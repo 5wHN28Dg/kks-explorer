@@ -18,7 +18,16 @@ KKS_RE = re.compile(rf'([0-9])([0-9])({L}{{3}})([0-9]{{2}})(?:({L}{{2}})([0-9]{{
 LINK_CODE = re.compile(r'[0-9A-Z]{4,24}')
 HEX = re.compile(r'#[0-9a-f]{6}')
 MAX = {'bytes': 16 << 20, 'equipment': 4000, 'pipes': 2000, 'structures': 2000, 'points': 256, 'values': 4000,
-       'alarms': 500, 'machines': 64, 'steps': 200, 'table': 1024}
+       'alarms': 500, 'machines': 64, 'steps': 200, 'table': 1024,
+       'isolations': 64, 'iso_points': 16, 'works': 128}     # the last three: format 2 (§14)
+ISO_KINDS = ('electrical', 'mechanical', 'process', 'instrument')                 # §15.1
+DISCIPLINES = ('mech', 'elec', 'inst', 'chem', 'civil')                          # §15.2
+PERMIT_KINDS = ('general', 'electrical', 'hot', 'confined')
+# a permit's states (§15.3) and the actions that move it: the states each is taken in, and where it goes
+PERMIT_STATES = ('none', 'requested', 'approved', 'isolated', 'issued', 'accepted', 'done', 'returned', 'deisolated',
+                 'closed', 'cancelled')
+PERMIT_ACTIONS = {'request': ((0, 9, 10), 1), 'approve': ((1,), 2), 'issue': ((3,), 4), 'accept': ((4,), 5),
+                  'done': ((5,), 6), 'return': ((6,), 7), 'close': ((8,), 9), 'cancel': ((1, 2, 3), 10)}
 GROUPS = ('water', 'steam', 'air', 'gas', 'oil', 'chemicals', 'flue_gas')
 OP_DO = ('open', 'close', 'stop_travel', 'start', 'stop', 'close_breaker', 'open_breaker', 'set', 'reset',
          'acknowledge')
@@ -38,10 +47,14 @@ PREFIX_RE = re.compile(rf'[0-9]{{2}}{L}{{3}}(?:[0-9](?:[0-9](?:{L}(?:{L}(?:[0-9]
 
 # ---------------------------------------------------------------- small checks
 
-def fmt(d, kind, where):
+def fmt(d, kind, where, top=1):
+    """The format name and version: 1, or up to `top` (2: plant.json, and the area, model, scenario and procedure
+    files of a version 2 plant, §14)."""
     need(d.get('format') == FORMATS[kind], 'bad_format', f'{where}: format must be "{FORMATS[kind]}"')
     v = d.get('version')
-    need(v == 1 and not isinstance(v, bool), 'bad_version', f'{where}: version must be 1')
+    need(v in range(1, top + 1) and isinstance(v, int) and not isinstance(v, bool), 'bad_version',
+         f'{where}: version must be {" or ".join(str(x) for x in range(1, top + 1))}')
+    return v
 
 
 def time(x, where, lo=0.0, positive=False):
@@ -272,6 +285,7 @@ class Bundle:
 
     def __init__(self):
         self.plant = self.kit = self.sounds = self.screens = None
+        self.version = 1                           # plant.json's (§14)
         self.screen_of = {}                        # code shown on the screens -> (screen id, group id) (§7.11)
         self.areas, self.models = [], []          # in plant.json order
         self.scenarios, self.procedures = {}, {}
@@ -390,7 +404,7 @@ class Plant:
     def check_plant(self, p):
         w = 'plant.json'
         keys(p, ('format', 'version', 'id', 'title', 'frequency_hz', 'kks', 'media', 'areas', 'ext', 'start'), (), w)
-        fmt(p, 'plant', w)
+        self.b.version = fmt(p, 'plant', w, 2)
         ident(p['id'], f'{w}.id')
         name_text(p['title'], f'{w}.title')
         need(p['frequency_hz'] in (50, 60) and not isinstance(p['frequency_hz'], bool), 'bad_value',
@@ -484,7 +498,7 @@ class Plant:
     def check_area(self, a, aid, rel):
         keys(a, ('format', 'version', 'id', 'title', 'bounds', 'pack', 'equipment', 'pipes', 'structures', 'signs'),
              (), rel)
-        fmt(a, 'area', rel)
+        fmt(a, 'area', rel, self.b.version)
         need(a['id'] == aid, 'bad_id', f'{rel}: id must be {aid!r}')
         name_text(a['title'], f'{rel}.title')
         lst(a['bounds'], f'{rel}.bounds', 2, 2)
@@ -775,7 +789,7 @@ class Plant:
 # ---------------------------------------------------------------- the behaviour model (§7)
 
 STATELESS = ('const', 'state', 'of', 'sum', 'product', 'min', 'max', 'diff', 'select', 'cmp', 'and', 'or', 'not')
-STATEFUL = ('lag', 'ramp', 'integrate', 'latch', 'delay', 'timer', 'wrap')
+STATEFUL = ('lag', 'ramp', 'integrate', 'latch', 'delay', 'timer', 'wrap', 'hold')
 NODE = {
     'const': (('const',), ()), 'state': (('state',), ()), 'of': (('of', 'table'), ('step',)),
     'sum': (('sum',), ()), 'product': (('product',), ()), 'min': (('min',), ()), 'max': (('max',), ()),
@@ -784,6 +798,7 @@ NODE = {
     'lag': (('lag', 'tau'), ('tau_down', 'init')), 'ramp': (('ramp', 'rate'), ('rate_down', 'init')),
     'integrate': (('integrate', 'gain', 'min', 'max'), ('init',)), 'latch': (('latch', 'reset'), ('init',)),
     'delay': (('delay', 'on'), ('off', 'init')), 'timer': (('timer',), ()), 'wrap': (('wrap', 'period'), ('init',)),
+    'hold': (('hold', 'when'), ('init',)),         # format 2 (§15.4)
 }
 CMP = ('>=', '>', '<=', '<')
 
@@ -810,6 +825,8 @@ def node_refs(n, kind):
         return [n['cmp'][0], n['cmp'][2]]
     if kind == 'latch':
         return [n['latch'], n['reset']]
+    if kind == 'hold':
+        return [n['hold'], n['when']]
     return [n[kind]]
 
 
@@ -827,15 +844,26 @@ class Model:
         self.pending_set = []
         self.states = set()
         self.machine_targets, self.machine_cmds, self.trip_refs = [], [], []
+        self.isolations, self.works = [], []     # format 2 (§15)
+        self.iso_codes, self.work_isos = [], []  # (code, where), (isolation id, where): resolved in finish()
+        self.version = 1                         # of the model file being added
+
+    def kept(self):
+        """The values the engine keeps for permits and isolations (§15.1, §15.3), in slot order."""
+        return [x['id'] + s for x in self.isolations for s in ('_locked', '_complete')] + \
+            [w['id'] + '_permit' for w in self.works]
 
     def known(self):
-        """Names any condition may read: values, ext, machine states, trip latches."""
+        """Names any condition may read: values, ext, machine states, trip latches, and the permits' and isolations'
+        values (format 2)."""
         return set(self.index) | set(self.ext) | {m['id'] + '_state' for m in self.machines} | \
-            {t['id'] + '_latched' for t in self.trips}
+            {t['id'] + '_latched' for t in self.trips} | set(self.kept())
 
     def add(self, d, aid, rel):
-        keys(d, ('format', 'version', 'area'), ('values', 'ops', 'interlocks', 'machines', 'alarms', 'trips', 'bind'), rel)
-        fmt(d, 'model', rel)
+        self.version = fmt(d, 'model', rel, self.b.version)
+        v2 = ('isolations', 'works') if self.version == 2 else ()
+        keys(d, ('format', 'version', 'area'), ('values', 'ops', 'interlocks', 'machines', 'alarms', 'trips', 'bind')
+             + v2, rel)
         need(d['area'] == aid, 'bad_id', f'{rel}: area must be {aid!r}')
         self.rel = rel
         for i, pair in enumerate(capped(d.get('values', []), f'{rel}.values', 'values')):
@@ -875,6 +903,59 @@ class Model:
         need(len(self.alarms) <= MAX['alarms'], 'limit', f'{rel}: the joined model has over {MAX["alarms"]} alarms')
         for i, x in enumerate(lst(d.get('bind', []), f'{rel}.bind', 0, 8000)):
             self.check_bind(x, f'{rel}: binding {i}')
+        for i, x in enumerate(lst(d.get('isolations', []), f'{rel}.isolations')):
+            self.check_isolation(x, f'{rel}: isolation {x.get("id", i) if isinstance(x, dict) else i}')
+        need(len(self.isolations) <= MAX['isolations'], 'limit', f'{rel}: the joined model has over '
+             f'{MAX["isolations"]} isolations')
+        for i, x in enumerate(lst(d.get('works', []), f'{rel}.works')):
+            self.check_work(x, f'{rel}: work {x.get("id", i) if isinstance(x, dict) else i}')
+        need(len(self.works) <= MAX['works'], 'limit', f'{rel}: the joined model has over {MAX["works"]} works')
+
+    def check_isolation(self, x, w):
+        """§15.1: the points made safe and locked for a work."""
+        keys(x, ('id', 'text', 'points'), (), w)
+        need(isinstance(x['id'], str) and ID_RE.fullmatch(x['id']) and len(x['id']) <= 22, 'bad_id',
+             f'{w}: id of at most 22 characters')
+        need(x['id'] not in {y['id'] for y in self.isolations}, 'dup_id', w)
+        name_text(x['text'], f'{w}.text', 200)
+        lst(x['points'], f'{w}.points', 1)
+        need(len(x['points']) <= MAX['iso_points'], 'limit', f'{w}: over {MAX["iso_points"]} points')
+        seen = set()
+        for i, pt in enumerate(x['points']):
+            wp = f'{w}.points[{i}]'
+            keys(pt, ('kks', 'kind', 'how'), ('safe',), wp)
+            self.kks_ref(pt['kks'], wp)
+            need(pt['kks'] not in seen, 'dup_id', f'{wp}: {pt["kks"]} twice in one isolation')
+            seen.add(pt['kks'])
+            need(pt['kind'] in ISO_KINDS, 'bad_value', f'{wp}.kind: one of {ISO_KINDS}')
+            name_text(pt['how'], f'{wp}.how', 200)
+            if 'safe' in pt:
+                self.cond(pt['safe'], f'{wp}.safe')
+            self.iso_codes.append((pt['kks'], wp))
+        self.isolations.append(x)
+
+    def check_work(self, x, w):
+        """§15.2: a job on equipment that needs a permit."""
+        keys(x, ('id', 'kks', 'title', 'discipline', 'permit'), ('isolation', 'repairs', 'set', 'task'), w)
+        need(isinstance(x['id'], str) and ID_RE.fullmatch(x['id']) and len(x['id']) <= 22, 'bad_id',
+             f'{w}: id of at most 22 characters')
+        need(x['id'] not in {y['id'] for y in self.works}, 'dup_id', w)
+        self.kks_ref(x['kks'], w)
+        name_text(x['title'], f'{w}.title', 120)
+        need(x['discipline'] in DISCIPLINES, 'bad_value', f'{w}.discipline: one of {DISCIPLINES}')
+        need(x['permit'] in PERMIT_KINDS, 'bad_value', f'{w}.permit: one of {PERMIT_KINDS}')
+        if 'isolation' in x:
+            self.work_isos.append((x['isolation'], f'{w}.isolation'))
+        if 'repairs' in x:
+            ident(x['repairs'], f'{w}.repairs')
+        if 'set' in x:
+            need(isinstance(x['set'], dict), 'bad_type', f'{w}.set: an object of state names and numbers')
+            for k, v in x['set'].items():
+                self.pending_set.append((k, f'{w}.set'))
+                num(v, f'{w}.set.{k}')
+        if 'task' in x:
+            ident(x['task'], f'{w}.task')       # a task of staff.json once the plant has one (§16, milestone S1)
+        self.works.append(x)
 
     def kks_ref(self, c, where):
         need(isinstance(c, str) and c in self.p.codes, 'bad_ref', f'{where}: no equipment {c!r} in the plant')
@@ -896,6 +977,8 @@ class Model:
         self.pending.append((r, where, False))
 
     def check_node(self, n, w):
+        need(not (self.version == 1 and isinstance(n, dict) and 'hold' in n), 'unknown_key',
+             f'{w}: the hold node is format 2 (a version 2 model file, §15.4)')
         kind = node_kind(n, w)
         req, opt = NODE[kind]
         keys(n, req, opt + ('unit', 'kks'), w)
@@ -947,6 +1030,11 @@ class Model:
                 need(n['min'] <= n['init'] <= n['max'], 'bad_value', f'{w}.init within min and max')
             if kind == 'wrap':
                 need(0 <= n['init'] < n['period'], 'bad_value', f'{w}.init within [0, period)')
+        if kind == 'hold':
+            # §15.4: the input as this step computed it (an earlier value), `when` as the previous step left it
+            self.ref(n['hold'], w, True)
+            self.ref(n['when'], w, False)
+            return kind
         for r in node_refs(n, kind):
             self.ref(r, w, stateless)
         return kind
@@ -1134,6 +1222,17 @@ class Model:
             need(t in trips, 'bad_ref', f'{w}: no trip {t!r}')
         for name, sw in self.p.sound_refs:
             need(name in known, 'bad_ref', f'{sw}: no value {name!r}')
+        # format 2 (§15): an isolation's point locks something; a work's isolation exists; the kept values' names
+        locks = {n.get('kks') for _, n, kind in self.values if kind == 'state'} | {a['kks'] for a in self.alarms}
+        for c, where in self.iso_codes:
+            need(c in locks, 'bad_ref', f'{where}: {c} is the code of no state or alarm of the model (a lock must do '
+                                        f'something)')
+        isos = {x['id'] for x in self.isolations}
+        for i, where in self.work_isos:
+            need(i in isos, 'bad_ref', f'{where}: no isolation {i!r}')
+        for name in self.kept():
+            need(name not in self.index and name not in self.ext, 'dup_id',
+                 f'{name}: a value or ext value has the name of a permit\'s or isolation\'s value (§15)')
 
 
 # ---------------------------------------------------------------- the control room screens (screens.json, §7.11)
@@ -1274,7 +1373,7 @@ def check_screens(s, m, b):
 
 def check_scenario(s, m, rel):
     keys(s, ('format', 'version', 'id', 'title', 'init'), ('latched', 'faults'), rel)
-    fmt(s, 'scenario', rel)
+    fmt(s, 'scenario', rel, m.b.version)
     ident(s['id'], rel)
     name_text(s['title'], rel)
     need(isinstance(s['init'], dict), 'bad_type', f'{rel}.init')
@@ -1350,7 +1449,7 @@ class PlantText(Course):
 
 def check_procedure(pr, m, b, rel):
     keys(pr, ('format', 'version', 'id', 'title', 'kind', 'steps'), ('scenario', 'intro'), rel)
-    fmt(pr, 'procedure', rel)
+    fmt(pr, 'procedure', rel, b.version)
     ident(pr['id'], rel)
     name_text(pr['title'], rel)
     need(pr['kind'] in ('procedure', 'tour'), 'bad_value', f'{rel}.kind: procedure or tour')
@@ -1406,7 +1505,9 @@ class Engine:
         op(kks, do, value=None, trip=None), ack(alarm), shelve(alarm, seconds), unshelve(alarm), fault(id),
         repair(id)
     (fault: a scenario fault without `when`, pressed by the trainer; applied in step 3; repair: a fault's repair,
-    applied in step 3 after the faults, §7.8).
+    applied in step 3 after the faults, §7.8). Format 2 (§15, free mode: person None):
+        permit(work, action, person=None), lock(work, point, person=None), unlock(work, point, person=None)
+    (permit actions handled in step 1; locks and unlocks noted in step 1 and made at the start of step 3, §17.1).
     """
 
     def __init__(self, b, scenario):
@@ -1415,7 +1516,18 @@ class Engine:
         sc = b.scenarios[scenario] if isinstance(scenario, str) else scenario
         self.sc = sc
         names = [v[0] for v in m.values] + list(m.ext) + [x['id'] + '_state' for x in m.machines] + \
-            [t['id'] + '_latched' for t in m.trips]
+            [t['id'] + '_latched' for t in m.trips] + m.kept()
+        # format 2 (§15): permits and isolations
+        self.v2 = b.version == 2
+        self.isos = {x['id']: x for x in m.isolations}
+        self.works = {w['id']: w for w in m.works}
+        self.permit = {w['id']: 0 for w in m.works}     # §15.3's states
+        self.ptw = {}                                   # work -> its permit's number, from its last request
+        self.ptw_count = 0
+        self.acceptor = {}                              # work -> who accepted its permit (None in free mode)
+        self.holder = {x['id']: None for x in m.isolations}     # the work holding each isolation (§15.1)
+        self.locks = {}                                 # (isolation id, point index) -> who locked it
+        self.code_locks = {}                            # code -> its locked points, of every isolation
         self.names = names
         self.ix = {n: i for i, n in enumerate(names)}
         self.n = len(names)
@@ -1438,6 +1550,7 @@ class Engine:
         self.events = []
         self.step_no = 0
         self.watch = {}
+        self.state_kks = {self.ix[name]: n['kks'] for name, n, kind in m.values if kind == 'state' and 'kks' in n}
         self._compile()
         for fid, f in self.faults.items():
             if isinstance(f.get('when'), dict):
@@ -1455,7 +1568,8 @@ class Engine:
                         for fid in self.fault_cond}
         for k in ('cur', 'events', 'queue'):
             setattr(c, k, list(getattr(self, k)))
-        for k in ('mstate', 'latched', 'trip_count', 'first_out', 'astate', 'acount', 'shelved', 'il_prev'):
+        for k in ('mstate', 'latched', 'trip_count', 'first_out', 'astate', 'acount', 'shelved', 'il_prev',
+                  'permit', 'ptw', 'acceptor', 'holder', 'locks', 'code_locks'):
             setattr(c, k, dict(getattr(self, k)))
         c.faults_done = set(self.faults_done)
         c.faults_fixed = set(self.faults_fixed)
@@ -1481,12 +1595,15 @@ class Engine:
         self.prog = []          # (index, fn(cur, prev) -> value) for stateless and stateful nodes
         self.init = [0.0] * self.n
         self.mem = {}
+        self.hold0 = {}         # holds without an init (their own or the scenario's): their input at step 0 (§15.4)
         for i, (name, n, kind) in enumerate(self.m.values):
             fn = self._node(i, n, kind)
             if kind == 'state':
                 self.init[i] = float(n['state'])
             elif kind in STATEFUL:
                 self.init[i] = float(n.get('init', 0))
+            if kind == 'hold' and 'init' not in n and name not in self.sc['init']:
+                self.hold0[i] = self._r(n['hold'])
             if fn is not None:
                 self.prog.append((i, fn, kind in STATEFUL))
 
@@ -1600,6 +1717,10 @@ class Engine:
                     mem[0] = 0
                 return mem[0] / 10      # 0.1 × count, as count / 10 so every reader gets the same double
             return g
+        if kind == 'hold':
+            # §15.4: the input as this step computed it while `when` (as the previous step left it) is false
+            u, wh = R(n['hold']), P(n['when'])
+            return lambda cur, prev: prev[i] if wh(cur, prev) >= 0.5 else u(cur, prev)
         if kind == 'wrap':
             u, per = P(n['wrap']), float(n['period'])
             def g(cur, prev):
@@ -1628,6 +1749,8 @@ class Engine:
         for i, fn, stateful in self.prog:
             if not stateful:
                 cur[i] = fn(cur, prev)
+            elif i in self.hold0:
+                cur[i] = self.hold0[i](cur, prev)
 
     # --- trainee inputs
     def op(self, kks, do, value=None, trip=None):
@@ -1648,6 +1771,15 @@ class Engine:
     def repair(self, fid):
         self.queue.append(('repair', fid))
 
+    def permit(self, work, action, person=None):
+        self.queue.append(('permit', work, action, person))
+
+    def lock(self, work, point, person=None):
+        self.queue.append(('lock', work, point, person))
+
+    def unlock(self, work, point, person=None):
+        self.queue.append(('unlock', work, point, person))
+
     def v(self, name):
         return self.cur[self.ix[name]]
 
@@ -1657,9 +1789,102 @@ class Engine:
     def ev(self, *e):
         self.events.append([self.step_no] + list(e))
 
-    def _set(self, s):
+    def _set(self, s, work=None):
         for k, v in s.items():
-            self.cur[self.ix[k]] = float(v)
+            self._write(self.ix[k], float(v), work)
+
+    def _write(self, i, x, work=None):
+        """A write to a state, skipped while its code is locked (§15.1); a work's own `done` writes (work) are made
+        when every isolation locking the code is held by that work."""
+        c = self.state_kks.get(i)
+        if c is not None and self.code_locks.get(c):
+            if work is None or any(self.holder[iso] != work for iso, p in self.locks
+                                   if self.isos[iso]['points'][p]['kks'] == c):
+                return
+        self.cur[i] = x
+
+    def locking(self, code):
+        """The isolations (in model order) with a locked point on this code."""
+        if not self.code_locks.get(code):
+            return []
+        return [x['id'] for x in self.m.isolations
+                if any((x['id'], p) in self.locks for p, pt in enumerate(x['points']) if pt['kks'] == code)]
+
+    def n_locked(self, iso):
+        return sum(1 for p in range(len(self.isos[iso]['points'])) if (iso, p) in self.locks)
+
+    def _permit(self, work, action, person, dones):
+        """A permit action (§15.3), in step 1."""
+        if not (isinstance(work, str) and work in self.works and isinstance(action, str)
+                and action in PERMIT_ACTIONS):
+            self.ev('permit', work, action, person, 'unknown', [])
+            return
+        w = self.works[work]
+        iso = w.get('isolation')
+        frm, to = PERMIT_ACTIONS[action]
+        why = []
+        if person is not None:
+            why.append('authority')     # no staff in the plant: free mode, person null (§17.1)
+        if self.permit[work] not in frm:
+            why.append('state')
+        if action == 'request' and iso is not None and self.holder[iso] is not None:
+            why.append('iso_busy')
+        if why:
+            self.ev('permit', work, action, person, 'refused', why)
+            return
+        self.permit[work] = to
+        self.cur[self.ix[work + '_permit']] = float(to)
+        if action == 'request':
+            self.ptw_count += 1
+            self.ptw[work] = f'PTW-{self.ptw_count:04d}'
+            self.acceptor.pop(work, None)
+            if iso is not None:
+                self.holder[iso] = work
+        elif action == 'accept':
+            self.acceptor[work] = person
+        elif action == 'done':
+            dones.append(work)
+        elif action in ('cancel', 'close') and iso is not None and self.n_locked(iso) == 0:
+            self.holder[iso] = None
+        self.ev('permit', work, action, person, 'done', [])
+
+    def _lock(self, kind, work, point, person, vals):
+        """A lock or unlock (§15.1), at the start of step 3."""
+        w = self.works.get(work) if isinstance(work, str) else None
+        iso = w.get('isolation') if w else None
+        if iso is None or not (isinstance(point, int) and not isinstance(point, bool)
+                               and 0 <= point < len(self.isos[iso]['points'])):
+            self.ev(kind, work, point, person, 'unknown', [])
+            return
+        pt = self.isos[iso]['points'][point]
+        key = (iso, point)
+        why = []
+        if person is not None:
+            why.append('authority')
+        if self.permit[work] not in ((2, 3) if kind == 'lock' else (2, 3, 7, 10)) or self.holder[iso] != work:
+            why.append('state')
+        if kind == 'lock':
+            if key in self.locks:
+                why.append('locked')
+            if 'safe' in pt and vals[self.ix[pt['safe']]] < 0.5:
+                why.append(pt['safe'])
+        elif key not in self.locks:
+            why.append('unlocked')
+        if why:
+            self.ev(kind, work, point, person, 'refused', why)
+            return
+        if kind == 'lock':
+            self.locks[key] = person
+            self.code_locks[pt['kks']] = self.code_locks.get(pt['kks'], 0) + 1
+        else:
+            del self.locks[key]
+            self.code_locks[pt['kks']] -= 1
+        k = self.n_locked(iso)
+        self.cur[self.ix[iso + '_locked']] = float(k)
+        self.cur[self.ix[iso + '_complete']] = 1.0 if k == len(self.isos[iso]['points']) else 0.0
+        if kind == 'unlock' and self.permit[work] == 10 and k == 0:
+            self.holder[iso] = None     # a cancelled work lets its isolation go with its last lock
+        self.ev(kind, work, point, person, 'done', [])
 
     def _enter(self, mc, to, cause):
         old = self.mstate[mc['id']]
@@ -1691,12 +1916,18 @@ class Engine:
         moved = set()
         pressed = []
         asked = []
+        noted = []          # locks and unlocks, made in step 3 (§17.1)
+        dones = []          # works whose permit went to done: their repairs and set in step 3
         # 1. the trainee's inputs, in the order made
         q, self.queue = self.queue, []
         for item in q:
             kind = item[0]
             if kind == 'op':
                 self._op(item[1:], prev, moved)
+            elif kind == 'permit':
+                self._permit(item[1], item[2], item[3], dones)
+            elif kind in ('lock', 'unlock'):
+                noted.append(item)
             elif kind in ('ack', 'shelve', 'unshelve') and item[1] not in self.astate:
                 continue        # an alarm the model doesn't have: nothing happens, no event (§7.10)
             elif kind == 'ack':
@@ -1727,7 +1958,25 @@ class Engine:
         for i, fn, stateful in self.prog:
             cur[i] = fn(cur, prev)
         vals = list(cur)          # conditions in steps 3–7 read the values as step 2 left them
-        # 3. faults
+        # 3. the locks and unlocks noted in step 1, in the order made; the permits' automatic moves (§15.3)
+        for kind, work, point, person in noted:
+            self._lock(kind, work, point, person, vals)
+        for w in self.m.works:
+            wid, iso = w['id'], w.get('isolation')
+            k = self.n_locked(iso) if iso is not None else 0
+            done = iso is None or k == len(self.isos[iso]['points'])
+            st, new = self.permit[wid], None
+            if st == 2 and done:
+                new = 3
+            elif st == 3 and not done:
+                new = 2
+            elif st == 7 and k == 0:
+                new = 8
+            if new is not None:
+                self.permit[wid] = new
+                cur[self.ix[wid + '_permit']] = float(new)
+                self.ev('permit', wid, 'auto', None, 'done', [new])
+        # then the faults
         for fid, f in self.faults.items():
             # applied once; a repaired trainer's fault can be pressed again (§7.8)
             if fid in self.faults_done and not (fid in self.faults_fixed and 'when' not in f):
@@ -1748,6 +1997,16 @@ class Engine:
                 self.faults_fixed.add(fid)
                 self._set(f['repair'])
                 self.ev('repair', fid)
+        # then the works whose permit went to done, in the order of their `done`: the fault they repair, their set
+        for wid in dones:
+            w = self.works[wid]
+            fid = w.get('repairs')
+            f = self.faults.get(fid)
+            if f is not None and 'repair' in f and fid in self.faults_done and fid not in self.faults_fixed:
+                self.faults_fixed.add(fid)
+                self._set(f['repair'], wid)
+                self.ev('repair', fid)
+            self._set(w.get('set', {}), wid)
         # 4. interlocks on a rising edge
         for x in m.interlocks:
             now = vals[self.ix[x['when']]] >= 0.5
@@ -1788,7 +2047,7 @@ class Engine:
         # 7. alarms
         for a in self.alarms:
             aid = a['id']
-            sup = 'suppress' in a and vals[self.ix[a['suppress']]] >= 0.5
+            sup = 'suppress' in a and vals[self.ix[a['suppress']]] >= 0.5 or bool(self.code_locks.get(a['kks']))
             if aid in self.shelved and self.shelved[aid] <= self.step_no:
                 del self.shelved[aid]
                 self.ev('unshelve', aid)
@@ -1835,12 +2094,13 @@ class Engine:
         if do == 'set' and 'machine' not in o:
             if value is None or not (o['range'][0] <= value <= o['range'][1]):
                 failed.append(o['input'])
+        failed += [x + '_locked' for x in self.locking(kks)]       # a locked code refuses every op (§15.1)
         if failed:
             self.ev('op', kks, do, 'refused', failed)
             return
         self.ev('op', kks, do, 'done', [])
         if do == 'set' and 'machine' not in o:
-            self.cur[self.ix[o['input']]] = float(value)
+            self._write(self.ix[o['input']], float(value))
         if do == 'reset' and 'machine' not in o:
             self.latched[trip] = False
             self.trip_count[trip] = 0
@@ -1875,6 +2135,11 @@ class Engine:
              'alarms': {a: s for a, s in self.astate.items() if s != 'normal'},
              'shelved': sorted(self.shelved),
              'fast_forward': self.fast_forward()}
+        if self.v2:
+            s['permits'] = {w['id']: self.permit[w['id']] for w in self.m.works if self.permit[w['id']]}
+            s['ptw'] = {w['id']: self.ptw[w['id']] for w in self.m.works if w['id'] in self.ptw}
+            s['locked'] = [[x['id'], p] for x in self.m.isolations for p in range(len(x['points']))
+                           if (x['id'], p) in self.locks]
         if values:
             s['values'] = {n: self.cur[i] for i, n in enumerate(self.names)}
         return s
@@ -1910,6 +2175,15 @@ class Recorder(Engine):
 
     def repair(self, fid):
         self._q(('repair', fid))
+
+    def permit(self, work, action, person=None):
+        self._q(('permit', work, action, person))
+
+    def lock(self, work, point, person=None):
+        self._q(('lock', work, point, person))
+
+    def unlock(self, work, point, person=None):
+        self._q(('unlock', work, point, person))
 
     def clone(self):
         c = super().clone()
