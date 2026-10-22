@@ -282,14 +282,20 @@ static func _shrub(m, g, h: float, wide: float, leaf: Color, flower: Color, flow
 		var a := TAU * k / 3.0 + rng.randf()
 		m.cyl(Vector3(cos(a) * 0.06, sin(a) * 0.06, 0), Vector3(cos(a) * w * 0.15, sin(a) * w * 0.15, h * 0.4), 0.025, 0.018, 4, false)
 
-## Bougainvillea trained up a porch's or a walkway's post: a column of leaves and magenta bracts, spreading at the top
-## along the roof's edge.
+## Bougainvillea trained up a porch's or a walkway's post (planted at the post): clusters of leaves and magenta bracts
+## climbing it, thinner low down, a round head where it reaches the roof's edge.
 static func _bougainvillea(m, g, h: float) -> void:
 	var rng := _rng(g, 4)
-	col(m, "foliage", BOUGAINVILLEA)
-	var cols := [[BOUGAINVILLEA, 0.55], [BOUGAINVILLEA.darkened(0.15), 0.15], [BOUGAINVILLEA_LEAF, 0.3]]
-	_blob(m, Vector3(0, 0, h * 0.45), Vector3(0.35, 0.35, h * 0.45), rng, cols, 6, 4, 0.2)
-	_blob(m, Vector3(0, 0, h * 0.92), Vector3(1.1, 0.6, 0.35), rng, cols, 7, 3, 0.2)
+	col(m, "foliage", BOUGAINVILLEA_LEAF)
+	var cols := [[BOUGAINVILLEA_LEAF, 0.45], [BOUGAINVILLEA, 0.4], [BOUGAINVILLEA.darkened(0.2), 0.15]]
+	var n := 4
+	for k in n:
+		var t := (k + 0.5) / n
+		var r := lerpf(0.16, 0.3, t)
+		var a := rng.randf() * TAU
+		var c := Vector3(cos(a) * 0.06, sin(a) * 0.06, h * lerpf(0.2, 0.78, t))
+		_blob(m, c, Vector3(r, r, h * 0.16), rng, cols, 6, 3, 0.25)
+	_blob(m, Vector3(0, 0, h * 0.95), Vector3(0.6, 0.6, 0.3), rng, cols, 7, 3, 0.25)
 
 ## The drip line along a row of plants (plant coordinates of the row's ends, in the part frame): a black hose on the
 ## ground (detail).

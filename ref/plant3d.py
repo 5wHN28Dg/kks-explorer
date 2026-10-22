@@ -34,6 +34,9 @@ OP_DO = ('open', 'close', 'stop_travel', 'start', 'stop', 'close_breaker', 'open
 DIRS = {'n': (0, 1, 0), 's': (0, -1, 0), 'e': (1, 0, 0), 'w': (-1, 0, 0), 'up': (0, 0, 1), 'down': (0, 0, -1)}
 WALKABLE = ('platform', 'floor', 'grating', 'road', 'stair', 'ladder')
 SURFACES = ('platform', 'floor', 'grating', 'road')     # an outline at the part's height
+# structure parts the content build draws itself (apps/plant3d/builder/plant_builder.gd STRUCTURES, less `door`)
+BUILDER_STRUCTURES = ('building', 'floor', 'platform', 'grating', 'road', 'stair', 'ladder', 'pit', 'slab', 'fence',
+                      'pipe_rack', 'wall', 'handrail', 'column', 'beam', 'trench')
 STAIR = {'rise': (0.15, 0.20), 'going': 0.25, 'step_rule': (0.60, 0.66), 'flight': 3.6}
 TOL = 0.05          # metres: a stair's or ladder's end meets a surface within this height and plan distance
 BLOCKS = ('h', 'p', 'ul', 'ol', 'table', 'callout', 'cards', 'chain')
@@ -365,6 +368,13 @@ class Plant:
                 need(apart or inside or held, 'area_overlap', f'{rel}: bounds overlap area {other!r}')
             rects.append((aid, a['bounds'], 'load' in a))
             b.areas.append(a)
+        # an interior lies inside one area (its building's), not out on ground of no area (§18.5)
+        for aid, r, ins in rects:
+            if ins:
+                (ax0, ay0), (ax1, ay1) = r
+                need(any(not o_ins and bx0 <= ax0 and ax1 <= bx1 and by0 <= ay0 and ay1 <= by1
+                         for _, ((bx0, by0), (bx1, by1)), o_ins in rects), 'area_overlap',
+                     f'areas/{aid}.json: an interior lies inside the area holding its building')
         for rel in files:
             if rel.startswith('areas/'):
                 need(rel[6:-5] in p['areas'], 'bad_ref', f'{rel}: area not listed in plant.json')
@@ -511,6 +521,12 @@ class Plant:
             # holding it, and it holds no equipment or pipes (nothing with a code to find while it is not loaded)
             need(a['load'] == 'inside', 'bad_value', f'{rel}.load: "inside"')
             need(not a['equipment'] and not a['pipes'], 'bad_kind', f'{rel}: an interior holds no equipment or pipes')
+            # and only what the app shows unbaked in the instanced pieces' format (§18.6): the kit's site parts and
+            # doors, none of the builder's own structures (a floor, a wall, a stair… would be a pipeline of its own)
+            for s in a['structures'] if isinstance(a['structures'], list) else []:
+                need(not isinstance(s, dict) or s.get('part') not in BUILDER_STRUCTURES, 'bad_kind',
+                     f'{rel}: structure {s.get("id") if isinstance(s, dict) else s}: an interior holds the kit\'s site '
+                     f'parts and doors only, not a {s.get("part") if isinstance(s, dict) else s}')
         need(a['id'] == aid, 'bad_id', f'{rel}: id must be {aid!r}')
         name_text(a['title'], f'{rel}.title')
         lst(a['bounds'], f'{rel}.bounds', 2, 2)

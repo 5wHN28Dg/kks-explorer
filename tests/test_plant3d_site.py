@@ -94,7 +94,7 @@ class Format(unittest.TestCase):
         with open(os.path.join(DATA, 'kit.json'), encoding='utf-8') as f:
             now = json.load(f)['parts']
         kit = json.loads(cls.files['kit.json'])
-        for part in ('table', 'room', 'planting', 'door', 'fence'):
+        for part in ('table', 'room', 'planting', 'door', 'fence', 'slab'):
             kit['parts'][part] = now[part]
         cls.files['kit.json'] = json.dumps(kit).encode()
 
@@ -128,6 +128,16 @@ class Format(unittest.TestCase):
         # across two areas, or out in the open, or overlapping an area it is not inside
         self.assertEqual(self.code(self.with_interior(bounds=((35, 5), (55, 15)))), 'area_overlap')
         self.assertEqual(self.code(self.with_interior(bounds=((-5, 5), (5, 15)))), 'area_overlap')
+        # on ground of no area at all
+        self.assertEqual(self.code(self.with_interior(bounds=((100, 100), (110, 110)))), 'area_overlap')
+
+    def test_an_interior_holds_only_the_kits_site_parts_and_doors(self):
+        slab = {'id': 'in1_slab', 'part': 'slab', 'at': [8, 8, 0], 'params': {'outline': [[0, 0], [1, 0], [1, 1]]}}
+        files = self.with_interior()
+        a = json.loads(files['areas/in1.json'])
+        a['structures'].append(slab)
+        files['areas/in1.json'] = json.dumps(a).encode()
+        self.assertEqual(self.code(files), 'bad_kind')
 
     def test_an_interior_holds_no_equipment(self):
         eq = [{'kks': '10LAC90AP001', 'name': 'A pump', 'part': 'pump_horizontal', 'at': [8, 8, 0]}]
@@ -233,6 +243,11 @@ class Site(unittest.TestCase):
             p = (x, y)
             with self.subTest(plant=sid, species=sp, at=(round(x, 1), round(y, 1))):
                 if sp == 'date_palm':
+                    # beside an east-west walkway, on its south side: the sun is in the south (SITE.md §4)
+                    for r in paved:
+                        ew = r[2] - r[0] > 3 * (r[3] - r[1])
+                        if ew and r[0] <= p[0] <= r[2] and 0 < dist_rect(p, r) <= 3.0:
+                            self.assertLess(p[1], r[1], 'a palm beside an east-west walkway stands on its sunny (south) side')
                     # shade on a walkway, a court, a forecourt or an entrance people use
                     self.assertTrue(any(dist_rect(p, r) <= 3.0 for r in paved + parking) or
                                     any(math.dist(p, d) <= 12 for d in doors),

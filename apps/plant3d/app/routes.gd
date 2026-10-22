@@ -55,7 +55,7 @@ static func frames(plant) -> Array:
 
 ## The camp walk: about 900 m, 11 minutes at a walk; the interiors load on the way (app/interiors.gd).
 static func camp(_plant) -> Array:
-	var out: Array = [_to(-20, 0), _to(-12, 0), _to(-5, 0), _to(-5, 17), _to(-42, 17), _to(-50, 22), _to(-139, 22),
+	var out: Array = [_to(-20, 0), _to(-12, 0), _to(-5, 0), _to(-5, 21.2), _to(-42, 21.2), _to(-50, 22), _to(-139, 22),
 		_to(-262, 22), _to(-411, 22), _to(-411, 35), _to(-405.5, 35),
 		# block 1: its corridor, room 101 and back, out by the east door
 		_to(-403, 35), _to(-403, 33.4), _to(-401.5, 32.8), _to(-403, 33.4), _to(-403, 35), _to(-365.5, 35),
@@ -64,5 +64,5 @@ static func camp(_plant) -> Array:
 		_to(-340, 22), _to(-340, 6), _to(-340, 2.5), _to(-340, -5), _to(-350, -5), _to(-340, -5), _to(-340, 2.5),
 		_to(-340, 6), _to(-340, 22),
 		# back to the plant
-		_to(-139, 22), _to(-50, 22), _to(-42, 17), _to(-5, 17), _to(-5, 0), _to(-12, 0)]
+		_to(-139, 22), _to(-50, 22), _to(-42, 21.2), _to(-5, 21.2), _to(-5, 0), _to(-12, 0)]
 	return out

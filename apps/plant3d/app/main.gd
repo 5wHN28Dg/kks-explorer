@@ -58,6 +58,7 @@ var times := PackedFloat32Array()
 var gpu := PackedFloat32Array()
 var last_us := 0
 var t_walk := 0.0
+var walk_pipelines := -1   # pipelines compiled when the walk's measured part began (PIPELINE lines)
 var walk_seconds := 600.0
 var first_frame_ms := -1
 ## The first walkable frame was drawn: the plant, the player, the map, the HUD and the UI are all there (a script that
@@ -438,6 +439,17 @@ func _process(delta: float) -> void:
 		gpu.append(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()))
 		if ms > 100.0:
 			_say("SPIKE %.1f ms at %.1f s, at %s" % [ms, t_walk, str(player.global_position)])
+		# a pipeline compiled after the start is a hitch on a phone (decision 0060): logged with where and when
+		var pl := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE) + \
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION)
+		if pl > walk_pipelines:
+			if walk_pipelines >= 0:
+				_say("PIPELINE %d compiled at %.1f s (frame %.1f ms), at %s" % [pl - walk_pipelines, t_walk, ms, str(player.global_position)])
+			walk_pipelines = pl
+		# a GPU frame over 100 ms (the screen holds the frame, while the scripts' own frame time stays short)
+		var g: float = gpu[gpu.size() - 1]
+		if g > 66.0:
+			_say("GPU %.1f ms at %.1f s, at %s" % [g, t_walk, str(player.global_position)])
 		if ui != null and ui.clock != null:
 			sim_t += delta
 			if sim_t >= 1.0:

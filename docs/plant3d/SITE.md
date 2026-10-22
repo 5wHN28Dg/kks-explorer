@@ -48,7 +48,7 @@ Format: docs/PLANT3D.md (areas §3; format 2 parts and interiors §18.5–§18.6
 - **Roads** at least 6 m wide (two buses pass), a 1.5 m walkway along each road that people use; crossings marked;
   bus stops at the camp gate, the plant gate and the control building. Everything walkable is reached on foot from
   the control room, the camp too (the walking test, 0059).
-- **Distances** (for the staff's ways, STAFF.md): camp gate to plant gate 130 m; plant gate to the control building
+- **Distances** (for the staff's ways, STAFF.md): camp gate to plant gate 120 m (as built, C1); plant gate to the control building
   110 m; the control building to the WTP 330 m (a bus or the pickup for jobs there, or a walk of about 4 minutes).
 
 ## 2. What the trainee sees from the train

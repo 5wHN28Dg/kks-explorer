@@ -40,7 +40,7 @@
   {"id": "rw_lamp_5", "part": "lamp_post", "at": [-146.0, 11.2, 0], "params": {"height": 8}}
  ],
  "signs": [
-  {"text": "Camp 130 m", "at": [-143, 23.4, 2.0], "yaw": 90, "size": 0.35},
+  {"text": "Camp 120 m", "at": [-143, 23.4, 2.0], "yaw": 90, "size": 0.35},
   {"text": "Plant gate", "at": [-257, 23.4, 2.0], "yaw": 270, "size": 0.35}
  ]
 }

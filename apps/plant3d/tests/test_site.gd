@@ -68,10 +68,15 @@ func interiors(tree: SceneTree) -> Array:
 	p.append_array(unbaked(node, "block 1's interior"))
 	# beyond 30 m it is freed
 	who.global_position = door + Vector3(-40, 1, 0)
-	for i in 30:
+	var t_free := Time.get_ticks_msec()   # by the clock: the loader checks 4 times a second of frame time
+	while it.loaded("block1_in") and Time.get_ticks_msec() - t_free < 5000:
 		await tree.process_frame
 	if it.loaded("block1_in"):
 		p.append("block 1's interior is freed 40 m from its doors")
+	while not it._dying.is_empty() and Time.get_ticks_msec() - t_free < 10000:
+		await tree.process_frame   # (taken out a few pieces a frame)
+	if not it._dying.is_empty():
+		p.append("block 1's interior is taken out within 10 s")
 	# every interior, as the walking tests load them: each the same kind of surfaces
 	err = plant.load_interiors()
 	if err != "":

@@ -345,7 +345,7 @@ def road_west():
          row('rw_oleander', 'oleander', (x0 + 2, 26.0), (x1 - 2, 26.0))]
     s += palms_along('rw_palm', x0 + 4, x1 - 4, (VERGE_Y[0] + VERGE_Y[1]) / 2, 8)
     s += lamps('rw_lamp', x0 + 6, x1 - 6, 24, y=11.2)
-    signs = [sign('Camp 130 m', [x1 - 3, 23.4, 2.0], 90, 0.35), sign('Plant gate', [x0 + 3, 23.4, 2.0], 270, 0.35)]
+    signs = [sign('Camp 120 m', [x1 - 3, 23.4, 2.0], 90, 0.35), sign('Plant gate', [x0 + 3, 23.4, 2.0], 270, 0.35)]
     return area2('road_west', 'Road to the camp', [[x0, 10], [x1, 30]], CAMP_PACK, s, signs)
 
 
@@ -418,7 +418,7 @@ def camp():
         n = math.ceil(length / 5.5)
         for i in range(1, n, 2):
             k += 1
-            s.append(plant1(f'camp_walk_bougainvillea_{k}', 'bougainvillea', [-412.75, r3(y_mid - length / 2 + length * i / n)]))
+            s.append(plant1(f'camp_walk_bougainvillea_{k}', 'bougainvillea', [-412.35, r3(y_mid - length / 2 + length * i / n)]))
     for n, bx, by, col in blocks():
         sid = f'camp_block{n}'
         bx1 = bx + BLOCK_W
@@ -436,7 +436,7 @@ def camp():
         npost = math.ceil(BLOCK_W / 3.2)
         for i in range(0, npost + 1, 3):
             x = bx + 0.1 + (BLOCK_W - 0.2) * i / npost
-            s.append(plant1(f'{sid}_bougainvillea_{i}', 'bougainvillea', [r3(x), by - 2.75]))
+            s.append(plant1(f'{sid}_bougainvillea_{i}', 'bougainvillea', [r3(x), by - 2.4]))   # at the post
     # the amenities north of the main walkway, their doors on it, a paved step to each
     for sid, (bx0, by0, bx1, by1), kks, title in (('camp_gym', GYM, '00UZW31', 'Gym'),
                                                   ('camp_rec', REC, '00UZW33', 'Recreation room'),
@@ -653,8 +653,8 @@ def control_planting():
     gate, north of the building (the walkway's south: its shade), and low beds of saltbush and caper beside its door
     on the bare ground. The control area's bounds grow east and north to hold them (the yard between it and the
     turbine hall, paved as before)."""
-    s = [box_road('ctl_walk', -40, 16, -6, 18, 'concrete'), box_road('ctl_walk_door', -8, 1.2, -6, 16, 'concrete')]
-    s += [plant1(f'ctl_palm_{k + 1}', 'date_palm', [x, 19.5]) for k, x in enumerate((-37, -29, -21, -13))]
+    s = [box_road('ctl_walk', -40, 20.5, -6, 22, 'concrete'), box_road('ctl_walk_door', -8, 1.2, -6, 20.5, 'concrete')]
+    s += [plant1(f'ctl_palm_{k + 1}', 'date_palm', [x, 18.6]) for k, x in enumerate((-37, -29, -21, -13))]
     s += [row('ctl_bed_n', 'saltbush', (-8.9, 2.2), (-8.9, 4.6)), row('ctl_bed_s', 'caper', (-8.9, -2.2), (-8.9, -3.6))]
     return s
 

@@ -1,9 +1,10 @@
 ## The interiors (docs/PLANT3D.md §18.5, decision 0066): a camp block's rooms, the mess hall and its kitchen, the
 ## prayer room, the gym, the laundry, the recreation room, the offices. Each is a scene of its own (the build's
 ## manifest `interiors`), loaded on a worker thread when the trainee comes within NEAR metres of one of its building's
-## doors, made (instantiated) on a worker thread too, then put into the plant a few of its pieces a frame (BATCH), and
-## taken out the same way beyond FAR: the Note 9 held a frame 104-127 ms each time an interior went in whole
-## (2026-10-22). Its pieces are the plant's materials and vertex format, unbaked (builder/kit_place.gd `unbaked`), so
+## doors, then put into the plant a few of its pieces a frame (BATCH), and taken out the same way beyond FAR: the Note 9
+## held a frame 104-127 ms each time an interior went in whole (2026-10-22). It is instantiated on this thread (its
+## bodies are made through the physics server, which is not thread-safe here: Jolt, no physics thread). Its pieces
+## are the plant's materials and vertex format, unbaked (builder/kit_place.gd `unbaked`), so
 ## showing one compiles no pipeline. Distances checked 4 times a second.
 extends Node
 
@@ -30,7 +31,7 @@ func setup(p: Node3D, walker: Node3D) -> void:
 		var b: Array = a.bounds
 		items[a.id] = {"scene": a.scene, "doors": a.get("doors", []).map(func(d): return Plant.v3(d)),
 			"rect": Rect2(Vector2(b[0][0], b[0][1]), Vector2(b[1][0] - b[0][0], b[1][1] - b[0][1])),
-			"node": null, "loading": false, "title": a.get("title", a.id), "task": -1, "made": null,
+			"node": null, "loading": false, "title": a.get("title", a.id),
 			"pending": [], "shown": false}
 
 ## Metres from a point (Godot's axes) to an interior: its nearest door, or its plan rectangle when nearer.
@@ -65,23 +66,11 @@ func _process(delta: float) -> void:
 	_t = 0.0
 	update(who.global_position)
 
-## The per-frame work: interiors made on a worker thread go in, BATCH pieces a frame; freed ones go out the same way.
+## The per-frame work: interiors made go in, BATCH pieces a frame; freed ones go out the same way.
 func _step() -> void:
 	var budget := BATCH
 	for id in items:
 		var it: Dictionary = items[id]
-		if it.task >= 0 and WorkerThreadPool.is_task_completed(it.task):
-			WorkerThreadPool.wait_for_task_completion(it.task)
-			it.task = -1
-			var n: Node = it.made.node
-			it.made = null
-			it.pending = n.get_meta("pieces", [])
-			n.remove_meta("pieces")
-			plant.add_child(n)
-			it.node = n
-			if it.pending.is_empty():
-				it.shown = true
-				shown.emit(id)
 		while budget > 0 and it.node != null and not it.pending.is_empty():
 			var pair: Array = it.pending.pop_front()   # [its container (already in), the piece]
 			var piece: Node = pair[1]
@@ -130,7 +119,7 @@ func update(at: Vector3) -> void:
 			elif st != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 				it.loading = false   # failed: tried again next time the trainee comes near
 				push_warning("interior %s: could not load %s" % [id, it.scene])
-		elif it.node == null and it.task < 0 and d < NEAR:
+		elif it.node == null and d < NEAR and not _dying_ids().has(id):   # (one copy at a time)
 			if ResourceLoader.load_threaded_request(it.scene, "PackedScene", true) == OK:
 				it.loading = true
 		elif it.node != null and d > FAR:
@@ -138,26 +127,42 @@ func update(at: Vector3) -> void:
 			for p in it.pending:
 				(p[1] as Node).free()
 			it.pending = []
-			_dying.append([it.node])
+			_dying.append([it.node, id])
 			it.node = null
 			it.shown = false
 			freed.emit(id)
 
-## Instantiates on a worker thread (nodes outside the tree), its pieces taken off its root to go in by batches.
+## Instantiates it (outside the tree) and puts its root and containers in: what the containers hold (structures,
+## signs, the kit's cells) goes in by batches (_step).
 func _make(id: String, ps: PackedScene) -> void:
-	var holder := {"node": null}
-	items[id].made = holder
-	items[id].task = WorkerThreadPool.add_task(func():
-		# the area's containers (structures, signs, kit…) stay; what they hold goes in by batches
-		var n := ps.instantiate()
-		var pieces: Array = []
-		for c in n.get_children():
-			for p in c.get_children():
-				pieces.append([c, p])
-		for pair in pieces:
-			(pair[0] as Node).remove_child(pair[1])
-		n.set_meta("pieces", pieces)
-		holder.node = n)
+	var n := ps.instantiate()
+	if n == null:
+		push_warning("interior %s: its scene made nothing" % id)
+		return
+	var pieces: Array = []
+	for c in n.get_children():
+		for p in c.get_children():
+			pieces.append([c, p])
+	for pair in pieces:
+		(pair[0] as Node).remove_child(pair[1])
+	var it: Dictionary = items[id]
+	it.pending = pieces
+	plant.add_child(n)
+	it.node = n
+	if pieces.is_empty():
+		it.shown = true
+		shown.emit(id)
+
+func _dying_ids() -> Array:
+	return _dying.map(func(d): return d[1])
+
+## Pieces never put in hold no tree: freed with the loader (a world freed while an interior went in).
+func _exit_tree() -> void:
+	for id in items:
+		for p in items[id].pending:
+			if is_instance_valid(p[1]) and not (p[1] as Node).is_inside_tree():
+				(p[1] as Node).free()
+		items[id].pending = []
 
 ## Shows one at once, on this thread (load_all).
 func _show(id: String, ps: PackedScene) -> void:
