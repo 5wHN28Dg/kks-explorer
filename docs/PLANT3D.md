@@ -1246,11 +1246,13 @@ C are not made. Vehicles stand at home. Step 0 makes no staff events.
 1. **Duties and slots:** people whose duty starts or ends (event `duty`), in person order; then the slots whose time
    is reached, per person in slot order: a task instance each (§17.3). People in the scenario's `absent` take part in
    nothing.
-2. **Reactions** to this step's events and edges, in reaction order: each gives its task to one person.
+2. **Reactions** to this step's events and edges (all but unsafe acts, phase 5), in reaction order: each gives its
+   task to one person.
 3. **Vehicles**, in file order: they move, dwell, set off (§16.8).
 4. **People**, in index order: each advances its current task (§17.3), ending steps and starting the next until one
    waits, at most 64 task steps per person in a step. A `ride` boards in this phase.
-5. **Unsafe acts** (§16.7) start and end, in person order, and their `seen` reactions are given, in reaction order.
+5. **Unsafe acts** (§16.7) start and end, in person order; then the reactions to them, `seen` or not, in reaction
+   order (§16.7).
 
 ### 17.3 Queues
 
@@ -1264,9 +1266,9 @@ C are not made. Vehicles stand at home. Step 0 makes no staff events.
   progress is paused (its time kept) and resumed when the task comes back. A pre-empted `go` stops at the next place
   of its route.
 - **Travel:** a `go` starting in step n takes its route's ways one after another; the person is at the end of way i
-  after the sum of the steps of ways 1 to i (event `move` per way). If the place is taken when they arrive (it can't
-  be: it was reserved) — or the target is `{"kind", "room"}` and none is free — they wait at the room's door and take
-  the first that becomes free, in place order.
+  after the sum of the steps of ways 1 to i (event `move` per way). A target place is reserved when the route starts
+  (§16.2); a `{"kind", "room"}` target with no free place, or a named place another person holds, sends them to wait
+  as §16.2 says.
 - **Ends:** the task's last step done ends it (event `done`); a `wait` timed out without `else`, or a refused op,
   permit, lock or unlock without `else`, abandons it (`abandoned`). A `wait` on the trainee times out like any other.
 
