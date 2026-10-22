@@ -1259,18 +1259,34 @@ class Windows(unittest.TestCase):
                                  'set\tUsername\tpia', 'set\tPassword\tpia password 1', 'click\tJoin',
                                  'wait\t~Sample sheet\t60', 'click\tLearning',
                                  'wait\t~Rumaila Plant Foundations — 0 of 76 solved\t30'], keep=False, sync_every=3000)
-        app, code = None, None
+        app = None
         for _ in range(40):
             ds = json.loads(self.peer('pairing'))['devices']
             if ds:
-                app, code = ds[0]['device'], ds[0]['code']
+                app = ds[0]['device']
                 break
             time.sleep(1)
-        self.assertIsNotNone(code, 'the app never showed up on the other device')
-        title = '%s — code %s' % (label, code)
-        self.check('ppair.uia', ['click\tCheck again', 'wait\t%s: Not paired\t30' % title, 'click\tPair with ' + title,
-                                 'wait\t%s: Paired here: pair on that device too\t20' % title])
+        self.assertIsNotNone(app, 'the app never showed up on the other device')
         self.peer('pair', app)
+        # the app: the other device asked; Pair; both compute the code once the other's reveal came through the server
+        self.check('ppair.uia', ['sleep\t4000', 'click\tCheck again', 'wait\t~%s: That device asked to pair\t30' % label,
+                                 'click\tPair with ' + label, 'wait\t~%s: \t10' % label])
+        code = None
+        for _ in range(30):
+            row = json.loads(self.peer('pairing'))['devices'][0]
+            if row['state'] == 'compare':
+                code = row['code']
+                break
+            time.sleep(1)
+        self.assertIsNotNone(code, 'the other device never showed a code')
+        ok = False
+        for _ in range(4):
+            ok, _ = ui('pcode.uia', ['sleep\t4000', 'click\tCheck again',
+                                     'wait\t%s: Code %s: confirm only if the other device shows the same code\t10' % (label, code)], True)
+            if ok: break
+        self.assertTrue(ok, 'the code never showed in the app')
+        self.check('pconfirm.uia', ['click\tCodes match with ' + label, 'wait\t%s: Paired\t20' % label])
+        self.peer('confirm', app, code)
         ok = False
         for _ in range(4):       # the app takes the share in at its next round; Check again counts again
             ok, _ = ui('pcount.uia', ['sleep\t5000', 'click\tCheck again',

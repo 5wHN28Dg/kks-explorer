@@ -650,23 +650,43 @@ class Phone(unittest.TestCase):
         self.join('pia', 'pia password 1')
         ui.tap('Learning', exact=True)
         ui.find('0 of 76 questions solved', timeout=15)
-        phone, code = None, None
+        phone = None
         for _ in range(40):
             ds = json.loads(self.peer('pairing'))['devices']
             if ds:
-                phone, code = ds[0]['device'], ds[0]['code']
+                phone = ds[0]['device']
                 break
             time.sleep(1)
-        self.assertIsNotNone(code, 'the phone never showed up on the other device')
-        for _ in range(10):
-            if ui.present(f'code {code}'):
-                break
-            ui.tap('Check again', exact=True) if ui.present('Check again', exact=True) else ui.scroll_to('Check again', exact=True, tries=12)
-            time.sleep(1)
-        ui.scroll_to(f'code {code}', tries=12)
-        ui.tap('Pair with')
-        ui.scroll_to('Paired here: pair on that device too', exact=True, tries=12)
+        self.assertIsNotNone(phone, 'the phone never showed up on the other device')
         self.peer('pair', phone)
+
+        def until(text, act=None, tries=12):
+            """sync, Check again (and press `act` when it is there) until `text` is on the Learning page"""
+            for _ in range(tries):
+                if ui.present(text):
+                    return
+                if act and ui.present(act):
+                    ui.tap(act)
+                    time.sleep(2)
+                    continue
+                self.phone_sync()
+                ui.scroll_to('Check again', exact=True, tries=12)
+                ui.tap('Check again', exact=True)
+                time.sleep(1)
+            ui.scroll_to(text, tries=12)
+        until('Waiting for the other device', act='Pair with ')   # (the button's description: "Pair with <label>")
+        code = None
+        for _ in range(20):
+            row = json.loads(self.peer('pairing'))['devices'][0]
+            if row['state'] == 'compare':
+                code = row['code']
+                break
+            time.sleep(1)
+        self.assertIsNotNone(code, 'the other device never showed a code')
+        until(f'Code {code}: confirm only if')
+        ui.tap('Codes match', exact=True)
+        until('Paired')
+        self.peer('confirm', phone, code)
         for _ in range(6):
             self.phone_sync()
             if ui.present('1 of 76 questions solved'):
