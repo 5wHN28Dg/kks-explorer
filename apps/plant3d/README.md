@@ -93,8 +93,9 @@ Controls (R7):
 - **Touch:** two sticks, Godot's own `VirtualJoystick`, driving the same actions as a gamepad's sticks: move on the
   left (analogue, as the gamepad's), look on the right. There are buttons for Fly, Map, Use, Settings, and Up and Down while flying.
 - **The plant (ui/):** E (gamepad A) or a click or tap on a part opens its card; L (D-pad up) the alarms, P (D-pad
-  left) procedures and tours, K (D-pad down) pause and run, the full stop (D-pad right) fast-forward, H (X) to the
-  control room and its screens, Esc (B) closes the top panel. The bar under the buttons does the same by touch.
+  left) procedures and tours, T the permits to work (gamepad: a card's permit button or the procedures panel), K
+  (D-pad down) pause and run, the full stop (D-pad right) fast-forward, H (X) to the control room and its screens,
+  Esc (B) closes the top panel. The bar under the buttons does the same by touch.
 - **The control room screens:** the arrows (D-pad) move between items, Enter (A) opens one, Page Up and Down (LB
   and RB) change screen, + and − zoom; by touch, drag to pan, pinch to zoom, tap to open.
 - **Walking and running** (`app/player.gd`): a slow step 0.5 m/s, a walk 1.4 m/s (the settings' "Walking pace":
@@ -142,6 +143,15 @@ from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.
 - **Instructor mode** (settings): the scenario to restart in (`cold_iron`, `hot_restart`) and the scenario's trainer
   faults: Apply, then Repair (a repaired fault can be applied again). The trainee repairs a fault at its equipment
   too: the card there offers it within reach while the fault is applied. The debrief lists every repair.
+- **Permits to work** (`ui/permit_panel.gd`, `ui/permits.gd`; docs/PLANT3D.md §15): the plant's works and their
+  permits. A work's form shows its number (PTW-0001), state, steps, its isolation's points with how each is made safe
+  and which are locked, the next actions and the history. In free mode the trainee plays each role in turn (the
+  button says whose step it is: the maintenance supervisor requests, the shift supervisor approves, issues and closes,
+  the technician accepts, finishes and hands back). Each point is locked and tagged at its equipment (within reach,
+  as a local operation; Go there flies there); the permit is isolated when the last lock is on and de-isolated when
+  the last is off. A locked code refuses its operations (the card says why), skips every automatic write (a standby
+  pump's auto-start) and suppresses its alarms; an isolated transmitter holds its reading and votes tripped. The
+  screens and cards show a padlock and the permit's number; the debrief has a Permits tab.
 - **Handwheels:** a CW pump's discharge valve whose actuator has lost its supply is worked at the valve: Open or Close
   by handwheel, Stop turning (five minutes over the full travel).
 - **Bindings:** the kit's moving pieces are children of the equipment's node named by their channel (`shaft`,

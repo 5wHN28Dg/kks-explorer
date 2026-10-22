@@ -1221,7 +1221,7 @@ FORKS2 = [
       ('lock', 'wo_cond_p2_cal', 0), ('run', 2), ('fault', 'cw_ab_fail'), ('run', 300)],
      {'first_out': {'st': 'st_trip_cond_p'}, 'alarms': ['cond_p1_h', 'cond_p1_hh', 'cond_p3_h', 'cond_p3_hh'],
       'no_alarms': ['cond_p2_h', 'cond_p2_hh'], 'permits': {'wo_cond_p2_cal': 3},
-      'end': {'cond_p2_vote': [1, 1], 'cond_p2': [3, 12], 'cond_p': [25, 200]}}),
+      'end': {'cond_p2_vote': [1, 1], 'cond_p2': [3, 12]}, 'max': {'cond_p': [25, 200]}}),
     # the isolated transmitter alone: the trip runs 1 out of 2, nothing trips at normal pressure
     ('cond_p3_isolated_calm', 'end',
      [('permit', 'wo_cond_p3_cal', 'request'), ('permit', 'wo_cond_p3_cal', 'approve'), ('run', 1),
@@ -1241,7 +1241,7 @@ def build_train2(b):
     e, log, bases = run_cold_start(b)
     forks = []
     for fid, base, actions, expect in FORKS2:
-        probes = sorted(set(expect.get('end', {})))
+        probes = sorted(set(expect.get('max', {})) | set(expect.get('end', {})))
         f, start, fin, fev, seen = run_fork(bases[base], actions, probes)
         fork = {'id': fid, 'base_step': start, 'inputs': fin, 'until': f.step_no, 'events': fev,
                 'end': f.snapshot(values=False), 'expect': expect}

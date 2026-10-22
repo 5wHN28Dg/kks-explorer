@@ -844,10 +844,12 @@ func _step() -> void:
 	for item in noted:
 		_lock(item[0], item[1], item[2], item[3], vals)
 	for wi in _wk.size():
+		var st := pstate[wi]
+		if st != 2 and st != 3 and st != 7:
+			continue                # (the levels below move only these: skipped for the step's cost)
 		var k: int = _wk[wi][1]
 		var c := _n_locked(k) if k != -1 else 0
 		var whole: bool = k == -1 or c == _iso[k][1].size()
-		var st := pstate[wi]
 		var nw := -1
 		if st == 2 and whole:
 			nw = 3
@@ -937,9 +939,10 @@ func _step() -> void:
 			_ev(["trip", t[0], first])
 			_do_actions(t[4], {})
 	# 7. alarms
+	var any_lock := not code_locks.is_empty()
 	for k in _al.size():
 		var a = _al[k]
-		var sup: bool = a[3] != -1 and vals[a[3]] >= 0.5 or code_locks.has(a[6])
+		var sup: bool = (a[3] != -1 and vals[a[3]] >= 0.5) or (any_lock and code_locks.has(a[6]))
 		if shelved[k] != -1 and shelved[k] <= step_no:
 			shelved[k] = -1
 			_ev(["unshelve", a[0]])

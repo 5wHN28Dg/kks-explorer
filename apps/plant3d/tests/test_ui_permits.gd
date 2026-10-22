@@ -222,6 +222,7 @@ func run(tree: SceneTree) -> Array:
 	if e.v("cond_p2") != held or e.v("cond_p2_tx") <= held:
 		p.append("the isolated transmitter's reading moved (%s, held %s, process %s)" % [e.v("cond_p2"), held,
 				e.v("cond_p2_tx")])
+	ui.go_control_room(false)
 	ui.open_screens(ui.screens.screens[ui.screens.screen_of["30MAG10CP002"][0]]["id"])
 	for k in 30:
 		await tree.process_frame

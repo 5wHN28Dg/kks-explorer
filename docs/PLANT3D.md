@@ -1484,3 +1484,16 @@ Every panel works with keyboard, gamepad and touch, as the format 1 panels.
 
 The app's engine (`apps/plant3d/sim`) reproduces every vector bit for bit, format 1's and format 2's, on every
 platform (CAPABILITIES.md §8).
+
+**As built for milestone P1** (2026-10-22: permits, isolations and the `hold` node, no staff): the file holds `valid`,
+`reject` (the version rules, the `hold` node, isolations and works: every rule of §15 the validator checks), `steps`
+(three unit runs in free mode: a permit's life with every action, refusal and automatic move, locks against this
+step's values, what a locked code refuses, skips and suppresses; a code locked by two isolations, a cancel with
+points still locked, a work without an isolation; an isolated transmitter's held reading, suppressed alarm and
+tripped vote, and the `hold` node's step 0) and `train`: forks from the first train's cold start (its inputs, to rebuild
+the base, and no snapshots) that lock out CW pump B, start a pump and lock it in one step, lock out the standby CCW
+pump (its auto-start skipped), isolate condenser pressure transmitters 2 and 3, and service a cooling tower fan, each
+with its expectations (`refused`, `lock_refused`, `permits`, `repaired`, alarms raised and not, values at the end).
+Format 1's file keeps its synthetic parts byte for byte; its `train` and `hot` runs follow the first train's content,
+now version 2: the same inputs and events, every format 1 value the same at every snapshot, with the new values and
+the snapshot keys `permits`, `ptw` and `locked` added. S1 adds the staff's `steps` and `day`.
