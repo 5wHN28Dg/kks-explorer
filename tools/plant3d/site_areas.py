@@ -352,7 +352,9 @@ def road_west():
 # ---------------------------------------------------------------- the camp (`camp`, SITE.md §3)
 
 CAMP = (-480, -40, -260, 120)
-BLOCK_W, BLOCK_D = 40, 10
+BLOCK_W, BLOCK_D, BLOCK_H = 40, 10, 3.2
+AMENITY_H = 3.5
+MESS_H = 4.2
 COL_X = {'A': -458, 'B': -404}           # the blocks' west ends
 ROW_Y = (30, 50, 70, 90)                 # their south (front) walls
 WALKWAY_X = (-412, -410)                 # the covered walkway between the two columns
@@ -424,7 +426,7 @@ def camp():
         win = []
         for side in ('s', 'n'):
             win += [(side, BLOCK_W / 12 + 40 / 6 * i, 1.5, 1.2, 1.0) for i in range(6)]
-        s += building(sid, bx, by, bx1, by + BLOCK_D, 3.2, f'00UZW1{n}', [('w', 5, 'personnel'), ('e', 5, 'personnel')],
+        s += building(sid, bx, by, bx1, by + BLOCK_D, BLOCK_H, f'00UZW1{n}', [('w', 5, 'personnel'), ('e', 5, 'personnel')],
                       windows=win, locked=(n != 1))
         s.append(st(f'{sid}_porch', 'porch', [bx + BLOCK_W / 2, by, 0], 180, params={'length': BLOCK_W, 'depth': 2.5}))
         # the path from the covered walkway to the gable door
@@ -442,7 +444,7 @@ def camp():
                                                   ('camp_office', OFFICE, '00UZW40', 'Camp office and first aid')):
         w = bx1 - bx0
         office = sid == 'camp_office'
-        s += building(sid, bx0, by0, bx1, by1, 3.5, kks, [('s', w / 2, 'double' if sid == 'camp_prayer' else 'personnel')],
+        s += building(sid, bx0, by0, bx1, by1, AMENITY_H, kks, [('s', w / 2, 'double' if sid == 'camp_prayer' else 'personnel')],
                       windows=windows_along('s', w, 4, skip=(w / 2,)) + windows_along('n', w, 4), locked=office)
         s.append(box_road(f'{sid}_step', bx0 + w / 2 - 1.5, WALK_Y[1], bx0 + w / 2 + 1.5, by0, 'concrete'))
     # the camp office: a desk at its window, saltbush and caper by its door
@@ -452,11 +454,11 @@ def camp():
           row('camp_office_bed_e', 'caper', (-282.6, 25.4), (-281.2, 25.4)),
           plant1('camp_gate_saltbush', 'saltbush', [-265.5, 24.6])]
     # the laundry, behind the gym, its door towards the blocks
-    s += building('camp_laundry', *LAUNDRY, 3.5, '00UZW32', [('w', 4, 'personnel')],
+    s += building('camp_laundry', *LAUNDRY, AMENITY_H, '00UZW32', [('w', 4, 'personnel')],
                   windows=windows_along('s', 10, 4) + windows_along('n', 10, 4))
     # the mess hall and its kitchen; a covered walkway to its door across the road's marked crossing
     mx0, my0, mx1, my1 = MESS
-    s += building('camp_mess', mx0, my0, mx1, my1, 4.2, '00UZW20', [('n', 20, 'double'), ('s', 10, 'personnel')],
+    s += building('camp_mess', mx0, my0, mx1, my1, MESS_H, '00UZW20', [('n', 20, 'double'), ('s', 10, 'personnel')],
                   windows=windows_along('n', 40, 4, z=1.8, w=1.6, h=1.2, skip=(20,)) +
                   windows_along('e', 20, 4, z=1.8, w=1.6, h=1.2) + windows_along('w', 20, 4, z=1.8, w=1.6, h=1.2))
     s += [box_road('camp_mess_walk', -341, my1, -339, ROAD_Y[0], 'concrete'),
@@ -545,7 +547,7 @@ def block1_inside():
               st(f'block1_in_chair_{num}', 'chair', [r3(bx + 1.15), r3(outer + sgn * 2.4), 0], 270, params={'kind': 'office'}),
               st(f'block1_in_wardrobe_{num}', 'locker', [r3(bx + pitch - 3.2), r3(wy - sgn * 0.35), 0],
                  180 if side == 's' else 0, params={'width': 1.0})]
-    s.insert(0, room('block1_in_rooms', (bx, by), 0, 2.9, walls, openings))
+    s.insert(0, room('block1_in_rooms', (bx, by), 0, BLOCK_H - 0.05, walls, openings))   # up to the ceiling
     return area2('block1_in', 'Block 1', [[bx, by], [bx1, by + BLOCK_D]], CAMP_PACK, s, signs, 'inside')
 
 
@@ -554,7 +556,7 @@ def mess_inside():
     (ranges and their hood, worktops, the washing-up sinks, shelves, the cold room's door)."""
     mx0, my0, mx1, my1 = MESS
     wall_y = -7.0
-    s = [room('mess_in_walls', (mx0, my0), 0, 3.6, walls=[
+    s = [room('mess_in_walls', (mx0, my0), 0, MESS_H - 0.05, walls=[
         {'a': [mx0 + 0.15, wall_y], 'b': [mx1 - 0.15, wall_y]}, {'a': [-352, my0 + 0.15], 'b': [-352, -11]},
         {'a': [mx0 + 0.15, -11], 'b': [-352, -11]}],
         openings=[{'kind': 'door', 'at': [-324, wall_y], 'width': 1.0},
@@ -587,7 +589,7 @@ def mess_inside():
 def prayer_inside():
     """A carpeted hall; at the door a lobby with shoe racks and an ablution row."""
     px0, py0, px1, py1 = PRAYER
-    s = [room('prayer_in_lobby_wall', (px0, py0), 0, 3.0, walls=[{'a': [px0 + 0.15, 29], 'b': [px1 - 0.15, 29]}],
+    s = [room('prayer_in_lobby_wall', (px0, py0), 0, AMENITY_H - 0.05, walls=[{'a': [px0 + 0.15, 29], 'b': [px1 - 0.15, 29]}],
               openings=[{'kind': 'door', 'at': [-308, 29], 'width': 1.6, 'height': 2.3}]),
          st('prayer_in_shoes_w', 'shelf', [-311.6, 28.75, 0], 180, params={'kind': 'shoes', 'length': 2.4, 'height': 1.0}),
          st('prayer_in_shoes_e', 'shelf', [-304.4, 28.75, 0], 180, params={'kind': 'shoes', 'length': 2.4, 'height': 1.0}),

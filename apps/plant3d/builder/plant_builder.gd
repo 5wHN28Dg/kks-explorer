@@ -1296,6 +1296,10 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 	# are never seen)
 	var shell: bool = not b.openings.any(func(o): return o.kind == "door")
 	body.set_meta("shell", shell)
+	# a low building (a camp block, an office, the gate house): its liner a flat ceiling with no steel under it and its
+	# lamps panels flush under it (a hall's rafters and hung bells a metre over a 1.8 m walker read as a shed)
+	var low: bool = h <= LOW_CEILING
+	body.set_meta("low_ceiling", low)
 	for i in pg.size():
 		var a := pg[i]
 		var c := pg[(i + 1) % pg.size()]
@@ -1365,7 +1369,7 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 	if not shell:
 		_mesh_node(body, "liner", liner, _mat("liner"))
 		var steel := _st()
-		if _roof_steel(steel, b, roof_holes) > 0:
+		if not low and _roof_steel(steel, b, roof_holes) > 0:
 			_mesh_node(body, "roof_steel", steel, _mat("roof_steel"), STEEL_TEXEL)
 	if clad:
 		_mesh_node(body, "trims", trim, _mat("trim"), Lightmap.SHEET_TEXEL * 2.0)
@@ -1394,6 +1398,7 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 				mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 
 const INSIDE_RANGE := 30.0
+const LOW_CEILING := 5.0
 
 func _area_pack(id: String) -> String:
 	for a in areas:
@@ -1697,7 +1702,13 @@ func _lamps(body: Node, b: Dictionary) -> int:
 	# under the roof, over the whole hall: each hung on a short rod from a purlin, midway between two rafters, as high
 	# as it hung before the steel (whatever runs under the roof keeps its clearance), none under a roof opening
 	var places: Array = roof_lamp_places(b)
+	var low: bool = h <= LOW_CEILING
 	for c in places[0]:
+		if low:
+			# a panel flush under the ceiling (the liner)
+			var _p := _lamp(body, housing, lens, c, h - LINER_T - PANEL_T, places[1], h, n)
+			n += 1
+			continue
 		var panel := _lamp(body, housing, lens, c, h - LAMP_DROP, places[1], h, n)
 		Geom.add_prism(housing, Geom.rect(c.x - 0.015, c.y - 0.015, c.x + 0.015, c.y + 0.015),
 			h - LAMP_DROP + (PANEL_T if panel else 0.25), h - LINER_T - PURLIN_D)

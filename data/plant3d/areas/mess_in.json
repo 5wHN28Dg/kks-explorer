@@ -11,7 +11,7 @@
  "equipment": [],
  "pipes": [],
  "structures": [
-  {"id": "mess_in_walls", "part": "room", "at": [-360, -16, 0], "params": {"height": 3.6, "walls": [{"a": [0.15, 9.0], "b": [39.85, 9.0]}, {"a": [8.0, 0.15], "b": [8.0, 5.0]}, {"a": [0.15, 5.0], "b": [8.0, 5.0]}], "openings": [{"kind": "door", "at": [36.0, 9.0], "width": 1.0}, {"kind": "door_closed", "at": [4.0, 5.0], "width": 1.0, "height": 2.0}]}},
+  {"id": "mess_in_walls", "part": "room", "at": [-360, -16, 0], "params": {"height": 4.15, "walls": [{"a": [0.15, 9.0], "b": [39.85, 9.0]}, {"a": [8.0, 0.15], "b": [8.0, 5.0]}, {"a": [0.15, 5.0], "b": [8.0, 5.0]}], "openings": [{"kind": "door", "at": [36.0, 9.0], "width": 1.0}, {"kind": "door_closed", "at": [4.0, 5.0], "width": 1.0, "height": 2.0}]}},
   {"id": "mess_in_kitchen_door", "part": "door", "at": [-324, -7.0, 0], "yaw": 180},
   {"id": "mess_in_serving", "part": "counter", "at": [-340, -6.3, 0], "params": {"kind": "serving", "length": 12}},
   {"id": "mess_in_range", "part": "counter", "at": [-340, -15.45, 0], "params": {"kind": "range", "length": 4.0}},

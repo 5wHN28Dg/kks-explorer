@@ -40,6 +40,17 @@ func run(tree: SceneTree) -> Array:
 		var roof := body.get_node_or_null("roof") as MeshInstance3D
 		var liner := body.get_node_or_null("liner") as MeshInstance3D
 		var steel := body.get_node_or_null("roof_steel") as MeshInstance3D
+		if body.get_meta("low_ceiling", false):
+			# a low building: a flat ceiling (the liner) with no steel under it, its lamps panels flush under it
+			if roof == null or liner == null or steel != null:
+				p.append("%s: a low building has its roof and ceiling and no roof steel (%s %s %s)" % [body.name, roof != null, liner != null, steel != null])
+				continue
+			var ceil_y: float = (roof.global_transform * roof.mesh.get_aabb()).position.y - 0.03   # under the liner (3 cm)
+			for l in body.get_children():
+				if l is SpotLight3D and String(l.name).begins_with("lamp_") and l.global_position.y > ceil_y - 1.0:
+					if absf(ceil_y - 0.06 - 0.2 - l.global_position.y) > 0.02:
+						p.append("%s: a ceiling panel's light is 0.26 m under the ceiling (%.2f)" % [l.get_path(), ceil_y - l.global_position.y])
+			continue
 		if roof == null or liner == null or steel == null:
 			p.append("%s: its roof, liner and roof steel (%s %s %s)" % [body.name, roof != null, liner != null, steel != null])
 			continue
