@@ -1,7 +1,7 @@
 ## Person secrets and course progress (PROTOCOL-v2 §13, §17): private entries only the person's own devices can read.
 ## Secrets reach another device only sealed to its box key, after the person paired the two (decision 0062).
 
-import std/[algorithm, strutils, tables]
+import std/[algorithm, sequtils, strutils, tables]
 import json, crypto, util, proto, replay, node, extras
 
 const
@@ -233,12 +233,13 @@ proc sharePlain*(person, sender, to: string, secrets: seq[SecretRec], holders, r
   for i, s in secrets:
     if i >= MaxSecrets: break
     a.elems.add newObj(@[("k", newStr(b64u(s.k))), ("made", newInt(s.made))])
-  proc ids(v: seq[string]): JNode =
+  proc ids(v: seq[string], newest = false): JNode =
+    ## at most 64: the first ones, or for the retired list the latest (the retirements that matter now)
     result = newArr()
-    for i, x in v:
-      if i < MaxListed: result.elems.add newStr(x)
+    let start = if newest: max(0, v.len - MaxListed) else: 0
+    for i in start ..< min(v.len, start + MaxListed): result.elems.add newStr(v[i])
   newObj(@[("person", newStr(person)), ("from", newStr(sender)), ("to", newStr(to)), ("secrets", a),
-           ("holders", ids(holders)), ("removed", ids(removed)), ("retired", ids(retired))])
+           ("holders", ids(holders)), ("removed", ids(removed)), ("retired", ids(retired, newest = true))])
 
 proc saveProgress*(n: Node, course: string, data: OrderedTable[string, string], wall: int64): JNode
 proc loadProgress*(n: Node, person: string): OrderedTable[string, OrderedTable[string, string]]
@@ -310,8 +311,32 @@ proc progressTick*(n: Node, wall: int64): int =
     if id in takenIds: continue
     let e = n.entries.getOrDefault(id)
     if e == nil or e["peer"].s notin paired: continue
+    if e["peer"].s in n.listMeta(RemovedMeta):        # a share named it removed: nothing more from it
+      paired.del e["peer"].s
+      n.setPaired(paired)
+      continue
     let (ok, got) = n.p.takeShare(box, e["body"]["sealed"], e["peer"].s, n.device, me)
     if ok:
+      # a removal this device has not acted on: everything it holds is retired but what the share brings unretired
+      # (a secret a removed device shared to this device alone must not keep writing)
+      let rotatedNow = n.listMeta(RotatedMeta)
+      var news: seq[string]
+      for d in got.removed:
+        if d notin rotatedNow and d != n.device: news.add d
+      if news.len > 0:
+        var keep: seq[string]
+        for r in got.secrets:
+          let h = hex(n.p.sha256(r.k))
+          if h notin got.retired: keep.add h
+        var retire: seq[string]
+        for r in n.secretRecs(me):
+          let h = hex(n.p.sha256(r.k))
+          if h notin keep: retire.add h
+        n.addListed(RetiredMeta, retire)
+        n.addListed(RemovedMeta, news)
+        n.setList(RotatedMeta, rotatedNow & news)
+        for d in news: paired.del d
+        n.setPaired(paired)
       discard n.addSecrets(me, got.secrets)
       n.addListed(HoldersMeta, @[e["peer"].s] & got.holders & got.removed)
       n.addListed(RemovedMeta, got.removed)
@@ -438,7 +463,8 @@ proc startPairing*(n: Node, device: string, wall: int64) =
     p.del device
     n.setPaired(p)
   discard n.append("pair_commit", newObj(@[("to", newStr(device)), ("commit", newStr(mine))]), wall)
-  discard n.progressTick(wall)
+  try: discard n.progressTick(wall)      # (started either way; the next round runs the upkeep again)
+  except CatchableError: discard
 
 proc confirmPairing*(n: Node, device, code: string, wall: int64) =
   ## The person checked that both screens show `code`: trust `device`, with the box key the code was made with.
@@ -451,11 +477,18 @@ proc confirmPairing*(n: Node, device, code: string, wall: int64) =
   p[device] = st["box"].s
   n.setPaired(p)
   n.addListed(HoldersMeta, [device])
+  # a device the person paired again is no longer one a share said was removed
+  var rm = n.listMeta(RemovedMeta)
+  var ro = n.listMeta(RotatedMeta)
+  if device in rm or device in ro:
+    n.setList(RemovedMeta, rm.filterIt(it != device))
+    n.setList(RotatedMeta, ro.filterIt(it != device))
   var left = newObj()
   for (k, v) in at.fields:
     if k != device: left[k] = v
   n.store.setMeta(AttemptsMeta, toText(left))
-  discard n.progressTick(wall)
+  try: discard n.progressTick(wall)
+  except CatchableError: discard
 
 # ---------------------------------------------------------------- course progress
 

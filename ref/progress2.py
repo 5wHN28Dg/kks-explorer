@@ -38,7 +38,7 @@ def share_plain(person, sender, to, secrets, holders=(), removed=(), retired=())
     return {'person': person, 'from': sender, 'to': to,
             'secrets': [{'k': P.b64u(k), 'made': made} for k, made in ordered],
             'holders': list(holders)[:MAX_LISTED], 'removed': list(removed)[:MAX_LISTED],
-            'retired': list(retired)[:MAX_LISTED]}
+            'retired': list(retired)[-MAX_LISTED:]}
 
 
 def share_seal(box_key_str, plain, eph=None, nonce=None):

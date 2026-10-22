@@ -565,8 +565,10 @@ and a set of **retired** ones (their SHA-256 hex).
 - **Rotation:** when a holder is cut by a valid revoke (§10) in its replay, once per holder, it retires every secret
   it holds, makes a new one, and saves its order-free progress again under it (the objects whose members are only
   ever added, `solved`, and the `…Best` values; `last` and `skip` are not, since an old value saved again would be
-  ordered after a newer one written offline elsewhere). When a paired device's share says a holder was removed, it
-  takes the share's retired list and newer secret instead of making its own. A removed device is denied every sync,
+  ordered after a newer one written offline elsewhere). When a paired device's share first says a holder was removed,
+  it retires every secret it holds except those the share brings unretired (a secret the removed device shared to
+  this device alone must not keep writing), drops that holder from its paired set and takes nothing more from it,
+  instead of making its own new secret. Pairing the same device again clears it from the removed devices. A removed device is denied every sync,
   and nobody shares to it again (below), so it never sees the new secret, even from a device whose replay the server
   keeps the revoke from.
 
@@ -605,7 +607,8 @@ device is cut, or when its box key changes (pairing again is needed).
   the canonical JSON of `{"person": P, "from": <the writer's device ID>, "to": <to>, "secrets": [{"k": <32 bytes,
   base64url>, "made": <int 0 … 2^53 − 1>}, …], "holders": [device IDs], "removed": [device IDs], "retired": [SHA-256
   hex]}`: the secrets it holds for P in its write order, at most 32; its holders that are not removed; the holders it
-  knows were removed (cut in its replay, or named so by a share it took); its retired secrets; at most 64 each.
+  knows were removed (cut in its replay, or named so by a share it took); its retired secrets, the latest 64; at most
+  64 each.
 - Never to a device it knows was removed.
 - When: right after the person confirms a pairing; when it learns or makes a secret, or learns of a removal, the other
   has not been sent (so secrets spread along pairings: a device paired with A gets, through A, what A got from B).

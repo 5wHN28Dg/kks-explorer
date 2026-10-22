@@ -328,17 +328,23 @@ suite "removals the server would hide, and a secret from the far future":
     pairBoth(y, z)
     pairBoth(v, x)
     pairBoth(v, z)
-    # v (to be stolen) brings a secret made at the largest allowed time
-    discard v.addSecrets(bob, @[(P.randomBytes(32), MaxInt53)])
     v.save("solved", """{"a_r":true}""")
     round()
-    let evil = v.secretsOf(bob)[0]
-    for n in [x, y, z]: check n.secretsOf(bob)[0] == evil
+    # v (to be stolen) shares a secret made at the largest allowed time to z alone
+    let evil = P.randomBytes(32)
+    let sealed = P.eciesSeal(v.run.boxKeys[z.device], SharePurpose, canonical(sharePlain(bob, v.device, z.device,
+                             @[(evil, MaxInt53)] & v.secretRecs(bob), @[], @[])).toBytes)
+    discard v.append("secret_share", newObj(@[("to", newStr(z.device)), ("sealed", sealed)]), tick())
+    share(v, hub)
+    share(hub, z)
+    discard z.progressTick(tick())
+    check z.secretsOf(bob)[0] == evil
+    check evil notin x.secretsOf(bob) and evil notin y.secretsOf(bob)
     # x removes v; the server holds that revoke back from z
     discard x.append("revoke", newObj(@[("device", newStr(v.device)), ("last_seq", newInt(v.vv[v.device][0].i))]), tick())
     let cutAt = x.vv[x.device][0].i
     devs = @[x, y]
-    round()
+    round()            # (z does not sync meanwhile: it has not passed the evil secret on)
     check x.secretsOf(bob)[0] != evil and y.secretsOf(bob)[0] != evil
     var batch: seq[JNode]
     for e in hub.entriesFor(z.vv):
@@ -356,3 +362,23 @@ suite "removals the server would hide, and a secret from the far future":
       if i > before and e["type"].s == "secret_share" and e["body"]["to"].s == v.device: sharedToV = true
     check not sharedToV
     check evil notin @[x.secretsOf(bob)[0], y.secretsOf(bob)[0], z.secretsOf(bob)[0]]
+
+  test "a device a share wrongly named removed is shared to again once the person pairs it again":
+    # y (still trusted) tells z that x was removed although x is live; z stops sharing to x until they pair again
+    devs = @[x, y, z]
+    round()
+    pairBoth(x, z)
+    let sealed = P.eciesSeal(y.run.boxKeys[z.device], SharePurpose, canonical(sharePlain(bob, y.device, z.device,
+                             y.secretRecs(bob), @[], @[x.device])).toBytes)
+    discard y.append("secret_share", newObj(@[("to", newStr(z.device)), ("sealed", sealed)]), tick())
+    round()
+    check x.device notin z.pairedSet
+    proc toX(): int =
+      for e in z.entries.values:
+        if e["peer"].s == z.device and e["type"].s == "secret_share" and e["body"]["to"].s == x.device: inc result
+    let before = toX()
+    pairBoth(x, z)
+    check x.device in z.pairedSet
+    discard z.addSecrets(bob, @[(P.randomBytes(32), tick())])     # something new to share
+    round()
+    check toX() > before                      # z shares to x again
