@@ -54,7 +54,7 @@
   {"kks": "00GNR10AM001", "name": "Neutralisation pit agitator", "part": "agitator", "at": [373.8, 67, 0], "params": {"kw": 4, "d": 1.0, "shaft": 2.3}, "plate": "motor"},
   {"kks": "00GNR10AP001", "name": "Neutralisation pit discharge pump A", "part": "pump_vertical", "at": [372.4, 65.2, 0], "yaw": 270, "params": {"flow_m3h": 60, "head_m": 20, "motor_kw": 7.5, "pit_depth": 2.6}, "plate": "motor_side"},
   {"kks": "00GNR10AP002", "name": "Neutralisation pit discharge pump B", "part": "pump_vertical", "at": [372.4, 68.8, 0], "yaw": 270, "params": {"flow_m3h": 60, "head_m": 20, "motor_kw": 7.5, "pit_depth": 2.6}, "plate": "motor_side"},
-  {"kks": "00GBS10AT001", "name": "Sludge thickener", "part": "thickener", "at": [380, 80, 0], "yaw": 90, "params": {"d": 10, "height": 4.5, "bridge": true}, "plate": "wall"},
+  {"kks": "00GBS10AT001", "name": "Sludge thickener", "part": "thickener", "at": [380, 80, 0], "yaw": 90, "params": {"d": 10, "height": 4.7, "bridge": true}, "plate": "wall"},
   {"kks": "00GBS20AT001", "name": "Sludge filter press", "part": "filter_press", "at": [383, 52.5, 0], "params": {"plates": 60, "length": 6}, "plate": "side"}
  ],
  "pipes": [
@@ -104,11 +104,11 @@
  ],
  "structures": [
   {"id": "wtp_mixer_deck", "part": "platform", "at": [380.6, 109.6, 4.5], "params": {"outline": [[0, 0], [4.8, 0], [4.8, 4.8], [0, 4.8]], "deck": "grating", "edge": "handrail"}},
-  {"id": "wtp_mixer_stair", "part": "stair", "params": {"foot": [383.8, 120.92, 0.0], "top": [383.8, 114.3, 4.5], "layout": "straight", "width": 1.0}},
-  {"id": "wtp_clar_a_bridge", "part": "platform", "at": [362, 122, 5.25], "params": {"outline": [[-1.4, -1.4], [1.4, -1.4], [1.4, 1.4], [0.75, 1.4], [0.75, 8.8], [1.75, 8.8], [1.75, 10.4], [-0.75, 10.4], [-0.75, 1.4], [-1.4, 1.4]], "deck": "grating", "edge": "handrail"}},
-  {"id": "wtp_clar_a_stair", "part": "stair", "params": {"foot": [371.33, 131.6, 0.0], "top": [363.7, 131.6, 5.25], "layout": "straight", "width": 1.0}},
-  {"id": "wtp_clar_b_bridge", "part": "platform", "at": [362, 99, 5.25], "params": {"outline": [[-1.4, -1.4], [1.4, -1.4], [1.4, 1.4], [0.75, 1.4], [0.75, 8.8], [1.75, 8.8], [1.75, 10.4], [-0.75, 10.4], [-0.75, 1.4], [-1.4, 1.4]], "deck": "grating", "edge": "handrail"}},
-  {"id": "wtp_clar_b_stair", "part": "stair", "params": {"foot": [371.33, 108.6, 0.0], "top": [363.7, 108.6, 5.25], "layout": "straight", "width": 1.0}},
+  {"id": "wtp_mixer_stair", "part": "stair", "params": {"foot": [374.08, 112, 0.0], "top": [380.7, 112, 4.5], "layout": "straight", "width": 1.0}},
+  {"id": "wtp_clar_a_bridge", "part": "platform", "at": [362, 122, 5.25], "params": {"outline": [[-1.4, -1.4], [1.4, -1.4], [1.4, 1.4], [0.75, 1.4], [0.75, 10.4], [-1.75, 10.4], [-1.75, 8.8], [-0.75, 8.8], [-0.75, 1.4], [-1.4, 1.4]], "deck": "grating", "edge": "handrail"}},
+  {"id": "wtp_clar_a_stair", "part": "stair", "params": {"foot": [352.67, 131.6, 0.0], "top": [360.3, 131.6, 5.25], "layout": "straight", "width": 1.0}},
+  {"id": "wtp_clar_b_bridge", "part": "platform", "at": [362, 99, 5.25], "params": {"outline": [[-1.4, -1.4], [1.4, -1.4], [1.4, 1.4], [0.75, 1.4], [0.75, 10.4], [-1.75, 10.4], [-1.75, 8.8], [-0.75, 8.8], [-0.75, 1.4], [-1.4, 1.4]], "deck": "grating", "edge": "handrail"}},
+  {"id": "wtp_clar_b_stair", "part": "stair", "params": {"foot": [352.67, 108.6, 0.0], "top": [360.3, 108.6, 5.25], "layout": "straight", "width": 1.0}},
   {"id": "wtp_filter_deck", "part": "platform", "at": [322.75, 108.95, 4.5], "params": {"outline": [[0, 0], [20.5, 0], [20.5, 4.1], [0, 4.1]], "deck": "grating", "edge": "handrail"}},
   {"id": "wtp_filter_stair", "part": "stair", "params": {"foot": [324.75, 119.57, 0.0], "top": [324.75, 112.95, 4.5], "layout": "straight", "width": 1.0}},
   {"id": "wtp_building", "part": "building", "kks": "00UGD10", "at": [300, 50, 0], "params": {"outline": [[0, 0], [40, 0], [40, 25], [0, 25]], "height": 10, "floor": "epoxy", "openings": [{"kind": "door", "at": [22, 25, 0], "width": 4, "height": 4.5}, {"kind": "door", "at": [36, 25, 0], "width": 1.0, "height": 2.1}, {"kind": "door", "at": [0, 6, 0], "width": 1.0, "height": 2.1}, {"kind": "door", "at": [40, 3, 0], "width": 1.0, "height": 2.1}, {"kind": "pipe", "at": [17.6, 25, 6.3], "width": 0.5, "height": 0.5}, {"kind": "pipe", "at": [16.8, 25, 5.5], "width": 0.5, "height": 0.5}, {"kind": "pipe", "at": [0, 18.5, 7.5], "width": 0.5, "height": 0.5}, {"kind": "pipe", "at": [0, 12.5, 6.9], "width": 0.5, "height": 0.5}, {"kind": "louvre", "at": [8, 25, 8.2], "width": 3, "height": 1.5}, {"kind": "louvre", "at": [30, 25, 8.2], "width": 3, "height": 1.5}, {"kind": "louvre", "at": [10, 0, 8.2], "width": 3, "height": 1.5}, {"kind": "louvre", "at": [30, 0, 8.2], "width": 3, "height": 1.5}, {"kind": "window", "at": [6, 0, 3.2], "width": 2.4, "height": 1.2}, {"kind": "window", "at": [14, 0, 3.2], "width": 2.4, "height": 1.2}, {"kind": "window", "at": [24, 0, 3.2], "width": 2.4, "height": 1.2}, {"kind": "window", "at": [34, 0, 2.2], "width": 1.6, "height": 1.0}, {"kind": "window", "at": [40, 18, 2.0], "width": 2.0, "height": 1.0}, {"kind": "window", "at": [30, 25, 2.2], "width": 2.0, "height": 1.0}]}},
@@ -125,8 +125,8 @@
   {"id": "wtp_chem_door_s", "part": "door", "at": [351.5, 48, 0], "yaw": 180, "params": {"kind": "personnel"}},
   {"id": "wtp_neut_pit", "part": "pit", "at": [368, 64, 0], "params": {"outline": [[0, 0], [10, 0], [10, 6], [0, 6]], "depth": 3}},
   {"id": "wtp_neut_bridge", "part": "platform", "at": [371.5, 64, 0], "params": {"outline": [[0, 0], [3, 0], [3, 6], [0, 6]], "deck": "grating", "edge": "handrail"}},
-  {"id": "wtp_thick_bridge", "part": "platform", "at": [380, 80, 5.05], "params": {"outline": [[-1.4, -1.4], [1.4, -1.4], [1.4, 1.4], [0.75, 1.4], [0.75, 5.3], [1.75, 5.3], [1.75, 6.9], [-0.75, 6.9], [-0.75, 1.4], [-1.4, 1.4]], "deck": "grating", "edge": "handrail"}},
-  {"id": "wtp_thick_stair", "part": "stair", "params": {"foot": [389.1, 86.1, 0.0], "top": [381.7, 86.1, 5.05], "layout": "straight", "width": 1.0}},
+  {"id": "wtp_thick_bridge", "part": "platform", "at": [380, 80, 5.25], "params": {"outline": [[-1.4, -1.4], [1.4, -1.4], [1.4, 1.4], [0.75, 1.4], [0.75, 6.9], [-1.75, 6.9], [-1.75, 5.3], [-0.75, 5.3], [-0.75, 1.4], [-1.4, 1.4]], "deck": "grating", "edge": "handrail"}},
+  {"id": "wtp_thick_stair", "part": "stair", "params": {"foot": [370.67, 86.1, 0.0], "top": [378.3, 86.1, 5.25], "layout": "straight", "width": 1.0}},
   {"id": "wtp_press_house", "part": "building", "kks": "00UGQ10", "at": [376, 48, 0], "params": {"outline": [[0, 0], [12, 0], [12, 9], [0, 9]], "height": 7, "floor": "concrete", "openings": [{"kind": "door", "at": [0, 4.5, 0], "width": 3, "height": 3.5}, {"kind": "door", "at": [9, 9, 0], "width": 1.0, "height": 2.1}, {"kind": "louvre", "at": [12, 4.5, 5.5], "width": 2, "height": 1}, {"kind": "window", "at": [4, 9, 3], "width": 2, "height": 1}]}},
   {"id": "wtp_press_door_w", "part": "door", "at": [376, 52.5, 0], "yaw": 270, "params": {"kind": "roller", "width": 3, "height": 3.5}},
   {"id": "wtp_press_door_n", "part": "door", "at": [385, 57, 0], "params": {"kind": "personnel"}}

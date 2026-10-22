@@ -47,8 +47,8 @@ def wtp_tour():
                  (['The rapid mixer (', k('00GBD10AM001'), ') mixes the coagulant into the water in seconds: the '
                    'fine clay particles start to gather into flocs.'], ['00GBD10AM001']),
                  (['The clarifiers (', k('00GBD11AT001'), ', ', k('00GBD12AT001'), ') let the flocs settle; the '
-                   'clear water spills over the weirs into the launder round the wall.'],
-                  ['00GBD11AT001', '00GBD12AT001']),
+                   'clear water spills over the weirs into the launder round the wall. Its bridge, up the stair, '
+                   'carries the rake\'s drive.'], ['00GBD11AT001', '00GBD12AT001']),
                  (['The gravity filters (', k('00GBB10'), '): six cells of sand and anthracite, their valves in the '
                    'gallery under the deck. A filter whose head loss grows is backwashed with air and water.'],
                   ['00GBB10']),

@@ -42,14 +42,16 @@ def stair_to(sid, top, direction, h, width=1.0):
 
 def bridge_deck(sid, centre, r, z):
     """A clarifier's (or the thickener's) bridge deck, walkable: the square round the drive at the centre, the strip
-    to north over the wall (the part's -x at yaw 90) and the landing beyond it, where the stair arrives from the east.
-    Returns the platform and the landing's stair top."""
+    to north over the wall (the part's -x at yaw 90) and the landing beyond it, where the stair arrives from the west
+    (rising eastwards: a walker from the train comes from the west and walks straight onto it; a foot at the east end
+    made walkers turn back round the stair's rail end, where they caught: tests/test_walk.gd). Returns the platform
+    and the landing's stair top."""
     rim = r + WALL
     out = rim + BRIDGE_OUT
-    poly = [[-1.4, -1.4], [1.4, -1.4], [1.4, 1.4], [0.75, 1.4], [0.75, rim], [1.75, rim], [1.75, out], [-0.75, out],
-            [-0.75, 1.4], [-1.4, 1.4]]
+    poly = [[-1.4, -1.4], [1.4, -1.4], [1.4, 1.4], [0.75, 1.4], [0.75, out], [-1.75, out], [-1.75, rim],
+            [-0.75, rim], [-0.75, 1.4], [-1.4, 1.4]]
     deck = st(sid, 'platform', [centre[0], centre[1], z], outline=poly, deck='grating', edge='handrail')
-    return deck, [round(centre[0] + 1.7, 3), round(centre[1] + rim + BRIDGE_OUT / 2, 3), z]
+    return deck, [round(centre[0] - 1.7, 3), round(centre[1] + rim + BRIDGE_OUT / 2, 3), z]
 
 
 # ---------------------------------------------------------------- the intake on the river bank
@@ -149,7 +151,7 @@ def pretreatment():
                   'motor'))
     sts.append(st('wtp_mixer_deck', 'platform', [380.6, 109.6, 4.5], outline=rect(4.8, 4.8), deck='grating',
                   edge='handrail'))
-    sts.append(stair_to('wtp_mixer_stair', [383.8, 114.3, 4.5], 's', 4.5))
+    sts.append(stair_to('wtp_mixer_stair', [380.7, 112, 4.5], 'e', 4.5))   # from the west, as walkers come
     # the clarifiers: bridges to the north (the part's -x at yaw 90), stairs from the east up to their landings
     for k, (cx, cy) in CLAR.items():
         n = 1 if k == 'a' else 2
@@ -160,7 +162,7 @@ def pretreatment():
                       {'d': CLAR_D, 'height': CLAR_H, 'bridge': True}, 'wall', [tq]))
         deck, top = bridge_deck(f'wtp_clar_{k}_bridge', (cx, cy), CLAR_D / 2, CLAR_H + DECK_OVER)
         sts.append(deck)
-        sts.append(stair_to(f'wtp_clar_{k}_stair', top, 'w', CLAR_H + DECK_OVER))
+        sts.append(stair_to(f'wtp_clar_{k}_stair', top, 'e', CLAR_H + DECK_OVER))
     # coagulated water from the rapid mixer to the clarifiers' centre wells (under the ground)
     pipes.append(pipe('00GBD11BR001', 'Coagulated water to clarifier A', 'raw_water', 400, free([381.5, 113, -2]),
                       [[366, 113, -2], [366, 122, -2], [362, 122, -2]], nz('00GBD11AT001', 'inlet'), buried=[[0, 3]]))
@@ -445,11 +447,11 @@ def chemicals_and_wastes():
                           nz(f'00GNR10AP00{n}', 'discharge'), [[366.5, y, 1.5]], free([366.5, y, -1])))
     # the sludge thickener and the filter press
     tq = []
-    eqs.append(eq('00GBS10AT001', 'Sludge thickener', 'thickener', [380, 80, 0], 90, {'d': 10, 'height': 4.5,
+    eqs.append(eq('00GBS10AT001', 'Sludge thickener', 'thickener', [380, 80, 0], 90, {'d': 10, 'height': CLAR_H,
                                                                                          'bridge': True}, 'wall', tq))
     eqs.append(eq('00GBS20AT001', 'Sludge filter press', 'filter_press', [383, 52.5, 0], 0,
                   {'plates': 60, 'length': 6}, 'side'))
-    deck, top = bridge_deck('wtp_thick_bridge', (380, 80), 5, 4.5 + DECK_OVER)
+    deck, top = bridge_deck('wtp_thick_bridge', (380, 80), 5, CLAR_H + DECK_OVER)
     structures = [
         st('wtp_chem_store', 'building', [345, 48, 0], kks='00UTS10', outline=rect(20, 13), height=6, floor='epoxy',
            openings=[{'kind': 'door', 'at': [10, 13, 0], 'width': 3, 'height': 3.5},
@@ -459,7 +461,7 @@ def chemicals_and_wastes():
         st('wtp_chem_door_s', 'door', [351.5, 48, 0], 180, kind='personnel'),
         st('wtp_neut_pit', 'pit', [368, 64, 0], outline=rect(10, 6), depth=3),
         st('wtp_neut_bridge', 'platform', [371.5, 64, 0], outline=rect(3, 6), deck='grating', edge='handrail'),
-        deck, stair_to('wtp_thick_stair', top, 'w', 4.5 + DECK_OVER),
+        deck, stair_to('wtp_thick_stair', top, 'e', CLAR_H + DECK_OVER),
         st('wtp_press_house', 'building', [376, 48, 0], kks='00UGQ10', outline=rect(12, 9), height=7,
            floor='concrete',
            openings=[{'kind': 'door', 'at': [0, 4.5, 0], 'width': 3, 'height': 3.5},
