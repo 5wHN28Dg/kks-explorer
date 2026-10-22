@@ -14,7 +14,7 @@
   {"id": "ws_in_bays", "part": "room", "at": [-128, 50, 0], "params": {"height": 3.0, "walls": [{"a": [9.3, 0.2], "b": [9.3, 13.8]}, {"a": [18.7, 0.2], "b": [18.7, 13.8]}], "openings": [{"kind": "door", "at": [9.3, 7.0], "width": 2.0, "height": 2.6}, {"kind": "door", "at": [18.7, 7.0], "width": 2.0, "height": 2.6}]}},
   {"id": "ws_in_ic_cal", "part": "counter", "at": [-123.4, 63.2, 0], "yaw": 180, "params": {"kind": "workbench", "length": 4.0, "depth": 0.9}},
   {"id": "ws_in_ic_bench", "part": "counter", "at": [-127.3, 56.0, 0], "yaw": 90, "params": {"kind": "workbench", "length": 3.0}},
-  {"id": "ws_in_ic_shelf", "part": "shelf", "at": [-123.4, 50.4, 0], "params": {"length": 3.0}},
+  {"id": "ws_in_ic_shelf", "part": "shelf", "at": [-126.3, 50.4, 0], "params": {"length": 3.0}},
   {"id": "ws_in_ic_chair", "part": "chair", "at": [-123.4, 62.3, 0], "params": {"kind": "office"}},
   {"id": "ws_in_ic_desk", "part": "desk", "at": [-120.2, 59.0, 0], "yaw": 270},
   {"id": "ws_in_mech_bench_1", "part": "counter", "at": [-114, 63.2, 0], "yaw": 180, "params": {"kind": "workbench", "length": 4.0}},

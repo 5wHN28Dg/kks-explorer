@@ -371,16 +371,18 @@ func structure(parent: Node3D, s: Dictionary) -> Node3D:
 			var L := a.distance_to(c)
 			if L < 0.05:
 				continue   # one plant: no drip line along a row
-			# in pieces of at most a detail cell, each in its own cell (a detail piece's range is measured to its cell)
-			var n := int(ceil(L / SMALL_CELL))
-			for j in n:
-				var p0 := a.lerp(c, float(j) / n)
-				var p1 := a.lerp(c, float(j + 1) / n)
-				var mb = MB.new()
-				P_SITE.drip_line(mb, Vector3.ZERO, Vector3(p1.x - p0.x, p1.y - p0.y, 0))
-				var layers := Kit._meshes(mb.finish(), Vector3.ZERO)
-				for k in layers:
-					_cell(layers[k], k, Transform3D(Basis(), Geom.g([p0.x, p0.y, p0.z])))
+			# in DRIP_UNIT pieces of one mesh along it (instanced, held once), each in its own cell (a detail piece's
+			# range is measured to its cell), the remainder its own
+			var d := (c - a) / L
+			var xf_dir := Basis(Vector3.UP, atan2(d.y, d.x))   # the unit's x along the row (Godot: plant y is -z)
+			var n := int(floor(L / DRIP_UNIT + 1e-6))
+			for j in n + 1:
+				var len := minf(DRIP_UNIT, L - j * DRIP_UNIT)
+				if len < 0.05:
+					break
+				var p0 := a + d * (j * DRIP_UNIT)
+				for k in _drip_layers(len):
+					_cell(_drip_layers(len)[k], k, Transform3D(xf_dir, Geom.g([p0.x, p0.y, p0.z])))
 	elif s.part == "kerb":
 		places = kerb_places(s, pr)
 	else:
@@ -394,6 +396,18 @@ func structure(parent: Node3D, s: Dictionary) -> Node3D:
 		instances += 1
 		add_solids(body, res.solids, Transform3D(xf.basis, xf.origin))
 	return body
+
+## A row's drip line in pieces this long (one mesh, instanced along every row).
+const DRIP_UNIT := 4.0
+var _drip := {}
+## The drip line's meshes for a piece `len` long along x (cached by length).
+func _drip_layers(len: float) -> Dictionary:
+	var key := snappedf(len, 0.01)
+	if not _drip.has(key):
+		var mb = MB.new()
+		P_SITE.drip_line(mb, Vector3.ZERO, Vector3(key, 0, 0))
+		_drip[key] = Kit._meshes(mb.finish(), Vector3.ZERO)
+	return _drip[key]
 
 ## How many shapes a species has (a plant's `variant`): enough that a row is not one plant copied, few enough that the
 ## scenes hold each once (a variant is a mesh of its own).

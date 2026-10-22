@@ -77,6 +77,7 @@ func interiors(tree: SceneTree) -> Array:
 		await tree.process_frame   # (taken out a few pieces a frame)
 	if not it._dying.is_empty():
 		p.append("block 1's interior is taken out within 10 s")
+	await tree.process_frame   # (its emptied root, queued for deletion, gone)
 	# every interior, as the walking tests load them: each the same kind of surfaces
 	err = plant.load_interiors()
 	if err != "":

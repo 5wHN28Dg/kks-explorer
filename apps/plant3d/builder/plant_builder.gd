@@ -996,6 +996,12 @@ func hlod(root: Node3D, id: String, items: Dictionary, scope: Node, keep := {}) 
 		if gi == null or n.has_meta("hlod_keep"):
 			continue
 		var c := _plan_centre(gi)
+		# a building's pieces and the doors and windows on its walls go with the building (its far box's square):
+		# by their own centres they straddled a square's edge and left holes in the near view
+		for bl in items.buildings:
+			if Geometry2D.is_point_in_polygon(c, bl.outline) or _near_poly(c, bl.outline, 0.6):
+				c = _mean(bl.outline)
+				break
 		var k := Vector2i(int(floor(c.x / HLOD_CHUNK)), int(floor(c.y / HLOD_CHUNK)))
 		if made.has(k):
 			gi.visibility_parent = gi.get_path_to(made[k])

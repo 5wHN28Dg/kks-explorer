@@ -315,7 +315,7 @@ def workshop_inside():
     # I&C: the calibration bench (pressure and temperature calibrators), benches, the instrument store
     s += [st('ws_in_ic_cal', 'counter', [-123.4, 63.2, 0], 180, params={'kind': 'workbench', 'length': 4.0, 'depth': 0.9}),
           st('ws_in_ic_bench', 'counter', [-127.3, 56.0, 0], 90, params={'kind': 'workbench', 'length': 3.0}),
-          st('ws_in_ic_shelf', 'shelf', [-123.4, 50.4, 0], 0, params={'length': 3.0}),
+          st('ws_in_ic_shelf', 'shelf', [-126.3, 50.4, 0], 0, params={'length': 3.0}),   # clear of the south door
           st('ws_in_ic_chair', 'chair', [-123.4, 62.3, 0], 0, params={'kind': 'office'}),
           st('ws_in_ic_desk', 'desk', [-120.2, 59.0, 0], 270)]
     s += [st('ws_in_mech_bench_1', 'counter', [-114, 63.2, 0], 180, params={'kind': 'workbench', 'length': 4.0}),

@@ -349,6 +349,18 @@ class Site(unittest.TestCase):
                 for s in a['structures']:
                     self.assertTrue(s['part'] in site_parts or s['part'] == 'door', f'{s["id"]}: {s["part"]}')
 
+    def test_doors_are_clear(self):
+        """Nothing solid stands in a doorway: no furniture, vehicle or fitting within 0.8 m of a door (a shelf once
+        stood 5 cm behind the workshops' south door)."""
+        clear_of = set(K.SITE_PARTS) - {'planting', 'kerb', 'room', 'carpet', 'crossing', 'porch', 'canopy', 'court'}
+        doors = [(s['id'], s['at']) for a in self.b.areas for s in a['structures'] if s['part'] == 'door']
+        for a in self.b.areas:
+            for s in a['structures']:
+                if s['part'] in clear_of:
+                    for did, d in doors:
+                        if abs(d[2] - s['at'][2]) < 1.0:
+                            self.assertGreater(math.dist(d[:2], s['at'][:2]), 0.8, f'{s["id"]} stands in the doorway of {did}')
+
     def test_the_site_buildings_have_their_codes(self):
         """SITE.md §6: the administration building, workshops, store, gate house and the camp's buildings by the
         public key's U letters."""

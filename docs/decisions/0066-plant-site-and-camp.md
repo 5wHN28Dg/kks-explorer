@@ -33,3 +33,25 @@ buildings and interiors loaded so that the first start (8.8 s of 15 on the Note 
 
 **When to revisit:** the package passes 150 MB (packs on demand: a network permission, the user's call, MILESTONES.md);
 the Note 9's walk misses the frame rules near the camp; train 2 is built (its mirror must stay clear).
+
+## As built (milestone C1, 2026-10-23)
+
+Note 9 (release exports **without the lightmap's bake**, same day, plugged in, `lean+vis`; the bake needs more than the
+4 GiB this task's memory share allowed, main's own bake too):
+
+| | Rule | Main | C1 |
+|---|---|---|---|
+| First start (5 runs) | ≤ 15 s (≤ 13.5 s margin) | 9.43–9.93 s | 7.68–9.09 s |
+| `frames` walk (the train), frames ≥ 30 fps | ≥ 95 % | 98.72 % | 98.32 % |
+| `frames` walk: p95 / GPU median / peak PSS | ≤ 1.2× main | 37.4 ms / 23.7 ms / 694 MB | 39.6 ms / 24.8 ms / 745 MB |
+| `camp` walk (gate, road, camp, block 1, mess), frames ≥ 30 fps | ≥ 95 % | — | 99.61 % |
+| `camp` walk: frames over 100 ms after the first 5 s | none | — | one, 102.6 ms (GPU 94 ms) at the plant gate on the way back, near the walk's end; an earlier run had one of 116.8 ms, another a burst while the phone's own services started; not traced |
+| `camp` walk: peak PSS | ≤ 1.5 GB | — | 747 MB |
+
+Packages (unbaked exports): APK 108.6 → 111.0 MB; Windows exe 2.3 MB larger compressed. With main's lightmap share
+the MSIX x64 (147.9 MB in 0.2.1) comes to about 150–153 MB: over the 150 MB budget (the user's call, MILESTONES.md).
+The APK stays about 128 MB.
+
+What it took: interiors put into the tree twelve pieces a frame (whole, the Note 9 held 104–127 ms frames); a far view
+per 48 m square (HLOD) for the site and the camp; planting instanced and left out of the bake; walls, not palisades,
+round the camp; shells drawn from outside only.
