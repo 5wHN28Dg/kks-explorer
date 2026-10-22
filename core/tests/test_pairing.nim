@@ -44,10 +44,11 @@ suite "pairing vectors (v2-pairing.json)":
         for i, x in t["secrets"].elems:
           check hex(got[i].k) == x["k_hex"].s and got[i].made == x["made"].i
 
-  test "pairing codes":
+  test "pairing codes and commitments":
     for c in V["pair_codes"].elems:
-      check P.pairCode(c["a"].s, c["box_a"].s, c["b"].s, c["box_b"].s) == c["code"].s
-      check P.pairCode(c["b"].s, c["box_b"].s, c["a"].s, c["box_a"].s) == c["code"].s
+      check P.pairCode(c["a"].s, c["box_a"].s, c["nonce_a"].s, c["b"].s, c["box_b"].s, c["nonce_b"].s) == c["code"].s
+      check P.pairCode(c["b"].s, c["box_b"].s, c["nonce_b"].s, c["a"].s, c["box_a"].s, c["nonce_a"].s) == c["code"].s
+      check P.pairCommit(c["a"].s, c["b"].s, c["box_a"].s, c["nonce_a"].s) == c["commit_a"].s
 
   test "which secret writes":
     for w in V["write_secret"].elems:
@@ -83,9 +84,9 @@ proc save(n: Node, k, v: string) =
   d[k] = v
   discard n.saveProgress("hrsg", d, tick())
 
-proc codeFor(n: Node, other: string): string =
+proc rowOf(n: Node, other: string): JNode =
   for d in n.pairingList["devices"].elems:
-    if d["device"].s == other: return d["code"].s
+    if d["device"].s == other: return d
 
 suite "pairing between a person's own devices":
   # the hub stands for the server: it certifies devices (as with a custodial key) and relays everything
@@ -105,12 +106,27 @@ suite "pairing between a person's own devices":
     n.adopt(hub.root)
   let devs = @[phone, tablet, laptop, minted]
   proc round() =
-    ## every device syncs with the hub and runs its upkeep, twice (what one device writes reaches the others)
-    for _ in 0 ..< 2:
+    ## every device syncs with the hub and runs its upkeep, three times (what one device writes reaches the others)
+    for _ in 0 ..< 3:
       for n in devs:
         share(hub, n)
         discard n.progressTick(tick())
         share(n, hub)
+  proc pairBoth(x, y: Node) =
+    ## the person presses Pair on both, the devices sync, both show the same code, the person confirms on both
+    x.startPairing(y.device, tick())
+    round()
+    check x.rowOf(y.device)["state"].s == "waiting" and y.rowOf(x.device)["state"].s == "asked"
+    y.startPairing(x.device, tick())
+    round()
+    let cx = x.rowOf(y.device)
+    let cy = y.rowOf(x.device)
+    check cx["state"].s == "compare" and cy["state"].s == "compare"
+    check cx["code"].s.len == 6 and cx["code"].s == cy["code"].s
+    x.confirmPairing(y.device, cx["code"].s, tick())
+    y.confirmPairing(x.device, cy["code"].s, tick())
+    round()
+    check x.rowOf(y.device)["state"].s == "paired" and y.rowOf(x.device)["state"].s == "paired"
 
   test "before pairing: each device keeps its own progress; nobody else opens it":
     round()
@@ -118,20 +134,49 @@ suite "pairing between a person's own devices":
     round()
     check phone.progressOf(bob)["solved"] == """{"q1_r":true}"""
     check tablet.progressOf(bob).len == 0 and minted.progressOf(bob).len == 0
+    check phone.pairingList["ready"].b and phone.rowOf(tablet.device)["state"].s == "none"
+    check phone.rowOf(hub.device) == nil      # it wrote no box key: never offered
 
-  test "both devices show the same code for each other; a server-certified device has a different one":
-    check phone.pairingList["ready"].b and tablet.pairingList["ready"].b
-    check phone.codeFor(tablet.device).len == 6
-    check phone.codeFor(tablet.device) == tablet.codeFor(phone.device)
-    check phone.codeFor(minted.device) != tablet.codeFor(phone.device)
-    check phone.codeFor(hub.device) == ""      # it wrote no box key: never offered
+  test "a device reveals its nonce only after the other's commitment, and takes only the reveal committed to":
+    # the server's own device for bob, impersonating the tablet: whatever it reveals afterwards, the phone's code is
+    # the one its commitment fixed before the phone's nonce was known (no grinding for a chosen code)
+    let before = phone.entries.len
+    phone.startPairing(minted.device, tick())
+    share(phone, hub)
+    share(hub, minted)
+    var revealed = false
+    for e in phone.entries.values:
+      if e["type"].s == "pair_reveal" and e["peer"].s == phone.device: revealed = true
+    check not revealed and phone.entries.len == before + 1     # the commitment only
+    let nonce = b64u(P.randomBytes(16))
+    discard minted.append("pair_commit", newObj(@[("to", newStr(phone.device)),
+      ("commit", newStr(P.pairCommit(minted.device, phone.device, minted.run.boxKeys[minted.device], nonce)))]), tick())
+    share(minted, hub)
+    share(hub, phone)
+    discard phone.progressTick(tick())
+    share(phone, hub)
+    share(hub, minted)
+    # the phone's nonce is out; the minted device tries other nonces to steer the code, then the committed one
+    for i in 0 ..< 50:
+      discard minted.append("pair_reveal", newObj(@[("to", newStr(phone.device)), ("nonce", newStr(b64u(P.randomBytes(16))))]), tick())
+    discard minted.append("pair_reveal", newObj(@[("to", newStr(phone.device)), ("nonce", newStr(nonce))]), tick())
+    share(minted, hub)
+    share(hub, phone)
+    discard phone.progressTick(tick())
+    let row = phone.rowOf(minted.device)
+    var phoneNonce = ""
+    for e in phone.entries.values:
+      if e["type"].s == "pair_reveal" and e["peer"].s == phone.device: phoneNonce = e["body"]["nonce"].s
+    check row["state"].s == "compare"
+    check row["code"].s == P.pairCode(phone.device, phone.run.boxKeys[phone.device], phoneNonce, minted.device,
+                                      minted.run.boxKeys[minted.device], nonce)
+    # the person sees a code no device of theirs shows, and does not confirm: nothing is shared
+    round()
+    check minted.device notin minted.run.shares
 
-  test "pairing on one side only gives nothing; on both, progress follows":
-    phone.pair(tablet.device, tick())
-    round()
-    check tablet.progressOf(bob).len == 0          # the tablet has not confirmed the phone yet
-    tablet.pair(phone.device, tick())
-    round()
+  test "pairing on both: progress follows; a code that does not match is refused":
+    expect ValueError: phone.confirmPairing(tablet.device, "000000", tick())
+    pairBoth(phone, tablet)
     check tablet.progressOf(bob)["solved"] == """{"q1_r":true}"""
     tablet.save("finalBest", "7")
     round()
@@ -152,7 +197,6 @@ suite "pairing between a person's own devices":
       check parseStrict(p["skip"]) == parseStrict("""{"m1":true}""")
 
   test "a device the server certified alone gets nothing and can plant nothing":
-    # it shares a newer secret of its own to the phone: the phone never paired with it, so it keeps writing as before
     let before = phone.secretsOf(bob)
     let planted = P.randomBytes(32)
     discard minted.addSecrets(bob, @[(planted, tick() + 10_000_000)])
@@ -162,20 +206,24 @@ suite "pairing between a person's own devices":
     round()
     check phone.secretsOf(bob) == before
     check minted.progressOf(bob).len == 0
-    check minted.device notin minted.run.shares     # nobody shared to it
-    expect ValueError: phone.pair(hub.device, tick())
+    check minted.device notin minted.run.shares
+    expect ValueError: phone.startPairing(hub.device, tick())
 
   test "secrets travel along pairings: a laptop paired with the tablet only reads the phone's progress":
-    laptop.pair(tablet.device, tick())
-    tablet.pair(laptop.device, tick())
-    round()
+    pairBoth(laptop, tablet)
     check parseStrict(laptop.progressOf(bob)["solved"]) == parseStrict("""{"q1_r":true,"q2_f":true,"q3_p":true}""")
     laptop.save("last", "\"p9\"")
     round()
     check phone.progressOf(bob)["last"] == "\"p9\""
 
-  test "removing a device moves the others to a new secret it never sees":
+  test "removing a device moves every other device to a new secret, even one never paired with it":
+    # the laptop's clock ran a year ahead when it made a secret: the new one must still be the newest
+    discard laptop.addSecrets(bob, @[(P.randomBytes(32), tick() + 365 * 86_400_000)])
+    laptop.save("finalBest", "11")
+    round()
     let old = phone.secretsOf(bob)[0]
+    check old == laptop.secretsOf(bob)[0]
+    # the phone removes the laptop; the phone never paired with it, the tablet did
     discard phone.append("revoke", newObj(@[("device", newStr(laptop.device)),
                                             ("last_seq", newInt(laptop.vv[laptop.device][0].i))]), tick())
     round()
@@ -188,6 +236,14 @@ suite "pairing between a person's own devices":
     let last = phone.run.private[bob][^1]
     for k in laptop.secretsOf(bob):
       expect CatchableError: discard P.privateOpen(k, phone.entries[last]["body"])
+    # the progress was saved again under the new secret: a device holding only it reads everything
+    let fresh = newNode(P, newMemStore(), P.p256Generate())
+    discard fresh.addSecrets(bob, @[(now, 0'i64)])
+    share(hub, fresh)
+    fresh.adopt(hub.root)
+    share(hub, fresh)
+    let p = fresh.progressOf(bob)
+    check p["finalBest"] == "11" and p["last"] == "\"p9\"" and "q3_p" in p["solved"]
 
   test "the hub holds only ciphertext: no secret, no box key, no progress in the clear":
     check hub.secretsOf(bob).len == 0 and hub.loadProgress(bob).len == 0

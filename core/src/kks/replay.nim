@@ -62,6 +62,7 @@ type
     reports*: OrderedTable[string, seq[string]]   ## device → report entry IDs (§13a)
     boxKeys*: OrderedTable[string, string]        ## device → its latest box key (§17)
     shares*: OrderedTable[string, seq[string]]    ## device → secret_share entry IDs naming it (§17)
+    pairSteps*: OrderedTable[string, seq[string]] ## device → pair_commit / pair_reveal entry IDs naming it (§17)
     ignored*: OrderedTable[string, string]
     revokes: seq[Revoke]
     decisions*: OrderedTable[string, JNode]
@@ -716,6 +717,15 @@ proc tSecretShare(r: Run, e: JNode, eid, author: string) =
   need(r.devices[b["to"].s]["person"].s == author, "not_allowed")
   r.shares.mgetOrPut(b["to"].s, @[]).add eid
 
+proc tPairStep(r: Run, e: JNode, eid, author: string) =
+  ## §17 pairing: a commitment to a nonce, or the nonce, for another device of the same person; kept by `to`
+  let b = e["body"]
+  need(isPeerN(b["to"]) and b["to"].s in r.devices and b["to"].s != e["peer"].s)
+  if e["type"].s == "pair_commit": need(isHex64n(b["commit"]))
+  else: need(isB64u(b["nonce"]) and b["nonce"].s.len == 22)
+  need(r.devices[b["to"].s]["person"].s == author, "not_allowed")
+  r.pairSteps.mgetOrPut(b["to"].s, @[]).add eid
+
 proc bodyKeys(t: string): seq[string] =
   case t
   of "genesis": @["plant", "root", "manager", "stmt_manager", "stmt_device", "sig_manager", "sig_device", "import"]
@@ -740,6 +750,8 @@ proc bodyKeys(t: string): seq[string] =
   of "report": @["sealed"]
   of "box_key": @["key"]
   of "secret_share": @["to", "sealed"]
+  of "pair_commit": @["to", "commit"]
+  of "pair_reveal": @["to", "nonce"]
   else: @[]
 
 proc run(c: Ctx, r: Run, ordered: seq[(string, JNode)]): Run =
@@ -767,6 +779,7 @@ proc run(c: Ctx, r: Run, ordered: seq[(string, JNode)]): Run =
       of "report": r.tReport(e, eid)
       of "box_key": c.tBoxKey(r, e)
       of "secret_share": r.tSecretShare(e, eid, author)
+      of "pair_commit", "pair_reveal": r.tPairStep(e, eid, author)
       of "approve": r.tApprove(e, eid, author, role)
       of "reject": r.tReject(e, eid, author, role)
       of "withdraw": r.tWithdraw(e, eid, author)
@@ -920,6 +933,13 @@ proc state*(r: Run): JNode =
       for x in v: a.elems.add newStr(x)
       sh.fields.add((k, a))
     result.fields.add(("shares", sh))
+  if r.pairSteps.len > 0:
+    var ps = newObj()
+    for k, v in r.pairSteps:
+      var a = newArr()
+      for x in v: a.elems.add newStr(x)
+      ps.fields.add((k, a))
+    result.fields.add(("pair_steps", ps))
 
 proc replay*(p: Provider, entries: seq[JNode], root: string): JNode =
   ## Replay `entries` (any order, any devices) from the trust anchor `root` (root key string, §2). -> state.

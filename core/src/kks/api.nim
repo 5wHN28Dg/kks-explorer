@@ -1853,8 +1853,12 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
     return ok(O(("on", B(on))))
   of "/api/pairing":
     if a.mode == "server": fail(404, ProgressOnServer)
-    let dev = if d.get("device") != nil and d["device"].isStr: d["device"].s else: ""
-    try: a.n.pair(dev, now)
+    proc str(k: string): string = (if d.get(k) != nil and d[k].isStr: d[k].s else: "")
+    try:
+      case str("action")
+      of "start": a.n.startPairing(str("device"), now)
+      of "confirm": a.n.confirmPairing(str("device"), str("code"), now)
+      else: bad("action must be start or confirm")
     except ValueError as e: bad(e.msg)
     return ok(a.n.pairingList)
   of "/api/progress":

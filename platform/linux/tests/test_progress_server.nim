@@ -35,7 +35,7 @@ suite "the server holds only ciphertext of course progress":
     discard s.n.appendAs(custodial, "device_cert", deviceCertBody(n.device, mgr, label), tick())
     n.adopt(s.n.root)
   proc round() =
-    for _ in 0 ..< 2:
+    for _ in 0 ..< 3:
       for n in [phone, tablet]:
         share(s.n, n)
         discard n.progressTick(tick())
@@ -44,8 +44,15 @@ suite "the server holds only ciphertext of course progress":
   test "two devices pair through the server and read each other's progress":
     round()
     check phone.pairingList["devices"].len == 1     # the tablet; not the server's device, nor the custodial one
-    phone.pair(tablet.device, tick())
-    tablet.pair(phone.device, tick())
+    phone.startPairing(tablet.device, tick())
+    round()
+    tablet.startPairing(phone.device, tick())
+    round()
+    let code = phone.pairingList["devices"][0]["code"].s
+    check code.len == 6 and tablet.pairingList["devices"][0]["code"].s == code
+    phone.confirmPairing(tablet.device, code, tick())
+    tablet.confirmPairing(phone.device, code, tick())
+    round()
     var d: OrderedTable[string, string]
     d["solved"] = """{"q1_r":true,"q2_f":true}"""
     d["finalBest"] = "8"
@@ -56,7 +63,7 @@ suite "the server holds only ciphertext of course progress":
   test "every row of the server's store, opened with its key, holds no secret and no progress":
     check s.n.secretsOf(mgr).len == 0 and s.n.loadProgress(mgr).len == 0
     check s.n.device notin s.n.run.boxKeys and not s.n.pairingList["ready"].b
-    check s.n.run.shares.len == 2 and s.n.run.private[mgr].len >= 1    # it does relay them
+    check s.n.run.shares.len == 2 and s.n.run.private[mgr].len >= 1 and s.n.run.pairSteps.len == 2   # it relays them
     var plain = ""
     var n = 0
     for (tbl, keyCol, valCol) in [("entries", "id", "data"), ("evidence", "id", "data"), ("blobs", "sha", "data"),
@@ -70,7 +77,7 @@ suite "the server holds only ciphertext of course progress":
     check n > 10
     check "q1_r" notin plain and "finalBest" notin plain and "solved" notin plain
     for r in s.store.db.rows("SELECT k FROM meta"):
-      check r.colText(0) notin ["box_key", "paired", "shares_sent", "shares_taken"] and
+      check r.colText(0) notin ["box_key", "paired", "shares_sent", "shares_taken", "pair_attempts", "rotated_for"] and
             not r.colText(0).startsWith("person_secrets")
     for dev in [phone, tablet]:
       for k in dev.secretsOf(mgr):

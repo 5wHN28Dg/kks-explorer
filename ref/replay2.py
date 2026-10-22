@@ -49,6 +49,8 @@ BODY = {
     'report': ('sealed',),
     'box_key': ('key',),
     'secret_share': ('to', 'sealed'),
+    'pair_commit': ('to', 'commit'),
+    'pair_reveal': ('to', 'nonce'),
 }
 SEALED_KEYS = ('v', 'purpose', 'epk', 'nonce', 'ct')
 STMT = {'manager': ('kind', 'person'), 'device': ('kind', 'device', 'person'), 'rotate': ('kind', 'root'),
@@ -203,7 +205,7 @@ class _Run:
         self.proposals, self.pending, self.waiting, self.votes = {}, {}, {}, {}
         self.conflicts, self.private, self.ignored = [], {}, {}
         self.reports = {}
-        self.box_keys, self.shares = {}, {}
+        self.box_keys, self.shares, self.pair_steps = {}, {}, {}
         self.revokes = []
         self.authors, self.decisions, self.history, self.at = {}, {}, [], None
         self.comments = {}
@@ -401,6 +403,20 @@ class _Run:
         _need(self.devices[b['to']]['person'] == author, 'not_allowed')
         self.shares.setdefault(b['to'], []).append(eid)
 
+    def t_pair_commit(self, e, eid, author, role):
+        # §17 pairing: a commitment to a nonce for another device of the same person
+        self._pair_step(e, eid, author, lambda b: _match(HEX64_RE, b['commit']))
+
+    def t_pair_reveal(self, e, eid, author, role):
+        self._pair_step(e, eid, author, lambda b: _match(B64U_RE, b['nonce']) and len(b['nonce']) == 22)
+
+    def _pair_step(self, e, eid, author, value_ok):
+        b = e['body']
+        _need(_match(PEER_RE, b['to']) and b['to'] in self.devices and b['to'] != e['peer'])
+        _need(value_ok(b))
+        _need(self.devices[b['to']]['person'] == author, 'not_allowed')
+        self.pair_steps.setdefault(b['to'], []).append(eid)
+
     # ----- data: self-approved or proposals -----
     def _data(self, e, eid, author, role):
         _check_data(e['type'], e['body'])
@@ -565,6 +581,7 @@ class _Run:
             **({'reports': self.reports} if self.reports else {}),
             **({'box_keys': self.box_keys} if self.box_keys else {}),
             **({'shares': self.shares} if self.shares else {}),
+            **({'pair_steps': self.pair_steps} if self.pair_steps else {}),
         }
 
 

@@ -630,9 +630,18 @@ def pairing_file():
     W.w('bob-phone', 1480, 'secret_share', {'to': W.peer('bob-tablet')})
     W.w('mgr-laptop', 1490, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': sealed})
     W.w('stranger', 1495, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': sealed})
+    n1 = P.b64u(bytes(range(16)))
+    c1 = G2.pair_commit(W.peer('bob-phone'), W.peer('bob-tablet'), ks(box_phone), n1)
+    W.w('bob-phone', 1496, 'pair_commit', {'to': W.peer('bob-tablet'), 'commit': c1})
+    W.w('bob-tablet', 1497, 'pair_commit', {'to': W.peer('bob-phone'), 'commit': c1.upper()})
+    W.w('bob-tablet', 1497, 'pair_commit', {'to': W.peer('ali-phone'), 'commit': c1})
+    W.w('bob-phone', 1498, 'pair_reveal', {'to': W.peer('bob-tablet'), 'nonce': n1})
+    W.w('bob-phone', 1498, 'pair_reveal', {'to': W.peer('bob-tablet'), 'nonce': n1 + 'A'})
+    W.w('bob-phone', 1499, 'pair_reveal', {'to': W.peer('bob-phone'), 'nonce': n1})
     last = len(W.logs['bob-phone'].entries)
     W.w('bob-tablet', 1500, 'revoke', {'device': W.peer('bob-phone'), 'last_seq': last})
     W.w('bob-phone', 1600, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': sealed})
+    W.w('bob-phone', 1605, 'pair_commit', {'to': W.peer('bob-tablet'), 'commit': c1})
     W.w('bob-phone', 1610, 'box_key', {'key': ks(box_ali)})
     sc = W.scenario('box keys and secret shares (§17)', [
         'box_keys: bob-phone, bob-tablet its second key (the latest counts), ali-phone (anyone certified, about itself)',
@@ -640,7 +649,10 @@ def pairing_file():
         'bad_body: a key that is no point, an extra body key, a share to another person (not_allowed), to itself, to an '
         'unknown device, purpose not kks-person-secret, ct over 4 096, v not the integer 2, an extra sealed key, a '
         'missing sealed',
-        'not_allowed: bob-phone to ali-phone, the manager to bob-tablet (another person, even for the manager)',
+        'not_allowed: bob-phone to ali-phone, the manager to bob-tablet (another person, even for the manager), '
+        'bob-tablet\'s pair_commit to ali-phone',
+        'pair_steps: bob-tablet gets bob-phone\'s pair_commit and pair_reveal; bad_body: an upper-case commit, a '
+        'nonce of 23 characters, a reveal to itself',
         'not_certified: the stranger; revoked: bob-phone after bob-tablet revoked it'])
 
     # taking a share in: what a device gets from each sealed share (null = nothing)
@@ -665,15 +677,19 @@ def pairing_file():
         take('secrets not a list', {**plain, 'secrets': {}}, n=10),
         take('not JSON', b'not json', n=11),
         take('the wrong purpose', plain, purpose='kks-report', n=12),
-        take('20 secrets: only the first 16 are read',
-             {**plain, 'secrets': [sec(bytes([i]) * 32, 100 - i) for i in range(20)]}, n=13),
+        take('40 secrets: only the first 32 are read',
+             {**plain, 'secrets': [sec(bytes([i]) * 32, 100 - i) for i in range(40)]}, n=13),
         take('a JSON array', [1, 2], n=14),
     ]
     codes = []
-    for a, b in (('bob-phone', 'bob-tablet'), ('bob-tablet', 'bob-phone'), ('ali-phone', 'bob-phone')):
+    for i, (a, b) in enumerate((('bob-phone', 'bob-tablet'), ('bob-tablet', 'bob-phone'), ('ali-phone', 'bob-phone'))):
         ka, kb = ks(W.key('box-' + a)), ks(W.key('box-' + b))
-        codes.append({'a': W.peer(a), 'box_a': ka, 'b': W.peer(b), 'box_b': kb,
-                      'code': G2.pair_code(W.peer(a), ka, W.peer(b), kb)})
+        nonce = {'bob-phone': P.b64u(bytes([1]) * 16), 'bob-tablet': P.b64u(bytes([2]) * 16),
+                 'ali-phone': P.b64u(bytes([3]) * 16)}
+        na, nb = nonce[a], nonce[b]               # rows 0 and 1: the same pair, seen from each side
+        codes.append({'a': W.peer(a), 'box_a': ka, 'nonce_a': na, 'b': W.peer(b), 'box_b': kb, 'nonce_b': nb,
+                      'commit_a': G2.pair_commit(W.peer(a), W.peer(b), ka, na),
+                      'code': G2.pair_code(W.peer(a), ka, na, W.peer(b), kb, nb)})
     assert codes[0]['code'] == codes[1]['code']
     writes = []
     for why, secrets in (('the newest writes', [(s1, 5000), (s2, 7000)]),

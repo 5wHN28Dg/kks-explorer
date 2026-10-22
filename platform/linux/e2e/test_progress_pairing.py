@@ -69,24 +69,37 @@ class ProgressPairing(unittest.TestCase):
         cls.server.wait(5)
         shutil.rmtree(cls.dir, ignore_errors=True)
 
-    def code(self, peer, other):
+    def row(self, peer, other):
         got = peer.json('pairing')
         self.assertTrue(got['ready'], got)
-        return {d['device']: d['code'] for d in got['devices']}.get(other.id)
+        return next((d for d in got['devices'] if d['device'] == other.id), None)
+
+    def until(self, peer, other, state, tries=8):
+        """sync this device until its row for `other` reaches `state` (pairing steps travel through the server)"""
+        for _ in range(tries):
+            r = self.row(peer, other)
+            if r and r['state'] == state:
+                return r
+        self.fail(f'{state!r} never reached: {r}')
 
     def test_pairing_and_progress(self):
         # every device must have synced its box key before the others list it
         for p in (self.a, self.b, self.c):
             p.run('pairing')
-        ab, ba = self.code(self.a, self.b), self.code(self.b, self.a)
-        self.assertRegex(ab or '', r'^\d{6}$')
-        self.assertEqual(ab, ba, 'both screens show the same code')
-        self.assertNotEqual(self.code(self.a, self.c), ab)
+        self.assertEqual(self.row(self.a, self.b)['state'], 'none')
         self.a.run('save', 'fnd', 'solved', '{"q1_r":true}')
         self.assertEqual(self.b.json('progress', 'fnd'), {}, 'nothing before pairing')
         self.a.json('pair', self.b.id)
-        self.assertEqual(self.b.json('progress', 'fnd'), {}, 'nothing while only one side paired')
+        self.until(self.b, self.a, 'asked')
+        self.assertEqual(self.row(self.a, self.b)['state'], 'waiting')
         self.b.json('pair', self.a.id)
+        ab = self.until(self.a, self.b, 'compare')['code']
+        ba = self.until(self.b, self.a, 'compare')['code']
+        self.assertRegex(ab, r'^\d{6}$')
+        self.assertEqual(ab, ba, 'both screens show the same code')
+        self.assertEqual(self.b.json('progress', 'fnd'), {}, 'nothing before the person confirmed')
+        self.a.json('confirm', self.b.id, ab)
+        self.b.json('confirm', self.a.id, ba)
         self.a.run('pairing')         # takes the tablet's share in
         self.assertEqual(json.loads(self.b.json('progress', 'fnd')['solved']), {'q1_r': True})
         self.b.run('save', 'fnd', 'finalBest', '9')

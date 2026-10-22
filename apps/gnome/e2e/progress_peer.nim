@@ -4,8 +4,9 @@
 ##   cd apps/gnome && nim c -d:release -o:OUT/progress_peer e2e/progress_peer.nim
 ##   KKS_DATA_DIR=D KKS_STORAGE_KEY_FILE=D/key OUT/progress_peer join HOST:PORT USER PASSWORD
 ##   … device                      this device's ID
-##   … pairing                     the pairing list (JSON: ready, devices with their codes)
-##   … pair DEVICE                 pair with DEVICE (the person checked the codes)
+##   … pairing                     the pairing list (JSON: ready, devices with their state and code)
+##   … pair DEVICE                 press Pair for DEVICE (a new commitment, §17)
+##   … confirm DEVICE CODE         the codes match: confirm the pairing
 ##   … save COURSE KEY VALUE       save one progress value (VALUE is the JSON text)
 ##   … progress COURSE             this person's progress in COURSE as this device reads it (JSON)
 import std/[asyncdispatch, os, tables]
@@ -15,6 +16,8 @@ let args = commandLineParams()
 if args.len == 0: quit "usage: progress_peer join|device|pairing|pair|save|progress …"
 let a = openApp()
 proc sync() =
+  ## twice: what the first round's §17 upkeep wrote (a reveal, a share) goes out in the second
+  discard waitFor a.syncAll()
   discard waitFor a.syncAll()
 case args[0]
 of "join":
@@ -27,9 +30,11 @@ of "device": echo a.n.device
 of "pairing":
   sync()
   echo toText(a.call("GET", "/api/pairing"))
-of "pair":
+of "pair", "confirm":
   sync()
-  echo toText(a.call("POST", "/api/pairing", newObj(@[("device", newStr(args[1]))])))
+  var body = newObj(@[("action", newStr(if args[0] == "pair": "start" else: "confirm")), ("device", newStr(args[1]))])
+  if args[0] == "confirm": body["code"] = newStr(args[2])
+  echo toText(a.call("POST", "/api/pairing", body))
   sync()
 of "save":
   sync()

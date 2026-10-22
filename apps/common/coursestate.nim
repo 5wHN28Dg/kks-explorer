@@ -110,12 +110,11 @@ const
                  "Not the manager, not the server."
   NotReadyNote* = "To share your progress with your other devices, pair them here. This device is not ready to " &
                   "pair yet: it needs to sync first."
-  PairHelp* = "Pair only when the other device shows the same code, and pair on both devices. A device you don't " &
-              "recognise, or whose code differs, is not yours to pair."
+  PairHelp* = "Press Pair here and on the other device. After both have synced, each shows a code: confirm only " &
+              "when both show the same code. A device you don't recognise, or whose code differs, is not yours to pair."
 
 type PairRow* = object
-  device*, label*, code*: string
-  paired*, pairedBack*: bool
+  device*, label*, state*, code*: string    ## state: none, asked, waiting, compare, paired (PROTOCOL-v2 §17)
 
 proc pairing*(a: App): (bool, seq[PairRow]) =
   ## (ready, the person's other devices that can pair)
@@ -123,24 +122,28 @@ proc pairing*(a: App): (bool, seq[PairRow]) =
     let j = a.call("GET", "/api/pairing")
     result[0] = j["ready"].b
     for d in j["devices"].elems:
-      result[1].add PairRow(device: d["device"].s, label: d["label"].s, code: d["code"].s, paired: d["paired"].b,
-                            pairedBack: d["paired_back"].b)
+      result[1].add PairRow(device: d["device"].s, label: d["label"].s, state: d["state"].s, code: d["code"].s)
   except ApiError, KeyError: discard
 
-proc pairWith*(a: App, device: string): string =
-  ## "" when paired, else why not
+proc pairAct(a: App, action, device, code: string): string =
   try:
-    discard a.call("POST", "/api/pairing", newObj(@[("device", newStr(device))]))
+    discard a.call("POST", "/api/pairing", newObj(@[("action", newStr(action)), ("device", newStr(device)),
+                                                    ("code", newStr(code))]))
     ""
   except ApiError as e: e.msg
 
-proc rowTitle*(r: PairRow): string =
-  (if r.label.len > 0: r.label else: "A device") & " — code " & r.code
+proc pairStart*(a: App, device: string): string = a.pairAct("start", device, "")
+  ## "" when started, else why not
+proc pairConfirm*(a: App, r: PairRow): string = a.pairAct("confirm", r.device, r.code)
+
+proc rowTitle*(r: PairRow): string = (if r.label.len > 0: r.label else: "A device")
 
 proc rowStatus*(r: PairRow): string =
-  if r.paired and r.pairedBack: "Paired"
-  elif r.paired: "Paired here: pair on that device too"
-  elif r.pairedBack: "That device paired with this one: pair here if the codes match"
+  case r.state
+  of "paired": "Paired"
+  of "compare": "Code " & r.code & ": confirm only if the other device shows the same code"
+  of "waiting": "Waiting for the other device: press Pair there too, and let both sync"
+  of "asked": "That device asked to pair: press Pair here to compare codes"
   else: "Not paired"
 
 # ---------------------------------------------------------------- opening a course

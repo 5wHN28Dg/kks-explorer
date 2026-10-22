@@ -260,22 +260,33 @@ fun Pairing(rev: Int) {
             j == null || !j.optBoolean("ready") -> Dim("To share your progress with your other devices, pair them here. This device is not ready to pair yet: it needs to sync first.")
             rows.isEmpty() -> Dim("No other device of yours can pair yet. Open Learning on it once it has synced.")
             else -> {
-                Dim("Pair only when the other device shows the same code, and pair on both devices. A device you don't recognise, or whose code differs, is not yours to pair.")
+                Dim("Press Pair here and on the other device. After both have synced, each shows a code: confirm only when both show the same code. A device you don't recognise, or whose code differs, is not yours to pair.")
                 rows.forEach { d ->
-                    val title = d.optString("label").ifEmpty { "A device" } + " — code " + d.getString("code")
-                    val status = when {
-                        d.optBoolean("paired") && d.optBoolean("paired_back") -> "Paired"
-                        d.optBoolean("paired") -> "Paired here: pair on that device too"
-                        d.optBoolean("paired_back") -> "That device paired with this one: pair here if the codes match"
+                    val label = d.optString("label").ifEmpty { "A device" }
+                    val state = d.optString("state")
+                    val code = d.optString("code")
+                    val status = when (state) {
+                        "paired" -> "Paired"
+                        "compare" -> "Code $code: confirm only if the other device shows the same code"
+                        "waiting" -> "Waiting for the other device: press Pair there too, and let both sync"
+                        "asked" -> "That device asked to pair: press Pair here to compare codes"
                         else -> "Not paired"
                     }
+                    fun act(body: JSONObject) {
+                        err = call("POST", "/api/pairing", body.put("device", d.getString("device"))).error ?: ""
+                        again++
+                    }
                     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) { Text(title); Dim(status) }
-                            if (!d.optBoolean("paired")) Button(onClick = {
-                                err = call("POST", "/api/pairing", JSONObject().put("device", d.getString("device"))).error ?: ""
-                                again++
-                            }, modifier = Modifier.semantics { contentDescription = "Pair with $title" }) { Text("Pair") }
+                        Column(Modifier.padding(12.dp)) {
+                            Text(label); Dim(status)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (state == "compare") Button(onClick = { act(JSONObject().put("action", "confirm").put("code", code)) },
+                                    modifier = Modifier.semantics { contentDescription = "Codes match with $label" }) { Text("Codes match") }
+                                if (state != "paired") OutlinedButton(onClick = { act(JSONObject().put("action", "start")) },
+                                    modifier = Modifier.semantics { contentDescription = (if (state == "compare" || state == "waiting") "Start again with " else "Pair with ") + label }) {
+                                    Text(if (state == "compare" || state == "waiting") "Start again" else "Pair")
+                                }
+                            }
                         }
                     }
                 }

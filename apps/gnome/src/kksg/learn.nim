@@ -822,14 +822,16 @@ proc pairingSection(w: Win): W =
           let r = rows[ri]
           let dev = r.device
           let rw = row(rowTitle(r), rowStatus(r))
-          if not r.paired:
-            let b = button("Pair", "suggested-action", proc () =
-              let why = pairWith(w.a, dev)
+          proc act(text: string, fn: proc (): string) =
+            let b = button(text, "suggested-action", proc () =
+              let why = fn()
               if why.len > 0: w.toast(why)
               fill(), once = true)
             gtk_widget_set_valign(b, GTK_ALIGN_CENTER)
-            setAccessibleLabel(b, "Pair with " & rowTitle(r))
             adw_action_row_add_suffix(rw, b)
+          if r.state == "compare": act("Codes match", proc (): string = pairConfirm(w.a, r))
+          if r.state != "paired":
+            act(if r.state in ["compare", "waiting"]: "Start again" else: "Pair", proc (): string = pairStart(w.a, dev))
           lst.gtk_list_box_append(rw)
       body.add lst
     body.add button("Check again", "flat", proc () = fill())

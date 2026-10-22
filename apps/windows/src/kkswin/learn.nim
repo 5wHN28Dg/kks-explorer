@@ -736,11 +736,14 @@ proc pairingPart(w: Win, p: Page) =
         let r = prs[ri]
         let dev = r.device
         p.label(rowTitle(r) & ": " & rowStatus(r))
-        if not r.paired:
-          p.buttons(("Pair with " & rowTitle(r), proc () =
-            let why = pairWith(w.a, dev)
-            if why.len > 0: w.toast(why)
-            w.rebuildSide()))
+        proc done(why: string) =
+          if why.len > 0: w.toast(why)
+          w.rebuildSide()
+        if r.state == "compare":
+          p.buttons(("Codes match with " & rowTitle(r), proc () = done(pairConfirm(w.a, r))))
+        if r.state != "paired":
+          p.buttons(((if r.state in ["compare", "waiting"]: "Pair again with " else: "Pair with ") & rowTitle(r),
+                     proc () = done(pairStart(w.a, dev))))
   p.buttons(("Check again", proc () = w.rebuildSide()))
 
 proc learningTab*(w: Win, p: Page) =

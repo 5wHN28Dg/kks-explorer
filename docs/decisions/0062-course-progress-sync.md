@@ -43,22 +43,29 @@ server only stores and relays ciphertext, and a server that misbehaves still can
 | A | §17 swap or a log share to any device certified for the person, no confirmation | **no**: the server can certify a device for the person (custodial key) |
 | B | a key derived from the password, or held by the server for the person | **no**: the server checks the password and holds the custodial keys |
 | C | sealed to the receiving device's own device key (ECIES, §20) | yes, but impossible on Android 10 (Keystore signing key) |
-| **D** | **sealed to the receiving device's box key in a log entry, after the person paired the two devices by comparing a code on both screens** | **yes**: the server relays ciphertext; a device it certifies shows a different code |
+| **D** | **sealed to the receiving device's box key in a log entry, after the person paired the two devices by comparing a code on both screens** | **yes**: the server relays ciphertext; with committed nonces, a device it certifies can't steer the code to match |
 
 ## Choice (for native devices): D, pairing by code, shares through the log
 
 Spec: PROTOCOL-v2 §17 (rewritten). In short:
 - Each device publishes a **box key** (a `box_key` entry, signed in its own chain, so the server can't swap it).
-- **Pairing:** both devices show the same 6-digit code, computed from both device IDs and both box keys. The person
-  taps "Pair" on each device after checking the codes match. Each side then writes a `secret_share` entry: its secrets,
-  ECIES-sealed (§20) to the other's box key. The pairing works across time: the second device can confirm hours later,
-  through the server, without the two ever connecting.
+- **Pairing:** the person presses Pair on each device. Each device first commits to a fresh random nonce in the log,
+  and reveals it only after it holds the other's commitment; the 6-digit code comes from both device IDs, both box keys
+  and both nonces. The person checks the codes match and confirms on each device. Each side then writes a
+  `secret_share` entry: its secrets, ECIES-sealed (§20) to the box key the code was made with. It all goes through the
+  log, so the two devices never need to be online together; it takes a few sync rounds.
+- **Why the commitments** (found by the blind review, 2026-10-22): a code made from the device IDs and box keys alone
+  is fixed and public, so a server could try box keys for a device of its own until it shows the real device's code
+  (about a million tries for 6 digits), and hide the real one. With each nonce committed before the other is seen,
+  neither side can steer the code: a stand-in matches with probability one in a million per attempt.
 - A device takes secrets only from a device it paired with itself, and passes any new secret on to its other paired
   devices, so the person's devices converge without pairing every two of them. A device certified by the server alone
   is paired with nobody: it gets nothing, and secrets it shares are ignored (it can't make a device write with a key
   the server knows).
 - **Which secret writes:** the newest (`made`), so that after a device is removed the person's remaining devices move
-  to a new secret the removed device never sees.
+  to a new secret the removed device never sees. Every device of the person makes one when any device that was sent
+  secrets is removed (not only one it paired with), with a `made` above every one it holds (a clock ahead elsewhere
+  can't keep an old one writing), and saves its progress again under it.
 - **Merging** stays as COURSES §8 and §17 say: solved and skip are objects merged by union, `finalBest` the larger,
   `last` the later in replay order. Two devices progressing offline lose nothing: every save carries the whole object,
   and replay merges every entry.

@@ -195,6 +195,8 @@ Box coordinates are integers, in tenths of a sheet-image pixel. A body must have
 | `report` | `{sealed}` (§13a) | any certified device |
 | `box_key` | `{key}` (§17, decision 0062) | any certified device, about itself |
 | `secret_share` | `{to, sealed}` (§17, decision 0062) | a device of the same person as `to` |
+| `pair_commit` | `{to, commit}` (§17, decision 0062) | a device of the same person as `to` |
+| `pair_reveal` | `{to, nonce}` (§17, decision 0062) | a device of the same person as `to` |
 
 ### 9a. Body rules
 
@@ -232,6 +234,8 @@ replay only accepts or ignores.
 - **`box_key`:** `key` a key string (§2). **`secret_share`:** `to` a known device (`[A-Za-z0-9_-]{32}`, certified
   earlier), not the author; `sealed` a §20 object with exactly `{v, purpose, epk, nonce, ct}`: `v` 2, `purpose`
   `kks-person-secret`, `epk` a key string, `nonce` 16 base64url characters, `ct` 22–4 096 base64url characters.
+- **`pair_commit`, `pair_reveal`:** `to` as for `secret_share`; `commit` 64 lowercase hex; `nonce` 22 base64url
+  characters.
 - **`root` and genesis key fields:** `root` in genesis is a key string (§2). `rotate.root` and `backup_key.key` are key
   strings.
 - **Genesis `import`:** see §21 for the state rules.
@@ -375,7 +379,8 @@ The state is a JSON object:
 - `private {person: [entry IDs in order]}`;
 - `reports {device: [entry IDs in order]}`, present only when there is at least one report (§13a);
 - `box_keys {device: key}` (the latest valid `box_key` of each device) and `shares {device: [entry IDs in order]}`
-  (the `secret_share` entries naming that device in `to`), each present only when not empty (§17);
+  (the `secret_share` entries naming that device in `to`) and `pair_steps {device: [entry IDs in order]}` (the
+  `pair_commit` and `pair_reveal` entries naming it), each present only when not empty (§17);
 - `ignored {entry: code}`;
 - `imported` (the §21 `v1` hash or null).
 
@@ -550,32 +555,48 @@ entries, so the server stores and relays them without being able to open them, a
 together.
 
 **Secrets.** A device keeps, per person (only its own), a set of secrets `{k: 32 bytes, made: wall-clock ms}`.
-- It makes the first one when it first writes a private entry and holds none.
+- It makes the first one when it first writes a private entry and holds none (not when it pairs).
 - It **writes with the newest** (largest `made`; equal: the one whose SHA-256 hex sorts first), and tries every one
   it holds when opening.
-- It makes a new one when a device it is paired with is cut by a valid revoke (§10), and shares it as below. The removed
-  device is denied every sync from then on, so it never sees the new secret.
+- A new secret's `made` is the larger of the wall clock and the largest `made` held + 1, so a clock running behind
+  another device's can't leave an older secret writing.
+- It makes a new one when any device of its person that was sent secrets (a `secret_share` names it, from any device)
+  is cut by a valid revoke (§10), once per such device, whether it paired with it or not; it then saves its merged
+  progress again under the new secret, so that newer devices need only the newest secrets. The removed device is
+  denied every sync from then on, so it never sees the new secret.
 
 **Box key.** Each device makes a P-256 key pair for receiving secrets, kept in its sealed store (0020), and writes a
 `box_key` entry with its public key before its first pairing. Only the device itself may write its `box_key`
 (`not_allowed` otherwise); the latest valid one in replay order counts (§14 `box_keys`). The device key is not used:
 on Android it can only sign.
 
-**Pairing** two devices A and B of the same person, both with a `box_key` in the log:
-- **Code:** sort the two device IDs (code point); with X the first and Y the second, the code is the first 4 bytes of
-  SHA-256(`"kks-pair-code-v1\n"` + X + `"\n"` + box key of X + `"\n"` + Y + `"\n"` + box key of Y), big-endian,
-  mod 1 000 000, zero-padded to 6 digits. Both devices compute it from their own replay, so it is the same on both
-  screens only if each sees the other's real box key.
-- A device lists its person's other devices that have a box key and are not cut, with their label and the code. The
-  person taps **Pair** on each of the two devices after checking the codes match; the order and the time between the
-  two taps don't matter.
-- Each device keeps the set of devices it has paired with (local to the device, in its sealed store, never sent), and
-  drops a device from it when that device is cut.
+**Pairing** two devices A and B of the same person, both with a `box_key` in the log. The code the person compares
+must not be one a third party can steer: the server can certify devices for the person and could otherwise try box
+keys until one of its devices shows the code of the real one (a 6-digit code is only 20 bits). So each device commits
+to a fresh random nonce before it sees the other's, the way Bluetooth numeric comparison does:
+1. **Start** (the person presses Pair on A for B): A makes a 16-byte random nonce `nA` (base64url, 22 characters) and
+   writes `pair_commit {to: B, commit}`, `commit` = lowercase hex SHA-256(`"kks-pair-commit-v1\n"` + A + `"\n"` + B +
+   `"\n"` + A's box key + `"\n"` + `nA`). Pressing again starts over with a new nonce.
+2. **Reveal:** once A has started and the log holds a `pair_commit` from B to A, A keeps the latest such commitment
+   as the one it answers, and writes `pair_reveal {to: B, nonce: nA}`. A never reveals before it holds B's
+   commitment, so B's was fixed before `nA` was known.
+3. **Code:** A takes B's `pair_reveal` whose nonce matches the commitment it answered (any other reveal is ignored).
+   With X the smaller device ID (code point) and Y the other, the code is the first 4 bytes of
+   SHA-256(`"kks-pair-code-v2\n"` + X + `"\n"` + box key of X + `"\n"` + nonce of X + `"\n"` + Y + `"\n"` + box key of Y +
+   `"\n"` + nonce of Y), big-endian, mod 1 000 000, zero-padded to 6 digits. B computes the same from its side.
+4. **Confirm:** the person checks that both screens show the same code and confirms on each device. Each device then
+   adds the other to its paired set, with the box key the code was made with (local, in its sealed store, never
+   sent).
+
+A third party that answers in B's place had to commit before seeing `nA`, so its code matches B's with probability
+10⁻⁶ per attempt, and a mismatch is seen by the person. The steps travel through the log, so the two devices never
+need to be online together; a pairing takes a few sync rounds. A device drops another from its paired set when that
+device is cut, or when its box key changes (pairing again is needed).
 
 **Sharing:** a device writes a `secret_share` to each device in its paired set:
-- `to` = the paired device, `sealed` = ECIES (§20) to `to`'s current box key, purpose `kks-person-secret`, plaintext
+- `to` = the paired device, `sealed` = ECIES (§20) to the box key the person confirmed for it, purpose `kks-person-secret`, plaintext
   the canonical JSON of `{"person": P, "from": <the writer's device ID>, "to": <to>, "secrets": [{"k": <32 bytes,
-  base64url>, "made": <int ≥ 0>}, …]}` with every secret it holds for P, newest first, at most 16.
+  base64url>, "made": <int ≥ 0>}, …]}` with every secret it holds for P, newest first, at most 32.
 - When: right after the person taps Pair; when it learns or makes a secret the other has not been sent (so secrets
   spread along pairings: a device paired with A gets, through A, what A got from B); when the other's box key changes.
 - A share is only ever written to a device of the writer's own person (authority, §10 table).
@@ -584,7 +605,7 @@ on Android it can only sign.
 secrets only if all of these hold, otherwise it keeps nothing (and may look again after a later pairing):
 - the entry is valid in replay and its author is in its paired set;
 - the plaintext's `person` is its own person, `from` is the entry's author and `to` is itself;
-- each secret has exactly `k` (32 bytes) and `made`. At most 16 are read.
+- each secret has exactly `k` (32 bytes) and `made`. At most 32 are read.
 
 A device paired with nobody, such as one the server certified on its own, receives nothing; the secrets it shares are
 ignored, so it cannot make anyone write with a key it knows.

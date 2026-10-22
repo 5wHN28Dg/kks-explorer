@@ -6,13 +6,19 @@ from ref import proto2 as P
 from ref import crypto2 as C
 
 SHARE_PURPOSE = 'kks-person-secret'
-MAX_SECRETS = 16
+MAX_SECRETS = 32
 
 
-def pair_code(dev_a, box_a, dev_b, box_b):
-    """§17: the same 6 digits on both devices; the IDs sorted by code point, each followed by its box key."""
-    (x, kx), (y, ky) = sorted([(dev_a, box_a), (dev_b, box_b)])
-    d = hashlib.sha256(('kks-pair-code-v1\n' + x + '\n' + kx + '\n' + y + '\n' + ky).encode()).digest()
+def pair_commit(dev, to, box, nonce):
+    """§17: a pair_commit's value: the hash of the nonce the device will reveal, bound to both devices and its box key"""
+    return hashlib.sha256(('kks-pair-commit-v1\n' + dev + '\n' + to + '\n' + box + '\n' + nonce).encode()).hexdigest()
+
+
+def pair_code(dev_a, box_a, nonce_a, dev_b, box_b, nonce_b):
+    """§17: the same 6 digits on both devices; the IDs sorted by code point, each followed by its box key and its
+    revealed nonce (each committed before the other's was seen, so neither side can steer the code)."""
+    (x, kx, nx), (y, ky, ny) = sorted([(dev_a, box_a, nonce_a), (dev_b, box_b, nonce_b)])
+    d = hashlib.sha256(('kks-pair-code-v2\n' + x + '\n' + kx + '\n' + nx + '\n' + y + '\n' + ky + '\n' + ny).encode()).digest()
     return f'{int.from_bytes(d[:4], "big") % 1_000_000:06d}'
 
 
