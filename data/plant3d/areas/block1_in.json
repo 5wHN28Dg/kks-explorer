@@ -1,0 +1,49 @@
+{
+ "format": "walkdown-plant-area",
+ "version": 2,
+ "id": "block1_in",
+ "title": "Block 1",
+ "bounds": [
+  [-404, 30],
+  [-364, 40]
+ ],
+ "pack": "camp",
+ "equipment": [],
+ "pipes": [],
+ "structures": [
+  {"id": "block1_in_rooms", "part": "room", "at": [-404, 30, 0], "params": {"height": 2.9, "walls": [{"a": [0.15, 4.2], "b": [39.85, 4.2]}, {"a": [0.15, 5.8], "b": [39.85, 5.8]}, {"a": [6.667, 0.15], "b": [6.667, 4.2]}, {"a": [6.667, 5.8], "b": [6.667, 9.85]}, {"a": [13.333, 0.15], "b": [13.333, 4.2]}, {"a": [13.333, 5.8], "b": [13.333, 9.85]}, {"a": [20.0, 0.15], "b": [20.0, 4.2]}, {"a": [20.0, 5.8], "b": [20.0, 9.85]}, {"a": [26.667, 0.15], "b": [26.667, 4.2]}, {"a": [26.667, 5.8], "b": [26.667, 9.85]}, {"a": [33.333, 0.15], "b": [33.333, 4.2]}, {"a": [33.333, 5.8], "b": [33.333, 9.85]}, {"a": [4.367, 4.2], "b": [4.367, 2.2]}, {"a": [4.367, 2.2], "b": [6.667, 2.2]}, {"a": [4.367, 5.8], "b": [4.367, 7.8]}, {"a": [4.367, 7.8], "b": [6.667, 7.8]}], "openings": [{"kind": "door", "at": [1.0, 4.2], "width": 0.9}, {"kind": "door", "at": [1.0, 5.8], "width": 0.9}, {"kind": "door_closed", "at": [7.667, 4.2], "width": 0.9}, {"kind": "door_closed", "at": [7.667, 5.8], "width": 0.9}, {"kind": "door_closed", "at": [14.333, 4.2], "width": 0.9}, {"kind": "door_closed", "at": [14.333, 5.8], "width": 0.9}, {"kind": "door_closed", "at": [21.0, 4.2], "width": 0.9}, {"kind": "door_closed", "at": [21.0, 5.8], "width": 0.9}, {"kind": "door_closed", "at": [27.667, 4.2], "width": 0.9}, {"kind": "door_closed", "at": [27.667, 5.8], "width": 0.9}, {"kind": "door_closed", "at": [34.333, 4.2], "width": 0.9}, {"kind": "door_closed", "at": [34.333, 5.8], "width": 0.9}, {"kind": "door", "at": [4.367, 3.0], "width": 0.7}, {"kind": "door", "at": [4.367, 7.0], "width": 0.7}]}},
+  {"id": "block1_in_door_101", "part": "door", "at": [-403.0, 34.2, 0], "yaw": 180, "params": {"width": 0.9}},
+  {"id": "block1_in_door_107", "part": "door", "at": [-403.0, 35.8, 0], "params": {"width": 0.9}},
+  {"id": "block1_in_bath_door_101", "part": "door", "at": [-399.633, 33.0, 0], "yaw": 270, "params": {"width": 0.7}},
+  {"id": "block1_in_wc_101", "part": "sanitary", "at": [-398.033, 34.15, 0], "yaw": 180, "params": {"kind": "wc"}},
+  {"id": "block1_in_shower_101", "part": "sanitary", "at": [-397.433, 33.1, 0], "yaw": 270, "params": {"kind": "shower"}},
+  {"id": "block1_in_basin_101", "part": "sanitary", "at": [-398.883, 32.25, 0], "params": {"kind": "basin"}},
+  {"id": "block1_in_bed_101", "part": "bed", "at": [-401.4, 30.7, 0], "yaw": 90},
+  {"id": "block1_in_desk_101", "part": "desk", "at": [-403.52, 32.4, 0], "yaw": 270},
+  {"id": "block1_in_chair_101", "part": "chair", "at": [-402.85, 32.4, 0], "yaw": 270, "params": {"kind": "office"}},
+  {"id": "block1_in_wardrobe_101", "part": "locker", "at": [-400.533, 33.85, 0], "yaw": 180, "params": {"width": 1.0}},
+  {"id": "block1_in_bath_door_107", "part": "door", "at": [-399.633, 37.0, 0], "yaw": 270, "params": {"width": 0.7}},
+  {"id": "block1_in_wc_107", "part": "sanitary", "at": [-398.033, 35.85, 0], "params": {"kind": "wc"}},
+  {"id": "block1_in_shower_107", "part": "sanitary", "at": [-397.433, 36.9, 0], "yaw": 270, "params": {"kind": "shower"}},
+  {"id": "block1_in_basin_107", "part": "sanitary", "at": [-398.883, 37.75, 0], "yaw": 180, "params": {"kind": "basin"}},
+  {"id": "block1_in_bed_107", "part": "bed", "at": [-401.4, 39.3, 0], "yaw": 90},
+  {"id": "block1_in_desk_107", "part": "desk", "at": [-403.52, 37.6, 0], "yaw": 270},
+  {"id": "block1_in_chair_107", "part": "chair", "at": [-402.85, 37.6, 0], "yaw": 270, "params": {"kind": "office"}},
+  {"id": "block1_in_wardrobe_107", "part": "locker", "at": [-400.533, 36.15, 0], "params": {"width": 1.0}}
+ ],
+ "signs": [
+  {"text": "101", "at": [-402.15, 34.0, 1.7], "yaw": 0, "size": 0.15},
+  {"text": "107", "at": [-402.15, 36.0, 1.7], "yaw": 180, "size": 0.15},
+  {"text": "102", "at": [-395.483, 34.0, 1.7], "yaw": 0, "size": 0.15},
+  {"text": "108", "at": [-395.483, 36.0, 1.7], "yaw": 180, "size": 0.15},
+  {"text": "103", "at": [-388.817, 34.0, 1.7], "yaw": 0, "size": 0.15},
+  {"text": "109", "at": [-388.817, 36.0, 1.7], "yaw": 180, "size": 0.15},
+  {"text": "104", "at": [-382.15, 34.0, 1.7], "yaw": 0, "size": 0.15},
+  {"text": "110", "at": [-382.15, 36.0, 1.7], "yaw": 180, "size": 0.15},
+  {"text": "105", "at": [-375.483, 34.0, 1.7], "yaw": 0, "size": 0.15},
+  {"text": "111", "at": [-375.483, 36.0, 1.7], "yaw": 180, "size": 0.15},
+  {"text": "106", "at": [-368.817, 34.0, 1.7], "yaw": 0, "size": 0.15},
+  {"text": "112", "at": [-368.817, 36.0, 1.7], "yaw": 180, "size": 0.15}
+ ],
+ "load": "inside"
+}

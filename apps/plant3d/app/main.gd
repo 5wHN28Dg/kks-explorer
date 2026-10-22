@@ -35,6 +35,7 @@ const Hud = preload("res://app/hud.gd")
 const MapView = preload("res://app/map_view.gd")
 const PlantUi = preload("res://ui/plant_ui.gd")
 const Lighting = preload("res://app/lighting.gd")
+const Interiors = preload("res://app/interiors.gd")
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
 
 var cf: ConfigFile
@@ -42,6 +43,7 @@ var opts := {}
 var tier := ""
 var tier_why := ""
 var plant: Node3D
+var interiors: Node   # app/interiors.gd: the rooms loaded near their doors
 var player
 var hud
 var map
@@ -143,6 +145,10 @@ func _ready() -> void:
 		await _drawn()   # draws the sky alone and sets the hidden plant's pipelines compiling
 		plant.visible = true
 		_launch("plant's pipelines queued")
+	interiors = Interiors.new()
+	interiors.name = "interiors"
+	add_child(interiors)
+	interiors.setup(plant, player)
 	map = MapView.new()
 	map.name = "map"
 	add_child(map)
@@ -304,6 +310,8 @@ func _on_jump(to: Vector3) -> void:
 	toggle_map()
 
 func area_at(p: Vector3) -> String:
+	if interiors != null and interiors.title_at(p) != "":
+		return interiors.title_at(p)
 	for a in plant.manifest.areas:
 		var b: Array = a.bounds
 		if p.x >= b[0][0] and p.x <= b[1][0] and -p.z >= b[0][1] and -p.z <= b[1][1]:

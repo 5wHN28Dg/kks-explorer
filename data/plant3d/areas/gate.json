@@ -1,0 +1,50 @@
+{
+ "format": "walkdown-plant-area",
+ "version": 2,
+ "id": "gate",
+ "title": "Plant gate",
+ "bounds": [
+  [-140, 0],
+  [-53, 40]
+ ],
+ "pack": "site",
+ "equipment": [],
+ "pipes": [],
+ "structures": [
+  {"id": "gate_road", "part": "road", "kks": "00UZA10", "at": [-140, 12, 0], "params": {"outline": [[0, 0], [87.0, 0], [87.0, 7.0], [0, 7.0]], "surface": "asphalt"}},
+  {"id": "gate_walk_w", "part": "road", "at": [-140, 21, 0], "params": {"outline": [[0, 0], [48.0, 0], [48.0, 2.0], [0, 2.0]], "surface": "concrete"}},
+  {"id": "gate_walk_e", "part": "road", "at": [-86, 21, 0], "params": {"outline": [[0, 0], [33.0, 0], [33.0, 2.0], [0, 2.0]], "surface": "concrete"}},
+  {"id": "gate_entrance", "part": "road", "at": [-92, 19, 0], "params": {"outline": [[0, 0], [6.0, 0], [6.0, 21.0], [0, 21.0]], "surface": "asphalt"}},
+  {"id": "gate_walk_admin", "part": "road", "at": [-94, 23, 0], "params": {"outline": [[0, 0], [2.0, 0], [2.0, 17.0], [0, 17.0]], "surface": "concrete"}},
+  {"id": "gate_crossing", "part": "crossing", "at": [-89, 22, 0], "params": {"width": 6, "length": 2}},
+  {"id": "gate_kerb_s", "part": "kerb", "at": [-140, 12, 0], "params": {"route": [[0, 0, 0], [87.0, 0.0, 0]], "painted": true}},
+  {"id": "gate_kerb_nw", "part": "kerb", "at": [-140, 19, 0], "params": {"route": [[0, 0, 0], [48.0, 0.0, 0]], "painted": true}},
+  {"id": "gate_kerb_ne", "part": "kerb", "at": [-86, 19, 0], "params": {"route": [[0, 0, 0], [33.0, 0.0, 0]], "painted": true}},
+  {"id": "gate_barrier_in", "part": "barrier", "at": [-131, 19.6, 0], "yaw": 90, "params": {"width": 3.6}},
+  {"id": "gate_barrier_out", "part": "barrier", "at": [-127, 11.4, 0], "yaw": 270, "params": {"width": 3.6}},
+  {"id": "gate_house", "part": "building", "kks": "00UYE10", "at": [-122, 24.5, 0], "params": {"outline": [[0, 0], [8.0, 0], [8.0, 5.0], [0, 5.0]], "height": 3.2, "cladding": "panel", "floor": "vinyl", "openings": [{"kind": "door", "at": [4.0, 0, 0], "width": 1.0, "height": 2.1}, {"kind": "window", "at": [1.5, 0, 1.6], "width": 1.6, "height": 1.0}, {"kind": "window", "at": [6.5, 0, 1.6], "width": 1.6, "height": 1.0}, {"kind": "window", "at": [0, 2.5, 1.6], "width": 2.0, "height": 1.0}]}},
+  {"id": "gate_house_door1", "part": "door", "at": [-118.0, 24.5, 0], "yaw": 180, "params": {"kind": "personnel", "width": 1.0, "height": 2.1}},
+  {"id": "gate_bus_shelter", "part": "canopy", "at": [-108, 24.4, 0], "yaw": 90, "params": {"length": 6, "width": 2.4, "height": 2.6}},
+  {"id": "gate_bus_bench", "part": "bench", "at": [-108, 24.9, 0], "params": {"length": 3}},
+  {"id": "gate_palm_1", "part": "planting", "at": [-112.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "gate_palm_2", "part": "planting", "at": [-104.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "gate_palm_3", "part": "planting", "at": [-96.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "gate_palm_4", "part": "planting", "at": [-80.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "gate_palm_5", "part": "planting", "at": [-72.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "gate_palm_6", "part": "planting", "at": [-64.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "gate_palm_7", "part": "planting", "at": [-56.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "gate_lamp_1", "part": "lamp_post", "at": [-136.0, 11.0, 0], "params": {"height": 8}},
+  {"id": "gate_lamp_2", "part": "lamp_post", "at": [-110.0, 11.0, 0], "params": {"height": 8}},
+  {"id": "gate_lamp_3", "part": "lamp_post", "at": [-84.0, 11.0, 0], "params": {"height": 8}},
+  {"id": "gate_lamp_4", "part": "lamp_post", "at": [-58.0, 11.0, 0], "params": {"height": 8}},
+  {"id": "gate_saltbush_w", "part": "planting", "at": [-121.3, 23.7, 0], "params": {"species": "saltbush", "route": [[0, 0, 0], [1.7, 0.0, 0]]}},
+  {"id": "gate_saltbush_e", "part": "planting", "at": [-116.4, 23.7, 0], "params": {"species": "saltbush", "route": [[0, 0, 0], [1.7, 0.0, 0]]}}
+ ],
+ "signs": [
+  {"text": "Plant gate", "at": [-118, 24.5, 2.6], "yaw": 180, "size": 0.45},
+  {"text": "Gate house 00UYE10", "at": [-114, 27, 2.4], "yaw": 90, "size": 0.3},
+  {"text": "All visitors report to the gate house", "at": [-122, 26.5, 1.8], "yaw": 270, "size": 0.22},
+  {"text": "Bus stop", "at": [-108, 25.6, 2.4], "yaw": 180, "size": 0.3},
+  {"text": "Speed limit 20 km/h", "at": [-136, 11.2, 2.2], "yaw": 270, "size": 0.3}
+ ]
+}

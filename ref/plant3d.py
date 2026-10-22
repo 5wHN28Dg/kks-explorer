@@ -38,10 +38,12 @@ PREFIX_RE = re.compile(rf'[0-9]{{2}}{L}{{3}}(?:[0-9](?:[0-9](?:{L}(?:{L}(?:[0-9]
 
 # ---------------------------------------------------------------- small checks
 
-def fmt(d, kind, where):
+def fmt(d, kind, where, two=False):
+    """The file's format and version: 1, or 2 where `two` allows it (format 2, §14: a version 2 plant's areas)."""
     need(d.get('format') == FORMATS[kind], 'bad_format', f'{where}: format must be "{FORMATS[kind]}"')
     v = d.get('version')
-    need(v == 1 and not isinstance(v, bool), 'bad_version', f'{where}: version must be 1')
+    need(v in ((1, 2) if two else (1,)) and not isinstance(v, bool), 'bad_version',
+         f'{where}: version must be {"1 or 2" if two else "1"}')
 
 
 def time(x, where, lo=0.0, positive=False):
@@ -340,12 +342,15 @@ class Plant:
             need(rel in files, 'missing_key', f'{rel} is missing (plant.json lists area {aid!r})')
             a = parse(files, rel)
             self.check_area(a, aid, rel)
-            for other, r in rects:
+            for other, r, other_inside in rects:
                 (ax0, ay0), (ax1, ay1) = a['bounds']
                 (bx0, by0), (bx1, by1) = r
-                need(ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0, 'area_overlap',
-                     f'{rel}: bounds overlap area {other!r}')
-            rects.append((aid, a['bounds']))
+                apart = ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0
+                # an interior lies inside the area holding its building (§18.5), and overlaps nothing else
+                inside = 'load' in a and not other_inside and bx0 <= ax0 and ax1 <= bx1 and by0 <= ay0 and ay1 <= by1
+                held = other_inside and 'load' not in a and ax0 <= bx0 and bx1 <= ax1 and ay0 <= by0 and by1 <= ay1
+                need(apart or inside or held, 'area_overlap', f'{rel}: bounds overlap area {other!r}')
+            rects.append((aid, a['bounds'], 'load' in a))
             b.areas.append(a)
         for rel in files:
             if rel.startswith('areas/'):
@@ -390,7 +395,7 @@ class Plant:
     def check_plant(self, p):
         w = 'plant.json'
         keys(p, ('format', 'version', 'id', 'title', 'frequency_hz', 'kks', 'media', 'areas', 'ext', 'start'), (), w)
-        fmt(p, 'plant', w)
+        fmt(p, 'plant', w, two=True)
         ident(p['id'], f'{w}.id')
         name_text(p['title'], f'{w}.title')
         need(p['frequency_hz'] in (50, 60) and not isinstance(p['frequency_hz'], bool), 'bad_value',
@@ -482,9 +487,15 @@ class Plant:
 
     # --- areas
     def check_area(self, a, aid, rel):
+        two = self.b.plant.get('version') == 2
         keys(a, ('format', 'version', 'id', 'title', 'bounds', 'pack', 'equipment', 'pipes', 'structures', 'signs'),
-             (), rel)
-        fmt(a, 'area', rel)
+             ('load',) if two and a.get('version') == 2 else (), rel)
+        fmt(a, 'area', rel, two=two)
+        if 'load' in a:
+            # an interior (§18.5): a scene of its own, loaded near its building's doors; its shell is in the area
+            # holding it, and it holds no equipment or pipes (nothing with a code to find while it is not loaded)
+            need(a['load'] == 'inside', 'bad_value', f'{rel}.load: "inside"')
+            need(not a['equipment'] and not a['pipes'], 'bad_kind', f'{rel}: an interior holds no equipment or pipes')
         need(a['id'] == aid, 'bad_id', f'{rel}: id must be {aid!r}')
         name_text(a['title'], f'{rel}.title')
         lst(a['bounds'], f'{rel}.bounds', 2, 2)
@@ -701,6 +712,14 @@ class Plant:
                 elif part == 'pit':
                     self.b.surfaces.append(('pit', at[2], poly, []))
                     self.b.surfaces.append(('floor', at[2] - params['depth'], poly, []))
+            # a route (a fence, a wall, a row of plants, a kerb) and partitions lie in the area too
+            for q in params.get('route', []) if isinstance(params.get('route'), list) else []:
+                r = rot([q[0], q[1], 0], yaw)
+                pts.append((at[0] + r[0], at[1] + r[1]))
+            for wall in params.get('walls', []) if part == 'room' else []:
+                for end in ('a', 'b'):
+                    r = rot([wall[end][0], wall[end][1], 0], yaw)
+                    pts.append((at[0] + r[0], at[1] + r[1]))
             for q in pts:
                 need(in_rect(q, bounds), 'outside_area', f'{w}: {[round(c, 2) for c in q[:2]]} is outside the area '
                                                          f'{bounds}')

@@ -25,7 +25,10 @@ SYSTEMS = {
     'QHA': 'Auxiliary boiler', 'CWA': 'Main control desk A', 'CWB': 'Main control desk B',
     'UCA': 'Control building', 'UHA': 'HRSG structure', 'UHN': 'Stack structure',
     'UMA': 'Turbine hall', 'UMB': 'Gas turbine hall', 'UQA': 'Circulating water pump house',
-    'URA': 'Cooling tower structure'}
+    'URA': 'Cooling tower structure',
+    # the site and the camp (docs/plant3d/SITE.md §6; UZW's subdivision is our convention)
+    'UST': 'Workshops', 'USU': 'Store', 'UYC': 'Administration building', 'UYE': 'Gate house', 'UZA': 'Roads',
+    'UZD': 'Parking', 'UZW': 'Camp: housing and its amenities'}
 EQUIPMENT = {'AA': 'Valve or damper with its actuator', 'AC': 'Heat exchanger or heating surface',
              'AE': 'Turning, driving or lifting gear', 'AN': 'Fan or compressor', 'AP': 'Pump unit',
              'AT': 'Filter or cleaning unit', 'BB': 'Vessel or tank', 'BR': 'Pipe', 'BS': 'Silencer'}
@@ -41,8 +44,9 @@ MEDIA = {'cooling_water': ('water', '#2e7d32', 'Cooling water'), 'raw_water': ('
          'air': ('air', '#78909c', 'Air'), 'fuel_gas': ('gas', '#f9a825', 'Fuel gas')}
 
 
-def plant(codes):
-    """plant.json, with decoder tables holding only the letters `codes` use."""
+def plant(codes, area_ids=None):
+    """plant.json, with decoder tables holding only the letters `codes` use. Version 2 (PLANT3D.md §14): the site's
+    interiors are areas with `load` (§18.5)."""
     used = {'units': set(), 'systems': set(), 'equipment': set(), 'measurements': set()}
     rx = re.compile(r'([0-9])[0-9]([A-Z]{3})[0-9]{2}(?:([A-Z]{2})[0-9]{3}[A-Z]?)?')
     for c in codes:
@@ -55,10 +59,10 @@ def plant(codes):
     kks = {k: {c: tables[k][c] for c in sorted(used[k])} for k in tables}
     kks['source'] = ('Codes follow the public KKS key (sources: docs/plant3d/FIRST-TRAIN.md §1); only the letters '
                      'this plant uses, with meanings in our own words.')
-    return {'format': 'walkdown-plant', 'version': 1, 'id': 'ccpp', 'title': 'Generic 2-2-1 combined-cycle plant',
+    return {'format': 'walkdown-plant', 'version': 2, 'id': 'ccpp', 'title': 'Generic 2-2-1 combined-cycle plant',
             'frequency_hz': 50, 'kks': kks,
             'media': {k: {'group': g, 'band': b, 'name': n} for k, (g, b, n) in MEDIA.items()},
-            'areas': ['control', 'bop', 'ct', 'cw', 'gt1', 'trafo1', 'hrsg1', 'st', 'rack'],
+            'areas': area_ids or ['control', 'bop', 'ct', 'cw', 'gt1', 'trafo1', 'hrsg1', 'st', 'rack'],
             'ext': ['ambient_t', 'ambient_wb', 'grid_frequency'],
             'start': {'at': [-20, 0, 0], 'yaw': 90}}
 

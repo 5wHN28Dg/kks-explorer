@@ -44,6 +44,10 @@ func _nav(out: String, b) -> void:
 	var scenes: Array = [m.ground]
 	for a in m.areas:
 		scenes.append(a.scene)
+	# the interiors too (PLANT3D.md §18.5): the app loads them near their doors, but a way into a room is a way like
+	# any other
+	for a in m.get("interiors", []):
+		scenes.append(a.scene)
 	var st: Array = m.start.at
 	var r: Dictionary = await NavBake.bake(root, out, scenes, b.stairs, b.ladders, Vector3(st[0], st[1], st[2]))
 	if r.has("error"):

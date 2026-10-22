@@ -69,7 +69,7 @@ class Content(unittest.TestCase):
 
     def test_counts(self):
         c = self.b.counts
-        self.assertEqual(c['areas'], 9)
+        self.assertEqual(c['areas'], 9 + 12)          # the first train; the site, the camp and their interiors
         self.assertGreaterEqual(c['equipment'], 150)
         self.assertGreaterEqual(c['pipes'], 25)
         self.assertGreaterEqual(c['tours'], 1)

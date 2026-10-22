@@ -443,10 +443,10 @@ class HearingProtection(unittest.TestCase):
                                 self.assertTrue(on_edge(np.array(g['at'][:2], float) + end * along, poly),
                                                 'the sign\'s board runs off its wall')
                         else:
-                            quiet_doors += 1
+                            quiet_doors += a['pack'] == 'base'
                             self.assertEqual(near, [], 'a quiet building\'s door has no hearing-protection sign')
         # the first train: the GT hall, the turbine hall, the CW pump house and the boiler house are loud (six
-        # doors); the control building is quiet
+        # doors); the control building is quiet (and so is every building of the site and the camp, SITE.md)
         self.assertEqual((loud_doors, quiet_doors), (6, 1))
 
 

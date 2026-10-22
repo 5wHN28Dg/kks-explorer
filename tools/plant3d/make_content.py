@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write the first train (docs/plant3d/FIRST-TRAIN.md) and the kit's interface to data/plant3d/ in the layout of
+"""Write the first train (docs/plant3d/FIRST-TRAIN.md), the site beyond it (docs/plant3d/SITE.md) and the kit's interface to data/plant3d/ in the layout of
 docs/PLANT3D.md, then check it with the reference validator (ref/plant3d.py).
 
     python3 tools/plant3d/make_content.py          # check that data/plant3d matches what this makes
@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
-import kit, train_areas, train_model, train_content, train_screens  # noqa: E402
+import kit, train_areas, train_model, train_content, train_screens, site_areas  # noqa: E402
 
 OUT = os.path.join(ROOT, 'data', 'plant3d')
 
@@ -88,8 +88,8 @@ def add_air_permissives(areas, models):
 
 def build():
     """{relative path: text} for everything under data/plant3d."""
-    areas = train_areas.areas()
-    files = {'kit.json': kit.kit(), 'plant.json': train_content.plant(codes(areas)),
+    areas = site_areas.add_to_train(train_areas.areas()) + site_areas.areas()
+    files = {'kit.json': kit.kit(), 'plant.json': train_content.plant(codes(areas), [a['id'] for a in areas]),
              'sounds.json': train_content.sounds(), 'screens.json': train_screens.screens()}
     for a in areas:
         files[f'areas/{a["id"]}.json'] = a

@@ -22,8 +22,10 @@ const P_VAL = preload("res://kit/parts_valves.gd")
 const P_INS = preload("res://kit/parts_instruments.gd")
 const P_EL = preload("res://kit/parts_electrical.gd")
 const P_PIPE = preload("res://kit/parts_pipes.gd")
+const P_SITE = preload("res://kit/parts_site.gd")
 
-## The parts each generator script makes (structure parts are made by the builder itself: §5).
+## The parts each generator script makes (structure parts are made by the builder itself, §5, except the site's and
+## the camp's: planting, vehicles, furniture, PLANT3D.md §18.6).
 const MAKERS := {
 	"gas_turbine": "MACH", "generator": "MACH", "steam_turbine": "MACH", "sfc": "MACH", "turning_gear": "MACH",
 	"filter_house": "MACH",
@@ -43,6 +45,11 @@ const MAKERS := {
 	"elbow": "PIPE", "tee": "PIPE", "reducer": "PIPE", "flange": "PIPE", "pipe_support": "PIPE",
 	"tag_plate": "INS", "sign": "INS", "lamp": "INS", "beacon": "INS", "horn": "INS", "emergency_stop": "INS",
 	"safety_shower": "INS",
+	"planting": "SITE", "vehicle": "SITE", "barrier": "SITE", "guard_booth": "SITE", "canopy": "SITE",
+	"lamp_post": "SITE", "kerb": "SITE", "crossing": "SITE", "court": "SITE", "porch": "SITE", "room": "SITE", "bed": "SITE",
+	"locker": "SITE", "desk": "SITE", "chair": "SITE", "table": "SITE", "bench": "SITE", "counter": "SITE",
+	"shelf": "SITE", "washer": "SITE", "gym_rack": "SITE", "sofa": "SITE", "screen": "SITE", "carpet": "SITE",
+	"sanitary": "SITE",
 }
 
 ## Triangle budgets per part at full detail (LOD 0), the most any one instance may take with any parameters the kit
@@ -63,6 +70,10 @@ const BUDGET := {
 	"cable_tray": 6000, "elbow": 3000, "tee": 2000, "reducer": 1000, "flange": 1500, "pipe_support": 400,
 	"tag_plate": 60, "sign": 60, "lamp": 300, "beacon": 400, "horn": 300, "emergency_stop": 400,
 	"safety_shower": 1500,
+	"planting": 2500, "vehicle": 1500, "barrier": 600, "guard_booth": 500, "canopy": 4000, "lamp_post": 500,
+	"kerb": 6000, "crossing": 300, "court": 8000, "porch": 1200, "room": 6000, "bed": 300, "locker": 400, "desk": 150, "chair": 300,
+	"table": 150, "bench": 150, "counter": 1200, "shelf": 1600, "washer": 200, "gym_rack": 600, "sofa": 200,
+	"screen": 50, "carpet": 1500, "sanitary": 300,
 }
 
 class Gen:
@@ -175,6 +186,7 @@ static func _script(part: String):
 		"INS": return P_INS
 		"EL": return P_EL
 		"PIPE": return P_PIPE
+		"SITE": return P_SITE
 	return null
 
 ## Makes a part (cached: the same part with the same parameters and context is made once).

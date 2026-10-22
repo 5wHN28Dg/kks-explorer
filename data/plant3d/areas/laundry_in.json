@@ -1,0 +1,26 @@
+{
+ "format": "walkdown-plant-area",
+ "version": 2,
+ "id": "laundry_in",
+ "title": "Laundry",
+ "bounds": [
+  [-358, 46],
+  [-348, 54]
+ ],
+ "pack": "camp",
+ "equipment": [],
+ "pipes": [],
+ "structures": [
+  {"id": "laundry_in_washer_1", "part": "washer", "at": [-356.2, 53.5, 0], "yaw": 180, "params": {"kind": "washer"}},
+  {"id": "laundry_in_washer_2", "part": "washer", "at": [-355.4, 53.5, 0], "yaw": 180, "params": {"kind": "washer"}},
+  {"id": "laundry_in_washer_3", "part": "washer", "at": [-354.6, 53.5, 0], "yaw": 180, "params": {"kind": "washer"}},
+  {"id": "laundry_in_washer_4", "part": "washer", "at": [-353.8, 53.5, 0], "yaw": 180, "params": {"kind": "washer"}},
+  {"id": "laundry_in_dryer_1", "part": "washer", "at": [-348.5, 52.6, 0], "yaw": 270, "params": {"kind": "dryer"}},
+  {"id": "laundry_in_dryer_2", "part": "washer", "at": [-348.5, 51.8, 0], "yaw": 270, "params": {"kind": "dryer"}},
+  {"id": "laundry_in_dryer_3", "part": "washer", "at": [-348.5, 51.0, 0], "yaw": 270, "params": {"kind": "dryer"}},
+  {"id": "laundry_in_table", "part": "table", "at": [-353, 49.5, 0], "yaw": 90, "params": {"length": 2.4, "width": 1.0, "height": 0.9}},
+  {"id": "laundry_in_shelf", "part": "shelf", "at": [-352.5, 46.4, 0], "params": {"length": 2.4}}
+ ],
+ "signs": [],
+ "load": "inside"
+}

@@ -39,6 +39,7 @@ var stairs: Array = []           # {id, area, foot, top, layout, width, st, lay}
 var ladders: Array = []          # {id, area, foot, top, facing, exit}
 var buildings: Array = []        # {id, area, outline, height, openings, at}
 var pits: Array = []             # {id, area, outline, depth}
+var kit_structures: Array = []   # the structures the parts kit draws (planting, vehicles, furniture): {s, area}
 var rack_tiers: Array = []       # pipe racks' tiers, where pipes rest: {outline, z}
 var kp                           # the parts kit's placement (builder/kit_place.gd)
 var mats := {}
@@ -132,6 +133,9 @@ func _collect_structure(s: Dictionary, a: Dictionary) -> void:
 	var part: String = s.part
 	var where := "%s: %s" % [a.rel, s.id]
 	if not part in STRUCTURES:
+		if Kit.has_part(part):   # the site's and the camp's (kit/parts_site.gd)
+			kit_structures.append({"s": s, "area": a.id})
+			return
 		_err("unsupported", where, "the build has no geometry for structure part '%s' yet" % part)
 		return
 	var pr := params_of(part, s.get("params", {}))
@@ -145,7 +149,8 @@ func _collect_structure(s: Dictionary, a: Dictionary) -> void:
 		var deck: String = pr.get("deck", "concrete" if part != "grating" else "grating")
 		var rails: bool = part == "floor" or (part == "platform" and pr.get("edge", "handrail") == "handrail")
 		surfaces.append({"id": s.id, "kind": part, "z": at.z, "outline": Geom.poly(pr.outline, off, yaw), "holes": holes,
-			"thick": DECK.get(deck, 0.2), "rails": rails, "deck": deck, "area": a.id, "finish": pr.get("finish", "epoxy")})
+			"thick": DECK.get(deck, 0.2), "rails": rails, "deck": deck, "area": a.id, "finish": pr.get("finish", "epoxy"),
+			"surface": pr.get("surface", "")})
 	elif part == "stair":
 		var foot := _v3(pr.foot)
 		var top := _v3(pr.top)
@@ -164,7 +169,7 @@ func _collect_structure(s: Dictionary, a: Dictionary) -> void:
 	elif part == "building":
 		buildings.append({"id": s.id, "area": a.id, "outline": Geom.poly(pr.outline, off, yaw), "height": float(pr.height),
 			"openings": pr.get("openings", []), "at": at, "yaw": yaw, "cladding": pr.get("cladding", "metal"),
-			"rel": a.rel, "floor": pr.get("floor", "epoxy"), "crane": float(pr.get("crane", 0.0))})
+			"rel": a.rel, "floor": pr.get("floor", "epoxy"), "crane": float(pr.get("crane", 0.0)), "kks": s.get("kks", "")})
 	elif part == "pit":
 		var pg := Geom.poly(pr.outline, off, yaw)
 		pits.append({"id": s.id, "area": a.id, "outline": pg, "depth": float(pr.depth)})
@@ -256,7 +261,7 @@ func _check() -> void:
 	# a door in a building's wall stands in a door opening of that wall (else it would open onto the wall)
 	for a in areas:
 		for s in a.data.get("structures", []):
-			if s.part != "door":
+			if s.part != "door" or s.get("params", {}).get("locked", false):
 				continue
 			var at := _v3(s.at)
 			var p := Vector2(at.x, at.y)
@@ -661,19 +666,29 @@ func build_all(out_dir: String) -> int:
 	var ground := _ground()
 	err += _save(ground, out_dir.path_join("ground.scn"))
 	var manifest_areas: Array = []
+	var interiors: Array = []
 	for a in areas:
 		var root := Node3D.new()
 		root.name = "area_" + a.id
+		var inside: bool = a.data.get("load", "") == "inside"
+		kp.unbaked = inside
 		_area(root, a)
+		kp.unbaked = false
 		var path := out_dir.path_join("areas/%s.scn" % a.id)
 		err += _save(root, path)
 		var bd: Array = a.data.bounds
-		manifest_areas.append({"id": a.id, "title": a.data.get("title", a.id), "scene": path, "bounds": bd})
+		var entry := {"id": a.id, "title": a.data.get("title", a.id), "scene": path, "bounds": bd}
+		if inside:
+			# an interior (PLANT3D.md §18.5): loaded by the app near its building's doors, left out of the bake
+			entry["doors"] = interior_doors(a).map(func(p): return _arr(Geom.g([p.x, p.y, 0.0])))
+			interiors.append(entry)
+		else:
+			manifest_areas.append(entry)
 	err += _bake_scene(out_dir, [out_dir.path_join("ground.scn")] + manifest_areas.map(func(a): return a.scene))
 	var manifest := {
 		"format": "walkdown-plant-built", "version": 1, "title": plant.get("title", ""),
 		"start": {"at": _arr(Geom.g(plant.start.at)), "yaw": float(plant.start.get("yaw", 0))},
-		"ground": out_dir.path_join("ground.scn"), "areas": manifest_areas, "extent": _extent(),
+		"ground": out_dir.path_join("ground.scn"), "areas": manifest_areas, "interiors": interiors, "extent": _extent(),
 		"stairs": stairs.map(func(s): return {"id": s.id, "area": s.area, "path": s.lay.path.map(func(p): return _arr(Geom.g([p.x, p.y, p.z])))}),
 		"ladders": ladders.map(func(l): return {"id": l.id, "area": l.area, "foot": _arr(Geom.g([l.foot.x, l.foot.y, l.foot.z])),
 			"top": l.top, "facing": l.facing, "exit": _arr(Geom.g([l.exit.x, l.exit.y, l.exit.z]))}),
@@ -687,6 +702,23 @@ func build_all(out_dir: String) -> int:
 		return err + 1
 	f.store_string(JSON.stringify(manifest, " ", false))
 	return err
+
+## An interior's doors (plan points): the door openings of the buildings standing in its bounds (their shells are in
+## the area that holds the interior), where the app loads it as the trainee comes near (PLANT3D.md §18.5); its bounds'
+## centre when none.
+func interior_doors(a: Dictionary) -> Array:
+	var bd: Array = a.data.bounds
+	var r := Rect2(Vector2(bd[0][0], bd[0][1]), Vector2(bd[1][0] - bd[0][0], bd[1][1] - bd[0][1]))
+	var out: Array = []
+	for b in buildings:
+		if b.area == a.id or not r.grow(0.01).has_point(_mean(b.outline)):
+			continue
+		for o in b.openings:
+			if o.kind == "door":
+				out.append(_opening_plan(b, o))
+	if out.is_empty():
+		out.append(r.get_center())
+	return out
 
 ## The scene the lightmap is baked in (builder/bake/, after this build, on a GPU): the ground and every area as
 ## instances under one node named as the app's plant node holds them, the sun, the sky, and the LightmapGI beside
@@ -809,6 +841,9 @@ func _area(root: Node3D, a: Dictionary) -> void:
 			"fence": _fence(sts, s)
 			"wall": _wall(sts, s)
 			"pipe_rack": _rack(sts, s)
+	for ks in kit_structures:
+		if ks.area == a.id:
+			kp.structure(sts, ks.s)
 	for sg in a.data.get("signs", []):
 		var l := Label3D.new()
 		l.name = "sign"
@@ -921,10 +956,15 @@ func _along(a: Vector3, b: Vector3) -> Transform3D:
 
 # ------------------------------------------------------------------ structures
 
+## A road's surface (content: `road`'s `surface`) and its material: asphalt, paved concrete (walkways, cast in bays) or
+## compacted gravel.
+const ROAD_MATS := {"asphalt": "road_asphalt", "concrete": "yard", "gravel": "yard_gravel"}
 func _surface(parent: Node3D, sf: Dictionary) -> void:
 	# a building's floors (an operating deck) are painted as its ground floor is (_hall_floor)
 	var inside: bool = sf.kind == "floor" or _in_building(sf)
 	var mat := _mat("grating" if sf.deck == "grating" else ("deck_steel" if sf.deck == "steel" else ("pit" if sf.kind == "pit_floor" else (FLOOR_MATS[sf.get("finish", "epoxy")] if inside else "concrete"))))
+	if sf.kind == "road":
+		mat = _mat(ROAD_MATS.get(sf.get("surface", "asphalt"), "road_asphalt"))
 	_slab(parent, sf.id, sf.outline, sf.holes, sf.z, sf.thick, mat)
 	if inside and sf.deck == "concrete" and sf.z >= DECK_SOFFIT_MIN:
 		_soffit(parent, sf)
@@ -1085,6 +1125,8 @@ func _ladder(parent: Node3D, l: Dictionary) -> void:
 func _building(parent: Node3D, b: Dictionary) -> void:
 	var body := _body(parent, b.id)
 	body.set_meta("building", b.id)
+	if b.get("kks", "") != "":
+		body.set_meta("kks", b.kks)   # found by its code (a tour's stop, a card), as equipment is
 	body.set_meta("cladding", b.cladding)
 	var walls := _st()
 	var liner := _st()
@@ -1417,7 +1459,7 @@ const HALL_FLOOR_T := 0.004
 ## A floor's finish (content: a building's `floor`, a deck's `finish`) and the material it is drawn with: painted,
 ## glazed tiles (a turbine hall's operating floor and walkways), bare concrete (a ground floor under a deck, a pump
 ## house: cracks, dust, tyre marks).
-const FLOOR_MATS := {"epoxy": "hall_floor", "tile": "floor_tile", "concrete": "floor_concrete"}
+const FLOOR_MATS := {"epoxy": "hall_floor", "tile": "floor_tile", "concrete": "floor_concrete", "vinyl": "floor_vinyl"}
 func _hall_floor(body: Node, b: Dictionary) -> int:
 	var pg: PackedVector2Array = b.outline
 	var holes: Array = []
@@ -1684,6 +1726,9 @@ func _pit(parent: Node3D, p: Dictionary) -> void:
 
 func _door(parent: Node3D, s: Dictionary) -> void:
 	var pr := params_of("door", s.get("params", {}))
+	if pr.get("locked", false):
+		_locked_door(parent, s, pr)
+		return
 	var door := AnimatableBody3D.new()
 	door.name = s.id
 	door.set_script(load("res://app/door.gd"))
@@ -1709,6 +1754,32 @@ func _door(parent: Node3D, s: Dictionary) -> void:
 	cs.shape = bs
 	cs.position = mi.position
 	door.add_child(cs)
+
+## A door that never opens (a shell's: `locked`): its leaf on the wall's outer face (the door's yaw points out of its
+## building), solid, drawn with the doors' material; the wall stays whole behind it.
+func _locked_door(parent: Node3D, s: Dictionary, pr: Dictionary) -> void:
+	var body := StaticBody3D.new()
+	body.name = s.id
+	var out := Geom.heading(float(s.get("yaw", 0)))
+	var at := _v3(s.at)
+	body.position = Geom.g([at.x + out.x * (WALL_T * 0.5 + 0.04), at.y + out.y * (WALL_T * 0.5 + 0.04), at.z])
+	body.rotation.y = Geom.yaw_rad(float(s.get("yaw", 0)))
+	parent.add_child(body)
+	var mi := MeshInstance3D.new()
+	mi.name = "panel"
+	var bm := BoxMesh.new()
+	bm.size = Vector3(float(pr.width), float(pr.height), 0.08)
+	mi.mesh = Mat.plant_mesh(bm)
+	mi.position.y = float(pr.height) * 0.5
+	mi.material_override = _mat("door")
+	Lightmap.mark(mi, false)
+	body.add_child(mi)
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = bm.size
+	cs.shape = bs
+	cs.position = mi.position
+	body.add_child(cs)
 
 func _slab_part(parent: Node3D, s: Dictionary) -> void:
 	var pr := params_of("slab", s.get("params", {}))
