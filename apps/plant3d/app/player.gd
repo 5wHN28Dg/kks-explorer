@@ -20,7 +20,7 @@ const JOG_SPEED := 3.0         # m/s: a stick pushed all the way
 const RUN_SPEED := 4.0         # m/s: running (the run modifier)
 const WALK_PUSH := 0.75        # the stick's push that walks at the pace; beyond it the walk becomes a jog
 const PACES := {"slow": 1.1, "normal": WALK_SPEED, "brisk": 1.7}   # the settings' pace (app/hud.gd)
-const STAIR_WALK := 0.8        # m/s in plan at most on a stair, walking, and running (a step a tread)
+const STAIR_WALK := 0.8        # m/s in plan at most on a stair, walking, and running
 const STAIR_RUN := 1.4
 const STAIR_NORMAL_Y := 0.97   # a floor steeper than about 14 degrees is a stair (stairs are slopes of about 33)
 const ACCEL := 4.0             # m/s2 speeding up on a floor (0 to a walk in a third of a second, to a run in one)
@@ -188,10 +188,10 @@ func _physics_process(delta: float) -> void:
 		if lv.length() > 0.0:
 			look(lv.x * LOOK_RATE * delta, lv.y * LOOK_RATE * delta)
 	var wish := _wish()
-	if _run_latched:                  # a toggled run ends when the walker stops after it
-		if not run_toggle or (wish == Vector2.ZERO and _latched_moved):
+	if _run_latched:                  # a toggled run ends when the walker has come to a stop after it
+		if not run_toggle or (wish == Vector2.ZERO and _latched_moved and _move.length() < 0.1):
 			_run_latched = false
-		_latched_moved = wish != Vector2.ZERO
+		_latched_moved = _latched_moved or wish != Vector2.ZERO
 	var fast := running()
 	match mode:
 		Mode.FLY: _fly(wish, fast, delta)
@@ -229,7 +229,7 @@ func _walk(wish: Vector2, fast: bool, delta: float) -> void:
 		velocity.y -= GRAVITY * delta
 	move_and_slide()
 
-## The eye dips at each step and sways from foot to foot, in step with the footsteps (stride_for); back to rest
+## The eye dips at each step and sways from foot to foot, at the footsteps' rate (stride_for); back to rest
 ## when standing, climbing or flying, or with reduced motion.
 func _head_bob(delta: float) -> void:
 	var rest := Vector3(0, EYE, 0)

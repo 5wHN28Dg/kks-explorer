@@ -103,8 +103,8 @@ Controls (R7):
   (for players who can't hold a key); a toggled run ends when the walker stops. The walker speeds up at 4 m/s² and
   slows down or turns at 10 m/s². On a stair it goes at most 0.8 m/s in plan walking and 1.4 running; a ladder is
   climbed at 0.8 m/s whatever the gait. Footsteps follow the speed: longer strides the faster (about 2 a second at a
-  walk, 3 running), softer slow steps and louder running ones. The eye dips and sways in step while walking, unless
-  "Reduced motion" is on. There is no crouching.
+  walk, 3 running), softer slow steps and louder running ones. The eye dips and sways at the footsteps' rate while
+  walking, unless "Reduced motion" is on. Touch has no run button: its stick goes up to a jog. There is no crouching.
 - **Ladders:** walk into a ladder facing it to climb it. To go down, step backwards over the edge at its top.
 - **Map:** drag to pan, use the wheel or pinch to zoom, and right-drag or turn two fingers to rotate. Tap a floor to
   go there.
@@ -288,7 +288,7 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
 - `test_gait`: walking and running: a stick's push to a speed, keys at the pace, Shift and the stick's click (held and
   toggled), a touch stick, gradual speeding up and slowing down, the settings' pace, a stair's and a ladder's limits
   running and walking, the footsteps' stride and level, the head bob and reduced motion. `test_walk` walks every
-  stair and ladder walking, running and at the slow pace.
+  stair and ladder walking, running and at the slow pace; `test_gait` climbs a flight at the slowest step (0.5 m/s).
 - `test_ui_walk_route`: the walking directions in the app (shown, redrawn, found again off the way, hidden in flight
   and by other steps) and the gamepad's X for the control room.
 - `test_frames_route`: the phone's walk, once.

@@ -131,7 +131,9 @@ func stairs_and_ladders(tree: SceneTree) -> Array:
 	var t0 := Time.get_ticks_msec()
 	if plant.manifest.stairs.size() < 7 or plant.manifest.ladders.is_empty():
 		problems.append("the first train has %d stairs and %d ladders, not 7 and 1" % [plant.manifest.stairs.size(), plant.manifest.ladders.size()])
-	# at a walk, running, and at the slow pace (the walker's speed is the trainee's: app/player.gd speed_for)
+	# at a walk, running, and at the slow pace (a scripted walker walks at its pace: app/player.gd speed_for; the
+	# slowest step, a stick just pushed, climbs a flight in tests/test_gait.gd: from a stair's foot, as the route
+	# here comes round a corner past the stair's side, where a walker that slow doesn't drift wide of it)
 	for g in [{"what": "walking", "run": false, "pace": Player.WALK_SPEED}, {"what": "running", "run": true, "pace": Player.WALK_SPEED},
 			{"what": "at the slow pace", "run": false, "pace": Player.PACES.slow}]:
 		player.run = g.run

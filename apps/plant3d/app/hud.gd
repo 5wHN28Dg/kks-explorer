@@ -258,6 +258,6 @@ func refresh() -> void:
 func _process(_d: float) -> void:
 	var p: Vector3 = main.player.global_position
 	var mode: String = ["walking", "flying", "on a ladder"][main.player.mode]
-	if main.player.mode == Player.Mode.WALK and Vector2(main.player.velocity.x, main.player.velocity.z).length() > Player.JOG_SPEED - 0.5:
+	if main.player.mode == Player.Mode.WALK and Vector2(main.player.velocity.x, main.player.velocity.z).length() > Player.JOG_SPEED + 0.2:
 		mode = "running"
 	status.text = "%s · %s · x %.0f  y %.0f  +%.1f m · %s" % [main.area_at(p), mode, p.x, -p.z, p.y, main.tier]

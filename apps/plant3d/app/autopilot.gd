@@ -56,6 +56,7 @@ func _physics_process(delta: float) -> void:
 			i = 0
 		else:
 			player.drive = Vector2.ZERO
+			player.speed_cap = INF
 			running = false
 			finished.emit()
 			return
@@ -68,6 +69,7 @@ func _physics_process(delta: float) -> void:
 	if done:
 		i += 1
 		_phase = 0
+		player.speed_cap = INF
 		_reset_stuck()
 		return
 	_since += delta

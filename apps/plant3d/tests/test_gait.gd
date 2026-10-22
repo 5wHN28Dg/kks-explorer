@@ -4,8 +4,8 @@
 ##   controls     on the built ground with the app's own input actions: W walks, Shift runs (held, or toggled), the
 ##                left stick half pushed steps slowly and fully pushed jogs, its click runs, a touch stick's push is
 ##                analogue too; speeding up and slowing down are gradual
-##   stairs       up and down a flight of HRSG 1's stair tower running, and walking: never faster than the stair's
-##                limits; up and down the stack's ladder running: never faster than climbing
+##   stairs       up and down a flight of HRSG 1's stair tower running, walking and at the slowest step: never faster
+##                than the stair's limits; up and down the stack's ladder running: never faster than climbing
 ##   cadence      the footsteps' stride and level follow the speed (about 2 a second at a walk, 3 running, louder)
 ##   head bob     the eye dips and sways in step while walking; none with reduced motion, none standing
 extends RefCounted
@@ -190,6 +190,12 @@ func controls(tree: SceneTree, player) -> Array:
 	_key(KEY_W, true)
 	await _frames(tree, 72)
 	var toggled := _speed(player)
+	_key(KEY_W, false)                 # let go a moment (a stick flicked through its dead zone): still running
+	await _frames(tree, 2)
+	_key(KEY_W, true)
+	await _frames(tree, 30)
+	if absf(_speed(player) - Player.RUN_SPEED) > 0.05:
+		p.append("a toggled run ends when the controls let go for a moment: %.2f m/s" % _speed(player))
 	_key(KEY_SHIFT, true)
 	_key(KEY_SHIFT, false)
 	await _frames(tree, 30)
@@ -297,21 +303,28 @@ func stairs(tree: SceneTree, world: Node, plant, player) -> Array:
 	var up: Array = path.slice(0, 4).map(func(q): return {"to": q})
 	var down := up.duplicate()
 	down.reverse()
-	for fast in [true, false]:
+	# running, walking, and at the slowest step (a stick just pushed) from the flight's foot
+	var foot_up: Array = path.slice(2, 4).map(func(q): return {"to": q})
+	var foot_down := foot_up.duplicate()
+	foot_down.reverse()
+	for gait in ["running", "walking", "at the slowest step"]:
+		var fast: bool = gait == "running"
 		player.run = fast
+		player.pace = Player.SLOW_SPEED if gait == "at the slowest step" else Player.WALK_SPEED
 		player.set_mode(Player.Mode.FLY)
-		player.global_position = path[0] + Vector3.UP * 0.05
+		player.global_position = (path[2] if gait == "at the slowest step" else path[0]) + Vector3.UP * 0.05
 		player.set_mode(Player.Mode.WALK)
 		await _frames(tree, 10)
-		var limit: float = Player.STAIR_RUN if fast else Player.STAIR_WALK
-		for leg in [["up", up], ["down", down]]:
+		var limit: float = Player.STAIR_RUN if fast else minf(Player.STAIR_WALK, player.pace)
+		for leg in ([["up", foot_up], ["down", foot_down]] if gait == "at the slowest step" else [["up", up], ["down", down]]):
 			var st: Dictionary = await _follow(tree, world, player, leg[1])
-			var what := "%s HRSG 1's first flight %s" % ["running" if fast else "walking", leg[0]]
+			var what := "%s HRSG 1's first flight %s" % [gait, leg[0]]
 			var end: Vector3 = leg[1][-1].to
 			if st.stuck != "" or not st.done or Vector2(player.global_position.x - end.x, player.global_position.z - end.z).length() > 0.5:
 				p.append("%s: %s, ended at %s" % [what, st.stuck if st.stuck != "" else "did not end there", str(player.global_position)])
 			elif st.stair_frames < 30 or st.stair > limit + 0.02 or st.stair < limit * 0.8:
 				p.append("%s: at most %.2f m/s on the stair over %d frames, not its limit %.2f" % [what, st.stair, st.stair_frames, limit])
+	player.pace = Player.WALK_SPEED
 	# the stack's ladder, running: no faster than climbing
 	var l: Dictionary = plant.manifest.ladders[0]
 	player.run = true
