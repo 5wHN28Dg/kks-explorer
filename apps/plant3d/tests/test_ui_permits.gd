@@ -306,6 +306,8 @@ func run(tree: SceneTree) -> Array:
 			"Lock removed: 30PAC10AP002", "Permit CW pump B motor: bearing replacement: closed"]:
 		if not texts.any(func(x): return String(x).contains(want)):
 			p.append("the debrief does not list %s" % want)
+	if not texts.any(func(x): return String(x).contains("not carried out on 00PGC10AP002: locked out")):
+		p.append("the debrief does not say the standby's auto-start was not carried out")
 	if not "\n".join(Debrief.summary_lines(d)).contains("Permits to work: 3"):
 		p.append("the debrief's summary does not count the permits: %s" % "\n".join(Debrief.summary_lines(d)))
 	# gamepad: the card and the procedures panel reach the form

@@ -49,6 +49,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 	var out: Array = []
 	var evs: Array = engine.events
 	var then := Permits.replay(engine)    # each permit event's number and state as they were
+	var locked := {}                       # code -> points locked on it, as the events go (an interlock's skipped writes)
 	for i in to:
 		var ev: Array = evs[i]
 		var inp := []
@@ -62,6 +63,11 @@ static func collect(engine, info, tracker) -> Dictionary:
 		var prev: String = state.get(ev[2], "normal") if ev[1] == "alarm" else ""
 		if ev[1] == "alarm":
 			state[ev[2]] = ev[3]
+		if (ev[1] == "lock" or ev[1] == "unlock") and ev[5] == "done" and typeof(ev[2]) == TYPE_STRING \
+				and m.work_ix.has(ev[2]) and m.works[m.work_ix[ev[2]]].has("isolation"):
+			var pts: Array = m.isolations[m.isolation_ix[m.works[m.work_ix[ev[2]]]["isolation"]]]["points"]
+			var lc: String = pts[int(ev[3])]["kks"]
+			locked[lc] = locked.get(lc, 0) + (1 if ev[1] == "lock" else -1)
 		if i < from:
 			continue
 		var e := {"step": int(ev[0]), "kind": str(ev[1]), "text": "", "code": "", "dev": "", "prio": 0}
@@ -131,6 +137,15 @@ static func collect(engine, info, tracker) -> Dictionary:
 						il = x
 				e.code = String(il.get("kks", ""))
 				e.text = "Interlock: %s" % il.get("text", ev[2])
+				# its writes to a locked-out code were skipped (§15.1): the standby pump didn't start
+				var skipped := PackedStringArray()
+				for d in il.get("do", []):
+					for name in (d.get("set", {}) as Dictionary):
+						var c = engine._state_kks.get(engine.ix.get(name, -1))
+						if c != null and locked.get(c, 0) > 0 and not skipped.has(c):
+							skipped.append(c)
+				if not skipped.is_empty():
+					e.text += " (not carried out on %s: locked out)" % ", ".join(skipped)
 			"permit", "lock", "unlock":
 				var wid = ev[2]
 				var wd: Dictionary = m.works[m.work_ix[wid]] if typeof(wid) == TYPE_STRING and m.work_ix.has(wid) else {}
