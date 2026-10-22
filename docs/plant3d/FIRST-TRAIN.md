@@ -212,6 +212,9 @@ floor. Ground at z = 0. Train 2 is the mirror of train 1 across y = 0 (later).
 | `ct` | 170, −35 – 260, 35 | cooling tower: 2 rows of 5 cells (x 175–255, y −16–16), fan decks at +14, stair towers at both ends, basin −2 m, makeup and blowdown |
 | `rack` | 80, −25 – 85, 45 | (as built) the pipe rack between the turbine hall and `bop`, over the road: an area of its own so the rack has somewhere to stand |
 
+**Beyond the train** (format 2, 2026-10-22): the water treatment plant, its river intake, the admin area, the plant
+gate and the camp are planned in SITE.md, on the same coordinates.
+
 **As built:** the steam pipes enter the steam turbine from below the operating floor (the kit's turbine nozzles
 point down), so they run on the rack's tiers at +8 and +10 and under the +12 floor; the CW supply runs at −4.5 m
 along y = −30 and the return at −12 m along y = −33, so the two cross without meeting.
