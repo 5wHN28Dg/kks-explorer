@@ -82,6 +82,22 @@ Spec: PROTOCOL-v2 §17 (rewritten). In short:
 The cost: every new device needs one pairing with a device the person already has. Until then it keeps its own
 progress, which merges in once the pairing is done.
 
+## Known limits (from the adversarial review, 2026-10-22; accepted as they stand)
+
+- The server sees who paired with whom and when, how many shares each device writes, and roughly how many secrets a
+  share holds (its length). It never sees a secret or any progress.
+- Rows name a device by its label, which the server sets for devices it certifies: the code is the check, and the
+  help text says so. No fingerprint is shown next to the code.
+- A commitment that was never revealed stays fresh: a re-pairing can wait until Pair is pressed again on the other
+  device.
+- Past 32 secrets, a newly paired device does not get old `skip` and `last` values until they are next written.
+- A removal proof is checked by signature and authority, not against its author's chain: a paired device could circulate
+  a revoke it never published (its effect ends once that device is cut; it could publish a real one anyway).
+- A device cut by a fork, not a revoke, has no revoke entry to prove its removal; the person's devices then keep reading
+  each other's progress but each writes with its own new secret.
+- An honest device that holds 16 proofs all newer than one hidden removal could pass that removed device's secret on
+  unretired; this needs about 17 real removals, a stolen device, and a server that hides one revoke from one device.
+
 ## The user's choices (2026-10-22)
 
 1. **A person who uses only the web app** (or a browser next to their devices):
