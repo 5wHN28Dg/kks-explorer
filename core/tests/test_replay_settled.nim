@@ -37,7 +37,7 @@ proc fields(r: Run): seq[(string, string)] =
 suite "the settled round's run is the final pass's":
   test "every scenario of the vectors":
     var n = 0
-    for file in ["v2-replay.json", "v2-malformed.json", "v2-reports.json"]:
+    for file in ["v2-replay.json", "v2-malformed.json", "v2-reports.json", "v2-pairing.json"]:
       for s in loadVectors(file)["scenarios"].elems:
         forceFinalPass = true
         let full = P.replayRun(s["entries"].elems, s["root"].s)
@@ -48,5 +48,6 @@ suite "the settled round's run is the final pass's":
         check quick.chainIgnored == full.chainIgnored
         check quick.run.ignored == full.run.ignored
         check quick.run.private == full.run.private and quick.run.reports == full.run.reports
+        check quick.run.boxKeys == full.run.boxKeys and quick.run.shares == full.run.shares
         inc n
     check n >= 12

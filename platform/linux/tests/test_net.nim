@@ -17,7 +17,7 @@ suite "sync over real TCP":
   discard server.append("genesis", P.genesisBody(rootKey, "Test plant", server.device, me, "boss", "The Manager"), nowMs())
   server.adopt(keyString(rootKey.pub))
   let lst = listen(server, newIdentity(kServer), 0, "127.0.0.1",
-                   Hooks(secrets: proc (r: string, m: JNode): JNode = server.secretsAnswer(r, m)))
+                   Hooks(secrets: proc (r: string, m: JNode): JNode = newObj(@[("t", newStr("secrets")), ("secrets", newArr())])))
 
   test "a certified laptop joins, syncs, and a change travels back":
     let kLaptop = P.p256Generate()
@@ -29,7 +29,8 @@ suite "sync over real TCP":
     let st2 = waitFor laptop.syncWith(newIdentity(kLaptop), "127.0.0.1", lst.port, server.device)
     check st2.sent == 1
     check server.entries.len == 3
-    let ans = waitFor laptop.ask(newIdentity(kLaptop), "127.0.0.1", lst.port, server.device, laptop.secretsRequest())
+    let ans = waitFor laptop.ask(newIdentity(kLaptop), "127.0.0.1", lst.port, server.device,
+                       newObj(@[("t", newStr("secrets")), ("person", newStr(me)), ("secrets", newArr())]))
     check ans["t"].s == "secrets"
 
   test "the wrong device answering is refused":
