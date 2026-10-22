@@ -5,7 +5,8 @@
 //   soon as its script starts.
 // - Every write the course makes to those keys is saved to the log a moment later (and kept in a pending list until
 //   that worked, e.g. across a reload).
-// On a plant server (a browser, no app) there is no log for this: progress then stays in this browser only.
+// On a plant server (a browser, no app) there is no log for this: progress then stays in this browser only (decision
+// 0062: a browser holds no person secret, so nothing of it goes to the server).
 (() => {
   // the v1 HTML courses name themselves (data-course); course.html (the JSON courses) carries the id as ?c=
   const course = document.currentScript.dataset.course || new URLSearchParams(location.search).get('c') || '';

@@ -177,7 +177,8 @@ class Progress(val course: String) {
 
     init {
         val d = call("GET", "/api/progress", query = mapOf("course" to course)).json.optJSONObject("data") ?: JSONObject()
-        fun obj(k: String): Set<String> = runCatching { JSONObject(d.optString(k, "{}")).keys().asSequence().toSet() }.getOrDefault(emptySet())
+        // members written as false were taken back (a module no longer skipped): the merge is a union (§17)
+        fun obj(k: String): Set<String> = runCatching { JSONObject(d.optString(k, "{}")).let { o -> o.keys().asSequence().filter { o.optBoolean(it) }.toSet() } }.getOrDefault(emptySet())
         solved = obj("solved"); skip = obj("skip")
         last = runCatching { JSONArray("[" + d.optString("last", "\"\"") + "]").getString(0) }.getOrDefault("")
         best = d.optString("finalBest", "0").toIntOrNull() ?: 0
@@ -188,7 +189,10 @@ class Progress(val course: String) {
     }
     private fun objOf(s: Set<String>) = JSONObject().apply { s.sorted().forEach { put(it, true) } }.toString()
     fun solve(id: String) { if (id !in solved) { solved = solved + id; save("solved", objOf(solved)) } }
-    fun saveSkip(s: Set<String>) { skip = s; save("skip", objOf(s)) }
+    fun saveSkip(s: Set<String>) {
+        val o = JSONObject(objOf(s)).apply { (skip - s).forEach { put(it, false) } }
+        skip = s; save("skip", o.toString())
+    }
     fun saveLast(id: String) { if (id != last) { last = id; save("last", JSONObject.quote(id)) } }
     fun score(n: Int) { if (n > best) { best = n; save("finalBest", n.toString()) } }
 }
@@ -238,7 +242,47 @@ fun Learning(ui: Ui, snack: SnackbarHostState) {
                 }
             }
         }
-        item { Dim("Your progress is private: only your own devices can read it.") }
+        item { Dim("Your progress is private: only you can read it, on your own devices that you paired. Not the manager, not the server.") }
+        item { Pairing(rev) }
+    }
+}
+
+/** "Your devices": pairing by code (PROTOCOL-v2 §17, decision 0062), so that progress follows the person */
+@Composable
+fun Pairing(rev: Int) {
+    var again by remember { mutableIntStateOf(0) }
+    var err by remember { mutableStateOf("") }
+    val j = remember(rev, again) { runCatching { call("GET", "/api/pairing").json }.getOrNull() }
+    Column(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+        Text("Your devices", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+        val rows = j?.optJSONArray("devices").objects()
+        when {
+            j == null || !j.optBoolean("ready") -> Dim("To share your progress with your other devices, pair them here. This device is not ready to pair yet: it needs to sync first.")
+            rows.isEmpty() -> Dim("No other device of yours can pair yet. Open Learning on it once it has synced.")
+            else -> {
+                Dim("Pair only when the other device shows the same code, and pair on both devices. A device you don't recognise, or whose code differs, is not yours to pair.")
+                rows.forEach { d ->
+                    val title = d.optString("label").ifEmpty { "A device" } + " — code " + d.getString("code")
+                    val status = when {
+                        d.optBoolean("paired") && d.optBoolean("paired_back") -> "Paired"
+                        d.optBoolean("paired") -> "Paired here: pair on that device too"
+                        d.optBoolean("paired_back") -> "That device paired with this one: pair here if the codes match"
+                        else -> "Not paired"
+                    }
+                    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text(title); Dim(status) }
+                            if (!d.optBoolean("paired")) Button(onClick = {
+                                err = call("POST", "/api/pairing", JSONObject().put("device", d.getString("device"))).error ?: ""
+                                again++
+                            }, modifier = Modifier.semantics { contentDescription = "Pair with $title" }) { Text("Pair") }
+                        }
+                    }
+                }
+            }
+        }
+        if (err.isNotEmpty()) Dim(err)
+        TextButton(onClick = { err = ""; again++ }) { Text("Check again") }
     }
 }
 

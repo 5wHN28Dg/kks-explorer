@@ -20,6 +20,10 @@
       h('div', {class: 'sub'}, `${n} of ${t} questions answered correctly`), h('div', {class: 'bar'}, h('i', {style: `width:${t ? Math.round(100 * n / t) : 0}%`})));
     a.href = K.safeUrl(c.href);
     return a;
-  }), h('p', {class: 'sub'}, saved ? 'Your progress is private: only your own devices can read it, and it follows you between them.'
-                                   : 'On the plant server, progress stays in this browser. The app on your own phone or computer keeps it with you across devices.'));
+  }), h('p', {class: 'sub', id: 'progressNote'}, saved
+    ? 'Your progress is private: only you can read it, on your own devices that you paired in the app. Not the manager, not the server.'
+    // decision 0062 (the user, 2026-10-22): a browser holds no key, so its progress never leaves it
+    : 'Your progress stays in this browser only: it is not sent to the server, and it does not follow you to other ' +
+      'devices or browsers. The Walkdown app on your phone or computer keeps it private and shares it with your own ' +
+      'paired devices.'));
 })();

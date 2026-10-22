@@ -84,8 +84,12 @@ proc markSolved*(c: Course, qid: string) =
   c.save("solved", setObj(c.solved))
 
 proc setSkip*(c: Course, mods: HashSet[string]) =
+  ## a module no longer skipped is written as false: the merge is a union (§17), so leaving it out would not take it back
+  var o = setObj(mods)
+  for m in c.skip:
+    if m notin mods: o[m] = newBool(false)
   c.skip = mods
-  c.save("skip", setObj(mods))
+  c.save("skip", o)
 
 proc setLast*(c: Course, pageId: string) =
   if c.last == pageId: return
@@ -98,6 +102,46 @@ proc recordScore*(c: Course, score: int) =
   if score > c.finalBest:
     c.finalBest = score
     c.save("finalBest", newInt(score))
+
+# ---------------------------------------------------------------- pairing (PROTOCOL-v2 §17, decision 0062)
+
+const
+  PrivacyNote* = "Your progress is private: only you can read it, on your own devices that you paired. " &
+                 "Not the manager, not the server."
+  NotReadyNote* = "To share your progress with your other devices, pair them here. This device is not ready to " &
+                  "pair yet: it needs to sync first."
+  PairHelp* = "Pair only when the other device shows the same code, and pair on both devices. A device you don't " &
+              "recognise, or whose code differs, is not yours to pair."
+
+type PairRow* = object
+  device*, label*, code*: string
+  paired*, pairedBack*: bool
+
+proc pairing*(a: App): (bool, seq[PairRow]) =
+  ## (ready, the person's other devices that can pair)
+  try:
+    let j = a.call("GET", "/api/pairing")
+    result[0] = j["ready"].b
+    for d in j["devices"].elems:
+      result[1].add PairRow(device: d["device"].s, label: d["label"].s, code: d["code"].s, paired: d["paired"].b,
+                            pairedBack: d["paired_back"].b)
+  except ApiError, KeyError: discard
+
+proc pairWith*(a: App, device: string): string =
+  ## "" when paired, else why not
+  try:
+    discard a.call("POST", "/api/pairing", newObj(@[("device", newStr(device))]))
+    ""
+  except ApiError as e: e.msg
+
+proc rowTitle*(r: PairRow): string =
+  (if r.label.len > 0: r.label else: "A device") & " — code " & r.code
+
+proc rowStatus*(r: PairRow): string =
+  if r.paired and r.pairedBack: "Paired"
+  elif r.paired: "Paired here: pair on that device too"
+  elif r.pairedBack: "That device paired with this one: pair here if the codes match"
+  else: "Not paired"
 
 # ---------------------------------------------------------------- opening a course
 
