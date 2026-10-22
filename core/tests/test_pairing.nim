@@ -24,13 +24,16 @@ suite "pairing vectors (v2-pairing.json)":
                         block:
                           var r: seq[SecretRec]
                           for x in s["plaintext"]["secrets"].elems: r.add (unb64u(x["k"].s), x["made"].i)
-                          r)
+                          r,
+                        @[s["plaintext"]["holders"][0].s], @[s["plaintext"]["removed"][0].s],
+                        @[s["plaintext"]["retired"][0].s])
     check hex(canonical(pt).toBytes) == s["plaintext_bytes_hex"].s
     let eph2 = PrivateKey(scalar: unhex(s["eph_private_scalar_hex"].s), pub: P.publicKey(s["sealed"]["epk"].s))
     check P.eciesSeal(s["box_key"].s, SharePurpose, canonical(pt).toBytes, eph2, unhex(s["nonce_hex"].s)) == s["sealed"]
     let (ok, got) = P.takeShare(box, s["sealed"], s["plaintext"]["from"].s, s["plaintext"]["to"].s,
                                 s["plaintext"]["person"].s)
-    check ok and got.len == 2 and got[0].made == 7000
+    check ok and got.secrets.len == 2 and got.secrets[0].made == 7000
+    check got.holders == @[s["plaintext"]["holders"][0].s] and got.removed == @[s["plaintext"]["removed"][0].s]
 
   test "taking shares in: only a well-formed share for this person and device gives anything":
     let box = privateKeyFromHex(V["share"]["box_private_scalar_hex"].s, V["share"]["box_key"].s)
@@ -40,9 +43,11 @@ suite "pairing vectors (v2-pairing.json)":
         check not ok
         if ok: echo "  took from: ", t["why"].s
       else:
-        check ok and got.len == t["secrets"].len
+        check ok and got.secrets.len == t["secrets"].len
         for i, x in t["secrets"].elems:
-          check hex(got[i].k) == x["k_hex"].s and got[i].made == x["made"].i
+          check hex(got.secrets[i].k) == x["k_hex"].s and got.secrets[i].made == x["made"].i
+        check got.holders.len == t["holders"].len and got.removed.len == t["removed"].len and
+              got.retired.len == t["retired"].len
 
   test "pairing codes and commitments":
     for c in V["pair_codes"].elems:
@@ -56,6 +61,7 @@ suite "pairing vectors (v2-pairing.json)":
       var recs: seq[SecretRec]
       for x in w["secrets"].elems: recs.add (unhex(x["k_hex"].s), x["made"].i)
       discard n.addSecrets("p", recs)
+      n.store.setMeta("retired_secrets", toText(w["retired"]))
       check hex(n.secretsOf("p")[0]) == w["writes_hex"].s
 
   test "progress merges: union, the larger best, the later value":
@@ -116,7 +122,7 @@ suite "pairing between a person's own devices":
     ## the person presses Pair on both, the devices sync, both show the same code, the person confirms on both
     x.startPairing(y.device, tick())
     round()
-    check x.rowOf(y.device)["state"].s == "waiting" and y.rowOf(x.device)["state"].s == "asked"
+    check x.rowOf(y.device)["state"].s == "waiting" and y.rowOf(x.device)["state"].s in ["asked", "paired"]
     y.startPairing(x.device, tick())
     round()
     let cx = x.rowOf(y.device)
@@ -201,7 +207,7 @@ suite "pairing between a person's own devices":
     let planted = P.randomBytes(32)
     discard minted.addSecrets(bob, @[(planted, tick() + 10_000_000)])
     let sealed = P.eciesSeal(minted.run.boxKeys[phone.device], SharePurpose,
-                             canonical(sharePlain(bob, minted.device, phone.device, minted.secretRecs(bob))).toBytes)
+                             canonical(sharePlain(bob, minted.device, phone.device, minted.secretRecs(bob), @[], @[])).toBytes)
     discard minted.append("secret_share", newObj(@[("to", newStr(phone.device)), ("sealed", sealed)]), tick())
     round()
     check phone.secretsOf(bob) == before
@@ -236,14 +242,40 @@ suite "pairing between a person's own devices":
     let last = phone.run.private[bob][^1]
     for k in laptop.secretsOf(bob):
       expect CatchableError: discard P.privateOpen(k, phone.entries[last]["body"])
-    # the progress was saved again under the new secret: a device holding only it reads everything
+    # the order-free progress (solved, the bests) was saved again under the new secret: a device holding only it reads
+    # it; "last" and "skip" are not (a re-save would stamp an old value over a newer one written offline elsewhere)
     let fresh = newNode(P, newMemStore(), P.p256Generate())
     discard fresh.addSecrets(bob, @[(now, 0'i64)])
     share(hub, fresh)
     fresh.adopt(hub.root)
     share(hub, fresh)
     let p = fresh.progressOf(bob)
-    check p["finalBest"] == "11" and p["last"] == "\"p9\"" and "q3_p" in p["solved"]
+    check p["finalBest"] == "11" and "q3_p" in p["solved"] and "last" notin p
+
+  test "the same two devices pair again (after Start again): the codes match again":
+    # the tablet's commitment from the last pairing is spent (its nonce is out): the phone waits for a new one
+    phone.startPairing(tablet.device, tick())
+    check phone.rowOf(tablet.device)["state"].s == "waiting"
+    pairBoth(phone, tablet)
+    check phone.secretsOf(bob)[0] == tablet.secretsOf(bob)[0]
+
+  test "devices the server certified alone can't make the person's devices rotate":
+    let r2 = newNode(P, newMemStore(), P.p256Generate())
+    discard hub.append("device_cert", deviceCertBody(r2.device, bob, "tablet"), tick())
+    r2.adopt(hub.root)
+    share(hub, r2)
+    discard r2.progressTick(tick())
+    share(r2, hub)
+    share(hub, minted)
+    discard minted.progressTick(tick())
+    let sealed = P.eciesSeal(r2.run.boxKeys[r2.device], SharePurpose,
+                             canonical(sharePlain(bob, minted.device, r2.device, @[(P.randomBytes(32), 1'i64)], @[], @[])).toBytes)
+    discard minted.append("secret_share", newObj(@[("to", newStr(r2.device)), ("sealed", sealed)]), tick())
+    discard minted.append("revoke", newObj(@[("device", newStr(r2.device)), ("last_seq", newInt(r2.vv[r2.device][0].i))]), tick())
+    share(minted, hub)
+    let before = phone.secretRecs(bob).len
+    round()
+    check phone.secretRecs(bob).len == before and tablet.secretRecs(bob).len == before
 
   test "the hub holds only ciphertext: no secret, no box key, no progress in the clear":
     check hub.secretsOf(bob).len == 0 and hub.loadProgress(bob).len == 0
@@ -256,3 +288,71 @@ suite "pairing between a person's own devices":
     for n in [phone, tablet]:
       for k in n.secretsOf(bob):
         check b64u(k) notin everything and hex(k) notin everything
+
+suite "removals the server would hide, and a secret from the far future":
+  # v is removed by x; y sees that and moves to a new secret; the server holds x's revoke back from z (it can: z gets
+  # x's chain only up to before the revoke) but passes y's share on. v had been paired with x and with z.
+  let rootKey = P.p256Generate()
+  let hub = newNode(P, newMemStore(), P.p256Generate())
+  let mgr = P.newPersonId()
+  discard hub.append("genesis", P.genesisBody(rootKey, "Test plant", hub.device, mgr, "boss", "The Manager"), tick())
+  hub.adopt(keyString(rootKey.pub))
+  let bob = P.newPersonId()
+  discard hub.append("person", personBody(bob, "bob", "Bob User", "user"), tick())
+  var v, x, y, z: Node
+  for (n, label) in [(addr v, "v"), (addr x, "x"), (addr y, "y"), (addr z, "z")]:
+    n[] = newNode(P, newMemStore(), P.p256Generate())
+    discard hub.append("device_cert", deviceCertBody(n[].device, bob, label), tick())
+    n[].adopt(hub.root)
+  var devs = @[v, x, y, z]
+  proc round() =
+    for _ in 0 ..< 3:
+      for n in devs:
+        share(hub, n)
+        discard n.progressTick(tick())
+        share(n, hub)
+  proc pairBoth(a, b: Node) =
+    a.startPairing(b.device, tick())
+    round()
+    b.startPairing(a.device, tick())
+    round()
+    let code = a.rowOf(b.device)["code"].s
+    check code.len == 6 and b.rowOf(a.device)["code"].s == code
+    a.confirmPairing(b.device, code, tick())
+    b.confirmPairing(a.device, code, tick())
+    round()
+
+  test "a far-future made from a device later removed can't keep its secret writing":
+    round()
+    pairBoth(x, y)
+    pairBoth(y, z)
+    pairBoth(v, x)
+    pairBoth(v, z)
+    # v (to be stolen) brings a secret made at the largest allowed time
+    discard v.addSecrets(bob, @[(P.randomBytes(32), MaxInt53)])
+    v.save("solved", """{"a_r":true}""")
+    round()
+    let evil = v.secretsOf(bob)[0]
+    for n in [x, y, z]: check n.secretsOf(bob)[0] == evil
+    # x removes v; the server holds that revoke back from z
+    discard x.append("revoke", newObj(@[("device", newStr(v.device)), ("last_seq", newInt(v.vv[v.device][0].i))]), tick())
+    let cutAt = x.vv[x.device][0].i
+    devs = @[x, y]
+    round()
+    check x.secretsOf(bob)[0] != evil and y.secretsOf(bob)[0] != evil
+    var batch: seq[JNode]
+    for e in hub.entriesFor(z.vv):
+      if e["peer"].s != x.device or e["seq"].i < cutAt: batch.add e
+    discard z.ingest(batch, tick())
+    check v.device notin z.run.cuts
+    let before = z.entries.len
+    discard z.progressTick(tick())
+    check z.secretsOf(bob)[0] == y.secretsOf(bob)[0]            # y's share told it, and brought the new secret
+    check v.device notin z.pairedSet
+    var sharedToV = false
+    var i = 0
+    for id, e in z.entries:
+      inc i
+      if i > before and e["type"].s == "secret_share" and e["body"]["to"].s == v.device: sharedToV = true
+    check not sharedToV
+    check evil notin @[x.secretsOf(bob)[0], y.secretsOf(bob)[0], z.secretsOf(bob)[0]]

@@ -260,7 +260,7 @@ fun Pairing(rev: Int) {
             j == null || !j.optBoolean("ready") -> Dim("To share your progress with your other devices, pair them here. This device is not ready to pair yet: it needs to sync first.")
             rows.isEmpty() -> Dim("No other device of yours can pair yet. Open Learning on it once it has synced.")
             else -> {
-                Dim("Press Pair here and on the other device. After both have synced, each shows a code: confirm only when both show the same code. A device you don't recognise, or whose code differs, is not yours to pair.")
+                Dim("Press Pair here and on the other device. After both have synced, each shows a code: confirm only when both show the same code. Don't confirm if the other device shows no code or a different one, or if you don't recognise it: the server names devices, so a name alone proves nothing.")
                 rows.forEach { d ->
                     val label = d.optString("label").ifEmpty { "A device" }
                     val state = d.optString("state")

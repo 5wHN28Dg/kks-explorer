@@ -62,10 +62,17 @@ Spec: PROTOCOL-v2 §17 (rewritten). In short:
   devices, so the person's devices converge without pairing every two of them. A device certified by the server alone
   is paired with nobody: it gets nothing, and secrets it shares are ignored (it can't make a device write with a key
   the server knows).
-- **Which secret writes:** the newest (`made`), so that after a device is removed the person's remaining devices move
-  to a new secret the removed device never sees. Every device of the person makes one when any device that was sent
-  secrets is removed (not only one it paired with), with a `made` above every one it holds (a clock ahead elsewhere
-  can't keep an old one writing), and saves its progress again under it.
+- **Which secret writes:** the newest not retired. When a device that holds the secrets is removed, the person's
+  devices retire every secret they hold and move to a new one the removed device never sees, and save the order-free
+  progress (solved questions, best scores) again under it.
+- **Hardened after the adversarial review (2026-10-22):**
+  - only holders known from trusted shares count, so devices the server certified on its own can't trigger rotations;
+  - shares carry the removed devices, so a device whose replay the server keeps the revoke from still stops sharing
+    to the removed one;
+  - retiring old secrets on rotation means a far-future `made` can't keep a stolen device's secret writing;
+  - `made` is bounded to 2^53 − 1;
+  - a commitment whose nonce was already revealed is never answered, so the same two devices can pair again;
+  - state is saved before a reveal is written.
 - **Merging** stays as COURSES §8 and §17 say: solved and skip are objects merged by union, `finalBest` the larger,
   `last` the later in replay order. Two devices progressing offline lose nothing: every save carries the whole object,
   and replay merges every entry.

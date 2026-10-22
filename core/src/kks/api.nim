@@ -1724,7 +1724,8 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
     of "/api/pairing":
       # §17 (decision 0062): this person's other devices and the code each shows; never on a server
       if a.mode == "server": fail(404, ProgressOnServer)
-      discard a.n.progressTick(now)
+      try: discard a.n.progressTick(now)     # (the list shows even when the upkeep fails; the next round tries again)
+      except CatchableError: discard
       return ok(a.n.pairingList)
     of "/api/progress":
       if a.mode == "server": fail(404, ProgressOnServer)

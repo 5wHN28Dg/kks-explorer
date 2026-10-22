@@ -7,6 +7,7 @@ from ref import crypto2 as C
 
 SHARE_PURPOSE = 'kks-person-secret'
 MAX_SECRETS = 32
+MAX_LISTED = 64
 
 
 def pair_commit(dev, to, box, nonce):
@@ -22,16 +23,22 @@ def pair_code(dev_a, box_a, nonce_a, dev_b, box_b, nonce_b):
     return f'{int.from_bytes(d[:4], "big") % 1_000_000:06d}'
 
 
-def write_secret(secrets):
-    """The secret a device writes with: the largest `made`; equal: the lowest SHA-256 hex. secrets = [(k, made)]."""
-    return min(secrets, key=lambda s: (-s[1], hashlib.sha256(s[0]).hexdigest()))[0]
+def write_secret(secrets, retired=()):
+    """The secret a device writes with: one not retired by a rotation first, then the largest `made`; equal: the
+    lowest SHA-256 hex. secrets = [(k, made)]; retired = SHA-256 hex strings."""
+    return min(secrets, key=lambda s: (hashlib.sha256(s[0]).hexdigest() in retired, -s[1],
+                                       hashlib.sha256(s[0]).hexdigest()))[0]
 
 
-def share_plain(person, sender, to, secrets):
-    """secrets = [(k, made)], newest first, at most 16."""
-    ordered = sorted(secrets, key=lambda s: (-s[1], hashlib.sha256(s[0]).hexdigest()))[:MAX_SECRETS]
+def share_plain(person, sender, to, secrets, holders=(), removed=(), retired=()):
+    """secrets = [(k, made)] in write order, at most 32; holders, removed: device IDs; retired: SHA-256 hex; at most
+    64 each."""
+    ordered = sorted(secrets, key=lambda s: (hashlib.sha256(s[0]).hexdigest() in retired, -s[1],
+                                             hashlib.sha256(s[0]).hexdigest()))[:MAX_SECRETS]
     return {'person': person, 'from': sender, 'to': to,
-            'secrets': [{'k': P.b64u(k), 'made': made} for k, made in ordered]}
+            'secrets': [{'k': P.b64u(k), 'made': made} for k, made in ordered],
+            'holders': list(holders)[:MAX_LISTED], 'removed': list(removed)[:MAX_LISTED],
+            'retired': list(retired)[:MAX_LISTED]}
 
 
 def share_seal(box_key_str, plain, eph=None, nonce=None):
@@ -39,17 +46,19 @@ def share_seal(box_key_str, plain, eph=None, nonce=None):
 
 
 def share_take(box_private, sealed, author, me, person):
-    """The secrets a share gives this device, or None when it gives nothing (§17 "Taking a share in"). The caller
-    has already checked that the entry is valid and its author is in this device's paired set."""
+    """What a share gives this device: (secrets, holders, removed, retired), or None when it gives nothing (§17 "Taking a share
+    in"). The caller has already checked that the entry is valid and its author is in this device's paired set."""
     try:
         if sealed.get('purpose') != SHARE_PURPOSE:
             return None
         o = json.loads(C.ecies_open(box_private, sealed))
     except Exception:
         return None
-    if not isinstance(o, dict) or set(o) != {'person', 'from', 'to', 'secrets'}:
+    if not isinstance(o, dict) or set(o) != {'person', 'from', 'to', 'secrets', 'holders', 'removed', 'retired'}:
         return None
-    if o['person'] != person or o['from'] != author or o['to'] != me or not isinstance(o['secrets'], list):
+    if o['person'] != person or o['from'] != author or o['to'] != me:
+        return None
+    if not all(isinstance(o[k], list) for k in ('secrets', 'holders', 'removed', 'retired')):
         return None
     got = []
     for s in o['secrets'][:MAX_SECRETS]:
@@ -65,7 +74,16 @@ def share_take(box_private, sealed, author, me, person):
         if len(k) != 32:
             return None
         got.append((k, made))
-    return got
+    lists = []
+    for field in ('holders', 'removed'):
+        ids = o[field][:MAX_LISTED]
+        if not all(isinstance(x, str) and P.PEER_RE.fullmatch(x) for x in ids):
+            return None
+        lists.append(ids)
+    retired = o['retired'][:MAX_LISTED]
+    if not all(isinstance(x, str) and P.HEX64_RE.fullmatch(x) for x in retired):
+        return None
+    return got, lists[0], lists[1], retired
 
 
 def merge_value(key, old, new):

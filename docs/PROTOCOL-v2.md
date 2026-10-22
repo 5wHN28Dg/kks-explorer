@@ -554,16 +554,21 @@ enough: the person confirms each pairing by comparing a code on both screens. Se
 entries, so the server stores and relays them without being able to open them, and two devices need never be online
 together.
 
-**Secrets.** A device keeps, per person (only its own), a set of secrets `{k: 32 bytes, made: wall-clock ms}`.
+**Secrets.** A device keeps, per person (only its own), a set of secrets `{k: 32 bytes, made: wall-clock ms ≤ 2^53 − 1}`,
+and a set of **retired** ones (their SHA-256 hex).
 - It makes the first one when it first writes a private entry and holds none (not when it pairs).
-- It **writes with the newest** (largest `made`; equal: the one whose SHA-256 hex sorts first), and tries every one
-  it holds when opening.
-- A new secret's `made` is the larger of the wall clock and the largest `made` held + 1, so a clock running behind
-  another device's can't leave an older secret writing.
-- It makes a new one when any device of its person that was sent secrets (a `secret_share` names it, from any device)
-  is cut by a valid revoke (§10), once per such device, whether it paired with it or not; it then saves its merged
-  progress again under the new secret, so that newer devices need only the newest secrets. The removed device is
-  denied every sync from then on, so it never sees the new secret.
+- It **writes with** one not retired, the newest (largest `made`; equal: the one whose SHA-256 hex sorts first), and
+  tries every one it holds when opening. A new secret's `made` is the larger of the wall clock and the largest held
+  `made` + 1 (both capped at 2^53 − 1).
+- **Holders:** the devices it knows hold the person's secrets: those it paired with, and those a paired device's share
+  names (below). A device the server certified on its own is never one, so it can't make anyone rotate.
+- **Rotation:** when a holder is cut by a valid revoke (§10) in its replay, once per holder, it retires every secret
+  it holds, makes a new one, and saves its order-free progress again under it (the objects whose members are only
+  ever added, `solved`, and the `…Best` values; `last` and `skip` are not, since an old value saved again would be
+  ordered after a newer one written offline elsewhere). When a paired device's share says a holder was removed, it
+  takes the share's retired list and newer secret instead of making its own. A removed device is denied every sync,
+  and nobody shares to it again (below), so it never sees the new secret, even from a device whose replay the server
+  keeps the revoke from.
 
 **Box key.** Each device makes a P-256 key pair for receiving secrets, kept in its sealed store (0020), and writes a
 `box_key` entry with its public key before its first pairing. Only the device itself may write its `box_key`
@@ -577,9 +582,11 @@ to a fresh random nonce before it sees the other's, the way Bluetooth numeric co
 1. **Start** (the person presses Pair on A for B): A makes a 16-byte random nonce `nA` (base64url, 22 characters) and
    writes `pair_commit {to: B, commit}`, `commit` = lowercase hex SHA-256(`"kks-pair-commit-v1\n"` + A + `"\n"` + B +
    `"\n"` + A's box key + `"\n"` + `nA`). Pressing again starts over with a new nonce.
-2. **Reveal:** once A has started and the log holds a `pair_commit` from B to A, A keeps the latest such commitment
-   as the one it answers, and writes `pair_reveal {to: B, nonce: nA}`. A never reveals before it holds B's
-   commitment, so B's was fixed before `nA` was known.
+2. **Reveal:** once A has started and the log holds a fresh `pair_commit` from B to A, A keeps the latest fresh one as
+   the commitment it answers (saved before anything is written), and writes `pair_reveal {to: B, nonce: nA}`. A never
+   reveals before it holds B's commitment, so B's was fixed before `nA` was known. A commitment is **fresh** unless a
+   `pair_reveal` from B that matches it was already in the log when A started this attempt (its nonce is out: pairing
+   again with the same device needs new commitments on both sides).
 3. **Code:** A takes B's `pair_reveal` whose nonce matches the commitment it answered (any other reveal is ignored).
    With X the smaller device ID (code point) and Y the other, the code is the first 4 bytes of
    SHA-256(`"kks-pair-code-v2\n"` + X + `"\n"` + box key of X + `"\n"` + nonce of X + `"\n"` + Y + `"\n"` + box key of Y +
@@ -596,16 +603,23 @@ device is cut, or when its box key changes (pairing again is needed).
 **Sharing:** a device writes a `secret_share` to each device in its paired set:
 - `to` = the paired device, `sealed` = ECIES (§20) to the box key the person confirmed for it, purpose `kks-person-secret`, plaintext
   the canonical JSON of `{"person": P, "from": <the writer's device ID>, "to": <to>, "secrets": [{"k": <32 bytes,
-  base64url>, "made": <int ≥ 0>}, …]}` with every secret it holds for P, newest first, at most 32.
-- When: right after the person taps Pair; when it learns or makes a secret the other has not been sent (so secrets
-  spread along pairings: a device paired with A gets, through A, what A got from B); when the other's box key changes.
+  base64url>, "made": <int 0 … 2^53 − 1>}, …], "holders": [device IDs], "removed": [device IDs], "retired": [SHA-256
+  hex]}`: the secrets it holds for P in its write order, at most 32; its holders that are not removed; the holders it
+  knows were removed (cut in its replay, or named so by a share it took); its retired secrets; at most 64 each.
+- Never to a device it knows was removed.
+- When: right after the person confirms a pairing; when it learns or makes a secret, or learns of a removal, the other
+  has not been sent (so secrets spread along pairings: a device paired with A gets, through A, what A got from B).
 - A share is only ever written to a device of the writer's own person (authority, §10 table).
 
 **Taking a share in:** a device opens each `secret_share` naming it (§14 `shares`) with its box key, and takes the
 secrets only if all of these hold, otherwise it keeps nothing (and may look again after a later pairing):
 - the entry is valid in replay and its author is in its paired set;
 - the plaintext's `person` is its own person, `from` is the entry's author and `to` is itself;
-- each secret has exactly `k` (32 bytes) and `made`. At most 32 are read.
+- each secret has exactly `k` (32 bytes) and `made` (an integer 0 … 2^53 − 1); `holders` and `removed` hold device
+  IDs, `retired` SHA-256 hex. At most 32 secrets and 64 of each list are read.
+
+It then adds the secrets, the author and the share's holders and removed devices to its holders, the removed ones
+to the devices it knows were removed (it drops them from its paired set), and the retired ones to its retired set.
 
 A device paired with nobody, such as one the server certified on its own, receives nothing; the secrets it shares are
 ignored, so it cannot make anyone write with a key it knows.

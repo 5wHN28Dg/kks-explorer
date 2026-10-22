@@ -13,7 +13,12 @@ const
   BoxWrittenMeta = "box_key_written" ## the box key string this device has written a box_key entry for
   PairedMeta = "paired"             ## the devices the person paired this one with: {device: their box key then}
   AttemptsMeta = "pair_attempts"    ## pairings under way: {device: {"nonce", "mine", "theirs"?, "their_nonce"?}}
-  RotatedMeta = "rotated_for"       ## removed devices this device has made a new secret for: [device ID, …]
+  RotatedMeta = "rotated_for"       ## removed holders this device has moved to a new secret for: [device ID, …]
+  HoldersMeta = "holders"           ## the devices known to hold this person's secrets (paired, or named by a paired
+                                    ## device's share): [device ID, …]
+  RetiredMeta = "retired_secrets"   ## SHA-256 hex of secrets a rotation retired from writing (still read): [hex, …]
+  RemovedMeta = "removed_holders"   ## holders a paired device's share said were removed: [device ID, …]
+  MaxListed* = 64                   ## device IDs in a share's holders and removed
   SentMeta = "shares_sent"          ## {device: {"box": key string, "sent": [secret SHA-256 hex, …]}}
   TakenMeta = "shares_taken"        ## secret_share entry IDs already taken in: [entry ID, …]
 
@@ -27,9 +32,13 @@ proc metaJson(n: Node, key: string, empty: JNode): JNode =
   try: parseStrict(raw) except JsonError: empty
 
 proc secretRecs*(n: Node, person: string): seq[SecretRec] =
-  ## This person's secrets known here, the one to write with first (§17: the newest `made`; equal: the lowest
-  ## SHA-256 hex). Stored before 2026-10-22 as bare strings: those count as made 0.
-  var withSha: seq[(int64, string, seq[byte])]
+  ## This person's secrets known here, the one to write with first (§17: secrets not retired by a rotation first,
+  ## then the newest `made`, then the lowest SHA-256 hex). Stored before 2026-10-22 as bare strings: those count as
+  ## made 0.
+  var retired: seq[string]
+  for x in n.metaJson(RetiredMeta, newArr()).elems:
+    if x.isStr: retired.add x.s
+  var withSha: seq[(bool, int64, string, seq[byte])]
   for x in n.metaJson(secretsKey(person), newArr()).elems:
     try:
       var k: seq[byte]
@@ -39,12 +48,15 @@ proc secretRecs*(n: Node, person: string): seq[SecretRec] =
         k = unb64u(x["k"].s)
         made = x["made"].i
       else: continue
-      if k.len == 32: withSha.add((made, hex(n.p.sha256(k)), k))
+      if k.len == 32:
+        let h = hex(n.p.sha256(k))
+        withSha.add((h in retired, made, h, k))
     except ValueError: discard
-  withSha.sort(proc (a, b: (int64, string, seq[byte])): int =
-    result = cmp(b[0], a[0])
-    if result == 0: result = cmp(a[1], b[1]))
-  for (m, _, k) in withSha: result.add (k, m)
+  withSha.sort(proc (a, b: (bool, int64, string, seq[byte])): int =
+    result = cmp(a[0], b[0])
+    if result == 0: result = cmp(b[1], a[1])
+    if result == 0: result = cmp(a[2], b[2]))
+  for (_, m, _, k) in withSha: result.add (k, m)
 
 proc secretsOf*(n: Node, person: string): seq[seq[byte]] =
   ## This person's secrets known here; the one to write with first.
@@ -74,8 +86,8 @@ proc addSecrets*(n: Node, person: string, secrets: seq[seq[byte]]): int =
 
 proc newSecret(n: Node, person: string, wall: int64): seq[byte] =
   ## a new secret that is the newest held (§17: a clock behind another device's must not keep an old one writing)
-  var made = max(wall, 0'i64)
-  for r in n.secretRecs(person): made = max(made, r.made + 1)
+  var made = min(max(wall, 0'i64), MaxInt53)
+  for r in n.secretRecs(person): made = max(made, min(r.made, MaxInt53 - 1) + 1)
   result = n.p.randomBytes(32)
   discard n.addSecrets(person, @[(result, made)])
 
@@ -143,77 +155,131 @@ proc myBoxPublished(n: Node): string =
   let k = keyString(key.pub)
   if n.run.boxKeys.getOrDefault(n.device) == k: k else: ""
 
-proc stepsFrom(n: Node, d, typ: string): seq[JNode] =
-  ## the bodies of `typ` entries from device `d` to this device, in replay order
+proc stepIds(n: Node, d, typ: string): seq[(string, JNode)] =
+  ## (entry ID, body) of the `typ` entries from device `d` to this device, in replay order
   for id in n.run.pairSteps.getOrDefault(n.device):
     let e = n.entries.getOrDefault(id)
-    if e != nil and e["peer"].s == d and e["type"].s == typ: result.add e["body"]
+    if e != nil and e["peer"].s == d and e["type"].s == typ: result.add (id, e["body"])
+
+proc stepsFrom(n: Node, d, typ: string): seq[JNode] =
+  for (_, b) in n.stepIds(d, typ): result.add b
+
+proc listMeta(n: Node, key: string): seq[string] =
+  for x in n.metaJson(key, newArr()).elems:
+    if x.isStr: result.add x.s
+
+proc setList(n: Node, key: string, v: seq[string]) =
+  var a = newArr()
+  for x in v: a.elems.add newStr(x)
+  n.store.setMeta(key, toText(a))
+
+proc addListed(n: Node, key: string, v: openArray[string]) =
+  var have = n.listMeta(key)
+  var changed = false
+  for x in v:
+    if x != n.device and x notin have:
+      have.add x
+      changed = true
+  if changed: n.setList(key, have)
 
 proc attempts(n: Node): JNode =
   result = n.metaJson(AttemptsMeta, newObj())
   if result.kind != jObj: result = newObj()
 
-proc takeShare*(p: Provider, box: PrivateKey, sealed: JNode, author, me, person: string): (bool, seq[SecretRec]) =
-  ## §17 "Taking a share in": the secrets a share gives (false = it gives nothing). The caller checks that the entry
-  ## is valid in replay and that its author is in this device's paired set.
+type Share* = object
+  secrets*: seq[SecretRec]
+  holders*, removed*: seq[string]    ## devices the sender knows hold the secrets, and holders it knows were removed
+  retired*: seq[string]              ## SHA-256 hex of the secrets a rotation retired from writing
+
+proc takeShare*(p: Provider, box: PrivateKey, sealed: JNode, author, me, person: string): (bool, Share) =
+  ## §17 "Taking a share in": what a share gives (false = nothing). The caller checks that the entry is valid in
+  ## replay and that its author is in this device's paired set.
+  var got: Share
   try:
     if sealed.kind != jObj or sealed.get("purpose") == nil or not sealed["purpose"].isStr or
        sealed["purpose"].s != SharePurpose: return
     let o = parseStrict(p.eciesOpen(box, sealed).toStr)
-    if o.kind != jObj or o.fields.len != 4: return
-    for k in ["person", "from", "to", "secrets"]:
+    if o.kind != jObj or o.fields.len != 7: return
+    for k in ["person", "from", "to", "secrets", "holders", "removed", "retired"]:
       if o.get(k) == nil: return
     if not (o["person"].isStr and o["person"].s == person and o["from"].isStr and o["from"].s == author and
-            o["to"].isStr and o["to"].s == me and o["secrets"].kind == jArr): return
-    var got: seq[SecretRec]
+            o["to"].isStr and o["to"].s == me and o["secrets"].kind == jArr and o["holders"].kind == jArr and
+            o["removed"].kind == jArr and o["retired"].kind == jArr): return
     for i, s in o["secrets"].elems:
       if i >= MaxSecrets: break
       if s.kind != jObj or s.fields.len != 2 or s.get("k") == nil or s.get("made") == nil: return
-      if not s["k"].isStr or s["made"].kind != jInt or s["made"].i < 0: return
+      if not s["k"].isStr or s["made"].kind != jInt or s["made"].i < 0 or s["made"].i > MaxInt53: return
       let k = unb64u(s["k"].s)
       if k.len != 32: return
-      got.add (k, s["made"].i)
+      got.secrets.add (k, s["made"].i)
+    for (field, dest) in [("holders", addr got.holders), ("removed", addr got.removed)]:
+      for i, x in o[field].elems:
+        if i >= MaxListed: break
+        if not isPeer(if x.isStr: x.s else: ""): return
+        dest[].add x.s
+    for i, x in o["retired"].elems:
+      if i >= MaxListed: break
+      if not (x.isStr and isHex64(x.s)): return
+      got.retired.add x.s
     (true, got)
   except CatchableError:
-    (false, @[])
+    (false, Share())
 
-proc sharePlain*(person, sender, to: string, secrets: seq[SecretRec]): JNode =
-  ## the share's plaintext: the secrets in write order (newest first), at most 16
+proc sharePlain*(person, sender, to: string, secrets: seq[SecretRec], holders, removed: seq[string],
+                 retired: seq[string] = @[]): JNode =
+  ## the share's plaintext: the secrets in write order (newest first), at most 32; the devices the sender knows hold
+  ## them and those it knows were removed, at most 64 each
   var a = newArr()
   for i, s in secrets:
     if i >= MaxSecrets: break
     a.elems.add newObj(@[("k", newStr(b64u(s.k))), ("made", newInt(s.made))])
-  newObj(@[("person", newStr(person)), ("from", newStr(sender)), ("to", newStr(to)), ("secrets", a)])
+  proc ids(v: seq[string]): JNode =
+    result = newArr()
+    for i, x in v:
+      if i < MaxListed: result.elems.add newStr(x)
+  newObj(@[("person", newStr(person)), ("from", newStr(sender)), ("to", newStr(to)), ("secrets", a),
+           ("holders", ids(holders)), ("removed", ids(removed)), ("retired", ids(retired))])
 
 proc saveProgress*(n: Node, course: string, data: OrderedTable[string, string], wall: int64): JNode
 proc loadProgress*(n: Node, person: string): OrderedTable[string, OrderedTable[string, string]]
 
 proc pairSteps(n: Node, wall: int64): int =
-  ## §17 pairing, the steps that need no person: reveal this device's nonce once the other device's commitment is in
-  ## the log (never before: a commitment made after seeing it could be chosen to make the codes match), then take
-  ## its reveal when it matches the commitment revealed against.
+  ## §17 pairing, the steps that need no person: reveal this device's nonce once the other device's fresh commitment
+  ## is in the log (never before: a commitment made after seeing it could be chosen to make the codes match; never
+  ## against one whose nonce was revealed before this attempt started), then take its reveal when it matches the
+  ## commitment revealed against. The state is saved before the reveal is written.
   let mine = n.myBoxPublished
   var at = n.attempts
-  var changed = false
   for (d, st) in at.fields:
     if not n.ownDevice(d) or d notin n.run.boxKeys: continue
     let theirBox = n.run.boxKeys[d]
-    let commits = n.stepsFrom(d, "pair_commit")
     if st.get("theirs") == nil:
-      if commits.len == 0: continue
-      st["theirs"] = commits[^1]["commit"]          # the commitment this device reveals against, kept
+      var seenBefore: seq[string]
+      if st.get("seen") != nil and st["seen"].kind == jArr:
+        for x in st["seen"].elems: seenBefore.add x.s
+      var fresh = ""
+      for (_, c) in n.stepIds(d, "pair_commit"):
+        var stale = false
+        for (rid, r) in n.stepIds(d, "pair_reveal"):
+          if rid in seenBefore and r["nonce"].isStr and n.p.pairCommit(d, n.device, theirBox, r["nonce"].s) == c["commit"].s:
+            stale = true
+        if not stale: fresh = c["commit"].s      # the latest fresh one
+      if fresh.len == 0: continue
+      st["theirs"] = newStr(fresh)                 # kept before anything is revealed
+      n.store.setMeta(AttemptsMeta, toText(at))
+    if st.get("revealed") == nil:
       discard n.append("pair_reveal", newObj(@[("to", newStr(d)), ("nonce", st["nonce"])]), wall)
+      st["revealed"] = newBool(true)
+      n.store.setMeta(AttemptsMeta, toText(at))
       inc result
-      changed = true
-    elif st.get("their_nonce") == nil:
+    if st.get("their_nonce") == nil:
       for r in n.stepsFrom(d, "pair_reveal"):
         if r["nonce"].isStr and n.p.pairCommit(d, n.device, theirBox, r["nonce"].s) == st["theirs"].s:
           st["their_nonce"] = r["nonce"]
           st["box"] = newStr(theirBox)
           st["code"] = newStr(n.p.pairCode(n.device, mine, st["nonce"].s, d, theirBox, r["nonce"].s))
-          changed = true
+          n.store.setMeta(AttemptsMeta, toText(at))
           break
-  if changed: n.store.setMeta(AttemptsMeta, toText(at))
 
 proc progressTick*(n: Node, wall: int64): int =
   ## The §17 upkeep an app runs after each sync round and around pairing (never a server: it is nobody's own device):
@@ -228,33 +294,13 @@ proc progressTick*(n: Node, wall: int64): int =
     n.store.setMeta(BoxWrittenMeta, boxStr)
     inc result
   if n.myBoxPublished.len > 0: result += n.pairSteps(wall)
-  # a removed device of this person that had been sent secrets (by anyone): drop it, and write with a new secret
-  # from now on (it is denied every sync, so it never sees that one); progress is saved again under it
+  # paired devices that were removed leave the paired set
   var paired = n.pairedMap
   var drop: seq[string]
   for d in paired.keys:
     if not n.live(d) or n.run.devices[d]["person"].s != me: drop.add d
   for d in drop: paired.del d
   if drop.len > 0: n.setPaired(paired)
-  var rotated = n.metaJson(RotatedMeta, newArr())
-  var rotatedIds: seq[string]
-  for x in rotated.elems: rotatedIds.add x.s
-  var gone: seq[string]
-  for d in n.run.shares.keys:
-    if d != n.device and d in n.run.cuts and d notin rotatedIds and d in n.run.devices and
-       n.run.devices[d]["person"].s == me: gone.add d
-  if gone.len > 0:
-    for d in gone: rotated.elems.add newStr(d)
-    n.store.setMeta(RotatedMeta, toText(rotated))
-    if n.secretRecs(me).len > 0:
-      let all = n.loadProgress(me)
-      discard n.newSecret(me, wall)
-      for course, data in all:
-        if data.len > 0:
-          try:
-            discard n.saveProgress(course, data, wall)
-            inc result
-          except ValueError: discard
   # shares to this device from devices it paired with (only to the box key the person confirmed)
   var taken = n.metaJson(TakenMeta, newArr())
   var takenIds: seq[string]
@@ -265,10 +311,45 @@ proc progressTick*(n: Node, wall: int64): int =
     let e = n.entries.getOrDefault(id)
     if e == nil or e["peer"].s notin paired: continue
     let (ok, got) = n.p.takeShare(box, e["body"]["sealed"], e["peer"].s, n.device, me)
-    if ok: discard n.addSecrets(me, got)
+    if ok:
+      discard n.addSecrets(me, got.secrets)
+      n.addListed(HoldersMeta, @[e["peer"].s] & got.holders & got.removed)
+      n.addListed(RemovedMeta, got.removed)
+      n.addListed(RetiredMeta, got.retired)
     taken.elems.add newStr(id)
     tookAny = true
   if tookAny: n.store.setMeta(TakenMeta, toText(taken))
+  # a holder of the secrets was removed (its cut is in this replay, or a paired device's share said so): from now on
+  # write with a new secret it never sees. When a paired device's share already said so, the newer secret it brought
+  # does that; else this device makes one, and saves the order-free progress (solved, the bests) again under it.
+  let toldRemoved = n.listMeta(RemovedMeta)
+  var rotated = n.listMeta(RotatedMeta)
+  var gone: seq[string]
+  for d in n.listMeta(HoldersMeta):
+    if d notin rotated and (d in toldRemoved or d in n.run.cuts): gone.add d
+  if gone.len > 0:
+    var own = false
+    for d in gone:
+      if d notin toldRemoved: own = true
+    if own and n.secretRecs(me).len > 0:
+      let all = n.loadProgress(me)
+      var old: seq[string]
+      for r in n.secretRecs(me): old.add hex(n.p.sha256(r.k))
+      n.addListed(RetiredMeta, old)        # (a far-future made can't keep a held secret writing)
+      discard n.newSecret(me, wall)
+      for course, data in all:
+        var keep: OrderedTable[string, string]
+        for k, v in data:
+          if k == "solved" or k.endsWith("Best"): keep[k] = v
+        if keep.len > 0:
+          try:
+            discard n.saveProgress(course, keep, wall)
+            inc result
+          except ValueError: discard
+    n.setList(RotatedMeta, rotated & gone)
+    for d in gone:
+      if d in paired: paired.del d
+    n.setPaired(paired)
   # share to each paired device what it has not been sent, sealed to the box key the person confirmed
   let recs = n.secretRecs(me)
   if recs.len == 0: return
@@ -277,7 +358,12 @@ proc progressTick*(n: Node, wall: int64): int =
     if i < MaxSecrets: shas.add hex(n.p.sha256(r.k))
   var sent = n.metaJson(SentMeta, newObj())
   if sent.kind != jObj: sent = newObj()
+  let removedAll = n.listMeta(RotatedMeta) & n.listMeta(RemovedMeta)
+  var holders: seq[string]
+  for d in n.listMeta(HoldersMeta):
+    if d notin removedAll: holders.add d
   for d, theirBox in paired:
+    if d in removedAll: continue
     if n.run.boxKeys.getOrDefault(d) != theirBox: continue    # a box key the person did not compare codes with
     let prev = sent.get(d)
     var need = prev == nil or prev.kind != jObj or prev.get("box") == nil or not prev["box"].isStr or
@@ -288,12 +374,22 @@ proc progressTick*(n: Node, wall: int64): int =
         if x.isStr: had.add x.s
       for s in shas:
         if s notin had: need = true
+      var told: seq[string]
+      if prev.get("removed") != nil and prev["removed"].kind == jArr:
+        for x in prev["removed"].elems:
+          if x.isStr: told.add x.s
+      for x in removedAll:
+        if x notin told: need = true      # a removal it has not been told about
     if not need: continue
-    let sealed = n.p.eciesSeal(theirBox, SharePurpose, canonical(sharePlain(me, n.device, d, recs)).toBytes)
+    let sealed = n.p.eciesSeal(theirBox, SharePurpose,
+                               canonical(sharePlain(me, n.device, d, recs, holders, removedAll,
+                                                    n.listMeta(RetiredMeta))).toBytes)
     discard n.append("secret_share", newObj(@[("to", newStr(d)), ("sealed", sealed)]), wall)
     var a = newArr()
     for s in shas: a.elems.add newStr(s)
-    sent[d] = newObj(@[("box", newStr(theirBox)), ("sent", a)])
+    var rm = newArr()
+    for x in removedAll: rm.elems.add newStr(x)
+    sent[d] = newObj(@[("box", newStr(theirBox)), ("sent", a), ("removed", rm)])
     n.store.setMeta(SentMeta, toText(sent))
     inc result
 
@@ -333,7 +429,9 @@ proc startPairing*(n: Node, device: string, wall: int64) =
   let nonce = b64u(n.p.randomBytes(16))
   let mine = n.p.pairCommit(n.device, device, n.myBoxPublished, nonce)
   var at = n.attempts
-  at[device] = newObj(@[("nonce", newStr(nonce)), ("mine", newStr(mine))])
+  var seen = newArr()          # the other's reveals before this attempt: their commitments are spent
+  for (rid, _) in n.stepIds(device, "pair_reveal"): seen.elems.add newStr(rid)
+  at[device] = newObj(@[("nonce", newStr(nonce)), ("mine", newStr(mine)), ("seen", seen)])
   n.store.setMeta(AttemptsMeta, toText(at))
   var p = n.pairedMap
   if device in p:
@@ -352,6 +450,7 @@ proc confirmPairing*(n: Node, device, code: string, wall: int64) =
   var p = n.pairedMap
   p[device] = st["box"].s
   n.setPaired(p)
+  n.addListed(HoldersMeta, [device])
   var left = newObj()
   for (k, v) in at.fields:
     if k != device: left[k] = v

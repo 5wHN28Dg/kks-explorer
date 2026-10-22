@@ -604,7 +604,9 @@ def pairing_file():
                                                                      'box-bob-tablet-2', 'box-ali-phone'))
     ks = P.key_string
     s1, s2 = bytes(range(32)), bytes(range(100, 132))
-    plain = G2.share_plain(B, W.peer('bob-phone'), W.peer('bob-tablet'), [(s1, 5000), (s2, 7000)])
+    plain = G2.share_plain(B, W.peer('bob-phone'), W.peer('bob-tablet'), [(s1, 5000), (s2, 7000)],
+                           holders=[W.peer('bob-laptop')], removed=[W.peer('bob-old')],
+                           retired=[hashlib.sha256(bytes(range(200, 232))).hexdigest()])
     sealed = G2.share_seal(ks(box_tablet2), plain, eph=W.key('share-eph'), nonce=bytes(range(12)))
     W.genesis('mgr-laptop', 1000, M, 'hashim', 'Hashim M')
     W.w('mgr-laptop', 1100, 'person', person(A, 'ali', 'Ali Admin', 'admin'))
@@ -661,7 +663,9 @@ def pairing_file():
         sl = C.ecies_seal(ks(box_tablet2), purpose, text, eph=W.key('share-eph-%d' % n), nonce=bytes([n]) * 12)
         got = G2.share_take(box_tablet2, sl, W.peer(author), W.peer(me), person_)
         return {'why': why, 'sealed': sl, 'author': W.peer(author), 'me': W.peer(me), 'person': person_,
-                'secrets': None if got is None else [{'k_hex': k.hex(), 'made': m} for k, m in got]}
+                'secrets': None if got is None else [{'k_hex': k.hex(), 'made': m} for k, m in got[0]],
+                'holders': None if got is None else got[1], 'removed': None if got is None else got[2],
+                'retired': None if got is None else got[3]}
     sp, st = W.peer('bob-phone'), W.peer('bob-tablet')
     sec = lambda k, m: {'k': P.b64u(k), 'made': m}
     takes = [
@@ -680,6 +684,13 @@ def pairing_file():
         take('40 secrets: only the first 32 are read',
              {**plain, 'secrets': [sec(bytes([i]) * 32, 100 - i) for i in range(40)]}, n=13),
         take('a JSON array', [1, 2], n=14),
+        take('made above 2^53 - 1', json.dumps({**plain, 'secrets': [sec(s1, 2 ** 53)]}).encode(), n=15),
+        take('made 2^53 - 1: the largest allowed', {**plain, 'secrets': [sec(s1, 2 ** 53 - 1)]}, n=16),
+        take('a holder that is no device ID', {**plain, 'holders': ['x']}, n=17),
+        take('removed not a list', {**plain, 'removed': 'x'}, n=18),
+        take('no holders field', {k: v for k, v in plain.items() if k != 'holders'}, n=19),
+        take('a retired entry that is no SHA-256 hex', {**plain, 'retired': ['ABC']}, n=21),
+        take('70 holders: only the first 64 are read', {**plain, 'holders': [W.peer('h%d' % i) for i in range(70)]}, n=20),
     ]
     codes = []
     for i, (a, b) in enumerate((('bob-phone', 'bob-tablet'), ('bob-tablet', 'bob-phone'), ('ali-phone', 'bob-phone'))):
@@ -692,11 +703,14 @@ def pairing_file():
                       'code': G2.pair_code(W.peer(a), ka, na, W.peer(b), kb, nb)})
     assert codes[0]['code'] == codes[1]['code']
     writes = []
-    for why, secrets in (('the newest writes', [(s1, 5000), (s2, 7000)]),
-                         ('equal made: the lowest SHA-256 hex', [(s1, 7000), (s2, 7000)]),
-                         ('one secret', [(s2, 0)])):
-        writes.append({'why': why, 'secrets': [{'k_hex': k.hex(), 'made': m} for k, m in secrets],
-                       'writes_hex': G2.write_secret(secrets).hex()})
+    r1 = hashlib.sha256(s1).hexdigest()
+    for why, secrets, retired in (('the newest writes', [(s1, 5000), (s2, 7000)], []),
+                                  ('equal made: the lowest SHA-256 hex', [(s1, 7000), (s2, 7000)], []),
+                                  ('one secret', [(s2, 0)], []),
+                                  ('a retired secret never writes while another is held, however new',
+                                   [(s1, 2 ** 53 - 1), (s2, 7000)], [r1])):
+        writes.append({'why': why, 'secrets': [{'k_hex': k.hex(), 'made': m} for k, m in secrets], 'retired': retired,
+                       'writes_hex': G2.write_secret(secrets, retired).hex()})
     merges = []
     for why, key, values in (
             ('solved: union, never loses a question', 'solved', ['{"a_r":true}', '{"b_f":true}', '{"a_r":true}']),
