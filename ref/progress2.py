@@ -1,0 +1,106 @@
+"""Person secrets between a person's own devices and course progress (docs/PROTOCOL-v2.md §13, §17; decision 0062).
+Test-only reference: the pairing code, the sealed share, which secret writes, and how progress values merge."""
+import hashlib, json, math
+
+from ref import proto2 as P
+from ref import crypto2 as C
+
+SHARE_PURPOSE = 'kks-person-secret'
+MAX_SECRETS = 16
+
+
+def pair_code(dev_a, box_a, dev_b, box_b):
+    """§17: the same 6 digits on both devices; the IDs sorted by code point, each followed by its box key."""
+    (x, kx), (y, ky) = sorted([(dev_a, box_a), (dev_b, box_b)])
+    d = hashlib.sha256(('kks-pair-code-v1\n' + x + '\n' + kx + '\n' + y + '\n' + ky).encode()).digest()
+    return f'{int.from_bytes(d[:4], "big") % 1_000_000:06d}'
+
+
+def write_secret(secrets):
+    """The secret a device writes with: the largest `made`; equal: the lowest SHA-256 hex. secrets = [(k, made)]."""
+    return min(secrets, key=lambda s: (-s[1], hashlib.sha256(s[0]).hexdigest()))[0]
+
+
+def share_plain(person, sender, to, secrets):
+    """secrets = [(k, made)], newest first, at most 16."""
+    ordered = sorted(secrets, key=lambda s: (-s[1], hashlib.sha256(s[0]).hexdigest()))[:MAX_SECRETS]
+    return {'person': person, 'from': sender, 'to': to,
+            'secrets': [{'k': P.b64u(k), 'made': made} for k, made in ordered]}
+
+
+def share_seal(box_key_str, plain, eph=None, nonce=None):
+    return C.ecies_seal(box_key_str, SHARE_PURPOSE, P.canonical(plain), eph=eph, nonce=nonce)
+
+
+def share_take(box_private, sealed, author, me, person):
+    """The secrets a share gives this device, or None when it gives nothing (§17 "Taking a share in"). The caller
+    has already checked that the entry is valid and its author is in this device's paired set."""
+    try:
+        if sealed.get('purpose') != SHARE_PURPOSE:
+            return None
+        o = json.loads(C.ecies_open(box_private, sealed))
+    except Exception:
+        return None
+    if not isinstance(o, dict) or set(o) != {'person', 'from', 'to', 'secrets'}:
+        return None
+    if o['person'] != person or o['from'] != author or o['to'] != me or not isinstance(o['secrets'], list):
+        return None
+    got = []
+    for s in o['secrets'][:MAX_SECRETS]:
+        if not isinstance(s, dict) or set(s) != {'k', 'made'}:
+            return None
+        made = s['made']
+        if type(made) is not int or made < 0 or made > P.MAX_INT or not isinstance(s['k'], str):
+            return None
+        try:
+            k = P.unb64u(s['k'])
+        except Exception:
+            return None
+        if len(k) != 32:
+            return None
+        got.append((k, made))
+    return got
+
+
+def merge_value(key, old, new):
+    """Two saved strings of one progress key (COURSES §8, PROTOCOL §17): objects → union (the later's keys win),
+    "…Best" numbers → the larger (equal: the later), otherwise (or either not JSON) the later. old None = unset."""
+    if old is None:
+        return new
+    try:
+        a, b = _strict(old), _strict(new)
+    except ValueError:
+        return new
+    if isinstance(a, dict) and isinstance(b, dict):
+        return json.dumps({**a, **b}, ensure_ascii=False, separators=(',', ':'))
+    if key.endswith('Best') and _num(a) and _num(b):
+        return old if a > b else new
+    return new
+
+
+def _num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _dup_check(pairs):
+    keys = [k for k, _ in pairs]
+    if len(keys) != len(set(keys)):
+        raise ValueError('duplicate key')
+    return dict(pairs)
+
+
+def _strict(text):
+    def bad_const(c):
+        raise ValueError(c)
+    v = json.loads(text, object_pairs_hook=_dup_check, parse_constant=bad_const)
+    if isinstance(v, float) and not math.isfinite(v):
+        raise ValueError('not finite')
+    return v
+
+
+def fold(values):
+    """[(key, value), …] in replay order → {key: merged value}."""
+    out = {}
+    for k, v in values:
+        out[k] = merge_value(k, out.get(k), v)
+    return out

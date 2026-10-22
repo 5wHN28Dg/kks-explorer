@@ -4,6 +4,8 @@
   v2-replay.json     §8–14, §21: statements, private entries, scenarios (incl. the v1 import)
   v2-malformed.json  every entry type with every field replaced by every kind of wrong value
   v2-crypto.json     §16, §18, §20: join code and request, relay room and hello, ECIES, passphrase backup
+  v2-reports.json    §13a: diagnostics reports
+  v2-pairing.json    §17 (decision 0062): box keys, secret shares, the pairing code, which secret writes, progress merge
 
 Deterministic (fixed seeds, RFC 6979 signatures, fixed clocks and nonces). The files are FROZEN once the Nim core
 depends on them: regenerating must give identical bytes (tests/test_protocol_v2.py).
@@ -15,6 +17,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from ref import crypto2 as C
 from ref import proto2 as P
 from ref import replay2 as R
+from ref import progress2 as G2
 
 DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vectors')
 T0 = 1790000000000
@@ -593,8 +596,124 @@ def reports_file():
             'scenarios': [sc]}
 
 
+# ====================================================================== v2-pairing (§17, decision 0062, 2026-10-22)
+def pairing_file():
+    W = World()
+    M, A, B = pid('manager'), pid('ali'), pid('bob')
+    box_phone, box_tablet, box_tablet2, box_ali = (W.key(n) for n in ('box-bob-phone', 'box-bob-tablet',
+                                                                     'box-bob-tablet-2', 'box-ali-phone'))
+    ks = P.key_string
+    s1, s2 = bytes(range(32)), bytes(range(100, 132))
+    plain = G2.share_plain(B, W.peer('bob-phone'), W.peer('bob-tablet'), [(s1, 5000), (s2, 7000)])
+    sealed = G2.share_seal(ks(box_tablet2), plain, eph=W.key('share-eph'), nonce=bytes(range(12)))
+    W.genesis('mgr-laptop', 1000, M, 'hashim', 'Hashim M')
+    W.w('mgr-laptop', 1100, 'person', person(A, 'ali', 'Ali Admin', 'admin'))
+    W.w('mgr-laptop', 1110, 'person', person(B, 'bob', 'Bob User', 'user'))
+    W.w('mgr-laptop', 1200, 'device_cert', {'device': W.peer('ali-phone'), 'person': A, 'label': 'phone'})
+    W.w('mgr-laptop', 1210, 'device_cert', {'device': W.peer('bob-phone'), 'person': B, 'label': 'phone'})
+    W.w('mgr-laptop', 1220, 'device_cert', {'device': W.peer('bob-tablet'), 'person': B, 'label': 'tablet'})
+    W.w('bob-phone', 1300, 'box_key', {'key': ks(box_phone)})
+    W.w('bob-tablet', 1310, 'box_key', {'key': ks(box_tablet)})
+    W.w('bob-tablet', 1320, 'box_key', {'key': ks(box_tablet2)})
+    W.w('ali-phone', 1330, 'box_key', {'key': ks(box_ali)})
+    W.w('bob-phone', 1340, 'box_key', {'key': 'A' * 87})
+    W.w('bob-phone', 1350, 'box_key', {'key': ks(box_phone), 'device': W.peer('bob-tablet')})
+    W.w('stranger', 1360, 'box_key', {'key': ks(box_phone)})
+    W.w('bob-phone', 1400, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': sealed})
+    W.w('bob-phone', 1410, 'secret_share', {'to': W.peer('ali-phone'), 'sealed': sealed})
+    W.w('bob-phone', 1420, 'secret_share', {'to': W.peer('bob-phone'), 'sealed': sealed})
+    W.w('bob-phone', 1430, 'secret_share', {'to': W.peer('nobody'), 'sealed': sealed})
+    W.w('bob-phone', 1440, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': {**sealed, 'purpose': 'kks-report'}})
+    W.w('bob-phone', 1450, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': {**sealed, 'ct': 'A' * 4097}})
+    W.w('bob-phone', 1460, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': {**sealed, 'v': True}})
+    W.w('bob-phone', 1470, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': {**sealed, 'extra': 1}})
+    W.w('bob-phone', 1480, 'secret_share', {'to': W.peer('bob-tablet')})
+    W.w('mgr-laptop', 1490, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': sealed})
+    W.w('stranger', 1495, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': sealed})
+    last = len(W.logs['bob-phone'].entries)
+    W.w('bob-tablet', 1500, 'revoke', {'device': W.peer('bob-phone'), 'last_seq': last})
+    W.w('bob-phone', 1600, 'secret_share', {'to': W.peer('bob-tablet'), 'sealed': sealed})
+    W.w('bob-phone', 1610, 'box_key', {'key': ks(box_ali)})
+    sc = W.scenario('box keys and secret shares (§17)', [
+        'box_keys: bob-phone, bob-tablet its second key (the latest counts), ali-phone (anyone certified, about itself)',
+        'shares: bob-tablet gets bob-phone\'s valid share at 1400 only',
+        'bad_body: a key that is no point, an extra body key, a share to another person (not_allowed), to itself, to an '
+        'unknown device, purpose not kks-person-secret, ct over 4 096, v not the integer 2, an extra sealed key, a '
+        'missing sealed',
+        'not_allowed: bob-phone to ali-phone, the manager to bob-tablet (another person, even for the manager)',
+        'not_certified: the stranger; revoked: bob-phone after bob-tablet revoked it'])
+
+    # taking a share in: what a device gets from each sealed share (null = nothing)
+    def take(why, plain_or_text, author='bob-phone', me='bob-tablet', person_=B, purpose=G2.SHARE_PURPOSE, n=0):
+        text = plain_or_text if isinstance(plain_or_text, bytes) else P.canonical(plain_or_text)
+        sl = C.ecies_seal(ks(box_tablet2), purpose, text, eph=W.key('share-eph-%d' % n), nonce=bytes([n]) * 12)
+        got = G2.share_take(box_tablet2, sl, W.peer(author), W.peer(me), person_)
+        return {'why': why, 'sealed': sl, 'author': W.peer(author), 'me': W.peer(me), 'person': person_,
+                'secrets': None if got is None else [{'k_hex': k.hex(), 'made': m} for k, m in got]}
+    sp, st = W.peer('bob-phone'), W.peer('bob-tablet')
+    sec = lambda k, m: {'k': P.b64u(k), 'made': m}
+    takes = [
+        take('valid: both secrets, newest first', plain, n=1),
+        take('the person is someone else', {**plain, 'person': A}, n=2),
+        take('from is not the entry\'s author', {**plain, 'from': W.peer('ali-phone')}, n=3),
+        take('to is another device', {**plain, 'to': sp}, n=4),
+        take('an extra key', {**plain, 'x': 1}, n=5),
+        take('a secret of 31 bytes', {**plain, 'secrets': [sec(bytes(31), 1)]}, n=6),
+        take('made negative', {**plain, 'secrets': [sec(s1, -1)]}, n=7),
+        take('made not an integer', {**plain, 'secrets': [{'k': P.b64u(s1), 'made': '1'}]}, n=8),
+        take('an extra key in a secret', {**plain, 'secrets': [{**sec(s1, 1), 'x': 0}]}, n=9),
+        take('secrets not a list', {**plain, 'secrets': {}}, n=10),
+        take('not JSON', b'not json', n=11),
+        take('the wrong purpose', plain, purpose='kks-report', n=12),
+        take('20 secrets: only the first 16 are read',
+             {**plain, 'secrets': [sec(bytes([i]) * 32, 100 - i) for i in range(20)]}, n=13),
+        take('a JSON array', [1, 2], n=14),
+    ]
+    codes = []
+    for a, b in (('bob-phone', 'bob-tablet'), ('bob-tablet', 'bob-phone'), ('ali-phone', 'bob-phone')):
+        ka, kb = ks(W.key('box-' + a)), ks(W.key('box-' + b))
+        codes.append({'a': W.peer(a), 'box_a': ka, 'b': W.peer(b), 'box_b': kb,
+                      'code': G2.pair_code(W.peer(a), ka, W.peer(b), kb)})
+    assert codes[0]['code'] == codes[1]['code']
+    writes = []
+    for why, secrets in (('the newest writes', [(s1, 5000), (s2, 7000)]),
+                         ('equal made: the lowest SHA-256 hex', [(s1, 7000), (s2, 7000)]),
+                         ('one secret', [(s2, 0)])):
+        writes.append({'why': why, 'secrets': [{'k_hex': k.hex(), 'made': m} for k, m in secrets],
+                       'writes_hex': G2.write_secret(secrets).hex()})
+    merges = []
+    for why, key, values in (
+            ('solved: union, never loses a question', 'solved', ['{"a_r":true}', '{"b_f":true}', '{"a_r":true}']),
+            ('skip: a module taken back is written as false', 'skip', ['{"m1":true,"m2":true}', '{"m1":false}']),
+            ('finalBest: the larger, whatever the order', 'finalBest', ['7', '9', '3']),
+            ('finalBest equal: the later', 'finalBest', ['5', '5']),
+            ('last: the later', 'last', ['"p1"', '"p7"', '"p3"']),
+            ('a later value that is not JSON replaces', 'last', ['"p1"', 'x{']),
+            ('an earlier value that is not JSON is replaced', 'solved', ['x{', '{"a_r":true}']),
+            ('object then number: the later', 'solved', ['{"a_r":true}', '3']),
+            ('…Best with a string: the later', 'finalBest', ['9', '"x"']),
+            ('arrays are not merged', 'skip', ['[1]', '[2]'])):
+        got = G2.fold([(key, v) for v in values])
+        merges.append({'why': why, 'key': key, 'values': values, 'merged': json.loads(got[key]) if _is_json(got[key])
+                       else got[key], 'merged_is_json': _is_json(got[key])})
+    return {'protocol': 2, 'note': NOTE,
+            'share': {'box_private_scalar_hex': private_scalar_hex(box_tablet2), 'box_key': ks(box_tablet2),
+                      'eph_private_scalar_hex': private_scalar_hex(W.key('share-eph')),
+                      'nonce_hex': bytes(range(12)).hex(), 'plaintext': plain,
+                      'plaintext_bytes_hex': P.canonical(plain).hex(), 'sealed': sealed},
+            'take': takes, 'pair_codes': codes, 'write_secret': writes, 'merge': merges, 'scenarios': [sc]}
+
+
+def _is_json(t):
+    try:
+        json.loads(t)
+        return True
+    except ValueError:
+        return False
+
+
 FILES = {'v2-core.json': core, 'v2-replay.json': replay_file, 'v2-malformed.json': malformed_file,
-         'v2-crypto.json': crypto_file, 'v2-reports.json': reports_file}
+         'v2-crypto.json': crypto_file, 'v2-reports.json': reports_file, 'v2-pairing.json': pairing_file}
 
 
 if __name__ == '__main__':
