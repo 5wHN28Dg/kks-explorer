@@ -265,12 +265,25 @@ class Validator(unittest.TestCase):
         cases = [({k: v for k, v in d.items() if k != 'format'}, 'missing_key'),
                  (dict(d, extra=1, version=2), 'unknown_key'),
                  (dict(d, works=[]), 'unknown_key'),
-                 ([], 'bad_type'), ('x', 'bad_type')]
+                 ([], 'bad_type'), ('x', 'bad_type'),
+                 (dict(d, values=d['values'] + [['zz', {'hold': d['values'][0][0], 'when': d['values'][0][0]}]]),
+                  'bad_kind'),
+                 (dict(d, values=d['values'] + [['zz', {'const': 1, 'hold': 'x'}]]), 'unknown_key')]
+        files = dict(base, **{name: json.dumps(dict(d, version=1.0)).encode()})
+        P.check_files(files)                    # 1.0 is version 1, as format 1 always took it
         for m, code in cases:
             files = dict(base, **{name: json.dumps(m).encode()})
             with self.assertRaises(P.FormatError, msg=repr(m)[:60]) as cm:
                 P.check_files(files)
             self.assertEqual(cm.exception.code, code, repr(m)[:60])
+        # a scenario fault's `when` with a hold key: format 1's unknown key beside its node kind
+        sname = next(k for k in base if k.startswith('scenarios/'))
+        sc = json.loads(base[sname])
+        f0 = dict(sc['faults'][0], when={'cmp': [d['values'][0][0], '>', 1], 'hold': 'x'})
+        files = dict(base, **{sname: json.dumps(dict(sc, faults=[f0] + sc['faults'][1:])).encode()})
+        with self.assertRaises(P.FormatError) as cm:
+            P.check_files(files)
+        self.assertEqual(cm.exception.code, 'unknown_key', str(cm.exception))
 
     def test_a_sign_symbol_the_app_does_not_draw_is_refused(self):
         """A safety sign's `symbol` is one the app draws (ISO 7010 M003, apps/plant3d/builder/kit_place.gd

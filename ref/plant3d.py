@@ -52,9 +52,10 @@ def fmt(d, kind, where, top=1):
     files of a version 2 plant, §14)."""
     need(d.get('format') == FORMATS[kind], 'bad_format', f'{where}: format must be "{FORMATS[kind]}"')
     v = d.get('version')
-    need(v in range(1, top + 1) and isinstance(v, int) and not isinstance(v, bool), 'bad_version',
+    # a whole number (1.0 is 1, as format 1 always took it), not a boolean
+    need(isinstance(v, (int, float)) and not isinstance(v, bool) and v in range(1, top + 1), 'bad_version',
          f'{where}: version must be {" or ".join(str(x) for x in range(1, top + 1))}')
-    return v
+    return int(v)
 
 
 def time(x, where, lo=0.0, positive=False):
@@ -805,6 +806,15 @@ NODE = {
 CMP = ('>=', '>', '<=', '<')
 
 
+def v1_hold(n, where):
+    """A `hold` key where format 1 is read (§15.4): refused with format 1's code, which had no hold node: beside
+    another node kind it is that kind's unknown key, alone it is no node kind."""
+    if isinstance(n, dict) and 'hold' in n:
+        other = any(k in n for k in STATEFUL + STATELESS if k != 'hold')
+        need(False, 'unknown_key' if other else 'bad_kind', f'{where}: the hold node is format 2 (a version 2 model '
+                                                             f'file, §15.4)')
+
+
 def node_kind(n, where):
     need(isinstance(n, dict), 'bad_type', where)
     st = [k for k in STATEFUL if k in n]
@@ -981,8 +991,8 @@ class Model:
         self.pending.append((r, where, False))
 
     def check_node(self, n, w):
-        need(not (self.version == 1 and isinstance(n, dict) and 'hold' in n), 'unknown_key',
-             f'{w}: the hold node is format 2 (a version 2 model file, §15.4)')
+        if self.version == 1:
+            v1_hold(n, w)
         kind = node_kind(n, w)
         req, opt = NODE[kind]
         keys(n, req, opt + ('unit', 'kks'), w)
@@ -1417,6 +1427,8 @@ def check_scenario(s, m, rel):
             if isinstance(f['when'], str):
                 m.cond(f['when'], f'{w}.when')
             else:
+                if m.b.version == 1:
+                    v1_hold(f['when'], f'{w}.when')
                 kind = node_kind(f['when'], f'{w}.when')
                 need(kind in STATELESS and kind not in ('const', 'state'), 'bad_kind',
                      f'{w}.when: a value name or a stateless node')

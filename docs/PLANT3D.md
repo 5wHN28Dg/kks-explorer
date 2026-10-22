@@ -1002,7 +1002,8 @@ Each work has one permit at a time; its state is the value `<work id>_permit`:
 read as the previous step left it, like any stateful node's input. At step 0 a hold takes its `init` (the scenario's
 wins over its own) or, without one, its input's step 0 value, evaluated in order with the stateless nodes. A
 transmitter whose root valve is shut holds its last reading; the content reads `<isolation>_complete` as `when`. A
-`hold` in a version 1 model file is `unknown_key`. **Voting:** an isolated channel of a 2-out-of-3 trip votes *tripped*, so the trip
+`hold` key where format 1 is read (a version 1 model file, a version 1 plant's scenario) gets format 1's code: beside
+another node kind `unknown_key`, alone `bad_kind`. **Voting:** an isolated channel of a 2-out-of-3 trip votes *tripped*, so the trip
 runs 1-out-of-2 on the other two (the usual safe choice: a second fault trips the machine rather than hiding a
 real one); a bypass that keeps 2-out-of-2 is an authorised override not in format 2 (STAFF.md §3).
 

@@ -922,7 +922,7 @@ REJECTS2 = [
     ('isolations in a version 1 model file', 'unknown_key', _all(
         _set(MOD + ['version'], 1), _del(MOD + ['works']),
         _set(MOD + ['values', 8], ['p_held', {'product': ['p', 1]}]))),
-    ('a hold node in a version 1 model file', 'unknown_key', _all(
+    ('a hold node in a version 1 model file', 'bad_kind', _all(
         _set(MOD + ['version'], 1), _del(MOD + ['works']), _del(MOD + ['isolations']))),
     ('a hold reading a later value', 'forward_ref', _set(MOD + ['values', 6], ['pump_off', {'hold': 'valve_shut',
                                                                                           'when': 0}])),
