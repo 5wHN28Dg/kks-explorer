@@ -38,15 +38,16 @@ pinned script and redistributed in the app), at a cost the Note 9 can carry (006
   has (a handwheel, a calibrator, typing at a desk, reading a gauge) are our own poses on the same profile, held or
   cycled, with Godot's skeleton modifiers for reach and gaze.
 - **Fallback for milestone A1's first steps:** Kenney Mini Characters (CC0), until retargeting is shown to work.
-- **Not used:** Mixamo (redistribution), Quaternius (licence conflict: the user's question), mocap datasets that
-  aren't CC0.
+- **Not used:** Mixamo (redistribution), Quaternius (licence conflict), mocap datasets that aren't CC0, except CMU's
+  under the user's decision below.
 
-## For the user
+## Decided by the user (2026-10-22)
 
-- Quaternius: its pack pages say CC0, its licence page now forbids redistribution. Using the 2025 CC0 mirror (copies
-  obtained before the new licence) would be legal on §7's reading but rests on that reading; it is not chosen.
-- If our own work poses don't convince, CMU's motion capture (free, not CC0) is the nearest source: a licence
-  decision.
+- **KayKit (CC0) first**, with our own work poses.
+- **CMU's motion capture is allowed** if KayKit and our own poses look too stiff: free, not CC0 ("free for all uses
+  … may not resell this data directly", http://mocap.cs.cmu.edu/). Clips taken from it are committed like the others,
+  each named in the about list, and its notice joins the app's About screen.
+- Quaternius is not used (its pack pages say CC0, its licence page forbids redistribution).
 
 **When to revisit:** A1's retargeting trial fails (then Kenney's rig and simpler clips, or the user's choice above);
 MakeHuman's licence policy changes; Quaternius settles its licence back to CC0.

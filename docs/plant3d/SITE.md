@@ -48,7 +48,7 @@ Format: docs/PLANT3D.md (areas §3; format 2 parts and interiors §18.5–§18.6
 
 The WTP stands north-east of the cooling tower, low (clarifiers, tanks 12 m, the treatment building 10 m): from the
 HRSG platforms it reads as a separate plant across the road. The camp is west, behind the admin area: low
-single-storey blocks among palms, seen from the control building's door.
+single-storey blocks shaded by date palms (§4), seen from the control building's door.
 
 ## 3. The camp
 
@@ -64,13 +64,37 @@ single-storey blocks among palms, seen from the control building's door.
 | Camp gate | gate house, barrier, guard booth | the guard's post |
 | Parking and bus stop | under shade canopies | |
 | Sports court | 28 × 15 m, fenced, floodlit | outdoor, walkable |
-| Walkways | covered walkways between the blocks, the mess and the gate; roads with painted kerbs, street lamps, palms | |
+| Walkways | covered walkways between the blocks, the mess and the gate; roads with painted kerbs and street lamps; planting by §4 | |
 
 
 Generic and neutral: buildings in light, sand and grey tones (the user's choice of neutral colours, 2026-10-21),
 signs in the plant's own style (PLANT3D.md §5).
 
-## 4. Performance
+## 4. Planting
+
+The user's rule (2026-10-22): planting suits the place, a desert plant site in southern Iraq, and every plant has a
+purpose: **shade**, a **windbreak**, **dust control**, or a recognised camp landscape (a shaded court by the mess, the
+entrance). Nothing is planted for decoration alone, and there is little or no lawn: the ground between plantings is
+gravel or bare compacted soil, as on such sites. Everything planted is drip-irrigated from the service water (the
+WTP's `00GHA10`; not modelled). Species are ones commonly grown in hot, dry, saline conditions of the region:
+
+| Plant | Where | Purpose |
+|---|---|---|
+| Date palm (*Phoenix dactylifera*) | in rows along the camp's main walkway and the road to the plant gate; by the mess hall's court; at the admin building's entrance | shade on the walkways people use at shift changes; the camp's recognised landscape |
+| Tamarisk (*Tamarix* species) | a belt along the camp's west and north fence, and along the plant's west boundary by the admin area and the gate | windbreak and dust control against the prevailing north-westerly wind (the shamal) |
+| Oleander (*Nerium oleander*) | hedges along the camp's roads and between the parking and the blocks | dust control and screening along roads; drought and salt tolerant (poisonous: not by the mess or where food is) |
+| Bougainvillea | on the blocks' porches and the covered walkways' posts | shade on porches and walkways; the camp's landscape |
+| Drought-tolerant shrubs (saltbush, *Atriplex*; caper, *Capparis*) | low beds by the camp office, the gate houses and the admin building | dust control on bare ground by doors |
+
+Not planted: lawns, flower beds, plants inside the process areas (the train, the WTP, the transformer yard: gravel and
+concrete only, for fire safety, access and drainage), and anything near the cooling tower's drift or the switchyard.
+Planting is a structure (`planting`, PLANT3D.md §18.6): drawn with the `form` and `detail` classes (§10 of
+PLANT3D.md: a palm's trunk and crown are `form`, its fronds' cut-outs `detail`), static, baked into the lightmap.
+
+**The first train's site** (builder/site.gd: concrete yards, gravel, the ring road, the boundary wall) has no
+planting and nothing to remove. What it should gain is listed under milestone C1 (MILESTONES.md).
+
+## 5. Performance
 
 - **Packs:** `wtp`, `site` and `camp` are packs of their own (0054 §6), shipped in the one package while it stays
   under its budget (150 MB); each milestone measures the package size.
@@ -83,7 +107,7 @@ signs in the plant's own style (PLANT3D.md §5).
 - **Lightmaps:** each pack has its own baked lightmap (0057).
 - **The walking test** (0059) covers every new area, and every walking way of the staff (PLANT3D.md §18.1).
 
-## 5. KKS of the site
+## 6. KKS of the site
 
 Structures by the public key's U letters ([E2] p. 80–85): `00UYC10` administration building, `00UST10` workshops,
 `00USU10` store, `00UYE10` gate house, `00UZA10` plant roads, `00UZD10` parking, `00UZJ10` fence and gates, `00UZW10`

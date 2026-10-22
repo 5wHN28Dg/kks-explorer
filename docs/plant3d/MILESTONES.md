@@ -8,7 +8,7 @@ tried on the Note 9 first). Every milestone that changes what is drawn or run is
 frame rules (≥ 95 % of frames shown at ≥ 30 fps in the 10-minute walk, none over 100 ms after the first 5 s, peak PSS
 ≤ 1.5 GB, first walkable frame ≤ 15 s, and 0060's margin of ≤ 13.5 s per first start) and the 1.2× regression rule,
 with the walk extended into the milestone's new areas or crowds. A milestone that misses them is not done; cutting
-scope to meet them is the user's call (top of this file's "Questions").
+scope to meet them is the user's call ("When to stop and ask the user", below).
 
 Sizes: **S** one pull request; **M** two to four; **L** five to eight.
 
@@ -22,7 +22,7 @@ Sizes: **S** one pull request; **M** two to four; **L** five to eight.
 | A1 | **Avatars** (0063, 0064): the CC0 body exports, our work clothes and PPE props, the CC0 animations retargeted, the posed band's meshes made by the build; the measurement of PLANT3D.md §18.4 on the Note 9 with the walk among 6, 12 and 24 people, which fixes the tier counts | L | S1 | the operators and the people of S1 visible in the control room and the field |
 | S2 | **Maintenance and safety**: the maintenance disciplines and their supervisors, works for the first train's faults, calibrations, preventive jobs, the full permit flow between NPCs and the trainee, PPE and zones, the HSE officer's walks and unsafe acts, contractors | L | A1 | the trainee as technician, supervisor or HSE officer; jobs that change the plant |
 | S3 | **WTP staff**: the WTP operator and chemists, the WTP's jobs (cartridge change, calibrations), samples and the lab | M | W3, S2 | the WTP worked by its people |
-| C1 | **Site and camp, walkable** (SITE.md): `admin`, `gate`, `road_west`, `camp` with the interiors loaded near their doors, vehicles' kit parts, the walking test over it all | L | — (A1 for people in it) | the camp and the gate to walk through |
+| C1 | **Site and camp, walkable** (SITE.md): `admin`, `gate`, `road_west`, `camp` with the interiors loaded near their doors, vehicles' kit parts, the planting of SITE.md §4, the walking test over it all. **The first train's site** (it has no planting today) gains: a tamarisk windbreak along the boundary wall's north and west sides (dust and wind from the shamal), date palms shading the walkway from the plant gate to the control building and the admin parking, low drought-tolerant shrubs by the control building's door; nothing inside the process areas | L | — (A1 for people in it) | the camp and the gate to walk through |
 | S4 | **The full day**: off-duty routines in the camp, buses, meals, the jump to the next shift, managers and meetings, drivers and guards, the whole roster; the debrief per role; the `day` vector over the full content; the Note 9 walk at the busiest hour (the shift change at the plant gate) | L | S2, S3, C1 | every role of STAFF.md to play through a day |
 
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4
@@ -32,11 +32,11 @@ needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, 
 (W1, A1, C1) adds one kind of load and is measured alone before the next adds another; S4, the busiest hour, comes
 last, when the per-tier counts are known from A1.
 
-## Questions for the user (as they arise)
+## When to stop and ask the user (the user, 2026-10-22)
 
-- If A1's measurement leaves the Note 9 fewer than 4 skinned people, or no posed band, within the frame rules: accept
-  fewer people on the phone (the logical day is the same; the map shows them), or other cuts.
-- If W1 or C1 push the package over 150 MB: ship `wtp` and `camp` as packs loaded on demand (0054 §6; the plant app
-  has no network today: a pack to download is a new permission).
-- The animation source (0063): the CC0 sources may lack work poses that our own poses can't make convincingly; any
-  non-CC0 source is the user's decision.
+- **If A1 measures fewer than 4 animated (skinned) people on the Note 9** within the frame rules: stop and ask before
+  going on.
+- **If the package passes 150 MB** (W1, A1, C1 or later): stop and ask before going on (packs on demand, 0054 §6,
+  would need a network permission).
+- Decided already: animations from KayKit (CC0) first; CMU's motion capture allowed if they look too stiff, its
+  notice in the About screen (0063). The camp as SITE.md describes it; planting by SITE.md §4.

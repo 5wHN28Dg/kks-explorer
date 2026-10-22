@@ -1417,7 +1417,7 @@ metering pumps), `chemical_tank` (FRP, in a bund), `filter_press`, `sample_panel
 (on a tank or basin). Camp and site (SITE.md): `bed`, `locker`, `desk`, `chair`, `table`, `bench`, `counter`,
 `shelf`, `washer`, `gym_rack`, `sofa`, `screen` (a TV or wall display), `carpet` (a floor finish), `vehicle` (bus,
 pickup, SUV), `barrier` (a gate arm), `guard_booth`, `canopy` (shade over parking and walkways), `lamp_post`,
-`palm`, `kerb` (painted), `court` (a fenced sports court), `porch`, `room` (an
+`planting` (by species: date palm, tamarisk, oleander, bougainvillea, a drought-tolerant shrub; SITE.md §4), `kerb` (painted), `court` (a fenced sports court), `porch`, `room` (an
 interior partition with doors). Geometry is the kit's, as everything (§9).
 
 ### 18.7 The trainee's panels
