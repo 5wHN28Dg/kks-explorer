@@ -118,6 +118,11 @@ VOICES = {
         'air compressors turn at 25 rev/s, and the GT lube oil pumps\' two-pole motors would whine higher): magnetic '
         'hum 100 and 200 Hz; rotor-slot whine at 44 slots x 24.7 = 1,087 Hz with +/- 100 Hz '
         'sidebands; its cooling fan\'s blade pass 11 x 24.7 = 271.5 Hz; pink noise 200-4,000 Hz is the fan')),
+    'ro_hp_pump': dict(spl=88, noise_am=[(0.5, 0.04)], mains=(100, 200), why=(
+        'An RO high-pressure pump: a multistage centrifugal pump on a two-pole motor (2,970 rpm, 49.5 rev/s as the '
+        'model turns it). Its strongest tone is the impellers\' vane passing, 7 vanes x 49.5 = 346.5 Hz; the motor\'s '
+        'rotor-slot whine at 28 slots x 49.5 = 1,386 Hz with +/- 100 Hz sidebands; magnetic hum 100 and 200 Hz; pink '
+        'noise 300-6,000 Hz is the motor fan and the water at 12 bar. Higher and louder than motor_small')),
     'fan_large': dict(spl=88, rates='swell', noise_am=[(0.25, 0.08)], mains=(100,), why=(
         'Cooling tower fan: a large axial fan of 8 blades at 120 rpm passes a blade 16 times a second: a whoosh, '
         'not a pitch (the noise swells at 16 Hz); its right-angle gearbox meshes at 420 Hz; motor hum 100 Hz; pink '

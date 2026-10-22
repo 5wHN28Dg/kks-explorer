@@ -1,6 +1,6 @@
 ## The frame-time walk's route (app/routes.gd `frames`, measured on the phones) walked once headless, so a phone run
 ## doesn't measure a walker stuck at a door or a pipe: out of the control room, through the turbine hall's two doors,
-## up and down HRSG 1's stair tower and back. Fails when the walker is stuck for 5 s or falls below the ground.
+## up and down HRSG 1's stair tower, out to the water treatment plant and through its treatment building, and back. Fails when the walker is stuck for 5 s or falls below the ground.
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")

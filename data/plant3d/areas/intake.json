@@ -1,0 +1,39 @@
+{
+ "format": "walkdown-plant-area",
+ "version": 1,
+ "id": "intake",
+ "title": "Raw water intake",
+ "bounds": [
+  [430, 60],
+  [470, 110]
+ ],
+ "pack": "wtp",
+ "equipment": [
+  {"kks": "00GAA10BB001", "name": "Intake channel and wet well", "part": "basin", "at": [455.25, 85.0, -7.0], "params": {"length": 28.4, "width": 8.9, "depth": 5.47}, "parts": [{"kks": "00GAA10CL001", "name": "Intake level", "part": "level_transmitter", "at": [9, -4.25, 7.0], "params": {"range": [-3, 1], "unit": "m"}}]},
+  {"kks": "00GAA10AT001", "name": "Bar screen", "part": "bar_screen", "at": [468.5, 85, 0], "yaw": 270, "params": {"width": 8.0, "depth": 7.0}, "plate": "side"},
+  {"kks": "00GAA10AT002", "name": "Band screen A", "part": "screen_band", "at": [460.5, 82.75, 0], "yaw": 270, "params": {"width": 3.0, "depth": 7.0, "motor_kw": 1.5}, "plate": "side"},
+  {"kks": "00GAA10AT003", "name": "Band screen B", "part": "screen_band", "at": [460.5, 87.25, 0], "yaw": 270, "params": {"width": 3.0, "depth": 7.0, "motor_kw": 1.5}, "plate": "side"},
+  {"kks": "00GBN30BB001", "name": "Hypochlorite day tank and dosing skid", "part": "dosing_skid", "at": [437.0, 85.0, 0], "params": {"length": 2.4, "width": 1.2, "tank_l": 1000}, "plate": "front", "parts": [{"kks": "00GBN30AP001", "name": "Hypochlorite dosing pump A", "part": "metering_pump", "at": [0, 0.323, 0.2], "params": {"kw": 0.37}, "plate": "side"}, {"kks": "00GBN30AP002", "name": "Hypochlorite dosing pump B", "part": "metering_pump", "at": [0, 0.773, 0.2], "params": {"kw": 0.37}, "plate": "side"}]},
+  {"kks": "00GAF10AP001", "name": "Raw water pump A", "part": "pump_vertical", "at": [444, 85, 0], "yaw": 180, "params": {"flow_m3h": 550, "head_m": 30, "motor_kw": 75, "pit_depth": 6.5}, "plate": "motor_side"},
+  {"kks": "00GAF10AP002", "name": "Raw water pump B", "part": "pump_vertical", "at": [448, 85, 0], "yaw": 180, "params": {"flow_m3h": 550, "head_m": 30, "motor_kw": 75, "pit_depth": 6.5}, "plate": "motor_side"},
+  {"kks": "00GAF10AP003", "name": "Raw water pump C", "part": "pump_vertical", "at": [452, 85, 0], "yaw": 180, "params": {"flow_m3h": 550, "head_m": 30, "motor_kw": 75, "pit_depth": 6.5}, "plate": "motor_side"}
+ ],
+ "pipes": [
+  {"kks": "00GAC10BR010", "name": "Raw water main to the water treatment plant", "medium": "raw_water", "dn": 500, "from": {"at": [455, 79, -1.5]}, "points": [[386, 79, -1.5], [386, 112, -1.5]], "to": {"at": [383.5, 112, -1.5]}, "buried": [[0, 2]], "arrows": 25},
+  {"kks": "00GAF10BR001", "name": "Raw water pump A discharge", "medium": "raw_water", "dn": 300, "from": {"kks": "00GAF10AP001", "nozzle": "discharge"}, "points": [[444, 79, 1.5]], "to": {"pipe": "00GAC10BR010", "at": [444, 79, -1.5]}, "valves": [{"kks": "00GAF10AA201", "part": "valve_check", "at": 0.15, "name": "Raw water pump A check valve", "params": {"dn": 300}, "plate": "body"}, {"kks": "00GAF10AA101", "part": "valve_butterfly", "at": 0.4, "name": "Raw water pump A discharge valve", "params": {"dn": 300, "actuator": "electric"}, "plate": "body"}], "parts": [{"kks": "00GAF10CP501", "part": "pressure_gauge", "at": 0.06, "side": "top", "name": "Raw water pump A discharge pressure", "params": {"range": [0, 6], "unit": "bar"}}]},
+  {"kks": "00GAF10BR002", "name": "Raw water pump B discharge", "medium": "raw_water", "dn": 300, "from": {"kks": "00GAF10AP002", "nozzle": "discharge"}, "points": [[448, 79, 1.5]], "to": {"pipe": "00GAC10BR010", "at": [448, 79, -1.5]}, "valves": [{"kks": "00GAF10AA202", "part": "valve_check", "at": 0.15, "name": "Raw water pump B check valve", "params": {"dn": 300}, "plate": "body"}, {"kks": "00GAF10AA102", "part": "valve_butterfly", "at": 0.4, "name": "Raw water pump B discharge valve", "params": {"dn": 300, "actuator": "electric"}, "plate": "body"}], "parts": [{"kks": "00GAF10CP502", "part": "pressure_gauge", "at": 0.06, "side": "top", "name": "Raw water pump B discharge pressure", "params": {"range": [0, 6], "unit": "bar"}}]},
+  {"kks": "00GAF10BR003", "name": "Raw water pump C discharge", "medium": "raw_water", "dn": 300, "from": {"kks": "00GAF10AP003", "nozzle": "discharge"}, "points": [[452, 79, 1.5]], "to": {"pipe": "00GAC10BR010", "at": [452, 79, -1.5]}, "valves": [{"kks": "00GAF10AA203", "part": "valve_check", "at": 0.15, "name": "Raw water pump C check valve", "params": {"dn": 300}, "plate": "body"}, {"kks": "00GAF10AA103", "part": "valve_butterfly", "at": 0.4, "name": "Raw water pump C discharge valve", "params": {"dn": 300, "actuator": "electric"}, "plate": "body"}], "parts": [{"kks": "00GAF10CP503", "part": "pressure_gauge", "at": 0.06, "side": "top", "name": "Raw water pump C discharge pressure", "params": {"range": [0, 6], "unit": "bar"}}]}
+ ],
+ "structures": [
+  {"id": "intake_pit", "part": "pit", "at": [441, 80.5, 0], "params": {"outline": [[0, 0], [28.5, 0], [28.5, 9], [0, 9]], "depth": 7.0}},
+  {"id": "intake_deck", "part": "platform", "at": [441, 80.5, 0], "params": {"outline": [[0, 0], [28.5, 0], [28.5, 9], [0, 9]], "openings": [[[21.5, 0.5], [28.0, 0.5], [28.0, 8.5], [21.5, 8.5]], [[19.0, 0.8], [20.0, 0.8], [20.0, 3.7], [19.0, 3.7]], [[19.0, 5.3], [20.0, 5.3], [20.0, 8.2], [19.0, 8.2]]], "deck": "concrete", "edge": "handrail"}},
+  {"id": "intake_divider", "part": "wall", "at": [455.5, 85, -7.0], "params": {"route": [[0, 0, 0], [6.5, 0, 0]], "height": 7.0, "thickness": 0.4}},
+  {"id": "intake_house", "part": "building", "kks": "00UGA10", "at": [434, 77, 0], "params": {"outline": [[0, 0], [36, 0], [36, 16], [0, 16]], "height": 9, "floor": "concrete", "openings": [{"kind": "door", "at": [12, 0, 0], "width": 4, "height": 4.5}, {"kind": "door", "at": [0, 8, 0], "width": 1.0, "height": 2.1}, {"kind": "louvre", "at": [0, 3, 7], "width": 3, "height": 1.5}, {"kind": "louvre", "at": [0, 13, 7], "width": 3, "height": 1.5}, {"kind": "louvre", "at": [5, 16, 7], "width": 3, "height": 1.5}, {"kind": "louvre", "at": [18, 16, 7], "width": 3, "height": 1.5}, {"kind": "louvre", "at": [31, 16, 7], "width": 3, "height": 1.5}, {"kind": "louvre", "at": [36, 13, 7], "width": 3, "height": 1.5}, {"kind": "window", "at": [5, 0, 4.5], "width": 2.4, "height": 1.2}, {"kind": "window", "at": [19, 0, 4.5], "width": 2.4, "height": 1.2}, {"kind": "window", "at": [30, 0, 4.5], "width": 2.4, "height": 1.2}, {"kind": "window", "at": [10, 16, 4.5], "width": 2.4, "height": 1.2}, {"kind": "window", "at": [25, 16, 4.5], "width": 2.4, "height": 1.2}]}},
+  {"id": "intake_door_s", "part": "door", "at": [446, 77, 0], "yaw": 180, "params": {"kind": "roller", "width": 4, "height": 4.5}},
+  {"id": "intake_door_w", "part": "door", "at": [434, 85, 0], "yaw": 270, "params": {"kind": "personnel"}}
+ ],
+ "signs": [
+  {"text": "Raw water intake 00UGA10", "at": [440, 77, 5.2], "yaw": 180, "size": 0.4},
+  {"text": "Raw water pumps A B C", "at": [448, 92.9, 3], "yaw": 180, "size": 0.4}
+ ]
+}

@@ -4,7 +4,10 @@
 ##   - the areas' yards paved in concrete (their bounds), gravel between them;
 ##   - a ring road round all the areas (asphalt, kerbs, a covered drain along its inner edge);
 ##   - a precast concrete boundary wall with pilasters and a closed gate;
-##   - the country beyond: a terrain to the far plane, flat near the wall, rising to low hills.
+##   - the country beyond: a terrain to the far plane, flat near the wall, rising to low hills;
+##   - with a river intake (an area `intake`, docs/plant3d/SITE.md §1): the river along the wall's east side, beyond
+##     a strip of bank, its water at RIVER_LEVEL, and the headwall where the intake's channel (its pits) opens on
+##     the river under the road and the wall.
 ## The walkable ground (z = 0 inside the wall) keeps its collision as before; kerbs and drains are drawn only (a
 ## walker steps over them). Everything here is static and baked into the lightmap.
 extends RefCounted
@@ -19,8 +22,14 @@ const WALL_H := 2.6
 const KERB_H := 0.12
 const FAR := 760.0         # the terrain's reach from the plant's centre (the walker's far plane is 800 m)
 const TERRAIN_CELL := 20.0
+const RIVER_GAP := 5.0     # the bank: from the wall's east side to the river's edge
+const RIVER_W := 90.0
+const RIVER_LEVEL := -1.5  # the water (WATER-TREATMENT.md: the intake's wet well stands at the river's level)
+const RIVER_BED := -4.0
+const RIVER_SLOPE := 10.0  # the banks go down to the bed over this width
 
 var b   # the plant builder
+var river := false
 
 func _init(builder) -> void:
 	b = builder
@@ -72,6 +81,43 @@ func make(root: Node3D, holes: Array) -> void:
 	_kerbs_and_drain(root, road_in, road_out, drain_in)
 	_wall(root, wall)
 	_terrain(root, wall)
+	if has_river():
+		_river(root, wall)
+
+## A river intake in the plant: an area `intake` (SITE.md §1). The river then runs along the wall's east side.
+func has_river() -> bool:
+	return b.areas.any(func(a): return a.id == "intake")
+
+## The river's plan strip: x from its west edge to its east edge (the wall's east side + RIVER_GAP).
+func river_x(wall: Rect2) -> Vector2:
+	return Vector2(wall.end.x + RIVER_GAP, wall.end.x + RIVER_GAP + RIVER_W)
+
+## The river's water from one end of the terrain to the other (its banks are the terrain's: _height), and the intake
+## channel's headwall on the west bank, its opening dark, level with the intake's pits.
+func _river(root: Node3D, wall: Rect2) -> void:
+	var rx := river_x(wall)
+	var c := wall.get_center()
+	var st: SurfaceTool = b._st()
+	# as far north and south as the terrain reaches at the river (its edge is a circle of FAR round the centre)
+	var dx := maxf(absf(rx.x - c.x), absf(rx.y - c.x))
+	var half := sqrt(maxf(FAR * FAR - dx * dx, 0.0))
+	Geom.add_prism(st, Geom.rect(rx.x, c.y - half, rx.y, c.y + half), RIVER_LEVEL - 0.05, RIVER_LEVEL, false, false)
+	b._mesh_node(root, "river", st, b._mat("water_river"), 8.0)
+	var lo := INF
+	var hi := -INF
+	for p in b.pits:
+		if p.area == "intake":
+			for q: Vector2 in p.outline:
+				lo = minf(lo, q.y)
+				hi = maxf(hi, q.y)
+	if lo < hi:
+		var hw: SurfaceTool = b._st()
+		# out into the water past the bank's foot (the terrain reaches the water's level about 2.5 m into the river)
+		Geom.add_prism(hw, Geom.rect(rx.x - 2.0, lo - 1.5, rx.x + 3.5, hi + 1.5), RIVER_BED, 0.4)
+		b._mesh_node(root, "intake_headwall", hw, b._mat("concrete"), Lightmap.TEXEL)
+		var dark: SurfaceTool = b._st()
+		Geom.add_prism(dark, Geom.rect(rx.x + 3.5, lo, rx.x + 3.52, hi), RIVER_BED + 0.5, RIVER_LEVEL + 0.6)
+		b._mesh_node(root, "intake_opening", dark, b._mat("drain"))
 
 static func _bbox(pg: PackedVector2Array) -> Rect2:
 	var r := Rect2(pg[0], Vector2.ZERO)
@@ -147,6 +193,7 @@ func _wall(root: Node3D, r: Rect2) -> void:
 ## (the wall keeps the walker in); lit by the bake at a coarse texel.
 func _terrain(root: Node3D, wall: Rect2) -> void:
 	var c := wall.get_center()
+	river = has_river()
 	var noise := FastNoiseLite.new()
 	noise.seed = 7
 	noise.frequency = 0.004
@@ -200,4 +247,12 @@ func _height(p: Vector2, wall: Rect2, noise: FastNoiseLite) -> float:
 	var t := smoothstep(20.0, 120.0, d)
 	var hills := smoothstep(250.0, 650.0, d)
 	var nv := noise.get_noise_2d(p.x, p.y)   # -1 .. 1
-	return t * (1.5 * nv) + hills * (14.0 + 22.0 * nv) - 0.15 * t
+	var h := t * (1.5 * nv) + hills * (14.0 + 22.0 * nv) - 0.15 * t
+	if river:
+		# the river's channel: the banks fall to its bed within RIVER_SLOPE of its edges, across its whole length
+		var rx := river_x(wall)
+		var inside := minf(p.x - rx.x, rx.y - p.x)
+		if inside > -RIVER_SLOPE:
+			var k := smoothstep(-RIVER_SLOPE, RIVER_SLOPE, inside)
+			h = lerpf(minf(h, 0.0), RIVER_BED, k)
+	return h

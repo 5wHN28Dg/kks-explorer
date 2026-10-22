@@ -14,6 +14,7 @@
   {"id": "turning_gear", "kind": "synth", "tones": [{"hz": 8, "gain": 0.5}, {"hz": 100, "gain": 0.3}, {"hz": 600, "gain": 0.12}], "noise": {"colour": "brown", "band": [50, 400], "gain": 0.3}},
   {"id": "motor_large", "kind": "synth", "tones": [{"hz": 100, "gain": 0.6}, {"hz": 200, "gain": 0.2}, {"hz": 742.5, "gain": 0.15}, {"hz": 642.5, "gain": 0.07}, {"hz": 842.5, "gain": 0.07}, {"hz": 49.5, "gain": 0.3}], "noise": {"colour": "pink", "band": [100, 2500], "gain": 0.5}},
   {"id": "motor_small", "kind": "synth", "tones": [{"hz": 100, "gain": 0.5}, {"hz": 200, "gain": 0.15}, {"hz": 1087, "gain": 0.12}, {"hz": 987, "gain": 0.06}, {"hz": 1187, "gain": 0.06}, {"hz": 271.5, "gain": 0.1}], "noise": {"colour": "pink", "band": [200, 4000], "gain": 0.4}},
+  {"id": "ro_hp_pump", "kind": "synth", "tones": [{"hz": 346.5, "gain": 0.5}, {"hz": 1386, "gain": 0.3}, {"hz": 1286, "gain": 0.12}, {"hz": 1486, "gain": 0.12}, {"hz": 100, "gain": 0.35}, {"hz": 200, "gain": 0.12}], "noise": {"colour": "pink", "band": [300, 6000], "gain": 0.5}},
   {"id": "fan_large", "kind": "synth", "tones": [{"hz": 16, "gain": 0.4}, {"hz": 420, "gain": 0.1}, {"hz": 100, "gain": 0.15}], "noise": {"colour": "pink", "band": [60, 1500], "gain": 0.6}},
   {"id": "water_rain", "kind": "synth", "noise": {"colour": "white", "band": [400, 9000]}},
   {"id": "liquid_ring", "kind": "synth", "tones": [{"hz": 25, "gain": 0.4}, {"hz": 300, "gain": 0.15}, {"hz": 100, "gain": 0.25}], "noise": {"colour": "brown", "band": [80, 1200], "gain": 0.6}},

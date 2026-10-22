@@ -138,6 +138,17 @@ func floor_below(from: Vector3, depth := 400.0) -> Dictionary:
 		return {}
 	return hit
 
+## Would the walker's capsule standing at `feet` (Godot coordinates) be clear of everything solid?
+func fits_at(feet: Vector3) -> bool:
+	var cap := CapsuleShape3D.new()
+	cap.radius = RADIUS
+	cap.height = HEIGHT - 0.1
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = cap
+	q.transform = Transform3D(Basis.IDENTITY, feet + Vector3.UP * (HEIGHT * 0.5 + 0.05))
+	q.exclude = [get_rid()]
+	return get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
+
 ## The wanted movement in the walker's frame: x right, y forward (each -1..1).
 func _wish() -> Vector2:
 	if scripted:

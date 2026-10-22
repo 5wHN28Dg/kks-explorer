@@ -212,6 +212,25 @@ The plant's `kks` tables gain these letters (meanings in our own words, as FIRST
 - These change the first train's model, so its vectors are made again in that milestone (MILESTONES.md W1), as with
   every content change; the cold start's procedure gains no step (the WTP is in service in `cold_iron`).
 
+## 8a. As built in W1 (walkable, 2026-10-22)
+
+The content tools make it (`tools/plant3d/wtp_areas.py`, `wtp_content.py`); the layout is SITE.md's. What W1 settled
+that the plan above leaves open:
+- **Codes on things that are not one part:** each gravity filter's code (`00GBB11AT001` …) is on the number board at
+  its cell on the operating deck (a `sign` part, coded); the bank is `00GBB10`. Each dosing skid is coded by its day
+  tank (`…BB001`), its metering pumps (`…AP001`, `AP002`) are parts of their own on it. The degasser's blower
+  `00GCH10AN001` is a blower package beside the tower. The rapid mixer `00GBD10AM001` is the agitator; its tank is
+  `00GBD10BB001`. The intake's channel and wet well is `00GAA10BB001`; the laboratory bench `00QUG20`.
+- **The WTP control desk** `00CWD10` (an `operator_desk`) stands in its control room; its screens come with W2's
+  `desks`, until then it says that the screens are worked in the control room.
+- **What runs:** the WTP is in service (§8); until W2's model, the running half of each pair (raw water pumps A and
+  B, makeup pump A, service water pump A, RO stream A, mixed bed feed pump A, transfer pump A, the degasser's blower)
+  turns and sounds at a constant speed, the others stand still. The RO high-pressure pumps have a sound of their own
+  (`ro_hp_pump`), which makes the treatment building a hearing-protection area.
+- **Not built in W1:** the pressure filters of PLANT3D.md §18.6 (the gravity filters do their work), the backwash
+  and air scour lines inside the gallery (their pumps' lines end under the ground), the sludge lines to the
+  thickener and the press.
+
 ## 9. Not built (deliberately)
 
 Ultrafiltration, EDI and a second RO pass (0065); chemical unloading from tankers; the water's real chemistry (no

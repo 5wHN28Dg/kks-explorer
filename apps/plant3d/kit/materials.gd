@@ -167,6 +167,8 @@ static func specs() -> Dictionary:
 	m["window_glass"] = {"set": "", "tint": Color(0.52, 0.60, 0.65), "rough": 0.08, "metal": 0.3}
 	m["window_day"] = {"set": "", "tint": Color(0.80, 0.85, 0.88), "rough": 0.4, "metal": 0.0, "emit": true, "emit_energy": 0.7}
 	m["water"] = {"set": "", "tint": Color(0.18, 0.30, 0.32), "rough": 0.08, "metal": 0.1}
+	# a river's water: turbid with silt (WATER-TREATMENT.md §2: 20 NTU in the dry months), a muddy olive under the sky
+	m["water_river"] = {"set": "", "tint": Color(0.25, 0.27, 0.20), "rough": 0.1, "metal": 0.1}
 	m["fill"] = {"set": "", "tint": Color(0.16, 0.17, 0.18), "rough": 0.8, "metal": 0.0}            # CT fill, louvres' depth
 	m["dark"] = {"set": "", "tint": Color(0.03, 0.03, 0.03), "rough": 1.0, "metal": 0.0}            # openings, shadows inside
 	m["lamp_off"] = {"set": "", "tint": Color(0.55, 0.52, 0.45), "rough": 0.2, "metal": 0.0}
