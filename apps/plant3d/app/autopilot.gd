@@ -86,10 +86,13 @@ func _physics_process(delta: float) -> void:
 
 ## The speed to pass the point of step i at: on to the next point the faster the straighter, else stopped.
 func _turn_speed(target: Vector3) -> float:
-	if i + 1 >= steps.size() or not (steps[i + 1] as Dictionary).has("to"):
+	var n := i + 1
+	if n >= steps.size() and loop:
+		n = 0                            # a looped route goes on round
+	if n >= steps.size() or not (steps[n] as Dictionary).has("to"):
 		return 0.0
 	var p: Vector3 = player.global_position
-	var nx: Vector3 = steps[i + 1].to
+	var nx: Vector3 = steps[n].to
 	var a := Vector2(target.x - p.x, target.z - p.z).normalized()
 	var b := Vector2(nx.x - target.x, nx.z - target.z).normalized()
 	return lerpf(1.0, Player.RUN_SPEED, pow(clampf(a.dot(b), 0.0, 1.0), 4.0))   # 45 degrees: 1.75 m/s; a right angle: 1

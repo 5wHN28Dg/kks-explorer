@@ -2,8 +2,8 @@
 ##   speeds       a stick's push maps to a slow step, the pace at WALK_PUSH and a jog all the way; keys walk at the
 ##                pace; the run modifier runs; the settings' pace moves the walk
 ##   controls     on the built ground with the app's own input actions: W walks, Shift runs (held, or toggled), the
-##                left stick half pushed steps slowly and fully pushed jogs, its click runs, a touch stick's push is
-##                analogue too; speeding up and slowing down are gradual
+##                left stick half pushed steps slowly and fully pushed jogs, its click runs, a touch stick (Godot's
+##                VirtualJoystick, dragged) is analogue too; speeding up and slowing down are gradual
 ##   stairs       up and down a flight of HRSG 1's stair tower running, walking and at the slowest step: never faster
 ##                than the stair's limits; up and down the stack's ladder running: never faster than climbing
 ##   cadence      the footsteps' stride and level follow the speed (about 2 a second at a walk, 3 running, louder)
@@ -15,10 +15,12 @@ const Player = preload("res://app/player.gd")
 const Autopilot = preload("res://app/autopilot.gd")
 const SoundPlayer = preload("res://ui/sound_player.gd")
 const Controls = preload("res://app/controls.gd")
+const Quality = preload("res://app/quality.gd")
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = speeds()
 	p.append_array(cadence())
+	p.append_array(await measured_walk(tree))
 	var world := Node3D.new()
 	tree.root.add_child(world)
 	world.add_child(Controls.new())          # the input actions, as the app makes them (once: kept when there)
@@ -34,6 +36,33 @@ func run(tree: SceneTree) -> Array:
 	p.append_array(await bob(tree, player))
 	p.append_array(await stairs(tree, world, plant, player))
 	world.free()
+	return p
+
+## The phones' measured walk (app/main.gd walk=frames) goes at a walk whatever pace the settings keep, so that its
+## frames compare between devices.
+func measured_walk(tree: SceneTree) -> Array:
+	var cf := Quality.settings()
+	var kept = cf.get_value("controls", "pace", null)
+	cf.set_value("controls", "pace", "slow")
+	Quality.save(cf)
+	var main: Node = (load("res://app/main.tscn") as PackedScene).instantiate()
+	main.opts = {"walk": "frames", "seconds": "600"}
+	tree.root.add_child(main)
+	for i in 600:
+		if main.auto != null and main.auto.running:
+			break
+		await tree.process_frame
+	var p: Array = []
+	if main.auto == null or not main.auto.running:
+		p.append("walk=frames did not start")
+	elif main.player.pace != Player.WALK_SPEED:
+		p.append("walk=frames walks at the settings' pace (%.2f m/s), not at a walk" % main.player.pace)
+	main.free()
+	if kept == null:
+		cf.erase_section_key("controls", "pace")
+	else:
+		cf.set_value("controls", "pace", kept)
+	Quality.save(cf)
 	return p
 
 func speeds() -> Array:
@@ -232,13 +261,42 @@ func controls(tree: SceneTree, player) -> Array:
 	_button(JOY_BUTTON_LEFT_STICK, false)
 	_axis(JOY_AXIS_LEFT_Y, 0.0)
 	await _frames(tree, 40)
-	# a touch stick (Godot's VirtualJoystick presses the actions with its push's strength): analogue
+	# a touch stick: Godot's VirtualJoystick as the HUD makes it (app/hud.gd), dragged by a thumb a little and to its
+	# rim: it presses the actions with the push's strength, so the walker steps slowly, then jogs
+	var size0: Vector2i = tree.root.size
+	tree.root.size = Vector2i(1280, 720)             # (the headless window is 64 px: the stick would be outside it)
+	var layer := CanvasLayer.new()
+	tree.root.add_child(layer)
+	var j := VirtualJoystick.new()
+	j.position = Vector2(20, 200)
+	j.size = Vector2(420, 420)
+	j.joystick_size = 220
+	j.tip_size = 90
+	j.joystick_mode = 1
+	j.action_left = "move_left"; j.action_right = "move_right"; j.action_up = "move_forward"; j.action_down = "move_back"
+	layer.add_child(j)
 	await _start(tree, player)
-	Input.action_press("move_forward", 0.6)
-	await _frames(tree, 60)
-	push = Input.get_vector("move_left", "move_right", "move_back", "move_forward").length()
-	if absf(_speed(player) - Player.speed_for(push, false, true)) > 0.05 or _speed(player) >= Player.WALK_SPEED:
-		p.append("a touch stick pushed to %.2f: %.2f m/s, not %.2f" % [push, _speed(player), Player.speed_for(push, false, true)])
+	var at := Vector2(230, 410)
+	var touch := InputEventScreenTouch.new()
+	touch.position = at
+	touch.pressed = true
+	Input.parse_input_event(touch)
+	await _frames(tree, 2)
+	for drag in [[30.0, false], [200.0, true]]:
+		var d := InputEventScreenDrag.new()
+		d.position = at - Vector2(0, drag[0])
+		d.relative = Vector2(0, -1)
+		Input.parse_input_event(d)
+		await _frames(tree, 60)
+		push = Input.get_vector("move_left", "move_right", "move_back", "move_forward").length()
+		var want := Player.speed_for(push, false, true)
+		if push <= 0.0 or absf(_speed(player) - want) > 0.05 or (drag[1] and absf(want - Player.JOG_SPEED) > 0.01) \
+				or (not drag[1] and _speed(player) >= Player.WALK_SPEED):
+			p.append("a touch stick dragged %d px: pushed %.2f, %.2f m/s, not %.2f" % [drag[0], push, _speed(player), want])
+	touch.pressed = false
+	Input.parse_input_event(touch)
+	layer.free()
+	tree.root.size = size0
 	_release_all()
 	await _frames(tree, 40)
 	return p

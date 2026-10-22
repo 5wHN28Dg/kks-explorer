@@ -208,7 +208,8 @@ func show_settings(on: bool) -> void:
 		var mode: String = main.cf.get_value("quality", "mode", "auto")
 		tier_opt.selected = ["auto", "full", "lean+vis"].find(mode)
 		touch_opt.selected = ["auto", "on", "off"].find(main.cf.get_value("controls", "touch", "auto"))
-		pace_opt.selected = maxi(Player.PACES.keys().find(main.cf.get_value("controls", "pace", "normal")), 0)
+		var pi: int = Player.PACES.keys().find(main.cf.get_value("controls", "pace", "normal"))
+		pace_opt.selected = pi if pi >= 0 else Player.PACES.keys().find("normal")     # as apply_gait: unknown is normal
 		run_toggle_cb.set_pressed_no_signal(main.cf.get_value("controls", "run_toggle", false))
 		tier_note.text = "Now: %s (%s), %s renderer." % [main.tier, main.tier_why, Quality.renderer()]
 
