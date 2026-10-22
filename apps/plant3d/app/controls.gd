@@ -12,6 +12,7 @@
 ##   menu      Escape, gamepad Start: settings (or closes the top panel of ui/)
 ##   alarms    L, gamepad D-pad up: the alarm list (ui/plant_ui.gd)
 ##   procedure P, gamepad D-pad left: procedures and tours
+##   permits   T: the permits to work (gamepad: from a card's Permit button or the procedures panel)
 ##   pause     K, gamepad D-pad down: pause, and run again at 1×
 ##   fast      . (full stop), gamepad D-pad right: fast-forward
 ##   home      H, gamepad X: to the control room and its screens, and the screens off again there (B is Godot's
@@ -23,6 +24,7 @@ const KEYS := {
 	"move_right": [KEY_D, KEY_RIGHT], "run": [KEY_SHIFT], "fly": [KEY_F], "up": [KEY_SPACE],
 	"down": [KEY_C], "map": [KEY_M, KEY_TAB], "use": [KEY_E], "menu": [KEY_ESCAPE],
 	"alarms": [KEY_L], "procedure": [KEY_P], "pause": [KEY_K], "fast": [KEY_PERIOD], "home": [KEY_H],
+	"permits": [KEY_T],
 	"look_left": [], "look_right": [], "look_up": [], "look_down": [],
 }
 const AXES := {   # action: [axis, direction]

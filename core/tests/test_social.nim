@@ -8,7 +8,7 @@ proc tick(): int64 =
   wall += 1000
   wall
 
-suite "invites, secrets, course progress":
+suite "invites and the retired secrets swap":
   let rootKey = P.p256Generate()
   var phone = newNode(P, newMemStore(), P.p256Generate())
   let me = P.newPersonId()
@@ -44,32 +44,7 @@ suite "invites, secrets, course progress":
     check iv.offer(P, d, newObj(@[("token", newNull()), ("request", req)]), 102)["state"].s == "refused"
     check P.joinCode(d, phone.device).len == 6
 
-  test "secrets swap only between two devices of one person, then progress merges":
-    var s1 = newSession(laptop, true, phone.device, adoptRoot = phone.root)
+  test "a responder answers the retired secrets swap with nothing (§17: secrets travel only in sealed shares)":
     var s2 = newSession(phone, false, laptop.device)
-    s1.wall = tick()
-    s2.wall = s1.wall
-    while not (s1.done and s2.done):
-      while s1.sending:
-        for m in s1.take(): s2.receive(m)
-      while s2.sending:
-        for m in s2.take(): s1.receive(m)
-    check laptop.owner == me
-    var d1: OrderedTable[string, string]
-    d1["solved"] = """{"a":true}"""
-    d1["finalBest"] = "7"
-    discard phone.saveProgress("hrsg", d1, tick())
-    # the laptop can't read it yet: no secret
-    discard laptop.ingest(phone.entriesFor(laptop.vv), tick())
-    check laptop.loadProgress(me).len == 0
-    let answer = phone.secretsAnswer(laptop.device, laptop.secretsRequest())
-    check laptop.takeSecretsAnswer(answer) == 1
-    var d2: OrderedTable[string, string]
-    d2["solved"] = """{"b":true}"""
-    d2["finalBest"] = "5"
-    discard laptop.saveProgress("hrsg", d2, tick())
-    let got = laptop.loadProgress(me)["hrsg"]
-    check parseStrict(got["solved"]) == parseStrict("""{"a":true,"b":true}""")
-    check got["finalBest"] == "7"
-    # a stranger asking for secrets gets none
-    check phone.secretsAnswer("strangerpeer", laptop.secretsRequest())["secrets"].len == 0
+    s2.receive(newObj(@[("t", newStr("secrets")), ("person", newStr(me)), ("secrets", newArr())]))
+    check s2.outbox[0]["secrets"].len == 0 and phone.secretsOf(me).len == 0

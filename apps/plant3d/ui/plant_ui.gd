@@ -4,7 +4,8 @@
 ##
 ## Keys and buttons (app/controls.gd): E or a tap at a part opens its card (gamepad A), L the alarms (D-pad up),
 ## P procedures and tours (D-pad left), K pause and run (D-pad down), the full stop key fast-forward (D-pad right),
-## H back to the control room and its screens (gamepad X; ui/mimic.gd: one screen per system, PLANT3D §7.11), Esc or B closes the top panel. The debrief (what happened in the run) opens
+## H back to the control room and its screens (gamepad X; ui/mimic.gd: one screen per system, PLANT3D §7.11), T the
+## permits to work (PLANT3D §15; gamepad: from a card or the procedures panel), Esc or B closes the top panel. The debrief (what happened in the run) opens
 ## at the end of a procedure and from the alarm list's Events button. A procedure's step with `"go": "walk"` shows the
 ## way on foot to the equipment it points at (app/walk_route.gd).
 extends CanvasLayer
@@ -25,6 +26,7 @@ const Card = preload("res://ui/card.gd")
 const AlarmPanel = preload("res://ui/alarm_panel.gd")
 const ProcedurePanel = preload("res://ui/procedure_panel.gd")
 const TrainerPanel = preload("res://ui/trainer_panel.gd")
+const PermitPanel = preload("res://ui/permit_panel.gd")
 const Autosave = preload("res://ui/autosave.gd")
 const DebriefPanel = preload("res://ui/debrief_panel.gd")
 const WalkRoute = preload("res://app/walk_route.gd")
@@ -55,6 +57,7 @@ var card
 var alarms
 var procedure
 var trainer
+var permits                     # ui/permit_panel.gd: the permits to work and their isolations (PLANT3D §15)
 var autosave                    # ui/autosave.gd: the run saved to user://, offered again at start
 var debrief
 var screens                     # ui/screens_model.gd: the control room screens made from the model (PLANT3D §7.11)
@@ -161,6 +164,7 @@ func _build() -> void:
 	root.add_child(bar)
 	_alarm_btn = _bar_button(bar, "Alarms", func(): toggle_alarms())
 	_bar_button(bar, "Procedures", func(): toggle_procedure())
+	_bar_button(bar, "Permits", func(): toggle_permits())
 	_bar_button(bar, "Control room", func(): control_room())
 	_trainer_btn = _bar_button(bar, "Instructor", func(): toggle_trainer())
 	_trainer_btn.visible = instructor
@@ -198,6 +202,10 @@ func _build() -> void:
 	trainer.name = "trainer"
 	root.add_child(trainer)
 	trainer.setup(self)
+	permits = PermitPanel.new()
+	permits.name = "permits"
+	root.add_child(permits)
+	permits.setup(self)
 	debrief = DebriefPanel.new()
 	debrief.name = "debrief"
 	root.add_child(debrief)
@@ -251,6 +259,8 @@ func _layout() -> void:
 	alarms.size = card.size
 	trainer.position = card.position
 	trainer.size = card.size
+	permits.position = card.position
+	permits.size = card.size
 	debrief.position = card.position
 	debrief.size = card.size
 	mimic.position = Vector2(0.0, top0)
@@ -264,7 +274,8 @@ func _layout_toast() -> void:
 	var vs: Vector2 = root.get_viewport_rect().size
 	# between the side panels when they are open (on a phone it may reach over them: it has its own background)
 	var side := 0.0
-	if card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible or debrief.visible):
+	if card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible or debrief.visible
+			or permits.visible):
 		side = card.size.x + 32.0
 	_toast_beside_card = card != null and card.visible
 	var w := clampf(vs.x - 2.0 * side, 360.0, minf(vs.x * 0.5, 900.0))
@@ -322,6 +333,8 @@ func open_panel(p: String) -> void:
 		toggle_alarms()
 	elif p == "procedure" and not procedure.visible:
 		toggle_procedure()
+	elif p == "permits" or p.begins_with("permit:"):
+		open_permits(p.substr(7) if p.begins_with("permit:") else "")
 	elif p.begins_with("card:"):
 		open_card(p.substr(5))
 	elif p == "screens" or p.begins_with("screens:"):
@@ -417,6 +430,9 @@ func restart(scenario: String, quiet := false) -> void:
 	trends.clear()
 	results.clear()
 	_pending.clear()
+	permits.results.clear()
+	permits._pending.clear()
+	permits._sig = ""
 	_ev_seen = 0
 	if not quiet:
 		toast("The plant restarted: %s." % model.scenarios[scenario].get("title", scenario))
@@ -431,6 +447,7 @@ func open_card(code: String, note := "") -> void:
 	alarms.visible = false
 	trainer.visible = false
 	debrief.visible = false
+	permits.visible = false
 	card.open(code, note)
 	if index.has(code) or screens_open() and screens.screen_of.has(code):
 		show_me(code)
@@ -577,7 +594,7 @@ func toast(text: String, seconds := 4.0) -> void:
 
 ## The right-hand side holds one of the card, the alarm list and the instructor's panel; procedures stay on the left.
 func _right_open(p) -> void:
-	for q in [card, alarms, trainer, debrief]:
+	for q in [card, alarms, trainer, debrief, permits]:
 		if q != p and q.visible:
 			if q == card:
 				close_card()
@@ -626,6 +643,31 @@ func close_procedure() -> void:
 	mimic.take_focus()
 
 
+## The permits to work (PLANT3D §15): the list, a work's form (its id), or the form of the work at a code.
+func open_permits(wid := "", code := "") -> void:
+	if card.visible:
+		close_card()
+	for q in [alarms, trainer, debrief]:
+		q.visible = false
+	if code != "":
+		permits.open_for_code(code)
+	else:
+		permits.open(wid)
+	_release_mouse()
+
+
+func toggle_permits() -> void:
+	if permits.visible:
+		close_permits()
+	else:
+		open_permits()
+
+
+func close_permits() -> void:
+	permits.visible = false
+	mimic.take_focus()
+
+
 func toggle_trainer() -> void:
 	if trainer.visible:
 		close_trainer()
@@ -649,6 +691,8 @@ func set_instructor(on: bool) -> void:
 func close_top() -> bool:
 	if trainer.visible:
 		close_trainer()
+	elif permits.visible:
+		close_permits()
 	elif debrief.visible:
 		close_debrief()
 	elif alarms.visible:
@@ -759,6 +803,7 @@ func _sync_events() -> void:
 		var from := _ev_seen
 		_ev_seen = evs.size()
 		alarms.on_events(evs, from)
+		permits.on_events(evs, from)
 		_follow_events(evs, from)
 
 
@@ -804,7 +849,7 @@ var _max_h := 0.0
 
 ## The side panels as tall as their content (up to the bottom of the screen), so the view and the sticks stay free.
 func _fit() -> void:
-	for pnl in [card, procedure, alarms, trainer, debrief]:
+	for pnl in [card, procedure, alarms, trainer, debrief, permits]:
 		if pnl.visible:
 			W.fit(pnl, _max_h)
 
@@ -922,6 +967,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 		toggle_alarms(); get_viewport().set_input_as_handled()
 	elif ev.is_action_pressed("procedure"):
 		toggle_procedure(); get_viewport().set_input_as_handled()
+	elif ev.is_action_pressed("permits"):
+		toggle_permits(); get_viewport().set_input_as_handled()
 	elif ev.is_action_pressed("pause"):
 		clock.set_speed(SimClock.Speed.NORMAL if clock.speed == SimClock.Speed.PAUSED else SimClock.Speed.PAUSED)
 		get_viewport().set_input_as_handled()

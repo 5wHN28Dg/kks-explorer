@@ -256,6 +256,35 @@ class Validator(unittest.TestCase):
                   'area_overlap', 'limit'):
             self.assertIn(c, codes)
 
+    def test_a_format_1_model_file_keeps_format_1_error_codes(self):
+        """Format 2 must not change what a format 1 model file is refused with (keys are checked before the version),
+        and a model file that is no object is refused, not a crash."""
+        base = {k: t.encode() for k, t in self.V['valid'][0]['files'].items()}
+        name = next(k for k in base if k.startswith('model/'))
+        d = json.loads(base[name])
+        cases = [({k: v for k, v in d.items() if k != 'format'}, 'missing_key'),
+                 (dict(d, extra=1, version=2), 'unknown_key'),
+                 (dict(d, works=[]), 'unknown_key'),
+                 ([], 'bad_type'), ('x', 'bad_type'),
+                 (dict(d, values=d['values'] + [['zz', {'hold': d['values'][0][0], 'when': d['values'][0][0]}]]),
+                  'bad_kind'),
+                 (dict(d, values=d['values'] + [['zz', {'const': 1, 'hold': 'x'}]]), 'unknown_key')]
+        files = dict(base, **{name: json.dumps(dict(d, version=1.0)).encode()})
+        P.check_files(files)                    # 1.0 is version 1, as format 1 always took it
+        for m, code in cases:
+            files = dict(base, **{name: json.dumps(m).encode()})
+            with self.assertRaises(P.FormatError, msg=repr(m)[:60]) as cm:
+                P.check_files(files)
+            self.assertEqual(cm.exception.code, code, repr(m)[:60])
+        # a scenario fault's `when` with a hold key: format 1's unknown key beside its node kind
+        sname = next(k for k in base if k.startswith('scenarios/'))
+        sc = json.loads(base[sname])
+        f0 = dict(sc['faults'][0], when={'cmp': [d['values'][0][0], '>', 1], 'hold': 'x'})
+        files = dict(base, **{sname: json.dumps(dict(sc, faults=[f0] + sc['faults'][1:])).encode()})
+        with self.assertRaises(P.FormatError) as cm:
+            P.check_files(files)
+        self.assertEqual(cm.exception.code, 'unknown_key', str(cm.exception))
+
     def test_a_sign_symbol_the_app_does_not_draw_is_refused(self):
         """A safety sign's `symbol` is one the app draws (ISO 7010 M003, apps/plant3d/builder/kit_place.gd
         SIGN_SYMBOLS): the app's own check is an assert, which a release build drops."""
@@ -585,6 +614,145 @@ class Vectors(unittest.TestCase):
             self.assertIsNone(d, d)
 
 
+class Vectors2(unittest.TestCase):
+    """Format 2 (PLANT3D §14–§15, §19; milestone P1: permits, isolations and the hold node): the file is what the
+    generator makes; its valid plant passes with its counts, each reject is caught with its code; its unit runs and
+    the first train's permit forks replay from their inputs; and format 1's vectors keep their synthetic parts."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(G.OUT2, encoding='utf-8') as f:
+            cls.text = f.read()
+        cls.V = json.loads(cls.text)
+
+    def test_file_is_what_the_generator_makes(self):
+        self.assertEqual(json.loads(self.text), json.loads(G.dump(G.build2())),
+                         'run python3 ref/make_plant3d_vectors.py --write')
+
+    def test_valid(self):
+        for v in self.V['valid']:
+            b = P.check_files({k: t.encode() for k, t in v['files'].items()})
+            self.assertEqual(b.counts, v['counts'])
+            self.assertEqual((b.version, b.counts['isolations'], b.counts['works']), (2, 2, 2))
+
+    def test_each_reject_is_caught_with_its_code(self):
+        base = {k: t.encode() for k, t in self.V['valid'][0]['files'].items()}
+        codes = set()
+        for r in self.V['reject']:
+            files = dict(base)
+            for k, t in r['change'].items():
+                if t is None:
+                    files.pop(k)
+                else:
+                    files[k] = t.encode()
+            with self.assertRaises(P.FormatError, msg=r['why']) as cm:
+                P.check_files(files)
+            self.assertEqual(cm.exception.code, r['code'], f'{r["why"]}: {cm.exception}')
+            codes.add(r['code'])
+        for c in ('bad_version', 'unknown_key', 'forward_ref', 'bad_ref', 'bad_value', 'dup_id', 'bad_id', 'limit',
+                  'bad_length', 'bad_type'):
+            self.assertIn(c, codes)
+
+    def test_unit_steps_replay(self):
+        for s in self.V['steps']:
+            F = G.mini2()
+            F['model/a1.json'] = s['model']
+            F['scenarios/s1.json'] = s['scenario']
+            del F['procedures/p1.json']
+            del F['screens.json']
+            e = P.Engine(G.check(F), 's1')
+            got = [plain(e.snapshot())]
+            i = 0
+            inputs = s['inputs']
+            while e.step_no < len(s['states']) - 1:
+                while i < len(inputs) and inputs[i][0] == e.step_no + 1:
+                    G.apply(e, inputs[i])
+                    i += 1
+                e.step()
+                got.append(plain(e.snapshot()))
+            d = close(got, s['states'])
+            self.assertIsNone(d, d)
+            self.assertEqual(plain(e.events), s['events'])
+
+    def test_every_permit_action_and_refusal_is_pinned(self):
+        """§19: each permit transition and refusal, the automatic moves, locks and unlocks done and refused for each
+        reason, unknown inputs, a refused op naming a lock, a skipped write and a suppressed alarm."""
+        ev = [e for s in self.V['steps'] for e in s['events']]
+        done = {e[3] for e in ev if e[1] == 'permit' and e[5] == 'done'}
+        self.assertEqual(done, {'request', 'approve', 'issue', 'accept', 'done', 'return', 'close', 'cancel', 'auto'})
+        autos = {e[6][0] for e in ev if e[1] == 'permit' and e[3] == 'auto'}
+        self.assertEqual(autos, {2, 3, 8})
+        reasons = {r for e in ev if e[1] in ('permit', 'lock', 'unlock') for r in e[6] if e[5] == 'refused'}
+        for r in ('state', 'iso_busy', 'authority', 'locked', 'unlocked', 'pump_off'):
+            self.assertIn(r, reasons)
+        self.assertTrue(any(e[1] == 'lock' and e[5] == 'unknown' for e in ev))
+        self.assertTrue(any(e[1] == 'permit' and e[5] == 'unknown' for e in ev))
+        self.assertIn(['10LAC10AP001', 'start', 'refused', ['valve_open', 'iso_p_locked', 'iso_q_locked']],
+                      [e[2:6] for e in ev if e[1] == 'op'])
+        # a point locked and unlocked in one step; back to approved when a point is unlocked from an isolated permit
+        life = self.V['steps'][0]
+        self.assertIn([10, 'unlock', 'wo_p', 1, None, 'done', []], life['events'])
+        self.assertIn([6, 'permit', 'wo_g', 'auto', None, 'done', [2]], self.V['steps'][2]['events'])
+
+    def test_locked_writes_skipped_alarms_suppressed(self):
+        life = self.V['steps'][0]
+        st = life['states']
+        # step 13: an interlock, a trip, a machine, an op on another code, a set op and a trainer fault all write the
+        # locked pump's or valve's states: each skipped; the alarm at the locked pump suppressed, the tank's raised
+        self.assertEqual(st[13]['values']['pump_cmd'], 0.0)
+        self.assertEqual(st[13]['values']['valve_cmd'], 0.0)
+        self.assertEqual(st[13]['values']['aux2'], 2.0)              # the interlock's write to an unlocked state
+        self.assertEqual(st[13]['machines']['m'], 'run')              # the machine entered its state all the same
+        self.assertIn('alt', st[13]['alarms'])
+        self.assertNotIn('alp', st[13]['alarms'])
+        # the work's done repairs the fault (written: the work holds the isolation locking the code)
+        self.assertEqual(st[17]['values']['pump_fault'], 0.0)
+        self.assertIn([17, 'repair', 'f1'], life['events'])
+        shared = self.V['steps'][1]['states']
+        self.assertEqual(shared[5]['values']['pump_cmd'], 0.0)        # the other isolation's lock: skipped
+        self.assertEqual(shared[5]['values']['aux2'], 7.0)
+        self.assertEqual(shared[19]['values']['pump_cmd'], 1.0)       # only its own isolation locks it: written
+
+    def test_hold_node(self):
+        st = self.V['steps'][2]['states']
+        v0 = st[0]['values']
+        self.assertEqual((v0['h_init'], v0['h_sc'], v0['h_free'], v0['h_num']), (7.0, -2.0, 0.5, 3.0))
+        self.assertEqual(st[3]['values']['h_init'], 3.0)              # held: w was 1 in the previous step
+        self.assertEqual(st[4]['values']['h_init'], 3.5)
+        self.assertEqual(st[5]['values']['g1h'], 3.5)                # the isolated channel holds
+        self.assertEqual(st[5]['tripped'], ['t'])                     # and votes tripped: 1 out of 2 on the others
+        self.assertNotIn('a1', st[12]['alarms'])
+        self.assertIn('a1', st[16]['alarms'])                         # back in service: its reading and alarm
+
+    def test_train_forks_replay(self):
+        """The first train's permit forks: the cold start's inputs reproduce the base, each fork its events."""
+        t = self.V['train']
+        b = P.check_dir(DATA)
+        e = P.Engine(b, t['scenario'])
+        bases = {}
+        base_steps = {f['base_step'] for f in t['forks']}
+        G.replay(e, t['inputs'], t['until'])
+        self.assertEqual(base_steps, {t['until']})
+        bases[t['until']] = e
+        for f in t['forks']:
+            x = bases[f['base_step']].clone()
+            n0 = len(x.events)
+            G.replay(x, f['inputs'], f['until'])
+            self.assertEqual(plain(x.events[n0:]), f['events'], f['id'])
+            d = close(plain(x.snapshot(values=False)), f['end'], f['id'])
+            self.assertIsNone(d, d)
+
+    def test_format1_vectors_keep_their_synthetic_parts(self):
+        """plant3d-v1.json's synthetic plant, rejects, unit runs and links are format 1's and stay what they were;
+        its train runs only gained the first train's format 2 values (their events are unchanged)."""
+        with open(G.OUT, encoding='utf-8') as f:
+            V1 = json.load(f)
+        self.assertEqual(json.loads(V1['valid'][0]['files']['plant.json'])['version'], 1)
+        for s in V1['steps']:
+            self.assertEqual(s['model']['version'], 1)
+            self.assertNotIn('permits', s['states'][0])
+
+
 class HotRestart(unittest.TestCase):
     """FIRST-TRAIN §4 "As built": the hot restart by its procedure reaches base load without an alarm or a trip, and
     on the way the roll is refused while the steam is more than 50 K colder than the hot casing."""
@@ -689,6 +857,8 @@ class Forks(unittest.TestCase):
         with open(G.OUT, encoding='utf-8') as f:
             V = json.load(f)
         cls.forks = V['train']['forks'] + V['hot']['forks']
+        with open(G.OUT2, encoding='utf-8') as f:
+            cls.forks += json.load(f)['train']['forks']      # format 2: permits to work on the first train
         cls.b = P.check_dir(DATA)
 
     def test_expectations(self):
@@ -699,6 +869,10 @@ class Forks(unittest.TestCase):
                     self.assertIn([kks, do, 'refused', failed], [e[2:6] for e in ev if e[1] == 'op'])
                 for kks, do in ex.get('done', []):
                     self.assertIn([kks, do, 'done', []], [e[2:6] for e in ev if e[1] == 'op'])
+                for work, point, why in ex.get('lock_refused', []):
+                    self.assertIn([work, point, None, 'refused', why], [e[2:7] for e in ev if e[1] == 'lock'])
+                if 'permits' in ex:
+                    self.assertEqual(end['permits'], ex['permits'])
                 for fid in ex.get('repaired', []):
                     self.assertIn(['repair', fid], [e[1:3] for e in ev if e[1] == 'repair'])
                 if 'faults' in ex:                # every fault applied, in order (a repaired one pressed again)

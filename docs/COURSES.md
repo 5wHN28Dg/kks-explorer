@@ -207,10 +207,14 @@ JSON string:
 | `solved` | object: question ID (with suffix, §7) → `true` |
 | `finalBest` | integer: the best test score |
 
-Merging (unchanged from v1):
-- objects → union;
+Merging (unchanged from v1; PROTOCOL-v2 §17):
+- objects → union (a member taken back, a module no longer skipped, is written as `false`, which readers treat as
+  absent);
 - `finalBest` → maximum;
 - otherwise the later value.
+
+Only the person's own devices read it: they share the person secret after the person paired them (PROTOCOL-v2 §17,
+decision 0062). In a browser on the plant server, progress stays in that browser's localStorage.
 
 ## 9. Figures
 

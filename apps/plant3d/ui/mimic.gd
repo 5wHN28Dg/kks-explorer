@@ -3,6 +3,9 @@
 ## equipment, colour only for what is abnormal (alarms by priority, trips). Made from the model by
 ## ui/screens_model.gd; drawn here at a few hertz, not every frame (the values change at the model's 0.1 s step).
 ##
+## Equipment locked for work by a permit's isolation (PLANT3D §15) carries a padlock and its permit's number, its cell
+## a violet border: "LOCKED OUT PTW-0001", or "ISOLATED" for an instrument (its reading held, its alarms suppressed).
+##
 ## Tap or click a drive, valve, breaker or measurement: its card (ui/card.gd) opens beside the screen, with the ops the
 ## content offers on the screens and their permissives: everything goes through the card and the engine, as from the
 ## field. Drag to pan, pinch or the mouse wheel to zoom; keyboard and gamepad: the arrows or D-pad move from item to
@@ -13,6 +16,7 @@ extends Control
 
 const W = preload("res://ui/widgets.gd")
 const ScreensModel = preload("res://ui/screens_model.gd")
+const Permits = preload("res://ui/permits.gd")
 const Trends = preload("res://ui/trends.gd")
 
 const REFRESH := 0.25           # seconds between redraws of the values (4 Hz)
@@ -35,6 +39,7 @@ const HOLLOW := Color(0.97, 0.97, 0.97)      # a stopped drive, a closed valve: 
 const LINE := Color(0.40, 0.41, 0.43)
 const TRIP := Color(0.85, 0.10, 0.10)
 const SELECT := Color(0.05, 0.25, 0.65)
+const LOCK := Color(0.42, 0.16, 0.66)        # locked out or isolated for work (PLANT3D §15)
 const STATE_WORDS := {"active_unack": "unacknowledged", "active_ack": "acknowledged",
 	"cleared_unack": "cleared, unacknowledged", "normal": "normal"}
 const PRIO := {1: Color(0.86, 0.10, 0.10), 2: Color(1.0, 0.55, 0.0), 3: Color(0.95, 0.85, 0.10)}
@@ -541,6 +546,7 @@ func _on_resized() -> void:
 
 var _unsized := false
 var drawn := {}                 # code -> the state or value its cell showed when last drawn (tests: what is on screen)
+var locks_drawn := {}           # code -> the lock words its cell showed when last drawn ("" none; tests)
 var _laid_for := Vector2.ZERO   # the canvas size the layouts were chosen for
 var _picked := false            # the selection was picked (select()), not the screen's first target by default
 
@@ -1017,6 +1023,15 @@ func _draw_item(r: Rect2, it: Dictionary, e) -> void:
 	var x := r.position.x + PAD
 	var y := r.position.y + PAD * 0.6
 	var w := r.size.x - PAD * 2
+	var lt: String = Permits.lock_text(e, it.code) if not e.code_locks.is_empty() else ""
+	locks_drawn[it.code] = lt
+	if lt != "":
+		_ci.draw_rect(r.grow(-2.0), LOCK, false, 3.0)
+		var cw := _font().get_string_size(it.code, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		_padlock(Vector2(x + cw + 6.0, y + 1.0))
+		var num := lt.substr(lt.find("PTW-")) if lt.contains("PTW-") else ""
+		if num != "" and not _compact(it):
+			_text(_ci, Vector2(x + cw + 24.0, y), num, 13, LOCK)
 	if _compact(it):
 		var txt: String = ui.info.fmt(it.values[0], e.v(it.values[0]))
 		drawn[it.code] = txt
@@ -1037,6 +1052,10 @@ func _draw_item(r: Rect2, it: Dictionary, e) -> void:
 			_text(_ci, Vector2(x, y + 22 + 18 * i), nl[i], 14, INK, w - (44.0 if tk >= 0 and last else 0.0))
 		if tk >= 0:
 			_text(_ci, Vector2(r.end.x - PAD - 38, y + 23 + 18 * (nl.size() - 1)), "TRIP", 13, TRIP)
+		elif lt != "":
+			var short := lt.substr(lt.find("PTW-")) if lt.contains("PTW-") else lt
+			var sw := _font().get_string_size(short, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+			_text(_ci, Vector2(r.end.x - PAD - sw, y + 23 + 18 * (nl.size() - 1)), short, 13, LOCK)
 		return
 	_text(_ci, Vector2(x, y), it.code, 13, INK_DIM)
 	_alarm_badges(r, al)
@@ -1055,7 +1074,9 @@ func _draw_item(r: Rect2, it: Dictionary, e) -> void:
 			_text(_ci, tb.position + Vector2(5, 1), "TRIP", 14, Color.WHITE)
 			sx += 58.0
 		_text(_ci, Vector2(sx, y + 4), state.words, 15, INK, r.end.x - PAD - sx)
-		if state.second != "":
+		if lt != "":
+			_text(_ci, Vector2(x + 48.0, y + 24), lt.get_slice(" PTW-", 0) + ("" if state.second == "" else " · " + state.second), 13, LOCK, w - 48.0)
+		elif state.second != "":
 			_text(_ci, Vector2(x + 48.0, y + 24), state.second, 13, INK_DIM, w - 48.0)
 		y += 46.0
 	elif not it.lamps.is_empty():
@@ -1202,6 +1223,14 @@ func _draw_symbol(c: Vector2, it: Dictionary, e) -> Dictionary:
 		_ci.draw_rect(b, EQUIP, false, 2.0)
 		_text(_ci, b.position + Vector2(9, 2), "M", 15, HOLLOW if st.on else EQUIP)
 	return st
+
+
+## A padlock (PLANT3D §15): a shackle over a body, 14 × 16 at `at` (its top left).
+func _padlock(at: Vector2) -> void:
+	_ci.draw_arc(at + Vector2(7, 7), 4.5, PI, TAU, 10, LOCK, 2.0)
+	_ci.draw_line(at + Vector2(2.5, 7), at + Vector2(2.5, 9), LOCK, 2.0)
+	_ci.draw_line(at + Vector2(11.5, 7), at + Vector2(11.5, 9), LOCK, 2.0)
+	_ci.draw_rect(Rect2(at + Vector2(0, 8), Vector2(14, 9)), LOCK)
 
 
 func _draw_extra(r: Rect2, vn: String, e) -> void:

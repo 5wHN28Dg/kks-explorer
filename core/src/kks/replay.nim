@@ -60,6 +60,9 @@ type
     conflicts*: seq[JNode]
     private*: OrderedTable[string, seq[string]]
     reports*: OrderedTable[string, seq[string]]   ## device → report entry IDs (§13a)
+    boxKeys*: OrderedTable[string, string]        ## device → its latest box key (§17)
+    shares*: OrderedTable[string, seq[string]]    ## device → secret_share entry IDs naming it (§17)
+    pairSteps*: OrderedTable[string, seq[string]] ## device → pair_commit / pair_reveal entry IDs naming it (§17)
     ignored*: OrderedTable[string, string]
     revokes: seq[Revoke]
     decisions*: OrderedTable[string, JNode]
@@ -695,6 +698,34 @@ proc tReport(r: Run, e: JNode, eid: string) =
   need(isB64u(s["ct"]) and s["ct"].s.len in 22..65_536)
   r.reports.mgetOrPut(e["peer"].s, @[]).add eid
 
+proc tBoxKey(c: Ctx, r: Run, e: JNode) =
+  ## §17 (decision 0062): the device's key for receiving person secrets, written by the device itself
+  need(c.validKeyStr(e["body"]["key"]))
+  r.boxKeys[e["peer"].s] = e["body"]["key"].s
+
+proc tSecretShare(r: Run, e: JNode, eid, author: string) =
+  ## §17: person secrets sealed to another device of the same person; kept opaquely
+  let b = e["body"]
+  need(isPeerN(b["to"]) and b["to"].s in r.devices and b["to"].s != e["peer"].s)
+  let s = b["sealed"]
+  need(s.kind == jObj)
+  keysAre(s, ["v", "purpose", "epk", "nonce", "ct"])
+  need(s["v"].kind == jInt and s["v"].i == 2 and s["purpose"].isStr and s["purpose"].s == "kks-person-secret")
+  need(isB64u(s["epk"]) and s["epk"].s.len == 87)
+  need(isB64u(s["nonce"]) and s["nonce"].s.len == 16)
+  need(isB64u(s["ct"]) and s["ct"].s.len in 22..65_536)
+  need(r.devices[b["to"].s]["person"].s == author, "not_allowed")
+  r.shares.mgetOrPut(b["to"].s, @[]).add eid
+
+proc tPairStep(r: Run, e: JNode, eid, author: string) =
+  ## §17 pairing: a commitment to a nonce, or the nonce, for another device of the same person; kept by `to`
+  let b = e["body"]
+  need(isPeerN(b["to"]) and b["to"].s in r.devices and b["to"].s != e["peer"].s)
+  if e["type"].s == "pair_commit": need(isHex64n(b["commit"]))
+  else: need(isB64u(b["nonce"]) and b["nonce"].s.len == 22)
+  need(r.devices[b["to"].s]["person"].s == author, "not_allowed")
+  r.pairSteps.mgetOrPut(b["to"].s, @[]).add eid
+
 proc bodyKeys(t: string): seq[string] =
   case t
   of "genesis": @["plant", "root", "manager", "stmt_manager", "stmt_device", "sig_manager", "sig_device", "import"]
@@ -717,6 +748,10 @@ proc bodyKeys(t: string): seq[string] =
   of "comment": @["entry", "text"]
   of "private": @["person", "nonce", "ct"]
   of "report": @["sealed"]
+  of "box_key": @["key"]
+  of "secret_share": @["to", "sealed"]
+  of "pair_commit": @["to", "commit"]
+  of "pair_reveal": @["to", "nonce"]
   else: @[]
 
 proc run(c: Ctx, r: Run, ordered: seq[(string, JNode)]): Run =
@@ -742,6 +777,9 @@ proc run(c: Ctx, r: Run, ordered: seq[(string, JNode)]): Run =
       of "setting": r.tSetting(e, role)
       of "private": r.tPrivate(e, eid, author)
       of "report": r.tReport(e, eid)
+      of "box_key": c.tBoxKey(r, e)
+      of "secret_share": r.tSecretShare(e, eid, author)
+      of "pair_commit", "pair_reveal": r.tPairStep(e, eid, author)
       of "approve": r.tApprove(e, eid, author, role)
       of "reject": r.tReject(e, eid, author, role)
       of "withdraw": r.tWithdraw(e, eid, author)
@@ -884,6 +922,24 @@ proc state*(r: Run): JNode =
          ("conflicts", newArr(r.conflicts)), ("votes", votes), ("private", priv), ("ignored", ignored),
          ("imported", orNull(r.imported))])
   if r.reports.len > 0: result.fields.add(("reports", reports))   # only when there are any (§14)
+  if r.boxKeys.len > 0:
+    var bk = newObj()
+    for k, v in r.boxKeys: bk.fields.add((k, newStr(v)))
+    result.fields.add(("box_keys", bk))
+  if r.shares.len > 0:
+    var sh = newObj()
+    for k, v in r.shares:
+      var a = newArr()
+      for x in v: a.elems.add newStr(x)
+      sh.fields.add((k, a))
+    result.fields.add(("shares", sh))
+  if r.pairSteps.len > 0:
+    var ps = newObj()
+    for k, v in r.pairSteps:
+      var a = newArr()
+      for x in v: a.elems.add newStr(x)
+      ps.fields.add((k, a))
+    result.fields.add(("pair_steps", ps))
 
 proc replay*(p: Provider, entries: seq[JNode], root: string): JNode =
   ## Replay `entries` (any order, any devices) from the trust anchor `root` (root key string, §2). -> state.

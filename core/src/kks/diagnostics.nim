@@ -74,7 +74,7 @@ proc enable*(n: Node, wall: int64) =
   let k = n.p.p256Generate()
   let keyStr = keyString(k.pub)
   let body = newObj(@[("key", newStr(keyStr)), ("private", newStr(b64u(k.scalar)))])
-  discard n.append("private", n.p.privateBody(n.ensureSecret(me), me, "report_key", body), wall)
+  discard n.append("private", n.p.privateBody(n.ensureSecret(me, wall), me, "report_key", body), wall)
   discard n.append("setting", newObj(@[("key", newStr("diagnostics")), ("value", newObj(@[("key", newStr(keyStr))]))]), wall)
 
 proc disable*(n: Node, wall: int64) =

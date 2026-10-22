@@ -1,6 +1,6 @@
 {
  "format": "walkdown-plant-model",
- "version": 1,
+ "version": 2,
  "area": "st",
  "values": [
   ["st_lac_cmd", {"state": 0, "kks": "30MAV10AP001"}],
@@ -37,17 +37,21 @@
   ["cond_p1_hc", {"cmp": ["cond_p1", "<", 13]}],
   ["cond_p1_hh", {"cmp": ["cond_p1", ">", 25]}],
   ["cond_p1_hhc", {"cmp": ["cond_p1", "<", 23]}],
-  ["cond_p2", {"sum": ["cond_p", 0.1], "unit": "kPa(a)", "kks": "30MAG10CP002"}],
-  ["cond_p2_h", {"cmp": ["cond_p2", ">", 15]}],
-  ["cond_p2_hc", {"cmp": ["cond_p2", "<", 13]}],
-  ["cond_p2_hh", {"cmp": ["cond_p2", ">", 25]}],
-  ["cond_p2_hhc", {"cmp": ["cond_p2", "<", 23]}],
-  ["cond_p3", {"sum": ["cond_p", -0.1], "unit": "kPa(a)", "kks": "30MAG10CP003"}],
-  ["cond_p3_h", {"cmp": ["cond_p3", ">", 15]}],
-  ["cond_p3_hc", {"cmp": ["cond_p3", "<", 13]}],
-  ["cond_p3_hh", {"cmp": ["cond_p3", ">", 25]}],
-  ["cond_p3_hhc", {"cmp": ["cond_p3", "<", 23]}],
-  ["cond_hh_v", {"sum": ["cond_p1_hh", "cond_p2_hh", "cond_p3_hh"]}],
+  ["cond_p2_tx", {"sum": ["cond_p", 0.1], "unit": "kPa(a)"}],
+  ["cond_p2", {"hold": "cond_p2_tx", "when": "iso_cond_p2_complete", "unit": "kPa(a)", "kks": "30MAG10CP002"}],
+  ["cond_p2_h", {"cmp": ["cond_p2_tx", ">", 15]}],
+  ["cond_p2_hc", {"cmp": ["cond_p2_tx", "<", 13]}],
+  ["cond_p2_hh", {"cmp": ["cond_p2_tx", ">", 25]}],
+  ["cond_p2_hhc", {"cmp": ["cond_p2_tx", "<", 23]}],
+  ["cond_p2_vote", {"or": ["cond_p2_hh", "iso_cond_p2_complete"]}],
+  ["cond_p3_tx", {"sum": ["cond_p", -0.1], "unit": "kPa(a)"}],
+  ["cond_p3", {"hold": "cond_p3_tx", "when": "iso_cond_p3_complete", "unit": "kPa(a)", "kks": "30MAG10CP003"}],
+  ["cond_p3_h", {"cmp": ["cond_p3_tx", ">", 15]}],
+  ["cond_p3_hc", {"cmp": ["cond_p3_tx", "<", 13]}],
+  ["cond_p3_hh", {"cmp": ["cond_p3_tx", ">", 25]}],
+  ["cond_p3_hhc", {"cmp": ["cond_p3_tx", "<", 23]}],
+  ["cond_p3_vote", {"or": ["cond_p3_hh", "iso_cond_p3_complete"]}],
+  ["cond_hh_v", {"sum": ["cond_p1_hh", "cond_p2_vote", "cond_p3_vote"]}],
   ["cond_hh", {"cmp": ["cond_hh_v", ">=", 2]}],
   ["cond_p_ok", {"not": "cond_hh"}],
   ["st_vac_ok", {"cmp": ["cond_p", "<", 12]}],
@@ -473,5 +477,13 @@
   {"kks": "30MAV10AP002", "anim": "shaft", "of": "st_ldc_run", "scale": 49},
   {"kks": "30MAV10AP002", "lamp": "running", "of": "st_ldc_run"},
   {"kks": "30MAV20AP001", "lamp": "running", "of": "st_jack_run"}
+ ],
+ "isolations": [
+  {"id": "iso_cond_p2", "text": "Condenser pressure transmitter 2", "points": [{"kks": "30MAG10CP002", "kind": "instrument", "how": "Root valve shut and tagged; the transmitter vented"}]},
+  {"id": "iso_cond_p3", "text": "Condenser pressure transmitter 3", "points": [{"kks": "30MAG10CP003", "kind": "instrument", "how": "Root valve shut and tagged; the transmitter vented"}]}
+ ],
+ "works": [
+  {"id": "wo_cond_p2_cal", "kks": "30MAG10CP002", "title": "Condenser pressure transmitter 2: calibration check", "discipline": "inst", "permit": "general", "isolation": "iso_cond_p2"},
+  {"id": "wo_cond_p3_cal", "kks": "30MAG10CP003", "title": "Condenser pressure transmitter 3: calibration check", "discipline": "inst", "permit": "general", "isolation": "iso_cond_p3"}
  ]
 }
