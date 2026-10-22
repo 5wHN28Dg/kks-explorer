@@ -17,6 +17,8 @@ PKG = 'io.github.walkdown'
 # the emulator reaches this machine at 10.0.2.2; a real phone over USB uses `adb reverse` and 127.0.0.1
 # (choose the phone with ANDROID_SERIAL; KKS_PHONE_HOST=127.0.0.1)
 PHONE_HOST = os.environ.get('KKS_PHONE_HOST', '10.0.2.2')
+# a second device of the same person, without a window (apps/gnome/e2e/progress_peer.nim, run on this machine)
+PEER = os.environ.get('KKS_PEER', '/tmp/kksgnome/progress_peer')
 SHOTS = os.environ.get('KKS_SHOTS', os.path.expanduser('~/kks-work/shots-android'))
 
 
@@ -621,6 +623,72 @@ class Phone(unittest.TestCase):
         ground = grey.getpixel((int(w * 0.15), int(h * 0.045)))
         with self.subTest('the status bar follows the theme'):
             self.assertGreater(max(hi - ground, ground - lo), 100, f'night {now}: the status bar\'s icons (greys {lo} to {hi}) do not stand out from the background ({ground})')
+
+    def peer(self, *args):
+        """progress_peer: the person's other device (on this machine, next to the server)"""
+        d = os.path.join(self.dir, 'peer')
+        os.makedirs(d, exist_ok=True)
+        r = subprocess.run([PEER, *args], env=dict(os.environ, KKS_DATA_DIR=d, KKS_STORAGE_KEY_FILE=os.path.join(d, 'key')),
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout.strip().splitlines()[-1]
+
+    def phone_sync(self):
+        ui.tap('Drawings', exact=True)
+        ui.tap('Sync', exact=True, timeout=15)
+        time.sleep(3)
+        ui.tap('Learning', exact=True)
+
+    def test_course_pairing(self):
+        """course progress follows the person between their own devices (decision 0062): the other device saved
+        progress; Learning lists it with the code both show; once both paired, the phone shows that progress, and a
+        question answered on the phone reaches the other device"""
+        self.member('pia', 'Pia Learner', 'pia password 1')
+        qs = next(c for c in self.boss.req('GET', '/api/courses')['courses'] if c['id'] == 'fnd')['questions']
+        self.assertEqual(self.peer('join', f'127.0.0.1:{self.sport}', 'pia', 'pia password 1'), 'joined')
+        self.peer('save', 'fnd', 'solved', json.dumps({qs[-1]: True}))
+        self.join('pia', 'pia password 1')
+        ui.tap('Learning', exact=True)
+        ui.find('0 of 76 questions solved', timeout=15)
+        phone, code = None, None
+        for _ in range(40):
+            ds = json.loads(self.peer('pairing'))['devices']
+            if ds:
+                phone, code = ds[0]['device'], ds[0]['code']
+                break
+            time.sleep(1)
+        self.assertIsNotNone(code, 'the phone never showed up on the other device')
+        for _ in range(10):
+            if ui.present(f'code {code}'):
+                break
+            ui.tap('Check again', exact=True) if ui.present('Check again', exact=True) else ui.scroll_to('Check again', exact=True, tries=12)
+            time.sleep(1)
+        ui.scroll_to(f'code {code}', tries=12)
+        ui.tap('Pair with')
+        ui.scroll_to('Paired here: pair on that device too', exact=True, tries=12)
+        self.peer('pair', phone)
+        for _ in range(6):
+            self.phone_sync()
+            if ui.present('1 of 76 questions solved'):
+                break
+        ui.find('1 of 76 questions solved', timeout=10)
+        # a question answered on the phone reaches the other device
+        ui.tap('Rumaila Plant Foundations', exact=True)
+        ui.tap('Contents', exact=True, timeout=15)
+        ui.tap('1 · Combined cycle', exact=True)
+        ui.scroll_to('The combined cycle. Combined cycle:', tries=20)
+        ui.scroll_to('Once the gas cools below HP boiling temperature')
+        ui.tap('Once the gas cools below HP boiling temperature')
+        ui.find('2 of 76 solved', exact=True, timeout=10)
+        ui.tap('Back', exact=True)
+        solved = {}
+        for _ in range(6):
+            self.phone_sync()
+            solved = json.loads(json.loads(self.peer('progress', 'fnd')).get('solved', '{}'))
+            if len(solved) == 2:
+                break
+        self.assertEqual(len(solved), 2, solved)
+        self.assertIn(qs[-1], solved)
 
     def test_multi(self):
         """one place and one note for several codes (/api/submit-many): Select tags from the ⋮ menu, two tags tapped
@@ -1868,7 +1936,7 @@ class Phone(unittest.TestCase):
 # that part; each takes about ten minutes. Every test is in exactly one (checked below), so three parts are a whole run.
 # test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB). test_app_links is in part 3: at the
 # end of part 1 it took the emulator to 7.25 GiB, of part 2 to 7.03 GiB (2026-10-16); part 3 had ended at 6.41.
-PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes'),
+PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing'),
          ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'description_and_credit', 'flow', 'course_figures', 'app_links'))
