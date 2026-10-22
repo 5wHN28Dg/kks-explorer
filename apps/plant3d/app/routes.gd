@@ -4,6 +4,9 @@
 ##   pit     up the turbine hall's condenser pit stair (-6 m to the ground) and back down
 ##   frames  the frame-time walk (wiki measurement rules): out of the control room, through the turbine hall
 ##           (its west and east doors), along the road, up and down HRSG 1's stair tower, and back; looped
+##   camp    the frame-time walk through the site and the camp (milestone C1): out of the control room, along the
+##           palms to the plant gate, the road to the camp, into block 1 and one of its rooms, along its corridor, across
+##           the road to the mess hall and between its tables, and back; looped
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
@@ -49,3 +52,17 @@ static func frames(plant) -> Array:
 	r.append_array([_to(93.5, 44.5), _to(140, 36), _to(165, 36), _to(165, 30), _to(93.5, 36), _to(-5, 36), _to(-5, 0),
 		_to(-12, 0), _to(-20, 0)])
 	return r
+
+## The camp walk: about 900 m, 11 minutes at a walk; the interiors load on the way (app/interiors.gd).
+static func camp(_plant) -> Array:
+	var out: Array = [_to(-20, 0), _to(-12, 0), _to(-5, 0), _to(-5, 17), _to(-42, 17), _to(-50, 22), _to(-139, 22),
+		_to(-262, 22), _to(-411, 22), _to(-411, 35), _to(-405.5, 35),
+		# block 1: its corridor, room 101 and back, out by the east door
+		_to(-403, 35), _to(-403, 33.4), _to(-401.5, 32.8), _to(-403, 33.4), _to(-403, 35), _to(-365.5, 35),
+		_to(-362, 35), _to(-362, 22),
+		# the mess hall: across the road by its crossing, between the tables, along the serving counter, and out
+		_to(-340, 22), _to(-340, 6), _to(-340, 2.5), _to(-340, -5), _to(-350, -5), _to(-340, -5), _to(-340, 2.5),
+		_to(-340, 6), _to(-340, 22),
+		# back to the plant
+		_to(-139, 22), _to(-50, 22), _to(-42, 17), _to(-5, 17), _to(-5, 0), _to(-12, 0)]
+	return out

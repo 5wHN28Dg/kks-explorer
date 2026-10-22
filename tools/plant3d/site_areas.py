@@ -205,10 +205,11 @@ def admin():
     for k, z in enumerate((FLOOR_H, 2 * FLOOR_H)):
         s.append(st(f'admin_floor_{k + 1}', 'floor', [ax0, ay0, z], params={'outline': rect(ax1 - ax0, ay1 - ay0),
                                                                              'finish': 'vinyl'}))
-    s += [st('admin_stair_1', 'stair', params={'foot': [-123.2, 100.6, 0], 'top': [-118.6, 100.6, FLOOR_H],
-                                                'layout': 'straight', 'width': 1.0}),
-          st('admin_stair_2', 'stair', params={'foot': [-118.6, 102.3, FLOOR_H], 'top': [-123.2, 102.3, 2 * FLOOR_H],
-                                                'layout': 'straight', 'width': 1.0})]
+    # (a 5.6 m run: 20 risers of 0.18 m, goings of 0.29 m, 1.2 m wide: an office stair)
+    s += [st('admin_stair_1', 'stair', params={'foot': [-122.2, 100.4, 0], 'top': [-122.2, 106.0, FLOOR_H],
+                                                'layout': 'straight', 'width': 1.2}),
+          st('admin_stair_2', 'stair', params={'foot': [-120.2, 106.0, FLOOR_H], 'top': [-120.2, 100.4, 2 * FLOOR_H],
+                                                'layout': 'straight', 'width': 1.2})]
     # its shade canopy over the path to the door, palms at the entrance, low beds along its front
     s += [st('admin_door_canopy', 'canopy', [-108, 94.5, 0], params={'length': 7, 'width': 3.2, 'height': 3.0}),
           plant1('admin_palm_w1', 'date_palm', [-114, 94.5]), plant1('admin_palm_e1', 'date_palm', [-102, 94.5]),
@@ -252,7 +253,7 @@ def admin_inside():
     s.append(room('admin_in_rooms_0', (ax0, ay0), 0, FLOOR_H - 0.35, walls=[
         {'a': [-116, 98.2], 'b': [-116, 111.8]}, {'a': [-116, 104], 'b': [-92.2, 104]},
         {'a': [-104, 104], 'b': [-104, 111.8]}],
-        openings=[{'kind': 'door', 'at': [-116, 101.5], 'width': 1.6, 'height': 2.3},
+        openings=[{'kind': 'door', 'at': [-116, 100.9], 'width': 1.6, 'height': 2.3},
                   {'kind': 'door', 'at': [-110, 104], 'width': 1.0},
                   {'kind': 'door', 'at': [-98, 104], 'width': 1.0}]))
     s += [st('admin_in_door_permit', 'door', [-110, 104, 0], 180), st('admin_in_door_meeting', 'door', [-98, 104, 0], 180),
@@ -396,16 +397,22 @@ def camp():
     s += palms_along('camp_palm', -270, spine_w + 4, (VERGE_Y[0] + VERGE_Y[1]) / 2, 8, skip=(-340, -411))
     s += lamps('camp_lamp', -282, spine_w + 10, 24, y=11.2)
     # oleander along the spine road's south side (dust), not by the mess hall and its court
-    s += [row('camp_oleander_road', 'oleander', (spine_w + 2, 9.6), (COURT[0] - 8, 9.6)),
+    s += [row('camp_oleander_road', 'oleander', (spine_w + 2, 9.6), (COURT[0] - 16, 9.6)),
           # and between the parking and the blocks (dust and screening)
           row('camp_oleander_park_n', 'oleander', (PARKING[0] - 1.5, PARKING[3] + 1.5), (-274, PARKING[3] + 1.5)),
           row('camp_oleander_park_w', 'oleander', (PARKING[0] - 1.5, PARKING[1] + 1), (PARKING[0] - 1.5, PARKING[3] + 0.3))]
     # the accommodation blocks (1–8), their porches with bougainvillea on the posts, the covered walkway between them
-    s += [box_road('camp_walk_blocks', WALKWAY_X[0], WALK_Y[1], WALKWAY_X[1], ROW_Y[-1] + 6, 'concrete'),
-          st('camp_walk_canopy_1', 'canopy', [-411, 43, 0], params={'length': 40, 'width': 3.0, 'height': 2.8}),
-          st('camp_walk_canopy_2', 'canopy', [-411, 80, 0], params={'length': 34, 'width': 3.0, 'height': 2.8})]
-    for k, y in enumerate((26.0, 34.0, 52.0, 60.0, 72.0, 86.0)):
-        s.append(plant1(f'camp_walk_bougainvillea_{k + 1}', 'bougainvillea', [-412.75, y]))
+    s += [box_road('camp_walk_blocks', WALKWAY_X[0], WALK_Y[1], WALKWAY_X[1], ROW_Y[-1] + 6, 'concrete')]
+    k = 0
+    for c, (y_mid, length) in enumerate(((43, 40), (80, 34))):
+        s.append(st(f'camp_walk_canopy_{c + 1}', 'canopy', [-411, y_mid, 0],
+                    params={'length': length, 'width': 3.0, 'height': 2.8}))
+        # bougainvillea at every other post on its west side (kit/parts_site.gd canopy: posts every length / n,
+        # n = ceil(length / 5.5), 0.15 m in from its sides)
+        n = math.ceil(length / 5.5)
+        for i in range(1, n, 2):
+            k += 1
+            s.append(plant1(f'camp_walk_bougainvillea_{k}', 'bougainvillea', [-412.75, r3(y_mid - length / 2 + length * i / n)]))
     for n, bx, by, col in blocks():
         sid = f'camp_block{n}'
         bx1 = bx + BLOCK_W
@@ -437,8 +444,8 @@ def camp():
     # the camp office: a desk at its window, saltbush and caper by its door
     s += [st('camp_office_desk', 'desk', [-286.5, 26.9, 0], 0, params={'width': 1.4}),
           st('camp_office_chair', 'chair', [-286.5, 27.7, 0], 180, params={'kind': 'office'}),
-          row('camp_office_bed_w', 'saltbush', (-289.2, 25.4), (-286.4, 25.4)),
-          row('camp_office_bed_e', 'caper', (-281.6, 25.4), (-278.8, 25.4)),
+          row('camp_office_bed_w', 'saltbush', (-286.6, 25.4), (-285.4, 25.4)),
+          row('camp_office_bed_e', 'caper', (-282.6, 25.4), (-281.2, 25.4)),
           plant1('camp_gate_saltbush', 'saltbush', [-265.5, 24.6])]
     # the laundry, behind the gym, its door towards the blocks
     s += building('camp_laundry', *LAUNDRY, 3.5, '00UZW32', [('w', 4, 'personnel')],
@@ -640,8 +647,9 @@ def control_planting():
     gate, north of the building (the walkway's south: its shade), and low beds of saltbush and caper beside its door
     on the bare ground. The control area's bounds grow east and north to hold them (the yard between it and the
     turbine hall, paved as before)."""
-    s = [plant1(f'ctl_palm_{k + 1}', 'date_palm', [x, 19.5]) for k, x in enumerate((-37, -29, -21, -13))]
-    s += [row('ctl_bed_n', 'saltbush', (-8.6, 2.2), (-8.6, 5.0)), row('ctl_bed_s', 'caper', (-8.6, -2.2), (-8.6, -5.0))]
+    s = [box_road('ctl_walk', -40, 16, -6, 18, 'concrete'), box_road('ctl_walk_door', -8, 1.2, -6, 16, 'concrete')]
+    s += [plant1(f'ctl_palm_{k + 1}', 'date_palm', [x, 19.5]) for k, x in enumerate((-37, -29, -21, -13))]
+    s += [row('ctl_bed_n', 'saltbush', (-8.9, 2.2), (-8.9, 4.6)), row('ctl_bed_s', 'caper', (-8.9, -2.2), (-8.9, -3.6))]
     return s
 
 
@@ -655,3 +663,27 @@ def add_to_train(train):
             a['bounds'] = CONTROL_BOUNDS
             a['structures'] = a['structures'] + control_planting()
     return train
+
+
+def tours():
+    """The walk from the control room through the site to the camp (SITE.md §1: everything walkable is reached on
+    foot from the control room, the camp too)."""
+    from train_content import tour, k
+    return [tour('camp_path', 'Tour: from the plant gate to the camp',
+                 'Walk from the control building past the admin area and through the plant gate to the camp, where '
+                 'the crews live, eat and rest off shift.',
+                 [(['The gate house (', k('00UYE10'), '): everyone signs in and out here; the walkway beside the road is '
+                    'shaded by date palms.'], ['00UYE10']),
+                  (['The administration building (', k('00UYC10'), '): the permit office is on its ground floor.'],
+                   ['00UYC10']),
+                  (['The workshops (', k('00UST10'), '): I&C with its calibration bench, mechanical, electrical.'],
+                   ['00UST10']),
+                  (['Accommodation block 1 (', k('00UZW11'), '): single rooms off a central corridor, each with its '
+                    'own bathroom.'], ['00UZW11']),
+                  (['The laundry (', k('00UZW32'), ').'], ['00UZW32']),
+                  (['The gym (', k('00UZW31'), ') and the recreation room (', k('00UZW33'), ').'],
+                   ['00UZW31', '00UZW33']),
+                  (['The prayer room (', k('00UZW30'), '): shoes off and the ablution area at its door.'], ['00UZW30']),
+                  (['The mess hall (', k('00UZW20'), '): its kitchen is behind the serving counter; its court is shaded '
+                    'by palms.'], ['00UZW20']),
+                  (['The camp office and first aid (', k('00UZW40'), '), by the camp gate.'], ['00UZW40'])])]

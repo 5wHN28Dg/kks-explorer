@@ -4,7 +4,8 @@
 ## Options, after `--` on the command line (desktop) or one per line in walk.txt in the app's external files folder
 ## (Android: phone/frames.sh pushes it):
 ##   quality=full|lean+vis   this tier, whatever the settings say
-##   walk=frames|climb|screens   walk a scripted route (app/routes.gd) and log frame times; `frames` loops;
+##   walk=frames|camp|climb|screens   walk a scripted route (app/routes.gd) and log frame times; `frames` and
+##                           `camp` (through the site and the camp, milestone C1) loop;
 ##                           `screens` stays in the control room with its screens open, showing each in turn for 10 s
 ##                           (the screens' cost, ui/mimic.gd)
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
@@ -403,18 +404,18 @@ func _start_walk() -> void:
 		ui.mimic.reset_cost()
 		last_us = Time.get_ticks_usec()
 		return
-	var route: Array = Routes.frames(plant) if opts.walk == "frames" else Routes.climb(plant)
+	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else Routes.climb(plant))
 	auto = Autopilot.new()
 	auto.skip_stuck = true
 	add_child(auto)
 	auto.stuck.connect(func(i, at): stuck_count += 1; _say("STUCK at step %d, %s" % [i, str(at)]))
 	auto.finished.connect(_finish)
 	var st: Array = plant.start()
-	if opts.walk != "frames":
+	if opts.walk not in ["frames", "camp"]:
 		player.global_position = route[0].to
 	else:
 		player.global_position = st[0]
-	auto.start(player, route, opts.walk == "frames")
+	auto.start(player, route, opts.walk in ["frames", "camp"])
 	last_us = Time.get_ticks_usec()
 
 func _process(delta: float) -> void:
@@ -519,5 +520,10 @@ func _shots() -> void:
 		var img := get_viewport().get_texture().get_image()
 		var p := out_dir.path_join(nm + ".png")
 		_say("shot %s: error %d" % [p, img.save_png(p)])
+		# what the view costs (the site's budget per view, SITE.md §5: draw calls and triangles)
+		_say("shot %s: %d draw calls, %d objects, %d triangles" % [nm,
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
 	_write_out()
 	get_tree().quit()

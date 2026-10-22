@@ -35,13 +35,15 @@ func run(tree: SceneTree) -> Array:
 		p.append("the chevrons' pipeline is queued by a hidden chevron after the start")
 	if shown_early or r._mi.visible or r.shown():
 		p.append("the chevron that queues the pipeline is never drawn")
-	for i in 300:
-		if r.ready_to_find():
-			break
+	# 5 s of the clock: the map is made on a worker thread (Godot's async map iterations), which the headless run's
+	# frames (as fast as they go) don't wait for
+	var t_ready := Time.get_ticks_msec()
+	while not r.ready_to_find() and Time.get_ticks_msec() - t_ready < 5000:
 		await tree.physics_frame
 	if not r.ready_to_find():
+		var why: String = r.error
 		main.free()
-		return ["the navigation map was not ready 5 s after the start: %s" % r.error]
+		return ["the navigation map was not ready 5 s after the start: %s" % why]
 	ui.go_control_room()
 	var player = ui.player
 	# 1. a step to walk to: the way from the control room to the instrument air compressor

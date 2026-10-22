@@ -488,9 +488,9 @@ class Plant:
     # --- areas
     def check_area(self, a, aid, rel):
         two = self.b.plant.get('version') == 2
-        keys(a, ('format', 'version', 'id', 'title', 'bounds', 'pack', 'equipment', 'pipes', 'structures', 'signs'),
-             ('load',) if two and a.get('version') == 2 else (), rel)
         fmt(a, 'area', rel, two=two)
+        keys(a, ('format', 'version', 'id', 'title', 'bounds', 'pack', 'equipment', 'pipes', 'structures', 'signs'),
+             ('load',) if a['version'] == 2 else (), rel)
         if 'load' in a:
             # an interior (§18.5): a scene of its own, loaded near its building's doors; its shell is in the area
             # holding it, and it holds no equipment or pipes (nothing with a code to find while it is not loaded)

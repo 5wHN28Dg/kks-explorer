@@ -8,14 +8,15 @@ runs when the app starts (the app loads the built scenes).
 |---|---|
 | `kit.gd` | the entry point: `Kit.make(part, params, ctx)`, the part list (`MAKERS`), the triangle budgets (`BUDGET`) |
 | `mesh.gd` | the mesh builder: primitives in a part's frame, layers per material and visibility class, LODs |
-| `parts_*.gd` | the generators, one file per group: machines, rotating, heat exchange, vessels and HRSG, valves, instruments and people cues, electrical, pipes |
+| `parts_*.gd` | the generators, one file per group: machines, rotating, heat exchange, vessels and HRSG, valves, instruments and people cues, electrical, pipes; `parts_site.gd` the site's and the camp's structures (planting by species, vehicles, gates, canopies, lamps, kerbs, the sports court, porches, partitions and furniture: docs/PLANT3D.md §18.6) |
 | `parts_common.gd` | what many parts share: flanges and bolts, nozzles, baseplates, motors, couplings and guards, rails, ladders |
 | `materials.gd` | the materials, the texture sets and the texture tiers |
 | `fetch_textures.sh` | the CC0 textures, pinned by SHA-256 (never committed) |
 | `gallery.gd` | pictures of every part, to look at (needs a display: `tools/plant3d/bench/offscreen.sh`) |
 
 Every part of `data/plant3d/kit.json` outside the `structures` group has a generator (the structures are the
-builder's own: walkable surfaces, stairs, ladders, buildings, pits, slabs, fences, the pipe rack). `tests/test_kit.gd`
+builder's own: walkable surfaces, stairs, ladders, buildings, pits, slabs, fences, the pipe rack), and so do the
+site's and the camp's structures (`parts_site.gd`), which the builder places as it places equipment. `tests/test_kit.gd`
 checks that, and everything below that a test can check.
 
 ## Frames

@@ -11,7 +11,7 @@
  "equipment": [],
  "pipes": [],
  "structures": [
-  {"id": "admin_in_rooms_0", "part": "room", "at": [-124, 98, 0], "params": {"height": 3.25, "walls": [{"a": [8.0, 0.2], "b": [8.0, 13.8]}, {"a": [8.0, 6.0], "b": [31.8, 6.0]}, {"a": [20.0, 6.0], "b": [20.0, 13.8]}], "openings": [{"kind": "door", "at": [8.0, 3.5], "width": 1.6, "height": 2.3}, {"kind": "door", "at": [14.0, 6.0], "width": 1.0}, {"kind": "door", "at": [26.0, 6.0], "width": 1.0}]}},
+  {"id": "admin_in_rooms_0", "part": "room", "at": [-124, 98, 0], "params": {"height": 3.25, "walls": [{"a": [8.0, 0.2], "b": [8.0, 13.8]}, {"a": [8.0, 6.0], "b": [31.8, 6.0]}, {"a": [20.0, 6.0], "b": [20.0, 13.8]}], "openings": [{"kind": "door", "at": [8.0, 2.9], "width": 1.6, "height": 2.3}, {"kind": "door", "at": [14.0, 6.0], "width": 1.0}, {"kind": "door", "at": [26.0, 6.0], "width": 1.0}]}},
   {"id": "admin_in_door_permit", "part": "door", "at": [-110, 104, 0], "yaw": 180},
   {"id": "admin_in_door_meeting", "part": "door", "at": [-98, 104, 0], "yaw": 180},
   {"id": "admin_in_reception", "part": "counter", "at": [-104, 100.3, 0], "yaw": 180, "params": {"kind": "reception", "length": 3.0}},

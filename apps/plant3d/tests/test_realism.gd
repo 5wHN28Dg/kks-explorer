@@ -116,7 +116,7 @@ func run(tree: SceneTree) -> Array:
 		if lum > 0.25 or float(floor_mat.get_shader_parameter("roughness_scale")) > 0.6:
 			p.append("a hall's floor is painted: a believable albedo (%.2f linear) and satin, not chalk" % lum)
 	# each hall has its floor in its finish (painted, tiled or bare concrete: photo pass)
-	var finishes := ["hall_floor", "floor_tile", "floor_concrete"].map(func(n): return load("res://built/materials/%s.tres" % n))
+	var finishes := ["hall_floor", "floor_tile", "floor_concrete", "floor_vinyl"].map(func(n): return load("res://built/materials/%s.tres" % n))
 	for roof in plant.find_children("roof", "MeshInstance3D", true, false):
 		halls += 1
 		var fl := roof.get_parent().get_node_or_null("floor") as MeshInstance3D

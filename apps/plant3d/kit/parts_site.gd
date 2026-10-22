@@ -83,10 +83,10 @@ static func planting(_part: String, g) -> void:
 	match String(g.p.get("species", "date_palm")):
 		"date_palm": _palm(m, g, h)
 		"tamarisk": _tamarisk(m, g, h)
-		"oleander": _shrub(m, g, h, 0.75, OLEANDER, OLEANDER_FLOWER, 0.18, 7, 5)
+		"oleander": _shrub(m, g, h, 0.8, OLEANDER, OLEANDER_FLOWER, 0.08, 7, 4)
 		"bougainvillea": _bougainvillea(m, g, h)
-		"saltbush": _shrub(m, g, h, 0.75, SALTBUSH, SALTBUSH.lightened(0.15), 0.25, 7, 4)
-		"caper": _shrub(m, g, h, 1.6, CAPER, CAPER_FLOWER, 0.12, 8, 3)
+		"saltbush": _shrub(m, g, h, 1.2, SALTBUSH, SALTBUSH.lightened(0.15), 0.15, 6, 4)
+		"caper": _shrub(m, g, h, 2.6, CAPER, CAPER_FLOWER, 0.08, 6, 3)
 	var s: Array = species(g).solid
 	g.solid_cyl(Vector3.ZERO, Vector3(0, 0, minf(float(s[1]), h)), float(s[0]))
 
@@ -122,6 +122,21 @@ static func _palm(m, g, h: float) -> void:
 	prof.append([0.34, top_z + 0.25])
 	prof.append([0.18, top_z + 0.55])
 	m.lathe(Vector3.ZERO, axis, prof, 7, false)
+	# the old leaf bases ("boots") standing out of the trunk in staggered rings, as a date palm's trunk shows them
+	# (detail: up close, on the walkways they shade)
+	col(m, "matte", BARK_PALM.lightened(0.08), "detail", 0.12)
+	var rings := int((top_z - 0.5) / 0.32)
+	for i in rings:
+		var z := 0.4 + i * 0.32
+		var r := lerpf(0.27, 0.22, z / top_z) + 0.03
+		var c := axis * (z / maxf(axis.z, 0.5))
+		for k in 7:
+			var a := TAU * (k + 0.5 * (i % 2)) / 7.0 + i * 0.13
+			var rad := Vector3(cos(a), sin(a), 0)
+			var side := Vector3(-sin(a), cos(a), 0)
+			var p0 := c + rad * r
+			_two_sided(m, p0 - side * 0.08, p0 + side * 0.08, p0 + side * 0.05 + rad * 0.1 + Vector3(0, 0, 0.17),
+				p0 - side * 0.05 + rad * 0.1 + Vector3(0, 0, 0.17))
 	# the crown: 14 fronds by the golden angle, upper ones steep, lower ones drooping past horizontal
 	var L := clampf(h * 0.42, 2.0, 3.8)
 	var base := top + axis * 0.35
@@ -232,20 +247,31 @@ static func _tamarisk(m, g, h: float) -> void:
 		var cols := [[TAMARISK, 4.0], [TAMARISK.darkened(0.18), 2.0], [TAMARISK.lightened(0.12), 1.0]]
 		_blob(m, c, Vector3(w * 0.75, w * 0.75, h * 0.3), rng, cols, 7, 4)
 
-## A dense shrub: an oleander of a hedge, a saltbush or a caper (low and wide), lumps with flowers in their colours.
+## A dense shrub: an oleander of a hedge, a saltbush or a caper (low and wide): a cluster of smaller lumps (one big
+## lump read as a ball), leaves and a few flowers in the vertices' colours.
 static func _shrub(m, g, h: float, wide: float, leaf: Color, flower: Color, flower_share: float, n_az: int, n_el: int) -> void:
 	var rng := _rng(g, 3)
-	var cols := [[leaf, 1.0 - flower_share], [leaf.darkened(0.2), 0.3], [flower, flower_share]]
+	col(m, "matte", leaf)
+	var cols := [[leaf, 1.0 - flower_share], [leaf.darkened(0.22), 0.35], [leaf.lightened(0.08), 0.2], [flower, flower_share]]
 	var w := h * wide
-	_blob(m, Vector3(0, 0, h * 0.5), Vector3(w * 0.5, w * 0.5, h * 0.5), rng, cols, n_az, n_el, 0.12)
-	if h > 1.5:
-		_blob(m, Vector3(rng.randf_range(-0.2, 0.2) * w, rng.randf_range(-0.2, 0.2) * w, h * 0.72),
-			Vector3(w * 0.38, w * 0.38, h * 0.3), rng, cols, n_az - 1, 4, 0.15)
+	var lumps := 5 if h > 1.2 else 4
+	for k in lumps:
+		var a := TAU * k / lumps + rng.randf_range(-0.4, 0.4)
+		var top := k == 0
+		var r := w * (0.32 if top else rng.randf_range(0.26, 0.34))
+		var c := Vector3(0, 0, h - r * 0.9) if top else Vector3(cos(a) * w * 0.26, sin(a) * w * 0.26, rng.randf_range(0.42, 0.6) * h)
+		_blob(m, c, Vector3(r, r, minf(r * 1.1, h * 0.5)), rng, cols, n_az, n_el, 0.1)
+	# the stems at the foot (seen under a hedge)
+	col(m, "matte", BARK, "detail", 0.05)
+	for k in 3:
+		var a := TAU * k / 3.0 + rng.randf()
+		m.cyl(Vector3(cos(a) * 0.06, sin(a) * 0.06, 0), Vector3(cos(a) * w * 0.15, sin(a) * w * 0.15, h * 0.4), 0.025, 0.018, 4, false)
 
 ## Bougainvillea trained up a porch's or a walkway's post: a column of leaves and magenta bracts, spreading at the top
 ## along the roof's edge.
 static func _bougainvillea(m, g, h: float) -> void:
 	var rng := _rng(g, 4)
+	col(m, "matte", BOUGAINVILLEA)
 	var cols := [[BOUGAINVILLEA, 0.55], [BOUGAINVILLEA.darkened(0.15), 0.15], [BOUGAINVILLEA_LEAF, 0.3]]
 	_blob(m, Vector3(0, 0, h * 0.45), Vector3(0.35, 0.35, h * 0.45), rng, cols, 6, 4, 0.2)
 	_blob(m, Vector3(0, 0, h * 0.92), Vector3(1.1, 0.6, 0.35), rng, cols, 7, 3, 0.2)
@@ -399,8 +425,8 @@ static func lamp_post(_part: String, g) -> void:
 		col(m, "galvanised", Color(0.85, 0.87, 0.88))
 	g.solid_cyl(Vector3.ZERO, Vector3(0, 0, h), 0.12)
 
-## A kerb along `route` (relative to the origin): 15 cm high, 15 wide, painted in black and yellow stripes 1 m long
-## when `painted` (a camp's roads), else bare concrete. Drawn only: a walker steps over it.
+## A kerb along `route` (relative to the origin): 15 cm high, 15 wide, painted in yellow and white stripes 1 m long
+## when `painted` (the site's and the camp's roads, as such sites paint them), else bare concrete. Drawn only: a walker steps over it.
 static func kerb(_part: String, g) -> void:
 	var m = g.m
 	var route: Array = g.p.get("route", [])
@@ -416,7 +442,7 @@ static func kerb(_part: String, g) -> void:
 		var n := maxi(1, int(round(L))) if painted else 1
 		for k in n:
 			if painted:
-				col(m, "paint_white", Color(0.92, 0.70, 0.08, 0.3) if k % 2 == 0 else Color(0.07, 0.07, 0.07, 0.3))
+				col(m, "paint_white", Color(0.92, 0.70, 0.08, 0.3) if k % 2 == 0 else Color(0.90, 0.90, 0.87, 0.3))
 			else:
 				col(m, "concrete", Color(1, 1, 1))
 			var c := a + d * (L * (k + 0.5) / n)

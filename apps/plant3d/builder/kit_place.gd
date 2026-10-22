@@ -364,13 +364,19 @@ func structure(parent: Node3D, s: Dictionary) -> Node3D:
 		for i in range(route.size() - 1):
 			var a := at + Geom.turn(b._v3(route[i]), yaw)
 			var c := at + Geom.turn(b._v3(route[i + 1]), yaw)
-			if a.distance_to(c) < 0.05:
+			var L := a.distance_to(c)
+			if L < 0.05:
 				continue   # one plant: no drip line along a row
-			var mb = MB.new()
-			P_SITE.drip_line(mb, Vector3.ZERO, Vector3(c.x - a.x, c.y - a.y, 0))
-			var layers := Kit._meshes(mb.finish(), Vector3.ZERO)
-			for k in layers:
-				_cell(layers[k], k, Transform3D(Basis(), Geom.g([a.x, a.y, a.z])))
+			# in pieces of at most a detail cell, each in its own cell (a detail piece's range is measured to its cell)
+			var n := int(ceil(L / SMALL_CELL))
+			for j in n:
+				var p0 := a.lerp(c, float(j) / n)
+				var p1 := a.lerp(c, float(j + 1) / n)
+				var mb = MB.new()
+				P_SITE.drip_line(mb, Vector3.ZERO, Vector3(p1.x - p0.x, p1.y - p0.y, 0))
+				var layers := Kit._meshes(mb.finish(), Vector3.ZERO)
+				for k in layers:
+					_cell(layers[k], k, Transform3D(Basis(), Geom.g([p0.x, p0.y, p0.z])))
 	else:
 		places.append([at, yaw, pr])
 	for pl in places:

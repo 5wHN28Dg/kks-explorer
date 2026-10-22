@@ -100,7 +100,7 @@ def build():
     state_kks = {v[0]: v[1]['kks'] for m in models for v in m.values if 'state' in v[1] and 'kks' in v[1]}
     for s in train_content.scenarios(state_kks):
         files[f'scenarios/{s["id"]}.json'] = s
-    for p in [train_content.cold_start(), train_content.hot_restart()] + train_content.tours():
+    for p in [train_content.cold_start(), train_content.hot_restart()] + train_content.tours() + site_areas.tours():
         files[f'procedures/{p["id"]}.json'] = p
     return {k: dump(v) for k, v in sorted(files.items())}
 

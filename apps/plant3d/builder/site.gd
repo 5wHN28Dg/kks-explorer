@@ -97,8 +97,8 @@ func make(root: Node3D, holes: Array) -> void:
 		var bd: Array = a.data.bounds
 		pads.append(_rect(bd))
 		var sts: Array = a.data.get("structures", [])
-		# an area laying its own roads (the site's, the camp's) is compacted gravel between them
-		paved.append(sts.any(func(s): return s.get("part", "") == "building") and not sts.any(func(s): return s.get("part", "") == "road"))
+		# the site's and the camp's areas lay their own roads and walkways: compacted gravel between them
+		paved.append(sts.any(func(s): return s.get("part", "") == "building") and not a.data.get("pack", "") in [SITE_PACK, CAMP_PACK])
 	holes = holes.duplicate()
 	for sf in roads():
 		holes.append(sf.outline)
@@ -221,7 +221,8 @@ func _pilaster(st: SurfaceTool, p: Vector2) -> void:
 
 ## Where content roads at ground level cross the wall's side from a to c: [[t0, t1], …] along it (metres from a),
 ## sorted and merged: a road whose outline reaches within 0.3 m of the line, from its first corner on the line to its
-## last.
+## last; roads side by side (a road and its walkway, a verge between) are one opening.
+const GATE_MERGE := 3.0
 func road_cuts(a: Vector2, c: Vector2) -> Array:
 	var L := a.distance_to(c)
 	var d := (c - a) / L
@@ -230,7 +231,7 @@ func road_cuts(a: Vector2, c: Vector2) -> Array:
 	for sf in roads():
 		var lo := INF
 		var hi := -INF
-		for q in sf.outline:
+		for q: Vector2 in sf.outline:
 			if absf((q - a).dot(nrm)) <= 0.3:
 				var t := (q - a).dot(d)
 				lo = minf(lo, t)
@@ -240,7 +241,7 @@ func road_cuts(a: Vector2, c: Vector2) -> Array:
 	cuts.sort_custom(func(x, y): return x[0] < y[0])
 	var out: Array = []
 	for cu in cuts:
-		if not out.is_empty() and cu[0] <= out[-1][1] + 0.01:
+		if not out.is_empty() and cu[0] <= out[-1][1] + GATE_MERGE:
 			out[-1][1] = maxf(out[-1][1], cu[1])
 		else:
 			out.append(cu)
@@ -248,19 +249,33 @@ func road_cuts(a: Vector2, c: Vector2) -> Array:
 
 ## The windbreak: tamarisk (SITE.md §4) in two staggered rows WINDBREAK_ROWS metres inside the wall's north and west
 ## sides, the second row half a spacing along, every WINDBREAK_SPACING metres; none within WINDBREAK_CLEAR of a road
-## (the gate, the ring road) or inside a process area or a site area's building. Made by the parts kit (planting) and
-## baked with the ground. Returns the trees planted.
+## (the gate, the ring road) or inside a process area or by a site area's building or structure. Made by the parts kit
+## (planting) and baked with the ground. Returns the trees planted.
 const WINDBREAK_ROWS := [3.0, 5.5]
 const WINDBREAK_SPACING := 2.5
 const WINDBREAK_CLEAR := 6.0
 func _windbreak(root: Node3D, wall: Rect2, road_out: Rect2) -> int:
+	var places := windbreak_places(wall, road_out)
+	var k := 0
+	for p in places:
+		var s := {"id": "windbreak_%d" % k, "part": "planting", "at": [p.x, p.y, 0.0],
+			"yaw": float((k * 97) % 360), "params": {"species": "tamarisk"}}
+		k += 1
+		b.kp.structure(root, s)
+	b.kp.flush(root)
+	print("build: windbreak: %d tamarisks along the wall's north and west sides" % places.size())
+	return places.size()
+
+## Where the windbreak's trees stand (plan points).
+func windbreak_places(wall: Rect2, road_out: Rect2) -> Array:
 	var blocked: Array = []   # rects a tree must not stand in
 	for a in b.areas:
 		if interior(a):
 			continue
 		if a.data.get("pack", "") in [SITE_PACK, CAMP_PACK]:
 			for st in a.data.get("structures", []):
-				if st.get("part", "") in ["building", "canopy", "court", "porch", "vehicle", "lamp_post", "guard_booth", "barrier", "planting"]:
+				if st.get("part", "") in ["building", "road", "planting", "canopy", "court", "porch", "vehicle", "lamp_post",
+						"guard_booth", "barrier", "bench", "fence"]:
 					var at: Array = st.get("at", [0, 0, 0])
 					blocked.append(Rect2(Vector2(at[0], at[1]), Vector2.ZERO).grow(3.0))
 			continue
@@ -270,8 +285,7 @@ func _windbreak(root: Node3D, wall: Rect2, road_out: Rect2) -> int:
 		blocked.append(_bbox(sf.outline).grow(WINDBREAK_CLEAR))
 	for bd in b.buildings:
 		blocked.append(_bbox(bd.outline).grow(2.0))
-	var n := 0
-	var k := 0
+	var out: Array = []
 	for row in WINDBREAK_ROWS.size():
 		var off: float = WINDBREAK_ROWS[row]
 		var shift := WINDBREAK_SPACING * 0.5 * row
@@ -286,16 +300,9 @@ func _windbreak(root: Node3D, wall: Rect2, road_out: Rect2) -> int:
 			while t <= L:
 				var p := a.lerp(c, t / L)
 				t += WINDBREAK_SPACING
-				if blocked.any(func(r): return r.has_point(p)):
-					continue
-				var s := {"id": "windbreak_%d" % k, "part": "planting", "at": [p.x, p.y, 0.0],
-					"yaw": float((k * 97) % 360), "params": {"species": "tamarisk"}}
-				k += 1
-				b.kp.structure(root, s)
-				n += 1
-	b.kp.flush(root)
-	print("build: windbreak: %d tamarisks along the wall's north and west sides" % n)
-	return n
+				if not blocked.any(func(r): return r.has_point(p)):
+					out.append(p)
+	return out
 
 ## The country beyond the wall: a grid out to FAR from the centre, its height 0 at the wall, a few metres of
 ## undulation within 250 m and low hills towards the far plane (FastNoiseLite: the same every build). Not walkable
