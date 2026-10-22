@@ -32,7 +32,7 @@ static func clarifier(part: String, g) -> void:
 	# the launder: a channel round the inside of the wall, its inner weir wall a little under the water
 	m.use("concrete", "form")
 	m.tube(Vector3(0, 0, H - FREEBOARD - 0.7), Vector3(0, 0, H - FREEBOARD + 0.05), r - 0.6, r - 0.75, n)
-	m.cyl(Vector3(0, 0, H - FREEBOARD - 0.8), Vector3(0, 0, H - FREEBOARD - 0.7), r, r, n, false)
+	m.ring(Vector3(0, 0, H - FREEBOARD - 0.7), Vector3(0, 0, 1), r - 0.75, r, n)   # the launder's floor
 	m.use("paint_darkgrey", "detail", 0.02)   # the V-notch weir plate's top edge
 	m.tube(Vector3(0, 0, H - FREEBOARD + 0.05), Vector3(0, 0, H - FREEBOARD + 0.12), r - 0.6, r - 0.63, n)
 	# the centre well (the reaction and flocculation zone of a solids-contact clarifier)
@@ -144,12 +144,14 @@ static func filter_bank(_part: String, g) -> void:
 	C.nozzle(m, Vector3(0, -L * 0.5 - 0.1, p_out.z), p_out, od_out, "pipe_water")
 	C.nozzle(m, Vector3(0, L * 0.5 + 0.1, p_in.z), p_in, od_in, "pipe_water")
 	m.use("pipe_air", "form")
-	m.cyl(Vector3(-G * 0.5 + 0.3, L * 0.5, 2.3), Vector3(-G * 0.5 + 0.3, -L * 0.5, 2.3), 0.1, -1.0, 12)
+	var air_x := -G * 0.5 + 0.3 if per[1] > 0 else G * 0.5 - 0.3   # along the wall of a row that is there
+	m.cyl(Vector3(air_x, L * 0.5, 2.3), Vector3(air_x, -L * 0.5, 2.3), 0.1, -1.0, 12)
 	m.use("pipe_water", "form")   # the inlet's drops into each cell's channel (both rows), over the walls' tops
-	var nn: int = per[0]
-	for i in nn:
-		var yc := -L * 0.5 + (L / nn) * (i + 0.5)
-		for s: float in [1.0, -1.0]:
+	for k in 2:
+		var nk: int = per[k]
+		var s := 1.0 if k == 0 else -1.0
+		for i in nk:   # each row's drops at its own cells' middles
+			var yc := -L * 0.5 + 0.3 + ((L - 0.3) / nk) * i + ((L - 0.3) / nk - 0.3) * 0.5
 			m.cyl(Vector3(0, yc, p_in.z), Vector3(G * 0.5 * s, yc, p_in.z), 0.1, -1.0, 10, false)
 	g.plate("end", Vector3(G * 0.5 + t + W * 0.5, -L * 0.5 - 0.01, 1.6), Vector3(0, -1, 0), "large")
 	g.solid_box(Vector3(G * 0.5, -L * 0.5, 0), Vector3(G * 0.5 + W + 2.0 * t, L * 0.5, H))

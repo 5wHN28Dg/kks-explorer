@@ -8,7 +8,6 @@
 ##   - with a river intake (an area `intake`, docs/plant3d/SITE.md §1): the river along the wall's east side, beyond
 ##     a strip of bank, its water at RIVER_LEVEL, and the headwall where the intake's channel (its pits) opens on
 ##     the river under the road and the wall.
-## The ground's slabs are drawn without their undersides (never seen; half their lightmap texels).
 ## The walkable ground (z = 0 inside the wall) keeps its collision as before; kerbs and drains are drawn only (a
 ## walker steps over them). Everything here is static and baked into the lightmap.
 extends RefCounted
@@ -66,7 +65,7 @@ func make(root: Node3D, holes: Array) -> void:
 	var gh: Array = holes.duplicate()
 	for p in pads:
 		gh.append(poly_of(p))
-	b._slab(root, "ground", poly_of(drain_in), gh, 0.0, 0.5, b._mat("ground"), Lightmap.GROUND_TEXEL, false)
+	b._slab(root, "ground", poly_of(drain_in), gh, 0.0, 0.5, b._mat("ground"), Lightmap.GROUND_TEXEL)
 	# the yards: concrete, less pits and stairwells
 	var i := 0
 	for p in pads:
@@ -74,11 +73,11 @@ func make(root: Node3D, holes: Array) -> void:
 		for h in holes:
 			if p.grow(0.01).encloses(_bbox(h)):
 				ph.append(h)
-		b._slab(root, "yard_%d" % i, poly_of(p), ph, 0.0, 0.5, b._mat("yard" if paved[i] else "yard_gravel"), Lightmap.GROUND_TEXEL, false)
+		b._slab(root, "yard_%d" % i, poly_of(p), ph, 0.0, 0.5, b._mat("yard" if paved[i] else "yard_gravel"), Lightmap.GROUND_TEXEL)
 		i += 1
 	# the ring road, and gravel from it to the wall
-	b._slab(root, "road", poly_of(road_out), [poly_of(road_in)], 0.0, 0.5, b._mat("road"), Lightmap.GROUND_TEXEL, false)
-	b._slab(root, "verge", poly_of(wall), [poly_of(road_out)], 0.0, 0.5, b._mat("ground"), Lightmap.GROUND_TEXEL, false)
+	b._slab(root, "road", poly_of(road_out), [poly_of(road_in)], 0.0, 0.5, b._mat("road"), Lightmap.GROUND_TEXEL)
+	b._slab(root, "verge", poly_of(wall), [poly_of(road_out)], 0.0, 0.5, b._mat("ground"), Lightmap.GROUND_TEXEL)
 	_kerbs_and_drain(root, road_in, road_out, drain_in)
 	_wall(root, wall)
 	_terrain(root, wall)
@@ -113,10 +112,11 @@ func _river(root: Node3D, wall: Rect2) -> void:
 				hi = maxf(hi, q.y)
 	if lo < hi:
 		var hw: SurfaceTool = b._st()
-		Geom.add_prism(hw, Geom.rect(rx.x - 2.0, lo - 1.5, rx.x + 0.5, hi + 1.5), RIVER_BED, 0.4)
+		# out into the water past the bank's foot (the terrain reaches the water's level about 2.5 m into the river)
+		Geom.add_prism(hw, Geom.rect(rx.x - 2.0, lo - 1.5, rx.x + 3.5, hi + 1.5), RIVER_BED, 0.4)
 		b._mesh_node(root, "intake_headwall", hw, b._mat("concrete"), Lightmap.TEXEL)
 		var dark: SurfaceTool = b._st()
-		Geom.add_prism(dark, Geom.rect(rx.x + 0.5, lo, rx.x + 0.52, hi), RIVER_BED + 0.5, RIVER_LEVEL + 0.6)
+		Geom.add_prism(dark, Geom.rect(rx.x + 3.5, lo, rx.x + 3.52, hi), RIVER_BED + 0.5, RIVER_LEVEL + 0.6)
 		b._mesh_node(root, "intake_opening", dark, b._mat("drain"))
 
 static func _bbox(pg: PackedVector2Array) -> Rect2:

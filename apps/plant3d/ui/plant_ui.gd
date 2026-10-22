@@ -573,9 +573,23 @@ func stand_point(b: AABB, dir: Vector3) -> Vector3:
 			to.y = (hit.position.y if not hit.is_empty() else maxf(b.position.y, 0.0)) + 0.05
 			if first == Vector3.INF:
 				first = to
-			if not hit.is_empty() and player.fits_at(to):
+			if not hit.is_empty() and _is_floor(hit, to) and player.fits_at(to):
 				return to
 	return first
+
+
+## A floor to stand on: not the top of a machine or a pipe (their bodies are in the groups `equipment` and `pipes`),
+## and flat for the walker's width round the point (a handrail's or a wall's top is not: four rays 0.3 m out land
+## within 5 cm of its height).
+func _is_floor(hit: Dictionary, at: Vector3) -> bool:
+	var col = hit.get("collider")
+	if col is Node and ((col as Node).is_in_group("equipment") or (col as Node).is_in_group("pipes")):
+		return false
+	for o: Vector3 in [Vector3(0.3, 0, 0), Vector3(-0.3, 0, 0), Vector3(0, 0, 0.3), Vector3(0, 0, -0.3)]:
+		var h: Dictionary = player.floor_below(at + o + Vector3.UP * 0.5, 1.0)
+		if h.is_empty() or absf(h.position.y - (at.y - 0.05)) > 0.05:
+			return false
+	return true
 
 
 ## To the control room (`say`: with a word on what is offered there; not when the screens open at once, which it

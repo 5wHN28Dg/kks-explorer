@@ -184,7 +184,7 @@ PARTS = {
     'clarifier': part('vessels', {'d': N(4, 60, 17), 'height': N(2, 10, 5.5), 'bridge': B(True)},
                       {'inlet': ([0, 0, 0], 'down'), 'outlet': ([0, ['d', -0.5, -1.0], ['height', 1, -0.9]], 's')},
                       None, ['wall']),
-    'thickener': part('vessels', {'d': N(3, 40, 10), 'height': N(2, 8, 4.5), 'bridge': B(True)},
+    'thickener': part('vessels', {'d': N(4, 40, 10), 'height': N(2, 8, 4.5), 'bridge': B(True)},
                       {'inlet': ([0, 0, 0], 'down'), 'outlet': ([0, ['d', -0.5, -1.0], ['height', 1, -0.9]], 's')},
                       None, ['wall']),
     'filter_bank': part('vessels', {'cells': I(1, 16, 6), 'length': N(3, 80, 16.5), 'width': N(2, 12, 5),
