@@ -77,6 +77,7 @@ reference, Microsoft Learn, caniuse and MDN browser-compat-data.
 | [0011](0011-vendored-fonts.md) | Vendored course fonts | keep | none |
 | [0012](0012-cloudflare-relay.md) | Cloudflare Workers relay | keep | none |
 | [0013](0013-own-implementations.md) | Our own Noise, reliable UDP, WebSocket clients, Kotlin JSON | keep; rudp re-evaluated in M6 | none now |
+| [0062](0062-course-progress-sync.md) | Course progress follows a person's own devices: the person secret is shared only sealed to a device's box key, in log entries, after the person pairs the two devices by comparing a code; the server relays ciphertext only | proposed: the web app and lost-devices recovery wait for the user |
 
 **Status (2026-09-30):** the user approved the actions for 0006, 0007, 0008 and 0009, and decided two others:
 - 0003: keep JPEG XL, based on the user's own tests, with no WebP/AVIF measurement;
