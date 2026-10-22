@@ -7,6 +7,7 @@ extends PanelContainer
 
 const W = preload("res://ui/widgets.gd")
 const JsonStrict = preload("res://sim/json_strict.gd")
+const Permits = preload("res://ui/permits.gd")
 
 var ui                          # ui/plant_ui.gd
 var code := ""
@@ -16,6 +17,8 @@ var _state: Label
 var _where: Label
 var _values := {}               # value name -> Label
 var _alarms: Label
+var _lock: Label                # "LOCKED OUT PTW-0001": the code is locked by a permit's isolation (PLANT3D §15)
+var _works: Array = []          # [work, button]: the permits to work on this equipment
 var _ops: Array = []            # [op, button, permissives label, feedback label, entry or null, note label]
 var _repairs: Array = []        # [fault, box, button, note label]: the scenario's faults repaired at this equipment
 var _t := 0.0
@@ -71,6 +74,16 @@ func open(c: String, note := "") -> void:
 			_values[vn] = l
 	_alarms = W.label("", 18, W.BAD_COLOUR)
 	body.add_child(_alarms)
+	_lock = W.label("", 19, W.BAD_COLOUR)
+	_lock.name = "lock"
+	body.add_child(_lock)
+	_works.clear()
+	for wd in Permits.works_at(ui.clock.engine, c):
+		var wb := W.button("", func(): ui.open_permits(String(wd["id"])))
+		wb.name = "permit_" + String(wd["id"])
+		wb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		body.add_child(wb)
+		_works.append([wd, wb])
 	var ops: Array = info.ops_of.get(c, [])
 	var repairable: bool = ui.clock.engine.sc.get("faults", []).any(func(f): return f.get("kks", "") == c and f.has("repair"))
 	if ops.is_empty() and not repairable:
@@ -228,6 +241,13 @@ func refresh() -> void:
 			var a: Dictionary = info.m.alarms[k]
 			al.append("%s %s: %s" % [a.get("isa", ""), a["text"], s.replace("_", " ")])
 	_alarms.text = "\n".join(al)
+	var lt: String = Permits.lock_text(e, code)
+	_lock.text = (lt + ": its operations are refused and its alarms suppressed until the locks are removed") if lt != "" else ""
+	for wr in _works:
+		var st: int = Permits.state_of(e, wr[0]["id"])
+		var num: String = Permits.number_of(e, wr[0]["id"])
+		(wr[1] as Button).text = "Permit to work: %s (%s%s)" % [wr[0]["title"], Permits.STATE_WORDS[st].to_lower(),
+				(", " + num) if num != "" and st != 0 else ""]
 	for rp in _repairs:
 		var fid: String = rp[0]["id"]
 		var asked: bool = e.queue.any(func(q): return q[0] == "repair" and q[1] == fid)

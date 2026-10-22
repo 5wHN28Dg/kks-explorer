@@ -204,11 +204,40 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 				if typeof(key) != TYPE_STRING or (k == "first_out" and typeof(d[k][key]) != TYPE_STRING):
 					return "a damaged %s" % k
 	if d.has("queue"):
+		var sizes := {"op": 5, "ack": 2, "shelve": 3, "unshelve": 2, "fault": 2, "repair": 2, "permit": 4, "lock": 4,
+				"unlock": 4}
 		for q in d["queue"]:
-			if typeof(q) != TYPE_ARRAY or q.is_empty() or not q[0] in ["op", "ack", "shelve", "unshelve", "fault", "repair"] \
-					or q.size() != {"op": 5, "ack": 2, "shelve": 3, "unshelve": 2, "fault": 2, "repair": 2}[q[0]] \
+			if typeof(q) != TYPE_ARRAY or q.is_empty() or not sizes.has(q[0]) or q.size() != sizes[q[0]] \
 					or (q[0] in ["fault", "repair"] and typeof(q[1]) != TYPE_STRING):
 				return "a damaged input"
+	# permits and isolations (PLANT3D §15): states, holders and locks the engine indexes with, and that agree
+	if d.has("pstate"):
+		for s in d["pstate"]:
+			if s < 0 or s > 10:
+				return "a permit in a state that doesn't exist"
+	if d.has("holder"):
+		for h in d["holder"]:
+			if h < -1 or h >= fresh._wk.size():
+				return "an isolation held by a work that doesn't exist"
+	if d.has("lockbits"):
+		var want := {}
+		for k in fresh._iso.size():
+			for pi in fresh._iso[k][1].size():
+				var b: int = d["lockbits"][fresh._iso[k][4] + pi]
+				if b != 0 and b != 1:
+					return "a damaged lock"
+				if b == 1:
+					want[fresh._iso[k][1][pi][0]] = want.get(fresh._iso[k][1][pi][0], 0) + 1
+		if d.has("code_locks") and d["code_locks"] != want:
+			return "locks that don't agree"
+	for k in ["ptw", "acceptor", "lockers"]:
+		if d.has(k):
+			for key in d[k]:
+				if (k != "lockers" and typeof(key) != TYPE_STRING) or (k == "lockers" and typeof(key) != TYPE_VECTOR2I) \
+						or (k == "ptw" and typeof(d[k][key]) != TYPE_STRING):
+					return "a damaged %s" % k
+	if d.get("ptw_count", 0) < 0:
+		return "a damaged permit count"
 	for k in ["inputs", "events"]:
 		if d.has(k):
 			for x in d[k]:

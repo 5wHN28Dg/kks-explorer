@@ -114,6 +114,10 @@ func _list() -> void:
 			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(l)
 			row.add_child(W.button("Start", _start.bind(id)))
+	body.add_child(W.label("Permits to work", 22))
+	var pb := W.button("Open the permits", func(): ui.open_permits())
+	pb.name = "permits"
+	body.add_child(pb)
 
 
 ## A link asks for a procedure (from outside the app: it only offers, the trainee decides).

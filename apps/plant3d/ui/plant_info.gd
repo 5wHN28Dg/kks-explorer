@@ -200,7 +200,18 @@ func failed_text(o: Dictionary, failed: String, engine) -> String:
 		if o["range"][0] == 0 and o["range"][1] == 1:
 			return "The value must be between 0 and 100 %"
 		return "The value must be between %s and %s" % [num(o["range"][0]), num(o["range"][1])]
+	if failed.ends_with("_locked") and m.isolation_ix.has(failed.trim_suffix("_locked")):
+		return lock_words(failed.trim_suffix("_locked"), engine)
 	return failed
+
+
+## A lock that refuses an op (PLANT3D §15.1) in words: the isolation and the permit holding it.
+func lock_words(iso_id: String, engine) -> String:
+	var k: int = m.isolation_ix[iso_id]
+	var h: int = engine.holder[k] if engine != null else -1
+	var num: String = String(engine.ptw.get(m.works[h]["id"], "")) if h >= 0 else ""
+	return "Locked out for work: %s%s. It works again when the permit's locks are removed" % [
+			m.isolations[k]["text"], (" (" + num + ")") if num != "" else ""]
 
 
 func machine_index(mid: String) -> int:
@@ -236,6 +247,9 @@ func permissives(o: Dictionary, engine) -> Array:
 			out.append(["The trip is not latched", false])
 		elif t != null and engine.truth(t["when"]):
 			out.append(["The cause of the trip is still there", false])
+	# a locked code refuses every op (PLANT3D §15.1)
+	for name in engine._locking(o["kks"]):
+		out.append([lock_words(String(name).trim_suffix("_locked"), engine), false])
 	return out
 
 

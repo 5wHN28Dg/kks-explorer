@@ -79,8 +79,7 @@ func _ack_all() -> void:
 
 
 static func suppressed(e, k: int) -> bool:
-	var slot: int = e._al[k][3]
-	return slot != -1 and e.cur[slot] >= 0.5
+	return e.alarm_suppressed(k)      # by design, or its code locked for work (PLANT3D §15.1)
 
 
 func _listed(e, k: int, t: String) -> bool:

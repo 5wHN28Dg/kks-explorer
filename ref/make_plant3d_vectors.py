@@ -1113,7 +1113,8 @@ def unit_models2():
         [1, 'op', TANK, 'set', 3, None], [2, 'op', PUMP, 'set', 1, None],
         pm(3, G_, 'request'), pm(3, G_, 'approve'), lk(3, G_, 0), [3, 'op', PUMP, 'set', 0, None],
         [3, 'op', TANK, 'set', 3.5, None],
-        [5, 'op', TANK, 'set', 4.8, None], [8, 'op', TANK, 'set', 5.2, None], [8, 'op', PUMP, 'set', 2, None],
+        [5, 'op', TANK, 'set', 4.8, None], ul(6, G_, 0), lk(7, G_, 0),
+        [8, 'op', TANK, 'set', 5.2, None], [8, 'op', PUMP, 'set', 2, None],
         [11, 'op', TANK, 'set', 0, None], [12, 'op', TANK, 'reset', None, 't'],
         [13, 'op', PUMP, 'set', 0, None],
         pm(14, G_, 'issue'), pm(14, G_, 'accept'), pm(14, G_, 'done'), pm(14, G_, 'return'), ul(15, G_, 0),
@@ -1124,8 +1125,9 @@ def unit_models2():
          "stop and a lock in one step); what a locked code refuses, skips and suppresses", pump, faults, life, 24),
         ('a code locked by two isolations; a done write made only when every isolation locking its code is held by '
          'the work; a cancel with points still locked; a work without an isolation', pump, faults, shared, 20),
-        ('an isolated transmitter: its reading held, its alarm suppressed, its 2-out-of-3 vote tripped; the hold '
-         'node at step 0 (its init, the scenario\'s, its input), reading a later when, a number',
+        ('an isolated transmitter: its reading held, its alarm suppressed, its 2-out-of-3 vote tripped; unlocked from '
+         'isolated (the permit back to approved) and locked again; the hold node at step 0 (its init, the '
+         'scenario\'s, its input), reading a later when, a number',
          channels, [], chan, 20),
     ]
 

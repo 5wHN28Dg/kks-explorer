@@ -65,7 +65,7 @@ var _iso: Array = []         # format 2: [id, points [[code, safe slot or -1]...
 							 #   its first bit in lockbits]
 var _wk: Array = []          # [id, isolation index or -1, permit slot, repairs (fault id) or null, set]
 var _state_kks := {}         # state slot -> its code (states with a kks)
-var v2 := false              # a version 2 plant (§14): its snapshots have permits, ptw and locked
+var _v2 := false              # a version 2 plant (§14): its snapshots have permits, ptw and locked
 
 # the state (copied by clone)
 var cur := PackedFloat64Array()
@@ -111,7 +111,7 @@ func _init(model = null, scenario = null) -> void:
 	for t in m.trips:
 		names.append(t["id"] + "_latched")
 	names.append_array(PackedStringArray(m.kept()))
-	v2 = m.version == 2
+	_v2 = m.version == 2
 	n = names.size()
 	for i in n:
 		ix[names[i]] = i
@@ -1022,6 +1022,17 @@ func _op(item: Array, moved: Dictionary) -> void:
 
 # ---------------------------------------------------------------- what the vectors compare (§12)
 
+## An alarm suppressed now: by design (its `suppress` value, §7.6) or because its code is locked (§15.1).
+func alarm_suppressed(k: int) -> bool:
+	var a = _al[k]
+	return (a[3] != -1 and cur[a[3]] >= 0.5) or code_locks.has(a[6])
+
+
+## The isolations' ids locking a code now, in model order (§15.1).
+func isolations_locking(code) -> Array:
+	return _locking(code).map(func(x): return String(x).trim_suffix("_locked"))
+
+
 ## §7.9: no unacknowledged alarm, no active priority 1 alarm, no machine in a watched state.
 func fast_forward() -> bool:
 	for k in _al.size():
@@ -1063,7 +1074,7 @@ func snapshot(with_values: bool = true) -> Dictionary:
 	sh.sort()
 	var s := {"step": step_no, "machines": machines, "tripped": tripped, "first_out": fo, "alarms": al,
 			"shelved": sh, "fast_forward": fast_forward()}
-	if v2:
+	if _v2:
 		var pm := {}
 		var nums := {}
 		for wi in _wk.size():
@@ -1098,7 +1109,7 @@ func clone():
 	var c = get_script().new()
 	for k in ["m", "sc", "names", "ix", "n", "_prog_kind", "_prog_out", "_prog_a", "_prog_na", "_prog_f", "_ia",
 			"_fa", "_nprog", "_fault_nodes", "_scratch", "_init_vals", "_nmem", "_il", "_mc", "_mc_ix", "_tr", "_tr_ix", "_al", "_al_ix",
-			"_faults", "_fault_ix", "_ops", "_iso", "_wk", "_state_kks", "v2", "step_no", "ptw_count"]:
+			"_faults", "_fault_ix", "_ops", "_iso", "_wk", "_state_kks", "_v2", "step_no", "ptw_count"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits"]:
