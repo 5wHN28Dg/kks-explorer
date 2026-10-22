@@ -189,6 +189,8 @@ static func specs() -> Dictionary:
 	# the site's and the camp's matte things (kit/parts_site.gd): leaves, bark, soil, fabric, plaster, the shade
 	# sheets, their colours in the vertices
 	m["matte"] = {"set": "", "tint": Color(1, 1, 1), "rough": 0.9, "metal": 0.0, "vc": true}
+	# planting (leaves, bark, the soil of a tree's basin): as `matte`, but never baked (builder/kit_place.gd UNBAKED)
+	m["foliage"] = {"set": "", "tint": Color(1, 1, 1), "rough": 0.85, "metal": 0.0, "vc": true}
 	# a prefabricated building's walls (the camp's blocks, the gate house): sandwich panels 1.2 m wide, painted a light
 	# sand (neutral colours, the user's choice of 2026-10-21)
 	m["panel"] = {"set": "PaintedMetal004", "tint": Color(0.86, 0.83, 0.76), "rough": 0.9, "metal": 0.1, "tile": 2.0, "sheet": 1.2}

@@ -44,6 +44,10 @@ var unsupported: Array = []
 ## pieces take the sky's light in the vertex format and pipelines the instanced pieces already compiled at the start
 ## (no UV2: a mesh with UV2 and no bake would be a pipeline of its own, compiled when the trainee walks in)
 var unbaked := false
+## Materials whose pieces are never baked, instanced in their cells and lit by the sky and the sun: planting, whose
+## leaves' area (two faces of every frond, lumps of every crown) was most of the site's lightmap texels and took the
+## bake out of its memory (2026-10-22)
+const UNBAKED := ["foliage"]
 
 func _init(builder) -> void:
 	b = builder
@@ -631,7 +635,7 @@ func flush(root: Node3D) -> int:
 		var size := INF
 		for c in group:
 			size = minf(size, c.size)
-		if cls == "form" and not unbaked:
+		if cls == "form" and not unbaked and not group[0].mat in UNBAKED:
 			# a static mesh standing once in its cell: the bake lights it (builder/lightmap.gd). Identify pieces
 			# (tag plates, bands, arrows) are not: a texel of a third of a metre would grey a white plate behind
 			# its code; they take the sky's light like the instanced pieces

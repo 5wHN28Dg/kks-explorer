@@ -1,9 +1,10 @@
 ## The site and the camp (docs/plant3d/SITE.md, docs/PLANT3D.md §18.6): planting by species, vehicles, the gates'
 ## barriers and booths, shade canopies, street lamps, kerbs, the sports court, porches, interior partitions and the
 ## furniture of the camp's rooms. Structures without codes: nothing here moves or is operated. Every surface is the
-## plant's one lit shader (decision 0060): the colours are in the vertices of a few materials (`matte` for planting,
-## fabric and plaster; the paint set for vehicles and furniture's steel; plain for glass and screens), so a cell's
-## pieces of every colour are one draw call per material.
+## plant's one lit shader (decision 0060): the colours are in the vertices of a few materials (`foliage` for planting,
+## `matte` for fabric and plaster; the paint set for vehicles and furniture's steel; plain for glass and screens), so a
+## cell's pieces of every colour are one draw call per material. Planting is left out of the lightmap's bake
+## (builder/kit_place.gd UNBAKED): its leaves' area was most of the site's texels, and the bake ran out of memory.
 ##
 ## Planting (SITE.md §4: every plant has a purpose): date palms (shade on the walkways), tamarisk (the windbreak against
 ## the north-westerly shamal), oleander (dust hedges along roads), bougainvillea (on porches and walkway posts),
@@ -92,12 +93,12 @@ static func planting(_part: String, g) -> void:
 
 ## The basin a tree is watered in (drip-irrigated, SITE.md §4): a low ring of soil round its foot, the wet soil in it.
 static func _basin(m, r: float) -> void:
-	col(m, "matte", SOIL)
+	col(m, "foliage", SOIL)
 	m.lathe(Vector3.ZERO, Vector3(0, 0, 1), [[r, 0.0], [r * 1.12, 0.1], [r * 1.3, 0.1], [r * 1.5, 0.0]], 10, false)
-	col(m, "matte", SOIL_WET)
+	col(m, "foliage", SOIL_WET)
 	m.disk(Vector3(0, 0, 0.012), Vector3(0, 0, 1), r * 1.02, 10)
 	# the drip line's emitter loop round the trunk (detail)
-	col(m, "matte", HOSE, "detail", 0.02)
+	col(m, "foliage", HOSE, "detail", 0.02)
 	m.torus(Vector3(0, 0, 0.03), Vector3(1, 0, 0), Vector3(0, 1, 0), r * 0.7, 0.01, TAU, 12, 4)
 
 ## A date palm: a trunk patterned by the old leaf bases, a crown of arching fronds (each a keeled strip, its leaflets
@@ -110,7 +111,7 @@ static func _palm(m, g, h: float) -> void:
 	var top := Vector3(lean.x * top_z, lean.y * top_z, top_z)
 	var axis := top.normalized()
 	# the trunk: leaf-base rings every 0.45 m (its silhouette's notches), widening a little to the crown
-	col(m, "matte", BARK_PALM)
+	col(m, "foliage", BARK_PALM)
 	var prof: Array = []
 	var n := maxi(4, int(top_z / 0.45))
 	for i in n + 1:
@@ -124,7 +125,7 @@ static func _palm(m, g, h: float) -> void:
 	m.lathe(Vector3.ZERO, axis, prof, 7, false)
 	# the old leaf bases ("boots") standing out of the trunk in staggered rings, as a date palm's trunk shows them
 	# (detail: up close, on the walkways they shade)
-	col(m, "matte", BARK_PALM.lightened(0.08), "detail", 0.12)
+	col(m, "foliage", BARK_PALM.lightened(0.08), "detail", 0.12)
 	var rings := int((top_z - 0.5) / 0.32)
 	for i in rings:
 		var z := 0.4 + i * 0.32
@@ -151,7 +152,7 @@ static func _palm(m, g, h: float) -> void:
 ## A frond from b along azimuth az (radians from north, clockwise), starting at elevation elev and arching down by
 ## droop over its length L; w its widest (the leaflets' span). Both faces drawn (a thin blade, the shader culls backs).
 static func _frond(m, b: Vector3, az: float, elev: float, droop: float, L: float, w: float, c: Color) -> void:
-	col(m, "matte", c)
+	col(m, "foliage", c)
 	var fwd := Vector3(sin(az), cos(az), 0)
 	var side := Vector3(cos(az), -sin(az), 0)
 	var segs := 4
@@ -233,13 +234,13 @@ static func _blob(m, c: Vector3, r: Vector3, rng: RandomNumberGenerator, cols: A
 ## overlapping lumps, low enough to stop the dust-laden wind at a fence (its feathery twigs are the lumps' colour).
 static func _tamarisk(m, g, h: float) -> void:
 	var rng := _rng(g, 2)
-	col(m, "matte", BARK)
+	col(m, "foliage", BARK)
 	var stems := 2 + int(rng.randf() * 2.0)
 	for i in stems:
 		var a := TAU * i / stems + rng.randf()
 		var top := Vector3(cos(a) * 0.5, sin(a) * 0.5, h * 0.38)
 		m.cyl(Vector3(cos(a) * 0.08, sin(a) * 0.08, 0), top, 0.12, 0.08, 6, false)
-	col(m, "matte", TAMARISK)
+	col(m, "foliage", TAMARISK)
 	var w := h * 0.38
 	for i in 4:
 		var a := TAU * i / 4.0 + rng.randf() * 0.8
@@ -251,7 +252,7 @@ static func _tamarisk(m, g, h: float) -> void:
 ## lump read as a ball), leaves and a few flowers in the vertices' colours.
 static func _shrub(m, g, h: float, wide: float, leaf: Color, flower: Color, flower_share: float, n_az: int, n_el: int) -> void:
 	var rng := _rng(g, 3)
-	col(m, "matte", leaf)
+	col(m, "foliage", leaf)
 	var cols := [[leaf, 1.0 - flower_share], [leaf.darkened(0.22), 0.35], [leaf.lightened(0.08), 0.2], [flower, flower_share]]
 	var w := h * wide
 	var lumps := 5 if h > 1.2 else 4
@@ -262,7 +263,7 @@ static func _shrub(m, g, h: float, wide: float, leaf: Color, flower: Color, flow
 		var c := Vector3(0, 0, h - r * 0.9) if top else Vector3(cos(a) * w * 0.26, sin(a) * w * 0.26, rng.randf_range(0.42, 0.6) * h)
 		_blob(m, c, Vector3(r, r, minf(r * 1.1, h * 0.5)), rng, cols, n_az, n_el, 0.1)
 	# the stems at the foot (seen under a hedge)
-	col(m, "matte", BARK, "detail", 0.05)
+	col(m, "foliage", BARK, "detail", 0.05)
 	for k in 3:
 		var a := TAU * k / 3.0 + rng.randf()
 		m.cyl(Vector3(cos(a) * 0.06, sin(a) * 0.06, 0), Vector3(cos(a) * w * 0.15, sin(a) * w * 0.15, h * 0.4), 0.025, 0.018, 4, false)
@@ -271,7 +272,7 @@ static func _shrub(m, g, h: float, wide: float, leaf: Color, flower: Color, flow
 ## along the roof's edge.
 static func _bougainvillea(m, g, h: float) -> void:
 	var rng := _rng(g, 4)
-	col(m, "matte", BOUGAINVILLEA)
+	col(m, "foliage", BOUGAINVILLEA)
 	var cols := [[BOUGAINVILLEA, 0.55], [BOUGAINVILLEA.darkened(0.15), 0.15], [BOUGAINVILLEA_LEAF, 0.3]]
 	_blob(m, Vector3(0, 0, h * 0.45), Vector3(0.35, 0.35, h * 0.45), rng, cols, 6, 4, 0.2)
 	_blob(m, Vector3(0, 0, h * 0.92), Vector3(1.1, 0.6, 0.35), rng, cols, 7, 3, 0.2)
@@ -279,7 +280,7 @@ static func _bougainvillea(m, g, h: float) -> void:
 ## The drip line along a row of plants (plant coordinates of the row's ends, in the part frame): a black hose on the
 ## ground (detail).
 static func drip_line(m, a: Vector3, b: Vector3) -> void:
-	col(m, "matte", HOSE, "detail", 0.02)
+	col(m, "foliage", HOSE, "detail", 0.02)
 	m.cyl(a + Vector3(0, 0, 0.012), b + Vector3(0, 0, 0.012), 0.008, -1.0, 4, false)
 
 # ------------------------------------------------------------------ vehicles and the gates
