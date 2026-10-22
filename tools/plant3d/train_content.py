@@ -56,7 +56,8 @@ MEDIA = {'cooling_water': ('water', '#2e7d32', 'Cooling water'), 'raw_water': ('
          # the water treatment plant (docs/plant3d/WATER-TREATMENT.md)
          'clarified_water': ('water', '#689f38', 'Clarified water'),
          'filtered_water': ('water', '#00796b', 'Filtered water'), 'permeate': ('water', '#0277bd', 'RO permeate'),
-         'demin_water': ('water', '#283593', 'Demineralised water')}
+         'demin_water': ('water', '#283593', 'Demineralised water'),
+         'waste_water': ('water', '#6d4c41', 'Waste water')}
 
 
 def plant(codes):

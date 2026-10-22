@@ -27,7 +27,8 @@
   "clarified_water": {"group": "water", "band": "#689f38", "name": "Clarified water"},
   "filtered_water": {"group": "water", "band": "#00796b", "name": "Filtered water"},
   "permeate": {"group": "water", "band": "#0277bd", "name": "RO permeate"},
-  "demin_water": {"group": "water", "band": "#283593", "name": "Demineralised water"}
+  "demin_water": {"group": "water", "band": "#283593", "name": "Demineralised water"},
+  "waste_water": {"group": "water", "band": "#6d4c41", "name": "Waste water"}
  },
  "areas": [
   "control",

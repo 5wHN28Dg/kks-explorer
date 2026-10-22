@@ -9,7 +9,7 @@
  ],
  "pack": "wtp",
  "equipment": [
-  {"kks": "00GAA10BB001", "name": "Intake channel and wet well", "part": "basin", "at": [455.25, 85.0, -7.0], "params": {"length": 28.5, "width": 9, "depth": 5.47}, "parts": [{"kks": "00GAA10CL001", "name": "Intake level", "part": "level_transmitter", "at": [9, -4.25, 7.0], "params": {"range": [-3, 1], "unit": "m"}}]},
+  {"kks": "00GAA10BB001", "name": "Intake channel and wet well", "part": "basin", "at": [455.25, 85.0, -7.0], "params": {"length": 28.4, "width": 8.9, "depth": 5.47}, "parts": [{"kks": "00GAA10CL001", "name": "Intake level", "part": "level_transmitter", "at": [9, -4.25, 7.0], "params": {"range": [-3, 1], "unit": "m"}}]},
   {"kks": "00GAA10AT001", "name": "Bar screen", "part": "bar_screen", "at": [468.5, 85, 0], "yaw": 270, "params": {"width": 8.0, "depth": 7.0}, "plate": "side"},
   {"kks": "00GAA10AT002", "name": "Band screen A", "part": "screen_band", "at": [460.5, 82.75, 0], "yaw": 270, "params": {"width": 3.0, "depth": 7.0, "motor_kw": 1.5}, "plate": "side"},
   {"kks": "00GAA10AT003", "name": "Band screen B", "part": "screen_band", "at": [460.5, 87.25, 0], "yaw": 270, "params": {"width": 3.0, "depth": 7.0, "motor_kw": 1.5}, "plate": "side"},

@@ -50,7 +50,7 @@ def wtp_tour():
                    'clear water spills over the weirs into the launder round the wall. Its bridge, up the stair, '
                    'carries the rake\'s drive.'], ['00GBD11AT001', '00GBD12AT001']),
                  (['The gravity filters (', k('00GBB10'), '): six cells of sand and anthracite, their valves in the '
-                   'gallery under the deck. A filter whose head loss grows is backwashed with air and water.'],
+                   'gallery under the deck, seen from its ends. A filter whose head loss grows is backwashed with air and water.'],
                   ['00GBB10']),
                  (['The filtered water tank (', k('00GBL10BB001'), ') feeds the cooling tower makeup pumps (',
                    k('00GHB10AP001'), ') and the service water pumps, which also feed the RO.'],

@@ -55,9 +55,10 @@ static func frames(plant) -> Array:
 
 ## From the cooling tower's north-east corner into the water treatment plant and back (docs/plant3d/SITE.md): across
 ## the makeup and transfer pipes' post lines where their posts leave room (x 266: their posts stand at 264.25 and
-## 268.75 on y = 38, at 263.4 and 267.7 on y = 39.5), in at the treatment building's west door, past the RO trains,
-## out at its north door, and back by the demineralised water tanks.
+## 268.75 on y = 38, at 263.4 and 267.7 on y = 41.5; y 45.5: at y 42 and 50 on x = 271, 43.5 and 47.6 on x = 274.1),
+## in at the treatment building's west door, past the RO trains, out at its north door (y 82: clear of the posts of
+## the permeate and mixed bed lines at y 80.3 and 80.6), and back by the demineralised water tanks.
 static func wtp_loop() -> Array:
-	return [_to(258, 31), _to(266, 31), _to(266, 47), _to(294, 47), _to(294, 56), _to(303, 56), _to(313, 57.2),
-		_to(327, 57.2), _to(327, 71), _to(322, 71), _to(322, 80), _to(296, 80), _to(294, 72), _to(294, 47),
-		_to(266, 47), _to(266, 31), _to(258, 31)]
+	return [_to(258, 31), _to(266, 31), _to(266, 45.5), _to(294, 45.5), _to(294, 56), _to(303, 56), _to(313, 57.2),
+		_to(327, 57.2), _to(327, 71), _to(322, 71), _to(322, 82), _to(296, 82), _to(294, 72), _to(294, 45.5),
+		_to(266, 45.5), _to(266, 31), _to(258, 31)]

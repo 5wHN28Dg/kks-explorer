@@ -292,7 +292,8 @@ class WaterTreatment(unittest.TestCase):
         self.assertEqual(tr['to'], {'kks': '00GHC10BB001', 'nozzle': 'inlet'})
         _, main = self.codes['00GAC10BR010']
         self.assertGreater(main['from']['at'][0], 430)
-        self.assertLess(main['to']['at'][0], 390)
+        mix = self.codes['00GBD10BB001'][1]['at']
+        self.assertLess(math.dist(main['to']['at'][:2], mix[:2]), 3.0, 'the raw water main ends under the rapid mixer')
 
     def test_the_tour_from_the_river_to_the_demin_tank(self):
         with open(os.path.join(DATA, 'procedures', 'wtp_path.json'), encoding='utf-8') as f:

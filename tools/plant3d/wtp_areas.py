@@ -13,8 +13,9 @@ from train_areas import (eq, child, pipe, nz, jn, free, valve, inst, rect, box, 
 
 PACK = 'wtp'
 DECK_OVER = 0.55          # a clarifier's bridge deck over its wall's top (kit: parts_water.gd): 28 risers of 0.1875 m
-                          # for the clarifiers' stairs, 27 for the thickener's (a stair of 0.19 m risers ends a walker
-                          # more than half a metre up its last going: tests/test_walk.gd)
+                          # for the clarifiers' and the thickener's stairs (a stair of 0.19 m risers ends a walker more
+                          # than half a metre up its last going: tests/test_walk.gd)
+INSET = 0.05              # a basin's water in a pit: its walls this far in front of the pit's (no coplanar faces)
 BRIDGE_OUT = 1.6          # the bridge's deck beyond the wall: the landing at the top of its stair (parts_water.gd)
 WALL = 0.3                # a clarifier's wall
 
@@ -71,7 +72,7 @@ def intake():
     skid_at = [437.0, 85.0, 0]
     equipment = [
         eq('00GAA10BB001', 'Intake channel and wet well', 'basin', [x0 + L / 2, y0 + W / 2, -PIT_DEPTH], 0,
-           {'length': L, 'width': W, 'depth': round(PIT_DEPTH + RIVER_LEVEL - 0.03, 2)}, None, [level]),
+           {'length': L - 2 * INSET, 'width': W - 2 * INSET, 'depth': round(PIT_DEPTH + RIVER_LEVEL - 0.03, 2)}, None, [level]),
         eq('00GAA10AT001', 'Bar screen', 'bar_screen', [468.5, 85, 0], 270, {'width': 8.0, 'depth': PIT_DEPTH}, 'side'),
         eq('00GAA10AT002', 'Band screen A', 'screen_band', [460.5, 82.75, 0], 270,
            {'width': 3.0, 'depth': PIT_DEPTH, 'motor_kw': 1.5}, 'side'),
@@ -145,7 +146,7 @@ MB_Y = {'a': 70, 'b': 64}
 def pretreatment():
     eqs, pipes, sts = [], [], []
     # the rapid mixer: a concrete tank, its agitator on the access deck over it
-    eqs.append(eq('00GBD10BB001', 'Rapid mix tank', 'basin', [383, 112, 0], 0, {'length': 4, 'width': 4, 'depth': 4.25},
+    eqs.append(eq('00GBD10BB001', 'Rapid mix tank', 'basin', [383, 112, 0], 0, {'length': 4, 'width': 4, 'depth': 4.2},
                   'edge'))
     eqs.append(eq('00GBD10AM001', 'Rapid mixer', 'agitator', [383, 112, 4.5], 0, {'kw': 5.5, 'd': 1.2, 'shaft': 3.3},
                   'motor'))
@@ -253,15 +254,15 @@ def filtered_water():
              jn('00GBL10BR002', [286, 118, 0.5]), [[286, 110, 0.5]], nz('00GHA10AP002', 'suction')),
         pipe('00GHA10BR011', 'Service water pump A suction', 'filtered_water', 300, jn('00GBL10BR003', [286, 114, 0.5]),
              [], nz('00GHA10AP001', 'suction')),
-        pipe('00GHB10BR001', 'Cooling tower makeup water', 'filtered_water', 400, nz('00GHB10AP001', 'discharge'),
+        pipe('00GHB10BR001', 'Cooling tower makeup water', 'filtered_water', 300, nz('00GHB10AP001', 'discharge'),
              [[280.25, 126, 5], [271, 126, 5], [271, 38, 5], [262, 38, 5], [262, 3, 5], [262, 3, -0.6],
               [258, 3, -0.6]], jn('30PAR10BR001', [258, 0, -0.6]), buried=[[6, 7]], arrows=20,
-             valves=[valve('00GHB10AA201', 'valve_check', 0.008, 'Makeup pump A check valve', dn=400),
-                     valve('00GHB10AA101', 'valve_gate', 0.017, 'Makeup pump A discharge valve', dn=400)]),
-        pipe('00GHB10BR002', 'Makeup pump B discharge', 'filtered_water', 400, nz('00GHB10AP002', 'discharge'),
+             valves=[valve('00GHB10AA201', 'valve_check', 0.008, 'Makeup pump A check valve', dn=300),
+                     valve('00GHB10AA101', 'valve_gate', 0.017, 'Makeup pump A discharge valve', dn=300)]),
+        pipe('00GHB10BR002', 'Makeup pump B discharge', 'filtered_water', 300, nz('00GHB10AP002', 'discharge'),
              [[280.25, 122, 5], [276, 122, 5]], jn('00GHB10BR001', [276, 126, 5]),
-             valves=[valve('00GHB10AA202', 'valve_check', 0.15, 'Makeup pump B check valve', dn=400),
-                     valve('00GHB10AA102', 'valve_gate', 0.38, 'Makeup pump B discharge valve', dn=400)]),
+             valves=[valve('00GHB10AA202', 'valve_check', 0.15, 'Makeup pump B check valve', dn=300),
+                     valve('00GHB10AA102', 'valve_gate', 0.38, 'Makeup pump B discharge valve', dn=300)]),
     ]
     for n, y in ((1, 114), (2, 110)):
         L = 'AB'[n - 1]
@@ -301,7 +302,7 @@ def treatment_building():
                           [[x, by + 4.375, 2.4], [x, by + 8.2, 2.4], [x, by + 8.2, 0.3]], nz(f'00GCB2{n}AT001', 'feed_in'),
                           valves=[valve(f'00GCB2{n}AA101', 'valve_globe', 0.3, f'RO {L} feed valve', dn=80,
                                         rating='pn25', actuator='electric')]))
-        pipes.append(pipe(f'00GCB2{n}BR003', f'RO {L} concentrate to drain', 'raw_water', 50,
+        pipes.append(pipe(f'00GCB2{n}BR003', f'RO {L} concentrate to drain', 'waste_water', 50,
                           nz(f'00GCB2{n}AT001', 'concentrate_out'), [[x + 0.8, by + 18, 0.3]],
                           free([x + 0.8, by + 18, -1]),
                           valves=[valve(f'00GCB2{n}AA301', 'valve_control', 0.25, f'RO {L} concentrate valve', dn=50,
@@ -413,7 +414,7 @@ def degassing_and_demin():
                           nz(f'00GCL10BB00{n}', 'outlet'), [], nz(f'00GHC10AP00{n}', 'suction')))
     pipes.append(pipe('00GHC10BR001', 'Demineralised water transfer to the plant\'s demineralised water tank',
                       'demin_water', 100, nz('00GHC10AP001', 'discharge'),
-                      [[274.125, 66, 6.5], [274.125, 39.5, 6.5], [133, 39.5, 6.5], [133, 4, 6.5], [125, 4, 6.5],
+                      [[274.125, 66, 6.5], [274.125, 41.5, 6.5], [133, 41.5, 6.5], [133, 4, 6.5], [125, 4, 6.5],
                        [125, 4, 9]], nz('00GHC10BB001', 'inlet'), arrows=20,
                       valves=[valve('00GHC10AA201', 'valve_check', 0.006, 'Transfer pump A check valve', dn=100),
                               valve('00GHC10AA101', 'valve_gate', 0.014, 'Transfer pump A discharge valve', dn=100)]))
@@ -434,16 +435,16 @@ def chemicals_and_wastes():
         eqs.append(dosing(code, chem, [x, 51.5, 0], 0, litres))
     # the neutralisation pit: its water, the bridge across it with the agitator and the discharge pumps
     eqs.append(eq('00GNR10BB001', 'Neutralisation pit', 'basin', [373, 67, -3], 0,
-                  {'length': 10, 'width': 6, 'depth': 2.2}, None,
-                  [child('00GNR10CQ001', 'Neutralisation pit pH', 'temperature_element', [1.3, -2.75, 3.1],
-                         {'range': [0, 14], 'unit': 'pH'})]))
+                  {'length': 10 - 2 * INSET, 'width': 6 - 2 * INSET, 'depth': 2.2}, None,
+                  [child('00GNR10CQ001', 'Neutralisation pit pH', 'local_panel', [-1.2, -3.6, 3.0],
+                         {'width': 0.4, 'height': 0.6})]))
     eqs.append(eq('00GNR10AM001', 'Neutralisation pit agitator', 'agitator', [373.8, 67, 0], 0,
                   {'kw': 4, 'd': 1.0, 'shaft': 2.3}, 'motor'))
     for n, y in ((1, 65.2), (2, 68.8)):
         L = 'AB'[n - 1]
         eqs.append(eq(f'00GNR10AP00{n}', f'Neutralisation pit discharge pump {L}', 'pump_vertical', [372.4, y, 0], 270,
                       {'flow_m3h': 60, 'head_m': 20, 'motor_kw': 7.5, 'pit_depth': 2.6}, 'motor_side'))
-        pipes.append(pipe(f'00GNR10BR00{n}', f'Neutralisation pit discharge pump {L} to the outfall', 'raw_water', 100,
+        pipes.append(pipe(f'00GNR10BR00{n}', f'Neutralisation pit discharge pump {L} to the outfall', 'waste_water', 100,
                           nz(f'00GNR10AP00{n}', 'discharge'), [[366.5, y, 1.5]], free([366.5, y, -1])))
     # the sludge thickener and the filter press
     tq = []

@@ -99,7 +99,10 @@ func _river(root: Node3D, wall: Rect2) -> void:
 	var rx := river_x(wall)
 	var c := wall.get_center()
 	var st: SurfaceTool = b._st()
-	Geom.add_prism(st, Geom.rect(rx.x, c.y - FAR, rx.y, c.y + FAR), RIVER_LEVEL - 0.05, RIVER_LEVEL, false)
+	# as far north and south as the terrain reaches at the river (its edge is a circle of FAR round the centre)
+	var dx := maxf(absf(rx.x - c.x), absf(rx.y - c.x))
+	var half := sqrt(maxf(FAR * FAR - dx * dx, 0.0))
+	Geom.add_prism(st, Geom.rect(rx.x, c.y - half, rx.y, c.y + half), RIVER_LEVEL - 0.05, RIVER_LEVEL, false, false)
 	b._mesh_node(root, "river", st, b._mat("water_river"), 8.0)
 	var lo := INF
 	var hi := -INF

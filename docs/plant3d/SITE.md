@@ -8,11 +8,11 @@ Format: docs/PLANT3D.md (areas §3; format 2 parts and interiors §18.5–§18.6
 
 ```
    y
- 140 ┤ ┌ admin ┐                                                                  ┌─────── wtp ────────┐   ┌intake┐≈≈≈≈≈≈ river ≈≈≈
- 110 ┤ │offices│                                                                  │ clarifiers  filters│   │screens│≈≈≈ (x 470–560)
+ 140 ┤ ┌ admin ┐                                                                  ┌─────── wtp ────────┐   ┌intake┐≈≈≈ river (x 500–590) ≈
+ 110 ┤ │offices│                                                                  │ clarifiers  filters│   │screens│≈≈≈ 
   90 ┤ │workshp│   ┌─ GT1 hall ─┐┌──── HRSG 1 ────┐                               │ RO/demin bldg, lab │   │pumps │≈≈≈
   60 ┤ └───────┘   └────────────┘└────────────────┘ ◯ stack                      │ demin tanks, pit   │   └──────┘≈≈≈
-  45 ┤        [trafo1]   ═══ raw water main (buried, y 80) ═══════════════════════└────────────────────┘
+  45 ┤        [trafo1]   ═══ raw water main (buried, y 79) ═══════════════════════└────────────────────┘
   20 ┤ ══ gate ══ ┌control┐ ┌── turbine hall ──┐ [rack][bop] [cw]  ┌── cooling tower ──┐
    0 ┤ (x −120)  └───────┘ └──────────────────┘                    └───────────────────┘
  −45 ┤                       (train 2, later: the mirror of train 1 across y = 0)
@@ -41,7 +41,7 @@ Format: docs/PLANT3D.md (areas §3; format 2 parts and interiors §18.5–§18.6
   the cooling tower's makeup pipe 30PAR10BR001 before its valve 30PAR10AA001; demineralised water transfer (DN 100,
   +6.5 m) along x = 274 and y = 39.5 to x = 133, then south to `bop`'s demin tank 00GHC10BB001. (The plan first
   said sleepers along y = 40: pipes at ground level would cut the walkways between the train and the WTP.)
-- **The fence** encloses the plant from x −140 to 495 (the river beyond it, W1), y −130 to 145 (train 2 included), the camp separately; a
+- **The fence** encloses the plant from x −140 to 495 (the river beyond it, W1), y −130 to 160 (train 2 included; as built the wall runs 25 m beyond the process areas), the camp separately; a
   fence is a structure (`fence`, PLANT3D.md §5), not walkable through. One gate for people and vehicles at the
   plant's west, one at the camp's east.
 - **Roads** at least 6 m wide (two buses pass), a 1.5 m walkway along each road that people use; crossings marked;

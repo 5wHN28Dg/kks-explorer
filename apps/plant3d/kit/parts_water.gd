@@ -78,8 +78,8 @@ static func thickener(part: String, g) -> void:
 	clarifier(part, g)
 
 ## A bank of gravity filters (rapid sand and anthracite, WATER-TREATMENT §3 #5): `cells` concrete cells in two rows
-## along y, `length` long, each row `width` across, the pipe gallery between the rows (open at both ends: a walker
-## goes in under the operating deck, which is the content's platform at the bank's top). In every cell the water
+## along y, `length` long, each row `width` across, the pipe gallery between the rows (open at both ends, seen from
+## them: its pipes fill it, nobody walks in; the operating deck over it is the content's platform at the bank's top). In every cell the water
 ## over its bed and its wash troughs; in the gallery the inlet channel's pipe under the deck, the filtered water
 ## header along the floor with each cell's outlet branch (the valves on them are coded parts of their own), the air
 ## scour header.
