@@ -47,8 +47,11 @@ task lists in content with a small set of reactions: what a plant's routines and
 - **Random numbers**: one xorshift32 stream per person, seeded through Wellons' lowbias32 mix, with 32-bit products
   defined exactly (§17.5); draws only at `work` ranges and `choose`.
 - Reference in `ref/plant3d.py`, vectors `plant3d-v2.json` (§19), the GDScript engine bit for bit; cost budget 0.3 ms
-  per step on the Note 9 (§18.4): the fast-forward cap falls from about 18× to about 15×; routes are cached, and
-  people with nothing due in a step may be skipped by an implementation as long as the result is the same.
+  per step on the Note 9 (§18.4); with the WTP's model (0065) the fast-forward cap falls from about 18× to no less
+  than 12×. Routes are never searched at run time: the content tool ships the walking network's next-point table
+  (§16.2), which the reference checks; people with nothing due in a step may be skipped by an implementation as long
+  as the result is the same.
+
 
 
 **When to revisit:** if trainers need behaviour the step list can't say (then a bounded addition to the step kinds,

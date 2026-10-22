@@ -25,7 +25,7 @@ Format: docs/PLANT3D.md (areas §3; format 2 parts and interiors §18.5–§18.6
 | (first train) | FIRST-TRAIN.md §3 | unchanged | base |
 | `wtp` | 270, 45 – 390, 135 | the water treatment plant (WATER-TREATMENT.md): rapid mixer, two clarifiers Ø 17 m, six filter cells and their gallery, filtered water tank, treatment building 40 × 25 m (RO trains, degasser, mixed beds, the WTP control panel, the lab), two demin tanks Ø 13 m, chemical storage in bunds, neutralisation pit, thickener, filter press house | wtp |
 | `intake` | 430, 60 – 470, 110 | the intake structure on the river bank: bar screen, two band screens, three raw water pumps in a wet well, hypochlorite dosing | wtp |
-| `admin` | −110, 40 – −50, 140 | a three-storey office block (offices of the managers, engineers and HSE; a meeting room; the permit office) with a shade canopy over the path to its door, workshops (I&C with its calibration bench, mechanical, electrical), the store, the plant's parking under shade canopies (white pickups and SUVs) | site |
+| `admin` | −110, 40 – −50, 140 | a three-storey office block (offices of the managers, engineers and HSE; a meeting room; the permit office) with a shade canopy over the path to its door, workshops (I&C with its calibration bench, mechanical, electrical), the store, the plant's parking under shade canopies (pickups and SUVs) | site |
 | `gate` | −140, 0 – −110, 40 | the plant gate: gate house, barriers in and out, turnstile, bus stop, the fence's corner | site |
 | `road_west` | −260, 10 – −140, 30 | the road and its walkway between the camp gate and the plant gate (130 m), street lamps | site |
 | `camp` | −480, −40 – −260, 120 | the camp (§3) | camp |
@@ -54,7 +54,7 @@ single-storey blocks among palms, seen from the control building's door.
 
 | Building | Size | Inside (walkable interiors marked ●) |
 |---|---|---|
-| Accommodation blocks 1–8 | prefabricated, single storey with a porch along the front, 40 × 10 m, 12 single rooms each with its own bathroom (96 rooms for 91 people and visitors) | ● block 1: the central corridor (glossy tiles), every room's door and number, two rooms open (bed, desk, wardrobe, the bathroom); other blocks are shells with their doors (`load: inside`, PLANT3D.md §18.5) |
+| Accommodation blocks 1–8 | prefabricated, single storey with a porch along the front, 40 × 10 m, 12 single rooms each with its own bathroom (96 rooms for 91 people and visitors) | ● block 1: the central corridor, every room's door and number, two rooms open (bed, desk, wardrobe, the bathroom); other blocks are shells with their doors (`load: inside`, PLANT3D.md §18.5) |
 | Mess hall and kitchen | 40 × 20 m | ● dining hall (tables for 120), serving counter, the kitchen behind it (ranges, cold room door, washing up) |
 | Prayer room | 12 × 10 m | ● carpeted hall, shoe racks and an ablution area at the door |
 | Gym | 16 × 10 m | ● racks and machines |

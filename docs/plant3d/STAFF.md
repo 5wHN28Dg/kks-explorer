@@ -11,7 +11,8 @@ task list, and NPCs fill the others.
 ## 1. Roles and how many
 
 Per crew (four crews, A–D, on a rotation of two days, two nights, four off: 12-hour shifts 06:00–18:00 and
-18:00–06:00) and on days (07:00–16:00, six days a week). Counts give a plant of about 2 trains at full build; the
+18:00–06:00) and on days (07:00–16:00, six days a week). Every role that works in the field lists hearing protection
+(`ear`) in its PPE, since the halls need it (§4). Counts give a plant of about 2 trains at full build; the
 first train's content uses the same numbers (people have work enough with the WTP and the BOP).
 
 | Role (`id`) | Roster | Per crew / on days | Authorities (PLANT3D.md §16.3) | Plays | What they do |
@@ -37,7 +38,7 @@ first train's content uses the same numbers (people have work enough with the WT
 | Contractor supervisor (`contractor_sup`) | days | 1 | request, accept | yes | the contractors' permits and their toolbox talk |
 | Contractor (`contractor`) | days | 8 (two teams) | — | yes | scaffolding, insulation, painting, civil jobs under their supervisor's permit; the shortcuts the safety walk finds |
 | Storekeeper (`store`) | days | 1 | — | no | tool and spares issue |
-| Driver (`driver`) | shift | 1 | drive | yes | the bus runs of the shift (the shift changes and the day workers' times, PLANT3D.md §16.8); a pickup for jobs between them |
+| Driver (`driver`) | `driver_shift`: the same rotation, 05:00–17:00 and 17:00–05:00, so the shift-change runs fall inside a duty | 1 | drive | yes | the bus runs of the shift (the shift changes and the day workers' times, PLANT3D.md §16.8); a pickup for jobs between them |
 | Camp staff: cook, cleaner, laundry (`camp`) | days | 6 | — | no | mess hall, rooms, laundry |
 
 12 people per crew (48 on the rotation, 12 on duty at a time) and 43 on days: 91 people, under the 200 limit; in
@@ -51,7 +52,7 @@ permit is accepted by its discipline's `accept` holders (the contractor supervis
 ## 2. A day
 
 Clock (PLANT3D.md §16.1): `day_scale` 6. A 12-hour shift is 2 hours of model time; played at 1× with fast-forward in
-the quiet stretches (the Note 9's cap, about 15× with the staff step, PLANT3D.md §18.4) a shift takes 40–90 minutes of the trainee's time,
+the quiet stretches (the Note 9's cap, at least 12× with the WTP and the staff, PLANT3D.md §18.4) a shift takes 40–90 minutes of the trainee's time,
 depending on how much of it is theirs to do. Walking is not compressed: a 300 m walk takes 4 minutes, which the clock
 shows as 23. Tasks' clock minutes are set so a round of 12 readings takes about 45 clock minutes, as on site.
 
@@ -64,7 +65,7 @@ shows as 23. Tasks' clock minutes are set so a round of 12 readings takes about 
 | 07:00–07:20 | | toolbox talk per discipline (HSE officer visits one); the maintenance supervisors' daily work list | |
 | 07:30 | supervisor at the morning meeting (control building) | managers, maintenance supervisors, HSE, chemist | |
 | 08:00– | rounds every 2 hours; permit requests come in; supervisor approves, operators isolate | jobs start as their permits are issued | |
-| 10:00, 14:00 | | safety walks (HSE officer; the plant manager on Mondays of the week list) | |
+| 10:00, 14:00 | | safety walks (HSE officer; the plant manager on the first day of the week) | |
 | 12:00–13:00 | breaks in turn (meal brought to the control room for the operators) | lunch at the mess (bus) | mess open |
 | 15:00–16:00 | permits returned, isolations removed, equipment back in service | | |
 | 16:15 | | bus to the camp | |
@@ -81,7 +82,7 @@ Each is a task (PLANT3D.md §16.6) with its steps and, for work on equipment, a 
 | Field round | field op | `read` of every local gauge on the route; a finding when a value is outside its range | the CCR operator gets the round's findings by radio |
 | Start or stop on instruction | field op ← CCR op (`call`) | the `local` op (a CW pump discharge valve to its start position, the condenser vents) | the CCR operator waits for the field's "done" before the next step of a procedure |
 | Corrective job on a pump | mech tech, maint sup, shift sup, field op, elec AP | `permit` request → approve → `lock` the breaker (elec AP) and the valve (field op) → issue → accept → `work` (bearing, coupling) → `done` repairs the fault → return → `unlock` → close; then the operator starts the pump again | on the screens: CW pump B locked out (padlock, PTW number), its start refused with the failed value `iso_cw_b_locked`; its standby auto-start skipped. In the field: a chain, padlock and danger tag on the valve's handwheel, a padlock and tag on the breaker |
-| Isolating a transmitter | I&C tech, CCR op | the CCR op shelves nothing: the isolation's point (kind `instrument`) suppresses its alarms; the reading holds (`hold` node) and is marked isolated; the 2-out-of-3 condenser pressure trip runs 2 out of 2 on the others | the condenser pressure 30MAG10CP002 shows "isolated, PTW-0007" and a held value on the operator's screen |
+| Isolating a transmitter | I&C tech, CCR op | the CCR op shelves nothing: the isolation's point (kind `instrument`) suppresses its alarms; the reading holds (`hold` node) and is marked isolated; the isolated channel votes tripped, so the 2-out-of-3 condenser pressure trip runs 1 out of 2 on the others (a bypass keeping 2 out of 2 is an authorised override, not in format 2) | the condenser pressure 30MAG10CP002 shows "isolated, PTW-0007" and a held value on the operator's screen |
 | Calibration | I&C tech | the work's `set` puts the transmitter's drift (a fault the scenario sets slowly) back to 0 | the reading jumps back into line with its two partners when the permit is returned |
 | Preventive maintenance | mech or elec tech, by the week list | a work without a fault (greasing a fan motor: the fan locked out for 20 clock minutes) | a cooling tower fan out of service: the cold water a little warmer at high load |
 | Filter backwash, MB regeneration, RO CIP | WTP op (WATER-TREATMENT.md §6) | the WTP's machine commands, with permits only where hands go into the equipment | the demin tank level falls while a train is out |
