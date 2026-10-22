@@ -15,7 +15,7 @@ pinned script and redistributed in the app), at a cost the Note 9 can carry (006
 | Quaternius Universal Animation Library 1 and 2, Universal Base Characters | pack and itch.io pages say "CC0" (UAL2 v2.2 page updated 2026-09-28); **but quaternius.com/license.html is now the "Quaternius Asset License v1.0" (2026-08-28)**, whose §3a forbids redistributing the assets "as a standalone asset, asset pack, stock file…", §7: the version in effect when obtained governs | UAL1 free tier 45 clips (idle, walks, talk, sit, interact, pick-up, kneeling fix, push, driving); 53-joint Rigify-named skeleton; base bodies ~13 k triangles | **conflicting licences**; downloads through itch.io's per-session links (no stable URL); a CC0 GitHub mirror of the 2025-06-10 free pack exists (J-Ponzo/gltf-universal-animation-library) |
 | KayKit Character Animations (Kay Lousberg) | itch.io page: "Creative Commons Zero v1.0 Universal" | 161 humanoid clips in the free tier, FBX and glTF, incl. tool work (digging, hammering; v1.1, 2025-12-10); `Rig_Medium`, `Rig_Large` | characters are fantasy (not used); bone count not verified; itch.io links not stable |
 | Kenney Mini Characters 1.0 | CC0 (License.txt in the zip) | 12 people, 690–876 triangles, 32 clips | 7-bone cartoon rig, doesn't retarget: a placeholder at most |
-| MakeHuman / MPFB2 (Blender) | "All core assets are shared under Creative Commons, CC0"; since 2020 an export is CC0 only if every asset in it was (static.makehumancommunity.org/about/license.html); asset packs are mixed CC0 and CC-BY | realistic adults; CC0 shirts, trousers, suits, shoes, gloves, glasses, helmets; rigs `game_engine` (53 bones), `default` (163) | active (MPFB v2.0.18, 2026-10-11); no CC0 coveralls, hi-vis or hard hats |
+| MakeHuman / MPFB2 (Blender) | "All core assets are shared under Creative Commons, CC0"; since 2020 an export is CC0 only if every asset in it was (static.makehumancommunity.org/about/license.html); asset packs are mixed CC0 and CC-BY | realistic adults; CC0 shirts, trousers, suits, shoes, gloves, glasses, and "helmets" (Hats 02, not industrial hard hats); rigs `game_engine` (53 bones), `default` (163) | active (MPFB v2.0.18, 2026-10-11); no CC0 coveralls, hi-vis or hard hats |
 | Mixamo (Adobe) | not CC0; free for use, but not to distribute "the raw character and animation files" (Adobe FAQ as quoted 2022; the page refused our fetch) | | **excluded**: a public repository and packages distribute the files |
 | CMU motion capture | "free for all uses … may not resell this data directly"; FAQ: "may be copied, modified, or redistributed" | thousands of raw BVH takes | not CC0; clean-up and retargeting work |
 | Bandai Namco motion dataset, LAFAN1, 100STYLE | CC BY-NC 4.0; CC BY-NC-ND 4.0; CC BY 4.0 | | excluded (not CC0) |
@@ -24,8 +24,9 @@ pinned script and redistributed in the app), at a cost the Note 9 can carry (006
 ## Choice
 
 - **Bodies:** MakeHuman/MPFB2 exports with CC0 assets only (bodies, skins, hair, the CC0 shirt, trouser, shoe,
-  glove, glasses and helmet packs), the `game_engine` rig, eight bodies of mixed build and age, decimated to the
-  budgets of 0064 (LOD0 ≤ 4,000 triangles). Made once in Blender (a tool, not shipped) by a recorded recipe (every
+  glove and glasses packs), the `game_engine` rig, eight bodies of mixed build and age, decimated to the
+  budgets of 0064 (LOD0 ≤ 4,000 triangles); the hard hats are ours (below), not MakeHuman's. Made once in Blender (a
+  tool, not shipped) by a recorded recipe (every
   MakeHuman setting and asset name, with each asset pack's licence checked as CC0 at export) and **committed** as
   glTF with that recipe and the licences in their entries of the about list, as the sounds are (0054 §7).
 - **Work clothes and PPE are ours**, made by code like the kit (coveralls as the body's clothes with our own

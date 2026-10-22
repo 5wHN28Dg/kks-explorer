@@ -25,9 +25,10 @@ and on laptops, without a per-frame cost that grows with the population?
 
 - **Three bands by distance:** skinned avatars near (Note 9 ≤ 6 within 25 m; laptop ≤ 24 within 40 m; two mesh LODs);
   posed static meshes beyond (to 80 m on the phone, 150 m on laptops): each body in 6 poses (stand, walk A, walk B,
-  sit, work, carry) made by the build from the same assets, one MultiMesh per pose and look, the pose switched 4
-  times a second for walkers; nothing beyond. No impostors (no maintained Godot 4 implementation; posed meshes give
-  the same far look for less work).
+  sit, work, carry) made by the build from the same assets, one MultiMesh per pose and body with the outfit's colours
+  as per-instance data (8 bodies: at most 48 draw calls, budget 50), the pose switched 4 times a second for walkers;
+  nothing beyond. No impostors (no maintained Godot 4 implementation; posed meshes give the same far look for less
+  work).
 - **Animation advanced by the app:** 30 Hz within 10 m, 15 Hz further, paused out of view; one AnimationTree per
   skinned avatar, created from a pool of the band's size (never per person).
 - **No run-time path search and no avoidance for people:** each way's path is baked as a polyline with the navigation

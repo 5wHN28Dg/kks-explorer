@@ -25,7 +25,7 @@ Format: docs/PLANT3D.md (areas §3; format 2 parts and interiors §18.5–§18.6
 | (first train) | FIRST-TRAIN.md §3 | unchanged | base |
 | `wtp` | 270, 45 – 390, 135 | the water treatment plant (WATER-TREATMENT.md): rapid mixer, two clarifiers Ø 17 m, six filter cells and their gallery, filtered water tank, treatment building 40 × 25 m (RO trains, degasser, mixed beds, the WTP control panel, the lab), two demin tanks Ø 13 m, chemical storage in bunds, neutralisation pit, thickener, filter press house | wtp |
 | `intake` | 430, 60 – 470, 110 | the intake structure on the river bank: bar screen, two band screens, three raw water pumps in a wet well, hypochlorite dosing | wtp |
-| `admin` | −110, 40 – −50, 140 | administration building (offices of the managers, engineers and HSE; a meeting room; the permit office), workshops (I&C with its calibration bench, mechanical, electrical), the store, the plant's parking under shade canopies | site |
+| `admin` | −110, 40 – −50, 140 | a three-storey office block (offices of the managers, engineers and HSE; a meeting room; the permit office) with a shade canopy over the path to its door, workshops (I&C with its calibration bench, mechanical, electrical), the store, the plant's parking under shade canopies (white pickups and SUVs) | site |
 | `gate` | −140, 0 – −110, 40 | the plant gate: gate house, barriers in and out, turnstile, bus stop, the fence's corner | site |
 | `road_west` | −260, 10 – −140, 30 | the road and its walkway between the camp gate and the plant gate (130 m), street lamps | site |
 | `camp` | −480, −40 – −260, 120 | the camp (§3) | camp |
@@ -47,14 +47,14 @@ Format: docs/PLANT3D.md (areas §3; format 2 parts and interiors §18.5–§18.6
 ## 2. What the trainee sees from the train
 
 The WTP stands north-east of the cooling tower, low (clarifiers, tanks 12 m, the treatment building 10 m): from the
-HRSG platforms it reads as a separate plant across the road. The camp is west, behind the admin area: low two-storey
-blocks under shade, seen from the control building's door.
+HRSG platforms it reads as a separate plant across the road. The camp is west, behind the admin area: low
+single-storey blocks among palms, seen from the control building's door.
 
 ## 3. The camp
 
 | Building | Size | Inside (walkable interiors marked ●) |
 |---|---|---|
-| Accommodation blocks 1–4 | 2 storeys, 48 × 12 m, 24 single rooms each (96 rooms for 89 people and visitors) | ● block 1: the corridors, stairs, one room of each kind (bed, desk, wardrobe, bathroom door); every room has its door and number; other blocks are shells with their doors (`load: inside`, PLANT3D.md §18.5) |
+| Accommodation blocks 1–8 | prefabricated, single storey with a porch along the front, 40 × 10 m, 12 single rooms each with its own bathroom (96 rooms for 91 people and visitors) | ● block 1: the central corridor (glossy tiles), every room's door and number, two rooms open (bed, desk, wardrobe, the bathroom); other blocks are shells with their doors (`load: inside`, PLANT3D.md §18.5) |
 | Mess hall and kitchen | 40 × 20 m | ● dining hall (tables for 120), serving counter, the kitchen behind it (ranges, cold room door, washing up) |
 | Prayer room | 12 × 10 m | ● carpeted hall, shoe racks and an ablution area at the door |
 | Gym | 16 × 10 m | ● racks and machines |
@@ -63,7 +63,9 @@ blocks under shade, seen from the control building's door.
 | Camp office and first aid | 12 × 8 m | shell; a desk at the window |
 | Camp gate | gate house, barrier, guard booth | the guard's post |
 | Parking and bus stop | under shade canopies | |
-| Walkways | covered walkways between the blocks, the mess and the gate | |
+| Sports court | 28 × 15 m, fenced, floodlit | outdoor, walkable |
+| Walkways | covered walkways between the blocks, the mess and the gate; roads with painted kerbs, street lamps, palms | |
+
 
 Generic and neutral: buildings in light, sand and grey tones (the user's choice of neutral colours, 2026-10-21),
 signs in the plant's own style (PLANT3D.md §5).

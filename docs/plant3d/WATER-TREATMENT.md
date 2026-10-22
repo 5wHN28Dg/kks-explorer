@@ -34,10 +34,10 @@ are any.
 | | Design value | Source |
 |---|---|---|
 | Cooling tower makeup (both trains at base load, hot day) | ~850 m³/h of clarified, filtered water; cycles of concentration 3–5 | [EPRI] p. 3-5 (CCPP with a tower: 230 gal/MWh makeup at 5 cycles); ours for the hot day |
-| Demineralised water (HRSG blowdown and losses, start-ups, sampling) | ~30 m³/h on average, more at start-ups | ours, from about 1–2 % of ~600 t/h of steam |
+| Demineralised water | ~30 m³/h on average, more at start-ups | ours: HRSG blowdown and losses of about 1–2 % of ~600 t/h of steam (6–12 m³/h), plus start-ups, sampling, closed cooling and service needs and the mixed beds' own rinse water |
 | Raw water taken | ~1,000 m³/h (makeup, the RO feed, service water, ~5 % for sludge and backwash) | ours |
 | Demin plant | 2 streams × 40 m³/h (one in service, one standby or regenerating) | ours |
-| Demin storage | 2 tanks × 1,500 m³ (about two days), with a floating cover against CO₂ | ours; the cover [IAPWS] §6.8 |
+| Demin storage | 2 tanks × 1,500 m³ (about four days at the average draw, a day and a half of start-ups), with a floating cover against CO₂ | ours; the cover [IAPWS] §6.8 |
 | Makeup quality | conductivity < 0.1 µS/cm, silica < 10 µg/kg | [IAPWS] §6.8 and table 4 |
 
 The river is turbid and changes with the season: 20 NTU in the dry months, up to 500 NTU in a flood (a scenario
@@ -103,7 +103,8 @@ S sludge thickening), parallel streams by units (11, 12), equipment AN numbers a
 | 00GCB11AT001, 00GCB12AT001 | Cartridge filters A, B | GCB filtering |
 | 00GCB21AP001, 00GCB22AP001 | RO high-pressure pumps A, B | (RO is not in the key: placed under GCB, our convention) |
 | 00GCB21AT001, 00GCB22AT001 | RO trains A, B | |
-| 00GCB21CQ001, CQ002, CP001, CF001 | RO permeate conductivity, feed ORP, feed pressure, permeate flow (also on B) | |
+| 00GCB21CQ001, CQ002, CP001, CP002, CF001 | RO permeate conductivity, feed ORP, feed (HP pump discharge) pressure, HP pump suction pressure, permeate flow (also on B) | |
+| 00GCB11CP001, 00GCB12CP001 | Cartridge filter differential pressure | |
 | 00GCH10AT001, 00GCH10AN001 | Degasser tower, its blower | GCH degasification |
 | 00GCK10BB001, 00GCK10AP001–002 | Degassed water tank, mixed bed feed pumps | GCK intermediate storage |
 | 00GCF11AT001, 00GCF12AT001 | Mixed beds A, B | GCF ion exchanger |
@@ -123,9 +124,15 @@ The plant's `kks` tables gain these letters (meanings in our own words, as FIRST
 - **Two speeds.** Hydraulics (a pump's start, pressures, flows) run in model time like the train. **Inventories**
   that take hours or days on site (tanks, a filter's head loss, a mixed bed's exhaustion, the RO's fouling, sludge)
   run at clock rates: their `integrate` gains are multiplied by the clock's `day_scale` (PLANT3D.md §16.1), so the
-  demin tank empties over the right number of clock hours and a mixed bed runs about three clock days. Sequence step
-  times (a backwash, a regeneration) are clock durations divided by `day_scale`: the regeneration's ~4 hours are 40
-  model minutes.
+  demin tank empties over the right number of clock hours and a mixed bed runs about three clock days (the content
+  tool reads `day_scale` from plant.json). Sequence step times (a backwash, a regeneration) are clock durations
+  divided by `day_scale`: the regeneration's ~4 hours are 40 model minutes.
+- **Where the two speeds meet** (§8): the plant's demin tank `00GHC10BB001` and the cooling tower basin keep the
+  first train's model rates. A flow between a clock-rate inventory and a model-rate one is counted at each end at that
+  end's rate: the transfer pumps' 40 m³/h fill the plant's tank at 40 m³/h of model time and empty the WTP's demin
+  tanks at 240 m³/h of model time (× 6). Mass is not conserved across the tie, deliberately: the WTP's slow
+  inventories must move within a played shift, the train's fast ones must not race.
+
 - **Values (the main ones):** `river_ntu`, `river_tds` (ext); raw water flow from the pumps and their discharge
   valve; coagulant ratio (dose ÷ the demand table of `river_ntu`) → clarified turbidity (a table: under-dosed → the
   clarifier carries floc over; over-dosed → no better, more sludge); sludge blanket level (integrates solids − blowdown);
@@ -161,8 +168,9 @@ The plant's `kks` tables gain these letters (meanings in our own words, as FIRST
 | 00GBB11CP001–00GBB16CP001 | PDAH | Filter head loss high: backwash due | > 2.2 m | 3 |
 | 00GBL10BB001 | LAL | Filtered water tank low | < 30 % | 2 |
 | 00GCB21CQ002, 00GCB22CQ002 | QAH / QAHH | RO feed ORP high / high-high (RO trip) | > 250 / > 300 mV | 2 / 1 |
-| 00GCB11AT001, 00GCB12AT001 | PDAH | Cartridge filter ΔP high | > 1.0 bar | 3 |
-| 00GCB21CP001, 00GCB22CP001 | PAH / PAHH, PALL | RO feed pressure high / high-high (trip); suction low-low (trip) | > 15 / > 16 bar; < 1 bar | 2 / 1, 1 |
+| 00GCB11CP001, 00GCB12CP001 | PDAH | Cartridge filter ΔP high | > 1.0 bar | 3 |
+| 00GCB21CP001, 00GCB22CP001 | PAH / PAHH | RO feed pressure high / high-high (RO trip) | > 15 / > 16 bar | 2 / 1 |
+| 00GCB21CP002, 00GCB22CP002 | PALL | RO HP pump suction pressure low-low (RO trip) | < 1 bar | 1 |
 | 00GCB21CF001, 00GCB22CF001 | FAL | RO normalised permeate flow low: CIP due | −10 % | 3 |
 | 00GCB21CQ001, 00GCB22CQ001 | QAH | RO permeate conductivity high (to drain) | > 50 µS/cm | 2 |
 | 00GCF11CQ001, 00GCF12CQ001 | QAH | Mixed bed outlet conductivity high (exhausted) | > 0.2 µS/cm | 2 |
