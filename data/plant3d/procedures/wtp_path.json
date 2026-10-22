@@ -1,0 +1,24 @@
+{
+ "format": "walkdown-plant-procedure",
+ "version": 1,
+ "id": "wtp_path",
+ "title": "Tour: the water treatment plant, from the river to the demineralised water tank",
+ "kind": "tour",
+ "intro": [
+  {"p": ["Follow the water from the river through the intake, the clarifiers and filters, reverse osmosis, the degasser and the mixed beds to the demineralised water the HRSG is fed with."]}
+ ],
+ "steps": [
+  {"id": "s1", "text": ["The bar screen (", {"link": ["00GAA10AT001"], "to": {"kks": "00GAA10AT001"}}, ") keeps logs and rubbish out of the intake channel; the travelling band screens behind it (", {"link": ["00GAA10AT002"], "to": {"kks": "00GAA10AT002"}}, ", ", {"link": ["00GAA10AT003"], "to": {"kks": "00GAA10AT003"}}, ") catch what is larger than 9.5 mm."], "at": ["00GAA10AT001", "00GAA10AT002", "00GAA10AT003"], "go": "walk"},
+  {"id": "s2", "text": ["Three vertical raw water pumps (", {"link": ["00GAF10AP001"], "to": {"kks": "00GAF10AP001"}}, ") stand over the wet well, two running. They send the river water through the buried raw water main (", {"link": ["00GAC10BR010"], "to": {"kks": "00GAC10BR010"}}, ") to the treatment plant."], "at": ["00GAF10AP001", "00GAF10AP002", "00GAF10AP003"], "go": "walk"},
+  {"id": "s3", "text": ["The rapid mixer (", {"link": ["00GBD10AM001"], "to": {"kks": "00GBD10AM001"}}, ") mixes the coagulant into the water in seconds: the fine clay particles start to gather into flocs."], "at": ["00GBD10AM001"], "go": "walk"},
+  {"id": "s4", "text": ["The clarifiers (", {"link": ["00GBD11AT001"], "to": {"kks": "00GBD11AT001"}}, ", ", {"link": ["00GBD12AT001"], "to": {"kks": "00GBD12AT001"}}, ") let the flocs settle; the clear water spills over the weirs into the launder round the wall."], "at": ["00GBD11AT001", "00GBD12AT001"], "go": "walk"},
+  {"id": "s5", "text": ["The gravity filters (", {"link": ["00GBB10"], "to": {"kks": "00GBB10"}}, "): six cells of sand and anthracite, their valves in the gallery under the deck. A filter whose head loss grows is backwashed with air and water."], "at": ["00GBB10"], "go": "walk"},
+  {"id": "s6", "text": ["The filtered water tank (", {"link": ["00GBL10BB001"], "to": {"kks": "00GBL10BB001"}}, ") feeds the cooling tower makeup pumps (", {"link": ["00GHB10AP001"], "to": {"kks": "00GHB10AP001"}}, ") and the service water pumps, which also feed the RO."], "at": ["00GBL10BB001", "00GHB10AP001"], "go": "walk"},
+  {"id": "s7", "text": ["Cartridge filters (", {"link": ["00GCB11AT001"], "to": {"kks": "00GCB11AT001"}}, ") of 5 µm protect the membranes; sodium bisulphite has taken the chlorine out before them."], "at": ["00GCB11AT001", "00GCB12AT001"], "go": "walk"},
+  {"id": "s8", "text": ["The high-pressure pump (", {"link": ["00GCB21AP001"], "to": {"kks": "00GCB21AP001"}}, ") raises the feed to about 12 bar; the RO train (", {"link": ["00GCB21AT001"], "to": {"kks": "00GCB21AT001"}}, ") passes three quarters of it through the membranes as permeate."], "at": ["00GCB21AP001", "00GCB21AT001"], "go": "walk"},
+  {"id": "s9", "text": ["The degasser (", {"link": ["00GCH10AT001"], "to": {"kks": "00GCH10AT001"}}, ") blows the carbon dioxide out of the permeate before the mixed beds."], "at": ["00GCH10AT001"], "go": "walk"},
+  {"id": "s10", "text": ["The mixed beds (", {"link": ["00GCF11AT001"], "to": {"kks": "00GCF11AT001"}}, ") polish the water to under 0.1 µS/cm."], "at": ["00GCF11AT001", "00GCF12AT001"], "go": "walk"},
+  {"id": "s11", "text": ["The demineralised water tanks (", {"link": ["00GCL10BB001"], "to": {"kks": "00GCL10BB001"}}, ") store about four days of the plant's needs; the transfer pumps (", {"link": ["00GHC10AP001"], "to": {"kks": "00GHC10AP001"}}, ") send it to the train."], "at": ["00GCL10BB001", "00GHC10AP001"], "go": "walk"},
+  {"id": "s12", "text": ["The plant's demineralised water tank (", {"link": ["00GHC10BB001"], "to": {"kks": "00GHC10BB001"}}, ") beside the auxiliary boiler: the makeup of the water-steam cycle comes from here."], "at": ["00GHC10BB001"], "go": "walk"}
+ ]
+}

@@ -22,6 +22,7 @@ const P_VAL = preload("res://kit/parts_valves.gd")
 const P_INS = preload("res://kit/parts_instruments.gd")
 const P_EL = preload("res://kit/parts_electrical.gd")
 const P_PIPE = preload("res://kit/parts_pipes.gd")
+const P_WAT = preload("res://kit/parts_water.gd")
 
 ## The parts each generator script makes (structure parts are made by the builder itself: §5).
 const MAKERS := {
@@ -43,6 +44,10 @@ const MAKERS := {
 	"elbow": "PIPE", "tee": "PIPE", "reducer": "PIPE", "flange": "PIPE", "pipe_support": "PIPE",
 	"tag_plate": "INS", "sign": "INS", "lamp": "INS", "beacon": "INS", "horn": "INS", "emergency_stop": "INS",
 	"safety_shower": "INS",
+	"clarifier": "WAT", "thickener": "WAT", "filter_bank": "WAT", "cartridge_housing": "WAT", "ro_train": "WAT",
+	"degasser": "WAT", "ion_exchanger": "WAT", "dosing_skid": "WAT", "metering_pump": "WAT", "chemical_tank": "WAT",
+	"filter_press": "WAT", "sample_panel": "WAT", "lab_bench": "WAT", "agitator": "WAT", "bar_screen": "WAT",
+	"screen_band": "WAT",
 }
 
 ## Triangle budgets per part at full detail (LOD 0), the most any one instance may take with any parameters the kit
@@ -63,6 +68,10 @@ const BUDGET := {
 	"cable_tray": 6000, "elbow": 3000, "tee": 2000, "reducer": 1000, "flange": 1500, "pipe_support": 400,
 	"tag_plate": 60, "sign": 60, "lamp": 300, "beacon": 400, "horn": 300, "emergency_stop": 400,
 	"safety_shower": 1500,
+	"clarifier": 9000, "thickener": 7000, "filter_bank": 9000, "cartridge_housing": 3000, "ro_train": 16000,
+	"degasser": 7000, "ion_exchanger": 6000, "dosing_skid": 3000, "metering_pump": 2500, "chemical_tank": 6000,
+	"filter_press": 6000, "sample_panel": 4000, "lab_bench": 2000, "agitator": 3500, "bar_screen": 5000,
+	"screen_band": 4000,
 }
 
 class Gen:
@@ -175,6 +184,7 @@ static func _script(part: String):
 		"INS": return P_INS
 		"EL": return P_EL
 		"PIPE": return P_PIPE
+		"WAT": return P_WAT
 	return null
 
 ## Makes a part (cached: the same part with the same parameters and context is made once).
