@@ -8,6 +8,7 @@
 ##   - with a river intake (an area `intake`, docs/plant3d/SITE.md §1): the river along the wall's east side, beyond
 ##     a strip of bank, its water at RIVER_LEVEL, and the headwall where the intake's channel (its pits) opens on
 ##     the river under the road and the wall.
+## The ground's slabs are drawn without their undersides (never seen; half their lightmap texels).
 ## The walkable ground (z = 0 inside the wall) keeps its collision as before; kerbs and drains are drawn only (a
 ## walker steps over them). Everything here is static and baked into the lightmap.
 extends RefCounted
@@ -65,7 +66,7 @@ func make(root: Node3D, holes: Array) -> void:
 	var gh: Array = holes.duplicate()
 	for p in pads:
 		gh.append(poly_of(p))
-	b._slab(root, "ground", poly_of(drain_in), gh, 0.0, 0.5, b._mat("ground"), Lightmap.GROUND_TEXEL)
+	b._slab(root, "ground", poly_of(drain_in), gh, 0.0, 0.5, b._mat("ground"), Lightmap.GROUND_TEXEL, false)
 	# the yards: concrete, less pits and stairwells
 	var i := 0
 	for p in pads:
@@ -73,11 +74,11 @@ func make(root: Node3D, holes: Array) -> void:
 		for h in holes:
 			if p.grow(0.01).encloses(_bbox(h)):
 				ph.append(h)
-		b._slab(root, "yard_%d" % i, poly_of(p), ph, 0.0, 0.5, b._mat("yard" if paved[i] else "yard_gravel"), Lightmap.GROUND_TEXEL)
+		b._slab(root, "yard_%d" % i, poly_of(p), ph, 0.0, 0.5, b._mat("yard" if paved[i] else "yard_gravel"), Lightmap.GROUND_TEXEL, false)
 		i += 1
 	# the ring road, and gravel from it to the wall
-	b._slab(root, "road", poly_of(road_out), [poly_of(road_in)], 0.0, 0.5, b._mat("road"), Lightmap.GROUND_TEXEL)
-	b._slab(root, "verge", poly_of(wall), [poly_of(road_out)], 0.0, 0.5, b._mat("ground"), Lightmap.GROUND_TEXEL)
+	b._slab(root, "road", poly_of(road_out), [poly_of(road_in)], 0.0, 0.5, b._mat("road"), Lightmap.GROUND_TEXEL, false)
+	b._slab(root, "verge", poly_of(wall), [poly_of(road_out)], 0.0, 0.5, b._mat("ground"), Lightmap.GROUND_TEXEL, false)
 	_kerbs_and_drain(root, road_in, road_out, drain_in)
 	_wall(root, wall)
 	_terrain(root, wall)

@@ -262,7 +262,9 @@ static func _strip(a: Vector2, b: Vector2, across: Vector2, w: float) -> PackedV
 # ------------------------------------------------------------------ meshes and shapes (Godot axes)
 
 ## A vertical prism over a plan piece (plant coordinates) from z0 to z1, added to a SurfaceTool (top, bottom, sides).
-static func add_prism(st: SurfaceTool, piece: PackedVector2Array, z0: float, z1: float, sides := true) -> void:
+## `bottom` false leaves the underside out (a slab lying on the ground: nobody sees it, and the lightmap's atlas
+## would give it as many texels as the top).
+static func add_prism(st: SurfaceTool, piece: PackedVector2Array, z0: float, z1: float, sides := true, bottom := true) -> void:
 	var n := piece.size()
 	var ccw := _signed_area(piece) > 0.0
 	var top: Array = []
@@ -273,9 +275,13 @@ static func add_prism(st: SurfaceTool, piece: PackedVector2Array, z0: float, z1:
 	for i in range(1, n - 1):
 		# plan counter-clockwise = Godot clockwise seen from above (z flips): wind for an outward normal
 		if ccw:
-			_tri(st, top[0], top[i + 1], top[i]); _tri(st, bot[0], bot[i], bot[i + 1])
+			_tri(st, top[0], top[i + 1], top[i])
+			if bottom:
+				_tri(st, bot[0], bot[i], bot[i + 1])
 		else:
-			_tri(st, top[0], top[i], top[i + 1]); _tri(st, bot[0], bot[i + 1], bot[i])
+			_tri(st, top[0], top[i], top[i + 1])
+			if bottom:
+				_tri(st, bot[0], bot[i + 1], bot[i])
 	if sides:
 		for i in n:
 			var j := (i + 1) % n
