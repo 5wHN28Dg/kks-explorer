@@ -13,7 +13,7 @@ extends RefCounted
 const JsonStrict = preload("json_strict.gd")
 
 const STATELESS := ["const", "state", "of", "sum", "product", "min", "max", "diff", "select", "cmp", "and", "or", "not"]
-const STATEFUL := ["lag", "ramp", "integrate", "latch", "delay", "timer", "wrap"]
+const STATEFUL := ["lag", "ramp", "integrate", "latch", "delay", "timer", "wrap", "hold"]
 
 var error := ""
 var plant := {}
@@ -29,6 +29,11 @@ var machines: Array = []              # each with "_ids" (state ids in order) ad
 var alarms: Array = []
 var trips: Array = []
 var bind: Array = []
+var version := 1                      # plant.json's (§14)
+var isolations: Array = []            # format 2 (§15.1), joined in area order
+var works: Array = []                 # format 2 (§15.2)
+var isolation_ix := {}                # id -> position
+var work_ix := {}
 var scenarios := {}                   # id -> scenario, in file-name order
 var procedures := {}                  # id -> procedure, in file-name order
 
@@ -75,6 +80,8 @@ static func node_refs(n: Dictionary, kind: String) -> Array:
 			return [n["cmp"][0], n["cmp"][2]]
 		"latch":
 			return [n["latch"], n["reset"]]
+		"hold":
+			return [n["hold"], n["when"]]
 	return [n[kind]]
 
 
@@ -143,6 +150,7 @@ func _load(files: Dictionary) -> void:
 		return
 	plant = p
 	ext = p.get("ext", [])
+	version = int(p.get("version", 1))
 	for aid in p.get("areas", []):
 		var a = _read(files, "areas/%s.json" % aid)
 		if a == null:
@@ -217,6 +225,23 @@ func _add_model(d: Dictionary, rel: String) -> void:
 	interlocks.append_array(d.get("interlocks", []))
 	alarms.append_array(d.get("alarms", []))
 	bind.append_array(d.get("bind", []))
+	for x in d.get("isolations", []):
+		isolation_ix[x["id"]] = isolations.size()
+		isolations.append(x)
+	for w in d.get("works", []):
+		work_ix[w["id"]] = works.size()
+		works.append(w)
+
+
+## The values the engine keeps for permits and isolations (§15.1, §15.3), in slot order.
+func kept() -> Array:
+	var out := []
+	for x in isolations:
+		out.append(x["id"] + "_locked")
+		out.append(x["id"] + "_complete")
+	for w in works:
+		out.append(w["id"] + "_permit")
+	return out
 
 
 ## Every name the engine will read must exist (the validator's bad_ref, kept here because a missing name would
@@ -232,7 +257,7 @@ func known(name) -> bool:
 	for t in trips:
 		if name == t["id"] + "_latched":
 			return true
-	return false
+	return kept().has(name)
 
 
 func _need(name, where: String) -> void:
@@ -281,6 +306,14 @@ func _finish() -> void:
 			_check_set({o["input"]: 0}, w)
 		elif o["do"] == "reset" and trip_by_id(o.get("trip")) == null:
 			_fail("%s: no trip %s" % [w, str(o.get("trip"))])
+	for x in isolations:
+		for pt in x["points"]:
+			if pt.has("safe"):
+				_need(pt["safe"], "isolation " + x["id"])
+	for w in works:
+		if w.has("isolation") and not isolation_ix.has(w["isolation"]):
+			_fail("work %s: no isolation %s" % [w["id"], str(w["isolation"])])
+		_check_set(w.get("set", {}), "work " + w["id"])
 
 
 func _check_set(s: Dictionary, where: String) -> void:

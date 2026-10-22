@@ -399,6 +399,8 @@ class Plant:
                  procedures=sum(1 for x in b.procedures.values() if x['kind'] == 'procedure'),
                  tours=sum(1 for x in b.procedures.values() if x['kind'] == 'tour'),
                  sounds=len(b.sounds['sounds']), screens=len(b.screens['screens']) if b.screens else 0)
+        if b.version == 2:
+            c.update(isolations=len(m.isolations), works=len(m.works))
 
     # --- plant.json
     def check_plant(self, p):
@@ -1521,7 +1523,7 @@ class Engine:
         self.v2 = b.version == 2
         self.isos = {x['id']: x for x in m.isolations}
         self.works = {w['id']: w for w in m.works}
-        self.permit = {w['id']: 0 for w in m.works}     # §15.3's states
+        self.pstate = {w['id']: 0 for w in m.works}     # §15.3's states
         self.ptw = {}                                   # work -> its permit's number, from its last request
         self.ptw_count = 0
         self.acceptor = {}                              # work -> who accepted its permit (None in free mode)
@@ -1569,7 +1571,7 @@ class Engine:
         for k in ('cur', 'events', 'queue'):
             setattr(c, k, list(getattr(self, k)))
         for k in ('mstate', 'latched', 'trip_count', 'first_out', 'astate', 'acount', 'shelved', 'il_prev',
-                  'permit', 'ptw', 'acceptor', 'holder', 'locks', 'code_locks'):
+                  'pstate', 'ptw', 'acceptor', 'holder', 'locks', 'code_locks'):
             setattr(c, k, dict(getattr(self, k)))
         c.faults_done = set(self.faults_done)
         c.faults_fixed = set(self.faults_fixed)
@@ -1825,14 +1827,14 @@ class Engine:
         why = []
         if person is not None:
             why.append('authority')     # no staff in the plant: free mode, person null (§17.1)
-        if self.permit[work] not in frm:
+        if self.pstate[work] not in frm:
             why.append('state')
         if action == 'request' and iso is not None and self.holder[iso] is not None:
             why.append('iso_busy')
         if why:
             self.ev('permit', work, action, person, 'refused', why)
             return
-        self.permit[work] = to
+        self.pstate[work] = to
         self.cur[self.ix[work + '_permit']] = float(to)
         if action == 'request':
             self.ptw_count += 1
@@ -1861,7 +1863,7 @@ class Engine:
         why = []
         if person is not None:
             why.append('authority')
-        if self.permit[work] not in ((2, 3) if kind == 'lock' else (2, 3, 7, 10)) or self.holder[iso] != work:
+        if self.pstate[work] not in ((2, 3) if kind == 'lock' else (2, 3, 7, 10)) or self.holder[iso] != work:
             why.append('state')
         if kind == 'lock':
             if key in self.locks:
@@ -1882,7 +1884,7 @@ class Engine:
         k = self.n_locked(iso)
         self.cur[self.ix[iso + '_locked']] = float(k)
         self.cur[self.ix[iso + '_complete']] = 1.0 if k == len(self.isos[iso]['points']) else 0.0
-        if kind == 'unlock' and self.permit[work] == 10 and k == 0:
+        if kind == 'unlock' and self.pstate[work] == 10 and k == 0:
             self.holder[iso] = None     # a cancelled work lets its isolation go with its last lock
         self.ev(kind, work, point, person, 'done', [])
 
@@ -1965,7 +1967,7 @@ class Engine:
             wid, iso = w['id'], w.get('isolation')
             k = self.n_locked(iso) if iso is not None else 0
             done = iso is None or k == len(self.isos[iso]['points'])
-            st, new = self.permit[wid], None
+            st, new = self.pstate[wid], None
             if st == 2 and done:
                 new = 3
             elif st == 3 and not done:
@@ -1973,7 +1975,7 @@ class Engine:
             elif st == 7 and k == 0:
                 new = 8
             if new is not None:
-                self.permit[wid] = new
+                self.pstate[wid] = new
                 cur[self.ix[wid + '_permit']] = float(new)
                 self.ev('permit', wid, 'auto', None, 'done', [new])
         # then the faults
@@ -2136,7 +2138,7 @@ class Engine:
              'shelved': sorted(self.shelved),
              'fast_forward': self.fast_forward()}
         if self.v2:
-            s['permits'] = {w['id']: self.permit[w['id']] for w in self.m.works if self.permit[w['id']]}
+            s['permits'] = {w['id']: self.pstate[w['id']] for w in self.m.works if self.pstate[w['id']]}
             s['ptw'] = {w['id']: self.ptw[w['id']] for w in self.m.works if w['id'] in self.ptw}
             s['locked'] = [[x['id'], p] for x in self.m.isolations for p in range(len(x['points']))
                            if (x['id'], p) in self.locks]

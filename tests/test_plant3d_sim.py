@@ -1,6 +1,7 @@
 """Walkdown Plant's behaviour engine in GDScript (apps/plant3d/sim) against the reference (ref/plant3d.py), run with
 the pinned Godot (decision 0041) headless:
-- every vector of ref/vectors/plant3d-v1.json replays through it (apps/plant3d/sim/tests/run_vectors.gd): events
+- every vector of ref/vectors/plant3d-v1.json and plant3d-v2.json (format 2: permits, isolations, the hold node)
+  replays through it (apps/plant3d/sim/tests/run_vectors.gd): events
   exactly, snapshots to the file's precision, the cold start run as a trainee by its procedure, every fork, every link;
 - bit for bit: the SHA-256 of every value at every step of every run (the unit runs, the 66,436-step cold start and
   its 70 forks) equals the reference's; a difference is reported at its first step and value;
@@ -17,6 +18,7 @@ from ref import plant3d as P  # noqa: E402
 
 SIM = os.path.join(REPO, 'apps', 'plant3d', 'sim')
 VECTORS = os.path.join(REPO, 'ref', 'vectors', 'plant3d-v1.json')
+VECTORS2 = os.path.join(REPO, 'ref', 'vectors', 'plant3d-v2.json')
 DATA = os.path.join(REPO, 'data', 'plant3d')
 GODOT = os.environ.get('KKS_GODOT') or os.path.expanduser('~/.local/kksdev/godot/Godot_v4.7.2-stable_linux.x86_64')
 HAVE = os.access(GODOT, os.X_OK)
@@ -41,6 +43,10 @@ def apply(e, item):
         e.unshelve(item[2])
     elif kind == 'repair':
         e.repair(item[2])
+    elif kind == 'permit':
+        e.permit(item[2], item[3], item[4])
+    elif kind in ('lock', 'unlock'):
+        getattr(e, kind)(item[2], item[3], item[4])
     else:
         e.fault(item[2])
 
@@ -80,11 +86,11 @@ def steps_bundle(valid_files, s):
     return P.check_files(files)
 
 
-def steps_runs(valid_files, steps, keep=None):
+def steps_runs(valid_files, steps, keep=None, prefix=''):
     """The unit runs (the vectors' `steps`) on the reference, as reference_runs."""
     out = {}
     for i, s in enumerate(steps):
-        run = f'steps/{i}'
+        run = f'{prefix}steps/{i}'
         kk = (keep[1], keep[2]) if keep and keep[0] == run else None
         e = P.Engine(steps_bundle(valid_files, s), 's1')
         h = Hasher(0)
@@ -102,7 +108,7 @@ def steps_runs(valid_files, steps, keep=None):
     return out
 
 
-def reference_runs(V, keep=None):
+def reference_runs(V, keep=None, V2=None):
     """Every run of run_vectors.gd on the reference: {run: (first step hashed, chunk digests, names, kept values)}.
     keep = (run, from, to) keeps that run's values at those steps."""
     out = {}
@@ -115,10 +121,15 @@ def reference_runs(V, keep=None):
     b = P.check_dir(DATA)
     for name in ('train', 'hot'):
         train_runs(b, name, V[name], out, k)
+    if V2 is not None:
+        for run, r in steps_runs(V2['valid'][0]['files'], V2['steps'], keep, 'v2/').items():
+            out[run] = r
+        if 'train' in V2:
+            train_runs(b, 'v2/train', V2['train'], out, k, 'v2/')
     return out
 
 
-def train_runs(b, name, t, out, k):
+def train_runs(b, name, t, out, k, prefix=''):
     """A start run by its procedure (the vectors' `train` or `hot`) and its forks, into out."""
     e = P.Engine(b, t['scenario'])
     base_steps = {f['base_step'] for f in t['forks']}
@@ -150,9 +161,9 @@ def train_runs(b, name, t, out, k):
                 apply(x, fin[j])
                 j += 1
             x.step()
-            h.add(x, k(f['id']))
+            h.add(x, k(prefix + f['id']))
         h.end()
-        out[f['id']] = (f['base_step'] + 1, h.chunks, x.names, h.vals)
+        out[prefix + f['id']] = (f['base_step'] + 1, h.chunks, x.names, h.vals)
 
 
 def number_corpus():
@@ -164,7 +175,7 @@ def number_corpus():
         toks.add(s)
         return 0
 
-    paths = [VECTORS] + [os.path.join(r, f) for r, _, fs in os.walk(DATA) for f in fs if f.endswith('.json')]
+    paths = [VECTORS, VECTORS2] + [os.path.join(r, f) for r, _, fs in os.walk(DATA) for f in fs if f.endswith('.json')]
     for p in paths:
         with open(p, encoding='utf-8') as f:
             json.load(f, parse_float=keep, parse_int=keep)
@@ -206,6 +217,8 @@ class GdscriptEngine(unittest.TestCase):
             raise AssertionError(f'KKS_REQUIRE_GODOT=1 but there is no Godot at {GODOT}')
         with open(VECTORS, encoding='utf-8') as f:
             cls.V = json.load(f)
+        with open(VECTORS2, encoding='utf-8') as f:
+            cls.V2 = json.load(f)
         cls.tmp = tempfile.TemporaryDirectory()
         cls.digest_path = os.path.join(cls.tmp.name, 'digests.json')
         cls.result = godot('run_vectors.gd', f'--digests={cls.digest_path}')
@@ -220,13 +233,13 @@ class GdscriptEngine(unittest.TestCase):
         self.assertEqual(self.result.returncode, 0, out[-6000:] + self.result.stderr[-3000:])
         self.assertNotIn('FAIL', out)
         n = 1 + len(self.V['steps']) + len(self.V['links']) + 2 * (1 + 1) + len(self.V['train']['forks']) + \
-            len(self.V['hot']['forks'])
+            len(self.V['hot']['forks']) + 1 + len(self.V2['steps']) + len(self.V2.get('train', {}).get('forks', []))
         self.assertIn(f'VECTORS passed={n} failed=0', out)
 
     def test_every_value_bit_for_bit(self):
         with open(self.digest_path, encoding='utf-8') as f:
             got = json.load(f)
-        ref = reference_runs(self.V)
+        ref = reference_runs(self.V, V2=self.V2)
         self.assertEqual(sorted(got), sorted(ref))
         for run, (start, chunks, names, _) in ref.items():
             g = got[run]
@@ -241,11 +254,11 @@ class GdscriptEngine(unittest.TestCase):
 
     def first_difference(self, run, lo, hi, names):
         """The first step and value of a run where the two engines differ (both dump the chunk's values)."""
-        part = 'steps' if run.startswith('steps/') else 'train'
+        part = 'v2' if run.startswith('v2/') else 'steps' if run.startswith('steps/') else 'train'
         r = godot('run_vectors.gd', f'--only={part}', f'--dump={run}:{lo}:{hi}')
         dumped = {int(line.split()[1]): bytes.fromhex(line.split()[2])
                   for line in r.stdout.splitlines() if line.startswith('DUMP ')}
-        ref = reference_runs(self.V, keep=(run, lo, hi))[run][3]
+        ref = reference_runs(self.V, keep=(run, lo, hi), V2=self.V2)[run][3]
         for step in sorted(ref):
             a, b = dumped.get(step), ref[step]
             if a != b:

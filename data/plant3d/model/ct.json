@@ -1,6 +1,6 @@
 {
  "format": "walkdown-plant-model",
- "version": 1,
+ "version": 2,
  "area": "ct",
  "values": [
   ["ct_fan1_cmd", {"state": 0, "kks": "30PAD10AN001"}],
@@ -98,7 +98,10 @@
   ["ct_ll", {"cmp": ["ct_basin_level", "<", -0.6]}],
   ["cw_basin_ok", {"not": "ct_ll"}],
   ["ct_level_ok", {"cmp": ["ct_basin_level", ">=", -0.2]}],
-  ["ct_fans_5", {"cmp": ["ct_fans_n", ">=", 5]}]
+  ["ct_fans_5", {"cmp": ["ct_fans_n", ">=", 5]}],
+  ["ct_fan3_nocmd", {"not": "ct_fan3_cmd"}],
+  ["ct_fan3_still", {"cmp": ["ct_fan3_spd", "<", 0.01]}],
+  ["ct_fan3_safe", {"and": ["ct_fan3_nocmd", "ct_fan3_still"]}]
  ],
  "ops": [
   {"kks": "30PAR10AA001", "do": "auto", "machine": "ct_mk_ctrl", "where": ["screen"]},
@@ -208,5 +211,11 @@
   {"kks": "30PAD10CL001", "show": "ct_basin_level"},
   {"kks": "30PAR10AA001", "anim": "stem", "of": "ct_mk_pos"},
   {"kks": "30PAD10", "sound": "water_rain", "gain": {"of": "cw_flow", "table": [[0, 0], [30000, 1]]}}
+ ],
+ "isolations": [
+  {"id": "iso_ct_fan3", "text": "Cooling tower fan 3: motor supply", "points": [{"kks": "30PAD10AN003", "kind": "electrical", "how": "Fan stopped; its breaker racked out, locked and tagged", "safe": "ct_fan3_safe"}]}
+ ],
+ "works": [
+  {"id": "wo_ct_fan3", "kks": "30PAD10AN003", "title": "Cooling tower fan 3: bearings and gearbox service", "discipline": "mech", "permit": "general", "isolation": "iso_ct_fan3", "repairs": "ct_fan3_vib"}
  ]
 }

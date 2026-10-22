@@ -689,6 +689,8 @@ class Forks(unittest.TestCase):
         with open(G.OUT, encoding='utf-8') as f:
             V = json.load(f)
         cls.forks = V['train']['forks'] + V['hot']['forks']
+        with open(G.OUT2, encoding='utf-8') as f:
+            cls.forks += json.load(f)['train']['forks']      # format 2: permits to work on the first train
         cls.b = P.check_dir(DATA)
 
     def test_expectations(self):
@@ -699,6 +701,10 @@ class Forks(unittest.TestCase):
                     self.assertIn([kks, do, 'refused', failed], [e[2:6] for e in ev if e[1] == 'op'])
                 for kks, do in ex.get('done', []):
                     self.assertIn([kks, do, 'done', []], [e[2:6] for e in ev if e[1] == 'op'])
+                for work, point, why in ex.get('lock_refused', []):
+                    self.assertIn([work, point, None, 'refused', why], [e[2:7] for e in ev if e[1] == 'lock'])
+                if 'permits' in ex:
+                    self.assertEqual(end['permits'], ex['permits'])
                 for fid in ex.get('repaired', []):
                     self.assertIn(['repair', fid], [e[1:3] for e in ev if e[1] == 'repair'])
                 if 'faults' in ex:                # every fault applied, in order (a repaired one pressed again)

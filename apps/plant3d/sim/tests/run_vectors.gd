@@ -1,15 +1,17 @@
 extends SceneTree
-## Replays ref/vectors/plant3d-v1.json through the app's engine (apps/plant3d/sim) and compares it with the reference
-## (ref/plant3d.py), headless:
+## Replays ref/vectors/plant3d-v1.json and plant3d-v2.json (format 2: permits, isolations, the hold node) through the
+## app's engine (apps/plant3d/sim) and compares it with the reference (ref/plant3d.py), headless:
 ##   godot --headless --script apps/plant3d/sim/tests/run_vectors.gd [-- options]
 ## Options:
 ##   --vectors=PATH    the vector file (default ref/vectors/plant3d-v1.json of this checkout)
+##   --vectors2=PATH   the format 2 vector file (default ref/vectors/plant3d-v2.json); its runs are named v2/…
 ##   --data=PATH       the first train's content (default data/plant3d)
 ##   --digests=PATH    also write the SHA-256 of every value at every step of every run, in chunks of 1000 steps
 ##                     (tests/test_plant3d_sim.py compares them with the reference's: bit for bit)
 ##   --dump=RUN:FROM:TO   print every value's bits at steps FROM–TO of one run (steps/N, train, hot or a fork's id)
-##   --only=PARTS      some of: valid,steps,links,procedure,train (default all; procedure and train run both the
-##                     cold start, `train`, and the hot restart, `hot`)
+##   --only=PARTS      some of: valid,steps,links,procedure,train,v2 (default all; procedure and train run both the
+##                     cold start, `train`, and the hot restart, `hot`; v2 runs the format 2 file's valid plant,
+##                     steps and train forks)
 ##
 ## What is compared with the file: every event exactly (kinds, names, numbers and their int/float type, booleans);
 ## every snapshot's machines, trips, first-out records, alarms (in the model's order), shelved alarms and fast-forward
@@ -55,7 +57,19 @@ func _init() -> void:
 		_finish(t0)
 		return
 	var V: Dictionary = r.value
-	var parts: PackedStringArray = opts.get("only", "valid,steps,links,procedure,train").split(",")
+	var parts: PackedStringArray = opts.get("only", "valid,steps,links,procedure,train,v2").split(",")
+	var V2 := {}
+	if parts.has("v2"):
+		var path2: String = opts.get("vectors2", repo.path_join("ref/vectors/plant3d-v2.json"))
+		var r2 := JsonStrict.parse(FileAccess.get_file_as_bytes(path2), 1000)
+		if not r2.ok:
+			_result("read", "%s: %s" % [path2, r2.error])
+			_finish(t0)
+			return
+		V2 = r2.value
+		expected += 1 + V2["steps"].size()
+		if V2.has("train"):
+			expected += V2["train"]["forks"].size()
 	var valid_files: Dictionary = V["valid"][0]["files"]
 	# the starts run by their procedures: the cold start (`train`) and the hot restart (`hot`, where the file has it)
 	var starts := ["train", "hot"].filter(func(k): return V.has(k))
@@ -71,7 +85,11 @@ func _init() -> void:
 	if parts.has("links"):
 		_links(V["links"], valid_files)
 	var train_model = null
-	if parts.has("procedure") or parts.has("train"):
+	if parts.has("v2"):
+		_valid(V2["valid"][0])
+		for k in V2["steps"].size():
+			_steps(k, V2["steps"][k], V2["valid"][0]["files"], "v2/")
+	if parts.has("procedure") or parts.has("train") or V2.has("train"):
 		train_model = PlantModel.from_dir(opts.get("data", repo.path_join("data/plant3d")))
 		if train_model.error != "":
 			_result("train model", train_model.error)
@@ -82,6 +100,8 @@ func _init() -> void:
 			_procedure(V[st], train_model)
 		if parts.has("train"):
 			_train(V[st], train_model, st)
+	if V2.has("train"):
+		_train(V2["train"], train_model, "v2/train")
 	if opts.has("digests"):
 		var f := FileAccess.open(opts["digests"], FileAccess.WRITE)
 		f.store_string(JSON.stringify(digests, " ", false))
@@ -208,6 +228,9 @@ func _valid(v: Dictionary) -> void:
 	var got := {"areas": m.areas.size(), "codes": m.codes.size(), "values": m.values.size(), "ops": m.ops.size(),
 			"interlocks": m.interlocks.size(), "machines": m.machines.size(), "alarms": m.alarms.size(),
 			"trips": m.trips.size(), "bindings": m.bind.size(), "scenarios": m.scenarios.size()}
+	if c.has("isolations"):
+		got["isolations"] = m.isolations.size()
+		got["works"] = m.works.size()
 	var want := {}
 	for k in got:
 		want[k] = c[k]
@@ -244,19 +267,19 @@ func _apply_due(e, inputs: Array, i: int) -> int:
 	return i
 
 
-func _steps(k: int, s: Dictionary, valid_files: Dictionary) -> void:
+func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "") -> void:
 	var files := valid_files.duplicate()
 	files["model/a1.json"] = s["model"]
 	files["scenarios/s1.json"] = s["scenario"]
 	files.erase("procedures/p1.json")
 	files.erase("screens.json")
-	var name := "steps/%d (%s)" % [k, s["why"]]
+	var name := "%ssteps/%d (%s)" % [prefix, k, s["why"]]
 	var m = PlantModel.from_files(files)
 	if m.error != "":
 		_result(name, m.error)
 		return
 	var e = PlantEngine.new(m, "s1")
-	var run := "steps/%d" % k
+	var run := "%ssteps/%d" % [prefix, k]
 	_hash_begin(run, 0)
 	_hash(e)
 	var states: Array = s["states"]
@@ -302,13 +325,14 @@ func _train(t: Dictionary, m, run: String) -> void:
 	var bases := {}
 	for f in forks:
 		bases[int(f["base_step"])] = null
-	var snaps: Array = t["snapshots"]
+	var snaps: Array = t.get("snapshots", [])
+	var whole: bool = t.has("snapshots")     # format 2's train holds the forks only (and the inputs to reach them)
 	var si := 0
 	var inputs := by_step(t["inputs"])
 	var i := 0
 	var d := ""
 	var until: int = t["until"]
-	var every: int = t["snapshot_every"]
+	var every: int = t.get("snapshot_every", 1)
 	_hash_begin(run, 0)
 	_hash(e)
 	while e.step_no < until:
@@ -317,7 +341,7 @@ func _train(t: Dictionary, m, run: String) -> void:
 		i = _apply_due(e, inputs, i)
 		e.step()
 		_hash(e)
-		if d == "" and (e.step_no % every == 0 or e.step_no == until):
+		if whole and d == "" and (e.step_no % every == 0 or e.step_no == until):
 			if si >= snaps.size():
 				d = "step %d: more snapshots than the reference" % e.step_no
 			else:
@@ -330,15 +354,19 @@ func _train(t: Dictionary, m, run: String) -> void:
 		d = "inputs after the last step"
 	if d == "" and si != snaps.size():
 		d = "%d snapshots, the reference %d" % [si, snaps.size()]
-	if d == "":
+	if d == "" and whole:
 		d = diff(e.events, t["events"], "events")
-	_result("%s: %s replayed from its inputs (%d steps, %d snapshots)" % [run, t["procedure"], until, snaps.size()], d)
+	if whole:
+		_result("%s: %s replayed from its inputs (%d steps, %d snapshots)" % [run, t["procedure"], until,
+				snaps.size()], d)
+	elif d != "":
+		_result("%s: %s replayed from its inputs" % [run, t["procedure"]], d)
 	for f in forks:
 		var x = bases[int(f["base_step"])].clone()
 		var n0: int = x.events.size()
 		var fin := by_step(f["inputs"])
 		var j := 0
-		_hash_begin(f["id"], x.step_no + 1)
+		_hash_begin(("v2/" if run.begins_with("v2/") else "") + f["id"], x.step_no + 1)
 		while x.step_no < int(f["until"]):
 			j = _apply_due(x, fin, j)
 			x.step()

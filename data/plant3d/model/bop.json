@@ -1,6 +1,6 @@
 {
  "format": "walkdown-plant-model",
- "version": 1,
+ "version": 2,
  "area": "bop",
  "values": [
   ["ia_a_cmd", {"state": 0, "kks": "00QFA10AN001"}],
@@ -56,7 +56,9 @@
   ["aux_run", {"and": ["aux_cmd", "ia_ok"]}],
   ["aux_p_sp", {"product": ["aux_run", 12]}],
   ["aux_p", {"ramp": "aux_p_sp", "rate": 0.02, "rate_down": 0.005, "init": 0, "unit": "bar", "kks": "00QHA10CP001"}],
-  ["aux_ok", {"cmp": ["aux_p", ">=", 10]}]
+  ["aux_ok", {"cmp": ["aux_p", ">=", 10]}],
+  ["ccw_a_safe", {"not": "ccw_a_cmd"}],
+  ["ccw_b_safe", {"not": "ccw_b_cmd"}]
  ],
  "ops": [
   {"kks": "00QFA10AN001", "do": "start", "set": {"ia_a_cmd": 1}, "needs": [["ia_a_ok", "The motor has a fault: it needs repair before a start"]], "where": ["local", "screen"]},
@@ -108,5 +110,13 @@
   {"kks": "00QHA10CP001", "show": "aux_p"},
   {"kks": "00QHA10", "sound": "burner", "gain": {"of": "aux_run", "table": [[0, 0], [1, 1]]}},
   {"kks": "00QHA10", "lamp": "running", "of": "aux_run"}
+ ],
+ "isolations": [
+  {"id": "iso_ccw_a", "text": "Closed cooling water pump A: motor supply", "points": [{"kks": "00PGC10AP001", "kind": "electrical", "how": "Pump stopped; its breaker racked out, locked and tagged", "safe": "ccw_a_safe"}]},
+  {"id": "iso_ccw_b", "text": "Closed cooling water pump B: motor supply", "points": [{"kks": "00PGC10AP002", "kind": "electrical", "how": "Pump stopped; its breaker racked out, locked and tagged", "safe": "ccw_b_safe"}]}
+ ],
+ "works": [
+  {"id": "wo_ccw_a_motor", "kks": "00PGC10AP001", "title": "Closed cooling water pump A motor: winding and terminal check", "discipline": "elec", "permit": "electrical", "isolation": "iso_ccw_a", "repairs": "ccw_a_motor"},
+  {"id": "wo_ccw_b_motor", "kks": "00PGC10AP002", "title": "Closed cooling water pump B motor: winding and terminal check", "discipline": "elec", "permit": "electrical", "isolation": "iso_ccw_b", "repairs": "ccw_b_motor"}
  ]
 }
