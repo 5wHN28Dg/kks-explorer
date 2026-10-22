@@ -179,6 +179,22 @@ simplifier (as for imported models, decision 0041), each no larger than the one 
 | basin | 1,000 | 72 |
 | tank_vertical | 9,000 | 8,680 |
 | vessel_horizontal | 6,000 | 2,812 |
+| clarifier | 9,000 | 3,160 |
+| thickener | 7,000 | 3,288 |
+| filter_bank | 9,000 | 2,730 |
+| cartridge_housing | 3,000 | 2,304 |
+| ro_train | 16,000 | 7,620 |
+| degasser | 7,000 | 4,136 |
+| ion_exchanger | 6,000 | 2,120 |
+| dosing_skid | 3,000 | 756 |
+| metering_pump | 2,500 | 476 |
+| chemical_tank | 6,000 | 3,592 |
+| filter_press | 6,000 | 2,892 |
+| sample_panel | 4,000 | 1,692 |
+| lab_bench | 2,000 | 320 |
+| agitator | 3,500 | 692 |
+| bar_screen | 5,000 | 1,772 |
+| screen_band | 4,000 | 464 |
 | valve_gate | 5,000 | 4,712 |
 | valve_globe | 5,000 | 4,732 |
 | valve_butterfly | 4,000 | 2,104 |
@@ -220,7 +236,8 @@ simplifier (as for imported models, decision 0041), each no larger than the one 
 | emergency_stop | 400 | 172 |
 | safety_shower | 1,500 | 296 |
 
-The first train (2026-10-16): 302,944 triangles at full detail in all, in 1,112 instanced or merged meshes (cells of
+With the water treatment plant (W1, 2026-10-22): 491,133 triangles at full detail in 1,832 instanced or merged
+meshes, 330 pipe supports. The first train (2026-10-16): 302,944 triangles at full detail in all, in 1,112 instanced or merged meshes (cells of
 12 m, 6 m for detail; pipes and large parts cut by cell); 176 pipe
 supports. The bench that decided the engine (0041) had 1.46 M triangles.
 
