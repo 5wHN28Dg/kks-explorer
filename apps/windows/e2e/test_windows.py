@@ -14,6 +14,7 @@ DRIVER = sys.argv[3] if len(sys.argv) > 3 else '/tmp/kkswin/uiadrive.exe'
 SERVER = sys.argv[4] if len(sys.argv) > 4 else '/tmp/kkslinux/kks_server'
 IMPORTER = sys.argv[5] if len(sys.argv) > 5 else '/tmp/kksimp/kks_import'
 HOST = os.environ.get('KKS_HOST_FROM_VM', '192.168.122.1')
+PEER = os.environ.get('KKS_PEER', '/tmp/kksgnome/progress_peer')   # apps/gnome/e2e/progress_peer.nim: a second device
 KEY = os.path.expanduser('~/.ssh/kks_vm')
 del sys.argv[1:]
 SSH = ['-i', KEY, '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null', '-o', 'LogLevel=ERROR', '-o', 'BatchMode=yes']
@@ -1222,10 +1223,9 @@ class Windows(unittest.TestCase):
         self.check('scan.uia', ['click\tJoin with a code', 'click\tScan with the camera…',
                                 'value\tInvite text\t"token":"camera-test"\t30'], keep=False)
 
-    def test_courses(self):
-        """the JSON courses (decision 0036): Learning lists them; a course window with its rail; a question answered
-        (progress in the window title); a figure is a named window; RichEdit text is there"""
-        # the program's own data next to the exe: data/courses (JSON + JPEG XL) and the course faces
+    def course_files(self):
+        """the program's own data next to the exe: data/courses (JSON + JPEG XL) and the course faces (once)"""
+        if getattr(Windows, 'courses_put', False): return
         vm('New-Item -ItemType Directory -Force C:\\kks\\data\\courses, C:\\kks\\vendor\\fonts | Out-Null')
         cdir = os.path.join(REPO, 'data', 'courses')
         files = [os.path.join(cdir, f) for f in os.listdir(cdir) if f.endswith('.jxl') or f in ('ppt.json', 'fnd.json', 'hrsg.json', 'inc.json')]
@@ -1233,6 +1233,84 @@ class Windows(unittest.TestCase):
         fdir = os.path.join(REPO, 'vendor', 'fonts')
         subprocess.run(['scp', '-q'] + SSH + [os.path.join(fdir, f) for f in os.listdir(fdir) if f.endswith('.woff2')] +
                        ['kks@%s:C:/kks/vendor/fonts/' % VM], check=True, timeout=300)
+        Windows.courses_put = True
+
+    def peer(self, *args):
+        """progress_peer (apps/gnome/e2e/progress_peer.nim): the person's other device, on this machine"""
+        d = os.path.join(self.dir, 'peer')
+        os.makedirs(d, exist_ok=True)
+        r = subprocess.run([PEER, *args], env=dict(os.environ, KKS_DATA_DIR=d, KKS_STORAGE_KEY_FILE=os.path.join(d, 'key')),
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout.strip().splitlines()[-1]
+
+    def test_course_pairing(self):
+        """course progress follows the person between their own devices (decision 0062): the other device saved
+        progress; the Learning tab lists it with the code both show; once both paired, the app shows that progress,
+        and a question answered in the app reaches the other device"""
+        self.course_files()
+        self.member('pia', 'Pia Learner')
+        qs = next(c for c in self.boss.req('GET', '/api/courses')['courses'] if c['id'] == 'fnd')['questions']
+        self.assertEqual(self.peer('join', '127.0.0.1:%d' % self.sport, 'pia', 'pia password 1'), 'joined')
+        self.peer('save', 'fnd', 'solved', json.dumps({qs[-1]: True}))
+        mine = self.peer('device')
+        label = next(d['label'] for d in self.boss.req('GET', '/api/devices?show_hidden=1')['all'] if d['device'] == mine)
+        self.check('pjoin.uia', ['click\tJoin through a server', 'set\tServer address\t%s:%d' % (HOST, self.sport),
+                                 'set\tUsername\tpia', 'set\tPassword\tpia password 1', 'click\tJoin',
+                                 'wait\t~Sample sheet\t60', 'click\tLearning',
+                                 'wait\t~Rumaila Plant Foundations — 0 of 76 solved\t30'], keep=False, sync_every=3000)
+        app = None
+        for _ in range(40):
+            ds = json.loads(self.peer('pairing'))['devices']
+            if ds:
+                app = ds[0]['device']
+                break
+            time.sleep(1)
+        self.assertIsNotNone(app, 'the app never showed up on the other device')
+        self.peer('pair', app)
+        # the app: the other device asked; Pair; both compute the code once the other's reveal came through the server
+        self.check('ppair.uia', ['sleep\t4000', 'click\tCheck again', 'wait\t~%s: That device asked to pair\t30' % label,
+                                 'click\tPair with ' + label, 'wait\t~%s: \t10' % label])
+        code = None
+        for _ in range(30):
+            row = json.loads(self.peer('pairing'))['devices'][0]
+            if row['state'] == 'compare':
+                code = row['code']
+                break
+            time.sleep(1)
+        self.assertIsNotNone(code, 'the other device never showed a code')
+        ok = False
+        for _ in range(4):
+            ok, _ = ui('pcode.uia', ['sleep\t4000', 'click\tCheck again',
+                                     'wait\t%s: Code %s: confirm only if the other device shows the same code\t10' % (label, code)], True)
+            if ok: break
+        self.assertTrue(ok, 'the code never showed in the app')
+        self.check('pconfirm.uia', ['click\tCodes match with ' + label, 'wait\t%s: Paired\t20' % label])
+        self.peer('confirm', app, code)
+        ok = False
+        for _ in range(4):       # the app takes the share in at its next round; Check again counts again
+            ok, _ = ui('pcount.uia', ['sleep\t5000', 'click\tCheck again',
+                                      'wait\t~Rumaila Plant Foundations — 1 of 76 solved\t10'], True)
+            if ok: break
+        self.assertTrue(ok, "the other device's progress never showed in the app")
+        self.check('panswer.uia', ['select\t~Rumaila Plant Foundations', 'click\tOpen the course',
+                                   'wait\t~Rumaila Plant Foundations — 1 of 76 solved\t30',
+                                   'select\t1 · Combined cycle', 'click\tOpen the selected page',
+                                   'click\t~Once the gas cools below HP boiling temperature',
+                                   'wait\t~Rumaila Plant Foundations — 2 of 76 solved\t20'])
+        solved = {}
+        for _ in range(30):
+            solved = json.loads(json.loads(self.peer('progress', 'fnd')).get('solved', '{}'))
+            if len(solved) == 2: break
+            time.sleep(2)
+        self.assertEqual(len(solved), 2, solved)
+        self.assertIn(qs[-1], solved)
+        self.leave('pia')
+
+    def test_courses(self):
+        """the JSON courses (decision 0036): Learning lists them; a course window with its rail; a question answered
+        (progress in the window title); a figure is a named window; RichEdit text is there"""
+        self.course_files()
         self.check('cjoin.uia', ['click\tJoin through a server', 'set\tServer address\t%s:%d' % (HOST, self.sport),
                                  'set\tUsername\tboss', 'set\tPassword\ta long password', 'click\tJoin',
                                  'wait\t~Sample sheet\t60'], keep=False)

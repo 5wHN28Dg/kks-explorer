@@ -4,7 +4,8 @@
 ## parts: crypto provider, TLS, mDNS, the storage key's home, where the device key lives, local addresses.
 
 import std/[asyncdispatch, httpclient, os, strutils, tables, times, uri, sets, sequtils, nativesockets, selectors]
-import kks/[json, util, crypto, proto, node, api, plant, sync, extras, bundle, plantdata, invites, diagnostics, model]
+import kks/[json, util, crypto, proto, node, api, plant, sync, extras, bundle, plantdata, invites, diagnostics, model,
+            progress]
 import kksl/[dbstore, net, internet]
 when defined(windows):
   import kks/provider_cng
@@ -557,6 +558,9 @@ proc syncAll*(a: App): Future[int] {.async.} =
   if targets.len > 0 and lastOk > 0 and nowMs() - lastOk > 24 * 3600 * 1000:
     a.diag("sync", "no successful sync for more than 24 hours")
   discard a.reportDiagnostics()
+  # §17 (decision 0062): publish the box key, take in shares from paired devices, share what they lack
+  try: discard a.n.progressTick(nowMs())
+  except CatchableError as e: a.diag("error", "course progress pairing: " & e.msg)
   a.changed("sync")
 
 proc snapshot*(a: App): JNode =

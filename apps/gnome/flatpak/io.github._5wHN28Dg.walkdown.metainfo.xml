@@ -28,6 +28,9 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="0.10.6" date="2026-10-22">
+      <description><p>Course progress follows you between your own devices: pair them once under Learning, Your devices, by comparing a 6-digit code. Only you can read your progress. Walkdown also starts faster.</p></description>
+    </release>
     <release version="0.10.5" date="2026-10-21">
       <description><p>walkdown:// links: another app, such as Walkdown Plant, can open Walkdown at a piece of equipment or at a course page.</p></description>
     </release>

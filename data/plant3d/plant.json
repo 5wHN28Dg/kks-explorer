@@ -1,6 +1,6 @@
 {
  "format": "walkdown-plant",
- "version": 1,
+ "version": 2,
  "id": "ccpp",
  "title": "Generic 2-2-1 combined-cycle plant",
  "frequency_hz": 50,

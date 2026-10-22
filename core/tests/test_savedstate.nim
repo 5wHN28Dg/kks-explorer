@@ -78,7 +78,7 @@ suite "the saved state is read only when it is the replay of what is held":
     check a.run.equipment.len == 10
 
   test "every scenario of the vectors comes back field for field":
-    for file in ["v2-replay.json", "v2-malformed.json", "v2-reports.json"]:
+    for file in ["v2-replay.json", "v2-malformed.json", "v2-reports.json", "v2-pairing.json"]:
       for sc in loadVectors(file)["scenarios"].elems:
         let rr = P.replayRun(sc["entries"].elems, sc["root"].s)
         let bytes = encodeSaved(P, repeat("ab", 32), rr.run, rr.chainIgnored)

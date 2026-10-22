@@ -522,6 +522,10 @@ def apply(e, item):
         e.fault(item[2])
     elif kind == 'repair':
         e.repair(item[2])
+    elif kind == 'permit':
+        e.permit(item[2], item[3], item[4])
+    elif kind in ('lock', 'unlock'):
+        getattr(e, kind)(item[2], item[3], item[4])
     else:
         raise ValueError(kind)
 
@@ -813,6 +817,10 @@ def run_fork(base, actions, probes=()):
             e.fault(a[1])
         elif a[0] == 'repair':
             e.repair(a[1])
+        elif a[0] == 'permit':
+            e.permit(a[1], a[2])
+        elif a[0] in ('lock', 'unlock'):
+            getattr(e, a[0])(a[1], a[2])
         elif a[0] == 'run':
             step(round(a[1] * 10))
         elif a[0] == 'until':
@@ -878,6 +886,389 @@ LINKS = [  # links read against the synthetic plant (§6)
 ]
 
 
+# ================================================================ format 2 (PLANT3D §14–§15, §19): permits, isolations, hold
+
+OUT2 = os.path.join(ROOT, 'ref', 'vectors', 'plant3d-v2.json')
+PUMP, VALVE, TANK, GAUGE = '10LAC10AP001', '10LAB10AA001', '10LAB10BB001', '10LAB10CP501'
+
+
+def mini2():
+    """The synthetic plant as version 2: its model has isolations, works and a hold node."""
+    F = mini()
+    F['plant.json']['version'] = 2
+    m = F['model/a1.json']
+    m['version'] = 2
+    m['values'][1] = ['valve_cmd', {'state': 0, 'kks': VALVE}]
+    m['values'] += [['pump_off', {'not': 'pump_cmd'}], ['valve_shut', {'not': 'valve_cmd'}],
+                    ['p_held', {'hold': 'p', 'when': 'iso_gauge_complete', 'unit': 'bar', 'kks': GAUGE}]]
+    m['isolations'] = [
+        {'id': 'iso_pump', 'text': 'The pump: its motor supply and its discharge valve',
+         'points': [{'kks': PUMP, 'kind': 'electrical', 'safe': 'pump_off', 'how': 'Pump stopped; breaker locked'},
+                    {'kks': VALVE, 'kind': 'mechanical', 'safe': 'valve_shut', 'how': 'Valve shut and chained'}]},
+        {'id': 'iso_gauge', 'text': 'The pressure gauge', 'points': [
+            {'kks': GAUGE, 'kind': 'instrument', 'how': 'Root valve shut and tagged'}]}]
+    m['works'] = [{'id': 'wo_pump', 'kks': PUMP, 'title': 'Pump: bearing', 'discipline': 'mech', 'permit': 'general',
+                   'isolation': 'iso_pump', 'repairs': 'f1', 'task': 'job_pump'},
+                  {'id': 'wo_gauge', 'kks': GAUGE, 'title': 'Gauge: calibration', 'discipline': 'inst',
+                   'permit': 'general', 'isolation': 'iso_gauge', 'set': {}}]
+    return F
+
+
+ISO = ['model/a1.json', 'isolations']
+WORK = ['model/a1.json', 'works']
+REJECTS2 = [
+    ('a version 2 model in a version 1 plant', 'bad_version', _set(['plant.json', 'version'], 1)),
+    ('plant.json of version 3', 'bad_version', _set(['plant.json', 'version'], 3)),
+    ('isolations in a version 1 model file', 'unknown_key', _all(
+        _set(MOD + ['version'], 1), _del(MOD + ['works']),
+        _set(MOD + ['values', 8], ['p_held', {'product': ['p', 1]}]))),
+    ('a hold node in a version 1 model file', 'bad_kind', _all(
+        _set(MOD + ['version'], 1), _del(MOD + ['works']), _del(MOD + ['isolations']))),
+    ('a hold reading a later value', 'forward_ref', _set(MOD + ['values', 6], ['pump_off', {'hold': 'valve_shut',
+                                                                                          'when': 0}])),
+    ('a hold whose when is no value', 'bad_ref', _set(MOD + ['values', 8], ['p_held', {'hold': 'p', 'when': 'zz'}])),
+    ('a hold without its when', 'missing_key', _set(MOD + ['values', 8], ['p_held', {'hold': 'p'}])),
+    ('an isolation point on a code of no state or alarm', 'bad_ref', _set(ISO + [1, 'points', 0, 'kks'], TANK)),
+    ('an isolation point on a code the plant lacks', 'bad_ref', _set(ISO + [1, 'points', 0, 'kks'], '10LAB10CP509')),
+    ('an isolation point of an unknown kind', 'bad_value', _set(ISO + [0, 'points', 0, 'kind'], 'hydraulic')),
+    ('one code twice in an isolation', 'dup_id', _set(ISO + [0, 'points', 1, 'kks'], PUMP)),
+    ('an isolation id over 22 characters', 'bad_id', _set(ISO + [1, 'id'], 'i' * 23)),
+    ('two isolations with one id', 'dup_id', _set(ISO + [1, 'id'], 'iso_pump')),
+    ('an isolation without points', 'bad_length', _set(ISO + [1, 'points'], [])),
+    ('an isolation of 17 points', 'limit', _set(ISO + [1, 'points'], [
+        {'kks': GAUGE, 'kind': 'instrument', 'how': f'Point {i}'} for i in range(17)])),
+    ('a safe value that does not exist', 'bad_ref', _set(ISO + [0, 'points', 0, 'safe'], 'pump_safe')),
+    ("a point's how over 200 characters", 'bad_type', _set(ISO + [0, 'points', 0, 'how'], 'x' * 201)),
+    ("a value named like an isolation's value", 'dup_id', _app(MOD + ['values'], ['iso_pump_complete', {'const': 1}])),
+    ("a value named like a work's permit", 'dup_id', _app(MOD + ['values'], ['wo_pump_permit', {'const': 1}])),
+    ("an ext value named like an isolation's value", 'dup_id', _all(
+        _set(['plant.json', 'ext'], ['ambient_t', 'iso_gauge_locked']),
+        _set(['scenarios/s1.json', 'init', 'iso_gauge_locked'], 0))),
+    ('a work whose isolation is a list', 'bad_id', _set(WORK + [0, 'isolation'], [])),
+    ('a work whose isolation is an object', 'bad_id', _set(WORK + [0, 'isolation'], {})),
+    ('a model file that is a list', 'bad_type', lambda F: F.__setitem__('model/a1.json', [])),
+    ('a work naming an isolation that does not exist', 'bad_ref', _set(WORK + [0, 'isolation'], 'iso_motor')),
+    ('a work on equipment that does not exist', 'bad_ref', _set(WORK + [0, 'kks'], '10LAC10AP009')),
+    ('a work of an unknown discipline', 'bad_value', _set(WORK + [0, 'discipline'], 'paint')),
+    ('a work with an unknown permit kind', 'bad_value', _set(WORK + [0, 'permit'], 'cold')),
+    ('a work setting a value that is not a state', 'bad_ref', _set(WORK + [1, 'set'], {'flow': 0})),
+    ('a work repairing a fault that is not an identifier', 'bad_id', _set(WORK + [0, 'repairs'], 'F 1')),
+    ('two works with one id', 'dup_id', _set(WORK + [1, 'id'], 'wo_pump')),
+    ('a work id over 22 characters', 'bad_id', _set(WORK + [1, 'id'], 'w' * 23)),
+    ('over 128 works', 'limit', _set(WORK, [{'id': f'w{i}', 'kks': PUMP, 'title': 'W', 'discipline': 'mech',
+                                              'permit': 'general'} for i in range(129)])),
+    ('a scenario setting a hold to text', 'bad_number', _set(['scenarios/s1.json', 'init', 'p_held'], 'x')),
+]
+
+
+def build_rejects2():
+    out = []
+    base = mini2()
+    for why, code, change in REJECTS2:
+        F = copy.deepcopy(base)
+        change(F)
+        try:
+            check(F)
+        except P.FormatError as e:
+            assert e.code == code, f'{why}: expected {code}, got {e}'
+        else:
+            raise AssertionError(f'{why}: not rejected')
+        text = {k: (v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)) for k, v in F.items()}
+        old = {k: json.dumps(v, ensure_ascii=False) for k, v in base.items()}
+        change = {k: t for k, t in text.items() if old.get(k) != t}
+        change.update({k: None for k in old if k not in text})
+        out.append({'why': why, 'code': code, 'change': change})
+    return out
+
+
+def unit_models2():
+    """Format 2's unit runs (§19): models with permits, isolations and holds, inputs as Recorder.inputs."""
+    pump = {
+        'values': [
+            ['pump_cmd', {'state': 0, 'kks': PUMP}], ['pump_fault', {'state': 0, 'kks': PUMP}],
+            ['valve_cmd', {'state': 0, 'kks': VALVE}], ['aux', {'state': 0}], ['aux2', {'state': 0}],
+            ['pump_off', {'not': 'pump_cmd'}], ['valve_shut', {'not': 'valve_cmd'}],
+            ['valve_open', {'cmp': ['valve_cmd', '>=', 0.5]}],
+            ['aux_hi', {'cmp': ['aux', '>=', 1]}], ['trip_c', {'cmp': ['aux', '>=', 2]}],
+            ['il_c', {'cmp': ['aux', '>=', 3]}], ['p', {'product': ['pump_cmd', 5], 'kks': GAUGE}],
+            ['p_high', {'cmp': ['p', '>', 4]}], ['permit_seen', {'product': ['wo_p_permit', 1]}],
+            ['locked_seen', {'product': ['iso_p_locked', 1]}], ['complete_seen', {'lag': 'iso_p_complete', 'tau': 0.1}]],
+        'ops': [{'kks': PUMP, 'do': 'start', 'set': {'pump_cmd': 1}, 'needs': [['valve_open', 'Valve closed']],
+                 'where': ['local', 'screen']},
+                {'kks': PUMP, 'do': 'stop', 'set': {'pump_cmd': 0}, 'where': ['local', 'screen']},
+                {'kks': PUMP, 'do': 'reset', 'trip': 'tp', 'where': ['screen']},
+                {'kks': VALVE, 'do': 'open', 'set': {'valve_cmd': 1}, 'where': ['local']},
+                {'kks': VALVE, 'do': 'close', 'set': {'valve_cmd': 0}, 'where': ['local']},
+                {'kks': TANK, 'do': 'set', 'input': 'aux', 'range': [0, 9], 'where': ['screen']},
+                {'kks': TANK, 'do': 'start', 'set': {'pump_cmd': 1, 'aux2': 1}, 'where': ['screen']},
+                {'kks': TANK, 'do': 'go', 'machine': 'm', 'where': ['screen']},
+                {'kks': TANK, 'do': 'back', 'machine': 'm', 'where': ['screen']},
+                {'kks': GAUGE, 'do': 'set', 'input': 'pump_cmd', 'range': [0, 1], 'where': ['screen']}],
+        'interlocks': [{'id': 'il', 'when': 'il_c', 'do': [{'set': {'pump_cmd': 1, 'aux2': 2}}]}],
+        'machines': [{'id': 'm', 'kks': TANK, 'init': 'idle',
+                      'commands': {'go': {'from': ['idle'], 'to': 'run'}, 'back': {'from': '*', 'to': 'idle'}},
+                      'states': [{'id': 'idle', 'watch': False}, {'id': 'run', 'set': {'pump_cmd': 1}, 'watch': False}]}],
+        'trips': [{'id': 'tp', 'kks': TANK, 'text': 'Aux high', 'when': 'trip_c', 'do': [{'set': {'valve_cmd': 1}}]}],
+        'alarms': [{'id': 'alp', 'kks': PUMP, 'text': 'Aux high at the pump', 'when': 'aux_hi', 'priority': 3,
+                    'where': PUMP},
+                   {'id': 'alt', 'kks': TANK, 'text': 'Aux high at the tank', 'when': 'aux_hi', 'priority': 3,
+                    'where': TANK}],
+        'isolations': [
+            {'id': 'iso_p', 'text': 'Pump: motor and valve',
+             'points': [{'kks': PUMP, 'kind': 'electrical', 'safe': 'pump_off', 'how': 'Breaker locked'},
+                        {'kks': VALVE, 'kind': 'mechanical', 'safe': 'valve_shut', 'how': 'Valve chained'}]},
+            {'id': 'iso_q', 'text': 'Pump: motor only',
+             'points': [{'kks': PUMP, 'kind': 'electrical', 'safe': 'pump_off', 'how': 'Breaker locked'}]}],
+        'works': [{'id': 'wo_p', 'kks': PUMP, 'title': 'Pump bearing', 'discipline': 'mech', 'permit': 'general',
+                   'isolation': 'iso_p', 'repairs': 'f1', 'set': {'valve_cmd': 0, 'aux2': 5}},
+                  {'id': 'wo_q', 'kks': PUMP, 'title': 'Pump motor', 'discipline': 'elec', 'permit': 'electrical',
+                   'isolation': 'iso_q', 'set': {'pump_cmd': 1, 'aux2': 7}},
+                  {'id': 'wo_p2', 'kks': VALVE, 'title': 'Valve packing', 'discipline': 'mech', 'permit': 'general',
+                   'isolation': 'iso_p'},
+                  {'id': 'wo_n', 'kks': TANK, 'title': 'Tank inspection', 'discipline': 'civil', 'permit': 'confined',
+                   'set': {'aux': 1}, 'repairs': 'nofault'}]}
+    faults = [{'id': 'f1', 'set': {'pump_fault': 1}, 'text': 'Pump bearing worn', 'kks': PUMP,
+               'repair': {'pump_fault': 0}},
+              {'id': 'f2', 'set': {'pump_cmd': 1}, 'text': 'Trainer starts the pump', 'repair': {'pump_cmd': 0}}]
+    channels = {
+        'values': [
+            ['x', {'state': 0}], ['w', {'state': 0}],
+            ['g1', {'sum': ['x', 0], 'kks': GAUGE}],
+            ['g1h', {'hold': 'g1', 'when': 'iso_g_complete', 'kks': GAUGE}],
+            ['g2', {'sum': ['x', 0.5]}], ['g3', {'sum': ['x', -0.5]}],
+            ['g1h_hi', {'cmp': ['g1h', '>', 5]}],
+            ['v1', {'or': ['g1h_hi', 'iso_g_complete']}],
+            ['v2', {'cmp': ['g2', '>', 5]}], ['v3', {'cmp': ['g3', '>', 5]}],
+            ['votes', {'sum': ['v1', 'v2', 'v3']}],
+            ['trip_c', {'cmp': ['votes', '>=', 2]}],
+            ['h_init', {'hold': 'x', 'when': 'w', 'init': 7}],
+            ['h_sc', {'hold': 'x', 'when': 'w'}],
+            ['h_free', {'hold': 'g2', 'when': 'w'}],
+            ['h_later', {'hold': 'x', 'when': 'later'}],
+            ['h_num', {'hold': 3, 'when': 'w'}],
+            ['later', {'cmp': ['w', '>=', 2]}]],
+        'ops': [{'kks': TANK, 'do': 'set', 'input': 'x', 'range': [-9, 9], 'where': ['screen']},
+                {'kks': PUMP, 'do': 'set', 'input': 'w', 'range': [0, 9], 'where': ['screen']},
+                {'kks': TANK, 'do': 'reset', 'trip': 't', 'where': ['screen']}],
+        'trips': [{'id': 't', 'kks': TANK, 'text': 'Two of three high', 'when': 'trip_c', 'do': [{'set': {'w': 0}}]}],
+        'alarms': [{'id': 'a1', 'kks': GAUGE, 'text': 'Channel 1 high', 'when': 'g1h_hi', 'priority': 2,
+                    'where': GAUGE},
+                   {'id': 'a2', 'kks': TANK, 'text': 'Channel 2 high', 'when': 'v2', 'priority': 2, 'where': TANK}],
+        'isolations': [{'id': 'iso_g', 'text': 'Channel 1', 'points': [
+            {'kks': GAUGE, 'kind': 'instrument', 'how': 'Root valve shut'}]}],
+        'works': [{'id': 'wo_g', 'kks': GAUGE, 'title': 'Channel 1 calibration', 'discipline': 'inst',
+                   'permit': 'general', 'isolation': 'iso_g'}]}
+    P_, Q_, P2, N_ = 'wo_p', 'wo_q', 'wo_p2', 'wo_n'
+
+    def pm(n, w, a, who=None):
+        return [n, 'permit', w, a, who]
+
+    def lk(n, w, pt, who=None):
+        return [n, 'lock', w, pt, who]
+
+    def ul(n, w, pt, who=None):
+        return [n, 'unlock', w, pt, who]
+
+    def op(n, kks, do, value=None, trip=None):
+        return [n, 'op', kks, do, value, trip]
+
+    life = [
+        [1, 'fault', 'f1'], pm(1, P_, 'approve'), pm(1, P_, 'request'), pm(1, P_, 'request'), pm(1, P2, 'approve'),
+        pm(1, P2, 'request'), pm(1, P_, 'issue'),
+        lk(2, P_, 0), pm(2, P_, 'bogus'), pm(2, 'nope', 'request'), pm(2, 7, 'request'), lk(2, N_, 0), lk(2, P_, 5),
+        lk(2, P_, -1), lk(2, P_, True), lk(2, P_, 1.0), lk(2, 'nope', 0), ul(2, P_, 'x'), pm(2, P_, 'approve', 'tech1'),
+        lk(2, P_, 0, 'tech1'),
+        pm(3, P_, 'approve'),
+        op(4, VALVE, 'open'), op(5, PUMP, 'start'),
+        lk(6, P_, 0), op(7, PUMP, 'stop'),
+        op(8, PUMP, 'start'), lk(8, P_, 0),
+        op(9, PUMP, 'stop'), lk(9, P_, 0), lk(9, P_, 0),
+        op(10, VALVE, 'close'), lk(10, P_, 1), ul(10, P_, 1), ul(10, P2, 0),
+        lk(11, P_, 1),
+        op(12, PUMP, 'start'), op(12, PUMP, 'stop'), [12, 'repair', 'f1'],
+        op(13, TANK, 'set', 3), op(13, TANK, 'start'), op(13, GAUGE, 'set', 1), op(13, TANK, 'go'), [13, 'fault', 'f2'],
+        op(14, PUMP, 'reset', None, 'tp'), op(14, TANK, 'set', 0), [14, 'repair', 'f2'],
+        op(15, PUMP, 'reset', None, 'tp'), op(15, TANK, 'back'),
+        pm(16, P_, 'issue'), pm(16, P_, 'accept'), pm(16, P_, 'return'),
+        pm(17, P_, 'done'),
+        pm(18, P_, 'return'), lk(18, P_, 0), pm(18, P_, 'close'),
+        ul(19, P_, 0), ul(19, P_, 0),
+        ul(20, P_, 1),
+        pm(21, P_, 'close'), pm(21, P2, 'request'),
+        pm(22, P_, 'request'), op(22, PUMP, 'reset', None, 'tp'),
+        pm(23, P2, 'cancel'), pm(23, P_, 'request'), pm(23, P_, 'cancel'), pm(23, P_, 'request')]
+    shared = [
+        pm(1, Q_, 'request'), pm(1, P_, 'request'), pm(2, Q_, 'approve'), pm(2, P_, 'approve'),
+        lk(3, Q_, 0), lk(3, P_, 0), lk(3, P_, 1),
+        op(4, PUMP, 'start'), op(4, TANK, 'set', 1),
+        pm(5, Q_, 'issue'), pm(5, Q_, 'accept'), pm(5, Q_, 'done'),
+        pm(6, Q_, 'return'), ul(7, Q_, 0), pm(8, Q_, 'close'),
+        pm(9, P_, 'cancel'), lk(9, P_, 0),
+        pm(10, P_, 'request'), pm(10, P2, 'request'),
+        ul(11, P_, 0), pm(12, P2, 'request'), ul(12, P_, 1), pm(13, P2, 'request'),
+        pm(14, N_, 'request'), pm(14, N_, 'approve'),
+        pm(15, N_, 'issue'), pm(15, N_, 'accept'), pm(15, N_, 'done'), pm(15, N_, 'return'),
+        pm(16, N_, 'close'), pm(16, N_, 'request'),
+        pm(17, Q_, 'request'), pm(17, Q_, 'approve'), lk(18, Q_, 0),
+        pm(19, Q_, 'issue'), pm(19, Q_, 'accept'), pm(19, Q_, 'done')]
+    G_ = 'wo_g'
+    chan = [
+        [1, 'op', TANK, 'set', 3, None], [2, 'op', PUMP, 'set', 1, None],
+        pm(3, G_, 'request'), pm(3, G_, 'approve'), lk(3, G_, 0), [3, 'op', PUMP, 'set', 0, None],
+        [3, 'op', TANK, 'set', 3.5, None],
+        [5, 'op', TANK, 'set', 4.8, None], ul(6, G_, 0), lk(7, G_, 0),
+        [8, 'op', TANK, 'set', 5.2, None], [8, 'op', PUMP, 'set', 2, None],
+        [11, 'op', TANK, 'set', 0, None], [12, 'op', TANK, 'reset', None, 't'],
+        [13, 'op', PUMP, 'set', 0, None],
+        pm(14, G_, 'issue'), pm(14, G_, 'accept'), pm(14, G_, 'done'), pm(14, G_, 'return'), ul(15, G_, 0),
+        [15, 'op', TANK, 'set', 6, None], [18, 'ack', 'a1'], pm(19, G_, 'close')]
+    return [
+        ("a permit's life: request, approve, the automatic moves, issue, accept, done (its repair and set), return, "
+         "close; every refusal (state, iso_busy, authority, unknown); locks against this step's values (a start or a "
+         "stop and a lock in one step); what a locked code refuses, skips and suppresses; a fault or a repair asked on a "
+         "locked code not made (the work's done repairs the fault)", pump, faults, life, 24),
+        ('a code locked by two isolations; a done write made only when every isolation locking its code is held by '
+         'the work; a cancel with points still locked; a work without an isolation', pump, faults, shared, 20),
+        ('an isolated transmitter: its reading held, its alarm suppressed, its 2-out-of-3 vote tripped; unlocked from '
+         'isolated (the permit back to approved) and locked again; the hold node at step 0 (its init, the '
+         'scenario\'s, its input), reading a later when, a number',
+         channels, [], chan, 20),
+    ]
+
+
+def unit_bundle2(model, init, faults):
+    F = mini2()
+    F['model/a1.json'] = dict({'format': 'walkdown-plant-model', 'version': 2, 'area': 'a1'}, **model)
+    F['scenarios/s1.json'] = {'format': 'walkdown-plant-scenario', 'version': 2, 'id': 's1', 'title': 'Units',
+                              'init': dict(init), 'faults': faults}
+    for rel in ('procedures/p1.json', 'screens.json'):
+        del F[rel]
+    return F, check(F)
+
+
+def build_steps2():
+    out = []
+    for why, model, faults, inputs, n in unit_models2():
+        init = {'ambient_t': 20}
+        if 'h_sc' in [v[0] for v in model['values']]:
+            init['h_sc'] = -2
+        F, b = unit_bundle2(model, init, faults)
+        e = P.Engine(b, 's1')
+        states = [e.snapshot()]
+        i = 0
+        while e.step_no < n:
+            while i < len(inputs) and inputs[i][0] == e.step_no + 1:
+                apply(e, inputs[i])
+                i += 1
+            e.step()
+            states.append(e.snapshot())
+        assert i == len(inputs), why
+        out.append({'why': why, 'model': F['model/a1.json'], 'scenario': F['scenarios/s1.json'], 'inputs': inputs,
+                    'states': states, 'events': e.events})
+    return out
+
+
+# Format 2's forks from the cold start (PLANT3D §19; milestone P1: a permit to work on the first train, run in free
+# mode as the several roles in turn). Actions as FORKS, and ('permit', work, action), ('lock' | 'unlock', work, point).
+def permit_run(work, isolate, work_s=60):
+    """A whole permit in free mode: request, approve, the points locked (isolate: their indexes), issue, accept,
+    the work, done, return, the points unlocked, close."""
+    a = [('permit', work, 'request'), ('run', 1), ('permit', work, 'approve'), ('run', 1)]
+    a += [('lock', work, i) for i in isolate] + [('run', 1)]
+    a += [('permit', work, 'issue'), ('permit', work, 'accept'), ('run', work_s), ('permit', work, 'done'),
+          ('run', 1), ('permit', work, 'return'), ('run', 1)]
+    a += [('unlock', work, i) for i in isolate] + [('run', 1), ('permit', work, 'close'), ('run', 1)]
+    return a
+
+
+CW_B, CW_B_V = '30PAC10AP002', '30PAC10AA102'
+FORKS2 = [
+    # CW pump B locked out at base load: stopped, its valve closed, both locked; its start refused while locked; its
+    # trip latched by the fault stays latched (no reset on a locked code); the motor repaired by the work's done
+    ('cw_b_locked_out', 'end',
+     [('fault', 'cw_b_motor'), ('run', 20),
+      ('permit', 'wo_cw_b_motor', 'request'), ('run', 1), ('permit', 'wo_cw_b_motor', 'approve'), ('run', 1),
+      ('lock', 'wo_cw_b_motor', 0), ('lock', 'wo_cw_b_motor', 1), ('run', 90), ('lock', 'wo_cw_b_motor', 1),
+      ('run', 1),
+      ('op', CW_B, 'start', None, None), ('op', CW_B, 'reset', None, 'cw_b_trip_ol'),
+      ('op', CW_B_V, 'set', 0.15, None), ('run', 1),
+      ('permit', 'wo_cw_b_motor', 'issue'), ('permit', 'wo_cw_b_motor', 'accept'), ('run', 60),
+      ('permit', 'wo_cw_b_motor', 'done'), ('run', 1), ('permit', 'wo_cw_b_motor', 'return'), ('run', 1),
+      ('unlock', 'wo_cw_b_motor', 0), ('unlock', 'wo_cw_b_motor', 1), ('run', 1),
+      ('permit', 'wo_cw_b_motor', 'close'), ('run', 1),
+      ('op', CW_B, 'reset', None, 'cw_b_trip_ol'), ('run', 1), ('op', CW_B_V, 'set', 0.15, None),
+      ('until', 'cw_b_vstart', 120), ('op', CW_B, 'start', None, None), ('run', 10)],
+     {'refused': [[CW_B, 'start', ['cw_b_vstart', 'cw_b_trips_clear', 'cw_b_ok', 'iso_cw_b_locked']],
+                  [CW_B, 'reset', ['iso_cw_b_locked']], [CW_B_V, 'set', ['iso_cw_b_locked']]],
+      'lock_refused': [['wo_cw_b_motor', 1, ['cw_b_v_safe']]],
+      'repaired': ['cw_b_motor'], 'permits': {'wo_cw_b_motor': 9}, 'done': [[CW_B, 'start']],
+      'end': {'cw_b_run': [1, 1], 'iso_cw_b_locked': [0, 0]}}),
+    # a start and a lock in one step: the start is done in step 1, so the pump is not safe in step 3
+    ('cw_c_start_and_lock', 'end',
+     [('permit', 'wo_cw_c_motor', 'request'), ('permit', 'wo_cw_c_motor', 'approve'), ('run', 1),
+      ('op', '30PAC10AA103', 'set', 0.15, None), ('until', 'cw_c_vstart', 60),
+      ('op', '30PAC10AP003', 'start', None, None), ('lock', 'wo_cw_c_motor', 0), ('run', 1),
+      ('permit', 'wo_cw_c_motor', 'cancel'), ('run', 1)],
+     {'done': [['30PAC10AP003', 'start']], 'lock_refused': [['wo_cw_c_motor', 0, ['cw_c_safe']]],
+      'permits': {'wo_cw_c_motor': 10}}),
+    # the standby CCW pump locked out: when the running one trips, the auto-start's interlock fires and its write is
+    # skipped (the plant loses its closed cooling water, as it would)
+    ('ccw_b_locked_auto_start_skipped', 'end',
+     [('permit', 'wo_ccw_b_motor', 'request'), ('permit', 'wo_ccw_b_motor', 'approve'), ('run', 1),
+      ('lock', 'wo_ccw_b_motor', 0), ('run', 1), ('fault', 'ccw_a_motor'), ('run', 30)],
+     {'interlocks': ['ccw_b_auto'], 'first_out': {'ccw': 'ccw_a_trip'}, 'permits': {'wo_ccw_b_motor': 3},
+      'end': {'ccw_b_cmd': [0, 0], 'ccw_b_run': [0, 0]}}),
+    # a condenser pressure transmitter isolated: its reading held, its vote tripped (1 out of 2 on the others), its
+    # alarms suppressed while the condenser pressure rises after the CW pumps are lost; the turbine still trips
+    ('cond_p2_isolated', 'end',
+     [('permit', 'wo_cond_p2_cal', 'request'), ('permit', 'wo_cond_p2_cal', 'approve'), ('run', 1),
+      ('lock', 'wo_cond_p2_cal', 0), ('run', 2), ('fault', 'cw_ab_fail'), ('run', 300)],
+     {'first_out': {'st': 'st_trip_cond_p'}, 'alarms': ['cond_p1_h', 'cond_p1_hh', 'cond_p3_h', 'cond_p3_hh'],
+      'no_alarms': ['cond_p2_h', 'cond_p2_hh'], 'permits': {'wo_cond_p2_cal': 3},
+      'end': {'cond_p2_vote': [1, 1], 'cond_p2': [3, 12]}, 'max': {'cond_p': [25, 200]}}),
+    # the isolated transmitter alone: the trip runs 1 out of 2, nothing trips at normal pressure
+    ('cond_p3_isolated_calm', 'end',
+     [('permit', 'wo_cond_p3_cal', 'request'), ('permit', 'wo_cond_p3_cal', 'approve'), ('run', 1),
+      ('lock', 'wo_cond_p3_cal', 0), ('run', 60)],
+     {'no_trip': True, 'end': {'cond_hh_v': [1, 1], 'cond_p3_vote': [1, 1]}, 'permits': {'wo_cond_p3_cal': 3}}),
+    # a cooling tower fan's service: stopped, locked out, worked, returned, run again
+    ('ct_fan3_service', 'end',
+     [('fault', 'ct_fan3_vib'), ('run', 60)] + permit_run('wo_ct_fan3', [0], 120) +
+     [('op', '30PAD10CY003', 'reset', None, 'ct_fan3_trip_vib'), ('run', 1),
+      ('op', '30PAD10AN003', 'start', None, None), ('run', 60)],
+     {'repaired': ['ct_fan3_vib'], 'permits': {'wo_ct_fan3': 9}, 'done': [['30PAD10AN003', 'start']],
+      'end': {'ct_fan3_cmd': [1, 1], 'ct_fan3_vib': [0, 5]}}),
+]
+
+
+def build_train2(b):
+    e, log, bases = run_cold_start(b)
+    forks = []
+    for fid, base, actions, expect in FORKS2:
+        probes = sorted(set(expect.get('max', {})) | set(expect.get('end', {})))
+        f, start, fin, fev, seen = run_fork(bases[base], actions, probes)
+        fork = {'id': fid, 'base_step': start, 'inputs': fin, 'until': f.step_no, 'events': fev,
+                'end': f.snapshot(values=False), 'expect': expect}
+        if probes:
+            fork['seen'] = seen
+        forks.append(fork)
+    return {'scenario': 'cold_iron', 'procedure': 'cold_start', 'inputs': e.inputs, 'until': e.step_no,
+            'forks': forks}
+
+
+def build2():
+    F = mini2()
+    return {'about': 'Walkdown Plant content format 2 vectors (docs/PLANT3D.md §19), made by '
+                     'ref/make_plant3d_vectors.py from ref/plant3d.py. Numbers compare to 1e-6. Milestone P1: permits, '
+                     'isolations and the hold node (§15); staff (§16–§17) come with S1.',
+            'valid': [{'why': 'the synthetic plant as version 2', 'files': {k: json.dumps(v, ensure_ascii=False)
+                                                                           for k, v in F.items()},
+                       'counts': check(F).counts}],
+            'reject': build_rejects2(),
+            'steps': build_steps2(),
+            'train': build_train2(train_bundle())}
+
+
 def build():
     F = mini()
     tb = train_bundle()
@@ -899,13 +1290,17 @@ def dump(v):
 
 
 if __name__ == '__main__':
-    text = dump(build())
-    if '--write' in sys.argv:
-        with open(OUT, 'w', encoding='utf-8') as f:
-            f.write(text)
-        print(f'wrote {OUT}: {len(text)} bytes')
-    else:
-        with open(OUT, encoding='utf-8') as f:
-            same = f.read() == text
-        print('up to date' if same else 'differs (run with --write)')
-        sys.exit(0 if same else 1)
+    bad = 0
+    for out, make in ((OUT, build), (OUT2, build2)):
+        if '--only-v2' in sys.argv and out == OUT:
+            continue
+        text = dump(make())
+        if '--write' in sys.argv:
+            with open(out, 'w', encoding='utf-8') as f:
+                f.write(text)
+            print(f'wrote {out}: {len(text)} bytes')
+        else:
+            same = os.path.exists(out) and open(out, encoding='utf-8').read() == text
+            print(f'{out}: ' + ('up to date' if same else 'differs (run with --write)'))
+            bad += not same
+    sys.exit(1 if bad else 0)

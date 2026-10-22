@@ -62,9 +62,15 @@ class CourseWeb(unittest.TestCase):
             page = ctx.new_page()
             errors = []
             page.on('pageerror', lambda e: errors.append(str(e)))
+            sent = []      # every request with a body: progress must never be among them (decision 0062)
+            page.on('request', lambda r: sent.append((r.url, r.post_data or '')) if r.method != 'GET' else None)
             page.goto(self.base + '/learning.html')
             page.wait_for_selector('a.course')
             self.assertEqual(page.locator('a.course').count(), 4)
+            # on a server, progress stays in this browser, and the page says so; the server has no progress or pairing
+            self.assertIn('stays in this browser only', page.locator('#progressNote').inner_text())
+            for path in ('/api/progress', '/api/pairing'):
+                self.assertEqual(ctx.request.get(self.base + path).status, 404, path)
             self.assertIn('course.html?c=ppt', page.locator('a.course').first.get_attribute('href'))
             for cid, course in COURSES.items():
                 page.goto(f'{self.base}/course.html?c={cid}')
@@ -132,6 +138,7 @@ class CourseWeb(unittest.TestCase):
                 acts.nth(i).locator('.opt').first.click()
             self.assertIn('finished', page.locator('#main .score').inner_text())
             self.assertIsNotNone(page.evaluate("localStorage.getItem('ppt.finalBest')"))
+            self.assertEqual([u for u, d in sent if '/api/progress' in u or 'solved' in d or 'finalBest' in d], [])
             # drills and the decoder
             page.goto(f'{self.base}/course.html?c=hrsg#drill')
             page.wait_for_selector('.drill-card .reading')

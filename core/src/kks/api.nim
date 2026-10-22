@@ -1671,6 +1671,8 @@ proc publicUser*(me: Actor): JNode =
 
 # ---------------------------------------------------------------- routes
 
+const ProgressOnServer = "Course progress stays in this browser on a server: only your own devices hold the key to it."
+
 proc qint(q: Table[string, string], k: string, default: int): int =
   try: (if k in q: parseInt(q[k]) else: default) except ValueError: default
 
@@ -1719,7 +1721,14 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
         o["can_read"] = B(a.n.canRead)
         o["reports"] = a.n.readReports
       return ok(o)
+    of "/api/pairing":
+      # §17 (decision 0062): this person's other devices and the code each shows; never on a server
+      if a.mode == "server": fail(404, ProgressOnServer)
+      try: discard a.n.progressTick(now)     # (the list shows even when the upkeep fails; the next round tries again)
+      except CatchableError: discard
+      return ok(a.n.pairingList)
     of "/api/progress":
+      if a.mode == "server": fail(404, ProgressOnServer)
       let got = a.n.loadProgress(me.person)
       proc dataOf(c: OrderedTable[string, string]): JNode =
         result = newObj()
@@ -1843,7 +1852,18 @@ proc route*(a: Api, me: Actor, meth, path: string, q: Table[string, string], d: 
       if on: a.n.enable(now) else: a.n.disable(now)
     except ValueError as e: bad(e.msg)
     return ok(O(("on", B(on))))
+  of "/api/pairing":
+    if a.mode == "server": fail(404, ProgressOnServer)
+    proc str(k: string): string = (if d.get(k) != nil and d[k].isStr: d[k].s else: "")
+    try:
+      case str("action")
+      of "start": a.n.startPairing(str("device"), now)
+      of "confirm": a.n.confirmPairing(str("device"), str("code"), now)
+      else: bad("action must be start or confirm")
+    except ValueError as e: bad(e.msg)
+    return ok(a.n.pairingList)
   of "/api/progress":
+    if a.mode == "server": fail(404, ProgressOnServer)
     let course = if d.get("course") != nil and d["course"].isStr: d["course"].s else: ""
     var data: OrderedTable[string, string]
     let dd = d.get("data")

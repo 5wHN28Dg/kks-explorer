@@ -723,6 +723,29 @@ proc openCourseWindow*(w: Win, id: string, page = "") =
   cw.show(if page.len > 0 and c.page(page) != nil: page else: c.startPage()["id"].s)
   ShowWindow(cw.hwnd, SW_SHOW)
 
+proc pairingPart(w: Win, p: Page) =
+  ## "Your devices": pairing by code (PROTOCOL-v2 §17, decision 0062), so that progress follows the person
+  p.title("Your devices")
+  let (ready, prs) = pairing(w.a)
+  if not ready: p.dim(NotReadyNote)
+  elif prs.len == 0: p.dim("No other device of yours can pair yet. Open the Learning tab on it once it has synced.")
+  else:
+    p.dim(PairHelp)
+    for ri in 0 ..< prs.len:
+      closureScope:      # each button its own device (closures in a loop share variables)
+        let r = prs[ri]
+        let dev = r.device
+        p.label(rowTitle(r) & ": " & rowStatus(r))
+        proc done(why: string) =
+          if why.len > 0: w.toast(why)
+          w.rebuildSide()
+        if r.state == "compare":
+          p.buttons(("Codes match with " & rowTitle(r), proc () = done(pairConfirm(w.a, r))))
+        if r.state != "paired":
+          p.buttons(((if r.state in ["compare", "waiting"]: "Pair again with " else: "Pair with ") & rowTitle(r),
+                     proc () = done(pairStart(w.a, dev))))
+  p.buttons(("Check again", proc () = w.rebuildSide()))
+
 proc learningTab*(w: Win, p: Page) =
   ## the side's Learning tab: the courses with their progress
   let cs = listCourses(w.a)
@@ -737,8 +760,9 @@ proc learningTab*(w: Win, p: Page) =
       if d.get("solved") != nil:
         let o = parseStrict(d["solved"].s)
         for q in cr.questions:
-          if o.get(q) != nil: inc n
+          if o.get(q) != nil and o[q].kind == jBool and o[q].b: inc n
     except CatchableError: discard
     rows.add cr.title & " — " & $n & " of " & $cr.questions.len & " solved"
   p.list(rows, 26 * cs.len + 8, onActivate = (proc (i: int) = w.openCourseWindow(cs[i].id)), openLabel = "Open the course")
-  p.dim("Your progress is private: only your own devices can read it.")
+  p.dim(PrivacyNote)
+  w.pairingPart(p)

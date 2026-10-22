@@ -10,6 +10,7 @@ from gi.repository import Atspi, GLib  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 APP = sys.argv[1] if len(sys.argv) > 1 else '/tmp/kksgnome/kks_explorer'
+PEER = os.environ.get('KKS_PEER', os.path.join(os.path.dirname(APP), 'progress_peer'))   # e2e/progress_peer.nim
 HERE = os.path.dirname(os.path.abspath(__file__))
 VENV_PY = os.path.join(HERE, '..', '..', '..', '.venv', 'bin', 'python')   # OpenCV, for the QR video
 INVITE = '{"kks_invite":1,"root":"TEST-ROOT","peer":"TESTPEER","addrs":["192.0.2.1:8421"],"token":"camera-test","plant":"Camera test"}'
@@ -1068,6 +1069,100 @@ class Gnome(Plant):
             self.apps[-1].wait(15)
         except subprocess.TimeoutExpired:
             self.fail('the app kept running with its course window after the main window was closed')
+
+    def peer(self, name, *args):
+        """progress_peer (e2e/progress_peer.nim): a second device of the same person, without a window"""
+        d = os.path.join(self.dir, name)
+        os.makedirs(d, exist_ok=True)
+        r = subprocess.run([PEER, *args], env=dict(os.environ, KKS_DATA_DIR=d, KKS_STORAGE_KEY_FILE=os.path.join(d, 'key')),
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout.strip().splitlines()[-1]
+
+    def test_course_pairing(self):
+        """course progress follows the person between their own devices (decision 0062): a second device saved
+        progress; the app lists it with a code under "Your devices"; once both paired, the app shows that progress,
+        and a question answered in the app reaches the other device"""
+        b = self.boss
+        r = b.req('POST', '/api/users', {'username': 'pia', 'full_name': 'Pia Learner', 'position': 'Operator', 'role': 'user'})
+        self.assertTrue(Client(self.base).req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1],
+                                                                              'password': 'pia password 1'}).get('ok'))
+        qs = next(c for c in b.req('GET', '/api/courses')['courses'] if c['id'] == 'fnd')['questions']
+        self.assertEqual(self.peer('pia-tablet', 'join', f'127.0.0.1:{self.sport}', 'pia', 'pia password 1'), 'joined')
+        self.peer('pia-tablet', 'save', 'fnd', 'solved', json.dumps({qs[-1]: True}))
+        a = self.start_app('pia-laptop', KKS_SYNC_EVERY='2000')
+        self.join(a, 'pia', 'pia password 1')
+        atspi.click(atspi.find(a, 'button', name='Learning'))
+        atspi.find(a, None, contains='0 of 76 solved', timeout=10)      # nothing of the tablet's yet
+        # the tablet sees the laptop (once the laptop's box key went through the server), and presses Pair
+        laptop = None
+        for _ in range(30):
+            ds = json.loads(self.peer('pia-tablet', 'pairing'))['devices']
+            if ds:
+                laptop = ds[0]['device']
+                break
+            time.sleep(1)
+        self.assertIsNotNone(laptop, 'the laptop never showed up on the tablet')
+        self.peer('pia-tablet', 'pair', laptop)
+
+        def press(button, until):
+            """Check again until `button` is there, press it until the page shows `until` (a press on a button the
+            page made again in between does nothing, #160)"""
+            for _ in range(25):
+                if atspi.find_all(a, None, contains=until):
+                    return
+                btn = next(iter(atspi.find_all(a, 'button', name=button)), None)
+                if btn is not None:
+                    atspi.click(btn)
+                    time.sleep(2)
+                else:
+                    atspi.click_named(a, 'button', 'Check again')
+                    time.sleep(1.5)
+            seen = [f'{n.get_role_name()}: {n.get_name()}' for n in atspi.walk(a)
+                    if any(w in (n.get_name() or '').lower() for w in ('code', 'pair', 'device', 'sync', 'not '))]
+            self.fail(f'{until!r} never on the page; on screen: {seen}')
+        press('Pair', 'Waiting for the other device')          # (it may already show the code)
+        # both compute the code once the other's reveal came through the server
+        code = None
+        for _ in range(20):
+            row = json.loads(self.peer('pia-tablet', 'pairing'))['devices'][0]
+            if row['state'] == 'compare':
+                code = row['code']
+                break
+            time.sleep(1)
+        self.assertIsNotNone(code, 'the tablet never showed a code')
+        press('Check again', 'Code %s: confirm only if' % code)
+        press('Codes match', 'Paired')
+        self.peer('pia-tablet', 'confirm', laptop, code)
+        # the laptop takes the tablet's share in at its next round, and shows the tablet's progress
+        shown = False
+        for _ in range(30):
+            # the Learning page counts what it held when it was made: back, and open it again
+            if not atspi.find_all(a, 'button', name='Learning'):
+                atspi.click_named(a, 'button', 'Back', timeout=5)
+            atspi.click(atspi.find(a, 'button', name='Learning', timeout=8))
+            try:
+                atspi.find(a, None, contains='1 of 76 solved', timeout=1, showing=False)
+                shown = True
+                break
+            except AssertionError:
+                time.sleep(1)
+        self.assertTrue(shown, "the tablet's progress never showed on the laptop")
+        # a question answered on the laptop reaches the tablet
+        atspi.click(atspi.find(a, 'button', name='Rumaila Plant Foundations'))
+        atspi.click(atspi.find(a, 'button', name='1 · Combined cycle', timeout=15))
+        atspi.click(atspi.find(a, 'button', contains='Once the gas cools below HP boiling temperature', timeout=10))
+        atspi.find(a, 'label', name='2 of 76 solved', timeout=10)
+        solved = {}
+        for _ in range(30):
+            got = json.loads(self.peer('pia-tablet', 'progress', 'fnd'))
+            solved = json.loads(got.get('solved', '{}'))
+            if len(solved) == 2:
+                break
+            time.sleep(1)
+        self.assertEqual(len(solved), 2, solved)
+        self.assertIn(qs[-1], solved)
+        self.assertEqual(self.criticals('pia-laptop'), [])
 
     def test_zzz_multi_member(self):
         """A MEMBER's "Photo for all" (their changes wait for approval), with codes of two drawings (runs last: its

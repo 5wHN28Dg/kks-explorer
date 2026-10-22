@@ -74,7 +74,7 @@ def plant(codes):
     kks = {k: {c: tables[k][c] for c in sorted(used[k])} for k in tables}
     kks['source'] = ('Codes follow the public KKS key (sources: docs/plant3d/FIRST-TRAIN.md §1); only the letters '
                      'this plant uses, with meanings in our own words.')
-    return {'format': 'walkdown-plant', 'version': 1, 'id': 'ccpp', 'title': 'Generic 2-2-1 combined-cycle plant',
+    return {'format': 'walkdown-plant', 'version': 2, 'id': 'ccpp', 'title': 'Generic 2-2-1 combined-cycle plant',
             'frequency_hz': 50, 'kks': kks,
             'media': {k: {'group': g, 'band': b, 'name': n} for k, (g, b, n) in MEDIA.items()},
             'areas': ['control', 'bop', 'ct', 'cw', 'gt1', 'trafo1', 'hrsg1', 'st', 'rack', 'wtp', 'intake'],
