@@ -862,10 +862,12 @@ class Model:
             {t['id'] + '_latched' for t in self.trips} | set(self.kept())
 
     def add(self, d, aid, rel):
-        self.version = fmt(d, 'model', rel, self.b.version)
-        v2 = ('isolations', 'works') if self.version == 2 else ()
+        v2 = ('isolations', 'works')
         keys(d, ('format', 'version', 'area'), ('values', 'ops', 'interlocks', 'machines', 'alarms', 'trips', 'bind')
-             + v2, rel)
+             + v2, rel)                  # first, so a format 1 file keeps format 1's error codes
+        self.version = fmt(d, 'model', rel, self.b.version)
+        for k in v2:
+            need(self.version == 2 or k not in d, 'unknown_key', f'{rel}.{k}: only in a version 2 model file')
         need(d['area'] == aid, 'bad_id', f'{rel}: area must be {aid!r}')
         self.rel = rel
         for i, pair in enumerate(capped(d.get('values', []), f'{rel}.values', 'values')):
@@ -947,7 +949,7 @@ class Model:
         need(x['discipline'] in DISCIPLINES, 'bad_value', f'{w}.discipline: one of {DISCIPLINES}')
         need(x['permit'] in PERMIT_KINDS, 'bad_value', f'{w}.permit: one of {PERMIT_KINDS}')
         if 'isolation' in x:
-            self.work_isos.append((x['isolation'], f'{w}.isolation'))
+            self.work_isos.append((ident(x['isolation'], f'{w}.isolation'), f'{w}.isolation'))
         if 'repairs' in x:
             ident(x['repairs'], f'{w}.repairs')
         if 'set' in x:

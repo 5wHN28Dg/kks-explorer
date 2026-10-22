@@ -256,6 +256,22 @@ class Validator(unittest.TestCase):
                   'area_overlap', 'limit'):
             self.assertIn(c, codes)
 
+    def test_a_format_1_model_file_keeps_format_1_error_codes(self):
+        """Format 2 must not change what a format 1 model file is refused with (keys are checked before the version),
+        and a model file that is no object is refused, not a crash."""
+        base = {k: t.encode() for k, t in self.V['valid'][0]['files'].items()}
+        name = next(k for k in base if k.startswith('model/'))
+        d = json.loads(base[name])
+        cases = [({k: v for k, v in d.items() if k != 'format'}, 'missing_key'),
+                 (dict(d, extra=1, version=2), 'unknown_key'),
+                 (dict(d, works=[]), 'unknown_key'),
+                 ([], 'bad_type'), ('x', 'bad_type')]
+        for m, code in cases:
+            files = dict(base, **{name: json.dumps(m).encode()})
+            with self.assertRaises(P.FormatError, msg=repr(m)[:60]) as cm:
+                P.check_files(files)
+            self.assertEqual(cm.exception.code, code, repr(m)[:60])
+
     def test_a_sign_symbol_the_app_does_not_draw_is_refused(self):
         """A safety sign's `symbol` is one the app draws (ISO 7010 M003, apps/plant3d/builder/kit_place.gd
         SIGN_SYMBOLS): the app's own check is an assert, which a release build drops."""

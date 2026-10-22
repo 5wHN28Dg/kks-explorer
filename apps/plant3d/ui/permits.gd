@@ -118,10 +118,11 @@ static func works_at(e, code: String) -> Array:
 
 
 ## A refusal's reason (a word of §17.7, or a `safe` value's name) in words.
-static func reason_text(e, work: Dictionary, why: String, point := -1) -> String:
+static func reason_text(e, work: Dictionary, why: String, point := -1, state := -1) -> String:
 	match why:
 		"state":
-			return "not at this point of the permit (it is %s)" % STATE_WORDS[state_of(e, work["id"])].to_lower()
+			var st: int = state if state >= 0 else state_of(e, work["id"])
+			return "not at this point of the permit (it is %s)" % STATE_WORDS[st].to_lower()
 		"iso_busy":
 			var x := isolation_of(e, work)
 			var k: int = e.m.isolation_ix.get(x.get("id", ""), -1)
@@ -142,22 +143,51 @@ static func reason_text(e, work: Dictionary, why: String, point := -1) -> String
 	return why
 
 
-## An event of a permit, lock or unlock (§17.7) in words, for the form's history and the debrief.
-static func event_text(e, ev: Array) -> String:
+## How each permit, lock or unlock event found its work (the engine keeps only the present): replays the run's events
+## from the start, where every permit is at 0 and numbers start at PTW-0001 (sim/engine.gd). {event index: [the work's
+## permit number then ("" before its first request), its permit state just before the event]}.
+static func replay(e) -> Dictionary:
+	var out := {}
+	var st := {}
+	var nums := {}
+	var count := 0
+	for i in e.events.size():
+		var ev: Array = e.events[i]
+		if ev[1] != "permit" and ev[1] != "lock" and ev[1] != "unlock":
+			continue
+		var wid := str(ev[2])
+		var before: int = st.get(wid, 0)
+		if ev[1] == "permit" and ev[5] == "done":
+			if ev[3] == "auto":
+				st[wid] = int(ev[6][0])
+			elif ACTIONS_TO.has(ev[3]):
+				st[wid] = ACTIONS_TO[ev[3]]
+				if ev[3] == "request":
+					count += 1
+					nums[wid] = "PTW-%04d" % count
+		out[i] = [nums.get(wid, ""), before]
+	return out
+
+
+## An event of a permit, lock or unlock (§17.7) in words, for the form's history and the debrief. `ctx` is the event's
+## entry of replay() (its number and state then); without it the present ones are used.
+static func event_text(e, ev: Array, ctx := []) -> String:
 	var wid = ev[2]
+	var num: String = ctx[0] if not ctx.is_empty() else number_of(e, str(wid))
+	var then: int = ctx[1] if not ctx.is_empty() else -1
 	var w: Dictionary = e.m.works[e.m.work_ix[wid]] if typeof(wid) == TYPE_STRING and e.m.work_ix.has(wid) else {}
 	if ev[1] == "permit":
 		var title: String = w.get("title", str(wid))
 		if ev[3] == "auto":
-			return "Permit %s %s: %s" % [number_of(e, str(wid)), title, STATE_WORDS[int(ev[6][0])].to_lower()]
+			return "Permit %s %s: %s" % [num, title, STATE_WORDS[int(ev[6][0])].to_lower()]
 		var what: String = DONE_WORDS.get(ev[3], str(ev[3]))
 		match ev[5]:
 			"done":
-				return "Permit %s: %s%s" % [title, what, (" (%s)" % number_of(e, str(wid))) if ev[3] == "request" else ""]
+				return "Permit %s: %s%s" % [title, what, (" (%s)" % num) if ev[3] == "request" else ""]
 			"refused":
 				var why := PackedStringArray()
 				for r in ev[6]:
-					why.append(reason_text(e, w, String(r)) if not w.is_empty() else String(r))
+					why.append(reason_text(e, w, String(r), -1, then) if not w.is_empty() else String(r))
 				return "Permit %s: %s refused (%s)" % [title, ACTION_WORDS.get(ev[3], str(ev[3])).to_lower(), "; ".join(why)]
 		return "Permit %s %s: not a permit action of this plant" % [str(wid), str(ev[3])]
 	# lock, unlock
@@ -172,7 +202,7 @@ static func event_text(e, ev: Array) -> String:
 		"refused":
 			var why := PackedStringArray()
 			for r in ev[6]:
-				why.append(reason_text(e, w, String(r), p))
+				why.append(reason_text(e, w, String(r), p, then))
 			return "%s %s refused: %s" % ["Lock" if ev[1] == "lock" else "Unlock", where, "; ".join(why)]
 	return "%s %s: not a point of this plant" % [ev[1].capitalize(), where]
 
@@ -180,7 +210,9 @@ static func event_text(e, ev: Array) -> String:
 ## Every event of one work (its permit, its locks), in order: [[step, text, refused]].
 static func history(e, wid: String) -> Array:
 	var out := []
-	for ev in e.events:
+	var ctx := replay(e)
+	for i in e.events.size():
+		var ev: Array = e.events[i]
 		if (ev[1] == "permit" or ev[1] == "lock" or ev[1] == "unlock") and typeof(ev[2]) == TYPE_STRING and ev[2] == wid:
-			out.append([int(ev[0]), event_text(e, ev), ev[5] != "done"])
+			out.append([int(ev[0]), event_text(e, ev, ctx[i]), ev[5] != "done"])
 	return out

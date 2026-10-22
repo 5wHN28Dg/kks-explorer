@@ -944,6 +944,9 @@ REJECTS2 = [
     ("an ext value named like an isolation's value", 'dup_id', _all(
         _set(['plant.json', 'ext'], ['ambient_t', 'iso_gauge_locked']),
         _set(['scenarios/s1.json', 'init', 'iso_gauge_locked'], 0))),
+    ('a work whose isolation is a list', 'bad_id', _set(WORK + [0, 'isolation'], [])),
+    ('a work whose isolation is an object', 'bad_id', _set(WORK + [0, 'isolation'], {})),
+    ('a model file that is a list', 'bad_type', lambda F: F.__setitem__('model/a1.json', [])),
     ('a work naming an isolation that does not exist', 'bad_ref', _set(WORK + [0, 'isolation'], 'iso_motor')),
     ('a work on equipment that does not exist', 'bad_ref', _set(WORK + [0, 'kks'], '10LAC10AP009')),
     ('a work of an unknown discipline', 'bad_value', _set(WORK + [0, 'discipline'], 'paint')),

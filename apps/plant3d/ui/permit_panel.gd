@@ -21,6 +21,7 @@ var results := {}               # [work, action] or [work, "lock" | "unlock", po
 var _pending: Array = []        # [key, kind, work, action or point, step it takes effect]
 var _sig := ""
 var _t := 0.0
+var _refocus := false                 # an action was sent from the form: its focus follows the next step
 var feedback: Label             # the last action's result (tests read it)
 
 
@@ -96,8 +97,22 @@ func send_lock(kind: String, point: int) -> void:
 	_sent(str([work, kind, point]), kind, work, point, e.step_no + 1)
 
 
+## After a saved run is put back (ui/autosave.gd): the permit and lock inputs still waiting in the engine's queue are
+## waiting on the form again, so their buttons stay "sent" and their results come back as they do before a save.
+func waiting_from(e) -> void:
+	_pending.clear()
+	results.clear()
+	for q in e.queue:
+		if (q[0] == "permit" or q[0] == "lock" or q[0] == "unlock") and typeof(q[1]) == TYPE_STRING:
+			var key := str([q[1], q[2]]) if q[0] == "permit" else str([q[1], q[0], q[2]])
+			_pending.append([key, q[0], q[1], q[2], e.step_no + 1])
+			results[key] = {"state": "sent", "text": "Sent: it takes effect when the plant runs"}
+	_sig = ""
+
+
 func _sent(key: String, kind: String, wid: String, what, step: int) -> void:
 	_pending.append([key, kind, wid, what, step])
+	_refocus = true
 	var paused: bool = ui.clock.speed == SimClock.Speed.PAUSED
 	results[key] = {"state": "sent", "text": "Sent%s" % (": it takes effect when the plant runs (paused)" if paused else "…")}
 	_sig = ""
@@ -107,6 +122,7 @@ func _sent(key: String, kind: String, wid: String, what, step: int) -> void:
 ## The engine's events since the last look (ui/plant_ui.gd _sync_events): the results of what was sent.
 func on_events(evs: Array, from: int) -> void:
 	var e = ui.clock.engine
+	var ctx := {}                     # Permits.replay, once a result is found
 	for i in range(from, evs.size()):
 		var ev: Array = evs[i]
 		if ev[1] != "permit" and ev[1] != "lock" and ev[1] != "unlock":
@@ -117,7 +133,9 @@ func on_events(evs: Array, from: int) -> void:
 		for k in _pending.size():
 			var p: Array = _pending[k]
 			if p[1] == ev[1] and p[2] == ev[2] and p[3] == ev[3] and int(ev[0]) >= p[4]:
-				var txt: String = Permits.event_text(e, ev)
+				if ctx.is_empty():
+					ctx = Permits.replay(e)
+				var txt: String = Permits.event_text(e, ev, ctx.get(i, []))
 				results[p[0]] = {"state": ev[5], "text": txt}
 				if feedback != null and is_instance_valid(feedback):
 					feedback.text = txt
@@ -155,12 +173,39 @@ func refresh() -> void:
 		_list(e)
 	else:
 		_form(e, w, hist)
+	# after an action the pressed button is disabled, then gone: the focus goes on to the next step's button (a
+	# gamepad would otherwise land on "All permits" and walk the whole form again), once one is offered; a trainee
+	# who moved the focus elsewhere keeps it there
+	var step_on: bool = _refocus and ui.wants_focus() and (focus_name == "" or focus_name == "back" or _is_step(focus_name))
+	if not step_on:
+		_refocus = false
+	var kept := false
 	if focus_name != "":
 		var again := body.find_child(focus_name, true, false)
 		if again is Button and not again.disabled:
 			again.grab_focus()
+			kept = _is_step(focus_name)
 		else:
 			_focus()
+	if step_on and not kept:
+		var next := _first_step(body)
+		if next != null:
+			next.grab_focus()
+			_refocus = false
+
+
+static func _is_step(n: String) -> bool:
+	return n.begins_with("do_") or n.begins_with("lock_") or n.begins_with("unlock_")
+
+
+static func _first_step(n: Node) -> Button:
+	for c in n.get_children():
+		if c is Button and not c.disabled and _is_step(c.name) and c.name != "do_cancel":   # never a cancel by a double press
+			return c
+		var f := _first_step(c)
+		if f:
+			return f
+	return null
 
 
 func _safe_sig(e, w) -> String:

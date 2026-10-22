@@ -16,6 +16,7 @@ const App = preload("res://tests/ui_app.gd")
 const Procedure = preload("res://sim/procedure.gd")
 const RunSave = preload("res://ui/run_save.gd")
 const Debrief = preload("res://ui/debrief.gd")
+const Permits = preload("res://ui/permits.gd")
 
 const PUMP := "30PAC10AP002"
 const VALVE := "30PAC10AA102"
@@ -82,12 +83,17 @@ func run(tree: SceneTree) -> Array:
 	var req := _button(pm, "do_request")
 	if req == null or not req.text.contains("as the maintenance supervisor"):
 		p.append("the form's request names no role: %s" % (req.text if req else "none"))
+	if req != null:
+		req.grab_focus()
 	for a in ["request", "approve"]:
 		err = _press(pm, "do_" + a)
 		if err != "":
 			p.append(err)
 		ui.clock.run_steps(1)
 		pm.refresh()
+		var fo2: Control = ui.get_viewport().gui_get_focus_owner()
+		if a == "request" and (fo2 == null or fo2.name != "do_approve"):
+			p.append("after the request the focus is on %s, not the approve" % (fo2.name if fo2 else "nothing"))
 	if e.pstate[e.m.work_ix[WORK]] != 2 or e.ptw.get(WORK, "") != "PTW-0001":
 		p.append("after request and approve the permit is %d, %s" % [e.pstate[e.m.work_ix[WORK]], e.ptw.get(WORK, "")])
 	if not App.texts(pm).contains("PTW-0001") or not App.texts(pm).contains("Permit: Approved"):
@@ -250,7 +256,12 @@ func run(tree: SceneTree) -> Array:
 		var got := [e2.pstate, e2.lockbits, e2.ptw, e2.code_locks, e2.holder, e2.queue]
 		if str(got) != str(want):
 			p.append("the restored permits differ: %s, not %s" % [str(got).left(300), str(want).left(300)])
+		if pm.results.get(str(["wo_ccw_b_motor", "issue"]), {}).get("state", "") != "sent":
+			p.append("the issue waiting across the save is not shown as sent: %s" % str(pm.results))
 		ui.clock.run_steps(1)
+		ui._sync_events()
+		if pm.results.get(str(["wo_ccw_b_motor", "issue"]), {}).get("state", "") != "done":
+			p.append("the issue waiting across the save brought back no result: %s" % str(pm.results))
 		if e2.pstate[e2.m.work_ix["wo_ccw_b_motor"]] != 4:
 			p.append("the issue waiting across the save did not take effect (%d)" % e2.pstate[e2.m.work_ix["wo_ccw_b_motor"]])
 		# a tampered save whose locks don't agree is refused
@@ -258,7 +269,26 @@ func run(tree: SceneTree) -> Array:
 		bad["engine"]["code_locks"] = {}
 		if ui.autosave.check(bad) == "":
 			p.append("a save whose locks don't agree was accepted")
+		bad = dec["payload"].duplicate(true)
+		bad["engine"]["pstate"][e2.m.work_ix["wo_ccw_b_motor"]] = 9
+		if ui.autosave.check(bad) == "":
+			p.append("a save whose permit state and permit value don't agree was accepted")
+		bad = dec["payload"].duplicate(true)
+		bad["engine"]["holder"][e2.m.isolation_ix["iso_ccw_b"]] = -1
+		if ui.autosave.check(bad) == "":
+			p.append("a save with locks no permit holds was accepted")
 		e = e2
+	# the history tells each event as it was then: an approve refused while closed, then a second request (a new
+	# number) leave the first request's number and the refusal's state as they were
+	e.permit(WORK, "approve")
+	ui.clock.run_steps(1)
+	e.permit(WORK, "request")
+	ui.clock.run_steps(1)
+	var second: String = e.ptw.get(WORK, "")
+	var lines: Array = Permits.history(e, WORK).map(func(x): return String(x[1]))
+	for want in ["requested (PTW-0001)", "requested (%s)" % second, "approve refused (not at this point of the permit (it is closed))"]:
+		if second == "PTW-0001" or not lines.any(func(x): return x.contains(want)):
+			p.append("the history does not say %s as it was then: %s" % [want, "; ".join(lines).left(600)])
 	# the debrief lists the permits and the locks
 	var d: Dictionary = Debrief.collect(e, ui.info, null)
 	var texts: Array = d.entries.map(func(x): return x.text)

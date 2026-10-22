@@ -230,6 +230,20 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 					want[fresh._iso[k][1][pi][0]] = want.get(fresh._iso[k][1][pi][0], 0) + 1
 		if d.has("code_locks") and d["code_locks"] != want:
 			return "locks that don't agree"
+		# a locked point belongs to a held isolation, and the values conditions read agree with the locks (§15.1)
+		for k in fresh._iso.size():
+			var c := 0
+			for pi in fresh._iso[k][1].size():
+				c += int(d["lockbits"][fresh._iso[k][4] + pi])
+			if c > 0 and d.has("holder") and d["holder"][k] == -1:
+				return "locks that no permit holds"
+			if d.has("cur") and (d["cur"][fresh._iso[k][2]] != float(c)
+					or d["cur"][fresh._iso[k][3]] != (1.0 if c == fresh._iso[k][1].size() else 0.0)):
+				return "locks that don't agree"
+	if d.has("pstate") and d.has("cur"):
+		for wi in fresh._wk.size():
+			if d["cur"][fresh._wk[wi][2]] != float(d["pstate"][wi]):
+				return "a permit whose value doesn't agree"
 	for k in ["ptw", "acceptor", "lockers"]:
 		if d.has(k):
 			for key in d[k]:
@@ -288,6 +302,7 @@ func restore(p: Dictionary) -> void:
 	ui._ev_seen = e.events.size()
 	ui.results = p["ui"]["results"]
 	ui._pending = p["ui"]["pending"]
+	ui.permits.waiting_from(e)
 	if p["procedure"] != "":
 		ui.start_procedure(p["procedure"], null, false)
 		RunSave.apply(ui.tracker, p["tracker"])

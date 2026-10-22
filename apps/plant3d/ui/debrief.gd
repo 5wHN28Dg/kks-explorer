@@ -48,6 +48,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 	var in_i := 0
 	var out: Array = []
 	var evs: Array = engine.events
+	var then := Permits.replay(engine)    # each permit event's number and state as they were
 	for i in to:
 		var ev: Array = evs[i]
 		var inp := []
@@ -134,7 +135,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 				var wid = ev[2]
 				var wd: Dictionary = m.works[m.work_ix[wid]] if typeof(wid) == TYPE_STRING and m.work_ix.has(wid) else {}
 				e.code = String(wd.get("kks", ""))
-				e.text = Permits.event_text(engine, ev)
+				e.text = Permits.event_text(engine, ev, then.get(i, []))
 				if ev[5] != "done":
 					sm.permit_refused += 1
 				elif ev[1] == "lock":
