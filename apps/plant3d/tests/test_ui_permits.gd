@@ -98,6 +98,9 @@ func run(tree: SceneTree) -> Array:
 		p.append("after request and approve the permit is %d, %s" % [e.pstate[e.m.work_ix[WORK]], e.ptw.get(WORK, "")])
 	if not App.texts(pm).contains("PTW-0001") or not App.texts(pm).contains("Permit: Approved"):
 		p.append("the form does not show the approved permit PTW-0001")
+	# the motor's fault, before the locks: the work's done repairs it
+	ui.fault("cw_b_motor")
+	ui.clock.run_steps(1)
 	# locks at the equipment only: from the control room they are not offered
 	var lk := _button(pm, "lock_0")
 	if lk == null or not lk.disabled or not App.texts(pm).contains("At the equipment only"):
@@ -130,6 +133,13 @@ func run(tree: SceneTree) -> Array:
 			p.append("the locked pump's start came back %s" % str(res))
 		if e.truth("cw_b_cmd"):
 			p.append("the locked pump was started")
+	# at the locked pump its fault's repair is not offered (it would not be made, §15.1)
+	ui.player.global_position = ui.index.center(PUMP) + Vector3(0, 0, 3)
+	ui.open_card(PUMP)
+	ui.card.refresh()
+	if not App.texts(ui.card).contains("Locked out: the work under its permit repairs it"):
+		p.append("the locked pump's card offers its repair: %s" % App.texts(ui.card).left(300))
+	ui.go_control_room(false)
 	ui.close_card()
 	ui.open_screens(ui.screens.screens[ui.screens.screen_of[PUMP][0]]["id"])
 	for k in 30:
@@ -138,8 +148,6 @@ func run(tree: SceneTree) -> Array:
 		p.append("the screen drew the locked pump as %s" % ui.mimic.locks_drawn.get(PUMP, "nothing"))
 	ui.close_screens()
 	# the work: issued, accepted, the motor's fault (pressed before) repaired by the work's done, handed back
-	ui.fault("cw_b_motor")              # a fault while locked: applied, its write skipped (the pump is locked)
-	ui.clock.run_steps(1)
 	ui.open_permits(WORK)
 	for a in ["issue", "accept", "done", "return"]:
 		err = _press(pm, "do_" + a)
@@ -149,6 +157,8 @@ func run(tree: SceneTree) -> Array:
 		pm.refresh()
 	if e.pstate[e.m.work_ix[WORK]] != 7:
 		p.append("after issue, accept, done and return the permit is %d" % e.pstate[e.m.work_ix[WORK]])
+	if e.v("cw_b_fault") != 0.0 or not e.faults_fixed.has("cw_b_motor"):
+		p.append("the work's done did not repair the motor's fault (%s)" % e.v("cw_b_fault"))
 	# the locks off, at the equipment; the permit de-isolated by itself, then closed
 	for k in 2:
 		var code: String = [PUMP, VALVE][k]

@@ -252,8 +252,10 @@ func refresh() -> void:
 		var fid: String = rp[0]["id"]
 		var asked: bool = e.queue.any(func(q): return q[0] == "repair" and q[1] == fid)
 		(rp[1] as Control).visible = e.faults_done.has(fid) and not e.faults_fixed.has(fid)
-		(rp[2] as Button).disabled = not near or asked
-		(rp[3] as Label).text = "Repaired: it acts in the next step" if asked else ("" if near else "At the equipment only: walk up to it")
+		# locked out (§15.1): a repair would not be made; the work's permit repairs it
+		(rp[2] as Button).disabled = not near or asked or lt != ""
+		(rp[3] as Label).text = "Repaired: it acts in the next step" if asked else ("Locked out: the work under its permit "
+				+ "repairs it" if lt != "" else ("" if near else "At the equipment only: walk up to it"))
 	for row in _ops:
 		var o: Dictionary = row[0]
 		var ok: bool = info.offered(o, near, ctl)

@@ -1797,15 +1797,24 @@ class Engine:
         for k, v in s.items():
             self._write(self.ix[k], float(v), work)
 
+    def _skips(self, i, work=None):
+        """Whether a write to a state is skipped: its code is locked (§15.1), and not by isolations all held by the
+        work whose own `done` writes it."""
+        c = self.state_kks.get(i)
+        return c is not None and bool(self.code_locks.get(c)) and (
+            work is None or any(self.holder[iso] != work for iso, p in self.locks
+                                if self.isos[iso]['points'][p]['kks'] == c))
+
+    def _blocked(self, s, work=None):
+        """Whether any write of a fault's `set` or `repair` would be skipped: such a fault or repair is not made at all
+        (§15.1), so it is neither applied nor repaired without acting."""
+        return bool(self.code_locks) and any(self._skips(self.ix[k], work) for k in s)
+
     def _write(self, i, x, work=None):
         """A write to a state, skipped while its code is locked (§15.1); a work's own `done` writes (work) are made
         when every isolation locking the code is held by that work."""
-        c = self.state_kks.get(i)
-        if c is not None and self.code_locks.get(c):
-            if work is None or any(self.holder[iso] != work for iso, p in self.locks
-                                   if self.isos[iso]['points'][p]['kks'] == c):
-                return
-        self.cur[i] = x
+        if not self._skips(i, work):
+            self.cur[i] = x
 
     def locking(self, code):
         """The isolations (in model order) with a locked point on this code."""
@@ -1990,14 +1999,15 @@ class Engine:
                 hit = vals[self.ix[w]] >= 0.5 if isinstance(w, str) else self.fault_cond[fid](vals, vals) >= 0.5
             else:
                 hit = fid in pressed
-            if hit:
+            if hit and not self._blocked(f['set']):
                 self.faults_done.add(fid)
                 self.faults_fixed.discard(fid)
                 self._set(f['set'])
                 self.ev('fault', fid)
         # then the repairs asked, in the scenario's order: a fault applied and not repaired since, with a `repair`
         for fid, f in self.faults.items():
-            if fid in asked and 'repair' in f and fid in self.faults_done and fid not in self.faults_fixed:
+            if fid in asked and 'repair' in f and fid in self.faults_done and fid not in self.faults_fixed \
+                    and not self._blocked(f['repair']):
                 self.faults_fixed.add(fid)
                 self._set(f['repair'])
                 self.ev('repair', fid)
@@ -2006,7 +2016,8 @@ class Engine:
             w = self.works[wid]
             fid = w.get('repairs')
             f = self.faults.get(fid)
-            if f is not None and 'repair' in f and fid in self.faults_done and fid not in self.faults_fixed:
+            if f is not None and 'repair' in f and fid in self.faults_done and fid not in self.faults_fixed \
+                    and not self._blocked(f['repair'], wid):
                 self.faults_fixed.add(fid)
                 self._set(f['repair'], wid)
                 self.ev('repair', fid)

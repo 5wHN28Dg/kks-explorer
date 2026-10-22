@@ -926,6 +926,9 @@ room, and an isolated transmitter shows as such on the operator's screen.
     a `set` op's number), an interlock, a machine, a trip, a fault or a repair, in steps 1 and 3–6 (the standby pump's
     auto-start can't start a pump that is locked out; nothing else changes). A work's own `repairs` and `set` (§15.2)
     are written to a locked code only if every isolation locking it is held by that work.
+    A fault or a repair (§7.8, or a work's `repairs`) any of whose writes would be skipped is not made at all: not
+    applied or repaired, no event (a trainer's fault pressed then is lost; one with a `when` is made once the lock is
+    off; a repair asked then can be asked again, and the work's `done` still repairs its fault).
     A machine entering a state whose `set` is skipped still enters it: content gives such machines a permissive on
     `<isolation>_locked` so they can't be commanded into it;
   - every alarm whose `kks` is that code is suppressed (§7.6, as by design);

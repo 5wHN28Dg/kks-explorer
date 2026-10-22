@@ -1085,7 +1085,7 @@ def unit_models2():
         op(9, PUMP, 'stop'), lk(9, P_, 0), lk(9, P_, 0),
         op(10, VALVE, 'close'), lk(10, P_, 1), ul(10, P_, 1), ul(10, P2, 0),
         lk(11, P_, 1),
-        op(12, PUMP, 'start'), op(12, PUMP, 'stop'),
+        op(12, PUMP, 'start'), op(12, PUMP, 'stop'), [12, 'repair', 'f1'],
         op(13, TANK, 'set', 3), op(13, TANK, 'start'), op(13, GAUGE, 'set', 1), op(13, TANK, 'go'), [13, 'fault', 'f2'],
         op(14, PUMP, 'reset', None, 'tp'), op(14, TANK, 'set', 0), [14, 'repair', 'f2'],
         op(15, PUMP, 'reset', None, 'tp'), op(15, TANK, 'back'),
@@ -1125,7 +1125,8 @@ def unit_models2():
     return [
         ("a permit's life: request, approve, the automatic moves, issue, accept, done (its repair and set), return, "
          "close; every refusal (state, iso_busy, authority, unknown); locks against this step's values (a start or a "
-         "stop and a lock in one step); what a locked code refuses, skips and suppresses", pump, faults, life, 24),
+         "stop and a lock in one step); what a locked code refuses, skips and suppresses; a fault or a repair asked on a "
+         "locked code not made (the work's done repairs the fault)", pump, faults, life, 24),
         ('a code locked by two isolations; a done write made only when every isolation locking its code is held by '
          'the work; a cancel with points still locked; a work without an isolation', pump, faults, shared, 20),
         ('an isolated transmitter: its reading held, its alarm suppressed, its 2-out-of-3 vote tripped; unlocked from '

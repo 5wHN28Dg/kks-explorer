@@ -447,20 +447,40 @@ func _apply_set(s: Array, work: int = -1) -> void:
 ## A write to a state, skipped while its code is locked (§15.1); a work's own `done` writes (work: its index) are made
 ## when every isolation locking the code is held by that work.
 func _write(i: int, x: float, work: int = -1) -> void:
-	if not code_locks.is_empty():
-		var c = _state_kks.get(i)
-		if c != null and code_locks.has(c):
-			if work == -1:
-				return
-			for k in _iso.size():
-				if holder[k] == work:
-					continue
-				var pts: Array = _iso[k][1]
-				var off: int = _iso[k][4]
-				for p in pts.size():
-					if lockbits[off + p] and pts[p][0] == c:
-						return
-	cur[i] = x
+	if not _skips(i, work):
+		cur[i] = x
+
+
+## Whether a write to a state is skipped: its code is locked (§15.1), and not by isolations all held by the work whose
+## own `done` writes it.
+func _skips(i: int, work: int = -1) -> bool:
+	if code_locks.is_empty():
+		return false
+	var c = _state_kks.get(i)
+	if c == null or not code_locks.has(c):
+		return false
+	if work == -1:
+		return true
+	for k in _iso.size():
+		if holder[k] == work:
+			continue
+		var pts: Array = _iso[k][1]
+		var off: int = _iso[k][4]
+		for p in pts.size():
+			if lockbits[off + p] and pts[p][0] == c:
+				return true
+	return false
+
+
+## Whether any write of a fault's set or repair would be skipped: such a fault or repair is not made at all (§15.1).
+func _blocked(s: Array, work: int = -1) -> bool:
+	if code_locks.is_empty():
+		return false
+	var slots: PackedInt32Array = s[0]
+	for k in slots.size():
+		if _skips(slots[k], work):
+			return true
+	return false
 
 
 ## The isolations (in model order) with a locked point on this code, as their `<id>_locked` names.
@@ -876,7 +896,7 @@ func _step() -> void:
 				hit = vals[_scratch] >= 0.5
 			2:
 				hit = pressed.has(fid)
-		if hit:
+		if hit and not _blocked(fl[3]):
 			faults_done[fid] = true
 			faults_fixed.erase(fid)
 			_apply_set(fl[3])
@@ -884,7 +904,7 @@ func _step() -> void:
 	# then the repairs asked, in the scenario's order: a fault applied and not repaired since, with a `repair`
 	for fl in _faults:
 		var fid: String = fl[0]
-		if fl[4] != null and asked.has(fid) and faults_done.has(fid) and not faults_fixed.has(fid):
+		if fl[4] != null and asked.has(fid) and faults_done.has(fid) and not faults_fixed.has(fid) and not _blocked(fl[4]):
 			faults_fixed[fid] = true
 			_apply_set(fl[4])
 			_ev(["repair", fid])
@@ -892,7 +912,8 @@ func _step() -> void:
 	for wi in dones:
 		var fid = _wk[wi][3]
 		var fk: int = _fault_ix.get(fid, -1) if typeof(fid) == TYPE_STRING else -1
-		if fk != -1 and _faults[fk][4] != null and faults_done.has(fid) and not faults_fixed.has(fid):
+		if fk != -1 and _faults[fk][4] != null and faults_done.has(fid) and not faults_fixed.has(fid) \
+				and not _blocked(_faults[fk][4], wi):
 			faults_fixed[fid] = true
 			_apply_set(_faults[fk][4], wi)
 			_ev(["repair", fid])
