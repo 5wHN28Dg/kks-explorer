@@ -5,6 +5,11 @@
 change needs `"version": 2` and a new vector file. Requirements: https://github.com/5wHN28Dg/kks-explorer/wiki/3D-plant
 (R1–R10). Engine: decision 0041.
 
+**Format 2 (DRAFT 2026-10-22, §14–§19)** adds staff who work the plant (roles, rosters, routines, tasks; the trainee
+plays any role), permits to work and isolations that change the model, and the site beyond the train (water
+treatment plant, camp). Its content plans: docs/plant3d/STAFF.md, WATER-TREATMENT.md, SITE.md; its milestones:
+docs/plant3d/MILESTONES.md; decisions 0062–0066. Format 1 content stays valid under format 2 (§14).
+
 The plant you walk through in Walkdown Plant is **data**, like a course: a *description* (where every piece of
 equipment, pipe and structure is), built from a **kit of parametric parts** (what each kind of thing looks like), made
 alive by a **behaviour model** (how values change when someone operates the plant), and used by **procedures and
@@ -22,6 +27,7 @@ follows the public KKS key, none comes from a real plant.
 | `data/plant3d/sounds/<file>.ogg` | the recorded clips the library names (§11) |
 | `data/plant3d/kit.json` | the parts kit's interface (§9), format `walkdown-plant-kit`: what the validator knows of each part |
 | `data/plant3d/screens.json` | the control room screens (§7.11), format `walkdown-plant-screens`: which systems each screen shows and where (optional) |
+| `data/plant3d/staff.json` | (format 2) the people who work the plant: places and ways, roles, people, rosters, routines, tasks, reactions, zones (§16), format `walkdown-plant-staff` (optional) |
 
 The first train's files are made by `tools/plant3d/make_content.py` (repeated pieces such as twelve thermocouples or
 ten fans stay consistent), and the tests check that the committed files are exactly what it makes.
@@ -838,3 +844,619 @@ as for the courses):
   scenario, when the second cooling end is built.
 - No content loaded from outside the app (no downloads, no user content) while the engine's security response is a
   known weak point (0041).
+
+# Part 2: format 2 (DRAFT 2026-10-22)
+
+Written before any code, from the user's decision of 2026-10-22 (staff with full roles to play, a water treatment
+plant, a camp). Decisions: 0062 (the staff model), 0063 (characters and animations), 0064 (people on screen: budgets
+per tier), 0065 (the water treatment process), 0066 (the site beyond the train). Content plans:
+docs/plant3d/STAFF.md, docs/plant3d/WATER-TREATMENT.md, docs/plant3d/SITE.md. Milestones: docs/plant3d/MILESTONES.md.
+
+## 14. What format 2 changes
+
+- **Versions.** `plant.json` says `"version": 2` to use anything below. A version 2 plant may list area, model,
+  scenario and procedure files of version 1 or 2; a key of this part in a version 1 file is `unknown_key`, as format 1
+  says. Everything in §1–§12 holds unchanged: a plant with no `staff.json`, no `isolations`, no `works` and no `hold`
+  node steps exactly as format 1, and the format 1 vectors (`plant3d-v1.json`) keep passing on both engines. Format 2's
+  own vectors are `ref/vectors/plant3d-v2.json` (§19).
+- **plant.json** gains `clock` (§16.1).
+- **Models** gain the stateful node `hold` (§15.4), `isolations` (§15.1) and `works` (§15.2).
+- **Scenarios** gain `staff`: `{"seed": n, "trainee": person id or null, "absent": [person ids]}` and `"start":
+  {"day": d, "time": "HH:MM"}` (the clock at step 0; default plant.json's).
+- **Areas** gain the kit parts of the water treatment plant and the camp (§18.6) and `"load": "inside"` (§18.5).
+- **screens.json** gains `desks` per screen and on the overview: the codes of the `operator_desk` parts it is reached
+  from (default: every desk). An op whose `where` holds `screen` is offered only at a desk with a screen that shows its
+  code: the water treatment plant's own panel works the WTP, the main control room's desks show its overview without
+  operating it (WATER-TREATMENT.md §7).
+- **staff.json** (new, optional): the people (§16).
+- **One step** gains step 9, the staff (§17), and new trainee inputs (§17.6).
+- **Limits** (`limit` above them): per model 64 isolations of at most 16 points, 128 works; per staff file 200
+  people, 48 roles, 2,000 places of which 500 points, 6,000 ways, 16 vehicles, 400 tasks of at most 64 steps, 128
+  reactions, 64 zones, 16 rosters, 64 routines.
+- **New error codes:** `bad_clock` (a time that isn't `HH:MM`, a `day_scale` that doesn't divide 60),
+  `unreachable` (a place no way reaches from the control room), `bad_way` (a way shorter than the straight line
+  between its places; the build's check against the navigation mesh, §18.1), `authority` (a task step whose role
+  can't do it, found by the validator: an `approve` step in a role without that authority), `bad_zone` (a place on a
+  zone's edge, or whose zone list doesn't match the outlines, §16.2).
+
+## 15. Permits to work and isolations (the model)
+
+A permit to work is how a plant keeps people safe while they work on equipment: the work is asked for, approved,
+the equipment is isolated (made safe and locked), the permit is issued to the person in charge of the work, the
+work is done, the permit is handed back, the isolation is removed and the equipment is returned to service. In
+Walkdown Plant this is part of the model, so a pump locked out by an electrician can't be started from the control
+room, and an isolated transmitter shows as such on the operator's screen.
+
+### 15.1 Isolations
+
+```json
+{"id": "iso_cw_b", "text": "CW pump B: motor supply and discharge valve",
+ "points": [{"kks": "30PAC10AP002", "kind": "electrical", "safe": "cw_b_safe",
+             "how": "Pump stopped; its breaker racked out, locked and tagged"},
+            {"kks": "30PAC10AA102", "kind": "mechanical", "safe": "cw_b_valve_safe",
+             "how": "Discharge valve closed; handwheel chained, locked and tagged"}]}
+```
+
+- **`points`** (1–16): the equipment made safe, each with its `kind` (`electrical`, `mechanical`, `process`,
+  `instrument`: who may lock it, §16.3), the value `safe` that must be true to lock it (optional: an instrument's root
+  valve needs none) and `how` (1–200 characters, shown on the permit and at the point). Each point's code is the `kks`
+  of at least one `state` or alarm of the model (`bad_ref` otherwise: a lock must do something). `safe` should read the
+  commands, not only what follows them: a pump commanded to run is not safe before it turns (`cw_b_safe` = run command
+  0 and speed 0).
+- **Holding.** An isolation is *held* by a work whose permit is at 1–8, or by a cancelled work while any of the
+  isolation's points is locked. A `request` for a work whose isolation is held by another work, or has a point locked,
+  is refused (`iso_busy`). Locks and unlocks name the holding work (another work: `state`).
+- **Locking** (the input `lock`, §17.6) is noted in step 1 and made at the start of step 3 (§17.1), refused unless the
+  permit is `approved` or `isolated`, the person may lock that kind, the point is unlocked, and its `safe` is true as
+  this step's step 2 computed it (after this step's ops). **Unlocking** likewise, refused unless the permit is
+  `approved` or `isolated` (a point locked in error), `returned` or `cancelled`, and the point is locked. Points may
+  be locked and unlocked in any order.
+- **While a code is locked** (a point with that code is locked, in any isolation):
+  - every op (§7.2) on that code is refused: the failed values are the permissives that failed, then
+    `<isolation id>_locked` of each isolation locking it, in model order. A trip's `reset` on a locked code is
+    refused too: a locked pump's trip is reset after the isolation is removed;
+  - every write to a `state` whose `kks` is that code is skipped, by an interlock, a machine, a trip, a fault or a
+    repair, in steps 3–6 (the standby pump's auto-start can't start a pump that is locked out; nothing else changes).
+    A work's own `repairs` and `set` (§15.2) are written only if every isolation locking the code is held by that work.
+    A machine entering a state whose `set` is skipped still enters it: content gives such machines a permissive on
+    `<isolation>_locked` so they can't be commanded into it;
+  - every alarm whose `kks` is that code is suppressed (§7.6, as by design);
+  - the screens mark the code isolated (a padlock and the permit's number), and the part carries the lock in the
+    field (`identify` class, §10): a chain through the handwheel, a padlock and a danger tag on a valve; a padlock
+    and tag on a breaker's racking hasp; a tag on an instrument's root valve.
+- **Values the engine keeps:** `<isolation id>_locked` (the number of its points locked) and
+  `<isolation id>_complete` (1 while all are). Read by any node and condition, as a machine's state is (§7.1);
+  isolation and work IDs are at most 22 characters, and a declared value with one of these names (or `<work
+  id>_permit`, §15.3) is `dup_id`. §7.1's list of what writes a `state` gains the works' `done` (§15.3).
+
+### 15.2 Works
+
+A work is a job on equipment that needs a permit: corrective (a fault to repair), preventive (a routine service) or a
+calibration.
+
+```json
+{"id": "wo_cw_b_motor", "kks": "30PAC10AP002", "title": "CW pump B motor: bearing replacement",
+ "discipline": "mech", "permit": "general", "isolation": "iso_cw_b",
+ "repairs": "cw_b_fails", "set": {}, "task": "job_cw_b_motor"}
+```
+
+- **`discipline`:** `mech`, `elec`, `inst`, `chem` or `civil`: who may accept the permit (§16.3).
+- **`permit`:** `general`, `electrical`, `hot` (hot work) or `confined` (confined space): shown on the form. The
+  task of a `hot` or `confined` work has a gas test, a `read` step with `"test": "gas"` of a gas detector's value
+  before its first `work` step (validator: `bad_ref` without one).
+- **`isolation`** (optional): a work without one (an inspection) needs no locks.
+- **`repairs`** (optional): a fault of the scenario, repaired when the work is done (written as §7.8's repair, with its
+  event); a work for a fault the scenario doesn't have does nothing more. **`set`** (optional): states written when
+  done (a calibration puts a transmitter's drift back to 0).
+- **`task`:** the staff task (§16.6) that does the work; the trainee does the same steps when they play its role.
+
+### 15.3 A permit's states
+
+Each work has one permit at a time; its state is the value `<work id>_permit`:
+
+| Value | State | Moved by | Who (§16.3 authority) |
+|---|---|---|---|
+| 0 | none | | |
+| 1 | requested | `request` (from none, closed or cancelled) | `request` |
+| 2 | approved | `approve` (from requested) | `approve` |
+| 3 | isolated | by itself (below) | |
+| 4 | issued | `issue` (from isolated) | `issue` |
+| 5 | accepted: work may start | `accept` (from issued) | `accept` and the work's discipline |
+| 6 | done | `done` (from accepted) | the acceptor (below) |
+| 7 | returned | `return` (from done) | the acceptor |
+| 8 | deisolated | by itself (below) | |
+| 9 | closed | `close` (from deisolated) | `issue` |
+| 10 | cancelled | `cancel` from requested, approved or isolated (points still locked stay locked until unlocked) | `approve` |
+
+- Every other action from a state is refused (`state`), as is one by a person without the authority (`authority`).
+- **The acceptor** is the person who made `accept`. While they are off duty or absent, another person with `accept`
+  and the work's discipline may make `done` and `return` (permits are handed back at a shift's end, as on site).
+- `done` writes the work's `repairs` and `set` in step 3 (§17.1). The work itself is the task's `work` steps before
+  it: the engine checks the permit and the person, not the task.
+- **Automatic moves** are levels, checked in step 3 after the locks and unlocks, in work order (model order), each an
+  event (§17.7): a permit at 2 whose isolation is complete (or that has none) goes to 3; at 3 with its isolation not
+  complete, back to 2; at 7 with no point of its isolation locked (or none), to 8.
+- A **permit number** is given at `request`: `PTW-` and four digits, counted from 1 in the run, in the order requested.
+
+### 15.4 The `hold` node
+
+`{"hold": ref, "when": ref, "init": n}` (stateful; `init` default 0, which a scenario may set): y ← input while `when`
+is false, else y keeps its value. A transmitter whose root valve is shut holds its last reading; the content reads
+`<isolation>_complete` as `when`. **Voting:** an isolated channel of a 2-out-of-3 trip votes *tripped*, so the trip
+runs 1-out-of-2 on the other two (the usual safe choice: a second fault trips the machine rather than hiding a
+real one); a bypass that keeps 2-out-of-2 is an authorised override not in format 2 (STAFF.md §3).
+
+## 16. Staff (staff.json)
+
+```json
+{"format": "walkdown-plant-staff", "version": 1, "origin": "cr_desk_a",
+ "speeds": {"walk": 1.3, "stair": 0.5, "ladder": 0.3, "drive": 8},
+ "places": [Place, …], "ways": [Way, …], "next": [[point index, …], …], "zones": [Zone, …],
+ "roles": [Role, …], "rosters": [Roster, …], "people": [Person, …], "vehicles": [Vehicle, …],
+ "routines": [Routine, …], "tasks": [Task, …], "reactions": [Reaction, …], "messages": {id: text, …}}
+```
+
+`origin` is the place every place must be reached from on foot (`unreachable` otherwise): a control room desk.
+`put_right` names the tasks an HSE stop gives (§16.7): `{"ppe": task, "permit": task, "unsafe": task}`.
+
+### 16.1 The clock
+
+plant.json: `"clock": {"day_scale": 6, "start": {"day": 1, "time": "06:00"}, "week": ["mon", "tue", "wed", "thu",
+"fri", "sat", "sun"]}`.
+
+- **The plant clock** (the clocks on the walls, rosters, routines) runs `day_scale` times faster than model time: at
+  6, a 12-hour shift is 2 hours of model time, a day 4 hours. Process dynamics stay in model time (a pump still
+  starts in seconds, a person walks at 1.3 m/s); only what people plan by the clock is compressed. `day_scale` divides
+  60 (1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30 or 60: `bad_clock` otherwise), so a whole clock minute is a whole number of
+  steps: 600 / `day_scale`.
+- **The clock is kept in whole tenths of a clock second**, never as a float, counted from 00:00 of day 0 (the day
+  before the first), so it is never negative: at step n it is C(n) = S + n × `day_scale` + J, with S the start (day d
+  at HH:MM is (d × 1440 + HH × 60 + MM) × 600 tenths; the start's day is at least 1) and J the sum of the jumps made
+  (§17.6). Shown as day and HH:MM:SS (day = C div 864,000, the rest likewise, all on non-negative integers), the
+  seconds truncated. **A clock time** T is reached in the first step n with C(n) ≥ T. `week` names day 1's weekday
+  first: day d is `week[(d − 1) mod 7]`, mod the floor modulo (day 0 is the last of the week). Day 0 exists for
+  rosters (a night shift on at the start).
+- Durations in staff content (`work`, timeouts, routine offsets) are whole clock minutes. Content tools that need
+  the clock (the WTP's clock-rate gains, WATER-TREATMENT.md §5) read `day_scale` from plant.json.
+
+### 16.2 Places, ways and zones
+
+```json
+{"id": "cr_desk_a", "at": [-25, 2, 0], "yaw": 90, "kind": "desk", "room": "control_room", "pose": "sit"}
+["cr_desk_a", "cr_door", 9.5, "walk"]
+{"id": "gt1_hall", "outline": [[0, 50], [80, 50], [80, 80], [0, 80]], "z": [-1, 20], "ppe": ["helmet", "ear"]}
+```
+
+- **A place** is a spot a person stands, sits or lies at: `kind` is `desk`, `seat`, `bed`, `table`, `work` (where one
+  works on equipment: `kks` names it), `door`, `stop` (a vehicle stop), `locker` (PPE), `store` (tools), `counter`,
+  `point` (a way point) or `muster`; `room` groups places (`control_room`, `mess`, `camp_b1_r12`); a room's **door**
+  is its first place of kind `door` in file order; `pose` (`stand`, `sit`, `lie`, `kneel`) and `yaw` say how a person
+  is shown there; `depot` is where a vehicle stands; a person's **home** is the first `bed` of their home room.
+- **Taking places.** A place of kind `point`, `door`, `stop`, `muster`, `counter`, `depot` or `work` holds anyone
+  (several people can work at one machine). Every other place is *taken* from the step a person's route to it starts
+  (reserved) until they leave it, or until the step that reserved it stops being current (done elsewhere,
+  pre-empted, abandoned, skipped, a jump); it is *free* otherwise. A `go` to a named place taken by someone else ends
+  at the place's room door (or, without a room, the last place before it on the route) and waits there; when it
+  becomes free, the waiting people take it in index order; after 15 clock minutes of waiting the step fails (the
+  task's `else`, or abandoned).
+- **A way** joins two places: `[a, b, metres, mode]`, both directions, `mode` from `speeds`, metres > 0. Its time in
+  steps is ⌈metres × 10 / speed − 1e-9⌉, computed once in IEEE doubles in that order, and at least 1. Ways of mode
+  `drive` join `stop` and `depot` places and are used only by vehicles (§16.8). A way shorter than the straight line
+  between its places is `bad_way`.
+- **The walking network.** Places of kind `point` (at most 500) are the network: walking ways (`walk`, `stair`,
+  `ladder`) join points to points; every other place has exactly one walking way, to a point (its stub). A route from
+  place a to place b is a's stub, the points' route, b's stub (a and b on the same point: the two stubs). The points'
+  route is the quickest by steps; of equal ones, the one whose list of point indices (from the start) is lowest,
+  compared element by element, a shorter list being lower when one is the beginning of the other. **`next`** holds,
+  for each point i and destination j, the point after i on the route from i to j (−1 for i = j): made by the content
+  tool with that rule, checked by the validator against its own search (`bad_ref`), and only looked up by the engines.
+  Vehicles' routes over `drive` ways (at most 64 stops and depots) follow the same rule, searched at load.
+- **The content tools make places and ways from the layout** (a `work` place in front of every piece of equipment
+  that has a local op, a reading or a work; points along walkways, at stair ends and doors), and the Godot build checks
+  every walking way against the navigation mesh (§18.1).
+- **Zones** are plan outlines with a height range and the PPE needed there. Each place lists its zones
+  (`"zones": [ids]`), written by the content tool; the validator checks the list against the outlines and refuses a
+  place within 1 cm of a zone's edge or height limits (`bad_zone`), so no engine ever tests geometry. A person on a
+  way is in the zones listed by both its ends.
+
+### 16.3 Roles
+
+```json
+{"id": "field_op", "title": "Field operator", "discipline": "ops", "look": "coverall_ops",
+ "authority": ["operate_local", "request", "lock_mechanical", "lock_process"],
+ "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "field_op_shift", "off": "off_duty", "play": true}
+```
+
+- **`discipline`:** `ops`, `inst`, `mech`, `elec`, `chem`, `civil` (contractors), `hse`, `mgmt`, `security`,
+  `transport`, `camp`. Accepting a permit needs `accept` and the work's discipline (§15.2).
+- **`authority`:** `operate_screen` (ops from the screens), `operate_local`, `request`, `approve`, `issue`, `accept`,
+  `lock_<kind>` (§15.1), `stop_work` (HSE: halts a work, §16.7), `sample` (samples and lab readings), `drive`. The
+  trainee in a role has exactly its authorities: an operator who is not authorised can't lock an electrical point.
+- **`ppe`:** what the role wears at work (the items: `helmet`, `boots`, `glasses`, `gloves`, `ear`, `harness`,
+  `face_shield`, `apron`, `vest`); it is put on with a `ppe` step at a locker.
+- **`routine`**, **`off`:** the routines on and off duty (§16.5). **`play`:** whether a trainee may take the role.
+- **`look`:** the avatar's outfit (§18.2).
+
+### 16.4 People and rosters
+
+```json
+{"id": "a_fo1", "role": "field_op", "roster": "shift", "crew": "a", "call": "Field 1, crew A", "home": "camp_b1_r12"}
+{"id": "shift", "kind": "rotation", "cycle": ["D", "D", "N", "N", "O", "O", "O", "O"],
+ "crews": {"a": 0, "b": 2, "c": 4, "d": 6}, "hours": {"D": ["06:00", "18:00"], "N": ["18:00", "06:00"]}}
+{"id": "day", "kind": "days", "days": ["mon", "tue", "wed", "thu", "fri", "sat"], "hours": ["07:00", "16:00"]}
+```
+
+- **A person** has a role, one roster (and a crew for a rotation), a `call` sign (1–32 characters; people have call
+  signs, not names) and a `home` room in the camp. Their order in the file is their **index**, which orders
+  everything they do in a step.
+- **Duties.** A duty belongs to the day its start falls on. In a rotation, crew c on day d (d ≥ 0) works
+  `cycle[(d − 1 + crews[c]) mod len]` with mod the floor modulo (Python's `%`; GDScript's `posmod`, not `%`); a duty
+  whose end time is not after its start ends the next day. A `days` roster works on the listed weekdays, those hours.
+- **On duty** from the step its start is reached to the step its end is reached (events `duty on` and `off`, §17.7);
+  slots of the routine before the start or after the end (handover, the commute) are made all the same (§16.5).
+
+### 16.5 Routines
+
+```json
+{"id": "field_op_shift", "slots": [
+   {"at": "start-0:40", "task": "commute_in"},
+   {"at": "start-0:15", "task": "handover_take"},
+   {"at": "start+1:00", "every": "2:00", "until": "end-1:00", "task": "round_field"},
+   {"at": "start+4:00", "task": "meal_break"},
+   {"at": "end-0:15", "task": "handover_give"},
+   {"at": "end+0:20", "task": "commute_out"}],
+ "idle": "idle_field_office"}
+```
+
+- **`at`:** an offset from the duty's `start` or `end` (`start+1:00`, `end-0:30`, at most ±12:00), or a clock time
+  `HH:MM`, which means its first occurrence at or after the duty's start. `every` repeats it while the time is at or
+  before `until` (inclusive). Each slot makes a task instance for the person in the step its time is reached (§17.2);
+  slots are worked out per duty, when the duty's day is known.
+- **`idle`:** the task done when the queue is empty (it ends when anything else is queued).
+- **Off duty** (`off`): a routine whose slots are offsets from the person's previous duty's end (`prev+1:00`) or next
+  duty's start (`next-8:00`), or clock times `HH:MM` each day; a slot is made only while the person is off duty and
+  not within its routine's slots of a duty (meals, sleep before the next duty, free time chosen by `choose` steps
+  among the camp's places: gym, laundry, prayer room, recreation, own room). So a night crew sleeps by day with the
+  same routine as a day crew.
+
+### 16.6 Tasks
+
+```json
+{"id": "round_field", "title": "Field round: circulating water and cooling tower", "priority": 3,
+ "steps": [{"go": "locker_field"}, {"ppe": "role"},
+           {"go": {"kks": "30PAC10AP001"}}, {"read": "30PAC10CP501", "expect": [1.8, 3.2], "tol": 0.1},
+           {"work": [2, 4], "anim": "inspect"},
+           {"go": {"kks": "30PAD10BB001"}}, {"read": "30PAD10CL001", "tol": 0.05},
+           {"say": "round_done", "to": "ccr_op"}]}
+```
+
+Steps, each done by an NPC as said and by the trainee through the input named (§17.6):
+
+| Step | An NPC | The trainee |
+|---|---|---|
+| `go`: a place, `{"kks": code}` (its work place), `{"kind": k, "room": r}` (the first free one in place order) or `"home"` | walks the route; done on arrival | `arrive` at that place (the app sends it within 1.5 m) |
+| `work`: clock minutes, or `[min, max]` (a whole number drawn, §17.5); `anim`, `tool` | stays for that time | stays at the place for that time (`arrive`/`leave`; time away doesn't count) |
+| `read`: a code with a `show` binding; `expect` optional (inclusive); `tol` (in its unit); `"test": "gas"` for a gas test | records the shown value (as the previous step left it); outside `expect`: `out_of_range` | `read` with the value typed: `misread` if it differs from the shown value as the previous step left it by more than `tol`, else as an NPC |
+| `op`: `{"kks", "do", "value", "trip", "where"}` (`where` `local` or `screen`, one of the op's own; a `screen` op comes after a `go` to a desk in the same task) | makes the op input | the same op, made as anywhere (§7.2) |
+| `permit`: `{"work", "action"}` (`"work": "$"` = the task's work) | makes the permit input | the same, from the permit form |
+| `lock` / `unlock`: `{"work", "point"}` or `{"work", "point": "all"}` (each point in order, walking to each) | goes to the point's work place, makes the input | the same, at the point |
+| `ppe`: `"role"`, a list, or `"off"` | puts it on or off (at a locker for on) | `ppe` inputs at a locker |
+| `say`: a message id, `to` a role, a person or `"channel"` | sends it (event; the radio log) | `say` from the radio panel |
+| `wait`: `{"until": value, "minutes": timeout, "else": step}` or `{"permit": [work, state], …}` (done when the permit is at that state or past it in the order 1 → 9; cancelled ends it as a timeout) | waits | waits |
+| `call`: `{"role", "task", "work"}` | queues the task for a person of that role (§17.3, "Who gets a task") | the same, from the radio panel |
+| `meet`: `{"room", "with": [roles], "minutes"}` | goes to the room's first free `seat`, `desk` or `table` (else its door), waits for one on-duty person of each role (at most 15 clock minutes), then stays | the same |
+| `choose`: `[[weight, task], …]` (weights ≥ 1) | picks one by its random numbers and runs it in place of the rest of this task | `pick` among them (no draw) |
+| `ride`: `{"from": stop, "to": stop}` | boards a vehicle (§16.8) | the same, or walks instead (a `go`) |
+| `sleep`: `{"until": "HH:MM"}` | lies at the home bed until then | may `jump` (§17.6) |
+| `stop`: `{"stop": "act"}` (roles with `stop_work`; goes first to the place the acting person is at when the step starts) | stops the act the task was given for (§16.7) | the same |
+
+- A task has `priority` 1 (urgent) to 5 (default 3), `interruptible` (default true), optionally `work` (the work it
+  does, for `$`) and `else` targets inside it; `"unsafe": true` on a step marks a shortcut (§16.7). `anim` and
+  `tool` are what the app shows (§18.3).
+- **The validator** checks that each step's role can do it (`authority`) and that every `{"kks"}` has a work place;
+  that every task has 1–64 steps, every `else` points forward, no task reaches itself through `choose` or `call`, and
+  every `idle` and off-duty task has a step that takes time (`work` of at least 1 minute, `wait`, `meet`, `sleep`) (`bad_ref` otherwise),
+  so no person loops within a step. A retry is written out as the steps again.
+- A `work` step paused and resumed keeps the number it drew.
+
+### 16.7 Reactions and unsafe acts
+
+```json
+{"on": {"alarm": 1}, "roles": ["ccr_op"], "task": "answer_alarm", "priority": 1}
+{"on": {"trip": "*"}, "roles": ["shift_sup"], "task": "trip_call"}
+{"on": {"fault": "cw_b_fails"}, "roles": ["shift_sup"], "task": "raise_work", "work": "wo_cw_b_motor"}
+{"on": {"value": "wtp_mb_exhausted"}, "roles": ["wtp_op"], "task": "mb_regeneration"}
+{"on": {"unsafe": "*"}, "roles": ["hse_officer", "shift_sup"], "task": "stop_unsafe", "seen": true}
+```
+
+- **`on`:** an alarm becoming `active_unack` whose priority number is at most n (`alarm`), a trip latching, a fault
+  applied, a value turning true (a rising edge, as an interlock), a permit reaching a state (`{"permit":
+  "requested"}`), or an unsafe act starting. The task goes to one person (§17.3). A reaction is skipped while a task
+  it gave for the same source (the same alarm, trip, fault, value, permit or act) is still queued or current, so a
+  chattering alarm doesn't flood anyone.
+- **Unsafe acts:** a person in a zone without one of the zone's PPE items; a person at the work place of a work's
+  `kks` in a `work` step of a task for that work while its permit is not `accepted`; a step marked `"unsafe": true`
+  while it runs. An act **starts** in the step its condition becomes true and **ends** when it is false (events
+  `unsafe` and `safe`, once each).
+- **Seen:** with `"seen": true` the reaction goes only to people of its roles who are in a zone of the act in the
+  step it starts, or who come into one while it lasts (the safety walk finds it), the first in role order then
+  index; it is made once per act. Without `seen` it goes by §17.3 in the step the act starts. Both in phase 5 of
+  §17.2.
+- **Stopping work.** When a person with `stop_work` reaches a `stop` step of a task a reaction gave them for an act
+  (§16.6), the acting person's current task is abandoned (or goes to its `else`) and they
+  are given the `put_right` task for the act's kind at priority 1 (put the PPE on at the nearest locker, report to the
+  supervisor for a permit, or leave the shortcut); the act ends when its condition is false. A paused step is not
+  running, so a paused `"unsafe"` step is no act.
+- **The trainee's unsafe acts** are the same, from the trainee's `zone`, `ppe` and `arrive` inputs.
+
+### 16.8 Vehicles
+
+```json
+{"id": "bus_1", "kind": "bus", "seats": 30, "driver": "driver", "home": "depot_1",
+ "runs": [{"at": "05:40", "stops": ["camp_stop", "gate_stop", "cr_stop"], "dwell": 2}]}
+```
+
+- **`driver`** is a role. A run's `at` is its departure from its first stop; the vehicle leaves `home` that many
+  clock minutes earlier as its drive there takes (rounded up), with the first on-duty person of the role, in index
+  order, who is not on another run; with none, the run is skipped (event). The driver is taken from their task (it
+  is paused, and they are not free, §17.3) and placed aboard; after the run the vehicle returns home and the driver
+  resumes their queue at the depot.
+- The vehicle drives the quickest route over `drive` ways (§16.2) between its stops, staying `dwell` clock minutes at
+  each.
+- **Boarding:** a person whose `ride` step waits at a stop boards a vehicle dwelling there whose later stops include
+  `to`, in index order while seats are left; they leave it at `to`. A `ride` with no such vehicle within 30 clock
+  minutes becomes a walk to `to`.
+
+## 17. The staff step
+
+### 17.1 Where things happen in a step
+
+Format 2 extends §7.10 so:
+
+1. **Inputs**, first the trainee's in the order made, then the NPCs' made in the previous step's step 9, in the order
+   made. Each is handled as it comes and makes its event at once: ops (§7.2, with the authority and `where` rules
+   below), alarm inputs, faults and repairs (noted, as format 1), `permit` (§15.3), `lock` and `unlock` (noted for
+   step 3, no event yet), the trainee's `role`, `task_ack`, `arrive`, `leave`, `read`, `ppe`, `zone`, `say`, `pick`
+   (recorded for step 9) and `jump` (§17.6). Then the first-out records (format 1).
+2. As format 1.
+3. First the locks and unlocks noted in step 1, in the order made, each checked against this step's values (§15.1)
+   and an event; then the automatic permit moves (§15.3); then format 1's faults and repairs; then `done`'s
+   `repairs` and `set`, in the order the `done` inputs were made.
+4. – 8. As format 1 (with §15.1's skipped writes).
+9. **Staff** (§17.2): reads the values and states as steps 2–8 left them and this step's events, and **writes no
+   value**: everything an NPC does to the plant is an input queued for step 1 of the next step. An NPC is refused as
+   the trainee would be, and a run is reproduced from its seed and the trainee's inputs alone.
+
+**Ops and authority.** A version 2 op input names where it is made and by whom: `[n, "op", kks, do, value, trip,
+where, person]`. An op whose `where` is not among the op's own `where` is refused (`where`); one by a person whose
+role lacks `operate_screen` (where `screen`) or `operate_local` (`local`) is refused (`authority`). The engine doesn't
+check that the person stands at the equipment or a desk: the app does for the trainee, the validator for NPC tasks
+(§16.6). **Free mode** (no trainee person) and version 1 inputs (no `where`, no person) skip every authority and
+`where` check: the trainee holds every authority, as in format 1, and may also make permit, lock and unlock inputs
+with person `null`.
+
+### 17.2 Order in step 9
+
+**Placement** (at step 0, and after a jump, §17.6): with the clock C, every person's duties in force are known (a
+level: no `duty` events for it); each person is put at the first place of the task of their slot whose time is the
+latest at or before C and within its duty (or off-duty routine), and that slot's task is queued for them (it starts in
+the next step 9); with no such slot, their idle task's place (on duty) or home (off duty). Slots before
+C are not made. Vehicles stand at home. Step 0 makes no staff events.
+
+1. **Duties and slots:** people whose duty starts or ends (event `duty`), in person order; then the slots whose time
+   is reached, per person in slot order: a task instance each (§17.3). People in the scenario's `absent` take part in
+   nothing.
+2. **Reactions** to this step's events and edges (all but unsafe acts, phase 5), in reaction order: each gives its
+   task to one person.
+3. **Vehicles**, in file order: they move, dwell, set off (§16.8).
+4. **People**, in index order: each advances its current task (§17.3), ending steps and starting the next until one
+   waits, at most 64 task steps per person in a step. A `ride` boards in this phase.
+5. **Unsafe acts** (§16.7) start and end, in person order; then the reactions to them, `seen` or not, in reaction
+   order (§16.7).
+
+### 17.3 Queues
+
+- **Who gets a task** (a reaction or a `call`): among on-duty people of its roles, in the order the roles are listed
+  then by index, the first *free* one: free = no current task, or only the idle task, or a current task whose
+  priority number is greater than the new task's and which is interruptible. If none is free, the first on-duty one.
+  If none is on duty, nobody: event `task` with person `null` and `unassigned`. A person on a vehicle run is not
+  free. A queue holds at most 32 instances: one more is `unassigned`.
+- **The queue** orders task instances by priority number, then the step made, then the order made. The current task
+  is pre-empted between its steps by a queued task with a lower priority number when it is interruptible; a `work` in
+  progress is paused (its time kept) and resumed when the task comes back. A pre-empted `go` stops at the next place
+  of its route.
+- **Travel:** a `go` starting in step n takes its route's ways one after another; the person is at the end of way i
+  after the sum of the steps of ways 1 to i (event `move` per way). A target place is reserved when the route starts
+  (§16.2); a `{"kind", "room"}` target with no free place, or a named place another person holds, sends them to wait
+  as §16.2 says.
+- **Ends:** the task's last step done ends it (event `done`); a `wait` timed out without `else`, or a refused op,
+  permit, lock or unlock without `else`, abandons it (`abandoned`). A `wait` on the trainee times out like any other.
+
+### 17.4 The trainee's person
+
+The trainee takes the scenario's `trainee` person, or one chosen at the start (the input `role` at step 1 only, a
+`play` role not in `absent`; any other `role` input is refused, with its event; the trainee and the drivers can't be
+`absent`: `bad_ref`).
+Their person is in the queue as any other, but every step waits for its input (§16.6) and nothing else is done for
+them; reactions and calls reach them by the rule of §17.3, like anyone. A `say` to the trainee arrives in the radio
+panel.
+
+### 17.5 Random numbers
+
+Each person has their own stream:
+- `mul32(a, b)` = a × b mod 2³² for a, b < 2³², computed exactly; GDScript, whose ints are signed 64-bit, uses
+  `((a * (b & 0xFFFF)) + (((a * (b >> 16)) & 0xFFFF) << 16)) & 0xFFFFFFFF`, which never passes 2⁶³;
+- `mix32(x)`: x ^= x >> 16; x = mul32(x, 0x7feb352d); x ^= x >> 15; x = mul32(x, 0x846ca68b); x ^= x >> 16;
+- the scenario's `seed` is a whole number 0 to 2³² − 1; person i (from 0) starts at s = mix32(seed ^ mul32(i + 1,
+  0x9e3779b9)), 1 if that is 0;
+- a draw: s ^= (s << 13) mod 2³²; s ^= s >> 17; s ^= (s << 5) mod 2³²; r = s >> 8 (24 bits);
+- a whole number in [lo, hi]: lo + ((r × (hi − lo + 1)) >> 24); `choose` with integer weights of total T (≤ 2¹⁶)
+  picks the first whose running sum exceeds (r × T) >> 24.
+- A draw is made when a `work` step with a range starts and when an NPC's `choose` starts, for the trainee too
+  (their `work` ranges draw; their `choose` doesn't). A person added at the end of the file changes no one else's
+  draws; their other effects (places taken, tasks given) may change others' days.
+
+### 17.6 Inputs, jumps and fast-forward
+
+| Input | Meaning |
+|---|---|
+| `[n, "role", person]` | the trainee takes that person (§17.4) |
+| `[n, "permit", work, action, person]` | a permit action (§15.3) |
+| `[n, "lock", work, point, person]`, `[n, "unlock", work, point, person]` | a point of the work's isolation (its index in `points`) |
+| `[n, "arrive", place]`, `[n, "leave", place]` | the trainee reached or left a place |
+| `[n, "read", code, value]` | a reading the trainee wrote down |
+| `[n, "ppe", item, 0 or 1]` | the trainee took off or put on an item |
+| `[n, "zone", zone, "in" or "out"]` | the trainee entered or left a zone |
+| `[n, "say", message, to]` | a radio message from the trainee |
+| `[n, "pick", index]` | the trainee's answer to a `choose` |
+| `[n, "task_ack"]` | the trainee has seen the new tasks in their queue (§17.6, fast-forward) |
+| `[n, "jump", "HH:MM"]` | sleep or skip to the next such clock time |
+
+**A jump** is handled in step 1: accepted only when fast-forward is offered (below) and no permit of the run is
+between `requested` and `returned`. J grows by the time from the clock to the next occurrence of HH:MM strictly after
+it (§16.1); the gap is (old clock, new clock]. The plant's values are not stepped through the gap (the night passes
+quietly); the rest of this step runs as usual. In step 9 of that step, before its phase 1: every queue is cleared
+(event `skipped` for each instance, and for each slot whose time fell in the gap, except one exactly at the new
+clock), each vehicle goes home, reservations are released, and the placement rule runs at the new clock (duties as
+levels: no `duty` events for duties that began or ended in the gap); phase 1 then runs. A jump draws no random
+numbers.
+
+**Fast-forward** is a level, part of the snapshot's `fast_forward`: offered when format 1 offers it (§7.9) and the
+trainee's person has no task instance given to them since their last `task_ack` (a new task, a call, a reaction, a
+`say` to them). The app stops fast-forward when it stops being offered and shows the new tasks; the trainee's
+`task_ack` makes it offered again, with steps of theirs still to do (a walk to the next gauge is their own pace).
+In free mode, format 1's rule alone.
+
+### 17.7 Events and snapshots
+
+Events, at the place §17.1 makes them. Step 1: `[n, "permit", work, action, person, "done" | "refused", [reasons]]`,
+`[n, "role", person, "done" | "refused"]`, `[n, "task_ack"]`, `[n, "jump", from, to, "done" | "refused"]` (tenths of
+clock seconds). Step 3, first: `[n, "lock", work, point, person, "done" | "refused", [reasons]]` and `"unlock"`, then
+the automatic moves `[n, "permit", work, "auto", null, "done", [new state]]`. Step 9: `[n, "duty", person, "on" |
+"off"]`, `[n, "task", person, task, "start" | "done" | "abandoned" | "skipped" | "unassigned"]`, `[n, "move", person,
+from, to, arrive step]`, `[n, "vehicle", id, stop, "arrive" | "depart" | "skipped"]`, `[n, "read", person, code,
+value, "ok" | "out_of_range" | "misread"]`, `[n, "say", person, message, to]`, `[n, "unsafe" | "safe", person, kind,
+zone or work]`. The op event of a version 2 op adds `where` and person; reasons and failed values are value names or
+the words `state`, `authority`, `where`, `iso_busy`.
+
+A snapshot (§12) adds `"clock"` (tenths), `"people": {id: [where, task or null, step index]}` (where: a place,
+`["way", from, to, depart, arrive]` or `["vehicle", id]`), `"vehicles": {id: [place or [from, to, depart, arrive],
+[people aboard]]}`, `"permits": {work: state}` (those not 0), `"locked": [[isolation, point], …]`, `"unacked"` (the
+trainee's tasks given since their last `task_ack`) and the values `<isolation>_locked`, `<isolation>_complete`,
+`<work>_permit`.
+
+## 18. People on screen (the app; not in the vectors)
+
+### 18.1 Walking
+
+- The logical position (§17.3) is the truth; the avatar shows it. **No path search for people at run time:** the build
+  stores, for every way, the polyline the navigation mesh gives between its places (0059's mesh, stairs and ladders
+  along their own paths), and an avatar on a way is placed along it by the fraction of its time gone. The build
+  refuses a walking way whose mesh path is longer than its length + 10 % (`bad_way`), so people never visibly hurry.
+- **No crowd simulation.** People keep to a lane: 0.35 m to the right of the polyline (by direction of travel), so
+  two people meeting pass. Near the trainee (within 1 m ahead) an avatar steps aside up to 0.6 m, or stands and then
+  catches up at up to 1.6 m/s; it never pushes the trainee and never leaves the walkable mesh. A late avatar is
+  placed at its logical position the next time it is out of view.
+- Doors open for people as for the trainee; vehicles drive on `drive` ways along their road polylines.
+
+### 18.2 Avatars
+
+- Bodies are CC0 exports of MakeHuman (MPFB) with CC0 clothes only, our own work clothes and PPE (coveralls,
+  hi-vis vests, hard hats, glasses, ear defenders, harness, radio, tools) made as kit props on the hands, head and
+  body (decision 0063). Animations: CC0 clips retargeted at import to Godot's humanoid skeleton profile; work poses
+  the clips lack (a handwheel, a calibrator, typing) are made by our own poses and Godot's skeleton modifiers.
+- **Looks** (`look` in a role): body (one of 8), outfit and colour, hard hat colour by function (white:
+  supervisors, engineers and managers; yellow: operators and technicians; blue: contractors; green: HSE; these are
+  ours, shown in a legend), each person's look fixed by index.
+
+### 18.3 Animation
+
+An `AnimationTree` per near avatar: idle, walk and run blended by speed, turning in place, and the actions of
+`anim` (`inspect`, `talk`, `radio`, `type`, `sit`, `write`, `kneel_work`, `wrench`, `handwheel`, `calibrate`, `carry`,
+`climb`, `eat`, `sleep`, `lift`). Advanced by the app (manual process mode) at 30 Hz within 10 m, 15 Hz to the end of
+the skinned band, posed meshes beyond (§18.4).
+
+### 18.4 Budgets per tier
+
+The frame rules don't change (≥ 95 % of frames shown at ≥ 30 fps, none over 100 ms after the first 5 s, peak PSS
+≤ 1.5 GB, first walkable frame ≤ 15 s on the Note 9; 0060's margin: every first start ≤ 13.5 s). People get a fixed
+share, measured with the frames walk among a crowd (MILESTONES.md M3):
+
+| | Note 9 (`lean+vis`) | Laptop (`full`) |
+|---|---|---|
+| Skinned avatars drawn | ≤ 6, within 25 m | ≤ 24, within 40 m |
+| Their meshes | LOD0 ≤ 4,000 triangles (≤ 10 m), LOD1 ≤ 1,500; one material; ≤ 56 bones | the same assets |
+| Posed band | to 80 m: unskinned meshes in 6 poses (≤ 500 triangles), one MultiMesh per pose and body (the outfit's colours per instance), pose changed 4 times a second; ≤ 50 draw calls | to 150 m; ≤ 50 draw calls |
+| Beyond | not drawn | not drawn |
+| People in the world (logical) | ≤ 200, every tier | |
+| GPU time for people | ≤ 2.5 ms median added | ≤ 2 ms |
+| CPU per frame for people | ≤ 2 ms (animation, placement) | ≤ 1 ms |
+| Staff step | ≤ 0.3 ms per model step at the peak of a shift change, routes only looked up (`next`, §16.2); a jump's placement ≤ 50 ms | |
+| Model step with the WTP and the staff | ≤ 2.1 ms, so fast-forward keeps at least 12× (0065); measured in W2 and S1 | |
+
+| Memory | ≤ 100 MB PSS for bodies, clothes, animations and textures (1024 px on the phone) | |
+| Load | the avatars' pipelines compiled in the hidden frame (0060): ≤ 1.5 s added to the first start | |
+
+The nearest by distance get the skinned slots, people the trainee talks to or works with first. A tier that misses
+its share after M3's measurement lowers its counts, never the frame rules (MILESTONES.md says what then needs the
+user).
+
+### 18.5 Interiors and loading
+
+An area with `"load": "inside"` (a camp block's rooms, the mess hall's kitchen) is a scene of its own, loaded when the
+trainee comes within 15 m of its building's doors and freed 30 m away; its shell is in the area that holds it. Its
+people are logical as anywhere and drawn only while it is loaded.
+
+### 18.6 New kit parts
+
+Water treatment (WATER-TREATMENT.md §5): `screen_band`, `bar_screen`, `clarifier` (circular, solids contact: d,
+depth, bridge), `thickener`, `filter_bank` (gravity cells: cells, cell size, gallery), `pressure_filter` (vertical
+vessel: d, height, media), `cartridge_housing`, `ro_train` (vessels per stage, elements per vessel, frame),
+`degasser` (tower, blower), `ion_exchanger` (mixed bed vessel: d, height, lateral nozzles), `dosing_skid` (day tank,
+metering pumps), `chemical_tank` (FRP, in a bund), `filter_press`, `sample_panel`, `lab_bench`, `agitator`
+(on a tank or basin). Camp and site (SITE.md): `bed`, `locker`, `desk`, `chair`, `table`, `bench`, `counter`,
+`shelf`, `washer`, `gym_rack`, `sofa`, `screen` (a TV or wall display), `carpet` (a floor finish), `vehicle` (bus,
+pickup, SUV), `barrier` (a gate arm), `guard_booth`, `canopy` (shade over parking and walkways), `lamp_post`,
+`planting` (by species: date palm, tamarisk, oleander, bougainvillea, a drought-tolerant shrub; SITE.md §4), `kerb` (painted), `court` (a fenced sports court), `porch`, `room` (an
+interior partition with doors). Geometry is the kit's, as everything (§9).
+
+### 18.7 The trainee's panels
+
+- **Start:** scenario, day and time, and a role: the list of `play` roles with what their shift holds; or free mode
+  (no role: the plant as in format 1, the people working around the trainee).
+- **Tasks:** the role's day (from its routine), the current task's steps with the place and "take me there" (0059),
+  the readings sheet of a round (each value with its expected range), what each NPC is waiting for from the trainee.
+- **Permit form:** a work's permit, its state and history (who did what at which clock time), its isolation points
+  with their `how`, which are locked (and by whom), and the buttons the trainee's authorities allow, each refused with
+  its reasons as an op is.
+- **Radio:** a log per channel (operations, maintenance, HSE) of the messages of §16.6 in text; the trainee sends
+  from the messages their task offers and from requests (call a technician, ask for a permit). No voices and no free
+  text: messages are content.
+- **PPE:** what the trainee wears (at a locker), and the zone's needs when entering it.
+- **Shift log and handover:** running equipment, open permits, alarms, findings of the rounds and work done, made from
+  the events.
+- **Map:** people as dots by role (a filter), the trainee's colleagues named.
+- **Time:** the clock, fast-forward with "until my next task", and "sleep to the next shift" (a jump) when allowed.
+- **Debrief:** §8's, with the role's tasks (done, late, abandoned, skipped), the permits and the unsafe acts.
+
+Every panel works with keyboard, gamepad and touch, as the format 1 panels.
+
+## 19. Format 2 vectors
+
+`ref/vectors/plant3d-v2.json`, made by `ref/make_plant3d_vectors.py` from `ref/plant3d.py` as format 1's:
+- `valid` and `reject`: a small synthetic version 2 plant and its rule breaks (every new error code);
+- `steps`: small models and staff files pinning the `hold` node, each permit transition and refusal (the automatic
+  moves as levels, a shared isolation refused, the acceptor's hand-back), locks made in step 3 against this step's
+  values (a start and a lock in one step), a code locked by two isolations, what a locked code refuses, skips and
+  suppresses, every task step kind for an NPC and for the trainee, pre-emption and released reservations, waiting for
+  a taken place, the `next` table and its ties, placement at step 0 and after a jump, rosters across midnight and day
+  0, off-duty offsets, reactions (`seen` and not, duplicates skipped), unsafe acts and `stop`, `task_ack` and the
+  fast-forward level, the random streams (a person added at the end changes no one else's draws), vehicles and
+  boarding, jumps, and the authority and `where` refusals;
+- `day`: the full content's first shift (12 clock hours from 06:00) with seed 1 and no trainee: every event, a
+  snapshot every clock hour; and forks with a trainee (the operator granting a permit late, an electrician locking
+  out the pump the operator then tries to start, a technician isolating a condenser pressure transmitter during a
+  run, a contractor's unsafe act found by the safety walk).
+
+The app's engine (`apps/plant3d/sim`) reproduces every vector bit for bit, format 1's and format 2's, on every
+platform (CAPABILITIES.md §8).

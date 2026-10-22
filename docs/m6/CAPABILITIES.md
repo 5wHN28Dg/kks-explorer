@@ -117,6 +117,14 @@ from Godot 4 (0041), so the rows below say what the platform gives underneath an
 | Install size | ✅ no limit (MSIX, ours) | ✅ no limit (Flatpak bundle) | ✅ sideloaded APK: no limit; Google Play's limits don't apply (we don't publish there) [D] |
 | Extra content at run time | ✅ `.pck` resource packs [D] | ✅ same | ✅ same |
 | Behaviour model bit for bit with the reference (apps/plant3d/sim) | 🟡 GDScript `float` is an IEEE double on every platform [D]; not run here yet: a lag's factor uses the C library's `exp` (the Windows build's CRT) | ✅ every value at every step of every vector equal to ref/plant3d.py's, glibc `exp` on both sides [V, 2026-10-16] | ✅ the same on the Note 9 (Android 10, bionic `exp`): every vector's digests equal the laptop's [V, 2026-10-16]; a step takes 1.4 ms there |
+| Skinned characters (format 2 people, 0064) | ✅ engine: skinning in a compute shader in the RD renderers (`renderer_rd/shaders/skeleton.glsl`) [S]; "skinning … can be very expensive on some platforms … reduce the animation rate for distant … meshes" [D optimizing_3d_performance] | ✅ same | ✅ same, Mobile renderer [S]; the count the Note 9 holds is measured in milestone A1, not yet [—] |
+| Animation blending and rate | ✅ AnimationTree (state machines, blend spaces); `AnimationMixer.callback_mode_process` MANUAL: the app calls `advance(delta)` at its own rate [D] | ✅ same | ✅ same |
+| Retargeting animations between rigs | ✅ import-time BoneMap to `SkeletonProfileHumanoid` (T-pose reference, rest fixer) [D retargeting_3d_skeletons]; our sources not tried yet [—] | ✅ same | ✅ same |
+| Many animated copies of one mesh | 🟡 MultiMesh has no skinning; per-instance animation only by vertex shader [D]; we use posed static meshes per MultiMesh (0064) | 🟡 same | 🟡 same |
+| Impostors (far characters) | ❌ none built in; the one Godot impostor addon found targets Godot 3 and is unmaintained [K, 0064 findings] | ❌ | ❌ |
+| Crowd avoidance | 🟡 NavigationAgent3D RVO avoidance, "in its own space … no information from navigation meshes" [D]; not used: people follow baked way polylines (0064) | 🟡 same | 🟡 same |
+| Loading an interior while walking | ✅ `ResourceLoader.load_threaded_request` [D] | ✅ same | ✅ same |
+| Behaviour (NPC) logic | ❌ no built-in AI; addons LimboAI (MIT, C++ module or GDExtension) and Beehave (MIT, GDScript) [K]; ours instead, bit for bit with the reference (0062) | ❌ | ❌ |
 
 Sources (Godot 4.7): https://docs.godotengine.org/en/stable/about/system_requirements.html ·
 https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_android.html ·
@@ -124,6 +132,10 @@ https://docs.godotengine.org/en/stable/tutorials/performance/pipeline_compilatio
 https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/importing_images.html ·
 https://docs.godotengine.org/en/stable/tutorials/platform/linux/wayland_x11.html ·
 https://docs.godotengine.org/en/stable/tutorials/export/exporting_pcks.html · https://godotengine.org/releases/4.7/ ·
+https://docs.godotengine.org/en/stable/tutorials/performance/optimizing_3d_performance.html ·
+https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/retargeting_3d_skeletons.html ·
+https://docs.godotengine.org/en/stable/classes/class_animationmixer.html ·
+https://docs.godotengine.org/en/stable/classes/class_navigationagent3d.html ·
 Godot's Android sources at the 4.7-stable tag (GodotPlugin.java, GodotActivity.kt). Platforms:
 https://developer.android.com/guide/playcore/asset-delivery/texture-compression ·
 https://developer.android.com/reference/android/os/PowerManager#getCurrentThermalStatus() ·
@@ -133,7 +145,8 @@ https://specifications.freedesktop.org/desktop-entry-spec/latest/ ·
 https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.OpenURI.html
 
 **Gaps for Walkdown Plant:** the engine itself (Godot, 0041); the Android deep link (a plugin of ours, 0054); audio
-synthesis on the phone (loops made at build time); shader baking only outside CI (release builds on the laptop).
+synthesis on the phone (loops made at build time); shader baking only outside CI (release builds on the laptop);
+NPC behaviour (ours, 0062), far characters (no impostors: posed meshes, 0064).
 
 ## Gaps: what no platform provides, or only some do
 
