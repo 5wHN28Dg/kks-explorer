@@ -8,6 +8,7 @@ useDefault = true
 # reference, the Nim core, course-figure.js) can reproduce the vectors byte for byte. They protect nothing, and the
 # files are frozen spec, so the keys can't be moved or renamed. peer/vectors/ is the same file under its old path
 # in the history. All 69 default-rule hits in the history (generic-api-key) are in these files (checked 2026-10-05).
+# v2-pairing.json added 2026-10-22 (course progress pairing vectors, same seeds; the user approved).
 # Narrowed 2026-10-06 to the exact files the hits are in: any other file under these directories, or a new vector file,
 # is scanned as usual.
 [[allowlists]]
@@ -18,5 +19,6 @@ paths = [
   '''^ref/vectors/v2-malformed\.json$''',
   '''^ref/vectors/v2-replay\.json$''',
   '''^ref/vectors/v2-reports\.json$''',
+  '''^ref/vectors/v2-pairing\.json$''',
   '''^peer/vectors/v2-replay\.json$''',
 ]
