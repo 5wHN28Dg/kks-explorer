@@ -16,7 +16,7 @@ const BRIDGE_OUT := 1.6
 ## A circular solids-contact clarifier (or, with `thickener`, a sludge thickener): its concrete tank standing on the
 ## ground, the launder ring inside the wall, the steel centre well (the reaction zone), the outlet box, and (with
 ## `bridge`) the bridge's girders from the centre over the wall along -x, with the rake's drive at the centre. The
-## bridge's deck is a platform of the content (walkable: PLANT3D.md §5), at the wall's top + 0.6 m, and reaches
+## bridge's deck is a platform of the content (walkable: PLANT3D.md §5), at the wall's top + 0.55 m, and reaches
 ## BRIDGE_OUT beyond the wall, where its stair arrives.
 static func clarifier(part: String, g) -> void:
 	var m = g.m
@@ -62,7 +62,7 @@ static func clarifier(part: String, g) -> void:
 			m.box_lh(Vector3(-1.4, 1.3 * s - 0.08, H + 0.08), Vector3(1.4, 1.3 * s + 0.08, H + 0.5))
 			m.box_lh(Vector3(xo, 0.62 * s - 0.1, 0), Vector3(xo + 0.2, 0.62 * s + 0.1, H + 0.08))
 		m.box_lh(Vector3(-r - WALL, -0.75, H), Vector3(-r - WALL + 0.4, 0.75, H + 0.08))   # the bearing on the wall
-		var top := H + 0.6
+		var top := H + 0.55
 		m.use("paint_motor", "identify")   # the rake's drive: a gear head and its motor on the deck at the centre
 		m.cyl(Vector3(0, 0, top), Vector3(0, 0, top + 0.55), 0.55, -1.0, 24)
 		m.cyl(Vector3(0, 0, top + 0.55), Vector3(0, 0, top + 1.25), 0.2, -1.0, 16)

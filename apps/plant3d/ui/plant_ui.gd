@@ -515,11 +515,7 @@ func fly_to(code: String, done: Callable = Callable()) -> void:
 	if dir.length() < 0.1:
 		dir = Vector3(0, 0, 1)
 	dir = dir.normalized()
-	var r := maxf(b.size.x, b.size.z) * 0.5
-	var to := c + dir * minf(r + 2.5, 40.0)
-	# stand on the floor beside it (a platform, a grating, the ground), not at the foot of a column in a pit
-	var hit: Dictionary = player.floor_below(Vector3(to.x, b.end.y + 1.0, to.z), b.size.y + 40.0)
-	to.y = (hit.position.y if not hit.is_empty() else maxf(b.position.y, 0.0)) + 0.05
+	var to := stand_point(b, dir)
 	var aim := Vector3(c.x, clampf(c.y, to.y + 0.3, to.y + 3.0), c.z)
 	var look := aim - (to + Vector3.UP * 1.65)
 	var yaw := atan2(-look.x, -look.z)
@@ -541,6 +537,28 @@ func fly_to(code: String, done: Callable = Callable()) -> void:
 		player.set_mode(player.Mode.WALK)     # lands on the floor below when there is one, else keeps flying
 		if done.is_valid():
 			done.call())
+
+
+## Where "Go there" puts the trainee for equipment in box b, coming from direction dir (unit, plan): on the floor
+## beside it (a platform, a grating, the ground; not at the foot of a column in a pit), and clear of everything
+## solid: the side towards the trainee first, then round the equipment in eighths of a turn, then further out. A
+## place inside a machine (a condenser's vent seen from its pit lands inside the condenser's shell) would leave
+## the walker to be pushed out of it, through the floor (tests/test_ui_cold_start.gd: the condenser's vents).
+func stand_point(b: AABB, dir: Vector3) -> Vector3:
+	var c := b.get_center()
+	var r := maxf(b.size.x, b.size.z) * 0.5
+	var first := Vector3.INF
+	for dist: float in [r + 2.5, r + 4.0, r + 6.0]:
+		for turn: float in [0.0, 45.0, -45.0, 90.0, -90.0, 135.0, -135.0, 180.0]:
+			var d := dir.rotated(Vector3.UP, deg_to_rad(turn))
+			var to := c + d * minf(dist, 40.0)
+			var hit: Dictionary = player.floor_below(Vector3(to.x, b.end.y + 1.0, to.z), b.size.y + 40.0)
+			to.y = (hit.position.y if not hit.is_empty() else maxf(b.position.y, 0.0)) + 0.05
+			if first == Vector3.INF:
+				first = to
+			if not hit.is_empty() and player.fits_at(to):
+				return to
+	return first
 
 
 ## To the control room (`say`: with a word on what is offered there; not when the screens open at once, which it

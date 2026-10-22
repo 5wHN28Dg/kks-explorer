@@ -12,7 +12,9 @@ from train_areas import (eq, child, pipe, nz, jn, free, valve, inst, rect, box, 
                          sign, hearing_signs, pg)
 
 PACK = 'wtp'
-DECK_OVER = 0.6           # a clarifier's bridge deck over its wall's top (kit: parts_water.gd)
+DECK_OVER = 0.55          # a clarifier's bridge deck over its wall's top (kit: parts_water.gd): 28 risers of 0.1875 m
+                          # for the clarifiers' stairs, 27 for the thickener's (a stair of 0.19 m risers ends a walker
+                          # more than half a metre up its last going: tests/test_walk.gd)
 BRIDGE_OUT = 1.6          # the bridge's deck beyond the wall: the landing at the top of its stair (parts_water.gd)
 WALL = 0.3                # a clarifier's wall
 
@@ -141,13 +143,13 @@ MB_Y = {'a': 70, 'b': 64}
 def pretreatment():
     eqs, pipes, sts = [], [], []
     # the rapid mixer: a concrete tank, its agitator on the access deck over it
-    eqs.append(eq('00GBD10BB001', 'Rapid mix tank', 'basin', [383, 112, 0], 0, {'length': 4, 'width': 4, 'depth': 4.5},
+    eqs.append(eq('00GBD10BB001', 'Rapid mix tank', 'basin', [383, 112, 0], 0, {'length': 4, 'width': 4, 'depth': 4.25},
                   'edge'))
-    eqs.append(eq('00GBD10AM001', 'Rapid mixer', 'agitator', [383, 112, 4.75], 0, {'kw': 5.5, 'd': 1.2, 'shaft': 3.5},
+    eqs.append(eq('00GBD10AM001', 'Rapid mixer', 'agitator', [383, 112, 4.5], 0, {'kw': 5.5, 'd': 1.2, 'shaft': 3.3},
                   'motor'))
-    sts.append(st('wtp_mixer_deck', 'platform', [380.6, 109.6, 4.75], outline=rect(4.8, 4.8), deck='grating',
+    sts.append(st('wtp_mixer_deck', 'platform', [380.6, 109.6, 4.5], outline=rect(4.8, 4.8), deck='grating',
                   edge='handrail'))
-    sts.append(stair_to('wtp_mixer_stair', [383.8, 114.3, 4.75], 's', 4.75))
+    sts.append(stair_to('wtp_mixer_stair', [383.8, 114.3, 4.5], 's', 4.5))
     # the clarifiers: bridges to the north (the part's -x at yaw 90), stairs from the east up to their landings
     for k, (cx, cy) in CLAR.items():
         n = 1 if k == 'a' else 2
@@ -360,7 +362,7 @@ def treatment_building():
     signs = [sign('Water treatment building 00UGD10', [300, 66, 3.2], 270),
              sign('RO trains', [327, 74.75, 3.4], 180, 0.3), sign('Mixed beds', [300.25, 67, 2.6], 90, 0.25),
              sign('WTP control room', [330, 71.5, 2.4], 270, 0.25), sign('Laboratory', [330, 52.5, 2.4], 270, 0.25)]
-    signs += hearing_signs(structures, flip=('wtp_door_e',))
+    signs += hearing_signs(structures, flip=('wtp_door_e', 'wtp_door_ctl'))
     return eqs, pipes, structures, signs
 
 
@@ -451,10 +453,10 @@ def chemicals_and_wastes():
     structures = [
         st('wtp_chem_store', 'building', [345, 48, 0], kks='00UTS10', outline=rect(20, 13), height=6, floor='epoxy',
            openings=[{'kind': 'door', 'at': [10, 13, 0], 'width': 3, 'height': 3.5},
-                     {'kind': 'door', 'at': [0, 6.5, 0], 'width': 1.0, 'height': 2.1},
+                     {'kind': 'door', 'at': [6.5, 0, 0], 'width': 1.0, 'height': 2.1},
                      louvre(4, 13, 4.6, 2, 1), louvre(16, 13, 4.6, 2, 1), louvre(20, 6.5, 4.6, 2, 1)]),
         st('wtp_chem_door_n', 'door', [355, 61, 0], 0, kind='roller', width=3, height=3.5),
-        st('wtp_chem_door_w', 'door', [345, 54.5, 0], 270, kind='personnel'),
+        st('wtp_chem_door_s', 'door', [351.5, 48, 0], 180, kind='personnel'),
         st('wtp_neut_pit', 'pit', [368, 64, 0], outline=rect(10, 6), depth=3),
         st('wtp_neut_bridge', 'platform', [371.5, 64, 0], outline=rect(3, 6), deck='grating', edge='handrail'),
         deck, stair_to('wtp_thick_stair', top, 'w', 4.5 + DECK_OVER),

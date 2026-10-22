@@ -183,7 +183,8 @@ class Synthesis(unittest.TestCase):
         for loud, quiet in (('gt_whine', 'motor_large'), ('motor_large', 'motor_small'), ('gen_hum', 'transformer_hum'),
                             ('motor_small', 'valve_motor'), ('horn_p1', 'horn_p2'), ('horn_p2', 'horn_p3'),
                             ('combustion', 'exhaust_rumble'), ('exhaust_rumble', 'turning_gear'),
-                            ('transformer_hum', 'valve_motor'), ('combustion', 'motor_small')):
+                            ('transformer_hum', 'valve_motor'), ('combustion', 'motor_small'),
+                            ('ro_hp_pump', 'motor_small'), ('motor_large', 'ro_hp_pump')):
             self.assertGreater(plans[loud], plans[quiet], f'{loud} should be louder than {quiet}')
         # the run-up hands over to its loop without a jump: its last second at the loop's level
         # (measured against the loop's own samples, not the plan the generator levelled it to)
@@ -243,6 +244,14 @@ class Synthesis(unittest.TestCase):
         # the large motor is lower than the small one: its slot whine and its vane passing
         self.assertLess(min(z['hz'] for z in SYNTH['motor_large']['tones']),
                         min(z['hz'] for z in SYNTH['motor_small']['tones']))
+        # an RO high-pressure pump (the water treatment plant): its two-pole motor turns twice as fast as a four-pole
+        # one; its strongest tone is the impellers' vane passing (7 vanes), its slot whine 28 slots x the speed with
+        # sidebands at +/- 2 x 50 Hz
+        hp = shaft['00GCB21AP001']
+        ro = {z['hz'] for z in SYNTH['ro_hp_pump']['tones']}
+        self.assertAlmostEqual(hp, 2 * ccw, delta=0.2)
+        self.assertLessEqual({7 * hp, 28 * hp, 28 * hp - 100, 28 * hp + 100}, ro)
+        self.assertEqual(max(SYNTH['ro_hp_pump']['tones'], key=lambda z: z['gain'])['hz'], 7 * hp)
 
     def test_noise_in_its_band(self):
         for sid, (layers, _, loop) in self.made.items():
@@ -446,8 +455,10 @@ class HearingProtection(unittest.TestCase):
                             quiet_doors += 1
                             self.assertEqual(near, [], 'a quiet building\'s door has no hearing-protection sign')
         # the first train: the GT hall, the turbine hall, the CW pump house and the boiler house are loud (six
-        # doors); the control building is quiet
-        self.assertEqual((loud_doors, quiet_doors), (6, 1))
+        # doors); the control building is quiet. The water treatment plant: its treatment building is loud (the RO
+        # high-pressure pumps: four doors); the intake house (raw water pumps on four-pole motors), the chemical
+        # store and the filter press house are quiet (two doors each)
+        self.assertEqual((loud_doors, quiet_doors), (10, 7))
 
 
 class Vorbis(unittest.TestCase):

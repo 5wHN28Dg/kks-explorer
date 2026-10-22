@@ -3,7 +3,9 @@
 ##           stack platform at +40, then back down the same way: the walking test's route
 ##   pit     up the turbine hall's condenser pit stair (-6 m to the ground) and back down
 ##   frames  the frame-time walk (wiki measurement rules): out of the control room, through the turbine hall
-##           (its west and east doors), along the road, up and down HRSG 1's stair tower, and back; looped
+##           (its west and east doors), along the road, up and down HRSG 1's stair tower, out past the cooling
+##           tower to the water treatment plant (between the posts of the pipes to the train, through its
+##           treatment building past the RO trains, round by the demineralised water tanks), and back; looped
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
@@ -46,6 +48,16 @@ static func frames(plant) -> Array:
 	r.append_array(_stair(plant, "hrsg1_stair"))
 	r.append_array([_to(101.4, 52.5, 30), _to(130, 56, 30), _to(101.4, 56, 30), _to(101.4, 52.5, 30), _to(101.4, 49.5, 30)])
 	r.append_array(_stair(plant, "hrsg1_stair", true))
-	r.append_array([_to(93.5, 44.5), _to(140, 36), _to(165, 36), _to(165, 30), _to(93.5, 36), _to(-5, 36), _to(-5, 0),
-		_to(-12, 0), _to(-20, 0)])
+	r.append_array([_to(93.5, 44.5), _to(140, 36), _to(165, 36), _to(165, 30)])
+	r.append_array(wtp_loop())
+	r.append_array([_to(165, 30), _to(93.5, 36), _to(-5, 36), _to(-5, 0), _to(-12, 0), _to(-20, 0)])
 	return r
+
+## From the cooling tower's north-east corner into the water treatment plant and back (docs/plant3d/SITE.md): across
+## the makeup and transfer pipes' post lines where their posts leave room (x 266: their posts stand at 264.25 and
+## 268.75 on y = 38, at 263.4 and 267.7 on y = 39.5), in at the treatment building's west door, past the RO trains,
+## out at its north door, and back by the demineralised water tanks.
+static func wtp_loop() -> Array:
+	return [_to(258, 31), _to(266, 31), _to(266, 47), _to(294, 47), _to(294, 56), _to(303, 56), _to(313, 57.2),
+		_to(327, 57.2), _to(327, 71), _to(322, 71), _to(322, 80), _to(296, 80), _to(294, 72), _to(294, 47),
+		_to(266, 47), _to(266, 31), _to(258, 31)]

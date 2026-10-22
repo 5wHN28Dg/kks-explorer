@@ -232,6 +232,7 @@ func _safety_signs(tree: SceneTree) -> Array:
 			var m := (c as GeometryInstance3D).material_override as ShaderMaterial
 			if m == null or m.resource_path.get_file() != "sign_board.tres" or float(m.get_shader_parameter("emission_energy")) <= 0.0:
 				p.append("%s: a sign's board is drawn with the retroreflective board material" % c.get_path())
-	if signs != 6:
-		p.append("the plant has %d M003 signs (want the loud buildings' six doors)" % signs)
+	# the first train's loud buildings have six doors, the water treatment building (its RO pumps) four
+	if signs != 10:
+		p.append("the plant has %d M003 signs (want the loud buildings' ten doors)" % signs)
 	return p

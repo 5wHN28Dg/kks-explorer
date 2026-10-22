@@ -30,12 +30,18 @@ Format: docs/PLANT3D.md (areas §3; format 2 parts and interiors §18.5–§18.6
 | `road_west` | −260, 10 – −140, 30 | the road and its walkway between the camp gate and the plant gate (130 m), street lamps | site |
 | `camp` | −480, −40 – −260, 120 | the camp (§3) | camp |
 
-- **The river** runs north–south at x 470–560: water drawn as the existing site's ground is (builder/site.gd), not
-  walkable, with the intake's bank and a handrail. The raw water main (DN 500, buried) runs along y = 80 from the
-  intake to the WTP.
-- **Water to the train:** cooling tower makeup (DN 400, on sleepers along y = 40 then south to `ct`'s makeup valve
-  30PAR10AA001); demin transfer (DN 100, on the same sleepers to `bop`'s demin tank 00GHC10BB001).
-- **The fence** encloses the plant from x −140 to 475, y −130 to 145 (train 2 included), the camp separately; a
+- **The river** runs north–south along the plant's east side: as built (W1), 5 m beyond the boundary wall's east
+  side, 90 m wide (x 500–590 while the wall stands at x 495: builder/site.gd places it from the wall, so it follows
+  the wall if the fence moves), its water at −1.5 m, drawn by the site (builder/site.gd), not walkable; the wall
+  keeps walkers off the bank. The intake's channel (x 441–469.5) runs on under the intake house's east wall, the
+  ring road and the wall to a headwall on the river bank. The raw water main (DN 500, buried) runs along y = 79
+  from the intake to the WTP's rapid mixer.
+- **Water to the train** (as built, W1): overhead on steel posts (the build's pipe supports), walkable under:
+  cooling tower makeup (DN 400, +5 m) from the makeup pumps along x = 271 and y = 38, then under the ground into
+  the cooling tower's makeup pipe 30PAR10BR001 before its valve 30PAR10AA001; demineralised water transfer (DN 100,
+  +6.5 m) along x = 274 and y = 39.5 to x = 133, then south to `bop`'s demin tank 00GHC10BB001. (The plan first
+  said sleepers along y = 40: pipes at ground level would cut the walkways between the train and the WTP.)
+- **The fence** encloses the plant from x −140 to 495 (the river beyond it, W1), y −130 to 145 (train 2 included), the camp separately; a
   fence is a structure (`fence`, PLANT3D.md §5), not walkable through. One gate for people and vehicles at the
   plant's west, one at the camp's east.
 - **Roads** at least 6 m wide (two buses pass), a 1.5 m walkway along each road that people use; crossings marked;

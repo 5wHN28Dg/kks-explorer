@@ -241,6 +241,13 @@ The numbers are rounded typical values from these sources, good for the look, no
 - **Pipe support spans** (`parts_pipes.gd SPANS`): ASME B31.1 Table 121.5 (water service) to DN 600, extrapolated
   to 12 m above.
 - **Pump sizes**: nozzles for 3 m/s (suction) and 4.5 m/s (discharge); a pump is multistage above 150 m of head.
+- **Water treatment** (`parts_water.gd`, docs/plant3d/WATER-TREATMENT.md §1 for the sources): clarifier and
+  thickener walls 0.3 m of concrete with 0.35 m freeboard, the solids-contact centre well about 0.28 × the radius;
+  gravity filter cells with two wash troughs each and a pipe gallery between the rows (Ten States Standards §4.3);
+  RO pressure vessels of 8-inch elements (1.016 m each) racked three high, permeate ports on the end caps (FilmTec
+  manual); bar screens at 75 mm, inclined at 75°; mixed beds with dished heads (0.2 × the diameter) and a frontal
+  valve nest; dosing skids sized from their day tank (height about 1.3 × its diameter); filter press plates of
+  0.8–1.6 m.
 
 ## Looking at it
 
