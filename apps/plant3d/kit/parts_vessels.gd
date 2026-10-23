@@ -446,7 +446,9 @@ static func basin(_part: String, g) -> void:
 	var D: float = g.num("depth", 2)
 	var t := 0.3
 	m.use("concrete", "form")
-	m.box_lh(Vector3(-L * 0.5 - t, -W * 0.5 - t, -0.3), Vector3(L * 0.5 + t, W * 0.5 + t, 0.0))
+	# its floor slab stands 3 cm proud of the origin: a basin at grade (the WTP's rapid mixer) would otherwise have its
+	# floor in the yard's plane (tests/test_ground.gd)
+	m.box_lh(Vector3(-L * 0.5 - t, -W * 0.5 - t, -0.3), Vector3(L * 0.5 + t, W * 0.5 + t, 0.03))
 	m.box_lh(Vector3(-L * 0.5 - t, W * 0.5, 0), Vector3(L * 0.5 + t, W * 0.5 + t, D + 0.25))
 	m.box_lh(Vector3(-L * 0.5 - t, -W * 0.5 - t, 0), Vector3(L * 0.5 + t, -W * 0.5, D + 0.25))
 	m.box_lh(Vector3(L * 0.5, -W * 0.5, 0), Vector3(L * 0.5 + t, W * 0.5, D + 0.25))

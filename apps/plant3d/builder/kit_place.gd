@@ -1042,6 +1042,22 @@ static func split_cells(layers: Dictionary, o: Vector3) -> Array:
 			by_cell[key].layers[k] = {"mat": L.mat, "cls": L.cls, "size": L.size, "arrays": out, "tris": ni.size() / 3}
 	return by_cell.values()
 
+## The top of a support post's base plate over the surface it stands on (parts_pipes.gd `_support`, `_bridge`): 2 cm,
+## and FOOT_STEP more for each plate already laid within FOOT_NEAR of it on the same surface (two pipes' supports side
+## by side: their plates overlapped in one plane and fought in the depth buffer, tests/test_ground.gd). 4 cm: a
+## stacked plate stays 2 cm clear of a hall's floor too (plant_builder.gd HALL_FLOOR_T), which hides a single plate.
+const FOOT := 0.02
+const FOOT_STEP := 0.04
+const FOOT_NEAR := 0.8
+var feet: Array = []   # [plan point, surface z, plate top]
+func _foot(p: Vector2, z: float) -> float:
+	var top := FOOT
+	for f in feet:
+		if absf(f[1] - z) < 0.01 and (f[0] as Vector2).distance_to(p) < FOOT_NEAR:
+			top = maxf(top, f[2] + FOOT_STEP)
+	feet.append([p, z, top])
+	return top
+
 ## Supports at the span table's spacing along every horizontal run above ground, on the highest walkable surface,
 ## rack tier or the ground below (within MAX_POST), or hung from a roof or deck above (within 6 m).
 func _supports(p: Dictionary, route: Array, r: float, buried: Dictionary) -> Array:
@@ -1072,10 +1088,13 @@ func _supports(p: Dictionary, route: Array, r: float, buried: Dictionary) -> Arr
 					if br.is_empty():
 						unsupported.append("%s at %s (over a walkway)" % [p.kks, str(q.snapped(Vector3(0.1, 0.1, 0.1)))])
 					else:
+						for l in br.legs:
+							l["foot"] = _foot(Vector2(l.at.x, l.at.y), l.z)
 						out.append(br)
 						n_made += 1
 					continue
-				out.append({"at": q, "z_to": base, "kind": "guide" if n_made % 3 == 2 else "shoe", "dir": dn})
+				out.append({"at": q, "z_to": base, "kind": "guide" if n_made % 3 == 2 else "shoe", "dir": dn,
+					"foot": _foot(Vector2(q.x, q.y), base)})
 				n_made += 1
 				continue
 			var above := _above(q, r)

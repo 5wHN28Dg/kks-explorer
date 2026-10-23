@@ -470,7 +470,8 @@ static func kerb(_part: String, g) -> void:
 			m.box(c + Vector3(0, 0, 0.075), Vector3(0.15, L / n, 0.15), bs)
 
 ## A marked pedestrian crossing: white stripes 0.5 m wide every metre across a road `width` wide, each `length` long
-## along the road (y), painted 1 cm proud of it (drawn only). Origin at its centre.
+## along the road (y), painted 2 cm proud of it (drawn only: closer, it fought the road in a phone's depth buffer,
+## tests/test_ground.gd). Origin at its centre.
 static func crossing(_part: String, g) -> void:
 	var m = g.m
 	var w: float = g.num("width", 7.0)
@@ -479,32 +480,38 @@ static func crossing(_part: String, g) -> void:
 	var n := int(floor(w))
 	for k in n:
 		var x := -w * 0.5 + (w - n) * 0.5 + k + 0.25
-		m.box_lh(Vector3(x, -L * 0.5, 0.0), Vector3(x + 0.5, L * 0.5, 0.012))
+		m.box_lh(Vector3(x, -L * 0.5, 0.0), Vector3(x + 0.5, L * 0.5, 0.02))
 
 ## A sports court (`length` along y): its surface with the lines, a chain-link fence round it (posts, rails; the mesh
 ## itself is a `detail` grid) with a gate gap in the middle of its east side, and a floodlight mast at each corner.
-## Origin at the court's centre.
+## Origin at the court's centre. Its layers (the surround, the playing area, the lines) stand COURT_STEP apart: closer,
+## they fought in a phone's depth buffer (tests/test_ground.gd).
+const COURT_STEP := 0.02
 static func court(_part: String, g) -> void:
 	var m = g.m
 	var L: float = g.num("length", 28.0)
 	var w: float = g.num("width", 15.0)
 	var fh: float = g.num("fence", 4.0)
 	col(m, "matte", Color(0.30, 0.42, 0.36))
-	m.box_lh(Vector3(-w * 0.5, -L * 0.5, 0), Vector3(w * 0.5, L * 0.5, 0.02))
+	m.box_lh(Vector3(-w * 0.5, -L * 0.5, 0), Vector3(w * 0.5, L * 0.5, COURT_STEP))
 	col(m, "matte", Color(0.55, 0.30, 0.24))
-	m.box_lh(Vector3(-w * 0.5 + 1.5, -L * 0.5 + 1.5, 0.02), Vector3(w * 0.5 - 1.5, L * 0.5 - 1.5, 0.025))
+	m.box_lh(Vector3(-w * 0.5 + 1.5, -L * 0.5 + 1.5, COURT_STEP), Vector3(w * 0.5 - 1.5, L * 0.5 - 1.5, COURT_STEP * 2.0))
 	col(m, "plain", Color(0.92, 0.92, 0.9))
 	var lw := 0.06
 	var x0 := -w * 0.5 + 1.5
 	var x1 := w * 0.5 - 1.5
 	var y0 := -L * 0.5 + 1.5
 	var y1 := L * 0.5 - 1.5
+	# the centre line stops at the centre circle and goes on inside it (the circle's ring and the line would overlap)
+	var rc := 1.8
 	for seg in [[Vector2(x0, y0), Vector2(x1, y0)], [Vector2(x1, y0), Vector2(x1, y1)], [Vector2(x1, y1), Vector2(x0, y1)],
-			[Vector2(x0, y1), Vector2(x0, y0)], [Vector2(x0, 0), Vector2(x1, 0)]]:
+			[Vector2(x0, y1), Vector2(x0, y0)], [Vector2(x0, 0), Vector2(-rc - lw * 3.0, 0)],
+			[Vector2(-rc + lw, 0), Vector2(rc - lw, 0)], [Vector2(rc + lw * 3.0, 0), Vector2(x1, 0)]]:
 		var a: Vector2 = seg[0]
 		var b: Vector2 = seg[1]
-		m.box_lh(Vector3(minf(a.x, b.x) - lw, minf(a.y, b.y) - lw, 0.025), Vector3(maxf(a.x, b.x) + lw, maxf(a.y, b.y) + lw, 0.03))
-	m.ring(Vector3(0, 0, 0.03), Vector3(0, 0, 1), 1.8, 1.8 + lw * 2.0, 24)
+		m.box_lh(Vector3(minf(a.x, b.x) - lw, minf(a.y, b.y) - lw, COURT_STEP * 2.0),
+			Vector3(maxf(a.x, b.x) + lw, maxf(a.y, b.y) + lw, COURT_STEP * 3.0))
+	m.ring(Vector3(0, 0, COURT_STEP * 3.0), Vector3(0, 0, 1), rc, rc + lw * 2.0, 24)
 	# the fence: posts every 3 m, top and bottom rails, the gate gap (2 m) in the east side
 	var corners := [Vector2(-w * 0.5, -L * 0.5), Vector2(w * 0.5, -L * 0.5), Vector2(w * 0.5, L * 0.5), Vector2(-w * 0.5, L * 0.5)]
 	for i in 4:
