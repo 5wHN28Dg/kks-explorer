@@ -5,7 +5,8 @@
 ## cpu_ms and gpu_ms are the engine's last measured render times (they lag a frame or two); sim_steps are the model's
 ## steps run between this line's frame and the next. surf_pipes and spec_pipes are the pipelines compiled since the line
 ## before (a pipeline compiled after the start is a hitch on a phone: decision 0060), and events what else the app
-## started in that frame (`counters`: sounds loaded and started, saves, route searches; each name with how many),
+## started in that frame (`counters`: sounds loaded and started, saves, route searches; each name with how many; work
+## in calls deferred to the end of a frame shows on the next frame's line),
 ## so that a long frame can be told from the phone's own work (phone/frames.sh pulls frames.csv).
 extends Node
 
@@ -93,7 +94,7 @@ func _events() -> String:
 	for k in counters:
 		var v := int(counters[k].call())
 		var d: int = v - int(_counts.get(k, 0))
-		if d != 0:
+		if d > 0:   # (a count that went down, a cache emptied, is no work done)
 			ev.append("%s+%d" % [k, d])
 		_counts[k] = v
 	return " ".join(ev)

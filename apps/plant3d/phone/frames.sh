@@ -34,6 +34,7 @@ say() { echo "[$(date +%H:%M:%S)] $*"; }
 [ "$(a get-state 2>/dev/null)" = device ] || { echo "phone $SERIAL is not attached (adb devices)" >&2; exit 3; }
 [ -f "$APK" ] || { echo "no $APK: run tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh release" >&2; exit 2; }
 mkdir -p "$OUT"
+: > "$HERE/results/.gdignore"   # (inside the Godot project: its CSVs are not translations to import)
 model=$(sh_ getprop ro.product.model)
 say "phone $SERIAL: $model, Android $(sh_ getprop ro.build.version.release); $APK"
 
@@ -47,6 +48,7 @@ KEEP="${KEEP:-}"; [ "$KEEP" = 0 ] && KEEP=""
 kept_apk=""
 [ -n "$KEEP" ] && [ "$SERIAL" = "$NOTE9" ] && { echo "KEEP is for another phone's own plant app; the Note 9's is cleared" >&2; exit 2; }
 cleanup() {
+  trap '' INT TERM   # (a second Ctrl-C must not stop the reinstall of their own build)
   if [ -n "$bright_level" ]; then
     sh_ settings put system screen_brightness_mode "$bright_mode" || true
     sh_ settings put system screen_brightness "$bright_level" || true
@@ -55,7 +57,7 @@ cleanup() {
     sh_ rm -f "$FILES/walk.txt" "$FILES/result.txt" "$FILES/frames.csv" || true
     if [ -n "$kept_apk" ]; then
       say "putting their own build back on $SERIAL"
-      a install -r -d "$kept_apk" >/dev/null || echo "!!! could not put their build back: adb -s $SERIAL install -r -d $kept_apk" >&2
+      a install -r "$kept_apk" >/dev/null || echo "!!! could not put their build back: adb -s $SERIAL install -r $kept_apk, and adb -s $SERIAL shell rm -f $FILES/walk.txt" >&2
     fi
   elif [ "$SERIAL" != "$NOTE9" ]; then
     say "removing $PKG from $SERIAL"
@@ -81,6 +83,15 @@ if [ -n "$KEEP" ]; then
   [ "$(echo "$paths" | grep -c .)" = 1 ] || { echo "KEEP=1: $PKG on $SERIAL is not one APK ($paths): nothing changed" >&2; exit 1; }
   a pull "$paths" "$OUT/kept.apk" >/dev/null && [ -s "$OUT/kept.apk" ] ||
     { echo "KEEP=1: could not copy $SERIAL's own build: nothing changed" >&2; exit 1; }
+  # the build put back must install over the test build without a downgrade (refused for a release app): the same
+  # version code, and the same signing key (else the install over theirs would fail anyway)
+  BT="$(ls -d "${ANDROID_HOME:-$HOME/Android/Sdk}"/build-tools/* 2>/dev/null | grep -v -- '-rc' | sort -V | tail -1)"
+  vc() { "$BT/aapt2" dump badging "$1" 2>/dev/null | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1; }
+  cert() { "$BT/apksigner" verify --print-certs "$1" 2>/dev/null | grep -m1 'certificate SHA-256'; }
+  if [ -z "$(vc "$APK")" ] || [ "$(vc "$APK")" != "$(vc "$OUT/kept.apk")" ] || [ "$(cert "$APK")" != "$(cert "$OUT/kept.apk")" ]; then
+    echo "KEEP=1: $APK differs from $SERIAL's own build in version code ($(vc "$APK") against $(vc "$OUT/kept.apk")) or key: nothing changed" >&2
+    exit 1
+  fi
   kept_apk="$OUT/kept.apk"
   # never uninstall here: that would delete their run (an APK signed with another key is refused: stop)
   a install -r "$APK" >/dev/null || { echo "install -r over $SERIAL's own plant app failed: nothing changed" >&2; exit 1; }
@@ -129,7 +140,7 @@ while ! sh_ ls "$FILES/result.txt" >/dev/null 2>&1; do
   sleep 10
 done
 a pull "$FILES/result.txt" "$OUT/" >/dev/null 2>&1 || true
-sleep 2   # frames.csv is written after result.txt
+sleep 5   # frames.csv is written after result.txt
 a pull "$FILES/frames.csv" "$OUT/" >/dev/null 2>&1 || true
 sh_ rm -f "$FILES/walk.txt"   # a later start by hand is an ordinary start
 sleep 3

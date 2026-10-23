@@ -46,6 +46,14 @@ func run(tree: SceneTree) -> Array:
 		if under == Vector3.INF:
 			p.append("building %s's occluder has its roof" % body.get_meta("building"))
 			continue
+		# the roof's occluder covers the whole roof: its area that of the roof mesh's top faces
+		var occ_area := 0.0
+		for t in own:
+			if absf(t[0].y - top) < 1e-3 and absf(t[1].y - top) < 1e-3 and absf(t[2].y - top) < 1e-3:
+				occ_area += ((t[1] - t[0]).cross(t[2] - t[0])).length() * 0.5
+		var roof_area := _top_area(body.get_node_or_null("roof") as MeshInstance3D)
+		if roof_area <= 0.0 or absf(occ_area - roof_area) > 0.01 * roof_area + 0.05:
+			p.append("building %s's occluder covers its roof (%.1f of %.1f m²)" % [body.get_meta("building"), occ_area, roof_area])
 		var mid := Vector3(under.x, top * 0.5, under.z)
 		if not _hits(own, Vector3(under.x, 0.5, under.z), under + Vector3.UP * 5.0):
 			p.append("building %s's occluder covers its roof" % body.get_meta("building"))
@@ -107,6 +115,28 @@ func run(tree: SceneTree) -> Array:
 		p.append("the app's pointer and map marker are found (%d drawn through walls)" % through)
 	main.free()
 	return p
+
+## The area of a mesh's upward faces at its top (a roof slab's upper side), in world space.
+static func _top_area(mi: MeshInstance3D) -> float:
+	if mi == null or mi.mesh == null:
+		return 0.0
+	var xf := mi.global_transform
+	var tris: Array = []
+	var top := -INF
+	for si in mi.mesh.get_surface_count():
+		var arr := mi.mesh.surface_get_arrays(si)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var ix = arr[Mesh.ARRAY_INDEX]
+		var n: int = ix.size() if ix != null else v.size()
+		for k in range(0, n, 3):
+			var t := [xf * v[ix[k] if ix != null else k], xf * v[ix[k + 1] if ix != null else k + 1], xf * v[ix[k + 2] if ix != null else k + 2]]
+			tris.append(t)
+			top = maxf(top, maxf(t[0].y, maxf(t[1].y, t[2].y)))
+	var area := 0.0
+	for t in tris:
+		if absf(t[0].y - top) < 1e-3 and absf(t[1].y - top) < 1e-3 and absf(t[2].y - top) < 1e-3:
+			area += ((t[1] - t[0]).cross(t[2] - t[0])).length() * 0.5
+	return area
 
 static func _hits(tris: Array, a: Vector3, b: Vector3) -> bool:
 	for t in tris:
