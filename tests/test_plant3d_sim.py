@@ -108,6 +108,10 @@ def steps_runs(valid_files, steps, keep=None, prefix=''):
     return out
 
 
+# the water treatment plant's runs in plant3d-v2.json (W2: its start from cold; W3: cleaning in place, regeneration)
+WTP_RUNS = ('wtp', 'wtp_cip', 'wtp_regen')
+
+
 def reference_runs(V, keep=None, V2=None):
     """Every run of run_vectors.gd on the reference: {run: (first step hashed, chunk digests, names, kept values)}.
     keep = (run, from, to) keeps that run's values at those steps."""
@@ -126,8 +130,9 @@ def reference_runs(V, keep=None, V2=None):
             out[run] = r
         if 'train' in V2:
             train_runs(b, 'v2/train', V2['train'], out, k, 'v2/')
-        if 'wtp' in V2:
-            train_runs(b, 'v2/wtp', V2['wtp'], out, k, 'v2/')
+        for run in WTP_RUNS:
+            if run in V2:
+                train_runs(b, f'v2/{run}', V2[run], out, k, 'v2/')
     return out
 
 
@@ -236,7 +241,7 @@ class GdscriptEngine(unittest.TestCase):
         self.assertNotIn('FAIL', out)
         n = 1 + len(self.V['steps']) + len(self.V['links']) + 2 * (1 + 1) + len(self.V['train']['forks']) + \
             len(self.V['hot']['forks']) + 1 + len(self.V2['steps']) + len(self.V2.get('train', {}).get('forks', [])) + \
-            (2 + len(self.V2['wtp']['forks']) if 'wtp' in self.V2 else 0)
+            sum(2 + len(self.V2[r]['forks']) for r in WTP_RUNS if r in self.V2)
         self.assertIn(f'VECTORS passed={n} failed=0', out)
 
     def test_every_value_bit_for_bit(self):

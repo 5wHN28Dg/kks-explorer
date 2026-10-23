@@ -341,9 +341,41 @@ func open_panel(p: String) -> void:
 	elif p.begins_with("card:"):
 		open_card(p.substr(5))
 	elif p == "screens" or p.begins_with("screens:"):
-		if not at_desk():
-			go_control_room(false)
-		open_screens(p.substr(8) if p.begins_with("screens:") else "")
+		open_screens_at_desk(p.substr(8) if p.begins_with("screens:") else "")
+
+
+## The screens at a screen (its id; "" the overview), from wherever the trainee is: at a desk that has it they open
+## there; else the trainee goes to a desk that has it (PLANT3D §14 `desks`), the main control room when it is one of
+## them, otherwise the first of its desks (the water treatment plant's own), and they open on arrival.
+func open_screens_at_desk(screen_id := "") -> void:
+	if screens.error != "":
+		open_screens(screen_id)
+		return
+	var i: int = screens.screen_index(screen_id) if screen_id != "" else -1
+	if screen_id != "" and i < 0:
+		toast("No screen %s." % screen_id)
+		return
+	if at_desk() and screen_here(i):
+		open_screens(screen_id)
+		return
+	var ds: Array = screens.overview.get("desks", []) if i < 0 else screens.screens[i].desks
+	if ds.is_empty():
+		ds = info.desks()
+	var to := ""
+	for d in ds:
+		if info.area_of.get(d, "") == "control":
+			to = d
+			break
+	if to != "" or ds.is_empty():
+		go_control_room(false)
+		open_screens(screen_id)
+		return
+	to = ds[0]
+	fly_to(to, func():
+		if at_desk() and screen_here(i):
+			open_screens(screen_id)
+		else:
+			toast("The screens are worked at %s." % info.name_of(to)))
 
 
 # ------------------------------------------------------------------ where the trainee is

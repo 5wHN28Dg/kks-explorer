@@ -1,0 +1,20 @@
+{
+ "format": "walkdown-plant-procedure",
+ "version": 1,
+ "id": "mb_regeneration",
+ "title": "Water treatment plant: regenerate a mixed bed",
+ "kind": "procedure",
+ "scenario": "wtp_normal",
+ "intro": [
+  {"p": ["Change over to mixed bed B and regenerate mixed bed A, then neutralise its wastes."]}
+ ],
+ "steps": [
+  {"id": "mb_b", "text": ["Mixed bed A (", {"link": ["00GCF11AT001"], "to": {"kks": "00GCF11AT001"}}, ") is near exhaustion. Put mixed bed B (", {"link": ["00GCF12AT001"], "to": {"kks": "00GCF12AT001"}}, ") in service and start its feed pump (", {"link": ["00GCK10AP002"], "to": {"kks": "00GCK10AP002"}}, ")."], "at": ["00GCF12AT001", "00GCK10AP002", "00GCF11CQ002"], "go": "walk", "do": [{"kks": "00GCF12AT001", "do": "in_service"}, {"kks": "00GCK10AP002", "do": "start"}], "ordered": true, "done": "mb_b_making", "why": [{"p": ["Silica breaks through first, before the conductivity rises: the bed is changed over before it spoils the demineralised water tanks."]}]},
+  {"id": "mb_a_off", "text": ["Stop mixed bed feed pump A (", {"link": ["00GCK10AP001"], "to": {"kks": "00GCK10AP001"}}, ") and put mixed bed A in standby."], "at": ["00GCK10AP001", "00GCF11AT001"], "go": "walk", "do": [{"kks": "00GCK10AP001", "do": "stop"}, {"kks": "00GCF11AT001", "do": "standby"}], "ordered": true, "done": "mf_a_safe"},
+  {"id": "regen", "text": ["Start the regeneration of mixed bed A (", {"link": ["00GCF11AT001"], "to": {"kks": "00GCF11AT001"}}, "): backwash and separation, settling, drain down."], "at": ["00GCF11AT001"], "go": "walk", "do": [{"kks": "00GCF11AT001", "do": "regenerate"}], "done": "mb_a_rdy", "why": [{"p": ["The backwash lifts the bed: the anion resin, lighter, settles above the cation resin, so each can take its own regenerant."]}]},
+  {"id": "inject", "text": ["Check the acid (", {"link": ["00GCP10BB001"], "to": {"kks": "00GCP10BB001"}}, ") and caustic (", {"link": ["00GCP20BB001"], "to": {"kks": "00GCP20BB001"}}, ") tanks, and start the injection of the regenerants."], "at": ["00GCP10BB001", "00GCP20BB001", "00GCF11AT001"], "go": "walk", "do": [{"kks": "00GCF11AT001", "do": "inject"}], "done": "mb_a_airrdy", "why": [{"p": ["Hydrochloric acid from below restores the cation resin, caustic soda from above the anion resin; both leave by the collector at the interface. Three bed volumes of slow rinse push them out."]}]},
+  {"id": "blower", "text": ["Start the resin mixing blower (", {"link": ["00GCP30AN001"], "to": {"kks": "00GCP30AN001"}}, ")."], "at": ["00GCP30AN001"], "go": "walk", "do": [{"kks": "00GCP30AN001", "do": "start"}], "done": "gp_air_cmd"},
+  {"id": "air", "text": ["Start the air mix of mixed bed A (", {"link": ["00GCF11AT001"], "to": {"kks": "00GCF11AT001"}}, "): the sequence stops the blower, refills the bed slowly and rinses it to under 0.1 µS/cm (", {"link": ["00GCF11CQ001"], "to": {"kks": "00GCF11CQ001"}}, ")."], "at": ["00GCF11AT001", "00GCF11CQ001"], "go": "walk", "do": [{"kks": "00GCF11AT001", "do": "air_mix"}], "done": "mb_a_sb", "why": [{"p": ["Mixed again, each grain of anion resin sits beside a cation one: the water meets hundreds of exchanges in series, which is how a mixed bed polishes to under 0.1 µS/cm."]}]},
+  {"id": "pit", "text": ["Start the neutralisation batch at the pit (", {"link": ["00GNR10BB001"], "to": {"kks": "00GNR10BB001"}}, ")."], "at": ["00GNR10BB001", "00GNR10CQ001"], "go": "walk", "do": [{"kks": "00GNR10BB001", "do": "neutralise"}], "done": "nr_on", "why": [{"p": ["The regenerants' excess reaches the pit as acid: the batch doses caustic to pH 6.5–8.5 before the discharge."]}]}
+ ]
+}
