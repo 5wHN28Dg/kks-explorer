@@ -1,0 +1,15 @@
+{
+ "format": "walkdown-plant-procedure",
+ "version": 1,
+ "id": "ro_stop_flush",
+ "title": "Water treatment plant: stop an RO train and flush it",
+ "kind": "procedure",
+ "scenario": "cold_iron",
+ "intro": [
+  {"p": ["Stop RO train A as for a planned outage, with its flush."]}
+ ],
+ "steps": [
+  {"id": "stop", "text": ["Stop RO train A (", {"link": ["00GCB21AT001"], "to": {"kks": "00GCB21AT001"}}, "): the high-pressure pump stops and the train is flushed with permeate for 30 minutes."], "at": ["00GCB21AT001"], "go": "walk", "do": [{"kks": "00GCB21AT001", "do": "stop"}], "done": "ro_a_stopped", "why": [{"p": ["Concentrate left standing in the vessels would scale the membranes: the flush pushes it out with water without antiscalant until the concentrate is as clean as the feed."]}]},
+  {"id": "mb", "text": ["Stop mixed bed feed pump A (", {"link": ["00GCK10AP001"], "to": {"kks": "00GCK10AP001"}}, "): no permeate comes to the degassed water tank (", {"link": ["00GCK10BB001"], "to": {"kks": "00GCK10BB001"}}, ") now."], "at": ["00GCK10AP001", "00GCK10BB001"], "go": "walk", "do": [{"kks": "00GCK10AP001", "do": "stop"}]}
+ ]
+}

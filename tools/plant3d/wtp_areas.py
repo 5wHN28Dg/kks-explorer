@@ -412,7 +412,7 @@ def degassing_and_demin():
                       90, {'flow_m3h': 40, 'head_m': 60, 'motor_kw': 15, 'length': 2.5}, 'motor_side'))
         pipes.append(pipe(f'00GCL10BR01{n}', f'Demineralised water tank {L} to transfer pump {L}', 'demin_water', 100,
                           nz(f'00GCL10BB00{n}', 'outlet'), [], nz(f'00GHC10AP00{n}', 'suction')))
-    pipes.append(pipe('00GHC10BR001', 'Demineralised water transfer to the plant\'s demineralised water tank',
+    pipes.append(pipe('00GHC10BR001', 'Demineralised water transfer to the plant',
                       'demin_water', 100, nz('00GHC10AP001', 'discharge'),
                       [[274.125, 66, 6.5], [274.125, 41.5, 6.5], [133, 41.5, 6.5], [133, 4, 6.5], [125, 4, 6.5],
                        [125, 4, 9]], nz('00GHC10BB001', 'inlet'), arrows=20,

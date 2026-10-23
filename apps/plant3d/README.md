@@ -118,7 +118,8 @@ The plant runs as soon as the app starts, in the `cold_iron` scenario, at 1×. T
 steps every 0.1 s of plant time whatever the frame rate. Fast-forward is offered while the engine allows it (no
 unacknowledged alarm, no active priority 1 alarm, no machine in a step to watch) and stops by itself when that
 changes, or when a procedure step is done. It is capped so that the model takes at most a quarter of one core,
-from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.4 ms a step).
+from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.4 ms a step) before the water
+treatment plant's model, about 10× with it (W2: about 2.5 ms a step, apps/plant3d/sim/README.md).
 
 - **Cards:** the code with its meaning from the plant's key table, where it is (and "Go there"), its state and
   values, its alarms and its operations. An operation is offered where the content's `where` says: within 6 m of the
@@ -126,7 +127,10 @@ from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.
   a refused operation says why (a failed permissive, the sequence's state, a trip whose cause is still there, a
   value out of range). A 0–1 command is typed in per cent.
 - **Control room screens** (`ui/mimic.gd`, `ui/screens_model.gd`, `ui/trends.gd`; docs/PLANT3D.md §7.11): the
-  Control room button (H, gamepad X) and the operator desks open them, in the control room only. An overview of the
+  Control room button (H, gamepad X) and the operator desks open them, at a desk only: the main control room's (the
+  train's screens and the water treatment plant's overview) or the water treatment plant's own (its screens), each
+  showing the screens screens.json gives its desk (PLANT3D §14 `desks`); an operation from the screens is offered
+  only at a desk that shows its code, and its card says which desk does. An overview of the
   train (key values with their trends, a tile per screen with its drives and alarms) and a screen per system, made
   from the model and `screens.json`: drives, valves, breakers and sequences with their state, values with their
   units, what the next operation needs, alarms by priority (on the item, the tab and the banner), trends. Grey,

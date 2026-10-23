@@ -58,7 +58,9 @@
  "ext": [
   "ambient_t",
   "ambient_wb",
-  "grid_frequency"
+  "grid_frequency",
+  "river_ntu",
+  "river_tds"
  ],
  "start": {"at": [-20, 0, 0], "yaw": 90}
 }

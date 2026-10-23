@@ -980,6 +980,13 @@ REJECTS2 = [
     ('over 128 works', 'limit', _set(WORK, [{'id': f'w{i}', 'kks': PUMP, 'title': 'W', 'discipline': 'mech',
                                               'permit': 'general'} for i in range(129)])),
     ('a scenario setting a hold to text', 'bad_number', _set(['scenarios/s1.json', 'init', 'p_held'], 'x')),
+    # screens.json's desks (§14)
+    ('desks in a version 1 screens.json', 'unknown_key', _set(SCR + ['desks'], [PUMP])),
+    ("a screen's desks naming no operator desk", 'bad_ref', _all(_set(['screens.json', 'version'], 2),
+                                                                 _set(SCR + ['desks'], [PUMP]))),
+    ("the overview's desks empty", 'bad_length', _all(_set(['screens.json', 'version'], 2),
+                                                      _set(['screens.json', 'overview', 'desks'], []))),
+    ('screens.json of version 3', 'bad_version', _set(['screens.json', 'version'], 3)),
 ]
 
 
@@ -1318,6 +1325,108 @@ FORKS2 = [
 ]
 
 
+# The first train's ties to the water treatment plant (WATER-TREATMENT §8): the makeup pump stopped at base load (the
+# basin's makeup is gone at once), and the plant's demineralised water tank drained with no transfer (its low alarm in
+# the train's control room)
+FORKS2 += [
+    ('makeup_pump_stopped', 'end', [('op', '00GHB10AP001', 'stop', None, None), ('run', 60)],
+     {'done': [['00GHB10AP001', 'stop']], 'end': {'ct_mk_flow': [0, 0], 'ct_net': [-100000, -1]}}),
+    ('demin_tank_drained', 'end', [('op', '00GHC10AP001', 'stop', None, None), ('fault', 'dm_drain'), ('run', 2400)],
+     {'alarms': ['dm_low'], 'end': {'dm_lvl': [0, 30], 'tr_q': [0, 0]}}),
+]
+
+# Forks from the water treatment plant's start from cold (wtp_start), one for each of its trips and interlocks and for
+# the refusals the procedure's order avoids (WATER-TREATMENT §5–§7)
+RO_B_ON = [('op', '00GCB22AT001', 'start', None, None), ('until', 'ro_b_is3', 1200)]
+WTP_FORKS = [
+    ('rw_a_overload', 'end', [('fault', 'rw_a_motor'), ('run', 10)],
+     {'first_out': {'rw': 'rw_a_trip_ol'}, 'alarms': ['rw_a_tripped']}),
+    ('rw_b_overload', 'end', [('fault', 'rw_b_motor'), ('run', 10)],
+     {'first_out': {'rw': 'rw_b_trip_ol'}, 'alarms': ['rw_b_tripped']}),
+    ('rw_c_overload', 'end', [('op', '00GAF10AP003', 'start', None, None), ('run', 10), ('fault', 'rw_c_motor'),
+                              ('run', 10)],
+     {'done': [['00GAF10AP003', 'start']], 'first_out': {'rw': 'rw_c_trip_ol'}, 'alarms': ['rw_c_tripped']}),
+    ('intake_low_low', 'end', [('op', '00GAF10AP003', 'start', None, None), ('run', 10), ('fault', 'screen_clog'),
+                               ('run', 300)],
+     {'first_out': {'rw': 'rw_a_trip_ll'}, 'tripped': ['rw_b_trip_ll', 'rw_c_trip_ll'],
+      'alarms': ['rw_lvl_low', 'rw_lvl_ll'], 'end': {'rw_flow': [0, 0]}}),
+    ('intake_low_start_refused', 'end', [('fault', 'screen_clog'), ('until', 'rw_l', 300),
+                                         ('op', '00GAF10AP003', 'start', None, None), ('run', 1)],
+     {'refused': [['00GAF10AP003', 'start', ['rw_lvl_ok']]]}),
+    ('ro_a_suction', 'end', [('fault', 'cart_a_clog'), ('run', 700)],
+     {'first_out': {'ro_a': 'ro_a_trip_suct'}, 'alarms': ['cf_a_dp_h', 'ro_a_suct_ll'],
+      'machines': {'ro_a': 'stopped'}}),
+    ('ro_a_chlorine', 'end', [('fault', 'sbs_pump'), ('run', 120)],
+     {'first_out': {'ro_a': 'ro_a_trip_orp'}, 'alarms': ['ro_a_orp_h', 'ro_a_orp_hh'], 'machines': {'ro_a': 'stopped'}}),
+    ('ro_a_pressure', 'end', [('fault', 'ro_a_conc_stuck'), ('run', 60)],
+     {'first_out': {'ro_a': 'ro_a_trip_p'}, 'alarms': ['ro_a_p_h', 'ro_a_p_hh']}),
+    ('ro_a_restart_refused', 'end', [('fault', 'ro_a_conc_stuck'), ('run', 60),
+                                     ('op', '00GCB21AT001', 'start', None, None), ('run', 1)],
+     {'refused': [['00GCB21AT001', 'start', ['ro_a_no_trip']]]}),
+    ('ro_a_permeate_bad', 'end', [('fault', 'ro_a_oring'), ('run', 120), ('repair', 'ro_a_oring'), ('run', 120)],
+     {'interlocks': ['ro_a_to_drain', 'ro_a_to_service'], 'alarms': ['ro_a_cond_h'], 'repaired': ['ro_a_oring'],
+      'end': {'ro_a_bad': [0, 0]}}),
+    ('ro_b_suction', 'end', RO_B_ON + [('fault', 'cart_b_clog'), ('run', 700)],
+     {'done': [['00GCB22AT001', 'start']], 'first_out': {'ro_b': 'ro_b_trip_suct'}, 'alarms': ['cf_b_dp_h']}),
+    ('ro_b_chlorine', 'end', RO_B_ON + [('fault', 'sbs_pump'), ('run', 120)],
+     {'first_out': {'ro_a': 'ro_a_trip_orp', 'ro_b': 'ro_b_trip_orp'}, 'alarms': ['ro_b_orp_hh']}),
+    ('ro_b_pressure', 'end', RO_B_ON + [('fault', 'ro_b_conc_stuck'), ('run', 60)],
+     {'first_out': {'ro_b': 'ro_b_trip_p'}, 'alarms': ['ro_b_p_hh']}),
+    ('ro_b_permeate_bad', 'end', RO_B_ON + [('fault', 'ro_b_oring'), ('run', 120), ('repair', 'ro_b_oring'),
+                                            ('run', 120)],
+     {'interlocks': ['ro_b_to_drain', 'ro_b_to_service'], 'alarms': ['ro_b_cond_h']}),
+    ('ro_start_without_chemicals', 'service', [('op', '00GCB21AT001', 'start', None, None), ('run', 1)],
+     {'refused': [['00GCB21AT001', 'start', ['sbs_on', 'as_on']]]}),
+    ('ro_start_without_feed', 'makeup', [('op', '00GCB21AT001', 'start', None, None), ('run', 1)],
+     {'refused': [['00GCB21AT001', 'start', ['ro_a_suct_ok', 'sbs_on', 'as_on']]]}),
+    ('mb_feed_low_low', 'end', [('op', '00GCK10AP002', 'start', None, None), ('op', '00GCB21AT001', 'stop', None, None),
+                                ('run', 1500)],
+     {'first_out': {'mb_feed': 'mf_a_trip_ll'}, 'tripped': ['mf_b_trip_ll']}),
+    ('mb_a_exhausted', 'end', [('fault', 'mb_a_early'), ('run', 600), ('op', '00GCF12AT001', 'in_service', None, None),
+                               ('op', '00GCK10AP002', 'start', None, None), ('run', 30)],
+     {'interlocks': ['mb_a_exhausted'], 'alarms': ['mb_a_cond_h', 'mb_a_si_h'], 'machines': {'mb_a': 'recirc'},
+      'done': [['00GCF12AT001', 'in_service'], ['00GCK10AP002', 'start']]}),
+    ('mb_a_exhausted_refused', 'end', [('fault', 'mb_a_early'), ('run', 600),
+                                       ('op', '00GCF11AT001', 'in_service', None, None), ('run', 1)],
+     {'refused': [['00GCF11AT001', 'in_service', ['mb_a_good']]]}),
+    ('mb_b_exhausted', 'end', [('op', '00GCF12AT001', 'in_service', None, None),
+                               ('op', '00GCK10AP002', 'start', None, None), ('run', 30), ('fault', 'mb_b_early'),
+                               ('run', 900)],
+     {'interlocks': ['mb_b_exhausted'], 'machines': {'mb_b': 'recirc'}}),
+    ('tr_a_overload', 'end', [('fault', 'tr_a_motor'), ('run', 10)],
+     {'first_out': {'transfer': 'tr_a_trip_ol'}, 'alarms': ['tr_a_tripped']}),
+    ('tr_b_overload', 'end', [('op', '00GHC10AP002', 'start', None, None), ('run', 10), ('fault', 'tr_b_motor'),
+                              ('run', 10)],
+     {'first_out': {'transfer': 'tr_b_trip_ol'}, 'alarms': ['tr_b_tripped']}),
+    ('demin_tank_low_low', 'end', [('op', '00GHC10AP002', 'start', None, None), ('fault', 'dt_drain'), ('run', 300)],
+     {'first_out': {'transfer': 'tr_a_trip_ll'}, 'tripped': ['tr_b_trip_ll'], 'alarms': ['dt_a_low', 'dt_a_ll'],
+      'end': {'tr_q': [0, 0.001]}}),
+    ('backwash_one_at_a_time', 'end', [('op', '00GBB11AT001', 'backwash', None, None), ('run', 1),
+                                       ('op', '00GBB12AT001', 'backwash', None, None), ('run', 1)],
+     {'done': [['00GBB11AT001', 'backwash']], 'refused': [['00GBB12AT001', 'backwash', ['bw_free']]]}),
+    # two backwashes commanded in one step both pass the permissive (it reads the previous step): filter 1 goes on,
+    # filter 2 goes back to service
+    ('backwash_two_in_one_step', 'end', [('op', '00GBB11AT001', 'backwash', None, None),
+                                         ('op', '00GBB12AT001', 'backwash', None, None), ('run', 30)],
+     {'done': [['00GBB11AT001', 'backwash'], ['00GBB12AT001', 'backwash']],
+      'machines': {'filter1': 'drain', 'filter2': 'service'}, 'end': {'bw_n': [1, 1], 'filter2_state': [0, 0]}}),
+    # a filter on standby is not being backwashed: its head loss stays, another filter washes, and it washes itself
+    ('filter_standby_then_backwash', 'end', [('op', '00GBB12AT001', 'take_out', None, None), ('run', 60),
+                                             ('op', '00GBB11AT001', 'backwash', None, None), ('until', 'fl1_clean', 600),
+                                             ('op', '00GBB12AT001', 'backwash', None, None), ('until', 'fl2_clean', 600)],
+     {'done': [['00GBB12AT001', 'take_out'], ['00GBB11AT001', 'backwash'], ['00GBB12AT001', 'backwash']],
+      'machines': {'filter1': 'rinse', 'filter2': 'service'}, 'max': {'fl2_hl': [0.7, 0.9]}}),
+    ('filter_put_back', 'end', [('op', '00GBB12AT001', 'take_out', None, None), ('run', 60),
+                                ('op', '00GBB12AT001', 'put_in', None, None), ('run', 1)],
+     {'done': [['00GBB12AT001', 'put_in']], 'machines': {'filter2': 'service'}, 'end': {'fl2_hl': [0.7, 0.9]}}),
+    ('pit_ph_blocked', 'end', [('op', '00GNR10AP001', 'start', None, None), ('run', 10), ('fault', 'nr_ph_drift'),
+                               ('run', 200), ('op', '00GNR10AP001', 'start', None, None), ('run', 1)],
+     {'interlocks': ['nr_blocked'], 'alarms': ['nr_ph'], 'refused': [['00GNR10AP001', 'start', ['nr_ph_ok']]]}),
+    ('pit_emptied', 'end', [('op', '00GNR10AP001', 'start', None, None), ('run', 1200)],
+     {'interlocks': ['nr_empty'], 'end': {'nr_a_cmd': [0, 0]}}),
+]
+
+
 def build_train2(b):
     e, log, bases = run_cold_start(b)
     forks = []
@@ -1339,13 +1448,15 @@ def build2():
     F = mini2()
     return {'about': 'Walkdown Plant content format 2 vectors (docs/PLANT3D.md §19), made by '
                      'ref/make_plant3d_vectors.py from ref/plant3d.py. Numbers compare to 1e-6. Milestone P1: permits, '
-                     'isolations and the hold node (§15); staff (§16–§17) come with S1.',
+                     'isolations and the hold node (§15); W2: the water treatment plant started from cold by its '
+                     'procedure (`wtp`, as format 1\'s `train`); staff (§16–§17) come with S1.',
             'valid': [{'why': 'the synthetic plant as version 2', 'files': {k: json.dumps(v, ensure_ascii=False)
                                                                            for k, v in F.items()},
                        'counts': check(F).counts}],
             'reject': build_rejects2(),
             'steps': build_steps2(),
-            'train': build_train2(train_bundle())}
+            'train': build_train2(train_bundle()),
+            'wtp': build_train(train_bundle(), 'wtp_cold', 'wtp_start', WTP_FORKS)}
 
 
 def build():

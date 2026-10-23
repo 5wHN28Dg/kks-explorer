@@ -1,5 +1,6 @@
 extends SceneTree
-## Replays ref/vectors/plant3d-v1.json and plant3d-v2.json (format 2: permits, isolations, the hold node) through the
+## Replays ref/vectors/plant3d-v1.json and plant3d-v2.json (format 2: permits, isolations, the hold node; the water
+## treatment plant's start from cold, `wtp`) through the
 ## app's engine (apps/plant3d/sim) and compares it with the reference (ref/plant3d.py), headless:
 ##   godot --headless --script apps/plant3d/sim/tests/run_vectors.gd [-- options]
 ## Options:
@@ -70,6 +71,8 @@ func _init() -> void:
 		expected += 1 + V2["steps"].size()
 		if V2.has("train"):
 			expected += V2["train"]["forks"].size()
+		if V2.has("wtp"):          # the water treatment plant's start from cold (W2): its procedure, run and forks
+			expected += 2 + V2["wtp"]["forks"].size()
 	var valid_files: Dictionary = V["valid"][0]["files"]
 	# the starts run by their procedures: the cold start (`train`) and the hot restart (`hot`, where the file has it)
 	var starts := ["train", "hot"].filter(func(k): return V.has(k))
@@ -89,7 +92,7 @@ func _init() -> void:
 		_valid(V2["valid"][0])
 		for k in V2["steps"].size():
 			_steps(k, V2["steps"][k], V2["valid"][0]["files"], "v2/")
-	if parts.has("procedure") or parts.has("train") or V2.has("train"):
+	if parts.has("procedure") or parts.has("train") or V2.has("train") or V2.has("wtp"):
 		train_model = PlantModel.from_dir(opts.get("data", repo.path_join("data/plant3d")))
 		if train_model.error != "":
 			_result("train model", train_model.error)
@@ -102,6 +105,9 @@ func _init() -> void:
 			_train(V[st], train_model, st)
 	if V2.has("train"):
 		_train(V2["train"], train_model, "v2/train")
+	if V2.has("wtp"):
+		_procedure(V2["wtp"], train_model)
+		_train(V2["wtp"], train_model, "v2/wtp")
 	if opts.has("digests"):
 		var f := FileAccess.open(opts["digests"], FileAccess.WRITE)
 		f.store_string(JSON.stringify(digests, " ", false))

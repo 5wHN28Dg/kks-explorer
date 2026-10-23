@@ -128,6 +128,8 @@ def reference_runs(V, keep=None, V2=None):
             out[run] = r
         if 'train' in V2:
             train_runs(b, 'v2/train', V2['train'], out, k, 'v2/')
+        if 'wtp' in V2:
+            train_runs(b, 'v2/wtp', V2['wtp'], out, k, 'v2/')
     return out
 
 
@@ -235,7 +237,8 @@ class GdscriptEngine(unittest.TestCase):
         self.assertEqual(self.result.returncode, 0, out[-6000:] + self.result.stderr[-3000:])
         self.assertNotIn('FAIL', out)
         n = 1 + len(self.V['steps']) + len(self.V['links']) + 2 * (1 + 1) + len(self.V['train']['forks']) + \
-            len(self.V['hot']['forks']) + 1 + len(self.V2['steps']) + len(self.V2.get('train', {}).get('forks', []))
+            len(self.V['hot']['forks']) + 1 + len(self.V2['steps']) + len(self.V2.get('train', {}).get('forks', [])) + \
+            (2 + len(self.V2['wtp']['forks']) if 'wtp' in self.V2 else 0)
         self.assertIn(f'VECTORS passed={n} failed=0', out)
 
     def test_every_value_bit_for_bit(self):
