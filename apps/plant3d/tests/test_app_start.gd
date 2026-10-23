@@ -26,7 +26,9 @@ func run(tree: SceneTree) -> Array:
 		p.append("the walker starts in %s, not the control building" % main.area_at(main.player.global_position))
 	if main.tier == "":
 		p.append("no quality tier was chosen")
-	if main.lightmap_bicubic != Lighting.lightmap_bicubic(Quality.is_phone(), RenderingServer.get_video_adapter_name()):
+	# (RenderingServer has no getter for the filter: the start records what it set)
+	var want_filter := "bicubic" if Lighting.lightmap_bicubic(Quality.is_phone(), RenderingServer.get_video_adapter_name()) else "bilinear"
+	if main.lightmap_filter != want_filter:
 		p.append("the start sets the lightmap's filter for this device (app/lighting.gd lightmap_bicubic)")
 	main.toggle_map()
 	if not main.map.active or main.player.input_enabled:

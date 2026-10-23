@@ -19,9 +19,10 @@
 ##   probe=1                 (walk) frames.csv beside result.txt: where each frame's time goes (app/frame_probe.gd)
 ##   pipeline_save_mb=N      save the pipeline cache every N MB of new pipelines instead of the project's 0.25
 ##   walkdown-plant://…      a link (docs/PLANT3D.md §6): anywhere on the command line, as the desktop files pass it
-##   fx_off=fog,tonemap      those effects off (tonemap: linear output at half exposure), fx_on=ssao,sdfgi,ssil,volfog,glow,bicubic those on (measuring what each costs:
+##   fx_off=fog,tonemap      those effects off (tonemap: linear output at half exposure), fx_on=ssao,sdfgi,ssil,volfog,glow those on (measuring what each costs:
 ##                           app/lighting.gd); fx_off=shadow,cascades2,shadow40,shadowhard the sun's shadow's parts
-##                           (app/quality.gd), fx_off=lightmap the plant without its bake (the halls dark: their lamps
+##                           (app/quality.gd), fx_on=bicubic the lightmap's bicubic filter even where it is off (to see the
+##                           Adreno fault again: app/lighting.gd), fx_off=lightmap the plant without its bake (the halls dark: their lamps
 ##                           light through the bake only), fx_off=stencils the pipes' stencilled names hidden
 ##   On a phone walk.txt takes probe, fx_off and fx_on too (phone/frames.sh's WALK_EXTRA)
 extends Node3D
@@ -69,7 +70,7 @@ var sim_n := 0
 var sim_t := 0.0
 var screens_walk := false   # walk=screens: the control room's screens in turn, nobody walking
 var _screen_t := 0.0
-var lightmap_bicubic := true   # the lightmap's filter on this device (app/lighting.gd lightmap_bicubic)
+var lightmap_filter := ""   # "bicubic" or "bilinear": the lightmap's filter on this device, set before the plant loads (app/lighting.gd lightmap_bicubic)
 var probing := false     # the tier probe is running: no map, no tier changes, no walking until it ends
 
 func _ready() -> void:
@@ -235,8 +236,8 @@ func _environment() -> void:
 	add_child(we)
 	sun = Lighting.sun()
 	add_child(sun)
-	lightmap_bicubic = Lighting.apply_lightmap_filter(Quality.is_phone(), RenderingServer.get_video_adapter_name())
-	_say("lightmap filter: %s" % ("bicubic" if lightmap_bicubic else "bilinear"))
+	lightmap_filter = "bicubic" if Lighting.apply_lightmap_filter(Quality.is_phone(), RenderingServer.get_video_adapter_name()) else "bilinear"
+	_say("lightmap filter: %s" % lightmap_filter)
 
 ## Picks the tier (app/quality.gd) and applies it; a desktop without a measurement of its GPU measures it first.
 ## `to_plant` false: the plant is not loaded yet; its pieces and materials get the tier later (the early start).
