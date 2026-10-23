@@ -127,22 +127,34 @@ static func drawn_height(vp: Viewport) -> float:
 	var px := float(w.size.y) if w != null and w.size.y > 0 else vp.get_visible_rect().size.y
 	return px * vp.scaling_3d_scale
 
-static func apply_ranges(vp: Viewport) -> void:
+## `root`: only the pieces under it (an interior just loaded, app/interiors.gd), else every piece in the tree.
+static func apply_ranges(vp: Viewport, root: Node = null) -> void:
 	if not vp.has_meta("detail_min_px"):
 		return
 	var h := drawn_height(vp)
 	var f := (h * 0.5) / tan(deg_to_rad(WALK_FOV * 0.5))
 	var min_px: float = vp.get_meta("detail_min_px")
-	for n in vp.get_tree().get_nodes_in_group("detail"):
+	var nodes: Array = vp.get_tree().get_nodes_in_group("detail") if root == null else _in_group(root, "detail")
+	for n in nodes:
 		if n is GeometryInstance3D and n.has_meta("detail_size"):
 			var d: float = float(n.get_meta("detail_size")) * f / min_px
 			var margin := d * 0.1
 			n.visibility_range_end = d + float(n.get_meta("box_half", 0.0)) + margin
 			n.visibility_range_end_margin = margin
 			n.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
-	for n in vp.get_tree().get_nodes_in_group("legible"):
+	for n in (vp.get_tree().get_nodes_in_group("legible") if root == null else _in_group(root, "legible")):
 		if n is GeometryInstance3D and n.has_meta("legible_size"):
 			var d: float = float(n.get_meta("legible_size")) * f / LEGIBLE_PX
 			n.visibility_range_end = d
 			n.visibility_range_end_margin = d * 0.1
 			n.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+
+static func _in_group(root: Node, group: String) -> Array:
+	var out: Array = []
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n.is_in_group(group):
+			out.append(n)
+		stack.append_array(n.get_children())
+	return out

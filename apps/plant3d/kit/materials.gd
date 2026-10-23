@@ -188,6 +188,17 @@ static func specs() -> Dictionary:
 	m["sheeting"] = {"set": "CorrugatedSteel005", "tint": Color(0.85, 0.85, 0.85), "rough": 0.6, "metal": 0.1, "tile": 2.5, "vc": true, "sheet": 1.0}
 	m["plain"] = {"set": "", "tint": Color(1, 1, 1), "rough": 0.6, "metal": 0.0, "vc": true}
 	m["plain_metal"] = {"set": "", "tint": Color(1, 1, 1), "rough": 0.3, "metal": 0.9, "vc": true}
+	# the site's and the camp's matte things (kit/parts_site.gd): leaves, bark, soil, fabric, plaster, the shade
+	# sheets, their colours in the vertices
+	m["matte"] = {"set": "", "tint": Color(1, 1, 1), "rough": 0.9, "metal": 0.0, "vc": true}
+	# planting (leaves, bark, the soil of a tree's basin): as `matte`, but never baked (builder/kit_place.gd UNBAKED)
+	m["foliage"] = {"set": "", "tint": Color(1, 1, 1), "rough": 0.85, "metal": 0.0, "vc": true}
+	# a prefabricated building's walls (the camp's blocks, the gate house): sandwich panels 1.2 m wide, painted a light
+	# sand (neutral colours, the user's choice of 2026-10-21)
+	m["panel"] = {"set": "PaintedMetal004", "tint": Color(0.86, 0.83, 0.76), "rough": 0.9, "metal": 0.1, "tile": 2.0, "sheet": 1.2}
+	# the camp's and the offices' floors: matte vinyl tiles 0.5 m square (no gloss: the user's review of the camp,
+	# 2026-10-21)
+	m["floor_vinyl"] = {"set": "", "tint": Color(0.66, 0.64, 0.60), "rough": 0.75, "metal": 0.0, "tile_size": 0.5, "weather": "floor"}
 	return m
 
 static var _specs := {}
@@ -231,7 +242,8 @@ const STRUCTURE_MATS := {
 	"hall_floor": ["hall_floor", false], "liner": ["liner", false], "roof_steel": ["paint_frame", false],
 	"floor_tile": ["floor_tile", false], "floor_concrete": ["floor_concrete", false], "firewall": ["concrete", true],
 	"louvre": ["galvanised", false], "window": ["window_glass", false], "window_in": ["window_day", false],
-	"trim": ["paint_grey", false],
+	"trim": ["paint_grey", false], "wall_panel": ["panel", true], "floor_vinyl": ["floor_vinyl", false],
+	"road_asphalt": ["asphalt", false],
 }
 
 static func structure_spec(name: String) -> Dictionary:
@@ -246,7 +258,7 @@ static func structure_spec(name: String) -> Dictionary:
 		spec["joints"] = 6.0   # cast in 6 m bays
 	if name == "road":
 		spec["joints"] = 5.0
-	if name in ["wall_metal", "wall_concrete", "wall_brick", "fence", "firewall"]:
+	if name in ["wall_metal", "wall_concrete", "wall_brick", "wall_panel", "fence", "firewall"]:
 		spec["top_edge"] = true   # streaks hang from each panel's top (its top in the vertex colour: the builder's _panel)
 	return spec
 

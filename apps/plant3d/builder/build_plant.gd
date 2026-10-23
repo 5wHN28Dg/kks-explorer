@@ -44,14 +44,18 @@ func _nav(out: String, b) -> void:
 	var scenes: Array = [m.ground]
 	for a in m.areas:
 		scenes.append(a.scene)
+	# the interiors too (PLANT3D.md §18.5): the app loads them near their doors, but a way into a room is a way like
+	# any other
+	for a in m.get("interiors", []):
+		scenes.append(a.scene)
 	var st: Array = m.start.at
 	var r: Dictionary = await NavBake.bake(root, out, scenes, b.stairs, b.ladders, Vector3(st[0], st[1], st[2]))
 	if r.has("error"):
 		printerr("build: ", r.error)
 		quit(1)
 		return
-	print("build: navigation mesh: %d polygons (%d out of reach dropped), %d vertices, %d doors and %d stairs left out, %d bytes, %d ms" % [
-		r.polygons, r.dropped, r.vertices, r.doors, r.stairs, r.bytes, r.ms])
+	print("build: navigation mesh: %d polygons (%d out of reach dropped), %d vertices, %d doors and %d stairs left out, baked in %d tiles of %d (the rest without floor; %d polygons split on their seams), %d bytes, %d ms" % [
+		r.polygons, r.dropped, r.vertices, r.doors, r.stairs, r.tiles, r.grid, r.splits, r.bytes, r.ms])
 	quit(0)
 
 func _clear(dir: String) -> void:

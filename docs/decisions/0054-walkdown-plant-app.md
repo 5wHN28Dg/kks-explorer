@@ -97,7 +97,9 @@ same repository would stop every phone's Walkdown updates. [V] the code.
    Note 9 against it before choosing), BC/BPTC on the desktops. The Android export must carry only the mobile
    formats: to verify on the first export (the docs don't say; the bench's 81 MB carried both).
 6. **Size and on-demand content.** The first train ships as **one APK / one package**, budget ≤ 150 MB (measured and
-   written down per tier, the wiki's growth rule applies). Areas are already separate scenes in packs (`pack` in
+   written down per tier, the wiki's growth rule applies). Since 2026-10-23 (the user) the 150 MB is the APK's
+   alone; the desktop packages (MSIX, Flatpak) may grow to about 300 MB, still compressed wherever it costs nothing;
+   `tools/plant_release.py` refuses a package over its budget. Areas are already separate scenes in packs (`pack` in
    PLANT3D.md §3), so when the whole plant outgrows the budget, later areas become `.pck` files loaded with
    `load_resource_pack()`, downloaded like Walkdown's plant data and checked by SHA-256, without a format change.
    Google Play's limits don't bind (GitHub releases, 0022).
@@ -169,5 +171,5 @@ same repository would stop every phone's Walkdown updates. [V] the code.
 
 **When to revisit:** if the Note 9 misses the frame rule with this content (0041; the question goes back to the
 user); when the plant app needs the core (progress kept in the plant's log, signed content): then a GDExtension
-binding to `libkks` against the network-free decision above; when the package passes 150 MB; when Godot's security
+binding to `libkks` against the network-free decision above; when the APK passes 150 MB or a desktop package about 300 MB; when Godot's security
 response (0041) changes or the app is to load content we don't make; when Godot's shader baker works headless.

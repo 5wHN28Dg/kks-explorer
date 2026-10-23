@@ -36,6 +36,18 @@ func load_plant() -> String:
 	load_ms = Time.get_ticks_msec() - t0
 	return ""
 
+## Every interior at once, on this thread: the tests walk into all of them (the app loads each near its doors,
+## app/interiors.gd). Returns "" or what went wrong.
+func load_interiors() -> String:
+	for a in manifest.get("interiors", []):
+		var ps := load(a.scene) as PackedScene
+		if ps == null:
+			return "cannot load " + a.scene
+		var n := ps.instantiate()
+		add_child(n)
+		fill_cells(n)
+	return ""
+
 ## The parts kit's instanced cells (builder/kit_place.gd): the build saves their transforms as meta (Godot's headless
 ## renderer, which the build runs in, keeps no MultiMesh data); here they go to the MultiMeshes.
 static func fill_cells(area: Node) -> int:
