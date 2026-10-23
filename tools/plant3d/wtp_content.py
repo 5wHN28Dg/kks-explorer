@@ -1,37 +1,130 @@
-"""The water treatment plant's model, sounds and tour for milestone W1 (docs/plant3d/MILESTONES.md: walkable; its
-behaviour, screens, alarms and procedures are W2's). The WTP is in service whenever the first train's scenarios run
-(WATER-TREATMENT.md §8: "the WTP is in service in cold_iron"), so here its running machines turn and sound at a
-constant speed: one stream of each kind runs, the standby ones stand still. W2 replaces the constants with the
-model of WATER-TREATMENT.md §5."""
-from train_model import M
-from train_content import k, tour
-
-# what runs (the running half of each pair; WATER-TREATMENT §2: raw water 2 of 3, one RO and mixed bed stream)
-RUNNING_4POLE = ['00GAF10AP001', '00GAF10AP002', '00GHB10AP001', '00GHA10AP001', '00GCK10AP001', '00GHC10AP001']
-RUNNING_HP = ['00GCB21AP001']
-RUNNING_BLOWERS = ['00GCH10AN001']
-SPEED_4POLE = 24.7          # rev/s: a four-pole motor (1,482 rpm), as motor_small's tones assume
-SPEED_2POLE = 49.5          # rev/s: the RO high-pressure pumps' two-pole motors (2,970 rpm), ro_hp_pump's tones
+"""The water treatment plant's procedures and tour (docs/plant3d/WATER-TREATMENT.md §7): the tour of milestone W1, and
+W2's start-up from cold (`wtp_start`), a filter's backwash (`filter_backwash`) and an RO train's stop with its flush
+(`ro_stop_flush`). The model is wtp_model.py. CIP and the mixed beds' regeneration are W3's."""
+from train_content import k, tour, step, op
 
 
-def models():
-    """intake's and wtp's models, in plant.json's area order (wtp before intake)."""
-    w = M('wtp')
-    w.const('wtp_in_service', 1)
-    i = M('intake')
-    i.const('intake_in_service', 1)
-    for m, run in ((i, 'intake_in_service'), (w, 'wtp_in_service')):
-        for code in RUNNING_4POLE:
-            if (code.startswith('00GAF')) == (m is i):
-                m.b(kks=code, anim='shaft', of=run, scale=SPEED_4POLE)
-                m.b(kks=code, sound='motor_small', gain={'of': run, 'table': [[0, 0], [1, 0.8]]})
-    for code in RUNNING_HP:
-        w.b(kks=code, anim='shaft', of='wtp_in_service', scale=SPEED_2POLE)
-        w.b(kks=code, sound='ro_hp_pump', gain={'of': 'wtp_in_service', 'table': [[0, 0], [1, 1]]})
-    for code in RUNNING_BLOWERS:
-        w.b(kks=code, anim='shaft', of='wtp_in_service', scale=25)
-        w.b(kks=code, sound='motor_small', gain={'of': 'wtp_in_service', 'table': [[0, 0], [1, 0.6]]})
-    return [w, i]
+def wtp_start():
+    """From a stopped WTP (scenario wtp_cold): intake, chlorination, coagulant and polymer, clarifiers to a stable
+    state, filters, filtered water to the cooling tower, an RO train with its flush, the degasser, a mixed bed, and the
+    transfer to the plant's demineralised water tank (WATER-TREATMENT §7)."""
+    S = [
+        step('rw_a', ['Start raw water pump A (', k('00GAF10AP001'), ') at the intake.'], ['00GAF10AP001'],
+             [op('00GAF10AP001', 'start')], 'rw_a_run',
+             ['One pump first: the raw water main fills without a surge; the second follows once the flow is '
+              'steady.']),
+        step('hypo', ['Start hypochlorite dosing pump A (', k('00GBN30AP001'), ').'], ['00GBN30AP001'],
+             [op('00GBN30AP001', 'start')], 'hy_on',
+             ['1–2 mg/L of chlorine keeps algae and slime out of the clarifiers and filters. It must be taken out '
+              'again before the RO.']),
+        step('mixer', ['Start the rapid mixer (', k('00GBD10AM001'), ').'], ['00GBD10AM001'],
+             [op('00GBD10AM001', 'start')], 'mx_run',
+             ['The coagulant has to be spread through the water in seconds: an intense mix, then slow '
+              'flocculation.']),
+        step('coag', ['Set the coagulant dose to the season\'s jar-test value, 30 mg/L, at the coagulant skid (',
+                      k('00GBN10BB001'), '), and start coagulant pump A (', k('00GBN10AP001'), ').'],
+             ['00GBN10BB001', '00GBN10AP001'],
+             [op('00GBN10BB001', 'set', 30), op('00GBN10AP001', 'start')], 'cg_dosing',
+             ['Ferric chloride neutralises the charge on the clay particles so that they gather into flocs. Too '
+              'little and the clarifiers carry floc over; too much does no better and makes more sludge. A flood '
+              'needs more (up to 80 mg/L).'], ordered=True),
+        step('polymer', ['Start polymer dosing pump A (', k('00GBN20AP001'), ').'], ['00GBN20AP001'],
+             [op('00GBN20AP001', 'start')], 'pl_on',
+             ['A fraction of a milligram per litre binds the small flocs into large ones that settle fast.']),
+        step('rw_b', ['Start raw water pump B (', k('00GAF10AP002'), '): the plant\'s full flow, about 1,050 m³/h.'],
+             ['00GAF10AP002'], [op('00GAF10AP002', 'start')], 'wt_raw_ok'),
+        step('clarify', ['Watch the clarified water turbidity (', k('00GBD11CQ001'), ', ', k('00GBD12CQ001'),
+                         ') settle below 2 NTU.'], ['00GBD11CQ001', '00GBD12CQ001'], (), 'cl_stable',
+             ['The sludge blanket has to form before the clarifiers clear: the filters behind them would block '
+              'quickly on turbid water.'], go='walk'),
+        step('sludge', ['Start the sludge filter press (', k('00GBS20AT001'), '): the clarifiers\' sludge goes to the '
+                        'thickener (', k('00GBS10AT001'), ').'], ['00GBS20AT001', '00GBS10AT001'],
+             [op('00GBS20AT001', 'start')], 'fp_cmd',
+             ['Without it the thickener fills in a few hours of the clock and its sludge comes back over the weir.']),
+        step('filtered', ['The filters are in service. Wait for the filtered water tank (', k('00GBL10BB001'),
+                          ') to fill above 70 %.'], ['00GBL10BB001'], (), 'ft_70'),
+        step('makeup', ['Start cooling tower makeup pump A (', k('00GHB10AP001'), ').'], ['00GHB10AP001'],
+             [op('00GHB10AP001', 'start')], 'mk_avail',
+             ['The first train\'s cooling tower basin takes its makeup from here: without it the basin falls.']),
+        step('service', ['Start service water pump A (', k('00GHA10AP001'), '): it feeds the RO.'], ['00GHA10AP001'],
+             [op('00GHA10AP001', 'start')], 'sw_p_ok'),
+        step('chem', ['Start the RO\'s chemical dosing: sodium bisulphite (', k('00GCN10AP001'), '), antiscalant (',
+                      k('00GCN20AP001'), ') and acid (', k('00GCE10AP001'), ').'],
+             ['00GCN10AP001', '00GCN20AP001', '00GCE10AP001'],
+             [op('00GCN10AP001', 'start'), op('00GCN20AP001', 'start'), op('00GCE10AP001', 'start')], 'chem_on',
+             ['Bisulphite takes out the chlorine, which would destroy the polyamide membranes; antiscalant and acid '
+              'keep salts from scaling them as the concentrate thickens.']),
+        step('orp', ['Check the RO feed ORP (', k('00GCB21CQ002'), ') below 230 mV.'], ['00GCB21CQ002'], (),
+             'ro_a_orp_ok', ['Above 300 mV the RO trips: free chlorine reaches the membranes.']),
+        step('degasser', ['Start the degasser blower (', k('00GCH10AN001'), ').'], ['00GCH10AN001'],
+             [op('00GCH10AN001', 'start')], 'dg_cmd',
+             ['It strips the carbon dioxide the RO lets through, which would otherwise load the mixed beds.']),
+        step('ro_a', ['Start RO train A (', k('00GCB21AT001'), '): a 30-minute low-pressure flush, then the '
+                      'high-pressure pump (', k('00GCB21AP001'), ') ramps up with the permeate to drain for the first '
+                      'hour.'], ['00GCB21AT001', '00GCB21AP001'], [op('00GCB21AT001', 'start')], 'ro_a_is3',
+             ['The flush pushes air and the stagnant water out at 2–4 bar: a membrane must not see a pressure '
+              'shock. The first permeate is poor until the elements have flushed out ([FT] §5.2).']),
+        step('mb_a', ['Start mixed bed feed pump A (', k('00GCK10AP001'), ') and watch mixed bed A\'s outlet '
+                      'conductivity (', k('00GCF11CQ001'), ') below 0.1 µS/cm.'],
+             ['00GCK10AP001', '00GCF11CQ001'], [op('00GCK10AP001', 'start')], 'mb_a_making'),
+        step('transfer', ['Start demineralised water transfer pump A (', k('00GHC10AP001'), '): the plant\'s '
+                          'demineralised water tank (', k('00GHC10BB001'), ') fills.'],
+             ['00GHC10AP001', '00GHC10BB001'], [op('00GHC10AP001', 'start')], 'tr_flowing',
+             ['The hotwell\'s makeup and the HRSG\'s losses come from that tank.']),
+    ]
+    return {'format': 'walkdown-plant-procedure', 'version': 1, 'id': 'wtp_start',
+            'title': 'Water treatment plant: start-up from cold', 'kind': 'procedure', 'scenario': 'wtp_cold',
+            'intro': [{'p': ['Start the water treatment plant from standstill, from the river to the demineralised '
+                             'water the train is fed with. Its own control desk (', k('00CWD10'), ') works it; the '
+                             'main control room only sees its overview.']}],
+            'steps': S}
+
+
+def filter_backwash():
+    """A gravity filter's backwash by its sequence ([10SS] §4.3.1): drain down, air scour, air and water, rinse."""
+    S = [
+        step('check', ['Filter 1 (', k('00GBB11AT001'), ') has the highest head loss (', k('00GBB11CP001'),
+                       '): 1.4 m of the 2.2 m at which it is due.'], ['00GBB11CP001'], go='walk'),
+        step('tank', ['Check the filtered water tank (', k('00GBL10BB001'), ') is above 40 %: a backwash takes '
+                      'about 240 m³.'], ['00GBL10BB001'], (), 'ft_bw_ok'),
+        step('wash', ['Start the backwash of filter 1 (', k('00GBB11AT001'), ') and follow its steps: the backwash '
+                      'pump (', k('00GBR10AP001'), ') and the air scour blower (', k('00GBR10AN001'), ') run by '
+                      'themselves.'], ['00GBB11AT001', '00GBR10AP001', '00GBR10AN001'],
+             [op('00GBB11AT001', 'backwash')], 'fl1_clean',
+             ['Air first loosens the dirt from the grains; water at 45 m/h then lifts the bed and carries it to '
+              'waste. One filter at a time: the others take its flow meanwhile.']),
+        step('back', ['Filter 1 is back in service with a clean bed; check the filtered water tank recovers above '
+                      '70 %.'], ['00GBL10BB001'], (), 'ft_70'),
+    ]
+    return {'format': 'walkdown-plant-procedure', 'version': 1, 'id': 'filter_backwash',
+            'title': 'Water treatment plant: backwash a gravity filter', 'kind': 'procedure', 'scenario': 'cold_iron',
+            'intro': [{'p': ['Backwash a gravity filter before its head loss reaches the 2.2 m at which its water '
+                             'would break through.']}],
+            'steps': S}
+
+
+def ro_stop_flush():
+    """An RO train's normal stop: the high-pressure pump stops and the train is flushed with permeate until the
+    concentrate matches the feed ([FT] p. 109, p. 125)."""
+    S = [
+        step('stop', ['Stop RO train A (', k('00GCB21AT001'), '): the high-pressure pump stops and the train is '
+                      'flushed with permeate for 30 minutes.'], ['00GCB21AT001'],
+             [op('00GCB21AT001', 'stop')], 'ro_a_stopped',
+             ['Concentrate left standing in the vessels would scale the membranes: the flush pushes it out with '
+              'water without antiscalant until the concentrate is as clean as the feed.']),
+        step('mb', ['Stop mixed bed feed pump A (', k('00GCK10AP001'), '): no permeate comes to the degassed water '
+                    'tank (', k('00GCK10BB001'), ') now.'], ['00GCK10AP001', '00GCK10BB001'],
+             [op('00GCK10AP001', 'stop')]),
+    ]
+    return {'format': 'walkdown-plant-procedure', 'version': 1, 'id': 'ro_stop_flush',
+            'title': 'Water treatment plant: stop an RO train and flush it', 'kind': 'procedure',
+            'scenario': 'cold_iron',
+            'intro': [{'p': ['Stop RO train A as for a planned outage, with its flush.']}],
+            'steps': S}
+
+
+def procedures():
+    return [wtp_start(), filter_backwash(), ro_stop_flush(), wtp_tour()]
 
 
 def wtp_tour():

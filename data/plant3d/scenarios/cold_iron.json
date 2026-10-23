@@ -8,7 +8,9 @@
   "ambient_wb": 25,
   "grid_frequency": 50,
   "hp_mass": -100,
-  "lp_lvl": -50
+  "lp_lvl": -50,
+  "river_ntu": 20,
+  "river_tds": 1000
  },
  "latched": [
   "gt1_trip_lube",
@@ -63,6 +65,25 @@
   {"id": "cw_b_ls", "set": {"cw_b_ls_fault": 1}, "text": "CW pump B discharge valve: the start-position limit switch sticks made (the permissive passes with the valve open)", "kks": "30PAC10AA102", "repair": {"cw_b_ls_fault": 0}},
   {"id": "cw_c_ls", "set": {"cw_c_ls_fault": 1}, "text": "CW pump C discharge valve: the start-position limit switch sticks made (the permissive passes with the valve open)", "kks": "30PAC10AA103", "repair": {"cw_c_ls_fault": 0}},
   {"id": "byp_hyd", "set": {"byp_hyd_fault": 1}, "text": "Bypass valves' hydraulic unit fails: the bypass is blocked", "kks": "30MAN10AA001", "repair": {"byp_hyd_fault": 0}},
-  {"id": "st_trip_no_bypass", "set": {"st_vib_fault": 1, "byp_hyd_fault": 1}, "text": "Steam turbine bearing 3 damage with the bypass hydraulics failed: no steam sink", "repair": {"st_vib_fault": 0, "byp_hyd_fault": 0}}
+  {"id": "st_trip_no_bypass", "set": {"st_vib_fault": 1, "byp_hyd_fault": 1}, "text": "Steam turbine bearing 3 damage with the bypass hydraulics failed: no steam sink", "repair": {"st_vib_fault": 0, "byp_hyd_fault": 0}},
+  {"id": "rw_a_motor", "set": {"rw_a_fault": 1}, "text": "Raw water pump A motor overload", "kks": "00GAF10AP001", "repair": {"rw_a_fault": 0}},
+  {"id": "rw_b_motor", "set": {"rw_b_fault": 1}, "text": "Raw water pump B motor overload", "kks": "00GAF10AP002", "repair": {"rw_b_fault": 0}},
+  {"id": "rw_c_motor", "set": {"rw_c_fault": 1}, "text": "Raw water pump C motor overload", "kks": "00GAF10AP003", "repair": {"rw_c_fault": 0}},
+  {"id": "screen_clog", "set": {"rw_clog": 1}, "text": "Band screens blocked by debris (the intake level falls)", "kks": "00GAA10AT002", "repair": {"rw_clog": 0}},
+  {"id": "coag_pump", "set": {"cg_a_fault": 1}, "text": "Coagulant dosing pump A fails", "kks": "00GBN10AP001", "repair": {"cg_a_fault": 0}},
+  {"id": "sbs_pump", "set": {"sbs_a_fault": 1}, "text": "Sodium bisulphite dosing pump A fails: chlorine reaches the RO", "kks": "00GCN10AP001", "repair": {"sbs_a_fault": 0}},
+  {"id": "cart_a_clog", "set": {"cf_a_clog": 1}, "text": "Cartridge filter A clogging (the RO A suction pressure falls)", "kks": "00GCB11AT001", "repair": {"cf_a_clog": 0}},
+  {"id": "cart_b_clog", "set": {"cf_b_clog": 1}, "text": "Cartridge filter B clogging (the RO B suction pressure falls)", "kks": "00GCB12AT001", "repair": {"cf_b_clog": 0}},
+  {"id": "ro_a_conc_stuck", "set": {"ro_a_conc_fault": 1}, "text": "RO A concentrate valve stuck nearly closed", "kks": "00GCB21AA301", "repair": {"ro_a_conc_fault": 0}},
+  {"id": "ro_b_conc_stuck", "set": {"ro_b_conc_fault": 1}, "text": "RO B concentrate valve stuck nearly closed", "kks": "00GCB22AA301", "repair": {"ro_b_conc_fault": 0}},
+  {"id": "ro_a_oring", "set": {"ro_a_leak": 1}, "text": "RO A: a leaking interconnector O-ring (salt passes into the permeate)", "kks": "00GCB21AT001", "repair": {"ro_a_leak": 0}},
+  {"id": "ro_b_oring", "set": {"ro_b_leak": 1}, "text": "RO B: a leaking interconnector O-ring (salt passes into the permeate)", "kks": "00GCB22AT001", "repair": {"ro_b_leak": 0}},
+  {"id": "ro_a_fouling", "set": {"ro_a_fast": 1}, "text": "RO A fouls fast (a colloid upset upstream): cleaning due early", "kks": "00GCB21AT001", "repair": {"ro_a_fast": 0}},
+  {"id": "mb_a_early", "set": {"mb_a_fast": 1}, "text": "Mixed bed A exhausts early (silica breaks through first)", "kks": "00GCF11AT001", "repair": {"mb_a_fast": 0}},
+  {"id": "mb_b_early", "set": {"mb_b_fast": 1}, "text": "Mixed bed B exhausts early (silica breaks through first)", "kks": "00GCF12AT001", "repair": {"mb_b_fast": 0}},
+  {"id": "dt_drain", "set": {"dt_drain": 1}, "text": "A demineralised water tank drain valve left open", "kks": "00GCL10BB001", "repair": {"dt_drain": 0}},
+  {"id": "tr_a_motor", "set": {"tr_a_fault": 1}, "text": "Demineralised water transfer pump A motor overload", "kks": "00GHC10AP001", "repair": {"tr_a_fault": 0}},
+  {"id": "tr_b_motor", "set": {"tr_b_fault": 1}, "text": "Demineralised water transfer pump B motor overload", "kks": "00GHC10AP002", "repair": {"tr_b_fault": 0}},
+  {"id": "nr_ph_drift", "set": {"nr_drift": 1}, "text": "Neutralisation pit pH probe drifts low", "kks": "00GNR10CQ001", "repair": {"nr_drift": 0}}
  ]
 }
