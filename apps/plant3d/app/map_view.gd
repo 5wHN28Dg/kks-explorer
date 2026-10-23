@@ -35,6 +35,7 @@ func setup(p, plant) -> void:
 	mat.no_depth_test = true
 	marker.material_override = mat
 	marker.layers = 1 << (LAYER - 1)
+	marker.ignore_occlusion_culling = true   # over the trainee, under a hall's roof: drawn through it
 	marker.rotation.x = -PI * 0.5   # the cone's tip points the way the trainee faces
 	add_child(marker)
 	for a in plant.manifest.areas:
@@ -47,6 +48,7 @@ func setup(p, plant) -> void:
 		l.font_size = 48
 		l.outline_size = 10
 		l.layers = 1 << (LAYER - 1)
+		l.ignore_occlusion_culling = true
 		l.position = Vector3((b[0][0] + b[1][0]) * 0.5, 45.0, -(b[0][1] + b[1][1]) * 0.5)
 		add_child(l)
 	var r: Rect2 = plant.extent()

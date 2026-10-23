@@ -30,10 +30,31 @@ func run(tree: SceneTree) -> Array:
 		var v := ao.get_vertices()
 		var ix := ao.get_indices()
 		var xf: Transform3D = oi.global_transform
-		var lo := Vector3.INF
-		var hi := -Vector3.INF
+		var own: Array = []
+		var top := -INF
 		for k in range(0, ix.size(), 3):
-			tris.append([xf * v[ix[k]], xf * v[ix[k + 1]], xf * v[ix[k + 2]]])
+			own.append([xf * v[ix[k]], xf * v[ix[k + 1]], xf * v[ix[k + 2]]])
+			top = maxf(top, (xf * v[ix[k]]).y)
+		tris.append_array(own)
+		# it covers the roof and the walls: from under a piece of the roof, a line up meets it, and lines out across
+		# the floor meet it at least three ways of four (a door may stand in the fourth)
+		var under := Vector3.INF
+		for t in own:
+			if absf(t[0].y - top) < 1e-3 and absf(t[1].y - top) < 1e-3 and absf(t[2].y - top) < 1e-3:
+				under = (t[0] + t[1] + t[2]) / 3.0
+				break
+		if under == Vector3.INF:
+			p.append("building %s's occluder has its roof" % body.get_meta("building"))
+			continue
+		var mid := Vector3(under.x, top * 0.5, under.z)
+		if not _hits(own, Vector3(under.x, 0.5, under.z), under + Vector3.UP * 5.0):
+			p.append("building %s's occluder covers its roof" % body.get_meta("building"))
+		var ways := 0
+		for d in [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
+			if _hits(own, mid, mid + d * 400.0):
+				ways += 1
+		if ways < 3:
+			p.append("building %s's occluder has its walls (a line out met it %d ways of four)" % [body.get_meta("building"), ways])
 		# the occluder is the building's own: inside its walls' bounds
 		var aabb := AABB()
 		var first := true
@@ -63,4 +84,32 @@ func run(tree: SceneTree) -> Array:
 	if doors < 5:
 		p.append("the plant's doors are found (%d)" % doors)
 	plant.free()
+	# what is drawn through walls on purpose (no depth test: the pointer's box and arrow, the map's marker and labels)
+	# is never culled by the occluders
+	var main: Node = (load("res://app/main.tscn") as PackedScene).instantiate()
+	tree.root.add_child(main)
+	for i in 30:
+		await tree.process_frame
+		if main.first_frame_ms >= 0:
+			break
+	var through := 0
+	for g in main.find_children("*", "GeometryInstance3D", true, false):
+		var nd := false
+		if g is Label3D:
+			nd = (g as Label3D).no_depth_test
+		elif g.material_override is BaseMaterial3D:
+			nd = (g.material_override as BaseMaterial3D).no_depth_test
+		if nd:
+			through += 1
+			if not (g as GeometryInstance3D).ignore_occlusion_culling:
+				p.append("%s, drawn through walls, is not culled by the occluders" % main.get_path_to(g))
+	if through < 3:
+		p.append("the app's pointer and map marker are found (%d drawn through walls)" % through)
+	main.free()
 	return p
+
+static func _hits(tris: Array, a: Vector3, b: Vector3) -> bool:
+	for t in tris:
+		if Geometry3D.segment_intersects_triangle(a, b, t[0], t[1], t[2]) != null:
+			return true
+	return false

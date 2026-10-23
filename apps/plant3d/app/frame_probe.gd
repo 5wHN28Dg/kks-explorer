@@ -71,7 +71,7 @@ static func pipelines() -> Vector2i:
 
 
 ## What the plant's UI starts now and then on the main thread: sound files loaded and players started, the run's saves
-## (their capture is on the main thread), the walking directions' searches and drawings.
+## written, the walking directions' searches and drawings.
 func add_app_counters(u) -> void:
 	if u.sounds != null:
 		counters["sound_files"] = func(): return u.sounds._streams.size()
@@ -80,7 +80,7 @@ func add_app_counters(u) -> void:
 			for k in u.sounds.played:
 				n += int(u.sounds.played[k])
 			return n + u.sounds.loops_started
-	if u.autosave != null:
+	if u.autosave != null:   # (counted when a save's thread is joined: its capture was a frame or more before)
 		counters["save"] = func(): return u.autosave.saves
 	if u.route != null:
 		counters["route_find"] = func(): return u.route.stats.finds
@@ -112,6 +112,13 @@ func _proc_begin() -> void:
 func _proc_end() -> void:
 	var now := Time.get_ticks_usec()
 	var start := _first_phys if _phys_n > 0 else _proc0
+	# this frame's own work (its scripts have run) and where the walker stands now: written with this frame's line,
+	# which comes at the end of the next frame's scripts, once this frame has been drawn
+	var ev_now := _events()
+	var at_now := Vector3.ZERO   # plant coordinates: x east, y north, z up
+	if main != null and main.player != null:
+		var gp: Vector3 = main.player.global_position
+		at_now = Vector3(gp.x, -gp.z, gp.y)
 	# the previous frame, now that its draw has happened (without a display, as in the tests, nothing is drawn)
 	if _frame0 > 0:
 		var drawn := _pre >= _proc1 and _post >= _pre
@@ -121,10 +128,7 @@ func _proc_end() -> void:
 		if c != null:
 			steps = c.engine.step_no if c.engine != null else 0
 		var pipes := pipelines()
-		var at := Vector3.ZERO   # where the walker stood (plant coordinates: x east, y north, z up)
-		if main != null and main.player != null:
-			var gp: Vector3 = main.player.global_position
-			at = Vector3(gp.x, -gp.z, gp.y)
+		var at := _prev_at
 		rows.append("%d,%.3f,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%.1f,%.1f,%.1f,%s" % [
 			_frame0 / 1000, (start - _frame0) / 1000.0, _prev_phys_n, _prev_phys_ms, (_proc1 - _prev_proc0) / 1000.0,
 			(_pre - _proc1) / 1000.0 if drawn else 0.0, (_post - _pre) / 1000.0 if drawn else 0.0,
@@ -133,9 +137,11 @@ func _proc_end() -> void:
 			RenderingServer.viewport_get_measured_render_time_gpu(vp),
 			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
 			Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), steps - _steps0,
-			pipes.x - _pipes0.x, pipes.y - _pipes0.y, at.x, at.y, at.z, _events()])
+			pipes.x - _pipes0.x, pipes.y - _pipes0.y, at.x, at.y, at.z, _prev_ev])
 		_steps0 = steps
 		_pipes0 = pipes
+	_prev_ev = ev_now
+	_prev_at = at_now
 	_prev_phys_n = _phys_n
 	_prev_phys_ms = (_proc0 - _first_phys) / 1000.0 if _phys_n > 0 else 0.0
 	_prev_proc0 = _proc0
@@ -146,6 +152,8 @@ func _proc_end() -> void:
 var _prev_phys_n := 0
 var _prev_phys_ms := 0.0
 var _prev_proc0 := 0
+var _prev_ev := ""
+var _prev_at := Vector3.ZERO
 
 
 func write(dir: String) -> void:

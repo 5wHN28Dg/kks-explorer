@@ -18,7 +18,7 @@ func run(tree: SceneTree) -> Array:
 	ProjectSettings.set_setting(SAVE, was)
 	var probe = FrameProbe.new()
 	probe.main = main
-	var ticks := {"n": 0}
+	var ticks := {"n": 0, "at": 0}
 	probe.counters["test_counter"] = func(): return ticks.n
 	main.add_child(probe)
 	for k in ["sound_files", "sounds", "save", "route_find", "route_draw"]:
@@ -27,7 +27,8 @@ func run(tree: SceneTree) -> Array:
 	for i in 30:
 		await tree.process_frame
 		if i == 20:
-			ticks.n += 3
+			ticks.n += 3   # in frame 20, before its scripts run: on frame 20's own line
+			ticks["at"] = Time.get_ticks_usec() / 1000
 	var dir := OS.get_user_data_dir().path_join("test-frame-probe")
 	DirAccess.make_dir_recursive_absolute(dir)
 	probe.write(dir)
@@ -53,6 +54,11 @@ func run(tree: SceneTree) -> Array:
 				ev += 1
 				if not "test_counter+3" in e.split(" "):
 					p.append("a frame's events name what changed in it and by how much (%s)" % e)
+				# on the line of the frame it happened in: that frame began before it, the next one after
+				var t0 := int(rows[i].split(",")[0])
+				var t1 := int(rows[i + 1].split(",")[0]) if i + 1 < rows.size() else 1 << 40
+				if t0 > int(ticks.at) or t1 < int(ticks.at):
+					p.append("a frame's events are on its own line (at %d ms: on the line of %d ms, the next %d ms)" % [ticks.at, t0, t1])
 		if ev != 1:
 			p.append("a counter that changed once shows in one frame's events (%d)" % ev)
 	DirAccess.remove_absolute(dir.path_join("frames.csv"))
