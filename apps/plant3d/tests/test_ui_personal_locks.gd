@@ -75,6 +75,8 @@ func run(tree: SceneTree) -> Array:
 	if go == null or field == null:
 		main.free()
 		return p + ["no removal by authority on the form: %s" % t.left(600)]
+	if not (go as Button).disabled:
+		p.append("the removal by authority is offered with no reason written")
 	# the reason typed is kept when the form is rebuilt
 	(field as LineEdit).text = REASON
 	(field as LineEdit).text_changed.emit(REASON)

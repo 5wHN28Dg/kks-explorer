@@ -745,8 +745,8 @@ func pause(e, pi: int) -> void:
 			st["left"] -= m - st["last"]
 			st["last"] = m
 		st["resumed"] = true
-	for k in ["dest", "waiting", "wait_since", "target", "meet_since", "seat"]:
-		st.erase(k)
+	for k in ["dest", "waiting", "wait_since", "target", "meet_since", "seat", "seen"]:
+		st.erase(k)          # (seen: a resumed step is current again, §17.8)
 	unreserve(e, pi)
 	_enqueue(e, pi, cur)
 	e.sp_cur[pi] = null
@@ -1362,12 +1362,20 @@ func drop_kept(e, mine: Array) -> void:
 	for y in mine:
 		if y[1] == "machine" and y[5] != "next":
 			moved[y[2]] = true
-	if moved.is_empty():
+	# a point locked again (by anyone): an earlier unlock of it no longer holds
+	var relocked := []
+	for y in mine:
+		if y[1] == "lock" and y[5] == "done":
+			relocked.append([y[2], y[3]])
+	if moved.is_empty() and relocked.is_empty():
 		return
 	var out := []
 	for r in e.st_early:
-		if not (r[0] == "op" and r[5] != null and moved.has(r[5])):
-			out.append(r)
+		if r[0] == "op" and r[5] != null and moved.has(r[5]):
+			continue
+		if r[0] == "unlock" and relocked.has([r[2], r[3]]):
+			continue
+		out.append(r)
 	e.st_early = out
 
 

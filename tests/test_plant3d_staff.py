@@ -331,6 +331,30 @@ class StaffVectors(unittest.TestCase):
         self.assertEqual(len(sr.early), 3)
         sr.drop_kept([[5, 'machine', 'm', 'b', 'c', 'command']])
         self.assertEqual(sr.early, [['op', 1, 'K2', 'open', 'local', None], ['lock', 1, 'w', 0]])
+        # a point locked again: an earlier unlock of it no longer holds (adversarial review)
+        sr.early = [['unlock', 1, 'w', 0], ['unlock', 1, 'w', 1], ['lock', 1, 'w', 0]]
+        sr.drop_kept([[5, 'lock', 'w', 0, 'a_elec', 'refused', ['state']]])
+        self.assertEqual(len(sr.early), 3)
+        sr.drop_kept([[5, 'lock', 'w', 0, 'a_elec', 'done', []]])
+        self.assertEqual(sr.early, [['unlock', 1, 'w', 1], ['lock', 1, 'w', 0]])
+
+    def test_a_paused_step_is_looked_at_again(self):
+        """A step paused by a pre-emption becomes current again when it resumes: its first look is made again."""
+        b = P.check_files(files_of(self.V, self.runs[0]))
+        e = P.Engine(b, 's1')
+        e.role('a_fo1')
+        e.step()
+        sr = e.staff
+        p = sr.people[sr.trainee]
+        for _ in range(3000):
+            if p.cur is not None:
+                break
+            e.step()
+        self.assertIsNotNone(p.cur)
+        st = p.cur['st']
+        st['seen'] = True
+        sr.pause(p)
+        self.assertNotIn('seen', st)
 
     def test_personal_locks(self):
         """§15.1 (the user, 2026-10-23): only whoever placed a lock removes it; a supervisor's removal by authority

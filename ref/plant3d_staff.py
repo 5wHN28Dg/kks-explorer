@@ -1233,8 +1233,8 @@ class StaffRun:
     def pause(self, p):
         cur = p.cur
         st = cur['st']
-        for k in ('dest', 'waiting', 'wait_since', 'target', 'meet_since', 'seat'):
-            st.pop(k, None)
+        for k in ('dest', 'waiting', 'wait_since', 'target', 'meet_since', 'seat', 'seen'):
+            st.pop(k, None)     # (seen: a resumed step is current again, §17.8)
         self.unreserve(p)
         p.queue.append(cur)
         p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
@@ -1744,6 +1744,10 @@ class StaffRun:
         moved = {x[2] for x in mine if x[1] == 'machine' and x[5] != 'next'}
         if moved:
             self.early = [r for r in self.early if not (r[0] == 'op' and r[5] in moved)]
+        # a point locked again (by anyone): an earlier unlock of it no longer holds
+        relocked = [(x[2], x[3]) for x in mine if x[1] == 'lock' and x[5] == 'done']
+        if relocked:
+            self.early = [r for r in self.early if not (r[0] == 'unlock' and (r[2], r[3]) in relocked)]
 
     def keep(self, p, mine, took):
         """Their actions done in this step that no step of theirs took: kept for a step that becomes current later."""

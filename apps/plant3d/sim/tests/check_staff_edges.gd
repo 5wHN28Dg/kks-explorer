@@ -2,7 +2,8 @@ extends SceneTree
 ## Places held in cases the staff vectors don't reach, as tests/test_plant3d_staff.py checks them on the reference
 ## (§17.8): a `leave` naming no place keeps what the trainee holds; someone already standing at a place they are sent
 ## to holds it; the trainee's meeting seat is theirs again after a pause; a machine command kept for a later step is
-## dropped when its machine is entered by a command or an action, not by its own `next`. Prints "STAFF_EDGES bad=N" and each failure.
+## dropped when its machine is entered by a command or an action, not by its own `next`; a kept unlock is dropped
+## when its point is locked again; a paused step is looked at again when it resumes. Prints "STAFF_EDGES bad=N" and each failure.
 ##   godot --headless --script apps/plant3d/sim/tests/check_staff_edges.gd -- [VECTORS2]
 const PlantModel = preload("../plant_model.gd")
 const PlantEngine = preload("../engine.gd")
@@ -114,3 +115,24 @@ func _kept_command_dropped() -> void:
 	sm.drop_kept(e, [[5, "machine", "m", "b", "c", "command"]])
 	if e.st_early != [["op", 1, "K2", "open", "local", null], ["lock", 1, "w", 0]]:
 		_bad.append("a machine entered by a command kept the earlier command: %s" % [e.st_early])
+	e.st_early = [["unlock", 1, "w", 0], ["unlock", 1, "w", 1], ["lock", 1, "w", 0]]
+	sm.drop_kept(e, [[5, "lock", "w", 0, "a_elec", "refused", ["state"]]])
+	if e.st_early.size() != 3:
+		_bad.append("a refused lock dropped a kept unlock")
+	sm.drop_kept(e, [[5, "lock", "w", 0, "a_elec", "done", []]])
+	if e.st_early != [["unlock", 1, "w", 1], ["lock", 1, "w", 0]]:
+		_bad.append("a point locked again kept the earlier unlock: %s" % [e.st_early])
+	# a paused step is looked at again when it resumes
+	var tp: int = e.st_trainee
+	for i in 3000:
+		if e.sp_cur[tp] != null:
+			break
+		e.step()
+	if e.sp_cur[tp] == null:
+		_bad.append("the trainee was given no task")
+		return
+	var st: Dictionary = e.sp_cur[tp]["st"]
+	st["seen"] = true
+	sm.pause(e, tp)
+	if st.has("seen"):
+		_bad.append("a paused step keeps its first look")

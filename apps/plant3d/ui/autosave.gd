@@ -214,7 +214,9 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 	if d.has("st_early"):
 		for r in d["st_early"]:
 			if typeof(r) != TYPE_ARRAY or r.size() < 4 or not r[0] in ["op", "permit", "lock", "unlock"] \
-					or (r[0] == "op" and r.size() != 6) or (r[0] == "permit" and r.size() != 5) \
+					or (r[0] == "op" and (r.size() != 6 or typeof(r[2]) != TYPE_STRING or typeof(r[3]) != TYPE_STRING \
+					or typeof(r[4]) != TYPE_STRING)) \
+					or (r[0] == "permit" and (r.size() != 5 or typeof(r[2]) != TYPE_STRING or typeof(r[3]) != TYPE_STRING)) \
 					or (r[0] in ["lock", "unlock"] and (r.size() != 4 or typeof(r[3]) != TYPE_INT)):
 				return "a damaged record of the trainee's actions"
 	# permits and isolations (PLANT3D §15): states, holders and locks the engine indexes with, and that agree

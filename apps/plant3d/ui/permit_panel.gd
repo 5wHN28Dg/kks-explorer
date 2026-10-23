@@ -346,6 +346,7 @@ func _isolation(e, w: Dictionary, st: int) -> void:
 		var reach: bool = _reachable(pt["kks"])
 		var who: String = Permits.LOCKER.get(pt["kind"], "field operator")
 		if not locked:
+			_reasons.erase(str([w["id"], p]))      # a reason typed for a lock that has gone since
 			var b := W.button("Lock and tag (as the %s)" % who, send_lock.bind("lock", p))
 			b.name = "lock_%d" % p
 			b.disabled = not (can_lock and held and reach) or _sent_now(str([w["id"], "lock", p]))
@@ -395,11 +396,13 @@ func _removal(box: VBoxContainer, wid: String, p: int, can: bool) -> void:
 	reason.max_length = 200
 	reason.editable = can and not sent
 	reason.text = _reasons.get(str([wid, p]), "")
-	reason.text_changed.connect(func(t: String): _reasons[str([wid, p])] = t)
 	box.add_child(reason)
 	var go := W.button("Remove by authority with this reason", func(): send_remove(p, reason.text))
 	go.name = "remove_%d" % p
-	go.disabled = not can or sent
+	go.disabled = not can or sent or reason.text.strip_edges() == ""
+	reason.text_changed.connect(func(t: String):
+		_reasons[str([wid, p])] = t
+		go.disabled = not can or sent or t.strip_edges() == "")
 	go.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(go)
 	for i in REASONS.size():

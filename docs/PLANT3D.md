@@ -1446,7 +1446,8 @@ What S1 settles that §16–§17 left open (the engines and the vectors follow t
   waiting: the debrief lists it); each `done` event counts for one step only.
 - **Actions before their step** (the user, 2026-10-23). An op, permit action, lock or unlock of the trainee's that is
   `done` and that no step of theirs took in its step is *kept* (at most 32, the oldest dropped first). When an `op`,
-  `permit`, `lock` or `unlock` step becomes current (it is first looked at: once, not again while it waits), a kept
+  `permit`, `lock` or `unlock` step becomes current (it is first looked at, or again after its task was paused: not
+  again while it waits), a kept
   action that matches it counts for it if what the step asks for is still true then: the earliest such one, taken
   out of the kept ones, with the event `[n, "early", person, task, step, kind, made]` (the debrief says it was done
   out of order). Still true:
@@ -1455,7 +1456,8 @@ What S1 settles that §16–§17 left open (the engines and the vectors follow t
     where its machine entered a state other than by `next` (a command or an action) after it was made;
   - a permit action: the work's permit has the same number (§15.3) and is at the action's state or past it in the
     order 1 to 9 (`cancel`: still cancelled);
-  - a lock: the point is locked by them and the work holds its isolation; an unlock: the point is unlocked.
+  - a lock: the point is locked by them and the work holds its isolation; an unlock: the point is unlocked (a kept
+    unlock is dropped in step 9 of any step where its point was locked again).
   Values are read as steps 2–8 of this step left them. A `lock`/`unlock` step with `"all"` takes a kept action for
   each point still to do. Within a step, the current step's own matching inputs are taken first. A
   `say` step takes a `say` input of the same message and `to`; a `call` step a `call` input of the same role and
