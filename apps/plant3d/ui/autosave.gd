@@ -210,6 +210,13 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 			if typeof(q) != TYPE_ARRAY or q.is_empty() or not sizes.has(q[0]) or q.size() != sizes[q[0]] \
 					or (q[0] in ["fault", "repair"] and typeof(q[1]) != TYPE_STRING):
 				return "a damaged input"
+	# the trainee's actions kept for a later step (PLANT3D §17.8): records the staff step indexes blindly
+	if d.has("st_early"):
+		for r in d["st_early"]:
+			if typeof(r) != TYPE_ARRAY or r.size() < 4 or not r[0] in ["op", "permit", "lock", "unlock"] \
+					or (r[0] == "op" and r.size() != 6) or (r[0] == "permit" and r.size() != 5) \
+					or (r[0] in ["lock", "unlock"] and (r.size() != 4 or typeof(r[3]) != TYPE_INT)):
+				return "a damaged record of the trainee's actions"
 	# permits and isolations (PLANT3D §15): states, holders and locks the engine indexes with, and that agree
 	if d.has("pstate"):
 		for s in d["pstate"]:

@@ -47,8 +47,12 @@ def apply(e, item):
         e.permit(item[2], item[3], item[4])
     elif kind in ('lock', 'unlock'):
         getattr(e, kind)(item[2], item[3], item[4])
-    else:
+    elif kind == 'remove_lock':
+        e.remove_lock(item[2], item[3], item[4], item[5])
+    elif kind == 'fault':
         e.fault(item[2])
+    else:
+        raise ValueError(f'an input this harness does not replay: {item}')
 
 
 class Hasher:

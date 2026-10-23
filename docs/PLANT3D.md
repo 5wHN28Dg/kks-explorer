@@ -916,14 +916,16 @@ room, and an isolated transmitter shows as such on the operator's screen.
   `isolated` (a point locked in error), `returned` or `cancelled` and its work holds the isolation (`state`), the
   point is locked (`unlocked`), and the person unlocking is the one who locked it (`owner`: a lock is personal; the
   user, 2026-10-23). The reasons are listed in the order `authority`, `state`, then `locked`, `unlocked` or the
-  `safe` value, then `owner`, every one that applies.
+  `safe` value, then `owner`, every one that applies. Points may be locked and unlocked in any order. A lock or
+  unlock naming no work, a work without an isolation, or a point that is not a whole number (a JSON integer) from 0
+  to the number of points − 1 is `unknown` (§17.7).
 - **Lock removal by authority** (the input `remove_lock`, §17.6): a supervisor removes another person's lock, with
   the reason written down (the locker has gone home sick, say). It is an unlock made in the same place and order,
   with the authority `remove_lock` in place of `lock_<kind>` and no `owner` check, and its event names whose lock it
   was and the reason (§17.7); the debrief lists it. A reason that is not text of 1 to 200 characters makes it
-  `unknown`. Points may be locked and unlocked in any order. A lock or unlock
-  naming no work, a work without an isolation, or a point that is not a whole number (a JSON integer) from 0 to the
-  number of points − 1 is `unknown` (§17.7).
+  `unknown`, as are the cases that make an unlock `unknown`. NPCs make no removal by authority, and an NPC's
+  `unlock` of another person's lock is refused (`owner`) like anyone's: its step's `else`, or the task abandoned
+  (open: what NPCs do with a lock whose locker has gone off shift is for the user to decide).
 - **While a code is locked** (a point with that code is locked, in any isolation):
   - every op (§7.2) on that code is refused: the failed values are format 1's (the permissives that failed, then a
     machine's state, a trip's latch or cause, a `set` op's input), then `<isolation id>_locked` of each isolation
