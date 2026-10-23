@@ -285,15 +285,19 @@ The model is still `tools/plant3d/wtp_model.py`, the procedures `wtp_content.py`
   low-pH one at pH ≤ 2.5 and ≤ 40 °C ([FT] table 35).
 - **An RO train's cleaning** (its machine's states 5–8, command `clean` from `stopped`): stage 1, stage 2 (30 clock
   minutes each), a soak (30 min, shorter than the sources' hours: ours), a flush of 20 min to the pit; `stop_cleaning`
-  goes to the flush. One train at a time (two commanded in one step: B goes back to `stopped`). The solution above
-  40 °C trips the cleaning to its flush (`ro_x_trip_cip_t`, TAHH).
+  goes to the flush. One train at a time (two commanded in one step: B goes back to `stopped`). A high-pH solution
+  above 36.5 °C, or any above 40 °C, trips the cleaning to its flush (`ro_x_trip_cip_t`, TAHH; TAH at 36 °C). The flush
+  takes its solution from the tank (10 m³/h) to the pit; the tank drains the rest.
 - **Fouling in three parts** (ours): colloids and biofilm (60 % of what the feed brings), taken off by the high-pH
   solution; scale and oxides (30 %), by the low-pH; and 10 % that no cleaning takes. A cleaning takes its part off at
   2.5 a clock hour while the solution recirculates or soaks, less when the high-pH solution is cold (0.4 at 25 °C). A
   full CIP from 89 % normalised flow gives back about 98.7 %.
-- **Chlorine damage** (§7): seconds of feed above 250 mV at flow (`ro_x_clx`); past 60 the scenario's fault
-  `ro_x_cl_damage` (a fault with `when`) passes four times the salt. A trip on ORP alone does not reach it; a flush with
-  chlorinated feed after it does. Only the work `wo_ro_x_membranes` (permit, the train isolated) repairs it.
+- **Chlorine damage** (§7): seconds of feed water above 250 mV on the membranes at flow (`ro_x_clx`: flushing,
+  starting, in service; not the permeate flush of a stop); past 60 the scenario's fault `ro_x_cl_damage` (a fault with
+  `when`) passes four times the salt. A trip on ORP alone does not reach it; a reset and restart without the fix does,
+  by the start's flush with chlorinated feed: the RO's start reads the dosing pumps' run commands, as a control system
+  sees them, so a failed pump still lets it start (its no-flow alarm says so). Only the work `wo_ro_x_membranes`
+  (permit, the train isolated) repairs it.
 - **A mixed bed's regeneration** (its machine's states 3–13, command `regenerate` from `standby` with its feed pump
   stopped and the pit below 60 %): backwash and separation 25 clock minutes, settle 5, drain 10, a hold for the
   operator (`inject`, the acid and caustic tanks above 15 %), injection 40, displacement 60, drain 15, a hold (`air_mix`,
@@ -305,7 +309,8 @@ The model is still `tools/plant3d/wtp_model.py`, the procedures `wtp_content.py`
   before): the CIP's drain and flush, a regeneration's acid excess (−0.28 kmol each). The batch (machine `nr_batch`:
   dose → mix 10 min → check → discharge until low) doses caustic or acid by the pH (the dosing skids `00GNR20`,
   `00GNR30` beside the pit) to 6.5–8.5 with the agitator running.
-- **Faults added:** the antiscalant pump A, a clarifier upset (its rake stalled: 30 times the carry-over), filter 3's
+- **Faults added:** the antiscalant pump A, clarifier A's upset (its rake stalled: 30 times its carry-over; the filters
+  take the two clarifiers' water mixed, so taking A out of service clears it), filter 3's
   underdrain (20 times its turbidity: breakthrough), the degasser blower's motor (a trip; CO₂ to 40 mg/L, the new
   analyser `00GCH10CQ001`), RO B fouling fast, a resin leak in either mixed bed (its outlet strainer's differential
   pressure `00GCF1nCP001` rises, the bed exhausts three times as fast; repaired only by the work `wo_mb_x_resin`, a
@@ -313,11 +318,14 @@ The model is still `tools/plant3d/wtp_model.py`, the procedures `wtp_content.py`
   bisulphite and antiscalant pumps A have a no-flow alarm. Filtered water turbidity high (QAH 0.5 NTU) on `00GBB10`.
 - **A turbid river flocculates better** (`cl_fk`): at 500 NTU rightly dosed (80 mg/L) the clarifiers give about
   1.5 NTU; at the dry season's 30 mg/L about 25 NTU, and the filters block (`wtp_flood`). Unchanged at 20 NTU.
+- **The flood** of §7 is the scenario `wtp_flood`, not a trainer's fault (the river's turbidity is an `ext` value, which
+  only a scenario sets).
 - **Scenarios:** `wtp_normal` (cold_iron's train, the WTP as there with filter 1 due for its backwash, RO B off line
   fouled to 89 %, mixed bed A 82 % used: its silica alarm after about an hour); `wtp_flood` (the river at 500 NTU).
-- **Procedures:** `ro_cip` (RO B, 11 steps, about 54 model minutes) and `mb_regeneration` (bed A, 7 steps, about
+- **Procedures:** `ro_cip` (RO B, 11 steps, about 50 model minutes) and `mb_regeneration` (bed A, 7 steps, about
   44), both from `wtp_normal`, each ending with the pit's batch.
-- **Simplified:** the CIP tank keeps its warmth when refilled; the regenerants' water is not drawn from any tank; the
+- **Simplified:** the CIP tank keeps its warmth when refilled; a regeneration under way has no abort (the RO's cleaning
+  has `stop_cleaning`); the regenerants' water is not drawn from any tank; the
   pit's discharge does not carry its excess away (it is discharged only near neutral).
 
 ## 9. Not built (deliberately)

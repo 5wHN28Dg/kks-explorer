@@ -1354,8 +1354,9 @@ WTP_FORKS += [
     ('antiscalant_pump_fails', 'end', [('fault', 'as_pump'), ('run', 10)],
      {'alarms': ['as_a_noflow'], 'end': {'as_on': [0, 0]}}),
     ('coagulant_pump_no_flow', 'end', [('fault', 'coag_pump'), ('run', 10)], {'alarms': ['cg_a_noflow']}),
+    # clarifier A's rake stalls: its turbidity alarms, B's not; the filters take the two mixed
     ('clarifier_upset', 'end', [('fault', 'cl_upset'), ('run', 900)],
-     {'alarms': ['cla_ntu_h', 'clb_ntu_h', 'fl_ntu_h'], 'max': {'cl_ntu': [5, 20]}}),
+     {'alarms': ['cla_ntu_h'], 'no_alarms': ['clb_ntu_h'], 'max': {'cla_ntu': [5, 20], 'cl_ntu': [3, 10]}}),
     ('filter3_breakthrough', 'end', [('fault', 'fl3_underdrain'), ('run', 30), ('repair', 'fl3_underdrain'),
                                      ('run', 30)],
      {'alarms': ['fl_ntu_h'], 'repaired': ['fl3_underdrain'], 'max': {'sdi': [4, 5]}, 'end': {'fl_ntu': [0, 0.2]}}),
@@ -1364,11 +1365,12 @@ WTP_FORKS += [
     ('degasser_restart_refused', 'end', [('fault', 'dg_motor'), ('run', 10),
                                          ('op', '00GCH10AN001', 'start', None, None), ('run', 1)],
      {'refused': [['00GCH10AN001', 'start', ['dg_fan_ok']]]}),
-    # the bisulphite fails, the RO trips; flushed with the chlorinated feed the membranes are damaged (a fault of the
-    # scenario), which only the membranes' replacement under a permit repairs
+    # the bisulphite pump fails, the RO trips; reset and restarted without the fix (the failed pump still says
+    # running), its start's flush with chlorinated feed damages the membranes (a fault of the scenario), which only
+    # their replacement under a permit repairs
     ('ro_a_chlorine_damage', 'end',
      [('fault', 'sbs_pump'), ('run', 120), ('op', '00GCB21CQ002', 'reset', None, 'ro_a_trip_orp'), ('run', 1),
-      ('op', '00GCB21AT001', 'flush', None, None), ('run', 400)] + permit_run('wo_ro_a_membranes', [0]),
+      ('op', '00GCB21AT001', 'start', None, None), ('run', 400)] + permit_run('wo_ro_a_membranes', [0]),
      {'faults': ['sbs_pump', 'ro_a_cl_damage'], 'repaired': ['ro_a_cl_damage'], 'permits': {'wo_ro_a_membranes': 9},
       'max': {'ro_a_dmg_k': [4, 4]}, 'end': {'ro_a_dmg': [0, 0], 'iso_ro_a_locked': [0, 0]}}),
     # resin leaks from mixed bed A: its strainer blocks; the bed taken out and its internals repaired under a permit

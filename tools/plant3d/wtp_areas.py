@@ -344,9 +344,10 @@ def treatment_building():
                          {'range': [0, 60], 'unit': '°C'}),
                    child('00GCB30CQ001', 'CIP solution pH', 'local_panel', [-1.25, 0.3, 0],
                          {'width': 0.4, 'height': 0.6}, 90)]))
-    eqs.append(eq('00GCB30AP001', 'CIP recirculation pump', 'pump_horizontal', [311.5, 56.6, 0], 0,
+    # (south of the hall's walkway from the west door to the RO trains, y 56–58)
+    eqs.append(eq('00GCB30AP001', 'CIP recirculation pump', 'pump_horizontal', [313.8, 52.4, 0], 0,
                   {'flow_m3h': 50, 'head_m': 40, 'motor_kw': 11, 'length': 1.8}, 'motor_side'))
-    eqs.append(eq('00GCB30AT001', 'CIP cartridge filter', 'cartridge_housing', [313.7, 56.6, 0], 270,
+    eqs.append(eq('00GCB30AT001', 'CIP cartridge filter', 'cartridge_housing', [315.4, 52.4, 0], 270,
                   {'d': 0.5, 'height': 1.4}, 'side'))
     # the WTP's control room and laboratory (behind the partitions at the east end)
     eqs.append(eq('00CWD10', 'Water treatment plant control desk', 'operator_desk', [335, 68.8, 0], 180,

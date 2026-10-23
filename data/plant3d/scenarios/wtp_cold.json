@@ -46,6 +46,8 @@
   "fp_cmd": 0,
   "wt_hy": 0,
   "cl_ntu": 1,
+  "cla_ntu": 1,
+  "clb_ntu": 1,
   "ft_lvl": 60,
   "dg_lvl": 60,
   "dt_a_lvl": 60,

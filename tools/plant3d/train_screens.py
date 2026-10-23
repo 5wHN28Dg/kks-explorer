@@ -79,7 +79,7 @@ def wtp():
              g('dg', 'Degasser and degassed water tank', [3, 0], ['00GCH10', '00GCK10BB']),
              g('cip', 'Cleaning (CIP) skid', [3, 1], ['00GCB30'])],
          'lines': [ln('chem', 'cfa'), ln('cfa', 'roa', 'filtered_water'), ln('cfb', 'rob', 'filtered_water'),
-                   ln('roa', 'dg', 'permeate'), ln('rob', 'dg', 'permeate'), ln('cip', 'rob')],
+                   ln('roa', 'dg', 'permeate'), ln('rob', 'dg', 'permeate'), ln('cip', 'roa'), ln('cip', 'rob')],
          'trend': ['ro_a_p', 'ro_a_cond', 'ro_a_orp', 'ro_a_suct', 'dg_lvl']},
         {'id': 'wtp_demin', 'short': 'Demin', 'title': 'Mixed beds, demineralised water and transfer', 'desks': WTP,
          'groups': [
@@ -90,7 +90,7 @@ def wtp():
              g('transfer', 'Transfer pumps', [3, 0], ['00GHC10']),
              g('regen', 'Regeneration: acid and caustic tanks, resin mixing blower', [0, 1], ['00GCP'])],
          'lines': [ln('feed', 'mba', 'permeate'), ln('feed', 'mbb', 'permeate'), ln('mba', 'tanks', 'demin_water'),
-                   ln('regen', 'mbb'),
+                   ln('regen', 'mba'), ln('regen', 'mbb'),
                    ln('mbb', 'tanks', 'demin_water'), ln('tanks', 'transfer', 'demin_water')],
          'trend': ['mb_a_cond', 'mb_a_si', 'dt_a_lvl', 'tr_q']},
         {'id': 'wtp_waste', 'short': 'Wastes', 'title': 'Neutralisation pit and sludge', 'desks': WTP,

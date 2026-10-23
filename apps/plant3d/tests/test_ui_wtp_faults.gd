@@ -85,7 +85,7 @@ func run(tree: SceneTree) -> Array:
 	if not ui.screens_open():
 		main.free()
 		return p + ["the WTP's screens did not open at its desk"]
-	var want := {"wtp_ro": ["dg_tripped", "dg_co2_h"], "wtp_demin": ["mb_a_dp_h"], "wtp": ["cla_ntu_h", "clb_ntu_h"]}
+	var want := {"wtp_ro": ["dg_tripped", "dg_co2_h"], "wtp_demin": ["mb_a_dp_h"], "wtp": ["cla_ntu_h"]}
 	for sid in want:
 		var si: int = sm.screen_index(sid)
 		mim.show_screen(si)

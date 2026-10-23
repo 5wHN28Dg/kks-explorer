@@ -55,8 +55,8 @@ CIP_FILL = 24               # m³/h of permeate into the CIP tank, and its drain
 CIP_TIMES = [30, 30, 30]    # clock minutes: stage 1, stage 2, a short soak (cumulative in the sequence)
 CIP_FLUSH = 20              # clock minutes of the flush to the pit
 CIP_CLEAN = 2.5             # per clock hour: how fast a solution at its best takes its foulant off (ours)
-# W3: a mixed bed's regeneration ([MB] p. 2–3), clock minutes of each timed state (ours, about four hours with the
-# operator's two holds): backwash and separation, settle, drain; regenerants, displacement, drain; air mix, refill,
+# W3: a mixed bed's regeneration ([MB] p. 2–3), clock minutes of each timed state (ours, about 3.5 hours with the
+# operator's two holds; [MB]: ~4 h): backwash and separation, settle, drain; regenerants, displacement, drain; air mix, refill,
 # final rinse (at least 30 min, then until the outlet is good)
 MB_REGEN = [('backwash', 25), ('settle', 5), ('drain', 10), ('ready', None), ('inject', 40), ('displace', 60),
             ('drain2', 15), ('air_ready', None), ('air_mix', 10), ('refill', 15), ('rinse', 30)]
@@ -69,7 +69,7 @@ MB_WASTE = {'backwash': 20, 'drain': 10, 'inject': 8, 'displace': 9, 'drain2': 1
 MB_ACID = {'inject': -0.2, 'displace': -0.15}
 REGEN_USE = 21              # % of a regenerant tank a clock hour of injection (≈14 % a regeneration; ours)
 # the neutralisation pit's pH from its excess of base, kmol (negative: acid), in ~100 m³ of water with the river's
-# own buffer (ours: strong acid or base, 1 mol in 100 m³ is pH 3 or 11)
+# own buffer (ours: strong acid or base, 0.1 kmol in 100 m³ is pH 3 or 11)
 NR_PH = [[-2, 1.5], [-0.3, 2.5], [-0.05, 4.0], [-0.01, 5.5], [-0.002, 6.5], [0, 7.2], [0.002, 7.8], [0.01, 9.0],
          [0.05, 10.5], [0.3, 11.5], [2, 12.5]]
 
@@ -79,7 +79,7 @@ COLD_WTP = {'rw_a_cmd': 0, 'rw_b_cmd': 0, 'rw_a_spd': 0, 'rw_b_spd': 0, 'hy_a_cm
             'mk_a_p': 0, 'sbs_a_cmd': 0, 'as_a_cmd': 0, 'ac_a_cmd': 0, 'ro_a_park': 1, 'ro_a_hp': 0, 'ro_a_dump': 1,
             'ro_a_spd': 0, 'ro_a_p': 0, 'ro_a_feedv': 0, 'ro_a_concv': 0, 'ro_a_su': 0, 'cf_a_dp': 0,
             'ct_mk_sup': 0, 'dg_cmd': 0, 'dg_co2': 40,
-            'mf_a_cmd': 0, 'mf_a_spd': 0, 'tr_a_cmd': 0, 'tr_a_spd': 0, 'fp_cmd': 0, 'wt_hy': 0, 'cl_ntu': 1,
+            'mf_a_cmd': 0, 'mf_a_spd': 0, 'tr_a_cmd': 0, 'tr_a_spd': 0, 'fp_cmd': 0, 'wt_hy': 0, 'cl_ntu': 1, 'cla_ntu': 1, 'clb_ntu': 1,
             'ft_lvl': 60, 'dg_lvl': 60, 'dt_a_lvl': 60, 'dt_b_lvl': 60, 'cg_lvl': 60, 'dm_lvl': 60, 'dm_in': 0}
 
 # W3's scenarios (WATER-TREATMENT §7). wtp_normal: one RO and one mixed bed stream in service, the day's work waiting
@@ -302,22 +302,31 @@ def wtp():
     m.tab('cl_share', 'cl_n', [[1, 1], [2, 0.5]])
     m.prod('cl_load', ['wt_raw', 'cl_share'], 'm³/h')
     m.tab('cl_over', 'cl_load', [[600, 1], [1100, 4]])  # one clarifier with all the flow: upflow 4.6 m/h, past 2.4
-    m.tab('cl_upset_k', 'cl_upset', [[0, 1], [1, 30]])   # a stalled rake: the blanket rises over the weirs (W3)
     # a turbid river flocculates better (more collisions): at a flood's 500 NTU, rightly dosed, the clarifiers still
-    # give about 2 NTU (W3, wtp_flood; ours, the trend [IEPA] §5.3 describes)
+    # give about 1.5 NTU (W3, wtp_flood; ours, the trend [IEPA] §5.3 describes)
     m.tab('cl_fk', 'river_ntu', [[100, 1], [500, 0.15]])
-    m.prod('cl_sp0', ['river_ntu', 'cl_frac', 'pl_k', 'mx_k', 'cl_over', 'cl_upset_k', 'cl_fk'])
+    m.prod('cl_sp0', ['river_ntu', 'cl_frac', 'pl_k', 'mx_k', 'cl_over', 'cl_fk'])
     m.max('cl_sp1', ['cl_sp0', 0.3])
     # with no flow the water stands and settles: the clarified turbidity goes to 0.5 NTU, whatever the dosing
     m.NOT('wt_still', 'wt_flow')
     m.prod('cl_sp_run', ['cl_sp1', 'wt_flow'])
     m.prod('cl_sp_still', ['wt_still', 0.5])
     m.sum('cl_sp', ['cl_sp_run', 'cl_sp_still'])
-    m.lag('cl_ntu', 'cl_sp', 600, init=0.405263158, unit='NTU')       # about an hour through a clarifier (clock)
-    m.max('cla_ntu', ['cl_ntu'], 'NTU', '00GBD11CQ001')
-    m.max('clb_ntu', ['cl_ntu'], 'NTU', '00GBD12CQ001')
-    m.cmp('cl_h', 'cl_ntu', '>', 5)
-    m.cmp('cl_hc', 'cl_ntu', '<', 4)
+    # clarifier A's upset (W3: its rake stalled, the blanket over the weirs) is 30 times its carry-over; the filters
+    # take the two clarifiers' water mixed (the one in service alone, all of it)
+    m.tab('cl_upset_k', 'cl_upset', [[0, 1], [1, 30]])
+    m.prod('cla_in', ['cla_cmd', 'cl_upset_k'])
+    m.sum('cl_mix0', ['cla_in', 'clb_cmd'])
+    m.prod('cl_mix1', ['cl_mix0', 'cl_share'])
+    m.max('cl_mix_k', ['cl_mix1', 1])
+    m.prod('cl_sp_mix', ['cl_sp', 'cl_mix_k'])
+    m.lag('cl_ntu', 'cl_sp_mix', 600, init=0.405263158, unit='NTU')   # about an hour through a clarifier (clock)
+    m.prod('cla_sp', ['cl_sp', 'cl_upset_k'])
+    m.lag('cla_ntu', 'cla_sp', 600, init=0.405263158, unit='NTU', kks='00GBD11CQ001')
+    m.lag('clb_ntu', 'cl_sp', 600, init=0.405263158, unit='NTU', kks='00GBD12CQ001')
+    for x in 'ab':
+        m.cmp(f'cl{x}_h', f'cl{x}_ntu', '>', 5)
+        m.cmp(f'cl{x}_hc', f'cl{x}_ntu', '<', 4)
     m.cmp('cl_ok', 'cl_ntu', '<', 2)
     m.delay('wt_raw_long', 'wt_raw_ok', 300)
     m.AND('cl_stable', ['cl_ok', 'wt_raw_long'])
@@ -415,19 +424,25 @@ def wtp():
     m.NOT('sbs_a_ok', 'sbs_a_fault')
     m.AND('sbs_a_run', ['sbs_a_cmd', 'sbs_a_ok'])
     m.OR('sbs_run', ['sbs_a_run', 'sbs_b_cmd'])
-    m.AND('sbs_on', ['sbs_run', 'sw_on'])
+    m.AND('sbs_dose_on', ['sbs_run', 'sw_on'])
+    # the RO's start reads the dosing pumps' run commands, as a control system sees them, not their flow (a failed
+    # pump still says running: its no-flow alarm tells; W3, WATER-TREATMENT §7's restart without the fix)
+    m.OR('sbs_cmd_on', ['sbs_a_cmd', 'sbs_b_cmd'])
+    m.AND('sbs_on', ['sbs_cmd_on', 'sw_on'])
     m.NOT('as_a_ok', 'as_a_fault')
     m.AND('as_a_run', ['as_a_cmd', 'as_a_ok'])
     m.OR('as_run', ['as_a_run', 'as_b_cmd'])
-    m.AND('as_on', ['as_run', 'sw_on'])
+    m.AND('as_dose_on', ['as_run', 'sw_on'])
+    m.OR('as_cmd_on', ['as_a_cmd', 'as_b_cmd'])
+    m.AND('as_on', ['as_cmd_on', 'sw_on'])
     m.OR('ac_run', ['ac_a_cmd', 'ac_b_cmd'])
     m.AND('ac_on', ['ac_run', 'sw_on'])
     m.AND('chem_on', ['sbs_on', 'as_on'])
     m.lag('wt_hy', 'hy_dose', 600, init=1.5)            # the chlorine dosed at the intake, an hour later
-    m.tab('sbs_k', 'sbs_on', [[0, 1], [1, 0]])
+    m.tab('sbs_k', 'sbs_dose_on', [[0, 1], [1, 0]])
     m.prod('cl_free', ['wt_hy', 0.5, 'sbs_k'], 'mg/L')  # half used up on the way; SBS takes the rest out
     m.tab('orp_sp', 'cl_free', [[0, 200], [0.05, 240], [0.2, 330], [0.75, 420]])
-    m.sum('as_ac', ['as_on', 'ac_on'])
+    m.sum('as_ac', ['as_dose_on', 'ac_on'])
     m.tab('scale_k', 'as_ac', [[0, 5], [1, 2], [2, 1]])  # scaling without antiscalant and acid
     m.tab('sdi_k', 'sdi', [[3, 1], [5, 3], [6.5, 8]])
     m.prod('feed_cond', ['river_tds', 1.6], 'µS/cm')     # ~1.6 µS/cm per mg/L of salts
@@ -438,12 +453,12 @@ def wtp():
     m.tab('cip_acid', 'cip_state', [[3.5, 0], [4, 1], [4.5, 0]])
     m.tab('cip_water', 'cip_state', [[1.5, 0], [2, 1], [2.5, 0]])
     m.tab('cip_idle', 'cip_state', [[0, 1], [0.5, 0]])
+    m.tab('cip_filling', 'cip_state', [[0.5, 0], [1, 1], [1.5, 0]])
     m.cmp('cip_full', 'cip_lvl', '>=', 90)
     m.cmp('cip_empty', 'cip_lvl', '<', 0.5)
     m.cmp('cip_has', 'cip_lvl', '>=', 20)
     m.prod('cip_fill_q', ['cip_fill', CIP_FILL], 'm³/h')
     m.prod('cip_dr_q', ['cip_drain', CIP_FILL], 'm³/h')
-    m.diff('cip_net', 'cip_fill_q', 'cip_dr_q')
     # 0.1 % NaOH (0.025 kmol/m³), 0.2 % HCl (0.055 kmol/m³): what the solution takes to the pit
     m.tab('cip_conc', 'cip_chem', [[0, 0], [1, 0.025], [2, -0.055]])
     m.prod('cip_dr_chem', ['cip_dr_q', 'cip_conc'])
@@ -460,9 +475,13 @@ def wtp():
     m.cmp('cip_warm', 'cip_t', '>=', 30)
     m.cmp('cip_t_ok', 'cip_t', '<=', 35.5)      # high pH at most 35 °C ([FT] table 35)
     m.cmp('cip_t_aok', 'cip_t', '<=', 40)       # low pH at most 40 °C (the skid's trip)
-    m.cmp('cip_t_h', 'cip_t', '>', 37)
-    m.cmp('cip_t_hc', 'cip_t', '<', 36)
+    m.cmp('cip_t_h', 'cip_t', '>', 36)
+    m.cmp('cip_t_hc', 'cip_t', '<', 35.5)
     m.cmp('cip_t_hh', 'cip_t', '>', 40)
+    # the limit the cleaning trips at: 36.5 °C for a high-pH solution (35 °C, [FT] table 35), 40 °C for any
+    m.cmp('cip_t_alk_hh0', 'cip_t', '>', 36.5)
+    m.AND('cip_t_alk_hh', ['cip_t_alk_hh0', 'cip_alk'])
+    m.OR('cip_over', ['cip_t_hh', 'cip_t_alk_hh'])
     m.cmp('cip_ph_hi', 'cip_ph', '>=', 11.5)
     m.cmp('cip_ph_lo', 'cip_ph', '<=', 2.5)
     m.AND('cip_alk_ok', ['cip_alk', 'cip_ph_hi', 'cip_warm', 'cip_t_ok'])
@@ -500,6 +519,12 @@ def wtp():
         m.timer(f'{p}_tfl', f'{p}_isfl')
         m.cmp(f'{p}_fl_done', f'{p}_tfl', '>=', clock_s(CIP_FLUSH))
         m.prod(f'{p}_fl_q', [f'{p}_isfl', 20], 'm³/h')          # the flush to the pit, half of it solution
+        # a cleaning with each solution done (its flush ended), until the CIP tank is filled again: the procedure's
+        # step ends there, not while the train still stands stopped from before
+        for c, sol in (('alk', 'cip_alk'), ('acid', 'cip_acid')):
+            m.AND(f'{p}_{c}_end', [f'{p}_fl_done', sol])
+            m.latch(f'{p}_{c}_cl', f'{p}_{c}_end', 'cip_filling')
+            m.AND(f'{p}_{c}_cleaned', [f'{p}_{c}_cl', f'{p}_is0'])
         m.prod(f'{p}_fl_chem', [f'{p}_isfl', 'cip_conc', 10])
         m.ramp(f'{p}_spd', f'{p}_hp', 0.05, 0.2, init=1 if x == 'a' else 0, unit='pu')   # ramped slowly
         m.lag(f'{p}_fl', f'{p}_flush', 10)
@@ -522,7 +547,8 @@ def wtp():
         m.cmp(f'{p}_orp_ok', f'{p}_orp', '<', 230)
         # chlorine on the membranes (W3): seconds of feed above 250 mV at flow; past a minute the polyamide is
         # oxidised (a fault of the scenario, only new membranes repair it; WATER-TREATMENT §7)
-        m.prod(f'{p}_clx_in', [f'{p}_orp_h0', f'{p}_ff'])
+        m.tab(f'{p}_onfeed', st, [[0, 0], [1, 1], [3, 1], [4, 0]])     # flushing, starting, service: feed water
+        m.prod(f'{p}_clx_in', [f'{p}_orp_h0', f'{p}_ff', f'{p}_onfeed'])
         m.integ(f'{p}_clx', f'{p}_clx_in', 1, 0, 1000, 0, 's')
         m.cmp(f'{p}_cl_dmg_c', f'{p}_clx', '>', 60)
         m.tab(f'{p}_dmg_k', f'{p}_dmg', [[0, 1], [1, 4]])
@@ -579,11 +605,16 @@ def wtp():
         m.ramp(f'{p}_concv', f'{p}_conc_sp', 0.1, init=0.25 if x == 'a' else 0, unit='pu', kks=f'00GCB2{n}AA301')
         m.OR(f'{p}_tripped', [f'{p}_trip_suct_latched', f'{p}_trip_p_latched', f'{p}_trip_orp_latched',
                               f'{p}_trip_cip_t_latched'])
-        m.AND(f'{p}_cip_hot', [f'{p}_incirc', 'cip_t_hh'])
+        m.AND(f'{p}_cip_hot', [f'{p}_incirc', 'cip_over'])
         m.NOT(f'{p}_no_trip', f'{p}_tripped')
         m.cmp(f'{p}_stopped', st, '<', 0.5)
 
     # ---------------------------------------------------------------- degasser and degassed water tank (§3 #10)
+    # the tank's level: filled, drained, and the solution the flush sends to the pit (10 m³/h)
+    m.sum('cip_fl_n', ['ro_a_isfl', 'ro_b_isfl'])
+    m.prod('cip_fl_q', ['cip_fl_n', 10])
+    m.sum('cip_out', ['cip_dr_q', 'cip_fl_q'])
+    m.diff('cip_net', 'cip_fill_q', 'cip_out')
     m.OR('cip_busy', ['ro_a_incip', 'ro_b_incip'])     # the CIP skid serves one train at a time (W3)
     m.NOT('cip_free', 'cip_busy')
     m.OR('cip_pump', ['ro_a_incirc', 'ro_b_incirc'])
@@ -651,7 +682,8 @@ def wtp():
         m.sum(f'{p}_rin', [f'{p}_rate', f'{p}_regen_r'])
         m.tab(f'{p}_cond_sp', f'{p}_ex', [[0, 0.06], [0.9, 0.08], [1, 0.5], [1.2, 5]])
         m.lag(f'{p}_cond_lag', f'{p}_cond_sp', 60, init=0.07111111 if x == 'a' else 0.06, unit='µS/cm')
-        # the regenerants left in the bed until the final rinse washes them out (about 35 clock minutes to 0.1 µS/cm)
+        # the regenerants left in the bed until the final rinse washes them out (about 20 clock minutes to 0.1 µS/cm;
+        # the rinse lasts at least 30)
         m.prod(f'{p}_res_sp', [f'{p}_inchem', 100])
         m.lag(f'{p}_res', f'{p}_res_sp', 5, 25, 0, 'µS/cm')
         m.sum(f'{p}_cond', [f'{p}_cond_lag', f'{p}_res'], 'µS/cm', f'00GCF1{n}CQ001')
@@ -681,6 +713,7 @@ def wtp():
         m.NOT(f'mf_{x}_off', f'mf_{x}_cmd')
         m.cmp(f'mf_{x}_still', f'mf_{x}_spd', '<', 0.01)
         m.AND(f'mf_{x}_safe', [f'mf_{x}_off', f'mf_{x}_still'])
+        m.AND(f'{p}_taken', [f'mf_{x}_safe', f'{p}_sb'])          # out of service, ready to regenerate or isolate
     m.OR('mb_regen_any', ['mb_a_inregen', 'mb_b_inregen'])
     m.NOT('mb_regen_free', 'mb_regen_any')
     m.AND('mb_b_clash', ['mb_a_inregen', 'mb_b_inregen'])
@@ -763,7 +796,10 @@ def wtp():
     m.tab('nr_ismix', 'nr_batch_state', [[1.5, 0], [2, 1], [2.5, 0]])
     m.timer('nr_tm', 'nr_ismix')
     m.cmp('nr_mixed', 'nr_tm', '>=', clock_s(10))
-    m.AND('nr_mix_ok', ['nr_mixed', 'nr_ph_ok'])
+    m.cmp('nr_has', 'nr_lvl', '>=', 10)                 # as nr_lvl_ok (the pumps' start), computed here
+    m.AND('nr_mix_ok', ['nr_mixed', 'nr_ph_ok', 'nr_has'])
+    m.NOT('nr_lvl_lo', 'nr_has')
+    m.AND('nr_mix_dry', ['nr_mixed', 'nr_ph_ok', 'nr_lvl_lo'])
     m.AND('nr_mix_bad', ['nr_mixed', 'nr_ph_bad'])
     m.cmp('nr_room', 'nr_lvl', '<', 60)
     m.cmp('nr_low', 'nr_lvl', '<', 5)
@@ -883,7 +919,7 @@ def wtp():
         m.trip(f'{p}_trip_p', f'00GCB2{n}CP001', f'RO {L}: feed pressure high-high', f'{p}_p_hh', stop, 'PAHH', 2, p)
         m.trip(f'{p}_trip_orp', f'00GCB2{n}CQ002', f'RO {L}: feed ORP high-high (chlorine)', f'{p}_orp_hh', stop,
                'QAHH', 10, p)
-        m.trip(f'{p}_trip_cip_t', '00GCB30CT001', f'RO {L} cleaning: solution above 40 °C (the membranes\' limit)',
+        m.trip(f'{p}_trip_cip_t', '00GCB30CT001', f'RO {L} cleaning: solution over the membranes\' limit (high pH 36.5 °C, any 40 °C)',
                f'{p}_cip_hot', [{'machine': p, 'to': 'cip_flush'}], 'TAHH', 2, p)
         m.interlock(f'{p}_to_drain', f'{p}_cond_hd', [{'set': {f'{p}_bad': 1}}], f'00GCB2{n}CQ001',
                     f'RO {L} permeate conductivity high: permeate to drain')
@@ -902,7 +938,7 @@ def wtp():
                                     'drain': {'from': ['water', 'alkaline', 'acid'], 'to': 'draining'}},
                        'states': [{'id': 'empty', 'set': {'cip_fill': 0, 'cip_drain': 0, 'cip_chem': 0},
                                    'watch': False},
-                                  {'id': 'filling', 'set': {'cip_fill': 1}, 'next': [['cip_full', 'water']],
+                                  {'id': 'filling', 'set': {'cip_fill': 1}, 'next': [['cip_full', 'water'], ['dg_ll', 'water']],
                                    'say': 'Filling with RO permeate from the degassed water tank'},
                                   {'id': 'water', 'set': {'cip_fill': 0}, 'watch': False},
                                   {'id': 'alkaline', 'set': {'cip_chem': 1}, 'watch': False,
@@ -1001,7 +1037,7 @@ def wtp():
                                    'next': [['nr_ph_mid', 'mixing']],
                                    'say': 'Dosing acid or caustic to bring the pit to pH 6.5–8.5'},
                                   {'id': 'mixing', 'set': {'nr_auto': 0},
-                                   'next': [['nr_mix_bad', 'dosing'], ['nr_mix_ok', 'discharging']],
+                                   'next': [['nr_mix_bad', 'dosing'], ['nr_mix_ok', 'discharging'], ['nr_mix_dry', 'idle']],
                                    'say': 'Mixing, then checking the pH'},
                                   {'id': 'discharging', 'set': {'nr_a_cmd': 1},
                                    'next': [['nr_low', 'idle'], ['nr_ph_bad', 'dosing']],
@@ -1046,8 +1082,8 @@ def wtp():
     # ---------------------------------------------------------------- alarms (§6)
     m.alarm('cg_low', '00GBN10BB001', 'Coagulant day tank low', 'cg_l', 3, isa='LAL', clear='cg_lc')
     for x, code in (('a', '00GBD11CQ001'), ('b', '00GBD12CQ001')):
-        m.alarm(f'cl{x}_ntu_h', code, f'Clarifier {x.upper()}: clarified water turbidity high', 'cl_h', 2,
-                isa='QAH', clear='cl_hc')
+        m.alarm(f'cl{x}_ntu_h', code, f'Clarifier {x.upper()}: clarified water turbidity high', f'cl{x}_h', 2,
+                isa='QAH', clear=f'cl{x}_hc')
     for i in FILTERS:
         m.alarm(f'fl{i}_hl_h', f'00GBB1{i}CP001', f'Filter {i} head loss high: backwash due', f'fl{i}_hl_h', 3,
                 f'00GBB1{i}AT001', 'PDAH', f'fl{i}_hl_hc')

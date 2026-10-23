@@ -355,8 +355,8 @@ func open_screens_at_desk(screen_id := "") -> void:
 	if screen_id != "" and i < 0:
 		toast("No screen %s." % screen_id)
 		return
-	if at_desk() and screen_here(i):
-		open_screens(screen_id)
+	if at_desk() and (screen_id == "" or screen_here(i)):
+		open_screens(screen_id)            # "": the desk's own first screen
 		return
 	var ds: Array = screens.overview.get("desks", []) if i < 0 else screens.screens[i].desks
 	if ds.is_empty():

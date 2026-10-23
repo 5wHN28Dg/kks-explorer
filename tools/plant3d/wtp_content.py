@@ -127,11 +127,11 @@ def ro_stop_flush():
 def ro_cip():
     """RO B cleaned in place ([FT] §6.3, tables 35–37; [TSB] p. 2, p. 8–12): a high-pH cleaning, then a low-pH one,
     each recirculated through one stage at a time, soaked and flushed; the wastes neutralised in the pit."""
-    def clean(sid, what):
+    def clean(sid, what, c):
         return step(sid, [f'Clean RO train B (', k('00GCB22AT001'), f') with the {what} solution: the CIP pump (',
                           k('00GCB30AP001'), ') recirculates it through the first stage, then the second, the elements '
                           'soak, and permeate flushes the solution to the neutralisation pit.'],
-                    ['00GCB22AT001', '00GCB30AP001'], [op('00GCB22AT001', 'clean')], 'ro_b_stopped',
+                    ['00GCB22AT001', '00GCB30AP001'], [op('00GCB22AT001', 'clean')], f'ro_b_{c}_cleaned',
                     ['One stage at a time, at 6–10 m³/h a vessel and under 4 bar: the flow lifts the foulant off the '
                      'membranes without pressing it in. About two and a half hours of the clock.'])
     S = [
@@ -148,7 +148,7 @@ def ro_cip():
              [op('00GCB30BB001', 'add_caustic'), op('00GCB30AH001', 'start')], 'cip_alk_ok',
              ['High pH first: it takes off the colloids, the organics and the biofilm, which an acid would only fix '
               'to the membrane. Warm it works faster, but polyamide takes pH 12 only up to 35 °C.']),
-        clean('clean_alk', 'high-pH'),
+        clean('clean_alk', 'high-pH', 'alk'),
         step('drain_alk', ['Stop the heater (', k('00GCB30AH001'), ') and drain the CIP tank (', k('00GCB30BB001'),
                            ') to the neutralisation pit.'], ['00GCB30BB001', '00GCB30AH001'],
              [op('00GCB30AH001', 'stop'), op('00GCB30BB001', 'drain')], 'cip_idle'),
@@ -158,7 +158,7 @@ def ro_cip():
                       ') under 2.5.'], ['00GCB30BB001', '00GCB30CQ001'], [op('00GCB30BB001', 'add_acid')],
              'cip_acid_ok', ['Low pH takes off the scale (calcium carbonate, metal oxides) the antiscalant did not '
                              'hold back.']),
-        clean('clean_acid', 'low-pH'),
+        clean('clean_acid', 'low-pH', 'acid'),
         step('drain_acid', ['Drain the CIP tank (', k('00GCB30BB001'), ') to the neutralisation pit.'],
              ['00GCB30BB001'], [op('00GCB30BB001', 'drain')], 'cip_idle'),
         step('flow', ['RO B\'s normalised permeate flow (', k('00GCB22CF001'), ') is back above 98 %: the train is '
@@ -191,7 +191,7 @@ def mb_regeneration():
               'spoils the demineralised water tanks.'], ordered=True),
         step('mb_a_off', ['Stop mixed bed feed pump A (', k('00GCK10AP001'), ') and put mixed bed A in standby.'],
              ['00GCK10AP001', '00GCF11AT001'],
-             [op('00GCK10AP001', 'stop'), op('00GCF11AT001', 'standby')], 'mf_a_safe', ordered=True),
+             [op('00GCK10AP001', 'stop'), op('00GCF11AT001', 'standby')], 'mb_a_taken', ordered=True),
         step('regen', ['Start the regeneration of mixed bed A (', k('00GCF11AT001'), '): backwash and separation, '
                        'settling, drain down.'], ['00GCF11AT001'], [op('00GCF11AT001', 'regenerate')], 'mb_a_rdy',
              ['The backwash lifts the bed: the anion resin, lighter, settles above the cation resin, so each can take '

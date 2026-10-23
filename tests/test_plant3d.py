@@ -523,6 +523,25 @@ class WaterTreatmentModel(unittest.TestCase):
                 e, log = P.run_procedure(self.b, pid)
                 self.assertEqual(log[-1][0], last)
 
+    def test_a_step_with_operations_does_not_end_before_them(self):
+        """The app ends a step as soon as its `done` is true: a step with operations whose `done` is already true when
+        it begins would pass before the trainee made them (blind review of W3: the cleanings' steps)."""
+        for pid in ('wtp_start', 'filter_backwash', 'ro_stop_flush', 'ro_cip', 'mb_regeneration'):
+            pr = self.b.procedures[pid]
+            e = P.Recorder(self.b, pr['scenario'])
+            for s in pr['steps']:
+                with self.subTest(pid=pid, step=s['id']):
+                    if s.get('do') and 'done' in s:
+                        self.assertFalse(e.truth(s['done']), f'{s["done"]} already true')
+                for d in s.get('do', []):
+                    e.op(d['kks'], d['do'], d.get('value'), d.get('trip'))
+                e.step()
+                n = 0
+                while 'done' in s and not e.truth(s['done']):
+                    e.step()
+                    n += 1
+                    self.assertLess(n, 36000, s['id'])
+
     def test_wtp_normal_holds_the_days_work(self):
         """§7: the filter's backwash due at once, RO B waiting for its cleaning, mixed bed A's silica through in about
         an hour."""
