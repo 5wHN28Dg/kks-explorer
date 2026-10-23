@@ -325,9 +325,20 @@ def edge_steps():
               'ops': [{'kks': A, 'do': 'set', 'input': 'u', 'range': [0, 2], 'where': ['screen']},
                       {'kks': B, 'do': 'start', 'set': {'k': 1}, 'where': ['local']}],
               'alarms': [{'id': 'al', 'kks': A, 'text': 'U high', 'when': 'on', 'priority': 1, 'where': A}]}
+    table = [[x * 1.0, (x * 0.37) % 7.1] for x in range(1024)]
+    big = {'values': [['u', {'state': 0}], ['r', {'ramp': 'u', 'rate': 1000}],
+                      ['lin', {'of': 'r', 'table': table}], ['stp', {'of': 'r', 'table': table, 'step': True}],
+                      ['h', {'cmp': ['r', '>=', 500]}],
+                      ['sm', {'sum': ['lin', 'stp', 0.1] * 13 + ['r']}], ['pr', {'product': ['h', 1.01] * 20}],
+                      ['mn', {'min': ['lin', 'stp', 3] * 13 + ['r']}], ['mx', {'max': ['stp', 'lin', -1] * 13 + ['r']}],
+                      ['an', {'and': ['h', 1] * 20}], ['orr', {'or': [0, 'h'] * 20}]],
+           'ops': [{'kks': A, 'do': 'set', 'input': 'u', 'range': [0, 2000], 'where': ['screen']}]}
     return [
         ('delays longer than 2^31 steps never fire (and an off delay that long never drops)', long_delay,
          {'ambient_t': 20}, [], [], 4),
+        ("nodes past the generated program's limits (engine.gd _FAST_TERMS, _FAST_ROWS): 1024-row tables, "
+         'linear and steps, and lists of 40 refs', big, {'ambient_t': 20}, [], [[1, 'op', A, 'set', 1000, None],
+                                                                                [12, 'op', A, 'set', 0, None]], 30),
         ('shelving times at the half step, a bool as a set value, refusals, unknown ops, -0.0 through min, max, '
          'sum and select', inputs, {'ambient_t': 20}, [], [
             [1, 'op', A, 'set', 1, None], [2, 'shelve', 'al', 0.05], [3, 'shelve', 'al', 0.15],
@@ -378,6 +389,7 @@ class GdscriptEngineEdges(unittest.TestCase):
             no_errors(self, r)
             self.assertEqual(r.returncode, 0, r.stdout[-4000:])
             self.assertIn(f'VECTORS passed={len(E["steps"])} failed=0', r.stdout)
+            self.assertIn(f'PROGRAM straight-line={len(E["steps"])} interpreter=0', r.stdout)
             with open(dig, encoding='utf-8') as f:
                 got = json.load(f)
         for run, (start, chunks, _, _) in steps_runs(V['valid'][0]['files'], E['steps']).items():
@@ -405,15 +417,17 @@ class GdscriptEngineInterpreter(unittest.TestCase):
                 no_errors(self, r)
                 self.assertEqual(r.returncode, 0, r.stdout[-4000:])
                 self.assertIn(f'VECTORS passed={len(vec["steps"])} failed=0', r.stdout)
+                self.assertIn(f'PROGRAM straight-line=0 interpreter={len(vec["steps"])}', r.stdout)
                 with open(dig, encoding='utf-8') as f:
                     got = json.load(f)
                 for run, (start, chunks, _, _) in steps_runs(V['valid'][0]['files'], vec['steps']).items():
                     self.assertEqual(got[run]['chunks'], chunks, f'{name} {run}')
 
 
-# The bench's gate (CI's runner took about 0.2 ms a step with the straight-line program, 0.8 ms before it): generous,
-# so that only a real regression fails, such as the engine falling back to its interpreter.
-MAX_STEP_US = 500
+# The bench's gate: generous, so that a busy runner doesn't fail it (about 0.12 ms a step on the laptop with the
+# straight-line program, 0.5 ms before it; CI's runner has been 1.5-2 times slower than the laptop). Losing the
+# program itself is caught exactly by the PROGRAM line.
+MAX_STEP_US = 750
 
 
 @unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
