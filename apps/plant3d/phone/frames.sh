@@ -7,6 +7,10 @@
 #   APK=path  another APK (default export/walkdown-plant.apk, build.sh release)
 #   WALK_EXTRA="procedure=cold_start\npanels=alarms,procedure\nspeed=fast\n"   more options for the walk (app/main.gd)
 #   WALK_EXTRA="walk=screens\n"   the control room's screens instead of the walk, each in turn for 10 s (their cost)
+#   WALK_EXTRA="probe=1\n"   and frames.csv, where each frame's time went (app/frame_probe.gd), pulled beside result.txt
+#   KEEP=1    on a phone whose own plant app holds someone's run and settings (the Honor): installed over it with its
+#             data kept (install -r), never cleared or removed; the walk saves to a file of its own (app/main.gd), so
+#             their run and settings stay as they were. Not a first start there: the pipeline cache is kept
 # Only io.github.walkdown.plant is installed, started, cleared or removed: never Walkdown (io.github.walkdown), never
 # anything else. Only on the Note 9 is a setting changed (50 % brightness, put back after). Any other phone (the Honor
 # is the user's own) keeps its settings, the run refuses to start when the plant app is already there (it would
@@ -37,12 +41,16 @@ installed() {
   echo "$l" | grep -qx "package:$PKG"
 }
 bright_mode=""; bright_level=""
+KEEP="${KEEP:-}"
+[ -n "$KEEP" ] && [ "$SERIAL" = "$NOTE9" ] && { echo "KEEP is for another phone's own plant app; the Note 9's is cleared" >&2; exit 2; }
 cleanup() {
   if [ -n "$bright_level" ]; then
     sh_ settings put system screen_brightness_mode "$bright_mode" || true
     sh_ settings put system screen_brightness "$bright_level" || true
   fi
-  if [ "$SERIAL" != "$NOTE9" ]; then
+  if [ -n "$KEEP" ]; then
+    sh_ rm -f "$FILES/walk.txt" "$FILES/result.txt" "$FILES/frames.csv" || true
+  elif [ "$SERIAL" != "$NOTE9" ]; then
     say "removing $PKG from $SERIAL"
     a uninstall "$PKG" >/dev/null 2>&1 || true
     if (installed); then echo "!!! $PKG is still on $SERIAL: adb -s $SERIAL uninstall $PKG" >&2; fi
@@ -50,13 +58,22 @@ cleanup() {
 }
 
 # on someone's own phone, a plant app already there may hold their own progress: never clear or remove it
-if [ "$SERIAL" != "$NOTE9" ] && installed; then
+if [ -n "$KEEP" ] && ! installed; then
+  echo "KEEP=1: $PKG is not installed on $SERIAL (nothing to keep)" >&2
+  exit 7
+fi
+if [ "$SERIAL" != "$NOTE9" ] && [ -z "$KEEP" ] && installed; then
   echo "$PKG is already installed on $SERIAL; this run would clear and then remove it. Remove it yourself first if that is fine." >&2
   exit 7
 fi
 trap cleanup EXIT
 # install (an earlier build signed with another key is replaced: it is only ever this app)
-a install -r "$APK" >/dev/null 2>&1 || { a uninstall "$PKG" >/dev/null 2>&1 || true; a install "$APK" >/dev/null; }
+if [ -n "$KEEP" ]; then
+  # never uninstall here: that would delete their run (an APK signed with another key is refused: stop)
+  a install -r "$APK" >/dev/null || { echo "install -r over $SERIAL's own plant app failed: nothing changed" >&2; exit 1; }
+else
+  a install -r "$APK" >/dev/null 2>&1 || { a uninstall "$PKG" >/dev/null 2>&1 || true; a install "$APK" >/dev/null; }
+fi
 installed || { echo "install failed" >&2; exit 1; }
 if [ "$SERIAL" = "$NOTE9" ]; then
   bright_mode=$(sh_ settings get system screen_brightness_mode)
@@ -65,13 +82,15 @@ if [ "$SERIAL" = "$NOTE9" ]; then
   sh_ settings put system screen_brightness 128
 fi
 sh_ am force-stop "$PKG"
-sh_ pm clear "$PKG" >/dev/null   # a first start: no shader cache, no saved settings (as after an install)
+[ -n "$KEEP" ] || sh_ pm clear "$PKG" >/dev/null   # a first start: no shader cache, no saved settings (as after an install)
 sh_ mkdir -p "$FILES"
+sh_ rm -f "$FILES/result.txt" "$FILES/frames.csv"   # (a kept app's last walk)
 printf 'walk=frames\nseconds=%s\n%b' "$SECONDS_" "${WALK_EXTRA:-}" > "$OUT/walk.txt"
 a push "$OUT/walk.txt" "$FILES/walk.txt" >/dev/null
 # in front and unlocked, or nothing is drawn (0041)
-# (the Note 9 has no screen lock: wake it and dismiss the keyguard; the screen times out normally after)
-if [ "$SERIAL" = "$NOTE9" ]; then sh_ input keyevent KEYCODE_WAKEUP; sleep 1; sh_ wm dismiss-keyguard; fi
+# (wake it and dismiss the keyguard, as on the Note 9, which has no screen lock; a phone with one must be unlocked
+# by hand; the screen times out normally after)
+sh_ input keyevent KEYCODE_WAKEUP; sleep 1; sh_ wm dismiss-keyguard
 sleep 1
 if [ "$(sh_ dumpsys power | grep -c 'mWakefulness=Awake' || true)" = 0 ] || [ "$(sh_ dumpsys window policy | grep -cE '^ +showing=true' || true)" != 0 ]; then
   echo "the phone is locked or its screen is off: unlock it and run this again" >&2
@@ -97,6 +116,8 @@ while ! sh_ ls "$FILES/result.txt" >/dev/null 2>&1; do
   sleep 10
 done
 a pull "$FILES/result.txt" "$OUT/" >/dev/null 2>&1 || true
+sleep 2   # frames.csv is written after result.txt
+a pull "$FILES/frames.csv" "$OUT/" >/dev/null 2>&1 || true
 sh_ rm -f "$FILES/walk.txt"   # a later start by hand is an ordinary start
 sleep 3
 sh_ am force-stop "$PKG"
