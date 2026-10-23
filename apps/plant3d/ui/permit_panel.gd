@@ -84,16 +84,16 @@ func _process(delta: float) -> void:
 
 func send(action: String) -> void:
 	var e = ui.clock.engine
-	e.permit(work, action)
+	e.permit(work, action, ui.me())
 	_sent(str([work, action]), "permit", work, action, e.step_no + 1)
 
 
 func send_lock(kind: String, point: int) -> void:
 	var e = ui.clock.engine
 	if kind == "lock":
-		e.lock(work, point)
+		e.lock(work, point, ui.me())
 	else:
-		e.unlock(work, point)
+		e.unlock(work, point, ui.me())
 	_sent(str([work, kind, point]), kind, work, point, e.step_no + 1)
 
 

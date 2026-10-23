@@ -96,6 +96,7 @@ var inputs: Array = []
 var step_no := 0
 var timing := false                 # when set, every step's time in microseconds goes to step_us (tests/bench_step.gd)
 var step_us := PackedInt64Array()
+var staff_us := PackedInt64Array()    # with timing: step 9's own time in each step
 
 # format 2's clock and staff (§16–§17): built from the content and the scenario (shared by clones, not saved)
 var _sm = null                      # sim/staff.gd: the plant's staff.json when the scenario has `staff`, else null
@@ -1163,7 +1164,12 @@ func _step() -> void:
 			_ev(["alarm", a[0], nw])
 	# 9. the staff (§17): they read this step's values and events and write nothing but next step's inputs
 	if _sm != null:
-		_sm.step(self)
+		if timing:
+			var t9 := Time.get_ticks_usec()
+			_sm.step(self)
+			staff_us.append(Time.get_ticks_usec() - t9)
+		else:
+			_sm.step(self)
 
 
 func _op(item: Array, moved: Dictionary, npc := false) -> String:

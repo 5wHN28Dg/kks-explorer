@@ -41,7 +41,7 @@ if grep -q "SCRIPT ERROR" "$HERE/.build.log"; then
 fi
 # the behaviour model, scenarios and procedures the app runs (ui/plant_ui.gd reads them with sim/'s strict reader)
 mkdir -p "$HERE/built/content"
-cp "$ROOT/data/plant3d/plant.json" "$ROOT/data/plant3d/screens.json" "$HERE/built/content/"
+cp "$ROOT/data/plant3d/plant.json" "$ROOT/data/plant3d/screens.json" "$ROOT/data/plant3d/staff.json" "$HERE/built/content/"
 for d in areas model scenarios procedures; do
   mkdir -p "$HERE/built/content/$d"
   cp "$ROOT/data/plant3d/$d/"*.json "$HERE/built/content/$d/"

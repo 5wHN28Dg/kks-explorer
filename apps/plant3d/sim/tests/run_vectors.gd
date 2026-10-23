@@ -72,6 +72,8 @@ func _init() -> void:
 			expected += V2["train"]["forks"].size()
 		if V2.has("staff"):
 			expected += 1 + V2["staff"]["runs"].size()
+		if V2.has("day"):
+			expected += 1 + V2["day"]["forks"].size()
 	var valid_files: Dictionary = V["valid"][0]["files"]
 	# the starts run by their procedures: the cold start (`train`) and the hot restart (`hot`, where the file has it)
 	var starts := ["train", "hot"].filter(func(k): return V.has(k))
@@ -106,6 +108,8 @@ func _init() -> void:
 			_train(V[st], train_model, st)
 	if V2.has("train"):
 		_train(V2["train"], train_model, "v2/train")
+	if V2.has("day"):
+		_day(V2["day"], train_model)
 	if opts.has("digests"):
 		var f := FileAccess.open(opts["digests"], FileAccess.WRITE)
 		f.store_string(JSON.stringify(digests, " ", false))
@@ -357,6 +361,42 @@ func _staff_run(k: int, r: Dictionary, base: Dictionary) -> void:
 	if d == "":
 		d = diff(_reads_as(e.events, r["events"]), r["events"], "events")
 	_result(name, d)
+
+
+## The first train's day with its staff (§19 `day`): the run from the scenario's start (every event, a snapshot every
+## clock hour) and each run with a trainee or a fault (every event).
+func _day(d: Dictionary, m) -> void:
+	var e = PlantEngine.new(m, d["scenario"])
+	_hash_begin("v2/day", 0)
+	_hash(e)
+	var states: Array = d["states"]
+	var df := diff(e.snapshot(false), states[0], "day step 0")
+	var si := 1
+	while df == "" and e.step_no < d["until"]:
+		e.step()
+		_hash(e)
+		if e.step_no % int(d["every"]) == 0:
+			df = diff(e.snapshot(false), states[si], "day step %d" % e.step_no)
+			si += 1
+	_hash_end()
+	if df == "":
+		df = diff(_reads_as(e.events, d["events"]), d["events"], "day events")
+	_result("v2/day (%d steps)" % d["until"], df)
+	for f in d["forks"]:
+		var x = PlantEngine.new(m, d["scenario"])
+		var inputs := by_step(f["inputs"])
+		var i := 0
+		_hash_begin("v2/day/" + f["id"], 0)
+		_hash(x)
+		while x.step_no < f["until"]:
+			i = _apply_due(x, inputs, i)
+			x.step()
+			_hash(x)
+		_hash_end()
+		var fd := diff(_reads_as(x.events, f["events"]), f["events"], "events")
+		if fd == "":
+			fd = diff(x.snapshot(false), f["end"], "end")
+		_result("v2/day/" + f["id"], fd)
 
 
 ## The events with each read's value replaced by the reference's when it is within the file's precision (the file

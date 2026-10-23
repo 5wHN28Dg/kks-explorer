@@ -223,3 +223,78 @@ class StaffVectors(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class FirstTrainStaff(unittest.TestCase):
+    """The first train's staff content (tools/plant3d/train_staff.py, milestone S1) and its `day` vector: the day
+    replays from the content; each run with a trainee or a fault does what it was made for; the rounds' ranges hold
+    for the plant at rest and at base load (a reading out of range is a finding, not the normal state)."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(G.OUT2, encoding='utf-8') as f:
+            cls.day = json.load(f)['day']
+        cls.b = P.check_dir(G.DATA)
+
+    def test_content(self):
+        st = self.b.staff
+        roles = {p['role'] for p in st.people}
+        self.assertEqual(roles, {'shift_sup', 'ccr_op', 'field_op', 'elec_ap', 'mech_tech', 'elec_tech', 'ic_tech'})
+        self.assertEqual(sum(1 for p in st.people if p['roster'] == 'shift'), 28)
+        self.assertTrue(all(st.roles[r]['play'] for r in ('shift_sup', 'ccr_op', 'field_op', 'elec_ap')))
+        self.assertEqual(self.b.plant['clock']['day_scale'], 6)
+        self.assertIn('staff', self.b.scenarios['shift_cold'])
+        for s in ('cold_iron', 'hot_restart'):
+            self.assertNotIn('staff', self.b.scenarios[s])      # format 1's vectors run without people
+
+    def test_day_replays(self):
+        d = self.day
+        e = P.Engine(self.b, d['scenario'])
+        states = [plain(e.snapshot(values=False))]
+        while e.step_no < d['until']:
+            e.step()
+            if e.step_no % d['every'] == 0:
+                states.append(plain(e.snapshot(values=False)))
+        self.assertIsNone(close(plain(e.events), d['events']))
+        self.assertIsNone(close(states, d['states']))
+        kinds = {x[1] for x in d['events']}
+        for k in ('duty', 'task', 'move', 'read', 'say', 'call'):
+            self.assertIn(k, kinds)
+        self.assertFalse(any(x[1] == 'read' and x[5] == 'out_of_range' for x in d['events']),
+                         'a normal day finds nothing out of range')
+
+    def test_forks(self):
+        for f in self.day['forks']:
+            e = P.Engine(self.b, self.day['scenario'])
+            inputs = sorted(f['inputs'], key=lambda x: x[0])
+            j = 0
+            while e.step_no < f['until']:
+                while j < len(inputs) and inputs[j][0] == e.step_no + 1:
+                    G.apply_staff(e, inputs[j])
+                    j += 1
+                e.step()
+            self.assertIsNone(close(plain(e.events), f['events']), f['id'])
+            x = f['expect']
+            if 'trainee' in x:
+                self.assertEqual(e.staff.people[e.staff.trainee].id, x['trainee'], f['id'])
+            for k, v in x.get('end', {}).items():
+                self.assertEqual(e.v(k), v, f['id'])
+            for w, s in x.get('permits', {}).items():
+                self.assertEqual(e.pstate[w], s, f['id'])
+            for fid in x.get('repaired', []):
+                self.assertIn([fid], [ev[2:] for ev in e.events if ev[1] == 'repair'], f['id'])
+            for want in x.get('events', []):
+                self.assertTrue(any(ev[1:1 + len(want)] == [w if w is not None else ev[1 + i]
+                                                           for i, w in enumerate(want)] for ev in e.events),
+                                f'{f["id"]}: no event like {want}')
+
+    def test_round_ranges_hold_at_rest_and_at_base_load(self):
+        sys.path.insert(0, os.path.join(REPO, 'tools', 'plant3d'))
+        import train_staff as T
+        e0 = P.Engine(self.b, 'cold_iron')
+        e1, _ = P.run_procedure(self.b, 'cold_start')
+        for _, (title, reads) in T.ROUNDS.items():
+            for code, (lo, hi), tol in reads:
+                for e in (e0, e1):
+                    v = e.shown(code, e.cur)
+                    self.assertTrue(lo <= v <= hi, f'{code}: {v} outside [{lo}, {hi}] ({title})')

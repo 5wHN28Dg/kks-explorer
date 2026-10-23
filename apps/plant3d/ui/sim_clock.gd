@@ -84,6 +84,8 @@ func ff_blocked() -> String:
 	for mi in e._mc.size():
 		if e._mc[mi][3][e.mstate[mi]][2]:
 			return "%s is in a step to watch (%s)" % [e._mc[mi][0].replace("_", " "), e._mc[mi][2][e.mstate[mi]].replace("_", " ")]
+	if e._sm != null and e.st_trainee != -1 and e.st_unacked > 0:
+		return "something new for you in the Crew panel (press Seen there)"
 	return ""
 
 

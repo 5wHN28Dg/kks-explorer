@@ -18,7 +18,7 @@ const MAGIC := "WDPSAVE\n"
 const FORMAT := 1
 const HEAD := 8 + 4 + 8 + 32
 const MAX_BYTES := 64 * 1024 * 1024
-const ENGINE_BUILT := ["m", "sc", "names", "ix", "n", "timing", "step_us"]
+const ENGINE_BUILT := ["m", "sc", "names", "ix", "n", "timing", "step_us", "staff_us"]
 const TRACKER_BUILT := ["proc", "steps"]
 const PAYLOAD_KEYS := {"app": TYPE_STRING, "content": TYPE_STRING, "scenario": TYPE_STRING, "saved_unix": TYPE_INT,
 		"engine": TYPE_DICTIONARY, "clock": TYPE_DICTIONARY, "procedure": TYPE_STRING, "tracker": TYPE_DICTIONARY,

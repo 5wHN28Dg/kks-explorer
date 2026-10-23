@@ -1570,9 +1570,9 @@ class Trainee:
     says, calls, makes ops, permits and locks, picks the first choice, acknowledges new tasks after `ack_after` steps.
     `extra`: more inputs at given steps ([step, kind, …]). The inputs it makes are the vector's (Recorder.inputs)."""
 
-    def __init__(self, walk=40, wrong=(), ack_after=5, extra=(), quiet=False):
+    def __init__(self, walk=40, wrong=(), ack_after=5, extra=(), quiet=False, wake=0):
         self.walk, self.wrong, self.ack_after, self.extra = walk, set(wrong), ack_after, list(extra)
-        self.quiet = quiet
+        self.quiet, self.wake = quiet, wake
         self.going = None
         self.done = set()
         self.reads = 0
@@ -1583,7 +1583,7 @@ class Trainee:
         for x in [x for x in self.extra if x[0] == n]:
             apply_staff(e, x)
         sr = e.staff
-        if sr.trainee is None or self.quiet:
+        if sr.trainee is None or self.quiet or n < self.wake:
             return
         if sr.unacked:
             if self.unacked_since is None:
@@ -1755,6 +1755,51 @@ def build_staff():
     return out
 
 
+# The first train's day (§19 `day`): the scenario with staff from its start (05:30) through the day shift, seed 1 and
+# no trainee; and runs from the same start with a trainee or a trainer's fault: (id, scenario's staff changes, the
+# Trainee player, steps, expectations checked by tests/test_plant3d_staff.py).
+DAY_STEPS = 75000            # 05:30 to 18:00 at day_scale 6
+DAY_EVERY = 6000             # a snapshot every clock hour
+def day_forks():
+    return [
+        ('field_cw_alarm', Trainee(extra=[[1, 'role', 'a_fo_cw'], [4000, 'fault', 'cw_b_valve_stuck']]), 15000,
+         {'trainee': 'a_fo_cw', 'events': [['task', None, 'answer_alarm', 'start'], ['call', None, 'field_op', 'check_alarm']]}),
+        ('ccr_instruction', Trainee(extra=[[1, 'role', 'a_ccr1'], [3200, 'call', 'field_op', 'ccw_cooler_in', None]]),
+         9000, {'trainee': 'a_ccr1', 'end': {'ccw_cooler': 1}}),
+        ('npc_permit', Trainee(extra=[[4000, 'fault', 'cw_b_motor']]), 36000,
+         {'permits': {'wo_cw_b_motor': 9}, 'repaired': ['cw_b_motor']}),
+        ('sup_late', Trainee(wake=9000, extra=[[1, 'role', 'a_sup'], [4000, 'fault', 'ccw_a_motor']]), 36000,
+         {'trainee': 'a_sup', 'permits': {'wo_ccw_a_motor': 9}}),
+    ]
+
+
+def day_bundle():
+    return P.check_dir(DATA)
+
+
+def build_day(b=None):
+    b = b or day_bundle()
+    sid = next(k for k, v in b.scenarios.items() if 'staff' in v)
+    e = P.Recorder(b, sid)
+    snaps = [e.snapshot(values=False)]
+    while e.step_no < DAY_STEPS:
+        e.step()
+        if e.step_no % DAY_EVERY == 0:
+            snaps.append(e.snapshot(values=False))
+    forks = []
+    for fid, player, until, expect in day_forks():
+        f = P.Recorder(b, sid)
+        n0 = 0
+        while f.step_no < until:
+            player(f)
+            f.step()
+        forks.append({'id': fid, 'inputs': f.inputs, 'until': until, 'events': f.events[n0:],
+                      'end': f.snapshot(values=False), 'expect': expect,
+                      'values': {k: f.v(k) for k in sorted(expect.get('end', {}))}})
+    return {'scenario': sid, 'until': DAY_STEPS, 'every': DAY_EVERY, 'events': e.events, 'states': snaps,
+            'forks': forks}
+
+
 def build2():
     F = mini2()
     return {'about': 'Walkdown Plant content format 2 vectors (docs/PLANT3D.md §19), made by '
@@ -1770,7 +1815,8 @@ def build2():
             'staff': {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in staff_files().items()},
                       'counts': check(staff_files()).counts,
                       'reject': build_rejects_staff(),
-                      'runs': build_staff()}}
+                      'runs': build_staff()},
+            'day': build_day()}
 
 
 def build():
