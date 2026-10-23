@@ -8,8 +8,9 @@ import os, sys, unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHARDS = 3
 # from CI's logs (2026-10-23, the run cut off at its 20 minutes): format 1's vectors ~8 min (the cold start and its
-# forks built, then replayed); format 2's ~7.5 min, and ColdStart's ~0.75 min with it: ~8 min; shard 0 the rest
-HEAVY = {'test_plant3d.Vectors': 1, 'test_plant3d.Vectors2': 2, 'test_plant3d.ColdStart': 2}
+# forks built, then replayed), ColdStart's ~0.75 min with it; format 2's ~7.5 min before W3's two runs (more since);
+# shard 0 the rest
+HEAVY = {'test_plant3d.Vectors': 1, 'test_plant3d.ColdStart': 1, 'test_plant3d.Vectors2': 2}
 
 
 def tests_of(suite):

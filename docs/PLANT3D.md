@@ -1044,9 +1044,10 @@ pressure transmitters, when 2-out-of-3 voting falls back and trips the steam tur
 isolation will trip the steam turbine") and asks for confirmation; the lock is then made as any other. Nothing is
 special-cased: the engine answers from the model.
 
-- **The query** `lock_effects(work, point)` (an engine call, not an input: it changes nothing and is not part of the
-  run) runs two copies of the run as it stands, with the inputs already made and not yet stepped: one with the input
-  `[lock, work, point, null]` made after them, one without. Each copy steps **100 steps** (10 s of model time) with no
+- **The query** `lock_effects(work, point, person)` (an engine call, not an input: it changes nothing and is not part
+  of the run; `person` null in free mode, else the trainee's person, who makes the lock) runs two copies of the run as
+  it stands, with the inputs already made and not yet stepped: one with the input `[lock, work, point, person]` made
+  after them, one without. Each copy steps **100 steps** (10 s of model time) with no
   other input. The answer is `{"lock": the lock event's result in the first copy ("done", "refused" or "unknown"),
   "trips": [...], "alarms": [...]}`: the trips with a `trip` event in the first copy and none in the second, and the
   priority 1 alarms with an event to `active_unack` in the first copy and none in the second, each list in model order.

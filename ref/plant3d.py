@@ -1622,8 +1622,8 @@ class Engine:
         permit(work, action, person=None), lock(work, point, person=None), unlock(work, point, person=None),
         repair_under(fault, work, person=None)
     (permit actions handled in step 1; locks and unlocks noted in step 1 and made at the start of step 3, §17.1; the
-    trainee's repair under a permit checked in step 1 and made in step 3, §15.5). lock_effects(work, point) answers
-    what a lock would do (§15.6) without changing the run.
+    trainee's repair under a permit checked in step 1 and made in step 3, §15.5). lock_effects(work, point, horizon,
+    person) answers what a lock would do (§15.6) without changing the run.
     """
 
     def __init__(self, b, scenario):
