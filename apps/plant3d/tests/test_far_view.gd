@@ -2,7 +2,7 @@
 ## `far_merge`): their pieces merged per square and material and simplified within FAR_ERROR, drawn from
 ## FAR_MERGE_RANGE out, each piece itself drawn only nearer (its `visibility_parent`); per far mesh no more vertices and
 ## indices than its pieces and over the same box (a wrong transform or square shows); detail pieces left out with their
-## own range, and what stands inside a building (culled by its occluder); in the plant's vertex format without UV2 (no pipeline of its own), and casting no shadow.
+## own range, and what stands inside a building (drawn only within FAR_MERGE_RANGE: no door is open from beyond it); in the plant's vertex format without UV2 (no pipeline of its own), and casting no shadow.
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
@@ -68,6 +68,8 @@ func run(tree: SceneTree) -> Array:
 				inside += 1
 				if not gi.visibility_parent.is_empty():
 					p.append("%s's %s, inside a building, is never under the far view" % [id, area.get_path_to(gi)])
+				elif gi.visibility_range_end <= 0.0 or gi.visibility_range_end > Builder.FAR_MERGE_RANGE:
+					p.append("%s's %s, inside a building, is drawn only within %d m (%.0f)" % [id, area.get_path_to(gi), int(Builder.FAR_MERGE_RANGE), gi.visibility_range_end])
 				continue
 			if gi != null and not gi is Label3D:
 				var am: Mesh = gi.mesh if gi is MeshInstance3D else ((gi as MultiMeshInstance3D).multimesh.mesh if gi is MultiMeshInstance3D and gi.multimesh != null else null)

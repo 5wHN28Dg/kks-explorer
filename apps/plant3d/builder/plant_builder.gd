@@ -1141,9 +1141,11 @@ const INSIDE_PARTS := ["floor", "frame", "lamp_housings", "lamp_lenses", "liner"
 	"crane_hook"]
 
 ## Marks (meta `far_inside`) what stands inside the area's buildings: their inside parts, and every other piece whose
-## plan centre is within a building's outline. They stay out of the far view and are drawn as before, each culled
-## by its building's occluder: merged, a hall's whole inside was drawn with its walls from every distance (from the
-## WTP, the first train's halls cost the Note 9 a third more GPU time, 2026-10-23).
+## plan centre is within a building's outline. They stay out of the far view and are drawn only within
+## FAR_MERGE_RANGE: beyond it every door is shut (app/door.gd opens one within a few metres) and windows are on solid
+## wall, so a hall's inside is never seen from there. Merged, a hall's whole inside was drawn with its walls from every
+## distance (from the WTP the first train's halls cost the Note 9 a third more GPU time); drawn as pieces, the
+## occluders did not cull them from 300 m and more (the camp's road: 1,000 draw calls), 2026-10-23.
 func _mark_inside(root: Node3D, id: String) -> void:
 	var outlines: Array = buildings.filter(func(b): return b.area == id).map(func(b): return b.outline)
 	for n in root.find_children("*", "GeometryInstance3D", true, false):
@@ -1151,15 +1153,17 @@ func _mark_inside(root: Node3D, id: String) -> void:
 		var body: Node = gi.get_parent()
 		while body != null and body != root and not body.has_meta("building"):
 			body = body.get_parent()
+		var inside := false
 		if body != null and body != root:
-			if String(gi.name) in INSIDE_PARTS:
-				gi.set_meta("far_inside", true)
-			continue
-		var c := _plan_centre(gi)
-		for pg in outlines:
-			if Geometry2D.is_point_in_polygon(c, pg):
-				gi.set_meta("far_inside", true)
-				break
+			inside = String(gi.name) in INSIDE_PARTS
+		else:
+			var c := _plan_centre(gi)
+			inside = outlines.any(func(pg): return Geometry2D.is_point_in_polygon(c, pg))
+		if inside:
+			gi.set_meta("far_inside", true)
+			if not gi.is_in_group("detail") and (gi.visibility_range_end <= 0.0 or gi.visibility_range_end > FAR_MERGE_RANGE):
+				gi.visibility_range_end = FAR_MERGE_RANGE
+				gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 
 ## The far view's error: the merged geometry simplified until its surfaces stray this far (metres) from the pieces'
 ## (two thirds of a pixel at FAR_MERGE_RANGE on the Note 9, one and a half on a 4K screen's full tier, less farther off).
