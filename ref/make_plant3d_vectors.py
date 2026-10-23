@@ -976,6 +976,7 @@ REJECTS2 = [
         _set(['scenarios/s1.json', 'faults', 0, 'repair'], {'valve_dem': 1}))),
     ('a work repairing a fault that is not an identifier', 'bad_id', _set(WORK + [0, 'repairs'], 'F 1')),
     ('two works with one id', 'dup_id', _set(WORK + [1, 'id'], 'wo_pump')),
+    ('two works repairing one fault', 'dup_id', _set(WORK + [1, 'repairs'], 'f1')),
     ('a work id over 22 characters', 'bad_id', _set(WORK + [1, 'id'], 'w' * 23)),
     ('over 128 works', 'limit', _set(WORK, [{'id': f'w{i}', 'kks': PUMP, 'title': 'W', 'discipline': 'mech',
                                               'permit': 'general'} for i in range(129)])),

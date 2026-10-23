@@ -961,7 +961,8 @@ calibration.
 - **`isolation`** (optional): a work without one (an inspection) needs no locks.
 - **`repairs`** (optional): a fault of the scenario, repaired when the work is done (written as §7.8's repair, with its
   event), or before that by the trainee under the permit (§15.5); a work for a fault the scenario doesn't have does
-  nothing more. **`set`** (optional): states written when done (a service counter, or a state of another code).
+  nothing more. At most one work repairs a given fault (validator: `dup_id`), so the card's repair always names
+  the one permit it goes under. **`set`** (optional): states written when done (a service counter, or a state of another code).
 - **No restarts under lock** (the user, 2026-10-23): a work's own steps never start or move its own locked-out
   equipment. A key of its `set` that is a `state` whose `kks` is a point of the work's own isolation is `locked_write`,
   and so is an `op` step of its task (§16.6) on such a code (checked with the tasks, milestone S1). What the work puts

@@ -995,6 +995,8 @@ class Model:
             self.work_isos.append((ident(x['isolation'], f'{w}.isolation'), f'{w}.isolation'))
         if 'repairs' in x:
             ident(x['repairs'], f'{w}.repairs')
+            need(x['repairs'] not in {y.get('repairs') for y in self.works}, 'dup_id',
+                 f'{w}.repairs: another work already repairs {x["repairs"]} (one work per fault)')
         if 'set' in x:
             need(isinstance(x['set'], dict), 'bad_type', f'{w}.set: an object of state names and numbers')
             for k, v in x['set'].items():
