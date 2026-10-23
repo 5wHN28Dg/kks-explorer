@@ -1,8 +1,8 @@
-## The water treatment plant's and its intake's far view (builder/plant_builder.gd `far_merge`): their pieces merged
-## per square and material, drawn from FAR_MERGE_RANGE out, each piece itself drawn only nearer (its
-## `visibility_parent`); nothing lost in the merge (every piece's geometry is in its square's far mesh) but the detail
-## pieces, which keep their own range and are not in it; in the
-## plant's vertex format without UV2 (no pipeline of its own), and casting no shadow.
+## The far views of the first train's areas, the water treatment plant and its intake (builder/plant_builder.gd
+## `far_merge`): their pieces merged per square and material and simplified within FAR_ERROR, drawn from
+## FAR_MERGE_RANGE out, each piece itself drawn only nearer (its `visibility_parent`); per far mesh no more vertices and
+## indices than its pieces and over the same box (a wrong transform or square shows); detail pieces left out with their
+## own range; in the plant's vertex format without UV2 (no pipeline of its own), and casting no shadow.
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
@@ -18,7 +18,7 @@ func run(tree: SceneTree) -> Array:
 	if err != "":
 		plant.free()
 		return ["the built plant loads: " + err]
-	for id in ["area_wtp", "area_intake"]:
+	for id in ["area_wtp", "area_intake", "area_hrsg1", "area_st", "area_gt1", "area_ct", "area_cw", "area_bop", "area_control", "area_trafo1"]:
 		var area := plant.get_node_or_null(id) as Node3D
 		if area == null:
 			p.append("%s is in the built plant" % id)
@@ -99,8 +99,9 @@ func run(tree: SceneTree) -> Array:
 		for mi in got:
 			var g: Array = got[mi]
 			var w: Array = want.get(mi, [0, 0, null])
-			if g[0] != w[0] or g[1] != w[1]:
-				p.append("%s's far mesh %s holds its pieces' geometry (%d vertices and %d indices, of %d and %d)" % [id, mi.name, g[0], g[1], w[0], w[1]])
+			# simplified within FAR_ERROR: no more than its pieces, never empty, over the same box
+			if g[0] == 0 or g[1] == 0 or g[0] > w[0] or g[1] > w[1]:
+				p.append("%s's far mesh %s holds its pieces' geometry, simplified (%d vertices and %d indices, of %d and %d)" % [id, mi.name, g[0], g[1], w[0], w[1]])
 			elif w[2] == null or not _same_box(g[2], w[2]):
 				p.append("%s's far mesh %s lies where its pieces do (%s, they %s)" % [id, mi.name, str(g[2]), str(w[2])])
 	# fx_off=farview (app/main.gd): the far views hidden, every piece under one drawn at every distance again
@@ -117,4 +118,5 @@ func run(tree: SceneTree) -> Array:
 	return p
 
 static func _same_box(a: AABB, b: AABB) -> bool:
-	return a.position.distance_to(b.position) < 0.01 and a.end.distance_to(b.end) < 0.01
+	# (a simplified surface keeps its outline within FAR_ERROR, but a thin piece at the edge may go entirely)
+	return a.position.distance_to(b.position) < 0.3 and a.end.distance_to(b.end) < 0.3

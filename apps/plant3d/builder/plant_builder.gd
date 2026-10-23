@@ -893,7 +893,7 @@ func _area(root: Node3D, a: Dictionary) -> void:
 			if s.part in ["road", "wall", "fence"]:
 				keep[s.id] = true
 		hlod(root, a.id, _far_items(a), root, keep)
-	elif a.data.get("pack", "") == "wtp":
+	elif a.data.get("pack", "") in ["wtp", "base"]:
 		far_merge(root, a.id)
 
 # ------------------------------------------------------------------ the far view of the site and the camp (HLOD)
@@ -1015,10 +1015,12 @@ func hlod(root: Node3D, id: String, items: Dictionary, scope: Node, keep := {}) 
 	print("build: area %s: far view in %d squares, %d pieces drawn near only" % [id, made.size(), parented])
 	return made.size()
 
-## The water treatment plant's and its intake's far view: their own pieces merged per HLOD_CHUNK square and material
-## (one draw call each, Godot's mesh LODs made for them), drawn beyond FAR_MERGE_RANGE of the square; the pieces
-## themselves are drawn only within it (`visibility_parent`, as `hlod`). From the camp's road, 450-600 m off, the two
-## areas were 681 of the view's 1,852 draw calls (the Note 9's GPU held frames of 100-150 ms there once warm, 2026-10-23).
+## The far view of the first train's areas, the water treatment plant and its intake: their own pieces merged per
+## HLOD_CHUNK square and material (one draw call each), simplified within FAR_ERROR (`_far_simplified`), drawn beyond
+## FAR_MERGE_RANGE of the square; the pieces themselves are drawn only within it (`visibility_parent`, as `hlod`). From
+## the camp's road, 450-600 m off, the WTP and intake were 681 of the view's 1,852 draw calls (the Note 9's GPU held
+## frames of 100-150 ms there once warm, 2026-10-23); from the plant gate's road, 250-400 m off, the train was about
+## 1,000 of 1,400 (65-80 ms of GPU a frame, frames up to 135 ms).
 ## The merged meshes are the pieces' own geometry and materials, unbaked and without UV2 (the kit cells' pipelines:
 ## none new), and cast no shadow (beyond every tier's shadow distance). Doors are drawn near only (beyond FAR_MERGE_RANGE
 ## a doorway shows open); labels (the signs' text) keep their own range, as before.
@@ -1106,11 +1108,9 @@ func far_merge(root: Node3D, id: String) -> int:
 		(by_square[key[0]] as ImporterMesh).add_surface(Mesh.PRIMITIVE_TRIANGLES, a, [], {}, key[1])
 	var made := {}
 	for k in by_square:
-		var im: ImporterMesh = by_square[k]
-		im.generate_lods(25.0, 60.0, [])
 		var mi := MeshInstance3D.new()
 		mi.name = "far_%d_%d" % [k.x, k.y]
-		mi.mesh = im.get_mesh()
+		mi.mesh = _far_simplified(by_square[k])
 		mi.visibility_range_begin = FAR_MERGE_RANGE
 		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -1134,6 +1134,54 @@ func far_merge(root: Node3D, id: String) -> int:
 			parented += 1
 	print("build: area %s: far view merged in %d squares (%d surfaces), %d pieces drawn near only" % [id, made.size(), groups.size(), parented])
 	return made.size()
+
+## The far view's error: the merged geometry simplified until its surfaces stray this far (metres) from the pieces'
+## (two thirds of a pixel at FAR_MERGE_RANGE on the Note 9, one and a half on a 4K screen's full tier, less farther off).
+const FAR_ERROR := 0.2
+
+## A square's merged surfaces simplified (Godot's own mesh simplifier, as for LODs) to the coarsest level within
+## FAR_ERROR, only the vertices it still uses kept, and Godot's LODs made again for farther off: fewer triangles to
+## draw and to ship (the first train's far view would otherwise copy all of its geometry into the package).
+static func _far_simplified(im: ImporterMesh) -> ArrayMesh:
+	im.generate_lods(25.0, 60.0, [])
+	var out := ImporterMesh.new()
+	for si in im.get_surface_count():
+		var arr := im.get_surface_arrays(si)
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		for l in im.get_surface_lod_count(si):
+			if im.get_surface_lod_size(si, l) <= FAR_ERROR:
+				idx = im.get_surface_lod_indices(si, l)
+		# only the vertices the chosen level uses
+		var remap := {}
+		var keep := PackedInt32Array()
+		var ni := PackedInt32Array()
+		ni.resize(idx.size())
+		for j in idx.size():
+			var q := idx[j]
+			if not remap.has(q):
+				remap[q] = keep.size()
+				keep.append(q)
+			ni[j] = remap[q]
+		var a := []
+		a.resize(Mesh.ARRAY_MAX)
+		for t in [Mesh.ARRAY_VERTEX, Mesh.ARRAY_NORMAL, Mesh.ARRAY_COLOR, Mesh.ARRAY_TEX_UV]:
+			var src = arr[t]
+			var dst = src.duplicate()
+			dst.resize(keep.size())
+			for j in keep.size():
+				dst[j] = src[keep[j]]
+			a[t] = dst
+		var tan: PackedFloat32Array = arr[Mesh.ARRAY_TANGENT]
+		var nt := PackedFloat32Array()
+		nt.resize(keep.size() * 4)
+		for j in keep.size():
+			for c in 4:
+				nt[j * 4 + c] = tan[keep[j] * 4 + c]
+		a[Mesh.ARRAY_TANGENT] = nt
+		a[Mesh.ARRAY_INDEX] = ni
+		out.add_surface(Mesh.PRIMITIVE_TRIANGLES, a, [], {}, im.get_surface_material(si))
+	out.generate_lods(25.0, 60.0, [])
+	return out.get_mesh()
 
 ## Whether a drawn piece goes into its area's far view (`far_merge`): shown (with every parent up to the area: a
 ## lamp's lit lens under its hidden `on` is not), not a label (signs' and tags' text keep their own range, or none),
