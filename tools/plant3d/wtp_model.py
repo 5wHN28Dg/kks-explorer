@@ -303,7 +303,7 @@ def wtp():
     m.prod('cl_load', ['wt_raw', 'cl_share'], 'm³/h')
     m.tab('cl_over', 'cl_load', [[600, 1], [1100, 4]])  # one clarifier with all the flow: upflow 4.6 m/h, past 2.4
     # a turbid river flocculates better (more collisions): at a flood's 500 NTU, rightly dosed, the clarifiers still
-    # give about 1.5 NTU (W3, wtp_flood; ours, the trend [IEPA] §5.3 describes)
+    # give about 2 NTU (W3, wtp_flood; ours, the trend [IEPA] §5.3 describes)
     m.tab('cl_fk', 'river_ntu', [[100, 1], [500, 0.15]])
     m.prod('cl_sp0', ['river_ntu', 'cl_frac', 'pl_k', 'mx_k', 'cl_over', 'cl_fk'])
     m.max('cl_sp1', ['cl_sp0', 0.3])
@@ -457,10 +457,13 @@ def wtp():
     m.tab('cip_acid', 'cip_state', [[3.5, 0], [4, 1], [4.5, 0]])
     m.tab('cip_water', 'cip_state', [[1.5, 0], [2, 1], [2.5, 0]])
     m.tab('cip_idle', 'cip_state', [[0, 1], [0.5, 0]])
+    m.NOT('cip_heat_off', 'cip_heat_cmd')
+    m.AND('cip_idle_off', ['cip_idle', 'cip_heat_off'])     # drained, its heater stopped (ro_cip's drain_alk)
     m.tab('cip_filling', 'cip_state', [[0.5, 0], [1, 1], [1.5, 0]])
     m.cmp('cip_full', 'cip_lvl', '>=', 90)
     m.cmp('cip_empty', 'cip_lvl', '<', 0.5)
     m.cmp('cip_has', 'cip_lvl', '>=', 20)
+    m.NOT('cip_wet', 'cip_empty')
     m.prod('cip_fill_q', ['cip_fill', CIP_FILL], 'm³/h')
     m.prod('cip_dr_q', ['cip_drain', CIP_FILL], 'm³/h')
     # 0.1 % NaOH (0.025 kmol/m³), 0.2 % HCl (0.055 kmol/m³): what the solution takes to the pit
@@ -525,11 +528,13 @@ def wtp():
         m.prod(f'{p}_fl_q', [f'{p}_isfl', 20], 'm³/h')          # the flush to the pit, half of it solution
         # a cleaning with each solution done (its flush ended), until the CIP tank is filled again: the procedure's
         # step ends there, not while the train still stands stopped from before
+        # (only a whole cycle: its soak finished, not a cleaning stopped or tripped to its flush early)
+        m.latch(f'{p}_soaked', f'{p}_c3', 'cip_filling')
         for c, sol in (('alk', 'cip_alk'), ('acid', 'cip_acid')):
-            m.AND(f'{p}_{c}_end', [f'{p}_fl_done', sol])
+            m.AND(f'{p}_{c}_end', [f'{p}_fl_done', sol, f'{p}_soaked'])
             m.latch(f'{p}_{c}_cl', f'{p}_{c}_end', 'cip_filling')
             m.AND(f'{p}_{c}_cleaned', [f'{p}_{c}_cl', f'{p}_is0'])
-        m.prod(f'{p}_fl_chem', [f'{p}_isfl', 'cip_conc', 10])
+        m.prod(f'{p}_fl_chem', [f'{p}_isfl', 'cip_conc', 10, 'cip_wet'])   # only what the tank still holds
         m.ramp(f'{p}_spd', f'{p}_hp', 0.05, 0.2, init=1 if x == 'a' else 0, unit='pu')   # ramped slowly
         m.lag(f'{p}_fl', f'{p}_flush', 10)
         m.prod(f'{p}_fl_half', [f'{p}_fl', 0.5])
@@ -552,8 +557,12 @@ def wtp():
         # chlorine on the membranes (W3): seconds of feed above 250 mV at flow; past a minute the polyamide is
         # oxidised (a fault of the scenario, only new membranes repair it; WATER-TREATMENT §7)
         m.tab(f'{p}_onfeed', st, [[0, 0], [1, 1], [3, 1], [4, 0]])     # flushing, starting, service: feed water
-        m.prod(f'{p}_clx_in', [f'{p}_orp_h0', f'{p}_ff', f'{p}_onfeed'])
-        m.integ(f'{p}_clx', f'{p}_clx_in', 1, 0, 1000, 0, 's')
+        m.prod(f'{p}_clx_add', [f'{p}_orp_h0', f'{p}_ff', f'{p}_onfeed'])
+        # leaky (time constant 600 model seconds, a clock hour): trips handled one by one fade; a restart without the
+        # fix keeps adding (time compressed, as the whole model: polyamide takes ~1,000 ppm·h, [FT])
+        # (a lag of 600 × the input over 600 s: dx/dt = input − x/600)
+        m.prod(f'{p}_clx_in', [f'{p}_clx_add', 600])
+        m.lag(f'{p}_clx', f'{p}_clx_in', 600, init=0, unit='s')
         m.cmp(f'{p}_cl_dmg_c', f'{p}_clx', '>', 60)
         m.tab(f'{p}_dmg_k', f'{p}_dmg', [[0, 1], [1, 4]])
         # fouling (0–1): the colloids the feed's SDI brings, faster without antiscalant and acid; at design about a
@@ -913,7 +922,8 @@ def wtp():
         m.op(code, 'clean', None, [(f'{p}_no_trip', 'An RO trip is latched: reset it first'),
                                    ('cip_ready', 'The cleaning solution is not ready: the CIP tank dosed and at its pH, '
                                                  'a high-pH solution warmed to 30–35 °C'),
-                                   ('cip_free', 'The other train is being cleaned: the CIP skid serves one at a time')],
+                                   ('cip_free', 'The other train is being cleaned: the CIP skid serves one at a time'),
+                                   ('cip_has', 'The CIP tank is nearly empty: fill and dose it again')],
              machine=p)
         m.op(code, 'stop_cleaning', None, (), machine=p)
         stop = [{'machine': p, 'to': 'stopped'}]

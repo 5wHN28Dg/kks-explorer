@@ -133,7 +133,7 @@ def ro_cip():
                           'soak, and permeate flushes the solution to the neutralisation pit.'],
                     ['00GCB22AT001', '00GCB30AP001'], [op('00GCB22AT001', 'clean')], f'ro_b_{c}_cleaned',
                     ['One stage at a time, at 6–10 m³/h a vessel and under 4 bar: the flow lifts the foulant off the '
-                     'membranes without pressing it in. About two and a half hours of the clock.'])
+                     'membranes without pressing it in. About two hours of the clock.'])
     S = [
         step('check', ['RO train B (', k('00GCB22AT001'), ') came off line for its cleaning: its normalised permeate '
                        'flow (', k('00GCB22CF001'), ') is down to 89 %, more than 10 % under its clean value. RO A '
@@ -151,7 +151,7 @@ def ro_cip():
         clean('clean_alk', 'high-pH', 'alk'),
         step('drain_alk', ['Stop the heater (', k('00GCB30AH001'), ') and drain the CIP tank (', k('00GCB30BB001'),
                            ') to the neutralisation pit.'], ['00GCB30BB001', '00GCB30AH001'],
-             [op('00GCB30AH001', 'stop'), op('00GCB30BB001', 'drain')], 'cip_idle'),
+             [op('00GCB30AH001', 'stop'), op('00GCB30BB001', 'drain')], 'cip_idle_off'),
         step('fill2', ['Fill the CIP tank (', k('00GCB30BB001'), ') with permeate again.'], ['00GCB30BB001'],
              [op('00GCB30BB001', 'fill')], 'cip_water'),
         step('acid', ['Dose hydrochloric acid into the tank (0.2 % HCl, pH 2) and wait for its pH (', k('00GCB30CQ001'),

@@ -287,17 +287,21 @@ The model is still `tools/plant3d/wtp_model.py`, the procedures `wtp_content.py`
   minutes each), a soak (30 min, shorter than the sources' hours: ours), a flush of 20 min to the pit; `stop_cleaning`
   goes to the flush. One train at a time (two commanded in one step: B goes back to `stopped`). A high-pH solution
   above 36.5 °C, or any above 40 °C, trips the cleaning to its flush (`ro_x_trip_cip_t`, TAHH; TAH at 36 °C). The flush
-  takes its solution from the tank (10 m³/h) to the pit; the tank drains the rest.
+  takes its solution from the tank (10 m³/h) to the pit; the tank drains the rest. A cleaning needs the tank at least
+  20 % full. Only a whole cycle (its soak finished) counts as the cleaning done (`ro_x_alk_cleaned`,
+  `ro_x_acid_cleaned`, until the tank is filled again): one stopped or tripped early must be made again.
 - **Fouling in three parts** (ours): colloids and biofilm (60 % of what the feed brings), taken off by the high-pH
   solution; scale and oxides (30 %), by the low-pH; and 10 % that no cleaning takes. A cleaning takes its part off at
   2.5 a clock hour while the solution recirculates or soaks, less when the high-pH solution is cold (0.4 at 25 °C). A
   full CIP from 89 % normalised flow gives back about 98.7 %.
 - **Chlorine damage** (§7): seconds of feed water above 250 mV on the membranes at flow (`ro_x_clx`: flushing,
-  starting, in service; not the permeate flush of a stop); past 60 the scenario's fault `ro_x_cl_damage` (a fault with
+  starting, in service; not the permeate flush of a stop), forgotten with a time constant of 600 model seconds (a
+  clock hour), so trips handled one by one do not add up; past 60 the scenario's fault `ro_x_cl_damage` (a fault with
   `when`) passes four times the salt. A trip on ORP alone does not reach it; a reset and restart without the fix does,
   by the start's flush with chlorinated feed: the RO's start reads the dosing pumps' run commands, as a control system
   sees them, so a failed pump still lets it start (its no-flow alarm says so). Only the work `wo_ro_x_membranes`
-  (permit, the train isolated) repairs it.
+  (permit, the train isolated) repairs it. Time is compressed here as everywhere in the model: real polyamide takes
+  about 1,000 ppm·h of free chlorine ([FT]), not a minute of a high ORP.
 - **A mixed bed's regeneration** (its machine's states 3–13, command `regenerate` from `standby` with its feed pump
   stopped and the pit below 60 %): backwash and separation 25 clock minutes, settle 5, drain 10, a hold for the
   operator (`inject`, the acid and caustic tanks above 15 %), injection 40, displacement 60, drain 15, a hold (`air_mix`,
@@ -318,14 +322,14 @@ The model is still `tools/plant3d/wtp_model.py`, the procedures `wtp_content.py`
   confined-space permit with the bed isolated), the CIP heater's thermostat stuck (towards 50 °C). The coagulant,
   bisulphite and antiscalant pumps A have a no-flow alarm. Filtered water turbidity high (QAH 0.5 NTU) on `00GBB10`.
 - **A turbid river flocculates better** (`cl_fk`): at 500 NTU rightly dosed (80 mg/L) the clarifiers give about
-  1.5 NTU; at the dry season's 30 mg/L about 25 NTU, and the filters block (`wtp_flood`). Unchanged at 20 NTU.
+  2 NTU; at the dry season's 30 mg/L about 40 NTU, and the filters block (`wtp_flood`). Unchanged at 20 NTU.
 - **The flood** of §7 is the scenario `wtp_flood`, not a trainer's fault (the river's turbidity is an `ext` value, which
   only a scenario sets).
 - **Scenarios:** `wtp_normal` (cold_iron's train, the WTP as there with filter 1 due for its backwash, RO B off line
   fouled to 89 %, mixed bed A 82 % used: its silica alarm after about an hour); `wtp_flood` (the river at 500 NTU).
 - **Procedures:** `ro_cip` (RO B, 11 steps, about 50 model minutes) and `mb_regeneration` (bed A, 7 steps, about
   44), both from `wtp_normal`, each ending with the pit's batch.
-- **Simplified:** the CIP tank keeps its warmth when refilled; a regeneration under way has no abort (the RO's cleaning
+- **Simplified:** the CIP tank keeps its warmth when refilled; the RO flush's permeate half is not drawn from any tank; a regeneration under way has no abort (the RO's cleaning
   has `stop_cleaning`); the regenerants' water is not drawn from any tank; the
   pit's discharge does not carry its excess away (it is discharged only near neutral).
 

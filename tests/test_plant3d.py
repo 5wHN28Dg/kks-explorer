@@ -530,10 +530,21 @@ class WaterTreatmentModel(unittest.TestCase):
             pr = self.b.procedures[pid]
             e = P.Recorder(self.b, pr['scenario'])
             for s in pr['steps']:
+                ops = s.get('do', [])
+                if not s.get('ordered'):
+                    ops = ops[::-1]         # a trainee may make them in any order: the other one than the reference's
                 with self.subTest(pid=pid, step=s['id']):
-                    if s.get('do') and 'done' in s:
+                    if ops and 'done' in s:
                         self.assertFalse(e.truth(s['done']), f'{s["done"]} already true')
-                for d in s.get('do', []):
+                    # nor before the last of them: half a model minute between operations (adversarial review of W3:
+                    # drain_alk ended with the tank's drain, its heater still on)
+                    for d in ops[:-1]:
+                        e.op(d['kks'], d['do'], d.get('value'), d.get('trip'))
+                        for _ in range(300):
+                            e.step()
+                        if 'done' in s:
+                            self.assertFalse(e.truth(s['done']), f'{s["done"]} true before {ops[-1]["do"]}')
+                for d in ops[-1:]:
                     e.op(d['kks'], d['do'], d.get('value'), d.get('trip'))
                 e.step()
                 n = 0
@@ -541,6 +552,42 @@ class WaterTreatmentModel(unittest.TestCase):
                     e.step()
                     n += 1
                     self.assertLess(n, 36000, s['id'])
+
+    def test_a_cleaning_stopped_early_does_not_end_its_step(self):
+        """A cleaning stopped (or tripped) before its soak ends goes to its flush, but does not count as done: ro_cip's
+        step waits for a whole cycle (adversarial review of W3: the procedure then stuck at `flow`)."""
+        e, _ = P.run_procedure(self.b, 'ro_cip', until_step='clean_alk')
+        e.op('00GCB22AT001', 'clean')
+        for _ in range(600):
+            e.step()
+        e.op('00GCB22AT001', 'stop_cleaning')
+        n = 0
+        while not e.truth('ro_b_stopped') or n < 10:
+            e.step()
+            n += 1
+            self.assertLess(n, 36000)
+        for _ in range(100):
+            e.step()
+        self.assertFalse(e.truth('ro_b_alk_cleaned'))
+
+    def test_chlorine_exposure_fades_after_a_handled_trip(self):
+        """The membranes' chlorine exposure is forgotten over about a clock hour: trips handled one by one do not add
+        up to the damage (adversarial review of W3: the fourth handled trip damaged them)."""
+        e = P.Engine(self.b, 'wtp_normal')
+        e.fault('sbs_pump')
+        n = 0
+        while not e.truth('ro_a_trip_orp_latched'):
+            e.step()
+            n += 1
+            self.assertLess(n, 6000)
+        e.op('00GCN10AP002', 'start')
+        for _ in range(100):
+            e.step()
+        x = e.v('ro_a_clx')
+        self.assertGreater(x, 5)
+        for _ in range(12000):
+            e.step()
+        self.assertLess(e.v('ro_a_clx'), x / 5)
 
     def test_mixed_bed_taken_out_waits_for_its_standby(self):
         """mb_regeneration's `mb_a_off` ends only when both its operations are made: the pump stopped alone does not
