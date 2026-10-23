@@ -49,11 +49,32 @@ computed on Linux in the compiled model.
 `select` or `wrap`), and inputs whose names are text or null and whose values are numbers, booleans or null (the
 reference raises on, for example, a list as an alarm name). There the GDScript keeps going without a defined result.
 
-**Step time** (`bench_step.gd`, the whole first train): about 0.28 ms a step on the laptop, 0.46 ms on CI's runner,
-1.4 ms on the Note 9 (fast-forward at 60× needs 600 steps a second: 0.85 of one of its cores).
+**Step time** (`bench_step.gd`, the whole first train, before the water treatment plant and before the generated
+program below): about 0.28 ms a step on the laptop, 0.46 ms on CI's runner, 1.4 ms on the Note 9 (fast-forward at
+60× needs 600 steps a second: 0.85 of one of its cores).
 
 **With the water treatment plant (W2, 2026-10-23):** the joined model grew from 1,112 to about 1,700 values. Laptop,
 the same load for both: 0.57 → 0.80 ms a step over the cold start (1.4×). Note 9, the app's debug export walking with
 fast-forward (apps/plant3d/phone/frames.sh, `speed=fast`, 130 s), main against W2: 1.78 → 3.16 ms a step (1.8×), so
 the app's fast-forward cap there falls from about 14× to about 8×; the release build's 1.4 ms becomes about 2.5 ms
 (estimated by that ratio, not measured).
+
+**Faster, the same bits (2026-10-23).** Step 2 now runs as straight-line GDScript that `_gen_fast` writes from the
+compiled program once per model (one statement or a few per node, every slot and argument a number in the code: no
+dispatch on the node's kind, no reads of the program's arrays), compiled at the engine's start (about 50 ms on the
+laptop) and shared by every engine of that model. The interpreter `_run` stays: step 0, faults' `when` nodes, and
+every step if the generated script ever fails to compile (an error, then the same results more slowly). The loops
+of steps 3–7 read packed arrays per trip and alarm and skip what can't change anything (no trainer's fault pressed,
+no repair asked, an alarm that reads false and is normal), and `fast_forward()`, which the app's clock asks after
+every step at fast-forward, looks at normal alarms first (24 → 10 µs). The arithmetic is the same operations on the
+same doubles in the same order, so the vectors' digests are unchanged; `tests/test_plant3d_sim.py` runs every
+vector through the generated program, the unit and edge runs through the interpreter alone, and gates the step's
+cost on the runner at 0.5 ms (`bench_step.gd --max-us`: a regression such as losing the generated program fails).
+
+| | before | after |
+|---|---|---|
+| laptop, `bench_step.gd` (whole plant with the WTP, cold start / base load) | 0.51 / 0.49 ms | 0.12 / 0.12 ms |
+| Note 9, release export, the app walking at fast-forward (`frames.sh`, `speed=fast`, 130 s, two runs each, alternated; the clock's `step_ms`: the step and what follows it in the app) | 1.9 and 2.7 ms | 0.77 and 0.81 ms |
+| Note 9, the clock's fast-forward cap (a quarter of a core) | 13× and 9× | 33× and 31× |
+
+(The release APKs for this were exported without the lightmap's bake, which changes nothing the model does.)
