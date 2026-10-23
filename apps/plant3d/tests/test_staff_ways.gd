@@ -9,7 +9,7 @@ const PlantModel = preload("res://sim/plant_model.gd")
 const Layout = preload("res://tests/staff_layout.gd")
 
 const ON_MESH := 0.35       # m: a place's distance to the mesh
-const REACH := 3.0          # m: a work place's distance to its equipment's bounds
+const REACH := 8.0          # m: from a work place (at eye height) to its equipment's bounds: a thermocouple high on the exhaust duct is read from the floor below
 
 
 func run(tree: SceneTree) -> Array:
@@ -36,7 +36,8 @@ func run(tree: SceneTree) -> Array:
 			p.append("place %s %s is %.2f m off the walkable mesh" % [pl["id"], str(pl["at"]), c.distance_to(g)])
 		if pl["kind"] == "work" and ui.index.has(pl["kks"]):
 			var box: AABB = ui.index.box(pl["kks"])
-			var d := g.distance_to(g.clamp(box.position, box.end))
+			var eye := g + Vector3.UP * 1.6
+			var d := eye.distance_to(eye.clamp(box.position, box.end))
 			if d > REACH:
 				p.append("work place %s is %.1f m from %s (reach %.0f m)" % [pl["id"], d, pl["kks"], REACH])
 	for w in m.staff.d["ways"]:

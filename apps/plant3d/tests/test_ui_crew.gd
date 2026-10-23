@@ -87,12 +87,12 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 	ui.model.scenarios["test_crew_cw"] = sc
 	ui.start_shift("test_crew_cw")
 	await tree.process_frame
-	if not ui.crew.visible or App.find_button(ui.crew, "Play Field CW, crew A") == null:
+	if not ui.crew.visible or App.find_button(ui.crew, "Play Field CW, crew A…") == null:
 		p.append("the shift's start offers no role (the Crew panel: %s)" % App.texts(ui.crew).left(300))
 		return
 	if ui.clock.speed != SimClock.Speed.PAUSED:
 		p.append("the plant runs before a role is chosen")
-	App.find_button(ui.crew, "Play Field CW, crew A").pressed.emit()
+	App.find_button(ui.crew, "Play Field CW, crew A…").pressed.emit()
 	var e = ui.clock.engine
 	if e.st_trainee == -1 or e._sm.people[e.st_trainee]["id"] != "a_fo_cw":
 		p.append("the role was not taken: %s" % str(e.events.slice(0, 4)))
