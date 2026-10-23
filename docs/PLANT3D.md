@@ -534,7 +534,8 @@ it was). A repaired trainer's fault can be pressed again, and is then applied ag
 not applied again in that run. A repair asked in the step its fault is pressed comes after it (step 3) and repairs it.
 A repair writes its states whatever else set them: of two applied faults that set the same state, repairing one undoes
 that state for both (the other stays applied, and can still be repaired). A repair of a fault that has no `repair`, has not been applied, is already repaired,
-or isn't one of the scenario's does nothing and makes no event.
+or isn't one of the scenario's does nothing and makes no event. (Format 2, §15.5: in a version 2 plant the trainee
+repairs under a permit to work, and this input is the trainer's alone.)
 
 ### 7.9 Time
 
@@ -877,7 +878,8 @@ docs/plant3d/STAFF.md, docs/plant3d/WATER-TREATMENT.md, docs/plant3d/SITE.md. Mi
   `unreachable` (a place no way reaches from the control room), `bad_way` (a way shorter than the straight line
   between its places; the build's check against the navigation mesh, §18.1), `authority` (a task step whose role
   can't do it, found by the validator: an `approve` step in a role without that authority), `bad_zone` (a place on a
-  zone's edge, or whose zone list doesn't match the outlines, §16.2).
+  zone's edge, or whose zone list doesn't match the outlines, §16.2), `locked_write` (a work's `set`, or an `op` step of
+  its task, on a code of its own isolation, §15.2).
 
 ## 15. Permits to work and isolations (the model)
 
@@ -924,7 +926,7 @@ room, and an isolated transmitter shows as such on the operator's screen.
     the isolation is removed;
   - every write to a `state` whose `kks` is that code is skipped, whatever makes it: an op on another code (its `set`,
     a `set` op's number), an interlock, a machine, a trip, a fault or a repair, in steps 1 and 3–6 (the standby pump's
-    auto-start can't start a pump that is locked out; nothing else changes). A work's own `repairs` and `set` (§15.2)
+    auto-start can't start a pump that is locked out; nothing else changes). A work's own `repairs` and `set` (§15.2), and a repair under its permit (§15.5),
     are written to a locked code only if every isolation locking it is held by that work.
     A fault or a repair (§7.8, or a work's `repairs`) any of whose writes would be skipped is not made at all: not
     applied or repaired, no event (a trainer's fault pressed then is lost; one with a `when` is made once the lock is
@@ -957,8 +959,13 @@ calibration.
   before its first `work` step (validator: `bad_ref` without one).
 - **`isolation`** (optional): a work without one (an inspection) needs no locks.
 - **`repairs`** (optional): a fault of the scenario, repaired when the work is done (written as §7.8's repair, with its
-  event); a work for a fault the scenario doesn't have does nothing more. **`set`** (optional): states written when
-  done (a calibration puts a transmitter's drift back to 0).
+  event), or before that by the trainee under the permit (§15.5); a work for a fault the scenario doesn't have does
+  nothing more. **`set`** (optional): states written when done (a service counter, a setpoint put back).
+- **No restarts under lock** (the user, 2026-10-23): a work's own steps never start or move its own locked-out
+  equipment. A key of its `set` that is a `state` whose `kks` is a point of the work's own isolation is `locked_write`,
+  and so is an `op` step of its task (§16.6) on such a code (checked with the tasks, milestone S1). What the work puts
+  right on its own equipment is a fault it `repairs` (a calibration's drift is a fault whose repair puts it back to 0):
+  a repair writes the fault's states, never a command.
 - **`task`** (optional until the plant has a `staff.json`, then required and a task of it, `bad_ref`): the staff task
   (§16.6) that does the work; the trainee does the same steps when they play its role. Without staff (milestone P1)
   the trainee runs a permit through its states from the permit form, in free mode (§17.1).
@@ -993,6 +1000,53 @@ Each work has one permit at a time; its state is the value `<work id>_permit`:
   complete, back to 2; at 7 with no point of its isolation locked (or none), to 8.
 - A **permit number** is given at `request`: `PTW-` and four digits, counted from 1 in the run, in the order requested
   (a work requested again after it was closed or cancelled gets a new number, and its acceptor is cleared).
+
+### 15.5 Repairs under a permit
+
+Decided by the user on 2026-10-23: in a version 2 plant the trainee repairs a faulted piece of equipment only under
+an issued permit with its isolation in place; the trainer (the instructor's panel) still clears faults directly, to set
+up training.
+
+- **The trainee's repair** is the input `[n, "repair", fault, work, person]`: the fault repaired under that work's
+  permit. In step 1, as it comes:
+  - `unknown` (event `[n, "repair", fault, work, person, "unknown", []]`, nothing else) when the work is not a work of
+    the model, the fault not one of the scenario's with a `repair`, or the work's `repairs` not that fault;
+  - refused (`[n, "repair", fault, work, person, "refused", [reasons]]`) with the reasons, in this order, every one
+    that applies: `authority` (as a permit action, §15.3 and §17.1: a person in a plant without staff; with staff, a
+    person without `accept` and the work's discipline), `state` (the work's permit is not *accepted*, 5). An accepted
+    permit's isolation is complete: its points can't be unlocked from issued to done (§15.1);
+  - otherwise it is noted, without an event, and made in step 3 with format 1's repairs (one list, in the scenario's
+    order), its writes being the work's own (§15.1: made on a code locked only by isolations the work holds), with
+    format 1's `[n, "repair", fault]` event. As any repair (§7.8), one of a fault not applied, already repaired, or
+    whose writes would be skipped does nothing and makes no event. A fault asked by the trainer and under a permit in
+    one step is repaired once, as the work's. The work's `done` later finds it repaired and repairs nothing.
+- **The trainer's repair** is format 1's input `[n, "repair", fault]`, unchanged (§7.8, also on a fault no work
+  repairs). The app sends it from the instructor's panel only; in a version 2 plant the card offers the trainee the
+  repair under a permit, at the equipment, while the work's permit is accepted (and says why not otherwise). A version 1
+  plant has no works: its trainee repairs as format 1 says.
+
+### 15.6 What a lock would do
+
+Decided by the user on 2026-10-23: before placing an isolation that would trip a machine (the second of the condenser
+pressure transmitters, when 2-out-of-3 voting falls back and trips the steam turbine), the permit form warns ("this
+isolation will trip the steam turbine") and asks for confirmation; the lock is then made as any other. Nothing is
+special-cased: the engine answers from the model.
+
+- **The query** `lock_effects(work, point)` (an engine call, not an input: it changes nothing and is not part of the
+  run) runs two copies of the run as it stands, with the inputs already made and not yet stepped: one with the input
+  `[lock, work, point, null]` made after them, one without. Each copy steps **100 steps** (10 s of model time) with no
+  other input. The answer is `{"lock": the lock event's result in the first copy ("done", "refused" or "unknown"),
+  "trips": [...], "alarms": [...]}`: the trips with a `trip` event in the first copy and none in the second, and the
+  priority 1 alarms with an event to `active_unack` in the first copy and none in the second, each list in model order.
+  A trip or alarm that would come anyway is not blamed on the lock; a runback is announced by its priority 1 alarm.
+- 10 s holds a trip's delay in the first train (at most 5 s) and the vote that follows a lock at once; what a lock
+  causes later (a level that falls over minutes) is the lesson of the run, not of the form.
+- **The form:** a lock whose answer has trips or alarms is not sent at once. The form names what would trip (each
+  trip's text, and the machines its `do` moves, by name) and the alarms, and offers "Lock it anyway" and "Don't
+  lock", the focus on "Don't lock"; the lock is sent only on "Lock it anyway". Touch, keyboard and gamepad alike.
+  The answer is computed off the main thread and the button says it is checking meanwhile.
+- **Vectors:** a unit run's and a fork's `effects`, `[[step, work, point, answer], …]`: each asked when the run is at
+  `step`, after the inputs of step + 1 are made and before that step is stepped.
 
 ### 15.4 The `hold` node
 
@@ -1236,12 +1290,12 @@ Format 2 extends §7.10 so:
 
 1. **Inputs**, first the trainee's in the order made, then the NPCs' made in the previous step's step 9, in the order
    made. Each is handled as it comes and makes its event at once: ops (§7.2, with the authority and `where` rules
-   below), alarm inputs, faults and repairs (noted, as format 1), `permit` (§15.3), `lock` and `unlock` (noted for
+   below), alarm inputs, faults and repairs (noted, as format 1; a repair under a permit checked first, §15.5), `permit` (§15.3), `lock` and `unlock` (noted for
    step 3, no event yet), the trainee's `role`, `task_ack`, `arrive`, `leave`, `read`, `ppe`, `zone`, `say`, `pick`
    (recorded for step 9) and `jump` (§17.6). Then the first-out records (format 1).
 2. As format 1.
 3. First the locks and unlocks noted in step 1, in the order made, each checked against this step's values (§15.1)
-   and an event; then the automatic permit moves (§15.3); then format 1's faults and repairs; then `done`'s
+   and an event; then the automatic permit moves (§15.3); then format 1's faults and repairs (with those under a permit, §15.5); then `done`'s
    `repairs` and `set`, in the order the `done` inputs were made.
 4. – 8. As format 1 (with §15.1's skipped writes).
 9. **Staff** (§17.2): reads the values and states as steps 2–8 left them and this step's events, and **writes no
@@ -1325,6 +1379,7 @@ Each person has their own stream:
 | `[n, "role", person]` | the trainee takes that person (§17.4) |
 | `[n, "permit", work, action, person]` | a permit action (§15.3) |
 | `[n, "lock", work, point, person]`, `[n, "unlock", work, point, person]` | a point of the work's isolation (its index in `points`) |
+| `[n, "repair", fault, work, person]` | the trainee's repair under the work's permit (§15.5) |
 | `[n, "arrive", place]`, `[n, "leave", place]` | the trainee reached or left a place |
 | `[n, "read", code, value]` | a reading the trainee wrote down |
 | `[n, "ppe", item, 0 or 1]` | the trainee took off or put on an item |
@@ -1353,6 +1408,7 @@ In free mode, format 1's rule alone.
 
 Events, at the place §17.1 makes them. Step 1: `[n, "permit", work, action, person, "done" | "refused" |
 "unknown", [reasons]]` (`unknown` with an empty list),
+`[n, "repair", fault, work, person, "refused" | "unknown", [reasons]]` (§15.5),
 `[n, "role", person, "done" | "refused"]`, `[n, "task_ack"]`, `[n, "jump", from, to, "done" | "refused"]` (tenths of
 clock seconds). Step 3, first: `[n, "lock", work, point, person, "done" | "refused" | "unknown", [reasons]]` and
 `"unlock"` (§15.1's reasons), then
@@ -1488,6 +1544,13 @@ Every panel works with keyboard, gamepad and touch, as the format 1 panels.
 
 The app's engine (`apps/plant3d/sim`) reproduces every vector bit for bit, format 1's and format 2's, on every
 platform (CAPABILITIES.md §8).
+
+**Added 2026-10-23 (milestone P1b):** the unit runs pin the trainee's repair under a permit (refused before the
+permit is accepted, with `authority`, and `unknown`; made with the permit accepted on a locked code; the work's `done`
+then repairs nothing) beside the trainer's repair (made on a free code, not made on a locked one), and `effects`
+(§15.6: a lock that trips a 2-out-of-3 vote, a refused lock, a trip that comes anyway); `reject` has `locked_write`;
+the forks add the trainee's repair of CW pump B under its permit and the condenser pressure transmitters' warning (the
+second transmitter's lock trips the steam turbine, the first's doesn't).
 
 **As built for milestone P1** (2026-10-22: permits, isolations and the `hold` node, no staff): the file holds `valid`,
 `reject` (the version rules, the `hold` node, isolations and works: every rule of §15 the validator checks), `steps`
