@@ -1495,6 +1495,14 @@ An area with `"load": "inside"` (a camp block's rooms, the mess hall's kitchen) 
 trainee comes within 15 m of its building's doors and freed 30 m away; its shell is in the area that holds it. Its
 people are logical as anywhere and drawn only while it is loaded.
 
+- **Content** (validator): only in a version 2 area of a version 2 plant; its bounds lie inside exactly one other
+  area (the one holding its building) and overlap no other; it holds no equipment or pipes.
+- **Built** (C1): the build leaves interiors out of the plant's scenes at the start and out of the lightmap's bake,
+  lists them in the manifest's `interiors` with their buildings' doors, and bakes them into the walking directions'
+  navigation mesh (a way into a room is a way like any other). The app (`app/interiors.gd`) checks the walker's
+  distance four times a second, loads with `ResourceLoader.load_threaded_request`, and shows an interior only once it
+  has loaded.
+
 ### 18.6 New kit parts
 
 Water treatment (WATER-TREATMENT.md §5): `screen_band`, `bar_screen`, `clarifier` (circular, solids contact: d,
@@ -1507,6 +1515,29 @@ metering pumps' plinths), `metering_pump`, `chemical_tank` (FRP, in a bund), `fi
 pickup, SUV), `barrier` (a gate arm), `guard_booth`, `canopy` (shade over parking and walkways), `lamp_post`,
 `planting` (by species: date palm, tamarisk, oleander, bougainvillea, a drought-tolerant shrub; SITE.md §4), `kerb` (painted), `court` (a fenced sports court), `porch`, `room` (an
 interior partition with doors). Geometry is the kit's, as everything (§9).
+
+As built (milestone C1; `data/plant3d/kit.json` has their parameters): these are structures (the `structures` group,
+no code) that the parts kit draws (`apps/plant3d/kit/parts_site.gd`), placed by `at` and `yaw` and instanced per cell
+like equipment, solid where a walker would meet them. Beyond the list above:
+
+- **`planting`:** `species` (`date_palm`, `tamarisk`, `oleander`, `bougainvillea`, `saltbush`, `caper`), `height`
+  and `spacing` (0: the species' usual), and `route` (relative to `at`): a row, one plant at its first point and
+  then every `spacing` metres, each with a shape of its own; the default route, of no length, is one plant. Opaque
+  geometry in the plant's one shader (no cut-out leaves, §10 and 0060): a palm's trunk, its leaf bases (`detail`) and
+  its arching fronds (keeled blades, both faces), shrubs and crowns as clusters of lumps with their leaves' and
+  flowers' colours in the vertices; a row's drip line (`detail`). The generated LODs thin them with distance.
+- **`room`:** `walls` (records of `a`, `b`, plan points relative to `at`), `height`, `openings` (`door`, `window`,
+  and `door_closed`: a shut door's leaf drawn in the wall, for a room nobody is shown).
+- **`crossing`:** a marked pedestrian crossing (`width` across the road, `length` along it).
+- **`sanitary`:** `wc`, `shower`, `basin` or an `ablution` row.
+- **`counter`** kinds `serving`, `kitchen`, `range`, `sink`, `basin`, `reception`, `workbench`; **`shelf`** kinds
+  `store`, `shoes`; **`gym_rack`** kinds `weights`, `treadmill`, `bike`, `bench`.
+- §5's parts gain: a `building`'s `cladding` `panel` (prefabricated sandwich panels) and `floor` `vinyl` (matte vinyl
+  tiles; also a `floor`'s or `platform`'s `finish`); a `door`'s `locked` (a shell's door that never opens: its leaf on
+  the wall's outside, no opening needed); a `road`'s `surface` is drawn (asphalt, paved concrete, gravel) and a road
+  at ground level is cut out of the ground and the yards (and opens the boundary wall where it crosses it).
+- An interior (§18.5) holds only these parts and doors, and is drawn unbaked in the vertex format the instanced
+  pieces already use, so showing one compiles no pipeline the start has not (0060).
 
 ### 18.7 The trainee's panels
 

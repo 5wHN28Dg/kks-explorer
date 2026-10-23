@@ -1,0 +1,25 @@
+{
+ "format": "walkdown-plant-area",
+ "version": 2,
+ "id": "prayer_in",
+ "title": "Prayer room",
+ "bounds": [
+  [-314, 26],
+  [-302, 36]
+ ],
+ "pack": "camp",
+ "equipment": [],
+ "pipes": [],
+ "structures": [
+  {"id": "prayer_in_lobby_wall", "part": "room", "at": [-314, 26, 0], "params": {"height": 3.45, "walls": [{"a": [0.15, 3.0], "b": [11.85, 3.0]}], "openings": [{"kind": "door", "at": [6.0, 3.0], "width": 1.6, "height": 2.3}]}},
+  {"id": "prayer_in_shoes_w", "part": "shelf", "at": [-311.6, 28.75, 0], "yaw": 180, "params": {"kind": "shoes", "length": 2.4, "height": 1.0}},
+  {"id": "prayer_in_shoes_e", "part": "shelf", "at": [-304.4, 28.75, 0], "yaw": 180, "params": {"kind": "shoes", "length": 2.4, "height": 1.0}},
+  {"id": "prayer_in_ablution", "part": "sanitary", "at": [-313.85, 27.5, 0], "yaw": 90, "params": {"kind": "ablution"}},
+  {"id": "prayer_in_carpet", "part": "carpet", "at": [-313.85, 29.1, 0], "params": {"outline": [[0, 0], [11.7, 0], [11.7, 6.75], [0, 6.75]], "colour": "green"}},
+  {"id": "prayer_in_shelf", "part": "shelf", "at": [-303.0, 35.6, 0], "yaw": 180, "params": {"length": 1.2, "height": 1.4}}
+ ],
+ "signs": [
+  {"text": "Please take off your shoes", "at": [-308, 28.75, 2.4], "yaw": 180, "size": 0.18}
+ ],
+ "load": "inside"
+}

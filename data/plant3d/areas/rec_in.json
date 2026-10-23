@@ -1,0 +1,32 @@
+{
+ "format": "walkdown-plant-area",
+ "version": 2,
+ "id": "rec_in",
+ "title": "Recreation room",
+ "bounds": [
+  [-338, 26],
+  [-322, 36]
+ ],
+ "pack": "camp",
+ "equipment": [],
+ "pipes": [],
+ "structures": [
+  {"id": "rec_in_screen", "part": "screen", "at": [-330, 35.85, 0], "yaw": 180, "params": {"size": 1.9, "mount": 1.6}},
+  {"id": "rec_in_sofa_1", "part": "sofa", "at": [-333.2, 32.0, 0], "params": {"seats": 3}},
+  {"id": "rec_in_sofa_2", "part": "sofa", "at": [-326.8, 32.0, 0], "params": {"seats": 3}},
+  {"id": "rec_in_sofa_3", "part": "sofa", "at": [-336.6, 33.4, 0], "yaw": 90, "params": {"seats": 2}},
+  {"id": "rec_in_coffee", "part": "table", "at": [-330, 33.3, 0], "yaw": 90, "params": {"length": 1.2, "width": 0.6, "height": 0.45}},
+  {"id": "rec_in_table_1", "part": "table", "at": [-335, 28.6, 0], "params": {"length": 1.2, "width": 0.9}},
+  {"id": "rec_in_chair_1_1", "part": "chair", "at": [-335.75, 28.6, 0], "yaw": 90},
+  {"id": "rec_in_chair_1_2", "part": "chair", "at": [-334.25, 28.6, 0], "yaw": 270},
+  {"id": "rec_in_chair_1_3", "part": "chair", "at": [-335.0, 27.7, 0]},
+  {"id": "rec_in_chair_1_4", "part": "chair", "at": [-335.0, 29.5, 0], "yaw": 180},
+  {"id": "rec_in_table_2", "part": "table", "at": [-325, 28.6, 0], "params": {"length": 1.2, "width": 0.9}},
+  {"id": "rec_in_chair_2_1", "part": "chair", "at": [-325.75, 28.6, 0], "yaw": 90},
+  {"id": "rec_in_chair_2_2", "part": "chair", "at": [-324.25, 28.6, 0], "yaw": 270},
+  {"id": "rec_in_chair_2_3", "part": "chair", "at": [-325.0, 27.7, 0]},
+  {"id": "rec_in_chair_2_4", "part": "chair", "at": [-325.0, 29.5, 0], "yaw": 180}
+ ],
+ "signs": [],
+ "load": "inside"
+}

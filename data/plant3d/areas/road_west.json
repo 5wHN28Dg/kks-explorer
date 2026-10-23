@@ -1,0 +1,46 @@
+{
+ "format": "walkdown-plant-area",
+ "version": 2,
+ "id": "road_west",
+ "title": "Road to the camp",
+ "bounds": [
+  [-260, 10],
+  [-140, 30]
+ ],
+ "pack": "camp",
+ "equipment": [],
+ "pipes": [],
+ "structures": [
+  {"id": "rw_road", "part": "road", "kks": "00UZA30", "at": [-260, 12, 0], "params": {"outline": [[0, 0], [120.0, 0], [120.0, 7.0], [0, 7.0]], "surface": "asphalt"}},
+  {"id": "rw_walk", "part": "road", "at": [-260, 21, 0], "params": {"outline": [[0, 0], [120.0, 0], [120.0, 2.0], [0, 2.0]], "surface": "concrete"}},
+  {"id": "rw_kerb_s", "part": "kerb", "at": [-260, 12, 0], "params": {"route": [[0, 0, 0], [120.0, 0.0, 0]], "painted": true}},
+  {"id": "rw_kerb_n", "part": "kerb", "at": [-260, 19, 0], "params": {"route": [[0, 0, 0], [120.0, 0.0, 0]], "painted": true}},
+  {"id": "rw_wall_s", "part": "wall", "at": [-260, 10.5, 0], "params": {"route": [[0.0, 0.0, 0], [120.0, 0.0, 0]], "height": 1.2, "thickness": 0.2}},
+  {"id": "rw_wall_n", "part": "wall", "at": [-260, 29.5, 0], "params": {"route": [[0.0, 0.0, 0], [120.0, 0.0, 0]], "height": 1.2, "thickness": 0.2}},
+  {"id": "rw_oleander", "part": "planting", "at": [-258, 26.0, 0], "params": {"species": "oleander", "route": [[0, 0, 0], [116.0, 0.0, 0]]}},
+  {"id": "rw_palm_1", "part": "planting", "at": [-256.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_2", "part": "planting", "at": [-248.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_3", "part": "planting", "at": [-240.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_4", "part": "planting", "at": [-232.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_5", "part": "planting", "at": [-224.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_6", "part": "planting", "at": [-216.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_7", "part": "planting", "at": [-208.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_8", "part": "planting", "at": [-200.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_9", "part": "planting", "at": [-192.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_10", "part": "planting", "at": [-184.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_11", "part": "planting", "at": [-176.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_12", "part": "planting", "at": [-168.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_13", "part": "planting", "at": [-160.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_14", "part": "planting", "at": [-152.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_palm_15", "part": "planting", "at": [-144.0, 20.0, 0], "params": {"species": "date_palm"}},
+  {"id": "rw_lamp_1", "part": "lamp_post", "at": [-254.0, 11.2, 0], "params": {"height": 8}},
+  {"id": "rw_lamp_2", "part": "lamp_post", "at": [-227.0, 11.2, 0], "params": {"height": 8}},
+  {"id": "rw_lamp_3", "part": "lamp_post", "at": [-200.0, 11.2, 0], "params": {"height": 8}},
+  {"id": "rw_lamp_4", "part": "lamp_post", "at": [-173.0, 11.2, 0], "params": {"height": 8}},
+  {"id": "rw_lamp_5", "part": "lamp_post", "at": [-146.0, 11.2, 0], "params": {"height": 8}}
+ ],
+ "signs": [
+  {"text": "Camp 120 m", "at": [-143, 23.4, 2.0], "yaw": 90, "size": 0.35},
+  {"text": "Plant gate", "at": [-257, 23.4, 2.0], "yaw": 270, "size": 0.35}
+ ]
+}

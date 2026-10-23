@@ -25,6 +25,10 @@ const CELL_H := 0.03            # the climb, 0.09 m, is three of them (Recast fl
 const LINK_REACH := 1.0         # how far from a stair's or a ladder's end its link finds the mesh (the app's map too)
 const APPROACH := 0.8           # metres in front of a stair's end where its link starts
 
+const TILE := 102.4              # metres (1024 cells): the site is baked in tiles of this size (bake_tiled)
+const TILE_FLOOR_MIN := 25.0     # m² of level faces in a tile (a slab's top and bottom) above which an empty bake of it fails
+const BORDER := 1.0             # metres baked round each tile and cut off again, so a tile's edge is not eroded
+
 static func params() -> NavigationMesh:
 	var nm := NavigationMesh.new()
 	nm.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
@@ -89,7 +93,9 @@ static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, 
 				v.append(Vector3(p.x, 0, -p.y))
 			var lo: float = fl.z0 - 0.5
 			src.add_projected_obstruction(v, lo, fl.z1 - 0.15 - lo, false)
-	NavigationServer3D.bake_from_source_geometry_data(nm, src)
+	var tiled := bake_tiled(nm, src, TILE)
+	if tiled.has("error"):
+		return tiled
 	if nm.get_polygon_count() == 0:
 		return {"error": "nav: the navigation mesh is empty"}
 	# the links: each stair's foot and top, each ladder's foot and step-off point
@@ -107,7 +113,7 @@ static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, 
 	if e != OK:
 		return {"error": "nav: save %s: error %d" % [path, e]}
 	return {"polygons": nm.get_polygon_count(), "dropped": all - nm.get_polygon_count(), "vertices": nm.get_vertices().size(),
-		"doors": left_out.doors, "stairs": left_out.stairs, "ms": Time.get_ticks_msec() - t0,
+		"doors": left_out.doors, "stairs": left_out.stairs, "tiles": tiled.tiles, "grid": tiled.grid, "splits": tiled.splits, "ms": Time.get_ticks_msec() - t0,
 		"bytes": FileAccess.get_file_as_bytes(path).size()}
 
 ## A stair's way (its path, Godot's axes) with the floor in front of each end, APPROACH metres on, where its link
@@ -279,3 +285,162 @@ static func _keep(nm: NavigationMesh, keep: Dictionary) -> void:
 	nm.vertices = nv
 	for q in out:
 		nm.add_polygon(q)
+
+## Bakes `src` into `nm` tile by tile, `tile` metres square on the cell grid, and joins the tiles into one mesh.
+## Recast (Godot's baker) indexes a heightfield's spans with 24 bits: the site and the camp at 0.1 m cells (some
+## 975 x 220 m, 21 million columns) overflowed it, and the bake came out empty or crashed. Each tile is baked with
+## a border (BORDER) so its polygons end exactly on the tile's edge; the vertices the tiles share there are welded,
+## and an edge on a seam that a vertex of the other side splits is split there too (Recast places the seam's
+## vertices on each side independently): Godot's region joins two polygons only by an edge both have exactly.
+## Returns {"tiles": tiles with polygons, "grid": tiles in the grid, "splits": polygons split on a seam} (none on
+## the site in 2026-10), or {"error": …} when a tile with floor in it baked to nothing.
+static func bake_tiled(nm: NavigationMesh, src: NavigationMeshSourceGeometryData3D, tile: float) -> Dictionary:
+	var b := src.get_bounds()
+	var x0 := floorf(b.position.x / tile) * tile
+	var z0 := floorf(b.position.z / tile) * tile
+	var nx := maxi(1, ceili((b.end.x - x0) / tile))
+	var nz := maxi(1, ceili((b.end.z - z0) / tile))
+	var tiles: Array = []
+	var floors := floor_area_by_tile(src, Vector2(x0, z0), tile)
+	for ix in nx:
+		for iz in nz:
+			var t := params()
+			# Godot cuts the border inside the box it bakes: the box is the tile and the border round it. Half a
+			# cell less, as Godot rounds the border up to whole cells (BORDER / CELL in floats is not exactly 10)
+			t.filter_baking_aabb = AABB(Vector3(x0 + ix * tile - BORDER, b.position.y - 1.0, z0 + iz * tile - BORDER),
+				Vector3(tile + 2.0 * BORDER, b.size.y + 2.0, tile + 2.0 * BORDER))
+			t.border_size = BORDER - CELL * 0.5
+			NavigationServer3D.bake_from_source_geometry_data(t, src)
+			if t.get_polygon_count() > 0:
+				tiles.append(t)
+			elif floors.get(Vector2i(ix, iz), 0.0) > TILE_FLOOR_MIN:
+				# Recast gives up on a tile without a word (a limit of its own: 65,534 vertices, 15-bit regions):
+				# a square of the site missing from the directions must stop the build, as the whole one did
+				return {"error": "nav: the tile at x %.1f, z %.1f has %.0f m² of level floor but baked to nothing" % [
+					x0 + ix * tile, z0 + iz * tile, floors[Vector2i(ix, iz)]]}
+	return {"tiles": tiles.size(), "grid": nx * nz, "splits": join_tiles(nm, tiles, Vector2(x0, z0), tile, Vector2i(nx, nz))}
+
+## The level faces (triangles within 25° of level, up or down: a slab counts twice) in each tile of the grid from
+## `origin`, in m²,
+## by the tile the triangle's middle is in: Vector2i(column, row) -> area.
+static func floor_area_by_tile(src: NavigationMeshSourceGeometryData3D, origin: Vector2, tile: float) -> Dictionary:
+	var v := src.get_vertices()
+	var ix := src.get_indices()
+	var out := {}
+	for k in range(0, ix.size() - 2, 3):
+		var a := Vector3(v[ix[k] * 3], v[ix[k] * 3 + 1], v[ix[k] * 3 + 2])
+		var b := Vector3(v[ix[k + 1] * 3], v[ix[k + 1] * 3 + 1], v[ix[k + 1] * 3 + 2])
+		var c := Vector3(v[ix[k + 2] * 3], v[ix[k + 2] * 3 + 1], v[ix[k + 2] * 3 + 2])
+		var n := (b - a).cross(c - a)
+		var area := n.length() * 0.5
+		if area < 1e-6 or absf(n.y) < 0.9 * n.length():
+			continue
+		var m := (a + b + c) / 3.0
+		var key := Vector2i(floori((m.x - origin.x) / tile), floori((m.z - origin.y) / tile))
+		out[key] = out.get(key, 0.0) + area
+	return out
+
+## Joins baked tiles (`n` of them across and down from `origin`, `tile` metres square) into `nm`: the vertices
+## within 1 cm of each other welded, an edge on a seam split at the other side's vertices on it. Returns how many
+## polygons were split.
+static func join_tiles(nm: NavigationMesh, tiles: Array, origin: Vector2, tile: float, n: Vector2i) -> int:
+	var x0 := origin.x
+	var z0 := origin.y
+	var nx := n.x
+	var nz := n.y
+	var verts := PackedVector3Array()
+	var polys: Array = []
+	var weld := {}   # Vector2i(x, z in cm) -> [vertex indices] (one per floor height)
+	for t in tiles:
+		var map := PackedInt32Array()
+		for v in t.get_vertices():
+			map.append(_weld(verts, weld, v))
+		for i in t.get_polygon_count():
+			var q := PackedInt32Array()
+			for idx in t.get_polygon(i):
+				q.append(map[idx])
+			polys.append(q)
+	# the seams: the lines between tiles, and the vertices on each
+	var lines := {}   # Vector2i(axis 0 = x / 1 = z, line number) -> [vertex indices]
+	for i in verts.size():
+		for axis in 2:
+			var c: float = verts[i].x - x0 if axis == 0 else verts[i].z - z0
+			var k := roundi(c / tile)
+			if k > 0 and k < (nx if axis == 0 else nz) and absf(c - k * tile) < 0.005:
+				var key := Vector2i(axis, k)
+				if not lines.has(key):
+					lines[key] = []
+				lines[key].append(i)
+	nm.clear_polygons()
+	var out: Array = []
+	var splits := 0
+	for p in polys:
+		var loop := PackedInt32Array()
+		var split := false
+		for k in p.size():
+			var u: int = p[k]
+			var w: int = p[(k + 1) % p.size()]
+			loop.append(u)
+			for between in _on_seam(verts, lines, x0, z0, tile, u, w):
+				loop.append(between)
+				split = true
+		if not split:
+			out.append(p)
+			continue
+		splits += 1
+		# fan round the polygon's middle (a polygon with a straight angle on its edge would have a vertex in line)
+		var mid := Vector3.ZERO
+		for idx in p:
+			mid += verts[idx]
+		verts.append(mid / p.size())
+		var m := verts.size() - 1
+		for k in loop.size():
+			out.append(PackedInt32Array([m, loop[k], loop[(k + 1) % loop.size()]]))
+	nm.vertices = verts
+	for q in out:
+		nm.add_polygon(q)
+	return splits
+
+## The vertex for `v`: one already there within 1 cm in plan and 0.1 m in height, else `v` added.
+static func _weld(verts: PackedVector3Array, weld: Dictionary, v: Vector3) -> int:
+	var key := Vector2i(roundi(v.x * 100.0), roundi(v.z * 100.0))
+	for dx in [0, -1, 1]:
+		for dz in [0, -1, 1]:
+			for i in weld.get(key + Vector2i(dx, dz), []):
+				if absf(verts[i].y - v.y) < 0.1 and Vector2(verts[i].x, verts[i].z).distance_to(Vector2(v.x, v.z)) < 0.01:
+					return i
+	verts.append(v)
+	if not weld.has(key):
+		weld[key] = []
+	weld[key].append(verts.size() - 1)
+	return verts.size() - 1
+
+## The vertices strictly between `u` and `w`, in order from `u`, when both lie on the same seam (and in height on
+## the line between them, within 0.3 m); [] otherwise.
+static func _on_seam(verts: PackedVector3Array, lines: Dictionary, x0: float, z0: float, tile: float, u: int, w: int) -> Array:
+	var a := verts[u]
+	var c := verts[w]
+	for axis in 2:
+		var ca: float = a.x - x0 if axis == 0 else a.z - z0
+		var cc: float = c.x - x0 if axis == 0 else c.z - z0
+		var k := roundi(ca / tile)
+		if not lines.has(Vector2i(axis, k)) or absf(ca - k * tile) >= 0.005 or absf(cc - k * tile) >= 0.005:
+			continue
+		var along: float = c.z - a.z if axis == 0 else c.x - a.x
+		if absf(along) < 0.005:
+			return []
+		var found: Array = []
+		for i in lines[Vector2i(axis, k)]:
+			if i == u or i == w:
+				continue
+			var v := verts[i]
+			var f: float = ((v.z - a.z) if axis == 0 else (v.x - a.x)) / along
+			# not at an end (1 cm, as the weld: a seam edge can be 100 m long); on the edge in height within 0.3 m
+			# (Recast's detail mesh leaves a sloping edge up to detail_sample_max_error, 0.2 m, off the line)
+			if f * absf(along) <= 0.01 or (1.0 - f) * absf(along) <= 0.01:
+				continue
+			if absf(v.y - lerpf(a.y, c.y, f)) < 0.3:
+				found.append([f, i])
+		found.sort_custom(func(p, q): return p[0] < q[0])
+		return found.map(func(p): return p[1])
+	return []

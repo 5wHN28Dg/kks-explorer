@@ -3,6 +3,9 @@
 ## map opens, holds the walker's controls while open, and closes after a jump; a tap on the map lands on a free floor.
 extends RefCounted
 
+const Lighting = preload("res://app/lighting.gd")
+const Quality = preload("res://app/quality.gd")
+
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
 	for f in DirAccess.get_files_at("res://app"):
@@ -23,6 +26,15 @@ func run(tree: SceneTree) -> Array:
 		p.append("the walker starts in %s, not the control building" % main.area_at(main.player.global_position))
 	if main.tier == "":
 		p.append("no quality tier was chosen")
+	# (RenderingServer has no getter for the filter: the start records what it set)
+	var want_filter := "bicubic" if Lighting.lightmap_bicubic(Quality.is_phone(), RenderingServer.get_video_adapter_name()) else "bilinear"
+	if main.lightmap_filter != want_filter:
+		p.append("the start sets the lightmap's filter for this device (app/lighting.gd lightmap_bicubic)")
+	# before the plant loads: the filter is part of every lit pipeline
+	var i_filter: int = Array(main.lines).find_custom(func(s): return s.begins_with("lightmap filter:"))
+	var i_plant: int = Array(main.lines).find_custom(func(s): return s.begins_with("loaded the plant"))
+	if i_filter < 0 or i_plant < 0 or i_filter > i_plant:
+		p.append("the lightmap's filter is set before the plant loads (lines %d and %d)" % [i_filter, i_plant])
 	main.toggle_map()
 	if not main.map.active or main.player.input_enabled:
 		p.append("the map opens and holds the walker's controls")

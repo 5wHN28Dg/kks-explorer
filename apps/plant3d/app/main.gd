@@ -4,7 +4,8 @@
 ## Options, after `--` on the command line (desktop) or one per line in walk.txt in the app's external files folder
 ## (Android: phone/frames.sh pushes it):
 ##   quality=full|lean+vis   this tier, whatever the settings say
-##   walk=frames|climb|screens   walk a scripted route (app/routes.gd) and log frame times; `frames` loops;
+##   walk=frames|camp|climb|screens   walk a scripted route (app/routes.gd) and log frame times; `frames` and
+##                           `camp` (through the site and the camp, milestone C1) loop;
 ##                           `screens` stays in the control room with its screens open, showing each in turn for 10 s
 ##                           (the screens' cost, ui/mimic.gd)
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
@@ -21,9 +22,10 @@
 ##   walkdown-plant://…      a link (docs/PLANT3D.md §6): anywhere on the command line, as the desktop files pass it
 ##   fx_off=fog,tonemap      those effects off (tonemap: linear output at half exposure), fx_on=ssao,sdfgi,ssil,volfog,glow those on (measuring what each costs:
 ##                           app/lighting.gd); fx_off=shadow,cascades2,shadow40,shadowhard the sun's shadow's parts
-##                           (app/quality.gd), fx_off=lightmap the plant without its bake (the halls dark: their lamps
+##                           (app/quality.gd), fx_on=bicubic the lightmap's bicubic filter even where it is off (to see the
+##                           Adreno fault again: app/lighting.gd), fx_off=lightmap the plant without its bake (the halls dark: their lamps
 ##                           light through the bake only), fx_off=stencils the pipes' stencilled names hidden
-##   On a phone walk.txt takes probe and fx_off too (phone/frames.sh's WALK_EXTRA)
+##   On a phone walk.txt takes probe, fx_off and fx_on too (phone/frames.sh's WALK_EXTRA)
 extends Node3D
 
 const Quality = preload("res://app/quality.gd")
@@ -35,6 +37,7 @@ const Hud = preload("res://app/hud.gd")
 const MapView = preload("res://app/map_view.gd")
 const PlantUi = preload("res://ui/plant_ui.gd")
 const Lighting = preload("res://app/lighting.gd")
+const Interiors = preload("res://app/interiors.gd")
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
 
 var cf: ConfigFile
@@ -42,6 +45,7 @@ var opts := {}
 var tier := ""
 var tier_why := ""
 var plant: Node3D
+var interiors: Node   # app/interiors.gd: the rooms loaded near their doors
 var player
 var hud
 var map
@@ -55,6 +59,7 @@ var times := PackedFloat32Array()
 var gpu := PackedFloat32Array()
 var last_us := 0
 var t_walk := 0.0
+var walk_pipelines := -1   # pipelines compiled when the walk's measured part began (PIPELINE lines)
 var walk_seconds := 600.0
 var first_frame_ms := -1
 ## The first walkable frame was drawn: the plant, the player, the map, the HUD and the UI are all there (a script that
@@ -69,6 +74,7 @@ var sim_n := 0
 var sim_t := 0.0
 var screens_walk := false   # walk=screens: the control room's screens in turn, nobody walking
 var _screen_t := 0.0
+var lightmap_filter := ""   # "bicubic" or "bilinear": the lightmap's filter on this device, set before the plant loads (app/lighting.gd lightmap_bicubic)
 var probing := false     # the tier probe is running: no map, no tier changes, no walking until it ends
 
 func _ready() -> void:
@@ -143,6 +149,10 @@ func _ready() -> void:
 		await _drawn()   # draws the sky alone and sets the hidden plant's pipelines compiling
 		plant.visible = true
 		_launch("plant's pipelines queued")
+	interiors = Interiors.new()
+	interiors.name = "interiors"
+	add_child(interiors)
+	interiors.setup(plant, player)
 	map = MapView.new()
 	map.name = "map"
 	add_child(map)
@@ -203,7 +213,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off"]:   # nothing else from a shared folder (probe and fx_off: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on"]:   # nothing else from a shared folder (probe, fx_off and fx_on: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
@@ -234,6 +244,8 @@ func _environment() -> void:
 	add_child(we)
 	sun = Lighting.sun()
 	add_child(sun)
+	lightmap_filter = "bicubic" if Lighting.apply_lightmap_filter(Quality.is_phone(), RenderingServer.get_video_adapter_name()) else "bilinear"
+	_say("lightmap filter: %s" % lightmap_filter)
 
 ## Picks the tier (app/quality.gd) and applies it; a desktop without a measurement of its GPU measures it first.
 ## `to_plant` false: the plant is not loaded yet; its pieces and materials get the tier later (the early start).
@@ -304,6 +316,8 @@ func _on_jump(to: Vector3) -> void:
 	toggle_map()
 
 func area_at(p: Vector3) -> String:
+	if interiors != null and interiors.title_at(p) != "":
+		return interiors.title_at(p)
 	for a in plant.manifest.areas:
 		var b: Array = a.bounds
 		if p.x >= b[0][0] and p.x <= b[1][0] and -p.z >= b[0][1] and -p.z <= b[1][1]:
@@ -395,18 +409,18 @@ func _start_walk() -> void:
 		ui.mimic.reset_cost()
 		last_us = Time.get_ticks_usec()
 		return
-	var route: Array = Routes.frames(plant) if opts.walk == "frames" else Routes.climb(plant)
+	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else Routes.climb(plant))
 	auto = Autopilot.new()
 	auto.skip_stuck = true
 	add_child(auto)
 	auto.stuck.connect(func(i, at): stuck_count += 1; _say("STUCK at step %d, %s" % [i, str(at)]))
 	auto.finished.connect(_finish)
 	var st: Array = plant.start()
-	if opts.walk != "frames":
+	if opts.walk not in ["frames", "camp"]:
 		player.global_position = route[0].to
 	else:
 		player.global_position = st[0]
-	auto.start(player, route, opts.walk == "frames")
+	auto.start(player, route, opts.walk in ["frames", "camp"])
 	last_us = Time.get_ticks_usec()
 
 func _process(delta: float) -> void:
@@ -429,6 +443,17 @@ func _process(delta: float) -> void:
 		gpu.append(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()))
 		if ms > 100.0:
 			_say("SPIKE %.1f ms at %.1f s, at %s" % [ms, t_walk, str(player.global_position)])
+		# a pipeline compiled after the start is a hitch on a phone (decision 0060): logged with where and when
+		var pl := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE) + \
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION)
+		if pl > walk_pipelines:
+			if walk_pipelines >= 0:
+				_say("PIPELINE %d compiled at %.1f s (frame %.1f ms), at %s" % [pl - walk_pipelines, t_walk, ms, str(player.global_position)])
+			walk_pipelines = pl
+		# a GPU frame over 100 ms (the screen holds the frame, while the scripts' own frame time stays short)
+		var g: float = gpu[gpu.size() - 1]
+		if g > 66.0:
+			_say("GPU %.1f ms at %.1f s, at %s" % [g, t_walk, str(player.global_position)])
 		if ui != null and ui.clock != null:
 			sim_t += delta
 			if sim_t >= 1.0:
@@ -511,5 +536,10 @@ func _shots() -> void:
 		var img := get_viewport().get_texture().get_image()
 		var p := out_dir.path_join(nm + ".png")
 		_say("shot %s: error %d" % [p, img.save_png(p)])
+		# what the view costs (the site's budget per view, SITE.md §5: draw calls and triangles)
+		_say("shot %s: %d draw calls, %d objects, %d triangles" % [nm,
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
 	_write_out()
 	get_tree().quit()
