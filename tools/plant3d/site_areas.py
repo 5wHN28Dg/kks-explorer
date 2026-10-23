@@ -194,7 +194,7 @@ def admin():
          box_road('admin_parking', -86, 66, -58, 91, kks='00UZD10'),
          # the paved forecourt in front of the building and north of the parking, shaded by palms
          box_road('admin_forecourt', -118, 91, -58, 98, 'concrete'),
-         box_road('admin_workshop_apron', -100, 54, -92, 61),
+         box_road('admin_workshop_apron', -100, 54, -94, 61),   # to the walkway's edge (not over it: tests/test_ground.gd)
          box_road('admin_store_apron', -86, 49, -80, 55, 'concrete'),
          kerb('admin_kerb_w', [-92, 40], [-92, 91], False),
          ]

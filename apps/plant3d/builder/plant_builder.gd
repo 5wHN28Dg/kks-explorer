@@ -841,7 +841,11 @@ func _area(root: Node3D, a: Dictionary) -> void:
 	for p in pits:
 		if p.area == a.id:
 			_pit(sts, p)
-	for s in a.data.get("structures", []):
+	# an interior's furniture and partitions on the ground floor stand on its hall's floor, HALL_FLOOR_T over the
+	# ground (a carpet 1.5 cm thick would be under it)
+	var inside: bool = a.data.get("load", "") == "inside"
+	for s0 in a.data.get("structures", []):
+		var s: Dictionary = _on_hall_floor(s0) if inside else s0
 		match s.part:
 			"door": _door(sts, s)
 			"slab": _slab_part(sts, s)
@@ -850,7 +854,7 @@ func _area(root: Node3D, a: Dictionary) -> void:
 			"pipe_rack": _rack(sts, s)
 	for ks in kit_structures:
 		if ks.area == a.id:
-			kp.structure(sts, ks.s)
+			kp.structure(sts, _on_hall_floor(ks.s) if inside else ks.s)
 	for sg in a.data.get("signs", []):
 		var l := Label3D.new()
 		l.name = "sign"
@@ -1640,12 +1644,24 @@ static func piece_top(r: Rect2, cuts: Array, h: float) -> float:
 	return top
 
 ## A hall's floor on the ground (z = 0): painted, not the yard's bare concrete. Drawn only (the ground's slab is the
-## walkable one) 4 mm over it, less the pits and stairwells inside the hall.
-const HALL_FLOOR_T := 0.004
+## walkable one) HALL_FLOOR_T over it, less the pits and stairwells inside the hall. 4 cm: two surfaces closer than
+## about 1.5 cm fight in a phone's 24-bit depth buffer from some tens of metres (the 4 mm it was flickered against the
+## yard; tests/test_ground.gd), and the kit's 2 cm base plates on the floor stay under it.
+const HALL_FLOOR_T := 0.04
 ## A floor's finish (content: a building's `floor`, a deck's `finish`) and the material it is drawn with: painted,
 ## glazed tiles (a turbine hall's operating floor and walkways), bare concrete (a ground floor under a deck, a pump
 ## house: cracks, dust, tyre marks).
 const FLOOR_MATS := {"epoxy": "hall_floor", "tile": "floor_tile", "concrete": "floor_concrete", "vinyl": "floor_vinyl"}
+## A structure standing at z = 0 moved up onto the hall's floor (an interior's: its buildings' floors are drawn
+## HALL_FLOOR_T over the ground); any other unchanged.
+func _on_hall_floor(s: Dictionary) -> Dictionary:
+	var at: Array = s.get("at", [0, 0, 0])
+	if at.size() < 3 or absf(float(at[2])) > TOL:
+		return s
+	var out := s.duplicate()
+	out["at"] = [at[0], at[1], float(at[2]) + HALL_FLOOR_T]
+	return out
+
 func _hall_floor(body: Node, b: Dictionary) -> int:
 	var pg: PackedVector2Array = b.outline
 	var holes: Array = []
@@ -1660,7 +1676,7 @@ func _hall_floor(body: Node, b: Dictionary) -> int:
 	var st := _st()
 	var n := 0
 	for pc in Geom.decompose(pg, holes):
-		Geom.add_prism(st, pc, 0.0, HALL_FLOOR_T, false)
+		Geom.add_prism(st, pc, 0.0, HALL_FLOOR_T)   # with its edges: a door's threshold, a pit's rim
 		n += 1
 	if n > 0:
 		_mesh_node(body, "floor", st, _mat(FLOOR_MATS[b.get("floor", "epoxy")]), Lightmap.GROUND_TEXEL)
@@ -1895,6 +1911,11 @@ func _pit_lamps(body: Node, p: Dictionary) -> int:
 		_mesh_node(body, "lamp_lenses", lens, _mat("lamp_white"))
 	return n
 
+## A pit's walls: PIT_WALL_T thick, centred on its outline, their top PIT_WALL_DROP below the ground: the yard's slab
+## round the pit and a cover over it (a grating at z = 0) lie over half their top each, and in one plane with it they
+## fought in the depth buffer (tests/test_ground.gd).
+const PIT_WALL_T := 0.3
+const PIT_WALL_DROP := 0.02
 func _pit(parent: Node3D, p: Dictionary) -> void:
 	var body := _body(parent, p.id + "_walls")
 	_pit_lamps(body, p)
@@ -1923,7 +1944,12 @@ func _pit(parent: Node3D, p: Dictionary) -> void:
 			if not open and k < n and start < 0.0:
 				start = t
 			elif (open or k == n) and start >= 0.0:
-				_panel(st, body, a.lerp(b, start), a.lerp(b, t), -float(p.depth), 0.0, 0.3)
+				# at the outline's corners each wall runs PIT_WALL_T / 2 past its start and stops as far short of its
+				# end (a pinwheel: a right-angled corner filled once, neither twice nor notched)
+				var t0 := start * len - (PIT_WALL_T * 0.5 if start == 0.0 else 0.0)
+				var t1 := t * len - (PIT_WALL_T * 0.5 if k == n else 0.0)
+				var d := (b - a) / len
+				_panel(st, body, a + d * t0, a + d * t1, -float(p.depth), -PIT_WALL_DROP, PIT_WALL_T)
 				start = -1.0
 	_mesh_node(body, "mesh", st, _mat("pit"))
 
