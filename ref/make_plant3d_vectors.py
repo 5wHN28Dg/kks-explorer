@@ -1352,7 +1352,7 @@ WTP_FORKS = [
 # W3 (WATER-TREATMENT §7): the remaining faults, from the WTP started from cold
 WTP_FORKS += [
     ('antiscalant_pump_fails', 'end', [('fault', 'as_pump'), ('run', 10)],
-     {'alarms': ['as_a_noflow'], 'end': {'as_on': [0, 0]}}),
+     {'alarms': ['as_a_noflow'], 'end': {'as_dose_on': [0, 0], 'as_on': [1, 1]}}),
     ('coagulant_pump_no_flow', 'end', [('fault', 'coag_pump'), ('run', 10)], {'alarms': ['cg_a_noflow']}),
     # clarifier A's rake stalls: its turbidity alarms, B's not; the filters take the two mixed
     ('clarifier_upset', 'end', [('fault', 'cl_upset'), ('run', 900)],
