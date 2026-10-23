@@ -117,7 +117,8 @@ The plant runs as soon as the app starts, in the `cold_iron` scenario, at 1×. T
 steps every 0.1 s of plant time whatever the frame rate. Fast-forward is offered while the engine allows it (no
 unacknowledged alarm, no active priority 1 alarm, no machine in a step to watch) and stops by itself when that
 changes, or when a procedure step is done. It is capped so that the model takes at most a quarter of one core,
-from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.4 ms a step).
+from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.4 ms a step) before the water
+treatment plant's model, about 10× with it (W2: about 2.5 ms a step, apps/plant3d/sim/README.md).
 
 - **Cards:** the code with its meaning from the plant's key table, where it is (and "Go there"), its state and
   values, its alarms and its operations. An operation is offered where the content's `where` says: within 6 m of the

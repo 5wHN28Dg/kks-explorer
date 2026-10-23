@@ -270,8 +270,9 @@ The model is `tools/plant3d/wtp_model.py` (areas `wtp` and `intake`, about 580 v
   about 2.5 model hours, the coagulant tank's fill after about 4.5, mixed bed A after about 6.
 - **Procedures:** `wtp_start` (from `wtp_cold`, 17 steps, about 23 model minutes), `filter_backwash` and
   `ro_stop_flush` (from `cold_iron`).
-- **Model cost:** the joined model grew from 1,112 to 1,696 values; a step takes about 1.45 times as long
-  (apps/plant3d/sim/README.md).
+- **Model cost:** the joined model grew from 1,112 to about 1,700 values; a step takes about 1.4 times as long on
+  the laptop and 1.8 times on the Note 9, whose fast-forward cap falls from about 14× to 8× (debug builds;
+  apps/plant3d/sim/README.md).
 
 ## 9. Not built (deliberately)
 
