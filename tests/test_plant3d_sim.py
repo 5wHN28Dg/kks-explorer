@@ -331,13 +331,14 @@ def edge_steps():
                       ['h', {'cmp': ['r', '>=', 500]}],
                       ['sm', {'sum': ['lin', 'stp', 0.1] * 13 + ['r']}], ['pr', {'product': ['h', 1.01] * 20}],
                       ['mn', {'min': ['lin', 'stp', 3] * 13 + ['r']}], ['mx', {'max': ['stp', 'lin', -1] * 13 + ['r']}],
-                      ['an', {'and': ['h', 1] * 20}], ['orr', {'or': [0, 'h'] * 20}]],
+                      ['an', {'and': ['h', 1] * 20}], ['orr', {'or': [0, 'h'] * 20}],
+                      ['one', {'of': 'r', 'table': [[5, 2]]}], ['one_s', {'of': 'r', 'table': [[5, 2]], 'step': True}]],
            'ops': [{'kks': A, 'do': 'set', 'input': 'u', 'range': [0, 2000], 'where': ['screen']}]}
     return [
         ('delays longer than 2^31 steps never fire (and an off delay that long never drops)', long_delay,
          {'ambient_t': 20}, [], [], 4),
         ("nodes past the generated program's limits (engine.gd _FAST_TERMS, _FAST_ROWS): 1024-row tables, "
-         'linear and steps, and lists of 40 refs', big, {'ambient_t': 20}, [], [[1, 'op', A, 'set', 1000, None],
+         'linear and steps, one-row tables, and lists of 40 refs', big, {'ambient_t': 20}, [], [[1, 'op', A, 'set', 1000, None],
                                                                                 [12, 'op', A, 'set', 0, None]], 30),
         ('shelving times at the half step, a bool as a set value, refusals, unknown ops, -0.0 through min, max, '
          'sum and select', inputs, {'ambient_t': 20}, [], [
@@ -400,7 +401,8 @@ class GdscriptEngineEdges(unittest.TestCase):
 class GdscriptEngineInterpreter(unittest.TestCase):
     """The engine steps with a straight-line GDScript program generated from the model (engine.gd _gen_fast), which
     every other test here runs. Its interpreter (engine.gd _run: step 0, faults' `when` nodes, and every step when the
-    program could not be compiled) must give the same bits: the unit runs and the edge runs, stepped by it alone."""
+    program could not be compiled) must give the same bits: the unit runs (formats 1 and 2) and the edge runs, stepped by
+    it alone."""
 
     def test_unit_and_edge_runs(self):
         with open(VECTORS, encoding='utf-8') as f:
@@ -422,6 +424,24 @@ class GdscriptEngineInterpreter(unittest.TestCase):
                     got = json.load(f)
                 for run, (start, chunks, _, _) in steps_runs(V['valid'][0]['files'], vec['steps']).items():
                     self.assertEqual(got[run]['chunks'], chunks, f'{name} {run}')
+            # format 2's unit runs (permits, isolations, the hold node), without its train and water plant runs
+            with open(VECTORS2, encoding='utf-8') as f:
+                V2 = json.load(f)
+            V2 = {k: v for k, v in V2.items() if k not in ('train', 'wtp')}
+            path = os.path.join(d, 'v2.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(V2, f)
+            dig = os.path.join(d, 'v2-digests.json')
+            r = godot('run_vectors.gd', '--only=v2', f'--vectors2={path}', f'--digests={dig}', '--interpreter=1',
+                      timeout=600)
+            no_errors(self, r)
+            self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+            self.assertIn(f'VECTORS passed={1 + len(V2["steps"])} failed=0', r.stdout)
+            self.assertIn(f'PROGRAM straight-line=0 interpreter={len(V2["steps"])}', r.stdout)
+            with open(dig, encoding='utf-8') as f:
+                got = json.load(f)
+            for run, (start, chunks, _, _) in steps_runs(V2['valid'][0]['files'], V2['steps'], prefix='v2/').items():
+                self.assertEqual(got[run]['chunks'], chunks, run)
 
 
 # The bench's gate: generous, so that a busy runner doesn't fail it (about 0.12 ms a step on the laptop with the

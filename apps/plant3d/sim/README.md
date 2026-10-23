@@ -69,7 +69,9 @@ no repair asked, an alarm that reads false and is normal), and `fast_forward()`,
 every step at fast-forward, looks at normal alarms first (24 → 10 µs). The arithmetic is the same operations on the
 same doubles in the same order, so the vectors' digests are unchanged; `tests/test_plant3d_sim.py` runs every
 vector through the generated program, the unit and edge runs through the interpreter alone, and gates the step's
-cost on the runner at 0.5 ms (`bench_step.gd --max-us`: a regression such as losing the generated program fails).
+cost on the runner at 0.75 ms (`bench_step.gd --max-us`; losing the generated program fails on its own, by the
+`PROGRAM` line). Lists past 16 refs and tables past 16 rows run as a loop and a call in the generated script (Godot's
+parser recurses into a long expression or `elif` chain).
 
 | | before | after |
 |---|---|---|

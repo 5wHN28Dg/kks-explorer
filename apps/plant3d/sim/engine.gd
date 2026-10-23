@@ -838,16 +838,16 @@ func _gen_fast() -> void:
 	var src := _fast_source()
 	var cache: Dictionary = m.get_meta(&"engine_fast", {}) if m is Object else {}
 	if cache.has(src):
-		_fast = cache[src]
+		_fast = cache[src]      # (null: it did not compile, once is enough)
 		return
 	var s := GDScript.new()
 	s.source_code = src
-	if s.reload() != OK:
+	if s.reload() == OK:
+		_fast = s
+	else:
 		push_error("engine: the straight-line program did not compile; stepping with the interpreter")
-		return
-	_fast = s
 	if m is Object:
-		cache[src] = s
+		cache[src] = _fast
 		m.set_meta(&"engine_fast", cache)
 
 
@@ -967,9 +967,10 @@ func _fast_node(p: int) -> String:
 
 
 ## A K_OF node: _table unrolled (its loop's every turn is one test here; the same comparisons and arithmetic), or a
-## call of the generated script's copy of _table past _FAST_ROWS rows.
+## call of the generated script's copy of _table past _FAST_ROWS rows, and for a single row (where _table, given NaN,
+## reads past the table: the copy does the same).
 func _fast_table(o: int, src: int, cnt: int, step_table: bool, f: int) -> String:
-	if cnt > _FAST_ROWS:
+	if cnt > _FAST_ROWS or cnt < 2:
 		return "\tc[%d] = table(fa, %d, %d, %s, c[%d])" % [o, f, cnt, "true" if step_table else "false", src]
 	var lines := PackedStringArray(["\tu = c[%d]" % src, "\tif u < fa[%d]:" % f, "\t\tc[%d] = fa[%d]" % [o, f + 1]])
 	if step_table:
