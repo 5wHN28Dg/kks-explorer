@@ -23,6 +23,7 @@ var _sig := ""
 var _t := 0.0
 var _refocus := false                 # an action was sent from the form: its focus follows the next step
 var feedback: Label             # the last action's result (tests read it)
+var _reasons := {}              # [work, point] as a string -> the removal reason being typed (kept across rebuilds)
 
 
 func setup(u) -> void:
@@ -88,6 +89,17 @@ func send(action: String) -> void:
 	_sent(str([work, action]), "permit", work, action, e.step_no + 1)
 
 
+## A lock removal by authority (§15.1): another person's lock, with the reason written down.
+func send_remove(point: int, reason: String) -> void:
+	reason = reason.strip_edges()
+	if reason == "":
+		return
+	_reasons.erase(str([work, point]))
+	var e = ui.clock.engine
+	e.remove_lock(work, point, ui.me(), reason.left(200))
+	_sent(str([work, "remove_lock", point]), "remove_lock", work, point, e.step_no + 1)
+
+
 func send_lock(kind: String, point: int) -> void:
 	var e = ui.clock.engine
 	if kind == "lock":
@@ -103,7 +115,8 @@ func waiting_from(e) -> void:
 	_pending.clear()
 	results.clear()
 	for q in e.queue:
-		if (q[0] == "permit" or q[0] == "lock" or q[0] == "unlock") and typeof(q[1]) == TYPE_STRING:
+		if (q[0] == "permit" or q[0] == "lock" or q[0] == "unlock" or q[0] == "remove_lock") \
+				and typeof(q[1]) == TYPE_STRING:
 			var key := str([q[1], q[2]]) if q[0] == "permit" else str([q[1], q[0], q[2]])
 			_pending.append([key, q[0], q[1], q[2], e.step_no + 1])
 			results[key] = {"state": "sent", "text": "Sent: it takes effect when the plant runs"}
@@ -125,7 +138,7 @@ func on_events(evs: Array, from: int) -> void:
 	var ctx := {}                     # Permits.replay, once a result is found
 	for i in range(from, evs.size()):
 		var ev: Array = evs[i]
-		if ev[1] != "permit" and ev[1] != "lock" and ev[1] != "unlock":
+		if not Permits.is_permit_event(ev):
 			continue
 		if ev[1] == "permit" and ev[3] == "auto":
 			_sig = ""
@@ -182,7 +195,7 @@ func refresh() -> void:
 	var kept := false
 	if focus_name != "":
 		var again := body.find_child(focus_name, true, false)
-		if again is Button and not again.disabled:
+		if again is Button and not again.disabled or again is LineEdit and again.editable:
 			again.grab_focus()
 			kept = _is_step(focus_name)
 		else:
@@ -195,7 +208,7 @@ func refresh() -> void:
 
 
 static func _is_step(n: String) -> bool:
-	return n.begins_with("do_") or n.begins_with("lock_") or n.begins_with("unlock_")
+	return n.begins_with("do_") or n.begins_with("lock_") or n.begins_with("unlock_") or n.begins_with("remove_")
 
 
 static func _first_step(n: Node) -> Button:
@@ -318,11 +331,13 @@ func _isolation(e, w: Dictionary, st: int) -> void:
 		var box := VBoxContainer.new()
 		body.add_child(box)
 		var locked: bool = Permits.point_locked(e, x["id"], p)
+		var locker = e.lockers.get(Vector2i(k, p))
+		var mine: bool = locker == null and ui.me() == null or typeof(locker) == typeof(ui.me()) and locker == ui.me()
 		var kind: String = Permits.KIND_WORDS.get(pt["kind"], pt["kind"])
 		box.add_child(W.label("%d. %s %s (%s)" % [p + 1, pt["kks"], ui.info.name_of(pt["kks"]), kind], 18))
 		box.add_child(W.label(pt["how"], 16, W.DIM))
 		var safe: bool = not pt.has("safe") or e.truth(pt["safe"])
-		var status := "LOCKED and tagged" if locked else ("not locked · safe to lock" if safe else "not locked · not safe to lock yet")
+		var status := ("LOCKED and tagged by %s" % Permits.person_words(e, locker)) if locked else ("not locked · safe to lock" if safe else "not locked · not safe to lock yet")
 		var sl := W.label(status, 17, W.BAD_COLOUR if locked else (W.OK_COLOUR if safe else W.DIM))
 		sl.name = "point_%d" % p
 		box.add_child(sl)
@@ -336,18 +351,63 @@ func _isolation(e, w: Dictionary, st: int) -> void:
 			b.disabled = not (can_lock and held and reach) or _sent_now(str([w["id"], "lock", p]))
 			b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			row.add_child(b)
-		else:
+		elif mine:
 			var b := W.button("Remove the lock (as the %s)" % who, send_lock.bind("unlock", p))
 			b.name = "unlock_%d" % p
 			b.disabled = not (can_unlock and held and reach) or _sent_now(str([w["id"], "unlock", p]))
 			b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			row.add_child(b)
+		else:
+			# a personal lock: only whoever placed it removes it; a supervisor may, by authority, with a reason
+			box.add_child(W.label("Only %s removes this lock." % Permits.person_words(e, locker), 15, W.DIM))
+			if _may_remove(e):
+				_removal(box, w["id"], p, can_unlock and held and reach)
 		if ui.index.has(pt["kks"]):
 			var g := W.button("Go there", func(): ui.fly_to(pt["kks"]))
 			g.name = "go_%d" % p
 			row.add_child(g)
 		if (can_lock and not locked or can_unlock and locked) and held and not reach:
 			box.add_child(W.label("At the equipment only: walk up to it (or Go there)", 15, W.DIM))
+
+
+## The trainee's role may remove another's lock by authority (free mode: every authority).
+func _may_remove(e) -> bool:
+	var me = ui.me()
+	if me == null:
+		return true
+	var sm = e._sm
+	if sm == null or typeof(me) != TYPE_STRING or not sm.person_ix.has(me):
+		return false
+	return sm.roles[sm.people[sm.person_ix[me]]["role"]]["authority"].has("remove_lock")
+
+
+const REASONS := ["Whoever locked it has left the site", "Whoever locked it can't be reached"]
+
+
+## The removal by authority: a reason typed, or one of the usual ones (a gamepad has no keyboard), each a button.
+func _removal(box: VBoxContainer, wid: String, p: int, can: bool) -> void:
+	var sent := _sent_now(str([wid, "remove_lock", p]))
+	box.add_child(W.label("Remove it by authority: write down why (it goes in the permit's history and the debrief).",
+			15, W.DIM))
+	var reason := LineEdit.new()
+	reason.name = "reason_%d" % p
+	reason.placeholder_text = "Why the lock is removed"
+	reason.max_length = 200
+	reason.editable = can and not sent
+	reason.text = _reasons.get(str([wid, p]), "")
+	reason.text_changed.connect(func(t: String): _reasons[str([wid, p])] = t)
+	box.add_child(reason)
+	var go := W.button("Remove by authority with this reason", func(): send_remove(p, reason.text))
+	go.name = "remove_%d" % p
+	go.disabled = not can or sent
+	go.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(go)
+	for i in REASONS.size():
+		var b := W.button("Remove by authority: %s" % REASONS[i].to_lower(), send_remove.bind(p, REASONS[i]))
+		b.name = "remove_%d_%d" % [p, i]
+		b.disabled = not can or sent
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(b)
 
 
 func _sent_now(key: String) -> bool:

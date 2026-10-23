@@ -243,7 +243,8 @@ def roles():
                 'ppe': ['helmet', 'boots', 'glasses', 'gloves', 'ear'] if rid != 'ccr_op' else ['helmet', 'boots'],
                 'routine': routine, 'play': play}
     return [
-        role('shift_sup', 'Shift supervisor', 'ops', ['operate_screen', 'request', 'approve', 'issue', 'lock_process'],
+        role('shift_sup', 'Shift supervisor', 'ops', ['operate_screen', 'request', 'approve', 'issue', 'lock_process',
+                                                       'remove_lock'],
              'sup_shift', True, 'coverall_ops_white'),
         dict(role('ccr_op', 'Control room operator', 'ops', ['operate_screen', 'request', 'lock_process'],
                   'ccr_shift', True, 'coverall_ops'), requests=['ask_' + i[0] for i in INSTRUCTIONS]),

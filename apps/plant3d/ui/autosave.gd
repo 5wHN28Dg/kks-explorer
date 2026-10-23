@@ -205,7 +205,7 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 					return "a damaged %s" % k
 	if d.has("queue"):
 		var sizes := {"op": 5, "ack": 2, "shelve": 3, "unshelve": 2, "fault": 2, "repair": 2, "permit": 4, "lock": 4,
-				"unlock": 4}
+				"unlock": 4, "remove_lock": 5}
 		for q in d["queue"]:
 			if typeof(q) != TYPE_ARRAY or q.is_empty() or not sizes.has(q[0]) or q.size() != sizes[q[0]] \
 					or (q[0] in ["fault", "repair"] and typeof(q[1]) != TYPE_STRING):

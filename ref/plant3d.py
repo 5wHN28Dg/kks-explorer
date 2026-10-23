@@ -1895,6 +1895,9 @@ class Engine:
     def unlock(self, work, point, person=None):
         self.queue.append(('unlock', work, point, person))
 
+    def remove_lock(self, work, point, person, reason):
+        self.queue.append(('remove_lock', work, point, person, reason))
+
     # format 2's trainee inputs for the staff (§17.6)
     def role(self, person):
         self.queue.append(('role', person))
@@ -2043,18 +2046,23 @@ class Engine:
         self.ev('permit', work, action, person, 'done', [])
         return 'done'
 
-    def _lock(self, kind, work, point, person, vals, npc=False):
-        """A lock or unlock (§15.1), at the start of step 3."""
+    def _lock(self, kind, work, point, person, vals, npc=False, reason=None):
+        """A lock, unlock or removal by authority (§15.1), at the start of step 3."""
         w = self.works.get(work) if isinstance(work, str) else None
         iso = w.get('isolation') if w else None
+        tail = []
+        if kind == 'remove_lock':
+            key = (iso, point) if iso is not None and isinstance(point, int) and not isinstance(point, bool) else None
+            tail = [self.locks.get(key), reason]       # whose lock it was, and why it was removed
         if iso is None or not (isinstance(point, int) and not isinstance(point, bool)
-                               and 0 <= point < len(self.isos[iso]['points'])):
-            self.ev(kind, work, point, person, 'unknown', [])
+                               and 0 <= point < len(self.isos[iso]['points'])) \
+                or (kind == 'remove_lock' and not (isinstance(reason, str) and 1 <= len(reason) <= 200)):
+            self.ev(kind, work, point, person, 'unknown', [], *tail)
             return 'unknown'
         pt = self.isos[iso]['points'][point]
         key = (iso, point)
         why = []
-        if self._authority(person, npc, 'lock_' + pt['kind']):
+        if self._authority(person, npc, 'remove_lock' if kind == 'remove_lock' else 'lock_' + pt['kind']):
             why.append('authority')
         if self.pstate[work] not in ((2, 3) if kind == 'lock' else (2, 3, 7, 10)) or self.holder[iso] != work:
             why.append('state')
@@ -2065,8 +2073,10 @@ class Engine:
                 why.append(pt['safe'])
         elif key not in self.locks:
             why.append('unlocked')
+        elif kind == 'unlock' and self.locks[key] != person:
+            why.append('owner')         # a personal lock is removed only by whoever placed it
         if why:
-            self.ev(kind, work, point, person, 'refused', why)
+            self.ev(kind, work, point, person, 'refused', why, *tail)
             return 'refused'
         if kind == 'lock':
             self.locks[key] = person
@@ -2077,9 +2087,9 @@ class Engine:
         k = self.n_locked(iso)
         self.cur[self.ix[iso + '_locked']] = float(k)
         self.cur[self.ix[iso + '_complete']] = 1.0 if k == len(self.isos[iso]['points']) else 0.0
-        if kind == 'unlock' and self.pstate[work] == 10 and k == 0:
+        if kind != 'lock' and self.pstate[work] == 10 and k == 0:
             self.holder[iso] = None     # a cancelled work lets its isolation go with its last lock
-        self.ev(kind, work, point, person, 'done', [])
+        self.ev(kind, work, point, person, 'done', [], *tail)
         return 'done'
 
     def _enter(self, mc, to, cause):
@@ -2131,6 +2141,8 @@ class Engine:
                 if npc:
                     sr.people[sr.st.person_ix[item[3]]].result = r
             elif kind in ('lock', 'unlock'):
+                noted.append(item + (None, npc))
+            elif kind == 'remove_lock':
                 noted.append(item + (npc,))
             elif kind in ('role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump'):
                 if sr is not None:
@@ -2170,8 +2182,8 @@ class Engine:
             cur[i] = fn(cur, prev)
         vals = list(cur)          # conditions in steps 3–7 read the values as step 2 left them
         # 3. the locks and unlocks noted in step 1, in the order made; the permits' automatic moves (§15.3)
-        for kind, work, point, person, npc in noted:
-            r = self._lock(kind, work, point, person, vals, npc)
+        for kind, work, point, person, reason, npc in noted:
+            r = self._lock(kind, work, point, person, vals, npc, reason)
             if npc:
                 sr.people[sr.st.person_ix[person]].result = r
         for w in self.m.works:
@@ -2455,6 +2467,9 @@ class Recorder(Engine):
 
     def unlock(self, work, point, person=None):
         self._q(('unlock', work, point, person))
+
+    def remove_lock(self, work, point, person, reason):
+        self._q(('remove_lock', work, point, person, reason))
 
     def clone(self):
         c = super().clone()

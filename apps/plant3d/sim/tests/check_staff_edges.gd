@@ -1,7 +1,8 @@
 extends SceneTree
 ## Places held in cases the staff vectors don't reach, as tests/test_plant3d_staff.py checks them on the reference
 ## (§17.8): a `leave` naming no place keeps what the trainee holds; someone already standing at a place they are sent
-## to holds it; the trainee's meeting seat is theirs again after a pause. Prints "STAFF_EDGES bad=N" and each failure.
+## to holds it; the trainee's meeting seat is theirs again after a pause; a machine command kept for a later step is
+## dropped when its machine is entered by a command or an action, not by its own `next`. Prints "STAFF_EDGES bad=N" and each failure.
 ##   godot --headless --script apps/plant3d/sim/tests/check_staff_edges.gd -- [VECTORS2]
 const PlantModel = preload("../plant_model.gd")
 const PlantEngine = preload("../engine.gd")
@@ -23,6 +24,7 @@ func _init() -> void:
 	_leave_nowhere()
 	_standing_there()
 	_meeting_seat()
+	_kept_command_dropped()
 	for b in _bad:
 		print("FAIL ", b)
 	print("STAFF_EDGES bad=%d" % _bad.size())
@@ -100,3 +102,15 @@ func _meeting_seat() -> void:
 	sm.meet(e, tp, cur, mt, true)
 	if e.sp_res[tp] != seat or e.st_holder.get(seat, -1) != tp:
 		_bad.append("after a pause the trainee's meeting seat was not theirs again")
+
+
+func _kept_command_dropped() -> void:
+	var e = _engine("a_fo1")
+	var sm = e._sm
+	e.st_early = [["op", 1, "K", "start", "local", "m"], ["op", 1, "K2", "open", "local", null], ["lock", 1, "w", 0]]
+	sm.drop_kept(e, [[5, "machine", "m", "a", "b", "next"]])
+	if e.st_early.size() != 3:
+		_bad.append("a machine moved by its own next dropped a kept command")
+	sm.drop_kept(e, [[5, "machine", "m", "b", "c", "command"]])
+	if e.st_early != [["op", 1, "K2", "open", "local", null], ["lock", 1, "w", 0]]:
+		_bad.append("a machine entered by a command kept the earlier command: %s" % [e.st_early])

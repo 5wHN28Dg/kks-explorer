@@ -15,6 +15,7 @@ const DAY := 864000
 const MINUTE := 600
 const WAIT_PLACE := 15
 const QUEUE_MAX := 32
+const EARLY_KEPT := 32           # the trainee's actions kept for a later step (§17.8)
 const OPEN_KINDS := ["point", "door", "stop", "muster", "counter", "depot", "work"]
 const STATE_NAMES := ["none", "requested", "approved", "isolated", "issued", "accepted", "done", "returned",
 		"deisolated", "closed", "cancelled"]
@@ -589,7 +590,12 @@ func step(e) -> void:
 	# 2. reactions
 	react(e, n)
 	# 4. people
-	if not jump_step:
+	if jump_step:
+		if e.st_trainee != -1 and not e._absent.has(e.st_trainee):
+			var mine := _mine(e)            # their actions of this step are kept all the same (§17.8)
+			drop_kept(e, mine)
+			keep(e, e.st_trainee, mine, {})
+	else:
 		for pi in np:
 			if pi == e.st_trainee:
 				if not e._absent.has(pi):
@@ -1161,11 +1167,11 @@ func trainee_turn(e, pi: int, tin: Array) -> void:
 	var used := []
 	used.resize(tin.size())
 	used.fill(false)
-	var mine := []
-	for k in range(e.ev_mark, e.events.size()):
-		if e.events[k][0] == e.step_no:
-			mine.append(e.events[k])
-	trainee_steps(e, pi, tin, used, mine)
+	var mine := _mine(e)
+	drop_kept(e, mine)
+	var took := {}
+	trainee_steps(e, pi, tin, used, mine, took)
+	keep(e, pi, mine, took)
 	for k in tin.size():
 		if used[k]:
 			continue
@@ -1183,7 +1189,15 @@ func trainee_turn(e, pi: int, tin: Array) -> void:
 				assign(e, [item[1]], item[2], prio_of(item[2]), null, null, null, null)
 
 
-func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array) -> void:
+func _mine(e) -> Array:
+	var mine := []
+	for k in range(e.ev_mark, e.events.size()):
+		if e.events[k][0] == e.step_no:
+			mine.append(e.events[k])
+	return mine
+
+
+func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dictionary) -> void:
 	var n: int = e.step_no
 	var pid: String = people[pi]["id"]
 	for _k in 64:
@@ -1274,19 +1288,30 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array) -> void:
 					r = "next"
 		elif s.has("op"):
 			var o: Dictionary = s["op"]
-			for y in mine:
+			for j in mine.size():
+				var y: Array = mine[j]
 				# (a done op's code, do, where and person are text: what the trainee typed is compared only then)
-				if y[1] == "op" and y.size() > 7 and y[4] == "done" and y[2] == o["kks"] and y[3] == o["do"] \
-						and y[6] == o["where"] and y[7] == pid:
+				if not took.has(j) and y[1] == "op" and y.size() > 7 and y[4] == "done" and y[2] == o["kks"] \
+						and y[3] == o["do"] and y[6] == o["where"] and y[7] == pid:
+					took[j] = true
 					r = "next"
 					break
+			if typeof(r) == TYPE_STRING and r == "wait" and _first_look(x) \
+					and early_done(e, pi, cur, "op", [o["kks"], o["do"], o["where"]], o):
+				r = "next"
 		elif s.has("permit"):
 			var w = cur["work"] if s["permit"]["work"] == "$" else s["permit"]["work"]
-			for y in mine:
-				if y[1] == "permit" and y[5] == "done" and _same(y[2], w) and y[3] == s["permit"]["action"] \
+			var a: String = s["permit"]["action"]
+			for j in mine.size():
+				var y: Array = mine[j]
+				if not took.has(j) and y[1] == "permit" and y[5] == "done" and _same(y[2], w) and y[3] == a \
 						and y[4] == pid:
+					took[j] = true
 					r = "next"
 					break
+			if typeof(r) == TYPE_STRING and r == "wait" and _first_look(x) \
+					and early_done(e, pi, cur, "permit", [w, a], null):
+				r = "next"
 		elif s.has("lock") or s.has("unlock"):
 			var k := "lock" if s.has("lock") else "unlock"
 			var w = cur["work"] if s[k]["work"] == "$" else s[k]["work"]
@@ -1303,15 +1328,132 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array) -> void:
 				if not x.has("got"):
 					x["got"] = []
 				var got: Array = x["got"]
-				for y in mine:
-					if y[1] == k and y[5] == "done" and _same(y[2], w) and y[4] == pid and pts.has(y[3]) \
-							and not got.has(y[3]):
+				for j in mine.size():
+					var y: Array = mine[j]
+					if not took.has(j) and y[1] == k and y[5] == "done" and _same(y[2], w) and y[4] == pid \
+							and pts.has(y[3]) and not got.has(y[3]):
+						took[j] = true
 						got.append(y[3])
+				if not x.has("seen"):
+					for pt in pts:
+						if not got.has(pt) and early_done(e, pi, cur, k, [w, pt], null):
+							got.append(pt)
+					x["seen"] = true
 				if got.size() == pts.size():
 					r = "next"
 		if typeof(r) == TYPE_STRING and r == "wait":
 			return
 		advance(e, pi, r)
+
+
+# ---------------------------------------------------------------- actions before their step (§17.8)
+
+## The step is looked at for the first time (then marked): a kept action is taken only when it becomes current.
+static func _first_look(x: Dictionary) -> bool:
+	if x.has("seen"):
+		return false
+	x["seen"] = true
+	return true
+
+
+## A machine entered by a command or an action in this step: an earlier command of it no longer holds.
+func drop_kept(e, mine: Array) -> void:
+	var moved := {}
+	for y in mine:
+		if y[1] == "machine" and y[5] != "next":
+			moved[y[2]] = true
+	if moved.is_empty():
+		return
+	var out := []
+	for r in e.st_early:
+		if not (r[0] == "op" and r[5] != null and moved.has(r[5])):
+			out.append(r)
+	e.st_early = out
+
+
+## Their actions done in this step that no step of theirs took: kept for a step that becomes current later.
+func keep(e, pi: int, mine: Array, took: Dictionary) -> void:
+	var pid: String = people[pi]["id"]
+	for j in mine.size():
+		var y: Array = mine[j]
+		if took.has(j):
+			continue
+		var kind = y[1]
+		if kind == "op":
+			if y.size() > 7 and y[4] == "done" and _same(y[7], pid):
+				var oc = e.op_entry(y[2], y[3], null)
+				var mc = oc["o"].get("machine") if oc != null else null
+				e.st_early.append(["op", y[0], y[2], y[3], y[6], mc])
+		elif kind == "permit" or kind == "lock" or kind == "unlock":
+			if y[5] == "done" and _same(y[4], pid):
+				if kind == "permit":
+					e.st_early.append(["permit", y[0], y[2], y[3], e.ptw.get(y[2])])
+				else:
+					e.st_early.append([kind, y[0], y[2], y[3]])
+	if e.st_early.size() > EARLY_KEPT:
+		e.st_early = e.st_early.slice(e.st_early.size() - EARLY_KEPT)
+
+
+## The earliest kept action of this kind that matches (op: code, do, where; permit: work, action; lock or unlock:
+## work, point) and still holds is taken for the step: removed from the kept ones, with the event `early`.
+func early_done(e, pi: int, cur: Dictionary, kind: String, want: Array, o) -> bool:
+	for k in e.st_early.size():
+		var q: Array = e.st_early[k]
+		if q[0] != kind:
+			continue
+		var ok := false
+		if kind == "op":
+			ok = q[2] == want[0] and q[3] == want[1] and q[4] == want[2] and _op_holds(e, o)
+		elif kind == "permit":
+			ok = _same(q[2], want[0]) and q[3] == want[1] and _permit_holds(e, want[0], want[1], q[4])
+		else:
+			ok = _same(q[2], want[0]) and q[3] == want[1] and _lock_holds(e, kind, want[0], want[1], pi)
+		if ok:
+			e.st_early.remove_at(k)
+			e._ev(["early", people[pi]["id"], cur["task"], cur["step"], q[0], q[1]])
+			return true
+	return false
+
+
+## An op's effect still holds: every state its `set` writes has that value, a `set` op's input the step's `value`
+## (when the step names one), a reset's trip is not latched.
+func _op_holds(e, o: Dictionary) -> bool:
+	var c = e.op_entry(o["kks"], o["do"], o.get("trip"))
+	if c == null:
+		return false
+	var sl: PackedInt32Array = c["set"][0]
+	var sv: PackedFloat64Array = c["set"][1]
+	for i in sl.size():
+		if e.cur[sl[i]] != sv[i]:
+			return false
+	var op: Dictionary = c["o"]
+	if op.has("input") and o.has("value") and e.cur[e.ix[op["input"]]] != float(o["value"]):
+		return false
+	if op["do"] == "reset" and not op.has("machine") and e.latched[c["ti"]] != 0:
+		return false
+	return true
+
+
+## The same permit (its number) at the action's state or past it (1 to 9), or still cancelled.
+func _permit_holds(e, w, action: String, num) -> bool:
+	var wi: int = e.m.work_ix.get(w, -1) if typeof(w) == TYPE_STRING else -1
+	if wi == -1 or not _same(e.ptw.get(w), num):
+		return false
+	var st: int = e.pstate[wi]
+	var to: int = PERMIT_TO[action]
+	return st == 10 if to == 10 else (to <= st and st <= 9)
+
+
+## A lock still in place by them under that work; an unlocked point still unlocked.
+func _lock_holds(e, kind: String, w, point: int, pi: int) -> bool:
+	var wi: int = e.m.work_ix.get(w, -1) if typeof(w) == TYPE_STRING else -1
+	var k: int = e._wk[wi][1] if wi != -1 else -1
+	if k == -1:
+		return false
+	var key := Vector2i(k, point)
+	if kind == "unlock":
+		return not e.lockers.has(key)
+	return e.lockers.has(key) and _same(e.lockers[key], people[pi]["id"]) and e.holder[k] == wi
 
 
 ## Equal and of one type: what a trainee's input typed (any JSON value) is compared with text so (GDScript's == between

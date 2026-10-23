@@ -70,7 +70,7 @@ static func in_tab(e: Dictionary, t: String) -> bool:
 	match t:
 		"deviations": return e.dev != ""
 		"alarms": return e.kind in ["alarm", "shelve", "unshelve", "trip"]
-		"permits": return e.kind in ["permit", "lock", "unlock"]
+		"permits": return e.kind in ["permit", "lock", "unlock", "remove_lock"]
 	return true
 
 
@@ -173,7 +173,7 @@ func _row(e: Dictionary) -> Button:
 		c = W.OK_COLOUR
 	elif e.kind == "machine" or e.kind == "interlock":
 		c = W.DIM
-	elif e.kind in ["permit", "lock", "unlock"]:
+	elif e.kind in ["permit", "lock", "unlock", "remove_lock"]:
 		c = W.BAD_COLOUR if e.text.contains("refused") else Color(0.6, 0.8, 1.0)
 	for k in ["font_color", "font_focus_color", "font_hover_color", "font_pressed_color"]:
 		b.add_theme_color_override(k, c)

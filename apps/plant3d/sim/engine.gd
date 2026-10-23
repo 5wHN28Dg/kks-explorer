@@ -131,6 +131,7 @@ var st_holder := {}                 # place -> the person reserving or occupying
 var st_given := {}                  # reaction source -> instances of it still queued or current
 var st_vprev: Array = []            # per reaction on a value: its truth after the previous step
 var st_next1 := 0                   # the clock at which phase 1 next has something to do (staff.gd _phase1)
+var st_early: Array = []            # the trainee's done actions no step took yet (§17.8): [kind, step, …]
 var sp_on := PackedByteArray()
 var sp_duty: Array = []             # [start, end] or []
 var sp_duties: Array = []           # the duties planned ahead
@@ -476,6 +477,17 @@ func unlock(work, point, person = null) -> void:
 	_q(["unlock", work, point, person])
 
 
+## The compiled op of a code, do and trip (staff.gd: the trainee's actions before their step), null for none.
+func op_entry(kks, do, trip):
+	var key = PlantModel.op_key(kks, do, trip)
+	return _ops.get(key) if key != null else null
+
+
+## A lock removal by authority (§15.1): another person's lock taken off by a supervisor, with the reason.
+func remove_lock(work, point, person, reason) -> void:
+	_q(["remove_lock", work, point, person, reason])
+
+
 # format 2's trainee inputs for the staff (§17.6)
 func role(person) -> void:
 	_q(["role", person])
@@ -554,6 +566,8 @@ func apply_input(item: Array) -> void:
 			lock(item[2], item[3], item[4])
 		"unlock":
 			unlock(item[2], item[3], item[4])
+		"remove_lock":
+			remove_lock(item[2], item[3], item[4], item[5])
 		"role", "arrive", "leave", "pick", "jump":
 			_q([item[1], item[2]])
 		"task_ack":
@@ -720,16 +734,28 @@ func _permit(work, action, person, dones: Array, npc := false) -> String:
 
 
 ## A lock or unlock (§15.1), at the start of step 3; its outcome.
-func _lock(kind: String, work, point, person, vals: PackedFloat64Array, npc := false) -> String:
+## The same person (or both null): what an input names is compared with a person id so, whatever its type.
+static func _same_person(a, b) -> bool:
+	return typeof(a) == typeof(b) and a == b
+
+
+func _lock(kind: String, work, point, person, vals: PackedFloat64Array, npc := false, reason = null) -> String:
 	var wi: int = m.work_ix.get(work, -1) if typeof(work) == TYPE_STRING else -1
 	var k: int = _wk[wi][1] if wi != -1 else -1
-	if k == -1 or typeof(point) != TYPE_INT or point < 0 or point >= _iso[k][1].size():
-		_ev([kind, work, point, person, "unknown", []])
+	var tail := []
+	if kind == "remove_lock":           # whose lock it was, and why it was removed
+		tail = [lockers.get(Vector2i(k, point)) if k != -1 and typeof(point) == TYPE_INT \
+				and point >= 0 and point < _iso[k][1].size() else null, reason]
+	if k == -1 or typeof(point) != TYPE_INT or point < 0 or point >= _iso[k][1].size() \
+			or (kind == "remove_lock" and not (typeof(reason) == TYPE_STRING and reason.length() >= 1 \
+			and reason.length() <= 200)):
+		_ev([kind, work, point, person, "unknown", []] + tail)
 		return "unknown"
 	var pt: Array = _iso[k][1][point]
 	var bit: int = _iso[k][4] + point
 	var why := []
-	if _authority(person, npc, "lock_" + m.isolations[k]["points"][point]["kind"]):
+	if _authority(person, npc, "remove_lock" if kind == "remove_lock" else
+			"lock_" + m.isolations[k]["points"][point]["kind"]):
 		why.append("authority")
 	var st := pstate[wi]
 	var ok := (st == 2 or st == 3) if kind == "lock" else (st == 2 or st == 3 or st == 7 or st == 10)
@@ -742,8 +768,10 @@ func _lock(kind: String, work, point, person, vals: PackedFloat64Array, npc := f
 			why.append(names[pt[1]])
 	elif not lockbits[bit]:
 		why.append("unlocked")
+	elif kind == "unlock" and not _same_person(lockers.get(Vector2i(k, point)), person):
+		why.append("owner")             # a personal lock is removed only by whoever placed it
 	if not why.is_empty():
-		_ev([kind, work, point, person, "refused", why])
+		_ev([kind, work, point, person, "refused", why] + tail)
 		return "refused"
 	if kind == "lock":
 		lockbits[bit] = 1
@@ -758,9 +786,9 @@ func _lock(kind: String, work, point, person, vals: PackedFloat64Array, npc := f
 	var c := _n_locked(k)
 	cur[_iso[k][2]] = float(c)
 	cur[_iso[k][3]] = 1.0 if c == _iso[k][1].size() else 0.0
-	if kind == "unlock" and st == 10 and c == 0:
+	if kind != "lock" and st == 10 and c == 0:
 		holder[k] = -1      # a cancelled work lets its isolation go with its last lock
-	_ev([kind, work, point, person, "done", []])
+	_ev([kind, work, point, person, "done", []] + tail)
 	return "done"
 
 
@@ -1209,7 +1237,7 @@ func _step() -> void:
 			if npc:
 				sp_result[_sm.person_ix[item[3]]] = r
 			continue
-		if kind == "lock" or kind == "unlock":
+		if kind == "lock" or kind == "unlock" or kind == "remove_lock":
 			noted.append([item, npc])
 			continue
 		if kind == "role" or kind == "task_ack" or kind == "arrive" or kind == "leave" or kind == "read" \
@@ -1263,7 +1291,7 @@ func _step() -> void:
 	# 3. the locks and unlocks noted in step 1, in the order made; the permits' automatic moves (§15.3)
 	for nd in noted:
 		var item: Array = nd[0]
-		var r := _lock(item[0], item[1], item[2], item[3], vals, nd[1])
+		var r := _lock(item[0], item[1], item[2], item[3], vals, nd[1], item[4] if item.size() > 4 else null)
 		if nd[1]:
 			sp_result[_sm.person_ix[item[3]]] = r
 	for wi in _wk.size():
@@ -1583,7 +1611,7 @@ func clone():
 			"lockbits", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",
-			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev",
+			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_early",
 			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result"]:
 		c.set(k, get(k).duplicate(true))
 	return c

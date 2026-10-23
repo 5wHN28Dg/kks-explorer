@@ -913,9 +913,15 @@ room, and an isolated transmitter shows as such on the operator's screen.
   permit is `approved` or `isolated` and its work holds the isolation (else `state`), the person may lock that kind
   (`authority`), the point is unlocked (`locked`), and its `safe` is true as this step's step 2 computed it, after this
   step's ops (else the `safe` value's name). **Unlocking** likewise, refused unless the permit is `approved` or
-  `isolated` (a point locked in error), `returned` or `cancelled` and its work holds the isolation (`state`), and the
-  point is locked (`unlocked`). The reasons are listed in the order `authority`, `state`, then `locked`, `unlocked`
-  or the `safe` value, every one that applies. Points may be locked and unlocked in any order. A lock or unlock
+  `isolated` (a point locked in error), `returned` or `cancelled` and its work holds the isolation (`state`), the
+  point is locked (`unlocked`), and the person unlocking is the one who locked it (`owner`: a lock is personal; the
+  user, 2026-10-23). The reasons are listed in the order `authority`, `state`, then `locked`, `unlocked` or the
+  `safe` value, then `owner`, every one that applies.
+- **Lock removal by authority** (the input `remove_lock`, §17.6): a supervisor removes another person's lock, with
+  the reason written down (the locker has gone home sick, say). It is an unlock made in the same place and order,
+  with the authority `remove_lock` in place of `lock_<kind>` and no `owner` check, and its event names whose lock it
+  was and the reason (§17.7); the debrief lists it. A reason that is not text of 1 to 200 characters makes it
+  `unknown`. Points may be locked and unlocked in any order. A lock or unlock
   naming no work, a work without an isolation, or a point that is not a whole number (a JSON integer) from 0 to the
   number of points − 1 is `unknown` (§17.7).
 - **While a code is locked** (a point with that code is locked, in any isolation):
@@ -1092,7 +1098,7 @@ plant.json: `"clock": {"day_scale": 6, "start": {"day": 1, "time": "06:00"}, "we
 - **`discipline`:** `ops`, `inst`, `mech`, `elec`, `chem`, `civil` (contractors), `hse`, `mgmt`, `security`,
   `transport`, `camp`. Accepting a permit needs `accept` and the work's discipline (§15.2).
 - **`authority`:** `operate_screen` (ops from the screens), `operate_local`, `request`, `approve`, `issue`, `accept`,
-  `lock_<kind>` (§15.1), `stop_work` (HSE: halts a work, §16.7), `sample` (samples and lab readings), `drive`. The
+  `lock_<kind>` (§15.1), `remove_lock` (a lock removal by authority, §15.1), `stop_work` (HSE: halts a work, §16.7), `sample` (samples and lab readings), `drive`. The
   trainee in a role has exactly its authorities: an operator who is not authorised can't lock an electrical point.
 - **`ppe`:** what the role wears at work (the items: `helmet`, `boots`, `glasses`, `gloves`, `ear`, `harness`,
   `face_shield`, `apron`, `vest`); it is put on with a `ppe` step at a locker.
@@ -1326,6 +1332,7 @@ Each person has their own stream:
 | `[n, "role", person]` | the trainee takes that person (§17.4) |
 | `[n, "permit", work, action, person]` | a permit action (§15.3) |
 | `[n, "lock", work, point, person]`, `[n, "unlock", work, point, person]` | a point of the work's isolation (its index in `points`) |
+| `[n, "remove_lock", work, point, person, reason]` | a lock removal by authority (§15.1): `reason` is text of 1 to 200 characters |
 | `[n, "arrive", place]`, `[n, "leave", place]` | the trainee reached or left a place |
 | `[n, "read", code, value]` | a reading the trainee wrote down |
 | `[n, "ppe", item, 0 or 1]` | the trainee took off or put on an item |
@@ -1356,13 +1363,16 @@ Events, at the place §17.1 makes them. Step 1: `[n, "permit", work, action, per
 "unknown", [reasons]]` (`unknown` with an empty list),
 `[n, "role", person, "done" | "refused"]`, `[n, "task_ack"]`, `[n, "jump", from, to, "done" | "refused"]` (tenths of
 clock seconds). Step 3, first: `[n, "lock", work, point, person, "done" | "refused" | "unknown", [reasons]]` and
-`"unlock"` (§15.1's reasons), then
+`"unlock"` (§15.1's reasons), and `[n, "remove_lock", work, point, person, "done" | "refused" | "unknown", [reasons],
+owner, reason]` (owner: the person whose lock the point holds as the input is made, null when it holds none or the
+work and point name none), then
 the automatic moves `[n, "permit", work, "auto", null, "done", [new state]]`. Step 9: `[n, "duty", person, "on" |
 "off"]`, `[n, "task", person, task, "start" | "done" | "abandoned" | "skipped" | "unassigned"]`, `[n, "move", person,
 from, to, arrive step]`, `[n, "vehicle", id, stop, "arrive" | "depart" | "skipped"]`, `[n, "read", person, code,
 value, "ok" | "out_of_range" | "misread"]`, `[n, "say", person, message, to]`, `[n, "unsafe" | "safe", person, kind,
-zone or work]`. The op event of a version 2 op adds `where` and person; reasons and failed values are value names or
-the words `state`, `authority`, `where`, `iso_busy`, `locked`, `unlocked`. The repairs a `done` makes in step 3 are
+zone or work]`, `[n, "early", person, task, step index, kind, made]` (§17.8: an action of the trainee's made in step
+`made` counts for that step). The op event of a version 2 op adds `where` and person; reasons and failed values are value names or
+the words `state`, `authority`, `where`, `iso_busy`, `locked`, `unlocked`, `owner`. The repairs a `done` makes in step 3 are
 `[n, "repair", fault]` events, as §7.8's, after format 1's repairs.
 
 A snapshot (§12) adds `"clock"` (tenths), `"people": {id: [where, task or null, step index]}` (where: a place,
@@ -1430,7 +1440,22 @@ What S1 settles that §16–§17 left open (the engines and the vectors follow t
   desk or table they held is let go when they leave it or arrive elsewhere. A `read`
   is compared with the value as the previous step left it (`misread` beyond `tol`); otherwise the shown value is
   checked against `expect`, and the event carries the value typed. Their `op` (the same code, `do` and `where`),
-  `permit`, `lock` and `unlock` steps are done when a matching input of theirs is `done` (a refusal leaves the step waiting: the debrief lists it). A
+  `permit`, `lock` and `unlock` steps are done when a matching input of theirs is `done` (a refusal leaves the step
+  waiting: the debrief lists it); each `done` event counts for one step only.
+- **Actions before their step** (the user, 2026-10-23). An op, permit action, lock or unlock of the trainee's that is
+  `done` and that no step of theirs took in its step is *kept* (at most 32, the oldest dropped first). When an `op`,
+  `permit`, `lock` or `unlock` step becomes current (it is first looked at: once, not again while it waits), a kept
+  action that matches it counts for it if what the step asks for is still true then: the earliest such one, taken
+  out of the kept ones, with the event `[n, "early", person, task, step, kind, made]` (the debrief says it was done
+  out of order). Still true:
+  - an op: every state its `set` writes has that value, a `set` op's input has the step's `value` (when the step
+    gives one), a reset's trip is not latched; a machine command is dropped from the kept ones in step 9 of any step
+    where its machine entered a state other than by `next` (a command or an action) after it was made;
+  - a permit action: the work's permit has the same number (§15.3) and is at the action's state or past it in the
+    order 1 to 9 (`cancel`: still cancelled);
+  - a lock: the point is locked by them and the work holds its isolation; an unlock: the point is unlocked.
+  Values are read as steps 2–8 of this step left them. A `lock`/`unlock` step with `"all"` takes a kept action for
+  each point still to do. Within a step, the current step's own matching inputs are taken first. A
   `say` step takes a `say` input of the same message and `to`; a `call` step a `call` input of the same role and
   task. Radio inputs that no step took are sent as they are: a message to its `to`, or a **call**, a new input
   `[n, "call", role, task, work]`, accepted when a `call` step names that role and task in a task the trainee's role

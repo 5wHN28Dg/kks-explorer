@@ -295,6 +295,60 @@ class StaffVectors(unittest.TestCase):
         sr.meet(tp, cur, m, True)
         self.assertEqual((tp.res, sr.holder.get(seat)), (seat, tp.i))
 
+    def run_named(self, start):
+        return next(r for r in self.runs if r['why'].startswith(start))['events']
+
+    def test_actions_before_their_step(self):
+        """§17.8 (the user, 2026-10-23): an op, lock or permit action of the trainee's made before its step is current
+        counts when the step becomes current if it still holds (event early); one that no longer holds is made
+        again; a done input counts for one step only."""
+        ahead = self.run_named('actions before their step')
+        early = [x[2:7] for x in ahead if x[1] == 'early']
+        self.assertIn(['a_fo1', 'isolate_m', 1, 'op'], [x[:4] for x in early])
+        self.assertIn(['a_fo1', 'isolate_m', 2, 'lock'], [x[:4] for x in early])
+        made = {x[0] for x in ahead if x[1] in ('op', 'lock') and len(x) > 4 and 'a_fo1' in x}
+        self.assertTrue(all(x[4] in made for x in early))
+        # the lock was made before its step, and is still the field operator's when the job is done
+        self.assertTrue(any(x[1] == 'task' and x[3] == 'isolate_m' and x[4] == 'done' for x in ahead))
+        undo = self.run_named('an action before its step that no longer holds')
+        self.assertFalse(any(x[1] == 'early' and x[3] == 'isolate_m' for x in undo))
+        closes = [x[0] for x in undo if x[1] == 'op' and x[3] == 'close' and len(x) > 7 and x[7] == 'a_fo1']
+        self.assertGreaterEqual(len(closes), 3)     # the open_valve task's, the one ahead, and the one made again
+        self.assertTrue(any(x[1] == 'task' and x[3] == 'isolate_m' and x[4] == 'done' for x in undo))
+        mech = self.run_named('a permit action before its step')
+        acc = [x for x in mech if x[1] == 'permit' and x[3] == 'accept' and x[4] == 'mech1']
+        self.assertEqual(len(acc), 1)
+        self.assertIn(['mech1', 'job_pump', 2, 'permit', acc[0][0]], [x[2:7] for x in mech if x[1] == 'early'])
+
+    def test_a_kept_command_is_dropped_when_its_machine_is_commanded(self):
+        b = P.check_files(files_of(self.V, self.runs[0]))
+        e = P.Engine(b, 's1')
+        e.role('a_fo1')
+        e.step()
+        sr = e.staff
+        sr.early = [['op', 1, 'K', 'start', 'local', 'm'], ['op', 1, 'K2', 'open', 'local', None], ['lock', 1, 'w', 0]]
+        sr.drop_kept([[5, 'machine', 'm', 'a', 'b', 'next']])
+        self.assertEqual(len(sr.early), 3)
+        sr.drop_kept([[5, 'machine', 'm', 'b', 'c', 'command']])
+        self.assertEqual(sr.early, [['op', 1, 'K2', 'open', 'local', None], ['lock', 1, 'w', 0]])
+
+    def test_personal_locks(self):
+        """§15.1 (the user, 2026-10-23): only whoever placed a lock removes it; a supervisor's removal by authority
+        names the reason and whose lock it was."""
+        ev = self.run_named('personal locks')
+        self.assertIn([600, 'unlock', 'wo_pump', 1, 'a_sup', 'refused', ['owner']], ev)
+        self.assertIn([601, 'remove_lock', 'wo_pump', 1, 'a_sup', 'unknown', [], 'a_fo1', ''], ev)
+        self.assertIn([601, 'remove_lock', 'wo_pump', 1, 'a_fo1', 'refused', ['authority'], 'a_fo1', 'Called away'], ev)
+        self.assertIn([602, 'remove_lock', 'wo_pump', 1, 'a_sup', 'done', [], 'a_fo1',
+                       'Locker went home sick; valve seen shut'], ev)
+        self.assertIn([603, 'remove_lock', 'wo_pump', 1, 'a_sup', 'refused', ['unlocked'], None, 'Again'], ev)
+        self.assertIn([604, 'lock', 'wo_pump', 1, 'a_sup', 'done', []], ev)
+        self.assertIn([606, 'unlock', 'wo_pump', 1, 'a_sup', 'done', []], ev)
+        # the NPCs unlock their own locks in every run
+        for r in self.runs:
+            self.assertFalse(any(x[1] == 'unlock' and x[5] == 'refused' and 'owner' in x[6] and x[4] != 'a_sup'
+                                 for x in r['events']), r['why'])
+
     def test_a_free_radio_call_names_no_work(self):
         b = P.check_files(files_of(self.V, self.runs[4]))
         e = P.Engine(b, 's1')

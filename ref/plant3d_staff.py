@@ -24,13 +24,14 @@ POSES = ('stand', 'sit', 'lie', 'kneel')
 WALK_MODES = ('walk', 'stair', 'ladder')
 ROLE_DISCIPLINES = ('ops', 'inst', 'mech', 'elec', 'chem', 'civil', 'hse', 'mgmt', 'security', 'transport', 'camp')
 AUTHORITIES = ('operate_screen', 'operate_local', 'request', 'approve', 'issue', 'accept', 'lock_electrical',
-               'lock_mechanical', 'lock_process', 'lock_instrument', 'stop_work', 'sample', 'drive')
+               'lock_mechanical', 'lock_process', 'lock_instrument', 'remove_lock', 'stop_work', 'sample', 'drive')
 PPE = ('helmet', 'boots', 'glasses', 'gloves', 'ear', 'harness', 'face_shield', 'apron', 'vest')
 WEEK = ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun')
 # who may make each permit action (§15.3): done and return are the acceptor's (or another with accept and the
 # work's discipline while the acceptor is off duty or absent)
 PERMIT_AUTH = {'request': 'request', 'approve': 'approve', 'issue': 'issue', 'accept': 'accept', 'done': 'accept',
                'return': 'accept', 'close': 'issue', 'cancel': 'approve'}
+PERMIT_TO = {'request': 1, 'approve': 2, 'issue': 4, 'accept': 5, 'done': 6, 'return': 7, 'close': 9, 'cancel': 10}
 STATE_NAMES = ('none', 'requested', 'approved', 'isolated', 'issued', 'accepted', 'done', 'returned', 'deisolated',
                'closed', 'cancelled')
 STEP_KINDS = ('go', 'work', 'read', 'op', 'permit', 'lock', 'unlock', 'say', 'wait', 'call', 'meet', 'choose', 'ack')
@@ -40,6 +41,7 @@ OFFSET = re.compile(r'(start|end)([+-])([0-9]|1[0-2]):([0-5][0-9])')
 DUR = re.compile(r'([0-9]|1[0-9]|2[0-4]):([0-5][0-9])')
 DAY = 864000            # tenths of a clock second in a day
 MINUTE = 600
+EARLY_KEPT = 32         # the trainee's actions kept for a later step (§17.8)
 WAIT_PLACE = 15         # clock minutes a person waits for a taken place, or for a meeting's people (§16.2, §16.6)
 
 
@@ -855,6 +857,7 @@ class StaffRun:
         self.holder = {}                # reserved or occupied place -> person index
         self.given = {}                 # (reaction index, source) -> instance count still queued or current
         self.vprev = [e.truth(r['on']['value']) if 'value' in r['on'] else None for r in st.reactions]
+        self.early = []                 # the trainee's done actions no step took yet (§17.8): [kind, step, …]
 
     def copy(self, e):
         """An independent copy for a clone of the engine (the content is shared)."""
@@ -1138,7 +1141,12 @@ class StaffRun:
         # 2. reactions
         self.react(n)
         # 4. people
-        if not jump_step:
+        if jump_step:
+            if self.trainee is not None:        # their actions of this step are kept all the same (§17.8)
+                mine = [x for x in e.events[e.ev_mark:] if x[0] == n]
+                self.drop_kept(mine)
+                self.keep(self.people[self.trainee], mine, set())
+        else:
             for p in self.people:
                 if p.id in self.absent:
                     continue
@@ -1580,7 +1588,10 @@ class StaffRun:
         n = e.step_no
         used = [False] * len(tin)
         mine = [x for x in e.events[e.ev_mark:] if x[0] == n]
-        self.trainee_steps(p, tin, used, mine)
+        self.drop_kept(mine)
+        took = set()
+        self.trainee_steps(p, tin, used, mine, took)
+        self.keep(p, mine, took)
         # then the radio inputs no step of theirs took: free messages and calls (requests, §18.7)
         for k, item in enumerate(tin):
             if used[k]:
@@ -1596,7 +1607,7 @@ class StaffRun:
                 if ok:
                     self.assign([item[1]], item[2], st.tasks[item[2]].get('priority', 3), None, None, None, None)
 
-    def trainee_steps(self, p, tin, used, mine):
+    def trainee_steps(self, p, tin, used, mine, took):
         e = self.e
         st = self.st
         n = e.step_no
@@ -1680,13 +1691,25 @@ class StaffRun:
                     r = 'next'
             elif 'op' in s:
                 o = s['op']
-                if any(y[1] == 'op' and y[2] == o['kks'] and y[3] == o['do'] and y[4] == 'done' and len(y) > 7
-                       and y[6] == o['where'] and y[7] == p.id for y in mine):
+                j = next((j for j, y in enumerate(mine) if j not in took and y[1] == 'op' and y[2] == o['kks']
+                          and y[3] == o['do'] and y[4] == 'done' and len(y) > 7 and y[6] == o['where']
+                          and y[7] == p.id), None)
+                if j is not None:
+                    took.add(j)
+                    r = 'next'
+                elif self.early_done(p, cur, x, lambda q: q[0] == 'op' and q[2] == o['kks'] and q[3] == o['do']
+                                     and q[4] == o['where'] and self.op_holds(o)):
                     r = 'next'
             elif 'permit' in s:
                 w = cur['work'] if s['permit']['work'] == '$' else s['permit']['work']
-                if any(y[1] == 'permit' and y[2] == w and y[3] == s['permit']['action'] and y[4] == p.id
-                       and y[5] == 'done' for y in mine):
+                a = s['permit']['action']
+                j = next((j for j, y in enumerate(mine) if j not in took and y[1] == 'permit' and y[2] == w
+                          and y[3] == a and y[4] == p.id and y[5] == 'done'), None)
+                if j is not None:
+                    took.add(j)
+                    r = 'next'
+                elif self.early_done(p, cur, x, lambda q: q[0] == 'permit' and q[2] == w and q[3] == a
+                                     and self.permit_holds(w, a, q[4])):
                     r = 'next'
             elif 'lock' in s or 'unlock' in s:
                 k = 'lock' if 'lock' in s else 'unlock'
@@ -1698,15 +1721,94 @@ class StaffRun:
                     npts = len(e.isos[iso]['points'])
                     pts = list(range(npts)) if s[k]['point'] == 'all' else [s[k]['point']]
                     got = x.setdefault('got', [])
-                    for y in mine:
-                        if y[1] == k and y[2] == w and y[4] == p.id and y[5] == 'done' and y[3] in pts \
-                                and y[3] not in got:
+                    for j, y in enumerate(mine):
+                        if j not in took and y[1] == k and y[2] == w and y[4] == p.id and y[5] == 'done' \
+                                and y[3] in pts and y[3] not in got:
+                            took.add(j)
                             got.append(y[3])
+                    if 'seen' not in x:
+                        for pt in pts:
+                            if pt not in got and self.early_done(p, cur, None, lambda q: q[0] == k and q[2] == w
+                                                                 and q[3] == pt and self.lock_holds(k, w, pt, p)):
+                                got.append(pt)
+                        x['seen'] = True
                     if len(got) == len(pts):
                         r = 'next'
             if r == 'wait':
                 return
             self.advance(p, r)
+
+    # --- the trainee's actions made before their step was current (§17.8)
+    def drop_kept(self, mine):
+        """A machine entered by a command or an action in this step: an earlier command of it no longer holds."""
+        moved = {x[2] for x in mine if x[1] == 'machine' and x[5] != 'next'}
+        if moved:
+            self.early = [r for r in self.early if not (r[0] == 'op' and r[5] in moved)]
+
+    def keep(self, p, mine, took):
+        """Their actions done in this step that no step of theirs took: kept for a step that becomes current later."""
+        e = self.e
+        for j, y in enumerate(mine):
+            if j in took or y[1] not in ('op', 'permit', 'lock', 'unlock'):
+                continue
+            if y[1] == 'op':
+                if len(y) > 7 and y[4] == 'done' and y[7] == p.id:
+                    o = e.m.op_keys.get((y[2], y[3], None))
+                    self.early.append(['op', y[0], y[2], y[3], y[6], o.get('machine') if o else None])
+            elif y[5] == 'done' and y[4] == p.id:
+                if y[1] == 'permit':
+                    self.early.append(['permit', y[0], y[2], y[3], e.ptw.get(y[2])])
+                else:
+                    self.early.append([y[1], y[0], y[2], y[3]])
+        del self.early[:-EARLY_KEPT]
+
+    def early_done(self, p, cur, x, match):
+        """When the step becomes current (x without 'seen'; x None: the caller keeps it): the trainee's earliest kept
+        action that matches and whose effect still holds is taken for the step, with the event `early`."""
+        if x is not None:
+            if 'seen' in x:
+                return False
+            x['seen'] = True
+        for k, q in enumerate(self.early):
+            if match(q):
+                del self.early[k]
+                self.e.ev('early', p.id, cur['task'], cur['step'], q[0], q[1])
+                return True
+        return False
+
+    def op_holds(self, o):
+        """An op's effect still holds: every state its `set` writes has that value, a `set` op's input the step's
+        `value` (when the step names one), a reset's trip is not latched (a machine command: kept records only)."""
+        e = self.e
+        op = e.m.op_keys.get((o['kks'], o['do'], o.get('trip')))
+        if op is None:
+            return False
+        if any(e.cur[e.ix[k]] != float(v) for k, v in op.get('set', {}).items()):
+            return False
+        if 'input' in op and 'value' in o and e.cur[e.ix[op['input']]] != float(o['value']):
+            return False
+        if op['do'] == 'reset' and 'machine' not in op and e.latched[op['trip']]:
+            return False
+        return True
+
+    def permit_holds(self, w, action, ptw):
+        """A permit action still holds: the same permit (its number) at the action's state or past it (1 to 9), or
+        still cancelled."""
+        e = self.e
+        st = e.pstate.get(w)
+        if st is None or e.ptw.get(w) != ptw:
+            return False
+        to = PERMIT_TO[action]
+        return st == 10 if to == 10 else to <= st <= 9
+
+    def lock_holds(self, kind, w, point, p):
+        """A lock still in place by them under that work; an unlocked point still unlocked."""
+        e = self.e
+        iso = e.works[w].get('isolation')
+        key = (iso, point)
+        if kind == 'unlock':
+            return key not in e.locks
+        return e.locks.get(key, False) == p.id and e.holder[iso] == w
 
     # --- the snapshot's part (§17.7)
     def snap(self):

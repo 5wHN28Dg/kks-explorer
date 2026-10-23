@@ -526,6 +526,8 @@ def apply(e, item):
         e.permit(item[2], item[3], item[4])
     elif kind in ('lock', 'unlock'):
         getattr(e, kind)(item[2], item[3], item[4])
+    elif kind == 'remove_lock':
+        e.remove_lock(item[2], item[3], item[4], item[5])
     else:
         raise ValueError(kind)
 
@@ -1434,7 +1436,8 @@ def mini_staff():
              role('field_op', 'Field operator', 'ops', ['operate_local', 'request', 'lock_mechanical', 'lock_process'],
                   'field_shift'),
              role('shift_sup', 'Shift supervisor', 'ops', ['operate_screen', 'request', 'approve', 'issue',
-                                                            'lock_process'], 'sup_shift'),
+                                                            'lock_mechanical', 'lock_process', 'remove_lock'],
+                  'sup_shift'),
              role('elec_ap', 'Electrical authorised person', 'ops', ['operate_local', 'request', 'lock_electrical'],
                   'elec_shift'),
              role('mech_tech', 'Mechanical technician', 'mech', ['accept'], 'mech_days')]
@@ -1690,9 +1693,12 @@ class Trainee:
     says, calls, makes ops, permits and locks, picks the first choice, acknowledges new tasks after `ack_after` steps.
     `extra`: more inputs at given steps ([step, kind, …]). The inputs it makes are the vector's (Recorder.inputs)."""
 
-    def __init__(self, walk=40, wrong=(), ack_after=5, extra=(), quiet=False, wake=0):
+    def __init__(self, walk=40, wrong=(), ack_after=5, extra=(), quiet=False, wake=0, ahead=None, undo=False):
         self.walk, self.wrong, self.ack_after, self.extra = walk, set(wrong), ack_after, list(extra)
         self.quiet, self.wake = quiet, wake
+        # ahead: while walking a `go`, make the ops ('ops') or the ops, permits and locks ('all') of the steps after
+        # it (past waits) before they are current (§17.8); undo: then the opposite of each op, a step later
+        self.ahead, self.undo, self.ahead_done, self.undo_at = ahead, undo, set(), []
         self.going = None
         self.done = set()
         self.reads = 0
@@ -1729,6 +1735,26 @@ class Trainee:
             place = x.get('place')
         elif 'lock' in s or 'unlock' in s:
             pass
+        for at, o in [u for u in self.undo_at if u[0] == n]:
+            e.op(o['kks'], {'open': 'close', 'close': 'open'}[o['do']], None, None, o['where'], me)
+        if self.ahead and 'go' in s and (cur['order'], cur['step']) not in self.ahead_done:
+            self.ahead_done.add((cur['order'], cur['step']))
+            for t in steps[cur['step'] + 1:]:
+                if 'wait' in t:
+                    continue
+                if 'op' in t:
+                    o = t['op']
+                    e.op(o['kks'], o['do'], o.get('value'), o.get('trip'), o['where'], me)
+                    if self.undo:
+                        self.undo_at.append((n + 1, o))
+                elif self.ahead == 'all' and 'permit' in t:
+                    w = cur['work'] if t['permit']['work'] == '$' else t['permit']['work']
+                    e.permit(w, t['permit']['action'], me)
+                elif self.ahead == 'all' and ('lock' in t or 'unlock' in t):
+                    k = 'lock' if 'lock' in t else 'unlock'
+                    getattr(e, k)(cur['work'] if t[k]['work'] == '$' else t[k]['work'], t[k]['point'], me)
+                else:
+                    break
         if place is not None and sr.t_at != place:
             if self.going is None or self.going[0] != place:
                 self.going = (place, n + self.walk)
@@ -1850,6 +1876,31 @@ def staff_runs():
         ('a field operator absent at 17:30: the crew of one does the calls; nobody on duty for the technician\'s job '
          '(unassigned); the shift change to the night crew', {'absent': ['a_fo2'], 'start': {'day': 1, 'time': '17:30'}},
          None, Trainee(extra=[[5, 'fault', 'f1']]), 1500, 20),
+        ('actions before their step (§17.8), the trainee as field operator 1 of crew A: on the way to the valve for '
+         'the isolation, the valve closed and its point locked before those steps are current; each counts when its '
+         'step becomes current, as it still holds (event early)',
+         {'trainee': 'a_fo1'}, None, Trainee(ahead='all', extra=[[901, 'fault', 'f1']]), 1400, 20),
+        ('an action before its step that no longer holds: the valve closed on the way and opened again a step later; '
+         'its step becomes current with the valve open, so the close counts only when made again',
+         {'trainee': 'a_fo1'}, None, Trainee(ahead='ops', undo=True, extra=[[901, 'fault', 'f1']]), 1400, 20),
+        ('a permit action before its step: the mechanical technician accepts the issued permit on the way to the pump; '
+         'the wait for issued passes and the accept step counts it when current',
+         {'trainee': 'mech1'}, None, Trainee(ahead='all', extra=[[901, 'fault', 'f1']]), 2400, 20),
+        ('personal locks (§15.1): the supervisor (the trainee, quiet) raises the work by inputs; the electrician and a '
+         'field operator lock their points; the supervisor\'s unlock of another\'s lock refused (owner); a removal '
+         'by authority with an empty reason (unknown), one naming another person (authority), one done (its owner '
+         'and reason in the event), one of the point now unlocked (unlocked); the supervisor\'s own lock and unlock',
+         {'trainee': 'a_sup'}, None,
+         Trainee(quiet=True, extra=[[310, 'fault', 'f1'], [312, 'permit', 'wo_pump', 'request', 'a_sup'],
+                                    [313, 'permit', 'wo_pump', 'approve', 'a_sup'],
+                                    [314, 'call', 'elec_ap', 'isolate_e', None], [315, 'call', 'field_op', 'isolate_m', None],
+                                    [600, 'unlock', 'wo_pump', 1, 'a_sup'],
+                                    [601, 'remove_lock', 'wo_pump', 1, 'a_sup', ''],
+                                    [601, 'remove_lock', 'wo_pump', 1, 'a_fo1', 'Called away'],
+                                    [602, 'remove_lock', 'wo_pump', 1, 'a_sup', 'Locker went home sick; valve seen shut'],
+                                    [603, 'remove_lock', 'wo_pump', 1, 'a_sup', 'Again'],
+                                    [604, 'lock', 'wo_pump', 1, 'a_sup'], [606, 'unlock', 'wo_pump', 1, 'a_sup']]),
+         700, 20),
     ]
 
 
