@@ -297,7 +297,7 @@ func _trips(e) -> void:
 			for o in ui.info.m.ops:
 				if o["do"] == "reset" and o.get("trip") == t["id"]:
 					var b := W.button("Reset", func(): ui.do_op(o, null))
-					b.disabled = not ui.info.offered(o, ui.near(o["kks"]), ui.in_control_room())
+					b.disabled = not ui.info.offered(o, ui.near(o["kks"]), ui.screen_reach(o["kks"]))
 					row.add_child(b)
 			if t.has("kks"):
 				row.add_child(W.button("Go to", func(): ui.open_card(t["kks"])))

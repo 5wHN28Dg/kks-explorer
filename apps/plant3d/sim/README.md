@@ -51,3 +51,9 @@ reference raises on, for example, a list as an alarm name). There the GDScript k
 
 **Step time** (`bench_step.gd`, the whole first train): about 0.28 ms a step on the laptop, 0.46 ms on CI's runner,
 1.4 ms on the Note 9 (fast-forward at 60× needs 600 steps a second: 0.85 of one of its cores).
+
+**With the water treatment plant (W2, 2026-10-23):** the joined model grew from 1,112 to about 1,700 values. Laptop,
+the same load for both: 0.57 → 0.80 ms a step over the cold start (1.4×). Note 9, the app's debug export walking with
+fast-forward (apps/plant3d/phone/frames.sh, `speed=fast`, 130 s), main against W2: 1.78 → 3.16 ms a step (1.8×), so
+the app's fast-forward cap there falls from about 14× to about 8×; the release build's 1.4 ms becomes about 2.5 ms
+(estimated by that ratio, not measured).

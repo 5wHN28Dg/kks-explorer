@@ -163,7 +163,7 @@ func _place() -> void:
 			for p in gr["codes"]:
 				prefixes[p] = [si, gi]
 		screens.append({"id": sc["id"], "short": sc.get("short", sc["id"]), "title": sc["title"], "groups": groups,
-				"lines": sc.get("lines", []), "trend": sc.get("trend", [])})
+				"lines": sc.get("lines", []), "trend": sc.get("trend", []), "desks": sc.get("desks", [])})
 	for x in data.get("left_out", []):
 		for p in x["codes"]:
 			prefixes[p] = ["left", x["why"]]
@@ -188,6 +188,15 @@ func _place() -> void:
 	for v in m.values:
 		if v[1].has("unit") and not v[1].has("kks") and not extras.has(v[0]):
 			internal.append(v[0])
+
+
+## Whether screen i (−1: the overview) is reached from any of the desks `here` (PLANT3D §14: a screen without
+## `desks` is on every desk).
+func reached(i: int, here: Array) -> bool:
+	if here.is_empty():
+		return false
+	var ds: Array = overview.get("desks", []) if i < 0 else screens[i].desks
+	return ds.is_empty() or ds.any(func(d): return here.has(d))
 
 
 func screen_index(id: String) -> int:

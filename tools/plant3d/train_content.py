@@ -82,7 +82,7 @@ def plant(codes, area_ids=None):
             'frequency_hz': 50, 'kks': kks,
             'media': {k: {'group': g, 'band': b, 'name': n} for k, (g, b, n) in MEDIA.items()},
             'areas': area_ids or ['control', 'bop', 'ct', 'cw', 'gt1', 'trafo1', 'hrsg1', 'st', 'rack', 'wtp', 'intake'],
-            'ext': ['ambient_t', 'ambient_wb', 'grid_frequency'],
+            'ext': ['ambient_t', 'ambient_wb', 'grid_frequency', 'river_ntu', 'river_tds'],
             'start': {'at': [-20, 0, 0], 'yaw': 90}}
 
 
@@ -241,7 +241,8 @@ def fault(fid, sets, text, state_kks):
     return f
 
 
-COLD_INIT = {'ambient_t': 35, 'ambient_wb': 25, 'grid_frequency': 50, 'hp_mass': -100, 'lp_lvl': -50}
+COLD_INIT = {'ambient_t': 35, 'ambient_wb': 25, 'grid_frequency': 50, 'hp_mass': -100, 'lp_lvl': -50,
+             'river_ntu': 20, 'river_tds': 1000}     # the river in the dry months (WATER-TREATMENT §2)
 # The hot restart (FIRST-TRAIN §4 "As built"): the train tripped from load about three hours ago and everything
 # stopped. The HP casing has cooled only to 480 °C (τ 30 h), the boxed-up HP drum to 280 °C (64 bar, 10 K an hour), the
 # steam at the superheater outlet to 270 °C. The first steam is far colder than the casing: the turbine may roll only once the GT's load
@@ -251,13 +252,18 @@ HOT_INIT = {'st_casing_t': 480, 'hp_casing_seen': 480, 'hp_tw': 280, 'hp_tsat_sl
 
 
 def scenarios(state_kks):
-    faults = [fault(f, s, t, state_kks) for f, s, t in FAULTS]
+    import wtp_model
+    faults = [fault(f, s, t, state_kks) for f, s, t in FAULTS] + wtp_model.faults(state_kks)
     latched = ['gt1_trip_lube', 'st_trip_lube', 'st_trip_cond_p']
     return [{'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'cold_iron',
              'title': 'Cold start after a long outage', 'init': dict(COLD_INIT), 'latched': latched,
              'faults': faults},
             {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'hot_restart',
              'title': 'Hot restart three hours after a trip', 'init': dict(COLD_INIT, **HOT_INIT),
+             'latched': latched, 'faults': faults},
+            # WATER-TREATMENT §7: the water treatment plant stopped, its tanks at 60 %; the train at cold iron
+            {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'wtp_cold',
+             'title': 'Water treatment plant stopped, tanks at 60 %', 'init': dict(COLD_INIT, **wtp_model.COLD_WTP),
              'latched': latched, 'faults': faults}]
 
 

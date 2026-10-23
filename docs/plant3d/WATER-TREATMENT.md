@@ -231,6 +231,49 @@ that the plan above leaves open:
   and air scour lines inside the gallery (their pumps' lines end under the ground), the sludge lines to the
   thickener and the press.
 
+## 8b. As built in W2 (operable, 2026-10-23)
+
+The model is `tools/plant3d/wtp_model.py` (areas `wtp` and `intake`, about 580 values), its screens
+`tools/plant3d/train_screens.py`, its procedures `wtp_content.py`. What W2 settled that the plan above leaves open:
+- **The clock.** `day_scale` is 6 (PLANT3D.md §16.1) until plant.json has its `clock` (milestone S1): the content
+  tool then reads it from there. The clock-rate inventories: the filtered water, degassed water and demin tanks, the
+  coagulant day tank, the neutralisation pit, each filter's head loss, each RO train's fouling, each mixed bed's
+  exhaustion and the thickener (a lag of 2 clock hours). The pumps, pressures, ORP, conductivities and sequences run in
+  model time; a sequence's step is its clock time ÷ 6 (an RO flush of 30 min is 5 model minutes).
+- **The ties (§8).** The basin's makeup flow is the valve's flow times `ct_mk_sup`, a `delay` of the WTP's
+  `mk_avail` (a makeup pump running and the filtered water tank above 5 %): exactly 1 while the WTP supplies, so the
+  first train's values are unchanged. The plant's demin tank `00GHC10BB001` (300 m³, model rate, 80 % at the start) is
+  a value: filled by the transfer pumps through its level valve (full flow below 85 %, shut at 95 %), drawn by the
+  hotwell makeup and the HRSG's losses (8 m³/h while it makes steam); the hotwell makeup needs it above 3 %
+  (`hw_mk_ok`); its low alarm (LAL 30 %) is on the train's Auxiliaries screen. The transfer flow is counted at the
+  train's rate there and at the clock's in the WTP's tanks (§5). In `cold_iron` and `hot_restart` the WTP is in service,
+  and the first train's format 1 vectors keep every value, event and input they had.
+- **Simplified:** the demin tanks fill from a common header and the transfer pumps draw on both; the filtered
+  water tank overflows back to the clarifiers' inlet above 90 % (raw water flow is not controlled); the clarifiers
+  are a lag of 10 model minutes on a dose-ratio table, without a sludge blanket of their own; the backwash's pump B
+  and blower B are standby without operations; an RO trip stops the train without its flush (the trainee flushes it,
+  `ro_stop_flush`); chlorine damage to the membranes, CIP and the mixed beds' regeneration are W3's.
+- **The scenario `wtp_cold`** is the first train at cold iron with the WTP stopped and its tanks at 60 % (the plant's
+  demin tank too). A scenario can't set a machine's state, so RO A, which is in service in the train's scenarios,
+  is stopped by its state `ro_a_park`: set in `wtp_cold`, it moves the train to `stopped` at the first step.
+- **Desks (PLANT3D.md §14):** the WTP's screens (overview, pretreatment, filters, RO, demin, wastes) are on its own
+  desk `00CWD10`; its overview is on the main control room's desks too, and holds only measurements, so nothing of
+  the WTP is worked from there. The app works a desk's screens within 6 m of it (the main control room by its area).
+- **Faults:** the raw water pumps' overloads, the band screens blocked, the coagulant and bisulphite pumps failing,
+  a cartridge filter clogging, an RO concentrate valve stuck, a leaking O-ring, fast fouling, a mixed bed exhausting
+  early, a demin tank's drain left open, the transfer pumps' overloads, the pit's pH probe drifting, the plant's demin
+  tank drained. Each repaired at its equipment.
+- **Alarm codes:** the levels' alarms stand on their transmitters (`00GBL10CL001`, `00GCL10CL001`/`002`), the
+  plant's demin tank's on the tank; the pit's pH alarm is one alarm (QAH) for either side of 6–9.
+- **Left for W3:** a mixed bed that exhausts in free play is recovered by putting the other bed in service (its
+  regeneration is W3's). In long free play from `cold_iron` the WTP asks for its day work: filter 1's backwash after
+  about 2.5 model hours, the coagulant tank's fill after about 4.5, mixed bed A after about 6.
+- **Procedures:** `wtp_start` (from `wtp_cold`, 17 steps, about 23 model minutes), `filter_backwash` and
+  `ro_stop_flush` (from `cold_iron`).
+- **Model cost:** the joined model grew from 1,112 to about 1,700 values; a step takes about 1.4 times as long on
+  the laptop and 1.8 times on the Note 9, whose fast-forward cap falls from about 14× to 8× (debug builds;
+  apps/plant3d/sim/README.md).
+
 ## 9. Not built (deliberately)
 
 Ultrafiltration, EDI and a second RO pass (0065); chemical unloading from tankers; the water's real chemistry (no
