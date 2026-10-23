@@ -841,7 +841,11 @@ func _area(root: Node3D, a: Dictionary) -> void:
 	for p in pits:
 		if p.area == a.id:
 			_pit(sts, p)
-	for s in a.data.get("structures", []):
+	# an interior's furniture and partitions on the ground floor stand on its hall's floor, HALL_FLOOR_T over the
+	# ground (a carpet 1.5 cm thick would be under it)
+	var inside: bool = a.data.get("load", "") == "inside"
+	for s0 in a.data.get("structures", []):
+		var s: Dictionary = _on_hall_floor(s0) if inside else s0
 		match s.part:
 			"door": _door(sts, s)
 			"slab": _slab_part(sts, s)
@@ -850,7 +854,7 @@ func _area(root: Node3D, a: Dictionary) -> void:
 			"pipe_rack": _rack(sts, s)
 	for ks in kit_structures:
 		if ks.area == a.id:
-			kp.structure(sts, ks.s)
+			kp.structure(sts, _on_hall_floor(ks.s) if inside else ks.s)
 	for sg in a.data.get("signs", []):
 		var l := Label3D.new()
 		l.name = "sign"
@@ -1648,6 +1652,16 @@ const HALL_FLOOR_T := 0.04
 ## glazed tiles (a turbine hall's operating floor and walkways), bare concrete (a ground floor under a deck, a pump
 ## house: cracks, dust, tyre marks).
 const FLOOR_MATS := {"epoxy": "hall_floor", "tile": "floor_tile", "concrete": "floor_concrete", "vinyl": "floor_vinyl"}
+## A structure standing at z = 0 moved up onto the hall's floor (an interior's: its buildings' floors are drawn
+## HALL_FLOOR_T over the ground); any other unchanged.
+func _on_hall_floor(s: Dictionary) -> Dictionary:
+	var at: Array = s.get("at", [0, 0, 0])
+	if at.size() < 3 or absf(float(at[2])) > TOL:
+		return s
+	var out := s.duplicate()
+	out["at"] = [at[0], at[1], float(at[2]) + HALL_FLOOR_T]
+	return out
+
 func _hall_floor(body: Node, b: Dictionary) -> int:
 	var pg: PackedVector2Array = b.outline
 	var holes: Array = []
@@ -1662,7 +1676,7 @@ func _hall_floor(body: Node, b: Dictionary) -> int:
 	var st := _st()
 	var n := 0
 	for pc in Geom.decompose(pg, holes):
-		Geom.add_prism(st, pc, 0.0, HALL_FLOOR_T, false)
+		Geom.add_prism(st, pc, 0.0, HALL_FLOOR_T)   # with its edges: a door's threshold, a pit's rim
 		n += 1
 	if n > 0:
 		_mesh_node(body, "floor", st, _mat(FLOOR_MATS[b.get("floor", "epoxy")]), Lightmap.GROUND_TEXEL)

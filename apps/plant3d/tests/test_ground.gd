@@ -13,7 +13,7 @@ const Builder = preload("res://builder/plant_builder.gd")
 const Site = preload("res://builder/site.gd")
 
 const GROUND := 0.6          # faces with every corner within this of z = 0 are the ground's
-const MIN_GAP := 0.015       # metres between two surfaces drawn over each other (a phone's 24-bit depth buffer, the near plane at 5 cm: about 110 m)
+const MIN_GAP := 0.015       # metres between two surfaces drawn over each other: a phone's 24-bit depth buffer with the near plane at 5 cm resolves 1.5 cm to about 110 m, 2 cm to about 130 m (beyond, a ground piece is a few pixels)
 const PARALLEL := 0.9986     # cos 3°: surfaces closer to parallel than this fight where they meet (crossing ones meet in a line)
 const OVERLAP_AREA := 0.02   # m² of overlap within MIN_GAP that counts as a fight
 const BIN := 8.0
@@ -24,6 +24,8 @@ func run(tree: SceneTree) -> Array:
 	var plant := Plant.new()
 	world.add_child(plant)
 	var err := plant.load_plant()
+	if err == "":
+		err = plant.load_interiors()   # their furniture stands on the halls' floors
 	if err != "":
 		world.free()
 		return [err]
@@ -120,32 +122,62 @@ static func no_gaps(tris: Array) -> Array:
 		p.append("the ground is sampled for gaps (%d points)" % n)
 	return p
 
-## The upward faces near z = 0 (from `lo`) of every drawn mesh under root: [a, b, c (Vector3, world), name, range
-## begin, range end].
+## The upward faces near z = 0 (from `lo`) of every drawn mesh under root, the instanced pieces' (MultiMeshes: the
+## planting, the kit's repeated parts) each in place: [a, b, c (Vector3, world), name, range begin, range end].
 static func faces(root: Node, lo := -GROUND) -> Array:
 	var out: Array = []
-	for n in root.find_children("*", "MeshInstance3D", true, false):
-		var mi := n as MeshInstance3D
-		if mi.mesh == null or not mi.is_visible_in_tree():
+	for n in root.find_children("*", "GeometryInstance3D", true, false):
+		var gi := n as GeometryInstance3D
+		if not gi.is_visible_in_tree():
 			continue
-		var xf := mi.global_transform
-		var nm := String(root.get_path_to(mi))
-		for s in mi.mesh.get_surface_count():
-			var arr: Array = mi.mesh.surface_get_arrays(s)
+		var mesh: Mesh = null
+		var xfs: Array = []
+		if gi is MeshInstance3D:
+			mesh = (gi as MeshInstance3D).mesh
+			xfs = [gi.global_transform]
+		elif gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh != null:
+			var mm := (gi as MultiMeshInstance3D).multimesh
+			mesh = mm.mesh
+			# from the build's saved buffer (app/plant.gd fill_cells): the headless renderer keeps no MultiMesh data
+			if not gi.has_meta("xforms"):
+				continue
+			var buf: PackedFloat32Array = gi.get_meta("xforms")
+			var cnt := int(gi.get_meta("count"))
+			if cnt <= 0:
+				continue
+			var stride := buf.size() / cnt   # 12 floats of transform, then colour and custom data if any
+			for k in cnt:
+				var o := k * stride
+				var xf := Transform3D(Basis(Vector3(buf[o], buf[o + 4], buf[o + 8]), Vector3(buf[o + 1], buf[o + 5], buf[o + 9]),
+					Vector3(buf[o + 2], buf[o + 6], buf[o + 10])), Vector3(buf[o + 3], buf[o + 7], buf[o + 11]))
+				xfs.append(gi.global_transform * xf)
+		if mesh == null or xfs.is_empty():
+			continue
+		var nm := String(root.get_path_to(gi))
+		for s in mesh.get_surface_count():
+			var arr: Array = mesh.surface_get_arrays(s)
 			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 			var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
 			var count := idx.size() if idx.size() > 0 else v.size()
+			var tris := PackedInt32Array()   # the first vertex of each triangle to look at
 			for t in range(0, count - 2, 3):
-				var a: Vector3 = xf * v[idx[t] if idx.size() > 0 else t]
-				var b: Vector3 = xf * v[idx[t + 1] if idx.size() > 0 else t + 1]
-				var c: Vector3 = xf * v[idx[t + 2] if idx.size() > 0 else t + 2]
-				if a.y > GROUND or b.y > GROUND or c.y > GROUND or a.y < lo or b.y < lo or c.y < lo:
-					continue
-				# Godot's front face is clockwise seen from the front: its normal is (c - a) × (b - a)
-				var nrm := (c - a).cross(b - a)
-				if nrm.length_squared() < 1e-10 or nrm.normalized().y < 0.7:
-					continue
-				out.append([a, b, c, nm, mi.visibility_range_begin, mi.visibility_range_end])
+				var ly := maxf(v[idx[t] if idx.size() > 0 else t].y, maxf(v[idx[t + 1] if idx.size() > 0 else t + 1].y,
+					v[idx[t + 2] if idx.size() > 0 else t + 2].y))
+				# an instanced piece stands upright on its origin: only its low faces can lie on the ground
+				if xfs.size() == 1 or ly <= 1.0:
+					tris.append(t)
+			for xf: Transform3D in xfs:
+				for t in tris:
+					var a: Vector3 = xf * v[idx[t] if idx.size() > 0 else t]
+					var b: Vector3 = xf * v[idx[t + 1] if idx.size() > 0 else t + 1]
+					var c: Vector3 = xf * v[idx[t + 2] if idx.size() > 0 else t + 2]
+					if a.y > GROUND or b.y > GROUND or c.y > GROUND or a.y < lo or b.y < lo or c.y < lo:
+						continue
+					# Godot's front face is clockwise seen from the front: its normal is (c - a) × (b - a)
+					var nrm := (c - a).cross(b - a)
+					if nrm.length_squared() < 1e-10 or nrm.normalized().y < 0.7:
+						continue
+					out.append([a, b, c, nm, gi.visibility_range_begin, gi.visibility_range_end])
 	return out
 
 ## The fights between the faces: a list of problems (at most a few, each naming the two pieces and where).

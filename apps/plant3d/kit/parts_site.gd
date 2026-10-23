@@ -96,7 +96,7 @@ static func _basin(m, r: float) -> void:
 	col(m, "foliage", SOIL)
 	m.lathe(Vector3.ZERO, Vector3(0, 0, 1), [[r, 0.0], [r * 1.12, 0.1], [r * 1.3, 0.1], [r * 1.5, 0.0]], 10, false)
 	col(m, "foliage", SOIL_WET)
-	m.disk(Vector3(0, 0, 0.012), Vector3(0, 0, 1), r * 1.02, 10)
+	m.disk(Vector3(0, 0, 0.025), Vector3(0, 0, 1), r * 1.02, 10)   # 2.5 cm over the ground: nearer, they fight (tests/test_ground.gd)
 	# the drip line's emitter loop round the trunk (detail)
 	col(m, "foliage", HOSE, "detail", 0.02)
 	m.torus(Vector3(0, 0, 0.03), Vector3(1, 0, 0), Vector3(0, 1, 0), r * 0.7, 0.01, TAU, 12, 4)
@@ -918,7 +918,7 @@ static func carpet(_part: String, g) -> void:
 	var c: Color = CARPET.get(String(g.p.get("colour", "green")), CARPET.green)
 	var pts: Array = []
 	for q in g.p.get("outline", []):
-		pts.append(Vector3(float(q[0]), float(q[1]), 0.012))
+		pts.append(Vector3(float(q[0]), float(q[1]), 0.02))   # 2 cm on the floor: nearer, they fight (tests/test_ground.gd)
 	if pts.size() < 3:
 		return
 	col(m, "matte", c)
@@ -932,7 +932,7 @@ static func carpet(_part: String, g) -> void:
 	col(m, "matte", c.lightened(0.18))
 	var y := lo.y + 1.2
 	while y < hi.y - 0.2:
-		m.box_lh(Vector3(lo.x + 0.15, y - 0.04, 0.012), Vector3(hi.x - 0.15, y + 0.04, 0.015))
+		m.box_lh(Vector3(lo.x + 0.15, y - 0.04, 0.02), Vector3(hi.x - 0.15, y + 0.04, 0.04))
 		y += 1.2
 
 ## Sanitary ware: a WC, a shower tray with its glass screen, a washbasin, or an ablution row (a bench, taps and a
@@ -964,7 +964,7 @@ static func sanitary(_part: String, g) -> void:
 			col(m, "plain", CERAMIC.darkened(0.08))
 			m.box_lh(Vector3(-1.5, 0.0, 0), Vector3(1.5, 0.25, 0.9))
 			col(m, "dark", Color(0.1, 0.1, 0.1))
-			m.box_lh(Vector3(-1.5, 0.25, 0.0), Vector3(1.5, 0.45, 0.01))
+			m.box_lh(Vector3(-1.5, 0.25, 0.0), Vector3(1.5, 0.45, 0.02))
 			col(m, "plain", CERAMIC)
 			m.box_lh(Vector3(-1.5, 0.75, 0), Vector3(1.5, 1.05, 0.35))
 			col(m, "plain_metal", Color(0.8, 0.8, 0.82), "detail", 0.04)
