@@ -22,6 +22,8 @@ must stay Walkdown's. Nothing is published unless
 - the MSIX packages are Walkdown's (publisher CN=Walkdown, never a test certificate), signed, of this version and for
   the architecture their name says (the manifest and the exe), windows-msix.cer is CN=Walkdown, and the APK is
   signed with the plant's key (CN=Walkdown Plant: never a debug or unsigned build; apksigner from the Android SDK);
+- every package is within its size budget (the user, 2026-10-23): the APK at most 150 MB, the desktop packages
+  (the MSIX packages, the Flatpak bundle) at most 300 MB;
 - every CI run on the commit has finished and passed, the Walkdown Plant app workflow among them (a hard gate);
 - GitHub's latest release is a Walkdown vX.Y.Z before, and still the same one after (if publishing made the plant's
   release latest after all, the Walkdown release is made latest again and the tool fails)."""
@@ -44,6 +46,23 @@ FILES = ('walkdown-plant.apk', 'WalkdownPlant.msix', 'WalkdownPlant-arm64.msix',
 BUILT_FROM = {'walkdown-plant.apk': re.compile(r'assets/(.*/)?built/build_info\.json'),
               'WalkdownPlant.msix': re.compile(r'WalkdownPlant\.exe'),
               'WalkdownPlant-arm64.msix': re.compile(r'WalkdownPlant\.exe')}
+
+# the size budget per package (the user, 2026-10-23; decision 0054 §6): the APK at most 150 MB (past it, packs on
+# demand, which need a network permission: the user's call); the desktop packages may grow to about 300 MB. Still
+# compress wherever it costs nothing.
+MB = 1_000_000
+MAX_BYTES = {'walkdown-plant.apk': 150 * MB, 'WalkdownPlant.msix': 300 * MB, 'WalkdownPlant-arm64.msix': 300 * MB,
+             'walkdown-plant.flatpak': 300 * MB}
+
+
+def size_problems(files):
+    """[the packages over their size budget] ({name: path})"""
+    out = []
+    for name, path in sorted(files.items()):
+        limit = MAX_BYTES.get(name)
+        if limit is not None and os.path.getsize(path) > limit:
+            out.append(f'{name} is {os.path.getsize(path) / MB:.1f} MB, over its budget of {limit // MB} MB')
+    return out
 
 
 def tag(version):
@@ -218,6 +237,7 @@ def problems(version, files, root=None, remote='origin'):
     if not any(n in BUILT_FROM for n in files):
         out.append('nothing to release in DIR: no APK or MSIX package')
     out += artifact_problems(files, commit, version)
+    out += size_problems(files)
     out += release.ci_problems(commit, required=('Walkdown Plant app',))
     out += release.latest_problems()
     return commit, out

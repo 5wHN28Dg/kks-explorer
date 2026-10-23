@@ -38,7 +38,7 @@ def read_json(path):
 LIBRARY = read_json(os.path.join(ROOT, 'data', 'plant3d', 'sounds.json'))
 SYNTH = {s['id']: s for s in LIBRARY['sounds'] if s['kind'] == 'synth'}
 SEAM_CLICK_DB = -90         # the synthesised samples: nothing at the seam beyond rounding
-BUDGET_BYTES = 10_000_000   # 0054 §7: 10 MB for the sounds within the 150 MB package; these are far below
+BUDGET_BYTES = 10_000_000   # 0054 §7: 10 MB for the sounds within the 150 MB APK; these are far below
 
 
 def need_ffmpeg(test):
@@ -452,12 +452,13 @@ class HearingProtection(unittest.TestCase):
                                 self.assertTrue(on_edge(np.array(g['at'][:2], float) + end * along, poly),
                                                 'the sign\'s board runs off its wall')
                         else:
-                            quiet_doors += 1
+                            quiet_doors += a['pack'] not in ('site', 'camp')
                             self.assertEqual(near, [], 'a quiet building\'s door has no hearing-protection sign')
         # the first train: the GT hall, the turbine hall, the CW pump house and the boiler house are loud (six
         # doors); the control building is quiet. The water treatment plant: its treatment building is loud (the RO
         # high-pressure pumps: four doors); the intake house (raw water pumps on four-pole motors), the chemical
-        # store and the filter press house are quiet (two doors each)
+        # store and the filter press house are quiet (two doors each). The site's and the camp's buildings are quiet too
+        # (SITE.md), not counted here
         self.assertEqual((loud_doors, quiet_doors), (10, 7))
 
 

@@ -30,6 +30,7 @@ var region := RID()
 var links := {}                 # link RID -> {kind: "stair" | "ladder", id, path: the way along it, foot first}
 var error := ""
 var _probe := Vector3.INF       # a vertex of the mesh: the map has taken the mesh in once a search finds it
+var _polygons := 4096           # the mesh's polygons: how many a search may visit (Godot's default 4,096)
 var _map_ready := false
 
 var player                      # app/player.gd
@@ -67,6 +68,7 @@ func setup(_plant = null) -> String:
 	NavigationServer3D.region_set_map(region, map)
 	NavigationServer3D.region_set_navigation_mesh(region, nm)
 	_probe = nm.get_vertices()[0]
+	_polygons = nm.get_polygon_count()
 	# the stairs and the ladders, as the bake found their ways (builder/nav_bake.gd): each stair's path with the
 	# floor in front of its two ends, each ladder's foot and step-off point
 	for w in nm.get_meta("ways", []):
@@ -196,6 +198,10 @@ func find(from: Vector3, to: Vector3) -> Dictionary:
 	q.start_position = from
 	q.target_position = to
 	q.metadata_flags = NavigationPathQueryParameters3D.PATH_METADATA_INCLUDE_TYPES | NavigationPathQueryParameters3D.PATH_METADATA_INCLUDE_RIDS
+	# every polygon may be searched: Godot stops at 4,096 by default and then returns the way to the nearest point
+	# found so far, which with the site's and the camp's mesh (19,000 polygons) was a way to the foot of a stair, short
+	# of every target up a stair or a ladder (2026-10-22)
+	q.path_search_max_polygons = _polygons
 	var r := NavigationPathQueryResult3D.new()
 	NavigationServer3D.query_path(q, r)
 	var raw := r.path
@@ -233,6 +239,8 @@ func find(from: Vector3, to: Vector3) -> Dictionary:
 
 
 ## The route as app/autopilot.gd's steps: walk to each point (a stair along its path), climb each ladder on the way.
+## The point in front of a stair where its way begins is walked to exactly (autopilot.gd EXACT_REACH): the walker
+## lines up there before it turns onto the flight.
 func steps(rt: Dictionary) -> Array:
 	var out: Array = []
 	var pts: PackedVector3Array = rt.points
@@ -245,7 +253,10 @@ func steps(rt: Dictionary) -> Array:
 			while i < pts.size() and rt.marks[i] == m:
 				i += 1
 			continue
-		out.append({"to": pts[i], "floor": pts[i].y})
+		if m.begins_with("stair ") and (i == 0 or rt.marks[i - 1] != m):
+			out.append({"to": pts[i], "floor": pts[i].y, "exact": true})
+		else:
+			out.append({"to": pts[i], "floor": pts[i].y})
 		i += 1
 	return out
 

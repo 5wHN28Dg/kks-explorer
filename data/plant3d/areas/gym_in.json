@@ -1,0 +1,27 @@
+{
+ "format": "walkdown-plant-area",
+ "version": 2,
+ "id": "gym_in",
+ "title": "Gym",
+ "bounds": [
+  [-360, 26],
+  [-344, 36]
+ ],
+ "pack": "camp",
+ "equipment": [],
+ "pipes": [],
+ "structures": [
+  {"id": "gym_in_rack", "part": "gym_rack", "at": [-359.5, 31, 0], "yaw": 90, "params": {"kind": "weights"}},
+  {"id": "gym_in_screen", "part": "screen", "at": [-352, 35.85, 0], "yaw": 180, "params": {"size": 1.4, "mount": 2.0}},
+  {"id": "gym_in_treadmill_1", "part": "gym_rack", "at": [-357, 34.4, 0], "params": {"kind": "treadmill"}},
+  {"id": "gym_in_treadmill_2", "part": "gym_rack", "at": [-355, 34.4, 0], "params": {"kind": "treadmill"}},
+  {"id": "gym_in_treadmill_3", "part": "gym_rack", "at": [-353, 34.4, 0], "params": {"kind": "treadmill"}},
+  {"id": "gym_in_bike_1", "part": "gym_rack", "at": [-350.5, 34.6, 0], "params": {"kind": "bike"}},
+  {"id": "gym_in_bike_2", "part": "gym_rack", "at": [-348.8, 34.6, 0], "params": {"kind": "bike"}},
+  {"id": "gym_in_bench_1", "part": "gym_rack", "at": [-356.5, 29.8, 0], "params": {"kind": "bench"}},
+  {"id": "gym_in_bench_2", "part": "gym_rack", "at": [-351.5, 29.8, 0], "params": {"kind": "bench"}},
+  {"id": "gym_in_lockers", "part": "locker", "at": [-344.45, 30, 0], "yaw": 270, "params": {"width": 2.0}}
+ ],
+ "signs": [],
+ "load": "inside"
+}
