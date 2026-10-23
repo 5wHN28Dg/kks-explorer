@@ -3,6 +3,9 @@
 ## map opens, holds the walker's controls while open, and closes after a jump; a tap on the map lands on a free floor.
 extends RefCounted
 
+const Lighting = preload("res://app/lighting.gd")
+const Quality = preload("res://app/quality.gd")
+
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
 	for f in DirAccess.get_files_at("res://app"):
@@ -23,6 +26,8 @@ func run(tree: SceneTree) -> Array:
 		p.append("the walker starts in %s, not the control building" % main.area_at(main.player.global_position))
 	if main.tier == "":
 		p.append("no quality tier was chosen")
+	if main.lightmap_bicubic != Lighting.lightmap_bicubic(Quality.is_phone(), RenderingServer.get_video_adapter_name()):
+		p.append("the start sets the lightmap's filter for this device (app/lighting.gd lightmap_bicubic)")
 	main.toggle_map()
 	if not main.map.active or main.player.input_enabled:
 		p.append("the map opens and holds the walker's controls")
