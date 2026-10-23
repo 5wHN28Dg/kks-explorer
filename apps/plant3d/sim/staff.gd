@@ -48,12 +48,15 @@ var roles := {}                      # id -> role
 var auth := {}                       # role id -> {authority: true}
 var people: Array = []
 var person_ix := {}
+var role_people := {}                # role -> its people's indexes, in file order
 var rosters := {}
 var routines := {}                   # id -> {"slots": [[at kind, at minutes, every or -1, until kind, until minutes, task]], "idle": task}
 var tasks := {}                      # id -> task
 var reactions: Array = []
 var messages := {}
 var callable := {}                   # "role\ntask" -> true: what a trainee may call over the radio (§18.7)
+var react_kind := PackedStringArray()  # per reaction: what it is on
+var value_reactions := PackedInt32Array()   # the reactions on a value
 
 
 static func load_from(m, doc: Dictionary):
@@ -147,6 +150,9 @@ func _build(m, doc: Dictionary) -> void:
 	people = doc["people"]
 	for i in people.size():
 		person_ix[people[i]["id"]] = i
+		var rp: PackedInt32Array = role_people.get(people[i]["role"], PackedInt32Array())
+		rp.append(i)
+		role_people[people[i]["role"]] = rp
 	for t in doc["tasks"]:
 		tasks[t["id"]] = t
 	for r in doc["routines"]:
@@ -162,6 +168,10 @@ func _build(m, doc: Dictionary) -> void:
 			slots.append([at[0], at[1], every, until[0], until[1], s["task"]])
 		routines[r["id"]] = {"slots": slots, "idle": r["idle"]}
 	reactions = doc.get("reactions", [])
+	for i in reactions.size():
+		react_kind.append(reactions[i]["on"].keys()[0])
+		if react_kind[i] == "value":
+			value_reactions.append(i)
 	messages = doc["messages"]
 	for t in doc["tasks"]:
 		for s in t["steps"]:
@@ -234,6 +244,7 @@ func init_run(e, scen: Dictionary) -> void:
 	e.sp_res.resize(n)
 	e.sp_occ.resize(n)
 	e.sp_rng.resize(n)
+	e.sp_wake.resize(n)
 	for i in n:
 		e.sp_rng[i] = seed_of(seed, i)
 		e.sp_duty.append([])
@@ -318,6 +329,7 @@ func place_all(e, c: int, old: int) -> void:
 	var day: int = c / DAY
 	e.st_holder = {}
 	e.st_given = {}
+	e.st_next1 = 0
 	for pi in people.size():
 		e.sp_duties[pi] = []
 		e.sp_slots[pi] = []
@@ -331,6 +343,7 @@ func place_all(e, c: int, old: int) -> void:
 		e.sp_pos[pi] = -1
 		e.sp_on[pi] = 0
 		e.sp_duty[pi] = []
+		e.sp_wake[pi] = 0
 		if e._absent.has(pi):
 			continue
 		plan(e, pi, day + 1)
@@ -441,6 +454,7 @@ func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count 
 			"int": t.get("interruptible", true)}
 	e.st_order += 1
 	_enqueue(e, pi, inst)
+	e.sp_wake[pi] = 0
 	if made_by != null:
 		e.st_given[made_by] = e.st_given.get(made_by, 0) + 1
 	if count and pi == e.st_trainee:
@@ -563,6 +577,26 @@ func step(e) -> void:
 	# 1. duties, then slots
 	var day: int = c / DAY
 	var np := people.size()
+	if c >= e.st_next1:
+		_phase1(e, c, day)
+	# 2. reactions
+	react(e, n)
+	# 4. people
+	if not jump_step:
+		for pi in np:
+			if pi == e.st_trainee:
+				if not e._absent.has(pi):
+					trainee_turn(e, pi, tin)
+			elif n >= e.sp_wake[pi] and not e._absent.has(pi):
+				turn(e, pi)
+	for i in value_reactions:
+		e.st_vprev[i] = e.truth(reactions[i]["on"]["value"])
+
+
+## Phase 1 (duties, then slots), run only when the clock reaches the next duty boundary, slot or planning day of
+## anyone (st_next1): between them it would change nothing.
+func _phase1(e, c: int, day: int) -> void:
+	var np := people.size()
 	for pi in np:
 		if e._absent.has(pi):
 			continue
@@ -571,6 +605,7 @@ func step(e) -> void:
 		if e.sp_on[pi] and c >= e.sp_duty[pi][1]:
 			e.sp_on[pi] = 0
 			e.sp_duty[pi] = []
+			e.sp_wake[pi] = 0
 			e._ev(["duty", people[pi]["id"], "off"])
 		if not e.sp_on[pi]:
 			var dl: Array = e.sp_duties[pi]
@@ -579,6 +614,7 @@ func step(e) -> void:
 			if not dl.is_empty() and dl[0][0] <= c:
 				e.sp_on[pi] = 1
 				e.sp_duty[pi] = dl.pop_front()
+				e.sp_wake[pi] = 0
 				e._ev(["duty", people[pi]["id"], "on"])
 	for pi in np:
 		if e._absent.has(pi):
@@ -587,21 +623,17 @@ func step(e) -> void:
 		while not sl.is_empty() and sl[0][0] <= c:
 			var s: Array = sl.pop_front()
 			give(e, pi, s[4], prio_of(s[4]), null, null, null, null)
-	# 2. reactions
-	react(e, n)
-	# 4. people
-	if not jump_step:
-		for pi in np:
-			if e._absent.has(pi):
-				continue
-			if pi == e.st_trainee:
-				trainee_turn(e, pi, tin)
-			else:
-				turn(e, pi)
-	for i in reactions.size():
-		var on: Dictionary = reactions[i]["on"]
-		if on.has("value"):
-			e.st_vprev[i] = e.truth(on["value"])
+	var nx: int = (day + 1) * DAY            # the next day, planned when it begins, at the latest
+	for pi in np:
+		if e._absent.has(pi):
+			continue
+		if e.sp_on[pi]:
+			nx = mini(nx, e.sp_duty[pi][1])
+		elif not e.sp_duties[pi].is_empty():
+			nx = mini(nx, e.sp_duties[pi][0][0])
+		if not e.sp_slots[pi].is_empty():
+			nx = mini(nx, e.sp_slots[pi][0][0])
+	e.st_next1 = nx
 
 
 func react(e, n: int) -> void:
@@ -611,11 +643,14 @@ func react(e, n: int) -> void:
 	for k in range(e.ev_mark, e.events.size()):
 		if e.events[k][0] == n:
 			evs.append(e.events[k])
+	if evs.is_empty() and value_reactions.is_empty():
+		return
 	for ri in reactions.size():
 		var r: Dictionary = reactions[ri]
-		var on: Dictionary = r["on"]
-		var k: String = on.keys()[0]
-		var v = on[k]
+		var k: String = react_kind[ri]
+		if evs.is_empty() and k != "value":
+			continue
+		var v = r["on"][k]
 		var prio: int = int(r.get("priority", prio_of(r["task"])))
 		var hits := []          # [source key, work, code, alarm]
 		if k == "value":
@@ -690,6 +725,13 @@ func select(e, pi: int):
 func pause(e, pi: int) -> void:
 	var cur: Dictionary = e.sp_cur[pi]
 	var st: Dictionary = cur["st"]
+	if st.has("left") and st.has("last") and pi != e.st_trainee:
+		# the steps slept through up to the last one before the pause count; on resuming, one step does
+		var m: int = e.step_no - 1
+		if st["last"] < m and not st.get("resumed", false):
+			st["left"] -= m - st["last"]
+			st["last"] = m
+		st["resumed"] = true
 	for k in ["dest", "waiting", "wait_since", "target", "meet_since"]:
 		st.erase(k)
 	unreserve(e, pi)
@@ -721,11 +763,19 @@ func leave_place(e, pi: int) -> void:
 		e.sp_occ[pi] = -1
 
 
+## A person's turn in phase 4. Asleep until sp_wake (a walk's arrival, the end of a `work` or a meeting's stay): the
+## turns in between would change nothing, so they are not run (§0062: "people with nothing due in a step may be
+## skipped by an implementation as long as the result is the same"); a task given to them, a duty's start or end and
+## a placement wake them at once, and a work's time is counted as the steps gone (the reference counts them one by
+## one: the vectors check that the two agree).
 func turn(e, pi: int) -> void:
 	var n: int = e.step_no
+	if n < e.sp_wake[pi]:
+		return
 	var leg: Array = e.sp_leg[pi]
 	if not leg.is_empty():
 		if leg[3] > n:
+			e.sp_wake[pi] = leg[3]
 			return
 		e.sp_pos[pi] = leg[1]
 		e.sp_leg[pi] = []
@@ -735,6 +785,7 @@ func turn(e, pi: int) -> void:
 	for _k in 64:
 		var cur = select(e, pi)
 		if cur == null:
+			e.sp_wake[pi] = 1 << 62     # nothing to do and off duty: until a task or a duty wakes them
 			return
 		var r = run(e, pi, cur)
 		if typeof(r) == TYPE_STRING and r == "wait":
@@ -906,9 +957,11 @@ func run(e, pi: int, cur: Dictionary):
 			x["left"] = mins(e, pi, s["work"]) * tpm
 			x["last"] = n
 		elif x["last"] < n:
-			x["left"] -= 1
-			x["last"] = n
-		return "next" if x["left"] <= 0 else "wait"
+			_count(x, n)
+		if x["left"] <= 0:
+			return "next"
+		e.sp_wake[pi] = n + x["left"]
+		return "wait"
 	if s.has("read"):
 		var code: String = s["read"]
 		var val: float = e.shown(code, e.prev)
@@ -1050,9 +1103,8 @@ func meet(e, pi: int, cur: Dictionary, mt: Dictionary, trainee: bool) -> String:
 		var all := true
 		for r in mt["with"]:
 			var found := false
-			for qi in people.size():
-				if qi != pi and e.sp_on[qi] and people[qi]["role"] == r and e.sp_pos[qi] != -1 \
-						and rm.has(e.sp_pos[qi]):
+			for qi in role_people.get(r, PackedInt32Array()):
+				if qi != pi and e.sp_on[qi] and e.sp_pos[qi] != -1 and rm.has(e.sp_pos[qi]):
 					found = true
 					break
 			if not found:
@@ -1065,10 +1117,28 @@ func meet(e, pi: int, cur: Dictionary, mt: Dictionary, trainee: bool) -> String:
 		else:
 			return "wait"
 	elif x["last"] < e.step_no:
-		if not trainee or e.st_t_at == x["place"]:
-			x["left"] -= 1
-		x["last"] = e.step_no
-	return "next" if x["left"] <= 0 else "wait"
+		if trainee:
+			if e.st_t_at == x["place"]:
+				x["left"] -= 1
+			x["last"] = e.step_no
+		else:
+			_count(x, e.step_no)
+	if x["left"] <= 0:
+		return "next"
+	if not trainee:
+		e.sp_wake[pi] = e.step_no + x["left"]
+	return "wait"
+
+
+## An NPC's work or stay counted to step n: one step per step gone since the last count (the turns slept through),
+## one only after a pause (time away doesn't count, as the reference's count one by one).
+static func _count(x: Dictionary, n: int) -> void:
+	if x.get("resumed", false):
+		x["left"] -= 1
+		x.erase("resumed")
+	else:
+		x["left"] -= n - x["last"]
+	x["last"] = n
 
 
 # ---------------------------------------------------------------- the trainee's person (§17.4)

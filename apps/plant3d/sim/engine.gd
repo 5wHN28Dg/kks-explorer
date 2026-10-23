@@ -119,6 +119,7 @@ var st_jumped: Array = []           # [old clock, new clock] of a jump in this s
 var st_holder := {}                 # place -> the person reserving or occupying it
 var st_given := {}                  # reaction source -> instances of it still queued or current
 var st_vprev: Array = []            # per reaction on a value: its truth after the previous step
+var st_next1 := 0                   # the clock at which phase 1 next has something to do (staff.gd _phase1)
 var sp_on := PackedByteArray()
 var sp_duty: Array = []             # [start, end] or []
 var sp_duties: Array = []           # the duties planned ahead
@@ -132,6 +133,7 @@ var sp_res := PackedInt32Array()    # a place reserved, -1
 var sp_occ := PackedInt32Array()    # a place occupied, -1
 var sp_result: Array = []           # an NPC's input's outcome, read in step 9
 var sp_rng := PackedInt64Array()
+var sp_wake := PackedInt64Array()   # the step a person's next turn can change anything (staff.gd turn)
 
 
 func _init(model = null, scenario = null) -> void:
@@ -1339,10 +1341,10 @@ func clone():
 			"_fa", "_nprog", "_fault_nodes", "_scratch", "_init_vals", "_nmem", "_il", "_mc", "_mc_ix", "_tr", "_tr_ix", "_al", "_al_ix",
 			"_faults", "_fault_ix", "_ops", "_iso", "_wk", "_state_kks", "_v2", "step_no", "ptw_count",
 			"_sm", "_S", "_ds", "_absent", "_fixed_trainee", "_show", "_fault_kks", "J", "ev_mark", "st_order",
-			"st_unacked", "st_trainee", "st_t_at"]:
+			"st_unacked", "st_trainee", "st_t_at", "st_next1"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
-			"lockbits", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng"]:
+			"lockbits", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",
 			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev",
