@@ -192,6 +192,21 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 			ui.clock.run_steps(1)
 			if ui._jumps != e.J or e.st_t_at != pos:
 				p.append("after the jump the app did not follow the placement (%d, at %d)" % [pos, e.st_t_at])
+			# the radio log read again from the start (as after a restore) keeps each line's own time
+			var want := ""
+			var lines := 0
+			for ev in e.events:
+				if ev[1] == "jump" and ev[4] == "done":
+					break
+				if ev[1] == "say" or (ev[1] == "call" and ev[6] == "done"):
+					var t: int = (e._S + ev[0] * e._ds + j0) % 864000 / 10
+					want = "%02d:%02d  " % [t / 3600, (t / 60) % 60]
+					lines += 1
+			ui.crew._engine = null
+			ui.crew._follow(e)
+			if lines == 0 or ui.crew._radio.size() < lines or not ui.crew._radio[lines - 1].begins_with(want):
+				p.append("the radio log's last line before the jump does not read %s: %s"
+						% [want, str(ui.crew._radio.slice(maxi(lines - 1, 0), lines + 1))])
 
 
 func _ccr_operator(tree: SceneTree, ui, p: Array) -> void:

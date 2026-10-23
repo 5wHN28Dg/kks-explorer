@@ -1,0 +1,102 @@
+extends SceneTree
+## Places held in cases the staff vectors don't reach, as tests/test_plant3d_staff.py checks them on the reference
+## (§17.8): a `leave` naming no place keeps what the trainee holds; someone already standing at a place they are sent
+## to holds it; the trainee's meeting seat is theirs again after a pause. Prints "STAFF_EDGES bad=N" and each failure.
+##   godot --headless --script apps/plant3d/sim/tests/check_staff_edges.gd -- [VECTORS2]
+const PlantModel = preload("../plant_model.gd")
+const PlantEngine = preload("../engine.gd")
+const JsonStrict = preload("../json_strict.gd")
+
+var _bad: Array = []
+var _files := {}
+
+
+func _init() -> void:
+	quit(1)         # stays the exit code if a script error stops this function
+	var args := OS.get_cmdline_user_args()
+	var path: String = args[0] if args.size() > 0 else "ref/vectors/plant3d-v2.json"
+	var st: Dictionary = JsonStrict.parse(FileAccess.get_file_as_bytes(path), 1000).value["staff"]
+	_files = st["files"].duplicate()
+	_files["scenarios/s1.json"] = st["runs"][0]["scenario"]
+	if st["runs"][0]["staff"] != null:
+		_files["staff.json"] = st["runs"][0]["staff"]
+	_leave_nowhere()
+	_standing_there()
+	_meeting_seat()
+	for b in _bad:
+		print("FAIL ", b)
+	print("STAFF_EDGES bad=%d" % _bad.size())
+	quit(1 if _bad.size() else 0)
+
+
+func _engine(trainee: String):
+	var e = PlantEngine.new(PlantModel.from_files(_files), "s1")
+	if trainee != "":
+		e.role(trainee)
+	e.step()
+	return e
+
+
+func _free_place(e, sm) -> int:
+	for i in sm.places.size():
+		if not sm.open[i] and not e.st_holder.has(i):
+			return i
+	return -1
+
+
+func _leave_nowhere() -> void:
+	var e = _engine("a_fo1")
+	var sm = e._sm
+	var tp: int = e.st_trainee
+	e.st_t_at = -1
+	e.sp_pos[tp] = -1
+	var seat := _free_place(e, sm)
+	e.sp_occ[tp] = seat
+	e.st_holder[seat] = tp
+	e.leave("no_such_place")
+	e.step()
+	if e.sp_occ[tp] != seat or e.st_holder.get(seat, -1) != tp:
+		_bad.append("a leave naming no place let go of the trainee's place")
+
+
+func _standing_there() -> void:
+	var e = _engine("")
+	var sm = e._sm
+	var p := -1
+	for i in sm.people.size():
+		if e.sp_pos[i] != -1 and e.sp_leg[i].is_empty():
+			p = i
+			break
+	sm.leave_place(e, p)
+	sm.unreserve(e, p)
+	var here := _free_place(e, sm)
+	e.sp_pos[p] = here
+	var r: String = sm.go(e, p, {"st": {}}, here)
+	if r != "next" or e.sp_occ[p] != here or e.st_holder.get(here, -1) != p:
+		_bad.append("someone standing at the place they were sent to doesn't hold it (%s)" % r)
+
+
+func _meeting_seat() -> void:
+	var e = _engine("a_fo1")
+	var sm = e._sm
+	var tp: int = e.st_trainee
+	e.st_t_at = -1
+	e.sp_pos[tp] = -1
+	sm.leave_place(e, tp)
+	var room := ""
+	for r in sm.rooms:
+		var i: int = sm.meet_place(e, r, tp)
+		if i != -1 and sm.kind[i] in ["seat", "desk", "table"]:
+			room = r
+			break
+	var mt := {"room": room, "with": [], "minutes": 5}
+	var cur := {"st": {}, "prio": 0, "made": 0, "order": 0}
+	if sm.meet(e, tp, cur, mt, true) != "wait" or e.sp_res[tp] != cur["st"]["place"]:
+		_bad.append("the trainee's meeting seat was not reserved")
+		return
+	var seat: int = cur["st"]["place"]
+	e.sp_cur[tp] = cur
+	sm.pause(e, tp)
+	sm.meet(e, tp, cur, mt, true)
+	if e.sp_res[tp] != seat or e.st_holder.get(seat, -1) != tp:
+		_bad.append("after a pause the trainee's meeting seat was not theirs again")

@@ -1109,7 +1109,7 @@ class StaffRun:
                         self.leave_place(tp)        # a place held is let go when the trainee is elsewhere
                     if tp.res == self.t_at:
                         tp.occ, tp.res = tp.res, None
-                elif item[0] == 'leave' and isinstance(item[1], str) and st.pix.get(item[1]) == self.t_at:
+                elif item[0] == 'leave' and isinstance(item[1], str) and item[1] in st.pix and st.pix[item[1]] == self.t_at:
                     self.t_at = None
                     tp.pos = None
                     self.leave_place(tp)
@@ -1225,7 +1225,7 @@ class StaffRun:
     def pause(self, p):
         cur = p.cur
         st = cur['st']
-        for k in ('dest', 'waiting', 'wait_since', 'target', 'meet_since'):
+        for k in ('dest', 'waiting', 'wait_since', 'target', 'meet_since', 'seat'):
             st.pop(k, None)
         self.unreserve(p)
         p.queue.append(cur)
@@ -1332,6 +1332,8 @@ class StaffRun:
     def walk(self, p, dest):
         """Moves p one way towards dest; True when there."""
         if p.pos == dest:
+            if p.res == dest:               # already standing there: the place reserved is now held
+                p.occ, p.res = dest, None
             return True
         e = self.e
         st = self.st
@@ -1542,8 +1544,10 @@ class StaffRun:
         x = cur['st']
         if 'place' not in x:
             x['place'] = st.meet_place(m['room'], {k: v for k, v in self.holder.items() if v != p.i})
-            if trainee and x['place'] is not None and not self.taken(x['place'], p):
-                self.reserve(p, x['place'])     # the trainee's seat at the meeting is theirs, as an NPC's
+        if trainee and 'seat' not in x:         # the trainee's seat at the meeting is theirs, as an NPC's (again
+            x['seat'] = True                    # after a pause, which lets a reservation go)
+            if x['place'] is not None and not self.taken(x['place'], p):
+                self.reserve(p, x['place'])
         if not trainee:
             r = self.go(p, cur, x['place'])
             if r != 'next':

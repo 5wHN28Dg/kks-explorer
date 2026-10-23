@@ -432,6 +432,17 @@ class GdscriptEngineEdges(unittest.TestCase):
             self.assertEqual(got[run]['chunks'], chunks, run)
 
 
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptStaffEdges(unittest.TestCase):
+    """Places held in cases the staff vectors don't reach, as tests/test_plant3d_staff.py checks the reference."""
+
+    def test_staff_edges(self):
+        r = godot('check_staff_edges.gd', os.path.join(REPO, 'ref', 'vectors', 'plant3d-v2.json'), timeout=300)
+        no_errors(self, r)
+        self.assertIn('STAFF_EDGES bad=0', r.stdout, r.stdout[-4000:])
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+
+
 def no_errors(case, r):
     """Godot carries on after a script error or push_error: any of them fails the test."""
     bad = [x for x in (r.stdout + r.stderr).splitlines() if 'SCRIPT ERROR' in x or x.startswith('ERROR:')]

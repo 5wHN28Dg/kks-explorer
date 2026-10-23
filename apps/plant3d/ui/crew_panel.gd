@@ -22,6 +22,7 @@ var _sig := ""
 var _t := 0.0
 var _seen := 0                  # events read so far (the radio log and readings sheet grow from there)
 var _engine = null
+var _j := 0                     # the jumps made up to the event read last (each line's time is its own clock's)
 var _radio: Array = []          # [step, text] of every message and call
 var _reads: Dictionary = {}     # person -> their read events
 
@@ -92,15 +93,18 @@ func _follow(e) -> void:
 	if e != _engine or e.events.size() < _seen:
 		_engine = e
 		_seen = 0
+		_j = 0
 		_radio.clear()
 		_reads.clear()
 	var sm = e._sm
 	for k in range(_seen, e.events.size()):
 		var ev: Array = e.events[k]
-		if ev[1] == "say":
-			_radio.append("%s  %s → %s: %s" % [_at(e, ev[0]), _call(sm, ev[2]), _to(sm, ev[4]), sm.messages.get(ev[3], ev[3])])
+		if ev[1] == "jump" and ev[4] == "done":
+			_j += ev[3] - ev[2]
+		elif ev[1] == "say":
+			_radio.append("%s  %s → %s: %s" % [_at(e, ev[0], _j), _call(sm, ev[2]), _to(sm, ev[4]), sm.messages.get(ev[3], ev[3])])
 		elif ev[1] == "call" and ev[6] == "done":
-			_radio.append("%s  %s → %s: %s" % [_at(e, ev[0]), _call(sm, ev[2]), _to(sm, ev[3]),
+			_radio.append("%s  %s → %s: %s" % [_at(e, ev[0], _j), _call(sm, ev[2]), _to(sm, ev[3]),
 					sm.tasks[ev[4]]["title"] if sm.tasks.has(ev[4]) else ev[4]])
 		elif ev[1] == "read":
 			if not _reads.has(ev[2]):
@@ -360,8 +364,8 @@ func _next_shift(e) -> String:
 	return "18:00" if t >= 6 * 36000 and t < 18 * 36000 else "06:00"
 
 
-static func _at(e, step: int) -> String:
-	var t: int = e._S + step * e._ds + e.J
+static func _at(e, step: int, j: int) -> String:
+	var t: int = e._S + step * e._ds + j
 	var s: int = (t % 864000) / 10
 	return "%02d:%02d" % [s / 3600, (s / 60) % 60]
 

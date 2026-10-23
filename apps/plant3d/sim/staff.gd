@@ -739,7 +739,7 @@ func pause(e, pi: int) -> void:
 			st["left"] -= m - st["last"]
 			st["last"] = m
 		st["resumed"] = true
-	for k in ["dest", "waiting", "wait_since", "target", "meet_since"]:
+	for k in ["dest", "waiting", "wait_since", "target", "meet_since", "seat"]:
 		st.erase(k)
 	unreserve(e, pi)
 	_enqueue(e, pi, cur)
@@ -866,6 +866,9 @@ func hop(a: int, b: int) -> int:
 func walk(e, pi: int, dest: int) -> bool:
 	var pos: int = e.sp_pos[pi]
 	if pos == dest:
+		if e.sp_res[pi] == dest:        # already standing there: the place reserved is now held
+			e.sp_occ[pi] = dest
+			e.sp_res[pi] = -1
 		return true
 	var nx := hop(pos, dest)
 	var st: int = ways[mini(pos, nx) * places.size() + maxi(pos, nx)]
@@ -1096,8 +1099,10 @@ func meet(e, pi: int, cur: Dictionary, mt: Dictionary, trainee: bool) -> String:
 	var x: Dictionary = cur["st"]
 	if not x.has("place"):
 		x["place"] = meet_place(e, mt["room"], pi)
-		if trainee and x["place"] != -1 and not taken(e, x["place"], pi):
-			reserve(e, pi, x["place"])      # the trainee's seat at the meeting is theirs, as an NPC's
+	if trainee and not x.has("seat"):       # their seat, as an NPC's (again after a pause, which lets it go)
+		x["seat"] = true
+		if x["place"] != -1 and not taken(e, x["place"], pi):
+			reserve(e, pi, x["place"])
 	if not trainee:
 		var r := go(e, pi, cur, int(x["place"]))
 		if r != "next":

@@ -240,7 +240,60 @@ class StaffVectors(unittest.TestCase):
         self.assertIsNotNone(seat, 'the trainee never held a place')
         e.leave(sr.st.places[seat]['id'])
         e.step()
-        self.assertNotIn(seat, sr.holder)
+        self.assertNotEqual(sr.holder.get(seat), sr.trainee)     # someone standing there may hold it now
+        self.assertNotEqual(sr.people[sr.trainee].res, seat)
+
+    def test_a_leave_of_an_unknown_place_does_nothing(self):
+        """Away from every place, a `leave` naming no place keeps what the trainee holds (as GDScript does)."""
+        b = P.check_files(files_of(self.V, self.runs[0]))
+        e = P.Engine(b, 's1')
+        e.role('a_fo1')
+        e.step()
+        sr = e.staff
+        tp = sr.people[sr.trainee]
+        sr.t_at = tp.pos = None
+        seat = next(i for i, q in enumerate(sr.st.places) if q['kind'] == 'seat' and i not in sr.holder)
+        tp.occ = seat
+        sr.holder[seat] = tp.i
+        e.leave('no_such_place')
+        e.step()
+        self.assertEqual((tp.occ, sr.holder.get(seat)), (seat, tp.i))
+
+    def test_a_person_standing_at_the_place_they_reserve_holds_it(self):
+        """Someone already at a place they didn't hold, sent there, holds it (the reservation isn't dropped)."""
+        b = P.check_files(files_of(self.V, self.runs[0]))
+        e = P.Engine(b, 's1')
+        e.step()
+        sr = e.staff
+        p = next(q for q in sr.people if q.pos is not None and q.leg is None)
+        sr.leave_place(p)
+        sr.unreserve(p)
+        here = next(i for i, q in enumerate(sr.st.places) if q['kind'] not in S.OPEN_KINDS and i not in sr.holder)
+        p.pos = here                     # placed there while someone else held it, say
+        self.assertEqual(sr.go(p, {'st': {}}, here), 'next')
+        self.assertEqual((p.occ, sr.holder.get(here)), (here, p.i))
+
+    def test_the_trainees_meeting_seat_is_theirs_again_after_a_pause(self):
+        """A pause lets the trainee's meeting seat go; when the meeting is theirs again, so is the seat."""
+        b = P.check_files(files_of(self.V, self.runs[0]))
+        e = P.Engine(b, 's1')
+        e.role('a_fo1')
+        e.step()
+        sr = e.staff
+        tp = sr.people[sr.trainee]
+        sr.t_at = tp.pos = None
+        sr.leave_place(tp)
+        room = next(r for r in sr.st.rooms if sr.st.meet_place(r, sr.holder) is not None
+                    and sr.st.places[sr.st.meet_place(r, sr.holder)]['kind'] in ('seat', 'desk', 'table'))
+        m = {'room': room, 'with': [], 'minutes': 5}
+        cur = {'st': {}, 'prio': 0, 'made': 0, 'order': 0}
+        self.assertEqual(sr.meet(tp, cur, m, True), 'wait')
+        seat = cur['st']['place']
+        self.assertEqual(tp.res, seat)
+        tp.cur = cur
+        sr.pause(tp)
+        sr.meet(tp, cur, m, True)
+        self.assertEqual((tp.res, sr.holder.get(seat)), (seat, tp.i))
 
     def test_a_free_radio_call_names_no_work(self):
         b = P.check_files(files_of(self.V, self.runs[4]))
