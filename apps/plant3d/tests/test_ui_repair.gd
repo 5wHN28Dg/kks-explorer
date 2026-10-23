@@ -108,11 +108,14 @@ func run(tree: SceneTree) -> Array:
 		pm.refresh()
 	p.append_array(_do(ui, pm, "issue"))
 	ui.player.global_position = ui.index.center(PUMP_A) + Vector3(0, 0, 3)
-	ui.card.refresh()
+	ui.open_card(PUMP_A)            # (the permit form took the card's place)
+	rp = ui.card._repairs[0] if not ui.card._repairs.is_empty() else []
 	if rp.is_empty() or not (rp[2] as Button).disabled:
 		p.append("the repair is offered with the permit only issued")
+	ui.open_permits(WORK_A)
 	p.append_array(_do(ui, pm, "accept"))
-	ui.card.refresh()
+	ui.open_card(PUMP_A)
+	rp = ui.card._repairs[0] if not ui.card._repairs.is_empty() else []
 	if not rp.is_empty():
 		if (rp[2] as Button).disabled:
 			p.append("with the permit accepted, beside the pump, its repair is not offered: %s" % (rp[3] as Label).text)
@@ -134,6 +137,7 @@ func run(tree: SceneTree) -> Array:
 		if e.v("cw_a_fault") != 0.0 or (rp[1] as Control).visible:
 			p.append("the repair at the locked-out pump did not repair it, or is still offered (fault %s)" % e.v("cw_a_fault"))
 	# the work done finds it repaired (no second repair); handed back, the locks off, closed
+	ui.open_permits(WORK_A)
 	p.append_array(_do(ui, pm, "done"))
 	p.append_array(_do(ui, pm, "return"))
 	for k in 2:

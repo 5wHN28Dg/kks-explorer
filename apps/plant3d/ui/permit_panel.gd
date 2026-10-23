@@ -78,6 +78,21 @@ static func _first(n: Node) -> Button:
 	return null
 
 
+## Gamepad A presses the form's focused button (Godot's ui_accept has no gamepad button; app/hud.gd does the same for
+## the settings): the form, and the lock warning's answer, work from a gamepad as from the keyboard.
+func _input(ev: InputEvent) -> void:
+	if not visible or not (ev is InputEventJoypadButton and ev.button_index == JOY_BUTTON_A):
+		return
+	var fo := get_viewport().gui_get_focus_owner()
+	if fo == null or not is_ancestor_of(fo) or not fo.is_visible_in_tree() or not fo is BaseButton:
+		return
+	get_viewport().set_input_as_handled()
+	var a := InputEventAction.new()
+	a.action = "ui_accept"
+	a.pressed = ev.pressed
+	get_viewport().push_input(a)
+
+
 func _process(delta: float) -> void:
 	poll_check()
 	if not visible:

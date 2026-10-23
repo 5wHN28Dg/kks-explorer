@@ -42,8 +42,11 @@ static func _focus(ui) -> String:
 	return String(f.name) if f != null else ""
 
 
+## Puts the trainee beside the equipment, held there (the walker would fall from beside a transmitter up a wall while
+## the frames pass that the check and the input events take).
 static func _near(ui, code: String) -> void:
 	if ui.index.has(code):
+		ui.player.set_physics_process(false)
 		ui.player.global_position = ui.index.center(code) + Vector3(0, 0, 3)
 
 
@@ -109,14 +112,14 @@ func run(tree: SceneTree) -> Array:
 		main.free()
 		return p + ["transmitter 3's lock brought no warning: %s" % str(pm.check)]
 	var a: Dictionary = pm.check["answer"]
-	if a.get("trips", []) != ["st_trip_cond_p", "gen3_trip_prot"] or a.get("alarms", []) != ["gt1_runback"]:
+	if a.get("trips", []) != ["st_trip_cond_p"] or a.get("alarms", []) != []:     # at vacuum: no generator, no runback
 		p.append("the warning's answer is %s" % str(a))
 	await tree.process_frame
 	var warn: Label = pm.body.find_child("warn_0", true, false)
 	var st_name: String = ui.info.name_of("30MAA10")
-	if warn == null or not warn.text.contains("Condenser pressure high-high") or not warn.text.contains("GT 1 runback") \
-			or (st_name != "" and not warn.text.contains(st_name)):
-		p.append("the warning does not name the trip, what it moves (%s) and the alarm: %s" % [st_name,
+	if warn == null or not warn.text.contains("Condenser pressure high-high") or st_name == "" \
+			or not warn.text.contains("will trip " + st_name):
+		p.append("the warning does not name the trip and what it moves (%s): %s" % [st_name,
 				warn.text if warn else "none"])
 	if _focus(ui) != "cancel_lock_0":
 		p.append("the warning's focus is on %s, not Don't lock" % _focus(ui))
