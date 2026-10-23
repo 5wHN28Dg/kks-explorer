@@ -446,11 +446,14 @@ static func basin(_part: String, g) -> void:
 	var D: float = g.num("depth", 2)
 	var t := 0.3
 	m.use("concrete", "form")
-	m.box_lh(Vector3(-L * 0.5 - t, -W * 0.5 - t, -0.3), Vector3(L * 0.5 + t, W * 0.5 + t, 0.0))
-	m.box_lh(Vector3(-L * 0.5 - t, W * 0.5, 0), Vector3(L * 0.5 + t, W * 0.5 + t, D + 0.25))
-	m.box_lh(Vector3(-L * 0.5 - t, -W * 0.5 - t, 0), Vector3(L * 0.5 + t, -W * 0.5, D + 0.25))
-	m.box_lh(Vector3(L * 0.5, -W * 0.5, 0), Vector3(L * 0.5 + t, W * 0.5, D + 0.25))
-	m.box_lh(Vector3(-L * 0.5 - t, -W * 0.5, 0), Vector3(-L * 0.5, W * 0.5, D + 0.25))
+	# its floor slab between the walls stands 3 cm proud of the origin, the walls from the slab's foot: a basin at
+	# grade (the WTP's rapid mixer) or in a pit would otherwise have its floor in the yard's or the pit's plane, and
+	# a slab under the walls would share their outer faces (tests/test_ground.gd, review)
+	m.box_lh(Vector3(-L * 0.5, -W * 0.5, -0.3), Vector3(L * 0.5, W * 0.5, 0.03))
+	m.box_lh(Vector3(-L * 0.5 - t, W * 0.5, -0.3), Vector3(L * 0.5 + t, W * 0.5 + t, D + 0.25))
+	m.box_lh(Vector3(-L * 0.5 - t, -W * 0.5 - t, -0.3), Vector3(L * 0.5 + t, -W * 0.5, D + 0.25))
+	m.box_lh(Vector3(L * 0.5, -W * 0.5, -0.3), Vector3(L * 0.5 + t, W * 0.5, D + 0.25))
+	m.box_lh(Vector3(-L * 0.5 - t, -W * 0.5, -0.3), Vector3(-L * 0.5, W * 0.5, D + 0.25))
 	m.use("water", "identify")
 	# the water stands just above the ground round it (a cooling tower's basin is at grade)
 	m.box_lh(Vector3(-L * 0.5, -W * 0.5, D + 0.03), Vector3(L * 0.5, W * 0.5, D + 0.05))

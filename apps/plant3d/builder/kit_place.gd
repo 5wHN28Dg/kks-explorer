@@ -1042,6 +1042,33 @@ static func split_cells(layers: Dictionary, o: Vector3) -> Array:
 			by_cell[key].layers[k] = {"mat": L.mat, "cls": L.cls, "size": L.size, "arrays": out, "tris": ni.size() / 3}
 	return by_cell.values()
 
+## The top of a support post's base plate over the surface it stands on (parts_pipes.gd `_support`, `_bridge`): FOOT,
+## or FOOT_STEP higher for each level the plates it overlaps already take (two pipes' supports side by side: their
+## plates overlapped in one plane and fought in the depth buffer, tests/test_ground.gd); the lowest level free. 4 cm: a
+## raised plate stays 2 cm clear of a hall's floor too (plant_builder.gd HALL_FLOOR_T), which hides a plate at FOOT.
+## `half`: the plate's half width (its plates are square, along the plant's axes).
+const FOOT := 0.02
+const FOOT_STEP := 0.04
+var feet: Array = []   # [plan point, half width, surface z, plate top]
+func _foot(p: Vector2, half: float, z: float) -> float:
+	var taken: Array = []
+	for f in feet:
+		var q: Vector2 = f[0]
+		if absf(f[2] - z) < 0.01 and absf(q.x - p.x) < half + f[1] and absf(q.y - p.y) < half + f[1]:
+			taken.append(f[3])
+	var top := FOOT
+	while taken.any(func(t): return absf(t - top) < 0.001):
+		top += FOOT_STEP
+	feet.append([p, half, z, top])
+	return top
+
+## The half width of a support post's base plate (parts_pipes.gd `_support`), 0 where it has none (a post shorter
+## than 5 cm: the shoe sits on the surface).
+static func _plate_half(post: float) -> float:
+	if post <= 0.05:
+		return 0.0
+	return (0.1 if post < 2.0 else (0.2 if post < 8.0 else 0.3)) * 2.5 * 0.5
+
 ## Supports at the span table's spacing along every horizontal run above ground, on the highest walkable surface,
 ## rack tier or the ground below (within MAX_POST), or hung from a roof or deck above (within 6 m).
 func _supports(p: Dictionary, route: Array, r: float, buried: Dictionary) -> Array:
@@ -1072,10 +1099,17 @@ func _supports(p: Dictionary, route: Array, r: float, buried: Dictionary) -> Arr
 					if br.is_empty():
 						unsupported.append("%s at %s (over a walkway)" % [p.kks, str(q.snapped(Vector3(0.1, 0.1, 0.1)))])
 					else:
+						for l in br.legs:
+							if q.z - r - 0.15 - l.z > 0.05:   # (parts_pipes.gd _bridge: a leg's plate, 0.45 m square)
+								l["foot"] = _foot(Vector2(l.at.x, l.at.y), 0.225, l.z)
 						out.append(br)
 						n_made += 1
 					continue
-				out.append({"at": q, "z_to": base, "kind": "guide" if n_made % 3 == 2 else "shoe", "dir": dn})
+				var sup := {"at": q, "z_to": base, "kind": "guide" if n_made % 3 == 2 else "shoe", "dir": dn}
+				var half := _plate_half(q.z - r - 0.1 - base)
+				if half > 0.0:
+					sup["foot"] = _foot(Vector2(q.x, q.y), half, base)
+				out.append(sup)
 				n_made += 1
 				continue
 			var above := _above(q, r)

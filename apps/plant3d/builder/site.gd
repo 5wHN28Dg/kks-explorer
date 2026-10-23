@@ -361,6 +361,11 @@ func windbreak_places(wall: Rect2, road_out: Rect2) -> Array:
 ## The country beyond the wall: a grid out to FAR from the centre, its height 0 at the wall, a few metres of
 ## undulation within 250 m and low hills towards the far plane (FastNoiseLite: the same every build). Not walkable
 ## (the wall keeps the walker in); lit by the bake at a coarse texel.
+## None of it lies under the site's own ground (the wall's rect, the camp's areas): the grid's lines include those
+## rects' edges, so every cell is wholly inside one (left out) or wholly outside, and the terrain meets the ground's
+## edge at height 0 without overlapping it. (It used to run on under the ground a little lower, cut only where a whole
+## 20 m cell lay inside: across the 20 m wide road to the camp no cell did, and the terrain lay in the gravel's and the
+## road's plane there, showing through them in patches that changed as one walked: the Note 9, 2026-10-23.)
 func _terrain(root: Node3D, wall: Rect2) -> void:
 	var c := wall.get_center()
 	river = has_river()
@@ -368,26 +373,23 @@ func _terrain(root: Node3D, wall: Rect2) -> void:
 	noise.seed = 7
 	noise.frequency = 0.004
 	noise.fractal_octaves = 4
-	var n := int(ceil(FAR * 2.0 / TERRAIN_CELL))
+	var zones: Array = ground_rects(wall)
 	var o := c - Vector2(FAR, FAR)
-	var zones: Array = camp_rects()
+	var xs := grid_lines(o.x, zones, 0)
+	var ys := grid_lines(o.y, zones, 1)
 	var hs := []
-	for j in n + 1:
+	for j in ys.size():
 		var row := []
-		for i in n + 1:
-			var p := o + Vector2(i, j) * TERRAIN_CELL
-			row.append(_height(p, wall, noise, zones))
+		for i in xs.size():
+			row.append(_height(Vector2(xs[i], ys[j]), wall, noise, zones))
 		hs.append(row)
 	var st: SurfaceTool = b._st()
-	var inner: Array = [wall.grow(-1.0)]
-	for r in camp_rects():
-		inner.append((r as Rect2).grow(-1.0))
-	for j in n:
-		for i in n:
-			var p00 := o + Vector2(i, j) * TERRAIN_CELL
-			var p11 := p00 + Vector2(TERRAIN_CELL, TERRAIN_CELL)
-			var cell := Rect2(p00, Vector2(TERRAIN_CELL, TERRAIN_CELL))
-			if inner.any(func(r): return r.encloses(cell)):
+	for j in ys.size() - 1:
+		for i in xs.size() - 1:
+			var p00 := Vector2(xs[i], ys[j])
+			var p11 := Vector2(xs[i + 1], ys[j + 1])
+			var mid := (p00 + p11) * 0.5
+			if zones.any(func(r): return (r as Rect2).has_point(mid)):
 				continue   # inside the wall or the camp: the site's own ground
 			if p00.distance_to(c) > FAR + TERRAIN_CELL and p11.distance_to(c) > FAR + TERRAIN_CELL:
 				continue
@@ -400,6 +402,34 @@ func _terrain(root: Node3D, wall: Rect2) -> void:
 			_tri(st, v[0], v[2], v[3])
 	st.generate_normals()
 	b._mesh_node(root, "terrain", st, b._mat("terrain"), 8.0)
+
+## The rects the site's own ground covers (plant coordinates): inside the wall, and the camp's areas outside it.
+func ground_rects(wall: Rect2) -> Array:
+	var out: Array = [wall]
+	out.append_array(camp_rects())
+	return out
+
+## The terrain grid's lines along one axis (0: x, 1: y) from `start`: every TERRAIN_CELL to 2 × FAR, and every edge of
+## the ground's rects, so that no cell crosses one (a grid line within a metre of an edge gives way to it: no slivers).
+static func grid_lines(start: float, zones: Array, axis: int) -> PackedFloat64Array:
+	var edges: Array = []
+	for r in zones:
+		var rr: Rect2 = r
+		edges.append(rr.position[axis])
+		edges.append(rr.end[axis])
+	var all: Array = edges.duplicate()
+	var n := int(ceil(FAR * 2.0 / TERRAIN_CELL))
+	for k in n + 1:
+		var t := start + k * TERRAIN_CELL
+		if k == 0 or k == n or not edges.any(func(e): return absf(e - t) < 1.0):
+			all.append(t)
+	all = all.filter(func(t): return t >= start - 1e-6 and t <= start + n * TERRAIN_CELL + 1e-6)
+	all.sort()
+	var out := PackedFloat64Array()
+	for t in all:
+		if out.is_empty() or t - out[out.size() - 1] > 1e-4:
+			out.append(t)
+	return out
 
 static func _tri(st: SurfaceTool, a: Vector3, c: Vector3, d: Vector3) -> void:
 	# the triangle's front face up (Godot: clockwise seen from the front)
@@ -415,18 +445,14 @@ static func _dist(p: Vector2, r: Rect2) -> float:
 	var dy := maxf(maxf(r.position.y - p.y, p.y - r.end.y), 0.0)
 	return Vector2(dx, dy).length()
 
-## Terrain height at a plan point: 0 inside a band round the wall and the camp's ground (`zones`), then undulating,
-## then hills.
+## Terrain height at a plan point: 0 on and near the edge of the wall and the camp's ground (`zones`), then
+## undulating, then hills.
 func _height(p: Vector2, wall: Rect2, noise: FastNoiseLite, zones: Array = []) -> float:
 	var d := _dist(p, wall)   # outside the wall
 	for z in zones:
-		if (z as Rect2).grow(-0.5).has_point(p):
-			return -0.3   # under the camp's own ground
 		d = minf(d, _dist(p, z))
 	if d <= 0.0:
-		# inside the wall: under the site's own ground (a terrain cell across the wall would otherwise lie in the
-		# gravel's plane and flicker against it)
-		return -0.3 if wall.grow(-0.5).has_point(p) else 0.0
+		return 0.0   # on the edge of the site's own ground (no terrain lies inside it: _terrain)
 	var t := smoothstep(20.0, 120.0, d)
 	var hills := smoothstep(250.0, 650.0, d)
 	var nv := noise.get_noise_2d(p.x, p.y)   # -1 .. 1
