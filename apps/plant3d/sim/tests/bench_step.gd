@@ -1,9 +1,12 @@
 extends SceneTree
 ## The model's cost (decision 0054 §10 "Model cost"): the time of one 0.1 s step of the whole first train's model,
 ## over the cold start run by its procedure and then at base load, headless.
-##   godot --headless --script apps/plant3d/sim/tests/bench_step.gd [-- --data=PATH --base-steps=N]
+##   godot --headless --script apps/plant3d/sim/tests/bench_step.gd [-- --data=PATH --base-steps=N --max-us=US]
 ## Prints "STEP phase=… steps=N mean_us=… p50_us=… p99_us=… max_us=… ff_max=…x": ff_max is the fast-forward speed one
-## core could keep up with at that mean (10 steps per second of model time).
+## core could keep up with at that mean (10 steps per second of model time); "PROGRAM straight-line" or "interpreter"
+## (how step 2 ran, engine.gd _gen_fast); "FF_CHECK mean_us=…", the cost of engine.fast_forward(), which the app's
+## clock asks after every step at fast-forward. With --max-us, "GATE ok" or "GATE slow" and exit code 1 when the
+## batch's mean step is above US (tests/test_plant3d_sim.py: CI).
 
 const PlantModel = preload("../plant_model.gd")
 const Procedure = preload("../procedure.gd")
@@ -28,6 +31,7 @@ func _init() -> void:
 			m.machines.size(), t1 - t0])
 	var e = load(get_script().resource_path.get_base_dir().path_join("../engine.gd")).new(m, "cold_iron")
 	print("COMPILE us=%d" % (Time.get_ticks_usec() - t1))
+	print("PROGRAM %s" % ("straight-line" if e._fast != null else "interpreter"))
 	# the cold start: time every step the procedure makes
 	e.timing = true
 	var r := Procedure.run(m, "cold_start", 3600, e, null, Callable())
@@ -50,6 +54,15 @@ func _init() -> void:
 	e.step(n)
 	var per := float(Time.get_ticks_usec() - s2) / n
 	print("BATCH steps=%d mean_us=%.1f ff_max=%dx" % [n, per, int(1e6 / per / 10.0)])
+	var s3 := Time.get_ticks_usec()
+	for k in 1000:
+		e.fast_forward()
+	print("FF_CHECK mean_us=%.1f" % ((Time.get_ticks_usec() - s3) / 1000.0))
+	if opts.has("max-us"):
+		var gate := float(opts["max-us"])
+		print("GATE %s mean_us=%.1f max_us=%.0f" % ["ok" if per <= gate else "slow", per, gate])
+		if per > gate:
+			return
 	quit(0)
 
 
