@@ -71,6 +71,7 @@ var crew                        # ui/crew_panel.gd: the trainee's role, tasks an
 var people                      # ui/people_view.gd: the crews as markers in the plant and dots on the map
 var _place_t := 0.0
 var _arrived := -2              # the place the last arrive input named (-1: a leave), -2: none sent yet
+var _jumps := 0                 # the engine's J when last looked at: a jump moves the walker to their placed person
 var root: Control
 var arrows: Control
 var instructor := false
@@ -395,7 +396,9 @@ func do_op(o: Dictionary, value) -> void:
 	var who = me()
 	if who != null:
 		# playing a person (§17.1): made from the screens or at the equipment, by them
-		clock.engine.op(o["kks"], o["do"], value, o.get("trip"), "screen" if screens_open() else "local", who)
+		# (where the card offers it: the screens, or the control room away from the equipment; else at it)
+		var where := "screen" if screens_open() or (in_control_room() and not near(o["kks"])) else "local"
+		clock.engine.op(o["kks"], o["do"], value, o.get("trip"), where, who)
 	else:
 		clock.engine.op(o["kks"], o["do"], value, o.get("trip"))
 	_pending.append([key, o, clock.engine.step_no + 1])
@@ -473,6 +476,14 @@ func _place_tick() -> void:
 	if e._sm == null or e.st_trainee == -1:
 		return
 	var sm = e._sm
+	if e.J != _jumps and e.st_jumped.is_empty():
+		# after a jump (§17.6) the trainee's person stands where the placement put them: the walker goes there
+		_jumps = e.J
+		_arrived = -2
+		if e.sp_pos[e.st_trainee] != -1:
+			go_to_place(e.sp_pos[e.st_trainee])
+		toast("The clock jumped to %s." % clock_text())
+		return
 	var g: Vector3 = player.global_position
 	var here := Vector3(g.x, -g.z, g.y)
 	var best := -1
@@ -553,6 +564,7 @@ func restart(scenario: String, quiet := false) -> void:
 	permits._sig = ""
 	_ev_seen = 0
 	_arrived = -2
+	_jumps = 0
 	crew._sig = ""
 	if not quiet:
 		toast("The plant restarted: %s." % model.scenarios[scenario].get("title", scenario))

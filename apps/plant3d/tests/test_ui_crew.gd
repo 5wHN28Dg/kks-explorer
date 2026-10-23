@@ -15,6 +15,8 @@ const SimClock = preload("res://ui/sim_clock.gd")
 const RunSave = preload("res://ui/run_save.gd")
 const PlantEngine = preload("res://sim/engine.gd")
 
+var _lost_typing := false
+
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
@@ -58,6 +60,10 @@ func _play(ui, readings: Dictionary) -> bool:
 		var v: float = e.shown(s["read"], e.cur)
 		var typed := v + (5.0 if readings.size() == 1 else 0.0)        # the second reading misread on purpose
 		ui.crew.entry.text = "%.3f" % typed
+		ui.crew._sig = ""
+		ui.crew.refresh()           # the panel rebuilt (a colleague's radio message) while the trainee types
+		if ui.crew.entry.text != "%.3f" % typed:
+			_lost_typing = true
 		App.find_button(ui.crew, "Write down").pressed.emit()
 		readings[s["read"]] = typed
 		return true
@@ -160,6 +166,32 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 	ui.people.update()
 	if ui.people.shown < 3:
 		p.append("the crews are not on screen (%d markers)" % ui.people.shown)
+	if _lost_typing:
+		p.append("a reading being typed was erased when the Crew panel rebuilt")
+	# sleep to the next shift (a jump, §17.6): the walker is moved to where the placement put the trainee's person
+	for k in e._al.size():
+		if e.astate[k] in ["active_unack", "cleared_unack"]:
+			ui.ack(e._al[k][0], false)
+	if e.st_unacked > 0:
+		e.task_ack()
+	ui.clock.run_steps(2)
+	ui.crew._sig = ""
+	ui.crew.refresh()
+	var sleep := App.find_button(ui.crew, "Sleep to…")
+	if sleep == null or sleep.disabled:
+		p.append("no sleep to the next shift offered (fast-forward %s: %s)" % [str(e.fast_forward()), ui.clock.ff_blocked()])
+	else:
+		var j0: int = e.J
+		sleep.pressed.emit()
+		ui.clock.run_steps(2)
+		if e.J == j0:
+			p.append("the jump was not made: %s" % str(e.events.slice(e.events.size() - 3)))
+		else:
+			ui._place_tick()
+			var pos: int = e.sp_pos[e.st_trainee]
+			ui.clock.run_steps(1)
+			if ui._jumps != e.J or e.st_t_at != pos:
+				p.append("after the jump the app did not follow the placement (%d, at %d)" % [pos, e.st_t_at])
 
 
 func _ccr_operator(tree: SceneTree, ui, p: Array) -> void:
@@ -206,6 +238,17 @@ func _ccr_operator(tree: SceneTree, ui, p: Array) -> void:
 	if last.is_empty() or last[-1][4] != "refused" or not last[-1][5].has("where"):
 		p.append("the trainee's op from the screens on a local-only valve was not refused for its where: %s" % str(last))
 	ui.close_screens()
+	# the same op from a card in the control room with the screens closed: made from the screens (`screen`)
+	ui.go_control_room(false)
+	var o2: Dictionary = {}
+	for x in ui.model.ops:
+		if x["kks"] == "30PAC10AA102" and x["do"] == "close":
+			o2 = x
+	ui.do_op(o2, null)
+	ui.clock.run_steps(1)
+	var made = e.events.filter(func(ev): return ev[1] == "op" and ev[2] == "30PAC10AA102" and ev.size() == 8 and ev[7] == me)
+	if made.is_empty() or made[-1][6] != "screen":
+		p.append("an op from a card in the control room was not made from the screens: %s" % str(made))
 
 
 ## A run with the crews saved and restored: the same at every step after (people, queues, random streams).
@@ -230,5 +273,5 @@ func _save(ui, p: Array) -> void:
 	for k in 600:
 		e.step()
 		f2.step()
-	if var_to_bytes(e.snapshot()) != var_to_bytes(f2.snapshot()) or e.events.size() != f2.events.size():
+	if var_to_bytes(e.snapshot()) != var_to_bytes(f2.snapshot()) or var_to_bytes(e.events) != var_to_bytes(f2.events):
 		p.append("the restored run with staff differs from the uninterrupted one")

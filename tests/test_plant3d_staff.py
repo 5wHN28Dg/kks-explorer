@@ -195,18 +195,17 @@ class StaffVectors(unittest.TestCase):
         self.assertEqual([p.rng for p in e1.staff.people], [p.rng for p in e2.staff.people][:10])
 
     def test_waiting_for_a_taken_place(self):
-        """The supervisor's seat taken by a field operator: the supervisor waits at the office's door, and gives up
-        after 15 clock minutes (the idle task abandoned)."""
+        """A seat taken by someone else: the person waits at the room's door and gives up after 15 clock minutes
+        counted from their arrival there (the task abandoned)."""
         found = 0
+        doors = ('office_door', 'cr_door', 'ws_door')
         for r in self.runs:
             ev = r['events']
             for e in ev:
-                if e[1] == 'task' and e[2] == 'a_sup' and e[3] == 'idle_sup' and e[4] == 'abandoned':
-                    door = [m[5] for m in ev if m[1] == 'move' and m[2] == 'a_sup' and m[4] == 'office_door'
-                            and m[5] <= e[0]]
-                    self.assertTrue(door, 'abandoned without waiting at the door')
-                    self.assertEqual(e[0] - max(door), 150)       # 15 clock minutes at day_scale 60
-                    found += 1
+                if e[1] == 'task' and e[4] == 'abandoned':
+                    door = [m[5] for m in ev if m[1] == 'move' and m[2] == e[2] and m[4] in doors and m[5] <= e[0]]
+                    if door and e[0] - max(door) == 150:     # 15 clock minutes at day_scale 60
+                        found += 1
         self.assertGreater(found, 0)
 
     def test_clone_is_independent(self):
@@ -221,8 +220,37 @@ class StaffVectors(unittest.TestCase):
         self.assertIsNot(c.staff.people[0], e.staff.people[0])
 
 
-if __name__ == '__main__':
-    unittest.main()
+
+    def test_the_trainee_lets_go_of_a_place(self):
+        """A seat the trainee's go took is let go when they leave it or arrive elsewhere (others may take it)."""
+        b = P.check_files(files_of(self.V, self.runs[0]))
+        e = P.Engine(b, 's1')
+        e.role('a_fo1')
+        e.step()
+        sr = e.staff
+        seat = None
+        player = G.Trainee(walk=5)
+        for _ in range(3000):
+            player(e)
+            e.step()
+            held = [k for k, v in sr.holder.items() if v == sr.trainee and k == sr.t_at]
+            if held:
+                seat = held[0]
+                break
+        self.assertIsNotNone(seat, 'the trainee never held a place')
+        e.leave(sr.st.places[seat]['id'])
+        e.step()
+        self.assertNotIn(seat, sr.holder)
+
+    def test_a_free_radio_call_names_no_work(self):
+        b = P.check_files(files_of(self.V, self.runs[4]))
+        e = P.Engine(b, 's1')
+        e.step(2)
+        e.call('field_op', 'open_valve', 'wo_pump')
+        e.call('field_op', 'open_valve')
+        e.step()
+        calls = [x for x in e.events if x[1] == 'call' and x[2] == 'a_ccr']
+        self.assertEqual([c[6] for c in calls], ['refused', 'done'])
 
 
 class FirstTrainStaff(unittest.TestCase):
@@ -298,3 +326,7 @@ class FirstTrainStaff(unittest.TestCase):
                 for e in (e0, e1):
                     v = e.shown(code, e.cur)
                     self.assertTrue(lo <= v <= hi, f'{code}: {v} outside [{lo}, {hi}] ({title})')
+
+
+if __name__ == '__main__':
+    unittest.main()

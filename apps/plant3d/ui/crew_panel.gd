@@ -19,6 +19,10 @@ var title: Label
 var entry: LineEdit             # the reading being written down (tests type into it)
 var _sig := ""
 var _t := 0.0
+var _seen := 0                  # events read so far (the radio log and readings sheet grow from there)
+var _engine = null
+var _radio: Array = []          # [step, text] of every message and call
+var _reads: Dictionary = {}     # person -> their read events
 
 
 func setup(u) -> void:
@@ -78,19 +82,44 @@ func _signature(e) -> String:
 
 
 func _radio_count(e) -> int:
-	var c := 0
-	for ev in e.events:
-		if ev[1] == "say" or ev[1] == "call" or ev[1] == "read":
-			c += 1
-	return c
+	_follow(e)
+	return _radio.size() * 7 + _reads.get(e._sm.people[e.st_trainee]["id"] if e.st_trainee != -1 else "", []).size()
+
+
+## Reads the events once each (the list only grows within a run): the radio log and the readings.
+func _follow(e) -> void:
+	if e != _engine or e.events.size() < _seen:
+		_engine = e
+		_seen = 0
+		_radio.clear()
+		_reads.clear()
+	var sm = e._sm
+	for k in range(_seen, e.events.size()):
+		var ev: Array = e.events[k]
+		if ev[1] == "say":
+			_radio.append("%s  %s → %s: %s" % [_at(e, ev[0]), _call(sm, ev[2]), _to(sm, ev[4]), sm.messages.get(ev[3], ev[3])])
+		elif ev[1] == "call" and ev[6] == "done":
+			_radio.append("%s  %s → %s: %s" % [_at(e, ev[0]), _call(sm, ev[2]), _to(sm, ev[3]),
+					sm.tasks[ev[4]]["title"] if sm.tasks.has(ev[4]) else ev[4]])
+		elif ev[1] == "read":
+			if not _reads.has(ev[2]):
+				_reads[ev[2]] = []
+			_reads[ev[2]].append(ev)
+	_seen = e.events.size()
 
 
 func refresh() -> void:
 	var e = ui.clock.engine
+	if e._sm != null:
+		_follow(e)
 	var sig := _signature(e)
 	if sig == _sig:
 		return
 	_sig = sig
+	var typed := entry.text if entry != null and is_instance_valid(entry) else ""
+	var had_focus := get_viewport() != null and get_viewport().gui_get_focus_owner() != null \
+			and is_ancestor_of(get_viewport().gui_get_focus_owner())
+	entry = null
 	W.clear(body)
 	var sm = e._sm
 	if sm == null:
@@ -104,7 +133,13 @@ func refresh() -> void:
 		_roles(e, sm)
 	else:
 		_me(e, sm)
-	_radio(e, sm)
+	_radio_log(e, sm)
+	if entry != null and typed != "":
+		entry.text = typed                  # a reading being typed survives the panel's rebuild
+	if had_focus and ui.wants_focus():
+		var f: Control = entry if entry != null else _first(body)
+		if f:
+			f.grab_focus.call_deferred()
 
 
 # ------------------------------------------------------------------ role selection (§17.4)
@@ -160,10 +195,7 @@ func _me(e, sm) -> void:
 		body.add_child(W.label("Waiting:", 18, W.DIM))
 		for inst in q:
 			body.add_child(W.label("• " + sm.tasks[inst["task"]]["title"] + " (priority %d)" % inst["prio"], 18))
-	var reads := []
-	for ev in e.events:
-		if ev[1] == "read" and ev[2] == p["id"]:
-			reads.append(ev)
+	var reads: Array = _reads.get(p["id"], [])
 	if not reads.is_empty():
 		body.add_child(W.label("Readings sheet:", 18, W.DIM))
 		for ev in reads.slice(maxi(0, reads.size() - 12)):
@@ -291,15 +323,9 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 
 # ------------------------------------------------------------------ the radio (§18.7)
 
-func _radio(e, sm) -> void:
+func _radio_log(e, sm) -> void:
 	body.add_child(W.label("Radio", 20, Color(1.0, 0.85, 0.4)))
-	var lines := []
-	for ev in e.events:
-		if ev[1] == "say":
-			lines.append("%s  %s → %s: %s" % [_at(e, ev[0]), _call(sm, ev[2]), _to(sm, ev[4]), sm.messages.get(ev[3], ev[3])])
-		elif ev[1] == "call" and ev[6] == "done":
-			lines.append("%s  %s → %s: %s" % [_at(e, ev[0]), _call(sm, ev[2]), _to(sm, ev[3]),
-					sm.tasks[ev[4]]["title"] if sm.tasks.has(ev[4]) else ev[4]])
+	var lines := _radio
 	for l in lines.slice(maxi(0, lines.size() - 10)):
 		body.add_child(W.label(l, 16))
 	if e.st_trainee == -1:
@@ -317,8 +343,13 @@ func _radio(e, sm) -> void:
 				func(): ui.clock.engine.radio_call(role, task, null)))
 	var nxt := _next_shift(e)
 	var b := W.button("Sleep to %s" % nxt, func(): ui.clock.engine.jump(nxt))
-	b.disabled = not e.fast_forward()
+	var open_permit := false
+	for s in e.pstate:
+		open_permit = open_permit or (s >= 1 and s <= 7)
+	b.disabled = not e.fast_forward() or open_permit
 	body.add_child(b)
+	if open_permit:
+		body.add_child(W.label("(no sleeping while a permit is open)", 16, W.DIM))
 
 
 func _next_shift(e) -> String:

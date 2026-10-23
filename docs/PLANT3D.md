@@ -1421,14 +1421,15 @@ What S1 settles that §16–§17 left open (the engines and the vectors follow t
   not counted in `unacked`.
 - **The jump's step:** its `skipped` events come first for every instance queued or current (people in order), then,
   per person, for the slots in the gap; phase 4 is not run in that step, so the placed tasks start in the next.
-- **The trainee.** Their `arrive` and `leave` inputs are applied at the start of step 9 in the order made. A `read`
+- **The trainee.** Their `arrive` and `leave` inputs are applied at the start of step 9 in the order made; a seat,
+  desk or table they held is let go when they leave it or arrive elsewhere. A `read`
   is compared with the value as the previous step left it (`misread` beyond `tol`); otherwise the shown value is
-  checked against `expect`, and the event carries the value typed. Their `op`, `permit`, `lock` and `unlock` steps
-  are done when a matching input of theirs is `done` (a refusal leaves the step waiting: the debrief lists it). A
+  checked against `expect`, and the event carries the value typed. Their `op` (the same code, `do` and `where`),
+  `permit`, `lock` and `unlock` steps are done when a matching input of theirs is `done` (a refusal leaves the step waiting: the debrief lists it). A
   `say` step takes a `say` input of the same message and `to`; a `call` step a `call` input of the same role and
   task. Radio inputs that no step took are sent as they are: a message to its `to`, or a **call**, a new input
-  `[n, "call", role, task, work]` (work optional), accepted when some `call` step of the content names that role and
-  task (the radio panel's requests) and refused otherwise. Calls make the event `[n, "call", person, role, task, work,
+  `[n, "call", role, task, work]`, accepted when some `call` step of the content names that role and task (the radio
+  panel's requests) and the work is null (the called task's own `work` then, if any), refused otherwise. Calls make the event `[n, "call", person, role, task, work,
   "done" | "refused"]`, the NPCs' too.
 - **`unacked`** in the snapshot is a count. `[n, "say", …]` to the trainee's person or role counts.
 - **Ops by a person** (§17.1): the reasons start with `where` (the op's own `where` lacks it; then no authority is

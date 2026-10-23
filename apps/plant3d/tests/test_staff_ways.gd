@@ -29,6 +29,10 @@ func run(tree: SceneTree) -> Array:
 		return ["the navigation map was not ready 10 s after the start"]
 	var sm = m.staff
 	var bad := 0
+	var local := {}
+	for o in m.ops:
+		if o["where"].has("local"):
+			local[o["kks"]] = true
 	for pl in sm.places:
 		var g := Layout.godot_of(pl["at"])
 		var c: Vector3 = NavigationServer3D.map_get_closest_point(r.map, g)
@@ -40,6 +44,10 @@ func run(tree: SceneTree) -> Array:
 			var d := eye.distance_to(eye.clamp(box.position, box.end))
 			if d > REACH:
 				p.append("work place %s is %.1f m from %s (reach %.0f m)" % [pl["id"], d, pl["kks"], REACH])
+			# where a local op is made, the card must offer it: within the app's reach of the walker (ui/plant_ui.gd)
+			if local.has(pl["kks"]) and ui.index.distance(pl["kks"], g + Vector3.UP * 1.0) > ui.REACH:
+				p.append("work place %s: %s's local ops are out of the card's reach (%.1f m)" % [pl["id"], pl["kks"],
+						ui.index.distance(pl["kks"], g + Vector3.UP * 1.0)])
 	for w in m.staff.d["ways"]:
 		var a: Vector3 = Layout.godot_of(sm.places[sm.pix[w[0]]]["at"])
 		var b: Vector3 = Layout.godot_of(sm.places[sm.pix[w[1]]]["at"])

@@ -286,7 +286,7 @@ func _resolve(at_kind: int, at_min: int, duty: Array) -> int:
 		return duty[0] + at_min * MINUTE
 	if at_kind == 1:
 		return duty[1] + at_min * MINUTE
-	var t: int = (duty[0] / DAY) * DAY + at_min * MINUTE
+	var t: int = duty[0] - posmod(duty[0], DAY) + at_min * MINUTE      # floor division, as the reference
 	return t if t >= duty[0] else t + DAY
 
 
@@ -571,9 +571,15 @@ func step(e) -> void:
 			if item[0] == "arrive" and typeof(item[1]) == TYPE_STRING and pix.has(item[1]):
 				e.st_t_at = pix[item[1]]
 				e.sp_pos[tr] = e.st_t_at
+				if e.sp_occ[tr] != e.st_t_at:
+					leave_place(e, tr)          # a place held is let go when the trainee is elsewhere
+				if e.sp_res[tr] == e.st_t_at:
+					e.sp_occ[tr] = e.sp_res[tr]
+					e.sp_res[tr] = -1
 			elif item[0] == "leave" and typeof(item[1]) == TYPE_STRING and pix.get(item[1], -2) == e.st_t_at:
 				e.st_t_at = -1
 				e.sp_pos[tr] = -1
+				leave_place(e, tr)
 	# 1. duties, then slots
 	var day: int = c / DAY
 	var np := people.size()
@@ -1089,6 +1095,8 @@ func meet(e, pi: int, cur: Dictionary, mt: Dictionary, trainee: bool) -> String:
 	var x: Dictionary = cur["st"]
 	if not x.has("place"):
 		x["place"] = meet_place(e, mt["room"], pi)
+		if trainee and x["place"] != -1 and not taken(e, x["place"], pi):
+			reserve(e, pi, x["place"])      # the trainee's seat at the meeting is theirs, as an NPC's
 	if not trainee:
 		var r := go(e, pi, cur, int(x["place"]))
 		if r != "next":
@@ -1163,11 +1171,10 @@ func trainee_turn(e, pi: int, tin: Array) -> void:
 		elif item[0] == "call":
 			var ok: bool = typeof(item[1]) == TYPE_STRING and typeof(item[2]) == TYPE_STRING \
 					and callable.has(item[1] + "\n" + item[2]) \
-					and (item[3] == null or (typeof(item[3]) == TYPE_STRING and e.m.work_ix.has(item[3])))
+					and item[3] == null         # a request names no work: the called task's own, if any
 			e._ev(["call", people[pi]["id"], item[1], item[2], item[3], "done" if ok else "refused"])
 			if ok:
-				var code = e.m.works[e.m.work_ix[item[3]]]["kks"] if item[3] != null else null
-				assign(e, [item[1]], item[2], prio_of(item[2]), null, item[3], code, null)
+				assign(e, [item[1]], item[2], prio_of(item[2]), null, null, null, null)
 
 
 func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array) -> void:
@@ -1263,7 +1270,7 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array) -> void:
 			var o: Dictionary = s["op"]
 			for y in mine:
 				if y[1] == "op" and y[2] == o["kks"] and y[3] == o["do"] and y[4] == "done" and y.size() > 7 \
-						and y[7] == pid:
+						and y[6] == o["where"] and y[7] == pid:
 					r = "next"
 					break
 		elif s.has("permit"):

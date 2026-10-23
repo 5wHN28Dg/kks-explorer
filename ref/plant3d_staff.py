@@ -1076,12 +1076,18 @@ class StaffRun:
             jump_step = False
         if self.trainee is not None:
             for item in tin:
+                tp = self.people[self.trainee]
                 if item[0] == 'arrive' and isinstance(item[1], str) and item[1] in st.pix:
                     self.t_at = st.pix[item[1]]
-                    self.people[self.trainee].pos = self.t_at
+                    tp.pos = self.t_at
+                    if tp.occ != self.t_at:
+                        self.leave_place(tp)        # a place held is let go when the trainee is elsewhere
+                    if tp.res == self.t_at:
+                        tp.occ, tp.res = tp.res, None
                 elif item[0] == 'leave' and isinstance(item[1], str) and st.pix.get(item[1]) == self.t_at:
                     self.t_at = None
-                    self.people[self.trainee].pos = None
+                    tp.pos = None
+                    self.leave_place(tp)
         # 1. duties, then slots
         day = c // DAY
         for p in self.people:
@@ -1511,6 +1517,8 @@ class StaffRun:
         x = cur['st']
         if 'place' not in x:
             x['place'] = st.meet_place(m['room'], {k: v for k, v in self.holder.items() if v != p.i})
+            if trainee and x['place'] is not None and not self.taken(x['place'], p):
+                self.reserve(p, x['place'])     # the trainee's seat at the meeting is theirs, as an NPC's
         if not trainee:
             r = self.go(p, cur, x['place'])
             if r != 'next':
@@ -1553,11 +1561,10 @@ class StaffRun:
                 self.say(p, item[1], item[2])
             elif item[0] == 'call':
                 ok = isinstance(item[1], str) and isinstance(item[2], str) and (item[1], item[2]) in st.callable \
-                    and (item[3] is None or isinstance(item[3], str) and item[3] in e.works)
+                    and item[3] is None       # a request names no work: the called task's own, if any
                 e.ev('call', p.id, item[1], item[2], item[3], 'done' if ok else 'refused')
                 if ok:
-                    self.assign([item[1]], item[2], st.tasks[item[2]].get('priority', 3), None, item[3],
-                                e.works[item[3]]['kks'] if item[3] is not None else None, None)
+                    self.assign([item[1]], item[2], st.tasks[item[2]].get('priority', 3), None, None, None, None)
 
     def trainee_steps(self, p, tin, used, mine):
         e = self.e
@@ -1644,7 +1651,7 @@ class StaffRun:
             elif 'op' in s:
                 o = s['op']
                 if any(y[1] == 'op' and y[2] == o['kks'] and y[3] == o['do'] and y[4] == 'done' and len(y) > 7
-                       and y[7] == p.id for y in mine):
+                       and y[6] == o['where'] and y[7] == p.id for y in mine):
                     r = 'next'
             elif 'permit' in s:
                 w = cur['work'] if s['permit']['work'] == '$' else s['permit']['work']
