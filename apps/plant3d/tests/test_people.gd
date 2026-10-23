@@ -26,6 +26,42 @@ func run(tree: SceneTree) -> Array:
 	p += _assets(info)
 	p += await _bands(tree, info)
 	p += _shares(info)
+	p += _crowd(tree)
+	return p
+
+
+## The measurement's crowd (app/crowd.gd) keeps round the walker when the walk goes round its loop: nobody jumps.
+func _crowd(tree: SceneTree) -> Array:
+	var p: Array = []
+	var root := Node3D.new()
+	tree.root.add_child(root)
+	var ppl = People.new()
+	root.add_child(ppl)
+	ppl.setup({})
+	var walker := Node3D.new()
+	root.add_child(walker)
+	var route := []
+	for q in [Vector3(0, 0, 0), Vector3(100, 0, 0), Vector3(100, 0, -100), Vector3(0, 0, -100), Vector3(0, 0, 0)]:
+		route.append({"to": q})
+	var c = load("res://app/crowd.gd").new()
+	root.add_child(c)
+	walker.position = Vector3(0, 0, -5)   # near the loop's end (s = 395 of 400)
+	c.setup(route, walker, ppl, 12)
+	c.set_process(false)
+	c._process(1.0 / 60.0)
+	var fewest := 99
+	for step in 900:
+		# the walker goes on round the corner and past the loop's start
+		walker.position = walker.position + Vector3(0, 0, 1.4 / 60.0) if walker.position.z < 0.0 else walker.position + Vector3(1.4 / 60.0, 0, 0)
+		c._process(1.0 / 60.0)
+		var near := 0
+		for q in ppl.people:
+			if (q.at as Vector3).distance_to(walker.position) < 26.0:
+				near += 1
+		fewest = mini(fewest, near)
+	if fewest < 12:
+		p.append("the crowd stays round the walker as the walk goes round its loop (%d of 12 at one moment)" % fewest)
+	root.free()
 	return p
 
 
@@ -186,11 +222,16 @@ func _bands(tree: SceneTree, info: Dictionary) -> Array:
 		if a.person >= 0:
 			a.acc = 0.0
 			adv[a.person] = 0
+	var last := {}
+	for a in ppl.avatars:
+		if a.person >= 0:
+			last[a.person] = a.anim.current_animation_position
 	for i in 60:
 		ppl._skinned(1.0 / 60.0)
 		for a in ppl.avatars:
-			if a.person >= 0 and a.acc == 0.0:
-				adv[a.person] += 1
+			if a.person >= 0 and a.anim.current_animation_position != last[a.person]:
+				adv[a.person] += 1   # the clip itself moved on (not only the rate's timer)
+				last[a.person] = a.anim.current_animation_position
 	if adv.get(0, 0) < 28 or adv.get(0, 0) > 31 or adv.get(1, 0) < 14 or adv.get(1, 0) > 16:
 		p.append("clips advanced 30 times a second within 10 m and 15 beyond (%s)" % str(adv))
 	ppl.people[1].at = Vector3(1, 0, 18)   # behind the camera
@@ -203,6 +244,28 @@ func _bands(tree: SceneTree, info: Dictionary) -> Array:
 	for a in ppl.avatars:
 		if a.person == 1 and a.anim.current_animation_position != t0:
 			p.append("a clip out of view is not advanced")
+	# someone the trainee works with gets a slot first, though further away
+	ppl.people[1].at = Vector3(1, 0, -8)
+	ppl.people[3].at = Vector3(0, 0, -21)
+	ppl.people[3]["near"] = true
+	ppl._assign()
+	var ids := []
+	for a in ppl.avatars:
+		if a.person >= 0:
+			ids.append(a.person)
+	if not 3 in ids:
+		p.append("a person the trainee works with gets a skinned avatar first (%s)" % str(ids))
+	ppl.people[3].erase("near")
+	ppl.people[3].at = Vector3(0, 0, -50)
+	# a person of a look this build has not made is not drawn (and nothing fails)
+	ppl.people.append({"at": Vector3(0, 0, -3), "yaw": 0.0, "speed": 0.0, "anim": "", "look": "no_such_look", "on": ""})
+	ppl._assign()
+	ppl._skinned(1.0 / 60.0)
+	ppl._posed()
+	for a in ppl.avatars:
+		if a.person == ppl.people.size() - 1:
+			p.append("a person of an unknown look gets no avatar")
+	ppl.people.pop_back()
 	# the staff's activities to clips: stairs and ladders, standing still
 	var cases := [[{"speed": 1.0, "on": "stairs"}, "stairs"], [{"speed": 0.5, "on": "ladder"}, "climb"],
 		[{"speed": 0.0, "on": "ladder"}, "climb"], [{"speed": 0.0, "anim": "radio"}, "radio"],

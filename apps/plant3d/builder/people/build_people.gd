@@ -79,9 +79,10 @@ func build(out: String) -> Dictionary:
 	for k in BUDGET:
 		if tri[k] > BUDGET[k]:
 			errors.append("people: %s mesh has %d triangles, the budget is %d (docs/PLANT3D.md §18.4)" % [k, tri[k], BUDGET[k]])
-	# the gaits' natural speeds: how fast the stance foot moves back under the body
+	# the gaits' natural speeds: how fast the stance foot moves back under the body; a stair's along its slope (two
+	# steps of 0.28 m going and 0.18 m rise a cycle: people's speed on a stair is along it)
 	var speeds := {"walk": _gait_speed(skel, lib.get_animation("walk")), "run": _gait_speed(skel, lib.get_animation("run")),
-		"stairs": 0.28 * 2.0 / lib.get_animation("stairs").length, "climb": 0.6 / lib.get_animation("climb").length}
+		"stairs": Vector2(0.28, 0.18).length() * 2.0 / lib.get_animation("stairs").length, "climb": 0.6 / lib.get_animation("climb").length}
 	# the avatar scene
 	var root := Node3D.new()
 	root.name = "Avatar"

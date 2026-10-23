@@ -128,7 +128,7 @@ func _person(look: Dictionary) -> void:
 	var loft := []
 	for e in t:
 		loft.append([Vector3(0, e[0], 0), e[1], e[2], e[3]])
-	_loft2(loft, Vector3.FORWARD, true, true)
+	_loft2(loft, Vector3.RIGHT, true, true)
 	# the head, the hard hat (a dome and its brim), glasses and ear defenders
 	_ellipsoid(Vector3(0, 1.635, 0.012), Vector3(0.080, 0.103, 0.093), c.skin, {"head": 1.0}, 0.0, 1.0)
 	_ellipsoid(Vector3(0, 1.675, 0.0), Vector3(0.106, 0.098, 0.122), c.hat, {"head": 1.0}, 0.0, 0.5)
@@ -153,8 +153,6 @@ func _person(look: Dictionary) -> void:
 				[Vector3(0.30 * s, sy, -0.003), 0.058 * lean, tape, {"upperarm." + side: 1.0}],
 				[Vector3(0.335 * s, sy, -0.004), 0.057 * lean, tape, {"upperarm." + side: 1.0}],
 				[Vector3(0.335 * s, sy, -0.004), 0.057 * lean, top, {"upperarm." + side: 1.0}]])
-		elif fine:
-			arm.append([Vector3(0.33 * s, sy, -0.004), 0.057, top, {"upperarm." + side: 1.0}])
 		arm.append([Vector3(ex * s, sy, -0.01), 0.048, top, {"upperarm." + side: 0.5, "lowerarm." + side: 0.5}])
 		if fine:
 			arm.append([Vector3(lerpf(ex, wx, 0.5) * s, sy, -0.005), 0.044, top, {"lowerarm." + side: 1.0}])
@@ -199,7 +197,7 @@ func _accessories(look: Dictionary) -> void:
 			"belt":   # a tool belt with pouches
 				_loft2([[Vector3(0, 0.985, 0), Vector2(0.178, 0.122), Color(0.24, 0.18, 0.12), {"hips": 1.0}],
 					[Vector3(0, 1.035, 0), Vector2(0.172, 0.118), Color(0.24, 0.18, 0.12), {"hips": 0.8, "spine": 0.2}]],
-					Vector3.FORWARD, false, false)
+					Vector3.RIGHT, false, false)
 				for s in [1.0, -1.0]:
 					_box(Vector3(0.155 * s, 0.95, 0.05), Vector3(0.05, 0.10, 0.08), Basis(), Color(0.30, 0.22, 0.14), {"hips": 1.0})
 				_box(Vector3(-0.17, 0.93, -0.03), Vector3(0.025, 0.16, 0.035), Basis(), Color(0.55, 0.12, 0.10), {"hips": 1.0})

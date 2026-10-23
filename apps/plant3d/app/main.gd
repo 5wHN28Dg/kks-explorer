@@ -148,6 +148,8 @@ func _ready() -> void:
 		var perr: String = people.setup(Quality.people_share(tier, opts) if tier != "" else {})
 		if perr != "":
 			_say("people: " + perr)
+			people.queue_free()
+			people = null
 	if early:
 		plant.visible = false
 		Quality.apply_ranges(get_viewport())   # the tier's visibility ranges, on the plant's pieces now loaded

@@ -26,8 +26,8 @@ const CLIP_POSE := {"sit": "sit", "type": "sit", "sleep": "sit", "handwheel": "w
 const RUN_FROM := 2.2           # m/s: faster than this is a run
 const STILL := 0.15             # m/s: slower than this is standing
 const BLEND := 0.25             # s: the crossfade between clips
-const POSED_HZ := 10.0          # the posed band's update rate; a walker's pose changes 4 times a second
-const ASSIGN_HZ := 4.0          # who gets the skinned slots, re-decided this often
+const ASSIGN_HZ := 4.0          # who gets the skinned slots, re-decided this often (the posed band follows at once)
+const KEEP := 2.0               # m: a person gets an avatar, or LOD0, only this far inside its edge (keeps it to the edge)
 
 var info: Dictionary = {}
 var cfg: Dictionary = {}        # the tier's share (app/quality.gd PRESETS[tier].people)
@@ -35,7 +35,6 @@ var people: Array = []
 var camera: Camera3D
 var avatars: Array = []         # the pool: {node, body, anim, person, look, lod, clip, acc}
 var posed := {}                 # look -> pose -> MultiMeshInstance3D
-var _posed_t := 0.0
 var _assign_t := 1.0
 var _clock := 0.0
 var _scene: PackedScene
@@ -119,10 +118,9 @@ func _process(delta: float) -> void:
 		_assign_t = 0.0
 		_assign()
 	_skinned(delta)
-	_posed_t += delta
-	if _posed_t >= 1.0 / POSED_HZ:
-		_posed_t = 0.0
-		_posed()
+	# every frame, right after the slots: nobody missing or drawn twice when they move between the bands, and the
+	# posed walkers placed smoothly (their pose changes 4 times a second)
+	_posed()
 	var us := Time.get_ticks_usec() - t0
 	stats.us = us
 	stats.us_max = maxi(stats.us_max, us)
@@ -134,12 +132,19 @@ func _process(delta: float) -> void:
 ## keeps their avatar while still among the nearest, so that a clip is not restarted for nothing.
 func _assign() -> void:
 	var cam := camera.global_position
-	var r2: float = float(cfg.skinned_range) * float(cfg.skinned_range)
+	var r: float = float(cfg.skinned_range)
+	var held := {}
+	for a in avatars:
+		if a.person >= 0:
+			held[a.person] = true
 	var cand := []
 	for i in people.size():
 		var p: Dictionary = people[i]
+		if not info.looks.has(p.get("look", "")):
+			continue   # (a look this build has not made: not drawn)
 		var d2: float = (p.at as Vector3).distance_squared_to(cam)
-		if d2 <= r2:
+		var lim := r - (0.0 if held.has(i) else KEEP)   # a new avatar only KEEP inside the edge: no flicker
+		if d2 <= lim * lim:
 			cand.append([0 if p.get("near", false) else 1, d2, i])
 	cand.sort()
 	var want := {}
@@ -188,7 +193,9 @@ func _skinned(delta: float) -> void:
 		var sc: float = p.get("scale", 1.0)
 		a.node.transform = Transform3D(Basis(Vector3.UP, float(p.get("yaw", 0.0)) + PI).scaled(Vector3.ONE * sc), at)
 		var d := at.distance_to(cam)
-		var lod := 0 if d <= float(cfg.lod0_range) else 1
+		# LOD0 within its range; taken again only KEEP inside it (no flicker at the edge)
+		var edge := float(cfg.lod0_range) - (KEEP if a.lod == 1 else 0.0)
+		var lod := 0 if d <= edge else 1
 		if a.look != p.look or a.lod != lod:
 			a.look = p.look
 			a.lod = lod
@@ -214,7 +221,7 @@ func _skinned(delta: float) -> void:
 		a.acc += delta
 		var hz := 30.0 if d <= float(cfg.anim_near) else 15.0
 		if a.acc + 1e-4 >= 1.0 / hz:
-			if camera.is_position_in_frustum(at + Vector3.UP * 0.9) or d < 2.0:
+			if _in_view(at) or d < 2.0:
 				a.anim.advance(a.acc)
 				adv += 1
 			a.acc = 0.0
@@ -222,6 +229,14 @@ func _skinned(delta: float) -> void:
 	stats.advanced = adv
 	stats.lod0 = l0
 	stats.lod1 = l1
+
+
+## Whether any of a person's height is in the camera's view (feet, chest, head).
+func _in_view(at: Vector3) -> bool:
+	for h in [0.1, 0.9, 1.7]:
+		if camera.is_position_in_frustum(at + Vector3.UP * h):
+			return true
+	return false
 
 
 ## The posed band: everyone within its range who has no avatar, by look and pose.
@@ -239,7 +254,7 @@ func _posed() -> void:
 			continue
 		var p: Dictionary = people[i]
 		var at: Vector3 = p.at
-		if at.distance_squared_to(cam) > r2:
+		if at.distance_squared_to(cam) > r2 or not posed.has(p.get("look", "")):
 			continue
 		var clip := _clip_of(p)
 		var pose: String

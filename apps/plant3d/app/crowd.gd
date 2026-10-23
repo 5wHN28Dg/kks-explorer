@@ -60,9 +60,11 @@ func _process(delta: float) -> void:
 		var c: Dictionary = crowd[i]
 		if not c.work:
 			c.s += c.dir * c.speed * delta
-		if c.s - s_walker > AHEAD:
+		# the difference along the route as it loops (the walker's place is folded into the route's length)
+		var ds: float = fposmod(c.s - s_walker + length * 0.5, length) - length * 0.5
+		if ds > AHEAD:
 			c.s -= span
-		elif c.s - s_walker < -BEHIND:
+		elif ds < -BEHIND:
 			c.s += span
 		var s: float = fposmod(c.s, length)
 		var k := _segment(s)
@@ -76,7 +78,7 @@ func _process(delta: float) -> void:
 			fwd *= c.dir
 		var right := fwd.cross(Vector3.UP).normalized()
 		var p: Dictionary = people_node.people[i]
-		var lane: float = c.lane if not c.work else 1.1
+		var lane: float = c.lane if not c.work else 0.8
 		p.at = a.lerp(b, f) + right * lane
 		var face := fwd if not c.work else -right   # workers face the route
 		p.yaw = atan2(-face.x, -face.z)
