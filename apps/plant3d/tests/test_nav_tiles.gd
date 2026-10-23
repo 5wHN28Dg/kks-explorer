@@ -34,7 +34,12 @@ func run(tree: SceneTree) -> Array:
 	root.queue_free()
 	var whole := NavBake.params()
 	NavigationServer3D.bake_from_source_geometry_data(whole, src)
-	NavBake.bake_tiled(nm, src, 4.0)
+	var tiled: Dictionary = NavBake.bake_tiled(nm, src, 4.0)
+	check(not tiled.has("error"), "bake_tiled: %s" % str(tiled.get("error", "")))
+	check(tiled.get("tiles", 0) == 6 and tiled.get("grid", 0) == 6, "baked in %s tiles of %s, not 6 of 6" % [str(tiled.get("tiles")), str(tiled.get("grid"))])
+	# the level faces by tile (what an empty tile is checked against): the floor's top and bottom, 4 x 4 m each
+	var floors: Dictionary = NavBake.floor_area_by_tile(src, Vector2.ZERO, 4.0)
+	check(absf(floors.get(Vector2i(0, 0), 0.0) - 32.0) < 1.0, "the level faces in tile (0, 0): %.2f m², not about 32" % floors.get(Vector2i(0, 0), 0.0))
 	check(nm.get_polygon_count() > 0, "the tiled mesh is empty")
 	if problems:
 		return problems
@@ -55,7 +60,11 @@ func run(tree: SceneTree) -> Array:
 		for idx in nm.get_polygon(i):
 			c += verts[idx]
 		c /= nm.get_polygon(i).size()
-		tiles[Vector2i(floori(c.x / 4.0), floori(c.z / 4.0))] = true
+		var sq := Vector2i(floori(c.x / 4.0), floori(c.z / 4.0))
+		tiles[sq] = true
+		for idx in nm.get_polygon(i):   # a tile's polygons end on its edges: none reaches into the next tile
+			if verts[idx].x < sq.x * 4.0 - 0.01 or verts[idx].x > sq.x * 4.0 + 4.01 or verts[idx].z < sq.y * 4.0 - 0.01 or verts[idx].z > sq.y * 4.0 + 4.01:
+				check(false, "polygon %d reaches out of its tile %s at %s" % [i, str(sq), str(verts[idx])])
 	check(tiles.size() >= 5, "the mesh lies in %d tiles (the floor spans 6)" % tiles.size())
 	return problems
 

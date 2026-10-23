@@ -26,6 +26,7 @@ const LINK_REACH := 1.0         # how far from a stair's or a ladder's end its l
 const APPROACH := 0.8           # metres in front of a stair's end where its link starts
 
 const TILE := 102.4              # metres (1024 cells): the site is baked in tiles of this size (bake_tiled)
+const TILE_FLOOR_MIN := 25.0     # m² of level faces in a tile (a slab's top and bottom) above which an empty bake of it fails
 const BORDER := 1.0             # metres baked round each tile and cut off again, so a tile's edge is not eroded
 
 static func params() -> NavigationMesh:
@@ -93,6 +94,8 @@ static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, 
 			var lo: float = fl.z0 - 0.5
 			src.add_projected_obstruction(v, lo, fl.z1 - 0.15 - lo, false)
 	var tiled := bake_tiled(nm, src, TILE)
+	if tiled.has("error"):
+		return tiled
 	if nm.get_polygon_count() == 0:
 		return {"error": "nav: the navigation mesh is empty"}
 	# the links: each stair's foot and top, each ladder's foot and step-off point
@@ -110,7 +113,7 @@ static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, 
 	if e != OK:
 		return {"error": "nav: save %s: error %d" % [path, e]}
 	return {"polygons": nm.get_polygon_count(), "dropped": all - nm.get_polygon_count(), "vertices": nm.get_vertices().size(),
-		"doors": left_out.doors, "stairs": left_out.stairs, "tiles": tiled.tiles, "splits": tiled.splits, "ms": Time.get_ticks_msec() - t0,
+		"doors": left_out.doors, "stairs": left_out.stairs, "tiles": tiled.tiles, "grid": tiled.grid, "splits": tiled.splits, "ms": Time.get_ticks_msec() - t0,
 		"bytes": FileAccess.get_file_as_bytes(path).size()}
 
 ## A stair's way (its path, Godot's axes) with the floor in front of each end, APPROACH metres on, where its link
@@ -289,7 +292,8 @@ static func _keep(nm: NavigationMesh, keep: Dictionary) -> void:
 ## a border (BORDER) so its polygons end exactly on the tile's edge; the vertices the tiles share there are welded,
 ## and an edge on a seam that a vertex of the other side splits is split there too (Recast places the seam's
 ## vertices on each side independently): Godot's region joins two polygons only by an edge both have exactly.
-## Returns {"tiles": tiles with polygons, "splits": polygons split on a seam} (none on the site in 2026-10).
+## Returns {"tiles": tiles with polygons, "grid": tiles in the grid, "splits": polygons split on a seam} (none on
+## the site in 2026-10), or {"error": …} when a tile with floor in it baked to nothing.
 static func bake_tiled(nm: NavigationMesh, src: NavigationMeshSourceGeometryData3D, tile: float) -> Dictionary:
 	var b := src.get_bounds()
 	var x0 := floorf(b.position.x / tile) * tile
@@ -297,6 +301,7 @@ static func bake_tiled(nm: NavigationMesh, src: NavigationMeshSourceGeometryData
 	var nx := maxi(1, ceili((b.end.x - x0) / tile))
 	var nz := maxi(1, ceili((b.end.z - z0) / tile))
 	var tiles: Array = []
+	var floors := floor_area_by_tile(src, Vector2(x0, z0), tile)
 	for ix in nx:
 		for iz in nz:
 			var t := params()
@@ -308,7 +313,32 @@ static func bake_tiled(nm: NavigationMesh, src: NavigationMeshSourceGeometryData
 			NavigationServer3D.bake_from_source_geometry_data(t, src)
 			if t.get_polygon_count() > 0:
 				tiles.append(t)
-	return {"tiles": tiles.size(), "splits": join_tiles(nm, tiles, Vector2(x0, z0), tile, Vector2i(nx, nz))}
+			elif floors.get(Vector2i(ix, iz), 0.0) > TILE_FLOOR_MIN:
+				# Recast gives up on a tile without a word (a limit of its own: 65,534 vertices, 15-bit regions):
+				# a square of the site missing from the directions must stop the build, as the whole one did
+				return {"error": "nav: the tile at x %.1f, z %.1f has %.0f m² of level floor but baked to nothing" % [
+					x0 + ix * tile, z0 + iz * tile, floors[Vector2i(ix, iz)]]}
+	return {"tiles": tiles.size(), "grid": nx * nz, "splits": join_tiles(nm, tiles, Vector2(x0, z0), tile, Vector2i(nx, nz))}
+
+## The level faces (triangles within 25° of level, up or down: a slab counts twice) in each tile of the grid from
+## `origin`, in m²,
+## by the tile the triangle's middle is in: Vector2i(column, row) -> area.
+static func floor_area_by_tile(src: NavigationMeshSourceGeometryData3D, origin: Vector2, tile: float) -> Dictionary:
+	var v := src.get_vertices()
+	var ix := src.get_indices()
+	var out := {}
+	for k in range(0, ix.size() - 2, 3):
+		var a := Vector3(v[ix[k] * 3], v[ix[k] * 3 + 1], v[ix[k] * 3 + 2])
+		var b := Vector3(v[ix[k + 1] * 3], v[ix[k + 1] * 3 + 1], v[ix[k + 1] * 3 + 2])
+		var c := Vector3(v[ix[k + 2] * 3], v[ix[k + 2] * 3 + 1], v[ix[k + 2] * 3 + 2])
+		var n := (b - a).cross(c - a)
+		var area := n.length() * 0.5
+		if area < 1e-6 or absf(n.y) < 0.9 * n.length():
+			continue
+		var m := (a + b + c) / 3.0
+		var key := Vector2i(floori((m.x - origin.x) / tile), floori((m.z - origin.y) / tile))
+		out[key] = out.get(key, 0.0) + area
+	return out
 
 ## Joins baked tiles (`n` of them across and down from `origin`, `tile` metres square) into `nm`: the vertices
 ## within 1 cm of each other welded, an edge on a seam split at the other side's vertices on it. Returns how many

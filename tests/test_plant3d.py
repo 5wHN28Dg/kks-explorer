@@ -254,7 +254,11 @@ class WaterTreatment(unittest.TestCase):
         for aid in ('wtp', 'intake'):
             self.assertEqual(self.areas[aid]['pack'], 'wtp')
         with open(os.path.join(DATA, 'plant.json'), encoding='utf-8') as f:
-            self.assertEqual(json.load(f)['areas'][-2:], ['wtp', 'intake'])
+            order = json.load(f)['areas']
+        # the water treatment pack's two areas, together after the first train's (the site's and the camp's
+        # areas, C1, come after them)
+        self.assertEqual(order[order.index('wtp'):order.index('wtp') + 2], ['wtp', 'intake'])
+        self.assertGreater(order.index('wtp'), order.index('rack'))
 
     def test_every_stage_has_its_equipment(self):
         """WATER-TREATMENT.md §3's stages, each by its codes of §4, in the area that holds it."""

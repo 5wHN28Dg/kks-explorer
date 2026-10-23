@@ -54,8 +54,8 @@ func _nav(out: String, b) -> void:
 		printerr("build: ", r.error)
 		quit(1)
 		return
-	print("build: navigation mesh: %d polygons (%d out of reach dropped), %d vertices, %d doors and %d stairs left out, baked in %d tiles (%d polygons split on their seams), %d bytes, %d ms" % [
-		r.polygons, r.dropped, r.vertices, r.doors, r.stairs, r.tiles, r.splits, r.bytes, r.ms])
+	print("build: navigation mesh: %d polygons (%d out of reach dropped), %d vertices, %d doors and %d stairs left out, baked in %d tiles of %d (the rest without floor; %d polygons split on their seams), %d bytes, %d ms" % [
+		r.polygons, r.dropped, r.vertices, r.doors, r.stairs, r.tiles, r.grid, r.splits, r.bytes, r.ms])
 	quit(0)
 
 func _clear(dir: String) -> void:

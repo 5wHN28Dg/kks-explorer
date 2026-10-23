@@ -113,7 +113,7 @@ func _walk_to(target: Vector3, v_end := 0.0, reach := REACH) -> bool:
 	player.drive = Vector2(0, 1)
 	# to a corner: at v_end where the step ends (within reach); to a stop: at the point itself (the walker stops on
 	# past the reach, near the point)
-	var left := d.length() - (REACH if v_end > 0.0 else 0.0)
+	var left := d.length() - (reach if v_end > 0.0 else 0.0)
 	player.speed_cap = maxf(sqrt(v_end * v_end + 2.0 * BRAKE * maxf(left, 0.0)), CREEP)
 	return false
 
