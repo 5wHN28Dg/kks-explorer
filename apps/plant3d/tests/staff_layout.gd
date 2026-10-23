@@ -40,9 +40,9 @@ func _run() -> void:
 	var main := App.start(self)
 	var ui = main.ui
 	var r = ui.route
-	for i in 600:
-		if r.ready_to_find():
-			break
+	# 20 s of the clock: the map is made on a worker thread, which the headless run's frames don't wait for
+	var t_ready := Time.get_ticks_msec()
+	while not r.ready_to_find() and Time.get_ticks_msec() - t_ready < 20000:
 		await physics_frame
 	if not r.ready_to_find():
 		print("staff_layout: the navigation map was not ready")

@@ -20,13 +20,13 @@ func run(tree: SceneTree) -> Array:
 	var main := App.start(tree)
 	var ui = main.ui
 	var r = ui.route
-	for i in 600:
-		if r.ready_to_find():
-			break
+	# 20 s of the clock: the map is made on a worker thread, which the headless run's frames don't wait for
+	var t_ready := Time.get_ticks_msec()
+	while not r.ready_to_find() and Time.get_ticks_msec() - t_ready < 20000:
 		await tree.physics_frame
 	if not r.ready_to_find():
 		main.free()
-		return ["the navigation map was not ready 10 s after the start"]
+		return ["the navigation map was not ready 20 s after the start"]
 	var sm = m.staff
 	var bad := 0
 	var local := {}
