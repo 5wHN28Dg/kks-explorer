@@ -10,6 +10,7 @@ extends SceneTree
 ##   --digests=PATH    also write the SHA-256 of every value at every step of every run, in chunks of 1000 steps
 ##                     (tests/test_plant3d_sim.py compares them with the reference's: bit for bit)
 ##   --dump=RUN:FROM:TO   print every value's bits at steps FROM–TO of one run (steps/N, train, hot or a fork's id)
+##   --interpreter=1   step every engine with the interpreter (engine.gd _run), not the straight-line program
 ##   --only=PARTS      some of: valid,steps,links,procedure,train,v2 (default all; procedure and train run both the
 ##                     cold start, `train`, and the hot restart, `hot`; v2 runs the format 2 file's valid plant,
 ##                     steps and train forks)
@@ -45,6 +46,7 @@ func _init() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--") and a.contains("="):
 			opts[a.substr(2, a.find("=") - 2)] = a.substr(a.find("=") + 1)
+	PlantEngine.interpret_only = opts.get("interpreter", "") == "1"
 	if opts.has("dump"):
 		var d: PackedStringArray = opts["dump"].rsplit(":", true, 2)
 		dump_run = d[0]

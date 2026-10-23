@@ -384,6 +384,53 @@ class GdscriptEngineEdges(unittest.TestCase):
             self.assertEqual(got[run]['chunks'], chunks, run)
 
 
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptEngineInterpreter(unittest.TestCase):
+    """The engine steps with a straight-line GDScript program generated from the model (engine.gd _gen_fast), which
+    every other test here runs. Its interpreter (engine.gd _run: step 0, faults' `when` nodes, and every step when the
+    program could not be compiled) must give the same bits: the unit runs and the edge runs, stepped by it alone."""
+
+    def test_unit_and_edge_runs(self):
+        with open(VECTORS, encoding='utf-8') as f:
+            V = json.load(f)
+        E = build_edge_vectors(V)
+        with tempfile.TemporaryDirectory() as d:
+            for name, vec in (('steps', V), ('edges', E)):
+                path = os.path.join(d, name + '.json')
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(vec, f)
+                dig = os.path.join(d, name + '-digests.json')
+                r = godot('run_vectors.gd', f'--vectors={path}', '--only=steps', f'--digests={dig}', '--interpreter=1',
+                          timeout=600)
+                no_errors(self, r)
+                self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+                self.assertIn(f'VECTORS passed={len(vec["steps"])} failed=0', r.stdout)
+                with open(dig, encoding='utf-8') as f:
+                    got = json.load(f)
+                for run, (start, chunks, _, _) in steps_runs(V['valid'][0]['files'], vec['steps']).items():
+                    self.assertEqual(got[run]['chunks'], chunks, f'{name} {run}')
+
+
+# The bench's gate (CI's runner took about 0.2 ms a step with the straight-line program, 0.8 ms before it): generous,
+# so that only a real regression fails, such as the engine falling back to its interpreter.
+MAX_STEP_US = 500
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptEngineStepCost(unittest.TestCase):
+    """The model's step on this machine (apps/plant3d/sim/tests/bench_step.gd, the whole plant over the cold start
+    and at base load): printed for the record, and failed above MAX_STEP_US microseconds."""
+
+    def test_step_cost(self):
+        r = godot('bench_step.gd', '--base-steps=3000', f'--max-us={MAX_STEP_US}', timeout=900)
+        print('\n' + '\n'.join(x for x in r.stdout.splitlines() if x.split(' ')[0] in ('LOAD', 'COMPILE', 'PROGRAM', 'STEP',
+                                                                                  'BATCH', 'FF_CHECK', 'GATE')))
+        no_errors(self, r)
+        self.assertIn('PROGRAM straight-line', r.stdout)
+        self.assertEqual(r.returncode, 0, r.stdout[-3000:])
+        self.assertIn('GATE ok', r.stdout)
+
+
 def no_errors(case, r):
     """Godot carries on after a script error or push_error: any of them fails the test."""
     bad = [x for x in (r.stdout + r.stderr).splitlines() if 'SCRIPT ERROR' in x or x.startswith('ERROR:')]

@@ -146,7 +146,8 @@ func _process(delta: float) -> void:
 	var ran := 0
 	var sp := speed
 	for i in n:
-		if speed == Speed.FAST and not engine.fast_forward():
+		# (after the first, the check at the end of the step before has looked at this very state)
+		if i == 0 and speed == Speed.FAST and not engine.fast_forward():
 			set_speed(Speed.NORMAL, "Fast-forward stopped: " + ff_blocked())
 			break
 		_one()

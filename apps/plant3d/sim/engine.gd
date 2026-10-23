@@ -50,6 +50,7 @@ var _nmem := 0
 var _fault_nodes := PackedInt32Array()  # program entries of faults' `when` nodes (evaluated on their own)
 var _scratch := 0                       # the slot a fault's `when` node writes
 var _fast = null                        # the program as straight-line GDScript (_gen_fast), or null: _run
+static var interpret_only := false     # tests: step with _run alone (tests/run_vectors.gd --interpreter=1)
 
 # compiled conditions and actions
 var _il: Array = []          # [id, when slot, actions]
@@ -61,6 +62,14 @@ var _al: Array = []          # [id, when slot, clear slot or -1, suppress slot o
 var _al_ix := {}
 var _faults: Array = []      # [id, kind 0 name / 1 node / 2 trainer, slot or node, set, repair set or null]
 var _fault_ix := {}          # fault id -> position in _faults
+var _auto_faults := PackedInt32Array()  # the faults with a `when` (not the trainer's), in scenario order
+var _all_faults := PackedInt32Array()   # every fault, in scenario order
+var _tr_when := PackedInt32Array()      # per trip: its `when` slot, and the steps it needs
+var _tr_need := PackedInt64Array()
+var _al_when := PackedInt32Array()      # per alarm: its `when`, `clear` and `suppress` slots (-1: none)
+var _al_clear := PackedInt32Array()
+var _al_sup := PackedInt32Array()
+var _al_need := PackedInt64Array()      # per alarm: the steps it needs
 var _ops := {}               # op key -> compiled op
 var _iso: Array = []         # format 2: [id, points [[code, safe slot or -1]...], locked slot, complete slot,
 							 #   its first bit in lockbits]
@@ -282,6 +291,18 @@ func _compile() -> void:
 			var fp := _node(-1, f["when"], kind)
 			_fault_nodes.append(fp)
 			_faults.append([f["id"], 1, fp, fs, rs])
+	for k in _faults.size():
+		_all_faults.append(k)
+		if _faults[k][1] != 2:
+			_auto_faults.append(k)
+	for t in _tr:
+		_tr_when.append(t[1])
+		_tr_need.append(t[2])
+	for a in _al:
+		_al_when.append(a[1])
+		_al_clear.append(a[2])
+		_al_sup.append(a[3])
+		_al_need.append(a[4])
 	for key in m.op_keys:
 		var o = m.op_keys[key]
 		var needs := PackedInt32Array()
@@ -812,6 +833,8 @@ func _table(p: int, u: float) -> float:
 ## nodes, and every step when this could not be compiled). The script depends on the model alone (the main program's
 ## slots, constants and memory are laid out before any scenario's), so engines of one model share it.
 func _gen_fast() -> void:
+	if interpret_only:
+		return
 	var src := _fast_source()
 	var cache: Dictionary = m.get_meta(&"engine_fast", {}) if m is Object else {}
 	if cache.has(src):
@@ -1034,8 +1057,9 @@ func _step() -> void:
 			pstate[wi] = nw
 			cur[_wk[wi][2]] = float(nw)
 			_ev(["permit", _wk[wi][0], "auto", null, "done", [nw]])
-	# then the faults
-	for fl in _faults:
+	# then the faults (a trainer's fault is hit only when pressed: with none pressed, only the others are looked at)
+	for fk in (_all_faults if not pressed.is_empty() else _auto_faults):
+		var fl: Array = _faults[fk]
 		var fid: String = fl[0]
 		# applied once; a repaired trainer's fault can be pressed again (§7.8)
 		if faults_done.has(fid) and not (faults_fixed.has(fid) and fl[1] == 2):
@@ -1055,7 +1079,7 @@ func _step() -> void:
 			_apply_set(fl[3])
 			_ev(["fault", fid])
 	# then the repairs asked, in the scenario's order: a fault applied and not repaired since, with a `repair`
-	for fl in _faults:
+	for fl in (_faults if not asked.is_empty() else []):
 		var fid: String = fl[0]
 		if fl[4] != null and asked.has(fid) and faults_done.has(fid) and not faults_fixed.has(fid) and not _blocked(fl[4]):
 			faults_fixed[fid] = true
@@ -1092,12 +1116,12 @@ func _step() -> void:
 	for k in _tr.size():
 		if latched[k]:
 			continue
-		var t = _tr[k]
-		if vals[t[1]] >= 0.5:
+		if vals[_tr_when[k]] >= 0.5:
 			trip_count[k] += 1
 		else:
 			trip_count[k] = 0
-		if trip_count[k] >= t[2]:
+		if trip_count[k] >= _tr_need[k]:
+			var t: Array = _tr[k]
 			latched[k] = 1
 			cur[t[5]] = 1.0
 			var g: String = t[3]
@@ -1115,19 +1139,27 @@ func _step() -> void:
 	# 7. alarms
 	var any_lock := not code_locks.is_empty()
 	for k in _al.size():
-		var a = _al[k]
-		var sup: bool = (a[3] != -1 and vals[a[3]] >= 0.5) or (any_lock and code_locks.has(a[6]))
-		if shelved[k] != -1 and shelved[k] <= step_no:
+		var sp := _al_sup[k]
+		var sup: bool = (sp != -1 and vals[sp] >= 0.5) or (any_lock and code_locks.has(_al[k][6]))
+		var sh := shelved[k]
+		if sh != -1 and sh <= step_no:
 			shelved[k] = -1
-			_ev(["unshelve", a[0]])
-		if sup or shelved[k] != -1:
+			sh = -1
+			_ev(["unshelve", _al[k][0]])
+		if sup or sh != -1:
 			acount[k] = 0
 			continue
-		var on := vals[a[1]] >= 0.5
-		acount[k] = acount[k] + 1 if on else 0
-		var active: bool = acount[k] >= a[4]
-		var clear: bool = vals[a[2]] >= 0.5 if a[2] != -1 else not on
+		var on := vals[_al_when[k]] >= 0.5
 		var s: String = astate[k]
+		if not on:
+			acount[k] = 0
+			if s == "normal":
+				continue            # (not active: it stays normal; skipped for the step's cost)
+		else:
+			acount[k] += 1
+		var active: bool = acount[k] >= _al_need[k]
+		var cl := _al_clear[k]
+		var clear: bool = vals[cl] >= 0.5 if cl != -1 else not on
 		var nw := s
 		if s == "normal" and active:
 			nw = "active_unack"
@@ -1139,7 +1171,7 @@ func _step() -> void:
 			nw = "active_unack"
 		if nw != s:
 			astate[k] = nw
-			_ev(["alarm", a[0], nw])
+			_ev(["alarm", _al[k][0], nw])
 
 
 func _op(item: Array, moved: Dictionary) -> void:
@@ -1213,12 +1245,12 @@ func isolations_locking(code) -> Array:
 ## §7.9: no unacknowledged alarm, no active priority 1 alarm, no machine in a watched state.
 func fast_forward() -> bool:
 	for k in _al.size():
-		if shelved[k] != -1:
-			continue
 		var s: String = astate[k]
+		if s == "normal" or shelved[k] != -1:
+			continue            # (a normal alarm blocks nothing: looked at first for the cost, called every step)
 		if s == "active_unack" or s == "cleared_unack":
 			return false
-		if _al[k][5] == 1 and (s == "active_unack" or s == "active_ack"):
+		if _al[k][5] == 1 and s == "active_ack":
 			return false
 	for mi in _mc.size():
 		if _mc[mi][3][mstate[mi]][2]:
@@ -1286,7 +1318,8 @@ func clone():
 	var c = get_script().new()
 	for k in ["m", "sc", "names", "ix", "n", "_prog_kind", "_prog_out", "_prog_a", "_prog_na", "_prog_f", "_ia",
 			"_fa", "_nprog", "_fast", "_fault_nodes", "_scratch", "_init_vals", "_nmem", "_il", "_mc", "_mc_ix", "_tr", "_tr_ix", "_al", "_al_ix",
-			"_faults", "_fault_ix", "_ops", "_iso", "_wk", "_state_kks", "_v2", "step_no", "ptw_count"]:
+			"_faults", "_fault_ix", "_auto_faults", "_all_faults", "_tr_when", "_tr_need", "_al_when", "_al_clear",
+			"_al_sup", "_al_need", "_ops", "_iso", "_wk", "_state_kks", "_v2", "step_no", "ptw_count"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits"]:
