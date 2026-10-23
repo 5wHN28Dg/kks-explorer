@@ -709,6 +709,24 @@ class Vectors(unittest.TestCase):
             self.assertIsNone(d, d)
 
 
+def replay_asking(e, inputs, until, effects, tc):
+    """Replays inputs to step `until`, asking each of `effects` ([step, work, point, answer]) when the run is at its
+    step with the next step's inputs made (§15.6); returns them as asked, and checks that asking changes nothing."""
+    inputs = sorted(inputs, key=lambda x: x[0])
+    got, i = [], 0
+    while e.step_no < until:
+        while i < len(inputs) and inputs[i][0] == e.step_no + 1:
+            G.apply(e, inputs[i])
+            i += 1
+        for q in effects:
+            if q[0] == e.step_no:
+                before = (plain(e.snapshot()), len(e.events), list(e.queue))
+                got.append([q[0], q[1], q[2], e.lock_effects(q[1], q[2])])
+                tc.assertEqual((plain(e.snapshot()), len(e.events), list(e.queue)), before, 'asking changed the run')
+        e.step()
+    return got
+
+
 class Vectors2(unittest.TestCase):
     """Format 2 (PLANT3D §14–§15, §19; milestone P1: permits, isolations and the hold node): the file is what the
     generator makes; its valid plant passes with its counts, each reject is caught with its code; its unit runs and
@@ -745,7 +763,7 @@ class Vectors2(unittest.TestCase):
             self.assertEqual(cm.exception.code, r['code'], f'{r["why"]}: {cm.exception}')
             codes.add(r['code'])
         for c in ('bad_version', 'unknown_key', 'forward_ref', 'bad_ref', 'bad_value', 'dup_id', 'bad_id', 'limit',
-                  'bad_length', 'bad_type'):
+                  'bad_length', 'bad_type', 'locked_write'):
             self.assertIn(c, codes)
 
     def test_unit_steps_replay(self):
@@ -759,12 +777,16 @@ class Vectors2(unittest.TestCase):
             got = [plain(e.snapshot())]
             i = 0
             inputs = s['inputs']
+            asked = []
             while e.step_no < len(s['states']) - 1:
                 while i < len(inputs) and inputs[i][0] == e.step_no + 1:
                     G.apply(e, inputs[i])
                     i += 1
+                asked += [[q[0], q[1], q[2], e.lock_effects(q[1], q[2])] for q in s.get('effects', [])
+                          if q[0] == e.step_no]
                 e.step()
                 got.append(plain(e.snapshot()))
+            self.assertEqual(asked, s.get('effects', []))
             d = close(got, s['states'])
             self.assertIsNone(d, d)
             self.assertEqual(plain(e.events), s['events'])
@@ -804,9 +826,40 @@ class Vectors2(unittest.TestCase):
         self.assertEqual(st[17]['values']['pump_fault'], 0.0)
         self.assertIn([17, 'repair', 'f1'], life['events'])
         shared = self.V['steps'][1]['states']
-        self.assertEqual(shared[5]['values']['pump_cmd'], 0.0)        # the other isolation's lock: skipped
+        self.assertEqual(shared[5]['values']['motor_fault'], 1.0)     # the other isolation's lock: not repaired
         self.assertEqual(shared[5]['values']['aux2'], 7.0)
-        self.assertEqual(shared[19]['values']['pump_cmd'], 1.0)       # only its own isolation locks it: written
+        self.assertEqual(shared[19]['values']['motor_fault'], 0.0)    # only its own isolation locks it: repaired
+        self.assertIn([19, 'repair', 'f3'], self.V['steps'][1]['events'])
+
+    def test_repairs_under_a_permit(self):
+        """§15.5: the trainee's repair names a work whose permit is accepted; the trainer's repair needs none."""
+        life, shared = self.V['steps'][0]['events'], self.V['steps'][1]['events']
+        self.assertIn([12, 'repair', 'f1', 'wo_p', None, 'refused', ['state']], life)       # isolated, not accepted
+        self.assertNotIn([12, 'repair', 'f1'], life)                                        # the trainer's: locked
+        self.assertIn([16, 'repair', 'f1', 'wo_p', 'tech1', 'refused', ['authority']], life)
+        for fid, w in (('f2', 'wo_p'), ('f1', 'wo_q'), ('f1', 'nope'), ('nofault', 'wo_n')):
+            self.assertIn([16, 'repair', fid, w, None, 'unknown', []], life)
+        self.assertIn([16, 'repair', 'f1'], life)              # made on the locked pump, as the work's
+        self.assertEqual(self.V['steps'][0]['states'][16]['values']['pump_fault'], 0.0)
+        self.assertEqual([e for e in life if e[1] == 'repair' and len(e) == 3], [[16, 'repair', 'f1']])  # done: none
+        self.assertIn([2, 'repair', 'f1', 'wo_p', None, 'refused', ['state']], shared)
+        self.assertIn([2, 'repair', 'f1'], shared)             # the trainer's, on a free code
+
+    def test_lock_effects(self):
+        """§15.6: what a lock would do, asked of the reference again where the vectors asked it."""
+        chan = self.V['steps'][2]
+        self.assertEqual([q[3] for q in chan['effects']],
+                         [{'lock': 'refused', 'trips': [], 'alarms': []},
+                          {'lock': 'done', 'trips': ['t'], 'alarms': ['a3']},
+                          {'lock': 'done', 'trips': [], 'alarms': []}])
+        F = G.mini2()
+        F['model/a1.json'] = chan['model']
+        F['scenarios/s1.json'] = chan['scenario']
+        del F['procedures/p1.json']
+        del F['screens.json']
+        e = P.Engine(G.check(F), 's1')
+        got = replay_asking(e, chan['inputs'], len(chan['states']) - 1, chan['effects'], self)
+        self.assertEqual(got, chan['effects'])
 
     def test_hold_node(self):
         st = self.V['steps'][2]['states']
@@ -832,7 +885,8 @@ class Vectors2(unittest.TestCase):
         for f in t['forks']:
             x = bases[f['base_step']].clone()
             n0 = len(x.events)
-            G.replay(x, f['inputs'], f['until'])
+            self.assertEqual(replay_asking(x, f['inputs'], f['until'], f.get('effects', []), self),
+                             f.get('effects', []), f['id'])
             self.assertEqual(plain(x.events[n0:]), f['events'], f['id'])
             d = close(plain(x.snapshot(values=False)), f['end'], f['id'])
             self.assertIsNone(d, d)
@@ -970,6 +1024,13 @@ class Forks(unittest.TestCase):
                     self.assertEqual(end['permits'], ex['permits'])
                 for fid in ex.get('repaired', []):
                     self.assertIn(['repair', fid], [e[1:3] for e in ev if e[1] == 'repair'])
+                for fid, w, why in ex.get('repair_refused', []):
+                    self.assertIn([fid, w, None, 'refused', why], [e[2:7] for e in ev if e[1] == 'repair'])
+                if 'repairs' in ex:
+                    self.assertEqual(len([e for e in ev if e[1] == 'repair' and len(e) == 3]), ex['repairs'])
+                if 'effects' in ex:
+                    self.assertEqual([[q[1], q[2], q[3]['lock'], q[3]['trips'], q[3]['alarms']] for q in f['effects']],
+                                     ex['effects'])
                 if 'faults' in ex:                # every fault applied, in order (a repaired one pressed again)
                     self.assertEqual(ex['faults'], [e[2] for e in ev if e[1] == 'fault'])
                 for g, t in ex.get('first_out', {}).items():
