@@ -386,7 +386,7 @@ static func _weld(verts: PackedVector3Array, weld: Dictionary, v: Vector3) -> in
 	return verts.size() - 1
 
 ## The vertices strictly between `u` and `w`, in order from `u`, when both lie on the same seam (and in height on
-## the line between them, within 0.1 m); [] otherwise.
+## the line between them, within 0.3 m); [] otherwise.
 static func _on_seam(verts: PackedVector3Array, lines: Dictionary, x0: float, z0: float, tile: float, u: int, w: int) -> Array:
 	var a := verts[u]
 	var c := verts[w]
@@ -405,9 +405,11 @@ static func _on_seam(verts: PackedVector3Array, lines: Dictionary, x0: float, z0
 				continue
 			var v := verts[i]
 			var f: float = ((v.z - a.z) if axis == 0 else (v.x - a.x)) / along
-			if f <= 0.0005 or f >= 0.9995:
+			# not at an end (1 cm, as the weld: a seam edge can be 100 m long); on the edge in height within 0.3 m
+			# (Recast's detail mesh leaves a sloping edge up to detail_sample_max_error, 0.2 m, off the line)
+			if f * absf(along) <= 0.01 or (1.0 - f) * absf(along) <= 0.01:
 				continue
-			if absf(v.y - lerpf(a.y, c.y, f)) < 0.1:
+			if absf(v.y - lerpf(a.y, c.y, f)) < 0.3:
 				found.append([f, i])
 		found.sort_custom(func(p, q): return p[0] < q[0])
 		return found.map(func(p): return p[1])

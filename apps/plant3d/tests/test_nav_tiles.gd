@@ -17,6 +17,7 @@ func check(ok: bool, what: String) -> void:
 
 func run(tree: SceneTree) -> Array:
 	_t_junction()
+	_long_seam()
 	var root := Node3D.new()
 	tree.root.add_child(root)
 	_box(root, Vector3(5.0, -0.25, 3.0), Vector3(10.0, 0.5, 6.0))   # the floor, 10 x 6 m, its top at 0
@@ -92,3 +93,19 @@ func _t_junction() -> void:
 	check(nm.get_vertices().size() == 6, "hand-made tiles: %d vertices, not 6 (5 after the weld, 1 in the split polygon's middle)" % nm.get_vertices().size())
 	var kept: Dictionary = NavBake.reachable(nm, Vector3(1.5, 0, 2), [])
 	check(kept.get("polygons", {}).size() == nm.get_polygon_count(), "hand-made tiles not joined across the seam: %s" % str(kept))
+
+## A 100 m seam edge on one side, the other side's vertex 3 cm from its end and 0.15 m above its line (a sloping
+## edge's detail vertex): split there too.
+func _long_seam() -> void:
+	var a := NavigationMesh.new()
+	a.vertices = PackedVector3Array([Vector3(1, 0, 50), Vector3(4, 0, 0), Vector3(4, 0, 100)])
+	a.add_polygon(PackedInt32Array([0, 1, 2]))
+	var b := NavigationMesh.new()
+	b.vertices = PackedVector3Array([Vector3(4, 0, 0), Vector3(4, 0.15, 0.03), Vector3(4, 0, 100), Vector3(7, 0, 50)])
+	b.add_polygon(PackedInt32Array([0, 3, 1]))
+	b.add_polygon(PackedInt32Array([1, 3, 2]))
+	var nm := NavigationMesh.new()
+	var splits := NavBake.join_tiles(nm, [a, b], Vector2.ZERO, 4.0, Vector2i(2, 1))
+	check(splits == 1, "long seam: %d polygons split, not 1" % splits)
+	var kept: Dictionary = NavBake.reachable(nm, Vector3(2, 0, 50), [])
+	check(kept.get("polygons", {}).size() == nm.get_polygon_count(), "long seam not joined: %s" % str(kept))
