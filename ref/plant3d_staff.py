@@ -1528,7 +1528,12 @@ class StaffRun:
         st = self.st
         n = e.step_no
         used = [False] * len(tin)
+        mine = [x for x in e.events[e.ev_mark:] if x[0] == n]
+        self.trainee_steps(p, tin, used, mine)
+        # then the radio inputs no step of theirs took: free messages and calls (requests, §18.7)
         for k, item in enumerate(tin):
+            if used[k]:
+                continue
             if item[0] == 'say' and item[1] in st.messages and isinstance(item[2], str) and \
                     (item[2] == 'channel' or item[2] in st.roles or item[2] in st.person_ix):
                 self.say(p, item[1], item[2])
@@ -1538,7 +1543,11 @@ class StaffRun:
                 if ok:
                     self.assign([item[1]], item[2], st.tasks[item[2]].get('priority', 3), None, item[3],
                                 e.works[item[3]]['kks'] if item[3] is not None else None, None)
-        mine = [x for x in e.events[e.ev_mark:] if x[0] == n]
+
+    def trainee_steps(self, p, tin, used, mine):
+        e = self.e
+        st = self.st
+        n = e.step_no
         for _ in range(64):
             cur = self.select(p)
             if cur is None:
@@ -1586,17 +1595,23 @@ class StaffRun:
                 r = self.meet(p, cur, s['meet'], True)
             elif 'say' in s:
                 for k, item in enumerate(tin):
-                    if not used[k] and item[0] == 'say' and item[1] == s['say']:
+                    if not used[k] and item[0] == 'say' and item[1] == s['say'] and item[2] == s['to']:
                         used[k] = True
+                        self.say(p, s['say'], s['to'])
                         r = 'next'
                         break
             elif 'wait' in s:
                 r = self.wait(p, cur, s['wait'])
             elif 'call' in s:
+                c = s['call']
                 for k, item in enumerate(tin):
-                    if not used[k] and item[0] == 'call' and item[1] == s['call']['role'] and \
-                            item[2] == s['call']['task']:
+                    if not used[k] and item[0] == 'call' and item[1] == c['role'] and item[2] == c['task']:
                         used[k] = True
+                        w = c.get('work', '$')
+                        w = cur['work'] if w == '$' else w
+                        e.ev('call', p.id, c['role'], c['task'], w, 'done')
+                        self.assign([c['role']], c['task'], st.tasks[c['task']].get('priority', 3), None, w,
+                                    cur['code'], cur['alarm'])
                         r = 'next'
                         break
             elif 'choose' in s:
