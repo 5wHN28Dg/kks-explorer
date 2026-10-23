@@ -127,14 +127,17 @@ func send_lock(kind: String, point: int) -> void:
 
 ## A lock asked from the form: what it would do is checked first (§15.6), off the main thread, on a copy of the run as
 ## it stands with the inputs already made.
-func ask_lock(point: int) -> void:
-	if not check.is_empty():
+func ask_lock(point: int, again := false) -> void:
+	if not check.is_empty() and not again:
 		return
+	if not again:
+		check = {}
 	var e = ui.clock.engine
 	var copy = e.clone()
 	var wid := work
 	var box := {}
 	check = {"work": wid, "point": point, "engine": e, "box": box, "state": "checking", "answer": {},
+			"step": e.step_no, "tries": int(check.get("tries", 0)) + 1,
 			"task": WorkerThreadPool.add_task(func(): box["answer"] = copy.lock_effects(wid, point))}
 	_sig = ""
 	refresh()
@@ -147,17 +150,38 @@ func poll_check() -> void:
 	if check.get("state", "") != "checking" or not WorkerThreadPool.is_task_completed(check["task"]):
 		return
 	WorkerThreadPool.wait_for_task_completion(check["task"])
-	var a: Dictionary = check["box"].get("answer", {})
 	var point: int = check["point"]
+	if not check["box"].has("answer"):
+		check = {}                  # the check failed: nothing is sent
+		ui.toast("Could not check what the lock would do: press Lock again")
+		_sig = ""
+		refresh()
+		return
+	var a: Dictionary = check["box"]["answer"]
 	if a.get("trips", []).is_empty() and a.get("alarms", []).is_empty():
+		if ui.clock.engine.step_no - int(check["step"]) > 10 and int(check["tries"]) < 3:
+			ask_lock(point, true)       # the run moved on while it was checked: asked again as it stands now
+			return
 		check = {}
-		send_lock("lock", point)
+		_send_checked(point)
 	else:
 		check["state"] = "warn"
 		check["answer"] = a
 		_focus_to = "cancel_lock_%d" % point
 	_sig = ""
 	refresh()
+
+
+## A checked lock, sent only within reach of its equipment (as the Lock button): the trainee may have walked away.
+func _send_checked(point: int) -> void:
+	var w = ui.clock.engine.m.works[ui.clock.engine.m.work_ix[work]]
+	var pts: Array = Permits.isolation_of(ui.clock.engine, w).get("points", [])
+	if point < pts.size() and not _reachable(pts[point]["kks"]):
+		ui.toast("At the equipment only: walk back to it and lock it there")
+		_sig = ""
+		refresh()
+		return
+	send_lock("lock", point)
 
 
 ## A check or warning whose run (a restart, a saved run put back) or form (closed, another work) has gone is dropped:
@@ -188,7 +212,7 @@ func answer_lock(lock_it: bool) -> void:
 	var point: int = check["point"]
 	check = {}
 	if lock_it:
-		send_lock("lock", point)
+		_send_checked(point)
 	else:
 		_focus_to = "lock_%d" % point
 		_sig = ""

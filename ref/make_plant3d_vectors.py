@@ -970,6 +970,10 @@ REJECTS2 = [
     ('a work moving a valve of its own isolation', 'locked_write', _set(WORK + [0, 'set'], {'valve_cmd': 0})),
     ('a fault whose repair, made as its work\'s, restarts a pump the work locks out', 'locked_write',
      _set(['scenarios/s1.json', 'faults', 0, 'repair'], {'pump_cmd': 1})),
+    ('a fault whose repair, made as its work\'s, moves the demand of a valve the work locks out', 'locked_write', _all(
+        _app(MOD + ['values'], ['valve_dem', {'state': 0, 'kks': VALVE}]),
+        _app(MOD + ['ops'], {'kks': VALVE, 'do': 'set', 'input': 'valve_dem', 'range': [0, 1], 'where': ['local']}),
+        _set(['scenarios/s1.json', 'faults', 0, 'repair'], {'valve_dem': 1}))),
     ('a work repairing a fault that is not an identifier', 'bad_id', _set(WORK + [0, 'repairs'], 'F 1')),
     ('two works with one id', 'dup_id', _set(WORK + [1, 'id'], 'wo_pump')),
     ('a work id over 22 characters', 'bad_id', _set(WORK + [1, 'id'], 'w' * 23)),

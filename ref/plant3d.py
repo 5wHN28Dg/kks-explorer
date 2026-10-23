@@ -1433,7 +1433,7 @@ def check_scenario(s, m, rel):
             m.sets(f['repair'], f'{w}.repair')
             # no restarts under lock (§15.2): a repair made as a work's own write (its done, or the trainee's under its
             # permit, §15.5) writes no command (a state an op sets) of a code of that work's own isolation
-            commands = {k for o in m.ops for k in o.get('set', {})}
+            commands = {k for o in m.ops for k in o.get('set', {})} | {o['input'] for o in m.ops if 'input' in o}
             state_kks = {name: n.get('kks') for name, n, kind in m.values if kind == 'state'}
             for wk in m.works:
                 if wk.get('repairs') != f['id'] or 'isolation' not in wk:

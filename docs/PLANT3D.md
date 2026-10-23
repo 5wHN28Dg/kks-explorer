@@ -966,7 +966,7 @@ calibration.
   and so is an `op` step of its task (§16.6) on such a code (checked with the tasks, milestone S1). What the work puts
   right on its own equipment is a fault it `repairs` (a calibration's drift is a fault whose repair puts it back to 0):
   a repair writes the fault's states, never a command. A scenario fault's `repair` key that is a command (a state an
-  op's `set` writes) of a code of the own isolation of a work that `repairs` that fault is `locked_write` too.
+  op's `set` writes, or a `set` op's `input`) of a code of the own isolation of a work that `repairs` that fault is `locked_write` too.
 - **`task`** (optional until the plant has a `staff.json`, then required and a task of it, `bad_ref`): the staff task
   (§16.6) that does the work; the trainee does the same steps when they play its role. Without staff (milestone P1)
   the trainee runs a permit through its states from the permit form, in free mode (§17.1).
@@ -1045,7 +1045,10 @@ special-cased: the engine answers from the model.
 - **The form:** a lock whose answer has trips or alarms is not sent at once. The form names what would trip (each
   trip's text, and the machines its `do` moves, by name) and the alarms, and offers "Lock it anyway" and "Don't
   lock", the focus on "Don't lock"; the lock is sent only on "Lock it anyway". Touch, keyboard and gamepad alike.
-  The answer is computed off the main thread and the button says it is checking meanwhile.
+  The answer is computed off the main thread and the button says it is checking meanwhile. An answer with nothing to
+  warn about that comes back after the run has moved on more than 1 s is asked again (three times at most, then the
+  lock is sent); a check that fails sends nothing. The lock is sent only within reach of its equipment, as the Lock
+  button itself.
 - **Vectors:** a unit run's and a fork's `effects`, `[[step, work, point, answer], …]`: each asked when the run is at
   `step`, after the inputs of step + 1 are made and before that step is stepped.
 

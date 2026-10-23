@@ -117,6 +117,16 @@ func run(tree: SceneTree) -> Array:
 	var again: Button = pm.body.find_child("lock_0", true, false)
 	if not pm.check.is_empty() or again == null or again.disabled or e.inputs.size() != n0:
 		p.append("a warning left by closing the form stayed (%s) or blocked the lock" % str(pm.check.get("state", "")))
+	# "Lock it anyway" after walking away from the transmitter: not sent (locks are made at the equipment)
+	again.pressed.emit()
+	if not await App.lock_checked(tree, pm) or pm.check.get("state", "") != "warn":
+		p.append("transmitter 3's lock brought no warning before walking away")
+	ui.player.global_position = ui.index.center(TX3) + Vector3(0, 0, 60)
+	(pm.body.find_child("confirm_lock_0", true, false) as Button).pressed.emit()
+	if not pm.check.is_empty() or e.inputs.size() != n0:
+		p.append("Lock it anyway away from the equipment sent the lock: %s" % str(e.inputs.slice(n0)))
+	_near(ui, TX3)
+	pm.refresh()
 	var n_in: int = e.inputs.size()
 	# touch: the lock pressed, the warning, "Don't lock" pressed: nothing sent
 	(pm.body.find_child("lock_0", true, false) as Button).pressed.emit()

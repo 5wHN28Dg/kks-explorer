@@ -130,7 +130,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 				sm.faults += 1
 			"repair":
 				e.code = fault_kks(m, str(ev[2]), engine.sc)
-				if ev.size() > 3:       # the trainee's repair under a permit, refused or unknown (§15.5)
+				if ev.size() >= 7 and ev[6] is Array:     # the trainee's repair under a permit, refused or unknown (§15.5)
 					e.text = "Repair not made: %s (%s)" % [fault_text(m, str(ev[2]), engine.sc),
 							"; ".join(ev[6].map(func(x): return REPAIR_WHY.get(x, str(x)))) if ev[5] == "refused"
 							else "not a repair of that permit's work"]

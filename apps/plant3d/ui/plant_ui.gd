@@ -943,7 +943,7 @@ func _follow_events(evs: Array, from: int) -> void:
 					if say != "":
 						toast(say)
 			"repair":
-				if ev.size() > 3:       # the trainee's repair under a permit, not made (§15.5)
+				if ev.size() >= 7 and ev[6] is Array:     # the trainee's repair under a permit, not made (§15.5)
 					toast("Repair not made: %s" % ("; ".join(ev[6].map(func(x): return Debrief.REPAIR_WHY.get(x, str(x))))
 							if ev[5] == "refused" else "not a repair of that permit's work"))
 
