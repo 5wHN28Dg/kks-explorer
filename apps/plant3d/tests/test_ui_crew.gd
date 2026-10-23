@@ -110,8 +110,8 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 		p.append("the CW round was not done by 07:00+ (now %s, the task %s step %s)" % [ui.clock_text(),
 				str(cur["task"]) if cur else "none", str(cur["step"]) if cur else ""])
 		return
-	var reads := e.events.filter(func(ev): return ev[1] == "read" and ev[2] == me)
-	var how := reads.map(func(ev): return ev[5])
+	var reads: Array = e.events.filter(func(ev): return ev[1] == "read" and ev[2] == me)
+	var how: Array = reads.map(func(ev): return ev[5])
 	if reads.size() != 4 or how.count("misread") != 1 or how.count("ok") != 3:
 		p.append("the round's readings: %s (expected 4: three in range, one misread)" % str(reads))
 	if not App.texts(ui.crew).contains("misread"):

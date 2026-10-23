@@ -24,7 +24,7 @@ LAYOUT = os.path.join(HERE, 'staff_layout.json')
 CLOCK = {'day_scale': 6, 'start': {'day': 1, 'time': '06:00'},
          'week': ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']}
 SPEEDS = {'walk': 1.3, 'stair': 0.5, 'ladder': 0.3}
-K = 4                       # nearest points measured for each place's way into the network
+K = 8                       # nearest points measured for each place's way into the network
 STAIR_RISE = 2.0            # a way that climbs and comes down more than this (m) is walked at stair speed
 
 # The walking network (plant coordinates: x east, y north, z up), along the walkways the frames walk and the walking
@@ -38,10 +38,14 @@ POINTS = {
     'p_e5': (87, 5, 0), 'p_e12': (87, 13, 0), 'p_e36': (87, 36, 0),
     'p_c40': (40, 36, 0), 'p_c113': (113, 40, 0), 'p_c140': (140, 36, 0), 'p_c165': (165, 36, 0),
     'p_gt_s': (40, 47, 0), 'p_gt_in': (40, 54, 0), 'p_gt_w': (12, 56, 0), 'p_gt_e': (68, 56, 0),
-    'p_gt_nw': (30, 76, 0), 'p_gt_n': (30, 84, 0),
+    'p_gt_nw': (30, 76, 0), 'p_gt_n': (24, 81, 0),
     'p_b1': (106, 12, 0), 'p_b2': (106, 0, 0), 'p_b3': (120, 0, 0), 'p_b4': (113, -11, 0), 'p_b5': (130, 0, 0),
     'p_cw_x': (137, 11, 0), 'p_cw_o': (152, 11, 0), 'p_cw_i': (152, 2, 0),
     'p_ct_n': (167, 12, 0), 'p_ct_s': (167, -18, 0),
+    # up the stairs: the turbine hall's operating floor, its condenser pit, HRSG 1's drum platform, the cooling
+    # tower's fan deck
+    'p_st_12': (12, 16, 12), 'p_st_12e': (60, 12, 12), 'p_st_pit6': (57, 2.5, -6), 'p_h_foot': (93.5, 44.5, 0), 'p_h_30': (101.4, 52.5, 30),
+    'p_ct_14': (176, -12, 14),
 }
 EDGES = [
     ('p_cr', 'p_cr_e'), ('p_cr', 'p_cr_n'), ('p_cr', 'p_cr_s'), ('p_cr_e', 'p_door'), ('p_door', 'p_w20'),
@@ -52,6 +56,8 @@ EDGES = [
     ('p_gt_nw', 'p_gt_n'), ('p_e36', 'p_c113'), ('p_c113', 'p_c140'), ('p_c140', 'p_c165'),
     ('p_b1', 'p_b2'), ('p_b2', 'p_b3'), ('p_b3', 'p_b4'), ('p_b3', 'p_b5'), ('p_b5', 'p_cw_x'),
     ('p_cw_x', 'p_cw_o'), ('p_cw_o', 'p_cw_i'), ('p_cw_o', 'p_c140'), ('p_c165', 'p_ct_n'), ('p_ct_n', 'p_ct_s'),
+    ('p_st_w', 'p_st_12'), ('p_st_12', 'p_st_12e'), ('p_st_pit', 'p_st_pit6'), ('p_e36', 'p_h_foot'), ('p_h_foot', 'p_c113'),
+    ('p_h_foot', 'p_h_30'), ('p_ct_s', 'p_ct_14'),
 ]
 # The control building's rooms (its ground floor: the control room, the field office, the maintenance workshop)
 # and the gate where people come on site (until the camp and its buses, milestone S4).
@@ -72,6 +78,7 @@ ANCHORS = {
     'ws_bench_1': dict(at=(-18, -12, 0), kind='table', room='workshop', yaw=180),
     'ws_bench_2': dict(at=(-22, -12, 0), kind='table', room='workshop', yaw=180),
     'ws_bench_3': dict(at=(-26, -12, 0), kind='table', room='workshop', yaw=180),
+    'ws_bench_4': dict(at=(-30, -12, 0), kind='table', room='workshop', yaw=180),
     'gate': dict(at=(-5, -14, 0), kind='door'),
 }
 
@@ -201,7 +208,7 @@ def network(models, layout):
         if code not in layout['stand']:
             missing.append(code)
             continue
-        pid = 'w_' + code
+        pid = 'w_' + code.lower()
         places.append({'id': pid, 'at': layout['stand'][code], 'kind': 'work', 'kks': code})
         at[pid] = tuple(layout['stand'][code])
     if missing:
@@ -353,6 +360,9 @@ def tasks(models):
             steps += [{'go': {'kks': code}}, {'op': {'kks': code, 'do': do, 'where': 'local'}}]
         steps.append({'say': msg, 'to': 'ccr_op'})
         task(tid, title, steps, priority=2)
+        # the control room's side: the call itself (what makes it one of the radio panel's requests, §17.8)
+        task('ask_' + tid, f'Ask a field operator: {title[0].lower() + title[1:]}', [
+            desk, {'call': {'role': 'field_op', 'task': tid}}, {'work': 1}], priority=2)
     # permits (§15, STAFF.md §3): asked for by the supervisor when a fault makes a work, approved and issued by them,
     # isolated by the people whose kind of point it is, accepted, worked and handed back by the technician of the
     # work's discipline, de-isolated, closed

@@ -339,8 +339,8 @@
   {"id": "iso_cw_c", "text": "CW pump C: motor supply and discharge valve", "points": [{"kks": "30PAC10AP003", "kind": "electrical", "how": "Pump stopped; its breaker racked out, locked and tagged", "safe": "cw_c_safe"}, {"kks": "30PAC10AA103", "kind": "mechanical", "how": "Discharge valve closed; handwheel chained, locked and tagged", "safe": "cw_c_v_safe"}]}
  ],
  "works": [
-  {"id": "wo_cw_a_motor", "kks": "30PAC10AP001", "title": "CW pump A motor: bearing replacement", "discipline": "mech", "permit": "general", "isolation": "iso_cw_a", "repairs": "cw_a_motor"},
-  {"id": "wo_cw_b_motor", "kks": "30PAC10AP002", "title": "CW pump B motor: bearing replacement", "discipline": "mech", "permit": "general", "isolation": "iso_cw_b", "repairs": "cw_b_motor"},
-  {"id": "wo_cw_c_motor", "kks": "30PAC10AP003", "title": "CW pump C motor: bearing replacement", "discipline": "mech", "permit": "general", "isolation": "iso_cw_c", "repairs": "cw_c_motor"}
+  {"id": "wo_cw_a_motor", "kks": "30PAC10AP001", "title": "CW pump A motor: bearing replacement", "discipline": "mech", "permit": "general", "isolation": "iso_cw_a", "repairs": "cw_a_motor", "task": "job_cw_a_motor"},
+  {"id": "wo_cw_b_motor", "kks": "30PAC10AP002", "title": "CW pump B motor: bearing replacement", "discipline": "mech", "permit": "general", "isolation": "iso_cw_b", "repairs": "cw_b_motor", "task": "job_cw_b_motor"},
+  {"id": "wo_cw_c_motor", "kks": "30PAC10AP003", "title": "CW pump C motor: bearing replacement", "discipline": "mech", "permit": "general", "isolation": "iso_cw_c", "repairs": "cw_c_motor", "task": "job_cw_c_motor"}
  ]
 }

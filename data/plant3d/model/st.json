@@ -483,7 +483,7 @@
   {"id": "iso_cond_p3", "text": "Condenser pressure transmitter 3", "points": [{"kks": "30MAG10CP003", "kind": "instrument", "how": "Root valve shut and tagged; the transmitter vented"}]}
  ],
  "works": [
-  {"id": "wo_cond_p2_cal", "kks": "30MAG10CP002", "title": "Condenser pressure transmitter 2: calibration check", "discipline": "inst", "permit": "general", "isolation": "iso_cond_p2"},
-  {"id": "wo_cond_p3_cal", "kks": "30MAG10CP003", "title": "Condenser pressure transmitter 3: calibration check", "discipline": "inst", "permit": "general", "isolation": "iso_cond_p3"}
+  {"id": "wo_cond_p2_cal", "kks": "30MAG10CP002", "title": "Condenser pressure transmitter 2: calibration check", "discipline": "inst", "permit": "general", "isolation": "iso_cond_p2", "task": "job_cond_p2_cal"},
+  {"id": "wo_cond_p3_cal", "kks": "30MAG10CP003", "title": "Condenser pressure transmitter 3: calibration check", "discipline": "inst", "permit": "general", "isolation": "iso_cond_p3", "task": "job_cond_p3_cal"}
  ]
 }

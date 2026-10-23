@@ -116,7 +116,7 @@
   {"id": "iso_ccw_b", "text": "Closed cooling water pump B: motor supply", "points": [{"kks": "00PGC10AP002", "kind": "electrical", "how": "Pump stopped; its breaker racked out, locked and tagged", "safe": "ccw_b_safe"}]}
  ],
  "works": [
-  {"id": "wo_ccw_a_motor", "kks": "00PGC10AP001", "title": "Closed cooling water pump A motor: winding and terminal check", "discipline": "elec", "permit": "electrical", "isolation": "iso_ccw_a", "repairs": "ccw_a_motor"},
-  {"id": "wo_ccw_b_motor", "kks": "00PGC10AP002", "title": "Closed cooling water pump B motor: winding and terminal check", "discipline": "elec", "permit": "electrical", "isolation": "iso_ccw_b", "repairs": "ccw_b_motor"}
+  {"id": "wo_ccw_a_motor", "kks": "00PGC10AP001", "title": "Closed cooling water pump A motor: winding and terminal check", "discipline": "elec", "permit": "electrical", "isolation": "iso_ccw_a", "repairs": "ccw_a_motor", "task": "job_ccw_a_motor"},
+  {"id": "wo_ccw_b_motor", "kks": "00PGC10AP002", "title": "Closed cooling water pump B motor: winding and terminal check", "discipline": "elec", "permit": "electrical", "isolation": "iso_ccw_b", "repairs": "ccw_b_motor", "task": "job_ccw_b_motor"}
  ]
 }

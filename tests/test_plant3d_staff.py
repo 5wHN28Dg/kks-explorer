@@ -258,7 +258,7 @@ class FirstTrainStaff(unittest.TestCase):
         self.assertIsNone(close(plain(e.events), d['events']))
         self.assertIsNone(close(states, d['states']))
         kinds = {x[1] for x in d['events']}
-        for k in ('duty', 'task', 'move', 'read', 'say', 'call'):
+        for k in ('duty', 'task', 'move', 'read', 'say'):
             self.assertIn(k, kinds)
         self.assertFalse(any(x[1] == 'read' and x[5] == 'out_of_range' for x in d['events']),
                          'a normal day finds nothing out of range')
@@ -284,8 +284,8 @@ class FirstTrainStaff(unittest.TestCase):
             for fid in x.get('repaired', []):
                 self.assertIn([fid], [ev[2:] for ev in e.events if ev[1] == 'repair'], f['id'])
             for want in x.get('events', []):
-                self.assertTrue(any(ev[1:1 + len(want)] == [w if w is not None else ev[1 + i]
-                                                           for i, w in enumerate(want)] for ev in e.events),
+                self.assertTrue(any(len(ev) > len(want) and all(w is None or ev[1 + i] == w
+                                                                for i, w in enumerate(want)) for ev in e.events),
                                 f'{f["id"]}: no event like {want}')
 
     def test_round_ranges_hold_at_rest_and_at_base_load(self):

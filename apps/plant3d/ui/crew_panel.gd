@@ -192,7 +192,7 @@ func _task(e, sm, cur: Dictionary) -> void:
 func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 	if s.has("go"):
 		var dest = cur["st"].get("dest")
-		var where := sm.places[dest]["id"] if dest != null and k_is_cur(cur, s, sm) else _go_text(sm, cur, s["go"])
+		var where: String = sm.places[dest]["id"] if dest != null and k_is_cur(cur, s, sm) else _go_text(sm, cur, s["go"])
 		return "Go to %s" % _place_name(sm, where)
 	if s.has("work"):
 		return "Work there %s clock min" % (str(s["work"]) if typeof(s["work"]) != TYPE_ARRAY else "%d–%d" % s["work"])
@@ -231,7 +231,7 @@ func _go_text(sm, cur: Dictionary, x) -> String:
 		return x
 	if x.has("kks"):
 		var code = cur["code"] if x["kks"] == "$" else x["kks"]
-		return "w_" + str(code)
+		return "w_" + str(code).to_lower()
 	return "%s in the %s" % [x["kind"], x["room"]]
 
 
@@ -273,7 +273,7 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 		row.add_child(W.button("Call", func(): ui.clock.engine.radio_call(c["role"], c["task"], c.get("work"))))
 	if s.has("choose"):
 		for k in s["choose"].size():
-			var kk := k
+			var kk: int = k
 			row.add_child(W.button(sm.tasks[s["choose"][k][1]]["title"], func(): ui.clock.engine.pick(kk)))
 	if s.has("ack") and cur["alarm"] != null:
 		var a: String = cur["alarm"]

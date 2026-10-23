@@ -1766,7 +1766,7 @@ def day_forks():
          {'trainee': 'a_fo_cw', 'events': [['task', None, 'answer_alarm', 'start'], ['call', None, 'field_op', 'check_alarm']]}),
         ('ccr_instruction', Trainee(extra=[[1, 'role', 'a_ccr1'], [3200, 'call', 'field_op', 'ccw_cooler_in', None]]),
          9000, {'trainee': 'a_ccr1', 'end': {'ccw_cooler': 1}}),
-        ('npc_permit', Trainee(extra=[[4000, 'fault', 'cw_b_motor']]), 36000,
+        ('npc_permit', Trainee(extra=[[10000, 'fault', 'cw_b_motor']]), 36000,
          {'permits': {'wo_cw_b_motor': 9}, 'repaired': ['cw_b_motor']}),
         ('sup_late', Trainee(wake=9000, extra=[[1, 'role', 'a_sup'], [4000, 'fault', 'ccw_a_motor']]), 36000,
          {'trainee': 'a_sup', 'permits': {'wo_ccw_a_motor': 9}}),
