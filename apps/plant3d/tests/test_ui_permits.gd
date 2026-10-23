@@ -59,6 +59,9 @@ func run(tree: SceneTree) -> Array:
 	ui.autosave.restore(pl)
 	ui.clock.set_speed(App.SimClock.Speed.PAUSED)
 	var e = ui.clock.engine
+	# the trainee is put beside equipment and stays there: the walker would fall from a place in the air while the frames
+	# pass that a lock's check takes (a lock is sent only within reach, PLANT3D §15.6)
+	ui.player.set_physics_process(false)
 	if e.truth("cw_b_run") or not e.truth("st_cond_trip_clear") or e.v("cond_p") > 12.0:
 		p.append("the plant is not at vacuum with CW pump B stopped (cond_p %.1f)" % e.v("cond_p"))
 	# keyboard: T opens the permits with the focus in the list

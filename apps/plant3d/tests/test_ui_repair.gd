@@ -51,6 +51,9 @@ func run(tree: SceneTree) -> Array:
 		return ["the interaction layer did not start"]
 	await tree.process_frame
 	var e = ui.clock.engine
+	# the trainee is put beside equipment and stays there: the walker would fall from a place in the air while the frames
+	# pass that a lock's check takes (a lock is sent only within reach, PLANT3D §15.6)
+	ui.player.set_physics_process(false)
 	# 1. the instructor's panel: apply, repair, apply again
 	ui.set_instructor(true)
 	ui.toggle_trainer()
