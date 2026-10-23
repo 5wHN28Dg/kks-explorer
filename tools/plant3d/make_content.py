@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write the first train (docs/plant3d/FIRST-TRAIN.md), the water treatment plant (WATER-TREATMENT.md) and the kit's interface to data/plant3d/ in the layout of
+"""Write the first train (docs/plant3d/FIRST-TRAIN.md), the water treatment plant (WATER-TREATMENT.md), the site beyond them (docs/plant3d/SITE.md) and the kit's interface to data/plant3d/ in the layout of
 docs/PLANT3D.md, then check it with the reference validator (ref/plant3d.py).
 
     python3 tools/plant3d/make_content.py          # check that data/plant3d matches what this makes
@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
-import kit, train_areas, train_model, train_content, train_screens, train_staff, wtp_areas, wtp_content  # noqa: E402
+import kit, train_areas, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
 
 OUT = os.path.join(ROOT, 'data', 'plant3d')
 
@@ -88,14 +88,14 @@ def add_air_permissives(areas, models):
 
 def build():
     """{relative path: text} for everything under data/plant3d."""
-    areas = train_areas.areas() + wtp_areas.areas()
-    plant = train_content.plant(codes(areas))
+    areas = site_areas.add_to_train(train_areas.areas()) + wtp_areas.areas() + site_areas.areas()
+    plant = train_content.plant(codes(areas), [a['id'] for a in areas])
     plant['clock'] = train_staff.CLOCK          # format 2's plant clock (§16.1): the staff's day
     files = {'kit.json': kit.kit(), 'plant.json': plant,
              'sounds.json': train_content.sounds(), 'screens.json': train_screens.screens()}
     for a in areas:
         files[f'areas/{a["id"]}.json'] = a
-    models = train_model.models() + wtp_content.models()
+    models = train_model.models() + wtp_model.models()
     add_air_permissives(areas, models)
     jobs = train_staff.works_tasks(models)      # with staff.json every work names its task (§15.2)
     for m in models:
@@ -108,7 +108,8 @@ def build():
         files[f'scenarios/{s["id"]}.json'] = s
     files['scenarios/shift_cold.json'] = train_staff.scenario(files['scenarios/cold_iron.json'])
     files['staff.json'] = train_staff.staff(models, train_staff.load_layout())
-    for p in [train_content.cold_start(), train_content.hot_restart()] + train_content.tours() + [wtp_content.wtp_tour()]:
+    for p in [train_content.cold_start(), train_content.hot_restart()] + train_content.tours() + \
+            wtp_content.procedures() + site_areas.tours():
         files[f'procedures/{p["id"]}.json'] = p
     return {k: dump(v) for k, v in sorted(files.items())}
 

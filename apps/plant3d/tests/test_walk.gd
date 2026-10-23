@@ -35,6 +35,8 @@ func _world(tree: SceneTree) -> Array:
 	var plant := Plant.new()
 	world.add_child(plant)
 	var err := plant.load_plant()
+	if err == "":
+		err = plant.load_interiors()   # the rooms, as the app shows them when the trainee comes near
 	if err != "":
 		world.free()
 		return [err]
@@ -196,9 +198,8 @@ func routes(tree: SceneTree) -> Array:
 		return [err]
 	var index := SceneIndex.new()
 	index.scan(plant)
-	for i in 600:
-		if nav.ready_to_find():
-			break
+	var t_ready := Time.get_ticks_msec()   # 10 s of the clock (the map is made on a worker thread)
+	while not nav.ready_to_find() and Time.get_ticks_msec() - t_ready < 10000:
 		await tree.physics_frame
 	if not nav.ready_to_find():
 		world.free()

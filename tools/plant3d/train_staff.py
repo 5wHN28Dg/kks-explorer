@@ -456,8 +456,8 @@ def works_tasks(models):
 if __name__ == '__main__':
     sys.path.insert(0, HERE)
     sys.path.insert(0, ROOT)
-    import train_model, wtp_content  # noqa: E402
-    models = train_model.models() + wtp_content.models()
+    import train_model, wtp_model  # noqa: E402
+    models = train_model.models() + wtp_model.models()
     if '--requests' in sys.argv:
         path = sys.argv[sys.argv.index('--requests') + 1]
         with open(path, 'w', encoding='utf-8') as f:

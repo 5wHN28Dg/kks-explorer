@@ -32,6 +32,16 @@ permit numbers on the screens and cards, the debrief's Permits tab, saved runs w
 pumps have no standby auto-start (format 1's behaviour, unchanged): the auto-start skipped by a lock is shown on the CCW
 pumps. Locks are not yet drawn in the field (chains, padlocks and tags on the parts: with the kit work of S2).
 
+**W2 as built (2026-10-23):** the WTP's model (WATER-TREATMENT.md §8b) with 11 sequences (six filters' backwash, two
+RO trains, two mixed beds, the coagulant tank's fill), 18 trips in five first-out groups, 8 interlocks and 44 alarms;
+its six screens on its own desk (screens.json `desks`, PLANT3D §14), its overview also on the main control room's;
+the procedures `wtp_start`, `filter_backwash` and `ro_stop_flush`; 20 faults; the ties to the first train (makeup and
+the plant's demin tank, its low alarm on the train's screens). The vectors: `plant3d-v2.json` gains `wtp` (the start
+from cold and 26 forks), the train's tie forks and the `desks` rejects; format 1's `train` and `hot` keep every input,
+event and value they had (the WTP's values added; W1's two placeholder constants `wtp_in_service` and
+`intake_in_service` removed). Not yet: the WTP's local panel apart from its desk, CIP, the mixed
+beds' regeneration and the scenarios `wtp_normal` and `wtp_flood` (W3).
+
 **S1 as built (2026-10-23):** the reference (`ref/plant3d_staff.py`) and the GDScript engine (`sim/staff.gd`) bit
 for bit on `plant3d-v2.json`'s `staff` (a synthetic plant: rejects and seven runs) and `day` (the first train's day
 shift with seed 1, and four runs with a trainee or a fault); what S1 settles and what waits for S2 and S4 is PLANT3D.md
@@ -55,7 +65,9 @@ last, when the per-tier counts are known from A1.
 
 - **If A1 measures fewer than 4 animated (skinned) people on the Note 9** within the frame rules: stop and ask before
   going on.
-- **If the package passes 150 MB** (W1, A1, C1 or later): stop and ask before going on (packs on demand, 0054 §6,
-  would need a network permission).
+- **If the APK passes 150 MB** (W1, A1, C1 or later): stop and ask before going on (packs on demand, 0054 §6,
+  would need a network permission). The desktop packages (MSIX, Flatpak) may grow to about 300 MB (the user,
+  2026-10-23); stop and ask if one passes that. Compress wherever it costs nothing. `tools/plant_release.py` refuses
+  a package over its budget.
 - Decided already: animations from KayKit (CC0) first; CMU's motion capture allowed if they look too stiff, its
   notice in the About screen (0063). The camp as SITE.md describes it; planting by SITE.md §4.

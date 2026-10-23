@@ -34,6 +34,9 @@ OP_DO = ('open', 'close', 'stop_travel', 'start', 'stop', 'close_breaker', 'open
 DIRS = {'n': (0, 1, 0), 's': (0, -1, 0), 'e': (1, 0, 0), 'w': (-1, 0, 0), 'up': (0, 0, 1), 'down': (0, 0, -1)}
 WALKABLE = ('platform', 'floor', 'grating', 'road', 'stair', 'ladder')
 SURFACES = ('platform', 'floor', 'grating', 'road')     # an outline at the part's height
+# structure parts the content build draws itself (apps/plant3d/builder/plant_builder.gd STRUCTURES, less `door`)
+BUILDER_STRUCTURES = ('building', 'floor', 'platform', 'grating', 'road', 'stair', 'ladder', 'pit', 'slab', 'fence',
+                      'pipe_rack', 'wall', 'handrail', 'column', 'beam', 'trench')
 STAIR = {'rise': (0.15, 0.20), 'going': 0.25, 'step_rule': (0.60, 0.66), 'flight': 3.6}
 TOL = 0.05          # metres: a stair's or ladder's end meets a surface within this height and plan distance
 BLOCKS = ('h', 'p', 'ul', 'ol', 'table', 'callout', 'cards', 'chain')
@@ -356,13 +359,23 @@ class Plant:
             need(rel in files, 'missing_key', f'{rel} is missing (plant.json lists area {aid!r})')
             a = parse(files, rel)
             self.check_area(a, aid, rel)
-            for other, r in rects:
+            for other, r, other_inside in rects:
                 (ax0, ay0), (ax1, ay1) = a['bounds']
                 (bx0, by0), (bx1, by1) = r
-                need(ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0, 'area_overlap',
-                     f'{rel}: bounds overlap area {other!r}')
-            rects.append((aid, a['bounds']))
+                apart = ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0
+                # an interior lies inside the area holding its building (§18.5), and overlaps nothing else
+                inside = 'load' in a and not other_inside and bx0 <= ax0 and ax1 <= bx1 and by0 <= ay0 and ay1 <= by1
+                held = other_inside and 'load' not in a and ax0 <= bx0 and bx1 <= ax1 and ay0 <= by0 and by1 <= ay1
+                need(apart or inside or held, 'area_overlap', f'{rel}: bounds overlap area {other!r}')
+            rects.append((aid, a['bounds'], 'load' in a))
             b.areas.append(a)
+        # an interior lies inside one area (its building's), not out on ground of no area (§18.5)
+        for aid, r, ins in rects:
+            if ins:
+                (ax0, ay0), (ax1, ay1) = r
+                need(any(not o_ins and bx0 <= ax0 and ax1 <= bx1 and by0 <= ay0 and ay1 <= by1
+                         for _, ((bx0, by0), (bx1, by1)), o_ins in rects), 'area_overlap',
+                     f'areas/{aid}.json: an interior lies inside the area holding its building')
         for rel in files:
             if rel.startswith('areas/'):
                 need(rel[6:-5] in p['areas'], 'bad_ref', f'{rel}: area not listed in plant.json')
@@ -518,9 +531,21 @@ class Plant:
 
     # --- areas
     def check_area(self, a, aid, rel):
+        # the version first: a version 2 key in an area a version 1 plant lists is a version error (§14)
+        av = fmt(a, 'area', rel, self.b.version)
         keys(a, ('format', 'version', 'id', 'title', 'bounds', 'pack', 'equipment', 'pipes', 'structures', 'signs'),
-             (), rel)
-        fmt(a, 'area', rel, self.b.version)
+             ('load',) if av == 2 else (), rel)
+        if 'load' in a:
+            # an interior (§18.5): a scene of its own, loaded near its building's doors; its shell is in the area
+            # holding it, and it holds no equipment or pipes (nothing with a code to find while it is not loaded)
+            need(a['load'] == 'inside', 'bad_value', f'{rel}.load: "inside"')
+            need(not a['equipment'] and not a['pipes'], 'bad_kind', f'{rel}: an interior holds no equipment or pipes')
+            # and only what the app shows unbaked in the instanced pieces' format (§18.6): the kit's site parts and
+            # doors, none of the builder's own structures (a floor, a wall, a stair… would be a pipeline of its own)
+            for s in a['structures'] if isinstance(a['structures'], list) else []:
+                need(not isinstance(s, dict) or s.get('part') not in BUILDER_STRUCTURES, 'bad_kind',
+                     f'{rel}: structure {s.get("id") if isinstance(s, dict) else s}: an interior holds the kit\'s site '
+                     f'parts and doors only, not a {s.get("part") if isinstance(s, dict) else s}')
         need(a['id'] == aid, 'bad_id', f'{rel}: id must be {aid!r}')
         name_text(a['title'], f'{rel}.title')
         lst(a['bounds'], f'{rel}.bounds', 2, 2)
@@ -737,6 +762,14 @@ class Plant:
                 elif part == 'pit':
                     self.b.surfaces.append(('pit', at[2], poly, []))
                     self.b.surfaces.append(('floor', at[2] - params['depth'], poly, []))
+            # a route (a fence, a wall, a row of plants, a kerb) and partitions lie in the area too
+            for q in params.get('route', []) if isinstance(params.get('route'), list) else []:
+                r = rot([q[0], q[1], 0], yaw)
+                pts.append((at[0] + r[0], at[1] + r[1]))
+            for wall in params.get('walls', []) if part == 'room' else []:
+                for end in ('a', 'b'):
+                    r = rot([wall[end][0], wall[end][1], 0], yaw)
+                    pts.append((at[0] + r[0], at[1] + r[1]))
             for q in pts:
                 need(in_rect(q, bounds), 'outside_area', f'{w}: {[round(c, 2) for c in q[:2]]} is outside the area '
                                                          f'{bounds}')
@@ -1314,14 +1347,27 @@ def owner(code, prefixes):
 def check_screens(s, m, b):
     w = 'screens.json'
     keys(s, ('format', 'version', 'overview', 'screens'), ('left_out',), w)
-    fmt(s, 'screens', w)
+    version = fmt(s, 'screens', w, b.version)
     units = {name: node for name, node, _ in m.values if 'unit' in node}
+    desk_codes = {c for c, e in b.equipment.items() if e['part'] == 'operator_desk'}
+
+    def desks(x, where):
+        """Format 2 (§14): the operator desks a screen is reached from (default: every desk)."""
+        if 'desks' not in x:
+            return
+        need(version == 2, 'unknown_key', f'{where}.desks: only in a version 2 screens.json')
+        ds = lst(x['desks'], f'{where}.desks', 1, 16)
+        for c in ds:
+            need(isinstance(c, str) and c in desk_codes, 'bad_ref', f'{where}.desks: {c!r} is no operator desk of '
+                 f'the plant')
+        need(len(set(ds)) == len(ds), 'dup_id', f'{where}.desks: a desk twice')
 
     def shown_value(v, where):
         need(isinstance(v, str) and v in units, 'bad_ref', f'{where}: {v!r} is no value with a unit')
 
     ov = s['overview']
-    keys(ov, ('title', 'short', 'key'), (), f'{w}.overview')
+    keys(ov, ('title', 'short', 'key'), ('desks',), f'{w}.overview')
+    desks(ov, f'{w}.overview')
     name_text(ov['title'], f'{w}.overview.title')
     name_text(ov['short'], f'{w}.overview.short', 16)
     for v in lst(ov['key'], f'{w}.overview.key', 1, 12):
@@ -1332,7 +1378,8 @@ def check_screens(s, m, b):
     seen_screens = set()
     for i, sc in enumerate(lst(s['screens'], f'{w}.screens', 1, 16)):
         ws = f'{w}: screen {sc.get("id", i) if isinstance(sc, dict) else i}'
-        keys(sc, ('id', 'short', 'title', 'groups'), ('lines', 'trend'), ws)
+        keys(sc, ('id', 'short', 'title', 'groups'), ('lines', 'trend', 'desks'), ws)
+        desks(sc, ws)
         ident(sc['id'], ws)
         need(sc['id'] not in seen_screens and sc['id'] != 'overview', 'dup_id', f'{ws}: id used twice (or "overview")')
         seen_screens.add(sc['id'])

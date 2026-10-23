@@ -17,6 +17,7 @@ const P_PIPE = preload("res://kit/parts_pipes.gd")
 const P_VAL = preload("res://kit/parts_valves.gd")
 const P_MACH = preload("res://kit/parts_machines.gd")
 const P_HX = preload("res://kit/parts_heat.gd")
+const P_SITE = preload("res://kit/parts_site.gd")
 const Lightmap = preload("res://builder/lightmap.gd")
 
 const CELL := 12.0          # the instancing cell (0041)
@@ -39,6 +40,14 @@ var instances := 0
 var supports := 0
 var cells_made := 0
 var unsupported: Array = []
+## An interior's scene (PLANT3D.md §18.5, loaded near its doors after the start): left out of the lightmap's bake, its
+## pieces take the sky's light in the vertex format and pipelines the instanced pieces already compiled at the start
+## (no UV2: a mesh with UV2 and no bake would be a pipeline of its own, compiled when the trainee walks in)
+var unbaked := false
+## Materials whose pieces are never baked, instanced in their cells and lit by the sky and the sun: planting, whose
+## leaves' area (two faces of every frond, lumps of every crown) was most of the site's lightmap texels and took the
+## bake out of its memory (2026-10-22)
+const UNBAKED := ["foliage"]
 
 func _init(builder) -> void:
 	b = builder
@@ -299,29 +308,7 @@ func equipment(parent: Node3D, kks: String, top: bool) -> Node3D:
 		_plate(node, xf, res.plates[plate], kks)
 	# collision: the parts' solids (small parts on pipes and machines are not solid)
 	if top or box.size.length() > 1.0:
-		for s in res.solids:
-			var cs := CollisionShape3D.new()
-			if s.kind == "obox":
-				var bs := BoxShape3D.new()
-				bs.size = s.size
-				cs.shape = bs
-				var B: Basis = s.basis
-				# the shape's own axes are the basis' (in Godot's terms), its size along them
-				cs.transform = Transform3D(Basis(Kit._gv(B.x), Kit._gv(B.y), Kit._gv(B.z)), Kit._gv(s.c))
-			elif s.kind == "box":
-				var lo: Vector3 = Kit._gv(s.lo)
-				var hi: Vector3 = Kit._gv(s.hi)
-				var bs := BoxShape3D.new()
-				bs.size = (hi - lo).abs().max(Vector3(0.05, 0.05, 0.05))
-				cs.shape = bs
-				cs.position = (lo + hi) * 0.5
-			else:
-				var c2 := CylinderShape3D.new()
-				c2.radius = s.r
-				c2.height = maxf(s.a.distance_to(s.b), 0.05)
-				cs.shape = c2
-				cs.transform = b._along(Kit._gv(s.a), Kit._gv(s.b))
-			node.add_child(cs)
+		add_solids(node, res.solids, Transform3D.IDENTITY)
 	# the floating label (as before the kit): the code and the name over the part
 	var lab := Label3D.new()
 	lab.name = "label"
@@ -334,6 +321,156 @@ func equipment(parent: Node3D, kks: String, top: bool) -> Node3D:
 	lab.position = Vector3(box.get_center().x, box.end.y + (0.6 if top else 0.15), box.get_center().z) if not first else Vector3(0, 1, 0)
 	node.add_child(lab)
 	return node
+
+## The kit's solids (part frame) as collision shapes under `node`, placed by `xf` (the part's frame in the node's).
+func add_solids(node: Node3D, solids: Array, xf: Transform3D) -> void:
+	for s in solids:
+		var cs := CollisionShape3D.new()
+		if s.kind == "obox":
+			var bs := BoxShape3D.new()
+			bs.size = s.size
+			cs.shape = bs
+			var B: Basis = s.basis
+			# the shape's own axes are the basis' (in Godot's terms), its size along them
+			cs.transform = Transform3D(Basis(Kit._gv(B.x), Kit._gv(B.y), Kit._gv(B.z)), Kit._gv(s.c))
+		elif s.kind == "box":
+			var lo: Vector3 = Kit._gv(s.lo)
+			var hi: Vector3 = Kit._gv(s.hi)
+			var bs := BoxShape3D.new()
+			bs.size = (hi - lo).abs().max(Vector3(0.05, 0.05, 0.05))
+			cs.shape = bs
+			cs.position = (lo + hi) * 0.5
+		else:
+			var c2 := CylinderShape3D.new()
+			c2.radius = s.r
+			c2.height = maxf(s.a.distance_to(s.b), 0.05)
+			cs.shape = c2
+			cs.transform = b._along(Kit._gv(s.a), Kit._gv(s.b))
+		cs.transform = xf * cs.transform
+		node.add_child(cs)
+
+## A structure the parts kit draws (the site's and the camp's, PLANT3D.md §18.6: planting, vehicles, gates, canopies,
+## furniture): a body named by its id holding its solids, its static pieces to the cells like equipment's. A planting
+## along a `route` is one plant every `spacing` metres along it (the species' usual spacing for 0), each with a
+## variant of its shape and a heading of its own (a row is not one plant copied), and the row's drip line.
+func structure(parent: Node3D, s: Dictionary) -> Node3D:
+	var pr: Dictionary = b.params_of(s.part, s.get("params", {}))
+	var at: Vector3 = b._v3(s.get("at", [0, 0, 0]))
+	var yaw := float(s.get("yaw", 0))
+	var body := StaticBody3D.new()
+	body.name = s.id
+	body.set_meta("structure", s.part)
+	parent.add_child(body)
+	var places: Array = []   # [plant position, yaw, params]
+	if s.part == "planting":
+		places = planting_places(s, pr)
+		var route: Array = pr.route
+		for i in range(route.size() - 1):
+			var a := at + Geom.turn(b._v3(route[i]), yaw)
+			var c := at + Geom.turn(b._v3(route[i + 1]), yaw)
+			var L := a.distance_to(c)
+			if L < 0.05:
+				continue   # one plant: no drip line along a row
+			# in DRIP_UNIT pieces of one mesh along it (instanced, held once), each in its own cell (a detail piece's
+			# range is measured to its cell), the remainder its own
+			var d := (c - a) / L
+			var xf_dir := Basis(Vector3.UP, atan2(d.y, d.x))   # the unit's x along the row (Godot: plant y is -z)
+			var n := int(floor(L / DRIP_UNIT + 1e-6))
+			for j in n + 1:
+				var len := minf(DRIP_UNIT, L - j * DRIP_UNIT)
+				if len < 0.05:
+					break
+				var p0 := a + d * (j * DRIP_UNIT)
+				for k in _drip_layers(len):
+					_cell(_drip_layers(len)[k], k, Transform3D(xf_dir, Geom.g([p0.x, p0.y, p0.z])))
+	elif s.part == "kerb":
+		places = kerb_places(s, pr)
+	else:
+		places.append([at, yaw, pr])
+	for pl in places:
+		var res := Kit.make(s.part, pl[2], {}, seg_scale)
+		var xf := xform({"pos": pl[0], "yaw": pl[1]})
+		for k in res.layers:
+			_cell(res.layers[k], k, xf)
+		tris_total += res.tris
+		instances += 1
+		add_solids(body, res.solids, Transform3D(xf.basis, xf.origin))
+	return body
+
+## A row's drip line in pieces this long (one mesh, instanced along every row).
+const DRIP_UNIT := 4.0
+var _drip := {}
+## The drip line's meshes for a piece `len` long along x (cached by length).
+func _drip_layers(len: float) -> Dictionary:
+	var key := snappedf(len, 0.01)
+	if not _drip.has(key):
+		var mb = MB.new()
+		P_SITE.drip_line(mb, Vector3.ZERO, Vector3(key, 0, 0))
+		_drip[key] = Kit._meshes(mb.finish(), Vector3.ZERO)
+	return _drip[key]
+
+## How many shapes a species has (a plant's `variant`): enough that a row is not one plant copied, few enough that the
+## scenes hold each once (a variant is a mesh of its own).
+const VARIANTS := 4
+
+## A kerb along its route as KERB_UNIT pieces (one stripe of each colour), the remainder of each straight piece its own:
+## the same few meshes instanced along every road, not one mesh per kerb.
+const KERB_UNIT := 2.0
+func kerb_places(s: Dictionary, pr: Dictionary) -> Array:
+	var at: Vector3 = b._v3(s.get("at", [0, 0, 0]))
+	var yaw := float(s.get("yaw", 0))
+	var out: Array = []
+	var route: Array = pr.route
+	for i in range(route.size() - 1):
+		var a := at + Geom.turn(b._v3(route[i]), yaw)
+		var c := at + Geom.turn(b._v3(route[i + 1]), yaw)
+		var L := a.distance_to(c)
+		if L < 0.05:
+			continue
+		var d := (c - a) / L
+		var heading := rad_to_deg(atan2(d.x, d.y))
+		var n := int(floor(L / KERB_UNIT + 1e-6))
+		for k in n + 1:
+			var len := minf(KERB_UNIT, L - k * KERB_UNIT)
+			if len < 0.05:
+				break
+			var p := pr.duplicate()
+			p["route"] = [[0, 0, 0], [0, snappedf(len, 0.01), 0]]
+			out.append([a + d * (k * KERB_UNIT), heading, p])
+	return out
+
+## Where a row's plants stand: along the route (relative to the structure's `at`, turned by its `yaw`) from its first
+## point, one every spacing metres, the last one at most half a spacing from its end; [position, yaw, params].
+func planting_places(s: Dictionary, pr: Dictionary) -> Array:
+	var at: Vector3 = b._v3(s.get("at", [0, 0, 0]))
+	var yaw := float(s.get("yaw", 0))
+	var sp := float(pr.get("spacing", 0.0))
+	if sp <= 0.0:
+		sp = float(P_SITE.SPECIES.get(String(pr.species), P_SITE.SPECIES.date_palm).spacing)
+	var pts: Array = []
+	for q in pr.route:
+		pts.append(at + Geom.turn(b._v3(q), yaw))
+	var out: Array = []
+	var carry := 0.0
+	var k := 0
+	var seed := hash(s.id)
+	for i in range(pts.size() - 1):
+		var a: Vector3 = pts[i]
+		var c: Vector3 = pts[i + 1]
+		var L := a.distance_to(c)
+		var t := carry
+		if L < 1e-6 and i > 0:
+			continue
+		while t <= L + 1e-6:
+			var p := pr.duplicate()
+			p.erase("route")
+			p.erase("spacing")
+			p["variant"] = (seed + k) % VARIANTS
+			out.append([a.lerp(c, t / maxf(L, 1e-6)), float((seed / 7 + k * 137) % 360), p])
+			k += 1
+			t += sp
+		carry = t - L
+	return out
 
 func _node_pivot(n: Node3D, root: Node3D) -> Vector3:
 	var p := Vector3.ZERO
@@ -514,7 +651,9 @@ func flush(root: Node3D) -> int:
 	var merge := {}   # "layer|cell" -> [entries]
 	for k in cells:
 		var c: Dictionary = cells[k]
-		if c.xf.size() == 1:
+		# planting is instanced, never merged: a row's plants share a few meshes (their variants), which the scene then
+		# holds once, not once per cell (merged, the site's palms and tamarisks were most of its scenes' bytes)
+		if c.xf.size() == 1 and not c.mat in UNBAKED:
 			var parts: PackedStringArray = k.split("|")
 			var mk := "|".join(parts.slice(1))
 			if not merge.has(mk):
@@ -544,11 +683,11 @@ func flush(root: Node3D) -> int:
 		var size := INF
 		for c in group:
 			size = minf(size, c.size)
-		if cls == "form":
+		if cls == "form" and not unbaked and not group[0].mat in UNBAKED:
 			# a static mesh standing once in its cell: the bake lights it (builder/lightmap.gd). Identify pieces
 			# (tag plates, bands, arrows) are not: a texel of a third of a metre would grey a white plate behind
 			# its code; they take the sky's light like the instanced pieces
-			var lit := Lightmap.unwrap(arr, Lightmap.TEXEL, cls != "identify")
+			var lit := Lightmap.unwrap(arr, Lightmap.TEXEL * b.texel_scale, cls != "identify")
 			if lit != null:
 				_emit_static(kit, lit, group[0].mat, cls, o, n)
 				n += 1

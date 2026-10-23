@@ -56,6 +56,20 @@
   ["aux_run", {"and": ["aux_cmd", "ia_ok"]}],
   ["aux_p_sp", {"product": ["aux_run", 12]}],
   ["aux_p", {"ramp": "aux_p_sp", "rate": 0.02, "rate_down": 0.005, "init": 0, "unit": "bar", "kks": "00QHA10CP001"}],
+  ["dm_drain", {"state": 0, "kks": "00GHC10BB001"}],
+  ["dm_in", {"lag": "tr_q", "tau": 10, "init": 40, "unit": "m³/h"}],
+  ["dm_hw", {"lag": "hw_mk", "tau": 1}],
+  ["dm_gen", {"lag": "hp_gen", "tau": 1}],
+  ["dm_hrsg_on", {"cmp": ["dm_gen", ">", 1]}],
+  ["dm_loss", {"product": ["dm_hrsg_on", 8]}],
+  ["dm_hw_q", {"product": ["dm_hw", 3.6]}],
+  ["dm_drain_q", {"product": ["dm_drain", 300]}],
+  ["dm_out", {"sum": ["dm_hw_q", "dm_loss", "dm_drain_q"], "unit": "m³/h"}],
+  ["dm_net", {"diff": ["dm_in", "dm_out"]}],
+  ["dm_lvl", {"integrate": "dm_net", "gain": 9.2592593e-05, "min": 0, "max": 100, "init": 80, "unit": "%", "kks": "00GHC10BB001"}],
+  ["dm_ok", {"cmp": ["dm_lvl", ">", 3]}],
+  ["dm_l", {"cmp": ["dm_lvl", "<", 30]}],
+  ["dm_lc", {"cmp": ["dm_lvl", ">", 35]}],
   ["aux_ok", {"cmp": ["aux_p", ">=", 10]}],
   ["ccw_a_safe", {"not": "ccw_a_cmd"}],
   ["ccw_b_safe", {"not": "ccw_b_cmd"}]
@@ -81,6 +95,7 @@
   {"id": "ccw_a_auto", "when": "ccw_b_trip_latched", "do": [{"set": {"ccw_a_cmd": 1}}], "kks": "00PGC10AP001", "text": "Pump B tripped: the standby pump starts"}
  ],
  "alarms": [
+  {"id": "dm_low", "kks": "00GHC10BB001", "text": "Demineralised water tank low (makeup from the water treatment plant)", "when": "dm_l", "priority": 2, "where": "00GHC10BB001", "isa": "LAL", "clear": "dm_lc"},
   {"id": "ccw_a_tripped", "kks": "00PGC10AP001", "text": "Closed cooling water pump A tripped", "when": "ccw_a_trip_latched", "priority": 2, "where": "00PGC10AP001"},
   {"id": "ccw_b_tripped", "kks": "00PGC10AP002", "text": "Closed cooling water pump B tripped", "when": "ccw_b_trip_latched", "priority": 2, "where": "00PGC10AP002"},
   {"id": "ia_p_low", "kks": "00QFB10CP001", "text": "Instrument air header pressure low", "when": "ia_low", "priority": 1, "where": "00QFB10CP001", "isa": "PAL", "suppress": "ia_sup"},
@@ -93,6 +108,7 @@
   {"id": "ccw_b_trip", "kks": "00PGC10AP002", "text": "Closed cooling water pump B motor trip", "when": "ccw_b_trip_c", "do": [{"set": {"ccw_b_cmd": 0}}], "delay": 0.5, "first_out": "ccw"}
  ],
  "bind": [
+  {"kks": "00GHC10BB001", "show": "dm_lvl"},
   {"kks": "00QFA10AN001", "anim": "shaft", "of": "ia_a_run", "scale": 25},
   {"kks": "00QFA10AN001", "sound": "motor_small", "gain": {"of": "ia_a_run", "table": [[0, 0], [1, 0.8]]}},
   {"kks": "00QFA10AN001", "lamp": "running", "of": "ia_a_run"},

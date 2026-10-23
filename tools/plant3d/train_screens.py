@@ -18,7 +18,89 @@ def ln(frm, to, medium=None):
     return out
 
 
+MAIN = ['00CWA10', '00CWB10']      # the main control room's desks
+WTP = ['00CWD10']                  # the water treatment plant's own desk (WATER-TREATMENT §7)
+
+
 def screens():
+    """The train's screens, worked from the main control room's desks, then the water treatment plant's: its
+    overview is on every desk (the main control room reads it), the rest on the WTP's own desk only (PLANT3D §14:
+    `desks`). Each screen says its desks: without them it would be on every desk."""
+    out = train()
+    for sc in out['screens']:
+        sc['desks'] = list(MAIN)
+    out['overview']['desks'] = list(MAIN)
+    out['screens'] += wtp()
+    out['version'] = 2
+    return out
+
+
+def wtp():
+    return [
+        {'id': 'wtp', 'short': 'WTP', 'title': 'Water treatment plant overview', 'desks': MAIN + WTP,
+         'groups': [
+             g('raw', 'Raw water: intake level and flow', [0, 0], ['00GAA10CL', '00GAC10']),
+             g('clar', 'Clarified water', [1, 0], ['00GBD11CQ', '00GBD12CQ']),
+             g('filt', 'Filtered water', [2, 0], ['00GBB10', '00QUG10']),
+             g('perm', 'RO permeate', [2, 1], ['00GCB21CQ001', '00GCB22CQ001']),
+             g('demin', 'Demineralised water', [1, 1], ['00GCF11CQ', '00GCF12CQ']),
+             g('transfer', 'Transfer to the plant', [0, 1], ['00GHC10BR'])],
+         'lines': [ln('raw', 'clar', 'raw_water'), ln('clar', 'filt', 'clarified_water'),
+                   ln('filt', 'perm', 'filtered_water'), ln('perm', 'demin', 'permeate'),
+                   ln('demin', 'transfer', 'demin_water')],
+         'trend': ['wt_raw', 'cl_ntu', 'ft_lvl', 'dt_a_lvl', 'tr_q']},
+        {'id': 'wtp_pre', 'short': 'Pretreatment', 'title': 'Intake, coagulation and clarifiers', 'desks': WTP,
+         'groups': [
+             g('intake', 'Intake: screens and raw water pumps', [0, 0], ['00GAA10', '00GAF10']),
+             g('chlor', 'Pre-chlorination', [0, 1], ['00GBN30']),
+             g('coag', 'Coagulant and polymer dosing', [1, 1], ['00GBN10', '00GBN20']),
+             g('mix', 'Rapid mixer', [1, 0], ['00GBD10']),
+             g('clar', 'Clarifiers', [2, 0], ['00GBD11', '00GBD12'])],
+         'lines': [ln('intake', 'mix', 'raw_water'), ln('chlor', 'intake'), ln('coag', 'mix'),
+                   ln('mix', 'clar', 'raw_water')],
+         'trend': ['wt_raw', 'rw_lvl', 'cl_ntu', 'cg_dose']},
+        {'id': 'wtp_filters', 'short': 'Filters', 'title': 'Gravity filters, backwash and filtered water',
+         'desks': WTP,
+         'groups': [g(f'f{i}', f'Filter {i}', [(i - 1) % 3, (i - 1) // 3], [f'00GBB1{i}']) for i in range(1, 7)] + [
+             g('bw', 'Backwash pumps and air scour blowers', [3, 0], ['00GBR10']),
+             g('tank', 'Filtered water tank', [3, 1], ['00GBL10']),
+             g('mk', 'Cooling tower makeup pumps', [4, 0], ['00GHB10']),
+             g('sw', 'Service water pumps (RO feed)', [4, 1], ['00GHA10'])],
+         'lines': [ln('bw', 'f3'), ln('f6', 'tank', 'filtered_water'), ln('tank', 'mk', 'filtered_water'),
+                   ln('tank', 'sw', 'filtered_water')],
+         'trend': ['ft_lvl', 'fl_ntu', 'fl1_hl', 'ct_mk_flow']},
+        {'id': 'wtp_ro', 'short': 'RO', 'title': 'Dechlorination, cartridge filters and reverse osmosis', 'desks': WTP,
+         'groups': [
+             g('chem', 'Bisulphite, antiscalant and acid dosing', [0, 0], ['00GCN10', '00GCN20', '00GCE10']),
+             g('cfa', 'Cartridge filter A', [1, 0], ['00GCB11']),
+             g('cfb', 'Cartridge filter B', [1, 1], ['00GCB12']),
+             g('roa', 'RO train A', [2, 0], ['00GCB21']),
+             g('rob', 'RO train B', [2, 1], ['00GCB22']),
+             g('dg', 'Degasser and degassed water tank', [3, 0], ['00GCH10', '00GCK10BB'])],
+         'lines': [ln('chem', 'cfa'), ln('cfa', 'roa', 'filtered_water'), ln('cfb', 'rob', 'filtered_water'),
+                   ln('roa', 'dg', 'permeate'), ln('rob', 'dg', 'permeate')],
+         'trend': ['ro_a_p', 'ro_a_cond', 'ro_a_orp', 'ro_a_suct', 'dg_lvl']},
+        {'id': 'wtp_demin', 'short': 'Demin', 'title': 'Mixed beds, demineralised water and transfer', 'desks': WTP,
+         'groups': [
+             g('feed', 'Mixed bed feed pumps', [0, 0], ['00GCK10AP']),
+             g('mba', 'Mixed bed A', [1, 0], ['00GCF11']),
+             g('mbb', 'Mixed bed B', [1, 1], ['00GCF12']),
+             g('tanks', 'Demineralised water tanks', [2, 0], ['00GCL10']),
+             g('transfer', 'Transfer pumps', [3, 0], ['00GHC10'])],
+         'lines': [ln('feed', 'mba', 'permeate'), ln('feed', 'mbb', 'permeate'), ln('mba', 'tanks', 'demin_water'),
+                   ln('mbb', 'tanks', 'demin_water'), ln('tanks', 'transfer', 'demin_water')],
+         'trend': ['mb_a_cond', 'mb_a_si', 'dt_a_lvl', 'tr_q']},
+        {'id': 'wtp_waste', 'short': 'Wastes', 'title': 'Neutralisation pit and sludge', 'desks': WTP,
+         'groups': [
+             g('pit', 'Neutralisation pit', [0, 0], ['00GNR10']),
+             g('th', 'Sludge thickener', [1, 0], ['00GBS10']),
+             g('press', 'Filter press', [1, 1], ['00GBS20'])],
+         'lines': [ln('th', 'press', 'waste_water')],
+         'trend': ['nr_ph', 'nr_lvl', 'th_lvl']},
+    ]
+
+
+def train():
     return {
         'format': 'walkdown-plant-screens', 'version': 1,
         'overview': {'title': 'Train 1 overview', 'short': 'Overview',
@@ -82,9 +164,10 @@ def screens():
                  g('ccw', 'Closed cooling water pumps', [0, 0], ['00PGC10']),
                  g('cooler', 'Closed cooling water cooler', [1, 0], ['00PGB10']),
                  g('air', 'Instrument air', [0, 1], ['00QFA10', '00QFB10']),
-                 g('aux', 'Auxiliary boiler', [1, 1], ['00QHA10'])],
+                 g('aux', 'Auxiliary boiler', [1, 1], ['00QHA10']),
+                 g('demin', 'Demineralised water tank (from the water treatment plant)', [2, 0], ['00GHC10BB'])],
              'lines': [ln('ccw', 'cooler', 'cooling_water')],
-             'trend': ['ccw_t', 'ia_p', 'aux_p']},
+             'trend': ['ccw_t', 'ia_p', 'aux_p', 'dm_lvl']},
             {'id': 'el', 'short': 'Electrical', 'title': 'Electrical: generators, excitation and breakers',
              'groups': [
                  g('gen1', 'Generator 1 and excitation', [0, 0], ['10MKA10', '10MKC10'],
