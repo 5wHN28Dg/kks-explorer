@@ -54,7 +54,7 @@ var routines := {}                   # id -> {"slots": [[at kind, at minutes, ev
 var tasks := {}                      # id -> task
 var reactions: Array = []
 var messages := {}
-var callable := {}                   # "role\ntask" -> true: what a trainee may call over the radio (§18.7)
+var callable := {}                   # "caller role\nrole\ntask" -> true: the radio panel's requests (§17.8)
 var react_kind := PackedStringArray()  # per reaction: what it is on
 var value_reactions := PackedInt32Array()   # the reactions on a value
 
@@ -173,10 +173,11 @@ func _build(m, doc: Dictionary) -> void:
 		if react_kind[i] == "value":
 			value_reactions.append(i)
 	messages = doc["messages"]
-	for t in doc["tasks"]:
-		for s in t["steps"]:
-			if s.has("call"):
-				callable[s["call"]["role"] + "\n" + s["call"]["task"]] = true
+	for r in doc["roles"]:
+		for x in r.get("requests", []):
+			for s in tasks[x]["steps"]:
+				if s.has("call"):
+					callable[r["id"] + "\n" + s["call"]["role"] + "\n" + s["call"]["task"]] = true
 	for t in tasks.values():
 		for s in t["steps"]:
 			if s.has("go") and typeof(s["go"]) == TYPE_STRING and not pix.has(s["go"]):
@@ -536,7 +537,7 @@ func jump(e, to) -> void:
 			if s >= 1 and s <= 7:
 				ok = false
 				break
-	if ok and not e.st_jumped.is_empty():
+	if ok and (not e.st_jumped.is_empty() or e._npc_pending > 0):
 		ok = false
 	if ok:
 		e.J += t - old
@@ -1170,7 +1171,7 @@ func trainee_turn(e, pi: int, tin: Array) -> void:
 			say(e, pi, item[1], item[2])
 		elif item[0] == "call":
 			var ok: bool = typeof(item[1]) == TYPE_STRING and typeof(item[2]) == TYPE_STRING \
-					and callable.has(item[1] + "\n" + item[2]) \
+					and callable.has(people[pi]["role"] + "\n" + item[1] + "\n" + item[2]) \
 					and item[3] == null         # a request names no work: the called task's own, if any
 			e._ev(["call", people[pi]["id"], item[1], item[2], item[3], "done" if ok else "refused"])
 			if ok:
@@ -1214,7 +1215,7 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array) -> void:
 		elif s.has("read"):
 			for k in tin.size():
 				var it: Array = tin[k]
-				if not used[k] and it[0] == "read" and it[1] == s["read"] and _is_num(it[2]):
+				if not used[k] and it[0] == "read" and _same(it[1], s["read"]) and _is_num(it[2]):
 					used[k] = true
 					var val: float = e.shown(s["read"], e.prev)
 					var ex = s.get("expect")
@@ -1231,7 +1232,7 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array) -> void:
 		elif s.has("say"):
 			for k in tin.size():
 				var it: Array = tin[k]
-				if not used[k] and it[0] == "say" and it[1] == s["say"] and it[2] == s["to"]:
+				if not used[k] and it[0] == "say" and _same(it[1], s["say"]) and _same(it[2], s["to"]):
 					used[k] = true
 					say(e, pi, s["say"], s["to"])
 					r = "next"
@@ -1242,7 +1243,7 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array) -> void:
 			var c: Dictionary = s["call"]
 			for k in tin.size():
 				var it: Array = tin[k]
-				if not used[k] and it[0] == "call" and it[1] == c["role"] and it[2] == c["task"]:
+				if not used[k] and it[0] == "call" and _same(it[1], c["role"]) and _same(it[2], c["task"]):
 					used[k] = true
 					var w = c.get("work", "$")
 					w = cur["work"] if w == "$" else w
@@ -1269,15 +1270,16 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array) -> void:
 		elif s.has("op"):
 			var o: Dictionary = s["op"]
 			for y in mine:
-				if y[1] == "op" and y[2] == o["kks"] and y[3] == o["do"] and y[4] == "done" and y.size() > 7 \
+				# (a done op's code, do, where and person are text: what the trainee typed is compared only then)
+				if y[1] == "op" and y.size() > 7 and y[4] == "done" and y[2] == o["kks"] and y[3] == o["do"] \
 						and y[6] == o["where"] and y[7] == pid:
 					r = "next"
 					break
 		elif s.has("permit"):
 			var w = cur["work"] if s["permit"]["work"] == "$" else s["permit"]["work"]
 			for y in mine:
-				if y[1] == "permit" and y[2] == w and y[3] == s["permit"]["action"] and y[4] == pid \
-						and y[5] == "done":
+				if y[1] == "permit" and y[5] == "done" and _same(y[2], w) and y[3] == s["permit"]["action"] \
+						and y[4] == pid:
 					r = "next"
 					break
 		elif s.has("lock") or s.has("unlock"):
@@ -1297,7 +1299,7 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array) -> void:
 					x["got"] = []
 				var got: Array = x["got"]
 				for y in mine:
-					if y[1] == k and y[2] == w and y[4] == pid and y[5] == "done" and pts.has(y[3]) \
+					if y[1] == k and y[5] == "done" and _same(y[2], w) and y[4] == pid and pts.has(y[3]) \
 							and not got.has(y[3]):
 						got.append(y[3])
 				if got.size() == pts.size():
@@ -1305,6 +1307,12 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array) -> void:
 		if typeof(r) == TYPE_STRING and r == "wait":
 			return
 		advance(e, pi, r)
+
+
+## Equal and of one type: what a trainee's input typed (any JSON value) is compared with text so (GDScript's == between
+## an int and a String is an error, where Python's is False).
+static func _same(a, b) -> bool:
+	return typeof(a) == typeof(b) and a == b
 
 
 static func _is_num(x) -> bool:

@@ -1400,6 +1400,10 @@ What S1 settles that §16–§17 left open (the engines and the vectors follow t
   the reaction's `work`, the permit's work, the call's, or else the task's own `work`.
 - **`else`** may stand on a `go`, `op`, `permit`, `lock` or `unlock` step (and inside a `wait`): the index of a later
   step. Without one, the failure abandons the task.
+- **A jump** is also refused while NPCs' inputs of the step before are still to be made in step 1 (a supervisor's
+  permit request then made after the jump's check would be left with no task). **Limits:** an idle task has a `work`
+  of a minute or more (`bad_ref`: a `wait` already true or an empty meeting would end in its own step), and a routine
+  makes at most 256 slots in a duty (`limit`).
 - **The idle task** is given priority 6 (below every task), ends (`done`) when anything is queued or the duty ends,
   and starts again (a new `start`) when it ended with the queue still empty.
 - **Pre-emption** is checked at a person's turn whenever they stand at a place: between steps, at each place a `go`
@@ -1428,9 +1432,12 @@ What S1 settles that §16–§17 left open (the engines and the vectors follow t
   `permit`, `lock` and `unlock` steps are done when a matching input of theirs is `done` (a refusal leaves the step waiting: the debrief lists it). A
   `say` step takes a `say` input of the same message and `to`; a `call` step a `call` input of the same role and
   task. Radio inputs that no step took are sent as they are: a message to its `to`, or a **call**, a new input
-  `[n, "call", role, task, work]`, accepted when some `call` step of the content names that role and task (the radio
-  panel's requests) and the work is null (the called task's own `work` then, if any), refused otherwise. Calls make the event `[n, "call", person, role, task, work,
-  "done" | "refused"]`, the NPCs' too.
+  `[n, "call", role, task, work]`, accepted when a `call` step names that role and task in a task the trainee's role
+  lists in its new key `requests` (the radio panel's requests) and the work is null (the called task's own `work`
+  then, if any), refused otherwise. A task called by a request may not use `"$"` (`bad_ref`): the radio gives it no
+  work, code or alarm. So a role calls only what its own requests say (a control room operator can't send a field
+  operator to close a valve for an isolation). Calls make the event `[n, "call", person, role, task, work, "done" |
+  "refused"]`, the NPCs' too.
 - **`unacked`** in the snapshot is a count. `[n, "say", …]` to the trainee's person or role counts.
 - **Ops by a person** (§17.1): the reasons start with `where` (the op's own `where` lacks it; then no authority is
   checked) or `authority`, before format 1's failed values and the locks. While the trainee plays a person, an

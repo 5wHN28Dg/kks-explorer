@@ -248,9 +248,31 @@ class StaffVectors(unittest.TestCase):
         e.step(2)
         e.call('field_op', 'open_valve', 'wo_pump')
         e.call('field_op', 'open_valve')
+        e.call('field_op', 'isolate_m')         # not one of the control room operator's requests
         e.step()
         calls = [x for x in e.events if x[1] == 'call' and x[2] == 'a_ccr']
-        self.assertEqual([c[6] for c in calls], ['refused', 'done'])
+        self.assertEqual([c[6] for c in calls], ['refused', 'done', 'refused'])
+
+
+    def test_no_jump_while_npcs_inputs_wait(self):
+        """A jump checked in step 1 before the NPCs' inputs of the step before are made would leave a permit they
+        request with no task: it is refused while any is still to be made."""
+        sc = json.loads(json.dumps(self.runs[5]['scenario']))
+        b = P.check_files(files_of(self.V, dict(self.runs[5], scenario=sc)))
+        e = P.Engine(b, 's1')
+        e.step(1)
+        e.task_ack()
+        e.fault('f1')               # the supervisor (the trainee here) gets a task; an NPC's input is what we need:
+        for _ in range(400):
+            e.step()
+            if e.npc_queue:
+                break
+        self.assertTrue(e.npc_queue, 'no NPC input to wait for')
+        e.task_ack()
+        e.jump('20:00')
+        e.step()
+        j = [x for x in e.events if x[1] == 'jump']
+        self.assertEqual(j[-1][4], 'refused')
 
 
 class FirstTrainStaff(unittest.TestCase):

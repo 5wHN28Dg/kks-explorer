@@ -245,8 +245,8 @@ def roles():
     return [
         role('shift_sup', 'Shift supervisor', 'ops', ['operate_screen', 'request', 'approve', 'issue', 'lock_process'],
              'sup_shift', True, 'coverall_ops_white'),
-        role('ccr_op', 'Control room operator', 'ops', ['operate_screen', 'request', 'lock_process'], 'ccr_shift',
-             True, 'coverall_ops'),
+        dict(role('ccr_op', 'Control room operator', 'ops', ['operate_screen', 'request', 'lock_process'],
+                  'ccr_shift', True, 'coverall_ops'), requests=['ask_' + i[0] for i in INSTRUCTIONS]),
         role('field_op', 'Field operator', 'ops', ['operate_local', 'request', 'lock_mechanical', 'lock_process'],
              'field_st', True, 'coverall_ops'),
         role('elec_ap', 'Electrical authorised person', 'ops', ['operate_local', 'request', 'lock_electrical'],

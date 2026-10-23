@@ -385,7 +385,7 @@
  ],
  "roles": [
   {"id": "shift_sup", "title": "Shift supervisor", "discipline": "ops", "look": "coverall_ops_white", "authority": ["operate_screen", "request", "approve", "issue", "lock_process"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "sup_shift", "play": true},
-  {"id": "ccr_op", "title": "Control room operator", "discipline": "ops", "look": "coverall_ops", "authority": ["operate_screen", "request", "lock_process"], "ppe": ["helmet", "boots"], "routine": "ccr_shift", "play": true},
+  {"id": "ccr_op", "title": "Control room operator", "discipline": "ops", "look": "coverall_ops", "authority": ["operate_screen", "request", "lock_process"], "ppe": ["helmet", "boots"], "routine": "ccr_shift", "play": true, "requests": ["ask_ccw_cooler_in", "ask_ccw_cooler_out", "ask_cw_vents_open", "ask_cw_vents_close"]},
   {"id": "field_op", "title": "Field operator", "discipline": "ops", "look": "coverall_ops", "authority": ["operate_local", "request", "lock_mechanical", "lock_process"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "field_st", "play": true},
   {"id": "elec_ap", "title": "Electrical authorised person", "discipline": "ops", "look": "coverall_ops", "authority": ["operate_local", "request", "lock_electrical"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "elec_shift", "play": true},
   {"id": "mech_tech", "title": "Mechanical technician", "discipline": "mech", "look": "coverall_mech", "authority": ["accept"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "tech_days", "play": false},

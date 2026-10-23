@@ -1329,7 +1329,7 @@ def mini_staff():
              role('elec_ap', 'Electrical authorised person', 'ops', ['operate_local', 'request', 'lock_electrical'],
                   'elec_shift'),
              role('mech_tech', 'Mechanical technician', 'mech', ['accept'], 'mech_days')]
-    roles[0].update(look='coverall_ops', ppe=['helmet', 'boots'])
+    roles[0].update(look='coverall_ops', ppe=['helmet', 'boots'], requests=['ask_open'])
     rosters = [{'id': 'shift', 'kind': 'rotation', 'cycle': ['D', 'D', 'N', 'N', 'O', 'O', 'O', 'O'],
                 'crews': {'a': 0, 'b': 2, 'c': 4, 'd': 6}, 'hours': {'D': ['06:00', '18:00'], 'N': ['18:00', '06:00']}},
                {'id': 'day', 'kind': 'days', 'days': ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'],
@@ -1438,7 +1438,9 @@ def mini_staff():
         task('sup_check', 'The supervisor\'s look round', [{'go': 'cr_table'}, {'work': 5},
                                                          {'say': 'all_well', 'to': 'channel'}]),
         task('toolbox', 'Toolbox talk', [{'meet': {'room': 'workshop', 'with': ['mech_tech'], 'minutes': 10}}]),
-        task('cal_gauge', 'Calibrate the gauge', [{'go': {'kks': GAUGE}}, {'work': 5}])]
+        task('cal_gauge', 'Calibrate the gauge', [{'go': {'kks': GAUGE}}, {'work': 5}]),
+        task('ask_open', 'Ask for the valve opened', [desk, {'call': {'role': 'field_op', 'task': 'open_valve'}},
+                                                      {'work': 1}], priority=2)]
     reactions = [{'on': {'alarm': 2}, 'roles': ['ccr_op'], 'task': 'answer_alarm'},
                  {'on': {'trip': '*'}, 'roles': ['shift_sup', 'ccr_op'], 'task': 'trip_call'},
                  {'on': {'fault': 'f1'}, 'roles': ['shift_sup'], 'task': 'raise_work', 'work': 'wo_pump'},
@@ -1522,6 +1524,15 @@ REJECTS_STAFF = [
     ('a task reaching itself through choose', 'bad_ref', _set(TASK(12) + ['steps', 1],
                                                               {'choose': [[1, 'round']]})),
     ('an idle task with no step that takes time', 'bad_ref', _set(TASK(0) + ['steps', 1], {'work': 0})),
+    ('an idle task whose only time is a wait', 'bad_ref', _set(TASK(0) + ['steps', 1], {'wait': {'until': 'p_high'}})),
+    ('a routine of over 256 slots in a duty', 'limit', _set(STF + ['routines', 0, 'slots', 1],
+                                                           {'at': 'start-12:00', 'every': '0:01', 'until': 'end+12:00',
+                                                            'task': 'instruct'})),
+    ('a radio request that calls nobody', 'bad_ref', _set(STF + ['roles', 0, 'requests'], ['idle_ccr'])),
+    ('a radio request for a task that needs a "$"', 'bad_ref', _all(
+        _app(STF + ['tasks'], {'id': 'ask_check', 'title': 'Ask', 'steps': [{'call': {'role': 'field_op',
+                                                                                    'task': 'check_alarm'}}]}),
+        _set(STF + ['roles', 0, 'requests'], ['ask_check']))),
     ('a say to nobody', 'bad_ref', _set(TASK(5) + ['steps', 1, 'to'], 'mayor')),
     ('a say of an unknown message', 'bad_ref', _set(TASK(5) + ['steps', 1, 'say'], 'hello')),
     ('choose weights over 65536', 'bad_number', _set(TASK(11) + ['steps', 6, 'choose', 0, 0], 65536)),
@@ -1700,6 +1711,8 @@ def staff_runs():
          'opened on the control room\'s call, the alarm checked on the radio\'s call, a lock of the work\'s '
          'mechanical point, task_ack and the fast-forward level',
          {}, None, Trainee(wrong=(1,), extra=[[1, 'role', 'a_fo1'], [1, 'role', 'a_fo2'], [3, 'role', 'a_fo2'],
+                                              [160, 'read', 7, 1.0], [160, 'say', 5, 'channel'], [160, 'say', 'handover', 9],
+                                              [161, 'call', 3, 4, None], [161, 'op', 12, 'open', None, None, 'local', 'a_fo1'],
                                               [901, 'fault', 'f1']]), 2400, 20),
         ('the trainee as control room operator of crew A (the scenario\'s trainee): the instruction called over the '
          'radio and the pump started from the screen; refusals: an op at a where the op lacks, a local op without '

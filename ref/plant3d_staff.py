@@ -11,7 +11,7 @@ the trainee's person and inputs, jumps, fast-forward and the random streams. Zon
 come with S2; vehicles, `ride`, `sleep`, homes and off-duty routines with S4: their keys are refused until then
 (`unknown_key`), so no content can rely on behaviour the engines don't have.
 """
-import copy, heapq, math, re
+import copy, heapq, json, math, re
 from ref.courses import need, keys, is_num, num, ident, lst
 
 STAFF_FORMAT = 'walkdown-plant-staff'
@@ -318,7 +318,7 @@ class Staff:
             wr = f'{w}[{i}]'
             need(not isinstance(r, dict) or 'off' not in r, 'unknown_key', f'{wr}.off: off-duty routines come with '
                                                                            f'milestone S4')
-            keys(r, ('id', 'title', 'discipline', 'authority', 'routine', 'play'), ('look', 'ppe'), wr)
+            keys(r, ('id', 'title', 'discipline', 'authority', 'routine', 'play'), ('look', 'ppe', 'requests'), wr)
             ident(r['id'], f'{wr}.id')
             need(r['id'] not in self.roles, 'dup_id', f'{wr}: role {r["id"]} twice')
             need(isinstance(r['title'], str) and 1 <= len(r['title']) <= 60, 'bad_type', f'{wr}.title')
@@ -332,6 +332,8 @@ class Staff:
                 ident(r['look'], f'{wr}.look')
             ident(r['routine'], f'{wr}.routine')
             need(isinstance(r['play'], bool), 'bad_type', f'{wr}.play: true or false')
+            for x in lst(r.get('requests', []), f'{wr}.requests', 0, 32):
+                ident(x, f'{wr}.requests')
             self.role_ix[r['id']] = i
             self.roles[r['id']] = r
         self.role_list = roles
@@ -431,6 +433,16 @@ class Staff:
                     need(0 < every <= 1440, 'bad_clock', f'{ws}.every: more than 0:00, at most 24:00')
                     until = self.at_ref(s['until'], f'{ws}.until')
                 slots.append((at, every, until, s['task']))
+            # at most 256 slots in a duty (a day's 1440 minutes and the ±12:00 around it bound every span)
+            bound = 0
+            for at, every, until, _ in slots:
+                if every is None:
+                    bound += 1
+                else:
+                    pos = lambda a: a[1] + (1440 if a[0] == 'end' else 0) + (1440 if a[0] == 'clock' else 0)  # noqa: E731
+                    span = min(max(pos(until) - pos(at) + (1440 if at[0] != until[0] else 0), 0), 3 * 1440)
+                    bound += span // every + 1
+            need(bound <= 256, 'limit', f'{wr}: up to {bound} slots in a duty (at most 256)')
             self.routines[r['id']] = {'slots': slots, 'idle': r['idle']}
         for rid, r in self.roles.items():
             need(r['routine'] in self.routines, 'bad_ref', f'staff.json: role {rid}.routine: no routine '
@@ -675,9 +687,10 @@ class Staff:
             visit(tid, [tid])
         for rid, r in self.routines.items():
             t = self.tasks[r['idle']]
-            need(any(('work' in s and (s['work'][0] if isinstance(s['work'], list) else s['work']) >= 1)
-                     or 'wait' in s or 'meet' in s for s in t['steps']), 'bad_ref',
-                 f'staff.json: routine {rid}\'s idle task {r["idle"]} has no step that takes time')
+            # a work of at least a minute: a wait already true or an empty meeting would end in the step it begins
+            need(any('work' in s and (s['work'][0] if isinstance(s['work'], list) else s['work']) >= 1
+                     for s in t['steps']), 'bad_ref',
+                 f'staff.json: routine {rid}\'s idle task {r["idle"]} has no work of a minute or more')
 
     def check_authority(self):
         """Each step of a task can be done by every role that may run it (`authority`): the roles whose routine
@@ -701,6 +714,10 @@ class Staff:
                 works[r['task']].add(r['work'])
             elif 'permit' in r['on']:
                 works[r['task']].update(w['id'] for w in self.m.works)
+        for rid, r in self.roles.items():
+            for x in r.get('requests', []):
+                if x in runs:
+                    runs[x].add(rid)
         for t in self.tasks.values():
             if 'work' in t:
                 works[t['id']].add(t['work'])
@@ -728,11 +745,18 @@ class Staff:
                             changed = True
         wmap = {w['id']: w for w in self.m.works}
         isos = {x['id']: x for x in self.m.isolations}
+        # the radio panel's requests (§17.8): (the caller's role, the role called, the task) of the call steps of the
+        # tasks a role lists in `requests`; a task called so is given no work or code, so it may not use "$"
         self.callable = set()
-        for t in self.tasks.values():
-            for s in t['steps']:
-                if 'call' in s:
-                    self.callable.add((s['call']['role'], s['call']['task']))
+        for rid, r in self.roles.items():
+            for x in r.get('requests', []):
+                need(x in self.tasks, 'bad_ref', f'staff.json: role {rid}.requests: no task {x!r}')
+                calls = [s['call'] for s in self.tasks[x]['steps'] if 'call' in s]
+                need(calls, 'bad_ref', f'staff.json: role {rid}.requests: task {x} calls nobody')
+                for c in calls:
+                    need('"$"' not in json.dumps(self.tasks[c['task']]) and 'work' not in c, 'bad_ref',
+                         f'staff.json: role {rid}.requests: task {c["task"]} needs a "$" the radio can\'t give')
+                    self.callable.add((rid, c['role'], c['task']))
         for tid, t in self.tasks.items():
             for i, s in enumerate(t['steps']):
                 ws = f'staff.json: task {tid}.steps[{i}]'
@@ -1051,7 +1075,8 @@ class StaffRun:
         while t <= old:
             t += DAY
         ok = self.trainee is None or self.unacked == 0
-        ok = ok and e.ff_model() and not any(1 <= s <= 7 for s in e.pstate.values()) and self.jumped is None
+        ok = ok and e.ff_model() and not any(1 <= s <= 7 for s in e.pstate.values()) and self.jumped is None \
+            and not e.npc_pending
         if ok:
             e.J += t - old
             self.jumped = (old, t)
@@ -1560,7 +1585,8 @@ class StaffRun:
                     (item[2] == 'channel' or item[2] in st.roles or item[2] in st.person_ix):
                 self.say(p, item[1], item[2])
             elif item[0] == 'call':
-                ok = isinstance(item[1], str) and isinstance(item[2], str) and (item[1], item[2]) in st.callable \
+                ok = isinstance(item[1], str) and isinstance(item[2], str) \
+                    and (p.role, item[1], item[2]) in st.callable \
                     and item[3] is None       # a request names no work: the called task's own, if any
                 e.ev('call', p.id, item[1], item[2], item[3], 'done' if ok else 'refused')
                 if ok:

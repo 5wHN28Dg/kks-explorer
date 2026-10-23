@@ -17,6 +17,7 @@ var ui                          # ui/plant_ui.gd
 var body: VBoxContainer
 var title: Label
 var entry: LineEdit             # the reading being written down (tests type into it)
+var _entry_code := ""           # which reading step the entry is for
 var _sig := ""
 var _t := 0.0
 var _seen := 0                  # events read so far (the radio log and readings sheet grow from there)
@@ -117,6 +118,7 @@ func refresh() -> void:
 		return
 	_sig = sig
 	var typed := entry.text if entry != null and is_instance_valid(entry) else ""
+	var typed_for := _entry_code
 	var had_focus := get_viewport() != null and get_viewport().gui_get_focus_owner() != null \
 			and is_ancestor_of(get_viewport().gui_get_focus_owner())
 	entry = null
@@ -134,8 +136,8 @@ func refresh() -> void:
 	else:
 		_me(e, sm)
 	_radio_log(e, sm)
-	if entry != null and typed != "":
-		entry.text = typed                  # a reading being typed survives the panel's rebuild
+	if entry != null and typed != "" and typed_for == _entry_code:
+		entry.text = typed                  # a reading being typed survives the panel's rebuild (the same reading's)
 	if had_focus and ui.wants_focus():
 		var f: Control = entry if entry != null else _first(body)
 		if f:
@@ -291,6 +293,7 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 				row.add_child(W.button("Take me there", func(): ui.go_to_place(d)))
 	if s.has("read"):
 		entry = LineEdit.new()
+		_entry_code = "%s/%s/%s" % [s["read"], str(cur["order"]), str(cur["step"])]
 		entry.placeholder_text = "the value shown"
 		entry.custom_minimum_size.x = 160 * W.scale
 		row.add_child(entry)
@@ -335,10 +338,10 @@ func _radio_log(e, sm) -> void:
 	body.add_child(row)
 	for key in sm.callable:
 		var parts: PackedStringArray = String(key).split("\n")
-		if parts[0] == me["role"]:
+		if parts[0] != me["role"]:
 			continue
-		var role := parts[0]
-		var task := parts[1]
+		var role := parts[1]
+		var task := parts[2]
 		row.add_child(W.button("Call %s: %s" % [role.replace("_", " "), sm.tasks[task]["title"]],
 				func(): ui.clock.engine.radio_call(role, task, null)))
 	var nxt := _next_shift(e)

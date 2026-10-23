@@ -1611,6 +1611,7 @@ class Engine:
             self.S = start_tenths(sc.get('start', clock['start']))
         self.J = 0
         self.npc_queue = []             # the NPCs' inputs made in step 9, for the next step's step 1
+        self.npc_pending = 0
         self.ev_mark = 0                # where this step's events begin
         self.staff = None
         if b.staff is not None and 'staff' in sc:
@@ -2070,6 +2071,7 @@ class Engine:
         # 1. the trainee's inputs, in the order made, then the NPCs' made in the previous step's step 9 (§17.1)
         q, self.queue = self.queue, []
         nq, self.npc_queue = self.npc_queue, []
+        self.npc_pending = len(nq)      # a jump waits for the NPCs' inputs of the step before (§17.8)
         sr = self.staff
         for npc, item in [(False, x) for x in q] + [(True, x) for x in nq]:
             kind = item[0]

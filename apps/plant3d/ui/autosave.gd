@@ -300,6 +300,7 @@ func restore(p: Dictionary) -> void:
 	ui.sounds.reset_edges()
 	ui.alarms.on_events(e.events, 0)
 	ui._ev_seen = e.events.size()
+	ui._jumps = e.J                 # a jump made before the save is not one to follow again
 	ui.results = p["ui"]["results"]
 	ui._pending = p["ui"]["pending"]
 	ui.permits.waiting_from(e)

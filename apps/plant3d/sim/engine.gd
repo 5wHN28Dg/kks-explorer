@@ -106,6 +106,7 @@ var _absent := {}                   # person index -> true
 var _fixed_trainee := false         # the scenario names the trainee
 var _show := {}                     # code -> its show binding's value name or number
 var _fault_kks := {}                # scenario fault id -> its code or null
+var _npc_pending := 0               # the NPCs' inputs in this step's step 1 (set every step)
 # the staff's state (§17; saved with the run, copied by clone): st_ for the run, sp_ per person in file order
 var J := 0                          # the jumps made, in tenths of a clock second
 var npc_queue: Array = []           # the NPCs' inputs made in step 9, for the next step's step 1
@@ -537,7 +538,7 @@ func apply_input(item: Array) -> void:
 		"read", "say":
 			_q([item[1], item[2], item[3]])
 		"call":
-			radio_call(item[2], item[3], item[4])
+			radio_call(item[2], item[3], item[4] if item.size() > 4 else null)
 		_:
 			push_error("engine: unknown input " + str(item))
 
@@ -969,6 +970,7 @@ func _step() -> void:
 	var q := queue
 	queue = []
 	var nt := q.size()
+	_npc_pending = npc_queue.size()     # a jump waits for the NPCs' inputs of the step before (§17.8)
 	if not npc_queue.is_empty():
 		q = q + npc_queue
 		npc_queue = []
