@@ -155,9 +155,15 @@ jobs:
           KKS_IMPORT: /tmp/kksimp/kks_import
         run: .venv/bin/python platform/linux/e2e/test_server_http.py /tmp/kkslinux/kks_server -v
 
+  # in three shards side by side (tests/shards.py): one test run was over 20 minutes, most of it the Walkdown Plant
+  # vectors built and replayed, which have shards of their own
   python:
     runs-on: ubuntu-26.04
-    timeout-minutes: 30  # the Walkdown Plant vectors are made again and replayed (~15 min on main, ~20 with W3)
+    timeout-minutes: 30  # (main's, from when the job was one; each shard has taken under 9 minutes)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -169,11 +175,12 @@ jobs:
           python3 -m venv .venv
           .venv/bin/pip install -q -r requirements-dev.txt
       - name: FFmpeg with libvorbis (Walkdown Plant's sounds are encoded with it, decision 0055)
+        if: matrix.shard == 0
         run: sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends ffmpeg >/dev/null
       - name: The protocol, strict JSON, path store, course and Walkdown Plant vectors (the Python reference)
         env:
           KKS_REQUIRE_FFMPEG: '1'
-        run: .venv/bin/python -m unittest discover -s tests -v
+        run: .venv/bin/python tests/shards.py ${{ matrix.shard }}
 
   # the web client's download size against web-size.json (tools/web_size.py): any change needs the baseline updated in
   # the same PR, and the PR says why growth is worth it
