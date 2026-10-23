@@ -112,7 +112,7 @@ measured by its loudest 400 ms. A recorded clip added later must follow the same
 ## Measured (2026-10-19)
 
 31 sounds in 51 files, 1.92 MB of Ogg Vorbis in total (24 sounds, 1.57 MB before the footsteps, doors and ambience).
-Decision 0054's budget is 150 MB for the whole package (10 MB for clips). A loop's tone layers are 2 s (8–22 KiB)
+Decision 0054's budget is 150 MB for the APK (10 MB for clips; the desktop packages may grow to about 300 MB). A loop's tone layers are 2 s (8–22 KiB)
 and its noise layer 8 s (34–74 KiB; the wind's 16 s, 133 KiB); a footstep is 5–7 KiB. The worst loop-point tick
 after Vorbis is −54.2 dB under its sound; 26 of the 43 loop layers have nothing beyond the rest of the loop.
 

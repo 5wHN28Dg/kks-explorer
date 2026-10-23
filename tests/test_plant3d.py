@@ -69,7 +69,7 @@ class Content(unittest.TestCase):
 
     def test_counts(self):
         c = self.b.counts
-        self.assertEqual(c['areas'], 9 + 12)          # the first train; the site, the camp and their interiors
+        self.assertEqual(c['areas'], 9 + 2 + 12)      # the first train; the water treatment plant; the site, the camp and their interiors
         self.assertGreaterEqual(c['equipment'], 150)
         self.assertGreaterEqual(c['pipes'], 25)
         self.assertGreaterEqual(c['tours'], 1)
@@ -224,6 +224,101 @@ NAME_HASHES = {
     'b6a3df8ad16ab20ef9670b56c59827b60202d6db67f3aff7b168f7d228976460',
     'c2f2d91c2a31954e293fe038488e1a411a2fd90c0196c126c918852e3e80a7d9',
 }
+
+
+class WaterTreatment(unittest.TestCase):
+    """Milestone W1 (docs/plant3d/MILESTONES.md): the water treatment plant and its intake, walkable, as
+    WATER-TREATMENT.md §3-§4 and SITE.md lay them out; its tour; the pipes that tie it to the first train."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.areas = {}
+        for name in os.listdir(os.path.join(DATA, 'areas')):
+            with open(os.path.join(DATA, 'areas', name), encoding='utf-8') as f:
+                a = json.load(f)
+            cls.areas[a['id']] = a
+        cls.codes = {}
+        for a in cls.areas.values():
+            for e in a['equipment']:
+                cls.codes[e['kks']] = (a['id'], e)
+                for c in e.get('parts', []):
+                    cls.codes[c['kks']] = (a['id'], c)
+            for p in a['pipes']:
+                cls.codes[p['kks']] = (a['id'], p)
+                for v in p.get('valves', []) + p.get('parts', []):
+                    cls.codes[v['kks']] = (a['id'], v)
+
+    def test_areas_where_the_site_puts_them(self):
+        self.assertEqual(self.areas['wtp']['bounds'], [[270, 45], [390, 135]])      # SITE.md §1
+        self.assertEqual(self.areas['intake']['bounds'], [[430, 60], [470, 110]])
+        for aid in ('wtp', 'intake'):
+            self.assertEqual(self.areas[aid]['pack'], 'wtp')
+        with open(os.path.join(DATA, 'plant.json'), encoding='utf-8') as f:
+            self.assertEqual(json.load(f)['areas'][-2:], ['wtp', 'intake'])
+
+    def test_every_stage_has_its_equipment(self):
+        """WATER-TREATMENT.md §3's stages, each by its codes of §4, in the area that holds it."""
+        want = {'intake': ['00GAA10AT001', '00GAA10AT002', '00GAA10AT003', '00GAA10CL001', '00GAF10AP001',
+                           '00GAF10AP002', '00GAF10AP003', '00GAC10BR010', '00GBN30BB001'],
+                'wtp': ['00GBD10AM001', '00GBD11AT001', '00GBD12AT001', '00GBD11CQ001', '00GBD12CQ001', '00GBN10BB001',
+                        '00GBN20BB001', '00GBN10AP001', '00GBN10AP002']
+                       + [f'00GBB1{n}AT001' for n in range(1, 7)] + [f'00GBB1{n}CP001' for n in range(1, 7)]
+                       + ['00GBR10AP001', '00GBR10AP002', '00GBR10AN001', '00GBR10AN002', '00GBL10BB001',
+                          '00GHB10AP001', '00GHB10AP002', '00GHA10AP001', '00GHA10AP002', '00GCN10BB001',
+                          '00GCN20BB001', '00GCE10BB001', '00GCB11AT001', '00GCB12AT001', '00GCB21AP001',
+                          '00GCB22AP001', '00GCB21AT001', '00GCB22AT001', '00GCB21CQ001', '00GCB21CQ002',
+                          '00GCB21CP001', '00GCB21CP002', '00GCB21CF001', '00GCB11CP001', '00GCH10AT001',
+                          '00GCH10AN001', '00GCK10BB001', '00GCK10AP001', '00GCK10AP002', '00GCF11AT001',
+                          '00GCF12AT001', '00GCF11CQ001', '00GCF11CQ002', '00GCP10BB001', '00GCP20BB001',
+                          '00GCP30AN001', '00GCL10BB001', '00GCL10BB002', '00GHC10AP001', '00GHC10AP002',
+                          '00GNR10BB001', '00GNR10AP001', '00GNR10AP002', '00GNR10AM001', '00GNR10CQ001',
+                          '00GBS10AT001', '00GBS20AT001', '00QUG10', '00CWD10']}
+        for aid, codes in want.items():
+            for code in codes:
+                with self.subTest(code=code):
+                    self.assertIn(code, self.codes)
+                    self.assertEqual(self.codes[code][0], aid)
+        buildings = {s.get('kks') for a in ('wtp', 'intake') for s in self.areas[a]['structures']
+                     if s['part'] == 'building'}
+        self.assertEqual(buildings, {'00UGA10', '00UGD10', '00UGQ10', '00UTS10'})
+
+    def test_tied_to_the_train(self):
+        """SITE.md §1: the makeup line ends in the cooling tower's makeup pipe before its valve, the transfer line on
+        the plant's demineralised water tank, the raw water main runs from the intake to the rapid mixer."""
+        _, mk = self.codes['00GHB10BR001']
+        self.assertEqual(mk['from'], {'kks': '00GHB10AP001', 'nozzle': 'discharge'})
+        self.assertEqual(mk['to']['pipe'], '30PAR10BR001')
+        _, tr = self.codes['00GHC10BR001']
+        self.assertEqual(tr['to'], {'kks': '00GHC10BB001', 'nozzle': 'inlet'})
+        _, main = self.codes['00GAC10BR010']
+        self.assertGreater(main['from']['at'][0], 430)
+        mix = self.codes['00GBD10BB001'][1]['at']
+        self.assertLess(math.dist(main['to']['at'][:2], mix[:2]), 3.0, 'the raw water main ends under the rapid mixer')
+
+    def test_the_tour_from_the_river_to_the_demin_tank(self):
+        with open(os.path.join(DATA, 'procedures', 'wtp_path.json'), encoding='utf-8') as f:
+            t = json.load(f)
+        self.assertEqual(t['kind'], 'tour')
+        stops = [c for s in t['steps'] for c in s['at']]
+        self.assertEqual(stops[0], '00GAA10AT001')
+        self.assertEqual(stops[-1], '00GHC10BB001')
+        for code in stops[:-1]:
+            self.assertIn(self.codes[code][0], ('wtp', 'intake'), code)
+        self.assertTrue(all(s['go'] == 'walk' for s in t['steps']))
+
+    def test_running_pumps_turn_and_sound(self):
+        """W1 has no behaviour (W2's): the running half of each pair turns and sounds, the standby ones are still."""
+        bind = []
+        for aid in ('wtp', 'intake'):
+            with open(os.path.join(DATA, 'model', f'{aid}.json'), encoding='utf-8') as f:
+                bind += json.load(f)['bind']
+        sounding = {b['kks'] for b in bind if 'sound' in b}
+        turning = {b['kks'] for b in bind if b.get('anim') == 'shaft'}
+        for code in ('00GAF10AP001', '00GAF10AP002', '00GHB10AP001', '00GCB21AP001', '00GHC10AP001'):
+            self.assertIn(code, sounding)
+            self.assertIn(code, turning)
+        for code in ('00GAF10AP003', '00GHB10AP002', '00GCB22AP001', '00GHC10AP002', '00GBR10AP001'):
+            self.assertNotIn(code, sounding | turning)
 
 
 class Validator(unittest.TestCase):

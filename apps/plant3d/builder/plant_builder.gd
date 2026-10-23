@@ -524,14 +524,14 @@ func _st() -> SurfaceTool:
 	return st
 
 ## A slab: the region (outline less holes) from z - t to z, drawn and solid.
-func _slab(parent: Node, name: String, outline: PackedVector2Array, holes: Array, z: float, t: float, mat: Material, texel := Lightmap.TEXEL) -> int:
+func _slab(parent: Node, name: String, outline: PackedVector2Array, holes: Array, z: float, t: float, mat: Material, texel := Lightmap.TEXEL, bottom := true) -> int:
 	var pieces := Geom.decompose(outline, holes)
 	if pieces.is_empty():
 		return 0
 	var st := _st()
 	var body := _body(parent, name)
 	for pc in pieces:
-		Geom.add_prism(st, pc, z - t, z)
+		Geom.add_prism(st, pc, z - t, z, true, bottom)
 		_convex(body, Geom.prism_points(pc, z - t, z))
 	_mesh_node(body, "mesh", st, mat, texel)
 	return pieces.size()

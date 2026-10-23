@@ -1,6 +1,7 @@
 ## The frame-time walks' routes (app/routes.gd `frames` and `camp`, measured on the phones) walked once headless, so a
 ## phone run doesn't measure a walker stuck at a door or a pipe: out of the control room, through the turbine hall's
-## two doors, up and down HRSG 1's stair tower and back; and to the camp, into block 1's room 101 and the mess hall,
+## two doors, up and down HRSG 1's stair tower, out to the water treatment plant and through its treatment building,
+## and back; and to the camp, into block 1's room 101 and the mess hall,
 ## their interiors loaded by the app's own loader (app/interiors.gd) as the walker comes near. Fails when the walker is
 ## stuck for 5 s or falls below the ground, or an interior on the way was not there when the walker went in.
 extends RefCounted

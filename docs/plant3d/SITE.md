@@ -8,11 +8,11 @@ Format: docs/PLANT3D.md (areas §3; format 2 parts and interiors §18.5–§18.6
 
 ```
    y
- 140 ┤ ┌ admin ┐                                                                  ┌─────── wtp ────────┐   ┌intake┐≈≈≈≈≈≈ river ≈≈≈
- 110 ┤ │offices│                                                                  │ clarifiers  filters│   │screens│≈≈≈ (x 470–560)
+ 140 ┤ ┌ admin ┐                                                                  ┌─────── wtp ────────┐   ┌intake┐≈≈≈ river (x 500–590) ≈
+ 110 ┤ │offices│                                                                  │ clarifiers  filters│   │screens│≈≈≈ 
   90 ┤ │workshp│   ┌─ GT1 hall ─┐┌──── HRSG 1 ────┐                               │ RO/demin bldg, lab │   │pumps │≈≈≈
   60 ┤ └───────┘   └────────────┘└────────────────┘ ◯ stack                      │ demin tanks, pit   │   └──────┘≈≈≈
-  45 ┤        [trafo1]   ═══ raw water main (buried, y 80) ═══════════════════════└────────────────────┘
+  45 ┤        [trafo1]   ═══ raw water main (buried, y 79) ═══════════════════════└────────────────────┘
   20 ┤ ══ gate ══ ┌control┐ ┌── turbine hall ──┐ [rack][bop] [cw]  ┌── cooling tower ──┐
    0 ┤ (x −120)  └───────┘ └──────────────────┘                    └───────────────────┘
  −45 ┤                       (train 2, later: the mirror of train 1 across y = 0)
@@ -30,12 +30,18 @@ Format: docs/PLANT3D.md (areas §3; format 2 parts and interiors §18.5–§18.6
 | `road_west` | −260, 10 – −140, 30 | the road and its walkway between the camp gate and the plant gate (120 m), street lamps, fenced on both sides (the country beyond is not walkable) | camp |
 | `camp` | −480, −40 – −260, 120 | the camp (§3); interiors `block1_in`, `mess_in`, `prayer_in`, `gym_in`, `laundry_in`, `rec_in` | camp |
 
-- **The river** runs north–south at x 470–560: water drawn as the existing site's ground is (builder/site.gd), not
-  walkable, with the intake's bank and a handrail. The raw water main (DN 500, buried) runs along y = 80 from the
-  intake to the WTP.
-- **Water to the train:** cooling tower makeup (DN 400, on sleepers along y = 40 then south to `ct`'s makeup valve
-  30PAR10AA001); demin transfer (DN 100, on the same sleepers to `bop`'s demin tank 00GHC10BB001).
-- **The fence** encloses the plant from x −140 to 475, y −130 to 145 (train 2 included), the camp separately; a
+- **The river** runs north–south along the plant's east side: as built (W1), 5 m beyond the boundary wall's east
+  side, 90 m wide (x 500–590 while the wall stands at x 495: builder/site.gd places it from the wall, so it follows
+  the wall if the fence moves), its water at −1.5 m, drawn by the site (builder/site.gd), not walkable; the wall
+  keeps walkers off the bank. The intake's channel (x 441–469.5) runs on under the intake house's east wall, the
+  ring road and the wall to a headwall on the river bank. The raw water main (DN 500, buried) runs along y = 79
+  from the intake to the WTP's rapid mixer.
+- **Water to the train** (as built, W1): overhead on steel posts (the build's pipe supports), walkable under:
+  cooling tower makeup (DN 400, +5 m) from the makeup pumps along x = 271 and y = 38, then under the ground into
+  the cooling tower's makeup pipe 30PAR10BR001 before its valve 30PAR10AA001; demineralised water transfer (DN 100,
+  +6.5 m) along x = 274 and y = 39.5 to x = 133, then south to `bop`'s demin tank 00GHC10BB001. (The plan first
+  said sleepers along y = 40: pipes at ground level would cut the walkways between the train and the WTP.)
+- **The fence** encloses the plant from x −140 to 495 (the river beyond it, W1), y −130 to 160 (train 2 included; as built the wall runs 25 m beyond the process areas), the camp separately; a
   fence is a structure (`fence`, PLANT3D.md §5), not walkable through. One gate for people and vehicles at the
   plant's west, one at the camp's east.
   - **As built (C1):** the builder's boundary wall (`builder/site.gd`) goes round the process areas (every pack but
@@ -123,7 +129,8 @@ planting and nothing to remove. What it should gain is listed under milestone C1
 ## 5. Performance
 
 - **Packs:** `wtp`, `site` and `camp` are packs of their own (0054 §6), shipped in the one package while it stays
-  under its budget (150 MB); each milestone measures the package size.
+  under its budget (the APK 150 MB, the desktop packages about 300 MB: the user, 2026-10-23); each milestone
+  measures the package sizes.
 - **What the far view costs:** each new area is built like the train's (12 m cells, visibility ranges, merged far
   pieces; 0041, PLANT3D.md §10). Budget per new area, measured on the Note 9 in its milestone: draw calls in any view
   that sees it ≤ 25 % of the first train's in its busiest view, triangles likewise; the frame rules unchanged.

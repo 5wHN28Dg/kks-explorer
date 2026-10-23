@@ -1,0 +1,14 @@
+{
+ "format": "walkdown-plant-model",
+ "version": 1,
+ "area": "intake",
+ "values": [
+  ["intake_in_service", {"const": 1}]
+ ],
+ "bind": [
+  {"kks": "00GAF10AP001", "anim": "shaft", "of": "intake_in_service", "scale": 24.7},
+  {"kks": "00GAF10AP001", "sound": "motor_small", "gain": {"of": "intake_in_service", "table": [[0, 0], [1, 0.8]]}},
+  {"kks": "00GAF10AP002", "anim": "shaft", "of": "intake_in_service", "scale": 24.7},
+  {"kks": "00GAF10AP002", "sound": "motor_small", "gain": {"of": "intake_in_service", "table": [[0, 0], [1, 0.8]]}}
+ ]
+}

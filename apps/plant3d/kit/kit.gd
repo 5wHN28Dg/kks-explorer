@@ -23,6 +23,7 @@ const P_INS = preload("res://kit/parts_instruments.gd")
 const P_EL = preload("res://kit/parts_electrical.gd")
 const P_PIPE = preload("res://kit/parts_pipes.gd")
 const P_SITE = preload("res://kit/parts_site.gd")
+const P_WAT = preload("res://kit/parts_water.gd")
 
 ## The parts each generator script makes (structure parts are made by the builder itself, §5, except the site's and
 ## the camp's: planting, vehicles, furniture, PLANT3D.md §18.6).
@@ -50,6 +51,10 @@ const MAKERS := {
 	"locker": "SITE", "desk": "SITE", "chair": "SITE", "table": "SITE", "bench": "SITE", "counter": "SITE",
 	"shelf": "SITE", "washer": "SITE", "gym_rack": "SITE", "sofa": "SITE", "screen": "SITE", "carpet": "SITE",
 	"sanitary": "SITE",
+	"clarifier": "WAT", "thickener": "WAT", "filter_bank": "WAT", "cartridge_housing": "WAT", "ro_train": "WAT",
+	"degasser": "WAT", "ion_exchanger": "WAT", "dosing_skid": "WAT", "metering_pump": "WAT", "chemical_tank": "WAT",
+	"filter_press": "WAT", "sample_panel": "WAT", "lab_bench": "WAT", "agitator": "WAT", "bar_screen": "WAT",
+	"screen_band": "WAT",
 }
 
 ## Triangle budgets per part at full detail (LOD 0), the most any one instance may take with any parameters the kit
@@ -74,6 +79,10 @@ const BUDGET := {
 	"kerb": 6000, "crossing": 300, "court": 8000, "porch": 1200, "room": 6000, "bed": 300, "locker": 400, "desk": 150, "chair": 300,
 	"table": 150, "bench": 150, "counter": 1200, "shelf": 1600, "washer": 200, "gym_rack": 600, "sofa": 200,
 	"screen": 50, "carpet": 1500, "sanitary": 300,
+	"clarifier": 9000, "thickener": 7000, "filter_bank": 9000, "cartridge_housing": 3000, "ro_train": 16000,
+	"degasser": 7000, "ion_exchanger": 6000, "dosing_skid": 3000, "metering_pump": 2500, "chemical_tank": 6000,
+	"filter_press": 6000, "sample_panel": 4000, "lab_bench": 2000, "agitator": 3500, "bar_screen": 5000,
+	"screen_band": 4000,
 }
 
 class Gen:
@@ -187,6 +196,7 @@ static func _script(part: String):
 		"EL": return P_EL
 		"PIPE": return P_PIPE
 		"SITE": return P_SITE
+		"WAT": return P_WAT
 	return null
 
 ## Makes a part (cached: the same part with the same parameters and context is made once).

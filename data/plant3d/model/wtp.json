@@ -1,0 +1,22 @@
+{
+ "format": "walkdown-plant-model",
+ "version": 1,
+ "area": "wtp",
+ "values": [
+  ["wtp_in_service", {"const": 1}]
+ ],
+ "bind": [
+  {"kks": "00GHB10AP001", "anim": "shaft", "of": "wtp_in_service", "scale": 24.7},
+  {"kks": "00GHB10AP001", "sound": "motor_small", "gain": {"of": "wtp_in_service", "table": [[0, 0], [1, 0.8]]}},
+  {"kks": "00GHA10AP001", "anim": "shaft", "of": "wtp_in_service", "scale": 24.7},
+  {"kks": "00GHA10AP001", "sound": "motor_small", "gain": {"of": "wtp_in_service", "table": [[0, 0], [1, 0.8]]}},
+  {"kks": "00GCK10AP001", "anim": "shaft", "of": "wtp_in_service", "scale": 24.7},
+  {"kks": "00GCK10AP001", "sound": "motor_small", "gain": {"of": "wtp_in_service", "table": [[0, 0], [1, 0.8]]}},
+  {"kks": "00GHC10AP001", "anim": "shaft", "of": "wtp_in_service", "scale": 24.7},
+  {"kks": "00GHC10AP001", "sound": "motor_small", "gain": {"of": "wtp_in_service", "table": [[0, 0], [1, 0.8]]}},
+  {"kks": "00GCB21AP001", "anim": "shaft", "of": "wtp_in_service", "scale": 49.5},
+  {"kks": "00GCB21AP001", "sound": "ro_hp_pump", "gain": {"of": "wtp_in_service", "table": [[0, 0], [1, 1]]}},
+  {"kks": "00GCH10AN001", "anim": "shaft", "of": "wtp_in_service", "scale": 25},
+  {"kks": "00GCH10AN001", "sound": "motor_small", "gain": {"of": "wtp_in_service", "table": [[0, 0], [1, 0.6]]}}
+ ]
+}

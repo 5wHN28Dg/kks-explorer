@@ -3,7 +3,9 @@
 ##           stack platform at +40, then back down the same way: the walking test's route
 ##   pit     up the turbine hall's condenser pit stair (-6 m to the ground) and back down
 ##   frames  the frame-time walk (wiki measurement rules): out of the control room, through the turbine hall
-##           (its west and east doors), along the road, up and down HRSG 1's stair tower, and back; looped
+##           (its west and east doors), along the road, up and down HRSG 1's stair tower, out past the cooling
+##           tower to the water treatment plant (between the posts of the pipes to the train, through its
+##           treatment building past the RO trains, round by the demineralised water tanks), and back; looped
 ##   camp    the frame-time walk through the site and the camp (milestone C1): out of the control room, along the
 ##           palms to the plant gate, the road to the camp, into block 1 and one of its rooms, along its corridor, across
 ##           the road to the mess hall and between its tables, and back; looped
@@ -49,8 +51,9 @@ static func frames(plant) -> Array:
 	r.append_array(_stair(plant, "hrsg1_stair"))
 	r.append_array([_to(101.4, 52.5, 30), _to(130, 56, 30), _to(101.4, 56, 30), _to(101.4, 52.5, 30), _to(101.4, 49.5, 30)])
 	r.append_array(_stair(plant, "hrsg1_stair", true))
-	r.append_array([_to(93.5, 44.5), _to(140, 36), _to(165, 36), _to(165, 30), _to(93.5, 36), _to(-5, 36), _to(-5, 0),
-		_to(-12, 0), _to(-20, 0)])
+	r.append_array([_to(93.5, 44.5), _to(140, 36), _to(165, 36), _to(165, 30)])
+	r.append_array(wtp_loop())
+	r.append_array([_to(165, 30), _to(93.5, 36), _to(-5, 36), _to(-5, 0), _to(-12, 0), _to(-20, 0)])
 	return r
 
 ## The camp walk: about 900 m, 11 minutes at a walk; the interiors load on the way (app/interiors.gd).
@@ -66,3 +69,12 @@ static func camp(_plant) -> Array:
 		# back to the plant
 		_to(-139, 22), _to(-50, 22), _to(-42, 21.2), _to(-5, 21.2), _to(-5, 0), _to(-12, 0)]
 	return out
+## From the cooling tower's north-east corner into the water treatment plant and back (docs/plant3d/SITE.md): across
+## the makeup and transfer pipes' post lines where their posts leave room (x 266: their posts stand at 264.25 and
+## 268.75 on y = 38, at 263.4 and 267.7 on y = 41.5; y 45.5: at y 42 and 50 on x = 271, 43.5 and 47.6 on x = 274.1),
+## in at the treatment building's west door, past the RO trains, out at its north door (y 82: clear of the posts of
+## the permeate and mixed bed lines at y 80.3 and 80.6), and back by the demineralised water tanks.
+static func wtp_loop() -> Array:
+	return [_to(258, 31), _to(266, 31), _to(266, 45.5), _to(294, 45.5), _to(294, 56), _to(303, 56), _to(313, 57.2),
+		_to(327, 57.2), _to(327, 71), _to(322, 71), _to(322, 82), _to(296, 82), _to(294, 72), _to(294, 45.5),
+		_to(266, 45.5), _to(266, 31), _to(258, 31)]

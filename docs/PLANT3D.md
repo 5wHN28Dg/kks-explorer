@@ -1446,10 +1446,10 @@ people are logical as anywhere and drawn only while it is loaded.
 ### 18.6 New kit parts
 
 Water treatment (WATER-TREATMENT.md §5): `screen_band`, `bar_screen`, `clarifier` (circular, solids contact: d,
-depth, bridge), `thickener`, `filter_bank` (gravity cells: cells, cell size, gallery), `pressure_filter` (vertical
+height, bridge), `thickener`, `filter_bank` (gravity cells: cells, cell size, gallery), `pressure_filter` (vertical
 vessel: d, height, media), `cartridge_housing`, `ro_train` (vessels per stage, elements per vessel, frame),
-`degasser` (tower, blower), `ion_exchanger` (mixed bed vessel: d, height, lateral nozzles), `dosing_skid` (day tank,
-metering pumps), `chemical_tank` (FRP, in a bund), `filter_press`, `sample_panel`, `lab_bench`, `agitator`
+`degasser` (tower, blower), `ion_exchanger` (mixed bed vessel: d, height, lateral nozzles), `dosing_skid` (day tank, the
+metering pumps' plinths), `metering_pump`, `chemical_tank` (FRP, in a bund), `filter_press`, `sample_panel`, `lab_bench`, `agitator`
 (on a tank or basin). Camp and site (SITE.md): `bed`, `locker`, `desk`, `chair`, `table`, `bench`, `counter`,
 `shelf`, `washer`, `gym_rack`, `sofa`, `screen` (a TV or wall display), `carpet` (a floor finish), `vehicle` (bus,
 pickup, SUV), `barrier` (a gate arm), `guard_booth`, `canopy` (shade over parking and walkways), `lamp_post`,

@@ -7,7 +7,7 @@ UNITS = {'0': 'Common to the whole plant', '1': 'Gas turbine train 1 (GT 1, gene
 SYSTEMS = {
     'BAC': 'Generator circuit breaker', 'BAT': 'Generator step-up transformer', 'BBT': 'Unit auxiliary transformer',
     'BBA': 'Medium-voltage distribution', 'BFA': 'Low-voltage main distribution',
-    'GHC': 'Demineralised water storage', 'HAC': 'Economiser', 'HAD': 'Evaporator and drum', 'HAH': 'Superheater',
+    'GHC': 'Demineralised water distribution and storage', 'HAC': 'Economiser', 'HAD': 'Evaporator and drum', 'HAH': 'Superheater',
     'HAJ': 'Reheater', 'HAN': 'Boiler drains and vents', 'HNA': 'Flue gas ducts (HRSG inlet and casing)',
     'HNE': 'Stack', 'LAB': 'Feedwater piping', 'LAC': 'Feedwater pumps', 'LAE': 'Superheater spray water',
     'LBA': 'Main steam piping', 'LBB': 'Hot reheat piping', 'LBC': 'Cold reheat piping',
@@ -28,12 +28,26 @@ SYSTEMS = {
     'URA': 'Cooling tower structure',
     # the site and the camp (docs/plant3d/SITE.md §6; UZW's subdivision is our convention)
     'UST': 'Workshops', 'USU': 'Store', 'UYC': 'Administration building', 'UYE': 'Gate house', 'UZA': 'Roads',
-    'UZD': 'Parking', 'UZW': 'Camp: housing and its amenities'}
+    'UZD': 'Parking', 'UZW': 'Camp: housing and its amenities',
+    # the water treatment plant (docs/plant3d/WATER-TREATMENT.md §4: process steps by the key's step letters)
+    'GAA': 'Raw water intake: screens and wet well', 'GAC': 'Raw water piping', 'GAF': 'Raw water pumps',
+    'GBB': 'Pretreatment: gravity filters', 'GBD': 'Pretreatment: coagulation and clarification',
+    'GBL': 'Filtered water storage', 'GBN': 'Pretreatment chemical supply', 'GBR': 'Filter backwash: water and air',
+    'GBS': 'Sludge thickening and dewatering', 'GCB': 'Cartridge filters and reverse osmosis (our convention)',
+    'GCE': 'Acid dosing', 'GCF': 'Ion exchange: mixed beds', 'GCH': 'Degasification',
+    'GCK': 'Degassed water storage and mixed bed feed', 'GCL': 'Demineralised water storage (water treatment plant)',
+    'GCN': 'Chemical supply before the RO (bisulphite, antiscalant)', 'GCP': 'Mixed bed regeneration',
+    'GHA': 'Service water distribution', 'GHB': 'Filtered water distribution: cooling tower makeup',
+    'GNR': 'Neutralisation of waste water', 'QUG': 'Water treatment sampling and laboratory',
+    'CWD': 'Water treatment plant control desk', 'UGA': 'Intake structure', 'UGD': 'Water treatment building',
+    'UGQ': 'Sludge dewatering building', 'UTS': 'Chemical storage building'}
 EQUIPMENT = {'AA': 'Valve or damper with its actuator', 'AC': 'Heat exchanger or heating surface',
              'AE': 'Turning, driving or lifting gear', 'AN': 'Fan or compressor', 'AP': 'Pump unit',
-             'AT': 'Filter or cleaning unit', 'BB': 'Vessel or tank', 'BR': 'Pipe', 'BS': 'Silencer'}
+             'AM': 'Mixer or agitator', 'AT': 'Filtering, cleaning or separating unit', 'BB': 'Vessel or tank',
+             'BR': 'Pipe', 'BS': 'Silencer'}
 MEASUREMENTS = {'CB': 'Radiation (flame)', 'CF': 'Flow', 'CG': 'Position or displacement', 'CL': 'Level',
-                'CP': 'Pressure', 'CS': 'Speed', 'CT': 'Temperature', 'CY': 'Vibration'}
+                'CP': 'Pressure', 'CQ': 'Analysis (water quality)', 'CS': 'Speed', 'CT': 'Temperature',
+                'CY': 'Vibration'}
 
 # each medium: its colour group, its band's colour, and the service name stencilled on its pipes
 MEDIA = {'cooling_water': ('water', '#2e7d32', 'Cooling water'), 'raw_water': ('water', '#558b2f', 'Raw water'),
@@ -41,7 +55,12 @@ MEDIA = {'cooling_water': ('water', '#2e7d32', 'Cooling water'), 'raw_water': ('
          'boiler_water': ('water', '#00695c', 'Boiler water'), 'steam_hp': ('steam', '#c62828', 'HP steam'),
          'steam_rh': ('steam', '#ad1457', 'Hot reheat steam'), 'steam_crh': ('steam', '#e57373', 'Cold reheat steam'),
          'steam_lp': ('steam', '#ef6c00', 'LP steam'), 'steam_aux': ('steam', '#d84315', 'Auxiliary steam'),
-         'air': ('air', '#78909c', 'Air'), 'fuel_gas': ('gas', '#f9a825', 'Fuel gas')}
+         'air': ('air', '#78909c', 'Air'), 'fuel_gas': ('gas', '#f9a825', 'Fuel gas'),
+         # the water treatment plant (docs/plant3d/WATER-TREATMENT.md)
+         'clarified_water': ('water', '#689f38', 'Clarified water'),
+         'filtered_water': ('water', '#00796b', 'Filtered water'), 'permeate': ('water', '#0277bd', 'RO permeate'),
+         'demin_water': ('water', '#283593', 'Demineralised water'),
+         'waste_water': ('water', '#6d4c41', 'Waste water')}
 
 
 def plant(codes, area_ids=None):
@@ -62,7 +81,7 @@ def plant(codes, area_ids=None):
     return {'format': 'walkdown-plant', 'version': 2, 'id': 'ccpp', 'title': 'Generic 2-2-1 combined-cycle plant',
             'frequency_hz': 50, 'kks': kks,
             'media': {k: {'group': g, 'band': b, 'name': n} for k, (g, b, n) in MEDIA.items()},
-            'areas': area_ids or ['control', 'bop', 'ct', 'cw', 'gt1', 'trafo1', 'hrsg1', 'st', 'rack'],
+            'areas': area_ids or ['control', 'bop', 'ct', 'cw', 'gt1', 'trafo1', 'hrsg1', 'st', 'rack', 'wtp', 'intake'],
             'ext': ['ambient_t', 'ambient_wb', 'grid_frequency'],
             'start': {'at': [-20, 0, 0], 'yaw': 90}}
 
@@ -105,6 +124,8 @@ def sounds():
               {'colour': 'pink', 'band': [100, 2500], 'gain': 0.5}),
         synth('motor_small', t((100, 0.5), (200, 0.15), (1087, 0.12), (987, 0.06), (1187, 0.06), (271.5, 0.1)),
               {'colour': 'pink', 'band': [200, 4000], 'gain': 0.4}),
+        synth('ro_hp_pump', t((346.5, 0.5), (1386, 0.3), (1286, 0.12), (1486, 0.12), (100, 0.35), (200, 0.12)),
+              {'colour': 'pink', 'band': [300, 6000], 'gain': 0.5}),
         synth('fan_large', t((16, 0.4), (420, 0.1), (100, 0.15)),
               {'colour': 'pink', 'band': [60, 1500], 'gain': 0.6}),
         synth('water_rain', None, {'colour': 'white', 'band': [400, 9000]}),
