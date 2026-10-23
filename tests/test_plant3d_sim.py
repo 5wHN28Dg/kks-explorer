@@ -432,7 +432,7 @@ class GdscriptEngineInterpreter(unittest.TestCase):
             # format 2's unit runs (permits, isolations, the hold node), without its train and water plant runs
             with open(VECTORS2, encoding='utf-8') as f:
                 V2 = json.load(f)
-            V2 = {k: v for k, v in V2.items() if k not in ('train', 'wtp')}
+            V2 = {k: v for k, v in V2.items() if k != 'train' and k not in WTP_RUNS}
             path = os.path.join(d, 'v2.json')
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(V2, f)
