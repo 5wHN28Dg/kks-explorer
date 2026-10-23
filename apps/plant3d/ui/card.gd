@@ -221,14 +221,14 @@ func refresh() -> void:
 	var info = ui.info
 	var e = ui.clock.engine
 	var near: bool = ui.near(code)
-	var ctl: bool = ui.in_control_room()
-	var here := "In the control room" if ctl else ""
+	var ctl: bool = ui.screen_reach(code)
+	var here := "On the screens here" if ctl else ""
 	if ui.index.has(code):
 		var d: float = ui.distance_to(code)
 		var area: String = info.area_titles.get(info.area_of.get(code, ""), "")
 		_where.text = "%s · %s" % [area, "within reach" if near else "%.0f m away" % d]
 		if ctl:
-			_where.text += " · you are in the control room"
+			_where.text += " · on the screens of this desk"
 	else:
 		_where.text = "Not drawn in the plant: worked from the control room screens." + ((" " + here) if here != "" else "")
 	_state.text = " · ".join(info.state_words(code, e))
@@ -264,10 +264,11 @@ func refresh() -> void:
 		var w: Array = o.get("where", ["local", "screen"])
 		var note := ""
 		if not ok:
+			var desks: String = ui.desks_for(o["kks"])
 			if w.has("local") and w.has("screen"):
-				note = "At the equipment (walk up to it) or from the control room"
+				note = "At the equipment (walk up to it) or from the screens at: " + desks
 			elif w.has("screen"):
-				note = "From the control room screens only"
+				note = "From the screens only, at: " + desks
 			else:
 				note = "At the equipment only: walk up to it"
 		(row[5] as Label).text = note

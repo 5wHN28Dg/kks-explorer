@@ -90,6 +90,7 @@
   {"id": "dt_drain", "set": {"dt_drain": 1}, "text": "A demineralised water tank drain valve left open", "kks": "00GCL10BB001", "repair": {"dt_drain": 0}},
   {"id": "tr_a_motor", "set": {"tr_a_fault": 1}, "text": "Demineralised water transfer pump A motor overload", "kks": "00GHC10AP001", "repair": {"tr_a_fault": 0}},
   {"id": "tr_b_motor", "set": {"tr_b_fault": 1}, "text": "Demineralised water transfer pump B motor overload", "kks": "00GHC10AP002", "repair": {"tr_b_fault": 0}},
-  {"id": "nr_ph_drift", "set": {"nr_drift": 1}, "text": "Neutralisation pit pH probe drifts low", "kks": "00GNR10CQ001", "repair": {"nr_drift": 0}}
+  {"id": "nr_ph_drift", "set": {"nr_drift": 1}, "text": "Neutralisation pit pH probe drifts low", "kks": "00GNR10CQ001", "repair": {"nr_drift": 0}},
+  {"id": "dm_drain", "set": {"dm_drain": 1}, "text": "The plant's demineralised water tank drain valve left open", "kks": "00GHC10BB001", "repair": {"dm_drain": 0}}
  ]
 }

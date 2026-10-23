@@ -48,6 +48,8 @@ var ui                          # ui/plant_ui.gd
 var sm                          # ui/screens_model.gd
 var trends                      # ui/trends.gd
 var current := -1               # -1: the overview, else the screen's index in sm.screens
+var _desk_sig := "?"            # the desks the screens were opened at (PLANT3D §14), as a key
+var _here: Array = []           # per screen from the overview (-1) on: whether this desk has it
 var selected := ""              # the selected target: a code, "screen:<i>" (an overview tile) or ""
 var canvas: Control
 var banner: Control
@@ -164,8 +166,38 @@ func canvas_top() -> float:
 
 func open(screen := -1) -> void:
 	visible = true
+	_desks_changed()
 	show_screen(screen)
 	take_focus()
+
+
+## The desk's screens (PLANT3D §14 `desks`): the tabs of the screens this desk has, the overview's tiles of those only.
+## The layouts are made again when the desk changes (the main control room's, the water treatment plant's).
+func _desks_changed() -> void:
+	var sig := ",".join(PackedStringArray(ui.desks_here()))
+	if sig == _desk_sig:
+		return
+	_desk_sig = sig
+	_layouts.clear()
+	_view.clear()
+	_here.clear()
+	for i in range(-1, sm.screens.size()):
+		_here.append(ui.screen_here(i))
+	for k in _tab_btns.size():
+		(_tab_btns[k] as Button).visible = _here[k]
+
+
+## Whether screen i (−1: the overview) is on the desk the screens were opened at.
+func here(i: int) -> bool:
+	return i + 1 < _here.size() and _here[i + 1]
+
+
+## The first screen of this desk: the overview where it has it.
+func _first_here() -> int:
+	for i in range(-1, sm.screens.size()):
+		if here(i):
+			return i
+	return -1
 
 
 ## The keys and the gamepad work the canvas: it takes the focus when the screens open and when a panel over them
@@ -179,7 +211,10 @@ func take_focus() -> void:
 func show_screen(i: int) -> void:
 	if current != i and _layouts.has(current):
 		_view[current] = [zoom, offset]
-	current = clampi(i, -1, sm.screens.size() - 1)
+	i = clampi(i, -1, sm.screens.size() - 1)
+	if not here(i):
+		i = _first_here()
+	current = i
 	for k in _tab_btns.size():
 		(_tab_btns[k] as Button).set_pressed_no_signal(k == current + 1)
 	_layout_of(current)
@@ -283,7 +318,7 @@ func _process(delta: float) -> void:
 	if _frame_us > 2000:
 		frames_over_2ms += 1
 	_frame_us = 0
-	if ui.clock == null or not ui.in_control_room():
+	if ui.clock == null or not ui.at_desk():
 		ui.close_screens()
 		return
 	_t += delta
@@ -504,10 +539,11 @@ func _make_overview() -> Dictionary:
 	var tw := 372.0
 	var th := 170.0
 	var tper := 4
-	for i in sm.screens.size():
-		var r := Rect2(24.0 + (i % tper) * (tw + PAD * 2), y + (i / tper) * (th + PAD * 2), tw, th)
-		out.cells.append({"rect": r, "id": "screen:%d" % i, "kind": "tile"})
-	y += ceili(sm.screens.size() / float(tper)) * (th + PAD * 2)
+	var shown: Array = range(sm.screens.size()).filter(func(i): return here(i))    # this desk's screens
+	for n in shown.size():
+		var r := Rect2(24.0 + (n % tper) * (tw + PAD * 2), y + (n / tper) * (th + PAD * 2), tw, th)
+		out.cells.append({"rect": r, "id": "screen:%d" % shown[n], "kind": "tile"})
+	y += ceili(shown.size() / float(tper)) * (th + PAD * 2)
 	x = 24.0 + mini(maxi(keys.size(), 1), per) * (kw + PAD * 2)
 	out.size = Vector2(maxf(x, 24.0 + tper * (tw + PAD * 2)), y + 16.0)
 	return out
@@ -731,11 +767,21 @@ func _canvas_input(ev: InputEvent) -> void:
 
 
 func _prev_screen() -> int:
-	return current - 1 if current > -1 else sm.screens.size() - 1
+	var i := current
+	for k in sm.screens.size() + 1:
+		i = i - 1 if i > -1 else sm.screens.size() - 1
+		if here(i):
+			return i
+	return current
 
 
 func _next_screen() -> int:
-	return current + 1 if current < sm.screens.size() - 1 else -1
+	var i := current
+	for k in sm.screens.size() + 1:
+		i = i + 1 if i < sm.screens.size() - 1 else -1
+		if here(i):
+			return i
+	return current
 
 
 func _pinch_dist() -> float:
@@ -842,6 +888,9 @@ func go_to_alarm(k: int) -> void:
 	var a: Dictionary = ui.model.alarms[k]
 	var c = a.get("kks", a.get("where"))
 	if c == null or not sm.screen_of.has(c):
+		return
+	if not here(sm.screen_of[c][0]):
+		ui.toast("%s is on the screens at: %s." % [c, ui.desks_for(c)])
 		return
 	show_screen(sm.screen_of[c][0])
 	select(c)

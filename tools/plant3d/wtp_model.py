@@ -77,6 +77,7 @@ FAULTS = [  # trainer faults (WATER-TREATMENT §7), each repaired at its equipme
     ('tr_a_motor', {'tr_a_fault': 1}, 'Demineralised water transfer pump A motor overload'),
     ('tr_b_motor', {'tr_b_fault': 1}, 'Demineralised water transfer pump B motor overload'),
     ('nr_ph_drift', {'nr_drift': 1}, 'Neutralisation pit pH probe drifts low'),
+    ('dm_drain', {'dm_drain': 1}, 'The plant\'s demineralised water tank drain valve left open'),
 ]
 
 
@@ -85,13 +86,15 @@ def bop_tie(m):
     00GHC10BB001, at the train's model rate (WATER-TREATMENT §8). Filled by the WTP's transfer pumps, drawn by the
     hotwell makeup (st: hw_mk, kg/s) and the HRSG's continuous losses while it makes steam (blowdown, sampling: ~8 m³/h,
     1–2 % of its steam, §2). Read through lags: those values come later in the joined model (PLANT3D §7.1)."""
+    m.state('dm_drain', 0, '00GHC10BB001')
     m.lag('dm_in', 'tr_q', 10, init=TRANSFER, unit='m³/h')
     m.lag('dm_hw', 'hw_mk', 1)
     m.lag('dm_gen', 'hp_gen', 1)
     m.cmp('dm_hrsg_on', 'dm_gen', '>', 1)
     m.prod('dm_loss', ['dm_hrsg_on', 8])
     m.prod('dm_hw_q', ['dm_hw', 3.6])
-    m.sum('dm_out', ['dm_hw_q', 'dm_loss'], 'm³/h')
+    m.prod('dm_drain_q', ['dm_drain', 300])
+    m.sum('dm_out', ['dm_hw_q', 'dm_loss', 'dm_drain_q'], 'm³/h')
     m.diff('dm_net', 'dm_in', 'dm_out')
     m.integ('dm_lvl', 'dm_net', round(100 / (3600 * PLANT_DEMIN_TANK), 12), 0, 100, 80, '%', '00GHC10BB001')
     m.cmp('dm_ok', 'dm_lvl', '>', 3)

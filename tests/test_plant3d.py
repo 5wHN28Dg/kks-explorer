@@ -307,18 +307,131 @@ class WaterTreatment(unittest.TestCase):
         self.assertTrue(all(s['go'] == 'walk' for s in t['steps']))
 
     def test_running_pumps_turn_and_sound(self):
-        """W1 has no behaviour (W2's): the running half of each pair turns and sounds, the standby ones are still."""
+        """W2: every pump and blower of the WTP turns, sounds and lights its lamp by its model value; in the train's
+        scenarios the running half of each pair runs (WATER-TREATMENT §8: in service in cold_iron), the standby half
+        and the backwash's pump and blower stand still."""
         bind = []
         for aid in ('wtp', 'intake'):
             with open(os.path.join(DATA, 'model', f'{aid}.json'), encoding='utf-8') as f:
                 bind += json.load(f)['bind']
-        sounding = {b['kks'] for b in bind if 'sound' in b}
-        turning = {b['kks'] for b in bind if b.get('anim') == 'shaft'}
-        for code in ('00GAF10AP001', '00GAF10AP002', '00GHB10AP001', '00GCB21AP001', '00GHC10AP001'):
-            self.assertIn(code, sounding)
-            self.assertIn(code, turning)
-        for code in ('00GAF10AP003', '00GHB10AP002', '00GCB22AP001', '00GHC10AP002', '00GBR10AP001'):
-            self.assertNotIn(code, sounding | turning)
+        b = P.check_dir(DATA)
+        e = P.Engine(b, 'cold_iron')
+        shaft = {x['kks']: x['of'] for x in bind if x.get('anim') == 'shaft'}
+        sounding = {x['kks'] for x in bind if 'sound' in x}
+        lamp = {x['kks'] for x in bind if x.get('lamp') == 'running'}
+        for code in ('00GAF10AP001', '00GAF10AP002', '00GHB10AP001', '00GHA10AP001', '00GCB21AP001', '00GCK10AP001',
+                     '00GHC10AP001', '00GCH10AN001'):
+            self.assertIn(code, sounding & lamp)
+            self.assertEqual(e.v(shaft[code]), 1, code)
+        for code in ('00GAF10AP003', '00GHB10AP002', '00GCB22AP001', '00GHC10AP002', '00GBR10AP001', '00GBR10AN001'):
+            self.assertIn(code, sounding & lamp)
+            self.assertEqual(e.v(shaft[code]), 0, code)
+
+
+class WaterTreatmentModel(unittest.TestCase):
+    """Milestone W2 (WATER-TREATMENT.md §5–§8): the WTP started from cold by its procedure, its other procedures run in
+    the model alone, the main control room reads its overview without working it, every alarm of §6 is in the model,
+    and the ties to the train are transparent while the WTP is in service (the train's values unchanged)."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(G.OUT2, encoding='utf-8') as f:
+            cls.V2 = json.load(f)
+        with open(G.OUT, encoding='utf-8') as f:
+            cls.train = json.load(f)['train']
+        cls.b = P.check_dir(DATA)
+
+    def test_start_from_cold(self):
+        t = self.V2['wtp']
+        self.assertEqual((t['scenario'], t['procedure']), ('wtp_cold', 'wtp_start'))
+        self.assertEqual([s['id'] for s in self.b.procedures['wtp_start']['steps']], [s for s, _ in t['steps']])
+        self.assertEqual({e[1] for e in t['events']}, {'op', 'machine'}, 'no alarm, trip or interlock on the way')
+        self.assertTrue(all(e[4] == 'done' for e in t['events'] if e[1] == 'op'))
+        init = self.b.scenarios['wtp_cold']['init']
+        for st in ('rw_a_cmd', 'rw_b_cmd', 'mk_a_cmd', 'sw_a_cmd', 'mf_a_cmd', 'tr_a_cmd', 'dg_cmd'):
+            self.assertEqual(init[st], 0, st)
+        for lvl in ('ft_lvl', 'dg_lvl', 'dt_a_lvl', 'dt_b_lvl'):
+            self.assertEqual(init[lvl], 60, lvl)
+        end = t['snapshots'][-1]
+        self.assertEqual(end['machines']['ro_a'], 'service')
+        self.assertEqual(end['machines']['mb_a'], 'service')
+        v = end['values']
+        self.assertEqual(v['mb_a_making'], 1)
+        self.assertGreaterEqual(v['tr_q'], 30)
+        self.assertGreaterEqual(v['wt_raw'], 1000)
+        self.assertLess(v['ro_a_cond'], 50)
+        self.assertLess(v['mb_a_cond'], 0.1)
+        self.assertEqual(v['mk_avail'], 1)
+        self.assertLess(t['until'] / 600, 45, 'about half an hour of model time')
+
+    def test_other_procedures_run_in_the_model_alone(self):
+        for pid, last in (('filter_backwash', 'back'), ('ro_stop_flush', 'mb')):
+            with self.subTest(pid):
+                e, log = P.run_procedure(self.b, pid)
+                self.assertEqual(log[-1][0], last)
+                self.assertTrue(all(x[4] == 'done' for x in e.events if x[1] == 'op'))
+                self.assertEqual({x[1] for x in e.events} - {'op', 'machine'}, set())
+        e, _ = P.run_procedure(self.b, 'filter_backwash')
+        moves = [x[4] for x in e.events if x[1] == 'machine' and x[2] == 'filter1']
+        self.assertEqual(moves, ['drain', 'air', 'air_water', 'rinse', 'service'])
+        self.assertAlmostEqual(e.v('fl1_hl'), 0.3)
+
+    def test_main_control_room_reads_the_wtp_without_working_it(self):
+        """§7: the WTP's own desk works it; the main control room's desks show its overview only (PLANT3D §14)."""
+        with open(os.path.join(DATA, 'screens.json'), encoding='utf-8') as f:
+            sc = json.load(f)
+        main, wtp = {'00CWA10', '00CWB10'}, {'00CWD10'}
+        self.assertEqual(set(sc['overview']['desks']), main)
+        screen_ops = {o['kks'] for o in self.b.model.ops if 'screen' in o['where']}
+        by_id = {x['id']: x for x in sc['screens']}
+        for code, (sid, _) in self.b.screen_of.items():
+            desks = set(by_id[sid]['desks'])
+            if sid.startswith('wtp'):
+                if desks & main:
+                    self.assertNotIn(code, screen_ops, f'{code}: worked from the main control room')
+                if code in screen_ops:
+                    self.assertEqual(desks, wtp, code)
+        self.assertEqual(set(by_id['wtp']['desks']), main | wtp)
+        self.assertEqual(self.b.screen_of['00GHC10BB001'][0], 'aux', 'the plant\'s demin tank on the train\'s screens')
+
+    def test_every_alarm_of_the_table_is_in_the_model(self):
+        """WATER-TREATMENT §6, by code and ISA letters."""
+        rows = [('00GAA10CL001', 'LAL'), ('00GAA10CL001', 'LALL'), ('00GBD11CQ001', 'QAH'), ('00GBD12CQ001', 'QAH'),
+                ('00GBN10BB001', 'LAL'), ('00GBL10CL001', 'LAL'), ('00GCB21CQ002', 'QAH'), ('00GCB21CQ002', 'QAHH'),
+                ('00GCB22CQ002', 'QAHH'), ('00GCB11CP001', 'PDAH'), ('00GCB12CP001', 'PDAH'), ('00GCB21CP001', 'PAH'),
+                ('00GCB21CP001', 'PAHH'), ('00GCB22CP002', 'PALL'), ('00GCB21CF001', 'FAL'), ('00GCB21CQ001', 'QAH'),
+                ('00GCF11CQ001', 'QAH'), ('00GCF12CQ002', 'QAH'), ('00GCL10CL001', 'LAL'), ('00GCL10CL002', 'LALL'),
+                ('00GNR10CQ001', 'QAH'), ('00GBS10AT001', 'LAH'), ('00GHC10BB001', 'LAL')] + \
+               [(f'00GBB1{i}CP001', 'PDAH') for i in range(1, 7)]
+        have = {(a['kks'], a.get('isa')) for a in self.b.model.alarms}
+        for r in rows:
+            self.assertIn(r, have)
+        for code in ('00GAF10AP001', '00GAF10AP002', '00GAF10AP003'):
+            self.assertIn(code, {a['kks'] for a in self.b.model.alarms})
+
+    def test_the_ties_are_transparent_while_the_wtp_runs(self):
+        """§8: in the cold start the WTP supplies the makeup and the demin tank throughout, so the train's makeup flow
+        and hotwell makeup are what they were before the ties (the factor is exactly 1)."""
+        for s in self.train['snapshots']:
+            v = s['values']
+            self.assertEqual((v['ct_mk_sup'], v['mk_avail'], v['dm_ok'], v['hw_mk_ok']), (1, 1, 1, 1), s['step'])
+            self.assertAlmostEqual(v['ct_mk_flow'], v['ct_mk_pos'] * 800, delta=1e-6)
+            self.assertGreater(v['dm_lvl'], 30)
+        nodes = {n: node for n, node, _ in self.b.model.values}
+        self.assertEqual(nodes['ct_mk_flow']['product'], ['ct_mk_pos', 800, 'ct_mk_sup'])
+        self.assertEqual(nodes['hw_mk_ok']['and'], ['hw_mk_free', 'dm_ok'])
+
+    def test_two_speeds(self):
+        """§5: the WTP's inventories at clock rate (× day_scale), the plant's demin tank at the train's rate."""
+        import wtp_model
+        nodes = {n: node for n, node, _ in self.b.model.values}
+        D = wtp_model.DAY
+        self.assertAlmostEqual(nodes['dt_a_lvl']['gain'], D * 100 / (3600 * 1500))
+        self.assertAlmostEqual(nodes['dm_lvl']['gain'], 100 / (3600 * 300))
+        self.assertAlmostEqual(nodes['mb_a_ex']['gain'], D / 3600)
+        # a mixed bed lasts about three clock days at design: 1/72 of its capacity per clock hour
+        rate = 40 * 26.56 * 1 * 1 * nodes['mb_a_rate']['product'][-1]
+        self.assertAlmostEqual(rate, 1 / 72, places=6)
 
 
 class Validator(unittest.TestCase):
@@ -837,6 +950,10 @@ class Vectors2(unittest.TestCase):
             d = close(plain(x.snapshot(values=False)), f['end'], f['id'])
             self.assertIsNone(d, d)
 
+    def test_wtp_replays(self):
+        """W2: the water treatment plant's start from cold, its snapshots and forks, from its inputs alone."""
+        Vectors._replay(self, P.check_dir(DATA), self.V["wtp"])
+
     def test_format1_vectors_keep_their_synthetic_parts(self):
         """plant3d-v1.json's synthetic plant, rejects, unit runs and links are format 1's and stay what they were;
         its train runs only gained the first train's format 2 values (their events are unchanged)."""
@@ -953,7 +1070,8 @@ class Forks(unittest.TestCase):
             V = json.load(f)
         cls.forks = V['train']['forks'] + V['hot']['forks']
         with open(G.OUT2, encoding='utf-8') as f:
-            cls.forks += json.load(f)['train']['forks']      # format 2: permits to work on the first train
+            V2 = json.load(f)
+        cls.forks += V2['train']['forks'] + V2['wtp']['forks']   # format 2: permits, the WTP (W2) and its ties
         cls.b = P.check_dir(DATA)
 
     def test_expectations(self):

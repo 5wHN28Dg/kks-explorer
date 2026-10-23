@@ -32,6 +32,15 @@ permit numbers on the screens and cards, the debrief's Permits tab, saved runs w
 pumps have no standby auto-start (format 1's behaviour, unchanged): the auto-start skipped by a lock is shown on the CCW
 pumps. Locks are not yet drawn in the field (chains, padlocks and tags on the parts: with the kit work of S2).
 
+**W2 as built (2026-10-23):** the WTP's model (WATER-TREATMENT.md §8b) with 11 sequences (six filters' backwash, two
+RO trains, two mixed beds, the coagulant tank's fill), 18 trips in five first-out groups, 8 interlocks and 44 alarms;
+its six screens on its own desk (screens.json `desks`, PLANT3D §14), its overview also on the main control room's;
+the procedures `wtp_start`, `filter_backwash` and `ro_stop_flush`; 20 faults; the ties to the first train (makeup and
+the plant's demin tank, its low alarm on the train's screens). The vectors: `plant3d-v2.json` gains `wtp` (the start
+from cold and 26 forks), the train's tie forks and the `desks` rejects; format 1's `train` and `hot` keep every input,
+event and value they had (the WTP's values added). Not yet: the WTP's local panel apart from its desk, CIP, the mixed
+beds' regeneration and the scenarios `wtp_normal` and `wtp_flood` (W3).
+
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4
 needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, S2 with C1, then S3, then S4.
 
