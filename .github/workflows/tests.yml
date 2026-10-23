@@ -159,7 +159,7 @@ jobs:
   # vectors built and replayed, which have shards of their own
   python:
     runs-on: ubuntu-26.04
-    timeout-minutes: 20
+    timeout-minutes: 30  # (main's, from when the job was one; each shard has taken under 9 minutes)
     strategy:
       fail-fast: false
       matrix:
