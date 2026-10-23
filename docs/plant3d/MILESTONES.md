@@ -54,6 +54,13 @@ operators' permits; their own jobs and play come with S2); places and ways measu
 dots. Step cost on the laptop: 17 µs mean, 56 µs at the shift change (an estimated 0.18 ms on the Note 9: not
 measured on the phone yet, and so the Note 9 walk of the frame rules is not run for S1, which draws only capsules).
 
+**W3 as built (2026-10-23):** the RO's cleaning in place with its skid (tank, heater, pump), a mixed bed's
+regeneration, the neutralisation pit's batch, eight more faults (with a chlorine damage only new membranes repair and a
+resin leak repaired under a permit), the scenarios `wtp_normal` and `wtp_flood`, the procedures `ro_cip` and
+`mb_regeneration` (WATER-TREATMENT.md §8c); `plant3d-v2.json` gains the runs `wtp_cip` and `wtp_regen` with their forks
+and the WTP's fault forks. A `screens:` link opens its screen at a desk that has it (the WTP's own for its screens).
+The CIP skid and the pit's dosing skids are new drawing (five small parts); not yet walked on the Note 9.
+
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4
 needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, S2 with C1, then S3, then S4.
 

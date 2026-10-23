@@ -85,7 +85,17 @@
   {"id": "tr_a_motor", "set": {"tr_a_fault": 1}, "text": "Demineralised water transfer pump A motor overload", "kks": "00GHC10AP001", "repair": {"tr_a_fault": 0}},
   {"id": "tr_b_motor", "set": {"tr_b_fault": 1}, "text": "Demineralised water transfer pump B motor overload", "kks": "00GHC10AP002", "repair": {"tr_b_fault": 0}},
   {"id": "nr_ph_drift", "set": {"nr_drift": 1}, "text": "Neutralisation pit pH probe drifts low", "kks": "00GNR10CQ001", "repair": {"nr_drift": 0}},
-  {"id": "dm_drain", "set": {"dm_drain": 1}, "text": "The plant's demineralised water tank drain valve left open", "kks": "00GHC10BB001", "repair": {"dm_drain": 0}}
+  {"id": "dm_drain", "set": {"dm_drain": 1}, "text": "The plant's demineralised water tank drain valve left open", "kks": "00GHC10BB001", "repair": {"dm_drain": 0}},
+  {"id": "as_pump", "set": {"as_a_fault": 1}, "text": "Antiscalant dosing pump A fails: the RO membranes scale faster", "kks": "00GCN20AP001", "repair": {"as_a_fault": 0}},
+  {"id": "cl_upset", "set": {"cl_upset": 1}, "text": "Clarifier A: its rake drive stalls, the sludge blanket rises and floc carries over", "kks": "00GBD11AT001", "repair": {"cl_upset": 0}},
+  {"id": "fl3_underdrain", "set": {"fl3_ud": 1}, "text": "Filter 3: a broken underdrain nozzle lets media and dirt through (breakthrough)", "kks": "00GBB13AT001", "repair": {"fl3_ud": 0}},
+  {"id": "dg_motor", "set": {"dg_fault": 1}, "text": "Degasser blower motor overload: carbon dioxide stays in the permeate", "kks": "00GCH10AN001", "repair": {"dg_fault": 0}},
+  {"id": "ro_b_fouling", "set": {"ro_b_fast": 1}, "text": "RO B fouls fast (a colloid upset upstream): cleaning due early", "kks": "00GCB22AT001", "repair": {"ro_b_fast": 0}},
+  {"id": "mb_a_resin", "set": {"mb_a_resin": 1}, "text": "Mixed bed A: a broken underdrain lateral leaks resin into the outlet strainer", "repair": {"mb_a_resin": 0}},
+  {"id": "mb_b_resin", "set": {"mb_b_resin": 1}, "text": "Mixed bed B: a broken underdrain lateral leaks resin into the outlet strainer", "repair": {"mb_b_resin": 0}},
+  {"id": "cip_heater", "set": {"cip_heat_fault": 1}, "text": "The CIP tank heater's thermostat sticks: the solution overheats", "kks": "00GCB30AH001", "repair": {"cip_heat_fault": 0}},
+  {"id": "ro_a_cl_damage", "set": {"ro_a_dmg": 1}, "text": "RO A: the membranes oxidised by chlorine pass salt (new membranes needed)", "when": "ro_a_cl_dmg_c", "repair": {"ro_a_dmg": 0}},
+  {"id": "ro_b_cl_damage", "set": {"ro_b_dmg": 1}, "text": "RO B: the membranes oxidised by chlorine pass salt (new membranes needed)", "when": "ro_b_cl_dmg_c", "repair": {"ro_b_dmg": 0}}
  ],
  "start": {"day": 1, "time": "05:30"},
  "staff": {"seed": 1}

@@ -1,6 +1,6 @@
 extends SceneTree
 ## Replays ref/vectors/plant3d-v1.json and plant3d-v2.json (format 2: permits, isolations, the hold node; the water
-## treatment plant's start from cold, `wtp`) through the
+## treatment plant's start from cold, `wtp`; W3's cleaning in place, `wtp_cip`, and regeneration, `wtp_regen`) through the
 ## app's engine (apps/plant3d/sim) and compares it with the reference (ref/plant3d.py), headless:
 ##   godot --headless --script apps/plant3d/sim/tests/run_vectors.gd [-- options]
 ## Options:
@@ -29,6 +29,8 @@ const Links = preload("../links.gd")
 const JsonStrict = preload("../json_strict.gd")
 
 const CHUNK := 1000
+## the water treatment plant's runs in plant3d-v2.json, each a start by its procedure with forks (W2, W3)
+const WTP_RUNS := ["wtp", "wtp_cip", "wtp_regen"]
 
 var repo := ""
 var opts := {}
@@ -75,12 +77,13 @@ func _init() -> void:
 		expected += 1 + V2["steps"].size()
 		if V2.has("train"):
 			expected += V2["train"]["forks"].size()
+		for k in WTP_RUNS:         # the water treatment plant's runs by their procedures (W2, W3): procedure, run, forks
+			if V2.has(k):
+				expected += 2 + V2[k]["forks"].size()
 		if V2.has("staff"):
 			expected += 1 + V2["staff"]["runs"].size()
 		if V2.has("day"):
 			expected += 1 + V2["day"]["forks"].size()
-		if V2.has("wtp"):          # the water treatment plant's start from cold (W2): its procedure, run and forks
-			expected += 2 + V2["wtp"]["forks"].size()
 	var valid_files: Dictionary = V["valid"][0]["files"]
 	# the starts run by their procedures: the cold start (`train`) and the hot restart (`hot`, where the file has it)
 	var starts := ["train", "hot"].filter(func(k): return V.has(k))
@@ -102,7 +105,7 @@ func _init() -> void:
 			_steps(k, V2["steps"][k], V2["valid"][0]["files"], "v2/")
 		if V2.has("staff"):
 			_staff(V2["staff"])
-	if parts.has("procedure") or parts.has("train") or V2.has("train") or V2.has("wtp"):
+	if parts.has("procedure") or parts.has("train") or V2.has("train") or WTP_RUNS.any(func(k): return V2.has(k)):
 		train_model = PlantModel.from_dir(opts.get("data", repo.path_join("data/plant3d")))
 		if train_model.error != "":
 			_result("train model", train_model.error)
@@ -115,9 +118,10 @@ func _init() -> void:
 			_train(V[st], train_model, st)
 	if V2.has("train"):
 		_train(V2["train"], train_model, "v2/train")
-	if V2.has("wtp"):
-		_procedure(V2["wtp"], train_model)
-		_train(V2["wtp"], train_model, "v2/wtp")
+	for k in WTP_RUNS:
+		if V2.has(k):
+			_procedure(V2[k], train_model)
+			_train(V2[k], train_model, "v2/" + k)
 	if V2.has("day"):
 		_day(V2["day"], train_model)
 	if opts.has("digests"):

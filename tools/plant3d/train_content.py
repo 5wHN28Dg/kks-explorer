@@ -42,7 +42,8 @@ SYSTEMS = {
     'CWD': 'Water treatment plant control desk', 'UGA': 'Intake structure', 'UGD': 'Water treatment building',
     'UGQ': 'Sludge dewatering building', 'UTS': 'Chemical storage building'}
 EQUIPMENT = {'AA': 'Valve or damper with its actuator', 'AC': 'Heat exchanger or heating surface',
-             'AE': 'Turning, driving or lifting gear', 'AN': 'Fan or compressor', 'AP': 'Pump unit',
+             'AE': 'Turning, driving or lifting gear', 'AH': 'Heating or cooling unit', 'AN': 'Fan or compressor',
+             'AP': 'Pump unit',
              'AM': 'Mixer or agitator', 'AT': 'Filtering, cleaning or separating unit', 'BB': 'Vessel or tank',
              'BR': 'Pipe', 'BS': 'Silencer'}
 MEASUREMENTS = {'CB': 'Radiation (flame)', 'CF': 'Flow', 'CG': 'Position or displacement', 'CL': 'Level',
@@ -264,7 +265,14 @@ def scenarios(state_kks):
             # WATER-TREATMENT §7: the water treatment plant stopped, its tanks at 60 %; the train at cold iron
             {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'wtp_cold',
              'title': 'Water treatment plant stopped, tanks at 60 %', 'init': dict(COLD_INIT, **wtp_model.COLD_WTP),
-             'latched': latched, 'faults': faults}]
+             'latched': latched, 'faults': faults},
+            # W3: the water treatment plant's day work, and the river in flood
+            {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'wtp_normal',
+             'title': 'Water treatment plant: a normal day\'s work',
+             'init': dict(COLD_INIT, **wtp_model.NORMAL_WTP), 'latched': latched, 'faults': faults},
+            {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'wtp_flood',
+             'title': 'Water treatment plant: the river in flood (500 NTU)',
+             'init': dict(COLD_INIT, **wtp_model.FLOOD_WTP), 'latched': latched, 'faults': faults}]
 
 
 def k(code):

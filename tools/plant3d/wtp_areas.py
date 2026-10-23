@@ -326,13 +326,30 @@ def treatment_building():
                       [child(f'00GCF1{n}CQ001', f'Mixed bed {L} outlet conductivity', 'local_panel', [1.3, -0.6, 0],
                              {'width': 0.4, 'height': 0.6}, 180),
                        child(f'00GCF1{n}CQ002', f'Mixed bed {L} outlet silica', 'local_panel', [1.3, 0.3, 0],
-                             {'width': 0.4, 'height': 0.6}, 180)]))
+                             {'width': 0.4, 'height': 0.6}, 180),
+                       pg(f'00GCF1{n}CP001', f'Mixed bed {L} outlet strainer differential pressure', [0, 2],
+                          [0.9, 0.9, 0.9])]))
     eqs.append(eq('00GCP10BB001', 'Regeneration acid tank (hydrochloric acid)', 'chemical_tank', [303.5, 53.3, 0], 0,
                   {'d': 1.4, 'height': 2.2, 'bund': True}, 'side'))
     eqs.append(eq('00GCP20BB001', 'Regeneration caustic tank (sodium hydroxide)', 'chemical_tank', [307.5, 53.3, 0], 0,
                   {'d': 1.4, 'height': 2.2, 'bund': True}, 'side'))
     eqs.append(eq('00GCP30AN001', 'Resin mixing air blower', 'compressor_skid', [303, 58, 0], 0,
                   {'kw': 7.5, 'length': 1.6, 'width': 1.0}, 'side'))
+    # the RO's clean-in-place skid (WATER-TREATMENT §3 "RO cleaning", milestone W3), between the regenerant tanks and
+    # RO train A: its tank with the immersion heater, temperature and pH; the recirculation pump and its cartridge
+    # filter (4 m³ and 50 m³/h: 6–10 m³/h per vessel over the six vessels of a first stage, [FT] tables 35–37; ours)
+    eqs.append(eq('00GCB30BB001', 'RO cleaning (CIP) tank', 'tank_vertical', [311.5, 52.6, 0], 0,
+                  {'d': 1.8, 'height': 2.0, 'roof': 'dome'}, 'side',
+                  [child('00GCB30AH001', 'CIP tank immersion heater', 'junction_box', [0, -1.0, 1.6]),
+                   child('00GCB30CT001', 'CIP tank temperature', 'temperature_element', [0.95, 0, 0.8],
+                         {'range': [0, 60], 'unit': '°C'}),
+                   child('00GCB30CQ001', 'CIP solution pH', 'local_panel', [-1.25, 0.3, 0],
+                         {'width': 0.4, 'height': 0.6}, 90)]))
+    # (south of the hall's walkway from the west door to the RO trains, y 56–58)
+    eqs.append(eq('00GCB30AP001', 'CIP recirculation pump', 'pump_horizontal', [313.8, 52.4, 0], 0,
+                  {'flow_m3h': 50, 'head_m': 40, 'motor_kw': 11, 'length': 1.8}, 'motor_side'))
+    eqs.append(eq('00GCB30AT001', 'CIP cartridge filter', 'cartridge_housing', [315.4, 52.4, 0], 270,
+                  {'d': 0.5, 'height': 1.4}, 'side'))
     # the WTP's control room and laboratory (behind the partitions at the east end)
     eqs.append(eq('00CWD10', 'Water treatment plant control desk', 'operator_desk', [335, 68.8, 0], 180,
                   {'width': 3.2, 'screens': 3}, 'front'))
@@ -374,7 +391,9 @@ def degassing_and_demin():
     eqs, pipes = [], []
     eqs.append(eq('00GCH10AT001', 'Degasser tower', 'degasser', [305, 88.5, 0], 90, {'d': 1.8, 'height': 7}, 'side',
                   [child('00GCH10AN001', 'Degasser blower', 'compressor_skid', [2.6, 0.25, 0],
-                         {'kw': 4, 'length': 1.4, 'width': 0.9}, 270)]))
+                         {'kw': 4, 'length': 1.4, 'width': 0.9}, 270),
+                   child('00GCH10CQ001', 'Degassed water carbon dioxide', 'local_panel', [0.3, -1.5, 0],
+                         {'width': 0.4, 'height': 0.6}, 180)]))
     eqs.append(eq('00GCK10BB001', 'Degassed water tank', 'tank_vertical', [312, 88.5, 0], 90,
                   {'d': 4, 'height': 4, 'roof': 'cone'}, 'side'))
     for n, y in ((1, 88.5), (2, 85.5)):
@@ -441,6 +460,9 @@ def chemicals_and_wastes():
                          {'width': 0.4, 'height': 0.6})]))
     eqs.append(eq('00GNR10AM001', 'Neutralisation pit agitator', 'agitator', [373.8, 67, 0], 0,
                   {'kw': 4, 'd': 1.0, 'shaft': 2.3}, 'motor'))
+    # the pit's acid and caustic dosing (WATER-TREATMENT §3 #13, milestone W3), worked by its neutralisation batch
+    eqs.append(dosing('00GNR20', 'Pit acid (hydrochloric acid)', [369, 61.6, 0], 0, 500, pumps=1))
+    eqs.append(dosing('00GNR30', 'Pit caustic (sodium hydroxide)', [372.5, 61.6, 0], 0, 500, pumps=1))
     for n, y in ((1, 65.2), (2, 68.8)):
         L = 'AB'[n - 1]
         eqs.append(eq(f'00GNR10AP00{n}', f'Neutralisation pit discharge pump {L}', 'pump_vertical', [372.4, y, 0], 270,
