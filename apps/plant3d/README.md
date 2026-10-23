@@ -153,6 +153,20 @@ from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.
   the last is off. A locked code refuses its operations (the card says why), skips every automatic write (a standby
   pump's auto-start) and suppresses its alarms; an isolated transmitter holds its reading and votes tripped. The
   screens and cards show a padlock and the permit's number; the debrief has a Permits tab.
+- **Crews** (`ui/crew_panel.gd`, `ui/people_view.gd`; docs/PLANT3D.md §16–§18.7, milestone S1): the Crew button (R)
+  in a run with staff (`shift_cold`: the day shift, the plant cold; the panel offers it in other runs). At the
+  shift's start the plant waits for a role: the shift supervisor, a control room operator, a field operator (each
+  with the round of their area) or the electrical authorised person, each person on duty or coming on; or free
+  mode. The panel then shows the role's current task step by step (Take me there, Write down a reading, Send a
+  message, Call, a choice), the tasks waiting, "Seen" for what is new (fast-forward waits for it), the readings sheet
+  with each reading in range, out of range or misread, the radio between the roles (and the role's requests to other
+  roles), and "Sleep to" the next shift when the plant is quiet and no permit is open. Ops made while playing are
+  the person's: from the screens (`screen`) or at the equipment (`local`), refused when the role lacks the
+  authority or the op lacks that `where`; permits and locks are the person's too. The NPC colleagues are capsules in
+  the plant and dots on the map (by role's colour) until their avatars (milestone A1). The staff's step costs 17 µs
+  a step on average on the laptop and 56 µs at the shift change (`sim/tests/bench_step.gd`, `STEP phase=staff_*`;
+  2026-10-23, the machine shared with other jobs): about 0.18 ms there on the Note 9 at its usual 3.3 times, within
+  the 0.3 ms of PLANT3D.md §18.4 (not yet measured on the phone).
 - **Handwheels:** a CW pump's discharge valve whose actuator has lost its supply is worked at the valve: Open or Close
   by handwheel, Stop turning (five minutes over the full travel).
 - **Bindings:** the kit's moving pieces are children of the equipment's node named by their channel (`shaft`,

@@ -32,6 +32,18 @@ permit numbers on the screens and cards, the debrief's Permits tab, saved runs w
 pumps have no standby auto-start (format 1's behaviour, unchanged): the auto-start skipped by a lock is shown on the CCW
 pumps. Locks are not yet drawn in the field (chains, padlocks and tags on the parts: with the kit work of S2).
 
+**S1 as built (2026-10-23):** the reference (`ref/plant3d_staff.py`) and the GDScript engine (`sim/staff.gd`) bit
+for bit on `plant3d-v2.json`'s `staff` (a synthetic plant: rejects and seven runs) and `day` (the first train's day
+shift with seed 1, and four runs with a trainee or a fault); what S1 settles and what waits for S2 and S4 is PLANT3D.md
+§17.8. The first train's staff (`tools/plant3d/train_staff.py`): four crews of a shift supervisor, two control room
+operators, three field operators (each with their round: GT and HRSG, ST and auxiliaries, CW and cooling tower) and
+an electrical authorised person; two mechanical, one electrical and one I&C technician on days (they take the
+operators' permits; their own jobs and play come with S2); places and ways measured on the navigation mesh
+(`tests/staff_layout.gd`) and checked against it by the build (`tests/test_staff_ways.gd`). The scenario
+`shift_cold`; the Crew panel (role, tasks, readings sheet, radio, sleep to the next shift); people as capsules and map
+dots. Step cost on the laptop: 17 µs mean, 56 µs at the shift change (an estimated 0.18 ms on the Note 9: not
+measured on the phone yet, and so the Note 9 walk of the frame rules is not run for S1, which draws only capsules).
+
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4
 needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, S2 with C1, then S3, then S4.
 

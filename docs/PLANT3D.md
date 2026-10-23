@@ -1534,6 +1534,13 @@ interior partition with doors). Geometry is the kit's, as everything (§9).
 
 Every panel works with keyboard, gamepad and touch, as the format 1 panels.
 
+**As built for milestone S1** (the app, 2026-10-23): Start is the Crew panel at the start of a run with staff (the
+roles, each with its people on duty or coming on, or free mode); Tasks, Radio and Time are in that panel too (the
+current task's steps, the tasks waiting, "Seen", the readings sheet, the radio log with the role's requests, "Sleep
+to" the next shift); the permit form is P1's, its actions made as the trainee's person; the map shows people as dots
+by role (no filter yet), and the plant shows them as capsules. PPE, the shift log, the role's day ahead and the
+debrief's role tab come with S2 and S4.
+
 ## 19. Format 2 vectors
 
 `ref/vectors/plant3d-v2.json`, made by `ref/make_plant3d_vectors.py` from `ref/plant3d.py` as format 1's:
