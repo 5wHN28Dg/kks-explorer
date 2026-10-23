@@ -8,7 +8,7 @@ import os, sys, unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHARDS = 3
 # from CI's logs (2026-10-23, the run cut off at its 20 minutes): format 1's vectors ~8 min (the cold start and its
-# forks built, then replayed); format 2's ~7.5 min, with the cold start's timing ~8 min; shard 0 the rest ~4-7 min
+# forks built, then replayed); format 2's ~7.5 min, and ColdStart's ~0.75 min with it: ~8 min; shard 0 the rest
 HEAVY = {'test_plant3d.Vectors': 1, 'test_plant3d.Vectors2': 2, 'test_plant3d.ColdStart': 2}
 
 
@@ -43,7 +43,10 @@ def main(arg):
         raise SystemExit(f'a shard from 0 to {SHARDS - 1}')
     suite = unittest.TestSuite(t for t in tests if shard_of(t) == k)
     print(f'shard {k} of {SHARDS}: {suite.countTestCases()} of {len(tests)} tests', flush=True)
-    r = unittest.TextTestRunner(verbosity=2).run(suite)
+    if not suite.countTestCases():
+        print('no tests in this shard')     # as unittest: a run of nothing is not a pass
+        return 1
+    r = unittest.TextTestRunner(verbosity=2, warnings='default').run(suite)
     return 0 if r.wasSuccessful() else 1
 
 
