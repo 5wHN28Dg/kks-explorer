@@ -274,6 +274,65 @@ The model is `tools/plant3d/wtp_model.py` (areas `wtp` and `intake`, about 580 v
   the laptop and 1.8 times on the Note 9, whose fast-forward cap falls from about 14× to 8× (debug builds;
   apps/plant3d/sim/README.md).
 
+## 8c. As built in W3 (the day work, 2026-10-23)
+
+The model is still `tools/plant3d/wtp_model.py`, the procedures `wtp_content.py`. What W3 settled:
+- **The CIP skid** (in the treatment building between the regenerant tanks and RO A): the tank `00GCB30BB001` (4 m³)
+  with its immersion heater `00GCB30AH001`, temperature `00GCB30CT001` and pH `00GCB30CQ001`, the recirculation pump
+  `00GCB30AP001` (50 m³/h) and its cartridge filter `00GCB30AT001`. Its sequence (machine `cip`): fill with permeate
+  from the degassed water tank, dose caustic (0.1 % NaOH, pH 12) or acid (0.2 % HCl, pH 2), drain to the pit. The
+  heater holds 35 °C (10 K a clock hour); a high-pH solution must be at pH ≥ 11.5 and 30–35.5 °C before a cleaning, a
+  low-pH one at pH ≤ 2.5 and ≤ 40 °C ([FT] table 35).
+- **An RO train's cleaning** (its machine's states 5–8, command `clean` from `stopped`): stage 1, stage 2 (30 clock
+  minutes each), a soak (30 min, shorter than the sources' hours: ours), a flush of 20 min to the pit; `stop_cleaning`
+  goes to the flush. One train at a time (two commanded in one step: B goes back to `stopped`). A high-pH solution
+  above 36.5 °C, or any above 40 °C, trips the cleaning to its flush (`ro_x_trip_cip_t`, TAHH; TAH at 36 °C). The flush
+  takes its solution from the tank (10 m³/h) to the pit; the tank drains the rest. A cleaning needs the tank at least
+  20 % full. Only a whole cycle (its soak finished) counts as the cleaning done (`ro_x_alk_cleaned`,
+  `ro_x_acid_cleaned`, until the tank is filled again): one stopped or tripped early must be made again.
+- **Fouling in three parts** (ours): colloids and biofilm (60 % of what the feed brings), taken off by the high-pH
+  solution; scale and oxides (30 %), by the low-pH; and 10 % that no cleaning takes. A cleaning takes its part off at
+  2.5 a clock hour while the solution recirculates or soaks, less when the high-pH solution is cold (0.4 at 25 °C). A
+  full CIP from 89 % normalised flow gives back about 98.7 %.
+- **Chlorine damage** (§7): seconds of feed water above 250 mV on the membranes at flow (`ro_x_clx`: flushing,
+  starting, in service; not the permeate flush of a stop), forgotten with a time constant of 600 model seconds (a
+  clock hour), so trips handled one by one do not add up; past 60 the scenario's fault `ro_x_cl_damage` (a fault with
+  `when`) passes four times the salt. A trip on ORP alone does not reach it; a reset and restart without the fix does,
+  by the start's flush with chlorinated feed: the RO's start reads the dosing pumps' run commands, as a control system
+  sees them, so a failed pump still lets it start (its no-flow alarm says so). Only the work `wo_ro_x_membranes`
+  (permit, the train isolated) repairs it. Time is compressed here as everywhere in the model: real polyamide takes
+  about 1,000 ppm·h of free chlorine ([FT]), not a minute of a high ORP.
+- **A mixed bed's regeneration** (its machine's states 3–13, command `regenerate` from `standby` with its feed pump
+  stopped and the pit below 60 %): backwash and separation 25 clock minutes, settle 5, drain 10, a hold for the
+  operator (`inject`, the acid and caustic tanks above 15 %), injection 40, displacement 60, drain 15, a hold (`air_mix`,
+  the resin mixing blower `00GCP30AN001` running), air mix 10, refill 15 (the sequence stops the blower), final rinse at
+  least 30 minutes and until the outlet is under 0.1 µS/cm: about 3.5 clock hours with the holds. The injection takes
+  the exhaustion to about 3 % of what it was. Each regeneration takes 14 % of each regenerant tank; the tanks are
+  filled from the bulk delivery (machines `gp_hcl_fill`, `gp_naoh_fill`). One bed at a time.
+- **The neutralisation pit** now holds an excess of acid or base (`nr_alk`, kmol; pH by a table of it, neutral 7.2 as
+  before): the CIP's drain and flush, a regeneration's acid excess (−0.28 kmol each). The batch (machine `nr_batch`:
+  dose → mix 10 min → check → discharge until low) doses caustic or acid by the pH (the dosing skids `00GNR20`,
+  `00GNR30` beside the pit) to 6.5–8.5 with the agitator running; the batch's end stops the agitator.
+- **Faults added:** the antiscalant pump A, clarifier A's upset (its rake stalled: 30 times its carry-over; the filters
+  take the two clarifiers' water mixed, so taking A out of service clears it; a clarifier out of service reads its
+  standing water settling to 0.5 NTU), filter 3's
+  underdrain (20 times its turbidity: breakthrough), the degasser blower's motor (a trip; CO₂ to 40 mg/L, the new
+  analyser `00GCH10CQ001`), RO B fouling fast, a resin leak in either mixed bed (its outlet strainer's differential
+  pressure `00GCF1nCP001` rises, the bed exhausts three times as fast; repaired only by the work `wo_mb_x_resin`, a
+  confined-space permit with the bed isolated), the CIP heater's thermostat stuck (towards 50 °C). The coagulant,
+  bisulphite and antiscalant pumps A have a no-flow alarm. Filtered water turbidity high (QAH 0.5 NTU) on `00GBB10`.
+- **A turbid river flocculates better** (`cl_fk`): at 500 NTU rightly dosed (80 mg/L) the clarifiers give about
+  2 NTU; at the dry season's 30 mg/L about 40 NTU, and the filters block (`wtp_flood`). Unchanged at 20 NTU.
+- **The flood** of §7 is the scenario `wtp_flood`, not a trainer's fault (the river's turbidity is an `ext` value, which
+  only a scenario sets).
+- **Scenarios:** `wtp_normal` (cold_iron's train, the WTP as there with filter 1 due for its backwash, RO B off line
+  fouled to 89 %, mixed bed A 82 % used: its silica alarm after about an hour); `wtp_flood` (the river at 500 NTU).
+- **Procedures:** `ro_cip` (RO B, 11 steps, about 50 model minutes) and `mb_regeneration` (bed A, 7 steps, about
+  44), both from `wtp_normal`, each ending with the pit's batch.
+- **Simplified:** the CIP tank keeps its warmth when refilled; the RO flush's permeate half is not drawn from any tank; a regeneration under way has no abort (the RO's cleaning
+  has `stop_cleaning`); the regenerants' water is not drawn from any tank; the
+  pit's discharge does not carry its excess away (it is discharged only near neutral).
+
 ## 9. Not built (deliberately)
 
 Ultrafiltration, EDI and a second RO pass (0065); chemical unloading from tankers; the water's real chemistry (no

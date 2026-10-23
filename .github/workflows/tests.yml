@@ -157,7 +157,7 @@ jobs:
 
   python:
     runs-on: ubuntu-26.04
-    timeout-minutes: 20
+    timeout-minutes: 30  # the Walkdown Plant vectors are made again and replayed (~15 min on main, ~20 with W3)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
