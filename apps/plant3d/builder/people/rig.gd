@@ -34,7 +34,7 @@ const HIPS_KAYKIT := 0.405663   # KayKit's hips height at rest (the hips' positi
 const LEG_SWING := {"walk": 0.55, "run": 0.7}
 ## KayKit's mannequin holds its arms away from a wide body: every clip's upper arms are brought this far (radians)
 ## towards ours.
-const ARM_IN := 0.5
+const ARM_IN := 0.65
 
 ## Our names for KayKit's clips (file, clip, loops). docs/PLANT3D.md §18.3's `anim` values map to these
 ## (app/people.gd ANIM_CLIP).

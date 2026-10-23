@@ -59,6 +59,8 @@ func run(tree: SceneTree) -> Array:
 			seen.frames += 1
 			if not main.plant.visible and main.plant.get_child_count() > 1:
 				seen.hidden_frames += 1
+				if main.people != null and not main.people.avatars.is_empty():
+					seen["people_hidden"] = seen.get("people_hidden", 0) + 1
 	tree.process_frame.connect(watch)
 	tree.root.add_child(main)
 	for i in 30:
@@ -88,6 +90,16 @@ func run(tree: SceneTree) -> Array:
 	if seen.started != 1 or not seen.ui_at_start:
 		p.append("`started` is sent once, with the plant shown, the HUD and the UI made (%d times)" % seen.started)
 	p += tier_materials(main.plant, "lean+vis")
+	# the people's avatars and posed meshes are made in the plant before its hidden frame: their pipelines are queued
+	# with the plant's (and are the plant's: the one shader, app/people.gd)
+	const Quality = preload("res://app/quality.gd")
+	var ppl = main.people
+	if ppl == null or ppl.get_parent() != main.plant or ppl.avatars.size() != int(Quality.people_share("lean+vis").skinned) \
+			or ppl.posed.is_empty() or seen.get("people_hidden", 0) < 1:
+		p.append("the people's avatars are made in the plant, before its hidden frame (%s)" % str(seen))
+	elif ppl.avatars.size() > 0:
+		var posed_one: Node = ppl.posed.values()[0].values()[0]
+		p += lit_surfaces(posed_one, "the people's posed meshes")
 	var b = main.ui.bindings
 	if b != null:
 		var lit: ShaderMaterial = b._mat("running", true)
