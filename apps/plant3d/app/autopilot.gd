@@ -1,6 +1,10 @@
 ## Walks the player along a scripted route with the player's own controls (no teleporting, no path finding): the
 ## walking test, the frame-time walk on the phones, and later the tours' "take me there". Each step is
 ##   {"to": Vector3}                         walk (turning towards it) until within reach in plan
+##   {"to": Vector3, "exact": true}          walk to it and come to rest there, within EXACT_REACH (a stair's approach point:
+##                                           the flight's clear width leaves the walker about 0.2 m either side, less
+##                                           than REACH, and a walker that came in from the side turned onto the stair
+##                                           off its line and caught its side: app/walk_route.gd steps)
 ##   {"ladder": id, "dir": "up" | "down"}    climb a ladder (from its foot, or from its top's step-off point)
 ## The walker speeds up and slows down as a trainee does (app/player.gd): the autopilot slows it before a corner (the
 ## sharper, the slower) and before the route's end or a ladder, so that it turns and stops where the route says.
@@ -10,6 +14,7 @@ extends Node
 
 const Player = preload("res://app/player.gd")
 const REACH := 0.35
+const EXACT_REACH := 0.1
 const STUCK_S := 5.0
 const BRAKE := 0.8 * Player.DECEL   # m/s2 the autopilot plans to slow at (some margin under the walker's own)
 const CREEP := 0.3                  # m/s: the least it slows to before a stop
@@ -63,7 +68,7 @@ func _physics_process(delta: float) -> void:
 	var s: Dictionary = steps[i]
 	var done := false
 	if s.has("to"):
-		done = _walk_to(s.to, _turn_speed(s.to))
+		done = _stop_at(s.to) if s.get("exact", false) else _walk_to(s.to, _turn_speed(s.to))
 	elif s.has("ladder"):
 		done = _ladder(s)
 	if done:
@@ -97,11 +102,11 @@ func _turn_speed(target: Vector3) -> float:
 	var b := Vector2(nx.x - target.x, nx.z - target.z).normalized()
 	return lerpf(1.0, Player.RUN_SPEED, pow(clampf(a.dot(b), 0.0, 1.0), 4.0))   # 45 degrees: 1.75 m/s; a right angle: 1
 
-## Walks towards `target`, slowing so as to pass it at no more than `v_end`; true when within reach.
-func _walk_to(target: Vector3, v_end := 0.0) -> bool:
+## Walks towards `target`, slowing so as to pass it at no more than `v_end`; true when within `reach`.
+func _walk_to(target: Vector3, v_end := 0.0, reach := REACH) -> bool:
 	var p: Vector3 = player.global_position
 	var d := Vector2(target.x - p.x, target.z - p.z)
-	if d.length() < REACH:
+	if d.length() < reach:
 		player.drive = Vector2.ZERO
 		return true
 	player.aim = atan2(-d.x, -d.y)
@@ -111,6 +116,16 @@ func _walk_to(target: Vector3, v_end := 0.0) -> bool:
 	var left := d.length() - (REACH if v_end > 0.0 else 0.0)
 	player.speed_cap = maxf(sqrt(v_end * v_end + 2.0 * BRAKE * maxf(left, 0.0)), CREEP)
 	return false
+
+## Walks to `target` and comes to rest within EXACT_REACH of it; true once at rest there (a walker that ends the step
+## still moving drifts on sideways when it turns to the next).
+func _stop_at(target: Vector3) -> bool:
+	var p: Vector3 = player.global_position
+	if Vector2(target.x - p.x, target.z - p.z).length() >= EXACT_REACH:
+		_walk_to(target, 0.0, EXACT_REACH)
+		return false
+	player.drive = Vector2.ZERO
+	return Vector2(player.velocity.x, player.velocity.z).length() < 0.05
 
 func _find_ladder(id: String) -> Node3D:
 	for l in player.get_tree().get_nodes_in_group("ladders"):

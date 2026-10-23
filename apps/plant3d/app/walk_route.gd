@@ -239,6 +239,8 @@ func find(from: Vector3, to: Vector3) -> Dictionary:
 
 
 ## The route as app/autopilot.gd's steps: walk to each point (a stair along its path), climb each ladder on the way.
+## The point in front of a stair where its way begins is walked to exactly (autopilot.gd EXACT_REACH): the walker
+## lines up there before it turns onto the flight.
 func steps(rt: Dictionary) -> Array:
 	var out: Array = []
 	var pts: PackedVector3Array = rt.points
@@ -251,7 +253,10 @@ func steps(rt: Dictionary) -> Array:
 			while i < pts.size() and rt.marks[i] == m:
 				i += 1
 			continue
-		out.append({"to": pts[i], "floor": pts[i].y})
+		if m.begins_with("stair ") and (i == 0 or rt.marks[i - 1] != m):
+			out.append({"to": pts[i], "floor": pts[i].y, "exact": true})
+		else:
+			out.append({"to": pts[i], "floor": pts[i].y})
 		i += 1
 	return out
 
