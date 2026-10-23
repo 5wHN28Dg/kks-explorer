@@ -822,9 +822,12 @@ class Vectors2(unittest.TestCase):
         self.assertEqual(st[13]['machines']['m'], 'run')              # the machine entered its state all the same
         self.assertIn('alt', st[13]['alarms'])
         self.assertNotIn('alp', st[13]['alarms'])
-        # the work's done repairs the fault (written: the work holds the isolation locking the code)
-        self.assertEqual(st[17]['values']['pump_fault'], 0.0)
-        self.assertIn([17, 'repair', 'f1'], life['events'])
+        # the trainee's repair under the accepted permit writes the locked pump's state (the work holds the isolation
+        # locking the code); the work's done then finds it repaired (the done's own repair: steps[1], f3 at step 19)
+        self.assertEqual(st[15]['values']['pump_fault'], 1.0)
+        self.assertEqual(st[16]['values']['pump_fault'], 0.0)
+        self.assertIn([16, 'repair', 'f1'], life['events'])
+        self.assertNotIn([17, 'repair', 'f1'], life['events'])
         shared = self.V['steps'][1]['states']
         self.assertEqual(shared[5]['values']['motor_fault'], 1.0)     # the other isolation's lock: not repaired
         self.assertEqual(shared[5]['values']['aux2'], 7.0)

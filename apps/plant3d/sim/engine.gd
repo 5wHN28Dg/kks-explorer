@@ -7,8 +7,10 @@ extends RefCounted
 ##   op(kks, do, value, trip), ack(alarm), shelve(alarm, seconds), unshelve(alarm), fault(id), repair(id)
 ## (fault: a scenario fault without `when`, pressed by the trainer; applied in step 3; repair: a fault's repair,
 ## applied in step 3 after the faults, §7.8). Format 2 (§15, free mode: person null): permit(work, action, person),
-## lock(work, point, person), unlock(work, point, person): permit actions in step 1, locks and unlocks noted in step 1
-## and made at the start of step 3 (§17.1). Every input is also kept in
+## lock(work, point, person), unlock(work, point, person), repair_under(fault, work, person): permit actions in step 1,
+## locks and unlocks noted in step 1 and made at the start of step 3 (§17.1), the trainee's repair under a permit
+## checked in step 1 and made in step 3 (§15.5; in a version 2 plant repair(id) is the trainer's). lock_effects(work,
+## point) answers what a lock would do (§15.6) without changing the run. Every input is also kept in
 ## `inputs` as [the step it takes effect in, kind, …], the vectors' input form.
 ##
 ## Arithmetic notes (what makes it bit-exact, each mirrored from the reference):
@@ -384,6 +386,11 @@ func repair(fid) -> void:
 	_q(["repair", fid])
 
 
+## The trainee's repair under a work's permit (§15.5): checked in step 1, made in step 3 with the trainer's repairs.
+func repair_under(fid, work, person = null) -> void:
+	_q(["repair", fid, work, person])
+
+
 func permit(work, action, person = null) -> void:
 	_q(["permit", work, action, person])
 
@@ -410,7 +417,10 @@ func apply_input(item: Array) -> void:
 		"fault":
 			fault(item[2])
 		"repair":
-			repair(item[2])
+			if item.size() > 3:
+				repair_under(item[2], item[3], item[4])
+			else:
+				repair(item[2])
 		"permit":
 			permit(item[2], item[3], item[4])
 		"lock":
@@ -540,6 +550,62 @@ func _permit(work, action, person, dones: Array) -> void:
 	elif (action == "cancel" or action == "close") and iso != -1 and _n_locked(iso) == 0:
 		holder[iso] = -1
 	_ev(["permit", work, action, person, "done", []])
+
+
+## The trainee's repair under a permit (§15.5), in step 1: true when it is noted for step 3.
+func _repair_under(fid, work, person) -> bool:
+	var wi: int = m.work_ix.get(work, -1) if typeof(work) == TYPE_STRING else -1
+	var fk: int = _fault_ix.get(fid, -1) if typeof(fid) == TYPE_STRING else -1
+	if wi == -1 or fk == -1 or _faults[fk][4] == null or typeof(_wk[wi][3]) != TYPE_STRING or _wk[wi][3] != fid:
+		_ev(["repair", fid, work, person, "unknown", []])
+		return false
+	var why := []
+	if person != null:
+		why.append("authority")     # no staff in the plant: free mode, person null (§17.1)
+	if pstate[wi] != 5:
+		why.append("state")
+	if not why.is_empty():
+		_ev(["repair", fid, work, person, "refused", why])
+		return false
+	return true
+
+
+## What a lock would do (§15.6): the trips and priority 1 alarms that come within `horizon` steps with the lock made
+## after the inputs already queued, and not without it. Changes nothing in this run.
+func lock_effects(work, point, horizon: int = 100) -> Dictionary:
+	var a = clone()
+	var b = clone()
+	a.queue.append(["lock", work, point, null])
+	var na: int = a.events.size()
+	var nb: int = b.events.size()
+	a.step(horizon)
+	b.step(horizon)
+	var lock = null
+	var ta := {}
+	var ra := {}
+	for k in range(na, a.events.size()):
+		var e: Array = a.events[k]
+		if e[0] == step_no + 1 and (e[1] == "lock" or e[1] == "unlock"):
+			lock = e[5]
+		elif e[1] == "trip":
+			ta[e[2]] = true
+		elif e[1] == "alarm" and e[3] == "active_unack":
+			ra[e[2]] = true
+	for k in range(nb, b.events.size()):
+		var e: Array = b.events[k]
+		if e[1] == "trip":
+			ta.erase(e[2])
+		elif e[1] == "alarm" and e[3] == "active_unack":
+			ra.erase(e[2])
+	var trips := []
+	for t in m.trips:
+		if ta.has(t["id"]):
+			trips.append(t["id"])
+	var alarms := []
+	for x in m.alarms:
+		if x["priority"] == 1 and ra.has(x["id"]):
+			alarms.append(x["id"])
+	return {"lock": lock, "trips": trips, "alarms": alarms}
 
 
 ## A lock or unlock (§15.1), at the start of step 3.
@@ -808,6 +874,7 @@ func _step() -> void:
 	var moved := {}
 	var pressed := []
 	var asked := []
+	var under := {}         # fault -> the work (its index) under whose permit the trainee repairs it (§15.5)
 	var noted := []         # locks and unlocks, made in step 3 (§17.1)
 	var dones := []         # works whose permit went to done: their repairs and set in step 3
 	# 1. the trainee's inputs, in the order made
@@ -827,6 +894,9 @@ func _step() -> void:
 		var ai = _al_ix.get(item[1], -1) if typeof(item[1]) == TYPE_STRING else -1
 		if kind == "fault":
 			pressed.append(item[1])
+		elif kind == "repair" and item.size() > 2:
+			if _repair_under(item[1], item[2], item[3]):
+				under[item[1]] = m.work_ix[item[2]]
 		elif kind == "repair":
 			asked.append(item[1])
 		elif ai == -1:
@@ -901,12 +971,15 @@ func _step() -> void:
 			faults_fixed.erase(fid)
 			_apply_set(fl[3])
 			_ev(["fault", fid])
-	# then the repairs asked, in the scenario's order: a fault applied and not repaired since, with a `repair`
+	# then the repairs asked, in the scenario's order: a fault applied and not repaired since, with a `repair`; one
+	# under a permit (§15.5) writes as its work
 	for fl in _faults:
 		var fid: String = fl[0]
-		if fl[4] != null and asked.has(fid) and faults_done.has(fid) and not faults_fixed.has(fid) and not _blocked(fl[4]):
+		var wu: int = under.get(fid, -1)
+		if fl[4] != null and (wu != -1 or asked.has(fid)) and faults_done.has(fid) and not faults_fixed.has(fid) \
+				and not _blocked(fl[4], wu):
 			faults_fixed[fid] = true
-			_apply_set(fl[4])
+			_apply_set(fl[4], wu)
 			_ev(["repair", fid])
 	# then the works whose permit went to done, in the order of their `done`: the fault they repair, their set
 	for wi in dones:
