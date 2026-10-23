@@ -10,6 +10,8 @@ extends RefCounted
 const W = preload("res://ui/widgets.gd")
 const Permits = preload("res://ui/permits.gd")
 
+## Why the trainee's repair under a permit was refused (PLANT3D §15.5).
+const REPAIR_WHY := {"state": "its permit to work was not accepted", "authority": "not this person's to do"}
 const ALARM_WORDS := {
 	"normal>active_unack": "raised", "cleared_unack>active_unack": "raised again",
 	"active_unack>active_ack": "acknowledged", "cleared_unack>normal": "acknowledged after it cleared",
@@ -129,9 +131,14 @@ static func collect(engine, info, tracker) -> Dictionary:
 				e.code = fault_kks(m, str(ev[2]), engine.sc)
 				sm.faults += 1
 			"repair":
-				e.text = "Repaired: %s" % fault_text(m, str(ev[2]), engine.sc)
 				e.code = fault_kks(m, str(ev[2]), engine.sc)
-				sm.repairs += 1
+				if ev.size() >= 7 and ev[6] is Array:     # the trainee's repair under a permit, refused or unknown (§15.5)
+					e.text = "Repair not made: %s (%s)" % [fault_text(m, str(ev[2]), engine.sc),
+							"; ".join(ev[6].map(func(x): return REPAIR_WHY.get(x, str(x)))) if ev[5] == "refused"
+							else "not a repair of that permit's work"]
+				else:
+					e.text = "Repaired: %s" % fault_text(m, str(ev[2]), engine.sc)
+					sm.repairs += 1
 			"interlock":
 				var il := {}
 				for x in m.interlocks:

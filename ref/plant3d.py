@@ -1014,6 +1014,8 @@ class Model:
             self.work_isos.append((ident(x['isolation'], f'{w}.isolation'), f'{w}.isolation'))
         if 'repairs' in x:
             ident(x['repairs'], f'{w}.repairs')
+            need(x['repairs'] not in {y.get('repairs') for y in self.works}, 'dup_id',
+                 f'{w}.repairs: another work already repairs {x["repairs"]} (one work per fault)')
         if 'set' in x:
             need(isinstance(x['set'], dict), 'bad_type', f'{w}.set: an object of state names and numbers')
             for k, v in x['set'].items():
@@ -1296,6 +1298,16 @@ class Model:
         isos = {x['id'] for x in self.isolations}
         for i, where in self.work_isos:
             need(i in isos, 'bad_ref', f'{where}: no isolation {i!r}')
+        # no restarts under lock (§15.2): a work's set writes no state of a code of its own isolation
+        state_kks = {name: n.get('kks') for name, n, kind in self.values if kind == 'state'}
+        for w in self.works:
+            if 'isolation' not in w:
+                continue
+            own = {pt['kks'] for x in self.isolations if x['id'] == w['isolation'] for pt in x['points']}
+            for k in w.get('set', {}):
+                need(state_kks.get(k) not in own, 'locked_write',
+                     f'work {w["id"]}.set: {k} is a state of {state_kks.get(k)}, which its own isolation locks '
+                     f'(a work never restarts its own locked-out equipment; what it puts right is a fault it repairs)')
         for name in self.kept():
             need(name not in self.index and name not in self.ext, 'dup_id',
                  f'{name}: a value or ext value has the name of a permit\'s or isolation\'s value (§15)')
@@ -1493,6 +1505,18 @@ def check_scenario(s, m, rel):
         m.sets(f['set'], f'{w}.set')
         if 'repair' in f:
             m.sets(f['repair'], f'{w}.repair')
+            # no restarts under lock (§15.2): a repair made as a work's own write (its done, or the trainee's under its
+            # permit, §15.5) writes no command (a state an op sets) of a code of that work's own isolation
+            commands = {k for o in m.ops for k in o.get('set', {})} | {o['input'] for o in m.ops if 'input' in o}
+            state_kks = {name: n.get('kks') for name, n, kind in m.values if kind == 'state'}
+            for wk in m.works:
+                if wk.get('repairs') != f['id'] or 'isolation' not in wk:
+                    continue
+                own = {pt['kks'] for x in m.isolations if x['id'] == wk['isolation'] for pt in x['points']}
+                for k in f['repair']:
+                    need(k not in commands or state_kks.get(k) not in own, 'locked_write',
+                         f'{w}.repair: {k} is a command of {state_kks.get(k)}, which work {wk["id"]}\'s own isolation '
+                         f'locks (a repair writes the fault\'s states, never a command)')
         if 'kks' in f:
             m.kks_ref(f['kks'], f'{w}.kks')
         if 'when' in f:
@@ -1593,9 +1617,13 @@ class Engine:
         op(kks, do, value=None, trip=None), ack(alarm), shelve(alarm, seconds), unshelve(alarm), fault(id),
         repair(id)
     (fault: a scenario fault without `when`, pressed by the trainer; applied in step 3; repair: a fault's repair,
-    applied in step 3 after the faults, §7.8). Format 2 (§15, free mode: person None):
-        permit(work, action, person=None), lock(work, point, person=None), unlock(work, point, person=None)
-    (permit actions handled in step 1; locks and unlocks noted in step 1 and made at the start of step 3, §17.1).
+    applied in step 3 after the faults, §7.8; in a version 2 plant the trainer's). Format 2 (§15, free mode: person
+    None):
+        permit(work, action, person=None), lock(work, point, person=None), unlock(work, point, person=None),
+        repair_under(fault, work, person=None)
+    (permit actions handled in step 1; locks and unlocks noted in step 1 and made at the start of step 3, §17.1; the
+    trainee's repair under a permit checked in step 1 and made in step 3, §15.5). lock_effects(work, point) answers
+    what a lock would do (§15.6) without changing the run.
     """
 
     def __init__(self, b, scenario):
@@ -1886,6 +1914,9 @@ class Engine:
     def repair(self, fid):
         self.queue.append(('repair', fid))
 
+    def repair_under(self, fid, work, person=None):
+        self.queue.append(('repair', fid, work, person))
+
     def permit(self, work, action, person=None):
         self.queue.append(('permit', work, action, person))
 
@@ -2092,6 +2123,45 @@ class Engine:
         self.ev(kind, work, point, person, 'done', [], *tail)
         return 'done'
 
+    def _repair_under(self, fid, work, person):
+        """The trainee's repair under a permit (§15.5), in step 1: True when it is noted for step 3."""
+        w = self.works.get(work) if isinstance(work, str) else None
+        f = self.faults.get(fid) if isinstance(fid, str) else None
+        if w is None or f is None or 'repair' not in f or w.get('repairs') != fid:
+            self.ev('repair', fid, work, person, 'unknown', [])
+            return False
+        why = []
+        # who may: as the permit's `done` (§15.3, §17.1): the acceptor, or another with `accept` and the work's
+        # discipline while they are off duty; without staff, free mode only (person null)
+        if self._authority(person, False, 'accept', w['discipline'], True, work):
+            why.append('authority')
+        if self.pstate[work] != 5:
+            why.append('state')
+        if why:
+            self.ev('repair', fid, work, person, 'refused', why)
+            return False
+        return True
+
+    def lock_effects(self, work, point, horizon=100, person=None):
+        """What a lock would do (§15.6): the trips and priority 1 alarms that come within `horizon` steps with the lock
+        made after the inputs already queued, and not without it."""
+        a, b = self.clone(), self.clone()
+        a.queue.append(('lock', work, point, person))
+        na, nb = len(a.events), len(b.events)
+        a.step(horizon)
+        b.step(horizon)
+        ea, eb = a.events[na:], b.events[nb:]
+        lock = ([None] + [e[5] for e in ea if e[0] == self.step_no + 1 and e[1] in ('lock', 'unlock')])[-1]
+
+        def tripped(evs):
+            return {e[2] for e in evs if e[1] == 'trip'}
+
+        def raised(evs):
+            return {e[2] for e in evs if e[1] == 'alarm' and e[3] == 'active_unack'}
+        ta, tb, ra, rb = tripped(ea), tripped(eb), raised(ea), raised(eb)
+        return {'lock': lock, 'trips': [t['id'] for t in self.trips if t['id'] in ta and t['id'] not in tb],
+                'alarms': [x['id'] for x in self.alarms if x['priority'] == 1 and x['id'] in ra and x['id'] not in rb]}
+
     def _enter(self, mc, to, cause):
         old = self.mstate[mc['id']]
         new = mc['_ids'].index(to)
@@ -2123,6 +2193,7 @@ class Engine:
         moved = set()
         pressed = []
         asked = []
+        under = {}          # fault -> the work under whose permit the trainee repairs it (§15.5)
         noted = []          # locks and unlocks, made in step 3 (§17.1)
         dones = []          # works whose permit went to done: their repairs and set in step 3
         # 1. the trainee's inputs, in the order made, then the NPCs' made in the previous step's step 9 (§17.1)
@@ -2171,6 +2242,9 @@ class Engine:
                     self.ev('unshelve', item[1])
             elif kind == 'fault':
                 pressed.append(item[1])
+            elif kind == 'repair' and len(item) > 2:
+                if self._repair_under(item[1], item[2], item[3]):
+                    under[item[1]] = item[2]
             elif kind == 'repair':
                 asked.append(item[1])
         # first-out records clear when no trip of the group is latched
@@ -2216,12 +2290,14 @@ class Engine:
                 self.faults_fixed.discard(fid)
                 self._set(f['set'])
                 self.ev('fault', fid)
-        # then the repairs asked, in the scenario's order: a fault applied and not repaired since, with a `repair`
+        # then the repairs asked, in the scenario's order: a fault applied and not repaired since, with a `repair`; one
+        # under a permit (§15.5) writes as its work
         for fid, f in self.faults.items():
-            if fid in asked and 'repair' in f and fid in self.faults_done and fid not in self.faults_fixed \
-                    and not self._blocked(f['repair']):
+            wid = under.get(fid)
+            if (fid in asked or wid is not None) and 'repair' in f and fid in self.faults_done \
+                    and fid not in self.faults_fixed and not self._blocked(f['repair'], wid):
                 self.faults_fixed.add(fid)
-                self._set(f['repair'])
+                self._set(f['repair'], wid)
                 self.ev('repair', fid)
         # then the works whose permit went to done, in the order of their `done`: the fault they repair, their set
         for wid in dones:
@@ -2458,6 +2534,9 @@ class Recorder(Engine):
 
     def repair(self, fid):
         self._q(('repair', fid))
+
+    def repair_under(self, fid, work, person=None):
+        self._q(('repair', fid, work, person))
 
     def permit(self, work, action, person=None):
         self._q(('permit', work, action, person))

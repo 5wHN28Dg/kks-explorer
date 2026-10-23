@@ -117,6 +117,14 @@ static func works_at(e, code: String) -> Array:
 	return out
 
 
+## The work whose permit repairs a fault (PLANT3D §15.5): its `repairs` names it; {} when none does.
+static func work_repairing(e, fid: String) -> Dictionary:
+	for w in e.m.works:
+		if w.get("repairs", "") == fid:
+			return w
+	return {}
+
+
 ## A refusal's reason (a word of §17.7, or a `safe` value's name) in words.
 static func reason_text(e, work: Dictionary, why: String, point := -1, state := -1) -> String:
 	match why:

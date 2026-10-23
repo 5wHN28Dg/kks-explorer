@@ -41,6 +41,8 @@ def apply(e, item):
         e.shelve(item[2], item[3])
     elif kind == 'unshelve':
         e.unshelve(item[2])
+    elif kind == 'repair' and len(item) > 3:
+        e.repair_under(item[2], item[3], item[4])       # the trainee's, under a permit (PLANT3D §15.5)
     elif kind == 'repair':
         e.repair(item[2])
     elif kind == 'permit':

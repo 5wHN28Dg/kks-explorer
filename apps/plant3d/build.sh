@@ -89,7 +89,8 @@ for d in "${XDG_DATA_HOME:-$HOME/.local/share}/godot"/*; do
   if [ -e "$d" ] && [ "$(basename "$d")" != app_userdata ]; then ln -s "$d" "$TDATA/godot/"; fi
 done
 XDG_DATA_HOME="$TDATA" $T "$GODOT" --headless --fixed-fps 60 --path "$HERE" --script res://tests/run_tests.gd >"$HERE/.test.log" 2>&1 ||
-  { grep -vE "^$|Jolt Physics job|jolt_job_system" "$HERE/.test.log" | tail -30; echo "tests failed (apps/plant3d/.test.log)" >&2; exit 1; }
+  { grep -vE "^$|Jolt Physics job|jolt_job_system" "$HERE/.test.log" | tail -30; grep -E "^FAIL" "$HERE/.test.log" | head -40
+    echo "tests failed (apps/plant3d/.test.log)" >&2; exit 1; }
 grep -E "^(ok|FAIL)|passed" "$HERE/.test.log"
 grep -qF "tests' user data: $TDATA/" "$HERE/.test.log" ||
   { grep "tests' user data" "$HERE/.test.log"; echo "the tests did not run in their own data folder" >&2; exit 1; }

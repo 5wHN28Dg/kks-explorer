@@ -320,6 +320,21 @@ class StaffVectors(unittest.TestCase):
         self.assertEqual(len(acc), 1)
         self.assertIn(['mech1', 'job_pump', 2, 'permit', acc[0][0]], [x[2:7] for x in mech if x[1] == 'early'])
 
+    def test_repairs_only_under_the_permit_by_its_acceptor(self):
+        """§15.5 with staff (the user, 2026-10-23): a repair under the work's permit is the acceptor's, as its done; a
+        played role without accept is refused, and so is an input naming another person."""
+        fo = self.run_named('actions before their step')
+        self.assertIn([1300, 'repair', 'f1', 'wo_pump', 'a_fo1', 'refused', ['authority']], fo)
+        mech = self.run_named('a permit action before its step')
+        self.assertIn([1100, 'repair', 'f1', 'wo_pump', 'a_fo1', 'refused', ['authority']], mech)
+        self.assertIn([1101, 'repair', 'f1'], mech)
+        self.assertEqual(sum(1 for x in mech if x[1] == 'repair' and len(x) == 3), 1)   # the done repairs nothing more
+        for r in self.runs:      # the NPCs' repairs are their work's done, under the permit
+            for x in r['events']:
+                if x[1] == 'repair' and len(x) == 3 and x[0] != 1101:
+                    self.assertTrue(any(y[0] == x[0] and y[1] == 'permit' and y[3] == 'done' and y[5] == 'done'
+                                        for y in r['events']), (r['why'][:40], x))
+
     def test_a_kept_command_is_dropped_when_its_machine_is_commanded(self):
         b = P.check_files(files_of(self.V, self.runs[0]))
         e = P.Engine(b, 's1')
