@@ -3,7 +3,7 @@
 ##   whose screens open at that screen (its desks, PLANT3D §14); the overview's link stays in the main control room;
 ## - faults applied from the instructor's panel (the degasser blower's motor, a resin leak in mixed bed A, a clarifier
 ##   upset) are seen at the WTP's desk: the blower marked tripped and its alarms on the RO screen, the strainer's alarm
-##   on the demin screen, the turbidity's on the pretreatment screen, each screen's tab with its count;
+##   on the demin screen, the clarified turbidity's on the WTP's overview, each screen's tab with its count;
 ## - the resin leak is repaired only by its work under a permit, not at the equipment: the bed's card offers no repair.
 extends RefCounted
 
@@ -78,14 +78,14 @@ func run(tree: SceneTree) -> Array:
 		ui.clock.run_steps(1)
 		ui.trainer.refresh()
 	ui.toggle_trainer()
-	ui.clock.run_steps(900)
+	ui.clock.run_steps(4000)            # the lags: the strainer (τ 300 s) and the clarifiers (τ 600 s)
 	# 3. seen at the WTP's desk
 	ui.open_panel("screens:wtp_ro")
 	await settle(tree, ui)
 	if not ui.screens_open():
 		main.free()
 		return p + ["the WTP's screens did not open at its desk"]
-	var want := {"wtp_ro": ["dg_tripped", "dg_co2_h"], "wtp_demin": ["mb_a_dp_h"], "wtp_pre": ["cla_ntu_h", "clb_ntu_h"]}
+	var want := {"wtp_ro": ["dg_tripped", "dg_co2_h"], "wtp_demin": ["mb_a_dp_h"], "wtp": ["cla_ntu_h", "clb_ntu_h"]}
 	for sid in want:
 		var si: int = sm.screen_index(sid)
 		mim.show_screen(si)
