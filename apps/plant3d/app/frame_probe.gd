@@ -3,7 +3,10 @@
 ## draw, the draw itself (RenderingServer's frame_pre_draw to frame_post_draw: the render thread's CPU work and any wait
 ## for the GPU or the swap chain), the rest (the OS's events, the wait for the next frame), and what the systems did.
 ## cpu_ms and gpu_ms are the engine's last measured render times (they lag a frame or two); sim_steps are the model's
-## steps run between this line's frame and the next.
+## steps run between this line's frame and the next. surf_pipes and spec_pipes are the pipelines compiled since the line
+## before (a pipeline compiled after the start is a hitch on a phone: decision 0060), and events what else the app
+## started in that frame (`counters`: sounds loaded and started, saves, route searches; each name with how many),
+## so that a long frame can be told from the phone's own work (phone/frames.sh pulls frames.csv).
 extends Node
 
 var main: Node
@@ -19,6 +22,10 @@ var _steps0 := 0
 var _phys_first: Node
 var _proc_first: Node
 var _proc_last: Node
+var _pipes0 := Vector2i.ZERO
+## name -> Callable returning a count that only grows: a change between two lines is written in `events`
+var counters := {}
+var _counts := {}
 
 
 class Hook extends Node:
@@ -49,7 +56,47 @@ func _ready() -> void:
 	RenderingServer.frame_post_draw.connect(func(): _post = Time.get_ticks_usec())
 	var c = main.ui.clock if main != null and main.ui != null else null
 	_steps0 = c.engine.step_no if c != null and c.engine != null else 0
-	rows.append("t_ms,frame_ms,phys_n,phys_ms,proc_ms,to_draw_ms,draw_ms,after_ms,cpu_ms,gpu_ms,draws,objects,sim_steps")
+	rows.append("t_ms,frame_ms,phys_n,phys_ms,proc_ms,to_draw_ms,draw_ms,after_ms,cpu_ms,gpu_ms,draws,objects,sim_steps,surf_pipes,spec_pipes,events")
+	_pipes0 = pipelines()
+	if main != null and main.ui != null:
+		add_app_counters(main.ui)
+	for k in counters:
+		_counts[k] = int(counters[k].call())
+
+
+## The pipelines Godot has compiled so far (surface, specialization).
+static func pipelines() -> Vector2i:
+	return Vector2i(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION))
+
+
+## What the plant's UI starts now and then on the main thread: sound files loaded and players started, the run's saves
+## (their capture is on the main thread), the walking directions' searches and drawings.
+func add_app_counters(u) -> void:
+	if u.sounds != null:
+		counters["sound_files"] = func(): return u.sounds._streams.size()
+		counters["sounds"] = func():
+			var n := 0
+			for k in u.sounds.played:
+				n += int(u.sounds.played[k])
+			return n + u.sounds.loops_started
+	if u.autosave != null:
+		counters["save"] = func(): return u.autosave.saves
+	if u.route != null:
+		counters["route_find"] = func(): return u.route.stats.finds
+		counters["route_draw"] = func(): return u.route.stats.draws
+
+
+## The counters that changed since the last call, as "name+n" separated by spaces.
+func _events() -> String:
+	var ev := PackedStringArray()
+	for k in counters:
+		var v := int(counters[k].call())
+		var d: int = v - int(_counts.get(k, 0))
+		if d != 0:
+			ev.append("%s+%d" % [k, d])
+		_counts[k] = v
+	return " ".join(ev)
 
 
 func _phys_begin() -> void:
@@ -73,15 +120,18 @@ func _proc_end() -> void:
 		var c = main.ui.clock if main != null and main.ui != null else null
 		if c != null:
 			steps = c.engine.step_no if c.engine != null else 0
-		rows.append("%d,%.3f,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d" % [
+		var pipes := pipelines()
+		rows.append("%d,%.3f,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%s" % [
 			_frame0 / 1000, (start - _frame0) / 1000.0, _prev_phys_n, _prev_phys_ms, (_proc1 - _prev_proc0) / 1000.0,
 			(_pre - _proc1) / 1000.0 if drawn else 0.0, (_post - _pre) / 1000.0 if drawn else 0.0,
 			(start - (_post if drawn else _proc1)) / 1000.0,
 			RenderingServer.viewport_get_measured_render_time_cpu(vp),
 			RenderingServer.viewport_get_measured_render_time_gpu(vp),
 			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
-			Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), steps - _steps0])
+			Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), steps - _steps0,
+			pipes.x - _pipes0.x, pipes.y - _pipes0.y, _events()])
 		_steps0 = steps
+		_pipes0 = pipes
 	_prev_phys_n = _phys_n
 	_prev_phys_ms = (_proc0 - _first_phys) / 1000.0 if _phys_n > 0 else 0.0
 	_prev_proc0 = _proc0

@@ -18,15 +18,22 @@ func run(tree: SceneTree) -> Array:
 	ProjectSettings.set_setting(SAVE, was)
 	var probe = FrameProbe.new()
 	probe.main = main
+	var ticks := {"n": 0}
+	probe.counters["test_counter"] = func(): return ticks.n
 	main.add_child(probe)
+	for k in ["sound_files", "sounds", "save", "route_find", "route_draw"]:
+		if not probe.counters.has(k):
+			p.append("the probe counts the app's own work per frame: %s" % k)
 	for i in 30:
 		await tree.process_frame
+		if i == 20:
+			ticks.n += 3
 	var dir := OS.get_user_data_dir().path_join("test-frame-probe")
 	DirAccess.make_dir_recursive_absolute(dir)
 	probe.write(dir)
 	var rows := FileAccess.get_file_as_string(dir.path_join("frames.csv")).strip_edges().split("\n")
 	var head := rows[0].split(",")
-	for col in ["frame_ms", "phys_n", "proc_ms", "draw_ms", "gpu_ms", "sim_steps"]:
+	for col in ["frame_ms", "phys_n", "proc_ms", "draw_ms", "gpu_ms", "sim_steps", "surf_pipes", "spec_pipes", "events"]:
 		if not col in head:
 			p.append("frames.csv has the column %s" % col)
 	if rows.size() < 25:
@@ -39,6 +46,15 @@ func run(tree: SceneTree) -> Array:
 				bad += 1
 		if bad > 0:
 			p.append("every line of frames.csv is a whole frame with its time (%d are not)" % bad)
+		var ev := 0
+		for i in range(1, rows.size()):
+			var e := rows[i].split(",")[head.find("events")]
+			if e.contains("test_counter"):
+				ev += 1
+				if not "test_counter+3" in e.split(" "):
+					p.append("a frame's events name what changed in it and by how much (%s)" % e)
+		if ev != 1:
+			p.append("a counter that changed once shows in one frame's events (%d)" % ev)
 	DirAccess.remove_absolute(dir.path_join("frames.csv"))
 	DirAccess.remove_absolute(dir)
 	main.free()
