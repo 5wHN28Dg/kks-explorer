@@ -599,10 +599,12 @@ func _operate(tree: SceneTree, ui) -> Array:
 		mim.move_selection(Vector2.DOWN)
 	if mim.selected == before:
 		p.append("the arrows did not move the selection from %s" % before)
-	# the overview: a tile per screen; Enter on a tile opens it
+	# the overview: a tile per screen of this desk (PLANT3D §14: the main control room's); Enter on a tile opens it
 	mim.show_screen(-1)
-	if mim._targets().size() != ui.screens.screens.size():
-		p.append("the overview has %d tiles for %d screens" % [mim._targets().size(), ui.screens.screens.size()])
+	var n_here: int = range(ui.screens.screens.size()).filter(func(i): return ui.screen_here(i)).size()
+	if mim._targets().size() != n_here or n_here >= ui.screens.screens.size():
+		p.append("the overview has %d tiles for this desk's %d screens (of %d)" % [mim._targets().size(), n_here,
+				ui.screens.screens.size()])
 	mim.activate("screen:2")
 	if mim.current != 2:
 		p.append("a tile did not open its screen")

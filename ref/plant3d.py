@@ -1328,14 +1328,27 @@ def owner(code, prefixes):
 def check_screens(s, m, b):
     w = 'screens.json'
     keys(s, ('format', 'version', 'overview', 'screens'), ('left_out',), w)
-    fmt(s, 'screens', w)
+    version = fmt(s, 'screens', w, b.version)
     units = {name: node for name, node, _ in m.values if 'unit' in node}
+    desk_codes = {c for c, e in b.equipment.items() if e['part'] == 'operator_desk'}
+
+    def desks(x, where):
+        """Format 2 (§14): the operator desks a screen is reached from (default: every desk)."""
+        if 'desks' not in x:
+            return
+        need(version == 2, 'unknown_key', f'{where}.desks: only in a version 2 screens.json')
+        ds = lst(x['desks'], f'{where}.desks', 1, 16)
+        for c in ds:
+            need(isinstance(c, str) and c in desk_codes, 'bad_ref', f'{where}.desks: {c!r} is no operator desk of '
+                 f'the plant')
+        need(len(set(ds)) == len(ds), 'dup_id', f'{where}.desks: a desk twice')
 
     def shown_value(v, where):
         need(isinstance(v, str) and v in units, 'bad_ref', f'{where}: {v!r} is no value with a unit')
 
     ov = s['overview']
-    keys(ov, ('title', 'short', 'key'), (), f'{w}.overview')
+    keys(ov, ('title', 'short', 'key'), ('desks',), f'{w}.overview')
+    desks(ov, f'{w}.overview')
     name_text(ov['title'], f'{w}.overview.title')
     name_text(ov['short'], f'{w}.overview.short', 16)
     for v in lst(ov['key'], f'{w}.overview.key', 1, 12):
@@ -1346,7 +1359,8 @@ def check_screens(s, m, b):
     seen_screens = set()
     for i, sc in enumerate(lst(s['screens'], f'{w}.screens', 1, 16)):
         ws = f'{w}: screen {sc.get("id", i) if isinstance(sc, dict) else i}'
-        keys(sc, ('id', 'short', 'title', 'groups'), ('lines', 'trend'), ws)
+        keys(sc, ('id', 'short', 'title', 'groups'), ('lines', 'trend', 'desks'), ws)
+        desks(sc, ws)
         ident(sc['id'], ws)
         need(sc['id'] not in seen_screens and sc['id'] != 'overview', 'dup_id', f'{ws}: id used twice (or "overview")')
         seen_screens.add(sc['id'])

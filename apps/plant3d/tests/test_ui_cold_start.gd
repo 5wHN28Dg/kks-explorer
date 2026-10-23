@@ -13,8 +13,8 @@ const SimClock = preload("res://ui/sim_clock.gd")
 const W = preload("res://ui/widgets.gd")
 
 
-static func vectors() -> Dictionary:
-	var path := ProjectSettings.globalize_path("res://").path_join("../../ref/vectors/plant3d-v1.json").simplify_path()
+static func vectors(file := "plant3d-v1.json") -> Dictionary:
+	var path := ProjectSettings.globalize_path("res://").path_join("../../ref/vectors/" + file).simplify_path()
 	var r := JsonStrict.parse(FileAccess.get_file_as_bytes(path), 1000)
 	return r.value if r.ok else {}
 
@@ -51,6 +51,13 @@ static func settle(tree: SceneTree, ui) -> void:
 ## screen (ui/mimic.gd): the screen with the equipment, a click on it, its card; the local ones as before.
 var via_screens := false
 
+## Another start (tests/test_ui_wtp_start.gd): the vector file and its run, and the operator desk whose screens work
+## it ("" the main control room's, by its button). A run whose scenario is not the app's start is begun from the
+## procedure panel's "Start from there (the plant restarts)".
+var vector_file := "plant3d-v1.json"
+var run_key := "train"
+var desk := ""
+
 
 ## Opens a code's card from the control room screens as a trainee does: the screens on, the code's screen, a click
 ## on its symbol. "" when the card is open, else what went wrong.
@@ -83,10 +90,10 @@ static func _from_screen(tree: SceneTree, ui, code: String) -> String:
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
-	var V := vectors()
+	var V := vectors(vector_file)
 	if V.is_empty():
-		return ["cannot read ref/vectors/plant3d-v1.json"]
-	var t: Dictionary = V["train"]
+		return ["cannot read ref/vectors/" + vector_file]
+	var t: Dictionary = V[run_key]
 	var main: Node = (load("res://app/main.tscn") as PackedScene).instantiate()
 	tree.root.add_child(main)
 	var ui = main.ui
@@ -116,6 +123,12 @@ func run(tree: SceneTree) -> Array:
 		Engine.time_scale = 1.0
 		return p
 	row_btn.pressed.emit()
+	if ui.clock.scenario != t["scenario"]:
+		# the panel asks first: the plant restarts at the procedure's scenario, still paused at its step 0
+		find_button(ui.procedure, "Start from there (the plant restarts)").pressed.emit()
+		ui.clock.set_speed(SimClock.Speed.PAUSED)
+		if ui.clock.scenario != t["scenario"] or ui.clock.engine.step_no != 0:
+			p.append("the plant did not restart at %s, step 0" % t["scenario"])
 	if ui.tracker == null or ui.tracker.index != 0:
 		main.free()
 		Engine.time_scale = 1.0
@@ -129,7 +142,15 @@ func run(tree: SceneTree) -> Array:
 		for d in s.get("do", []):
 			var o: Dictionary = ui.model.op_keys[ui.model.op_key(d["kks"], d["do"], d.get("trip"))]
 			var where: Array = o.get("where", ["local", "screen"])
-			if where.has("screen"):
+			if where.has("screen") and desk != "":
+				if not ui.screen_reach(d["kks"]):
+					ui.fly_to(desk)            # the desk's own control room (the water treatment plant's)
+					await settle(tree, ui)
+				if not ui.screen_reach(d["kks"]):
+					p.append("step %s: %s is not on the screens at %s (%.1f m from it)" % [s["id"], d["kks"], desk,
+							ui.distance_to(desk)])
+					break
+			elif where.has("screen"):
 				if not ui.in_control_room():
 					find_button(ui.root, "Control room").pressed.emit()
 			if via_screens and where.has("screen"):
@@ -212,7 +233,7 @@ func run(tree: SceneTree) -> Array:
 		if not ui.procedure.visible or ui.tracker.index != -1:
 			p.append("the procedure panel does not show the procedure as finished")
 		p.append_array(_debrief(ui, e, t))
-		print("  cold start through the UI: %d steps of model time (%s), %d operations, %d procedure steps" % [e.step_no,
+		print("  %s through the UI: %d steps of model time (%s), %d operations, %d procedure steps" % [t["procedure"], e.step_no,
 				ui.clock.clock_text(), e.inputs.size(), ui.run_tracker.log.size()])
 	main.free()
 	return p

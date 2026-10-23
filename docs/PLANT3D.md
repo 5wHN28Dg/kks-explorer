@@ -865,7 +865,8 @@ docs/plant3d/STAFF.md, docs/plant3d/WATER-TREATMENT.md, docs/plant3d/SITE.md. Mi
   {"day": d, "time": "HH:MM"}` (the clock at step 0; default plant.json's).
 - **Areas** gain the kit parts of the water treatment plant and the camp (§18.6) and `"load": "inside"` (§18.5).
 - **screens.json** gains `desks` per screen and on the overview: the codes of the `operator_desk` parts it is reached
-  from (default: every desk). An op whose `where` holds `screen` is offered only at a desk with a screen that shows its
+  from (default: every desk); 1–16 codes, each an `operator_desk` of the plant (`bad_ref`), in a screens.json of
+  `"version": 2` (`unknown_key` in version 1). An op whose `where` holds `screen` is offered only at a desk with a screen that shows its
   code: the water treatment plant's own panel works the WTP, the main control room's desks show its overview without
   operating it (WATER-TREATMENT.md §7).
 - **staff.json** (new, optional): the people (§16).

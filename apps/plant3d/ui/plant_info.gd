@@ -81,6 +81,15 @@ func part_of(code: String) -> String:
 	return parts.get(code, "")
 
 
+## The operator desks of the plant (`operator_desk` parts), in content order: their screens are worked there.
+func desks() -> Array:
+	var out := []
+	for c in parts:
+		if parts[c] == "operator_desk":
+			out.append(c)
+	return out
+
+
 static func _structure_name(s: Dictionary) -> String:
 	return String(s.get("part", "structure")).capitalize()
 
@@ -253,7 +262,8 @@ func permissives(o: Dictionary, engine) -> Array:
 	return out
 
 
-## Where the trainee can do an op from here: "local" within reach of the equipment, "screen" in the control room.
+## Where the trainee can do an op from here: "local" within reach of the equipment, "screen" at a desk whose screens
+## show its code (PLANT3D §14: the main control room's, or the water treatment plant's own).
 static func offered(o: Dictionary, near: bool, in_control: bool) -> bool:
 	var w: Array = o.get("where", ["local", "screen"])
 	return (near and w.has("local")) or (in_control and w.has("screen"))

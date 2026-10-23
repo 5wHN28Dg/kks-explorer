@@ -36,6 +36,9 @@ const Trends = preload("res://ui/trends.gd")
 
 const CONTENT := "res://built/content"
 const REACH := 6.0              # metres: within this a trainee works the equipment's local controls
+## How near an operator desk outside the main control room the trainee stands to work its screens (m): within the
+## water treatment plant's control room.
+const DESK_REACH := 6.0
 const HINT_RANGE := 15.0
 
 signal horn_changed(priority: int)
@@ -338,7 +341,7 @@ func open_panel(p: String) -> void:
 	elif p.begins_with("card:"):
 		open_card(p.substr(5))
 	elif p == "screens" or p.begins_with("screens:"):
-		if not in_control_room():
+		if not at_desk():
 			go_control_room(false)
 		open_screens(p.substr(8) if p.begins_with("screens:") else "")
 
@@ -355,6 +358,62 @@ func distance_to(code: String) -> float:
 
 func near(code: String) -> bool:
 	return index.has(code) and distance_to(code) <= REACH
+
+
+## The operator desks whose screens the trainee is at (PLANT3D §14 `desks`): in the main control room its desks,
+## elsewhere any desk within DESK_REACH (the water treatment plant's own control room).
+func desks_here() -> Array:
+	var out := []
+	var ctl := in_control_room()
+	for c in info.desks():
+		if ctl and info.area_of.get(c, "") == "control":
+			out.append(c)
+		elif not ctl and index.has(c) and distance_to(c) <= DESK_REACH and _desk_seen(c):
+			out.append(c)
+	return out
+
+
+## A desk outside the main control room is worked only from where its screens are in sight: nothing solid (a wall,
+## a partition) between the trainee's eyes and the desk.
+func _desk_seen(code: String) -> bool:
+	var b: AABB = index.box(code)
+	var to := b.get_center()
+	var q := PhysicsRayQueryParameters3D.create(eye(), to)
+	q.exclude = [player.get_rid()]
+	var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(q)
+	return hit.is_empty() or b.grow(0.3).has_point(hit.position)
+
+
+## At an operator desk: its screens can be worked.
+func at_desk() -> bool:
+	return not desks_here().is_empty()
+
+
+## Whether screen i (−1: the overview) is on a desk here.
+func screen_here(i: int) -> bool:
+	return screens.error == "" and screens.reached(i, desks_here())
+
+
+## Whether a code's operations from the screens are offered here: a desk here has the screen that shows it.
+func screen_reach(code: String) -> bool:
+	if screens.error != "" or not screens.screen_of.has(code):
+		return false
+	return screens.reached(screens.screen_of[code][0], desks_here())
+
+
+## The names of the desks that show a code's screen ("" when it is on no screen).
+func desks_for(code: String) -> String:
+	if screens.error != "" or not screens.screen_of.has(code):
+		return ""
+	var ds: Array = screens.screens[screens.screen_of[code][0]].desks
+	if ds.is_empty():
+		ds = info.desks()
+	var names := PackedStringArray()
+	for d in ds:
+		var n: String = info.name_of(d)
+		if not names.has(n):
+			names.append(n)
+	return ", ".join(names)
 
 
 func in_control_room() -> bool:
@@ -466,10 +525,11 @@ func screens_open() -> bool:
 	return mimic != null and mimic.visible
 
 
-## Opens the screens at a screen (its id; "" the overview), in the control room only: they are its desks' screens.
+## Opens the screens at a screen (its id; "" the overview, or the desk's first screen), at an operator desk only:
+## the main control room's or the water treatment plant's, each with its own screens (PLANT3D §14).
 func open_screens(screen_id := "") -> void:
-	if screens.error != "" or not in_control_room():
-		toast("The screens are worked in the control room." if screens.error == "" else "No control room screens: " + screens.error)
+	if screens.error != "" or not at_desk():
+		toast("The screens are worked at an operator desk: in the control room, or the water treatment plant's." if screens.error == "" else "No control room screens: " + screens.error)
 		return
 	_release_mouse()
 	mimic.open(screens.screen_index(screen_id) if screen_id != "" else -1)
@@ -490,7 +550,7 @@ func close_screens() -> void:
 
 ## The Control room button (and H, gamepad X): to the control room and its screens; there, the screens on and off.
 func control_room() -> void:
-	if in_control_room() and not player.scripted:
+	if at_desk() and not player.scripted:
 		if screens_open():
 			close_screens()
 		else:
@@ -501,7 +561,7 @@ func control_room() -> void:
 
 
 func show_me(code: String) -> void:
-	var on_screens: bool = screens_open() and screens.screen_of.has(code)
+	var on_screens: bool = screens_open() and screens.screen_of.has(code) and mimic.here(screens.screen_of[code][0])
 	if on_screens:
 		# the plant is not drawn under the screens: the code is shown on its screen too (the pointer and the route
 		# below are there when the screens close)
