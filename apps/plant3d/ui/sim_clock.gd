@@ -2,7 +2,8 @@
 ## (docs/PLANT3D.md §7.9, §7.10). Pause, 1× and fast-forward. Fast-forward is offered only while the engine allows it
 ## (no unacknowledged alarm, no active priority 1 alarm, no machine in a watched state) and stops by itself the moment
 ## that changes. Its speed is capped so that the model never takes more than `cpu_share` of one core, from the
-## measured cost of a step (decision 0054: 1.4 ms on the Note 9, so about 18× there; 60× on a laptop).
+## measured cost of a step (decision 0054; with the water treatment plant about 0.8 ms a step on the Note 9, so about
+## 30× there; 60× on a laptop: sim/README.md).
 extends Node
 
 const PlantEngine = preload("res://sim/engine.gd")
@@ -148,7 +149,8 @@ func _process(delta: float) -> void:
 	var ran := 0
 	var sp := speed
 	for i in n:
-		if speed == Speed.FAST and not engine.fast_forward():
+		# (after the first, the check at the end of the step before has looked at this very state)
+		if i == 0 and speed == Speed.FAST and not engine.fast_forward():
 			set_speed(Speed.NORMAL, "Fast-forward stopped: " + ff_blocked())
 			break
 		_one()

@@ -10,6 +10,8 @@ extends SceneTree
 ##   --digests=PATH    also write the SHA-256 of every value at every step of every run, in chunks of 1000 steps
 ##                     (tests/test_plant3d_sim.py compares them with the reference's: bit for bit)
 ##   --dump=RUN:FROM:TO   print every value's bits at steps FROM–TO of one run (steps/N, train, hot or a fork's id)
+##   --interpreter=1   step every engine with the interpreter (engine.gd _run), not the straight-line program; the
+##                     last lines say how many of the engines made here ran each ("PROGRAM straight-line=N interpreter=M")
 ##   --only=PARTS      some of: valid,steps,links,procedure,train,v2 (default all; procedure and train run both the
 ##                     cold start, `train`, and the hot restart, `hot`; v2 runs the format 2 file's valid plant,
 ##                     steps and train forks)
@@ -36,6 +38,7 @@ var digests := {}
 var dump_run := ""
 var dump_from := 0
 var dump_to := -1
+var _programs := [0, 0]
 var expected := 0       # results the run must give: a script error that skips one fails the run
 
 
@@ -45,6 +48,7 @@ func _init() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--") and a.contains("="):
 			opts[a.substr(2, a.find("=") - 2)] = a.substr(a.find("=") + 1)
+	PlantEngine._interpret_only = opts.get("interpreter", "") == "1"
 	if opts.has("dump"):
 		var d: PackedStringArray = opts["dump"].rsplit(":", true, 2)
 		dump_run = d[0]
@@ -124,6 +128,7 @@ func _init() -> void:
 
 
 func _finish(t0: int) -> void:
+	print("PROGRAM straight-line=%d interpreter=%d" % [_programs[0], _programs[1]])   # how the engines made here stepped
 	if passed + failed != expected:
 		failed += 1
 		print("FAIL the run: %d results, %d expected (a script error above stopped a vector)" % [passed + failed - 1,
@@ -293,6 +298,7 @@ func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "")
 		_result(name, m.error)
 		return
 	var e = PlantEngine.new(m, "s1")
+	_programs[0 if e._fast != null else 1] += 1
 	var run := "%ssteps/%d" % [prefix, k]
 	_hash_begin(run, 0)
 	_hash(e)
@@ -442,6 +448,7 @@ func _procedure(t: Dictionary, m) -> void:
 
 func _train(t: Dictionary, m, run: String) -> void:
 	var e = PlantEngine.new(m, t["scenario"])
+	_programs[0 if e._fast != null else 1] += 1
 	var forks: Array = t["forks"]
 	var bases := {}
 	for f in forks:
