@@ -17,6 +17,7 @@ const MIN_GAP := 0.015       # metres between two surfaces drawn over each other
 const PARALLEL := 0.9986     # cos 3°: surfaces closer to parallel than this fight where they meet (crossing ones meet in a line)
 const OVERLAP_AREA := 0.02   # m² of overlap within MIN_GAP that counts as a fight
 const BIN := 8.0
+const SLIVER := 0.001        # m²: an overlap smaller than this between two faces is rounding
 
 func run(tree: SceneTree) -> Array:
 	var world := Node3D.new()
@@ -29,12 +30,12 @@ func run(tree: SceneTree) -> Array:
 	if err != "":
 		world.free()
 		return [err]
-	var tris := faces(plant)
+	var tris := faces(plant, -12.0)   # down to the deepest pit's floor
 	var p := fights(tris)
 	if tris.size() < 1000:
 		p.append("the ground's faces are read from the built plant (%d)" % tris.size())
 	p.append_array(terrain_meets_ground(plant))
-	p.append_array(no_gaps(faces(plant, -12.0)))
+	p.append_array(no_gaps(tris))
 	world.free()
 	return p
 
@@ -191,8 +192,8 @@ static func fights(tris: Array) -> Array:
 				if not bins.has(k):
 					bins[k] = []
 				bins[k].append(i)
-	var p: Array = []
-	var seen := {}   # pairs of pieces already reported
+	# the overlap is added up per pair of pieces (two pieces cut into small triangles fight as much as two whole ones)
+	var total := {}   # [name, name] -> [m², first face, second face of the largest overlap, its m²]
 	var checked := {}
 	for k in bins:
 		var list: Array = bins[k]
@@ -204,19 +205,45 @@ static func fights(tris: Array) -> Array:
 				if checked.has(key):
 					continue
 				checked[key] = true
+				if not _ground_pair(tris[i], tris[j]):
+					continue
 				var area := fight_area(tris[i], tris[j])
-				if area > OVERLAP_AREA:
-					var pair := [tris[i][3], tris[j][3]]
-					pair.sort()
-					if seen.has(pair):
-						continue
-					seen[pair] = true
-					var at := _overlap_point(tris[i], tris[j])
-					p.append("%s and %s lie in one plane (z %.3f and %.3f) over %.2f m² of ground at plan (%.1f, %.1f): they fight in the depth buffer" % [
-						tris[i][3], tris[j][3], _h(tris[i], at), _h(tris[j], at), area, at.x, -at.y])
-					if p.size() >= 400:
-						return p
-	return p
+				if area <= SLIVER:
+					continue   # (two faces that only touch along an edge: float rounding)
+				var pair := [tris[i][3], tris[j][3]]
+				pair.sort()
+				if not total.has(pair):
+					total[pair] = [0.0, i, j, 0.0]
+				total[pair][0] += area
+				if area > total[pair][3]:
+					total[pair][1] = i
+					total[pair][2] = j
+					total[pair][3] = area
+	var p: Array = []
+	for pair in total:
+		var e: Array = total[pair]
+		if e[0] > OVERLAP_AREA:
+			var at := _overlap_point(tris[e[1]], tris[e[2]])
+			p.append("%s and %s lie in one plane (z %.3f and %.3f) over %.2f m² of ground, e.g. at plan (%.1f, %.1f): they fight in the depth buffer" % [
+				pair[0], pair[1], _h(tris[e[1]], at), _h(tris[e[2]], at), e[0], at.x, -at.y])
+	p.sort()
+	return p.slice(0, 40)
+
+## Whether a pair of faces is the ground's business: a structure's or the ground's own pieces (slabs, roads, floors,
+## pits' floors and walls, the terrain) at any depth down to the deepest pit; a kit piece (equipment, planting,
+## furniture) against one of those, or two kit pieces lying on the ground (within KIT_GROUND of it). Two pieces of
+## one machine down in a pit are the parts kit's own detail, not the ground.
+const KIT_GROUND := 0.1
+static func _ground_pair(s: Array, t: Array) -> bool:
+	var ks: bool = String(s[3]).contains("/kit/")
+	var kt: bool = String(t[3]).contains("/kit/")
+	if not (ks and kt):
+		return true
+	for f in [s, t]:
+		for k in 3:
+			if absf((f[k] as Vector3).y) > KIT_GROUND:
+				return false
+	return true
 
 ## A plan point (x, z) in the overlap of two faces' plans (the middle of the first overlap's corners).
 static func _overlap_point(s: Array, t: Array) -> Vector2:
@@ -245,12 +272,16 @@ static func fight_area(s: Array, t: Array) -> float:
 		return 0.0
 	if not _plan_box(s).intersects(_plan_box(t)):
 		return 0.0
-	var ps := PackedVector2Array([Vector2(s[0].x, s[0].z), Vector2(s[1].x, s[1].z), Vector2(s[2].x, s[2].z)])
-	var pt := PackedVector2Array([Vector2(t[0].x, t[0].z), Vector2(t[1].x, t[1].z), Vector2(t[2].x, t[2].z)])
+	# (about the first face's corner: single precision hundreds of metres from the plant's origin rounds too coarsely)
+	var o := Vector2(s[0].x, s[0].z)
+	var ps := PackedVector2Array([Vector2(s[0].x, s[0].z) - o, Vector2(s[1].x, s[1].z) - o, Vector2(s[2].x, s[2].z) - o])
+	var pt := PackedVector2Array([Vector2(t[0].x, t[0].z) - o, Vector2(t[1].x, t[1].z) - o, Vector2(t[2].x, t[2].z) - o])
 	var total := 0.0
 	for poly in Geometry2D.intersect_polygons(ps, pt):
 		# the height between the two planes is linear over the overlap: keep where it is within ±MIN_GAP
-		var q: PackedVector2Array = poly
+		var q := PackedVector2Array()
+		for v in poly:
+			q.append(v + o)
 		q = _clip(q, s, t, 1.0)
 		q = _clip(q, s, t, -1.0)
 		total += _area(q)
@@ -280,9 +311,11 @@ static func _h(t: Array, p: Vector2) -> float:
 	return a.y - (nrm.x * (p.x - a.x) + nrm.z * (p.y - a.z)) / nrm.y
 
 static func _area(q: PackedVector2Array) -> float:
+	# about its first corner: Vector2 is single precision, and cross products of coordinates hundreds of metres out
+	# round to 0.002 m²
 	var s := 0.0
-	for k in q.size():
-		s += q[k].cross(q[(k + 1) % q.size()])
+	for k in range(1, q.size() - 1):
+		s += (q[k] - q[0]).cross(q[k + 1] - q[0])
 	return absf(s) * 0.5
 
 ## Whether two visibility ranges (begin, end; an end of 0 is no end) are ever both drawn.

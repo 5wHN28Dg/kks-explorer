@@ -42,7 +42,9 @@ const CAPER := Color(0.36, 0.50, 0.28)
 const CAPER_FLOWER := Color(0.93, 0.88, 0.90)
 const SOIL := Color(0.50, 0.41, 0.31)
 const SOIL_WET := Color(0.36, 0.29, 0.22)
-const HOSE := Color(0.06, 0.06, 0.06)
+## The drip hose, black polyethylene greyed by the dust: pure black, thinner than a pixel a few metres off, drew a hard
+## dark line that broke into dashes as one walked (the Note 9, 2026-10-23: taken for a fault in the ground).
+const HOSE := Color(0.20, 0.19, 0.17)
 
 ## Vehicle paint (no white: the user's choice, 2026-10-21; muted, neutral fleet colours).
 const VEHICLE := {"silver": Color(0.68, 0.69, 0.70), "grey": Color(0.42, 0.44, 0.45), "sand": Color(0.72, 0.64, 0.50),
@@ -297,8 +299,8 @@ static func _bougainvillea(m, g, h: float) -> void:
 		_blob(m, c, Vector3(r, r, h * 0.16), rng, cols, 6, 3, 0.25)
 	_blob(m, Vector3(0, 0, h * 0.95), Vector3(0.6, 0.6, 0.3), rng, cols, 7, 3, 0.25)
 
-## The drip line along a row of plants (plant coordinates of the row's ends, in the part frame): a black hose on the
-## ground (detail).
+## The drip line along a row of plants (plant coordinates of the row's ends, in the part frame): a dusty black hose on
+## the ground (detail).
 static func drip_line(m, a: Vector3, b: Vector3) -> void:
 	col(m, "foliage", HOSE, "detail", 0.02)
 	m.cyl(a + Vector3(0, 0, 0.012), b + Vector3(0, 0, 0.012), 0.008, -1.0, 4, false)
@@ -504,9 +506,11 @@ static func court(_part: String, g) -> void:
 	var y1 := L * 0.5 - 1.5
 	# the centre line stops at the centre circle and goes on inside it (the circle's ring and the line would overlap)
 	var rc := 1.8
-	for seg in [[Vector2(x0, y0), Vector2(x1, y0)], [Vector2(x1, y0), Vector2(x1, y1)], [Vector2(x1, y1), Vector2(x0, y1)],
-			[Vector2(x0, y1), Vector2(x0, y0)], [Vector2(x0, 0), Vector2(-rc - lw * 3.0, 0)],
-			[Vector2(-rc + lw, 0), Vector2(rc - lw, 0)], [Vector2(rc + lw * 3.0, 0), Vector2(x1, 0)]]:
+	# (the side lines and the centre line stop at the lines they meet: no line over another)
+	for seg in [[Vector2(x0, y0), Vector2(x1, y0)], [Vector2(x1, y0 + lw * 2.0), Vector2(x1, y1 - lw * 2.0)],
+			[Vector2(x1, y1), Vector2(x0, y1)], [Vector2(x0, y1 - lw * 2.0), Vector2(x0, y0 + lw * 2.0)],
+			[Vector2(x0 + lw * 2.0, 0), Vector2(-rc - lw * 3.0, 0)],
+			[Vector2(-rc + lw, 0), Vector2(rc - lw, 0)], [Vector2(rc + lw * 3.0, 0), Vector2(x1 - lw * 2.0, 0)]]:
 		var a: Vector2 = seg[0]
 		var b: Vector2 = seg[1]
 		m.box_lh(Vector3(minf(a.x, b.x) - lw, minf(a.y, b.y) - lw, COURT_STEP * 2.0),
