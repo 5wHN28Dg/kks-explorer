@@ -381,7 +381,7 @@ class Staff:
             wp = f'{w}[{i}]'
             need(not isinstance(p, dict) or 'home' not in p, 'unknown_key', f'{wp}.home: homes come with the camp '
                                                                            f'(milestone S4)')
-            keys(p, ('id', 'role', 'roster', 'call'), ('crew',), wp)
+            keys(p, ('id', 'role', 'roster', 'call'), ('crew', 'routine'), wp)
             ident(p['id'], f'{wp}.id')
             need(p['id'] not in self.person_ix and p['id'] not in self.roles, 'dup_id',
                  f'{wp}: {p["id"]} is already a person or a role')
@@ -435,6 +435,15 @@ class Staff:
         for rid, r in self.roles.items():
             need(r['routine'] in self.routines, 'bad_ref', f'staff.json: role {rid}.routine: no routine '
                                                          f'{r["routine"]!r}')
+        for p in self.people:
+            if 'routine' in p:
+                need(p['routine'] in self.routines, 'bad_ref', f'staff.json: person {p["id"]}.routine: no routine '
+                                                              f'{p["routine"]!r}')
+
+    def routine_of(self, i):
+        """A person's routine: their own `routine` (§17.8), else their role's."""
+        p = self.people[i]
+        return self.routines[p.get('routine', self.roles[p['role']]['routine'])]
 
     def work_ref(self, x, where, dollar=True):
         need(isinstance(x, str) and (x == '$' and dollar or x in {w['id'] for w in self.m.works}), 'bad_ref',
@@ -680,6 +689,11 @@ class Staff:
             for s in ro['slots']:
                 runs[s[3]].add(rid)
             runs[ro['idle']].add(rid)
+        for i, p in enumerate(self.people):
+            ro = self.routine_of(i)
+            for s in ro['slots']:
+                runs[s[3]].add(p['role'])
+            runs[ro['idle']].add(p['role'])
         for r in self.reactions:
             for ro in r['roles']:
                 runs[r['task']].add(ro)
@@ -847,7 +861,7 @@ class StaffRun:
 
     def slot_times(self, p, duty):
         """The slots of a duty: [(time, slot index, repetition, task)] in time order, then slot order."""
-        r = self.st.routines[self.st.roles[p.role]['routine']]
+        r = self.st.routine_of(p.i)
         out = []
 
         def resolve(at):
@@ -917,7 +931,7 @@ class StaffRun:
             else:
                 task = None
             place = self.first_place(task) if task is not None else None
-            idle = st.routines[st.roles[p.role]['routine']]['idle']
+            idle = st.routine_of(p.i)['idle']
             if place is None:
                 place = self.first_place(idle)
             if place is None:
@@ -1162,7 +1176,7 @@ class StaffRun:
                 p.pos = self.st.gate
                 e.ev('move', p.id, None, self.st.places[p.pos]['id'], e.step_no)
         if cur is None and p.on:
-            idle = self.st.routines[self.st.roles[p.role]['routine']]['idle']
+            idle = self.st.routine_of(p.i)['idle']
             cur = p.cur = {'task': idle, 'prio': 6, 'made': e.step_no, 'order': self.order, 'step': 0, 'st': {},
                            'work': None, 'code': None, 'alarm': None, 'src': None, 'idle': True, 'started': True,
                            'int': True}

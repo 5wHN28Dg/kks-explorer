@@ -1390,6 +1390,8 @@ What S1 settles that §16–§17 left open (the engines and the vectors follow t
   task starts (a slot before their duty, the idle task when the duty starts) appears at the gate (`[n, "move",
   person, null, gate, n]`); a person off duty with no current task and an empty queue leaves the site from where
   they stand (`[n, "move", person, place, null, n]`). Placement puts off-duty people off site.
+- **A person's own routine:** a person may name a `routine` of their own, which replaces their role's (three field
+  operators of one role, each with the round of their own area).
 - **New step `ack`:** `{"ack": "$"}` acknowledges the alarm the task was given for (an NPC makes the `ack` input when
   it is unacknowledged; the trainee's step is done once it isn't).
 - **`"$"` codes:** `{"go": {"kks": "$"}}` goes to the work place of the instance's code: an alarm reaction's alarm

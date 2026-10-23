@@ -1338,7 +1338,7 @@ def mini_staff():
         {'id': pid, 'role': r, 'roster': ro, 'call': call}, **({'crew': crew} if crew else {}))
     people = [person('c_ccr', 'ccr_op', 'shift', 'Control C', 'c'), person('c_fo', 'field_op', 'shift', 'Field C', 'c'),
               person('a_ccr', 'ccr_op', 'shift', 'Control A', 'a'), person('a_fo1', 'field_op', 'shift', 'Field 1 A', 'a'),
-              person('a_fo2', 'field_op', 'shift', 'Field 2 A', 'a'), person('a_sup', 'shift_sup', 'shift', 'Super A', 'a'),
+              dict(person('a_fo2', 'field_op', 'shift', 'Field 2 A', 'a'), routine='field_shift2'), person('a_sup', 'shift_sup', 'shift', 'Super A', 'a'),
               person('a_elec', 'elec_ap', 'shift', 'Sparks A', 'a'), person('mech1', 'mech_tech', 'day', 'Mech 1'),
               person('mech2', 'mech_tech', 'day', 'Mech 2'), person('b_fo', 'field_op', 'shift', 'Field B', 'b')]
     slot = lambda at, task, **kw: dict({'at': at, 'task': task}, **kw)  # noqa: E731
@@ -1348,6 +1348,9 @@ def mini_staff():
                                                           slot('end-0:15', 'handover_give')]},
         {'id': 'field_shift', 'idle': 'idle_field', 'slots': [
             slot('start-0:15', 'handover_take_f'), slot('start+0:30', 'round', every='2:00', until='end-1:00'),
+            slot('end-0:15', 'handover_give_f')]},
+        {'id': 'field_shift2', 'idle': 'idle_field', 'slots': [
+            slot('start-0:15', 'handover_take_f'), slot('start+1:00', 'round', every='2:00', until='end-1:00'),
             slot('end-0:15', 'handover_give_f')]},
         {'id': 'sup_shift', 'idle': 'idle_sup', 'slots': [slot('start+0:05', 'sup_check'), slot('08:30', 'raise_valve'),
                                                           slot('12:00', 'sup_check')]},
@@ -1496,6 +1499,7 @@ REJECTS_STAFF = [
     ('a role\'s unknown discipline', 'bad_value', _set(STF + ['roles', 0, 'discipline'], 'art')),
     ('a person of no role', 'bad_ref', _set(STF + ['people', 0, 'role'], 'pilot')),
     ('a person on a rotation without a crew', 'bad_ref', _del(STF + ['people', 0, 'crew'])),
+    ('a person\'s own routine that does not exist', 'bad_ref', _set(STF + ['people', 4, 'routine'], 'nothing')),
     ('a call sign of 33 characters', 'bad_type', _set(STF + ['people', 0, 'call'], 'x' * 33)),
     ('over 200 people', 'limit', lambda F: F['staff.json']['people'].extend(
         {'id': f'x{i}', 'role': 'mech_tech', 'roster': 'day', 'call': f'X{i}'} for i in range(191))),

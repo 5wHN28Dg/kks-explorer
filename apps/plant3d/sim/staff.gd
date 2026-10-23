@@ -177,8 +177,14 @@ func prio_of(tid: String) -> int:
 	return int(tasks[tid].get("priority", 3))
 
 
+## A person's routine: their own `routine` (§17.8), else their role's.
+func routine_of(pi: int) -> Dictionary:
+	var p: Dictionary = people[pi]
+	return routines[p.get("routine", roles[p["role"]]["routine"])]
+
+
 func idle_of(pi: int) -> String:
-	return routines[roles[people[pi]["role"]]["routine"]]["idle"]
+	return routine_of(pi)["idle"]
 
 
 # ---------------------------------------------------------------- random numbers (§17.5)
@@ -282,7 +288,7 @@ static func _slot_less(a: Array, b: Array) -> bool:
 
 func plan(e, pi: int, upto: int) -> void:
 	var slots: Array = e.sp_slots[pi]
-	var r: Dictionary = routines[roles[people[pi]["role"]]["routine"]]
+	var r: Dictionary = routine_of(pi)
 	for day in range(e.sp_planned[pi] + 1, upto + 1):
 		var du := duty_on_day(pi, day)
 		if du.is_empty():
