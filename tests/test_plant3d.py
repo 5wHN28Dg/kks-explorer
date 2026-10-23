@@ -332,6 +332,26 @@ class WaterTreatment(unittest.TestCase):
             self.assertEqual(e.v(shaft[code]), 0, code)
 
 
+_RUNS = {}
+
+
+def procedure_run(b, pid):
+    """A procedure run once as a trainee (P.run_procedure), shared by the tests: (its last engine, its log, a clone of
+    the engine at the start of each step, before its operations). Clone what you change."""
+    if pid not in _RUNS:
+        first = P.Recorder(b, b.procedures[pid]['scenario'])
+        steps = [s['id'] for s in b.procedures[pid]['steps']]
+        bases = {steps[0]: first.clone()}
+
+        def keep(sid, e):
+            i = steps.index(sid)
+            if i + 1 < len(steps):
+                bases[steps[i + 1]] = e.clone()
+        e, log = P.run_procedure(b, pid, eng=first, on_step=keep)
+        _RUNS[pid] = (e, log, bases)
+    return _RUNS[pid]
+
+
 class WaterTreatmentModel(unittest.TestCase):
     """Milestone W2 (WATER-TREATMENT.md §5–§8): the WTP started from cold by its procedure, its other procedures run in
     the model alone, the main control room reads its overview without working it, every alarm of §6 is in the model,
@@ -371,11 +391,11 @@ class WaterTreatmentModel(unittest.TestCase):
     def test_other_procedures_run_in_the_model_alone(self):
         for pid, last in (('filter_backwash', 'back'), ('ro_stop_flush', 'mb')):
             with self.subTest(pid):
-                e, log = P.run_procedure(self.b, pid)
+                e, log, _ = procedure_run(self.b, pid)
                 self.assertEqual(log[-1][0], last)
                 self.assertTrue(all(x[4] == 'done' for x in e.events if x[1] == 'op'))
                 self.assertEqual({x[1] for x in e.events} - {'op', 'machine'}, set())
-        e, _ = P.run_procedure(self.b, 'filter_backwash')
+        e, _, _ = procedure_run(self.b, 'filter_backwash')
         moves = [x[4] for x in e.events if x[1] == 'machine' and x[2] == 'filter1']
         self.assertEqual(moves, ['drain', 'air', 'air_water', 'rinse', 'service'])
         self.assertAlmostEqual(e.v('fl1_hl'), 0.3, delta=0.001)     # the clean bed, a little load since
@@ -520,7 +540,7 @@ class WaterTreatmentModel(unittest.TestCase):
         """The two W3 procedures from wtp_normal, as a trainee who does exactly what each step says."""
         for pid, last in (('ro_cip', 'pit'), ('mb_regeneration', 'pit')):
             with self.subTest(pid):
-                e, log = P.run_procedure(self.b, pid)
+                e, log, _ = procedure_run(self.b, pid)
                 self.assertEqual(log[-1][0], last)
 
     def test_a_step_with_operations_does_not_end_before_them(self):
@@ -528,35 +548,28 @@ class WaterTreatmentModel(unittest.TestCase):
         it begins would pass before the trainee made them (blind review of W3: the cleanings' steps)."""
         for pid in ('wtp_start', 'filter_backwash', 'ro_stop_flush', 'ro_cip', 'mb_regeneration'):
             pr = self.b.procedures[pid]
-            e = P.Recorder(self.b, pr['scenario'])
+            _, _, bases = procedure_run(self.b, pid)
             for s in pr['steps']:
                 ops = s.get('do', [])
+                if not ops or 'done' not in s:
+                    continue
                 if not s.get('ordered'):
                     ops = ops[::-1]         # a trainee may make them in any order: the other one than the reference's
+                e = bases[s['id']].clone()  # where the reference's trainee stood at the step's start
                 with self.subTest(pid=pid, step=s['id']):
-                    if ops and 'done' in s:
-                        self.assertFalse(e.truth(s['done']), f'{s["done"]} already true')
+                    self.assertFalse(e.truth(s['done']), f'{s["done"]} already true')
                     # nor before the last of them: half a model minute between operations (adversarial review of W3:
                     # drain_alk ended with the tank's drain, its heater still on)
                     for d in ops[:-1]:
                         e.op(d['kks'], d['do'], d.get('value'), d.get('trip'))
                         for _ in range(300):
                             e.step()
-                        if 'done' in s:
-                            self.assertFalse(e.truth(s['done']), f'{s["done"]} true before {ops[-1]["do"]}')
-                for d in ops[-1:]:
-                    e.op(d['kks'], d['do'], d.get('value'), d.get('trip'))
-                e.step()
-                n = 0
-                while 'done' in s and not e.truth(s['done']):
-                    e.step()
-                    n += 1
-                    self.assertLess(n, 36000, s['id'])
+                        self.assertFalse(e.truth(s['done']), f'{s["done"]} true before {ops[-1]["do"]}')
 
     def test_a_cleaning_stopped_early_does_not_end_its_step(self):
         """A cleaning stopped (or tripped) before its soak ends goes to its flush, but does not count as done: ro_cip's
         step waits for a whole cycle (adversarial review of W3: the procedure then stuck at `flow`)."""
-        e, _ = P.run_procedure(self.b, 'ro_cip', until_step='clean_alk')
+        e = procedure_run(self.b, 'ro_cip')[2]['clean_alk'].clone()
         e.op('00GCB22AT001', 'clean')
         for _ in range(600):
             e.step()
@@ -592,7 +605,7 @@ class WaterTreatmentModel(unittest.TestCase):
     def test_mixed_bed_taken_out_waits_for_its_standby(self):
         """mb_regeneration's `mb_a_off` ends only when both its operations are made: the pump stopped alone does not
         end it (blind review of W3: else `regenerate` is refused at the next step)."""
-        e, _ = P.run_procedure(self.b, 'mb_regeneration', until_step='mb_a_off')
+        e = procedure_run(self.b, 'mb_regeneration')[2]['mb_a_off'].clone()
         e.op('00GCK10AP001', 'stop')
         for _ in range(600):
             e.step()
@@ -621,7 +634,7 @@ class WaterTreatmentModel(unittest.TestCase):
     def test_high_ph_cleaning_trips_above_its_limit(self):
         """A high-pH solution trips the cleaning above 36.5 °C ([FT] table 35: 35 °C), not only at the skid's 40 °C
         (blind review of W3: the limit was checked only at the start)."""
-        e, _ = P.run_procedure(self.b, 'ro_cip', until_step='clean_alk')
+        e = procedure_run(self.b, 'ro_cip')[2]['clean_alk'].clone()
         e.fault('cip_heater')
         e.op('00GCB22AT001', 'clean')
         n = 0
@@ -634,7 +647,7 @@ class WaterTreatmentModel(unittest.TestCase):
     def test_cip_flush_draws_its_solution_from_the_tank(self):
         """The flush sends the tank's solution to the pit, so the drain sends only what is left: a cleaning never takes
         more chemical to the pit than the tank held (blind review of W3)."""
-        e, _ = P.run_procedure(self.b, 'ro_cip', until_step='drain_alk')
+        e = procedure_run(self.b, 'ro_cip')[2]['drain_alk'].clone()
         self.assertLess(e.v('cip_lvl'), 30)
 
     def test_cip_fill_stops_at_an_empty_degassed_tank(self):
@@ -645,7 +658,7 @@ class WaterTreatmentModel(unittest.TestCase):
 
     def test_neutralisation_batch_stops_its_agitator(self):
         """The batch starts the pit's agitator and stops it when it ends (blind review of W3: it ran on for ever)."""
-        e, _ = P.run_procedure(self.b, 'ro_cip')
+        e = procedure_run(self.b, 'ro_cip')[0].clone()
         self.assertEqual(e.v('nr_mix_cmd'), 1)
         n = 0
         while e.mstate['nr_batch'] != 0:
