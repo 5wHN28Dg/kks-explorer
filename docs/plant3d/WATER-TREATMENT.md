@@ -308,9 +308,10 @@ The model is still `tools/plant3d/wtp_model.py`, the procedures `wtp_content.py`
 - **The neutralisation pit** now holds an excess of acid or base (`nr_alk`, kmol; pH by a table of it, neutral 7.2 as
   before): the CIP's drain and flush, a regeneration's acid excess (−0.28 kmol each). The batch (machine `nr_batch`:
   dose → mix 10 min → check → discharge until low) doses caustic or acid by the pH (the dosing skids `00GNR20`,
-  `00GNR30` beside the pit) to 6.5–8.5 with the agitator running.
+  `00GNR30` beside the pit) to 6.5–8.5 with the agitator running; the batch's end stops the agitator.
 - **Faults added:** the antiscalant pump A, clarifier A's upset (its rake stalled: 30 times its carry-over; the filters
-  take the two clarifiers' water mixed, so taking A out of service clears it), filter 3's
+  take the two clarifiers' water mixed, so taking A out of service clears it; a clarifier out of service reads its
+  standing water settling to 0.5 NTU), filter 3's
   underdrain (20 times its turbidity: breakthrough), the degasser blower's motor (a trip; CO₂ to 40 mg/L, the new
   analyser `00GCH10CQ001`), RO B fouling fast, a resin leak in either mixed bed (its outlet strainer's differential
   pressure `00GCF1nCP001` rises, the bed exhausts three times as fast; repaired only by the work `wo_mb_x_resin`, a

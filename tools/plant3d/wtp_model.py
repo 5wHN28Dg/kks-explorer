@@ -321,9 +321,13 @@ def wtp():
     m.max('cl_mix_k', ['cl_mix1', 1])
     m.prod('cl_sp_mix', ['cl_sp', 'cl_mix_k'])
     m.lag('cl_ntu', 'cl_sp_mix', 600, init=0.405263158, unit='NTU')   # about an hour through a clarifier (clock)
-    m.prod('cla_sp', ['cl_sp', 'cl_upset_k'])
-    m.lag('cla_ntu', 'cla_sp', 600, init=0.405263158, unit='NTU', kks='00GBD11CQ001')
-    m.lag('clb_ntu', 'cl_sp', 600, init=0.405263158, unit='NTU', kks='00GBD12CQ001')
+    # each clarifier's own turbidity: out of service its water stands and settles to 0.5 NTU, as with no flow
+    for x, n, refs in (('a', 1, ['cl_sp', 'cl_upset_k', 'cla_cmd']), ('b', 2, ['cl_sp', 'clb_cmd'])):
+        m.prod(f'cl{x}_sp_run', refs)
+        m.NOT(f'cl{x}_out', f'cl{x}_cmd')
+        m.prod(f'cl{x}_sp_still', [f'cl{x}_out', 0.5])
+        m.sum(f'cl{x}_sp', [f'cl{x}_sp_run', f'cl{x}_sp_still'])
+        m.lag(f'cl{x}_ntu', f'cl{x}_sp', 600, init=0.405263158, unit='NTU', kks=f'00GBD1{n}CQ001')
     for x in 'ab':
         m.cmp(f'cl{x}_h', f'cl{x}_ntu', '>', 5)
         m.cmp(f'cl{x}_hc', f'cl{x}_ntu', '<', 4)
@@ -1032,8 +1036,8 @@ def wtp():
     m.machines.append({'id': 'nr_batch', 'kks': '00GNR10BB001', 'init': 'idle',
                        'commands': {'neutralise': {'from': ['idle'], 'to': 'dosing'},
                                     'stop_batch': {'from': ['dosing', 'mixing', 'discharging'], 'to': 'idle'}},
-                       'states': [{'id': 'idle', 'set': {'nr_auto': 0}, 'watch': False},
-                                  {'id': 'dosing', 'set': {'nr_auto': 1, 'nr_mix_cmd': 1},
+                       'states': [{'id': 'idle', 'set': {'nr_auto': 0, 'nr_mix_cmd': 0}, 'watch': False},   # the batch's end stops
+                                  {'id': 'dosing', 'set': {'nr_auto': 1, 'nr_mix_cmd': 1},  # the agitator it started
                                    'next': [['nr_ph_mid', 'mixing']],
                                    'say': 'Dosing acid or caustic to bring the pit to pH 6.5–8.5'},
                                   {'id': 'mixing', 'set': {'nr_auto': 0},

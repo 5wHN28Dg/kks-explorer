@@ -542,6 +542,72 @@ class WaterTreatmentModel(unittest.TestCase):
                     n += 1
                     self.assertLess(n, 36000, s['id'])
 
+    def test_mixed_bed_taken_out_waits_for_its_standby(self):
+        """mb_regeneration's `mb_a_off` ends only when both its operations are made: the pump stopped alone does not
+        end it (blind review of W3: else `regenerate` is refused at the next step)."""
+        e, _ = P.run_procedure(self.b, 'mb_regeneration', until_step='mb_a_off')
+        e.op('00GCK10AP001', 'stop')
+        for _ in range(600):
+            e.step()
+        self.assertEqual(e.v('mf_a_safe'), 1)
+        self.assertFalse(e.truth('mb_a_taken'))
+        e.op('00GCF11AT001', 'standby')
+        e.step()
+        self.assertTrue(e.truth('mb_a_taken'))
+
+    def test_clarifier_a_upset_clears_when_it_is_taken_out(self):
+        """Clarifier A's stalled rake spoils its own water, not B's; taken out of service, the filters' water clears
+        (blind review of W3: the upset was on the clarifiers' shared turbidity)."""
+        e = P.Engine(self.b, 'wtp_normal')
+        e.fault('cl_upset')
+        for _ in range(6000):
+            e.step()
+        self.assertGreater(e.v('cla_ntu'), 5)
+        self.assertLess(e.v('clb_ntu'), 2)
+        self.assertGreater(e.v('cl_ntu'), 3)
+        e.op('00GBD11AT001', 'stop')
+        for _ in range(12000):
+            e.step()
+        self.assertLess(e.v('cl_ntu'), 2)
+        self.assertLess(e.v('cla_ntu'), 2, 'out of service, its water stands and settles')
+
+    def test_high_ph_cleaning_trips_above_its_limit(self):
+        """A high-pH solution trips the cleaning above 36.5 °C ([FT] table 35: 35 °C), not only at the skid's 40 °C
+        (blind review of W3: the limit was checked only at the start)."""
+        e, _ = P.run_procedure(self.b, 'ro_cip', until_step='clean_alk')
+        e.fault('cip_heater')
+        e.op('00GCB22AT001', 'clean')
+        n = 0
+        while not e.truth('ro_b_trip_cip_t_latched'):
+            e.step()
+            n += 1
+            self.assertLess(n, 36000, 'no trip')
+        self.assertLess(e.v('cip_t'), 37.5)
+
+    def test_cip_flush_draws_its_solution_from_the_tank(self):
+        """The flush sends the tank's solution to the pit, so the drain sends only what is left: a cleaning never takes
+        more chemical to the pit than the tank held (blind review of W3)."""
+        e, _ = P.run_procedure(self.b, 'ro_cip', until_step='drain_alk')
+        self.assertLess(e.v('cip_lvl'), 30)
+
+    def test_cip_fill_stops_at_an_empty_degassed_tank(self):
+        """The CIP tank's fill stops when the degassed water tank reaches its low-low level (blind review of W3)."""
+        cip = next(m for m in self.b.model.machines if m['id'] == 'cip')
+        filling = next(s for s in cip['states'] if s['id'] == 'filling')
+        self.assertIn(['dg_ll', 'water'], filling['next'])
+
+    def test_neutralisation_batch_stops_its_agitator(self):
+        """The batch starts the pit's agitator and stops it when it ends (blind review of W3: it ran on for ever)."""
+        e, _ = P.run_procedure(self.b, 'ro_cip')
+        self.assertEqual(e.v('nr_mix_cmd'), 1)
+        n = 0
+        while e.mstate['nr_batch'] != 0:
+            e.step()
+            n += 1
+            self.assertLess(n, 72000, 'the batch did not end')
+        e.step()
+        self.assertEqual(e.v('nr_mix_cmd'), 0)
+
     def test_wtp_normal_holds_the_days_work(self):
         """§7: the filter's backwash due at once, RO B waiting for its cleaning, mixed bed A's silica through in about
         an hour."""

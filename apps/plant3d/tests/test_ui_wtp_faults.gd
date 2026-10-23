@@ -60,6 +60,11 @@ func run(tree: SceneTree) -> Array:
 	if ui.in_control_room() or not ui.desks_here().has("00CWD10"):
 		p.append("screens:wtp_ro did not take the trainee to the WTP's desk (%.1f m from it)" % ui.distance_to("00CWD10"))
 	ui.close_screens()
+	ui.open_panel("screens")             # no screen named, at the WTP's desk: its own screens, the trainee stays
+	await settle(tree, ui)
+	if ui.in_control_room() or not ui.desks_here().has("00CWD10") or not ui.screens_open():
+		p.append("screens (none named) at the WTP's desk did not open there")
+	ui.close_screens()
 	ui.open_panel("screens:aux")         # the train's screen from the WTP's desk: back to the main control room
 	await settle(tree, ui)
 	if not ui.in_control_room() or not ui.screens_open() or mim.current != sm.screen_index("aux"):
