@@ -10,7 +10,7 @@
  ],
  "steps": [
   {"id": "check", "text": ["Filter 1 (", {"link": ["00GBB11AT001"], "to": {"kks": "00GBB11AT001"}}, ") has the highest head loss (", {"link": ["00GBB11CP001"], "to": {"kks": "00GBB11CP001"}}, "): 1.4 m of the 2.2 m at which it is due."], "at": ["00GBB11CP001"], "go": "walk"},
-  {"id": "tank", "text": ["Check the filtered water tank (", {"link": ["00GBL10BB001"], "to": {"kks": "00GBL10BB001"}}, ") is above 40 %: a backwash takes about 240 m³."], "at": ["00GBL10BB001"], "go": "walk", "done": "ft_bw_ok"},
+  {"id": "tank", "text": ["Check the filtered water tank (", {"link": ["00GBL10BB001"], "to": {"kks": "00GBL10BB001"}}, ") is above 40 %: a backwash takes about 360 m³."], "at": ["00GBL10BB001"], "go": "walk", "done": "ft_bw_ok"},
   {"id": "wash", "text": ["Start the backwash of filter 1 (", {"link": ["00GBB11AT001"], "to": {"kks": "00GBB11AT001"}}, ") and follow its steps: the backwash pump (", {"link": ["00GBR10AP001"], "to": {"kks": "00GBR10AP001"}}, ") and the air scour blower (", {"link": ["00GBR10AN001"], "to": {"kks": "00GBR10AN001"}}, ") run by themselves."], "at": ["00GBB11AT001"], "go": "walk", "do": [{"kks": "00GBB11AT001", "do": "backwash"}], "done": "fl1_clean", "why": [{"p": ["Air first loosens the dirt from the grains; water at 45 m/h then lifts the bed and carries it to waste. One filter at a time: the others take its flow meanwhile."]}]},
   {"id": "back", "text": ["Filter 1 is back in service with a clean bed; check the filtered water tank recovers above 70 %."], "at": ["00GBL10BB001"], "go": "walk", "done": "ft_70"}
  ]

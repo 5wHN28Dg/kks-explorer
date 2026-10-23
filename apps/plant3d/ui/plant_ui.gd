@@ -550,7 +550,7 @@ func control_room() -> void:
 
 
 func show_me(code: String) -> void:
-	var on_screens: bool = screens_open() and screens.screen_of.has(code)
+	var on_screens: bool = screens_open() and screens.screen_of.has(code) and mimic.here(screens.screen_of[code][0])
 	if on_screens:
 		# the plant is not drawn under the screens: the code is shown on its screen too (the pointer and the route
 		# below are there when the screens close)

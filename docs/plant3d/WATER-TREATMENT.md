@@ -263,6 +263,11 @@ The model is `tools/plant3d/wtp_model.py` (areas `wtp` and `intake`, about 580 v
   a cartridge filter clogging, an RO concentrate valve stuck, a leaking O-ring, fast fouling, a mixed bed exhausting
   early, a demin tank's drain left open, the transfer pumps' overloads, the pit's pH probe drifting, the plant's demin
   tank drained. Each repaired at its equipment.
+- **Alarm codes:** the levels' alarms stand on their transmitters (`00GBL10CL001`, `00GCL10CL001`/`002`), the
+  plant's demin tank's on the tank; the pit's pH alarm is one alarm (QAH) for either side of 6–9.
+- **Left for W3:** a mixed bed that exhausts in free play is recovered by putting the other bed in service (its
+  regeneration is W3's). In long free play from `cold_iron` the WTP asks for its day work: filter 1's backwash after
+  about 2.5 model hours, the coagulant tank's fill after about 4.5, mixed bed A after about 6.
 - **Procedures:** `wtp_start` (from `wtp_cold`, 17 steps, about 23 model minutes), `filter_backwash` and
   `ro_stop_flush` (from `cold_iron`).
 - **Model cost:** the joined model grew from 1,112 to 1,696 values; a step takes about 1.45 times as long

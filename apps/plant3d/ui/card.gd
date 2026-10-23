@@ -230,7 +230,7 @@ func refresh() -> void:
 		if ctl:
 			_where.text += " · on the screens of this desk"
 	else:
-		_where.text = "Not drawn in the plant: worked from the control room screens." + ((" " + here) if here != "" else "")
+		_where.text = "Not drawn in the plant: worked from the screens of an operator desk." + ((" " + here) if here != "" else "")
 	_state.text = " · ".join(info.state_words(code, e))
 	for vn in _values:
 		(_values[vn] as Label).text = info.fmt(vn, e.v(vn))
@@ -265,6 +265,8 @@ func refresh() -> void:
 		var note := ""
 		if not ok:
 			var desks: String = ui.desks_for(o["kks"])
+			if desks == "":
+				desks = "an operator desk"
 			if w.has("local") and w.has("screen"):
 				note = "At the equipment (walk up to it) or from the screens at: " + desks
 			elif w.has("screen"):

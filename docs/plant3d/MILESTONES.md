@@ -38,7 +38,8 @@ its six screens on its own desk (screens.json `desks`, PLANT3D §14), its overvi
 the procedures `wtp_start`, `filter_backwash` and `ro_stop_flush`; 20 faults; the ties to the first train (makeup and
 the plant's demin tank, its low alarm on the train's screens). The vectors: `plant3d-v2.json` gains `wtp` (the start
 from cold and 26 forks), the train's tie forks and the `desks` rejects; format 1's `train` and `hot` keep every input,
-event and value they had (the WTP's values added). Not yet: the WTP's local panel apart from its desk, CIP, the mixed
+event and value they had (the WTP's values added; W1's two placeholder constants `wtp_in_service` and
+`intake_in_service` removed). Not yet: the WTP's local panel apart from its desk, CIP, the mixed
 beds' regeneration and the scenarios `wtp_normal` and `wtp_flood` (W3).
 
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4

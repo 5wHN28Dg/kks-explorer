@@ -86,7 +86,7 @@ def filter_backwash():
         step('check', ['Filter 1 (', k('00GBB11AT001'), ') has the highest head loss (', k('00GBB11CP001'),
                        '): 1.4 m of the 2.2 m at which it is due.'], ['00GBB11CP001'], go='walk'),
         step('tank', ['Check the filtered water tank (', k('00GBL10BB001'), ') is above 40 %: a backwash takes '
-                      'about 240 m³.'], ['00GBL10BB001'], (), 'ft_bw_ok'),
+                      'about 360 m³.'], ['00GBL10BB001'], (), 'ft_bw_ok'),
         step('wash', ['Start the backwash of filter 1 (', k('00GBB11AT001'), ') and follow its steps: the backwash '
                       'pump (', k('00GBR10AP001'), ') and the air scour blower (', k('00GBR10AN001'), ') run by '
                       'themselves.'], ['00GBB11AT001'],

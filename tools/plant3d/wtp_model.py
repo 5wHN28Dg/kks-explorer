@@ -209,6 +209,8 @@ def wtp():
     m.integ('dg_lvl', 'dg_net', clock_gain(DEGASSED_TANK), 0, 100, 60, '%', '00GCK10BB001')
     m.integ('ft_lvl', 'ft_net', clock_gain(FILTERED_TANK), 0, 90, 90, '%', '00GBL10CL001')
     m.integ('nr_lvl', 'nr_net', clock_gain(PIT), 0, 100, 40, '%', '00GNR10BB001')
+    # the thickener: 10 % of its volume a clock hour at the design's sludge (in units of it)
+    m.integ('th_lvl', 'th_bal', round(DAY * 10 / 3600, 12), 0, 100, 32.5, '%', '00GBS10AT001')
     for x, n in (('a', 1), ('b', 2)):
         m.integ(f'dt_{x}_lvl', f'dt_{x}_net', clock_gain(DEMIN_TANK), 0, 100, 70, '%', f'00GCL10CL00{n}')
 
@@ -239,7 +241,7 @@ def wtp():
     m.tab('cl_over', 'cl_load', [[600, 1], [1100, 4]])  # one clarifier with all the flow: upflow 4.6 m/h, past 2.4
     m.prod('cl_sp0', ['river_ntu', 'cl_frac', 'pl_k', 'mx_k', 'cl_over'])
     m.max('cl_sp', ['cl_sp0', 0.3])
-    m.lag('cl_ntu', 'cl_sp', 600, init=0.405263158, unit='NTU')       # about an hour and a half through a clarifier (clock)
+    m.lag('cl_ntu', 'cl_sp', 600, init=0.405263158, unit='NTU')       # about an hour through a clarifier (clock)
     m.max('cla_ntu', ['cl_ntu'], 'NTU', '00GBD11CQ001')
     m.max('clb_ntu', ['cl_ntu'], 'NTU', '00GBD12CQ001')
     m.cmp('cl_h', 'cl_ntu', '>', 5)
@@ -260,8 +262,12 @@ def wtp():
     for i in FILTERS:
         st = f'filter{i}_state'
         m.cmp(f'fl{i}_svc', st, '<', 0.5)
-        m.cmp(f'fl{i}_bw', st, '>', 0.5)
-        m.cmp(f'fl{i}_rinse', st, '>', 3.5)
+        # the backwash's states are 1–4 (drain to rinse); standby (5) is neither
+        m.cmp(f'fl{i}_st_lo', st, '>', 0.5)
+        m.cmp(f'fl{i}_st_hi', st, '<', 4.5)
+        m.AND(f'fl{i}_bw', [f'fl{i}_st_lo', f'fl{i}_st_hi'])
+        m.cmp(f'fl{i}_st_r', st, '>', 3.5)
+        m.AND(f'fl{i}_rinse', [f'fl{i}_st_r', f'fl{i}_st_hi'])
         m.timer(f'fl{i}_t', f'fl{i}_bw')
         t = 0
         for k, minutes in enumerate(F_TIMES, 1):
@@ -275,9 +281,9 @@ def wtp():
     m.sum('bw_n', [f'fl{i}_bw' for i in FILTERS])
     m.cmp('bw_free', 'bw_n', '<', 0.5)
     for i in FILTERS:
-        # head loss: the solids caught (turbidity × flow), about 0.05 m a clock hour at design (2.2 m in ~36 h);
+        # head loss: the solids caught (turbidity × flow), about 0.05 m a clock hour at design (0.3 to 2.2 m in ~36 h);
         # the backwash's rinse washes it back to the clean bed's 0.3 m
-        m.prod(f'fl{i}_load', [f'fl{i}_svc', 'cl_ntu', 'fl_per', 0.00055])
+        m.prod(f'fl{i}_load', [f'fl{i}_svc', 'cl_ntu', 'fl_per', 0.00077])
         m.prod(f'fl{i}_wash', [f'fl{i}_rinse', -60])
         m.sum(f'fl{i}_rate', [f'fl{i}_load', f'fl{i}_wash'])
         m.integ(f'fl{i}_hl', f'fl{i}_rate', round(DAY / 3600, 12), 0.3, 3, FILTER_INIT[i], 'm', f'00GBB1{i}CP001')
@@ -324,7 +330,7 @@ def wtp():
     m.OR('ac_run', ['ac_a_cmd', 'ac_b_cmd'])
     m.AND('ac_on', ['ac_run', 'sw_on'])
     m.AND('chem_on', ['sbs_on', 'as_on'])
-    m.lag('wt_hy', 'hy_dose', 600, init=1.5)            # the chlorine dosed at the intake, an hour and a half later
+    m.lag('wt_hy', 'hy_dose', 600, init=1.5)            # the chlorine dosed at the intake, an hour later
     m.tab('sbs_k', 'sbs_on', [[0, 1], [1, 0]])
     m.prod('cl_free', ['wt_hy', 0.5, 'sbs_k'], 'mg/L')  # half used up on the way; SBS takes the rest out
     m.tab('orp_sp', 'cl_free', [[0, 200], [0.05, 240], [0.2, 330], [0.75, 420]])
@@ -453,7 +459,7 @@ def wtp():
         m.cmp(f'{p}_flowing', f'{p}_flow', '>=', 35)
         m.AND(f'{p}_making', [f'{p}_flowing', f'{p}_good', f'{p}_svc'])
         m.AND(f'mf_{x}_ll_c', ['dg_ll', f'mf_{x}_cmd'])
-    m.sum('dg_out', ['mb_a_flow', 'mb_b_flow'])
+    m.sum('dg_out', ['mb_a_out', 'mb_b_out'])          # a recirculating bed's water comes back to the tank
     m.diff('dg_net', 'dg_in', 'dg_out')
 
     # ---------------------------------------------------------------- the demineralised water tanks and transfer (§3 #12)
@@ -505,10 +511,10 @@ def wtp():
     m.cmp('nr_lvl_ok', 'nr_lvl', '>=', 10)
     m.AND('nr_low_run', ['nr_low', 'nr_on'])
     m.prod('th_load', ['wt_raw', 'river_ntu', round(1 / (1050 * 20), 12)])   # 1 at the dry season's design
-    m.tab('th_cap', 'fp_cmd', [[0, 0], [1, 1.6]])
-    m.diff('th_bal', 'th_load', 'th_cap')
-    m.tab('th_sp', 'th_bal', [[-1.6, 30], [-0.6, 40], [0, 80], [1, 100]])
-    m.lag('th_lvl', 'th_sp', round(clock_s(120), 1), init=40, unit='%', kks='00GBS10AT001')
+    # the press takes up to 1.6 times the design's sludge while there is sludge to take (the level above 20 %)
+    m.tab('th_cap', 'th_lvl', [[20, 0], [40, 1.6]])
+    m.prod('th_out', ['fp_cmd', 'th_cap'])
+    m.diff('th_bal', 'th_load', 'th_out')
     m.cmp('th_h', 'th_lvl', '>', 80)
     m.cmp('th_hc', 'th_lvl', '<', 75)
 
