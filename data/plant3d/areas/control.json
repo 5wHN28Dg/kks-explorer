@@ -5,7 +5,7 @@
  "title": "Control building",
  "bounds": [
   [-40, -15],
-  [-10, 15]
+  [-3, 22]
  ],
  "pack": "base",
  "equipment": [
@@ -19,7 +19,15 @@
   {"id": "ctl_building", "part": "building", "kks": "00UCA10", "at": [-40, -15, 0], "params": {"outline": [[0, 0], [30, 0], [30, 30], [0, 30]], "height": 12, "cladding": "concrete", "openings": [{"kind": "door", "at": [30, 15, 0], "width": 1.8, "height": 2.4}]}},
   {"id": "ctl_door", "part": "door", "at": [-10, 0, 0], "yaw": 90, "params": {"kind": "double", "width": 1.8}},
   {"id": "ctl_floor_6", "part": "floor", "at": [-40, -15, 6], "params": {"outline": [[0, 0], [30, 0], [30, 30], [0, 30]], "openings": [[[1, 1], [8.5, 1], [8.5, 5], [1, 5]]]}},
-  {"id": "ctl_stair", "part": "stair", "params": {"foot": [-39, -14, 0], "top": [-31.4, -10, 6], "layout": "switchback", "width": 1.2}}
+  {"id": "ctl_stair", "part": "stair", "params": {"foot": [-39, -14, 0], "top": [-31.4, -10, 6], "layout": "switchback", "width": 1.2}},
+  {"id": "ctl_walk", "part": "road", "at": [-40, 20.5, 0], "params": {"outline": [[0, 0], [34.0, 0], [34.0, 1.5], [0, 1.5]], "surface": "concrete"}},
+  {"id": "ctl_walk_door", "part": "road", "at": [-8, 1.2, 0], "params": {"outline": [[0, 0], [2.0, 0], [2.0, 19.3], [0, 19.3]], "surface": "concrete"}},
+  {"id": "ctl_palm_1", "part": "planting", "at": [-37, 18.6, 0], "params": {"species": "date_palm"}},
+  {"id": "ctl_palm_2", "part": "planting", "at": [-29, 18.6, 0], "params": {"species": "date_palm"}},
+  {"id": "ctl_palm_3", "part": "planting", "at": [-21, 18.6, 0], "params": {"species": "date_palm"}},
+  {"id": "ctl_palm_4", "part": "planting", "at": [-13, 18.6, 0], "params": {"species": "date_palm"}},
+  {"id": "ctl_bed_n", "part": "planting", "at": [-8.9, 2.2, 0], "params": {"species": "saltbush", "route": [[0, 0, 0], [0.0, 2.4, 0]]}},
+  {"id": "ctl_bed_s", "part": "planting", "at": [-8.9, -2.2, 0], "params": {"species": "caper", "route": [[0, 0, 0], [0.0, -1.4, 0]]}}
  ],
  "signs": [
   {"text": "Control room", "at": [-11, 2, 2.6], "yaw": 90, "size": 0.4},

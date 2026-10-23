@@ -1,0 +1,21 @@
+{
+ "format": "walkdown-plant-procedure",
+ "version": 1,
+ "id": "camp_path",
+ "title": "Tour: from the plant gate to the camp",
+ "kind": "tour",
+ "intro": [
+  {"p": ["Walk from the control building past the admin area and through the plant gate to the camp, where the crews live, eat and rest off shift."]}
+ ],
+ "steps": [
+  {"id": "s1", "text": ["The gate house (", {"link": ["00UYE10"], "to": {"kks": "00UYE10"}}, "): everyone signs in and out here; the walkway beside the road is shaded by date palms."], "at": ["00UYE10"], "go": "walk"},
+  {"id": "s2", "text": ["The administration building (", {"link": ["00UYC10"], "to": {"kks": "00UYC10"}}, "): the permit office is on its ground floor."], "at": ["00UYC10"], "go": "walk"},
+  {"id": "s3", "text": ["The workshops (", {"link": ["00UST10"], "to": {"kks": "00UST10"}}, "): I&C with its calibration bench, mechanical, electrical."], "at": ["00UST10"], "go": "walk"},
+  {"id": "s4", "text": ["Accommodation block 1 (", {"link": ["00UZW11"], "to": {"kks": "00UZW11"}}, "): single rooms off a central corridor, each with its own bathroom."], "at": ["00UZW11"], "go": "walk"},
+  {"id": "s5", "text": ["The laundry (", {"link": ["00UZW32"], "to": {"kks": "00UZW32"}}, ")."], "at": ["00UZW32"], "go": "walk"},
+  {"id": "s6", "text": ["The gym (", {"link": ["00UZW31"], "to": {"kks": "00UZW31"}}, ") and the recreation room (", {"link": ["00UZW33"], "to": {"kks": "00UZW33"}}, ")."], "at": ["00UZW31", "00UZW33"], "go": "walk"},
+  {"id": "s7", "text": ["The prayer room (", {"link": ["00UZW30"], "to": {"kks": "00UZW30"}}, "): shoes off and the ablution area at its door."], "at": ["00UZW30"], "go": "walk"},
+  {"id": "s8", "text": ["The mess hall (", {"link": ["00UZW20"], "to": {"kks": "00UZW20"}}, "): its kitchen is behind the serving counter; its court is shaded by palms."], "at": ["00UZW20"], "go": "walk"},
+  {"id": "s9", "text": ["The camp office and first aid (", {"link": ["00UZW40"], "to": {"kks": "00UZW40"}}, "), by the camp gate."], "at": ["00UZW40"], "go": "walk"}
+ ]
+}

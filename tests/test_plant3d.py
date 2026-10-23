@@ -69,7 +69,7 @@ class Content(unittest.TestCase):
 
     def test_counts(self):
         c = self.b.counts
-        self.assertEqual(c['areas'], 11)                # the first train's nine, the water treatment plant's two
+        self.assertEqual(c['areas'], 9 + 2 + 12)      # the first train; the water treatment plant; the site, the camp and their interiors
         self.assertGreaterEqual(c['equipment'], 150)
         self.assertGreaterEqual(c['pipes'], 25)
         self.assertGreaterEqual(c['tours'], 1)
@@ -254,7 +254,11 @@ class WaterTreatment(unittest.TestCase):
         for aid in ('wtp', 'intake'):
             self.assertEqual(self.areas[aid]['pack'], 'wtp')
         with open(os.path.join(DATA, 'plant.json'), encoding='utf-8') as f:
-            self.assertEqual(json.load(f)['areas'][-2:], ['wtp', 'intake'])
+            order = json.load(f)['areas']
+        # the water treatment pack's two areas, together after the first train's (the site's and the camp's
+        # areas, C1, come after them)
+        self.assertEqual(order[order.index('wtp'):order.index('wtp') + 2], ['wtp', 'intake'])
+        self.assertGreater(order.index('wtp'), order.index('rack'))
 
     def test_every_stage_has_its_equipment(self):
         """WATER-TREATMENT.md §3's stages, each by its codes of §4, in the area that holds it."""
@@ -420,6 +424,33 @@ class WaterTreatmentModel(unittest.TestCase):
         nodes = {n: node for n, node, _ in self.b.model.values}
         self.assertEqual(nodes['ct_mk_flow']['product'], ['ct_mk_pos', 800, 'ct_mk_sup'])
         self.assertEqual(nodes['hw_mk_ok']['and'], ['hw_mk_free', 'dm_ok'])
+
+    def _engine(self, base, **init):
+        """An engine on a copy of a scenario with some initial values changed."""
+        b = copy.copy(self.b)
+        b.scenarios = dict(self.b.scenarios)
+        sc = copy.deepcopy(self.b.scenarios[base])
+        sc['init'].update(init)
+        b.scenarios['_t'] = sc
+        return P.Engine(b, '_t')
+
+    def test_a_stopped_plant_stays_quiet(self):
+        """wtp_cold left alone: no alarm (the standing clarifiers settle instead of going turbid)."""
+        e = P.Engine(self.b, 'wtp_cold')
+        for _ in range(3000):
+            e.step()
+        self.assertEqual([x for x in e.events if x[1] == 'alarm'], [])
+        self.assertLess(e.v('cl_ntu'), 2)
+
+    def test_pumps_do_not_chatter_at_an_empty_filtered_tank(self):
+        """The makeup and service water pumps stop below 5 % and wait for 10 %: the basin's makeup does not flip."""
+        e = self._engine('cold_iron', ft_lvl=7, ct_mk_cmd=1, rw_b_cmd=0, rw_b_spd=0)
+        flips, last = 0, e.v('mk_avail')
+        for _ in range(1200):
+            e.step()
+            flips += e.v('mk_avail') != last
+            last = e.v('mk_avail')
+        self.assertLessEqual(flips, 2)
 
     def test_two_speeds(self):
         """§5: the WTP's inventories at clock rate (× day_scale), the plant's demin tank at the train's rate."""

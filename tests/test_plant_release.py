@@ -254,6 +254,32 @@ class PlantRelease(unittest.TestCase):
         os.remove(os.path.join(d, 'WalkdownPlant.msix'))
         self.assertIn('no APK or MSIX package', self.run_main(['1.2.3', d])[0])
 
+    def test_packages_must_be_within_their_size_budget(self):
+        # the user, 2026-10-23: the APK at most 150 MB, the desktop packages (MSIX, Flatpak) about 300 MB
+        MB = 1_000_000
+        self.assertEqual(plant_release.MAX_BYTES, {'walkdown-plant.apk': 150 * MB, 'WalkdownPlant.msix': 300 * MB,
+                                                   'WalkdownPlant-arm64.msix': 300 * MB,
+                                                   'walkdown-plant.flatpak': 300 * MB})
+        self.assertEqual(set(plant_release.MAX_BYTES) | {'windows-msix.cer'}, set(plant_release.FILES))
+        d = self.packages()
+        apk, msix = (os.path.getsize(os.path.join(d, n)) for n in ('walkdown-plant.apk', 'WalkdownPlant.msix'))
+        # at its budget it passes; one byte over, it is refused, and only the package over its own budget
+        with mock.patch.dict(plant_release.MAX_BYTES, {'walkdown-plant.apk': apk, 'WalkdownPlant.msix': msix}):
+            self.assertIsNone(self.run_main(['1.2.3', d])[0])
+        with mock.patch.dict(plant_release.MAX_BYTES, {'walkdown-plant.apk': apk - 1, 'WalkdownPlant.msix': msix}):
+            err, _ = self.run_main(['1.2.3', d])
+        self.assertIn('walkdown-plant.apk is', err or '')
+        self.assertIn('over its budget', err)
+        self.assertNotIn('WalkdownPlant.msix is', err)
+        with mock.patch.dict(plant_release.MAX_BYTES, {'WalkdownPlant.msix': msix - 1}):
+            self.assertIn('WalkdownPlant.msix is', self.run_main(['1.2.3', d])[0] or '')
+        # the real budgets: a desktop package of 200 MB passes where an APK of 200 MB would not
+        big = {'walkdown-plant.flatpak': os.path.join(self.tmp, 'big')}
+        with open(big['walkdown-plant.flatpak'], 'wb') as f:
+            f.truncate(200 * MB)
+        self.assertEqual(plant_release.size_problems(big), [])
+        self.assertEqual(len(plant_release.size_problems({'walkdown-plant.apk': big['walkdown-plant.flatpak']})), 1)
+
     def test_a_failed_create_still_checks_latest(self):
         self.gh.create_makes_latest = self.gh.create_fails = True
         err, _ = self.run_main(['1.2.3', self.packages(), '--publish', '--yes'])

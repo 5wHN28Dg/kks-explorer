@@ -39,6 +39,12 @@ var stairs: Array = []           # {id, area, foot, top, layout, width, st, lay}
 var ladders: Array = []          # {id, area, foot, top, facing, exit}
 var buildings: Array = []        # {id, area, outline, height, openings, at}
 var pits: Array = []             # {id, area, outline, depth}
+## The lightmap's texel for what is being built, as a factor of each piece's own: 2 for the site's and the camp's
+## areas (low buildings seen from afar: a quarter of the texels, so the bake's atlas and the package stay near the first
+## train's)
+var texel_scale := 1.0
+const SITE_TEXEL_SCALE := 2.0
+var kit_structures: Array = []   # the structures the parts kit draws (planting, vehicles, furniture): {s, area}
 var rack_tiers: Array = []       # pipe racks' tiers, where pipes rest: {outline, z}
 var kp                           # the parts kit's placement (builder/kit_place.gd)
 var mats := {}
@@ -132,6 +138,9 @@ func _collect_structure(s: Dictionary, a: Dictionary) -> void:
 	var part: String = s.part
 	var where := "%s: %s" % [a.rel, s.id]
 	if not part in STRUCTURES:
+		if Kit.has_part(part):   # the site's and the camp's (kit/parts_site.gd)
+			kit_structures.append({"s": s, "area": a.id})
+			return
 		_err("unsupported", where, "the build has no geometry for structure part '%s' yet" % part)
 		return
 	var pr := params_of(part, s.get("params", {}))
@@ -145,7 +154,8 @@ func _collect_structure(s: Dictionary, a: Dictionary) -> void:
 		var deck: String = pr.get("deck", "concrete" if part != "grating" else "grating")
 		var rails: bool = part == "floor" or (part == "platform" and pr.get("edge", "handrail") == "handrail")
 		surfaces.append({"id": s.id, "kind": part, "z": at.z, "outline": Geom.poly(pr.outline, off, yaw), "holes": holes,
-			"thick": DECK.get(deck, 0.2), "rails": rails, "deck": deck, "area": a.id, "finish": pr.get("finish", "epoxy")})
+			"thick": DECK.get(deck, 0.2), "rails": rails, "deck": deck, "area": a.id, "finish": pr.get("finish", "epoxy"),
+			"surface": pr.get("surface", "")})
 	elif part == "stair":
 		var foot := _v3(pr.foot)
 		var top := _v3(pr.top)
@@ -164,7 +174,7 @@ func _collect_structure(s: Dictionary, a: Dictionary) -> void:
 	elif part == "building":
 		buildings.append({"id": s.id, "area": a.id, "outline": Geom.poly(pr.outline, off, yaw), "height": float(pr.height),
 			"openings": pr.get("openings", []), "at": at, "yaw": yaw, "cladding": pr.get("cladding", "metal"),
-			"rel": a.rel, "floor": pr.get("floor", "epoxy"), "crane": float(pr.get("crane", 0.0))})
+			"rel": a.rel, "floor": pr.get("floor", "epoxy"), "crane": float(pr.get("crane", 0.0)), "kks": s.get("kks", "")})
 	elif part == "pit":
 		var pg := Geom.poly(pr.outline, off, yaw)
 		pits.append({"id": s.id, "area": a.id, "outline": pg, "depth": float(pr.depth)})
@@ -256,7 +266,7 @@ func _check() -> void:
 	# a door in a building's wall stands in a door opening of that wall (else it would open onto the wall)
 	for a in areas:
 		for s in a.data.get("structures", []):
-			if s.part != "door":
+			if s.part != "door" or s.get("params", {}).get("locked", false):
 				continue
 			var at := _v3(s.at)
 			var p := Vector2(at.x, at.y)
@@ -497,7 +507,7 @@ func _mesh_node(parent: Node, name: String, st: SurfaceTool, mat: Material, texe
 	var arr := st.commit_to_arrays()
 	var lit: Mesh = null
 	if not arr.is_empty() and arr[Mesh.ARRAY_INDEX] != null:
-		lit = Lightmap.unwrap(Lightmap.white(arr), texel, false)
+		lit = Lightmap.unwrap(Lightmap.white(arr), texel * texel_scale, false)
 	if lit != null:
 		mi.mesh = lit
 		mi.material_override = mat
@@ -661,19 +671,31 @@ func build_all(out_dir: String) -> int:
 	var ground := _ground()
 	err += _save(ground, out_dir.path_join("ground.scn"))
 	var manifest_areas: Array = []
+	var interiors: Array = []
 	for a in areas:
 		var root := Node3D.new()
 		root.name = "area_" + a.id
+		var inside: bool = a.data.get("load", "") == "inside"
+		kp.unbaked = inside
+		texel_scale = SITE_TEXEL_SCALE if a.data.get("pack", "") in ["site", "camp"] else 1.0
 		_area(root, a)
+		kp.unbaked = false
+		texel_scale = 1.0
 		var path := out_dir.path_join("areas/%s.scn" % a.id)
 		err += _save(root, path)
 		var bd: Array = a.data.bounds
-		manifest_areas.append({"id": a.id, "title": a.data.get("title", a.id), "scene": path, "bounds": bd})
+		var entry := {"id": a.id, "title": a.data.get("title", a.id), "scene": path, "bounds": bd}
+		if inside:
+			# an interior (PLANT3D.md §18.5): loaded by the app near its building's doors, left out of the bake
+			entry["doors"] = interior_doors(a).map(func(p): return _arr(Geom.g([p.x, p.y, 0.0])))
+			interiors.append(entry)
+		else:
+			manifest_areas.append(entry)
 	err += _bake_scene(out_dir, [out_dir.path_join("ground.scn")] + manifest_areas.map(func(a): return a.scene))
 	var manifest := {
 		"format": "walkdown-plant-built", "version": 1, "title": plant.get("title", ""),
 		"start": {"at": _arr(Geom.g(plant.start.at)), "yaw": float(plant.start.get("yaw", 0))},
-		"ground": out_dir.path_join("ground.scn"), "areas": manifest_areas, "extent": _extent(),
+		"ground": out_dir.path_join("ground.scn"), "areas": manifest_areas, "interiors": interiors, "extent": _extent(),
 		"stairs": stairs.map(func(s): return {"id": s.id, "area": s.area, "path": s.lay.path.map(func(p): return _arr(Geom.g([p.x, p.y, p.z])))}),
 		"ladders": ladders.map(func(l): return {"id": l.id, "area": l.area, "foot": _arr(Geom.g([l.foot.x, l.foot.y, l.foot.z])),
 			"top": l.top, "facing": l.facing, "exit": _arr(Geom.g([l.exit.x, l.exit.y, l.exit.z]))}),
@@ -687,6 +709,23 @@ func build_all(out_dir: String) -> int:
 		return err + 1
 	f.store_string(JSON.stringify(manifest, " ", false))
 	return err
+
+## An interior's doors (plan points): the door openings of the buildings standing in its bounds (their shells are in
+## the area that holds the interior), where the app loads it as the trainee comes near (PLANT3D.md §18.5); its bounds'
+## centre when none.
+func interior_doors(a: Dictionary) -> Array:
+	var bd: Array = a.data.bounds
+	var r := Rect2(Vector2(bd[0][0], bd[0][1]), Vector2(bd[1][0] - bd[0][0], bd[1][1] - bd[0][1]))
+	var out: Array = []
+	for b in buildings:
+		if b.area == a.id or not r.grow(0.01).has_point(_mean(b.outline)):
+			continue
+		for o in b.openings:
+			if o.kind == "door":
+				out.append(_opening_plan(b, o))
+	if out.is_empty():
+		out.append(r.get_center())
+	return out
 
 ## The scene the lightmap is baked in (builder/bake/, after this build, on a GPU): the ground and every area as
 ## instances under one node named as the app's plant node holds them, the sun, the sky, and the LightmapGI beside
@@ -809,6 +848,9 @@ func _area(root: Node3D, a: Dictionary) -> void:
 			"fence": _fence(sts, s)
 			"wall": _wall(sts, s)
 			"pipe_rack": _rack(sts, s)
+	for ks in kit_structures:
+		if ks.area == a.id:
+			kp.structure(sts, ks.s)
 	for sg in a.data.get("signs", []):
 		var l := Label3D.new()
 		l.name = "sign"
@@ -841,6 +883,154 @@ func _area(root: Node3D, a: Dictionary) -> void:
 			l.set_meta("text_width", w)
 		signs.add_child(l)
 	kp.flush(root)
+	if a.data.get("pack", "") in ["site", "camp"] and a.data.get("load", "") != "inside":
+		var keep := {}   # its roads and walls: drawn at every distance (long and flat: a few draw calls)
+		for s in a.data.get("structures", []):
+			if s.part in ["road", "wall", "fence"]:
+				keep[s.id] = true
+		hlod(root, a.id, _far_items(a), root, keep)
+
+# ------------------------------------------------------------------ the far view of the site and the camp (HLOD)
+
+## The site's and the camp's far view (PLANT3D.md §10: "merged per 12 m cell far away (Godot visibility ranges as
+## HLOD)"; SITE.md §5: a new area's draw calls in any view that sees it): per HLOD_CHUNK square, one plain mesh of its
+## buildings as boxes under their roofs, its plants as a trunk and a crown and its shade canopies as sheets, drawn
+## beyond HLOD_RANGE of it; the area's own pieces in that square are drawn only within it (each one's
+## `visibility_parent` is its square's mesh). From the train the camp is a few draw calls, not hundreds. The far
+## meshes are unbaked and without UV2 (the moving pieces' pipelines: none new), and cast no shadow (beyond every
+## tier's shadow distance).
+const HLOD_CHUNK := 48.0
+const HLOD_RANGE := 120.0
+const FAR_WALL := Color(0.80, 0.77, 0.70)
+const FAR_ROOF := Color(0.62, 0.63, 0.62)
+const FAR_LEAF := Color(0.36, 0.44, 0.30)
+const FAR_TRUNK := Color(0.42, 0.35, 0.27)
+const FAR_SHEET := Color(0.80, 0.75, 0.63)
+
+## What the far view of an area shows: {buildings: [{outline, height}], plants: [[species, plan point, height]],
+## sheets: [[plan polygon, height]]}.
+func _far_items(a: Dictionary) -> Dictionary:
+	var out := {"buildings": [], "plants": [], "sheets": []}
+	for bl in buildings:
+		if bl.area == a.id:
+			out.buildings.append({"outline": bl.outline, "height": bl.height})
+	for ks in kit_structures:
+		if ks.area != a.id:
+			continue
+		var s: Dictionary = ks.s
+		var pr := params_of(s.part, s.get("params", {}))
+		match s.part:
+			"planting":
+				var h := float(pr.height) if float(pr.height) > 0.0 else float(KitPlace.P_SITE.SPECIES.get(String(pr.species), {}).get("height", 2.0))
+				for pl in kp.planting_places(s, pr):
+					out.plants.append([String(pr.species), Vector2(pl[0].x, pl[0].y), h])
+			"canopy", "porch":
+				var L := float(pr.length)
+				var w := float(pr.get("width", pr.get("depth", 2.5)))
+				var off := Vector2.ZERO if s.part == "canopy" else Vector2(0, w * 0.5)   # a porch reaches out from its wall
+				var pg := Geom.poly([[-L * 0.5 + off.x, -w * 0.5 + off.y], [L * 0.5 + off.x, -w * 0.5 + off.y],
+					[L * 0.5 + off.x, w * 0.5 + off.y], [-L * 0.5 + off.x, w * 0.5 + off.y]], Vector2(s.at[0], s.at[1]), float(s.get("yaw", 0)))
+				if s.part == "canopy":
+					pg = Geom.poly([[-w * 0.5, -L * 0.5], [w * 0.5, -L * 0.5], [w * 0.5, L * 0.5], [-w * 0.5, L * 0.5]], Vector2(s.at[0], s.at[1]), float(s.get("yaw", 0)))
+				out.sheets.append([pg, float(pr.height)])
+	return out
+
+## Builds the far meshes of `items` under root's node "far", and parents every drawn piece under root to its square's
+## mesh. Returns the far meshes made.
+func hlod(root: Node3D, id: String, items: Dictionary, scope: Node, keep := {}) -> int:
+	var sts := {}   # Vector2i -> SurfaceTool
+	var st_of := func(p: Vector2) -> SurfaceTool:
+		var k := Vector2i(int(floor(p.x / HLOD_CHUNK)), int(floor(p.y / HLOD_CHUNK)))
+		if not sts.has(k):
+			sts[k] = _st()
+		return sts[k]
+	for bl in items.buildings:
+		var st: SurfaceTool = st_of.call(_mean(bl.outline))
+		st.set_color(FAR_WALL)
+		Geom.add_prism(st, bl.outline, 0.0, bl.height)
+		st.set_color(FAR_ROOF)
+		Geom.add_prism(st, bl.outline, bl.height, bl.height + 0.3)
+	for sh in items.sheets:
+		var st: SurfaceTool = st_of.call(_mean(sh[0]))
+		st.set_color(FAR_SHEET)
+		Geom.add_prism(st, sh[0], sh[1], sh[1] + 0.1)
+	for pl in items.plants:
+		var st: SurfaceTool = st_of.call(pl[1])
+		var c: Vector2 = pl[1]
+		var h: float = pl[2]
+		if pl[0] == "date_palm":
+			st.set_color(FAR_TRUNK)
+			Geom.add_prism(st, circle(c, 0.25, 4), 0.0, h - 0.8, true)
+			st.set_color(FAR_LEAF)
+			Geom.add_prism(st, circle(c, h * 0.38, 6), h - 1.4, h - 0.6, true)
+		else:
+			var w := h * (0.45 if pl[0] == "tamarisk" else 0.6)
+			st.set_color(FAR_LEAF.lightened(0.1) if pl[0] in ["tamarisk", "saltbush"] else FAR_LEAF)
+			Geom.add_prism(st, circle(c, w, 6), h * (0.35 if pl[0] == "tamarisk" else 0.0), h, true)
+	var far := Node3D.new()
+	far.name = "far"
+	root.add_child(far)
+	var made := {}   # Vector2i -> MeshInstance3D
+	for k in sts:
+		var st: SurfaceTool = sts[k]
+		st.generate_tangents()
+		var mi := MeshInstance3D.new()
+		mi.name = "far_%d_%d" % [k.x, k.y]
+		mi.mesh = st.commit()
+		mi.material_override = _mat("matte")
+		mi.visibility_range_begin = HLOD_RANGE
+		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		Lightmap.mark(mi, false)
+		far.add_child(mi)
+		made[k] = mi
+	# the near pieces: each drawn only while its square's far mesh is not (Godot's HLOD)
+	var stack: Array = scope.get_children()
+	var parented := 0
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n == far or keep.has(String(n.name)):
+			continue
+		stack.append_array(n.get_children())
+		var gi := n as GeometryInstance3D
+		if gi == null or n.has_meta("hlod_keep"):
+			continue
+		var c := _plan_centre(gi)
+		# a building's pieces and the doors and windows on its walls go with the building (its far box's square):
+		# by their own centres they straddled a square's edge and left holes in the near view
+		for bl in items.buildings:
+			if Geometry2D.is_point_in_polygon(c, bl.outline) or _near_poly(c, bl.outline, 0.6):
+				c = _mean(bl.outline)
+				break
+		var k := Vector2i(int(floor(c.x / HLOD_CHUNK)), int(floor(c.y / HLOD_CHUNK)))
+		if made.has(k):
+			gi.visibility_parent = gi.get_path_to(made[k])
+			parented += 1
+	print("build: area %s: far view in %d squares, %d pieces drawn near only" % [id, made.size(), parented])
+	return made.size()
+
+## A drawn piece's centre in plan (plant coordinates), from its own box: the kit's cells carry it as meta `box`.
+func _plan_centre(gi: GeometryInstance3D) -> Vector2:
+	var box: AABB
+	if gi.has_meta("box"):
+		box = gi.get_meta("box")
+	elif gi is MeshInstance3D and gi.mesh != null:
+		box = _global_xf(gi) * gi.mesh.get_aabb()
+	else:
+		var p := _global_xf(gi).origin
+		box = AABB(p, Vector3.ZERO)
+	var c := box.get_center()
+	return Vector2(c.x, -c.z)
+
+## A node's transform from the area's root (the root stands at the origin).
+static func _global_xf(n: Node) -> Transform3D:
+	var t := Transform3D.IDENTITY
+	var c: Node = n
+	while c != null:
+		if c is Node3D:
+			t = (c as Node3D).transform * t
+		c = c.get_parent()
+	return t
 
 # ------------------------------------------------------------------ equipment (made by the parts kit: kit_place.gd)
 
@@ -921,10 +1111,15 @@ func _along(a: Vector3, b: Vector3) -> Transform3D:
 
 # ------------------------------------------------------------------ structures
 
+## A road's surface (content: `road`'s `surface`) and its material: asphalt, paved concrete (walkways, cast in bays) or
+## compacted gravel.
+const ROAD_MATS := {"asphalt": "road_asphalt", "concrete": "yard", "gravel": "yard_gravel"}
 func _surface(parent: Node3D, sf: Dictionary) -> void:
 	# a building's floors (an operating deck) are painted as its ground floor is (_hall_floor)
 	var inside: bool = sf.kind == "floor" or _in_building(sf)
 	var mat := _mat("grating" if sf.deck == "grating" else ("deck_steel" if sf.deck == "steel" else ("pit" if sf.kind == "pit_floor" else (FLOOR_MATS[sf.get("finish", "epoxy")] if inside else "concrete"))))
+	if sf.kind == "road":
+		mat = _mat(ROAD_MATS.get(sf.get("surface", "asphalt"), "road_asphalt"))
 	_slab(parent, sf.id, sf.outline, sf.holes, sf.z, sf.thick, mat)
 	if inside and sf.deck == "concrete" and sf.z >= DECK_SOFFIT_MIN:
 		_soffit(parent, sf)
@@ -1085,6 +1280,8 @@ func _ladder(parent: Node3D, l: Dictionary) -> void:
 func _building(parent: Node3D, b: Dictionary) -> void:
 	var body := _body(parent, b.id)
 	body.set_meta("building", b.id)
+	if b.get("kks", "") != "":
+		body.set_meta("kks", b.kks)   # found by its code (a tour's stop, a card), as equipment is
 	body.set_meta("cladding", b.cladding)
 	var walls := _st()
 	var liner := _st()
@@ -1100,6 +1297,15 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 	var h: float = b.height
 	var clad: bool = b.cladding == "metal"
 	var roof_holes: Array = []
+	# a shell nobody goes into (no door opening: its doors are `locked`, PLANT3D.md §18.6; the camp's other blocks,
+	# the store): its outside only, no liner, roof steel, floor or lamps inside (they cost the bake and the package and
+	# are never seen)
+	var shell: bool = not b.openings.any(func(o): return o.kind == "door")
+	body.set_meta("shell", shell)
+	# a low building (a camp block, an office, the gate house): its liner a flat ceiling with no steel under it and its
+	# lamps panels flush under it (a hall's rafters and hung bells a metre over a 1.8 m walker read as a shed)
+	var low: bool = h <= LOW_CEILING
+	body.set_meta("low_ceiling", low)
 	for i in pg.size():
 		var a := pg[i]
 		var c := pg[(i + 1) % pg.size()]
@@ -1149,26 +1355,28 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 				var p0 := a + u * r.position.x
 				var p1 := a + u * r.end.x
 				_wall_panel(walls, body, p0, p1, r.position.y, r.end.y, 0.25, piece_top(r, cuts, h))
-				if clad:
+				if clad and not shell:
 					# the inner skin, light: a hall seen from inside (polish pass)
 					var off := inward * (WALL_T * 0.5 + LINER_T * 0.5)
 					_panel(liner, null, p0 + off, p1 + off, r.position.y, minf(r.end.y, h - LINER_T), LINER_T)
 		_wall_trims(trim, plinth, a, c, -inward, cuts, h, clad)
-		if clad:
+		if clad and not shell:
 			_frame_edge(frame, body, a, c, inward, blocks, b)
 	_mesh_node(body, "walls", walls, _mat("wall_" + b.cladding))
 	var roof := _st()
 	for pc in Geom.decompose(pg, roof_holes):
 		Geom.add_prism(roof, pc, h, h + 0.3)
 		_convex(body, Geom.prism_points(pc, h, h + 0.3))
-		Geom.add_prism(liner, pc, h - LINER_T, h)
+		if not shell:
+			Geom.add_prism(liner, pc, h - LINER_T, h)
 	_mesh_node(body, "roof", roof, _mat("roof"))
 	# every building's roof from inside: the liner and the steel under it (a dark ceiling with nothing under it read as
 	# a black void in every hall: polish pass)
-	_mesh_node(body, "liner", liner, _mat("liner"))
-	var steel := _st()
-	if _roof_steel(steel, b, roof_holes) > 0:
-		_mesh_node(body, "roof_steel", steel, _mat("roof_steel"), STEEL_TEXEL)
+	if not shell:
+		_mesh_node(body, "liner", liner, _mat("liner"))
+		var steel := _st()
+		if not low and _roof_steel(steel, b, roof_holes) > 0:
+			_mesh_node(body, "roof_steel", steel, _mat("roof_steel"), STEEL_TEXEL)
 	if clad:
 		_mesh_node(body, "trims", trim, _mat("trim"), Lightmap.SHEET_TEXEL * 2.0)
 	_mesh_node(body, "plinth", plinth, _mat("concrete"))
@@ -1176,13 +1384,33 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 		_mesh_node(body, "louvres", louvres, _mat("louvre"), Lightmap.SHEET_TEXEL * 2.0)
 	if windows > 0:
 		_mesh_node(body, "windows", glass, _mat("window"))
-		_mesh_node(body, "windows_in", glass_in, _mat("window_in"))
+		if not shell:
+			_mesh_node(body, "windows_in", glass_in, _mat("window_in"))
 	if float(b.get("crane", 0.0)) > 0.0:
 		_crane(body, frame, b)
-	if clad:
+	if clad and not shell:
 		_mesh_node(body, "frame", frame, _mat("roof_steel"), STEEL_TEXEL)
-	_hall_floor(body, b)
-	_lamps(body, b)
+	if not shell:
+		_hall_floor(body, b)
+		_lamps(body, b)
+	# the site's and the camp's buildings (low, closed): what is seen only inside or through a door is drawn within
+	# INSIDE_RANGE of the building (its box's centre, as Godot measures a range) (SITE.md §5: the far view's budget)
+	if _area_pack(b.area) in ["site", "camp"]:
+		var r := INSIDE_RANGE + Site._bbox(pg).size.length() * 0.5
+		for n in ["liner", "roof_steel", "frame", "windows_in", "floor", "lamp_housings", "lamp_lenses"]:
+			var mi := body.get_node_or_null(n) as GeometryInstance3D
+			if mi != null:
+				mi.visibility_range_end = r
+				mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+
+const INSIDE_RANGE := 30.0
+const LOW_CEILING := 5.0
+
+func _area_pack(id: String) -> String:
+	for a in areas:
+		if a.id == id:
+			return a.data.get("pack", "")
+	return ""
 
 ## A building's walls: 0.25 m thick on their outline; a metal-clad hall's light inner skin (its liner) 3 cm thick
 ## against their inside and under the roof.
@@ -1417,7 +1645,7 @@ const HALL_FLOOR_T := 0.004
 ## A floor's finish (content: a building's `floor`, a deck's `finish`) and the material it is drawn with: painted,
 ## glazed tiles (a turbine hall's operating floor and walkways), bare concrete (a ground floor under a deck, a pump
 ## house: cracks, dust, tyre marks).
-const FLOOR_MATS := {"epoxy": "hall_floor", "tile": "floor_tile", "concrete": "floor_concrete"}
+const FLOOR_MATS := {"epoxy": "hall_floor", "tile": "floor_tile", "concrete": "floor_concrete", "vinyl": "floor_vinyl"}
 func _hall_floor(body: Node, b: Dictionary) -> int:
 	var pg: PackedVector2Array = b.outline
 	var holes: Array = []
@@ -1480,10 +1708,16 @@ func _lamps(body: Node, b: Dictionary) -> int:
 	# under the roof, over the whole hall: each hung on a short rod from a purlin, midway between two rafters, as high
 	# as it hung before the steel (whatever runs under the roof keeps its clearance), none under a roof opening
 	var places: Array = roof_lamp_places(b)
+	var low: bool = h <= LOW_CEILING
 	for c in places[0]:
-		_lamp(body, housing, lens, c, h - LAMP_DROP, places[1], h, n)
-		Geom.add_prism(housing, Geom.rect(c.x - 0.015, c.y - 0.015, c.x + 0.015, c.y + 0.015), h - LAMP_DROP + 0.25,
-			h - LINER_T - PURLIN_D)
+		if low:
+			# a panel flush under the ceiling (the liner)
+			var _p := _lamp(body, housing, lens, c, h - LINER_T - PANEL_T, places[1], h, n)
+			n += 1
+			continue
+		var panel := _lamp(body, housing, lens, c, h - LAMP_DROP, places[1], h, n)
+		Geom.add_prism(housing, Geom.rect(c.x - 0.015, c.y - 0.015, c.x + 0.015, c.y + 0.015),
+			h - LAMP_DROP + (PANEL_T if panel else 0.25), h - LINER_T - PURLIN_D)
 		n += 1
 	# under each deck of the hall (an operating floor, a building's upper floor): the floor below it is out of the
 	# roof lamps' reach, as a real hall's ground floor is lit by lamps under the deck (adversarial review)
@@ -1498,7 +1732,7 @@ func _lamps(body: Node, b: Dictionary) -> int:
 		var machines := through_deck(sf)   # none inside a machine that passes down through the deck (review)
 		for c in cs:
 			if Geom.in_region(c, sf.outline, sf.holes + machines) and Geom.in_region(c, pg, []):
-				_lamp(body, housing, lens, c, z, gap, h, n)
+				var _panel := _lamp(body, housing, lens, c, z, gap, h, n)
 				n += 1
 	if n > 0:
 		_mesh_node(body, "lamp_housings", housing, _mat("steel_dark"))
@@ -1575,11 +1809,21 @@ func lamp_floor(c: Vector2, z: float) -> float:
 	return f
 
 ## One high-bay lamp at c, its housing's underside at height z: housing, lit lens, the downlight and its spill.
-func _lamp(body: Node, housing: SurfaceTool, lens: SurfaceTool, c: Vector2, z: float, gap: float, h: float, n: int) -> void:
-	# a round high-bay luminaire: the reflector's bell and the driver's housing over it, the lens under it
-	Geom.add_prism(housing, circle(c, 0.28, 16), z, z + 0.12)
-	Geom.add_prism(housing, circle(c, 0.17, 12), z + 0.12, z + 0.25)
-	Geom.add_prism(lens, circle(c, 0.24, 16), z - 0.03, z)
+## Under a low ceiling (an office, a camp block: the lamp under PANEL_BELOW metres over its floor) a lamp is a square
+## panel, as such rooms are lit, not a high bay's bell (a tenth of its vertices: the site's buildings hold hundreds).
+const PANEL_BELOW := 4.5
+const PANEL_T := 0.06
+## Returns whether it is a panel.
+func _lamp(body: Node, housing: SurfaceTool, lens: SurfaceTool, c: Vector2, z: float, gap: float, h: float, n: int) -> bool:
+	var panel := z - lamp_floor(c, z) < PANEL_BELOW
+	if panel:
+		Geom.add_prism(housing, Geom.rect(c.x - 0.3, c.y - 0.3, c.x + 0.3, c.y + 0.3), z, z + PANEL_T)
+		Geom.add_prism(lens, Geom.rect(c.x - 0.27, c.y - 0.27, c.x + 0.27, c.y + 0.27), z - 0.01, z)
+	else:
+		# a round high-bay luminaire: the reflector's bell and the driver's housing over it, the lens under it
+		Geom.add_prism(housing, circle(c, 0.28, 16), z, z + 0.12)
+		Geom.add_prism(housing, circle(c, 0.17, 12), z + 0.12, z + 0.25)
+		Geom.add_prism(lens, circle(c, 0.24, 16), z - 0.03, z)
 	var l := SpotLight3D.new()
 	l.name = "lamp_%d" % n
 	l.position = Geom.g([c.x, c.y, z - 0.2])
@@ -1608,6 +1852,7 @@ func _lamp(body: Node, housing: SurfaceTool, lens: SurfaceTool, c: Vector2, z: f
 	l.shadow_enabled = false
 	l.add_to_group("baked_lights", true)
 	body.add_child(l)
+	return panel
 
 ## A circle of n sides round c (plan), radius r: a round piece's outline.
 static func circle(c: Vector2, r: float, n: int) -> PackedVector2Array:
@@ -1684,6 +1929,9 @@ func _pit(parent: Node3D, p: Dictionary) -> void:
 
 func _door(parent: Node3D, s: Dictionary) -> void:
 	var pr := params_of("door", s.get("params", {}))
+	if pr.get("locked", false):
+		_locked_door(parent, s, pr)
+		return
 	var door := AnimatableBody3D.new()
 	door.name = s.id
 	door.set_script(load("res://app/door.gd"))
@@ -1709,6 +1957,32 @@ func _door(parent: Node3D, s: Dictionary) -> void:
 	cs.shape = bs
 	cs.position = mi.position
 	door.add_child(cs)
+
+## A door that never opens (a shell's: `locked`): its leaf on the wall's outer face (the door's yaw points out of its
+## building), solid, drawn with the doors' material; the wall stays whole behind it.
+func _locked_door(parent: Node3D, s: Dictionary, pr: Dictionary) -> void:
+	var body := StaticBody3D.new()
+	body.name = s.id
+	var out := Geom.heading(float(s.get("yaw", 0)))
+	var at := _v3(s.at)
+	body.position = Geom.g([at.x + out.x * (WALL_T * 0.5 + 0.04), at.y + out.y * (WALL_T * 0.5 + 0.04), at.z])
+	body.rotation.y = Geom.yaw_rad(float(s.get("yaw", 0)))
+	parent.add_child(body)
+	var mi := MeshInstance3D.new()
+	mi.name = "panel"
+	var bm := BoxMesh.new()
+	bm.size = Vector3(float(pr.width), float(pr.height), 0.08)
+	mi.mesh = Mat.plant_mesh(bm)
+	mi.position.y = float(pr.height) * 0.5
+	mi.material_override = _mat("door")
+	Lightmap.mark(mi, false)
+	body.add_child(mi)
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = bm.size
+	cs.shape = bs
+	cs.position = mi.position
+	body.add_child(cs)
 
 func _slab_part(parent: Node3D, s: Dictionary) -> void:
 	var pr := params_of("slab", s.get("params", {}))

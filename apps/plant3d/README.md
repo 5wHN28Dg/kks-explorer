@@ -13,7 +13,7 @@ geometry at their described positions, made by the builder.
 |---|---|
 | `kit/` | the parts kit: every equipment part of `data/plant3d/kit.json` made from its parameters, the materials and their CC0 textures (fetched by `kit/fetch_textures.sh`) |
 | `builder/` | the content build: `data/plant3d` to `built/` (a scene per area, the ground and the site round the areas, the materials, the sky, the bake scene, `plant.json`, the walking directions' navigation mesh `nav.res` from `nav_bake.gd`). It runs at build time, never at app start. (Not `build/`: the repository ignores every `build/` folder.) `builder/bake/` is the editor plugin that bakes the lightmap |
-| `app/` | the app: start and tiers (`main.gd`, `quality.gd`), loading (`plant.gd`), the walker (`player.gd`), doors, the overview map, the touch controls and settings (`hud.gd`), About (`about.gd`), scripted routes (`autopilot.gd`, `routes.gd`), walking directions (`walk_route.gd`) |
+| `app/` | the app: start and tiers (`main.gd`, `quality.gd`), loading (`plant.gd`), the walker (`player.gd`), doors, the overview map, the touch controls and settings (`hud.gd`), About (`about.gd`), scripted routes (`autopilot.gd`, `routes.gd`), walking directions (`walk_route.gd`), the interiors loaded near their doors (`interiors.gd`) |
 | `ui/` | the interaction layer: the engine run at 0.1 s steps (`sim_clock.gd`), equipment cards (`card.gd`), alarms (`alarm_panel.gd`), procedures and tours (`procedure_panel.gd`, `procedure_tracker.gd`), the instructor's faults, bindings on the parts (`bindings.gd`), sounds (`sound_player.gd`), links (`links_in.gd`), the saved run (`autosave.gd`, `run_save.gd`); `plant_ui.gd` ties them together |
 | `addons/walkdown_plant_android/` | editor-only: the export plugin that adds the `walkdown-plant://` intent filter to the Android manifest (decision 0056) |
 | `msix/` | the MSIX: its manifest (identity, alias, the `walkdown-plant` protocol), `make-msix.sh` (the package, as Walkdown's), `logos.gd` (the logos from `icon.svg`) |
@@ -70,6 +70,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 |---|---|
 | `--quality=full` or `--quality=lean+vis` | uses that tier |
 | `--walk=frames --seconds=600` | the scripted frame-time walk |
+| `--walk=camp --seconds=600` | the frame-time walk through the site and the camp (milestone C1): to the plant gate, along the road to the camp, into block 1 and the mess hall, and back; its interiors load on the way |
 | `--walk=climb` | the test's route |
 | `--walk=screens` | the control room's screens, each in turn for 10 s: their frame cost (`MIMIC` line) |
 | `--shot=NAME@x,y,z,yaw,pitch;…` | saves PNG views and quits |
@@ -388,7 +389,9 @@ procedure, with the keys, is on the wiki's Releasing page. In short, from a clea
 4. `apps/plant3d/flatpak/build.sh --bundle walkdown-plant.flatpak BUILD_DIR --disable-rofiles-fuse` (the option where FUSE is not available to flatpak-builder, as for Walkdown).
 5. `python3 tools/plant_release.py X.Y.Z DIR --notes notes.md`: a dry run that checks everything; then the same with
    `--publish`. It refuses unless the version is the app's, the checkout is clean and on origin/main (and `plant-vX.Y.Z` on
-   origin, if there, names it), the APK and both MSIX packages carry the commit without local changes (the MSIX signed as `CN=Walkdown`, for the architecture its name says), every CI run
+   origin, if there, names it), the APK and both MSIX packages carry the commit without local changes (the MSIX signed as `CN=Walkdown`, for the architecture its name says), every package is within
+   its size budget (the APK at most 150 MB; the MSIX packages and the Flatpak bundle at most 300 MB, still compressed
+   wherever it costs nothing: the user, 2026-10-23), every CI run
    on the commit has passed, and GitHub's latest release is a Walkdown `vX.Y.Z`; it creates the release with
    `--latest=false` and checks afterwards that the latest release is still Walkdown's (and makes it latest again if
    not). `tools/release.py` makes Walkdown's own releases latest explicitly, behind the same checks.

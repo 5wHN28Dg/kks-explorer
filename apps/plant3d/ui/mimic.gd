@@ -858,8 +858,13 @@ func ack_screen() -> void:
 	var e = ui.clock.engine
 	var ks: Array = []
 	if current < 0:
+		# the overview: every alarm of the screens this desk has (the main control room reads the WTP's overview
+		# only: the WTP's own alarms are acknowledged at its desk), and those on no screen
 		for k in e._al.size():
-			if not ScreensModel.suppressed(e, k):
+			var a: Dictionary = ui.model.alarms[k]
+			var c = a.get("kks", a.get("where"))
+			var at = sm.screen_of.get(c) if c != null else null
+			if not ScreensModel.suppressed(e, k) and (at == null or here(at[0])):
 				ks.append(k)
 	else:
 		ks = sm.screen_alarms(current, e).alarms

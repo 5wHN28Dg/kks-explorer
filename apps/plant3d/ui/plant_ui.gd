@@ -368,9 +368,20 @@ func desks_here() -> Array:
 	for c in info.desks():
 		if ctl and info.area_of.get(c, "") == "control":
 			out.append(c)
-		elif not ctl and index.has(c) and distance_to(c) <= DESK_REACH:
+		elif not ctl and index.has(c) and distance_to(c) <= DESK_REACH and _desk_seen(c):
 			out.append(c)
 	return out
+
+
+## A desk outside the main control room is worked only from where its screens are in sight: nothing solid (a wall,
+## a partition) between the trainee's eyes and the desk.
+func _desk_seen(code: String) -> bool:
+	var b: AABB = index.box(code)
+	var to := b.get_center()
+	var q := PhysicsRayQueryParameters3D.create(eye(), to)
+	q.exclude = [player.get_rid()]
+	var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(q)
+	return hit.is_empty() or b.grow(0.3).has_point(hit.position)
 
 
 ## At an operator desk: its screens can be worked.

@@ -69,6 +69,48 @@ VALVE = {'dn': I(6, 4000, 100), 'rating': E(['pn10', 'pn16', 'pn25', 'pn40', 'pn
          'handwheel': E(['top', 'left', 'right'], 'top')}
 RANGE = {'range': T('pair'), 'unit': TXT('bar')}
 
+# Planting by species (SITE.md §4: every plant has a purpose; species grown in hot, dry, saline ground in the region)
+SPECIES = ['date_palm', 'tamarisk', 'oleander', 'bougainvillea', 'saltbush', 'caper']
+WALL_OPENINGS = {'type': 'records', 'max': 64, 'fields': {'kind': E(['door', 'window', 'door_closed']), 'at': T('xy'),
+                                                         'width': N(0.6, 4, 0.9), 'height': N(0.5, 3, 2.1)}}
+SITE_PARTS = {
+    # a row of plants along `route` (relative to `at`) from its first point every `spacing` metres; the default
+    # route, of no length, is one plant at `at`; height 0 and spacing 0 take the species' usual (kit/parts_site.gd)
+    'planting': part('structures', {'species': E(SPECIES), 'height': N(0, 20, 0), 'spacing': N(0, 30, 0),
+                                    'route': {'type': 'path', 'default': [[0, 0, 0], [0, 0, 0]]}}),
+    'vehicle': part('structures', {'kind': E(['bus', 'pickup', 'suv']),
+                                   'colour': E(['silver', 'grey', 'sand', 'blue', 'green'], 'silver')}),
+    'barrier': part('structures', {'width': N(2, 10, 4), 'open': B(False)}),
+    'guard_booth': part('structures', {'width': N(1.5, 4, 2.2), 'depth': N(1.5, 4, 2.2)}),
+    'canopy': part('structures', {'length': N(2, 100, 10), 'width': N(1.5, 20, 5), 'height': N(2.2, 8, 3)}),
+    'lamp_post': part('structures', {'height': N(3, 15, 8), 'arms': I(1, 2, 1)}),
+    'kerb': part('structures', {'route': T('path'), 'painted': B(True)}),
+    # a marked pedestrian crossing (zebra stripes across a road `width` wide, `length` along it)
+    'crossing': part('structures', {'width': N(2, 20, 7), 'length': N(1, 6, 3)}),
+    'court': part('structures', {'length': N(10, 40, 28), 'width': N(8, 25, 15), 'fence': N(2, 6, 4)}),
+    'porch': part('structures', {'length': N(2, 60, 40), 'depth': N(1, 5, 2.5), 'height': N(2.2, 4, 2.8)}),
+    # interior partitions: walls from a to b (relative to `at`), their door and window openings by plan point on a wall
+    'room': part('structures', {'walls': {'type': 'records', 'max': 128, 'fields': {'a': T('xy'), 'b': T('xy')}},
+                                'height': N(2.2, 5, 2.9), 'openings': WALL_OPENINGS}),
+    'bed': part('structures', {'width': N(0.8, 2, 0.9), 'length': N(1.8, 2.3, 2.0)}),
+    'locker': part('structures', {'width': N(0.4, 2.4, 1.0), 'height': N(1, 2.4, 2.0)}),
+    'desk': part('structures', {'width': N(0.8, 3, 1.2), 'depth': N(0.5, 1.2, 0.6)}),
+    'chair': part('structures', {'kind': E(['office', 'dining'], 'dining')}),
+    'table': part('structures', {'length': N(0.6, 6, 1.8), 'width': N(0.6, 2, 0.9), 'height': N(0.4, 1.1, 0.75)}),
+    'bench': part('structures', {'length': N(0.8, 6, 2)}),
+    'counter': part('structures', {'length': N(0.6, 20, 3), 'depth': N(0.4, 1.5, 0.7),
+                                   'kind': E(['serving', 'kitchen', 'range', 'sink', 'basin', 'reception', 'workbench'],
+                                             'kitchen')}),
+    'shelf': part('structures', {'length': N(0.4, 6, 1.2), 'height': N(0.3, 2.5, 1.8),
+                                 'kind': E(['store', 'shoes'], 'store')}),
+    'washer': part('structures', {'kind': E(['washer', 'dryer'], 'washer')}),
+    'gym_rack': part('structures', {'kind': E(['weights', 'treadmill', 'bike', 'bench'], 'weights')}),
+    'sofa': part('structures', {'seats': I(1, 4, 3)}),
+    'screen': part('structures', {'size': N(0.5, 3, 1.4), 'mount': N(0.8, 3, 1.5)}),
+    'carpet': part('structures', {'outline': T('polygon'), 'colour': E(['green', 'red', 'blue', 'sand'], 'green')}),
+    'sanitary': part('structures', {'kind': E(['wc', 'shower', 'basin', 'ablution'], 'wc')}),
+}
+
 PARTS = {
     # machines
     'gas_turbine': part('machines', {'rating_mw': N(1, 600, 250), 'length': N(5, 40, 22), 'casing_d': N(1, 8, 4.5),
@@ -277,19 +319,19 @@ PARTS = {
     'pipe_support': part('pipes', {'kind': E(['shoe', 'guide', 'anchor', 'hanger'], 'shoe')}),
     # structures (§5): placed by `at` (outline relative to it), or by foot and top
     'building': part('structures', {'outline': T('polygon'), 'height': N(2, 80), 'roof': E(['flat', 'pitched'], 'flat'),
-                                    'cladding': E(['metal', 'concrete', 'brick'], 'metal'),
+                                    'cladding': E(['metal', 'concrete', 'brick', 'panel'], 'metal'),
                                     # the ground floor's finish, and an overhead travelling crane's rail height (0: none)
-                                    'floor': E(['epoxy', 'tile', 'concrete'], 'epoxy'), 'crane': N(0, 78, 0),
+                                    'floor': E(['epoxy', 'tile', 'concrete', 'vinyl'], 'epoxy'), 'crane': N(0, 78, 0),
                                     'openings': {'type': 'records', 'max': 64, 'fields': {
                                         'kind': E(['door', 'louvre', 'pipe', 'window']), 'at': T('xyz'),
                                         'width': N(0.2, 30), 'height': N(0.2, 30)}}}),
     'floor': part('structures', {'outline': T('polygon'), 'openings': {'type': 'polygons', 'default': []},
                                  'deck': E(['concrete', 'grating', 'steel'], 'concrete'),
-                                 'finish': E(['epoxy', 'tile', 'concrete'], 'epoxy')}, walkable=True),
+                                 'finish': E(['epoxy', 'tile', 'concrete', 'vinyl'], 'epoxy')}, walkable=True),
     'platform': part('structures', {'outline': T('polygon'), 'openings': {'type': 'polygons', 'default': []},
                                     'deck': E(['grating', 'concrete', 'steel'], 'grating'),
                                     'edge': E(['handrail', 'kickplate', 'none'], 'handrail'),
-                                    'finish': E(['epoxy', 'tile', 'concrete'], 'epoxy')}, walkable=True),
+                                    'finish': E(['epoxy', 'tile', 'concrete', 'vinyl'], 'epoxy')}, walkable=True),
     'grating': part('structures', {'outline': T('polygon'), 'openings': {'type': 'polygons', 'default': []}},
                     walkable=True),
     'road': part('structures', {'outline': T('polygon'), 'openings': {'type': 'polygons', 'default': []},
@@ -298,8 +340,9 @@ PARTS = {
                                  'width': N(0.6, 2.5, 1.0)}, walkable=True),
     'ladder': part('structures', {'foot': T('xyz'), 'top': N(-30, 200), 'facing': N(0, 360, 0)}, walkable=True),
     'handrail': part('structures', {'route': T('path')}),
+    # `locked`: a door that never opens (a shell's, PLANT3D.md §18.5), its leaf on the wall's outside, no opening
     'door': part('structures', {'kind': E(['personnel', 'double', 'roller'], 'personnel'), 'width': N(0.7, 10, 1.0),
-                                'height': N(1.9, 10, 2.1)}),
+                                'height': N(1.9, 10, 2.1), 'locked': B(False)}),
     'column': part('structures', {'height': N(0.5, 80, 6), 'size': N(0.1, 2, 0.4)}),
     'beam': part('structures', {'route': T('path'), 'size': N(0.1, 2, 0.4)}),
     'trench': part('structures', {'outline': T('polygon'), 'depth': N(0.2, 5, 1)}),
@@ -309,6 +352,9 @@ PARTS = {
     'pit': part('structures', {'outline': T('polygon'), 'depth': N(0.5, 30, 6)}),
     'pipe_rack': part('structures', {'length': N(2, 500, 50), 'width': N(1, 20, 6), 'height': N(2, 30, 8),
                                      'tiers': I(1, 4, 2), 'bays': I(1, 100, 8)}),
+    # the site and the camp (docs/plant3d/SITE.md, PLANT3D.md §18.6): structures without codes, drawn by the parts
+    # kit (apps/plant3d/kit/parts_site.gd), placed by `at` and `yaw` like any structure
+    **SITE_PARTS,
     # people cues
     'tag_plate': part('cues', {'kind': E(['small', 'large'], 'small')}),
     'sign': part('cues', {'size': N(0.05, 2, 0.3)}),

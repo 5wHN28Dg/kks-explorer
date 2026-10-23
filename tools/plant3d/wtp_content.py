@@ -9,14 +9,6 @@ def wtp_start():
     state, filters, filtered water to the cooling tower, an RO train with its flush, the degasser, a mixed bed, and the
     transfer to the plant's demineralised water tank (WATER-TREATMENT §7)."""
     S = [
-        step('rw_a', ['Start raw water pump A (', k('00GAF10AP001'), ') at the intake.'], ['00GAF10AP001'],
-             [op('00GAF10AP001', 'start')], 'rw_a_run',
-             ['One pump first: the raw water main fills without a surge; the second follows once the flow is '
-              'steady.']),
-        step('hypo', ['Start hypochlorite dosing pump A (', k('00GBN30AP001'), ').'], ['00GBN30AP001'],
-             [op('00GBN30AP001', 'start')], 'hy_on',
-             ['1–2 mg/L of chlorine keeps algae and slime out of the clarifiers and filters. It must be taken out '
-              'again before the RO.']),
         step('mixer', ['Start the rapid mixer (', k('00GBD10AM001'), ').'], ['00GBD10AM001'],
              [op('00GBD10AM001', 'start')], 'mx_run',
              ['The coagulant has to be spread through the water in seconds: an intense mix, then slow '
@@ -24,13 +16,21 @@ def wtp_start():
         step('coag', ['Set the coagulant dose to the season\'s jar-test value, 30 mg/L, at the coagulant skid (',
                       k('00GBN10BB001'), '), and start coagulant pump A (', k('00GBN10AP001'), ').'],
              ['00GBN10BB001', '00GBN10AP001'],
-             [op('00GBN10BB001', 'set', 30), op('00GBN10AP001', 'start')], 'cg_dosing',
+             [op('00GBN10BB001', 'set', 30), op('00GBN10AP001', 'start')], 'cg_on',
              ['Ferric chloride neutralises the charge on the clay particles so that they gather into flocs. Too '
               'little and the clarifiers carry floc over; too much does no better and makes more sludge. A flood '
               'needs more (up to 80 mg/L).'], ordered=True),
         step('polymer', ['Start polymer dosing pump A (', k('00GBN20AP001'), ').'], ['00GBN20AP001'],
-             [op('00GBN20AP001', 'start')], 'pl_on',
+             [op('00GBN20AP001', 'start')], 'pl_run',
              ['A fraction of a milligram per litre binds the small flocs into large ones that settle fast.']),
+        step('hypo', ['Start hypochlorite dosing pump A (', k('00GBN30AP001'), ').'], ['00GBN30AP001'],
+             [op('00GBN30AP001', 'start')], 'hy_run',
+             ['1–2 mg/L of chlorine keeps algae and slime out of the clarifiers and filters. It must be taken out '
+              'again before the RO.']),
+        step('rw_a', ['Start raw water pump A (', k('00GAF10AP001'), ') at the intake.'], ['00GAF10AP001'],
+             [op('00GAF10AP001', 'start')], 'cg_dosing',
+             ['One pump first: the raw water main fills without a surge; the second follows once the flow is '
+              'steady. The dosing pumps, ready and running, dose as soon as the water flows.']),
         step('rw_b', ['Start raw water pump B (', k('00GAF10AP002'), '): the plant\'s full flow, about 1,050 m³/h.'],
              ['00GAF10AP002'], [op('00GAF10AP002', 'start')], 'wt_raw_ok'),
         step('clarify', ['Watch the clarified water turbidity (', k('00GBD11CQ001'), ', ', k('00GBD12CQ001'),

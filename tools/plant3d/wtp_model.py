@@ -53,7 +53,8 @@ MB_STATES = ['service', 'recirc', 'standby']
 COLD_WTP = {'rw_a_cmd': 0, 'rw_b_cmd': 0, 'rw_a_spd': 0, 'rw_b_spd': 0, 'hy_a_cmd': 0, 'wt_raw': 0,
             'mx_cmd': 0, 'cg_a_cmd': 0, 'pl_a_cmd': 0, 'mk_a_cmd': 0, 'sw_a_cmd': 0, 'sw_a_p': 0,
             'mk_a_p': 0, 'sbs_a_cmd': 0, 'as_a_cmd': 0, 'ac_a_cmd': 0, 'ro_a_park': 1, 'ro_a_hp': 0, 'ro_a_dump': 1,
-            'ro_a_spd': 0, 'ro_a_p': 0, 'ro_a_feedv': 0, 'ro_a_concv': 0, 'ro_a_su': 0, 'cf_a_dp': 0, 'dg_cmd': 0, 'dg_co2': 40,
+            'ro_a_spd': 0, 'ro_a_p': 0, 'ro_a_feedv': 0, 'ro_a_concv': 0, 'ro_a_su': 0, 'cf_a_dp': 0,
+            'ct_mk_sup': 0, 'dg_cmd': 0, 'dg_co2': 40,
             'mf_a_cmd': 0, 'mf_a_spd': 0, 'tr_a_cmd': 0, 'tr_a_spd': 0, 'fp_cmd': 0, 'wt_hy': 0, 'cl_ntu': 1,
             'ft_lvl': 60, 'dg_lvl': 60, 'dt_a_lvl': 60, 'dt_b_lvl': 60, 'cg_lvl': 60, 'dm_lvl': 60, 'dm_in': 0}
 
@@ -240,7 +241,12 @@ def wtp():
     m.prod('cl_load', ['wt_raw', 'cl_share'], 'm³/h')
     m.tab('cl_over', 'cl_load', [[600, 1], [1100, 4]])  # one clarifier with all the flow: upflow 4.6 m/h, past 2.4
     m.prod('cl_sp0', ['river_ntu', 'cl_frac', 'pl_k', 'mx_k', 'cl_over'])
-    m.max('cl_sp', ['cl_sp0', 0.3])
+    m.max('cl_sp1', ['cl_sp0', 0.3])
+    # with no flow the water stands and settles: the clarified turbidity goes to 0.5 NTU, whatever the dosing
+    m.NOT('wt_still', 'wt_flow')
+    m.prod('cl_sp_run', ['cl_sp1', 'wt_flow'])
+    m.prod('cl_sp_still', ['wt_still', 0.5])
+    m.sum('cl_sp', ['cl_sp_run', 'cl_sp_still'])
     m.lag('cl_ntu', 'cl_sp', 600, init=0.405263158, unit='NTU')       # about an hour through a clarifier (clock)
     m.max('cla_ntu', ['cl_ntu'], 'NTU', '00GBD11CQ001')
     m.max('clb_ntu', ['cl_ntu'], 'NTU', '00GBD12CQ001')
@@ -280,6 +286,15 @@ def wtp():
     m.prod('fl_flow', ['fl_in', 'fl_any'], 'm³/h')
     m.sum('bw_n', [f'fl{i}_bw' for i in FILTERS])
     m.cmp('bw_free', 'bw_n', '<', 0.5)
+    # two backwashes commanded in one step both pass the permissive (it reads the previous step): the lower-numbered
+    # filter goes on, the other returns to service
+    for i in FILTERS:
+        if i == 1:
+            m.cmp('fl1_clash', 'bw_n', '<', -1)        # never: filter 1 always goes on
+            continue
+        m.sum(f'fl{i}_before', [f'fl{j}_bw' for j in range(1, i)])
+        m.cmp(f'fl{i}_other', f'fl{i}_before', '>', 0.5)
+        m.AND(f'fl{i}_clash', [f'fl{i}_bw', f'fl{i}_other'])
     for i in FILTERS:
         # head loss: the solids caught (turbidity × flow), about 0.05 m a clock hour at design (0.3 to 2.2 m in ~36 h);
         # the backwash's rinse washes it back to the clean bed's 0.3 m
@@ -301,7 +316,11 @@ def wtp():
     m.prod('bw_q', ['bw_water', BACKWASH], 'm³/h')
 
     # ---------------------------------------------------------------- the filtered water tank and its pumps (§3 #6)
-    m.cmp('ft_ok', 'ft_lvl', '>', 5)
+    # the pumps' dry-run protection: off below 5 %, back above 10 % (no chatter at the limit)
+    m.cmp('ft_dry_set', 'ft_lvl', '<', 5)
+    m.cmp('ft_dry_reset', 'ft_lvl', '>', 10)
+    m.latch('ft_dry', 'ft_dry_set', 'ft_dry_reset')
+    m.NOT('ft_ok', 'ft_dry')
     m.cmp('ft_bw_ok', 'ft_lvl', '>=', 40)
     m.cmp('ft_l', 'ft_lvl', '<', 30)
     m.cmp('ft_lc', 'ft_lvl', '>', 35)
@@ -425,6 +444,8 @@ def wtp():
     m.cmp('dg_ll', 'dg_lvl', '<', 10)
     m.cmp('dg_ok', 'dg_lvl', '>=', 20)
     m.cmp('dg_room', 'dg_lvl', '<', 90)
+    m.cmp('dg_h', 'dg_lvl', '>', 95)
+    m.cmp('dg_hc', 'dg_lvl', '<', 90)
     m.tab('dg_feed_k', 'dg_lvl', [[10, 0.3], [30, 1]])  # the mixed beds' feed throttled as the tank empties
 
     # ---------------------------------------------------------------- mixed beds (§3 #11; [MB])
@@ -509,6 +530,8 @@ def wtp():
     m.NOT('nr_ph_bad', 'nr_ph_ok')
     m.cmp('nr_low', 'nr_lvl', '<', 5)
     m.cmp('nr_lvl_ok', 'nr_lvl', '>=', 10)
+    m.cmp('nr_h', 'nr_lvl', '>', 90)
+    m.cmp('nr_hc', 'nr_lvl', '<', 85)
     m.AND('nr_low_run', ['nr_low', 'nr_on'])
     m.prod('th_load', ['wt_raw', 'river_ntu', round(1 / (1050 * 20), 12)])   # 1 at the dry season's design
     # the press takes up to 1.6 times the design's sludge while there is sludge to take (the level above 20 %)
@@ -545,13 +568,13 @@ def wtp():
                                         'take_out': {'from': ['service'], 'to': 'standby'},
                                         'put_in': {'from': ['standby'], 'to': 'service'}},
                            'states': [{'id': 'service', 'set': {'bw_air': 0, 'bw_water': 0}, 'watch': False},
-                                      {'id': 'drain', 'next': [[times[0], 'air']],
+                                      {'id': 'drain', 'next': [[f'fl{i}_clash', 'service'], [times[0], 'air']],
                                        'say': 'Draining down to the media'},
-                                      {'id': 'air', 'set': {'bw_air': 1}, 'next': [[times[1], 'air_water']],
+                                      {'id': 'air', 'set': {'bw_air': 1}, 'next': [[f'fl{i}_clash', 'service'], [times[1], 'air_water']],
                                        'say': 'Air scour, 1 m³/min per m²'},
-                                      {'id': 'air_water', 'set': {'bw_water': 1}, 'next': [[times[2], 'rinse']],
+                                      {'id': 'air_water', 'set': {'bw_water': 1}, 'next': [[f'fl{i}_clash', 'service'], [times[2], 'rinse']],
                                        'say': 'Air and water together'},
-                                      {'id': 'rinse', 'set': {'bw_air': 0}, 'next': [[times[3], 'service']],
+                                      {'id': 'rinse', 'set': {'bw_air': 0}, 'next': [[f'fl{i}_clash', 'service'], [times[3], 'service']],
                                        'say': 'Water at 45 m/h: the bed expands and the dirt goes to waste'},
                                       {'id': 'standby', 'watch': False}]})
         m.op(f'00GBB1{i}AT001', 'backwash', None,
@@ -682,6 +705,10 @@ def wtp():
                 f'dt_{x}_ll', 1, f'00GCL10BB00{n}', 'LALL')
     m.alarm('nr_ph', '00GNR10CQ001', 'Neutralisation pit pH out of range (discharge blocked)', 'nr_ph_bad', 3,
             '00GNR10BB001', 'QAH')
+    m.alarm('dg_high', '00GCK10BB001', 'Degassed water tank high: the permeate overflows to drain', 'dg_h', 3,
+            isa='LAH', clear='dg_hc')
+    m.alarm('nr_high', '00GNR10BB001', 'Neutralisation pit level high: discharge it', 'nr_h', 3, isa='LAH',
+            clear='nr_hc')
     m.alarm('th_high', '00GBS10AT001', 'Thickener sludge level high', 'th_h', 3, isa='LAH', clear='th_hc')
 
     # ---------------------------------------------------------------- what is seen and heard
@@ -689,7 +716,9 @@ def wtp():
     for x, n in (('a', 1), ('b', 2)):
         for pre, sys in (('cg', '00GBN10'), ('pl', '00GBN20'), ('sbs', '00GCN10'), ('as', '00GCN20'),
                          ('ac', '00GCE10')):
-            m.b(kks=f'{sys}AP00{n}', lamp='running', of=f'{pre}_{x}_cmd')
+            # a failed pump (coagulant and bisulphite A) shows stopped
+            run = f'{pre}_a_run' if x == 'a' and pre in ('cg', 'sbs') else f'{pre}_{x}_cmd'
+            m.b(kks=f'{sys}AP00{n}', lamp='running', of=run)
         for pre, sys, run in (('mk', '00GHB10', 'mk_{x}_run'), ('sw', '00GHA10', 'sw_{x}_run'),
                               ('mf', '00GCK10', 'mf_{x}_spd'), ('tr', '00GHC10', 'tr_{x}_spd')):
             code = f'{sys}AP00{n}'
