@@ -893,7 +893,7 @@ func _area(root: Node3D, a: Dictionary) -> void:
 			if s.part in ["road", "wall", "fence"]:
 				keep[s.id] = true
 		hlod(root, a.id, _far_items(a), root, keep)
-	elif a.data.get("pack", "") in ["wtp", "base"]:
+	elif a.data.get("pack", "") in ["wtp", "base"] and a.data.get("load", "") != "inside":
 		far_merge(root, a.id)
 
 # ------------------------------------------------------------------ the far view of the site and the camp (HLOD)
@@ -1188,8 +1188,9 @@ static func _far_simplified(im: ImporterMesh) -> ArrayMesh:
 ## not kept by the far view's own rules (`hlod_keep`), not a detail piece (it keeps its own range by its size,
 ## app/quality.gd: on a phone most end well within FAR_MERGE_RANGE), and all triangles.
 static func far_mergeable(gi: GeometryInstance3D, root: Node) -> bool:
-	if gi == null or gi is Label3D or gi.has_meta("hlod_keep") or gi.is_in_group("detail") or gi.has_meta("far_view"):
-		return false
+	if gi == null or gi is Label3D or gi.has_meta("hlod_keep") or gi.is_in_group("detail") or gi.has_meta("far_view") \
+			or gi.visibility_range_end > 0.0 or gi.visibility_range_begin > 0.0:
+		return false   # (a piece with a range of its own keeps it: merged, it would come back beyond FAR_MERGE_RANGE)
 	var n: Node = gi
 	while n != null and n != root:
 		if n is Node3D and not (n as Node3D).visible:
@@ -1561,8 +1562,15 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 				var p0 := a + u * r.position.x
 				var p1 := a + u * r.end.x
 				_wall_panel(walls, body, p0, p1, r.position.y, r.end.y, 0.25, piece_top(r, cuts, h))
-				for q in [[p0, r.position.y], [p1, r.position.y], [p1, r.end.y], [p0, r.position.y], [p1, r.end.y], [p0, r.end.y]]:
-					occ.append(Geom.g([q[0].x, q[0].y, q[1]]))
+				# the occluder OCC_MARGIN inside the panel's edges, but on the ground (Godot tests against a coarse
+				# buffer: an edge exactly on a doorway's or a corner's culls what is seen just past it, or flickers)
+				var oz0 := r.position.y + (OCC_MARGIN if r.position.y > 0.01 else 0.0)
+				var oz1 := r.end.y - OCC_MARGIN
+				if r.size.x > 2.0 * OCC_MARGIN and oz1 > oz0:
+					var o0 := a + u * (r.position.x + OCC_MARGIN)
+					var o1 := a + u * (r.end.x - OCC_MARGIN)
+					for q in [[o0, oz0], [o1, oz0], [o1, oz1], [o0, oz0], [o1, oz1], [o0, oz1]]:
+						occ.append(Geom.g([q[0].x, q[0].y, q[1]]))
 				if clad and not shell:
 					# the inner skin, light: a hall seen from inside (polish pass)
 					var off := inward * (WALL_T * 0.5 + LINER_T * 0.5)
@@ -1628,6 +1636,8 @@ func _area_pack(id: String) -> String:
 ## project.godot): what stands behind them is not drawn, a hall's inside from outdoors and the plant outside from in a
 ## hall (the Note 9's GPU held frames of 100-120 ms in the water treatment plant's hall, 1,570 draw calls where the
 ## hall's walls hid all but 490). Triangles in `tris`, three points each.
+const OCC_MARGIN := 0.3
+
 func _occluder(body: Node, tris: PackedVector3Array) -> void:
 	if tris.is_empty():
 		return

@@ -5,6 +5,7 @@
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
+const Builder = preload("res://builder/plant_builder.gd")
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
@@ -85,9 +86,17 @@ func run(tree: SceneTree) -> Array:
 		var xf: Transform3D = d.global_transform
 		var mid: Vector3 = xf.origin + xf.basis.y.normalized() * (float(d.height) * 0.5)
 		var through: Vector3 = xf.basis.z.normalized()
-		for t in tris:
-			if Geometry3D.segment_intersects_triangle(mid - through, mid + through, t[0], t[1], t[2]) != null:
-				p.append("no occluder in the doorway of %s (at %s)" % [d.name, mid])
+		# and none within a few decimetres round it (Builder.OCC_MARGIN): beside each jamb and over the head
+		var side: Vector3 = xf.basis.x.normalized() * (float(d.width) * 0.5 + Builder.OCC_MARGIN * 0.5)
+		var up: Vector3 = xf.basis.y.normalized() * (float(d.height) * 0.5 + Builder.OCC_MARGIN * 0.5)
+		for at in [mid, mid + side, mid - side, mid + up]:
+			var hit := false
+			for t in tris:
+				if Geometry3D.segment_intersects_triangle(at - through, at + through, t[0], t[1], t[2]) != null:
+					hit = true
+					break
+			if hit:
+				p.append("no occluder in or just round the doorway of %s (at %s)" % [d.name, at])
 				break
 	if doors < 5:
 		p.append("the plant's doors are found (%d)" % doors)

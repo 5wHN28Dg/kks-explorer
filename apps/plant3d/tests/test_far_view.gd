@@ -48,6 +48,7 @@ func run(tree: SceneTree) -> Array:
 		# place: per far mesh, the same vertices and indices as its pieces, over the same box
 		var want := {}   # far mesh -> [vertices, indices, bounds] of its pieces
 		var orphans := 0
+		var all_v := 0   # every drawn piece's vertices but the details' and labels'
 		var details := 0
 		var orphan := ""
 		var stack: Array = area.get_children()
@@ -62,6 +63,11 @@ func run(tree: SceneTree) -> Array:
 				if not gi.visibility_parent.is_empty():
 					p.append("%s's detail %s keeps its own range, not the far view's" % [id, area.get_path_to(gi)])
 				continue
+			if gi != null and not gi is Label3D:
+				var am: Mesh = gi.mesh if gi is MeshInstance3D else ((gi as MultiMeshInstance3D).multimesh.mesh if gi is MultiMeshInstance3D and gi.multimesh != null else null)
+				if am != null:
+					for s in am.get_surface_count():
+						all_v += am.surface_get_array_len(s) * (1 if gi is MeshInstance3D else int(gi.get_meta("count", 0)))
 			if not Builder.far_mergeable(gi, area):
 				continue
 			var par := gi.get_node_or_null(gi.visibility_parent) as MeshInstance3D if not gi.visibility_parent.is_empty() else null
@@ -92,6 +98,12 @@ func run(tree: SceneTree) -> Array:
 					for x in v:
 						var wx: Vector3 = t * x
 						w[2] = AABB(wx, Vector3.ZERO) if w[2] == null else (w[2] as AABB).expand(wx)
+		# most of the area is in its far view (the rule for what is merged must not leave the bulk out)
+		var merged_v := 0
+		for mi in want:
+			merged_v += int(want[mi][0])
+		if merged_v < all_v * 0.6:
+			p.append("%s's far view holds most of its pieces (%d vertices of %d)" % [id, merged_v, all_v])
 		if orphans > 0:
 			p.append("%s: %d pieces are drawn at every distance (no far view as their visibility parent), %s among them" % [id, orphans, orphan])
 		if details == 0:
