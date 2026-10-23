@@ -50,6 +50,11 @@ func _crowd(tree: SceneTree) -> Array:
 	c.set_process(false)
 	c._process(1.0 / 60.0)
 	var fewest := 99
+	var start := []
+	for q in ppl.people:
+		start.append(q.at)
+	if (start[0] as Vector3) == Vector3.ZERO:
+		p.append("the crowd is placed when it is set up, before a frame is drawn")
 	for step in 900:
 		# the walker goes on round the corner and past the loop's start
 		walker.position = walker.position + Vector3(0, 0, 1.4 / 60.0) if walker.position.z < 0.0 else walker.position + Vector3(1.4 / 60.0, 0, 0)
@@ -59,6 +64,12 @@ func _crowd(tree: SceneTree) -> Array:
 			if (q.at as Vector3).distance_to(walker.position) < 26.0:
 				near += 1
 		fewest = mini(fewest, near)
+	var moved := 0
+	for k in ppl.people.size():
+		if (ppl.people[k].at as Vector3).distance_to(start[k]) > 5.0:
+			moved += 1
+	if moved < 6:
+		p.append("the crowd's walkers move along the route (%d of 12 moved)" % moved)
 	if fewest < 12:
 		p.append("the crowd stays round the walker as the walk goes round its loop (%d of 12 at one moment)" % fewest)
 	root.free()
@@ -257,6 +268,27 @@ func _bands(tree: SceneTree, info: Dictionary) -> Array:
 		p.append("a person the trainee works with gets a skinned avatar first (%s)" % str(ids))
 	ppl.people[3].erase("near")
 	ppl.people[3].at = Vector3(0, 0, -50)
+	# a person keeps their avatar against someone a little nearer (no swapping at the same distance)
+	ppl.people[2].at = Vector3(0, 0, -60)
+	ppl._assign()
+	ppl.people[2].at = Vector3(0, 0, -7.0)   # nearer than person 1 (8.06 m), by less than KEEP
+	ppl._assign()
+	var kept := []
+	for a in ppl.avatars:
+		if a.person >= 0:
+			kept.append(a.person)
+	kept.sort()
+	if kept != [0, 1]:
+		p.append("an avatar is not taken by someone less than %.0f m nearer (%s)" % [People.KEEP, str(kept)])
+	ppl.people[2].at = Vector3(0, 0, -5.5)   # nearer by more than KEEP
+	ppl._assign()
+	kept.clear()
+	for a in ppl.avatars:
+		if a.person >= 0:
+			kept.append(a.person)
+	kept.sort()
+	if kept != [0, 2]:
+		p.append("someone clearly nearer takes the avatar (%s)" % str(kept))
 	# a person of a look this build has not made is not drawn (and nothing fails)
 	ppl.people.append({"at": Vector3(0, 0, -3), "yaw": 0.0, "speed": 0.0, "anim": "", "look": "no_such_look", "on": ""})
 	ppl._assign()

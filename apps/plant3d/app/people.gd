@@ -85,6 +85,10 @@ func apply_share(share: Dictionary) -> void:
 		anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 		avatars.append({"node": n, "body": body, "anim": anim, "person": -1, "look": "", "lod": -1, "clip": "", "acc": 0.0,
 			"speed_scale": 1.0})
+	# every look's skinned meshes loaded now, not when someone first comes near (a load is a hitch on a phone)
+	for l in info.looks:
+		for lod in ["lod0", "lod1"]:
+			_mesh(info.looks[l][lod])
 	for l in info.looks:
 		posed[l] = {}
 		for p in info.looks[l].posed:
@@ -145,7 +149,10 @@ func _assign() -> void:
 		var d2: float = (p.at as Vector3).distance_squared_to(cam)
 		var lim := r - (0.0 if held.has(i) else KEEP)   # a new avatar only KEEP inside the edge: no flicker
 		if d2 <= lim * lim:
-			cand.append([0 if p.get("near", false) else 1, d2, i])
+			# whoever holds an avatar keeps it against someone up to KEEP nearer: no swapping between people at
+			# nearly the same distance (a swap restarts a clip and turns the other into a statue)
+			var dk: float = sqrt(d2) - (KEEP if held.has(i) else 0.0)
+			cand.append([0 if p.get("near", false) else 1, dk, i])
 	cand.sort()
 	var want := {}
 	for k in mini(cand.size(), avatars.size()):

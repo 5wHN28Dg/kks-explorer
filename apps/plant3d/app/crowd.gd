@@ -18,6 +18,7 @@ var cum := PackedFloat32Array()
 var length := 0.0
 var s_walker := 0.0
 var crowd: Array = []    # per person: {s, dir, speed, lane, work, anim}
+var loop := false        # the route ends where it starts (the frames and camp walks): people go round it
 var _lost := 0.0         # squared distance from the walker to the route at its last place
 
 
@@ -33,6 +34,9 @@ func setup(route: Array, w: Node3D, people, count: int) -> void:
 	for i in range(1, pts.size()):
 		cum.append(cum[i - 1] + pts[i - 1].distance_to(pts[i]))
 	length = cum[cum.size() - 1]
+	loop = pts.size() > 2 and pts[0].distance_to(pts[pts.size() - 1]) < 1.0
+	# placed before the first frame is drawn, and moved before the people node places them in each frame
+	process_priority = -1
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20261023
 	var looks: Array = people.info.looks.keys()
@@ -47,6 +51,7 @@ func setup(route: Array, w: Node3D, people, count: int) -> void:
 		crowd.append(p)
 		people.people.append({"at": Vector3.ZERO, "yaw": 0.0, "speed": 0.0, "anim": p.anim, "look": looks[i % looks.size()],
 			"scale": rng.randf_range(0.94, 1.06), "on": ""})
+	_process(0.0)   # their first places, before a frame is drawn
 
 
 func _process(delta: float) -> void:
@@ -61,12 +66,13 @@ func _process(delta: float) -> void:
 		if not c.work:
 			c.s += c.dir * c.speed * delta
 		# the difference along the route as it loops (the walker's place is folded into the route's length)
-		var ds: float = fposmod(c.s - s_walker + length * 0.5, length) - length * 0.5
+		var ds: float = (fposmod(c.s - s_walker + length * 0.5, length) - length * 0.5) if loop else c.s - s_walker
 		if ds > AHEAD:
 			c.s -= span
 		elif ds < -BEHIND:
 			c.s += span
-		var s: float = fposmod(c.s, length)
+		# on a loop round it; on an open route kept within its ends (no one drawn at the far end)
+		var s: float = fposmod(c.s, length) if loop else clampf(c.s, 0.0, length)
 		var k := _segment(s)
 		var a: Vector3 = pts[k]
 		var b: Vector3 = pts[k + 1]
