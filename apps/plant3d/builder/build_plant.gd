@@ -6,6 +6,7 @@ extends SceneTree
 
 const Builder = preload("res://builder/plant_builder.gd")
 const NavBake = preload("res://builder/nav_bake.gd")
+const People = preload("res://builder/people/build_people.gd")
 
 func _init() -> void:
 	var args := {}
@@ -35,6 +36,16 @@ func _init() -> void:
 		b.kp.instances, b.kp.tris_total, b.kp.cells_made, b.kp.supports])
 	for u in b.kp.unsupported:
 		print("build: warning: nothing to stand a pipe support on under ", u)
+	# the people's avatars, clips and posed meshes (builder/people/build_people.gd)
+	var pb := People.new()
+	var ps: Dictionary = pb.build(out.path_join("people"))
+	for e in pb.errors:
+		printerr("build: ", e)
+	if not pb.errors.is_empty():
+		quit(1)
+		return
+	print("build: people: %d looks, triangles %s, %d bones, %d clips, gait speeds %s" % [ps.looks.size(), ps.triangles,
+		ps.bones, ps.clips.size(), ps.speeds])
 	_nav.call_deferred(out, b)
 
 ## The walking directions' navigation mesh, from the scenes just saved (builder/nav_bake.gd); deferred, so that the

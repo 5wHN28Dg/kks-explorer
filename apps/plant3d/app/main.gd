@@ -25,7 +25,10 @@
 ##                           (app/quality.gd), fx_on=bicubic the lightmap's bicubic filter even where it is off (to see the
 ##                           Adreno fault again: app/lighting.gd), fx_off=lightmap the plant without its bake (the halls dark: their lamps
 ##                           light through the bake only), fx_off=stencils the pipes' stencilled names hidden
-##   On a phone walk.txt takes probe, fx_off and fx_on too (phone/frames.sh's WALK_EXTRA)
+##   crowd=N                 (walk) N people round the walker (app/crowd.gd): what people cost (milestone A1)
+##   people_skinned=N        that many skinned avatars instead of the tier's (measuring), people_shadows=0 theirs off
+##   On a phone walk.txt takes probe, fx_off, fx_on, crowd, people_skinned and people_shadows too (phone/frames.sh's
+##   WALK_EXTRA)
 extends Node3D
 
 const Quality = preload("res://app/quality.gd")
@@ -38,6 +41,8 @@ const MapView = preload("res://app/map_view.gd")
 const PlantUi = preload("res://ui/plant_ui.gd")
 const Lighting = preload("res://app/lighting.gd")
 const Interiors = preload("res://app/interiors.gd")
+const People = preload("res://app/people.gd")
+const Crowd = preload("res://app/crowd.gd")
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
 
 var cf: ConfigFile
@@ -46,6 +51,8 @@ var tier := ""
 var tier_why := ""
 var plant: Node3D
 var interiors: Node   # app/interiors.gd: the rooms loaded near their doors
+var people: Node3D    # app/people.gd: the people on screen (none in a build without built/people/)
+var crowd: Node       # app/crowd.gd: a measurement's crowd (crowd=N)
 var player
 var hud
 var map
@@ -132,6 +139,15 @@ func _ready() -> void:
 			l.visible = false
 	for l in get_tree().get_nodes_in_group("baked_lights"):
 		l.queue_free()   # the halls' lamps light through the bake only (forty real-time lights in a hall cost too much)
+	# the people (app/people.gd): their avatars' pool is made now, in the plant (hidden with it below), so that their
+	# pipelines are queued with the plant's (they share them: one shader, decision 0060)
+	if People.available():
+		people = People.new()
+		people.name = "people"
+		plant.add_child(people)
+		var perr: String = people.setup(Quality.people_share(tier, opts) if tier != "" else {})
+		if perr != "":
+			_say("people: " + perr)
 	if early:
 		plant.visible = false
 		Quality.apply_ranges(get_viewport())   # the tier's visibility ranges, on the plant's pieces now loaded
@@ -143,6 +159,8 @@ func _ready() -> void:
 	var st: Array = plant.start()
 	player.global_position = st[0]
 	player.set_heading(st[1])
+	if people != null:
+		people.camera = player.camera
 	if early:
 		sky_cam.queue_free()
 		player.camera.make_current()
@@ -213,7 +231,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on"]:   # nothing else from a shared folder (probe, fx_off and fx_on: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "crowd", "people_skinned", "people_shadows"]:   # nothing else from a shared folder (probe, fx_off, fx_on and the people's: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
@@ -262,6 +280,8 @@ func choose_tier(to_plant := true) -> void:
 	tier = c.tier
 	tier_why = c.why
 	Quality.apply(tier, get_viewport(), sun, env, to_plant)
+	if people != null and people.cfg != Quality.people_share(tier, opts):
+		people.apply_share(Quality.people_share(tier, opts))
 	if hud:
 		hud.refresh()
 	_say("tier %s (%s), renderer %s, %s" % [tier, tier_why, Quality.renderer(), RenderingServer.get_video_adapter_name()])
@@ -415,6 +435,7 @@ func _start_walk() -> void:
 	add_child(auto)
 	auto.stuck.connect(func(i, at): stuck_count += 1; _say("STUCK at step %d, %s" % [i, str(at)]))
 	auto.finished.connect(_finish)
+	_start_crowd(route)
 	var st: Array = plant.start()
 	if opts.walk not in ["frames", "camp"]:
 		player.global_position = route[0].to
@@ -422,6 +443,14 @@ func _start_walk() -> void:
 		player.global_position = st[0]
 	auto.start(player, route, opts.walk in ["frames", "camp"])
 	last_us = Time.get_ticks_usec()
+
+## crowd=N: N people round the walker on `route` (app/crowd.gd), in a walk or in shots.
+func _start_crowd(route: Array) -> void:
+	if opts.has("crowd") and people != null and crowd == null:
+		crowd = Crowd.new()
+		crowd.name = "crowd"
+		add_child(crowd)
+		crowd.setup(route, player, people, clampi(int(opts.crowd), 0, 200))
 
 func _process(delta: float) -> void:
 	if not screens_walk and (auto == null or not auto.running):
@@ -491,6 +520,8 @@ func _finish() -> void:
 			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576, first_frame_ms, plant.load_ms])
 	else:
 		_say("RESULT no frames (stuck=%d)" % stuck_count)
+	if people != null and crowd != null:
+		_say("PEOPLE crowd=%d skinned_max=%d %s" % [people.people.size(), int(people.cfg.skinned), people.summary()])
 	if screens_walk:
 		var m = ui.mimic
 		_say("MIMIC screens_open=%s frames=%d draw_max_us=%d draw_mean_us=%d frames_over_2ms=%d longest_piece_us=%d (the pieces' drawing only)" % [
@@ -516,6 +547,7 @@ func _write_out() -> void:
 
 ## Views saved as PNGs (looking at the result on a laptop): shot=NAME@x,y,z,yaw,pitch;… in plant coordinates.
 func _shots() -> void:
+	_start_crowd(Routes.frames(plant))
 	for i in 30:
 		await get_tree().process_frame
 	DirAccess.make_dir_recursive_absolute(out_dir)

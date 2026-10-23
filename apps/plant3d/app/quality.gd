@@ -17,10 +17,25 @@ const Lighting = preload("res://app/lighting.gd")
 
 const PRESETS := {
 	"full": {"scale": 1.0, "fsr": false, "shadow_atlas": 4096, "shadow_distance": 80.0, "lod_threshold": 1.0,
-		"detail_min_px": 1.5},
+		"detail_min_px": 1.5, "people": PEOPLE_FULL},
 	"lean+vis": {"scale": 0.6, "fsr": true, "shadow_atlas": 2048, "shadow_distance": 40.0, "lod_threshold": 4.0,
-		"detail_min_px": 3.0},
+		"detail_min_px": 3.0, "people": PEOPLE_PHONE},
 }
+## The people's share per tier (docs/PLANT3D.md §18.4, app/people.gd): how many skinned avatars and within what
+## distance, LOD0's distance, where the clips run at 30 Hz, the posed band's distance, shadows.
+const PEOPLE_FULL := {"skinned": 24, "skinned_range": 40.0, "lod0_range": 10.0, "anim_near": 10.0, "posed_range": 150.0,
+	"shadows": true}
+const PEOPLE_PHONE := {"skinned": 6, "skinned_range": 25.0, "lod0_range": 10.0, "anim_near": 10.0, "posed_range": 80.0,
+	"shadows": true}
+
+## The tier's people share, with a measurement's own skinned count (`people_skinned=N`) when given.
+static func people_share(tier: String, opts := {}) -> Dictionary:
+	var s: Dictionary = PRESETS.get(tier, PRESETS["lean+vis"]).people.duplicate()
+	if opts.has("people_skinned"):
+		s.skinned = clampi(int(opts.people_skinned), 0, 64)
+	if opts.has("people_shadows"):
+		s.shadows = opts.people_shadows not in ["0", "false", "off"]
+	return s
 const TIERS := ["full", "lean+vis"]
 const SETTINGS := "user://settings.cfg"
 ## The probe's limit: the full tier's GPU time per frame (median over the probe) on the heaviest view, in ms. Laptops
