@@ -30,6 +30,7 @@ var feedback: Label             # the last action's result (tests read it)
 ## The lock being checked or warned about (§15.6): {work, point, engine, task, box, state "checking" | "warn", answer}
 var check := {}
 var _focus_to := ""             # a button the next rebuild gives the focus to
+var _orphans: Array = []        # checks dropped while their worker still runs: waited for once done
 
 
 func setup(u) -> void:
@@ -95,6 +96,10 @@ func _input(ev: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	poll_check()
+	for t in _orphans.duplicate():
+		if WorkerThreadPool.is_task_completed(t):
+			WorkerThreadPool.wait_for_task_completion(t)
+			_orphans.erase(t)
 	if not visible:
 		return
 	_t += delta
@@ -138,14 +143,13 @@ func ask_lock(point: int) -> void:
 ## The check's answer, once the worker has it: a lock with nothing to warn about is sent at once, one that would trip
 ## something waits for the trainee's answer. A check whose run or form has gone meanwhile is dropped.
 func poll_check() -> void:
+	_drop_stale()
 	if check.get("state", "") != "checking" or not WorkerThreadPool.is_task_completed(check["task"]):
 		return
 	WorkerThreadPool.wait_for_task_completion(check["task"])
 	var a: Dictionary = check["box"].get("answer", {})
 	var point: int = check["point"]
-	if check["engine"] != ui.clock.engine or check["work"] != work:
-		check = {}
-	elif a.get("trips", []).is_empty() and a.get("alarms", []).is_empty():
+	if a.get("trips", []).is_empty() and a.get("alarms", []).is_empty():
 		check = {}
 		send_lock("lock", point)
 	else:
@@ -156,8 +160,29 @@ func poll_check() -> void:
 	refresh()
 
 
+## A check or warning whose run (a restart, a saved run put back) or form (closed, another work) has gone is dropped:
+## nothing is sent, and the form's locks are free again.
+func _drop_stale() -> void:
+	if check.is_empty() or (check["engine"] == ui.clock.engine and check["work"] == work and visible):
+		return
+	if check["state"] == "checking":
+		_orphans.append(check["task"])
+	check = {}
+	_sig = ""
+
+
+func _exit_tree() -> void:
+	if check.get("state", "") == "checking":
+		_orphans.append(check["task"])
+	check = {}
+	for t in _orphans:
+		WorkerThreadPool.wait_for_task_completion(t)
+	_orphans.clear()
+
+
 ## The trainee's answer to the warning: lock it anyway, or not.
 func answer_lock(lock_it: bool) -> void:
+	_drop_stale()
 	if check.get("state", "") != "warn":
 		return
 	var point: int = check["point"]

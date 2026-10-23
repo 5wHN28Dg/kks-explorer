@@ -353,8 +353,9 @@ is faster still ("Time" below).
   set the same states (both pumps' trip and one pump's) are repaired by either: the other then still shows as applied,
   and repairing it too changes nothing more. The debrief lists each repair with its model time.
   **Since 2026-10-23 (PLANT3D.md §15.5)** the trainee repairs only under a permit to work: at the equipment, with the
-  work's permit accepted and its isolation in place (CW pumps A–C, CCW pumps A and B, cooling tower fan 3's
-  vibration). A fault no work repairs is cleared from the instructor's panel only.
+  work's permit accepted and its isolation in place (the motors of CW pumps A–C and CCW pumps A and B). A fault no
+  work repairs, or damage inside a machine (cooling tower fan 3's blades, repaired by its work's done), is not offered
+  at the equipment: the instructor's panel clears it.
 - **Trainer faults** (the scenario's faults without a condition, PLANT3D.md §7.8) make every trip and interlock
   fire, each fan's and each pump's included; the tests run each, most from the end of the cold start (a CW valve
   fault from the point where the procedure is about to start that pump: the fork starts it itself)

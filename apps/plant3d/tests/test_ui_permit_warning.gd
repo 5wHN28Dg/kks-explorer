@@ -105,6 +105,18 @@ func run(tree: SceneTree) -> Array:
 	p.append_array(_approved(ui, pm, "wo_cond_p3_cal"))
 	_near(ui, TX3)
 	pm.refresh()
+	# a warning whose form is closed is dropped: nothing sent, the lock free again when the form opens
+	(pm.body.find_child("lock_0", true, false) as Button).pressed.emit()
+	if not await App.lock_checked(tree, pm) or pm.check.get("state", "") != "warn":
+		p.append("transmitter 3's lock brought no warning before the form was closed")
+	var n0: int = e.inputs.size()
+	ui.close_permits()
+	pm.poll_check()
+	ui.open_permits("wo_cond_p3_cal")
+	pm.refresh()
+	var again: Button = pm.body.find_child("lock_0", true, false)
+	if not pm.check.is_empty() or again == null or again.disabled or e.inputs.size() != n0:
+		p.append("a warning left by closing the form stayed (%s) or blocked the lock" % str(pm.check.get("state", "")))
 	var n_in: int = e.inputs.size()
 	# touch: the lock pressed, the warning, "Don't lock" pressed: nothing sent
 	(pm.body.find_child("lock_0", true, false) as Button).pressed.emit()

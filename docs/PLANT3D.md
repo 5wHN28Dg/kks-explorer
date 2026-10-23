@@ -878,8 +878,8 @@ docs/plant3d/STAFF.md, docs/plant3d/WATER-TREATMENT.md, docs/plant3d/SITE.md. Mi
   `unreachable` (a place no way reaches from the control room), `bad_way` (a way shorter than the straight line
   between its places; the build's check against the navigation mesh, §18.1), `authority` (a task step whose role
   can't do it, found by the validator: an `approve` step in a role without that authority), `bad_zone` (a place on a
-  zone's edge, or whose zone list doesn't match the outlines, §16.2), `locked_write` (a work's `set`, or an `op` step of
-  its task, on a code of its own isolation, §15.2).
+  zone's edge, or whose zone list doesn't match the outlines, §16.2), `locked_write` (a work's `set`, an `op` step of
+  its task, or a command its fault's `repair` writes, on a code of its own isolation, §15.2).
 
 ## 15. Permits to work and isolations (the model)
 
@@ -960,12 +960,13 @@ calibration.
 - **`isolation`** (optional): a work without one (an inspection) needs no locks.
 - **`repairs`** (optional): a fault of the scenario, repaired when the work is done (written as §7.8's repair, with its
   event), or before that by the trainee under the permit (§15.5); a work for a fault the scenario doesn't have does
-  nothing more. **`set`** (optional): states written when done (a service counter, a setpoint put back).
+  nothing more. **`set`** (optional): states written when done (a service counter, or a state of another code).
 - **No restarts under lock** (the user, 2026-10-23): a work's own steps never start or move its own locked-out
   equipment. A key of its `set` that is a `state` whose `kks` is a point of the work's own isolation is `locked_write`,
   and so is an `op` step of its task (§16.6) on such a code (checked with the tasks, milestone S1). What the work puts
   right on its own equipment is a fault it `repairs` (a calibration's drift is a fault whose repair puts it back to 0):
-  a repair writes the fault's states, never a command.
+  a repair writes the fault's states, never a command. A scenario fault's `repair` key that is a command (a state an
+  op's `set` writes) of a code of the own isolation of a work that `repairs` that fault is `locked_write` too.
 - **`task`** (optional until the plant has a `staff.json`, then required and a task of it, `bad_ref`): the staff task
   (§16.6) that does the work; the trainee does the same steps when they play its role. Without staff (milestone P1)
   the trainee runs a permit through its states from the permit form, in free mode (§17.1).

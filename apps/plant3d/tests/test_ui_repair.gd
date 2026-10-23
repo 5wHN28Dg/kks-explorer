@@ -116,7 +116,9 @@ func run(tree: SceneTree) -> Array:
 	p.append_array(_do(ui, pm, "accept"))
 	ui.open_card(PUMP_A)
 	rp = ui.card._repairs[0] if not ui.card._repairs.is_empty() else []
-	if not rp.is_empty():
+	if rp.is_empty():
+		p.append("the pump's card has no repair row with the permit accepted")
+	else:
 		if (rp[2] as Button).disabled:
 			p.append("with the permit accepted, beside the pump, its repair is not offered: %s" % (rp[3] as Label).text)
 		(rp[2] as Button).pressed.emit()

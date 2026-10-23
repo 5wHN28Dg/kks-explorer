@@ -220,6 +220,10 @@ func _repair_note(e, rp: Array, near: bool, asked: bool) -> String:
 			var num: String = Permits.number_of(e, w["id"])
 			return "Under its permit to work only (%s%s: %s): its isolation in place and the permit accepted" % [
 					w["title"], (", " + num) if num != "" and st != 0 else "", Permits.STATE_WORDS[st].to_lower()]
+		# another work's lock on the code: the repair would not be made (§15.1)
+		var fk: int = e._fault_ix.get(String(rp[0]["id"]), -1)
+		if fk != -1 and e._blocked(e._faults[fk][4], e.m.work_ix[w["id"]]):
+			return "Also locked out by another permit: its repair waits until that one's locks are off"
 	if not near:
 		return "At the equipment only: walk up to it"
 	return ""

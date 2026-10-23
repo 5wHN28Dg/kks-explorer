@@ -923,6 +923,8 @@ def mini2():
                    'isolation': 'iso_pump', 'repairs': 'f1', 'task': 'job_pump'},
                   {'id': 'wo_gauge', 'kks': GAUGE, 'title': 'Gauge: calibration', 'discipline': 'inst',
                    'permit': 'general', 'isolation': 'iso_gauge', 'set': {}}]
+    # the pump's work repairs f1, whose repair (format 1's: the valve shut) would be a command of its own isolation
+    del F['scenarios/s1.json']['faults'][0]['repair']
     return F
 
 
@@ -966,6 +968,8 @@ REJECTS2 = [
     ('a work setting a value that is not a state', 'bad_ref', _set(WORK + [1, 'set'], {'flow': 0})),
     ('a work restarting its own locked-out pump', 'locked_write', _set(WORK + [0, 'set'], {'pump_cmd': 1})),
     ('a work moving a valve of its own isolation', 'locked_write', _set(WORK + [0, 'set'], {'valve_cmd': 0})),
+    ('a fault whose repair, made as its work\'s, restarts a pump the work locks out', 'locked_write',
+     _set(['scenarios/s1.json', 'faults', 0, 'repair'], {'pump_cmd': 1})),
     ('a work repairing a fault that is not an identifier', 'bad_id', _set(WORK + [0, 'repairs'], 'F 1')),
     ('two works with one id', 'dup_id', _set(WORK + [1, 'id'], 'wo_pump')),
     ('a work id over 22 characters', 'bad_id', _set(WORK + [1, 'id'], 'w' * 23)),

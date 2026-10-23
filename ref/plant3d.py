@@ -1431,6 +1431,18 @@ def check_scenario(s, m, rel):
         m.sets(f['set'], f'{w}.set')
         if 'repair' in f:
             m.sets(f['repair'], f'{w}.repair')
+            # no restarts under lock (§15.2): a repair made as a work's own write (its done, or the trainee's under its
+            # permit, §15.5) writes no command (a state an op sets) of a code of that work's own isolation
+            commands = {k for o in m.ops for k in o.get('set', {})}
+            state_kks = {name: n.get('kks') for name, n, kind in m.values if kind == 'state'}
+            for wk in m.works:
+                if wk.get('repairs') != f['id'] or 'isolation' not in wk:
+                    continue
+                own = {pt['kks'] for x in m.isolations if x['id'] == wk['isolation'] for pt in x['points']}
+                for k in f['repair']:
+                    need(k not in commands or state_kks.get(k) not in own, 'locked_write',
+                         f'{w}.repair: {k} is a command of {state_kks.get(k)}, which work {wk["id"]}\'s own isolation '
+                         f'locks (a repair writes the fault\'s states, never a command)')
         if 'kks' in f:
             m.kks_ref(f['kks'], f'{w}.kks')
         if 'when' in f:
@@ -1954,7 +1966,7 @@ class Engine:
         a.step(horizon)
         b.step(horizon)
         ea, eb = a.events[na:], b.events[nb:]
-        lock = [e[5] for e in ea if e[0] == self.step_no + 1 and e[1] in ('lock', 'unlock')][-1]
+        lock = ([None] + [e[5] for e in ea if e[0] == self.step_no + 1 and e[1] in ('lock', 'unlock')])[-1]
 
         def tripped(evs):
             return {e[2] for e in evs if e[1] == 'trip'}
