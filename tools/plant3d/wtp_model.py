@@ -334,7 +334,6 @@ def wtp():
     m.prod('feed_cond', ['river_tds', 1.6], 'µS/cm')     # ~1.6 µS/cm per mg/L of salts
 
     # ---------------------------------------------------------------- the RO trains (§3 #9; [FT] §5.2 start and stop)
-    rt = {}
     for x, n in (('a', 1), ('b', 2)):
         p = f'ro_{x}'
         st = f'{p}_state'
@@ -410,7 +409,6 @@ def wtp():
         m.OR(f'{p}_tripped', [f'{p}_trip_suct_latched', f'{p}_trip_p_latched', f'{p}_trip_orp_latched'])
         m.NOT(f'{p}_no_trip', f'{p}_tripped')
         m.cmp(f'{p}_stopped', st, '<', 0.5)
-        rt[x] = n
 
     # ---------------------------------------------------------------- degasser and degassed water tank (§3 #10)
     m.tab('dg_sp', 'dg_cmd', [[0, 40], [1, 5]])        # CO2 left in the permeate, mg/L ([FT] p. 33; vendors 5–15)

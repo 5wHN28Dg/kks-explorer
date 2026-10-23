@@ -89,7 +89,7 @@ def filter_backwash():
                       'about 240 m³.'], ['00GBL10BB001'], (), 'ft_bw_ok'),
         step('wash', ['Start the backwash of filter 1 (', k('00GBB11AT001'), ') and follow its steps: the backwash '
                       'pump (', k('00GBR10AP001'), ') and the air scour blower (', k('00GBR10AN001'), ') run by '
-                      'themselves.'], ['00GBB11AT001', '00GBR10AP001', '00GBR10AN001'],
+                      'themselves.'], ['00GBB11AT001'],
              [op('00GBB11AT001', 'backwash')], 'fl1_clean',
              ['Air first loosens the dirt from the grains; water at 45 m/h then lifts the bed and carries it to '
               'waste. One filter at a time: the others take its flow meanwhile.']),

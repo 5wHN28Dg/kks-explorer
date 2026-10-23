@@ -73,7 +73,7 @@ class Content(unittest.TestCase):
         self.assertGreaterEqual(c['equipment'], 150)
         self.assertGreaterEqual(c['pipes'], 25)
         self.assertGreaterEqual(c['tours'], 1)
-        self.assertEqual(c['procedures'], 2)          # the cold start and the hot restart
+        self.assertEqual(c['procedures'], 5)          # the cold start, the hot restart, the WTP's three (W2)
         self.assertLessEqual(c['values'], P.MAX['values'])
 
     def test_screens_show_every_code_of_the_model(self):
@@ -374,7 +374,7 @@ class WaterTreatmentModel(unittest.TestCase):
         e, _ = P.run_procedure(self.b, 'filter_backwash')
         moves = [x[4] for x in e.events if x[1] == 'machine' and x[2] == 'filter1']
         self.assertEqual(moves, ['drain', 'air', 'air_water', 'rinse', 'service'])
-        self.assertAlmostEqual(e.v('fl1_hl'), 0.3)
+        self.assertAlmostEqual(e.v('fl1_hl'), 0.3, delta=0.001)     # the clean bed, a little load since
 
     def test_main_control_room_reads_the_wtp_without_working_it(self):
         """§7: the WTP's own desk works it; the main control room's desks show its overview only (PLANT3D §14)."""
