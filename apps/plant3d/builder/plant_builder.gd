@@ -1021,6 +1021,8 @@ func hlod(root: Node3D, id: String, items: Dictionary, scope: Node, keep := {}) 
 ## areas were 681 of the view's 1,852 draw calls (the Note 9's GPU held frames of 100-150 ms there once warm, 2026-10-23).
 ## The merged meshes are the pieces' own geometry and materials, unbaked and without UV2 (the kit cells' pipelines:
 ## none new), and cast no shadow (beyond every tier's shadow distance). Doors, signs and labels are drawn near only.
+## Detail pieces (group "detail": valves, instruments, small fittings) are left out and keep their own range by size
+## (app/quality.gd), as before: merged, the Note 9 would draw every bolt of the WTP at 400 m.
 const FAR_MERGE_RANGE := 200.0
 
 func far_merge(root: Node3D, id: String) -> int:
@@ -1031,8 +1033,8 @@ func far_merge(root: Node3D, id: String) -> int:
 		var n: Node = stack.pop_back()
 		stack.append_array(n.get_children())
 		var gi := n as GeometryInstance3D
-		if gi == null or not gi.visible or gi is Label3D or gi.has_meta("hlod_keep"):
-			continue
+		if gi == null or not gi.visible or gi is Label3D or gi.has_meta("hlod_keep") or gi.is_in_group("detail"):
+			continue   # (a detail keeps its own range by its size, app/quality.gd: on a phone most end well within FAR_MERGE_RANGE)
 		pieces.append(gi)
 		if _in_door(gi):
 			continue   # (a moving door: drawn near only)

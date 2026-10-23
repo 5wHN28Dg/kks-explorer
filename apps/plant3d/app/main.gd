@@ -28,7 +28,9 @@
 ##                           Adreno fault again: app/lighting.gd), fx_off=lightmap the plant without its bake (the halls dark: their lamps
 ##                           light through the bake only), fx_off=stencils the pipes' stencilled names hidden,
 ##                           fx_off=occlusion the buildings' occluders unused (builder/plant_builder.gd _occluder),
-##                           fx_off=wtp the water treatment plant and its intake hidden (their cost seen from afar)
+##                           fx_off=wtp the water treatment plant and its intake hidden (their cost seen from afar),
+##                           fx_off=farview their merged far view unused, their pieces drawn at every distance as before
+##                           it (builder/plant_builder.gd far_merge)
 ##   On a phone walk.txt takes probe, fx_off and fx_on too (phone/frames.sh's WALK_EXTRA)
 extends Node3D
 
@@ -135,6 +137,8 @@ func _ready() -> void:
 		for n in ["area_wtp", "area_intake"]:
 			if plant.has_node(n):
 				(plant.get_node(n) as Node3D).visible = false
+	if "farview" in Lighting.off:   # fx_off=farview: the WTP's and intake's pieces drawn at every distance, no far view
+		far_view_off(plant)
 	if "occlusion" in Lighting.off:   # fx_off=occlusion: the buildings' occluders not used (what they save)
 		get_viewport().use_occlusion_culling = false
 	if "stencils" in Lighting.off:   # fx_off=stencils: the pipes' stencilled names hidden, to measure what they cost
@@ -557,3 +561,15 @@ func _shots() -> void:
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
 	_write_out()
 	get_tree().quit()
+
+## fx_off=farview: the merged far views (builder/plant_builder.gd far_merge) hidden and their pieces drawn at every
+## distance, as before them (what the far view saves or costs on a phone).
+static func far_view_off(plant: Node) -> void:
+	for n in plant.find_children("*", "GeometryInstance3D", true, false):
+		var gi := n as GeometryInstance3D
+		if gi.has_meta("far_view"):
+			gi.visible = false
+		elif not gi.visibility_parent.is_empty():
+			var par := gi.get_node_or_null(gi.visibility_parent)
+			if par != null and par.has_meta("far_view"):
+				gi.visibility_parent = NodePath()

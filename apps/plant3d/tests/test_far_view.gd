@@ -1,11 +1,13 @@
 ## The water treatment plant's and its intake's far view (builder/plant_builder.gd `far_merge`): their pieces merged
 ## per square and material, drawn from FAR_MERGE_RANGE out, each piece itself drawn only nearer (its
-## `visibility_parent`); nothing lost in the merge (every piece's geometry is in its square's far mesh), in the
+## `visibility_parent`); nothing lost in the merge (every piece's geometry is in its square's far mesh) but the detail
+## pieces, which keep their own range and are not in it; in the
 ## plant's vertex format without UV2 (no pipeline of its own), and casting no shadow.
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
 const Builder = preload("res://builder/plant_builder.gd")
+const Main = preload("res://app/main.gd")
 const FORMAT := Mesh.ARRAY_FORMAT_VERTEX | Mesh.ARRAY_FORMAT_NORMAL | Mesh.ARRAY_FORMAT_TANGENT | Mesh.ARRAY_FORMAT_COLOR | Mesh.ARRAY_FORMAT_TEX_UV
 
 func run(tree: SceneTree) -> Array:
@@ -40,6 +42,7 @@ func run(tree: SceneTree) -> Array:
 		# every drawn piece (but the far meshes) has a far mesh as its visibility parent; its vertices are all merged
 		var near_v := 0
 		var orphans := 0
+		var details := 0
 		var orphan := ""
 		var stack: Array = area.get_children()
 		while not stack.is_empty():
@@ -49,6 +52,11 @@ func run(tree: SceneTree) -> Array:
 			stack.append_array(n.get_children())
 			var gi := n as GeometryInstance3D
 			if gi == null or not gi.visible or gi is Label3D or gi.has_meta("hlod_keep"):
+				continue
+			if gi.is_in_group("detail"):   # a detail keeps its own range (app/quality.gd), never under the far view
+				details += 1
+				if not gi.visibility_parent.is_empty():
+					p.append("%s's detail %s keeps its own range, not the far view's" % [id, area.get_path_to(gi)])
 				continue
 			if gi.visibility_parent.is_empty() or not (gi.get_node_or_null(gi.visibility_parent) is MeshInstance3D):
 				orphans += 1
@@ -63,7 +71,19 @@ func run(tree: SceneTree) -> Array:
 				near_v += (mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() * count
 		if orphans > 0:
 			p.append("%s: %d pieces are drawn at every distance (no far view as their visibility parent), %s among them" % [id, orphans, orphan])
+		if details == 0:
+			p.append("%s has detail pieces (left out of its far view)" % id)
 		if far_v != near_v:
 			p.append("%s's far view holds all its pieces' geometry (%d vertices of %d)" % [id, far_v, near_v])
+	# fx_off=farview (app/main.gd): the far views hidden, every piece under one drawn at every distance again
+	Main.far_view_off(plant)
+	for n in plant.find_children("*", "GeometryInstance3D", true, false):
+		var gi := n as GeometryInstance3D
+		if gi.has_meta("far_view") and gi.visible:
+			p.append("fx_off=farview hides the far view %s" % gi.name)
+		var par := gi.get_node_or_null(gi.visibility_parent) if not gi.visibility_parent.is_empty() else null
+		if par != null and par.has_meta("far_view"):
+			p.append("fx_off=farview draws %s at every distance" % gi.name)
+			break
 	plant.free()
 	return p
