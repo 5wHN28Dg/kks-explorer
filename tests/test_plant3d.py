@@ -443,8 +443,19 @@ class WaterTreatmentModel(unittest.TestCase):
         self.assertLess(e.v('cl_ntu'), 2)
 
     def test_pumps_do_not_chatter_at_an_empty_filtered_tank(self):
-        """The makeup and service water pumps stop below 5 % and wait for 10 %: the basin's makeup does not flip."""
-        e = self._engine('cold_iron', ft_lvl=7, ct_mk_cmd=1, rw_b_cmd=0, rw_b_spd=0)
+        """The makeup and service water pumps stop below 5 % and wait for 10 %: with the basin's makeup valve wide
+        open by hand and one raw water pump stopped, the makeup does not flip on and off at the limit."""
+        e = P.Engine(self.b, 'cold_iron')
+        e.op('30PAR10AA001', 'manual')
+        e.step()
+        e.op('30PAR10AA001', 'set', 1.0)
+        e.op('00GAF10AP002', 'stop')
+        e.step()
+        for _ in range(20000):
+            e.step()
+            if e.v('ft_lvl') < 6:
+                break
+        self.assertLess(e.v('ft_lvl'), 6, 'the tank did not empty')
         flips, last = 0, e.v('mk_avail')
         for _ in range(1200):
             e.step()
