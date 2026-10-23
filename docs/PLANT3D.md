@@ -1401,7 +1401,7 @@ order, then each work's). A version 2 plant's snapshot always has `permits`, `pt
   are ours, made by code at build time (`builder/people/body.gd`) on KayKit's skeleton at an adult's proportions,
   with KayKit's clips retargeted (rotations as they are, the hips' height scaled) and our own work poses
   (`builder/people/rig.gd`). Eight looks by role (`builder/people/looks.gd`): the plant's own staff in a blue
-  coverall with reflective tape, a hi-vis vest and a **white** hard hat (the task of 2026-10-23), told apart by the
+  coverall with reflective tape, a hi-vis vest and a **white** hard hat (confirmed by the user, 2026-10-23: white, blue for contractors, green for HSE, replacing the colours above), told apart by the
   vest's colour (orange: operators and supervisors; lime: maintenance, managers, HSE) and what they carry (radio,
   clipboard, tool belt, the calibrator's case); contractors grey with a blue hat, HSE officers a green one; safety
   glasses and ear defenders on every field role. The person's height varies by ±6 % (the node's scale).
