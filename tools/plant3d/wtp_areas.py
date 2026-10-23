@@ -98,8 +98,9 @@ def intake():
         st('intake_pit', 'pit', [x0, y0, 0], outline=rect(L, W), depth=PIT_DEPTH),
         st('intake_deck', 'platform', [x0, y0, 0], outline=rect(L, W), openings=deck_openings, deck='concrete',
            edge='handrail'),
-        # the wall between the two band screens' channels, from the channel's floor to the deck
-        st('intake_divider', 'wall', [455.5, 85, -PIT_DEPTH], route=[[0, 0, 0], [6.5, 0, 0]], height=PIT_DEPTH,
+        # the wall between the two band screens' channels, from the channel's floor to the deck's underside (to its
+        # top, the wall's top lay in the deck's plane: tests/test_ground.gd)
+        st('intake_divider', 'wall', [455.5, 85, -PIT_DEPTH], route=[[0, 0, 0], [6.5, 0, 0]], height=PIT_DEPTH - 0.3,
            thickness=0.4),
         # the intake house over the wet well, the pumps and the screens; the channel runs on under its east wall
         # and the road to the river (site.gd draws the river and the channel's headwall on its bank)

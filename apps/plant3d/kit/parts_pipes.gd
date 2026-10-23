@@ -157,9 +157,11 @@ static func pipe(m, pts: Array, p: Dictionary, origin: Vector3) -> void:
 	# supports
 	for s in p.get("supports", []):
 		if s.kind == "bridge":
-			_bridge(m, s.at - origin, rr, s.legs.map(func(l): return {"at": l.at - origin, "z": l.z - origin.z}), s.dir)
+			_bridge(m, s.at - origin, rr, s.legs.map(func(l): return {"at": l.at - origin, "z": l.z - origin.z,
+				"foot": float(l.get("foot", 0.02))}), s.dir)
 		else:
-			_support(m, s.at - origin, s.z_to - origin.z, rr, s.get("kind", "shoe"), s.get("dir", Vector3(1, 0, 0)))
+			_support(m, s.at - origin, s.z_to - origin.z, rr, s.get("kind", "shoe"), s.get("dir", Vector3(1, 0, 0)),
+				float(s.get("foot", 0.02)))
 
 ## A flow arrow lying on the pipe's surface on both sides (and on top for a horizontal run): a shaft and a head.
 static func _arrow(m, start: Vector3, d: Vector3, r: float, len: float) -> void:
@@ -184,7 +186,8 @@ static func _head(m, base: Vector3, d: Vector3, across: Vector3, n: Vector3, w: 
 	m.poly([a, c, b] if d.cross(across).dot(n) < 0.0 else [a, b, c], n)
 
 ## A support under (or over) a pipe: a shoe (or a clamp) and a post down to z_to (or a rod up to it).
-static func _support(m, at: Vector3, z_to: float, r: float, kind: String, dir: Vector3) -> void:
+## Its post's base plate is `foot` thick (builder/kit_place.gd `_foot`: thicker where another plate lies beside it).
+static func _support(m, at: Vector3, z_to: float, r: float, kind: String, dir: Vector3, foot := 0.02) -> void:
 	var side := dir.cross(Vector3(0, 0, 1)).normalized() if absf(dir.z) < 0.9 else Vector3(1, 0, 0)
 	if z_to > at.z:   # a hanger from above
 		m.use("galvanised", "form")
@@ -207,7 +210,7 @@ static func _support(m, at: Vector3, z_to: float, r: float, kind: String, dir: V
 		m.use("galvanised", "form")
 		var pw := 0.1 if h < 2.0 else (0.2 if h < 8.0 else 0.3)
 		m.box(Vector3(at.x, at.y, z_to + h * 0.5), Vector3(pw, pw, h))
-		m.box(Vector3(at.x, at.y, z_to + 0.01), Vector3(pw * 2.5, pw * 2.5, 0.02))
+		m.box(Vector3(at.x, at.y, z_to + foot * 0.5), Vector3(pw * 2.5, pw * 2.5, foot))
 		if h > 8.0:   # a tall trestle: a second leg and its bracing
 			var o := side * 1.2
 			m.box(Vector3(at.x, at.y, z_to + h * 0.5) + o, Vector3(pw, pw, h))
@@ -227,7 +230,8 @@ static func _bridge(m, at: Vector3, r: float, legs: Array, dir: Vector3) -> void
 		var h: float = bz - l.z
 		if h > 0.05:
 			m.box(Vector3(l.at.x, l.at.y, l.z + h * 0.5), Vector3(0.2, 0.2, h))
-			m.box(Vector3(l.at.x, l.at.y, l.z + 0.01), Vector3(0.45, 0.45, 0.02))
+			var ft: float = l.get("foot", 0.02)
+			m.box(Vector3(l.at.x, l.at.y, l.z + ft * 0.5), Vector3(0.45, 0.45, ft))
 	m.cyl(Vector3(a.x, a.y, bz), Vector3(c.x, c.y, bz), 0.12, -1.0, 4)
 	m.use("steel", "form")
 	var side := dir.cross(Vector3(0, 0, 1)).normalized()
