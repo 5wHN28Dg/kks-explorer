@@ -27,20 +27,26 @@ func run(tree: SceneTree) -> Array:
 		if far == null or far.get_child_count() == 0:
 			p.append("%s has its far view" % id)
 			continue
-		var far_v := 0
+		var got := {}   # far mesh -> [vertices, indices, bounds] as merged
 		for f in far.get_children():
 			var mi := f as MeshInstance3D
 			if absf(mi.visibility_range_begin - Builder.FAR_MERGE_RANGE) > 1e-3 or mi.visibility_range_end != 0.0:
 				p.append("%s's far mesh %s is drawn from %d m out" % [id, mi.name, int(Builder.FAR_MERGE_RANGE)])
 			if mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 				p.append("%s's far mesh %s casts no shadow" % [id, mi.name])
+			var g := [0, 0, AABB()]
 			for s in mi.mesh.get_surface_count():
 				var fmt: int = (mi.mesh as ArrayMesh).surface_get_format(s) & (Mesh.ARRAY_FORMAT_VERTEX | Mesh.ARRAY_FORMAT_NORMAL | Mesh.ARRAY_FORMAT_TANGENT | Mesh.ARRAY_FORMAT_COLOR | Mesh.ARRAY_FORMAT_TEX_UV | Mesh.ARRAY_FORMAT_TEX_UV2)
 				if fmt != FORMAT:
 					p.append("%s's far mesh %s is in the plant's vertex format without UV2 (%d)" % [id, mi.name, fmt])
-				far_v += (mi.mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
-		# every drawn piece (but the far meshes) has a far mesh as its visibility parent; its vertices are all merged
-		var near_v := 0
+				var arr := mi.mesh.surface_get_arrays(s)
+				g[0] += (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+				g[1] += (arr[Mesh.ARRAY_INDEX] as PackedInt32Array).size()
+			g[2] = (mi.global_transform * mi.mesh.get_aabb())
+			got[mi] = g
+		# every merged piece has its square's far mesh as its visibility parent, and that mesh holds its geometry in
+		# place: per far mesh, the same vertices and indices as its pieces, over the same box
+		var want := {}   # far mesh -> [vertices, indices, bounds] of its pieces
 		var orphans := 0
 		var details := 0
 		var orphan := ""
@@ -51,30 +57,52 @@ func run(tree: SceneTree) -> Array:
 				continue
 			stack.append_array(n.get_children())
 			var gi := n as GeometryInstance3D
-			if gi == null or not gi.visible or gi is Label3D or gi.has_meta("hlod_keep"):
-				continue
-			if gi.is_in_group("detail"):   # a detail keeps its own range (app/quality.gd), never under the far view
+			if gi != null and gi.is_in_group("detail"):   # a detail keeps its own range (app/quality.gd), never under the far view
 				details += 1
 				if not gi.visibility_parent.is_empty():
 					p.append("%s's detail %s keeps its own range, not the far view's" % [id, area.get_path_to(gi)])
 				continue
-			if gi.visibility_parent.is_empty() or not (gi.get_node_or_null(gi.visibility_parent) is MeshInstance3D):
+			if not Builder.far_mergeable(gi, area):
+				continue
+			var par := gi.get_node_or_null(gi.visibility_parent) as MeshInstance3D if not gi.visibility_parent.is_empty() else null
+			if par == null or not got.has(par):
 				orphans += 1
 				orphan = str(area.get_path_to(gi))
+				continue
 			if Builder._in_door(gi):
 				continue
-			var mesh: Mesh = gi.mesh if gi is MeshInstance3D else ((gi as MultiMeshInstance3D).multimesh.mesh if gi is MultiMeshInstance3D and gi.multimesh != null else null)
-			var count := 1 if gi is MeshInstance3D else int(gi.get_meta("count", 0))
-			if mesh == null:
-				continue
+			var mesh: Mesh = gi.mesh if gi is MeshInstance3D else (gi as MultiMeshInstance3D).multimesh.mesh
+			var xfs: Array = [gi.global_transform]
+			if gi is MultiMeshInstance3D:
+				xfs = []
+				var buf: PackedFloat32Array = gi.get_meta("xforms")
+				for i in int(gi.get_meta("count")):
+					var q := buf.slice(i * 12, i * 12 + 12)
+					xfs.append(gi.global_transform * Transform3D(Basis(Vector3(q[0], q[4], q[8]), Vector3(q[1], q[5], q[9]), Vector3(q[2], q[6], q[10])), Vector3(q[3], q[7], q[11])))
+			if not want.has(par):
+				want[par] = [0, 0, null]
+			var w: Array = want[par]
 			for s in mesh.get_surface_count():
-				near_v += (mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() * count
+				var arr := mesh.surface_get_arrays(s)
+				var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+				var idx = arr[Mesh.ARRAY_INDEX]
+				for t: Transform3D in xfs:
+					w[0] += v.size()
+					w[1] += (idx as PackedInt32Array).size() if idx != null else v.size()
+					for x in v:
+						var wx: Vector3 = t * x
+						w[2] = AABB(wx, Vector3.ZERO) if w[2] == null else (w[2] as AABB).expand(wx)
 		if orphans > 0:
 			p.append("%s: %d pieces are drawn at every distance (no far view as their visibility parent), %s among them" % [id, orphans, orphan])
 		if details == 0:
 			p.append("%s has detail pieces (left out of its far view)" % id)
-		if far_v != near_v:
-			p.append("%s's far view holds all its pieces' geometry (%d vertices of %d)" % [id, far_v, near_v])
+		for mi in got:
+			var g: Array = got[mi]
+			var w: Array = want.get(mi, [0, 0, null])
+			if g[0] != w[0] or g[1] != w[1]:
+				p.append("%s's far mesh %s holds its pieces' geometry (%d vertices and %d indices, of %d and %d)" % [id, mi.name, g[0], g[1], w[0], w[1]])
+			elif w[2] == null or not _same_box(g[2], w[2]):
+				p.append("%s's far mesh %s lies where its pieces do (%s, they %s)" % [id, mi.name, str(g[2]), str(w[2])])
 	# fx_off=farview (app/main.gd): the far views hidden, every piece under one drawn at every distance again
 	Main.far_view_off(plant)
 	for n in plant.find_children("*", "GeometryInstance3D", true, false):
@@ -87,3 +115,6 @@ func run(tree: SceneTree) -> Array:
 			break
 	plant.free()
 	return p
+
+static func _same_box(a: AABB, b: AABB) -> bool:
+	return a.position.distance_to(b.position) < 0.01 and a.end.distance_to(b.end) < 0.01

@@ -31,7 +31,7 @@
 ##                           fx_off=wtp the water treatment plant and its intake hidden (their cost seen from afar),
 ##                           fx_off=farview their merged far view unused, their pieces drawn at every distance as before
 ##                           it (builder/plant_builder.gd far_merge)
-##   On a phone walk.txt takes probe, fx_off and fx_on too (phone/frames.sh's WALK_EXTRA)
+##   On a phone walk.txt takes probe, fx_off, fx_on and max_fps too (phone/frames.sh's WALK_EXTRA)
 extends Node3D
 
 const Quality = preload("res://app/quality.gd")
@@ -227,7 +227,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps"]:   # nothing else from a shared folder (probe, fx_off and fx_on: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps"]:   # nothing else from a shared folder (probe, fx_off, fx_on and max_fps: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))

@@ -1020,7 +1020,8 @@ func hlod(root: Node3D, id: String, items: Dictionary, scope: Node, keep := {}) 
 ## themselves are drawn only within it (`visibility_parent`, as `hlod`). From the camp's road, 450-600 m off, the two
 ## areas were 681 of the view's 1,852 draw calls (the Note 9's GPU held frames of 100-150 ms there once warm, 2026-10-23).
 ## The merged meshes are the pieces' own geometry and materials, unbaked and without UV2 (the kit cells' pipelines:
-## none new), and cast no shadow (beyond every tier's shadow distance). Doors, signs and labels are drawn near only.
+## none new), and cast no shadow (beyond every tier's shadow distance). Doors are drawn near only (beyond FAR_MERGE_RANGE
+## a doorway shows open); labels (the signs' text) keep their own range, as before.
 ## Detail pieces (group "detail": valves, instruments, small fittings) are left out and keep their own range by size
 ## (app/quality.gd), as before: merged, the Note 9 would draw every bolt of the WTP at 400 m.
 const FAR_MERGE_RANGE := 200.0
@@ -1033,8 +1034,8 @@ func far_merge(root: Node3D, id: String) -> int:
 		var n: Node = stack.pop_back()
 		stack.append_array(n.get_children())
 		var gi := n as GeometryInstance3D
-		if gi == null or not gi.visible or gi is Label3D or gi.has_meta("hlod_keep") or gi.is_in_group("detail"):
-			continue   # (a detail keeps its own range by its size, app/quality.gd: on a phone most end well within FAR_MERGE_RANGE)
+		if not far_mergeable(gi, root):
+			continue
 		pieces.append(gi)
 		if _in_door(gi):
 			continue   # (a moving door: drawn near only)
@@ -1133,6 +1134,28 @@ func far_merge(root: Node3D, id: String) -> int:
 			parented += 1
 	print("build: area %s: far view merged in %d squares (%d surfaces), %d pieces drawn near only" % [id, made.size(), groups.size(), parented])
 	return made.size()
+
+## Whether a drawn piece goes into its area's far view (`far_merge`): shown (with every parent up to the area: a
+## lamp's lit lens under its hidden `on` is not), not a label (signs' and tags' text keep their own range, or none),
+## not kept by the far view's own rules (`hlod_keep`), not a detail piece (it keeps its own range by its size,
+## app/quality.gd: on a phone most end well within FAR_MERGE_RANGE), and all triangles.
+static func far_mergeable(gi: GeometryInstance3D, root: Node) -> bool:
+	if gi == null or gi is Label3D or gi.has_meta("hlod_keep") or gi.is_in_group("detail") or gi.has_meta("far_view"):
+		return false
+	var n: Node = gi
+	while n != null and n != root:
+		if n is Node3D and not (n as Node3D).visible:
+			return false
+		n = n.get_parent()
+	var mesh: Mesh = (gi as MeshInstance3D).mesh if gi is MeshInstance3D else \
+		((gi as MultiMeshInstance3D).multimesh.mesh if gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh != null \
+			and gi.has_meta("xforms") else null)   # (an instanced cell's places: the build's saved buffer)
+	if mesh == null:
+		return false
+	for si in mesh.get_surface_count():
+		if mesh.surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
+			return false
+	return true
 
 ## Whether a node is part of a door (app/door.gd: it moves, so it is not merged into a far view).
 static func _in_door(n: Node) -> bool:

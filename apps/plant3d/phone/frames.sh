@@ -12,12 +12,14 @@
 #             data kept (install -r), never cleared or removed; the walk saves to a file of its own (app/main.gd), and
 #             their own build is put back afterwards (pulled first: a saved run opens only in the build that saved
 #             it, ui/run_save.gd), so their run and settings stay as they were. Not a first start there: the
-#             pipeline cache is kept
+#             pipeline cache is kept; the walk runs at their saved tier (unless walk.txt's quality= says otherwise) and
+#             leaves its own run in user://run-options.save (never offered at an ordinary start)
 # Only io.github.walkdown.plant is installed, started, cleared or removed: never Walkdown (io.github.walkdown), never
 # anything else. Only on the Note 9 is a setting changed (50 % brightness, put back after). Any other phone (the Honor
 # is the user's own) keeps its settings, the run refuses to start when the plant app is already there (it would
 # clear it), and the plant app is removed again at the end.
-# Results: apps/plant3d/results/SERIAL/<time>/ (result.txt, sf.txt, state.txt, logcat.txt).
+# Results: apps/plant3d/results/SERIAL/<time>/ (result.txt, sf.txt, state.txt, logcat.txt; with probe=1 frames.csv and
+# probe_summary.txt; with KEEP=1 kept.apk, their own build).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 PKG=io.github.walkdown.plant
