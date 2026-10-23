@@ -444,6 +444,48 @@ class GdscriptEngineInterpreter(unittest.TestCase):
                 self.assertEqual(got[run]['chunks'], chunks, run)
 
 
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptEngineFastOutsideReference(unittest.TestCase):
+    """Where the reference has no result (it raises), the straight-line program must still do what the interpreter
+    does (apps/plant3d/sim/tests/check_fast.gd), and a program that fails to compile is tried once per model."""
+
+    def files(self, d, model):
+        with open(VECTORS, encoding='utf-8') as f:
+            V = json.load(f)
+        files = dict(V['valid'][0]['files'])
+        files['model/a1.json'] = json.dumps(dict({'format': 'walkdown-plant-model', 'version': 1, 'area': 'a1'},
+                                                 **model))
+        files['scenarios/s1.json'] = json.dumps({'format': 'walkdown-plant-scenario', 'version': 1, 'id': 's1',
+                                                 'title': 'Edges', 'init': {'ambient_t': 20}, 'faults': []})
+        del files['procedures/p1.json']
+        del files['screens.json']
+        path = os.path.join(d, 'files.json')
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(files, f)
+        return path
+
+    def test_one_row_table_given_nan(self):
+        """A one-row linear table fed NaN: _table reads the next node's arguments as its second row and gives NaN
+        (the reference raises IndexError); an unrolled `if u < x0 / elif u >= x0` would keep the last step's value.
+        Here the input is -inf for 3 steps, then NaN (inf * 0)."""
+        model = {'values': [['k', {'state': 1}], ['u', {'state': 100000000}], ['inf', {'product': ['u'] * 64}],
+                            ['d', {'delay': 'k', 'on': 0.3, 'off': 0.1}], ['z', {'diff': ['d', 1]}],
+                            ['x', {'product': ['inf', 'z']}], ['one', {'of': 'x', 'table': [[5, 2]]}],
+                            ['after', {'of': 'k', 'table': [[1, 3], [2, 4]]}]]}
+        with tempfile.TemporaryDirectory() as d:
+            r = godot('check_fast.gd', f'--files={self.files(d, model)}', '--steps=8', timeout=300)
+        no_errors(self, r)
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+        self.assertIn('FAST steps=8 differ=0', r.stdout)
+
+    def test_failed_compile_cached(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = godot('check_fast.gd', f'--files={self.files(d, {"values": [["k", {"state": 1}]]})}', '--broken=1',
+                      timeout=300)
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+        self.assertIn('BROKEN cached=true fast=<null>,<null>', r.stdout)
+
+
 # The bench's gate: generous, so that a busy runner doesn't fail it (about 0.12 ms a step on the laptop with the
 # straight-line program, 0.5 ms before it; CI's runner has been 1.5-2 times slower than the laptop). Losing the
 # program itself is caught exactly by the PROGRAM line.
