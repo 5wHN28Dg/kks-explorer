@@ -27,7 +27,8 @@
 ##                           (app/quality.gd), fx_on=bicubic the lightmap's bicubic filter even where it is off (to see the
 ##                           Adreno fault again: app/lighting.gd), fx_off=lightmap the plant without its bake (the halls dark: their lamps
 ##                           light through the bake only), fx_off=stencils the pipes' stencilled names hidden,
-##                           fx_off=occlusion the buildings' occluders unused (builder/plant_builder.gd _occluder)
+##                           fx_off=occlusion the buildings' occluders unused (builder/plant_builder.gd _occluder),
+##                           fx_off=wtp the water treatment plant and its intake hidden (their cost seen from afar)
 ##   On a phone walk.txt takes probe, fx_off and fx_on too (phone/frames.sh's WALK_EXTRA)
 extends Node3D
 
@@ -130,6 +131,10 @@ func _ready() -> void:
 		_say("lightmap: %d meshes baked" % lm.light_data.get_user_count())
 	else:
 		_say("lightmap: none in this build (the sky and the sun only)")
+	if "wtp" in Lighting.off:   # fx_off=wtp: the water treatment plant and its intake not drawn (what they cost far off)
+		for n in ["area_wtp", "area_intake"]:
+			if plant.has_node(n):
+				(plant.get_node(n) as Node3D).visible = false
 	if "occlusion" in Lighting.off:   # fx_off=occlusion: the buildings' occluders not used (what they save)
 		get_viewport().use_occlusion_culling = false
 	if "stencils" in Lighting.off:   # fx_off=stencils: the pipes' stencilled names hidden, to measure what they cost

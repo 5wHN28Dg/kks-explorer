@@ -889,6 +889,8 @@ func _area(root: Node3D, a: Dictionary) -> void:
 			if s.part in ["road", "wall", "fence"]:
 				keep[s.id] = true
 		hlod(root, a.id, _far_items(a), root, keep)
+	elif a.data.get("pack", "") == "wtp":
+		far_merge(root, a.id)
 
 # ------------------------------------------------------------------ the far view of the site and the camp (HLOD)
 
@@ -1008,6 +1010,132 @@ func hlod(root: Node3D, id: String, items: Dictionary, scope: Node, keep := {}) 
 			parented += 1
 	print("build: area %s: far view in %d squares, %d pieces drawn near only" % [id, made.size(), parented])
 	return made.size()
+
+## The water treatment plant's and its intake's far view: their own pieces merged per HLOD_CHUNK square and material
+## (one draw call each, Godot's mesh LODs made for them), drawn beyond FAR_MERGE_RANGE of the square; the pieces
+## themselves are drawn only within it (`visibility_parent`, as `hlod`). From the camp's road, 450-600 m off, the two
+## areas were 681 of the view's 1,852 draw calls (the Note 9's GPU held frames of 100-150 ms there once warm, 2026-10-23).
+## The merged meshes are the pieces' own geometry and materials, unbaked and without UV2 (the kit cells' pipelines:
+## none new), and cast no shadow (beyond every tier's shadow distance). Doors, signs and labels are drawn near only.
+const FAR_MERGE_RANGE := 200.0
+
+func far_merge(root: Node3D, id: String) -> int:
+	var groups := {}   # [Vector2i, Material] -> {arrays…}
+	var pieces: Array = []
+	var stack: Array = root.get_children()
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		var gi := n as GeometryInstance3D
+		if gi == null or not gi.visible or gi is Label3D or gi.has_meta("hlod_keep"):
+			continue
+		pieces.append(gi)
+		if _in_door(gi):
+			continue   # (a moving door: drawn near only)
+		var c := _plan_centre(gi)
+		var k := Vector2i(int(floor(c.x / HLOD_CHUNK)), int(floor(c.y / HLOD_CHUNK)))
+		var xf := _global_xf(gi)
+		var mesh: Mesh = null
+		var xfs: Array = []
+		if gi is MeshInstance3D:
+			mesh = (gi as MeshInstance3D).mesh
+			xfs = [xf]
+		elif gi is MultiMeshInstance3D and gi.has_meta("xforms") and (gi as MultiMeshInstance3D).multimesh != null:
+			mesh = (gi as MultiMeshInstance3D).multimesh.mesh
+			var buf: PackedFloat32Array = gi.get_meta("xforms")
+			for i in int(gi.get_meta("count")):
+				var b := buf.slice(i * 12, i * 12 + 12)
+				xfs.append(xf * Transform3D(Basis(Vector3(b[0], b[4], b[8]), Vector3(b[1], b[5], b[9]), Vector3(b[2], b[6], b[10])), Vector3(b[3], b[7], b[11])))
+		if mesh == null:
+			continue
+		for si in mesh.get_surface_count():
+			var mat: Material = gi.material_override if gi.material_override != null else mesh.surface_get_material(si)
+			if mat == null:
+				continue
+			var arr := mesh.surface_get_arrays(si)
+			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			if v.is_empty() or arr[Mesh.ARRAY_NORMAL] == null or arr[Mesh.ARRAY_TANGENT] == null or arr[Mesh.ARRAY_COLOR] == null or arr[Mesh.ARRAY_TEX_UV] == null:
+				continue
+			var key := [k, mat]
+			if not groups.has(key):
+				groups[key] = {"v": PackedVector3Array(), "n": PackedVector3Array(), "t": PackedFloat32Array(),
+					"c": PackedColorArray(), "uv": PackedVector2Array(), "i": PackedInt32Array()}
+			var g: Dictionary = groups[key]
+			var nn: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+			var tt: PackedFloat32Array = arr[Mesh.ARRAY_TANGENT]
+			var idx = arr[Mesh.ARRAY_INDEX]
+			for t in xfs:
+				var base: int = g.v.size()
+				var nb: Basis = (t as Transform3D).basis.inverse().transposed()
+				for j in v.size():
+					g.v.append(t * v[j])
+					g.n.append((nb * nn[j]).normalized())
+					var tv: Vector3 = ((t as Transform3D).basis * Vector3(tt[j * 4], tt[j * 4 + 1], tt[j * 4 + 2])).normalized()
+					g.t.append_array([tv.x, tv.y, tv.z, tt[j * 4 + 3]])
+				g.c.append_array(arr[Mesh.ARRAY_COLOR])
+				g.uv.append_array(arr[Mesh.ARRAY_TEX_UV])
+				if idx != null:
+					for q in (idx as PackedInt32Array):
+						g.i.append(base + q)
+				else:
+					for q in v.size():
+						g.i.append(base + q)
+	var far := Node3D.new()
+	far.name = "far"
+	root.add_child(far)
+	var by_square := {}   # Vector2i -> ImporterMesh
+	for key in groups:
+		var g: Dictionary = groups[key]
+		if not by_square.has(key[0]):
+			by_square[key[0]] = ImporterMesh.new()
+		var a := []
+		a.resize(Mesh.ARRAY_MAX)
+		a[Mesh.ARRAY_VERTEX] = g.v
+		a[Mesh.ARRAY_NORMAL] = g.n
+		a[Mesh.ARRAY_TANGENT] = g.t
+		a[Mesh.ARRAY_COLOR] = g.c
+		a[Mesh.ARRAY_TEX_UV] = g.uv
+		a[Mesh.ARRAY_INDEX] = g.i
+		(by_square[key[0]] as ImporterMesh).add_surface(Mesh.PRIMITIVE_TRIANGLES, a, [], {}, key[1])
+	var made := {}
+	for k in by_square:
+		var im: ImporterMesh = by_square[k]
+		im.generate_lods(25.0, 60.0, [])
+		var mi := MeshInstance3D.new()
+		mi.name = "far_%d_%d" % [k.x, k.y]
+		mi.mesh = im.get_mesh()
+		mi.visibility_range_begin = FAR_MERGE_RANGE
+		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.set_meta("far_view", true)
+		Lightmap.mark(mi, false)
+		far.add_child(mi)
+		made[k] = mi
+	var parented := 0
+	for gi in pieces:
+		var c := _plan_centre(gi)
+		var k := Vector2i(int(floor(c.x / HLOD_CHUNK)), int(floor(c.y / HLOD_CHUNK)))
+		if not made.has(k):   # (a door alone in its square: with the nearest square's far mesh)
+			var best := INF
+			for m in made:
+				var d := (Vector2(m) + Vector2(0.5, 0.5)).distance_to(c / HLOD_CHUNK)
+				if d < best:
+					best = d
+					k = m
+		if made.has(k):
+			gi.visibility_parent = gi.get_path_to(made[k])
+			parented += 1
+	print("build: area %s: far view merged in %d squares (%d surfaces), %d pieces drawn near only" % [id, made.size(), groups.size(), parented])
+	return made.size()
+
+## Whether a node is part of a door (app/door.gd: it moves, so it is not merged into a far view).
+static func _in_door(n: Node) -> bool:
+	var p := n.get_parent()
+	while p != null:
+		if p is AnimatableBody3D:
+			return true
+		p = p.get_parent()
+	return false
 
 ## A drawn piece's centre in plan (plant coordinates), from its own box: the kit's cells carry it as meta `box`.
 func _plan_centre(gi: GeometryInstance3D) -> Vector2:
