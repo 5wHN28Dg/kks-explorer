@@ -73,7 +73,7 @@ class Content(unittest.TestCase):
         self.assertGreaterEqual(c['equipment'], 150)
         self.assertGreaterEqual(c['pipes'], 25)
         self.assertGreaterEqual(c['tours'], 1)
-        self.assertEqual(c['procedures'], 5)          # the cold start, the hot restart, the WTP's three (W2)
+        self.assertEqual(c['procedures'], 7)          # the cold start, the hot restart, the WTP's three (W2) and two (W3)
         self.assertLessEqual(c['values'], P.MAX['values'])
 
     def test_screens_show_every_code_of_the_model(self):
@@ -475,7 +475,9 @@ class WaterTreatmentModel(unittest.TestCase):
         moves = [e[4] for e in t['events'] if e[1] == 'machine' and e[2] == 'ro_b']
         self.assertEqual(moves, ['cip_circ1', 'cip_circ2', 'cip_soak', 'cip_flush', 'stopped'] * 2)
         self.assertNotIn('trip', {e[1] for e in t['events']})
-        first, end = t['snapshots'][0]['values'], t['snapshots'][-1]['values']
+        e0 = P.Engine(self.b, 'wtp_normal')                  # step 0 (the snapshots start at 10 minutes)
+        first = {n: e0.v(n) for n in ('ro_b_nflow', 'ro_b_bio', 'ro_b_sc')}
+        end = t['snapshots'][-1]['values']
         self.assertLess(first['ro_b_nflow'], 90)
         self.assertGreaterEqual(end['ro_b_nflow'], 98)
         self.assertGreater(end['ro_b_foul'], end['ro_b_irr'] - 1e-9, 'a cleaning never takes the last of it')
@@ -497,7 +499,9 @@ class WaterTreatmentModel(unittest.TestCase):
         moves = [e[4] for e in t['events'] if e[1] == 'machine' and e[2] == 'mb_a']
         self.assertEqual(moves, ['standby', 'backwash', 'settle', 'drain', 'ready', 'inject', 'displace', 'drain2',
                                  'air_ready', 'air_mix', 'refill', 'rinse', 'standby'])
-        first, end = t['snapshots'][0]['values'], t['snapshots'][-1]['values']
+        e0 = P.Engine(self.b, 'wtp_normal')                  # step 0 (the snapshots start at 10 minutes)
+        first = {n: e0.v(n) for n in ('mb_a_ex', 'gp_hcl_lvl', 'gp_naoh_lvl')}
+        end = t['snapshots'][-1]['values']
         self.assertGreater(first['mb_a_ex'], 0.8)
         self.assertLess(end['mb_a_ex'], 0.05)
         self.assertLess(end['mb_a_cond'], 0.1)

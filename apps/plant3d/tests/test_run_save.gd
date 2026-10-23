@@ -31,6 +31,7 @@ func run(tree: SceneTree) -> Array:
 		return ["the model did not load: " + m.error]
 	var ran = _round_trip(m, PlantEngine, p)
 	_round_trip(m, load("res://tests/fixtures/engine_plus.gd"), p)
+	_round_trip_wtp(m, p)
 	if ran != null:
 		_compiled_fixed(m, ran, p)
 	_file(m, p)
@@ -139,6 +140,47 @@ func _round_trip(m, script, p: Array):
 		if RunSave.check(plain, RunSave.engine_fields(plain), got["payload"]["engine"]) == "":
 			p.append("a plain engine took a save with fields it doesn't have")
 	return e
+
+
+## The water treatment plant's day work (W3) saved in the middle of its sequences: an RO train being cleaned in place
+## (saved just before its first stage ends) and a mixed bed's regenerants being injected (just before its
+## displacement), each with the pit's batch and the CIP skid's tank in their states; put back into a fresh engine,
+## the run goes on bit for bit through the sequence's next state.
+func _round_trip_wtp(m, p: Array) -> void:
+	for c in [["ro_cip", "clean_alk", ["00GCB22AT001", "clean"], 2950, "ro_b"],
+			["mb_regeneration", "inject", ["00GCF11AT001", "inject"], 3950, "mb_a"]]:
+		var pr: Dictionary = m.procedures[c[0]]
+		var e = PlantEngine.new(m, pr["scenario"])
+		var r := Procedure.run(m, c[0], 3600, e, c[1])
+		if r.error != "":
+			p.append("%s stopped: %s" % [c[0], r.error])
+			continue
+		e.op(c[2][0], c[2][1])
+		e.step(c[3])
+		var state_before: float = e.v(c[4] + "_state")
+		var path := DIR.path_join("wtp.save")
+		if RunSave.write(path, RunSave.encode(_payload(e))) != OK:
+			p.append("%s: the save was not written" % c[0])
+			continue
+		var got := RunSave.read(path)
+		var f2 = PlantEngine.new(m, pr["scenario"])
+		if not got["ok"] or RunSave.check(f2, RunSave.engine_fields(f2), got["payload"]["engine"]) != "":
+			p.append("%s: the save did not read back or was refused" % c[0])
+			continue
+		RunSave.apply(f2, got["payload"]["engine"])
+		if _bytes(f2) != _bytes(e):
+			p.append("%s: the restored engine is not the saved one" % c[0])
+			continue
+		for k in 200:
+			e.step()
+			f2.step()
+			if f2.cur != e.cur:
+				p.append("%s: the restored run differs from the uninterrupted one at step %d" % [c[0], e.step_no])
+				break
+		if _bytes(f2) != _bytes(e):
+			p.append("%s: after 200 steps the restored run's state differs" % c[0])
+		if f2.v(c[4] + "_state") == state_before:
+			p.append("%s: the sequence did not move on after the save (the comparison proves little)" % c[0])
 
 
 ## The fields a save leaves out are built from the model and the scenario: a run never changes them.

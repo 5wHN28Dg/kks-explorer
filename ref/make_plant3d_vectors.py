@@ -1374,15 +1374,16 @@ WTP_FORKS += [
     # resin leaks from mixed bed A: its strainer blocks; the bed taken out and its internals repaired under a permit
     ('mb_a_resin_leak', 'end',
      [('fault', 'mb_a_resin'), ('run', 600), ('op', '00GCK10AP001', 'stop', None, None),
-      ('op', '00GCF11AT001', 'standby', None, None), ('run', 10),
+      ('op', '00GCF11AT001', 'standby', None, None), ('run', 20),
       ('permit', 'wo_mb_a_resin', 'request'), ('run', 1), ('permit', 'wo_mb_a_resin', 'approve'), ('run', 1),
       ('lock', 'wo_mb_a_resin', 0), ('lock', 'wo_mb_a_resin', 1), ('run', 1),
       ('op', '00GCF11AT001', 'in_service', None, None), ('run', 1)] +
      permit_run('wo_mb_a_resin', [0, 1], 120)[4 + 3:],
      {'alarms': ['mb_a_dp_h'], 'refused': [['00GCF11AT001', 'in_service', ['iso_mb_a_locked']]],
       'repaired': ['mb_a_resin'], 'permits': {'wo_mb_a_resin': 9}}),
-    ('ro_b_fast_fouling', 'end', RO_B_ON + [('fault', 'ro_b_fouling'), ('until', 'ro_b_nflow_l', 9000), ('run', 10)],
-     {'alarms': ['ro_b_cip']}),
+    # RO B fouling 200 times as fast: in five minutes what a month of the clock brings (from 0.05)
+    ('ro_b_fast_fouling', 'end', RO_B_ON + [('fault', 'ro_b_fouling'), ('run', 300)],
+     {'faults': ['ro_b_fouling'], 'end': {'ro_b_foul': [0.06, 0.08]}}),
 ]
 
 # W3: the RO's cleaning in place (ro_cip) from the normal day's work, and its refusals and trip
@@ -1402,10 +1403,10 @@ CIP_FORKS = [
     ('cip_stop_cleaning', 'caustic', [('op', '00GCB22AT001', 'clean', None, None), ('run', 60),
                                       ('op', '00GCB22AT001', 'stop_cleaning', None, None), ('until', 'ro_b_stopped', 600)],
      {'done': [['00GCB22AT001', 'stop_cleaning']], 'machines': {'ro_b': 'cip_flush'}}),
-    ('cip_overheat_b', 'caustic', [('fault', 'cip_heater'), ('op', '00GCB22AT001', 'clean', None, None),
+    ('cip_overheat_b', 'clean_alk', [('fault', 'cip_heater'), ('op', '00GCB22AT001', 'clean', None, None),
                                    ('until', 'ro_b_trip_cip_t_latched', 1800), ('run', 10)],
      {'first_out': {'ro_b': 'ro_b_trip_cip_t'}, 'alarms': ['cip_t_h'], 'machines': {'ro_b': 'cip_flush'}}),
-    ('cip_overheat_a', 'caustic', [('op', '00GCB21AT001', 'stop', None, None), ('until', 'ro_a_stopped', 600),
+    ('cip_overheat_a', 'clean_alk', [('op', '00GCB21AT001', 'stop', None, None), ('until', 'ro_a_stopped', 600),
                                    ('fault', 'cip_heater'), ('op', '00GCB21AT001', 'clean', None, None),
                                    ('until', 'ro_a_trip_cip_t_latched', 1800), ('run', 10)],
      {'first_out': {'ro_a': 'ro_a_trip_cip_t'}, 'machines': {'ro_a': 'cip_flush'}}),
@@ -1428,11 +1429,13 @@ REGEN_FORKS = [
       'machines': {'mb_a': 'backwash', 'mb_b': 'standby'}, 'end': {'mb_b_state': [2, 2]}}),
     ('air_mix_refused_without_blower', 'inject', [('op', '00GCF11AT001', 'air_mix', None, None), ('run', 1)],
      {'refused': [['00GCF11AT001', 'air_mix', ['gp_air_cmd']]]}),
-    ('regen_acid_tank_filled', 'end', [('op', '00GCP10BB001', 'fill', None, None), ('until', 'gp_hcl_full', 900),
+    ('regen_acid_tank_filled', 'mb_b', [('op', '00GCP10BB001', 'fill', None, None), ('until', 'gp_hcl_full', 900),
                                        ('run', 10)],
      {'done': [['00GCP10BB001', 'fill']], 'machines': {'gp_hcl_fill': 'idle'}, 'end': {'gp_hcl_lvl': [95, 100]}}),
-    ('pit_probe_drift_during_discharge', 'end', [('fault', 'nr_ph_drift'), ('run', 300)],
-     {'interlocks': ['nr_blocked'], 'machines': {'nr_batch': 'dosing'}}),
+    # the pit's probe drifts 3 pH low while the batch discharges: the discharge is blocked, and the batch doses caustic
+    # into a pit that is already neutral (the true pH rises past 9: the lesson of a drifted probe)
+    ('pit_probe_drift_during_discharge', 'end', [('fault', 'nr_ph_drift'), ('run', 600)],
+     {'interlocks': ['nr_blocked'], 'machines': {'nr_batch': 'dosing'}, 'max': {'nr_ph_true': [9, 14]}}),
 ]
 
 

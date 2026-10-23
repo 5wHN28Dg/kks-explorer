@@ -459,7 +459,7 @@ def wtp():
            kks='00GCB30CT001')
     m.cmp('cip_warm', 'cip_t', '>=', 30)
     m.cmp('cip_t_ok', 'cip_t', '<=', 35.5)      # high pH at most 35 °C ([FT] table 35)
-    m.cmp('cip_t_aok', 'cip_t', '<=', 45)       # low pH at most 45 °C
+    m.cmp('cip_t_aok', 'cip_t', '<=', 40)       # low pH at most 40 °C (the skid's trip)
     m.cmp('cip_t_h', 'cip_t', '>', 37)
     m.cmp('cip_t_hc', 'cip_t', '<', 36)
     m.cmp('cip_t_hh', 'cip_t', '>', 40)
@@ -740,7 +740,7 @@ def wtp():
     m.diff('nr_net', 'nr_in', 'nr_dis')
     # its pH from its excess of base (W3: the wastes' acid and caustic, the batch's dosing; NR_PH)
     m.tab('nr_ph_true', 'nr_alk', NR_PH, 'pH')
-    m.prod('nr_ph_off', ['nr_drift', -2])
+    m.prod('nr_ph_off', ['nr_drift', -3])                # a probe drifted 3 pH low (W3: enough to fool the batch)
     m.sum('nr_ph_sp', ['nr_ph_true', 'nr_ph_off'])
     m.lag('nr_ph', 'nr_ph_sp', 60, init=7.2, unit='pH', kks='00GNR10CQ001')
     m.cmp('nr_ph_lo', 'nr_ph', '>=', 6)
