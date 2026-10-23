@@ -690,7 +690,7 @@ func select(e, pi: int):
 func pause(e, pi: int) -> void:
 	var cur: Dictionary = e.sp_cur[pi]
 	var st: Dictionary = cur["st"]
-	for k in ["dest", "wait_since", "target", "meet_since"]:
+	for k in ["dest", "waiting", "wait_since", "target", "meet_since"]:
 		st.erase(k)
 	unreserve(e, pi)
 	_enqueue(e, pi, cur)
@@ -861,11 +861,13 @@ func go(e, pi: int, cur: Dictionary, x) -> String:
 			if w == -1 or w == i:
 				w = before(e.sp_pos[pi], i)
 			s["dest"] = w
-			s["wait_since"] = e.step_no
+			s["waiting"] = true
 		else:
 			s["dest"] = i
 			reserve(e, pi, i)
-	if s.get("wait_since") != null and e.sp_pos[pi] == s["dest"]:
+	if s.get("waiting", false) and e.sp_pos[pi] == s["dest"]:
+		if not s.has("wait_since"):
+			s["wait_since"] = e.step_no     # the 15 minutes count from the arrival where they wait
 		var i: int = s["target"]
 		if typeof(x) == TYPE_DICTIONARY and x.has("kind"):
 			var j := free_of(e, x["kind"], x["room"], pi)
@@ -874,14 +876,14 @@ func go(e, pi: int, cur: Dictionary, x) -> String:
 				s["target"] = j
 		if not taken(e, i, pi):
 			s["dest"] = i
-			s["wait_since"] = null
+			s["waiting"] = false
 			reserve(e, pi, i)
 		elif e.step_no - s["wait_since"] >= WAIT_PLACE * tpm:
 			return "fail"
 		else:
 			return "wait"
 	if walk(e, pi, s["dest"]):
-		return "next" if s.get("wait_since") == null else "wait"
+		return "wait" if s.get("waiting", false) else "next"
 	return "wait"
 
 

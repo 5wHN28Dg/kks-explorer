@@ -1408,7 +1408,7 @@ What S1 settles that §16–§17 left open (the engines and the vectors follow t
   `wait`'s start; its `go` or `meet` looks for its place again when it resumes. `choose` ends the task (`done`) and
   starts the chosen one in the same instance (`start`).
 - **Who waits for a taken place** checks it at their own turn in phase 4 (so in index order); a `{"kind", "room"}`
-  target takes any free place of its kind then.
+  target takes any free place of its kind then. The 15 clock minutes count from their arrival where they wait.
 - **A meeting's place** is the room's first seat, desk or table not held by another person, else its door (a room
   used by `meet` has a door: `bad_ref`); the people it waits for are on duty, other than the person, at a place of
   the room.

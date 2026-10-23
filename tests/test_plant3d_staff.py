@@ -4,7 +4,7 @@ inputs; each reject is caught with its code; and the rules the vectors pin are c
 midnight and day 0, slots, placement, routes and their tie rule, reservations, pre-emption, reactions and their
 duplicates, the permit flow between NPCs, the trainee's inputs, jumps, fast-forward, the random streams).
   .venv/bin/python -m unittest tests.test_plant3d_staff"""
-import copy, json, os, sys, unittest
+import json, os, sys, unittest
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, REPO)
@@ -197,9 +197,17 @@ class StaffVectors(unittest.TestCase):
     def test_waiting_for_a_taken_place(self):
         """The supervisor's seat taken by a field operator: the supervisor waits at the office's door, and gives up
         after 15 clock minutes (the idle task abandoned)."""
-        ev = self.runs[0]['events']
-        self.assertTrue(any(e[1] == 'task' and e[2] == 'a_sup' and e[3] == 'idle_sup' and e[4] == 'abandoned'
-                            for r in self.runs for e in r['events']))
+        found = 0
+        for r in self.runs:
+            ev = r['events']
+            for e in ev:
+                if e[1] == 'task' and e[2] == 'a_sup' and e[3] == 'idle_sup' and e[4] == 'abandoned':
+                    door = [m[5] for m in ev if m[1] == 'move' and m[2] == 'a_sup' and m[4] == 'office_door'
+                            and m[5] <= e[0]]
+                    self.assertTrue(door, 'abandoned without waiting at the door')
+                    self.assertEqual(e[0] - max(door), 150)       # 15 clock minutes at day_scale 60
+                    found += 1
+        self.assertGreater(found, 0)
 
     def test_clone_is_independent(self):
         b = P.check_files(files_of(self.V, self.runs[0]))

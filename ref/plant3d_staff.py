@@ -12,7 +12,7 @@ come with S2; vehicles, `ride`, `sleep`, homes and off-duty routines with S4: th
 (`unknown_key`), so no content can rely on behaviour the engines don't have.
 """
 import copy, heapq, math, re
-from ref.courses import FormatError, need, keys, is_num, num, ident, lst
+from ref.courses import need, keys, is_num, num, ident, lst
 
 STAFF_FORMAT = 'walkdown-plant-staff'
 MAX = {'people': 200, 'roles': 48, 'places': 2000, 'points': 500, 'ways': 6000, 'tasks': 400, 'task_steps': 64,
@@ -1194,7 +1194,7 @@ class StaffRun:
     def pause(self, p):
         cur = p.cur
         st = cur['st']
-        for k in ('dest', 'wait_since', 'target', 'meet_since'):
+        for k in ('dest', 'waiting', 'wait_since', 'target', 'meet_since'):
             st.pop(k, None)
         self.unreserve(p)
         p.queue.append(cur)
@@ -1329,11 +1329,13 @@ class StaffRun:
                 if w is None or w == i:
                     w = self.before(p.pos, i)
                 s['dest'] = w
-                s['wait_since'] = e.step_no
+                s['waiting'] = True
             else:
                 s['dest'] = i
                 self.reserve(p, i)
-        if s.get('wait_since') is not None and p.pos == s['dest']:
+        if s.get('waiting') and p.pos == s['dest']:
+            if 'wait_since' not in s:
+                s['wait_since'] = e.step_no         # the 15 minutes count from the arrival where they wait
             i = s['target']
             if not isinstance(x, int) and not isinstance(x, str) and 'kind' in x:
                 j = self.free_of(x['kind'], x['room'], p.i)
@@ -1341,16 +1343,14 @@ class StaffRun:
                     i = s['target'] = j
             if not self.taken(i, p):
                 s['dest'] = i
-                s['wait_since'] = None
+                s['waiting'] = False
                 self.reserve(p, i)
             elif e.step_no - s['wait_since'] >= WAIT_PLACE * st.tpm:
                 return 'fail'
             else:
                 return 'wait'
         if self.walk(p, s['dest']):
-            if s.get('wait_since') is None:
-                return 'next'
-            return 'wait'
+            return 'wait' if s.get('waiting') else 'next'
         return 'wait'
 
     def before(self, a, b):
