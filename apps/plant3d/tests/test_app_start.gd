@@ -30,6 +30,11 @@ func run(tree: SceneTree) -> Array:
 	var want_filter := "bicubic" if Lighting.lightmap_bicubic(Quality.is_phone(), RenderingServer.get_video_adapter_name()) else "bilinear"
 	if main.lightmap_filter != want_filter:
 		p.append("the start sets the lightmap's filter for this device (app/lighting.gd lightmap_bicubic)")
+	# before the plant loads: the filter is part of every lit pipeline
+	var i_filter: int = Array(main.lines).find_custom(func(s): return s.begins_with("lightmap filter:"))
+	var i_plant: int = Array(main.lines).find_custom(func(s): return s.begins_with("loaded the plant"))
+	if i_filter < 0 or i_plant < 0 or i_filter > i_plant:
+		p.append("the lightmap's filter is set before the plant loads (lines %d and %d)" % [i_filter, i_plant])
 	main.toggle_map()
 	if not main.map.active or main.player.input_enabled:
 		p.append("the map opens and holds the walker's controls")
