@@ -65,6 +65,27 @@ static func sun() -> DirectionalLight3D:
 	l.light_bake_mode = Light3D.BAKE_DYNAMIC   # the bake keeps its bounce; its direct light and shadow stay real-time
 	return l
 
+## The lightmap's filter. Godot reads the bake through a bicubic filter by default (four bilinear reads, smoother
+## between texels); on the Honor 600's Adreno 722 (Vulkan, Mobile renderer, driver 0800.74) that filter drew the bake
+## as dark and pale blocks a texel or two wide on every outdoor wall, roof and yard, on both tiers, flickering as one
+## walks (2026-10-23: the same build with only the filter switched to bilinear drew it clean; uploading the lightmap
+## again as RGBA half floats instead of RGBE9995, or the shadowmask as uncompressed RGBA8 instead of ETC2 R11, changed
+## nothing). So phones read the bake bilinear (a quarter of the lightmap's and the shadowmask's texture reads, on any
+## phone GPU: the Note 9's Mali drew the bicubic filter right, and its screenshots of the same walk show no difference
+## to see at a phone's size, but phone GPUs are not measured one by one), and so does any Adreno elsewhere
+## (Windows on Snapdragon laptops: the same GPU family and driver line, not measured). `fx_on=bicubic` forces it on
+## (to see the fault again on a device).
+static func lightmap_bicubic(phone: bool, adapter: String) -> bool:
+	if "bicubic" in on:
+		return true
+	return not phone and not adapter.to_lower().contains("adreno")
+
+## Sets the lightmap's filter for this device (before the plant loads: the filter is part of every lit pipeline).
+static func apply_lightmap_filter(phone: bool, adapter: String) -> bool:
+	var b := lightmap_bicubic(phone, adapter)
+	RenderingServer.lightmaps_set_bicubic_filter(b)
+	return b
+
 ## The lightmap node for a plant whose areas stand under `parent`, or null when the build carries no bake.
 static func lightmap_node() -> LightmapGI:
 	if not ResourceLoader.exists(LIGHTMAP) or "lightmap" in off:   # fx_off=lightmap: without it, to compare
@@ -84,7 +105,8 @@ static func lightmap_node() -> LightmapGI:
 ## on for a measurement (the Mobile renderer has none of SSAO, SSIL and volumetric fog). The shade comes from the bake.
 ## Effects switched off for a measurement (main.gd's `fx_off=fog,tonemap,lightmap`): which costs what.
 static var off: PackedStringArray = []
-## Effects switched on for a measurement only (`fx_on=ssao,sdfgi,ssil,volfog,glow`): measured and left out (0057).
+## Effects switched on for a measurement only (`fx_on=ssao,sdfgi,ssil,volfog,glow`): measured and left out (0057);
+## `fx_on=bicubic` the lightmap's bicubic filter on a phone (lightmap_bicubic, above).
 static var on: PackedStringArray = []
 
 static func apply(tier: String, env: Environment) -> void:
