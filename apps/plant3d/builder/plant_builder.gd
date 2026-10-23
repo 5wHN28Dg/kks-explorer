@@ -1029,6 +1029,7 @@ func hlod(root: Node3D, id: String, items: Dictionary, scope: Node, keep := {}) 
 const FAR_MERGE_RANGE := 200.0
 
 func far_merge(root: Node3D, id: String) -> int:
+	_mark_inside(root, id)
 	var groups := {}   # [Vector2i, Material] -> {arrays…}
 	var pieces: Array = []
 	var stack: Array = root.get_children()
@@ -1135,6 +1136,31 @@ func far_merge(root: Node3D, id: String) -> int:
 	print("build: area %s: far view merged in %d squares (%d surfaces), %d pieces drawn near only" % [id, made.size(), groups.size(), parented])
 	return made.size()
 
+## A building's parts seen only from inside it (its outside: walls, roof, trims, plinth, louvres, windows, steps).
+const INSIDE_PARTS := ["floor", "frame", "lamp_housings", "lamp_lenses", "liner", "roof_steel", "windows_in", "crane",
+	"crane_hook"]
+
+## Marks (meta `far_inside`) what stands inside the area's buildings: their inside parts, and every other piece whose
+## plan centre is within a building's outline. They stay out of the far view and are drawn as before, each culled
+## by its building's occluder: merged, a hall's whole inside was drawn with its walls from every distance (from the
+## WTP, the first train's halls cost the Note 9 a third more GPU time, 2026-10-23).
+func _mark_inside(root: Node3D, id: String) -> void:
+	var outlines: Array = buildings.filter(func(b): return b.area == id).map(func(b): return b.outline)
+	for n in root.find_children("*", "GeometryInstance3D", true, false):
+		var gi := n as GeometryInstance3D
+		var body: Node = gi.get_parent()
+		while body != null and body != root and not body.has_meta("building"):
+			body = body.get_parent()
+		if body != null and body != root:
+			if String(gi.name) in INSIDE_PARTS:
+				gi.set_meta("far_inside", true)
+			continue
+		var c := _plan_centre(gi)
+		for pg in outlines:
+			if Geometry2D.is_point_in_polygon(c, pg):
+				gi.set_meta("far_inside", true)
+				break
+
 ## The far view's error: the merged geometry simplified until its surfaces stray this far (metres) from the pieces'
 ## (two thirds of a pixel at FAR_MERGE_RANGE on the Note 9, one and a half on a 4K screen's full tier, less farther off).
 const FAR_ERROR := 0.2
@@ -1185,10 +1211,11 @@ static func _far_simplified(im: ImporterMesh) -> ArrayMesh:
 
 ## Whether a drawn piece goes into its area's far view (`far_merge`): shown (with every parent up to the area: a
 ## lamp's lit lens under its hidden `on` is not), not a label (signs' and tags' text keep their own range, or none),
-## not kept by the far view's own rules (`hlod_keep`), not a detail piece (it keeps its own range by its size,
+## not kept by the far view's own rules (`hlod_keep`), not inside a building (`_mark_inside`), not a detail piece (it keeps its own range by its size,
 ## app/quality.gd: on a phone most end well within FAR_MERGE_RANGE), and all triangles.
 static func far_mergeable(gi: GeometryInstance3D, root: Node) -> bool:
 	if gi == null or gi is Label3D or gi.has_meta("hlod_keep") or gi.is_in_group("detail") or gi.has_meta("far_view") \
+			or gi.has_meta("far_inside") \
 			or gi.visibility_range_end > 0.0 or gi.visibility_range_begin > 0.0:
 		return false   # (a piece with a range of its own keeps it: merged, it would come back beyond FAR_MERGE_RANGE)
 	var n: Node = gi

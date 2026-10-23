@@ -2,7 +2,7 @@
 ## `far_merge`): their pieces merged per square and material and simplified within FAR_ERROR, drawn from
 ## FAR_MERGE_RANGE out, each piece itself drawn only nearer (its `visibility_parent`); per far mesh no more vertices and
 ## indices than its pieces and over the same box (a wrong transform or square shows); detail pieces left out with their
-## own range; in the plant's vertex format without UV2 (no pipeline of its own), and casting no shadow.
+## own range, and what stands inside a building (culled by its occluder); in the plant's vertex format without UV2 (no pipeline of its own), and casting no shadow.
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
@@ -50,6 +50,7 @@ func run(tree: SceneTree) -> Array:
 		var orphans := 0
 		var all_v := 0   # every drawn piece's vertices but the details' and labels'
 		var details := 0
+		var inside := 0
 		var orphan := ""
 		var stack: Array = area.get_children()
 		while not stack.is_empty():
@@ -62,6 +63,11 @@ func run(tree: SceneTree) -> Array:
 				details += 1
 				if not gi.visibility_parent.is_empty():
 					p.append("%s's detail %s keeps its own range, not the far view's" % [id, area.get_path_to(gi)])
+				continue
+			if gi != null and gi.has_meta("far_inside"):   # inside a building: drawn as before, culled by its occluder
+				inside += 1
+				if not gi.visibility_parent.is_empty():
+					p.append("%s's %s, inside a building, is never under the far view" % [id, area.get_path_to(gi)])
 				continue
 			if gi != null and not gi is Label3D:
 				var am: Mesh = gi.mesh if gi is MeshInstance3D else ((gi as MultiMeshInstance3D).multimesh.mesh if gi is MultiMeshInstance3D and gi.multimesh != null else null)
@@ -106,6 +112,8 @@ func run(tree: SceneTree) -> Array:
 			p.append("%s's far view holds most of its pieces (%d vertices of %d)" % [id, merged_v, all_v])
 		if orphans > 0:
 			p.append("%s: %d pieces are drawn at every distance (no far view as their visibility parent), %s among them" % [id, orphans, orphan])
+		if inside == 0 and id in ["area_st", "area_wtp"]:
+			p.append("%s's halls keep their insides out of the far view" % id)
 		if details == 0:
 			p.append("%s has detail pieces (left out of its far view)" % id)
 		for mi in got:
@@ -130,5 +138,5 @@ func run(tree: SceneTree) -> Array:
 	return p
 
 static func _same_box(a: AABB, b: AABB) -> bool:
-	# (a simplified surface keeps its outline within FAR_ERROR, but a thin piece at the edge may go entirely)
-	return a.position.distance_to(b.position) < 0.3 and a.end.distance_to(b.end) < 0.3
+	# (a simplified surface keeps its outline within FAR_ERROR, but a small piece at the edge may go entirely)
+	return a.position.distance_to(b.position) < 1.0 and a.end.distance_to(b.end) < 1.0

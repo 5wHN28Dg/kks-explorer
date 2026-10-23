@@ -29,6 +29,7 @@
 ##                           light through the bake only), fx_off=stencils the pipes' stencilled names hidden,
 ##                           fx_off=occlusion the buildings' occluders unused (builder/plant_builder.gd _occluder),
 ##                           fx_off=wtp the water treatment plant and its intake hidden (their cost seen from afar),
+##                           fx_off=interiors the rooms near their doors never loaded (app/interiors.gd),
 ##                           fx_off=farview their merged far view unused, their pieces drawn at every distance as before
 ##                           it (builder/plant_builder.gd far_merge)
 ##   On a phone walk.txt takes probe, fx_off, fx_on and max_fps too (phone/frames.sh's WALK_EXTRA)
@@ -167,6 +168,8 @@ func _ready() -> void:
 	interiors.name = "interiors"
 	add_child(interiors)
 	interiors.setup(plant, player)
+	if "interiors" in Lighting.off:   # fx_off=interiors: the rooms never loaded (what loading and freeing them costs)
+		interiors.process_mode = Node.PROCESS_MODE_DISABLED
 	map = MapView.new()
 	map.name = "map"
 	add_child(map)
