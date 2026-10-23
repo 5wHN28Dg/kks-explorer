@@ -487,10 +487,12 @@ class GdscriptEngineInterpreter(unittest.TestCase):
                     got = json.load(f)
                 for run, (start, chunks, _, _) in steps_runs(V['valid'][0]['files'], vec['steps']).items():
                     self.assertEqual(got[run]['chunks'], chunks, f'{name} {run}')
-            # format 2's unit runs (permits, isolations, the hold node), without its train and water plant runs
+            # format 2's unit runs (permits, isolations, the hold node), without its runs of the first train's content
+            # (train, water plant, the staff's day: they need the content's model, which --only=v2 doesn't load) nor
+            # the staff's runs (GdscriptEngine replays them)
             with open(VECTORS2, encoding='utf-8') as f:
                 V2 = json.load(f)
-            V2 = {k: v for k, v in V2.items() if k not in ('train', 'wtp')}
+            V2 = {k: v for k, v in V2.items() if k not in ('train', 'wtp', 'day', 'staff')}
             path = os.path.join(d, 'v2.json')
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(V2, f)
