@@ -9,16 +9,16 @@ name: Walkdown Plant app
 
 on:
   pull_request:
-    paths: ['apps/plant3d/**', 'data/plant3d/**', 'ref/plant3d.py', 'ref/sjson.py', 'ref/courses.py',
+    paths: ['apps/plant3d/**', 'data/plant3d/**', 'ref/plant3d.py', 'ref/plant3d_staff.py', 'ref/sjson.py', 'ref/courses.py',
             'ref/make_plant3d_vectors.py', 'ref/vectors/plant3d-v1.json', 'ref/vectors/plant3d-v2.json',
-            'tests/test_plant3d.py',
+            'tests/test_plant3d.py', 'tests/test_plant3d_staff.py',
             'tests/test_plant3d_bench.py', 'docs/plant3d/FIRST-TRAIN.md', 'tools/plant3d/**',
             '.github/workflows/plant3d-app.yml']
   push:
     branches: [main]
-    paths: ['apps/plant3d/**', 'data/plant3d/**', 'ref/plant3d.py', 'ref/sjson.py', 'ref/courses.py',
+    paths: ['apps/plant3d/**', 'data/plant3d/**', 'ref/plant3d.py', 'ref/plant3d_staff.py', 'ref/sjson.py', 'ref/courses.py',
             'ref/make_plant3d_vectors.py', 'ref/vectors/plant3d-v1.json', 'ref/vectors/plant3d-v2.json',
-            'tests/test_plant3d.py',
+            'tests/test_plant3d.py', 'tests/test_plant3d_staff.py',
             'tests/test_plant3d_bench.py', 'docs/plant3d/FIRST-TRAIN.md', 'tools/plant3d/**',
             '.github/workflows/plant3d-app.yml']
   workflow_dispatch:
@@ -56,7 +56,7 @@ jobs:
       - name: Godot 4.7.2 and the JDK 17 of its Android Gradle build (pinned)
         run: tools/plant3d/bench/fetch_godot.sh && tools/plant3d/fetch_jdk.sh
       - name: The content tests (the validator, the generator's output, the vectors)
-        run: python3 -m unittest tests.test_plant3d tests.test_plant3d_bench
+        run: python3 -m unittest tests.test_plant3d tests.test_plant3d_staff tests.test_plant3d_bench
       - name: Content check, content build, the app's tests, headless exports
         run: apps/plant3d/build.sh export
       - name: Sizes

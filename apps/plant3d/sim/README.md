@@ -1,14 +1,15 @@
 # Walkdown Plant: the behaviour engine (GDScript)
 
-The plant's behaviour model (docs/PLANT3D.md §7, and format 2's permits, isolations and `hold` node, §15) as the app
-runs it, bit for bit with the reference (`ref/plant3d.py`) on `ref/vectors/plant3d-v1.json` and `plant3d-v2.json`
-(decision 0054 §10).
+The plant's behaviour model (docs/PLANT3D.md §7, and format 2's permits, isolations and `hold` node, §15, and its staff,
+§16–§17) as the app runs it, bit for bit with the reference (`ref/plant3d.py`, `ref/plant3d_staff.py`) on
+`ref/vectors/plant3d-v1.json` and `plant3d-v2.json` (decision 0054 §10, 0062).
 
 | File | What it is |
 |---|---|
 | `json_strict.gd` | strict JSON reader (the rules of `ref/sjson.py`), numbers correctly rounded like Python's `float()`: Godot's `JSON` and `String.to_float` are off by a unit in the last place for some 17-digit numbers, one of which is in the first train's model |
 | `plant_model.gd` | loads `data/plant3d` (or a `{path: text}` set of files): the joined model, scenarios, procedures and the plant's codes |
 | `engine.gd` | the 0.1 s step of §7.10: values, operations and permissives, interlocks, machines, trips with first-out, alarms with suppression and shelving, faults; permits to work, locks and the writes they skip (§15, free mode); snapshots and fast-forward |
+| `staff.gd` | staff.json (§16) as the engine runs it, and the staff step (step 9, §17): duties, routines, queues, routes by the `next` table, reservations, reactions, the task steps, the trainee's person, jumps, the per-person random streams. It holds only what is built from the content; the run's staff state is the engine's `st_`/`sp_` variables, so saved runs and clones keep it |
 | `procedure.gd` | a procedure run in the model alone, as a trainee who does each step |
 | `links.gd` | `walkdown-plant://` links (§6) |
 

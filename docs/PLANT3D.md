@@ -1373,6 +1373,69 @@ last permit number, in model order), `"locked": [[isolation, point], …]` (in m
 order, then each work's). A version 2 plant's snapshot always has `permits`, `ptw` and `locked`, after
 `fast_forward`, in that order; `clock`, `people`, `vehicles` and `unacked` come with staff (milestone S1).
 
+### 17.8 As built for milestone S1 (2026-10-23)
+
+The reference (`ref/plant3d_staff.py`, run by `ref/plant3d.py`'s Engine) and the app's engine (`apps/plant3d/sim/staff.gd`)
+agree bit for bit on `plant3d-v2.json`'s `staff` part (§19). S1 builds the operators' side of §16–§17; what comes
+later is **refused by the validator** (`unknown_key`, naming the milestone), so no content relies on behaviour the
+engines don't have yet:
+- **S2:** `zones`, `put_right`, the `ppe` and `stop` steps, `"unsafe": true`, reactions `on: {"unsafe"}` and `seen`
+  (PPE, zones, unsafe acts and the safety walk);
+- **S4:** `vehicles`, `drive` ways, `ride` and `sleep`, a person's `home`, `"go": "home"`, a role's `off` routine
+  (the camp, the buses, off duty).
+
+What S1 settles that §16–§17 left open (the engines and the vectors follow these):
+- **The gate.** staff.json has `"gate"`: a `door`, `point` or `muster` place where people come on site and leave it.
+  Without homes (S4), a person **off site** has no place: the snapshot's `where` is null. An off-site person whose
+  task starts (a slot before their duty, the idle task when the duty starts) appears at the gate (`[n, "move",
+  person, null, gate, n]`); a person off duty with no current task and an empty queue leaves the site from where
+  they stand (`[n, "move", person, place, null, n]`). Placement puts off-duty people off site.
+- **New step `ack`:** `{"ack": "$"}` acknowledges the alarm the task was given for (an NPC makes the `ack` input when
+  it is unacknowledged; the trainee's step is done once it isn't).
+- **`"$"` codes:** `{"go": {"kks": "$"}}` goes to the work place of the instance's code: an alarm reaction's alarm
+  `where`, a fault reaction's fault `kks`, a permit reaction's work's `kks` (or the reaction's `work`'s); a `call`
+  passes the caller's code, alarm and work on (its own `work`, when given, replaces the work). A task's `"$"` work is
+  the reaction's `work`, the permit's work, the call's, or else the task's own `work`.
+- **`else`** may stand on a `go`, `op`, `permit`, `lock` or `unlock` step (and inside a `wait`): the index of a later
+  step. Without one, the failure abandons the task.
+- **The idle task** is given priority 6 (below every task), ends (`done`) when anything is queued or the duty ends,
+  and starts again (a new `start`) when it ended with the queue still empty.
+- **Pre-emption** is checked at a person's turn whenever they stand at a place: between steps, at each place a `go`
+  reaches, during a `work`, `wait` or `meet`. Not while an NPC waits for the outcome of its input (an op, permit,
+  lock or unlock: the outcome is read in the next step 9). A paused instance keeps its `work`'s time left and its
+  `wait`'s start; its `go` or `meet` looks for its place again when it resumes. `choose` ends the task (`done`) and
+  starts the chosen one in the same instance (`start`).
+- **Who waits for a taken place** checks it at their own turn in phase 4 (so in index order); a `{"kind", "room"}`
+  target takes any free place of its kind then.
+- **A meeting's place** is the room's first seat, desk or table not held by another person, else its door (a room
+  used by `meet` has a door: `bad_ref`); the people it waits for are on duty, other than the person, at a place of
+  the room.
+- **`lock` / `unlock` with `"all"`:** the NPC walks to each point's work place in turn and makes one input at a time;
+  the trainee's step is done when each point has a `done` lock (or unlock) by them.
+- **Slots** are made per person in the order (time, duty start, slot index, repetition); duties and their slots are
+  worked out through the day after the clock's.
+- **Placement:** a slot "within its duty" is one at or after the duty's start. A task's first place is its first
+  `go`'s or `meet`'s place; without one, the idle task's; without that, the origin. The task queued by placement is
+  not counted in `unacked`.
+- **The jump's step:** its `skipped` events come first for every instance queued or current (people in order), then,
+  per person, for the slots in the gap; phase 4 is not run in that step, so the placed tasks start in the next.
+- **The trainee.** Their `arrive` and `leave` inputs are applied at the start of step 9 in the order made. A `read`
+  is compared with the value as the previous step left it (`misread` beyond `tol`); otherwise the shown value is
+  checked against `expect`, and the event carries the value typed. Their `op`, `permit`, `lock` and `unlock` steps
+  are done when a matching input of theirs is `done` (a refusal leaves the step waiting: the debrief lists it). A
+  `say` step takes a `say` input of the same message and `to`; a `call` step a `call` input of the same role and
+  task. Radio inputs that no step took are sent as they are: a message to its `to`, or a **call**, a new input
+  `[n, "call", role, task, work]` (work optional), accepted when some `call` step of the content names that role and
+  task (the radio panel's requests) and refused otherwise. Calls make the event `[n, "call", person, role, task, work,
+  "done" | "refused"]`, the NPCs' too.
+- **`unacked`** in the snapshot is a count. `[n, "say", …]` to the trainee's person or role counts.
+- **Ops by a person** (§17.1): the reasons start with `where` (the op's own `where` lacks it; then no authority is
+  checked) or `authority`, before format 1's failed values and the locks. While the trainee plays a person, an
+  input of theirs naming no person, or another person, is refused (`authority`); a version 1 op too.
+- **Reactions** take the reaction's `priority`, else the task's. A value reaction's edge is against its truth after the
+  previous step 9 (at step 0: its value then).
+- **The queue limit** of 32 counts the current task unless it is the idle task.
+
 ## 18. People on screen (the app; not in the vectors)
 
 ### 18.1 Walking
@@ -1501,3 +1564,16 @@ with its expectations (`refused`, `lock_refused`, `permits`, `repaired`, alarms 
 Format 1's file keeps its synthetic parts byte for byte; its `train` and `hot` runs follow the first train's content,
 now version 2: the same inputs and events, every format 1 value the same at every snapshot, with the new values and
 the snapshot keys `permits`, `ptw` and `locked` added. S1 adds the staff's `steps` and `day`.
+
+**As built for milestone S1** (2026-10-23, §17.8): `staff` holds a synthetic version 2 plant with a clock at
+`day_scale` 60 and staff (`files`, `counts`): two crews of operators on a rotation, a shift supervisor, an electrical
+authorised person and two technicians on days, on a walking network with two equal routes (the tie rule) and a stair;
+`reject`: its rule breaks (every staff error code of §14, the S2 and S4 keys refused); `runs`: seven runs, each with
+its scenario (and staff file when it differs), its inputs, every event and a snapshot every `every` steps: a shift
+change and a morning without a trainee (rounds, readings, a choice, an instruction over the radio, a trip, the alarm
+answered and checked locally, a value reaction, two permits run between NPCs, locks by their roles, a technicians'
+toolbox meeting, a taken seat waited for); the same with another seed; a person added at the end; the trainee as a
+field operator (the role input, rounds walked and read, a misreading, calls answered); the trainee as control room
+operator (the radio instruction, every refusal of §17.1, free radio calls); placement at 10:30 and jumps (refused
+while a task waits for `task_ack` and while a permit is open; accepted; two in a step); an absent operator and a
+call with nobody on duty. The first train's `day` comes with its staff content.
