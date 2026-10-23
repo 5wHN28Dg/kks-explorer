@@ -97,7 +97,7 @@ static func _stand(g, top: Vector3) -> void:
 	m.use("galvanised", "form")
 	var foot := Vector3(top.x, top.y, dz)
 	m.cyl(foot, top, 0.03, -1.0, 8)
-	m.box(foot + Vector3(0, 0, 0.005), Vector3(0.2, 0.2, 0.01))
+	m.box(foot + Vector3(0, 0, 0.01), Vector3(0.2, 0.2, 0.02))
 	m.box(top + Vector3(0, 0, -0.02), Vector3(0.08, 0.08, 0.04))
 	m.xf = keep
 
@@ -344,7 +344,7 @@ static func push_button_station(_part: String, g) -> void:
 	var h := 0.32 if em else 0.22
 	m.use("galvanised", "form")
 	m.cyl(Vector3(0, -0.06, 0), Vector3(0, -0.06, 1.25), 0.03, -1.0, 8)
-	m.box(Vector3(0, -0.06, 0.005), Vector3(0.2, 0.2, 0.01))
+	m.box(Vector3(0, -0.06, 0.01), Vector3(0.2, 0.2, 0.02))
 	m.use("paint_grey", "identify")
 	m.box(Vector3(0, 0, 1.25), Vector3(0.12, 0.09, h))
 	m.use("paint_green", "identify")

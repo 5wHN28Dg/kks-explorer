@@ -42,7 +42,9 @@ const CAPER := Color(0.36, 0.50, 0.28)
 const CAPER_FLOWER := Color(0.93, 0.88, 0.90)
 const SOIL := Color(0.50, 0.41, 0.31)
 const SOIL_WET := Color(0.36, 0.29, 0.22)
-const HOSE := Color(0.06, 0.06, 0.06)
+## The drip hose, black polyethylene greyed by the dust: pure black, thinner than a pixel a few metres off, drew a hard
+## dark line that broke into dashes as one walked (the Note 9, 2026-10-23: taken for a fault in the ground).
+const HOSE := Color(0.20, 0.19, 0.17)
 
 ## Vehicle paint (no white: the user's choice, 2026-10-21; muted, neutral fleet colours).
 const VEHICLE := {"silver": Color(0.68, 0.69, 0.70), "grey": Color(0.42, 0.44, 0.45), "sand": Color(0.72, 0.64, 0.50),
@@ -96,7 +98,7 @@ static func _basin(m, r: float) -> void:
 	col(m, "foliage", SOIL)
 	m.lathe(Vector3.ZERO, Vector3(0, 0, 1), [[r, 0.0], [r * 1.12, 0.1], [r * 1.3, 0.1], [r * 1.5, 0.0]], 10, false)
 	col(m, "foliage", SOIL_WET)
-	m.disk(Vector3(0, 0, 0.012), Vector3(0, 0, 1), r * 1.02, 10)
+	m.disk(Vector3(0, 0, 0.025), Vector3(0, 0, 1), r * 1.02, 10)   # 2.5 cm over the ground: nearer, they fight (tests/test_ground.gd)
 	# the drip line's emitter loop round the trunk (detail)
 	col(m, "foliage", HOSE, "detail", 0.02)
 	m.torus(Vector3(0, 0, 0.03), Vector3(1, 0, 0), Vector3(0, 1, 0), r * 0.7, 0.01, TAU, 12, 4)
@@ -297,8 +299,8 @@ static func _bougainvillea(m, g, h: float) -> void:
 		_blob(m, c, Vector3(r, r, h * 0.16), rng, cols, 6, 3, 0.25)
 	_blob(m, Vector3(0, 0, h * 0.95), Vector3(0.6, 0.6, 0.3), rng, cols, 7, 3, 0.25)
 
-## The drip line along a row of plants (plant coordinates of the row's ends, in the part frame): a black hose on the
-## ground (detail).
+## The drip line along a row of plants (plant coordinates of the row's ends, in the part frame): a dusty black hose on
+## the ground (detail).
 static func drip_line(m, a: Vector3, b: Vector3) -> void:
 	col(m, "foliage", HOSE, "detail", 0.02)
 	m.cyl(a + Vector3(0, 0, 0.012), b + Vector3(0, 0, 0.012), 0.008, -1.0, 4, false)
@@ -470,7 +472,8 @@ static func kerb(_part: String, g) -> void:
 			m.box(c + Vector3(0, 0, 0.075), Vector3(0.15, L / n, 0.15), bs)
 
 ## A marked pedestrian crossing: white stripes 0.5 m wide every metre across a road `width` wide, each `length` long
-## along the road (y), painted 1 cm proud of it (drawn only). Origin at its centre.
+## along the road (y), painted 2 cm proud of it (drawn only: closer, it fought the road in a phone's depth buffer,
+## tests/test_ground.gd). Origin at its centre.
 static func crossing(_part: String, g) -> void:
 	var m = g.m
 	var w: float = g.num("width", 7.0)
@@ -479,32 +482,40 @@ static func crossing(_part: String, g) -> void:
 	var n := int(floor(w))
 	for k in n:
 		var x := -w * 0.5 + (w - n) * 0.5 + k + 0.25
-		m.box_lh(Vector3(x, -L * 0.5, 0.0), Vector3(x + 0.5, L * 0.5, 0.012))
+		m.box_lh(Vector3(x, -L * 0.5, 0.0), Vector3(x + 0.5, L * 0.5, 0.02))
 
 ## A sports court (`length` along y): its surface with the lines, a chain-link fence round it (posts, rails; the mesh
 ## itself is a `detail` grid) with a gate gap in the middle of its east side, and a floodlight mast at each corner.
-## Origin at the court's centre.
+## Origin at the court's centre. Its layers (the surround, the playing area, the lines) stand COURT_STEP apart: closer,
+## they fought in a phone's depth buffer (tests/test_ground.gd).
+const COURT_STEP := 0.02
 static func court(_part: String, g) -> void:
 	var m = g.m
 	var L: float = g.num("length", 28.0)
 	var w: float = g.num("width", 15.0)
 	var fh: float = g.num("fence", 4.0)
 	col(m, "matte", Color(0.30, 0.42, 0.36))
-	m.box_lh(Vector3(-w * 0.5, -L * 0.5, 0), Vector3(w * 0.5, L * 0.5, 0.02))
+	m.box_lh(Vector3(-w * 0.5, -L * 0.5, 0), Vector3(w * 0.5, L * 0.5, COURT_STEP))
 	col(m, "matte", Color(0.55, 0.30, 0.24))
-	m.box_lh(Vector3(-w * 0.5 + 1.5, -L * 0.5 + 1.5, 0.02), Vector3(w * 0.5 - 1.5, L * 0.5 - 1.5, 0.025))
+	m.box_lh(Vector3(-w * 0.5 + 1.5, -L * 0.5 + 1.5, COURT_STEP), Vector3(w * 0.5 - 1.5, L * 0.5 - 1.5, COURT_STEP * 2.0))
 	col(m, "plain", Color(0.92, 0.92, 0.9))
 	var lw := 0.06
 	var x0 := -w * 0.5 + 1.5
 	var x1 := w * 0.5 - 1.5
 	var y0 := -L * 0.5 + 1.5
 	var y1 := L * 0.5 - 1.5
-	for seg in [[Vector2(x0, y0), Vector2(x1, y0)], [Vector2(x1, y0), Vector2(x1, y1)], [Vector2(x1, y1), Vector2(x0, y1)],
-			[Vector2(x0, y1), Vector2(x0, y0)], [Vector2(x0, 0), Vector2(x1, 0)]]:
+	# the centre line stops at the centre circle and goes on inside it (the circle's ring and the line would overlap)
+	var rc := 1.8
+	# (the side lines and the centre line stop at the lines they meet: no line over another)
+	for seg in [[Vector2(x0, y0), Vector2(x1, y0)], [Vector2(x1, y0 + lw * 2.0), Vector2(x1, y1 - lw * 2.0)],
+			[Vector2(x1, y1), Vector2(x0, y1)], [Vector2(x0, y1 - lw * 2.0), Vector2(x0, y0 + lw * 2.0)],
+			[Vector2(x0 + lw * 2.0, 0), Vector2(-rc - lw * 3.0, 0)],
+			[Vector2(-rc + lw, 0), Vector2(rc - lw, 0)], [Vector2(rc + lw * 3.0, 0), Vector2(x1 - lw * 2.0, 0)]]:
 		var a: Vector2 = seg[0]
 		var b: Vector2 = seg[1]
-		m.box_lh(Vector3(minf(a.x, b.x) - lw, minf(a.y, b.y) - lw, 0.025), Vector3(maxf(a.x, b.x) + lw, maxf(a.y, b.y) + lw, 0.03))
-	m.ring(Vector3(0, 0, 0.03), Vector3(0, 0, 1), 1.8, 1.8 + lw * 2.0, 24)
+		m.box_lh(Vector3(minf(a.x, b.x) - lw, minf(a.y, b.y) - lw, COURT_STEP * 2.0),
+			Vector3(maxf(a.x, b.x) + lw, maxf(a.y, b.y) + lw, COURT_STEP * 3.0))
+	m.ring(Vector3(0, 0, COURT_STEP * 3.0), Vector3(0, 0, 1), rc, rc + lw * 2.0, 24)
 	# the fence: posts every 3 m, top and bottom rails, the gate gap (2 m) in the east side
 	var corners := [Vector2(-w * 0.5, -L * 0.5), Vector2(w * 0.5, -L * 0.5), Vector2(w * 0.5, L * 0.5), Vector2(-w * 0.5, L * 0.5)]
 	for i in 4:
@@ -911,7 +922,7 @@ static func carpet(_part: String, g) -> void:
 	var c: Color = CARPET.get(String(g.p.get("colour", "green")), CARPET.green)
 	var pts: Array = []
 	for q in g.p.get("outline", []):
-		pts.append(Vector3(float(q[0]), float(q[1]), 0.012))
+		pts.append(Vector3(float(q[0]), float(q[1]), 0.02))   # 2 cm on the floor: nearer, they fight (tests/test_ground.gd)
 	if pts.size() < 3:
 		return
 	col(m, "matte", c)
@@ -925,7 +936,7 @@ static func carpet(_part: String, g) -> void:
 	col(m, "matte", c.lightened(0.18))
 	var y := lo.y + 1.2
 	while y < hi.y - 0.2:
-		m.box_lh(Vector3(lo.x + 0.15, y - 0.04, 0.012), Vector3(hi.x - 0.15, y + 0.04, 0.015))
+		m.box_lh(Vector3(lo.x + 0.15, y - 0.04, 0.02), Vector3(hi.x - 0.15, y + 0.04, 0.04))
 		y += 1.2
 
 ## Sanitary ware: a WC, a shower tray with its glass screen, a washbasin, or an ablution row (a bench, taps and a
@@ -957,7 +968,7 @@ static func sanitary(_part: String, g) -> void:
 			col(m, "plain", CERAMIC.darkened(0.08))
 			m.box_lh(Vector3(-1.5, 0.0, 0), Vector3(1.5, 0.25, 0.9))
 			col(m, "dark", Color(0.1, 0.1, 0.1))
-			m.box_lh(Vector3(-1.5, 0.25, 0.0), Vector3(1.5, 0.45, 0.01))
+			m.box_lh(Vector3(-1.5, 0.25, 0.0), Vector3(1.5, 0.45, 0.02))
 			col(m, "plain", CERAMIC)
 			m.box_lh(Vector3(-1.5, 0.75, 0), Vector3(1.5, 1.05, 0.35))
 			col(m, "plain_metal", Color(0.8, 0.8, 0.82), "detail", 0.04)
