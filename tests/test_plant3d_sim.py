@@ -126,7 +126,31 @@ def reference_runs(V, keep=None, V2=None):
             out[run] = r
         if 'train' in V2:
             train_runs(b, 'v2/train', V2['train'], out, k, 'v2/')
+        for i, r in enumerate(V2.get('staff', {}).get('runs', [])):
+            out[f'v2/staff/{i}'] = staff_run(V2['staff']['files'], r, k(f'v2/staff/{i}'))
     return out
+
+
+def staff_run(files, r, kk):
+    """A staff run (the vectors' `staff.runs`) on the reference, as reference_runs."""
+    from ref import make_plant3d_vectors as G
+    F = {rel: t.encode() for rel, t in files.items()}
+    F['scenarios/s1.json'] = json.dumps(r['scenario']).encode()
+    if r['staff'] is not None:
+        F['staff.json'] = json.dumps(r['staff']).encode()
+    e = P.Engine(P.check_files(F), 's1')
+    h = Hasher(0)
+    h.add(e, kk)
+    inputs = sorted(r['inputs'], key=lambda x: x[0])
+    j = 0
+    while e.step_no < r['until']:
+        while j < len(inputs) and inputs[j][0] == e.step_no + 1:
+            G.apply_staff(e, inputs[j])
+            j += 1
+        e.step()
+        h.add(e, kk)
+    h.end()
+    return (0, h.chunks, e.names, h.vals)
 
 
 def train_runs(b, name, t, out, k, prefix=''):
@@ -233,7 +257,8 @@ class GdscriptEngine(unittest.TestCase):
         self.assertEqual(self.result.returncode, 0, out[-6000:] + self.result.stderr[-3000:])
         self.assertNotIn('FAIL', out)
         n = 1 + len(self.V['steps']) + len(self.V['links']) + 2 * (1 + 1) + len(self.V['train']['forks']) + \
-            len(self.V['hot']['forks']) + 1 + len(self.V2['steps']) + len(self.V2.get('train', {}).get('forks', []))
+            len(self.V['hot']['forks']) + 1 + len(self.V2['steps']) + len(self.V2.get('train', {}).get('forks', [])) + \
+            (1 + len(self.V2['staff']['runs']) if 'staff' in self.V2 else 0)
         self.assertIn(f'VECTORS passed={n} failed=0', out)
 
     def test_every_value_bit_for_bit(self):

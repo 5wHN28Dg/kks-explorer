@@ -1534,11 +1534,12 @@ class StaffRun:
         for k, item in enumerate(tin):
             if used[k]:
                 continue
-            if item[0] == 'say' and item[1] in st.messages and isinstance(item[2], str) and \
+            if item[0] == 'say' and isinstance(item[1], str) and item[1] in st.messages and isinstance(item[2], str) and \
                     (item[2] == 'channel' or item[2] in st.roles or item[2] in st.person_ix):
                 self.say(p, item[1], item[2])
             elif item[0] == 'call':
-                ok = (item[1], item[2]) in st.callable and (item[3] is None or item[3] in e.works)
+                ok = isinstance(item[1], str) and isinstance(item[2], str) and (item[1], item[2]) in st.callable \
+                    and (item[3] is None or isinstance(item[3], str) and item[3] in e.works)
                 e.ev('call', p.id, item[1], item[2], item[3], 'done' if ok else 'refused')
                 if ok:
                     self.assign([item[1]], item[2], st.tasks[item[2]].get('priority', 3), None, item[3],
