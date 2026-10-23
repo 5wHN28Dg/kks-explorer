@@ -57,3 +57,14 @@ static func run_until(ui, value: String, limit := 20000) -> bool:
 			return true
 		ui.clock.run_steps(1)
 	return e.truth(value)
+
+
+## Waits until a lock asked from the permit form has been checked (PLANT3D §15.6: on a worker thread): sent, or its
+## warning shown. False when the check took longer than `limit` frames.
+static func lock_checked(tree: SceneTree, pm, limit := 1200) -> bool:
+	for k in limit:
+		pm.poll_check()
+		if pm.check.is_empty() or pm.check["state"] == "warn":
+			return true
+		await tree.process_frame
+	return false

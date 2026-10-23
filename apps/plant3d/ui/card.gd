@@ -20,7 +20,7 @@ var _alarms: Label
 var _lock: Label                # "LOCKED OUT PTW-0001": the code is locked by a permit's isolation (PLANT3D §15)
 var _works: Array = []          # [work, button]: the permits to work on this equipment
 var _ops: Array = []            # [op, button, permissives label, feedback label, entry or null, note label]
-var _repairs: Array = []        # [fault, box, button, note label]: the scenario's faults repaired at this equipment
+var _repairs: Array = []        # [fault, box, button, note label, work or {}]: the scenario's faults repaired here
 var _t := 0.0
 
 
@@ -116,20 +116,23 @@ func open(c: String, note := "") -> void:
 		if entry != null:
 			entry.text_submitted.connect(func(_t): _press(o, entry))
 		_ops.append([o, b, perm, fb, entry, note_l])
-	# a fault repaired here (PLANT3D §7.8): shown while it is applied and not repaired, worked within reach
+	# a fault repaired here (PLANT3D §7.8): shown while it is applied and not repaired, worked within reach; in a plant
+	# with permits to work (version 2) only under its work's permit, once accepted (§15.5)
+	var v2: bool = ui.clock.engine.m.version == 2
 	for f in ui.clock.engine.sc.get("faults", []):
 		if f.get("kks", "") == c and f.has("repair"):
 			var box := VBoxContainer.new()
 			body.add_child(box)
-			var rb := W.button("Repair: " + String(f.get("text", f["id"])), func():
-				ui.repair(String(f["id"]))
-				refresh(), 140)
+			var w: Dictionary = Permits.work_repairing(ui.clock.engine, String(f["id"])) if v2 else {}
+			var rb := W.button(("Repair under the permit: " if v2 else "Repair: ") + String(f.get("text", f["id"])),
+					_repair.bind(String(f["id"]), String(w.get("id", ""))), 140)
+			rb.name = "repair_" + String(f["id"])
 			rb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			box.add_child(rb)
 			var rn := W.label("", 16, W.DIM)
 			box.add_child(rn)
 			box.visible = false
-			_repairs.append([f, box, rb, rn])
+			_repairs.append([f, box, rb, rn, w])
 	visible = true
 	refresh()
 	if ui.wants_focus():
@@ -195,6 +198,33 @@ static func percent_to_fraction(t: String) -> String:
 	return "%s%s.%s" % [mt.get_string(1), ip if ip != "" else "0", fp]
 
 
+func _repair(fid: String, wid: String) -> void:
+	if wid != "":
+		ui.repair_under(fid, wid)
+	else:
+		ui.repair(fid)
+	refresh()
+
+
+## Why the trainee can't repair a fault here now ("" when they can), PLANT3D §7.8 and §15.5.
+func _repair_note(e, rp: Array, near: bool, asked: bool) -> String:
+	if asked:
+		return "Repaired: it acts in the next step"
+	var v2: bool = e.m.version == 2
+	var w: Dictionary = rp[4]
+	if v2 and w.is_empty():
+		return "No permit to work covers this repair: the instructor clears it"
+	if v2:
+		var st: int = Permits.state_of(e, w["id"])
+		if st != 5:
+			var num: String = Permits.number_of(e, w["id"])
+			return "Under its permit to work only (%s%s: %s): its isolation in place and the permit accepted" % [
+					w["title"], (", " + num) if num != "" and st != 0 else "", Permits.STATE_WORDS[st].to_lower()]
+	if not near:
+		return "At the equipment only: walk up to it"
+	return ""
+
+
 func _press(o: Dictionary, entry: LineEdit) -> void:
 	var value = null
 	if entry != null:
@@ -252,10 +282,9 @@ func refresh() -> void:
 		var fid: String = rp[0]["id"]
 		var asked: bool = e.queue.any(func(q): return q[0] == "repair" and q[1] == fid)
 		(rp[1] as Control).visible = e.faults_done.has(fid) and not e.faults_fixed.has(fid)
-		# locked out (§15.1): a repair would not be made; the work's permit repairs it
-		(rp[2] as Button).disabled = not near or asked or lt != ""
-		(rp[3] as Label).text = "Repaired: it acts in the next step" if asked else ("Locked out: the work under its permit "
-				+ "repairs it" if lt != "" else ("" if near else "At the equipment only: walk up to it"))
+		var why := _repair_note(e, rp, near, asked)
+		(rp[2] as Button).disabled = why != ""
+		(rp[3] as Label).text = why
 	for row in _ops:
 		var o: Dictionary = row[0]
 		var ok: bool = info.offered(o, near, ctl)

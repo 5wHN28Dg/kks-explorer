@@ -112,6 +112,8 @@ func run(tree: SceneTree) -> Array:
 		err = _press(pm, "lock_%d" % k)
 		if err != "":
 			p.append("beside %s: %s" % [code, err])
+		elif not await App.lock_checked(tree, pm) or not pm.check.is_empty():
+			p.append("beside %s: the lock was not sent after its check (%s)" % [code, str(pm.check.get("answer", ""))])
 		ui.clock.run_steps(1)
 		pm.refresh()
 	if e.pstate[e.m.work_ix[WORK]] != 3 or e.v("iso_cw_b_complete") != 1.0:
@@ -133,12 +135,13 @@ func run(tree: SceneTree) -> Array:
 			p.append("the locked pump's start came back %s" % str(res))
 		if e.truth("cw_b_cmd"):
 			p.append("the locked pump was started")
-	# at the locked pump its fault's repair is not offered (it would not be made, §15.1)
+	# at the locked pump its fault's repair is not offered before the permit is accepted (§15.5)
 	ui.player.global_position = ui.index.center(PUMP) + Vector3(0, 0, 3)
 	ui.open_card(PUMP)
 	ui.card.refresh()
-	if not App.texts(ui.card).contains("Locked out: the work under its permit repairs it"):
-		p.append("the locked pump's card offers its repair: %s" % App.texts(ui.card).left(300))
+	var rb: Button = ui.card.body.find_child("repair_cw_b_motor", true, false)
+	if rb == null or not rb.disabled or not App.texts(ui.card).contains("Under its permit to work only"):
+		p.append("the locked pump's card offers its repair before the permit is accepted: %s" % App.texts(ui.card).left(300))
 	ui.go_control_room(false)
 	ui.close_card()
 	ui.open_screens(ui.screens.screens[ui.screens.screen_of[PUMP][0]]["id"])
@@ -202,6 +205,8 @@ func run(tree: SceneTree) -> Array:
 	err = _press(pm, "lock_0")
 	if err != "":
 		p.append("CCW pump B: " + err)
+	elif not await App.lock_checked(tree, pm) or not pm.check.is_empty():
+		p.append("CCW pump B: the lock was not sent after its check (%s)" % str(pm.check.get("answer", "")))
 	ui.clock.run_steps(1)
 	ui.fault("ccw_a_motor")
 	ui.clock.run_steps(30)
@@ -221,6 +226,8 @@ func run(tree: SceneTree) -> Array:
 	err = _press(pm, "lock_0")
 	if err != "":
 		p.append("transmitter 2: " + err)
+	elif not await App.lock_checked(tree, pm) or not pm.check.is_empty():
+		p.append("transmitter 2: the lock was not sent after its check (%s)" % str(pm.check.get("answer", "")))
 	ui.clock.run_steps(2)
 	if e.v("cond_p2_vote") != 1.0 or e.v("cond_hh_v") != 1.0 or e.truth("st_trip_cond_p_latched"):
 		p.append("the isolated transmitter does not vote tripped alone (vote %s, votes %s)" % [e.v("cond_p2_vote"),

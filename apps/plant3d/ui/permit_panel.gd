@@ -7,6 +7,10 @@
 ## Locks are made at the equipment (lock-out and tag-out): a point's Lock and Remove buttons work within reach of its
 ## equipment, as a local operation does (a code not drawn in the plant is locked from anywhere); Go there flies there.
 ## Touch, keyboard and gamepad: every control is a button that takes the focus (Esc or B closes, as the other panels).
+##
+## Before a lock is sent the engine is asked what it would do (§15.6, sim/engine.gd lock_effects), on a worker thread
+## while the button says it is checking: a lock that would trip a machine or raise a priority 1 alarm is not sent until
+## the trainee confirms it ("Lock it anyway"; the focus starts on "Don't lock").
 extends PanelContainer
 
 const W = preload("res://ui/widgets.gd")
@@ -23,6 +27,9 @@ var _sig := ""
 var _t := 0.0
 var _refocus := false                 # an action was sent from the form: its focus follows the next step
 var feedback: Label             # the last action's result (tests read it)
+## The lock being checked or warned about (§15.6): {work, point, engine, task, box, state "checking" | "warn", answer}
+var check := {}
+var _focus_to := ""             # a button the next rebuild gives the focus to
 
 
 func setup(u) -> void:
@@ -72,6 +79,7 @@ static func _first(n: Node) -> Button:
 
 
 func _process(delta: float) -> void:
+	poll_check()
 	if not visible:
 		return
 	_t += delta
@@ -95,6 +103,84 @@ func send_lock(kind: String, point: int) -> void:
 	else:
 		e.unlock(work, point)
 	_sent(str([work, kind, point]), kind, work, point, e.step_no + 1)
+
+
+## A lock asked from the form: what it would do is checked first (§15.6), off the main thread, on a copy of the run as
+## it stands with the inputs already made.
+func ask_lock(point: int) -> void:
+	if not check.is_empty():
+		return
+	var e = ui.clock.engine
+	var copy = e.clone()
+	var wid := work
+	var box := {}
+	check = {"work": wid, "point": point, "engine": e, "box": box, "state": "checking", "answer": {},
+			"task": WorkerThreadPool.add_task(func(): box["answer"] = copy.lock_effects(wid, point))}
+	_sig = ""
+	refresh()
+
+
+## The check's answer, once the worker has it: a lock with nothing to warn about is sent at once, one that would trip
+## something waits for the trainee's answer. A check whose run or form has gone meanwhile is dropped.
+func poll_check() -> void:
+	if check.get("state", "") != "checking" or not WorkerThreadPool.is_task_completed(check["task"]):
+		return
+	WorkerThreadPool.wait_for_task_completion(check["task"])
+	var a: Dictionary = check["box"].get("answer", {})
+	var point: int = check["point"]
+	if check["engine"] != ui.clock.engine or check["work"] != work:
+		check = {}
+	elif a.get("trips", []).is_empty() and a.get("alarms", []).is_empty():
+		check = {}
+		send_lock("lock", point)
+	else:
+		check["state"] = "warn"
+		check["answer"] = a
+		_focus_to = "cancel_lock_%d" % point
+	_sig = ""
+	refresh()
+
+
+## The trainee's answer to the warning: lock it anyway, or not.
+func answer_lock(lock_it: bool) -> void:
+	if check.get("state", "") != "warn":
+		return
+	var point: int = check["point"]
+	check = {}
+	if lock_it:
+		send_lock("lock", point)
+	else:
+		_focus_to = "lock_%d" % point
+		_sig = ""
+		refresh()
+
+
+## What the warning says: the machines the lock would trip (by name), each trip's text, and the alarms (§15.6).
+func warning_text(a: Dictionary) -> String:
+	var m = ui.clock.engine.m
+	var machines := PackedStringArray()
+	var lines := PackedStringArray()
+	for tid in a.get("trips", []):
+		var t = m.trip_by_id(tid)
+		if t == null:
+			continue
+		lines.append("• Trip: " + String(t.get("text", tid)))
+		for d in t.get("do", []):
+			if d.has("machine"):
+				var mc = m.machine_by_id(d["machine"])
+				var nm: String = ui.info.name_of(String(mc.get("kks", ""))) if mc != null else ""
+				nm = nm if nm != "" else String(d["machine"])
+				if not machines.has(nm):
+					machines.append(nm)
+	for aid in a.get("alarms", []):
+		for x in m.alarms:
+			if x["id"] == aid:
+				lines.append("• Alarm: " + String(x["text"]))
+	var head := "This isolation will trip %s" % " and ".join(machines) if not machines.is_empty() else \
+			"This isolation will trip the plant"
+	if a.get("trips", []).is_empty():
+		head = "This isolation will raise a priority 1 alarm"
+	return head + " (within 10 s of the lock):\n" + "\n".join(lines)
 
 
 ## After a saved run is put back (ui/autosave.gd): the permit and lock inputs still waiting in the engine's queue are
@@ -160,8 +246,8 @@ func refresh() -> void:
 		for pt in x.get("points", []):
 			near.append("1" if _reachable(pt["kks"]) else "0")
 	var hist: Array = Permits.history(e, work) if w != null else []
-	var sig := "%s|%s|%s|%s|%s|%d|%s|%s" % [work, str(e.pstate), str(e.lockbits), str(e.ptw), ",".join(near),
-			hist.size(), str(results), _safe_sig(e, w)]
+	var sig := "%s|%s|%s|%s|%s|%d|%s|%s|%s%s" % [work, str(e.pstate), str(e.lockbits), str(e.ptw), ",".join(near),
+			hist.size(), str(results), _safe_sig(e, w), check.get("state", ""), check.get("point", "")]
 	if sig == _sig:
 		return
 	var had_focus := get_viewport().gui_get_focus_owner()
@@ -192,6 +278,11 @@ func refresh() -> void:
 		if next != null:
 			next.grab_focus()
 			_refocus = false
+	if _focus_to != "":
+		var to := body.find_child(_focus_to, true, false)
+		_focus_to = ""
+		if to is Button and not to.disabled and ui.wants_focus():
+			to.grab_focus()
 
 
 static func _is_step(n: String) -> bool:
@@ -330,10 +421,24 @@ func _isolation(e, w: Dictionary, st: int) -> void:
 		box.add_child(row)
 		var reach: bool = _reachable(pt["kks"])
 		var who: String = Permits.LOCKER.get(pt["kind"], "field operator")
-		if not locked:
-			var b := W.button("Lock and tag (as the %s)" % who, send_lock.bind("lock", p))
+		var asked: bool = not check.is_empty() and check["work"] == w["id"] and check["point"] == p
+		if not locked and asked and check["state"] == "warn":
+			# what the lock would do (§15.6): sent only on "Lock it anyway"
+			var wl := W.label(warning_text(check["answer"]), 17, W.BAD_COLOUR)
+			wl.name = "warn_%d" % p
+			box.add_child(wl)
+			box.move_child(wl, row.get_index())
+			var yes := W.button("Lock it anyway", answer_lock.bind(true))
+			yes.name = "confirm_lock_%d" % p
+			row.add_child(yes)
+			var no := W.button("Don't lock", answer_lock.bind(false))
+			no.name = "cancel_lock_%d" % p
+			row.add_child(no)
+		elif not locked:
+			var b := W.button("Checking what the lock would do…" if asked else "Lock and tag (as the %s)" % who,
+					ask_lock.bind(p))
 			b.name = "lock_%d" % p
-			b.disabled = not (can_lock and held and reach) or _sent_now(str([w["id"], "lock", p]))
+			b.disabled = not (can_lock and held and reach) or _sent_now(str([w["id"], "lock", p])) or not check.is_empty()
 			b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			row.add_child(b)
 		else:
