@@ -12,6 +12,7 @@ extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
 const Player = preload("res://app/player.gd")
+const Routes = preload("res://app/routes.gd")
 const Autopilot = preload("res://app/autopilot.gd")
 const SoundPlayer = preload("res://ui/sound_player.gd")
 const Controls = preload("res://app/controls.gd")
@@ -57,6 +58,23 @@ func measured_walk(tree: SceneTree) -> Array:
 		p.append("walk=frames did not start")
 	elif main.player.pace != Player.WALK_SPEED:
 		p.append("walk=frames walks at the settings' pace (%.2f m/s), not at a walk" % main.player.pace)
+	main.free()
+	# walk=wtp: the frames walk's part in the water treatment plant, looped, from its own first point
+	main = (load("res://app/main.tscn") as PackedScene).instantiate()
+	main.opts = {"walk": "wtp", "seconds": "600"}
+	tree.root.add_child(main)
+	for i in 600:
+		if main.auto != null and main.auto.running:
+			break
+		await tree.process_frame
+	if main.auto == null or not main.auto.running:
+		p.append("walk=wtp did not start")
+	else:
+		var first: Vector3 = Routes.wtp_loop()[0].to
+		if not main.auto.loop or main.auto.steps.size() != Routes.wtp_loop().size():
+			p.append("walk=wtp loops the water treatment plant's part of the walk")
+		if Vector2(main.player.global_position.x - first.x, main.player.global_position.z - first.z).length() > 2.0:
+			p.append("walk=wtp starts at its loop's first point (%s, not %s)" % [main.player.global_position, first])
 	main.free()
 	if kept == null:
 		cf.erase_section_key("controls", "pace")

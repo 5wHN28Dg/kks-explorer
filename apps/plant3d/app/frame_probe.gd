@@ -56,7 +56,7 @@ func _ready() -> void:
 	RenderingServer.frame_post_draw.connect(func(): _post = Time.get_ticks_usec())
 	var c = main.ui.clock if main != null and main.ui != null else null
 	_steps0 = c.engine.step_no if c != null and c.engine != null else 0
-	rows.append("t_ms,frame_ms,phys_n,phys_ms,proc_ms,to_draw_ms,draw_ms,after_ms,cpu_ms,gpu_ms,draws,objects,sim_steps,surf_pipes,spec_pipes,events")
+	rows.append("t_ms,frame_ms,phys_n,phys_ms,proc_ms,to_draw_ms,draw_ms,after_ms,cpu_ms,gpu_ms,draws,objects,sim_steps,surf_pipes,spec_pipes,x,y,z,events")
 	_pipes0 = pipelines()
 	if main != null and main.ui != null:
 		add_app_counters(main.ui)
@@ -121,7 +121,11 @@ func _proc_end() -> void:
 		if c != null:
 			steps = c.engine.step_no if c.engine != null else 0
 		var pipes := pipelines()
-		rows.append("%d,%.3f,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%s" % [
+		var at := Vector3.ZERO   # where the walker stood (plant coordinates: x east, y north, z up)
+		if main != null and main.player != null:
+			var gp: Vector3 = main.player.global_position
+			at = Vector3(gp.x, -gp.z, gp.y)
+		rows.append("%d,%.3f,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%.1f,%.1f,%.1f,%s" % [
 			_frame0 / 1000, (start - _frame0) / 1000.0, _prev_phys_n, _prev_phys_ms, (_proc1 - _prev_proc0) / 1000.0,
 			(_pre - _proc1) / 1000.0 if drawn else 0.0, (_post - _pre) / 1000.0 if drawn else 0.0,
 			(start - (_post if drawn else _proc1)) / 1000.0,
@@ -129,7 +133,7 @@ func _proc_end() -> void:
 			RenderingServer.viewport_get_measured_render_time_gpu(vp),
 			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
 			Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), steps - _steps0,
-			pipes.x - _pipes0.x, pipes.y - _pipes0.y, _events()])
+			pipes.x - _pipes0.x, pipes.y - _pipes0.y, at.x, at.y, at.z, _events()])
 		_steps0 = steps
 		_pipes0 = pipes
 	_prev_phys_n = _phys_n

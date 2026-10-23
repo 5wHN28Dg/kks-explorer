@@ -4,7 +4,9 @@
 ## Options, after `--` on the command line (desktop) or one per line in walk.txt in the app's external files folder
 ## (Android: phone/frames.sh pushes it):
 ##   quality=full|lean+vis   this tier, whatever the settings say
-##   walk=frames|climb|screens   walk a scripted route (app/routes.gd) and log frame times; `frames` loops;
+##   walk=frames|wtp|climb|screens   walk a scripted route (app/routes.gd) and log frame times; `frames` loops;
+##                           `wtp` loops the frames walk's part in the water treatment plant (its views' cost, without
+##                           the nine minutes to get there)
 ##                           `screens` stays in the control room with its screens open, showing each in turn for 10 s
 ##                           (the screens' cost, ui/mimic.gd)
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
@@ -23,7 +25,8 @@
 ##                           app/lighting.gd); fx_off=shadow,cascades2,shadow40,shadowhard the sun's shadow's parts
 ##                           (app/quality.gd), fx_on=bicubic the lightmap's bicubic filter even where it is off (to see the
 ##                           Adreno fault again: app/lighting.gd), fx_off=lightmap the plant without its bake (the halls dark: their lamps
-##                           light through the bake only), fx_off=stencils the pipes' stencilled names hidden
+##                           light through the bake only), fx_off=stencils the pipes' stencilled names hidden, fx_off=warmup no warm-up
+##                           before the first walkable frame (app/warmup.gd)
 ##   On a phone walk.txt takes probe, fx_off and fx_on too (phone/frames.sh's WALK_EXTRA)
 extends Node3D
 
@@ -36,6 +39,7 @@ const Hud = preload("res://app/hud.gd")
 const MapView = preload("res://app/map_view.gd")
 const PlantUi = preload("res://ui/plant_ui.gd")
 const Lighting = preload("res://app/lighting.gd")
+const Warmup = preload("res://app/warmup.gd")
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
 
 var cf: ConfigFile
@@ -179,6 +183,8 @@ func _ready() -> void:
 	if not early:
 		choose_tier()
 		_launch("tier")
+	elif not "warmup" in Lighting.off and DisplayServer.get_name() != "headless":   # (nothing is drawn without a display)
+		await _warm_up()
 	_first_frame()
 	if opts.has("shot"):
 		_shots.call_deferred()
@@ -188,6 +194,22 @@ func _ready() -> void:
 		_start_walk()
 	elif opts.get("map", "") == "1":
 		toggle_map()
+
+## Every area drawn once before the first walkable frame (app/warmup.gd: the GPU's first sight of a view cost the
+## Note 9 frames of 70-120 ms on the walk), into a viewport half the 3D resolution, while the player can't move yet.
+func _warm_up() -> void:
+	var w := Warmup.new()
+	w.name = "warmup"
+	add_child(w)
+	var vp := get_viewport()
+	var px := Vector2(vp.get_window().size) if vp.get_window() != null else vp.get_visible_rect().size
+	var size := Vector2i((px * vp.scaling_3d_scale * 0.5).max(Vector2(64, 64)))
+	var moving: bool = player.input_enabled
+	player.input_enabled = false
+	await w.run(plant.manifest, vp, size)
+	player.input_enabled = moving
+	_launch("warm-up (%d points, four ways, at %dx%d)" % [w.drawn, size.x, size.y])
+	w.queue_free()
 
 func _unbaked(n: Node) -> void:
 	var g := n as GeometryInstance3D
@@ -399,7 +421,8 @@ func _start_walk() -> void:
 		ui.mimic.reset_cost()
 		last_us = Time.get_ticks_usec()
 		return
-	var route: Array = Routes.frames(plant) if opts.walk == "frames" else Routes.climb(plant)
+	var looped: bool = opts.walk in ["frames", "wtp"]
+	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.wtp_loop() if opts.walk == "wtp" else Routes.climb(plant))
 	auto = Autopilot.new()
 	auto.skip_stuck = true
 	add_child(auto)
@@ -410,7 +433,7 @@ func _start_walk() -> void:
 		player.global_position = route[0].to
 	else:
 		player.global_position = st[0]
-	auto.start(player, route, opts.walk == "frames")
+	auto.start(player, route, looped)
 	last_us = Time.get_ticks_usec()
 
 func _process(delta: float) -> void:

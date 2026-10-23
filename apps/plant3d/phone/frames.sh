@@ -133,4 +133,14 @@ first=$(grep -m1 "plant: first frame" "$OUT/logcat.txt" | awk '{print $1}' || tr
 cat "$OUT/state.txt"
 grep -E "tier|loaded|first frame|STUCK|SPIKE|CADENCE|RESULT" "$OUT/result.txt" || say "no result.txt (see $OUT/logcat.txt)"
 cat "$OUT/sf_summary.txt"
+# with probe=1: the pipelines compiled after the start's first 5 s (each one a possible hitch: decision 0060) and
+# every frame over 100 ms with where its time went (GPU or not) and what the app started in it
+if [ -s "$OUT/frames.csv" ] && [ -n "$first" ] && [ -n "$start" ]; then
+  ff=$(grep -m1 "first frame drawn" "$OUT/result.txt" | sed 's/.*drawn \([0-9]*\) ms.*/\1/')
+  awk -F, -v ff="$ff" 'NR == 1 { for (i = 1; i <= NF; i++) c[$i] = i; next }
+    $c["t_ms"] > ff + 5000 { p += $c["surf_pipes"] + $c["spec_pipes"]
+      if ($c["frame_ms"] > 100) printf "PROBE frame %.1f ms at +%.1f s: gpu %.1f ms, draw %.1f ms, scripts %.1f ms, physics %.1f ms, %d draws, events [%s]\n",
+        $c["frame_ms"], ($c["t_ms"] - ff) / 1000, $c["gpu_ms"], $c["draw_ms"], $c["proc_ms"], $c["phys_ms"], $c["draws"], $c["events"] }
+    END { printf "PROBE pipelines compiled after the first 5 s: %d\n", p }' "$OUT/frames.csv" | tee "$OUT/probe_summary.txt"
+fi
 echo "results: $OUT"
