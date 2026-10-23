@@ -19,6 +19,7 @@
 ##   panels=alarms,procedure,card:CODE   open these panels (the frame measurement with the UI open)
 ##   speed=fast              start the plant in fast-forward (the model's share of a core, measured in a walk)
 ##   probe=1                 (walk) frames.csv beside result.txt: where each frame's time goes (app/frame_probe.gd)
+##   max_fps=N               at most N frames a second (0: no cap): what a cap does to a phone's heat and long frames
 ##   pipeline_save_mb=N      save the pipeline cache every N MB of new pipelines instead of the project's 0.25
 ##   walkdown-plant://…      a link (docs/PLANT3D.md §6): anywhere on the command line, as the desktop files pass it
 ##   fx_off=fog,tonemap      those effects off (tonemap: linear output at half exposure), fx_on=ssao,sdfgi,ssil,volfog,glow those on (measuring what each costs:
@@ -217,11 +218,14 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on"]:   # nothing else from a shared folder (probe, fx_off and fx_on: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps"]:   # nothing else from a shared folder (probe, fx_off and fx_on: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
 		_say("pipeline cache saved every %.2f MB" % float(ProjectSettings.get_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb")))
+	if opts.has("max_fps"):   # (measuring a frame cap's effect on a phone's heat and long frames)
+		Engine.max_fps = clampi(int(opts.max_fps), 0, 240)
+		_say("frames capped at %d a second" % Engine.max_fps)
 	out_dir = ANDROID_FILES if OS.get_name() == "Android" else opts.get("out", OS.get_user_data_dir())
 	Lighting.off = String(opts.get("fx_off", "")).split(",", false)
 	Lighting.on = String(opts.get("fx_on", "")).split(",", false)
