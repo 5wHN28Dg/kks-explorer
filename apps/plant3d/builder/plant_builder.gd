@@ -1100,6 +1100,7 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 	var h: float = b.height
 	var clad: bool = b.cladding == "metal"
 	var roof_holes: Array = []
+	var occ := PackedVector3Array()   # the walls and the roof as one occluder (_occluder)
 	for i in pg.size():
 		var a := pg[i]
 		var c := pg[(i + 1) % pg.size()]
@@ -1149,6 +1150,8 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 				var p0 := a + u * r.position.x
 				var p1 := a + u * r.end.x
 				_wall_panel(walls, body, p0, p1, r.position.y, r.end.y, 0.25, piece_top(r, cuts, h))
+				for q in [[p0, r.position.y], [p1, r.position.y], [p1, r.end.y], [p0, r.position.y], [p1, r.end.y], [p0, r.end.y]]:
+					occ.append(Geom.g([q[0].x, q[0].y, q[1]]))
 				if clad:
 					# the inner skin, light: a hall seen from inside (polish pass)
 					var off := inward * (WALL_T * 0.5 + LINER_T * 0.5)
@@ -1162,7 +1165,11 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 		Geom.add_prism(roof, pc, h, h + 0.3)
 		_convex(body, Geom.prism_points(pc, h, h + 0.3))
 		Geom.add_prism(liner, pc, h - LINER_T, h)
+		var tri := Geometry2D.triangulate_polygon(pc)
+		for k in tri:
+			occ.append(Geom.g([pc[k].x, pc[k].y, h]))
 	_mesh_node(body, "roof", roof, _mat("roof"))
+	_occluder(body, occ)
 	# every building's roof from inside: the liner and the steel under it (a dark ceiling with nothing under it read as
 	# a black void in every hall: polish pass)
 	_mesh_node(body, "liner", liner, _mat("liner"))
@@ -1183,6 +1190,23 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 		_mesh_node(body, "frame", frame, _mat("roof_steel"), STEEL_TEXEL)
 	_hall_floor(body, b)
 	_lamps(body, b)
+
+## A building's walls (less their door and pipe openings) and roof as an occluder (Godot's occlusion culling,
+## project.godot): what stands behind them is not drawn, a hall's inside from outdoors and the plant outside from in a
+## hall (the Note 9's GPU held frames of 100-120 ms in the water treatment plant's hall, 1,570 draw calls where the
+## hall's walls hid all but 490). Triangles in `tris`, three points each.
+func _occluder(body: Node, tris: PackedVector3Array) -> void:
+	if tris.is_empty():
+		return
+	var idx := PackedInt32Array()
+	for i in tris.size():
+		idx.append(i)
+	var o := ArrayOccluder3D.new()
+	o.set_arrays(tris, idx)
+	var oi := OccluderInstance3D.new()
+	oi.name = "occluder"
+	oi.occluder = o
+	body.add_child(oi)
 
 ## A building's walls: 0.25 m thick on their outline; a metal-clad hall's light inner skin (its liner) 3 cm thick
 ## against their inside and under the roof.
