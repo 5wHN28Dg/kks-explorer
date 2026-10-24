@@ -29,6 +29,9 @@ npx wrangler deploy         # prints https://kks-relay.<your-subdomain>.workers.
 
 To move wrangler: change its version in `package.json`, run `npm install --package-lock-only --ignore-scripts`, and
 commit both files (the dependency check in CI scans the lockfile; `osv-scanner.toml` here explains its entries).
+The `overrides` in `package.json` force versions of wrangler's own dependencies: `sharp` (licence, see
+`osv-scanner.toml`) and `undici` 7.30.1 (miniflare pins 7.29.1, which has three advisories). When you move wrangler,
+check with `npm ls undici` whether its miniflare still needs the override, and drop it once miniflare asks for 7.30.1 or newer.
 
 Then, as the manager: Manage → Devices → Internet in the web pages (v2 apps: Manage → Account → Internet relay) →
 relay address `wss://kks-relay.<your-subdomain>.workers.dev`
