@@ -257,6 +257,17 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 		return "Choose what next"
 	if s.has("ack"):
 		return "Acknowledge the alarm %s" % str(cur["alarm"])
+	if s.has("handover") or s.has("remove_locks"):
+		var what: String = {"take": "Take over the locks of your post", "give": "Hand over your locks (remove each "
+				+ "once the incoming person's lock is on)"}.get(s.get("handover"), "Remove by authority the locks "
+				+ "of %s" % str(cur.get("owner")))
+		if k_is_cur(cur, s, sm) and e.st_trainee != -1:
+			var left: Array = sm.points_left(e, e.st_trainee, cur, s)
+			var names := []
+			for key in left:
+				names.append(e._iso[key.x][1][key.y][0])
+			what += ": " + (", ".join(names) if not names.is_empty() else "none left")
+		return what
 	return str(s)
 
 
@@ -326,6 +337,15 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 	if s.has("op"):
 		var code: String = s["op"]["kks"]
 		row.add_child(W.button("Take me there", func(): ui.fly_to(code)))
+	if (s.has("handover") or s.has("remove_locks")) and e.st_trainee != -1:
+		var left: Array = sm.points_left(e, e.st_trainee, cur, s)
+		if not left.is_empty():
+			var wi: int = e.holder[left[0].x]
+			if wi != -1:
+				var ws: String = e.m.works[wi]["id"]
+				var b := W.button("Permit form", func(): ui.open_permits(ws))
+				b.name = "handover_form"
+				row.add_child(b)
 
 
 # ------------------------------------------------------------------ the radio (§18.7)

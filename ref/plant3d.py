@@ -26,6 +26,14 @@ PERMIT_KINDS = ('general', 'electrical', 'hot', 'confined')
 # a permit's states (§15.3) and the actions that move it: the states each is taken in, and where it goes
 PERMIT_STATES = ('none', 'requested', 'approved', 'isolated', 'issued', 'accepted', 'done', 'returned', 'deisolated',
                  'closed', 'cancelled')
+NO_OWNER = object()      # a removal by authority that names no owner: the point's earliest lock (§15.1)
+
+
+def same_person(a, b):
+    """The same person (or both null): what an input names is compared with a person id so, whatever its type."""
+    return type(a) is type(b) and a == b
+
+
 PERMIT_ACTIONS = {'request': ((0, 9, 10), 1), 'approve': ((1,), 2), 'issue': ((3,), 4), 'accept': ((4,), 5),
                   'done': ((5,), 6), 'return': ((6,), 7), 'close': ((8,), 9), 'cancel': ((1, 2, 3), 10)}
 GROUPS = ('water', 'steam', 'air', 'gas', 'oil', 'chemicals', 'flue_gas')
@@ -1642,7 +1650,7 @@ class Engine:
         self.ptw_count = 0
         self.acceptor = {}                              # work -> who accepted its permit (None in free mode)
         self.holder = {x['id']: None for x in m.isolations}     # the work holding each isolation (§15.1)
-        self.locks = {}                                 # (isolation id, point index) -> who locked it
+        self.locks = {}                                 # (isolation id, point index) -> who locked it, in order
         self.code_locks = {}                            # code -> its locked points, of every isolation
         self.names = names
         self.ix = {n: i for i, n in enumerate(names)}
@@ -1710,6 +1718,7 @@ class Engine:
         for k in ('mstate', 'latched', 'trip_count', 'first_out', 'astate', 'acount', 'shelved', 'il_prev',
                   'pstate', 'ptw', 'acceptor', 'holder', 'locks', 'code_locks'):
             setattr(c, k, dict(getattr(self, k)))
+        c.locks = {k: list(v) for k, v in self.locks.items()}
         c.faults_done = set(self.faults_done)
         c.faults_fixed = set(self.faults_fixed)
         return c
@@ -1926,8 +1935,8 @@ class Engine:
     def unlock(self, work, point, person=None):
         self.queue.append(('unlock', work, point, person))
 
-    def remove_lock(self, work, point, person, reason):
-        self.queue.append(('remove_lock', work, point, person, reason))
+    def remove_lock(self, work, point, person, reason, owner=None, named=False):
+        self.queue.append(('remove_lock', work, point, person, reason) + ((owner,) if named else ()))
 
     # format 2's trainee inputs for the staff (§17.6)
     def role(self, person):
@@ -2077,48 +2086,66 @@ class Engine:
         self.ev('permit', work, action, person, 'done', [])
         return 'done'
 
-    def _lock(self, kind, work, point, person, vals, npc=False, reason=None):
-        """A lock, unlock or removal by authority (§15.1), at the start of step 3."""
+    def _lock(self, kind, work, point, person, vals, npc=False, reason=None, owner=NO_OWNER):
+        """A lock, unlock or removal by authority (§15.1), at the start of step 3. A point holds the personal locks
+        of one or more people, in the order placed (a handover's, §15.1)."""
         w = self.works.get(work) if isinstance(work, str) else None
         iso = w.get('isolation') if w else None
+        valid = iso is not None and isinstance(point, int) and not isinstance(point, bool) \
+            and 0 <= point < len(self.isos[iso]['points'])
+        key = (iso, point) if valid else None
+        held = self.locks.get(key, [])
         tail = []
-        if kind == 'remove_lock':
-            key = (iso, point) if iso is not None and isinstance(point, int) and not isinstance(point, bool) else None
-            tail = [self.locks.get(key), reason]       # whose lock it was, and why it was removed
-        if iso is None or not (isinstance(point, int) and not isinstance(point, bool)
-                               and 0 <= point < len(self.isos[iso]['points'])) \
-                or (kind == 'remove_lock' and not (isinstance(reason, str) and 1 <= len(reason) <= 200)):
+        if kind == 'remove_lock':       # whose lock it was, and why it was removed
+            tail = [owner if owner is not NO_OWNER else (held[0] if held else None), reason]
+        if not valid or (kind == 'remove_lock' and not (isinstance(reason, str) and 1 <= len(reason) <= 200)):
             self.ev(kind, work, point, person, 'unknown', [], *tail)
             return 'unknown'
         pt = self.isos[iso]['points'][point]
-        key = (iso, point)
+        st = self.pstate[work]
+        mine = any(same_person(x, person) for x in held)
         why = []
         if self._authority(person, npc, 'remove_lock' if kind == 'remove_lock' else 'lock_' + pt['kind']):
             why.append('authority')
-        if self.pstate[work] not in ((2, 3) if kind == 'lock' else (2, 3, 7, 10)) or self.holder[iso] != work:
+        if kind == 'lock':
+            ok = st in (2, 3) or bool(held)     # an added lock (a handover's) at any state that holds the isolation
+        elif kind == 'unlock':
+            ok = st in (2, 3, 7, 10) or st in (4, 5, 6) and any(not same_person(x, person) for x in held)
+        else:
+            ok = st in (2, 3, 4, 5, 6, 7, 10)
+        if not ok or self.holder[iso] != work:
             why.append('state')
         if kind == 'lock':
-            if key in self.locks:
+            if mine:
                 why.append('locked')
-            if 'safe' in pt and vals[self.ix[pt['safe']]] < 0.5:
+            if not held and 'safe' in pt and vals[self.ix[pt['safe']]] < 0.5:
                 why.append(pt['safe'])
-        elif key not in self.locks:
+        elif not held:
             why.append('unlocked')
-        elif kind == 'unlock' and self.locks[key] != person:
+        elif kind == 'unlock' and not mine:
             why.append('owner')         # a personal lock is removed only by whoever placed it
+        elif kind == 'remove_lock' and owner is not NO_OWNER and not any(same_person(x, owner) for x in held):
+            why.append('unlocked')      # the person named holds no lock here
         if why:
             self.ev(kind, work, point, person, 'refused', why, *tail)
             return 'refused'
         if kind == 'lock':
-            self.locks[key] = person
-            self.code_locks[pt['kks']] = self.code_locks.get(pt['kks'], 0) + 1
+            if not held:
+                self.code_locks[pt['kks']] = self.code_locks.get(pt['kks'], 0) + 1
+            self.locks[key] = held + [person]
         else:
-            del self.locks[key]
-            self.code_locks[pt['kks']] -= 1
+            who = person if kind == 'unlock' else (owner if owner is not NO_OWNER else held[0])
+            j = next(i for i, x in enumerate(held) if same_person(x, who))
+            rest = held[:j] + held[j + 1:]
+            if rest:
+                self.locks[key] = rest
+            else:
+                del self.locks[key]
+                self.code_locks[pt['kks']] -= 1
         k = self.n_locked(iso)
         self.cur[self.ix[iso + '_locked']] = float(k)
         self.cur[self.ix[iso + '_complete']] = 1.0 if k == len(self.isos[iso]['points']) else 0.0
-        if kind != 'lock' and self.pstate[work] == 10 and k == 0:
+        if kind != 'lock' and st == 10 and k == 0:
             self.holder[iso] = None     # a cancelled work lets its isolation go with its last lock
         self.ev(kind, work, point, person, 'done', [], *tail)
         return 'done'
@@ -2137,6 +2164,9 @@ class Engine:
             why.append('authority')
         if self.pstate[work] != 5:
             why.append('state')
+        iso = w.get('isolation')
+        if iso is None or self.n_locked(iso) < len(self.isos[iso]['points']):
+            why.append('isolation')     # a repair needs the isolation in place (2026-10-24)
         if why:
             self.ev('repair', fid, work, person, 'refused', why)
             return False
@@ -2212,9 +2242,9 @@ class Engine:
                 if npc:
                     sr.people[sr.st.person_ix[item[3]]].result = r
             elif kind in ('lock', 'unlock'):
-                noted.append(item + (None, npc))
+                noted.append((item + (None, NO_OWNER), npc))
             elif kind == 'remove_lock':
-                noted.append(item + (npc,))
+                noted.append((item[:5] + (item[5] if len(item) > 5 else NO_OWNER,), npc))
             elif kind in ('role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump'):
                 if sr is not None:
                     sr.t_input(item)
@@ -2241,11 +2271,15 @@ class Engine:
                 if self.shelved.pop(item[1], None) is not None:
                     self.ev('unshelve', item[1])
             elif kind == 'fault':
+                if self.v2:
+                    self.ev('instructor', 'fault', item[1])
                 pressed.append(item[1])
             elif kind == 'repair' and len(item) > 2:
                 if self._repair_under(item[1], item[2], item[3]):
                     under[item[1]] = item[2]
             elif kind == 'repair':
+                if self.v2:
+                    self.ev('instructor', 'repair', item[1])
                 asked.append(item[1])
         # first-out records clear when no trip of the group is latched
         for g in list(self.first_out):
@@ -2256,8 +2290,8 @@ class Engine:
             cur[i] = fn(cur, prev)
         vals = list(cur)          # conditions in steps 3–7 read the values as step 2 left them
         # 3. the locks and unlocks noted in step 1, in the order made; the permits' automatic moves (§15.3)
-        for kind, work, point, person, reason, npc in noted:
-            r = self._lock(kind, work, point, person, vals, npc, reason)
+        for (kind, work, point, person, reason, owner), npc in noted:
+            r = self._lock(kind, work, point, person, vals, npc, reason, owner)
             if npc:
                 sr.people[sr.st.person_ix[person]].result = r
         for w in self.m.works:
@@ -2267,8 +2301,8 @@ class Engine:
             st, new = self.pstate[wid], None
             if st == 2 and done:
                 new = 3
-            elif st == 3 and not done:
-                new = 2
+            elif st in (3, 4, 5) and not done:
+                new = 2         # (4, 5: a lock removed by authority suspends the work, §15.3)
             elif st == 7 and k == 0:
                 new = 8
             if new is not None:
@@ -2294,6 +2328,10 @@ class Engine:
         # under a permit (§15.5) writes as its work
         for fid, f in self.faults.items():
             wid = under.get(fid)
+            if wid is not None and self.pstate[wid] != 5:
+                wid = None      # suspended in this step's step 3 (§15.5): not made under the permit
+                if fid not in asked:
+                    continue
             if (fid in asked or wid is not None) and 'repair' in f and fid in self.faults_done \
                     and fid not in self.faults_fixed and not self._blocked(f['repair'], wid):
                 self.faults_fixed.add(fid)
@@ -2547,8 +2585,8 @@ class Recorder(Engine):
     def unlock(self, work, point, person=None):
         self._q(('unlock', work, point, person))
 
-    def remove_lock(self, work, point, person, reason):
-        self._q(('remove_lock', work, point, person, reason))
+    def remove_lock(self, work, point, person, reason, owner=None, named=False):
+        self._q(('remove_lock', work, point, person, reason) + ((owner,) if named else ()))
 
     def clone(self):
         c = super().clone()

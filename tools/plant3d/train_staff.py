@@ -139,6 +139,8 @@ MESSAGES = {
     'vents_done': 'Water box vents set as asked',
     'request': 'Permit requested: please approve',
     'all_well': 'All stations: all well',
+    'lock_left': 'Removed by authority: its holder went off shift with the work unfinished and nobody took it over',
+    'locks_removed': 'A lock left by someone gone off shift removed by authority: see the permit',
 }
 
 
@@ -325,13 +327,19 @@ def tasks(models):
     task('idle_elec', 'In the field office: switching orders', [{'go': 'fo_table'}, {'work': 30, 'anim': 'write'}])
     task('idle_tech', 'In the workshop', [{'go': {'kind': 'table', 'room': 'workshop'}}, {'work': 30}])
     meet = lambda room, role, minutes=15: {'meet': {'room': room, 'with': [role], 'minutes': minutes}}  # noqa: E731
+    # a shift's handover: the locks of a work left unfinished are handed over too, the incoming person's lock first
+    # (PLANT3D §15.1, §17.9; the user, 2026-10-24)
+    take, give = {'handover': 'take'}, {'handover': 'give'}
     task('handover_take', 'Take the control room handover', [meet('control_room', 'ccr_op'),
-                                                             {'say': 'handover', 'to': 'shift_sup'}])
-    task('handover_give', 'Give the control room handover', [meet('control_room', 'ccr_op')])
-    task('handover_take_sup', 'Take the shift handover', [meet('control_room', 'shift_sup')])
-    task('handover_give_sup', 'Give the shift handover', [meet('control_room', 'shift_sup')])
-    task('handover_take_f', 'Take the field handover', [meet('field_office', 'field_op')])
-    task('handover_give_f', 'Give the field handover', [meet('field_office', 'field_op')])
+                                                             {'say': 'handover', 'to': 'shift_sup'}, take])
+    task('handover_give', 'Give the control room handover', [meet('control_room', 'ccr_op'), give])
+    task('handover_take_sup', 'Take the shift handover', [meet('control_room', 'shift_sup'), take])
+    task('handover_give_sup', 'Give the shift handover', [meet('control_room', 'shift_sup'), give])
+    task('handover_take_f', 'Take the field handover', [meet('field_office', 'field_op'), take])
+    task('handover_give_f', 'Give the field handover', [meet('field_office', 'field_op'), give])
+    # a lock left on by someone gone off shift (nobody of their post took it over): the supervisor removes it
+    task('remove_left_locks', 'Remove a lock left by someone gone off shift', [
+        {'remove_locks': 'lock_left'}, {'say': 'locks_removed', 'to': 'channel'}], priority=2)
     task('sup_walk', 'The supervisor\'s look round the control room', [{'go': 'cr_sup'}, {'work': 10},
                                                                        {'say': 'all_well', 'to': 'channel'}])
     task('toolbox', 'Toolbox talk in the workshop', [meet('workshop', 'mech_tech', 10)])
@@ -419,7 +427,8 @@ def reactions(model_reacts):
            {'on': {'trip': '*'}, 'roles': ['shift_sup'], 'task': 'trip_call'},
            {'on': {'permit': 'requested'}, 'roles': ['shift_sup'], 'task': 'approve_permit'},
            {'on': {'permit': 'isolated'}, 'roles': ['shift_sup'], 'task': 'issue_permit'},
-           {'on': {'permit': 'deisolated'}, 'roles': ['shift_sup'], 'task': 'close_permit'}]
+           {'on': {'permit': 'deisolated'}, 'roles': ['shift_sup'], 'task': 'close_permit'},
+           {'on': {'lock_left': '*'}, 'roles': ['shift_sup'], 'task': 'remove_left_locks'}]
     out += [{'on': {'fault': f}, 'roles': ['shift_sup'], 'task': 'request_permit', 'work': w}
             for f, w in FAULT_WORK.items()]
     return out + model_reacts

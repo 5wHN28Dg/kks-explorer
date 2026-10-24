@@ -1261,8 +1261,43 @@ class Vectors2(unittest.TestCase):
         self.assertIn([16, 'repair', 'f1'], life)              # made on the locked pump, as the work's
         self.assertEqual(self.V['steps'][0]['states'][16]['values']['pump_fault'], 0.0)
         self.assertEqual([e for e in life if e[1] == 'repair' and len(e) == 3], [[16, 'repair', 'f1']])  # done: none
-        self.assertIn([2, 'repair', 'f1', 'wo_p', None, 'refused', ['state']], shared)
+        self.assertIn([2, 'repair', 'f1', 'wo_p', None, 'refused', ['state', 'isolation']], shared)
         self.assertIn([2, 'repair', 'f1'], shared)             # the trainer's, on a free code
+
+    def test_repair_needs_the_isolation(self):
+        """§15.5 (2026-10-24): a work without an isolation can't be repaired under its accepted permit (its done
+        still repairs); before, it could (the gap the S1 review left)."""
+        shared = self.V['steps'][1]['events']
+        self.assertIn([15, 'repair', 'f4', 'wo_n', None, 'refused', ['isolation']], shared)
+        self.assertIn([15, 'repair', 'f4'], shared)                    # by the work's done
+        self.assertIn([2, 'repair', 'f1', 'wo_p', None, 'refused', ['state', 'isolation']], shared)
+
+    def test_removal_while_issued_suspends_the_work(self):
+        """§15.1, §15.3 (2026-10-24): a lock removed by authority while the permit is accepted suspends the work
+        (back to approved); an unlock then is refused when no other lock stays; a repair noted in that step is not
+        made; a removal names its owner."""
+        run = next(r for r in self.V['steps'] if r['why'].startswith('a lock removed by authority'))
+        ev = run['events']
+        self.assertIn([4, 'unlock', 'wo_p', 0, None, 'refused', ['state']], ev)
+        self.assertIn([5, 'remove_lock', 'wo_p', 1, None, 'done', [], None, 'Locker went home'], ev)
+        self.assertIn([5, 'permit', 'wo_p', 'auto', None, 'done', [2]], ev)
+        self.assertNotIn([5, 'repair', 'f1'], ev)
+        self.assertIn([6, 'repair', 'f1', 'wo_p', None, 'refused', ['state', 'isolation']], ev)
+        self.assertIn([7, 'repair', 'f1'], ev)
+        self.assertIn([8, 'remove_lock', 'wo_p', 0, None, 'refused', ['unlocked'], 'tech1', 'Not here'], ev)
+        self.assertIn([8, 'remove_lock', 'wo_p', 0, 'tech1', 'refused', ['authority'], None, 'Not mine'], ev)
+        self.assertIn([9, 'remove_lock', 'wo_p', 0, None, 'done', [], None, 'Named'], ev)
+        self.assertIn([9, 'permit', 'wo_p', 'auto', None, 'done', [2]], ev)
+
+    def test_instructor_events(self):
+        """§15.5 (2026-10-24): in a version 2 plant every trainer's fault and repair input makes an instructor
+        event as it comes; format 1's vectors have none."""
+        life = self.V['steps'][0]['events']
+        self.assertEqual(life[0], [1, 'instructor', 'fault', 'f1'])
+        self.assertIn([12, 'instructor', 'repair', 'f1'], life)     # asked on a locked code: made nothing, still seen
+        self.assertNotIn([12, 'repair', 'f1'], life)
+        v1 = json.load(open(os.path.join(ROOT, 'ref', 'vectors', 'plant3d-v1.json'), encoding='utf-8'))
+        self.assertFalse(any(x[1] == 'instructor' for r in v1['steps'] for x in r['events']))
 
     def test_lock_effects(self):
         """§15.6: what a lock would do, asked of the reference again where the vectors asked it."""
