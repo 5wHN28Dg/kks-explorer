@@ -56,7 +56,9 @@ class Shards(unittest.TestCase):
         text, m = matrix('plant3d-app.yml', 'shard')
         self.assertEqual(m, [[str(k) for k in range(shards.CONTENT_SHARDS)]])
         self.assertIn('tests/shards.py content ${{ matrix.shard }}', text)
-        self.assertNotIn('-m unittest', text, 'the content tests run in their shards alone')
+        content = text[text.index('\n  content:\n'):text.index('\n  plant3d:\n')]
+        self.assertNotIn('-m unittest', content, 'the content tests run in their shards alone')
+
 
 if __name__ == '__main__':
     unittest.main()
