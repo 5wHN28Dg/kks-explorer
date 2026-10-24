@@ -19,7 +19,11 @@ var length := 0.0
 var s_walker := 0.0
 var crowd: Array = []    # per person: {s, dir, speed, lane, work, anim}
 var loop := false        # the route ends where it starts (the frames and camp walks): people go round it
-var _lost := 0.0         # squared distance from the walker to the route at its last place
+var _lost := 0.0
+## Whether a place is on a road or outside the process areas (main.gd's area test): there people carry their hats
+## (PLANT3D.md §18.2 as built). Checked twice a second.
+var road_at: Callable
+var _road_t := 1.0         # squared distance from the walker to the route at its last place
 
 
 ## `route`: app/routes.gd's steps (their `to` points), `count` people.
@@ -50,7 +54,7 @@ func setup(route: Array, w: Node3D, people, count: int) -> void:
 			p.speed = 3.2   # a few run
 		crowd.append(p)
 		people.people.append({"at": Vector3.ZERO, "yaw": 0.0, "speed": 0.0, "anim": p.anim, "look": looks[i % looks.size()],
-			"scale": rng.randf_range(0.94, 1.06), "on": ""})
+			"scale": rng.randf_range(0.94, 1.06), "on": "", "hat": true})
 	_process(0.0)   # their first places, before a frame is drawn
 
 
@@ -61,6 +65,10 @@ func _process(delta: float) -> void:
 	if _lost > 25.0:   # (the walk went round to its start again)
 		s_walker = _nearest(walker.global_position, 0.0, length)
 	var span := AHEAD + BEHIND
+	_road_t += delta
+	var check_road := road_at.is_valid() and _road_t >= 0.5
+	if check_road:
+		_road_t = 0.0
 	for i in crowd.size():
 		var c: Dictionary = crowd[i]
 		if not c.work:
@@ -90,6 +98,8 @@ func _process(delta: float) -> void:
 		p.yaw = atan2(-face.x, -face.z)
 		p.speed = 0.0 if c.work else c.speed
 		p.on = "stairs" if absf(dir.y) > 0.3 * maxf(0.01, flat.length()) else ""
+		if check_road:
+			p.hat = not road_at.call(p.at)
 
 
 func _segment(s: float) -> int:

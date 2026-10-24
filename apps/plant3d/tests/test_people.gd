@@ -94,7 +94,7 @@ func _assets(info: Dictionary) -> Array:
 		if not info.roles.has(r) or not info.looks.has(info.roles[r]):
 			p.append("role %s has a look" % r)
 	for c in ["idle", "walk", "run", "stairs", "climb", "inspect", "talk", "radio", "type", "sit", "write",
-			"kneel_work", "wrench", "handwheel", "calibrate", "carry", "sleep", "lift"]:
+			"kneel_work", "wrench", "handwheel", "calibrate", "carry", "sleep", "lift", "walk_road", "idle_road"]:
 		if not c in info.clips:
 			p.append("the clip %s is built" % c)
 	for k in ["walk", "run", "stairs", "climb"]:
@@ -105,7 +105,10 @@ func _assets(info: Dictionary) -> Array:
 		p.append("the run is faster than the walk at its natural speed (%s)" % str(info.speeds))
 	for id in info.looks:
 		var l: Dictionary = info.looks[id]
-		for lod in ["lod0", "lod1"]:
+		for lod in ["lod0", "lod1", "lod0_road", "lod1_road"]:
+			if not l.has(lod):
+				p.append("%s has its %s mesh" % [id, lod])
+				continue
 			p += _surface(load(l[lod]), true, "%s %s" % [id, lod])
 		for pose in l.posed:
 			p += _surface(load(l.posed[pose]), false, "%s posed %s" % [id, pose])
@@ -255,6 +258,16 @@ func _bands(tree: SceneTree, info: Dictionary) -> Array:
 	for a in ppl.avatars:
 		if a.person == 1 and a.anim.current_animation_position != t0:
 			p.append("a clip out of view is not advanced")
+	# on a road: the hat carried and the phone in hand (the road meshes and clips), the walk still at its own speed
+	ppl.people[0].hat = false
+	ppl._skinned(1.0 / 60.0)
+	for a in ppl.avatars:
+		if a.person == 0:
+			if a.clip != "walk_road" or not (a.body as MeshInstance3D).mesh.resource_path.ends_with("_road_0.res"):
+				p.append("a walker on a road carries the hat (%s, %s)" % [a.clip, (a.body as MeshInstance3D).mesh.resource_path])
+			if absf(a.speed_scale - 1.4 / float(info.speeds.walk)) > 1e-3:
+				p.append("the hat-carrying walk keeps the walk's speed")
+	ppl.people[0].erase("hat")
 	# someone the trainee works with gets a slot first, though further away
 	ppl.people[1].at = Vector3(1, 0, -8)
 	ppl.people[3].at = Vector3(0, 0, -21)
@@ -302,7 +315,8 @@ func _bands(tree: SceneTree, info: Dictionary) -> Array:
 	var cases := [[{"speed": 1.0, "on": "stairs"}, "stairs"], [{"speed": 0.5, "on": "ladder"}, "climb"],
 		[{"speed": 0.0, "on": "ladder"}, "climb"], [{"speed": 0.0, "anim": "radio"}, "radio"],
 		[{"speed": 0.0, "anim": "eat"}, "sit"], [{"speed": 0.0, "anim": "no_such"}, "idle"], [{"speed": 1.4, "anim": "radio"}, "walk"],
-		[{"speed": 4.0}, "run"]]
+		[{"speed": 4.0}, "run"], [{"speed": 1.4, "hat": false}, "walk_road"], [{"speed": 0.0, "hat": false}, "idle_road"],
+		[{"speed": 0.0, "hat": false, "anim": "inspect"}, "inspect"], [{"speed": 4.0, "hat": false}, "run"]]
 	for c in cases:
 		var got: String = ppl._clip_of(c[0])
 		if got != c[1]:

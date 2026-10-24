@@ -45,6 +45,9 @@ func build(out: String) -> Dictionary:
 	var own := rig.own_clips()
 	for k in own:
 		lib.add_animation(k, own[k])
+	var road := rig.road_clips(lib.get_animation("walk"), lib.get_animation("idle"))
+	for k in road:
+		lib.add_animation(k, road[k])
 	rig.free_sources()
 	# the material: the plant's one shader, colours from the vertices (decision 0060: no pipeline of its own)
 	var mat := Materials.plain(Color.WHITE)
@@ -58,14 +61,16 @@ func build(out: String) -> Dictionary:
 	for id in Looks.LOOKS:
 		var look := Looks.look(id)
 		var entry := {"posed": {}}
-		for lod in [0, 1]:
-			var m := Body.make(rig.names, look, 2 - lod)
-			m.surface_set_material(0, mat)
-			var n := _tris(m)
-			tri["lod%d" % lod] = maxi(tri["lod%d" % lod], n)
-			var path := out.path_join("look_%s_%d.res" % [id, lod])
-			ResourceSaver.save(m, path)
-			entry["lod%d" % lod] = path
+		for variant in ["", "_road"]:
+			var lk := Looks.look(id, variant != "")
+			for lod in [0, 1]:
+				var m := Body.make(rig.names, lk, 2 - lod)
+				m.surface_set_material(0, mat)
+				var n := _tris(m)
+				tri["lod%d" % lod] = maxi(tri["lod%d" % lod], n)
+				var path := out.path_join("look_%s%s_%d.res" % [id, variant, lod])
+				ResourceSaver.save(m, path)
+				entry["lod%d%s" % [lod, variant]] = path
 		var low := Body.make(rig.names, look, 0)
 		tri.posed = maxi(tri.posed, _tris(low))
 		for pose in POSES:

@@ -347,3 +347,33 @@ func own_clips() -> Dictionary:
 		stair.append(p)
 	out["stairs"] = own(stair, 1.3, true)
 	return out
+
+
+## `clip` with the bones that `pose` (for limbs() and solve()) names held still in that pose: the hat carried at the
+## hip in the left hand while walking, the phone looked at while standing.
+func hold(src: Animation, pose: Dictionary, bones: PackedStringArray, track_root := "Skeleton3D") -> Animation:
+	var a := src.duplicate(true) as Animation
+	for t in range(a.get_track_count() - 1, -1, -1):
+		var b := str(a.track_get_path(t)).get_slice(":", 1)
+		if b in bones and a.track_get_type(t) == Animation.TYPE_ROTATION_3D:
+			a.remove_track(t)
+	var rots := solve(limbs(pose))
+	for b in bones:
+		var i := names.find(b)
+		var n := a.add_track(Animation.TYPE_ROTATION_3D)
+		a.track_set_path(n, NodePath(track_root + ":" + b))
+		a.rotation_track_insert_key(n, 0.0, rots[i])
+	return a
+
+
+## The road variant's clips (docs/PLANT3D.md §18.3, as built): walking with the hat in the left hand at the hip, and
+## standing looking at the phone in the right hand.
+func road_clips(walk: Animation, idle: Animation) -> Dictionary:
+	var left := PackedStringArray(["upperarm.l", "lowerarm.l", "wrist.l", "hand.l"])
+	var hat := {"reach.l": Vector3(0.25, 0.93, 0.03), "elbow.l": Vector3(1, 0.2, -0.6)}
+	var phone := hat.duplicate()
+	phone.merge({"reach.r": Vector3(-0.10, 1.17, 0.30), "elbow.r": Vector3(-1, -1, -0.2), "head": Vector3(0, 1, 0.55)})
+	var both := left.duplicate()
+	both.append_array(PackedStringArray(["upperarm.r", "lowerarm.r", "wrist.r", "hand.r", "head"]))
+	return {"walk_road": hold(walk, hat, left), "idle_road": hold(idle, phone, both)}
+

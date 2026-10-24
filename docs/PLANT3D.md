@@ -1404,7 +1404,11 @@ order, then each work's). A version 2 plant's snapshot always has `permits`, `pt
   coverall with reflective tape, a hi-vis vest and a **white** hard hat (confirmed by the user, 2026-10-23: white, blue for contractors, green for HSE, replacing the colours above), told apart by the
   vest's colour (orange: operators and supervisors; lime: maintenance, managers, HSE) and what they carry (radio,
   clipboard, tool belt, the calibrator's case); contractors grey with a blue hat, HSE officers a green one; safety
-  glasses and ear defenders on every field role. The person's height varies by ±6 % (the node's scale).
+  glasses and ear defenders on every field role. Engineers, managers and office staff wear a dark shirt and trousers
+  under a lime vest. Each look has a **road variant**: on roads and outside the process areas the hat is carried in the
+  hand and a phone held in the other (its own walk, and an idle looking at the phone), the hat back on inside an area
+  that requires it (the driver says which: `hat` in app/people.gd); the posed band, beyond the skinned one, shows the
+  hat on. The person's height varies by ±6 % (the node's scale).
 
 ### 18.3 Animation
 

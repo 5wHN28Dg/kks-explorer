@@ -52,6 +52,7 @@ func _person(look: Dictionary) -> void:
 	var vest: Color = c.get("vest", Color.TRANSPARENT)
 	var tape: Color = c.tape
 	var near := detail >= 1
+	var taped := not c.has("shirt")   # a coverall's tape on the arms and legs (not on a shirt and trousers)
 	var fine := detail >= 2
 	var lean: float = look.get("build", 1.0)   # 1 average; > 1 heavier
 	# legs: hip to ankle, a band of reflective tape below the knee, the boot's top
@@ -67,7 +68,7 @@ func _person(look: Dictionary) -> void:
 		if fine:
 			leg.append([Vector3(x, 0.64, kz * 0.7), 0.070 * lean, c.suit, {"upperleg." + side: 1.0}])
 		leg.append([Vector3(x, 0.50, kz), 0.060 * lean, c.suit, {"upperleg." + side: 0.5, "lowerleg." + side: 0.5}])
-		if near:
+		if near and taped:
 			leg.append_array([
 				[Vector3(x, 0.335, lerpf(kz, az, 0.4)), 0.057, c.suit, {"lowerleg." + side: 1.0}],
 				[Vector3(x, 0.335, lerpf(kz, az, 0.4)), 0.057, tape, {"lowerleg." + side: 1.0}],
@@ -131,8 +132,21 @@ func _person(look: Dictionary) -> void:
 	_loft2(loft, Vector3.RIGHT, true, true)
 	# the head, the hard hat (a dome and its brim), glasses and ear defenders
 	_ellipsoid(Vector3(0, 1.635, 0.012), Vector3(0.080, 0.103, 0.093), c.skin, {"head": 1.0}, 0.0, 1.0)
-	_ellipsoid(Vector3(0, 1.675, 0.0), Vector3(0.106, 0.098, 0.122), c.hat, {"head": 1.0}, 0.0, 0.5)
-	_ellipsoid(Vector3(0, 1.672, 0.022), Vector3(0.128, 0.011, 0.155), c.hat, {"head": 1.0}, 0.0, 1.0)
+	if look.get("road", false):
+		# off the process areas the hat is carried by its brim in the left hand (T-pose: the arm along +x; hanging,
+		# the crown faces out from the hip), and a phone is in the right hand, flat on the palm
+		var hl: Vector3 = J["hand.l"]
+		var hc := Vector3(hl.x + 0.05, hl.y - 0.075, 0.0)
+		_ellipsoid(Vector3(0, 1.652, 0.0), Vector3(0.085, 0.092, 0.098), Color(0.10, 0.08, 0.07), {"head": 1.0}, 0.0, 0.42)
+		_ellipsoid(hc + Vector3(0, 0.003, 0), Vector3(0.106, 0.098, 0.122), c.hat, {"hand.l": 1.0}, 0.0, 0.5)
+		_ellipsoid(hc, Vector3(0.128, 0.011, 0.155), c.hat, {"hand.l": 1.0}, 0.0, 1.0)
+		if near:
+			var hr: Vector3 = J["hand.r"]
+			_box(Vector3(hr.x - 0.07, hr.y - 0.018, 0.02), Vector3(0.15, 0.008, 0.075), Basis(), Color(0.10, 0.10, 0.11),
+				{"hand.r": 1.0})
+	else:
+		_ellipsoid(Vector3(0, 1.675, 0.0), Vector3(0.106, 0.098, 0.122), c.hat, {"head": 1.0}, 0.0, 0.5)
+		_ellipsoid(Vector3(0, 1.672, 0.022), Vector3(0.128, 0.011, 0.155), c.hat, {"head": 1.0}, 0.0, 1.0)
 	if near:
 		_box(Vector3(0, 1.645, 0.098), Vector3(0.135, 0.026, 0.012), Basis(), c.glasses, {"head": 1.0})
 		if look.get("ear", true):
@@ -147,7 +161,7 @@ func _person(look: Dictionary) -> void:
 		var arm := [
 			[Vector3(0.13 * s, sy - 0.01, 0), 0.066, top, {"chest": 0.8, "upperarm." + side: 0.2}],
 			[Vector3(0.20 * s, sy, 0), 0.064 * lean, top, {"upperarm." + side: 0.8, "chest": 0.2}]]
-		if near:
+		if near and taped:
 			arm.append_array([
 				[Vector3(0.30 * s, sy, -0.003), 0.058 * lean, top, {"upperarm." + side: 1.0}],
 				[Vector3(0.30 * s, sy, -0.003), 0.058 * lean, tape, {"upperarm." + side: 1.0}],

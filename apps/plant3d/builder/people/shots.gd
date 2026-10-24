@@ -90,7 +90,17 @@ func _init() -> void:
 	(av2.get_node("Skeleton3D/Body") as MeshInstance3D).mesh = load(info.looks.operator.lod1)
 	(av2.get_node("Anim") as AnimationPlayer).play("walk")
 	(av2.get_node("Anim") as AnimationPlayer).advance(0.2)
-	cam.look_at_from_position(Vector3(0.5, 1.3, 7.5), Vector3(0.5, 0.9, 0))
+	# the road variant: the hat carried, walking and standing at the phone (the office look)
+	for k in 2:
+		var av3: Node3D = scene.instantiate()
+		root.add_child(av3)
+		av3.position = Vector3((i + 1 + k) * 1.1 - 3.0, 0, 0)
+		av3.rotation.y = 0.9
+		(av3.get_node("Skeleton3D/Body") as MeshInstance3D).mesh = load(info.looks.office.lod0_road)
+		var ap3: AnimationPlayer = av3.get_node("Anim")
+		ap3.play("walk_road" if k == 0 else "idle_road")
+		ap3.advance(0.3)
+	cam.look_at_from_position(Vector3(1.5, 1.3, 8.5), Vector3(1.5, 0.9, 0))
 	await _save(out.path_join("posed.png"))
 	quit()
 

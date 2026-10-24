@@ -452,6 +452,7 @@ func _start_crowd(route: Array) -> void:
 		crowd = Crowd.new()
 		crowd.name = "crowd"
 		add_child(crowd)
+		crowd.road_at = func(at: Vector3) -> bool: return area_at(at) == "Between the areas"
 		crowd.setup(route, player, people, clampi(int(opts.crowd), 0, 200))
 
 func _process(delta: float) -> void:

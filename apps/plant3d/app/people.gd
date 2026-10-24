@@ -3,7 +3,8 @@
 ##   at: Vector3 (Godot's frame, the feet), yaw: float (radians; facing -Z at 0, as the walker), speed: float (m/s
 ##   along the ground), anim: String (docs/PLANT3D.md §18.3's `anim`, or "" to follow the speed), look: String
 ##   (built/people/people.json's looks), scale: float (the person's height over 1.75 m), on: "" | "stairs" | "ladder",
-##   near: bool (someone the trainee works with: a skinned slot first)
+##   near: bool (someone the trainee works with: a skinned slot first), hat: bool (false on roads and outside the
+##   process areas: the hat carried in the hand and a phone in the other, PLANT3D.md §18.2 as built; default true)
 ## and this node draws them in three bands by distance from the camera:
 ##   skinned   the nearest, at most the tier's `skinned` within `skinned_range`: a pool of skinned avatars made at
 ##             the start (never one per person), LOD0 within `lod0_range`, LOD1 beyond, their clips advanced by this
@@ -84,10 +85,10 @@ func apply_share(share: Dictionary) -> void:
 		var anim: AnimationPlayer = n.get_node("Anim")
 		anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 		avatars.append({"node": n, "body": body, "anim": anim, "person": -1, "look": "", "lod": -1, "clip": "", "acc": 0.0,
-			"speed_scale": 1.0})
+			"speed_scale": 1.0, "road": ""})
 	# every look's skinned meshes loaded now, not when someone first comes near (a load is a hitch on a phone)
 	for l in info.looks:
-		for lod in ["lod0", "lod1"]:
+		for lod in ["lod0", "lod1", "lod0_road", "lod1_road"]:
 			_mesh(info.looks[l][lod])
 	for l in info.looks:
 		posed[l] = {}
@@ -181,8 +182,11 @@ func _clip_of(p: Dictionary) -> String:
 	if s > STILL:
 		if on == "stairs":
 			return "stairs"
-		return "run" if s > RUN_FROM else "walk"
-	return ANIM_CLIP.get(p.get("anim", ""), "idle")
+		if s > RUN_FROM:
+			return "run"
+		return "walk" if p.get("hat", true) else "walk_road"
+	var c: String = ANIM_CLIP.get(p.get("anim", ""), "idle")
+	return "idle_road" if c == "idle" and not p.get("hat", true) else c
 
 
 func _skinned(delta: float) -> void:
@@ -203,17 +207,19 @@ func _skinned(delta: float) -> void:
 		# LOD0 within its range; taken again only KEEP inside it (no flicker at the edge)
 		var edge := float(cfg.lod0_range) - (KEEP if a.lod == 1 else 0.0)
 		var lod := 0 if d <= edge else 1
-		if a.look != p.look or a.lod != lod:
+		var road := "" if p.get("hat", true) else "_road"
+		if a.look != p.look or a.lod != lod or a.get("road", "") != road:
 			a.look = p.look
 			a.lod = lod
-			a.body.mesh = _mesh(info.looks[p.look]["lod%d" % lod])
+			a.road = road
+			a.body.mesh = _mesh(info.looks[p.look]["lod%d%s" % [lod, road]])
 		if lod == 0:
 			l0 += 1
 		else:
 			l1 += 1
 		var clip := _clip_of(p)
 		var sp: float = p.get("speed", 0.0)
-		var nat: float = float(info.speeds.get(clip, 0.0))
+		var nat: float = float(info.speeds.get(clip.trim_suffix("_road"), 0.0))
 		var scale := (sp / sc) / nat if nat > 0.0 and sp > STILL else 1.0
 		if clip != a.clip:
 			var first: bool = a.clip == ""
@@ -265,7 +271,7 @@ func _posed() -> void:
 			continue
 		var clip := _clip_of(p)
 		var pose: String
-		if clip in ["walk", "run", "stairs", "climb"]:
+		if clip in ["walk", "walk_road", "run", "stairs", "climb"]:
 			# walk A and B in turn, 4 times a second, each person at their own moment
 			pose = "walk_a" if int(floor((_clock + float(i) * 0.13) * 4.0)) % 2 == 0 else "walk_b"
 		else:
