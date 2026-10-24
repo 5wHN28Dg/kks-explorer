@@ -2088,6 +2088,8 @@ def overnight_staff():
     st['people'].append({'id': 'ic1', 'role': 'ic_tech', 'roster': 'day', 'call': 'Instruments 1'})
     G = 'wo_gauge'
     st['tasks'] += [
+        {'id': 'have_gauge_isolated', 'title': 'Have the gauge isolated', 'priority': 2,
+         'steps': [{'call': {'role': 'ic_tech', 'task': 'iso_gauge'}}]},
         {'id': 'iso_gauge', 'title': 'Isolate the gauge', 'priority': 2,
          'steps': [{'go': {'kks': GAUGE}}, {'lock': {'work': '$', 'point': 0}}]},
         {'id': 'issue_gauge', 'title': 'Issue the gauge\'s permit', 'priority': 2,
@@ -2102,7 +2104,7 @@ def overnight_staff():
          'steps': [{'go': {'kks': GAUGE}}, {'unlock': {'work': '$', 'point': 0}}]},
         {'id': 'close_gauge', 'title': 'Close the gauge\'s permit', 'priority': 2,
          'steps': [{'go': 'cr_table'}, {'permit': {'work': '$', 'action': 'close'}}]}]
-    for state, roles, task in (('approved', ['ic_tech'], 'iso_gauge'), ('isolated', ['shift_sup'], 'issue_gauge'),
+    for state, roles, task in (('approved', ['shift_sup'], 'have_gauge_isolated'), ('isolated', ['shift_sup'], 'issue_gauge'),
                                ('issued', ['ic_tech'], 'job_gauge'), ('returned', ['ic_tech'], 'deiso_gauge'),
                                ('deisolated', ['shift_sup'], 'close_gauge')):
         st['reactions'].append({'on': {'permit': state}, 'roles': roles, 'task': task, 'work': G})

@@ -886,7 +886,7 @@ class StaffRun:
         self.vprev = [e.truth(r['on']['value']) if 'value' in r['on'] else None for r in st.reactions]
         self.early = []                 # the trainee's done actions no step took yet (§17.8): [kind, step, …]
         self.left = set()               # people off site with a lock at the last phase 2 (§17.9)
-        self.pending = []               # permit offers nobody took: [key, work, code, state] (§17.10)
+        self.pending = []               # offers for a permit nobody was on duty to take (§17.10)
 
     def copy(self, e):
         """An independent copy for a clone of the engine (the content is shared)."""
@@ -1068,6 +1068,16 @@ class StaffRun:
                 return self.give(p, tid, prio, made_by, work, code, alarm, owner=owner)
         return self.give(cands[0], tid, prio, made_by, work, code, alarm, owner=owner)
 
+    def offer(self, roles, tid, prio, src, w, code, alarm, pw, owner=None):
+        """assign(), and an offer for a permit's work (pw) that found nobody of its roles on duty is kept, to be made
+        again when one comes on (§17.10)."""
+        nobody = not any(p.role in roles and p.on and p.id not in self.absent for p in self.people)
+        if not self.assign(roles, tid, prio, src, w, code, alarm, owner) and nobody \
+                and isinstance(pw, str) and pw in self.e.pstate:
+            ident = src if src is not None else ('call', tuple(roles), tid, w)
+            if all(x[0] != ident for x in self.pending):
+                self.pending.append([ident, src, list(roles), tid, prio, w, code, pw, self.e.pstate[pw]])
+
     def release(self, inst):
         if inst['src'] is not None:
             self.given[inst['src']] -= 1
@@ -1225,21 +1235,16 @@ class StaffRun:
                 if p.i not in self.left:
                     gone.append(p)
         self.left = now
-        # permit offers that found nobody on duty: offered again when someone of the reaction's roles comes on, at
-        # each later shift until taken, while the permit is still at that state (§17.10)
+        # permit offers that found nobody on duty: offered again when someone of their roles comes on, at each later
+        # shift until taken, while the permit is still at its state then (§17.10)
         if self.pending:
             came = {self.people[st.person_ix[x[2]]].role for x in evs if x[1] == 'duty' and x[3] == 'on'}
             keep = []
-            for key, w, code, state in self.pending:
-                r = st.reactions[key[0]]
-                if e.pstate.get(key[2]) != state or key in self.given:
+            for ident, src, roles, tid, prio, w, code, pw, state in self.pending:
+                if e.pstate.get(pw) != state or (src is not None and src in self.given):
                     continue            # moved on, or given meanwhile
-                if not came.intersection(r['roles']):
-                    keep.append([key, w, code, state])
-                    continue
-                prio = r.get('priority', st.tasks[r['task']].get('priority', 3))
-                if not self.assign(r['roles'], r['task'], prio, key, w, code, None):
-                    keep.append([key, w, code, state])
+                if not came.intersection(roles) or not self.assign(roles, tid, prio, src, w, code, None):
+                    keep.append([ident, src, roles, tid, prio, w, code, pw, state])
             self.pending = keep
         for ri, r in enumerate(st.reactions):
             k, v = next(iter(r['on'].items()))
@@ -1272,10 +1277,8 @@ class StaffRun:
                 w = r.get('work', work)
                 if code is None and w is not None:
                     code = e.works[w]['kks']
-                ok = self.assign(r['roles'], r['task'], prio, key, w, code, alarm,
-                                 src[1] if k == 'lock_left' else None)
-                if not ok and k == 'permit' and all(x[0] != key for x in self.pending):
-                    self.pending.append([key, w, code, STATE_NAMES.index(v)])
+                self.offer(r['roles'], r['task'], prio, key, w, code, alarm, src[1] if k == 'permit' else None,
+                           src[1] if k == 'lock_left' else None)
 
     # --- a person's turn (phase 4)
     def select(self, p):
@@ -1550,8 +1553,8 @@ class StaffRun:
             w = c.get('work', '$')
             w = cur['work'] if w == '$' else w
             e.ev('call', p.id, c['role'], c['task'], w, 'done')
-            self.assign([c['role']], c['task'], st.tasks[c['task']].get('priority', 3), None, w, cur['code'],
-                        cur['alarm'])
+            self.offer([c['role']], c['task'], st.tasks[c['task']].get('priority', 3), None, w, cur['code'],
+                       cur['alarm'], w)
             return 'next'
         if 'choose' in s:
             tot = sum(w for w, _ in s['choose'])
@@ -1908,8 +1911,8 @@ class StaffRun:
                         w = c.get('work', '$')
                         w = cur['work'] if w == '$' else w
                         e.ev('call', p.id, c['role'], c['task'], w, 'done')
-                        self.assign([c['role']], c['task'], st.tasks[c['task']].get('priority', 3), None, w,
-                                    cur['code'], cur['alarm'])
+                        self.offer([c['role']], c['task'], st.tasks[c['task']].get('priority', 3), None, w,
+                                   cur['code'], cur['alarm'], w)
                         r = 'next'
                         break
             elif 'choose' in s:

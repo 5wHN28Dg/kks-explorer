@@ -1639,11 +1639,14 @@ both engines and the vectors (§19):
   a lock removed by authority), its jobs (instances of a task with `resume`, given for that work: current, queued or
   held) are abandoned at once in phase 2 (event `abandoned` each), so nobody works on equipment no longer isolated,
   and their reaction sources are free (§16.7): when the permit is issued again, its job is offered again.
-- **An offer nobody could take is made again** (the user, 2026-10-24). A reaction to a permit state whose task found
-  nobody on duty (`unassigned`) is kept; in phase 2 of any step where someone of its roles comes on duty (a `duty`
-  `on` event), it is offered again (§17.3), and kept for the next such step while still unassigned, until someone
-  takes it. It is dropped when the permit is no longer at that state, or the reaction's source is held by another
-  task. So a permit suspended and re-isolated or re-issued at night, when no technician of its trade is on duty, is
+- **An offer nobody could take is made again** (the user, 2026-10-24). An offer for a permit's work that found
+  nobody of its roles on duty (`unassigned`) is kept: a reaction to a permit state, or a task's `call` step whose
+  work is a work of the model (the supervisor's call to the trade that isolates; not the trainee's free radio calls).
+  In phase 2 of any step where someone of its roles comes on duty (a `duty` `on` event) it is offered again (§17.3),
+  and kept for the next such step while still unassigned, until someone takes it. It is dropped when the permit is no
+  longer at the state it had when the offer was made, or the reaction's source is held by another task; one offer
+  is kept once (a reaction by its source; a call by its roles, task and work). An offer that fails only because a
+  queue is full is not kept. So a permit suspended and re-isolated or re-issued at night, when no technician of its trade is on duty, is
   offered at the start of that trade's next shift. Placement clears the kept offers.
 - **Vectors** (§19): a staff run with an instrument technician on days whose job and lock run past 16:00, held
   overnight and resumed at 07:00 (no removal by authority); a day fork of the first train where CW pump B's lock is

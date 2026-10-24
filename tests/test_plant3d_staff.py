@@ -508,6 +508,8 @@ class StaffVectors(unittest.TestCase):
         starts = [x for x in ev if x[1] == 'task' and x[3] == 'iso_gauge' and x[4] == 'start' and x[0] > 3000]
         self.assertEqual([x[0] for x in starts], [9900])
         self.assertTrue(any(x[1] == 'duty' and x[3] == 'on' and 3000 < x[0] < 9900 for x in ev))
+        self.assertEqual([x for x in ev if x[1] == 'task' and x[3] == 'iso_gauge' and 3000 <= x[0] < 9900],
+                         [[3000, 'task', None, 'iso_gauge', 'unassigned']])   # kept, not offered to the night
         self.assertTrue(any(x[1] == 'permit' and x[2] == 'wo_gauge' and x[3] == 'close' and x[5] == 'done'
                             and x[0] > 9900 for x in ev))
 

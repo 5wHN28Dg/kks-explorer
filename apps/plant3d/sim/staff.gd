@@ -492,6 +492,23 @@ func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, al
 	return give(e, cands[0], tid, prio, made_by, work, code, alarm, true, owner)
 
 
+## assign(), and an offer for a permit's work (pw) that found nobody of its roles on duty is kept, to be made again
+## when one comes on (§17.10).
+func offer(e, role_list: Array, tid: String, prio: int, src, w, code, alarm, pw, owner = null) -> void:
+	var nobody := true
+	for pi in people.size():
+		if role_list.has(people[pi]["role"]) and e.sp_on[pi] and not e._absent.has(pi):
+			nobody = false
+			break
+	if not assign(e, role_list, tid, prio, src, w, code, alarm, owner) and nobody \
+			and typeof(pw) == TYPE_STRING and e.m.work_ix.has(pw):
+		var ident: String = src if src != null else "call|%s|%s|%s" % ["/".join(role_list), tid, str(w)]
+		for pd in e.st_pending:
+			if pd[0] == ident:
+				return
+		e.st_pending.append([ident, src, role_list.duplicate(), tid, prio, w, code, pw, e.pstate[e.m.work_ix[pw]]])
+
+
 func release(e, inst: Dictionary) -> void:
 	var src = inst["src"]
 	if src != null:
@@ -720,10 +737,8 @@ func react(e, n: int) -> void:
 				if not e.st_left.has(pi):
 					gone.append(pi)
 		e.st_left = now
-	if evs.is_empty() and value_reactions.is_empty() and gone.is_empty():
-		return
-	# permit offers that found nobody on duty: offered again when someone of the reaction's roles comes on, at each
-	# later shift until taken, while the permit is still at that state (§17.10)
+	# permit offers that found nobody on duty: offered again when someone of their roles comes on, at each later
+	# shift until taken, while the permit is still at its state then (§17.10)
 	if not e.st_pending.is_empty():
 		var came := {}
 		for x in evs:
@@ -731,21 +746,18 @@ func react(e, n: int) -> void:
 				came[people[person_ix[x[2]]]["role"]] = true
 		var keep := []
 		for pd in e.st_pending:
-			var key: String = pd[0]
-			var r: Dictionary = reactions[pd[1]]
-			if e.pstate[e.m.work_ix[pd[2]]] != pd[5] or e.st_given.has(key):
+			# [ident, src or null, roles, task, prio, work given, code, permit's work, its state then]
+			if e.pstate[e.m.work_ix[pd[7]]] != pd[8] or (pd[1] != null and e.st_given.has(pd[1])):
 				continue            # moved on, or given meanwhile
 			var any_role := false
-			for ro in r["roles"]:
+			for ro in pd[2]:
 				if came.has(ro):
 					any_role = true
-			if not any_role:
-				keep.append(pd)
-				continue
-			var prio: int = int(r.get("priority", prio_of(r["task"])))
-			if not assign(e, r["roles"], r["task"], prio, key, pd[3], pd[4], null):
+			if not any_role or not assign(e, pd[2], pd[3], pd[4], pd[1], pd[5], pd[6], null):
 				keep.append(pd)
 		e.st_pending = keep
+	if evs.is_empty() and value_reactions.is_empty() and gone.is_empty():
+		return
 	for ri in reactions.size():
 		var r: Dictionary = reactions[ri]
 		var k: String = react_kind[ri]
@@ -783,14 +795,8 @@ func react(e, n: int) -> void:
 			var code = h[2]
 			if code == null and w != null:
 				code = e.m.works[e.m.work_ix[w]]["kks"]
-			var ok := assign(e, r["roles"], r["task"], prio, key, w, code, h[3], h[4] if h.size() > 4 else null)
-			if not ok and k == "permit":
-				var dup := false
-				for pd in e.st_pending:
-					if pd[0] == key:
-						dup = true
-				if not dup:
-					e.st_pending.append([key, ri, h[1], w, code, STATE_NAMES.find(v)])
+			offer(e, r["roles"], r["task"], prio, key, w, code, h[3], h[1] if k == "permit" else null,
+					h[4] if h.size() > 4 else null)
 
 
 # ---------------------------------------------------------------- a person's turn (phase 4)
@@ -1116,7 +1122,7 @@ func run(e, pi: int, cur: Dictionary):
 		var w = c.get("work", "$")
 		w = cur["work"] if w == "$" else w
 		e._ev(["call", pid, c["role"], c["task"], w, "done"])
-		assign(e, [c["role"]], c["task"], prio_of(c["task"]), null, w, cur["code"], cur["alarm"])
+		offer(e, [c["role"]], c["task"], prio_of(c["task"]), null, w, cur["code"], cur["alarm"], w)
 		return "next"
 	if s.has("choose"):
 		var tot := 0
@@ -1595,7 +1601,7 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 					var w = c.get("work", "$")
 					w = cur["work"] if w == "$" else w
 					e._ev(["call", pid, c["role"], c["task"], w, "done"])
-					assign(e, [c["role"]], c["task"], prio_of(c["task"]), null, w, cur["code"], cur["alarm"])
+					offer(e, [c["role"]], c["task"], prio_of(c["task"]), null, w, cur["code"], cur["alarm"], w)
 					r = "next"
 					break
 		elif s.has("choose"):
