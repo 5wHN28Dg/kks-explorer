@@ -1073,7 +1073,7 @@ class StaffRun:
         again when one comes on (§17.10)."""
         nobody = not any(p.role in roles and p.on and p.id not in self.absent for p in self.people)
         if not self.assign(roles, tid, prio, src, w, code, alarm, owner) and nobody \
-                and isinstance(pw, str) and pw in self.e.pstate:
+                and isinstance(pw, str) and pw in self.e.pstate and 1 <= self.e.pstate[pw] <= 8:
             ident = src if src is not None else ('call', tuple(roles), tid, w)
             if all(x[0] != ident for x in self.pending):
                 self.pending.append([ident, src, list(roles), tid, prio, w, code, pw, self.e.pstate[pw]])
@@ -1241,8 +1241,10 @@ class StaffRun:
             came = {self.people[st.person_ix[x[2]]].role for x in evs if x[1] == 'duty' and x[3] == 'on'}
             keep = []
             for ident, src, roles, tid, prio, w, code, pw, state in self.pending:
-                if e.pstate.get(pw) != state or (src is not None and src in self.given):
-                    continue            # moved on, or given meanwhile
+                if e.pstate.get(pw) != state or (src is not None and src in self.given) or (src is None and any(
+                        q['task'] == tid and q['work'] == w for p in self.people
+                        for q in ([p.cur] if p.cur is not None else []) + p.queue)):
+                    continue            # moved on, or given meanwhile (a call: the same task and work given again)
                 if not came.intersection(roles) or not self.assign(roles, tid, prio, src, w, code, None):
                     keep.append([ident, src, roles, tid, prio, w, code, pw, state])
             self.pending = keep

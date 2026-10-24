@@ -492,6 +492,18 @@ func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, al
 	return give(e, cands[0], tid, prio, made_by, work, code, alarm, true, owner)
 
 
+## Whether someone has an instance of this task for this work, current or queued (a kept call given again).
+func _given_again(e, tid: String, w) -> bool:
+	for pi in people.size():
+		var all: Array = e.sp_queue[pi].duplicate()
+		if e.sp_cur[pi] != null:
+			all.append(e.sp_cur[pi])
+		for q in all:
+			if q["task"] == tid and typeof(q["work"]) == typeof(w) and q["work"] == w:
+				return true
+	return false
+
+
 ## assign(), and an offer for a permit's work (pw) that found nobody of its roles on duty is kept, to be made again
 ## when one comes on (§17.10).
 func offer(e, role_list: Array, tid: String, prio: int, src, w, code, alarm, pw, owner = null) -> void:
@@ -501,7 +513,8 @@ func offer(e, role_list: Array, tid: String, prio: int, src, w, code, alarm, pw,
 			nobody = false
 			break
 	if not assign(e, role_list, tid, prio, src, w, code, alarm, owner) and nobody \
-			and typeof(pw) == TYPE_STRING and e.m.work_ix.has(pw):
+			and typeof(pw) == TYPE_STRING and e.m.work_ix.has(pw) and e.pstate[e.m.work_ix[pw]] >= 1 \
+			and e.pstate[e.m.work_ix[pw]] <= 8:
 		var ident: String = src if src != null else "call|%s|%s|%s" % ["/".join(role_list), tid, str(w)]
 		for pd in e.st_pending:
 			if pd[0] == ident:
@@ -721,7 +734,7 @@ func react(e, n: int) -> void:
 				e.sp_wake[pi] = 0
 			e.sp_queue[pi] = keep_q
 			e.sp_held[pi] = keep_h
-	if reactions.is_empty():
+	if reactions.is_empty() and e.st_pending.is_empty():
 		return
 	var gone := []
 	if has_left:
@@ -747,8 +760,9 @@ func react(e, n: int) -> void:
 		var keep := []
 		for pd in e.st_pending:
 			# [ident, src or null, roles, task, prio, work given, code, permit's work, its state then]
-			if e.pstate[e.m.work_ix[pd[7]]] != pd[8] or (pd[1] != null and e.st_given.has(pd[1])):
-				continue            # moved on, or given meanwhile
+			if e.pstate[e.m.work_ix[pd[7]]] != pd[8] or (pd[1] != null and e.st_given.has(pd[1])) \
+					or (pd[1] == null and _given_again(e, pd[3], pd[5])):
+				continue            # moved on, or given meanwhile (a call: the same task and work given again)
 			var any_role := false
 			for ro in pd[2]:
 				if came.has(ro):

@@ -484,6 +484,17 @@ class StaffVectors(unittest.TestCase):
         self.assertTrue(any(x[1] == 'unlock' and x[4] == 'ic1' and x[5] == 'done' and x[0] > resumed[0] for x in ev))
         self.assertTrue(any(x[1] == 'permit' and x[2] == 'wo_gauge' and x[3] == 'close' and x[5] == 'done' for x in ev))
 
+    def test_a_call_kept_without_reactions(self):
+        """§17.10 (adversarial review): a kept call is made again at the trade's next shift with no reactions in the
+        content (GDScript returned early there)."""
+        ev = next(r for r in self.runs if r['why'].startswith('a call kept with no reactions'))['events']
+        un = [x for x in ev if x[1:] == ['task', None, 'iso_gauge', 'unassigned']]
+        st = [x for x in ev if x[1:] == ['task', 'ic1', 'iso_gauge', 'start']]
+        self.assertEqual(len(un), 1)
+        self.assertEqual(len(st), 1)
+        self.assertGreater(st[0][0], un[0][0])
+        self.assertTrue(any(x[1] == 'lock' and x[4] == 'ic1' and x[5] == 'done' for x in ev))
+
     def test_two_jobs_held_overnight(self):
         """§17.10 (blind review): a second job held at the duty's end doesn't replace the first; both resume."""
         ev = next(r for r in self.runs if r['why'].startswith('a day-shift job overnight'))['events']
