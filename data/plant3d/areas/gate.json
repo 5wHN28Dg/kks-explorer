@@ -12,10 +12,10 @@
  "pipes": [],
  "structures": [
   {"id": "gate_road", "part": "road", "kks": "00UZA10", "at": [-140, 12, 0], "params": {"outline": [[0, 0], [87.0, 0], [87.0, 7.0], [0, 7.0]], "surface": "asphalt"}},
-  {"id": "gate_walk_w", "part": "road", "at": [-140, 21, 0], "params": {"outline": [[0, 0], [48.0, 0], [48.0, 2.0], [0, 2.0]], "surface": "concrete"}},
-  {"id": "gate_walk_e", "part": "road", "at": [-86, 21, 0], "params": {"outline": [[0, 0], [33.0, 0], [33.0, 2.0], [0, 2.0]], "surface": "concrete"}},
+  {"id": "gate_walk_w", "part": "road", "at": [-140, 21, 0], "params": {"outline": [[0, 0], [48.0, 0], [48.0, 2.0], [0, 2.0]], "surface": "pavers"}},
+  {"id": "gate_walk_e", "part": "road", "at": [-86, 21, 0], "params": {"outline": [[0, 0], [33.0, 0], [33.0, 2.0], [0, 2.0]], "surface": "pavers"}},
   {"id": "gate_entrance", "part": "road", "at": [-92, 19, 0], "params": {"outline": [[0, 0], [6.0, 0], [6.0, 21.0], [0, 21.0]], "surface": "asphalt"}},
-  {"id": "gate_walk_admin", "part": "road", "at": [-94, 23, 0], "params": {"outline": [[0, 0], [2.0, 0], [2.0, 17.0], [0, 17.0]], "surface": "concrete"}},
+  {"id": "gate_walk_admin", "part": "road", "at": [-94, 23, 0], "params": {"outline": [[0, 0], [2.0, 0], [2.0, 17.0], [0, 17.0]], "surface": "pavers"}},
   {"id": "gate_crossing", "part": "crossing", "at": [-89, 22, 0], "params": {"width": 6, "length": 2}},
   {"id": "gate_kerb_s", "part": "kerb", "at": [-140, 12, 0], "params": {"route": [[0, 0, 0], [87.0, 0.0, 0]], "painted": true}},
   {"id": "gate_kerb_nw", "part": "kerb", "at": [-140, 19, 0], "params": {"route": [[0, 0, 0], [48.0, 0.0, 0]], "painted": true}},
@@ -37,6 +37,8 @@
   {"id": "gate_lamp_2", "part": "lamp_post", "at": [-110.0, 11.0, 0], "params": {"height": 8}},
   {"id": "gate_lamp_3", "part": "lamp_post", "at": [-84.0, 11.0, 0], "params": {"height": 8}},
   {"id": "gate_lamp_4", "part": "lamp_post", "at": [-58.0, 11.0, 0], "params": {"height": 8}},
+  {"id": "gate_hydrant", "part": "hydrant", "at": [-97, 10.4, 0]},
+  {"id": "gate_hydrant_bollard", "part": "bollard", "at": [-96.1, 10.4, 0]},
   {"id": "gate_saltbush_w", "part": "planting", "at": [-121.3, 23.7, 0], "params": {"species": "saltbush", "route": [[0, 0, 0], [1.7, 0.0, 0]]}},
   {"id": "gate_saltbush_e", "part": "planting", "at": [-116.4, 23.7, 0], "params": {"species": "saltbush", "route": [[0, 0, 0], [1.7, 0.0, 0]]}}
  ],

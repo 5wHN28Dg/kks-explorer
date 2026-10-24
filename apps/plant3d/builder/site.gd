@@ -3,7 +3,8 @@
 ## the areas' bounds, the same for every plant description, nothing a trainee operates:
 ##   - the areas' yards paved in concrete (their bounds), gravel between them; an area that lays its own roads
 ##     (the site's and the camp's, SITE.md) is compacted gravel between them, its roads cut out of it;
-##   - a ring road round the process areas (asphalt, kerbs, a covered drain along its inner edge);
+##   - a ring road round the process areas (asphalt, kerbs painted yellow and white, a covered drain along its inner
+##     edge, a block-paved footpath along its outer edge, fire hydrants with their bollards beyond it);
 ##   - a precast concrete boundary wall with pilasters and a closed gate, round the process areas and the ring road
 ##     and joined with the `site` pack's areas (the admin building and the plant gate: their outer edge is the wall's
 ##     line), open where a road of an area crosses it (the plant gate);
@@ -26,6 +27,7 @@ const ROAD_W := 7.0
 const WALL_GAP := 12.0     # from the road's outer edge to the wall
 const WALL_H := 2.6
 const KERB_H := 0.12
+const PATH_W := 1.5        # the block-paved footpath along the ring road's outer kerb (photo pass 3)
 const FAR := 760.0         # the terrain's reach from the plant's centre (the walker's far plane is 800 m)
 const TERRAIN_CELL := 20.0
 const RIVER_GAP := 5.0     # the bank: from the wall's east side to the river's edge
@@ -49,6 +51,7 @@ static func poly_of(r: Rect2) -> PackedVector2Array:
 ## Packs whose areas are not the process plant: the site's (inside the wall, to its line) and the camp's (outside).
 const SITE_PACK := "site"
 const CAMP_PACK := "camp"
+const WTP_PACK := "wtp"
 
 static func _rect(bd: Array) -> Rect2:
 	return Rect2(Vector2(bd[0][0], bd[0][1]), Vector2(bd[1][0] - bd[0][0], bd[1][1] - bd[0][1]))
@@ -108,7 +111,8 @@ func make(root: Node3D, holes: Array) -> void:
 		pads.append(_rect(bd))
 		var sts: Array = a.data.get("structures", [])
 		# the site's and the camp's areas lay their own roads and walkways: compacted gravel between them
-		paved.append(sts.any(func(s): return s.get("part", "") == "building") and not a.data.get("pack", "") in [SITE_PACK, CAMP_PACK])
+		# (the water treatment plant's tank farm and vessel rows stand in gravel, as such yards are: photo pass 3)
+		paved.append(sts.any(func(s): return s.get("part", "") == "building") and not a.data.get("pack", "") in [SITE_PACK, CAMP_PACK, WTP_PACK])
 		site_yard.append(a.data.get("pack", "") in [SITE_PACK, CAMP_PACK])
 	holes = holes.duplicate()
 	for sf in roads():
@@ -136,12 +140,24 @@ func make(root: Node3D, holes: Array) -> void:
 		i += 1
 	# the ring road, and gravel from it to the wall (less the yards of the site's areas there)
 	b._slab(root, "road", poly_of(road_out), [poly_of(road_in)], 0.0, 0.5, b._mat("road"), Lightmap.GROUND_TEXEL)
-	var vh: Array = [poly_of(road_out)]
+	# the block-paved footpath along the road's outer kerb, less where a site area's yard or a content road meets the
+	# road (the plant gate and the admin area at the wall's west side)
+	var path_out := road_out.grow(PATH_W)
+	var ph: Array = [poly_of(road_out)]
+	for p in pads:
+		if path_out.intersects(p):
+			ph.append(poly_of(p))
+	for sf in roads():
+		if path_out.intersects(_bbox(sf.outline)):
+			ph.append(sf.outline)
+	b._slab(root, "footpath", poly_of(path_out), ph, 0.0, 0.5, b._mat("pavers"), Lightmap.GROUND_TEXEL)
+	var vh: Array = [poly_of(path_out)]
 	for p in pads:
 		if wall.encloses(p) and not road_out.intersects(p):
 			vh.append(poly_of(p))
 	b._slab(root, "verge", poly_of(wall), vh, 0.0, 0.5, b._mat("ground"), Lightmap.GROUND_TEXEL)
 	_kerbs_and_drain(root, road_in, road_out, drain_in)
+	_hydrants(root, road_out, pads)
 	_wall(root, wall)
 	_windbreak(root, wall, road_out)
 	_terrain(root, wall)
@@ -203,11 +219,12 @@ func _kerbs_and_drain(root: Node3D, road_in: Rect2, road_out: Rect2, drain_in: R
 	b._mesh_node(root, "drain", dark, b._mat("drain"))
 	b._slab(root, "drain_cover", poly_of(road_in), [poly_of(drain_in)], 0.0, 0.03, b._mat("grating"), Lightmap.TEXEL)
 
-## The kerbs are painted in alternate black and yellow stripes KERB_STRIPE long (the paint's colours in the
-## vertices: one draw call): a kerb piece (a rectangle) cut along its length.
+## The kerbs are painted in alternate yellow and white blocks KERB_STRIPE long, as the site's and the camp's (kit
+## parts_site.gd kerb; photo pass 3: the plant's roads are painted so too) (the paint's colours in the vertices: one
+## draw call): a kerb piece (a rectangle) cut along its length.
 const KERB_STRIPE := 1.0
 const KERB_YELLOW := Color(0.92, 0.70, 0.08, 0.3)
-const KERB_BLACK := Color(0.07, 0.07, 0.07, 0.3)
+const KERB_WHITE := Color(0.90, 0.90, 0.87, 0.3)
 func _striped(st: SurfaceTool, pc: PackedVector2Array) -> void:
 	var r := _bbox(pc)
 	var along_x := r.size.x >= r.size.y
@@ -218,8 +235,70 @@ func _striped(st: SurfaceTool, pc: PackedVector2Array) -> void:
 		var t1 := L * (k + 1) / n
 		var q := Rect2(r.position + (Vector2(t0, 0) if along_x else Vector2(0, t0)),
 			Vector2(t1 - t0, r.size.y) if along_x else Vector2(r.size.x, t1 - t0))
-		st.set_color(KERB_YELLOW if k % 2 == 0 else KERB_BLACK)
+		st.set_color(KERB_YELLOW if k % 2 == 0 else KERB_WHITE)
 		Geom.add_prism(st, poly_of(q), 0.0, KERB_H)
+
+## Fire hydrants along the ring road (photo pass 3): a red pillar hydrant HYDRANT_OFF metres beyond the outer kerb,
+## behind the footpath, every HYDRANT_SPACING metres round the plant, a red bollard beside each against the vehicles;
+## none within HYDRANT_CLEAR of a corner, of a content road, of a site area's yard or of an overhead pipe's line
+## (its posts). Made by the parts kit, baked with the ground. Returns the hydrants placed.
+const HYDRANT_SPACING := 60.0
+const HYDRANT_OFF := 2.4
+const HYDRANT_CLEAR := 4.0
+func _hydrants(root: Node3D, road_out: Rect2, pads: Array) -> int:
+	var places := hydrant_places(road_out, pads)
+	var k := 0
+	for pl in places:
+		var p: Vector2 = pl[0]
+		var out: Vector2 = pl[1]   # away from the road
+		var along := Vector2(-out.y, out.x)
+		var yaw := rad_to_deg(atan2(-out.x, -out.y))   # the pumper outlet (+y) towards the road
+		b.kp.structure(root, {"id": "hydrant_%d" % k, "part": "hydrant", "at": [p.x, p.y, 0.0], "yaw": yaw})
+		var q := p + along * 0.9 - out * 0.3
+		b.kp.structure(root, {"id": "hydrant_bollard_%d" % k, "part": "bollard", "at": [q.x, q.y, 0.0]})
+		k += 1
+	b.kp.flush(root)
+	print("build: %d fire hydrants along the ring road" % k)
+	return k
+
+## Where the ring road's hydrants stand: [plan point, unit vector away from the road].
+func hydrant_places(road_out: Rect2, pads: Array) -> Array:
+	var blocked: Array = []
+	for p in pads:
+		if not road_out.encloses(p):
+			blocked.append((p as Rect2).grow(1.0))
+	for sf in roads():
+		blocked.append(_bbox(sf.outline).grow(HYDRANT_CLEAR))
+	var lines: Array = []   # overhead pipes' plan segments
+	for a in b.areas:
+		for pp in a.data.get("pipes", []):
+			var pts: Array = pp.get("points", [])
+			for i in range(pts.size() - 1):
+				if float(pts[i][2]) > 0.5 or float(pts[i + 1][2]) > 0.5:
+					lines.append([Vector2(pts[i][0], pts[i][1]), Vector2(pts[i + 1][0], pts[i + 1][1])])
+	var r := road_out.grow(HYDRANT_OFF)
+	var pg := poly_of(r)
+	var out: Array = []
+	for j in pg.size():
+		var a2: Vector2 = pg[j]
+		var c2: Vector2 = pg[(j + 1) % pg.size()]
+		var L := a2.distance_to(c2)
+		var d := (c2 - a2) / L
+		var away := Vector2(d.y, -d.x)   # (the rect's corners run counter-clockwise: outward is to the right)
+		if away.dot(a2 - r.get_center()) < 0.0:
+			away = -away
+		var t := HYDRANT_SPACING * 0.5
+		while t < L - HYDRANT_CLEAR:
+			var p := a2 + d * t
+			t += HYDRANT_SPACING
+			if t - HYDRANT_SPACING < HYDRANT_CLEAR:
+				continue
+			if blocked.any(func(q): return (q as Rect2).has_point(p)):
+				continue
+			if lines.any(func(sg): return Geometry2D.get_closest_point_to_segment(p, sg[0], sg[1]).distance_to(p) < HYDRANT_CLEAR):
+				continue
+			out.append([p, away])
+	return out
 
 static func _ccw(a: Vector2, c: Vector2, d: Vector2) -> bool:
 	return (c - a).cross(d - a) > 0.0

@@ -204,9 +204,10 @@ class Site(unittest.TestCase):
 
     def test_no_lawn_only_the_regions_species(self):
         self.assertEqual({p[1] for p in self.plants}, set(K.SPECIES))
-        self.assertEqual(set(K.SPECIES), {'date_palm', 'tamarisk', 'oleander', 'bougainvillea', 'saltbush', 'caper'})
+        self.assertEqual(set(K.SPECIES), {'date_palm', 'tamarisk', 'oleander', 'bougainvillea', 'saltbush', 'caper',
+                                          'dracaena'})
 
-    def roads(self, surfaces=('asphalt', 'concrete', 'gravel')):
+    def roads(self, surfaces=('asphalt', 'concrete', 'gravel', 'pavers')):
         out = []
         for a in self.b.areas:
             for s in a['structures']:
@@ -221,7 +222,7 @@ class Site(unittest.TestCase):
 
     def test_every_plant_has_a_purpose(self):
         """SITE.md §4, each species where its purpose is."""
-        paved = self.roads(('concrete',))       # walkways, the forecourt, the mess hall's court
+        paved = self.roads(('concrete', 'pavers'))   # walkways, the forecourt, the mess hall's court
         asphalt = self.roads(('asphalt',))
         parking = [rect_of(s) for a in self.b.areas for s in a['structures']
                    if s['part'] == 'road' and s.get('kks', '').startswith('00UZD')]
@@ -239,10 +240,18 @@ class Site(unittest.TestCase):
             for s in a['structures']:
                 if s['part'] in ('porch', 'canopy'):
                     posts.append(s)
+        inside = {a['id'] for a in self.b.areas if a.get('load') == 'inside'}
+        outside_doors = [(s['at'][0], s['at'][1]) for a in self.b.areas if a['id'] not in inside
+                         for s in a['structures'] if s['part'] == 'door']
         for aid, sp, x, y, sid in self.plants:
             p = (x, y)
             with self.subTest(plant=sid, species=sp, at=(round(x, 1), round(y, 1))):
-                if sp == 'date_palm':
+                # pot plants only indoors, every other species only outdoors
+                self.assertEqual(sp == 'dracaena', aid in inside, 'a pot plant indoors, the rest outdoors')
+                if sp == 'dracaena':
+                    # the entrance's landscape: in a lobby, within 12 m of the building's outside door
+                    self.assertTrue(any(math.dist(p, d) <= 12.0 for d in outside_doors), 'a pot plant stands by an entrance')
+                elif sp == 'date_palm':
                     # beside an east-west walkway, on its south side: the sun is in the south (SITE.md §4)
                     for r in paved:
                         ew = r[2] - r[0] > 3 * (r[3] - r[1])

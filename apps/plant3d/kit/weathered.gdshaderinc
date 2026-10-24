@@ -59,6 +59,9 @@ uniform float lap_length = 0.0;       // cladding sheets this long (m) along UV1
 uniform float macro = 0.0;            // the ground's large-scale variation and ruts (0: none)
 uniform vec4 track = vec4(0.0);       // a track's axis: a point (x, z) and a unit direction (x, z); zero: none
 uniform float tile_size = 0.0;        // a tiled floor: square tiles this wide (m) in world x, z, grout between (0: none)
+uniform float tile_bond = 0.0;        // 1: block paving, bricks twice as long as wide (`tile_size`) laid in half bond
+uniform float tile_tone = 0.06;       // how much one tile's tone differs from the next (glazed tiles little, pavers more)
+uniform float tile_gloss = 1.0;       // the tiles' sheen at a grazing view (0: none, as concrete pavers)
 uniform float cracks = 0.0;           // a bare concrete floor's cracks, scuffs and tyre marks (0: none)
 
 varying vec3 wpos;
@@ -260,6 +263,10 @@ void fragment() {
 	// (derivatives outside the branches: uniform control flow)
 	vec2 tq = wpos.xz / max(tile_size, 0.01);
 	vec2 tw = fwidth(tq);
+	// block paving: rows along world x, each brick 2 tiles long, every other row shifted half a brick (the derivatives
+	// taken before the shift: it jumps at each row)
+	tq.x = mix(tq.x, tq.x * 0.5 + 0.5 * floor(tq.y), tile_bond);
+	tw.x *= mix(1.0, 0.5, tile_bond);
 	float cv = n_lo.b * 0.7 + n_hi.r * 0.3;
 	float cw = fwidth(cv);
 	float sheen = 0.0;
@@ -269,10 +276,10 @@ void fragment() {
 		float grout = 1.0 - smoothstep(gw, gw + max(tw.x, tw.y) * 1.2, 0.5 - max(tf.x, tf.y));
 		grout *= 1.0 - smoothstep(0.08, 0.3, max(tw.x, tw.y));
 		float th = hash1(dot(mod(floor(tq), 64.0), vec2(1.0, 57.0)) + 3.0);   // small arguments: sin keeps its precision on a phone
-		base *= 0.96 + 0.06 * th;
+		base *= 1.0 - tile_tone * 0.67 + tile_tone * th;
 		rough = mix(rough * (0.8 + 0.5 * th), 0.8, grout);
 		base = mix(base, base * 0.72, grout);
-		sheen = (1.0 - grout) * (0.8 + 0.4 * th);
+		sheen = (1.0 - grout) * (0.8 + 0.4 * th) * tile_gloss;
 	}
 	// a bare concrete floor: hairline cracks (the noise's contours, broken), dark scuffs and tyre marks
 	if (cracks > 0.0 && up > 0.7) {

@@ -342,13 +342,21 @@ static func tank_vertical(_part: String, g) -> void:
 		for i in 25:
 			var a := TAU * i / 24.0
 			pts.append(Vector2(cos(a), sin(a)) * (r - 0.1))
+		# the roof's edge handrail: top and knee rails, a post at most about 1.8 m apart (photo pass 3: a storage
+		# tank's rail reads as a dense ring of posts against the sky)
 		m.use("paint_yellow", "form")
+		var every := maxi(1, int(floor(1.8 / (TAU * (r - 0.1) / 24.0))))
 		for i in 24:
 			var a: Vector2 = pts[i]
 			var b: Vector2 = pts[i + 1]
 			m.cyl(Vector3(a.x, a.y, H + 1.1), Vector3(b.x, b.y, H + 1.1), 0.022, -1.0, 6, false)
-			if i % 2 == 0:
+			if i % every == 0:
 				m.cyl(Vector3(a.x, a.y, H), Vector3(a.x, a.y, H + 1.1), 0.022, -1.0, 6, false)
+		m.use("paint_yellow", "detail", 0.05)
+		for i in 24:
+			var a: Vector2 = pts[i]
+			var b: Vector2 = pts[i + 1]
+			m.cyl(Vector3(a.x, a.y, H + 0.55), Vector3(b.x, b.y, H + 0.55), 0.018, -1.0, 5, false)
 	# a caged ladder (small tanks) or a stair round the shell (large ones)
 	if H > 2.5:
 		C.ladder(m, Vector3(0, -r - 0.45, 0.3), H, Vector2(0, 1))

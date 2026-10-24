@@ -107,6 +107,36 @@ def building(sid, x0, y0, x1, y1, h, kks, doors, cladding='panel', floor='vinyl'
     return [b] + out
 
 
+def ac_units(prefix, x0, y0, x1, y1, windows, keep=lambda side, t, z: True):
+    """A split air conditioner's outdoor unit on the outside wall under each window (photo pass 3: under every window
+    of the offices and the accommodation blocks), its foot 0.75 m under the sill (0.25 m off the ground at least),
+    facing out of the wall."""
+    out = []
+    for side, t, z, ww, wh in windows:
+        if side not in ('s', 'n') or not keep(side, t, z):
+            continue
+        foot = r3(max(0.25, z - wh / 2 - 0.75))
+        y = y0 - 0.13 if side == 's' else y1 + 0.13
+        out.append(st(f'{prefix}_ac_{side}{len(out) + 1}', 'ac_unit', [r3(x0 + t + 0.2), r3(y), foot], 180 if side == 's' else 0))
+    return out
+
+
+def hydrant(sid, at, yaw, bollard=(0.9, 0)):
+    """A pillar fire hydrant by a road, its pumper outlet (+y) towards it, and a red bollard beside it (photo pass 3)."""
+    r = math.radians(yaw)
+    bx, by = bollard
+    q = (at[0] + bx * math.cos(r) + by * math.sin(r), at[1] - bx * math.sin(r) + by * math.cos(r))
+    return [st(sid, 'hydrant', [at[0], at[1], 0], yaw), st(f'{sid}_bollard', 'bollard', [r3(q[0]), r3(q[1]), 0])]
+
+
+def bays(x_mid, length, every=5.5):
+    """The car stalls under a shade sail of `length` centred on x_mid: two in each bay between its posts (kit
+    parts_site.gd _sail: posts every length / ceil(length / 5.5))."""
+    n = max(1, math.ceil(length / every))
+    b = length / n
+    return [r3(x_mid - length / 2 + b * (i + 0.5) + o) for i in range(n) for o in (-b / 4, b / 4)]
+
+
 def windows_along(side, length, every, z=1.5, w=1.2, h=1.0, skip=()):
     out = []
     n = int(length // every)
@@ -148,11 +178,11 @@ def gate():
     x0, x1 = WALL_X, -53
     ent = (-92, -86)    # the admin building's entrance road, northwards
     s = [box_road('gate_road', x0, ROAD_Y[0], x1, ROAD_Y[1], kks='00UZA10'),
-         box_road('gate_walk_w', x0, WALK_Y[0], ent[0], WALK_Y[1], 'concrete'),
-         box_road('gate_walk_e', ent[1], WALK_Y[0], x1, WALK_Y[1], 'concrete'),
+         box_road('gate_walk_w', x0, WALK_Y[0], ent[0], WALK_Y[1], 'pavers'),
+         box_road('gate_walk_e', ent[1], WALK_Y[0], x1, WALK_Y[1], 'pavers'),
          box_road('gate_entrance', ent[0], ROAD_Y[1], ent[1], 40),
          # the walkway up to the admin building, beside its road
-         box_road('gate_walk_admin', ent[0] - 2, WALK_Y[1], ent[0], 40, 'concrete'),
+         box_road('gate_walk_admin', ent[0] - 2, WALK_Y[1], ent[0], 40, 'pavers'),
          st('gate_crossing', 'crossing', [ent[0] + 3, 22, 0], params={'width': 6, 'length': 2}),
          kerb('gate_kerb_s', [x0, ROAD_Y[0]], [x1, ROAD_Y[0]]),
          kerb('gate_kerb_nw', [x0, ROAD_Y[1]], [ent[0], ROAD_Y[1]]),
@@ -169,6 +199,7 @@ def gate():
     # palms in the verge, south of the walkway: its shade at midday (the sun stands in the south)
     s += palms_along('gate_palm', -112, -56, (VERGE_Y[0] + VERGE_Y[1]) / 2, 8, skip=(ent[0], ent[1], -108))
     s += lamps('gate_lamp', -136, -58, 26, y=11.0)
+    s += hydrant('gate_hydrant', (-97, 10.4), 0)
     # low beds by the gate house's door: bare ground held against the dust
     s += [row('gate_saltbush_w', 'saltbush', (-121.3, 23.7), (-119.6, 23.7)),
           row('gate_saltbush_e', 'saltbush', (-116.4, 23.7), (-114.7, 23.7))]
@@ -190,13 +221,13 @@ def admin():
     x0, x1 = WALL_X, -53
     ax0, ay0, ax1, ay1 = ADMIN
     s = [box_road('admin_entrance', -92, 40, -86, 91, kks='00UZA20'),
-         box_road('admin_walk', -94, 40, -92, 91, 'concrete'),
+         box_road('admin_walk', -94, 40, -92, 91, 'pavers'),
          box_road('admin_parking', -86, 66, -58, 91, kks='00UZD10'),
          # the paved forecourt in front of the building and north of the parking, shaded by palms
          box_road('admin_forecourt', -118, 91, -58, 98, 'concrete'),
          box_road('admin_workshop_apron', -100, 54, -94, 61),   # to the walkway's edge (not over it: tests/test_ground.gd)
          box_road('admin_store_apron', -86, 49, -80, 55, 'concrete'),
-         kerb('admin_kerb_w', [-92, 40], [-92, 91], False),
+         kerb('admin_kerb_w', [-92, 40], [-92, 91]),
          ]
     # the office block: three storeys, its floors and two straight stairs at its west end
     win = []
@@ -204,7 +235,9 @@ def admin():
         win += [(side, t, z, ww, wh) for side, t, _, ww, wh in windows_along('s', ax1 - ax0, 4, skip=(16,) if z < 3 else ())]
         win += [(side, t, z, ww, wh) for side, t, _, ww, wh in windows_along('n', ax1 - ax0, 4)]
     s += building('admin_building', ax0, ay0, ax1, ay1, 11, '00UYC10', [('s', 16, 'double')], cladding='concrete',
-                  windows=win)
+                  floor='tile', windows=win)
+    # an air conditioner under every window but the ground floor's at the front (its beds and canopy there)
+    s += ac_units('admin_building', ax0, ay0, ax1, ay1, win, keep=lambda side, t, z: side == 'n' or z > 3)
     for k, z in enumerate((FLOOR_H, 2 * FLOOR_H)):
         s.append(st(f'admin_floor_{k + 1}', 'floor', [ax0, ay0, z], params={'outline': rect(ax1 - ax0, ay1 - ay0),
                                                                              'finish': 'vinyl'}))
@@ -219,15 +252,17 @@ def admin():
           row('admin_bed_w', 'caper', (-121.5, 97.2), (-111.5, 97.2)),
           row('admin_bed_e', 'caper', (-104.5, 97.2), (-94.5, 97.2))]
     # the parking under car shades, palms along the forecourt shading the walk from the cars to the door
-    s += [st('admin_shade_s', 'canopy', [-72, 69, 0], 90, params={'length': 26, 'width': 5.5, 'height': 2.8}),
-          st('admin_shade_n', 'canopy', [-72, 88, 0], 90, params={'length': 26, 'width': 5.5, 'height': 2.8})]
+    # (shade sails: their posts at the back of the stalls, away from the aisle: kit parts_site.gd _sail)
+    s += [st('admin_shade_s', 'canopy', [-72, 69, 0], 270, params={'length': 27.5, 'width': 5.5, 'height': 2.8, 'kind': 'sail'}),
+          st('admin_shade_n', 'canopy', [-72, 88, 0], 90, params={'length': 27.5, 'width': 5.5, 'height': 2.8, 'kind': 'sail'})]
     s += palms_along('admin_palm', -90, -60, 94.5, 10)
     s += [plant1(f'admin_parking_palm_{k + 1}', 'date_palm', [-55.5, y]) for k, y in enumerate((70, 79, 88))]
     colours = ['grey', 'silver', 'sand', 'blue', 'silver', 'green', 'grey', 'silver']
-    for k, x in enumerate((-83, -79.7, -76.4, -73.1, -66.5, -63.2)):
+    stalls = bays(-72, 27.5)
+    for k, x in enumerate([stalls[i] for i in (0, 1, 2, 3, 6, 7)]):
         s.append(st(f'admin_car_s{k + 1}', 'vehicle', [x, 69, 0], 180, params={'kind': 'pickup' if k % 2 else 'suv',
                                                                                'colour': colours[k]}))
-    for k, x in enumerate((-83, -76.4, -73.1, -69.8, -63.2)):
+    for k, x in enumerate([stalls[i] for i in (0, 2, 3, 5, 7)]):
         s.append(st(f'admin_car_n{k + 1}', 'vehicle', [x, 88, 0], 0, params={'kind': 'suv' if k % 2 else 'pickup',
                                                                              'colour': colours[k + 3]}))
     # workshops (I&C with its calibration bench, mechanical, electrical: interior below) and the store
@@ -240,6 +275,10 @@ def admin():
     s += building('admin_store', sx0, sy0, sx1, sy1, 6, '00USU10', [('w', 6.0, 'roller')], cladding='metal',
                   floor='concrete', windows=windows_along('n', sx1 - sx0, 6, z=4.2, w=2.0), locked=True)
     s += [row('admin_ws_bed', 'saltbush', (-127.2, 49.2), (-124.2, 49.2))]
+    # skip bins by the store, the telecom mast behind the office block, a hydrant by the entrance road
+    s += [st('admin_skip_1', 'skip_bin', [-59.5, 48.5, 0], 90), st('admin_skip_2', 'skip_bin', [-59.5, 51.2, 0], 90),
+          st('admin_mast', 'mast', [-127, 122, 0], params={'height': 30})]
+    s += hydrant('admin_hydrant', (-85, 63.5), 270)
     signs = [sign('Administration building 00UYC10', [-108, ay0, 3.0], 180, 0.4),
              sign('Permit office', [-110.5, ay0, 2.5], 180, 0.25),
              sign('Workshops 00UST10', [wx1, 60.5, 4.5], 90, 0.4), sign('Store 00USU10', [sx0, 55.5, 4.0], 270, 0.4),
@@ -268,6 +307,18 @@ def admin_inside():
     for k, x in enumerate((-99.4, -98.0, -96.6)):
         s += [st(f'admin_in_meeting_chair_s{k + 1}', 'chair', [x, 106.95, 0], 0, params={'kind': 'office'}),
               st(f'admin_in_meeting_chair_n{k + 1}', 'chair', [x, 109.05, 0], 180, params={'kind': 'office'})]
+    # the lobby (photo pass 3): leather sofas round carved wooden side tables at both ends, potted plants by the
+    # entrance and in the corners (the entrance's landscape, SITE.md §4); its floor glazed tiles (the building's)
+    s += [st('admin_in_lobby_sofa_w', 'sofa', [-113.6, 103.45, 0], 180, params={'seats': 3, 'cover': 'leather'}),
+          st('admin_in_lobby_chair_w', 'sofa', [-111.6, 102.2, 0], 270, params={'seats': 1, 'cover': 'leather'}),
+          st('admin_in_lobby_table_w', 'table', [-113.6, 102.1, 0], 90, params={'length': 1.0, 'width': 0.6, 'height': 0.5, 'kind': 'wood'}),
+          st('admin_in_lobby_sofa_e', 'sofa', [-92.85, 100.8, 0], 270, params={'seats': 3, 'cover': 'leather'}),
+          st('admin_in_lobby_chair_e', 'sofa', [-94.6, 103.25, 0], 180, params={'seats': 1, 'cover': 'leather'}),
+          st('admin_in_lobby_table_e', 'table', [-94.4, 100.8, 0], 0, params={'length': 1.0, 'width': 0.6, 'height': 0.5, 'kind': 'wood'}),
+          st('admin_in_lobby_table_c', 'table', [-101.4, 99.0, 0], 0, params={'length': 0.6, 'width': 0.6, 'height': 0.6, 'kind': 'wood'}),
+          plant1('admin_in_lobby_plant_1', 'dracaena', [-109.7, 98.6]), plant1('admin_in_lobby_plant_2', 'dracaena', [-106.3, 98.6]),
+          plant1('admin_in_lobby_plant_3', 'dracaena', [-115.4, 103.5]), plant1('admin_in_lobby_plant_4', 'dracaena', [-97.5, 98.6]),
+          plant1('admin_in_lobby_plant_5', 'dracaena', [-102.0, 103.5])]
     for k, x in enumerate((-114.2, -111.6)):
         s += [st(f'admin_in_permit_desk_{k + 1}', 'desk', [x, 108.6, 0], 0),
               st(f'admin_in_permit_chair_{k + 1}', 'chair', [x, 108.0, 0], 0, params={'kind': 'office'})]
@@ -336,7 +387,7 @@ def workshop_inside():
 def road_west():
     x0, x1 = -260, WALL_X
     s = [box_road('rw_road', x0, ROAD_Y[0], x1, ROAD_Y[1], kks='00UZA30'),
-         box_road('rw_walk', x0, WALK_Y[0], x1, WALK_Y[1], 'concrete'),
+         box_road('rw_walk', x0, WALK_Y[0], x1, WALK_Y[1], 'pavers'),
          kerb('rw_kerb_s', [x0, ROAD_Y[0]], [x1, ROAD_Y[0]]), kerb('rw_kerb_n', [x0, ROAD_Y[1]], [x1, ROAD_Y[1]]),
          # the corridor between the camp and the plant is walled on both sides, low enough to see over (the country
          # is not walkable)
@@ -383,7 +434,7 @@ def camp():
     x0, y0, x1, y1 = CAMP
     spine_w = -440
     s = [box_road('camp_spine', spine_w, ROAD_Y[0], x1, ROAD_Y[1], kks='00UZA40'),
-         box_road('camp_walk', spine_w, WALK_Y[0], x1, WALK_Y[1], 'concrete'),
+         box_road('camp_walk', spine_w, WALK_Y[0], x1, WALK_Y[1], 'pavers'),
          kerb('camp_kerb_s1', [spine_w, ROAD_Y[0]], [-272, ROAD_Y[0]]), kerb('camp_kerb_s2', [-266, ROAD_Y[0]], [x1, ROAD_Y[0]]),
          kerb('camp_kerb_n', [spine_w, ROAD_Y[1]], [x1, ROAD_Y[1]]),
          # the camp's perimeter wall (the gate at its east side, where the road comes in) and the gate itself
@@ -428,6 +479,7 @@ def camp():
             win += [(side, BLOCK_W / 12 + 40 / 6 * i, 1.5, 1.2, 1.0) for i in range(6)]
         s += building(sid, bx, by, bx1, by + BLOCK_D, BLOCK_H, f'00UZW1{n}', [('w', 5, 'personnel'), ('e', 5, 'personnel')],
                       windows=win, locked=(n != 1))
+        s += ac_units(sid, bx, by, bx1, by + BLOCK_D, win)
         s.append(st(f'{sid}_porch', 'porch', [bx + BLOCK_W / 2, by, 0], 180, params={'length': BLOCK_W, 'depth': 2.5}))
         # the path from the covered walkway to the gable door
         px0, px1 = (bx1, WALKWAY_X[0]) if col == 'A' else (WALKWAY_X[1], bx)
@@ -452,7 +504,10 @@ def camp():
           st('camp_office_chair', 'chair', [-286.5, 27.7, 0], 180, params={'kind': 'office'}),
           row('camp_office_bed_w', 'saltbush', (-286.6, 25.4), (-285.4, 25.4)),
           row('camp_office_bed_e', 'caper', (-282.6, 25.4), (-281.2, 25.4)),
-          plant1('camp_gate_saltbush', 'saltbush', [-265.5, 24.6])]
+          plant1('camp_gate_saltbush', 'saltbush', [-265.5, 24.6]),
+          # the ambulance, parked on the camp road by the first-aid point, facing the gate
+          st('camp_ambulance', 'vehicle', [-288, 17.6, 0], 90, params={'kind': 'ambulance'})]
+    s += hydrant('camp_hydrant_1', (-294, 10.0), 0) + hydrant('camp_hydrant_2', (-318, 10.0), 0)
     # the laundry, behind the gym, its door towards the blocks
     s += building('camp_laundry', *LAUNDRY, AMENITY_H, '00UZW32', [('w', 4, 'personnel')],
                   windows=windows_along('s', 10, 4) + windows_along('n', 10, 4))
@@ -463,7 +518,9 @@ def camp():
                   windows_along('e', 20, 4, z=1.8, w=1.6, h=1.2) + windows_along('w', 20, 4, z=1.8, w=1.6, h=1.2))
     s += [box_road('camp_mess_walk', -341, my1, -339, ROAD_Y[0], 'concrete'),
           st('camp_mess_canopy', 'canopy', [-340, 8, 0], params={'length': 8, 'width': 3.0, 'height': 2.8}),
-          box_road('camp_mess_service', mx0 + 8, -24, mx0 + 12, my0, 'concrete')]
+          box_road('camp_mess_service', mx0 + 8, -24, mx0 + 12, my0, 'concrete'),
+          # the kitchen's skip bins beside its service road
+          st('camp_skip_1', 'skip_bin', [-345.5, -20.5, 0], 90), st('camp_skip_2', 'skip_bin', [-345.5, -23.2, 0], 90)]
     # the mess hall's court: paved, shaded by palms, tables and benches for eating outside
     cx0, cy0, cx1, cy1 = COURT
     s.append(box_road('camp_court', cx0, cy0, cx1, cy1, 'concrete'))
@@ -477,17 +534,17 @@ def camp():
     px0, py0, px1, py1 = PARKING
     s += [box_road('camp_parking', px0, py0, px1, py1, kks='00UZD20'),
           box_road('camp_parking_road', -272, py1, -266, ROAD_Y[0]),
-          st('camp_shade_s', 'canopy', [-283, -32.5, 0], 90, params={'length': 30, 'width': 5.5, 'height': 2.8}),
-          st('camp_shade_n', 'canopy', [-286, -7.5, 0], 90, params={'length': 24, 'width': 5.5, 'height': 2.8}),
+          st('camp_shade_s', 'canopy', [-283, -32.5, 0], 270, params={'length': 27.5, 'width': 5.5, 'height': 2.8, 'kind': 'sail'}),
+          st('camp_shade_n', 'canopy', [-286, -7.5, 0], 90, params={'length': 22, 'width': 5.5, 'height': 2.8, 'kind': 'sail'}),
           st('camp_bus_1', 'vehicle', [-283, -17, 0], 90, params={'kind': 'bus', 'colour': 'sand'}),
           st('camp_bus_2', 'vehicle', [-283, -23, 0], 90, params={'kind': 'bus', 'colour': 'sand'}),
           st('camp_bus_shelter', 'canopy', [-273, 24.4, 0], 90, params={'length': 6, 'width': 2.4, 'height': 2.6}),
           st('camp_bus_bench', 'bench', [-273, 24.9, 0], params={'length': 3})]
     colours = ['silver', 'grey', 'sand', 'blue', 'silver', 'green', 'grey']
-    for k, x in enumerate((-297.5, -294.2, -287.6, -284.3, -277.7, -274.4)):
+    for k, x in enumerate([bays(-283, 27.5)[i] for i in (0, 1, 3, 4, 6, 7)]):
         s.append(st(f'camp_car_s{k + 1}', 'vehicle', [x, -32.5, 0], 180, params={'kind': 'pickup' if k % 2 else 'suv',
                                                                                  'colour': colours[k]}))
-    for k, x in enumerate((-296.5, -290, -283.5)):
+    for k, x in enumerate([bays(-286, 22)[i] for i in (0, 2, 5)]):
         s.append(st(f'camp_car_n{k + 1}', 'vehicle', [x, -7.5, 0], 0, params={'kind': 'pickup', 'colour': colours[k + 2]}))
     # the sports court, floodlit, its gate towards the main walkway
     s.append(st('camp_court_sports', 'court', [-445, -22, 0], 270, params={'length': 28, 'width': 15}))

@@ -1392,7 +1392,7 @@ func _along(a: Vector3, b: Vector3) -> Transform3D:
 
 ## A road's surface (content: `road`'s `surface`) and its material: asphalt, paved concrete (walkways, cast in bays) or
 ## compacted gravel.
-const ROAD_MATS := {"asphalt": "road_asphalt", "concrete": "yard", "gravel": "yard_gravel"}
+const ROAD_MATS := {"asphalt": "road_asphalt", "concrete": "yard", "gravel": "yard_gravel", "pavers": "pavers"}
 func _surface(parent: Node3D, sf: Dictionary) -> void:
 	# a building's floors (an operating deck) are painted as its ground floor is (_hall_floor)
 	var inside: bool = sf.kind == "floor" or _in_building(sf)

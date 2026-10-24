@@ -199,6 +199,10 @@ static func specs() -> Dictionary:
 	# the camp's and the offices' floors: matte vinyl tiles 0.5 m square (no gloss: the user's review of the camp,
 	# 2026-10-21)
 	m["floor_vinyl"] = {"set": "", "tint": Color(0.66, 0.64, 0.60), "rough": 0.75, "metal": 0.0, "tile_size": 0.5, "weather": "floor"}
+	# block paving (the walkways along the roads: photo pass 3): grey concrete pavers 0.2 × 0.1 m in half bond, each a
+	# little different in tone, matt (no glaze), the concrete's relief
+	m["pavers"] = {"set": "Concrete034", "maps": ["NormalGL", "Roughness"], "tint": Color(0.70, 0.67, 0.62), "rough": 1.0,
+		"metal": 0.0, "tile": 2.0, "tile_size": 0.1, "bond": 1.0, "tone": 0.22, "gloss": 0.0, "weather": "floor_bare"}
 	return m
 
 static var _specs := {}
@@ -243,7 +247,7 @@ const STRUCTURE_MATS := {
 	"floor_tile": ["floor_tile", false], "floor_concrete": ["floor_concrete", false], "firewall": ["concrete", true],
 	"louvre": ["galvanised", false], "window": ["window_glass", false], "window_in": ["window_day", false],
 	"trim": ["paint_grey", false], "wall_panel": ["panel", true], "floor_vinyl": ["floor_vinyl", false],
-	"road_asphalt": ["asphalt", false],
+	"road_asphalt": ["asphalt", false], "pavers": ["pavers", false],
 }
 
 static func structure_spec(name: String) -> Dictionary:
@@ -338,6 +342,9 @@ static func _make_weathered(name: String, spec: Dictionary, size: int) -> Shader
 	mat.set_shader_parameter("macro", float(spec.get("macro", 0.0)))
 	mat.set_shader_parameter("top_edge", 1.0 if spec.get("top_edge", false) else 0.0)
 	mat.set_shader_parameter("tile_size", float(spec.get("tile_size", 0.0)))
+	mat.set_shader_parameter("tile_bond", float(spec.get("bond", 0.0)))
+	mat.set_shader_parameter("tile_tone", float(spec.get("tone", 0.06)))
+	mat.set_shader_parameter("tile_gloss", float(spec.get("gloss", 1.0)))
 	mat.set_shader_parameter("cracks", float(spec.get("cracks", 0.0)))
 	if ResourceLoader.exists(NOISE):
 		mat.set_shader_parameter("noise_tex", load(NOISE))
