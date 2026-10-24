@@ -545,6 +545,8 @@ func _isolation(e, w: Dictionary, st: int) -> void:
 			b.disabled = not (held and reach) or _sent_now(str([w["id"], "unlock", p]))
 			b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			row.add_child(b)
+			if _may_remove(e):
+				_removal(box, w["id"], p, held and reach, other)
 		elif mine:
 			var b := W.button("Remove the lock (as the %s)" % who, send_lock.bind("unlock", p))
 			b.name = "unlock_%d" % p

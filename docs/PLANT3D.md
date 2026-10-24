@@ -1580,7 +1580,9 @@ What S1 settles that §16–§17 left open (the engines and the vectors follow t
 The user's decisions of 2026-10-24 (§15.1 "Locks at a shift change", §15.5 "Instructor actions are visible"), in
 both engines and the vectors (§19):
 - **A post** is a role and a routine (the person's own, else the role's): the three field operators of a crew hold
-  three posts, one of each crew holds each. A person's *post-mates* are the other people of their post.
+  three posts, one of each crew holds each. A person's *post-mates* are the other people of their post, but not of
+  their own crew (crew-mates come and go together: two control room operators of a crew hand nothing over to each
+  other).
 - **`{"handover": "take"}`, an NPC:** at each of their turns while the step is current, the point to take is the
   first, in model order (isolations, then points), that holds a lock of a post-mate and none of theirs, that no other
   person's take step has chosen and is still taking, and that this step has not tried. They walk to its work place
@@ -1602,7 +1604,9 @@ both engines and the vectors (§19):
   the permit form makes them; nothing is taken from the kept actions.
 - **Leaving the site with a lock:** at phase 2 of each step 9 the engine lists, in index order, the people other than
   the trainee and the absent who are off duty, off site (no place, not on a way) and hold a lock; each one not on the
-  list of the previous phase 2 is a `lock_left` source for every reaction to it.
+  list of the previous phase 2 is a `lock_left` source for every reaction to it. In a step with a `duty` `on` event
+  the previous list counts as empty, so a lock still left on is given again when someone comes on duty (a removal
+  that found no supervisor on duty, `unassigned`, is not lost; one still queued is not given twice, §16.7).
 - **The vectors** pin (§19): in `staff.runs`, a lock handed over by NPCs at the shift change while the permit is
   issued, with no step where a point is unlocked (the incoming electrician's and field operator's locks, then the
   outgoing ones' unlocks), and the deisolation later by the new holders; nobody of the post coming on (absent): the

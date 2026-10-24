@@ -1240,7 +1240,7 @@ class Vectors2(unittest.TestCase):
         self.assertIn([16, 'repair', 'f1'], life)              # made on the locked pump, as the work's
         self.assertEqual(self.V['steps'][0]['states'][16]['values']['pump_fault'], 0.0)
         self.assertEqual([e for e in life if e[1] == 'repair' and len(e) == 3], [[16, 'repair', 'f1']])  # done: none
-        self.assertIn([2, 'repair', 'f1', 'wo_p', None, 'refused', ['state']], shared)
+        self.assertIn([2, 'repair', 'f1', 'wo_p', None, 'refused', ['state', 'isolation']], shared)
         self.assertIn([2, 'repair', 'f1'], shared)             # the trainer's, on a free code
 
     def test_repair_needs_the_isolation(self):

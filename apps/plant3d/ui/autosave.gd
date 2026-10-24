@@ -271,9 +271,13 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 			if typeof(held) != TYPE_ARRAY or held.is_empty() or key.x < 0 or key.x >= fresh._iso.size() \
 					or key.y < 0 or key.y >= fresh._iso[key.x][1].size():
 				return "a damaged lockers"
-			for y in held:
+			for j in held.size():
+				var y = held[j]
 				if y != null and typeof(y) != TYPE_STRING:
 					return "a damaged lockers"
+				for j2 in j:
+					if typeof(held[j2]) == typeof(y) and held[j2] == y:
+						return "a damaged lockers"     # one person's lock twice on a point
 			if d.has("lockbits") and d["lockbits"][fresh._iso[key.x][4] + key.y] != 1:
 				return "locks that don't agree"
 		if d.has("lockbits"):

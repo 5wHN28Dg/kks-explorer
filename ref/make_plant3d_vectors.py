@@ -2080,6 +2080,10 @@ def handover_staff():
 def staff_runs():
     """(why, scenario changes, staff changes or None, the trainee player or None, steps, snapshot every)."""
     hand = handover_staff()
+    late = copy.deepcopy(hand)          # a relief supervisor on from 20:00 (a duty coming on at night)
+    late['rosters'].append({'id': 'late', 'kind': 'days', 'days': ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+                            'hours': ['20:00', '08:00']})
+    late['people'].append({'id': 'n_sup', 'role': 'shift_sup', 'roster': 'late', 'call': 'Relief super'})
     at5 = {'start': {'day': 1, 'time': '17:00'}}
     extra_person = copy.deepcopy(mini_staff()['staff.json'])
     extra_person['people'].append({'id': 'a_fo3', 'role': 'field_op', 'roster': 'shift', 'crew': 'a',
@@ -2171,10 +2175,13 @@ def staff_runs():
          at5, hand, Trainee(extra=[[2, 'fault', 'f1'], [1320, 'permit', 'wo_pump', 'accept', None],
                                    [1321, 'permit', 'wo_pump', 'done', None], [1322, 'permit', 'wo_pump', 'return', None]]),
          1900, 20),
-        ('nobody takes over (§17.9): crew B\'s electrician absent, crew A\'s waits 15 clock minutes at the breaker, '
+        ('nobody takes over (§17.9): crew B\'s electrician absent, crew A\'s waits 60 clock minutes at the breaker, '
          'leaves the site with the lock on, and crew B\'s supervisor removes it by authority with the reason (its '
          'owner in the event); the permit, issued, is suspended back to approved',
          dict(at5, absent=['b_elec']), hand, Trainee(extra=[[2, 'fault', 'f1']]), 1900, 20),
+        ('nobody takes over and no supervisor on duty either (crew B\'s absent): the removal is unassigned when the '
+         'electrician leaves, and given again when someone comes on duty: a relief supervisor on at 20:00 removes it',
+         dict(at5, absent=['b_elec', 'b_sup']), late, Trainee(extra=[[2, 'fault', 'f1']]), 2600, 20),
         ('the trainee as crew B\'s field operator takes over the valve\'s lock at the handover (a lock input from the '
          'permit form); crew A\'s field operator then unlocks theirs',
          dict(at5, trainee='b_fo'), hand, Trainee(extra=[[2, 'fault', 'f1']]), 1400, 20),

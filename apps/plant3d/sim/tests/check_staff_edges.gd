@@ -109,17 +109,20 @@ func _kept_command_dropped() -> void:
 	var e = _engine("a_fo1")
 	var sm = e._sm
 	e.st_early = [["op", 1, "K", "start", "local", "m"], ["op", 1, "K2", "open", "local", null], ["lock", 1, "w", 0]]
-	sm.drop_kept(e, [[5, "machine", "m", "a", "b", "next"]])
+	sm.drop_kept(e, [[5, "machine", "m", "a", "b", "next"]], "a_fo1")
 	if e.st_early.size() != 3:
 		_bad.append("a machine moved by its own next dropped a kept command")
-	sm.drop_kept(e, [[5, "machine", "m", "b", "c", "command"]])
+	sm.drop_kept(e, [[5, "machine", "m", "b", "c", "command"]], "a_fo1")
 	if e.st_early != [["op", 1, "K2", "open", "local", null], ["lock", 1, "w", 0]]:
 		_bad.append("a machine entered by a command kept the earlier command: %s" % [e.st_early])
 	e.st_early = [["unlock", 1, "w", 0], ["unlock", 1, "w", 1], ["lock", 1, "w", 0]]
-	sm.drop_kept(e, [[5, "lock", "w", 0, "a_elec", "refused", ["state"]]])
+	sm.drop_kept(e, [[5, "lock", "w", 0, "a_fo1", "refused", ["state"]]], "a_fo1")
 	if e.st_early.size() != 3:
 		_bad.append("a refused lock dropped a kept unlock")
-	sm.drop_kept(e, [[5, "lock", "w", 0, "a_elec", "done", []]])
+	sm.drop_kept(e, [[5, "lock", "w", 0, "a_elec", "done", []]], "a_fo1")
+	if e.st_early.size() != 3:
+		_bad.append("another person's lock dropped the trainee's kept unlock (locks stack, PLANT3D §15.1)")
+	sm.drop_kept(e, [[5, "lock", "w", 0, "a_fo1", "done", []]], "a_fo1")
 	if e.st_early != [["unlock", 1, "w", 1], ["lock", 1, "w", 0]]:
 		_bad.append("a point locked again kept the earlier unlock: %s" % [e.st_early])
 	# a paused step is looked at again when it resumes

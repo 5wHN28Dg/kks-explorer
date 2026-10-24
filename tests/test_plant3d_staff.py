@@ -435,6 +435,27 @@ class StaffVectors(unittest.TestCase):
         self.assertIn([rm[0][0], 'permit', 'wo_pump', 'auto', None, 'done', [2]], ev)
         self.assertIn([rm[0][0], 'say', 'b_sup', 'locks_removed', 'channel'], ev)
 
+    def test_a_left_lock_is_given_again(self):
+        """§17.9 (blind review): a removal that found no supervisor on duty is given again when someone comes on."""
+        ev = self.run_named('nobody takes over and no supervisor')
+        self.assertIn([1554, 'task', None, 'remove_left', 'unassigned'], ev)
+        self.assertIn([1800, 'task', 'n_sup', 'remove_left', 'start'], ev)
+        self.assertTrue(any(x[1] == 'remove_lock' and x[4] == 'n_sup' and x[5] == 'done' and x[7] == 'a_elec'
+                            for x in ev))
+
+    def test_crew_mates_are_not_post_mates(self):
+        """§17.9 (blind review): two people of one post in one crew hand nothing over to each other."""
+        F = G.staff_files(staff=G.handover_staff())
+        F['staff.json']['people'].append({'id': 'a_fo3', 'role': 'field_op', 'roster': 'shift', 'crew': 'a',
+                                          'call': 'Field 3 A'})
+        e = P.Engine(P.check_files(F), 's1')
+        sr = e.staff
+        ix = sr.st.person_ix
+        a1, a3 = sr.people[ix['a_fo1']], sr.people[ix['a_fo3']]
+        self.assertFalse(sr.mate(a1, 'a_fo3'))
+        self.assertFalse(sr.mate(a3, 'a_fo1'))
+        self.assertTrue(sr.mate(a1, 'c_fo'))
+
     def test_the_trainee_hands_over(self):
         """§17.9: the trainee takes over a lock from the permit form (incoming), and gives one (outgoing)."""
         ev = self.run_named("the trainee as crew B's field operator")

@@ -1191,6 +1191,8 @@ class StaffRun:
         # people who left the site with a lock on since the last phase 2 (§17.9)
         now = set()
         gone = []
+        if any(x[1] == 'duty' and x[3] == 'on' for x in evs):
+            self.left = set()           # someone came on duty: a lock still left is given again (§17.9)
         for p in self.people:
             if p.i != self.trainee and p.id not in self.absent and not p.on and p.pos is None and p.leg is None \
                     and any(p.id in x for x in e.locks.values()):
@@ -1563,8 +1565,13 @@ class StaffRun:
     def mate(self, p, who):
         """Whether `who` (a lock's person) is a post-mate of p: another person of p's role and routine."""
         st = self.st
-        return isinstance(who, str) and who != p.id and who in st.person_ix \
-            and self.people[st.person_ix[who]].post == p.post
+        if not (isinstance(who, str) and who != p.id and who in st.person_ix):
+            return False
+        q = st.people[st.person_ix[who]]
+        mine = st.people[p.i]
+        # a crew-mate hands nothing over at a shift change: they come and go together
+        return self.people[st.person_ix[who]].post == p.post and \
+            not ('crew' in q and q.get('crew') == mine.get('crew'))
 
     def chosen(self, p, key):
         """Whether another person's take step has chosen the point and is still taking it."""

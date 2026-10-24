@@ -668,6 +668,10 @@ func react(e, n: int) -> void:
 	# people who left the site with a lock on since the last phase 2 (§17.9)
 	var gone := []
 	if has_left:
+		for x in evs:
+			if x[1] == "duty" and x[3] == "on":
+				e.st_left = {}          # someone came on duty: a lock still left is given again (§17.9)
+				break
 		var now := {}
 		for pi in people.size():
 			if pi != e.st_trainee and not e._absent.has(pi) and not e.sp_on[pi] and e.sp_pos[pi] == -1 \
@@ -1118,6 +1122,10 @@ func _holds_any(e, who) -> bool:
 ## Whether `who` (a lock's person) is a post-mate of pi: another person of pi's role and routine.
 func mate(pi: int, who) -> bool:
 	if typeof(who) != TYPE_STRING or who == people[pi]["id"] or not person_ix.has(who):
+		return false
+	var q: Dictionary = people[person_ix[who]]
+	# a crew-mate hands nothing over at a shift change: they come and go together
+	if q.has("crew") and people[pi].has("crew") and q["crew"] == people[pi]["crew"]:
 		return false
 	return post[person_ix[who]] == post[pi]
 
