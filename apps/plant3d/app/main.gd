@@ -138,7 +138,7 @@ func _ready() -> void:
 		for n in ["area_wtp", "area_intake"]:
 			if plant.has_node(n):
 				(plant.get_node(n) as Node3D).visible = false
-	if "farview" in Lighting.off:   # fx_off=farview: the WTP's and intake's pieces drawn at every distance, no far view
+	if "farview" in Lighting.off:   # fx_off=farview: the merged far views unused, their pieces drawn at every distance (the insides' ranges stay)
 		far_view_off(plant)
 	if "occlusion" in Lighting.off:   # fx_off=occlusion: the buildings' occluders not used (what they save)
 		get_viewport().use_occlusion_culling = false

@@ -140,6 +140,8 @@ static func apply_ranges(vp: Viewport, root: Node = null) -> void:
 			var d: float = float(n.get_meta("detail_size")) * f / min_px
 			var margin := d * 0.1
 			n.visibility_range_end = d + float(n.get_meta("box_half", 0.0)) + margin
+			if n.has_meta("range_cap"):   # inside a building: never farther than its insides (builder/plant_builder.gd _mark_inside)
+				n.visibility_range_end = minf(n.visibility_range_end, float(n.get_meta("range_cap")))
 			n.visibility_range_end_margin = margin
 			n.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 	for n in (vp.get_tree().get_nodes_in_group("legible") if root == null else _in_group(root, "legible")):

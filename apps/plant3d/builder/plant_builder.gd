@@ -1022,8 +1022,8 @@ func hlod(root: Node3D, id: String, items: Dictionary, scope: Node, keep := {}) 
 ## frames of 100-150 ms there once warm, 2026-10-23); from the plant gate's road, 250-400 m off, the train was about
 ## 1,000 of 1,400 (65-80 ms of GPU a frame, frames up to 135 ms).
 ## The merged meshes are the pieces' own geometry and materials, unbaked and without UV2 (the kit cells' pipelines:
-## none new), and cast no shadow (beyond every tier's shadow distance). Doors are drawn near only (beyond FAR_MERGE_RANGE
-## a doorway shows open); labels (the signs' text) keep their own range, as before.
+## none new), and cast no shadow (beyond every tier's shadow distance). Doors are merged shut; labels (the signs' text)
+## keep their own range, as before.
 ## Detail pieces (group "detail": valves, instruments, small fittings) are left out and keep their own range by size
 ## (app/quality.gd), as before: merged, the Note 9 would draw every bolt of the WTP at 400 m.
 const FAR_MERGE_RANGE := 200.0
@@ -1031,6 +1031,7 @@ const FAR_MERGE_RANGE := 200.0
 func far_merge(root: Node3D, id: String) -> int:
 	_mark_inside(root, id)
 	var groups := {}   # [Vector2i, Material] -> {arrays…}
+	var whole := {}    # Vector2i -> the pieces merged into that square's far mesh
 	var pieces: Array = []
 	var stack: Array = root.get_children()
 	while not stack.is_empty():
@@ -1039,9 +1040,7 @@ func far_merge(root: Node3D, id: String) -> int:
 		var gi := n as GeometryInstance3D
 		if not far_mergeable(gi, root):
 			continue
-		pieces.append(gi)
-		if _in_door(gi):
-			continue   # (a moving door: drawn near only)
+		pieces.append(gi)   # (a door too, merged shut: it opens only within a few metres of the walker, app/door.gd)
 		var c := _plan_centre(gi)
 		var k := Vector2i(int(floor(c.x / HLOD_CHUNK)), int(floor(c.y / HLOD_CHUNK)))
 		var xf := _global_xf(gi)
@@ -1058,6 +1057,7 @@ func far_merge(root: Node3D, id: String) -> int:
 				xfs.append(xf * Transform3D(Basis(Vector3(b[0], b[4], b[8]), Vector3(b[1], b[5], b[9]), Vector3(b[2], b[6], b[10])), Vector3(b[3], b[7], b[11])))
 		if mesh == null:
 			continue
+		whole[k] = int(whole.get(k, 0)) + 1   # (far_mergeable: every surface of it goes in)
 		for si in mesh.get_surface_count():
 			var mat: Material = gi.material_override if gi.material_override != null else mesh.surface_get_material(si)
 			if mat == null:
@@ -1116,6 +1116,7 @@ func far_merge(root: Node3D, id: String) -> int:
 		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.set_meta("far_view", true)
+		mi.set_meta("pieces", int(whole.get(k, 0)))
 		Lightmap.mark(mi, false)
 		far.add_child(mi)
 		made[k] = mi
@@ -1168,7 +1169,9 @@ func _mark_inside(root: Node3D, id: String) -> void:
 		if r >= 0.0:
 			gi.set_meta("far_inside", true)
 			r = minf(r, FAR_MERGE_RANGE)
-			if not gi.is_in_group("detail") and (gi.visibility_range_end <= 0.0 or gi.visibility_range_end > r):
+			if gi.is_in_group("detail"):
+				gi.set_meta("range_cap", r)   # (app/quality.gd: a detail's range by size, at most this)
+			elif gi.visibility_range_end <= 0.0 or gi.visibility_range_end > r:
 				gi.visibility_range_end = r
 				gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 
@@ -1265,12 +1268,18 @@ static func far_mergeable(gi: GeometryInstance3D, root: Node) -> bool:
 			and gi.has_meta("xforms") else null)   # (an instanced cell's places: the build's saved buffer)
 	if mesh == null:
 		return false
+	var need := Mesh.ARRAY_FORMAT_NORMAL | Mesh.ARRAY_FORMAT_TANGENT | Mesh.ARRAY_FORMAT_COLOR | Mesh.ARRAY_FORMAT_TEX_UV
 	for si in mesh.get_surface_count():
 		if mesh.surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
 			return false
+		# what the merge takes: a material and the plant's vertex format (else the piece keeps its own drawing)
+		if gi.material_override == null and mesh.surface_get_material(si) == null:
+			return false
+		if mesh is ArrayMesh and ((mesh as ArrayMesh).surface_get_format(si) & need) != need:
+			return false
 	return true
 
-## Whether a node is part of a door (app/door.gd: it moves, so it is not merged into a far view).
+## Whether a node is part of a door (app/door.gd: it moves; merged into a far view in its shut pose only).
 static func _in_door(n: Node) -> bool:
 	var p := n.get_parent()
 	while p != null:

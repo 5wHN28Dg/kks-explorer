@@ -8,6 +8,7 @@ extends RefCounted
 const Plant = preload("res://app/plant.gd")
 const Builder = preload("res://builder/plant_builder.gd")
 const Main = preload("res://app/main.gd")
+const Quality = preload("res://app/quality.gd")
 const FORMAT := Mesh.ARRAY_FORMAT_VERTEX | Mesh.ARRAY_FORMAT_NORMAL | Mesh.ARRAY_FORMAT_TANGENT | Mesh.ARRAY_FORMAT_COLOR | Mesh.ARRAY_FORMAT_TEX_UV
 
 func run(tree: SceneTree) -> Array:
@@ -54,6 +55,7 @@ func run(tree: SceneTree) -> Array:
 		# every merged piece has its square's far mesh as its visibility parent, and that mesh holds its geometry in
 		# place: per far mesh, the same vertices and indices as its pieces, over the same box
 		var want := {}   # far mesh -> [vertices, indices, bounds] of its pieces
+		var pieces_in := {}   # far mesh -> its pieces
 		var orphans := 0
 		var all_v := 0   # every drawn piece's vertices but the details' and labels'
 		var details := 0
@@ -68,6 +70,8 @@ func run(tree: SceneTree) -> Array:
 			var gi := n as GeometryInstance3D
 			if gi != null and gi.is_in_group("detail"):   # a detail keeps its own range (app/quality.gd), never under the far view
 				details += 1
+				if not _is_part(gi, area) and _wholly_in(gi, area, builds, -Builder.WALL_T) and not gi.has_meta("range_cap"):
+					p.append("%s's detail %s, inside a building, is drawn no farther than its insides" % [id, area.get_path_to(gi)])
 				if not gi.visibility_parent.is_empty():
 					p.append("%s's detail %s keeps its own range, not the far view's" % [id, area.get_path_to(gi)])
 				continue
@@ -94,8 +98,7 @@ func run(tree: SceneTree) -> Array:
 				orphans += 1
 				orphan = str(area.get_path_to(gi))
 				continue
-			if Builder._in_door(gi):
-				continue
+			pieces_in[par] = int(pieces_in.get(par, 0)) + 1   # (a door too: merged shut)
 			var mesh: Mesh = gi.mesh if gi is MeshInstance3D else (gi as MultiMeshInstance3D).multimesh.mesh
 			var xfs: Array = [gi.global_transform]
 			if gi is MultiMeshInstance3D:
@@ -136,11 +139,33 @@ func run(tree: SceneTree) -> Array:
 		for mi in got:
 			var g: Array = got[mi]
 			var w: Array = want.get(mi, [0, 0, null])
+			# every piece under it merged into it (none drawn near only with nothing in its place beyond)
+			if int(mi.get_meta("pieces", -1)) != int(pieces_in.get(mi, 0)):
+				p.append("%s's far mesh %s holds all %d pieces under it (%d)" % [id, mi.name, int(pieces_in.get(mi, 0)), int(mi.get_meta("pieces", -1))])
 			# simplified within FAR_ERROR: no more than its pieces, never empty, over the same box
 			if g[0] == 0 or g[1] == 0 or g[0] > w[0] or g[1] > w[1]:
 				p.append("%s's far mesh %s holds its pieces' geometry, simplified (%d vertices and %d indices, of %d and %d)" % [id, mi.name, g[0], g[1], w[0], w[1]])
 			elif w[2] == null or not _same_box(g[2], w[2]):
 				p.append("%s's far mesh %s lies where its pieces do (%s, they %s)" % [id, mi.name, str(g[2]), str(w[2])])
+	# the tier's range for a detail inside a building stops at its cap (app/quality.gd)
+	var vp := tree.root.get_viewport()
+	var had: bool = vp.has_meta("detail_min_px")
+	var was = vp.get_meta("detail_min_px") if had else null
+	vp.set_meta("detail_min_px", 1.5)
+	var d := MeshInstance3D.new()
+	d.add_to_group("detail")
+	d.set_meta("detail_size", 10.0)
+	d.set_meta("range_cap", 50.0)
+	var holder := Node3D.new()
+	holder.add_child(d)
+	Quality.apply_ranges(vp, holder)
+	if d.visibility_range_end > 50.0 or d.visibility_range_end <= 0.0:
+		p.append("a detail inside a building is drawn no farther than its cap (%.0f)" % d.visibility_range_end)
+	holder.free()
+	if had:
+		vp.set_meta("detail_min_px", was)
+	else:
+		vp.remove_meta("detail_min_px")
 	# fx_off=farview (app/main.gd): the far views hidden, every piece under one drawn at every distance again
 	Main.far_view_off(plant)
 	for n in plant.find_children("*", "GeometryInstance3D", true, false):
@@ -169,14 +194,15 @@ static func _is_part(gi: Node, area: Node) -> bool:
 
 ## Whether a piece's box lies wholly within one of the area's buildings in plan and under its roof (checked here
 ## without the build's own rule: every corner in the outline, the top at most the building's height).
-static func _wholly_in(gi: GeometryInstance3D, area: Node, builds: Array) -> bool:
+static func _wholly_in(gi: GeometryInstance3D, area: Node, builds: Array, inset := 0.0) -> bool:
 	var box: AABB = gi.get_meta("box") if gi.has_meta("box") else (area as Node3D).global_transform.affine_inverse() * gi.global_transform * gi.get_aabb()
 	for b in builds:
 		if "area_" + String(b.area) != String(area.name) or box.end.y > float(b.height) + 0.01:
 			continue
 		var all := true
 		for c in [Vector2(box.position.x, -box.position.z), Vector2(box.end.x, -box.position.z), Vector2(box.position.x, -box.end.z), Vector2(box.end.x, -box.end.z)]:
-			if not Geometry2D.is_point_in_polygon(c, b.outline):
+			var pg: Array = Geometry2D.offset_polygon(b.outline, inset) if inset != 0.0 else [b.outline]
+			if pg.size() != 1 or not Geometry2D.is_point_in_polygon(c, pg[0]):
 				all = false
 		if all:
 			return true
