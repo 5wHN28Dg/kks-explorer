@@ -2,7 +2,7 @@
 ## `far_merge`): their pieces merged per square and material and simplified within FAR_ERROR, drawn from
 ## FAR_MERGE_RANGE out, each piece itself drawn only nearer (its `visibility_parent`); per far mesh no more vertices and
 ## indices than its pieces and over the same box (a wrong transform or square shows); detail pieces left out with their
-## own range, and what stands inside a building (drawn only within FAR_MERGE_RANGE: no door is open from beyond it); in the plant's vertex format without UV2 (no pipeline of its own), and casting no shadow.
+## own range, and what stands wholly inside a building, under its roof, not a door (drawn only near it: no door is open from farther); in the plant's vertex format without UV2 (no pipeline of its own), and casting no shadow.
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
@@ -18,7 +18,14 @@ func run(tree: SceneTree) -> Array:
 	if err != "":
 		plant.free()
 		return ["the built plant loads: " + err]
-	for id in ["area_wtp", "area_intake", "area_hrsg1", "area_st", "area_gt1", "area_ct", "area_cw", "area_bop", "area_control", "area_trafo1"]:
+	# the buildings as the content build reads them (plan outlines, heights)
+	var bld := Builder.new()
+	var data := ProjectSettings.globalize_path("res://").path_join("../../data/plant3d").simplify_path()
+	if not bld.read(data) or not bld.collect():
+		plant.free()
+		return ["the content builds (its buildings)"]
+	var builds: Array = bld.buildings
+	for id in ["area_wtp", "area_intake", "area_hrsg1", "area_st", "area_gt1", "area_ct", "area_cw", "area_bop", "area_control", "area_trafo1", "area_rack"]:
 		var area := plant.get_node_or_null(id) as Node3D
 		if area == null:
 			p.append("%s is in the built plant" % id)
@@ -66,6 +73,10 @@ func run(tree: SceneTree) -> Array:
 				continue
 			if gi != null and gi.has_meta("far_inside"):   # inside a building: drawn as before, culled by its occluder
 				inside += 1
+				if Builder._in_door(gi):
+					p.append("%s's door %s is not taken for inside its building" % [id, area.get_path_to(gi)])
+				elif not _is_part(gi, area) and not _wholly_in(gi, area, builds):
+					p.append("%s's %s, marked inside, stands wholly inside a building and under its roof" % [id, area.get_path_to(gi)])
 				if not gi.visibility_parent.is_empty():
 					p.append("%s's %s, inside a building, is never under the far view" % [id, area.get_path_to(gi)])
 				elif gi.visibility_range_end <= 0.0 or gi.visibility_range_end > Builder.FAR_MERGE_RANGE:
@@ -120,7 +131,7 @@ func run(tree: SceneTree) -> Array:
 			p.append("%s's hall lamps are drawn only near the hall (%.0f m)" % [id, lamps.visibility_range_end])
 		if inside == 0 and id in ["area_st", "area_wtp"]:
 			p.append("%s's halls keep their insides out of the far view" % id)
-		if details == 0:
+		if details == 0 and id != "area_rack":
 			p.append("%s has detail pieces (left out of its far view)" % id)
 		for mi in got:
 			var g: Array = got[mi]
@@ -146,3 +157,27 @@ func run(tree: SceneTree) -> Array:
 static func _same_box(a: AABB, b: AABB) -> bool:
 	# (a simplified surface keeps its outline within FAR_ERROR, but a small piece at the edge may go entirely)
 	return a.position.distance_to(b.position) < 1.0 and a.end.distance_to(b.end) < 1.0
+
+## A building's own part (under its body).
+static func _is_part(gi: Node, area: Node) -> bool:
+	var n := gi.get_parent()
+	while n != null and n != area:
+		if n.has_meta("building"):
+			return true
+		n = n.get_parent()
+	return false
+
+## Whether a piece's box lies wholly within one of the area's buildings in plan and under its roof (checked here
+## without the build's own rule: every corner in the outline, the top at most the building's height).
+static func _wholly_in(gi: GeometryInstance3D, area: Node, builds: Array) -> bool:
+	var box: AABB = gi.get_meta("box") if gi.has_meta("box") else (area as Node3D).global_transform.affine_inverse() * gi.global_transform * gi.get_aabb()
+	for b in builds:
+		if "area_" + String(b.area) != String(area.name) or box.end.y > float(b.height) + 0.01:
+			continue
+		var all := true
+		for c in [Vector2(box.position.x, -box.position.z), Vector2(box.end.x, -box.position.z), Vector2(box.position.x, -box.end.z), Vector2(box.end.x, -box.end.z)]:
+			if not Geometry2D.is_point_in_polygon(c, b.outline):
+				all = false
+		if all:
+			return true
+	return false

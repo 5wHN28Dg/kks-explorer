@@ -1141,38 +1141,62 @@ const INSIDE_PARTS := ["floor", "frame", "lamp_housings", "lamp_lenses", "liner"
 	"crane_hook"]
 
 ## Marks (meta `far_inside`) what stands inside the area's buildings: their inside parts, and every other piece whose
-## plan centre is within a building's outline. They stay out of the far view and are drawn only within INSIDE_RANGE
-## of the building (as the site's and camp's buildings: a part of the building from its centre, any other piece the
-## building's whole diagonal more), at most FAR_MERGE_RANGE: farther, every door is shut (app/door.gd opens one within
+## box stands wholly inside a building (`inside_building`). They stay out of the far view and are drawn only within
+## INSIDE_RANGE plus the building's diagonal of their own centre (as the site's and camp's buildings), at most
+## FAR_MERGE_RANGE: farther, every door is shut (app/door.gd opens one within
 ## a few metres) and windows are on solid wall, so a hall's inside is never seen from there. At 200 m the turbine
 ## hall's lamps, roof steel and frame (45,000 vertices) all came in at once on the camp walk's way back, with a GPU
 ## frame of 111 ms (2026-10-24). Merged, a hall's whole inside was drawn with its walls from every
 ## distance (from the WTP the first train's halls cost the Note 9 a third more GPU time); drawn as pieces, the
 ## occluders did not cull them from 300 m and more (the camp's road: 1,000 draw calls), 2026-10-23.
 func _mark_inside(root: Node3D, id: String) -> void:
-	var outlines: Array = buildings.filter(func(b): return b.area == id).map(func(b): return b.outline)
+	var mine: Array = buildings.filter(func(b): return b.area == id)
 	for n in root.find_children("*", "GeometryInstance3D", true, false):
 		var gi := n as GeometryInstance3D
 		var body: Node = gi.get_parent()
 		while body != null and body != root and not body.has_meta("building"):
 			body = body.get_parent()
-		var r := -1.0   # inside: drawn within r of its own centre
+		var r := -1.0   # inside: drawn within r of its own centre (the building's whole diagonal from anywhere in it)
 		if body != null and body != root:
-			if String(gi.name) in INSIDE_PARTS:   # the building's own (its centre is the building's)
-				var b: Array = buildings.filter(func(q): return q.id == body.get_meta("building"))
-				r = INSIDE_RANGE + (Site._bbox(b[0].outline).size.length() * 0.5 if not b.is_empty() else FAR_MERGE_RANGE)
-		else:
-			var c := _plan_centre(gi)
-			for pg in outlines:
-				if Geometry2D.is_point_in_polygon(c, pg):   # anywhere in it: the whole diagonal from a door
-					r = INSIDE_RANGE + Site._bbox(pg).size.length()
-					break
+			if String(gi.name) in INSIDE_PARTS:   # the building's own
+				var b: Array = mine.filter(func(q): return q.id == body.get_meta("building"))
+				r = INSIDE_RANGE + (Site._bbox(b[0].outline).size.length() if not b.is_empty() else FAR_MERGE_RANGE)
+		elif not _in_door(gi):
+			var b = inside_building(_piece_box(gi), mine)
+			if b != null:
+				r = INSIDE_RANGE + Site._bbox(b.outline).size.length()
 		if r >= 0.0:
 			gi.set_meta("far_inside", true)
 			r = minf(r, FAR_MERGE_RANGE)
 			if not gi.is_in_group("detail") and (gi.visibility_range_end <= 0.0 or gi.visibility_range_end > r):
 				gi.visibility_range_end = r
 				gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+
+## The building (of `bs`) a piece's box stands wholly inside, or null: every corner in plan at least WALL_T inside its
+## outline (a door, a pipe through the wall or a cell of pipework reaching outdoors is not inside) and its top under
+## the roof (a filter house standing on it is not inside).
+static func inside_building(box: AABB, bs: Array):
+	for b in bs:
+		var inner := Geometry2D.offset_polygon(b.outline, -WALL_T)
+		if inner.size() != 1 or box.end.y > float(b.height) + 0.01:
+			continue
+		var ok := true
+		for c in [Vector2(box.position.x, -box.position.z), Vector2(box.end.x, -box.position.z),
+				Vector2(box.position.x, -box.end.z), Vector2(box.end.x, -box.end.z)]:
+			if not Geometry2D.is_point_in_polygon(c, inner[0]):
+				ok = false
+				break
+		if ok:
+			return b
+	return null
+
+## A drawn piece's box in the area's frame (the kit's cells carry it as meta `box`).
+func _piece_box(gi: GeometryInstance3D) -> AABB:
+	if gi.has_meta("box"):
+		return gi.get_meta("box")
+	if gi is MeshInstance3D and gi.mesh != null:
+		return _global_xf(gi) * gi.mesh.get_aabb()
+	return AABB(_global_xf(gi).origin, Vector3.ZERO)
 
 ## The far view's error: the merged geometry simplified until its surfaces stray this far (metres) from the pieces'
 ## (two thirds of a pixel at FAR_MERGE_RANGE on the Note 9, one and a half on a 4K screen's full tier, less farther off).
