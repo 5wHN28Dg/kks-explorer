@@ -456,6 +456,14 @@ class StaffVectors(unittest.TestCase):
         self.assertFalse(sr.mate(a3, 'a_fo1'))
         self.assertTrue(sr.mate(a1, 'c_fo'))
 
+    def test_a_returned_work_is_not_handed_over(self):
+        """§17.9 (adversarial review): a work returned before the handover: nobody takes its locks over, the outgoing
+        people unlock without waiting, and the permit is closed (no lock rotates to the next shift)."""
+        ev = self.run_named('a work returned just before the shift change')
+        self.assertFalse(any(x[1] == 'lock' and x[0] > 902 for x in ev))
+        self.assertIn([954, 'unlock', 'wo_pump', 0, 'a_elec', 'done', []], ev)
+        self.assertIn([1437, 'permit', 'wo_pump', 'close', 'b_sup', 'done', []], ev)
+
     def test_the_trainee_hands_over(self):
         """§17.9: the trainee takes over a lock from the permit form (incoming), and gives one (outgoing)."""
         ev = self.run_named("the trainee as crew B's field operator")

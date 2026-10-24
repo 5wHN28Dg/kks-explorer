@@ -1140,21 +1140,37 @@ func chosen(e, pi: int, key: Vector2i) -> bool:
 	return false
 
 
+## A point to take over: a post-mate's lock on it, none of theirs nor of a crew-mate of their post (already taken
+## over), and its work still open (returned or cancelled: the isolation is coming off, §17.9).
+func _to_take_at(e, pi: int, k: int, held: Array) -> bool:
+	var pid: String = people[pi]["id"]
+	if _has(held, pid):
+		return false
+	var st: int = e.pstate[e.holder[k]]
+	if st == 7 or st == 10:
+		return false
+	for x in held:
+		if typeof(x) == TYPE_STRING and x != pid and person_ix.has(x):
+			var q: Dictionary = people[person_ix[x]]
+			if post[person_ix[x]] == post[pi] and q.has("crew") and people[pi].has("crew") \
+					and q["crew"] == people[pi]["crew"]:
+				return false
+	for x in held:
+		if mate(pi, x):
+			return true
+	return false
+
+
 ## Whether the point is still to do for a take, give or remove_locks step.
-func _still(pi: int, cur: Dictionary, s: Dictionary, held: Array) -> bool:
+func _still(e, pi: int, cur: Dictionary, s: Dictionary, key: Vector2i) -> bool:
+	var held: Array = e.lockers.get(key, [])
 	if held.is_empty():
 		return false
-	var pid: String = people[pi]["id"]
 	var h: String = s.get("handover", "")
 	if h == "take":
-		if _has(held, pid):
-			return false
-		for x in held:
-			if mate(pi, x):
-				return true
-		return false
+		return _to_take_at(e, pi, key.x, held)
 	if h == "give":
-		return _has(held, pid)
+		return _has(held, people[pi]["id"])
 	return cur.get("owner") != null and _has(held, cur.get("owner"))
 
 
@@ -1166,10 +1182,9 @@ func lock_target(e, pi: int, cur: Dictionary, s: Dictionary, x) -> Vector2i:
 	for k in e._iso.size():
 		for j in e._iso[k][1].size():
 			var key := Vector2i(k, j)
-			var held: Array = e.lockers.get(key, [])
-			if held.is_empty() or tried.has(key):
+			if not e.lockers.has(key) or tried.has(key):
 				continue
-			if not _still(pi, cur, s, held):
+			if not _still(e, pi, cur, s, key):
 				continue
 			if take and x != null and chosen(e, pi, key):
 				continue
@@ -1182,7 +1197,7 @@ func points_left(e, pi: int, cur: Dictionary, s: Dictionary) -> Array:
 	var out := []
 	for k in e._iso.size():
 		for j in e._iso[k][1].size():
-			if _still(pi, cur, s, e.lockers.get(Vector2i(k, j), [])):
+			if _still(e, pi, cur, s, Vector2i(k, j)):
 				out.append(Vector2i(k, j))
 	return out
 
@@ -1210,7 +1225,7 @@ func lock_round(e, pi: int, cur: Dictionary, s: Dictionary):
 				return "next"
 			x["pt"] = t
 		var key: Vector2i = x["pt"]
-		if not _still(pi, cur, s, e.lockers.get(key, [])):
+		if not _still(e, pi, cur, s, key):
 			tried.append(key)           # no longer to do (taken, given or removed meanwhile)
 			x.erase("pt")
 			x.erase("since")
@@ -1221,7 +1236,8 @@ func lock_round(e, pi: int, cur: Dictionary, s: Dictionary):
 			if r != "next":
 				return r
 			x.erase("dest")
-		if kind == "give":
+		var wst: int = e.pstate[e.holder[key.x]]
+		if kind == "give" and wst != 7 and wst != 10:
 			var other := false
 			for h in e.lockers[key]:
 				if not _same(h, pid):

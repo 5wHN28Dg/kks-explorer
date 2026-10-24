@@ -1584,13 +1584,15 @@ both engines and the vectors (§19):
   their own crew (crew-mates come and go together: two control room operators of a crew hand nothing over to each
   other).
 - **`{"handover": "take"}`, an NPC:** at each of their turns while the step is current, the point to take is the
-  first, in model order (isolations, then points), that holds a lock of a post-mate and none of theirs, that no other
-  person's take step has chosen and is still taking, and that this step has not tried. They walk to its work place
+  first, in model order (isolations, then points), that holds a lock of a post-mate, none of theirs and none of a
+  crew-mate of their post (one already took it over), whose work's permit is not `returned` or `cancelled` (its
+  isolation is coming off: nothing to hand over), that no other person's take step has chosen and is still taking,
+  and that this step has not tried. They walk to its work place
   (its code's, when it has one), make the `lock` input, read its outcome in the next step 9, and mark the point tried,
   whatever the outcome. The step is done when no point is left to take. A pause lets the chosen point go.
 - **`{"handover": "give"}`, an NPC:** the point to give is the first, in model order, that holds a lock of theirs and
   that this step has not tried. They walk to its work place and wait there until the point holds another person's
-  lock, at most 60 clock minutes from their arrival; then they make the `unlock` input and read its outcome. A wait
+  lock, at most 60 clock minutes from their arrival (no wait when its work's permit is `returned` or `cancelled`); then they make the `unlock` input and read its outcome. A wait
   that runs out leaves the lock on. Either way the point is tried; the step is done when no point is left.
 - **`{"remove_locks": message}`, an NPC:** the instance's *owner* is the person its `lock_left` reaction named (no
   owner in any other instance: the validator allows the step only in the task of a `lock_left` reaction, `bad_ref`,

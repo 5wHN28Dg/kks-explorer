@@ -1595,7 +1595,7 @@ class StaffRun:
                 if not held or key in tried:
                     continue
                 if s.get('handover') == 'take':
-                    if p.id in held or not any(self.mate(p, h) for h in held) or (x is not None and self.chosen(p, key)):
+                    if not self.to_take(p, key, held) or (x is not None and self.chosen(p, key)):
                         continue
                 elif s.get('handover') == 'give':
                     if p.id not in held:
@@ -1636,7 +1636,8 @@ class StaffRun:
                 if r != 'next':
                     return r
                 x.pop('dest', None)
-            if kind == 'give' and not any(not same(h, p.id) for h in e.locks[key]):
+            if kind == 'give' and e.pstate[e.holder[key[0]]] not in (7, 10) \
+                    and not any(not same(h, p.id) for h in e.locks[key]):
                 if 'since' not in x:
                     x['since'] = e.step_no
                 if e.step_no - x['since'] < HANDOVER_WAIT * st.tpm:
@@ -1662,10 +1663,24 @@ class StaffRun:
         if not held:
             return False
         if s.get('handover') == 'take':
-            return p.id not in held and any(self.mate(p, h) for h in held)
+            return self.to_take(p, key, held)
         if s.get('handover') == 'give':
             return p.id in held
         return cur['owner'] is not None and any(same(h, cur['owner']) for h in held)
+
+    def to_take(self, p, key, held):
+        """A point to take over: a post-mate's lock on it, none of theirs nor of a crew-mate of their post (already
+        taken over), and its work still open (returned or cancelled: the isolation is coming off, §17.9)."""
+        st = self.st
+        if p.id in held or self.e.pstate[self.e.holder[key[0]]] in (7, 10):
+            return False
+        mine = st.people[p.i]
+        for h in held:
+            if isinstance(h, str) and h in st.person_ix and h != p.id:
+                q = st.people[st.person_ix[h]]
+                if self.people[st.person_ix[h]].post == p.post and 'crew' in q and q['crew'] == mine.get('crew'):
+                    return False
+        return any(self.mate(p, h) for h in held)
 
     def say(self, p, msg, to):
         e = self.e

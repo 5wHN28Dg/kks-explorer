@@ -498,8 +498,13 @@ func _isolation(e, w: Dictionary, st: int) -> void:
 			else:
 				if other == null:
 					other = y
-				if e._sm != null and e.st_trainee != -1 and e._sm.mate(e.st_trainee, y):
-					mate = true
+		if locked and e._sm != null and e.st_trainee != -1:
+			mate = e._sm._to_take_at(e, e.st_trainee, k, lks)
+			# the trainee's remove_locks step names whose lock goes (§17.9): that one, when it is here
+			var c = e.sp_cur[e.st_trainee]
+			if c != null and e._sm.tasks[c["task"]]["steps"][c["step"]].has("remove_locks") \
+					and c.get("owner") != null and e._sm._has(lks, c["owner"]):
+				other = c["owner"]
 		var kind: String = Permits.KIND_WORDS.get(pt["kind"], pt["kind"])
 		box.add_child(W.label("%d. %s %s (%s)" % [p + 1, pt["kks"], ui.info.name_of(pt["kks"]), kind], 18))
 		box.add_child(W.label(pt["how"], 16, W.DIM))
@@ -572,7 +577,7 @@ func _isolation(e, w: Dictionary, st: int) -> void:
 			var g := W.button("Go there", func(): ui.fly_to(pt["kks"]))
 			g.name = "go_%d" % p
 			row.add_child(g)
-		if (can_lock and not locked or can_unlock and locked) and held and not reach:
+		if (can_lock and not locked or (can_unlock or st in [4, 5, 6]) and locked) and held and not reach:
 			box.add_child(W.label("At the equipment only: walk up to it (or Go there)", 15, W.DIM))
 
 

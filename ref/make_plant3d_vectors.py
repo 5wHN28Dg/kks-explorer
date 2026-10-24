@@ -2182,6 +2182,11 @@ def staff_runs():
         ('nobody takes over and no supervisor on duty either (crew B\'s absent): the removal is unassigned when the '
          'electrician leaves, and given again when someone comes on duty: a relief supervisor on at 20:00 removes it',
          dict(at5, absent=['b_elec', 'b_sup']), late, Trainee(extra=[[2, 'fault', 'f1']]), 2600, 20),
+        ('a work returned just before the shift change (adversarial review): the incoming people take over none of its '
+         'locks (its isolation is coming off), the outgoing ones unlock without waiting for them, and the permit is '
+         'deisolated and closed', at5, hand,
+         Trainee(extra=[[2, 'fault', 'f1'], [900, 'permit', 'wo_pump', 'accept', None],
+                        [901, 'permit', 'wo_pump', 'done', None], [902, 'permit', 'wo_pump', 'return', None]]), 1800, 20),
         ('the trainee as crew B\'s field operator takes over the valve\'s lock at the handover (a lock input from the '
          'permit form); crew A\'s field operator then unlocks theirs',
          dict(at5, trainee='b_fo'), hand, Trainee(extra=[[2, 'fault', 'f1']]), 1400, 20),

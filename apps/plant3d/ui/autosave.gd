@@ -286,6 +286,25 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 				n += int(b)
 			if n != d["lockers"].size():
 				return "locks that don't agree"
+	# a handover step's state (PLANT3D §17.9): the point chosen, those tried, the wait's start
+	if d.has("sp_cur") and d.has("lockbits"):
+		for c in d["sp_cur"]:
+			if typeof(c) != TYPE_DICTIONARY or typeof(c.get("st")) != TYPE_DICTIONARY:
+				continue
+			var x: Dictionary = c["st"]
+			var pts := []
+			if x.has("pt"):
+				pts.append(x["pt"])
+			if x.has("tried"):
+				if typeof(x["tried"]) != TYPE_ARRAY:
+					return "a damaged handover"
+				pts.append_array(x["tried"])
+			for v in pts:
+				if typeof(v) != TYPE_VECTOR2I or v.x < 0 or v.x >= fresh._iso.size() or v.y < 0 \
+						or v.y >= fresh._iso[v.x][1].size():
+					return "a damaged handover"
+			if x.has("since") and typeof(x["since"]) != TYPE_INT:
+				return "a damaged handover"
 	if d.get("ptw_count", 0) < 0:
 		return "a damaged permit count"
 	for k in ["inputs", "events"]:
