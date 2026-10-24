@@ -21,6 +21,7 @@ extends RefCounted
 ## - a time t counts floor(t / 0.1 + 0.5) steps; a timer is count / 10.0.
 
 const PlantModel = preload("plant_model.gd")
+const Staff = preload("staff.gd")
 
 const STEP := 0.1
 
@@ -107,6 +108,46 @@ var inputs: Array = []
 var step_no := 0
 var timing := false                 # when set, every step's time in microseconds goes to step_us (tests/bench_step.gd)
 var step_us := PackedInt64Array()
+var staff_us := PackedInt64Array()    # with timing: step 9's own time in each step
+
+# format 2's clock and staff (§16–§17): built from the content and the scenario (shared by clones, not saved)
+var _sm = null                      # sim/staff.gd: the plant's staff.json when the scenario has `staff`, else null
+var _S := 0                         # the clock at step 0, in tenths of a clock second (§16.1)
+var _ds := 0                        # day_scale
+var _absent := {}                   # person index -> true
+var _fixed_trainee := false         # the scenario names the trainee
+var _show := {}                     # code -> its show binding's value name or number
+var _fault_kks := {}                # scenario fault id -> its code or null
+var _npc_pending := 0               # the NPCs' inputs in this step's step 1 (set every step)
+# the staff's state (§17; saved with the run, copied by clone): st_ for the run, sp_ per person in file order
+var J := 0                          # the jumps made, in tenths of a clock second
+var npc_queue: Array = []           # the NPCs' inputs made in step 9, for the next step's step 1
+var ev_mark := 0                    # where this step's events begin
+var st_order := 0                   # task instances made
+var st_unacked := 0                 # given to the trainee since their last task_ack (§17.6)
+var st_trainee := -1                # the trainee's person, -1 for none (free mode)
+var st_t_at := -1                   # the place the trainee is at (arrive, leave), -1 for none
+var st_t_in: Array = []             # the trainee's inputs for step 9
+var st_jumped: Array = []           # [old clock, new clock] of a jump in this step
+var st_holder := {}                 # place -> the person reserving or occupying it
+var st_given := {}                  # reaction source -> instances of it still queued or current
+var st_vprev: Array = []            # per reaction on a value: its truth after the previous step
+var st_next1 := 0                   # the clock at which phase 1 next has something to do (staff.gd _phase1)
+var st_early: Array = []            # the trainee's done actions no step took yet (§17.8): [kind, step, …]
+var sp_on := PackedByteArray()
+var sp_duty: Array = []             # [start, end] or []
+var sp_duties: Array = []           # the duties planned ahead
+var sp_planned := PackedInt64Array()
+var sp_slots: Array = []            # [time, duty start, slot, repetition, task, duty]
+var sp_pos := PackedInt32Array()    # place, -1 off site or on a way
+var sp_leg: Array = []              # [from, to, depart, arrive] or []
+var sp_cur: Array = []              # the current task instance or null
+var sp_queue: Array = []
+var sp_res := PackedInt32Array()    # a place reserved, -1
+var sp_occ := PackedInt32Array()    # a place occupied, -1
+var sp_result: Array = []           # an NPC's input's outcome, read in step 9
+var sp_rng := PackedInt64Array()
+var sp_wake := PackedInt64Array()   # the step a person's next turn can change anything (staff.gd turn)
 
 
 func _init(model = null, scenario = null) -> void:
@@ -129,6 +170,19 @@ func _init(model = null, scenario = null) -> void:
 		ix[names[i]] = i
 	_compile()
 	_step0()
+	for x in m.bind:
+		if x.has("show") and not _show.has(x["kks"]):
+			_show[x["kks"]] = x["show"]
+	for f in sc.get("faults", []):
+		_fault_kks[f["id"]] = f.get("kks")
+	var clock = m.plant.get("clock")
+	if clock != null:
+		_ds = int(clock["day_scale"])
+		var st: Dictionary = sc.get("start", clock["start"])
+		_S = (int(st["day"]) * 1440 + Staff.hhmm(st["time"])) * 600
+	if m.staff != null and sc.has("staff"):
+		_sm = m.staff
+		_sm.init_run(self, sc)
 
 
 # ---------------------------------------------------------------- compiling
@@ -385,8 +439,12 @@ func _q(item: Array) -> void:
 	queue.append(item)
 
 
-func op(kks, do, value = null, trip = null) -> void:
-	_q(["op", kks, do, value, trip])
+## An op; with `where` it is a version 2 op (§17.1), made at `where` by `person`.
+func op(kks, do, value = null, trip = null, where = null, person = null) -> void:
+	if where == null and person == null:
+		_q(["op", kks, do, value, trip])
+	else:
+		_q(["op", kks, do, value, trip, where, person])
 
 
 func ack(alarm) -> void:
@@ -426,11 +484,79 @@ func unlock(work, point, person = null) -> void:
 	_q(["unlock", work, point, person])
 
 
+## The compiled op of a code, do and trip (staff.gd: the trainee's actions before their step), null for none.
+func op_entry(kks, do, trip):
+	var key = PlantModel.op_key(kks, do, trip)
+	return _ops.get(key) if key != null else null
+
+
+## A lock removal by authority (§15.1): another person's lock taken off by a supervisor, with the reason.
+func remove_lock(work, point, person, reason) -> void:
+	_q(["remove_lock", work, point, person, reason])
+
+
+# format 2's trainee inputs for the staff (§17.6)
+func role(person) -> void:
+	_q(["role", person])
+
+
+func task_ack() -> void:
+	_q(["task_ack"])
+
+
+func arrive(place) -> void:
+	_q(["arrive", place])
+
+
+func leave(place) -> void:
+	_q(["leave", place])
+
+
+func read(code, value) -> void:
+	_q(["read", code, value])
+
+
+func say(message, to) -> void:
+	_q(["say", message, to])
+
+
+func pick(index) -> void:
+	_q(["pick", index])
+
+
+func radio_call(role_id, task, work = null) -> void:
+	_q(["call", role_id, task, work])
+
+
+func jump(hhmm) -> void:
+	_q(["jump", hhmm])
+
+
+## The plant clock in tenths of a clock second (§16.1): C(n) = S + n × day_scale + J.
+func clock() -> int:
+	return _S + step_no * _ds + J
+
+
+## The value a code's `show` binding shows, in the given values.
+func shown(code, vals: PackedFloat64Array) -> float:
+	var r = _show[code]
+	if typeof(r) == TYPE_STRING:
+		return vals[ix[r]]
+	return float(r)
+
+
+func fault_code(fid):
+	return _fault_kks.get(fid)
+
+
 ## Queues an input in the vectors' form [step, kind, …] (the step is not checked here).
 func apply_input(item: Array) -> void:
 	match item[1]:
 		"op":
-			op(item[2], item[3], item[4], item[5])
+			if item.size() == 8:
+				op(item[2], item[3], item[4], item[5], item[6], item[7])
+			else:
+				op(item[2], item[3], item[4], item[5])
 		"ack":
 			ack(item[2])
 		"shelve":
@@ -450,6 +576,16 @@ func apply_input(item: Array) -> void:
 			lock(item[2], item[3], item[4])
 		"unlock":
 			unlock(item[2], item[3], item[4])
+		"remove_lock":
+			remove_lock(item[2], item[3], item[4], item[5])
+		"role", "arrive", "leave", "pick", "jump":
+			_q([item[1], item[2]])
+		"task_ack":
+			task_ack()
+		"read", "say":
+			_q([item[1], item[2], item[3]])
+		"call":
+			radio_call(item[2], item[3], item[4] if item.size() > 4 else null)
 		_:
 			push_error("engine: unknown input " + str(item))
 
@@ -539,25 +675,56 @@ func _n_locked(k: int) -> int:
 	return c
 
 
-## A permit action (§15.3), in step 1.
-func _permit(work, action, person, dones: Array) -> void:
+## Whether an input by `person` lacks authority (§17.1): without staff any person is refused (free mode, person
+## null); with staff, a trainee playing a person must name themself, free mode (no trainee person) skips the checks
+## for inputs naming no person, and a person's role must have the authority (and for `accept`, the work's
+## discipline; `done` and `return` are the acceptor's, or another's with `accept` and the discipline while the
+## acceptor is off duty or absent).
+func _authority(person, npc: bool, need: String, discipline = null, by_acceptor := false, work = null) -> bool:
+	if _sm == null:
+		return person != null
+	if person == null:
+		return not npc and st_trainee != -1
+	if typeof(person) != TYPE_STRING or not _sm.person_ix.has(person):
+		return true
+	var pi: int = _sm.person_ix[person]
+	if not npc and (st_trainee == -1 or pi != st_trainee):
+		return true
+	var rid: String = _sm.people[pi]["role"]
+	if not _sm.auth[rid].has(need):
+		return true
+	if discipline != null and _sm.roles[rid]["discipline"] != discipline:
+		return true
+	if by_acceptor:
+		var acc = acceptor.get(work)
+		if acc != null and acc != person:
+			var qi: int = _sm.person_ix[acc]
+			if sp_on[qi] and not _absent.has(qi):
+				return true
+	return false
+
+
+## A permit action (§15.3), in step 1; its outcome.
+func _permit(work, action, person, dones: Array, npc := false) -> String:
 	if typeof(work) != TYPE_STRING or not m.work_ix.has(work) or typeof(action) != TYPE_STRING \
 			or not PERMIT_ACTIONS.has(action):
 		_ev(["permit", work, action, person, "unknown", []])
-		return
+		return "unknown"
 	var wi: int = m.work_ix[work]
 	var iso: int = _wk[wi][1]
 	var spec: Array = PERMIT_ACTIONS[action]
 	var why := []
-	if person != null:
-		why.append("authority")     # no staff in the plant: free mode, person null (§17.1)
+	var acc_action: bool = action == "accept" or action == "done" or action == "return"
+	if _authority(person, npc, Staff.PERMIT_AUTH[action], m.works[wi]["discipline"] if acc_action else null,
+			action == "done" or action == "return", work):
+		why.append("authority")
 	if not spec[0].has(pstate[wi]):
 		why.append("state")
 	if action == "request" and iso != -1 and holder[iso] != -1:
 		why.append("iso_busy")
 	if not why.is_empty():
 		_ev(["permit", work, action, person, "refused", why])
-		return
+		return "refused"
 	pstate[wi] = spec[1]
 	cur[_wk[wi][2]] = float(spec[1])
 	if action == "request":
@@ -573,6 +740,7 @@ func _permit(work, action, person, dones: Array) -> void:
 	elif (action == "cancel" or action == "close") and iso != -1 and _n_locked(iso) == 0:
 		holder[iso] = -1
 	_ev(["permit", work, action, person, "done", []])
+	return "done"
 
 
 ## The trainee's repair under a permit (§15.5), in step 1: true when it is noted for step 3.
@@ -583,8 +751,10 @@ func _repair_under(fid, work, person) -> bool:
 		_ev(["repair", fid, work, person, "unknown", []])
 		return false
 	var why := []
-	if person != null:
-		why.append("authority")     # no staff in the plant: free mode, person null (§17.1)
+	# who may: as the permit's `done` (§15.3, §17.1): the acceptor, or another with `accept` and the work's discipline
+	# while they are off duty; without staff, free mode only (person null)
+	if _authority(person, false, "accept", m.works[wi]["discipline"], true, work):
+		why.append("authority")
 	if pstate[wi] != 5:
 		why.append("state")
 	if not why.is_empty():
@@ -595,10 +765,10 @@ func _repair_under(fid, work, person) -> bool:
 
 ## What a lock would do (§15.6): the trips and priority 1 alarms that come within `horizon` steps with the lock made
 ## after the inputs already queued, and not without it. Changes nothing in this run.
-func lock_effects(work, point, horizon: int = 100) -> Dictionary:
+func lock_effects(work, point, horizon: int = 100, person = null) -> Dictionary:
 	var a = clone()
 	var b = clone()
-	a.queue.append(["lock", work, point, null])
+	a.queue.append(["lock", work, point, person])
 	var na: int = a.events.size()
 	var nb: int = b.events.size()
 	a.step(horizon)
@@ -631,17 +801,29 @@ func lock_effects(work, point, horizon: int = 100) -> Dictionary:
 	return {"lock": lock, "trips": trips, "alarms": alarms}
 
 
-## A lock or unlock (§15.1), at the start of step 3.
-func _lock(kind: String, work, point, person, vals: PackedFloat64Array) -> void:
+## The same person (or both null): what an input names is compared with a person id so, whatever its type.
+static func _same_person(a, b) -> bool:
+	return typeof(a) == typeof(b) and a == b
+
+
+## A lock, unlock or removal by authority (§15.1), at the start of step 3; its outcome.
+func _lock(kind: String, work, point, person, vals: PackedFloat64Array, npc := false, reason = null) -> String:
 	var wi: int = m.work_ix.get(work, -1) if typeof(work) == TYPE_STRING else -1
 	var k: int = _wk[wi][1] if wi != -1 else -1
-	if k == -1 or typeof(point) != TYPE_INT or point < 0 or point >= _iso[k][1].size():
-		_ev([kind, work, point, person, "unknown", []])
-		return
+	var tail := []
+	if kind == "remove_lock":           # whose lock it was, and why it was removed
+		tail = [lockers.get(Vector2i(k, point)) if k != -1 and typeof(point) == TYPE_INT \
+				and point >= 0 and point < _iso[k][1].size() else null, reason]
+	if k == -1 or typeof(point) != TYPE_INT or point < 0 or point >= _iso[k][1].size() \
+			or (kind == "remove_lock" and not (typeof(reason) == TYPE_STRING and reason.length() >= 1 \
+			and reason.length() <= 200)):
+		_ev([kind, work, point, person, "unknown", []] + tail)
+		return "unknown"
 	var pt: Array = _iso[k][1][point]
 	var bit: int = _iso[k][4] + point
 	var why := []
-	if person != null:
+	if _authority(person, npc, "remove_lock" if kind == "remove_lock" else
+			"lock_" + m.isolations[k]["points"][point]["kind"]):
 		why.append("authority")
 	var st := pstate[wi]
 	var ok := (st == 2 or st == 3) if kind == "lock" else (st == 2 or st == 3 or st == 7 or st == 10)
@@ -654,9 +836,11 @@ func _lock(kind: String, work, point, person, vals: PackedFloat64Array) -> void:
 			why.append(names[pt[1]])
 	elif not lockbits[bit]:
 		why.append("unlocked")
+	elif kind == "unlock" and not _same_person(lockers.get(Vector2i(k, point)), person):
+		why.append("owner")             # a personal lock is removed only by whoever placed it
 	if not why.is_empty():
-		_ev([kind, work, point, person, "refused", why])
-		return
+		_ev([kind, work, point, person, "refused", why] + tail)
+		return "refused"
 	if kind == "lock":
 		lockbits[bit] = 1
 		lockers[Vector2i(k, point)] = person
@@ -670,9 +854,10 @@ func _lock(kind: String, work, point, person, vals: PackedFloat64Array) -> void:
 	var c := _n_locked(k)
 	cur[_iso[k][2]] = float(c)
 	cur[_iso[k][3]] = 1.0 if c == _iso[k][1].size() else 0.0
-	if kind == "unlock" and st == 10 and c == 0:
+	if kind != "lock" and st == 10 and c == 0:
 		holder[k] = -1      # a cancelled work lets its isolation go with its last lock
-	_ev([kind, work, point, person, "done", []])
+	_ev([kind, work, point, person, "done", []] + tail)
+	return "done"
 
 
 func _enter(mi: int, to: int, cause: String) -> void:
@@ -1091,6 +1276,7 @@ const _FAST_TABLE := """static func table(fa: PackedFloat64Array, f: int, cnt: i
 
 func _step() -> void:
 	step_no += 1
+	ev_mark = events.size()
 	prev = cur.duplicate()
 	var moved := {}
 	var pressed := []
@@ -1098,19 +1284,39 @@ func _step() -> void:
 	var under := {}         # fault -> the work (its index) under whose permit the trainee repairs it (§15.5)
 	var noted := []         # locks and unlocks, made in step 3 (§17.1)
 	var dones := []         # works whose permit went to done: their repairs and set in step 3
-	# 1. the trainee's inputs, in the order made
+	# 1. the trainee's inputs, in the order made, then the NPCs' made in the previous step's step 9 (§17.1)
 	var q := queue
 	queue = []
-	for item in q:
+	var nt := q.size()
+	_npc_pending = npc_queue.size()     # a jump waits for the NPCs' inputs of the step before (§17.8)
+	if not npc_queue.is_empty():
+		q = q + npc_queue
+		npc_queue = []
+	for qi in q.size():
+		var item: Array = q[qi]
+		var npc := qi >= nt
 		var kind: String = item[0]
 		if kind == "op":
-			_op(item, moved)
+			var r := _op(item, moved, npc)
+			if npc:
+				sp_result[_sm.person_ix[item[6]]] = r
 			continue
 		if kind == "permit":
-			_permit(item[1], item[2], item[3], dones)
+			var r := _permit(item[1], item[2], item[3], dones, npc)
+			if npc:
+				sp_result[_sm.person_ix[item[3]]] = r
 			continue
-		if kind == "lock" or kind == "unlock":
-			noted.append(item)
+		if kind == "lock" or kind == "unlock" or kind == "remove_lock":
+			noted.append([item, npc])
+			continue
+		if kind == "role" or kind == "task_ack" or kind == "arrive" or kind == "leave" or kind == "read" \
+				or kind == "say" or kind == "pick" or kind == "call" or kind == "jump":
+			if _sm != null:
+				_sm.t_input(self, item)
+			elif kind == "role":
+				_ev(["role", item[1], "refused"])
+			elif kind == "jump":
+				_ev(["jump", clock(), null, "refused"])
 			continue
 		var ai = _al_ix.get(item[1], -1) if typeof(item[1]) == TYPE_STRING else -1
 		if kind == "fault":
@@ -1155,8 +1361,11 @@ func _step() -> void:
 		_run(0, _nprog, cur, prev, false)
 	var vals := cur.duplicate()     # conditions in steps 3–7 read the values as step 2 left them
 	# 3. the locks and unlocks noted in step 1, in the order made; the permits' automatic moves (§15.3)
-	for item in noted:
-		_lock(item[0], item[1], item[2], item[3], vals)
+	for nd in noted:
+		var item: Array = nd[0]
+		var r := _lock(item[0], item[1], item[2], item[3], vals, nd[1], item[4] if item.size() > 4 else null)
+		if nd[1]:
+			sp_result[_sm.person_ix[item[3]]] = r
 	for wi in _wk.size():
 		var st := pstate[wi]
 		if st != 2 and st != 3 and st != 7:
@@ -1293,20 +1502,38 @@ func _step() -> void:
 		if nw != s:
 			astate[k] = nw
 			_ev(["alarm", _al[k][0], nw])
+	# 9. the staff (§17): they read this step's values and events and write nothing but next step's inputs
+	if _sm != null:
+		if timing:
+			var t9 := Time.get_ticks_usec()
+			_sm.step(self)
+			staff_us.append(Time.get_ticks_usec() - t9)
+		else:
+			_sm.step(self)
 
 
-func _op(item: Array, moved: Dictionary) -> void:
+func _op(item: Array, moved: Dictionary, npc := false) -> String:
 	var kks = item[1]
 	var do = item[2]
 	var value = item[3]
 	var trip = item[4]
+	var v2 := item.size() == 7          # a version 2 op: where it is made and by whom (§17.1)
+	var tail := [item[5], item[6]] if v2 else []
 	var key = PlantModel.op_key(kks, do, trip)
 	if key == null or not _ops.has(key):
-		_ev(["op", kks, do, "unknown", []])
-		return
+		_ev(["op", kks, do, "unknown", []] + tail)
+		return "unknown"
 	var c: Dictionary = _ops[key]
 	var o: Dictionary = c["o"]
 	var failed := []
+	if v2:
+		var where = item[5]
+		if typeof(where) != TYPE_STRING or not o["where"].has(where):
+			failed.append("where")
+		elif _authority(item[6], npc, "operate_" + where):
+			failed.append("authority")
+	elif _sm != null and st_trainee != -1 and not npc:
+		failed.append("authority")      # a trainee playing a person names where and who (§17.1)
 	var needs: PackedInt32Array = c["needs"]
 	for k in needs.size():
 		if prev[needs[k]] < 0.5:
@@ -1333,9 +1560,9 @@ func _op(item: Array, moved: Dictionary) -> void:
 			failed.append(o["input"])
 	failed.append_array(_locking(kks))         # a locked code refuses every op (§15.1)
 	if not failed.is_empty():
-		_ev(["op", kks, do, "refused", failed])
-		return
-	_ev(["op", kks, do, "done", []])
+		_ev(["op", kks, do, "refused", failed] + tail)
+		return "refused"
+	_ev(["op", kks, do, "done", []] + tail)
 	if mi == -1 and do == "set":
 		_write(c["input"], float(value))
 	if mi == -1 and do == "reset":
@@ -1348,6 +1575,7 @@ func _op(item: Array, moved: Dictionary) -> void:
 		var to: int = _mc[mi][2].find(_mc[mi][4][do]["to"])
 		_enter(mi, to, "command")
 		moved[mi] = true
+	return "done"
 
 
 # ---------------------------------------------------------------- what the vectors compare (§12)
@@ -1363,8 +1591,13 @@ func isolations_locking(code) -> Array:
 	return _locking(code).map(func(x): return String(x).trim_suffix("_locked"))
 
 
-## §7.9: no unacknowledged alarm, no active priority 1 alarm, no machine in a watched state.
+## §7.9, and with a trainee's person no task given to them since their last task_ack (§17.6).
 func fast_forward() -> bool:
+	return ff_model() and (_sm == null or st_trainee == -1 or st_unacked == 0)
+
+
+## §7.9: no unacknowledged alarm, no active priority 1 alarm, no machine in a watched state.
+func ff_model() -> bool:
 	for k in _al.size():
 		var s: String = astate[k]
 		if s == "normal" or shelved[k] != -1:
@@ -1421,6 +1654,11 @@ func snapshot(with_values: bool = true) -> Dictionary:
 		s["permits"] = pm
 		s["ptw"] = nums
 		s["locked"] = lk
+	if _sm != null:
+		s["clock"] = clock()
+		s["people"] = _sm.snap(self)
+		s["vehicles"] = {}
+		s["unacked"] = st_unacked
 	if with_values:
 		var vals := {}
 		for i in n:
@@ -1440,12 +1678,15 @@ func clone():
 	for k in ["m", "sc", "names", "ix", "n", "_prog_kind", "_prog_out", "_prog_a", "_prog_na", "_prog_f", "_ia",
 			"_fa", "_nprog", "_fast", "_fault_nodes", "_scratch", "_init_vals", "_nmem", "_il", "_mc", "_mc_ix", "_tr", "_tr_ix", "_al", "_al_ix",
 			"_faults", "_fault_ix", "_auto_faults", "_all_faults", "_tr_when", "_tr_need", "_al_when", "_al_clear",
-			"_al_sup", "_al_need", "_ops", "_iso", "_wk", "_state_kks", "_v2", "step_no", "ptw_count"]:
+			"_al_sup", "_al_need", "_ops", "_iso", "_wk", "_state_kks", "_v2", "step_no", "ptw_count",
+			"_sm", "_S", "_ds", "_absent", "_fixed_trainee", "_show", "_fault_kks", "J", "ev_mark", "st_order",
+			"st_unacked", "st_trainee", "st_t_at", "st_next1"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
-			"lockbits"]:
+			"lockbits", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",
-			"lockers", "code_locks"]:
+			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_early",
+			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result"]:
 		c.set(k, get(k).duplicate(true))
 	return c

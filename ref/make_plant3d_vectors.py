@@ -528,6 +528,8 @@ def apply(e, item):
         e.permit(item[2], item[3], item[4])
     elif kind in ('lock', 'unlock'):
         getattr(e, kind)(item[2], item[3], item[4])
+    elif kind == 'remove_lock':
+        e.remove_lock(item[2], item[3], item[4], item[5])
     else:
         raise ValueError(kind)
 
@@ -1536,13 +1538,632 @@ def build_train2(b):
             'forks': forks}
 
 
+# ================================================================ format 2's staff (§16–§17, milestone S1)
+
+from ref import plant3d_staff as S     # noqa: E402
+
+SC = ['scenarios/s1.json']
+STF = ['staff.json']
+
+
+def mini_staff():
+    """The synthetic plant (version 2) with a clock at day_scale 60 (a clock minute is 10 steps) and staff: two
+    crews of operators on a rotation, a shift supervisor, an electrical authorised person and two mechanical
+    technicians on days; a control room, an office, a workshop and work places at the pump, valve, gauge and tank,
+    on a walking network with a square (two equal routes, the tie rule) and a stair."""
+    F = mini2()
+    F['plant.json']['clock'] = {'day_scale': 60, 'start': {'day': 1, 'time': '05:30'},
+                                'week': ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']}
+    m = F['model/a1.json']
+    m['works'][1]['task'] = 'cal_gauge'
+    m['ops'].append({'kks': VALVE, 'do': 'close', 'set': {'valve_cmd': 0}, 'where': ['local']})
+    m['isolations'].append({'id': 'iso_v2', 'text': 'The valve, the pump stopped', 'points': [
+        {'kks': PUMP, 'kind': 'process', 'safe': 'pump_off', 'how': 'Pump stopped and tagged'},
+        {'kks': VALVE, 'kind': 'mechanical', 'safe': 'valve_shut', 'how': 'Valve shut and chained'}]})
+    m['works'].append({'id': 'wo_valve', 'kks': VALVE, 'title': 'Valve packing', 'discipline': 'mech',
+                       'permit': 'general', 'isolation': 'iso_v2', 'task': 'job_valve'})
+    # the pump's wear: the fault's own state, which a repair under wo_pump's permit puts right (§15.5)
+    m['values'].append(['pump_worn', {'state': 0, 'kks': PUMP}])
+    F['scenarios/s1.json']['version'] = 2
+    F['scenarios/s1.json']['staff'] = {'seed': 1}
+    F['scenarios/s1.json']['faults'] = [{'id': 'f1', 'set': {'pump_cmd': 0, 'pump_worn': 1}, 'text': 'Pump trips',
+                                         'kks': PUMP, 'repair': {'pump_worn': 0}}]
+    places = []
+
+    def pl(pid, at, kind, **kw):
+        places.append(dict({'id': pid, 'at': at, 'kind': kind}, **kw))
+    for i, at in enumerate([[0, 0, 0], [10, 0, 0], [20, 0, 0], [10, 10, 0], [30, 0, 0], [20, 10, 0]]):
+        pl(f'p{i}', at, 'point')
+    pl('cr_door', [-2, 0, 0], 'door', room='cr')
+    pl('desk_a', [-6, 1, 0], 'desk', room='cr', yaw=90, pose='sit')
+    pl('desk_b', [-6, -1, 0], 'desk', room='cr', yaw=90, pose='sit')
+    pl('cr_table', [-4, 3, 0], 'table', room='cr')
+    pl('office_door', [10, 12, 0], 'door', room='office')
+    pl('seat1', [9, 14, 0], 'seat', room='office', pose='sit')
+    pl('seat2', [11, 14, 0], 'seat', room='office', pose='sit')
+    pl('office_table', [12, 13, 0], 'table', room='office')
+    pl('ws_door', [22, 12, 0], 'door', room='workshop')
+    pl('bench', [24, 13, 0], 'table', room='workshop')
+    pl('bench2', [24, 11, 0], 'table', room='workshop')
+    pl('w_pump', [10, 4, 0], 'work', kks=PUMP)
+    pl('w_valve', [15, 1, 0], 'work', kks=VALVE, pose='kneel')
+    pl('w_gauge', [12, 1, 0], 'work', kks=GAUGE)
+    pl('w_tank', [30, 5, 0], 'work', kks=TANK)
+    pl('gate', [0, -10, 0], 'door')
+    ways = [['p0', 'p1', 10, 'walk'], ['p1', 'p2', 10, 'walk'], ['p1', 'p3', 10, 'walk'], ['p2', 'p5', 10, 'walk'],
+            ['p3', 'p5', 10, 'walk'], ['p2', 'p4', 10, 'stair'],
+            ['cr_door', 'p0', 2, 'walk'], ['desk_a', 'p0', 6.1, 'walk'], ['desk_b', 'p0', 6.1, 'walk'],
+            ['cr_table', 'p0', 5, 'walk'], ['office_door', 'p3', 2, 'walk'], ['seat1', 'p3', 4.2, 'walk'],
+            ['seat2', 'p3', 4.2, 'walk'], ['office_table', 'p3', 3.7, 'walk'], ['ws_door', 'p5', 2.9, 'walk'],
+            ['bench', 'p5', 5.1, 'walk'], ['bench2', 'p5', 4.2, 'walk'], ['w_pump', 'p1', 4, 'walk'], ['w_valve', 'p1', 5.1, 'walk'],
+            ['w_gauge', 'p1', 2.3, 'walk'], ['w_tank', 'p4', 5, 'walk'], ['gate', 'p0', 10, 'walk']]
+    speeds = {'walk': 1.3, 'stair': 0.5, 'ladder': 0.3}
+    pts = [p['id'] for p in places if p['kind'] == 'point']
+    adj = [[] for _ in pts]
+    for a, b, metres, mode in ways:
+        if a in pts and b in pts:
+            st = S.way_steps(metres, speeds[mode])
+            adj[pts.index(a)].append((pts.index(b), st))
+            adj[pts.index(b)].append((pts.index(a), st))
+    role = lambda rid, title, disc, auth, routine, play=True: {  # noqa: E731
+        'id': rid, 'title': title, 'discipline': disc, 'authority': auth, 'routine': routine, 'play': play}
+    roles = [role('ccr_op', 'Control room operator', 'ops', ['operate_screen', 'request', 'lock_process'], 'ccr_shift'),
+             role('field_op', 'Field operator', 'ops', ['operate_local', 'request', 'lock_mechanical', 'lock_process'],
+                  'field_shift'),
+             role('shift_sup', 'Shift supervisor', 'ops', ['operate_screen', 'request', 'approve', 'issue',
+                                                            'lock_mechanical', 'lock_process', 'remove_lock'],
+                  'sup_shift'),
+             role('elec_ap', 'Electrical authorised person', 'ops', ['operate_local', 'request', 'lock_electrical'],
+                  'elec_shift'),
+             role('mech_tech', 'Mechanical technician', 'mech', ['accept'], 'mech_days')]
+    roles[0].update(look='coverall_ops', ppe=['helmet', 'boots'], requests=['ask_open'])
+    rosters = [{'id': 'shift', 'kind': 'rotation', 'cycle': ['D', 'D', 'N', 'N', 'O', 'O', 'O', 'O'],
+                'crews': {'a': 0, 'b': 2, 'c': 4, 'd': 6}, 'hours': {'D': ['06:00', '18:00'], 'N': ['18:00', '06:00']}},
+               {'id': 'day', 'kind': 'days', 'days': ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'],
+                'hours': ['07:00', '16:00']}]
+    person = lambda pid, r, ro, call, crew=None: dict(  # noqa: E731
+        {'id': pid, 'role': r, 'roster': ro, 'call': call}, **({'crew': crew} if crew else {}))
+    people = [person('c_ccr', 'ccr_op', 'shift', 'Control C', 'c'), person('c_fo', 'field_op', 'shift', 'Field C', 'c'),
+              person('a_ccr', 'ccr_op', 'shift', 'Control A', 'a'), person('a_fo1', 'field_op', 'shift', 'Field 1 A', 'a'),
+              dict(person('a_fo2', 'field_op', 'shift', 'Field 2 A', 'a'), routine='field_shift2'), person('a_sup', 'shift_sup', 'shift', 'Super A', 'a'),
+              person('a_elec', 'elec_ap', 'shift', 'Sparks A', 'a'), person('mech1', 'mech_tech', 'day', 'Mech 1'),
+              person('mech2', 'mech_tech', 'day', 'Mech 2'), person('b_fo', 'field_op', 'shift', 'Field B', 'b')]
+    slot = lambda at, task, **kw: dict({'at': at, 'task': task}, **kw)  # noqa: E731
+    routines = [
+        {'id': 'ccr_shift', 'idle': 'idle_ccr', 'slots': [slot('start-0:15', 'handover_take'),
+                                                          slot('start+0:10', 'instruct'),
+                                                          slot('end-0:15', 'handover_give')]},
+        {'id': 'field_shift', 'idle': 'idle_field', 'slots': [
+            slot('start-0:15', 'handover_take_f'), slot('start+0:30', 'round', every='2:00', until='end-1:00'),
+            slot('end-0:15', 'handover_give_f')]},
+        {'id': 'field_shift2', 'idle': 'idle_field', 'slots': [
+            slot('start-0:15', 'handover_take_f'), slot('start+1:00', 'round', every='2:00', until='end-1:00'),
+            slot('end-0:15', 'handover_give_f')]},
+        {'id': 'sup_shift', 'idle': 'idle_sup', 'slots': [slot('start+0:05', 'sup_check'), slot('08:30', 'raise_valve'),
+                                                          slot('12:00', 'sup_check')]},
+        {'id': 'elec_shift', 'idle': 'idle_elec', 'slots': []},
+        {'id': 'mech_days', 'idle': 'idle_mech', 'slots': [slot('07:15', 'toolbox')]}]
+
+    def task(tid, title, steps, **kw):
+        return dict({'id': tid, 'title': title, 'steps': steps}, **kw)
+    desk = {'go': {'kind': 'desk', 'room': 'cr'}}
+    tasks = [
+        task('idle_ccr', 'At the desk', [desk, {'work': 30, 'anim': 'type'}]),
+        task('idle_field', 'In the office', [{'go': {'kind': 'seat', 'room': 'office'}}, {'work': 20}]),
+        task('idle_sup', 'At the supervisor\'s seat', [{'go': 'seat1'}, {'work': 30}]),
+        task('idle_elec', 'At the office table', [{'go': 'office_table'}, {'work': 30}]),
+        task('idle_mech', 'At a bench', [{'go': {'kind': 'table', 'room': 'workshop'}}, {'work': 30}]),
+        task('handover_take', 'Take the handover', [{'meet': {'room': 'cr', 'with': ['ccr_op'], 'minutes': 15}},
+                                                   {'say': 'handover', 'to': 'shift_sup'}]),
+        task('handover_give', 'Give the handover', [{'meet': {'room': 'cr', 'with': ['ccr_op'], 'minutes': 15}}]),
+        task('handover_take_f', 'Take the field handover',
+             [{'meet': {'room': 'office', 'with': ['field_op'], 'minutes': 15}}]),
+        task('handover_give_f', 'Give the field handover',
+             [{'meet': {'room': 'office', 'with': ['field_op'], 'minutes': 15}}]),
+        task('instruct', 'Start the pump', [desk, {'call': {'role': 'field_op', 'task': 'open_valve'}},
+                                            {'wait': {'until': 'valve_open', 'minutes': 30}},
+                                            {'op': {'kks': PUMP, 'do': 'start', 'where': 'screen'}, 'else': 4},
+                                            {'say': 'pump_report', 'to': 'shift_sup'}], priority=2),
+        task('open_valve', 'Open the pump\'s valve', [{'go': {'kks': VALVE}},
+                                                      {'op': {'kks': VALVE, 'do': 'open', 'where': 'local'}},
+                                                      {'say': 'valve_opened', 'to': 'ccr_op'}], priority=2),
+        task('round', 'Field round', [{'go': {'kks': GAUGE}}, {'read': GAUGE, 'expect': [0, 1], 'tol': 0.2},
+                                      {'work': [2, 4], 'anim': 'inspect'}, {'go': {'kks': TANK}}, {'work': 2},
+                                      {'say': 'round_done', 'to': 'ccr_op'},
+                                      {'choose': [[1, 'tea'], [2, 'check_pump']]}]),
+        task('tea', 'Tea in the office', [{'go': {'kind': 'seat', 'room': 'office'}}, {'work': [5, 10]}], priority=4),
+        task('check_pump', 'A look at the pump', [{'go': {'kks': PUMP}}, {'work': 3}]),
+        task('answer_alarm', 'Answer the alarm', [desk, {'ack': '$'}, {'call': {'role': 'field_op',
+                                                                                'task': 'check_alarm'}},
+                                                  {'say': 'check_alarm', 'to': 'field_op'}], priority=1,
+             interruptible=False),
+        task('check_alarm', 'Check the alarm locally', [{'go': {'kks': '$'}}, {'work': 2},
+                                                        {'say': 'alarm_checked', 'to': 'ccr_op'}], priority=1),
+        task('trip_call', 'A trip', [{'go': 'cr_table'}, {'say': 'trip', 'to': 'channel'}, {'work': 5}],
+             priority=1),
+        task('note_valve', 'Note the valve open', [{'work': 1}], priority=4),
+        task('raise_work', 'Raise the pump\'s work', [
+            {'permit': {'work': '$', 'action': 'request'}}, {'permit': {'work': '$', 'action': 'approve'}},
+            {'call': {'role': 'elec_ap', 'task': 'isolate_e'}}, {'call': {'role': 'field_op', 'task': 'isolate_m'}},
+            {'wait': {'permit': ['$', 'isolated'], 'minutes': 60}}, {'permit': {'work': '$', 'action': 'issue'}},
+            {'call': {'role': 'mech_tech', 'task': 'job_pump'}}, {'say': 'permit_issued', 'to': 'mech_tech'}],
+             priority=2),
+        task('isolate_e', 'Lock out the pump\'s breaker', [{'lock': {'work': '$', 'point': 0}},
+                                                           {'say': 'isolated', 'to': 'shift_sup'}], priority=2),
+        task('isolate_m', 'Chain the pump\'s valve', [{'go': {'kks': VALVE}},
+                                                      {'op': {'kks': VALVE, 'do': 'close', 'where': 'local'}},
+                                                      {'lock': {'work': '$', 'point': 1}},
+                                                      {'say': 'isolated', 'to': 'shift_sup'}], priority=2),
+        task('job_pump', 'The pump\'s bearing', [
+            {'go': {'kks': PUMP}}, {'wait': {'permit': ['$', 'issued'], 'minutes': 30}},
+            {'permit': {'work': '$', 'action': 'accept'}}, {'work': [20, 40], 'anim': 'wrench'},
+            {'permit': {'work': '$', 'action': 'done'}}, {'permit': {'work': '$', 'action': 'return'}},
+            {'say': 'job_done', 'to': 'shift_sup'}], work='wo_pump'),
+        task('deisolate', 'Take the isolation off', [
+            {'call': {'role': 'elec_ap', 'task': 'deiso_e'}}, {'call': {'role': 'field_op', 'task': 'deiso_m'}},
+            {'wait': {'permit': ['$', 'deisolated'], 'minutes': 60}}, {'permit': {'work': '$', 'action': 'close'}},
+            {'say': 'permit_closed', 'to': 'channel'}], priority=2),
+        task('deiso_e', 'Unlock the breaker', [{'unlock': {'work': '$', 'point': 0}}], priority=2),
+        task('deiso_m', 'Unchain the valve', [{'unlock': {'work': '$', 'point': 1}}], priority=2),
+        task('raise_valve', 'The valve\'s packing', [
+            {'permit': {'work': 'wo_valve', 'action': 'request'}, 'else': 5},
+            {'permit': {'work': 'wo_valve', 'action': 'approve'}},
+            {'call': {'role': 'field_op', 'task': 'isolate_all', 'work': 'wo_valve'}},
+            {'wait': {'permit': ['wo_valve', 'isolated'], 'minutes': 40}},
+            {'permit': {'work': 'wo_valve', 'action': 'issue'}},
+            {'call': {'role': 'mech_tech', 'task': 'job_valve'}}], priority=3),
+        task('isolate_all', 'Lock out the valve', [{'lock': {'work': '$', 'point': 'all'}}], priority=2),
+        task('job_valve', 'The valve\'s packing', [
+            {'go': {'kks': VALVE}}, {'wait': {'permit': ['$', 'issued'], 'minutes': 30}},
+            {'permit': {'work': '$', 'action': 'accept'}}, {'work': 15, 'anim': 'wrench'},
+            {'permit': {'work': '$', 'action': 'done'}}, {'permit': {'work': '$', 'action': 'return'}}], work='wo_valve'),
+        task('deiso_valve', 'Take the valve\'s isolation off', [
+            {'call': {'role': 'field_op', 'task': 'unlock_all'}},
+            {'wait': {'permit': ['$', 'deisolated'], 'minutes': 60}}, {'permit': {'work': '$', 'action': 'close'}}],
+             priority=2),
+        task('unlock_all', 'Unlock the valve', [{'unlock': {'work': '$', 'point': 'all'}}], priority=2),
+        task('sup_check', 'The supervisor\'s look round', [{'go': 'cr_table'}, {'work': 5},
+                                                         {'say': 'all_well', 'to': 'channel'}]),
+        task('toolbox', 'Toolbox talk', [{'meet': {'room': 'workshop', 'with': ['mech_tech'], 'minutes': 10}}]),
+        task('cal_gauge', 'Calibrate the gauge', [{'go': {'kks': GAUGE}}, {'work': 5}]),
+        task('ask_open', 'Ask for the valve opened', [desk, {'call': {'role': 'field_op', 'task': 'open_valve'}},
+                                                      {'work': 1}], priority=2)]
+    reactions = [{'on': {'alarm': 2}, 'roles': ['ccr_op'], 'task': 'answer_alarm'},
+                 {'on': {'trip': '*'}, 'roles': ['shift_sup', 'ccr_op'], 'task': 'trip_call'},
+                 {'on': {'fault': 'f1'}, 'roles': ['shift_sup'], 'task': 'raise_work', 'work': 'wo_pump'},
+                 {'on': {'value': 'valve_open'}, 'roles': ['ccr_op'], 'task': 'note_valve'},
+                 {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': 'deisolate', 'priority': 2,
+                  'work': 'wo_pump'},
+                 {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': 'deiso_valve', 'work': 'wo_valve'}]
+    messages = {'handover': 'Handover taken', 'pump_report': 'Pump started', 'valve_opened': 'Valve open',
+                'round_done': 'Round done, readings in the log', 'check_alarm': 'Check the alarm at the pump',
+                'alarm_checked': 'Checked locally', 'trip': 'Trip: everyone stand by', 'isolated': 'Point locked',
+                'permit_issued': 'Your permit is issued', 'job_done': 'Job done, permit returned',
+                'permit_closed': 'Permit closed', 'all_well': 'All well'}
+    F['staff.json'] = {'format': 'walkdown-plant-staff', 'version': 1, 'origin': 'desk_a', 'gate': 'gate',
+                       'speeds': speeds, 'places': places, 'ways': ways, 'next': S.next_table(len(pts), adj),
+                       'roles': roles, 'rosters': rosters, 'people': people, 'routines': routines, 'tasks': tasks,
+                       'reactions': reactions, 'messages': messages}
+    return F
+
+
+TASK = lambda i: STF + ['tasks', i]  # noqa: E731
+REJECTS_STAFF = [
+    ('staff.json in a version 1 plant', 'unknown_key', _all(_set(['plant.json', 'version'], 1),
+                                                           _set(MOD + ['version'], 1), _del(MOD + ['isolations']),
+                                                           _del(MOD + ['works']),
+                                                           _set(MOD + ['values', 8], ['p_held', {'sum': ['p', 0]}]),
+                                                           _del(['plant.json', 'clock']), _set(SC + ['version'], 1),
+                                                           _del(SC + ['staff']))),
+    ('a plant with staff and no clock', 'missing_key', _del(['plant.json', 'clock'])),
+    ('a day_scale that does not divide 60', 'bad_clock', _set(['plant.json', 'clock', 'day_scale'], 7)),
+    ('a clock time of 24:00', 'bad_clock', _set(['plant.json', 'clock', 'start', 'time'], '24:00')),
+    ('a roster\'s hours not HH:MM', 'bad_clock', _set(STF + ['rosters', 1, 'hours', 0], '7:00')),
+    ('a slot more than 12 hours from its duty', 'bad_clock', _set(STF + ['routines', 0, 'slots', 0, 'at'],
+                                                                   'start-12:01')),
+    ('a slot\'s every of 0:00', 'bad_clock', _set(STF + ['routines', 1, 'slots', 1, 'every'], '0:00')),
+    ('zones before milestone S2', 'unknown_key', _set(STF + ['zones'], [])),
+    ('vehicles before milestone S4', 'unknown_key', _set(STF + ['vehicles'], [])),
+    ('a person\'s home before milestone S4', 'unknown_key', _set(STF + ['people', 0, 'home'], 'camp_b1_r12')),
+    ('a ride step before milestone S4', 'unknown_key', _set(TASK(0) + ['steps', 0],
+                                                            {'ride': {'from': 'a', 'to': 'b'}})),
+    ('a ppe step before milestone S2', 'unknown_key', _set(TASK(0) + ['steps', 0], {'ppe': 'role'})),
+    ('a drive way before milestone S4', 'unknown_key', _set(STF + ['ways', 0, 3], 'drive')),
+    ('a place unreached from the control room', 'unreachable', _all(
+        _app(STF + ['places'], {'id': 'p6', 'at': [50, 0, 0], 'kind': 'point'}),
+        lambda F: F['staff.json'].__setitem__('next', [r + [-1] for r in F['staff.json']['next']] + [[-1] * 7]))),
+    ('a way shorter than the straight line', 'bad_way', _set(STF + ['ways', 0, 2], 9.99)),
+    ('a way of 0 m', 'bad_number', _set(STF + ['ways', 0, 2], 0)),
+    ('a second way between two places', 'dup_id', _app(STF + ['ways'], ['p1', 'p0', 12, 'walk'])),
+    ('a place with two ways', 'bad_ref', _app(STF + ['ways'], ['desk_a', 'p1', 20, 'walk'])),
+    ('a place with no way', 'bad_ref', _app(STF + ['places'], {'id': 'lost', 'at': [0, 0, 0], 'kind': 'seat'})),
+    ('a way between two places that are not points', 'bad_ref', _set(STF + ['ways', 6], ['cr_door', 'desk_a', 5, 'walk'])),
+    ('a next table not of the route rule (the tie)', 'bad_ref', _set(STF + ['next', 1, 5], 3)),
+    ('a next table of the wrong size', 'bad_length', lambda F: F['staff.json']['next'].pop()),
+    ('a work place without its code', 'missing_key', _del(STF + ['places', 17, 'kks'])),
+    ('a work place on a code the plant lacks', 'bad_ref', _set(STF + ['places', 17, 'kks'], '10LAC10AP009')),
+    ('a place of an unknown kind', 'bad_value', _set(STF + ['places', 6, 'kind'], 'sofa')),
+    ('two places with one id', 'dup_id', _set(STF + ['places', 7, 'id'], 'cr_door')),
+    ('an unknown authority', 'bad_value', _app(STF + ['roles', 0, 'authority'], 'fly')),
+    ('a role\'s unknown discipline', 'bad_value', _set(STF + ['roles', 0, 'discipline'], 'art')),
+    ('a person of no role', 'bad_ref', _set(STF + ['people', 0, 'role'], 'pilot')),
+    ('a person on a rotation without a crew', 'bad_ref', _del(STF + ['people', 0, 'crew'])),
+    ('a person\'s own routine that does not exist', 'bad_ref', _set(STF + ['people', 4, 'routine'], 'nothing')),
+    ('a call sign of 33 characters', 'bad_type', _set(STF + ['people', 0, 'call'], 'x' * 33)),
+    ('over 200 people', 'limit', lambda F: F['staff.json']['people'].extend(
+        {'id': f'x{i}', 'role': 'mech_tech', 'roster': 'day', 'call': f'X{i}'} for i in range(191))),
+    ('a step of two kinds', 'bad_kind', _set(TASK(0) + ['steps', 1], {'work': 1, 'say': 'handover', 'to': 'channel'})),
+    ('a task of 65 steps', 'bad_length', _set(TASK(0) + ['steps'], [{'work': 1}] * 65)),
+    ('an else pointing back', 'bad_ref', _set(TASK(9) + ['steps', 3, 'else'], 1)),
+    ('a go to a kks without a work place', 'bad_ref', _set(TASK(10) + ['steps', 0, 'go'], {'kks': '10LAB10BR001'})),
+    ('a read of a code without a show binding', 'bad_ref', _set(TASK(11) + ['steps', 1, 'read'], TANK)),
+    ('a screen op without a go to a desk first', 'bad_ref', _set(TASK(9) + ['steps', 0], {'work': 1})),
+    ('an op at a where the op lacks', 'bad_value', _set(TASK(10) + ['steps', 1, 'op', 'where'], 'screen')),
+    ('a field operator approving a permit', 'authority', _set(TASK(10) + ['steps', 2],
+                                                            {'permit': {'work': 'wo_pump', 'action': 'approve'}})),
+    ('a field operator locking an electrical point', 'authority', _set(TASK(20) + ['steps', 2, 'lock', 'point'], 0)),
+    ('a control room operator making a local op', 'authority', _set(TASK(14) + ['steps', 1],
+                                                                   {'op': {'kks': VALVE, 'do': 'open',
+                                                                           'where': 'local'}})),
+    ('a technician of another discipline accepting', 'authority', _set(STF + ['roles', 4, 'discipline'], 'elec')),
+    ('a task reaching itself through a call', 'bad_ref', _app(TASK(10) + ['steps'],
+                                                              {'call': {'role': 'field_op', 'task': 'open_valve'}})),
+    ('a task reaching itself through choose', 'bad_ref', _set(TASK(12) + ['steps', 1],
+                                                              {'choose': [[1, 'round']]})),
+    ('an idle task with no step that takes time', 'bad_ref', _set(TASK(0) + ['steps', 1], {'work': 0})),
+    ('an idle task whose only time is a wait', 'bad_ref', _set(TASK(0) + ['steps', 1], {'wait': {'until': 'p_high'}})),
+    ('a routine of over 256 slots in a duty', 'limit', _set(STF + ['routines', 0, 'slots', 1],
+                                                           {'at': 'start-12:00', 'every': '0:01', 'until': 'end+12:00',
+                                                            'task': 'instruct'})),
+    ('a radio request that calls nobody', 'bad_ref', _set(STF + ['roles', 0, 'requests'], ['idle_ccr'])),
+    ('a radio request for a task that needs a "$"', 'bad_ref', _all(
+        _app(STF + ['tasks'], {'id': 'ask_check', 'title': 'Ask', 'steps': [{'call': {'role': 'field_op',
+                                                                                    'task': 'check_alarm'}}]}),
+        _set(STF + ['roles', 0, 'requests'], ['ask_check']))),
+    ('a say to nobody', 'bad_ref', _set(TASK(5) + ['steps', 1, 'to'], 'mayor')),
+    ('a say of an unknown message', 'bad_ref', _set(TASK(5) + ['steps', 1, 'say'], 'hello')),
+    ('choose weights over 65536', 'bad_number', _set(TASK(11) + ['steps', 6, 'choose', 0, 0], 65536)),
+    ('a meeting in a room without a door', 'bad_ref', _set(TASK(5) + ['steps', 0, 'meet', 'room'], 'nowhere')),
+    ('a reaction to an unsafe act before S2', 'unknown_key', _set(STF + ['reactions', 0, 'on'], {'unsafe': '*'})),
+    ('a reaction to a value that does not exist', 'bad_ref', _set(STF + ['reactions', 3, 'on', 'value'], 'zz')),
+    ('a reaction to a permit state that is not one', 'bad_value', _set(STF + ['reactions', 4, 'on', 'permit'],
+                                                                      'done_ish')),
+    ('a work without its task in a plant with staff', 'missing_key', _del(WORK + [1, 'task'])),
+    ('a work naming a task staff.json lacks', 'bad_ref', _set(WORK + [1, 'task'], 'nothing')),
+    ('a "$" work in a task no work is given to', 'bad_ref', _set(TASK(16) + ['steps', 0],
+                                                                 {'permit': {'work': '$', 'action': 'request'}})),
+    ('a scenario\'s trainee who is not a person', 'bad_ref', _set(SC + ['staff', 'trainee'], 'nobody')),
+    ('a scenario\'s trainee absent', 'bad_ref', _all(_set(SC + ['staff', 'trainee'], 'a_fo1'),
+                                                     _set(SC + ['staff', 'absent'], ['a_fo1']))),
+    ('a seed of 2^32', 'bad_number', _set(SC + ['staff', 'seed'], 2 ** 32)),
+    ('a scenario start in a version 1 scenario', 'unknown_key', _all(_set(SC + ['version'], 1), _del(SC + ['staff']),
+                                                                     _set(SC + ['start'], {'day': 1,
+                                                                                           'time': '06:00'}))),
+]
+
+
+def build_rejects_staff():
+    out = []
+    base = mini_staff()
+    for why, code, change in REJECTS_STAFF:
+        F = copy.deepcopy(base)
+        change(F)
+        try:
+            check(F)
+        except P.FormatError as e:
+            assert e.code == code, f'{why}: expected {code}, got {e}'
+        else:
+            raise AssertionError(f'{why}: not rejected')
+        text = {k: (v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)) for k, v in F.items()}
+        old = {k: json.dumps(v, ensure_ascii=False) for k, v in base.items()}
+        change = {k: t for k, t in text.items() if old.get(k) != t}
+        change.update({k: None for k in old if k not in text})
+        out.append({'why': why, 'code': code, 'change': change})
+    return out
+
+
+class Trainee:
+    """Plays the trainee's person in the generator as the app would, from what the person's current step asks:
+    walks to its place (an arrive after `walk` steps, a leave first), types readings (`wrong` of them off by 1),
+    says, calls, makes ops, permits and locks, picks the first choice, acknowledges new tasks after `ack_after` steps.
+    `extra`: more inputs at given steps ([step, kind, …]). The inputs it makes are the vector's (Recorder.inputs)."""
+
+    def __init__(self, walk=40, wrong=(), ack_after=5, extra=(), quiet=False, wake=0, ahead=None, undo=False):
+        self.walk, self.wrong, self.ack_after, self.extra = walk, set(wrong), ack_after, list(extra)
+        self.quiet, self.wake = quiet, wake
+        # ahead: while walking a `go`, make the ops ('ops') or the ops, permits and locks ('all') of the steps after
+        # it (past waits) before they are current (§17.8); undo: then the opposite of each op, a step later
+        self.ahead, self.undo, self.ahead_done, self.undo_at = ahead, undo, set(), []
+        self.going = None
+        self.done = set()
+        self.reads = 0
+        self.unacked_since = None
+
+    def __call__(self, e):
+        n = e.step_no + 1
+        for x in [x for x in self.extra if x[0] == n]:
+            apply_staff(e, x)
+        sr = e.staff
+        if sr.trainee is None or self.quiet or n < self.wake:
+            return
+        if sr.unacked:
+            if self.unacked_since is None:
+                self.unacked_since = n
+            if n - self.unacked_since >= self.ack_after:
+                e.task_ack()
+                self.unacked_since = None
+        else:
+            self.unacked_since = None
+        p = sr.people[sr.trainee]
+        cur = p.cur
+        if cur is None:
+            return
+        steps = sr.st.tasks[cur['task']]['steps']
+        s = steps[cur['step']]
+        x = cur['st']
+        key = (cur['order'], cur['step'], cur['task'], x.get('i', 0))
+        me = p.id
+        place = None
+        if 'go' in s:
+            place = x.get('dest')
+        elif 'meet' in s:
+            place = x.get('place')
+        elif 'lock' in s or 'unlock' in s:
+            pass
+        for at, o in [u for u in self.undo_at if u[0] == n]:
+            e.op(o['kks'], {'open': 'close', 'close': 'open'}[o['do']], None, None, o['where'], me)
+        if self.ahead and 'go' in s and (cur['order'], cur['step']) not in self.ahead_done:
+            self.ahead_done.add((cur['order'], cur['step']))
+            for t in steps[cur['step'] + 1:]:
+                if 'wait' in t:
+                    continue
+                if 'op' in t:
+                    o = t['op']
+                    e.op(o['kks'], o['do'], o.get('value'), o.get('trip'), o['where'], me)
+                    if self.undo:
+                        self.undo_at.append((n + 1, o))
+                elif self.ahead == 'all' and 'permit' in t:
+                    w = cur['work'] if t['permit']['work'] == '$' else t['permit']['work']
+                    e.permit(w, t['permit']['action'], me)
+                elif self.ahead == 'all' and ('lock' in t or 'unlock' in t):
+                    k = 'lock' if 'lock' in t else 'unlock'
+                    getattr(e, k)(cur['work'] if t[k]['work'] == '$' else t[k]['work'], t[k]['point'], me)
+                else:
+                    break
+        if place is not None and sr.t_at != place:
+            if self.going is None or self.going[0] != place:
+                self.going = (place, n + self.walk)
+                if sr.t_at is not None:
+                    e.leave(sr.st.places[sr.t_at]['id'])
+            elif n >= self.going[1]:
+                e.arrive(sr.st.places[place]['id'])
+                self.going = None
+            return
+        if key in self.done:
+            return
+        if 'read' in s:
+            v = e.shown(s['read'], e.cur)
+            self.reads += 1
+            e.read(s['read'], v + (1.0 if self.reads in self.wrong else 0.0))
+        elif 'say' in s:
+            e.say(s['say'], s['to'])
+        elif 'call' in s:
+            w = s['call'].get('work', '$')
+            e.call(s['call']['role'], s['call']['task'], cur['work'] if w == '$' else w)
+        elif 'op' in s:
+            o = s['op']
+            e.op(o['kks'], o['do'], o.get('value'), o.get('trip'), o['where'], me)
+        elif 'permit' in s:
+            w = cur['work'] if s['permit']['work'] == '$' else s['permit']['work']
+            e.permit(w, s['permit']['action'], me)
+        elif 'lock' in s or 'unlock' in s:
+            k = 'lock' if 'lock' in s else 'unlock'
+            w = cur['work'] if s[k]['work'] == '$' else s[k]['work']
+            iso = e.isos[e.works[w]['isolation']]
+            pts = range(len(iso['points'])) if s[k]['point'] == 'all' else [s[k]['point']]
+            for i in pts:
+                getattr(e, k)(w, i, me)
+        elif 'choose' in s:
+            e.pick(0)
+        elif 'ack' in s and cur['alarm'] is not None:
+            e.ack(cur['alarm'])
+        else:
+            return
+        self.done.add(key)
+
+
+def apply_staff(e, item):
+    kind = item[1]
+    if kind == 'op' and len(item) == 8:
+        e.op(*item[2:8])
+    elif kind in ('role', 'arrive', 'leave', 'pick', 'jump'):
+        getattr(e, kind)(item[2])
+    elif kind == 'task_ack':
+        e.task_ack()
+    elif kind in ('read', 'say'):
+        getattr(e, kind)(item[2], item[3])
+    elif kind == 'call':
+        e.call(item[2], item[3], item[4])
+    else:
+        apply(e, item)
+
+
+def staff_files(scenario=None, staff=None):
+    F = mini_staff()
+    if scenario is not None:
+        F['scenarios/s1.json'] = scenario
+    if staff is not None:
+        F['staff.json'] = staff
+    del F['procedures/p1.json']
+    del F['screens.json']
+    return F
+
+
+def staff_runs():
+    """(why, scenario changes, staff changes or None, the trainee player or None, steps, snapshot every)."""
+    extra_person = copy.deepcopy(mini_staff()['staff.json'])
+    extra_person['people'].append({'id': 'a_fo3', 'role': 'field_op', 'roster': 'shift', 'crew': 'a',
+                                   'call': 'Field 3 A'})
+    return [
+        ('a shift change and a morning with no trainee (seed 1): the night crew hands over and goes, the day crew '
+         'comes on from the gate; rounds with readings and a choice drawn; the control room operator\'s instruction '
+         'to a field operator; the pump started from the screen trips: the alarm answered and checked locally, the '
+         'trip called; the value reaction; a trainer\'s fault raises a work: the permit requested, approved, both '
+         'points locked by their roles, issued, accepted, worked, done, returned, unlocked and closed by NPCs; the '
+         'technicians\' days, a toolbox meeting; the supervisor waiting for a seat a field operator took',
+         {}, None, Trainee(extra=[[901, 'fault', 'f1']]), 2400, 20),
+        ('the same morning with seed 7: other draws (work times, choices), the same rules', {'seed': 7}, None,
+         Trainee(extra=[[901, 'fault', 'f1']]), 2400, 20),
+        ('a person added at the end of the file: no one else\'s draws change', {}, extra_person,
+         Trainee(extra=[[901, 'fault', 'f1']]), 1200, 20),
+        ('the trainee as field operator 1 of crew A, chosen by the role input at step 1 (a second role input and one '
+         'at a later step refused): the handover, rounds walked and read (one reading wrong: misread), the valve '
+         'opened on the control room\'s call, the alarm checked on the radio\'s call, a lock of the work\'s '
+         'mechanical point, task_ack and the fast-forward level',
+         {}, None, Trainee(wrong=(1,), extra=[[1, 'role', 'a_fo1'], [1, 'role', 'a_fo2'], [3, 'role', 'a_fo2'],
+                                              [160, 'read', 7, 1.0], [160, 'say', 5, 'channel'], [160, 'say', 'handover', 9],
+                                              [161, 'call', 3, 4, None], [161, 'op', 12, 'open', None, None, 'local', 'a_fo1'],
+                                              [901, 'fault', 'f1']]), 2400, 20),
+        ('the trainee as control room operator of crew A (the scenario\'s trainee): the instruction called over the '
+         'radio and the pump started from the screen; refusals: an op at a where the op lacks, a local op without '
+         'operate_local, an op naming another person, a version 1 op while playing a person, a permit approval '
+         'without approve, a lock without lock_electrical; a free radio call to a field operator and a refused '
+         'one; a say from the radio panel',
+         {'trainee': 'a_ccr'}, None,
+         Trainee(extra=[[30, 'op', VALVE, 'open', None, None, 'screen', 'a_ccr'],
+                        [30, 'op', PUMP, 'stop', None, None, 'local', 'a_ccr'],
+                        [31, 'op', PUMP, 'stop', None, None, 'screen', 'a_fo1'],
+                        [32, 'op', PUMP, 'stop', None, None],
+                        [33, 'permit', 'wo_pump', 'approve', 'a_ccr'], [34, 'lock', 'wo_pump', 0, 'a_ccr'],
+                        [35, 'call', 'field_op', 'check_pump', None], [35, 'call', 'field_op', 'open_valve', None],
+                        [36, 'say', 'all_well', 'channel'], [901, 'fault', 'f1']]), 2000, 20),
+        ('placement at 10:30 (the trainee as shift supervisor, the scenario\'s) and jumps: refused while a task given '
+         'to the trainee is unacknowledged and while a permit is open, accepted to 19:00 (every queue skipped, the '
+         'slots in the gap skipped, the people placed again: the night crew on duty as a level, no duty events); a '
+         'second jump in one step refused; a jump to 17:30 the next day (the shift change\'s handover); a jump to a '
+         'time not HH:MM refused',
+         {'trainee': 'a_sup', 'start': {'day': 1, 'time': '10:30'}}, None,
+         Trainee(quiet=True, extra=[[2, 'fault', 'f1'], [5, 'jump', '18:00'], [8, 'task_ack'],
+                                    [9, 'permit', 'wo_pump', 'request', 'a_sup'], [10, 'jump', '18:00'],
+                                    [11, 'permit', 'wo_pump', 'cancel', 'a_sup'], [12, 'jump', '19:00'],
+                                    [12, 'jump', '20:00'], [40, 'task_ack'], [41, 'jump', '17:30'],
+                                    [42, 'jump', '6:00']]), 600, 10),
+        ('a field operator absent at 17:30: the crew of one does the calls; nobody on duty for the technician\'s job '
+         '(unassigned); the shift change to the night crew', {'absent': ['a_fo2'], 'start': {'day': 1, 'time': '17:30'}},
+         None, Trainee(extra=[[5, 'fault', 'f1']]), 1500, 20),
+        ('actions before their step (§17.8), the trainee as field operator 1 of crew A: on the way to the valve for '
+         'the isolation, the valve closed and its point locked before those steps are current; each counts when its '
+         'step becomes current, as it still holds (event early)',
+         {'trainee': 'a_fo1'}, None, Trainee(ahead='all', extra=[[901, 'fault', 'f1'],
+                                                                 [1300, 'repair', 'f1', 'wo_pump', 'a_fo1']]),
+         1400, 20),
+        ('an action before its step that no longer holds: the valve closed on the way and opened again a step later; '
+         'its step becomes current with the valve open, so the close counts only when made again',
+         {'trainee': 'a_fo1'}, None, Trainee(ahead='ops', undo=True, extra=[[901, 'fault', 'f1']]), 1400, 20),
+        ('a permit action before its step: the mechanical technician accepts the issued permit on the way to the pump; '
+         'the wait for issued passes and the accept step counts it when current. Repairs under the permit (§15.5): '
+         'theirs, as the acceptor, is made (the work\'s done then finds the fault repaired); the field operator\'s, '
+         'naming them, is refused (authority)',
+         {'trainee': 'mech1'}, None, Trainee(ahead='all', extra=[[901, 'fault', 'f1'],
+                                                                 [1100, 'repair', 'f1', 'wo_pump', 'a_fo1'],
+                                                                 [1101, 'repair', 'f1', 'wo_pump', 'mech1']]),
+         2400, 20),
+        ('personal locks (§15.1): the supervisor (the trainee, quiet) raises the work by inputs; the electrician and a '
+         'field operator lock their points; the supervisor\'s unlock of another\'s lock refused (owner); a removal '
+         'by authority with an empty reason (unknown), one naming another person (authority), one done (its owner '
+         'and reason in the event), one of the point now unlocked (unlocked); the supervisor\'s own lock and unlock',
+         {'trainee': 'a_sup'}, None,
+         Trainee(quiet=True, extra=[[310, 'fault', 'f1'], [312, 'permit', 'wo_pump', 'request', 'a_sup'],
+                                    [313, 'permit', 'wo_pump', 'approve', 'a_sup'],
+                                    [314, 'call', 'elec_ap', 'isolate_e', None], [315, 'call', 'field_op', 'isolate_m', None],
+                                    [600, 'unlock', 'wo_pump', 1, 'a_sup'],
+                                    [601, 'remove_lock', 'wo_pump', 1, 'a_sup', ''],
+                                    [601, 'remove_lock', 'wo_pump', 1, 'a_fo1', 'Called away'],
+                                    [602, 'remove_lock', 'wo_pump', 1, 'a_sup', 'Locker went home sick; valve seen shut'],
+                                    [603, 'remove_lock', 'wo_pump', 1, 'a_sup', 'Again'],
+                                    [604, 'lock', 'wo_pump', 1, 'a_sup'], [606, 'unlock', 'wo_pump', 1, 'a_sup']]),
+         700, 20),
+    ]
+
+
+def build_staff():
+    base = mini_staff()
+    out = []
+    for why, sc_change, staff, player, until, every in staff_runs():
+        sc = copy.deepcopy(base['scenarios/s1.json'])
+        for k, v in sc_change.items():
+            if k == 'start':
+                sc['start'] = v
+            else:
+                sc['staff'][k] = v
+        F = staff_files(sc, staff)
+        b = check(F)
+        e = P.Recorder(b, 's1')
+        states = [e.snapshot()]
+        while e.step_no < until:
+            player(e)
+            e.step()
+            if e.step_no % every == 0 or e.step_no == until:
+                states.append(e.snapshot())
+        out.append({'why': why, 'scenario': sc, 'staff': staff, 'inputs': e.inputs, 'until': until, 'every': every,
+                    'states': states, 'events': e.events})
+    return out
+
+
+# The first train's day (§19 `day`): the scenario with staff from its start (05:30) through the day shift, seed 1 and
+# no trainee; and runs from the same start with a trainee or a trainer's fault: (id, scenario's staff changes, the
+# Trainee player, steps, expectations checked by tests/test_plant3d_staff.py).
+DAY_STEPS = 75000            # 05:30 to 18:00 at day_scale 6
+DAY_EVERY = 6000             # a snapshot every clock hour
+def day_forks():
+    return [
+        ('field_cw_alarm', Trainee(extra=[[1, 'role', 'a_fo_cw'], [4000, 'fault', 'cw_b_valve_stuck']]), 15000,
+         {'trainee': 'a_fo_cw', 'events': [['task', None, 'answer_alarm', 'start'], ['call', None, 'field_op', 'check_alarm']]}),
+        ('ccr_instruction', Trainee(extra=[[1, 'role', 'a_ccr1'], [3200, 'call', 'field_op', 'ccw_cooler_in', None]]),
+         9000, {'trainee': 'a_ccr1', 'end': {'ccw_cooler': 1}}),
+        ('npc_permit', Trainee(extra=[[10000, 'fault', 'cw_b_motor']]), 36000,
+         {'permits': {'wo_cw_b_motor': 9}, 'repaired': ['cw_b_motor']}),
+        ('sup_late', Trainee(wake=9000, extra=[[1, 'role', 'a_sup'], [4000, 'fault', 'ccw_a_motor']]), 36000,
+         {'trainee': 'a_sup', 'permits': {'wo_ccw_a_motor': 9}}),
+    ]
+
+
+def day_bundle():
+    return P.check_dir(DATA)
+
+
+def build_day(b=None):
+    b = b or day_bundle()
+    sid = next(k for k, v in b.scenarios.items() if 'staff' in v)
+    e = P.Recorder(b, sid)
+    snaps = [e.snapshot(values=False)]
+    while e.step_no < DAY_STEPS:
+        e.step()
+        if e.step_no % DAY_EVERY == 0:
+            snaps.append(e.snapshot(values=False))
+    forks = []
+    for fid, player, until, expect in day_forks():
+        f = P.Recorder(b, sid)
+        n0 = 0
+        while f.step_no < until:
+            player(f)
+            f.step()
+        forks.append({'id': fid, 'inputs': f.inputs, 'until': until, 'events': f.events[n0:],
+                      'end': f.snapshot(values=False), 'expect': expect,
+                      'values': {k: f.v(k) for k in sorted(expect.get('end', {}))}})
+    return {'scenario': sid, 'until': DAY_STEPS, 'every': DAY_EVERY, 'events': e.events, 'states': snaps,
+            'forks': forks}
+
+
 def build2():
     F = mini2()
     return {'about': 'Walkdown Plant content format 2 vectors (docs/PLANT3D.md §19), made by '
                      'ref/make_plant3d_vectors.py from ref/plant3d.py. Numbers compare to 1e-6. Milestone P1: permits, '
                      'isolations and the hold node (§15); W2: the water treatment plant started from cold by its '
                      'procedure (`wtp`, as format 1\'s `train`); W3: an RO train cleaned in place (`wtp_cip`) '
-                     'and a mixed bed regenerated (`wtp_regen`) by their procedures; staff (§16–§17) come with S1.',
+                     'and a mixed bed regenerated (`wtp_regen`) by their procedures; milestone S1: the staff '
+                     '(§16–§17): `staff` holds a synthetic plant with staff, its rejects and its runs (every event, a '
+                     'snapshot every `every` steps), `day` the first train\'s day shift.',
             'valid': [{'why': 'the synthetic plant as version 2', 'files': {k: json.dumps(v, ensure_ascii=False)
                                                                            for k, v in F.items()},
                        'counts': check(F).counts}],
@@ -1550,6 +2171,11 @@ def build2():
             'steps': build_steps2(),
             'train': build_train2(train_bundle()),
             'wtp': build_train(train_bundle(), 'wtp_cold', 'wtp_start', WTP_FORKS),
+            'staff': {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in staff_files().items()},
+                      'counts': check(staff_files()).counts,
+                      'reject': build_rejects_staff(),
+                      'runs': build_staff()},
+            'day': build_day(),
             'wtp_cip': build_train(train_bundle(), 'wtp_normal', 'ro_cip', CIP_FORKS),
             'wtp_regen': build_train(train_bundle(), 'wtp_normal', 'mb_regeneration', REGEN_FORKS)}
 

@@ -145,6 +145,8 @@ static func reason_text(e, work: Dictionary, why: String, point := -1, state := 
 			return "it is locked already"
 		"unlocked":
 			return "it is not locked"
+		"owner":
+			return "it is another person's lock: only whoever placed it removes it (a supervisor may, by authority)"
 	var x := isolation_of(e, work)
 	if point >= 0 and point < x.get("points", []).size():
 		return "not safe to lock yet: %s" % String(x["points"][point]["how"]).to_lower()
@@ -161,7 +163,7 @@ static func replay(e) -> Dictionary:
 	var count := 0
 	for i in e.events.size():
 		var ev: Array = e.events[i]
-		if ev[1] != "permit" and ev[1] != "lock" and ev[1] != "unlock":
+		if not is_permit_event(ev):
 			continue
 		var wid := str(ev[2])
 		var before: int = st.get(wid, 0)
@@ -175,6 +177,20 @@ static func replay(e) -> Dictionary:
 					nums[wid] = "PTW-%04d" % count
 		out[i] = [nums.get(wid, ""), before]
 	return out
+
+
+## A permit, lock, unlock or lock removal by authority event (§17.7).
+static func is_permit_event(ev: Array) -> bool:
+	return ev[1] == "permit" or ev[1] == "lock" or ev[1] == "unlock" or ev[1] == "remove_lock"
+
+
+## A person's call sign (the staff's), "you" for the trainee in free mode (null), else what was named.
+static func person_words(e, pid) -> String:
+	if pid == null:
+		return "you"
+	if e._sm != null and typeof(pid) == TYPE_STRING and e._sm.person_ix.has(pid):
+		return e._sm.people[e._sm.person_ix[pid]]["call"]
+	return str(pid)
 
 
 ## An event of a permit, lock or unlock (§17.7) in words, for the form's history and the debrief. `ctx` is the event's
@@ -203,6 +219,17 @@ static func event_text(e, ev: Array, ctx := []) -> String:
 	var p: int = int(ev[3]) if typeof(ev[3]) == TYPE_INT else -1
 	var pts: Array = x.get("points", [])
 	var where: String = pts[p]["kks"] if p >= 0 and p < pts.size() else str(ev[3])
+	if ev[1] == "remove_lock":
+		match ev[5]:
+			"done":
+				return "Lock removed by authority by %s: %s (%s), locked by %s. Reason: %s" % [
+						person_words(e, ev[4]), where, w.get("title", str(wid)), person_words(e, ev[7]), str(ev[8])]
+			"refused":
+				var why := PackedStringArray()
+				for r in ev[6]:
+					why.append(reason_text(e, w, String(r), p, then))
+				return "Lock removal by authority %s refused: %s" % [where, "; ".join(why)]
+		return "Lock removal by authority %s: not a point of this plant, or no reason given" % where
 	var verb := "Locked and tagged" if ev[1] == "lock" else "Lock removed"
 	match ev[5]:
 		"done":
@@ -221,6 +248,6 @@ static func history(e, wid: String) -> Array:
 	var ctx := replay(e)
 	for i in e.events.size():
 		var ev: Array = e.events[i]
-		if (ev[1] == "permit" or ev[1] == "lock" or ev[1] == "unlock") and typeof(ev[2]) == TYPE_STRING and ev[2] == wid:
+		if is_permit_event(ev) and typeof(ev[2]) == TYPE_STRING and ev[2] == wid:
 			out.append([int(ev[0]), event_text(e, ev, ctx[i]), ev[5] != "done"])
 	return out
