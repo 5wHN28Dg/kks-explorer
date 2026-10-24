@@ -41,14 +41,20 @@ def apply(e, item):
         e.shelve(item[2], item[3])
     elif kind == 'unshelve':
         e.unshelve(item[2])
+    elif kind == 'repair' and len(item) > 3:
+        e.repair_under(item[2], item[3], item[4])       # the trainee's, under a permit (PLANT3D §15.5)
     elif kind == 'repair':
         e.repair(item[2])
     elif kind == 'permit':
         e.permit(item[2], item[3], item[4])
     elif kind in ('lock', 'unlock'):
         getattr(e, kind)(item[2], item[3], item[4])
-    else:
+    elif kind == 'remove_lock':
+        e.remove_lock(item[2], item[3], item[4], item[5])
+    elif kind == 'fault':
         e.fault(item[2])
+    else:
+        raise ValueError(f'an input this harness does not replay: {item}')
 
 
 class Hasher:
@@ -133,7 +139,53 @@ def reference_runs(V, keep=None, V2=None):
         for run in WTP_RUNS:
             if run in V2:
                 train_runs(b, f'v2/{run}', V2[run], out, k, 'v2/')
+        for i, r in enumerate(V2.get('staff', {}).get('runs', [])):
+            out[f'v2/staff/{i}'] = staff_run(V2['staff']['files'], r, k(f'v2/staff/{i}'))
+        if 'day' in V2:
+            day_runs(b, V2['day'], out, k)
     return out
+
+
+def day_runs(b, d, out, k):
+    """The first train's day and its runs with a trainee (the vectors' `day`), as reference_runs."""
+    from ref import make_plant3d_vectors as G
+    for name, inputs, until in [('v2/day', [], d['until'])] + [('v2/day/' + f['id'], f['inputs'], f['until'])
+                                                              for f in d['forks']]:
+        e = P.Engine(b, d['scenario'])
+        h = Hasher(0)
+        h.add(e, k(name))
+        inputs = sorted(inputs, key=lambda x: x[0])
+        j = 0
+        while e.step_no < until:
+            while j < len(inputs) and inputs[j][0] == e.step_no + 1:
+                G.apply_staff(e, inputs[j])
+                j += 1
+            e.step()
+            h.add(e, k(name))
+        h.end()
+        out[name] = (0, h.chunks, e.names, h.vals)
+
+
+def staff_run(files, r, kk):
+    """A staff run (the vectors' `staff.runs`) on the reference, as reference_runs."""
+    from ref import make_plant3d_vectors as G
+    F = {rel: t.encode() for rel, t in files.items()}
+    F['scenarios/s1.json'] = json.dumps(r['scenario']).encode()
+    if r['staff'] is not None:
+        F['staff.json'] = json.dumps(r['staff']).encode()
+    e = P.Engine(P.check_files(F), 's1')
+    h = Hasher(0)
+    h.add(e, kk)
+    inputs = sorted(r['inputs'], key=lambda x: x[0])
+    j = 0
+    while e.step_no < r['until']:
+        while j < len(inputs) and inputs[j][0] == e.step_no + 1:
+            G.apply_staff(e, inputs[j])
+            j += 1
+        e.step()
+        h.add(e, kk)
+    h.end()
+    return (0, h.chunks, e.names, h.vals)
 
 
 def train_runs(b, name, t, out, k, prefix=''):
@@ -241,6 +293,8 @@ class GdscriptEngine(unittest.TestCase):
         self.assertNotIn('FAIL', out)
         n = 1 + len(self.V['steps']) + len(self.V['links']) + 2 * (1 + 1) + len(self.V['train']['forks']) + \
             len(self.V['hot']['forks']) + 1 + len(self.V2['steps']) + len(self.V2.get('train', {}).get('forks', [])) + \
+            (1 + len(self.V2['staff']['runs']) if 'staff' in self.V2 else 0) + \
+            (1 + len(self.V2['day']['forks']) if 'day' in self.V2 else 0) + \
             sum(2 + len(self.V2[r]['forks']) for r in WTP_RUNS if r in self.V2)
         self.assertIn(f'VECTORS passed={n} failed=0', out)
 
@@ -403,6 +457,17 @@ class GdscriptEngineEdges(unittest.TestCase):
 
 
 @unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptStaffEdges(unittest.TestCase):
+    """Places held in cases the staff vectors don't reach, as tests/test_plant3d_staff.py checks the reference."""
+
+    def test_staff_edges(self):
+        r = godot('check_staff_edges.gd', os.path.join(REPO, 'ref', 'vectors', 'plant3d-v2.json'), timeout=300)
+        no_errors(self, r)
+        self.assertIn('STAFF_EDGES bad=0', r.stdout, r.stdout[-4000:])
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
 class GdscriptEngineInterpreter(unittest.TestCase):
     """The engine steps with a straight-line GDScript program generated from the model (engine.gd _gen_fast), which
     every other test here runs. Its interpreter (engine.gd _run: step 0, faults' `when` nodes, and every step when the
@@ -429,10 +494,12 @@ class GdscriptEngineInterpreter(unittest.TestCase):
                     got = json.load(f)
                 for run, (start, chunks, _, _) in steps_runs(V['valid'][0]['files'], vec['steps']).items():
                     self.assertEqual(got[run]['chunks'], chunks, f'{name} {run}')
-            # format 2's unit runs (permits, isolations, the hold node), without its train and water plant runs
+            # format 2's unit runs (permits, isolations, the hold node), without its runs of the first train's content
+            # (train, water plant, the staff's day: they need the content's model, which --only=v2 doesn't load) nor
+            # the staff's runs (GdscriptEngine replays them)
             with open(VECTORS2, encoding='utf-8') as f:
                 V2 = json.load(f)
-            V2 = {k: v for k, v in V2.items() if k != 'train' and k not in WTP_RUNS}
+            V2 = {k: v for k, v in V2.items() if k not in ('train', 'day', 'staff') and k not in WTP_RUNS}
             path = os.path.join(d, 'v2.json')
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(V2, f)

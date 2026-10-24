@@ -11,6 +11,7 @@ extends RefCounted
 ##   var e := Engine.new(m, "cold_iron")
 
 const JsonStrict = preload("json_strict.gd")
+const Staff = preload("staff.gd")
 
 const STATELESS := ["const", "state", "of", "sum", "product", "min", "max", "diff", "select", "cmp", "and", "or", "not"]
 const STATEFUL := ["lag", "ramp", "integrate", "latch", "delay", "timer", "wrap", "hold"]
@@ -36,6 +37,7 @@ var isolation_ix := {}                # id -> position
 var work_ix := {}
 var scenarios := {}                   # id -> scenario, in file-name order
 var procedures := {}                  # id -> procedure, in file-name order
+var staff = null                      # sim/staff.gd: staff.json (§16), or null
 
 
 ## The key an op is found by (§7.2: its equipment, its `do` and, for a reset, its trip). null when an input's parts
@@ -97,7 +99,7 @@ static func is_num(x) -> bool:
 static func from_dir(path: String):
 	var files := {}
 	var top := path.trim_suffix("/")
-	for rel in ["plant.json", "kit.json", "sounds.json"]:
+	for rel in ["plant.json", "kit.json", "sounds.json", "staff.json"]:
 		if FileAccess.file_exists(top + "/" + rel):
 			files[rel] = FileAccess.get_file_as_bytes(top + "/" + rel)
 	for sub in ["areas", "model", "scenarios", "procedures"]:
@@ -193,6 +195,14 @@ func _load(files: Dictionary) -> void:
 			if pr == null:
 				return
 			procedures[pr["id"]] = pr
+	if files.has("staff.json") and files["staff.json"] != null:
+		var sd = _read(files, "staff.json")
+		if sd == null:
+			return
+		staff = Staff.load_from(self, sd)
+		if staff.error != "":
+			_fail(staff.error)
+			return
 	for sid in scenarios:
 		_check_scenario(scenarios[sid])
 

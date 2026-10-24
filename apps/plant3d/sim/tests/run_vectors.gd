@@ -80,6 +80,10 @@ func _init() -> void:
 		for k in WTP_RUNS:         # the water treatment plant's runs by their procedures (W2, W3): procedure, run, forks
 			if V2.has(k):
 				expected += 2 + V2[k]["forks"].size()
+		if V2.has("staff"):
+			expected += 1 + V2["staff"]["runs"].size()
+		if V2.has("day"):
+			expected += 1 + V2["day"]["forks"].size()
 	var valid_files: Dictionary = V["valid"][0]["files"]
 	# the starts run by their procedures: the cold start (`train`) and the hot restart (`hot`, where the file has it)
 	var starts := ["train", "hot"].filter(func(k): return V.has(k))
@@ -99,6 +103,8 @@ func _init() -> void:
 		_valid(V2["valid"][0])
 		for k in V2["steps"].size():
 			_steps(k, V2["steps"][k], V2["valid"][0]["files"], "v2/")
+		if V2.has("staff"):
+			_staff(V2["staff"])
 	if parts.has("procedure") or parts.has("train") or V2.has("train") or WTP_RUNS.any(func(k): return V2.has(k)):
 		train_model = PlantModel.from_dir(opts.get("data", repo.path_join("data/plant3d")))
 		if train_model.error != "":
@@ -116,6 +122,8 @@ func _init() -> void:
 		if V2.has(k):
 			_procedure(V2[k], train_model)
 			_train(V2[k], train_model, "v2/" + k)
+	if V2.has("day"):
+		_day(V2["day"], train_model)
 	if opts.has("digests"):
 		var f := FileAccess.open(opts["digests"], FileAccess.WRITE)
 		f.store_string(JSON.stringify(digests, " ", false))
@@ -282,6 +290,14 @@ func _apply_due(e, inputs: Array, i: int) -> int:
 	return i
 
 
+## Asks each of `effects` ([step, work, point, answer], §15.6) that falls at the run's step, after that step's inputs
+## are made and before it is stepped; appends [step, work, point, the engine's answer] to `got`.
+func _ask(e, effects: Array, got: Array) -> void:
+	for q in effects:
+		if int(q[0]) == e.step_no:
+			got.append([q[0], q[1], q[2], e.lock_effects(q[1], int(q[2]))])
+
+
 func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "") -> void:
 	var files := valid_files.duplicate()
 	files["model/a1.json"] = s["model"]
@@ -301,8 +317,10 @@ func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "")
 	var states: Array = s["states"]
 	var d := diff(e.snapshot(), states[0], "step 0")
 	var i := 0
+	var asked := []
 	while d == "" and e.step_no < states.size() - 1:
 		i = _apply_due(e, s["inputs"], i)
+		_ask(e, s.get("effects", []), asked)
 		e.step()
 		_hash(e)
 		d = diff(e.snapshot(), states[e.step_no], "step %d" % e.step_no)
@@ -311,7 +329,116 @@ func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "")
 		d = "inputs after the last step"
 	if d == "":
 		d = diff(e.events, s["events"], "events")
+	if d == "":
+		d = diff(asked, s.get("effects", []), "what a lock would do")
 	_result(name, d)
+
+
+## Format 2's staff (§16–§17): the synthetic plant with staff loads with the reference's counts, and each run replays
+## from its inputs: every event (a read's value to the file's precision, everything else exactly) and a snapshot
+## every `every` steps.
+func _staff(st: Dictionary) -> void:
+	var m = PlantModel.from_files(st["files"])
+	if m.error != "" or m.staff == null:
+		_result("v2/staff: the plant with staff loads", m.error if m.error != "" else "no staff")
+		return
+	var c: Dictionary = st["counts"]
+	var sm = m.staff
+	var got := {"people": sm.people.size(), "roles": sm.roles.size(), "places": sm.places.size(),
+			"points": sm.points.size(), "ways": sm.ways.size(), "tasks": sm.tasks.size(),
+			"reactions": sm.reactions.size()}
+	var want := {}
+	for k in got:
+		want[k] = c[k]
+	_result("v2/staff: the plant with staff loads with the reference's counts", diff(got, want, "counts"))
+	for k in st["runs"].size():
+		_staff_run(k, st["runs"][k], st["files"])
+
+
+func _staff_run(k: int, r: Dictionary, base: Dictionary) -> void:
+	var files := base.duplicate()
+	files["scenarios/s1.json"] = r["scenario"]
+	if r["staff"] != null:
+		files["staff.json"] = r["staff"]
+	var name := "v2/staff/%d (%s)" % [k, r["why"].left(80)]
+	var m = PlantModel.from_files(files)
+	if m.error != "":
+		_result(name, m.error)
+		return
+	var e = PlantEngine.new(m, "s1")
+	var run := "v2/staff/%d" % k
+	_hash_begin(run, 0)
+	_hash(e)
+	var states: Array = r["states"]
+	var every: int = r["every"]
+	var until: int = r["until"]
+	var d := diff(e.snapshot(), states[0], "step 0")
+	var inputs := by_step(r["inputs"])
+	var i := 0
+	var si := 1
+	while d == "" and e.step_no < until:
+		i = _apply_due(e, inputs, i)
+		e.step()
+		_hash(e)
+		if e.step_no % every == 0 or e.step_no == until:
+			d = diff(e.snapshot(), states[si], "step %d" % e.step_no)
+			si += 1
+	_hash_end()
+	if d == "" and i != inputs.size():
+		d = "inputs after the last step"
+	if d == "":
+		d = diff(_reads_as(e.events, r["events"]), r["events"], "events")
+	_result(name, d)
+
+
+## The first train's day with its staff (§19 `day`): the run from the scenario's start (every event, a snapshot every
+## clock hour) and each run with a trainee or a fault (every event).
+func _day(d: Dictionary, m) -> void:
+	var e = PlantEngine.new(m, d["scenario"])
+	_hash_begin("v2/day", 0)
+	_hash(e)
+	var states: Array = d["states"]
+	var df := diff(e.snapshot(false), states[0], "day step 0")
+	var si := 1
+	while df == "" and e.step_no < d["until"]:
+		e.step()
+		_hash(e)
+		if e.step_no % int(d["every"]) == 0:
+			df = diff(e.snapshot(false), states[si], "day step %d" % e.step_no)
+			si += 1
+	_hash_end()
+	if df == "":
+		df = diff(_reads_as(e.events, d["events"]), d["events"], "day events")
+	_result("v2/day (%d steps)" % d["until"], df)
+	for f in d["forks"]:
+		var x = PlantEngine.new(m, d["scenario"])
+		var inputs := by_step(f["inputs"])
+		var i := 0
+		_hash_begin("v2/day/" + f["id"], 0)
+		_hash(x)
+		while x.step_no < f["until"]:
+			i = _apply_due(x, inputs, i)
+			x.step()
+			_hash(x)
+		_hash_end()
+		var fd := diff(_reads_as(x.events, f["events"]), f["events"], "events")
+		if fd == "":
+			fd = diff(x.snapshot(false), f["end"], "end")
+		_result("v2/day/" + f["id"], fd)
+
+
+## The events with each read's value replaced by the reference's when it is within the file's precision (the file
+## rounds numbers to 9 decimals; the value itself is a model value, which the digests compare bit for bit).
+static func _reads_as(got: Array, want: Array) -> Array:
+	var out := []
+	for k in got.size():
+		var g: Array = got[k]
+		if k < want.size() and g.size() == 6 and g[1] == "read" and want[k].size() == 6 and want[k][1] == "read" \
+				and diff(g[4], want[k][4], "", true) == "":
+			g = g.duplicate()
+			g[4] = want[k][4]
+		out.append(g)
+	return out
 
 
 func _links(links: Array, valid_files: Dictionary) -> void:
@@ -383,9 +510,11 @@ func _train(t: Dictionary, m, run: String) -> void:
 		var n0: int = x.events.size()
 		var fin := by_step(f["inputs"])
 		var j := 0
+		var asked := []
 		_hash_begin(("v2/" if run.begins_with("v2/") else "") + f["id"], x.step_no + 1)
 		while x.step_no < int(f["until"]):
 			j = _apply_due(x, fin, j)
+			_ask(x, f.get("effects", []), asked)
 			x.step()
 			_hash(x)
 		_hash_end()
@@ -396,4 +525,6 @@ func _train(t: Dictionary, m, run: String) -> void:
 			fd = diff(x.events.slice(n0), f["events"], "events")
 		if fd == "":
 			fd = diff(x.snapshot(false), f["end"], "end")
+		if fd == "":
+			fd = diff(asked, f.get("effects", []), "what a lock would do")
 		_result("fork " + f["id"], fd)

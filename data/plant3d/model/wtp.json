@@ -1222,9 +1222,9 @@
   {"id": "iso_ro_b", "text": "RO train B: the train and its high-pressure pump", "points": [{"kks": "00GCB22AT001", "kind": "process", "how": "Train stopped and drained; feed, permeate and concentrate valves closed, locked and tagged; the high-pressure pump's breaker racked out", "safe": "ro_b_stopped"}]}
  ],
  "works": [
-  {"id": "wo_mb_a_resin", "kks": "00GCF11AT001", "title": "Mixed bed A: underdrain lateral replaced, resin topped up", "discipline": "mech", "permit": "confined", "isolation": "iso_mb_a", "repairs": "mb_a_resin"},
-  {"id": "wo_ro_a_membranes", "kks": "00GCB21AT001", "title": "RO train A: membrane elements replaced", "discipline": "mech", "permit": "general", "isolation": "iso_ro_a", "repairs": "ro_a_cl_damage"},
-  {"id": "wo_mb_b_resin", "kks": "00GCF12AT001", "title": "Mixed bed B: underdrain lateral replaced, resin topped up", "discipline": "mech", "permit": "confined", "isolation": "iso_mb_b", "repairs": "mb_b_resin"},
-  {"id": "wo_ro_b_membranes", "kks": "00GCB22AT001", "title": "RO train B: membrane elements replaced", "discipline": "mech", "permit": "general", "isolation": "iso_ro_b", "repairs": "ro_b_cl_damage"}
+  {"id": "wo_mb_a_resin", "kks": "00GCF11AT001", "title": "Mixed bed A: underdrain lateral replaced, resin topped up", "discipline": "mech", "permit": "confined", "isolation": "iso_mb_a", "repairs": "mb_a_resin", "task": "job_mb_a_resin"},
+  {"id": "wo_ro_a_membranes", "kks": "00GCB21AT001", "title": "RO train A: membrane elements replaced", "discipline": "mech", "permit": "general", "isolation": "iso_ro_a", "repairs": "ro_a_cl_damage", "task": "job_ro_a_membranes"},
+  {"id": "wo_mb_b_resin", "kks": "00GCF12AT001", "title": "Mixed bed B: underdrain lateral replaced, resin topped up", "discipline": "mech", "permit": "confined", "isolation": "iso_mb_b", "repairs": "mb_b_resin", "task": "job_mb_b_resin"},
+  {"id": "wo_ro_b_membranes", "kks": "00GCB22AT001", "title": "RO train B: membrane elements replaced", "discipline": "mech", "permit": "general", "isolation": "iso_ro_b", "repairs": "ro_b_cl_damage", "task": "job_ro_b_membranes"}
  ]
 }

@@ -62,5 +62,6 @@
   "river_ntu",
   "river_tds"
  ],
- "start": {"at": [-20, 0, 0], "yaw": 90}
+ "start": {"at": [-20, 0, 0], "yaw": 90},
+ "clock": {"day_scale": 6, "start": {"day": 1, "time": "06:00"}, "week": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]}
 }

@@ -29,10 +29,14 @@ const TrainerPanel = preload("res://ui/trainer_panel.gd")
 const PermitPanel = preload("res://ui/permit_panel.gd")
 const Autosave = preload("res://ui/autosave.gd")
 const DebriefPanel = preload("res://ui/debrief_panel.gd")
+const Debrief = preload("res://ui/debrief.gd")
 const WalkRoute = preload("res://app/walk_route.gd")
 const Mimic = preload("res://ui/mimic.gd")
 const ScreensModel = preload("res://ui/screens_model.gd")
 const Trends = preload("res://ui/trends.gd")
+const CrewPanel = preload("res://ui/crew_panel.gd")
+const PeopleView = preload("res://ui/people_view.gd")
+const Plant = preload("res://app/plant.gd")
 
 const CONTENT := "res://built/content"
 const REACH := 6.0              # metres: within this a trainee works the equipment's local controls
@@ -67,6 +71,11 @@ var screens                     # ui/screens_model.gd: the control room screens 
 var trends                      # ui/trends.gd: the values the screens trend, sampled as the plant runs
 var mimic                       # ui/mimic.gd: the screens themselves
 var run_tracker                 # the last procedure followed in this run (kept for its debrief after it is closed)
+var crew                        # ui/crew_panel.gd: the trainee's role, tasks and radio (PLANT3D §18.7)
+var people                      # ui/people_view.gd: the crews as markers in the plant and dots on the map
+var _place_t := 0.0
+var _arrived := -2              # the place the last arrive input named (-1: a leave), -2: none sent yet
+var _jumps := 0                 # the engine's J when last looked at: a jump moves the walker to their placed person
 var root: Control
 var arrows: Control
 var instructor := false
@@ -146,6 +155,10 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	bindings.setup(clock.engine, index, info, player.camera)
 	sounds.engine = clock.engine
 	_build()
+	people = PeopleView.new()
+	people.name = "people"
+	m.add_child(people)
+	people.setup(self)
 	links = LinksIn.new()
 	links.name = "links"
 	links.link.connect(handle_link)
@@ -168,6 +181,7 @@ func _build() -> void:
 	_alarm_btn = _bar_button(bar, "Alarms", func(): toggle_alarms())
 	_bar_button(bar, "Procedures", func(): toggle_procedure())
 	_bar_button(bar, "Permits", func(): toggle_permits())
+	_bar_button(bar, "Crew", func(): toggle_crew())
 	_bar_button(bar, "Control room", func(): control_room())
 	_trainer_btn = _bar_button(bar, "Instructor", func(): toggle_trainer())
 	_trainer_btn.visible = instructor
@@ -209,6 +223,10 @@ func _build() -> void:
 	permits.name = "permits"
 	root.add_child(permits)
 	permits.setup(self)
+	crew = CrewPanel.new()
+	crew.name = "crew"
+	root.add_child(crew)
+	crew.setup(self)
 	debrief = DebriefPanel.new()
 	debrief.name = "debrief"
 	root.add_child(debrief)
@@ -258,6 +276,8 @@ func _layout() -> void:
 	card.size = Vector2(w, vs.y - top - 16.0)
 	procedure.position = Vector2(16.0, top)
 	procedure.size = Vector2(w, vs.y - top - 16.0)
+	crew.position = procedure.position
+	crew.size = procedure.size
 	alarms.position = card.position
 	alarms.size = card.size
 	trainer.position = card.position
@@ -465,10 +485,120 @@ func wants_focus() -> bool:
 
 func do_op(o: Dictionary, value) -> void:
 	var key := Tracker.op_key(o["kks"], o["do"], o.get("trip"))
-	clock.engine.op(o["kks"], o["do"], value, o.get("trip"))
+	var who = me()
+	if who != null:
+		# playing a person (§17.1): made from the screens or at the equipment, by them
+		# (where the card offers it: the screens, or the control room away from the equipment; else at it)
+		var where := "screen" if screens_open() or (in_control_room() and not near(o["kks"])) else "local"
+		clock.engine.op(o["kks"], o["do"], value, o.get("trip"), where, who)
+	else:
+		clock.engine.op(o["kks"], o["do"], value, o.get("trip"))
 	_pending.append([key, o, clock.engine.step_no + 1])
 	var paused: bool = clock.speed == SimClock.Speed.PAUSED
 	results[key] = {"state": "sent", "text": "Sent%s" % (": it takes effect when the plant runs (paused)" if paused else "…")}
+
+
+## The person the trainee plays (§17.4), null in free mode.
+func me():
+	var e = clock.engine if clock != null else null
+	if e == null or e._sm == null or e.st_trainee == -1:
+		return null
+	return e._sm.people[e.st_trainee]["id"]
+
+
+## The plant clock (§16.1) when the run has staff, else model time.
+func clock_text() -> String:
+	var e = clock.engine
+	if e == null or e._sm == null:
+		return clock.clock_text()
+	var t: int = e.clock()
+	var s: int = (t % 864000) / 10
+	return "Day %d %s %02d:%02d" % [t / 864000, e._sm.week[posmod(t / 864000 - 1, 7)].capitalize(), s / 3600, (s / 60) % 60]
+
+
+## A run with the crews (a scenario with `staff`): the plant paused at its start and the role offered.
+func start_shift(scenario: String) -> void:
+	restart(scenario)
+
+
+## The role input (§17.4) for a person, or free mode (""): only before the run's first step.
+func take_role(pid: String) -> void:
+	var e = clock.engine
+	if pid != "":
+		e.role(pid)
+		clock.run_steps(1)
+		if e.st_trainee != -1:
+			_arrived = -2
+			go_to_place(e.sp_pos[e.st_trainee] if e.sp_pos[e.st_trainee] != -1 else e._sm.gate)
+			toast("You are %s. Your tasks are in the Crew panel." % e._sm.people[e.st_trainee]["call"])
+		else:
+			toast("That role could not be taken.")
+	else:
+		toast("Free mode: the crews work around you.")
+	clock.set_speed(SimClock.Speed.NORMAL)
+
+
+## Puts the walker at a staff place (the logical places of §16.2; the walk itself is the trainee's).
+func go_to_place(i: int) -> void:
+	var sm = clock.engine._sm
+	if sm == null or i < 0:
+		return
+	var at: Array = sm.places[i]["at"]
+	if _flight:
+		_flight.kill()
+	player.scripted = false
+	player.set_mode(player.Mode.FLY)
+	player.global_position = Plant.g(at[0], at[1], at[2]) + Vector3.UP * 0.05
+	player.set_mode(player.Mode.WALK)
+	_place_t = 1.0
+
+
+## A reading written down by the trainee (the read input, §17.6).
+func write_reading(code: String, text: String) -> void:
+	var t := text.strip_edges().replace(",", ".")
+	if not t.is_valid_float():
+		toast("Type the number the gauge shows.")
+		return
+	clock.engine.read(code, t.to_float())
+
+
+## The arrive and leave inputs (§17.6): the trainee is at a place when within 1.5 m of it (2 m up or down).
+func _place_tick() -> void:
+	var e = clock.engine
+	if e._sm == null or e.st_trainee == -1:
+		return
+	var sm = e._sm
+	if e.J != _jumps and e.st_jumped.is_empty():
+		# after a jump (§17.6) the trainee's person stands where the placement put them: the walker goes there
+		_jumps = e.J
+		_arrived = -2
+		if e.sp_pos[e.st_trainee] != -1:
+			go_to_place(e.sp_pos[e.st_trainee])
+		toast("The clock jumped to %s." % clock_text())
+		return
+	var g: Vector3 = player.global_position
+	var here := Vector3(g.x, -g.z, g.y)
+	var best := -1
+	var bd := 1.5
+	for i in sm.places.size():
+		var at: Array = sm.places[i]["at"]
+		if absf(at[2] - here.z) > 2.0:
+			continue
+		var d := Vector2(at[0] - here.x, at[1] - here.y).length()
+		if d < bd:
+			bd = d
+			best = i
+	var now: int = e.st_t_at if _arrived == -2 else _arrived
+	if best != -1 and best != now:
+		if now >= 0:
+			e.leave(sm.places[now]["id"])
+		e.arrive(sm.places[best]["id"])
+		_arrived = best
+	elif best == -1 and now >= 0:
+		var at: Array = sm.places[now]["at"]
+		if Vector2(at[0] - here.x, at[1] - here.y).length() > 2.5:
+			e.leave(sm.places[now]["id"])
+			_arrived = -1
 
 
 func op_result(o: Dictionary) -> Dictionary:
@@ -495,10 +625,17 @@ func fault(fid: String) -> void:
 	toast("Fault pressed: it acts in the next step.")
 
 
-## A fault's repair (PLANT3D §7.8): from the instructor's panel, or by the trainee at its equipment (the card).
+## A fault's repair (PLANT3D §7.8): from the instructor's panel, or, in a plant without permits to work (version 1),
+## by the trainee at its equipment (the card).
 func repair(fid: String) -> void:
 	clock.engine.repair(fid)
 	toast("Repaired: it acts in the next step.")
+
+
+## The trainee's repair at the equipment under a work's permit to work (PLANT3D §15.5, a version 2 plant).
+func repair_under(fid: String, wid: String) -> void:
+	clock.engine.repair_under(fid, wid, me())
+	toast("Repaired under the permit: it acts in the next step.")
 
 
 func fast_forward() -> void:
@@ -525,8 +662,14 @@ func restart(scenario: String, quiet := false) -> void:
 	permits._pending.clear()
 	permits._sig = ""
 	_ev_seen = 0
+	_arrived = -2
+	_jumps = 0
+	crew._sig = ""
 	if not quiet:
 		toast("The plant restarted: %s." % model.scenarios[scenario].get("title", scenario))
+	if clock.engine._sm != null and clock.engine.st_trainee == -1:
+		clock.set_speed(SimClock.Speed.PAUSED)
+		open_crew()
 
 
 # ------------------------------------------------------------------ cards, pointing, moving
@@ -758,6 +901,7 @@ func toggle_procedure() -> void:
 	if procedure.visible:
 		close_procedure()
 	else:
+		crew.visible = false
 		procedure.open()
 		_release_mouse()
 
@@ -778,6 +922,24 @@ func open_permits(wid := "", code := "") -> void:
 	else:
 		permits.open(wid)
 	_release_mouse()
+
+
+func toggle_crew() -> void:
+	if crew.visible:
+		close_crew()
+	else:
+		open_crew()
+
+
+func open_crew() -> void:
+	procedure.visible = false
+	crew.open()
+	_release_mouse()
+
+
+func close_crew() -> void:
+	crew.visible = false
+	mimic.take_focus()
 
 
 func toggle_permits() -> void:
@@ -827,6 +989,8 @@ func close_top() -> bool:
 		close_screens()
 	elif procedure.visible:
 		close_procedure()
+	elif crew.visible:
+		close_crew()
 	else:
 		return false
 	return true
@@ -952,7 +1116,11 @@ func _process(delta: float) -> void:
 	_sync_events()
 	_horn_tick()
 	_blink += delta
-	_time.text = "%s %s" % [clock.clock_text(), {0: "paused", 1: "×1", 2: "×%.0f" % clock.ff_rate()}[clock.speed]]
+	_time.text = "%s %s" % [clock_text(), {0: "paused", 1: "×1", 2: "×%.0f" % clock.ff_rate()}[clock.speed]]
+	_place_t += delta
+	if _place_t >= 0.25:
+		_place_t = 0.0
+		_place_tick()
 	_ff_btn.disabled = clock.ff_blocked() != ""
 	_toast_tick(delta)
 	_t_hint += delta
@@ -997,7 +1165,8 @@ func _follow_events(evs: Array, from: int) -> void:
 			"op":
 				for k in _pending.size():         # the events come in the order the inputs were made
 					var p: Array = _pending[k]
-					if p[1]["kks"] == ev[2] and p[1]["do"] == ev[3] and ev[0] >= p[2]:
+					if p[1]["kks"] == ev[2] and p[1]["do"] == ev[3] and ev[0] >= p[2] \
+							and (ev.size() < 8 or ev[7] == me()):      # not a colleague's op (§17.1)
 						var o: Dictionary = p[1]
 						var txt := ""
 						match ev[4]:
@@ -1026,6 +1195,10 @@ func _follow_events(evs: Array, from: int) -> void:
 					var say: String = model.machines[mi]["states"][_state_pos(mi, ev[4])].get("say", "")
 					if say != "":
 						toast(say)
+			"repair":
+				if ev.size() >= 7 and ev[6] is Array:     # the trainee's repair under a permit, not made (§15.5)
+					toast("Repair not made: %s" % ("; ".join(ev[6].map(func(x): return Debrief.REPAIR_WHY.get(x, str(x))))
+							if ev[5] == "refused" else "not a repair of that permit's work"))
 
 
 func _state_pos(mi: int, state: String) -> int:
@@ -1093,6 +1266,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 		toggle_procedure(); get_viewport().set_input_as_handled()
 	elif ev.is_action_pressed("permits"):
 		toggle_permits(); get_viewport().set_input_as_handled()
+	elif ev.is_action_pressed("crew"):
+		toggle_crew(); get_viewport().set_input_as_handled()
 	elif ev.is_action_pressed("pause"):
 		clock.set_speed(SimClock.Speed.NORMAL if clock.speed == SimClock.Speed.PAUSED else SimClock.Speed.PAUSED)
 		get_viewport().set_input_as_handled()

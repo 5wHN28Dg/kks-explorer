@@ -217,6 +217,6 @@
   {"id": "iso_ct_fan3", "text": "Cooling tower fan 3: motor supply", "points": [{"kks": "30PAD10AN003", "kind": "electrical", "how": "Fan stopped; its breaker racked out, locked and tagged", "safe": "ct_fan3_safe"}]}
  ],
  "works": [
-  {"id": "wo_ct_fan3", "kks": "30PAD10AN003", "title": "Cooling tower fan 3: bearings and gearbox service", "discipline": "mech", "permit": "general", "isolation": "iso_ct_fan3", "repairs": "ct_fan3_vib"}
+  {"id": "wo_ct_fan3", "kks": "30PAD10AN003", "title": "Cooling tower fan 3: bearings and gearbox service", "discipline": "mech", "permit": "general", "isolation": "iso_ct_fan3", "repairs": "ct_fan3_vib", "task": "job_ct_fan3"}
  ]
 }

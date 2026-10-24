@@ -290,6 +290,7 @@ class Bundle:
     def __init__(self):
         self.plant = self.kit = self.sounds = self.screens = None
         self.version = 1                           # plant.json's (§14)
+        self.staff = None                          # staff.json, checked (ref/plant3d_staff.py), or None
         self.screen_of = {}                        # code shown on the screens -> (screen id, group id) (§7.11)
         self.areas, self.models = [], []          # in plant.json order
         self.scenarios, self.procedures = {}, {}
@@ -328,7 +329,7 @@ def check_files(files):
     """Check a plant given as {relative path: bytes} (the layout of PLANT3D's file table)."""
     b = Bundle()
     for rel in files:
-        need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json') or re.fullmatch(
+        need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json') or re.fullmatch(
             r'(areas|model|procedures|scenarios)/[a-z_][a-z0-9_]{0,31}\.json|sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg', rel),
             'unknown_key', f'{rel}: not a file of the format')
     for rel in ('plant.json', 'kit.json', 'sounds.json'):
@@ -389,6 +390,15 @@ class Plant:
             if rel.startswith('model/'):
                 need(rel[6:-5] in p['areas'], 'bad_ref', f'{rel}: area not listed in plant.json')
         m.finish()
+        b.staff = None
+        if 'staff.json' in files:
+            from ref.plant3d_staff import Staff
+            need(b.version == 2, 'unknown_key', 'staff.json: only in a version 2 plant (§14)')
+            b.staff = Staff(parse(files, 'staff.json'), b, m)
+        elif b.version == 2:
+            for x in m.works:
+                if 'task' in x:
+                    ident(x['task'], f'work {x["id"]}.task')
         for rel in sorted(files):
             if rel.startswith('scenarios/'):
                 s = parse(files, rel)
@@ -415,12 +425,21 @@ class Plant:
                  sounds=len(b.sounds['sounds']), screens=len(b.screens['screens']) if b.screens else 0)
         if b.version == 2:
             c.update(isolations=len(m.isolations), works=len(m.works))
+        if b.staff is not None:
+            st = b.staff
+            c.update(people=len(st.people), roles=len(st.roles), places=len(st.places), points=len(st.points),
+                     ways=len(st.ways), tasks=len(st.tasks), reactions=len(st.reactions))
 
     # --- plant.json
     def check_plant(self, p):
         w = 'plant.json'
-        keys(p, ('format', 'version', 'id', 'title', 'frequency_hz', 'kks', 'media', 'areas', 'ext', 'start'), (), w)
+        keys(p, ('format', 'version', 'id', 'title', 'frequency_hz', 'kks', 'media', 'areas', 'ext', 'start'),
+             ('clock',), w)
         self.b.version = fmt(p, 'plant', w, 2)
+        if 'clock' in p:
+            from ref.plant3d_staff import check_clock
+            need(self.b.version == 2, 'unknown_key', f'{w}.clock: only in a version 2 plant (§16.1)')
+            check_clock(p['clock'], f'{w}.clock')
         ident(p['id'], f'{w}.id')
         name_text(p['title'], f'{w}.title')
         need(p['frequency_hz'] in (50, 60) and not isinstance(p['frequency_hz'], bool), 'bad_value',
@@ -995,6 +1014,8 @@ class Model:
             self.work_isos.append((ident(x['isolation'], f'{w}.isolation'), f'{w}.isolation'))
         if 'repairs' in x:
             ident(x['repairs'], f'{w}.repairs')
+            need(x['repairs'] not in {y.get('repairs') for y in self.works}, 'dup_id',
+                 f'{w}.repairs: another work already repairs {x["repairs"]} (one work per fault)')
         if 'set' in x:
             need(isinstance(x['set'], dict), 'bad_type', f'{w}.set: an object of state names and numbers')
             for k, v in x['set'].items():
@@ -1277,6 +1298,16 @@ class Model:
         isos = {x['id'] for x in self.isolations}
         for i, where in self.work_isos:
             need(i in isos, 'bad_ref', f'{where}: no isolation {i!r}')
+        # no restarts under lock (§15.2): a work's set writes no state of a code of its own isolation
+        state_kks = {name: n.get('kks') for name, n, kind in self.values if kind == 'state'}
+        for w in self.works:
+            if 'isolation' not in w:
+                continue
+            own = {pt['kks'] for x in self.isolations if x['id'] == w['isolation'] for pt in x['points']}
+            for k in w.get('set', {}):
+                need(state_kks.get(k) not in own, 'locked_write',
+                     f'work {w["id"]}.set: {k} is a state of {state_kks.get(k)}, which its own isolation locks '
+                     f'(a work never restarts its own locked-out equipment; what it puts right is a fault it repairs)')
         for name in self.kept():
             need(name not in self.index and name not in self.ext, 'dup_id',
                  f'{name}: a value or ext value has the name of a permit\'s or isolation\'s value (§15)')
@@ -1433,8 +1464,14 @@ def check_screens(s, m, b):
 
 
 def check_scenario(s, m, rel):
-    keys(s, ('format', 'version', 'id', 'title', 'init'), ('latched', 'faults'), rel)
-    fmt(s, 'scenario', rel, m.b.version)
+    keys(s, ('format', 'version', 'id', 'title', 'init'), ('latched', 'faults', 'staff', 'start'), rel)
+    v = fmt(s, 'scenario', rel, m.b.version)
+    for k in ('staff', 'start'):
+        need(v == 2 or k not in s, 'unknown_key', f'{rel}.{k}: only in a version 2 scenario (§14)')
+    if v == 2:
+        from ref.plant3d_staff import check_scenario_staff
+        need('start' not in s or m.b.plant.get('clock') is not None, 'bad_ref', f'{rel}.start: the plant has no clock')
+        check_scenario_staff(s, m.b, rel)
     ident(s['id'], rel)
     name_text(s['title'], rel)
     need(isinstance(s['init'], dict), 'bad_type', f'{rel}.init')
@@ -1468,6 +1505,18 @@ def check_scenario(s, m, rel):
         m.sets(f['set'], f'{w}.set')
         if 'repair' in f:
             m.sets(f['repair'], f'{w}.repair')
+            # no restarts under lock (§15.2): a repair made as a work's own write (its done, or the trainee's under its
+            # permit, §15.5) writes no command (a state an op sets) of a code of that work's own isolation
+            commands = {k for o in m.ops for k in o.get('set', {})} | {o['input'] for o in m.ops if 'input' in o}
+            state_kks = {name: n.get('kks') for name, n, kind in m.values if kind == 'state'}
+            for wk in m.works:
+                if wk.get('repairs') != f['id'] or 'isolation' not in wk:
+                    continue
+                own = {pt['kks'] for x in m.isolations if x['id'] == wk['isolation'] for pt in x['points']}
+                for k in f['repair']:
+                    need(k not in commands or state_kks.get(k) not in own, 'locked_write',
+                         f'{w}.repair: {k} is a command of {state_kks.get(k)}, which work {wk["id"]}\'s own isolation '
+                         f'locks (a repair writes the fault\'s states, never a command)')
         if 'kks' in f:
             m.kks_ref(f['kks'], f'{w}.kks')
         if 'when' in f:
@@ -1568,9 +1617,13 @@ class Engine:
         op(kks, do, value=None, trip=None), ack(alarm), shelve(alarm, seconds), unshelve(alarm), fault(id),
         repair(id)
     (fault: a scenario fault without `when`, pressed by the trainer; applied in step 3; repair: a fault's repair,
-    applied in step 3 after the faults, §7.8). Format 2 (§15, free mode: person None):
-        permit(work, action, person=None), lock(work, point, person=None), unlock(work, point, person=None)
-    (permit actions handled in step 1; locks and unlocks noted in step 1 and made at the start of step 3, §17.1).
+    applied in step 3 after the faults, §7.8; in a version 2 plant the trainer's). Format 2 (§15, free mode: person
+    None):
+        permit(work, action, person=None), lock(work, point, person=None), unlock(work, point, person=None),
+        repair_under(fault, work, person=None)
+    (permit actions handled in step 1; locks and unlocks noted in step 1 and made at the start of step 3, §17.1; the
+    trainee's repair under a permit checked in step 1 and made in step 3, §15.5). lock_effects(work, point, horizon,
+    person) answers what a lock would do (§15.6) without changing the run.
     """
 
     def __init__(self, b, scenario):
@@ -1619,6 +1672,27 @@ class Engine:
             if isinstance(f.get('when'), dict):
                 self.fault_cond[fid] = self._node(-1, f['when'], node_kind(f['when'], fid))
         self._step0()
+        # format 2's staff (§16–§17): the clock, and the people when the plant has staff and the scenario says so
+        self.alarm_of = {a['id']: a for a in m.alarms}
+        self.show = {}
+        for x in m.bind:
+            if 'show' in x:
+                self.show.setdefault(x['kks'], x['show'])
+        clock = b.plant.get('clock')
+        self.ds = clock['day_scale'] if clock else 0
+        self.S = 0
+        if clock:
+            from ref.plant3d_staff import start_tenths
+            self.S = start_tenths(sc.get('start', clock['start']))
+        self.J = 0
+        self.npc_queue = []             # the NPCs' inputs made in step 9, for the next step's step 1
+        self.npc_pending = 0
+        self.ev_mark = 0                # where this step's events begin
+        self.staff = None
+        if b.staff is not None and 'staff' in sc:
+            from ref.plant3d_staff import StaffRun
+            self.staff = StaffRun(self, b.staff, sc)
+            self.staff.place_all(self.clock())
 
     def clone(self):
         """An independent copy at the same step (forks of a run: one cold start, many trip tests)."""
@@ -1629,8 +1703,10 @@ class Engine:
             c.mem[k][:] = v
         c.fault_cond = {fid: c._node(-1, self.faults[fid]['when'], node_kind(self.faults[fid]['when'], fid))
                         for fid in self.fault_cond}
-        for k in ('cur', 'events', 'queue'):
+        for k in ('cur', 'events', 'queue', 'npc_queue'):
             setattr(c, k, list(getattr(self, k)))
+        if self.staff is not None:
+            c.staff = self.staff.copy(c)
         for k in ('mstate', 'latched', 'trip_count', 'first_out', 'astate', 'acount', 'shelved', 'il_prev',
                   'pstate', 'ptw', 'acceptor', 'holder', 'locks', 'code_locks'):
             setattr(c, k, dict(getattr(self, k)))
@@ -1816,8 +1892,12 @@ class Engine:
                 cur[i] = self.hold0[i](cur, prev)
 
     # --- trainee inputs
-    def op(self, kks, do, value=None, trip=None):
-        self.queue.append(('op', kks, do, value, trip))
+    def op(self, kks, do, value=None, trip=None, where=None, person=None):
+        """An op; with `where` it is a version 2 op (§17.1), made at `where` by `person`."""
+        if where is None and person is None:
+            self.queue.append(('op', kks, do, value, trip))
+        else:
+            self.queue.append(('op', kks, do, value, trip, where, person))
 
     def ack(self, alarm):
         self.queue.append(('ack', alarm))
@@ -1834,6 +1914,9 @@ class Engine:
     def repair(self, fid):
         self.queue.append(('repair', fid))
 
+    def repair_under(self, fid, work, person=None):
+        self.queue.append(('repair', fid, work, person))
+
     def permit(self, work, action, person=None):
         self.queue.append(('permit', work, action, person))
 
@@ -1842,6 +1925,46 @@ class Engine:
 
     def unlock(self, work, point, person=None):
         self.queue.append(('unlock', work, point, person))
+
+    def remove_lock(self, work, point, person, reason):
+        self.queue.append(('remove_lock', work, point, person, reason))
+
+    # format 2's trainee inputs for the staff (§17.6)
+    def role(self, person):
+        self.queue.append(('role', person))
+
+    def task_ack(self):
+        self.queue.append(('task_ack',))
+
+    def arrive(self, place):
+        self.queue.append(('arrive', place))
+
+    def leave(self, place):
+        self.queue.append(('leave', place))
+
+    def read(self, code, value):
+        self.queue.append(('read', code, value))
+
+    def say(self, message, to):
+        self.queue.append(('say', message, to))
+
+    def pick(self, index):
+        self.queue.append(('pick', index))
+
+    def call(self, role, task, work=None):
+        self.queue.append(('call', role, task, work))
+
+    def jump(self, hhmm):
+        self.queue.append(('jump', hhmm))
+
+    def clock(self):
+        """The plant clock in tenths of a clock second (§16.1): C(n) = S + n × day_scale + J."""
+        return self.S + self.step_no * self.ds + self.J
+
+    def shown(self, code, vals):
+        """The value a code's `show` binding shows, in the given values."""
+        r = self.show[code]
+        return float(r) if is_num(r) else vals[self.ix[r]]
 
     def v(self, name):
         return self.cur[self.ix[name]]
@@ -1885,25 +2008,58 @@ class Engine:
     def n_locked(self, iso):
         return sum(1 for p in range(len(self.isos[iso]['points'])) if (iso, p) in self.locks)
 
-    def _permit(self, work, action, person, dones):
+    def _authority(self, person, npc, need_auth, discipline=None, acceptor=False, work=None):
+        """Whether an input by `person` lacks authority (§17.1): without staff any person is refused (free mode,
+        person null); with staff, a trainee playing a person must name themself, free mode (no trainee person)
+        skips the checks for inputs naming no person, and a person's role must have the authority (and for
+        `accept`, the work's discipline; `done` and `return` are the acceptor's, or another's with `accept` and the
+        discipline while the acceptor is off duty or absent)."""
+        sr = self.staff
+        if sr is None:
+            return person is not None
+        st = sr.st
+        if person is None:
+            return not npc and sr.trainee is not None
+        if not (isinstance(person, str) and person in st.person_ix):
+            return True
+        p = sr.people[st.person_ix[person]]
+        if not npc and (sr.trainee is None or p.i != sr.trainee):
+            return True
+        role = st.roles[p.role]
+        if need_auth not in role['authority']:
+            return True
+        if discipline is not None and role['discipline'] != discipline:
+            return True
+        if acceptor:
+            acc = self.acceptor.get(work)
+            if acc is not None and acc != person:
+                q = sr.people[st.person_ix[acc]]
+                if q.on and acc not in sr.absent:
+                    return True
+        return False
+
+    def _permit(self, work, action, person, dones, npc=False):
         """A permit action (§15.3), in step 1."""
         if not (isinstance(work, str) and work in self.works and isinstance(action, str)
                 and action in PERMIT_ACTIONS):
             self.ev('permit', work, action, person, 'unknown', [])
-            return
+            return 'unknown'
         w = self.works[work]
         iso = w.get('isolation')
         frm, to = PERMIT_ACTIONS[action]
         why = []
-        if person is not None:
-            why.append('authority')     # no staff in the plant: free mode, person null (§17.1)
+        from ref.plant3d_staff import PERMIT_AUTH
+        if self._authority(person, npc, PERMIT_AUTH[action],
+                           w['discipline'] if action in ('accept', 'done', 'return') else None,
+                           action in ('done', 'return'), work):
+            why.append('authority')
         if self.pstate[work] not in frm:
             why.append('state')
         if action == 'request' and iso is not None and self.holder[iso] is not None:
             why.append('iso_busy')
         if why:
             self.ev('permit', work, action, person, 'refused', why)
-            return
+            return 'refused'
         self.pstate[work] = to
         self.cur[self.ix[work + '_permit']] = float(to)
         if action == 'request':
@@ -1919,19 +2075,25 @@ class Engine:
         elif action in ('cancel', 'close') and iso is not None and self.n_locked(iso) == 0:
             self.holder[iso] = None
         self.ev('permit', work, action, person, 'done', [])
+        return 'done'
 
-    def _lock(self, kind, work, point, person, vals):
-        """A lock or unlock (§15.1), at the start of step 3."""
+    def _lock(self, kind, work, point, person, vals, npc=False, reason=None):
+        """A lock, unlock or removal by authority (§15.1), at the start of step 3."""
         w = self.works.get(work) if isinstance(work, str) else None
         iso = w.get('isolation') if w else None
+        tail = []
+        if kind == 'remove_lock':
+            key = (iso, point) if iso is not None and isinstance(point, int) and not isinstance(point, bool) else None
+            tail = [self.locks.get(key), reason]       # whose lock it was, and why it was removed
         if iso is None or not (isinstance(point, int) and not isinstance(point, bool)
-                               and 0 <= point < len(self.isos[iso]['points'])):
-            self.ev(kind, work, point, person, 'unknown', [])
-            return
+                               and 0 <= point < len(self.isos[iso]['points'])) \
+                or (kind == 'remove_lock' and not (isinstance(reason, str) and 1 <= len(reason) <= 200)):
+            self.ev(kind, work, point, person, 'unknown', [], *tail)
+            return 'unknown'
         pt = self.isos[iso]['points'][point]
         key = (iso, point)
         why = []
-        if person is not None:
+        if self._authority(person, npc, 'remove_lock' if kind == 'remove_lock' else 'lock_' + pt['kind']):
             why.append('authority')
         if self.pstate[work] not in ((2, 3) if kind == 'lock' else (2, 3, 7, 10)) or self.holder[iso] != work:
             why.append('state')
@@ -1942,9 +2104,11 @@ class Engine:
                 why.append(pt['safe'])
         elif key not in self.locks:
             why.append('unlocked')
+        elif kind == 'unlock' and self.locks[key] != person:
+            why.append('owner')         # a personal lock is removed only by whoever placed it
         if why:
-            self.ev(kind, work, point, person, 'refused', why)
-            return
+            self.ev(kind, work, point, person, 'refused', why, *tail)
+            return 'refused'
         if kind == 'lock':
             self.locks[key] = person
             self.code_locks[pt['kks']] = self.code_locks.get(pt['kks'], 0) + 1
@@ -1954,9 +2118,49 @@ class Engine:
         k = self.n_locked(iso)
         self.cur[self.ix[iso + '_locked']] = float(k)
         self.cur[self.ix[iso + '_complete']] = 1.0 if k == len(self.isos[iso]['points']) else 0.0
-        if kind == 'unlock' and self.pstate[work] == 10 and k == 0:
+        if kind != 'lock' and self.pstate[work] == 10 and k == 0:
             self.holder[iso] = None     # a cancelled work lets its isolation go with its last lock
-        self.ev(kind, work, point, person, 'done', [])
+        self.ev(kind, work, point, person, 'done', [], *tail)
+        return 'done'
+
+    def _repair_under(self, fid, work, person):
+        """The trainee's repair under a permit (§15.5), in step 1: True when it is noted for step 3."""
+        w = self.works.get(work) if isinstance(work, str) else None
+        f = self.faults.get(fid) if isinstance(fid, str) else None
+        if w is None or f is None or 'repair' not in f or w.get('repairs') != fid:
+            self.ev('repair', fid, work, person, 'unknown', [])
+            return False
+        why = []
+        # who may: as the permit's `done` (§15.3, §17.1): the acceptor, or another with `accept` and the work's
+        # discipline while they are off duty; without staff, free mode only (person null)
+        if self._authority(person, False, 'accept', w['discipline'], True, work):
+            why.append('authority')
+        if self.pstate[work] != 5:
+            why.append('state')
+        if why:
+            self.ev('repair', fid, work, person, 'refused', why)
+            return False
+        return True
+
+    def lock_effects(self, work, point, horizon=100, person=None):
+        """What a lock would do (§15.6): the trips and priority 1 alarms that come within `horizon` steps with the lock
+        made after the inputs already queued, and not without it."""
+        a, b = self.clone(), self.clone()
+        a.queue.append(('lock', work, point, person))
+        na, nb = len(a.events), len(b.events)
+        a.step(horizon)
+        b.step(horizon)
+        ea, eb = a.events[na:], b.events[nb:]
+        lock = ([None] + [e[5] for e in ea if e[0] == self.step_no + 1 and e[1] in ('lock', 'unlock')])[-1]
+
+        def tripped(evs):
+            return {e[2] for e in evs if e[1] == 'trip'}
+
+        def raised(evs):
+            return {e[2] for e in evs if e[1] == 'alarm' and e[3] == 'active_unack'}
+        ta, tb, ra, rb = tripped(ea), tripped(eb), raised(ea), raised(eb)
+        return {'lock': lock, 'trips': [t['id'] for t in self.trips if t['id'] in ta and t['id'] not in tb],
+                'alarms': [x['id'] for x in self.alarms if x['priority'] == 1 and x['id'] in ra and x['id'] not in rb]}
 
     def _enter(self, mc, to, cause):
         old = self.mstate[mc['id']]
@@ -1982,24 +2186,42 @@ class Engine:
     def _step(self):
         m = self.m
         self.step_no += 1
+        self.ev_mark = len(self.events)
         prev = list(self.cur)
         self.prev = prev
         cur = self.cur
         moved = set()
         pressed = []
         asked = []
+        under = {}          # fault -> the work under whose permit the trainee repairs it (§15.5)
         noted = []          # locks and unlocks, made in step 3 (§17.1)
         dones = []          # works whose permit went to done: their repairs and set in step 3
-        # 1. the trainee's inputs, in the order made
+        # 1. the trainee's inputs, in the order made, then the NPCs' made in the previous step's step 9 (§17.1)
         q, self.queue = self.queue, []
-        for item in q:
+        nq, self.npc_queue = self.npc_queue, []
+        self.npc_pending = len(nq)      # a jump waits for the NPCs' inputs of the step before (§17.8)
+        sr = self.staff
+        for npc, item in [(False, x) for x in q] + [(True, x) for x in nq]:
             kind = item[0]
             if kind == 'op':
-                self._op(item[1:], prev, moved)
+                r = self._op(item[1:], prev, moved, npc)
+                if npc:
+                    sr.people[sr.st.person_ix[item[6]]].result = r
             elif kind == 'permit':
-                self._permit(item[1], item[2], item[3], dones)
+                r = self._permit(item[1], item[2], item[3], dones, npc)
+                if npc:
+                    sr.people[sr.st.person_ix[item[3]]].result = r
             elif kind in ('lock', 'unlock'):
-                noted.append(item)
+                noted.append(item + (None, npc))
+            elif kind == 'remove_lock':
+                noted.append(item + (npc,))
+            elif kind in ('role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump'):
+                if sr is not None:
+                    sr.t_input(item)
+                elif kind == 'role':
+                    self.ev('role', item[1], 'refused')
+                elif kind == 'jump':
+                    self.ev('jump', self.clock(), None, 'refused')
             elif kind in ('ack', 'shelve', 'unshelve') and item[1] not in self.astate:
                 continue        # an alarm the model doesn't have: nothing happens, no event (§7.10)
             elif kind == 'ack':
@@ -2020,6 +2242,9 @@ class Engine:
                     self.ev('unshelve', item[1])
             elif kind == 'fault':
                 pressed.append(item[1])
+            elif kind == 'repair' and len(item) > 2:
+                if self._repair_under(item[1], item[2], item[3]):
+                    under[item[1]] = item[2]
             elif kind == 'repair':
                 asked.append(item[1])
         # first-out records clear when no trip of the group is latched
@@ -2031,8 +2256,10 @@ class Engine:
             cur[i] = fn(cur, prev)
         vals = list(cur)          # conditions in steps 3–7 read the values as step 2 left them
         # 3. the locks and unlocks noted in step 1, in the order made; the permits' automatic moves (§15.3)
-        for kind, work, point, person in noted:
-            self._lock(kind, work, point, person, vals)
+        for kind, work, point, person, reason, npc in noted:
+            r = self._lock(kind, work, point, person, vals, npc, reason)
+            if npc:
+                sr.people[sr.st.person_ix[person]].result = r
         for w in self.m.works:
             wid, iso = w['id'], w.get('isolation')
             k = self.n_locked(iso) if iso is not None else 0
@@ -2063,12 +2290,14 @@ class Engine:
                 self.faults_fixed.discard(fid)
                 self._set(f['set'])
                 self.ev('fault', fid)
-        # then the repairs asked, in the scenario's order: a fault applied and not repaired since, with a `repair`
+        # then the repairs asked, in the scenario's order: a fault applied and not repaired since, with a `repair`; one
+        # under a permit (§15.5) writes as its work
         for fid, f in self.faults.items():
-            if fid in asked and 'repair' in f and fid in self.faults_done and fid not in self.faults_fixed \
-                    and not self._blocked(f['repair']):
+            wid = under.get(fid)
+            if (fid in asked or wid is not None) and 'repair' in f and fid in self.faults_done \
+                    and fid not in self.faults_fixed and not self._blocked(f['repair'], wid):
                 self.faults_fixed.add(fid)
-                self._set(f['repair'])
+                self._set(f['repair'], wid)
                 self.ev('repair', fid)
         # then the works whose permit went to done, in the order of their `done`: the fault they repair, their set
         for wid in dones:
@@ -2145,14 +2374,29 @@ class Engine:
             if new != s:
                 self.astate[aid] = new
                 self.ev('alarm', aid, new)
+        # 9. the staff (§17): they read this step's values and events and write nothing but next step's inputs
+        if sr is not None:
+            sr.step()
 
-    def _op(self, item, prev, moved):
-        kks, do, value, trip = item
-        o = self.m.op_keys.get((kks, do, trip))
+    def _op(self, item, prev, moved, npc=False):
+        kks, do, value, trip = item[:4]
+        v2 = len(item) == 6         # a version 2 op: where it is made and by whom (§17.1)
+        tail = list(item[4:]) if v2 else []
+        o = self.m.op_keys.get((kks, do, trip)) if isinstance(kks, str) and isinstance(do, str) and \
+            (trip is None or isinstance(trip, str)) else None
         if o is None:
-            self.ev('op', kks, do, 'unknown', [])
-            return
-        failed = [nd[0] for nd in o.get('needs', []) if prev[self.ix[nd[0]]] < 0.5]
+            self.ev('op', kks, do, 'unknown', [], *tail)
+            return 'unknown'
+        failed = []
+        if v2:
+            where, person = item[4], item[5]
+            if where not in o['where']:
+                failed.append('where')
+            elif self._authority(person, npc, 'operate_' + where):
+                failed.append('authority')
+        elif self.staff is not None and self.staff.trainee is not None and not npc:
+            failed.append('authority')      # a trainee playing a person names where and who (§17.1)
+        failed += [nd[0] for nd in o.get('needs', []) if prev[self.ix[nd[0]]] < 0.5]
         if 'machine' in o:
             mc = next(x for x in self.machines if x['id'] == o['machine'])
             spec = mc['commands'][do]
@@ -2170,9 +2414,9 @@ class Engine:
                 failed.append(o['input'])
         failed += [x + '_locked' for x in self.locking(kks)]       # a locked code refuses every op (§15.1)
         if failed:
-            self.ev('op', kks, do, 'refused', failed)
-            return
-        self.ev('op', kks, do, 'done', [])
+            self.ev('op', kks, do, 'refused', failed, *tail)
+            return 'refused'
+        self.ev('op', kks, do, 'done', [], *tail)
         if do == 'set' and 'machine' not in o:
             self._write(self.ix[o['input']], float(value))
         if do == 'reset' and 'machine' not in o:
@@ -2184,9 +2428,15 @@ class Engine:
             mc = next(x for x in self.machines if x['id'] == o['machine'])
             self._enter(mc, mc['commands'][do]['to'], 'command')
             moved.add(mc['id'])
+        return 'done'
 
     # --- what the vectors compare (§12)
     def fast_forward(self):
+        """§7.9, and with a trainee's person no task given to them since their last task_ack (§17.6)."""
+        sr = self.staff
+        return self.ff_model() and (sr is None or sr.trainee is None or sr.unacked == 0)
+
+    def ff_model(self):
         """§7.9: no unacknowledged alarm, no active priority 1 alarm, no machine in a watched state."""
         for a in self.alarms:
             s = self.astate[a['id']]
@@ -2214,6 +2464,11 @@ class Engine:
             s['ptw'] = {w['id']: self.ptw[w['id']] for w in self.m.works if w['id'] in self.ptw}
             s['locked'] = [[x['id'], p] for x in self.m.isolations for p in range(len(x['points']))
                            if (x['id'], p) in self.locks]
+        if self.staff is not None:
+            s['clock'] = self.clock()
+            s['people'] = self.staff.snap()
+            s['vehicles'] = {}
+            s['unacked'] = self.staff.unacked
         if values:
             s['values'] = {n: self.cur[i] for i, n in enumerate(self.names)}
         return s
@@ -2232,8 +2487,38 @@ class Recorder(Engine):
         self.inputs.append([self.step_no + 1] + list(item))
         self.queue.append(item)
 
-    def op(self, kks, do, value=None, trip=None):
-        self._q(('op', kks, do, value, trip))
+    def op(self, kks, do, value=None, trip=None, where=None, person=None):
+        if where is None and person is None:
+            self._q(('op', kks, do, value, trip))
+        else:
+            self._q(('op', kks, do, value, trip, where, person))
+
+    def role(self, person):
+        self._q(('role', person))
+
+    def task_ack(self):
+        self._q(('task_ack',))
+
+    def arrive(self, place):
+        self._q(('arrive', place))
+
+    def leave(self, place):
+        self._q(('leave', place))
+
+    def read(self, code, value):
+        self._q(('read', code, value))
+
+    def say(self, message, to):
+        self._q(('say', message, to))
+
+    def pick(self, index):
+        self._q(('pick', index))
+
+    def call(self, role, task, work=None):
+        self._q(('call', role, task, work))
+
+    def jump(self, hhmm):
+        self._q(('jump', hhmm))
 
     def ack(self, alarm):
         self._q(('ack', alarm))
@@ -2250,6 +2535,9 @@ class Recorder(Engine):
     def repair(self, fid):
         self._q(('repair', fid))
 
+    def repair_under(self, fid, work, person=None):
+        self._q(('repair', fid, work, person))
+
     def permit(self, work, action, person=None):
         self._q(('permit', work, action, person))
 
@@ -2258,6 +2546,9 @@ class Recorder(Engine):
 
     def unlock(self, work, point, person=None):
         self._q(('unlock', work, point, person))
+
+    def remove_lock(self, work, point, person, reason):
+        self._q(('remove_lock', work, point, person, reason))
 
     def clone(self):
         c = super().clone()

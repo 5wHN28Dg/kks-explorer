@@ -63,7 +63,40 @@ func _init() -> void:
 		print("GATE %s mean_us=%.1f max_us=%.0f" % ["ok" if per <= gate else "slow", per, gate])
 		if per > gate:
 			return
+	_staff(m)
 	quit(0)
+
+
+## The staff step (step 9, PLANT3D.md §18.4: ≤ 0.3 ms per step on the Note 9 at the peak of a shift change): the
+## scenario with staff from its start, its own time per step (STAFF phase=…) and the whole step's with it.
+func _staff(m) -> void:
+	var sid := ""
+	for k in m.scenarios:
+		if m.scenarios[k].has("staff"):
+			sid = k
+			break
+	if sid == "" or m.staff == null:
+		print("STAFF none")
+		return
+	var e = load(get_script().resource_path.get_base_dir().path_join("../engine.gd")).new(m, sid)
+	var sm = e._sm
+	var n := 4 * 6000           # four clock hours from the scenario's start (05:30: the shift change at 06:00)
+	e.timing = true             # every step's time (step_us) and step 9's own (staff_us)
+	e.step(n)
+	e.timing = false
+	var st: PackedInt64Array = e.staff_us
+	var whole: PackedInt64Array = e.step_us
+	var peak := PackedInt64Array()
+	for k in range(1200, 3600):         # 05:42–06:06 at day_scale 6: the handovers and the duties' change
+		peak.append(st[k])
+	_report("staff_step9", st)
+	_report("staff_step9_shift_change", peak)
+	_report("model_and_staff", whole)
+	var ev := 0
+	for x in e.events:
+		if x[1] in ["task", "move", "say", "call", "duty", "read"]:
+			ev += 1
+	print("STAFF people=%d events=%d" % [sm.people.size(), ev])
 
 
 func _report(phase: String, t: PackedInt64Array) -> void:

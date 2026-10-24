@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
-import kit, train_areas, train_model, train_content, train_screens, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
+import kit, train_areas, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
 
 OUT = os.path.join(ROOT, 'data', 'plant3d')
 
@@ -89,17 +89,25 @@ def add_air_permissives(areas, models):
 def build():
     """{relative path: text} for everything under data/plant3d."""
     areas = site_areas.add_to_train(train_areas.areas()) + wtp_areas.areas() + site_areas.areas()
-    files = {'kit.json': kit.kit(), 'plant.json': train_content.plant(codes(areas), [a['id'] for a in areas]),
+    plant = train_content.plant(codes(areas), [a['id'] for a in areas])
+    plant['clock'] = train_staff.CLOCK          # format 2's plant clock (§16.1): the staff's day
+    files = {'kit.json': kit.kit(), 'plant.json': plant,
              'sounds.json': train_content.sounds(), 'screens.json': train_screens.screens()}
     for a in areas:
         files[f'areas/{a["id"]}.json'] = a
     models = train_model.models() + wtp_model.models()
     add_air_permissives(areas, models)
+    jobs = train_staff.works_tasks(models)      # with staff.json every work names its task (§15.2)
+    for m in models:
+        for w in getattr(m, 'works', []):
+            w['task'] = jobs[w['id']]
     for m in models:
         files[f'model/{m.area}.json'] = m.file()
     state_kks = {v[0]: v[1]['kks'] for m in models for v in m.values if 'state' in v[1] and 'kks' in v[1]}
     for s in train_content.scenarios(state_kks):
         files[f'scenarios/{s["id"]}.json'] = s
+    files['scenarios/shift_cold.json'] = train_staff.scenario(files['scenarios/cold_iron.json'])
+    files['staff.json'] = train_staff.staff(models, train_staff.load_layout())
     for p in [train_content.cold_start(), train_content.hot_restart()] + train_content.tours() + \
             wtp_content.procedures() + site_areas.tours():
         files[f'procedures/{p["id"]}.json'] = p
