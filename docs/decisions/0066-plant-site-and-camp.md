@@ -80,22 +80,33 @@ from 200–500 m (the plant gate's road, the WTP's west and the train from the W
 pieces they replace; their lighting is the sky's and the sun's without the bake's shadows, which shows nowhere in
 those views.
 
-**Final (merged main with W3, P1b, S1 and the engine's speed-up; release build, baked, test-signed; Note 9 `lean+vis`,
-plugged in, a first start each, begun at 30.6–31.0 °C):**
+**On the merged main (W3, P1b, S1 and the engine's speed-up); release builds, baked, test-signed; Note 9 `lean+vis`,
+plugged in, a first start each, begun at 28–31 °C.** Two builds: "before review" (b11) and the final one (b13), which
+adds the reviews' fixes (inside means the whole box within the walls and under the roof, doors merged shut, a detail
+inside a building capped at its insides' range):
 
-| Walk | Frames at ≥ 30 fps (SurfaceFlinger) | Frames over 100 ms after 5 s (app / SurfaceFlinger) | Worst frame | GPU median / p95 | Peak PSS | First walkable frame |
-|---|---|---|---|---|---|---|
-| `frames` (the train and the WTP) | 99.39 % | 0 / 0 | 66.0 ms | 20.4 / 26.2 ms | 1,128 MB | 11.2 s |
-| `wtp` | 98.89 % | 0 / 0 | 72.9 ms | 20.5 / 29.3 ms | 1,068 MB | 11.0 s |
-| `camp` (gate, road, camp, block 1, mess) | 99.44 % | 0 / 0 | 89.1 ms | 18.5 / 24.0 ms | 1,156 MB | 12.1 s |
+| Walk | Build | Frames at ≥ 30 fps | Frames over 100 ms after 5 s (app / SurfaceFlinger) | Worst | GPU median / p95 | Peak PSS | First walkable frame |
+|---|---|---|---|---|---|---|---|
+| `frames` (the train and the WTP) | before review | 99.39 % | 0 / 0 | 66.0 ms | 20.4 / 26.2 ms | 1,128 MB | 11.2 s |
+| | final | 99.49 % | 0 / 0 | 56.0 ms | 20.6 / 26.1 ms | 1,077 MB | 11.0 s |
+| `wtp` | before review | 98.89 % | 0 / 0 | 72.9 ms | 20.5 / 29.3 ms | 1,068 MB | 11.0 s |
+| | final | 98.82 % | 3 / 2 | 114.4 ms | 20.4 / 29.5 ms | 1,091 MB | 10.9 s |
+| `camp` (gate, road, camp, block 1, mess) | before review | 99.44 % | 0 / 0 | 89.1 ms | 18.5 / 24.0 ms | 1,156 MB | 12.1 s |
+| | final | 99.27 % | 1 / 2 | 147.5 ms | 18.4 / 24.1 ms | 1,107 MB | 11.6 s |
 
-The rules hold. On the build just before S1 was merged the same three walks had one frame over 100 ms each in two of
-them: `wtp` 112.5 ms, at the moment the phone's Samsung Cloud started at the top of the hour (698 log lines in that
-second against 2 the second before: an Android cause), and `camp` 115.5 ms with no Android cause, at the 200 m switch
-of the turbine hall's inside, which the last row of the table above removed. The first walkable frame went from about
-9.3 s to 11–12 s with S1's staff (not this change); the rule is 15 s.
+**The rule (none over 100 ms) does not hold reliably yet.** What is left is single frames whose GPU work takes
+100–160 ms between frames of about 20 ms, in views that cost the same on average in every build (the WTP's north side:
+GPU 23.1 and 23.5 ms on average in the two builds, 734 draw calls in both), with nothing in the logcat and no pipeline
+compiled: the final `wtp` walk's three at the WTP's north side, the final `camp` walk's one (GPU 156 ms, 147 draw
+calls) on the way into the mess hall. They come and go between runs of the same build (the build before the S1 merge:
+one at the WTP's posts at the moment the phone's Samsung Cloud started at the top of the hour, 698 log lines in that
+second against 2 the second before, an Android cause; its `camp` walk one at the 200 m switch of the turbine hall's
+inside, which the "near it" rule above removed). Not traced: they don't follow the autosave (11 of 168 such frames
+within three frames of a save, 6.5 % against 3.4 % by chance), the interiors' loading (`fx_off=interiors` had them too)
+or the phone's warmth. The first walkable frame went from about 9.3 s to 11–12 s with S1's staff (not this change);
+the rule is 15 s.
 
-Packages (the final build): APK 139.3 MB (budget 150); the desktop packages, estimated from their contents deflated
+Packages (the final build): APK 139.4 MB (budget 150); the desktop packages, estimated from their contents deflated
 (the MSIX and the Flatpak were not built here: a Windows VM packs the MSIX): MSIX x64 about 161 MB, ARM64 about
 152 MB, Flatpak about 125 MB (budget about 300).
 
