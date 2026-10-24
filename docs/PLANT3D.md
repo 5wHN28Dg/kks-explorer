@@ -1783,6 +1783,8 @@ lock" (a `lock`, within reach as any lock); at a point holding a lock of theirs 
 over)"; their handover task's step says which points are left. "Remove by authority" names the lock it removes. The
 debrief marks every instructor action ("by the instructor") and, when there is any, says at its top that the run
 used instructor mode, with their number; the saved run's offer says so too. Both read the run's `instructor` events.
+A point whose lock belongs to a day worker gone home says their lock stays on overnight and that they finish the job
+on their next shift (§17.10).
 
 ## 19. Format 2 vectors
 

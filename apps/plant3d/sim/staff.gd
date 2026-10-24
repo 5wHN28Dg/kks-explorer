@@ -1143,6 +1143,16 @@ func run(e, pi: int, cur: Dictionary):
 
 # ---------------------------------------------------------------- locks at a shift change (§17.9)
 
+## A lock's holder who is a day worker gone home: their lock stays on overnight and they finish the job on their
+## next duty (§17.10). For the permit form.
+func overnight(e, who) -> bool:
+	if typeof(who) != TYPE_STRING or not person_ix.has(who):
+		return false
+	var pi: int = person_ix[who]
+	return rosters[people[pi]["roster"]]["kind"] == "days" and not e.sp_on[pi] and e.sp_pos[pi] == -1 \
+			and e.sp_leg[pi].is_empty()
+
+
 ## Whether a reaction source key ("<reaction>|permit|<work>") is a permit's of one of these works.
 static func _permit_src(key: String, works: Dictionary) -> bool:
 	var parts := key.split("|")
