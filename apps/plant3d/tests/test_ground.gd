@@ -5,7 +5,8 @@
 ## and showed through it in patches with straight seams that moved as one walked).
 ## Checked over every area's scene and the ground's: each pair of upward faces near z = 0 whose plans overlap, and
 ## that are near parallel, must stand at least MIN_GAP apart everywhere they overlap, or not overlap by more than a
-## sliver (OVERLAP_AREA). Pieces never drawn together (their visibility ranges do not meet) do not count.
+## sliver (OVERLAP_AREA). Pieces never drawn together (their visibility ranges do not meet) do not count, nor the
+## merged far views (copies of their pieces' faces).
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
@@ -130,6 +131,10 @@ static func faces(root: Node, lo := -GROUND) -> Array:
 	for n in root.find_children("*", "GeometryInstance3D", true, false):
 		var gi := n as GeometryInstance3D
 		if not gi.is_visible_in_tree():
+			continue
+		# a merged far view (builder/plant_builder.gd `far_merge`) is its pieces' own faces, checked here as the pieces
+		# (tests/test_far_view.gd: all of them, nothing else), and drawn only where they are not
+		if gi.has_meta("far_view"):
 			continue
 		var mesh: Mesh = null
 		var xfs: Array = []

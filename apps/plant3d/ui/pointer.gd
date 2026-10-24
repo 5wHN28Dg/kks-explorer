@@ -21,6 +21,7 @@ func _ready() -> void:
 	_frame.mesh = BoxMesh.new()
 	_frame.material_override = glow
 	_frame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_frame.ignore_occlusion_culling = true   # seen through walls: the buildings' occluders must not cull it
 	add_child(_frame)
 	var solid := glow.duplicate()
 	solid.albedo_color = Color(1.0, 0.55, 0.0, 0.9)
@@ -34,6 +35,7 @@ func _ready() -> void:
 	_arrow.rotation.x = PI           # point down
 	_arrow.material_override = solid
 	_arrow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_arrow.ignore_occlusion_culling = true
 	add_child(_arrow)
 	visible = false
 

@@ -1013,6 +1013,25 @@ class Engine(unittest.TestCase):
         self.assertFalse(states[32]['fast_forward'])
 
 
+def frozen_parts(parts):
+    """Gives a vector test class one test per part of its file (`parts`: G.parts or G.parts2): the part as the
+    generator makes it now equals the file's. Together with the class's test that the file has exactly the generator's
+    parts, this is the whole file compared, a part per test so that CI can make them side by side."""
+    def add(cls):
+        for k in parts():
+            def test(self, k=k):
+                made = json.loads(G.dump({k: parts()[k]()}))[k]
+                self.assertIn(k, self.V)
+                self.assertEqual(self.V[k], made, f'{k}: run python3 ref/make_plant3d_vectors.py --write')
+            test.__name__ = f'test_frozen_{k}'
+            test.__qualname__ = f'{cls.__qualname__}.{test.__name__}'
+            test.__doc__ = f'The vectors\' `{k}` is what the generator makes.'
+            setattr(cls, test.__name__, test)
+        return cls
+    return add
+
+
+@frozen_parts(G.parts)
 class Vectors(unittest.TestCase):
     """The vector file is what the generator makes (this also re-runs the cold start and every fork), and replaying
     its inputs on a fresh engine gives its events and values: what the app's evaluator must do."""
@@ -1022,10 +1041,11 @@ class Vectors(unittest.TestCase):
         with open(G.OUT, encoding='utf-8') as f:
             cls.text = f.read()
         cls.V = json.loads(cls.text)
-        cls.built = json.loads(G.dump(G.build()))
 
     def test_file_is_frozen(self):
-        self.assertEqual(json.loads(self.text), self.built, 'run python3 ref/make_plant3d_vectors.py --write')
+        """The file has the generator's parts in its order; each part is made and compared by a test of its own
+        (test_frozen_<part>, below), so that CI can run them side by side (tests/shards.py)."""
+        self.assertEqual(list(self.V), list(G.parts()), 'run python3 ref/make_plant3d_vectors.py --write')
 
     def test_unit_steps_replay(self):
         for s in self.V['steps']:
@@ -1068,12 +1088,12 @@ class Vectors(unittest.TestCase):
             self.assertEqual(got[k], {'open': 'start'}, k)
 
     def test_train_replay(self):
-        """The cold start's inputs alone reproduce its events, every snapshot (to 1e-6), and each fork; so do the hot
-        restart's."""
-        b = P.check_dir(DATA)
-        for name in ('train', 'hot'):
-            with self.subTest(name):
-                self._replay(b, self.V[name])
+        """The cold start's inputs alone reproduce its events, every snapshot (to 1e-6), and each fork."""
+        self._replay(P.check_dir(DATA), self.V['train'])
+
+    def test_hot_replay(self):
+        """So do the hot restart's (a test of its own, as test_train_replay: CI runs them side by side)."""
+        self._replay(P.check_dir(DATA), self.V['hot'])
 
     def _replay(self, b, t):
         e = P.Engine(b, t['scenario'])
@@ -1122,6 +1142,7 @@ def replay_asking(e, inputs, until, effects, tc):
     return got
 
 
+@frozen_parts(G.parts2)
 class Vectors2(unittest.TestCase):
     """Format 2 (PLANT3D §14–§15, §19; milestone P1: permits, isolations and the hold node): the file is what the
     generator makes; its valid plant passes with its counts, each reject is caught with its code; its unit runs and
@@ -1134,8 +1155,8 @@ class Vectors2(unittest.TestCase):
         cls.V = json.loads(cls.text)
 
     def test_file_is_what_the_generator_makes(self):
-        self.assertEqual(json.loads(self.text), json.loads(G.dump(G.build2())),
-                         'run python3 ref/make_plant3d_vectors.py --write')
+        """The generator's parts in its order; each part is compared by its own test_frozen_<part> (as Vectors)."""
+        self.assertEqual(list(self.V), list(G.parts2()), 'run python3 ref/make_plant3d_vectors.py --write')
 
     def test_valid(self):
         for v in self.V['valid']:
@@ -1240,8 +1261,43 @@ class Vectors2(unittest.TestCase):
         self.assertIn([16, 'repair', 'f1'], life)              # made on the locked pump, as the work's
         self.assertEqual(self.V['steps'][0]['states'][16]['values']['pump_fault'], 0.0)
         self.assertEqual([e for e in life if e[1] == 'repair' and len(e) == 3], [[16, 'repair', 'f1']])  # done: none
-        self.assertIn([2, 'repair', 'f1', 'wo_p', None, 'refused', ['state']], shared)
+        self.assertIn([2, 'repair', 'f1', 'wo_p', None, 'refused', ['state', 'isolation']], shared)
         self.assertIn([2, 'repair', 'f1'], shared)             # the trainer's, on a free code
+
+    def test_repair_needs_the_isolation(self):
+        """§15.5 (2026-10-24): a work without an isolation can't be repaired under its accepted permit (its done
+        still repairs); before, it could (the gap the S1 review left)."""
+        shared = self.V['steps'][1]['events']
+        self.assertIn([15, 'repair', 'f4', 'wo_n', None, 'refused', ['isolation']], shared)
+        self.assertIn([15, 'repair', 'f4'], shared)                    # by the work's done
+        self.assertIn([2, 'repair', 'f1', 'wo_p', None, 'refused', ['state', 'isolation']], shared)
+
+    def test_removal_while_issued_suspends_the_work(self):
+        """§15.1, §15.3 (2026-10-24): a lock removed by authority while the permit is accepted suspends the work
+        (back to approved); an unlock then is refused when no other lock stays; a repair noted in that step is not
+        made; a removal names its owner."""
+        run = next(r for r in self.V['steps'] if r['why'].startswith('a lock removed by authority'))
+        ev = run['events']
+        self.assertIn([4, 'unlock', 'wo_p', 0, None, 'refused', ['state']], ev)
+        self.assertIn([5, 'remove_lock', 'wo_p', 1, None, 'done', [], None, 'Locker went home'], ev)
+        self.assertIn([5, 'permit', 'wo_p', 'auto', None, 'done', [2]], ev)
+        self.assertNotIn([5, 'repair', 'f1'], ev)
+        self.assertIn([6, 'repair', 'f1', 'wo_p', None, 'refused', ['state', 'isolation']], ev)
+        self.assertIn([7, 'repair', 'f1'], ev)
+        self.assertIn([8, 'remove_lock', 'wo_p', 0, None, 'refused', ['unlocked'], 'tech1', 'Not here'], ev)
+        self.assertIn([8, 'remove_lock', 'wo_p', 0, 'tech1', 'refused', ['authority'], None, 'Not mine'], ev)
+        self.assertIn([9, 'remove_lock', 'wo_p', 0, None, 'done', [], None, 'Named'], ev)
+        self.assertIn([9, 'permit', 'wo_p', 'auto', None, 'done', [2]], ev)
+
+    def test_instructor_events(self):
+        """§15.5 (2026-10-24): in a version 2 plant every trainer's fault and repair input makes an instructor
+        event as it comes; format 1's vectors have none."""
+        life = self.V['steps'][0]['events']
+        self.assertEqual(life[0], [1, 'instructor', 'fault', 'f1'])
+        self.assertIn([12, 'instructor', 'repair', 'f1'], life)     # asked on a locked code: made nothing, still seen
+        self.assertNotIn([12, 'repair', 'f1'], life)
+        v1 = json.load(open(os.path.join(ROOT, 'ref', 'vectors', 'plant3d-v1.json'), encoding='utf-8'))
+        self.assertFalse(any(x[1] == 'instructor' for r in v1['steps'] for x in r['events']))
 
     def test_lock_effects(self):
         """§15.6: what a lock would do, asked of the reference again where the vectors asked it."""

@@ -529,7 +529,7 @@ def apply(e, item):
     elif kind in ('lock', 'unlock'):
         getattr(e, kind)(item[2], item[3], item[4])
     elif kind == 'remove_lock':
-        e.remove_lock(item[2], item[3], item[4], item[5])
+        e.remove_lock(item[2], item[3], item[4], item[5], *item[6:7], named=len(item) > 6)
     else:
         raise ValueError(kind)
 
@@ -1059,12 +1059,13 @@ def unit_models2():
                   {'id': 'wo_p2', 'kks': VALVE, 'title': 'Valve packing', 'discipline': 'mech', 'permit': 'general',
                    'isolation': 'iso_p'},
                   {'id': 'wo_n', 'kks': TANK, 'title': 'Tank inspection', 'discipline': 'civil', 'permit': 'confined',
-                   'set': {'aux': 1}, 'repairs': 'nofault'}]}
+                   'set': {'aux': 1}, 'repairs': 'f4'}]}
     faults = [{'id': 'f1', 'set': {'pump_fault': 1}, 'text': 'Pump bearing worn', 'kks': PUMP,
                'repair': {'pump_fault': 0}},
               {'id': 'f2', 'set': {'pump_cmd': 1}, 'text': 'Trainer starts the pump', 'repair': {'pump_cmd': 0}},
               {'id': 'f3', 'set': {'motor_fault': 1}, 'text': 'Pump motor winding', 'kks': PUMP,
-               'repair': {'motor_fault': 0}}]
+               'repair': {'motor_fault': 0}},
+              {'id': 'f4', 'set': {'aux2': 3}, 'text': 'Tank coating', 'kks': TANK, 'repair': {'aux2': 0}}]
     channels = {
         'values': [
             ['x', {'state': 0}], ['w', {'state': 0}],
@@ -1149,11 +1150,27 @@ def unit_models2():
         pm(9, P_, 'cancel'), lk(9, P_, 0),
         pm(10, P_, 'request'), pm(10, P2, 'request'),
         ul(11, P_, 0), pm(12, P2, 'request'), ul(12, P_, 1), pm(13, P2, 'request'),
-        pm(14, N_, 'request'), pm(14, N_, 'approve'),
-        pm(15, N_, 'issue'), pm(15, N_, 'accept'), pm(15, N_, 'done'), pm(15, N_, 'return'),
+        [13, 'fault', 'f4'], pm(14, N_, 'request'), pm(14, N_, 'approve'),
+        pm(15, N_, 'issue'), pm(15, N_, 'accept'), rp(15, 'f4', N_), pm(15, N_, 'done'), pm(15, N_, 'return'),
         pm(16, N_, 'close'), pm(16, N_, 'request'),
         pm(17, Q_, 'request'), pm(17, Q_, 'approve'), lk(18, Q_, 0),
         pm(19, Q_, 'issue'), pm(19, Q_, 'accept'), pm(19, Q_, 'done')]
+    # a lock removed by authority while the permit is accepted suspends the work (§15.3, 2026-10-24): an unlock
+    # while accepted refused (no other lock stays); a repair noted in the step of the removal not made; refused then
+    # (state, isolation); locked, issued and accepted again, made; a removal naming its owner (null: free mode), one
+    # naming someone holding no lock there (unlocked), one by a person in free mode (authority)
+    rl = lambda n, w, pt, reason, *owner: [n, 'remove_lock', w, pt, None, reason, *owner]  # noqa: E731
+    suspend = [
+        [1, 'fault', 'f1'], pm(1, P_, 'request'), pm(1, P_, 'approve'),
+        lk(2, P_, 0), lk(2, P_, 1),
+        pm(3, P_, 'issue'), pm(3, P_, 'accept'),
+        ul(4, P_, 0),
+        rp(5, 'f1', P_), rl(5, P_, 1, 'Locker went home'),
+        rp(6, 'f1', P_), lk(6, P_, 1),
+        pm(7, P_, 'issue'), pm(7, P_, 'accept'), rp(7, 'f1', P_),
+        rl(8, P_, 0, 'Not here', 'tech1'), [8, 'remove_lock', P_, 0, 'tech1', 'Not mine'],
+        rl(9, P_, 0, 'Named', None),
+        pm(10, P_, 'done')]
     G_ = 'wo_g'
     chan = [
         [1, 'op', TANK, 'set', 3, None], [2, 'op', PUMP, 'set', 1, None],
@@ -1178,12 +1195,17 @@ def unit_models2():
          "unknown, refused for authority, made on the locked code once accepted (the work's done then repairs "
          "nothing)", pump, faults, life, 24, []),
         ("a code locked by two isolations; a done repair made only when every isolation locking its code is held by "
-         "the work; a cancel with points still locked; a work without an isolation; the trainer's repair on a free "
+         "the work; a cancel with points still locked; a work without an isolation (the trainee's repair under its "
+         "accepted permit refused: no isolation in place; its done repairs); the trainer's repair on a free "
          "code made, the trainee's without an accepted permit refused", pump, faults, shared, 20, []),
         ('an isolated transmitter: its reading held, its alarm suppressed, its 2-out-of-3 vote tripped; unlocked from '
          'isolated (the permit back to approved) and locked again; the hold node at step 0 (its init, the '
          'scenario\'s, its input), reading a later when, a number; what a lock would do (§15.6)',
          channels, [], chan, 26, chan_effects),
+        ('a lock removed by authority while the permit is accepted: the work suspended (the automatic move back to '
+         'approved), an unlock while accepted refused, a repair noted in that step not made, then refused (state, '
+         'isolation); locked, issued and accepted again, the repair made; removals naming the owner, naming one who '
+         'holds no lock there (unlocked), and by a person in free mode (authority)', pump, faults, suspend, 11, []),
     ]
 
 
@@ -1832,6 +1854,18 @@ REJECTS_STAFF = [
     ('a work naming a task staff.json lacks', 'bad_ref', _set(WORK + [1, 'task'], 'nothing')),
     ('a "$" work in a task no work is given to', 'bad_ref', _set(TASK(16) + ['steps', 0],
                                                                  {'permit': {'work': '$', 'action': 'request'}})),
+    ('a handover step neither take nor give', 'bad_value', _set(TASK(5) + ['steps', 1], {'handover': 'swap'})),
+    ('a remove_locks step of an unknown message', 'bad_ref', _all(
+        _app(STF + ['tasks'], {'id': 'rm', 'title': 'R', 'steps': [{'remove_locks': 'nothing'}]}),
+        _app(STF + ['reactions'], {'on': {'lock_left': '*'}, 'roles': ['shift_sup'], 'task': 'rm'}))),
+    ('a remove_locks step outside a lock_left reaction\'s task', 'bad_ref',
+     _set(TASK(16) + ['steps', 2], {'remove_locks': 'handover'})),
+    ('a remove_locks step in a role without remove_lock', 'authority', _all(
+        _app(STF + ['tasks'], {'id': 'rm', 'title': 'R', 'steps': [{'remove_locks': 'handover'}]}),
+        _app(STF + ['reactions'], {'on': {'lock_left': '*'}, 'roles': ['ccr_op'], 'task': 'rm'}))),
+    ('a lock_left reaction not on "*"', 'bad_value', _app(STF + ['reactions'], {'on': {'lock_left': 'a_fo1'},
+                                                                              'roles': ['shift_sup'],
+                                                                              'task': 'sup_check'})),
     ('a scenario\'s trainee who is not a person', 'bad_ref', _set(SC + ['staff', 'trainee'], 'nobody')),
     ('a scenario\'s trainee absent', 'bad_ref', _all(_set(SC + ['staff', 'trainee'], 'a_fo1'),
                                                      _set(SC + ['staff', 'absent'], ['a_fo1']))),
@@ -1868,8 +1902,10 @@ class Trainee:
     says, calls, makes ops, permits and locks, picks the first choice, acknowledges new tasks after `ack_after` steps.
     `extra`: more inputs at given steps ([step, kind, …]). The inputs it makes are the vector's (Recorder.inputs)."""
 
-    def __init__(self, walk=40, wrong=(), ack_after=5, extra=(), quiet=False, wake=0, ahead=None, undo=False):
+    def __init__(self, walk=40, wrong=(), ack_after=5, extra=(), quiet=False, wake=0, ahead=None, undo=False,
+                 back=False):
         self.walk, self.wrong, self.ack_after, self.extra = walk, set(wrong), ack_after, list(extra)
+        self.back = back            # walk back to a work step left half done by a pause (§17.9's runs)
         self.quiet, self.wake = quiet, wake
         # ahead: while walking a `go`, make the ops ('ops') or the ops, permits and locks ('all') of the steps after
         # it (past waits) before they are current (§17.8); undo: then the opposite of each op, a step later
@@ -1908,8 +1944,8 @@ class Trainee:
             place = x.get('dest')
         elif 'meet' in s:
             place = x.get('place')
-        elif 'lock' in s or 'unlock' in s:
-            pass
+        elif 'work' in s and x.get('place') is not None and self.back:
+            place = x['place']          # back to a work left half done (a pause took them elsewhere)
         for at, o in [u for u in self.undo_at if u[0] == n]:
             e.op(o['kks'], {'open': 'close', 'close': 'open'}[o['do']], None, None, o['where'], me)
         if self.ahead and 'go' in s and (cur['order'], cur['step']) not in self.ahead_done:
@@ -1963,6 +1999,24 @@ class Trainee:
             pts = range(len(iso['points'])) if s[k]['point'] == 'all' else [s[k]['point']]
             for i in pts:
                 getattr(e, k)(w, i, me)
+        elif 'handover' in s or 'remove_locks' in s:
+            # the permit form's buttons (§18.7): take over each lock of the post, give each lock now shared, remove
+            # the left person's locks by authority; each point once
+            for key in [(x['id'], j) for x in e.m.isolations for j in range(len(x['points']))]:
+                held = e.locks.get(key, [])
+                if (key, cur['order'], 'h') in self.done or not held:
+                    continue
+                if s.get('handover') == 'take' and me not in held and any(sr.mate(p, h) for h in held):
+                    e.lock(e.holder[key[0]], key[1], me)
+                elif s.get('handover') == 'give' and me in held and any(h != me for h in held):
+                    e.unlock(e.holder[key[0]], key[1], me)
+                elif 'remove_locks' in s and cur['owner'] in held:
+                    e.remove_lock(e.holder[key[0]], key[1], me, sr.st.messages[s['remove_locks']], cur['owner'],
+                                  named=True)
+                else:
+                    continue
+                self.done.add((key, cur['order'], 'h'))
+            return
         elif 'choose' in s:
             e.pick(0)
         elif 'ack' in s and cur['alarm'] is not None:
@@ -1999,8 +2053,45 @@ def staff_files(scenario=None, staff=None):
     return F
 
 
+def handover_staff():
+    """The synthetic staff with locks handed over at a shift change (§17.9): the handover tasks take over and give
+    locks, the electricians hand over in the field office too, a lock left on is removed by the supervisor (the
+    reaction lock_left), crew B's field operator on field operator 2's round (their post), and crew B's supervisor
+    and electrician added at the end of the file."""
+    st = copy.deepcopy(mini_staff()['staff.json'])
+    T = {t['id']: t for t in st['tasks']}
+    for tid in ('handover_take', 'handover_take_f'):
+        T[tid]['steps'].append({'handover': 'take'})
+    for tid in ('handover_give', 'handover_give_f'):
+        T[tid]['steps'].append({'handover': 'give'})
+    st['tasks'].append({'id': 'remove_left', 'title': 'Remove a lock left on', 'priority': 2,
+                        'steps': [{'remove_locks': 'lock_left'}, {'say': 'locks_removed', 'to': 'channel'}]})
+    next(r for r in st['routines'] if r['id'] == 'elec_shift')['slots'] = [
+        {'at': 'start-0:15', 'task': 'handover_take_f'}, {'at': 'end-0:15', 'task': 'handover_give_f'}]
+    st['reactions'].append({'on': {'lock_left': '*'}, 'roles': ['shift_sup'], 'task': 'remove_left'})
+    st['messages'].update({'lock_left': 'Removed by authority: its holder went off shift, nobody took over',
+                           'locks_removed': 'A lock left on removed by authority'})
+    next(q for q in st['people'] if q['id'] == 'b_fo')['routine'] = 'field_shift2'     # a_fo2's post
+    st['people'] += [{'id': 'b_sup', 'role': 'shift_sup', 'roster': 'shift', 'crew': 'b', 'call': 'Super B'},
+                     {'id': 'b_elec', 'role': 'elec_ap', 'roster': 'shift', 'crew': 'b', 'call': 'Sparks B'}]
+    return st
+
+
 def staff_runs():
     """(why, scenario changes, staff changes or None, the trainee player or None, steps, snapshot every)."""
+    hand = handover_staff()
+    quiet = copy.deepcopy(hand)         # no deisolation by the supervisor: the handover's own unlocks only
+    for r in quiet['reactions']:
+        if r['on'] == {'permit': 'returned'}:
+            r['task'] = 'sup_check'
+    for t in quiet['tasks']:            # (their tasks keep a work of their own, so the file stays valid)
+        if t['id'] in ('deisolate', 'deiso_valve'):
+            t['work'] = 'wo_pump' if t['id'] == 'deisolate' else 'wo_valve'
+    late = copy.deepcopy(hand)          # a relief supervisor on from 20:00 (a duty coming on at night)
+    late['rosters'].append({'id': 'late', 'kind': 'days', 'days': ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+                            'hours': ['20:00', '08:00']})
+    late['people'].append({'id': 'n_sup', 'role': 'shift_sup', 'roster': 'late', 'call': 'Relief super'})
+    at5 = {'start': {'day': 1, 'time': '17:00'}}
     extra_person = copy.deepcopy(mini_staff()['staff.json'])
     extra_person['people'].append({'id': 'a_fo3', 'role': 'field_op', 'roster': 'shift', 'crew': 'a',
                                    'call': 'Field 3 A'})
@@ -2083,6 +2174,32 @@ def staff_runs():
                                     [603, 'remove_lock', 'wo_pump', 1, 'a_sup', 'Again'],
                                     [604, 'lock', 'wo_pump', 1, 'a_sup'], [606, 'unlock', 'wo_pump', 1, 'a_sup']]),
          700, 20),
+        ('locks handed over at a shift change (§17.9), no trainee, from 17:00: the pump\'s work raised by crew A, its '
+         'points locked by their electrician and a field operator and the permit issued with no technician on duty; '
+         'at the handover crew B\'s electrician and field operator lock each point first (added locks while issued), '
+         'then crew A\'s people unlock theirs (allowed: another lock stays), so no step leaves a point unlocked; the '
+         'work then accepted, done and returned (free mode inputs), and the isolation removed by the new holders',
+         at5, hand, Trainee(extra=[[2, 'fault', 'f1'], [1320, 'permit', 'wo_pump', 'accept', None],
+                                   [1321, 'permit', 'wo_pump', 'done', None], [1322, 'permit', 'wo_pump', 'return', None]]),
+         1900, 20),
+        ('nobody takes over (§17.9): crew B\'s electrician absent, crew A\'s waits 60 clock minutes at the breaker, '
+         'leaves the site with the lock on, and crew B\'s supervisor removes it by authority with the reason (its '
+         'owner in the event); the permit, issued, is suspended back to approved',
+         dict(at5, absent=['b_elec']), hand, Trainee(extra=[[2, 'fault', 'f1']]), 1900, 20),
+        ('nobody takes over and no supervisor on duty either (crew B\'s absent): the removal is unassigned when the '
+         'electrician leaves, and given again when someone comes on duty: a relief supervisor on at 20:00 removes it',
+         dict(at5, absent=['b_elec', 'b_sup']), late, Trainee(extra=[[2, 'fault', 'f1']]), 2600, 20),
+        ('a work returned just before the shift change (adversarial review): the incoming people take over none of its '
+         'locks (its isolation is coming off), the outgoing ones unlock without waiting for them, and the permit is '
+         'deisolated by itself (the supervisor only looks round when it is returned, in this staff file)', at5, quiet,
+         Trainee(extra=[[2, 'fault', 'f1'], [900, 'permit', 'wo_pump', 'accept', None],
+                        [901, 'permit', 'wo_pump', 'done', None], [902, 'permit', 'wo_pump', 'return', None]]), 1800, 20),
+        ('the trainee as crew B\'s field operator takes over the valve\'s lock at the handover (a lock input from the '
+         'permit form); crew A\'s field operator then unlocks theirs',
+         dict(at5, trainee='b_fo'), hand, Trainee(extra=[[2, 'fault', 'f1']]), 1400, 20),
+        ('the trainee as crew A\'s field operator 2 locks the valve for the work, then gives the lock at the handover: '
+         'they unlock once crew B\'s field operator has locked it',
+         dict(at5, trainee='a_fo2'), hand, Trainee(back=True, extra=[[2, 'fault', 'f1']]), 1600, 20),
     ]
 
 
@@ -2155,45 +2272,55 @@ def build_day(b=None):
             'forks': forks}
 
 
-def build2():
+def parts2():
+    """Format 2's vectors part by part, in the file's order: each part's name and the function that makes it (the
+    tests check each part on its own, so CI can make them side by side)."""
     F = mini2()
-    return {'about': 'Walkdown Plant content format 2 vectors (docs/PLANT3D.md §19), made by '
-                     'ref/make_plant3d_vectors.py from ref/plant3d.py. Numbers compare to 1e-6. Milestone P1: permits, '
-                     'isolations and the hold node (§15); W2: the water treatment plant started from cold by its '
-                     'procedure (`wtp`, as format 1\'s `train`); W3: an RO train cleaned in place (`wtp_cip`) '
-                     'and a mixed bed regenerated (`wtp_regen`) by their procedures; milestone S1: the staff '
-                     '(§16–§17): `staff` holds a synthetic plant with staff, its rejects and its runs (every event, a '
-                     'snapshot every `every` steps), `day` the first train\'s day shift.',
-            'valid': [{'why': 'the synthetic plant as version 2', 'files': {k: json.dumps(v, ensure_ascii=False)
-                                                                           for k, v in F.items()},
-                       'counts': check(F).counts}],
-            'reject': build_rejects2(),
-            'steps': build_steps2(),
-            'train': build_train2(train_bundle()),
-            'wtp': build_train(train_bundle(), 'wtp_cold', 'wtp_start', WTP_FORKS),
-            'staff': {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in staff_files().items()},
-                      'counts': check(staff_files()).counts,
-                      'reject': build_rejects_staff(),
-                      'runs': build_staff()},
-            'day': build_day(),
-            'wtp_cip': build_train(train_bundle(), 'wtp_normal', 'ro_cip', CIP_FORKS),
-            'wtp_regen': build_train(train_bundle(), 'wtp_normal', 'mb_regeneration', REGEN_FORKS)}
+    return {
+        'about': lambda: ('Walkdown Plant content format 2 vectors (docs/PLANT3D.md §19), made by '
+                          'ref/make_plant3d_vectors.py from ref/plant3d.py. Numbers compare to 1e-6. Milestone P1: '
+                          'permits, isolations and the hold node (§15); W2: the water treatment plant started from cold '
+                          'by its procedure (`wtp`, as format 1\'s `train`); W3: an RO train cleaned in place '
+                          '(`wtp_cip`) and a mixed bed regenerated (`wtp_regen`) by their procedures; milestone S1: the '
+                          'staff (§16–§17): `staff` holds a synthetic plant with staff, its rejects and its runs (every '
+                          'event, a snapshot every `every` steps), `day` the first train\'s day shift.'),
+        'valid': lambda: [{'why': 'the synthetic plant as version 2', 'files': {k: json.dumps(v, ensure_ascii=False)
+                                                                               for k, v in F.items()},
+                           'counts': check(F).counts}],
+        'reject': build_rejects2,
+        'steps': build_steps2,
+        'train': lambda: build_train2(train_bundle()),
+        'wtp': lambda: build_train(train_bundle(), 'wtp_cold', 'wtp_start', WTP_FORKS),
+        'staff': lambda: {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in staff_files().items()},
+                          'counts': check(staff_files()).counts,
+                          'reject': build_rejects_staff(),
+                          'runs': build_staff()},
+        'day': build_day,
+        'wtp_cip': lambda: build_train(train_bundle(), 'wtp_normal', 'ro_cip', CIP_FORKS),
+        'wtp_regen': lambda: build_train(train_bundle(), 'wtp_normal', 'mb_regeneration', REGEN_FORKS)}
+
+
+def build2():
+    return {k: f() for k, f in parts2().items()}
+
+
+def parts():
+    """Format 1's vectors part by part, in the file's order (as parts2)."""
+    F = mini()
+    return {
+        'about': lambda: ('Walkdown Plant content format 1 vectors (docs/PLANT3D.md §12), made by '
+                          'ref/make_plant3d_vectors.py from ref/plant3d.py. Numbers compare to 1e-6.'),
+        'valid': lambda: [{'why': 'the synthetic plant', 'files': {k: json.dumps(v, ensure_ascii=False)
+                                                                  for k, v in F.items()}, 'counts': check(F).counts}],
+        'reject': build_rejects,
+        'steps': build_steps,
+        'links': lambda: [{'link': u, 'expect': P.read_link(u, check(F))} for u in LINKS],
+        'train': lambda: build_train(train_bundle()),
+        'hot': lambda: build_train(train_bundle(), 'hot_restart', 'hot_restart', HOT_FORKS)}
 
 
 def build():
-    F = mini()
-    tb = train_bundle()
-    counts = check(F).counts
-    links = [{'link': u, 'expect': P.read_link(u, check(F))} for u in LINKS]
-    return {'about': 'Walkdown Plant content format 1 vectors (docs/PLANT3D.md §12), made by '
-                     'ref/make_plant3d_vectors.py from ref/plant3d.py. Numbers compare to 1e-6.',
-            'valid': [{'why': 'the synthetic plant', 'files': {k: json.dumps(v, ensure_ascii=False)
-                                                              for k, v in F.items()}, 'counts': counts}],
-            'reject': build_rejects(),
-            'steps': build_steps(),
-            'links': links,
-            'train': build_train(tb),
-            'hot': build_train(tb, 'hot_restart', 'hot_restart', HOT_FORKS)}
+    return {k: f() for k, f in parts().items()}
 
 
 def dump(v):

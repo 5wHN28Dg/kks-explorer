@@ -46,6 +46,7 @@ var listener_at := Vector3.ZERO
 var dir := DIR
 var walker: CharacterBody3D = null      # the trainee (app/player.gd): footsteps and whether they are outdoors
 var played := {}                # sound id -> how many times it was asked for (the tests read it)
+var loops_started := 0          # bound loops started near the listener (app/frame_probe.gd's events)
 var last_step_db := 0.0         # the last footstep's level against a walk's (the tests read it)
 var outdoors := 1.0             # 0 inside a building … 1 outdoors, faded over FADE
 var running := 0.0              # how much of the plant runs: the bound loops' mean gain (0–1)
@@ -274,6 +275,7 @@ func _process(delta: float) -> void:
 
 
 func _start(n: Node3D, id: String) -> Array:
+	loops_started += 1
 	var out := []
 	var s: Dictionary = index.get(id, {})
 	for layer in s.get("layers", []):

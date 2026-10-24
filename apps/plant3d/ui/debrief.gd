@@ -11,7 +11,8 @@ const W = preload("res://ui/widgets.gd")
 const Permits = preload("res://ui/permits.gd")
 
 ## Why the trainee's repair under a permit was refused (PLANT3D §15.5).
-const REPAIR_WHY := {"state": "its permit to work was not accepted", "authority": "not this person's to do"}
+const REPAIR_WHY := {"state": "its permit to work was not accepted", "authority": "not this person's to do",
+		"isolation": "its isolation was not in place"}
 const ALARM_WORDS := {
 	"normal>active_unack": "raised", "cleared_unack>active_unack": "raised again",
 	"active_unack>active_ack": "acknowledged", "cleared_unack>normal": "acknowledged after it cleared",
@@ -21,8 +22,9 @@ const ALARM_WORDS := {
 
 ## {entries: [{step, kind, text, code, dev, prio}], summary: {…}, title}. `kind`: op, alarm, shelve, unshelve, trip,
 ## fault, repair, interlock, machine, permit, lock, unlock, remove_lock (a lock removed by authority), early (the
-## trainee's action made before its task step, counted when the step came: out of order, a deviation), step (a procedure step that ended), start (the procedure
-## began). `dev` is ""
+## trainee's action made before its task step, counted when the step came: out of order, a deviation), instructor
+## (an instructor's input, PLANT3D §15.5: the fault or repair it made, if any, is marked too), step (a procedure step
+## that ended), start (the procedure began). `dev` is ""
 ## or the deviation in words; `prio` an alarm's or trip's priority (0 otherwise).
 static func collect(engine, info, tracker) -> Dictionary:
 	var m = info.m
@@ -45,7 +47,9 @@ static func collect(engine, info, tracker) -> Dictionary:
 				devs[int(d[2])] = d
 	var sm := {"ops": 0, "refused": 0, "deviations": 0, "raised": 0, "prio": {1: 0, 2: 0, 3: 0}, "acked": 0,
 			"shelved": 0, "trips": 0, "first_out": PackedStringArray(), "faults": 0, "repairs": 0, "permits": {},
-			"locks": 0, "unlocks": 0, "permit_refused": 0, "by_authority": 0, "early": 0}
+			"locks": 0, "unlocks": 0, "permit_refused": 0, "by_authority": 0, "early": 0, "instructor": 0,
+			"instructor_run": instructor_count(engine)}
+	var by_instructor := {}             # "fault|id" or "repair|id" -> the step of the instructor's input
 	var state := {}                     # alarm id -> its state (from step 0: the run may begin later)
 	var inputs: Array = engine.inputs
 	var in_i := 0
@@ -126,9 +130,18 @@ static func collect(engine, info, tracker) -> Dictionary:
 				sm.trips += 1
 				if ev[3]:
 					sm.first_out.append(name)
+			"instructor":
+				# instructor mode is open to anyone, but every action of it is visible (the user, 2026-10-24)
+				e.code = fault_kks(m, str(ev[3]), engine.sc)
+				e.text = "By the instructor: %s %s" % ["fault pressed:" if ev[2] == "fault" else "repair asked:",
+						fault_text(m, str(ev[3]), engine.sc)]
+				by_instructor[str(ev[2]) + "|" + str(ev[3])] = int(ev[0])
+				sm.instructor += 1
 			"fault":
 				e.text = "Fault: %s" % fault_text(m, str(ev[2]), engine.sc)
 				e.code = fault_kks(m, str(ev[2]), engine.sc)
+				if by_instructor.get("fault|" + str(ev[2]), -1) == int(ev[0]):
+					e.text += " (by the instructor)"
 				sm.faults += 1
 			"repair":
 				e.code = fault_kks(m, str(ev[2]), engine.sc)
@@ -138,6 +151,8 @@ static func collect(engine, info, tracker) -> Dictionary:
 							else "not a repair of that permit's work"]
 				else:
 					e.text = "Repaired: %s" % fault_text(m, str(ev[2]), engine.sc)
+					if by_instructor.get("repair|" + str(ev[2]), -1) == int(ev[0]):
+						e.text += " (by the instructor)"
 					sm.repairs += 1
 			"interlock":
 				var il := {}
@@ -220,7 +235,26 @@ static func collect(engine, info, tracker) -> Dictionary:
 	sm["stopped"] = tracker != null and tracker.stopped
 	sm["began_at"] = tracker.begin_index if not proc.is_empty() else 0
 	var title := ("Debrief: " + String(proc.get("title", ""))) if not proc.is_empty() else "Events since the plant started"
+	if sm.instructor_run > 0:
+		title += " · instructor mode used"
 	return {"entries": out, "summary": sm, "title": title, "procedure": not proc.is_empty()}
+
+
+## The instructor's actions in the whole run (their `instructor` events, PLANT3D §15.5): a run with any used
+## instructor mode, and says so.
+static func instructor_count(engine) -> int:
+	var n := 0
+	for ev in engine.events:
+		if ev[1] == "instructor":
+			n += 1
+	return n
+
+
+## The line that opens the debrief of a run that used instructor mode ("" for none).
+static func instructor_line(n: int) -> String:
+	if n == 0:
+		return ""
+	return "This run used instructor mode: %d instructor action%s (marked below)" % [n, "" if n == 1 else "s"]
 
 
 static func _alarm_name(a: Dictionary, id) -> String:
@@ -303,6 +337,8 @@ static func deviation_text(d: Array, proc: Dictionary) -> String:
 static func summary_lines(d: Dictionary) -> PackedStringArray:
 	var sm: Dictionary = d.summary
 	var out := PackedStringArray()
+	if sm.get("instructor_run", 0) > 0:
+		out.append(instructor_line(sm.instructor_run))
 	out.append("Time: %s of plant time" % W.model_time(sm.time))
 	if d.procedure:
 		out.append("Steps: %d of %d done%s%s" % [sm.steps_done, sm.steps,

@@ -277,3 +277,13 @@ build with the polish pass's pieces taken out one at a time (louvres, liners, ro
 The laptop's 60 fps rule could not be measured with the GPU free (the user's editor drew on it through every run);
 the app's own GPU time is about the same (10.8 ms in the final build's run, 9.6 ms in an earlier build's,
 against 10.0 ms before, at the 95th percentile).
+
+## Occluders and far views (#249, 2026-10-24)
+
+What is drawn changed for the frame rules, not the look: every building's walls and roof are an occluder (occlusion
+culling on); the first train's areas, the WTP and its intake have a merged far view beyond 200 m (simplified within
+0.2 m, detail pieces, doors and what stands wholly inside buildings left out); what stands wholly inside a building is drawn only within 30 m plus the building's diagonal.
+The far meshes are not in the bake: lit by the sky and the sun without the bake's shadows. Laptop views from 200 to
+500 m on the final build (the plant gate's road east, the WTP's west, the train and the turbine hall's roller door from
+the WTP), with the far views and without them (`fx_off=farview`): no visible difference. The Note 9's walks on the merged code are in 0066 ("Frame spikes and the far
+views").

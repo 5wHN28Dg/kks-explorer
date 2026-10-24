@@ -911,23 +911,37 @@ room, and an isolated transmitter shows as such on the operator's screen.
   or at the unlock of its last locked point). A `request` for a work whose isolation has a holder (another work, or
   the same work cancelled with points still locked) is refused (`iso_busy`). Locks and unlocks name the holding work
   (another work: `state`).
-- **Locking** (the input `lock`, §17.6) is noted in step 1 and made at the start of step 3 (§17.1), refused unless the
-  permit is `approved` or `isolated` and its work holds the isolation (else `state`), the person may lock that kind
-  (`authority`), the point is unlocked (`locked`), and its `safe` is true as this step's step 2 computed it, after this
-  step's ops (else the `safe` value's name). **Unlocking** likewise, refused unless the permit is `approved` or
-  `isolated` (a point locked in error), `returned` or `cancelled` and its work holds the isolation (`state`), the
-  point is locked (`unlocked`), and the person unlocking is the one who locked it (`owner`: a lock is personal; the
-  user, 2026-10-23). The reasons are listed in the order `authority`, `state`, then `locked`, `unlocked` or the
-  `safe` value, then `owner`, every one that applies. Points may be locked and unlocked in any order. A lock or
-  unlock naming no work, a work without an isolation, or a point that is not a whole number (a JSON integer) from 0
-  to the number of points − 1 is `unknown` (§17.7).
+- **Personal locks** (the user, 2026-10-23 and 2026-10-24): a point holds the locks of one or more people, each
+  person's own, in the order placed; it is *locked* while it holds any. Several locks on one point are how a lock is
+  handed over at a shift change (below): the point is never left unprotected.
+- **Locking** (the input `lock`, §17.6) is noted in step 1 and made at the start of step 3 (§17.1), refused unless its
+  work holds the isolation and either the permit is `approved` or `isolated`, or the point is already locked (an
+  added lock, at any state: a handover's) (else `state`); unless the person may lock that kind (`authority`); unless
+  the point holds no lock of this person (`locked`); and, for a point not yet locked, unless its `safe` is true as
+  this step's step 2 computed it, after this step's ops (else the `safe` value's name; an added lock goes on equipment
+  already made safe and locked). **Unlocking** removes the person's own lock, refused unless its work holds the
+  isolation and either the permit is `approved` or `isolated` (a point locked in error), `returned` or `cancelled`, or
+  it is `issued`, `accepted` or `done` and a lock of another person stays on the point (a handover's second half)
+  (`state`); unless the point is locked (`unlocked`); unless one of its locks is this person's (`owner`: a lock is
+  personal; the user, 2026-10-23). The reasons are listed in the order `authority`, `state`, then `locked`,
+  `unlocked` or the `safe` value, then `owner`, every one that applies. Points may be locked and unlocked in any
+  order. A lock or unlock naming no work, a work without an isolation, or a point that is not a whole number (a JSON
+  integer) from 0 to the number of points − 1 is `unknown` (§17.7).
 - **Lock removal by authority** (the input `remove_lock`, §17.6): a supervisor removes another person's lock, with
-  the reason written down (the locker has gone home sick, say). It is an unlock made in the same place and order,
-  with the authority `remove_lock` in place of `lock_<kind>` and no `owner` check, and its event names whose lock it
-  was and the reason (§17.7); the debrief lists it. A reason that is not text of 1 to 200 characters makes it
-  `unknown`, as are the cases that make an unlock `unknown`. NPCs make no removal by authority, and an NPC's
-  `unlock` of another person's lock is refused (`owner`) like anyone's: its step's `else`, or the task abandoned
-  (open: what NPCs do with a lock whose locker has gone off shift is for the user to decide).
+  the reason written down (the locker has gone home sick, say). The input may name whose lock (`owner`); without one,
+  the point's earliest lock is removed. It is made in the same place and order as an unlock, with the authority
+  `remove_lock` in place of `lock_<kind>`, refused unless its work holds the isolation and the permit is between
+  `approved` and `returned` or `cancelled` (`state`), and unless the point holds a lock (of `owner`, when named:
+  `unlocked`); no `owner` check. Its event names whose lock it was and the reason (§17.7); the debrief lists it. A
+  reason that is not text of 1 to 200 characters makes it `unknown`, as are the cases that make an unlock `unknown`.
+  A removal that leaves an `issued` or `accepted` permit's isolation incomplete suspends the work (§15.3's automatic
+  move back to `approved`). An NPC's `unlock` of another person's lock is refused (`owner`) like anyone's.
+- **Locks at a shift change** (the user, 2026-10-24): when the holder of a lock goes off shift with the work
+  unfinished, the incoming person of their post places their own lock first, then the outgoing person removes theirs;
+  both are events of the permit. NPCs do it in their handover tasks (the steps `{"handover": "take"}` and `{"handover":
+  "give"}`, §16.6); a played role does the same from the permit form ("Take over the lock", §18.7). If nobody takes
+  over, the outgoing person leaves with the lock on, and the shift supervisor removes it by authority with a reason
+  (the reaction `lock_left` and the step `remove_locks`, §16.6–§16.7).
 - **While a code is locked** (a point with that code is locked, in any isolation):
   - every op (§7.2) on that code is refused: the failed values are format 1's (the permissives that failed, then a
     machine's state, a trip's latch or cause, a `set` op's input), then `<isolation id>_locked` of each isolation
@@ -1008,7 +1022,10 @@ Each work has one permit at a time; its state is the value `<work id>_permit`:
   it: the engine checks the permit and the person, not the task.
 - **Automatic moves** are levels, checked in step 3 after the locks and unlocks, in work order (model order), each an
   event (§17.7): a permit at 2 whose isolation is complete (or that has none) goes to 3; at 3 with its isolation not
-  complete, back to 2; at 7 with no point of its isolation locked (or none), to 8.
+  complete, back to 2; at 4 or 5 with its isolation not complete (a lock removed by authority, §15.1), back to 2:
+  the work is suspended until its isolation is complete again and the permit is issued and accepted again (2026-10-24);
+  at 7 with no point of its isolation locked (or none), to 8. A permit at 6 (the work done) keeps its state: it is
+  returned as usual.
 - A **permit number** is given at `request`: `PTW-` and four digits, counted from 1 in the run, in the order requested
   (a work requested again after it was closed or cancelled gets a new number, and its acceptor is cleared).
 
@@ -1025,10 +1042,14 @@ up training.
   - refused (`[n, "repair", fault, work, person, "refused", [reasons]]`) with the reasons, in this order, every one
     that applies: `authority` (as the permit's `done`, §15.3 and §17.1: a person in a plant without staff; with
     staff, anyone but the acceptor, or another with `accept` and the work's discipline while the acceptor is off duty
-    or absent: played roles and NPCs alike, whose repairs are their work's `done`), `state` (the work's permit is not *accepted*, 5). An accepted
-    permit's isolation is complete: its points can't be unlocked from issued to done (§15.1);
+    or absent: played roles and NPCs alike, whose repairs are their work's `done`), `state` (the work's permit is not
+    *accepted*, 5), `isolation` (the work has no isolation, or its isolation is not complete as step 1 finds it: a
+    repair needs the isolation in place, the user's rule of 2026-10-23; added 2026-10-24, before which a work without
+    an isolation repaired at *accepted*). A work without an isolation (an inspection) still repairs its fault by its
+    `done`;
   - otherwise it is noted, without an event, and made in step 3 with format 1's repairs (one list, in the scenario's
-    order), its writes being the work's own (§15.1: made on a code locked only by isolations the work holds), with
+    order) if the work's permit is still *accepted* after this step's locks and automatic moves (a lock removed by
+    authority in the same step suspends it, §15.3: then nothing, no event), its writes being the work's own (§15.1: made on a code locked only by isolations the work holds), with
     format 1's `[n, "repair", fault]` event. As any repair (§7.8), one of a fault not applied, already repaired, or
     whose writes would be skipped does nothing and makes no event. A fault asked by the trainer and under a permit in
     one step is repaired once, as the work's. The work's `done` later finds it repaired and repairs nothing.
@@ -1036,6 +1057,13 @@ up training.
   repairs). The app sends it from the instructor's panel only; in a version 2 plant the card offers the trainee the
   repair under a permit, at the equipment, while the work's permit is accepted (and says why not otherwise). A version 1
   plant has no works: its trainee repairs as format 1 says.
+- **Instructor actions are visible** (the user, 2026-10-24): instructor mode stays open to anyone, but in a version 2
+  plant every input of the trainer's (format 1's `fault` and `repair`, today the only ones; any bypass added later
+  likewise) makes, as it comes in step 1 and before anything else it does, the event `[n, "instructor", kind, id]`
+  (kind `fault` or `repair`, id the fault as given), whether it then acts or not. The debrief marks each, and a run
+  with any says so at the top of the debrief and in the saved run's offer (§18.7). A version 1 plant makes none:
+  format 1's synthetic vectors are unchanged, and only its `train` and `hot` runs, on the first train's version 2
+  content, carry them.
 
 ### 15.6 What a lock would do
 
@@ -1240,6 +1268,9 @@ Steps, each done by an NPC as said and by the trainee through the input named (�
 | `ride`: `{"from": stop, "to": stop}` | boards a vehicle (§16.8) | the same, or walks instead (a `go`) |
 | `sleep`: `{"until": "HH:MM"}` | lies at the home bed until then | may `jump` (§17.6) |
 | `stop`: `{"stop": "act"}` (roles with `stop_work`; goes first to the place the acting person is at when the step starts) | stops the act the task was given for (§16.7) | the same |
+| `handover`: `"take"` | takes over, one point at a time in model order, the locks of their post (§17.8) | locks those points from the permit form ("Take over the lock") |
+| `handover`: `"give"` | at each of their locks in turn, waits for another lock on the point (60 clock minutes at most), then unlocks; a lock nobody took over stays | unlocks each lock another lock now shares |
+| `remove_locks`: a message id (the reason) | removes by authority, one point at a time, the locks of the person the `lock_left` reaction named (§16.7), with the message's text as the reason | the same, from the permit form |
 
 - A task has `priority` 1 (urgent) to 5 (default 3), `interruptible` (default true), optionally `work` (the work it
   does, for `$`) and `else` targets inside it; `"unsafe": true` on a step marks a shortcut (§16.7). `anim` and
@@ -1265,6 +1296,10 @@ Steps, each done by an NPC as said and by the trainee through the input named (�
   "requested"}`), or an unsafe act starting. The task goes to one person (§17.3). A reaction is skipped while a task
   it gave for the same source (the same alarm, trip, fault, value, permit or act) is still queued or current, so a
   chattering alarm doesn't flood anyone.
+- **`{"lock_left": "*"}`** (2026-10-24): a person (not the trainee) who has left the site (off duty, no place, §17.8)
+  while holding a lock. The reaction is made once per departure, in phase 2 of the next step 9 (§17.2), with the
+  person as its source; its task's `remove_locks` step removes their locks. A person who comes back on site with
+  locks still on and leaves again makes it again.
 - **Unsafe acts:** a person in a zone without one of the zone's PPE items; a person at the work place of a work's
   `kks` in a `work` step of a task for that work while its permit is not `accepted`; a step marked `"unsafe": true`
   while it runs. An act **starts** in the step its condition becomes true and **ends** when it is false (events
@@ -1395,7 +1430,7 @@ Each person has their own stream:
 | `[n, "role", person]` | the trainee takes that person (§17.4) |
 | `[n, "permit", work, action, person]` | a permit action (§15.3) |
 | `[n, "lock", work, point, person]`, `[n, "unlock", work, point, person]` | a point of the work's isolation (its index in `points`) |
-| `[n, "remove_lock", work, point, person, reason]` | a lock removal by authority (§15.1): `reason` is text of 1 to 200 characters |
+| `[n, "remove_lock", work, point, person, reason]`, `[n, "remove_lock", work, point, person, reason, owner]` | a lock removal by authority (§15.1): `reason` is text of 1 to 200 characters; `owner` names whose lock (without it, the point's earliest) |
 | `[n, "repair", fault, work, person]` | the trainee's repair under the work's permit (§15.5) |
 | `[n, "arrive", place]`, `[n, "leave", place]` | the trainee reached or left a place |
 | `[n, "read", code, value]` | a reading the trainee wrote down |
@@ -1429,15 +1464,16 @@ Events, at the place §17.1 makes them. Step 1: `[n, "permit", work, action, per
 `[n, "role", person, "done" | "refused"]`, `[n, "task_ack"]`, `[n, "jump", from, to, "done" | "refused"]` (tenths of
 clock seconds). Step 3, first: `[n, "lock", work, point, person, "done" | "refused" | "unknown", [reasons]]` and
 `"unlock"` (§15.1's reasons), and `[n, "remove_lock", work, point, person, "done" | "refused" | "unknown", [reasons],
-owner, reason]` (owner: the person whose lock the point holds as the input is made, null when it holds none or the
-work and point name none), then
+owner, reason]` (owner: the input's `owner` when it names one, else the person whose lock is the point's earliest as
+the input is made, null when it holds none or the work and point name none), then
 the automatic moves `[n, "permit", work, "auto", null, "done", [new state]]`. Step 9: `[n, "duty", person, "on" |
 "off"]`, `[n, "task", person, task, "start" | "done" | "abandoned" | "skipped" | "unassigned"]`, `[n, "move", person,
 from, to, arrive step]`, `[n, "vehicle", id, stop, "arrive" | "depart" | "skipped"]`, `[n, "read", person, code,
 value, "ok" | "out_of_range" | "misread"]`, `[n, "say", person, message, to]`, `[n, "unsafe" | "safe", person, kind,
 zone or work]`, `[n, "early", person, task, step index, kind, made]` (§17.8: an action of the trainee's made in step
 `made` counts for that step). The op event of a version 2 op adds `where` and person; reasons and failed values are value names or
-the words `state`, `authority`, `where`, `iso_busy`, `locked`, `unlocked`, `owner`. The repairs a `done` makes in step 3 are
+the words `state`, `authority`, `where`, `iso_busy`, `locked`, `unlocked`, `owner`, `isolation`. Step 1 also makes
+`[n, "instructor", "fault" | "repair", id]` (§15.5) in a version 2 plant. The repairs a `done` makes in step 3 are
 `[n, "repair", fault]` events, as §7.8's, after format 1's repairs.
 
 A snapshot (§12) adds `"clock"` (tenths), `"people": {id: [where, task or null, step index]}` (where: a place,
@@ -1519,8 +1555,8 @@ What S1 settles that §16–§17 left open (the engines and the vectors follow t
     where its machine entered a state other than by `next` (a command or an action) after it was made;
   - a permit action: the work's permit has the same number (§15.3) and is at the action's state or past it in the
     order 1 to 9 (`cancel`: still cancelled);
-  - a lock: the point is locked by them and the work holds its isolation; an unlock: the point is unlocked (a kept
-    unlock is dropped in step 9 of any step where its point was locked again).
+  - a lock: the point holds a lock of theirs and the work holds its isolation; an unlock: the point holds no lock
+    of theirs (a kept unlock is dropped in step 9 of any step where they locked its point again).
   Values are read as steps 2–8 of this step left them. A `lock`/`unlock` step with `"all"` takes a kept action for
   each point still to do. Within a step, the current step's own matching inputs are taken first. A
   `say` step takes a `say` input of the same message and `to`; a `call` step a `call` input of the same role and
@@ -1538,6 +1574,49 @@ What S1 settles that §16–§17 left open (the engines and the vectors follow t
 - **Reactions** take the reaction's `priority`, else the task's. A value reaction's edge is against its truth after the
   previous step 9 (at step 0: its value then).
 - **The queue limit** of 32 counts the current task unless it is the idle task.
+
+### 17.9 Locks at a shift change, as built (2026-10-24)
+
+The user's decisions of 2026-10-24 (§15.1 "Locks at a shift change", §15.5 "Instructor actions are visible"), in
+both engines and the vectors (§19):
+- **A post** is a role and a routine (the person's own, else the role's): the three field operators of a crew hold
+  three posts, one of each crew holds each. A person's *post-mates* are the other people of their post, but not of
+  their own crew (crew-mates come and go together: two control room operators of a crew hand nothing over to each
+  other).
+- **`{"handover": "take"}`, an NPC:** at each of their turns while the step is current, the point to take is the
+  first, in model order (isolations, then points), that holds a lock of a post-mate, none of theirs and none of a
+  crew-mate of their post (one already took it over), whose work's permit is not `returned` or `cancelled` (its
+  isolation is coming off: nothing to hand over), that no other person's take step has chosen and is still taking,
+  and that this step has not tried. They walk to its work place
+  (its code's, when it has one), make the `lock` input, read its outcome in the next step 9, and mark the point tried,
+  whatever the outcome. The step is done when no point is left to take. A pause lets the chosen point go.
+- **`{"handover": "give"}`, an NPC:** the point to give is the first, in model order, that holds a lock of theirs and
+  that this step has not tried. They walk to its work place and wait there until the point holds another person's
+  lock, at most 60 clock minutes from their arrival (no wait when its work's permit is `returned` or `cancelled`); then they make the `unlock` input and read its outcome. A wait
+  that runs out leaves the lock on. Either way the point is tried; the step is done when no point is left.
+- **`{"remove_locks": message}`, an NPC:** the instance's *owner* is the person its `lock_left` reaction named (no
+  owner in any other instance: the validator allows the step only in the task of a `lock_left` reaction, `bad_ref`,
+  and in a role with `remove_lock`, `authority`; the message is one of `messages`, `bad_ref`). The point is the first,
+  in model order, that holds a lock of the owner and that this step has not tried; they walk to its work place and
+  make `[remove_lock, work, point, person, the message's text, owner]`, the work being the isolation's holder, and
+  read its outcome. The step is done when no point is left.
+- **The trainee's steps:** `take` is done when no point holds a post-mate's lock without one of theirs; `give` when
+  no point holds both a lock of theirs and another person's, and either they hold no lock or 60 clock minutes have
+  passed since the step became current; `remove_locks` when the owner holds no lock. Their own inputs do the work, as
+  the permit form makes them; nothing is taken from the kept actions.
+- **Leaving the site with a lock:** at phase 2 of each step 9 the engine lists, in index order, the people other than
+  the trainee and the absent who are off duty, off site (no place, not on a way) and hold a lock; each one not on the
+  list of the previous phase 2 is a `lock_left` source for every reaction to it. In a step with a `duty` `on` event
+  the previous list counts as empty, so a lock still left on is given again when someone comes on duty (a removal
+  that found no supervisor on duty, `unassigned`, is not lost; one still queued is not given twice, §16.7).
+- **The vectors** pin (§19): in `staff.runs`, a lock handed over by NPCs at the shift change while the permit is
+  issued, with no step where a point is unlocked (the incoming electrician's and field operator's locks, then the
+  outgoing ones' unlocks), and the deisolation later by the new holders; nobody of the post coming on (absent): the
+  outgoing electrician's wait runs out, they leave with the lock on, and the supervisor removes it by authority (the
+  permit suspended back to approved); the trainee taking over a lock, and giving one; in `steps`, a removal by
+  authority while accepted (the work suspended, a repair noted in that step not made), an unlock while accepted
+  refused with no other lock, removals naming their owner, the trainee's repair refused for `isolation` (a work
+  without one), and the instructor events; and in `staff.reject`, the new steps' and reaction's rule breaks.
 
 ## 18. People on screen (the app; not in the vectors)
 
@@ -1685,6 +1764,13 @@ to" the next shift); the permit form is P1's, its actions made as the trainee's 
 by role (no filter yet), and the plant shows them as capsules. PPE, the shift log, the role's day ahead and the
 debrief's role tab come with S2 and S4.
 
+**Added 2026-10-24 (locks at a shift change, instructor actions):** the permit form lists every lock on a point (who,
+in the order placed). At a point holding a lock of the trainee's post-mate and none of theirs it offers "Take over the
+lock" (a `lock`, within reach as any lock); at a point holding a lock of theirs and another's, "Remove my lock (handed
+over)"; their handover task's step says which points are left. "Remove by authority" names the lock it removes. The
+debrief marks every instructor action ("by the instructor") and, when there is any, says at its top that the run
+used instructor mode, with their number; the saved run's offer says so too. Both read the run's `instructor` events.
+
 ## 19. Format 2 vectors
 
 `ref/vectors/plant3d-v2.json`, made by `ref/make_plant3d_vectors.py` from `ref/plant3d.py` as format 1's:
@@ -1704,6 +1790,12 @@ debrief's role tab come with S2 and S4.
 
 The app's engine (`apps/plant3d/sim`) reproduces every vector bit for bit, format 1's and format 2's, on every
 platform (CAPABILITIES.md §8).
+
+**Added 2026-10-24 (locks at a shift change, §17.9):** `staff.runs` gains runs on the synthetic plant with the
+handover steps, the `lock_left` reaction and a supervisor's `remove_locks` task (its own staff file); `steps` pins the
+removal by authority while issued (the automatic move back to approved), an unlock while issued refused, and the
+trainee's repair refused for `isolation`; the version 2 runs with a trainer's input carry its `instructor` event; the
+first train's `day` follows its content, whose handover tasks now take over and give locks.
 
 **Added 2026-10-23 (milestone P1b):** the unit runs pin the trainee's repair under a permit (refused before the
 permit is accepted, with `authority`, and `unknown`; made with the permit accepted on a locked code; the work's `done`
