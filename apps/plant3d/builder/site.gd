@@ -257,7 +257,7 @@ func _hydrants(root: Node3D, road_out: Rect2, pads: Array) -> int:
 		var q := p + along * 0.9 - out * 0.3
 		b.kp.structure(root, {"id": "hydrant_bollard_%d" % k, "part": "bollard", "at": [q.x, q.y, 0.0]})
 		k += 1
-	b.kp.flush(root)
+	# (flushed with the windbreak's trees, into the one `kit` node the app fills: _windbreak)
 	print("build: %d fire hydrants along the ring road" % k)
 	return k
 

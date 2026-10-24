@@ -5,7 +5,8 @@
 ##   not baked): showing one compiles no pipeline the start has not (decision 0060);
 ## - the windbreak (builder/site.gd): two rows of tamarisk inside the wall's north and west sides, none in a process
 ##   area or by a road; the wall open at the plant gate's road and walkway only; the admin area and the gate inside the
-##   wall, the camp and its road outside it.
+##   wall, the camp and its road outside it;
+## - the ring road's kerbs painted yellow and white, its fire hydrants beyond the footpath (photo pass 3).
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
@@ -172,4 +173,29 @@ func site() -> Array:
 				p.append("a windbreak tree at %s stands by the road %s" % [str(tp), sf.id])
 	if north < 200 or west < 60:
 		p.append("the windbreak lines both the north (%d trees) and the west (%d) walls" % [north, west])
+	# the ring road's kerbs painted yellow and white (photo pass 3), never black
+	if Site.KERB_YELLOW.v < 0.8 or Site.KERB_WHITE.s > 0.1 or Site.KERB_WHITE.v < 0.8:
+		p.append("the ring road's kerbs are painted yellow and white")
+	# its hydrants: on every side, beyond the footpath, clear of the roads, the site's yards and each other
+	var pads: Array = []
+	for a in b.areas:
+		if not Site.interior(a):
+			pads.append(Site._rect(a.data.bounds))
+	var hyd := s.hydrant_places(road_out, pads)
+	if hyd.size() < 16:
+		p.append("the ring road has its hydrants (%d)" % hyd.size())
+	for i in hyd.size():
+		var hp: Vector2 = hyd[i][0]
+		var d := Site._dist(hp, road_out)
+		if d < Site.PATH_W + 0.3 or d > Site.PATH_W + 2.0:
+			p.append("a hydrant at %s stands just beyond the footpath (%.1f m from the road)" % [str(hp), d])
+		for sf in s.roads():
+			if Site._bbox(sf.outline).grow(2.0).has_point(hp):
+				p.append("a hydrant at %s stands clear of the road %s" % [str(hp), sf.id])
+		for r in pads:
+			if not road_out.encloses(r) and (r as Rect2).has_point(hp):
+				p.append("a hydrant at %s stands clear of the site's yards" % str(hp))
+		for j in range(i + 1, hyd.size()):
+			if hp.distance_to(hyd[j][0]) < 30.0:
+				p.append("the hydrants at %s and %s stand apart" % [str(hp), str(hyd[j][0])])
 	return p

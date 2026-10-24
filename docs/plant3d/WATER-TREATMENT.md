@@ -231,6 +231,16 @@ that the plan above leaves open:
   and air scour lines inside the gallery (their pumps' lines end under the ground), the sludge lines to the
   thickener and the press.
 
+**Photo pass 3 (2026-10-25):** compared with the user's reference photos of a plant in service (a row of pressure
+vessels on plinths in gravel, storage tanks with roof handrails): the yard round the WTP's tanks and buildings is
+gravel, not concrete; each storage tank's roof rail has a knee rail and a post at most about 1.8 m apart; each mixed
+bed stands on concrete plinths, has a side manhole low on its shell and a small platform with a rail by its top
+manway, reached by a caged ladder. Proportions were already those of such vessels (mixed beds about 1.5 times as
+tall as wide, demin tanks 13 m by 12 m). Not taken: the photographs' vessel colours (neutral, as everything here),
+and a row of outdoor pressure filters, which this process does not have (its gravity filters do that work, §8a). The
+photographs' auxiliary cooler (an evaporative closed-circuit cooler on steel columns) does not fit either: the first
+train's closed cooling water is cooled by the circulating water (FIRST-TRAIN.md, `00PGB10AC001`).
+
 ## 8b. As built in W2 (operable, 2026-10-23)
 
 The model is `tools/plant3d/wtp_model.py` (areas `wtp` and `intake`, about 580 values), its screens

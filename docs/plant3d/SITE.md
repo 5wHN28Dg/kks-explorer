@@ -98,6 +98,7 @@ WTP's `00GHA10`; not modelled). Species are ones commonly grown in hot, dry, sal
 | Oleander (*Nerium oleander*) | hedges along the camp's roads and between the parking and the blocks | dust control and screening along roads; drought and salt tolerant (poisonous: not by the mess or where food is) |
 | Bougainvillea | on the blocks' porches and the covered walkways' posts | shade on porches and walkways; the camp's landscape |
 | Drought-tolerant shrubs (saltbush, *Atriplex*; caper, *Capparis*) | low beds by the camp office, the gate houses and the admin building | dust control on bare ground by doors |
+| Dracaena (*Dracaena fragrans*), in pots | indoors only: the admin building's lobby, by its entrance | the entrance's recognised landscape (a lobby's plants); watered by hand |
 
 Not planted: lawns, flower beds, plants inside the process areas (the train, the WTP, the transformer yard: gravel and
 concrete only, for fire safety, access and drainage), and anything near the cooling tower's drift or the switchyard.
@@ -125,6 +126,28 @@ planting and nothing to remove. What it should gain is listed under milestone C1
   workshops and the camp office, and by the camp gate's booth.
 - Everything planted is drip-irrigated: a row's drip line is drawn along it, a tree's basin and emitter ring round its
   foot. The ground between is the site's gravel.
+
+**As built (photo pass 3, 2026-10-25),** from the user's reference photos of a plant in service (private, not in
+the repository; neutral colours, nothing of that plant's own):
+
+- **Roads:** every kerb painted in yellow and white blocks 1 m long, the ring road's too (it was black and yellow);
+  the walkways along the site's and the camp's roads block paved (grey concrete pavers in half bond: the road
+  surface `pavers`, drawn by the plant's one shader), and a block-paved footpath 1.5 m wide along the ring road's
+  outer kerb; red pillar fire hydrants, each with a red bollard beside it, every 60 m along the ring road beyond the
+  footpath (builder/site.gd, clear of the gate, the site's yards and the overhead pipes' posts) and by the site's
+  and the camp's roads. The water treatment plant's yard is gravel (its tank farm and vessel rows stand in gravel),
+  as the open yards were already.
+- **Camp and admin:** the parking under arched white shade sails (posts at the back of the stalls, two cars a bay),
+  steel skip bins by the store and by the mess hall's kitchen, a lattice telecom mast behind the office block, an air
+  conditioner's outdoor unit under every window of the accommodation blocks and of the office block (not the ground
+  floor's front, where its beds and canopy are), and the camp's ambulance parked on the camp road by the first-aid
+  point (the camp office), facing the gate: a pale van with a red band and a blue light bar, the one pale vehicle.
+- **The admin lobby:** glazed light tiles (the office block's ground floor), two groups of brown leather sofas round
+  carved wooden side tables, the reception counter, and dracaenas in pots by the entrance and in the corners.
+
+`tests/test_plant3d_site.py` checks the kerbs' paint, the walkways' paving and where the props stand (each hydrant by
+a road with its bollard, the ambulance on the camp road by the first-aid point, each air conditioner under a window,
+the sails' posts clear of the cars); `apps/plant3d/tests/test_site.gd` the ring road's kerbs and hydrants.
 
 ## 5. Performance
 

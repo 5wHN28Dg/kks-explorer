@@ -26,7 +26,7 @@ func run(tree: SceneTree) -> Array:
 		plant.free()
 		return ["the built plant loads: " + err]
 	var mats := {}
-	for n in ["hall_floor", "floor_tile", "floor_concrete", "grating", "roof_steel", "rail", "firewall", "yard_gravel", "paint"]:
+	for n in ["hall_floor", "floor_tile", "floor_concrete", "grating", "roof_steel", "rail", "firewall", "yard_gravel", "paint", "pavers"]:
 		mats[n] = load("res://built/materials/%s.tres" % n)
 		if mats[n] == null:
 			p.append("the material %s is built" % n)
@@ -120,12 +120,19 @@ func run(tree: SceneTree) -> Array:
 	else:
 		var cols: PackedColorArray = kerbs.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
 		var yellow := false
+		var white := false
 		var black := false
 		for c in cols:
 			yellow = yellow or (c.r > 0.8 and c.b < 0.2)
+			white = white or (c.r > 0.8 and c.g > 0.8 and c.b > 0.8)
 			black = black or (c.r < 0.1 and c.g < 0.1)
-		if not (yellow and black):
-			p.append("the kerbs are striped black and yellow")
+		if not (yellow and white) or black:
+			p.append("the kerbs are painted in yellow and white blocks (photo pass 3), not black and yellow")
+	# the block-paved footpath along the ring road (photo pass 3)
+	var fp := plant.find_child("footpath", true, false)
+	var fm := fp.get_node_or_null("mesh") as MeshInstance3D if fp != null else null
+	if fm == null or fm.material_override != mats.pavers:
+		p.append("the ring road has its block-paved footpath")
 	# stencils: the media's names, drawn as a safety sign's text, on their pipes
 	var stencils := plant.find_children("stencil*", "Label3D", true, false)
 	if stencils.size() < 10:

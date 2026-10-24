@@ -513,7 +513,7 @@ const SAIL := Color(0.93, 0.93, 0.90)
 static func _sail(m, g, L: float, w: float, h: float) -> void:
 	var n := maxi(1, int(ceil(L / 5.5)))
 	var NA := 6
-	var rise := 0.7
+	var rise := 1.0
 	var xp := -w * 0.5 + 0.25
 	var arc := func(t: float) -> Vector2:   # across the width, t 0..1: (x, z) of the arm
 		return Vector2(lerpf(xp, w * 0.5, t), h + rise * sin(PI * (0.15 + 0.85 * t)) - 0.25 * t)
@@ -634,22 +634,22 @@ static func bollard(_part: String, g) -> void:
 	g.solid_cyl(Vector3.ZERO, Vector3(0, 0, h), 0.06)
 
 ## A steel skip bin (a wheeled refuse container, about 2.5 m³): its body narrower at the foot, a rolled rim, two lid
-## flaps (one propped open), the lifting trunnions either side and four castors. Galvanised, dusty. Origin at its
+## flaps (one propped open), the lifting trunnions either side and four castors. Painted grey, dusty. Origin at its
 ## foot's centre; its long side along x.
 static func skip_bin(_part: String, g) -> void:
 	var m = g.m
-	var steel := Color(0.60, 0.61, 0.60)
+	var steel := Color(0.56, 0.58, 0.58, 0.35)   # painted grey steel, knocked about
 	col(m, "rubber", Color(0.05, 0.05, 0.05))
 	for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
 		m.cyl(Vector3(c.x * 0.62, c.y * 0.42 - 0.04, 0.09), Vector3(c.x * 0.62, c.y * 0.42 + 0.04, 0.09), 0.09, -1.0, 8)
-	col(m, "galvanised", steel)
+	col(m, "paint_white", steel)
 	m.hexa([Vector3(-0.72, -0.5, 0.2), Vector3(0.72, -0.5, 0.2), Vector3(0.72, 0.5, 0.2), Vector3(-0.72, 0.5, 0.2),
 		Vector3(-0.9, -0.62, 1.3), Vector3(0.9, -0.62, 1.3), Vector3(0.9, 0.62, 1.3), Vector3(-0.9, 0.62, 1.3)])
 	for sy: float in [-1.0, 1.0]:
 		m.box_lh(Vector3(-0.92, sy * 0.62 - 0.03, 1.24), Vector3(0.92, sy * 0.62 + 0.03, 1.33))   # the rim
 	for sx: float in [-1.0, 1.0]:
 		m.cyl(Vector3(sx * 0.85, 0, 1.05), Vector3(sx * 1.0, 0, 1.05), 0.05, -1.0, 8)   # the trunnions
-	col(m, "galvanised", steel.darkened(0.12))
+	col(m, "paint_white", steel.darkened(0.12))
 	m.box_lh(Vector3(-0.9, -0.62, 1.33), Vector3(0.0, 0.62, 1.36))   # one flap shut
 	m.box(Vector3(0.45, 0.72, 1.62), Vector3(0.9, 0.03, 0.62))     # the other propped open against the back
 	g.solid_box(Vector3(-0.92, -0.64, 0), Vector3(0.92, 0.64, 1.36))
