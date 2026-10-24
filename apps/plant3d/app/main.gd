@@ -4,8 +4,9 @@
 ## Options, after `--` on the command line (desktop) or one per line in walk.txt in the app's external files folder
 ## (Android: phone/frames.sh pushes it):
 ##   quality=full|lean+vis   this tier, whatever the settings say
-##   walk=frames|camp|climb|screens   walk a scripted route (app/routes.gd) and log frame times; `frames` and
-##                           `camp` (through the site and the camp, milestone C1) loop;
+##   walk=frames|camp|wtp|climb|screens   walk a scripted route (app/routes.gd) and log frame times; `frames` and
+##                           `camp` (through the site and the camp, milestone C1) loop; `wtp` loops the frames walk's
+##                           part in the water treatment plant (its views' cost, without the nine minutes to get there)
 ##                           `screens` stays in the control room with its screens open, showing each in turn for 10 s
 ##                           (the screens' cost, ui/mimic.gd)
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
@@ -18,14 +19,20 @@
 ##   panels=alarms,procedure,card:CODE   open these panels (the frame measurement with the UI open)
 ##   speed=fast              start the plant in fast-forward (the model's share of a core, measured in a walk)
 ##   probe=1                 (walk) frames.csv beside result.txt: where each frame's time goes (app/frame_probe.gd)
+##   max_fps=N               at most N frames a second (0: no cap): what a cap does to a phone's heat and long frames
 ##   pipeline_save_mb=N      save the pipeline cache every N MB of new pipelines instead of the project's 0.25
 ##   walkdown-plant://…      a link (docs/PLANT3D.md §6): anywhere on the command line, as the desktop files pass it
 ##   fx_off=fog,tonemap      those effects off (tonemap: linear output at half exposure), fx_on=ssao,sdfgi,ssil,volfog,glow those on (measuring what each costs:
 ##                           app/lighting.gd); fx_off=shadow,cascades2,shadow40,shadowhard the sun's shadow's parts
 ##                           (app/quality.gd), fx_on=bicubic the lightmap's bicubic filter even where it is off (to see the
 ##                           Adreno fault again: app/lighting.gd), fx_off=lightmap the plant without its bake (the halls dark: their lamps
-##                           light through the bake only), fx_off=stencils the pipes' stencilled names hidden
-##   On a phone walk.txt takes probe, fx_off and fx_on too (phone/frames.sh's WALK_EXTRA)
+##                           light through the bake only), fx_off=stencils the pipes' stencilled names hidden,
+##                           fx_off=occlusion the buildings' occluders unused (builder/plant_builder.gd _occluder),
+##                           fx_off=wtp the water treatment plant and its intake hidden (their cost seen from afar),
+##                           fx_off=interiors the rooms near their doors never loaded (app/interiors.gd),
+##                           fx_off=farview their merged far view unused, their pieces drawn at every distance as before
+##                           it (builder/plant_builder.gd far_merge)
+##   On a phone walk.txt takes probe, fx_off, fx_on and max_fps too (phone/frames.sh's WALK_EXTRA)
 extends Node3D
 
 const Quality = preload("res://app/quality.gd")
@@ -127,6 +134,14 @@ func _ready() -> void:
 		_say("lightmap: %d meshes baked" % lm.light_data.get_user_count())
 	else:
 		_say("lightmap: none in this build (the sky and the sun only)")
+	if "wtp" in Lighting.off:   # fx_off=wtp: the water treatment plant and its intake not drawn (what they cost far off)
+		for n in ["area_wtp", "area_intake"]:
+			if plant.has_node(n):
+				(plant.get_node(n) as Node3D).visible = false
+	if "farview" in Lighting.off:   # fx_off=farview: the merged far views unused, their pieces drawn at every distance (the insides' ranges stay)
+		far_view_off(plant)
+	if "occlusion" in Lighting.off:   # fx_off=occlusion: the buildings' occluders not used (what they save)
+		get_viewport().use_occlusion_culling = false
 	if "stencils" in Lighting.off:   # fx_off=stencils: the pipes' stencilled names hidden, to measure what they cost
 		for l in plant.find_children("stencil*", "Label3D", true, false):
 			l.visible = false
@@ -153,6 +168,8 @@ func _ready() -> void:
 	interiors.name = "interiors"
 	add_child(interiors)
 	interiors.setup(plant, player)
+	if "interiors" in Lighting.off:   # fx_off=interiors: the rooms never loaded (what loading and freeing them costs)
+		interiors.process_mode = Node.PROCESS_MODE_DISABLED
 	map = MapView.new()
 	map.name = "map"
 	add_child(map)
@@ -213,11 +230,14 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on"]:   # nothing else from a shared folder (probe, fx_off and fx_on: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps"]:   # nothing else from a shared folder (probe, fx_off, fx_on and max_fps: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
 		_say("pipeline cache saved every %.2f MB" % float(ProjectSettings.get_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb")))
+	if opts.has("max_fps"):   # (measuring a frame cap's effect on a phone's heat and long frames)
+		Engine.max_fps = clampi(int(opts.max_fps), 0, 240)
+		_say("frames capped at %d a second" % Engine.max_fps)
 	out_dir = ANDROID_FILES if OS.get_name() == "Android" else opts.get("out", OS.get_user_data_dir())
 	Lighting.off = String(opts.get("fx_off", "")).split(",", false)
 	Lighting.on = String(opts.get("fx_on", "")).split(",", false)
@@ -409,7 +429,8 @@ func _start_walk() -> void:
 		ui.mimic.reset_cost()
 		last_us = Time.get_ticks_usec()
 		return
-	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else Routes.climb(plant))
+	var looped: bool = opts.walk in ["frames", "camp", "wtp"]
+	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else (Routes.wtp_loop() if opts.walk == "wtp" else Routes.climb(plant)))
 	auto = Autopilot.new()
 	auto.skip_stuck = true
 	add_child(auto)
@@ -420,7 +441,7 @@ func _start_walk() -> void:
 		player.global_position = route[0].to
 	else:
 		player.global_position = st[0]
-	auto.start(player, route, opts.walk in ["frames", "camp"])
+	auto.start(player, route, looped)
 	last_us = Time.get_ticks_usec()
 
 func _process(delta: float) -> void:
@@ -543,3 +564,15 @@ func _shots() -> void:
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
 	_write_out()
 	get_tree().quit()
+
+## fx_off=farview: the merged far views (builder/plant_builder.gd far_merge) hidden and their pieces drawn at every
+## distance, as before them (what the far view saves or costs on a phone).
+static func far_view_off(plant: Node) -> void:
+	for n in plant.find_children("*", "GeometryInstance3D", true, false):
+		var gi := n as GeometryInstance3D
+		if gi.has_meta("far_view"):
+			gi.visible = false
+		elif not gi.visibility_parent.is_empty():
+			var par := gi.get_node_or_null(gi.visibility_parent)
+			if par != null and par.has_meta("far_view"):
+				gi.visibility_parent = NodePath()

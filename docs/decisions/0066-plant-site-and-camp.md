@@ -57,3 +57,47 @@ The APK stays about 128 MB.
 What it took: interiors put into the tree twelve pieces a frame (whole, the Note 9 held 104–127 ms frames); a far view
 per 48 m square (HLOD) for the site and the camp; planting instanced and left out of the bake; walls, not palisades,
 round the camp; shells drawn from outside only.
+
+## Frame spikes and the far views (#249, 2026-10-23/24)
+
+After W2 and C1 the Note 9 (release builds, baked, `lean+vis`, first starts after the phone cooled to ≤ 31 °C) showed
+frames over 100 ms on all three walks. `--probe=1` (frames.csv: each frame's physics, scripts, draw, GPU time, draw
+calls, pipelines compiled and the app's own events) traced every one to the GPU; none had an Android cause in the
+logcat, and none was a pipeline compiled late (0 to 2 per walk after the first 5 s, none in a long frame).
+
+| Cause | Seen | Fix |
+|---|---|---|
+| The WTP's and intake's merged far view held every valve and fitting (a quarter of its vertices), which on the phone are never drawn past about 200 m | `frames` walk: 3 frames of 101–107 ms on HRSG 1's roof, single GPU frames of 115–160 ms over the train, 10 SurfaceFlinger holds over 100 ms | detail pieces left out of the far view, with their own range by size (0 frames over 100 ms in the next two walks) |
+| The first train had no far view: from the plant gate's road on the camp walk's way back it was about 1,000 of the view's 1,400 draw calls | GPU 65–80 ms a frame for 20 s, frames to 135 ms | a far view for the train's areas too, simplified within 0.2 m (Godot's own simplifier) |
+| The halls' insides merged into the train's far view were drawn with the walls from every distance | WTP's north side: GPU 30.5 ms a frame on average (21 ms before), frames to 139 ms | what stands wholly inside a building, under its roof, stays out of the far view (not a door, nor a cell of pipework reaching outdoors, nor the filter house on GT 1's roof) |
+| Drawn as pieces instead, the halls' insides were not culled by the occluders from 300 m and more | camp walk's way back: about 1,000 draw calls (500 merged), single GPU frames to 125 ms | a building's inside is drawn only near it: within 30 m plus its size (as the site's and camp's), at most 200 m (every door is shut from farther off: app/door.gd opens one within 2 m). At 200 m alone, the turbine hall's lamps, roof steel and frame (45,000 vertices) came in at once on the camp walk's way back with a 111 ms GPU frame |
+
+An experiment ruled out the interiors' loading (`fx_off=interiors`: the camp walk with no room ever loaded showed the
+same spikes on its way back). The occluders now stand 0.3 m inside every wall panel's edges, so clear of doorways, corners and the roof's
+edge (Godot's occlusion buffer is coarse; an edge exactly on a doorway can cull what is seen just past it), and every building's walls and
+roof are an occluder (occlusion culling on: 1,576 → 475 draw calls in the WTP hall's view west). Seen on the laptop
+from 200–500 m (the plant gate's road, the WTP's west and the train from the WTP), the far views look the same as the
+pieces they replace; their lighting is the sky's and the sun's without the bake's shadows, which shows nowhere in
+those views.
+
+**Final (merged main with W3, P1b, S1 and the engine's speed-up; release build, baked, test-signed; Note 9 `lean+vis`,
+plugged in, a first start each, begun at 30.6–31.0 °C):**
+
+| Walk | Frames at ≥ 30 fps (SurfaceFlinger) | Frames over 100 ms after 5 s (app / SurfaceFlinger) | Worst frame | GPU median / p95 | Peak PSS | First walkable frame |
+|---|---|---|---|---|---|---|
+| `frames` (the train and the WTP) | 99.39 % | 0 / 0 | 66.0 ms | 20.4 / 26.2 ms | 1,128 MB | 11.2 s |
+| `wtp` | 98.89 % | 0 / 0 | 72.9 ms | 20.5 / 29.3 ms | 1,068 MB | 11.0 s |
+| `camp` (gate, road, camp, block 1, mess) | 99.44 % | 0 / 0 | 89.1 ms | 18.5 / 24.0 ms | 1,156 MB | 12.1 s |
+
+The rules hold. On the build just before S1 was merged the same three walks had one frame over 100 ms each in two of
+them: `wtp` 112.5 ms, at the moment the phone's Samsung Cloud started at the top of the hour (698 log lines in that
+second against 2 the second before: an Android cause), and `camp` 115.5 ms with no Android cause, at the 200 m switch
+of the turbine hall's inside, which the last row of the table above removed. The first walkable frame went from about
+9.3 s to 11–12 s with S1's staff (not this change); the rule is 15 s.
+
+Packages (the final build): APK 139.3 MB (budget 150); the desktop packages, estimated from their contents deflated
+(the MSIX and the Flatpak were not built here: a Windows VM packs the MSIX): MSIX x64 about 161 MB, ARM64 about
+152 MB, Flatpak about 125 MB (budget about 300).
+
+The Honor 600 was not attached on either day, so it was not measured (its last runs, 2026-10-23 morning, before the far
+views: `lean+vis` and `full` with no frame over 100 ms).

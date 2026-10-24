@@ -61,6 +61,12 @@ resin leak repaired under a permit), the scenarios `wtp_normal` and `wtp_flood`,
 and the WTP's fault forks. A `screens:` link opens its screen at a desk that has it (the WTP's own for its screens).
 The CIP skid and the pit's dosing skids are new drawing (five small parts); not yet walked on the Note 9.
 
+**W1 and C1 done (2026-10-24, #249):** the frame rules hold on the Note 9 with the WTP, the site and the camp on the
+merged code (W2, W3, P1b, S1): three cool 10-minute walks over the train, the WTP and the camp, 98.89–99.44 % of frames
+at ≥ 30 fps, no frame over 100 ms after the first 5 s, peak PSS at most 1.16 GB, first walkable frame 11–12 s; the APK
+139.3 MB (0066, "Frame spikes and the far views"). It took far views for the train as well as the WTP, occluders on
+every building, and buildings' insides drawn only near them.
+
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4
 needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, S2 with C1, then S3, then S4.
 
