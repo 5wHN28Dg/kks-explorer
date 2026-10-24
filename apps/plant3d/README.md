@@ -82,6 +82,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `walkdown-plant://kks/CODE`, `walkdown-plant://procedure/ID[/STEP]` | a link (docs/PLANT3D.md §6), anywhere on the command line; a start with a link takes none of the options above (a crafted link could add its own) |
 | `--fx_off=fog,lightmap,shadow`, `--fx_on=ssao,sdfgi,ssil,volfog,glow` | effects off or on, to measure what each costs |
 | `--fx_on=bicubic` | the lightmap's bicubic filter where the app turns it off (phones, Adreno GPUs: `app/lighting.gd`), to see that fault again |
+| `--fx_off=occlusion`, `--fx_off=farview`, `--fx_off=wtp`, `--fx_off=interiors` | the buildings' occluders unused; the merged far views unused (every piece drawn at every distance, as before them: `builder/plant_builder.gd` `far_merge`); the WTP and intake hidden; the rooms near their doors never loaded: to measure what each costs or saves |
 | `--probe=1` | (with a walk) `frames.csv` beside `result.txt`: per frame the physics steps, the scripts, the draw (the render thread and any wait for the GPU) and the GPU time (`app/frame_probe.gd`) |
 | `--pipeline_save_mb=N` | saves the pipeline cache every N MB of new pipelines (the project: 0.25) |
 

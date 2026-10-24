@@ -893,6 +893,8 @@ func _area(root: Node3D, a: Dictionary) -> void:
 			if s.part in ["road", "wall", "fence"]:
 				keep[s.id] = true
 		hlod(root, a.id, _far_items(a), root, keep)
+	elif a.data.get("pack", "") in ["wtp", "base"] and a.data.get("load", "") != "inside":
+		far_merge(root, a.id)
 
 # ------------------------------------------------------------------ the far view of the site and the camp (HLOD)
 
@@ -1012,6 +1014,279 @@ func hlod(root: Node3D, id: String, items: Dictionary, scope: Node, keep := {}) 
 			parented += 1
 	print("build: area %s: far view in %d squares, %d pieces drawn near only" % [id, made.size(), parented])
 	return made.size()
+
+## The far view of the first train's areas, the water treatment plant and its intake: their own pieces merged per
+## HLOD_CHUNK square and material (one draw call each), simplified within FAR_ERROR (`_far_simplified`), drawn beyond
+## FAR_MERGE_RANGE of the square; the pieces themselves are drawn only within it (`visibility_parent`, as `hlod`). From
+## the camp's road, 450-600 m off, the WTP and intake were 681 of the view's 1,852 draw calls (the Note 9's GPU held
+## frames of 100-150 ms there once warm, 2026-10-23); from the plant gate's road, 250-400 m off, the train was about
+## 1,000 of 1,400 (65-80 ms of GPU a frame, frames up to 135 ms).
+## The merged meshes are the pieces' own geometry and materials, unbaked and without UV2 (the kit cells' pipelines:
+## none new), and cast no shadow (beyond every tier's shadow distance). Doors are merged shut; labels (the signs' text)
+## keep their own range, as before.
+## Detail pieces (group "detail": valves, instruments, small fittings) are left out and keep their own range by size
+## (app/quality.gd), as before: merged, the Note 9 would draw every bolt of the WTP at 400 m.
+const FAR_MERGE_RANGE := 200.0
+
+func far_merge(root: Node3D, id: String) -> int:
+	_mark_inside(root, id)
+	var groups := {}   # [Vector2i, Material] -> {arrays…}
+	var whole := {}    # Vector2i -> the pieces merged into that square's far mesh
+	var pieces: Array = []
+	var stack: Array = root.get_children()
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		var gi := n as GeometryInstance3D
+		if not far_mergeable(gi, root):
+			continue
+		pieces.append(gi)   # (a door too, merged shut: it opens only within a few metres of the walker, app/door.gd)
+		var c := _plan_centre(gi)
+		var k := Vector2i(int(floor(c.x / HLOD_CHUNK)), int(floor(c.y / HLOD_CHUNK)))
+		var xf := _global_xf(gi)
+		var mesh: Mesh = null
+		var xfs: Array = []
+		if gi is MeshInstance3D:
+			mesh = (gi as MeshInstance3D).mesh
+			xfs = [xf]
+		elif gi is MultiMeshInstance3D and gi.has_meta("xforms") and (gi as MultiMeshInstance3D).multimesh != null:
+			mesh = (gi as MultiMeshInstance3D).multimesh.mesh
+			var buf: PackedFloat32Array = gi.get_meta("xforms")
+			for i in int(gi.get_meta("count")):
+				var b := buf.slice(i * 12, i * 12 + 12)
+				xfs.append(xf * Transform3D(Basis(Vector3(b[0], b[4], b[8]), Vector3(b[1], b[5], b[9]), Vector3(b[2], b[6], b[10])), Vector3(b[3], b[7], b[11])))
+		if mesh == null:
+			continue
+		whole[k] = int(whole.get(k, 0)) + 1   # (far_mergeable: every surface of it goes in)
+		for si in mesh.get_surface_count():
+			var mat: Material = gi.material_override if gi.material_override != null else mesh.surface_get_material(si)
+			if mat == null:
+				continue
+			var arr := mesh.surface_get_arrays(si)
+			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			if v.is_empty() or arr[Mesh.ARRAY_NORMAL] == null or arr[Mesh.ARRAY_TANGENT] == null or arr[Mesh.ARRAY_COLOR] == null or arr[Mesh.ARRAY_TEX_UV] == null:
+				continue
+			var key := [k, mat]
+			if not groups.has(key):
+				groups[key] = {"v": PackedVector3Array(), "n": PackedVector3Array(), "t": PackedFloat32Array(),
+					"c": PackedColorArray(), "uv": PackedVector2Array(), "i": PackedInt32Array()}
+			var g: Dictionary = groups[key]
+			var nn: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+			var tt: PackedFloat32Array = arr[Mesh.ARRAY_TANGENT]
+			var idx = arr[Mesh.ARRAY_INDEX]
+			for t in xfs:
+				var base: int = g.v.size()
+				var nb: Basis = (t as Transform3D).basis.inverse().transposed()
+				for j in v.size():
+					g.v.append(t * v[j])
+					g.n.append((nb * nn[j]).normalized())
+					var tv: Vector3 = ((t as Transform3D).basis * Vector3(tt[j * 4], tt[j * 4 + 1], tt[j * 4 + 2])).normalized()
+					g.t.append_array([tv.x, tv.y, tv.z, tt[j * 4 + 3]])
+				g.c.append_array(arr[Mesh.ARRAY_COLOR])
+				g.uv.append_array(arr[Mesh.ARRAY_TEX_UV])
+				if idx != null:
+					for q in (idx as PackedInt32Array):
+						g.i.append(base + q)
+				else:
+					for q in v.size():
+						g.i.append(base + q)
+	var far := Node3D.new()
+	far.name = "far"
+	root.add_child(far)
+	var by_square := {}   # Vector2i -> ImporterMesh
+	for key in groups:
+		var g: Dictionary = groups[key]
+		if not by_square.has(key[0]):
+			by_square[key[0]] = ImporterMesh.new()
+		var a := []
+		a.resize(Mesh.ARRAY_MAX)
+		a[Mesh.ARRAY_VERTEX] = g.v
+		a[Mesh.ARRAY_NORMAL] = g.n
+		a[Mesh.ARRAY_TANGENT] = g.t
+		a[Mesh.ARRAY_COLOR] = g.c
+		a[Mesh.ARRAY_TEX_UV] = g.uv
+		a[Mesh.ARRAY_INDEX] = g.i
+		(by_square[key[0]] as ImporterMesh).add_surface(Mesh.PRIMITIVE_TRIANGLES, a, [], {}, key[1])
+	var made := {}
+	for k in by_square:
+		var mi := MeshInstance3D.new()
+		mi.name = "far_%d_%d" % [k.x, k.y]
+		mi.mesh = _far_simplified(by_square[k])
+		mi.visibility_range_begin = FAR_MERGE_RANGE
+		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.set_meta("far_view", true)
+		mi.set_meta("pieces", int(whole.get(k, 0)))
+		Lightmap.mark(mi, false)
+		far.add_child(mi)
+		made[k] = mi
+	var parented := 0
+	for gi in pieces:
+		var c := _plan_centre(gi)
+		var k := Vector2i(int(floor(c.x / HLOD_CHUNK)), int(floor(c.y / HLOD_CHUNK)))
+		if not made.has(k):   # (a door alone in its square: with the nearest square's far mesh)
+			var best := INF
+			for m in made:
+				var d := (Vector2(m) + Vector2(0.5, 0.5)).distance_to(c / HLOD_CHUNK)
+				if d < best:
+					best = d
+					k = m
+		if made.has(k):
+			gi.visibility_parent = gi.get_path_to(made[k])
+			parented += 1
+	print("build: area %s: far view merged in %d squares (%d surfaces), %d pieces drawn near only" % [id, made.size(), groups.size(), parented])
+	return made.size()
+
+## A building's parts seen only from inside it (its outside: walls, roof, trims, plinth, louvres, windows, steps).
+const INSIDE_PARTS := ["floor", "frame", "lamp_housings", "lamp_lenses", "liner", "roof_steel", "windows_in", "crane",
+	"crane_hook"]
+
+## Marks (meta `far_inside`) what stands inside the area's buildings: their inside parts, and every other piece whose
+## box stands wholly inside a building (`inside_building`). They stay out of the far view and are drawn only within
+## INSIDE_RANGE plus the building's diagonal of their own centre (as the site's and camp's buildings), at most
+## FAR_MERGE_RANGE: farther, every door is shut (app/door.gd opens one within
+## a few metres) and windows are on solid wall, so a hall's inside is never seen from there. At 200 m the turbine
+## hall's lamps, roof steel and frame (45,000 vertices) all came in at once on the camp walk's way back, with a GPU
+## frame of 111 ms (2026-10-24). Merged, a hall's whole inside was drawn with its walls from every
+## distance (from the WTP the first train's halls cost the Note 9 a third more GPU time); drawn as pieces, the
+## occluders did not cull them from 300 m and more (the camp's road: 1,000 draw calls), 2026-10-23.
+func _mark_inside(root: Node3D, id: String) -> void:
+	var mine: Array = buildings.filter(func(b): return b.area == id)
+	for n in root.find_children("*", "GeometryInstance3D", true, false):
+		var gi := n as GeometryInstance3D
+		var body: Node = gi.get_parent()
+		while body != null and body != root and not body.has_meta("building"):
+			body = body.get_parent()
+		var r := -1.0   # inside: drawn within r of its own centre (the building's whole diagonal from anywhere in it)
+		if body != null and body != root:
+			if String(gi.name) in INSIDE_PARTS:   # the building's own
+				var b: Array = mine.filter(func(q): return q.id == body.get_meta("building"))
+				r = INSIDE_RANGE + (Site._bbox(b[0].outline).size.length() if not b.is_empty() else FAR_MERGE_RANGE)
+		elif not _in_door(gi):
+			var b = inside_building(_piece_box(gi), mine)
+			if b != null:
+				r = INSIDE_RANGE + Site._bbox(b.outline).size.length()
+		if r >= 0.0:
+			gi.set_meta("far_inside", true)
+			r = minf(r, FAR_MERGE_RANGE)
+			if gi.is_in_group("detail"):
+				gi.set_meta("range_cap", r)   # (app/quality.gd: a detail's range by size, at most this)
+			elif gi.visibility_range_end <= 0.0 or gi.visibility_range_end > r:
+				gi.visibility_range_end = r
+				gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+
+## The building (of `bs`) a piece's box stands wholly inside, or null: every corner in plan at least WALL_T inside its
+## outline (a door, a pipe through the wall or a cell of pipework reaching outdoors is not inside) and its top under
+## the roof (a filter house standing on it is not inside).
+static func inside_building(box: AABB, bs: Array):
+	for b in bs:
+		var inner := Geometry2D.offset_polygon(b.outline, -WALL_T)
+		if inner.size() != 1 or box.end.y > float(b.height) + 0.01:
+			continue
+		var ok := true
+		for c in [Vector2(box.position.x, -box.position.z), Vector2(box.end.x, -box.position.z),
+				Vector2(box.position.x, -box.end.z), Vector2(box.end.x, -box.end.z)]:
+			if not Geometry2D.is_point_in_polygon(c, inner[0]):
+				ok = false
+				break
+		if ok:
+			return b
+	return null
+
+## A drawn piece's box in the area's frame (the kit's cells carry it as meta `box`).
+func _piece_box(gi: GeometryInstance3D) -> AABB:
+	if gi.has_meta("box"):
+		return gi.get_meta("box")
+	if gi is MeshInstance3D and gi.mesh != null:
+		return _global_xf(gi) * gi.mesh.get_aabb()
+	return AABB(_global_xf(gi).origin, Vector3.ZERO)
+
+## The far view's error: the merged geometry simplified until its surfaces stray this far (metres) from the pieces'
+## (two thirds of a pixel at FAR_MERGE_RANGE on the Note 9, one and a half on a 4K screen's full tier, less farther off).
+const FAR_ERROR := 0.2
+
+## A square's merged surfaces simplified (Godot's own mesh simplifier, as for LODs) to the coarsest level within
+## FAR_ERROR, only the vertices it still uses kept, and Godot's LODs made again for farther off: fewer triangles to
+## draw and to ship (the first train's far view would otherwise copy all of its geometry into the package).
+static func _far_simplified(im: ImporterMesh) -> ArrayMesh:
+	im.generate_lods(25.0, 60.0, [])
+	var out := ImporterMesh.new()
+	for si in im.get_surface_count():
+		var arr := im.get_surface_arrays(si)
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		for l in im.get_surface_lod_count(si):
+			if im.get_surface_lod_size(si, l) <= FAR_ERROR:
+				idx = im.get_surface_lod_indices(si, l)
+		# only the vertices the chosen level uses
+		var remap := {}
+		var keep := PackedInt32Array()
+		var ni := PackedInt32Array()
+		ni.resize(idx.size())
+		for j in idx.size():
+			var q := idx[j]
+			if not remap.has(q):
+				remap[q] = keep.size()
+				keep.append(q)
+			ni[j] = remap[q]
+		var a := []
+		a.resize(Mesh.ARRAY_MAX)
+		for t in [Mesh.ARRAY_VERTEX, Mesh.ARRAY_NORMAL, Mesh.ARRAY_COLOR, Mesh.ARRAY_TEX_UV]:
+			var src = arr[t]
+			var dst = src.duplicate()
+			dst.resize(keep.size())
+			for j in keep.size():
+				dst[j] = src[keep[j]]
+			a[t] = dst
+		var tan: PackedFloat32Array = arr[Mesh.ARRAY_TANGENT]
+		var nt := PackedFloat32Array()
+		nt.resize(keep.size() * 4)
+		for j in keep.size():
+			for c in 4:
+				nt[j * 4 + c] = tan[keep[j] * 4 + c]
+		a[Mesh.ARRAY_TANGENT] = nt
+		a[Mesh.ARRAY_INDEX] = ni
+		out.add_surface(Mesh.PRIMITIVE_TRIANGLES, a, [], {}, im.get_surface_material(si))
+	out.generate_lods(25.0, 60.0, [])
+	return out.get_mesh()
+
+## Whether a drawn piece goes into its area's far view (`far_merge`): shown (with every parent up to the area: a
+## lamp's lit lens under its hidden `on` is not), not a label (signs' and tags' text keep their own range, or none),
+## not kept by the far view's own rules (`hlod_keep`), not inside a building (`_mark_inside`), not a detail piece (it keeps its own range by its size,
+## app/quality.gd: on a phone most end well within FAR_MERGE_RANGE), and all triangles.
+static func far_mergeable(gi: GeometryInstance3D, root: Node) -> bool:
+	if gi == null or gi is Label3D or gi.has_meta("hlod_keep") or gi.is_in_group("detail") or gi.has_meta("far_view") \
+			or gi.has_meta("far_inside") \
+			or gi.visibility_range_end > 0.0 or gi.visibility_range_begin > 0.0:
+		return false   # (a piece with a range of its own keeps it: merged, it would come back beyond FAR_MERGE_RANGE)
+	var n: Node = gi
+	while n != null and n != root:
+		if n is Node3D and not (n as Node3D).visible:
+			return false
+		n = n.get_parent()
+	var mesh: Mesh = (gi as MeshInstance3D).mesh if gi is MeshInstance3D else \
+		((gi as MultiMeshInstance3D).multimesh.mesh if gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh != null \
+			and gi.has_meta("xforms") else null)   # (an instanced cell's places: the build's saved buffer)
+	if mesh == null:
+		return false
+	var need := Mesh.ARRAY_FORMAT_NORMAL | Mesh.ARRAY_FORMAT_TANGENT | Mesh.ARRAY_FORMAT_COLOR | Mesh.ARRAY_FORMAT_TEX_UV
+	for si in mesh.get_surface_count():
+		if mesh.surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
+			return false
+		# what the merge takes: a material and the plant's vertex format (else the piece keeps its own drawing)
+		if gi.material_override == null and mesh.surface_get_material(si) == null:
+			return false
+		if mesh is ArrayMesh and ((mesh as ArrayMesh).surface_get_format(si) & need) != need:
+			return false
+	return true
+
+## Whether a node is part of a door (app/door.gd: it moves; merged into a far view in its shut pose only).
+static func _in_door(n: Node) -> bool:
+	var p := n.get_parent()
+	while p != null:
+		if p is AnimatableBody3D:
+			return true
+		p = p.get_parent()
+	return false
 
 ## A drawn piece's centre in plan (plant coordinates), from its own box: the kit's cells carry it as meta `box`.
 func _plan_centre(gi: GeometryInstance3D) -> Vector2:
@@ -1301,6 +1576,7 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 	var h: float = b.height
 	var clad: bool = b.cladding == "metal"
 	var roof_holes: Array = []
+	var occ := PackedVector3Array()   # the walls and the roof as one occluder (_occluder)
 	# a shell nobody goes into (no door opening: its doors are `locked`, PLANT3D.md §18.6; the camp's other blocks,
 	# the store): its outside only, no liner, roof steel, floor or lamps inside (they cost the bake and the package and
 	# are never seen)
@@ -1359,6 +1635,15 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 				var p0 := a + u * r.position.x
 				var p1 := a + u * r.end.x
 				_wall_panel(walls, body, p0, p1, r.position.y, r.end.y, 0.25, piece_top(r, cuts, h))
+				# the occluder OCC_MARGIN inside the panel's edges, but on the ground (Godot tests against a coarse
+				# buffer: an edge exactly on a doorway's or a corner's culls what is seen just past it, or flickers)
+				var oz0 := r.position.y + (OCC_MARGIN if r.position.y > 0.01 else 0.0)
+				var oz1 := r.end.y - OCC_MARGIN
+				if r.size.x > 2.0 * OCC_MARGIN and oz1 > oz0:
+					var o0 := a + u * (r.position.x + OCC_MARGIN)
+					var o1 := a + u * (r.end.x - OCC_MARGIN)
+					for q in [[o0, oz0], [o1, oz0], [o1, oz1], [o0, oz0], [o1, oz1], [o0, oz1]]:
+						occ.append(Geom.g([q[0].x, q[0].y, q[1]]))
 				if clad and not shell:
 					# the inner skin, light: a hall seen from inside (polish pass)
 					var off := inward * (WALL_T * 0.5 + LINER_T * 0.5)
@@ -1373,7 +1658,11 @@ func _building(parent: Node3D, b: Dictionary) -> void:
 		_convex(body, Geom.prism_points(pc, h, h + 0.3))
 		if not shell:
 			Geom.add_prism(liner, pc, h - LINER_T, h)
+		var tri := Geometry2D.triangulate_polygon(pc)
+		for k in tri:
+			occ.append(Geom.g([pc[k].x, pc[k].y, h]))
 	_mesh_node(body, "roof", roof, _mat("roof"))
+	_occluder(body, occ)
 	# every building's roof from inside: the liner and the steel under it (a dark ceiling with nothing under it read as
 	# a black void in every hall: polish pass)
 	if not shell:
@@ -1415,6 +1704,25 @@ func _area_pack(id: String) -> String:
 		if a.id == id:
 			return a.data.get("pack", "")
 	return ""
+
+## A building's walls (less their door and pipe openings) and roof as an occluder (Godot's occlusion culling,
+## project.godot): what stands behind them is not drawn, a hall's inside from outdoors and the plant outside from in a
+## hall (the Note 9's GPU held frames of 100-120 ms in the water treatment plant's hall, 1,570 draw calls where the
+## hall's walls hid all but 490). Triangles in `tris`, three points each.
+const OCC_MARGIN := 0.3
+
+func _occluder(body: Node, tris: PackedVector3Array) -> void:
+	if tris.is_empty():
+		return
+	var idx := PackedInt32Array()
+	for i in tris.size():
+		idx.append(i)
+	var o := ArrayOccluder3D.new()
+	o.set_arrays(tris, idx)
+	var oi := OccluderInstance3D.new()
+	oi.name = "occluder"
+	oi.occluder = o
+	body.add_child(oi)
 
 ## A building's walls: 0.25 m thick on their outline; a metal-clad hall's light inner skin (its liner) 3 cm thick
 ## against their inside and under the roof.
