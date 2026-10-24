@@ -29,6 +29,7 @@ const TrainerPanel = preload("res://ui/trainer_panel.gd")
 const PermitPanel = preload("res://ui/permit_panel.gd")
 const Autosave = preload("res://ui/autosave.gd")
 const DebriefPanel = preload("res://ui/debrief_panel.gd")
+const Debrief = preload("res://ui/debrief.gd")
 const WalkRoute = preload("res://app/walk_route.gd")
 const Mimic = preload("res://ui/mimic.gd")
 const ScreensModel = preload("res://ui/screens_model.gd")
@@ -495,10 +496,17 @@ func fault(fid: String) -> void:
 	toast("Fault pressed: it acts in the next step.")
 
 
-## A fault's repair (PLANT3D §7.8): from the instructor's panel, or by the trainee at its equipment (the card).
+## A fault's repair (PLANT3D §7.8): from the instructor's panel, or, in a plant without permits to work (version 1),
+## by the trainee at its equipment (the card).
 func repair(fid: String) -> void:
 	clock.engine.repair(fid)
 	toast("Repaired: it acts in the next step.")
+
+
+## The trainee's repair at the equipment under a work's permit to work (PLANT3D §15.5, a version 2 plant).
+func repair_under(fid: String, wid: String) -> void:
+	clock.engine.repair_under(fid, wid)
+	toast("Repaired under the permit: it acts in the next step.")
 
 
 func fast_forward() -> void:
@@ -1026,6 +1034,10 @@ func _follow_events(evs: Array, from: int) -> void:
 					var say: String = model.machines[mi]["states"][_state_pos(mi, ev[4])].get("say", "")
 					if say != "":
 						toast(say)
+			"repair":
+				if ev.size() >= 7 and ev[6] is Array:     # the trainee's repair under a permit, not made (§15.5)
+					toast("Repair not made: %s" % ("; ".join(ev[6].map(func(x): return Debrief.REPAIR_WHY.get(x, str(x))))
+							if ev[5] == "refused" else "not a repair of that permit's work"))
 
 
 func _state_pos(mi: int, state: String) -> int:

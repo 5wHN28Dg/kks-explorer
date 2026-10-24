@@ -282,6 +282,14 @@ func _apply_due(e, inputs: Array, i: int) -> int:
 	return i
 
 
+## Asks each of `effects` ([step, work, point, answer], §15.6) that falls at the run's step, after that step's inputs
+## are made and before it is stepped; appends [step, work, point, the engine's answer] to `got`.
+func _ask(e, effects: Array, got: Array) -> void:
+	for q in effects:
+		if int(q[0]) == e.step_no:
+			got.append([q[0], q[1], q[2], e.lock_effects(q[1], int(q[2]))])
+
+
 func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "") -> void:
 	var files := valid_files.duplicate()
 	files["model/a1.json"] = s["model"]
@@ -301,8 +309,10 @@ func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "")
 	var states: Array = s["states"]
 	var d := diff(e.snapshot(), states[0], "step 0")
 	var i := 0
+	var asked := []
 	while d == "" and e.step_no < states.size() - 1:
 		i = _apply_due(e, s["inputs"], i)
+		_ask(e, s.get("effects", []), asked)
 		e.step()
 		_hash(e)
 		d = diff(e.snapshot(), states[e.step_no], "step %d" % e.step_no)
@@ -311,6 +321,8 @@ func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "")
 		d = "inputs after the last step"
 	if d == "":
 		d = diff(e.events, s["events"], "events")
+	if d == "":
+		d = diff(asked, s.get("effects", []), "what a lock would do")
 	_result(name, d)
 
 
@@ -383,9 +395,11 @@ func _train(t: Dictionary, m, run: String) -> void:
 		var n0: int = x.events.size()
 		var fin := by_step(f["inputs"])
 		var j := 0
+		var asked := []
 		_hash_begin(("v2/" if run.begins_with("v2/") else "") + f["id"], x.step_no + 1)
 		while x.step_no < int(f["until"]):
 			j = _apply_due(x, fin, j)
+			_ask(x, f.get("effects", []), asked)
 			x.step()
 			_hash(x)
 		_hash_end()
@@ -396,4 +410,6 @@ func _train(t: Dictionary, m, run: String) -> void:
 			fd = diff(x.events.slice(n0), f["events"], "events")
 		if fd == "":
 			fd = diff(x.snapshot(false), f["end"], "end")
+		if fd == "":
+			fd = diff(asked, f.get("effects", []), "what a lock would do")
 		_result("fork " + f["id"], fd)
