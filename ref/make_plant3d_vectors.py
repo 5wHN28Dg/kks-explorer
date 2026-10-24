@@ -2088,6 +2088,8 @@ def overnight_staff():
     st['people'].append({'id': 'ic1', 'role': 'ic_tech', 'roster': 'day', 'call': 'Instruments 1'})
     G = 'wo_gauge'
     st['tasks'] += [
+        {'id': 'have_gauge_isolated', 'title': 'Have the gauge isolated', 'priority': 2,
+         'steps': [{'call': {'role': 'ic_tech', 'task': 'iso_gauge'}}]},
         {'id': 'iso_gauge', 'title': 'Isolate the gauge', 'priority': 2,
          'steps': [{'go': {'kks': GAUGE}}, {'lock': {'work': '$', 'point': 0}}]},
         {'id': 'issue_gauge', 'title': 'Issue the gauge\'s permit', 'priority': 2,
@@ -2102,10 +2104,28 @@ def overnight_staff():
          'steps': [{'go': {'kks': GAUGE}}, {'unlock': {'work': '$', 'point': 0}}]},
         {'id': 'close_gauge', 'title': 'Close the gauge\'s permit', 'priority': 2,
          'steps': [{'go': 'cr_table'}, {'permit': {'work': '$', 'action': 'close'}}]}]
-    for state, roles, task in (('approved', ['ic_tech'], 'iso_gauge'), ('isolated', ['shift_sup'], 'issue_gauge'),
+    for state, roles, task in (('approved', ['shift_sup'], 'have_gauge_isolated'), ('isolated', ['shift_sup'], 'issue_gauge'),
                                ('issued', ['ic_tech'], 'job_gauge'), ('returned', ['ic_tech'], 'deiso_gauge'),
                                ('deisolated', ['shift_sup'], 'close_gauge')):
         st['reactions'].append({'on': {'permit': state}, 'roles': roles, 'task': task, 'work': G})
+    return st
+
+
+def no_reactions_staff():
+    """The overnight staff with no reactions at all: the night supervisor's own routine calls the instrument
+    technician to isolate the gauge at 20:00 (adversarial review: a kept call in content without reactions)."""
+    st = overnight_staff()
+    st['reactions'] = []
+    st['tasks'] = [t for t in st['tasks'] if t['id'] != 'remove_left']
+    for t in st['tasks']:               # (with no reactions, the tasks that use "$" keep a work of their own)
+        if '"$"' in json.dumps(t['steps']) and 'work' not in t:
+            t['work'] = 'wo_gauge' if 'gauge' in t['id'] else \
+                'wo_valve' if 'valve' in t['id'] or t['id'] in ('isolate_all', 'unlock_all') else 'wo_pump'
+    st['tasks'].append({'id': 'night_call', 'title': 'Call for the gauge\'s isolation', 'priority': 2,
+                        'steps': [{'go': 'cr_table'}, {'call': {'role': 'ic_tech', 'task': 'iso_gauge',
+                                                                 'work': 'wo_gauge'}}]})
+    st['routines'].append({'id': 'sup_night', 'idle': 'idle_sup', 'slots': [{'at': '20:00', 'task': 'night_call'}]})
+    next(q for q in st['people'] if q['id'] == 'b_sup')['routine'] = 'sup_night'
     return st
 
 
@@ -2233,11 +2253,18 @@ def staff_runs():
          Trainee(extra=[[2, 'permit', 'wo_gauge', 'request', None], [3, 'permit', 'wo_gauge', 'approve', None]]),
          11600, 200),
         ('a day-shift job suspended overnight (§17.10): the technician\'s lock removed by authority at night; the '
-         'held job is abandoned at once (nobody works unisolated in the morning) and the re-isolation finds no '
-         'technician on duty', {'start': {'day': 1, 'time': '14:30'}}, overnight_staff(),
+         'held job is abandoned at once (nobody works unisolated in the morning); the re-isolation finds no '
+         'technician on duty and is offered again when the technician comes on at 07:00: the gauge is isolated, '
+         'issued and calibrated again, and the permit closed', {'start': {'day': 1, 'time': '14:30'}},
+         overnight_staff(),
          Trainee(extra=[[2, 'permit', 'wo_gauge', 'request', None], [3, 'permit', 'wo_gauge', 'approve', None],
                         [3000, 'remove_lock', 'wo_gauge', 0, None, 'The gauge is needed tonight', 'ic1']]),
-         10600, 200),
+         12400, 200),
+        ('a call kept with no reactions in the content (§17.10): the night supervisor\'s call at 20:00 for the '
+         'gauge\'s isolation finds no instrument technician on duty and is made again at 07:00',
+         {'start': {'day': 1, 'time': '18:30'}}, no_reactions_staff(),
+         Trainee(extra=[[2, 'permit', 'wo_gauge', 'request', None], [3, 'permit', 'wo_gauge', 'approve', None]]),
+         8000, 400),
         ('the trainee as crew B\'s field operator takes over the valve\'s lock at the handover (a lock input from the '
          'permit form); crew A\'s field operator then unlocks theirs',
          dict(at5, trainee='b_fo'), hand, Trainee(extra=[[2, 'fault', 'f1']]), 1400, 20),
