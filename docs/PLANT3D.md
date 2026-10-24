@@ -1577,29 +1577,6 @@ What S1 settles that §16–§17 left open (the engines and the vectors follow t
   previous step 9 (at step 0: its value then).
 - **The queue limit** of 32 counts the current task unless it is the idle task.
 
-### 17.10 Day-shift jobs overnight and re-issued permits (the user, 2026-10-24)
-
-- **An unfinished day-shift job keeps its lock overnight.** A task with `"resume": "next_duty"` (the content's jobs)
-  that is current when its person (an NPC) is off duty, at their turn while they stand at a place and wait for no
-  input's outcome, is *held*: paused as a pre-emption pauses it (§17.8, its `work` keeping its time left), taken off
-  their queue, event `[n, "task", person, task, "held"]`. They then leave the site as anyone off duty with nothing
-  to do. When their next duty starts (phase 1, after its `duty` event) the held instance goes back into their queue
-  (event `resumed`) and is picked by the queue's order. Placement (step 0, a jump) clears it.
-- **Day workers are not `lock_left`** (§16.7): a person on a `days` roster who leaves the site with a lock on keeps
-  it, the equipment isolated and the permit held (not cancelled or suspended); they remove it themselves when their
-  job resumes and ends (their own unlock, as any). The supervisor's removal by authority stays for a holder who can't
-  return (from the permit form, logged as before); NPCs make it only for shift workers, as §17.9 says.
-- **A permit re-issued after a suspension is offered again.** When a permit moves back to approved by itself (§15.3:
-  a lock removed by authority), every task instance given by a reaction to that work's permit states keeps running
-  but no longer holds its reaction's source (§16.7: "a reaction is skipped while a task it gave for the same source
-  is still queued or current"), so the reactions to its next states (isolated, issued) are given again: the job
-  suspended mid-work is offered to a technician when its permit is issued again. The old job's next permit step is
-  refused and abandons it, as any refusal does.
-- **Vectors** (§19): a staff run with an instrument technician on days whose job and lock run past 16:00, held
-  overnight and resumed at 07:00 (no removal by authority); a day fork of the first train where CW pump B's lock is
-  removed by authority while its job is in progress and the job is offered again when the permit is re-issued;
-  `reject` has a repairing work without an isolation.
-
 ### 17.9 Locks at a shift change, as built (2026-10-24)
 
 The user's decisions of 2026-10-24 (§15.1 "Locks at a shift change", §15.5 "Instructor actions are visible"), in
@@ -1642,6 +1619,29 @@ both engines and the vectors (§19):
   authority while accepted (the work suspended, a repair noted in that step not made), an unlock while accepted
   refused with no other lock, removals naming their owner, the trainee's repair refused for `isolation` (a work
   without one), and the instructor events; and in `staff.reject`, the new steps' and reaction's rule breaks.
+
+### 17.10 Day-shift jobs overnight and re-issued permits (the user, 2026-10-24)
+
+- **An unfinished day-shift job keeps its lock overnight.** A task with `"resume": "next_duty"` (the content's jobs)
+  that is current when its person (an NPC) is off duty, at their turn while they stand at a place and wait for no
+  input's outcome, is *held*: paused as a pre-emption pauses it (§17.8, its `work` keeping its time left), taken off
+  their queue, event `[n, "task", person, task, "held"]`. They then leave the site as anyone off duty with nothing
+  to do. When their next duty starts (phase 1, after its `duty` event) the held instance goes back into their queue
+  (event `resumed`) and is picked by the queue's order. Placement (step 0, a jump) clears it.
+- **Day workers are not `lock_left`** (§16.7): a person on a `days` roster who leaves the site with a lock on keeps
+  it, the equipment isolated and the permit held (not cancelled or suspended); they remove it themselves when their
+  job resumes and ends (their own unlock, as any). The supervisor's removal by authority stays for a holder who can't
+  return (from the permit form, logged as before); NPCs make it only for shift workers, as §17.9 says.
+- **A permit re-issued after a suspension is offered again.** When a permit moves back to approved by itself (§15.3:
+  a lock removed by authority), every task instance given by a reaction to that work's permit states keeps running
+  but no longer holds its reaction's source (§16.7: "a reaction is skipped while a task it gave for the same source
+  is still queued or current"), so the reactions to its next states (isolated, issued) are given again: the job
+  suspended mid-work is offered to a technician when its permit is issued again. The old job's next permit step is
+  refused and abandons it, as any refusal does.
+- **Vectors** (§19): a staff run with an instrument technician on days whose job and lock run past 16:00, held
+  overnight and resumed at 07:00 (no removal by authority); a day fork of the first train where CW pump B's lock is
+  removed by authority while its job is in progress and the job is offered again when the permit is re-issued;
+  `reject` has a repairing work without an isolation.
 
 ## 18. People on screen (the app; not in the vectors)
 

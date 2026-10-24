@@ -976,6 +976,7 @@ REJECTS2 = [
         _app(MOD + ['values'], ['valve_dem', {'state': 0, 'kks': VALVE}]),
         _app(MOD + ['ops'], {'kks': VALVE, 'do': 'set', 'input': 'valve_dem', 'range': [0, 1], 'where': ['local']}),
         _set(['scenarios/s1.json', 'faults', 0, 'repair'], {'valve_dem': 1}))),
+    ('a work that repairs with no isolation', 'missing_key', _del(WORK + [0, 'isolation'])),
     ('a work repairing a fault that is not an identifier', 'bad_id', _set(WORK + [0, 'repairs'], 'F 1')),
     ('two works with one id', 'dup_id', _set(WORK + [1, 'id'], 'wo_pump')),
     ('two works repairing one fault', 'dup_id', _set(WORK + [1, 'repairs'], 'f1')),
@@ -1059,13 +1060,12 @@ def unit_models2():
                   {'id': 'wo_p2', 'kks': VALVE, 'title': 'Valve packing', 'discipline': 'mech', 'permit': 'general',
                    'isolation': 'iso_p'},
                   {'id': 'wo_n', 'kks': TANK, 'title': 'Tank inspection', 'discipline': 'civil', 'permit': 'confined',
-                   'set': {'aux': 1}, 'repairs': 'f4'}]}
+                   'set': {'aux': 1}}]}
     faults = [{'id': 'f1', 'set': {'pump_fault': 1}, 'text': 'Pump bearing worn', 'kks': PUMP,
                'repair': {'pump_fault': 0}},
               {'id': 'f2', 'set': {'pump_cmd': 1}, 'text': 'Trainer starts the pump', 'repair': {'pump_cmd': 0}},
               {'id': 'f3', 'set': {'motor_fault': 1}, 'text': 'Pump motor winding', 'kks': PUMP,
-               'repair': {'motor_fault': 0}},
-              {'id': 'f4', 'set': {'aux2': 3}, 'text': 'Tank coating', 'kks': TANK, 'repair': {'aux2': 0}}]
+               'repair': {'motor_fault': 0}}]
     channels = {
         'values': [
             ['x', {'state': 0}], ['w', {'state': 0}],
@@ -1150,8 +1150,8 @@ def unit_models2():
         pm(9, P_, 'cancel'), lk(9, P_, 0),
         pm(10, P_, 'request'), pm(10, P2, 'request'),
         ul(11, P_, 0), pm(12, P2, 'request'), ul(12, P_, 1), pm(13, P2, 'request'),
-        [13, 'fault', 'f4'], pm(14, N_, 'request'), pm(14, N_, 'approve'),
-        pm(15, N_, 'issue'), pm(15, N_, 'accept'), rp(15, 'f4', N_), pm(15, N_, 'done'), pm(15, N_, 'return'),
+        pm(14, N_, 'request'), pm(14, N_, 'approve'),
+        pm(15, N_, 'issue'), pm(15, N_, 'accept'), pm(15, N_, 'done'), pm(15, N_, 'return'),
         pm(16, N_, 'close'), pm(16, N_, 'request'),
         pm(17, Q_, 'request'), pm(17, Q_, 'approve'), lk(18, Q_, 0),
         pm(19, Q_, 'issue'), pm(19, Q_, 'accept'), pm(19, Q_, 'done')]
@@ -1195,8 +1195,8 @@ def unit_models2():
          "unknown, refused for authority, made on the locked code once accepted (the work's done then repairs "
          "nothing)", pump, faults, life, 24, []),
         ("a code locked by two isolations; a done repair made only when every isolation locking its code is held by "
-         "the work; a cancel with points still locked; a work without an isolation (the trainee's repair under its "
-         "accepted permit refused: no isolation in place; its done repairs); the trainer's repair on a free "
+         "the work; a cancel with points still locked; a work without an isolation (an inspection: it repairs "
+         "nothing); the trainer's repair on a free "
          "code made, the trainee's without an accepted permit refused", pump, faults, shared, 20, []),
         ('an isolated transmitter: its reading held, its alarm suppressed, its 2-out-of-3 vote tripped; unlocked from '
          'isolated (the permit back to approved) and locked again; the hold node at step 0 (its init, the '
@@ -2077,6 +2077,35 @@ def handover_staff():
     return st
 
 
+def overnight_staff():
+    """The handover staff with an instrument technician on days (§17.10): the gauge's calibration permit raised by
+    inputs, isolated by the technician's own lock, issued by the supervisor, and a two-hour job that resumes at their
+    next duty; the isolation removed by the technician when the job is handed back, the permit then closed."""
+    st = handover_staff()
+    st['roles'].append({'id': 'ic_tech', 'title': 'Instrument technician', 'discipline': 'inst', 'play': True,
+                        'authority': ['operate_local', 'accept', 'lock_instrument'], 'routine': 'ic_days'})
+    st['routines'].append({'id': 'ic_days', 'idle': 'idle_mech', 'slots': []})
+    st['people'].append({'id': 'ic1', 'role': 'ic_tech', 'roster': 'day', 'call': 'Instruments 1'})
+    G = 'wo_gauge'
+    st['tasks'] += [
+        {'id': 'iso_gauge', 'title': 'Isolate the gauge', 'priority': 2,
+         'steps': [{'go': {'kks': GAUGE}}, {'lock': {'work': '$', 'point': 0}}]},
+        {'id': 'issue_gauge', 'title': 'Issue the gauge\'s permit', 'priority': 2,
+         'steps': [{'go': 'cr_table'}, {'permit': {'work': '$', 'action': 'issue'}}]},
+        {'id': 'job_gauge', 'title': 'Calibrate the gauge', 'work': G, 'resume': 'next_duty',
+         'steps': [{'go': {'kks': GAUGE}}, {'permit': {'work': '$', 'action': 'accept'}}, {'work': 120},
+                   {'permit': {'work': '$', 'action': 'done'}}, {'permit': {'work': '$', 'action': 'return'}}]},
+        {'id': 'deiso_gauge', 'title': 'Take the gauge\'s isolation off', 'priority': 2,
+         'steps': [{'go': {'kks': GAUGE}}, {'unlock': {'work': '$', 'point': 0}}]},
+        {'id': 'close_gauge', 'title': 'Close the gauge\'s permit', 'priority': 2,
+         'steps': [{'go': 'cr_table'}, {'permit': {'work': '$', 'action': 'close'}}]}]
+    for state, roles, task in (('approved', ['ic_tech'], 'iso_gauge'), ('isolated', ['shift_sup'], 'issue_gauge'),
+                               ('issued', ['ic_tech'], 'job_gauge'), ('returned', ['ic_tech'], 'deiso_gauge'),
+                               ('deisolated', ['shift_sup'], 'close_gauge')):
+        st['reactions'].append({'on': {'permit': state}, 'roles': roles, 'task': task, 'work': G})
+    return st
+
+
 def staff_runs():
     """(why, scenario changes, staff changes or None, the trainee player or None, steps, snapshot every)."""
     hand = handover_staff()
@@ -2194,6 +2223,12 @@ def staff_runs():
          'deisolated by itself (the supervisor only looks round when it is returned, in this staff file)', at5, quiet,
          Trainee(extra=[[2, 'fault', 'f1'], [900, 'permit', 'wo_pump', 'accept', None],
                         [901, 'permit', 'wo_pump', 'done', None], [902, 'permit', 'wo_pump', 'return', None]]), 1800, 20),
+        ('a day-shift job overnight (§17.10): the instrument technician locks the gauge, accepts its permit before 16:00 '
+         'and leaves at 16:00 with the job unfinished (held) and the lock on: no removal by authority, the permit '
+         'still accepted; at 07:00 the job resumes, is done and handed back, the technician unlocks their own lock '
+         'and the permit is closed', {'start': {'day': 1, 'time': '14:30'}}, overnight_staff(),
+         Trainee(extra=[[2, 'permit', 'wo_gauge', 'request', None], [3, 'permit', 'wo_gauge', 'approve', None]]),
+         11600, 200),
         ('the trainee as crew B\'s field operator takes over the valve\'s lock at the handover (a lock input from the '
          'permit form); crew A\'s field operator then unlocks theirs',
          dict(at5, trainee='b_fo'), hand, Trainee(extra=[[2, 'fault', 'f1']]), 1400, 20),
@@ -2239,6 +2274,12 @@ def day_forks():
         ('ccr_instruction', Trainee(extra=[[1, 'role', 'a_ccr1'], [3200, 'call', 'field_op', 'ccw_cooler_in', None]]),
          9000, {'trainee': 'a_ccr1', 'end': {'ccw_cooler': 1}}),
         ('npc_permit', Trainee(extra=[[10000, 'fault', 'cw_b_motor']]), 36000,
+         {'permits': {'wo_cw_b_motor': 9}, 'repaired': ['cw_b_motor']}),
+        # §17.10 (a bug the review found): the breaker's lock removed by authority while the job is in progress
+        # suspends the permit; re-isolated and issued again, the job is offered again
+        ('job_suspended', Trainee(extra=[[10000, 'fault', 'cw_b_motor'],
+                                         [15000, 'remove_lock', 'wo_cw_b_motor', 0, None, 'Breaker needed for a test',
+                                          'a_eap']]), 36000,
          {'permits': {'wo_cw_b_motor': 9}, 'repaired': ['cw_b_motor']}),
         ('sup_late', Trainee(wake=9000, extra=[[1, 'role', 'a_sup'], [4000, 'fault', 'ccw_a_motor']]), 36000,
          {'trainee': 'a_sup', 'permits': {'wo_ccw_a_motor': 9}}),
