@@ -667,8 +667,6 @@ func _phase1(e, c: int, day: int) -> void:
 
 
 func react(e, n: int) -> void:
-	if reactions.is_empty():
-		return
 	var evs := []
 	for k in range(e.ev_mark, e.events.size()):
 		if e.events[k][0] == n:
@@ -686,6 +684,7 @@ func react(e, n: int) -> void:
 			var c = e.sp_cur[pi]
 			if c != null and _job_of(c, back):
 				finish(e, pi, "abandoned")
+				e.sp_wake[pi] = 0       # (asleep in a work step: their next task starts at once, as the reference)
 			var gone_q := []
 			var keep_q := []
 			for q in e.sp_queue[pi]:
@@ -702,8 +701,11 @@ func react(e, n: int) -> void:
 			for inst in gone_q:
 				e._ev(["task", people[pi]["id"], inst["task"], "abandoned"])
 				release(e, inst)
+				e.sp_wake[pi] = 0
 			e.sp_queue[pi] = keep_q
 			e.sp_held[pi] = keep_h
+	if reactions.is_empty():
+		return
 	var gone := []
 	if has_left:
 		for x in evs:
@@ -713,7 +715,7 @@ func react(e, n: int) -> void:
 		var now := {}
 		for pi in people.size():
 			if pi != e.st_trainee and not e._absent.has(pi) and not e.sp_on[pi] and e.sp_pos[pi] == -1 \
-					and e.sp_leg[pi].is_empty() and e.sp_held[pi].is_empty() and _holds_any(e, people[pi]["id"]):
+					and e.sp_leg[pi].is_empty() and _left_locks(e, pi):
 				now[pi] = true
 				if not e.st_left.has(pi):
 					gone.append(pi)
@@ -776,6 +778,17 @@ func select(e, pi: int):
 		e.sp_held[pi].append(cur)
 		e._ev(["task", pid, cur["task"], "held"])
 		cur = null
+	if cur == null and not e.sp_on[pi] and pi != e.st_trainee:
+		var keep := []
+		for qq in q:
+			if tasks[qq["task"]].get("resume", "") == "next_duty":
+				e.sp_held[pi].append(qq)    # queued jobs off duty: held as they are, no walk to them first
+				e._ev(["task", pid, qq["task"], "held"])
+			else:
+				keep.append(qq)
+		if keep.size() != q.size():
+			q.clear()
+			q.append_array(keep)
 	if cur != null and cur["idle"] and (not q.is_empty() or not e.sp_on[pi]):
 		e._ev(["task", pid, cur["task"], "done"])
 		e.sp_cur[pi] = null
@@ -1154,11 +1167,40 @@ func run(e, pi: int, cur: Dictionary):
 
 ## A lock's holder who is a day worker gone home: their lock stays on overnight and they finish the job on their
 ## next duty (§17.10). For the permit form.
-func overnight(e, who) -> bool:
+func overnight(e, who, work: String) -> bool:
 	if typeof(who) != TYPE_STRING or not person_ix.has(who):
 		return false
 	var pi: int = person_ix[who]
-	return not e.sp_held[pi].is_empty() and not e.sp_on[pi] and e.sp_pos[pi] == -1 and e.sp_leg[pi].is_empty()
+	return _kept_works(e, pi).has(work) and not e.sp_on[pi] and e.sp_pos[pi] == -1 and e.sp_leg[pi].is_empty()
+
+
+## The works of a person's held jobs: their locks on those stay on overnight (§17.10).
+func _kept_works(e, pi: int) -> Dictionary:
+	var out := {}
+	for q in e.sp_held[pi]:
+		if typeof(q["work"]) == TYPE_STRING:
+			out[q["work"]] = true
+	return out
+
+
+## Whether pi holds a lock that is not kept for a held job of theirs (§17.10).
+func _left_locks(e, pi: int) -> bool:
+	var kept := _kept_works(e, pi)
+	var pid: String = people[pi]["id"]
+	for key in e.lockers:
+		if _has(e.lockers[key], pid) and not kept.has(e.m.works[e.holder[key.x]]["id"]):
+			return true
+	return false
+
+
+## A lock of the remove_locks step's owner, not kept for a held job of theirs (§17.10).
+func _removable(e, cur: Dictionary, key: Vector2i, held: Array) -> bool:
+	var o = cur.get("owner")
+	if o == null or not _has(held, o):
+		return false
+	if typeof(o) != TYPE_STRING or not person_ix.has(o):
+		return true
+	return not _kept_works(e, person_ix[o]).has(e.m.works[e.holder[key.x]]["id"])
 
 
 ## A job (a task with resume) given for one of these works.
@@ -1234,7 +1276,7 @@ func _still(e, pi: int, cur: Dictionary, s: Dictionary, key: Vector2i) -> bool:
 		return _to_take_at(e, pi, key.x, held)
 	if h == "give":
 		return _has(held, people[pi]["id"])
-	return cur.get("owner") != null and _has(held, cur.get("owner"))
+	return _removable(e, cur, key, held)
 
 
 ## The next point of a take, give or remove_locks step (isolations, then points, in model order), or

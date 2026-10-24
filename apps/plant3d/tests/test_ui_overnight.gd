@@ -94,7 +94,7 @@ func _overnight(tree: SceneTree) -> Array:
 	for ev in e.events:
 		if ev[1] == "task" and ev[2] == "ic1" and ev[3] == "job_cond_p2_cal" and ev[4] == "held":
 			held = true
-		if ev[1] == "remove_lock" or (ev[1] == "task" and ev[3] == "remove_left"):
+		if ev[1] == "remove_lock" or (ev[1] == "task" and ev[3] == "remove_left_locks"):
 			removal = true
 	var ic: int = e._sm.person_ix["ic1"]
 	if not held:

@@ -1299,7 +1299,7 @@ Steps, each done by an NPC as said and by the trainee through the input named (�
   it gave for the same source (the same alarm, trip, fault, value, permit or act) is still queued or current, so a
   chattering alarm doesn't flood anyone.
 - **`{"lock_left": "*"}`** (2026-10-24): a person (not the trainee) who has left the site (off duty, no place, §17.8)
-  while holding a lock, with no job held for their next duty (§17.10). The reaction is made once per departure, in phase 2 of the next step 9 (§17.2), with the
+  while holding a lock not kept for a job of theirs held for their next duty (§17.10). The reaction is made once per departure, in phase 2 of the next step 9 (§17.2), with the
   person as its source; its task's `remove_locks` step removes their locks. A person who comes back on site with
   locks still on and leaves again makes it again.
 - **Unsafe acts:** a person in a zone without one of the zone's PPE items; a person at the work place of a work's
@@ -1607,7 +1607,7 @@ both engines and the vectors (§19):
   passed since the step became current; `remove_locks` when the owner holds no lock. Their own inputs do the work, as
   the permit form makes them; nothing is taken from the kept actions.
 - **Leaving the site with a lock:** at phase 2 of each step 9 the engine lists, in index order, the people other than
-  the trainee, the absent and those with a job held (§17.10) who are off duty, off site (no place, not on a way) and hold a lock; each one not on the
+  the trainee and the absent who are off duty, off site (no place, not on a way) and hold a lock not kept for a held job (§17.10); each one not on the
   list of the previous phase 2 is a `lock_left` source for every reaction to it. In a step with a `duty` `on` event
   the previous list counts as empty, so a lock still left on is given again when someone comes on duty (a removal
   that found no supervisor on duty, `unassigned`, is not lost; one still queued is not given twice, §16.7).
@@ -1625,14 +1625,16 @@ both engines and the vectors (§19):
 - **An unfinished day-shift job keeps its lock overnight.** A task with `"resume": "next_duty"` (the content's jobs)
   that is current when its person (an NPC) is off duty, at their turn while they stand at a place and wait for no
   input's outcome, is *held*: paused as a pre-emption pauses it (§17.8, its `work` keeping its time left), taken off
-  their queue, event `[n, "task", person, task, "held"]`; a person may hold several, in the order held. They then
+  their queue, event `[n, "task", person, task, "held"]`; then any such task in their queue is held the same way, in
+  queue order, without being started (no walk to it off duty); a person may hold several, in the order held. They then
   leave the site as anyone off duty with nothing to do. When their next duty starts (phase 1, after its `duty`
   event) the held instances go back into their queue (event `resumed` each, in the order held) and are picked by the
   queue's order. A jump skips them (event `skipped`) and placement clears them.
-- **Someone with a held job is not `lock_left`** (§16.7): a person who leaves the site with a lock on and a job
-  held keeps the lock, the equipment isolated and the permit held (not cancelled or suspended); they remove it
+- **A lock kept for a held job is not `lock_left`** (§16.7): a person who leaves the site with a lock on a work they
+  hold a job for (the job's `work`) keeps that lock, the equipment isolated and the permit held (not cancelled or suspended); they remove it
   themselves when their job resumes and ends (their own unlock, as any). The supervisor's removal by authority stays
-  for a holder who can't return (from the permit form, logged as before), and for a lock left with no job held (§17.9).
+  for a holder who can't return (from the permit form, logged as before), and for any other lock they left (§17.9:
+  `lock_left` counts only locks not kept, and `remove_locks` removes only those).
 - **A permit re-issued after a suspension is offered again.** When a permit moves back to approved by itself (§15.3:
   a lock removed by authority), its jobs (instances of a task with `resume`, given for that work: current, queued or
   held) are abandoned at once in phase 2 (event `abandoned` each), so nobody works on equipment no longer isolated,

@@ -515,7 +515,7 @@ func _isolation(e, w: Dictionary, st: int) -> void:
 		var status := ("LOCKED and tagged by %s" % ", then ".join(by)) if locked else ("not locked · safe to lock" if safe else "not locked · not safe to lock yet")
 		if e._sm != null:
 			for y in lks:
-				if e._sm.overnight(e, y):
+				if e._sm.overnight(e, y, w["id"]):
 					status += " · %s's lock stays on overnight: they finish the job on their next shift" \
 							% Permits.person_words(e, y)
 		var sl := W.label(status, 17, W.BAD_COLOUR if locked else (W.OK_COLOUR if safe else W.DIM))

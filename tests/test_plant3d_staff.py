@@ -491,7 +491,9 @@ class StaffVectors(unittest.TestCase):
         resumed = [x[3] for x in ev if x[1] == 'task' and x[2] == 'ic1' and x[4] == 'resumed']
         self.assertEqual(held, ['job_gauge', 'inspect_gauge'])
         self.assertEqual(resumed, held)
-        self.assertIn([11210, 'task', 'ic1', 'inspect_gauge', 'done'], ev)
+        self.assertTrue(any(x[1:] == ['task', 'ic1', 'inspect_gauge', 'done'] for x in ev))
+        # the queued job off duty is held as it is: not started (no walk to it) before being held (adversarial)
+        self.assertFalse(any(x[1:] == ['task', 'ic1', 'inspect_gauge', 'start'] and x[0] < 9900 for x in ev))
 
     def test_a_held_job_suspended_at_night(self):
         """§17.10 (blind review): a lock removed by authority at night abandons the held jobs at once, so nobody
