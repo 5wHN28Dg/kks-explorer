@@ -473,6 +473,8 @@ func _start_crowd(route: Array) -> void:
 		crowd = Crowd.new()
 		crowd.name = "crowd"
 		add_child(crowd)
+		if ui != null and ui.people != null:
+			ui.people.avatars = null   # the crowd drives the people now, not the staff (a measurement)
 		crowd.road_at = func(at: Vector3) -> bool: return area_at(at) == "Between the areas"
 		crowd.setup(route, player, people, clampi(int(opts.crowd), 0, 200))
 

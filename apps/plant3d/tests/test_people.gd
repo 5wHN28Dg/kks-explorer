@@ -70,6 +70,14 @@ func _crowd(tree: SceneTree) -> Array:
 			moved += 1
 	if moved < 6:
 		p.append("the crowd's walkers move along the route (%d of 12 moved)" % moved)
+	# the staff's view (ui/people_view.gd) in a run without staff leaves the crowd's people alone
+	var pv = load("res://ui/people_view.gd").new()
+	root.add_child(pv)
+	pv.avatars = ppl
+	var n_before: int = ppl.people.size()
+	pv.drive(1.0 / 60.0)
+	if ppl.people.size() != n_before:
+		p.append("the staff's view without staff leaves a crowd's people alone (%d of %d left)" % [ppl.people.size(), n_before])
 	if fewest < 12:
 		p.append("the crowd stays round the walker as the walk goes round its loop (%d of 12 at one moment)" % fewest)
 	root.free()

@@ -23,6 +23,7 @@ var avatars                     # app/people.gd, when the build has the people
 var _yaw := {}                  # person -> the way they last faced
 var _hat := {}                  # person -> wearing the hat (checked twice a second)
 var _hat_t := 1.0
+var _drove := false             # this view filled the avatars' people (and may clear them)
 ## A task step's kind to what the person is seen doing (docs/PLANT3D.md §18.3); a `work` step says its own `anim`.
 const STEP_ANIM := {"read": "inspect", "meet": "talk", "say": "radio", "call": "radio", "wait": "idle", "ack": "type",
 	"permit": "write", "lock": "wrench", "unlock": "wrench"}
@@ -132,8 +133,13 @@ func drive(delta: float) -> void:
 	var sm = e._sm if e != null else null
 	var out: Array = avatars.people
 	if sm == null:
-		out.clear()
+		# no staff in this run: the people are someone else's (a measurement's crowd, app/crowd.gd) or nobody's;
+		# only those this view put there are taken away
+		if _drove:
+			out.clear()
+			_drove = false
 		return
+	_drove = true
 	if _at.size() != sm.places.size():
 		_at.clear()
 		for pl in sm.places:
