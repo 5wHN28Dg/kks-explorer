@@ -20,7 +20,8 @@ const ALARM_WORDS := {
 
 
 ## {entries: [{step, kind, text, code, dev, prio}], summary: {…}, title}. `kind`: op, alarm, shelve, unshelve, trip,
-## fault, repair, interlock, machine, permit, lock, unlock, step (a procedure step that ended), start (the procedure
+## fault, repair, interlock, machine, permit, lock, unlock, remove_lock (a lock removed by authority), early (the
+## trainee's action made before its task step, counted when the step came: out of order, a deviation), step (a procedure step that ended), start (the procedure
 ## began). `dev` is ""
 ## or the deviation in words; `prio` an alarm's or trip's priority (0 otherwise).
 static func collect(engine, info, tracker) -> Dictionary:
@@ -44,7 +45,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 				devs[int(d[2])] = d
 	var sm := {"ops": 0, "refused": 0, "deviations": 0, "raised": 0, "prio": {1: 0, 2: 0, 3: 0}, "acked": 0,
 			"shelved": 0, "trips": 0, "first_out": PackedStringArray(), "faults": 0, "repairs": 0, "permits": {},
-			"locks": 0, "unlocks": 0, "permit_refused": 0}
+			"locks": 0, "unlocks": 0, "permit_refused": 0, "by_authority": 0, "early": 0}
 	var state := {}                     # alarm id -> its state (from step 0: the run may begin later)
 	var inputs: Array = engine.inputs
 	var in_i := 0
@@ -65,7 +66,8 @@ static func collect(engine, info, tracker) -> Dictionary:
 		var prev: String = state.get(ev[2], "normal") if ev[1] == "alarm" else ""
 		if ev[1] == "alarm":
 			state[ev[2]] = ev[3]
-		if (ev[1] == "lock" or ev[1] == "unlock") and ev[5] == "done" and typeof(ev[2]) == TYPE_STRING \
+		if (ev[1] == "lock" or ev[1] == "unlock" or ev[1] == "remove_lock") and ev[5] == "done" \
+				and typeof(ev[2]) == TYPE_STRING \
 				and m.work_ix.has(ev[2]) and m.works[m.work_ix[ev[2]]].has("isolation"):
 			var pts: Array = m.isolations[m.isolation_ix[m.works[m.work_ix[ev[2]]]["isolation"]]]["points"]
 			var lc: String = pts[int(ev[3])]["kks"]
@@ -153,7 +155,15 @@ static func collect(engine, info, tracker) -> Dictionary:
 							skipped.append(c)
 				if not skipped.is_empty():
 					e.text += " (not carried out on %s: locked out)" % ", ".join(skipped)
-			"permit", "lock", "unlock":
+			"early":
+				# §17.8: an action of the trainee's made before its task step, counted when the step came
+				var sm_ = engine._sm
+				var tt = sm_.tasks[ev[3]]["title"] if sm_ != null and sm_.tasks.has(ev[3]) else str(ev[3])
+				e.text = "%s, step %d: done before its step (made at %s)" % [tt, int(ev[4]) + 1,
+						W.model_time(int(ev[6]))]
+				e.dev = "done out of order: before its step was current"
+				sm.early += 1
+			"permit", "lock", "unlock", "remove_lock":
 				var wid = ev[2]
 				var wd: Dictionary = m.works[m.work_ix[wid]] if typeof(wid) == TYPE_STRING and m.work_ix.has(wid) else {}
 				e.code = String(wd.get("kks", ""))
@@ -164,6 +174,9 @@ static func collect(engine, info, tracker) -> Dictionary:
 					sm.locks += 1
 				elif ev[1] == "unlock":
 					sm.unlocks += 1
+				elif ev[1] == "remove_lock":
+					sm.unlocks += 1
+					sm.by_authority += 1
 				if ev[1] == "permit" and ev[5] == "done" and not wd.is_empty():
 					sm.permits[wid] = int(ev[6][0]) if ev[3] == "auto" else Permits.ACTIONS_TO.get(ev[3], 0)
 			"machine":
@@ -320,8 +333,11 @@ static func summary_lines(d: Dictionary) -> PackedStringArray:
 		var by := PackedStringArray()
 		for wid in sm.permits:
 			by.append("%s %s" % [wid, Permits.STATE_WORDS[sm.permits[wid]].to_lower()])
-		out.append("Permits to work: %d (%s); locks made %d, removed %d%s" % [sm.permits.size(), ", ".join(by),
-				sm.locks, sm.unlocks, (", %d refused" % sm.permit_refused) if sm.permit_refused > 0 else ""])
+		out.append("Permits to work: %d (%s); locks made %d, removed %d%s%s" % [sm.permits.size(), ", ".join(by),
+				sm.locks, sm.unlocks, (" (%d by authority)" % sm.by_authority) if sm.by_authority > 0 else "",
+				(", %d refused" % sm.permit_refused) if sm.permit_refused > 0 else ""])
 	elif sm.permit_refused > 0:
 		out.append("Permits to work: %d refused" % sm.permit_refused)
+	if sm.early > 0:
+		out.append("Done out of order: %d (made before their task step, counted when it came)" % sm.early)
 	return out

@@ -9,16 +9,16 @@ name: Walkdown Plant app
 
 on:
   pull_request:
-    paths: ['apps/plant3d/**', 'data/plant3d/**', 'ref/plant3d.py', 'ref/sjson.py', 'ref/courses.py',
+    paths: ['apps/plant3d/**', 'data/plant3d/**', 'ref/plant3d.py', 'ref/plant3d_staff.py', 'ref/sjson.py', 'ref/courses.py',
             'ref/make_plant3d_vectors.py', 'ref/vectors/plant3d-v1.json', 'ref/vectors/plant3d-v2.json',
-            'tests/test_plant3d.py',
+            'tests/test_plant3d.py', 'tests/test_plant3d_staff.py',
             'tests/test_plant3d_bench.py', 'docs/plant3d/FIRST-TRAIN.md', 'tools/plant3d/**',
             '.github/workflows/plant3d-app.yml']
   push:
     branches: [main]
-    paths: ['apps/plant3d/**', 'data/plant3d/**', 'ref/plant3d.py', 'ref/sjson.py', 'ref/courses.py',
+    paths: ['apps/plant3d/**', 'data/plant3d/**', 'ref/plant3d.py', 'ref/plant3d_staff.py', 'ref/sjson.py', 'ref/courses.py',
             'ref/make_plant3d_vectors.py', 'ref/vectors/plant3d-v1.json', 'ref/vectors/plant3d-v2.json',
-            'tests/test_plant3d.py',
+            'tests/test_plant3d.py', 'tests/test_plant3d_staff.py',
             'tests/test_plant3d_bench.py', 'docs/plant3d/FIRST-TRAIN.md', 'tools/plant3d/**',
             '.github/workflows/plant3d-app.yml']
   workflow_dispatch:
@@ -31,6 +31,26 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # the content tests (the validator, the generator's output, the vectors) in a job of their own, in two parts side by
+  # side: in the app's job they had grown to 30 of its 40 minutes (S1's staff, W3's runs), before its build and tests
+  content:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        tests: ['tests.test_plant3d', 'tests.test_plant3d_staff tests.test_plant3d_bench']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; Godot (the bench's tests), checked by SHA-512 when fetched
+        with:
+          path: ~/.local/kksdev/godot
+          key: godot-editor-4.7.2-${{ hashFiles('tools/plant3d/bench/fetch_godot.sh') }}
+      - name: Godot 4.7.2 (pinned)
+        run: tools/plant3d/bench/fetch_godot.sh
+      - name: The content tests (the validator, the generator's output, the vectors)
+        run: python3 -m unittest ${{ matrix.tests }}
+
   plant3d:
     runs-on: ubuntu-24.04            # its image has the Android SDK (apksigner) the Android export needs
     timeout-minutes: 40
@@ -55,8 +75,6 @@ jobs:
           key: kit-textures-${{ hashFiles('apps/plant3d/kit/fetch_textures.sh') }}
       - name: Godot 4.7.2 and the JDK 17 of its Android Gradle build (pinned)
         run: tools/plant3d/bench/fetch_godot.sh && tools/plant3d/fetch_jdk.sh
-      - name: The content tests (the validator, the generator's output, the vectors)
-        run: python3 -m unittest tests.test_plant3d tests.test_plant3d_bench
       - name: Content check, content build, the app's tests, headless exports
         run: apps/plant3d/build.sh export
       - name: Sizes

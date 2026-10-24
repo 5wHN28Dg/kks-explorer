@@ -205,7 +205,7 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 					return "a damaged %s" % k
 	if d.has("queue"):
 		var sizes := {"op": 5, "ack": 2, "shelve": 3, "unshelve": 2, "fault": 2, "repair": 2, "permit": 4, "lock": 4,
-				"unlock": 4}
+				"unlock": 4, "remove_lock": 5}
 		for q in d["queue"]:
 			# a repair is the trainer's [repair, fault] or the trainee's under a permit [repair, fault, work, person]
 			if typeof(q) != TYPE_ARRAY or q.is_empty() or typeof(q[0]) != TYPE_STRING:
@@ -214,6 +214,15 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 			if not sizes.has(q[0]) or (q.size() != sizes[q[0]] and not under) \
 					or (q[0] in ["fault", "repair"] and typeof(q[1]) != TYPE_STRING):
 				return "a damaged input"
+	# the trainee's actions kept for a later step (PLANT3D §17.8): records the staff step indexes blindly
+	if d.has("st_early"):
+		for r in d["st_early"]:
+			if typeof(r) != TYPE_ARRAY or r.size() < 4 or not r[0] in ["op", "permit", "lock", "unlock"] \
+					or (r[0] == "op" and (r.size() != 6 or typeof(r[2]) != TYPE_STRING or typeof(r[3]) != TYPE_STRING \
+					or typeof(r[4]) != TYPE_STRING)) \
+					or (r[0] == "permit" and (r.size() != 5 or typeof(r[2]) != TYPE_STRING or typeof(r[3]) != TYPE_STRING)) \
+					or (r[0] in ["lock", "unlock"] and (r.size() != 4 or typeof(r[3]) != TYPE_INT)):
+				return "a damaged record of the trainee's actions"
 	# permits and isolations (PLANT3D §15): states, holders and locks the engine indexes with, and that agree
 	if d.has("pstate"):
 		for s in d["pstate"]:
@@ -304,6 +313,7 @@ func restore(p: Dictionary) -> void:
 	ui.sounds.reset_edges()
 	ui.alarms.on_events(e.events, 0)
 	ui._ev_seen = e.events.size()
+	ui._jumps = e.J                 # a jump made before the save is not one to follow again
 	ui.results = p["ui"]["results"]
 	ui._pending = p["ui"]["pending"]
 	ui.permits.waiting_from(e)

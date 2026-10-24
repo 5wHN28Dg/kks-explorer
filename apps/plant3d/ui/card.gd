@@ -220,6 +220,10 @@ func _repair_note(e, rp: Array, near: bool, asked: bool) -> String:
 			var num: String = Permits.number_of(e, w["id"])
 			return "Under its permit to work only (%s%s: %s): its isolation in place and the permit accepted" % [
 					w["title"], (", " + num) if num != "" and st != 0 else "", Permits.STATE_WORDS[st].to_lower()]
+		# who may repair under it: as the permit's done, the acceptor (the engine's own rule, §15.5)
+		if e._sm != null and e._authority(ui.me(), false, "accept", w["discipline"], true, w["id"]):
+			return ("Only whoever accepted the permit repairs it under the permit (another %s technician while they "
+					+ "are off shift): not your role") % Permits.DISCIPLINES.get(w["discipline"], w["discipline"]).to_lower()
 		# another work's lock on the code: the repair would not be made (§15.1)
 		var fk: int = e._fault_ix.get(String(rp[0]["id"]), -1)
 		if fk != -1 and e._blocked(e._faults[fk][4], e.m.work_ix[w["id"]]):
