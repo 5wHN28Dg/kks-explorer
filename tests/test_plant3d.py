@@ -1013,6 +1013,25 @@ class Engine(unittest.TestCase):
         self.assertFalse(states[32]['fast_forward'])
 
 
+def frozen_parts(parts):
+    """Gives a vector test class one test per part of its file (`parts`: G.parts or G.parts2): the part as the
+    generator makes it now equals the file's. Together with the class's test that the file has exactly the generator's
+    parts, this is the whole file compared, a part per test so that CI can make them side by side."""
+    def add(cls):
+        for k in parts():
+            def test(self, k=k):
+                made = json.loads(G.dump({k: parts()[k]()}))[k]
+                self.assertIn(k, self.V)
+                self.assertEqual(self.V[k], made, f'{k}: run python3 ref/make_plant3d_vectors.py --write')
+            test.__name__ = f'test_frozen_{k}'
+            test.__qualname__ = f'{cls.__qualname__}.{test.__name__}'
+            test.__doc__ = f'The vectors\' `{k}` is what the generator makes.'
+            setattr(cls, test.__name__, test)
+        return cls
+    return add
+
+
+@frozen_parts(G.parts)
 class Vectors(unittest.TestCase):
     """The vector file is what the generator makes (this also re-runs the cold start and every fork), and replaying
     its inputs on a fresh engine gives its events and values: what the app's evaluator must do."""
@@ -1022,10 +1041,11 @@ class Vectors(unittest.TestCase):
         with open(G.OUT, encoding='utf-8') as f:
             cls.text = f.read()
         cls.V = json.loads(cls.text)
-        cls.built = json.loads(G.dump(G.build()))
 
     def test_file_is_frozen(self):
-        self.assertEqual(json.loads(self.text), self.built, 'run python3 ref/make_plant3d_vectors.py --write')
+        """The file has the generator's parts in its order; each part is made and compared by a test of its own
+        (test_frozen_<part>, below), so that CI can run them side by side (tests/shards.py)."""
+        self.assertEqual(list(self.V), list(G.parts()), 'run python3 ref/make_plant3d_vectors.py --write')
 
     def test_unit_steps_replay(self):
         for s in self.V['steps']:
@@ -1068,12 +1088,12 @@ class Vectors(unittest.TestCase):
             self.assertEqual(got[k], {'open': 'start'}, k)
 
     def test_train_replay(self):
-        """The cold start's inputs alone reproduce its events, every snapshot (to 1e-6), and each fork; so do the hot
-        restart's."""
-        b = P.check_dir(DATA)
-        for name in ('train', 'hot'):
-            with self.subTest(name):
-                self._replay(b, self.V[name])
+        """The cold start's inputs alone reproduce its events, every snapshot (to 1e-6), and each fork."""
+        self._replay(P.check_dir(DATA), self.V['train'])
+
+    def test_hot_replay(self):
+        """So do the hot restart's (a test of its own, as test_train_replay: CI runs them side by side)."""
+        self._replay(P.check_dir(DATA), self.V['hot'])
 
     def _replay(self, b, t):
         e = P.Engine(b, t['scenario'])
@@ -1122,6 +1142,7 @@ def replay_asking(e, inputs, until, effects, tc):
     return got
 
 
+@frozen_parts(G.parts2)
 class Vectors2(unittest.TestCase):
     """Format 2 (PLANT3D §14–§15, §19; milestone P1: permits, isolations and the hold node): the file is what the
     generator makes; its valid plant passes with its counts, each reject is caught with its code; its unit runs and
@@ -1134,8 +1155,8 @@ class Vectors2(unittest.TestCase):
         cls.V = json.loads(cls.text)
 
     def test_file_is_what_the_generator_makes(self):
-        self.assertEqual(json.loads(self.text), json.loads(G.dump(G.build2())),
-                         'run python3 ref/make_plant3d_vectors.py --write')
+        """The generator's parts in its order; each part is compared by its own test_frozen_<part> (as Vectors)."""
+        self.assertEqual(list(self.V), list(G.parts2()), 'run python3 ref/make_plant3d_vectors.py --write')
 
     def test_valid(self):
         for v in self.V['valid']:
