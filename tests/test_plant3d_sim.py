@@ -41,6 +41,8 @@ def apply(e, item):
         e.shelve(item[2], item[3])
     elif kind == 'unshelve':
         e.unshelve(item[2])
+    elif kind == 'repair' and len(item) > 3:
+        e.repair_under(item[2], item[3], item[4])       # the trainee's, under a permit (PLANT3D §15.5)
     elif kind == 'repair':
         e.repair(item[2])
     elif kind == 'permit':
@@ -108,6 +110,10 @@ def steps_runs(valid_files, steps, keep=None, prefix=''):
     return out
 
 
+# the water treatment plant's runs in plant3d-v2.json (W2: its start from cold; W3: cleaning in place, regeneration)
+WTP_RUNS = ('wtp', 'wtp_cip', 'wtp_regen')
+
+
 def reference_runs(V, keep=None, V2=None):
     """Every run of run_vectors.gd on the reference: {run: (first step hashed, chunk digests, names, kept values)}.
     keep = (run, from, to) keeps that run's values at those steps."""
@@ -126,8 +132,9 @@ def reference_runs(V, keep=None, V2=None):
             out[run] = r
         if 'train' in V2:
             train_runs(b, 'v2/train', V2['train'], out, k, 'v2/')
-        if 'wtp' in V2:
-            train_runs(b, 'v2/wtp', V2['wtp'], out, k, 'v2/')
+        for run in WTP_RUNS:
+            if run in V2:
+                train_runs(b, f'v2/{run}', V2[run], out, k, 'v2/')
     return out
 
 
@@ -236,7 +243,7 @@ class GdscriptEngine(unittest.TestCase):
         self.assertNotIn('FAIL', out)
         n = 1 + len(self.V['steps']) + len(self.V['links']) + 2 * (1 + 1) + len(self.V['train']['forks']) + \
             len(self.V['hot']['forks']) + 1 + len(self.V2['steps']) + len(self.V2.get('train', {}).get('forks', [])) + \
-            (2 + len(self.V2['wtp']['forks']) if 'wtp' in self.V2 else 0)
+            sum(2 + len(self.V2[r]['forks']) for r in WTP_RUNS if r in self.V2)
         self.assertIn(f'VECTORS passed={n} failed=0', out)
 
     def test_every_value_bit_for_bit(self):
@@ -325,9 +332,21 @@ def edge_steps():
               'ops': [{'kks': A, 'do': 'set', 'input': 'u', 'range': [0, 2], 'where': ['screen']},
                       {'kks': B, 'do': 'start', 'set': {'k': 1}, 'where': ['local']}],
               'alarms': [{'id': 'al', 'kks': A, 'text': 'U high', 'when': 'on', 'priority': 1, 'where': A}]}
+    table = [[x * 1.0, (x * 0.37) % 7.1] for x in range(1024)]
+    big = {'values': [['u', {'state': 0}], ['r', {'ramp': 'u', 'rate': 1000}],
+                      ['lin', {'of': 'r', 'table': table}], ['stp', {'of': 'r', 'table': table, 'step': True}],
+                      ['h', {'cmp': ['r', '>=', 500]}],
+                      ['sm', {'sum': ['lin', 'stp', 0.1] * 13 + ['r']}], ['pr', {'product': ['h', 1.01] * 20}],
+                      ['mn', {'min': ['lin', 'stp', 3] * 13 + ['r']}], ['mx', {'max': ['stp', 'lin', -1] * 13 + ['r']}],
+                      ['an', {'and': ['h', 1] * 20}], ['orr', {'or': [0, 'h'] * 20}],
+                      ['one', {'of': 'r', 'table': [[5, 2]]}], ['one_s', {'of': 'r', 'table': [[5, 2]], 'step': True}]],
+           'ops': [{'kks': A, 'do': 'set', 'input': 'u', 'range': [0, 2000], 'where': ['screen']}]}
     return [
         ('delays longer than 2^31 steps never fire (and an off delay that long never drops)', long_delay,
          {'ambient_t': 20}, [], [], 4),
+        ("nodes past the generated program's limits (engine.gd _FAST_TERMS, _FAST_ROWS): 1024-row tables, "
+         'linear and steps, one-row tables, and lists of 40 refs', big, {'ambient_t': 20}, [], [[1, 'op', A, 'set', 1000, None],
+                                                                                [12, 'op', A, 'set', 0, None]], 30),
         ('shelving times at the half step, a bool as a set value, refusals, unknown ops, -0.0 through min, max, '
          'sum and select', inputs, {'ambient_t': 20}, [], [
             [1, 'op', A, 'set', 1, None], [2, 'shelve', 'al', 0.05], [3, 'shelve', 'al', 0.15],
@@ -378,10 +397,121 @@ class GdscriptEngineEdges(unittest.TestCase):
             no_errors(self, r)
             self.assertEqual(r.returncode, 0, r.stdout[-4000:])
             self.assertIn(f'VECTORS passed={len(E["steps"])} failed=0', r.stdout)
+            self.assertIn(f'PROGRAM straight-line={len(E["steps"])} interpreter=0', r.stdout)
             with open(dig, encoding='utf-8') as f:
                 got = json.load(f)
         for run, (start, chunks, _, _) in steps_runs(V['valid'][0]['files'], E['steps']).items():
             self.assertEqual(got[run]['chunks'], chunks, run)
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptEngineInterpreter(unittest.TestCase):
+    """The engine steps with a straight-line GDScript program generated from the model (engine.gd _gen_fast), which
+    every other test here runs. Its interpreter (engine.gd _run: step 0, faults' `when` nodes, and every step when the
+    program could not be compiled) must give the same bits: the unit runs (formats 1 and 2) and the edge runs, stepped by
+    it alone."""
+
+    def test_unit_and_edge_runs(self):
+        with open(VECTORS, encoding='utf-8') as f:
+            V = json.load(f)
+        E = build_edge_vectors(V)
+        with tempfile.TemporaryDirectory() as d:
+            for name, vec in (('steps', V), ('edges', E)):
+                path = os.path.join(d, name + '.json')
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(vec, f)
+                dig = os.path.join(d, name + '-digests.json')
+                r = godot('run_vectors.gd', f'--vectors={path}', '--only=steps', f'--digests={dig}', '--interpreter=1',
+                          timeout=600)
+                no_errors(self, r)
+                self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+                self.assertIn(f'VECTORS passed={len(vec["steps"])} failed=0', r.stdout)
+                self.assertIn(f'PROGRAM straight-line=0 interpreter={len(vec["steps"])}', r.stdout)
+                with open(dig, encoding='utf-8') as f:
+                    got = json.load(f)
+                for run, (start, chunks, _, _) in steps_runs(V['valid'][0]['files'], vec['steps']).items():
+                    self.assertEqual(got[run]['chunks'], chunks, f'{name} {run}')
+            # format 2's unit runs (permits, isolations, the hold node), without its train and water plant runs
+            with open(VECTORS2, encoding='utf-8') as f:
+                V2 = json.load(f)
+            V2 = {k: v for k, v in V2.items() if k != 'train' and k not in WTP_RUNS}
+            path = os.path.join(d, 'v2.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(V2, f)
+            dig = os.path.join(d, 'v2-digests.json')
+            r = godot('run_vectors.gd', '--only=v2', f'--vectors2={path}', f'--digests={dig}', '--interpreter=1',
+                      timeout=600)
+            no_errors(self, r)
+            self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+            self.assertIn(f'VECTORS passed={1 + len(V2["steps"])} failed=0', r.stdout)
+            self.assertIn(f'PROGRAM straight-line=0 interpreter={len(V2["steps"])}', r.stdout)
+            with open(dig, encoding='utf-8') as f:
+                got = json.load(f)
+            for run, (start, chunks, _, _) in steps_runs(V2['valid'][0]['files'], V2['steps'], prefix='v2/').items():
+                self.assertEqual(got[run]['chunks'], chunks, run)
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptEngineFastOutsideReference(unittest.TestCase):
+    """Where the reference has no result (it raises), the straight-line program must still do what the interpreter
+    does (apps/plant3d/sim/tests/check_fast.gd), and a program that fails to compile is tried once per model."""
+
+    def files(self, d, model):
+        with open(VECTORS, encoding='utf-8') as f:
+            V = json.load(f)
+        files = dict(V['valid'][0]['files'])
+        files['model/a1.json'] = json.dumps(dict({'format': 'walkdown-plant-model', 'version': 1, 'area': 'a1'},
+                                                 **model))
+        files['scenarios/s1.json'] = json.dumps({'format': 'walkdown-plant-scenario', 'version': 1, 'id': 's1',
+                                                 'title': 'Edges', 'init': {'ambient_t': 20}, 'faults': []})
+        del files['procedures/p1.json']
+        del files['screens.json']
+        path = os.path.join(d, 'files.json')
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(files, f)
+        return path
+
+    def test_one_row_table_given_nan(self):
+        """A one-row linear table fed NaN: _table reads the next node's arguments as its second row and gives NaN
+        (the reference raises IndexError); an unrolled `if u < x0 / elif u >= x0` would keep the last step's value.
+        Here the input is -inf for 3 steps, then NaN (inf * 0)."""
+        model = {'values': [['k', {'state': 1}], ['u', {'state': 100000000}], ['inf', {'product': ['u'] * 64}],
+                            ['d', {'delay': 'k', 'on': 0.3, 'off': 0.1}], ['z', {'diff': ['d', 1]}],
+                            ['x', {'product': ['inf', 'z']}], ['one', {'of': 'x', 'table': [[5, 2]]}],
+                            ['after', {'of': 'k', 'table': [[1, 3], [2, 4]]}]]}
+        with tempfile.TemporaryDirectory() as d:
+            r = godot('check_fast.gd', f'--files={self.files(d, model)}', '--steps=8', timeout=300)
+        no_errors(self, r)
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+        self.assertIn('FAST steps=8 differ=0', r.stdout)
+
+    def test_failed_compile_cached(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = godot('check_fast.gd', f'--files={self.files(d, {"values": [["k", {"state": 1}]]})}', '--broken=1',
+                      timeout=300)
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+        self.assertIn('BROKEN cached=true fast=<null>,<null>', r.stdout)
+
+
+# The bench's gate: generous, so that a busy runner doesn't fail it (about 0.12 ms a step on the laptop with the
+# straight-line program, 0.5 ms before it; CI's runner has been 1.5-2 times slower than the laptop). Losing the
+# program itself is caught exactly by the PROGRAM line.
+MAX_STEP_US = 750
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptEngineStepCost(unittest.TestCase):
+    """The model's step on this machine (apps/plant3d/sim/tests/bench_step.gd, the whole plant over the cold start
+    and at base load): printed for the record, and failed above MAX_STEP_US microseconds."""
+
+    def test_step_cost(self):
+        r = godot('bench_step.gd', '--base-steps=3000', f'--max-us={MAX_STEP_US}', timeout=900)
+        print('\n' + '\n'.join(x for x in r.stdout.splitlines() if x.split(' ')[0] in ('LOAD', 'COMPILE', 'PROGRAM', 'STEP',
+                                                                                  'BATCH', 'FF_CHECK', 'GATE')))
+        no_errors(self, r)
+        self.assertIn('PROGRAM straight-line', r.stdout)
+        self.assertEqual(r.returncode, 0, r.stdout[-3000:])
+        self.assertIn('GATE ok', r.stdout)
 
 
 def no_errors(case, r):

@@ -119,7 +119,8 @@ steps every 0.1 s of plant time whatever the frame rate. Fast-forward is offered
 unacknowledged alarm, no active priority 1 alarm, no machine in a step to watch) and stops by itself when that
 changes, or when a procedure step is done. It is capped so that the model takes at most a quarter of one core,
 from the measured cost of a step: 60× on a laptop, about 18× on the Note 9 (1.4 ms a step) before the water
-treatment plant's model, about 10× with it (W2: about 2.5 ms a step, apps/plant3d/sim/README.md).
+treatment plant's model, 9–13× with it (W2: 1.9–2.7 ms a step), and about 31–33× since the engine runs its model as
+generated straight-line code (0.8 ms a step, the same results bit for bit: apps/plant3d/sim/README.md).
 
 - **Cards:** the code with its meaning from the plant's key table, where it is (and "Go there"), its state and
   values, its alarms and its operations. An operation is offered where the content's `where` says: within 6 m of the
@@ -148,13 +149,16 @@ treatment plant's model, about 10× with it (W2: about 2.5 ms a step, apps/plant
   down stairs and ladders, from wherever the trainee stands, and the arrow's distance is then the walk's.
 - **Instructor mode** (settings): the scenario to restart in (`cold_iron`, `hot_restart`) and the scenario's trainer
   faults: Apply, then Repair (a repaired fault can be applied again). The trainee repairs a fault at its equipment
-  too: the card there offers it within reach while the fault is applied. The debrief lists every repair.
+  too, under its work's permit to work (docs/PLANT3D.md §15.5): the card there shows it while the fault is applied and
+  offers it within reach once the permit is accepted (and says why not otherwise). The debrief lists every repair.
 - **Permits to work** (`ui/permit_panel.gd`, `ui/permits.gd`; docs/PLANT3D.md §15): the plant's works and their
   permits. A work's form shows its number (PTW-0001), state, steps, its isolation's points with how each is made safe
   and which are locked, the next actions and the history. In free mode the trainee plays each role in turn (the
   button says whose step it is: the maintenance supervisor requests, the shift supervisor approves, issues and closes,
   the technician accepts, finishes and hands back). Each point is locked and tagged at its equipment (within reach,
-  as a local operation; Go there flies there); the permit is isolated when the last lock is on and de-isolated when
+  as a local operation; Go there flies there). Before a lock is sent the engine is asked what it would do
+  (§15.6, on a worker thread, the button saying it is checking): a lock that would trip a machine or raise a priority
+  1 alarm is warned about and sent only on "Lock it anyway" (the focus on "Don't lock"). The permit is isolated when the last lock is on and de-isolated when
   the last is off. A locked code refuses its operations (the card says why), skips every automatic write (a standby
   pump's auto-start) and suppresses its alarms; an isolated transmitter holds its reading and votes tripped. The
   screens and cards show a padlock and the permit's number; the debrief has a Permits tab.
@@ -328,8 +332,11 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
 - `test_ui_operate`, `test_ui_alarms`, `test_ui_links`, `test_ui_clock`, `test_ui_parts`: operations offered and
   refused, alarms acknowledged and shelved, links, the clock and its cap, moving parts and sounds.
 - `test_ui_repair`: a fault applied and repaired from the instructor's panel and applied again, repaired by the
-  trainee at its equipment (within reach only), a CW valve without its supply opened by its handwheel and stopped,
-  the debrief's repairs, a run saved with a repair waiting.
+  trainee at its equipment under its accepted permit (not before, within reach only; the work's done then repairs
+  nothing), a CW valve without its supply opened by its handwheel and stopped, the debrief's repairs, a run saved
+  with a repair waiting.
+- `test_ui_permit_warning`: what a lock would do (docs/PLANT3D.md §15.6): a lock that trips nothing sent once
+  checked; one that would trip the steam turbine warned about, answered by touch, gamepad and keyboard.
 
 A test stopped by a script error counts as failed (the runner counts script errors). `tests/ui_shots.gd` saves
 screenshots of the UI in use: `tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script

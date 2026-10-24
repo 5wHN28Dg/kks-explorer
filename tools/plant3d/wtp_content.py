@@ -1,6 +1,7 @@
 """The water treatment plant's procedures and tour (docs/plant3d/WATER-TREATMENT.md §7): the tour of milestone W1, and
 W2's start-up from cold (`wtp_start`), a filter's backwash (`filter_backwash`) and an RO train's stop with its flush
-(`ro_stop_flush`). The model is wtp_model.py. CIP and the mixed beds' regeneration are W3's."""
+(`ro_stop_flush`); W3's cleaning of an RO train in place (`ro_cip`) and a mixed bed's regeneration (`mb_regeneration`).
+The model is wtp_model.py."""
 from train_content import k, tour, step, op
 
 
@@ -123,8 +124,103 @@ def ro_stop_flush():
             'steps': S}
 
 
+def ro_cip():
+    """RO B cleaned in place ([FT] §6.3, tables 35–37; [TSB] p. 2, p. 8–12): a high-pH cleaning, then a low-pH one,
+    each recirculated through one stage at a time, soaked and flushed; the wastes neutralised in the pit."""
+    def clean(sid, what, c):
+        return step(sid, [f'Clean RO train B (', k('00GCB22AT001'), f') with the {what} solution: the CIP pump (',
+                          k('00GCB30AP001'), ') recirculates it through the first stage, then the second, the elements '
+                          'soak, and permeate flushes the solution to the neutralisation pit.'],
+                    ['00GCB22AT001', '00GCB30AP001'], [op('00GCB22AT001', 'clean')], f'ro_b_{c}_cleaned',
+                    ['One stage at a time, at 6–10 m³/h a vessel and under 4 bar: the flow lifts the foulant off the '
+                     'membranes without pressing it in. About two hours of the clock.'])
+    S = [
+        step('check', ['RO train B (', k('00GCB22AT001'), ') came off line for its cleaning: its normalised permeate '
+                       'flow (', k('00GCB22CF001'), ') is down to 89 %, more than 10 % under its clean value. RO A '
+                       'carries the plant meanwhile.'], ['00GCB22CF001'], (), 'ro_b_nflow_l0',
+             ['Normalised flow corrects the permeate flow for temperature and pressure: a fall of 10 %, a rise of 5–10 % '
+              'in salt passage or of 15 % in differential pressure calls for a cleaning ([FT] §6.3).'], go='walk'),
+        step('fill', ['Fill the CIP tank (', k('00GCB30BB001'), ') with RO permeate.'], ['00GCB30BB001'],
+             [op('00GCB30BB001', 'fill')], 'cip_water',
+             ['Permeate, free of chlorine and hardness: tap or filtered water would scale or oxidise the membranes.']),
+        step('caustic', ['Dose caustic soda into the tank (0.1 % NaOH, pH 12) and start its heater (', k('00GCB30AH001'),
+                         '): the solution must be at pH 11.5–12 and 30–35 °C.'], ['00GCB30BB001', '00GCB30AH001'],
+             [op('00GCB30BB001', 'add_caustic'), op('00GCB30AH001', 'start')], 'cip_alk_ok',
+             ['High pH first: it takes off the colloids, the organics and the biofilm, which an acid would only fix '
+              'to the membrane. Warm it works faster, but polyamide takes pH 12 only up to 35 °C.']),
+        clean('clean_alk', 'high-pH', 'alk'),
+        step('drain_alk', ['Stop the heater (', k('00GCB30AH001'), ') and drain the CIP tank (', k('00GCB30BB001'),
+                           ') to the neutralisation pit.'], ['00GCB30BB001', '00GCB30AH001'],
+             [op('00GCB30AH001', 'stop'), op('00GCB30BB001', 'drain')], 'cip_idle_off'),
+        step('fill2', ['Fill the CIP tank (', k('00GCB30BB001'), ') with permeate again.'], ['00GCB30BB001'],
+             [op('00GCB30BB001', 'fill')], 'cip_water'),
+        step('acid', ['Dose hydrochloric acid into the tank (0.2 % HCl, pH 2) and wait for its pH (', k('00GCB30CQ001'),
+                      ') under 2.5.'], ['00GCB30BB001', '00GCB30CQ001'], [op('00GCB30BB001', 'add_acid')],
+             'cip_acid_ok', ['Low pH takes off the scale (calcium carbonate, metal oxides) the antiscalant did not '
+                             'hold back.']),
+        clean('clean_acid', 'low-pH', 'acid'),
+        step('drain_acid', ['Drain the CIP tank (', k('00GCB30BB001'), ') to the neutralisation pit.'],
+             ['00GCB30BB001'], [op('00GCB30BB001', 'drain')], 'cip_idle'),
+        step('flow', ['RO B\'s normalised permeate flow (', k('00GCB22CF001'), ') is back above 98 %: the train is '
+                      'clean and ready as the standby train.'], ['00GCB22CF001'], (), 'ro_b_nflow_ok',
+             ['A cleaning restores most of the flow, never all of it: what is left builds up over the membranes\' '
+              'life until they are replaced.']),
+        step('pit', ['Start the neutralisation batch at the pit (', k('00GNR10BB001'), '): the caustic and acid '
+                     'wastes are dosed to pH 6.5–8.5, mixed and checked, then discharged.'],
+             ['00GNR10BB001', '00GNR10CQ001'], [op('00GNR10BB001', 'neutralise')], 'nr_on',
+             ['The two wastes partly neutralise each other; the acid\'s is the larger, so the batch doses caustic. '
+              'The discharge is allowed only between pH 6 and 9.']),
+    ]
+    return {'format': 'walkdown-plant-procedure', 'version': 1, 'id': 'ro_cip',
+            'title': 'Water treatment plant: clean an RO train in place', 'kind': 'procedure',
+            'scenario': 'wtp_normal',
+            'intro': [{'p': ['Clean RO train B with the CIP skid (', k('00GCB30BB001'), '): a high-pH cleaning, then a '
+                             'low-pH one, the wastes neutralised in the pit before they are discharged.']}],
+            'steps': S}
+
+
+def mb_regeneration():
+    """Mixed bed A regenerated ([MB] p. 2–3): the standby bed in service first, then backwash and separation, settle,
+    drain, the regenerants together, displacement, drain, air mix, refill, final rinse; the wastes neutralised."""
+    S = [
+        step('mb_b', ['Mixed bed A (', k('00GCF11AT001'), ') is near exhaustion. Put mixed bed B (', k('00GCF12AT001'),
+                      ') in service and start its feed pump (', k('00GCK10AP002'), ').'],
+             ['00GCF12AT001', '00GCK10AP002', '00GCF11CQ002'],
+             [op('00GCF12AT001', 'in_service'), op('00GCK10AP002', 'start')], 'mb_b_making',
+             ['Silica breaks through first, before the conductivity rises: the bed is changed over before it '
+              'spoils the demineralised water tanks.'], ordered=True),
+        step('mb_a_off', ['Stop mixed bed feed pump A (', k('00GCK10AP001'), ') and put mixed bed A in standby.'],
+             ['00GCK10AP001', '00GCF11AT001'],
+             [op('00GCK10AP001', 'stop'), op('00GCF11AT001', 'standby')], 'mb_a_taken', ordered=True),
+        step('regen', ['Start the regeneration of mixed bed A (', k('00GCF11AT001'), '): backwash and separation, '
+                       'settling, drain down.'], ['00GCF11AT001'], [op('00GCF11AT001', 'regenerate')], 'mb_a_rdy',
+             ['The backwash lifts the bed: the anion resin, lighter, settles above the cation resin, so each can take '
+              'its own regenerant.']),
+        step('inject', ['Check the acid (', k('00GCP10BB001'), ') and caustic (', k('00GCP20BB001'), ') tanks, and '
+                        'start the injection of the regenerants.'], ['00GCP10BB001', '00GCP20BB001', '00GCF11AT001'],
+             [op('00GCF11AT001', 'inject')], 'mb_a_airrdy',
+             ['Hydrochloric acid from below restores the cation resin, caustic soda from above the anion resin; both '
+              'leave by the collector at the interface. Three bed volumes of slow rinse push them out.']),
+        step('blower', ['Start the resin mixing blower (', k('00GCP30AN001'), ').'], ['00GCP30AN001'],
+             [op('00GCP30AN001', 'start')], 'gp_air_cmd'),
+        step('air', ['Start the air mix of mixed bed A (', k('00GCF11AT001'), '): the sequence stops the blower, '
+                     'refills the bed slowly and rinses it to under 0.1 µS/cm (', k('00GCF11CQ001'), ').'],
+             ['00GCF11AT001', '00GCF11CQ001'], [op('00GCF11AT001', 'air_mix')], 'mb_a_sb',
+             ['Mixed again, each grain of anion resin sits beside a cation one: the water meets hundreds of '
+              'exchanges in series, which is how a mixed bed polishes to under 0.1 µS/cm.']),
+        step('pit', ['Start the neutralisation batch at the pit (', k('00GNR10BB001'), ').'],
+             ['00GNR10BB001', '00GNR10CQ001'], [op('00GNR10BB001', 'neutralise')], 'nr_on',
+             ['The regenerants\' excess reaches the pit as acid: the batch doses caustic to pH 6.5–8.5 before the '
+              'discharge.']),
+    ]
+    return {'format': 'walkdown-plant-procedure', 'version': 1, 'id': 'mb_regeneration',
+            'title': 'Water treatment plant: regenerate a mixed bed', 'kind': 'procedure', 'scenario': 'wtp_normal',
+            'intro': [{'p': ['Change over to mixed bed B and regenerate mixed bed A, then neutralise its wastes.']}],
+            'steps': S}
+
+
 def procedures():
-    return [wtp_start(), filter_backwash(), ro_stop_flush(), wtp_tour()]
+    return [wtp_start(), filter_backwash(), ro_stop_flush(), ro_cip(), mb_regeneration(), wtp_tour()]
 
 
 def wtp_tour():

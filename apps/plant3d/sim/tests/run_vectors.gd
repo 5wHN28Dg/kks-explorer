@@ -1,6 +1,6 @@
 extends SceneTree
 ## Replays ref/vectors/plant3d-v1.json and plant3d-v2.json (format 2: permits, isolations, the hold node; the water
-## treatment plant's start from cold, `wtp`) through the
+## treatment plant's start from cold, `wtp`; W3's cleaning in place, `wtp_cip`, and regeneration, `wtp_regen`) through the
 ## app's engine (apps/plant3d/sim) and compares it with the reference (ref/plant3d.py), headless:
 ##   godot --headless --script apps/plant3d/sim/tests/run_vectors.gd [-- options]
 ## Options:
@@ -10,6 +10,8 @@ extends SceneTree
 ##   --digests=PATH    also write the SHA-256 of every value at every step of every run, in chunks of 1000 steps
 ##                     (tests/test_plant3d_sim.py compares them with the reference's: bit for bit)
 ##   --dump=RUN:FROM:TO   print every value's bits at steps FROM–TO of one run (steps/N, train, hot or a fork's id)
+##   --interpreter=1   step every engine with the interpreter (engine.gd _run), not the straight-line program; the
+##                     last lines say how many of the engines made here ran each ("PROGRAM straight-line=N interpreter=M")
 ##   --only=PARTS      some of: valid,steps,links,procedure,train,v2 (default all; procedure and train run both the
 ##                     cold start, `train`, and the hot restart, `hot`; v2 runs the format 2 file's valid plant,
 ##                     steps and train forks)
@@ -27,6 +29,8 @@ const Links = preload("../links.gd")
 const JsonStrict = preload("../json_strict.gd")
 
 const CHUNK := 1000
+## the water treatment plant's runs in plant3d-v2.json, each a start by its procedure with forks (W2, W3)
+const WTP_RUNS := ["wtp", "wtp_cip", "wtp_regen"]
 
 var repo := ""
 var opts := {}
@@ -36,6 +40,7 @@ var digests := {}
 var dump_run := ""
 var dump_from := 0
 var dump_to := -1
+var _programs := [0, 0]
 var expected := 0       # results the run must give: a script error that skips one fails the run
 
 
@@ -45,6 +50,7 @@ func _init() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--") and a.contains("="):
 			opts[a.substr(2, a.find("=") - 2)] = a.substr(a.find("=") + 1)
+	PlantEngine._interpret_only = opts.get("interpreter", "") == "1"
 	if opts.has("dump"):
 		var d: PackedStringArray = opts["dump"].rsplit(":", true, 2)
 		dump_run = d[0]
@@ -71,8 +77,9 @@ func _init() -> void:
 		expected += 1 + V2["steps"].size()
 		if V2.has("train"):
 			expected += V2["train"]["forks"].size()
-		if V2.has("wtp"):          # the water treatment plant's start from cold (W2): its procedure, run and forks
-			expected += 2 + V2["wtp"]["forks"].size()
+		for k in WTP_RUNS:         # the water treatment plant's runs by their procedures (W2, W3): procedure, run, forks
+			if V2.has(k):
+				expected += 2 + V2[k]["forks"].size()
 	var valid_files: Dictionary = V["valid"][0]["files"]
 	# the starts run by their procedures: the cold start (`train`) and the hot restart (`hot`, where the file has it)
 	var starts := ["train", "hot"].filter(func(k): return V.has(k))
@@ -92,7 +99,7 @@ func _init() -> void:
 		_valid(V2["valid"][0])
 		for k in V2["steps"].size():
 			_steps(k, V2["steps"][k], V2["valid"][0]["files"], "v2/")
-	if parts.has("procedure") or parts.has("train") or V2.has("train") or V2.has("wtp"):
+	if parts.has("procedure") or parts.has("train") or V2.has("train") or WTP_RUNS.any(func(k): return V2.has(k)):
 		train_model = PlantModel.from_dir(opts.get("data", repo.path_join("data/plant3d")))
 		if train_model.error != "":
 			_result("train model", train_model.error)
@@ -105,9 +112,10 @@ func _init() -> void:
 			_train(V[st], train_model, st)
 	if V2.has("train"):
 		_train(V2["train"], train_model, "v2/train")
-	if V2.has("wtp"):
-		_procedure(V2["wtp"], train_model)
-		_train(V2["wtp"], train_model, "v2/wtp")
+	for k in WTP_RUNS:
+		if V2.has(k):
+			_procedure(V2[k], train_model)
+			_train(V2[k], train_model, "v2/" + k)
 	if opts.has("digests"):
 		var f := FileAccess.open(opts["digests"], FileAccess.WRITE)
 		f.store_string(JSON.stringify(digests, " ", false))
@@ -116,6 +124,7 @@ func _init() -> void:
 
 
 func _finish(t0: int) -> void:
+	print("PROGRAM straight-line=%d interpreter=%d" % [_programs[0], _programs[1]])   # how the engines made here stepped
 	if passed + failed != expected:
 		failed += 1
 		print("FAIL the run: %d results, %d expected (a script error above stopped a vector)" % [passed + failed - 1,
@@ -273,6 +282,14 @@ func _apply_due(e, inputs: Array, i: int) -> int:
 	return i
 
 
+## Asks each of `effects` ([step, work, point, answer], §15.6) that falls at the run's step, after that step's inputs
+## are made and before it is stepped; appends [step, work, point, the engine's answer] to `got`.
+func _ask(e, effects: Array, got: Array) -> void:
+	for q in effects:
+		if int(q[0]) == e.step_no:
+			got.append([q[0], q[1], q[2], e.lock_effects(q[1], int(q[2]))])
+
+
 func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "") -> void:
 	var files := valid_files.duplicate()
 	files["model/a1.json"] = s["model"]
@@ -285,14 +302,17 @@ func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "")
 		_result(name, m.error)
 		return
 	var e = PlantEngine.new(m, "s1")
+	_programs[0 if e._fast != null else 1] += 1
 	var run := "%ssteps/%d" % [prefix, k]
 	_hash_begin(run, 0)
 	_hash(e)
 	var states: Array = s["states"]
 	var d := diff(e.snapshot(), states[0], "step 0")
 	var i := 0
+	var asked := []
 	while d == "" and e.step_no < states.size() - 1:
 		i = _apply_due(e, s["inputs"], i)
+		_ask(e, s.get("effects", []), asked)
 		e.step()
 		_hash(e)
 		d = diff(e.snapshot(), states[e.step_no], "step %d" % e.step_no)
@@ -301,6 +321,8 @@ func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "")
 		d = "inputs after the last step"
 	if d == "":
 		d = diff(e.events, s["events"], "events")
+	if d == "":
+		d = diff(asked, s.get("effects", []), "what a lock would do")
 	_result(name, d)
 
 
@@ -327,6 +349,7 @@ func _procedure(t: Dictionary, m) -> void:
 
 func _train(t: Dictionary, m, run: String) -> void:
 	var e = PlantEngine.new(m, t["scenario"])
+	_programs[0 if e._fast != null else 1] += 1
 	var forks: Array = t["forks"]
 	var bases := {}
 	for f in forks:
@@ -372,9 +395,11 @@ func _train(t: Dictionary, m, run: String) -> void:
 		var n0: int = x.events.size()
 		var fin := by_step(f["inputs"])
 		var j := 0
+		var asked := []
 		_hash_begin(("v2/" if run.begins_with("v2/") else "") + f["id"], x.step_no + 1)
 		while x.step_no < int(f["until"]):
 			j = _apply_due(x, fin, j)
+			_ask(x, f.get("effects", []), asked)
 			x.step()
 			_hash(x)
 		_hash_end()
@@ -385,4 +410,6 @@ func _train(t: Dictionary, m, run: String) -> void:
 			fd = diff(x.events.slice(n0), f["events"], "events")
 		if fd == "":
 			fd = diff(x.snapshot(false), f["end"], "end")
+		if fd == "":
+			fd = diff(asked, f.get("effects", []), "what a lock would do")
 		_result("fork " + f["id"], fd)

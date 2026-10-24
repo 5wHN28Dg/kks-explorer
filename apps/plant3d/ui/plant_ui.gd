@@ -29,6 +29,7 @@ const TrainerPanel = preload("res://ui/trainer_panel.gd")
 const PermitPanel = preload("res://ui/permit_panel.gd")
 const Autosave = preload("res://ui/autosave.gd")
 const DebriefPanel = preload("res://ui/debrief_panel.gd")
+const Debrief = preload("res://ui/debrief.gd")
 const WalkRoute = preload("res://app/walk_route.gd")
 const Mimic = preload("res://ui/mimic.gd")
 const ScreensModel = preload("res://ui/screens_model.gd")
@@ -341,9 +342,41 @@ func open_panel(p: String) -> void:
 	elif p.begins_with("card:"):
 		open_card(p.substr(5))
 	elif p == "screens" or p.begins_with("screens:"):
-		if not at_desk():
-			go_control_room(false)
-		open_screens(p.substr(8) if p.begins_with("screens:") else "")
+		open_screens_at_desk(p.substr(8) if p.begins_with("screens:") else "")
+
+
+## The screens at a screen (its id; "" the overview), from wherever the trainee is: at a desk that has it they open
+## there; else the trainee goes to a desk that has it (PLANT3D §14 `desks`), the main control room when it is one of
+## them, otherwise the first of its desks (the water treatment plant's own), and they open on arrival.
+func open_screens_at_desk(screen_id := "") -> void:
+	if screens.error != "":
+		open_screens(screen_id)
+		return
+	var i: int = screens.screen_index(screen_id) if screen_id != "" else -1
+	if screen_id != "" and i < 0:
+		toast("No screen %s." % screen_id)
+		return
+	if at_desk() and (screen_id == "" or screen_here(i)):
+		open_screens(screen_id)            # "": the desk's own first screen
+		return
+	var ds: Array = screens.overview.get("desks", []) if i < 0 else screens.screens[i].desks
+	if ds.is_empty():
+		ds = info.desks()
+	var to := ""
+	for d in ds:
+		if info.area_of.get(d, "") == "control":
+			to = d
+			break
+	if to != "" or ds.is_empty():
+		go_control_room(false)
+		open_screens(screen_id)
+		return
+	to = ds[0]
+	fly_to(to, func():
+		if at_desk() and screen_here(i):
+			open_screens(screen_id)
+		else:
+			toast("The screens are worked at %s." % info.name_of(to)))
 
 
 # ------------------------------------------------------------------ where the trainee is
@@ -463,10 +496,17 @@ func fault(fid: String) -> void:
 	toast("Fault pressed: it acts in the next step.")
 
 
-## A fault's repair (PLANT3D §7.8): from the instructor's panel, or by the trainee at its equipment (the card).
+## A fault's repair (PLANT3D §7.8): from the instructor's panel, or, in a plant without permits to work (version 1),
+## by the trainee at its equipment (the card).
 func repair(fid: String) -> void:
 	clock.engine.repair(fid)
 	toast("Repaired: it acts in the next step.")
+
+
+## The trainee's repair at the equipment under a work's permit to work (PLANT3D §15.5, a version 2 plant).
+func repair_under(fid: String, wid: String) -> void:
+	clock.engine.repair_under(fid, wid)
+	toast("Repaired under the permit: it acts in the next step.")
 
 
 func fast_forward() -> void:
@@ -994,6 +1034,10 @@ func _follow_events(evs: Array, from: int) -> void:
 					var say: String = model.machines[mi]["states"][_state_pos(mi, ev[4])].get("say", "")
 					if say != "":
 						toast(say)
+			"repair":
+				if ev.size() >= 7 and ev[6] is Array:     # the trainee's repair under a permit, not made (§15.5)
+					toast("Repair not made: %s" % ("; ".join(ev[6].map(func(x): return Debrief.REPAIR_WHY.get(x, str(x))))
+							if ev[5] == "refused" else "not a repair of that permit's work"))
 
 
 func _state_pos(mi: int, state: String) -> int:

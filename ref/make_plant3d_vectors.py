@@ -520,6 +520,8 @@ def apply(e, item):
         e.unshelve(item[2])
     elif kind == 'fault':
         e.fault(item[2])
+    elif kind == 'repair' and len(item) > 3:
+        e.repair_under(item[2], item[3], item[4])
     elif kind == 'repair':
         e.repair(item[2])
     elif kind == 'permit':
@@ -804,6 +806,7 @@ def run_fork(base, actions, probes=()):
     n_in = len(e.inputs)
     n_ev = len(e.events)
     seen = {n: {'max': e.v(n)} for n in probes}
+    effects, asked_at = [], []
 
     def step(k=1):
         for _ in range(k):
@@ -817,6 +820,13 @@ def run_fork(base, actions, probes=()):
             e.fault(a[1])
         elif a[0] == 'repair':
             e.repair(a[1])
+        elif a[0] == 'repair_under':
+            e.repair_under(a[1], a[2])
+        elif a[0] == 'effects':
+            # what a lock would do (§15.6), asked before the next step with its inputs made: no input of that step
+            # may follow it in the fork
+            effects.append([e.step_no, a[1], a[2], e.lock_effects(a[1], a[2])])
+            asked_at.append(len(e.inputs))
         elif a[0] == 'permit':
             e.permit(a[1], a[2])
         elif a[0] in ('lock', 'unlock'):
@@ -830,7 +840,9 @@ def run_fork(base, actions, probes=()):
                 step()
     for n in probes:
         seen[n]['end'] = e.v(n)
-    return e, start, e.inputs[n_in:], e.events[n_ev:], seen
+    for q, k in zip(effects, asked_at):
+        assert all(x[0] != q[0] + 1 for x in e.inputs[k:]), f'an input of step {q[0] + 1} after its effects query'
+    return e, start, e.inputs[n_in:], e.events[n_ev:], seen, effects
 
 
 def build_train(b, scenario='cold_iron', procedure='cold_start', fork_list=None):
@@ -850,7 +862,7 @@ def build_train(b, scenario='cold_iron', procedure='cold_start', fork_list=None)
     forks = []
     for fid, base, actions, expect in (FORKS if fork_list is None else fork_list):
         probes = sorted(set(expect.get('max', {})) | set(expect.get('end', {})))
-        f, start, fin, fev, seen = run_fork(bases[base], actions, probes)
+        f, start, fin, fev, seen, effects = run_fork(bases[base], actions, probes)
         fork = {'id': fid, 'base_step': start, 'inputs': fin, 'until': f.step_no, 'events': fev,
                 'end': f.snapshot(values=False), 'expect': expect}
         if probes:
@@ -911,6 +923,8 @@ def mini2():
                    'isolation': 'iso_pump', 'repairs': 'f1', 'task': 'job_pump'},
                   {'id': 'wo_gauge', 'kks': GAUGE, 'title': 'Gauge: calibration', 'discipline': 'inst',
                    'permit': 'general', 'isolation': 'iso_gauge', 'set': {}}]
+    # the pump's work repairs f1, whose repair (format 1's: the valve shut) would be a command of its own isolation
+    del F['scenarios/s1.json']['faults'][0]['repair']
     return F
 
 
@@ -952,8 +966,17 @@ REJECTS2 = [
     ('a work of an unknown discipline', 'bad_value', _set(WORK + [0, 'discipline'], 'paint')),
     ('a work with an unknown permit kind', 'bad_value', _set(WORK + [0, 'permit'], 'cold')),
     ('a work setting a value that is not a state', 'bad_ref', _set(WORK + [1, 'set'], {'flow': 0})),
+    ('a work restarting its own locked-out pump', 'locked_write', _set(WORK + [0, 'set'], {'pump_cmd': 1})),
+    ('a work moving a valve of its own isolation', 'locked_write', _set(WORK + [0, 'set'], {'valve_cmd': 0})),
+    ('a fault whose repair, made as its work\'s, restarts a pump the work locks out', 'locked_write',
+     _set(['scenarios/s1.json', 'faults', 0, 'repair'], {'pump_cmd': 1})),
+    ('a fault whose repair, made as its work\'s, moves the demand of a valve the work locks out', 'locked_write', _all(
+        _app(MOD + ['values'], ['valve_dem', {'state': 0, 'kks': VALVE}]),
+        _app(MOD + ['ops'], {'kks': VALVE, 'do': 'set', 'input': 'valve_dem', 'range': [0, 1], 'where': ['local']}),
+        _set(['scenarios/s1.json', 'faults', 0, 'repair'], {'valve_dem': 1}))),
     ('a work repairing a fault that is not an identifier', 'bad_id', _set(WORK + [0, 'repairs'], 'F 1')),
     ('two works with one id', 'dup_id', _set(WORK + [1, 'id'], 'wo_pump')),
+    ('two works repairing one fault', 'dup_id', _set(WORK + [1, 'repairs'], 'f1')),
     ('a work id over 22 characters', 'bad_id', _set(WORK + [1, 'id'], 'w' * 23)),
     ('over 128 works', 'limit', _set(WORK, [{'id': f'w{i}', 'kks': PUMP, 'title': 'W', 'discipline': 'mech',
                                               'permit': 'general'} for i in range(129)])),
@@ -993,6 +1016,7 @@ def unit_models2():
     pump = {
         'values': [
             ['pump_cmd', {'state': 0, 'kks': PUMP}], ['pump_fault', {'state': 0, 'kks': PUMP}],
+            ['motor_fault', {'state': 0, 'kks': PUMP}],
             ['valve_cmd', {'state': 0, 'kks': VALVE}], ['aux', {'state': 0}], ['aux2', {'state': 0}],
             ['pump_off', {'not': 'pump_cmd'}], ['valve_shut', {'not': 'valve_cmd'}],
             ['valve_open', {'cmp': ['valve_cmd', '>=', 0.5]}],
@@ -1027,16 +1051,18 @@ def unit_models2():
             {'id': 'iso_q', 'text': 'Pump: motor only',
              'points': [{'kks': PUMP, 'kind': 'electrical', 'safe': 'pump_off', 'how': 'Breaker locked'}]}],
         'works': [{'id': 'wo_p', 'kks': PUMP, 'title': 'Pump bearing', 'discipline': 'mech', 'permit': 'general',
-                   'isolation': 'iso_p', 'repairs': 'f1', 'set': {'valve_cmd': 0, 'aux2': 5}},
+                   'isolation': 'iso_p', 'repairs': 'f1', 'set': {'aux2': 5}},
                   {'id': 'wo_q', 'kks': PUMP, 'title': 'Pump motor', 'discipline': 'elec', 'permit': 'electrical',
-                   'isolation': 'iso_q', 'set': {'pump_cmd': 1, 'aux2': 7}},
+                   'isolation': 'iso_q', 'repairs': 'f3', 'set': {'aux2': 7}},
                   {'id': 'wo_p2', 'kks': VALVE, 'title': 'Valve packing', 'discipline': 'mech', 'permit': 'general',
                    'isolation': 'iso_p'},
                   {'id': 'wo_n', 'kks': TANK, 'title': 'Tank inspection', 'discipline': 'civil', 'permit': 'confined',
                    'set': {'aux': 1}, 'repairs': 'nofault'}]}
     faults = [{'id': 'f1', 'set': {'pump_fault': 1}, 'text': 'Pump bearing worn', 'kks': PUMP,
                'repair': {'pump_fault': 0}},
-              {'id': 'f2', 'set': {'pump_cmd': 1}, 'text': 'Trainer starts the pump', 'repair': {'pump_cmd': 0}}]
+              {'id': 'f2', 'set': {'pump_cmd': 1}, 'text': 'Trainer starts the pump', 'repair': {'pump_cmd': 0}},
+              {'id': 'f3', 'set': {'motor_fault': 1}, 'text': 'Pump motor winding', 'kks': PUMP,
+               'repair': {'motor_fault': 0}}]
     channels = {
         'values': [
             ['x', {'state': 0}], ['w', {'state': 0}],
@@ -1060,7 +1086,9 @@ def unit_models2():
         'trips': [{'id': 't', 'kks': TANK, 'text': 'Two of three high', 'when': 'trip_c', 'do': [{'set': {'w': 0}}]}],
         'alarms': [{'id': 'a1', 'kks': GAUGE, 'text': 'Channel 1 high', 'when': 'g1h_hi', 'priority': 2,
                     'where': GAUGE},
-                   {'id': 'a2', 'kks': TANK, 'text': 'Channel 2 high', 'when': 'v2', 'priority': 2, 'where': TANK}],
+                   {'id': 'a2', 'kks': TANK, 'text': 'Channel 2 high', 'when': 'v2', 'priority': 2, 'where': TANK},
+                   {'id': 'a3', 'kks': TANK, 'text': 'Two of three high', 'when': 'trip_c', 'priority': 1,
+                    'where': TANK}],
         'isolations': [{'id': 'iso_g', 'text': 'Channel 1', 'points': [
             {'kks': GAUGE, 'kind': 'instrument', 'how': 'Root valve shut'}]}],
         'works': [{'id': 'wo_g', 'kks': GAUGE, 'title': 'Channel 1 calibration', 'discipline': 'inst',
@@ -1079,6 +1107,9 @@ def unit_models2():
     def op(n, kks, do, value=None, trip=None):
         return [n, 'op', kks, do, value, trip]
 
+    def rp(n, fault, w, who=None):
+        return [n, 'repair', fault, w, who]
+
     life = [
         [1, 'fault', 'f1'], pm(1, P_, 'approve'), pm(1, P_, 'request'), pm(1, P_, 'request'), pm(1, P2, 'approve'),
         pm(1, P2, 'request'), pm(1, P_, 'issue'),
@@ -1092,11 +1123,12 @@ def unit_models2():
         op(9, PUMP, 'stop'), lk(9, P_, 0), lk(9, P_, 0),
         op(10, VALVE, 'close'), lk(10, P_, 1), ul(10, P_, 1), ul(10, P2, 0),
         lk(11, P_, 1),
-        op(12, PUMP, 'start'), op(12, PUMP, 'stop'), [12, 'repair', 'f1'],
+        op(12, PUMP, 'start'), op(12, PUMP, 'stop'), [12, 'repair', 'f1'], rp(12, 'f1', P_),
         op(13, TANK, 'set', 3), op(13, TANK, 'start'), op(13, GAUGE, 'set', 1), op(13, TANK, 'go'), [13, 'fault', 'f2'],
         op(14, PUMP, 'reset', None, 'tp'), op(14, TANK, 'set', 0), [14, 'repair', 'f2'],
         op(15, PUMP, 'reset', None, 'tp'), op(15, TANK, 'back'),
-        pm(16, P_, 'issue'), pm(16, P_, 'accept'), pm(16, P_, 'return'),
+        pm(16, P_, 'issue'), pm(16, P_, 'accept'), rp(16, 'f2', P_), rp(16, 'f1', Q_), rp(16, 'f1', 'nope'),
+        rp(16, 'nofault', N_), rp(16, 'f1', P_, 'tech1'), rp(16, 'f1', P_), pm(16, P_, 'return'),
         pm(17, P_, 'done'),
         pm(18, P_, 'return'), lk(18, P_, 0), pm(18, P_, 'close'),
         ul(19, P_, 0), ul(19, P_, 0),
@@ -1105,7 +1137,9 @@ def unit_models2():
         pm(22, P_, 'request'), op(22, PUMP, 'reset', None, 'tp'),
         pm(23, P2, 'cancel'), pm(23, P_, 'request'), pm(23, P_, 'cancel'), pm(23, P_, 'request')]
     shared = [
+        [1, 'fault', 'f1'], [1, 'fault', 'f3'],
         pm(1, Q_, 'request'), pm(1, P_, 'request'), pm(2, Q_, 'approve'), pm(2, P_, 'approve'),
+        [2, 'repair', 'f1'], rp(2, 'f1', P_),
         lk(3, Q_, 0), lk(3, P_, 0), lk(3, P_, 1),
         op(4, PUMP, 'start'), op(4, TANK, 'set', 1),
         pm(5, Q_, 'issue'), pm(5, Q_, 'accept'), pm(5, Q_, 'done'),
@@ -1128,18 +1162,26 @@ def unit_models2():
         [11, 'op', TANK, 'set', 0, None], [12, 'op', TANK, 'reset', None, 't'],
         [13, 'op', PUMP, 'set', 0, None],
         pm(14, G_, 'issue'), pm(14, G_, 'accept'), pm(14, G_, 'done'), pm(14, G_, 'return'), ul(15, G_, 0),
-        [15, 'op', TANK, 'set', 6, None], [18, 'ack', 'a1'], pm(19, G_, 'close')]
+        [15, 'op', TANK, 'set', 6, None], [18, 'ack', 'a1'], pm(19, G_, 'close'),
+        [20, 'op', TANK, 'set', 0, None], [21, 'op', TANK, 'reset', None, 't'], [22, 'op', TANK, 'set', 4.8, None],
+        pm(22, G_, 'request'), pm(22, G_, 'approve'), [24, 'op', TANK, 'set', 6, None]]
+    # what a lock would do (§15.6): refused (the permit closed); the trip and its priority 1 alarm the lock alone
+    # brings (one channel high, the isolated one voting tripped); a trip that comes anyway, not blamed on the lock
+    chan_effects = [(20, G_, 0), (22, G_, 0), (23, G_, 0)]
     return [
         ("a permit's life: request, approve, the automatic moves, issue, accept, done (its repair and set), return, "
          "close; every refusal (state, iso_busy, authority, unknown); locks against this step's values (a start or a "
          "stop and a lock in one step); what a locked code refuses, skips and suppresses; a fault or a repair asked on a "
-         "locked code not made (the work's done repairs the fault)", pump, faults, life, 24),
-        ('a code locked by two isolations; a done write made only when every isolation locking its code is held by '
-         'the work; a cancel with points still locked; a work without an isolation', pump, faults, shared, 20),
+         "locked code not made; the trainee's repair under a permit (§15.5): refused before the permit is accepted, "
+         "unknown, refused for authority, made on the locked code once accepted (the work's done then repairs "
+         "nothing)", pump, faults, life, 24, []),
+        ("a code locked by two isolations; a done repair made only when every isolation locking its code is held by "
+         "the work; a cancel with points still locked; a work without an isolation; the trainer's repair on a free "
+         "code made, the trainee's without an accepted permit refused", pump, faults, shared, 20, []),
         ('an isolated transmitter: its reading held, its alarm suppressed, its 2-out-of-3 vote tripped; unlocked from '
          'isolated (the permit back to approved) and locked again; the hold node at step 0 (its init, the '
-         'scenario\'s, its input), reading a later when, a number',
-         channels, [], chan, 20),
+         'scenario\'s, its input), reading a later when, a number; what a lock would do (§15.6)',
+         channels, [], chan, 26, chan_effects),
     ]
 
 
@@ -1155,23 +1197,31 @@ def unit_bundle2(model, init, faults):
 
 def build_steps2():
     out = []
-    for why, model, faults, inputs, n in unit_models2():
+    for why, model, faults, inputs, n, queries in unit_models2():
         init = {'ambient_t': 20}
         if 'h_sc' in [v[0] for v in model['values']]:
             init['h_sc'] = -2
         F, b = unit_bundle2(model, init, faults)
         e = P.Engine(b, 's1')
         states = [e.snapshot()]
+        effects = []
         i = 0
         while e.step_no < n:
             while i < len(inputs) and inputs[i][0] == e.step_no + 1:
                 apply(e, inputs[i])
                 i += 1
+            for at, work, point in queries:
+                if at == e.step_no:
+                    effects.append([at, work, point, e.lock_effects(work, point)])
             e.step()
             states.append(e.snapshot())
         assert i == len(inputs), why
-        out.append({'why': why, 'model': F['model/a1.json'], 'scenario': F['scenarios/s1.json'], 'inputs': inputs,
-                    'states': states, 'events': e.events})
+        assert len(effects) == len(queries), why
+        run = {'why': why, 'model': F['model/a1.json'], 'scenario': F['scenarios/s1.json'], 'inputs': inputs,
+               'states': states, 'events': e.events}
+        if effects:
+            run['effects'] = effects
+        out.append(run)
     return out
 
 
@@ -1238,6 +1288,34 @@ FORKS2 = [
      [('permit', 'wo_cond_p3_cal', 'request'), ('permit', 'wo_cond_p3_cal', 'approve'), ('run', 1),
       ('lock', 'wo_cond_p3_cal', 0), ('run', 60)],
      {'no_trip': True, 'end': {'cond_hh_v': [1, 1], 'cond_p3_vote': [1, 1]}, 'permits': {'wo_cond_p3_cal': 3}}),
+    # the trainee repairs CW pump B's motor at the pump (§15.5): refused without a permit and with it only issued, made
+    # once it is accepted (on the locked-out pump, as the work's); the work's done then repairs nothing; the pump runs
+    # again after the permit is closed
+    ('cw_b_repair_under_permit', 'end',
+     [('fault', 'cw_b_motor'), ('run', 20), ('repair_under', 'cw_b_motor', 'wo_cw_b_motor'), ('run', 1),
+      ('permit', 'wo_cw_b_motor', 'request'), ('run', 1), ('permit', 'wo_cw_b_motor', 'approve'), ('run', 1),
+      ('lock', 'wo_cw_b_motor', 0), ('run', 90), ('lock', 'wo_cw_b_motor', 1), ('run', 1),
+      ('permit', 'wo_cw_b_motor', 'issue'), ('repair_under', 'cw_b_motor', 'wo_cw_b_motor'), ('run', 1),
+      ('permit', 'wo_cw_b_motor', 'accept'), ('repair_under', 'cw_b_motor', 'wo_cw_b_motor'), ('run', 60),
+      ('permit', 'wo_cw_b_motor', 'done'), ('run', 1), ('permit', 'wo_cw_b_motor', 'return'), ('run', 1),
+      ('unlock', 'wo_cw_b_motor', 0), ('unlock', 'wo_cw_b_motor', 1), ('run', 1),
+      ('permit', 'wo_cw_b_motor', 'close'), ('run', 1),
+      ('op', CW_B, 'reset', None, 'cw_b_trip_ol'), ('run', 1), ('op', CW_B_V, 'set', 0.15, None),
+      ('until', 'cw_b_vstart', 120), ('op', CW_B, 'start', None, None), ('run', 10)],
+     {'repair_refused': [['cw_b_motor', 'wo_cw_b_motor', ['state']]], 'repaired': ['cw_b_motor'],
+      'repairs': 1, 'permits': {'wo_cw_b_motor': 9}, 'done': [[CW_B, 'start']], 'end': {'cw_b_run': [1, 1]}}),
+    # what a lock would do (§15.6): transmitter 2's lock alone trips nothing; with it locked, transmitter 3's lock
+    # would trip the steam turbine (the vote then 2 out of 3 tripped); locked all the same, it does
+    ('cond_p3_trip_warning', 'end',
+     [('permit', 'wo_cond_p2_cal', 'request'), ('permit', 'wo_cond_p2_cal', 'approve'),
+      ('permit', 'wo_cond_p3_cal', 'request'), ('permit', 'wo_cond_p3_cal', 'approve'), ('run', 1),
+      ('effects', 'wo_cond_p2_cal', 0), ('run', 1), ('lock', 'wo_cond_p2_cal', 0), ('run', 2),
+      ('effects', 'wo_cond_p3_cal', 0), ('effects', 'wo_cond_p2_cal', 0), ('run', 1),
+      ('lock', 'wo_cond_p3_cal', 0), ('run', 30)],
+     {'effects': [['wo_cond_p2_cal', 0, 'done', [], []],
+                  ['wo_cond_p3_cal', 0, 'done', ['st_trip_cond_p', 'gen3_trip_prot'], ['gt1_runback']],
+                  ['wo_cond_p2_cal', 0, 'refused', [], []]],
+      'first_out': {'st': 'st_trip_cond_p'}, 'permits': {'wo_cond_p2_cal': 3, 'wo_cond_p3_cal': 3}}),
     # a cooling tower fan's service: stopped, locked out, worked, returned, run again
     ('ct_fan3_service', 'end',
      [('fault', 'ct_fan3_vib'), ('run', 60)] + permit_run('wo_ct_fan3', [0], 120) +
@@ -1349,17 +1427,110 @@ WTP_FORKS = [
      {'interlocks': ['nr_empty'], 'end': {'nr_a_cmd': [0, 0]}}),
 ]
 
+# W3 (WATER-TREATMENT §7): the remaining faults, from the WTP started from cold
+WTP_FORKS += [
+    ('antiscalant_pump_fails', 'end', [('fault', 'as_pump'), ('run', 10)],
+     {'alarms': ['as_a_noflow'], 'end': {'as_dose_on': [0, 0], 'as_on': [1, 1]}}),
+    ('coagulant_pump_no_flow', 'end', [('fault', 'coag_pump'), ('run', 10)], {'alarms': ['cg_a_noflow']}),
+    # clarifier A's rake stalls: its turbidity alarms, B's not; the filters take the two mixed
+    ('clarifier_upset', 'end', [('fault', 'cl_upset'), ('run', 900)],
+     {'alarms': ['cla_ntu_h'], 'no_alarms': ['clb_ntu_h'], 'max': {'cla_ntu': [5, 20], 'cl_ntu': [3, 10]}}),
+    ('filter3_breakthrough', 'end', [('fault', 'fl3_underdrain'), ('run', 30), ('repair', 'fl3_underdrain'),
+                                     ('run', 30)],
+     {'alarms': ['fl_ntu_h'], 'repaired': ['fl3_underdrain'], 'max': {'sdi': [4, 5]}, 'end': {'fl_ntu': [0, 0.2]}}),
+    ('degasser_trip', 'end', [('fault', 'dg_motor'), ('run', 600)],
+     {'tripped': ['dg_trip_ol'], 'alarms': ['dg_tripped', 'dg_co2_h'], 'end': {'dg_cmd': [0, 0]}}),
+    ('degasser_restart_refused', 'end', [('fault', 'dg_motor'), ('run', 10),
+                                         ('op', '00GCH10AN001', 'start', None, None), ('run', 1)],
+     {'refused': [['00GCH10AN001', 'start', ['dg_fan_ok']]]}),
+    # the bisulphite pump fails, the RO trips; reset and restarted without the fix (the failed pump still says
+    # running), its start's flush with chlorinated feed damages the membranes (a fault of the scenario), which only
+    # their replacement under a permit repairs
+    ('ro_a_chlorine_damage', 'end',
+     [('fault', 'sbs_pump'), ('run', 120), ('op', '00GCB21CQ002', 'reset', None, 'ro_a_trip_orp'), ('run', 1),
+      ('op', '00GCB21AT001', 'start', None, None), ('run', 400)] + permit_run('wo_ro_a_membranes', [0]),
+     {'faults': ['sbs_pump', 'ro_a_cl_damage'], 'repaired': ['ro_a_cl_damage'], 'permits': {'wo_ro_a_membranes': 9},
+      'max': {'ro_a_dmg_k': [4, 4]}, 'end': {'ro_a_dmg': [0, 0], 'iso_ro_a_locked': [0, 0]}}),
+    # resin leaks from mixed bed A: its strainer blocks; the bed taken out and its internals repaired under a permit
+    ('mb_a_resin_leak', 'end',
+     [('fault', 'mb_a_resin'), ('run', 600), ('op', '00GCK10AP001', 'stop', None, None),
+      ('op', '00GCF11AT001', 'standby', None, None), ('run', 20),
+      ('permit', 'wo_mb_a_resin', 'request'), ('run', 1), ('permit', 'wo_mb_a_resin', 'approve'), ('run', 1),
+      ('lock', 'wo_mb_a_resin', 0), ('lock', 'wo_mb_a_resin', 1), ('run', 1),
+      ('op', '00GCF11AT001', 'in_service', None, None), ('run', 1)] +
+     permit_run('wo_mb_a_resin', [0, 1], 120)[4 + 3:],
+     {'alarms': ['mb_a_dp_h'], 'refused': [['00GCF11AT001', 'in_service', ['iso_mb_a_locked']]],
+      'repaired': ['mb_a_resin'], 'permits': {'wo_mb_a_resin': 9}}),
+    # RO B fouling 200 times as fast: in five minutes what a month of the clock brings (from 0.05)
+    ('ro_b_fast_fouling', 'end', RO_B_ON + [('fault', 'ro_b_fouling'), ('run', 300)],
+     {'faults': ['ro_b_fouling'], 'end': {'ro_b_foul': [0.06, 0.08]}}),
+]
+
+# W3: the RO's cleaning in place (ro_cip) from the normal day's work, and its refusals and trip
+CIP_FORKS = [
+    ('cip_clean_refused_cold', 'fill', [('op', '00GCB30BB001', 'add_caustic', None, None), ('until', 'cip_ph_hi', 600),
+                                        ('op', '00GCB22AT001', 'clean', None, None), ('run', 1)],
+     {'refused': [['00GCB22AT001', 'clean', ['cip_ready']]]}),
+    ('cip_one_train_at_a_time', 'caustic',
+     [('op', '00GCB21AT001', 'stop', None, None), ('until', 'ro_a_stopped', 600),
+      ('op', '00GCB22AT001', 'clean', None, None), ('op', '00GCB21AT001', 'clean', None, None), ('run', 30),
+      ('op', '00GCB22AT001', 'clean', None, None), ('run', 1)],
+     {'done': [['00GCB21AT001', 'clean']], 'refused': [['00GCB22AT001', 'clean', ['cip_free']]],
+      'machines': {'ro_a': 'cip_circ1', 'ro_b': 'stopped'}}),
+    ('cip_drain_refused_while_cleaning', 'caustic', [('op', '00GCB22AT001', 'clean', None, None), ('run', 10),
+                                                     ('op', '00GCB30BB001', 'drain', None, None), ('run', 1)],
+     {'refused': [['00GCB30BB001', 'drain', ['cip_free']]]}),
+    ('cip_stop_cleaning', 'caustic', [('op', '00GCB22AT001', 'clean', None, None), ('run', 60),
+                                      ('op', '00GCB22AT001', 'stop_cleaning', None, None), ('until', 'ro_b_stopped', 600)],
+     {'done': [['00GCB22AT001', 'stop_cleaning']], 'machines': {'ro_b': 'cip_flush'}}),
+    ('cip_overheat_b', 'caustic', [('fault', 'cip_heater'), ('op', '00GCB22AT001', 'clean', None, None),
+                                   ('until', 'ro_b_trip_cip_t_latched', 1800), ('run', 10)],
+     {'first_out': {'ro_b': 'ro_b_trip_cip_t'}, 'alarms': ['cip_t_h'], 'machines': {'ro_b': 'cip_flush'}}),
+    ('cip_overheat_a', 'caustic', [('op', '00GCB21AT001', 'stop', None, None), ('until', 'ro_a_stopped', 600),
+                                   ('fault', 'cip_heater'), ('op', '00GCB21AT001', 'clean', None, None),
+                                   ('until', 'ro_a_trip_cip_t_latched', 1800), ('run', 10)],
+     {'first_out': {'ro_a': 'ro_a_trip_cip_t'}, 'machines': {'ro_a': 'cip_flush'}}),
+]
+
+# W3: a mixed bed's regeneration (mb_regeneration) from the normal day's work, and its refusals
+REGEN_FORKS = [
+    ('regen_refused_feed_running', 'mb_b', [('op', '00GCF11AT001', 'standby', None, None), ('run', 1),
+                                            ('op', '00GCF11AT001', 'regenerate', None, None), ('run', 1)],
+     {'refused': [['00GCF11AT001', 'regenerate', ['mf_a_off']]]}),
+    ('regen_one_bed_at_a_time', 'regen', [('op', '00GCK10AP002', 'stop', None, None),
+                                          ('op', '00GCF12AT001', 'standby', None, None), ('run', 1),
+                                          ('op', '00GCF12AT001', 'regenerate', None, None), ('run', 1)],
+     {'refused': [['00GCF12AT001', 'regenerate', ['mb_regen_free']]]}),
+    ('regen_two_in_one_step', 'mb_a_off', [('op', '00GCK10AP002', 'stop', None, None),
+                                           ('op', '00GCF12AT001', 'standby', None, None), ('run', 1),
+                                           ('op', '00GCF11AT001', 'regenerate', None, None),
+                                           ('op', '00GCF12AT001', 'regenerate', None, None), ('run', 30)],
+     {'done': [['00GCF11AT001', 'regenerate'], ['00GCF12AT001', 'regenerate']],
+      'machines': {'mb_a': 'backwash', 'mb_b': 'standby'}, 'end': {'mb_b_state': [2, 2]}}),
+    ('air_mix_refused_without_blower', 'inject', [('op', '00GCF11AT001', 'air_mix', None, None), ('run', 1)],
+     {'refused': [['00GCF11AT001', 'air_mix', ['gp_air_cmd']]]}),
+    ('regen_acid_tank_filled', 'mb_b', [('op', '00GCP10BB001', 'fill', None, None), ('until', 'gp_hcl_full', 900),
+                                       ('run', 10)],
+     {'done': [['00GCP10BB001', 'fill']], 'machines': {'gp_hcl_fill': 'idle'}, 'end': {'gp_hcl_lvl': [95, 100]}}),
+    # the pit's probe drifts 3 pH low while the batch discharges: the discharge is blocked, and the batch doses caustic
+    # into a pit that is already neutral (the true pH rises past 9: the lesson of a drifted probe)
+    ('pit_probe_drift_during_discharge', 'end', [('fault', 'nr_ph_drift'), ('run', 600)],
+     {'interlocks': ['nr_blocked'], 'machines': {'nr_batch': 'dosing'}, 'max': {'nr_ph_true': [9, 14]}}),
+]
+
 
 def build_train2(b):
     e, log, bases = run_cold_start(b)
     forks = []
     for fid, base, actions, expect in FORKS2:
         probes = sorted(set(expect.get('max', {})) | set(expect.get('end', {})))
-        f, start, fin, fev, seen = run_fork(bases[base], actions, probes)
+        f, start, fin, fev, seen, effects = run_fork(bases[base], actions, probes)
         fork = {'id': fid, 'base_step': start, 'inputs': fin, 'until': f.step_no, 'events': fev,
                 'end': f.snapshot(values=False), 'expect': expect}
         if probes:
             fork['seen'] = seen
+        if effects:
+            fork['effects'] = effects
         forks.append(fork)
     return {'scenario': 'cold_iron', 'procedure': 'cold_start', 'inputs': e.inputs, 'until': e.step_no,
             'forks': forks}
@@ -1370,14 +1541,17 @@ def build2():
     return {'about': 'Walkdown Plant content format 2 vectors (docs/PLANT3D.md §19), made by '
                      'ref/make_plant3d_vectors.py from ref/plant3d.py. Numbers compare to 1e-6. Milestone P1: permits, '
                      'isolations and the hold node (§15); W2: the water treatment plant started from cold by its '
-                     'procedure (`wtp`, as format 1\'s `train`); staff (§16–§17) come with S1.',
+                     'procedure (`wtp`, as format 1\'s `train`); W3: an RO train cleaned in place (`wtp_cip`) '
+                     'and a mixed bed regenerated (`wtp_regen`) by their procedures; staff (§16–§17) come with S1.',
             'valid': [{'why': 'the synthetic plant as version 2', 'files': {k: json.dumps(v, ensure_ascii=False)
                                                                            for k, v in F.items()},
                        'counts': check(F).counts}],
             'reject': build_rejects2(),
             'steps': build_steps2(),
             'train': build_train2(train_bundle()),
-            'wtp': build_train(train_bundle(), 'wtp_cold', 'wtp_start', WTP_FORKS)}
+            'wtp': build_train(train_bundle(), 'wtp_cold', 'wtp_start', WTP_FORKS),
+            'wtp_cip': build_train(train_bundle(), 'wtp_normal', 'ro_cip', CIP_FORKS),
+            'wtp_regen': build_train(train_bundle(), 'wtp_normal', 'mb_regeneration', REGEN_FORKS)}
 
 
 def build():

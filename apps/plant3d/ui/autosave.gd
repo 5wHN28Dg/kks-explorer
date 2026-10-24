@@ -207,7 +207,11 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 		var sizes := {"op": 5, "ack": 2, "shelve": 3, "unshelve": 2, "fault": 2, "repair": 2, "permit": 4, "lock": 4,
 				"unlock": 4}
 		for q in d["queue"]:
-			if typeof(q) != TYPE_ARRAY or q.is_empty() or not sizes.has(q[0]) or q.size() != sizes[q[0]] \
+			# a repair is the trainer's [repair, fault] or the trainee's under a permit [repair, fault, work, person]
+			if typeof(q) != TYPE_ARRAY or q.is_empty() or typeof(q[0]) != TYPE_STRING:
+				return "a damaged input"
+			var under: bool = q[0] == "repair" and q.size() == 4 and typeof(q[2]) == TYPE_STRING
+			if not sizes.has(q[0]) or (q.size() != sizes[q[0]] and not under) \
 					or (q[0] in ["fault", "repair"] and typeof(q[1]) != TYPE_STRING):
 				return "a damaged input"
 	# permits and isolations (PLANT3D §15): states, holders and locks the engine indexes with, and that agree
