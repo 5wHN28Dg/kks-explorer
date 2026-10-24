@@ -32,7 +32,8 @@
 ##                           fx_off=interiors the rooms near their doors never loaded (app/interiors.gd),
 ##                           fx_off=farview their merged far view unused, their pieces drawn at every distance as before
 ##                           it (builder/plant_builder.gd far_merge)
-##   On a phone walk.txt takes probe, fx_off, fx_on and max_fps too (phone/frames.sh's WALK_EXTRA)
+##   On a phone walk.txt takes probe, fx_off, fx_on, max_fps and shot too (phone/frames.sh's WALK_EXTRA, phone/shots.sh);
+##   a shot's line in result.txt gives the view's draw calls, triangles and GPU time (median of 30 frames)
 extends Node3D
 
 const Quality = preload("res://app/quality.gd")
@@ -230,7 +231,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps"]:   # nothing else from a shared folder (probe, fx_off, fx_on and max_fps: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "shot"]:   # nothing else from a shared folder (probe, fx_off, fx_on, max_fps and shot: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
@@ -542,7 +543,7 @@ func _shots() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	for spec in String(opts.shot).split(";"):
 		var nv := spec.split("@")
-		var nm := nv[0]
+		var nm := nv[0].validate_filename()   # (a name only: on a phone it comes from a shared folder)
 		if nv.size() > 1 and nv[1] != "map":
 			var v := nv[1].split(",")
 			if map.active: toggle_map()
@@ -551,17 +552,21 @@ func _shots() -> void:
 			player.set_heading(-deg_to_rad(float(v[3])), deg_to_rad(float(v[4])))
 		elif not map.active:
 			toggle_map()
+		var gpus: Array = []   # the view's GPU time over its last 30 frames (the median goes in the shot's line)
 		for i in 45:
 			await get_tree().process_frame
+			if i >= 15:
+				gpus.append(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()))
+		gpus.sort()
 		await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()
 		var p := out_dir.path_join(nm + ".png")
 		_say("shot %s: error %d" % [p, img.save_png(p)])
 		# what the view costs (the site's budget per view, SITE.md §5: draw calls and triangles)
-		_say("shot %s: %d draw calls, %d objects, %d triangles" % [nm,
+		_say("shot %s: %d draw calls, %d objects, %d triangles, GPU median %.2f ms" % [nm,
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
-			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME), float(gpus[gpus.size() / 2])])
 	_write_out()
 	get_tree().quit()
 
