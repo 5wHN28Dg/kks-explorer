@@ -1061,8 +1061,9 @@ up training.
   plant every input of the trainer's (format 1's `fault` and `repair`, today the only ones; any bypass added later
   likewise) makes, as it comes in step 1 and before anything else it does, the event `[n, "instructor", kind, id]`
   (kind `fault` or `repair`, id the fault as given), whether it then acts or not. The debrief marks each, and a run
-  with any says so at the top of the debrief and in the saved run's offer (§18.7). A version 1 plant makes none
-  (format 1's vectors are unchanged).
+  with any says so at the top of the debrief and in the saved run's offer (§18.7). A version 1 plant makes none:
+  format 1's synthetic vectors are unchanged, and only its `train` and `hot` runs, on the first train's version 2
+  content, carry them.
 
 ### 15.6 What a lock would do
 
