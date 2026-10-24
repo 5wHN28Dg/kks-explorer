@@ -448,7 +448,7 @@ class StaffVectors(unittest.TestCase):
         F = G.staff_files(staff=G.handover_staff())
         F['staff.json']['people'].append({'id': 'a_fo3', 'role': 'field_op', 'roster': 'shift', 'crew': 'a',
                                           'call': 'Field 3 A'})
-        e = P.Engine(P.check_files(F), 's1')
+        e = P.Engine(G.check(F), 's1')
         sr = e.staff
         ix = sr.st.person_ix
         a1, a3 = sr.people[ix['a_fo1']], sr.people[ix['a_fo3']]
@@ -462,7 +462,8 @@ class StaffVectors(unittest.TestCase):
         ev = self.run_named('a work returned just before the shift change')
         self.assertFalse(any(x[1] == 'lock' and x[0] > 902 for x in ev))
         self.assertIn([954, 'unlock', 'wo_pump', 0, 'a_elec', 'done', []], ev)
-        self.assertIn([1437, 'permit', 'wo_pump', 'close', 'b_sup', 'done', []], ev)
+        self.assertTrue(any(x[1] == 'unlock' and x[4] == 'a_fo2' and x[5] == 'done' for x in ev))
+        self.assertTrue(any(x[1] == 'permit' and x[3] == 'auto' and x[6] == [8] for x in ev))
 
     def test_the_trainee_hands_over(self):
         """§17.9: the trainee takes over a lock from the permit form (incoming), and gives one (outgoing)."""

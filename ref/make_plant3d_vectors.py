@@ -2080,6 +2080,13 @@ def handover_staff():
 def staff_runs():
     """(why, scenario changes, staff changes or None, the trainee player or None, steps, snapshot every)."""
     hand = handover_staff()
+    quiet = copy.deepcopy(hand)         # no deisolation by the supervisor: the handover's own unlocks only
+    for r in quiet['reactions']:
+        if r['on'] == {'permit': 'returned'}:
+            r['task'] = 'sup_check'
+    for t in quiet['tasks']:            # (their tasks keep a work of their own, so the file stays valid)
+        if t['id'] in ('deisolate', 'deiso_valve'):
+            t['work'] = 'wo_pump' if t['id'] == 'deisolate' else 'wo_valve'
     late = copy.deepcopy(hand)          # a relief supervisor on from 20:00 (a duty coming on at night)
     late['rosters'].append({'id': 'late', 'kind': 'days', 'days': ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
                             'hours': ['20:00', '08:00']})
@@ -2184,7 +2191,7 @@ def staff_runs():
          dict(at5, absent=['b_elec', 'b_sup']), late, Trainee(extra=[[2, 'fault', 'f1']]), 2600, 20),
         ('a work returned just before the shift change (adversarial review): the incoming people take over none of its '
          'locks (its isolation is coming off), the outgoing ones unlock without waiting for them, and the permit is '
-         'deisolated and closed', at5, hand,
+         'deisolated by itself (the supervisor only looks round when it is returned, in this staff file)', at5, quiet,
          Trainee(extra=[[2, 'fault', 'f1'], [900, 'permit', 'wo_pump', 'accept', None],
                         [901, 'permit', 'wo_pump', 'done', None], [902, 'permit', 'wo_pump', 'return', None]]), 1800, 20),
         ('the trainee as crew B\'s field operator takes over the valve\'s lock at the handover (a lock input from the '
