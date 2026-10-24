@@ -50,7 +50,7 @@ def apply(e, item):
     elif kind in ('lock', 'unlock'):
         getattr(e, kind)(item[2], item[3], item[4])
     elif kind == 'remove_lock':
-        e.remove_lock(item[2], item[3], item[4], item[5])
+        e.remove_lock(item[2], item[3], item[4], item[5], *item[6:7], named=len(item) > 6)
     elif kind == 'fault':
         e.fault(item[2])
     else:

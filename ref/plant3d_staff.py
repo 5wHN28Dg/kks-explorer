@@ -34,7 +34,8 @@ PERMIT_AUTH = {'request': 'request', 'approve': 'approve', 'issue': 'issue', 'ac
 PERMIT_TO = {'request': 1, 'approve': 2, 'issue': 4, 'accept': 5, 'done': 6, 'return': 7, 'close': 9, 'cancel': 10}
 STATE_NAMES = ('none', 'requested', 'approved', 'isolated', 'issued', 'accepted', 'done', 'returned', 'deisolated',
                'closed', 'cancelled')
-STEP_KINDS = ('go', 'work', 'read', 'op', 'permit', 'lock', 'unlock', 'say', 'wait', 'call', 'meet', 'choose', 'ack')
+STEP_KINDS = ('go', 'work', 'read', 'op', 'permit', 'lock', 'unlock', 'say', 'wait', 'call', 'meet', 'choose', 'ack',
+              'handover', 'remove_locks')
 LATER = {'ppe': 'S2', 'stop': 'S2', 'ride': 'S4', 'sleep': 'S4'}
 HHMM = re.compile(r'([01][0-9]|2[0-3]):([0-5][0-9])')
 OFFSET = re.compile(r'(start|end)([+-])([0-9]|1[0-2]):([0-5][0-9])')
@@ -42,7 +43,15 @@ DUR = re.compile(r'([0-9]|1[0-9]|2[0-4]):([0-5][0-9])')
 DAY = 864000            # tenths of a clock second in a day
 MINUTE = 600
 EARLY_KEPT = 32         # the trainee's actions kept for a later step (§17.8)
+MAX_POINTS = 64 * 16    # every point of a model's isolations (§14's limits): a lock round's bound in a turn
+HANDOVER_WAIT = 60      # clock minutes an outgoing person waits at a lock for the incoming one's (§17.9)
 WAIT_PLACE = 15         # clock minutes a person waits for a taken place, or for a meeting's people (§16.2, §16.6)
+
+
+
+def same(a, b):
+    """The same person (or both null), whatever the types (§17.9)."""
+    return type(a) is type(b) and a == b
 
 
 # ---------------------------------------------------------------- random numbers (§17.5)
@@ -578,6 +587,13 @@ class Staff:
             elif k == 'ack':
                 keys(s, ('ack',), (), ws)
                 need(x == '$', 'bad_value', f'{ws}.ack: "$" (the alarm the task was given for)')
+            elif k == 'handover':
+                keys(s, ('handover',), (), ws)
+                need(x in ('take', 'give'), 'bad_value', f'{ws}.handover: "take" or "give" (§17.9)')
+            elif k == 'remove_locks':
+                keys(s, ('remove_locks',), (), ws)
+                need(isinstance(x, str) and x in self.messages, 'bad_ref', f'{ws}.remove_locks: no message {x!r} '
+                                                                           f'(the reason)')
             if 'else' in s:
                 self.else_ref(s['else'], i, len(steps), f'{ws}.else')
         self.m.finish()
@@ -642,7 +658,7 @@ class Staff:
             keys(r, ('on', 'roles', 'task'), ('priority', 'work'), wr)
             on = r['on']
             need(isinstance(on, dict) and len(on) == 1, 'bad_kind', f'{wr}.on: one of alarm, trip, fault, value, '
-                                                                   f'permit')
+                                                                   f'permit, lock_left')
             k, v = next(iter(on.items()))
             need(k != 'unsafe', 'unknown_key', f'{wr}.on.unsafe: unsafe acts come with milestone S2')
             if k == 'alarm':
@@ -655,8 +671,10 @@ class Staff:
                 need(v in values, 'bad_ref', f'{wr}.on.value: no value {v!r}')
             elif k == 'permit':
                 need(v in STATE_NAMES[1:], 'bad_value', f'{wr}.on.permit: a permit state from requested')
+            elif k == 'lock_left':
+                need(v == '*', 'bad_value', f'{wr}.on.lock_left: "*"')
             else:
-                need(False, 'bad_kind', f'{wr}.on: one of alarm, trip, fault, value, permit')
+                need(False, 'bad_kind', f'{wr}.on: one of alarm, trip, fault, value, permit, lock_left')
             for ro in lst(r['roles'], f'{wr}.roles', 1, 16):
                 need(ro in self.roles, 'bad_ref', f'{wr}.roles: no role {ro!r}')
             need(r['task'] in self.tasks, 'bad_ref', f'{wr}.task: no task {r["task"]!r}')
@@ -759,6 +777,7 @@ class Staff:
                     need('"$"' not in json.dumps(self.tasks[c['task']]) and 'work' not in c, 'bad_ref',
                          f'staff.json: role {rid}.requests: task {c["task"]} needs a "$" the radio can\'t give')
                     self.callable.add((rid, c['role'], c['task']))
+        left_tasks = {r['task'] for r in self.reactions if 'lock_left' in r['on']}
         for tid, t in self.tasks.items():
             for i, s in enumerate(t['steps']):
                 ws = f'staff.json: task {tid}.steps[{i}]'
@@ -785,6 +804,11 @@ class Staff:
                                 for p in (pts if pt == 'all' else [pts[pt]]):
                                     need(f'lock_{p["kind"]}' in auth, 'authority',
                                          f'{ws}: role {rid} lacks lock_{p["kind"]}')
+                if 'remove_locks' in s:
+                    need(tid in left_tasks, 'bad_ref', f'{ws}: remove_locks only in the task of a lock_left reaction')
+                    for rid in sorted(runs[tid]):
+                        need('remove_lock' in self.roles[rid]['authority'], 'authority',
+                             f'{ws}: role {rid} lacks remove_lock')
                 for k in ('permit', 'lock', 'unlock'):
                     if k in s and s[k]['work'] == '$':
                         need(works[tid], 'bad_ref', f'{ws}: "$" but no work is ever given to task {tid}')
@@ -824,7 +848,7 @@ def check_scenario_staff(s, b, rel):
 
 class Person:
     __slots__ = ('i', 'id', 'role', 'auth', 'rng', 'on', 'duty', 'duties', 'planned', 'slots', 'pos', 'leg',
-                 'cur', 'queue', 'res', 'occ', 'pending', 'result')
+                 'cur', 'queue', 'res', 'occ', 'pending', 'result', 'post')
 
 
 
@@ -848,6 +872,7 @@ class StaffRun:
             q.on, q.duty, q.duties, q.planned, q.slots = False, None, [], None, []
             q.pos, q.leg, q.cur, q.queue, q.res, q.occ, q.pending, q.result = None, None, None, [], None, None, \
                 None, None
+            q.post = (p['role'], p.get('routine', st.roles[p['role']]['routine']))     # role, routine (§17.9)
             self.people.append(q)
         self.order = 0                  # instances made, for the queue's order
         self.unacked = 0
@@ -858,6 +883,7 @@ class StaffRun:
         self.given = {}                 # (reaction index, source) -> instance count still queued or current
         self.vprev = [e.truth(r['on']['value']) if 'value' in r['on'] else None for r in st.reactions]
         self.early = []                 # the trainee's done actions no step took yet (§17.8): [kind, step, …]
+        self.left = set()               # people off site with a lock at the last phase 2 (§17.9)
 
     def copy(self, e):
         """An independent copy for a clone of the engine (the content is shared)."""
@@ -1000,7 +1026,7 @@ class StaffRun:
         return None
 
     # --- giving tasks (§17.3)
-    def give(self, p, tid, prio, made_by, work, code, alarm, count=True):
+    def give(self, p, tid, prio, made_by, work, code, alarm, count=True, owner=None):
         """Queues an instance of task tid for person p; returns False (event unassigned) when the queue is full."""
         if len(p.queue) + (1 if p.cur is not None and not p.cur['idle'] else 0) >= MAX['queue']:
             self.e.ev('task', None, tid, 'unassigned')
@@ -1010,7 +1036,7 @@ class StaffRun:
             work = t['work']
         inst = {'task': tid, 'prio': prio, 'made': self.e.step_no, 'order': self.order, 'step': 0, 'st': {},
                 'work': work, 'code': code, 'alarm': alarm, 'src': made_by, 'idle': False, 'started': False,
-                'int': t.get('interruptible', True)}
+                'int': t.get('interruptible', True), 'owner': owner}
         self.order += 1
         p.queue.append(inst)
         p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
@@ -1020,7 +1046,7 @@ class StaffRun:
             self.unacked += 1
         return True
 
-    def assign(self, roles, tid, prio, made_by, work, code, alarm):
+    def assign(self, roles, tid, prio, made_by, work, code, alarm, owner=None):
         """Who gets a task (§17.3): the first free on-duty person of its roles (roles in order, then index), else the
         first on-duty one, else nobody."""
         cands = []
@@ -1034,8 +1060,8 @@ class StaffRun:
         for p in cands:
             c = p.cur
             if c is None or c['idle'] or (c['prio'] > prio and c['int']):
-                return self.give(p, tid, prio, made_by, work, code, alarm)
-        self.give(cands[0], tid, prio, made_by, work, code, alarm)
+                return self.give(p, tid, prio, made_by, work, code, alarm, owner=owner)
+        self.give(cands[0], tid, prio, made_by, work, code, alarm, owner=owner)
 
     def release(self, inst):
         if inst['src'] is not None:
@@ -1144,7 +1170,7 @@ class StaffRun:
         if jump_step:
             if self.trainee is not None:        # their actions of this step are kept all the same (§17.8)
                 mine = [x for x in e.events[e.ev_mark:] if x[0] == n]
-                self.drop_kept(mine)
+                self.drop_kept(mine, self.people[self.trainee].id)
                 self.keep(self.people[self.trainee], mine, set())
         else:
             for p in self.people:
@@ -1162,6 +1188,18 @@ class StaffRun:
         e = self.e
         st = self.st
         evs = [x for x in e.events[e.ev_mark:] if x[0] == n]
+        # people who left the site with a lock on since the last phase 2 (§17.9)
+        now = set()
+        gone = []
+        if any(x[1] == 'duty' and x[3] == 'on' for x in evs):
+            self.left = set()           # someone came on duty: a lock still left is given again (§17.9)
+        for p in self.people:
+            if p.i != self.trainee and p.id not in self.absent and not p.on and p.pos is None and p.leg is None \
+                    and any(p.id in x for x in e.locks.values()):
+                now.add(p.i)
+                if p.i not in self.left:
+                    gone.append(p)
+        self.left = now
         for ri, r in enumerate(st.reactions):
             k, v = next(iter(r['on'].items()))
             prio = r.get('priority', st.tasks[r['task']].get('priority', 3))
@@ -1184,6 +1222,8 @@ class StaffRun:
                         new = x[6][0] if x[3] == 'auto' else PERMIT_TO[x[3]]
                         if STATE_NAMES[new] == v and ('work' not in r or r['work'] == x[2]):
                             hits.append((('permit', x[2]), x[2], e.works[x[2]]['kks'], None))
+            if k == 'lock_left':
+                hits = [(('lock_left', p.id), None, None, None) for p in gone]
             for src, work, code, alarm in hits:
                 key = (ri,) + src
                 if key in self.given:
@@ -1191,7 +1231,7 @@ class StaffRun:
                 w = r.get('work', work)
                 if code is None and w is not None:
                     code = e.works[w]['kks']
-                self.assign(r['roles'], r['task'], prio, key, w, code, alarm)
+                self.assign(r['roles'], r['task'], prio, key, w, code, alarm, src[1] if k == 'lock_left' else None)
 
     # --- a person's turn (phase 4)
     def select(self, p):
@@ -1218,7 +1258,7 @@ class StaffRun:
             idle = self.st.routine_of(p.i)['idle']
             cur = p.cur = {'task': idle, 'prio': 6, 'made': e.step_no, 'order': self.order, 'step': 0, 'st': {},
                            'work': None, 'code': None, 'alarm': None, 'src': None, 'idle': True, 'started': True,
-                           'int': True}
+                           'int': True, 'owner': None}
             self.order += 1
             e.ev('task', p.id, idle, 'start')
             if p.pos is None and p.i != self.trainee:
@@ -1233,7 +1273,7 @@ class StaffRun:
     def pause(self, p):
         cur = p.cur
         st = cur['st']
-        for k in ('dest', 'waiting', 'wait_since', 'target', 'meet_since', 'seat', 'seen'):
+        for k in ('dest', 'waiting', 'wait_since', 'target', 'meet_since', 'seat', 'seen', 'pt', 'since'):
             st.pop(k, None)     # (seen: a resumed step is current again, §17.8)
         self.unreserve(p)
         p.queue.append(cur)
@@ -1517,7 +1557,130 @@ class StaffRun:
                 return 'fail'
             x['i'] = i + 1
             return 'next' if i + 1 >= len(pts) else self.run(p, cur)
+        if 'handover' in s or 'remove_locks' in s:
+            return self.lock_round(p, cur, s)
         raise AssertionError(s)
+
+    # --- locks at a shift change (§17.9)
+    def mate(self, p, who):
+        """Whether `who` (a lock's person) is a post-mate of p: another person of p's role and routine."""
+        st = self.st
+        if not (isinstance(who, str) and who != p.id and who in st.person_ix):
+            return False
+        q = st.people[st.person_ix[who]]
+        mine = st.people[p.i]
+        # a crew-mate hands nothing over at a shift change: they come and go together
+        return self.people[st.person_ix[who]].post == p.post and \
+            not ('crew' in q and q.get('crew') == mine.get('crew'))
+
+    def chosen(self, p, key):
+        """Whether another person's take step has chosen the point and is still taking it."""
+        st = self.st
+        for q in self.people:
+            c = q.cur
+            if q.i != p.i and c is not None and c['st'].get('pt') == key \
+                    and st.tasks[c['task']]['steps'][c['step']].get('handover') == 'take':
+                return True
+        return False
+
+    def lock_target(self, p, cur, s, x):
+        """The next point of a take, give or remove_locks step (model order), or None."""
+        e = self.e
+        tried = x.get('tried', []) if x is not None else []
+        owner = cur['owner']
+        for iso in e.m.isolations:
+            for j in range(len(iso['points'])):
+                key = (iso['id'], j)
+                held = e.locks.get(key)
+                if not held or key in tried:
+                    continue
+                if s.get('handover') == 'take':
+                    if not self.to_take(p, key, held) or (x is not None and self.chosen(p, key)):
+                        continue
+                elif s.get('handover') == 'give':
+                    if p.id not in held:
+                        continue
+                elif owner is None or not any(same(h, owner) for h in held):
+                    continue
+                return key
+        return None
+
+    def lock_round(self, p, cur, s):
+        """An NPC's take, give or remove_locks step: one point at a time."""
+        e = self.e
+        st = self.st
+        x = cur['st']
+        tried = x.setdefault('tried', [])
+        kind = s.get('handover', 'remove')
+        if x.get('busy'):
+            if p.result is None:
+                return 'wait'
+            p.result = None
+            x['busy'] = False
+            tried.append(x.pop('pt'))
+            x.pop('since', None)
+        for _ in range(MAX_POINTS):
+            if 'pt' not in x:
+                key = self.lock_target(p, cur, s, x)
+                if key is None:
+                    return 'next'
+                x['pt'] = key
+            key = x['pt']
+            if not self.still(p, cur, s, key):
+                tried.append(x.pop('pt'))       # no longer to do (taken, given or removed meanwhile)
+                x.pop('since', None)
+                continue
+            wp = st.work_at.get(e.isos[key[0]]['points'][key[1]]['kks'])
+            if wp is not None:
+                r = self.go(p, cur, wp)
+                if r != 'next':
+                    return r
+                x.pop('dest', None)
+            if kind == 'give' and e.pstate[e.holder[key[0]]] not in (7, 10) \
+                    and not any(not same(h, p.id) for h in e.locks[key]):
+                if 'since' not in x:
+                    x['since'] = e.step_no
+                if e.step_no - x['since'] < HANDOVER_WAIT * st.tpm:
+                    return 'wait'
+                tried.append(x.pop('pt'))       # nobody took it over: the lock stays on
+                x.pop('since')
+                continue
+            w = e.holder[key[0]]
+            if kind == 'take':
+                e.npc_queue.append(('lock', w, key[1], p.id))
+            elif kind == 'give':
+                e.npc_queue.append(('unlock', w, key[1], p.id))
+            else:
+                e.npc_queue.append(('remove_lock', w, key[1], p.id, st.messages[s['remove_locks']], cur['owner']))
+            x['busy'] = True
+            p.result = None
+            return 'wait'
+        return 'wait'
+
+    def still(self, p, cur, s, key):
+        """Whether the chosen point is still to do."""
+        held = self.e.locks.get(key)
+        if not held:
+            return False
+        if s.get('handover') == 'take':
+            return self.to_take(p, key, held)
+        if s.get('handover') == 'give':
+            return p.id in held
+        return cur['owner'] is not None and any(same(h, cur['owner']) for h in held)
+
+    def to_take(self, p, key, held):
+        """A point to take over: a post-mate's lock on it, none of theirs nor of a crew-mate of their post (already
+        taken over), and its work still open (returned or cancelled: the isolation is coming off, §17.9)."""
+        st = self.st
+        if p.id in held or self.e.pstate[self.e.holder[key[0]]] in (7, 10):
+            return False
+        mine = st.people[p.i]
+        for h in held:
+            if isinstance(h, str) and h in st.person_ix and h != p.id:
+                q = st.people[st.person_ix[h]]
+                if self.people[st.person_ix[h]].post == p.post and 'crew' in q and q['crew'] == mine.get('crew'):
+                    return False
+        return any(self.mate(p, h) for h in held)
 
     def say(self, p, msg, to):
         e = self.e
@@ -1588,7 +1751,7 @@ class StaffRun:
         n = e.step_no
         used = [False] * len(tin)
         mine = [x for x in e.events[e.ev_mark:] if x[0] == n]
-        self.drop_kept(mine)
+        self.drop_kept(mine, p.id)
         took = set()
         self.trainee_steps(p, tin, used, mine, took)
         self.keep(p, mine, took)
@@ -1711,6 +1874,19 @@ class StaffRun:
                 elif self.early_done(p, cur, x, lambda q: q[0] == 'permit' and q[2] == w and q[3] == a
                                      and self.permit_holds(w, a, q[4])):
                     r = 'next'
+            elif 'handover' in s and s['handover'] == 'take':
+                if self.lock_target(p, cur, s, None) is None:
+                    r = 'next'
+            elif 'handover' in s:
+                if 'from' not in x:
+                    x['from'] = n
+                held = [h for h in e.locks.values() if p.id in h]
+                if not any(any(not same(y, p.id) for y in h) for h in held) and \
+                        (not held or n - x['from'] >= HANDOVER_WAIT * st.tpm):
+                    r = 'next'
+            elif 'remove_locks' in s:
+                if self.lock_target(p, cur, s, None) is None:
+                    r = 'next'
             elif 'lock' in s or 'unlock' in s:
                 k = 'lock' if 'lock' in s else 'unlock'
                 w = cur['work'] if s[k]['work'] == '$' else s[k]['work']
@@ -1739,13 +1915,13 @@ class StaffRun:
             self.advance(p, r)
 
     # --- the trainee's actions made before their step was current (§17.8)
-    def drop_kept(self, mine):
+    def drop_kept(self, mine, me):
         """A machine entered by a command or an action in this step: an earlier command of it no longer holds."""
         moved = {x[2] for x in mine if x[1] == 'machine' and x[5] != 'next'}
         if moved:
             self.early = [r for r in self.early if not (r[0] == 'op' and r[5] in moved)]
-        # a point locked again (by anyone): an earlier unlock of it no longer holds
-        relocked = [(x[2], x[3]) for x in mine if x[1] == 'lock' and x[5] == 'done']
+        # a point they locked again: an earlier unlock of theirs no longer holds
+        relocked = [(x[2], x[3]) for x in mine if x[1] == 'lock' and x[5] == 'done' and same(x[4], me)]
         if relocked:
             self.early = [r for r in self.early if not (r[0] == 'unlock' and (r[2], r[3]) in relocked)]
 
@@ -1811,8 +1987,8 @@ class StaffRun:
         iso = e.works[w].get('isolation')
         key = (iso, point)
         if kind == 'unlock':
-            return key not in e.locks
-        return e.locks.get(key, False) == p.id and e.holder[iso] == w
+            return p.id not in e.locks.get(key, [])
+        return p.id in e.locks.get(key, []) and e.holder[iso] == w
 
     # --- the snapshot's part (§17.7)
     def snap(self):
