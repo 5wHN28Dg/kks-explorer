@@ -981,7 +981,8 @@ calibration.
   task of a `hot` or `confined` work has a gas test, a `read` step with `"test": "gas"` of a gas detector's value
   before its first `work` step (validator: `bad_ref` without one).
 - **`isolation`** (optional): a work without one (an inspection) needs no locks.
-- **`repairs`** (optional): a fault of the scenario, repaired when the work is done (written as §7.8's repair, with its
+- **`repairs`** (optional; the work then needs an `isolation`, `missing_key` otherwise: every job that repairs
+  equipment is done with it isolated, the user, 2026-10-24): a fault of the scenario, repaired when the work is done (written as §7.8's repair, with its
   event), or before that by the trainee under the permit (§15.5); a work for a fault the scenario doesn't have does
   nothing more. At most one work repairs a given fault (validator: `dup_id`), so the card's repair always names
   the one permit it goes under. **`set`** (optional): states written when done (a service counter, or a state of another code).
@@ -1018,7 +1019,8 @@ Each work has one permit at a time; its state is the value `<work id>_permit`:
   work of the model, or not one of the eight above, is `unknown` and changes nothing.
 - **The acceptor** is the person who made `accept`. While they are off duty or absent, another person with `accept`
   and the work's discipline may make `done` and `return` (permits are handed back at a shift's end, as on site).
-- `done` writes the work's `repairs` and `set` in step 3 (§17.1). The work itself is the task's `work` steps before
+- `done` writes the work's `repairs` and `set` in step 3 (§17.1); its repair only while its isolation is complete
+  after this step's locks (a lock removed by authority in the same step: not made, no event; 2026-10-24). The work itself is the task's `work` steps before
   it: the engine checks the permit and the person, not the task.
 - **Automatic moves** are levels, checked in step 3 after the locks and unlocks, in work order (model order), each an
   event (§17.7): a permit at 2 whose isolation is complete (or that has none) goes to 3; at 3 with its isolation not
@@ -1045,8 +1047,7 @@ up training.
     or absent: played roles and NPCs alike, whose repairs are their work's `done`), `state` (the work's permit is not
     *accepted*, 5), `isolation` (the work has no isolation, or its isolation is not complete as step 1 finds it: a
     repair needs the isolation in place, the user's rule of 2026-10-23; added 2026-10-24, before which a work without
-    an isolation repaired at *accepted*). A work without an isolation (an inspection) still repairs its fault by its
-    `done`;
+    an isolation repaired at *accepted*; since 2026-10-24 a work that repairs has an isolation, §15.2);
   - otherwise it is noted, without an event, and made in step 3 with format 1's repairs (one list, in the scenario's
     order) if the work's permit is still *accepted* after this step's locks and automatic moves (a lock removed by
     authority in the same step suspends it, §15.3: then nothing, no event), its writes being the work's own (§15.1: made on a code locked only by isolations the work holds), with
@@ -1272,7 +1273,8 @@ Steps, each done by an NPC as said and by the trainee through the input named (�
 | `handover`: `"give"` | at each of their locks in turn, waits for another lock on the point (60 clock minutes at most), then unlocks; a lock nobody took over stays | unlocks each lock another lock now shares |
 | `remove_locks`: a message id (the reason) | removes by authority, one point at a time, the locks of the person the `lock_left` reaction named (§16.7), with the message's text as the reason | the same, from the permit form |
 
-- A task has `priority` 1 (urgent) to 5 (default 3), `interruptible` (default true), optionally `work` (the work it
+- A task has `priority` 1 (urgent) to 5 (default 3), `interruptible` (default true), `resume` (`"next_duty"`: a
+  job left unfinished at the end of its person's duty is held and resumed at their next duty, §17.10), optionally `work` (the work it
   does, for `$`) and `else` targets inside it; `"unsafe": true` on a step marks a shortcut (§16.7). `anim` and
   `tool` are what the app shows (§18.3).
 - **The validator** checks that each step's role can do it (`authority`) and that every `{"kks"}` has a work place;
@@ -1575,6 +1577,29 @@ What S1 settles that §16–§17 left open (the engines and the vectors follow t
   previous step 9 (at step 0: its value then).
 - **The queue limit** of 32 counts the current task unless it is the idle task.
 
+### 17.10 Day-shift jobs overnight and re-issued permits (the user, 2026-10-24)
+
+- **An unfinished day-shift job keeps its lock overnight.** A task with `"resume": "next_duty"` (the content's jobs)
+  that is current when its person (an NPC) is off duty, at their turn while they stand at a place and wait for no
+  input's outcome, is *held*: paused as a pre-emption pauses it (§17.8, its `work` keeping its time left), taken off
+  their queue, event `[n, "task", person, task, "held"]`. They then leave the site as anyone off duty with nothing
+  to do. When their next duty starts (phase 1, after its `duty` event) the held instance goes back into their queue
+  (event `resumed`) and is picked by the queue's order. Placement (step 0, a jump) clears it.
+- **Day workers are not `lock_left`** (§16.7): a person on a `days` roster who leaves the site with a lock on keeps
+  it, the equipment isolated and the permit held (not cancelled or suspended); they remove it themselves when their
+  job resumes and ends (their own unlock, as any). The supervisor's removal by authority stays for a holder who can't
+  return (from the permit form, logged as before); NPCs make it only for shift workers, as §17.9 says.
+- **A permit re-issued after a suspension is offered again.** When a permit moves back to approved by itself (§15.3:
+  a lock removed by authority), every task instance given by a reaction to that work's permit states keeps running
+  but no longer holds its reaction's source (§16.7: "a reaction is skipped while a task it gave for the same source
+  is still queued or current"), so the reactions to its next states (isolated, issued) are given again: the job
+  suspended mid-work is offered to a technician when its permit is issued again. The old job's next permit step is
+  refused and abandons it, as any refusal does.
+- **Vectors** (§19): a staff run with an instrument technician on days whose job and lock run past 16:00, held
+  overnight and resumed at 07:00 (no removal by authority); a day fork of the first train where CW pump B's lock is
+  removed by authority while its job is in progress and the job is offered again when the permit is re-issued;
+  `reject` has a repairing work without an isolation.
+
 ### 17.9 Locks at a shift change, as built (2026-10-24)
 
 The user's decisions of 2026-10-24 (§15.1 "Locks at a shift change", §15.5 "Instructor actions are visible"), in
@@ -1605,7 +1630,7 @@ both engines and the vectors (§19):
   passed since the step became current; `remove_locks` when the owner holds no lock. Their own inputs do the work, as
   the permit form makes them; nothing is taken from the kept actions.
 - **Leaving the site with a lock:** at phase 2 of each step 9 the engine lists, in index order, the people other than
-  the trainee and the absent who are off duty, off site (no place, not on a way) and hold a lock; each one not on the
+  the trainee, the absent and day workers (§17.10) who are off duty, off site (no place, not on a way) and hold a lock; each one not on the
   list of the previous phase 2 is a `lock_left` source for every reaction to it. In a step with a `duty` `on` event
   the previous list counts as empty, so a lock still left on is given again when someone comes on duty (a removal
   that found no supervisor on duty, `unassigned`, is not lost; one still queued is not given twice, §16.7).
