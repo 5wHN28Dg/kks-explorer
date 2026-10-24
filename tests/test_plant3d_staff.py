@@ -91,7 +91,7 @@ class StaffVectors(unittest.TestCase):
                   'task_ack', 'alarm', 'trip', 'fault', 'repair'):
             self.assertIn(k, kinds)
         outcomes = {e[4] for e in self.ev if e[1] == 'task'}
-        self.assertEqual(outcomes, {'start', 'done', 'abandoned', 'skipped', 'unassigned'})
+        self.assertEqual(outcomes, {'start', 'done', 'abandoned', 'skipped', 'unassigned', 'held', 'resumed'})
         reads = {e[5] for e in self.ev if e[1] == 'read'}
         self.assertEqual(reads, {'ok', 'out_of_range', 'misread'})
         npc_ops = [e for e in self.ev if e[1] == 'op' and len(e) == 8 and e[7] not in ('a_ccr',)]
@@ -465,6 +465,45 @@ class StaffVectors(unittest.TestCase):
         self.assertTrue(any(x[1] == 'unlock' and x[4] == 'a_fo2' and x[5] == 'done' for x in ev))
         self.assertTrue(any(x[1] == 'permit' and x[3] == 'auto' and x[6] == [8] for x in ev))
 
+    def test_a_day_shift_job_overnight(self):
+        """§17.10 (the user, 2026-10-24): an unfinished day-shift job is held at 16:00 with its lock on (no removal
+        by authority, the permit still accepted), resumed at 07:00, and its technician unlocks their own lock."""
+        run = next(r for r in self.runs if r['why'].startswith('a day-shift job overnight'))
+        ev = run['events']
+        held = next(x for x in ev if x[1] == 'task' and x[3] == 'job_gauge' and x[4] == 'held')
+        self.assertEqual(held[2], 'ic1')
+        self.assertTrue(any(x[1] == 'move' and x[2] == 'ic1' and x[4] is None and x[0] >= held[0] for x in ev))
+        resumed = next(x for x in ev if x[1] == 'task' and x[3] == 'job_gauge' and x[4] == 'resumed')
+        self.assertFalse(any(x[1] in ('remove_lock', 'unlock') and held[0] <= x[0] <= resumed[0] for x in ev))
+        self.assertFalse(any(x[1] == 'task' and x[3] == 'remove_left' for x in ev))
+        night = [s for s in run['states'] if held[0] < s['step'] < resumed[0]]
+        self.assertTrue(night)
+        for s in night:
+            self.assertEqual(s['permits'].get('wo_gauge'), 5, s['step'])
+            self.assertIn(['iso_gauge', 0], s['locked'])
+        self.assertTrue(any(x[1] == 'unlock' and x[4] == 'ic1' and x[5] == 'done' and x[0] > resumed[0] for x in ev))
+        self.assertTrue(any(x[1] == 'permit' and x[2] == 'wo_gauge' and x[3] == 'close' and x[5] == 'done' for x in ev))
+
+    def test_two_jobs_held_overnight(self):
+        """§17.10 (blind review): a second job held at the duty's end doesn't replace the first; both resume."""
+        ev = next(r for r in self.runs if r['why'].startswith('a day-shift job overnight'))['events']
+        held = [x[3] for x in ev if x[1] == 'task' and x[2] == 'ic1' and x[4] == 'held']
+        resumed = [x[3] for x in ev if x[1] == 'task' and x[2] == 'ic1' and x[4] == 'resumed']
+        self.assertEqual(held, ['job_gauge', 'inspect_gauge'])
+        self.assertEqual(resumed, held)
+        self.assertTrue(any(x[1:] == ['task', 'ic1', 'inspect_gauge', 'done'] for x in ev))
+        # the queued job off duty is held as it is: not started (no walk to it) before being held (adversarial)
+        self.assertFalse(any(x[1:] == ['task', 'ic1', 'inspect_gauge', 'start'] and x[0] < 9900 for x in ev))
+
+    def test_a_held_job_suspended_at_night(self):
+        """§17.10 (blind review): a lock removed by authority at night abandons the held jobs at once, so nobody
+        resumes work on equipment no longer isolated in the morning."""
+        ev = next(r for r in self.runs if r['why'].startswith('a day-shift job suspended overnight'))['events']
+        self.assertIn([3000, 'permit', 'wo_gauge', 'auto', None, 'done', [2]], ev)
+        self.assertIn([3000, 'task', 'ic1', 'job_gauge', 'abandoned'], ev)
+        self.assertFalse(any(x[1] == 'task' and x[4] == 'resumed' for x in ev))
+        self.assertFalse(any(x[1] == 'permit' and x[2] == 'wo_gauge' and x[0] > 3000 and x[4] == 'ic1' for x in ev))
+
     def test_the_trainee_hands_over(self):
         """§17.9: the trainee takes over a lock from the permit form (incoming), and gives one (outgoing)."""
         ev = self.run_named("the trainee as crew B's field operator")
@@ -521,6 +560,27 @@ class FirstTrainStaff(unittest.TestCase):
         with open(G.OUT2, encoding='utf-8') as f:
             cls.day = json.load(f)['day']
         cls.b = P.check_dir(G.DATA)
+
+    def test_a_suspended_job_is_offered_again(self):
+        """§17.10 (a bug the locks review found): CW pump B's breaker lock removed by authority while its job is in
+        progress suspends the permit; isolated and issued again, the job is offered to a technician again and the
+        permit goes on to closed (before the fix the job's reaction stayed blocked and the permit stuck at issued)."""
+        f = next(f for f in self.day['forks'] if f['id'] == 'job_suspended')
+        ev = f['events']
+        starts = [x for x in ev if x[1] == 'task' and x[3] == 'job_cw_b_motor' and x[4] == 'start']
+        self.assertEqual(len(starts), 2)
+        self.assertIn([15000, 'permit', 'wo_cw_b_motor', 'auto', None, 'done', [2]], ev)
+        reissue = [x[0] for x in ev if x[1] == 'permit' and x[2] == 'wo_cw_b_motor' and x[3] == 'issue']
+        self.assertEqual(len(reissue), 2)
+        self.assertGreaterEqual(starts[1][0], reissue[1])
+        self.assertIn([15000, 'task', 'mech1', 'job_cw_b_motor', 'abandoned'], ev)     # at once, not working on
+        self.assertEqual(f['end']['permits']['wo_cw_b_motor'], 9)
+
+    def test_jobs_resume_next_duty(self):
+        """§17.10: the content's jobs are held overnight at their duty's end, not left running."""
+        jobs = [t for t in self.b.staff.tasks.values() if t['id'].startswith('job_')]
+        self.assertTrue(jobs)
+        self.assertTrue(all(t.get('resume') == 'next_duty' for t in jobs))
 
     def test_content(self):
         st = self.b.staff

@@ -1265,12 +1265,13 @@ class Vectors2(unittest.TestCase):
         self.assertIn([2, 'repair', 'f1'], shared)             # the trainer's, on a free code
 
     def test_repair_needs_the_isolation(self):
-        """§15.5 (2026-10-24): a work without an isolation can't be repaired under its accepted permit (its done
-        still repairs); before, it could (the gap the S1 review left)."""
+        """§15.2, §15.5 (2026-10-24): a work that repairs has an isolation (the validator refuses one without), and
+        the trainee's repair under its permit needs that isolation in place."""
         shared = self.V['steps'][1]['events']
-        self.assertIn([15, 'repair', 'f4', 'wo_n', None, 'refused', ['isolation']], shared)
-        self.assertIn([15, 'repair', 'f4'], shared)                    # by the work's done
         self.assertIn([2, 'repair', 'f1', 'wo_p', None, 'refused', ['state', 'isolation']], shared)
+        self.assertIn(('a work that repairs with no isolation', 'missing_key'),
+                      [(r['why'], r['code']) for r in self.V['reject']])
+        self.assertFalse(any(x[1] == 'repair' and x[2] == 'f4' for x in shared))
 
     def test_removal_while_issued_suspends_the_work(self):
         """§15.1, §15.3 (2026-10-24): a lock removed by authority while the permit is accepted suspends the work

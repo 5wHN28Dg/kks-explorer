@@ -475,7 +475,8 @@ class Staff:
 
     def check_task(self, t):
         w = f'staff.json: task {t["id"]}'
-        keys(t, ('id', 'title', 'steps'), ('priority', 'interruptible', 'work'), w)
+        keys(t, ('id', 'title', 'steps'), ('priority', 'interruptible', 'work', 'resume'), w)
+        need(t.get('resume', 'next_duty') == 'next_duty', 'bad_value', f'{w}.resume: "next_duty" (§17.10)')
         need(isinstance(t['title'], str) and 1 <= len(t['title']) <= 120, 'bad_type', f'{w}.title')
         pr = t.get('priority', 3)
         need(isinstance(pr, int) and not isinstance(pr, bool) and 1 <= pr <= 5, 'bad_number', f'{w}.priority: 1–5')
@@ -848,7 +849,7 @@ def check_scenario_staff(s, b, rel):
 
 class Person:
     __slots__ = ('i', 'id', 'role', 'auth', 'rng', 'on', 'duty', 'duties', 'planned', 'slots', 'pos', 'leg',
-                 'cur', 'queue', 'res', 'occ', 'pending', 'result', 'post')
+                 'cur', 'queue', 'res', 'occ', 'pending', 'result', 'post', 'held')
 
 
 
@@ -872,6 +873,7 @@ class StaffRun:
             q.on, q.duty, q.duties, q.planned, q.slots = False, None, [], None, []
             q.pos, q.leg, q.cur, q.queue, q.res, q.occ, q.pending, q.result = None, None, None, [], None, None, \
                 None, None
+            q.held = []                # jobs held overnight (§17.10), in the order held
             q.post = (p['role'], p.get('routine', st.roles[p['role']]['routine']))     # role, routine (§17.9)
             self.people.append(q)
         self.order = 0                  # instances made, for the queue's order
@@ -959,6 +961,7 @@ class StaffRun:
         for p in self.people:
             p.duties, p.slots, p.planned = [], [], day - 3
             p.cur, p.queue, p.leg, p.res, p.occ, p.pending, p.result = None, [], None, None, None, None, None
+            p.held = []
             p.pos = None
             p.on, p.duty = False, None
             if p.id in self.absent:
@@ -1122,7 +1125,7 @@ class StaffRun:
             old, new = self.jumped
             self.jumped = None
             for p in self.people:
-                for inst in ([p.cur] if p.cur is not None else []) + p.queue:
+                for inst in ([p.cur] if p.cur is not None else []) + p.queue + p.held:
                     e.ev('task', p.id, inst['task'], 'skipped')
             self.place_all(new, old)
             jump_step = True
@@ -1158,6 +1161,11 @@ class StaffRun:
                 if p.duties and p.duties[0][0] <= c:
                     p.on, p.duty = True, p.duties.pop(0)
                     e.ev('duty', p.id, 'on')
+                    held, p.held = p.held, []   # the jobs held overnight come back (§17.10)
+                    for h in held:
+                        p.queue.append(h)
+                        p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
+                        e.ev('task', p.id, h['task'], 'resumed')
         for p in self.people:
             if p.id in self.absent:
                 continue
@@ -1193,9 +1201,24 @@ class StaffRun:
         gone = []
         if any(x[1] == 'duty' and x[3] == 'on' for x in evs):
             self.left = set()           # someone came on duty: a lock still left is given again (§17.9)
+        # a permit back to approved by itself (a suspension): its jobs (tasks with resume, given for that work) are
+        # abandoned at once, held or not, so nobody works on equipment no longer isolated and the reaction to its
+        # next issue offers the job again (§17.10)
+        back = {x[2] for x in evs if x[1] == 'permit' and x[3] == 'auto' and x[6] == [2]}
+        if back:
+            for p in self.people:
+                def job(inst):
+                    return inst['work'] in back and st.tasks[inst['task']].get('resume') == 'next_duty'
+                if p.cur is not None and job(p.cur):
+                    self.finish(p, 'abandoned')
+                for inst in [q for q in p.queue if job(q)] + [q for q in p.held if job(q)]:
+                    e.ev('task', p.id, inst['task'], 'abandoned')
+                    self.release(inst)
+                p.queue = [q for q in p.queue if not job(q)]
+                p.held = [q for q in p.held if not job(q)]
         for p in self.people:
             if p.i != self.trainee and p.id not in self.absent and not p.on and p.pos is None and p.leg is None \
-                    and any(p.id in x for x in e.locks.values()):
+                    and self.left_locks(p):
                 now.add(p.i)
                 if p.i not in self.left:
                     gone.append(p)
@@ -1239,6 +1262,17 @@ class StaffRun:
         current instance, or None."""
         e = self.e
         cur = p.cur
+        if cur is not None and not p.on and p.i != self.trainee and not cur['idle'] and not cur['st'].get('busy') \
+                and self.st.tasks[cur['task']].get('resume') == 'next_duty':
+            self.pause(p)               # a job left unfinished at the duty's end: held for the next (§17.10)
+            p.held.append(p.queue.pop(next(k for k, q in enumerate(p.queue) if q is cur)))
+            e.ev('task', p.id, cur['task'], 'held')
+            cur = None
+        if cur is None and not p.on and p.i != self.trainee:
+            for q in [q for q in p.queue if self.st.tasks[q['task']].get('resume') == 'next_duty']:
+                p.queue.remove(q)       # queued jobs off duty: held as they are, no walk to them first
+                p.held.append(q)
+                e.ev('task', p.id, q['task'], 'held')
         if cur is not None and cur['idle'] and (p.queue or not p.on):
             e.ev('task', p.id, cur['task'], 'done')
             p.cur = cur = None
@@ -1600,7 +1634,7 @@ class StaffRun:
                 elif s.get('handover') == 'give':
                     if p.id not in held:
                         continue
-                elif owner is None or not any(same(h, owner) for h in held):
+                elif not self.removable(cur, key, held):
                     continue
                 return key
         return None
@@ -1666,7 +1700,24 @@ class StaffRun:
             return self.to_take(p, key, held)
         if s.get('handover') == 'give':
             return p.id in held
-        return cur['owner'] is not None and any(same(h, cur['owner']) for h in held)
+        return self.removable(cur, key, held)
+
+    def removable(self, cur, key, held):
+        """A lock of the remove_locks step's owner, not kept for a held job of theirs (§17.10)."""
+        o = cur['owner']
+        if o is None or not any(same(h, o) for h in held):
+            return False
+        q = self.people[self.st.person_ix[o]] if isinstance(o, str) and o in self.st.person_ix else None
+        return q is None or self.e.holder[key[0]] not in self.kept_works(q)
+
+    def kept_works(self, p):
+        """The works of a person's held jobs: their locks on those stay on overnight (§17.10)."""
+        return {q['work'] for q in p.held if q['work'] is not None}
+
+    def left_locks(self, p):
+        """Whether p holds a lock that is not kept for a held job of theirs (§17.10)."""
+        kept = self.kept_works(p)
+        return any(p.id in held and self.e.holder[key[0]] not in kept for key, held in self.e.locks.items())
 
     def to_take(self, p, key, held):
         """A point to take over: a post-mate's lock on it, none of theirs nor of a crew-mate of their post (already

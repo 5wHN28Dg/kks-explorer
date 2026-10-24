@@ -1022,6 +1022,8 @@ class Model:
             self.work_isos.append((ident(x['isolation'], f'{w}.isolation'), f'{w}.isolation'))
         if 'repairs' in x:
             ident(x['repairs'], f'{w}.repairs')
+            need('isolation' in x, 'missing_key', f'{w}.isolation: a work that repairs equipment isolates it '
+                                                  f'(PLANT3D §15.2)')
             need(x['repairs'] not in {y.get('repairs') for y in self.works}, 'dup_id',
                  f'{w}.repairs: another work already repairs {x["repairs"]} (one work per fault)')
         if 'set' in x:
@@ -2342,8 +2344,10 @@ class Engine:
             w = self.works[wid]
             fid = w.get('repairs')
             f = self.faults.get(fid)
+            iso = w.get('isolation')
+            whole = iso is None or self.n_locked(iso) == len(self.isos[iso]['points'])
             if f is not None and 'repair' in f and fid in self.faults_done and fid not in self.faults_fixed \
-                    and not self._blocked(f['repair'], wid):
+                    and whole and not self._blocked(f['repair'], wid):
                 self.faults_fixed.add(fid)
                 self._set(f['repair'], wid)
                 self.ev('repair', fid)
