@@ -2155,45 +2155,55 @@ def build_day(b=None):
             'forks': forks}
 
 
-def build2():
+def parts2():
+    """Format 2's vectors part by part, in the file's order: each part's name and the function that makes it (the
+    tests check each part on its own, so CI can make them side by side)."""
     F = mini2()
-    return {'about': 'Walkdown Plant content format 2 vectors (docs/PLANT3D.md §19), made by '
-                     'ref/make_plant3d_vectors.py from ref/plant3d.py. Numbers compare to 1e-6. Milestone P1: permits, '
-                     'isolations and the hold node (§15); W2: the water treatment plant started from cold by its '
-                     'procedure (`wtp`, as format 1\'s `train`); W3: an RO train cleaned in place (`wtp_cip`) '
-                     'and a mixed bed regenerated (`wtp_regen`) by their procedures; milestone S1: the staff '
-                     '(§16–§17): `staff` holds a synthetic plant with staff, its rejects and its runs (every event, a '
-                     'snapshot every `every` steps), `day` the first train\'s day shift.',
-            'valid': [{'why': 'the synthetic plant as version 2', 'files': {k: json.dumps(v, ensure_ascii=False)
-                                                                           for k, v in F.items()},
-                       'counts': check(F).counts}],
-            'reject': build_rejects2(),
-            'steps': build_steps2(),
-            'train': build_train2(train_bundle()),
-            'wtp': build_train(train_bundle(), 'wtp_cold', 'wtp_start', WTP_FORKS),
-            'staff': {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in staff_files().items()},
-                      'counts': check(staff_files()).counts,
-                      'reject': build_rejects_staff(),
-                      'runs': build_staff()},
-            'day': build_day(),
-            'wtp_cip': build_train(train_bundle(), 'wtp_normal', 'ro_cip', CIP_FORKS),
-            'wtp_regen': build_train(train_bundle(), 'wtp_normal', 'mb_regeneration', REGEN_FORKS)}
+    return {
+        'about': lambda: ('Walkdown Plant content format 2 vectors (docs/PLANT3D.md §19), made by '
+                          'ref/make_plant3d_vectors.py from ref/plant3d.py. Numbers compare to 1e-6. Milestone P1: '
+                          'permits, isolations and the hold node (§15); W2: the water treatment plant started from cold '
+                          'by its procedure (`wtp`, as format 1\'s `train`); W3: an RO train cleaned in place '
+                          '(`wtp_cip`) and a mixed bed regenerated (`wtp_regen`) by their procedures; milestone S1: the '
+                          'staff (§16–§17): `staff` holds a synthetic plant with staff, its rejects and its runs (every '
+                          'event, a snapshot every `every` steps), `day` the first train\'s day shift.'),
+        'valid': lambda: [{'why': 'the synthetic plant as version 2', 'files': {k: json.dumps(v, ensure_ascii=False)
+                                                                               for k, v in F.items()},
+                           'counts': check(F).counts}],
+        'reject': build_rejects2,
+        'steps': build_steps2,
+        'train': lambda: build_train2(train_bundle()),
+        'wtp': lambda: build_train(train_bundle(), 'wtp_cold', 'wtp_start', WTP_FORKS),
+        'staff': lambda: {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in staff_files().items()},
+                          'counts': check(staff_files()).counts,
+                          'reject': build_rejects_staff(),
+                          'runs': build_staff()},
+        'day': build_day,
+        'wtp_cip': lambda: build_train(train_bundle(), 'wtp_normal', 'ro_cip', CIP_FORKS),
+        'wtp_regen': lambda: build_train(train_bundle(), 'wtp_normal', 'mb_regeneration', REGEN_FORKS)}
+
+
+def build2():
+    return {k: f() for k, f in parts2().items()}
+
+
+def parts():
+    """Format 1's vectors part by part, in the file's order (as parts2)."""
+    F = mini()
+    return {
+        'about': lambda: ('Walkdown Plant content format 1 vectors (docs/PLANT3D.md §12), made by '
+                          'ref/make_plant3d_vectors.py from ref/plant3d.py. Numbers compare to 1e-6.'),
+        'valid': lambda: [{'why': 'the synthetic plant', 'files': {k: json.dumps(v, ensure_ascii=False)
+                                                                  for k, v in F.items()}, 'counts': check(F).counts}],
+        'reject': build_rejects,
+        'steps': build_steps,
+        'links': lambda: [{'link': u, 'expect': P.read_link(u, check(F))} for u in LINKS],
+        'train': lambda: build_train(train_bundle()),
+        'hot': lambda: build_train(train_bundle(), 'hot_restart', 'hot_restart', HOT_FORKS)}
 
 
 def build():
-    F = mini()
-    tb = train_bundle()
-    counts = check(F).counts
-    links = [{'link': u, 'expect': P.read_link(u, check(F))} for u in LINKS]
-    return {'about': 'Walkdown Plant content format 1 vectors (docs/PLANT3D.md §12), made by '
-                     'ref/make_plant3d_vectors.py from ref/plant3d.py. Numbers compare to 1e-6.',
-            'valid': [{'why': 'the synthetic plant', 'files': {k: json.dumps(v, ensure_ascii=False)
-                                                              for k, v in F.items()}, 'counts': counts}],
-            'reject': build_rejects(),
-            'steps': build_steps(),
-            'links': links,
-            'train': build_train(tb),
-            'hot': build_train(tb, 'hot_restart', 'hot_restart', HOT_FORKS)}
+    return {k: f() for k, f in parts().items()}
 
 
 def dump(v):
