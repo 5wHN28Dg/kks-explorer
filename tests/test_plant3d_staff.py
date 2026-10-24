@@ -91,7 +91,7 @@ class StaffVectors(unittest.TestCase):
                   'task_ack', 'alarm', 'trip', 'fault', 'repair'):
             self.assertIn(k, kinds)
         outcomes = {e[4] for e in self.ev if e[1] == 'task'}
-        self.assertEqual(outcomes, {'start', 'done', 'abandoned', 'skipped', 'unassigned'})
+        self.assertEqual(outcomes, {'start', 'done', 'abandoned', 'skipped', 'unassigned', 'held', 'resumed'})
         reads = {e[5] for e in self.ev if e[1] == 'read'}
         self.assertEqual(reads, {'ok', 'out_of_range', 'misread'})
         npc_ops = [e for e in self.ev if e[1] == 'op' and len(e) == 8 and e[7] not in ('a_ccr',)]
@@ -572,7 +572,8 @@ class FirstTrainStaff(unittest.TestCase):
         self.assertIn([15000, 'permit', 'wo_cw_b_motor', 'auto', None, 'done', [2]], ev)
         reissue = [x[0] for x in ev if x[1] == 'permit' and x[2] == 'wo_cw_b_motor' and x[3] == 'issue']
         self.assertEqual(len(reissue), 2)
-        self.assertEqual(starts[1][0], reissue[1])
+        self.assertGreaterEqual(starts[1][0], reissue[1])
+        self.assertIn([15000, 'task', 'mech1', 'job_cw_b_motor', 'abandoned'], ev)     # at once, not working on
         self.assertEqual(f['end']['permits']['wo_cw_b_motor'], 9)
 
     def test_jobs_resume_next_duty(self):
