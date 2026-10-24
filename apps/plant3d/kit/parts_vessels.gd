@@ -345,18 +345,21 @@ static func tank_vertical(_part: String, g) -> void:
 		# the roof's edge handrail: top and knee rails, a post at most about 1.8 m apart (photo pass 3: a storage
 		# tank's rail reads as a dense ring of posts against the sky)
 		m.use("paint_yellow", "form")
-		var every := maxi(1, int(floor(1.8 / (TAU * (r - 0.1) / 24.0))))
+		var every := maxi(1, int(floor(2.0 / (TAU * (r - 0.1) / 24.0))))
+		# standing on the roof at the rail's radius (a dome is already 0.4 m up there on a 13 m tank)
+		var R := r + 0.05
+		var zr := H + (r * 0.3 * sqrt(maxf(0.0, 1.0 - pow((r - 0.1) / R, 2.0))) if roof == "dome" else r * 0.2 * (1.0 - (r - 0.1) / R))
 		for i in 24:
 			var a: Vector2 = pts[i]
 			var b: Vector2 = pts[i + 1]
-			m.cyl(Vector3(a.x, a.y, H + 1.1), Vector3(b.x, b.y, H + 1.1), 0.022, -1.0, 6, false)
+			m.cyl(Vector3(a.x, a.y, zr + 1.1), Vector3(b.x, b.y, zr + 1.1), 0.022, -1.0, 6, false)
 			if i % every == 0:
-				m.cyl(Vector3(a.x, a.y, H), Vector3(a.x, a.y, H + 1.1), 0.022, -1.0, 5, false)
+				m.cyl(Vector3(a.x, a.y, zr), Vector3(a.x, a.y, zr + 1.1), 0.022, -1.0, 5, false)
 		m.use("paint_yellow", "detail", 0.05)
 		for i in 24:
 			var a: Vector2 = pts[i]
 			var b: Vector2 = pts[i + 1]
-			m.cyl(Vector3(a.x, a.y, H + 0.55), Vector3(b.x, b.y, H + 0.55), 0.018, -1.0, 4, false)
+			m.cyl(Vector3(a.x, a.y, zr + 0.55), Vector3(b.x, b.y, zr + 0.55), 0.018, -1.0, 4, false)
 	# a caged ladder (small tanks) or a stair round the shell (large ones)
 	if H > 2.5:
 		C.ladder(m, Vector3(0, -r - 0.45, 0.3), H, Vector2(0, 1))

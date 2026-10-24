@@ -110,14 +110,17 @@ def building(sid, x0, y0, x1, y1, h, kks, doors, cladding='panel', floor='vinyl'
 def ac_units(prefix, x0, y0, x1, y1, windows, keep=lambda side, t, z: True):
     """A split air conditioner's outdoor unit on the outside wall under each window (photo pass 3: under every window
     of the offices and the accommodation blocks), its foot 0.75 m under the sill (0.25 m off the ground at least),
-    facing out of the wall."""
+    facing out of the wall, set to one side so that its pipe (kit parts_site.gd ac_unit: 0.36 m to the unit's right)
+    climbs the wall just beyond the window's edge, not across the glass."""
     out = []
     for side, t, z, ww, wh in windows:
         if side not in ('s', 'n') or not keep(side, t, z):
             continue
         foot = r3(max(0.25, z - wh / 2 - 0.75))
         y = y0 - 0.13 if side == 's' else y1 + 0.13
-        out.append(st(f'{prefix}_ac_{side}{len(out) + 1}', 'ac_unit', [r3(x0 + t + 0.2), r3(y), foot], 180 if side == 's' else 0))
+        off = ww / 2 + 0.1 - 0.36                      # the unit's middle from the window's, towards its right
+        x = x0 + t - off if side == 's' else x0 + t + off   # (its right is west on a south wall, yaw 180)
+        out.append(st(f'{prefix}_ac_{side}{len(out) + 1}', 'ac_unit', [r3(x), r3(y), foot], 180 if side == 's' else 0))
     return out
 
 
@@ -505,8 +508,9 @@ def camp():
           row('camp_office_bed_w', 'saltbush', (-286.6, 25.4), (-285.4, 25.4)),
           row('camp_office_bed_e', 'caper', (-282.6, 25.4), (-281.2, 25.4)),
           plant1('camp_gate_saltbush', 'saltbush', [-265.5, 24.6]),
-          # the ambulance, parked on the camp road by the first-aid point, facing the gate
-          st('camp_ambulance', 'vehicle', [-288, 17.6, 0], 90, params={'kind': 'ambulance'})]
+          # the ambulance, parked at the kerb of the camp road's north lane by the first-aid point (traffic keeps right:
+          # it faces west)
+          st('camp_ambulance', 'vehicle', [-288, 17.6, 0], 270, params={'kind': 'ambulance'})]
     s += hydrant('camp_hydrant_1', (-294, 10.0), 0) + hydrant('camp_hydrant_2', (-318, 10.0), 0)
     # the laundry, behind the gym, its door towards the blocks
     s += building('camp_laundry', *LAUNDRY, AMENITY_H, '00UZW32', [('w', 4, 'personnel')],

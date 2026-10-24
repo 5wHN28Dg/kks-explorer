@@ -102,7 +102,7 @@ func make(root: Node3D, holes: Array) -> void:
 	var road_out := road_in.grow(ROAD_W)
 	var wall := wall_rect()
 	var pads: Array = []
-	var paved: Array = []   # an area with a building is paved in concrete, an open one (an HRSG, a transformer yard) gravelled
+	var paved: Array = []   # an area with a building is paved in concrete, an open one (an HRSG, a transformer yard) or the WTP pack's gravelled
 	var site_yard: Array = []   # the site's and the camp's (a coarser lightmap texel: builder texel_scale)
 	for a in b.areas:
 		if interior(a):

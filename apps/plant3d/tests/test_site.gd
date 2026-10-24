@@ -184,6 +184,14 @@ func site() -> Array:
 	var hyd := s.hydrant_places(road_out, pads)
 	if hyd.size() < 16:
 		p.append("the ring road has its hydrants (%d)" % hyd.size())
+	# on its north, south and east sides (its west side runs along the site's yards: their own hydrants)
+	var sides := {}
+	for h in hyd:
+		var aw: Vector2 = h[1]
+		sides["n" if aw.y > 0.5 else ("s" if aw.y < -0.5 else ("e" if aw.x > 0.5 else "w"))] = true
+	for sd in ["n", "s", "e"]:
+		if not sides.has(sd):
+			p.append("the ring road has hydrants on its %s side" % sd)
 	for i in hyd.size():
 		var hp: Vector2 = hyd[i][0]
 		var d := Site._dist(hp, road_out)

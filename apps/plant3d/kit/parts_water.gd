@@ -345,8 +345,8 @@ static func ion_exchanger(_part: String, g) -> void:
 	for k in 4:
 		var a := TAU * (k + 0.5) / 4.0
 		var p := Vector3(cos(a), sin(a), 0) * r * 0.75
-		m.box_lh(p - Vector3(0.07, 0.07, 0.15), p + Vector3(0.07, 0.07, zb + 0.2))
-		m.box_lh(p - Vector3(0.15, 0.15, 0.15), p + Vector3(0.15, 0.15, 0.17))
+		m.box_lh(p + Vector3(-0.07, -0.07, 0.15), p + Vector3(0.07, 0.07, zb + 0.2))
+		m.box_lh(p + Vector3(-0.15, -0.15, 0.15), p + Vector3(0.15, 0.15, 0.17))
 	m.use("paint_tank", "identify")
 	m.dish(Vector3(0, 0, zb), Vector3(0, 0, -1), r, hd, 0, 5)
 	m.cyl(Vector3(0, 0, zb), Vector3(0, 0, zb + H), r, -1.0, 0, false)
@@ -360,13 +360,17 @@ static func ion_exchanger(_part: String, g) -> void:
 	m.use("steel", "identify")
 	m.cyl(Vector3(r + 0.15, 0, mz), Vector3(r + 0.2, 0, mz), 0.3, -1.0, 16)
 	m.cyl(Vector3(r + 0.2, 0.0, mz + 0.3), Vector3(r + 0.2, 0.0, mz + 0.5), 0.02, -1.0, 6, false)
-	# the top: a small platform with its rail by the manway, reached by a caged ladder on the -x side
-	var zt := zb + H + hd * 0.6
+	# the top: a small platform beside the head on the -x side, level with the shell's top seam (the manway within
+	# reach), its rail on the open sides, reached by a caged ladder up to its outer edge
+	var zt := zb + H
 	if zt > 2.5:
+		var x0 := -r - 0.85
+		var x1 := -r - 0.05
 		m.use("grating", "form")
-		m.box_lh(Vector3(-r - 0.1, -0.5, zt - 0.05), Vector3(-r * 0.2, 0.5, zt))
-		C.rail_loop(m, [Vector2(-r * 0.2, -0.5), Vector2(-r - 0.1, -0.5), Vector2(-r - 0.1, 0.5), Vector2(-r * 0.2, 0.5)], zt, false)
-		C.ladder(m, Vector3(-r - 0.5, 0, 0.0), zt, Vector2(1, 0))
+		m.box_lh(Vector3(x0, -0.5, zt - 0.05), Vector3(x1, 0.5, zt))
+		C.rail_loop(m, [Vector2(x1, -0.5), Vector2(x0, -0.5), Vector2(x0, -0.25)], zt, false)
+		C.rail_loop(m, [Vector2(x0, 0.25), Vector2(x0, 0.5), Vector2(x1, 0.5)], zt, false)
+		C.ladder(m, Vector3(x0 - 0.2, 0, 0.0), zt, Vector2(1, 0))
 	m.use("glass", "identify")   # the sight glasses, at the resin's levels
 	for zz: float in [zb + H * 0.35, zb + H * 0.6]:
 		m.cyl(Vector3(r * 0.5, -r * 0.87, zz), Vector3(r * 0.5 * 1.08, -r * 0.87 * 1.08 - 0.06, zz), 0.09, -1.0, 14)

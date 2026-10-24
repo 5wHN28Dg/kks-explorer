@@ -410,6 +410,9 @@ class Site(unittest.TestCase):
         spine = rect_of(next(s for s in self.areas['camp']['structures'] if s['id'] == 'camp_spine'))
         self.assertLess(dist_rect(amb[0]['at'][:2], office), 15)
         self.assertEqual(dist_rect(amb[0]['at'][:2], spine), 0)
+        # in the lane traffic keeps to (right-hand): the north lane faces west, the south lane east
+        north = amb[0]['at'][1] > (spine[1] + spine[3]) / 2
+        self.assertEqual(amb[0].get('yaw', 0) % 360, 270 if north else 90, 'the ambulance keeps to its lane')
         buildings = [s for a, s in self.structures('building')]
         acs = self.structures('ac_unit')
         self.assertGreaterEqual(len(acs), 100)
@@ -424,7 +427,10 @@ class Site(unittest.TestCase):
                         if o['kind'] == 'window' and abs(bd['at'][1] + o['at'][1] - wy) < 0.01 and \
                                 abs(bd['at'][0] + o['at'][0] - x) < o['width'] / 2 and \
                                 0 < o['at'][2] - o['height'] / 2 - (z + 0.58) < 0.5:
-                            ok = True
+                            # its pipe (0.36 m to the unit's right, up the wall) clear of the glass
+                            right = -1 if s.get('yaw', 0) == 180 else 1
+                            px = x + right * 0.36
+                            ok = abs(bd['at'][0] + o['at'][0] - px) > o['width'] / 2
             self.assertTrue(ok, f'{s["id"]} hangs under a window')
         cars = [s for a, s in self.structures('vehicle')]
         for a, s in self.structures('canopy'):

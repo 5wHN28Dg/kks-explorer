@@ -701,14 +701,15 @@ static func mast(_part: String, g) -> void:
 		var p := Vector3(cos(a), sin(a), 0) * 1.05
 		m.cyl(p + Vector3(0, 0, zp), p + Vector3(0, 0, h + 0.3), 0.04, -1.0, 6, false)
 		col(m, "plain", Color(0.86, 0.86, 0.84))
-		m.box(p * 1.12 + Vector3(0, 0, h - 0.6), Vector3(0.3, 0.12, 1.4), Basis(Vector3.UP, a))
+		m.box(p * 1.12 + Vector3(0, 0, h - 0.6), Vector3(0.12, 0.3, 1.4), Basis(Vector3(0, 0, 1), a))   # facing out
 		col(m, "galvanised", Color(0.80, 0.82, 0.83))
 	col(m, "plain", Color(0.86, 0.86, 0.84))
 	for k in 2:
-		var a := PI * 0.25 + PI * k
+		var a := PI * k   # off the middle of a face (+x, -x), clear of the corner legs
 		var dirv := Vector3(cos(a), sin(a), 0)
-		var hw: float = half.call(h - 6.0)
-		var c := dirv * (hw + 0.35) + Vector3(0, 0, h - 6.0 - 1.5 * k)
+		var zd := h - 6.0 - 1.5 * k
+		var hw: float = half.call(zd)
+		var c := dirv * (hw + 0.4) + Vector3(0, 0, zd)
 		m.dish(c, dirv, 0.45, 0.18, 14, 3)
 		m.cyl(c - dirv * 0.05, c - dirv * 0.3, 0.2, -1.0, 10)
 	col(m, "plain", Color(0.75, 0.08, 0.05), "detail", 0.2)
@@ -724,9 +725,9 @@ static func ac_unit(_part: String, g) -> void:
 	col(m, "paint_white", Color(0.30, 0.31, 0.32, 0.3))
 	for sx: float in [-1.0, 1.0]:   # the brackets
 		m.box_lh(Vector3(sx * 0.3 - 0.02, 0.0, -0.04), Vector3(sx * 0.3 + 0.02, 0.4, 0.0))
-		m.box_lh(Vector3(sx * 0.3 - 0.02, 0.0, -0.3), Vector3(sx * 0.3 + 0.02, 0.03, 0.0))
+		m.box_lh(Vector3(sx * 0.3 - 0.02, 0.0, -0.2), Vector3(sx * 0.3 + 0.02, 0.03, 0.0))
 	col(m, "matte", Color(0.87, 0.87, 0.84))
-	m.box_lh(Vector3(-0.42, 0.05, 0.0), Vector3(0.42, 0.36, 0.58))
+	m.box_lh(Vector3(-0.42, 0.06, 0.0), Vector3(0.42, 0.36, 0.58))
 	col(m, "plain", Color(0.18, 0.18, 0.19))
 	m.disk(Vector3(-0.1, 0.362, 0.29), Vector3(0, 1, 0), 0.21, 16)
 	col(m, "plain", Color(0.55, 0.56, 0.56))

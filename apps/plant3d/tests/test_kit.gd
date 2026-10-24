@@ -52,11 +52,26 @@ func run(_tree: SceneTree) -> Array:
 				check(res.plates.has(pl), "%s: the plate point %s exists (has %s)" % [part, pl, str(res.plates.keys())])
 		report.append("%s %d" % [part, worst])
 	print("kit: worst triangles per part: ", ", ".join(report))
+	_site_budgets()
 	_states()
 	_frames()
 	_solids(kit)
 	_breaker()
 	return problems
+
+## The site's parts (the `structures` group, skipped above: their params are routes and outlines) within their
+## budgets at their largest: photo pass 3's new parts and kinds.
+func _site_budgets() -> void:
+	var sets := [["hydrant", {}], ["bollard", {"height": 1.6}], ["skip_bin", {}], ["mast", {"height": 60}],
+		["mast", {"height": 10}], ["ac_unit", {}], ["table", {"kind": "wood"}], ["sofa", {"seats": 4, "cover": "leather"}],
+		["vehicle", {"kind": "ambulance"}], ["canopy", {"kind": "sail", "length": 100, "width": 20, "height": 8}],
+		["canopy", {"kind": "sail"}], ["planting", {"species": "dracaena", "height": 20}]]
+	for ps in sets:
+		var part: String = ps[0]
+		var p := Kit.params_of(part, ps[1])
+		var res := Kit.make(part, p, {})
+		check(res.tris > 0 and res.tris <= Kit.BUDGET.get(part, 0), "%s: %d triangles at full detail, budget %d (%s)" % [part, res.tris, Kit.BUDGET.get(part, 0), JSON.stringify(ps[1])])
+		check(not res.solids.is_empty(), "%s is solid (%s)" % [part, JSON.stringify(ps[1])])
 
 ## Parts a trainee could walk into are solid (the GT's exhaust duct, a basin's walls, trays, every machine).
 func _solids(kit: Dictionary) -> void:

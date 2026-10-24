@@ -939,6 +939,12 @@ func _far_items(a: Dictionary) -> Dictionary:
 				if s.part == "canopy":
 					pg = Geom.poly([[-w * 0.5, -L * 0.5], [w * 0.5, -L * 0.5], [w * 0.5, L * 0.5], [-w * 0.5, L * 0.5]], Vector2(s.at[0], s.at[1]), float(s.get("yaw", 0)))
 				out.sheets.append([pg, float(pr.height)])
+			"mast":
+				# a lattice mast reads as a slim solid shaft from afar (it would vanish with its square's pieces)
+				var mh := float(pr.height)
+				var hw := maxf(0.75, mh * 0.05) * 0.6
+				out.buildings.append({"outline": Geom.poly([[-hw, -hw], [hw, -hw], [hw, hw], [-hw, hw]], Vector2(s.at[0], s.at[1]), 0.0),
+					"height": mh})
 	return out
 
 ## Builds the far meshes of `items` under root's node "far", and parents every drawn piece under root to its square's

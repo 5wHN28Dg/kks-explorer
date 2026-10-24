@@ -273,7 +273,10 @@ void fragment() {
 	if (tile_size > 0.0 && up > 0.7) {
 		vec2 tf = abs(fract(tq) - 0.5);
 		float gw = 0.004 / tile_size;
-		float grout = 1.0 - smoothstep(gw, gw + max(tw.x, tw.y) * 1.2, 0.5 - max(tf.x, tf.y));
+		// (in half bond a tile unit along x is a brick's half: the grout as wide across the bricks' ends as their sides)
+		vec2 gw2 = vec2(gw * mix(1.0, 0.5, tile_bond), gw);
+		float aa = max(tw.x, tw.y) * 1.2;
+		float grout = max(1.0 - smoothstep(gw2.x, gw2.x + aa, 0.5 - tf.x), 1.0 - smoothstep(gw2.y, gw2.y + aa, 0.5 - tf.y));
 		grout *= 1.0 - smoothstep(0.08, 0.3, max(tw.x, tw.y));
 		float th = hash1(dot(mod(floor(tq), 64.0), vec2(1.0, 57.0)) + 3.0);   // small arguments: sin keeps its precision on a phone
 		base *= 1.0 - tile_tone * 0.67 + tile_tone * th;
