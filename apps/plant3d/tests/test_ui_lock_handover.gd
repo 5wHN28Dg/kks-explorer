@@ -154,7 +154,8 @@ func _handover(tree: SceneTree) -> Array:
 	t = App.texts(pm.body)
 	if not t.contains("LOCKED and tagged by Electrical, crew A") or t.contains("then Electrical"):
 		p.append("the form does not show the incoming lock alone: %s" % t.left(600))
-	if not (t.contains("Electrical, crew C") and t.contains("Electrical, crew A")):
+	if not (t.contains("Locked and tagged: %s (" % FAN) and t.contains("by Electrical, crew C")
+			and t.contains("by Electrical, crew A") and t.contains("Lock removed: %s (" % FAN)):
 		p.append("the permit's history does not name both people: %s" % t.left(900))
 	main.free()
 	return p
@@ -251,7 +252,7 @@ func _instructor(tree: SceneTree) -> Array:
 			marks.append(x)
 		elif (x.kind == "fault" or x.kind == "repair") and x.text.ends_with("(by the instructor)"):
 			by.append(x)
-	if marks.size() != 2 or marks[0].dev == "":
+	if marks.size() != 2 or not marks[0].text.begins_with("By the instructor: fault pressed:"):
 		p.append("the debrief does not list both instructor actions: %s" % str(marks))
 	if by.size() != 2:
 		p.append("the fault and its repair are not marked as the instructor's: %s" % str(d.entries.slice(-6)))

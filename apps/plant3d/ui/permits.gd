@@ -233,7 +233,7 @@ static func event_text(e, ev: Array, ctx := []) -> String:
 	var verb := "Locked and tagged" if ev[1] == "lock" else "Lock removed"
 	match ev[5]:
 		"done":
-			return "%s: %s (%s)" % [verb, where, w.get("title", str(wid))]
+			return "%s: %s (%s), by %s" % [verb, where, w.get("title", str(wid)), person_words(e, ev[4])]
 		"refused":
 			var why := PackedStringArray()
 			for r in ev[6]:

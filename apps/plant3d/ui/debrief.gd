@@ -135,7 +135,6 @@ static func collect(engine, info, tracker) -> Dictionary:
 				e.code = fault_kks(m, str(ev[3]), engine.sc)
 				e.text = "By the instructor: %s %s" % ["fault pressed:" if ev[2] == "fault" else "repair asked:",
 						fault_text(m, str(ev[3]), engine.sc)]
-				e.dev = "an instructor's action"
 				by_instructor[str(ev[2]) + "|" + str(ev[3])] = int(ev[0])
 				sm.instructor += 1
 			"fault":
