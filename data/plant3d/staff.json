@@ -509,12 +509,13 @@
   {"id": "idle_field", "title": "In the field office", "steps": [{"go": {"kind": "seat", "room": "field_office"}}, {"work": 20}]},
   {"id": "idle_elec", "title": "In the field office: switching orders", "steps": [{"go": "fo_table"}, {"work": 30, "anim": "write"}]},
   {"id": "idle_tech", "title": "In the workshop", "steps": [{"go": {"kind": "table", "room": "workshop"}}, {"work": 30}]},
-  {"id": "handover_take", "title": "Take the control room handover", "steps": [{"meet": {"room": "control_room", "with": ["ccr_op"], "minutes": 15}}, {"say": "handover", "to": "shift_sup"}]},
-  {"id": "handover_give", "title": "Give the control room handover", "steps": [{"meet": {"room": "control_room", "with": ["ccr_op"], "minutes": 15}}]},
-  {"id": "handover_take_sup", "title": "Take the shift handover", "steps": [{"meet": {"room": "control_room", "with": ["shift_sup"], "minutes": 15}}]},
-  {"id": "handover_give_sup", "title": "Give the shift handover", "steps": [{"meet": {"room": "control_room", "with": ["shift_sup"], "minutes": 15}}]},
-  {"id": "handover_take_f", "title": "Take the field handover", "steps": [{"meet": {"room": "field_office", "with": ["field_op"], "minutes": 15}}]},
-  {"id": "handover_give_f", "title": "Give the field handover", "steps": [{"meet": {"room": "field_office", "with": ["field_op"], "minutes": 15}}]},
+  {"id": "handover_take", "title": "Take the control room handover", "steps": [{"meet": {"room": "control_room", "with": ["ccr_op"], "minutes": 15}}, {"say": "handover", "to": "shift_sup"}, {"handover": "take"}]},
+  {"id": "handover_give", "title": "Give the control room handover", "steps": [{"meet": {"room": "control_room", "with": ["ccr_op"], "minutes": 15}}, {"handover": "give"}]},
+  {"id": "handover_take_sup", "title": "Take the shift handover", "steps": [{"meet": {"room": "control_room", "with": ["shift_sup"], "minutes": 15}}, {"handover": "take"}]},
+  {"id": "handover_give_sup", "title": "Give the shift handover", "steps": [{"meet": {"room": "control_room", "with": ["shift_sup"], "minutes": 15}}, {"handover": "give"}]},
+  {"id": "handover_take_f", "title": "Take the field handover", "steps": [{"meet": {"room": "field_office", "with": ["field_op"], "minutes": 15}}, {"handover": "take"}]},
+  {"id": "handover_give_f", "title": "Give the field handover", "steps": [{"meet": {"room": "field_office", "with": ["field_op"], "minutes": 15}}, {"handover": "give"}]},
+  {"id": "remove_left_locks", "title": "Remove a lock left by someone gone off shift", "steps": [{"remove_locks": "lock_left"}, {"say": "locks_removed", "to": "channel"}], "priority": 2},
   {"id": "sup_walk", "title": "The supervisor's look round the control room", "steps": [{"go": "cr_sup"}, {"work": 10}, {"say": "all_well", "to": "channel"}]},
   {"id": "toolbox", "title": "Toolbox talk in the workshop", "steps": [{"meet": {"room": "workshop", "with": ["mech_tech"], "minutes": 10}}]},
   {"id": "round_gt", "title": "Field round: gas turbine 1 and HRSG 1", "steps": [{"go": {"kks": "10MBV10CP001"}}, {"read": "10MBV10CP001", "expect": [0, 3.0], "tol": 0.1}, {"work": [1, 2], "anim": "inspect"}, {"go": {"kks": "10MBV10CT001"}}, {"read": "10MBV10CT001", "expect": [15, 60], "tol": 1}, {"work": [1, 2], "anim": "inspect"}, {"go": {"kks": "10MBD10CY001"}}, {"read": "10MBD10CY001", "expect": [0, 7.1], "tol": 0.2}, {"work": [1, 2], "anim": "inspect"}, {"go": {"kks": "10MKA10CT001"}}, {"read": "10MKA10CT001", "expect": [15, 100], "tol": 1}, {"work": [1, 2], "anim": "inspect"}, {"go": {"kks": "10MBR10CT006"}}, {"read": "10MBR10CT006", "expect": [0, 650], "tol": 5}, {"work": [1, 2], "anim": "inspect"}, {"go": {"kks": "10LAC10CF001"}}, {"read": "10LAC10CF001", "expect": [0, 1.1], "tol": 0.02}, {"work": [1, 2], "anim": "inspect"}, {"go": {"kks": "10LAC10CF002"}}, {"read": "10LAC10CF002", "expect": [0, 1.1], "tol": 0.02}, {"work": [1, 2], "anim": "inspect"}, {"say": "round_done", "to": "ccr_op"}, {"choose": [[3, "back_office"], [1, "tea_break"]]}]},
@@ -614,6 +615,7 @@
   {"on": {"permit": "requested"}, "roles": ["shift_sup"], "task": "approve_permit"},
   {"on": {"permit": "isolated"}, "roles": ["shift_sup"], "task": "issue_permit"},
   {"on": {"permit": "deisolated"}, "roles": ["shift_sup"], "task": "close_permit"},
+  {"on": {"lock_left": "*"}, "roles": ["shift_sup"], "task": "remove_left_locks"},
   {"on": {"fault": "cw_a_motor"}, "roles": ["shift_sup"], "task": "request_permit", "work": "wo_cw_a_motor"},
   {"on": {"fault": "cw_b_motor"}, "roles": ["shift_sup"], "task": "request_permit", "work": "wo_cw_b_motor"},
   {"on": {"fault": "cw_c_motor"}, "roles": ["shift_sup"], "task": "request_permit", "work": "wo_cw_c_motor"},
@@ -657,5 +659,5 @@
   {"on": {"permit": "issued"}, "roles": ["mech_tech"], "task": "job_ro_b_membranes", "work": "wo_ro_b_membranes"},
   {"on": {"permit": "returned"}, "roles": ["shift_sup"], "task": "deisolate_ro_b_membranes", "work": "wo_ro_b_membranes"}
  ],
- "messages": {"handover": "Handover taken: running equipment, open permits and alarms noted", "round_done": "Round done: readings in the log", "finding": "Round finding: a reading out of its range, see the log", "check_alarm": "Please check the alarm locally and report", "alarm_checked": "Alarm checked locally: reported in the log", "trip": "Trip: all stations stand by", "isolated": "Isolation points locked and tagged", "deisolated": "Isolation points removed", "permit_issued": "Your permit is issued: you may accept it", "job_done": "Job done: permit handed back", "permit_closed": "Permit closed: equipment back in service", "instruction": "Instruction for you over the radio", "ccw_cooler_done": "CCW cooler valves set as asked", "vents_done": "Water box vents set as asked", "request": "Permit requested: please approve", "all_well": "All stations: all well"}
+ "messages": {"handover": "Handover taken: running equipment, open permits and alarms noted", "round_done": "Round done: readings in the log", "finding": "Round finding: a reading out of its range, see the log", "check_alarm": "Please check the alarm locally and report", "alarm_checked": "Alarm checked locally: reported in the log", "trip": "Trip: all stations stand by", "isolated": "Isolation points locked and tagged", "deisolated": "Isolation points removed", "permit_issued": "Your permit is issued: you may accept it", "job_done": "Job done: permit handed back", "permit_closed": "Permit closed: equipment back in service", "instruction": "Instruction for you over the radio", "ccw_cooler_done": "CCW cooler valves set as asked", "vents_done": "Water box vents set as asked", "request": "Permit requested: please approve", "all_well": "All stations: all well", "lock_left": "Removed by authority: its holder went off shift with the work unfinished and nobody took it over", "locks_removed": "A lock left by someone gone off shift removed by authority: see the permit"}
 }

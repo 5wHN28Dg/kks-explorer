@@ -1268,7 +1268,7 @@ Steps, each done by an NPC as said and by the trainee through the input named (�
 | `sleep`: `{"until": "HH:MM"}` | lies at the home bed until then | may `jump` (§17.6) |
 | `stop`: `{"stop": "act"}` (roles with `stop_work`; goes first to the place the acting person is at when the step starts) | stops the act the task was given for (§16.7) | the same |
 | `handover`: `"take"` | takes over, one point at a time in model order, the locks of their post (§17.8) | locks those points from the permit form ("Take over the lock") |
-| `handover`: `"give"` | at each of their locks in turn, waits for another lock on the point (15 clock minutes at most), then unlocks; a lock nobody took over stays | unlocks each lock another lock now shares |
+| `handover`: `"give"` | at each of their locks in turn, waits for another lock on the point (60 clock minutes at most), then unlocks; a lock nobody took over stays | unlocks each lock another lock now shares |
 | `remove_locks`: a message id (the reason) | removes by authority, one point at a time, the locks of the person the `lock_left` reaction named (§16.7), with the message's text as the reason | the same, from the permit form |
 
 - A task has `priority` 1 (urgent) to 5 (default 3), `interruptible` (default true), optionally `work` (the work it
@@ -1587,7 +1587,7 @@ both engines and the vectors (§19):
   whatever the outcome. The step is done when no point is left to take. A pause lets the chosen point go.
 - **`{"handover": "give"}`, an NPC:** the point to give is the first, in model order, that holds a lock of theirs and
   that this step has not tried. They walk to its work place and wait there until the point holds another person's
-  lock, at most 15 clock minutes from their arrival; then they make the `unlock` input and read its outcome. A wait
+  lock, at most 60 clock minutes from their arrival; then they make the `unlock` input and read its outcome. A wait
   that runs out leaves the lock on. Either way the point is tried; the step is done when no point is left.
 - **`{"remove_locks": message}`, an NPC:** the instance's *owner* is the person its `lock_left` reaction named (no
   owner in any other instance: the validator allows the step only in the task of a `lock_left` reaction, `bad_ref`,
@@ -1596,7 +1596,7 @@ both engines and the vectors (§19):
   make `[remove_lock, work, point, person, the message's text, owner]`, the work being the isolation's holder, and
   read its outcome. The step is done when no point is left.
 - **The trainee's steps:** `take` is done when no point holds a post-mate's lock without one of theirs; `give` when
-  no point holds both a lock of theirs and another person's, and either they hold no lock or 15 clock minutes have
+  no point holds both a lock of theirs and another person's, and either they hold no lock or 60 clock minutes have
   passed since the step became current; `remove_locks` when the owner holds no lock. Their own inputs do the work, as
   the permit form makes them; nothing is taken from the kept actions.
 - **Leaving the site with a lock:** at phase 2 of each step 9 the engine lists, in index order, the people other than
