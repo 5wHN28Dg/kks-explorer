@@ -33,6 +33,7 @@ const KEEP := 2.0               # m: a person gets an avatar, or LOD0, only this
 var info: Dictionary = {}
 var cfg: Dictionary = {}        # the tier's share (app/quality.gd PRESETS[tier].people)
 var people: Array = []
+var time_scale := 1.0           # the clips' speed with the plant's (fast-forward, paused: the staff's driver sets it)
 var camera: Camera3D
 var avatars: Array = []         # the pool: {node, body, anim, person, look, lod, clip, acc}
 var posed := {}                 # look -> pose -> MultiMeshInstance3D
@@ -235,7 +236,7 @@ func _skinned(delta: float) -> void:
 		var hz := 30.0 if d <= float(cfg.anim_near) else 15.0
 		if a.acc + 1e-4 >= 1.0 / hz:
 			if _in_view(at) or d < 2.0:
-				a.anim.advance(a.acc)
+				a.anim.advance(a.acc * time_scale)
 				adv += 1
 			a.acc = 0.0
 	stats.skinned = n_sk
