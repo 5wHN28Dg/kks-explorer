@@ -341,6 +341,7 @@ func place_all(e, c: int, old: int) -> void:
 	var day: int = c / DAY
 	e.st_holder = {}
 	e.st_given = {}
+	e.st_pending = []
 	e.st_next1 = 0
 	for pi in people.size():
 		e.sp_duties[pi] = []
@@ -475,7 +476,7 @@ func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count 
 	return true
 
 
-func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, alarm, owner = null) -> void:
+func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, alarm, owner = null) -> bool:
 	var cands := []
 	for r in role_list:
 		for pi in people.size():
@@ -483,13 +484,12 @@ func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, al
 				cands.append(pi)
 	if cands.is_empty():
 		e._ev(["task", null, tid, "unassigned"])
-		return
+		return false
 	for pi in cands:
 		var c = e.sp_cur[pi]
 		if c == null or c["idle"] or (c["prio"] > prio and c["int"]):
-			give(e, pi, tid, prio, made_by, work, code, alarm, true, owner)
-			return
-	give(e, cands[0], tid, prio, made_by, work, code, alarm, true, owner)
+			return give(e, pi, tid, prio, made_by, work, code, alarm, true, owner)
+	return give(e, cands[0], tid, prio, made_by, work, code, alarm, true, owner)
 
 
 func release(e, inst: Dictionary) -> void:
@@ -722,6 +722,30 @@ func react(e, n: int) -> void:
 		e.st_left = now
 	if evs.is_empty() and value_reactions.is_empty() and gone.is_empty():
 		return
+	# permit offers that found nobody on duty: offered again when someone of the reaction's roles comes on, at each
+	# later shift until taken, while the permit is still at that state (§17.10)
+	if not e.st_pending.is_empty():
+		var came := {}
+		for x in evs:
+			if x[1] == "duty" and x[3] == "on":
+				came[people[person_ix[x[2]]]["role"]] = true
+		var keep := []
+		for pd in e.st_pending:
+			var key: String = pd[0]
+			var r: Dictionary = reactions[pd[1]]
+			if e.pstate[e.m.work_ix[pd[2]]] != pd[5] or e.st_given.has(key):
+				continue            # moved on, or given meanwhile
+			var any_role := false
+			for ro in r["roles"]:
+				if came.has(ro):
+					any_role = true
+			if not any_role:
+				keep.append(pd)
+				continue
+			var prio: int = int(r.get("priority", prio_of(r["task"])))
+			if not assign(e, r["roles"], r["task"], prio, key, pd[3], pd[4], null):
+				keep.append(pd)
+		e.st_pending = keep
 	for ri in reactions.size():
 		var r: Dictionary = reactions[ri]
 		var k: String = react_kind[ri]
@@ -759,7 +783,14 @@ func react(e, n: int) -> void:
 			var code = h[2]
 			if code == null and w != null:
 				code = e.m.works[e.m.work_ix[w]]["kks"]
-			assign(e, r["roles"], r["task"], prio, key, w, code, h[3], h[4] if h.size() > 4 else null)
+			var ok := assign(e, r["roles"], r["task"], prio, key, w, code, h[3], h[4] if h.size() > 4 else null)
+			if not ok and k == "permit":
+				var dup := false
+				for pd in e.st_pending:
+					if pd[0] == key:
+						dup = true
+				if not dup:
+					e.st_pending.append([key, ri, h[1], w, code, STATE_NAMES.find(v)])
 
 
 # ---------------------------------------------------------------- a person's turn (phase 4)

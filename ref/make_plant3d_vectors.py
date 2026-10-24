@@ -2233,11 +2233,13 @@ def staff_runs():
          Trainee(extra=[[2, 'permit', 'wo_gauge', 'request', None], [3, 'permit', 'wo_gauge', 'approve', None]]),
          11600, 200),
         ('a day-shift job suspended overnight (§17.10): the technician\'s lock removed by authority at night; the '
-         'held job is abandoned at once (nobody works unisolated in the morning) and the re-isolation finds no '
-         'technician on duty', {'start': {'day': 1, 'time': '14:30'}}, overnight_staff(),
+         'held job is abandoned at once (nobody works unisolated in the morning); the re-isolation finds no '
+         'technician on duty and is offered again when the technician comes on at 07:00: the gauge is isolated, '
+         'issued and calibrated again, and the permit closed', {'start': {'day': 1, 'time': '14:30'}},
+         overnight_staff(),
          Trainee(extra=[[2, 'permit', 'wo_gauge', 'request', None], [3, 'permit', 'wo_gauge', 'approve', None],
                         [3000, 'remove_lock', 'wo_gauge', 0, None, 'The gauge is needed tonight', 'ic1']]),
-         10600, 200),
+         12400, 200),
         ('the trainee as crew B\'s field operator takes over the valve\'s lock at the handover (a lock input from the '
          'permit form); crew A\'s field operator then unlocks theirs',
          dict(at5, trainee='b_fo'), hand, Trainee(extra=[[2, 'fault', 'f1']]), 1400, 20),

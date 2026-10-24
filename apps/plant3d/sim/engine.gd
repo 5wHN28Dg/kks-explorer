@@ -134,6 +134,7 @@ var st_given := {}                  # reaction source -> instances of it still q
 var st_vprev: Array = []            # per reaction on a value: its truth after the previous step
 var st_next1 := 0                   # the clock at which phase 1 next has something to do (staff.gd _phase1)
 var st_early: Array = []            # the trainee's done actions no step took yet (§17.8): [kind, step, …]
+var st_pending: Array = []          # permit offers nobody took (§17.10): [key, reaction, work, work given, code, state]
 var st_left := {}                   # people off site with a lock at the last phase 2 (§17.9): index -> true
 var sp_on := PackedByteArray()
 var sp_duty: Array = []             # [start, end] or []
@@ -1745,7 +1746,7 @@ func clone():
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",
 			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_early",
-			"st_left",
+			"st_left", "st_pending",
 			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result", "sp_held"]:
 		c.set(k, get(k).duplicate(true))
 	return c
