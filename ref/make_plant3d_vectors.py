@@ -2091,7 +2091,10 @@ def overnight_staff():
         {'id': 'iso_gauge', 'title': 'Isolate the gauge', 'priority': 2,
          'steps': [{'go': {'kks': GAUGE}}, {'lock': {'work': '$', 'point': 0}}]},
         {'id': 'issue_gauge', 'title': 'Issue the gauge\'s permit', 'priority': 2,
-         'steps': [{'go': 'cr_table'}, {'permit': {'work': '$', 'action': 'issue'}}]},
+         'steps': [{'go': 'cr_table'}, {'permit': {'work': '$', 'action': 'issue'}},
+                   {'call': {'role': 'ic_tech', 'task': 'inspect_gauge', 'work': G}}]},
+        {'id': 'inspect_gauge', 'title': 'Inspect the gauge\'s piping', 'priority': 4, 'resume': 'next_duty',
+         'steps': [{'go': {'kks': GAUGE}}, {'work': 30}]},
         {'id': 'job_gauge', 'title': 'Calibrate the gauge', 'work': G, 'resume': 'next_duty',
          'steps': [{'go': {'kks': GAUGE}}, {'permit': {'work': '$', 'action': 'accept'}}, {'work': 120},
                    {'permit': {'work': '$', 'action': 'done'}}, {'permit': {'work': '$', 'action': 'return'}}]},
@@ -2229,6 +2232,12 @@ def staff_runs():
          'and the permit is closed', {'start': {'day': 1, 'time': '14:30'}}, overnight_staff(),
          Trainee(extra=[[2, 'permit', 'wo_gauge', 'request', None], [3, 'permit', 'wo_gauge', 'approve', None]]),
          11600, 200),
+        ('a day-shift job suspended overnight (§17.10): the technician\'s lock removed by authority at night; the '
+         'held job is abandoned at once (nobody works unisolated in the morning) and the re-isolation finds no '
+         'technician on duty', {'start': {'day': 1, 'time': '14:30'}}, overnight_staff(),
+         Trainee(extra=[[2, 'permit', 'wo_gauge', 'request', None], [3, 'permit', 'wo_gauge', 'approve', None],
+                        [3000, 'remove_lock', 'wo_gauge', 0, None, 'The gauge is needed tonight', 'ic1']]),
+         10600, 200),
         ('the trainee as crew B\'s field operator takes over the valve\'s lock at the handover (a lock input from the '
          'permit form); crew A\'s field operator then unlocks theirs',
          dict(at5, trainee='b_fo'), hand, Trainee(extra=[[2, 'fault', 'f1']]), 1400, 20),

@@ -484,6 +484,24 @@ class StaffVectors(unittest.TestCase):
         self.assertTrue(any(x[1] == 'unlock' and x[4] == 'ic1' and x[5] == 'done' and x[0] > resumed[0] for x in ev))
         self.assertTrue(any(x[1] == 'permit' and x[2] == 'wo_gauge' and x[3] == 'close' and x[5] == 'done' for x in ev))
 
+    def test_two_jobs_held_overnight(self):
+        """§17.10 (blind review): a second job held at the duty's end doesn't replace the first; both resume."""
+        ev = next(r for r in self.runs if r['why'].startswith('a day-shift job overnight'))['events']
+        held = [x[3] for x in ev if x[1] == 'task' and x[2] == 'ic1' and x[4] == 'held']
+        resumed = [x[3] for x in ev if x[1] == 'task' and x[2] == 'ic1' and x[4] == 'resumed']
+        self.assertEqual(held, ['job_gauge', 'inspect_gauge'])
+        self.assertEqual(resumed, held)
+        self.assertIn([11210, 'task', 'ic1', 'inspect_gauge', 'done'], ev)
+
+    def test_a_held_job_suspended_at_night(self):
+        """§17.10 (blind review): a lock removed by authority at night abandons the held jobs at once, so nobody
+        resumes work on equipment no longer isolated in the morning."""
+        ev = next(r for r in self.runs if r['why'].startswith('a day-shift job suspended overnight'))['events']
+        self.assertIn([3000, 'permit', 'wo_gauge', 'auto', None, 'done', [2]], ev)
+        self.assertIn([3000, 'task', 'ic1', 'job_gauge', 'abandoned'], ev)
+        self.assertFalse(any(x[1] == 'task' and x[4] == 'resumed' for x in ev))
+        self.assertFalse(any(x[1] == 'permit' and x[2] == 'wo_gauge' and x[0] > 3000 and x[4] == 'ic1' for x in ev))
+
     def test_the_trainee_hands_over(self):
         """§17.9: the trainee takes over a lock from the permit form (incoming), and gives one (outgoing)."""
         ev = self.run_named("the trainee as crew B's field operator")

@@ -873,7 +873,7 @@ class StaffRun:
             q.on, q.duty, q.duties, q.planned, q.slots = False, None, [], None, []
             q.pos, q.leg, q.cur, q.queue, q.res, q.occ, q.pending, q.result = None, None, None, [], None, None, \
                 None, None
-            q.held = None              # a job held overnight (§17.10)
+            q.held = []                # jobs held overnight (§17.10), in the order held
             q.post = (p['role'], p.get('routine', st.roles[p['role']]['routine']))     # role, routine (§17.9)
             self.people.append(q)
         self.order = 0                  # instances made, for the queue's order
@@ -961,7 +961,7 @@ class StaffRun:
         for p in self.people:
             p.duties, p.slots, p.planned = [], [], day - 3
             p.cur, p.queue, p.leg, p.res, p.occ, p.pending, p.result = None, [], None, None, None, None, None
-            p.held = None
+            p.held = []
             p.pos = None
             p.on, p.duty = False, None
             if p.id in self.absent:
@@ -1125,7 +1125,7 @@ class StaffRun:
             old, new = self.jumped
             self.jumped = None
             for p in self.people:
-                for inst in ([p.cur] if p.cur is not None else []) + p.queue:
+                for inst in ([p.cur] if p.cur is not None else []) + p.queue + p.held:
                     e.ev('task', p.id, inst['task'], 'skipped')
             self.place_all(new, old)
             jump_step = True
@@ -1161,8 +1161,8 @@ class StaffRun:
                 if p.duties and p.duties[0][0] <= c:
                     p.on, p.duty = True, p.duties.pop(0)
                     e.ev('duty', p.id, 'on')
-                    if p.held is not None:      # the job held overnight comes back (§17.10)
-                        h, p.held = p.held, None
+                    held, p.held = p.held, []   # the jobs held overnight come back (§17.10)
+                    for h in held:
                         p.queue.append(h)
                         p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
                         e.ev('task', p.id, h['task'], 'resumed')
@@ -1201,21 +1201,24 @@ class StaffRun:
         gone = []
         if any(x[1] == 'duty' and x[3] == 'on' for x in evs):
             self.left = set()           # someone came on duty: a lock still left is given again (§17.9)
-        # a permit back to approved by itself (a suspension): what its reactions gave no longer holds their sources,
-        # so its next states are reacted to again (§17.10)
+        # a permit back to approved by itself (a suspension): its jobs (tasks with resume, given for that work) are
+        # abandoned at once, held or not, so nobody works on equipment no longer isolated and the reaction to its
+        # next issue offers the job again (§17.10)
         back = {x[2] for x in evs if x[1] == 'permit' and x[3] == 'auto' and x[6] == [2]}
         if back:
             for p in self.people:
-                for inst in ([p.cur] if p.cur is not None else []) + p.queue + ([p.held] if p.held else []):
-                    s = inst['src']
-                    if s is not None and len(s) == 3 and s[1] == 'permit' and s[2] in back:
-                        inst['src'] = None
-            for k in [k for k in self.given if len(k) == 3 and k[1] == 'permit' and k[2] in back]:
-                del self.given[k]
+                def job(inst):
+                    return inst['work'] in back and st.tasks[inst['task']].get('resume') == 'next_duty'
+                if p.cur is not None and job(p.cur):
+                    self.finish(p, 'abandoned')
+                for inst in [q for q in p.queue if job(q)] + [q for q in p.held if job(q)]:
+                    e.ev('task', p.id, inst['task'], 'abandoned')
+                    self.release(inst)
+                p.queue = [q for q in p.queue if not job(q)]
+                p.held = [q for q in p.held if not job(q)]
         for p in self.people:
             if p.i != self.trainee and p.id not in self.absent and not p.on and p.pos is None and p.leg is None \
-                    and st.rosters[st.people[p.i]['roster']]['kind'] != 'days' \
-                    and any(p.id in x for x in e.locks.values()):
+                    and not p.held and any(p.id in x for x in e.locks.values()):
                 now.add(p.i)
                 if p.i not in self.left:
                     gone.append(p)
@@ -1262,7 +1265,7 @@ class StaffRun:
         if cur is not None and not p.on and p.i != self.trainee and not cur['idle'] and not cur['st'].get('busy') \
                 and self.st.tasks[cur['task']].get('resume') == 'next_duty':
             self.pause(p)               # a job left unfinished at the duty's end: held for the next (§17.10)
-            p.held = p.queue.pop(next(k for k, q in enumerate(p.queue) if q is cur))
+            p.held.append(p.queue.pop(next(k for k, q in enumerate(p.queue) if q is cur)))
             e.ev('task', p.id, cur['task'], 'held')
             cur = None
         if cur is not None and cur['idle'] and (p.queue or not p.on):

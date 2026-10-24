@@ -265,7 +265,7 @@ func init_run(e, scen: Dictionary) -> void:
 		e.sp_cur.append(null)
 		e.sp_queue.append([])
 		e.sp_result.append(null)
-		e.sp_held.append(null)
+		e.sp_held.append([])
 	e.st_vprev = []
 	for r in reactions:
 		e.st_vprev.append(e.truth(r["on"]["value"]) if r["on"].has("value") else null)
@@ -352,7 +352,7 @@ func place_all(e, c: int, old: int) -> void:
 		e.sp_res[pi] = -1
 		e.sp_occ[pi] = -1
 		e.sp_result[pi] = null
-		e.sp_held[pi] = null
+		e.sp_held[pi] = []
 		e.sp_pos[pi] = -1
 		e.sp_on[pi] = 0
 		e.sp_duty[pi] = []
@@ -574,6 +574,7 @@ func step(e) -> void:
 			if e.sp_cur[pi] != null:
 				all.append(e.sp_cur[pi])
 			all.append_array(e.sp_queue[pi])
+			all.append_array(e.sp_held[pi])
 			for inst in all:
 				e._ev(["task", people[pi]["id"], inst["task"], "skipped"])
 		place_all(e, nw, old)
@@ -640,9 +641,9 @@ func _phase1(e, c: int, day: int) -> void:
 				e.sp_duty[pi] = dl.pop_front()
 				e.sp_wake[pi] = 0
 				e._ev(["duty", people[pi]["id"], "on"])
-				if e.sp_held[pi] != null:      # the job held overnight comes back (§17.10)
-					var h: Dictionary = e.sp_held[pi]
-					e.sp_held[pi] = null
+				var held: Array = e.sp_held[pi]  # the jobs held overnight come back (§17.10)
+				e.sp_held[pi] = []
+				for h in held:
 					_enqueue(e, pi, h)
 					e._ev(["task", people[pi]["id"], h["task"], "resumed"])
 	for pi in np:
@@ -673,27 +674,36 @@ func react(e, n: int) -> void:
 		if e.events[k][0] == n:
 			evs.append(e.events[k])
 	# people who left the site with a lock on since the last phase 2 (§17.9)
-	# a permit back to approved by itself (a suspension): what its reactions gave no longer holds their sources, so
-	# its next states are reacted to again (§17.10)
+	# a permit back to approved by itself (a suspension): its jobs (tasks with resume, given for that work) are
+	# abandoned at once, held or not, so nobody works on equipment no longer isolated and the reaction to its next
+	# issue offers the job again (§17.10)
 	var back := {}
 	for x in evs:
 		if x[1] == "permit" and x[3] == "auto" and x[6] == [2]:
 			back[x[2]] = true
 	if not back.is_empty():
 		for pi in people.size():
-			var all := []
-			if e.sp_cur[pi] != null:
-				all.append(e.sp_cur[pi])
-			all.append_array(e.sp_queue[pi])
-			if e.sp_held[pi] != null:
-				all.append(e.sp_held[pi])
-			for inst in all:
-				var src = inst["src"]
-				if typeof(src) == TYPE_STRING and _permit_src(src, back):
-					inst["src"] = null
-		for key in e.st_given.keys():
-			if _permit_src(key, back):
-				e.st_given.erase(key)
+			var c = e.sp_cur[pi]
+			if c != null and _job_of(c, back):
+				finish(e, pi, "abandoned")
+			var gone_q := []
+			var keep_q := []
+			for q in e.sp_queue[pi]:
+				if _job_of(q, back):
+					gone_q.append(q)
+				else:
+					keep_q.append(q)
+			var keep_h := []
+			for q in e.sp_held[pi]:
+				if _job_of(q, back):
+					gone_q.append(q)
+				else:
+					keep_h.append(q)
+			for inst in gone_q:
+				e._ev(["task", people[pi]["id"], inst["task"], "abandoned"])
+				release(e, inst)
+			e.sp_queue[pi] = keep_q
+			e.sp_held[pi] = keep_h
 	var gone := []
 	if has_left:
 		for x in evs:
@@ -703,8 +713,7 @@ func react(e, n: int) -> void:
 		var now := {}
 		for pi in people.size():
 			if pi != e.st_trainee and not e._absent.has(pi) and not e.sp_on[pi] and e.sp_pos[pi] == -1 \
-					and e.sp_leg[pi].is_empty() and rosters[people[pi]["roster"]]["kind"] != "days" \
-					and _holds_any(e, people[pi]["id"]):
+					and e.sp_leg[pi].is_empty() and e.sp_held[pi].is_empty() and _holds_any(e, people[pi]["id"]):
 				now[pi] = true
 				if not e.st_left.has(pi):
 					gone.append(pi)
@@ -764,7 +773,7 @@ func select(e, pi: int):
 			if is_same(q[k], cur):
 				q.remove_at(k)
 				break
-		e.sp_held[pi] = cur
+		e.sp_held[pi].append(cur)
 		e._ev(["task", pid, cur["task"], "held"])
 		cur = null
 	if cur != null and cur["idle"] and (not q.is_empty() or not e.sp_on[pi]):
@@ -1149,14 +1158,13 @@ func overnight(e, who) -> bool:
 	if typeof(who) != TYPE_STRING or not person_ix.has(who):
 		return false
 	var pi: int = person_ix[who]
-	return rosters[people[pi]["roster"]]["kind"] == "days" and not e.sp_on[pi] and e.sp_pos[pi] == -1 \
-			and e.sp_leg[pi].is_empty()
+	return not e.sp_held[pi].is_empty() and not e.sp_on[pi] and e.sp_pos[pi] == -1 and e.sp_leg[pi].is_empty()
 
 
-## Whether a reaction source key ("<reaction>|permit|<work>") is a permit's of one of these works.
-static func _permit_src(key: String, works: Dictionary) -> bool:
-	var parts := key.split("|")
-	return parts.size() == 3 and parts[1] == "permit" and works.has(parts[2])
+## A job (a task with resume) given for one of these works.
+func _job_of(inst: Dictionary, works: Dictionary) -> bool:
+	return typeof(inst["work"]) == TYPE_STRING and works.has(inst["work"]) \
+			and tasks[inst["task"]].get("resume", "") == "next_duty"
 
 
 ## Whether a point's locks hold one of this person's (any type: compared as a person).
