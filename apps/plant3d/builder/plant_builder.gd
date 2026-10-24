@@ -1141,9 +1141,12 @@ const INSIDE_PARTS := ["floor", "frame", "lamp_housings", "lamp_lenses", "liner"
 	"crane_hook"]
 
 ## Marks (meta `far_inside`) what stands inside the area's buildings: their inside parts, and every other piece whose
-## plan centre is within a building's outline. They stay out of the far view and are drawn only within
-## FAR_MERGE_RANGE: beyond it every door is shut (app/door.gd opens one within a few metres) and windows are on solid
-## wall, so a hall's inside is never seen from there. Merged, a hall's whole inside was drawn with its walls from every
+## plan centre is within a building's outline. They stay out of the far view and are drawn only within INSIDE_RANGE
+## of the building (as the site's and camp's buildings: a part of the building from its centre, any other piece the
+## building's whole diagonal more), at most FAR_MERGE_RANGE: farther, every door is shut (app/door.gd opens one within
+## a few metres) and windows are on solid wall, so a hall's inside is never seen from there. At 200 m the turbine
+## hall's lamps, roof steel and frame (45,000 vertices) all came in at once on the camp walk's way back, with a GPU
+## frame of 111 ms (2026-10-24). Merged, a hall's whole inside was drawn with its walls from every
 ## distance (from the WTP the first train's halls cost the Note 9 a third more GPU time); drawn as pieces, the
 ## occluders did not cull them from 300 m and more (the camp's road: 1,000 draw calls), 2026-10-23.
 func _mark_inside(root: Node3D, id: String) -> void:
@@ -1153,16 +1156,22 @@ func _mark_inside(root: Node3D, id: String) -> void:
 		var body: Node = gi.get_parent()
 		while body != null and body != root and not body.has_meta("building"):
 			body = body.get_parent()
-		var inside := false
+		var r := -1.0   # inside: drawn within r of its own centre
 		if body != null and body != root:
-			inside = String(gi.name) in INSIDE_PARTS
+			if String(gi.name) in INSIDE_PARTS:   # the building's own (its centre is the building's)
+				var b: Array = buildings.filter(func(q): return q.id == body.get_meta("building"))
+				r = INSIDE_RANGE + (Site._bbox(b[0].outline).size.length() * 0.5 if not b.is_empty() else FAR_MERGE_RANGE)
 		else:
 			var c := _plan_centre(gi)
-			inside = outlines.any(func(pg): return Geometry2D.is_point_in_polygon(c, pg))
-		if inside:
+			for pg in outlines:
+				if Geometry2D.is_point_in_polygon(c, pg):   # anywhere in it: the whole diagonal from a door
+					r = INSIDE_RANGE + Site._bbox(pg).size.length()
+					break
+		if r >= 0.0:
 			gi.set_meta("far_inside", true)
-			if not gi.is_in_group("detail") and (gi.visibility_range_end <= 0.0 or gi.visibility_range_end > FAR_MERGE_RANGE):
-				gi.visibility_range_end = FAR_MERGE_RANGE
+			r = minf(r, FAR_MERGE_RANGE)
+			if not gi.is_in_group("detail") and (gi.visibility_range_end <= 0.0 or gi.visibility_range_end > r):
+				gi.visibility_range_end = r
 				gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 
 ## The far view's error: the merged geometry simplified until its surfaces stray this far (metres) from the pieces'

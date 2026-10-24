@@ -114,6 +114,10 @@ func run(tree: SceneTree) -> Array:
 			p.append("%s's far view holds most of its pieces (%d vertices of %d)" % [id, merged_v, all_v])
 		if orphans > 0:
 			p.append("%s: %d pieces are drawn at every distance (no far view as their visibility parent), %s among them" % [id, orphans, orphan])
+		# a hall's own inside parts are drawn only near it (within INSIDE_RANGE of its walls), not to FAR_MERGE_RANGE
+		var lamps := area.find_child("lamp_housings", true, false) as GeometryInstance3D
+		if lamps != null and lamps.has_meta("far_inside") and lamps.visibility_range_end >= Builder.FAR_MERGE_RANGE:
+			p.append("%s's hall lamps are drawn only near the hall (%.0f m)" % [id, lamps.visibility_range_end])
 		if inside == 0 and id in ["area_st", "area_wtp"]:
 			p.append("%s's halls keep their insides out of the far view" % id)
 		if details == 0:
