@@ -14,6 +14,8 @@ extends RefCounted
 const DAY := 864000
 const MINUTE := 600
 const WAIT_PLACE := 15
+const HANDOVER_WAIT := 60         # clock minutes an outgoing person waits at a lock for the incoming one's (§17.9)
+const MAX_POINTS := 64 * 16       # every point of a model's isolations: a lock round's bound in a turn
 const QUEUE_MAX := 32
 const EARLY_KEPT := 32           # the trainee's actions kept for a later step (§17.8)
 const OPEN_KINDS := ["point", "door", "stop", "muster", "counter", "depot", "work"]
@@ -50,6 +52,8 @@ var auth := {}                       # role id -> {authority: true}
 var people: Array = []
 var person_ix := {}
 var role_people := {}                # role -> its people's indexes, in file order
+var post := PackedStringArray()      # per person: their role and routine (§17.9)
+var has_left := false                # a reaction on lock_left (§17.9)
 var rosters := {}
 var routines := {}                   # id -> {"slots": [[at kind, at minutes, every or -1, until kind, until minutes, task]], "idle": task}
 var tasks := {}                      # id -> task
@@ -156,6 +160,9 @@ func _build(m, doc: Dictionary) -> void:
 		role_people[people[i]["role"]] = rp
 	for t in doc["tasks"]:
 		tasks[t["id"]] = t
+	for i in people.size():
+		var p: Dictionary = people[i]
+		post.append(str(p["role"]) + "\n" + str(p.get("routine", roles[p["role"]]["routine"])))
 	for r in doc["routines"]:
 		var slots := []
 		for s in r["slots"]:
@@ -173,6 +180,8 @@ func _build(m, doc: Dictionary) -> void:
 		react_kind.append(reactions[i]["on"].keys()[0])
 		if react_kind[i] == "value":
 			value_reactions.append(i)
+		elif react_kind[i] == "lock_left":
+			has_left = true
 	messages = doc["messages"]
 	for r in doc["roles"]:
 		for x in r.get("requests", []):
@@ -443,7 +452,7 @@ static func _enqueue(e, pi: int, inst: Dictionary) -> void:
 	q.insert(at, inst)
 
 
-func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count := true) -> bool:
+func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count := true, owner = null) -> bool:
 	var c = e.sp_cur[pi]
 	if e.sp_queue[pi].size() + (1 if c != null and not c["idle"] else 0) >= QUEUE_MAX:
 		e._ev(["task", null, tid, "unassigned"])
@@ -453,7 +462,7 @@ func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count 
 		work = t["work"]
 	var inst := {"task": tid, "prio": prio, "made": e.step_no, "order": e.st_order, "step": 0, "st": {},
 			"work": work, "code": code, "alarm": alarm, "src": made_by, "idle": false, "started": false,
-			"int": t.get("interruptible", true)}
+			"int": t.get("interruptible", true), "owner": owner}
 	e.st_order += 1
 	_enqueue(e, pi, inst)
 	e.sp_wake[pi] = 0
@@ -464,7 +473,7 @@ func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count 
 	return true
 
 
-func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, alarm) -> void:
+func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, alarm, owner = null) -> void:
 	var cands := []
 	for r in role_list:
 		for pi in people.size():
@@ -476,9 +485,9 @@ func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, al
 	for pi in cands:
 		var c = e.sp_cur[pi]
 		if c == null or c["idle"] or (c["prio"] > prio and c["int"]):
-			give(e, pi, tid, prio, made_by, work, code, alarm)
+			give(e, pi, tid, prio, made_by, work, code, alarm, true, owner)
 			return
-	give(e, cands[0], tid, prio, made_by, work, code, alarm)
+	give(e, cands[0], tid, prio, made_by, work, code, alarm, true, owner)
 
 
 func release(e, inst: Dictionary) -> void:
@@ -593,7 +602,7 @@ func step(e) -> void:
 	if jump_step:
 		if e.st_trainee != -1 and not e._absent.has(e.st_trainee):
 			var mine := _mine(e)            # their actions of this step are kept all the same (§17.8)
-			drop_kept(e, mine)
+			drop_kept(e, mine, people[e.st_trainee]["id"])
 			keep(e, e.st_trainee, mine, {})
 	else:
 		for pi in np:
@@ -656,12 +665,23 @@ func react(e, n: int) -> void:
 	for k in range(e.ev_mark, e.events.size()):
 		if e.events[k][0] == n:
 			evs.append(e.events[k])
-	if evs.is_empty() and value_reactions.is_empty():
+	# people who left the site with a lock on since the last phase 2 (§17.9)
+	var gone := []
+	if has_left:
+		var now := {}
+		for pi in people.size():
+			if pi != e.st_trainee and not e._absent.has(pi) and not e.sp_on[pi] and e.sp_pos[pi] == -1 \
+					and e.sp_leg[pi].is_empty() and _holds_any(e, people[pi]["id"]):
+				now[pi] = true
+				if not e.st_left.has(pi):
+					gone.append(pi)
+		e.st_left = now
+	if evs.is_empty() and value_reactions.is_empty() and gone.is_empty():
 		return
 	for ri in reactions.size():
 		var r: Dictionary = reactions[ri]
 		var k: String = react_kind[ri]
-		if evs.is_empty() and k != "value":
+		if evs.is_empty() and k != "value" and k != "lock_left":
 			continue
 		var v = r["on"][k]
 		var prio: int = int(r.get("priority", prio_of(r["task"])))
@@ -670,6 +690,9 @@ func react(e, n: int) -> void:
 			var now: bool = e.truth(v)
 			if now and typeof(e.st_vprev[ri]) == TYPE_BOOL and not e.st_vprev[ri]:
 				hits.append(["value|" + v, null, null, null])
+		elif k == "lock_left":
+			for pi in gone:
+				hits.append(["lock_left|" + people[pi]["id"], null, null, null, people[pi]["id"]])
 		else:
 			for x in evs:
 				if k == "alarm" and x[1] == "alarm" and x[3] == "active_unack":
@@ -692,7 +715,7 @@ func react(e, n: int) -> void:
 			var code = h[2]
 			if code == null and w != null:
 				code = e.m.works[e.m.work_ix[w]]["kks"]
-			assign(e, r["roles"], r["task"], prio, key, w, code, h[3])
+			assign(e, r["roles"], r["task"], prio, key, w, code, h[3], h[4] if h.size() > 4 else null)
 
 
 # ---------------------------------------------------------------- a person's turn (phase 4)
@@ -721,7 +744,7 @@ func select(e, pi: int):
 	if cur == null and e.sp_on[pi]:
 		var idle := idle_of(pi)
 		cur = {"task": idle, "prio": 6, "made": e.step_no, "order": e.st_order, "step": 0, "st": {}, "work": null,
-				"code": null, "alarm": null, "src": null, "idle": true, "started": true, "int": true}
+				"code": null, "alarm": null, "src": null, "idle": true, "started": true, "int": true, "owner": null}
 		e.sp_cur[pi] = cur
 		e.st_order += 1
 		e._ev(["task", pid, idle, "start"])
@@ -745,7 +768,7 @@ func pause(e, pi: int) -> void:
 			st["left"] -= m - st["last"]
 			st["last"] = m
 		st["resumed"] = true
-	for k in ["dest", "waiting", "wait_since", "target", "meet_since", "seat", "seen"]:
+	for k in ["dest", "waiting", "wait_since", "target", "meet_since", "seat", "seen", "pt", "since"]:
 		st.erase(k)          # (seen: a resumed step is current again, §17.8)
 	unreserve(e, pi)
 	_enqueue(e, pi, cur)
@@ -1069,8 +1092,153 @@ func run(e, pi: int, cur: Dictionary):
 			return "fail"
 		x["i"] = i + 1
 		return "next" if i + 1 >= pts.size() else run(e, pi, cur)
+	if s.has("handover") or s.has("remove_locks"):
+		return lock_round(e, pi, cur, s)
 	push_error("staff: no step kind in " + str(s))
 	return "next"
+
+
+# ---------------------------------------------------------------- locks at a shift change (§17.9)
+
+## Whether a point's locks hold one of this person's (any type: compared as a person).
+static func _has(held: Array, who) -> bool:
+	for h in held:
+		if _same(h, who):
+			return true
+	return false
+
+
+func _holds_any(e, who) -> bool:
+	for key in e.lockers:
+		if _has(e.lockers[key], who):
+			return true
+	return false
+
+
+## Whether `who` (a lock's person) is a post-mate of pi: another person of pi's role and routine.
+func mate(pi: int, who) -> bool:
+	if typeof(who) != TYPE_STRING or who == people[pi]["id"] or not person_ix.has(who):
+		return false
+	return post[person_ix[who]] == post[pi]
+
+
+## Whether another person's take step has chosen the point and is still taking it.
+func chosen(e, pi: int, key: Vector2i) -> bool:
+	for qi in people.size():
+		var c = e.sp_cur[qi]
+		if qi != pi and c != null and c["st"].has("pt") and c["st"]["pt"] == key \
+				and tasks[c["task"]]["steps"][c["step"]].get("handover", "") == "take":
+			return true
+	return false
+
+
+## Whether the point is still to do for a take, give or remove_locks step.
+func _still(pi: int, cur: Dictionary, s: Dictionary, held: Array) -> bool:
+	if held.is_empty():
+		return false
+	var pid: String = people[pi]["id"]
+	var h: String = s.get("handover", "")
+	if h == "take":
+		if _has(held, pid):
+			return false
+		for x in held:
+			if mate(pi, x):
+				return true
+		return false
+	if h == "give":
+		return _has(held, pid)
+	return cur.get("owner") != null and _has(held, cur.get("owner"))
+
+
+## The next point of a take, give or remove_locks step (isolations, then points, in model order), or
+## Vector2i(-1, -1). With x null (the trainee's), nothing is tried or chosen by others.
+func lock_target(e, pi: int, cur: Dictionary, s: Dictionary, x) -> Vector2i:
+	var tried: Array = x.get("tried", []) if x != null else []
+	var take: bool = s.get("handover", "") == "take"
+	for k in e._iso.size():
+		for j in e._iso[k][1].size():
+			var key := Vector2i(k, j)
+			var held: Array = e.lockers.get(key, [])
+			if held.is_empty() or tried.has(key):
+				continue
+			if not _still(pi, cur, s, held):
+				continue
+			if take and x != null and chosen(e, pi, key):
+				continue
+			return key
+	return Vector2i(-1, -1)
+
+
+## The points still to do for a take, give or remove_locks step (the trainee's panel, §18.7), in model order.
+func points_left(e, pi: int, cur: Dictionary, s: Dictionary) -> Array:
+	var out := []
+	for k in e._iso.size():
+		for j in e._iso[k][1].size():
+			if _still(pi, cur, s, e.lockers.get(Vector2i(k, j), [])):
+				out.append(Vector2i(k, j))
+	return out
+
+
+## An NPC's take, give or remove_locks step: one point at a time.
+func lock_round(e, pi: int, cur: Dictionary, s: Dictionary):
+	var x: Dictionary = cur["st"]
+	if not x.has("tried"):
+		x["tried"] = []
+	var tried: Array = x["tried"]
+	var pid: String = people[pi]["id"]
+	var kind: String = s.get("handover", "remove")
+	if x.get("busy", false):
+		if e.sp_result[pi] == null:
+			return "wait"
+		e.sp_result[pi] = null
+		x["busy"] = false
+		tried.append(x["pt"])
+		x.erase("pt")
+		x.erase("since")
+	for _i in MAX_POINTS:
+		if not x.has("pt"):
+			var t := lock_target(e, pi, cur, s, x)
+			if t.x == -1:
+				return "next"
+			x["pt"] = t
+		var key: Vector2i = x["pt"]
+		if not _still(pi, cur, s, e.lockers.get(key, [])):
+			tried.append(key)           # no longer to do (taken, given or removed meanwhile)
+			x.erase("pt")
+			x.erase("since")
+			continue
+		var wp: int = work_at.get(e._iso[key.x][1][key.y][0], -1)
+		if wp != -1:
+			var r := go(e, pi, cur, wp)
+			if r != "next":
+				return r
+			x.erase("dest")
+		if kind == "give":
+			var other := false
+			for h in e.lockers[key]:
+				if not _same(h, pid):
+					other = true
+					break
+			if not other:
+				if not x.has("since"):
+					x["since"] = e.step_no
+				if e.step_no - x["since"] < HANDOVER_WAIT * tpm:
+					return "wait"
+				tried.append(key)       # nobody took it over: the lock stays on
+				x.erase("pt")
+				x.erase("since")
+				continue
+		var w: String = e.m.works[e.holder[key.x]]["id"]
+		if kind == "take":
+			e.npc_queue.append(["lock", w, key.y, pid])
+		elif kind == "give":
+			e.npc_queue.append(["unlock", w, key.y, pid])
+		else:
+			e.npc_queue.append(["remove_lock", w, key.y, pid, messages[s["remove_locks"]], cur.get("owner")])
+		x["busy"] = true
+		e.sp_result[pi] = null
+		return "wait"
+	return "wait"
 
 
 func say(e, pi: int, msg: String, to: String) -> void:
@@ -1168,7 +1336,7 @@ func trainee_turn(e, pi: int, tin: Array) -> void:
 	used.resize(tin.size())
 	used.fill(false)
 	var mine := _mine(e)
-	drop_kept(e, mine)
+	drop_kept(e, mine, people[pi]["id"])
 	var took := {}
 	trainee_steps(e, pi, tin, used, mine, took)
 	keep(e, pi, mine, took)
@@ -1312,6 +1480,26 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 			if typeof(r) == TYPE_STRING and r == "wait" and _first_look(x) \
 					and early_done(e, pi, cur, "permit", [w, a], null):
 				r = "next"
+		elif s.has("handover") and s["handover"] == "take":
+			if lock_target(e, pi, cur, s, null).x == -1:
+				r = "next"
+		elif s.has("handover"):
+			if not x.has("from"):
+				x["from"] = e.step_no
+			var shared := false
+			var any_mine := false
+			for key in e.lockers:
+				var held: Array = e.lockers[key]
+				if _has(held, pid):
+					any_mine = true
+					for h in held:
+						if not _same(h, pid):
+							shared = true
+			if not shared and (not any_mine or e.step_no - x["from"] >= HANDOVER_WAIT * tpm):
+				r = "next"
+		elif s.has("remove_locks"):
+			if lock_target(e, pi, cur, s, null).x == -1:
+				r = "next"
 		elif s.has("lock") or s.has("unlock"):
 			var k := "lock" if s.has("lock") else "unlock"
 			var w = cur["work"] if s[k]["work"] == "$" else s[k]["work"]
@@ -1357,15 +1545,15 @@ static func _first_look(x: Dictionary) -> bool:
 
 
 ## A machine entered by a command or an action in this step: an earlier command of it no longer holds.
-func drop_kept(e, mine: Array) -> void:
+func drop_kept(e, mine: Array, me: String) -> void:
 	var moved := {}
 	for y in mine:
 		if y[1] == "machine" and y[5] != "next":
 			moved[y[2]] = true
-	# a point locked again (by anyone): an earlier unlock of it no longer holds
+	# a point they locked again: an earlier unlock of theirs no longer holds
 	var relocked := []
 	for y in mine:
-		if y[1] == "lock" and y[5] == "done":
+		if y[1] == "lock" and y[5] == "done" and _same(y[4], me):
 			relocked.append([y[2], y[3]])
 	if moved.is_empty() and relocked.is_empty():
 		return
@@ -1459,9 +1647,10 @@ func _lock_holds(e, kind: String, w, point: int, pi: int) -> bool:
 	if k == -1:
 		return false
 	var key := Vector2i(k, point)
+	var held: Array = e.lockers.get(key, [])
 	if kind == "unlock":
-		return not e.lockers.has(key)
-	return e.lockers.has(key) and _same(e.lockers[key], people[pi]["id"]) and e.holder[k] == wi
+		return not _has(held, people[pi]["id"])
+	return _has(held, people[pi]["id"]) and e.holder[k] == wi
 
 
 ## Equal and of one type: what a trainee's input typed (any JSON value) is compared with text so (GDScript's == between

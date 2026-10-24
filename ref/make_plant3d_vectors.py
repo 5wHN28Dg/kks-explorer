@@ -1854,6 +1854,18 @@ REJECTS_STAFF = [
     ('a work naming a task staff.json lacks', 'bad_ref', _set(WORK + [1, 'task'], 'nothing')),
     ('a "$" work in a task no work is given to', 'bad_ref', _set(TASK(16) + ['steps', 0],
                                                                  {'permit': {'work': '$', 'action': 'request'}})),
+    ('a handover step neither take nor give', 'bad_value', _set(TASK(5) + ['steps', 1], {'handover': 'swap'})),
+    ('a remove_locks step of an unknown message', 'bad_ref', _all(
+        _app(STF + ['tasks'], {'id': 'rm', 'title': 'R', 'steps': [{'remove_locks': 'nothing'}]}),
+        _app(STF + ['reactions'], {'on': {'lock_left': '*'}, 'roles': ['shift_sup'], 'task': 'rm'}))),
+    ('a remove_locks step outside a lock_left reaction\'s task', 'bad_ref',
+     _set(TASK(16) + ['steps', 2], {'remove_locks': 'handover'})),
+    ('a remove_locks step in a role without remove_lock', 'authority', _all(
+        _app(STF + ['tasks'], {'id': 'rm', 'title': 'R', 'steps': [{'remove_locks': 'handover'}]}),
+        _app(STF + ['reactions'], {'on': {'lock_left': '*'}, 'roles': ['ccr_op'], 'task': 'rm'}))),
+    ('a lock_left reaction not on "*"', 'bad_value', _app(STF + ['reactions'], {'on': {'lock_left': 'a_fo1'},
+                                                                              'roles': ['shift_sup'],
+                                                                              'task': 'sup_check'})),
     ('a scenario\'s trainee who is not a person', 'bad_ref', _set(SC + ['staff', 'trainee'], 'nobody')),
     ('a scenario\'s trainee absent', 'bad_ref', _all(_set(SC + ['staff', 'trainee'], 'a_fo1'),
                                                      _set(SC + ['staff', 'absent'], ['a_fo1']))),

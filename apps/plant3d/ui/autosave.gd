@@ -211,7 +211,8 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 			if typeof(q) != TYPE_ARRAY or q.is_empty() or typeof(q[0]) != TYPE_STRING:
 				return "a damaged input"
 			var under: bool = q[0] == "repair" and q.size() == 4 and typeof(q[2]) == TYPE_STRING
-			if not sizes.has(q[0]) or (q.size() != sizes[q[0]] and not under) \
+			var named: bool = q[0] == "remove_lock" and q.size() == 6     # naming whose lock (§15.1)
+			if not sizes.has(q[0]) or (q.size() != sizes[q[0]] and not under and not named) \
 					or (q[0] in ["fault", "repair"] and typeof(q[1]) != TYPE_STRING):
 				return "a damaged input"
 	# the trainee's actions kept for a later step (PLANT3D §17.8): records the staff step indexes blindly
@@ -263,6 +264,24 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 				if (k != "lockers" and typeof(key) != TYPE_STRING) or (k == "lockers" and typeof(key) != TYPE_VECTOR2I) \
 						or (k == "ptw" and typeof(d[k][key]) != TYPE_STRING):
 					return "a damaged %s" % k
+	# each locked point's locks: one or more people (or null in free mode), and a locker for every locked point
+	if d.has("lockers"):
+		for key in d["lockers"]:
+			var held = d["lockers"][key]
+			if typeof(held) != TYPE_ARRAY or held.is_empty() or key.x < 0 or key.x >= fresh._iso.size() \
+					or key.y < 0 or key.y >= fresh._iso[key.x][1].size():
+				return "a damaged lockers"
+			for y in held:
+				if y != null and typeof(y) != TYPE_STRING:
+					return "a damaged lockers"
+			if d.has("lockbits") and d["lockbits"][fresh._iso[key.x][4] + key.y] != 1:
+				return "locks that don't agree"
+		if d.has("lockbits"):
+			var n := 0
+			for b in d["lockbits"]:
+				n += int(b)
+			if n != d["lockers"].size():
+				return "locks that don't agree"
 	if d.get("ptw_count", 0) < 0:
 		return "a damaged permit count"
 	for k in ["inputs", "events"]:
@@ -375,6 +394,12 @@ func _show_offer(p: Dictionary, why: String) -> void:
 			var i: int = p["tracker"]["index"]
 			lines.append("%s: %s." % [pr.get("title", p["procedure"]),
 					("step %d of %d" % [i + 1, pr["steps"].size()]) if i >= 0 else "finished"])
+		var used := 0              # instructor mode is open to anyone, and visible (PLANT3D §15.5)
+		for ev in p["engine"].get("events", []):
+			if ev[1] == "instructor":
+				used += 1
+		if used > 0:
+			lines.append("This run used instructor mode (%d instructor action%s)." % [used, "" if used == 1 else "s"])
 		lines.append("Saved %s." % Time.get_datetime_string_from_unix_time(p["saved_unix"] + _tz_offset(), true))
 		v.add_child(W.label("\n".join(lines), 20, W.DIM))
 		v.add_child(row)

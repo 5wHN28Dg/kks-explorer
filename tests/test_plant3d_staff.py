@@ -342,15 +342,17 @@ class StaffVectors(unittest.TestCase):
         e.step()
         sr = e.staff
         sr.early = [['op', 1, 'K', 'start', 'local', 'm'], ['op', 1, 'K2', 'open', 'local', None], ['lock', 1, 'w', 0]]
-        sr.drop_kept([[5, 'machine', 'm', 'a', 'b', 'next']])
+        sr.drop_kept([[5, 'machine', 'm', 'a', 'b', 'next']], 'a_fo1')
         self.assertEqual(len(sr.early), 3)
-        sr.drop_kept([[5, 'machine', 'm', 'b', 'c', 'command']])
+        sr.drop_kept([[5, 'machine', 'm', 'b', 'c', 'command']], 'a_fo1')
         self.assertEqual(sr.early, [['op', 1, 'K2', 'open', 'local', None], ['lock', 1, 'w', 0]])
-        # a point locked again: an earlier unlock of it no longer holds (adversarial review)
+        # a point they locked again: an earlier unlock of theirs no longer holds (adversarial review); another
+        # person's lock on it doesn't undo their unlock (locks are personal and stack, §15.1, 2026-10-24)
         sr.early = [['unlock', 1, 'w', 0], ['unlock', 1, 'w', 1], ['lock', 1, 'w', 0]]
-        sr.drop_kept([[5, 'lock', 'w', 0, 'a_elec', 'refused', ['state']]])
+        sr.drop_kept([[5, 'lock', 'w', 0, 'a_fo1', 'refused', ['state']]], 'a_fo1')
+        sr.drop_kept([[5, 'lock', 'w', 0, 'a_elec', 'done', []]], 'a_fo1')
         self.assertEqual(len(sr.early), 3)
-        sr.drop_kept([[5, 'lock', 'w', 0, 'a_elec', 'done', []]])
+        sr.drop_kept([[5, 'lock', 'w', 0, 'a_fo1', 'done', []]], 'a_fo1')
         self.assertEqual(sr.early, [['unlock', 1, 'w', 1], ['lock', 1, 'w', 0]])
 
     def test_a_paused_step_is_looked_at_again(self):
@@ -387,6 +389,64 @@ class StaffVectors(unittest.TestCase):
         for r in self.runs:
             self.assertFalse(any(x[1] == 'unlock' and x[5] == 'refused' and 'owner' in x[6] and x[4] != 'a_sup'
                                  for x in r['events']), r['why'])
+
+    def lock_counts(self, ev, work='wo_pump'):
+        """Each point's number of locks after every step of a run, from its lock, unlock and removal events."""
+        held, out = {}, {}
+        for x in ev:
+            if x[1] in ('lock', 'unlock', 'remove_lock') and x[2] == work and x[5] == 'done':
+                held[x[3]] = held.get(x[3], 0) + (1 if x[1] == 'lock' else -1)
+                out[x[0]] = dict(held)
+        return out
+
+    def test_locks_handed_over_at_a_shift_change(self):
+        """§15.1, §17.9 (the user, 2026-10-24): the incoming person's lock first, then the outgoing one's unlock; no
+        step leaves a point of the open work unlocked; the new holders remove the isolation later."""
+        ev = self.run_named('locks handed over at a shift change')
+        self.assertIn([985, 'lock', 'wo_pump', 0, 'b_elec', 'done', []], ev)
+        self.assertIn([986, 'unlock', 'wo_pump', 0, 'a_elec', 'done', []], ev)
+        self.assertIn([1157, 'lock', 'wo_pump', 1, 'b_fo', 'done', []], ev)
+        self.assertIn([1286, 'unlock', 'wo_pump', 1, 'a_fo2', 'done', []], ev)
+        counts = self.lock_counts(ev)
+        returned = next(x[0] for x in ev if x[1] == 'permit' and x[3] == 'return' and x[5] == 'done')
+        for n, held in counts.items():
+            if n < returned and n >= 142:
+                self.assertEqual(sorted(held), [0, 1], n)
+                self.assertTrue(all(v >= 1 for v in held.values()), (n, held))     # never unprotected
+        self.assertEqual(max(max(h.values()) for h in counts.values()), 2)     # both locks on, for a while
+        self.assertFalse(any(x[1] == 'permit' and x[3] == 'auto' and x[6] == [2] for x in ev))
+        self.assertIn([1392, 'unlock', 'wo_pump', 1, 'b_fo', 'done', []], ev)     # by the new holders
+        self.assertIn([1460, 'unlock', 'wo_pump', 0, 'b_elec', 'done', []], ev)
+        self.assertIn([1461, 'permit', 'wo_pump', 'close', 'b_sup', 'done', []], ev)
+
+    def test_nobody_takes_over(self):
+        """§17.9: the outgoing person's wait runs out, they leave with the lock on, and the supervisor removes it by
+        authority (lock_left, remove_locks), naming its owner; the issued permit is suspended back to approved."""
+        ev = self.run_named('nobody takes over')
+        self.assertFalse(any(x[1] == 'unlock' and x[4] == 'a_elec' for x in ev))
+        left = next(x[0] for x in ev if x[1] == 'move' and x[2] == 'a_elec' and x[4] is None)
+        start = next(x for x in ev if x[1] == 'task' and x[3] == 'remove_left')
+        self.assertEqual(start[2:], ['b_sup', 'remove_left', 'start'])
+        self.assertGreater(start[0], left)
+        rm = [x for x in ev if x[1] == 'remove_lock']
+        self.assertEqual(len(rm), 1)
+        self.assertEqual(rm[0][2:], ['wo_pump', 0, 'b_sup', 'done', [], 'a_elec',
+                                     'Removed by authority: its holder went off shift, nobody took over'])
+        self.assertIn([rm[0][0], 'permit', 'wo_pump', 'auto', None, 'done', [2]], ev)
+        self.assertIn([rm[0][0], 'say', 'b_sup', 'locks_removed', 'channel'], ev)
+
+    def test_the_trainee_hands_over(self):
+        """§17.9: the trainee takes over a lock from the permit form (incoming), and gives one (outgoing)."""
+        ev = self.run_named("the trainee as crew B's field operator")
+        lock = next(x for x in ev if x[1] == 'lock' and x[4] == 'b_fo')
+        unlock = next(x for x in ev if x[1] == 'unlock' and x[4] == 'a_fo2')
+        self.assertLess(lock[0], unlock[0])
+        self.assertIn([lock[0], 'task', 'b_fo', 'handover_take_f', 'done'], ev)
+        ev = self.run_named("the trainee as crew A's field operator 2")
+        lock = next(x for x in ev if x[1] == 'lock' and x[4] == 'b_fo')
+        unlock = next(x for x in ev if x[1] == 'unlock' and x[4] == 'a_fo2')
+        self.assertEqual(unlock[0], lock[0] + 1)            # theirs off once the incoming lock is on
+        self.assertIn([unlock[0], 'task', 'a_fo2', 'handover_give_f', 'done'], ev)
 
     def test_a_free_radio_call_names_no_work(self):
         b = P.check_files(files_of(self.V, self.runs[4]))

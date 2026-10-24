@@ -150,7 +150,15 @@ generated straight-line code (0.8 ms a step, the same results bit for bit: apps/
 - **Instructor mode** (settings): the scenario to restart in (`cold_iron`, `hot_restart`) and the scenario's trainer
   faults: Apply, then Repair (a repaired fault can be applied again). The trainee repairs a fault at its equipment
   too, under its work's permit to work (docs/PLANT3D.md §15.5): the card there shows it while the fault is applied and
-  offers it within reach once the permit is accepted (and says why not otherwise). The debrief lists every repair.
+  offers it within reach once the permit is accepted and its isolation is in place (and says why not otherwise). The
+  debrief lists every repair. Instructor mode is open to anyone, but visible: every instructor action is an event of
+  the run, marked in the debrief ("by the instructor"), and a run with any says so at the top of the debrief and in
+  the saved run's offer (docs/PLANT3D.md §15.5).
+- **Locks at a shift change** (docs/PLANT3D.md §15.1, §17.9): a point holds one or more personal locks. At a
+  handover the incoming person's lock goes on first ("Take over the lock" on the permit form, within reach), then
+  the outgoing person removes theirs ("Remove my lock (handed over)"); NPCs do the same in their handover tasks. A
+  lock left on by someone gone off shift is removed by the supervisor by authority, naming whose lock it was; while
+  the work is issued or accepted, that suspends it (back to approved).
 - **Permits to work** (`ui/permit_panel.gd`, `ui/permits.gd`; docs/PLANT3D.md §15): the plant's works and their
   permits. A work's form shows its number (PTW-0001), state, steps, its isolation's points with how each is made safe
   and which are locked, the next actions and the history. In free mode the trainee plays each role in turn (the

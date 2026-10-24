@@ -1602,13 +1602,14 @@ both engines and the vectors (§19):
 - **Leaving the site with a lock:** at phase 2 of each step 9 the engine lists, in index order, the people other than
   the trainee and the absent who are off duty, off site (no place, not on a way) and hold a lock; each one not on the
   list of the previous phase 2 is a `lock_left` source for every reaction to it.
-- **The vectors** pin: a lock handed over by NPCs at the shift change with no step where the point is unlocked (the
-  incoming electrician's and field operator's locks, then the outgoing ones' unlocks), and the deisolation later by
-  the new holders; nobody of the post coming on (absent): the outgoing person's wait runs out, they leave with the
-  lock on, and the supervisor removes it by authority (the permit suspended back to approved); the trainee taking over
-  and giving a lock; the unit runs' stacked locks, a removal naming its owner, an unlock while issued refused alone
-  and done when another lock stays, the trainee's repair refused for `isolation` (a work without one), and the
-  instructor events.
+- **The vectors** pin (§19): in `staff.runs`, a lock handed over by NPCs at the shift change while the permit is
+  issued, with no step where a point is unlocked (the incoming electrician's and field operator's locks, then the
+  outgoing ones' unlocks), and the deisolation later by the new holders; nobody of the post coming on (absent): the
+  outgoing electrician's wait runs out, they leave with the lock on, and the supervisor removes it by authority (the
+  permit suspended back to approved); the trainee taking over a lock, and giving one; in `steps`, a removal by
+  authority while accepted (the work suspended, a repair noted in that step not made), an unlock while accepted
+  refused with no other lock, removals naming their owner, the trainee's repair refused for `isolation` (a work
+  without one), and the instructor events; and in `staff.reject`, the new steps' and reaction's rule breaks.
 
 ## 18. People on screen (the app; not in the vectors)
 
