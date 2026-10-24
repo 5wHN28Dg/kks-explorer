@@ -119,3 +119,11 @@ open, as in 0057.
 **When to revisit:** when Godot can turn ubershaders off per project, or ships pipeline caches; if a phone in the
 measurement set compiles in parallel (the sky frame then matters less); before adding a shader, a material kind or a
 vertex format (count its pipelines on the Note 9).
+
+## The probe and the walks after W2, W3, C1 and S1 (#249, 2026-10-24)
+
+`--probe=1` (and `probe=1` in a phone's walk.txt) writes frames.csv: per frame the physics, the scripts, the draw (with
+any wait for the GPU), the GPU time, draw calls, the pipelines compiled and the app's own events; `phone/frames.sh`
+pulls it and lists every frame over 100 ms with where its time went. Over the final build's three Note 9 walks, 0 to 2
+pipelines were compiled after the first 5 s, none in a long frame: the start still compiles what the walks draw. The
+first walkable frames are in 0066's table (11.0 to 12.1 s from the launch on the code with S1's staff, 9.3 to 9.6 s before it; rule ≤ 15 s, 0060's margin 13.5 s).
