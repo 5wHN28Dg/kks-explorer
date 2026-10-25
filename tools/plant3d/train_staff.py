@@ -20,6 +20,8 @@ import json, math, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 LAYOUT = os.path.join(HERE, 'staff_layout.json')
+sys.path.insert(0, HERE)
+import wtp_staff  # noqa: E402  (the water treatment plant's people, milestone S3)
 
 CLOCK = {'day_scale': 6, 'start': {'day': 1, 'time': '06:00'},
          'week': ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']}
@@ -59,6 +61,10 @@ EDGES = [
     ('p_st_w', 'p_st_12'), ('p_st_12', 'p_st_12e'), ('p_st_pit', 'p_st_pit6'), ('p_e36', 'p_h_foot'), ('p_h_foot', 'p_c113'),
     ('p_h_foot', 'p_h_30'), ('p_ct_s', 'p_ct_14'),
 ]
+# milestone S3: the walk to the water treatment plant and through it (wtp_staff.py), after the train's points (their
+# indexes, and so the train's routes, unchanged)
+POINTS.update(wtp_staff.POINTS)
+EDGES += wtp_staff.EDGES
 # The control building's rooms (its ground floor: the control room, the field office, the maintenance workshop)
 # and the gate where people come on site (until the camp and its buses, milestone S4).
 ANCHORS = {
@@ -92,6 +98,7 @@ ANCHORS = {
     'ms_desk_2': dict(at=(-36, 9.5, 0), kind='table', room='maint_office', yaw=180, pose='sit'),
     'ms_desk_3': dict(at=(-38.5, 9.5, 0), kind='table', room='maint_office', yaw=180, pose='sit'),
     'con_muster': dict(at=(-3, -17, 0), kind='muster'),
+    **wtp_staff.ANCHORS,
 }
 # Zones (PLANT3D §16.2, STAFF.md §4; milestone S2): the process areas, where helmet, boots and glasses are worn; the
 # halls with machines of 85 dB(A) and over add hearing protection. Roads, the control building and the space between
@@ -105,7 +112,7 @@ ZONES = [
     ('cw_house', 'Circulating water pump house', (140, -20, 165, 20), ['helmet', 'boots', 'glasses', 'ear']),
     ('ct', 'Cooling tower', (170, -35, 260, 35), ['helmet', 'boots', 'glasses', 'ear']),
     ('trafo', 'Transformer yard', (-30, 40, 0, 60), ['helmet', 'boots', 'glasses']),
-]
+] + wtp_staff.ZONES
 ZONE_Z = [-10, 60]
 
 # Rounds (STAFF.md §3): each field operator's area, its readings: (code, expect [lo, hi], tol). The ranges hold for
@@ -135,7 +142,7 @@ FAULT_WORK = {'cw_a_motor': 'wo_cw_a_motor', 'cw_b_motor': 'wo_cw_b_motor', 'cw_
 WEEK_LIST = {
     'ms_mech': [('wo_ct_fan4_pm', ['mon', 'wed', 'fri'])],
     'ms_elec': [('wo_ccw_b_ir', ['mon', 'thu'])],
-    'ms_ic': [('wo_cond_p2_cal', ['mon', 'wed', 'fri']), ('wo_cond_p3_cal', ['tue', 'thu', 'sat'])],
+    'ms_ic': [('wo_cond_p2_cal', ['mon', 'wed', 'fri']), ('wo_cond_p3_cal', ['tue', 'thu', 'sat'])] + wtp_staff.WEEK,
 }
 # The contractors' works (civil: their supervisor accepts the permit), hosted by the mechanical maintenance supervisor
 # who asks for them each working morning; four contractors on each, the shortcut each may take (STAFF.md §4: 1 in 12)
@@ -200,6 +207,7 @@ MESSAGES = {
     'need_permit': 'Reporting for a permit before I start',
     'shortcut_left': 'Shortcut left: working safely again',
     'walk_done': 'Safety walk done: findings in the log',
+    **wtp_staff.MESSAGES,
 }
 
 
@@ -229,6 +237,7 @@ def work_codes(models):
     out += [pt['kks'] for x in isos for pt in x['points']]
     out += [c for _, _, ops, _ in INSTRUCTIONS for c, _ in ops]
     out += [c for _, codes in WALKS.values() for c in codes]
+    out += wtp_staff.work_codes()
     seen, res = set(), []
     for c in out:
         if c not in seen:
@@ -311,7 +320,7 @@ def roles():
              'sup_shift', True, 'coverall_ops_white'),
         dict(role('ccr_op', 'Control room operator', 'ops', ['operate_screen', 'request', 'lock_process'],
                   'ccr_shift', True, 'coverall_ops', ['helmet', 'boots']),
-             requests=['ask_' + i[0] for i in INSTRUCTIONS]),
+             requests=['ask_' + i[0] for i in INSTRUCTIONS] + ['ask_wtp_demin']),
         role('field_op', 'Field operator', 'ops', ['operate_local', 'request', 'lock_mechanical', 'lock_process'],
              'field_st', True, 'coverall_ops'),
         role('elec_ap', 'Electrical authorised person', 'ops', ['operate_local', 'request', 'lock_electrical'],
@@ -328,7 +337,7 @@ def roles():
         role('contractor_sup', 'Contractors\' supervisor', 'civil', ['request', 'accept'], 'con_sup_days', True,
              'contractor', field_ppe + ['harness']),
         role('contractor', 'Contractor', 'civil', [], 'con_days', True, 'contractor', field_ppe + ['harness']),
-    ]
+    ] + wtp_staff.roles()
 
 
 def rosters():
@@ -374,7 +383,7 @@ def people():
     out.append({'id': 'csup', 'role': 'contractor_sup', 'roster': 'day', 'call': 'Contractors\' supervisor'})
     for i in range(1, CONTRACTORS + 1):
         out.append({'id': f'con{i}', 'role': 'contractor', 'roster': 'day', 'call': f'Contractor {i}'})
-    return out
+    return out + wtp_staff.people()
 
 
 def slot(at, task, **kw):
@@ -408,13 +417,15 @@ def routines():
                                                           slot('14:00', 'walk_west')]},
         {'id': 'con_sup_days', 'idle': 'idle_con', 'slots': [slot('07:05', 'gear_up'), slot('15:00', 'hand_back')]},
         {'id': 'con_days', 'idle': 'idle_con', 'slots': [slot('07:05', 'gear_up')]},
-    ]
+    ] + wtp_staff.routines(slot)
 
 
 def tasks(models):
     al, isos, works, ops = model_parts(models)
     iso = {x['id']: x for x in isos}
     T = []
+    wtp_works = {w['id'] for m in models for f in [m.file() if hasattr(m, 'file') else m]
+                 if f.get('area') in wtp_staff.WTP_AREAS for w in f.get('works', [])}
 
     def task(tid, title, steps, **kw):
         T.append(dict({'id': tid, 'title': title, 'steps': steps}, **kw))
@@ -512,29 +523,38 @@ def tasks(models):
             continue
         lock_s, unlock_s = [], []
         by_role = {}
+        wtp = wid in wtp_works
+        prep = wtp_staff.prep(x['id']) if wtp else None
+        if prep:                # the WTP operator takes the equipment out of service first (S3)
+            by_role['wtp_op'] = []
         for i, pt in enumerate(x['points']):
-            by_role.setdefault(LOCKER[pt['kind']], []).append((i, pt))
+            by_role.setdefault((wtp_staff.LOCKER if wtp else LOCKER)[pt['kind']], []).append((i, pt))
         for role, pts in by_role.items():
-            steps, usteps = [], []
+            steps, usteps = list(prep) if prep and role == 'wtp_op' else [], []
             for i, pt in pts:
                 steps.append({'go': {'kks': pt['kks']}})
-                if pt['kind'] in MAKE_SAFE:
+                if pt['kind'] in MAKE_SAFE and not wtp:
                     steps.append({'op': {'kks': pt['kks'], 'do': MAKE_SAFE[pt['kind']], 'where': 'local'}})
+                if wtp and 'safe' in pt:    # (another's steps make it safe: wait for them)
+                    steps.append({'wait': {'until': pt['safe'], 'minutes': 60}})
                 steps.append({'lock': {'work': '$', 'point': i}})
                 usteps += [{'go': {'kks': pt['kks']}}, {'unlock': {'work': '$', 'point': i}}]
-            steps.append({'say': 'isolated', 'to': 'shift_sup'})
+            steps.append({'say': 'isolated' if pts else 'prepared', 'to': 'shift_sup'})
             usteps.append({'say': 'deisolated', 'to': 'shift_sup'})
             lt, ut = f'lock_{wid[3:]}_{role}', f'unlock_{wid[3:]}_{role}'
-            task(lt, f'Isolate for "{w["title"]}"', steps, priority=2)
-            task(ut, f'Remove the isolation of "{w["title"]}"', usteps, priority=2)
+            task(lt, f'Isolate for "{w["title"]}"' if pts else f'Take "{w["title"]}" out of service', steps,
+                 priority=2)
             lock_s.append({'call': {'role': role, 'task': lt}})
-            unlock_s.append({'call': {'role': role, 'task': ut}})
+            if pts:
+                task(ut, f'Remove the isolation of "{w["title"]}"', usteps, priority=2)
+                unlock_s.append({'call': {'role': role, 'task': ut}})
         task(f'isolate_{wid[3:]}', f'Have "{w["title"]}" isolated', lock_s, priority=2)
         task(f'deisolate_{wid[3:]}', f'Have the isolation of "{w["title"]}" removed', unlock_s, priority=2)
         job = f'job_{wid[3:]}'
         cal = wid.endswith('_cal')
+        gas = wtp_staff.gas_test(wid) + [{'go': {'kks': w['kks']}}] if w['permit'] in ('hot', 'confined') else []
         task(job, w['title'], [
-            {'go': {'kks': w['kks']}}, {'permit': {'work': '$', 'action': 'accept'}},
+            {'go': {'kks': w['kks']}}, {'permit': {'work': '$', 'action': 'accept'}}] + gas + [
             {'work': [20, 40], 'anim': 'calibrate', 'tool': 'calibrator'} if cal else
             {'work': [30, 60], 'anim': 'wrench', 'tool': 'spanner'}, {'permit': {'work': '$', 'action': 'done'}},
             {'permit': {'work': '$', 'action': 'return'}}, {'say': 'cal_done' if cal else 'job_done', 'to': 'shift_sup'}],
@@ -594,8 +614,9 @@ def tasks(models):
 
 
 def reactions(model_reacts):
-    out = [{'on': {'alarm': 2}, 'roles': ['ccr_op'], 'task': 'answer_alarm'},
-           {'on': {'trip': '*'}, 'roles': ['shift_sup'], 'task': 'trip_call'},
+    # the train's alarms and trips are the main control room's; the WTP's are its own operator's (S3, §17.12)
+    out = [{'on': {'alarm': 2}, 'areas': wtp_staff.TRAIN_AREAS, 'roles': ['ccr_op'], 'task': 'answer_alarm'},
+           {'on': {'trip': '*'}, 'areas': wtp_staff.TRAIN_AREAS, 'roles': ['shift_sup'], 'task': 'trip_call'},
            {'on': {'permit': 'requested'}, 'roles': ['shift_sup'], 'task': 'approve_permit'},
            {'on': {'permit': 'isolated'}, 'roles': ['shift_sup'], 'task': 'issue_permit'},
            {'on': {'permit': 'deisolated'}, 'roles': ['shift_sup'], 'task': 'close_permit'},
@@ -632,6 +653,9 @@ def staff(models, layout):
     places, ways, nxt = network(models, layout)
     zones = zone_lists(places)
     T, model_reacts = tasks(models)
+    wt, wr = wtp_staff.tasks(models)
+    T += wt
+    model_reacts = model_reacts + wr
     return {'format': 'walkdown-plant-staff', 'version': 1, 'origin': 'cr_desk_a', 'gate': 'gate', 'speeds': SPEEDS,
             'places': places, 'ways': ways, 'next': nxt, 'zones': zones, 'roles': roles(), 'rosters': rosters(),
             'people': people(), 'routines': routines(), 'tasks': T, 'reactions': reactions(model_reacts),
@@ -647,6 +671,16 @@ def scenario(cold):
     s['title'] = 'Day shift, the plant cold: the operators\' crews at work (choose a role)'
     s['start'] = {'day': 1, 'time': '05:30'}
     s['staff'] = {'seed': 8}        # (a day whose draws give two contractors' shortcuts, both found by HSE: S2)
+    return s
+
+
+def scenario_wtp(cold):
+    """`shift_wtp` (S3): as shift_cold, with the WTP's day work coming in the shift's first hours (wtp_staff.SHIFT_WTP)."""
+    s = scenario(cold)
+    s['id'] = 'shift_wtp'
+    s['title'] = 'Day shift at the WTP: a filter due, a mixed bed near exhaustion (choose a role)'
+    s['init'] = dict(s['init'], **wtp_staff.SHIFT_WTP)
+    s['staff'] = {'seed': 3}
     return s
 
 

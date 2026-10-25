@@ -65,6 +65,7 @@ var callable := {}                   # "caller role\nrole\ntask" -> true: the ra
 var react_kind := PackedStringArray()  # per reaction: what it is on
 var value_reactions := PackedInt32Array()   # the reactions on a value
 var act_reactions := PackedInt32Array()     # the reactions on an unsafe act (§16.7)
+var finding_reactions := PackedInt32Array() # the reactions on a reading out of its range (§17.12)
 var zone_ids: Array = []             # the zones' ids, in file order
 var zone_ix := {}                    # zone id -> its index
 var zone_ppe := PackedInt32Array()   # per zone: the PPE it needs, a bit per item of PPE
@@ -205,6 +206,8 @@ func _build(m, doc: Dictionary) -> void:
 			value_reactions.append(i)
 		elif react_kind[i] == "unsafe":
 			act_reactions.append(i)
+		elif react_kind[i] == "finding":
+			finding_reactions.append(i)
 		elif react_kind[i] == "lock_left":
 			has_left = true
 	messages = doc["messages"]
@@ -744,6 +747,7 @@ func step(e) -> void:
 			moved = true
 			break
 	act_phase(e, n, moved)
+	findings(e, n)
 	for i in value_reactions:
 		e.st_vprev[i] = e.truth(reactions[i]["on"]["value"])
 
@@ -905,9 +909,10 @@ func react(e, n: int) -> void:
 			for x in evs:
 				if k == "alarm" and x[1] == "alarm" and x[3] == "active_unack":
 					var a: Dictionary = e.m.alarms[e._al_ix[x[2]]]
-					if a["priority"] <= v:
+					if a["priority"] <= v and (not r.has("areas") or r["areas"].has(e.m.alarm_area[x[2]])):
 						hits.append(["alarm|" + x[2], null, a["where"], x[2]])
-				elif k == "trip" and x[1] == "trip" and (v == "*" or v == x[2]):
+				elif k == "trip" and x[1] == "trip" and (v == "*" or v == x[2]) \
+						and (not r.has("areas") or r["areas"].has(e.m.trip_area[x[2]])):
 					hits.append(["trip|" + x[2], null, null, null])
 				elif k == "fault" and x[1] == "fault" and x[2] == v:
 					hits.append(["fault|" + v, null, e.fault_code(v), null])
@@ -1487,6 +1492,28 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 				var key := "%d|unsafe|%s|%s|%d" % [ri, people[sk[0]]["id"], ACT_KINDS[k], n]
 				if (v == "*" or v == ACT_KINDS[k]) and not e.st_given.has(key):
 					assign(e, r["roles"], r["task"], prio, key, null, null, null, null, [sk[0], k, n])
+
+
+## Phase 5's end (§17.12): the readings of this step out of their range given by the reactions on a finding, in
+## reaction order, each reading in the order made; the task's "$" code is the code read.
+func findings(e, n: int) -> void:
+	if finding_reactions.is_empty():
+		return
+	var found := []
+	for k in range(e.ev_mark, e.events.size()):
+		var x: Array = e.events[k]
+		if x[0] == n and x[1] == "read" and x[5] == "out_of_range":
+			found.append(x)
+	if found.is_empty():
+		return
+	for ri in finding_reactions:
+		var r: Dictionary = reactions[ri]
+		var v: String = r["on"]["finding"]
+		var prio: int = int(r.get("priority", prio_of(r["task"])))
+		for x in found:
+			var key := "%d|finding|%s" % [ri, x[3]]
+			if (v == "*" or v == x[3]) and not e.st_given.has(key):
+				assign(e, r["roles"], r["task"], prio, key, r.get("work"), x[3], null)
 
 
 ## Who of the roles sees an act of person ai: on duty, in a zone ai is in now (§16.7); -1 for nobody.

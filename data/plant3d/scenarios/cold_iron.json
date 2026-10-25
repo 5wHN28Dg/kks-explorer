@@ -96,6 +96,10 @@
   {"id": "mb_a_resin", "set": {"mb_a_resin": 1}, "text": "Mixed bed A: a broken underdrain lateral leaks resin into the outlet strainer", "repair": {"mb_a_resin": 0}},
   {"id": "mb_b_resin", "set": {"mb_b_resin": 1}, "text": "Mixed bed B: a broken underdrain lateral leaks resin into the outlet strainer", "repair": {"mb_b_resin": 0}},
   {"id": "cip_heater", "set": {"cip_heat_fault": 1}, "text": "The CIP tank heater's thermostat sticks: the solution overheats", "kks": "00GCB30AH001", "repair": {"cip_heat_fault": 0}},
+  {"id": "ro_a_orp_drift", "set": {"ro_a_orp_drift": 40}, "text": "RO A feed ORP analyser drifts: reads 40 mV high", "kks": "00GCB21CQ002", "repair": {"ro_a_orp_drift": 0}},
+  {"id": "ro_b_orp_drift", "set": {"ro_b_orp_drift": 40}, "text": "RO B feed ORP analyser drifts: reads 40 mV high", "kks": "00GCB22CQ002", "repair": {"ro_b_orp_drift": 0}},
+  {"id": "ro_a_cond_drift", "set": {"ro_a_cond_drift": 15}, "text": "RO A permeate conductivity analyser drifts: reads 15 µS/cm high", "kks": "00GCB21CQ001", "repair": {"ro_a_cond_drift": 0}},
+  {"id": "ro_b_cond_drift", "set": {"ro_b_cond_drift": 15}, "text": "RO B permeate conductivity analyser drifts: reads 15 µS/cm high", "kks": "00GCB22CQ001", "repair": {"ro_b_cond_drift": 0}},
   {"id": "ro_a_cl_damage", "set": {"ro_a_dmg": 1}, "text": "RO A: the membranes oxidised by chlorine pass salt (new membranes needed)", "when": "ro_a_cl_dmg_c", "repair": {"ro_a_dmg": 0}},
   {"id": "ro_b_cl_damage", "set": {"ro_b_dmg": 1}, "text": "RO B: the membranes oxidised by chlorine pass salt (new membranes needed)", "when": "ro_b_cl_dmg_c", "repair": {"ro_b_dmg": 0}}
  ]

@@ -751,11 +751,17 @@ class Staff:
         trips = {t['id'] for t in self.m.trips}
         for i, r in enumerate(rs):
             wr = f'{w}[{i}]'
-            keys(r, ('on', 'roles', 'task'), ('priority', 'work', 'seen'), wr)
+            keys(r, ('on', 'roles', 'task'), ('priority', 'work', 'seen', 'areas'), wr)
             on = r['on']
             need(isinstance(on, dict) and len(on) == 1, 'bad_kind', f'{wr}.on: one of alarm, trip, fault, value, '
-                                                                   f'permit, lock_left, unsafe')
+                                                                   f'permit, lock_left, unsafe, finding')
             k, v = next(iter(on.items()))
+            if 'areas' in r:        # §17.12: the alarms or trips of these areas' model files only
+                need(k in ('alarm', 'trip'), 'unknown_key', f'{wr}.areas: on an alarm or a trip only')
+                al = lst(r['areas'], f'{wr}.areas', 1, 64)
+                need(len(set(map(str, al))) == len(al), 'dup_id', f'{wr}.areas')
+                for a in al:
+                    need(isinstance(a, str) and a in self.b.plant['areas'], 'bad_ref', f'{wr}.areas: no area {a!r}')
             if 'seen' in r:
                 need(r['seen'] is True and k == 'unsafe', 'bad_value', f'{wr}.seen: true, on an unsafe act')
             if k == 'unsafe':
@@ -773,8 +779,12 @@ class Staff:
                 need(v in STATE_NAMES[1:], 'bad_value', f'{wr}.on.permit: a permit state from requested')
             elif k == 'lock_left':
                 need(v == '*', 'bad_value', f'{wr}.on.lock_left: "*"')
+            elif k == 'finding':    # §17.12: a reading out of its range
+                need(v == '*' or isinstance(v, str) and v in self.m_show(), 'bad_ref',
+                     f'{wr}.on.finding: "*" or a code with a show binding')
             elif k != 'unsafe':
-                need(False, 'bad_kind', f'{wr}.on: one of alarm, trip, fault, value, permit, lock_left, unsafe')
+                need(False, 'bad_kind', f'{wr}.on: one of alarm, trip, fault, value, permit, lock_left, unsafe, '
+                                        f'finding')
             for ro in lst(r['roles'], f'{wr}.roles', 1, 16):
                 need(ro in self.roles, 'bad_ref', f'{wr}.roles: no role {ro!r}')
             need(r['task'] in self.tasks, 'bad_ref', f'{wr}.task: no task {r["task"]!r}')
@@ -935,6 +945,15 @@ class Staff:
                         need(works[tid], 'bad_ref', f'{ws}: "$" but no work is ever given to task {tid}')
                 if 'wait' in s and 'permit' in s['wait'] and s['wait']['permit'][0] == '$':
                     need(works[tid], 'bad_ref', f'{ws}: "$" but no work is ever given to task {tid}')
+        # a hot or confined work's task tests the air first: a read with "test": "gas" before its first work step
+        # (§15.2; checked from milestone S3, whose confined-space jobs are the first with staff)
+        for wid, x in wmap.items():
+            if x['permit'] in ('hot', 'confined') and x.get('task') in self.tasks:
+                steps = self.tasks[x['task']]['steps']
+                first = next((i for i, st_ in enumerate(steps) if 'work' in st_), len(steps))
+                need(any(st_.get('test') == 'gas' for st_ in steps[:first]), 'bad_ref',
+                     f'staff.json: task {x["task"]}: work {wid} is a {x["permit"]} work: a gas test (a read with '
+                     f'"test": "gas") before its first work step')
         self.runs = runs
 
     def step_works(self, w, given):
@@ -1444,6 +1463,19 @@ class StaffRun:
                     if v in ('*', kind) and (ri, 'unsafe', p.id, kind, n) not in self.given:
                         key = (ri, 'unsafe', p.id, kind, n)
                         self.assign(r['roles'], r['task'], prio, key, None, None, None, act=(p.i, kind, n))
+        # then the findings: readings of this step out of their range (§17.12), in reaction order, each reading in
+        # the order made; the task's "$" code is the code read
+        found = [x for x in e.events[e.ev_mark:] if x[0] == n and x[1] == 'read' and x[5] == 'out_of_range']
+        if found:
+            for ri, r in enumerate(st.reactions):
+                v = r['on'].get('finding')
+                if v is None:
+                    continue
+                prio = r.get('priority', st.tasks[r['task']].get('priority', 3))
+                for x in found:
+                    key = (ri, 'finding', x[3])
+                    if v in ('*', x[3]) and key not in self.given:
+                        self.assign(r['roles'], r['task'], prio, key, r.get('work'), x[3], None)
 
     def observer(self, roles, actor):
         """Who of the roles sees an act: on duty, in a zone the acting person is in now (§16.7)."""
@@ -1558,9 +1590,10 @@ class StaffRun:
                 for x in evs:
                     if k == 'alarm' and x[1] == 'alarm' and x[3] == 'active_unack':
                         a = e.alarm_of[x[2]]
-                        if a['priority'] <= v:
+                        if a['priority'] <= v and ('areas' not in r or e.area_of[('alarm', x[2])] in r['areas']):
                             hits.append((('alarm', x[2]), None, a['where'], x[2]))
-                    elif k == 'trip' and x[1] == 'trip' and (v == '*' or v == x[2]):
+                    elif k == 'trip' and x[1] == 'trip' and (v == '*' or v == x[2]) and \
+                            ('areas' not in r or e.area_of[('trip', x[2])] in r['areas']):
                         hits.append((('trip', x[2]), None, None, None))
                     elif k == 'fault' and x[1] == 'fault' and x[2] == v:
                         hits.append((('fault', v), None, e.faults[v].get('kks'), None))

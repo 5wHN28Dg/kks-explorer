@@ -29,6 +29,8 @@ var interlocks: Array = []
 var machines: Array = []              # each with "_ids" (state ids in order) added
 var alarms: Array = []
 var trips: Array = []
+var alarm_area := {}                  # alarm id -> its model file's area (a reaction's `areas`, PLANT3D §17.12)
+var trip_area := {}                   # trip id -> its model file's area
 var bind: Array = []
 var version := 1                      # plant.json's (§14)
 var isolations: Array = []            # format 2 (§15.1), joined in area order
@@ -229,11 +231,15 @@ func _add_model(d: Dictionary, rel: String) -> void:
 		mc["_ix"] = ix
 		machines.append(mc)
 	trips.append_array(d.get("trips", []))
+	for t in d.get("trips", []):
+		trip_area[t["id"]] = d["area"]
 	for o in d.get("ops", []):
 		op_keys[op_key(o["kks"], o["do"], o.get("trip"))] = o
 		ops.append(o)
 	interlocks.append_array(d.get("interlocks", []))
 	alarms.append_array(d.get("alarms", []))
+	for a in d.get("alarms", []):
+		alarm_area[a["id"]] = d["area"]
 	bind.append_array(d.get("bind", []))
 	for x in d.get("isolations", []):
 		isolation_ix[x["id"]] = isolations.size()
