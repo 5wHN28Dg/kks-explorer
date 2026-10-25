@@ -70,7 +70,7 @@ VALVE = {'dn': I(6, 4000, 100), 'rating': E(['pn10', 'pn16', 'pn25', 'pn40', 'pn
 RANGE = {'range': T('pair'), 'unit': TXT('bar')}
 
 # Planting by species (SITE.md §4: every plant has a purpose; species grown in hot, dry, saline ground in the region)
-SPECIES = ['date_palm', 'tamarisk', 'oleander', 'bougainvillea', 'saltbush', 'caper']
+SPECIES = ['date_palm', 'tamarisk', 'oleander', 'bougainvillea', 'saltbush', 'caper', 'dracaena']
 WALL_OPENINGS = {'type': 'records', 'max': 64, 'fields': {'kind': E(['door', 'window', 'door_closed']), 'at': T('xy'),
                                                          'width': N(0.6, 4, 0.9), 'height': N(0.5, 3, 2.1)}}
 SITE_PARTS = {
@@ -78,11 +78,12 @@ SITE_PARTS = {
     # route, of no length, is one plant at `at`; height 0 and spacing 0 take the species' usual (kit/parts_site.gd)
     'planting': part('structures', {'species': E(SPECIES), 'height': N(0, 20, 0), 'spacing': N(0, 30, 0),
                                     'route': {'type': 'path', 'default': [[0, 0, 0], [0, 0, 0]]}}),
-    'vehicle': part('structures', {'kind': E(['bus', 'pickup', 'suv']),
+    'vehicle': part('structures', {'kind': E(['bus', 'pickup', 'suv', 'ambulance']),
                                    'colour': E(['silver', 'grey', 'sand', 'blue', 'green'], 'silver')}),
     'barrier': part('structures', {'width': N(2, 10, 4), 'open': B(False)}),
     'guard_booth': part('structures', {'width': N(1.5, 4, 2.2), 'depth': N(1.5, 4, 2.2)}),
-    'canopy': part('structures', {'length': N(2, 100, 10), 'width': N(1.5, 20, 5), 'height': N(2.2, 8, 3)}),
+    'canopy': part('structures', {'length': N(2, 100, 10), 'width': N(1.5, 20, 5), 'height': N(2.2, 8, 3),
+                                  'kind': E(['sheet', 'sail'], 'sheet')}),
     'lamp_post': part('structures', {'height': N(3, 15, 8), 'arms': I(1, 2, 1)}),
     'kerb': part('structures', {'route': T('path'), 'painted': B(True)}),
     # a marked pedestrian crossing (zebra stripes across a road `width` wide, `length` along it)
@@ -96,7 +97,8 @@ SITE_PARTS = {
     'locker': part('structures', {'width': N(0.4, 2.4, 1.0), 'height': N(1, 2.4, 2.0)}),
     'desk': part('structures', {'width': N(0.8, 3, 1.2), 'depth': N(0.5, 1.2, 0.6)}),
     'chair': part('structures', {'kind': E(['office', 'dining'], 'dining')}),
-    'table': part('structures', {'length': N(0.6, 6, 1.8), 'width': N(0.6, 2, 0.9), 'height': N(0.4, 1.1, 0.75)}),
+    'table': part('structures', {'length': N(0.6, 6, 1.8), 'width': N(0.6, 2, 0.9), 'height': N(0.4, 1.1, 0.75),
+                                 'kind': E(['steel', 'wood'], 'steel')}),
     'bench': part('structures', {'length': N(0.8, 6, 2)}),
     'counter': part('structures', {'length': N(0.6, 20, 3), 'depth': N(0.4, 1.5, 0.7),
                                    'kind': E(['serving', 'kitchen', 'range', 'sink', 'basin', 'reception', 'workbench'],
@@ -105,10 +107,18 @@ SITE_PARTS = {
                                  'kind': E(['store', 'shoes'], 'store')}),
     'washer': part('structures', {'kind': E(['washer', 'dryer'], 'washer')}),
     'gym_rack': part('structures', {'kind': E(['weights', 'treadmill', 'bike', 'bench'], 'weights')}),
-    'sofa': part('structures', {'seats': I(1, 4, 3)}),
+    'sofa': part('structures', {'seats': I(1, 4, 3), 'cover': E(['fabric', 'leather'], 'fabric')}),
     'screen': part('structures', {'size': N(0.5, 3, 1.4), 'mount': N(0.8, 3, 1.5)}),
-    'carpet': part('structures', {'outline': T('polygon'), 'colour': E(['green', 'red', 'blue', 'sand'], 'green')}),
+    'carpet': part('structures', {'outline': T('polygon'), 'colour': E(['green', 'red', 'blue', 'sand'], 'green'),
+                                  'rows': B(True)}),
     'sanitary': part('structures', {'kind': E(['wc', 'shower', 'basin', 'ablution'], 'wc')}),
+    # roadside and building fittings (photo pass 3): a pillar fire hydrant, a bollard post, a steel skip bin, a
+    # lattice telecom mast, a split air conditioner's outdoor unit on its wall brackets
+    'hydrant': part('structures', {}),
+    'bollard': part('structures', {'height': N(0.6, 1.6, 1.2)}),
+    'skip_bin': part('structures', {}),
+    'mast': part('structures', {'height': N(10, 60, 30)}),
+    'ac_unit': part('structures', {}),
 }
 
 PARTS = {
@@ -335,7 +345,7 @@ PARTS = {
     'grating': part('structures', {'outline': T('polygon'), 'openings': {'type': 'polygons', 'default': []}},
                     walkable=True),
     'road': part('structures', {'outline': T('polygon'), 'openings': {'type': 'polygons', 'default': []},
-                                'surface': E(['asphalt', 'concrete', 'gravel'], 'asphalt')}, walkable=True),
+                                'surface': E(['asphalt', 'concrete', 'gravel', 'pavers'], 'asphalt')}, walkable=True),
     'stair': part('structures', {'foot': T('xyz'), 'top': T('xyz'), 'layout': E(['straight', 'switchback'], 'straight'),
                                  'width': N(0.6, 2.5, 1.0)}, walkable=True),
     'ladder': part('structures', {'foot': T('xyz'), 'top': N(-30, 200), 'facing': N(0, 360, 0)}, walkable=True),

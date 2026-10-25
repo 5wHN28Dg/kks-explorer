@@ -1758,6 +1758,12 @@ like equipment, solid where a walker would meet them. Beyond the list above:
   tiles; also a `floor`'s or `platform`'s `finish`); a `door`'s `locked` (a shell's door that never opens: its leaf on
   the wall's outside, no opening needed); a `road`'s `surface` is drawn (asphalt, paved concrete, gravel) and a road
   at ground level is cut out of the ground and the yards (and opens the boundary wall where it crosses it).
+- **Photo pass 3 (2026-10-25):** `planting` species `dracaena` (a pot plant, indoors only: SITE.md §4); `vehicle`
+  kind `ambulance` (a high-roofed van); `canopy` `kind` `sail` (a car park's arched white shade sails on posts along
+  one side, every bay of about 5.5 m: two stalls) besides `sheet`; `table` `kind` `wood` (a carved side table);
+  `sofa` `cover` `leather`; a `road`'s `surface` `pavers` (block paving); and the new parts `hydrant` (a red pillar
+  fire hydrant), `bollard` (`height`), `skip_bin`, `mast` (a lattice telecom mast, `height`) and `ac_unit` (a split
+  air conditioner's outdoor unit on its wall brackets, `at` its foot on the wall's face, facing out).
 - An interior (§18.5) holds only these parts and doors, and is drawn unbaked in the vertex format the instanced
   pieces already use, so showing one compiles no pipeline the start has not (0060).
 

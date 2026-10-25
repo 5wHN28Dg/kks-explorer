@@ -25,6 +25,7 @@ const SPECIES := {
 	"bougainvillea": {"height": 2.8, "spacing": 3.0, "solid": [0.25, 1.5]},
 	"saltbush": {"height": 1.0, "spacing": 1.2, "solid": [0.45, 0.8]},
 	"caper": {"height": 0.5, "spacing": 1.4, "solid": [0.45, 0.45]},
+	"dracaena": {"height": 1.6, "spacing": 1.0, "solid": [0.25, 0.5]},
 }
 
 ## Leaf, bark and soil colours (sRGB, in the vertices): the grey-greens of plants of hot dry places, never a lawn's.
@@ -45,6 +46,9 @@ const SOIL_WET := Color(0.36, 0.29, 0.22)
 ## The drip hose, black polyethylene greyed by the dust: pure black, thinner than a pixel a few metres off, drew a hard
 ## dark line that broke into dashes as one walked (the Note 9, 2026-10-23: taken for a fault in the ground).
 const HOSE := Color(0.20, 0.19, 0.17)
+## A potted dracaena's leaves (Dracaena fragrans, the lobby's plant: glossy dark green straps) and its glazed pot.
+const DRACAENA := Color(0.17, 0.32, 0.14)
+const POT := Color(0.30, 0.29, 0.28)
 
 ## Vehicle paint (no white: the user's choice, 2026-10-21; muted, neutral fleet colours).
 const VEHICLE := {"silver": Color(0.68, 0.69, 0.70), "grey": Color(0.42, 0.44, 0.45), "sand": Color(0.72, 0.64, 0.50),
@@ -90,6 +94,7 @@ static func planting(_part: String, g) -> void:
 		"bougainvillea": _bougainvillea(m, g, h)
 		"saltbush": _shrub(m, g, h, 1.2, SALTBUSH, SALTBUSH.lightened(0.15), 0.15, 6, 4)
 		"caper": _shrub(m, g, h, 2.6, CAPER, CAPER_FLOWER, 0.08, 6, 3)
+		"dracaena": _potted(m, g, h)
 	var s: Array = species(g).solid
 	g.solid_cyl(Vector3.ZERO, Vector3(0, 0, minf(float(s[1]), h)), float(s[0]))
 
@@ -299,6 +304,26 @@ static func _bougainvillea(m, g, h: float) -> void:
 		_blob(m, c, Vector3(r, r, h * 0.16), rng, cols, 6, 3, 0.25)
 	_blob(m, Vector3(0, 0, h * 0.95), Vector3(0.6, 0.6, 0.3), rng, cols, 7, 3, 0.25)
 
+## A dracaena in a glazed pot (indoors: the admin lobby's, SITE.md §4): three canes of different heights, each topped
+## by a rosette of arching strap leaves; no basin and no drip line (watered by hand).
+static func _potted(m, g, h: float) -> void:
+	var rng := _rng(g, 11)
+	col(m, "plain", POT)
+	m.lathe(Vector3.ZERO, Vector3(0, 0, 1), [[0.17, 0.0], [0.22, 0.42], [0.23, 0.45]], 14, false)
+	col(m, "foliage", SOIL.darkened(0.3))
+	m.disk(Vector3(0, 0, 0.42), Vector3(0, 0, 1), 0.21, 14)
+	for k in 3:
+		var a := TAU * (k / 3.0 + rng.randf() * 0.1)
+		var b := Vector3(cos(a), sin(a), 0) * 0.06 + Vector3(0, 0, 0.42)
+		var top := b + Vector3(cos(a) * 0.05, sin(a) * 0.05, (h - 0.6) * (0.55 + 0.22 * k))
+		col(m, "foliage", BARK)
+		m.cyl(b, top, 0.025, 0.02, 5, false)
+		var n := 9
+		for j in n:
+			var az := TAU * j / n + rng.randf() * 0.3
+			_frond(m, top, az, deg_to_rad(35.0 + rng.randf() * 30.0), 0.25, 0.42 + rng.randf() * 0.12, 0.07,
+				DRACAENA.lightened(rng.randf() * 0.12))
+
 ## The drip line along a row of plants (plant coordinates of the row's ends, in the part frame): a dusty black hose on
 ## the ground (detail).
 static func drip_line(m, a: Vector3, b: Vector3) -> void:
@@ -314,6 +339,9 @@ static func vehicle(_part: String, g) -> void:
 	var kind := String(g.p.get("kind", "pickup"))
 	var paint: Color = VEHICLE.get(String(g.p.get("colour", "silver")), VEHICLE.silver)
 	paint.a = 0.1
+	if kind == "ambulance":
+		_ambulance(m, g)
+		return
 	var W := 2.5 if kind == "bus" else 1.9
 	var L: float = {"bus": 12.0, "pickup": 5.3, "suv": 4.8}[kind]
 	var wr := 0.5 if kind == "bus" else 0.38
@@ -357,6 +385,53 @@ static func vehicle(_part: String, g) -> void:
 	for sx: float in [-1.0, 1.0]:
 		m.box(Vector3(sx * W * 0.42, -L * 0.5 - 0.01, 1.0), Vector3(0.18, 0.03, 0.2))
 	g.solid_box(Vector3(-W * 0.5, -L * 0.5, 0), Vector3(W * 0.5, L * 0.5, 3.1 if kind == "bus" else 1.85))
+
+## The camp's ambulance (parked by the first-aid point, SITE.md §3): a high-roofed van 5.4 m long, its body pale (as
+## ambulances are everywhere; the fleet's own colours stay muted), a red band along its sides and back, the blue
+## light bar over the cab (off while parked), the rear doors' windows. Origin under its middle, facing +y.
+const AMBULANCE := Color(0.88, 0.88, 0.85, 0.1)
+static func _ambulance(m, g) -> void:
+	var W := 2.0
+	var L := 5.4
+	var wr := 0.36
+	col(m, "rubber", Color(0.05, 0.05, 0.05))
+	for y: float in [-L * 0.3, L * 0.3]:
+		for sx: float in [-1.0, 1.0]:
+			m.cyl(Vector3(sx * (W * 0.5 - 0.25), y, wr), Vector3(sx * (W * 0.5 - 0.02), y, wr), wr, -1.0, 10)
+	col(m, "paint_darkgrey", Color(0.15, 0.15, 0.16))
+	m.box_lh(Vector3(-W * 0.45, -L * 0.48, wr * 0.6), Vector3(W * 0.45, L * 0.48, wr * 1.3))
+	col(m, "paint_white", AMBULANCE)
+	var cab := L * 0.5 - 1.5   # the box ends and the cab begins
+	m.box_lh(Vector3(-W * 0.5, -L * 0.5, 0.5), Vector3(W * 0.5, cab, 2.5))
+	m.box_lh(Vector3(-W * 0.5, cab, 0.5), Vector3(W * 0.5, L * 0.5, 1.15))
+	m.hexa([Vector3(-W * 0.5, cab, 1.15), Vector3(W * 0.5, cab, 1.15), Vector3(W * 0.48, L * 0.5 - 0.05, 1.15),
+		Vector3(-W * 0.48, L * 0.5 - 0.05, 1.15), Vector3(-W * 0.48, cab, 2.3), Vector3(W * 0.48, cab, 2.3),
+		Vector3(W * 0.45, cab + 0.75, 2.2), Vector3(-W * 0.45, cab + 0.75, 2.2)])
+	col(m, "glass", Color(0.10, 0.12, 0.14))
+	# the windscreen, on the cab's slope (1 cm proud of it)
+	var a0 := Vector3(0, cab + 0.75, 2.2).lerp(Vector3(0, L * 0.5 - 0.05, 1.15), 0.08)
+	var a1 := Vector3(0, cab + 0.75, 2.2).lerp(Vector3(0, L * 0.5 - 0.05, 1.15), 0.72)
+	var nrm := (a1 - a0).cross(Vector3(1, 0, 0)).normalized() * -0.015
+	_two_sided(m, Vector3(-W * 0.43, a0.y, a0.z) + nrm, Vector3(W * 0.43, a0.y, a0.z) + nrm,
+		Vector3(W * 0.45, a1.y, a1.z) + nrm, Vector3(-W * 0.45, a1.y, a1.z) + nrm)
+	for sx: float in [-1.0, 1.0]:
+		m.box_lh(Vector3(sx * W * 0.5 - 0.01, cab + 0.1, 1.3), Vector3(sx * W * 0.5 + 0.01, cab + 0.95, 1.95))
+	for sx: float in [-1.0, 1.0]:
+		m.box_lh(Vector3(sx * 0.45 - 0.3, -L * 0.5 - 0.015, 1.6), Vector3(sx * 0.45 + 0.3, -L * 0.5, 2.1))
+	col(m, "paint_red", Color(0.72, 0.09, 0.07, 0.15))
+	for sx: float in [-1.0, 1.0]:
+		m.box_lh(Vector3(minf(sx * W * 0.5, sx * (W * 0.5 + 0.015)), -L * 0.5 - 0.015, 1.0),
+			Vector3(maxf(sx * W * 0.5, sx * (W * 0.5 + 0.015)), L * 0.5 - 0.1, 1.2))   # 1.5 cm proud: no depth fight
+	m.box_lh(Vector3(-W * 0.5 - 0.015, -L * 0.5 - 0.015, 1.0), Vector3(W * 0.5 + 0.015, -L * 0.5, 1.2))
+	col(m, "plain", Color(0.15, 0.30, 0.75))
+	m.box_lh(Vector3(-W * 0.42, cab - 0.25, 2.5), Vector3(W * 0.42, cab + 0.05, 2.62))   # the light bar
+	col(m, "plain", Color(0.9, 0.9, 0.85), "detail", 0.15)
+	for sx: float in [-1.0, 1.0]:
+		m.box(Vector3(sx * W * 0.36, L * 0.5 + 0.01, 0.95), Vector3(0.25, 0.03, 0.12))
+	col(m, "plain", Color(0.7, 0.08, 0.06), "detail", 0.12)
+	for sx: float in [-1.0, 1.0]:
+		m.box(Vector3(sx * W * 0.46, -L * 0.5 - 0.01, 1.2), Vector3(0.1, 0.03, 0.4))
+	g.solid_box(Vector3(-W * 0.5, -L * 0.5, 0), Vector3(W * 0.5, L * 0.5, 2.6))
 
 ## A gate's barrier: its post with the counterweight, the arm in red and white bands across `width` (raised when
 ## `open`), and a rest post at its tip. Origin at the hinge post's foot; the arm runs along +x.
@@ -410,6 +485,9 @@ static func canopy(_part: String, g) -> void:
 	var L: float = g.num("length", 10.0)
 	var w: float = g.num("width", 5.0)
 	var h: float = g.num("height", 3.0)
+	if String(g.p.get("kind", "sheet")) == "sail":
+		_sail(m, g, L, w, h)
+		return
 	var n := maxi(1, int(ceil(L / 5.5)))
 	col(m, "galvanised", Color(0.85, 0.87, 0.88))
 	for i in n + 1:
@@ -428,6 +506,44 @@ static func canopy(_part: String, g) -> void:
 	var c := Vector3(w * 0.5 + 0.2, L * 0.5 + 0.2, h + 0.1)
 	var d := Vector3(-w * 0.5 - 0.2, L * 0.5 + 0.2, hi)
 	_two_sided(m, a, b, c, d)
+
+## A car park's shade sails (`kind` sail): steel posts along the -x side every bay (about 5.5 m: two cars), from each
+## an arched arm across the width, and between two arms a white tensioned fabric vault, sagging a little between
+## them. Origin at the middle of its footprint; length along y.
+const SAIL := Color(0.93, 0.93, 0.90)
+static func _sail(m, g, L: float, w: float, h: float) -> void:
+	var n := maxi(1, int(ceil(L / 5.5)))
+	var NA := 6
+	var rise := 1.0
+	var xp := -w * 0.5 + 0.25
+	var arc := func(t: float) -> Vector2:   # across the width, t 0..1: (x, z) of the arm
+		return Vector2(lerpf(xp, w * 0.5, t), h + rise * sin(PI * (0.15 + 0.85 * t)) - 0.25 * t)
+	for i in n + 1:
+		var y := -L * 0.5 + L * i / n
+		col(m, "galvanised", Color(0.85, 0.87, 0.88))
+		var top: Vector2 = arc.call(0.0)
+		m.cyl(Vector3(xp, y, 0), Vector3(xp, y, top.y), 0.09, -1.0, 8)
+		g.solid_cyl(Vector3(xp, y, 0), Vector3(xp, y, h), 0.1)
+		for k in NA:
+			var a: Vector2 = arc.call(float(k) / NA)
+			var b: Vector2 = arc.call(float(k + 1) / NA)
+			m.cyl(Vector3(a.x, y, a.y), Vector3(b.x, y, b.y), 0.05, -1.0, 6, false)
+		var st: Vector2 = arc.call(0.35)
+		m.cyl(Vector3(xp, y, h - 1.0), Vector3(st.x, y, st.y), 0.04, -1.0, 6, false)   # its strut
+	col(m, "matte", SAIL)
+	var NY := 3
+	for i in n:
+		var y0 := -L * 0.5 + L * i / n + 0.08
+		var y1 := -L * 0.5 + L * (i + 1) / n - 0.08
+		for k in NA:
+			for j in NY:
+				var q := []
+				for c in [[k, j], [k + 1, j], [k + 1, j + 1], [k, j + 1]]:
+					var a: Vector2 = arc.call(float(c[0]) / NA)
+					var v := float(c[1]) / NY
+					var sag := 0.18 * sin(PI * v) * sin(PI * float(c[0]) / NA)
+					q.append(Vector3(a.x, lerpf(y0, y1, v), a.y + 0.04 - sag))
+				_two_sided(m, q[0], q[1], q[2], q[3])
 
 ## A street lamp: a tapered galvanised pole on a concrete foot, its arm(s) and the lantern (off by day).
 static func lamp_post(_part: String, g) -> void:
@@ -483,6 +599,147 @@ static func crossing(_part: String, g) -> void:
 	for k in n:
 		var x := -w * 0.5 + (w - n) * 0.5 + k + 0.25
 		m.box_lh(Vector3(x, -L * 0.5, 0.0), Vector3(x + 0.5, L * 0.5, 0.02))
+
+## A pillar fire hydrant by a road (red: fire equipment is red whatever the plant's colours): its foot flange, the
+## barrel, two hose outlets with chained caps either side, the pumper outlet in front (+y), the bonnet and its
+## operating nut. Origin at its foot.
+const FIRE_RED := Color(0.72, 0.09, 0.07, 0.35)
+static func hydrant(_part: String, g) -> void:
+	var m = g.m
+	# one material (the paint's, its colours in the vertices) and a `detail` piece: drawn within its size's range, as
+	# small things are, wherever it stands (no far view need parent it), casting no shadow
+	col(m, "paint_white", Color(0.62, 0.61, 0.58, 0.4), "detail", 0.9)   # its concrete collar
+	m.cyl(Vector3(0, 0, -0.05), Vector3(0, 0, 0.06), 0.32, -1.0, 10)
+	col(m, "paint_red", FIRE_RED, "detail", 0.9)
+	m.cyl(Vector3(0, 0, 0.06), Vector3(0, 0, 0.12), 0.17, -1.0, 12)
+	m.cyl(Vector3(0, 0, 0.12), Vector3(0, 0, 0.72), 0.11, -1.0, 12, false)
+	m.cyl(Vector3(0, 0, 0.72), Vector3(0, 0, 0.76), 0.14, -1.0, 12)
+	m.dish(Vector3(0, 0, 0.76), Vector3(0, 0, 1), 0.13, 0.09, 12, 3)
+	m.cyl(Vector3(0, 0, 0.84), Vector3(0, 0, 0.9), 0.03, -1.0, 6)   # the operating nut
+	for sx: float in [-1.0, 1.0]:
+		m.cyl(Vector3(sx * 0.08, 0, 0.55), Vector3(sx * 0.2, 0, 0.55), 0.045, -1.0, 10)
+		m.cyl(Vector3(sx * 0.2, 0, 0.55), Vector3(sx * 0.23, 0, 0.55), 0.055, -1.0, 10)
+	m.cyl(Vector3(0, 0.08, 0.42), Vector3(0, 0.2, 0.42), 0.06, -1.0, 10)
+	m.cyl(Vector3(0, 0.2, 0.42), Vector3(0, 0.24, 0.42), 0.075, -1.0, 10)
+	g.solid_cyl(Vector3.ZERO, Vector3(0, 0, 0.9), 0.16)
+
+## A bollard post (`height`): a red steel tube on its buried foot, a white retroreflective band near its top (a hydrant's
+## or a cabinet's guard against vehicles, a road's edge). Origin at its foot.
+static func bollard(_part: String, g) -> void:
+	var m = g.m
+	var h: float = g.num("height", 1.2)
+	col(m, "paint_red", FIRE_RED, "detail", h)   # (a detail piece, as the hydrant)
+	m.cyl(Vector3.ZERO, Vector3(0, 0, h - 0.18), 0.05, -1.0, 10, false)
+	col(m, "paint_white", Color(0.92, 0.92, 0.90, 0.2), "detail", h)
+	m.cyl(Vector3(0, 0, h - 0.18), Vector3(0, 0, h - 0.08), 0.051, -1.0, 10, false)
+	col(m, "paint_red", FIRE_RED, "detail", h)
+	m.cyl(Vector3(0, 0, h - 0.08), Vector3(0, 0, h), 0.05, -1.0, 10)
+	g.solid_cyl(Vector3.ZERO, Vector3(0, 0, h), 0.06)
+
+## A steel skip bin (a wheeled refuse container, about 2.5 m³): its body narrower at the foot, a rolled rim, two lid
+## flaps (one propped open), the lifting trunnions either side and four castors. Painted grey, dusty. Origin at its
+## foot's centre; its long side along x.
+static func skip_bin(_part: String, g) -> void:
+	var m = g.m
+	var steel := Color(0.56, 0.58, 0.58, 0.35)   # painted grey steel, knocked about
+	col(m, "rubber", Color(0.05, 0.05, 0.05))
+	for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+		m.cyl(Vector3(c.x * 0.62, c.y * 0.42 - 0.04, 0.09), Vector3(c.x * 0.62, c.y * 0.42 + 0.04, 0.09), 0.09, -1.0, 8)
+	col(m, "paint_white", steel)
+	m.hexa([Vector3(-0.72, -0.5, 0.2), Vector3(0.72, -0.5, 0.2), Vector3(0.72, 0.5, 0.2), Vector3(-0.72, 0.5, 0.2),
+		Vector3(-0.9, -0.62, 1.3), Vector3(0.9, -0.62, 1.3), Vector3(0.9, 0.62, 1.3), Vector3(-0.9, 0.62, 1.3)])
+	for sy: float in [-1.0, 1.0]:
+		m.box_lh(Vector3(-0.92, sy * 0.62 - 0.03, 1.24), Vector3(0.92, sy * 0.62 + 0.03, 1.33))   # the rim
+	for sx: float in [-1.0, 1.0]:
+		m.cyl(Vector3(sx * 0.85, 0, 1.05), Vector3(sx * 1.0, 0, 1.05), 0.05, -1.0, 8)   # the trunnions
+	col(m, "paint_white", steel.darkened(0.12))
+	m.box_lh(Vector3(-0.9, -0.62, 1.33), Vector3(0.0, 0.62, 1.36))   # one flap shut
+	m.box(Vector3(0.45, 0.72, 1.62), Vector3(0.9, 0.03, 0.62))     # the other propped open against the back
+	g.solid_box(Vector3(-0.92, -0.64, 0), Vector3(0.92, 0.64, 1.36))
+
+## A telecom mast (`height`): a square lattice tower tapering from a tenth of its height at the foot to 1 m, its legs
+## on concrete pads, horizontals at every 3 m section and one diagonal across each face of each section (alternating),
+## the antenna platform at the top with three panel antennas and two microwave dishes, the aviation lamp. Galvanised.
+## Origin at the middle of its foot.
+static func mast(_part: String, g) -> void:
+	var m = g.m
+	var h: float = g.num("height", 30)
+	var b0 := maxf(1.5, h * 0.1) * 0.5
+	var b1 := 0.5
+	var n := maxi(3, int(round(h / 3.0)))
+	var half := func(z: float) -> float: return lerpf(b0, b1, z / h)
+	var corner := [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]
+	col(m, "concrete", Color(1, 1, 1))
+	for c: Vector2 in corner:
+		m.box_lh(Vector3(c.x * b0 - 0.35, c.y * b0 - 0.35, 0), Vector3(c.x * b0 + 0.35, c.y * b0 + 0.35, 0.3))
+	col(m, "galvanised", Color(0.80, 0.82, 0.83))
+	for i in n:
+		var z0 := h * i / n
+		var z1 := h * (i + 1) / n
+		var a0: float = half.call(z0)
+		var a1: float = half.call(z1)
+		for k in 4:
+			var c: Vector2 = corner[k]
+			var d: Vector2 = corner[(k + 1) % 4]
+			m.cyl(Vector3(c.x * a0, c.y * a0, z0), Vector3(c.x * a1, c.y * a1, z1), 0.06 if i < n / 2 else 0.045, -1.0, 6, false)
+	for i in n:
+		var z0 := h * i / n
+		var z1 := h * (i + 1) / n
+		var a0: float = half.call(z0)
+		var a1: float = half.call(z1)
+		col(m, "galvanised", Color(0.80, 0.82, 0.83), "detail", 0.3)
+		for k in 4:
+			var c: Vector2 = corner[k]
+			var d: Vector2 = corner[(k + 1) % 4]
+			m.cyl(Vector3(c.x * a1, c.y * a1, z1), Vector3(d.x * a1, d.y * a1, z1), 0.025, -1.0, 4, false)
+			var lo := c if (i + k) % 2 == 0 else d
+			var hi := d if (i + k) % 2 == 0 else c
+			m.cyl(Vector3(lo.x * a0, lo.y * a0, z0), Vector3(hi.x * a1, hi.y * a1, z1), 0.025, -1.0, 4, false)
+	# the antenna platform and its rail, the panel antennas on their pipes, two dishes, the aviation lamp
+	col(m, "galvanised", Color(0.80, 0.82, 0.83))
+	var zp := h - 2.5
+	m.box_lh(Vector3(-1.2, -1.2, zp - 0.08), Vector3(1.2, 1.2, zp))
+	for k in 3:
+		var a := TAU * k / 3.0 + 0.3
+		var p := Vector3(cos(a), sin(a), 0) * 1.05
+		m.cyl(p + Vector3(0, 0, zp), p + Vector3(0, 0, h + 0.3), 0.04, -1.0, 6, false)
+		col(m, "plain", Color(0.86, 0.86, 0.84))
+		m.box(p * (1.15 / 1.05) + Vector3(0, 0, h - 0.6), Vector3(0.12, 0.3, 1.4), Basis(Vector3(0, 0, 1), a))   # on its pipe, facing out
+		col(m, "galvanised", Color(0.80, 0.82, 0.83))
+	col(m, "plain", Color(0.86, 0.86, 0.84))
+	for k in 2:
+		var a := PI * k   # off the middle of a face (+x, -x), clear of the corner legs
+		var dirv := Vector3(cos(a), sin(a), 0)
+		var zd := h - 6.0 - 1.5 * k
+		var hw: float = half.call(zd)
+		var c := dirv * (hw + 0.32) + Vector3(0, 0, zd)   # its back drum against the tower's face
+		m.dish(c, dirv, 0.45, 0.18, 14, 3)
+		m.cyl(c - dirv * 0.05, c - dirv * 0.3, 0.2, -1.0, 10)
+	col(m, "plain", Color(0.75, 0.08, 0.05), "detail", 0.2)
+	m.cyl(Vector3(0, 0, h + 0.3), Vector3(0, 0, h + 0.5), 0.08, -1.0, 8)
+	g.solid_box(Vector3(-b0 - 0.35, -b0 - 0.35, 0), Vector3(b0 + 0.35, b0 + 0.35, 3.0))   # its foot, legs and bracing
+
+## A split air conditioner's outdoor unit on its wall brackets, under a window (the camp's blocks, the offices): the
+## casing, the fan's grille on the front (+y, away from the wall at the origin), the coil's grille at its side, the
+## insulated pipes up the wall to the room. Origin on the wall's face below the unit's middle, at the unit's foot.
+static func ac_unit(_part: String, g) -> void:
+	var m = g.m
+	# one material (matte, the colours in the vertices): 136 of them stand in the camp and the offices, and each material
+	# would be a draw call per cell; the grilles 1.5 cm proud of the casing (closer, they fight in a phone's depth buffer)
+	col(m, "matte", Color(0.30, 0.31, 0.32))
+	for sx: float in [-1.0, 1.0]:   # the brackets
+		m.box_lh(Vector3(sx * 0.3 - 0.02, 0.0, -0.04), Vector3(sx * 0.3 + 0.02, 0.4, 0.0))
+		m.box_lh(Vector3(sx * 0.3 - 0.02, 0.0, -0.2), Vector3(sx * 0.3 + 0.02, 0.03, 0.0))
+	col(m, "matte", Color(0.87, 0.87, 0.84))
+	m.box_lh(Vector3(-0.42, 0.06, 0.0), Vector3(0.42, 0.36, 0.58))
+	col(m, "matte", Color(0.18, 0.18, 0.19))
+	m.cyl(Vector3(-0.1, 0.36, 0.29), Vector3(-0.1, 0.375, 0.29), 0.21, -1.0, 16)
+	col(m, "matte", Color(0.55, 0.56, 0.56))
+	m.box_lh(Vector3(0.42, 0.08, 0.06), Vector3(0.435, 0.33, 0.52))
+	col(m, "matte", Color(0.82, 0.82, 0.79))
+	m.cyl(Vector3(0.36, 0.06, 0.4), Vector3(0.36, 0.03, 0.4), 0.025, -1.0, 6, false)
+	m.cyl(Vector3(0.36, 0.03, 0.4), Vector3(0.36, 0.03, 1.0), 0.025, -1.0, 6, false)
+	g.solid_box(Vector3(-0.42, 0.0, -0.05), Vector3(0.42, 0.36, 0.58))
 
 ## A sports court (`length` along y): its surface with the lines, a chain-link fence round it (posts, rails; the mesh
 ## itself is a `detail` grid) with a gate gap in the middle of its east side, and a floodlight mast at each corner.
@@ -721,12 +978,30 @@ static func table(_part: String, g) -> void:
 	var L: float = g.num("length", 1.8)
 	var w: float = g.num("width", 0.9)
 	var h: float = g.num("height", 0.75)
+	if String(g.p.get("kind", "steel")) == "wood":
+		_wood_table(m, g, L, w, h)
+		return
 	col(m, "matte", LAMINATE.lightened(0.15))
 	m.box_lh(Vector3(-w * 0.5, -L * 0.5, h - 0.03), Vector3(w * 0.5, L * 0.5, h))
 	col(m, "paint_white", Color(0.40, 0.41, 0.42, 0.3))
 	for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
 		var p := Vector3(c.x * (w * 0.5 - 0.06), c.y * (L * 0.5 - 0.06), 0)
 		m.box_lh(p - Vector3(0.02, 0.02, 0), p + Vector3(0.02, 0.02, h - 0.03))
+	g.solid_box(Vector3(-w * 0.5, -L * 0.5, 0), Vector3(w * 0.5, L * 0.5, h))
+
+## A wooden side table (`kind` wood: the lobby's): a carved top (an inset panel of a lighter tone), its apron and four
+## turned legs, dark varnished hardwood.
+const WOOD := Color(0.36, 0.22, 0.13)
+static func _wood_table(m, g, L: float, w: float, h: float) -> void:
+	col(m, "plain", WOOD)
+	m.box_lh(Vector3(-w * 0.5, -L * 0.5, h - 0.04), Vector3(w * 0.5, L * 0.5, h))
+	m.box_lh(Vector3(-w * 0.5 + 0.04, -L * 0.5 + 0.04, h - 0.12), Vector3(w * 0.5 - 0.04, L * 0.5 - 0.04, h - 0.04))
+	for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+		var p := Vector3(c.x * (w * 0.5 - 0.07), c.y * (L * 0.5 - 0.07), 0)
+		m.lathe(p, Vector3(0, 0, 1), [[0.025, 0.0], [0.035, 0.12], [0.022, 0.3], [0.04, 0.42], [0.025, 0.55],
+			[0.03, h - 0.12]], 6, false)
+	col(m, "plain", WOOD.lightened(0.18), "detail", 0.1)
+	m.box_lh(Vector3(-w * 0.5 + 0.08, -L * 0.5 + 0.08, h), Vector3(w * 0.5 - 0.08, L * 0.5 - 0.08, h + 0.004))
 	g.solid_box(Vector3(-w * 0.5, -L * 0.5, 0), Vector3(w * 0.5, L * 0.5, h))
 
 ## A bench (`length` along x): an outdoor or gym bench, slats on two steel frames.
@@ -890,11 +1165,15 @@ static func gym_rack(_part: String, g) -> void:
 			m.cyl(Vector3(-0.8, -0.7, 1.1), Vector3(0.8, -0.7, 1.1), 0.015, -1.0, 6)
 			g.solid_box(Vector3(-0.6, -0.75, 0), Vector3(0.6, 0.6, 0.5))
 
+const LEATHER := Color(0.36, 0.24, 0.16)
 ## A sofa (`seats` wide, facing +y): its base, seat and back cushions and arms.
 static func sofa(_part: String, g) -> void:
 	var m = g.m
 	var w := 0.65 * int(g.num("seats", 3)) + 0.3
-	col(m, "matte", FABRIC.lightened(0.1))
+	if String(g.p.get("cover", "fabric")) == "leather":
+		col(m, "plain", LEATHER)   # brown leather, satin (the lobby's)
+	else:
+		col(m, "matte", FABRIC.lightened(0.1))
 	m.box_lh(Vector3(-w * 0.5, -0.45, 0.1), Vector3(w * 0.5, 0.45, 0.42))
 	m.box_lh(Vector3(-w * 0.5, -0.45, 0.42), Vector3(w * 0.5, -0.22, 0.85))
 	for sx: float in [-1.0, 1.0]:
@@ -927,6 +1206,8 @@ static func carpet(_part: String, g) -> void:
 		return
 	col(m, "matte", c)
 	m.poly(pts, Vector3(0, 0, 1))
+	if not g.p.get("rows", true):
+		return   # an office's carpet: plain
 	# the prayer rows: a band every 1.2 m across the room (lighter), in the carpet's own geometry
 	var lo := Vector2(INF, INF)
 	var hi := Vector2(-INF, -INF)
