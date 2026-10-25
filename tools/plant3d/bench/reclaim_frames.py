@@ -2,8 +2,9 @@
 """The Note 9's long GPU frames against the kernel's memory reclaim (decision 0066, "The last frame spikes"):
   reclaim_frames.py RESULTS_DIR [--over 45]
 RESULTS_DIR is a phone/frames.sh walk with probe=1 and SAMPLE=1 (frames.csv, samp.txt, clock.txt, logcat.txt,
-result.txt). Each frame after the first 5 s is put in the 200 ms sample it began in, by how many pages kswapd scanned
-a second there; per band, how many of its frames' GPU time (Godot's own measure) passed --over ms.
+result.txt). Each frame after the first 5 s is put in the 200 ms sample it began in, by how many pages the kernel
+scanned to reclaim memory a second there (kswapd's and direct reclaim's together); per band, how many of its frames'
+GPU time (Godot's own measure, which lags its frame by one or two) passed --over ms.
 
 The frames' times are the engine's (ms since it started): the engine's start on the phone's boot clock is the log line
 "plant: first frame drawn N ms after the engine started" (logcat's epoch time, less N) less the offset between the
@@ -18,6 +19,8 @@ import sys
 # samp.txt's columns (phone/frames.sh SAMPLE): uptime, Mali clock, Mali load, then /proc/vmstat's pswpin pswpout
 # allocstall_normal allocstall_movable pgscan_kswapd pgscan_direct compact_stall, then MemFree MemAvailable SwapFree
 COL_KSWAPD = 7
+COL_DIRECT = 8
+COLUMNS = 13
 BANDS = [(0, 1, "none"), (1, 5000, "under 5,000 pages/s"), (5000, 20000, "5,000-20,000 pages/s"),
          (20000, float("inf"), "20,000 pages/s or more")]
 
@@ -34,18 +37,23 @@ def engine_start(d):
 
 def samples(d):
     out = []
-    for line in open(os.path.join(d, "samp.txt"), errors="replace"):
+    for n, line in enumerate(open(os.path.join(d, "samp.txt"), errors="replace"), 1):
         p = line.split()
-        if len(p) > COL_KSWAPD:
-            try:
-                out.append([float(x) for x in p])
-            except ValueError:
-                pass
+        if not p:
+            continue
+        if len(p) != COLUMNS:   # (a counter missing from /proc/vmstat would shift every column after it)
+            raise SystemExit("samp.txt line %d has %d columns, not %d (phone/frames.sh SAMPLE)" % (n, len(p), COLUMNS))
+        try:
+            out.append([float(x) for x in p])
+        except ValueError:
+            pass
     return out
 
 
 def bands(d, over=45.0):
     """[(band name, frames, frames over `over` ms of GPU)]."""
+    if not os.path.exists(os.path.join(d, "frames.csv")):
+        raise SystemExit("no frames.csv in %s: walk with probe=1 (WALK_EXTRA) as well as SAMPLE=1" % d)
     eng0, first = engine_start(d)
     s = samples(d)
     times = [x[0] for x in s]
@@ -59,7 +67,10 @@ def bands(d, over=45.0):
         if i <= 0 or i >= len(s):
             continue
         a, b = s[i - 1], s[i]
-        rate = (b[COL_KSWAPD] - a[COL_KSWAPD]) / max(b[0] - a[0], 1e-6)
+        scanned = (b[COL_KSWAPD] + b[COL_DIRECT]) - (a[COL_KSWAPD] + a[COL_DIRECT])
+        if scanned < 0:
+            continue   # (the kernel sums the online CPUs' counts: a core going offline lowers them; unknown here)
+        rate = scanned / max(b[0] - a[0], 1e-6)
         name = next(n for lo, hi, n in BANDS if lo <= rate < hi)
         count[name][0] += 1
         count[name][1] += float(r["gpu_ms"]) > over
@@ -71,7 +82,7 @@ def main(argv=None):
     ap.add_argument("dir")
     ap.add_argument("--over", type=float, default=45.0)
     a = ap.parse_args(argv)
-    print("kswapd scanning            frames   GPU over %.0f ms" % a.over)
+    print("kernel scanning            frames   GPU over %.0f ms" % a.over)
     for name, n, long_ in bands(a.dir, a.over):
         if n:
             print("  %-22s %8d   %5d (%.2f %%)" % (name, n, long_, 100.0 * long_ / n))

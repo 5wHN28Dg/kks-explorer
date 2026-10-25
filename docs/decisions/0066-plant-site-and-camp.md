@@ -115,10 +115,11 @@ views: `lean+vis` and `full` with no frame over 100 ms).
 
 ## The last frame spikes: the phone's memory reclaim (#252, 2026-10-25)
 
-**What they are.** The single GPU frames of 100–160 ms that #249 left (the final build's `wtp` and `camp` walks) come
-while the phone's kernel reclaims memory, not from anything the app draws or does at that moment. While it reclaims,
-the app's GPU frames can take two to seven times as long; in the walks measured here while the phone did not reclaim,
-no GPU frame passed 47 ms. That #249's own spikes (no trace, no stress, reclaim not recorded) were the same is the
+**What they are.** The single GPU frames of 100–160 ms that #249 left (the final build's `wtp` and `camp` walks) come,
+nearly all, while the phone's kernel reclaims memory, not from anything the app draws or does at that moment. While it
+reclaims, the app's GPU frames can take two to seven times as long; in the two walks measured here during which the
+sampler saw no reclaim at all, no GPU frame passed 47 ms (one walk per build; a few long frames, 0.06–0.07 % of those
+outside reclaim, come in the stressed walks too). That #249's own spikes (no trace, no stress, reclaim not recorded) were the same is the
 likeliest reading, not a measured one: they had the same signature (single GPU frames, nothing in the log, no pipeline
 compiled, in views that cost the same on average), and whether a walk "passes" then depends on what the phone's own
 services do in those ten minutes (a Samsung app starting, the top of the hour).
@@ -129,8 +130,8 @@ How it was found ([V] measured on the Note 9, `lean+vis`, release builds with th
 | | Finding | Source |
 |---|---|---|
 | A system trace of a walk (Perfetto, `apps/plant3d/phone/trace.pbtxt`: scheduler, clocks, reclaim, SurfaceFlinger's and the app's atrace) | Swappy's own marks (Godot's frame pacing) time each frame from its hand-over to its fence: 43 of 16,592 over 45 ms, the longest 156 ms. kswapd0 (the kernel's reclaim) ran 31.5 % of those frames' time against 1.6 % of the others'; kworker/0:0, the kernel worker bound to CPU 0, 47.9 % against 13.2 % | [V] `tools/plant3d/bench/pftrace.py` |
-| The same trace, the 156 ms frame | kworker/0:0 ran 34 ms of it; the Mali GPU at 546 MHz and fully loaded (a 200 ms sampler of the driver's `clock` and `utilization`, frames.sh `SAMPLE=1`); 0.7 s before it Samsung's account app (com.osp.app.signin) started and went into direct reclaim (the trace's vmscan events); nothing from the app or the system in the log; no pipeline compiled (frames.csv); SurfaceFlinger composed by the hardware composer after the start (no client composition in its atrace) | [V] the trace read by ad-hoc scripts; the sampler; frames.csv |
-| Two measures of one walk | Godot's own GPU time (GPU timestamps, frames.csv) had 120 frames over 45 ms in that walk, Swappy's 43: Swappy's time also holds how late its thread wakes after the fence, and lumps frames differently; the counts below are Godot's | [V] |
+| The same trace, the 156 ms frame | kworker/0:0 ran 34 ms of it; the Mali GPU at 546 MHz (its frequency table's top step is 572 MHz, not used in that walk) with a load of 100 % in the samples around it (a 200 ms sampler of the driver's `clock` and `utilization`, frames.sh `SAMPLE=1`: averages, not this frame's own); 0.7 s before it Samsung's account app (com.osp.app.signin) started and went into direct reclaim (the trace's vmscan events); nothing from the app or the system in the log; no pipeline compiled (frames.csv); SurfaceFlinger composed by the hardware composer after the start (no client composition in its atrace) | [V] the trace read by ad-hoc scripts; the sampler; frames.csv |
+| Two measures of one walk | Godot's own GPU time (GPU timestamps around the frame's commands, frames.csv) had 120 frames over 45 ms in that walk, Swappy's 43: the two time different things (Swappy from the hand-over to the fence as its thread sees it, a span that can hold more than one frame's work or less), so their counts differ; the counts below are Godot's | [V] |
 | The same views standing still (`phone/shots.sh`, a shot's GPU time) | the WTP hall's views where that walk's long frames clustered cost 18.5–22.8 ms of GPU, the yard 14.6 ms; none of the effect switches (shadow, occlusion, far view, stencils, lightmap) makes one of them heavy (first run cold, the others warm) | [V] |
 | The trace itself | streamed to the phone's storage at about 2 MB/s, it fills the page cache the kernel must then reclaim: the traced walk had 120 GPU frames over 45 ms, the same build's walks without it 1 | [V] |
 | Reclaim reproduced (`phone/frames.sh` `STRESS=1`: 2 MB a second written to a file in /data/local/tmp, nothing to do with the app; the sampler on) | 99–196 GPU frames over 45 ms a walk, up to 2 over 100 ms; of the frames while kswapd scanned 20,000 pages a second or more, 17–28 % were over 45 ms, of the frames while it scanned none 0.06–0.07 % | [V] `tools/plant3d/bench/reclaim_frames.py` |
@@ -149,8 +150,8 @@ How it was found ([V] measured on the Note 9, `lean+vis`, release builds with th
 
 **What this means for the rule.** The app's own frames hold the rule while the phone leaves its memory alone; while
 it reclaims, single GPU frames stall for tens of milliseconds, and nothing tried in the app removes that (with the
-sun's shadow off, 19 % less GPU time, GPU frames still reached 95 ms and an app frame 105 ms). The trace points at the
-kernel's side: CPU 0's worker running through the long frames while the GPU sat at full clock. That this worker is the
+sun's shadow off, GPU p95 31 → 22 ms, GPU frames still reached 95 ms and an app frame 105 ms). The trace points at the
+kernel's side: CPU 0's worker running through the long frames while the GPU's clock stayed up. That this worker is the
 Mali driver handling the GPU's page faults is the likeliest reading, not a proven one: naming its work needs kernel
 stacks or the driver's own trace events (this kernel has mali_page_fault_insert_pages and the like), and the Note 9 is
 not rooted and Android 10's Perfetto cannot record them. Whether "none over 100 ms" can be met on this phone, or

@@ -65,8 +65,8 @@ SAMPLE_F=/data/local/tmp/plant-samp.txt
 sample_on=""
 cleanup() {
   trap '' INT TERM   # (a second Ctrl-C must not stop the reinstall of their own build)
-  if [ -n "$sample_on" ]; then
-    sh_ "touch $SAMPLE_F.stop; sleep 1" || true
+  if [ -n "$sample_on" ]; then   # (the sampler deletes the mark when it sees it, and stops)
+    sh_ "touch $SAMPLE_F.stop; for i in 1 2 3 4 5 6 7 8; do [ -e $SAMPLE_F.stop ] || break; sleep 1; done" || true
     a pull "$SAMPLE_F" "$OUT/samp.txt" >/dev/null 2>&1 || true
     sh_ "rm -f $SAMPLE_F $SAMPLE_F.stop" || true
   fi
@@ -155,13 +155,17 @@ if [ -n "$SAMPLE" ]; then
   # MemAvailable and SwapFree (kB); clock.txt: uptime and the phone's epoch time together
   sample_on=1
   M=/sys/class/misc/mali0/device
-  sh_ "rm -f $SAMPLE_F $SAMPLE_F.stop; nohup sh -c 'while [ ! -e $SAMPLE_F.stop ]; do read up idle < /proc/uptime; echo \$up \$(cat $M/clock 2>/dev/null || echo 0) \$(cat $M/utilization 2>/dev/null || echo 0) \$(grep -E \"^(pswpin|pswpout|allocstall_normal|allocstall_movable|pgscan_kswapd|pgscan_direct|compact_stall) \" /proc/vmstat | cut -d\" \" -f2) \$(grep -E \"^(MemFree|MemAvailable|SwapFree):\" /proc/meminfo | tr -s \" \" | cut -d\" \" -f2); sleep 0.2; done' > $SAMPLE_F 2>/dev/null &"
+  rounds=$(( (SECONDS_ + 300) * 5 ))   # (it stops by itself too, should cleanup never reach the phone)
+  sh_ "rm -f $SAMPLE_F $SAMPLE_F.stop; nohup sh -c 'i=0; while [ ! -e $SAMPLE_F.stop ] && [ \$i -lt $rounds ]; do i=\$((i + 1)); read up idle < /proc/uptime; echo \$up \$(cat $M/clock 2>/dev/null || echo 0) \$(cat $M/utilization 2>/dev/null || echo 0) \$(grep -E \"^(pswpin|pswpout|allocstall_normal|allocstall_movable|pgscan_kswapd|pgscan_direct|compact_stall) \" /proc/vmstat | cut -d\" \" -f2) \$(grep -E \"^(MemFree|MemAvailable|SwapFree):\" /proc/meminfo | tr -s \" \" | cut -d\" \" -f2); sleep 0.2; done; rm -f $SAMPLE_F.stop' > $SAMPLE_F 2>/dev/null &"
   sh_ "cat /proc/uptime; date +%s.%N" > "$OUT/clock.txt"
 fi
 if [ -n "$STRESS" ]; then
   # a file growing by 2 MB a second through the walk (as a system trace written meanwhile): page cache the kernel must
   # reclaim; the writer stops, and deletes the file and the mark, when cleanup puts the mark there
   n=$((SECONDS_ + 300))
+  free_mb=$(sh_ df -k /data/local/tmp | awk 'NR == 2 { print int($4 / 1024) }')
+  [ -n "$free_mb" ] && [ "$free_mb" -gt $((n * 2 + 2048)) ] ||
+    { echo "STRESS writes up to $((n * 2)) MB: /data has ${free_mb:-?} MB free (2 GB more wanted)" >&2; exit 2; }
   stress_on=1
   sh_ "rm -f $STRESS_F $STRESS_F.stop; nohup sh -c 'i=0; while [ ! -e $STRESS_F.stop ] && [ \$i -lt $n ]; do dd if=/dev/zero of=$STRESS_F bs=1048576 count=2 seek=\$((i * 2)) conv=notrunc 2>/dev/null; i=\$((i + 1)); sleep 1; done; rm -f $STRESS_F $STRESS_F.stop' >/dev/null 2>&1 &"
   echo "stress: 2 MB/s written to $STRESS_F during the walk" >> "$OUT/state.txt"

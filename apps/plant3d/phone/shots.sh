@@ -27,7 +27,7 @@ mkdir -p "$OUT"
 : > "$HERE/results/.gdignore"
 adb -s "$SERIAL" install -r "$APK" >/dev/null 2>&1 || { adb -s "$SERIAL" uninstall "$PKG" >/dev/null 2>&1 || true; adb -s "$SERIAL" install "$APK" >/dev/null; }
 cleanup() {   # (an interrupted run leaves no walk.txt: the next start of the app would take the shots again)
-  sh_ rm -f "$FILES/walk.txt" "$FILES/result.txt" || true
+  sh_ "rm -f $FILES/walk.txt $FILES/result.txt $FILES/*.png" || true
   sh_ am force-stop "$PKG" || true
 }
 trap cleanup EXIT

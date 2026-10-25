@@ -34,6 +34,21 @@ class ReclaimFramesTest(unittest.TestCase):
             self.assertEqual(got["5,000-20,000 pages/s"], (1, 1))
             self.assertEqual(got["20,000 pages/s or more"], (2, 1))
             self.assertEqual(got["under 5,000 pages/s"], (0, 0))
+            # direct reclaim counts too; a count that drops (a core offline) leaves that sample out
+            rows2 = [r.split() for r in rows]
+            rows2[2][8] = "2000"   # direct: 2,000 pages between 115.2 and 115.4 (10,000/s) ...
+            for r in rows2[3:]:
+                r[8] = "2000"
+            rows2[7][7] = "0"      # ... and kswapd's count drops between 116.2 and 116.4
+            open(os.path.join(d, "samp.txt"), "w").write("\n".join(" ".join(r) for r in rows2) + "\n")
+            open(os.path.join(d, "frames.csv"), "a").write("15300,20,10.0\n16300,20,90.0\n")
+            got = {n: (a, b) for n, a, b in R.bands(d, 45.0)}
+            self.assertEqual(got["5,000-20,000 pages/s"], (2, 1))   # 15,300 (direct) and 16,100; 16,300 left out
+            self.assertEqual(got["none"], (2, 1))
+            # a missing column is refused, not read shifted
+            open(os.path.join(d, "samp.txt"), "w").write("115.00 0 0 0 0 0 0 0 0 0 0 0\n")
+            with self.assertRaises(SystemExit):
+                R.bands(d, 45.0)
 
 
 if __name__ == "__main__":

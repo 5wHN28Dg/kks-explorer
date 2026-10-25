@@ -97,28 +97,28 @@ def read(path, threads=()):
                         if bf == BUNDLE_CPU and bt == 0:
                             cpu = bv
                         elif bf == BUNDLE_EVENT and bt == 2:
-                            ts = pid = 0
-                            for ef, et, ev in fields(b, *bv):
-                                if ef == EV_TIMESTAMP:
-                                    ts = ev
-                                elif ef == EV_PID:
-                                    pid = ev
-                                elif ef == EV_SCHED_SWITCH and et == 2:
-                                    switches += 1
-                                    t0 = ts / 1e9 if t0 is None else min(t0, ts / 1e9)
-                                    m = {k: v for k, _, v in fields(b, *ev)}
-                                    comm = text(b, m[SW_NEXT_COMM]) if SW_NEXT_COMM in m else ""
-                                    if cpu in cur and cur[cpu][1] in wanted:
-                                        spans[cur[cpu][1]].append((cur[cpu][0], ts / 1e9))
-                                    cur[cpu] = (ts / 1e9, comm)
-                                elif ef == EV_PRINT and et == 2:
-                                    m = {k: v for k, _, v in fields(b, *ev)}
-                                    if PRINT_BUF in m:
-                                        s_ = text(b, m[PRINT_BUF])
-                                        if "GPU completion" in s_:
-                                            prints.append((ts, pid, s_.rstrip("\n")))
-        except (IndexError, ValueError):
-            cut = True   # (a trace stopped while writing: what came before is still good)
+                            ev = {}   # (field -> last value: the timestamp need not come first)
+                            for ef, et, v in fields(b, *bv):
+                                ev[ef] = (et, v)
+                            ts = ev.get(EV_TIMESTAMP, (0, 0))[1]
+                            if EV_SCHED_SWITCH in ev and ev[EV_SCHED_SWITCH][0] == 2:
+                                switches += 1
+                                t0 = ts / 1e9 if t0 is None else min(t0, ts / 1e9)
+                                m = {k: v for k, kt, v in fields(b, *ev[EV_SCHED_SWITCH][1])}
+                                nc = m.get(SW_NEXT_COMM)
+                                comm = text(b, nc) if isinstance(nc, tuple) else ""
+                                if cpu in cur and cur[cpu][1] in wanted:
+                                    spans[cur[cpu][1]].append((cur[cpu][0], ts / 1e9))
+                                cur[cpu] = (ts / 1e9, comm)
+                            elif EV_PRINT in ev and ev[EV_PRINT][0] == 2:
+                                m = {k: v for k, kt, v in fields(b, *ev[EV_PRINT][1])}
+                                buf = m.get(PRINT_BUF)
+                                if isinstance(buf, tuple):
+                                    s_ = text(b, buf)
+                                    if "GPU completion" in s_:
+                                        prints.append((ts, ev.get(EV_PID, (0, 0))[1], s_.rstrip("\n")))
+        except (IndexError, ValueError, TypeError):
+            cut = True   # (a trace stopped while writing, or bytes that are not a trace: what came before is read)
     prints.sort()
     for v in spans.values():
         v.sort()
@@ -156,7 +156,7 @@ class Busy:
 def report(path, threads, over, out=sys.stdout):
     prints, spans, switches, cut, t0 = read(path, threads)
     if cut:
-        print("the trace ends in a cut packet: read up to it", file=out)
+        print("the trace has a cut or malformed packet: read up to it", file=out)
     if not switches:
         print("no sched switches in the trace (a newer Perfetto's compact_sched is not read here)", file=out)
     frames = gpu_frames(prints)

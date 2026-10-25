@@ -1,6 +1,6 @@
 """tools/plant3d/bench/pftrace.py: a phone walk's Perfetto trace read without Perfetto's tools (decision 0066, "The last
-frame spikes"). A trace written here in Perfetto's wire format (sched switches on two CPUs, atrace prints, fields of
-every wire type the reader must skip):
+frame spikes"). A trace written here in Perfetto's wire format (sched switches on two CPUs, atrace prints with their
+timestamp after their text, fields of every wire type the reader must skip):
 - Swappy's slices give each GPU frame's time ("waiting for GPU completion" to the "GPU completion|0" counter on the
   same thread), however the prints of other threads interleave;
 - a named thread's running time inside a frame comes from the switches on every CPU, a run begun before the frame
@@ -37,7 +37,9 @@ def fixed(f, v, size):   # wire types 1 and 5 (a field the reader does not use)
     return varint(f << 3 | (1 if size == 8 else 5)) + (struct.pack("<Q", v) if size == 8 else struct.pack("<I", v))
 
 
-def event(ts, pid, kind, body):
+def event(ts, pid, kind, body):   # (prints with their timestamp last: the reader takes a field wherever it comes)
+    if kind == P.EV_PRINT:
+        return field(kind, body) + fixed(99, 7, 8) + field(P.EV_PID, pid) + field(P.EV_TIMESTAMP, ts)
     return field(P.EV_TIMESTAMP, ts) + field(P.EV_PID, pid) + fixed(99, 7, 8) + field(kind, body)
 
 
@@ -122,7 +124,7 @@ class PfTraceTest(unittest.TestCase):
         data = trace()
         out = io.StringIO()
         self.assertEqual(P.report(self.write(data[:-40]), ["kworker/0:0"], 45.0, out), 0)
-        self.assertIn("cut packet", out.getvalue())
+        self.assertIn("cut or malformed packet", out.getvalue())
 
 
 if __name__ == "__main__":

@@ -536,23 +536,48 @@ func _write_out() -> void:
 	if f:
 		f.store_string("\n".join(lines) + "\n")
 
+const MAX_SHOTS := 24
+## The views of a `shot=` list: [{name, at}], at null for the map's view or [x, y, z, yaw, pitch]; at most MAX_SHOTS
+## (on a phone the list comes from a shared folder, and each is a PNG), names made file names of at most 40
+## characters, a view without five numbers left out (with why in `bad`).
+static func shot_specs(text: String, bad: Array = []) -> Array:
+	var out: Array = []
+	for spec in text.split(";", false):
+		if out.size() >= MAX_SHOTS:
+			bad.append("more than %d shots" % MAX_SHOTS)
+			break
+		var nv := spec.split("@")
+		var nm := nv[0].validate_filename().left(40)
+		if nm == "":
+			bad.append("a shot without a name (%s)" % spec)
+			continue
+		if nv.size() < 2 or nv[1] == "map":
+			out.append({"name": nm, "at": null})
+			continue
+		var v := nv[1].split(",")
+		if v.size() != 5 or not Array(v).all(func(x): return String(x).strip_edges().is_valid_float()):
+			bad.append("shot %s: not x,y,z,yaw,pitch (%s)" % [nm, nv[1]])
+			continue
+		out.append({"name": nm, "at": Array(v).map(func(x): return float(x))})
+	return out
+
 ## Views saved as PNGs (looking at the result on a laptop): shot=NAME@x,y,z,yaw,pitch;… in plant coordinates.
 func _shots() -> void:
 	for i in 30:
 		await get_tree().process_frame
 	DirAccess.make_dir_recursive_absolute(out_dir)
-	for spec in String(opts.shot).split(";"):
-		var nv := spec.split("@")
-		var nm := nv[0].validate_filename()   # (a name only: on a phone it comes from a shared folder)
-		if nv.size() > 1 and nv[1] != "map":
-			var v := nv[1].split(",")
-			if v.size() != 5:
-				_say("shot %s: not x,y,z,yaw,pitch (%s)" % [nm, nv[1]])
-				continue
+	var bad: Array = []
+	var specs := shot_specs(String(opts.shot), bad)
+	for b in bad:
+		_say(b)
+	for sp in specs:
+		var nm: String = sp.name
+		if sp.at != null:
+			var v: Array = sp.at
 			if map.active: toggle_map()
 			player.set_mode(Player.Mode.FLY)
-			player.global_position = Plant.g(float(v[0]), float(v[1]), float(v[2])) - Vector3.UP * Player.EYE
-			player.set_heading(-deg_to_rad(float(v[3])), deg_to_rad(float(v[4])))
+			player.global_position = Plant.g(v[0], v[1], v[2]) - Vector3.UP * Player.EYE
+			player.set_heading(-deg_to_rad(v[3]), deg_to_rad(v[4]))
 		elif not map.active:
 			toggle_map()
 		var gpus: Array = []   # the view's GPU time over its last 30 frames (the median goes in the shot's line)
