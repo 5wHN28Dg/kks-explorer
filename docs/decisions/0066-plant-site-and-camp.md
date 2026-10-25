@@ -112,3 +112,136 @@ Packages (the final build): APK 139.4 MB (budget 150); the desktop packages, est
 
 The Honor 600 was not attached on either day, so it was not measured (its last runs, 2026-10-23 morning, before the far
 views: `lean+vis` and `full` with no frame over 100 ms).
+
+## The last frame spikes: the phone's memory reclaim (#258, 2026-10-25)
+
+**What they are.** The single GPU frames of 100–160 ms that #249 left (the final build's `wtp` and `camp` walks) come,
+nearly all, while the phone's kernel reclaims memory, not from anything the app draws or does at that moment. While it
+reclaims, the app's GPU frames can take two to seven times as long; in the two walks measured here during which the
+sampler saw no reclaim at all, no GPU frame passed 47 ms (one walk per build; a few long frames, 0.06–0.07 % of those
+outside reclaim, come in the stressed walks too). That #249's own spikes (no trace, no stress, reclaim not recorded) were the same is the
+likeliest reading, not a measured one: they had the same signature (single GPU frames, nothing in the log, no pipeline
+compiled, in views that cost the same on average), and whether a walk "passes" then depends on what the phone's own
+services do in those ten minutes (a Samsung app starting, the top of the hour).
+
+How it was found ([V] measured on the Note 9, `lean+vis`, release builds with the bake, test-signed; `wtp` walks of
+600 s; one walk per row, the counts vary from walk to walk):
+
+| | Finding | Source |
+|---|---|---|
+| A system trace of a walk (Perfetto, `apps/plant3d/phone/trace.pbtxt`: scheduler, clocks, reclaim, SurfaceFlinger's and the app's atrace) | Swappy's own marks (Godot's frame pacing) time each frame from its hand-over to its fence: 43 of 16,592 over 45 ms, the longest 156 ms. kswapd0 (the kernel's reclaim) ran 31.5 % of those frames' time against 1.6 % of the others'; kworker/0:0, the kernel worker bound to CPU 0, 47.9 % against 13.2 % | [V] `tools/plant3d/bench/pftrace.py` |
+| The same trace, the 156 ms frame | kworker/0:0 ran 34 ms of it; the Mali GPU at 546 MHz (its frequency table's top step is 572 MHz, not used in that walk) with a load of 100 % in the samples around it (a 200 ms sampler of the driver's `clock` and `utilization`, frames.sh `SAMPLE=1`: averages, not this frame's own); 0.7 s before it Samsung's account app (com.osp.app.signin) started and went into direct reclaim (the trace's vmscan events); nothing from the app or the system in the log; no pipeline compiled (frames.csv); SurfaceFlinger composed by the hardware composer after the start (no client composition in its atrace) | [V] the trace read by ad-hoc scripts; the sampler; frames.csv |
+| Two measures of one walk | Godot's own GPU time (GPU timestamps around the frame's commands, frames.csv) had 120 frames over 45 ms in that walk, Swappy's 43: the two time different things (Swappy from the hand-over to the fence as its thread sees it, a span that can hold more than one frame's work or less), so their counts differ; the counts below are Godot's | [V] |
+| The same views standing still (`phone/shots.sh`, a shot's GPU time) | the WTP hall's views where that walk's long frames clustered cost 18.5–22.8 ms of GPU, the yard 14.6 ms; none of the effect switches (shadow, occlusion, far view, stencils, lightmap) makes one of them heavy (first run cold, the others warm) | [V] |
+| The trace itself | streamed to the phone's storage at about 2 MB/s, it fills the page cache the kernel must then reclaim: the traced walk had 120 GPU frames over 45 ms, the same build's walks without it 1 | [V] |
+| Reclaim reproduced (`phone/frames.sh` `STRESS=1`: 2 MB a second written to a file in /data/local/tmp, nothing to do with the app; the sampler on) | 99–196 GPU frames over 45 ms a walk, up to 2 over 100 ms; of the frames while kswapd scanned 20,000 pages a second or more, 17–28 % were over 45 ms, of the frames while it scanned none 0.06–0.07 % | [V] `tools/plant3d/bench/reclaim_frames.py` |
+| Less GPU work, under the same stress | the sun's shadow off (`fx_off=shadow`, GPU p95 31 → 22 ms): 41 GPU frames over 45 ms instead of 99–196, the longest 94.6 ms (and an app frame of 105 ms): fewer, not none. What stands inside buildings casting no shadow (342,000 → 263,000 of the RO hall view's triangles in the shadow pass): 192, no gain within one walk's spread, so taken out again | [V] |
+| The build before #249's review fixes (b11, 3fb5d16a) | under the same stress as the final one: 196 GPU frames over 45 ms, one app frame of 122.7 ms. Its three clean walks in #249 are most likely walks during which the phone did not reclaim (not recorded then) | [V] |
+
+| `wtp` walk (600 s) | stress | start | GPU frames > 45 / > 66 / > 100 ms | app frames > 100 ms after 5 s | worst app frame | frames at ≥ 30 fps | GPU p95 |
+|---|---|---|---|---|---|---|---|
+| main, Perfetto tracing | the trace's writes | 30.8 °C | 120 / 37 / 2 | 4 | 172.3 ms | 98.45 % | 29.8 ms |
+| main | none | 31.2 °C | 1 / 0 / 0 | 0 | 74.2 ms | 98.36 % | 30.8 ms |
+| main, sun's shadow off | none | 31.2 °C | 0 / 0 / 0 | 0 | 59.2 ms | 99.68 % | 21.9 ms |
+| main | `STRESS=1` | 31.3 °C | 99 / 21 / 1 | 0 | 90.0 ms | 97.88 % | 31.1 ms |
+| inside buildings no shadow | `STRESS=1` | 31.4 °C | 192 / 60 / 2 | 0 | 97.0 ms | 97.38 % | 30.3 ms |
+| the same, sun's shadow off | `STRESS=1` | 32.2 °C | 41 / 13 / 0 | 1 | 105.0 ms | 99.49 % | 22.2 ms |
+| before #249's review (b11) | `STRESS=1` | 32.5 °C | 196 / 58 / 2 | 1 | 122.7 ms | 96.29 % | 31.8 ms |
+
+**What this means for the rule.** The app's own frames hold the rule while the phone leaves its memory alone; while
+it reclaims, single GPU frames stall for tens of milliseconds, and nothing tried in the app removes that (with the
+sun's shadow off, GPU p95 31 → 22 ms, GPU frames still reached 95 ms and an app frame 105 ms). The trace points at the
+kernel's side: CPU 0's worker running through the long frames while the GPU's clock stayed up. That this worker is the
+Mali driver handling the GPU's page faults is the likeliest reading, not a proven one: naming its work needs kernel
+stacks or the driver's own trace events (this kernel has mali_page_fault_insert_pages and the like), and the Note 9 is
+not rooted and Android 10's Perfetto cannot record them. How the rule treats them was the user's decision (below).
+
+**The rule, as the user decided it (2026-10-25).** "No frame over 100 ms after the first 5 s" counts the frames the
+app causes. A frame inside a traced burst of the kernel's memory reclaim is excluded, and its trace is kept as the
+evidence. Exactly:
+
+- The rule's frames are the app's own frame intervals over 100 ms after the walk's first 5 s: its `SPIKE` lines in the
+  log, which its `RESULT`'s `over100` counts.
+- A frame is inside reclaim when a `SAMPLE=1` sample overlapping it shows the kernel reclaiming since the sample
+  before. Reclaiming means kswapd or direct reclaim scanned at least one page (`pgscan_kswapd`, `pgscan_direct` in
+  `/proc/vmstat`), or a direct-reclaim stall (`allocstall_*`). The frame runs from its log time less its length to its
+  log time. The samples come every 0.2–0.3 s, so the reclaim that excludes a frame can be up to about 0.3 s before it
+  began or after it ended. Two samples more than 1 s apart, or a count that fell, show nothing.
+- The threshold is any reclaim, from the 12 walks above. The grouping was made by hand for this record (not
+  `reclaim_frames.py`'s own bands, which group a frame by the sample it began in): each frame by the most pages a
+  second scanned in the samples overlapping it, plus 70 ms for the lag of the GPU time it carries. In the 6 traced or
+  stressed walks, 0.027 % of the frames with no scanning had a GPU time over 45 ms; at 1–200 pages a second it was
+  1.6 %, at 200–1,000 15 %, and above that 2–15 %. In the walks without pressure the kernel reclaimed in at most
+  0.38 % of the sample pairs.
+- Every other frame counts as the app's: one the log lost (`over100` above the `SPIKE` lines found), one outside the
+  samples, and every frame of a walk without `SAMPLE=1`.
+- A walk that would pass only by excluding frames is not judged in three cases, and is walked again:
+  - reclaim in more than 1 % of its sample pairs, counted from its first frame to its `RESULT` over the pairs that
+    show something (the phone was under pressure through it). The clean walks measured 0–0.38 %, the traced and
+    stressed ones 4.1–11.5 %;
+  - a `STRESS=1` walk (pressure made on purpose), or one without the `state.txt` that would say so;
+  - more `SPIKE` lines in its log than its `over100` (another run's lines).
+  A walk with no frame excluded is judged by the plain rule.
+- The evidence is kept with the walk: `rule.txt` in its results folder (the judgement, the thresholds it used, and the
+  two sample lines that show each excluded frame's reclaim), beside `samp.txt`, `logcat.txt` and the walk's
+  `trace.pftrace` when it was traced. `phone/frames.sh` writes it after every `SAMPLE=1` walk
+  (`tools/plant3d/bench/reclaim_frames.py --rule`). Since this change the sampler reads the uptime just before
+  `/proc/vmstat`, so that a sample's time is its counters' time.
+
+Applied to the walks above: the traced `wtp` walk's four frames over 100 ms (172.3, 100.3, 104.3, 102.0 ms) were all
+inside reclaim, but the walk is not judged (reclaim in 5.8 % of its sample pairs). Neither are the stressed walks
+that had a frame excluded. #249's
+own spikes had no samples, so they count as the app's and those walks cannot pass.
+
+**Tools added** (to see it again): a shot's line gives its GPU time, and `shot=` works on a phone (`phone/shots.sh`:
+views × effect switches in one run); `phone/frames.sh` `STRESS=1` and `SAMPLE=1`, with
+`tools/plant3d/bench/reclaim_frames.py`; the trace's config `phone/trace.pbtxt` and its reader
+`tools/plant3d/bench/pftrace.py` (no Perfetto tools needed).
+
+**W1 and C1 judged by the rule (2026-10-25).** Release builds with the bake, test-signed, Note 9 `lean+vis`, a
+first start each, `SAMPLE=1` and `probe=1`. "Final" is #249's code (before A1 was merged). "Merged" is main with A1
+(the people) and this change. The evidence (`rule.txt`, `samp.txt`, the logs) is kept on this laptop
+(`~/kks-work/build/plant-gpu/walks/`), not in the repository.
+
+| `wtp` / `camp` walk (600 s) | Build | Start | Frames at ≥ 30 fps | Frames over 100 ms: the app's / excluded as reclaim | Worst | Reclaim in the walk's samples | Peak PSS | First walkable frame |
+|---|---|---|---|---|---|---|---|---|
+| `wtp` | final | 31.6 °C | 97.19 % | 0 / 0 | 65.6 ms | 0 % | 1,138 MB | 11.8 s |
+| `wtp` | final | 32.0 °C | 97.09 % | 0 / 0 | 73.1 ms | 0 % | 1,137 MB | 11.9 s |
+| `wtp` | merged, before the staging cap (below) | 29.6 °C | 99.20 % | 0 / 0 | 87.7 ms | 1.85 % | 1,137 MB | 11.5 s |
+| `wtp` | merged | 31.7 °C | 97.91 % | 0 / 0 | 76.0 ms | 0.05 % | 1,084 MB | 11.1 s |
+| `camp` | final | 32.0 °C | 99.51 % | 0 / 0 | 61.5 ms | 0 % | 1,142 MB | 11.9 s |
+| `camp` | final | 32.1 °C | 99.45 % | 0 / 0 | 58.6 ms | 0.29 % | 1,143 MB | 11.7 s |
+| `camp` | final | 30.8 °C | 99.66 % | 0 / 0 | 69.5 ms | 0.38 % | 1,152 MB | 11.8 s |
+| `camp` | merged | 31.9 °C | 99.59 % | 0 / 1 | 116.9 ms | 0.57 % | 1,116 MB | 11.6 s |
+
+Every walk passes, so W1 and C1 are done. One frame was excluded: the merged `camp` walk's 116.9 ms frame on the way
+back near the plant gate (GPU 109 ms, one of four GPU frames of 67–109 ms within a second). kswapd scanned 4,361 pages
+in the 0.29 s around it, and the phone's free memory rose by 49 MB, then fell again. Who asked for that memory the
+counters cannot say. It may have been the app itself; the rule excludes the frame either way, as the user decided.
+
+**The app's memory (2026-10-25).** The merged build's peak PSS on the `wtp` walk is 1,137 MB:
+- graphics 635 MB: the GL driver's 578 MB and the swap chain's 57 MB;
+- native heap 445 MB;
+- code 68 MB, mostly the APK's mapped files.
+
+Of the graphics, Godot's own allocations (the MEM line this change adds) are 330 MB: textures 129 MB (the bake's
+lightmap 64 MB and shadowmask 8 MB, the sky 8 MB, the materials), buffers 71 MB, and 130 MB in neither. That 130 MB is
+mostly the engine's upload staging buffers. They grow to `rendering/rendering_device/staging_buffer/max_size_mb`
+(128 MB by default) and stay that size. The driver's other ~250 MB is outside the engine's count: blocks it reserves
+but has not filled, and its own allocations.
+
+The project now caps the staging buffers at 16 MB. It costs nothing in looks or people: the same textures and meshes,
+uploaded in more rounds.
+- Laptop, mobile renderer: Godot's allocation fell from 250 to 159 MB, with the first frame at 2.30 s both times. A
+  4 MB cap saved 12 MB more but cost 0.2 s.
+- Note 9, same walk: Godot's allocation fell from 330 to 238 MB, the GL driver's count from 578 to 554 MB, the native
+  heap from 445 to 415 MB, and peak PSS from 1,137 to 1,084 MB (−53 MB, one walk each). The first walkable frame was
+  11.1 s against 11.5 s, and no frame went over 100 ms.
+
+Not done, because none of it is cheap:
+- The engine's transfer workers keep a staging buffer each, as large as the largest upload they have made (up to one
+  per CPU core). This can't be set from the project.
+- The driver's unfilled blocks.
+- The native heap: on the laptop, Godot's own allocations are about 280 MB, 120 MB of them the areas' scenes. The rest
+  on the phone is the driver's.
+- Smaller lightmap or sky textures would cost looks.

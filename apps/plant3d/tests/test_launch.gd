@@ -21,6 +21,11 @@ func run(tree: SceneTree) -> Array:
 	var chunk := float(ProjectSettings.get_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", 3.0))
 	if chunk > 0.5:
 		p.append("the pipeline cache is saved every %.2f MB, at most 0.5" % chunk)
+	# the engine's upload staging buffers stay as large as they ever grew: capped at 16 MB (Godot's default 128 MB held
+	# about 90 MB of the Note 9's memory for the whole run, decision 0066 "The app's memory")
+	var staging := int(ProjectSettings.get_setting("rendering/rendering_device/staging_buffer/max_size_mb", 128))
+	if staging > 16:
+		p.append("the staging buffers may grow to %d MB, at most 16" % staging)
 	# the built materials: all the weathered shader, the lamps lit
 	var lamps := 0
 	for f in DirAccess.get_files_at("res://built/materials"):

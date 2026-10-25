@@ -34,8 +34,9 @@
 ##                           it (builder/plant_builder.gd far_merge)
 ##   crowd=N                 (walk) N people round the walker (app/crowd.gd): what people cost (milestone A1)
 ##   people_skinned=N        that many skinned avatars instead of the tier's (measuring), people_shadows=0 theirs off
-##   On a phone walk.txt takes probe, fx_off, fx_on, max_fps, crowd, people_skinned and people_shadows too
-##   (phone/frames.sh's WALK_EXTRA)
+##   On a phone walk.txt takes probe, fx_off, fx_on, max_fps, crowd, people_skinned, people_shadows and shot too
+##   (phone/frames.sh's WALK_EXTRA, phone/shots.sh); a shot's line in result.txt gives the view's draw calls, triangles
+##   and GPU time (median of 30 frames)
 extends Node3D
 
 const Quality = preload("res://app/quality.gd")
@@ -250,7 +251,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows"]:   # nothing else from a shared folder (probe, fx_off, fx_on, max_fps and the people's: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "shot"]:   # nothing else from a shared folder (probe, fx_off, fx_on, max_fps, the people's and shot: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
@@ -552,6 +553,12 @@ func _finish() -> void:
 		var m = ui.mimic
 		_say("MIMIC screens_open=%s frames=%d draw_max_us=%d draw_mean_us=%d frames_over_2ms=%d longest_piece_us=%d (the pieces' drawing only)" % [
 			str(ui.screens_open()), m.frames, m.frame_us_max, m.frame_us_sum / maxi(1, m.frames), m.frames_over_2ms, m.piece_us_max])
+	var rd := RenderingServer.get_rendering_device()
+	if rd != null:
+		# what the GPU's memory holds (decision 0066, "The app's memory"): textures, buffers, and the driver's whole
+		# allocation, which also holds the engine's staging buffers
+		_say("MEM rd_textures=%dMB rd_buffers=%dMB rd_total=%dMB" % [rd.get_memory_usage(RenderingDevice.MEMORY_TEXTURES) / 1048576,
+			rd.get_memory_usage(RenderingDevice.MEMORY_BUFFERS) / 1048576, rd.get_memory_usage(RenderingDevice.MEMORY_TOTAL) / 1048576])
 	if sim_n > 0:
 		_say("SIM_RESULT model_ms_per_s_mean=%.1f model_ms_per_s_max=%.1f step_ms=%.3f ff_cap=%.1f model_time=%s" % [
 			sim_sum_ms / sim_n, sim_max_ms, ui.clock.step_ms, ui.clock.ff_cap(), ui.clock.clock_text()])
@@ -571,34 +578,66 @@ func _write_out() -> void:
 	if f:
 		f.store_string("\n".join(lines) + "\n")
 
+const MAX_SHOTS := 24
+## The views of a `shot=` list: [{name, at}], at null for the map's view or [x, y, z, yaw, pitch]; at most MAX_SHOTS
+## (on a phone the list comes from a shared folder, and each is a PNG), names made file names of at most 40
+## characters, a view without five numbers left out (with why in `bad`).
+static func shot_specs(text: String, bad: Array = []) -> Array:
+	var out: Array = []
+	for spec in text.split(";", false):
+		if out.size() >= MAX_SHOTS:
+			bad.append("more than %d shots" % MAX_SHOTS)
+			break
+		var nv := spec.split("@")
+		var nm := nv[0].validate_filename().left(40)
+		if nm == "":
+			bad.append("a shot without a name (%s)" % spec)
+			continue
+		if nv.size() < 2 or nv[1] == "map":
+			out.append({"name": nm, "at": null})
+			continue
+		var v := nv[1].split(",")
+		if v.size() != 5 or not Array(v).all(func(x): return String(x).strip_edges().is_valid_float()):
+			bad.append("shot %s: not x,y,z,yaw,pitch (%s)" % [nm, nv[1]])
+			continue
+		out.append({"name": nm, "at": Array(v).map(func(x): return float(x))})
+	return out
+
 ## Views saved as PNGs (looking at the result on a laptop): shot=NAME@x,y,z,yaw,pitch;… in plant coordinates.
 func _shots() -> void:
 	_start_crowd(Routes.frames(plant))
 	for i in 30:
 		await get_tree().process_frame
 	DirAccess.make_dir_recursive_absolute(out_dir)
-	for spec in String(opts.shot).split(";"):
-		var nv := spec.split("@")
-		var nm := nv[0]
-		if nv.size() > 1 and nv[1] != "map":
-			var v := nv[1].split(",")
+	var bad: Array = []
+	var specs := shot_specs(String(opts.shot), bad)
+	for b in bad:
+		_say(b)
+	for sp in specs:
+		var nm: String = sp.name
+		if sp.at != null:
+			var v: Array = sp.at
 			if map.active: toggle_map()
 			player.set_mode(Player.Mode.FLY)
-			player.global_position = Plant.g(float(v[0]), float(v[1]), float(v[2])) - Vector3.UP * Player.EYE
-			player.set_heading(-deg_to_rad(float(v[3])), deg_to_rad(float(v[4])))
+			player.global_position = Plant.g(v[0], v[1], v[2]) - Vector3.UP * Player.EYE
+			player.set_heading(-deg_to_rad(v[3]), deg_to_rad(v[4]))
 		elif not map.active:
 			toggle_map()
+		var gpus: Array = []   # the view's GPU time over its last 30 frames (the median goes in the shot's line)
 		for i in 45:
 			await get_tree().process_frame
+			if i >= 15:
+				gpus.append(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()))
+		gpus.sort()
 		await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()
 		var p := out_dir.path_join(nm + ".png")
 		_say("shot %s: error %d" % [p, img.save_png(p)])
 		# what the view costs (the site's budget per view, SITE.md §5: draw calls and triangles)
-		_say("shot %s: %d draw calls, %d objects, %d triangles" % [nm,
+		_say("shot %s: %d draw calls, %d objects, %d triangles, GPU median %.2f ms" % [nm,
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
-			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME), float(gpus[gpus.size() / 2])])
 	_write_out()
 	get_tree().quit()
 

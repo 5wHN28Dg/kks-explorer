@@ -324,3 +324,22 @@ hydrants, block 1 and the mess hall):
 No difference beyond run-to-run noise. Not measured on the phone: the `frames` and `wtp` walks (the phone was shared
 with two other tasks; the WTP's change is its yard's material, rails and two vessels' platforms), the baked build and
 its first start, the Honor.
+
+## The frame rule counts the frames the app causes (the user, 2026-10-25)
+
+The Note 9's last frames over 100 ms came while the phone's kernel reclaimed memory, not from what the app drew (0066,
+"The last frame spikes"). So the rule "no frame over 100 ms after the first 5 s" now counts only the frames the app
+causes. A frame inside a traced burst of the kernel's memory reclaim is excluded, with its evidence kept. Every other
+rule here is unchanged (≥ 95 % at ≥ 30 fps, peak PSS, first start, the 1.2× rule).
+
+- **Inside reclaim** means this: a sample of `phone/frames.sh SAMPLE=1` (every 0.2–0.3 s) that overlaps the frame
+  shows kswapd or direct reclaim scanning at least one page, or a direct-reclaim stall, since the sample before
+  (`/proc/vmstat`; samples at most 1 s apart).
+- **The threshold is any reclaim.** With no scanning, 0.027 % of frames had a GPU time over 45 ms. At 1–200 pages a
+  second it was 1.6 %, and 2–15 % above that (0066 gives the walks).
+- **The evidence** is the walk's `rule.txt` (each excluded frame with the sample lines that show its reclaim), beside
+  its `samp.txt` and `logcat.txt`. `tools/plant3d/bench/reclaim_frames.py --rule` writes it, and `frames.sh` runs it
+  after every `SAMPLE=1` walk.
+- **Not judged:** a walk without `SAMPLE=1` cannot exclude any frame. A walk that would pass only by excluding frames
+  is not judged, and is walked again, when it is a `STRESS=1` walk, when it had reclaim in more than 1 % of its
+  sample pairs, or when its log has more `SPIKE` lines than its `over100`. A frame the log lost counts as the app's.
