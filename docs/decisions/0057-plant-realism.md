@@ -287,3 +287,40 @@ The far meshes are not in the bake: lit by the sky and the sun without the bake'
 500 m on the final build (the plant gate's road east, the WTP's west, the train and the turbine hall's roller door from
 the WTP), with the far views and without them (`fx_off=farview`): no visible difference. The Note 9's walks on the merged code are in 0066 ("Frame spikes and the far
 views").
+
+## Photo pass 3 (2026-10-25)
+
+The user's third batch of reference photos (the admin zone, its lobby, the camp's road, the plant's roads, a row of
+pressure vessels and a tank farm; private, not in the repository) against the site, the camp and the WTP as C1 and W1
+built them. What changed is in SITE.md ("As built (photo pass 3)") and WATER-TREATMENT.md (§8a, photo pass 3): kerbs
+yellow and white, block-paved walkways and a footpath along the ring road, hydrants and bollards, shade sails, skips,
+a telecom mast, air conditioners under the windows, the camp's ambulance, the admin lobby, the WTP's gravel yard, its
+tank rails and mixed beds. Same one shader and vertex format (0060): the block paving is the tiled floor's code with
+three new uniforms (bond, tone, gloss) whose defaults leave every other tiled floor exactly as it was; every new part
+draws with materials already in use; the air conditioners and the hydrants each draw in one material (136 units and
+25 hydrants: a material each would be a draw call per cell), the hydrants and bollards as `detail` pieces with their
+own range. Left out: the photos' auxiliary cooler (the train's closed cooling water is cooled by the circulating water)
+and that plant's colours.
+
+Laptop views (`full`, 1280×720, unbaked, the same 22 views on main and on this change): draw calls up by 0 to 67 a
+view (the camp's block 1 front 406 → 473, its air conditioners; the admin block 429–507 → 482–560; the ring road
+839 → 857; the WTP 1,101–1,317 → 1,110–1,336), triangles by 1–9 %. Unbaked release APKs: 114.59 MB (main) →
+114.90 MB; main's baked APK was 139.4 MB (0066), so this change's stays about 140 MB (budget 150).
+
+Note 9 (`lean+vis`, plugged in, a first start each, `camp` walk 300 s with `probe=1`, the two builds one after the
+other at 34–36 °C; unbaked release exports of this change and of main at its base, signed with the test key; the
+camp walk passes the plant gate, the road west, the camp's blocks with their air conditioners, the ambulance and the
+hydrants, block 1 and the mess hall):
+
+| | Main (1d1eb58) | This change |
+|---|---|---|
+| Frames shown at ≥ 30 fps (SurfaceFlinger) | 99.73 % (99.59 % in an earlier run) | 99.82 % |
+| Frames over 100 ms after the first 5 s (app / SurfaceFlinger) | 0 / 0 | 0 / 0 |
+| Worst frame (app) | 65.4 ms (71.4) | 64.0 ms |
+| GPU median / p95 | 19.1 / 23.8 ms (19.3 / 25.9) | 18.9 / 23.8 ms |
+| Peak PSS | 1,063 MB (1,061) | 1,059 MB |
+| Pipelines compiled after the first 5 s | 0 | 0 |
+
+No difference beyond run-to-run noise. Not measured on the phone: the `frames` and `wtp` walks (the phone was shared
+with two other tasks; the WTP's change is its yard's material, rails and two vessels' platforms), the baked build and
+its first start, the Honor.
