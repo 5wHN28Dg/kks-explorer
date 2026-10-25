@@ -5,8 +5,8 @@ running meanwhile (decision 0066, "The last frame spikes").
 
   pftrace.py TRACE [--threads kswapd0,kworker/0:0] [--over 45]
 
-It maps the file and keeps only Swappy's marks and the named threads' running spans (a 1.2 GB walk's trace: about
-1 GB of memory and ten minutes here; run it under a memory cap). A thread is named by the scheduler's comm, so all
+It maps the file and keeps only Swappy's marks and the named threads' running spans (a 0.9 GB walk's trace: 64 s and
+0.93 GB resident here, most of it the mapped file, which the kernel can drop; still, run it under a memory cap). A thread is named by the scheduler's comm, so all
 threads of one name count together.
 
 Each GPU frame's time is Swappy's: from its "waiting for GPU completion N" slice (the frame handed to the GPU) to the
