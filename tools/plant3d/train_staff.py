@@ -414,7 +414,8 @@ def tasks(models):
         task(job, w['title'], [
             {'go': {'kks': w['kks']}}, {'permit': {'work': '$', 'action': 'accept'}},
             {'work': [30, 60], 'anim': 'wrench'}, {'permit': {'work': '$', 'action': 'done'}},
-            {'permit': {'work': '$', 'action': 'return'}}, {'say': 'job_done', 'to': 'shift_sup'}], work=wid)
+            {'permit': {'work': '$', 'action': 'return'}}, {'say': 'job_done', 'to': 'shift_sup'}], work=wid,
+             resume='next_duty')        # left unfinished at the duty's end: held overnight, lock on (§17.10)
         reacts += [{'on': {'permit': 'approved'}, 'roles': ['shift_sup'], 'task': f'isolate_{wid[3:]}', 'work': wid},
                    {'on': {'permit': 'issued'}, 'roles': [TECH[w['discipline']]], 'task': job, 'work': wid},
                    {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': f'deisolate_{wid[3:]}',

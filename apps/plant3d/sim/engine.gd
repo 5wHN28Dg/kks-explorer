@@ -134,6 +134,7 @@ var st_given := {}                  # reaction source -> instances of it still q
 var st_vprev: Array = []            # per reaction on a value: its truth after the previous step
 var st_next1 := 0                   # the clock at which phase 1 next has something to do (staff.gd _phase1)
 var st_early: Array = []            # the trainee's done actions no step took yet (§17.8): [kind, step, …]
+var st_pending: Array = []          # offers for a permit nobody was on duty to take (§17.10), staff.gd offer()
 var st_left := {}                   # people off site with a lock at the last phase 2 (§17.9): index -> true
 var sp_on := PackedByteArray()
 var sp_duty: Array = []             # [start, end] or []
@@ -149,6 +150,7 @@ var sp_occ := PackedInt32Array()    # a place occupied, -1
 var sp_result: Array = []           # an NPC's input's outcome, read in step 9
 var sp_rng := PackedInt64Array()
 var sp_wake := PackedInt64Array()   # the step a person's next turn can change anything (staff.gd turn)
+var sp_held: Array = []             # a job held overnight (§17.10), or null
 
 
 func _init(model = null, scenario = null) -> void:
@@ -1474,8 +1476,10 @@ func _step() -> void:
 	for wi in dones:
 		var fid = _wk[wi][3]
 		var fk: int = _fault_ix.get(fid, -1) if typeof(fid) == TYPE_STRING else -1
+		var wk: int = _wk[wi][1]
+		var whole: bool = wk == -1 or _n_locked(wk) == _iso[wk][1].size()
 		if fk != -1 and _faults[fk][4] != null and faults_done.has(fid) and not faults_fixed.has(fid) \
-				and not _blocked(_faults[fk][4], wi):
+				and whole and not _blocked(_faults[fk][4], wi):
 			faults_fixed[fid] = true
 			_apply_set(_faults[fk][4], wi)
 			_ev(["repair", fid])
@@ -1742,7 +1746,7 @@ func clone():
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",
 			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_early",
-			"st_left",
-			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result"]:
+			"st_left", "st_pending",
+			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result", "sp_held"]:
 		c.set(k, get(k).duplicate(true))
 	return c

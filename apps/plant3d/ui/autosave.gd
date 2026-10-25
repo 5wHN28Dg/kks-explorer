@@ -305,6 +305,19 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 					return "a damaged handover"
 			if x.has("since") and typeof(x["since"]) != TYPE_INT:
 				return "a damaged handover"
+	# offers kept for the next shift (PLANT3D §17.10): what react() indexes with
+	if d.has("st_pending"):
+		var sm = fresh._sm
+		for pd in d["st_pending"]:
+			if typeof(pd) != TYPE_ARRAY or pd.size() != 9 or typeof(pd[0]) != TYPE_STRING \
+					or (pd[1] != null and typeof(pd[1]) != TYPE_STRING) or typeof(pd[2]) != TYPE_ARRAY \
+					or typeof(pd[3]) != TYPE_STRING or typeof(pd[4]) != TYPE_INT or typeof(pd[7]) != TYPE_STRING \
+					or typeof(pd[8]) != TYPE_INT or not fresh.m.work_ix.has(pd[7]) \
+					or sm == null or not sm.tasks.has(pd[3]):
+				return "a damaged offer kept for the next shift"
+			for ro in pd[2]:
+				if typeof(ro) != TYPE_STRING:
+					return "a damaged offer kept for the next shift"
 	if d.get("ptw_count", 0) < 0:
 		return "a damaged permit count"
 	for k in ["inputs", "events"]:
