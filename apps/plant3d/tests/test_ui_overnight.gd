@@ -1,6 +1,7 @@
 ## Day-shift jobs overnight and re-issued permits (docs/PLANT3D.md §17.10; the user's decisions of 2026-10-24),
 ## played in the app as crew A's supervisor:
-## - condenser pressure transmitter 2's calibration, issued late in the day: the I&C technician (a day worker) is
+## - condenser pressure transmitter 3's calibration (not on Monday's list: transmitter 2's is, at 07:40, and is closed
+##   by the afternoon), issued late in the day: the I&C technician (a day worker) is
 ##   still on the job at 16:00; it is held, they go home with their lock on, the permit stays as it was (not
 ##   suspended or cancelled), nobody removes the lock by authority, and the form says the lock stays on overnight;
 ## - the cooling tower fan's job suspended mid-work by a removal by authority: isolated and issued again, it is
@@ -10,8 +11,8 @@ extends RefCounted
 const App = preload("res://tests/ui_app.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 
-const CAL := "wo_cond_p2_cal"
-const PT2 := "30MAG10CP002"
+const CAL := "wo_cond_p3_cal"
+const PT3 := "30MAG10CP003"
 const FAN_WORK := "wo_ct_fan3"
 const FAN := "30PAD10AN003"
 
@@ -92,7 +93,7 @@ func _overnight(tree: SceneTree) -> Array:
 	var held := false
 	var removal := false
 	for ev in e.events:
-		if ev[1] == "task" and ev[2] == "ic1" and ev[3] == "job_cond_p2_cal" and ev[4] == "held":
+		if ev[1] == "task" and ev[2] == "ic1" and ev[3] == "job_cond_p3_cal" and ev[4] == "held":
 			held = true
 		if ev[1] == "remove_lock" or (ev[1] == "task" and ev[3] == "remove_left_locks"):
 			removal = true
@@ -105,7 +106,7 @@ func _overnight(tree: SceneTree) -> Array:
 		p.append("a day worker's lock left on overnight was removed by authority")
 	if e.pstate[wi] != 4 and e.pstate[wi] != 5:
 		p.append("the permit did not stay as it was overnight: %d" % e.pstate[wi])
-	if e.lockbits[e._iso[e.m.isolation_ix["iso_cond_p2"]][4]] != 1:
+	if e.lockbits[e._iso[e.m.isolation_ix["iso_cond_p3"]][4]] != 1:
 		p.append("the transmitter is no longer isolated")
 	ui.open_permits(CAL)
 	var pm = ui.permits

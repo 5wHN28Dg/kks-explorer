@@ -67,6 +67,18 @@ func _play(ui, readings: Dictionary) -> bool:
 		App.find_button(ui.crew, "Write down").pressed.emit()
 		readings[s["read"]] = typed
 		return true
+	elif s.has("ppe"):
+		# the role's PPE put on at the locker before the handover (milestone S2)
+		var b := App.find_button(ui.crew, "Put it on")
+		if b == null:
+			b = App.find_button(ui.crew, "Take me to a locker")
+			if b == null:
+				return false
+			b.pressed.emit()
+			ui._place_tick()
+			return true
+		b.pressed.emit()
+		return true
 	elif s.has("say"):
 		App.find_button(ui.crew, "Send").pressed.emit()
 		return true
@@ -76,12 +88,15 @@ func _play(ui, readings: Dictionary) -> bool:
 	return false
 
 
-func _steps(ui, readings: Dictionary, until: Callable, limit: int) -> bool:
+func _steps(tree: SceneTree, ui, readings: Dictionary, until: Callable, limit: int) -> bool:
 	for i in limit:
 		if until.call():
 			return true
 		_play(ui, readings)
 		ui.clock.run_steps(10)
+		if i % 8 == 0:
+			await tree.process_frame       # the panels' old rows are freed at a frame's end: with S2's crowd they
+			                               # filled 3.5 GB in a loop without frames
 	return until.call()
 
 
@@ -111,7 +126,7 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 			if ev[1] == "say" and ev[2] == me and ev[3] == "round_done":
 				return true
 		return false
-	if not _steps(ui, readings, round_done, 2500):
+	if not await _steps(tree, ui, readings, round_done, 2500):
 		var cur = e.sp_cur[e.st_trainee]
 		p.append("the CW round was not done by 07:00+ (now %s, the task %s step %s)" % [ui.clock_text(),
 				str(cur["task"]) if cur else "none", str(cur["step"]) if cur else ""])
@@ -134,7 +149,7 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 			if ev[1] == "call" and ev[4] == "check_alarm" and ev[2] != me:
 				return true
 		return false
-	_steps(ui, readings, called, 300)
+	await _steps(tree, ui, readings, called, 300)
 	if not called.call():
 		p.append("no NPC called a field operator to check the alarm")
 		return
@@ -154,7 +169,7 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 			if ev[1] == "say" and ev[2] == me and ev[3] == "alarm_checked":
 				return true
 		return false
-	if not _steps(ui, readings, checked, 1500):
+	if not await _steps(tree, ui, readings, checked, 1500):
 		var cur = e.sp_cur[e.st_trainee]
 		p.append("the trainee did not check the alarm at the valve (the task %s)" % (str(cur["task"]) if cur else "none"))
 	var at: int = -1
@@ -263,7 +278,7 @@ func _ccr_operator(tree: SceneTree, ui, p: Array) -> void:
 	if not e.events.any(func(ev): return ev[1] == "call" and ev[2] == me and ev[4] == "ccw_cooler_in" and ev[6] == "done"):
 		p.append("the radio call was not made: %s" % str(e.events.slice(maxi(0, e.events.size() - 5))))
 	var done := func(): return e.truth("ccw_cooler")
-	_steps(ui, {}, done, 1500)
+	await _steps(tree, ui, {}, done, 1500)
 	if not e.truth("ccw_cooler"):
 		p.append("no NPC field operator opened the CCW cooler on the instruction (now %s)" % ui.clock_text())
 	else:
