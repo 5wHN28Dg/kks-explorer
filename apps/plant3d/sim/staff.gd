@@ -837,9 +837,17 @@ func react(e, n: int) -> void:
 				e.st_left = {}          # someone came on duty: a lock still left is given again (§17.9)
 				break
 		var now := {}
-		for pi in people.size():
-			if pi != e.st_trainee and not e._absent.has(pi) and not e.sp_on[pi] and e.sp_pos[pi] == -1 \
-					and e.sp_leg[pi].is_empty() and _left_locks(e, pi):
+		# only a lock's holder can have left one: found from the locks (few), not by asking everyone every step
+		var holds := PackedByteArray()
+		if not e.lockers.is_empty():
+			holds.resize(people.size())
+			for key in e.lockers:
+				for h in e.lockers[key]:
+					if typeof(h) == TYPE_STRING and person_ix.has(h):
+						holds[person_ix[h]] = 1
+		for pi in holds.size():
+			if holds[pi] and pi != e.st_trainee and not e._absent.has(pi) and not e.sp_on[pi] \
+					and e.sp_pos[pi] == -1 and e.sp_leg[pi].is_empty() and _left_locks(e, pi):
 				now[pi] = true
 				if not e.st_left.has(pi):
 					gone.append(pi)
@@ -864,6 +872,12 @@ func react(e, n: int) -> void:
 			if not any_role or not assign(e, pd[2], pd[3], pd[4], pd[1], pd[5], pd[6], null):
 				keep.append(pd)
 		e.st_pending = keep
+	# only these events start reactions here (the unsafe acts' are phase 5's): most steps have none of them
+	var rel := []
+	for x in evs:
+		if x[1] == "alarm" or x[1] == "trip" or x[1] == "fault" or x[1] == "permit":
+			rel.append(x)
+	evs = rel
 	if evs.is_empty() and value_reactions.is_empty() and gone.is_empty():
 		return
 	for ri in reactions.size():
@@ -1418,6 +1432,8 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 				acts[k] = [now[0], n, false]
 				e._ev(["unsafe", people[pi]["id"], ACT_KINDS[k], now[0]])
 				started.append([pi, k])
+	var acting := PackedInt32Array()    # the people with an act going on (in person order), for the seen reactions
+	var looked := false
 	for ri in act_reactions:
 		var r: Dictionary = reactions[ri]
 		var v: String = r["on"]["unsafe"]
@@ -1425,18 +1441,25 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 		if r.get("seen", false):
 			# the safety walk finds it: the first of its roles (role order, then index) in a zone of the act, in the
 			# step it starts or any later one while it lasts; once per act
-			for pi in people.size():
+			if acting.is_empty() and not looked:
+				looked = true
+				for pi in people.size():
+					var aa: Array = e.sp_acts[pi]
+					if aa[0] != null or aa[1] != null or aa[2] != null:
+						acting.append(pi)
+			for pi in acting:
 				for k in 3:
 					var a = e.sp_acts[pi][k]
 					if a == null or (v != "*" and v != ACT_KINDS[k]):
 						continue
-					var key := "%d|unsafe|%s|%s|%d" % [ri, people[pi]["id"], ACT_KINDS[k], a[1]]
-					if e.st_made.has(key):
+					var made := Vector4i(ri, pi, k, a[1])      # (not the source key: made every step, it cost)
+					if e.st_made.has(made):
 						continue
 					var obs := observer(e, r["roles"], pi)
 					if obs == -1:
 						continue
-					e.st_made[key] = true
+					e.st_made[made] = true
+					var key := "%d|unsafe|%s|%s|%d" % [ri, people[pi]["id"], ACT_KINDS[k], a[1]]
 					if not e.st_given.has(key):
 						give(e, obs, r["task"], prio, key, null, null, null, true, null, [pi, k, a[1]])
 		else:
@@ -1529,11 +1552,14 @@ func _kept_works(e, pi: int) -> Dictionary:
 
 ## Whether pi holds a lock that is not kept for a held job of theirs (§17.10).
 func _left_locks(e, pi: int) -> bool:
-	var kept := _kept_works(e, pi)
 	var pid: String = people[pi]["id"]
+	var kept = null             # made only for someone holding a lock (asked of everyone off site, every step)
 	for key in e.lockers:
-		if _has(e.lockers[key], pid) and not kept.has(e.m.works[e.holder[key.x]]["id"]):
-			return true
+		if _has(e.lockers[key], pid):
+			if kept == null:
+				kept = _kept_works(e, pi)
+			if not kept.has(e.m.works[e.holder[key.x]]["id"]):
+				return true
 	return false
 
 
