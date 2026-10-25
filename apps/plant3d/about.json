@@ -92,6 +92,15 @@
    "source": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/kloofendal_48d_partly_cloudy_puresky_2k.hdr",
    "use": "the sky; its sun becomes the plant's sun (apps/plant3d/builder/sky.gd)",
    "pinned_by": "apps/plant3d/kit/fetch_textures.sh (SHA-256)"
+  },
+  {
+   "id": "kaykit-character-animations",
+   "name": "KayKit - Character Animations 1.1, by Kay Lousberg (www.kaylousberg.com)",
+   "license": "CC0-1.0",
+   "url": "https://kaylousberg.itch.io/kaykit-character-animations",
+   "source": "https://kaylousberg.itch.io/kaykit-character-animations (KayKit_Character_Animations_1.1.zip, the free download)",
+   "use": "the people's skeleton and their clips (walking, running, idling, sitting, tool work), on bodies and work clothes of our own (apps/plant3d/builder/people/)",
+   "pinned_by": "apps/plant3d/people/kaykit/SOURCE.json (SHA-256 of the archive and of each committed file; people/fetch_kaykit.sh checks them)"
   }
  ],
  "licenses": {

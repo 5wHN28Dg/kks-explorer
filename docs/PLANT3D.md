@@ -1678,6 +1678,18 @@ both engines and the vectors (§19):
 - **Looks** (`look` in a role): body (one of 8), outfit and colour, hard hat colour by function (white:
   supervisors, engineers and managers; yellow: operators and technicians; blue: contractors; green: HSE; these are
   ours, shown in a legend), each person's look fixed by index.
+- **As built (A1, 2026-10-23):** KayKit's mannequin is a large-headed cartoon figure (hips at 0.41 m), so the bodies
+  are ours, made by code at build time (`builder/people/body.gd`) on KayKit's skeleton at an adult's proportions,
+  with KayKit's clips retargeted (rotations as they are, the hips' height scaled) and our own work poses
+  (`builder/people/rig.gd`). Eight looks by role (`builder/people/looks.gd`): the plant's own staff in a blue
+  coverall with reflective tape, a hi-vis vest and a **white** hard hat (confirmed by the user, 2026-10-23: white, blue for contractors, green for HSE, replacing the colours above), told apart by the
+  vest's colour (orange: operators and supervisors; lime: maintenance, managers, HSE) and what they carry (radio,
+  clipboard, tool belt, the calibrator's case); contractors grey with a blue hat, HSE officers a green one; safety
+  glasses and ear defenders on every field role. Engineers, managers and office staff wear a dark shirt and trousers
+  under a lime vest. Each look has a **road variant**: on roads and outside the process areas the hat is carried in the
+  hand and a phone held in the other (its own walk, and an idle looking at the phone), the hat back on inside an area
+  that requires it (the driver says which: `hat` in app/people.gd); the posed band, beyond the skinned one, shows the
+  hat on. The person's height varies by ±6 % (the node's scale).
 
 ### 18.3 Animation
 
@@ -1694,7 +1706,7 @@ share, measured with the frames walk among a crowd (MILESTONES.md M3):
 
 | | Note 9 (`lean+vis`) | Laptop (`full`) |
 |---|---|---|
-| Skinned avatars drawn | ≤ 6, within 25 m | ≤ 24, within 40 m |
+| Skinned avatars drawn | ≤ 12, within 25 m (A1's measurement, below) | ≤ 24, within 40 m |
 | Their meshes | LOD0 ≤ 4,000 triangles (≤ 10 m), LOD1 ≤ 1,500; one material; ≤ 56 bones | the same assets |
 | Posed band | to 80 m: unskinned meshes in 6 poses (≤ 500 triangles), one MultiMesh per pose and body (the outfit's colours per instance), pose changed 4 times a second; ≤ 50 draw calls | to 150 m; ≤ 50 draw calls |
 | Beyond | not drawn | not drawn |
@@ -1710,6 +1722,14 @@ share, measured with the frames walk among a crowd (MILESTONES.md M3):
 The nearest by distance get the skinned slots, people the trainee talks to or works with first. A tier that misses
 its share after M3's measurement lowers its counts, never the frame rules (MILESTONES.md says what then needs the
 user).
+
+**Measured (milestone A1, 2026-10-25, decision 0064 as built):** the Note 9, release build, `lean+vis`, the 10-minute
+`frames` walk with N skinned people round the walker (`crowd=N`), each run started at a battery temperature of at most
+30 °C, the counts interleaved. Medians (range): 0 people (3 runs) 99.39 % (98.69–99.43) of frames at ≥ 30 fps, GPU
+median 20.6 ms; 6 (2 runs) 99.39 % (99.35–99.42), +0.15 ms; 12 (2 runs) 99.40 % (99.35–99.45), +0.3 ms; 24 (2 runs)
+98.85 % (98.59–99.10), +0.7 ms, one frame of 112 ms in one run. No other frame over 100 ms; first walkable frame
+10.8–11.9 s; peak PSS 1,102–1,158 MB; the people's CPU 0.70 / 0.91 / 1.33 ms a frame (mean). The phone's count is
+12. Third runs for 6 and 12 were not possible: the shared phone stayed above 30 °C for the next four hours.
 
 ### 18.5 Interiors and loading
 

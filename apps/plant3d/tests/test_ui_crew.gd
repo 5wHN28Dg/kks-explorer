@@ -166,6 +166,35 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 	ui.people.update()
 	if ui.people.shown < 3:
 		p.append("the crews are not on screen (%d markers)" % ui.people.shown)
+	# their avatars (milestone A1): one person each, at the marker's place, a built look by role, what they do
+	var av = ui.people.avatars
+	if av == null:
+		p.append("the crews are drawn as avatars (app/people.gd), not capsules")
+	else:
+		ui.people.drive(1.0 / 60.0)
+		if av.people.size() != ui.people.shown or ui.people.capsules.multimesh.instance_count != 0:
+			p.append("each person on the map is one avatar, no capsules (%d avatars, %d markers)" % [av.people.size(), ui.people.shown])
+		var doing := {}
+		for q in av.people:
+			if not av.info.looks.has(q.look) or not (q.at is Vector3) or q.at == Vector3.INF:
+				p.append("an avatar has a built look and a place (%s)" % str(q))
+				break
+			doing[q.anim if q.speed == 0.0 else "walking"] = true
+		if doing.size() < 2:
+			p.append("the crews are seen doing more than one thing (%s)" % str(doing.keys()))
+		var sm = e._sm
+		for c in [[{"read": "x"}, "inspect"], [{"work": 5, "anim": "write"}, "write"], [{"work": 5}, "use"],
+				[{"op": {"where": ["screen"]}}, "type"], [{"say": "m"}, "radio"], [{"meet": {}}, "talk"]]:
+			var task_id: String = sm.tasks.keys()[0]
+			var saved = e.sp_cur[0]
+			var saved_steps = sm.tasks[task_id]["steps"]
+			sm.tasks[task_id]["steps"] = [c[0]]
+			e.sp_cur[0] = {"task": task_id, "step": 0}
+			var got: String = ui.people._anim(e, sm, 0, -1)
+			sm.tasks[task_id]["steps"] = saved_steps
+			e.sp_cur[0] = saved
+			if got != c[1]:
+				p.append("a step %s is seen as %s (%s)" % [str(c[0]), c[1], got])
 	if _lost_typing:
 		p.append("a reading being typed was erased when the Crew panel rebuilt")
 	# sleep to the next shift (a jump, §17.6): the walker is moved to where the placement put the trainee's person

@@ -51,3 +51,30 @@ pinned script and redistributed in the app), at a cost the Note 9 can carry (006
 
 **When to revisit:** A1's retargeting trial fails (then Kenney's rig and simpler clips, or the user's choice above);
 MakeHuman's licence policy changes; Quaternius settles its licence back to CC0.
+
+## As built (milestone A1, 2026-10-23)
+
+- **KayKit, fetched and pinned:** KayKit Character Animations 1.1 (the free download on itch.io, 2025-12-10; its
+  `License.txt`: "License: (Creative Commons Zero, CC0)"; the page: "Creative Commons Zero v1.0 Universal", read
+  2026-10-23). The archive's SHA-256 and each used file's are in `apps/plant3d/people/kaykit/SOURCE.json`; the files
+  (four `Rig_Medium_*.glb` and the licence) are committed, as this record chose, so that no build depends on itch.io,
+  which gives no stable link; `people/fetch_kaykit.sh` downloads the archive as a browser does (no account) and checks
+  every committed file against it byte for byte. The pack's own mannequin (`Rig_Medium`, 23 bones) comes in
+  `Rig_Medium_General.glb`.
+- **Bodies are ours, not MakeHuman's:** KayKit's mannequin is a large-headed cartoon figure (hips at 0.41 m, the head
+  a third of its height), wrong for a plant's realism (0057); MakeHuman needs Blender and an export recipe for little
+  gain at the phone's triangle budget. So the bodies are made by code at build time like the parts kit
+  (`builder/people/body.gd`): lofted limbs and torso in a coverall, boots, gloves, the head, a hard hat (dome and
+  brim), glasses, ear defenders, the vest with reflective tape as colour bands, and what each role carries (radio,
+  clipboard, tool belt, the calibrator's case): CC0 by authorship, colours in the vertices, three levels of detail
+  from one description (2,976 / 1,290 / 500 triangles).
+- **Retargeting without Godot's profile:** the skeleton is KayKit's own, its bones' orientations kept and only their
+  lengths changed to an adult's (`builder/people/rig.gd` `JOINTS`), so KayKit's rotation tracks play unchanged; the
+  hips' position track is scaled by the hips' height, the other position and scale tracks dropped. Two corrections
+  for the cartoon proportions: the walk's and run's leg swing taken 55 % and 70 % of the way from standing (KayKit
+  lifts the knee to the hip), the upper arms brought 0.65 rad nearer the body in every clip. The trial needed no
+  fallback (Kenney) and no CMU clips.
+- **Our own poses:** the handwheel, the radio, writing on a clipboard, typing, sitting, a ladder and a stair's step:
+  keys given as where the hands and feet are (two-bone IK) and where the spine and head point, on the same skeleton.
+- **Gait speeds measured, not guessed:** the build measures each gait clip's natural speed from its stance foot
+  (walk 1.77 m/s, run 3.69 m/s on our proportions); the app plays a clip at the person's speed over that.
