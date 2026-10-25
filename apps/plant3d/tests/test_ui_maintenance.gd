@@ -97,6 +97,17 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 			b.pressed.emit()
 			ui._place_tick()
 			return true
+	elif s.has("work"):
+		# a work step counts only where it started: back there after a call away (the Crew panel's own button)
+		var at = cur["st"].get("place")
+		if at != null and e.st_t_at != at:
+			var b := App.find_button(ui.crew, "Take me there")
+			if b == null:
+				log.append("a work step away from its place offers no way back: %s" % App.texts(ui.crew).left(300))
+				return false
+			b.pressed.emit()
+			ui._place_tick()
+			return true
 	elif s.has("ppe"):
 		var b := App.find_button(ui.crew, "Put it on")
 		if b == null:
@@ -195,14 +206,16 @@ func _ic_calibration(tree: SceneTree) -> Array:
 		main.free()
 		return ["the app or its scenario with the crews (shift_cold) did not start"]
 	ui.player.set_physics_process(false)     # put at places, it stays there (not falling while the clock runs)
-	_scenario(ui, "test_ic", "06:30")
+	# the trainee is the only I&C technician on site, so the job comes to them whatever they are doing when the
+	# supervisor gives it (with the others there it goes to whoever is free: ic1 is still at the lock then)
+	_scenario(ui, "test_ic", "06:30", {"absent": ["ic2", "ic3", "ic4"]})
 	var why: String = await _take(tree, ui, "test_ic", "Play I&C technician (coming on shift)")
 	if why != "":
 		main.free()
 		return [why]
 	var e = ui.clock.engine
 	ui.fault("cond_p2_drift")
-	ui.clock.run_steps(1)
+	ui.clock.run_steps(2)                  # the fault is set in its step; the transmitter reads it in the next
 	var drifted: float = e.v("cond_p2") - e.v("cond_p3")
 	var log := []
 	var done := func(): return _closed(e, CAL)

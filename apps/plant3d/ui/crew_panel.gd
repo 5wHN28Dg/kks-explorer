@@ -320,7 +320,9 @@ static func _place_name(sm, pid: String) -> String:
 func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 	var row := HBoxContainer.new()
 	body.add_child(row)
-	if s.has("go") or s.has("meet") or s.has("lock") or s.has("unlock"):
+	# a work step counts down only where it started (§17.3): a trainee called away in the middle (a lock elsewhere,
+	# a task of a higher priority) is taken back there
+	if s.has("go") or s.has("meet") or s.has("lock") or s.has("unlock") or s.has("work"):
 		var dest = cur["st"].get("dest", cur["st"].get("place"))
 		if s.has("lock") or s.has("unlock"):
 			dest = null
