@@ -574,13 +574,13 @@ func at_locker() -> bool:
 ## and apron of chemical work, milestone S3).
 func go_to_locker() -> void:
 	var sm = clock.engine._sm
-	var me := player.global_position
+	var me: Vector3 = player.global_position
 	var best := -1
 	var bd := INF
 	for i in sm.places.size():
 		if sm.kind[i] == "locker":
 			var at: Array = sm.places[i]["at"]
-			var d := me.distance_squared_to(Plant.g(at[0], at[1], at[2]))
+			var d: float = me.distance_squared_to(Plant.g(at[0], at[1], at[2]))
 			if d < bd:
 				bd = d
 				best = i

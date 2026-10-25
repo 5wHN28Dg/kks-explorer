@@ -79,7 +79,7 @@ func _signature(e) -> String:
 	var cur = e.sp_cur[tr] if tr != -1 else null
 	return "%d|%d|%s|%s|%d|%d|%d|%s|%d|%s" % [tr, e.step_no if tr == -1 and e.step_no < 2 else 0,
 			str(cur["task"]) + str(cur["step"]) + str(cur["st"].get("dest", "")) if cur != null else "",
-			str(e.sp_queue[tr].size()) if tr != -1 else "", e.st_unacked, e.events.size() / 50 if tr == -1 else
+			(str(e.sp_queue[tr].size()) + "/" + str(e.sp_slots[tr].size())) if tr != -1 else "", e.st_unacked, e.events.size() / 50 if tr == -1 else
 			_radio_count(e), e.st_t_at, str(e.fast_forward()), e.J, _safety_sig(e) if tr != -1 else ""]
 
 
@@ -215,6 +215,7 @@ func _me(e, sm) -> void:
 		body.add_child(W.label("Waiting:", 18, W.DIM))
 		for inst in q:
 			body.add_child(W.label("• " + sm.tasks[inst["task"]]["title"] + " (priority %d)" % inst["prio"], 18))
+	_day(e, sm, pi)
 	_safety(e, sm)
 	var reads: Array = _reads.get(p["id"], [])
 	if not reads.is_empty():
@@ -223,6 +224,18 @@ func _me(e, sm) -> void:
 			var c := W.OK_COLOUR if ev[5] == "ok" else W.BAD_COLOUR
 			body.add_child(W.label("%s  %s  %s" % [ev[3], _num(ev[4]), {"ok": "in range", "out_of_range":
 					"OUT OF RANGE", "misread": "misread (the gauge shows another value)"}[ev[5]]], 18, c))
+
+
+## The role's day (§18.7, milestone S3: each role plays its own task list): the slots still to come of the trainee's
+## routine, with their clock times (the next eight).
+func _day(e, sm, pi: int) -> void:
+	var sl: Array = e.sp_slots[pi]
+	if sl.is_empty():
+		return
+	body.add_child(W.label("Your day:", 18, W.DIM))
+	for s in sl.slice(0, 8):
+		var t: int = s[0] % 864000 / 10
+		body.add_child(W.label("%02d:%02d  %s" % [t / 3600, (t / 60) % 60, sm.tasks[s[4]]["title"]], 18))
 
 
 static func _num(x) -> String:
