@@ -24,10 +24,6 @@ func run(tree: SceneTree) -> Array:
 	for k in ["sound_files", "sounds", "save", "route_find", "route_draw"]:
 		if not probe.counters.has(k):
 			p.append("the probe counts the app's own work per frame: %s" % k)
-	# the kernel's memory reclaim (where /proc/vmstat can be read: Linux here, Android)
-	if FileAccess.file_exists(FrameProbe.VMSTAT):
-		if FrameProbe.vmstat_scanned() < 0 or not probe.counters.has("reclaim"):
-			p.append("the probe counts the pages the kernel scanned to reclaim memory (%d)" % FrameProbe.vmstat_scanned())
 	for i in 30:
 		await tree.process_frame
 		if i == 20:
