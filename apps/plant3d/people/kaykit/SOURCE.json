@@ -1,0 +1,41 @@
+{
+ "name": "KayKit - Character Animations",
+ "version": "1.1",
+ "author": "Kay Lousberg (www.kaylousberg.com)",
+ "license": "CC0-1.0",
+ "license_evidence": "License.txt in the archive (committed here): 'License: (Creative Commons Zero, CC0) http://creativecommons.org/publicdomain/zero/1.0/'; the itch.io page, 2026-10-23: 'Creative Commons Zero v1.0 Universal'",
+ "page": "https://kaylousberg.itch.io/kaykit-character-animations",
+ "upload_id": 15799903,
+ "archive": "KayKit_Character_Animations_1.1.zip",
+ "archive_date": "2025-12-10",
+ "archive_sha256": "65882f31f905ad2e953819648a59287cdeab8f623908d5ef701971d3758be20f",
+ "prefix": "KayKit_Character_Animations_1.1/",
+ "note": "Rig_Medium_General.glb also carries the Rig_Medium mannequin (body and skeleton) the people are made from; the other files only lend their clips",
+ "files": [
+  {
+   "file": "License.txt",
+   "member": "License.txt",
+   "sha256": "373b159044d1a886ed15f57ca5a7673ba14e2623c460283452705f2056912ed9"
+  },
+  {
+   "file": "Rig_Medium_General.glb",
+   "member": "Animations/gltf/Rig_Medium/Rig_Medium_General.glb",
+   "sha256": "5f725c0f745f36078c7238968cd5c04843cbc6260689eb6e7f5e2bbd7ffdd7ad"
+  },
+  {
+   "file": "Rig_Medium_MovementBasic.glb",
+   "member": "Animations/gltf/Rig_Medium/Rig_Medium_MovementBasic.glb",
+   "sha256": "11422afd50abf7e8c92ea107e2e0bc94abd38023d6d15f55ad580347efbfa29e"
+  },
+  {
+   "file": "Rig_Medium_Simulation.glb",
+   "member": "Animations/gltf/Rig_Medium/Rig_Medium_Simulation.glb",
+   "sha256": "ab6ffeed40c8281dd0ce0506534eadf7385151f1c266643a10fa2a0f0a7ba3b1"
+  },
+  {
+   "file": "Rig_Medium_Tools.glb",
+   "member": "Animations/gltf/Rig_Medium/Rig_Medium_Tools.glb",
+   "sha256": "e3b62dc122c5073373376a846e354137add2088ddcce8731c389fc5c20734aad"
+  }
+ ]
+}

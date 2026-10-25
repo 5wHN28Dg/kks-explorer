@@ -1,10 +1,13 @@
-## The crews on screen until their avatars (milestone A1): each person is a capsule at their logical place (§17.3:
-## the engine's position is the truth), moved along a way by the fraction of its time gone, in a colour per role;
-## and a dot per person on the overview map (its render layer). One MultiMesh each: two draw calls for everyone, the
-## instances updated 4 times a second. The trainee's own person is not drawn (they are the walker).
+## The crews on screen: each person at their logical place (§17.3: the engine's position is the truth), moved along a
+## way by the fraction of its time gone (the clock's part-step too, so they walk smoothly); a dot per person on the
+## overview map (its render layer), updated 4 times a second. The people themselves are app/people.gd's avatars
+## (milestone A1), driven from here every frame: where they are, which way they face, how fast they walk, what their
+## task's step has them do (STEP_ANIM), their look by role, the hat carried outside the process areas. A build without
+## them (no built/people/) shows a capsule per person instead. The trainee's own person is not drawn (the walker).
 extends Node3D
 
 const Plant = preload("res://app/plant.gd")
+const SimClock = preload("res://ui/sim_clock.gd")
 const MAP_LAYER := 2
 const COLOURS := {"shift_sup": Color(0.95, 0.95, 0.95), "ccr_op": Color(0.25, 0.55, 1.0),
 		"field_op": Color(1.0, 0.8, 0.1), "elec_ap": Color(1.0, 0.45, 0.1), "mech_tech": Color(0.3, 0.75, 0.35),
@@ -16,10 +19,21 @@ var dots: MultiMeshInstance3D
 var _t := 0.0
 var _at: Array = []             # per place: its position (Godot frame)
 var shown := 0                  # people drawn at the last update (tests)
+var avatars                     # app/people.gd, when the build has the people
+var _yaw := {}                  # person -> the way they last faced
+var _hat := {}                  # person -> wearing the hat (checked twice a second)
+var _hat_t := 1.0
+var _drove := false             # this view filled the avatars' people (and may clear them)
+## A task step's kind to what the person is seen doing (docs/PLANT3D.md §18.3); a `work` step says its own `anim`.
+const STEP_ANIM := {"read": "inspect", "meet": "talk", "say": "radio", "call": "radio", "wait": "idle", "ack": "type",
+	"permit": "write", "lock": "wrench", "unlock": "wrench"}
+const SEATED := ["desk", "seat", "table"]
 
 
 func setup(u) -> void:
 	ui = u
+	if ui != null and ui.main != null and "people" in ui.main and ui.main.people != null:
+		avatars = ui.main.people
 	capsules = _mm(_capsule(), 1)
 	dots = _mm(_dot(), 1 << (MAP_LAYER - 1))
 
@@ -61,6 +75,8 @@ func _mm(mesh: Mesh, layers: int) -> MultiMeshInstance3D:
 
 
 func _process(delta: float) -> void:
+	if avatars != null:
+		drive(delta)
 	_t += delta
 	if _t < 0.25:
 		return
@@ -98,10 +114,103 @@ func update() -> void:
 		xs.append(p)
 		cs.append(COLOURS.get(sm.people[pi]["role"], Color.GRAY))
 	shown = xs.size()
+	if avatars != null:
+		capsules.multimesh.instance_count = 0   # the avatars show them
 	for mi in [capsules, dots]:
+		if mi == capsules and avatars != null:
+			continue
 		var mm: MultiMesh = mi.multimesh
 		mm.instance_count = xs.size()
 		for i in xs.size():
 			var lift := Vector3(0, 0.9, 0) if mi == capsules else Vector3(0, 4.0, 0)
 			mm.set_instance_transform(i, Transform3D(Basis(), xs[i] + lift))
 			mm.set_instance_color(i, cs[i])
+
+
+## The avatars' people (app/people.gd `people`) from the engine, every frame.
+func drive(delta: float) -> void:
+	var e = ui.clock.engine if ui != null and ui.clock != null else null
+	var sm = e._sm if e != null else null
+	var out: Array = avatars.people
+	if sm == null:
+		# no staff in this run: the people are someone else's (a measurement's crowd, app/crowd.gd) or nobody's;
+		# only those this view put there are taken away
+		if _drove:
+			out.clear()
+			_drove = false
+		return
+	_drove = true
+	if _at.size() != sm.places.size():
+		_at.clear()
+		for pl in sm.places:
+			_at.append(Plant.g(pl["at"][0], pl["at"][1], pl["at"][2]))
+	var frac: float = clampf(ui.clock.acc / SimClock.STEP, 0.0, 1.0)
+	avatars.time_scale = ui.clock.rate()
+	_hat_t += delta
+	var check_hat := _hat_t >= 0.5
+	if check_hat:
+		_hat_t = 0.0
+	var n := 0
+	for pi in sm.people.size():
+		if pi == e.st_trainee:
+			continue
+		var at := Vector3.INF
+		var speed := 0.0
+		var on := ""
+		var leg: Array = e.sp_leg[pi]
+		var place := -1
+		if not leg.is_empty():
+			var a: Vector3 = _at[leg[0]]
+			var b: Vector3 = _at[leg[1]]
+			var steps: float = maxf(1.0, float(leg[3] - leg[2]))
+			var k := clampf((float(e.step_no - leg[2]) + frac) / steps, 0.0, 1.0)
+			at = a.lerp(b, k)
+			speed = a.distance_to(b) / (steps * SimClock.STEP) if k < 1.0 else 0.0
+			var flat := Vector2(b.x - a.x, b.z - a.z)
+			if flat.length() > 0.05:
+				_yaw[pi] = atan2(-flat.x, -flat.y)
+			if absf(b.y - a.y) > 0.3 * maxf(0.01, flat.length()):
+				on = "stairs"
+		elif e.sp_pos[pi] != -1:
+			place = e.sp_pos[pi]
+			at = _at[place]
+		if at == Vector3.INF:
+			continue
+		if n >= out.size():
+			out.append({})
+		var p: Dictionary = out[n]
+		var role: String = sm.people[pi]["role"]
+		p.at = at
+		p.yaw = _yaw.get(pi, 0.0)
+		p.speed = speed
+		p.on = on
+		p.look = avatars.info.roles.get(role, avatars.info.looks.keys()[0])
+		p.anim = "" if speed > 0.0 else _anim(e, sm, pi, place)
+		p.scale = 0.94 + 0.12 * float((pi * 37) % 11) / 10.0
+		if check_hat or not _hat.has(pi):
+			_hat[pi] = ui.main.area_at(at) != "Between the areas"
+		p.hat = _hat[pi]
+		n += 1
+	out.resize(n)
+
+
+## What a person not walking is seen doing: their task step's, or sitting at a desk, seat or table.
+func _anim(e, sm, pi: int, place: int) -> String:
+	var cur = e.sp_cur[pi]
+	var a := "idle"
+	if cur != null:
+		var s: Dictionary = sm.tasks[cur["task"]]["steps"][cur["step"]]
+		if s.has("work"):
+			a = s.get("anim", "use")
+		elif s.has("op"):
+			var w = s["op"].get("where", "")   # a string, or a list of them (PLANT3D.md §7.2)
+			a = "type" if (w is Array and "screen" in w) or (w is String and w.contains("screen")) else "handwheel"
+		else:
+			for k in STEP_ANIM:
+				if s.has(k):
+					a = STEP_ANIM[k]
+					break
+	if a == "idle" and place >= 0 and sm.kind[place] in SEATED:
+		a = "sit"
+	return a
+

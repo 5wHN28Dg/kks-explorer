@@ -68,6 +68,11 @@ over the train, the WTP and the camp hold ≥ 98.8 % of frames at ≥ 30 fps, pe
 (`wtp`) and 1 (`camp`) single GPU frames of 102–148 ms with no Android cause found (0066, "Frame spikes and the far
 views"). Those frames are what is left before W1 and C1 are done.
 
+**A1 as built (2026-10-25):** KayKit's CC0 clips (committed, pinned) on bodies, work clothes and PPE of our own
+made by the build (eight looks by role, each with a road variant); our own work poses; skinned avatars near, posed
+meshes further, nothing beyond; bound to the staff engine (place, way, task step, look by role, the hat off the
+process areas). The Note 9 holds 12 skinned people within the frame rules (decision 0064, as built); the laptop 24.
+
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4
 needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, S2 with C1, then S3, then S4.
 
