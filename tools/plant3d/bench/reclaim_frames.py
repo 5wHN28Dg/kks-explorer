@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The Note 9's long GPU frames against the kernel's memory reclaim (decision 0066, "The last frame spikes"):
-  reclaim_frames.py RESULTS_DIR [--over 45]
+  reclaim_frames.py RESULTS_DIR [--over 45] [--rule]
 RESULTS_DIR is a phone/frames.sh walk with probe=1 and SAMPLE=1 (frames.csv, samp.txt, clock.txt, logcat.txt,
 result.txt). Each frame after the first 5 s is put in the 200 ms sample it began in, by how many pages the kernel
 scanned to reclaim memory a second there (kswapd's and direct reclaim's together); per band, how many of its frames'
@@ -8,7 +8,18 @@ GPU time (Godot's own measure, which lags its frame by one or two) passed --over
 
 The frames' times are the engine's (ms since it started): the engine's start on the phone's boot clock is the log line
 "plant: first frame drawn N ms after the engine started" (logcat's epoch time, less N) less the offset between the
-phone's epoch and boot clocks (clock.txt: /proc/uptime, then the epoch, read together). Good to about 10 ms."""
+phone's epoch and boot clocks (clock.txt: /proc/uptime, then the epoch, read together). Good to about 10 ms.
+
+The frame rule (the user, 2026-10-25; decisions 0057 and 0066): "no frame over 100 ms after the first 5 s" counts the
+frames the app causes. Each of the rule's frames (the walk's SPIKE lines: the app's own frame intervals over 100 ms,
+as its RESULT's over100 counts them) is excluded as the phone's memory reclaim when a 200 ms sample overlapping the
+frame (its log time less its length, to its log time) shows the kernel reclaiming: kswapd or direct reclaim scanned at
+least one page, or a direct-reclaim stall, between that sample and the one before (samples at most 1 s apart). Every
+other frame is the app's, as is any frame the log lost (over100 against the SPIKE lines found), and every frame of a
+walk the sampler did not cover. A walk during which the kernel reclaimed in more than 1 % of the samples is not judged
+(the phone was under pressure through it: walk again), nor is a STRESS=1 walk. The judgement and, for each frame excluded, the sample lines
+that show its reclaim go to RESULTS_DIR/rule.txt, kept with the walk (samp.txt, logcat.txt, a trace.pftrace if one
+was recorded) as its evidence. No frames.csv needed for this part."""
 import argparse
 import bisect
 import csv
@@ -21,6 +32,11 @@ import sys
 COL_KSWAPD = 7
 COL_DIRECT = 8
 COLUMNS = 13
+RULE_MS = 100.0
+MIN_PAGES = 1          # pages scanned in one sample that make it reclaim (any: decision 0066's bands)
+MAX_GAP_S = 1.0        # a sample further from the one before proves nothing
+MAX_SHARE = 0.01       # reclaim in more of a walk's samples than this: the walk is not judged (decision 0066)
+COL_STALLS = (5, 6)    # allocstall_normal, allocstall_movable
 BANDS = [(0, 1, "none"), (1, 5000, "under 5,000 pages/s"), (5000, 20000, "5,000-20,000 pages/s"),
          (20000, float("inf"), "20,000 pages/s or more")]
 
@@ -77,11 +93,106 @@ def bands(d, over=45.0):
     return [(n, count[n][0], count[n][1]) for _, _, n in BANDS]
 
 
+def _lines(path):
+    with open(path, errors="replace") as f:
+        return f.read().splitlines()
+
+
+def reclaimed(a, b):
+    """Whether the kernel reclaimed between samples a and b (None: unknown, a count fell or the gap is too long)."""
+    if b[0] - a[0] > MAX_GAP_S or b[0] <= a[0]:
+        return None
+    d = [b[c] - a[c] for c in (COL_KSWAPD, COL_DIRECT) + COL_STALLS]
+    if min(d) < 0:
+        return None
+    return d[0] + d[1] >= MIN_PAGES or d[2] + d[3] > 0
+
+
+def rule(d):
+    """The frame rule's judgement of a walk: a dict with `frames` [(ms, t_walk s, "app" | "reclaim", [sample lines])],
+    `app`, `reclaim` (counts), `lost` (over100 frames with no SPIKE line, counted as the app's), `share` (the samples'
+    share in reclaim), `stressed` (a STRESS=1 walk), `judged` (False when the share passes MAX_SHARE or the walk was
+    stressed), `sampled` and `passes`."""
+    c = " ".join(_lines(os.path.join(d, "clock.txt"))).split()
+    off = float(c[2]) - float(c[0])
+    s = samples(d) if os.path.exists(os.path.join(d, "samp.txt")) else []
+    raw = []
+    if s:
+        raw = [l for l in _lines(os.path.join(d, "samp.txt")) if l.split()]
+    times = [x[0] for x in s]
+    over100 = None
+    for line in _lines(os.path.join(d, "result.txt")):
+        m = re.search(r"^RESULT .*\bover100=(\d+)", line)
+        if m:
+            over100 = int(m.group(1))
+    if over100 is None:
+        raise SystemExit("no RESULT line with over100= in result.txt: the walk did not finish")
+    frames = []
+    for line in _lines(os.path.join(d, "logcat.txt")):
+        m = re.match(r"\s*(\d+\.\d+)\s.*plant: SPIKE (\d+\.?\d*) ms at (\d+\.?\d*) s", line)
+        if not m:
+            continue
+        ms = float(m.group(2))
+        if ms <= RULE_MS:
+            continue
+        end = float(m.group(1)) - off
+        start = end - ms / 1000.0
+        ev = []
+        if s:
+            i = max(bisect.bisect_right(times, start), 1)   # the first sample after the frame began
+            while i < len(s):
+                if reclaimed(s[i - 1], s[i]):
+                    ev += [raw[i - 1], raw[i]]
+                if times[i] >= end:
+                    break
+                i += 1
+        frames.append((ms, float(m.group(3)), "reclaim" if ev else "app", ev))
+    pairs = [reclaimed(s[i - 1], s[i]) for i in range(1, len(s))]
+    share = sum(1 for p in pairs if p) / len(pairs) if pairs else 0.0
+    n_rec = sum(1 for f in frames if f[2] == "reclaim")
+    lost = max(over100 - len(frames), 0)
+    n_app = len(frames) - n_rec + lost
+    stressed = os.path.exists(os.path.join(d, "state.txt")) and \
+        any(l.startswith("stress:") for l in _lines(os.path.join(d, "state.txt")))
+    judged = share <= MAX_SHARE and not stressed
+    return {"frames": frames, "app": n_app, "reclaim": n_rec, "lost": lost, "share": share, "judged": judged,
+            "stressed": stressed, "sampled": bool(s), "passes": judged and n_app == 0}
+
+
+def rule_text(d):
+    r = rule(d)
+    out = ["The frame rule (no frame over %.0f ms after the first 5 s that the app causes; decisions 0057, 0066): %s"
+           % (RULE_MS, "PASSES" if r["passes"] else ("NOT JUDGED" if not r["judged"] else "FAILS")),
+           "  frames over %.0f ms the app caused: %d%s" % (RULE_MS, r["app"],
+               " (%d of them lost from the log)" % r["lost"] if r["lost"] else ""),
+           "  frames over %.0f ms excluded as the kernel's memory reclaim: %d" % (RULE_MS, r["reclaim"]),
+           "  samples with reclaim: %.2f %% of the walk%s" % (100.0 * r["share"],
+               "" if r["share"] <= MAX_SHARE else " (more than %.0f %%: the phone was under pressure through it, walk again)"
+               % (100 * MAX_SHARE))]
+    if r["stressed"]:
+        out.append("  a STRESS=1 walk (memory pressure made on purpose): never judged by the rule")
+    if not r["sampled"]:
+        out.append("  no samp.txt (walk with SAMPLE=1): no frame can be excluded")
+    for ms, t, why, ev in r["frames"]:
+        out.append("  %.1f ms at %.1f s: %s" % (ms, t, "the app's" if why == "app" else "inside reclaim, samples:"))
+        out += ["      " + l for l in ev]
+    out.append("  evidence: %s (samp.txt, logcat.txt%s)" % (os.path.abspath(d),
+               ", trace.pftrace" if os.path.exists(os.path.join(d, "trace.pftrace")) else ""))
+    return "\n".join(out) + "\n"
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("dir")
     ap.add_argument("--over", type=float, default=45.0)
+    ap.add_argument("--rule", action="store_true", help="only the frame rule's judgement (also written to rule.txt)")
     a = ap.parse_args(argv)
+    t = rule_text(a.dir)
+    with open(os.path.join(a.dir, "rule.txt"), "w") as f:
+        f.write(t)
+    print(t, end="")
+    if a.rule or not os.path.exists(os.path.join(a.dir, "frames.csv")) or not os.path.exists(os.path.join(a.dir, "samp.txt")):
+        return 0
     print("kernel scanning            frames   GPU over %.0f ms" % a.over)
     for name, n, long_ in bands(a.dir, a.over):
         if n:

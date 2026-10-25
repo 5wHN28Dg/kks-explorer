@@ -51,5 +51,115 @@ class ReclaimFramesTest(unittest.TestCase):
                 R.bands(d, 45.0)
 
 
+def _walk(d, samples, spikes, over100=None, stress=False, logcat_extra=""):
+    """A fake walk: epoch = boot clock + 1,000,000 s; samples [(boot s, kswapd pages, direct pages, stalls)];
+    spikes [(boot s it was logged at, ms)]."""
+    open(os.path.join(d, "clock.txt"), "w").write("50.00 40.00\n1000050.000000000\n")
+    open(os.path.join(d, "samp.txt"), "w").write("".join(
+        "%.2f 546000000 90 0 0 %d 0 %d %d 0 400000 2000000 900000\n" % (t, st, k, dr) for t, k, dr, st in samples))
+    open(os.path.join(d, "logcat.txt"), "w").write(logcat_extra + "".join(
+        "%.3f  1  2 I godot   : plant: SPIKE %.1f ms at %.1f s, at (1, 2, 3)\n" % (1000000 + t, ms, t - 100) for t, ms in spikes))
+    open(os.path.join(d, "result.txt"), "w").write(
+        "RESULT tier=lean+vis frames=100 max=1ms over100=%d gpu_median=1ms\n" % (len(spikes) if over100 is None else over100))
+    open(os.path.join(d, "state.txt"), "w").write("before: x\n" + ("stress: 2 MB/s\n" if stress else ""))
+
+
+def _quiet(n=600, t0=100.0):
+    """n samples 0.2 s apart from t0 with no reclaim."""
+    return [(t0 + 0.2 * i, 1000, 0, 0) for i in range(n)]
+
+
+class FrameRuleTest(unittest.TestCase):
+    def test_reclaim_excluded_and_app_counted(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = _quiet()
+            # kswapd scans 3 pages between 150.0 and 150.2 (all later counts higher by 3)
+            s = [(t, k + (3 if t > 150.1 else 0), dr, st) for t, k, dr, st in s]
+            # a 120 ms frame logged at 150.1 (from 149.98: overlaps the reclaiming sample), one of 105 ms at 160.0
+            # (quiet), one of 100.0 ms (not over 100: not the rule's)
+            _walk(d, s, [(150.1, 120.0), (160.0, 105.0), (170.0, 100.0)], over100=2)
+            r = R.rule(d)
+            self.assertEqual([(f[0], f[2]) for f in r["frames"]], [(120.0, "reclaim"), (105.0, "app")])
+            self.assertEqual((r["app"], r["reclaim"], r["lost"]), (1, 1, 0))
+            self.assertFalse(r["passes"])
+            self.assertTrue(r["judged"])
+            self.assertEqual(len(r["frames"][0][3]), 2)   # the two sample lines that show it
+            self.assertTrue(r["frames"][0][3][1].startswith("150.20 "))
+            t = R.rule_text(d)
+            self.assertIn("FAILS", t)
+            self.assertIn("150.20 546000000", t)
+            # main() writes the judgement beside the walk
+            R.main([d, "--rule"])
+            self.assertIn("excluded as the kernel's memory reclaim: 1", open(os.path.join(d, "rule.txt")).read())
+
+    def test_frame_just_before_reclaim_is_the_apps(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = [(t, k + (3 if t > 150.1 else 0), dr, st) for t, k, dr, st in _quiet()]
+            # logged at 149.99 (149.87-149.99): inside the quiet sample 149.8-150.0 only
+            _walk(d, s, [(149.99, 120.0)])
+            self.assertEqual(R.rule(d)["app"], 1)
+
+    def test_direct_reclaim_and_stalls(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = [(t, k, dr + (5 if t > 150.1 else 0), st) for t, k, dr, st in _quiet()]
+            s = [(t, k, dr, st + (1 if t > 160.1 else 0)) for t, k, dr, st in s]
+            _walk(d, s, [(150.1, 120.0), (160.1, 130.0)])
+            r = R.rule(d)
+            self.assertEqual((r["app"], r["reclaim"]), (0, 2))
+            self.assertTrue(r["passes"])
+
+    def test_lost_spikes_counted_as_the_apps(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = [(t, k + (3 if t > 150.1 else 0), dr, st) for t, k, dr, st in _quiet()]
+            _walk(d, s, [(150.1, 120.0)], over100=3)
+            r = R.rule(d)
+            self.assertEqual((r["app"], r["reclaim"], r["lost"]), (2, 1, 2))
+            self.assertFalse(r["passes"])
+
+    def test_no_proof_no_exclusion(self):
+        with tempfile.TemporaryDirectory() as d:
+            # a 2 s gap in the samples around the frame, with pages scanned across it: proves nothing
+            s = [x for x in _quiet() if not 149.0 < x[0] < 151.0]
+            s = [(t, k + (3 if t > 150 else 0), dr, st) for t, k, dr, st in s]
+            # a counter that falls (a core offline) proves nothing either
+            s = [(t, k - (500 if t > 160.1 else 0), dr + (9 if t > 160.1 else 0), st) for t, k, dr, st in s]
+            # a frame after the last sample
+            _walk(d, s, [(150.1, 120.0), (160.1, 110.0), (500.0, 101.0)])
+            r = R.rule(d)
+            self.assertEqual((r["app"], r["reclaim"]), (3, 0))
+            # without samp.txt every frame is the app's
+            os.remove(os.path.join(d, "samp.txt"))
+            r = R.rule(d)
+            self.assertEqual((r["app"], r["sampled"]), (3, False))
+            self.assertIn("no samp.txt", R.rule_text(d))
+
+    def test_walks_under_pressure_not_judged(self):
+        with tempfile.TemporaryDirectory() as d:
+            # reclaim in 7 of 599 sample pairs (1.2 %): no frame over 100 ms, still not judged
+            s = _quiet()
+            s = [(t, k + 2 * sum(1 for j in range(7) if t > 110.1 + j), dr, st) for t, k, dr, st in s]
+            _walk(d, s, [])
+            r = R.rule(d)
+            self.assertFalse(r["judged"])
+            self.assertFalse(r["passes"])
+            self.assertIn("NOT JUDGED", R.rule_text(d))
+            # 5 of 599 (0.8 %): judged, passes
+            s = [(t, k + 2 * sum(1 for j in range(5) if t > 110.1 + j), dr, st) for t, k, dr, st in _quiet()]
+            _walk(d, s, [])
+            self.assertTrue(R.rule(d)["passes"])
+            # a STRESS=1 walk never counts
+            _walk(d, _quiet(), [], stress=True)
+            r = R.rule(d)
+            self.assertFalse(r["passes"])
+            self.assertIn("STRESS=1", R.rule_text(d))
+
+    def test_unfinished_walk_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            _walk(d, _quiet(), [])
+            open(os.path.join(d, "result.txt"), "w").write("loaded the plant\n")
+            with self.assertRaises(SystemExit):
+                R.rule(d)
+
+
 if __name__ == "__main__":
     unittest.main()

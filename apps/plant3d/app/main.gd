@@ -517,6 +517,12 @@ func _finish() -> void:
 		var m = ui.mimic
 		_say("MIMIC screens_open=%s frames=%d draw_max_us=%d draw_mean_us=%d frames_over_2ms=%d longest_piece_us=%d (the pieces' drawing only)" % [
 			str(ui.screens_open()), m.frames, m.frame_us_max, m.frame_us_sum / maxi(1, m.frames), m.frames_over_2ms, m.piece_us_max])
+	var rd := RenderingServer.get_rendering_device()
+	if rd != null:
+		# what the GPU's memory holds (decision 0066, "The app's memory"): textures, buffers, and the driver's whole
+		# allocation, which also holds the engine's staging buffers
+		_say("MEM rd_textures=%dMB rd_buffers=%dMB rd_total=%dMB" % [rd.get_memory_usage(RenderingDevice.MEMORY_TEXTURES) / 1048576,
+			rd.get_memory_usage(RenderingDevice.MEMORY_BUFFERS) / 1048576, rd.get_memory_usage(RenderingDevice.MEMORY_TOTAL) / 1048576])
 	if sim_n > 0:
 		_say("SIM_RESULT model_ms_per_s_mean=%.1f model_ms_per_s_max=%.1f step_ms=%.3f ff_cap=%.1f model_time=%s" % [
 			sim_sum_ms / sim_n, sim_max_ms, ui.clock.step_ms, ui.clock.ff_cap(), ui.clock.clock_text()])
