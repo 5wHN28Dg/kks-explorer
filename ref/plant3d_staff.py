@@ -2081,20 +2081,27 @@ class StaffRun:
         return self.removable(cur, key, held)
 
     def removable(self, cur, key, held):
-        """A lock of the remove_locks step's owner, not kept for a held job of theirs (§17.10)."""
+        """A lock of the remove_locks step's owner, not kept for a held job (§17.10)."""
         o = cur['owner']
         if o is None or not any(same(h, o) for h in held):
             return False
         q = self.people[self.st.person_ix[o]] if isinstance(o, str) and o in self.st.person_ix else None
-        return q is None or self.e.holder[key[0]] not in self.kept_works(q)
+        return q is None or self.e.holder[key[0]] not in self.kept_works()
 
-    def kept_works(self, p):
-        """The works of a person's held jobs: their locks on those stay on overnight (§17.10)."""
-        return {q['work'] for q in p.held if q['work'] is not None}
+    def kept_works(self):
+        """The works of anyone's jobs (tasks with resume, given for a work), held, queued or current: every lock on
+        those stays on, whoever placed it, until the job ends (§17.10; the user, 2026-10-25)."""
+        tasks = self.st.tasks
+        out = set()
+        for x in self.people:
+            for q in ([x.cur] if x.cur is not None else []) + x.queue + x.held:
+                if q['work'] is not None and tasks[q['task']].get('resume') == 'next_duty':
+                    out.add(q['work'])
+        return out
 
     def left_locks(self, p):
-        """Whether p holds a lock that is not kept for a held job of theirs (§17.10)."""
-        kept = self.kept_works(p)
+        """Whether p holds a lock that is not kept for a held job (§17.10)."""
+        kept = self.kept_works()
         return any(p.id in held and self.e.holder[key[0]] not in kept for key, held in self.e.locks.items())
 
     def to_take(self, p, key, held):

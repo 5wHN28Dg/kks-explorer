@@ -387,8 +387,13 @@ class StaffVectors(unittest.TestCase):
         self.assertIn([603, 'remove_lock', 'wo_pump', 1, 'a_sup', 'refused', ['unlocked'], None, 'Again'], ev)
         self.assertIn([604, 'lock', 'wo_pump', 1, 'a_sup', 'done', []], ev)
         self.assertIn([606, 'unlock', 'wo_pump', 1, 'a_sup', 'done', []], ev)
-        # the NPCs unlock their own locks in every run (an unlocking task goes to a lock's owner first, §17.11)
+        # the NPCs unlock their own locks in every run (an unlocking task goes to a lock's owner first, §17.11),
+        # but where the owner is off duty: the task then goes by the usual rule and its unlock is refused, as that run
+        # pins (the lock is left, §17.9)
         for r in self.runs:
+            if r['why'].startswith("a colleague's lock kept while they are off"):
+                self.assertIn(['unlock', 'wo_gauge', 0, 'ic2', 'refused', ['owner']], [x[1:] for x in r['events']])
+                continue
             self.assertFalse(any(x[1] == 'unlock' and x[5] == 'refused' and 'owner' in x[6] and x[4] != 'a_sup'
                                  for x in r['events']), r['why'])
 
@@ -621,6 +626,43 @@ class StaffVectors(unittest.TestCase):
             self.assertIn(['iso_gauge', 0], s['locked'])
         self.assertTrue(any(x[1] == 'unlock' and x[4] == 'ic1' and x[5] == 'done' and x[0] > resumed[0] for x in ev))
         self.assertTrue(any(x[1] == 'permit' and x[2] == 'wo_gauge' and x[3] == 'close' and x[5] == 'done' for x in ev))
+
+    def test_a_colleagues_lock_kept_overnight(self):
+        """§17.10 (the user, 2026-10-25): a job held overnight keeps every lock on its isolation, whoever placed it:
+        ic1 isolated, ic2 holds the job; ic1 goes home with the lock on, nobody removes it by authority, and when the
+        job resumes and is handed back ic1 removes their own lock."""
+        run = next(r for r in self.runs if r['why'].startswith("a colleague's lock kept overnight"))
+        ev = run['events']
+        self.assertTrue(any(x[1:5] == ['lock', 'wo_gauge', 0, 'ic1'] and x[5] == 'done' for x in ev))
+        held = next(x for x in ev if x[1] == 'task' and x[3] == 'job_gauge' and x[4] == 'held')
+        self.assertEqual(held[2], 'ic2')
+        self.assertTrue(any(x[1] == 'move' and x[2] == 'ic1' and x[4] is None and x[0] >= held[0] for x in ev))
+        resumed = next(x for x in ev if x[1] == 'task' and x[3] == 'job_gauge' and x[4] == 'resumed')
+        self.assertFalse([x for x in ev if x[1] == 'remove_lock'])
+        self.assertFalse([x for x in ev if x[1] == 'task' and x[3] == 'remove_left'])
+        night = [s for s in run['states'] if held[0] < s['step'] < resumed[0]]
+        self.assertTrue(night)
+        for s in night:
+            self.assertEqual(s['permits'].get('wo_gauge'), 5, s['step'])
+            self.assertIn(['iso_gauge', 0], s['locked'])
+        self.assertTrue(any(x[1:4] == ['unlock', 'wo_gauge', 0] and x[4] == 'ic1' and x[5] == 'done'
+                            and x[0] > resumed[0] for x in ev))
+        self.assertTrue(any(x[1:4] == ['permit', 'wo_gauge', 'close'] and x[5] == 'done' for x in ev))
+
+    def test_a_colleagues_lock_kept_while_they_are_off(self):
+        """§17.10 (adversarial review of the user's rule of 2026-10-25): the isolating technician is off on Tuesday;
+        their lock stays on while the resumed job goes on (no removal at its resumption: before, the job was
+        abandoned there), and is removed by authority as a lock left only once the job has been handed back."""
+        ev = next(r for r in self.runs if r['why'].startswith("a colleague's lock kept while they are off"))['events']
+        resumed = next(x[0] for x in ev if x[1:5] == ['task', 'ic2', 'job_gauge', 'resumed'])
+        returned = next(x[0] for x in ev if x[1:4] == ['permit', 'wo_gauge', 'return'] and x[5] == 'done')
+        self.assertTrue(any(x[1:5] == ['task', 'ic2', 'job_gauge', 'done'] for x in ev))
+        self.assertFalse([x for x in ev if x[1] == 'task' and x[3] == 'job_gauge' and x[4] == 'abandoned'])
+        rm = [x for x in ev if x[1] == 'remove_lock']
+        self.assertEqual(len(rm), 1)
+        self.assertGreater(rm[0][0], returned)
+        self.assertGreater(returned, resumed)
+        self.assertEqual(rm[0][5:8], ['done', [], 'ic1'])
 
     def test_a_call_kept_without_reactions(self):
         """§17.10 (adversarial review): a kept call is made again at the trade's next shift with no reactions in the

@@ -1552,45 +1552,50 @@ func t_stop(e, ti: int, who) -> void:
 
 # ---------------------------------------------------------------- locks at a shift change (§17.9)
 
-## A lock's holder who is a day worker gone home: their lock stays on overnight and they finish the job on their
-## next duty (§17.10). For the permit form.
+## A lock's holder gone home while a job for its work is held (theirs or a colleague's): the lock stays on overnight
+## and its owner removes it when the job resumes (§17.10). For the permit form.
 func overnight(e, who, work: String) -> bool:
 	if typeof(who) != TYPE_STRING or not person_ix.has(who):
 		return false
 	var pi: int = person_ix[who]
-	return _kept_works(e, pi).has(work) and not e.sp_on[pi] and e.sp_pos[pi] == -1 and e.sp_leg[pi].is_empty()
+	return _kept_works(e).has(work) and not e.sp_on[pi] and e.sp_pos[pi] == -1 and e.sp_leg[pi].is_empty()
 
 
-## The works of a person's held jobs: their locks on those stay on overnight (§17.10).
-func _kept_works(e, pi: int) -> Dictionary:
+## The works of anyone's jobs (tasks with resume, given for a work), held, queued or current: every lock on those
+## stays on, whoever placed it, until the job ends (§17.10; the user, 2026-10-25).
+func _kept_works(e) -> Dictionary:
 	var out := {}
-	for q in e.sp_held[pi]:
-		if typeof(q["work"]) == TYPE_STRING:
-			out[q["work"]] = true
+	for qi in people.size():
+		var all: Array = e.sp_queue[qi] + e.sp_held[qi]
+		if e.sp_cur[qi] != null:
+			all.append(e.sp_cur[qi])
+		for q in all:
+			if typeof(q["work"]) == TYPE_STRING and tasks[q["task"]].get("resume", "") == "next_duty":
+				out[q["work"]] = true
 	return out
 
 
-## Whether pi holds a lock that is not kept for a held job of theirs (§17.10).
+## Whether pi holds a lock that is not kept for a held job (§17.10).
 func _left_locks(e, pi: int) -> bool:
 	var pid: String = people[pi]["id"]
 	var kept = null             # made only for someone holding a lock (asked of everyone off site, every step)
 	for key in e.lockers:
 		if _has(e.lockers[key], pid):
 			if kept == null:
-				kept = _kept_works(e, pi)
+				kept = _kept_works(e)
 			if not kept.has(e.m.works[e.holder[key.x]]["id"]):
 				return true
 	return false
 
 
-## A lock of the remove_locks step's owner, not kept for a held job of theirs (§17.10).
+## A lock of the remove_locks step's owner, not kept for a held job (§17.10).
 func _removable(e, cur: Dictionary, key: Vector2i, held: Array) -> bool:
 	var o = cur.get("owner")
 	if o == null or not _has(held, o):
 		return false
 	if typeof(o) != TYPE_STRING or not person_ix.has(o):
 		return true
-	return not _kept_works(e, person_ix[o]).has(e.m.works[e.holder[key.x]]["id"])
+	return not _kept_works(e).has(e.m.works[e.holder[key.x]]["id"])
 
 
 ## A job (a task with resume) given for one of these works.

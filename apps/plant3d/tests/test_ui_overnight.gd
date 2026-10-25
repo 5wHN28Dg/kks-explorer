@@ -4,6 +4,8 @@
 ##   by the afternoon), issued late in the day: the I&C technician (a day worker) is
 ##   still on the job at 16:00; it is held, they go home with their lock on, the permit stays as it was (not
 ##   suspended or cancelled), nobody removes the lock by authority, and the form says the lock stays on overnight;
+## - the same with two technicians (the user, 2026-10-25): one isolates, the other's job is held; the first one's
+##   lock stays on overnight too;
 ## - the cooling tower fan's job suspended mid-work by a removal by authority: isolated and issued again, it is
 ##   offered to a technician again.
 extends RefCounted
@@ -67,6 +69,7 @@ static func _form(ui, wid: String, actions: Array) -> Array:
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
 	p += await _overnight(tree)
+	p += await _colleague(tree)
 	p += await _reoffered(tree)
 	return p
 
@@ -113,8 +116,58 @@ func _overnight(tree: SceneTree) -> Array:
 	pm._sig = ""
 	pm.refresh()
 	var t := App.texts(pm.body)
-	if not t.contains("I&C technician's lock stays on overnight"):
+	if not t.contains("I&C technician's lock stays on until its job is done"):
 		p.append("the form does not say the lock stays on overnight: %s" % t.left(700))
+	main.free()
+	return p
+
+
+## Two technicians (the user, 2026-10-25): ic2 isolates the transmitter, the job goes to ic1 and is held at 16:00;
+## ic2 goes home with their lock on and it stays (no removal by authority, none offered to the supervisor), and the
+## permit form says so.
+func _colleague(tree: SceneTree) -> Array:
+	var main := App.start(tree)
+	var why: String = await _start(tree, main)
+	if why != "":
+		main.free()
+		return [why]
+	var ui = main.ui
+	var e = ui.clock.engine
+	_until(ui, 15, 40)
+	var p := _form(ui, CAL, ["request", "approve"])
+	e.npc_queue.append(["lock", CAL, 0, "ic2"])      # the isolating technician's lock, as their step 9 makes it
+	ui.clock.run_steps(2)
+	p += _form(ui, CAL, ["issue"])
+	var wi: int = e.m.work_ix[CAL]
+	if e.pstate[wi] != 4:
+		main.free()
+		return p + ["the calibration's permit was not issued: %d" % e.pstate[wi]]
+	_until(ui, 16, 40)
+	var holder := ""
+	for ev in e.events:
+		if ev[1] == "task" and ev[3] == "job_cond_p3_cal" and ev[4] == "held":
+			holder = str(ev[2])
+		if ev[1] == "remove_lock" or (ev[1] == "task" and ev[3] == "remove_left_locks"):
+			p.append("the colleague's lock was removed by authority (or its removal given): %s" % str(ev))
+	var me: int = e.st_trainee
+	for inst in e.sp_queue[me] + ([e.sp_cur[me]] if e.sp_cur[me] != null else []):
+		if inst["task"] == "remove_left_locks":
+			p.append("the supervisor was asked to remove the colleague's lock")
+	if holder == "" or holder == "ic2":
+		p.append("the job was not held by the other technician: %s" % holder)
+	if e.sp_pos[e._sm.person_ix["ic2"]] != -1:
+		p.append("the isolating technician did not go home")
+	if e.lockbits[e._iso[e.m.isolation_ix["iso_cond_p3"]][4]] != 1:
+		p.append("the transmitter is no longer isolated")
+	if e.pstate[wi] != 5:
+		p.append("the permit did not stay accepted overnight: %d" % e.pstate[wi])
+	ui.open_permits(CAL)
+	var pm = ui.permits
+	pm._sig = ""
+	pm.refresh()
+	var t := App.texts(pm.body)
+	if not t.contains("I&C technician 2's lock stays on until its job is done"):
+		p.append("the form does not say the colleague's lock stays on overnight: %s" % t.left(700))
 	main.free()
 	return p
 

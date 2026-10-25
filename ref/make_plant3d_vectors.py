@@ -2206,6 +2206,35 @@ def overnight_staff():
     return st
 
 
+def colleague_overnight_staff():
+    """The overnight staff with the gauge isolated by one instrument technician (ic1, who isolates) and calibrated by
+    another (ic2, who does the job): the job held overnight keeps ic1's lock too (§17.10; the user, 2026-10-25), and
+    the deisolation goes to ic1, the lock's owner (§17.11)."""
+    st = overnight_staff()
+    st['roles'].append({'id': 'ic_iso', 'title': 'Instrument technician (isolations)', 'discipline': 'inst',
+                        'play': True, 'authority': ['operate_local', 'lock_instrument'], 'routine': 'ic_days'})
+    next(q for q in st['people'] if q['id'] == 'ic1')['role'] = 'ic_iso'
+    st['people'].append({'id': 'ic2', 'role': 'ic_tech', 'roster': 'day', 'call': 'Instruments 2'})
+    for t in st['tasks']:
+        if t['id'] == 'have_gauge_isolated':
+            t['steps'] = [{'call': {'role': 'ic_iso', 'task': 'iso_gauge'}}]
+    for r in st['reactions']:
+        if r['task'] == 'deiso_gauge':
+            r['roles'] = ['ic_tech', 'ic_iso']
+    return st
+
+
+def colleague_off_staff():
+    """colleague_overnight_staff with the isolating technician (ic1) on Mondays only: off when the job resumes on
+    Tuesday, their lock stays on while the job goes on (adversarial review of the user's rule of 2026-10-25); once it
+    is handed back, ic1 still away, the lock is a lock left (§17.9) and the supervisor removes it by authority."""
+    st = colleague_overnight_staff()
+    day = next(r for r in st['rosters'] if r['id'] == 'day')
+    st['rosters'].append(dict(day, id='mon_only', days=['mon']))
+    next(q for q in st['people'] if q['id'] == 'ic1')['roster'] = 'mon_only'
+    return st
+
+
 def no_reactions_staff():
     """The overnight staff with no reactions at all: the night supervisor's own routine calls the instrument
     technician to isolate the gauge at 20:00 (adversarial review: a kept call in content without reactions)."""
@@ -2464,6 +2493,19 @@ def staff_runs():
          'and the permit is closed', {'start': {'day': 1, 'time': '14:30'}}, overnight_staff(),
          Trainee(extra=[[2, 'permit', 'wo_gauge', 'request', None], [3, 'permit', 'wo_gauge', 'approve', None]]),
          11600, 200),
+        ('a colleague\'s lock kept overnight (§17.10; the user, 2026-10-25): one instrument technician isolates '
+         'the gauge, another accepts its permit and leaves at 16:00 with the job held; the first leaves with their '
+         'lock on and nobody removes it by authority; at 07:00 the job resumes and is handed back, and the '
+         'deisolation goes to the lock\'s owner, who unlocks their own lock', {'start': {'day': 1, 'time': '14:30'}},
+         colleague_overnight_staff(),
+         Trainee(extra=[[2, 'permit', 'wo_gauge', 'request', None], [3, 'permit', 'wo_gauge', 'approve', None]]),
+         11600, 200),
+        ('a colleague\'s lock kept while they are off (§17.10; adversarial review): the isolating technician works '
+         'Mondays only; on Tuesday the held job resumes and is done with their lock still on (no removal while it '
+         'goes on); once it is handed back, the lock is a lock left and the supervisor removes it by authority',
+         {'start': {'day': 1, 'time': '14:30'}}, colleague_off_staff(),
+         Trainee(extra=[[2, 'permit', 'wo_gauge', 'request', None], [3, 'permit', 'wo_gauge', 'approve', None]]),
+         12400, 200),
         ('a day-shift job suspended overnight (§17.10): the technician\'s lock removed by authority at night; the '
          'held job is abandoned at once (nobody works unisolated in the morning); the re-isolation finds no '
          'technician on duty and is offered again when the technician comes on at 07:00: the gauge is isolated, '

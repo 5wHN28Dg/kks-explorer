@@ -516,8 +516,8 @@ func _isolation(e, w: Dictionary, st: int) -> void:
 		if e._sm != null:
 			for y in lks:
 				if e._sm.overnight(e, y, w["id"]):
-					status += " · %s's lock stays on overnight: they finish the job on their next shift" \
-							% Permits.person_words(e, y)
+					status += " · %s's lock stays on until its job is done (held to its holder's next duty, or " \
+							% Permits.person_words(e, y) + "under way)"
 		var sl := W.label(status, 17, W.BAD_COLOUR if locked else (W.OK_COLOUR if safe else W.DIM))
 		sl.name = "point_%d" % p
 		box.add_child(sl)

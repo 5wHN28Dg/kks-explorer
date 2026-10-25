@@ -1634,11 +1634,16 @@ both engines and the vectors (§19):
   leave the site as anyone off duty with nothing to do. When their next duty starts (phase 1, after its `duty`
   event) the held instances go back into their queue (event `resumed` each, in the order held) and are picked by the
   queue's order. A jump skips them (event `skipped`) and placement clears them.
-- **A lock kept for a held job is not `lock_left`** (§16.7): a person who leaves the site with a lock on a work they
-  hold a job for (the job's `work`) keeps that lock, the equipment isolated and the permit held (not cancelled or suspended); they remove it
-  themselves when their job resumes and ends (their own unlock, as any). The supervisor's removal by authority stays
+- **A lock kept for a job is not `lock_left`** (§16.7; the user, 2026-10-25): while anyone has a job for a work
+  (an instance of a task with `resume`, given for that work: held, queued or current), every lock on that work's
+  isolation stays on, whoever placed it: a person who leaves the site with such a lock keeps it (the technician who
+  isolated for a colleague's job too, and when the job resumes on a day they are off), the equipment isolated and
+  the permit held (not cancelled or suspended); each removes their own lock when the job ends (their own unlock, as
+  any: the deisolation's task goes to the lock's owner on duty, §17.11). Once the job has ended, a lock whose owner
+  is still off site is a lock left like any other (§17.9). The supervisor's removal by authority stays
   for a holder who can't return (from the permit form, logged as before), and for any other lock they left (§17.9:
-  `lock_left` counts only locks not kept, and `remove_locks` removes only those).
+  `lock_left` counts only locks not kept, and `remove_locks` removes only those). No removal by authority is made
+  for a kept lock.
 - **A permit re-issued after a suspension is offered again.** When a permit moves back to approved by itself (§15.3:
   a lock removed by authority), its jobs (instances of a task with `resume`, given for that work: current, queued or
   held) are abandoned at once in phase 2 (event `abandoned` each), so nobody works on equipment no longer isolated,
