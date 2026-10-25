@@ -197,3 +197,51 @@ own spikes had no samples, so they count as the app's and those walks cannot pas
 views × effect switches in one run); `phone/frames.sh` `STRESS=1` and `SAMPLE=1`, with
 `tools/plant3d/bench/reclaim_frames.py`; the trace's config `phone/trace.pbtxt` and its reader
 `tools/plant3d/bench/pftrace.py` (no Perfetto tools needed).
+
+**W1 and C1 judged by the rule (2026-10-25).** Release builds with the bake, test-signed, Note 9 `lean+vis`, a
+first start each, `SAMPLE=1` and `probe=1`. "Final" is #249's code (before A1 was merged). "Merged" is main with A1
+(the people) and this change. The evidence (`rule.txt`, `samp.txt`, the logs) is kept on this laptop
+(`~/kks-work/build/plant-gpu/walks/`), not in the repository.
+
+| `wtp` / `camp` walk (600 s) | Build | Start | Frames at ≥ 30 fps | Frames over 100 ms: the app's / excluded as reclaim | Worst | Reclaim in the walk's samples | Peak PSS | First walkable frame |
+|---|---|---|---|---|---|---|---|---|
+| `wtp` | final | 31.6 °C | 97.19 % | 0 / 0 | 65.6 ms | 0 % | 1,138 MB | 11.8 s |
+| `wtp` | final | 32.0 °C | 97.09 % | 0 / 0 | 73.1 ms | 0 % | 1,137 MB | 11.9 s |
+| `wtp` | merged, before the staging cap (below) | 29.6 °C | 99.20 % | 0 / 0 | 87.7 ms | 1.85 % | 1,137 MB | 11.5 s |
+| `wtp` | merged | 31.7 °C | 97.91 % | 0 / 0 | 76.0 ms | 0.05 % | 1,084 MB | 11.1 s |
+| `camp` | final | 32.0 °C | 99.51 % | 0 / 0 | 61.5 ms | 0 % | 1,142 MB | 11.9 s |
+| `camp` | final | 32.1 °C | 99.45 % | 0 / 0 | 58.6 ms | 0.29 % | 1,143 MB | 11.7 s |
+| `camp` | final | 30.8 °C | 99.66 % | 0 / 0 | 69.5 ms | 0.38 % | 1,152 MB | 11.8 s |
+| `camp` | merged | 31.9 °C | 99.59 % | 0 / 1 | 116.9 ms | 0.57 % | 1,116 MB | 11.6 s |
+
+Every walk passes, so W1 and C1 are done. One frame was excluded: the merged `camp` walk's 116.9 ms frame on the way
+back near the plant gate (GPU 109 ms, one of four GPU frames of 67–109 ms within a second). kswapd scanned 4,361 pages
+in the 0.29 s around it, and the phone's free memory rose by 49 MB, then fell again. Who asked for that memory the
+counters cannot say. It may have been the app itself; the rule excludes the frame either way, as the user decided.
+
+**The app's memory (2026-10-25).** The merged build's peak PSS on the `wtp` walk is 1,137 MB:
+- graphics 635 MB: the GL driver's 578 MB and the swap chain's 57 MB;
+- native heap 445 MB;
+- code 68 MB, mostly the APK's mapped files.
+
+Of the graphics, Godot's own allocations (the MEM line this change adds) are 330 MB: textures 129 MB (the bake's
+lightmap 64 MB and shadowmask 8 MB, the sky 8 MB, the materials), buffers 71 MB, and 130 MB in neither. That 130 MB is
+mostly the engine's upload staging buffers. They grow to `rendering/rendering_device/staging_buffer/max_size_mb`
+(128 MB by default) and stay that size. The driver's other ~250 MB is outside the engine's count: blocks it reserves
+but has not filled, and its own allocations.
+
+The project now caps the staging buffers at 16 MB. It costs nothing in looks or people: the same textures and meshes,
+uploaded in more rounds.
+- Laptop, mobile renderer: Godot's allocation fell from 250 to 159 MB, with the first frame at 2.30 s both times. A
+  4 MB cap saved 12 MB more but cost 0.2 s.
+- Note 9, same walk: Godot's allocation fell from 330 to 238 MB, the GL driver's count from 578 to 554 MB, the native
+  heap from 445 to 415 MB, and peak PSS from 1,137 to 1,084 MB (−53 MB, one walk each). The first walkable frame was
+  11.1 s against 11.5 s, and no frame went over 100 ms.
+
+Not done, because none of it is cheap:
+- The engine's transfer workers keep a staging buffer each, as large as the largest upload they have made (up to one
+  per CPU core). This can't be set from the project.
+- The driver's unfilled blocks.
+- The native heap: on the laptop, Godot's own allocations are about 280 MB, 120 MB of them the areas' scenes. The rest
+  on the phone is the driver's.
+- Smaller lightmap or sky textures would cost looks.

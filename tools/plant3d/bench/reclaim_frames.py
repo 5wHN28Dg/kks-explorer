@@ -172,7 +172,7 @@ def rule(d):
             i = max(bisect.bisect_right(times, start), 1)   # the first sample after the frame began
             while i < len(s):
                 if reclaimed(s[i - 1], s[i]):
-                    ev += [raw[i - 1], raw[i]]
+                    ev += [l for l in (raw[i - 1], raw[i]) if not ev or l != ev[-1]]   # (a sample shared by two pairs once)
                 if times[i] >= end:
                     break
                 i += 1

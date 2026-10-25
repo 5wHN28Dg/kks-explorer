@@ -65,17 +65,16 @@ resin leak repaired under a permit), the scenarios `wtp_normal` and `wtp_flood`,
 and the WTP's fault forks. A `screens:` link opens its screen at a desk that has it (the WTP's own for its screens).
 The CIP skid and the pit's dosing skids are new drawing (five small parts); not yet walked on the Note 9.
 
-**W1 and C1, not yet done (2026-10-24, #249):** on the merged code (W2, W3, P1b, S1) with far views for the train,
-the WTP and the intake, occluders on every building and buildings' insides drawn only near them, the Note 9's walks
-over the train, the WTP and the camp hold ≥ 98.8 % of frames at ≥ 30 fps, peak PSS at most 1.16 GB, first walkable frame
-11–12 s and the APK at 139.4 MB; one build passed all three walks with no frame over 100 ms, but the final one had 3
-(`wtp`) and 1 (`camp`) single GPU frames of 102–148 ms with no Android cause found (0066, "Frame spikes and the far
-views"). Those frames are what is left before W1 and C1 are done.
-
-**A1 as built (2026-10-25):** KayKit's CC0 clips (committed, pinned) on bodies, work clothes and PPE of our own
-made by the build (eight looks by role, each with a road variant); our own work poses; skinned avatars near, posed
-meshes further, nothing beyond; bound to the staff engine (place, way, task step, look by role, the hat off the
-process areas). The Note 9 holds 12 skinned people within the frame rules (decision 0064, as built); the laptop 24.
+**W1 and C1 done (2026-10-25, #258):** on the merged code (W2, W3, P1b, S1, A1) with far views for the train,
+the WTP and the intake, occluders on every building and buildings' insides drawn only near them. The last frames over
+100 ms that #249 left came from the phone's memory reclaim (0066, "The last frame spikes"). By the rule as the user
+decided it (frames the app causes, above), every `wtp` and `camp` walk of the final and the merged builds passes:
+- 6 walks with no frame over 100 ms at all, and 1 frame excluded as reclaim in the merged `camp` walk;
+- 97.09–99.66 % of frames at ≥ 30 fps;
+- peak PSS at most 1.15 GB, 1,084 MB on the merged `wtp` walk with the staging buffers capped at 16 MB (0066, "The
+  app's memory");
+- first walkable frame 11.1–11.9 s;
+- the APK at 142.0 MB.
 
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4
 needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, S2 with C1, then S3, then S4.
