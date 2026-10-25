@@ -1706,7 +1706,7 @@ share, measured with the frames walk among a crowd (MILESTONES.md M3):
 
 | | Note 9 (`lean+vis`) | Laptop (`full`) |
 |---|---|---|
-| Skinned avatars drawn | ≤ 6, within 25 m | ≤ 24, within 40 m |
+| Skinned avatars drawn | ≤ 12, within 25 m (A1's measurement, below) | ≤ 24, within 40 m |
 | Their meshes | LOD0 ≤ 4,000 triangles (≤ 10 m), LOD1 ≤ 1,500; one material; ≤ 56 bones | the same assets |
 | Posed band | to 80 m: unskinned meshes in 6 poses (≤ 500 triangles), one MultiMesh per pose and body (the outfit's colours per instance), pose changed 4 times a second; ≤ 50 draw calls | to 150 m; ≤ 50 draw calls |
 | Beyond | not drawn | not drawn |
@@ -1722,6 +1722,14 @@ share, measured with the frames walk among a crowd (MILESTONES.md M3):
 The nearest by distance get the skinned slots, people the trainee talks to or works with first. A tier that misses
 its share after M3's measurement lowers its counts, never the frame rules (MILESTONES.md says what then needs the
 user).
+
+**Measured (milestone A1, 2026-10-25, decision 0064 as built):** the Note 9, release build, `lean+vis`, the 10-minute
+`frames` walk with N skinned people round the walker (`crowd=N`), each run started at a battery temperature of at most
+30 °C, the counts interleaved. Medians (range): 0 people (3 runs) 99.39 % (98.69–99.43) of frames at ≥ 30 fps, GPU
+median 20.6 ms; 6 (2 runs) 99.39 % (99.35–99.42), +0.15 ms; 12 (2 runs) 99.40 % (99.35–99.45), +0.3 ms; 24 (2 runs)
+98.85 % (98.59–99.10), +0.7 ms, one frame of 112 ms in one run. No other frame over 100 ms; first walkable frame
+10.8–11.9 s; peak PSS 1,102–1,158 MB; the people's CPU 0.70 / 0.91 / 1.33 ms a frame (mean). The phone's count is
+12. Third runs for 6 and 12 were not possible: the shared phone stayed above 30 °C for the next four hours.
 
 ### 18.5 Interiors and loading
 

@@ -22,10 +22,11 @@ const PRESETS := {
 		"detail_min_px": 3.0, "people": PEOPLE_PHONE},
 }
 ## The people's share per tier (docs/PLANT3D.md §18.4, app/people.gd): how many skinned avatars and within what
-## distance, LOD0's distance, where the clips run at 30 Hz, the posed band's distance, shadows.
+## distance, LOD0's distance, where the clips run at 30 Hz, the posed band's distance, shadows. The phone's 12 is milestone
+## A1's measurement on the Note 9 (decision 0064, as built); the laptop's 24 the spec's.
 const PEOPLE_FULL := {"skinned": 24, "skinned_range": 40.0, "lod0_range": 10.0, "anim_near": 10.0, "posed_range": 150.0,
 	"shadows": true}
-const PEOPLE_PHONE := {"skinned": 6, "skinned_range": 25.0, "lod0_range": 10.0, "anim_near": 10.0, "posed_range": 80.0,
+const PEOPLE_PHONE := {"skinned": 12, "skinned_range": 25.0, "lod0_range": 10.0, "anim_near": 10.0, "posed_range": 80.0,
 	"shadows": true}
 
 ## The tier's people share, with a measurement's own skinned count (`people_skinned=N`) when given.
