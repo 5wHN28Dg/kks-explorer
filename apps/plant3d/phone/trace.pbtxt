@@ -7,7 +7,7 @@
 # then, while phone/frames.sh walks:
 #   adb shell perfetto --txt -c - --background -o /data/misc/perfetto-traces/walk.pftrace < apps/plant3d/phone/trace.pbtxt
 # and after it: adb shell kill -TERM PID (the PID it printed), adb pull the file, delete it on the phone, and read it
-# with tools/plant3d/bench/pftrace.py.
+# with tools/plant3d/bench/pftrace.py. Last, adb shell setprop persist.traced.enable 0 (the phone as it was).
 buffers { size_kb: 65536 fill_policy: DISCARD }
 buffers { size_kb: 8192 fill_policy: DISCARD }
 data_sources { config { name: "linux.ftrace" target_buffer: 0 ftrace_config {

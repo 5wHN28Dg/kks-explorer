@@ -11,6 +11,9 @@
 #   STRESS=1  (the Note 9 only) the phone's memory under pressure, as when its own services start: 2 MB a second written
 #             to a file in /data/local/tmp through the walk, deleted after. The kernel's reclaim (kswapd) then stalls
 #             single GPU frames to 50-160 ms (decision 0066, "The last frame spikes"): a walk that reproduces them
+#   SAMPLE=1  (the Note 9 only) every 200 ms the Mali GPU's clock and load and the kernel's reclaim counters
+#             (/proc/vmstat, /proc/meminfo) into samp.txt, with clock.txt to line it up with the log:
+#             tools/plant3d/bench/reclaim_frames.py RESULTS_DIR shows the long GPU frames while the kernel reclaimed
 #   KEEP=1    on a phone whose own plant app holds someone's run and settings (the Honor): installed over it with its
 #             data kept (install -r), never cleared or removed; the walk saves to a file of its own (app/main.gd), and
 #             their own build is put back afterwards (pulled first: a saved run opens only in the build that saved
@@ -51,13 +54,24 @@ installed() {
 bright_mode=""; bright_level=""
 KEEP="${KEEP:-}"; [ "$KEEP" = 0 ] && KEEP=""
 kept_apk=""
-[ -n "${STRESS:-}" ] && [ "$SERIAL" != "$NOTE9" ] && { echo "STRESS is for the Note 9 only" >&2; exit 2; }
+STRESS="${STRESS:-}"; [ "$STRESS" = 0 ] && STRESS=""
+SAMPLE="${SAMPLE:-}"; [ "$SAMPLE" = 0 ] && SAMPLE=""
+[ -n "$SAMPLE" ] && [ "$SERIAL" != "$NOTE9" ] && { echo "SAMPLE is for the Note 9 only" >&2; exit 2; }
+[ -n "$STRESS" ] && [ "$SERIAL" != "$NOTE9" ] && { echo "STRESS is for the Note 9 only" >&2; exit 2; }
 [ -n "$KEEP" ] && [ "$SERIAL" = "$NOTE9" ] && { echo "KEEP is for another phone's own plant app; the Note 9's is cleared" >&2; exit 2; }
 STRESS_F=/data/local/tmp/plant-stress.bin
+stress_on=""
+SAMPLE_F=/data/local/tmp/plant-samp.txt
+sample_on=""
 cleanup() {
   trap '' INT TERM   # (a second Ctrl-C must not stop the reinstall of their own build)
-  if [ -n "${STRESS:-}" ]; then
-    sh_ "touch $STRESS_F.stop; sleep 2; rm -f $STRESS_F $STRESS_F.stop" || true
+  if [ -n "$sample_on" ]; then
+    sh_ "touch $SAMPLE_F.stop; sleep 1" || true
+    a pull "$SAMPLE_F" "$OUT/samp.txt" >/dev/null 2>&1 || true
+    sh_ "rm -f $SAMPLE_F $SAMPLE_F.stop" || true
+  fi
+  if [ -n "$stress_on" ]; then   # (the writer, a second a round, deletes its file and the mark when it sees the mark)
+    sh_ "touch $STRESS_F.stop; for i in 1 2 3 4 5 6 7 8; do [ -e $STRESS_F.stop ] || break; sleep 1; done; rm -f $STRESS_F $STRESS_F.stop" || true
   fi
   if [ -n "$bright_level" ]; then
     sh_ settings put system screen_brightness_mode "$bright_mode" || true
@@ -135,10 +149,21 @@ echo "before: battery $(echo "$b" | sed -n 's/^ *level: //p' | head -1)% tempera
 t0=$(sh_ date +%s)
 act=$(sh_ cmd package resolve-activity --brief "$PKG" | tail -1)
 say "walking $SECONDS_ s (+5 s not measured)"
-if [ -n "${STRESS:-}" ]; then
-  # a file growing by 2 MB a second (at most 1.6 GB, as a system trace written through the walk): page cache the
-  # kernel must reclaim; it stops when cleanup touches $STRESS_F.stop
-  sh_ "rm -f $STRESS_F $STRESS_F.stop; nohup sh -c 'i=0; while [ ! -e $STRESS_F.stop ] && [ \$i -lt 800 ]; do dd if=/dev/zero of=$STRESS_F bs=1048576 count=2 seek=\$((i * 2)) conv=notrunc 2>/dev/null; i=\$((i + 1)); sleep 1; done; rm -f $STRESS_F' >/dev/null 2>&1 &"
+if [ -n "$SAMPLE" ]; then
+  # uptime (the kernel's boot clock), Mali clock (Hz), Mali load (%), then /proc/vmstat's pswpin pswpout
+  # allocstall_normal allocstall_movable pgscan_kswapd pgscan_direct compact_stall (in its own order), then MemFree,
+  # MemAvailable and SwapFree (kB); clock.txt: uptime and the phone's epoch time together
+  sample_on=1
+  M=/sys/class/misc/mali0/device
+  sh_ "rm -f $SAMPLE_F $SAMPLE_F.stop; nohup sh -c 'while [ ! -e $SAMPLE_F.stop ]; do read up idle < /proc/uptime; echo \$up \$(cat $M/clock 2>/dev/null || echo 0) \$(cat $M/utilization 2>/dev/null || echo 0) \$(grep -E \"^(pswpin|pswpout|allocstall_normal|allocstall_movable|pgscan_kswapd|pgscan_direct|compact_stall) \" /proc/vmstat | cut -d\" \" -f2) \$(grep -E \"^(MemFree|MemAvailable|SwapFree):\" /proc/meminfo | tr -s \" \" | cut -d\" \" -f2); sleep 0.2; done' > $SAMPLE_F 2>/dev/null &"
+  sh_ "cat /proc/uptime; date +%s.%N" > "$OUT/clock.txt"
+fi
+if [ -n "$STRESS" ]; then
+  # a file growing by 2 MB a second through the walk (as a system trace written meanwhile): page cache the kernel must
+  # reclaim; the writer stops, and deletes the file and the mark, when cleanup puts the mark there
+  n=$((SECONDS_ + 300))
+  stress_on=1
+  sh_ "rm -f $STRESS_F $STRESS_F.stop; nohup sh -c 'i=0; while [ ! -e $STRESS_F.stop ] && [ \$i -lt $n ]; do dd if=/dev/zero of=$STRESS_F bs=1048576 count=2 seek=\$((i * 2)) conv=notrunc 2>/dev/null; i=\$((i + 1)); sleep 1; done; rm -f $STRESS_F $STRESS_F.stop' >/dev/null 2>&1 &"
   echo "stress: 2 MB/s written to $STRESS_F during the walk" >> "$OUT/state.txt"
 fi
 sh_ am start -W -n "$act" > "$OUT/am_start.txt"

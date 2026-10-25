@@ -5,21 +5,27 @@ running meanwhile (decision 0066, "The last frame spikes").
 
   pftrace.py TRACE [--threads kswapd0,kworker/0:0] [--over 45]
 
+It maps the file and keeps only Swappy's marks and the named threads' running spans (a 1.2 GB walk's trace: about
+1 GB of memory and ten minutes here; run it under a memory cap). A thread is named by the scheduler's comm, so all
+threads of one name count together.
+
 Each GPU frame's time is Swappy's: from its "waiting for GPU completion N" slice (the frame handed to the GPU) to the
 "GPU completion|0" counter that follows on the same thread (its fence signalled), as Godot's Android frame pacing
-writes them through atrace. For every named kernel thread the report gives how much of the long frames (over --over
+writes them through atrace (the time also holds how late that thread wakes after the fence: under a busy CPU it is
+longer than the GPU's own work, which Godot's frames.csv measures). For every named kernel thread the report gives how much of the long frames (over --over
 ms) and of the others it ran; then each long frame with those threads' time in it.
 """
 import argparse
 import bisect
 import collections
+import mmap
+import os
 import sys
 
 # field numbers: protos/perfetto/trace/trace_packet.proto, ftrace/ftrace_event_bundle.proto, ftrace/ftrace_event.proto,
-# ftrace/sched.proto, ftrace/ftrace.proto, ps/process_tree.proto
+# ftrace/sched.proto, ftrace/ftrace.proto
 PACKET = 1
 TP_FTRACE = 1
-TP_PROCESS_TREE = 2
 BUNDLE_CPU = 1
 BUNDLE_EVENT = 2
 EV_TIMESTAMP = 1
@@ -67,47 +73,56 @@ def text(b, span):
     return b[span[0]:span[1]].decode("utf-8", "replace")
 
 
-def read(path):
-    """The trace's sched switches [(ts_ns, cpu, prev_pid, next_pid, next_comm)], atrace prints [(ts_ns, pid, text)],
-    and thread names {tid: name} (process tree, then the switches' comms)."""
-    b = open(path, "rb").read()
-    switches, prints, names = [], [], {}
-    for f, t, span in fields(b):
-        if f != PACKET or t != 2:
-            continue
-        for pf, pt, pv in fields(b, *span):
-            if pf == TP_FTRACE and pt == 2:
-                cpu = 0
-                for bf, bt, bv in fields(b, *pv):
-                    if bf == BUNDLE_CPU and bt == 0:
-                        cpu = bv
-                    elif bf == BUNDLE_EVENT and bt == 2:
-                        ts = pid = 0
-                        for ef, et, ev in fields(b, *bv):
-                            if ef == EV_TIMESTAMP:
-                                ts = ev
-                            elif ef == EV_PID:
-                                pid = ev
-                            elif ef == EV_SCHED_SWITCH and et == 2:
-                                m = {k: v for k, _, v in fields(b, *ev)}
-                                comm = text(b, m[SW_NEXT_COMM]) if SW_NEXT_COMM in m else ""
-                                switches.append((ts, cpu, m.get(SW_PREV_PID, 0), m.get(SW_NEXT_PID, 0), comm))
-                            elif ef == EV_PRINT and et == 2:
-                                m = {k: v for k, _, v in fields(b, *ev)}
-                                if PRINT_BUF in m:
-                                    prints.append((ts, pid, text(b, m[PRINT_BUF]).rstrip("\n")))
-            elif pf == TP_PROCESS_TREE and pt == 2:
-                for qf, qt, qv in fields(b, *pv):
-                    if qf == 2 and qt == 2:   # Thread {tid = 1, name = 2, tgid = 3}
-                        m = {k: v for k, _, v in fields(b, *qv)}
-                        if 2 in m:
-                            names[m.get(1, 0)] = text(b, m[2])
-    switches.sort()
+def read(path, threads=()):
+    """One pass over the trace (mapped, not read into memory: a walk's trace is 1-2 GB): Swappy's prints
+    [(ts_ns, pid, text)], and for every thread whose name (sched_switch's comm) is in `threads` its running spans
+    {name: [(start_s, end_s)]} (threads of one name together, e.g. kworker/0:0 over the trace's life); also how many
+    sched switches it held, whether it ended short (a cut last packet) and its first switch's time (s)."""
+    wanted = set(threads)
+    prints, spans, cur = [], collections.defaultdict(list), {}
+    switches = 0
+    t0 = None
+    cut = False
+    with open(path, "rb") as fh:
+        b = mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) if os.path.getsize(path) else b""
+        try:
+            for f, t, span in fields(b):
+                if f != PACKET or t != 2:
+                    continue
+                for pf, pt, pv in fields(b, *span):
+                    if pf != TP_FTRACE or pt != 2:
+                        continue
+                    cpu = 0
+                    for bf, bt, bv in fields(b, *pv):
+                        if bf == BUNDLE_CPU and bt == 0:
+                            cpu = bv
+                        elif bf == BUNDLE_EVENT and bt == 2:
+                            ts = pid = 0
+                            for ef, et, ev in fields(b, *bv):
+                                if ef == EV_TIMESTAMP:
+                                    ts = ev
+                                elif ef == EV_PID:
+                                    pid = ev
+                                elif ef == EV_SCHED_SWITCH and et == 2:
+                                    switches += 1
+                                    t0 = ts / 1e9 if t0 is None else min(t0, ts / 1e9)
+                                    m = {k: v for k, _, v in fields(b, *ev)}
+                                    comm = text(b, m[SW_NEXT_COMM]) if SW_NEXT_COMM in m else ""
+                                    if cpu in cur and cur[cpu][1] in wanted:
+                                        spans[cur[cpu][1]].append((cur[cpu][0], ts / 1e9))
+                                    cur[cpu] = (ts / 1e9, comm)
+                                elif ef == EV_PRINT and et == 2:
+                                    m = {k: v for k, _, v in fields(b, *ev)}
+                                    if PRINT_BUF in m:
+                                        s_ = text(b, m[PRINT_BUF])
+                                        if "GPU completion" in s_:
+                                            prints.append((ts, pid, s_.rstrip("\n")))
+        except (IndexError, ValueError):
+            cut = True   # (a trace stopped while writing: what came before is still good)
     prints.sort()
-    for ts, cpu, prev, nxt, comm in switches:
-        if nxt and nxt not in names and comm:
-            names[nxt] = comm
-    return switches, prints, names
+    for v in spans.values():
+        v.sort()
+    return prints, spans, switches, cut, t0
 
 
 def gpu_frames(prints):
@@ -119,18 +134,6 @@ def gpu_frames(prints):
         elif s.startswith("C|") and s.split("|")[2:4] == ["GPU completion", "0"] and pid in start:
             out.append((start[pid] / 1e9, (ts - start.pop(pid)) / 1e6))
     return out
-
-
-def running(switches):
-    """{tid: [(start_s, end_s)]} for every thread that ran."""
-    run, cur = collections.defaultdict(list), {}
-    for ts, cpu, prev, nxt, comm in switches:
-        t = ts / 1e9
-        if cpu in cur:
-            s0, tid = cur[cpu]
-            run[tid].append((s0, t))
-        cur[cpu] = (t, nxt)
-    return run
 
 
 class Busy:
@@ -151,28 +154,31 @@ class Busy:
 
 
 def report(path, threads, over, out=sys.stdout):
-    switches, prints, names = read(path)
+    prints, spans, switches, cut, t0 = read(path, threads)
+    if cut:
+        print("the trace ends in a cut packet: read up to it", file=out)
+    if not switches:
+        print("no sched switches in the trace (a newer Perfetto's compact_sched is not read here)", file=out)
     frames = gpu_frames(prints)
-    run = running(switches)
     if not frames:
         print("no GPU frames (Swappy's atrace slices: the trace needs atrace_categories gfx and atrace_apps)", file=out)
         return 1
-    first = switches[0][0] / 1e9 if switches else frames[0][0]
+    first = t0 if t0 is not None else frames[0][0]
     frames = [f for f in frames if f[0] > first + 1.0]   # (the trace's first second: threads' states unknown)
+    if not frames:
+        print("no GPU frames after the trace's first second", file=out)
+        return 1
     long_ = [f for f in frames if f[1] > over]
     print("%d GPU frames, %d over %.0f ms (longest %.1f ms)" % (len(frames), len(long_), over, max(f[1] for f in frames)), file=out)
-    busy = {}
+    busy = {n: Busy(spans.get(n, [])) for n in threads}
+    def share(name, fs):
+        tot = sum(ms for _, ms in fs) / 1000.0
+        return 100.0 * sum(busy[name](a, a + ms / 1000.0) for a, ms in fs) / tot if tot > 0 else 0.0
     for name in threads:
-        tids = [t for t, n in names.items() if n == name]
-        busy[name] = [Busy(run[t]) for t in tids if t in run]
-        def share(fs):
-            tot = sum(ms for _, ms in fs) / 1000.0
-            ran = sum(b(a, a + ms / 1000.0) for a, ms in fs for b in busy[name])
-            return 100.0 * ran / tot if tot > 0 else 0.0
         print("  %-14s ran %5.1f %% of the long frames' time, %4.1f %% of the others'" % (
-            name, share(long_), share([f for f in frames if f[1] <= over])), file=out)
+            name, share(name, long_), share(name, [f for f in frames if f[1] <= over])), file=out)
     for a, ms in long_:
-        print("  %.3f s  %6.1f ms  " % (a, ms) + "  ".join("%s %.1f ms" % (n, 1000.0 * sum(b(a, a + ms / 1000.0) for b in busy[n])) for n in threads), file=out)
+        print("  %.3f s  %6.1f ms  " % (a, ms) + "  ".join("%s %.1f ms" % (n, 1000.0 * busy[n](a, a + ms / 1000.0)) for n in threads), file=out)
     return 0
 
 

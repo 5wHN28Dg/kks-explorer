@@ -546,6 +546,9 @@ func _shots() -> void:
 		var nm := nv[0].validate_filename()   # (a name only: on a phone it comes from a shared folder)
 		if nv.size() > 1 and nv[1] != "map":
 			var v := nv[1].split(",")
+			if v.size() != 5:
+				_say("shot %s: not x,y,z,yaw,pitch (%s)" % [nm, nv[1]])
+				continue
 			if map.active: toggle_map()
 			player.set_mode(Player.Mode.FLY)
 			player.global_position = Plant.g(float(v[0]), float(v[1]), float(v[2])) - Vector3.UP * Player.EYE
