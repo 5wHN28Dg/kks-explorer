@@ -97,6 +97,23 @@ at the shift change on the laptop, about 0.20 ms on the Note 9). A job held over
 isolation, whoever placed it (the user, 2026-10-25: the technician who isolated for a colleague's job keeps theirs on
 and removes it when the job resumes). Not yet measured: the Note 9 frames walk with S2's crowd.
 
+**S3 as built (2026-10-26):** the water treatment plant worked by its people (PLANT3D.md §17.12): a WTP operator and
+a shift chemist in each crew and two chemists on days, at STAFF.md §1's numbers; the WTP's places measured on the
+navigation mesh (its control room with the WTP desk and lockers, the laboratory, the sample panel, the walk from the
+train and to the intake) and its zones (yards, the hall's hearing protection, face shield and apron in the chemical
+areas); the WTP operator's rounds and the chemists' samples and stock checks, each reading checked against the
+model; the sequences run from the WTP's desk: a filter's backwash ordered by the shift supervisor, a mixed bed's
+regeneration on the laboratory's silica finding, an RO train's cleaning in place, an RO trip's flush, the regenerant
+tanks' bulk delivery; the train's control room calling the WTP when its demineralised water runs low; the WTP's jobs
+under permits (cartridge changes and the RO analysers' calibrations added to the model, a mixed bed's internals with
+its gas test), the other stream put in service and the process points locked by the WTP operator. Two engine
+additions, bit for bit in both engines: reactions limited to the alarms and trips of named areas, and reactions on a
+finding (a reading out of its range). The scenario `shift_wtp`; the vectors' `staff.runs`, `reject` and `day` forks
+(PLANT3D.md §19). `tests/test_ui_wtp_staff.gd` plays the WTP operator through a filter backwash ordered by the NPC
+supervisor and the chemist logging a high silica result that the NPC operator acts on with a regeneration. Not built:
+the chemical tanker's delivery under a permit (WATER-TREATMENT §9 leaves the unloading out, and vehicles are S4's).
+STEPCOST
+
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4
 needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, S2 with C1, then S3, then S4.
 

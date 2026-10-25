@@ -786,20 +786,28 @@ class FirstTrainStaff(unittest.TestCase):
         st = self.b.staff
         roles = {p['role'] for p in st.people}
         self.assertEqual(roles, {'shift_sup', 'ccr_op', 'field_op', 'elec_ap', 'mech_tech', 'elec_tech', 'ic_tech',
-                                 'maint_sup', 'hse_officer', 'contractor_sup', 'contractor'})
-        self.assertEqual(sum(1 for p in st.people if p['roster'] == 'shift'), 28)
+                                 'maint_sup', 'hse_officer', 'contractor_sup', 'contractor', 'wtp_op', 'shift_chem',
+                                 'chemist'})
+        self.assertEqual(sum(1 for p in st.people if p['roster'] == 'shift'), 36)
         # STAFF.md §1's numbers on days (milestone S2), and every role played
         count = lambda r: sum(1 for p in st.people if p['role'] == r)  # noqa: E731
         self.assertEqual([count(r) for r in ('mech_tech', 'elec_tech', 'ic_tech', 'maint_sup', 'hse_officer',
                                              'contractor_sup', 'contractor')], [6, 4, 4, 3, 2, 1, 8])
+        # milestone S3: a WTP operator and a shift chemist in each crew, two chemists on days (STAFF.md §1)
+        self.assertEqual([count(r) for r in ('wtp_op', 'shift_chem', 'chemist')], [4, 4, 2])
         self.assertTrue(all(r['play'] for r in st.roles.values()))
         self.assertEqual({z['id'] for z in st.zones}, {'gt_hall', 'st_hall', 'hrsg', 'rack', 'bop', 'cw_house', 'ct',
-                                                        'trafo'})
+                                                        'trafo', 'wtp_yard_w', 'wtp_yard_n', 'wtp_yard_e', 'wtp_hall',
+                                                        'wtp_regen', 'wtp_chem', 'intake'})
+        # S2's people keep their places in the file too; S3's come after them
+        self.assertEqual([p['id'] for p in st.people[56:]], ['a_wtp', 'a_chem', 'b_wtp', 'b_chem', 'c_wtp', 'c_chem',
+                                                             'd_wtp', 'd_chem', 'chem1', 'chem2'])
         self.assertEqual(set(st.put_right), {'ppe', 'permit', 'unsafe'})
         # S1's people keep their places in the file (so their random streams), S2's come after them
         self.assertEqual([p['id'] for p in st.people[:32]][-4:], ['mech1', 'mech2', 'elec1', 'ic1'])
         self.assertEqual(self.b.plant['clock']['day_scale'], 6)
         self.assertIn('staff', self.b.scenarios['shift_cold'])
+        self.assertIn('staff', self.b.scenarios['shift_wtp'])
         for s in ('cold_iron', 'hot_restart'):
             self.assertNotIn('staff', self.b.scenarios[s])      # format 1's vectors run without people
 
@@ -821,7 +829,7 @@ class FirstTrainStaff(unittest.TestCase):
 
     def test_forks(self):
         for f in self.day['forks']:
-            e = P.Engine(self.b, self.day['scenario'])
+            e = P.Engine(self.b, f.get('scenario', self.day['scenario']))
             inputs = sorted(f['inputs'], key=lambda x: x[0])
             j = 0
             while e.step_no < f['until']:
@@ -910,13 +918,51 @@ class FirstTrainStaff(unittest.TestCase):
     def test_round_ranges_hold_at_rest_and_at_base_load(self):
         sys.path.insert(0, os.path.join(REPO, 'tools', 'plant3d'))
         import train_staff as T
+        import wtp_staff as W
         e0 = P.Engine(self.b, 'cold_iron')
         e1, _ = P.run_procedure(self.b, 'cold_start')
-        for _, (title, reads) in T.ROUNDS.items():
+        wtp = [(k, (k, r)) for k, r in (('WTP round', W.ROUND), ('samples', W.SAMPLES_PANEL + W.SAMPLES_LAB),
+                                         ('stock', W.STOCK))]
+        for _, (title, reads) in list(T.ROUNDS.items()) + wtp:
             for code, (lo, hi), tol in reads:
                 for e in (e0, e1):
                     v = e.shown(code, e.cur)
                     self.assertTrue(lo <= v <= hi, f'{code}: {v} outside [{lo}, {hi}] ({title})')
+
+    def test_the_wtp_worked_by_its_people(self):
+        """Milestone S3 on shift_wtp (the `day` forks): the shift supervisor orders filter 1's backwash and the WTP
+        operator runs it from the WTP's desk; the shift chemist's sample finds mixed bed A's silica over the
+        laboratory's limit and the WTP operator, given the finding, regenerates the bed (the regenerant tanks checked
+        in the face shield and apron); nobody in the WTP's zones without their PPE; the train's control room calls the
+        WTP when its demineralised water runs low; a cartridge change under a permit, the RO train changed over and
+        isolated by the WTP operator."""
+        forks = {f['id']: f for f in self.day['forks']}
+        ev = forks['wtp_npc']['events']
+        wants = (['task', 'a_sup', 'order_backwash_1', 'start'], ['op', '00GBB11AT001', 'backwash', 'done'],
+                 ['read', 'a_chem', '00GCF11CQ002'], ['op', '00GCF11AT001', 'regenerate', 'done'],
+                 ['op', '00GCF11AT001', 'inject', 'done'], ['task', 'a_wtp', 'mb_regen_a', 'done'])
+        order = [next((x[0] for x in ev if x[1:1 + len(w)] == w), None) for w in wants]
+        self.assertNotIn(None, order)
+        self.assertEqual(order, sorted(order))
+        self.assertFalse([x for x in ev if x[1] == 'unsafe'], 'everyone at the WTP wears the PPE of its zones')
+        worn = [x for x in forks['wtp_npc']['inputs'] if x[1] == 'ppe']
+        self.assertFalse(worn)          # (no trainee: the NPCs' PPE is theirs)
+        for f in ('demin_call', 'wtp_cartridge', 'ro_trip'):
+            self.assertFalse([x for x in forks[f]['events'] if x[1] in ('lock', 'unlock') and x[5] != 'done'], f)
+        # the WTP's alarms go to its own operator, the train's to the main control room (§17.12)
+        def answered(f):
+            return sorted({(x[2], x[3]) for x in forks[f]['events'] if x[1] == 'task'
+                           and x[3] in ('answer_alarm', 'answer_alarm_wtp', 'trip_call')})
+        self.assertEqual(answered('ro_trip'), [('a_wtp', 'answer_alarm_wtp')], 'an RO trip is the WTP\'s, not the train\'s')
+        self.assertEqual(answered('demin_call'), [('a_ccr1', 'answer_alarm')], 'the plant\'s demin tank is the train\'s')
+
+    def test_a_shift_day_finds_nothing_at_the_wtp(self):
+        """shift_cold's day (the `day` run) has the WTP's people at work: rounds, samples and the stock check, all
+        within their ranges, and no WTP sequence started."""
+        ev = self.day['events']
+        who = {x[2] for x in ev if x[1] == 'read'}
+        self.assertTrue({'a_wtp', 'a_chem', 'chem1', 'chem2'} <= who, who)
+        self.assertFalse([x for x in ev if x[1] == 'task' and x[3].startswith(('backwash_', 'mb_regen_', 'cip_ro_'))])
 
 
 if __name__ == '__main__':
