@@ -187,6 +187,19 @@ generated straight-line code (0.8 ms a step, the same results bit for bit: apps/
   a step on average on the laptop and 56 µs at the shift change (`sim/tests/bench_step.gd`, `STEP phase=staff_*`;
   2026-10-23, the machine shared with other jobs): about 0.18 ms there on the Note 9 at its usual 3.3 times, within
   the 0.3 ms of PLANT3D.md §18.4 (not yet measured on the phone).
+- **Maintenance and safety** (milestone S2; docs/PLANT3D.md §17.11): every role but the guards' plays, the
+  technicians, maintenance supervisors, HSE officers, the contractors and their supervisor too. The Crew panel's PPE
+  part says what the trainee wears and what each zone they are in needs (entering one says so too), puts the PPE on
+  or takes an item off at a locker (a task's PPE step: "Put it on", or "Take me to a locker"), and names their own
+  unsafe acts; a role that may stop work sees the unsafe acts in its zones, goes to the person ("Take me to them")
+  and stops the work within 3 m ("Stop the work"). The walker's zones go to the engine as zone inputs. People wear
+  the hard hat on their head where their zone needs it and they wear it, in the hand elsewhere. The debrief has a
+  Safety tab (every unsafe act, every stop) and a Your tasks tab. A work step counts only where it started: a
+  trainee called away in the middle (a lock elsewhere, say) gets "Take me there" back to it. With S2's staff (56 people) the staff's step
+  first cost 122 µs at the shift change on the laptop (0.40 ms on the Note 9 at 3.3 times, over §18.4's 0.3 ms):
+  phase 2 asked everyone off site about locks left and phase 5's safety walk went through everyone every step; both
+  now look only at the lock holders and the people with an act going on, 46 µs a step on average and 62 µs at the
+  shift change (2026-10-25; about 0.20 ms on the Note 9), the same results bit for bit.
 - **Handwheels:** a CW pump's discharge valve whose actuator has lost its supply is worked at the valve: Open or Close
   by handwheel, Stop turning (five minutes over the full travel).
 - **Bindings:** the kit's moving pieces are children of the equipment's node named by their channel (`shaft`,

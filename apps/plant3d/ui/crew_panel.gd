@@ -77,10 +77,24 @@ func _signature(e) -> String:
 		return "none"
 	var tr: int = e.st_trainee
 	var cur = e.sp_cur[tr] if tr != -1 else null
-	return "%d|%d|%s|%s|%d|%d|%d|%s|%d" % [tr, e.step_no if tr == -1 and e.step_no < 2 else 0,
+	return "%d|%d|%s|%s|%d|%d|%d|%s|%d|%s" % [tr, e.step_no if tr == -1 and e.step_no < 2 else 0,
 			str(cur["task"]) + str(cur["step"]) + str(cur["st"].get("dest", "")) if cur != null else "",
 			str(e.sp_queue[tr].size()) if tr != -1 else "", e.st_unacked, e.events.size() / 50 if tr == -1 else
-			_radio_count(e), e.st_t_at, str(e.fast_forward()), e.J]
+			_radio_count(e), e.st_t_at, str(e.fast_forward()), e.J, _safety_sig(e) if tr != -1 else ""]
+
+
+## What the PPE and unsafe-act part shows depends on (S2): what the trainee wears, their zones, every act going on,
+## whether they stand at a locker and whom of the acting people they can reach.
+func _safety_sig(e) -> String:
+	var sm = e._sm
+	if sm.zone_ids.is_empty():
+		return ""
+	var near := ""
+	for qi in sm.people.size():
+		if e.sp_acts[qi] != [null, null, null] and ui.near_person(qi):
+			near += str(qi) + ","
+	return "%d/%d/%s/%s/%s" % [e.sp_worn[e.st_trainee], e.sp_zin[e.st_trainee], str(e.sp_acts.hash()),
+			str(ui.at_locker()), near]
 
 
 func _radio_count(e) -> int:
@@ -201,6 +215,7 @@ func _me(e, sm) -> void:
 		body.add_child(W.label("Waiting:", 18, W.DIM))
 		for inst in q:
 			body.add_child(W.label("• " + sm.tasks[inst["task"]]["title"] + " (priority %d)" % inst["prio"], 18))
+	_safety(e, sm)
 	var reads: Array = _reads.get(p["id"], [])
 	if not reads.is_empty():
 		body.add_child(W.label("Readings sheet:", 18, W.DIM))
@@ -257,6 +272,15 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 		return "Choose what next"
 	if s.has("ack"):
 		return "Acknowledge the alarm %s" % str(cur["alarm"])
+	if s.has("ppe"):
+		if typeof(s["ppe"]) == TYPE_STRING and s["ppe"] == "off":
+			return "Take the PPE off at the locker"
+		return "Put on at the locker: %s" % ", ".join(ppe_items(sm, e, s["ppe"]))
+	if s.has("stop"):
+		var a = cur.get("act")
+		if a == null:
+			return "Stop the unsafe act"
+		return "Stop the unsafe act of %s: %s" % [sm.people[a[0]]["call"], act_text(sm, a[1], e.sp_acts[a[0]][a[1]])]
 	if s.has("handover") or s.has("remove_locks"):
 		var what: String = {"take": "Take over the locks of your post", "give": "Hand over your locks (remove each "
 				+ "once the incoming person's lock is on)"}.get(s.get("handover"), "Remove by authority the locks "
@@ -296,10 +320,12 @@ static func _place_name(sm, pid: String) -> String:
 func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 	var row := HBoxContainer.new()
 	body.add_child(row)
-	if s.has("go") or s.has("meet") or s.has("lock") or s.has("unlock"):
+	# a work step counts down only where it started (§17.3): a trainee called away in the middle (a lock elsewhere,
+	# a task of a higher priority) is taken back there
+	if s.has("go") or s.has("meet") or s.has("lock") or s.has("unlock") or s.has("work"):
 		var dest = cur["st"].get("dest", cur["st"].get("place"))
-		if s.has("lock") or s.has("unlock"):
-			dest = null
+		if s.has("lock") or s.has("unlock") or (dest != null and dest < 0):
+			dest = null         # (a work step begun between places: no place to go back to)
 		if dest != null:
 			var d: int = dest
 			if e.st_t_at == d:
@@ -337,6 +363,16 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 	if s.has("op"):
 		var code: String = s["op"]["kks"]
 		row.add_child(W.button("Take me there", func(): ui.fly_to(code)))
+	if s.has("ppe"):
+		if ui.at_locker():
+			var x = s["ppe"]
+			row.add_child(W.button("Take it all off" if typeof(x) == TYPE_STRING and x == "off" else "Put it on",
+					func(): ui.put_on(x)))
+		else:
+			row.add_child(W.button("Take me to a locker", func(): ui.go_to_locker()))
+	if s.has("stop") and cur.get("act") != null:
+		var qi: int = cur["act"][0]
+		_stop_controls(e, sm, row, qi)
 	if (s.has("handover") or s.has("remove_locks")) and e.st_trainee != -1:
 		var left: Array = sm.points_left(e, e.st_trainee, cur, s)
 		if not left.is_empty():
@@ -346,6 +382,101 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 				var b := W.button("Permit form", func(): ui.open_permits(ws))
 				b.name = "handover_form"
 				row.add_child(b)
+
+
+## "Take me there" to an acting person, or "Stop the work" when within reach of them.
+func _stop_controls(e, sm, row: Control, qi: int) -> void:
+	if ui.near_person(qi):
+		var pid: String = sm.people[qi]["id"]
+		var b := W.button("Stop the work", func(): ui.stop_work(pid))
+		b.name = "stop_" + pid
+		row.add_child(b)
+	else:
+		var to: int = e.sp_pos[qi] if e.sp_pos[qi] != -1 else (e.sp_leg[qi][1] if not e.sp_leg[qi].is_empty() else -1)
+		if to != -1:
+			row.add_child(W.button("Take me to them", func(): ui.go_to_place(to)))
+
+
+## A PPE step's items in words.
+static func ppe_items(sm, e, x) -> PackedStringArray:
+	var items: Array = x if typeof(x) == TYPE_ARRAY else sm.roles[sm.people[e.st_trainee]["role"]].get("ppe", [])
+	var out := PackedStringArray()
+	for it in items:
+		out.append(PPE_WORDS.get(it, it))
+	return out
+
+
+const PPE_WORDS := {"helmet": "hard hat", "boots": "safety boots", "glasses": "safety glasses", "gloves": "gloves",
+	"ear": "ear defenders", "harness": "harness", "face_shield": "face shield", "apron": "apron", "vest": "hi-vis vest"}
+
+
+## An unsafe act in words (PLANT3D §16.7): [zone or work, start, stopped] of its kind.
+static func act_text(sm, kind: int, a) -> String:
+	var det = a[0] if a != null else null
+	match kind:
+		0:
+			var z: int = sm.zone_ix.get(det, -1)
+			return "in the %s without all its PPE" % (String(sm.d["zones"][z].get("title", det)).to_lower() if z >= 0 else str(det))
+		1:
+			return "working before the permit of %s is accepted" % str(det)
+		_:
+			return "a shortcut" + (" on %s" % str(det) if det != null else "")
+
+
+## What the trainee wears, what their zones need, their own unsafe acts, and (with stop_work) the acts they can see.
+func _safety(e, sm) -> void:
+	if sm.zone_ids.is_empty():
+		return
+	var pi: int = e.st_trainee
+	var worn: int = e.sp_worn[pi]
+	var on := PackedStringArray()
+	for k in sm.PPE.size():
+		if worn & (1 << k):
+			on.append(PPE_WORDS.get(sm.PPE[k], sm.PPE[k]))
+	body.add_child(W.label("PPE", 20, Color(1.0, 0.85, 0.4)))
+	body.add_child(W.label("Wearing: " + (", ".join(on) if not on.is_empty() else "nothing"), 18))
+	var zm: int = e.sp_zin[pi]
+	for z in sm.zone_ids.size():
+		if zm & (1 << z):
+			var need: int = sm.zone_ppe[z]
+			var miss := PackedStringArray()
+			for k in sm.PPE.size():
+				if need & (1 << k) and not (worn & (1 << k)):
+					miss.append(PPE_WORDS.get(sm.PPE[k], sm.PPE[k]))
+			var zt: String = sm.d["zones"][z].get("title", sm.zone_ids[z])
+			body.add_child(W.label("In the %s%s" % [zt.to_lower(), (": missing " + ", ".join(miss)) if not miss.is_empty()
+					else ": all its PPE on"], 18, W.BAD_COLOUR if not miss.is_empty() else W.OK_COLOUR))
+	if ui.at_locker():
+		var row := HFlowContainer.new()
+		body.add_child(row)
+		row.add_child(W.button("Put on all my PPE", func(): ui.put_on("role")))
+		for k in sm.PPE.size():
+			var item: String = sm.PPE[k]
+			if worn & (1 << k):
+				var b := W.button("Take off " + PPE_WORDS.get(item, item), func(): ui.clock.engine.ppe(item, 0))
+				b.name = "off_" + item
+				row.add_child(b)
+	for k in 3:
+		var a = e.sp_acts[pi][k]
+		if a != null:
+			body.add_child(W.label("Unsafe act: you are " + act_text(sm, k, a), 18, W.BAD_COLOUR))
+	if not sm.auth[sm.people[pi]["role"]].has("stop_work"):
+		return
+	var seen := false
+	for qi in sm.people.size():
+		if qi == pi or (sm.zones_of(e, qi) & zm) == 0:
+			continue
+		for k in 3:
+			var a = e.sp_acts[qi][k]
+			if a == null or a[2]:
+				continue
+			if not seen:
+				body.add_child(W.label("Unsafe acts in sight", 20, Color(1.0, 0.85, 0.4)))
+				seen = true
+			var row := HBoxContainer.new()
+			body.add_child(row)
+			row.add_child(W.label("%s: %s" % [sm.people[qi]["call"], act_text(sm, k, a)], 18, W.BAD_COLOUR))
+			_stop_controls(e, sm, row, qi)
 
 
 # ------------------------------------------------------------------ the radio (§18.7)

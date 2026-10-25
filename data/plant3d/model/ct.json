@@ -102,7 +102,10 @@
   ["ct_fans_5", {"cmp": ["ct_fans_n", ">=", 5]}],
   ["ct_fan3_nocmd", {"not": "ct_fan3_cmd"}],
   ["ct_fan3_still", {"cmp": ["ct_fan3_spd", "<", 0.01]}],
-  ["ct_fan3_safe", {"and": ["ct_fan3_nocmd", "ct_fan3_still"]}]
+  ["ct_fan3_safe", {"and": ["ct_fan3_nocmd", "ct_fan3_still"]}],
+  ["ct_fan4_nocmd", {"not": "ct_fan4_cmd"}],
+  ["ct_fan4_still", {"cmp": ["ct_fan4_spd", "<", 0.01]}],
+  ["ct_fan4_safe", {"and": ["ct_fan4_nocmd", "ct_fan4_still"]}]
  ],
  "ops": [
   {"kks": "30PAR10AA001", "do": "auto", "machine": "ct_mk_ctrl", "where": ["screen"]},
@@ -214,9 +217,11 @@
   {"kks": "30PAD10", "sound": "water_rain", "gain": {"of": "cw_flow", "table": [[0, 0], [30000, 1]]}}
  ],
  "isolations": [
-  {"id": "iso_ct_fan3", "text": "Cooling tower fan 3: motor supply", "points": [{"kks": "30PAD10AN003", "kind": "electrical", "how": "Fan stopped; its breaker racked out, locked and tagged", "safe": "ct_fan3_safe"}]}
+  {"id": "iso_ct_fan3", "text": "Cooling tower fan 3: motor supply", "points": [{"kks": "30PAD10AN003", "kind": "electrical", "how": "Fan stopped; its breaker racked out, locked and tagged", "safe": "ct_fan3_safe"}]},
+  {"id": "iso_ct_fan4", "text": "Cooling tower fan 4: motor supply", "points": [{"kks": "30PAD10AN004", "kind": "electrical", "how": "Fan stopped; its breaker racked out, locked and tagged", "safe": "ct_fan4_safe"}]}
  ],
  "works": [
-  {"id": "wo_ct_fan3", "kks": "30PAD10AN003", "title": "Cooling tower fan 3: bearings and gearbox service", "discipline": "mech", "permit": "general", "isolation": "iso_ct_fan3", "repairs": "ct_fan3_vib", "task": "job_ct_fan3"}
+  {"id": "wo_ct_fan3", "kks": "30PAD10AN003", "title": "Cooling tower fan 3: bearings and gearbox service", "discipline": "mech", "permit": "general", "isolation": "iso_ct_fan3", "repairs": "ct_fan3_vib", "task": "job_ct_fan3"},
+  {"id": "wo_ct_fan4_pm", "kks": "30PAD10AN004", "title": "Cooling tower fan 4: grease the motor bearings", "discipline": "mech", "permit": "general", "isolation": "iso_ct_fan4", "task": "job_ct_fan4_pm"}
  ]
 }

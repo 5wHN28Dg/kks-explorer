@@ -1,6 +1,7 @@
 ## An offer nobody could take is made again (docs/PLANT3D.md §17.10; the user, 2026-10-24), played in the app as
 ## crew A's supervisor at 05:30, before the day technicians come on: the cooling tower fan's permit issued from the
-## form finds no mechanical technician on duty (its job unassigned); at 07:00, when they come on, the job is offered.
+## form finds no maintenance supervisor on duty to give the job (unassigned); at 07:00, when they come on, the
+## supervisor gives it (milestone S2: a maintenance supervisor gives an issued permit's job).
 extends RefCounted
 
 const App = preload("res://tests/ui_app.gd")
@@ -59,13 +60,16 @@ func run(tree: SceneTree) -> Array:
 			break
 	var unassigned := false
 	for ev in e.events:
-		if ev[1] == "task" and ev[2] == null and ev[3] == "job_ct_fan3" and ev[4] == "unassigned":
+		# since S2 an issued permit's job is given by the maintenance supervisors (assign_ct_fan3), none of whom is
+		# on duty at 05:30: theirs is the offer nobody could take
+		if ev[1] == "task" and ev[2] == null and ev[3] == "assign_ct_fan3" and ev[4] == "unassigned":
 			unassigned = true
 	if not unassigned:
 		main.free()
-		return p + ["the fan's job was not unassigned before the technicians came on: %s" % str(e.events.slice(-6))]
-	# run to 07:00 and a little after: the mechanical technicians come on duty
-	var want: int = 864000 + (7 * 60 + 5) * 600
+		return p + ["the fan's job's assignment was not unassigned before the technicians came on: %s" % str(e.events.slice(-6))]
+	# run to 07:00, when the maintenance supervisors and technicians come on duty, and on until the supervisor has
+	# given the job (the walk to the office's table and the toolbox talk first)
+	var want: int = 864000 + (8 * 60) * 600
 	while e.clock() < want:
 		ui.clock.run_steps(2000)
 	var offered := false
@@ -81,5 +85,8 @@ func run(tree: SceneTree) -> Array:
 			offered = true
 	if not offered:
 		p.append("the unassigned job was not offered when the technicians came on duty")
+	var given: Array = e.events.filter(func(ev): return ev[1] == "task" and ev[3] == "assign_ct_fan3" and ev[4] == "start")
+	if given.size() != 1 or not String(given[0][2]).begins_with("ms_"):
+		p.append("the offer was not made again to a maintenance supervisor once: %s" % str(given))
 	main.free()
 	return p

@@ -20,6 +20,8 @@ def files_of(V, run=None):
         F['scenarios/s1.json'] = json.dumps(run['scenario']).encode()
         if run['staff'] is not None:
             F['staff.json'] = json.dumps(run['staff']).encode()
+        for rel, v in run.get('files', {}).items():
+            F[rel] = json.dumps(v).encode()
     return F
 
 
@@ -82,13 +84,13 @@ class StaffVectors(unittest.TestCase):
             codes.add(r['code'])
         # every new error code of format 2's staff (§14), and the ones the staff file shares with format 1
         for c in ('bad_clock', 'unreachable', 'bad_way', 'authority', 'unknown_key', 'missing_key', 'bad_ref',
-                  'bad_value', 'dup_id', 'bad_length', 'limit', 'bad_number', 'bad_kind', 'bad_type'):
+                  'bad_value', 'dup_id', 'bad_length', 'limit', 'bad_number', 'bad_kind', 'bad_type', 'bad_zone'):
             self.assertIn(c, codes)
 
     def test_every_task_step_kind_and_outcome_is_pinned(self):
         kinds = {e[1] for e in self.ev}
         for k in ('duty', 'task', 'move', 'read', 'say', 'call', 'permit', 'lock', 'unlock', 'op', 'role', 'jump',
-                  'task_ack', 'alarm', 'trip', 'fault', 'repair'):
+                  'task_ack', 'alarm', 'trip', 'fault', 'repair', 'unsafe', 'safe', 'stop'):
             self.assertIn(k, kinds)
         outcomes = {e[4] for e in self.ev if e[1] == 'task'}
         self.assertEqual(outcomes, {'start', 'done', 'abandoned', 'skipped', 'unassigned', 'held', 'resumed'})
@@ -385,10 +387,149 @@ class StaffVectors(unittest.TestCase):
         self.assertIn([603, 'remove_lock', 'wo_pump', 1, 'a_sup', 'refused', ['unlocked'], None, 'Again'], ev)
         self.assertIn([604, 'lock', 'wo_pump', 1, 'a_sup', 'done', []], ev)
         self.assertIn([606, 'unlock', 'wo_pump', 1, 'a_sup', 'done', []], ev)
-        # the NPCs unlock their own locks in every run
+        # the NPCs unlock their own locks in every run (an unlocking task goes to a lock's owner first, §17.11),
+        # but where the owner is off duty: the task then goes by the usual rule and its unlock is refused, as that run
+        # pins (the lock is left, §17.9)
         for r in self.runs:
+            if r['why'].startswith("a colleague's lock kept while they are off"):
+                self.assertIn(['unlock', 'wo_gauge', 0, 'ic2', 'refused', ['owner']], [x[1:] for x in r['events']])
+                continue
             self.assertFalse(any(x[1] == 'unlock' and x[5] == 'refused' and 'owner' in x[6] and x[4] != 'a_sup'
                                  for x in r['events']), r['why'])
+
+    # --- milestone S2 (§17.11): zones, PPE, unsafe acts, the safety walk, stopping work
+    def test_ppe_at_placement_and_the_gate(self):
+        """On-duty people are placed in their role's PPE; people coming on site at the gate wear none until a ppe
+        step at a locker; PPE is left behind when leaving the site."""
+        r = next(r for r in self.runs if r['why'].startswith('safety (S2), no trainee'))
+        self.assertEqual(r['states'][0]['worn'], {'c_fo': ['helmet', 'boots', 'ear'], 'c_ccr': ['helmet', 'boots']})
+        later = r['states'][-1]['worn']
+        self.assertNotIn('c_fo', later)          # gone home at 06:00
+        self.assertEqual(later['hse1'], ['helmet', 'boots', 'ear', 'harness'])
+        self.assertEqual(later['con3'], ['helmet', 'boots', 'harness'])     # put right at the locker
+
+    def test_unsafe_acts_seen_and_stopped(self):
+        ev = self.run_named('safety (S2), no trainee')
+        kinds = {(e[2], e[3]) for e in ev if e[1] == 'unsafe'}
+        self.assertTrue({('con3', 'ppe'), ('con3', 'permit'), ('con1', 'unsafe'), ('a_fo1', 'ppe')} <= kinds, kinds)
+        # each act once: an unsafe event, then its safe event with the same zone or work
+        open_ = {}
+        for e in ev:
+            if e[1] == 'unsafe':
+                self.assertNotIn((e[2], e[3]), open_)
+                open_[(e[2], e[3])] = e[4]
+            elif e[1] == 'safe':
+                self.assertEqual(open_.pop((e[2], e[3])), e[4])
+        stops = [e for e in ev if e[1] == 'stop' and e[6] == 'done']
+        self.assertEqual([(e[2], e[3], e[4]) for e in stops],
+                         [('hse1', 'con3', 'ppe'), ('hse1', 'con3', 'permit'), ('hse1', 'con1', 'unsafe')])
+        n = stops[0][0]
+        self.assertIn([n, 'task', 'con3', 'early_start', 'abandoned'], ev)
+        self.assertIn([n, 'task', 'con3', 'put_on_ppe', 'start'], ev)
+        self.assertTrue(any(e[1] == 'task' and e[2] == 'con3' and e[3] == 'ask_permit' and e[4] == 'start' for e in ev))
+        self.assertIn([stops[2][0], 'task', 'con1', 'leave_shortcut', 'start'], ev)
+        # the not-seen reaction goes in the step the act starts, by the usual rule; a stop from free mode is refused
+        n = next(e[0] for e in ev if e[1:4] == ['unsafe', 'con3', 'permit'])
+        self.assertTrue(any(e[0] >= n and e[1:5] == ['task', 'a_sup', 'note_act', 'start'] for e in ev))
+        self.assertIn([1530, 'stop', None, 'con3', None, None, 'refused', ['authority']], ev)
+        # the contractors' permit: hosted, approved, issued, accepted by their supervisor, handed back and closed
+        acts = [(e[3], e[4]) for e in ev if e[1] == 'permit' and e[2] == 'wo_paint' and e[5] == 'done']
+        self.assertEqual(acts, [('request', 'ms1'), ('approve', 'a_sup'), ('auto', None), ('issue', 'a_sup'),
+                                ('accept', 'csup'), ('done', 'csup'), ('return', 'csup'), ('auto', None),
+                                ('close', 'a_sup')])
+
+    def test_a_stop_task_as_an_idle_task(self):
+        """Blind review of S2: a task with a stop step may also be a routine's idle task (the validator allows it); its
+        stop step has no act there and ends at once, as in GDScript (the reference's idle instance had no act: a
+        KeyError)."""
+        F = G.safety_files()
+        s = F['staff.json']
+        for r in s['routines']:
+            if r['id'] == 'hse_days':
+                r['idle'] = 'stop_unsafe'
+        for t in s['tasks']:
+            if t['id'] == 'stop_unsafe':
+                t['steps'].append({'work': 5})          # (an idle task works a while)
+        b = P.check_files({k: (v if isinstance(v, bytes) else json.dumps(v).encode()) for k, v in F.items()})
+        e = P.Engine(b, 's1')
+        while e.step_no < 20000:
+            e.step()
+        self.assertTrue(any(x[1:4] == ['task', 'hse1', 'stop_unsafe'] for x in e.events))
+
+    def test_nobody_stops_their_own_act(self):
+        """Adversarial review of S2: a reaction without `seen` may give the stop task to the acting person themselves
+        (the HSE officer without ear defenders in the hall, the only one of their role); its stop step ends with no
+        stop (the reference crashed on its own stopped task). The trainee's stop of themselves is refused, no_act."""
+        F = G.safety_files()
+        s = F['staff.json']
+        for r in s['reactions']:
+            if r['on'].get('unsafe') == '*':
+                r.pop('seen')
+                r['roles'] = ['hse_officer']
+        for r in s['roles']:
+            if r['id'] == 'hse_officer':
+                r['ppe'] = ['helmet', 'boots', 'harness']
+        b = P.check_files({k: (v if isinstance(v, bytes) else json.dumps(v).encode()) for k, v in F.items()})
+        e = P.Engine(b, 's1')
+        while e.step_no < 30000:
+            e.step()
+        own = [x for x in e.events if x[1] == 'unsafe' and x[2] == 'hse1' and x[3] == 'ppe']
+        self.assertTrue(own, 'the officer\'s own act')
+        self.assertTrue(any(x[1:5] == ['task', 'hse1', 'stop_unsafe', 'start'] and own[0][0] <= x[0] < own[0][0] + 100
+                            for x in e.events))
+        self.assertFalse([x for x in e.events if x[1] == 'stop' and x[2] == x[3]])
+        e2 = P.Engine(b, 's1')
+        e2.role('hse1')
+        while e2.step_no < 30000:
+            e2.step()
+            if e2.step_no == 20000:
+                e2.stop('hse1')
+        self.assertIn(['stop', 'hse1', 'hse1', None, None, 'refused', ['no_act']], [x[1:] for x in e2.events])
+
+    def test_slots_by_weekday(self):
+        mon = self.run_named('safety (S2), no trainee')
+        walks = [e[0] for e in mon if e[1:5] == ['task', 'hse1', 'safety_walk', 'start']]
+        self.assertEqual(len(walks), 2)          # 07:20 and 09:00 on Mondays; the 08:40 Tuesday walk not made
+        tue = self.run_named('a Tuesday (day 2)')
+        self.assertEqual([e for e in tue if e[1:4] == ['task', 'hse1', 'safety_walk']][:1],
+                         [[100, 'task', 'hse1', 'safety_walk', 'start']])
+
+    def test_the_trainee_stops_work(self):
+        ev = self.run_named('the trainee as the HSE officer')
+        self.assertIn([1000, 'stop', 'hse1', 'con3', None, None, 'refused', ['no_act']], ev)
+        self.assertIn([1001, 'stop', 'hse1', 'nobody', None, None, 'refused', ['no_act']], ev)
+        stop = next(e for e in ev if e[1] == 'stop' and e[6] == 'done')
+        self.assertEqual(stop[2:6], ['hse1', 'con1', 'unsafe', 'wo_paint'])
+        given = next(e for e in ev if e[1:4] == ['task', 'hse1', 'stop_unsafe'])
+        self.assertLess(given[0], stop[0])
+        self.assertIn([stop[0], 'task', 'con1', 'paint_short', 'abandoned'], ev)
+        inputs = next(r for r in self.runs if r['why'].startswith('the trainee as the HSE officer'))['inputs']
+        self.assertTrue(any(x[1:] == ['ppe', 'harness', 1] for x in inputs))
+        self.assertTrue(any(x[1:] == ['zone', 'yard', 'in'] for x in inputs))
+
+    def test_the_trainees_own_unsafe_act(self):
+        r = next(r for r in self.runs if r['why'].startswith('the trainee as field operator 1 of crew A takes'))
+        ev = r['events']
+        self.assertIn([1490, 'stop', 'a_fo1', 'con3', None, None, 'refused', ['authority']], ev)
+        act = next(e for e in ev if e[1:4] == ['unsafe', 'a_fo1', 'ppe'] and e[0] > 1700)
+        stop = next(e for e in ev if e[1] == 'stop' and e[3] == 'a_fo1')
+        self.assertEqual(stop[2], 'hse1')
+        self.assertLess(act[0], stop[0])
+        self.assertTrue(any(e[1:4] == ['task', 'a_fo1', 'put_on_ppe'] for e in ev))
+        self.assertTrue(any(e[1:4] == ['safe', 'a_fo1', 'ppe'] and e[0] > stop[0] for e in ev))
+        # inputs of no item, value or zone change nothing: no event at their steps, the helmet still on until 1700
+        self.assertFalse([e for e in ev if e[0] in (1600, 1601) and e[1] in ('unsafe', 'safe')])
+        st = next(s for s in r['states'] if s['step'] == 1620)
+        self.assertEqual(st['worn']['a_fo1'], ['helmet', 'boots', 'ear'])
+
+    def test_an_unlocking_task_goes_to_the_locks_owner(self):
+        """§17.11: the deisolation's call for the valve goes to the field operator who locked it, not the first free
+        one (another field operator's unlock would be refused, owner)."""
+        ev = self.run_named('safety (S2), no trainee')
+        locker = next(e[4] for e in ev if e[1:4] == ['lock', 'wo_pump', 1] and e[5] == 'done')
+        n = next(e[0] for e in ev if e[1] == 'call' and e[4] == 'deiso_m')
+        self.assertTrue(any(e[0] >= n and e[1:4] == ['task', locker, 'deiso_m'] for e in ev))
+        self.assertTrue(any(e[1:4] == ['unlock', 'wo_pump', 1] and e[4] == locker and e[5] == 'done' for e in ev))
 
     def lock_counts(self, ev, work='wo_pump'):
         """Each point's number of locks after every step of a run, from its lock, unlock and removal events."""
@@ -406,7 +547,9 @@ class StaffVectors(unittest.TestCase):
         self.assertIn([985, 'lock', 'wo_pump', 0, 'b_elec', 'done', []], ev)
         self.assertIn([986, 'unlock', 'wo_pump', 0, 'a_elec', 'done', []], ev)
         self.assertIn([1157, 'lock', 'wo_pump', 1, 'b_fo', 'done', []], ev)
-        self.assertIn([1286, 'unlock', 'wo_pump', 1, 'a_fo2', 'done', []], ev)
+        # (1286 before S2's review: a resumed work step now goes back to its place, so a_fo2's round ends later and
+        # they reach the field office's handover after the incoming field operator has left it)
+        self.assertIn([1473, 'unlock', 'wo_pump', 1, 'a_fo2', 'done', []], ev)
         counts = self.lock_counts(ev)
         returned = next(x[0] for x in ev if x[1] == 'permit' and x[3] == 'return' and x[5] == 'done')
         for n, held in counts.items():
@@ -417,7 +560,7 @@ class StaffVectors(unittest.TestCase):
         self.assertFalse(any(x[1] == 'permit' and x[3] == 'auto' and x[6] == [2] for x in ev))
         self.assertIn([1392, 'unlock', 'wo_pump', 1, 'b_fo', 'done', []], ev)     # by the new holders
         self.assertIn([1460, 'unlock', 'wo_pump', 0, 'b_elec', 'done', []], ev)
-        self.assertIn([1461, 'permit', 'wo_pump', 'close', 'b_sup', 'done', []], ev)
+        self.assertIn([1474, 'permit', 'wo_pump', 'close', 'b_sup', 'done', []], ev)     # (after a_fo2's own unlock)
 
     def test_nobody_takes_over(self):
         """§17.9: the outgoing person's wait runs out, they leave with the lock on, and the supervisor removes it by
@@ -483,6 +626,43 @@ class StaffVectors(unittest.TestCase):
             self.assertIn(['iso_gauge', 0], s['locked'])
         self.assertTrue(any(x[1] == 'unlock' and x[4] == 'ic1' and x[5] == 'done' and x[0] > resumed[0] for x in ev))
         self.assertTrue(any(x[1] == 'permit' and x[2] == 'wo_gauge' and x[3] == 'close' and x[5] == 'done' for x in ev))
+
+    def test_a_colleagues_lock_kept_overnight(self):
+        """§17.10 (the user, 2026-10-25): a job held overnight keeps every lock on its isolation, whoever placed it:
+        ic1 isolated, ic2 holds the job; ic1 goes home with the lock on, nobody removes it by authority, and when the
+        job resumes and is handed back ic1 removes their own lock."""
+        run = next(r for r in self.runs if r['why'].startswith("a colleague's lock kept overnight"))
+        ev = run['events']
+        self.assertTrue(any(x[1:5] == ['lock', 'wo_gauge', 0, 'ic1'] and x[5] == 'done' for x in ev))
+        held = next(x for x in ev if x[1] == 'task' and x[3] == 'job_gauge' and x[4] == 'held')
+        self.assertEqual(held[2], 'ic2')
+        self.assertTrue(any(x[1] == 'move' and x[2] == 'ic1' and x[4] is None and x[0] >= held[0] for x in ev))
+        resumed = next(x for x in ev if x[1] == 'task' and x[3] == 'job_gauge' and x[4] == 'resumed')
+        self.assertFalse([x for x in ev if x[1] == 'remove_lock'])
+        self.assertFalse([x for x in ev if x[1] == 'task' and x[3] == 'remove_left'])
+        night = [s for s in run['states'] if held[0] < s['step'] < resumed[0]]
+        self.assertTrue(night)
+        for s in night:
+            self.assertEqual(s['permits'].get('wo_gauge'), 5, s['step'])
+            self.assertIn(['iso_gauge', 0], s['locked'])
+        self.assertTrue(any(x[1:4] == ['unlock', 'wo_gauge', 0] and x[4] == 'ic1' and x[5] == 'done'
+                            and x[0] > resumed[0] for x in ev))
+        self.assertTrue(any(x[1:4] == ['permit', 'wo_gauge', 'close'] and x[5] == 'done' for x in ev))
+
+    def test_a_colleagues_lock_kept_while_they_are_off(self):
+        """§17.10 (adversarial review of the user's rule of 2026-10-25): the isolating technician is off on Tuesday;
+        their lock stays on while the resumed job goes on (no removal at its resumption: before, the job was
+        abandoned there), and is removed by authority as a lock left only once the job has been handed back."""
+        ev = next(r for r in self.runs if r['why'].startswith("a colleague's lock kept while they are off"))['events']
+        resumed = next(x[0] for x in ev if x[1:5] == ['task', 'ic2', 'job_gauge', 'resumed'])
+        returned = next(x[0] for x in ev if x[1:4] == ['permit', 'wo_gauge', 'return'] and x[5] == 'done')
+        self.assertTrue(any(x[1:5] == ['task', 'ic2', 'job_gauge', 'done'] for x in ev))
+        self.assertFalse([x for x in ev if x[1] == 'task' and x[3] == 'job_gauge' and x[4] == 'abandoned'])
+        rm = [x for x in ev if x[1] == 'remove_lock']
+        self.assertEqual(len(rm), 1)
+        self.assertGreater(rm[0][0], returned)
+        self.assertGreater(returned, resumed)
+        self.assertEqual(rm[0][5:8], ['done', [], 'ic1'])
 
     def test_a_call_kept_without_reactions(self):
         """§17.10 (adversarial review): a kept call is made again at the trade's next shift with no reactions in the
@@ -605,9 +785,19 @@ class FirstTrainStaff(unittest.TestCase):
     def test_content(self):
         st = self.b.staff
         roles = {p['role'] for p in st.people}
-        self.assertEqual(roles, {'shift_sup', 'ccr_op', 'field_op', 'elec_ap', 'mech_tech', 'elec_tech', 'ic_tech'})
+        self.assertEqual(roles, {'shift_sup', 'ccr_op', 'field_op', 'elec_ap', 'mech_tech', 'elec_tech', 'ic_tech',
+                                 'maint_sup', 'hse_officer', 'contractor_sup', 'contractor'})
         self.assertEqual(sum(1 for p in st.people if p['roster'] == 'shift'), 28)
-        self.assertTrue(all(st.roles[r]['play'] for r in ('shift_sup', 'ccr_op', 'field_op', 'elec_ap')))
+        # STAFF.md §1's numbers on days (milestone S2), and every role played
+        count = lambda r: sum(1 for p in st.people if p['role'] == r)  # noqa: E731
+        self.assertEqual([count(r) for r in ('mech_tech', 'elec_tech', 'ic_tech', 'maint_sup', 'hse_officer',
+                                             'contractor_sup', 'contractor')], [6, 4, 4, 3, 2, 1, 8])
+        self.assertTrue(all(r['play'] for r in st.roles.values()))
+        self.assertEqual({z['id'] for z in st.zones}, {'gt_hall', 'st_hall', 'hrsg', 'rack', 'bop', 'cw_house', 'ct',
+                                                        'trafo'})
+        self.assertEqual(set(st.put_right), {'ppe', 'permit', 'unsafe'})
+        # S1's people keep their places in the file (so their random streams), S2's come after them
+        self.assertEqual([p['id'] for p in st.people[:32]][-4:], ['mech1', 'mech2', 'elec1', 'ic1'])
         self.assertEqual(self.b.plant['clock']['day_scale'], 6)
         self.assertIn('staff', self.b.scenarios['shift_cold'])
         for s in ('cold_iron', 'hot_restart'):
@@ -653,6 +843,69 @@ class FirstTrainStaff(unittest.TestCase):
                 self.assertTrue(any(len(ev) > len(want) and all(w is None or ev[1 + i] == w
                                                                 for i, w in enumerate(want)) for ev in e.events),
                                 f'{f["id"]}: no event like {want}')
+
+    def test_maintenance_and_safety_day(self):
+        """Milestone S2 on the first train's day: the week's preventive works and the calibration (a Monday) run
+        through their permits to closed, the contractors' two permits too (hosted, accepted by their supervisor,
+        handed back); the two contractors' shortcuts the day's draws give are found by the HSE officers' walks and
+        stopped; every lock and unlock is made (each unlock by the lock's owner)."""
+        ev = self.day['events']
+        done = {(x[2], x[3]) for x in ev if x[1] == 'permit' and x[5] == 'done'}
+        for w in ('wo_cond_p2_cal', 'wo_ct_fan4_pm', 'wo_ccw_b_ir', 'wo_scaffold_hrsg', 'wo_paint_cw'):
+            self.assertIn((w, 'close'), done, w)
+        self.assertIn(('wo_paint_cw', 'accept'), done)
+        acc = [x[4] for x in ev if x[1] == 'permit' and x[2] in ('wo_paint_cw', 'wo_scaffold_hrsg') and x[3] == 'accept']
+        self.assertEqual(acc, ['csup', 'csup'])
+        req = [x[4] for x in ev if x[1] == 'permit' and x[2] in ('wo_paint_cw', 'wo_scaffold_hrsg') and x[3] == 'request']
+        self.assertEqual(req, ['ms_mech', 'ms_mech'])
+        stops = [x[2:6] for x in ev if x[1] == 'stop']
+        self.assertEqual(sorted(stops), [['hse1', 'con2', 'unsafe', 'wo_scaffold_hrsg'],
+                                         ['hse2', 'con5', 'unsafe', 'wo_paint_cw']])
+        self.assertFalse([x for x in ev if x[1] in ('lock', 'unlock', 'remove_lock') and x[5] != 'done'])
+        self.assertFalse([x for x in ev if x[1] == 'unsafe' and x[3] == 'ppe'], 'everyone in the zones wears PPE')
+        # the snapshot's PPE: the HSE officers and the contractors in theirs at 10:30
+        st = next(s for s in self.day['states'] if s['clock'] % 864000 == 10 * 36000 + 30 * 600)
+        self.assertEqual(st['worn']['hse1'], ['helmet', 'boots', 'glasses', 'ear', 'vest'])
+        self.assertIn('harness', st['worn']['con1'])
+
+    def test_ppe_on_before_a_held_job_and_for_the_supervisors(self):
+        """Blind review of S2: transmitter 3's calibration issued late on Monday is held overnight; on Tuesday its I&C
+        technician puts their PPE on at the toolbox talk, then walks back to the transmitter to finish it, and the
+        supervisors who took over the shift at 18:00 and 06:00 wear theirs: nobody's PPE act from Monday 15:40 to
+        Tuesday 10:00, and the job resumed and handed back with its lock on overnight (the trainee, a shift
+        supervisor, plays nothing: the deisolation waits for them)."""
+        sid = next(k for k, v in self.b.scenarios.items() if 'staff' in v)
+        e = P.Recorder(self.b, sid)
+        e.role('a_sup')
+
+        def until(day, hh, mm):
+            want = day * 864000 + (hh * 60 + mm) * 600
+            while e.clock() < want:
+                e.step()
+        until(1, 15, 40)
+        w = 'wo_cond_p3_cal'
+        e.permit(w, 'request', 'a_sup')
+        e.step()
+        e.permit(w, 'approve', 'a_sup')
+        e.step()
+        e.npc_queue.append(('lock', w, 0, 'ic1'))     # the I&C technician's lock, as their step 9 makes it
+        e.step()
+        e.step()
+        e.permit(w, 'issue', 'a_sup')
+        e.step()
+        n0 = e.step_no
+        until(2, 10, 0)
+        ev = [x for x in e.events if x[0] >= n0]
+        self.assertTrue(any(x[1:5] == ['task', 'ic1', 'job_cond_p3_cal', 'held'] for x in ev))
+        self.assertTrue(any(x[1:5] == ['task', 'ic1', 'job_cond_p3_cal', 'resumed'] for x in ev))
+        self.assertFalse([x for x in ev if x[1] == 'unsafe' and x[3] == 'ppe' and x[2] != 'a_sup'])
+        self.assertFalse([x for x in ev if x[1] == 'remove_lock'])
+        self.assertTrue(any(x[1:5] == ['permit', w, 'return', 'ic1'] and x[5] == 'done' for x in ev))
+        # the calibration finished at the transmitter, not where the technician came on (a resumed work step goes
+        # back to its place first)
+        tb = next(x[0] for x in ev if x[1:5] == ['task', 'ic1', 'toolbox', 'done'])
+        dn = next(x[0] for x in ev if x[1:4] == ['permit', w, 'done'] and x[5] == 'done')
+        self.assertTrue(any(x[1:3] == ['move', 'ic1'] and x[4] == 'w_30mag10cp003' and tb <= x[0] < dn for x in ev))
 
     def test_round_ranges_hold_at_rest_and_at_base_load(self):
         sys.path.insert(0, os.path.join(REPO, 'tools', 'plant3d'))

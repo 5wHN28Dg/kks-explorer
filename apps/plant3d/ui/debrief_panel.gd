@@ -39,7 +39,7 @@ func setup(u) -> void:
 	v.add_child(bar)
 	v.move_child(bar, 1)
 	for t in [["all", "Everything"], ["deviations", "Deviations"], ["alarms", "Alarms and trips"],
-			["permits", "Permits"]]:
+			["permits", "Permits"], ["safety", "Safety"], ["role", "Your tasks"]]:
 		var b := W.button(t[1], _tab.bind(t[0]))
 		b.toggle_mode = true
 		bar.add_child(b)
@@ -71,6 +71,8 @@ static func in_tab(e: Dictionary, t: String) -> bool:
 		"deviations": return e.dev != ""
 		"alarms": return e.kind in ["alarm", "shelve", "unshelve", "trip"]
 		"permits": return e.kind in ["permit", "lock", "unlock", "remove_lock"]
+		"safety": return e.kind in ["unsafe", "safe", "stop"]
+		"role": return e.kind == "task"
 	return true
 
 
@@ -135,7 +137,8 @@ func _focused_row() -> int:
 func _add_rows(list: Array) -> void:
 	if list.is_empty() and _list.get_child_count() == 0:
 		var none: String = {"all": "Nothing has happened yet.", "deviations": "No operation outside its step.",
-				"alarms": "No alarm or trip.", "permits": "No permit to work yet."}[tab]
+				"alarms": "No alarm or trip.", "permits": "No permit to work yet.", "safety": "No unsafe act.",
+				"role": "No task of yours yet."}[tab]
 		_list.add_child(_row({"step": -1, "kind": "", "text": none, "code": "", "dev": "", "prio": 0}))
 		return
 	if not list.is_empty() and _shown == 0 and _list.get_child_count() > 0:

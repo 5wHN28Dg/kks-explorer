@@ -76,6 +76,27 @@ decided it (frames the app causes, above), every `wtp` and `camp` walk of the fi
 - first walkable frame 11.1–11.9 s;
 - the APK at 142.0 MB.
 
+**S2 as built (2026-10-25):** zones, PPE, unsafe acts, the safety walk and stopping work in the reference and the
+GDScript engine bit for bit (PLANT3D.md §17.11, with what §16–§17 left open settled there), and slots by weekday;
+an unlocking task goes first to the lock's owner. The first train's staff gains the maintenance disciplines at
+STAFF.md §1's numbers, three maintenance supervisors (their week's list of preventive works and calibrations; the
+mechanical one hosts the contractors), two HSE officers (toolbox talk, safety walks, stopping what they see), a
+contractors' supervisor and eight contractors on two works without isolation, a locker room and zones over the
+process areas; the corrective works gain the CW discharge valves' limit switches (I&C), and the condenser pressure
+transmitters' calibration puts a drift right. Every role but the guards' plays. The vectors: `plant3d-v2.json`'s
+`staff` gains the safety staff's runs and rejects, `day` follows the S2 content (seed 8: two contractors' shortcuts
+found and stopped) with five more forks; format 1's `train` and `hot` keep every input and event (the new values
+added). The app: the Crew panel's PPE part, zone inputs from the walker, "Stop the work" within reach, the people's
+hard hats by what they wear and where, the debrief's Safety and Your tasks tabs (`tests/test_ui_maintenance.gd`
+plays an I&C technician's calibration and corrective repair, an HSE officer's stop and an NPC calibration seen from
+the control room). Tools and PPE on the avatars stay A1's looks by role; only the hard hat follows what is worn.
+From the reviews: a resumed `work` step goes back to its place first (a calibration held overnight was finished
+from the plant gate), the stop step waits for a trainee between places, nobody stops their own act, PPE is put on
+before a held job and before the supervisors' handover, and the staff step is back within §18.4's budget (62 µs
+at the shift change on the laptop, about 0.20 ms on the Note 9). A job held overnight keeps every lock on its
+isolation, whoever placed it (the user, 2026-10-25: the technician who isolated for a colleague's job keeps theirs on
+and removes it when the job resumes). Not yet measured: the Note 9 frames walk with S2's crowd.
+
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4
 needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, S2 with C1, then S3, then S4.
 

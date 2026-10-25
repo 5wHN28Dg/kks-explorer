@@ -1968,6 +1968,15 @@ class Engine:
     def jump(self, hhmm):
         self.queue.append(('jump', hhmm))
 
+    def ppe(self, item, on):
+        self.queue.append(('ppe', item, on))
+
+    def zone(self, zone, how):
+        self.queue.append(('zone', zone, how))
+
+    def stop(self, person):
+        self.queue.append(('stop', person))
+
     def clock(self):
         """The plant clock in tenths of a clock second (§16.1): C(n) = S + n × day_scale + J."""
         return self.S + self.step_no * self.ds + self.J
@@ -2247,7 +2256,8 @@ class Engine:
                 noted.append((item + (None, NO_OWNER), npc))
             elif kind == 'remove_lock':
                 noted.append((item[:5] + (item[5] if len(item) > 5 else NO_OWNER,), npc))
-            elif kind in ('role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump'):
+            elif kind in ('role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump', 'ppe', 'zone',
+                          'stop'):
                 if sr is not None:
                     sr.t_input(item)
                 elif kind == 'role':
@@ -2509,6 +2519,7 @@ class Engine:
         if self.staff is not None:
             s['clock'] = self.clock()
             s['people'] = self.staff.snap()
+            s['worn'], s['acts'] = self.staff.snap_acts()
             s['vehicles'] = {}
             s['unacked'] = self.staff.unacked
         if values:
@@ -2561,6 +2572,15 @@ class Recorder(Engine):
 
     def jump(self, hhmm):
         self._q(('jump', hhmm))
+
+    def ppe(self, item, on):
+        self._q(('ppe', item, on))
+
+    def zone(self, zone, how):
+        self._q(('zone', zone, how))
+
+    def stop(self, person):
+        self._q(('stop', person))
 
     def ack(self, alarm):
         self._q(('ack', alarm))

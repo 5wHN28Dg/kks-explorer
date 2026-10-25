@@ -11,7 +11,9 @@ const SimClock = preload("res://ui/sim_clock.gd")
 const MAP_LAYER := 2
 const COLOURS := {"shift_sup": Color(0.95, 0.95, 0.95), "ccr_op": Color(0.25, 0.55, 1.0),
 		"field_op": Color(1.0, 0.8, 0.1), "elec_ap": Color(1.0, 0.45, 0.1), "mech_tech": Color(0.3, 0.75, 0.35),
-		"elec_tech": Color(0.85, 0.35, 0.8), "ic_tech": Color(0.3, 0.85, 0.85)}
+		"elec_tech": Color(0.85, 0.35, 0.8), "ic_tech": Color(0.3, 0.85, 0.85), "maint_sup": Color(0.6, 0.9, 0.5),
+		"hse_officer": Color(0.2, 0.6, 0.3), "contractor_sup": Color(0.35, 0.45, 0.85),
+		"contractor": Color(0.2, 0.35, 0.75)}
 
 var ui
 var capsules: MultiMeshInstance3D
@@ -187,8 +189,13 @@ func drive(delta: float) -> void:
 		p.look = avatars.info.roles.get(role, avatars.info.looks.keys()[0])
 		p.anim = "" if speed > 0.0 else _anim(e, sm, pi, place)
 		p.scale = 0.94 + 0.12 * float((pi * 37) % 11) / 10.0
-		if check_hat or not _hat.has(pi):
-			_hat[pi] = ui.main.area_at(at) != "Between the areas"
+		if sm.zone_ids.is_empty():
+			if check_hat or not _hat.has(pi):
+				_hat[pi] = ui.main.area_at(at) != "Between the areas"
+		else:
+			# with zones (milestone S2): the hat on the head where a zone needs it and the person wears it; in the
+			# hand elsewhere (the road variant), and so too for one who has taken it off in a zone (an unsafe act seen)
+			_hat[pi] = hat_on(e, sm, pi)
 		p.hat = _hat[pi]
 		n += 1
 	out.resize(n)
@@ -214,3 +221,15 @@ func _anim(e, sm, pi: int, place: int) -> String:
 		a = "sit"
 	return a
 
+
+
+## Whether a person's hard hat is on their head (PLANT3D §17.11): they wear one and stand in a zone that needs it.
+static func hat_on(e, sm, pi: int) -> bool:
+	var helmet: int = 1 << int(sm.PPE.find("helmet"))
+	if (e.sp_worn[pi] & helmet) == 0:
+		return false
+	var zm: int = sm.zones_of(e, pi)
+	for z in sm.zone_ids.size():
+		if zm & (1 << z) and (sm.zone_ppe[z] & helmet) != 0:
+			return true
+	return false

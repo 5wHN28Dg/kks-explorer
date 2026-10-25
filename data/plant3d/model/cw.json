@@ -340,7 +340,11 @@
  ],
  "works": [
   {"id": "wo_cw_a_motor", "kks": "30PAC10AP001", "title": "CW pump A motor: bearing replacement", "discipline": "mech", "permit": "general", "isolation": "iso_cw_a", "repairs": "cw_a_motor", "task": "job_cw_a_motor"},
+  {"id": "wo_cw_a_ls", "kks": "30PAC10AA101", "title": "CW pump A discharge valve: replace the start-position limit switch", "discipline": "inst", "permit": "general", "isolation": "iso_cw_a", "repairs": "cw_a_ls", "task": "job_cw_a_ls"},
   {"id": "wo_cw_b_motor", "kks": "30PAC10AP002", "title": "CW pump B motor: bearing replacement", "discipline": "mech", "permit": "general", "isolation": "iso_cw_b", "repairs": "cw_b_motor", "task": "job_cw_b_motor"},
-  {"id": "wo_cw_c_motor", "kks": "30PAC10AP003", "title": "CW pump C motor: bearing replacement", "discipline": "mech", "permit": "general", "isolation": "iso_cw_c", "repairs": "cw_c_motor", "task": "job_cw_c_motor"}
+  {"id": "wo_cw_b_ls", "kks": "30PAC10AA102", "title": "CW pump B discharge valve: replace the start-position limit switch", "discipline": "inst", "permit": "general", "isolation": "iso_cw_b", "repairs": "cw_b_ls", "task": "job_cw_b_ls"},
+  {"id": "wo_cw_c_motor", "kks": "30PAC10AP003", "title": "CW pump C motor: bearing replacement", "discipline": "mech", "permit": "general", "isolation": "iso_cw_c", "repairs": "cw_c_motor", "task": "job_cw_c_motor"},
+  {"id": "wo_cw_c_ls", "kks": "30PAC10AA103", "title": "CW pump C discharge valve: replace the start-position limit switch", "discipline": "inst", "permit": "general", "isolation": "iso_cw_c", "repairs": "cw_c_ls", "task": "job_cw_c_ls"},
+  {"id": "wo_paint_cw", "kks": "30PAC10AP003", "title": "CW pump house: paint the pipework by pump C", "discipline": "civil", "permit": "general", "task": "job_paint_cw"}
  ]
 }

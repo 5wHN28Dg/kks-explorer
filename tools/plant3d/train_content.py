@@ -211,6 +211,9 @@ FAULTS = [  # trainer faults (no `when`: pressed by the trainer, PLANT3D §7.8)
 ] + [(f'cw_{x}_ls', {f'cw_{x}_ls_fault': 1}, f'CW pump {x.upper()} discharge valve: the start-position limit switch '
       f'sticks made (the permissive passes with the valve open)') for x in 'abc'] + [
     ('byp_hyd', {'byp_hyd_fault': 1}, 'Bypass valves\' hydraulic unit fails: the bypass is blocked'),
+    # instruments drifting out of calibration (milestone S2): the calibration under its permit puts them right
+    ('cond_p2_drift', {'cond_p2_drift': 1.5}, 'Condenser pressure transmitter 2 drifts: reads 1.5 kPa high'),
+    ('cond_p3_drift', {'cond_p3_drift': -1.2}, 'Condenser pressure transmitter 3 drifts: reads 1.2 kPa low'),
     ('st_trip_no_bypass', {'st_vib_fault': 1, 'byp_hyd_fault': 1},
      'Steam turbine bearing 3 damage with the bypass hydraulics failed: no steam sink'),
 ]

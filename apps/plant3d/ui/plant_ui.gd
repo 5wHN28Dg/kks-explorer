@@ -76,6 +76,7 @@ var people                      # ui/people_view.gd: the crews as markers in the
 var _place_t := 0.0
 var _arrived := -2              # the place the last arrive input named (-1: a leave), -2: none sent yet
 var _jumps := 0                 # the engine's J when last looked at: a jump moves the walker to their placed person
+var _zones := -1                # the zones the last zone inputs left the trainee in (a bit each), -1: none sent yet
 var root: Control
 var arrows: Control
 var instructor := false
@@ -529,6 +530,7 @@ func take_role(pid: String) -> void:
 		clock.run_steps(1)
 		if e.st_trainee != -1:
 			_arrived = -2
+			_zones = -1
 			go_to_place(e.sp_pos[e.st_trainee] if e.sp_pos[e.st_trainee] != -1 else e._sm.gate)
 			toast("You are %s. Your tasks are in the Crew panel." % e._sm.people[e.st_trainee]["call"])
 		else:
@@ -562,6 +564,120 @@ func write_reading(code: String, text: String) -> void:
 	clock.engine.read(code, t.to_float())
 
 
+## Whether the trainee stands at a locker place (PPE is put on and taken off there, PLANT3D §17.11).
+func at_locker() -> bool:
+	var e = clock.engine
+	return e._sm != null and e.st_t_at != -1 and e._sm.kind[e.st_t_at] == "locker"
+
+
+## The walker to the first locker of the content's locker room.
+func go_to_locker() -> void:
+	var sm = clock.engine._sm
+	for i in sm.places.size():
+		if sm.kind[i] == "locker":
+			go_to_place(i)
+			return
+
+
+## The trainee puts on their role's PPE ("role") or the listed items, or takes everything off ("off"), at a locker:
+## one ppe input per item (§17.6).
+func put_on(x) -> void:
+	var e = clock.engine
+	var sm = e._sm
+	if sm == null or e.st_trainee == -1:
+		return
+	if not at_locker():
+		toast("PPE is put on at a locker.")
+		return
+	var worn: int = e.sp_worn[e.st_trainee]
+	if typeof(x) == TYPE_STRING and x == "off":
+		for k in sm.PPE.size():
+			if worn & (1 << k):
+				e.ppe(sm.PPE[k], 0)
+		return
+	var items: Array = x if typeof(x) == TYPE_ARRAY else sm.roles[sm.people[e.st_trainee]["role"]].get("ppe", [])
+	for it in items:
+		if not (worn & (1 << sm.PPE.find(it))):
+			e.ppe(it, 1)
+
+
+## Whether the trainee is within talking reach (3 m) of a person, where the engine has them (a place, or along a way).
+func near_person(qi: int) -> bool:
+	var e = clock.engine
+	var sm = e._sm
+	var at = null
+	if not e.sp_leg[qi].is_empty():
+		var leg: Array = e.sp_leg[qi]
+		var k := clampf(float(e.step_no - leg[2]) / maxf(1.0, float(leg[3] - leg[2])), 0.0, 1.0)
+		var a: Array = sm.places[leg[0]]["at"]
+		var b: Array = sm.places[leg[1]]["at"]
+		at = Vector3(lerpf(a[0], b[0], k), lerpf(a[1], b[1], k), lerpf(a[2], b[2], k))
+	elif e.sp_pos[qi] != -1:
+		var p: Array = sm.places[e.sp_pos[qi]]["at"]
+		at = Vector3(p[0], p[1], p[2])
+	if at == null:
+		return false
+	var g: Vector3 = player.global_position
+	return Vector3(g.x, -g.z, g.y).distance_to(at) <= STOP_REACH
+
+
+const STOP_REACH := 3.0         # m: how near the trainee stops someone's work
+
+
+## The trainee stops an unsafe act of that person's (§16.7, §17.11): within reach of them, as a lock within reach of
+## its equipment.
+func stop_work(pid: String) -> void:
+	var e = clock.engine
+	var sm = e._sm
+	if sm == null or not sm.person_ix.has(pid):
+		return
+	if not near_person(sm.person_ix[pid]):
+		toast("Go to them first: work is stopped face to face.")
+		return
+	e.stop_act(pid)
+
+
+## The zone inputs (§17.6): the zones whose outline holds the walker (within their heights), as they change.
+func _zone_tick(e, here: Vector3) -> void:
+	var sm = e._sm
+	if sm.zone_ids.is_empty():
+		return
+	var zm := 0
+	for z in sm.zone_ids.size():
+		var zd: Dictionary = sm.d["zones"][z]
+		if here.z > float(zd["z"][0]) and here.z < float(zd["z"][1]) and _inside(here.x, here.y, zd["outline"]):
+			zm |= 1 << z
+	if _zones == -1:
+		_zones = e.sp_zin[e.st_trainee]
+	if zm == _zones:
+		return
+	var worn: int = e.sp_worn[e.st_trainee]
+	for z in sm.zone_ids.size():
+		var bit: int = 1 << z
+		if (zm & bit) and not (_zones & bit):
+			e.zone(sm.zone_ids[z], "in")
+			var miss := PackedStringArray()
+			for k in sm.PPE.size():
+				if sm.zone_ppe[z] & (1 << k) and not (worn & (1 << k)):
+					miss.append(CrewPanel.PPE_WORDS.get(sm.PPE[k], sm.PPE[k]))
+			var zt: String = sm.d["zones"][z].get("title", sm.zone_ids[z])
+			toast("Entering the %s%s" % [zt.to_lower(), (": you need " + ", ".join(miss)) if not miss.is_empty() else ""])
+		elif (_zones & bit) and not (zm & bit):
+			e.zone(sm.zone_ids[z], "out")
+	_zones = zm
+
+
+static func _inside(x: float, y: float, poly: Array) -> bool:
+	var inside := false
+	var n := poly.size()
+	for i in n:
+		var a: Array = poly[i]
+		var b: Array = poly[(i + 1) % n]
+		if (float(a[1]) > y) != (float(b[1]) > y) and x < float(a[0]) + (y - float(a[1])) * (float(b[0]) - float(a[0])) / (float(b[1]) - float(a[1])):
+			inside = not inside
+	return inside
+
+
 ## The arrive and leave inputs (§17.6): the trainee is at a place when within 1.5 m of it (2 m up or down).
 func _place_tick() -> void:
 	var e = clock.engine
@@ -572,12 +688,14 @@ func _place_tick() -> void:
 		# after a jump (§17.6) the trainee's person stands where the placement put them: the walker goes there
 		_jumps = e.J
 		_arrived = -2
+		_zones = -1
 		if e.sp_pos[e.st_trainee] != -1:
 			go_to_place(e.sp_pos[e.st_trainee])
 		toast("The clock jumped to %s." % clock_text())
 		return
 	var g: Vector3 = player.global_position
 	var here := Vector3(g.x, -g.z, g.y)
+	_zone_tick(e, here)
 	var best := -1
 	var bd := 1.5
 	for i in sm.places.size():
@@ -663,6 +781,7 @@ func restart(scenario: String, quiet := false) -> void:
 	permits._sig = ""
 	_ev_seen = 0
 	_arrived = -2
+	_zones = -1
 	_jumps = 0
 	crew._sig = ""
 	if not quiet:
@@ -1162,6 +1281,8 @@ func _follow_events(evs: Array, from: int) -> void:
 	for i in range(from, evs.size()):
 		var ev: Array = evs[i]
 		match ev[1]:
+			"unsafe", "stop":
+				_safety_toast(e, ev)
 			"op":
 				for k in _pending.size():         # the events come in the order the inputs were made
 					var p: Array = _pending[k]
@@ -1325,3 +1446,23 @@ func _draw_arrows() -> void:
 	arrows.draw_colored_polygon(PackedVector2Array([tip, tip - dir * s + side * s * 0.6, tip - dir * s - side * s * 0.6]), Color(1, 0.6, 0.1, 0.95))
 	arrows.draw_string_outline(font, tip - dir * s * 2.2 + Vector2(-30, 8), "%.0f %s" % [d, unit], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 6, Color.BLACK)
 	arrows.draw_string(font, tip - dir * s * 2.2 + Vector2(-30, 8), "%.0f %s" % [d, unit], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 0.7, 0.2))
+
+
+## Unsafe acts and stopped work concerning the trainee (PLANT3D §16.7, §17.11), as a line on the screen.
+func _safety_toast(e, ev: Array) -> void:
+	var sm = e._sm
+	if sm == null or e.st_trainee == -1:
+		return
+	var me_id: String = sm.people[e.st_trainee]["id"]
+	if ev[1] == "unsafe" and ev[2] == me_id:
+		var k: int = sm.ACT_KINDS.find(ev[3])
+		toast("Unsafe act: you are " + CrewPanel.act_text(sm, k, [ev[4], ev[0], false]))
+	elif ev[1] == "stop" and ev[3] == me_id and ev[6] == "done":
+		toast("%s stopped your work: %s. Put it right (your tasks)." % [sm.people[sm.person_ix[ev[2]]]["call"]
+				if sm.person_ix.has(ev[2]) else str(ev[2]), CrewPanel.act_text(sm, sm.ACT_KINDS.find(ev[4]), [ev[5]])])
+	elif ev[1] == "stop" and ev[2] == me_id:
+		if ev[6] == "done":
+			toast("You stopped the work of %s." % sm.people[sm.person_ix[ev[3]]]["call"])
+		else:
+			toast("Not stopped: %s" % ("you have no authority to stop work" if "authority" in ev[7]
+					else "no unsafe act of theirs goes on"))

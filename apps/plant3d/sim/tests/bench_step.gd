@@ -89,8 +89,14 @@ func _staff(m) -> void:
 	var peak := PackedInt64Array()
 	for k in range(1200, 3600):         # 05:42–06:06 at day_scale 6: the handovers and the duties' change
 		peak.append(st[k])
+	# the day workers' arrival (milestone S2: about thirty people at the gate, the lockers and the toolbox talk) and the
+	# morning's permits, 06:55–07:45
+	var day := PackedInt64Array()
+	for k in range(8500, 13500):
+		day.append(st[k])
 	_report("staff_step9", st)
 	_report("staff_step9_shift_change", peak)
+	_report("staff_step9_day_start", day)
 	_report("model_and_staff", whole)
 	var ev := 0
 	for x in e.events:

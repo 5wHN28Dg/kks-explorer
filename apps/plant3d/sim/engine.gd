@@ -151,6 +151,11 @@ var sp_result: Array = []           # an NPC's input's outcome, read in step 9
 var sp_rng := PackedInt64Array()
 var sp_wake := PackedInt64Array()   # the step a person's next turn can change anything (staff.gd turn)
 var sp_held: Array = []             # a job held overnight (§17.10), or null
+var sp_worn := PackedInt32Array()   # the PPE items worn: a bit per item of staff.gd PPE (§17.11)
+var sp_acts: Array = []             # per person: an Array per act kind (staff.gd ACT_KINDS), null or [zone or work, start, stopped]
+var sp_zin := PackedInt64Array()    # the trainee's zones from their zone inputs: a bit per zone (file order)
+var st_made := {}                   # `seen` reactions made, once per act (§16.7): source key -> true
+var _touched := PackedByteArray()   # people whose acts may have changed in this step's step 9 (staff.gd: scratch)
 
 
 func _init(model = null, scenario = null) -> void:
@@ -539,6 +544,21 @@ func jump(hhmm) -> void:
 	_q(["jump", hhmm])
 
 
+## The trainee puts a PPE item on (1) or takes it off (0), at a locker (§17.6, §17.11).
+func ppe(item, on) -> void:
+	_q(["ppe", item, on])
+
+
+## The trainee entered ("in") or left ("out") a zone (§16.2).
+func zone(zone_id, how) -> void:
+	_q(["zone", zone_id, how])
+
+
+## The trainee stops an unsafe act of that person's (§16.7, §17.11).
+func stop_act(person) -> void:
+	_q(["stop", person])
+
+
 ## The plant clock in tenths of a clock second (§16.1): C(n) = S + n × day_scale + J.
 func clock() -> int:
 	return _S + step_no * _ds + J
@@ -592,8 +612,10 @@ func apply_input(item: Array) -> void:
 			_q([item[1], item[2]])
 		"task_ack":
 			task_ack()
-		"read", "say":
+		"read", "say", "ppe", "zone":
 			_q([item[1], item[2], item[3]])
+		"stop":
+			_q(["stop", item[2]])
 		"call":
 			radio_call(item[2], item[3], item[4] if item.size() > 4 else null)
 		_:
@@ -1358,7 +1380,8 @@ func _step() -> void:
 			noted.append([item, npc])
 			continue
 		if kind == "role" or kind == "task_ack" or kind == "arrive" or kind == "leave" or kind == "read" \
-				or kind == "say" or kind == "pick" or kind == "call" or kind == "jump":
+				or kind == "say" or kind == "pick" or kind == "call" or kind == "jump" or kind == "ppe" \
+				or kind == "zone" or kind == "stop":
 			if _sm != null:
 				_sm.t_input(self, item)
 			elif kind == "role":
@@ -1716,6 +1739,9 @@ func snapshot(with_values: bool = true) -> Dictionary:
 	if _sm != null:
 		s["clock"] = clock()
 		s["people"] = _sm.snap(self)
+		var wa: Array = _sm.snap_acts(self)
+		s["worn"] = wa[0]
+		s["acts"] = wa[1]
 		s["vehicles"] = {}
 		s["unacked"] = st_unacked
 	if with_values:
@@ -1742,11 +1768,12 @@ func clone():
 			"st_unacked", "st_trainee", "st_t_at", "st_next1"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
-			"lockbits", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake"]:
+			"lockbits", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_worn",
+			"sp_zin"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",
 			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_early",
-			"st_left", "st_pending",
-			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result", "sp_held"]:
+			"st_left", "st_pending", "st_made",
+			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result", "sp_held", "sp_acts"]:
 		c.set(k, get(k).duplicate(true))
 	return c
