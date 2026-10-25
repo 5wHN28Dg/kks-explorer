@@ -5,7 +5,8 @@
 ## cpu_ms and gpu_ms are the engine's last measured render times (they lag a frame or two); sim_steps are the model's
 ## steps run between this line's frame and the next. surf_pipes and spec_pipes are the pipelines compiled since the line
 ## before (a pipeline compiled after the start is a hitch on a phone: decision 0060), and events what else the app
-## started in that frame (`counters`: sounds loaded and started, saves, route searches; each name with how many; work
+## started in that frame (`counters`: sounds loaded and started, saves, route searches, and `reclaim`, the pages the
+## kernel scanned to free memory; each name with how many; work
 ## in calls deferred to the end of a frame shows on the next frame's line),
 ## so that a long frame can be told from the phone's own work (phone/frames.sh pulls frames.csv).
 extends Node
@@ -61,6 +62,8 @@ func _ready() -> void:
 	_pipes0 = pipelines()
 	if main != null and main.ui != null:
 		add_app_counters(main.ui)
+	if FileAccess.file_exists(VMSTAT) and vmstat_scanned() >= 0:
+		counters["reclaim"] = vmstat_scanned
 	for k in counters:
 		_counts[k] = int(counters[k].call())
 
@@ -87,6 +90,21 @@ func add_app_counters(u) -> void:
 		counters["route_find"] = func(): return u.route.stats.finds
 		counters["route_draw"] = func(): return u.route.stats.draws
 
+
+## The pages the kernel scanned to reclaim memory so far (kswapd's and direct reclaim's, /proc/vmstat), or -1 where it
+## cannot be read. While the Note 9 reclaims memory, the Mali driver's page faults stall single GPU frames to 50-160 ms
+## (decision 0066, "The last frame spikes"): `reclaim+N` in a frame's events tells such a frame from the app's own work.
+const VMSTAT := "/proc/vmstat"
+static func vmstat_scanned() -> int:
+	var f := FileAccess.open(VMSTAT, FileAccess.READ)
+	if f == null:
+		return -1
+	var n := -1
+	while not f.eof_reached():
+		var l := f.get_line()
+		if l.begins_with("pgscan_kswapd ") or l.begins_with("pgscan_direct "):
+			n = maxi(n, 0) + int(l.get_slice(" ", 1))
+	return n
 
 ## The counters that changed since the last call, as "name+n" separated by spaces.
 func _events() -> String:
