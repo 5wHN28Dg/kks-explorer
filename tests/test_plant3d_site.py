@@ -204,9 +204,10 @@ class Site(unittest.TestCase):
 
     def test_no_lawn_only_the_regions_species(self):
         self.assertEqual({p[1] for p in self.plants}, set(K.SPECIES))
-        self.assertEqual(set(K.SPECIES), {'date_palm', 'tamarisk', 'oleander', 'bougainvillea', 'saltbush', 'caper'})
+        self.assertEqual(set(K.SPECIES), {'date_palm', 'tamarisk', 'oleander', 'bougainvillea', 'saltbush', 'caper',
+                                          'dracaena'})
 
-    def roads(self, surfaces=('asphalt', 'concrete', 'gravel')):
+    def roads(self, surfaces=('asphalt', 'concrete', 'gravel', 'pavers')):
         out = []
         for a in self.b.areas:
             for s in a['structures']:
@@ -221,7 +222,7 @@ class Site(unittest.TestCase):
 
     def test_every_plant_has_a_purpose(self):
         """SITE.md §4, each species where its purpose is."""
-        paved = self.roads(('concrete',))       # walkways, the forecourt, the mess hall's court
+        paved = self.roads(('concrete', 'pavers'))   # walkways, the forecourt, the mess hall's court
         asphalt = self.roads(('asphalt',))
         parking = [rect_of(s) for a in self.b.areas for s in a['structures']
                    if s['part'] == 'road' and s.get('kks', '').startswith('00UZD')]
@@ -239,10 +240,18 @@ class Site(unittest.TestCase):
             for s in a['structures']:
                 if s['part'] in ('porch', 'canopy'):
                     posts.append(s)
+        inside = {a['id'] for a in self.b.areas if a.get('load') == 'inside'}
+        outside_doors = [(s['at'][0], s['at'][1]) for a in self.b.areas if a['id'] not in inside
+                         for s in a['structures'] if s['part'] == 'door']
         for aid, sp, x, y, sid in self.plants:
             p = (x, y)
             with self.subTest(plant=sid, species=sp, at=(round(x, 1), round(y, 1))):
-                if sp == 'date_palm':
+                # pot plants only indoors, every other species only outdoors
+                self.assertEqual(sp == 'dracaena', aid in inside, 'a pot plant indoors, the rest outdoors')
+                if sp == 'dracaena':
+                    # the entrance's landscape: in a lobby, within 12 m of the building's outside door
+                    self.assertTrue(any(math.dist(p, d) <= 12.0 for d in outside_doors), 'a pot plant stands by an entrance')
+                elif sp == 'date_palm':
                     # beside an east-west walkway, on its south side: the sun is in the south (SITE.md §4)
                     for r in paved:
                         ew = r[2] - r[0] > 3 * (r[3] - r[1])
@@ -368,6 +377,78 @@ class Site(unittest.TestCase):
                 '00UZW40'} | {f'00UZW1{n}' for n in range(1, 9)}
         have = {s.get('kks') for a in self.b.areas for s in a['structures'] if s['part'] == 'building'}
         self.assertLessEqual(want, have)
+
+    def structures(self, part):
+        return [(a, s) for a in self.b.areas for s in a['structures'] if s['part'] == part]
+
+    def test_the_roads_kerbs_are_painted_and_walkways_block_paved(self):
+        """Photo pass 3: the site's and the camp's kerbs are painted in yellow and white blocks (the ring road's too:
+        apps/plant3d/tests/test_site.gd), the walkways along the roads block paved."""
+        kerbs = self.structures('kerb')
+        self.assertGreater(len(kerbs), 5)
+        for a, s in kerbs:
+            self.assertTrue(s['params'].get('painted', True), f'{s["id"]} is painted')
+        walks = {s['id']: s['params']['surface'] for a, s in self.structures('road')}
+        for sid in ('gate_walk_w', 'gate_walk_e', 'gate_walk_admin', 'admin_walk', 'rw_walk', 'camp_walk'):
+            self.assertEqual(walks[sid], 'pavers', sid)
+
+    def test_the_roadside_and_camp_props_stand_where_they_serve(self):
+        """Photo pass 3: each hydrant has its bollard beside it and stands within 3 m of a road; the ambulance is on
+        the camp road by the first-aid point; every air conditioner hangs on a building's long wall under one of its
+        windows; the shade sails' posts stand clear of the cars under them; skips and the mast stand on open
+        ground, clear of roads."""
+        roads = self.roads()
+        bollards = [s['at'] for a, s in self.structures('bollard')]
+        hyd = self.structures('hydrant')
+        self.assertGreaterEqual(len(hyd), 4)
+        for a, s in hyd:
+            self.assertTrue(any(math.dist(s['at'][:2], q[:2]) < 1.5 for q in bollards), f'{s["id"]} has its bollard')
+            self.assertTrue(any(0 < dist_rect(s['at'][:2], r) <= 3.0 for r in roads), f'{s["id"]} stands by a road')
+        amb = [s for a, s in self.structures('vehicle') if s['params'].get('kind') == 'ambulance']
+        self.assertEqual(len(amb), 1)
+        office = rect_of(next(s for s in self.areas['camp']['structures'] if s['id'] == 'camp_office'))
+        spine = rect_of(next(s for s in self.areas['camp']['structures'] if s['id'] == 'camp_spine'))
+        self.assertLess(dist_rect(amb[0]['at'][:2], office), 15)
+        self.assertEqual(dist_rect(amb[0]['at'][:2], spine), 0)
+        # in the lane traffic keeps to (right-hand): the north lane faces west, the south lane east
+        north = amb[0]['at'][1] > (spine[1] + spine[3]) / 2
+        self.assertEqual(amb[0].get('yaw', 0) % 360, 270 if north else 90, 'the ambulance keeps to its lane')
+        buildings = [s for a, s in self.structures('building')]
+        acs = self.structures('ac_unit')
+        self.assertGreaterEqual(len(acs), 100)
+        for a, s in acs:
+            x, y, z = s['at']
+            ok = False
+            for bd in buildings:
+                r = rect_of(bd)
+                if r[0] <= x <= r[2] and min(abs(y - r[1]), abs(y - r[3])) < 0.2:
+                    wy = r[1] if abs(y - r[1]) < 0.2 else r[3]
+                    for o in bd['params']['openings']:
+                        if o['kind'] == 'window' and abs(bd['at'][1] + o['at'][1] - wy) < 0.01 and \
+                                abs(bd['at'][0] + o['at'][0] - x) < o['width'] / 2 and \
+                                0 < o['at'][2] - o['height'] / 2 - (z + 0.58) < 0.5:
+                            # its pipe (0.36 m to the unit's right, up the wall) clear of the glass
+                            right = -1 if s.get('yaw', 0) == 180 else 1
+                            px = x + right * 0.36
+                            ok = abs(bd['at'][0] + o['at'][0] - px) > o['width'] / 2
+            self.assertTrue(ok, f'{s["id"]} hangs under a window')
+        cars = [s for a, s in self.structures('vehicle')]
+        for a, s in self.structures('canopy'):
+            prm = s['params']
+            if prm.get('kind') != 'sail':
+                continue
+            L, w = prm['length'], prm['width']
+            n = max(1, math.ceil(L / 5.5))
+            for i in range(n + 1):
+                q = rot((-w / 2 + 0.25, -L / 2 + L * i / n), s.get('yaw', 0))
+                post = (s['at'][0] + q[0], s['at'][1] + q[1])
+                for c in cars:
+                    half = (0.95 + 0.1, 2.7 + 0.1)   # a car's half width and half length, a post's radius
+                    d = rot((post[0] - c['at'][0], post[1] - c['at'][1]), -c.get('yaw', 0))
+                    self.assertFalse(abs(d[0]) < half[0] and abs(d[1]) < half[1], f'{s["id"]} post {i} in {c["id"]}')
+        for part in ('skip_bin', 'mast'):
+            for a, s in self.structures(part):
+                self.assertTrue(all(dist_rect(s['at'][:2], r) > 0.5 for r in roads), f'{s["id"]} clear of roads')
 
 
 if __name__ == '__main__':
