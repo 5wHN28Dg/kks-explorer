@@ -14,6 +14,7 @@ const Interiors = preload("res://app/interiors.gd")
 const TestLaunch = preload("res://tests/test_launch.gd")
 const Builder = preload("res://builder/plant_builder.gd")
 const Site = preload("res://builder/site.gd")
+const Geom = preload("res://builder/geom.gd")
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = await interiors(tree)
@@ -173,6 +174,14 @@ func site() -> Array:
 				p.append("a windbreak tree at %s stands by the road %s" % [str(tp), sf.id])
 	if north < 200 or west < 60:
 		p.append("the windbreak lines both the north (%d trees) and the west (%d) walls" % [north, west])
+	# the telecom mast stays on the skyline: a slim grey shaft of its height in the admin area's far view; the shade
+	# sails white there (photo pass 3)
+	var admin: Dictionary = b.areas.filter(func(a): return a.id == "admin")[0]
+	var fi: Dictionary = b._far_items(admin)
+	if not fi.buildings.any(func(bl): return bl.has("colour") and absf(float(bl.height) - 30.0) < 0.01 and Geom.bbox(bl.outline).size.x < 1.0):
+		p.append("the mast is in the admin area's far view as a slim shaft")
+	if not fi.sheets.any(func(sh): return sh.size() > 2 and sh[2] == Builder.FAR_SAIL):
+		p.append("the shade sails are white in the far view")
 	# the ring road's kerbs painted yellow and white (photo pass 3), never black
 	if Site.KERB_YELLOW.v < 0.8 or Site.KERB_WHITE.s > 0.1 or Site.KERB_WHITE.v < 0.8:
 		p.append("the ring road's kerbs are painted yellow and white")

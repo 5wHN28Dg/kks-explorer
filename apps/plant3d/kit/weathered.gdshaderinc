@@ -279,8 +279,11 @@ void fragment() {
 		float grout = max(1.0 - smoothstep(gw2.x, gw2.x + aa, 0.5 - tf.x), 1.0 - smoothstep(gw2.y, gw2.y + aa, 0.5 - tf.y));
 		grout *= 1.0 - smoothstep(0.08, 0.3, max(tw.x, tw.y));
 		float th = hash1(dot(mod(floor(tq), 64.0), vec2(1.0, 57.0)) + 3.0);   // small arguments: sin keeps its precision on a phone
-		base *= 1.0 - tile_tone * 0.67 + tile_tone * th;
-		rough = mix(rough * (0.8 + 0.5 * th), 0.8, grout);
+		// each tile's own tone and gloss; block paving's (small bricks, strong tones) fades to the mean where a
+		// brick gets under a few pixels, as the grout does, or each pixel picks a random brick and the walk sparkles
+		float tn = mix(1.0, 1.0 - smoothstep(0.08, 0.3, max(tw.x, tw.y)), tile_bond);
+		base *= 1.0 + tn * tile_tone * (th - 2.0 / 3.0);
+		rough = mix(rough * (1.0 + tn * 0.5 * (th - 0.4)), 0.8, grout);
 		base = mix(base, base * 0.72, grout);
 		sheen = (1.0 - grout) * (0.8 + 0.4 * th) * tile_gloss;
 	}

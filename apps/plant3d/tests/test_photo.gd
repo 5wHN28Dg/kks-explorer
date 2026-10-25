@@ -4,7 +4,8 @@
 ## - wide halls' roofs carried by trusses, the frame inside (columns, girts), an overhead crane on its runway clear of
 ##   the trusses; the tiles' sheen at a grazing view in the shader (no reflection probe: half a gigabyte of video
 ##   memory and 14 to 19 ms of the laptop's GPU time at the 95th percentile);
-## - the transformers' firewalls (solid), open yards gravelled, the road's kerbs striped black and yellow;
+## - the transformers' firewalls (solid), open yards gravelled, the road's kerbs painted in yellow and white blocks and its
+##   block-paved footpath (photo pass 3);
 ## - the media's names stencilled on the pipes, drawn as a safety sign's text is (no pipeline of their own);
 ## - valves' bodies black, electric actuators grey, bolts rusty.
 extends RefCounted

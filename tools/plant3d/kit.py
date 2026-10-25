@@ -109,7 +109,8 @@ SITE_PARTS = {
     'gym_rack': part('structures', {'kind': E(['weights', 'treadmill', 'bike', 'bench'], 'weights')}),
     'sofa': part('structures', {'seats': I(1, 4, 3), 'cover': E(['fabric', 'leather'], 'fabric')}),
     'screen': part('structures', {'size': N(0.5, 3, 1.4), 'mount': N(0.8, 3, 1.5)}),
-    'carpet': part('structures', {'outline': T('polygon'), 'colour': E(['green', 'red', 'blue', 'sand'], 'green')}),
+    'carpet': part('structures', {'outline': T('polygon'), 'colour': E(['green', 'red', 'blue', 'sand'], 'green'),
+                                  'rows': B(True)}),
     'sanitary': part('structures', {'kind': E(['wc', 'shower', 'basin', 'ablution'], 'wc')}),
     # roadside and building fittings (photo pass 3): a pillar fire hydrant, a bollard post, a steel skip bin, a
     # lattice telecom mast, a split air conditioner's outdoor unit on its wall brackets

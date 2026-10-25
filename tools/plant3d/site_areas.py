@@ -322,6 +322,10 @@ def admin_inside():
           plant1('admin_in_lobby_plant_1', 'dracaena', [-109.7, 98.6]), plant1('admin_in_lobby_plant_2', 'dracaena', [-106.3, 98.6]),
           plant1('admin_in_lobby_plant_3', 'dracaena', [-115.4, 103.5]), plant1('admin_in_lobby_plant_4', 'dracaena', [-97.5, 98.6]),
           plant1('admin_in_lobby_plant_5', 'dracaena', [-102.0, 103.5])]
+    # the permit office and the meeting room keep a matte floor (the offices', no gloss: the user, 2026-10-21): plain
+    # carpet over the tiles the lobby has
+    s += [st('admin_in_permit_carpet', 'carpet', [-116, 104, 0], params={'outline': rect(11.9, 7.8), 'colour': 'sand', 'rows': False}),
+          st('admin_in_meeting_carpet', 'carpet', [-104, 104, 0], params={'outline': rect(11.75, 7.8), 'colour': 'blue', 'rows': False})]
     for k, x in enumerate((-114.2, -111.6)):
         s += [st(f'admin_in_permit_desk_{k + 1}', 'desk', [x, 108.6, 0], 0),
               st(f'admin_in_permit_chair_{k + 1}', 'chair', [x, 108.0, 0], 0, params={'kind': 'office'})]

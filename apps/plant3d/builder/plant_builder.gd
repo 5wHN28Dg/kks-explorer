@@ -912,6 +912,8 @@ const FAR_ROOF := Color(0.62, 0.63, 0.62)
 const FAR_LEAF := Color(0.36, 0.44, 0.30)
 const FAR_TRUNK := Color(0.42, 0.35, 0.27)
 const FAR_SHEET := Color(0.80, 0.75, 0.63)
+const FAR_SAIL := Color(0.90, 0.90, 0.87)   # a car park's white shade sails
+const FAR_MAST := Color(0.62, 0.64, 0.65)   # a lattice mast's galvanised steel, seen as a shaft
 
 ## What the far view of an area shows: {buildings: [{outline, height}], plants: [[species, plan point, height]],
 ## sheets: [[plan polygon, height]]}.
@@ -938,13 +940,14 @@ func _far_items(a: Dictionary) -> Dictionary:
 					[L * 0.5 + off.x, w * 0.5 + off.y], [-L * 0.5 + off.x, w * 0.5 + off.y]], Vector2(s.at[0], s.at[1]), float(s.get("yaw", 0)))
 				if s.part == "canopy":
 					pg = Geom.poly([[-w * 0.5, -L * 0.5], [w * 0.5, -L * 0.5], [w * 0.5, L * 0.5], [-w * 0.5, L * 0.5]], Vector2(s.at[0], s.at[1]), float(s.get("yaw", 0)))
-				out.sheets.append([pg, float(pr.height)])
+				out.sheets.append([pg, float(pr.height), FAR_SAIL if String(pr.get("kind", "sheet")) == "sail" else FAR_SHEET])
 			"mast":
-				# a lattice mast reads as a slim solid shaft from afar (it would vanish with its square's pieces)
+				# a lattice mast reads from afar as a slim grey shaft, as its open lattice does at that distance (it
+				# would vanish with its square's pieces)
 				var mh := float(pr.height)
-				var hw := maxf(0.75, mh * 0.05) * 0.6
+				var hw := 0.3
 				out.buildings.append({"outline": Geom.poly([[-hw, -hw], [hw, -hw], [hw, hw], [-hw, hw]], Vector2(s.at[0], s.at[1]), 0.0),
-					"height": mh})
+					"height": mh, "colour": FAR_MAST})
 	return out
 
 ## Builds the far meshes of `items` under root's node "far", and parents every drawn piece under root to its square's
@@ -958,13 +961,17 @@ func hlod(root: Node3D, id: String, items: Dictionary, scope: Node, keep := {}) 
 		return sts[k]
 	for bl in items.buildings:
 		var st: SurfaceTool = st_of.call(_mean(bl.outline))
+		if bl.has("colour"):   # a mast's shaft: one colour, no roof
+			st.set_color(bl.colour)
+			Geom.add_prism(st, bl.outline, 0.0, bl.height)
+			continue
 		st.set_color(FAR_WALL)
 		Geom.add_prism(st, bl.outline, 0.0, bl.height)
 		st.set_color(FAR_ROOF)
 		Geom.add_prism(st, bl.outline, bl.height, bl.height + 0.3)
 	for sh in items.sheets:
 		var st: SurfaceTool = st_of.call(_mean(sh[0]))
-		st.set_color(FAR_SHEET)
+		st.set_color(sh[2] if sh.size() > 2 else FAR_SHEET)
 		Geom.add_prism(st, sh[0], sh[1], sh[1] + 0.1)
 	for pl in items.plants:
 		var st: SurfaceTool = st_of.call(pl[1])

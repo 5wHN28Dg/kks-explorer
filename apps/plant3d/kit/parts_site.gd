@@ -411,17 +411,18 @@ static func _ambulance(m, g) -> void:
 	# the windscreen, on the cab's slope (1 cm proud of it)
 	var a0 := Vector3(0, cab + 0.75, 2.2).lerp(Vector3(0, L * 0.5 - 0.05, 1.15), 0.08)
 	var a1 := Vector3(0, cab + 0.75, 2.2).lerp(Vector3(0, L * 0.5 - 0.05, 1.15), 0.72)
-	var nrm := (a1 - a0).cross(Vector3(1, 0, 0)).normalized() * -0.012
+	var nrm := (a1 - a0).cross(Vector3(1, 0, 0)).normalized() * -0.015
 	_two_sided(m, Vector3(-W * 0.43, a0.y, a0.z) + nrm, Vector3(W * 0.43, a0.y, a0.z) + nrm,
 		Vector3(W * 0.45, a1.y, a1.z) + nrm, Vector3(-W * 0.45, a1.y, a1.z) + nrm)
 	for sx: float in [-1.0, 1.0]:
 		m.box_lh(Vector3(sx * W * 0.5 - 0.01, cab + 0.1, 1.3), Vector3(sx * W * 0.5 + 0.01, cab + 0.95, 1.95))
 	for sx: float in [-1.0, 1.0]:
-		m.box_lh(Vector3(sx * 0.45 - 0.3, -L * 0.5 - 0.01, 1.6), Vector3(sx * 0.45 + 0.3, -L * 0.5, 2.1))
+		m.box_lh(Vector3(sx * 0.45 - 0.3, -L * 0.5 - 0.015, 1.6), Vector3(sx * 0.45 + 0.3, -L * 0.5, 2.1))
 	col(m, "paint_red", Color(0.72, 0.09, 0.07, 0.15))
 	for sx: float in [-1.0, 1.0]:
-		m.box_lh(Vector3(sx * W * 0.5 - 0.008, -L * 0.5, 1.0), Vector3(sx * W * 0.5 + 0.008, L * 0.5 - 0.1, 1.2))
-	m.box_lh(Vector3(-W * 0.5, -L * 0.5 - 0.008, 1.0), Vector3(W * 0.5, -L * 0.5, 1.2))
+		m.box_lh(Vector3(minf(sx * W * 0.5, sx * (W * 0.5 + 0.015)), -L * 0.5 - 0.015, 1.0),
+			Vector3(maxf(sx * W * 0.5, sx * (W * 0.5 + 0.015)), L * 0.5 - 0.1, 1.2))   # 1.5 cm proud: no depth fight
+	m.box_lh(Vector3(-W * 0.5 - 0.015, -L * 0.5 - 0.015, 1.0), Vector3(W * 0.5 + 0.015, -L * 0.5, 1.2))
 	col(m, "plain", Color(0.15, 0.30, 0.75))
 	m.box_lh(Vector3(-W * 0.42, cab - 0.25, 2.5), Vector3(W * 0.42, cab + 0.05, 2.62))   # the light bar
 	col(m, "plain", Color(0.9, 0.9, 0.85), "detail", 0.15)
@@ -605,9 +606,11 @@ static func crossing(_part: String, g) -> void:
 const FIRE_RED := Color(0.72, 0.09, 0.07, 0.35)
 static func hydrant(_part: String, g) -> void:
 	var m = g.m
-	col(m, "concrete", Color(1, 1, 1))
+	# one material (the paint's, its colours in the vertices) and a `detail` piece: drawn within its size's range, as
+	# small things are, wherever it stands (no far view need parent it), casting no shadow
+	col(m, "paint_white", Color(0.62, 0.61, 0.58, 0.4), "detail", 0.9)   # its concrete collar
 	m.cyl(Vector3(0, 0, -0.05), Vector3(0, 0, 0.06), 0.32, -1.0, 10)
-	col(m, "paint_red", FIRE_RED)
+	col(m, "paint_red", FIRE_RED, "detail", 0.9)
 	m.cyl(Vector3(0, 0, 0.06), Vector3(0, 0, 0.12), 0.17, -1.0, 12)
 	m.cyl(Vector3(0, 0, 0.12), Vector3(0, 0, 0.72), 0.11, -1.0, 12, false)
 	m.cyl(Vector3(0, 0, 0.72), Vector3(0, 0, 0.76), 0.14, -1.0, 12)
@@ -625,11 +628,11 @@ static func hydrant(_part: String, g) -> void:
 static func bollard(_part: String, g) -> void:
 	var m = g.m
 	var h: float = g.num("height", 1.2)
-	col(m, "paint_red", FIRE_RED)
+	col(m, "paint_red", FIRE_RED, "detail", h)   # (a detail piece, as the hydrant)
 	m.cyl(Vector3.ZERO, Vector3(0, 0, h - 0.18), 0.05, -1.0, 10, false)
-	col(m, "paint_white", Color(0.92, 0.92, 0.90, 0.2))
+	col(m, "paint_white", Color(0.92, 0.92, 0.90, 0.2), "detail", h)
 	m.cyl(Vector3(0, 0, h - 0.18), Vector3(0, 0, h - 0.08), 0.051, -1.0, 10, false)
-	col(m, "paint_red", FIRE_RED)
+	col(m, "paint_red", FIRE_RED, "detail", h)
 	m.cyl(Vector3(0, 0, h - 0.08), Vector3(0, 0, h), 0.05, -1.0, 10)
 	g.solid_cyl(Vector3.ZERO, Vector3(0, 0, h), 0.06)
 
@@ -701,7 +704,7 @@ static func mast(_part: String, g) -> void:
 		var p := Vector3(cos(a), sin(a), 0) * 1.05
 		m.cyl(p + Vector3(0, 0, zp), p + Vector3(0, 0, h + 0.3), 0.04, -1.0, 6, false)
 		col(m, "plain", Color(0.86, 0.86, 0.84))
-		m.box(p * 1.12 + Vector3(0, 0, h - 0.6), Vector3(0.12, 0.3, 1.4), Basis(Vector3(0, 0, 1), a))   # facing out
+		m.box(p * (1.15 / 1.05) + Vector3(0, 0, h - 0.6), Vector3(0.12, 0.3, 1.4), Basis(Vector3(0, 0, 1), a))   # on its pipe, facing out
 		col(m, "galvanised", Color(0.80, 0.82, 0.83))
 	col(m, "plain", Color(0.86, 0.86, 0.84))
 	for k in 2:
@@ -709,30 +712,31 @@ static func mast(_part: String, g) -> void:
 		var dirv := Vector3(cos(a), sin(a), 0)
 		var zd := h - 6.0 - 1.5 * k
 		var hw: float = half.call(zd)
-		var c := dirv * (hw + 0.4) + Vector3(0, 0, zd)
+		var c := dirv * (hw + 0.32) + Vector3(0, 0, zd)   # its back drum against the tower's face
 		m.dish(c, dirv, 0.45, 0.18, 14, 3)
 		m.cyl(c - dirv * 0.05, c - dirv * 0.3, 0.2, -1.0, 10)
 	col(m, "plain", Color(0.75, 0.08, 0.05), "detail", 0.2)
 	m.cyl(Vector3(0, 0, h + 0.3), Vector3(0, 0, h + 0.5), 0.08, -1.0, 8)
-	for c: Vector2 in corner:
-		g.solid_cyl(Vector3(c.x * b0, c.y * b0, 0), Vector3(c.x * b0, c.y * b0, 3.0), 0.35)
+	g.solid_box(Vector3(-b0 - 0.35, -b0 - 0.35, 0), Vector3(b0 + 0.35, b0 + 0.35, 3.0))   # its foot, legs and bracing
 
 ## A split air conditioner's outdoor unit on its wall brackets, under a window (the camp's blocks, the offices): the
 ## casing, the fan's grille on the front (+y, away from the wall at the origin), the coil's grille at its side, the
 ## insulated pipes up the wall to the room. Origin on the wall's face below the unit's middle, at the unit's foot.
 static func ac_unit(_part: String, g) -> void:
 	var m = g.m
-	col(m, "paint_white", Color(0.30, 0.31, 0.32, 0.3))
+	# one material (matte, the colours in the vertices): 136 of them stand in the camp and the offices, and each material
+	# would be a draw call per cell; the grilles 1.5 cm proud of the casing (closer, they fight in a phone's depth buffer)
+	col(m, "matte", Color(0.30, 0.31, 0.32))
 	for sx: float in [-1.0, 1.0]:   # the brackets
 		m.box_lh(Vector3(sx * 0.3 - 0.02, 0.0, -0.04), Vector3(sx * 0.3 + 0.02, 0.4, 0.0))
 		m.box_lh(Vector3(sx * 0.3 - 0.02, 0.0, -0.2), Vector3(sx * 0.3 + 0.02, 0.03, 0.0))
 	col(m, "matte", Color(0.87, 0.87, 0.84))
 	m.box_lh(Vector3(-0.42, 0.06, 0.0), Vector3(0.42, 0.36, 0.58))
-	col(m, "plain", Color(0.18, 0.18, 0.19))
-	m.disk(Vector3(-0.1, 0.362, 0.29), Vector3(0, 1, 0), 0.21, 16)
-	col(m, "plain", Color(0.55, 0.56, 0.56))
-	m.box_lh(Vector3(0.425, 0.08, 0.06), Vector3(0.43, 0.33, 0.52))
-	col(m, "matte", Color(0.82, 0.82, 0.79), "detail", 0.05)
+	col(m, "matte", Color(0.18, 0.18, 0.19))
+	m.cyl(Vector3(-0.1, 0.36, 0.29), Vector3(-0.1, 0.375, 0.29), 0.21, -1.0, 16)
+	col(m, "matte", Color(0.55, 0.56, 0.56))
+	m.box_lh(Vector3(0.42, 0.08, 0.06), Vector3(0.435, 0.33, 0.52))
+	col(m, "matte", Color(0.82, 0.82, 0.79))
 	m.cyl(Vector3(0.36, 0.06, 0.4), Vector3(0.36, 0.03, 0.4), 0.025, -1.0, 6, false)
 	m.cyl(Vector3(0.36, 0.03, 0.4), Vector3(0.36, 0.03, 1.0), 0.025, -1.0, 6, false)
 	g.solid_box(Vector3(-0.42, 0.0, -0.05), Vector3(0.42, 0.36, 0.58))
@@ -1202,6 +1206,8 @@ static func carpet(_part: String, g) -> void:
 		return
 	col(m, "matte", c)
 	m.poly(pts, Vector3(0, 0, 1))
+	if not g.p.get("rows", true):
+		return   # an office's carpet: plain
 	# the prayer rows: a band every 1.2 m across the room (lighter), in the carpet's own geometry
 	var lo := Vector2(INF, INF)
 	var hi := Vector2(-INF, -INF)
