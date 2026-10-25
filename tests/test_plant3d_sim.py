@@ -173,6 +173,8 @@ def staff_run(files, r, kk):
     F['scenarios/s1.json'] = json.dumps(r['scenario']).encode()
     if r['staff'] is not None:
         F['staff.json'] = json.dumps(r['staff']).encode()
+    for rel, v in r.get('files', {}).items():
+        F[rel] = json.dumps(v).encode()
     e = P.Engine(P.check_files(F), 's1')
     h = Hasher(0)
     h.add(e, kk)

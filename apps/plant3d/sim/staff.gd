@@ -19,6 +19,8 @@ const MAX_POINTS := 64 * 16       # every point of a model's isolations: a lock 
 const QUEUE_MAX := 32
 const EARLY_KEPT := 32           # the trainee's actions kept for a later step (§17.8)
 const OPEN_KINDS := ["point", "door", "stop", "muster", "counter", "depot", "work"]
+const PPE := ["helmet", "boots", "glasses", "gloves", "ear", "harness", "face_shield", "apron", "vest"]
+const ACT_KINDS := ["ppe", "permit", "unsafe"]   # an unsafe act's kinds, in the order checked (§16.7, §17.11)
 const STATE_NAMES := ["none", "requested", "approved", "isolated", "issued", "accepted", "done", "returned",
 		"deisolated", "closed", "cancelled"]
 const PERMIT_TO := {"request": 1, "approve": 2, "issue": 4, "accept": 5, "done": 6, "return": 7, "close": 9,
@@ -62,6 +64,15 @@ var messages := {}
 var callable := {}                   # "caller role\nrole\ntask" -> true: the radio panel's requests (§17.8)
 var react_kind := PackedStringArray()  # per reaction: what it is on
 var value_reactions := PackedInt32Array()   # the reactions on a value
+var act_reactions := PackedInt32Array()     # the reactions on an unsafe act (§16.7)
+var zone_ids: Array = []             # the zones' ids, in file order
+var zone_ix := {}                    # zone id -> its index
+var zone_ppe := PackedInt32Array()   # per zone: the PPE it needs, a bit per item of PPE
+var place_zm := PackedInt64Array()   # per place: its zones, a bit per zone (file order)
+var place_kks: Array = []            # per place: the code of a work place, else null
+var role_ppe := {}                   # role -> its PPE, a bit per item
+var put_right := {}                  # act kind -> the task an HSE stop gives the acting person
+var unlocks := {}                    # task -> {work or "$": true} its unlock steps name (§17.11)
 
 
 static func load_from(m, doc: Dictionary):
@@ -127,6 +138,17 @@ func _build(m, doc: Dictionary) -> void:
 			if kind[i] == "door":
 				door[r] = i
 				break
+	for z in doc.get("zones", []):
+		zone_ix[z["id"]] = zone_ids.size()
+		zone_ids.append(z["id"])
+		zone_ppe.append(ppe_mask(z["ppe"]))
+	for p in places:
+		var zm := 0
+		for z in p.get("zones", []):
+			zm |= 1 << int(zone_ix.get(z, 0))
+		place_zm.append(zm)
+		place_kks.append(p.get("kks") if p["kind"] == "work" else null)
+	put_right = doc.get("put_right", {})
 	var np := places.size()
 	for w in doc["ways"]:
 		if not pix.has(w[0]) or not pix.has(w[1]) or not speeds.has(w[3]):
@@ -146,6 +168,7 @@ func _build(m, doc: Dictionary) -> void:
 	gate = pix.get(doc["gate"], -1)
 	for r in doc["roles"]:
 		roles[r["id"]] = r
+		role_ppe[r["id"]] = ppe_mask(r.get("ppe", []))
 		var a := {}
 		for x in r["authority"]:
 			a[x] = true
@@ -173,13 +196,15 @@ func _build(m, doc: Dictionary) -> void:
 				var hm: PackedStringArray = String(s["every"]).split(":")
 				every = hm[0].to_int() * 60 + hm[1].to_int()
 				until = at_ref(s["until"])
-			slots.append([at[0], at[1], every, until[0], until[1], s["task"]])
+			slots.append([at[0], at[1], every, until[0], until[1], s["task"], s.get("days")])
 		routines[r["id"]] = {"slots": slots, "idle": r["idle"]}
 	reactions = doc.get("reactions", [])
 	for i in reactions.size():
 		react_kind.append(reactions[i]["on"].keys()[0])
 		if react_kind[i] == "value":
 			value_reactions.append(i)
+		elif react_kind[i] == "unsafe":
+			act_reactions.append(i)
 		elif react_kind[i] == "lock_left":
 			has_left = true
 	messages = doc["messages"]
@@ -192,6 +217,19 @@ func _build(m, doc: Dictionary) -> void:
 		for s in t["steps"]:
 			if s.has("go") and typeof(s["go"]) == TYPE_STRING and not pix.has(s["go"]):
 				_fail("task %s: no place %s" % [t["id"], s["go"]])
+			if s.has("unlock"):
+				if not unlocks.has(t["id"]):
+					unlocks[t["id"]] = {}
+				unlocks[t["id"]][s["unlock"]["work"]] = true
+
+
+static func ppe_mask(items: Array) -> int:
+	var m := 0
+	for x in items:
+		var k := PPE.find(x)
+		if k >= 0:
+			m |= 1 << k
+	return m
 
 
 func prio_of(tid: String) -> int:
@@ -256,8 +294,11 @@ func init_run(e, scen: Dictionary) -> void:
 	e.sp_occ.resize(n)
 	e.sp_rng.resize(n)
 	e.sp_wake.resize(n)
+	e.sp_worn.resize(n)
+	e.sp_zin.resize(n)
 	for i in n:
 		e.sp_rng[i] = seed_of(seed, i)
+		e.sp_acts.append([null, null, null])
 		e.sp_duty.append([])
 		e.sp_duties.append([])
 		e.sp_slots.append([])
@@ -318,8 +359,11 @@ func plan(e, pi: int, upto: int) -> void:
 			continue
 		e.sp_duties[pi].append(du)
 		var mine := []
+		var wd: String = week[posmod(du[0] / DAY - 1, 7)]
 		for k in r["slots"].size():
 			var s: Array = r["slots"][k]
+			if s[6] != null and not s[6].has(wd):
+				continue                # a slot of other weekdays (§17.11)
 			var t := _resolve(s[0], s[1], du)
 			if s[2] == -1:
 				mine.append([t, du[0], k, 0, s[5], du])
@@ -339,11 +383,17 @@ func plan(e, pi: int, upto: int) -> void:
 
 func place_all(e, c: int, old: int) -> void:
 	var day: int = c / DAY
+	if e._touched.size() == people.size():
+		e._touched.fill(1)         # everyone's acts looked at again in this step's phase 5
 	e.st_holder = {}
 	e.st_given = {}
 	e.st_pending = []
+	e.st_made = {}
 	e.st_next1 = 0
 	for pi in people.size():
+		e.sp_worn[pi] = 0
+		e.sp_zin[pi] = 0
+		e.sp_acts[pi] = [null, null, null]
 		e.sp_duties[pi] = []
 		e.sp_slots[pi] = []
 		e.sp_planned[pi] = day - 3
@@ -365,6 +415,7 @@ func place_all(e, c: int, old: int) -> void:
 			if du[0] <= c and c < du[1]:
 				e.sp_on[pi] = 1
 				e.sp_duty[pi] = du
+				e.sp_worn[pi] = role_ppe[people[pi]["role"]]     # at work already: in their PPE (§17.11)
 		var keep := []
 		for du in e.sp_duties[pi]:
 			if du[1] > c and du != e.sp_duty[pi]:
@@ -455,7 +506,8 @@ static func _enqueue(e, pi: int, inst: Dictionary) -> void:
 	q.insert(at, inst)
 
 
-func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count := true, owner = null) -> bool:
+func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count := true, owner = null,
+		act = null) -> bool:
 	var c = e.sp_cur[pi]
 	if e.sp_queue[pi].size() + (1 if c != null and not c["idle"] else 0) >= QUEUE_MAX:
 		e._ev(["task", null, tid, "unassigned"])
@@ -465,7 +517,7 @@ func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count 
 		work = t["work"]
 	var inst := {"task": tid, "prio": prio, "made": e.step_no, "order": e.st_order, "step": 0, "st": {},
 			"work": work, "code": code, "alarm": alarm, "src": made_by, "idle": false, "started": false,
-			"int": t.get("interruptible", true), "owner": owner}
+			"int": t.get("interruptible", true), "owner": owner, "act": act}
 	e.st_order += 1
 	_enqueue(e, pi, inst)
 	e.sp_wake[pi] = 0
@@ -476,7 +528,8 @@ func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count 
 	return true
 
 
-func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, alarm, owner = null) -> bool:
+func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, alarm, owner = null,
+		act = null) -> bool:
 	var cands := []
 	for r in role_list:
 		for pi in people.size():
@@ -485,11 +538,22 @@ func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, al
 	if cands.is_empty():
 		e._ev(["task", null, tid, "unassigned"])
 		return false
+	# a task that unlocks its work's isolation goes first to someone holding a lock on it: only a lock's owner
+	# removes it (§15.1, §17.11)
+	var w = work if work != null else tasks[tid].get("work")
+	if w != null and unlocks.has(tid) and (unlocks[tid].has(w) or unlocks[tid].has("$")):
+		var wi: int = e.m.work_ix.get(w, -1) if typeof(w) == TYPE_STRING else -1
+		if wi != -1 and e.m.works[wi].has("isolation"):
+			var ii: int = e.m.isolation_ix[e.m.works[wi]["isolation"]]
+			for pi in cands:
+				for key in e.lockers:
+					if key.x == ii and _has(e.lockers[key], people[pi]["id"]):
+						return give(e, pi, tid, prio, made_by, work, code, alarm, true, owner, act)
 	for pi in cands:
 		var c = e.sp_cur[pi]
 		if c == null or c["idle"] or (c["prio"] > prio and c["int"]):
-			return give(e, pi, tid, prio, made_by, work, code, alarm, true, owner)
-	return give(e, cands[0], tid, prio, made_by, work, code, alarm, true, owner)
+			return give(e, pi, tid, prio, made_by, work, code, alarm, true, owner, act)
+	return give(e, cands[0], tid, prio, made_by, work, code, alarm, true, owner, act)
 
 
 ## Whether someone has an instance of this task for this work, current or queued (a kept call given again).
@@ -594,6 +658,10 @@ func step(e) -> void:
 	var c: int = e.clock()
 	var tin: Array = e.st_t_in
 	e.st_t_in = []
+	var np0 := people.size()
+	if e._touched.size() != np0:
+		e._touched.resize(np0)
+	e._touched.fill(0)
 	var jump_step := false
 	if not e.st_jumped.is_empty():
 		var old: int = e.st_jumped[0]
@@ -624,6 +692,24 @@ func step(e) -> void:
 				e.st_t_at = -1
 				e.sp_pos[tr] = -1
 				leave_place(e, tr)
+			elif item[0] == "ppe" and typeof(item[1]) == TYPE_STRING and PPE.has(item[1]) \
+					and typeof(item[2]) == TYPE_INT and (item[2] == 0 or item[2] == 1):
+				if item[2] == 1:
+					e.sp_worn[tr] |= 1 << PPE.find(item[1])
+				else:
+					e.sp_worn[tr] &= ~(1 << PPE.find(item[1]))
+			elif item[0] == "zone" and typeof(item[1]) == TYPE_STRING and zone_ix.has(item[1]) \
+					and typeof(item[2]) == TYPE_STRING and (item[2] == "in" or item[2] == "out"):
+				if item[2] == "in":
+					e.sp_zin[tr] |= 1 << int(zone_ix[item[1]])
+				else:
+					e.sp_zin[tr] &= ~(1 << int(zone_ix[item[1]]))
+			elif item[0] == "stop":
+				t_stop(e, tr, item[1])
+	else:
+		for item in tin:
+			if item[0] == "stop":       # free mode: no person to stop work with
+				e._ev(["stop", null, item[1], null, null, "refused", ["authority"]])
 	# 1. duties, then slots
 	var day: int = c / DAY
 	var np := people.size()
@@ -644,6 +730,14 @@ func step(e) -> void:
 					trainee_turn(e, pi, tin)
 			elif n >= e.sp_wake[pi] and not e._absent.has(pi):
 				turn(e, pi)
+	# 5. unsafe acts, then the reactions to them
+	var moved := false
+	for k in range(e.ev_mark, e.events.size()):
+		var x: Array = e.events[k]
+		if x[0] == n and x[1] == "permit" and x[5] == "done":
+			moved = true
+			break
+	act_phase(e, n, moved)
 	for i in value_reactions:
 		e.st_vprev[i] = e.truth(reactions[i]["on"]["value"])
 
@@ -860,7 +954,8 @@ func select(e, pi: int):
 	if cur == null and e.sp_on[pi]:
 		var idle := idle_of(pi)
 		cur = {"task": idle, "prio": 6, "made": e.step_no, "order": e.st_order, "step": 0, "st": {}, "work": null,
-				"code": null, "alarm": null, "src": null, "idle": true, "started": true, "int": true, "owner": null}
+				"code": null, "alarm": null, "src": null, "idle": true, "started": true, "int": true, "owner": null,
+				"act": null}
 		e.sp_cur[pi] = cur
 		e.st_order += 1
 		e._ev(["task", pid, idle, "start"])
@@ -871,6 +966,7 @@ func select(e, pi: int):
 		leave_place(e, pi)
 		e._ev(["move", pid, places[e.sp_pos[pi]]["id"], null, e.step_no])
 		e.sp_pos[pi] = -1
+		e.sp_worn[pi] = 0       # PPE left in the locker when leaving the site (§17.11)
 	return cur
 
 
@@ -924,6 +1020,7 @@ func turn(e, pi: int) -> void:
 	var n: int = e.step_no
 	if n < e.sp_wake[pi]:
 		return
+	e._touched[pi] = 1
 	var leg: Array = e.sp_leg[pi]
 	if not leg.is_empty():
 		if leg[3] > n:
@@ -1210,8 +1307,204 @@ func run(e, pi: int, cur: Dictionary):
 		return "next" if i + 1 >= pts.size() else run(e, pi, cur)
 	if s.has("handover") or s.has("remove_locks"):
 		return lock_round(e, pi, cur, s)
+	if s.has("ppe"):
+		if typeof(s["ppe"]) == TYPE_STRING and s["ppe"] == "off":
+			e.sp_worn[pi] = 0
+		else:
+			e.sp_worn[pi] |= _ppe_of(pi, s["ppe"])
+		return "next"
+	if s.has("stop"):
+		return stop_step(e, pi, cur)
 	push_error("staff: no step kind in " + str(s))
 	return "next"
+
+
+## A ppe step's items ("role" or a list) as a bit mask.
+func _ppe_of(pi: int, x) -> int:
+	if typeof(x) == TYPE_STRING:
+		return role_ppe[people[pi]["role"]]
+	return ppe_mask(x)
+
+
+## An NPC's stop step: to the place the acting person is at when the step starts (a place held by someone: its
+## room's door, else its point), then the act stopped if it still goes on and nobody has stopped it (§16.7).
+func stop_step(e, pi: int, cur: Dictionary) -> String:
+	var act = cur["act"]
+	var x: Dictionary = cur["st"]
+	if act == null:
+		return "next"
+	if not x.has("dest"):
+		var qi: int = act[0]
+		var t: int = e.sp_pos[qi]
+		if t == -1 and not e.sp_leg[qi].is_empty():
+			t = e.sp_leg[qi][1]
+		if t == -1 or not ongoing(e, act):
+			return "next"
+		if not open[t]:
+			var dr: int = door.get(room_of[t], -1) if room_of[t] != null else -1
+			if dr != -1 and dr != t:
+				t = dr
+			elif point_no[t] == -1:
+				t = stub[t]
+		x["dest"] = t
+	if not walk(e, pi, x["dest"]):
+		return "wait"
+	if ongoing(e, act):
+		stop_act(e, pi, act)
+	return "next"
+
+
+# ---------------------------------------------------------------- unsafe acts (§16.7, phase 5) and stopping work
+
+## A person's zones as a bit mask (§16.2): their place's; on a way, those both its ends list; the trainee's from
+## their zone inputs; none off site.
+func zones_of(e, pi: int) -> int:
+	if pi == e.st_trainee:
+		return e.sp_zin[pi]
+	var leg: Array = e.sp_leg[pi]
+	if not leg.is_empty():
+		return place_zm[leg[0]] & place_zm[leg[1]]
+	var p: int = e.sp_pos[pi]
+	return place_zm[p] if p != -1 else 0
+
+
+## [zone or work] while the act's condition holds, else [].
+func _act_now(e, pi: int, k: int) -> Array:
+	if k == 0:
+		var zm := zones_of(e, pi)
+		if zm == 0:
+			return []
+		var worn: int = e.sp_worn[pi]
+		for z in zone_ids.size():
+			if zm & (1 << z) and (zone_ppe[z] & ~worn) != 0:
+				return [zone_ids[z]]
+		return []
+	var cur = e.sp_cur[pi]
+	if cur == null or cur["idle"]:
+		return []
+	var s: Dictionary = tasks[cur["task"]]["steps"][cur["step"]]
+	if k == 2:
+		return [cur["work"]] if s.get("unsafe", false) == true else []
+	var w = cur["work"]
+	if not s.has("work") or w == null or not e.sp_leg[pi].is_empty():
+		return []
+	var wi: int = e.m.work_ix.get(w, -1)
+	var p: int = e.sp_pos[pi]
+	if wi == -1 or p == -1 or e.pstate[wi] == 5:
+		return []
+	if place_kks[p] != null and place_kks[p] == e.m.works[wi]["kks"]:
+		return [w]
+	return []
+
+
+## Phase 5: acts start and end, in person order (kinds in order); then the reactions to them. Only the people whose
+## state may have changed are looked at again (their turn ran, a stop, a placement; every one when a permit moved,
+## and the trainee always): the others' acts stay as they are, as the reference finds them by looking at everyone.
+func act_phase(e, n: int, permit_moved: bool) -> void:
+	var started := []
+	for pi in people.size():
+		if e._absent.has(pi):
+			continue
+		if not permit_moved and pi != e.st_trainee and not e._touched[pi]:
+			continue
+		var acts: Array = e.sp_acts[pi]
+		for k in 3:
+			var now := _act_now(e, pi, k)
+			var a = acts[k]
+			if a != null and now.is_empty():
+				acts[k] = null
+				e._ev(["safe", people[pi]["id"], ACT_KINDS[k], a[0]])
+			elif a == null and not now.is_empty():
+				acts[k] = [now[0], n, false]
+				e._ev(["unsafe", people[pi]["id"], ACT_KINDS[k], now[0]])
+				started.append([pi, k])
+	for ri in act_reactions:
+		var r: Dictionary = reactions[ri]
+		var v: String = r["on"]["unsafe"]
+		var prio: int = int(r.get("priority", prio_of(r["task"])))
+		if r.get("seen", false):
+			# the safety walk finds it: the first of its roles (role order, then index) in a zone of the act, in the
+			# step it starts or any later one while it lasts; once per act
+			for pi in people.size():
+				for k in 3:
+					var a = e.sp_acts[pi][k]
+					if a == null or (v != "*" and v != ACT_KINDS[k]):
+						continue
+					var key := "%d|unsafe|%s|%s|%d" % [ri, people[pi]["id"], ACT_KINDS[k], a[1]]
+					if e.st_made.has(key):
+						continue
+					var obs := observer(e, r["roles"], pi)
+					if obs == -1:
+						continue
+					e.st_made[key] = true
+					if not e.st_given.has(key):
+						give(e, obs, r["task"], prio, key, null, null, null, true, null, [pi, k, a[1]])
+		else:
+			for sk in started:
+				var k: int = sk[1]
+				var key := "%d|unsafe|%s|%s|%d" % [ri, people[sk[0]]["id"], ACT_KINDS[k], n]
+				if (v == "*" or v == ACT_KINDS[k]) and not e.st_given.has(key):
+					assign(e, r["roles"], r["task"], prio, key, null, null, null, null, [sk[0], k, n])
+
+
+## Who of the roles sees an act of person ai: on duty, in a zone ai is in now (§16.7); -1 for nobody.
+func observer(e, role_list: Array, ai: int) -> int:
+	var zs := zones_of(e, ai)
+	if zs == 0:
+		return -1
+	for r in role_list:
+		for qi in role_people.get(r, PackedInt32Array()):
+			if e.sp_on[qi] and not e._absent.has(qi) and qi != ai and (zs & zones_of(e, qi)) != 0:
+				return qi
+	return -1
+
+
+## Whether the act [person index, kind index, start step] still goes on and nobody has stopped it.
+func ongoing(e, act: Array) -> bool:
+	var a = e.sp_acts[act[0]][act[1]]
+	return a != null and a[1] == act[2] and not a[2]
+
+
+## pi stops the act: its person's current task abandoned (or to its else), the put_right task for its kind given to
+## them at priority 1 (§16.7).
+func stop_act(e, pi: int, act: Array) -> void:
+	var qi: int = act[0]
+	var a: Array = e.sp_acts[qi][act[1]]
+	a[2] = true
+	var kname: String = ACT_KINDS[act[1]]
+	e._ev(["stop", people[pi]["id"], people[qi]["id"], kname, a[0], "done", []])
+	e._touched[qi] = 1
+	e.sp_wake[qi] = 0
+	var c = e.sp_cur[qi]
+	if c != null:
+		if c["idle"]:
+			finish(e, qi, "abandoned")
+		else:
+			c["st"].erase("busy")
+			advance(e, qi, "fail")
+	if put_right.has(kname):
+		give(e, qi, put_right[kname], 1, null, null, null, null)
+
+
+## The trainee's stop input (§17.11): an act of that person's, the first kind not yet stopped.
+func t_stop(e, ti: int, who) -> void:
+	var why := []
+	if not auth[people[ti]["role"]].has("stop_work"):
+		why.append("authority")
+	var act = null
+	if typeof(who) == TYPE_STRING and person_ix.has(who) and not e._absent.has(person_ix[who]):
+		var qi: int = person_ix[who]
+		for k in 3:
+			var a = e.sp_acts[qi][k]
+			if a != null and not a[2]:
+				act = [qi, k, a[1]]
+				break
+	if act == null:
+		why.append("no_act")
+	if not why.is_empty():
+		e._ev(["stop", people[ti]["id"], who, null, null, "refused", why])
+		return
+	stop_act(e, ti, act)
 
 
 # ---------------------------------------------------------------- locks at a shift change (§17.9)
@@ -1680,6 +1973,16 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 		elif s.has("remove_locks"):
 			if lock_target(e, pi, cur, s, null).x == -1:
 				r = "next"
+		elif s.has("ppe"):
+			var worn: int = e.sp_worn[pi]
+			if typeof(s["ppe"]) == TYPE_STRING and s["ppe"] == "off":
+				if worn == 0:
+					r = "next"
+			elif (_ppe_of(pi, s["ppe"]) & ~worn) == 0:
+				r = "next"
+		elif s.has("stop"):
+			if cur["act"] == null or not ongoing(e, cur["act"]):
+				r = "next"
 		elif s.has("lock") or s.has("unlock"):
 			var k := "lock" if s.has("lock") else "unlock"
 			var w = cur["work"] if s[k]["work"] == "$" else s[k]["work"]
@@ -1849,6 +2152,26 @@ static func _is_num(x) -> bool:
 
 
 # ---------------------------------------------------------------- the snapshot's part (§17.7)
+
+## `worn` ({person: their PPE items, in PPE's order} for those wearing any) and `acts` ([[person, kind, zone or work,
+## start step, stopped], …] in person order, then kind) of the snapshot (§17.11).
+func snap_acts(e) -> Array:
+	var worn := {}
+	var acts := []
+	for pi in people.size():
+		var w: int = e.sp_worn[pi]
+		if w != 0:
+			var items := []
+			for k in PPE.size():
+				if w & (1 << k):
+					items.append(PPE[k])
+			worn[people[pi]["id"]] = items
+		for k in 3:
+			var a = e.sp_acts[pi][k]
+			if a != null:
+				acts.append([people[pi]["id"], ACT_KINDS[k], a[0], a[1], a[2]])
+	return [worn, acts]
+
 
 func snap(e) -> Dictionary:
 	var out := {}

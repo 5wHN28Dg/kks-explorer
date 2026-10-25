@@ -360,6 +360,8 @@ func _staff_run(k: int, r: Dictionary, base: Dictionary) -> void:
 	files["scenarios/s1.json"] = r["scenario"]
 	if r["staff"] != null:
 		files["staff.json"] = r["staff"]
+	for rel in r.get("files", {}):
+		files[rel] = r["files"][rel]
 	var name := "v2/staff/%d (%s)" % [k, r["why"].left(80)]
 	var m = PlantModel.from_files(files)
 	if m.error != "":

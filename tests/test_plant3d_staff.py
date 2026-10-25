@@ -20,6 +20,8 @@ def files_of(V, run=None):
         F['scenarios/s1.json'] = json.dumps(run['scenario']).encode()
         if run['staff'] is not None:
             F['staff.json'] = json.dumps(run['staff']).encode()
+        for rel, v in run.get('files', {}).items():
+            F[rel] = json.dumps(v).encode()
     return F
 
 
@@ -82,13 +84,13 @@ class StaffVectors(unittest.TestCase):
             codes.add(r['code'])
         # every new error code of format 2's staff (§14), and the ones the staff file shares with format 1
         for c in ('bad_clock', 'unreachable', 'bad_way', 'authority', 'unknown_key', 'missing_key', 'bad_ref',
-                  'bad_value', 'dup_id', 'bad_length', 'limit', 'bad_number', 'bad_kind', 'bad_type'):
+                  'bad_value', 'dup_id', 'bad_length', 'limit', 'bad_number', 'bad_kind', 'bad_type', 'bad_zone'):
             self.assertIn(c, codes)
 
     def test_every_task_step_kind_and_outcome_is_pinned(self):
         kinds = {e[1] for e in self.ev}
         for k in ('duty', 'task', 'move', 'read', 'say', 'call', 'permit', 'lock', 'unlock', 'op', 'role', 'jump',
-                  'task_ack', 'alarm', 'trip', 'fault', 'repair'):
+                  'task_ack', 'alarm', 'trip', 'fault', 'repair', 'unsafe', 'safe', 'stop'):
             self.assertIn(k, kinds)
         outcomes = {e[4] for e in self.ev if e[1] == 'task'}
         self.assertEqual(outcomes, {'start', 'done', 'abandoned', 'skipped', 'unassigned', 'held', 'resumed'})
@@ -385,10 +387,96 @@ class StaffVectors(unittest.TestCase):
         self.assertIn([603, 'remove_lock', 'wo_pump', 1, 'a_sup', 'refused', ['unlocked'], None, 'Again'], ev)
         self.assertIn([604, 'lock', 'wo_pump', 1, 'a_sup', 'done', []], ev)
         self.assertIn([606, 'unlock', 'wo_pump', 1, 'a_sup', 'done', []], ev)
-        # the NPCs unlock their own locks in every run
+        # the NPCs unlock their own locks in every run (an unlocking task goes to a lock's owner first, §17.11)
         for r in self.runs:
             self.assertFalse(any(x[1] == 'unlock' and x[5] == 'refused' and 'owner' in x[6] and x[4] != 'a_sup'
                                  for x in r['events']), r['why'])
+
+    # --- milestone S2 (§17.11): zones, PPE, unsafe acts, the safety walk, stopping work
+    def test_ppe_at_placement_and_the_gate(self):
+        """On-duty people are placed in their role's PPE; people coming on site at the gate wear none until a ppe
+        step at a locker; PPE is left behind when leaving the site."""
+        r = next(r for r in self.runs if r['why'].startswith('safety (S2), no trainee'))
+        self.assertEqual(r['states'][0]['worn'], {'c_fo': ['helmet', 'boots', 'ear'], 'c_ccr': ['helmet', 'boots']})
+        later = r['states'][-1]['worn']
+        self.assertNotIn('c_fo', later)          # gone home at 06:00
+        self.assertEqual(later['hse1'], ['helmet', 'boots', 'ear', 'harness'])
+        self.assertEqual(later['con3'], ['helmet', 'boots', 'harness'])     # put right at the locker
+
+    def test_unsafe_acts_seen_and_stopped(self):
+        ev = self.run_named('safety (S2), no trainee')
+        kinds = {(e[2], e[3]) for e in ev if e[1] == 'unsafe'}
+        self.assertTrue({('con3', 'ppe'), ('con3', 'permit'), ('con1', 'unsafe'), ('a_fo1', 'ppe')} <= kinds, kinds)
+        # each act once: an unsafe event, then its safe event with the same zone or work
+        open_ = {}
+        for e in ev:
+            if e[1] == 'unsafe':
+                self.assertNotIn((e[2], e[3]), open_)
+                open_[(e[2], e[3])] = e[4]
+            elif e[1] == 'safe':
+                self.assertEqual(open_.pop((e[2], e[3])), e[4])
+        stops = [e for e in ev if e[1] == 'stop' and e[6] == 'done']
+        self.assertEqual([(e[2], e[3], e[4]) for e in stops],
+                         [('hse1', 'con3', 'ppe'), ('hse1', 'con3', 'permit'), ('hse1', 'con1', 'unsafe')])
+        n = stops[0][0]
+        self.assertIn([n, 'task', 'con3', 'early_start', 'abandoned'], ev)
+        self.assertIn([n, 'task', 'con3', 'put_on_ppe', 'start'], ev)
+        self.assertTrue(any(e[1] == 'task' and e[2] == 'con3' and e[3] == 'ask_permit' and e[4] == 'start' for e in ev))
+        self.assertIn([stops[2][0], 'task', 'con1', 'leave_shortcut', 'start'], ev)
+        # the not-seen reaction goes in the step the act starts, by the usual rule; a stop from free mode is refused
+        n = next(e[0] for e in ev if e[1:4] == ['unsafe', 'con3', 'permit'])
+        self.assertTrue(any(e[0] >= n and e[1:5] == ['task', 'a_sup', 'note_act', 'start'] for e in ev))
+        self.assertIn([1530, 'stop', None, 'con3', None, None, 'refused', ['authority']], ev)
+        # the contractors' permit: hosted, approved, issued, accepted by their supervisor, handed back and closed
+        acts = [(e[3], e[4]) for e in ev if e[1] == 'permit' and e[2] == 'wo_paint' and e[5] == 'done']
+        self.assertEqual(acts, [('request', 'ms1'), ('approve', 'a_sup'), ('auto', None), ('issue', 'a_sup'),
+                                ('accept', 'csup'), ('done', 'csup'), ('return', 'csup'), ('auto', None),
+                                ('close', 'a_sup')])
+
+    def test_slots_by_weekday(self):
+        mon = self.run_named('safety (S2), no trainee')
+        walks = [e[0] for e in mon if e[1:5] == ['task', 'hse1', 'safety_walk', 'start']]
+        self.assertEqual(len(walks), 2)          # 07:20 and 09:00 on Mondays; the 08:40 Tuesday walk not made
+        tue = self.run_named('a Tuesday (day 2)')
+        self.assertEqual([e for e in tue if e[1:4] == ['task', 'hse1', 'safety_walk']][:1],
+                         [[100, 'task', 'hse1', 'safety_walk', 'start']])
+
+    def test_the_trainee_stops_work(self):
+        ev = self.run_named('the trainee as the HSE officer')
+        self.assertIn([1000, 'stop', 'hse1', 'con3', None, None, 'refused', ['no_act']], ev)
+        self.assertIn([1001, 'stop', 'hse1', 'nobody', None, None, 'refused', ['no_act']], ev)
+        stop = next(e for e in ev if e[1] == 'stop' and e[6] == 'done')
+        self.assertEqual(stop[2:6], ['hse1', 'con1', 'unsafe', 'wo_paint'])
+        given = next(e for e in ev if e[1:4] == ['task', 'hse1', 'stop_unsafe'])
+        self.assertLess(given[0], stop[0])
+        self.assertIn([stop[0], 'task', 'con1', 'paint_short', 'abandoned'], ev)
+        inputs = next(r for r in self.runs if r['why'].startswith('the trainee as the HSE officer'))['inputs']
+        self.assertTrue(any(x[1:] == ['ppe', 'harness', 1] for x in inputs))
+        self.assertTrue(any(x[1:] == ['zone', 'yard', 'in'] for x in inputs))
+
+    def test_the_trainees_own_unsafe_act(self):
+        r = next(r for r in self.runs if r['why'].startswith('the trainee as field operator 1 of crew A takes'))
+        ev = r['events']
+        self.assertIn([1490, 'stop', 'a_fo1', 'con3', None, None, 'refused', ['authority']], ev)
+        act = next(e for e in ev if e[1:4] == ['unsafe', 'a_fo1', 'ppe'] and e[0] > 1700)
+        stop = next(e for e in ev if e[1] == 'stop' and e[3] == 'a_fo1')
+        self.assertEqual(stop[2], 'hse1')
+        self.assertLess(act[0], stop[0])
+        self.assertTrue(any(e[1:4] == ['task', 'a_fo1', 'put_on_ppe'] for e in ev))
+        self.assertTrue(any(e[1:4] == ['safe', 'a_fo1', 'ppe'] and e[0] > stop[0] for e in ev))
+        # inputs of no item, value or zone change nothing: no event at their steps, the helmet still on until 1700
+        self.assertFalse([e for e in ev if e[0] in (1600, 1601) and e[1] in ('unsafe', 'safe')])
+        st = next(s for s in r['states'] if s['step'] == 1620)
+        self.assertEqual(st['worn']['a_fo1'], ['helmet', 'boots', 'ear'])
+
+    def test_an_unlocking_task_goes_to_the_locks_owner(self):
+        """§17.11: the deisolation's call for the valve goes to the field operator who locked it, not the first free
+        one (another field operator's unlock would be refused, owner)."""
+        ev = self.run_named('safety (S2), no trainee')
+        locker = next(e[4] for e in ev if e[1:4] == ['lock', 'wo_pump', 1] and e[5] == 'done')
+        n = next(e[0] for e in ev if e[1] == 'call' and e[4] == 'deiso_m')
+        self.assertTrue(any(e[0] >= n and e[1:4] == ['task', locker, 'deiso_m'] for e in ev))
+        self.assertTrue(any(e[1:4] == ['unlock', 'wo_pump', 1] and e[4] == locker and e[5] == 'done' for e in ev))
 
     def lock_counts(self, ev, work='wo_pump'):
         """Each point's number of locks after every step of a run, from its lock, unlock and removal events."""

@@ -1784,12 +1784,10 @@ REJECTS_STAFF = [
     ('a slot more than 12 hours from its duty', 'bad_clock', _set(STF + ['routines', 0, 'slots', 0, 'at'],
                                                                    'start-12:01')),
     ('a slot\'s every of 0:00', 'bad_clock', _set(STF + ['routines', 1, 'slots', 1, 'every'], '0:00')),
-    ('zones before milestone S2', 'unknown_key', _set(STF + ['zones'], [])),
     ('vehicles before milestone S4', 'unknown_key', _set(STF + ['vehicles'], [])),
     ('a person\'s home before milestone S4', 'unknown_key', _set(STF + ['people', 0, 'home'], 'camp_b1_r12')),
     ('a ride step before milestone S4', 'unknown_key', _set(TASK(0) + ['steps', 0],
                                                             {'ride': {'from': 'a', 'to': 'b'}})),
-    ('a ppe step before milestone S2', 'unknown_key', _set(TASK(0) + ['steps', 0], {'ppe': 'role'})),
     ('a drive way before milestone S4', 'unknown_key', _set(STF + ['ways', 0, 3], 'drive')),
     ('a place unreached from the control room', 'unreachable', _all(
         _app(STF + ['places'], {'id': 'p6', 'at': [50, 0, 0], 'kind': 'point'}),
@@ -1846,7 +1844,6 @@ REJECTS_STAFF = [
     ('a say of an unknown message', 'bad_ref', _set(TASK(5) + ['steps', 1, 'say'], 'hello')),
     ('choose weights over 65536', 'bad_number', _set(TASK(11) + ['steps', 6, 'choose', 0, 0], 65536)),
     ('a meeting in a room without a door', 'bad_ref', _set(TASK(5) + ['steps', 0, 'meet', 'room'], 'nowhere')),
-    ('a reaction to an unsafe act before S2', 'unknown_key', _set(STF + ['reactions', 0, 'on'], {'unsafe': '*'})),
     ('a reaction to a value that does not exist', 'bad_ref', _set(STF + ['reactions', 3, 'on', 'value'], 'zz')),
     ('a reaction to a permit state that is not one', 'bad_value', _set(STF + ['reactions', 4, 'on', 'permit'],
                                                                       'done_ish')),
@@ -1876,11 +1873,84 @@ REJECTS_STAFF = [
 ]
 
 
+def _st(fn):
+    """A change to the safety staff (S2): fn(staff.json) edits it in place."""
+    def f(F):
+        fn(F['staff.json'])
+    return f
+
+
+def _tk(st, tid):
+    return next(t for t in st['tasks'] if t['id'] == tid)
+
+
+def _pl(st, pid):
+    return next(p for p in st['places'] if p['id'] == pid)
+
+
+REJECTS_SAFETY = [
+    ('a zone that needs no PPE', 'bad_length', _st(lambda st: st['zones'][0].__setitem__('ppe', []))),
+    ('a zone\'s PPE item that is not one', 'bad_value', _st(lambda st: st['zones'][0].__setitem__('ppe', ['cape']))),
+    ('a zone\'s heights upside down', 'bad_number', _st(lambda st: st['zones'][0].__setitem__('z', [5, -1]))),
+    ('an outline of two points', 'bad_length', _st(lambda st: st['zones'][0].__setitem__('outline', [[0, 0], [1, 1]]))),
+    ('two zones with one id', 'dup_id', _st(lambda st: st['zones'][1].__setitem__('id', 'hall'))),
+    ('over 64 zones', 'limit', _st(lambda st: st['zones'].extend(
+        {'id': f'z{i}', 'outline': [[100, 100], [101, 100], [101, 101]], 'z': [0, 1], 'ppe': ['helmet']}
+        for i in range(63)))),
+    ('a place within 1 cm of a zone\'s edge', 'bad_zone', _st(lambda st: _pl(st, 'w_valve').__setitem__(
+        'at', [17.995, 1, 0]))),
+    ('a place within 1 cm of a zone\'s height limit', 'bad_zone', _st(lambda st: _pl(st, 'w_gauge').__setitem__(
+        'at', [12, 1, 4.995]))),
+    ('a place whose zones are not those its outline gives', 'bad_zone', _st(lambda st: _pl(st, 'w_pump').pop('zones'))),
+    ('a place in a zone it does not list in file order', 'bad_zone', _st(lambda st: (
+        st['zones'].append({'id': 'big', 'outline': [[-50, -50], [50, -50], [50, 50], [-50, 50]], 'z': [-1, 6],
+                            'ppe': ['boots']})))),
+    ('a place\'s zone that does not exist', 'bad_ref', _st(lambda st: _pl(st, 'w_pump').__setitem__('zones', ['moon']))),
+    ('a ppe step that puts on with no go to a locker first', 'bad_ref', _st(lambda st: _tk(st, 'put_on_ppe')[
+        'steps'].pop(0))),
+    ('a ppe step of an item that is not one', 'bad_value', _st(lambda st: _tk(st, 'gear_up')['steps'][1].__setitem__(
+        'ppe', ['cape']))),
+    ('a stop step outside the task of a reaction to an unsafe act', 'bad_ref', _st(lambda st: _tk(st, 'gear_up')[
+        'steps'].append({'stop': 'act'}))),
+    ('a stop step not of "act"', 'bad_value', _st(lambda st: _tk(st, 'stop_unsafe')['steps'][0].__setitem__(
+        'stop', 'all'))),
+    ('a stop step in a role without stop_work', 'authority', _st(lambda st: next(
+        r for r in st['reactions'] if r['task'] == 'stop_unsafe')['roles'].append('contractor'))),
+    ('a reaction seen that is not on an unsafe act', 'bad_value', _st(lambda st: st['reactions'][0].__setitem__(
+        'seen', True))),
+    ('a reaction to an unsafe act of no kind', 'bad_value', _st(lambda st: next(
+        r for r in st['reactions'] if r['task'] == 'note_act')['on'].__setitem__('unsafe', 'rude'))),
+    ('a reaction to an unsafe act with a work', 'unknown_key', _st(lambda st: next(
+        r for r in st['reactions'] if r['task'] == 'note_act').__setitem__('work', 'wo_pump'))),
+    ('put_right of a task that does not exist', 'bad_ref', _st(lambda st: st['put_right'].__setitem__('ppe', 'nap'))),
+    ('put_right of a kind that is not one', 'unknown_key', _st(lambda st: st['put_right'].__setitem__('rude',
+                                                                                                   'put_on_ppe'))),
+    ('a put_right task a role can\'t do (a local op)', 'authority', _st(lambda st: st['put_right'].__setitem__(
+        'permit', 'open_valve'))),
+    ('unsafe: false on a step', 'bad_value', _st(lambda st: _tk(st, 'paint_safe')['steps'][1].__setitem__(
+        'unsafe', False))),
+    ('a slot\'s day that is not a weekday', 'bad_value', _st(lambda st: next(
+        r for r in st['routines'] if r['id'] == 'hse_days')['slots'][1].__setitem__('days', ['someday']))),
+    ('a slot\'s days twice', 'dup_id', _st(lambda st: next(
+        r for r in st['routines'] if r['id'] == 'hse_days')['slots'][1].__setitem__('days', ['mon', 'mon']))),
+]
+
+
+def safety_base():
+    """The rejects' base for S2: the synthetic plant (as mini_staff) with the safety staff and its model."""
+    F = mini_staff()
+    s = safety_files()
+    F['staff.json'], F['model/a1.json'] = s['staff.json'], s['model/a1.json']
+    return F
+
+
 def build_rejects_staff():
     out = []
     base = mini_staff()
-    for why, code, change in REJECTS_STAFF:
-        F = copy.deepcopy(base)
+    sbase = safety_base()
+    check(copy.deepcopy(sbase))
+    for why, code, change in REJECTS_STAFF + REJECTS_SAFETY:
+        F = copy.deepcopy(sbase if (why, code, change) in REJECTS_SAFETY else base)
         change(F)
         try:
             check(F)
@@ -1903,8 +1973,10 @@ class Trainee:
     `extra`: more inputs at given steps ([step, kind, …]). The inputs it makes are the vector's (Recorder.inputs)."""
 
     def __init__(self, walk=40, wrong=(), ack_after=5, extra=(), quiet=False, wake=0, ahead=None, undo=False,
-                 back=False):
+                 back=False, pick=0):
         self.walk, self.wrong, self.ack_after, self.extra = walk, set(wrong), ack_after, list(extra)
+        self.pick = pick            # which of a choose's tasks they take
+        self.stop_to = {}
         self.back = back            # walk back to a work step left half done by a pause (§17.9's runs)
         self.quiet, self.wake = quiet, wake
         # ahead: while walking a `go`, make the ops ('ops') or the ops, permits and locks ('all') of the steps after
@@ -1966,6 +2038,12 @@ class Trainee:
                     getattr(e, k)(cur['work'] if t[k]['work'] == '$' else t[k]['work'], t[k]['point'], me)
                 else:
                     break
+        if 'stop' in s and cur['act'] is not None:
+            if (cur['order'], cur['step']) not in self.stop_to:     # where the acting person is when it starts
+                q = sr.people[cur['act'][0]]
+                self.stop_to[(cur['order'], cur['step'])] = q.pos if q.pos is not None else \
+                    (q.leg[1] if q.leg is not None else None)
+            place = self.stop_to[(cur['order'], cur['step'])]
         if place is not None and sr.t_at != place:
             if self.going is None or self.going[0] != place:
                 self.going = (place, n + self.walk)
@@ -1974,6 +2052,7 @@ class Trainee:
             elif n >= self.going[1]:
                 e.arrive(sr.st.places[place]['id'])
                 self.going = None
+                self.zones(e, sr, p, place)
             return
         if key in self.done:
             return
@@ -2018,23 +2097,39 @@ class Trainee:
                 self.done.add((key, cur['order'], 'h'))
             return
         elif 'choose' in s:
-            e.pick(0)
+            e.pick(self.pick)
         elif 'ack' in s and cur['alarm'] is not None:
             e.ack(cur['alarm'])
+        elif 'ppe' in s:            # at the locker: each item the step asks for (or every one worn, off)
+            items = [x for x in S.PPE if x in p.worn] if s['ppe'] == 'off' else \
+                (sr.st.roles[p.role].get('ppe', []) if s['ppe'] == 'role' else s['ppe'])
+            for it in items:
+                e.ppe(it, 0 if s['ppe'] == 'off' else 1)
+        elif 'stop' in s and cur['act'] is not None:
+            e.stop(sr.people[cur['act'][0]].id)
         else:
             return
         self.done.add(key)
+
+    def zones(self, e, sr, p, place):
+        """The zone inputs the app makes on the way: out of those the place is not in, into those it is."""
+        st = sr.st
+        now = set(st.place_zones[place])
+        for k in sorted(p.zin - now):
+            e.zone(st.zones[k]['id'], 'out')
+        for k in sorted(now - p.zin):
+            e.zone(st.zones[k]['id'], 'in')
 
 
 def apply_staff(e, item):
     kind = item[1]
     if kind == 'op' and len(item) == 8:
         e.op(*item[2:8])
-    elif kind in ('role', 'arrive', 'leave', 'pick', 'jump'):
+    elif kind in ('role', 'arrive', 'leave', 'pick', 'jump', 'stop'):
         getattr(e, kind)(item[2])
     elif kind == 'task_ack':
         e.task_ack()
-    elif kind in ('read', 'say'):
+    elif kind in ('read', 'say', 'ppe', 'zone'):
         getattr(e, kind)(item[2], item[3])
     elif kind == 'call':
         e.call(item[2], item[3], item[4])
@@ -2129,6 +2224,122 @@ def no_reactions_staff():
     return st
 
 
+def safety_files():
+    """The synthetic plant with the safety staff (§17.11), its works joined by the contractors' painting job."""
+    F = staff_files()
+    F['staff.json'] = safety_staff()
+    m = F['model/a1.json']
+    m['works'].append({'id': 'wo_paint', 'kks': TANK, 'title': 'Tank: paint the shell', 'discipline': 'civil',
+                       'permit': 'general', 'task': 'paint_tank'})
+    return F
+
+
+def safety_staff():
+    """The handover staff with zones and PPE (§16.2, §16.7, milestone S2): the hall round the pump, valve and gauge
+    (helmet, boots, ear defenders) and the tank's yard (helmet, boots); lockers in the office; an HSE officer on days
+    with safety walks (one on Mondays, one on Tuesdays: slots by weekday) who stops what they see; a maintenance
+    supervisor who hosts the contractors and asks for their permit; a contractors' supervisor who accepts it and two
+    contractors who paint the tank under it (a shortcut drawn 2 in 3: the harness unclipped); a third contractor who
+    forgets the PPE and starts before the permit; the put-right tasks. The field operators' handover and the
+    technicians' toolbox talk begin at the locker."""
+    st = handover_staff()
+    st['places'] += [{'id': 'locker1', 'at': [8, 12, 0], 'kind': 'locker', 'room': 'office'},
+                     {'id': 'locker2', 'at': [7, 12, 0], 'kind': 'locker', 'room': 'office'},
+                     {'id': 'locker3', 'at': [7, 11, 0], 'kind': 'locker', 'room': 'office'},
+                     {'id': 'locker4', 'at': [7, 10, 0], 'kind': 'locker', 'room': 'office'},
+                     {'id': 'hse_table', 'at': [13, 15, 0], 'kind': 'table', 'room': 'office', 'pose': 'sit'},
+                     {'id': 'muster', 'at': [22, 8, 0], 'kind': 'muster'}]
+    st['ways'] += [['locker1', 'p3', 2.9, 'walk'], ['locker2', 'p3', 3.7, 'walk'], ['locker3', 'p3', 3.2, 'walk'],
+                   ['locker4', 'p3', 3, 'walk'], ['hse_table', 'p3', 5.9, 'walk'],
+                   ['muster', 'p5', 2.9, 'walk']]
+    st['zones'] = [{'id': 'hall', 'title': 'Pump hall', 'outline': [[7, -3], [18, -3], [18, 6], [7, 6]], 'z': [-1, 5],
+                    'ppe': ['helmet', 'boots', 'ear']},
+                   {'id': 'yard', 'title': 'Tank yard', 'outline': [[26, -3], [34, -3], [34, 8], [26, 8]],
+                    'z': [-1, 5], 'ppe': ['helmet', 'boots']}]
+    for p in st['places']:
+        if p['id'] in ('p1', 'w_pump', 'w_valve', 'w_gauge'):
+            p['zones'] = ['hall']
+        elif p['id'] in ('p4', 'w_tank'):
+            p['zones'] = ['yard']
+    for r in st['roles']:
+        if r['id'] in ('field_op', 'mech_tech', 'shift_sup', 'elec_ap'):
+            r['ppe'] = ['helmet', 'boots', 'ear']
+    role = lambda rid, title, disc, auth, routine, ppe: {  # noqa: E731
+        'id': rid, 'title': title, 'discipline': disc, 'authority': auth, 'routine': routine, 'play': True, 'ppe': ppe}
+    st['roles'] += [role('hse_officer', 'HSE officer', 'hse', ['stop_work'], 'hse_days',
+                         ['helmet', 'boots', 'ear', 'harness']),
+                    role('maint_sup', 'Maintenance supervisor', 'mech', ['request', 'stop_work'], 'ms_days',
+                         ['helmet', 'boots', 'ear']),
+                    role('contractor_sup', 'Contractors\' supervisor', 'civil', ['accept'], 'con_days',
+                         ['helmet', 'boots', 'harness']),
+                    role('contractor', 'Contractor', 'civil', [], 'con_days', ['helmet', 'boots', 'harness'])]
+    st['people'] += [{'id': 'hse1', 'role': 'hse_officer', 'roster': 'day', 'call': 'Safety 1'},
+                     {'id': 'ms1', 'role': 'maint_sup', 'roster': 'day', 'call': 'Maintenance super'},
+                     {'id': 'csup', 'role': 'contractor_sup', 'roster': 'day', 'call': 'Contractors super'},
+                     {'id': 'con1', 'role': 'contractor', 'roster': 'day', 'call': 'Painter 1'},
+                     {'id': 'con2', 'role': 'contractor', 'roster': 'day', 'call': 'Painter 2'},
+                     {'id': 'con3', 'role': 'contractor', 'roster': 'day', 'call': 'Painter 3', 'routine': 'con3_days'}]
+    gear = {'at': '07:05', 'task': 'gear_up'}
+    st['routines'] += [
+        {'id': 'hse_days', 'idle': 'idle_hse', 'slots': [gear, {'at': '07:20', 'task': 'safety_walk', 'days': ['mon']},
+                                                         {'at': '08:40', 'task': 'safety_walk', 'days': ['tue']},
+                                                         {'at': '09:00', 'task': 'safety_walk', 'days': ['mon']}]},
+        {'id': 'ms_days', 'idle': 'idle_hse', 'slots': [gear, {'at': '07:15', 'task': 'host_paint'}]},
+        {'id': 'con_days', 'idle': 'idle_con', 'slots': [gear]},
+        {'id': 'con3_days', 'idle': 'idle_con', 'slots': [{'at': '07:30', 'task': 'early_start'}]}]
+    T = {t['id']: t for t in st['tasks']}
+    locker = {'go': {'kind': 'locker', 'room': 'office'}}
+    T['handover_take_f']['steps'][:0] = [locker, {'ppe': 'role'}]
+    T['toolbox']['steps'][:0] = [locker, {'ppe': 'role'}]
+    task = lambda tid, title, steps, **kw: dict({'id': tid, 'title': title, 'steps': steps}, **kw)  # noqa: E731
+    st['tasks'] += [
+        task('gear_up', 'PPE on at the locker', [locker, {'ppe': 'role'}]),
+        task('idle_hse', 'At the office table', [{'go': 'hse_table'}, {'work': 30}]),
+        task('idle_con', 'At the muster point', [{'go': 'muster'}, {'work': 30}]),
+        task('safety_walk', 'Safety walk', [{'go': {'kks': TANK}}, {'work': 15, 'anim': 'inspect'},
+                                            {'go': {'kks': GAUGE}}, {'work': 10, 'anim': 'inspect'},
+                                            {'go': {'kks': PUMP}}, {'work': 10, 'anim': 'inspect'}]),
+        task('stop_unsafe', 'Stop the unsafe act', [{'stop': 'act'}, {'say': 'stopped', 'to': 'channel'}],
+             priority=1),
+        task('note_act', 'Note the work begun before its permit', [{'work': 1}], priority=4),
+        task('host_paint', 'Host the painters: ask for their permit', [
+            {'go': 'cr_table'}, {'permit': {'work': 'wo_paint', 'action': 'request'}}]),
+        task('approve_paint', 'Approve the painting', [{'go': 'cr_table'},
+                                                       {'permit': {'work': '$', 'action': 'approve'}}], priority=2),
+        task('issue_paint', 'Issue the painting', [{'go': 'cr_table'}, {'permit': {'work': '$', 'action': 'issue'}}],
+             priority=2),
+        task('close_paint', 'Close the painting', [{'go': 'cr_table'}, {'permit': {'work': '$', 'action': 'close'}}],
+             priority=2),
+        task('con_accept', 'Take the painting permit and set the painters on', [
+            {'go': {'kks': TANK}}, {'permit': {'work': '$', 'action': 'accept'}},
+            {'call': {'role': 'contractor', 'task': 'paint_tank'}}, {'work': 1},
+            {'call': {'role': 'contractor', 'task': 'paint_tank'}}, {'work': 80, 'anim': 'inspect'},
+            {'permit': {'work': '$', 'action': 'done'}}, {'permit': {'work': '$', 'action': 'return'}}], priority=2),
+        task('paint_tank', 'Paint the tank', [{'go': {'kks': TANK}},
+                                              {'choose': [[1, 'paint_safe'], [2, 'paint_short']]}], work='wo_paint'),
+        task('paint_safe', 'Paint, harness clipped', [{'go': {'kks': TANK}}, {'work': 40, 'anim': 'use'}]),
+        task('paint_short', 'Paint, harness unclipped', [{'go': {'kks': TANK}},
+                                                         {'work': 40, 'anim': 'use', 'unsafe': True}]),
+        task('early_start', 'Start the painting', [{'go': {'kks': TANK}}, {'work': 15, 'anim': 'use'}],
+             work='wo_paint'),
+        task('put_on_ppe', 'Put the PPE on', [locker, {'ppe': 'role'}]),
+        task('ask_permit', 'Report to the supervisor for a permit', [{'go': 'cr_table'},
+                                                                     {'say': 'need_permit', 'to': 'shift_sup'}]),
+        task('leave_shortcut', 'Leave the shortcut: clip on', [{'say': 'shortcut_left', 'to': 'channel'},
+                                                               {'work': 2}])]
+    st['put_right'] = {'ppe': 'put_on_ppe', 'permit': 'ask_permit', 'unsafe': 'leave_shortcut'}
+    st['reactions'] += [
+        {'on': {'unsafe': '*'}, 'roles': ['hse_officer', 'maint_sup'], 'task': 'stop_unsafe', 'seen': True},
+        {'on': {'unsafe': 'permit'}, 'roles': ['shift_sup'], 'task': 'note_act'},
+        {'on': {'permit': 'requested'}, 'roles': ['shift_sup'], 'task': 'approve_paint', 'work': 'wo_paint'},
+        {'on': {'permit': 'isolated'}, 'roles': ['shift_sup'], 'task': 'issue_paint', 'work': 'wo_paint'},
+        {'on': {'permit': 'issued'}, 'roles': ['contractor_sup'], 'task': 'con_accept', 'work': 'wo_paint'},
+        {'on': {'permit': 'deisolated'}, 'roles': ['shift_sup'], 'task': 'close_paint', 'work': 'wo_paint'}]
+    st['messages'].update({'stopped': 'Work stopped: an unsafe act', 'need_permit': 'I need a permit for this job',
+                           'shortcut_left': 'Harness clipped on again'})
+    return st
+
+
 def staff_runs():
     """(why, scenario changes, staff changes or None, the trainee player or None, steps, snapshot every)."""
     hand = handover_staff()
@@ -2144,6 +2355,7 @@ def staff_runs():
                             'hours': ['20:00', '08:00']})
     late['people'].append({'id': 'n_sup', 'role': 'shift_sup', 'roster': 'late', 'call': 'Relief super'})
     at5 = {'start': {'day': 1, 'time': '17:00'}}
+    safety = safety_staff()
     extra_person = copy.deepcopy(mini_staff()['staff.json'])
     extra_person['people'].append({'id': 'a_fo3', 'role': 'field_op', 'roster': 'shift', 'crew': 'a',
                                    'call': 'Field 3 A'})
@@ -2271,6 +2483,33 @@ def staff_runs():
         ('the trainee as crew A\'s field operator 2 locks the valve for the work, then gives the lock at the handover: '
          'they unlock once crew B\'s field operator has locked it',
          dict(at5, trainee='a_fo2'), hand, Trainee(back=True, extra=[[2, 'fault', 'f1']]), 1600, 20),
+        # milestone S2 (§17.11): zones, PPE, unsafe acts and the safety walk, on the safety staff and its model
+        ('safety (S2), no trainee: PPE put on at the lockers (a field operator called away from their handover before '
+         'the locker: in the hall without it); the HSE officer\'s safety walks (Monday\'s slots; Tuesday\'s not made); '
+         'a contractor without PPE who starts before the permit is seen in the tank yard and stopped twice (each act), '
+         'put right at the locker and sent to the supervisor; the maintenance supervisor hosts the painting: its '
+         'permit requested, approved, issued, accepted by the contractors\' supervisor, who sets two painters on; one '
+         'takes the shortcut (the harness unclipped) and is stopped on the second walk; the permit handed back and '
+         'closed; the not-seen reaction to a work begun before its permit; a stop from free mode refused',
+         {}, safety, Trainee(extra=[[901, 'fault', 'f1'], [1530, 'stop', 'con3']]), 3600, 20),
+        ('safety with seed 3: other draws (the painters\' choices), the same rules', {'seed': 3}, safety,
+         Trainee(extra=[[901, 'fault', 'f1']]), 3200, 20),
+        ('the trainee as the HSE officer: PPE on at the locker from the ppe step (an input per item), the zones '
+         'entered and left on the walks (zone inputs), the shortcut seen in the yard (the reaction given to them, '
+         'the first of its roles there) and stopped by their stop input; a stop with no act going on and one of '
+         'nobody refused',
+         {'trainee': 'hse1'}, safety, Trainee(walk=60, extra=[[901, 'fault', 'f1'], [1000, 'stop', 'con3'],
+                                                             [1001, 'stop', 'nobody']]), 2800, 20),
+        ('the trainee as field operator 1 of crew A takes the helmet off: in the hall without it (an unsafe act of '
+         'theirs), seen and stopped by the HSE officer: their task abandoned, the put-right task given to them, the '
+         'PPE put on again at the locker; their stop refused (no stop_work); PPE and zone inputs of no item, value or '
+         'zone ignored',
+         {'trainee': 'a_fo1'}, safety,
+         Trainee(extra=[[1490, 'stop', 'con3'], [1600, 'ppe', 'hat', 1], [1600, 'ppe', 'helmet', 2],
+                        [1601, 'zone', 'nowhere', 'in'], [1601, 'zone', 'hall', 'sideways'],
+                        [1700, 'ppe', 'helmet', 0]]), 2600, 20),
+        ('a Tuesday (day 2) from 08:30: the HSE officer\'s Tuesday walk is made, Monday\'s are not',
+         {'start': {'day': 2, 'time': '08:30'}}, safety, Trainee(), 400, 20),
     ]
 
 
@@ -2285,6 +2524,10 @@ def build_staff():
             else:
                 sc['staff'][k] = v
         F = staff_files(sc, staff)
+        more = {}           # files other than the scenario and staff.json that differ (the safety runs' model, S2)
+        if staff is not None and 'zones' in staff:
+            more = {'model/a1.json': safety_files()['model/a1.json']}
+            F.update(more)
         b = check(F)
         e = P.Recorder(b, 's1')
         states = [e.snapshot()]
@@ -2293,8 +2536,8 @@ def build_staff():
             e.step()
             if e.step_no % every == 0 or e.step_no == until:
                 states.append(e.snapshot())
-        out.append({'why': why, 'scenario': sc, 'staff': staff, 'inputs': e.inputs, 'until': until, 'every': every,
-                    'states': states, 'events': e.events})
+        out.append(dict({'why': why, 'scenario': sc, 'staff': staff, 'inputs': e.inputs, 'until': until,
+                         'every': every, 'states': states, 'events': e.events}, **({'files': more} if more else {})))
     return out
 
 

@@ -16,7 +16,7 @@ from ref.courses import need, keys, is_num, num, ident, lst
 
 STAFF_FORMAT = 'walkdown-plant-staff'
 MAX = {'people': 200, 'roles': 48, 'places': 2000, 'points': 500, 'ways': 6000, 'tasks': 400, 'task_steps': 64,
-       'reactions': 128, 'rosters': 16, 'routines': 64, 'queue': 32}
+       'reactions': 128, 'rosters': 16, 'routines': 64, 'queue': 32, 'zones': 64}
 PLACE_KINDS = ('desk', 'seat', 'bed', 'table', 'work', 'door', 'stop', 'locker', 'store', 'counter', 'point', 'muster',
                'depot')
 OPEN_KINDS = ('point', 'door', 'stop', 'muster', 'counter', 'depot', 'work')    # hold anyone (§16.2)
@@ -35,8 +35,10 @@ PERMIT_TO = {'request': 1, 'approve': 2, 'issue': 4, 'accept': 5, 'done': 6, 're
 STATE_NAMES = ('none', 'requested', 'approved', 'isolated', 'issued', 'accepted', 'done', 'returned', 'deisolated',
                'closed', 'cancelled')
 STEP_KINDS = ('go', 'work', 'read', 'op', 'permit', 'lock', 'unlock', 'say', 'wait', 'call', 'meet', 'choose', 'ack',
-              'handover', 'remove_locks')
-LATER = {'ppe': 'S2', 'stop': 'S2', 'ride': 'S4', 'sleep': 'S4'}
+              'handover', 'remove_locks', 'ppe', 'stop')
+LATER = {'ride': 'S4', 'sleep': 'S4'}
+ACT_KINDS = ('ppe', 'permit', 'unsafe')     # an unsafe act's kinds, in the order checked (§16.7, §17.11)
+ZONE_EDGE = 0.01        # a place this near a zone's edge or height limits is bad_zone (§16.2)
 HHMM = re.compile(r'([01][0-9]|2[0-3]):([0-5][0-9])')
 OFFSET = re.compile(r'(start|end)([+-])([0-9]|1[0-2]):([0-5][0-9])')
 DUR = re.compile(r'([0-9]|1[0-9]|2[0-4]):([0-5][0-9])')
@@ -149,18 +151,41 @@ def next_table(npts, adj):
     return table
 
 
+# ---------------------------------------------------------------- zones' geometry (the validator only, §16.2)
+
+def seg_dist(x, y, a, b):
+    """The distance in plan from (x, y) to the segment a–b."""
+    ax, ay = a
+    bx, by = b
+    dx, dy = bx - ax, by - ay
+    ll = dx * dx + dy * dy
+    t = 0.0 if ll == 0 else max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / ll))
+    return math.hypot(x - (ax + t * dx), y - (ay + t * dy))
+
+
+def in_outline(x, y, poly):
+    """Whether (x, y) lies inside the outline (even-odd rule)."""
+    inside = False
+    n = len(poly)
+    for i in range(n):
+        (x1, y1), (x2, y2) = poly[i], poly[(i + 1) % n]
+        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+            inside = not inside
+    return inside
+
+
 # ---------------------------------------------------------------- the validator
 
 class Staff:
+
     """A checked staff.json with everything the step needs, built once (the engine's state is in StaffRun)."""
 
     def __init__(self, d, b, m):
         self.d, self.b, self.m = d, b, m
         w = 'staff.json'
-        for k, ms in (('zones', 'S2'), ('vehicles', 'S4'), ('put_right', 'S2')):
-            need(k not in d, 'unknown_key', f'{w}.{k}: not before milestone {ms} (PLANT3D.md §17.8)')
+        need('vehicles' not in d, 'unknown_key', f'{w}.vehicles: not before milestone S4 (PLANT3D.md §17.8)')
         keys(d, ('format', 'version', 'origin', 'gate', 'speeds', 'places', 'ways', 'next', 'roles', 'rosters',
-                 'people', 'routines', 'tasks', 'messages'), ('reactions',), w)
+                 'people', 'routines', 'tasks', 'messages'), ('reactions', 'zones', 'put_right'), w)
         need(d['format'] == STAFF_FORMAT, 'bad_format', f'{w}: format must be "{STAFF_FORMAT}"')
         need(d['version'] == 1 and not isinstance(d['version'], bool), 'bad_version', f'{w}: version must be 1')
         clock = b.plant.get('clock')
@@ -170,6 +195,7 @@ class Staff:
         self.week = clock['week']
         self.check_speeds(d['speeds'])
         self.check_places(d['places'])
+        self.check_zones(d.get('zones', []))
         self.check_ways(d['ways'])
         self.check_next(d['next'])
         self.origin = self.place_ref(d['origin'], f'{w}.origin')
@@ -200,6 +226,7 @@ class Staff:
         for t in tl:
             self.check_task(t)
         self.check_reactions(d.get('reactions', []))
+        self.check_put_right(d.get('put_right', {}))
         self.check_task_refs()
         self.check_authority()
         for x in m.works:
@@ -228,9 +255,8 @@ class Staff:
         self.work_at = {}           # code -> its work place (the first)
         for i, p in enumerate(pl):
             wp = f'{w}[{i}]'
-            for k, ms in (('zones', 'S2'), ('depot', 'S4')):
-                need(not isinstance(p, dict) or k not in p, 'unknown_key', f'{wp}.{k}: not before milestone {ms}')
-            keys(p, ('id', 'at', 'kind'), ('room', 'yaw', 'pose', 'kks'), wp)
+            need(not isinstance(p, dict) or 'depot' not in p, 'unknown_key', f'{wp}.depot: not before milestone S4')
+            keys(p, ('id', 'at', 'kind'), ('room', 'yaw', 'pose', 'kks', 'zones'), wp)
             ident(p['id'], f'{wp}.id')
             need(p['id'] not in self.pix, 'dup_id', f'{wp}: place {p["id"]} twice')
             lst(p['at'], f'{wp}.at', 3, 3)
@@ -257,7 +283,57 @@ class Staff:
         need(self.points, 'bad_ref', f'{w}: the walking network has no point')
         self.door = {r: next((i for i in ix if self.places[i]['kind'] == 'door'), None) for r, ix in self.rooms.items()}
 
+    def check_zones(self, zones):
+        """Zones (§16.2): plan outlines with a height range and the PPE needed there; each place's `zones` must list,
+        in file order, exactly the zones it lies in, and no place lies within 1 cm of a zone's edge or height limits
+        (`bad_zone`), so the engines never test geometry."""
+        w = 'staff.json.zones'
+        lst(zones, w)
+        need(len(zones) <= MAX['zones'], 'limit', f'{w}: over {MAX["zones"]}')
+        self.zones, self.zone_ix = zones, {}
+        for i, z in enumerate(zones):
+            wz = f'{w}[{i}]'
+            keys(z, ('id', 'outline', 'z', 'ppe'), ('title',), wz)
+            ident(z['id'], f'{wz}.id')
+            need(z['id'] not in self.zone_ix, 'dup_id', f'{wz}: zone {z["id"]} twice')
+            if 'title' in z:
+                need(isinstance(z['title'], str) and 1 <= len(z['title']) <= 60, 'bad_type', f'{wz}.title')
+            for q in lst(z['outline'], f'{wz}.outline', 3, 64):
+                lst(q, f'{wz}.outline', 2, 2)
+                num(q[0], f'{wz}.outline')
+                num(q[1], f'{wz}.outline')
+            lst(z['z'], f'{wz}.z', 2, 2)
+            num(z['z'][0], f'{wz}.z')
+            num(z['z'][1], f'{wz}.z', z['z'][0])
+            need(z['z'][1] > z['z'][0], 'bad_number', f'{wz}.z: [low, high], high above low')
+            for a in lst(z['ppe'], f'{wz}.ppe', 1, len(PPE)):
+                need(a in PPE, 'bad_value', f'{wz}.ppe: one of {PPE}')
+            need(len(set(z['ppe'])) == len(z['ppe']), 'dup_id', f'{wz}.ppe')
+            self.zone_ix[z['id']] = i
+        self.place_zones = []       # per place: its zone indexes, in file order
+        for i, p in enumerate(self.places):
+            wp = f'staff.json.places[{i}]'
+            listed = lst(p.get('zones', []), f'{wp}.zones', 0, MAX['zones'])
+            for x in listed:
+                need(isinstance(x, str) and x in self.zone_ix, 'bad_ref', f'{wp}.zones: no zone {x!r}')
+            inside = []
+            for k, z in enumerate(zones):
+                x, y, h = p['at']
+                lo, hi = z['z']
+                edge = min(seg_dist(x, y, z['outline'][j], z['outline'][(j + 1) % len(z['outline'])])
+                           for j in range(len(z['outline'])))
+                ins = in_outline(x, y, z['outline'])
+                need(not (edge < ZONE_EDGE and lo - ZONE_EDGE <= h <= hi + ZONE_EDGE)
+                     and not (ins and (abs(h - lo) < ZONE_EDGE or abs(h - hi) < ZONE_EDGE)), 'bad_zone',
+                     f'{wp}: {p["id"]} lies within 1 cm of the edge or height limits of zone {z["id"]}')
+
+                if ins and lo < h < hi:
+                    inside.append(z['id'])
+            need(listed == inside, 'bad_zone', f'{wp}.zones: {listed}, its place lies in {inside} (in file order)')
+            self.place_zones.append([self.zone_ix[x] for x in inside])
+
     def place_ref(self, x, where):
+
         need(isinstance(x, str) and x in self.pix, 'bad_ref', f'{where}: no place {x!r}')
         return self.pix[x]
 
@@ -432,8 +508,14 @@ class Staff:
             slots = []
             for k, s in enumerate(lst(r['slots'], f'{wr}.slots', 0, 64)):
                 ws = f'{wr}.slots[{k}]'
-                keys(s, ('at', 'task'), ('every', 'until'), ws)
+                keys(s, ('at', 'task'), ('every', 'until', 'days'), ws)
                 need(s['task'] in self.tasks, 'bad_ref', f'{ws}.task: no task {s["task"]!r}')
+                days = None
+                if 'days' in s:         # the weekdays of the duties it is made in (§17.11: a week's list)
+                    days = lst(s['days'], f'{ws}.days', 1, 7)
+                    for x in days:
+                        need(x in WEEK, 'bad_value', f'{ws}.days: of {WEEK}')
+                    need(len(set(days)) == len(days), 'dup_id', f'{ws}.days')
                 at = self.at_ref(s['at'], f'{ws}.at')
                 every = until = None
                 if 'every' in s or 'until' in s:
@@ -443,10 +525,10 @@ class Staff:
                     every = int(mm.group(1)) * 60 + int(mm.group(2))
                     need(0 < every <= 1440, 'bad_clock', f'{ws}.every: more than 0:00, at most 24:00')
                     until = self.at_ref(s['until'], f'{ws}.until')
-                slots.append((at, every, until, s['task']))
+                slots.append((at, every, until, s['task'], days))
             # at most 256 slots in a duty (a day's 1440 minutes and the ±12:00 around it bound every span)
             bound = 0
-            for at, every, until, _ in slots:
+            for at, every, until, _, _ in slots:
                 if every is None:
                     bound += 1
                 else:
@@ -476,6 +558,7 @@ class Staff:
     def check_task(self, t):
         w = f'staff.json: task {t["id"]}'
         keys(t, ('id', 'title', 'steps'), ('priority', 'interruptible', 'work', 'resume'), w)
+        locker = False          # a go to a locker before (a ppe step that puts on comes after one, §17.11)
         need(t.get('resume', 'next_duty') == 'next_duty', 'bad_value', f'{w}.resume: "next_duty" (§17.10)')
         need(isinstance(t['title'], str) and 1 <= len(t['title']) <= 120, 'bad_type', f'{w}.title')
         pr = t.get('priority', 3)
@@ -490,7 +573,9 @@ class Staff:
             need(isinstance(s, dict), 'bad_type', ws)
             for k, ms in LATER.items():
                 need(k not in s, 'unknown_key', f'{ws}.{k}: not before milestone {ms} (PLANT3D.md §17.8)')
-            need('unsafe' not in s, 'unknown_key', f'{ws}.unsafe: unsafe acts come with milestone S2')
+            if 'unsafe' in s:           # a shortcut: an unsafe act while the step is current (§16.7)
+                need(s['unsafe'] is True, 'bad_value', f'{ws}.unsafe: true')
+                s = {k2: v for k2, v in s.items() if k2 != 'unsafe'}
             kinds = [k for k in STEP_KINDS if k in s]
             need(len(kinds) == 1, 'bad_kind', f'{ws}: exactly one of {STEP_KINDS}')
             k = kinds[0]
@@ -500,10 +585,25 @@ class Staff:
                 p = self.go_target(x, ws)
                 if p is not None:
                     desk = desk or self.places[p]['kind'] == 'desk'
+                    locker = locker or self.places[p]['kind'] == 'locker'
                 elif isinstance(x, dict) and x.get('kind') == 'desk':
                     desk = True
+                elif isinstance(x, dict) and x.get('kind') == 'locker':
+                    locker = True
+            elif k == 'ppe':
+                keys(s, ('ppe',), (), ws)
+                if x != 'off':
+                    if x != 'role':
+                        for a in lst(x, f'{ws}.ppe', 1, len(PPE)):
+                            need(a in PPE, 'bad_value', f'{ws}.ppe: "role", "off" or items of {PPE}')
+                        need(len(set(x)) == len(x), 'dup_id', f'{ws}.ppe')
+                    need(locker, 'bad_ref', f'{ws}.ppe: PPE is put on at a locker (a go to one first)')
+            elif k == 'stop':
+                keys(s, ('stop',), (), ws)
+                need(x == 'act', 'bad_value', f'{ws}.stop: "act" (the act the task was given for)')
             elif k == 'work':
                 keys(s, ('work',), ('anim', 'tool'), ws)
+
                 self.minutes(x, f'{ws}.work')
                 for a in ('anim', 'tool'):
                     if a in s:
@@ -655,14 +755,17 @@ class Staff:
         trips = {t['id'] for t in self.m.trips}
         for i, r in enumerate(rs):
             wr = f'{w}[{i}]'
-            need(not isinstance(r, dict) or 'seen' not in r, 'unknown_key', f'{wr}.seen: with unsafe acts (S2)')
-            keys(r, ('on', 'roles', 'task'), ('priority', 'work'), wr)
+            keys(r, ('on', 'roles', 'task'), ('priority', 'work', 'seen'), wr)
             on = r['on']
             need(isinstance(on, dict) and len(on) == 1, 'bad_kind', f'{wr}.on: one of alarm, trip, fault, value, '
-                                                                   f'permit, lock_left')
+                                                                   f'permit, lock_left, unsafe')
             k, v = next(iter(on.items()))
-            need(k != 'unsafe', 'unknown_key', f'{wr}.on.unsafe: unsafe acts come with milestone S2')
-            if k == 'alarm':
+            if 'seen' in r:
+                need(r['seen'] is True and k == 'unsafe', 'bad_value', f'{wr}.seen: true, on an unsafe act')
+            if k == 'unsafe':
+                need(v == '*' or v in ACT_KINDS, 'bad_value', f'{wr}.on.unsafe: "*" or one of {ACT_KINDS}')
+                need('work' not in r, 'unknown_key', f'{wr}.work: not on an unsafe act')
+            elif k == 'alarm':
                 need(v in (1, 2, 3) and not isinstance(v, bool), 'bad_value', f'{wr}.on.alarm: 1, 2 or 3')
             elif k == 'trip':
                 need(v == '*' or v in trips, 'bad_ref', f'{wr}.on.trip: "*" or a trip')
@@ -674,8 +777,8 @@ class Staff:
                 need(v in STATE_NAMES[1:], 'bad_value', f'{wr}.on.permit: a permit state from requested')
             elif k == 'lock_left':
                 need(v == '*', 'bad_value', f'{wr}.on.lock_left: "*"')
-            else:
-                need(False, 'bad_kind', f'{wr}.on: one of alarm, trip, fault, value, permit, lock_left')
+            elif k != 'unsafe':
+                need(False, 'bad_kind', f'{wr}.on: one of alarm, trip, fault, value, permit, lock_left, unsafe')
             for ro in lst(r['roles'], f'{wr}.roles', 1, 16):
                 need(ro in self.roles, 'bad_ref', f'{wr}.roles: no role {ro!r}')
             need(r['task'] in self.tasks, 'bad_ref', f'{wr}.task: no task {r["task"]!r}')
@@ -685,7 +788,16 @@ class Staff:
             if 'work' in r:
                 self.work_ref(r['work'], f'{wr}.work', False)
 
+    def check_put_right(self, pr):
+        """`put_right` (§16.7): the task an HSE stop gives the acting person, per kind of act."""
+        w = 'staff.json.put_right'
+        keys(pr, (), ACT_KINDS, w)
+        for k, t in pr.items():
+            need(t in self.tasks, 'bad_ref', f'{w}.{k}: no task {t!r}')
+        self.put_right = pr
+
     def check_task_refs(self):
+
         """No task reaches itself through choose or call; idle tasks take time (so no one loops within a step)."""
         def edges(t):
             for s in t['steps']:
@@ -739,6 +851,8 @@ class Staff:
             for x in r.get('requests', []):
                 if x in runs:
                     runs[x].add(rid)
+        for t in self.put_right.values():      # given to whoever an HSE stop finds acting: any role
+            runs[t].update(self.roles)
         for t in self.tasks.values():
             if 'work' in t:
                 works[t['id']].add(t['work'])
@@ -778,7 +892,13 @@ class Staff:
                     need('"$"' not in json.dumps(self.tasks[c['task']]) and 'work' not in c, 'bad_ref',
                          f'staff.json: role {rid}.requests: task {c["task"]} needs a "$" the radio can\'t give')
                     self.callable.add((rid, c['role'], c['task']))
+        self.unlocks = {}           # task -> the works its unlock steps name ("$" for the instance's), §17.11
+        for tid, t in self.tasks.items():
+            ws = {s['unlock']['work'] for s in t['steps'] if 'unlock' in s}
+            if ws:
+                self.unlocks[tid] = ws
         left_tasks = {r['task'] for r in self.reactions if 'lock_left' in r['on']}
+        act_tasks = {r['task'] for r in self.reactions if 'unsafe' in r['on']}
         for tid, t in self.tasks.items():
             for i, s in enumerate(t['steps']):
                 ws = f'staff.json: task {tid}.steps[{i}]'
@@ -805,7 +925,13 @@ class Staff:
                                 for p in (pts if pt == 'all' else [pts[pt]]):
                                     need(f'lock_{p["kind"]}' in auth, 'authority',
                                          f'{ws}: role {rid} lacks lock_{p["kind"]}')
+                if 'stop' in s:
+                    need(tid in act_tasks, 'bad_ref', f'{ws}: stop only in the task of a reaction to an unsafe act')
+                    for rid in sorted(runs[tid]):
+                        need('stop_work' in self.roles[rid]['authority'], 'authority',
+                             f'{ws}: role {rid} lacks stop_work')
                 if 'remove_locks' in s:
+
                     need(tid in left_tasks, 'bad_ref', f'{ws}: remove_locks only in the task of a lock_left reaction')
                     for rid in sorted(runs[tid]):
                         need('remove_lock' in self.roles[rid]['authority'], 'authority',
@@ -849,7 +975,7 @@ def check_scenario_staff(s, b, rel):
 
 class Person:
     __slots__ = ('i', 'id', 'role', 'auth', 'rng', 'on', 'duty', 'duties', 'planned', 'slots', 'pos', 'leg',
-                 'cur', 'queue', 'res', 'occ', 'pending', 'result', 'post', 'held')
+                 'cur', 'queue', 'res', 'occ', 'pending', 'result', 'post', 'held', 'worn', 'acts', 'zin')
 
 
 
@@ -874,6 +1000,9 @@ class StaffRun:
             q.pos, q.leg, q.cur, q.queue, q.res, q.occ, q.pending, q.result = None, None, None, [], None, None, \
                 None, None
             q.held = []                # jobs held overnight (§17.10), in the order held
+            q.worn = set()             # the PPE items worn (§16.3, §17.11)
+            q.acts = {}                # unsafe acts going on: kind -> [zone or work, start step, stopped] (§16.7)
+            q.zin = set()              # the trainee's zones, from their zone inputs (zone indexes)
             q.post = (p['role'], p.get('routine', st.roles[p['role']]['routine']))     # role, routine (§17.9)
             self.people.append(q)
         self.order = 0                  # instances made, for the queue's order
@@ -887,6 +1016,7 @@ class StaffRun:
         self.early = []                 # the trainee's done actions no step took yet (§17.8): [kind, step, …]
         self.left = set()               # people off site with a lock at the last phase 2 (§17.9)
         self.pending = []               # offers for a permit nobody was on duty to take (§17.10)
+        self.made = set()               # (reaction, act) of `seen` reactions made (once per act, §16.7)
 
     def copy(self, e):
         """An independent copy for a clone of the engine (the content is shared)."""
@@ -927,7 +1057,10 @@ class StaffRun:
                 return duty[1] + at[1] * MINUTE
             t = (duty[0] // DAY) * DAY + at[1] * MINUTE
             return t if t >= duty[0] else t + DAY
-        for k, (at, every, until, task) in enumerate(r['slots']):
+        wd = self.st.week[(duty[0] // DAY - 1) % 7]
+        for k, (at, every, until, task, days) in enumerate(r['slots']):
+            if days is not None and wd not in days:
+                continue                # a slot of other weekdays (§17.11)
             t = resolve(at)
             if every is None:
                 out.append((t, k, 0, task))
@@ -960,18 +1093,21 @@ class StaffRun:
         self.holder = {}
         self.given = {}
         self.pending = []
+        self.made = set()
         for p in self.people:
             p.duties, p.slots, p.planned = [], [], day - 3
             p.cur, p.queue, p.leg, p.res, p.occ, p.pending, p.result = None, [], None, None, None, None, None
             p.held = []
             p.pos = None
             p.on, p.duty = False, None
+            p.worn, p.acts, p.zin = set(), {}, set()
             if p.id in self.absent:
                 continue
             self.plan(p, day + 1)
             for du in p.duties:
                 if du[0] <= c < du[1]:
                     p.on, p.duty = True, du
+                    p.worn = set(st.roles[p.role].get('ppe', []))     # at work already: in their PPE (§17.11)
             p.duties = [du for du in p.duties if du[1] > c and du is not p.duty]
             pick = None
             for s in p.slots:
@@ -1031,7 +1167,7 @@ class StaffRun:
         return None
 
     # --- giving tasks (§17.3)
-    def give(self, p, tid, prio, made_by, work, code, alarm, count=True, owner=None):
+    def give(self, p, tid, prio, made_by, work, code, alarm, count=True, owner=None, act=None):
         """Queues an instance of task tid for person p; returns False (event unassigned) when the queue is full."""
         if len(p.queue) + (1 if p.cur is not None and not p.cur['idle'] else 0) >= MAX['queue']:
             self.e.ev('task', None, tid, 'unassigned')
@@ -1041,7 +1177,7 @@ class StaffRun:
             work = t['work']
         inst = {'task': tid, 'prio': prio, 'made': self.e.step_no, 'order': self.order, 'step': 0, 'st': {},
                 'work': work, 'code': code, 'alarm': alarm, 'src': made_by, 'idle': False, 'started': False,
-                'int': t.get('interruptible', True), 'owner': owner}
+                'int': t.get('interruptible', True), 'owner': owner, 'act': act}
         self.order += 1
         p.queue.append(inst)
         p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
@@ -1051,7 +1187,7 @@ class StaffRun:
             self.unacked += 1
         return True
 
-    def assign(self, roles, tid, prio, made_by, work, code, alarm, owner=None):
+    def assign(self, roles, tid, prio, made_by, work, code, alarm, owner=None, act=None):
         """Who gets a task (§17.3): the first free on-duty person of its roles (roles in order, then index), else the
         first on-duty one, else nobody."""
         cands = []
@@ -1062,11 +1198,22 @@ class StaffRun:
         if not cands:
             self.e.ev('task', None, tid, 'unassigned')
             return False
+        # a task that unlocks its work's isolation goes first to someone holding a lock on it: only a lock's owner
+        # removes it (§15.1, §17.11)
+        w = work if work is not None else self.st.tasks[tid].get('work')
+        un = self.st.unlocks.get(tid, ())
+        iso = self.e.works[w].get('isolation') if w is not None and w in self.e.works and (w in un or '$' in un) \
+            else None
+        if iso is not None:
+            for p in cands:
+                if any(same(h, p.id) for (i, j), held in self.e.locks.items() if i == iso for h in held):
+                    return self.give(p, tid, prio, made_by, work, code, alarm, owner=owner, act=act)
         for p in cands:
             c = p.cur
             if c is None or c['idle'] or (c['prio'] > prio and c['int']):
-                return self.give(p, tid, prio, made_by, work, code, alarm, owner=owner)
-        return self.give(cands[0], tid, prio, made_by, work, code, alarm, owner=owner)
+                return self.give(p, tid, prio, made_by, work, code, alarm, owner=owner, act=act)
+        return self.give(cands[0], tid, prio, made_by, work, code, alarm, owner=owner, act=act)
+
 
     def offer(self, roles, tid, prio, src, w, code, alarm, pw, owner=None):
         """assign(), and an offer for a permit's work (pw) that found nobody of its roles on duty is kept, to be made
@@ -1157,6 +1304,25 @@ class StaffRun:
                     self.t_at = None
                     tp.pos = None
                     self.leave_place(tp)
+                elif item[0] == 'ppe' and isinstance(item[1], str) and item[1] in PPE and type(item[2]) is int \
+                        and item[2] in (0, 1):
+                    if item[2]:
+                        tp.worn.add(item[1])
+                    else:
+                        tp.worn.discard(item[1])
+                elif item[0] == 'zone' and isinstance(item[1], str) and item[1] in st.zone_ix \
+                        and item[2] in ('in', 'out'):
+                    if item[2] == 'in':
+                        tp.zin.add(st.zone_ix[item[1]])
+                    else:
+                        tp.zin.discard(st.zone_ix[item[1]])
+                elif item[0] == 'stop':
+                    self.t_stop(tp, item[1])
+        else:
+            for item in tin:
+                if item[0] == 'stop':       # free mode: no person to stop work with
+                    e.ev('stop', None, item[1], None, None, 'refused', ['authority'])
+
         # 1. duties, then slots
         day = c // DAY
         for p in self.people:
@@ -1200,9 +1366,147 @@ class StaffRun:
                     self.trainee_turn(p, tin)
                 else:
                     self.turn(p)
+        # 5. unsafe acts, then the reactions to them
+        self.act_phase(n)
         for i, r in enumerate(st.reactions):
             if 'value' in r['on']:
                 self.vprev[i] = e.truth(r['on']['value'])
+
+    # --- unsafe acts (§16.7, phase 5) and stopping work
+    def zones_of(self, p):
+        """The zones a person is in, in file order (§16.2): their place's; on a way, those both its ends list; the
+        trainee's from their zone inputs; none off site."""
+        st = self.st
+        if p.i == self.trainee:
+            return sorted(p.zin)
+        if p.leg is not None:
+            b = st.place_zones[p.leg[1]]
+            return [k for k in st.place_zones[p.leg[0]] if k in b]
+        return st.place_zones[p.pos] if p.pos is not None else []
+
+    def act_now(self, p, kind):
+        """(True, zone or work) while the act's condition holds, else (False, None)."""
+        st = self.st
+        e = self.e
+        if kind == 'ppe':
+            for k in self.zones_of(p):
+                if any(x not in p.worn for x in st.zones[k]['ppe']):
+                    return True, st.zones[k]['id']
+            return False, None
+        cur = p.cur
+        if cur is None or cur['idle']:
+            return False, None
+        s = st.tasks[cur['task']]['steps'][cur['step']]
+        if kind == 'unsafe':
+            return (True, cur['work']) if s.get('unsafe') is True else (False, None)
+        w = cur['work']
+        if 'work' in s and w is not None and w in e.works and e.pstate[w] != 5 and p.leg is None \
+                and p.pos is not None and st.places[p.pos].get('kks') == e.works[w]['kks'] \
+                and st.places[p.pos]['kind'] == 'work':
+            return True, w
+        return False, None
+
+    def act_phase(self, n):
+        e = self.e
+        st = self.st
+        started = []
+        for p in self.people:
+            if p.id in self.absent:
+                continue
+            for kind in ACT_KINDS:
+                ok, det = self.act_now(p, kind)
+                a = p.acts.get(kind)
+                if a is not None and not ok:
+                    del p.acts[kind]
+                    e.ev('safe', p.id, kind, a[0])
+                elif a is None and ok:
+                    p.acts[kind] = [det, n, False]
+                    e.ev('unsafe', p.id, kind, det)
+                    started.append((p, kind))
+        for ri, r in enumerate(st.reactions):
+            v = r['on'].get('unsafe')
+            if v is None:
+                continue
+            prio = r.get('priority', st.tasks[r['task']].get('priority', 3))
+            if r.get('seen'):
+                # the safety walk finds it: the first of its roles (role order, then index) in a zone of the act,
+                # in the step it starts or any later one while it lasts; once per act
+                for p in self.people:
+                    for kind in ACT_KINDS:
+                        a = p.acts.get(kind)
+                        if a is None or v not in ('*', kind):
+                            continue
+                        key = (ri, 'unsafe', p.id, kind, a[1])
+                        if key in self.made:
+                            continue
+                        obs = self.observer(r['roles'], p)
+                        if obs is None:
+                            continue
+                        self.made.add(key)
+                        if key not in self.given:
+                            self.give(obs, r['task'], prio, key, None, None, None, act=(p.i, kind, a[1]))
+            else:
+                for p, kind in started:
+                    if v in ('*', kind) and (ri, 'unsafe', p.id, kind, n) not in self.given:
+                        key = (ri, 'unsafe', p.id, kind, n)
+                        self.assign(r['roles'], r['task'], prio, key, None, None, None, act=(p.i, kind, n))
+
+    def observer(self, roles, actor):
+        """Who of the roles sees an act: on duty, in a zone the acting person is in now (§16.7)."""
+        zs = set(self.zones_of(actor))
+        if not zs:
+            return None
+        for r in roles:
+            for q in self.people:
+                if q.role == r and q.on and q.id not in self.absent and q.i != actor.i \
+                        and zs.intersection(self.zones_of(q)):
+                    return q
+        return None
+
+    def ongoing(self, act):
+        """Whether the act (person index, kind, start step) still goes on and nobody has stopped it."""
+        a = self.people[act[0]].acts.get(act[1])
+        return a is not None and a[1] == act[2] and not a[2]
+
+    def stop_act(self, p, act):
+        """p stops the act: its person's current task abandoned (or to its else), the put_right task for its kind
+        given to them at priority 1 (§16.7)."""
+        e = self.e
+        q = self.people[act[0]]
+        a = q.acts[act[1]]
+        a[2] = True
+        e.ev('stop', p.id, q.id, act[1], a[0], 'done', [])
+        if q.cur is not None:
+            if q.cur['idle']:
+                self.finish(q, 'abandoned')
+            else:
+                q.cur['st'].pop('busy', None)
+                self.advance(q, 'fail')
+        t = self.st.put_right.get(act[1])
+        if t is not None:
+            self.give(q, t, 1, None, None, None, None)
+
+    def t_stop(self, tp, who):
+        """The trainee's stop input (§17.11): an act of that person's, the first kind not yet stopped."""
+        why = []
+        if 'stop_work' not in tp.auth:
+            why.append('authority')
+        st = self.st
+        act = None
+        if isinstance(who, str) and who in st.person_ix and who not in self.absent:
+            q = self.people[st.person_ix[who]]
+            for kind in ACT_KINDS:
+                a = q.acts.get(kind)
+                if a is not None and not a[2]:
+                    act = (q.i, kind, a[1])
+                    break
+        if act is None:
+            why.append('no_act')
+        if why:
+            self.e.ev('stop', tp.id, who, None, None, 'refused', why)
+            return
+        self.stop_act(tp, act)
+
 
     def react(self, n):
         e = self.e
@@ -1328,6 +1632,7 @@ class StaffRun:
             self.leave_place(p)
             e.ev('move', p.id, self.st.places[p.pos]['id'], None, e.step_no)
             p.pos = None
+            p.worn = set()      # PPE left in the locker when leaving the site (§17.11)
         return cur
 
     def pause(self, p):
@@ -1619,7 +1924,45 @@ class StaffRun:
             return 'next' if i + 1 >= len(pts) else self.run(p, cur)
         if 'handover' in s or 'remove_locks' in s:
             return self.lock_round(p, cur, s)
+        if 'ppe' in s:
+            self.put_on(p, s['ppe'])
+            return 'next'
+        if 'stop' in s:
+            return self.stop_step(p, cur)
         raise AssertionError(s)
+
+    def ppe_items(self, p, x):
+        return self.st.roles[p.role].get('ppe', []) if x == 'role' else x
+
+    def put_on(self, p, x):
+        """An NPC's ppe step: the items on (at the locker the task went to), or everything off."""
+        if x == 'off':
+            p.worn = set()
+        else:
+            p.worn.update(self.ppe_items(p, x))
+
+    def stop_step(self, p, cur):
+        """An NPC's stop step: to the place the acting person is at when the step starts (a place held by someone:
+        its room's door, else its point), then the act stopped if it still goes on and nobody has stopped it."""
+        st = self.st
+        act = cur['act']
+        x = cur['st']
+        if act is None:
+            return 'next'
+        if 'dest' not in x:
+            q = self.people[act[0]]
+            t = q.pos if q.pos is not None else (q.leg[1] if q.leg is not None else None)
+            if t is None or not self.ongoing(act):
+                return 'next'
+            if st.places[t]['kind'] not in OPEN_KINDS:
+                d = st.door.get(st.places[t].get('room'))
+                t = d if d is not None and d != t else (t if t in st.point_no else st.stub[t][0])
+            x['dest'] = t
+        if not self.walk(p, x['dest']):
+            return 'wait'
+        if self.ongoing(act):
+            self.stop_act(p, act)
+        return 'next'
 
     # --- locks at a shift change (§17.9)
     def mate(self, p, who):
@@ -1964,6 +2307,13 @@ class StaffRun:
             elif 'remove_locks' in s:
                 if self.lock_target(p, cur, s, None) is None:
                     r = 'next'
+            elif 'ppe' in s:
+                if (not p.worn) if s['ppe'] == 'off' else set(self.ppe_items(p, s['ppe'])) <= p.worn:
+                    r = 'next'
+            elif 'stop' in s:
+                if cur['act'] is None or not self.ongoing(cur['act']):
+                    r = 'next'
+
             elif 'lock' in s or 'unlock' in s:
                 k = 'lock' if 'lock' in s else 'unlock'
                 w = cur['work'] if s[k]['work'] == '$' else s[k]['work']
@@ -2068,6 +2418,15 @@ class StaffRun:
         return p.id in e.locks.get(key, []) and e.holder[iso] == w
 
     # --- the snapshot's part (§17.7)
+    def snap_acts(self):
+        """`worn`: {person: their PPE items, in the list's order} for those wearing any; `acts`: [[person, kind, zone or
+        work, start step, stopped], …] in person order, then kind (§17.11)."""
+        worn = {p.id: [x for x in PPE if x in p.worn] for p in self.people if p.worn}
+        acts = [[p.id, k, p.acts[k][0], p.acts[k][1], p.acts[k][2]] for p in self.people for k in ACT_KINDS
+                if k in p.acts]
+        return worn, acts
+
+
     def snap(self):
         st = self.st
         out = {}
