@@ -12,8 +12,11 @@
 #             to a file in /data/local/tmp through the walk, deleted after. The kernel's reclaim (kswapd) then stalls
 #             single GPU frames to 50-160 ms (decision 0066, "The last frame spikes"): a walk that reproduces them
 #   SAMPLE=1  (the Note 9 only) every 200 ms the Mali GPU's clock and load and the kernel's reclaim counters
-#             (/proc/vmstat, /proc/meminfo) into samp.txt, with clock.txt to line it up with the log:
-#             tools/plant3d/bench/reclaim_frames.py RESULTS_DIR shows the long GPU frames while the kernel reclaimed
+#             (/proc/vmstat, /proc/meminfo) into samp.txt, with clock.txt to line it up with the log; at the end the
+#             frame rule's judgement (frames over 100 ms the app caused, those excluded as the kernel's memory
+#             reclaim, with their evidence) in rule.txt: tools/plant3d/bench/reclaim_frames.py --rule RESULTS_DIR.
+#             Without SAMPLE=1 no frame can be excluded (decisions 0057, 0066). reclaim_frames.py RESULTS_DIR also
+#             shows the long GPU frames while the kernel reclaimed (with probe=1)
 #   KEEP=1    on a phone whose own plant app holds someone's run and settings (the Honor): installed over it with its
 #             data kept (install -r), never cleared or removed; the walk saves to a file of its own (app/main.gd), and
 #             their own build is put back afterwards (pulled first: a saved run opens only in the build that saved
@@ -69,6 +72,11 @@ cleanup() {
     sh_ "touch $SAMPLE_F.stop; for i in 1 2 3 4 5 6 7 8; do [ -e $SAMPLE_F.stop ] || break; sleep 1; done" || true
     a pull "$SAMPLE_F" "$OUT/samp.txt" >/dev/null 2>&1 || true
     sh_ "rm -f $SAMPLE_F $SAMPLE_F.stop" || true
+    # the frame rule's judgement (decisions 0057, 0066): frames over 100 ms the app caused, apart from those inside
+    # the kernel's memory reclaim, with the samples that show it; kept in rule.txt beside the walk
+    if grep -q "^RESULT .*over100=" "$OUT/result.txt" 2>/dev/null; then
+      python3 "$HERE/../../tools/plant3d/bench/reclaim_frames.py" --rule "$OUT" || echo "!!! no judgement of the frame rule (tools/plant3d/bench/reclaim_frames.py)" >&2
+    fi
   fi
   if [ -n "$stress_on" ]; then   # (the writer, a second a round, deletes its file and the mark when it sees the mark)
     sh_ "touch $STRESS_F.stop; for i in 1 2 3 4 5 6 7 8; do [ -e $STRESS_F.stop ] || break; sleep 1; done; rm -f $STRESS_F $STRESS_F.stop" || true

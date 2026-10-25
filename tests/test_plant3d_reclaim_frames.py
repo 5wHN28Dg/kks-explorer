@@ -161,5 +161,15 @@ class FrameRuleTest(unittest.TestCase):
                 R.rule(d)
 
 
+class FramesShTest(unittest.TestCase):
+    def test_sample_walks_are_judged(self):
+        """phone/frames.sh judges every SAMPLE=1 walk after its samples are pulled (rule.txt beside the walk)."""
+        sh = open(os.path.join(ROOT, "apps", "plant3d", "phone", "frames.sh")).read()
+        pull = sh.index('a pull "$SAMPLE_F" "$OUT/samp.txt"')
+        judge = sh.index('reclaim_frames.py" --rule "$OUT"')
+        self.assertLess(pull, judge)
+        self.assertLess(judge, sh.index('if [ -n "$stress_on" ]'))   # inside the sampler's part of cleanup
+
+
 if __name__ == "__main__":
     unittest.main()

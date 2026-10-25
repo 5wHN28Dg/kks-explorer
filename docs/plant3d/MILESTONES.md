@@ -5,10 +5,14 @@ Decisions 0062–0066.
 
 Every milestone ends **shippable**: a plant release could be made from it (0054's release gates: every CI run green,
 tried on the Note 9 first). Every milestone that changes what is drawn or run is measured on the Note 9 against the
-frame rules (≥ 95 % of frames shown at ≥ 30 fps in the 10-minute walk, none over 100 ms after the first 5 s, peak PSS
-≤ 1.5 GB, first walkable frame ≤ 15 s, and 0060's margin of ≤ 13.5 s per first start) and the 1.2× regression rule,
-with the walk extended into the milestone's new areas or crowds. A milestone that misses them is not done; cutting
-scope to meet them is the user's call ("When to stop and ask the user", below).
+frame rules (≥ 95 % of frames shown at ≥ 30 fps in the 10-minute walk, none over 100 ms after the first 5 s that the
+app causes, peak PSS ≤ 1.5 GB, first walkable frame ≤ 15 s, and 0060's margin of ≤ 13.5 s per first start) and the 1.2× regression rule,
+with the walk extended into the milestone's new areas or crowds. **Frames the app causes** (the user, 2026-10-25): a frame
+inside the kernel's memory reclaim is excluded, and its evidence is kept. "Inside" means a `phone/frames.sh SAMPLE=1`
+sample (every 200 ms) overlapping the frame shows kswapd or direct reclaim scanning at least one page, or a
+direct-reclaim stall. A walk without `SAMPLE=1` excludes nothing. A `STRESS=1` walk, or one with reclaim in more than
+1 % of its samples, is not judged. `tools/plant3d/bench/reclaim_frames.py` writes the judgement to the walk's
+`rule.txt` (decisions 0057 and 0066). A milestone that misses them is not done; cutting scope to meet them is the user's call ("When to stop and ask the user", below).
 
 Sizes: **S** one pull request; **M** two to four; **L** five to eight.
 

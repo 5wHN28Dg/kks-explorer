@@ -154,8 +154,34 @@ sun's shadow off, GPU p95 31 → 22 ms, GPU frames still reached 95 ms and an ap
 kernel's side: CPU 0's worker running through the long frames while the GPU's clock stayed up. That this worker is the
 Mali driver handling the GPU's page faults is the likeliest reading, not a proven one: naming its work needs kernel
 stacks or the driver's own trace events (this kernel has mali_page_fault_insert_pages and the like), and the Note 9 is
-not rooted and Android 10's Perfetto cannot record them. Whether "none over 100 ms" can be met on this phone, or
-should be judged on walks without reclaim (frames.sh `SAMPLE=1` records it), is the user's decision.
+not rooted and Android 10's Perfetto cannot record them. How the rule treats them was the user's decision (below).
+
+**The rule, as the user decided it (2026-10-25).** "No frame over 100 ms after the first 5 s" counts the frames the
+app causes. A frame inside a traced burst of the kernel's memory reclaim is excluded, and its trace is kept as the
+evidence. Exactly:
+
+- The rule's frames are the app's own frame intervals over 100 ms after the walk's first 5 s: its `SPIKE` lines in the
+  log, which its `RESULT`'s `over100` counts.
+- A frame is inside reclaim when a `SAMPLE=1` sample (every 200 ms, `/proc/vmstat`) overlapping it shows the kernel
+  reclaiming since the sample before: kswapd or direct reclaim scanned at least one page (`pgscan_kswapd`,
+  `pgscan_direct`), or a direct-reclaim stall (`allocstall_*`). The frame runs from its log time less its length to
+  its log time. Two samples more than 1 s apart, or a count that fell, show nothing.
+- The threshold is any reclaim, from the 12 walks above. Frames are grouped by the most pages a second scanned in the
+  samples overlapping each frame. In the 6 traced or stressed walks, 0.027 % of the frames with no scanning had a GPU
+  time over 45 ms; at 1–200 pages a second it was 1.6 %, at 200–1,000 15 %, and above that 2–15 %. In the 6 walks
+  without pressure the kernel reclaimed in at most 0.27 % of the samples.
+- Every other frame counts as the app's: one the log lost (`over100` above the `SPIKE` lines found), one outside the
+  samples, and every frame of a walk without `SAMPLE=1`.
+- Some walks are not judged at all. A `STRESS=1` walk is pressure made on purpose. A walk with reclaim in more than
+  1 % of its samples means the phone was under pressure through it, so walk again. The clean walks measured 0–0.27 %,
+  the traced and stressed ones 3.9–10.9 %.
+- The evidence is kept with the walk: `rule.txt` in its results folder (the judgement, and the two sample lines that
+  show each excluded frame's reclaim), beside `samp.txt`, `logcat.txt` and the walk's `trace.pftrace` when it was
+  traced. `phone/frames.sh` writes it after every `SAMPLE=1` walk (`tools/plant3d/bench/reclaim_frames.py`).
+
+Applied to the walks above: the traced `wtp` walk's four frames over 100 ms (172.3, 100.3, 104.3, 102.0 ms) were all
+inside reclaim, but the walk is not judged (reclaim in 5.4 % of its samples). The stressed walks are not judged. #249's
+own spikes had no samples, so they count as the app's and those walks cannot pass.
 
 **Tools added** (to see it again): a shot's line gives its GPU time, and `shot=` works on a phone (`phone/shots.sh`:
 views × effect switches in one run); `phone/frames.sh` `STRESS=1` and `SAMPLE=1`, with
