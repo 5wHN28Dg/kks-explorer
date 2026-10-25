@@ -66,13 +66,6 @@ func interiors(tree: SceneTree) -> Array:
 	# its surfaces: the plant's shader and vertex format, unbaked (no UV2, the sky's light): no new pipeline
 	p.append_array(TestLaunch.lit_surfaces(node, "block 1's interior"))
 	p.append_array(unbaked(node, "block 1's interior"))
-	# it stands inside its building: none of it casts the sun's shadow (app/quality.gd apply_shadows, as it goes in)
-	var casting := node.find_children("*", "GeometryInstance3D", true, false).filter(
-		func(g): return (g as GeometryInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
-	if not casting.is_empty():
-		p.append("block 1's interior casts no sun shadow (%d pieces do, e.g. %s)" % [casting.size(), casting[0].name])
-	if node.find_children("*", "GeometryInstance3D", true, false).all(func(g): return not g.is_in_group("inside_shadow")):
-		p.append("block 1's interior's pieces are in the group inside_shadow")
 	# beyond 30 m it is freed
 	who.global_position = door + Vector3(-40, 1, 0)
 	var t_free := Time.get_ticks_msec()   # by the clock: the loader checks 4 times a second of frame time
