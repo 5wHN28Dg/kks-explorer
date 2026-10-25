@@ -76,8 +76,8 @@ class FrameRuleTest(unittest.TestCase):
             # kswapd scans 3 pages between 150.0 and 150.2 (all later counts higher by 3)
             s = [(t, k + (3 if t > 150.1 else 0), dr, st) for t, k, dr, st in s]
             # a 120 ms frame logged at 150.1 (from 149.98: overlaps the reclaiming sample), one of 105 ms at 160.0
-            # (quiet), one of 100.0 ms (not over 100: not the rule's)
-            _walk(d, s, [(150.1, 120.0), (160.0, 105.0), (170.0, 100.0)], over100=2)
+            # (quiet)
+            _walk(d, s, [(150.1, 120.0), (160.0, 105.0)], over100=2)
             r = R.rule(d)
             self.assertEqual([(f[0], f[2]) for f in r["frames"]], [(120.0, "reclaim"), (105.0, "app")])
             self.assertEqual((r["app"], r["reclaim"], r["lost"]), (1, 1, 0))
@@ -127,31 +127,91 @@ class FrameRuleTest(unittest.TestCase):
             _walk(d, s, [(150.1, 120.0), (160.1, 110.0), (500.0, 101.0)])
             r = R.rule(d)
             self.assertEqual((r["app"], r["reclaim"]), (3, 0))
-            # without samp.txt every frame is the app's
+            # without samp.txt (and clock.txt: a walk without SAMPLE=1) every frame is the app's
             os.remove(os.path.join(d, "samp.txt"))
+            os.remove(os.path.join(d, "clock.txt"))
             r = R.rule(d)
             self.assertEqual((r["app"], r["sampled"]), (3, False))
             self.assertIn("no samp.txt", R.rule_text(d))
 
     def test_walks_under_pressure_not_judged(self):
         with tempfile.TemporaryDirectory() as d:
-            # reclaim in 7 of 599 sample pairs (1.2 %): no frame over 100 ms, still not judged
-            s = _quiet()
-            s = [(t, k + 2 * sum(1 for j in range(7) if t > 110.1 + j), dr, st) for t, k, dr, st in s]
-            _walk(d, s, [])
+            # reclaim in 7 of 599 sample pairs (1.2 %) and a frame excluded by it (logged at 110.15): not judged
+            s = [(t, k + 2 * sum(1 for j in range(7) if t > 110.1 + j), dr, st) for t, k, dr, st in _quiet()]
+            _walk(d, s, [(110.15, 120.0)])
             r = R.rule(d)
+            self.assertEqual(r["reclaim"], 1)
             self.assertFalse(r["judged"])
             self.assertFalse(r["passes"])
             self.assertIn("NOT JUDGED", R.rule_text(d))
-            # 5 of 599 (0.8 %): judged, passes
-            s = [(t, k + 2 * sum(1 for j in range(5) if t > 110.1 + j), dr, st) for t, k, dr, st in _quiet()]
+            # the same walk with no frame over 100 ms: the plain rule, passes
             _walk(d, s, [])
             self.assertTrue(R.rule(d)["passes"])
-            # a STRESS=1 walk never counts
-            _walk(d, _quiet(), [], stress=True)
+            # 5 of 599 (0.8 %): judged, passes
+            s = [(t, k + 2 * sum(1 for j in range(5) if t > 110.1 + j), dr, st) for t, k, dr, st in _quiet()]
+            _walk(d, s, [(110.15, 120.0)])
+            self.assertTrue(R.rule(d)["passes"])
+            # a STRESS=1 walk never passes by exclusion, nor one without state.txt
+            _walk(d, s, [(110.15, 120.0)], stress=True)
             r = R.rule(d)
             self.assertFalse(r["passes"])
             self.assertIn("STRESS=1", R.rule_text(d))
+            _walk(d, s, [(110.15, 120.0)])
+            os.remove(os.path.join(d, "state.txt"))
+            self.assertFalse(R.rule(d)["passes"])
+
+    def test_share_counts_known_pairs_in_the_walk(self):
+        with tempfile.TemporaryDirectory() as d:
+            # 7 reclaiming pairs among 300 known ones in the walk (2.3 %), diluted by 300 samples 1.5 s apart: still
+            # not judged; samples before the first frame (loading) left out of the share
+            s = [(100.0 + 0.2 * i, 1000, 0, 0) for i in range(300)]
+            s = [(t, k + 2 * sum(1 for j in range(7) if t > 110.1 + j), dr, st) for t, k, dr, st in s]
+            k = s[-1][1]
+            s += [(160.0 + 1.5 * i, k, 0, 0) for i in range(1, 300)]
+            _walk(d, s, [(110.15, 120.0)])
+            self.assertFalse(R.rule(d)["judged"])
+            # with the walk's first frame logged at 120.0, the reclaim before it (loading) does not count
+            first = "%.3f  1  2 I godot   : plant: first frame drawn 9000 ms after the engine started\n" % (1000000 + 120.0)
+            s2 = [(t, k2 + (50 if t > 150.1 else 0), dr, st) for t, k2, dr, st in s]
+            _walk(d, s2, [(150.15, 120.0)], logcat_extra=first)
+            r = R.rule(d)
+            self.assertEqual(r["reclaim"], 1)
+            self.assertTrue(r["passes"])
+
+    def test_log_oddities(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = [(t, k + (3 if t > 150.1 else 0), dr, st) for t, k, dr, st in _quiet()]
+            # a duplicated line counts once; a "100.0" line is a frame over 100 ms
+            _walk(d, s, [(150.1, 120.0), (150.1, 120.0), (160.0, 100.0)], over100=2)
+            r = R.rule(d)
+            self.assertEqual([(f[0], f[2]) for f in r["frames"]], [(120.0, "reclaim"), (100.0, "app")])
+            self.assertEqual((r["app"], r["lost"]), (1, 0))
+            # more SPIKE lines than over100 (another run's log): an exclusion is not trusted
+            _walk(d, s, [(150.1, 120.0), (160.0, 105.0)], over100=1)
+            r = R.rule(d)
+            self.assertFalse(r["judged"])
+            self.assertFalse(r["passes"])
+            # no logcat.txt: every over100 frame lost, the app's
+            os.remove(os.path.join(d, "logcat.txt"))
+            r = R.rule(d)
+            self.assertEqual((r["app"], r["lost"]), (1, 1))
+
+    def test_samp_oddities(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = [(t, k + (3 if t > 150.1 else 0), dr, st) for t, k, dr, st in _quiet()]
+            _walk(d, s, [(150.1, 120.0)])
+            lines = open(os.path.join(d, "samp.txt")).read().splitlines()
+            # a non-numeric line early on: the evidence printed stays in step with the samples
+            lines[3] = " ".join(["x"] * 13)
+            # a last line cut short (the sampler stopped mid-write): left out
+            open(os.path.join(d, "samp.txt"), "w").write("\n".join(lines) + "\n115.00 0 0\n")
+            r = R.rule(d)
+            self.assertEqual(r["reclaim"], 1)
+            self.assertTrue(r["frames"][0][3][0].startswith("150.00 "))
+            self.assertTrue(r["frames"][0][3][1].startswith("150.20 "))
+            # no rule.txt without --rule
+            R.main([d])
+            self.assertFalse(os.path.exists(os.path.join(d, "rule.txt")))
 
     def test_unfinished_walk_refused(self):
         with tempfile.TemporaryDirectory() as d:

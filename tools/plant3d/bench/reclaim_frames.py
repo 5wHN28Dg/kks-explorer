@@ -12,12 +12,14 @@ phone's epoch and boot clocks (clock.txt: /proc/uptime, then the epoch, read tog
 
 The frame rule (the user, 2026-10-25; decisions 0057 and 0066): "no frame over 100 ms after the first 5 s" counts the
 frames the app causes. Each of the rule's frames (the walk's SPIKE lines: the app's own frame intervals over 100 ms,
-as its RESULT's over100 counts them) is excluded as the phone's memory reclaim when a 200 ms sample overlapping the
+as its RESULT's over100 counts them) is excluded as the phone's memory reclaim when a sample (every 0.2-0.3 s) overlapping the
 frame (its log time less its length, to its log time) shows the kernel reclaiming: kswapd or direct reclaim scanned at
 least one page, or a direct-reclaim stall, between that sample and the one before (samples at most 1 s apart). Every
 other frame is the app's, as is any frame the log lost (over100 against the SPIKE lines found), and every frame of a
-walk the sampler did not cover. A walk during which the kernel reclaimed in more than 1 % of the samples is not judged
-(the phone was under pressure through it: walk again), nor is a STRESS=1 walk. The judgement and, for each frame excluded, the sample lines
+walk the sampler did not cover. A walk that would pass only by excluding frames is not judged when the kernel
+reclaimed in more than 1 % of its sample pairs (from its first frame to its RESULT; the phone was under pressure
+through it: walk again), when it is a STRESS=1 walk (or has no state.txt), or when its log has more SPIKE lines than
+over100. A walk with no frame excluded is judged as the plain rule. The judgement and, for each frame excluded, the sample lines
 that show its reclaim go to RESULTS_DIR/rule.txt, kept with the walk (samp.txt, logcat.txt, a trace.pftrace if one
 was recorded) as its evidence. No frames.csv needed for this part."""
 import argparse
@@ -108,17 +110,37 @@ def reclaimed(a, b):
     return d[0] + d[1] >= MIN_PAGES or d[2] + d[3] > 0
 
 
+def _rule_samples(d):
+    """samp.txt's rows as numbers and as written, in step; a last line cut short (the sampler stopped mid-write) is
+    left out, any other line of the wrong width refused."""
+    rows, raw = [], []
+    lines = [l for l in _lines(os.path.join(d, "samp.txt")) if l.split()]
+    for n, line in enumerate(lines, 1):
+        p = line.split()
+        if len(p) != COLUMNS:
+            if n == len(lines):
+                break
+            raise SystemExit("samp.txt line %d has %d columns, not %d (phone/frames.sh SAMPLE)" % (n, len(p), COLUMNS))
+        try:
+            rows.append([float(x) for x in p])
+        except ValueError:
+            continue
+        raw.append(line.strip())
+    return rows, raw
+
+
 def rule(d):
     """The frame rule's judgement of a walk: a dict with `frames` [(ms, t_walk s, "app" | "reclaim", [sample lines])],
-    `app`, `reclaim` (counts), `lost` (over100 frames with no SPIKE line, counted as the app's), `share` (the samples'
-    share in reclaim), `stressed` (a STRESS=1 walk), `judged` (False when the share passes MAX_SHARE or the walk was
-    stressed), `sampled` and `passes`."""
-    c = " ".join(_lines(os.path.join(d, "clock.txt"))).split()
-    off = float(c[2]) - float(c[0])
-    s = samples(d) if os.path.exists(os.path.join(d, "samp.txt")) else []
-    raw = []
-    if s:
-        raw = [l for l in _lines(os.path.join(d, "samp.txt")) if l.split()]
+    `app`, `reclaim` (counts), `lost` (over100 frames with no SPIKE line, counted as the app's), `share` (the share of
+    the walk's sample pairs with reclaim), `stressed` (a STRESS=1 walk, or no state.txt to tell), `extra` (more SPIKE
+    lines than over100), `judged` (False when frames were excluded and the share passes MAX_SHARE, the walk was
+    stressed or the log has extra SPIKE lines), `sampled` and `passes`."""
+    sampled = os.path.exists(os.path.join(d, "samp.txt"))
+    s, raw = _rule_samples(d) if sampled else ([], [])
+    off = 0.0
+    if s:   # (clock.txt is written by SAMPLE=1 walks only)
+        c = " ".join(_lines(os.path.join(d, "clock.txt"))).split()
+        off = float(c[2]) - float(c[0])
     times = [x[0] for x in s]
     over100 = None
     for line in _lines(os.path.join(d, "result.txt")):
@@ -127,14 +149,22 @@ def rule(d):
             over100 = int(m.group(1))
     if over100 is None:
         raise SystemExit("no RESULT line with over100= in result.txt: the walk did not finish")
-    frames = []
-    for line in _lines(os.path.join(d, "logcat.txt")):
+    log = _lines(os.path.join(d, "logcat.txt")) if os.path.exists(os.path.join(d, "logcat.txt")) else []
+    frames, seen, walk0, walk1 = [], set(), None, None
+    for line in log:
+        m0 = re.match(r"\s*(\d+\.\d+)\s.*plant: (first frame drawn|RESULT )", line)
+        if m0:
+            t = float(m0.group(1)) - off
+            if m0.group(2) == "RESULT ":
+                walk1 = t
+            elif walk0 is None:
+                walk0 = t
+        # every SPIKE line is a frame over 100 ms (the app logs one only then; "100.0" is 100.01-100.04 ms)
         m = re.match(r"\s*(\d+\.\d+)\s.*plant: SPIKE (\d+\.?\d*) ms at (\d+\.?\d*) s", line)
-        if not m:
+        if not m or line.strip() in seen:
             continue
+        seen.add(line.strip())
         ms = float(m.group(2))
-        if ms <= RULE_MS:
-            continue
         end = float(m.group(1)) - off
         start = end - ms / 1000.0
         ev = []
@@ -147,16 +177,21 @@ def rule(d):
                     break
                 i += 1
         frames.append((ms, float(m.group(3)), "reclaim" if ev else "app", ev))
-    pairs = [reclaimed(s[i - 1], s[i]) for i in range(1, len(s))]
-    share = sum(1 for p in pairs if p) / len(pairs) if pairs else 0.0
+    # the share over the walk itself (from its first frame to its RESULT) and over the pairs that show something
+    pairs = [reclaimed(s[i - 1], s[i]) for i in range(1, len(s))
+             if (walk0 is None or s[i][0] > walk0) and (walk1 is None or s[i - 1][0] < walk1)]
+    known = [p for p in pairs if p is not None]
+    share = sum(1 for p in known if p) / len(known) if known else 0.0
     n_rec = sum(1 for f in frames if f[2] == "reclaim")
     lost = max(over100 - len(frames), 0)
+    extra = len(frames) > over100
     n_app = len(frames) - n_rec + lost
-    stressed = os.path.exists(os.path.join(d, "state.txt")) and \
-        any(l.startswith("stress:") for l in _lines(os.path.join(d, "state.txt")))
-    judged = share <= MAX_SHARE and not stressed
+    st = os.path.join(d, "state.txt")
+    stressed = not os.path.exists(st) or any(l.startswith("stress:") for l in _lines(st))
+    # the guards matter only to a walk that would pass by excluding frames: with none excluded it is the plain rule
+    judged = (share <= MAX_SHARE and not stressed and not extra) or n_rec == 0
     return {"frames": frames, "app": n_app, "reclaim": n_rec, "lost": lost, "share": share, "judged": judged,
-            "stressed": stressed, "sampled": bool(s), "passes": judged and n_app == 0}
+            "stressed": stressed, "extra": extra, "sampled": bool(s), "passes": judged and n_app == 0}
 
 
 def rule_text(d):
@@ -170,7 +205,9 @@ def rule_text(d):
                "" if r["share"] <= MAX_SHARE else " (more than %.0f %%: the phone was under pressure through it, walk again)"
                % (100 * MAX_SHARE))]
     if r["stressed"]:
-        out.append("  a STRESS=1 walk (memory pressure made on purpose): never judged by the rule")
+        out.append("  a STRESS=1 walk (memory pressure made on purpose), or no state.txt to tell: not judged")
+    if r["extra"]:
+        out.append("  more SPIKE lines in the log than the RESULT's over100: not judged (another run's log?)")
     if not r["sampled"]:
         out.append("  no samp.txt (walk with SAMPLE=1): no frame can be excluded")
     for ms, t, why, ev in r["frames"]:
@@ -178,6 +215,9 @@ def rule_text(d):
         out += ["      " + l for l in ev]
     out.append("  evidence: %s (samp.txt, logcat.txt%s)" % (os.path.abspath(d),
                ", trace.pftrace" if os.path.exists(os.path.join(d, "trace.pftrace")) else ""))
+    out.append("  judged by tools/plant3d/bench/reclaim_frames.py: reclaim = at least %d page(s) scanned or a stall in a "
+               "sample pair overlapping the frame, pairs at most %.1f s apart; walks with reclaim in more than %.0f %% "
+               "of their pairs not judged" % (MIN_PAGES, MAX_GAP_S, 100 * MAX_SHARE))
     return "\n".join(out) + "\n"
 
 
@@ -185,11 +225,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("dir")
     ap.add_argument("--over", type=float, default=45.0)
-    ap.add_argument("--rule", action="store_true", help="only the frame rule's judgement (also written to rule.txt)")
+    ap.add_argument("--rule", action="store_true", help="only the frame rule's judgement, also written to rule.txt")
     a = ap.parse_args(argv)
     t = rule_text(a.dir)
-    with open(os.path.join(a.dir, "rule.txt"), "w") as f:
-        f.write(t)
+    if a.rule:
+        with open(os.path.join(a.dir, "rule.txt"), "w") as f:
+            f.write(t)
     print(t, end="")
     if a.rule or not os.path.exists(os.path.join(a.dir, "frames.csv")) or not os.path.exists(os.path.join(a.dir, "samp.txt")):
         return 0

@@ -160,11 +160,12 @@ say "walking $SECONDS_ s (+5 s not measured)"
 if [ -n "$SAMPLE" ]; then
   # uptime (the kernel's boot clock), Mali clock (Hz), Mali load (%), then /proc/vmstat's pswpin pswpout
   # allocstall_normal allocstall_movable pgscan_kswapd pgscan_direct compact_stall (in its own order), then MemFree,
-  # MemAvailable and SwapFree (kB); clock.txt: uptime and the phone's epoch time together
+  # MemAvailable and SwapFree (kB); clock.txt: uptime and the phone's epoch time together. The uptime is read just
+  # before /proc/vmstat (the Mali files first), so that a sample's time is its counters' (reclaim_frames.py)
   sample_on=1
   M=/sys/class/misc/mali0/device
   rounds=$(( (SECONDS_ + 300) * 5 ))   # (it stops by itself too, should cleanup never reach the phone)
-  sh_ "rm -f $SAMPLE_F $SAMPLE_F.stop; nohup sh -c 'i=0; while [ ! -e $SAMPLE_F.stop ] && [ \$i -lt $rounds ]; do i=\$((i + 1)); read up idle < /proc/uptime; echo \$up \$(cat $M/clock 2>/dev/null || echo 0) \$(cat $M/utilization 2>/dev/null || echo 0) \$(grep -E \"^(pswpin|pswpout|allocstall_normal|allocstall_movable|pgscan_kswapd|pgscan_direct|compact_stall) \" /proc/vmstat | cut -d\" \" -f2) \$(grep -E \"^(MemFree|MemAvailable|SwapFree):\" /proc/meminfo | tr -s \" \" | cut -d\" \" -f2); sleep 0.2; done; rm -f $SAMPLE_F.stop' > $SAMPLE_F 2>/dev/null &"
+  sh_ "rm -f $SAMPLE_F $SAMPLE_F.stop; nohup sh -c 'i=0; while [ ! -e $SAMPLE_F.stop ] && [ \$i -lt $rounds ]; do i=\$((i + 1)); c=\$(cat $M/clock 2>/dev/null || echo 0); u=\$(cat $M/utilization 2>/dev/null || echo 0); read up idle < /proc/uptime; echo \$up \$c \$u \$(grep -E \"^(pswpin|pswpout|allocstall_normal|allocstall_movable|pgscan_kswapd|pgscan_direct|compact_stall) \" /proc/vmstat | cut -d\" \" -f2) \$(grep -E \"^(MemFree|MemAvailable|SwapFree):\" /proc/meminfo | tr -s \" \" | cut -d\" \" -f2); sleep 0.2; done; rm -f $SAMPLE_F.stop' > $SAMPLE_F 2>/dev/null &"
   sh_ "cat /proc/uptime; date +%s.%N" > "$OUT/clock.txt"
 fi
 if [ -n "$STRESS" ]; then

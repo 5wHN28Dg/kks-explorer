@@ -162,25 +162,35 @@ evidence. Exactly:
 
 - The rule's frames are the app's own frame intervals over 100 ms after the walk's first 5 s: its `SPIKE` lines in the
   log, which its `RESULT`'s `over100` counts.
-- A frame is inside reclaim when a `SAMPLE=1` sample (every 200 ms, `/proc/vmstat`) overlapping it shows the kernel
-  reclaiming since the sample before: kswapd or direct reclaim scanned at least one page (`pgscan_kswapd`,
-  `pgscan_direct`), or a direct-reclaim stall (`allocstall_*`). The frame runs from its log time less its length to
-  its log time. Two samples more than 1 s apart, or a count that fell, show nothing.
-- The threshold is any reclaim, from the 12 walks above. Frames are grouped by the most pages a second scanned in the
-  samples overlapping each frame. In the 6 traced or stressed walks, 0.027 % of the frames with no scanning had a GPU
-  time over 45 ms; at 1–200 pages a second it was 1.6 %, at 200–1,000 15 %, and above that 2–15 %. In the 6 walks
-  without pressure the kernel reclaimed in at most 0.27 % of the samples.
+- A frame is inside reclaim when a `SAMPLE=1` sample overlapping it shows the kernel reclaiming since the sample
+  before. Reclaiming means kswapd or direct reclaim scanned at least one page (`pgscan_kswapd`, `pgscan_direct` in
+  `/proc/vmstat`), or a direct-reclaim stall (`allocstall_*`). The frame runs from its log time less its length to its
+  log time. The samples come every 0.2–0.3 s, so the reclaim that excludes a frame can be up to about 0.3 s before it
+  began or after it ended. Two samples more than 1 s apart, or a count that fell, show nothing.
+- The threshold is any reclaim, from the 12 walks above. The grouping was made by hand for this record (not
+  `reclaim_frames.py`'s own bands, which group a frame by the sample it began in): each frame by the most pages a
+  second scanned in the samples overlapping it, plus 70 ms for the lag of the GPU time it carries. In the 6 traced or
+  stressed walks, 0.027 % of the frames with no scanning had a GPU time over 45 ms; at 1–200 pages a second it was
+  1.6 %, at 200–1,000 15 %, and above that 2–15 %. In the walks without pressure the kernel reclaimed in at most
+  0.38 % of the sample pairs.
 - Every other frame counts as the app's: one the log lost (`over100` above the `SPIKE` lines found), one outside the
   samples, and every frame of a walk without `SAMPLE=1`.
-- Some walks are not judged at all. A `STRESS=1` walk is pressure made on purpose. A walk with reclaim in more than
-  1 % of its samples means the phone was under pressure through it, so walk again. The clean walks measured 0–0.27 %,
-  the traced and stressed ones 3.9–10.9 %.
-- The evidence is kept with the walk: `rule.txt` in its results folder (the judgement, and the two sample lines that
-  show each excluded frame's reclaim), beside `samp.txt`, `logcat.txt` and the walk's `trace.pftrace` when it was
-  traced. `phone/frames.sh` writes it after every `SAMPLE=1` walk (`tools/plant3d/bench/reclaim_frames.py`).
+- A walk that would pass only by excluding frames is not judged in three cases, and is walked again:
+  - reclaim in more than 1 % of its sample pairs, counted from its first frame to its `RESULT` over the pairs that
+    show something (the phone was under pressure through it). The clean walks measured 0–0.38 %, the traced and
+    stressed ones 4.1–11.5 %;
+  - a `STRESS=1` walk (pressure made on purpose), or one without the `state.txt` that would say so;
+  - more `SPIKE` lines in its log than its `over100` (another run's lines).
+  A walk with no frame excluded is judged by the plain rule.
+- The evidence is kept with the walk: `rule.txt` in its results folder (the judgement, the thresholds it used, and the
+  two sample lines that show each excluded frame's reclaim), beside `samp.txt`, `logcat.txt` and the walk's
+  `trace.pftrace` when it was traced. `phone/frames.sh` writes it after every `SAMPLE=1` walk
+  (`tools/plant3d/bench/reclaim_frames.py --rule`). Since this change the sampler reads the uptime just before
+  `/proc/vmstat`, so that a sample's time is its counters' time.
 
 Applied to the walks above: the traced `wtp` walk's four frames over 100 ms (172.3, 100.3, 104.3, 102.0 ms) were all
-inside reclaim, but the walk is not judged (reclaim in 5.4 % of its samples). The stressed walks are not judged. #249's
+inside reclaim, but the walk is not judged (reclaim in 5.8 % of its sample pairs). Neither are the stressed walks
+that had a frame excluded. #249's
 own spikes had no samples, so they count as the app's and those walks cannot pass.
 
 **Tools added** (to see it again): a shot's line gives its GPU time, and `shot=` works on a phone (`phone/shots.sh`:
