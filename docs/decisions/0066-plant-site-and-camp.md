@@ -113,7 +113,7 @@ Packages (the final build): APK 139.4 MB (budget 150); the desktop packages, est
 The Honor 600 was not attached on either day, so it was not measured (its last runs, 2026-10-23 morning, before the far
 views: `lean+vis` and `full` with no frame over 100 ms).
 
-## The last frame spikes: the phone's memory reclaim (#252, 2026-10-25)
+## The last frame spikes: the phone's memory reclaim (#258, 2026-10-25)
 
 **What they are.** The single GPU frames of 100–160 ms that #249 left (the final build's `wtp` and `camp` walks) come,
 nearly all, while the phone's kernel reclaims memory, not from anything the app draws or does at that moment. While it
