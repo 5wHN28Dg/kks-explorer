@@ -103,6 +103,18 @@ static func _measure_overrides(sun: DirectionalLight3D) -> void:
 	if "shadowhard" in off:
 		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_HARD)
 
+## What stands inside a building (group `inside_shadow`: builder/plant_builder.gd _mark_no_sun) casts no shadow of the
+## sun, under `root` (the plant at the start, an interior's piece as it goes in: app/interiors.gd). `fx_on=inside_shadow`
+## leaves them casting, as before (to measure what it saves).
+static func apply_shadows(root: Node) -> void:
+	var cast := "inside_shadow" in Lighting.on
+	var mode := GeometryInstance3D.SHADOW_CASTING_SETTING_ON if cast else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var all: Array = root.find_children("*", "GeometryInstance3D", true, false)
+	all.append(root)
+	for n in all:
+		if n is GeometryInstance3D and n.is_in_group("inside_shadow"):
+			(n as GeometryInstance3D).cast_shadow = mode
+
 ## The legibility of a tag plate's code (PLANT3D.md §10): its text is drawn while a character covers 8 px.
 const LEGIBLE_PX := 8.0
 

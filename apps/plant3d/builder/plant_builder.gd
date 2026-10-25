@@ -895,6 +895,20 @@ func _area(root: Node3D, a: Dictionary) -> void:
 		hlod(root, a.id, _far_items(a), root, keep)
 	elif a.data.get("pack", "") in ["wtp", "base"] and a.data.get("load", "") != "inside":
 		far_merge(root, a.id)
+	if inside:   # an interior stands wholly inside its building: none of it casts the sun's shadow
+		for n in root.find_children("*", "GeometryInstance3D", true, false):
+			_mark_no_sun(n)
+
+## What stands inside a building casts no shadow of the sun (group `inside_shadow`, applied when the app runs:
+## app/quality.gd apply_shadows; the bake keeps every caster, so the halls' baked light is as before): its walls and
+## roof already shade it all, so its own shadows would fall only in the sunlit patch of an open door. On the Note 9
+## each frame's shadow pass draws every caster within the shadow's reach in each of its cascades (in the WTP's RO hall
+## 342,000 of the view's 562,000 triangles), and while the phone reclaims memory (kswapd) the Mali driver's page faults
+## for that work, handled on CPU 0 (kworker/0:0), held single GPU frames of 50-160 ms (decision 0066, "The last frame
+## spikes").
+static func _mark_no_sun(gi: GeometryInstance3D) -> void:
+	if gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+		gi.add_to_group("inside_shadow", true)
 
 # ------------------------------------------------------------------ the far view of the site and the camp (HLOD)
 
@@ -1168,6 +1182,7 @@ func _mark_inside(root: Node3D, id: String) -> void:
 				r = INSIDE_RANGE + Site._bbox(b.outline).size.length()
 		if r >= 0.0:
 			gi.set_meta("far_inside", true)
+			_mark_no_sun(gi)
 			r = minf(r, FAR_MERGE_RANGE)
 			if gi.is_in_group("detail"):
 				gi.set_meta("range_cap", r)   # (app/quality.gd: a detail's range by size, at most this)

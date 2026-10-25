@@ -80,6 +80,7 @@ func _step() -> void:
 			if mmi != null and mmi.has_meta("xforms") and mmi.multimesh != null:   # as app/plant.gd fill_cells
 				mmi.multimesh.instance_count = int(mmi.get_meta("count"))
 				mmi.multimesh.buffer = mmi.get_meta("xforms")
+			Quality.apply_shadows(piece)   # an interior casts no sun shadow (it stands inside its building)
 			if is_inside_tree():
 				Quality.apply_ranges(get_viewport(), piece)   # the tier's visibility ranges on its pieces
 			if it.pending.is_empty():

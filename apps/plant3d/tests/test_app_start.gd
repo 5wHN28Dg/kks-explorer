@@ -35,6 +35,10 @@ func run(tree: SceneTree) -> Array:
 	var i_plant: int = Array(main.lines).find_custom(func(s): return s.begins_with("loaded the plant"))
 	if i_filter < 0 or i_plant < 0 or i_filter > i_plant:
 		p.append("the lightmap's filter is set before the plant loads (lines %d and %d)" % [i_filter, i_plant])
+	# what stands inside buildings casts no sun shadow once the app runs (app/quality.gd apply_shadows)
+	var inside: Array = tree.get_nodes_in_group("inside_shadow")
+	if inside.is_empty() or inside.any(func(g): return (g as GeometryInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF):
+		p.append("the start switches off the sun shadows of what stands inside buildings (%d pieces)" % inside.size())
 	main.toggle_map()
 	if not main.map.active or main.player.input_enabled:
 		p.append("the map opens and holds the walker's controls")

@@ -146,6 +146,7 @@ func _ready() -> void:
 	if "stencils" in Lighting.off:   # fx_off=stencils: the pipes' stencilled names hidden, to measure what they cost
 		for l in plant.find_children("stencil*", "Label3D", true, false):
 			l.visible = false
+	Quality.apply_shadows(plant)   # what stands inside buildings casts no sun shadow (fx_on=inside_shadow: as before)
 	for l in get_tree().get_nodes_in_group("baked_lights"):
 		l.queue_free()   # the halls' lamps light through the bake only (forty real-time lights in a hall cost too much)
 	if early:
