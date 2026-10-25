@@ -8,6 +8,9 @@
 #   WALK_EXTRA="procedure=cold_start\npanels=alarms,procedure\nspeed=fast\n"   more options for the walk (app/main.gd)
 #   WALK_EXTRA="walk=screens\n"   the control room's screens instead of the walk, each in turn for 10 s (their cost)
 #   WALK_EXTRA="probe=1\n"   and frames.csv, where each frame's time went (app/frame_probe.gd), pulled beside result.txt
+#   STRESS=1  (the Note 9 only) the phone's memory under pressure, as when its own services start: 2 MB a second written
+#             to a file in /data/local/tmp through the walk, deleted after. The kernel's reclaim (kswapd) then stalls
+#             single GPU frames to 50-160 ms (decision 0066, "The last frame spikes"): a walk that reproduces them
 #   KEEP=1    on a phone whose own plant app holds someone's run and settings (the Honor): installed over it with its
 #             data kept (install -r), never cleared or removed; the walk saves to a file of its own (app/main.gd), and
 #             their own build is put back afterwards (pulled first: a saved run opens only in the build that saved
@@ -48,9 +51,14 @@ installed() {
 bright_mode=""; bright_level=""
 KEEP="${KEEP:-}"; [ "$KEEP" = 0 ] && KEEP=""
 kept_apk=""
+[ -n "${STRESS:-}" ] && [ "$SERIAL" != "$NOTE9" ] && { echo "STRESS is for the Note 9 only" >&2; exit 2; }
 [ -n "$KEEP" ] && [ "$SERIAL" = "$NOTE9" ] && { echo "KEEP is for another phone's own plant app; the Note 9's is cleared" >&2; exit 2; }
+STRESS_F=/data/local/tmp/plant-stress.bin
 cleanup() {
   trap '' INT TERM   # (a second Ctrl-C must not stop the reinstall of their own build)
+  if [ -n "${STRESS:-}" ]; then
+    sh_ "touch $STRESS_F.stop; sleep 2; rm -f $STRESS_F $STRESS_F.stop" || true
+  fi
   if [ -n "$bright_level" ]; then
     sh_ settings put system screen_brightness_mode "$bright_mode" || true
     sh_ settings put system screen_brightness "$bright_level" || true
@@ -127,6 +135,12 @@ echo "before: battery $(echo "$b" | sed -n 's/^ *level: //p' | head -1)% tempera
 t0=$(sh_ date +%s)
 act=$(sh_ cmd package resolve-activity --brief "$PKG" | tail -1)
 say "walking $SECONDS_ s (+5 s not measured)"
+if [ -n "${STRESS:-}" ]; then
+  # a file growing by 2 MB a second (at most 1.6 GB, as a system trace written through the walk): page cache the
+  # kernel must reclaim; it stops when cleanup touches $STRESS_F.stop
+  sh_ "rm -f $STRESS_F $STRESS_F.stop; nohup sh -c 'i=0; while [ ! -e $STRESS_F.stop ] && [ \$i -lt 800 ]; do dd if=/dev/zero of=$STRESS_F bs=1048576 count=2 seek=\$((i * 2)) conv=notrunc 2>/dev/null; i=\$((i + 1)); sleep 1; done; rm -f $STRESS_F' >/dev/null 2>&1 &"
+  echo "stress: 2 MB/s written to $STRESS_F during the walk" >> "$OUT/state.txt"
+fi
 sh_ am start -W -n "$act" > "$OUT/am_start.txt"
 "$HERE/../../tools/plant3d/bench/sf_frames.sh" "$SERIAL" "$OUT/sf.txt" "$PKG" > "$OUT/sf_summary.txt" 2>&1 &
 sf=$!

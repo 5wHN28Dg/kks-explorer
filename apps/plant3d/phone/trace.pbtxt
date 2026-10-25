@@ -1,0 +1,44 @@
+# A system trace of a phone walk (decision 0066, "The last frame spikes"), for Android 10's Perfetto (the Note 9):
+# the scheduler, CPU frequency, reclaim (kswapd, direct reclaim), thermal, SurfaceFlinger's and the app's atrace
+# (Godot's frame pacing, Swappy, marks each GPU frame), the process tree, meminfo and the log. About 2 MB a second:
+# streamed to a file on the phone, so it is itself memory the kernel must reclaim (it brings on the long GPU frames it
+# records; phone/frames.sh STRESS=1 does the same without a trace). On the Note 9, as the shell, once:
+#   adb shell setprop persist.traced.enable 1
+# then, while phone/frames.sh walks:
+#   adb shell perfetto --txt -c - --background -o /data/misc/perfetto-traces/walk.pftrace < apps/plant3d/phone/trace.pbtxt
+# and after it: adb shell kill -TERM PID (the PID it printed), adb pull the file, delete it on the phone, and read it
+# with tools/plant3d/bench/pftrace.py.
+buffers { size_kb: 65536 fill_policy: DISCARD }
+buffers { size_kb: 8192 fill_policy: DISCARD }
+data_sources { config { name: "linux.ftrace" target_buffer: 0 ftrace_config {
+  ftrace_events: "sched/sched_switch"
+  ftrace_events: "power/cpu_frequency"
+  ftrace_events: "power/clock_set_rate"
+  ftrace_events: "power/suspend_resume"
+  ftrace_events: "thermal/thermal_temperature"
+  ftrace_events: "thermal/cdev_update"
+  ftrace_events: "thermal/thermal_power_devfreq_limit"
+  ftrace_events: "vmscan/mm_vmscan_direct_reclaim_begin"
+  ftrace_events: "vmscan/mm_vmscan_direct_reclaim_end"
+  ftrace_events: "vmscan/mm_vmscan_kswapd_wake"
+  ftrace_events: "vmscan/mm_vmscan_kswapd_sleep"
+  ftrace_events: "lowmemorykiller/lowmemory_kill"
+  ftrace_events: "compaction/mm_compaction_begin"
+  ftrace_events: "compaction/mm_compaction_end"
+  ftrace_events: "ion/ion_alloc_start"
+  ftrace_events: "ion/ion_alloc_end"
+  ftrace_events: "task/task_rename"
+  atrace_categories: "gfx"
+  atrace_categories: "freq"
+  atrace_categories: "memreclaim"
+  atrace_apps: "io.github.walkdown.plant"
+  buffer_size_kb: 16384
+  drain_period_ms: 250
+} } }
+data_sources { config { name: "linux.process_stats" target_buffer: 1 process_stats_config { scan_all_processes_on_start: true proc_stats_poll_ms: 1000 } } }
+data_sources { config { name: "linux.sys_stats" target_buffer: 1 sys_stats_config { meminfo_period_ms: 500 meminfo_counters: MEMINFO_MEM_FREE meminfo_counters: MEMINFO_MEM_AVAILABLE meminfo_counters: MEMINFO_CACHED meminfo_counters: MEMINFO_SWAP_FREE } } }
+data_sources { config { name: "android.log" target_buffer: 1 android_log_config { log_ids: LID_DEFAULT log_ids: LID_SYSTEM log_ids: LID_EVENTS } } }
+duration_ms: 780000
+write_into_file: true
+file_write_period_ms: 1000
+max_file_size_bytes: 2000000000
