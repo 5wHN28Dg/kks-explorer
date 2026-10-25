@@ -1487,7 +1487,7 @@ class StaffRun:
             why.append('authority')
         st = self.st
         act = None
-        if isinstance(who, str) and who in st.person_ix and who not in self.absent:
+        if isinstance(who, str) and who in st.person_ix and who not in self.absent and st.person_ix[who] != tp.i:
             q = self.people[st.person_ix[who]]
             for kind in ACT_KINDS:
                 a = q.acts.get(kind)
@@ -1616,7 +1616,7 @@ class StaffRun:
             idle = self.st.routine_of(p.i)['idle']
             cur = p.cur = {'task': idle, 'prio': 6, 'made': e.step_no, 'order': self.order, 'step': 0, 'st': {},
                            'work': None, 'code': None, 'alarm': None, 'src': None, 'idle': True, 'started': True,
-                           'int': True, 'owner': None}
+                           'int': True, 'owner': None, 'act': None}
             self.order += 1
             e.ev('task', p.id, idle, 'start')
             if p.pos is None and p.i != self.trainee:
@@ -1831,6 +1831,18 @@ class StaffRun:
             if 'left' not in x:
                 x['left'] = self.mins(p, cur, s['work']) * st.tpm
                 x['last'] = n
+                x['place'] = p.pos
+            elif x['place'] is not None and (p.pos != x['place'] or 'back' in x):
+                # resumed elsewhere (called away, or held overnight): back to where it was being done first, as a go;
+                # its time runs again from the arrival (§17.3)
+                x['back'] = True
+                r = self.go(p, cur, x['place'])
+                if r != 'next':
+                    return r
+                for k in ('back', 'dest', 'target', 'waiting', 'wait_since'):
+                    x.pop(k, None)
+                x['last'] = n
+                return 'next' if x['left'] <= 0 else 'wait'
             elif x['last'] < n:
                 x['left'] -= 1
                 x['last'] = n
@@ -1937,17 +1949,20 @@ class StaffRun:
 
     def stop_step(self, p, cur):
         """An NPC's stop step: to the place the acting person is at when the step starts (a place held by someone:
-        its room's door, else its point), then the act stopped if it still goes on and nobody has stopped it."""
+        its room's door, else its point; the trainee between places: once they are at one), then the act stopped if
+        it still goes on and nobody has stopped it."""
         st = self.st
         act = cur['act']
         x = cur['st']
-        if act is None:
-            return 'next'
+        if act is None or act[0] == p.i:
+            return 'next'               # (no act, or their own: nobody stops their own act)
         if 'dest' not in x:
             q = self.people[act[0]]
             t = q.pos if q.pos is not None else (q.leg[1] if q.leg is not None else None)
-            if t is None or not self.ongoing(act):
+            if not self.ongoing(act):
                 return 'next'
+            if t is None:
+                return 'wait'           # (the trainee between places: until they are at one, or the act is over)
             if st.places[t]['kind'] not in OPEN_KINDS:
                 d = st.door.get(st.places[t].get('room'))
                 t = d if d is not None and d != t else (t if t in st.point_no else st.stub[t][0])

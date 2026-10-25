@@ -324,8 +324,8 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 	# a task of a higher priority) is taken back there
 	if s.has("go") or s.has("meet") or s.has("lock") or s.has("unlock") or s.has("work"):
 		var dest = cur["st"].get("dest", cur["st"].get("place"))
-		if s.has("lock") or s.has("unlock"):
-			dest = null
+		if s.has("lock") or s.has("unlock") or (dest != null and dest < 0):
+			dest = null         # (a work step begun between places: no place to go back to)
 		if dest != null:
 			var d: int = dest
 			if e.st_t_at == d:

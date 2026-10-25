@@ -87,6 +87,12 @@ added). The app: the Crew panel's PPE part, zone inputs from the walker, "Stop t
 hard hats by what they wear and where, the debrief's Safety and Your tasks tabs (`tests/test_ui_maintenance.gd`
 plays an I&C technician's calibration and corrective repair, an HSE officer's stop and an NPC calibration seen from
 the control room). Tools and PPE on the avatars stay A1's looks by role; only the hard hat follows what is worn.
+From the reviews: a resumed `work` step goes back to its place first (a calibration held overnight was finished
+from the plant gate), the stop step waits for a trainee between places, nobody stops their own act, PPE is put on
+before a held job and before the supervisors' handover, and the staff step is back within §18.4's budget (62 µs
+at the shift change on the laptop, about 0.20 ms on the Note 9). Not yet measured: the Note 9 frames walk with
+S2's crowd. Open for the user: whether a held job keeps the locks of a colleague who isolated it (the locker goes
+home without a held job of their own, and their lock is then removed by authority).
 
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4
 needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, S2 with C1, then S3, then S4.

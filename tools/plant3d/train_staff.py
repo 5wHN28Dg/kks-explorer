@@ -441,7 +441,8 @@ def tasks(models):
     task('handover_take', 'Take the control room handover', [meet('control_room', 'ccr_op'),
                                                              {'say': 'handover', 'to': 'shift_sup'}, take])
     task('handover_give', 'Give the control room handover', [meet('control_room', 'ccr_op'), give])
-    task('handover_take_sup', 'Take the shift handover', [meet('control_room', 'shift_sup'), take])
+    # (the supervisor too: their removals by authority are made at the points, in the process areas)
+    task('handover_take_sup', 'Take the shift handover', gear + [meet('control_room', 'shift_sup'), take])
     task('handover_give_sup', 'Give the shift handover', [meet('control_room', 'shift_sup'), give])
     task('handover_take_f', 'Take the field handover', gear + [meet('field_office', 'field_op'), take])
     task('handover_give_f', 'Give the field handover', [meet('field_office', 'field_op'), give])
@@ -451,8 +452,9 @@ def tasks(models):
     task('sup_walk', 'The supervisor\'s look round the control room', [{'go': 'cr_sup'}, {'work': 10},
                                                                        {'say': 'all_well', 'to': 'channel'}])
     # the day's start in the maintenance workshop: PPE on, the toolbox talk led by the maintenance supervisors (an HSE
-    # officer joins it)
-    task('toolbox', 'Toolbox talk in the workshop', gear + [meet('workshop', 'maint_sup', 10)])
+    # officer joins it); before a job held overnight is taken up again (priority 2: the held job comes back at 07:00
+    # too, and nobody walks into the process areas without their PPE)
+    task('toolbox', 'Toolbox talk in the workshop', gear + [meet('workshop', 'maint_sup', 10)], priority=2)
     task('toolbox_lead', 'Lead the toolbox talk', gear + [meet('workshop', 'mech_tech', 10)])
     task('toolbox_visit', 'Join the toolbox talk', gear + [meet('workshop', 'maint_sup', 10)])
     for rid, (title, reads) in ROUNDS.items():

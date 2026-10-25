@@ -433,6 +433,54 @@ class StaffVectors(unittest.TestCase):
                                 ('accept', 'csup'), ('done', 'csup'), ('return', 'csup'), ('auto', None),
                                 ('close', 'a_sup')])
 
+    def test_a_stop_task_as_an_idle_task(self):
+        """Blind review of S2: a task with a stop step may also be a routine's idle task (the validator allows it); its
+        stop step has no act there and ends at once, as in GDScript (the reference's idle instance had no act: a
+        KeyError)."""
+        F = G.safety_files()
+        s = F['staff.json']
+        for r in s['routines']:
+            if r['id'] == 'hse_days':
+                r['idle'] = 'stop_unsafe'
+        for t in s['tasks']:
+            if t['id'] == 'stop_unsafe':
+                t['steps'].append({'work': 5})          # (an idle task works a while)
+        b = P.check_files({k: (v if isinstance(v, bytes) else json.dumps(v).encode()) for k, v in F.items()})
+        e = P.Engine(b, 's1')
+        while e.step_no < 20000:
+            e.step()
+        self.assertTrue(any(x[1:4] == ['task', 'hse1', 'stop_unsafe'] for x in e.events))
+
+    def test_nobody_stops_their_own_act(self):
+        """Adversarial review of S2: a reaction without `seen` may give the stop task to the acting person themselves
+        (the HSE officer without ear defenders in the hall, the only one of their role); its stop step ends with no
+        stop (the reference crashed on its own stopped task). The trainee's stop of themselves is refused, no_act."""
+        F = G.safety_files()
+        s = F['staff.json']
+        for r in s['reactions']:
+            if r['on'].get('unsafe') == '*':
+                r.pop('seen')
+                r['roles'] = ['hse_officer']
+        for r in s['roles']:
+            if r['id'] == 'hse_officer':
+                r['ppe'] = ['helmet', 'boots', 'harness']
+        b = P.check_files({k: (v if isinstance(v, bytes) else json.dumps(v).encode()) for k, v in F.items()})
+        e = P.Engine(b, 's1')
+        while e.step_no < 30000:
+            e.step()
+        own = [x for x in e.events if x[1] == 'unsafe' and x[2] == 'hse1' and x[3] == 'ppe']
+        self.assertTrue(own, 'the officer\'s own act')
+        self.assertTrue(any(x[1:5] == ['task', 'hse1', 'stop_unsafe', 'start'] and own[0][0] <= x[0] < own[0][0] + 100
+                            for x in e.events))
+        self.assertFalse([x for x in e.events if x[1] == 'stop' and x[2] == x[3]])
+        e2 = P.Engine(b, 's1')
+        e2.role('hse1')
+        while e2.step_no < 30000:
+            e2.step()
+            if e2.step_no == 20000:
+                e2.stop('hse1')
+        self.assertIn(['stop', 'hse1', 'hse1', None, None, 'refused', ['no_act']], [x[1:] for x in e2.events])
+
     def test_slots_by_weekday(self):
         mon = self.run_named('safety (S2), no trainee')
         walks = [e[0] for e in mon if e[1:5] == ['task', 'hse1', 'safety_walk', 'start']]
@@ -494,7 +542,9 @@ class StaffVectors(unittest.TestCase):
         self.assertIn([985, 'lock', 'wo_pump', 0, 'b_elec', 'done', []], ev)
         self.assertIn([986, 'unlock', 'wo_pump', 0, 'a_elec', 'done', []], ev)
         self.assertIn([1157, 'lock', 'wo_pump', 1, 'b_fo', 'done', []], ev)
-        self.assertIn([1286, 'unlock', 'wo_pump', 1, 'a_fo2', 'done', []], ev)
+        # (1286 before S2's review: a resumed work step now goes back to its place, so a_fo2's round ends later and
+        # they reach the field office's handover after the incoming field operator has left it)
+        self.assertIn([1473, 'unlock', 'wo_pump', 1, 'a_fo2', 'done', []], ev)
         counts = self.lock_counts(ev)
         returned = next(x[0] for x in ev if x[1] == 'permit' and x[3] == 'return' and x[5] == 'done')
         for n, held in counts.items():
@@ -505,7 +555,7 @@ class StaffVectors(unittest.TestCase):
         self.assertFalse(any(x[1] == 'permit' and x[3] == 'auto' and x[6] == [2] for x in ev))
         self.assertIn([1392, 'unlock', 'wo_pump', 1, 'b_fo', 'done', []], ev)     # by the new holders
         self.assertIn([1460, 'unlock', 'wo_pump', 0, 'b_elec', 'done', []], ev)
-        self.assertIn([1461, 'permit', 'wo_pump', 'close', 'b_sup', 'done', []], ev)
+        self.assertIn([1474, 'permit', 'wo_pump', 'close', 'b_sup', 'done', []], ev)     # (after a_fo2's own unlock)
 
     def test_nobody_takes_over(self):
         """§17.9: the outgoing person's wait runs out, they leave with the lock on, and the supervisor removes it by
@@ -775,6 +825,45 @@ class FirstTrainStaff(unittest.TestCase):
         st = next(s for s in self.day['states'] if s['clock'] % 864000 == 10 * 36000 + 30 * 600)
         self.assertEqual(st['worn']['hse1'], ['helmet', 'boots', 'glasses', 'ear', 'vest'])
         self.assertIn('harness', st['worn']['con1'])
+
+    def test_ppe_on_before_a_held_job_and_for_the_supervisors(self):
+        """Blind review of S2: transmitter 3's calibration issued late on Monday is held overnight; on Tuesday its I&C
+        technician puts their PPE on at the toolbox talk, then walks back to the transmitter to finish it, and the
+        supervisors who took over the shift at 18:00 and 06:00 wear theirs: nobody's PPE act from Monday 15:40 to
+        Tuesday 10:00, and the job resumed and handed back with its lock on overnight (the trainee, a shift
+        supervisor, plays nothing: the deisolation waits for them)."""
+        sid = next(k for k, v in self.b.scenarios.items() if 'staff' in v)
+        e = P.Recorder(self.b, sid)
+        e.role('a_sup')
+
+        def until(day, hh, mm):
+            want = day * 864000 + (hh * 60 + mm) * 600
+            while e.clock() < want:
+                e.step()
+        until(1, 15, 40)
+        w = 'wo_cond_p3_cal'
+        e.permit(w, 'request', 'a_sup')
+        e.step()
+        e.permit(w, 'approve', 'a_sup')
+        e.step()
+        e.npc_queue.append(('lock', w, 0, 'ic1'))     # the I&C technician's lock, as their step 9 makes it
+        e.step()
+        e.step()
+        e.permit(w, 'issue', 'a_sup')
+        e.step()
+        n0 = e.step_no
+        until(2, 10, 0)
+        ev = [x for x in e.events if x[0] >= n0]
+        self.assertTrue(any(x[1:5] == ['task', 'ic1', 'job_cond_p3_cal', 'held'] for x in ev))
+        self.assertTrue(any(x[1:5] == ['task', 'ic1', 'job_cond_p3_cal', 'resumed'] for x in ev))
+        self.assertFalse([x for x in ev if x[1] == 'unsafe' and x[3] == 'ppe' and x[2] != 'a_sup'])
+        self.assertFalse([x for x in ev if x[1] == 'remove_lock'])
+        self.assertTrue(any(x[1:5] == ['permit', w, 'return', 'ic1'] and x[5] == 'done' for x in ev))
+        # the calibration finished at the transmitter, not where the technician came on (a resumed work step goes
+        # back to its place first)
+        tb = next(x[0] for x in ev if x[1:5] == ['task', 'ic1', 'toolbox', 'done'])
+        dn = next(x[0] for x in ev if x[1:4] == ['permit', w, 'done'] and x[5] == 'done')
+        self.assertTrue(any(x[1:3] == ['move', 'ic1'] and x[4] == 'w_30mag10cp003' and tb <= x[0] < dn for x in ev))
 
     def test_round_ranges_hold_at_rest_and_at_base_load(self):
         sys.path.insert(0, os.path.join(REPO, 'tools', 'plant3d'))

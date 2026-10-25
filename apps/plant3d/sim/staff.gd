@@ -315,6 +315,12 @@ func init_run(e, scen: Dictionary) -> void:
 
 # ---------------------------------------------------------------- duties and slots (§16.4, §16.5)
 
+## The weekday of a clock time (tenths of a second from day 0's midnight; day 1 is the week's first), by floor
+## division as the reference's: a duty planned on day −1 starts at a negative time (truncating gave day 0's weekday).
+func weekday(t: int) -> String:
+	return week[posmod(floori(float(t) / DAY) - 1, 7)]
+
+
 func duty_on_day(pi: int, day: int) -> Array:
 	var pp: Dictionary = people[pi]
 	var ro: Dictionary = rosters[pp["roster"]]
@@ -359,7 +365,7 @@ func plan(e, pi: int, upto: int) -> void:
 			continue
 		e.sp_duties[pi].append(du)
 		var mine := []
-		var wd: String = week[posmod(du[0] / DAY - 1, 7)]
+		var wd: String = weekday(du[0])
 		for k in r["slots"].size():
 			var s: Array = r["slots"][k]
 			if s[6] != null and not s[6].has(wd):
@@ -1222,6 +1228,17 @@ func run(e, pi: int, cur: Dictionary):
 		if not x.has("left"):
 			x["left"] = mins(e, pi, s["work"]) * tpm
 			x["last"] = n
+			x["place"] = e.sp_pos[pi] if e.sp_pos[pi] != -1 else null
+		elif x["place"] != null and (e.sp_pos[pi] != x["place"] or x.has("back")):
+			# resumed elsewhere (called away, or held overnight): back to where it was being done first, as a go; its
+			# time runs again from the arrival (§17.3)
+			x["back"] = true
+			var r := go(e, pi, cur, int(x["place"]))
+			if r != "next":
+				return r
+			for k in ["back", "dest", "target", "waiting", "wait_since", "resumed"]:
+				x.erase(k)          # (resumed: the time away is not counted, the steps from here on are)
+			x["last"] = n
 		elif x["last"] < n:
 			_count(x, n)
 		if x["left"] <= 0:
@@ -1345,15 +1362,17 @@ func _ppe_of(pi: int, x) -> int:
 func stop_step(e, pi: int, cur: Dictionary) -> String:
 	var act = cur["act"]
 	var x: Dictionary = cur["st"]
-	if act == null:
-		return "next"
+	if act == null or act[0] == pi:
+		return "next"           # (no act, or their own: nobody stops their own act)"
 	if not x.has("dest"):
 		var qi: int = act[0]
 		var t: int = e.sp_pos[qi]
 		if t == -1 and not e.sp_leg[qi].is_empty():
 			t = e.sp_leg[qi][1]
-		if t == -1 or not ongoing(e, act):
+		if not ongoing(e, act):
 			return "next"
+		if t == -1:
+			return "wait"           # (the trainee between places: until they are at one, or the act is over)
 		if not open[t]:
 			var dr: int = door.get(room_of[t], -1) if room_of[t] != null else -1
 			if dr != -1 and dr != t:
@@ -1515,7 +1534,8 @@ func t_stop(e, ti: int, who) -> void:
 	if not auth[people[ti]["role"]].has("stop_work"):
 		why.append("authority")
 	var act = null
-	if typeof(who) == TYPE_STRING and person_ix.has(who) and not e._absent.has(person_ix[who]):
+	if typeof(who) == TYPE_STRING and person_ix.has(who) and not e._absent.has(person_ix[who]) \
+			and person_ix[who] != ti:
 		var qi: int = person_ix[who]
 		for k in 3:
 			var a = e.sp_acts[qi][k]

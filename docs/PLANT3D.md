@@ -1392,8 +1392,10 @@ C are not made. Vehicles stand at home. Step 0 makes no staff events.
   free. A queue holds at most 32 instances: one more is `unassigned`.
 - **The queue** orders task instances by priority number, then the step made, then the order made. The current task
   is pre-empted between its steps by a queued task with a lower priority number when it is interruptible; a `work` in
-  progress is paused (its time kept) and resumed when the task comes back. A pre-empted `go` stops at the next place
-  of its route.
+  progress is paused (its time kept) and resumed when the task comes back, where it was being done: an NPC elsewhere
+  (called away, or a job held overnight) first goes back to that place as a `go` would (`fail` as a `go`'s), and the
+  time runs again from the step after their arrival (S2's review: a calibration was finished from the plant gate).
+  A pre-empted `go` stops at the next place of its route.
 - **Travel:** a `go` starting in step n takes its route's ways one after another; the person is at the end of way i
   after the sum of the steps of ways 1 to i (event `move` per way). A target place is reserved when the route starts
   (§16.2); a `{"kind", "room"}` target with no free place, or a named place another person holds, sends them to wait
@@ -1694,15 +1696,19 @@ Zones, PPE, unsafe acts, the safety walk and stopping work (§16.2, §16.6, §16
 - **Stopping work.** The task an act's reaction gives carries the act. Its `stop` step (validator: only in the task
   of a reaction to an unsafe act, and in roles with `stop_work`, `authority`) walks an NPC to the place the acting
   person is at when the step starts (the end of the way they are on; a place someone holds: its room's door, else its
-  point), and there, if the act still goes on and nobody has stopped it, stops it: `[n, "stop", person, acting
-  person, kind, detail, "done", []]`; the acting person's current task goes to its current step's `else`, or is
+  point; the trainee at no place, between places: the step waits until they are at one or the act is over), and
+  there, if the act still goes on and nobody has stopped it, stops it: `[n, "stop", person, acting person, kind,
+  detail, "done", []]`; the acting person's current task goes to its current step's `else`, or is
   abandoned (an idle task ends `abandoned`), and they are given `put_right`'s task for the kind at priority 1. A
   stopped act still ends only when its condition is false (a `ppe` act when the PPE is on or they have left the
-  zone). An act already over, or already stopped, ends the step with no event. The trainee stops an act with the
+  zone). An act already over, or already stopped, or the stopper's own (a reaction without `seen` may give it to
+  the acting person), ends the step with no event. An input the acting person had already made (a lock, an unlock,
+  a permit action, an op) is not taken back: it is applied in the next step as any, its task gone (S2's review). The
+  trainee stops an act with the
   input `[n, "stop", person]` (§17.6), handled at the start of step 9 with their other inputs there: refused
   (`[n, "stop", trainee, person, null, null, "refused", [reasons]]`) for `authority` (their role lacks `stop_work`;
   in free mode the person is null and the reason `authority`) and `no_act` (no act of that person goes on that
-  nobody has stopped), else the person's first such act (kind order) is stopped as above. Their `stop` step is done
+  nobody has stopped, or the person is the trainee: nobody stops their own act), else the person's first such act (kind order) is stopped as above. Their `stop` step is done
   when its act is over or stopped.
 - **`put_right`** (`{"ppe": task, "permit": task, "unsafe": task}`, each optional, a task of the file): any role may
   be given one, so every step of these tasks must suit every role (`authority`).
