@@ -341,8 +341,11 @@ def st_area():
                         {'d': 1.6, 'length': 12, 'saddles': 2}),
                   child('30MAG10CL001', 'Hotwell level', 'level_transmitter', [6.3, -3, 1],
                         {'range': [-600, 600], 'unit': 'mm'})]
-    cond_parts += [child(f'30MAG10CP00{k}', f'Condenser pressure {k}', 'pressure_transmitter', [-6.3, -4 + 2 * k, 12],
-                         {'range': [0, 120], 'unit': 'kPa(a)'}) for k in (1, 2, 3)]
+    # the condenser pressure transmitters above their tappings (vacuum service: the impulse lines drain back), on the
+    # operating floor beside the IP/LP turbine, where an instrument technician reaches them to isolate and calibrate
+    # (milestone S2; they hung at +6 m out of anyone's reach before)
+    cond_parts += [child(f'30MAG10CP00{k}', f'Condenser pressure {k}', 'pressure_transmitter',
+                         [-6.5, round(-4 - 0.6 * k, 2), 18.35], {'range': [0, 120], 'unit': 'kPa(a)'}) for k in (1, 2, 3)]
     cond_parts += [child(f'30PAB10AA40{k}', f'Condenser water box vent {k}', 'valve_ball',
                          [(-3, 3, -3, 3)[k - 1], (-8, -8, 8, 8)[k - 1], 3.3], {'dn': 50, 'actuator': 'manual'})
                    for k in (1, 2, 3, 4)]

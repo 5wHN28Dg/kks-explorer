@@ -177,7 +177,6 @@ def in_outline(x, y, poly):
 # ---------------------------------------------------------------- the validator
 
 class Staff:
-
     """A checked staff.json with everything the step needs, built once (the engine's state is in StaffRun)."""
 
     def __init__(self, d, b, m):
@@ -326,14 +325,12 @@ class Staff:
                 need(not (edge < ZONE_EDGE and lo - ZONE_EDGE <= h <= hi + ZONE_EDGE)
                      and not (ins and (abs(h - lo) < ZONE_EDGE or abs(h - hi) < ZONE_EDGE)), 'bad_zone',
                      f'{wp}: {p["id"]} lies within 1 cm of the edge or height limits of zone {z["id"]}')
-
                 if ins and lo < h < hi:
                     inside.append(z['id'])
             need(listed == inside, 'bad_zone', f'{wp}.zones: {listed}, its place lies in {inside} (in file order)')
             self.place_zones.append([self.zone_ix[x] for x in inside])
 
     def place_ref(self, x, where):
-
         need(isinstance(x, str) and x in self.pix, 'bad_ref', f'{where}: no place {x!r}')
         return self.pix[x]
 
@@ -603,7 +600,6 @@ class Staff:
                 need(x == 'act', 'bad_value', f'{ws}.stop: "act" (the act the task was given for)')
             elif k == 'work':
                 keys(s, ('work',), ('anim', 'tool'), ws)
-
                 self.minutes(x, f'{ws}.work')
                 for a in ('anim', 'tool'):
                     if a in s:
@@ -797,7 +793,6 @@ class Staff:
         self.put_right = pr
 
     def check_task_refs(self):
-
         """No task reaches itself through choose or call; idle tasks take time (so no one loops within a step)."""
         def edges(t):
             for s in t['steps']:
@@ -931,7 +926,6 @@ class Staff:
                         need('stop_work' in self.roles[rid]['authority'], 'authority',
                              f'{ws}: role {rid} lacks stop_work')
                 if 'remove_locks' in s:
-
                     need(tid in left_tasks, 'bad_ref', f'{ws}: remove_locks only in the task of a lock_left reaction')
                     for rid in sorted(runs[tid]):
                         need('remove_lock' in self.roles[rid]['authority'], 'authority',
@@ -2313,7 +2307,6 @@ class StaffRun:
             elif 'stop' in s:
                 if cur['act'] is None or not self.ongoing(cur['act']):
                     r = 'next'
-
             elif 'lock' in s or 'unlock' in s:
                 k = 'lock' if 'lock' in s else 'unlock'
                 w = cur['work'] if s[k]['work'] == '$' else s[k]['work']

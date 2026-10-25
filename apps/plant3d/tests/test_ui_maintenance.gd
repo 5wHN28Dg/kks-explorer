@@ -25,6 +25,8 @@ const PT2 := "30MAG10CP002"
 const LS := "wo_cw_b_ls"
 const VALVE_B := "30PAC10AA102"
 
+var _pressed := {}              # a permit form's button pressed for a task step: the step it was pressed at
+
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
@@ -74,6 +76,8 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 	var e = ui.clock.engine
 	var sm = e._sm
 	var pi: int = e.st_trainee
+	if not ui.crew.visible:
+		ui.open_crew()
 	if e.st_unacked > 0:
 		var seen := App.find_button(ui.crew, "Seen")
 		if seen:
@@ -126,6 +130,9 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 		return true
 	elif s.has("permit") or s.has("lock") or s.has("unlock"):
 		var k := "permit" if s.has("permit") else ("lock" if s.has("lock") else "unlock")
+		var key := "%d/%d/%s" % [cur["order"], cur["step"], k]
+		if _pressed.get(key, -1000) > e.step_no - 50:
+			return false            # pressed already: its outcome comes in the next steps
 		var w = cur["work"] if s[k]["work"] == "$" else s[k]["work"]
 		var pt: int = s[k]["point"] if k != "permit" and typeof(s[k]["point"]) != TYPE_STRING else 0
 		if k != "permit":
@@ -138,6 +145,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 				return true
 		ui.open_permits(w)
 		var pm = ui.permits
+		_pressed[key] = e.step_no
 		var err := _press(pm, ("do_" + s[k]["action"]) if k == "permit" else ("%s_%d" % [k, pt]))
 		if err != "":
 			log.append(err)
@@ -200,10 +208,11 @@ func _ic_calibration(tree: SceneTree) -> Array:
 	var done := func(): return _closed(e, CAL)
 	if not await _steps(tree, ui, done, 4000, log):
 		var cur = e.sp_cur[e.st_trainee]
-		main.free()
-		return p + log.slice(0, 3) + ["the calibration's permit was not closed (now %s, state %d, the task %s step %s)" % [
+		var msg := "the calibration's permit was not closed (now %s, state %d, the task %s step %s)" % [
 				ui.clock_text(), e.pstate[e.m.work_ix[CAL]], str(cur["task"]) if cur else "none",
-				str(cur["step"]) if cur else ""]]
+				str(cur["step"]) if cur else ""]
+		main.free()
+		return p + log.slice(0, 3) + [msg]
 	p += log.slice(0, 3)
 	for want in [["ppe", "helmet", 1], ["lock", CAL, 0, "ic1", "done"], ["permit", CAL, "accept", "ic1", "done"],
 			["permit", CAL, "done", "ic1", "done"], ["permit", CAL, "return", "ic1", "done"],
@@ -251,9 +260,10 @@ func _ic_corrective(tree: SceneTree) -> Array:
 	var wi: int = e.m.work_ix[LS]
 	var accepted := func(): return e.pstate[wi] == 5 and e.acceptor.get(LS) == "ic1"
 	if not await _steps(tree, ui, accepted, 4000, log):
+		var msg := "the trainee never accepted the limit switch's permit (state %d, now %s)" % [e.pstate[wi],
+				ui.clock_text()]
 		main.free()
-		return p + log.slice(0, 3) + ["the trainee never accepted the limit switch's permit (state %d, now %s)" % [
-				e.pstate[wi], ui.clock_text()]]
+		return p + log.slice(0, 3) + [msg]
 	# the repair from the card at the valve, under the accepted permit (its isolation in place, §15.5)
 	ui.go_to_place(e._sm.work_at[VALVE_B])
 	ui._place_tick()
@@ -271,7 +281,10 @@ func _ic_corrective(tree: SceneTree) -> Array:
 	ui.close_card()
 	var closed := func(): return _closed(e, LS)
 	if not await _steps(tree, ui, closed, 4000, log):
-		p.append("the limit switch's permit was not closed (state %d)" % e.pstate[wi])
+		var cur = e.sp_cur[e.st_trainee]
+		p.append("the limit switch's permit was not closed (state %d, now %s, the task %s step %s at %d, queue %s)" % [
+				e.pstate[wi], ui.clock_text(), str(cur["task"]) if cur else "none", str(cur["step"]) if cur else "",
+				e.st_t_at, str(e.sp_queue[e.st_trainee].map(func(q): return q["task"]))])
 	var repairs: Array = e.events.filter(func(ev): return ev[1] == "repair" and ev[2] == "cw_b_ls" and ev.size() == 3)
 	if repairs.size() != 1:
 		p.append("the limit switch was repaired %d times (expected once: the work's done finds it repaired)" %
@@ -300,9 +313,10 @@ func _hse_stop(tree: SceneTree) -> Array:
 	var stopped := func(): return _has_ev(e, ["stop", "hse2", "con5", "unsafe", "wo_paint_cw", "done"])
 	if not await _steps(tree, ui, stopped, 6000, log):
 		var cur = e.sp_cur[e.st_trainee]
+		var msg := "the HSE officer did not stop the contractor's shortcut (now %s, the task %s)" % [ui.clock_text(),
+				str(cur["task"]) if cur else "none"]
 		main.free()
-		return p + log.slice(0, 3) + ["the HSE officer did not stop the contractor's shortcut (now %s, the task %s)" % [
-				ui.clock_text(), str(cur["task"]) if cur else "none"]]
+		return p + log.slice(0, 3) + [msg]
 	p += log.slice(0, 3)
 	if not _has_ev(e, ["task", "con5", "con_paint_cw_short", "abandoned"]):
 		p.append("the contractor's shortcut was not abandoned when stopped")

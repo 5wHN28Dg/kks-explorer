@@ -48,7 +48,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 	var sm := {"ops": 0, "refused": 0, "deviations": 0, "raised": 0, "prio": {1: 0, 2: 0, 3: 0}, "acked": 0,
 			"shelved": 0, "trips": 0, "first_out": PackedStringArray(), "faults": 0, "repairs": 0, "permits": {},
 			"locks": 0, "unlocks": 0, "permit_refused": 0, "by_authority": 0, "early": 0, "instructor": 0,
-			"instructor_run": instructor_count(engine), "unsafe": 0, "stopped": 0, "stopped_me": 0}
+			"instructor_run": instructor_count(engine), "unsafe": 0, "stops_made": 0, "stops_of_me": 0}
 	var by_instructor := {}             # "fault|id" or "repair|id" -> the step of the instructor's input
 	var state := {}                     # alarm id -> its state (from step 0: the run may begin later)
 	var inputs: Array = engine.inputs
@@ -180,9 +180,9 @@ static func collect(engine, info, tracker) -> Dictionary:
 					e.dev = "your unsafe act"
 					sm.unsafe += 1
 				elif ev[1] == "stop" and ev[6] == "done" and ev[2] == me_id:
-					sm.stopped += 1
+					sm.stops_made += 1
 				elif ev[1] == "stop" and ev[6] == "done" and ev[3] == me_id:
-					sm.stopped_me += 1
+					sm.stops_of_me += 1
 			"task":
 				# the trainee's own tasks (PLANT3D §18.7: the debrief's role tab): given, done, abandoned, skipped
 				var sm_ = engine._sm
@@ -395,9 +395,9 @@ static func summary_lines(d: Dictionary) -> PackedStringArray:
 				(", %d refused" % sm.permit_refused) if sm.permit_refused > 0 else ""])
 	elif sm.permit_refused > 0:
 		out.append("Permits to work: %d refused" % sm.permit_refused)
-	if sm.get("unsafe", 0) > 0 or sm.get("stopped", 0) > 0 or sm.get("stopped_me", 0) > 0:
+	if sm.get("unsafe", 0) > 0 or sm.get("stops_made", 0) > 0 or sm.get("stops_of_me", 0) > 0:
 		out.append("Safety: your unsafe acts %d%s; work you stopped %d" % [sm.unsafe,
-				(" (%d stopped by HSE)" % sm.stopped_me) if sm.stopped_me > 0 else "", sm.stopped])
+				(" (%d stopped by HSE)" % sm.stops_of_me) if sm.stops_of_me > 0 else "", sm.stops_made])
 	if sm.early > 0:
 		out.append("Done out of order: %d (made before their task step, counted when it came)" % sm.early)
 	return out

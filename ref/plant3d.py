@@ -2520,7 +2520,6 @@ class Engine:
             s['clock'] = self.clock()
             s['people'] = self.staff.snap()
             s['worn'], s['acts'] = self.staff.snap_acts()
-
             s['vehicles'] = {}
             s['unacked'] = self.staff.unacked
         if values:

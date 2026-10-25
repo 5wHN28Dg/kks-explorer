@@ -73,6 +73,21 @@ made by the build (eight looks by role, each with a road variant); our own work 
 meshes further, nothing beyond; bound to the staff engine (place, way, task step, look by role, the hat off the
 process areas). The Note 9 holds 12 skinned people within the frame rules (decision 0064, as built); the laptop 24.
 
+**S2 as built (2026-10-25):** zones, PPE, unsafe acts, the safety walk and stopping work in the reference and the
+GDScript engine bit for bit (PLANT3D.md §17.11, with what §16–§17 left open settled there), and slots by weekday;
+an unlocking task goes first to the lock's owner. The first train's staff gains the maintenance disciplines at
+STAFF.md §1's numbers, three maintenance supervisors (their week's list of preventive works and calibrations; the
+mechanical one hosts the contractors), two HSE officers (toolbox talk, safety walks, stopping what they see), a
+contractors' supervisor and eight contractors on two works without isolation, a locker room and zones over the
+process areas; the corrective works gain the CW discharge valves' limit switches (I&C), and the condenser pressure
+transmitters' calibration puts a drift right. Every role but the guards' plays. The vectors: `plant3d-v2.json`'s
+`staff` gains the safety staff's runs and rejects, `day` follows the S2 content (seed 8: two contractors' shortcuts
+found and stopped) with five more forks; format 1's `train` and `hot` keep every input and event (the new values
+added). The app: the Crew panel's PPE part, zone inputs from the walker, "Stop the work" within reach, the people's
+hard hats by what they wear and where, the debrief's Safety and Your tasks tabs (`tests/test_ui_maintenance.gd`
+plays an I&C technician's calibration and corrective repair, an HSE officer's stop and an NPC calibration seen from
+the control room). Tools and PPE on the avatars stay A1's looks by role; only the hard hat follows what is worn.
+
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4
 needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, S2 with C1, then S3, then S4.
 

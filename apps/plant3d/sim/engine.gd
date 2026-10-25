@@ -1742,7 +1742,6 @@ func snapshot(with_values: bool = true) -> Dictionary:
 		var wa: Array = _sm.snap_acts(self)
 		s["worn"] = wa[0]
 		s["acts"] = wa[1]
-
 		s["vehicles"] = {}
 		s["unacked"] = st_unacked
 	if with_values:
