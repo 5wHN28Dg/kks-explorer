@@ -1,6 +1,6 @@
 {
  "format": "walkdown-plant-model",
- "version": 1,
+ "version": 2,
  "area": "hrsg1",
  "values": [
   ["fw_a_cmd", {"state": 0, "kks": "10LAC10AP001"}],
@@ -244,5 +244,8 @@
   {"kks": "10HAN30BS001", "sound": "steam_vent", "gain": {"of": "hp_vent_loss", "table": [[0, 0], [5, 1]]}},
   {"kks": "10LBA30CT001", "show": "hp_steam_t"},
   {"kks": "10HNA10", "sound": "exhaust_rumble", "gain": {"of": "gt1_heat_mw", "table": [[0, 0], [350, 0.7]]}}
+ ],
+ "works": [
+  {"id": "wo_scaffold_hrsg", "kks": "10HAD10BB001", "title": "HRSG 1 drum platform: scaffold round the LP drum for its insulation", "discipline": "civil", "permit": "general", "task": "job_scaffold_hrsg"}
  ]
 }

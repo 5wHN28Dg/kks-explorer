@@ -438,6 +438,9 @@ def bop():
                     [(code, 'electrical', f'ccw_{x}_safe', 'Pump stopped; its breaker racked out, locked and tagged')])
         m.work(f'wo_ccw_{x}_motor', code, f'Closed cooling water pump {x.upper()} motor: winding and terminal check',
                'elec', 'electrical', f'iso_ccw_{x}', f'ccw_{x}_motor')
+    # preventive maintenance (milestone S2): the standby pump's motor insulation tested, on the electricians' list
+    m.work('wo_ccw_b_ir', '00PGC10AP002', 'Closed cooling water pump B motor: insulation resistance test', 'elec',
+           'electrical', 'iso_ccw_b')
     m.alarm('ia_p_low', '00QFB10CP001', 'Instrument air header pressure low', 'ia_low', 1, isa='PAL',
             suppress='ia_sup')
     for x, code in (('a', '00QFA10AN001'), ('b', '00QFA10AN002')):
@@ -526,6 +529,14 @@ def ct():
                 [('30PAD10AN003', 'electrical', 'ct_fan3_safe', 'Fan stopped; its breaker racked out, locked and tagged')])
     m.work('wo_ct_fan3', '30PAD10AN003', 'Cooling tower fan 3: bearings and gearbox service', 'mech', 'general',
            'iso_ct_fan3', 'ct_fan3_vib')
+    # preventive maintenance (milestone S2): fan 4's motor bearings greased, the fan locked out meanwhile
+    m.NOT('ct_fan4_nocmd', 'ct_fan4_cmd')
+    m.cmp('ct_fan4_still', 'ct_fan4_spd', '<', 0.01)
+    m.AND('ct_fan4_safe', ['ct_fan4_nocmd', 'ct_fan4_still'])
+    m.isolation('iso_ct_fan4', 'Cooling tower fan 4: motor supply',
+                [('30PAD10AN004', 'electrical', 'ct_fan4_safe', 'Fan stopped; its breaker racked out, locked and tagged')])
+    m.work('wo_ct_fan4_pm', '30PAD10AN004', 'Cooling tower fan 4: grease the motor bearings', 'mech', 'general',
+           'iso_ct_fan4')
     m.alarm('ct_basin_low', '30PAD10CL001', 'Cooling tower basin level low', 'ct_l', 2, isa='LAL')
     m.alarm('ct_basin_ll', '30PAD10CL001', 'Cooling tower basin level low-low', 'ct_ll', 1, isa='LALL')
     m.b(kks='30PAD10CL001', show='ct_basin_level')
@@ -678,6 +689,12 @@ def cw():
                                                           'tagged')])
         m.work(f'wo_cw_{x}_motor', ap, f'CW pump {L} motor: bearing replacement', 'mech', 'general', f'iso_cw_{x}',
                f'cw_{x}_motor')
+        # the discharge valve's start-position limit switch (a fault the instruments' technicians repair, S2), done
+        # with the pump and its valve isolated as for the motor
+        m.work(f'wo_cw_{x}_ls', aa, f'CW pump {L} discharge valve: replace the start-position limit switch', 'inst',
+               'general', f'iso_cw_{x}', f'cw_{x}_ls')
+    # the contractors' painting in the pump house (S2): a work with no isolation, under a permit all the same
+    m.work('wo_paint_cw', '30PAC10AP003', 'CW pump house: paint the pipework by pump C', 'civil', 'general')
     m.alarm('cw_flow_low', '30PAB10CF001', 'CW flow low', 'cw_flow_low', 1, isa='FAL')
     m.b(kks='30PAB10CF001', show='cw_flow')
     return m
@@ -1166,6 +1183,9 @@ def hrsg1():
     m.b(kks='10HAN30BS001', sound='steam_vent', gain={'of': 'hp_vent_loss', 'table': [[0, 0], [5, 1]]})
     m.b(kks='10LBA30CT001', show='hp_steam_t')
     m.b(kks='10HNA10', sound='exhaust_rumble', gain={'of': 'gt1_heat_mw', 'table': [[0, 0], [350, 0.7]]})
+    # the contractors' scaffolding on the drum platform (S2): a work with no isolation, under a permit all the same
+    m.work('wo_scaffold_hrsg', '10HAD10BB001', 'HRSG 1 drum platform: scaffold round the LP drum for its insulation',
+           'civil', 'general')
     return m
 
 
@@ -1200,6 +1220,10 @@ def st():
     m.state('st_brk_cmd', 0, '30BAC10')
     for f, code in (('st_gov_fault', '30MAA10'), ('st_thrust_fault', '30MAD10CG001'), ('st_vib_fault', '30MAD10CY003')):
         m.state(f, 0, code)
+    # condenser pressure transmitters 2 and 3 drift (a fault the scenario or the trainer sets): the calibration under a
+    # permit puts it back to 0 (PLANT3D §15.2, STAFF.md §3, milestone S2)
+    for k in (2, 3):
+        m.state(f'cond_p{k}_drift', 0, f'30MAG10CP00{k}', 'kPa')
     # turbine speed: integrates toward its target (held in the state "hold"), up 13.5 rpm/s, down 9 rpm/s
     m.integ('st_speed', 'st_acc', 1, 0, 1.3, 0, 'pu', '30MAA10')
     # condenser pressure first: it is a lag of a target computed further down (stateful nodes read the previous step)
@@ -1213,7 +1237,7 @@ def st():
         if k == 1:
             m.sum(tx, ['cond_p', off], 'kPa(a)', f'30MAG10CP00{k}')
         else:
-            tx = m.sum(f'cond_p{k}_tx', ['cond_p', off], 'kPa(a)')
+            tx = m.sum(f'cond_p{k}_tx', ['cond_p', off, f'cond_p{k}_drift'], 'kPa(a)')
             m.hold(f'cond_p{k}', tx, f'iso_cond_p{k}_complete', 'kPa(a)', f'30MAG10CP00{k}')
         m.cmp(f'cond_p{k}_h', tx, '>', 15)
         m.cmp(f'cond_p{k}_hc', tx, '<', 13)
@@ -1481,7 +1505,7 @@ def st():
         m.isolation(f'iso_cond_p{k}', f'Condenser pressure transmitter {k}',
                     [(f'30MAG10CP00{k}', 'instrument', None, 'Root valve shut and tagged; the transmitter vented')])
         m.work(f'wo_cond_p{k}_cal', f'30MAG10CP00{k}', f'Condenser pressure transmitter {k}: calibration check',
-               'inst', 'general', f'iso_cond_p{k}')
+               'inst', 'general', f'iso_cond_p{k}', f'cond_p{k}_drift')
     m.trip('st_trip_os', '30MAY10CS001', 'Steam turbine overspeed', 'st_os', to_trip, 'SAHH', None, 'st')
     m.trip('st_trip_axial', '30MAD10CG001', 'Steam turbine axial displacement high-high', 'st_axial_hh', to_trip,
            'ZAHH', 0.5, 'st')

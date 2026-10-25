@@ -48,7 +48,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 	var sm := {"ops": 0, "refused": 0, "deviations": 0, "raised": 0, "prio": {1: 0, 2: 0, 3: 0}, "acked": 0,
 			"shelved": 0, "trips": 0, "first_out": PackedStringArray(), "faults": 0, "repairs": 0, "permits": {},
 			"locks": 0, "unlocks": 0, "permit_refused": 0, "by_authority": 0, "early": 0, "instructor": 0,
-			"instructor_run": instructor_count(engine)}
+			"instructor_run": instructor_count(engine), "unsafe": 0, "stopped": 0, "stopped_me": 0}
 	var by_instructor := {}             # "fault|id" or "repair|id" -> the step of the instructor's input
 	var state := {}                     # alarm id -> its state (from step 0: the run may begin later)
 	var inputs: Array = engine.inputs
@@ -170,6 +170,27 @@ static func collect(engine, info, tracker) -> Dictionary:
 							skipped.append(c)
 				if not skipped.is_empty():
 					e.text += " (not carried out on %s: locked out)" % ", ".join(skipped)
+			"unsafe", "safe", "stop":
+				# milestone S2: unsafe acts (PLANT3D §16.7) and work stopped (§17.11), everyone's: whose they were,
+				# and the trainee's own counted
+				var sm_ = engine._sm
+				var me_id: String = sm_.people[engine.st_trainee]["id"] if sm_ != null and engine.st_trainee != -1 else ""
+				e.text = safety_text(sm_, ev)
+				if ev[1] == "unsafe" and ev[2] == me_id:
+					e.dev = "your unsafe act"
+					sm.unsafe += 1
+				elif ev[1] == "stop" and ev[6] == "done" and ev[2] == me_id:
+					sm.stopped += 1
+				elif ev[1] == "stop" and ev[6] == "done" and ev[3] == me_id:
+					sm.stopped_me += 1
+			"task":
+				# the trainee's own tasks (PLANT3D §18.7: the debrief's role tab): given, done, abandoned, skipped
+				var sm_ = engine._sm
+				if sm_ == null or engine.st_trainee == -1 or ev[2] != sm_.people[engine.st_trainee]["id"]:
+					continue
+				var tt = sm_.tasks[ev[3]]["title"] if sm_.tasks.has(ev[3]) else str(ev[3])
+				e.text = "Your task %s: %s" % [{"start": "begun", "done": "done", "abandoned": "ABANDONED",
+						"skipped": "skipped", "held": "held to your next duty", "resumed": "resumed"}.get(ev[4], ev[4]), tt]
 			"early":
 				# §17.8: an action of the trainee's made before its task step, counted when the step came
 				var sm_ = engine._sm
@@ -374,6 +395,29 @@ static func summary_lines(d: Dictionary) -> PackedStringArray:
 				(", %d refused" % sm.permit_refused) if sm.permit_refused > 0 else ""])
 	elif sm.permit_refused > 0:
 		out.append("Permits to work: %d refused" % sm.permit_refused)
+	if sm.get("unsafe", 0) > 0 or sm.get("stopped", 0) > 0 or sm.get("stopped_me", 0) > 0:
+		out.append("Safety: your unsafe acts %d%s; work you stopped %d" % [sm.unsafe,
+				(" (%d stopped by HSE)" % sm.stopped_me) if sm.stopped_me > 0 else "", sm.stopped])
 	if sm.early > 0:
 		out.append("Done out of order: %d (made before their task step, counted when it came)" % sm.early)
 	return out
+
+
+## An unsafe act's start or end, or work stopped (PLANT3D §16.7, §17.11), in words.
+static func safety_text(sm, ev: Array) -> String:
+	var who := func(pid) -> String:
+		return sm.people[sm.person_ix[pid]]["call"] if sm != null and sm.person_ix.has(pid) else str(pid)
+	var what := func(kind, det) -> String:
+		match kind:
+			"ppe": return "without all the PPE of %s" % str(det)
+			"permit": return "working before the permit of %s was accepted" % str(det)
+			_: return "a shortcut" + (" on %s" % str(det) if det != null else "")
+	match ev[1]:
+		"unsafe":
+			return "Unsafe act: %s, %s" % [who.call(ev[2]), what.call(ev[3], ev[4])]
+		"safe":
+			return "Unsafe act ended: %s, %s" % [who.call(ev[2]), what.call(ev[3], ev[4])]
+	if ev[6] == "done":
+		return "Work stopped by %s: %s, %s" % [who.call(ev[2]), who.call(ev[3]), what.call(ev[4], ev[5])]
+	return "Stop refused (%s): %s by %s" % [", ".join(ev[7].map(func(x): return {"authority": "no authority to stop "
+			+ "work", "no_act": "no unsafe act going on"}.get(x, str(x)))), who.call(ev[3]), who.call(ev[2])]

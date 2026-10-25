@@ -2562,6 +2562,20 @@ def day_forks():
          {'permits': {'wo_cw_b_motor': 9}, 'repaired': ['cw_b_motor']}),
         ('sup_late', Trainee(wake=9000, extra=[[1, 'role', 'a_sup'], [4000, 'fault', 'ccw_a_motor']]), 36000,
          {'trainee': 'a_sup', 'permits': {'wo_ccw_a_motor': 9}}),
+        # milestone S2: the week's calibration puts a drift right; a corrective job of the instruments' technicians;
+        # the trainee as an I&C technician, an HSE officer, a contractor who takes the shortcut
+        ('npc_cal', Trainee(extra=[[3000, 'fault', 'cond_p2_drift']]), 30000,
+         {'permits': {'wo_cond_p2_cal': 9}, 'repaired': ['cond_p2_drift'], 'end': {'cond_p2_drift': 0}}),
+        ('npc_ls', Trainee(extra=[[10000, 'fault', 'cw_b_ls']]), 40000,
+         {'permits': {'wo_cw_b_ls': 9}, 'repaired': ['cw_b_ls'], 'end': {'cw_b_ls_fault': 0}}),
+        ('trainee_ic', Trainee(extra=[[1, 'role', 'ic1'], [3000, 'fault', 'cond_p2_drift']]), 30000,
+         {'trainee': 'ic1', 'permits': {'wo_cond_p2_cal': 9}, 'repaired': ['cond_p2_drift'],
+          'events': [['lock', 'wo_cond_p2_cal', 0, 'ic1', 'done'], ['permit', 'wo_cond_p2_cal', 'accept', 'ic1', 'done'],
+                     ['unlock', 'wo_cond_p2_cal', 0, 'ic1', 'done']]}),
+        ('trainee_hse', Trainee(extra=[[1, 'role', 'hse2']]), 33000,
+         {'trainee': 'hse2', 'events': [['stop', 'hse2', 'con5', 'unsafe', 'wo_paint_cw', 'done']]}),
+        ('trainee_contractor', Trainee(pick=1, extra=[[1, 'role', 'con6']]), 33000,
+         {'trainee': 'con6', 'events': [['unsafe', 'con6', 'unsafe', 'wo_paint_cw'], ['stop', None, 'con6', 'unsafe']]}),
     ]
 
 

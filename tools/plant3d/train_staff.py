@@ -80,7 +80,33 @@ ANCHORS = {
     'ws_bench_3': dict(at=(-26, -12, 0), kind='table', room='workshop', yaw=180),
     'ws_bench_4': dict(at=(-30, -12, 0), kind='table', room='workshop', yaw=180),
     'gate': dict(at=(-5, -14, 0), kind='door'),
+    # milestone S2: the locker room along the west wall (PPE on and off), more benches in the workshop, the HSE
+    # officers' and the maintenance supervisors' tables, and the contractors' muster point by the gate
+    **{f'locker_{k}': dict(at=(-38.5, -5 + k, 0), kind='locker', room='lockers', yaw=270) for k in range(10)},
+    'lk_door': dict(at=(-36, -6.5, 0), kind='door', room='lockers'),
+    **{f'ws_bench_{k + 5}': dict(at=(-14 - 3 * (k % 3), -9 + 3 * (k // 3), 0), kind='table', room='workshop', yaw=180)
+       for k in range(6)},
+    'hse_desk_1': dict(at=(-33, 13, 0), kind='table', room='hse_office', yaw=0, pose='sit'),
+    'hse_desk_2': dict(at=(-36, 13, 0), kind='table', room='hse_office', yaw=0, pose='sit'),
+    'ms_desk_1': dict(at=(-33, 9.5, 0), kind='table', room='maint_office', yaw=180, pose='sit'),
+    'ms_desk_2': dict(at=(-36, 9.5, 0), kind='table', room='maint_office', yaw=180, pose='sit'),
+    'ms_desk_3': dict(at=(-38.5, 9.5, 0), kind='table', room='maint_office', yaw=180, pose='sit'),
+    'con_muster': dict(at=(-3, -17, 0), kind='muster'),
 }
+# Zones (PLANT3D §16.2, STAFF.md §4; milestone S2): the process areas, where helmet, boots and glasses are worn; the
+# halls with machines of 85 dB(A) and over add hearing protection. Roads, the control building and the space between
+# the areas are no zone (A1's hat carried there). [x0, y0, x1, y1] in plan (the areas' bounds), heights -10 to 60 m.
+ZONES = [
+    ('gt_hall', 'Gas turbine 1 hall and auxiliaries', (0, 50, 80, 92), ['helmet', 'boots', 'glasses', 'ear']),
+    ('st_hall', 'Turbine hall', (0, -25, 80, 25), ['helmet', 'boots', 'glasses', 'ear']),
+    ('hrsg', 'HRSG 1 and its stack', (80, 45, 175, 85), ['helmet', 'boots', 'glasses']),
+    ('rack', 'Pipe rack', (80, -25, 85, 45), ['helmet', 'boots', 'glasses']),
+    ('bop', 'Auxiliaries', (85, -25, 135, 25), ['helmet', 'boots', 'glasses']),
+    ('cw_house', 'Circulating water pump house', (140, -20, 165, 20), ['helmet', 'boots', 'glasses', 'ear']),
+    ('ct', 'Cooling tower', (170, -35, 260, 35), ['helmet', 'boots', 'glasses', 'ear']),
+    ('trafo', 'Transformer yard', (-30, 40, 0, 60), ['helmet', 'boots', 'glasses']),
+]
+ZONE_Z = [-10, 60]
 
 # Rounds (STAFF.md §3): each field operator's area, its readings: (code, expect [lo, hi], tol). The ranges hold for
 # the plant at rest and running normally (checked by tests/test_plant3d_staff_content.py on the cold start's base
@@ -101,7 +127,31 @@ FIELD = {'round_gt': 'field_gt', 'round_st': 'field_st', 'round_cw': 'field_cw'}
 
 # Faults of the scenario that make a corrective work (P1's works): the supervisor asks for its permit.
 FAULT_WORK = {'cw_a_motor': 'wo_cw_a_motor', 'cw_b_motor': 'wo_cw_b_motor', 'cw_c_motor': 'wo_cw_c_motor',
-              'ccw_a_motor': 'wo_ccw_a_motor', 'ccw_b_motor': 'wo_ccw_b_motor', 'ct_fan3_vib': 'wo_ct_fan3'}
+              'ccw_a_motor': 'wo_ccw_a_motor', 'ccw_b_motor': 'wo_ccw_b_motor', 'ct_fan3_vib': 'wo_ct_fan3',
+              'cw_a_ls': 'wo_cw_a_ls', 'cw_b_ls': 'wo_cw_b_ls', 'cw_c_ls': 'wo_cw_c_ls'}
+# The maintenance supervisors' week (milestone S2): the preventive and calibration works each asks a permit for in
+# the morning (07:40), by weekday (day 1 of the clock is a Monday). A work whose isolation another work holds that day
+# is left for its next day.
+WEEK_LIST = {
+    'ms_mech': [('wo_ct_fan4_pm', ['mon', 'wed', 'fri'])],
+    'ms_elec': [('wo_ccw_b_ir', ['mon', 'thu'])],
+    'ms_ic': [('wo_cond_p2_cal', ['mon', 'wed', 'fri']), ('wo_cond_p3_cal', ['tue', 'thu', 'sat'])],
+}
+# The contractors' works (civil: their supervisor accepts the permit), hosted by the mechanical maintenance supervisor
+# who asks for them each working morning; four contractors on each, the shortcut each may take (STAFF.md §4: 1 in 12)
+CONTRACT = {'wo_scaffold_hrsg': ('Scaffolding on the drum platform', 'lift', 'working at height with the harness '
+                                 'unclipped'),
+            'wo_paint_cw': ('Painting the pipework', 'use', 'painting without the face shield over the running pumps')}
+TEAM = 4
+CONTRACTORS = 8
+SHORTCUT = 12               # 1 in 12
+# HSE's safety walks (STAFF.md §2, §4): the places walked to, each looked at for a few minutes
+WALKS = {
+    'walk_west': ('Safety walk: gas turbine, turbine hall and HRSG', [
+        '10LAC10CF001', '10HAD10BB001', '10MBV10CP001', '10MKA10CT001', '30MAV10CP001', '30MAG10CL001']),
+    'walk_east': ('Safety walk: circulating water, cooling tower and auxiliaries', [
+        '30PAC10AP003', '30PAC10CP501', '30PAD10AN004', '30PAD10CL001', '00QHA10CP001', '00PGB10CT001']),
+}
 # who locks each kind of point; who takes a work of each discipline
 LOCKER = {'electrical': 'elec_ap', 'mechanical': 'field_op', 'process': 'field_op', 'instrument': 'ic_tech'}
 TECH = {'mech': 'mech_tech', 'elec': 'elec_tech', 'inst': 'ic_tech'}
@@ -141,6 +191,15 @@ MESSAGES = {
     'all_well': 'All stations: all well',
     'lock_left': 'Removed by authority: its holder went off shift with the work unfinished and nobody took it over',
     'locks_removed': 'A lock left by someone gone off shift removed by authority: see the permit',
+    # milestone S2
+    'job_assigned': 'A job for you: its permit is issued, accept it at the equipment',
+    'cal_done': 'Calibration done: the transmitter reads true, permit handed back',
+    'team_on': 'Contractors at work under their permit',
+    'handed_back': 'Contractors\' permits handed back: the work areas are clear',
+    'stopped': 'Work stopped by HSE: an unsafe act',
+    'need_permit': 'Reporting for a permit before I start',
+    'shortcut_left': 'Shortcut left: working safely again',
+    'walk_done': 'Safety walk done: findings in the log',
 }
 
 
@@ -169,6 +228,7 @@ def work_codes(models):
     out += [w['kks'] for w in works]
     out += [pt['kks'] for x in isos for pt in x['points']]
     out += [c for _, _, ops, _ in INSTRUCTIONS for c, _ in ops]
+    out += [c for _, codes in WALKS.values() for c in codes]
     seen, res = set(), []
     for c in out:
         if c not in seen:
@@ -240,26 +300,34 @@ def network(models, layout):
 
 
 def roles():
-    def role(rid, title, disc, auth, routine, play, look):
+    field_ppe = ['helmet', 'boots', 'glasses', 'gloves', 'ear']
+
+    def role(rid, title, disc, auth, routine, play, look, ppe=None):
         return {'id': rid, 'title': title, 'discipline': disc, 'look': look, 'authority': auth,
-                'ppe': ['helmet', 'boots', 'glasses', 'gloves', 'ear'] if rid != 'ccr_op' else ['helmet', 'boots'],
-                'routine': routine, 'play': play}
+                'ppe': field_ppe if ppe is None else ppe, 'routine': routine, 'play': play}
     return [
         role('shift_sup', 'Shift supervisor', 'ops', ['operate_screen', 'request', 'approve', 'issue', 'lock_process',
                                                        'remove_lock'],
              'sup_shift', True, 'coverall_ops_white'),
         dict(role('ccr_op', 'Control room operator', 'ops', ['operate_screen', 'request', 'lock_process'],
-                  'ccr_shift', True, 'coverall_ops'), requests=['ask_' + i[0] for i in INSTRUCTIONS]),
+                  'ccr_shift', True, 'coverall_ops', ['helmet', 'boots']),
+             requests=['ask_' + i[0] for i in INSTRUCTIONS]),
         role('field_op', 'Field operator', 'ops', ['operate_local', 'request', 'lock_mechanical', 'lock_process'],
              'field_st', True, 'coverall_ops'),
         role('elec_ap', 'Electrical authorised person', 'ops', ['operate_local', 'request', 'lock_electrical'],
              'elec_shift', True, 'coverall_ops'),
-        # the technicians take the operators' permits (S1); their own jobs and play come with S2
-        role('mech_tech', 'Mechanical technician', 'mech', ['accept'], 'tech_days', False, 'coverall_mech'),
-        role('elec_tech', 'Electrical technician', 'elec', ['accept', 'lock_electrical'], 'tech_days', False,
+        # the maintenance disciplines (milestone S2): their own jobs from the faults and the week's list
+        role('mech_tech', 'Mechanical technician', 'mech', ['accept'], 'tech_days', True, 'coverall_mech'),
+        role('elec_tech', 'Electrical technician', 'elec', ['accept', 'lock_electrical'], 'tech_days', True,
              'coverall_elec'),
-        role('ic_tech', 'I&C technician', 'inst', ['operate_local', 'accept', 'lock_instrument'], 'tech_days', False,
+        role('ic_tech', 'I&C technician', 'inst', ['operate_local', 'accept', 'lock_instrument'], 'tech_days', True,
              'coverall_inst'),
+        role('maint_sup', 'Maintenance supervisor', 'mech', ['request', 'accept'], 'ms_mech', True, 'supervisor'),
+        role('hse_officer', 'HSE officer', 'hse', ['stop_work'], 'hse_days1', True, 'hse',
+             ['helmet', 'boots', 'glasses', 'ear', 'vest']),
+        role('contractor_sup', 'Contractors\' supervisor', 'civil', ['request', 'accept'], 'con_sup_days', True,
+             'contractor', field_ppe + ['harness']),
+        role('contractor', 'Contractor', 'civil', [], 'con_days', True, 'contractor', field_ppe + ['harness']),
     ]
 
 
@@ -289,6 +357,23 @@ def people():
         out.append({'id': f'mech{i}', 'role': 'mech_tech', 'roster': 'day', 'call': f'Mechanical {i}'})
     out.append({'id': 'elec1', 'role': 'elec_tech', 'roster': 'day', 'call': 'Electrical technician'})
     out.append({'id': 'ic1', 'role': 'ic_tech', 'roster': 'day', 'call': 'I&C technician'})
+    # milestone S2, after S1's people (so no one's random draws change): the disciplines at STAFF.md §1's numbers,
+    # their supervisors, HSE and the contractors
+    for i in range(3, 7):
+        out.append({'id': f'mech{i}', 'role': 'mech_tech', 'roster': 'day', 'call': f'Mechanical {i}'})
+    for i in range(2, 5):
+        out.append({'id': f'elec{i}', 'role': 'elec_tech', 'roster': 'day', 'call': f'Electrical technician {i}'})
+    for i in range(2, 5):
+        out.append({'id': f'ic{i}', 'role': 'ic_tech', 'roster': 'day', 'call': f'I&C technician {i}'})
+    for k, name in (('mech', 'mechanical'), ('elec', 'electrical'), ('ic', 'I&C')):
+        out.append({'id': f'ms_{k}', 'role': 'maint_sup', 'roster': 'day', 'call': f'Maintenance super, {name}',
+                    'routine': f'ms_{k}'})
+    for i in (1, 2):
+        out.append({'id': f'hse{i}', 'role': 'hse_officer', 'roster': 'day', 'call': f'Safety {i}',
+                    'routine': f'hse_days{i}'})
+    out.append({'id': 'csup', 'role': 'contractor_sup', 'roster': 'day', 'call': 'Contractors\' supervisor'})
+    for i in range(1, CONTRACTORS + 1):
+        out.append({'id': f'con{i}', 'role': 'contractor', 'roster': 'day', 'call': f'Contractor {i}'})
     return out
 
 
@@ -300,6 +385,9 @@ def routines():
     field = lambda rid, rnd: {'id': rid, 'idle': 'idle_field', 'slots': [  # noqa: E731
         slot('start-0:15', 'handover_take_f'), slot('start+1:00', rnd, every='2:00', until='end-1:00'),
         slot('end-0:15', 'handover_give_f')]}
+    ms = lambda k, extra: {'id': f'ms_{k}', 'idle': 'idle_ms', 'slots': [  # noqa: E731
+        slot('07:00', 'toolbox_lead')] + [slot('07:40', f'plan_{w[3:]}', days=days) for w, days in WEEK_LIST['ms_' + k]]
+        + extra}
     return [
         {'id': 'sup_shift', 'idle': 'idle_sup', 'slots': [slot('start-0:15', 'handover_take_sup'),
                                                           slot('start+0:30', 'sup_walk'),
@@ -310,6 +398,16 @@ def routines():
         {'id': 'elec_shift', 'idle': 'idle_elec', 'slots': [slot('start-0:15', 'handover_take_f'),
                                                             slot('end-0:15', 'handover_give_f')]},
         {'id': 'tech_days', 'idle': 'idle_tech', 'slots': [slot('07:00', 'toolbox')]},
+        # the mechanical supervisor hosts the contractors: their permits asked for each working morning, a look at
+        # their work sites at 10:00
+        ms('mech', [slot('07:30', 'host_contractors'), slot('10:00', 'permit_check')]),
+        ms('elec', []), ms('ic', []),
+        {'id': 'hse_days1', 'idle': 'idle_hse', 'slots': [slot('07:00', 'toolbox_visit'), slot('10:00', 'walk_west'),
+                                                          slot('14:00', 'walk_east')]},
+        {'id': 'hse_days2', 'idle': 'idle_hse', 'slots': [slot('07:05', 'gear_up'), slot('10:00', 'walk_east'),
+                                                          slot('14:00', 'walk_west')]},
+        {'id': 'con_sup_days', 'idle': 'idle_con', 'slots': [slot('07:05', 'gear_up'), slot('15:00', 'hand_back')]},
+        {'id': 'con_days', 'idle': 'idle_con', 'slots': [slot('07:05', 'gear_up')]},
     ]
 
 
@@ -321,28 +419,42 @@ def tasks(models):
     def task(tid, title, steps, **kw):
         T.append(dict({'id': tid, 'title': title, 'steps': steps}, **kw))
     desk = {'go': {'kind': 'desk', 'room': 'control_room'}}
+    locker = {'go': {'kind': 'locker', 'room': 'lockers'}}
+    gear = [locker, {'ppe': 'role'}]
     task('idle_ccr', 'At the control desk: watching the screens', [desk, {'work': 30, 'anim': 'type'}])
     task('idle_sup', 'At the supervisor\'s table: the shift log', [{'go': 'cr_sup'}, {'work': 30, 'anim': 'write'}])
     task('idle_field', 'In the field office', [{'go': {'kind': 'seat', 'room': 'field_office'}}, {'work': 20}])
     task('idle_elec', 'In the field office: switching orders', [{'go': 'fo_table'}, {'work': 30, 'anim': 'write'}])
-    task('idle_tech', 'In the workshop', [{'go': {'kind': 'table', 'room': 'workshop'}}, {'work': 30}])
+    # more technicians than benches: one who finds none free waits by the workshop's door
+    task('idle_tech', 'In the workshop', [{'go': {'kind': 'table', 'room': 'workshop'}, 'else': 2}, {'work': 30},
+                                         {'work': 30}])
+    task('idle_ms', 'At the maintenance office: the work list', [{'go': {'kind': 'table', 'room': 'maint_office'}},
+                                                                 {'work': 30, 'anim': 'write'}])
+    task('idle_hse', 'At the HSE office: reports', [{'go': {'kind': 'table', 'room': 'hse_office'}},
+                                                    {'work': 30, 'anim': 'write'}])
+    task('idle_con', 'At the contractors\' muster point', [{'go': 'con_muster'}, {'work': 30}])
+    task('gear_up', 'PPE on at the locker', gear, priority=2)
     meet = lambda room, role, minutes=15: {'meet': {'room': room, 'with': [role], 'minutes': minutes}}  # noqa: E731
     # a shift's handover: the locks of a work left unfinished are handed over too, the incoming person's lock first
-    # (PLANT3D §15.1, §17.9; the user, 2026-10-24)
+    # (PLANT3D §15.1, §17.9; the user, 2026-10-24); the field's people put their PPE on first (S2)
     take, give = {'handover': 'take'}, {'handover': 'give'}
     task('handover_take', 'Take the control room handover', [meet('control_room', 'ccr_op'),
                                                              {'say': 'handover', 'to': 'shift_sup'}, take])
     task('handover_give', 'Give the control room handover', [meet('control_room', 'ccr_op'), give])
     task('handover_take_sup', 'Take the shift handover', [meet('control_room', 'shift_sup'), take])
     task('handover_give_sup', 'Give the shift handover', [meet('control_room', 'shift_sup'), give])
-    task('handover_take_f', 'Take the field handover', [meet('field_office', 'field_op'), take])
+    task('handover_take_f', 'Take the field handover', gear + [meet('field_office', 'field_op'), take])
     task('handover_give_f', 'Give the field handover', [meet('field_office', 'field_op'), give])
     # a lock left on by someone gone off shift (nobody of their post took it over): the supervisor removes it
     task('remove_left_locks', 'Remove a lock left by someone gone off shift', [
         {'remove_locks': 'lock_left'}, {'say': 'locks_removed', 'to': 'channel'}], priority=2)
     task('sup_walk', 'The supervisor\'s look round the control room', [{'go': 'cr_sup'}, {'work': 10},
                                                                        {'say': 'all_well', 'to': 'channel'}])
-    task('toolbox', 'Toolbox talk in the workshop', [meet('workshop', 'mech_tech', 10)])
+    # the day's start in the maintenance workshop: PPE on, the toolbox talk led by the maintenance supervisors (an HSE
+    # officer joins it)
+    task('toolbox', 'Toolbox talk in the workshop', gear + [meet('workshop', 'maint_sup', 10)])
+    task('toolbox_lead', 'Lead the toolbox talk', gear + [meet('workshop', 'mech_tech', 10)])
+    task('toolbox_visit', 'Join the toolbox talk', gear + [meet('workshop', 'maint_sup', 10)])
     for rid, (title, reads) in ROUNDS.items():
         steps = []
         for code, ex, tol in reads:
@@ -372,9 +484,10 @@ def tasks(models):
         # the control room's side: the call itself (what makes it one of the radio panel's requests, §17.8)
         task('ask_' + tid, f'Ask a field operator: {title[0].lower() + title[1:]}', [
             desk, {'call': {'role': 'field_op', 'task': tid}}, {'work': 1}], priority=2)
-    # permits (§15, STAFF.md §3): asked for by the supervisor when a fault makes a work, approved and issued by them,
-    # isolated by the people whose kind of point it is, accepted, worked and handed back by the technician of the
-    # work's discipline, de-isolated, closed
+    # permits (§15, STAFF.md §3): asked for by the supervisor when a fault makes a work (or by a maintenance supervisor
+    # from the week's list), approved and issued by the shift supervisor, isolated by the people whose kind of point
+    # it is, given to a technician of the work's discipline by a maintenance supervisor, accepted, worked and handed
+    # back, de-isolated (each lock removed by its owner), closed
     task('request_permit', 'Ask for a permit for the fault\'s work', [
         {'go': 'cr_sup'}, {'permit': {'work': '$', 'action': 'request'}}], priority=2)
     task('approve_permit', 'Approve the permit', [{'go': 'cr_sup'}, {'permit': {'work': '$', 'action': 'approve'}}],
@@ -383,11 +496,17 @@ def tasks(models):
                                               {'say': 'permit_issued', 'to': 'channel'}], priority=2)
     task('close_permit', 'Close the permit', [{'go': 'cr_sup'}, {'permit': {'work': '$', 'action': 'close'}},
                                               {'say': 'permit_closed', 'to': 'channel'}], priority=2)
+    ms_desk = {'go': {'kind': 'table', 'room': 'maint_office'}}
+    for k, items in WEEK_LIST.items():
+        for w, _ in items:
+            title = next(x['title'] for x in works if x['id'] == w)
+            task(f'plan_{w[3:]}', f'The week\'s list: ask for the permit of "{title}"', [
+                ms_desk, {'permit': {'work': w, 'action': 'request'}, 'else': 2}, {'work': 1}])
     reacts = []
     for w in works:
         wid = w['id']
         x = iso.get(w.get('isolation'))
-        if x is None:
+        if w['discipline'] == 'civil':
             continue
         lock_s, unlock_s = [], []
         by_role = {}
@@ -411,15 +530,64 @@ def tasks(models):
         task(f'isolate_{wid[3:]}', f'Have "{w["title"]}" isolated', lock_s, priority=2)
         task(f'deisolate_{wid[3:]}', f'Have the isolation of "{w["title"]}" removed', unlock_s, priority=2)
         job = f'job_{wid[3:]}'
+        cal = wid.endswith('_cal')
         task(job, w['title'], [
             {'go': {'kks': w['kks']}}, {'permit': {'work': '$', 'action': 'accept'}},
-            {'work': [30, 60], 'anim': 'wrench'}, {'permit': {'work': '$', 'action': 'done'}},
-            {'permit': {'work': '$', 'action': 'return'}}, {'say': 'job_done', 'to': 'shift_sup'}], work=wid,
-             resume='next_duty')        # left unfinished at the duty's end: held overnight, lock on (§17.10)
+            {'work': [20, 40], 'anim': 'calibrate', 'tool': 'calibrator'} if cal else
+            {'work': [30, 60], 'anim': 'wrench', 'tool': 'spanner'}, {'permit': {'work': '$', 'action': 'done'}},
+            {'permit': {'work': '$', 'action': 'return'}}, {'say': 'cal_done' if cal else 'job_done', 'to': 'shift_sup'}],
+             work=wid, resume='next_duty')        # left unfinished at the duty's end: held overnight, lock on (§17.10)
+        # the maintenance supervisor gives the issued permit's job to a technician of its discipline (S2)
+        task(f'assign_{wid[3:]}', f'Give "{w["title"]}" to a technician', [
+            ms_desk, {'call': {'role': TECH[w['discipline']], 'task': job}},
+            {'say': 'job_assigned', 'to': TECH[w['discipline']]}], priority=2)
         reacts += [{'on': {'permit': 'approved'}, 'roles': ['shift_sup'], 'task': f'isolate_{wid[3:]}', 'work': wid},
-                   {'on': {'permit': 'issued'}, 'roles': [TECH[w['discipline']]], 'task': job, 'work': wid},
+                   {'on': {'permit': 'issued'}, 'roles': ['maint_sup'], 'task': f'assign_{wid[3:]}', 'work': wid},
                    {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': f'deisolate_{wid[3:]}',
                     'work': wid}]
+    # the contractors (S2, STAFF.md §1, §4): their permits hosted by the mechanical maintenance supervisor, accepted
+    # by their own supervisor, who sets a team of four on; each contractor may take the work's shortcut, 1 in 12, an
+    # unsafe act until the safety walk finds it; handed back at 15:00
+    task('host_contractors', 'Host the contractors: ask for their permits',
+         [ms_desk] + [{'permit': {'work': w, 'action': 'request'}, 'else': 2 + k} for k, w in enumerate(CONTRACT)]
+         + [{'say': 'request', 'to': 'shift_sup'}])
+    task('permit_check', 'A look at the contractors\' work sites', [
+        s for w in CONTRACT for s in ({'go': {'kks': next(x['kks'] for x in works if x['id'] == w)}},
+                                      {'work': 5, 'anim': 'inspect'})])
+    for w, (title, anim, short) in CONTRACT.items():
+        kks = next(x['kks'] for x in works if x['id'] == w)
+        steps = [{'go': {'kks': kks}}, {'permit': {'work': '$', 'action': 'accept'}}]
+        for k in range(TEAM):
+            steps += [{'call': {'role': 'contractor', 'task': f'con_{w[3:]}'}}, {'work': 1}]
+        steps.append({'say': 'team_on', 'to': 'shift_sup'})
+        task(f'job_{w[3:]}', f'{title}: take the permit and set the team on', steps, work=w, priority=2,
+             resume='next_duty')
+        task(f'con_{w[3:]}', title, [{'go': {'kks': kks}}, {'choose': [[SHORTCUT - 1, f'con_{w[3:]}_safe'],
+                                                                      [1, f'con_{w[3:]}_short']]}], work=w)
+        task(f'con_{w[3:]}_safe', title, [{'go': {'kks': kks}}, {'work': [150, 210], 'anim': anim}], work=w)
+        task(f'con_{w[3:]}_short', f'{title}, {short}', [{'go': {'kks': kks}},
+                                                         {'work': [150, 210], 'anim': anim, 'unsafe': True}], work=w)
+        reacts.append({'on': {'permit': 'issued'}, 'roles': ['contractor_sup'], 'task': f'job_{w[3:]}', 'work': w})
+    hb = []
+    for w in CONTRACT:
+        kks = next(x['kks'] for x in works if x['id'] == w)
+        n = len(hb)
+        hb += [{'go': {'kks': kks}}, {'permit': {'work': w, 'action': 'done'}, 'else': n + 3},
+               {'permit': {'work': w, 'action': 'return'}}]
+    task('hand_back', 'Hand the contractors\' permits back', hb + [{'say': 'handed_back', 'to': 'shift_sup'}])
+    # HSE (STAFF.md §4): the safety walks; an unsafe act seen is stopped; the put-right tasks of the acting person
+    for wid_, (title, codes) in WALKS.items():
+        steps = []
+        for c in codes:
+            steps += [{'go': {'kks': c}}, {'work': [3, 5], 'anim': 'inspect'}]
+        task(wid_, title, steps + [{'say': 'walk_done', 'to': 'channel'}])
+    task('stop_unsafe', 'Stop the unsafe act', [{'stop': 'act'}, {'say': 'stopped', 'to': 'channel'}], priority=1)
+    task('put_on_ppe', 'Put the PPE on at the locker', gear, priority=1)
+    task('ask_permit', 'Report to the supervisor for a permit', [{'go': 'cr_door'},
+                                                                 {'say': 'need_permit', 'to': 'shift_sup'}],
+         priority=1)
+    task('leave_shortcut', 'Leave the shortcut: work safely', [{'say': 'shortcut_left', 'to': 'channel'},
+                                                               {'work': 2}], priority=1)
     return T, reacts
 
 
@@ -429,18 +597,44 @@ def reactions(model_reacts):
            {'on': {'permit': 'requested'}, 'roles': ['shift_sup'], 'task': 'approve_permit'},
            {'on': {'permit': 'isolated'}, 'roles': ['shift_sup'], 'task': 'issue_permit'},
            {'on': {'permit': 'deisolated'}, 'roles': ['shift_sup'], 'task': 'close_permit'},
-           {'on': {'lock_left': '*'}, 'roles': ['shift_sup'], 'task': 'remove_left_locks'}]
+           {'on': {'lock_left': '*'}, 'roles': ['shift_sup'], 'task': 'remove_left_locks'},
+           {'on': {'unsafe': '*'}, 'roles': ['hse_officer'], 'task': 'stop_unsafe', 'seen': True}]
     out += [{'on': {'fault': f}, 'roles': ['shift_sup'], 'task': 'request_permit', 'work': w}
             for f, w in FAULT_WORK.items()]
     return out + model_reacts
 
 
+def zone_lists(places):
+    """The zones (§16.2) and each place's list, the outlines widened by 2 cm until no place lies within 1 cm of an
+    edge (the validator's bad_zone)."""
+    from ref.plant3d_staff import seg_dist, in_outline, ZONE_EDGE
+    zones = []
+    for zid, title, (x0, y0, x1, y1), ppe in ZONES:
+        while True:
+            ol = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+            near = any(min(seg_dist(p['at'][0], p['at'][1], ol[j], ol[(j + 1) % 4]) for j in range(4)) < ZONE_EDGE
+                       for p in places)
+            if not near:
+                break
+            x0, y0, x1, y1 = round(x0 - 0.02, 2), round(y0 - 0.02, 2), round(x1 + 0.02, 2), round(y1 + 0.02, 2)
+        zones.append({'id': zid, 'title': title, 'outline': ol, 'z': ZONE_Z, 'ppe': ppe})
+    for p in places:
+        inside = [z['id'] for z in zones if in_outline(p['at'][0], p['at'][1], z['outline'])
+                  and ZONE_Z[0] < p['at'][2] < ZONE_Z[1]]
+        if inside:
+            p['zones'] = inside
+    return zones
+
+
 def staff(models, layout):
     places, ways, nxt = network(models, layout)
+    zones = zone_lists(places)
     T, model_reacts = tasks(models)
     return {'format': 'walkdown-plant-staff', 'version': 1, 'origin': 'cr_desk_a', 'gate': 'gate', 'speeds': SPEEDS,
-            'places': places, 'ways': ways, 'next': nxt, 'roles': roles(), 'rosters': rosters(), 'people': people(),
-            'routines': routines(), 'tasks': T, 'reactions': reactions(model_reacts), 'messages': MESSAGES}
+            'places': places, 'ways': ways, 'next': nxt, 'zones': zones, 'roles': roles(), 'rosters': rosters(),
+            'people': people(), 'routines': routines(), 'tasks': T, 'reactions': reactions(model_reacts),
+            'messages': MESSAGES, 'put_right': {'ppe': 'put_on_ppe', 'permit': 'ask_permit',
+                                                'unsafe': 'leave_shortcut'}}
 
 
 def scenario(cold):
@@ -450,7 +644,7 @@ def scenario(cold):
     s['id'] = 'shift_cold'
     s['title'] = 'Day shift, the plant cold: the operators\' crews at work (choose a role)'
     s['start'] = {'day': 1, 'time': '05:30'}
-    s['staff'] = {'seed': 1}
+    s['staff'] = {'seed': 8}        # (a day whose draws give two contractors' shortcuts, both found by HSE: S2)
     return s
 
 

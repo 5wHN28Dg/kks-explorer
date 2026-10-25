@@ -693,9 +693,19 @@ class FirstTrainStaff(unittest.TestCase):
     def test_content(self):
         st = self.b.staff
         roles = {p['role'] for p in st.people}
-        self.assertEqual(roles, {'shift_sup', 'ccr_op', 'field_op', 'elec_ap', 'mech_tech', 'elec_tech', 'ic_tech'})
+        self.assertEqual(roles, {'shift_sup', 'ccr_op', 'field_op', 'elec_ap', 'mech_tech', 'elec_tech', 'ic_tech',
+                                 'maint_sup', 'hse_officer', 'contractor_sup', 'contractor'})
         self.assertEqual(sum(1 for p in st.people if p['roster'] == 'shift'), 28)
-        self.assertTrue(all(st.roles[r]['play'] for r in ('shift_sup', 'ccr_op', 'field_op', 'elec_ap')))
+        # STAFF.md §1's numbers on days (milestone S2), and every role played
+        count = lambda r: sum(1 for p in st.people if p['role'] == r)  # noqa: E731
+        self.assertEqual([count(r) for r in ('mech_tech', 'elec_tech', 'ic_tech', 'maint_sup', 'hse_officer',
+                                             'contractor_sup', 'contractor')], [6, 4, 4, 3, 2, 1, 8])
+        self.assertTrue(all(r['play'] for r in st.roles.values()))
+        self.assertEqual({z['id'] for z in st.zones}, {'gt_hall', 'st_hall', 'hrsg', 'rack', 'bop', 'cw_house', 'ct',
+                                                        'trafo'})
+        self.assertEqual(set(st.put_right), {'ppe', 'permit', 'unsafe'})
+        # S1's people keep their places in the file (so their random streams), S2's come after them
+        self.assertEqual([p['id'] for p in st.people[:32]][-4:], ['mech1', 'mech2', 'elec1', 'ic1'])
         self.assertEqual(self.b.plant['clock']['day_scale'], 6)
         self.assertIn('staff', self.b.scenarios['shift_cold'])
         for s in ('cold_iron', 'hot_restart'):
@@ -741,6 +751,30 @@ class FirstTrainStaff(unittest.TestCase):
                 self.assertTrue(any(len(ev) > len(want) and all(w is None or ev[1 + i] == w
                                                                 for i, w in enumerate(want)) for ev in e.events),
                                 f'{f["id"]}: no event like {want}')
+
+    def test_maintenance_and_safety_day(self):
+        """Milestone S2 on the first train's day: the week's preventive works and the calibration (a Monday) run
+        through their permits to closed, the contractors' two permits too (hosted, accepted by their supervisor,
+        handed back); the two contractors' shortcuts the day's draws give are found by the HSE officers' walks and
+        stopped; every lock and unlock is made (each unlock by the lock's owner)."""
+        ev = self.day['events']
+        done = {(x[2], x[3]) for x in ev if x[1] == 'permit' and x[5] == 'done'}
+        for w in ('wo_cond_p2_cal', 'wo_ct_fan4_pm', 'wo_ccw_b_ir', 'wo_scaffold_hrsg', 'wo_paint_cw'):
+            self.assertIn((w, 'close'), done, w)
+        self.assertIn(('wo_paint_cw', 'accept'), done)
+        acc = [x[4] for x in ev if x[1] == 'permit' and x[2] in ('wo_paint_cw', 'wo_scaffold_hrsg') and x[3] == 'accept']
+        self.assertEqual(acc, ['csup', 'csup'])
+        req = [x[4] for x in ev if x[1] == 'permit' and x[2] in ('wo_paint_cw', 'wo_scaffold_hrsg') and x[3] == 'request']
+        self.assertEqual(req, ['ms_mech', 'ms_mech'])
+        stops = [x[2:6] for x in ev if x[1] == 'stop']
+        self.assertEqual(sorted(stops), [['hse1', 'con2', 'unsafe', 'wo_scaffold_hrsg'],
+                                         ['hse2', 'con5', 'unsafe', 'wo_paint_cw']])
+        self.assertFalse([x for x in ev if x[1] in ('lock', 'unlock', 'remove_lock') and x[5] != 'done'])
+        self.assertFalse([x for x in ev if x[1] == 'unsafe' and x[3] == 'ppe'], 'everyone in the zones wears PPE')
+        # the snapshot's PPE: the HSE officers and the contractors in theirs at 10:30
+        st = next(s for s in self.day['states'] if s['clock'] % 864000 == 10 * 36000 + 30 * 600)
+        self.assertEqual(st['worn']['hse1'], ['helmet', 'boots', 'glasses', 'ear', 'vest'])
+        self.assertIn('harness', st['worn']['con1'])
 
     def test_round_ranges_hold_at_rest_and_at_base_load(self):
         sys.path.insert(0, os.path.join(REPO, 'tools', 'plant3d'))

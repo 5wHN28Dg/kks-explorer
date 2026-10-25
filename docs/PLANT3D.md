@@ -1438,6 +1438,7 @@ Each person has their own stream:
 | `[n, "read", code, value]` | a reading the trainee wrote down |
 | `[n, "ppe", item, 0 or 1]` | the trainee took off or put on an item |
 | `[n, "zone", zone, "in" or "out"]` | the trainee entered or left a zone |
+| `[n, "stop", person]` | the trainee stops an unsafe act of that person's (§16.7, §17.11) |
 | `[n, "say", message, to]` | a radio message from the trainee |
 | `[n, "pick", index]` | the trainee's answer to a `choose` |
 | `[n, "task_ack"]` | the trainee has seen the new tasks in their queue (§17.6, fast-forward) |
@@ -1472,7 +1473,8 @@ the automatic moves `[n, "permit", work, "auto", null, "done", [new state]]`. St
 "off"]`, `[n, "task", person, task, "start" | "done" | "abandoned" | "skipped" | "unassigned"]`, `[n, "move", person,
 from, to, arrive step]`, `[n, "vehicle", id, stop, "arrive" | "depart" | "skipped"]`, `[n, "read", person, code,
 value, "ok" | "out_of_range" | "misread"]`, `[n, "say", person, message, to]`, `[n, "unsafe" | "safe", person, kind,
-zone or work]`, `[n, "early", person, task, step index, kind, made]` (§17.8: an action of the trainee's made in step
+zone or work]`, `[n, "stop", person, acting person, kind, detail, "done" | "refused", [reasons]]` (§17.11),
+`[n, "early", person, task, step index, kind, made]` (§17.8: an action of the trainee's made in step
 `made` counts for that step). The op event of a version 2 op adds `where` and person; reasons and failed values are value names or
 the words `state`, `authority`, `where`, `iso_busy`, `locked`, `unlocked`, `owner`, `isolation`. Step 1 also makes
 `[n, "instructor", "fault" | "repair", id]` (§15.5) in a version 2 plant. The repairs a `done` makes in step 3 are
@@ -1494,7 +1496,7 @@ agree bit for bit on `plant3d-v2.json`'s `staff` part (§19). S1 builds the oper
 later is **refused by the validator** (`unknown_key`, naming the milestone), so no content relies on behaviour the
 engines don't have yet:
 - **S2:** `zones`, `put_right`, the `ppe` and `stop` steps, `"unsafe": true`, reactions `on: {"unsafe"}` and `seen`
-  (PPE, zones, unsafe acts and the safety walk);
+  (PPE, zones, unsafe acts and the safety walk): built, §17.11;
 - **S4:** `vehicles`, `drive` ways, `ride` and `sleep`, a person's `home`, `"go": "home"`, a role's `off` routine
   (the camp, the buses, off duty).
 
@@ -1654,6 +1656,73 @@ both engines and the vectors (§19):
   overnight and resumed at 07:00 (no removal by authority); a day fork of the first train where CW pump B's lock is
   removed by authority while its job is in progress and the job is offered again when the permit is re-issued;
   `reject` has a repairing work without an isolation.
+
+### 17.11 As built for milestone S2 (2026-10-25)
+
+Zones, PPE, unsafe acts, the safety walk and stopping work (§16.2, §16.6, §16.7), in both engines and the vectors
+(§19). What §16–§17 left open, settled so:
+- **Zones** (`staff.json` `zones`, at most 64): `{"id", "title"?, "outline": [[x, y], …] (3–64 points, the even-odd
+  rule), "z": [low, high] (high above low), "ppe": [items] (1 or more)}`. Each place's `zones` lists, in file order,
+  exactly the zones whose outline holds it and whose heights it lies strictly between; a place within 1 cm of an
+  edge or of a height limit is `bad_zone`, as a list that differs. The content tool widens an outline by 2 cm until
+  no place is that near.
+- **What a person wears** (`worn`, a set of PPE items): at placement (step 0, a jump) everyone on duty wears their
+  role's `ppe` (at work already), everyone else nothing; a person coming on site at the gate wears nothing, and what
+  they wore is left behind when they leave the site (in the locker). A `ppe` step puts on the role's items (`"role"`)
+  or the listed ones, adding to what is worn, or with `"off"` takes everything off; an NPC's is done at once. A step
+  that puts on comes after a `go` to a `locker` place (a named one or `{"kind": "locker", …}`) in the same task
+  (`bad_ref`), as a screen op comes after a desk: the engine doesn't check where the trainee stands, the app does.
+  The trainee's `ppe` inputs (§17.6: an item of the list and 0 or 1, a JSON integer; anything else is ignored) are
+  applied at the start of step 9 with their `arrive`, `leave` and `zone` inputs, in the order made; their `ppe` step
+  is done when they wear every item it asks for (`"off"`: nothing).
+- **The zones a person is in:** their place's; on a way, the zones both its ends list; off site, none. The trainee's
+  are those of their `zone` inputs (a zone of the file and `"in"` or `"out"`; anything else is ignored), whatever
+  their place.
+- **Unsafe acts**, three kinds checked in the order `ppe`, `permit`, `unsafe` for each person not absent, in phase 5
+  of every step 9 (also a jump's, after its placement; never at step 0): `ppe`, the first zone (file order) of theirs
+  needing an item they don't wear, its id the act's detail; `permit`, standing (not on a way) at a `work` place
+  whose code is the `kks` of the current task instance's work, in a `work` step, while that work's permit is not
+  `accepted`, the work's id the detail; `unsafe`, a current step marked `"unsafe": true` (an idle task never), the
+  instance's work (or null) the detail. A kind's act starts when its condition becomes true (`[n, "unsafe", person,
+  kind, detail]`) and ends when it is false (`[n, "safe", person, kind, detail at its start]`); the person's other
+  kinds are acts of their own.
+- **Reactions to acts** (`{"on": {"unsafe": kind or "*"}}`, no `work`): after the acts of phase 5, in reaction order.
+  Without `seen`, each act started in this step (person order, then kind) is given by §17.3. With `seen: true`, every
+  act going on (person order, then kind) not yet given by that reaction goes to the first person of its roles (role
+  order, then index), on duty and not the acting person, who is in a zone the acting person is in now; once given,
+  never again for that act (the source is the reaction, the person, the kind and the act's start step).
+- **Stopping work.** The task an act's reaction gives carries the act. Its `stop` step (validator: only in the task
+  of a reaction to an unsafe act, and in roles with `stop_work`, `authority`) walks an NPC to the place the acting
+  person is at when the step starts (the end of the way they are on; a place someone holds: its room's door, else its
+  point), and there, if the act still goes on and nobody has stopped it, stops it: `[n, "stop", person, acting
+  person, kind, detail, "done", []]`; the acting person's current task goes to its current step's `else`, or is
+  abandoned (an idle task ends `abandoned`), and they are given `put_right`'s task for the kind at priority 1. A
+  stopped act still ends only when its condition is false (a `ppe` act when the PPE is on or they have left the
+  zone). An act already over, or already stopped, ends the step with no event. The trainee stops an act with the
+  input `[n, "stop", person]` (§17.6), handled at the start of step 9 with their other inputs there: refused
+  (`[n, "stop", trainee, person, null, null, "refused", [reasons]]`) for `authority` (their role lacks `stop_work`;
+  in free mode the person is null and the reason `authority`) and `no_act` (no act of that person goes on that
+  nobody has stopped), else the person's first such act (kind order) is stopped as above. Their `stop` step is done
+  when its act is over or stopped.
+- **`put_right`** (`{"ppe": task, "permit": task, "unsafe": task}`, each optional, a task of the file): any role may
+  be given one, so every step of these tasks must suit every role (`authority`).
+- **Slots by weekday:** a slot may name `"days"` (weekdays, 1–7, no repeat): it is made only in a duty that starts on
+  one of them (a week's list of preventive work and calibrations).
+- **An unlocking task goes to a lock's owner** (implementing the user's rule that only a lock's owner removes it,
+  §15.1): a task given by §17.3 whose steps `unlock` the instance's work (`"$"`) or the work given goes first to an
+  on-duty person of its roles (role order, then index) who holds a lock on a point of that work's isolation; with
+  none, by the usual rule.
+- **Snapshots** add `"worn"` (`{person: items}` for those wearing any, the items in §16.3's order) and `"acts"`
+  (`[[person, kind, detail, start step, stopped], …]`, person order then kind), after `people`.
+- **The first train's staff** (`tools/plant3d/train_staff.py`): the maintenance disciplines at STAFF.md §1's numbers
+  (six mechanical, four electrical and four I&C technicians), three maintenance supervisors (each with the week's
+  list of their discipline, the mechanical one hosting the contractors), two HSE officers (the toolbox talk, safety
+  walks at 10:00 and 14:00, stopping what they see), a contractors' supervisor and eight contractors on two works
+  without isolation (scaffolding on HRSG 1's drum platform, painting in the CW pump house), each contractor taking
+  the work's shortcut 1 time in 12; zones over the process areas; a locker room; the corrective works of the trainer's
+  faults (CW pump discharge valves' limit switches added) and the week's preventive works and calibrations (cooling
+  tower fan 4's bearings, CCW pump B's insulation test, the condenser pressure transmitters' calibration, which puts
+  a drift right). Every role but the guards' plays.
 
 ## 18. People on screen (the app; not in the vectors)
 
@@ -1824,6 +1893,19 @@ used instructor mode, with their number; the saved run's offer says so too. Both
 A point whose lock belongs to a day worker gone home says their lock stays on overnight and that they finish the job
 on their next shift (§17.10).
 
+**As built for milestone S2** (2026-10-25): every role of the first train's staff plays (the technicians, the
+maintenance supervisors, the HSE officers, the contractors' supervisor and the contractors too). The Crew panel's
+**PPE** part shows what the trainee wears and, for each zone they are in, what it needs and what is missing (entering a
+zone says so on the screen); at a locker it puts on the role's PPE or takes an item off, and a task's `ppe` step is
+"Put it on" there (else "Take me to a locker"). The app sends the zone inputs from the walker's position, four times
+a second. The trainee's own unsafe acts are named in the panel and on the screen ("Unsafe act: you are …", and who
+stopped their work). A role with `stop_work` sees the unsafe acts going on in its zones ("Unsafe acts in sight"); a
+`stop` step, or any act there, offers "Take me to them" and, within 3 m of the person, "Stop the work". People wear the
+hard hat on their head where their zone needs one and they wear it, in the hand elsewhere (A1's road variant, so a
+person who has taken it off in a zone is seen without it). The debrief gains a Safety tab (every unsafe act, its end
+and every stop; the trainee's own acts marked) and Your tasks (the trainee's task events), and its summary counts the
+trainee's unsafe acts and the work they stopped.
+
 ## 19. Format 2 vectors
 
 `ref/vectors/plant3d-v2.json`, made by `ref/make_plant3d_vectors.py` from `ref/plant3d.py` as format 1's:
@@ -1856,6 +1938,16 @@ then repairs nothing) beside the trainer's repair (made on a free code, not made
 (§15.6: a lock that trips a 2-out-of-3 vote, a refused lock, a trip that comes anyway); `reject` has `locked_write`;
 the forks add the trainee's repair of CW pump B under its permit and the condenser pressure transmitters' warning (the
 second transmitter's lock trips the steam turbine, the first's doesn't).
+
+**Added for milestone S2** (2026-10-25, §17.11): `staff.runs` gains five runs on the synthetic plant's safety staff
+(their own staff file and model, a run's `files`): PPE put on at lockers, the safety walks (slots by weekday), a
+contractor without PPE starting before the permit seen and stopped twice, the contractors' hosted permit and a
+shortcut stopped, the not-seen reaction, a stop from free mode; seed 3; the trainee as the HSE officer (PPE and zone
+inputs, the stop input, refusals); the trainee's own unsafe act stopped and put right (refusals, inputs ignored);
+a Tuesday. `staff.reject` gains the zones', PPE steps', stop steps', put_right's and weekday slots' rule breaks. The
+first train's `day` follows its S2 content (seed 8: two contractors' shortcuts found by the HSE walks), with forks for
+the calibration of a drift, a limit switch's corrective job, and the trainee as an I&C technician, an HSE officer and a
+contractor taking the shortcut. Snapshots with staff carry `worn` and `acts`.
 
 **As built for milestone P1** (2026-10-22: permits, isolations and the `hold` node, no staff): the file holds `valid`,
 `reject` (the version rules, the `hold` node, isolations and works: every rule of §15 the validator checks), `steps`

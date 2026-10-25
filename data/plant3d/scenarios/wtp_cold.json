@@ -109,6 +109,8 @@
   {"id": "cw_b_ls", "set": {"cw_b_ls_fault": 1}, "text": "CW pump B discharge valve: the start-position limit switch sticks made (the permissive passes with the valve open)", "kks": "30PAC10AA102", "repair": {"cw_b_ls_fault": 0}},
   {"id": "cw_c_ls", "set": {"cw_c_ls_fault": 1}, "text": "CW pump C discharge valve: the start-position limit switch sticks made (the permissive passes with the valve open)", "kks": "30PAC10AA103", "repair": {"cw_c_ls_fault": 0}},
   {"id": "byp_hyd", "set": {"byp_hyd_fault": 1}, "text": "Bypass valves' hydraulic unit fails: the bypass is blocked", "kks": "30MAN10AA001", "repair": {"byp_hyd_fault": 0}},
+  {"id": "cond_p2_drift", "set": {"cond_p2_drift": 1.5}, "text": "Condenser pressure transmitter 2 drifts: reads 1.5 kPa high", "kks": "30MAG10CP002", "repair": {"cond_p2_drift": 0}},
+  {"id": "cond_p3_drift", "set": {"cond_p3_drift": -1.2}, "text": "Condenser pressure transmitter 3 drifts: reads 1.2 kPa low", "kks": "30MAG10CP003", "repair": {"cond_p3_drift": 0}},
   {"id": "st_trip_no_bypass", "set": {"st_vib_fault": 1, "byp_hyd_fault": 1}, "text": "Steam turbine bearing 3 damage with the bypass hydraulics failed: no steam sink", "repair": {"st_vib_fault": 0, "byp_hyd_fault": 0}},
   {"id": "rw_a_motor", "set": {"rw_a_fault": 1}, "text": "Raw water pump A motor overload", "kks": "00GAF10AP001", "repair": {"rw_a_fault": 0}},
   {"id": "rw_b_motor", "set": {"rw_b_fault": 1}, "text": "Raw water pump B motor overload", "kks": "00GAF10AP002", "repair": {"rw_b_fault": 0}},

@@ -30,6 +30,8 @@
   ["st_gov_fault", {"state": 0, "kks": "30MAA10"}],
   ["st_thrust_fault", {"state": 0, "kks": "30MAD10CG001"}],
   ["st_vib_fault", {"state": 0, "kks": "30MAD10CY003"}],
+  ["cond_p2_drift", {"state": 0, "unit": "kPa", "kks": "30MAG10CP002"}],
+  ["cond_p3_drift", {"state": 0, "unit": "kPa", "kks": "30MAG10CP003"}],
   ["st_speed", {"integrate": "st_acc", "gain": 1, "min": 0, "max": 1.3, "init": 0, "unit": "pu", "kks": "30MAA10"}],
   ["cond_p", {"lag": "cond_p_tgt", "tau": 30, "tau_down": 150, "init": 101.3, "unit": "kPa(a)", "kks": "30MAG10AC001"}],
   ["cond_p1", {"sum": ["cond_p", 0], "unit": "kPa(a)", "kks": "30MAG10CP001"}],
@@ -37,14 +39,14 @@
   ["cond_p1_hc", {"cmp": ["cond_p1", "<", 13]}],
   ["cond_p1_hh", {"cmp": ["cond_p1", ">", 25]}],
   ["cond_p1_hhc", {"cmp": ["cond_p1", "<", 23]}],
-  ["cond_p2_tx", {"sum": ["cond_p", 0.1], "unit": "kPa(a)"}],
+  ["cond_p2_tx", {"sum": ["cond_p", 0.1, "cond_p2_drift"], "unit": "kPa(a)"}],
   ["cond_p2", {"hold": "cond_p2_tx", "when": "iso_cond_p2_complete", "unit": "kPa(a)", "kks": "30MAG10CP002"}],
   ["cond_p2_h", {"cmp": ["cond_p2_tx", ">", 15]}],
   ["cond_p2_hc", {"cmp": ["cond_p2_tx", "<", 13]}],
   ["cond_p2_hh", {"cmp": ["cond_p2_tx", ">", 25]}],
   ["cond_p2_hhc", {"cmp": ["cond_p2_tx", "<", 23]}],
   ["cond_p2_vote", {"or": ["cond_p2_hh", "iso_cond_p2_complete"]}],
-  ["cond_p3_tx", {"sum": ["cond_p", -0.1], "unit": "kPa(a)"}],
+  ["cond_p3_tx", {"sum": ["cond_p", -0.1, "cond_p3_drift"], "unit": "kPa(a)"}],
   ["cond_p3", {"hold": "cond_p3_tx", "when": "iso_cond_p3_complete", "unit": "kPa(a)", "kks": "30MAG10CP003"}],
   ["cond_p3_h", {"cmp": ["cond_p3_tx", ">", 15]}],
   ["cond_p3_hc", {"cmp": ["cond_p3_tx", "<", 13]}],
@@ -484,7 +486,7 @@
   {"id": "iso_cond_p3", "text": "Condenser pressure transmitter 3", "points": [{"kks": "30MAG10CP003", "kind": "instrument", "how": "Root valve shut and tagged; the transmitter vented"}]}
  ],
  "works": [
-  {"id": "wo_cond_p2_cal", "kks": "30MAG10CP002", "title": "Condenser pressure transmitter 2: calibration check", "discipline": "inst", "permit": "general", "isolation": "iso_cond_p2", "task": "job_cond_p2_cal"},
-  {"id": "wo_cond_p3_cal", "kks": "30MAG10CP003", "title": "Condenser pressure transmitter 3: calibration check", "discipline": "inst", "permit": "general", "isolation": "iso_cond_p3", "task": "job_cond_p3_cal"}
+  {"id": "wo_cond_p2_cal", "kks": "30MAG10CP002", "title": "Condenser pressure transmitter 2: calibration check", "discipline": "inst", "permit": "general", "isolation": "iso_cond_p2", "repairs": "cond_p2_drift", "task": "job_cond_p2_cal"},
+  {"id": "wo_cond_p3_cal", "kks": "30MAG10CP003", "title": "Condenser pressure transmitter 3: calibration check", "discipline": "inst", "permit": "general", "isolation": "iso_cond_p3", "repairs": "cond_p3_drift", "task": "job_cond_p3_cal"}
  ]
 }
