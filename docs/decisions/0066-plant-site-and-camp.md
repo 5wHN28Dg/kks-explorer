@@ -112,3 +112,46 @@ Packages (the final build): APK 139.4 MB (budget 150); the desktop packages, est
 
 The Honor 600 was not attached on either day, so it was not measured (its last runs, 2026-10-23 morning, before the far
 views: `lean+vis` and `full` with no frame over 100 ms).
+
+## The last frame spikes: the phone's memory reclaim (#252, 2026-10-25)
+
+**What they are.** The single GPU frames of 100–160 ms that #249 left (the final build's `wtp` and `camp` walks) come
+when the phone's kernel reclaims memory, not from anything the app draws or does at that moment. While it reclaims,
+any of the app's GPU frames can take two to seven times as long; when the phone does not reclaim through a walk, no
+frame is long. Whether a walk meets the rule therefore depends on what the phone's own services do in those ten
+minutes (a Samsung app starting, the top of the hour), which is why builds "passed" and "failed" from run to run.
+
+How it was found ([V] measured on the Note 9, `lean+vis`, release builds with the bake, test-signed; `wtp` walks of
+600 s unless named):
+
+| | Finding | Source |
+|---|---|---|
+| A system trace of a walk (Perfetto, `apps/plant3d/phone/trace.pbtxt`: scheduler, clocks, reclaim, SurfaceFlinger's and the app's atrace) | Each GPU frame's time from Swappy's own atrace marks (Godot's frame pacing): 43 of 16,592 frames over 45 ms, the longest 156 ms. kswapd0 (the kernel's reclaim) ran 31.5 % of those frames' time against 1.6 % of the others'; kworker/0:0 (the kernel worker on CPU 0, where the Mali driver's interrupts and page faults are handled) 47.9 % against 13.2 %. In the 156 ms frame the GPU ran at 546 MHz and 100 % busy, kworker/0:0 ran 34 ms; 0.7 s before it Samsung's account app (com.osp.app.signin) started and went into direct reclaim. Nothing in the log, no pipeline compiled, SurfaceFlinger composed by the hardware composer after the start (no client composition) | [V] `tools/plant3d/bench/pftrace.py` |
+| The same views standing still (`phone/shots.sh`, a shot's GPU time) | the WTP hall's views where the walk's long frames clustered cost 18.5–22.8 ms of GPU, the yard 14.6 ms; no effect switch (shadow, occlusion, far view, stencils, lightmap) makes one of them heavy | [V] |
+| The trace itself | streamed to the phone's storage at about 2 MB/s, it fills the page cache the kernel must then reclaim: that walk had 120 GPU frames over 45 ms (Godot's measure), the walks without it 0–1 | [V] |
+| Reclaim reproduced (`phone/frames.sh` `STRESS=1`: 2 MB a second written to a file in /data/local/tmp, nothing to do with the app) | 99–196 GPU frames over 45 ms a walk, up to 2 over 100 ms; of the frames while kswapd scanned (a 200 ms sampler of /proc/vmstat) 8–28 % were over 45 ms, of the others 0.06–0.07 % | [V] |
+| Less GPU work | the sun's shadow off (`fx_off=shadow`, GPU p95 31 → 22 ms) under the same stress: 41 frames over 45 ms instead of 99–192, and still one of 105 ms. What stands inside buildings casting no shadow (342,000 → 263,000 of the RO hall view's triangles in the shadow pass) changed nothing measurable (192, the phone warmer) and was taken out again | [V] |
+| The build before #249's review fixes (b11, 3fb5d16a) | under the same stress as bad as the final one: 196 frames over 45 ms, one frame of 122.7 ms. It passed its three walks because the phone did not reclaim during them | [V] |
+
+| `wtp` walk (600 s) | stress | start | GPU frames > 45 / > 66 / > 100 ms | frames > 100 ms after 5 s (app) | worst | frames at ≥ 30 fps | GPU p95 |
+|---|---|---|---|---|---|---|---|
+| main, Perfetto tracing | the trace's writes | 30.8 °C | 120 / 37 / 2 | 4 | 172.3 ms | 98.45 % | 29.8 ms |
+| main | none | 31.2 °C | 1 / 0 / 0 | 0 | 74.2 ms | 98.36 % | 30.8 ms |
+| main, sun's shadow off | none | 31.2 °C | 0 / 0 / 0 | 0 | 59.2 ms | 99.68 % | 21.9 ms |
+| main | `STRESS=1` | 31.3 °C | 99 / 21 / 1 | 0 | 90.0 ms | 97.88 % | 31.1 ms |
+| inside buildings no shadow | `STRESS=1` | 31.4 °C | 192 / 60 / 2 | 0 | 97.0 ms | 97.38 % | 30.3 ms |
+| the same, sun's shadow off | `STRESS=1` | 32.2 °C | 41 / 13 / 0 | 1 | 105.0 ms | 99.49 % | 22.2 ms |
+| before #249's review (b11) | `STRESS=1` | 32.5 °C | 196 / 58 / 2 | 1 | 122.7 ms | 96.29 % | 31.8 ms |
+
+**What this means for the rule.** The app's own frames hold the rule when the phone leaves its memory alone; when the
+phone reclaims, the Mali driver stalls the GPU on CPU 0 for tens of milliseconds, and no setting tried here removes
+that (with the sun's shadow off, 19 % less GPU time, a 105 ms frame remained). Kernel stacks or the driver's own
+trace events (mali_page_fault_insert_pages and the like exist in this kernel) would name the work kworker/0:0 does,
+but the Note 9 is not rooted and Android 10's Perfetto cannot record them; so "the Mali driver's page faults" is the
+likeliest reading of the trace, not a proven one. Whether "none over 100 ms" can be met on this phone, or should be
+judged on walks without reclaim, is the user's decision.
+
+**Tools added** (to see it again): a shot's line gives its GPU time, and `shot=` works on a phone (`phone/shots.sh`:
+views × effect switches in one run); `phone/frames.sh` `STRESS=1`; the trace's config `phone/trace.pbtxt` and its
+reader `tools/plant3d/bench/pftrace.py` (no Perfetto tools needed: the long frames and the kernel threads' share of
+them).
