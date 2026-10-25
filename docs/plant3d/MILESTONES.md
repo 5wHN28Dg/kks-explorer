@@ -112,7 +112,11 @@ finding (a reading out of its range). The scenario `shift_wtp`; the vectors' `st
 (PLANT3D.md §19). `tests/test_ui_wtp_staff.gd` plays the WTP operator through a filter backwash ordered by the NPC
 supervisor and the chemist logging a high silica result that the NPC operator acts on with a regeneration. Not built:
 the chemical tanker's delivery under a permit (WATER-TREATMENT §9 leaves the unloading out, and vehicles are S4's).
-STEPCOST
+The staff step (apps/plant3d/sim/tests/bench_step.gd, the laptop, back to back): 78 µs at the shift change with the
+WTP's people against 62 µs on main before them (64 µs against 51 µs at the day workers' arrival), after S3's value
+reactions were looked at alone on steps without events (a pass over every reaction each step had made it 100 µs);
+by S2's ratio about 0.25 ms on the Note 9, within §18.4's 0.3 ms (not measured on the phone: the phone was in use
+for another measurement, and S3 adds no drawing but ten people of A1's kind).
 
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4
 needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, S2 with C1, then S3, then S4.

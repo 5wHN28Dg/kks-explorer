@@ -117,6 +117,10 @@ plant, and the debrief lists the night crew's slots as done by the other crew.
 
 ## 6. What the first content holds
 
+**As built through S3 (2026-10-26):** the operators (S1), the maintenance disciplines, HSE and the contractors (S2), and
+the water treatment plant's operator and chemists (S3, PLANT3D.md §17.12); the guards, the managers and engineers,
+the drivers, the storekeeper and the camp staff come with S4.
+
 M2–M4 (MILESTONES.md) build this in steps: first the operators and the permit flow on the first train, then the
 maintenance disciplines with their jobs, then the WTP's people, then the camp and the full day. Scenario seeds pick a
 day; trainer faults (format 1) make the corrective jobs, so a trainer chooses the day's work.

@@ -66,6 +66,7 @@ var react_kind := PackedStringArray()  # per reaction: what it is on
 var value_reactions := PackedInt32Array()   # the reactions on a value
 var act_reactions := PackedInt32Array()     # the reactions on an unsafe act (§16.7)
 var finding_reactions := PackedInt32Array() # the reactions on a reading out of its range (§17.12)
+var value_slot := PackedInt32Array()        # per reaction on a value (value_reactions' order): its engine slot
 var zone_ids: Array = []             # the zones' ids, in file order
 var zone_ix := {}                    # zone id -> its index
 var zone_ppe := PackedInt32Array()   # per zone: the PPE it needs, a bit per item of PPE
@@ -748,8 +749,16 @@ func step(e) -> void:
 			break
 	act_phase(e, n, moved)
 	findings(e, n)
-	for i in value_reactions:
-		e.st_vprev[i] = e.truth(reactions[i]["on"]["value"])
+	_slots(e)
+	for j in value_reactions.size():
+		e.st_vprev[value_reactions[j]] = e.cur[value_slot[j]] >= 0.5
+
+
+## The engine slots of the values reactions are on (every engine of one model has the same).
+func _slots(e) -> void:
+	if value_slot.size() != value_reactions.size():
+		for i in value_reactions:
+			value_slot.append(e.ix[reactions[i]["on"]["value"]])
 
 
 ## Phase 1 (duties, then slots), run only when the clock reaches the next duty boundary, slot or planning day of
@@ -890,13 +899,25 @@ func react(e, n: int) -> void:
 	evs = rel
 	if evs.is_empty() and value_reactions.is_empty() and gone.is_empty():
 		return
-	for ri in reactions.size():
+	# (most steps: only the reactions on a value can be made, looked at alone in reaction order; milestone S3's
+	# value reactions made a pass over every reaction each step cost a third of the staff step)
+	if evs.is_empty() and gone.is_empty():
+		_slots(e)
+		var edge := false       # (a value turning true is rare: most steps end here)
+		for j in value_reactions.size():
+			var pv = e.st_vprev[value_reactions[j]]
+			if e.cur[value_slot[j]] >= 0.5 and typeof(pv) == TYPE_BOOL and not pv:
+				edge = true
+				break
+		if not edge:
+			return
+	var idxs = value_reactions if evs.is_empty() and gone.is_empty() else range(reactions.size())
+	for ri in idxs:
 		var r: Dictionary = reactions[ri]
 		var k: String = react_kind[ri]
 		if evs.is_empty() and k != "value" and k != "lock_left":
 			continue
 		var v = r["on"][k]
-		var prio: int = int(r.get("priority", prio_of(r["task"])))
 		var hits := []          # [source key, work, code, alarm]
 		if k == "value":
 			var now: bool = e.truth(v)
@@ -920,6 +941,9 @@ func react(e, n: int) -> void:
 					var nw: int = x[6][0] if x[3] == "auto" else PERMIT_TO[x[3]]
 					if STATE_NAMES[nw] == v and (not r.has("work") or r["work"] == x[2]):
 						hits.append(["permit|" + x[2], x[2], e.m.works[e.m.work_ix[x[2]]]["kks"], null])
+		if hits.is_empty():
+			continue
+		var prio: int = int(r["priority"]) if r.has("priority") else prio_of(r["task"])
 		for h in hits:
 			var key: String = str(ri) + "|" + h[0]
 			if e.st_given.has(key):
