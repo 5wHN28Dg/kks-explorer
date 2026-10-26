@@ -43,8 +43,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-nim
         with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
+      - uses: ./.github/actions/apt-cache   # the job's Ubuntu archives from earlier runs (checked by SHA-256 when used)
+        id: apt-cache
+        with: {name: core, mode: restore}
       - name: Libraries
         run: .github/scripts/apt-install.sh libgnutls28-dev zlib1g-dev
+      - uses: ./.github/actions/apt-cache   # what this run checked and used, for the next (also after a failure)
+        if: always() && steps.apt-cache.outcome == 'success'
+        with: {name: core, mode: save}
       - name: The Nim core's tests (no platform)
         working-directory: core
         run: nim test
@@ -64,11 +70,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-nim
         with: {version: '${{ env.NIM_VERSION }}', sha256: '${{ env.NIM_SHA256 }}', image: '${{ env.IMAGE }}'}
+      - uses: ./.github/actions/apt-cache   # the job's Ubuntu archives from earlier runs (checked by SHA-256 when used)
+        id: apt-cache
+        with: {name: platform-linux, mode: restore}
       - name: Libraries, and Avahi on the system bus (test_mdns announces and browses through it)
         run: |
           .github/scripts/apt-install.sh $APT_NIM avahi-daemon
           sudo systemctl start avahi-daemon
           systemctl is-active avahi-daemon
+      - uses: ./.github/actions/apt-cache   # what this run checked and used, for the next (also after a failure)
+        if: always() && steps.apt-cache.outcome == 'success'
+        with: {name: platform-linux, mode: save}
       - name: The relay twin's Python (test_internet starts relay/twin.py from .venv)
         run: |
           python3 -m venv .venv
@@ -91,10 +103,16 @@ jobs:
             ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a
             ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf-third.a
           key: mupdf-${{ env.IMAGE }}-${{ hashFiles('importer/fetch_mupdf.sh') }}
+      - uses: ./.github/actions/apt-cache   # the job's Ubuntu archives from earlier runs (checked by SHA-256 when used)
+        id: apt-cache
+        with: {name: importer, mode: restore}
       - name: Libraries, MuPDF
         run: |
           .github/scripts/apt-install.sh $APT_NIM
           [ -f ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
+      - uses: ./.github/actions/apt-cache   # what this run checked and used, for the next (also after a failure)
+        if: always() && steps.apt-cache.outcome == 'success'
+        with: {name: importer, mode: save}
       - name: The importer's tests
         working-directory: importer
         run: |
@@ -115,10 +133,16 @@ jobs:
             ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a
             ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf-third.a
           key: mupdf-${{ env.IMAGE }}-${{ hashFiles('importer/fetch_mupdf.sh') }}
+      - uses: ./.github/actions/apt-cache   # the job's Ubuntu archives from earlier runs (checked by SHA-256 when used)
+        id: apt-cache
+        with: {name: linux-build, mode: restore}
       - name: Libraries, MuPDF
         run: |
           .github/scripts/apt-install.sh $APT_NIM
           [ -f ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
+      - uses: ./.github/actions/apt-cache   # what this run checked and used, for the next (also after a failure)
+        if: always() && steps.apt-cache.outcome == 'success'
+        with: {name: linux-build, mode: save}
       - name: kks_server and kks_import
         run: |
           (cd platform/linux && nim c -d:release -o:/tmp/kkslinux/kks_server kks_server.nim)
@@ -139,11 +163,17 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: linux-bin
+      - uses: ./.github/actions/apt-cache   # the job's Ubuntu archives from earlier runs (checked by SHA-256 when used)
+        id: apt-cache
+        with: {name: server-http, mode: restore}
       - name: Binaries and their libraries
         run: |
           tar xf linux-bin.tar -C /tmp
           .github/scripts/apt-install.sh $APT_NIM
           test -x /tmp/kkslinux/kks_server && test -x /tmp/kksimp/kks_import   # else the Drawings tests would skip
+      - uses: ./.github/actions/apt-cache   # what this run checked and used, for the next (also after a failure)
+        if: always() && steps.apt-cache.outcome == 'success'
+        with: {name: server-http, mode: save}
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/pip
@@ -176,9 +206,16 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/pip install -q -r requirements-dev.txt
+      - uses: ./.github/actions/apt-cache   # the job's Ubuntu archives from earlier runs (checked by SHA-256 when used)
+        id: apt-cache
+        if: matrix.shard == 0
+        with: {name: python, mode: restore}
       - name: FFmpeg with libvorbis (Walkdown Plant's sounds are encoded with it, decision 0055)
         if: matrix.shard == 0
         run: .github/scripts/apt-install.sh ffmpeg
+      - uses: ./.github/actions/apt-cache   # what this run checked and used, for the next (also after a failure)
+        if: always() && steps.apt-cache.outcome == 'success' && matrix.shard == 0
+        with: {name: python, mode: save}
       - name: The protocol, strict JSON, path store, course and Walkdown Plant vectors (the Python reference)
         env:
           KKS_REQUIRE_FFMPEG: '1'
@@ -240,6 +277,9 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ env.IMAGE }}-${{ matrix.engine }}-${{ hashFiles('requirements-dev.txt') }}
+      - uses: ./.github/actions/apt-cache   # the job's Ubuntu archives from earlier runs (checked by SHA-256 when used)
+        id: apt-cache
+        with: {name: 'web-${{ matrix.engine }}', mode: restore}
       - name: Binaries, their libraries, djxl (test_web_wasm checks the stored photo)
         run: |
           tar xf linux-bin.tar -C /tmp
@@ -250,6 +290,9 @@ jobs:
           .venv/bin/pip install -q -r requirements-dev.txt
           .github/scripts/playwright-deps.sh ${{ matrix.engine }}
           .venv/bin/playwright install ${{ matrix.engine }}
+      - uses: ./.github/actions/apt-cache   # what this run checked and used, for the next (also after a failure)
+        if: always() && steps.apt-cache.outcome == 'success'
+        with: {name: 'web-${{ matrix.engine }}', mode: save}
       - name: The browser client on v2 plant data (test_web_v2)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
         run: .venv/bin/python platform/linux/e2e/test_web_v2.py -v -k ${{ matrix.engine }}
@@ -339,6 +382,9 @@ jobs:
         with:
           path: ~/.cache/pip
           key: pip-${{ env.IMAGE }}-${{ hashFiles('requirements-dev.txt') }}
+      - uses: ./.github/actions/apt-cache   # the job's Ubuntu archives from earlier runs (checked by SHA-256 when used)
+        id: apt-cache
+        with: {name: gnome-e2e, mode: restore}
       - name: GTK 4, libadwaita, libsecret, zxing-cpp, GStreamer; mutter, AT-SPI, python3-gi and Pillow for the test (system python3)
         run: |
           tar xf linux-bin.tar -C /tmp
@@ -347,6 +393,9 @@ jobs:
             gstreamer1.0-plugins-good gstreamer1.0-libav mutter at-spi2-core python3-gi python3-pil gir1.2-atspi-2.0 \
             gir1.2-glib-2.0 dbus-daemon ffmpeg fuse3 mesa-vulkan-drivers libgl1-mesa-dri fonts-dejavu-core
           pkg-config --modversion gtk4 libadwaita-1
+      - uses: ./.github/actions/apt-cache   # what this run checked and used, for the next (also after a failure)
+        if: always() && steps.apt-cache.outcome == 'success'
+        with: {name: gnome-e2e, mode: save}
       - name: .venv with OpenCV (the QR video for the camera test)
         run: |
           python3 -m venv .venv

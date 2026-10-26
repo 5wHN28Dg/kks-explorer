@@ -40,8 +40,7 @@ fetch() { # file url sha256
   f="$DEV/src/dl/$1"
   if [ ! -f "$f" ] || [ "$(sha256sum "$f" | cut -d' ' -f1)" != "$3" ]; then
     echo "download $1"
-    curl -sSfL -o "$f.part" "$2" || { rm -f "$f.part"; echo "$1: download failed ($2)" >&2; exit 1; }
-    mv "$f.part" "$f"
+    sh "$ROOT/tools/download.sh" "$2" "$f" || { echo "$1: download failed ($2)" >&2; exit 1; }   # tried again
   fi
   got=$(sha256sum "$f" | cut -d' ' -f1)
   [ "$got" = "$3" ] || { echo "$1: SHA-256 $got, expected $3" >&2; rm -f "$f"; exit 1; }

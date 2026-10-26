@@ -102,10 +102,16 @@ jobs:
             (cd ~/nim && sh build.sh >/dev/null && bin/nim c --hints:off koch >/dev/null && ./koch boot -d:release --hints:off >/dev/null)
           fi
           echo "$HOME/nim/bin" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/apt-cache   # the job's Ubuntu archives from earlier runs (checked by SHA-256 when used)
+        id: apt-cache
+        with: {name: linux-arm64, mode: restore}
+      - name: Libraries
+        run: .github/scripts/apt-install.sh libgnutls28-dev zlib1g-dev
+      - uses: ./.github/actions/apt-cache   # what this run checked and used, for the next (also after a failure)
+        if: always() && steps.apt-cache.outcome == 'success'
+        with: {name: linux-arm64, mode: save}
       - name: The Nim core's tests on ARM64
-        run: |
-          .github/scripts/apt-install.sh libgnutls28-dev zlib1g-dev
-          cd core && nim test
+        run: cd core && nim test
 
   flatpak-arm64:
     runs-on: ubuntu-24.04-arm

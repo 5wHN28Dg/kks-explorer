@@ -3,22 +3,47 @@
 stalled download is tried again and the install still happens; a download that stalls every time fails the step in
 bounded time and installs nothing; and no workflow installs anything with apt-get directly. Playwright's browser
 packages (playwright-deps.sh) come from `playwright install-deps --dry-run`, against a fake playwright: the packages
-it lists are installed through apt-install.sh and must then show as installed; any other answer fails the step."""
-import os, re, shutil, subprocess, tempfile, time, unittest
+it lists are installed through apt-install.sh and must then show as installed; any other answer fails the step.
+After a failed attempt the next starts with another mirror of the runner's list (2026-10-26: Azure's mirror trickled
+at 10 to 60 kB/s through all three attempts) after a pause that doubles. The archives are cached across runs
+(APT_DEB_CACHE, .github/actions/apt-cache): a cached archive is used only when its SHA-256 is the one apt's lists give,
+what a failed run got is kept, and only checked archives are saved (apt-cache-key.sh). Every job that installs
+packages restores that cache before and saves it after. tools/download.sh tries a failed download again."""
+import fnmatch, hashlib, os, re, shutil, subprocess, tempfile, time, unittest
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 SCRIPT = os.path.join(REPO, '.github', 'scripts', 'apt-install.sh')
 PW_SCRIPT = os.path.join(REPO, '.github', 'scripts', 'playwright-deps.sh')
+KEY_SCRIPT = os.path.join(REPO, '.github', 'scripts', 'apt-cache-key.sh')
+DOWNLOAD = os.path.join(REPO, 'tools', 'download.sh')
+VOICE = os.path.join(REPO, 'apps', 'plant3d', 'voice', 'build.sh')
 WORKFLOWS = os.path.join(REPO, '.github', 'workflows')
 
 # answers like apt-get; records each call; with --download-only it hangs (exec, so `timeout` ends it) while the
 # count in $FAKE/stalls is above 0; an install fails when $FAKE/fail-install exists
+# With --print-uris it prints $FAKE/uris (failing when $FAKE/fail-uris exists); a download records the first mirror
+# of $APT_MIRROR_LIST and what apt's archive folder held when it began ("have ..."), copies $FAKE/partial/* there
+# before a stall, and $FAKE/pool/* there when it succeeds.
 FAKE_APT = r'''#!/bin/bash
+case " $* " in
+  *" --print-uris "*)
+    [ -e "$FAKE/fail-uris" ] && exit 100
+    [ -e "$FAKE/uris" ] && cat "$FAKE/uris"
+    exit 0 ;;
+esac
 echo "$*" >> "$FAKE/calls"
 case " $* " in
   *" --download-only "*)
+    [ -f "$APT_MIRROR_LIST" ] && echo "mirror $(head -1 "$APT_MIRROR_LIST" | cut -f1)" >> "$FAKE/log"
+    [ -n "${APT_ARCHIVES:-}" ] && echo "have $(cd "$APT_ARCHIVES" && ls | tr '\n' ' ')" >> "$FAKE/log"
     n=$(cat "$FAKE/stalls")
-    if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$FAKE/stalls"; exec sleep 100; fi ;;
+    if [ "$n" -gt 0 ]; then
+      echo $((n - 1)) > "$FAKE/stalls"
+      [ -d "$FAKE/partial" ] && cp "$FAKE/partial/"* "$APT_ARCHIVES/"
+      exec sleep 100
+    fi
+    [ -d "$FAKE/pool" ] && cp "$FAKE/pool/"* "$APT_ARCHIVES/"
+    ;;
   *" install "*)
     [ -e "$FAKE/fail-install" ] && exit 100 ;;
 esac
@@ -42,7 +67,7 @@ class AptInstall(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.dir)
-        bin_ = os.path.join(self.dir, 'bin')
+        self.bin = bin_ = os.path.join(self.dir, 'bin')
         os.mkdir(bin_)
         for name, text in (('apt-get', FAKE_APT), ('sudo', FAKE_SUDO), ('playwright', FAKE_PLAYWRIGHT)):
             p = os.path.join(bin_, name)
@@ -51,7 +76,10 @@ class AptInstall(unittest.TestCase):
             os.chmod(p, 0o755)
         self.env = dict(os.environ, FAKE=self.dir, PATH=bin_ + os.pathsep + os.environ['PATH'],
                         PLAYWRIGHT=os.path.join(bin_, 'playwright'),
-                        APT_TRIES='3', APT_UPDATE_SECS='5', APT_DOWNLOAD_SECS='1', APT_INSTALL_SECS='5')
+                        APT_TRIES='3', APT_UPDATE_SECS='5', APT_DOWNLOAD_SECS='1', APT_INSTALL_SECS='5',
+                        APT_BACKOFF_SECS='0', APT_MIRROR_LIST=os.path.join(self.dir, 'no-mirror-list'))
+        self.env.pop('APT_DEB_CACHE', None)
+        self.env.pop('APT_ARCHIVES', None)
 
     def run_script(self, stalls, *pkgs):
         with open(os.path.join(self.dir, 'stalls'), 'w') as f:
@@ -168,6 +196,298 @@ class AptInstall(unittest.TestCase):
         self.assertIn('engine: [chromium, firefox, webkit]', web)
         self.assertLess(web.index('.github/scripts/playwright-deps.sh ${{ matrix.engine }}'),
                         web.index('.venv/bin/playwright install ${{ matrix.engine }}'))
+
+    # --- another mirror after a failed attempt, a pause that doubles ---
+
+    RUNNER_MIRRORS = ('http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n'
+                      'https://archive.ubuntu.com/ubuntu/\tpriority:2\n'
+                      'https://security.ubuntu.com/ubuntu/\tpriority:3\n')
+
+    def mirror_list(self, text=RUNNER_MIRRORS):
+        p = os.path.join(self.dir, 'apt-mirrors.txt')
+        with open(p, 'w') as f:
+            f.write(text)
+        self.env['APT_MIRROR_LIST'] = p
+        return p
+
+    def log(self):
+        p = os.path.join(self.dir, 'log')
+        if not os.path.exists(p):
+            return []
+        with open(p) as f:
+            return f.read().splitlines()
+
+    def test_a_failed_attempt_starts_the_next_on_another_mirror(self):
+        p = self.mirror_list()
+        r, calls, _ = self.run_script(2, 'ffmpeg')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        # Azure's, then archive.ubuntu.com, then (security.ubuntu.com passed over) Azure's again
+        self.assertEqual([l for l in self.log() if l.startswith('mirror ')],
+                         ['mirror http://azure.archive.ubuntu.com/ubuntu/', 'mirror https://archive.ubuntu.com/ubuntu/',
+                          'mirror http://azure.archive.ubuntu.com/ubuntu/'])
+        self.assertIn('the next attempt starts with mirror https://archive.ubuntu.com/ubuntu/', r.stdout)
+        with open(p) as f:   # every mirror still there, numbered in the order that worked
+            self.assertEqual(f.read(), self.RUNNER_MIRRORS)
+
+    def test_the_mirror_that_worked_stays_first(self):
+        p = self.mirror_list()
+        r, _, _ = self.run_script(1, 'ffmpeg')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(p) as f:
+            self.assertEqual(f.read(), 'https://archive.ubuntu.com/ubuntu/\tpriority:1\n'
+                                       'https://security.ubuntu.com/ubuntu/\tpriority:2\n'
+                                       'http://azure.archive.ubuntu.com/ubuntu/\tpriority:3\n')
+
+    def test_a_failed_update_also_moves_on(self):
+        p = self.mirror_list()
+        os.remove(os.path.join(self.bin, 'apt-get'))
+        with open(os.path.join(self.bin, 'apt-get'), 'w') as f:   # the first update fails, everything else works
+            f.write('#!/bin/bash\necho "$*" >> "$FAKE/calls"\n'
+                    'case " $* " in *" update "*) [ -e "$FAKE/updated" ] || { touch "$FAKE/updated"; exit 100; } ;; esac\n')
+        os.chmod(os.path.join(self.bin, 'apt-get'), 0o755)
+        r, calls, _ = self.run_script(0, 'ffmpeg')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.kinds(calls), ['update', 'update', 'download', 'install'])
+        with open(p) as f:
+            self.assertTrue(f.read().startswith('https://archive.ubuntu.com/'))
+
+    def test_one_mirror_or_none_changes_nothing(self):
+        p = self.mirror_list('http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n')
+        r, _, _ = self.run_script(1, 'ffmpeg')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(p) as f:
+            self.assertEqual(f.read(), 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n')
+        self.assertNotIn('starts with mirror', r.stdout)
+
+    def test_the_pause_between_attempts_doubles(self):
+        self.env['APT_BACKOFF_SECS'] = '1'
+        r, calls, secs = self.run_script(2, 'ffmpeg')   # two 1 s stalls, pauses of 1 s and 2 s
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.kinds(calls), ['update', 'download', 'download', 'download', 'install'])
+        self.assertGreaterEqual(secs, 5)
+
+    # --- the archive cache ---
+
+    def debs(self, folder, **files):
+        """writes the archives (name -> bytes) into $FAKE/<folder>; returns name -> SHA-256"""
+        d = os.path.join(self.dir, folder)
+        os.makedirs(d, exist_ok=True)
+        out = {}
+        for name, data in files.items():
+            name = name.replace('__', '_') + '.deb'
+            with open(os.path.join(d, name), 'wb') as f:
+                f.write(data)
+            out[name] = hashlib.sha256(data).hexdigest()
+        return out
+
+    def cache_setup(self, uris):
+        self.cache = os.path.join(self.dir, 'cache')
+        self.archives = os.path.join(self.dir, 'archives')
+        os.makedirs(self.archives, exist_ok=True)
+        self.env['APT_DEB_CACHE'] = self.cache
+        self.env['APT_ARCHIVES'] = self.archives
+        with open(os.path.join(self.dir, 'uris'), 'w') as f:
+            for name, sha in uris.items():
+                f.write(f"'mirror+file:/etc/apt/apt-mirrors.txt/pool/main/x/{name}' {name} 3 SHA256:{sha}\n")
+
+    def fresh_runner(self):
+        """a new run: apt's archive folder empty, the log and calls cleared (the cache folder stays)"""
+        shutil.rmtree(self.archives)
+        os.makedirs(self.archives)
+        for n in ('log', 'calls'):
+            if os.path.exists(os.path.join(self.dir, n)):
+                os.remove(os.path.join(self.dir, n))
+
+    def key(self):
+        r = subprocess.run([KEY_SCRIPT, self.cache], capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.strip()
+
+    def test_archives_are_cached_and_used_by_the_next_run(self):
+        pool = self.debs('pool', ffmpeg__1=b'ff1', libx__2=b'lx2')
+        self.cache_setup(pool)
+        r, _, _ = self.run_script(0, 'ffmpeg')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('apt cache: 2 archive(s) needed, 0 from the cache', r.stdout)
+        self.assertEqual(sorted(os.listdir(self.cache)), ['.used', 'ffmpeg_1.deb', 'libx_2.deb'])
+        k1 = self.key()
+        self.assertRegex(k1, r'^[0-9a-f]{32}$')
+        # the next run: both in apt's folder before its download begins, none fetched
+        shutil.rmtree(os.path.join(self.dir, 'pool'))
+        self.fresh_runner()
+        r, _, _ = self.run_script(0, 'ffmpeg')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('apt cache: 2 archive(s) needed, 2 from the cache', r.stdout)
+        self.assertIn('have ffmpeg_1.deb libx_2.deb ', self.log())
+        self.assertEqual(self.key(), k1)          # the same contents: the same key (saved only once)
+
+    def test_a_cached_archive_with_another_hash_is_never_used(self):
+        pool = self.debs('pool', ffmpeg__1=b'ff1')
+        self.cache_setup(pool)
+        os.makedirs(self.cache)
+        with open(os.path.join(self.cache, 'ffmpeg_1.deb'), 'wb') as f:
+            f.write(b'BAD')                       # the same size, other bytes: apt alone would take it
+        r, _, _ = self.run_script(0, 'ffmpeg')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('::warning::apt cache: ffmpeg_1.deb is not the archive', r.stdout)
+        self.assertIn('have ', self.log())       # apt's folder was empty when the download began
+        with open(os.path.join(self.cache, 'ffmpeg_1.deb'), 'rb') as f:
+            self.assertEqual(f.read(), b'ff1')   # replaced by the downloaded one, which matches
+
+    def test_a_downloaded_archive_with_another_hash_is_not_cached(self):
+        pool = self.debs('pool', ffmpeg__1=b'ff1')
+        self.cache_setup({'ffmpeg_1.deb': hashlib.sha256(b'other').hexdigest()})
+        r, _, _ = self.run_script(0, 'ffmpeg')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.cache, 'ffmpeg_1.deb')))
+        self.assertEqual(self.key(), '')          # nothing to save
+
+    def test_a_failed_run_keeps_what_it_got(self):
+        pool = self.debs('pool', ffmpeg__1=b'ff1', libx__2=b'lx2')
+        self.debs('partial', libx__2=b'lx2')
+        self.cache_setup(pool)
+        r, calls, _ = self.run_script(99, 'ffmpeg')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(self.kinds(calls), ['update', 'download', 'download', 'download'])
+        self.assertEqual(sorted(os.listdir(self.cache)), ['.used', 'libx_2.deb'])
+        self.assertNotEqual(self.key(), '')
+
+    def test_lines_without_a_sha256_or_with_a_path_are_not_cached(self):
+        pool = self.debs('pool', ffmpeg__1=b'ff1')
+        self.cache_setup({})
+        with open(os.path.join(self.dir, 'uris'), 'w') as f:
+            f.write("'http://x/pool/ffmpeg_1.deb' ffmpeg_1.deb 3 MD5Sum:0123456789abcdef0123456789abcdef\n"
+                    "'http://x/pool/a.deb' ../a.deb 3 SHA256:%s\n" % ('0' * 64))
+        r, _, _ = self.run_script(0, 'ffmpeg')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.count('apt cache: not cached'), 2)
+        self.assertEqual(self.key(), '')
+
+    def test_when_apt_cannot_list_the_archives_it_installs_without_the_cache(self):
+        self.debs('pool', ffmpeg__1=b'ff1')
+        self.cache_setup({})
+        open(os.path.join(self.dir, 'fail-uris'), 'w').close()
+        r, calls, _ = self.run_script(0, 'ffmpeg')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('the cache is not used this time', r.stdout)
+        self.assertEqual(self.kinds(calls), ['update', 'download', 'install'])
+
+    def test_only_what_was_checked_and_used_is_saved(self):
+        pool = self.debs('pool', ffmpeg__1=b'ff1')
+        self.cache_setup(pool)
+        os.makedirs(self.cache)
+        for name in ('stale_0.deb', 'x.deb.part', 'notes.txt'):   # from an older cache, or not archives at all
+            with open(os.path.join(self.cache, name), 'w') as f:
+                f.write('x')
+        r, _, _ = self.run_script(0, 'ffmpeg')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        k = self.key()
+        self.assertEqual(sorted(os.listdir(self.cache)), ['ffmpeg_1.deb'])
+        self.assertRegex(k, r'^[0-9a-f]{32}$')
+        # other contents, another key
+        with open(os.path.join(self.cache, '.used'), 'w') as f:
+            f.write('ffmpeg_1.deb\n')
+        with open(os.path.join(self.cache, 'ffmpeg_1.deb'), 'wb') as f:
+            f.write(b'ff2')
+        self.assertNotEqual(self.key(), k)
+
+    def test_the_cache_key_of_an_empty_or_missing_folder_is_empty(self):
+        self.cache = os.path.join(self.dir, 'nothing')
+        self.assertEqual(self.key(), '')
+        os.makedirs(self.cache)
+        self.assertEqual(self.key(), '')
+
+    # --- tools/download.sh ---
+
+    def run_download(self, fails):
+        """tools/download.sh against a fake curl that fails `fails` times (as curl did on downloads.xiph.org)"""
+        with open(os.path.join(self.dir, 'curl-fails'), 'w') as f:
+            f.write(str(fails))
+        with open(os.path.join(self.bin, 'curl'), 'w') as f:
+            f.write('#!/bin/bash\necho "$*" >> "$FAKE/curl-calls"\n'
+                    'n=$(cat "$FAKE/curl-fails")\n'
+                    'while [ $# -gt 0 ]; do [ "$1" = -o ] && out=$2; shift; done\n'
+                    'if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$FAKE/curl-fails"; echo part > "$out";\n'
+                    '  echo "curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL" >&2; exit 35; fi\n'
+                    'echo whole > "$out"\n')
+        os.chmod(os.path.join(self.bin, 'curl'), 0o755)
+        out = os.path.join(self.dir, 'opus.tar.gz')
+        env = dict(self.env, DOWNLOAD_BACKOFF_SECS='1')
+        t0 = time.time()
+        r = subprocess.run(['sh', DOWNLOAD, 'https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz', out],
+                           env=env, capture_output=True, text=True, timeout=60)
+        with open(os.path.join(self.dir, 'curl-calls')) as f:
+            calls = f.read().splitlines()
+        return r, calls, out, time.time() - t0
+
+    def test_a_failed_download_is_tried_again(self):
+        r, calls, out, secs = self.run_download(2)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(calls), 3)
+        self.assertGreaterEqual(secs, 3)          # pauses of 1 s and 2 s
+        with open(out) as f:
+            self.assertEqual(f.read(), 'whole\n')
+        self.assertFalse(os.path.exists(out + '.part'))
+        self.assertIn('--connect-timeout', calls[0])
+        self.assertIn('-sSfL', calls[0].split())  # an HTTP error is a failure, not a file
+
+    def test_a_download_that_always_fails_fails_and_leaves_nothing(self):
+        r, calls, out, _ = self.run_download(99)
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(len(calls), 5)
+        self.assertFalse(os.path.exists(out))
+        self.assertFalse(os.path.exists(out + '.part'))
+
+    def test_the_voice_sources_are_cached_and_still_checked(self):
+        with open(VOICE, encoding='utf-8') as f:
+            build = f.read()
+        fetches = re.findall(r'^fetch (\S+) (https://\S+) ([0-9a-f]{64})$', build, re.M)
+        self.assertEqual(len(fetches), 3)
+        self.assertIn('tools/download.sh', build)
+        self.assertIn('[ "$got" = "$3" ]', build)   # the SHA-256 check after every fetch, cached or not
+        with open(os.path.join(WORKFLOWS, 'plant3d-app.yml'), encoding='utf-8') as f:
+            wf = f.read()
+        key_step = "grep -E '^fetch ' apps/plant3d/voice/build.sh | sha256sum"
+        jobs = split_jobs(wf)
+        for job in ('plant3d', 'app-tests', 'voice'):
+            text = jobs[job]
+            with self.subTest(job=job):
+                self.assertIn(key_step, text)
+                globs = re.findall(r'~/\.local/kksdev/src/dl/(\S+)', text.split('key: ${{ steps.voice-src.outputs.key }}')[0])
+                for name, _, _ in fetches:
+                    self.assertTrue(any(fnmatch.fnmatch(name, g) for g in globs), (name, globs))
+                self.assertLess(text.index('steps.voice-src.outputs.key'), text.index('WDP_JOBS=4'))   # before the build
+
+    def test_every_job_that_installs_packages_restores_and_saves_the_cache(self):
+        n = 0
+        for wf in sorted(os.listdir(WORKFLOWS)):
+            with open(os.path.join(WORKFLOWS, wf), encoding='utf-8') as f:
+                text = f.read()
+            for job, body in split_jobs(text).items():
+                calls = [m.start() for m in re.finditer(r'\.github/scripts/(?:apt-install|playwright-deps)\.sh ', body)]
+                if not calls:
+                    continue
+                n += 1
+                with self.subTest(workflow=wf, job=job):
+                    restore = re.search(r"- uses: \./\.github/actions/apt-cache[^\n]*\n\s+id: apt-cache\n"
+                                        r"(?:\s+if: [^\n]+\n)?\s+with: \{name: ('[^']+'|[\w-]+), mode: restore\}", body)
+                    save = re.search(r"- uses: \./\.github/actions/apt-cache[^\n]*\n"
+                                     r"\s+if: always\(\) && steps\.apt-cache\.outcome == 'success'[^\n]*\n"
+                                     r"\s+with: \{name: ('[^']+'|[\w-]+), mode: save\}", body)
+                    self.assertIsNotNone(restore)
+                    self.assertIsNotNone(save)
+                    self.assertEqual(restore.group(1), save.group(1))
+                    self.assertLess(restore.end(), calls[0])
+                    self.assertGreater(save.start(), calls[-1])
+        self.assertGreaterEqual(n, 10)   # tests.yml's eight, arm64's linux-arm64, plant3d-app's voice
+
+
+def split_jobs(text):
+    """a workflow's jobs: name -> its text"""
+    body = text[text.index('\njobs:\n'):]
+    parts = re.split(r'^  ([A-Za-z0-9_-]+):\n', body, flags=re.M)
+    return dict(zip(parts[1::2], parts[2::2]))
+
 
 if __name__ == '__main__':
     unittest.main()
