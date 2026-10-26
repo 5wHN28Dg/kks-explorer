@@ -1,5 +1,6 @@
 ## The input actions (R7): keyboard and mouse, gamepads (SDL3), and the touch sticks, which drive the same actions as
-## a gamepad's sticks. Made here rather than in project.godot so that the bindings read as a table.
+## a gamepad's sticks. Made here rather than in project.godot so that the bindings read as a table. While a gamepad is
+## the controls in use the touch sticks hide (app/input_mode.gd, app/hud.gd).
 ##
 ##   move      W A S D / arrows, left stick, the left touch stick (the sticks are analogue: a slow step to a jog;
 ##             keys walk at the settings' pace: app/player.gd speed_for)
