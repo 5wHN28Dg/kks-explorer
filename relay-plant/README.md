@@ -38,8 +38,10 @@ app's session harness.
   The relay checks the framing, replaces `to` with the sender's relay ID, and passes the message on unread. A
   message that doesn't frame, or that is addressed to its sender or to nobody, is dropped.
 - The text `{"t":"ping"}` is answered `{"t":"pong"}` by the runtime without waking the room, so a paused room
-  hibernates.
-- When a room is closed, every socket gets `{"t":"error","why":"idle"}` or `{"t":"error","why":"expired"}`.
+  hibernates. The room's alarm reads each socket's last ping time, so pings keep a paused room open. A paused session
+  sends the relay nothing else (every 25 s is enough): a binary message wakes the room.
+- When a room is closed, every socket gets `{"t":"error","why":"idle"}` or `{"t":"error","why":"expired"}`. A member
+  closed for silence (below) gets `{"t":"error","why":"quiet"}`, and the others hear `left`.
 
 ## Limits
 
@@ -58,8 +60,11 @@ starts its counters again.
 - **Failed hellos:** 30 a minute per room (bad admit, bad hello). After that, every hello to the room is refused with
   `limit` until the minute is over. `no such session` is not counted: players retry a new room after a removal (§2.4).
 - **Joins:** at most 60 successful hellos a minute per room.
-- **Room lifetime:** a room lives at most 24 h. It is closed and deleted after 10 minutes with no binary message (pings
-  don't count), or 10 minutes empty.
+- **Room lifetime:** a room lives at most 24 h. It is closed and deleted after 10 minutes in which no member sent
+  anything, not even a ping, or 10 minutes empty.
+- **Silent members:** a member that sent nothing, not even a ping, for 2 minutes while others did is closed with
+  `quiet` when the room's alarm next runs (about every 10 minutes in a paused room). That is how players reaching a
+  paused host only through the relay learn that its device has gone (MULTIPLAYER.md §5.3).
 - **Room creation:** at most 200 rooms a UTC day, counted by the `Daily` Durable Object. At most 10 a minute per
   client address (an IPv6 address by its /64), through the Workers rate limiting binding (`CREATE_LIMIT`, per Cloudflare location, approximate).
   The binding is only asked when a room is created. Cloudflare's page doesn't say whether the free plan has it. If a
@@ -68,9 +73,11 @@ starts its counters again.
 ## Deploy
 
 **Free plan only:** a paid account would be billed past the free allowance. `deploy.py` reads the account's
-subscriptions through Cloudflare's API. It stops if any of them could be billed: a price other than 0, a Workers plan
-other than the free one, or anything it doesn't understand. Workers Paid is an account subscription, so a Free
-account has none of these. If the subscriptions can't be read, it deploys nothing.
+subscriptions through Cloudflare's API and deploys only when it sees positive evidence of the free plan: at least
+one subscription, every one of them a free plan (`free` or `workers_free`) at price 0. Anything else stops it: a
+price other than 0, any other plan, anything it doesn't understand, or an empty list (no plan shown at all). If the
+subscriptions can't be read, it deploys nothing. If a real Free account's list turns out not to look like that, the
+check needs a change reviewed against that real answer, not a way around it.
 
 You need:
 - Node.js 22 or newer;
@@ -124,7 +131,7 @@ KKS_PLANT_RELAY_WORKERD=1 .venv/bin/python -m unittest tests.test_plant_relay   
 ```
 
 The tests start `wrangler dev` themselves, with shorter timings passed in `RELAY_LIMITS` (`--var`). Only the idle,
-empty, maximum age and hello timings, the day's room count and the joins a minute can be changed that way. CI's
+quiet, empty, maximum age and hello timings, the day's room count and the joins a minute can be changed that way. CI's
 `plant-relay` job runs the workerd part.
 
 For a twin of your own: `python3 relay-plant/twin.py 8787` (behind a TLS proxy for `wss://`).

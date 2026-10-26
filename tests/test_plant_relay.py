@@ -19,6 +19,7 @@ import e2e_server  # noqa: E402
 MAIN = {'idle': 3000, 'empty': 3000, 'hello': 2000, 'joins': 1000}
 SHORT = {'maxAge': 4000}
 CAPS = {'daily': 3, 'joins': 5}
+QUIET = {'idle': 3000, 'quiet': 1500}
 WORKERD = os.environ.get('KKS_PLANT_RELAY_WORKERD') == '1'
 
 
@@ -148,6 +149,23 @@ class Base:
             except TimeoutError:
                 return
             self.assertNotEqual(op, 2, f'unexpected binary message {data[:40]!r}')
+
+    def ping_for(self, cs, secs):
+        """Every client in cs sends the text ping every 0.3 s for secs seconds; -> (client, its first other message),
+        or None."""
+        t0 = time.time()
+        while time.time() - t0 < secs:
+            for c in cs:
+                c.text(b'{"t":"ping"}')
+            for c in cs:
+                while True:
+                    try:
+                        m = c.json(0.3)
+                    except TimeoutError:
+                        break
+                    if m != {'t': 'pong'}:
+                        return c, m
+        return None
 
 
 class Behaviour(Base):
@@ -319,6 +337,11 @@ class Behaviour(Base):
         for i in range(10):
             self.assertEqual(self._hello(rnd_room(), os.urandom(32), True, f'{prefix}::{i + 1:x}').json()['t'], 'welcome')
         self.refused(self._hello(rnd_room(), os.urandom(32), True, f'{prefix}::beef'), 'limit')
+        # also when `::` stands for zeros of the prefix itself (2001:db8:x:0::/64 written 2001:db8:x::1)
+        prefix = '2001:db8:%x' % (int.from_bytes(os.urandom(2), 'big') | 1)
+        for i in range(10):
+            self.assertEqual(self._hello(rnd_room(), os.urandom(32), True, f'{prefix}::{i + 1:x}').json()['t'], 'welcome')
+        self.refused(self._hello(rnd_room(), os.urandom(32), True, f'{prefix}:0:1:2:3:4'), 'limit')
 
     def test_hello_timeout(self):
         room, admit, _ = self.session(1)
@@ -498,25 +521,21 @@ class Behaviour(Base):
         while time.time() - t0 < MAIN['idle'] / 1000 + 1:
             a.packets(2, b'x')
             self.assertEqual(unframe(b.binary()), (1, [b'x']))
-            a.text(b'{"t":"ping"}')   # (pings alone don't count)
             time.sleep(0.3)
-        # then no binary message, only pings: closed, and the room is gone
-        t1, m = time.time(), None
-        while m is None and time.time() - t1 < MAIN['idle'] / 1000 + 6:
-            a.text(b'{"t":"ping"}')
-            try:
-                while True:
-                    m = a.json(0.5)
-                    if m != {'t': 'pong'}:
-                        break
-                    m = None
-            except TimeoutError:
-                m = None
-        self.assertEqual(m, {'t': 'error', 'why': 'idle'})
+        # then nothing at all from anyone: closed, and the room is gone
+        self.assertEqual(a.json(MAIN['idle'] / 1000 + 6), {'t': 'error', 'why': 'idle'})
         self.assertEqual(b.json(5), {'t': 'error', 'why': 'idle'})
         self.refused(self._hello(room, admit, False), 'no such session')
         # and the code's room can be made again
         self.assertEqual(self.client(room).hello(admit, True)['id'], 1)
+
+    def test_paused_room_kept_open_by_pings(self):
+        # a paused session sends no binary message, only the text ping (answered without waking the Worker's room):
+        # that keeps the room open past the idle time (MULTIPLAYER.md §9.1)
+        room, admit, (a, b) = self.session(2)
+        self.assertIsNone(self.ping_for([a, b], MAIN['idle'] / 1000 * 2 + 2))
+        c = self.client(room)
+        self.assertEqual(c.hello(admit, False)['id'], 3)
 
     def test_empty_room_deleted(self):
         room, admit, (a,) = self.session(1)
@@ -565,6 +584,28 @@ class Caps(Base):
         self.assertEqual(self.client(room).hello(admit, False), {'t': 'error', 'why': 'limit'})
 
 
+class Quiet(Base):
+    LIMITS = QUIET
+
+    def test_quiet_member_closed(self):
+        # a member that sends nothing, not even a ping (a device gone without closing its socket), is closed while
+        # the others ping on, and they hear it left (a paused host's loss, §5.3)
+        room, admit, (a, b, c) = self.session(3)
+        t0 = time.time()
+        got = self.ping_for([a, c], QUIET['idle'] / 1000 + QUIET['quiet'] / 1000 + 4)
+        self.assertIsNotNone(got, 'the silent member was not closed')
+        self.assertEqual(got[1], {'t': 'left', 'id': 2})
+        self.assertGreaterEqual(time.time() - t0, QUIET['quiet'] / 1000 - 0.5)
+        self.refused(b, 'quiet')
+        other = c if got[0] is a else a
+        while True:
+            m = other.json()
+            if m != {'t': 'pong'}:
+                break
+        self.assertEqual(m, {'t': 'left', 'id': 2})
+        self.assertIsNone(self.ping_for([a, c], 1))   # the room stays open for the others
+
+
 class TwinRelay(Behaviour, unittest.TestCase):
     SERVER = Twin
 
@@ -574,6 +615,10 @@ class TwinShort(Short, unittest.TestCase):
 
 
 class TwinCaps(Caps, unittest.TestCase):
+    SERVER = Twin
+
+
+class TwinQuiet(Quiet, unittest.TestCase):
     SERVER = Twin
 
 
@@ -589,6 +634,11 @@ class WorkerdShort(Short, unittest.TestCase):
 
 @unittest.skipUnless(WORKERD, 'KKS_PLANT_RELAY_WORKERD=1 runs these against wrangler dev')
 class WorkerdCaps(Caps, unittest.TestCase):
+    SERVER = Workerd
+
+
+@unittest.skipUnless(WORKERD, 'KKS_PLANT_RELAY_WORKERD=1 runs these against wrangler dev')
+class WorkerdQuiet(Quiet, unittest.TestCase):
     SERVER = Workerd
 
 
@@ -627,7 +677,9 @@ class Deploy(unittest.TestCase):
             with self.assertRaises(SystemExit, msg=answer):
                 self.check(answer)
         self.check({'success': True, 'result': [{'rate_plan': {'id': 'free'}, 'price': 0}]})
-        self.check({'success': True, 'result': []})
+        # an empty list shows no plan at all: not evidence of the free plan, so nothing is deployed
+        with self.assertRaises(SystemExit):
+            self.check({'success': True, 'result': []})
 
     def test_config_has_no_vars(self):
         self.d.config_ok()

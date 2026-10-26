@@ -4,7 +4,7 @@ it could also run on any server (`python3 relay-plant/twin.py PORT`, behind a TL
 
 It never sees K, P or the invite code: a room is admitted by SHA-256(admit), and the packets are passed on unread.
 `Client` is a small WebSocket client for the tests and the harness."""
-import base64, hashlib, hmac, json, os, re, socket, struct, sys, threading, time
+import base64, hashlib, hmac, ipaddress, json, os, re, socket, struct, sys, threading, time
 
 ROOM_RE = re.compile(r'/v1/room/([0-9a-f]{32})')
 ADMIT_RE = re.compile(r'[A-Za-z0-9_-]{43}')
@@ -14,14 +14,19 @@ ID_BLOCK = 16
 
 def address_key(ip):
     """The rate limiting key of a client address: an IPv6 address by its /64, IPv4 as it is (as in src/index.js)."""
-    return ':'.join(ip.lower().split(':')[:4]) + '::/64' if ':' in ip else ip
+    if ':' not in ip:
+        return ip
+    try:
+        return str(ipaddress.IPv6Network(ip + '/64', strict=False))
+    except ValueError:
+        return ip
 
 # MULTIPLAYER.md §9.1 (the same names and values as LIMITS in src/index.js)
 LIMITS = {
     'members': 12, 'pending': 12, 'message': 65536, 'text': 512,
     'rate': 60, 'hostRate': 120, 'burst': 200, 'hostBurst': 400,
     'bytes': 256 * 1024, 'byteBurst': 1 << 20, 'cut': 3, 'window': 10000,
-    'idle': 600000, 'empty': 600000, 'maxAge': 86400000, 'hello': 10000,
+    'idle': 600000, 'quiet': 120000, 'empty': 600000, 'maxAge': 86400000, 'hello': 10000,
     'failed': 30, 'joins': 60, 'daily': 200,
     'ipCreates': 10,      # the Worker's rate limiting binding: rooms created per client address per minute
 }
@@ -66,6 +71,7 @@ class Conn:
         self.host = False
         self.gone = False
         self.at = now_ms()
+        self.la = self.at      # the last message or ping once admitted (the Worker: `la` and the auto-response time)
         self.ip = ''
         self.room = None       # the Room once admitted
 
@@ -157,7 +163,7 @@ class Room:
         self.admit, self.created = admit_hash, created
         self.next_id, self.id_floor = 1, 1 + ID_BLOCK
         self.empty_since = None
-        self.last_binary = 0
+        self.last_active = 0     # the last message of a member that has left (the others' are in their Conn)
         self.sockets = []        # every Conn of the room, admitted or not
         self.flow = {}           # relay ID -> [msgs bucket, bytes bucket, Window, slow_at]
 
@@ -259,7 +265,7 @@ class Relay:
 
     def _admit(self, name, room, c, now, creator):
         others = room.members()
-        c.id, c.host = room.next_id, creator
+        c.id, c.host, c.la = room.next_id, creator, now
         room.next_id += 1
         room.sockets.append(c)
         c.room = room
@@ -306,6 +312,7 @@ class Relay:
                     fl[3] = now
                     c.text({'t': 'slow'})
                 return
+            c.la = now
             if op == 1:
                 if size > L['text']:
                     return
@@ -334,7 +341,6 @@ class Relay:
             to = struct.unpack_from('!H', data)[0]
             if to == c.id:
                 return
-            room.last_binary = now
             out = struct.pack('!H', c.id) + data[2:]
             targets = [o for o in room.members(c) if to == 0 or o.id == to]
         for o in targets:
@@ -355,6 +361,7 @@ class Relay:
             return
         room.sockets.remove(c)
         room.flow.pop(c.id, None)
+        room.last_active = max(room.last_active, c.la)
         self._tell(room, {'t': 'left', 'id': c.id})
         if not room.members():
             room.empty_since = self.clock()
@@ -377,7 +384,14 @@ class Relay:
                 if now >= room.created + L['maxAge']:
                     why = 'expired'
                 elif room.members():
-                    why = 'idle' if now >= max(room.created, room.last_binary) + L['idle'] else None
+                    # a member silent past `quiet` is closed (the Worker does it at its alarm), unless every member
+                    # is: then the idle rule decides
+                    quiet = [o for o in room.members() if now - o.la >= L['quiet']]
+                    if len(quiet) < len(room.members()):
+                        for o in quiet:
+                            self._refuse(o, 'quiet')
+                    last = max([room.created, room.last_active] + [o.la for o in room.members()])
+                    why = 'idle' if now >= last + L['idle'] else None
                 else:
                     why = 'idle' if now >= (room.empty_since or room.created) + L['empty'] else None
                 if not why:
@@ -429,7 +443,8 @@ class Relay:
                 return
             while True:
                 op, data = c.recv()
-                if op == 1 and data == b'{"t":"ping"}':
+                if op == 1 and data == b'{"t":"ping"}':   # (the auto-response: no limits, but it counts as activity)
+                    c.la = self.clock()
                     c.send(1, b'{"t":"pong"}'); continue
                 self.message(name, c, op, data)
         except OSError:

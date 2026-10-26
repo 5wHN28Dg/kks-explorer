@@ -21,7 +21,8 @@ export const LIMITS = {
   bytes: 256 * 1024, byteBurst: 1 << 20, // bytes a second, and the bucket's size
   cut: 3,                 // at this many times a rate, kept for `window` ms, the socket is closed (`limit`)
   window: 10000,
-  idle: 600000,           // no binary message for this long: the room is closed and deleted
+  idle: 600000,           // no member sent anything, not even a ping, for this long: the room is closed and deleted
+  quiet: 120000,          // a member that sent nothing, not even a ping, for this long is closed at the room's next alarm
   empty: 600000,          // nobody in it for this long: the same
   maxAge: 86400000,       // a room lives at most this long
   hello: 10000,           // a socket must say hello within this
@@ -29,7 +30,7 @@ export const LIMITS = {
   joins: 60,              // successful hellos per room per minute
   daily: 200,             // rooms created per UTC day
 };
-const TUNABLE = ['idle', 'empty', 'maxAge', 'hello', 'daily', 'joins'];
+const TUNABLE = ['idle', 'quiet', 'empty', 'maxAge', 'hello', 'daily', 'joins'];
 
 export function limitsOf(env) {
   const l = {...LIMITS};
@@ -63,7 +64,13 @@ const same = (a, b) => {
 };
 const ID_BLOCK = 16;
 // the rate limiting key of a client address: an IPv6 address by its /64 (one subscriber's prefix), IPv4 as it is
-export const addressKey = ip => ip.includes(':') ? ip.toLowerCase().split(':').slice(0, 4).join(':') + '::/64' : ip;   // relay IDs are reserved in storage this many at a time (one row write per 16 joins)
+export function addressKey(ip) {
+  if (!ip.includes(':')) return ip;
+  const [head, tail] = ip.toLowerCase().split('::');   // (a `::` may stand for zeros of the prefix itself)
+  const h = head ? head.split(':') : [], t = tail === undefined ? [] : tail ? tail.split(':') : [];
+  const g = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t];
+  return g.slice(0, 4).map(x => (parseInt(x, 16) || 0).toString(16)).join(':') + '::/64';
+}   // relay IDs are reserved in storage this many at a time (one row write per 16 joins)
 
 // One token bucket: `rate` a second, at most `size` kept.
 class Bucket {
@@ -97,12 +104,14 @@ export class Room extends DurableObject {
     super(ctx, env);
     this.env = env;
     this.L = limitsOf(env);
-    // answered without waking the object, so a paused room hibernates (as Walkdown's relay does)
+    // answered without waking the object, so a paused room hibernates (as Walkdown's relay does); the alarm reads
+    // each socket's last one (getWebSocketAutoResponseTimestamp), so pings alone keep a paused room open
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"t":"ping"}', '{"t":"pong"}'));
     this.flow = new Map();      // relay ID -> {msgs, bytes, win, slowAt}: in memory only, as §9.1 says
     this.failed = [];           // times of failed hellos (the last minute)
     this.joined = [];           // times of successful hellos (the last minute)
-    this.lastBinary = 0;        // also kept in each sender's attachment (`lb`), which survives hibernation
+    this.lastActive = 0;        // the last message the object saw; also in each sender's attachment (`la`), which
+                                // survives hibernation
     this.nextId = 0;            // the next relay ID; 0: read the reserved floor from storage first
     this.idCeil = 0;
   }
@@ -163,6 +172,8 @@ export class Room extends DurableObject {
     // (a text longer than any allowed message isn't encoded: it is dropped, and counted at its most)
     const size = typeof msg !== 'string' ? msg.byteLength : msg.length > L_TEXT_MAX ? msg.length * 3 : new TextEncoder().encode(msg).length;
     if (!this.admitFlow(ws, a, size, now)) return;
+    this.lastActive = now;
+    if (!a.la || now - a.la >= 1000) ws.serializeAttachment({...a, la: now});
     if (typeof msg === 'string') {
       if (size > this.L.text) return;
       let m; try { m = JSON.parse(msg) } catch (e) { return }
@@ -218,7 +229,7 @@ export class Room extends DurableObject {
       const sql = this.ctx.storage.sql;
       sql.exec('CREATE TABLE IF NOT EXISTS room (admit BLOB NOT NULL, created INTEGER NOT NULL, id_floor INTEGER NOT NULL, empty_since INTEGER)');
       sql.exec('INSERT INTO room (admit, created, id_floor, empty_since) VALUES (?, ?, ?, NULL)', hash.buffer, now, 1 + ID_BLOCK);
-      this.nextId = 1; this.idCeil = 1 + ID_BLOCK; this.lastBinary = 0;
+      this.nextId = 1; this.idCeil = 1 + ID_BLOCK; this.lastActive = 0;
       this.admit(ws, a, now, true);   // before the next await: the creator is relay ID 1
       await this.ctx.storage.setAlarm(now + Math.min(L.idle, L.empty, L.maxAge));
       return;
@@ -242,7 +253,7 @@ export class Room extends DurableObject {
   admit(ws, a, now, creator) {
     const id = this.nextId++, others = this.members(ws);
     this.joined.push(now);
-    ws.serializeAttachment({...ws.deserializeAttachment(), id, host: creator, lb: 0, hello: false});
+    ws.serializeAttachment({...ws.deserializeAttachment(), id, host: creator, la: now, hello: false});
     const host = others.find(([o]) => o.host);
     this.send(ws, {t: 'welcome', id, peers: others.map(([o]) => o.id), host: creator ? id : host ? host[0].id : null});
     this.tell({t: 'joined', id}, ws);
@@ -267,8 +278,6 @@ export class Room extends DurableObject {
     }
     const to = (b[0] << 8) | b[1];
     if (to === a.id) return;
-    this.lastBinary = now;
-    if (!a.lb || now - a.lb >= 1000) ws.serializeAttachment({...a, lb: now});
     const out = b.slice();
     out[0] = a.id >> 8; out[1] = a.id & 255;
     for (const [o, other] of this.members(ws)) {
@@ -297,10 +306,10 @@ export class Room extends DurableObject {
     if (!a.id) return;
     this.flow.delete(a.id);
     const rest = this.members(ws);
-    // the leaver's last binary time stays in the room (hibernation keeps only the attachments)
-    if (a.lb && rest.length) {
+    // the leaver's last activity stays in the room (hibernation keeps only the attachments)
+    if (a.la && rest.length) {
       const [o, other] = rest[0];
-      if (!o.lb || o.lb < a.lb) other.serializeAttachment({...o, lb: a.lb});
+      if (!o.la || o.la < a.la) other.serializeAttachment({...o, la: a.la});
     }
     this.tell({t: 'left', id: a.id}, ws);
     if (!rest.length && this.row()) {
@@ -318,11 +327,24 @@ export class Room extends DurableObject {
       if (a && !a.id && !a.gone && !a.hello && now - a.at > L.hello) this.refuse(ws, 'no hello');
     }
     if (!row) { await this.ctx.storage.deleteAll(); return }
-    const members = this.members();
+    // a member's last activity: its last message, or its last ping (answered by the runtime while the object slept)
+    const active = (o, ws) => {
+      let t = Math.max(o.at || 0, o.la || 0);
+      try { t = Math.max(t, this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() || 0) } catch (e) {}
+      return t;
+    };
+    let members = this.members();
+    if (now < row.created + L.maxAge) {
+      // a member silent past `quiet` (a device gone without closing its socket, such as a paused host's: §5.3) is
+      // closed, and the others hear `left`; when every member is silent, the idle rule below decides
+      const quiet = members.filter(([o, ws]) => now - active(o, ws) >= L.quiet);
+      if (quiet.length < members.length) for (const [, ws] of quiet) this.refuse(ws, 'quiet');
+      members = this.members();
+    }
     let due = row.created + L.maxAge;
     if (members.length) {
-      let last = Math.max(row.created, this.lastBinary);
-      for (const [o] of members) if (o.lb) last = Math.max(last, o.lb);
+      let last = Math.max(row.created, this.lastActive);
+      for (const [o, ws] of members) last = Math.max(last, active(o, ws));
       due = Math.min(due, last + L.idle);
     } else {
       due = Math.min(due, (row.empty_since ?? row.created) + L.empty);
@@ -335,7 +357,7 @@ export class Room extends DurableObject {
       this.send(ws, {t: 'error', why});
       try { ws.close(1000, why) } catch (e) {}
     }
-    this.flow.clear(); this.nextId = 0; this.idCeil = 0; this.lastBinary = 0;
+    this.flow.clear(); this.nextId = 0; this.idCeil = 0; this.lastActive = 0;
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
   }

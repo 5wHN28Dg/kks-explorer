@@ -210,7 +210,8 @@ step.
   included, through the same path as anyone's). No player, the host included, runs a step that isn't committed.
 - **T, the turn:** 2 steps (0.2 s) at 1×. In fast-forward the host closes more steps per 0.2 s of real time (§7.2).
   A turn with no inputs is a commit with an empty list (about 70 bytes with header and encryption); a paused session
-  sends none, only a `ping` every second.
+  sends none. Paused, the host sends a `ping` every second to the players it reaches over the LAN or direct UDP, but
+  nothing through the relay except the relay's own text ping every 25 s (§9.1), which keeps the room open and asleep.
 - **The host runs before it commits:** it runs each step of the turn on its own engine, then sends the commit. In
   fast-forward it ends the turn early at the step after which the engine no longer offers fast-forward (§7.2), so no
   player runs past that point at the fast rate; the next turns are at 1×. The host runs without a jitter buffer; its
@@ -354,7 +355,10 @@ Every player has the whole state and the commits, so any of them can go on as ho
 
 1. **Noticing:** no packet from the host for 5 s (a host sends a commit or, paused, a `ping` at least every second;
    a host gone to the background sends `away` first, §7.5, and is waited for 30 s), the relay's `left` for the host's
-   relay ID, or the host's `bye`.
+   relay ID, or the host's `bye`. The 5 s rule doesn't apply to a paused host reached only through the relay, which
+   sends no packets there (§3.1): its loss is noticed by its `bye`, or by the relay's `left` when its socket closes or
+   when the relay closes it for silence (no message and no ping for 2 minutes, checked at the room's alarm, so within
+   about 12 minutes of the device vanishing).
 2. **The candidate** is the connected player with the lowest slot. Every player stops at the last commit it has and
    sends the candidate `last`: its committed step, its digest at its last hashed step, the numbers of its
    uncommitted inputs, and its RSA public key. `last` goes under K, addressed to the candidate alone. A player whose
@@ -593,12 +597,18 @@ clone) offer This Wi-Fi only.
   socket 60 messages a second averaged over 10 s (burst 200) and 256 KiB/s, the room's host 120 a second (it
   forwards, §9.4). Over a limit the relay drops the messages and sends `{"t": "slow"}`; only at three times the limit
   for 10 s does it close the socket with `limit` (a busy host is slowed, not cut off, which would force a host
-  change). A room lives at most 24 h; a room with no binary message for 10 minutes, or empty for 10 minutes, is
-  closed and deleted; failed hellos (bad admit, no such session) at most 30 a minute per room. The counters live in
+  change). A room lives at most 24 h; a room in which no member sent anything, not even a ping, for 10
+  minutes, or empty for 10 minutes, is closed and deleted; a member that sent nothing, not even a ping, for 2 minutes
+  while others did is closed (`quiet`), and the others hear `left`; failed hellos (bad admit, bad hello; not
+  `no such session`, which players retry after a removal, §2.4) at most 30 a minute per room. The counters live in
   the Durable Object's memory, never its storage (the free plan allows 100,000 rows written a day); a room evicted
   from memory starts its counters again. **Keep-alive:** a paused session sends nothing through the relay but the
   text `{"t":"ping"}` every 25 s, which the relay answers by `setWebSocketAutoResponse` without waking the object
-  (as Walkdown's), so a paused room hibernates and costs no duration.
+  (as Walkdown's), so a paused room hibernates and costs no duration. The relay reads each socket's last ping time
+  (`getWebSocketAutoResponseTimestamp`) when the room's alarm runs, so the pings count as activity: a paused room
+  stays open, up to its 24 h, for one alarm (one request) every 10 minutes. A paused host's every-second `ping`
+  (§3.1, §5.3) does not go through the relay: each binary message would wake the room and keep it from hibernating
+  (450 GB-s an hour, below).
 - **Room creation:** one more Durable Object counts the rooms created per UTC day and refuses `create` beyond 200
   (one request per room created); and the Workers rate limiting binding (10 or 60 s periods, per Cloudflare
   location, approximate [D workers/runtime-apis/bindings/rate-limit]) at 10 rooms a minute per IP address, if MP4
@@ -625,7 +635,7 @@ clone) offer This Wi-Fi only.
 - **As built** (MP4's server side, 2026-10-26; details and deploy steps in `relay-plant/README.md`):
   - every 2-byte number in the binary framing is big-endian, and a message that doesn't frame is dropped;
   - besides the errors above, a hello can get `bad hello` (not the hello above) or `no hello` (none within 10 s);
-    a room that is closed tells its sockets `idle` or `expired`;
+    a room that is closed tells its sockets `idle` or `expired`, and a member closed for silence gets `quiet`;
   - at most 12 sockets may wait for their hello at once, and 60 hellos a minute may succeed in a room;
   - the host's burst is 400 messages, a player's 200; the byte rate has a burst of 1 MiB;
   - `relay-plant/deploy.py` reads the account's subscriptions with an API token that has Billing Read (wrangler's own

@@ -31,8 +31,8 @@ def wrangler(*args, capture=True):
 
 def paid_plans(subscriptions):
     """The subscriptions in an account's list that could be billed: any with a price that is not a number 0, and any
-    Workers plan other than the free one. The Workers Paid plan is an account subscription ($5 a month), so an account
-    on Workers Free has none of these; anything not understood counts as paid (the check fails closed)."""
+    plan other than the free ones. Anything not understood counts as paid, and check_free also refuses an empty list
+    (the check fails closed: it needs positive evidence of the free plan)."""
     out = []
     for s in subscriptions:
         if not isinstance(s, dict):
@@ -54,6 +54,8 @@ def check_free(account, token):
         stop(f'could not read the account\'s subscriptions ({type(e).__name__}): the plan can\'t be confirmed as Workers Free, nothing deployed')
     if not body.get('success') or not isinstance(body.get('result'), list):
         stop('the account\'s subscriptions could not be read: the plan can\'t be confirmed as Workers Free, nothing deployed')
+    if not body['result']:   # (no plan listed at all: nothing shows the account is on the free plan)
+        stop('the account lists no subscriptions: the plan can\'t be confirmed as Workers Free, nothing deployed')
     paid = paid_plans(body['result'])
     if paid:
         stop(f'the account has {", ".join(paid)}: not the Workers Free plan, nothing deployed')
