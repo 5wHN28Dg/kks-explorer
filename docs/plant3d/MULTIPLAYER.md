@@ -139,7 +139,7 @@ form the vectors, the save and the debrief already use.
 | Kind | Channel | From → to | Key | Fields |
 |---|---|---|---|---|
 | `hello` | reliable | joiner → host | K | display name, RSA public key, the app version (`RunSave.app_version()`), the content hash, a rejoin token or none (§5.2) |
-| `welcome` | reliable | host → joiner | K, its body's secrets RSA-encrypted | slot, epoch, P encrypted to the joiner's RSA key, then (under that P, in the same packet's next message) roster, settings, the next input number for the slot, the host broadcast stream's next sequence |
+| `welcome` | reliable | host → joiner | K (P inside it RSA-encrypted) | slot, epoch, P encrypted to the joiner's RSA key, roster, settings (nothing in them is secret from the other players), the next input number for the slot, the host broadcast stream's next sequence; from then on host and joiner use P |
 | `refuse` | reliable | host → joiner | K | a reason (`full`, `version`, `content`, `removed`, `closed`) |
 | `key` | reliable | host → one player | K, RSA-encrypted | a new P after a rekey or host change (§2.4, §5.3) |
 | `roster` | reliable | host → all | K | every slot: name, role (a person or none), connected, path, LAN address, ready flags, SHA-256 of its rejoin token |
