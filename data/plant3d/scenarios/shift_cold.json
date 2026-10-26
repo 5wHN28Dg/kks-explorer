@@ -103,6 +103,6 @@
   {"id": "ro_a_cl_damage", "set": {"ro_a_dmg": 1}, "text": "RO A: the membranes oxidised by chlorine pass salt (new membranes needed)", "when": "ro_a_cl_dmg_c", "repair": {"ro_a_dmg": 0}},
   {"id": "ro_b_cl_damage", "set": {"ro_b_dmg": 1}, "text": "RO B: the membranes oxidised by chlorine pass salt (new membranes needed)", "when": "ro_b_cl_dmg_c", "repair": {"ro_b_dmg": 0}}
  ],
- "start": {"day": 1, "time": "05:30"},
+ "start": {"day": 1, "time": "05:00"},
  "staff": {"seed": 8}
 }

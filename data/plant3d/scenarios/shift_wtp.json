@@ -11,10 +11,10 @@
   "lp_lvl": -50,
   "river_ntu": 20,
   "river_tds": 1000,
-  "fl1_hl": 2.17,
-  "mb_a_ex": 0.875555556,
-  "mb_a_cond_lag": 0.0794259,
-  "mb_a_si": 10.638618916
+  "fl1_hl": 2.1435145,
+  "mb_a_ex": 0.8686111115,
+  "mb_a_cond_lag": 0.0792716,
+  "mb_a_si": 9.018248589
  },
  "latched": [
   "gt1_trip_lube",
@@ -107,6 +107,6 @@
   {"id": "ro_a_cl_damage", "set": {"ro_a_dmg": 1}, "text": "RO A: the membranes oxidised by chlorine pass salt (new membranes needed)", "when": "ro_a_cl_dmg_c", "repair": {"ro_a_dmg": 0}},
   {"id": "ro_b_cl_damage", "set": {"ro_b_dmg": 1}, "text": "RO B: the membranes oxidised by chlorine pass salt (new membranes needed)", "when": "ro_b_cl_dmg_c", "repair": {"ro_b_dmg": 0}}
  ],
- "start": {"day": 1, "time": "05:30"},
+ "start": {"day": 1, "time": "05:00"},
  "staff": {"seed": 3}
 }

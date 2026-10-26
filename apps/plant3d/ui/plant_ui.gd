@@ -1252,12 +1252,15 @@ func _each_frame(delta: float) -> void:
 	_sync_events()
 	_horn_tick()
 	_blink += delta
-	_time.text = "%s %s" % [clock_text(), {0: "paused", 1: "×1", 2: "×%.0f" % clock.ff_rate()}[clock.speed]]
+	var tk := Vector3i(clock.engine.step_no, clock.speed, roundi(clock.ff_rate()) if clock.speed == SimClock.Speed.FAST else 0)
+	if tk != _time_key or clock.engine != _time_engine:     # (the clock's text changes with a step or the speed)
+		_time_key = tk
+		_time_engine = clock.engine
+		_time.text = "%s %s" % [clock_text(), {0: "paused", 1: "×1", 2: "×%.0f" % clock.ff_rate()}[clock.speed]]
 	_place_t += delta
 	if _place_t >= 0.25:
 		_place_t = 0.0
 		_place_tick()
-	_ff_btn.disabled = clock.ff_blocked() != ""
 	_toast_tick(delta)
 	_t_hint += delta
 	if _t_hint >= 0.1:
@@ -1273,6 +1276,11 @@ func _each_frame(delta: float) -> void:
 
 var _fit_t := 0.0
 var _max_h := 0.0
+var _alarms_engine = null       # _horn_tick: the engine and step its counts are of
+var _alarms_step := -1
+var _alarms_unack := 0
+var _time_engine = null         # the clock's text: the engine, step, speed and rate it shows
+var _time_key := Vector3i(-1, -1, -1)
 
 
 ## The side panels as tall as their content (up to the bottom of the screen), so the view and the sticks stay free.
@@ -1343,25 +1351,34 @@ func _state_pos(mi: int, state: String) -> int:
 	return model.machines[mi]["_ids"].find(state)
 
 
+## The alarms' horn and button, and fast-forward's button. What they show changes only with a model step (every input
+## is applied in one, a restart makes another engine): looked at again only then, not every frame.
 func _horn_tick() -> void:
 	var e = clock.engine
-	var top := 0
-	var unack := 0
-	for k in e._al.size():
-		var s: String = e.astate[k]
-		if (s == "active_unack" or s == "cleared_unack") and e.shelved[k] == -1 and not AlarmPanel.suppressed(e, k):
-			unack += 1
-			var pr: int = e._al[k][5]
-			if top == 0 or pr < top:
-				top = pr
-	if top != _horn:
-		_horn = top
-		horn_changed.emit(top)
-	var active := 0
-	for k in e._al.size():
-		if e.astate[k] != "normal" and e.shelved[k] == -1 and not AlarmPanel.suppressed(e, k):
+	if e != _alarms_engine or e.step_no != _alarms_step:
+		_alarms_engine = e
+		_alarms_step = e.step_no
+		var top := 0
+		var unack := 0
+		var active := 0
+		for k in e._al.size():
+			var s: String = e.astate[k]
+			if s == "normal" or e.shelved[k] != -1 or AlarmPanel.suppressed(e, k):
+				continue
 			active += 1
-	_alarm_btn.text = "Alarms %d" % active if active > 0 else "Alarms"
+			if s == "active_unack" or s == "cleared_unack":
+				unack += 1
+				var pr: int = e._al[k][5]
+				if top == 0 or pr < top:
+					top = pr
+		_alarms_unack = unack
+		if top != _horn:
+			_horn = top
+			horn_changed.emit(top)
+		_alarm_btn.text = "Alarms %d" % active if active > 0 else "Alarms"
+		_ff_btn.disabled = clock.ff_blocked() != ""
+	var unack := _alarms_unack
+	var top := _horn
 	if unack > 0:
 		var on := fmod(_blink, 0.8) < 0.5
 		_alarm_btn.modulate = W.PRIO_COLOURS.get(top, Color.WHITE) if on else Color.WHITE

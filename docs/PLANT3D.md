@@ -1780,12 +1780,23 @@ vectors (§19). What S3 adds to §16–§17:
   the analyser and the train (its ORP trip and permeate dump read the analyser, whose shown value is held while it
   is isolated, §15.4: the train is locked out meanwhile), the gas test points, and `show`
   bindings for the readings the people take (the SDI, the filtered water turbidity, the dosing and regenerant tanks).
-- **Left as they are** (the reviews of S3): the WTP's people walk about half an hour from the gate, so the incoming
-  WTP operator and shift chemist reach their handover after the outgoing one's duty has ended, and the meeting, which
-  counts only people on duty (§17.8), is held alone (the locks are handed over all the same: taking over a lock needs
-  no meeting); a value reaction's job abandoned (a backwash refused, a wait that timed out) is not given again until
-  its value turns false and true again; the gas test point reads a constant (the air of a vessel opened and
-  ventilated for the work).
+- **A value reaction's job abandoned is offered again** (S3's limit, fixed 2026-10-26, under §17.10's rule for an
+  offer nobody could take). A job comes from a reaction on a value when its instance was given by it (its source) or
+  given by a `call` step of a task that came from it (the instance remembers the reaction, as far down as calls go).
+  When such a job ends `abandoned` (a backwash refused, a wait that timed out, a stop, a suspension) while the value
+  is still true, the reaction's offer is kept (once per reaction), as §17.10's kept offers: in phase 2 of any step
+  where someone of its roles comes on duty it is made again (the reaction's task to its roles, §17.3), unless someone
+  has a job of that reaction then (current, queued or held: kept for the next such step); it is dropped once the
+  value is false, and kept while a re-offer finds no one free to take it. So a backwash abandoned in the day is
+  ordered again by the next shift supervisor, at 18:00. Placement clears it with the others.
+- **The WTP's handovers with both there** (S3's limit, fixed 2026-10-26, by the timing alone): the WTP's people are
+  about 40 minutes of the clock from the gate (the control building's locker room on the way), so they come in at
+  `start-0:45` and reach the WTP's desk or the laboratory between `start-0:15` and the start, while the outgoing one,
+  there from `end-0:15`, is still on duty; they are still at the meeting when their own duty begins, so the outgoing
+  one's meeting finds them too (a meeting counts people on duty). The outgoing one's handover has priority 2, so a
+  round or samples still going at `end-0:15` (as placement starts them at a scenario's start) give way to it. The
+  scenarios with staff start at 05:00, before the first of those slots (placement gives no slot before the start).
+- **Left as it is:** the gas test point reads a constant (the air of a vessel opened and ventilated for the work).
 - **The scenario `shift_wtp`:** shift_cold with filter 1 nearly due (its head loss reaches 2.2 m at about 06:05) and
   mixed bed A further used (its silica passes 15 µg/kg at about 06:50, the analyser's alarm at about 08:15).
 

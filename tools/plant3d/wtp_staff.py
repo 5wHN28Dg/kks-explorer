@@ -71,8 +71,10 @@ ZONES = [
 # The scenario `shift_wtp` (milestone S3): the day shift with the WTP's day work coming in its first hours: filter 1
 # nearly due for its backwash (its head loss reaches 2.2 m at about 06:05), mixed bed A further used than in
 # wtp_normal (its silica passes the laboratory's 15 µg/kg at about 06:50 and the analyser's alarm at 20 at about
-# 08:15; the lags at their steady values, from wtp_normal's run)
-SHIFT_WTP = {'fl1_hl': 2.17, 'mb_a_ex': 0.875555556, 'mb_a_cond_lag': 0.0794259, 'mb_a_si': 10.638618916}
+# 08:15; the lags at their steady values, from wtp_normal's run). At the scenario's start, 05:00: the state these
+# values had at 05:30 less half an hour of the clock's drift (3000 steps: head loss, exhaustion, silica and the lag
+# all rise linearly over it)
+SHIFT_WTP = {'fl1_hl': 2.1435145, 'mb_a_ex': 0.8686111115, 'mb_a_cond_lag': 0.0792716, 'mb_a_si': 9.018248589}
 
 # The train's own areas: its alarms and trips are the main control room's; the WTP's and the intake's are the WTP's
 # (PLANT3D §17.12)
@@ -210,15 +212,17 @@ def people():
 
 def routines(slot):
     """The WTP's people put their PPE on at the control building's locker room as they come on site (the train's
-    gear_up, before anything else: priority 2), then walk to the WTP, about half an hour of the clock: their handover
-    slots are a little earlier than the train's (after 05:30, when the content's scenarios start), at the time of the
-    gear_up (so nobody leaves the site between the two)."""
+    gear_up, before anything else: priority 2), then walk to the WTP: about 40 minutes of the clock from the gate to
+    the WTP's desk or the laboratory. So they come in at start-0:45, at the time of the gear_up (nobody leaves the site
+    between the two), and reach their handover between start-0:15 and the start: the outgoing one, there from
+    end-0:15, is still on duty when they arrive, and they are still there, at the meeting, when their own duty begins
+    (a meeting counts the people on duty, PLANT3D §17.8). The content's scenarios start at 05:00, before 05:15."""
     return [
         {'id': 'wtp_shift', 'idle': 'idle_wtp', 'slots': [
-            slot('start-0:25', 'gear_up'), slot('start-0:25', 'handover_take_wtp'),
+            slot('start-0:45', 'gear_up'), slot('start-0:45', 'handover_take_wtp'),
             slot('start+1:00', 'round_wtp', every='4:00', until='end-3:30'), slot('end-0:15', 'handover_give_wtp')]},
         {'id': 'chem_shift', 'idle': 'idle_lab', 'slots': [
-            slot('start-0:25', 'gear_up'), slot('start-0:25', 'handover_take_lab'),
+            slot('start-0:45', 'gear_up'), slot('start-0:45', 'handover_take_lab'),
             slot('start+1:30', 'wtp_samples', every='4:00', until='end-1:00'), slot('start+3:30', 'chem_stock'),
             slot('end-0:15', 'handover_give_lab')]},
         # the two chemists on days: the stock and dosing check, the WTP's performance samples, each at their hours
@@ -246,10 +250,11 @@ def tasks(models):
     take, give = {'handover': 'take'}, {'handover': 'give'}
     task('handover_take_wtp', 'Take the WTP handover', [meet('wtp_control', 'wtp_op'),
                                                         say('handover_wtp', 'shift_sup'), take])
-    task('handover_give_wtp', 'Give the WTP handover', [meet('wtp_control', 'wtp_op'), give])
+    # the handover given before the rest (priority 2): a round or samples still going at end-0:15 wait for it
+    task('handover_give_wtp', 'Give the WTP handover', [meet('wtp_control', 'wtp_op'), give], priority=2)
     task('handover_take_lab', 'Take the laboratory handover', [meet('lab', 'shift_chem'),
                                                                say('handover_lab', 'wtp_op')])
-    task('handover_give_lab', 'Give the laboratory handover', [meet('lab', 'shift_chem')])
+    task('handover_give_lab', 'Give the laboratory handover', [meet('lab', 'shift_chem')], priority=2)
     task('round_wtp', 'WTP round: intake, clarifiers, filters, RO and demineralised water',
          reads(ROUND, [1, 2]) + [say('round_done_wtp', 'shift_sup')])
     task('wtp_samples', 'Samples: the sample panel, then the laboratory\'s analyses',

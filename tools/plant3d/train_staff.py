@@ -664,12 +664,13 @@ def staff(models, layout):
 
 
 def scenario(cold):
-    """`shift_cold`: the plant cold (as cold_iron), the operators' day shift on duty from its handover (05:30)."""
+    """`shift_cold`: the plant cold (as cold_iron), from 05:00, before the day shift's handover at 06:00 (time enough
+    for the WTP's people, about 40 minutes' walk from the gate, to reach theirs: wtp_staff.routines)."""
     s = dict(cold)
     s['version'] = 2
     s['id'] = 'shift_cold'
     s['title'] = 'Day shift, the plant cold: the operators\' crews at work (choose a role)'
-    s['start'] = {'day': 1, 'time': '05:30'}
+    s['start'] = {'day': 1, 'time': '05:00'}
     s['staff'] = {'seed': 8}        # (a day whose draws give two contractors' shortcuts, both found by HSE: S2)
     return s
 

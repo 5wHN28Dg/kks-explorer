@@ -85,10 +85,12 @@ func _signature(e) -> String:
 		return "none"
 	var tr: int = e.st_trainee
 	var cur = e.sp_cur[tr] if tr != -1 else null
+	# (free mode shows the roles or a line, and the radio's last lines: only the radio's count changes it; the
+	# sleep button's state, fast-forward's, only with a role)
 	return "%d|%d|%s|%s|%d|%d|%d|%s|%d|%s" % [tr, e.step_no if tr == -1 and e.step_no < 2 else 0,
 			str(cur["task"]) + str(cur["step"]) + str(cur["st"].get("dest", "")) if cur != null else "",
-			(str(e.sp_queue[tr].size()) + "/" + str(e.sp_slots[tr].size())) if tr != -1 else "", e.st_unacked, e.events.size() / 50 if tr == -1 else
-			_radio_count(e), e.st_t_at, str(e.fast_forward()), e.J, _safety_sig(e) if tr != -1 else ""]
+			(str(e.sp_queue[tr].size()) + "/" + str(e.sp_slots[tr].size())) if tr != -1 else "", e.st_unacked,
+			_radio_count(e), e.st_t_at, str(e.fast_forward()) if tr != -1 else "", e.J, _safety_sig(e) if tr != -1 else ""]
 
 
 ## What the PPE and unsafe-act part shows depends on (S2): what the trainee wears, their zones, every act going on,

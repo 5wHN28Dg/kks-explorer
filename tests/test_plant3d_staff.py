@@ -776,6 +776,48 @@ class FirstTrainStaff(unittest.TestCase):
         self.assertIn([15000, 'task', 'mech1', 'job_cw_b_motor', 'abandoned'], ev)     # at once, not working on
         self.assertEqual(f['end']['permits']['wo_cw_b_motor'], 9)
 
+    def test_an_abandoned_backwash_is_offered_again(self):
+        """§17.12 (S3's limit, fixed): filter 1's backwash refused (filter 2 started by the trainer just before) is
+        abandoned with the head loss still high; the supervisor's order is kept and made again when the next shift
+        supervisor comes on at 18:00, and the night's WTP operator backwashes the filter (before the fix the order
+        came only when the head loss fell and rose again: never)."""
+        f = next(f for f in self.day['forks'] if f['id'] == 'backwash_again')
+        ev = f['events']
+        gone = [x[0] for x in ev if x[1:] == ['task', 'a_wtp', 'backwash_1', 'abandoned']]
+        self.assertEqual(len(gone), 1)
+        orders = [x for x in ev if x[1] == 'task' and x[3] == 'order_backwash_1' and x[4] == 'start']
+        self.assertEqual(len(orders), 2)
+        self.assertGreater(orders[1][0], gone[0])
+        sup = orders[1][2]
+        self.assertNotEqual(sup, 'a_sup')
+        self.assertIn([orders[1][0], 'duty', sup, 'on'], ev)        # offered as they came on (18:00)
+        self.assertEqual(orders[1][0], (18 - 5) * 6000)
+        done = [x for x in ev if x[1] == 'op' and x[2] == '00GBB11AT001' and x[4] == 'done']
+        self.assertTrue(done and done[-1][0] > orders[1][0])
+        self.assertNotEqual(done[-1][7], 'a_wtp')                   # the night's WTP operator
+
+    def test_the_wtp_handovers_are_held_together(self):
+        """§17.12 (S3's limit, fixed): the WTP's incoming operator and shift chemist, about 40 minutes' walk from the
+        gate, reach their handover before 06:00 (and 18:00), while the outgoing one is still on duty and there: each
+        takes it in its 15 minutes (before the fix they arrived after 06:10, waited the 15 minutes for nobody and
+        took it alone, by 06:43)."""
+        ev = self.day['events']
+        at = lambda hh, mm: ((hh - 5) * 60 + mm) * 100        # noqa: E731 (steps from 05:00 at day_scale 6)
+        for tid, who, room in (('handover_take_wtp', 'a_wtp', 'wtp_desk'), ('handover_take_lab', 'a_chem', 'lab_seat')):
+            done = [x[0] for x in ev if x[1:] == ['task', who, tid, 'done']]
+            self.assertEqual(len(done), 1, who)
+            arrive = [x[0] for x in ev if x[1] == 'move' and x[2] == who and str(x[4]).startswith(room)
+                      and x[0] < done[0]]
+            self.assertTrue(arrive, who)
+            self.assertTrue(at(5, 45) <= arrive[-1] < at(6, 0), (who, arrive[-1]))
+            self.assertLessEqual(done[0] - arrive[-1], 15 * 100 + 60, who)     # met at once: 15 minutes, and the say
+        # the evening's too, in the fork that runs past 18:00
+        f = next(f for f in self.day['forks'] if f['id'] == 'backwash_again')
+        for tid in ('handover_take_wtp', 'handover_take_lab'):
+            done = [x for x in f['events'] if x[1] == 'task' and x[3] == tid and x[4] == 'done' and x[0] > at(12, 0)]
+            self.assertTrue(done, tid)
+            self.assertLess(done[0][0], at(18, 10), tid)
+
     def test_jobs_resume_next_duty(self):
         """§17.10: the content's jobs are held overnight at their duty's end, not left running."""
         jobs = [t for t in self.b.staff.tasks.values() if t['id'].startswith('job_')]

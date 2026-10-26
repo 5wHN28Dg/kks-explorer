@@ -71,6 +71,24 @@ func run(tree: SceneTree) -> Array:
 	c._process(1.0 / 60.0)
 	if c.engine.step_no - s5 != 2:
 		p.append("the frame after a capped one ran %d steps, not its own 2" % (c.engine.step_no - s5))
+	# a long frame (a hitch: 0.25 s counted) gives the next at most FRAME_MS of model work, not a quarter of 0.25 s:
+	# at 1 ms a step, 8 steps (not 62)
+	c.step_ms = 1.0
+	c.acc = 0.0
+	var s6: int = c.engine.step_no
+	c._process(0.25)
+	if c.engine.step_no - s6 > int(SimClock.FRAME_MS / 1.0):
+		p.append("a frame after a 0.25 s one ran %d steps of 1 ms, over %.0f ms" % [c.engine.step_no - s6, SimClock.FRAME_MS])
+	# and when the steps cost more than their measured average (here said to be 0.01 ms: the budget allows them all),
+	# fast-forward stops at FRAME_MS of real time within the frame, and what is left is not owed
+	c.step_ms = 0.01
+	c.acc = 0.0
+	var s7: int = c.engine.step_no
+	var t7 := Time.get_ticks_usec()
+	c._process(0.25)
+	var ms7 := (Time.get_ticks_usec() - t7) / 1000.0
+	if c.engine.step_no == s7 or ms7 > SimClock.FRAME_MS * 1.5 or c.acc != 0.0:
+		p.append("a frame of underestimated steps took %.1f ms for %d steps, %.2f s left owed" % [ms7, c.engine.step_no - s7, c.acc])
 	c.step_ms = 0.3
 	# fast-forward stops by itself when an alarm comes up: closed cooling water pump A runs, then its motor fails
 	c.set_speed(SimClock.Speed.PAUSED)

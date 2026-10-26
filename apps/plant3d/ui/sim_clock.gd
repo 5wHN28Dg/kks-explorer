@@ -23,6 +23,11 @@ var scenario := ""
 var speed := Speed.PAUSED
 var ff_want := FF_MAX           # the fast-forward asked for; the cap may give less
 var cpu_share := 0.25           # of one core, at most, for the model
+## the model's work in one frame, at most (ms: its steps with the staff's, step 9, and what follows each in the app),
+## however long the frame before was: a long frame (a hitch, a frame the phone held) must not make the next one long
+## too. Fast-forward stops at it within the frame as well, should steps cost more than their measured average (the
+## shift change's busiest steps)
+const FRAME_MS := 8.0
 var step_ms := 0.3              # a step's measured cost, moving average (ms)
 var hold := false               # set by a `stepped` listener: no more steps this frame
 var pause_on_hold := false      # and pause (procedures: "pause when a step is done")
@@ -76,14 +81,13 @@ func ff_blocked() -> String:
 		return "no plant"
 	var e = engine
 	for k in e._al.size():
-		if e.shelved[k] != -1:
-			continue
 		var s: String = e.astate[k]
-		var txt: String = e.m.alarms[k].get("text", e._al[k][0])
+		if s == "normal" or e.shelved[k] != -1:
+			continue            # (most alarms: looked at first, the text only for the one named)
 		if s == "active_unack" or s == "cleared_unack":
-			return "an alarm is not acknowledged (%s)" % txt
+			return "an alarm is not acknowledged (%s)" % e.m.alarms[k].get("text", e._al[k][0])
 		if e._al[k][5] == 1 and s == "active_ack":
-			return "a priority 1 alarm is active (%s)" % txt
+			return "a priority 1 alarm is active (%s)" % e.m.alarms[k].get("text", e._al[k][0])
 	for mi in e._mc.size():
 		if e._mc[mi][3][e.mstate[mi]][2]:
 			return "%s is in a step to watch (%s)" % [e._mc[mi][0].replace("_", " "), e._mc[mi][2][e.mstate[mi]].replace("_", " ")]
@@ -150,8 +154,8 @@ func _process(delta: float) -> void:
 	var n := floori(acc / STEP + 1e-9)
 	if n <= 0:
 		return
-	# the budget of this frame: cpu_share of its time (always at least one step: 1× must keep up)
-	var budget := maxi(1, floori(cpu_share * delta * 1000.0 / step_ms))
+	# the budget of this frame: cpu_share of its time, at most FRAME_MS (always at least one step: 1× must keep up)
+	var budget := maxi(1, floori(minf(cpu_share * delta * 1000.0, FRAME_MS) / step_ms))
 	if n > budget:
 		n = budget
 		acc = 0.0               # what the cap leaves out is not owed later
@@ -160,7 +164,13 @@ func _process(delta: float) -> void:
 	hold = false
 	var ran := 0
 	var sp := speed
+	var t_frame := Time.get_ticks_usec()
+	var timed_out := false
 	for i in n:
+		if i > 0 and speed == Speed.FAST and Time.get_ticks_usec() - t_frame >= FRAME_MS * 1000.0:
+			timed_out = true        # (fast-forward: what the frame's time leaves out is not owed later)
+			acc = 0.0
+			break
 		# (after the first, the check at the end of the step before has looked at this very state)
 		if i == 0 and speed == Speed.FAST and not engine.fast_forward():
 			set_speed(Speed.NORMAL, "Fast-forward stopped: " + ff_blocked())
@@ -177,7 +187,7 @@ func _process(delta: float) -> void:
 		if speed == Speed.FAST and not engine.fast_forward():
 			set_speed(Speed.NORMAL, "Fast-forward stopped: " + ff_blocked())
 			break
-	if speed == sp and ran < n:
+	if speed == sp and ran < n and not timed_out:
 		acc += (n - ran) * STEP          # a hold at 1×: the steps not run this frame are still owed
 
 

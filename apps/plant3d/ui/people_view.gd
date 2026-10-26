@@ -28,6 +28,7 @@ var _yaw := {}                  # person -> the way they last faced
 var _hat := {}                  # person -> wearing the hat (checked twice a second)
 var _hat_t := 1.0
 var _drove := false             # this view filled the avatars' people (and may clear them)
+var _look0 = null               # the look of a role without its own (the avatars' first)
 ## A task step's kind to what the person is seen doing (docs/PLANT3D.md §18.3); a `work` step says its own `anim`.
 const STEP_ANIM := {"read": "inspect", "meet": "talk", "say": "radio", "call": "radio", "wait": "idle", "ack": "type",
 	"permit": "write", "lock": "wrench", "unlock": "wrench"}
@@ -194,16 +195,19 @@ func drive(delta: float) -> void:
 		p.yaw = _yaw.get(pi, 0.0)
 		p.speed = speed
 		p.on = on
-		p.look = avatars.info.roles.get(role, avatars.info.looks.keys()[0])
+		if _look0 == null:
+			_look0 = avatars.info.looks.keys()[0]
+		p.look = avatars.info.roles.get(role, _look0)
 		p.anim = "" if speed > 0.0 else _anim(e, sm, pi, place)
 		p.scale = 0.94 + 0.12 * float((pi * 37) % 11) / 10.0
-		if sm.zone_ids.is_empty():
-			if check_hat or not _hat.has(pi):
+		if check_hat or not _hat.has(pi):     # (twice a second: what is worn and where changes with the steps)
+			if sm.zone_ids.is_empty():
 				_hat[pi] = ui.main.area_at(at) != "Between the areas"
-		else:
-			# with zones (milestone S2): the hat on the head where a zone needs it and the person wears it; in the
-			# hand elsewhere (the road variant), and so too for one who has taken it off in a zone (an unsafe act seen)
-			_hat[pi] = hat_on(e, sm, pi)
+			else:
+				# with zones (milestone S2): the hat on the head where a zone needs it and the person wears it; in the
+				# hand elsewhere (the road variant), and so too for one who has taken it off in a zone (an unsafe act
+				# seen)
+				_hat[pi] = hat_on(e, sm, pi)
 		p.hat = _hat[pi]
 		n += 1
 	out.resize(n)

@@ -85,11 +85,16 @@ static func tracker_fields(t: Object) -> PackedStringArray:
 
 
 ## A deep copy of the fields' values (safe to encode on another thread while obj goes on: tests/test_run_save.gd).
+## The event log is the exception: only the list is copied, not each event in it. An event is never changed once it
+## is in the log, which only grows (sim/engine.gd _ev), and the log is the largest part of a long run's state: copying
+## each event made the main thread's part of a save grow with the run (the app saves every 5 s).
 static func capture(obj: Object, names: PackedStringArray) -> Dictionary:
 	var d := {}
 	for nm in names:
 		var v = obj.get(nm)
-		if v is Array or v is Dictionary:
+		if nm == "events" and v is Array:
+			v = v.duplicate(false)
+		elif v is Array or v is Dictionary:
 			v = v.duplicate(true)
 		elif _is_packed(typeof(v)):
 			v = v.duplicate()       # packed arrays are shared by reference: the engine writes `cur` in place
