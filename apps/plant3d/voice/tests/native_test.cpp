@@ -40,12 +40,18 @@ int main() {
 	CHECK(!wdp_packet_has_fec(nullptr, 3), "a null packet has FEC");
 	unsigned char empty_silk[1] = {0x08};
 	CHECK(!has_fec_exact(empty_silk, 1), "a SILK packet with an empty frame has FEC");
+	// only 20 ms packets are decoded: SILK NB 20 ms yes; 10 ms, 60 ms, and a code-3 packet of 6 x 20 ms no
+	unsigned char p20[1] = {0x08}, p10[1] = {0x00}, p60[1] = {0x18}, p120[2] = {0x0B, 0x06};
+	CHECK(wdp_packet_is_20ms(p20, 1), "a 20 ms packet refused");
+	CHECK(!wdp_packet_is_20ms(p10, 1) && !wdp_packet_is_20ms(p60, 1) && !wdp_packet_is_20ms(p120, 2),
+	      "a packet of 10, 60 or 120 ms taken");
 	std::mt19937 rng(2026);
 	for (int k = 0; k < 20000; k++) {
 		int len = 1 + (int)(rng() % 64);
 		std::unique_ptr<unsigned char[]> p(new unsigned char[len]);
 		for (int i = 0; i < len; i++) p[i] = (unsigned char)rng();
 		wdp_packet_has_fec(p.get(), len);
+		wdp_packet_is_20ms(p.get(), len);
 	}
 
 	// 2. decoding hostile packets as wdp_voice does

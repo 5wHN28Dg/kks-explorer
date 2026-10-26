@@ -13,6 +13,15 @@
 // makes one over 1,276 bytes, and a decoder refuses anything over this without parsing it.
 #define WDP_MAX_PACKET 3825
 
+// Whether `packet` holds exactly 20 ms (320 samples at 16 kHz), what our encoder makes and the jitter buffer counts
+// on: a peer's 2.5 or 120 ms packet would starve it or run it behind, and concealment and FEC always give 20 ms.
+static inline bool wdp_packet_is_20ms(const unsigned char *packet, int len) {
+	if (packet == nullptr || len <= 0 || len > WDP_MAX_PACKET) {
+		return false;
+	}
+	return opus_packet_get_nb_samples(packet, (opus_int32)len, 16000) == 320;
+}
+
 // Whether `packet` carries in-band FEC (LBRR) for the frame before it; false for anything not a valid packet.
 // libopus 1.5.2's opus_packet_has_lbrr reads the first frame's first byte without checking that the frame has one:
 // a SILK packet whose first frame is empty (a 1-byte packet such as 0x08) made it read past the buffer. So the

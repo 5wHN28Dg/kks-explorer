@@ -89,9 +89,14 @@ library still runs, just without voice (`voice_check.gd` `available()`). An inst
 What comes from scripts or the network is bounded before libopus sees it:
 
 - a packet over 3,825 bytes is refused unparsed;
-- a packet decodes to at most 120 ms;
+- only 20 ms packets are decoded (what the encoder makes and the jitter buffer counts on): a 2.5 to 120 ms one from a
+  peer is refused;
 - mix rates outside 8–192 kHz are refused;
 - every buffer is sized for its call.
+
+libopus is built with its hardening on (upstream's default): an internal check that a packet trips stops the
+program instead of carrying on with bad state. A hostile peer could then end a session for one player. None is
+known for the packets that get through the checks above.
 
 ## Checks
 
@@ -110,13 +115,24 @@ What comes from scripts or the network is bounded before libopus sees it:
 
   `godot --path apps/plant3d res://voice/demo/voice_wav.tscn`
 
+What runs where:
+
+- CI runs `test_voice` against a library built with the runner's own GCC, and the native test with the runner's
+  compiler.
+- CI builds the shipped libraries (the SDK's, Android's and Windows') twice each and compares them, but runs none of
+  them.
+- The SDK's Linux library was run on the laptop: in the editor, the Linux export and the BaseApp's runner. Android's
+  was run on the Note 9.
+- The Windows DLLs have not been run yet (that needs a Windows VM).
+
 Measured (2026-10-26; the speech-like signal of `voice_check.gd`):
 
 | | Laptop (i7-12700H, Linux) | Note 9 (Exynos 9810, Android 10) |
 |---|---|---|
-| encode, per 20 ms frame (48 kHz in) | 0.11 ms median | see the PR / MULTIPLAYER.md §11 |
-| decode, per 20 ms frame (48 kHz out) | 0.02 ms median (0.05 ms to 44.1 kHz) | |
-| round trip | delay 6.4 ms, level −0.25 dB, SNR 8.5 dB, 10–11 kbit/s | |
+| encode, per 20 ms frame (48 kHz in) | 0.10–0.13 ms median | 0.20 ms median, p95 0.22 (3 runs of 1,000 frames) |
+| decode, per 20 ms frame | 0.02 ms to 48 kHz, 0.05–0.06 ms to 44.1 kHz (medians) | 0.13 ms median to 44.1 kHz, p95 0.14 |
+| round trip | delay 6.4 ms, level −0.25 dB, SNR 8.5 dB, 10–11 kbit/s | delay 6.5 ms, level −0.26 dB, SNR 8.5 dB |
+| size | 0.88 MB (Linux), 0.87 MB / 0.73 MB (Windows x64 / ARM64, the latter with libopus's NEON code) | 0.82 MB, stored uncompressed in the APK: the APK grows by 0.82 MB, to 117.5 MB |
 
 **FEC needs more than 16 kbit/s.** At §8.3's 16 kbit/s, libopus 1.5.2 codes no in-band FEC at any expected loss: no
 packet carries any. After its own discounts for complexity and loss, the rate is below its threshold even at narrowband.

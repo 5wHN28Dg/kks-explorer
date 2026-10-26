@@ -196,6 +196,11 @@ func _bounds(fails: Array) -> void:
 				break
 	if ClassDB.class_call_static("WdpVoiceDecoder", "packet_has_fec", long) or ClassDB.class_call_static("WdpVoiceDecoder", "packet_has_fec", PackedByteArray()):
 		fails.append("bounds: packet_has_fec said yes to an empty or over-long packet")
+	# only 20 ms packets: a peer's 10, 60 or 120 ms one (a TOC byte says so) is refused, never decoded to more or
+	# less than the jitter buffer counts on
+	for p in [PackedByteArray([0x00, 1, 2, 3]), PackedByteArray([0x18, 1, 2, 3]), PackedByteArray([0x0B, 0x06, 1, 2, 3])]:
+		if not d.decode(p).is_empty() or d.get_last_error() == 0 or not d.decode_fec(p).is_empty():
+			fails.append("bounds: a packet of another length than 20 ms was decoded (TOC %02x)" % p[0])
 	# a SILK packet whose first frame is empty: libopus's own check read past it (tests/native_test.cpp shows the
 	# read under the sanitizer); ours parses first and says no
 	if d.packet_has_fec(PackedByteArray([0x08])):

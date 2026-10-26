@@ -16,8 +16,8 @@
 # of failing on a missing file), and bin/BUILD-INFO.txt (each library's SHA-256, the toolchain that made it, CMake's,
 # Ninja's and Python's versions). Two builds of the same commit with the same toolchains give the same bytes (no
 # paths, dates or build IDs in them): WDP_CHECK_REPRO=1 builds each target a second time from a copy of the sources
-# at another path, in another build folder, and compares. The Linux build records the SDK's commit and, with
-# WDP_SDK_COMMIT set (CI), refuses another.
+# at another path, in another build folder, and compares. The Linux build refuses an SDK at another commit than
+# SDK_PIN below (WDP_SDK_COMMIT names a deliberate other one).
 # Sources are cached in $KKS_DEV/src/dl (default ~/.local/kksdev), checked on every run; work folders under
 # $WDP_WORK (default $KKS_DEV/wdp-voice). WDP_JOBS: parallel compile jobs (default 2).
 set -eu
@@ -66,6 +66,9 @@ unpack "$SRC"
 
 NDK="${WDP_NDK:-${ANDROID_HOME:-$HOME/Android/Sdk}/ndk/27.2.12479018}"
 SDK_REF=org.freedesktop.Sdk//26.08
+# the SDK's commit (freedesktop-sdk-26.08.3) the libraries are built with, here and on CI (which installs it with
+# `flatpak update --commit`): another is refused unless WDP_SDK_COMMIT names it (then its libraries differ)
+SDK_PIN=3311c13c67b602315c39cf5310de129dd3460d04b6c8cf5be1b2cbc42c51abd7
 # fixed for reproducible archives and any tool that reads it
 export SOURCE_DATE_EPOCH=1767225600
 
@@ -90,12 +93,12 @@ build_one() { # target dir_for_the_library [build_dir]
         elif flatpak info --system "$SDK_REF" >/dev/null 2>&1; then INST=--system
         else echo "the Linux build needs $SDK_REF (flatpak install flathub $SDK_REF), or WDP_LINUX_HOST=1 for a local check" >&2; exit 2; fi
         SDK_COMMIT=$(flatpak info "$INST" "$SDK_REF" | sed -n 's/^ *Commit: //p' | head -1)
-        if [ -n "${WDP_SDK_COMMIT:-}" ] && [ "$SDK_COMMIT" != "$WDP_SDK_COMMIT" ]; then
-          echo "$SDK_REF is at commit $SDK_COMMIT, not WDP_SDK_COMMIT=$WDP_SDK_COMMIT (flatpak update --commit=…)" >&2; exit 2
+        if [ "$SDK_COMMIT" != "${WDP_SDK_COMMIT:-$SDK_PIN}" ]; then
+          echo "$SDK_REF is at commit $SDK_COMMIT, not ${WDP_SDK_COMMIT:-$SDK_PIN}: flatpak update --user --commit=$SDK_PIN $SDK_REF (or WDP_SDK_COMMIT for a deliberate other one)" >&2; exit 2
         fi
         rm -rf "$b"; mkdir -p "$b" "$o"
         # the SDK sees only the work folder, this folder (read-only) and the output (nothing else of the home
-        # folder), no network, and none of the caller's environment but the date
+        # folder), no network (the caller's compiler variables were unset above)
         flatpak run "$INST" --die-with-parent --unshare=network --filesystem="$WORK" --filesystem="$HERE:ro" --filesystem="$o" \
           --env=SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" --command=sh "$SDK_REF" -c '
             set -e
@@ -110,7 +113,8 @@ build_one() { # target dir_for_the_library [build_dir]
     windows-x86_64|windows-arm64)
       sh "$ROOT/platform/windows/fetch-llvm-mingw.sh"
       M="$DEV/llvm-mingw/bin"
-      if [ "$t" = windows-arm64 ]; then A=aarch64; P=ARM64; S=windows.arm64; else A=x86_64; P=AMD64; S=windows.x86_64; fi
+      # (aarch64, not ARM64: libopus's CMake turns its NEON code on only for a processor matching "arm|aarch64")
+      if [ "$t" = windows-arm64 ]; then A=aarch64; P=aarch64; S=windows.arm64; else A=x86_64; P=AMD64; S=windows.x86_64; fi
       TC="$WORK/mingw-$A.cmake"
       cat > "$TC" <<T
 set(CMAKE_SYSTEM_NAME Windows)
@@ -181,6 +185,7 @@ gdextension() {
 INFO="$OUT/BUILD-INFO.txt"
 touch "$INFO"
 trap gdextension EXIT
+trap 'exit 130' INT TERM   # (exit runs the EXIT trap: the files above stay true to bin/)
 for t in $TARGETS; do
   if [ "$t" = native-test ]; then build_one native-test "$WORK/out-native-test"; continue; fi
   L=$(lib_of "$t")

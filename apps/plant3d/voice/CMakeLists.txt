@@ -32,8 +32,16 @@ set(OPUS_DRED OFF CACHE BOOL "" FORCE)
 set(OPUS_OSCE OFF CACHE BOOL "" FORCE)
 set(OPUS_INSTALL_PKG_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
 set(OPUS_INSTALL_CMAKE_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
+if(WIN32 AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+  # every ARM64 Windows CPU has NEON, and libopus has no run-time CPU check there: its NEON code without the check
+  set(OPUS_MAY_HAVE_NEON OFF CACHE BOOL "" FORCE)
+endif()
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_subdirectory("${WDP_SRC}/opus" opus EXCLUDE_FROM_ALL)
+if(WIN32 AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+  # (as libopus's own configure does with NEON presumed and no run-time check: both macros, no RTCD sources)
+  target_compile_definitions(opus PRIVATE OPUS_ARM_MAY_HAVE_NEON OPUS_ARM_MAY_HAVE_NEON_INTR)
+endif()
 
 # SpeexDSP 1.2.1: its resampler only, outside Speex (its symbols prefixed wdp_), in float
 add_library(wdp_resampler STATIC "${WDP_SRC}/speexdsp/libspeexdsp/resample.c")
@@ -74,6 +82,6 @@ elseif(ANDROID)
                       -Wl,--exclude-libs,ALL "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/wdp_voice.map")
 else()
   target_link_options(wdp_voice PRIVATE -static-libstdc++ -static-libgcc -Wl,--gc-sections -Wl,--build-id=none
-                      -Wl,-z,noexecstack -s -Wl,--exclude-libs,ALL
+                      -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now -s -Wl,--exclude-libs,ALL
                       "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/wdp_voice.map")
 endif()

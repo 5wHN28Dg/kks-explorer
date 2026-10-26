@@ -494,7 +494,8 @@ A phone that turns its screen off or goes to the background stops Godot's main l
 
 ### 8.2 The codec and library
 
-**Opus** (RFC 6716), through a small GDExtension of our own, **`wdp_voice`** (C++ against godot-cpp, MIT), built
+**Opus** (RFC 6716), through a small GDExtension of our own, **`wdp_voice`** (C++ against godot-cpp 10.0.0 with
+Godot 4.7's API, MIT; built as `apps/plant3d/voice/`, decision 0069 "As built"), built
 from pinned sources: **libopus 1.5.2** (BSD-3-Clause) and **SpeexDSP 1.2.1**'s resampler (BSD-3-Clause), for Android
 arm64-v8a (the NDK, as `libkks.so`), Linux x86-64 (built in the Flatpak's own SDK, matching
 `org.godotengine.godot.BaseApp//4.7`'s runtime, so that its glibc is the one it runs on) and Windows x86-64 and
@@ -514,6 +515,9 @@ without voice and says so.
 
 Mono, 16 kHz (wideband: a radio's band is narrower), `OPUS_APPLICATION_VOIP`, 20 ms frames, 16 kbit/s, complexity 5,
 in-band FEC on with the expected loss set from the measured loss, no DTX (push-to-talk sends only while talking).
+**Measured (MP5):** at 16 kbit/s, libopus 1.5.2 codes no in-band FEC at any expected loss. It needs about
+20 kbit/s with 10 % or more expected loss (decision 0069, "As built"). Until MP2 sets the bitrate, a lost frame is
+concealed, not rebuilt.
 Two frames per `voice` message (40 ms): about 80 bytes of Opus, 12 of fields, 14 of header and 33–48 of encryption,
 so about 150 bytes per 40 ms, **30 kbit/s** per talker (plus UDP/IP or WebSocket framing). The receiver keeps a
 jitter buffer of 60–200 ms (adaptive), decodes a lost frame by FEC or concealment, and plays it on the radio's bus
@@ -715,8 +719,8 @@ that the app causes, peak PSS ≤ 1.5 GB, first walkable frame ≤ 15 s). Multip
 | Snapshot (host) | ≤ 1 ms on the main thread; encoding on a worker thread | §5.1 |
 | Snapshot load (joiner) | off the frame except the final swap (≤ 5 ms), under a "Joining…" screen | |
 | Other players drawn | within §18.4's skinned budget (12) | §6.3 |
-| Voice encode | ≤ 1 ms per 20 ms frame on a worker thread (WorkerThreadPool), never the main thread | measured in MP5; libopus at complexity 5, 16 kHz mono |
-| Voice decode | ≤ 0.3 ms per 20 ms frame per talker, on the same worker | one talker per channel, at most 3 channels |
+| Voice encode | ≤ 1 ms per 20 ms frame on a worker thread (WorkerThreadPool), never the main thread | measured in MP5: 0.20 ms on the Note 9 (median, 48 kHz in; p95 0.22); libopus at complexity 5, 16 kHz mono |
+| Voice decode | ≤ 0.3 ms per 20 ms frame per talker, on the same worker | one talker per channel, at most 3 channels; measured in MP5: 0.13 ms on the Note 9 (median, to 44.1 kHz; p95 0.14) |
 | Memory | ≤ 30 MB PSS for the session, buffers and voice | |
 | Network | idle, per player: up ≈ 4 kbit/s (positions, acks), down ≈ 25 kbit/s with 7 others (35 positions and 5 commits a second at about 70–90 bytes each); ≈ 30 kbit/s per talker to each listener; a host forwarding for players on UDP sends each forwarded packet to each of them (voice to 6 players ≈ 180 kbit/s up) | plus UDP/IP or WebSocket framing |
 

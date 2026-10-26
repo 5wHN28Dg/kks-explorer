@@ -5,7 +5,7 @@
 //     empty while less than 20 ms is buffered); push_frames / pop_packet / packets_ready for more than one packet at
 //     a time; bitrate (16000), expected_loss (per cent, in-band FEC's redundancy); reset().
 //   WdpVoiceDecoder: setup(mix_rate) -> Error; decode(packet) -> PackedVector2Array at the mix rate (an empty packet
-//     = a lost frame: Opus's loss concealment); decode_fec(next_packet) rebuilds a lost frame from the in-band FEC
+//     = a lost frame: Opus's loss concealment; a packet that is not 20 ms is refused); decode_fec(next_packet) rebuilds a lost frame from the in-band FEC
 //     of the packet after it (concealment when it carries none); reset().
 //
 // Settings (§8.3): mono, 16 kHz, OPUS_APPLICATION_VOIP, 20 ms frames, 16 kbit/s, complexity 5, in-band FEC, no DTX.
@@ -41,7 +41,6 @@ namespace {
 
 constexpr int OPUS_RATE = 16000;                  // wideband (§8.3)
 constexpr int FRAME = OPUS_RATE / 50;             // 20 ms = 320 samples
-constexpr int MAX_FRAME = OPUS_RATE * 120 / 1000; // the longest an Opus packet decodes to: 120 ms
 constexpr int MAX_PACKET = WDP_MAX_PACKET;        // our own limit (wdp_core.h): a longer packet is refused unparsed
 constexpr int ENCODE_BUFFER = 1276;               // one 20 ms frame's packet: at most 1275 bytes + 1
 constexpr int MAX_PENDING_MS = 30000;             // the floor's 30 s limit (§8.4): beyond it the input is dropped
@@ -285,11 +284,12 @@ class WdpVoiceDecoder : public RefCounted {
 			return PackedVector2Array();
 		}
 		const int64_t len = p_packet.size();
-		if (len > MAX_PACKET) {
+		// at most MAX_PACKET bytes, and exactly 20 ms (wdp_core.h): anything else is refused before libopus decodes it
+		if (len > MAX_PACKET || (len > 0 && !wdp_packet_is_20ms(p_packet.ptr(), (int)len))) {
 			last_error = OPUS_INVALID_PACKET;
 			return PackedVector2Array();
 		}
-		float pcm[MAX_FRAME];
+		float pcm[FRAME];
 		int n;
 		if (len == 0) {
 			n = opus_decode_float(dec, nullptr, 0, pcm, FRAME, 0); // concealment for one 20 ms frame
@@ -297,7 +297,7 @@ class WdpVoiceDecoder : public RefCounted {
 			// the lost frame is 20 ms (our frame size): FEC needs the exact length of what is missing
 			n = opus_decode_float(dec, p_packet.ptr(), (opus_int32)len, pcm, FRAME, 1);
 		} else {
-			n = opus_decode_float(dec, p_packet.ptr(), (opus_int32)len, pcm, MAX_FRAME, 0);
+			n = opus_decode_float(dec, p_packet.ptr(), (opus_int32)len, pcm, FRAME, 0);
 		}
 		if (n < 0) {
 			last_error = n;

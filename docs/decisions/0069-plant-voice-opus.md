@@ -1,7 +1,8 @@
 # 0069 Walkdown Plant voice: Opus through a small GDExtension of our own, built from pinned libopus and SpeexDSP
 
 Date 2026-10-26 · Scope: docs/plant3d/MULTIPLAYER.md §8, §11; a new `apps/plant3d/voice/` (the GDExtension
-`wdp_voice` and its build); the packages' microphone permissions · Status: **proposed**, written before any code
+`wdp_voice` and its build); the packages' microphone permissions · Status: **accepted; the native part built 2026-10-26** (MP5: `wdp_voice`, "As built" below; capture, push-to-talk
+and the radio come with MP2), written before any code
 under the user's decision of 2026-10-26 (up to 8 players, push-to-talk voice over the in-game radio, the microphone
 permission) · Extends 0054 (its first native code); new dependencies: libopus, SpeexDSP (resampler), godot-cpp
 
@@ -41,7 +42,8 @@ user.
 ## Choice
 
 - **(4): `wdp_voice`**, libopus 1.5.2 and SpeexDSP 1.2.1's resampler from pinned commits with checksums, godot-cpp at
-  the tag matching Godot 4.7, built for Android arm64-v8a, Linux x86-64, Windows x64 and ARM64; its notices in About.
+  the tag matching Godot 4.7 (as built: godot-cpp 10.0.0, the first release versioned apart from Godot, against its
+  `extension_api-4-7.json`), built for Android arm64-v8a, Linux x86-64, Windows x64 and ARM64; its notices in About.
   TwoVoIP stays the fallback if our binding can't be kept up.
 - **Settings:** mono 16 kHz, VOIP mode, 20 ms frames, 16 kbit/s, complexity 5, in-band FEC, no DTX; two frames a
   message, about 30 kbit/s per talker with our headers and encryption; an adaptive jitter buffer of 60–200 ms.
@@ -55,6 +57,45 @@ user.
 - **Permissions:** Android `RECORD_AUDIO` (asked when voice is first turned on), Flatpak `--socket=pulseaudio`, MSIX
   `microphone`.
 - **Budgets (Note 9, measured in MP5):** encode ≤ 1 ms and decode ≤ 0.3 ms per 20 ms frame; ≤ 1 MB added to the APK.
+
+## As built (2026-10-26, MP5's native part)
+
+`apps/plant3d/voice/` (its README: the build, the interface, the checks).
+
+- **Built from pinned sources for all four targets:** libopus 1.5.2, SpeexDSP 1.2.1's `resample.c` and godot-cpp
+  10.0.0, from tarballs checked against SHA-256.
+  - Toolchains: Linux in `org.freedesktop.Sdk//26.08` (its commit pinned on CI), Android with NDK 27.2 at API 24,
+    Windows x64 and ARM64 with llvm-mingw 20260922.
+  - Each library exports one symbol.
+  - The builds are reproducible: each is built a second time from sources and folders at other paths, with the same
+    bytes, on the laptop and on CI.
+- **Sizes:** Android 0.82 MB, stored uncompressed in the APK, so the APK grows by 0.82 MB (117.5 MB in all, of the
+  150 MB limit). Linux 0.88 MB, Windows x64 0.87 MB, ARM64 0.73 MB.
+- **Measured on the speech-like test signal**, per 20 ms frame, 48 kHz in, 44.1 kHz out:
+
+  | | Encode, median | Decode, median | Round trip |
+  |---|---|---|---|
+  | Note 9 (3 runs of 1,000 frames) | 0.20 ms (p95 0.22) | 0.13 ms (p95 0.14) | delay 6.5 ms, level −0.26 dB |
+  | Laptop | 0.10–0.13 ms | 0.02 ms (48 kHz out), 0.05–0.06 ms (44.1 kHz out) | |
+
+  Both are inside the budgets of 1 ms and 0.3 ms.
+- **Loaded and run:**
+  - by the Godot 4.7.2 editor (the tests);
+  - by the Linux export;
+  - by the Flathub BaseApp's `godot-runner` inside `org.freedesktop.Platform//26.08`;
+  - in the APK on the Note 9.
+
+  The Windows DLLs are built and checked for their imports (KERNEL32 and the UCRT only), not yet run on Windows.
+- **In-band FEC needs more than 16 kbit/s.** At the 16 kbit/s chosen above, libopus 1.5.2 codes no FEC at any
+  expected loss: after its discounts for complexity and loss, the rate is under its threshold even at narrowband
+  (`decide_fec`). At 20 kbit/s with 10 % or more expected loss, 78 % of the packets carry FEC, at 15.5 kbit/s on
+  average; at 24 kbit/s, FEC rebuilds a lost frame at 8.5 dB SNR, against 6.0 dB for concealment. The bitrate is a
+  setting: MP2 chooses it (MULTIPLAYER.md §8.3).
+- **A libopus fault worked around:** 1.5.2's `opus_packet_has_lbrr` reads one byte past a packet whose first frame
+  is empty, such as the 1-byte packet 0x08. `wdp_voice` parses every packet before it calls that function. The native
+  test, run under the sanitizers, shows the read without the check.
+- **The Linux library needs the runtime's glibc (2.43).** It is built in the Flatpak's SDK, as chosen, so it loads
+  only on systems with glibc 2.43 or later. That is always true inside the Flatpak, the plant's only Linux package.
 
 ## When to revisit
 

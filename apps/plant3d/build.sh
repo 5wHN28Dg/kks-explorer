@@ -26,7 +26,7 @@ T="timeout ${GODOT_TIMEOUT:-600}"   # a script that fails to compile leaves Godo
 #    pinned sources (so the libraries are this commit's); other builds use what voice/bin/ holds (CI builds the Linux
 #    one first), and a platform without its library exports without voice
 if [ "$MODE" = release ]; then
-  "$HERE/voice/build.sh" || { echo "wdp_voice did not build: a release carries voice on every platform" >&2; exit 1; }
+  env -u WDP_LINUX_HOST -u WDP_SDK_COMMIT "$HERE/voice/build.sh" || { echo "wdp_voice did not build: a release carries voice on every platform" >&2; exit 1; }
 fi
 # the voice test must find the extension wherever its library for this machine is there (tests/test_voice.gd)
 [ -s "$HERE/voice/bin/libwdp_voice.linux.x86_64.so" ] && [ "$(uname -m)" = x86_64 ] && export WDP_VOICE_REQUIRED=1
