@@ -46,7 +46,9 @@ Godot 4.7 is the same on the three targets for everything in the first rows; the
 ## Choice
 
 - **Keys (c):** a 16-character code (75 random bits and a check), HKDF-SHA-256 to `room`, `admit` and K; P per player
-  sent in `hello`; RFC 7518's AES-128-CBC-HMAC-SHA-256 on every packet with the header as AAD; replay windows. What it
+  made by the host and sent encrypted to the player's per-process RSA-2048 key (`Crypto.generate_rsa`,
+  `Crypto.encrypt`: Godot's own), so neither capture nor the relay's routing reveals it, only an active stand-in for
+  the host at the moment of a join; RFC 7518's AES-128-CBC-HMAC-SHA-256 on every packet with the header as AAD; replay windows. What it
   does not protect against (one member forging the host on a LAN path) is detected by the digests and accepted
   (MULTIPLAYER.md §1.3, §10). Removal moves the session to new keys.
 - **Transport (b):** LAN UDP with a broadcast query on discovery port 47820 answered with an HMAC under K (the code
@@ -54,6 +56,9 @@ Godot 4.7 is the same on the three targets for everything in the first rows; the
   and the host after STUN and punching as Walkdown does, the relay otherwise; reliability by acks and RFC 6298
   retransmission per stream over every path, fragments for long messages on UDP, so a player moves between paths
   without losing a message; the host forwards broadcasts between UDP players and the relay (MULTIPLAYER.md §9.4).
+- **Accepted:** anyone who extracts the relay's URL from a build can use up the day's free allowance (online sessions
+  fail until 00:00 UTC, LAN play goes on, nothing is billed); a per-day room counter and per-socket limits make it
+  take effort.
 - **Relay (b):** `relay-plant/`, a Worker with one Durable Object per room, hibernating WebSockets, rooms created with
   SHA-256(admit), 16-bit relay IDs on every message, a host claim for routing, the limits of §9.1 (12 sockets,
   64 KiB, 60 msg/s and 120 for the host, 24 h, empty rooms deleted after 10 min, counters in memory); `relay-plant/twin.py` as its twin; deployed only on a free-plan account, checked by the

@@ -19,7 +19,7 @@ the Note 9's frame rules and over mobile networks?
 | The NPCs | already a pure function of the seed and the inputs (0062): nothing to send for them | PLANT3D.md §17 |
 | What must feel instant | walking, looking, the panels: all local, outside the engine | the app |
 | Classic lockstep | Age of Empires: commands scheduled two 200 ms turns ahead; playable at 250–500 ms latency on 28.8k modems; the turn length adapted to the slowest machine and the round trip | Bettner and Terrano, "1500 Archers on a 28.8: Network Programming in Age of Empires and Beyond", GDC 2001 |
-| Mobile latency | median about 45–50 ms (Ookla, US carriers: 46 ms H2 2025, 49 ms H2 2024); 18 ms in the best countries (Speedtest Global Index, Qatar, June 2025); tails longer | Ookla reports via rcrwireless.com and 5gstore.com; Speedtest Global Index via meatechwatch.com |
+| Mobile latency | median about 45–50 ms (Ookla, US carriers: 46 ms H2 2025, 49 ms H2 2024); 18 ms in the best countries (Speedtest Global Index, Qatar, June 2025); tails longer | Ookla reports via rcrwireless.com and 5gstore.com; Speedtest Global Index via meatechwatch.com (secondary reports of other regions: MP4's measurement on the Note 9 on mobile data is the evidence for the users' own networks) |
 | Godot's multiplayer | `MultiplayerAPI`/`MultiplayerPeer` (RPCs, replication of node properties) with ENet, WebSocket and WebRTC peers | [S] 4.7-stable modules/multiplayer, enet, websocket, webrtc |
 
 ## Alternatives
