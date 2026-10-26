@@ -9,7 +9,8 @@
 # `apt-get install --no-install-recommends` that --with-deps runs, on the package lists apt-install.sh has brought up
 # to date (the job runs it for its own packages first), and prints every package that would be installed
 # (Playwright's list and what they pull in) or says that all are installed. Any other answer, or a list whose length
-# is not the count it states, fails the step. After installing, the same check must say that all are installed. $PLAYWRIGHT is the playwright command (the test sets a fake one).
+# is not the count it states, fails the step. After installing, the same check must say that all are installed.
+# $PLAYWRIGHT is the playwright command (the test sets a fake one).
 set -euo pipefail
 [ $# -eq 1 ] || { echo "usage: $0 ENGINE" >&2; exit 2; }
 PLAYWRIGHT=${PLAYWRIGHT:-.venv/bin/playwright}
