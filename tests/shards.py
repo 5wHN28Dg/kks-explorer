@@ -57,16 +57,18 @@ CONTENT = {
     'test_plant3d.Vectors.test_train_replay': 2,
     'test_plant3d.Vectors.test_hot_replay': 2,
     'test_plant3d.Vectors2.test_frozen_train': 2,
-    # the staff's day's forks replayed (CI, 2026-10-26: ~583 s; shard 2 had taken 4 of its 40 minutes)
-    'test_plant3d_staff.FirstTrainStaff.test_forks': 2,
     # the water treatment plant's start made again (~116 s) and replayed (~132 s); its regeneration made (~38 s)
     'test_plant3d.Vectors2.test_frozen_wtp': 3,
     'test_plant3d.Vectors2.test_wtp_replays': 3,
     'test_plant3d.Vectors2.test_frozen_wtp_regen': 3,
-    # the first train's day made again (~118 s), the RO cleaning (~46 s), format 2's train forks replayed (~69 s)
+    # the staff's day's forks replayed (CI, 2026-10-26: ~583 s, the job up to 21.7 of its 40 minutes in shard 2 with
+    # format 1's replays; shard 3 had taken 5)
+    'test_plant3d_staff.FirstTrainStaff.test_forks': 3,
+    # the first train's day made again (~118 s here, ~485 s on CI), the RO cleaning (~46 s); format 2's train forks
+    # replayed (~69 s) in shard 2 (the job had reached 18.3 of its 40 minutes on CI)
     'test_plant3d.Vectors2.test_frozen_day': 4,
     'test_plant3d.Vectors2.test_frozen_wtp_cip': 4,
-    'test_plant3d.Vectors2.test_train_forks_replay': 4,
+    'test_plant3d.Vectors2.test_train_forks_replay': 2,
     # shard 0 the rest: the water treatment model's tests (~140 s on CI, which share their procedure runs), the staff's
     # other tests (the day replayed ~96 s), the bench (~20 s, with Godot), the content and the validator
 }
