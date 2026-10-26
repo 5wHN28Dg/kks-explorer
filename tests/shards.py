@@ -1,7 +1,8 @@
 """Runs one shard of a set of Python tests, for the CI jobs that run their shards side by side. Every test of the set
 runs in exactly one shard (tests/test_shards.py checks). Three sets:
-- `python` (.github/workflows/tests.yml): every test `unittest discover -s tests` finds; the slow Walkdown Plant vector
-  classes named in HEAVY have shards of their own, every other test (and any module that fails to load) is in shard 0;
+- `python` (.github/workflows/tests.yml): every test `unittest discover -s tests` finds; the slow Walkdown Plant tests
+  and classes named in HEAVY have the shards given there, every other test (and any module that fails to load) is in
+  shard 0;
 - `content` (.github/workflows/plant3d-app.yml, the Walkdown Plant content tests): the modules in CONTENT_MODULES; the
   tests and classes named in CONTENT have the shards given there, every other test (and any module that fails to
   load) is in shard 0;
@@ -15,14 +16,30 @@ runs in exactly one shard (tests/test_shards.py checks). Three sets:
 import os, sys, unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SHARDS = 3
-# from CI's logs (2026-10-23, the run cut off at its 20 minutes): format 1's vectors ~8 min (the cold start and its
-# forks built, then replayed), ColdStart's ~0.75 min with it; format 2's ~7.5 min before W3's two runs (more since);
-# shard 0 the rest
-HEAVY = {'test_plant3d.Vectors': 1, 'test_plant3d.ColdStart': 1, 'test_plant3d.Vectors2': 2}
+SHARDS = 5
+# a test's id or its class. Times from CI's log (2026-10-26, PR #268's run: each test's time up to the line that ends
+# it; the job's limit is 30 minutes): shard 0 had grown to ~1440 s of tests (24.5 minutes of the job) and was cut off at
+# 30 on a slower runner (#265), most of it the staff's forks (test_plant3d_staff). Keep each shard under half of the 30
+# minutes; one test is never split across shards: a test that grows past ~12 minutes alone can only be made faster.
+HEAVY = {
+    # format 1's vectors: the train part made again (~257 s) and replayed (~209 s), the hot restart (~101 s), the cold
+    # start with fast-forward (~53 s): ~620 s
+    'test_plant3d.Vectors': 1,
+    'test_plant3d.ColdStart': 1,
+    # format 2's vectors but the day (~450 s: the water plant ~315 s, the train ~132 s) and the held job's PPE over a
+    # night (~191 s): ~644 s
+    'test_plant3d.Vectors2': 2,
+    'test_plant3d_staff.FirstTrainStaff.test_ppe_on_before_a_held_job_and_for_the_supervisors': 2,
+    # format 2's first train's day made again (~485 s)
+    'test_plant3d.Vectors2.test_frozen_day': 3,
+    # the staff's day's forks replayed (~583 s; with the day replayed too, ~96 s, the job took 15 of its 30 minutes)
+    'test_plant3d_staff.FirstTrainStaff.test_forks': 4,
+    # shard 0 the rest (~450 s): the staff's other tests (the day replayed), the water treatment model, the sounds,
+    # everything else
+}
 
 CONTENT_MODULES = ('test_plant3d', 'test_plant3d_staff', 'test_plant3d_bench')
-CONTENT_SHARDS = 5
+CONTENT_SHARDS = 6
 # a test's id or its class; times measured on the laptop, 2026-10-24 (CI's runners took about 1.45 times as long):
 # test_plant3d took 27 of its job's 40 minutes on CI as one part, ~18.5 min here. Each shard ~4-5 min here; keep each
 # well under half of the job's 40 minutes on CI, and give a part that grows past ~5 min here a shard of its own.
@@ -31,6 +48,9 @@ CONTENT = {
     # run again with fast-forward: ~48 s
     'test_plant3d.Vectors.test_frozen_train': 1,
     'test_plant3d.ColdStart': 1,
+    # the held job's PPE over a night (CI, 2026-10-26: ~191 s; content shard 0 had reached 18.8 of the job's 40
+    # minutes, shard 1 4.5)
+    'test_plant3d_staff.FirstTrainStaff.test_ppe_on_before_a_held_job_and_for_the_supervisors': 1,
     # the hot restart made again (~68 s); format 1's train (~110 s) and hot restart (~45 s) replayed; format 2's
     # train part made again (the cold start and the permit forks, ~64 s)
     'test_plant3d.Vectors.test_frozen_hot': 2,
@@ -41,12 +61,16 @@ CONTENT = {
     'test_plant3d.Vectors2.test_frozen_wtp': 3,
     'test_plant3d.Vectors2.test_wtp_replays': 3,
     'test_plant3d.Vectors2.test_frozen_wtp_regen': 3,
-    # the first train's day made again (~118 s), the RO cleaning (~46 s), format 2's train forks replayed (~69 s)
+    # the first train's day made again (~118 s here, ~485 s on CI), the RO cleaning (~46 s); format 2's train forks
+    # replayed (~69 s) in shard 2 (the job had reached 18.3 of its 40 minutes on CI)
     'test_plant3d.Vectors2.test_frozen_day': 4,
     'test_plant3d.Vectors2.test_frozen_wtp_cip': 4,
-    'test_plant3d.Vectors2.test_train_forks_replay': 4,
-    # shard 0 the rest (~5 min): the water treatment model's tests (~140 s, which share their procedure runs), the staff
-    # (~125 s), the bench (~20 s, with Godot), the content and the validator
+    'test_plant3d.Vectors2.test_train_forks_replay': 2,
+    # the staff's day's forks replayed, alone (CI, 2026-10-26: with format 1's replays in shard 2, or the water plant's
+    # in shard 3, the job took 21.7 and 21.5 of its 40 minutes)
+    'test_plant3d_staff.FirstTrainStaff.test_forks': 5,
+    # shard 0 the rest: the water treatment model's tests (~140 s on CI, which share their procedure runs), the staff's
+    # other tests (the day replayed ~96 s), the bench (~20 s, with Godot), the content and the validator
 }
 
 APP_DIR = os.path.join(os.path.dirname(HERE), 'apps', 'plant3d', 'tests')
@@ -91,7 +115,7 @@ def name_of(t):
 
 
 def shard_of(t):
-    return HEAVY.get(name_of(t), 0)
+    return HEAVY.get(t.id(), HEAVY.get(name_of(t), 0))
 
 
 def content_shard_of(t):
