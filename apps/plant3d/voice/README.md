@@ -34,6 +34,12 @@ What it writes, all into `bin/`, none of it committed:
   warns and goes without voice; it does not fail on a missing file.
 - `BUILD-INFO.txt`: each library's SHA-256, its size and the toolchain that made it.
 
+The Linux library built in the SDK needs that runtime's glibc: 2.43 or later, for `sqrtf`'s new symbol version.
+Inside the Flatpak, the only way the plant ships on Linux, it always has it. A bare `export/linux` binary has voice
+only on a system with that glibc, and otherwise runs without it. CI's app job runs Godot on Ubuntu 24.04 (glibc 2.39),
+so it builds its library with the runner's own GCC (`WDP_LINUX_HOST=1`) for the tests. The SDK build is CI's
+`voice` job.
+
 The libraries are reproducible. The objects carry no build paths (`-ffile-prefix-map`), dates (`--no-insert-timestamp`)
 or build IDs. Two builds of a commit with the same toolchains give the same bytes. CI's `voice` job checks that for
 each target (`.github/workflows/plant3d-app.yml`). Each library exports one symbol, `wdp_voice_library_init`
@@ -41,8 +47,7 @@ each target (`.github/workflows/plant3d-app.yml`). Each library exports one symb
 what is unused.
 
 `apps/plant3d/build.sh release` runs `build.sh` for all four first and refuses to export without them. Its other modes
-use what `bin/` holds, and each export says whether it carries voice. CI's app job builds the Linux library before the
-app's tests. The exports carry the library to these places:
+use what `bin/` holds, and each export says whether it carries voice. CI's app job builds the Linux library (with its own GCC) before the app's tests. The exports carry the library to these places:
 
 - APK: `lib/arm64-v8a/`;
 - Linux and Windows: beside the executable;

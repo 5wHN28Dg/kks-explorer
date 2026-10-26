@@ -82,18 +82,13 @@ jobs:
           key: kit-textures-${{ hashFiles('apps/plant3d/kit/fetch_textures.sh') }}
       - name: Godot 4.7.2 and the JDK 17 of its Android Gradle build (pinned)
         run: tools/plant3d/bench/fetch_godot.sh && tools/plant3d/fetch_jdk.sh
-      # wdp_voice (decision 0069) for this machine, built as for the Flatpak (in its runtime's SDK), so that the app's
-      # tests run the voice codec (tests/test_voice.gd: build.sh makes it required once the library is there) and the
-      # Linux export carries it; the other platforms' libraries are built by the voice job
-      - name: The Flatpak SDK the Linux voice library is built in (org.freedesktop.Sdk//26.08)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends flatpak
-          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y --noninteractive flathub org.freedesktop.Sdk//26.08
-          flatpak update --user -y --noninteractive --commit="$WDP_SDK_COMMIT" org.freedesktop.Sdk//26.08
-      - name: wdp_voice for Linux x86-64 (pinned sources)
-        run: WDP_JOBS=4 apps/plant3d/voice/build.sh linux-x86_64 && cat apps/plant3d/voice/bin/BUILD-INFO.txt | tee -a "$GITHUB_STEP_SUMMARY"
+      # wdp_voice (decision 0069) for this machine, so that the app's tests run the voice codec (tests/test_voice.gd:
+      # build.sh makes it required once the library is there) and the Linux export carries it. Built with the
+      # runner's own GCC (WDP_LINUX_HOST): the release's, built in the Flatpak's SDK (the voice job below), needs that
+      # runtime's glibc (2.43: sqrtf), newer than this runner's, so Godot here could not load it. CI's exports are
+      # checks, never shipped.
+      - name: wdp_voice for this runner (pinned sources, the host's GCC)
+        run: WDP_JOBS=4 WDP_LINUX_HOST=1 apps/plant3d/voice/build.sh linux-x86_64 && cat apps/plant3d/voice/bin/BUILD-INFO.txt | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Content check, content build, the app's tests, headless exports
         run: apps/plant3d/build.sh export
       - name: Sizes
@@ -123,5 +118,5 @@ jobs:
             android-*)
               yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.2.12479018" >/dev/null ;;
           esac
-      - name: wdp_voice ${{ matrix.target }}, built twice and compared (native-test: the sanitizer test)
+      - name: "wdp_voice ${{ matrix.target }}, built twice and compared (native-test: the sanitizer test)"
         run: WDP_JOBS=4 WDP_CHECK_REPRO=1 apps/plant3d/voice/build.sh ${{ matrix.target }} && cat apps/plant3d/voice/bin/BUILD-INFO.txt | tee -a "$GITHUB_STEP_SUMMARY"
