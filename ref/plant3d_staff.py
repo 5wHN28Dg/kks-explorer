@@ -45,6 +45,7 @@ DUR = re.compile(r'([0-9]|1[0-9]|2[0-4]):([0-5][0-9])')
 DAY = 864000            # tenths of a clock second in a day
 MINUTE = 600
 EARLY_KEPT = 32         # the trainee's actions kept for a later step (§17.8)
+SLOTS = 8               # a session run's slots, 0 to 7 (§17.13; docs/plant3d/MULTIPLAYER.md)
 MAX_POINTS = 64 * 16    # every point of a model's isolations (§14's limits): a lock round's bound in a turn
 HANDOVER_WAIT = 60      # clock minutes an outgoing person waits at a lock for the incoming one's (§17.9)
 WAIT_PLACE = 15         # clock minutes a person waits for a taken place, or for a meeting's people (§16.2, §16.6)
@@ -998,13 +999,18 @@ class StaffRun:
     """The staff's state in a run, stepped by the engine's step 9 (§17). The engine calls `place(clock)` at step 0,
     `inputs(...)` in step 1 and `step()` as step 9; NPCs' inputs go to engine.npc_queue for the next step."""
 
-    def __init__(self, e, st, scen):
+    def __init__(self, e, st, scen, session=False):
         self.e, self.st = e, st
         x = scen['staff']
         self.seed = x['seed']
         self.absent = set(x.get('absent', []))
-        self.trainee = st.person_ix[x['trainee']] if x.get('trainee') is not None else None
-        self.fixed_trainee = self.trainee is not None
+        # the players (§17.13): slot -> person index. A single-player run has slot 0 alone, the trainee's; a session
+        # run up to SLOTS, the scenario's trainee (when it names one) being slot 0's, the host's
+        self.session = session
+        self.players = {}
+        if x.get('trainee') is not None:
+            self.players[0] = st.person_ix[x['trainee']]
+        self.fixed_trainee = bool(self.players)
         self.people = []
         for i, p in enumerate(st.people):
             q = Person()
@@ -1021,14 +1027,14 @@ class StaffRun:
             q.post = (p['role'], p.get('routine', st.roles[p['role']]['routine']))     # role, routine (§17.9)
             self.people.append(q)
         self.order = 0                  # instances made, for the queue's order
-        self.unacked = 0
-        self.t_at = None                # the trainee's place (arrive/leave)
-        self.t_in = []                  # the trainee's inputs for step 9: (kind, …)
+        self.acks = {}                  # slot -> tasks given to its person since their last task_ack (§17.6)
+        self.t_from = {}                # slot -> the place its person last left (arrive/leave; §17.13's release)
+        self.t_in = []                  # the players' inputs for step 9: (slot, (kind, …)), in the order made
         self.jumped = None              # (old clock, new clock) of a jump in this step
         self.holder = {}                # reserved or occupied place -> person index
         self.given = {}                 # (reaction index, source) -> instance count still queued or current
         self.vprev = [e.truth(r['on']['value']) if 'value' in r['on'] else None for r in st.reactions]
-        self.early = []                 # the trainee's done actions no step took yet (§17.8): [kind, step, …]
+        self.kept = {}                  # slot -> its person's done actions no step took yet (§17.8): [kind, step, …]
         self.left = set()               # people off site with a lock at the last phase 2 (§17.9)
         self.pending = []               # offers for a permit nobody was on duty to take (§17.10)
         self.made = set()               # (reaction, act) of `seen` reactions made (once per act, §16.7)
@@ -1036,6 +1042,36 @@ class StaffRun:
     def copy(self, e):
         """An independent copy for a clone of the engine (the content is shared)."""
         return copy.deepcopy(self, {id(self.e): e, id(self.st): self.st})
+
+    # --- the players (§17.13): a single-player run's trainee is slot 0's person
+    @property
+    def trainee(self):
+        """Slot 0's person (the single-player run's trainee), or None."""
+        return self.players.get(0)
+
+    @property
+    def unacked(self):
+        """The tasks given to the players' persons since their last task_ack, all slots together (§17.6)."""
+        return sum(self.acks.get(k, 0) for k in self.players)
+
+    @property
+    def t_at(self):
+        """The place slot 0's person is at (None between places or without one)."""
+        return self.at(0)
+
+    def at(self, slot):
+        p = self.players.get(slot)
+        return self.people[p].pos if p is not None else None
+
+    def slot_of(self, pi):
+        """The slot playing person pi, or None (an NPC)."""
+        for k, v in self.players.items():
+            if v == pi:
+                return k
+        return None
+
+    def early_of(self, slot):
+        return self.kept.setdefault(slot, [])
 
     # --- the clock and duties
     def clock(self):
@@ -1151,8 +1187,7 @@ class StaffRun:
                 p.occ = place
             if task is not None:
                 self.give(p, task, st.tasks[task].get('priority', 3), None, None, None, None, count=False)
-        if self.trainee is not None:
-            self.t_at = self.people[self.trainee].pos
+        self.t_from = {}
 
     def first_place(self, tid):
         st = self.st
@@ -1198,8 +1233,9 @@ class StaffRun:
         p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
         if made_by is not None:
             self.given[made_by] = self.given.get(made_by, 0) + 1
-        if count and p.i == self.trainee:
-            self.unacked += 1
+        k = self.slot_of(p.i)
+        if count and k is not None:
+            self.acks[k] = self.acks.get(k, 0) + 1
         return True
 
     def assign(self, roles, tid, prio, made_by, work, code, alarm, owner=None, act=None, orig=None):
@@ -1271,29 +1307,74 @@ class StaffRun:
             if not self.given[inst['src']]:
                 del self.given[inst['src']]
 
-    # --- step 1: the trainee's inputs for step 9 (and role, task_ack and jump, handled here)
-    def t_input(self, item):
+    # --- step 1: the players' inputs for step 9 (and role, release, task_ack and jump, handled here)
+    def t_input(self, item, slot=0):
+        """A player's input in step 1 (§17.6, §17.13): slot is the input's (0 in a single-player run)."""
         kind = item[0]
         e = self.e
+        st = self.st
+        tail = (slot,) if self.session else ()
         if kind == 'role':
             pid = item[1]
-            st = self.st
-            ok = (e.step_no == 1 and not self.fixed_trainee and self.trainee is None and isinstance(pid, str)
-                  and pid in st.person_ix and pid not in self.absent
-                  and st.roles[st.people[st.person_ix[pid]]['role']]['play'])
-            e.ev('role', pid, 'done' if ok else 'refused')
+            ok = isinstance(pid, str) and pid in st.person_ix and pid not in self.absent \
+                and st.roles[st.people[st.person_ix[pid]]['role']]['play']
+            if self.session:
+                # at any step: a person nobody plays, for a slot that plays nobody
+                ok = ok and slot not in self.players and st.person_ix[pid] not in self.players.values()
+            else:
+                ok = ok and e.step_no == 1 and not self.fixed_trainee and self.trainee is None
+            e.ev('role', pid, 'done' if ok else 'refused', *tail)
             if ok:
-                self.trainee = st.person_ix[pid]
-                self.t_at = self.people[self.trainee].pos
+                self.claim(slot, st.person_ix[pid])
+            return
+        if kind == 'release':
+            pi = self.players.get(slot)
+            e.ev('release', self.people[pi].id if pi is not None else None, 'done' if pi is not None else 'refused',
+                 slot)
+            if pi is not None:
+                self.let_go(slot)
             return
         if kind == 'task_ack':
-            self.unacked = 0
-            e.ev('task_ack')
+            self.acks[slot] = 0
+            e.ev('task_ack', *tail)
             return
         if kind == 'jump':
             self.jump(item[1])
             return
-        self.t_in.append(item)
+        self.t_in.append((slot, item))
+
+    def claim(self, slot, pi):
+        """A person becomes slot's (§17.13): an NPC's current task (not the idle task) paused as a pre-emption pauses
+        it, to be taken up again at their turn; one on a way is between places from now on (the place they left kept
+        for a release); their zones those their place or way gives them now; nothing counted or kept for the slot."""
+        p = self.people[pi]
+        zs = self.zones_of(p)            # (as an NPC's, before they become the slot's)
+        self.t_from[slot] = None
+        if p.leg is not None:
+            self.t_from[slot] = p.leg[0]
+            p.leg = None
+            p.pos = None
+        if p.cur is not None and not p.cur['idle']:
+            p.cur['st'].pop('busy', None)
+            self.pause(p)
+        p.result = None
+        p.zin = set(zs)
+        self.players[slot] = pi
+        self.acks[slot] = 0
+        self.kept[slot] = []
+
+    def let_go(self, slot):
+        """Slot's person becomes an NPC at once (§17.13): their current task (not the idle task) paused, to be taken up
+        at their next turn; one between places put back at the place they last left."""
+        pi = self.players.pop(slot)
+        p = self.people[pi]
+        if p.cur is not None and not p.cur['idle']:
+            self.pause(p)
+        if p.pos is None and self.t_from.get(slot) is not None:
+            p.pos = self.t_from[slot]
+        self.t_from.pop(slot, None)
+        self.acks.pop(slot, None)
+        self.kept.pop(slot, None)
 
     def jump(self, to):
         e = self.e
@@ -1305,7 +1386,7 @@ class StaffRun:
         t = (old // DAY) * DAY + (int(m.group(1)) * 60 + int(m.group(2))) * MINUTE
         while t <= old:
             t += DAY
-        ok = self.trainee is None or self.unacked == 0
+        ok = self.unacked == 0
         ok = ok and e.ff_model() and not any(1 <= s <= 7 for s in e.pstate.values()) and self.jumped is None \
             and not e.npc_pending
         if ok:
@@ -1330,38 +1411,40 @@ class StaffRun:
             jump_step = True
         else:
             jump_step = False
-        if self.trainee is not None:
-            for item in tin:
-                tp = self.people[self.trainee]
-                if item[0] == 'arrive' and isinstance(item[1], str) and item[1] in st.pix:
-                    self.t_at = st.pix[item[1]]
-                    tp.pos = self.t_at
-                    if tp.occ != self.t_at:
-                        self.leave_place(tp)        # a place held is let go when the trainee is elsewhere
-                    if tp.res == self.t_at:
-                        tp.occ, tp.res = tp.res, None
-                elif item[0] == 'leave' and isinstance(item[1], str) and item[1] in st.pix and st.pix[item[1]] == self.t_at:
-                    self.t_at = None
-                    tp.pos = None
-                    self.leave_place(tp)
-                elif item[0] == 'ppe' and isinstance(item[1], str) and item[1] in PPE and type(item[2]) is int \
-                        and item[2] in (0, 1):
-                    if item[2]:
-                        tp.worn.add(item[1])
-                    else:
-                        tp.worn.discard(item[1])
-                elif item[0] == 'zone' and isinstance(item[1], str) and item[1] in st.zone_ix \
-                        and item[2] in ('in', 'out'):
-                    if item[2] == 'in':
-                        tp.zin.add(st.zone_ix[item[1]])
-                    else:
-                        tp.zin.discard(st.zone_ix[item[1]])
-                elif item[0] == 'stop':
-                    self.t_stop(tp, item[1])
-        else:
-            for item in tin:
+        # the players' arrive, leave, ppe, zone and stop inputs, in the order made, each for its slot's person now
+        # (a slot playing nobody is in free mode: its stop refused, the others nothing)
+        for slot, item in tin:
+            ti = self.players.get(slot)
+            if ti is None:
                 if item[0] == 'stop':       # free mode: no person to stop work with
                     e.ev('stop', None, item[1], None, None, 'refused', ['authority'])
+                continue
+            tp = self.people[ti]
+            if item[0] == 'arrive' and isinstance(item[1], str) and item[1] in st.pix:
+                tp.pos = st.pix[item[1]]
+                if tp.occ != tp.pos:
+                    self.leave_place(tp)        # a place held is let go when the trainee is elsewhere
+                if tp.res == tp.pos:
+                    tp.occ, tp.res = tp.res, None
+            elif item[0] == 'leave' and isinstance(item[1], str) and item[1] in st.pix and tp.pos is not None \
+                    and st.pix[item[1]] == tp.pos:
+                self.t_from[slot] = tp.pos
+                tp.pos = None
+                self.leave_place(tp)
+            elif item[0] == 'ppe' and isinstance(item[1], str) and item[1] in PPE and type(item[2]) is int \
+                    and item[2] in (0, 1):
+                if item[2]:
+                    tp.worn.add(item[1])
+                else:
+                    tp.worn.discard(item[1])
+            elif item[0] == 'zone' and isinstance(item[1], str) and item[1] in st.zone_ix \
+                    and item[2] in ('in', 'out'):
+                if item[2] == 'in':
+                    tp.zin.add(st.zone_ix[item[1]])
+                else:
+                    tp.zin.discard(st.zone_ix[item[1]])
+            elif item[0] == 'stop':
+                self.t_stop(tp, item[1])
 
         # 1. duties, then slots
         day = c // DAY
@@ -1394,16 +1477,17 @@ class StaffRun:
         self.react(n)
         # 4. people
         if jump_step:
-            if self.trainee is not None:        # their actions of this step are kept all the same (§17.8)
+            for slot in sorted(self.players):   # their actions of this step are kept all the same (§17.8)
                 mine = [x for x in e.events[e.ev_mark:] if x[0] == n]
-                self.drop_kept(mine, self.people[self.trainee].id)
-                self.keep(self.people[self.trainee], mine, set())
+                self.drop_kept(mine, self.people[self.players[slot]].id, slot)
+                self.keep(self.people[self.players[slot]], mine, set(), slot)
         else:
             for p in self.people:
                 if p.id in self.absent:
                     continue
-                if p.i == self.trainee:
-                    self.trainee_turn(p, tin)
+                k = self.slot_of(p.i)
+                if k is not None:
+                    self.trainee_turn(p, [x for j, x in tin if j == k], k)
                 else:
                     self.turn(p)
         # 5. unsafe acts, then the reactions to them
@@ -1417,7 +1501,7 @@ class StaffRun:
         """The zones a person is in, in file order (§16.2): their place's; on a way, those both its ends list; the
         trainee's from their zone inputs; none off site."""
         st = self.st
-        if p.i == self.trainee:
+        if self.slot_of(p.i) is not None:
             return sorted(p.zin)
         if p.leg is not None:
             b = st.place_zones[p.leg[1]]
@@ -1587,8 +1671,8 @@ class StaffRun:
                 p.queue = [q for q in p.queue if not job(q)]
                 p.held = [q for q in p.held if not job(q)]
         for p in self.people:
-            if p.i != self.trainee and p.id not in self.absent and not p.on and p.pos is None and p.leg is None \
-                    and self.left_locks(p):
+            if self.slot_of(p.i) is None and p.id not in self.absent and not p.on and p.pos is None \
+                    and p.leg is None and self.left_locks(p):
                 now.add(p.i)
                 if p.i not in self.left:
                     gone.append(p)
@@ -1656,13 +1740,14 @@ class StaffRun:
         current instance, or None."""
         e = self.e
         cur = p.cur
-        if cur is not None and not p.on and p.i != self.trainee and not cur['idle'] and not cur['st'].get('busy') \
+        npc = self.slot_of(p.i) is None
+        if cur is not None and not p.on and npc and not cur['idle'] and not cur['st'].get('busy') \
                 and self.st.tasks[cur['task']].get('resume') == 'next_duty':
             self.pause(p)               # a job left unfinished at the duty's end: held for the next (§17.10)
             p.held.append(p.queue.pop(next(k for k, q in enumerate(p.queue) if q is cur)))
             e.ev('task', p.id, cur['task'], 'held')
             cur = None
-        if cur is None and not p.on and p.i != self.trainee:
+        if cur is None and not p.on and npc:
             for q in [q for q in p.queue if self.st.tasks[q['task']].get('resume') == 'next_duty']:
                 p.queue.remove(q)       # queued jobs off duty: held as they are, no walk to them first
                 p.held.append(q)
@@ -1679,7 +1764,7 @@ class StaffRun:
             if not cur['started']:
                 cur['started'] = True
                 e.ev('task', p.id, cur['task'], 'start')
-            if p.pos is None and p.i != self.trainee:
+            if p.pos is None and npc:
                 p.pos = self.st.gate
                 e.ev('move', p.id, None, self.st.places[p.pos]['id'], e.step_no)
         if cur is None and p.on:
@@ -1689,10 +1774,10 @@ class StaffRun:
                            'int': True, 'owner': None, 'act': None}
             self.order += 1
             e.ev('task', p.id, idle, 'start')
-            if p.pos is None and p.i != self.trainee:
+            if p.pos is None and npc:
                 p.pos = self.st.gate
                 e.ev('move', p.id, None, self.st.places[p.pos]['id'], e.step_no)
-        if cur is None and not p.on and p.pos is not None and p.i != self.trainee:
+        if cur is None and not p.on and p.pos is not None and npc:
             self.leave_place(p)
             e.ev('move', p.id, self.st.places[p.pos]['id'], None, e.step_no)
             p.pos = None
@@ -2193,9 +2278,10 @@ class StaffRun:
     def say(self, p, msg, to):
         e = self.e
         e.ev('say', p.id, msg, to)
-        t = self.trainee
-        if t is not None and t != p.i and (to == self.people[t].id or to == self.people[t].role):
-            self.unacked += 1
+        for k in sorted(self.players):
+            t = self.players[k]
+            if t != p.i and (to == self.people[t].id or to == self.people[t].role):
+                self.acks[k] = self.acks.get(k, 0) + 1
 
     def wait(self, p, cur, w):
         e = self.e
@@ -2232,7 +2318,7 @@ class StaffRun:
             if r != 'next':
                 return r
             x.pop('dest', None)
-        elif self.t_at != x['place']:
+        elif p.pos != x['place']:
             return 'wait'
         if 'meet_since' not in x and not x.get('met'):
             x['meet_since'] = e.step_no
@@ -2247,22 +2333,23 @@ class StaffRun:
             else:
                 return 'wait'
         elif x['last'] < e.step_no:
-            if not trainee or self.t_at == x['place']:
+            if not trainee or p.pos == x['place']:
                 x['left'] -= 1
             x['last'] = e.step_no
         return 'next' if x['left'] <= 0 else 'wait'
 
     # --- the trainee's person (§17.4): every step waits for its input
-    def trainee_turn(self, p, tin):
+    def trainee_turn(self, p, tin, slot):
+        """A player's person's turn (§17.4): tin, their slot's inputs of this step in the order made."""
         e = self.e
         st = self.st
         n = e.step_no
         used = [False] * len(tin)
         mine = [x for x in e.events[e.ev_mark:] if x[0] == n]
-        self.drop_kept(mine, p.id)
+        self.drop_kept(mine, p.id, slot)
         took = set()
-        self.trainee_steps(p, tin, used, mine, took)
-        self.keep(p, mine, took)
+        self.trainee_steps(p, tin, used, mine, took, slot)
+        self.keep(p, mine, took, slot)
         # then the radio inputs no step of theirs took: free messages and calls (requests, §18.7)
         for k, item in enumerate(tin):
             if used[k]:
@@ -2278,7 +2365,7 @@ class StaffRun:
                 if ok:
                     self.assign([item[1]], item[2], st.tasks[item[2]].get('priority', 3), None, None, None, None)
 
-    def trainee_steps(self, p, tin, used, mine, took):
+    def trainee_steps(self, p, tin, used, mine, took, slot):
         e = self.e
         st = self.st
         n = e.step_no
@@ -2298,17 +2385,17 @@ class StaffRun:
                         x['dest'] = i
                         if not taken:
                             self.reserve(p, i)
-                if r != 'fail' and self.t_at == x['dest']:
+                if r != 'fail' and p.pos is not None and p.pos == x['dest']:
                     r = 'next'
-                    if p.res == self.t_at:
+                    if p.res == p.pos:
                         p.occ, p.res = p.res, None
             elif 'work' in s:
                 if 'left' not in x:
                     x['left'] = self.mins(p, cur, s['work']) * st.tpm
                     x['last'] = n
-                    x['place'] = self.t_at
+                    x['place'] = p.pos
                 elif x['last'] < n:
-                    if self.t_at == x['place']:
+                    if p.pos == x['place']:
                         x['left'] -= 1
                     x['last'] = n
                 r = 'next' if x['left'] <= 0 else 'wait'
@@ -2368,8 +2455,8 @@ class StaffRun:
                 if j is not None:
                     took.add(j)
                     r = 'next'
-                elif self.early_done(p, cur, x, lambda q: q[0] == 'op' and q[2] == o['kks'] and q[3] == o['do']
-                                     and q[4] == o['where'] and self.op_holds(o)):
+                elif self.early_done(p, cur, x, slot, lambda q: q[0] == 'op' and q[2] == o['kks']
+                                     and q[3] == o['do'] and q[4] == o['where'] and self.op_holds(o)):
                     r = 'next'
             elif 'permit' in s:
                 w = cur['work'] if s['permit']['work'] == '$' else s['permit']['work']
@@ -2379,7 +2466,7 @@ class StaffRun:
                 if j is not None:
                     took.add(j)
                     r = 'next'
-                elif self.early_done(p, cur, x, lambda q: q[0] == 'permit' and q[2] == w and q[3] == a
+                elif self.early_done(p, cur, x, slot, lambda q: q[0] == 'permit' and q[2] == w and q[3] == a
                                      and self.permit_holds(w, a, q[4])):
                     r = 'next'
             elif 'handover' in s and s['handover'] == 'take':
@@ -2418,8 +2505,9 @@ class StaffRun:
                             got.append(y[3])
                     if 'seen' not in x:
                         for pt in pts:
-                            if pt not in got and self.early_done(p, cur, None, lambda q: q[0] == k and q[2] == w
-                                                                 and q[3] == pt and self.lock_holds(k, w, pt, p)):
+                            if pt not in got and self.early_done(p, cur, None, slot,
+                                                                 lambda q: q[0] == k and q[2] == w and q[3] == pt
+                                                                 and self.lock_holds(k, w, pt, p)):
                                 got.append(pt)
                         x['seen'] = True
                     if len(got) == len(pts):
@@ -2429,43 +2517,45 @@ class StaffRun:
             self.advance(p, r)
 
     # --- the trainee's actions made before their step was current (§17.8)
-    def drop_kept(self, mine, me):
+    def drop_kept(self, mine, me, slot):
         """A machine entered by a command or an action in this step: an earlier command of it no longer holds."""
         moved = {x[2] for x in mine if x[1] == 'machine' and x[5] != 'next'}
         if moved:
-            self.early = [r for r in self.early if not (r[0] == 'op' and r[5] in moved)]
+            self.kept[slot] = [r for r in self.early_of(slot) if not (r[0] == 'op' and r[5] in moved)]
         # a point they locked again: an earlier unlock of theirs no longer holds
         relocked = [(x[2], x[3]) for x in mine if x[1] == 'lock' and x[5] == 'done' and same(x[4], me)]
         if relocked:
-            self.early = [r for r in self.early if not (r[0] == 'unlock' and (r[2], r[3]) in relocked)]
+            self.kept[slot] = [r for r in self.early_of(slot) if not (r[0] == 'unlock' and (r[2], r[3]) in relocked)]
 
-    def keep(self, p, mine, took):
+    def keep(self, p, mine, took, slot):
         """Their actions done in this step that no step of theirs took: kept for a step that becomes current later."""
         e = self.e
+        early = self.early_of(slot)
         for j, y in enumerate(mine):
             if j in took or y[1] not in ('op', 'permit', 'lock', 'unlock'):
                 continue
             if y[1] == 'op':
                 if len(y) > 7 and y[4] == 'done' and y[7] == p.id:
                     o = e.m.op_keys.get((y[2], y[3], None))
-                    self.early.append(['op', y[0], y[2], y[3], y[6], o.get('machine') if o else None])
+                    early.append(['op', y[0], y[2], y[3], y[6], o.get('machine') if o else None])
             elif y[5] == 'done' and y[4] == p.id:
                 if y[1] == 'permit':
-                    self.early.append(['permit', y[0], y[2], y[3], e.ptw.get(y[2])])
+                    early.append(['permit', y[0], y[2], y[3], e.ptw.get(y[2])])
                 else:
-                    self.early.append([y[1], y[0], y[2], y[3]])
-        del self.early[:-EARLY_KEPT]
+                    early.append([y[1], y[0], y[2], y[3]])
+        del early[:-EARLY_KEPT]
 
-    def early_done(self, p, cur, x, match):
+    def early_done(self, p, cur, x, slot, match):
         """When the step becomes current (x without 'seen'; x None: the caller keeps it): the trainee's earliest kept
         action that matches and whose effect still holds is taken for the step, with the event `early`."""
         if x is not None:
             if 'seen' in x:
                 return False
             x['seen'] = True
-        for k, q in enumerate(self.early):
+        early = self.early_of(slot)
+        for k, q in enumerate(early):
             if match(q):
-                del self.early[k]
+                del early[k]
                 self.e.ev('early', p.id, cur['task'], cur['step'], q[0], q[1])
                 return True
         return False

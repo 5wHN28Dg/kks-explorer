@@ -253,7 +253,7 @@ class StaffVectors(unittest.TestCase):
         e.step()
         sr = e.staff
         tp = sr.people[sr.trainee]
-        sr.t_at = tp.pos = None
+        tp.pos = None
         seat = next(i for i, q in enumerate(sr.st.places) if q['kind'] == 'seat' and i not in sr.holder)
         tp.occ = seat
         sr.holder[seat] = tp.i
@@ -283,7 +283,7 @@ class StaffVectors(unittest.TestCase):
         e.step()
         sr = e.staff
         tp = sr.people[sr.trainee]
-        sr.t_at = tp.pos = None
+        tp.pos = None
         sr.leave_place(tp)
         room = next(r for r in sr.st.rooms if sr.st.meet_place(r, sr.holder) is not None
                     and sr.st.places[sr.st.meet_place(r, sr.holder)]['kind'] in ('seat', 'desk', 'table'))
@@ -343,19 +343,19 @@ class StaffVectors(unittest.TestCase):
         e.role('a_fo1')
         e.step()
         sr = e.staff
-        sr.early = [['op', 1, 'K', 'start', 'local', 'm'], ['op', 1, 'K2', 'open', 'local', None], ['lock', 1, 'w', 0]]
-        sr.drop_kept([[5, 'machine', 'm', 'a', 'b', 'next']], 'a_fo1')
-        self.assertEqual(len(sr.early), 3)
-        sr.drop_kept([[5, 'machine', 'm', 'b', 'c', 'command']], 'a_fo1')
-        self.assertEqual(sr.early, [['op', 1, 'K2', 'open', 'local', None], ['lock', 1, 'w', 0]])
+        sr.kept[0] = [['op', 1, 'K', 'start', 'local', 'm'], ['op', 1, 'K2', 'open', 'local', None], ['lock', 1, 'w', 0]]
+        sr.drop_kept([[5, 'machine', 'm', 'a', 'b', 'next']], 'a_fo1', 0)
+        self.assertEqual(len(sr.kept[0]), 3)
+        sr.drop_kept([[5, 'machine', 'm', 'b', 'c', 'command']], 'a_fo1', 0)
+        self.assertEqual(sr.kept[0], [['op', 1, 'K2', 'open', 'local', None], ['lock', 1, 'w', 0]])
         # a point they locked again: an earlier unlock of theirs no longer holds (adversarial review); another
         # person's lock on it doesn't undo their unlock (locks are personal and stack, §15.1, 2026-10-24)
-        sr.early = [['unlock', 1, 'w', 0], ['unlock', 1, 'w', 1], ['lock', 1, 'w', 0]]
-        sr.drop_kept([[5, 'lock', 'w', 0, 'a_fo1', 'refused', ['state']]], 'a_fo1')
-        sr.drop_kept([[5, 'lock', 'w', 0, 'a_elec', 'done', []]], 'a_fo1')
-        self.assertEqual(len(sr.early), 3)
-        sr.drop_kept([[5, 'lock', 'w', 0, 'a_fo1', 'done', []]], 'a_fo1')
-        self.assertEqual(sr.early, [['unlock', 1, 'w', 1], ['lock', 1, 'w', 0]])
+        sr.kept[0] = [['unlock', 1, 'w', 0], ['unlock', 1, 'w', 1], ['lock', 1, 'w', 0]]
+        sr.drop_kept([[5, 'lock', 'w', 0, 'a_fo1', 'refused', ['state']]], 'a_fo1', 0)
+        sr.drop_kept([[5, 'lock', 'w', 0, 'a_elec', 'done', []]], 'a_fo1', 0)
+        self.assertEqual(len(sr.kept[0]), 3)
+        sr.drop_kept([[5, 'lock', 'w', 0, 'a_fo1', 'done', []]], 'a_fo1', 0)
+        self.assertEqual(sr.kept[0], [['unlock', 1, 'w', 1], ['lock', 1, 'w', 0]])
 
     def test_a_paused_step_is_looked_at_again(self):
         """A step paused by a pre-emption becomes current again when it resumes: its first look is made again."""
