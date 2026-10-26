@@ -301,13 +301,15 @@ class Relay:
                 return
             size = len(data)
             rate = L['hostRate'] if c.host else L['rate']
+            burst = L['hostBurst'] if c.host else L['burst']
             fl = room.flow.get(c.id)
             if not fl:
-                fl = room.flow[c.id] = [Bucket(L['burst'], now), Bucket(L['byteBurst'], now), Window(), -1e18]
+                # a host's bucket starts full at the host's burst, not a player's (as the Worker)
+                fl = room.flow[c.id] = [Bucket(burst, now), Bucket(L['byteBurst'], now), Window(), -1e18]
             m, b = fl[2].add(now, 1, size, L['window'])
             if m > L['cut'] * rate * L['window'] / 1000 or b > L['cut'] * L['bytes'] * L['window'] / 1000:
                 self._refuse(c, 'limit'); return
-            if size > L['message'] or not fl[0].take(1, now, rate, L['hostBurst'] if c.host else L['burst']) \
+            if size > L['message'] or not fl[0].take(1, now, rate, burst) \
                     or not fl[1].take(size, now, L['bytes'], L['byteBurst']):
                 if now - fl[3] >= 1000:
                     fl[3] = now
