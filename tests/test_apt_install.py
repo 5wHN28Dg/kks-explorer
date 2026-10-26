@@ -87,6 +87,12 @@ class AptInstall(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertEqual(self.kinds(calls), ['update', 'download', 'install'])   # installing is not repeated
 
+    def test_the_update_can_be_skipped(self):
+        self.env['APT_SKIP_UPDATE'] = '1'
+        r, calls, _ = self.run_script(1, 'xvfb')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.kinds(calls), ['download', 'download', 'install'])
+
     def test_no_packages_is_an_error(self):
         r = subprocess.run([SCRIPT], env=self.env, capture_output=True, text=True, timeout=10)
         self.assertEqual(r.returncode, 2)
@@ -113,7 +119,7 @@ class AptInstall(unittest.TestCase):
         r, calls, pw = self.run_pw((1, 'BEWARE: your OS is not officially supported\n' + MISSING), (0, ALL_IN))
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(pw, ['install-deps --dry-run webkit'] * 2)    # the list, then the check
-        self.assertEqual(self.kinds(calls), ['update', 'download', 'install'])
+        self.assertEqual(self.kinds(calls), ['download', 'install'])     # the job's apt step updated the lists
         self.assertTrue(calls[-1].endswith(' fonts-unifont libmanette-0.2-0 xvfb'), calls[-1])
 
     def test_playwright_with_everything_installed_installs_nothing(self):
@@ -126,7 +132,7 @@ class AptInstall(unittest.TestCase):
         r, calls, _ = self.run_pw((1, MISSING), (1, 'Missing system dependencies (1):\n  xvfb\n'))
         self.assertNotEqual(r.returncode, 0)
         self.assertIn('::error::still missing', r.stdout)
-        self.assertEqual(self.kinds(calls), ['update', 'download', 'install'])
+        self.assertEqual(self.kinds(calls), ['download', 'install'])
 
     def test_an_answer_playwright_deps_does_not_know_fails_the_step(self):
         for answer in [(1, "Error: 'apt-get install -s' exited with code 100:\nE: Unable to locate package xvfb\n"),

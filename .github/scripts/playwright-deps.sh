@@ -41,7 +41,7 @@ pkgs=$(missing "$1")
 if [ -n "$pkgs" ]; then
   mapfile -t list <<<"$pkgs"
   echo "Playwright's $1 needs: ${list[*]}"
-  "$HERE/apt-install.sh" "${list[@]}"
+  APT_SKIP_UPDATE=1 "$HERE/apt-install.sh" "${list[@]}"     # the lists the dry run read, updated just before
 else
   echo "Playwright's $1: all system dependencies are installed already"
 fi

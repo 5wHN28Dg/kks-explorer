@@ -15,7 +15,9 @@
 #
 #   .github/scripts/apt-install.sh PACKAGE...
 # The limits can be set for the test (tests/test_apt_install.py): APT_TRIES, APT_UPDATE_SECS, APT_DOWNLOAD_SECS,
-# APT_INSTALL_SECS. The defaults add up to at most 26 minutes, inside the shortest job limit (30).
+# APT_INSTALL_SECS. APT_SKIP_UPDATE=1 skips the index update, for a call right after another that made it
+# (playwright-deps.sh). The defaults add up to at most 26 minutes (20 without the update); where that is more than a
+# job's own limit (server-http, 20; web, which calls this twice), the job's limit ends it first: still bounded.
 # Playwright's browser packages come through here too (playwright-deps.sh), not `playwright install --with-deps`.
 set -euo pipefail
 [ $# -gt 0 ] || { echo "usage: $0 PACKAGE..." >&2; exit 2; }
@@ -43,6 +45,6 @@ phase() {
   return 1
 }
 
-phase retry "update the package lists" "$UPDATE_SECS" "${APT[@]}" update
+[ "${APT_SKIP_UPDATE:-}" = 1 ] || phase retry "update the package lists" "$UPDATE_SECS" "${APT[@]}" update
 phase retry "download $*" "$DOWNLOAD_SECS" "${APT[@]}" install -y --no-install-recommends --download-only "$@"
 phase once "install $*" "$INSTALL_SECS" "${APT[@]}" install -y --no-install-recommends "$@"
