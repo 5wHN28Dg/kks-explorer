@@ -32,24 +32,32 @@ func run(tree: SceneTree) -> Array:
 	return p
 
 
+## The Crew panel rebuilt from the engine as it is now, whatever its own signature says (the panel's buttons are
+## looked for in it). Only where the step needs the panel: forced every round, it took most of the test's time.
+static func _fresh(ui) -> void:
+	ui.crew._sig = ""
+	ui.crew.refresh()
+
+
 ## Plays the trainee's current step as a trainee would from the Crew panel; true when something was done.
 func _play(ui, readings: Dictionary) -> bool:
 	var e = ui.clock.engine
 	var sm = e._sm
 	var pi: int = e.st_trainee
 	if e.st_unacked > 0:
+		_fresh(ui)                      # (rebuilt every round before: an alarm seen without waiting for the panel's own refresh)
 		var seen := App.find_button(ui.crew, "Seen")
 		if seen:
 			seen.pressed.emit()
 	var cur = e.sp_cur[pi]
 	if cur == null:
 		return false
-	ui.crew._sig = ""
-	ui.crew.refresh()
+	ui.crew.refresh()       # every state the panel passes through drawn, as the app does (its signature); forced below
 	var s: Dictionary = sm.tasks[cur["task"]]["steps"][cur["step"]]
 	if s.has("go") or s.has("meet"):
 		var dest = cur["st"].get("dest", cur["st"].get("place"))
 		if dest != null and e.st_t_at != dest:
+			_fresh(ui)
 			var b := App.find_button(ui.crew, "Take me there")
 			if b == null:
 				return false
@@ -57,6 +65,7 @@ func _play(ui, readings: Dictionary) -> bool:
 			ui._place_tick()
 			return true
 	elif s.has("read"):
+		_fresh(ui)
 		var v: float = e.shown(s["read"], e.cur)
 		var typed := v + (5.0 if readings.size() == 1 else 0.0)        # the second reading misread on purpose
 		ui.crew.entry.text = "%.3f" % typed
@@ -69,6 +78,7 @@ func _play(ui, readings: Dictionary) -> bool:
 		return true
 	elif s.has("ppe"):
 		# the role's PPE put on at the locker before the handover (milestone S2)
+		_fresh(ui)
 		var b := App.find_button(ui.crew, "Put it on")
 		if b == null:
 			b = App.find_button(ui.crew, "Take me to a locker")
@@ -80,6 +90,7 @@ func _play(ui, readings: Dictionary) -> bool:
 		b.pressed.emit()
 		return true
 	elif s.has("say"):
+		_fresh(ui)
 		App.find_button(ui.crew, "Send").pressed.emit()
 		return true
 	elif s.has("choose"):

@@ -84,10 +84,38 @@ jobs:
       # checks, never shipped.
       - name: wdp_voice for this runner (pinned sources, the host's GCC)
         run: WDP_JOBS=4 WDP_LINUX_HOST=1 apps/plant3d/voice/build.sh linux-x86_64 && cat apps/plant3d/voice/bin/BUILD-INFO.txt | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Content check, content build, the app's tests, headless exports
-        run: apps/plant3d/build.sh export
+      - name: Content check, content build, the app's tests (shard 0; app-tests runs the others), headless exports
+        run: PLANT_TEST_SHARD=0 apps/plant3d/build.sh export
       - name: Sizes
         run: ls -l apps/plant3d/export/check apps/plant3d/export/check/linux apps/plant3d/export/check/windows apps/plant3d/export/check/windows-arm64 | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # the app's other test shards (tests/shards.py app; tests/test_shards.py checks every test file runs in one of them,
+  # once, shard 0 in the job above): all in one run, they had grown to the 600 s build.sh gives a Godot run (test_walk
+  # alone ~170 s), and were cut off now and then. Each job makes the content (build.sh) and runs its shard.
+  app-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        app_shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; Godot, checked by SHA-512 when fetched
+        with:
+          path: ~/.local/kksdev/godot
+          key: godot-editor-4.7.2-${{ hashFiles('tools/plant3d/bench/fetch_godot.sh') }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; the parts kit's CC0 textures (checked by SHA-256 when fetched and on every run)
+        with:
+          path: ~/.cache/walkdown-plant/textures
+          key: kit-textures-${{ hashFiles('apps/plant3d/kit/fetch_textures.sh') }}
+      - name: Godot 4.7.2 (pinned)
+        run: tools/plant3d/bench/fetch_godot.sh
+      # as in the job above: tests/test_voice.gd runs the codec wherever its library is there (build.sh requires it then)
+      - name: wdp_voice for this runner (pinned sources, the host's GCC)
+        run: WDP_JOBS=4 WDP_LINUX_HOST=1 apps/plant3d/voice/build.sh linux-x86_64
+      - name: Content check, content build, the app's tests (one shard)
+        run: PLANT_TEST_SHARD=${{ matrix.app_shard }} apps/plant3d/build.sh tests
 
   # wdp_voice, the voice codec (decision 0069), for each platform the plant ships on, from its pinned sources, each
   # built twice in fresh folders and compared (apps/plant3d/voice/build.sh WDP_CHECK_REPRO=1): the libraries'

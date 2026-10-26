@@ -40,6 +40,13 @@ static func _take(tree: SceneTree, ui, label: String) -> String:
 	return ""
 
 
+## The Crew panel rebuilt from the engine as it is now, whatever its own signature says (the panel's buttons are
+## looked for in it). Only where the step needs the panel: forced every round, it took most of the test's time.
+static func _fresh(ui) -> void:
+	ui.crew._sig = ""
+	ui.crew.refresh()
+
+
 ## Plays the trainee's current step as a trainee would, from the Crew panel, the WTP desk's screens and the cards
 ## (true when something was done). The walker is put at a place by "Take me there".
 func _play(tree: SceneTree, ui, log: Array) -> bool:
@@ -49,18 +56,19 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 	if not ui.crew.visible:
 		ui.open_crew()
 	if e.st_unacked > 0:
+		_fresh(ui)                      # (rebuilt every round before: an alarm seen without waiting for the panel's own refresh)
 		var seen := App.find_button(ui.crew, "Seen")
 		if seen:
 			seen.pressed.emit()
 	var cur = e.sp_cur[pi]
 	if cur == null:
 		return false
-	ui.crew._sig = ""
-	ui.crew.refresh()
+	ui.crew.refresh()       # every state the panel passes through drawn, as the app does (its signature); forced below
 	var s: Dictionary = sm.tasks[cur["task"]]["steps"][cur["step"]]
 	if s.has("go") or s.has("meet") or s.has("work"):
 		var dest = cur["st"].get("dest", cur["st"].get("place"))
 		if dest != null and dest >= 0 and e.st_t_at != dest:
+			_fresh(ui)
 			var b := App.find_button(ui.crew, "Take me there")
 			if b == null:
 				log.append("a step with a place offers no Take me there: %s" % App.texts(ui.crew).left(300))
@@ -69,6 +77,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 			ui._place_tick()
 			return true
 	elif s.has("ppe"):
+		_fresh(ui)
 		var b := App.find_button(ui.crew, "Put it on")
 		if b == null:
 			b = App.find_button(ui.crew, "Take me to a locker")
@@ -82,6 +91,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 		return true
 	elif s.has("read"):
 		# the value the gauge or the analyser shows, written down from the Crew panel
+		_fresh(ui)
 		var v: float = e.shown(s["read"], e.cur)
 		if ui.crew.entry == null:
 			log.append("a reading step offers no entry: %s" % App.texts(ui.crew).left(300))
@@ -109,11 +119,13 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 		ui.close_screens()
 		return true
 	elif s.has("say"):
+		_fresh(ui)
 		var b := App.find_button(ui.crew, "Send")
 		if b:
 			b.pressed.emit()
 		return true
 	elif s.has("call"):
+		_fresh(ui)
 		var b := App.find_button(ui.crew, "Call")
 		if b:
 			b.pressed.emit()
