@@ -149,7 +149,7 @@ static func stair_way(space: PhysicsDirectSpaceState3D, path0: Array) -> Array:
 			var dir := d.rotated(Vector3.UP, deg_to_rad(a))
 			var q := p + dir * APPROACH
 			var floor := space.intersect_ray(PhysicsRayQueryParameters3D.create(q + Vector3.UP * 0.5, q + Vector3.DOWN * 0.5))
-			# a floor, not the stair's own landing (the way would turn back onto the stair)
+			# a floor, not a stair's landing (the stair's own: the way would turn back onto it)
 			if floor.is_empty() or absf(floor.position.y - p.y) > 0.1 or floor.normal.y < 0.9 or floor.collider.has_meta("stair"):
 				continue
 			# the walker's capsule fits along from the end to there

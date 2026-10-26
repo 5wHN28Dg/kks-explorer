@@ -8,10 +8,10 @@
 ## (so a person neither hurries nor dawdles: the way's time is its length's), never a run; a 0.3 m capsule (the
 ## walker's, 0.4 to 1.8 m above the feet) on it every SAMPLE metres touches no collider but a door's (doors open for
 ## walkers); the feet are within FEET of what a walker stands on (a floor, a deck, a stair's slope, the one the
-## walking test climbs), except on a ladder. Until 2026-10-26 this test measured the mesh's path against the way's
-## length, which was measured on that same path, while people were drawn along the straight line between the places:
-## through machines and rails, floating up the HRSG's stair. 45 ways' paths were more than 10 % longer than that line,
-## and nothing compared the two.
+## walking test climbs, through the treads' nosings), except on a ladder; each stair way has a stretch on its steps.
+## Until 2026-10-26 this test measured the mesh's path against the way's length, which was measured on that same path,
+## while people were drawn along the straight line between the places: through machines and rails, floating up the
+## HRSG's stair. 45 ways' paths were more than 10 % longer than that line, and nothing compared the two.
 extends RefCounted
 
 const App = preload("res://tests/ui_app.gd")
@@ -81,6 +81,7 @@ func run(tree: SceneTree) -> Array:
 		main.interiors.load_all()
 	for i in 4:
 		await tree.physics_frame
+	p.append_array(_doors(tree, r))
 	var at: Array = []
 	for pl in sm.places:
 		at.append(Layout.godot_of(pl["at"]))
@@ -103,6 +104,8 @@ func run(tree: SceneTree) -> Array:
 			var res := check_line(ways, space, skip, ia, ib, at.size(), steps * SimClock.STEP, float(w[2]))
 			samples += res[1]
 			on_stairs += res[2]
+			if w[3] == "stair" and res[2] == 0:
+				p.append("way %s–%s: a stair way with no stretch on stairs" % [w[0], w[1]])
 			for e in res[0]:
 				p.append("way %s–%s: %s" % [w[0], w[1], e])
 				lb += 1
@@ -139,37 +142,44 @@ static func check_line(ways, space: PhysicsDirectSpaceState3D, skip: Array[RID],
 	var q := PhysicsShapeQueryParameters3D.new()
 	q.shape = cap
 	q.exclude = skip
-	var n := maxi(2, ceili(length / SAMPLE))
 	var hits := {}
 	var feet := {}
 	var stairs := 0
 	var fast := 0.0
-	for dir in 2:
-		var from := ia if dir == 0 else ib
-		for i in n + 1:
-			var k := float(i) / n
-			if not ways.walk(key, from, k, seconds):
-				return [["walk() found no line"], 0, 0]
-			var at: Vector3 = ways.pos
-			fast = maxf(fast, ways.speed)
-			if dir == 1:
-				continue
+	# the line itself every SAMPLE metres: the capsule and the feet
+	var on: PackedByteArray = ways.lines[key][2]
+	var checked := 0
+	for i in range(1, pts.size()):
+		var m := maxi(1, ceili(pts[i - 1].distance_to(pts[i]) / SAMPLE))
+		for k in range(0 if i == 1 else 1, m + 1):
+			var at := pts[i - 1].lerp(pts[i], float(k) / m)
+			checked += 1
 			q.transform = Transform3D(Basis(), at + Vector3.UP * 1.1)
 			for h in space.intersect_shape(q, 4):
 				var c: Node = h.collider
 				var name := String(c.get_parent().name) + "/" + String(c.name) if c.get_parent() != null else String(c.name)
 				if not hits.has(name):
 					hits[name] = at
-			if ways.on == StaffWays.ON_STAIRS:
+			if on[i - 1] == StaffWays.ON_STAIRS:
 				stairs += 1
-			if ways.on != StaffWays.ON_LADDER:
+			if on[i - 1] != StaffWays.ON_LADDER:
 				var y: float = StaffPaths.surface(space, at, 0.3, 0.5, skip)
 				var gap: float = 0.5 if is_nan(y) else at.y - y
 				if absf(gap) > FEET and feet.size() < 3:
 					feet[at] = gap
-		# the way's two ends, as walked from either
-		if dir == 1 and (not ways.walk(key, ib, 0.0, seconds) or ways.pos.distance_to(pts[pts.size() - 1 if ia == ways.lines[key][3] else 0]) > 0.01):
-			out.append("walked from its other end, it does not start there")
+	# walked as ui/people_view.gd walks it, from either end: its speed, its ends
+	var n := maxi(2, ceili(length / SAMPLE))
+	for dir in 2:
+		var from := ia if dir == 0 else ib
+		var to := ib if dir == 0 else ia
+		for i in n + 1:
+			if not ways.walk(key, from, float(i) / n, seconds):
+				return [["walk() found no line"], 0, 0]
+			fast = maxf(fast, ways.speed)
+			if i == 0 and Vector2(ways.pos.x - at_of(ways, key, from).x, ways.pos.z - at_of(ways, key, from).z).length() > 0.01:
+				out.append("walked from %s, it does not start there" % ["its first place", "its second place"][dir])
+			if i == n and Vector2(ways.pos.x - at_of(ways, key, to).x, ways.pos.z - at_of(ways, key, to).z).length() > 0.01:
+				out.append("walked from %s, it does not end at the other" % ["its first place", "its second place"][dir])
 	for name in hits:
 		out.append("the capsule on its line hits %s at %s" % [name, str(hits[name])])
 	for at in feet:
@@ -177,4 +187,31 @@ static func check_line(ways, space: PhysicsDirectSpaceState3D, skip: Array[RID],
 				"above" if feet[at] > 0.0 else "into"])
 	if fast > PeopleView.RUN_FROM:
 		out.append("walked at %.2f m/s somewhere (a run from %.1f m/s)" % [fast, PeopleView.RUN_FROM])
-	return [out, n + 1, stairs]
+	return [out, checked, stairs]
+
+
+## The end of a way's line at place `place`.
+static func at_of(ways, key: int, place: int) -> Vector3:
+	var pts: PackedVector3Array = ways.lines[key][0]
+	return pts[0] if ways.lines[key][3] == place else pts[pts.size() - 1]
+
+
+## Every door 1 m wide or more is walked through on the mesh: from 1 m in front of it to 1 m behind it in at most
+## 3 m (the mesh keeps 0.4 m from each jamb, builder/nav_bake.gd: a 0.9 m door of the camp's rooms left the rooms off
+## it, 2026-10-26). Narrower doors (the camp's bathrooms, 0.7 m) are not on it.
+static func _doors(tree: SceneTree, r) -> Array:
+	var out: Array = []
+	var n := 0
+	for d in tree.get_nodes_in_group("doors"):
+		if float(d.get("width")) < 0.95:
+			continue
+		n += 1
+		var fwd: Vector3 = d.global_transform.basis.z.normalized()
+		var p: Vector3 = d.global_position
+		var f: Dictionary = r.find(p + fwd * 1.0, p - fwd * 1.0)
+		if not f.reached or f.length > 3.0:
+			out.append("door %s: not walked through on the mesh (%s, %.1f m)" % [d.name, "reached" if f.reached else "not reached", f.length])
+	if n < 30:
+		out.append("only %d doors checked" % n)
+	return out
+

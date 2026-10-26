@@ -46,12 +46,27 @@ static func open(sm, at: Array, file: String = FILE):
 		if not (pts is PackedVector3Array and t is PackedFloat32Array and o is PackedByteArray) or pts.size() < 2 \
 				or t.size() != pts.size() or o.size() != pts.size() - 1:
 			continue
+		if not _sane(t, o):
+			continue
 		var a: int = sm.pix[ab[0]]
 		var b: int = sm.pix[ab[1]]
 		if not _near(pts[0], at[a]) or not _near(pts[pts.size() - 1], at[b]):
 			continue
 		out.lines[mini(a, b) * np + maxi(a, b)] = [pts, t, o, a]
 	return out
+
+
+## Times from 0 to 1, never back; each stretch walked on something known.
+static func _sane(t: PackedFloat32Array, o: PackedByteArray) -> bool:
+	if t[0] != 0.0 or t[t.size() - 1] != 1.0:
+		return false
+	for i in range(1, t.size()):
+		if t[i] < t[i - 1]:
+			return false
+	for v in o:
+		if v > ON_LADDER:
+			return false
+	return true
 
 
 static func _near(p: Vector3, q: Vector3) -> bool:
@@ -72,6 +87,10 @@ func walk(key: int, from: int, k: float, seconds: float) -> bool:
 	var span := t[i] - t[i - 1]
 	var f := clampf((kk - t[i - 1]) / span, 0.0, 1.0) if span > 0.0 else 1.0
 	pos = pts[i - 1].lerp(pts[i], f)
+	# a stretch of no time (two times equal in single precision): its speed and heading are the next one's
+	while span <= 0.0 and i < t.size() - 1:
+		i += 1
+		span = t[i] - t[i - 1]
 	dir = (pts[i] - pts[i - 1]) if fwd else (pts[i - 1] - pts[i])
 	speed = dir.length() / (span * seconds) if span > 0.0 and seconds > 0.0 else 0.0
 	on = (l[2] as PackedByteArray)[i - 1]

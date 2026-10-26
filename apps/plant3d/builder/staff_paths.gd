@@ -102,8 +102,12 @@ static func feet_line(space: PhysicsDirectSpaceState3D, a: Vector3, b: Vector3, 
 		var p := src[i - 1]
 		var q := src[i]
 		if ladder[i - 1] == 1:
+			# up the rungs, then off onto the platform (down: onto the rungs, then down them): never across them
+			var bend := Vector3(p.x, q.y, p.z) if q.y > p.y else Vector3(q.x, p.y, q.z)
+			feet.append(bend)
+			on.append(ON_LADDER if q.y > p.y else ON_FLOOR)
 			feet.append(q)
-			on.append(ON_LADDER)
+			on.append(ON_FLOOR if q.y > p.y else ON_LADDER)
 			continue
 		var n := maxi(1, ceili(p.distance_to(q) / SAMPLE))
 		for k in range(1, n + 1):

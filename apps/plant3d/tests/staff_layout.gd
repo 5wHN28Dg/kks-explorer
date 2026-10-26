@@ -110,7 +110,8 @@ static func clear_of(main: Node, p: Vector3) -> Vector3:
 		if away.length() < 1e-3 or at.distance_to(p) > 0.1:
 			break
 		at += away.normalized() * 0.01
-	return p if at.distance_to(p) > 0.1 else at
+	q.transform = Transform3D(Basis(), at + Vector3.UP * 1.1)
+	return at if at.distance_to(p) <= 0.1 and space.get_rest_info(q).is_empty() else p
 
 
 static func _rise(points: PackedVector3Array) -> float:
