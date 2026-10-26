@@ -913,8 +913,8 @@ class FirstTrainStaff(unittest.TestCase):
                                          ['hse2', 'con5', 'unsafe', 'wo_paint_cw']])
         self.assertFalse([x for x in ev if x[1] in ('lock', 'unlock', 'remove_lock') and x[5] != 'done'])
         self.assertFalse([x for x in ev if x[1] == 'unsafe' and x[3] == 'ppe'], 'everyone in the zones wears PPE')
-        # the snapshot's PPE: the HSE officers and the contractors in theirs at 10:30
-        st = next(s for s in self.day['states'] if s['clock'] % 864000 == 10 * 36000 + 30 * 600)
+        # the snapshot's PPE: the HSE officers and the contractors in theirs at 10:00 (snapshots on the hour from 05:00)
+        st = next(s for s in self.day['states'] if s['clock'] % 864000 == 10 * 36000)
         self.assertEqual(st['worn']['hse1'], ['helmet', 'boots', 'glasses', 'ear', 'vest'])
         self.assertIn('harness', st['worn']['con1'])
 

@@ -311,6 +311,10 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 	if d.has("st_pending"):
 		var sm = fresh._sm
 		for pd in d["st_pending"]:
+			if typeof(pd) == TYPE_ARRAY and pd.size() == 9 and pd[7] == null:
+				if not _value_offer_ok(fresh, pd):
+					return "a damaged offer kept for the next shift"
+				continue
 			if typeof(pd) != TYPE_ARRAY or pd.size() != 9 or typeof(pd[0]) != TYPE_STRING \
 					or (pd[1] != null and typeof(pd[1]) != TYPE_STRING) or typeof(pd[2]) != TYPE_ARRAY \
 					or typeof(pd[3]) != TYPE_STRING or typeof(pd[4]) != TYPE_INT or typeof(pd[7]) != TYPE_STRING \
@@ -328,6 +332,27 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 				if typeof(x) != TYPE_ARRAY or x.size() < 2 or typeof(x[0]) != TYPE_INT or typeof(x[1]) != TYPE_STRING:
 					return "a damaged %s" % k
 	return ""
+
+
+## A reaction on a value's offer kept after its job was abandoned (PLANT3D §17.12, staff.gd value_again): [key, key,
+## roles, task, priority, work or null, code or null, null, the value's name], the key "<reaction>|value|<name>" of
+## a reaction on that value. What react() and value_busy() read of it.
+static func _value_offer_ok(fresh, pd: Array) -> bool:
+	var sm = fresh._sm
+	if sm == null or typeof(pd[0]) != TYPE_STRING or typeof(pd[1]) != TYPE_STRING or pd[1] != pd[0] \
+			or typeof(pd[2]) != TYPE_ARRAY or typeof(pd[3]) != TYPE_STRING or not sm.tasks.has(pd[3]) \
+			or typeof(pd[4]) != TYPE_INT or typeof(pd[8]) != TYPE_STRING or not fresh.ix.has(pd[8]) \
+			or (pd[5] != null and (typeof(pd[5]) != TYPE_STRING or not fresh.m.work_ix.has(pd[5]))) \
+			or (pd[6] != null and typeof(pd[6]) != TYPE_STRING):
+		return false
+	for ro in pd[2]:
+		if typeof(ro) != TYPE_STRING:
+			return false
+	var parts: PackedStringArray = String(pd[0]).split("|", true, 2)
+	if parts.size() != 3 or parts[1] != "value" or parts[2] != pd[8] or not parts[0].is_valid_int():
+		return false
+	var ri := parts[0].to_int()
+	return ri >= 0 and ri < sm.reactions.size() and sm.reactions[ri]["on"].get("value") == pd[8]
 
 
 static func _tracker_contents(t: Dictionary, e: Dictionary) -> bool:

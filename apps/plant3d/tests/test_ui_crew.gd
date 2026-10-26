@@ -372,3 +372,34 @@ func _save(ui, p: Array) -> void:
 		f2.step()
 	if var_to_bytes(e.snapshot()) != var_to_bytes(f2.snapshot()) or var_to_bytes(e.events) != var_to_bytes(f2.events):
 		p.append("the restored run with staff differs from the uninterrupted one")
+	# a reaction on a value's offer kept after its job was abandoned (PLANT3D §17.12): a save with one is taken, one
+	# that names another value than its reaction's is refused
+	var sm = e._sm
+	var ri := -1
+	for i in sm.reactions.size():
+		if sm.reactions[i]["on"].has("value"):
+			ri = i
+			break
+	if ri == -1:
+		p.append("no reaction on a value in shift_cold's staff")
+		return
+	var r: Dictionary = sm.reactions[ri]
+	var v: String = r["on"]["value"]
+	var key := "%d|value|%s" % [ri, v]
+	var w = r.get("work")
+	var kept := [key, key, r["roles"].duplicate(), r["task"], sm.prio_of(r["task"]), w,
+			m.works[m.work_ix[w]]["kks"] if w != null else null, null, v]
+	var with_kept := data.duplicate(true)
+	with_kept["st_pending"] = [kept]
+	var f3 = PlantEngine.new(m, "shift_cold")
+	var why: String = ui.autosave._engine_contents(f3, with_kept)
+	if why != "":
+		p.append("a save with a reaction on a value's kept offer was refused: %s" % why)
+	else:
+		RunSave.apply(f3, bytes_to_var(var_to_bytes(with_kept)))
+		f3.step(50)                 # (react() reads it every step: no error)
+	var wrong := kept.duplicate()
+	wrong[8] = "no_such_value"
+	with_kept["st_pending"] = [wrong]
+	if ui.autosave._engine_contents(PlantEngine.new(m, "shift_cold"), with_kept) == "":
+		p.append("a save whose kept offer names a value its reaction is not on was taken")
