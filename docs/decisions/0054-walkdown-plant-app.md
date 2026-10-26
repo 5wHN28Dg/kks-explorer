@@ -112,7 +112,9 @@ same repository would stop every phone's Walkdown updates. [V] the code.
    recordings are preferred for machinery, and `tools/about` lists them in the app's about data like `data/about.json`, with Godot's own
    notices from `Engine.get_license_info()`.
 8. **Identity and packaging.** Android `io.github.walkdown.plant`, a Gradle-built export (needed for the deep-link
-   plugin), arm64-v8a only (0046), `permissions/internet=false`: no network at all in format 1. Flatpak
+   plugin), arm64-v8a only (0046), `permissions/internet=false`: no network at all in format 1. **Amended 2026-10-26 (multiplayer, the user; decision 0068):** the app gains `INTERNET` and
+   `CHANGE_WIFI_MULTICAST_STATE` (and `RECORD_AUDIO` for voice, 0069) when multiplayer lands (milestone MP2 of
+   docs/plant3d/MULTIPLAYER.md); it opens no socket outside a session, which a test checks. Flatpak
    `io.github._5wHN28Dg.WalkdownPlant` (the user's choice, 2026-10-16) on `org.godotengine.godot.BaseApp//4.7`. MSIX identity `WalkdownPlant`, exe
    `WalkdownPlant.exe`, alias `walkdown-plant.exe`, publisher `CN=Walkdown` (the certificate IT already trusts,
    0043). Releases: tags `plant-vX.Y.Z` in this repository, published **not as latest**

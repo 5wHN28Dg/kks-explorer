@@ -126,6 +126,11 @@ from Godot 4 (0041), so the rows below say what the platform gives underneath an
 | Crowd avoidance | 🟡 NavigationAgent3D RVO avoidance, "in its own space … no information from navigation meshes" [D]; not used: people follow baked way polylines (0064) | 🟡 same | 🟡 same |
 | Loading an interior while walking | ✅ `ResourceLoader.load_threaded_request` [D] | ✅ same | ✅ same |
 | Behaviour (NPC) logic | ❌ no built-in AI; addons LimboAI (MIT, C++ module or GDExtension) and Beehave (MIT, GDScript) [K]; ours instead, bit for bit with the reference (0062) | ❌ | ❌ |
+| Multiplayer: sockets (2026-10-26, 0068) | ✅ engine: `PacketPeerUDP` (broadcast), `UDPServer`, `WebSocketPeer` with wss through mbedTLS [S 4.7]; MSIX `internetClient`, `privateNetworkClientServer`; 🟡 a full-trust app that listens may get the firewall prompt (to check in the VM, MP2) [D] | ✅ same; Flatpak `--share=network` (static) [D] | ✅ same; `INTERNET`, granted at install (can't be limited to a session: the app's behaviour, tested) [D]; 🟡 broadcasts may need a `WifiManager.MulticastLock` (`CHANGE_WIFI_MULTICAST_STATE`), through `JavaClassWrapper` (to verify, MP2); Android 17's `ACCESS_LOCAL_NETWORK` binds target SDK 37, Godot 4.7's template targets 36 [D, S] |
+| Multiplayer: end-to-end crypto from GDScript (0068) | 🟡 `AESContext` ECB/CBC only, `HMACContext` SHA-256, `Crypto` random bytes, RSA, EC keys only loaded from PEM; no ECDH, no Ed25519, no AEAD [S 4.7]: RFC 7518's AES-128-CBC-HMAC-SHA-256 and RFC 5869's HKDF built from them | 🟡 same | 🟡 same |
+| Multiplayer: QR invite | ❌ no QR class in Godot [S 4.7]: our own GDScript encoder draws it; desktops type the code or open the link | ❌ same | ✅ the phone's camera app opens `walkdown-plant://join/…`, which the app takes (0056): no camera permission in the plant app |
+| Microphone capture (voice, 0069) | ✅ `AudioServer.get_input_frames` (experimental) or `AudioStreamMicrophone` + `AudioEffectCapture`, `audio/driver/enable_input` [S 4.7]; WASAPI, Windows' privacy setting can give silence; MSIX `microphone` [D] | ✅ same; PulseAudio (PipeWire), Flatpak `--socket=pulseaudio` [D] | ✅ same; `RECORD_AUDIO` asked by Godot's OpenSL ES driver when input starts; recorded with the default preset, so no platform echo canceller or noise suppressor [S 4.7 audio_driver_opensl.cpp] |
+| Opus voice codec (0069) | ❌ not in Godot 4.7 (no libopus in `thirdparty/`) [S]: our GDExtension `wdp_voice` over libopus 1.5.2 (BSD-3) and SpeexDSP's resampler (BSD-3), cross-built with llvm-mingw (x64, ARM64) [—, MP5] | ❌ same: `wdp_voice` with gcc [—, MP5] | ❌ same: `wdp_voice` with the NDK, arm64-v8a [—, MP5] |
 
 Sources (Godot 4.7): https://docs.godotengine.org/en/stable/about/system_requirements.html ·
 https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_android.html ·
@@ -147,7 +152,10 @@ https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Ope
 
 **Gaps for Walkdown Plant:** the engine itself (Godot, 0041); the Android deep link (a plugin of ours, 0054); audio
 synthesis on the phone (loops made at build time); shader baking only outside CI (release builds on the laptop);
-NPC behaviour (ours, 0062), far characters (no impostors: posed meshes, 0064).
+NPC behaviour (ours, 0062), far characters (no impostors: posed meshes, 0064). Multiplayer (2026-10-26, docs/plant3d/MULTIPLAYER.md): no AEAD or key
+agreement in GDScript (an AEAD built from AES-CBC and HMAC, keys from the invite code, 0068); no Opus in Godot (our
+GDExtension, 0069); no QR class (our encoder; phones open the link with their camera app); Android's network
+permission granted for the whole install.
 
 ## Gaps: what no platform provides, or only some do
 
