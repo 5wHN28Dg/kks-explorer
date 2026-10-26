@@ -95,7 +95,37 @@ from the plant gate), the stop step waits for a trainee between places, nobody s
 before a held job and before the supervisors' handover, and the staff step is back within §18.4's budget (62 µs
 at the shift change on the laptop, about 0.20 ms on the Note 9). A job held overnight keeps every lock on its
 isolation, whoever placed it (the user, 2026-10-25: the technician who isolated for a colleague's job keeps theirs on
-and removes it when the job resumes). Not yet measured: the Note 9 frames walk with S2's crowd.
+and removes it when the job resumes).
+
+**S2 measured on the Note 9 (2026-10-26):** main at #259 (44c6f31), a release build with the bake, test-signed,
+`lean+vis`, a first start each, `SAMPLE=1` and `probe=1`, every walk started at a battery of at most 30.0 °C. The APK
+is 141.6 MB (budget 150). The evidence (`rule.txt`, `samp.txt`, the logs) is kept on this laptop, not in the repository.
+
+| Walk (600 s) | Start | Frames at ≥ 30 fps | Frames over 100 ms: the app's / excluded as reclaim | Worst | Reclaim in the samples | Peak PSS | First walkable frame | Rule |
+|---|---|---|---|---|---|---|---|---|
+| `frames` | 25.4 °C | 98.67 % | 0 / 0 | 74.6 ms | 4.44 % | 1,084 MB | 12.3 s | passes |
+| `frames` | 29.9 °C | 99.44 % | 0 / 0 | 65.8 ms | 0.79 % | 1,096 MB | 11.4 s | passes |
+| `wtp` | 29.9 °C | 99.34 % | 0 / 0 | 77.6 ms | 2.69 % | 1,124 MB | 11.6 s | passes |
+| `wtp` | 30.0 °C | 99.24 % | 0 / 0 | 80.6 ms | 1.26 % | 1,084 MB | 11.4 s | passes |
+| `camp` | 29.8 °C | 99.50 % | 0 / 1 | 103.3 ms | 1.93 % | 1,107 MB | 11.5 s | not judged: walked again |
+| `camp` | 29.9 °C | 99.65 % | 0 / 0 | 75.1 ms | 1.18 % | 1,101 MB | 11.7 s | passes |
+| `camp` (again) | 29.8 °C | 99.62 % | 0 / 0 | 82.9 ms | 1.04 % | 1,109 MB | 11.5 s | passes |
+
+The first `camp` walk's one frame over 100 ms (103.3 ms at 490 s, GPU 104 ms, near the plant gate on the way back,
+where #258's excluded frame was too) fell inside the kernel's reclaim, but the walk had reclaim in 1.93 % of its
+samples, so the rule does not judge it; the walk again passed with no frame over 100 ms. Six walks pass.
+
+These three walks start in `cold_iron`, which has no staff: S2's people are not in them. The people were measured
+with extra `frames` walks among 24 (`crowd=24`): the Note 9 draws at most 12 skinned (`skinned=12`, 12 posed, 11
+posed draws) every time. Alone (A1's measurement again): 98.34 % at ≥ 30 fps (A1: 98.59–99.10 %), no frame over
+100 ms, the people's CPU 1.20 ms a frame on average (4.47 ms at most; budget 2 ms), peak PSS 1,108 MB. With the crews
+running too (`scenario=shift_cold`, `speed=fast`: five minutes of fast-forward, then normal speed, the Crew panel
+open) two walks gave 95.06 % and 94.94 % at ≥ 30 fps, people's CPU 1.41 ms (at most 5.52 ms), model step 1.36–1.45
+ms at normal speed (budget 2.1), no frame over 100 ms that the app caused (one walk not judged: 1.03 % reclaim, its
+two frames of 100.0 and 101.3 ms both inside reclaim). The scripts there took 11.7 ms a frame in fast-forward and
+5.3 ms after it, against 4.3 ms in the crowd alone: fast-forward's model, the staff's steps and the Crew panel together.
+A walk that runs the crews in free mode at normal speed (a walk option to take no role) would measure S2's own crowd;
+none exists yet.
 
 **Order** (two tracks that join): P1 → S1 → A1 → S2, with W1 → W2 → W3 and C1 alongside; S3 needs both tracks, S4
 needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, S2 with C1, then S3, then S4.
