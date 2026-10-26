@@ -206,8 +206,9 @@ static func _doors(tree: SceneTree, r) -> Array:
 		if float(d.get("width")) < 0.95:
 			continue
 		n += 1
-		var fwd: Vector3 = d.global_transform.basis.z.normalized()
-		var p: Vector3 = d.global_position
+		var xf: Transform3D = d.get_parent().global_transform * d.closed_xf   # where it is when shut (it may be open)
+		var fwd: Vector3 = xf.basis.z.normalized()
+		var p: Vector3 = xf.origin
 		var f: Dictionary = r.find(p + fwd * 1.0, p - fwd * 1.0)
 		if not f.reached or f.length > 3.0:
 			out.append("door %s: not walked through on the mesh (%s, %.1f m)" % [d.name, "reached" if f.reached else "not reached", f.length])

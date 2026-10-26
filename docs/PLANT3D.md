@@ -1836,14 +1836,15 @@ HRSG's stair was walked up to 30 m above the ground.
   than 10 % off its way's length.
 - The mesh keeps 0.4 m from what is in the way (decision 0059's bake at the walker's 0.3 m left its edge touching
   them); the stack platform's ring is 1.5 m wide for it, and the camp's room doors 1.0 m (0.9 m left the rooms off
-  the mesh; the bathrooms' 0.7 m doors were off it before); a switchback stair is left from its last landing's middle,
-  not across the corner where its rails meet the floor's; a work place is moved up to 0.1 m clear of a corner the
+  the mesh; the bathrooms' 0.7 m doors were off it before); an end of a switchback stair reached across its landing's
+  corner (where its rails meet the floor's) is left out: the stair is left from the landing's middle; a work place is moved up to 0.1 m clear of a corner the
   mesh cuts.
 - `tests/test_staff_ways.gd` walks every line both ways: within 10 % of the way's length, a 0.3 m capsule (0.4 to
   1.8 m above the feet) touching nothing but doors, the feet within 5 cm of what is under them, every stair way on
   its steps for some of it, never a run, and every door 1 m wide or more walked through on the mesh;
   `test_staff_paths.gd` builds a line round a beam on a scene of its own.
-- Not yet (phases 3 and 4): turning eased at a line's corners, the lane and keeping apart, the crowd's lanes, the
+- Not yet (phases 3 and 4): doors opening for people (they open for the walker only, app/door.gd: a person passes
+  through a shut leaf), turning eased at a line's corners, the lane and keeping apart, the crowd's lanes, the
   standing places (a person at a place is drawn at its point, up to 5 cm above the floor).
 
 ### 18.2 Avatars

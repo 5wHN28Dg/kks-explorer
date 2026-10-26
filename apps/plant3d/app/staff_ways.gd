@@ -46,7 +46,7 @@ static func open(sm, at: Array, file: String = FILE):
 		if not (pts is PackedVector3Array and t is PackedFloat32Array and o is PackedByteArray) or pts.size() < 2 \
 				or t.size() != pts.size() or o.size() != pts.size() - 1:
 			continue
-		if not _sane(t, o):
+		if not _sane(t, o) or Array(pts).any(func(v: Vector3) -> bool: return not v.is_finite()):
 			continue
 		var a: int = sm.pix[ab[0]]
 		var b: int = sm.pix[ab[1]]
@@ -61,7 +61,7 @@ static func _sane(t: PackedFloat32Array, o: PackedByteArray) -> bool:
 	if t[0] != 0.0 or t[t.size() - 1] != 1.0:
 		return false
 	for i in range(1, t.size()):
-		if t[i] < t[i - 1]:
+		if t[i] < t[i - 1] or not is_finite(t[i]):
 			return false
 	for v in o:
 		if v > ON_LADDER:
@@ -88,8 +88,9 @@ func walk(key: int, from: int, k: float, seconds: float) -> bool:
 	var f := clampf((kk - t[i - 1]) / span, 0.0, 1.0) if span > 0.0 else 1.0
 	pos = pts[i - 1].lerp(pts[i], f)
 	# a stretch of no time (two times equal in single precision): its speed and heading are the next one's
-	while span <= 0.0 and i < t.size() - 1:
-		i += 1
+	# (the next one as walked: back along the line when walked from its other end)
+	while span <= 0.0 and (i < t.size() - 1 if fwd else i > 1):
+		i += 1 if fwd else -1
 		span = t[i] - t[i - 1]
 	dir = (pts[i] - pts[i - 1]) if fwd else (pts[i - 1] - pts[i])
 	speed = dir.length() / (span * seconds) if span > 0.0 and seconds > 0.0 else 0.0

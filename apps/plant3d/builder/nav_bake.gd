@@ -13,8 +13,8 @@ extends RefCounted
 
 const OUT := "nav.res"
 
-## The walker (app/player.gd): a 0.3 m capsule, 1.8 m tall (the stack platform at +40 leaves it 0.4 m between the
-## stack and the rail: no room to spare). Floors and platforms are level and stairs are links: a ledge is
+## The walker (app/player.gd): a 0.3 m capsule, 1.8 m tall (the stack platform at +40 is a 1.5 m ring round the
+## stack: 0.7 m of mesh). Floors and platforms are level and stairs are links: a ledge is
 ## climbed only as high as the capsule rides up one, r (1 - cos 46°) = 0.09 m (a machine's base is not).
 ## The mesh keeps AGENT_RADIUS from what is in the way, which Recast rounds up to whole cells: 4, 0.4 m. Baked at the
 ## walker's 0.3 m (3 cells) its edge lay exactly 0.3 m from a machine or a wall, and the paths along it touched them:
@@ -25,7 +25,7 @@ const AGENT_RADIUS := 0.35
 const AGENT_HEIGHT := 1.8
 const AGENT_CLIMB := 0.09
 const AGENT_SLOPE := 20.0
-const CELL := 0.1               # a 1 m personnel door less the radius on both sides leaves 0.3 m: three cells
+const CELL := 0.1               # a 1 m personnel door less the mesh's 0.4 m on both sides leaves 0.2 m: two cells
 const CELL_H := 0.03            # the climb, 0.09 m, is three of them (Recast floors it to whole cells)
 const LINK_REACH := 1.0         # how far from a stair's or a ladder's end its link finds the mesh (the app's map too)
 const APPROACH := 0.8           # metres in front of a stair's end where its link starts

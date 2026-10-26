@@ -90,13 +90,16 @@ static func feet_line(space: PhysicsDirectSpaceState3D, a: Vector3, b: Vector3, 
 	for i in pts.size():
 		if pts[i].distance_to(src[src.size() - 1]) > 1e-3:
 			src.append(pts[i])
-			ladder.append(1 if i > 0 and marks[i].begins_with("ladder ") and marks[i] == marks[i - 1] else 0)
+			# 1 up a ladder, 2 along a stair (a ledge the walker steps up elsewhere is no stair)
+			var same := i > 0 and marks[i] != "" and marks[i] == marks[i - 1]
+			ladder.append(1 if same and marks[i].begins_with("ladder ") else (2 if same and marks[i].begins_with("stair ") else 0))
 	if b.distance_to(src[src.size() - 1]) > 1e-3:
 		src.append(b)
 		ladder.append(0)
 	# the feet every SAMPLE metres (and at every point of the route: its corners)
 	var feet := PackedVector3Array()
 	var on := PackedByteArray()          # per stretch of feet
+	var flight := PackedByteArray()      # per stretch of feet: on a stair's way
 	feet.append(_down(space, src[0], exclude))
 	for i in range(1, src.size()):
 		var p := src[i - 1]
@@ -108,13 +111,15 @@ static func feet_line(space: PhysicsDirectSpaceState3D, a: Vector3, b: Vector3, 
 			on.append(ON_LADDER if q.y > p.y else ON_FLOOR)
 			feet.append(q)
 			on.append(ON_FLOOR if q.y > p.y else ON_LADDER)
+			flight.append_array([0, 0])
 			continue
 		var n := maxi(1, ceili(p.distance_to(q) / SAMPLE))
 		for k in range(1, n + 1):
 			feet.append(_down(space, p.lerp(q, float(k) / n), exclude))
 			on.append(ON_FLOOR)
+			flight.append(1 if ladder[i - 1] == 2 else 0)
 	for i in on.size():
-		if on[i] != ON_LADDER:
+		if on[i] != ON_LADDER and flight[i] == 1:
 			var s := feet[i + 1] - feet[i]
 			var run := Vector2(s.x, s.z).length()
 			on[i] = ON_STAIRS if absf(s.y) > STEEP * maxf(run, 1e-3) else ON_FLOOR
