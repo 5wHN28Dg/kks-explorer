@@ -206,8 +206,12 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 				if typeof(key) != TYPE_STRING or (k == "first_out" and typeof(d[k][key]) != TYPE_STRING):
 					return "a damaged %s" % k
 	if d.has("queue"):
-		var sizes := {"op": 5, "ack": 2, "shelve": 3, "unshelve": 2, "fault": 2, "repair": 2, "permit": 4, "lock": 4,
-				"unlock": 4, "remove_lock": 5}
+		# every input kind's lengths (PLANT3D.md §12, §17.6, §17.13): a version 2 op names where and who, a repair
+		# under a permit its work and person, a removal by authority may name whose lock; the staff's inputs too
+		var sizes := {"op": [5, 7], "ack": [2], "shelve": [3], "unshelve": [2], "fault": [2], "repair": [2, 4],
+				"permit": [4], "lock": [4], "unlock": [4], "remove_lock": [5, 6], "role": [2], "release": [1],
+				"task_ack": [1], "arrive": [2], "leave": [2], "read": [3], "say": [3], "pick": [2], "call": [4],
+				"jump": [2], "ppe": [3], "zone": [3], "stop": [2]}
 		for q0 in d["queue"]:
 			var q = q0
 			# a session run's inputs end with their slot (§17.13): looked at without it
@@ -218,10 +222,9 @@ func _engine_contents(fresh, d: Dictionary) -> String:
 			# a repair is the trainer's [repair, fault] or the trainee's under a permit [repair, fault, work, person]
 			if typeof(q) != TYPE_ARRAY or q.is_empty() or typeof(q[0]) != TYPE_STRING:
 				return "a damaged input"
-			var under: bool = q[0] == "repair" and q.size() == 4 and typeof(q[2]) == TYPE_STRING
-			var named: bool = q[0] == "remove_lock" and q.size() == 6     # naming whose lock (§15.1)
-			if not sizes.has(q[0]) or (q.size() != sizes[q[0]] and not under and not named) \
-					or (q[0] in ["fault", "repair"] and typeof(q[1]) != TYPE_STRING):
+			if not sizes.has(q[0]) or not q.size() in sizes[q[0]] \
+					or (q[0] in ["fault", "repair"] and typeof(q[1]) != TYPE_STRING) \
+					or (q[0] == "repair" and q.size() == 4 and typeof(q[2]) != TYPE_STRING):
 				return "a damaged input"
 	# the players (PLANT3D §17.13): each slot's person (each played by one slot at most) and the place it last left
 	var npeople: int = fresh._sm.people.size() if fresh._sm != null else 0

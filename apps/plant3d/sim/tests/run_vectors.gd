@@ -7,7 +7,8 @@ extends SceneTree
 ##   --vectors=PATH    the vector file (default ref/vectors/plant3d-v1.json of this checkout)
 ##   --vectors2=PATH   the format 2 vector file (default ref/vectors/plant3d-v2.json); its runs are named v2/…
 ##   --data=PATH       the first train's content (default data/plant3d)
-##   --digests=PATH    also write the SHA-256 of every value at every step of every run, in chunks of 1000 steps
+##   --digests=PATH    also write the SHA-256 of every value at every step of every run, in chunks of 1000 steps, and
+##                     the state digest (docs/PLANT3D.md §17.14) of every 50th step (`state`)
 ##                     (tests/test_plant3d_sim.py compares them with the reference's: bit for bit)
 ##   --dump=RUN:FROM:TO   print every value's bits at steps FROM–TO of one run (steps/N, train, hot or a fork's id)
 ##   --interpreter=1   step every engine with the interpreter (engine.gd _run), not the straight-line program; the
@@ -19,7 +20,8 @@ extends SceneTree
 ## What is compared with the file: every event exactly (kinds, names, numbers and their int/float type, booleans);
 ## every snapshot's machines, trips, first-out records, alarms (in the model's order), shelved alarms and fast-forward
 ## exactly; its values to the file's precision (the generator rounds them to 9 decimals, so to within 6e-10 plus the
-## last bit of the number). Bit-exactness of every value is what the digests prove.
+## last bit of the number). Bit-exactness of every value is what the digests prove. The state digests (§17.14) of the
+## runs that carry them (`digests`: the staff runs, the day and its forks) are compared with the file's.
 ## Exit code 0 when every vector passed; each failure prints the first divergence of its vector.
 
 const PlantModel = preload("../plant_model.gd")
@@ -29,6 +31,7 @@ const Links = preload("../links.gd")
 const JsonStrict = preload("../json_strict.gd")
 
 const CHUNK := 1000
+const DIGEST_EVERY := 50        # a state digest every 50 steps (§17.14), step 0's first
 ## the water treatment plant's runs in plant3d-v2.json, each a start by its procedure with forks (W2, W3)
 const WTP_RUNS := ["wtp", "wtp_cip", "wtp_regen"]
 
@@ -211,7 +214,7 @@ var _last := 0
 
 func _hash_begin(run: String, from_step: int) -> void:
 	_run = run
-	digests[run] = {"from": from_step, "chunks": []}
+	digests[run] = {"from": from_step, "chunks": [], "state": []}
 	_chunk_start = from_step
 	_ctx = HashingContext.new()
 	_ctx.start(HashingContext.HASH_SHA256)
@@ -222,6 +225,8 @@ func _hash(e) -> void:
 	if _run == dump_run and e.step_no >= dump_from and e.step_no <= dump_to:
 		print("DUMP %d %s" % [e.step_no, vals.to_byte_array().hex_encode()])
 	_ctx.update(vals.to_byte_array())
+	if e.step_no % DIGEST_EVERY == 0:
+		digests[_run]["state"].append(e.digest().hex_encode())
 	_last = e.step_no
 	if e.step_no - _chunk_start + 1 == CHUNK:
 		_hash_cut()
@@ -367,7 +372,7 @@ func _staff_run(k: int, r: Dictionary, base: Dictionary) -> void:
 	if m.error != "":
 		_result(name, m.error)
 		return
-	var e = PlantEngine.new(m, "s1")
+	var e = PlantEngine.new(m, "s1", r.get("session", false))
 	var run := "v2/staff/%d" % k
 	_hash_begin(run, 0)
 	_hash(e)
@@ -390,6 +395,8 @@ func _staff_run(k: int, r: Dictionary, base: Dictionary) -> void:
 		d = "inputs after the last step"
 	if d == "":
 		d = diff(_reads_as(e.events, r["events"]), r["events"], "events")
+	if d == "" and r.has("digests"):
+		d = diff(digests[run]["state"], r["digests"], "state digests")
 	_result(name, d)
 
 
@@ -411,9 +418,11 @@ func _day(d: Dictionary, m) -> void:
 	_hash_end()
 	if df == "":
 		df = diff(_reads_as(e.events, d["events"]), d["events"], "day events")
+	if df == "" and d.has("digests"):
+		df = diff(digests["v2/day"]["state"], d["digests"], "day state digests")
 	_result("v2/day (%d steps)" % d["until"], df)
 	for f in d["forks"]:
-		var x = PlantEngine.new(m, f.get("scenario", d["scenario"]))     # (S3's forks run on shift_wtp)
+		var x = PlantEngine.new(m, f.get("scenario", d["scenario"]), f.get("session", false))     # (S3's: shift_wtp)
 		var inputs := by_step(f["inputs"])
 		var i := 0
 		_hash_begin("v2/day/" + f["id"], 0)
@@ -426,6 +435,8 @@ func _day(d: Dictionary, m) -> void:
 		var fd := diff(_reads_as(x.events, f["events"]), f["events"], "events")
 		if fd == "":
 			fd = diff(x.snapshot(false), f["end"], "end")
+		if fd == "" and f.has("digests"):
+			fd = diff(digests["v2/day/" + f["id"]]["state"], f["digests"], "state digests")
 		_result("v2/day/" + f["id"], fd)
 
 

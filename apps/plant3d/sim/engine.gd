@@ -1840,6 +1840,94 @@ func snapshot(with_values: bool = true) -> Dictionary:
 	return s
 
 
+# ---------------------------------------------------------------- the state digest (§17.14)
+
+const DIGEST_TAG := "wdp-digest-1\n"
+
+## The state digest of docs/PLANT3D.md §17.14 (docs/plant3d/MULTIPLAYER.md §4): SHA-256 over the tag, the values'
+## doubles and the Variant encoding (var_to_bytes) of digest_tree(). Two engines of one model that will go on the same
+## way from here have the same digest, on every platform; the reference (ref/plant3d.py state_digest) makes the same.
+func digest() -> PackedByteArray:
+	var ctx := HashingContext.new()
+	ctx.start(HashingContext.HASH_SHA256)
+	ctx.update(DIGEST_TAG.to_ascii_buffer())
+	ctx.update(cur.slice(0, n).to_byte_array())
+	ctx.update(var_to_bytes(digest_tree()))
+	return ctx.finish()
+
+
+## What the digest covers besides the values (§17.14): every part of the state that the next steps read, in a form
+## of its own (sorted where the engine keeps a Dictionary); not the logs (events, inputs), the inputs still queued,
+## the previous step's values, the constants, nor what an implementation may keep differently (a task step's own
+## progress, the staff step's wake-ups and its next phase 1, the derived locks per code and lockbits).
+func digest_tree() -> Array:
+	var fo := []
+	var groups: Array = first_out.keys()
+	groups.sort()
+	for g in groups:
+		fo.append([g, first_out[g]])
+	var fd: Array = faults_done.keys()
+	fd.sort()
+	var ff: Array = faults_fixed.keys()
+	ff.sort()
+	var lk := []
+	for k in _iso.size():
+		for p in _iso[k][1].size():
+			if lockbits[_iso[k][4] + p]:
+				lk.append([k, p, lockers[Vector2i(k, p)]])
+	return [step_no, mem, mstate, latched, trip_count, fo, astate, acount, shelved, il_prev, fd, ff, pstate,
+			_sorted_pairs(ptw), ptw_count, _sorted_pairs(acceptor), holder, lk, _digest_staff()]
+
+
+func _digest_staff():
+	if _sm == null:
+		return null
+	var np: int = sp_on.size()
+	var slots := PackedInt32Array()
+	slots.resize(np)
+	var cur_i := []
+	var queue_i := []
+	var held_i := []
+	for pi in np:
+		slots[pi] = sp_slots[pi].size()
+		cur_i.append(_digest_inst(sp_cur[pi]))
+		var q := []
+		for x in sp_queue[pi]:
+			q.append(_digest_inst(x))
+		queue_i.append(q)
+		var h := []
+		for x in sp_held[pi]:
+			h.append(_digest_inst(x))
+		held_i.append(h)
+	var left := PackedInt32Array(st_left.keys())
+	left.sort()
+	var mk: Array = st_made.keys()
+	mk.sort()
+	var made := []
+	for k in mk:
+		made.append([k.x, k.y, k.z, k.w])
+	return [J, st_order, st_session, st_players, st_acks, st_t_from, st_kept, _sorted_pairs(st_holder),
+			_sorted_pairs(st_given), st_vprev, st_pending, left, made, npc_queue, sp_on, sp_duty, sp_duties, sp_planned,
+			slots, sp_pos, sp_leg, cur_i, queue_i, held_i, sp_res, sp_occ, sp_result, sp_rng, sp_worn, sp_acts, sp_zin]
+
+
+## A task instance in the digest: everything but its step's own progress ("st").
+static func _digest_inst(x):
+	if x == null:
+		return null
+	return [x["task"], x["prio"], x["made"], x["order"], x["step"], x["work"], x["code"], x["alarm"], x["src"],
+			x["idle"], x["started"], x["int"], x["owner"], x["act"], x.get("orig")]
+
+
+static func _sorted_pairs(d: Dictionary) -> Array:
+	var keys: Array = d.keys()
+	keys.sort()
+	var out := []
+	for k in keys:
+		out.append([k, d[k]])
+	return out
+
+
 ## The values in slot order (declared, ext, machine states, trip latches), as doubles.
 func value_array() -> PackedFloat64Array:
 	return cur.slice(0, n)

@@ -1652,7 +1652,8 @@ class StaffRun:
         # people who left the site with a lock on since the last phase 2 (§17.9)
         now = set()
         gone = []
-        if any(x[1] == 'duty' and x[3] == 'on' for x in evs):
+        has_left = any('lock_left' in r['on'] for r in st.reactions)
+        if has_left and any(x[1] == 'duty' and x[3] == 'on' for x in evs):
             self.left = set()           # someone came on duty: a lock still left is given again (§17.9)
         # a permit back to approved by itself (a suspension): its jobs (tasks with resume, given for that work) are
         # abandoned at once, held or not, so nobody works on equipment no longer isolated and the reaction to its
@@ -1670,13 +1671,14 @@ class StaffRun:
                     self.value_again(inst)
                 p.queue = [q for q in p.queue if not job(q)]
                 p.held = [q for q in p.held if not job(q)]
-        for p in self.people:
+        for p in self.people if has_left else ():     # (looked at only when a reaction is on it, as the app does)
             if self.slot_of(p.i) is None and p.id not in self.absent and not p.on and p.pos is None \
                     and p.leg is None and self.left_locks(p):
                 now.add(p.i)
                 if p.i not in self.left:
                     gone.append(p)
-        self.left = now
+        if has_left:
+            self.left = now
         # permit offers that found nobody on duty: offered again when someone of their roles comes on, at each later
         # shift until taken, while the permit is still at its state then (§17.10)
         if self.pending:
@@ -2593,6 +2595,61 @@ class StaffRun:
         if kind == 'unlock':
             return p.id not in e.locks.get(key, [])
         return p.id in e.locks.get(key, []) and e.holder[iso] == w
+
+    # --- the state digest's part (§17.14), as the app's engine keeps it (apps/plant3d/sim/engine.gd _digest_staff)
+    def digest_tree(self):
+        from ref.godot_variant import Packed, PACKED_BYTE, PACKED_INT32, PACKED_INT64
+
+        def key(k):         # a reaction source as the app keeps it: its parts joined by |
+            return None if k is None else '|'.join(str(x) for x in k)
+
+        def inst(x):
+            if x is None:
+                return None
+            act = x['act']
+            if act is not None:
+                act = [act[0], ACT_KINDS.index(act[1]), act[2]]
+            return [x['task'], x['prio'], x['made'], x['order'], x['step'], x['work'], x['code'], x['alarm'],
+                    key(x['src']), x['idle'], x['started'], x['int'], x['owner'], act, key(x.get('orig'))]
+
+        def i64(v):         # (a 64-bit field's two's complement)
+            return v - (1 << 64) if v >= 1 << 63 else v
+
+        def ident(x):
+            if isinstance(x, tuple) and x and x[0] == 'call':
+                return 'call|%s|%s|%s' % ('/'.join(x[1]), x[2], '<null>' if x[3] is None else x[3])
+            return key(x)
+        st = self.st
+        pending = [[ident(x[0]), key(x[1]), list(x[2]), x[3], x[4], x[5], x[6], x[7], x[8]] for x in self.pending]
+        made = sorted((k[0], self.st.person_ix[k[2]], ACT_KINDS.index(k[3]), k[4]) for k in self.made)
+        people = self.people
+        return [self.e.J, self.order, self.session,
+                Packed(PACKED_INT32, [self.players.get(k, -1) for k in range(SLOTS)]),
+                Packed(PACKED_INT32, [self.acks.get(k, 0) if k in self.players else 0 for k in range(SLOTS)]),
+                Packed(PACKED_INT32, [self.t_from.get(k) if self.t_from.get(k) is not None else -1
+                                      for k in range(SLOTS)]),
+                [list(self.kept.get(k, [])) for k in range(SLOTS)],
+                [[k, v] for k, v in sorted(self.holder.items())],
+                [[k, v] for k, v in sorted((key(k), v) for k, v in self.given.items())],
+                list(self.vprev), pending, Packed(PACKED_INT32, sorted(self.left)), [list(k) for k in made],
+                [list(x) for x in self.e.npc_queue],
+                Packed(PACKED_BYTE, [1 if p.on else 0 for p in people]),
+                [list(p.duty) if p.duty is not None else [] for p in people],
+                [[list(d) for d in p.duties] for p in people],
+                Packed(PACKED_INT64, [p.planned for p in people]),
+                Packed(PACKED_INT32, [len(p.slots) for p in people]),
+                Packed(PACKED_INT32, [p.pos if p.pos is not None else -1 for p in people]),
+                [list(p.leg) if p.leg is not None else [] for p in people],
+                [inst(p.cur) for p in people],
+                [[inst(x) for x in p.queue] for p in people],
+                [[inst(x) for x in p.held] for p in people],
+                Packed(PACKED_INT32, [p.res if p.res is not None else -1 for p in people]),
+                Packed(PACKED_INT32, [p.occ if p.occ is not None else -1 for p in people]),
+                [p.result for p in people],
+                Packed(PACKED_INT64, [i64(p.rng) for p in people]),
+                Packed(PACKED_INT32, [sum(1 << k for k, x in enumerate(PPE) if x in p.worn) for p in people]),
+                [[list(p.acts[k]) if k in p.acts else None for k in ACT_KINDS] for p in people],
+                Packed(PACKED_INT64, [i64(sum(1 << k for k in p.zin)) for p in people])]
 
     # --- the snapshot's part (§17.7)
     def snap_acts(self):

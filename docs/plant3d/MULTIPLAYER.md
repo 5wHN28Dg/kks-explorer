@@ -219,7 +219,10 @@ step.
 - **Inputs:** a player's UI no longer queues an input in the engine: it hands it to the session (`input`), shows it
   as sent (the op's button as pressed, "sending…"), and the input takes effect in every engine when its commit
   arrives. The player keeps each input until a commit lists its number, sends it again after a host change (§5.3),
-  and the host ignores an input number it has committed already.
+  and the host ignores an input number it has committed already. **As built (MP1):** every input the app makes goes
+  through one path, `apps/plant3d/ui/inputs.gd` (`send([kind, …])`, the trace form without step or slot); alone it
+  queues the input in the run's engine at once, as before, and a session (MP2) sets its `sink` to take it instead.
+  `tests/test_plant3d_inputs.py` checks that nothing else in the app makes an input.
 - **Playing a commit:** a player runs the committed steps at the session's rate (1×, or the fast-forward rate). It
   holds a **jitter buffer**: at 1× it runs at most up to C minus the buffer, which starts at one turn (0.2 s) and
   grows by a turn (to at most 5) whenever a commit arrives later than the buffer covered, shrinking again after
@@ -255,6 +258,18 @@ where the room landed. MP2 and MP4 measure it on the Note 9 (§13) against a bud
 on mobile data, input made to effect seen.
 
 ### 3.3 Several trainees in one engine
+
+**As built (MP1, 2026-10-26): PLANT3D.md §17.13** is the engine's rule, in the reference, the GDScript and the vectors
+(§19, "Added for milestone MP1"); where it differs from the plan below, it wins. What it settles: a slot that plays
+nobody is exactly a single-player run's free mode (its format 2 inputs naming no person pass, as there); the events
+of a session's `role`, `release` and `task_ack` end with the slot (`[n, "role", person, "done" | "refused", slot]`,
+`[n, "release", person, "done" | "refused", slot]`, `[n, "task_ack", slot]`); a claim or a release pauses the person's
+task as a pre-emption does and their next turn takes it up (a person walking a way when claimed is between places; one
+between places when released goes back to the place they left); an input without a valid slot does nothing. The
+engine is made as a session run (`new(model, scenario, true)`, `Engine(b, scenario, session=True)`), which its save
+and its digest record.
+
+The plan, as written before the code:
 
 Today the staff step has one trainee (`st_trainee`, PLANT3D.md §17.4). A session has up to 8, so the engine changes
 (milestone MP1, reference, GDScript and vectors together, as every engine change):
@@ -748,7 +763,10 @@ budget isn't done.
 ## 12. Tests
 
 - **The engine (MP1):** the multi-trainee vectors (§3.3) on the reference and GDScript; the digest's equality across
-  Linux, Android (the Note 9) and Windows (the VM) for every vector run every 50 steps.
+  Linux, Android (the Note 9) and Windows (the VM) for every vector run every 50 steps. As built: the staff runs, the
+  day and its forks carry their digests (`digests`), which `run_vectors.gd` checks on every platform it runs on; every
+  other run's digests are in its `--digests` output (`state`), which `tests/test_plant3d_sim.py` compares with the
+  reference's, and a run on another platform with Linux's.
 - **The crypto:** RFC 5869's HKDF test cases and RFC 7518 Appendix B.1's AEAD vector through our GDScript code; the
   code's check character; replay windows.
 - **The multi-instance harness** (`apps/plant3d/net/tests/`): N headless Godot processes (`--headless`, the engine and

@@ -2537,6 +2537,40 @@ class Engine:
                 return False
         return True
 
+    def digest(self):
+        """The state digest (§17.14): SHA-256 over the tag, the values' doubles and the Godot Variant encoding of
+        digest_tree(), as the app's engine makes it (apps/plant3d/sim/engine.gd digest)."""
+        import hashlib, struct
+        from ref.godot_variant import encode
+        h = hashlib.sha256(b'wdp-digest-1\n')
+        h.update(struct.pack('<%dd' % self.n, *self.cur[:self.n]))
+        h.update(encode(self.digest_tree()))
+        return h.hexdigest()
+
+    def digest_tree(self):
+        from ref.godot_variant import Packed, PACKED_BYTE, PACKED_INT32, PACKED_INT64
+        m = self.m
+        work_ix = {w['id']: k for k, w in enumerate(m.works)}
+        locks = [[k, p, list(self.locks[(x['id'], p)])] for k, x in enumerate(m.isolations)
+                 for p in range(len(x['points'])) if (x['id'], p) in self.locks]
+        mem = [c for v in self.mem.values() for c in v]
+        return [self.step_no, Packed(PACKED_INT64, mem),
+                Packed(PACKED_INT32, [self.mstate[mc['id']] for mc in self.machines]),
+                Packed(PACKED_BYTE, [1 if self.latched[t['id']] else 0 for t in self.trips]),
+                Packed(PACKED_INT64, [self.trip_count[t['id']] for t in self.trips]),
+                [[g, t] for g, t in sorted(self.first_out.items())],
+                [self.astate[a['id']] for a in self.alarms],
+                Packed(PACKED_INT64, [self.acount[a['id']] for a in self.alarms]),
+                Packed(PACKED_INT64, [self.shelved.get(a['id'], -1) for a in self.alarms]),
+                Packed(PACKED_BYTE, [1 if self.il_prev[x['id']] else 0 for x in m.interlocks]),
+                sorted(self.faults_done), sorted(self.faults_fixed),
+                Packed(PACKED_INT32, [self.pstate[w['id']] for w in m.works]),
+                [[k, v] for k, v in sorted(self.ptw.items())], self.ptw_count,
+                [[k, v] for k, v in sorted(self.acceptor.items())],
+                Packed(PACKED_INT32, [work_ix[self.holder[x['id']]] if self.holder[x['id']] is not None else -1
+                                      for x in m.isolations]),
+                locks, self.staff.digest_tree() if self.staff is not None else None]
+
     def snapshot(self, values=True):
         s = {'step': self.step_no,
              'machines': {mc['id']: mc['_ids'][self.mstate[mc['id']]] for mc in self.machines},

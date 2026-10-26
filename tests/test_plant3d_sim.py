@@ -149,9 +149,10 @@ def reference_runs(V, keep=None, V2=None):
 def day_runs(b, d, out, k):
     """The first train's day and its runs with a trainee (the vectors' `day`), as reference_runs."""
     from ref import make_plant3d_vectors as G
-    for name, inputs, until, sid in [('v2/day', [], d['until'], d['scenario'])] + [
-            ('v2/day/' + f['id'], f['inputs'], f['until'], f.get('scenario', d['scenario'])) for f in d['forks']]:
-        e = P.Engine(b, sid)
+    for name, inputs, until, sid, ses in [('v2/day', [], d['until'], d['scenario'], False)] + [
+            ('v2/day/' + f['id'], f['inputs'], f['until'], f.get('scenario', d['scenario']), f.get('session', False))
+            for f in d['forks']]:
+        e = P.Engine(b, sid, ses)
         h = Hasher(0)
         h.add(e, k(name))
         inputs = sorted(inputs, key=lambda x: x[0])
@@ -175,7 +176,7 @@ def staff_run(files, r, kk):
         F['staff.json'] = json.dumps(r['staff']).encode()
     for rel, v in r.get('files', {}).items():
         F[rel] = json.dumps(v).encode()
-    e = P.Engine(P.check_files(F), 's1')
+    e = P.Engine(P.check_files(F), 's1', r.get('session', False))
     h = Hasher(0)
     h.add(e, kk)
     inputs = sorted(r['inputs'], key=lambda x: x[0])
