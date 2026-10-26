@@ -312,7 +312,11 @@ the vectors' digests would fail first).
 
 **Its cost** (`apps/plant3d/sim/tests/bench_digest.gd`; on a phone the app's `digest=bench`, app/digest_bench.gd): the
 first train with its staff (shift_cold, 66 people, about 40 task instances, 38 KB hashed) at five points of the shift:
-laptop COST_LAPTOP; Note 9 COST_NOTE9.
+laptop 0.24 ms median, 0.30 ms
+at the 95th percentile, 0.39 ms the longest; **Note 9 (release build, 2026-10-26): 0.55 ms median, 0.66 ms at the
+95th percentile, 0.86 ms the longest** (0.42–0.64 ms by point, the most when the most tasks are given), of which the
+tree built and encoded is 0.36 ms (the rest SHA-256). Within the budget of 1 ms on the main thread: no worker thread
+is needed. At most about 2 digests a second (below), it is about 0.1 % of a core there.
 
 The plan, as written before the code: SHA-256 over the engine's state as the save keeps it (`RunSave.engine_fields`: every script variable
 but the compiled program), **without** `events`, `inputs` and the debrief's logs (they only grow, and what they record
