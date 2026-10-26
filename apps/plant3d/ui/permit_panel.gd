@@ -13,6 +13,8 @@
 ## the trainee confirms it ("Lock it anyway"; the focus starts on "Don't lock").
 extends PanelContainer
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const W = preload("res://ui/widgets.gd")
 const Permits = preload("res://ui/permits.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
@@ -96,6 +98,12 @@ func _input(ev: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.PANELS, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	poll_check()
 	for t in _orphans.duplicate():
 		if WorkerThreadPool.is_task_completed(t):

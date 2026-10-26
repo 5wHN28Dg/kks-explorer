@@ -6,6 +6,8 @@
 ## points along the route's polyline. The same people every run (a fixed seed).
 extends Node
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const AHEAD := 22.0
 const BEHIND := 18.0
 const LANE := 0.35
@@ -59,6 +61,12 @@ func setup(route: Array, w: Node3D, people, count: int) -> void:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.CROWD, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if pts.size() < 2:
 		return
 	s_walker = _nearest(walker.global_position, s_walker - 30.0, s_walker + 30.0)

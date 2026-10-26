@@ -14,6 +14,8 @@
 ## acknowledges the screen's alarms, Esc or B closes.
 extends Control
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const W = preload("res://ui/widgets.gd")
 const ScreensModel = preload("res://ui/screens_model.gd")
 const Permits = preload("res://ui/permits.gd")
@@ -309,6 +311,12 @@ func reset_cost() -> void:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.MIMIC, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if not visible:
 		return
 	# what the screens cost the last frame (their drawing happens after _process: it is counted here a frame late)

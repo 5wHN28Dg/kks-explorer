@@ -3,6 +3,8 @@
 ## the lesson is over (a repaired fault can be pressed again). Shown when instructor mode is on in the settings.
 extends PanelContainer
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const W = preload("res://ui/widgets.gd")
 
 var ui
@@ -50,6 +52,12 @@ static func trainer_faults(e) -> Array:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.PANELS, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if not visible:
 		return
 	_t += delta

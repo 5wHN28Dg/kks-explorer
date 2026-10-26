@@ -10,6 +10,8 @@
 ## every control is a button or a line edit that takes the focus (Esc or B closes, as the other panels).
 extends PanelContainer
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const W = preload("res://ui/widgets.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 
@@ -62,6 +64,12 @@ func _first(n: Node) -> Control:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.CREW, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if not visible:
 		return
 	_t += delta

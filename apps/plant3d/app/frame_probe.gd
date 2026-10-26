@@ -10,6 +10,9 @@
 ## so that a long frame can be told from the phone's own work (phone/frames.sh pulls frames.csv).
 extends Node
 
+const Cost = preload("res://app/script_cost.gd")
+const SimClock = preload("res://ui/sim_clock.gd")
+
 var main: Node
 var rows := PackedStringArray()
 var _first_phys := 0
@@ -59,6 +62,9 @@ func _ready() -> void:
 	_steps0 = c.engine.step_no if c != null and c.engine != null else 0
 	rows.append("t_ms,frame_ms,phys_n,phys_ms,proc_ms,to_draw_ms,draw_ms,after_ms,cpu_ms,gpu_ms,draws,objects,sim_steps,surf_pipes,spec_pipes,x,y,z,events")
 	_pipes0 = pipelines()
+	Cost.start()   # each part's own time in the scripts (the result's SCRIPTS lines)
+	if main != null and main.ui != null and main.ui.clock != null and main.ui.clock.engine != null:
+		main.ui.clock.engine.timing = true
 	if main != null and main.ui != null:
 		add_app_counters(main.ui)
 	for k in counters:
@@ -112,6 +118,8 @@ func _proc_begin() -> void:
 
 func _proc_end() -> void:
 	var now := Time.get_ticks_usec()
+	var ck = main.ui.clock if main != null and main.ui != null else null
+	Cost.frame(ck != null and ck.speed == SimClock.Speed.FAST, now - _proc0)
 	var start := _first_phys if _phys_n > 0 else _proc0
 	# this frame's own work (its scripts have run) and where the walker stands now: written with this frame's line,
 	# which comes at the end of the next frame's scripts, once this frame has been drawn

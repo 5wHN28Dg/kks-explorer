@@ -6,6 +6,8 @@
 ## them (no built/people/) shows a capsule per person instead. The trainee's own person is not drawn (the walker).
 extends Node3D
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const Plant = preload("res://app/plant.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const MAP_LAYER := 2
@@ -77,6 +79,12 @@ func _mm(mesh: Mesh, layers: int) -> MultiMeshInstance3D:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.PEOPLE_VIEW, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if avatars != null:
 		drive(delta)
 	_t += delta

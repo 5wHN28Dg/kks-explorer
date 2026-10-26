@@ -14,6 +14,8 @@
 ## Every mesh is the plant's one shader with its colours in the vertices (decision 0060): no pipeline of its own.
 extends Node3D
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const INFO := "res://built/people/people.json"
 ## docs/PLANT3D.md §18.3's `anim` values to the clips (builder/people/rig.gd); a value not here plays `idle`.
 const ANIM_CLIP := {"inspect": "inspect", "talk": "talk", "radio": "radio", "type": "type", "sit": "sit",
@@ -115,6 +117,12 @@ func _mesh(path: String) -> Mesh:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.AVATARS, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if camera == null or cfg.is_empty():
 		return
 	var t0 := Time.get_ticks_usec()

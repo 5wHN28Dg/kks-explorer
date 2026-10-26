@@ -8,6 +8,8 @@
 ## showing one compiles no pipeline. Distances checked 4 times a second.
 extends Node
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const Plant = preload("res://app/plant.gd")
 const Quality = preload("res://app/quality.gd")
 
@@ -59,6 +61,12 @@ func loaded(id: String) -> bool:
 var _dying: Array = []   # interiors being taken out: [root, its pieces still in]
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.OTHER, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	_step()
 	_t += delta
 	if _t < CHECK or who == null:

@@ -10,6 +10,8 @@
 ## way on foot to the equipment it points at (app/walk_route.gd).
 extends CanvasLayer
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const W = preload("res://ui/widgets.gd")
 const Quality = preload("res://app/quality.gd")
 const PlantModel = preload("res://sim/plant_model.gd")
@@ -1238,6 +1240,12 @@ func _refresh_bar() -> void:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.UI, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if clock == null:
 		_toast_tick(delta)
 		return

@@ -9,6 +9,8 @@
 ## the plant waits paused behind it and nothing can be walked or worked: nothing is saved until the trainee chooses.
 extends Node
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const RunSave = preload("res://ui/run_save.gd")
 const PlantEngine = preload("res://sim/engine.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
@@ -515,6 +517,12 @@ func _signature() -> String:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.AUTOSAVE, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	_lt += delta
 	if _lt >= INTERVAL:
 		_lt = 0.0

@@ -18,6 +18,8 @@
 ## every 0.1 s.
 extends Node3D
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const PlayerScript = preload("res://app/player.gd")
 const DIR := "res://built/sounds"
 const EARSHOT := 50.0           # metres: farther loops are stopped (nothing decodes for nobody)
@@ -238,6 +240,12 @@ func level_of(i: int) -> Vector2:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.SOUNDS, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if engine == null or index.is_empty():
 		return
 	_t += delta
@@ -373,6 +381,12 @@ func surface_under(w: CharacterBody3D) -> String:
 
 
 func _physics_process(_delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_physics(_delta)
+	Cost.add(Cost.SOUNDS, _c0)
+
+
+func _each_physics(_delta: float) -> void:
 	if walker == null or not is_instance_valid(walker):
 		return
 	var p := walker.global_position

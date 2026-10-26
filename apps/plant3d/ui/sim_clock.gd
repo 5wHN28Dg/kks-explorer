@@ -7,6 +7,7 @@
 extends Node
 
 const PlantEngine = preload("res://sim/engine.gd")
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
 
 const STEP := 0.1
 const FF_MAX := 60.0            # the format's top speed (§7.9)
@@ -38,6 +39,7 @@ func start(m, scenario_id: String) -> void:
 	model = m
 	scenario = scenario_id
 	engine = PlantEngine.new(m, scenario_id)
+	engine.timing = Cost.on         # (a measured walk: step 9's own time, read and cleared after each step)
 	acc = 0.0
 	_calibrate()
 	restarted.emit(engine)
@@ -116,8 +118,18 @@ func run_steps(n: int) -> int:
 func _one() -> void:
 	var t0 := Time.get_ticks_usec()
 	engine.step()
+	var t1 := Time.get_ticks_usec()
 	stepped.emit(engine)                # what follows each step (events, the procedure) is the model's cost too
 	var us := Time.get_ticks_usec() - t0
+	if Cost.on:
+		var st := 0
+		for u in engine.staff_us:
+			st += u
+		engine.staff_us.clear()
+		engine.step_us.clear()
+		Cost.cur[Cost.MODEL] += t1 - t0 - st
+		Cost.cur[Cost.STAFF] += st
+		Cost.cur[Cost.STEPPED] += us - (t1 - t0)
 	_win_steps += 1
 	_win_us += us
 	step_ms = step_ms * 0.98 + (us / 1000.0) * 0.02

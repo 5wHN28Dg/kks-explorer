@@ -13,6 +13,8 @@
 ## the state change now (these markers carry the meta `ui` and are not part of the plant's geometry).
 extends Node
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const Mat = preload("res://kit/materials.gd")
 const RANGE := 60.0             # metres: farther parts are not updated (nobody sees them move)
 const SHOW_RANGE := 8.0         # local displays are read up close
@@ -176,6 +178,12 @@ func _mat(kind: String, lit: bool) -> ShaderMaterial:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.BINDINGS, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if engine == null or cam == null:
 		return
 	var eye := cam.global_position
