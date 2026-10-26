@@ -212,7 +212,7 @@ func _kerbs_and_drain(root: Node3D, road_in: Rect2, road_out: Rect2, drain_in: R
 	for ring in [[road_in.grow(0.15), road_in], [road_out, road_out.grow(-0.15)]]:
 		for pc in Geom.decompose(poly_of(ring[0]), [poly_of(ring[1])]):
 			_striped(kerb, pc)
-	b._mesh_node(root, "kerbs", kerb, b._mat("paint"), Lightmap.GROUND_TEXEL)
+	b._mesh_cells(root, "kerbs", kerb, b._mat("paint"), Lightmap.GROUND_TEXEL)   # per square: the sun's cascades
 	var dark: SurfaceTool = b._st()
 	for pc in Geom.decompose(poly_of(road_in), [poly_of(drain_in)]):
 		Geom.add_prism(dark, pc, -0.25, -0.2, false)
@@ -340,7 +340,7 @@ func _wall(root: Node3D, r: Rect2) -> void:
 				_pilaster(st, p0)
 			if t1 < L - 1e-3:
 				_pilaster(st, a2 + d * t1)   # the gate post on the far side of a gap
-	b._mesh_node(body, "panels", st, b._mat("wall_concrete"), Lightmap.GROUND_TEXEL)
+	b._mesh_cells(body, "panels", st, b._mat("wall_concrete"), Lightmap.GROUND_TEXEL)   # per square: the sun's cascades
 	b._mesh_node(body, "gate", gate, b._mat("fence"), Lightmap.SHEET_TEXEL)   # a thin sheet: a fine texel
 
 func _pilaster(st: SurfaceTool, p: Vector2) -> void:

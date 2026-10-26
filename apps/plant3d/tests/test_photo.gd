@@ -115,18 +115,18 @@ func run(tree: SceneTree) -> Array:
 			gravel += 1
 	if gravel < 3:
 		p.append("the open areas' yards are gravelled (%d)" % gravel)
-	var kerbs := plant.find_child("kerbs", true, false) as MeshInstance3D
-	if kerbs == null or kerbs.material_override != mats.paint:
+	var kerbs: Array = plant.find_children("kerbs_*", "MeshInstance3D", true, false)   # a mesh per square (_mesh_cells)
+	if kerbs.is_empty() or kerbs.any(func(k): return k.material_override != mats.paint):
 		p.append("the kerbs are painted")
 	else:
-		var cols: PackedColorArray = kerbs.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
 		var yellow := false
 		var white := false
 		var black := false
-		for c in cols:
-			yellow = yellow or (c.r > 0.8 and c.b < 0.2)
-			white = white or (c.r > 0.8 and c.g > 0.8 and c.b > 0.8)
-			black = black or (c.r < 0.1 and c.g < 0.1)
+		for k in kerbs:
+			for c in (k.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] as PackedColorArray):
+				yellow = yellow or (c.r > 0.8 and c.b < 0.2)
+				white = white or (c.r > 0.8 and c.g > 0.8 and c.b > 0.8)
+				black = black or (c.r < 0.1 and c.g < 0.1)
 		if not (yellow and white) or black:
 			p.append("the kerbs are painted in yellow and white blocks (photo pass 3), not black and yellow")
 	# the block-paved footpath along the ring road (photo pass 3)
