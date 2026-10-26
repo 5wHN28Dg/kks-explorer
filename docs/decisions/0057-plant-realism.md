@@ -343,3 +343,54 @@ rule here is unchanged (≥ 95 % at ≥ 30 fps, peak PSS, first start, the 1.2×
 - **Not judged:** a walk without `SAMPLE=1` cannot exclude any frame. A walk that would pass only by excluding frames
   is not judged, and is walked again, when it is a `STRESS=1` walk, when it had reclaim in more than 1 % of its
   sample pairs, or when its log has more `SPIKE` lines than its `over100`. A frame the log lost counts as the app's.
+
+## The shadow casters (2026-10-26)
+
+What the sun's shadow pass draws for nothing is gone, and the picture stays the same. 0066 records an earlier, broader
+attempt ("what stands inside buildings casts no shadow"), which was taken out because it gained nothing within one
+walk's spread. This one is narrower and was measured in GPU cycles. A frame's GPU cycles are its GPU time times the
+Mali clock in effect, so they don't move with DVFS or heat. `tools/plant3d/bench/gpu_cycles.py` computes them, and
+`shadow_ab=` with `shadow_ab.py` switches groups of casters in turn within one walk.
+
+- **Where the cost was** (Note 9, `frames` walk, `shadow_ab=`, about 11 M cycles a frame with everything on):
+  - every caster off: −2.6 to −2.9 M cycles a frame; the sun's shadow off altogether: −3.9 M; two cascades instead of
+    four: −0.4 M;
+  - the kerbs, the terrain and the boundary wall: −0.4 M. The kerbs and the wall were each one mesh half a kilometre
+    long, drawn into all four cascades wherever the walker stood;
+  - the hall lamps, roof steel and liners: −0.2 M; the people: −0.2 M;
+  - the terrain, the river, the floors and the windows: no measurable cost.
+- **The kerbs and the boundary wall** are one mesh per 48 m square (`SHADOW_CELL`): 47 kerb meshes and 36 wall meshes.
+  Each cascade now draws only the squares near the walker.
+  - Every kerb block, panel and pilaster lies whole in the square of its own centre (`cell_tool`). A first version split
+    by triangle, which cut faces between two meshes and so between two lightmap charts, a possible seam every 48 m
+    (blind review). `test_shadow_casters.gd` fails on that version (30 wall meshes held cut faces).
+  - Same texel size, material and vertex format as before.
+- **Under the roofs** (`shade_under_roofs`): a piece casts no sun shadow when every ray from it toward the sun leaves its
+  building through solid wall or roof, never through a door, a pipe's opening or a roof opening.
+  - That is 114k of the 914k shadow-casting triangles, mostly hall lamps and roof steel.
+  - The buildings' own walls and roofs keep casting, and anything that moves with a door keeps its shadow.
+  - The bake is unaffected: Godot 4.7.2's lightmapper does not read `cast_shadow` (`scene/3d/lightmap_gi.cpp`,
+    `modules/lightmapper_rd`), so the hall lamps' baked shadows stay.
+  - The sun's direction comes from `Lighting.to_sun`, in the build and in the app alike. The test checks every piece the
+    build left shaded against the app's own sun.
+
+Note 9 (`lean+vis`, baked release APKs of main at c7e4538 and of this change, both signed with the test key; 600 s
+walks with `probe=1` and `SAMPLE=1`; "stress" means `scenario=shift_cold`, fast, 24 people with the crew panel open):
+
+| Walk | GPU M cycles a frame, mean (p95): main → this | GPU ms mean, main → this | ≥ 30 fps, main → this | app frames > 100 ms |
+|---|---|---|---|---|
+| stress ×2 | 11.00, 11.05 (14.3, 14.2) → 10.00, 9.99 (12.9, 13.1) | 24.8, 25.2 → 27.6, 24.2 | 94.9, 93.5 → 90.9, 96.2 % | 0, 0 → 3, 1 |
+| `crews=1` | 10.17 (12.6) → 9.02 (11.7) | 23.7 → 24.4 | 98.1 → 97.7 % | 0 → 0 |
+| `frames` | 10.30 (12.9) → 8.85 (10.1) | 21.4 → 26.4 | 99.2 → 96.8 % | 1 → 0 |
+
+- **The GPU's work per frame fell by 9–14 %** in every walk.
+- **Milliseconds and frame rates don't compare here.** Three of this change's walks started 3.4–3.6 °C warmer than
+  main's, because the phone was shared that night. The Mali clock then ran at 335–376 MHz instead of 442–483 MHz.
+  - The one walk that started as cool as main's (stress, 29.9 °C, 424 MHz) had a mean GPU time of 24.2 ms (main
+    24.8 and 25.2 ms) and 96.2 % of frames at 30 fps or better (main 94.9 and 93.5 %). It still had one frame over
+    100 ms that the app caused (102.0 ms).
+  - The stress walks of both builds have such frames: main's earlier ones in 0066, and its `crews` and `frames` walks
+    here.
+- **The look:** the phone's 20 views (`phone/shots.sh`, baked) and the laptop's 22 views (unbaked) are identical
+  between main and this change. The only phone pixels that differ are the clock on the HUD, and three laptop hall
+  views differ by run-to-run noise.
