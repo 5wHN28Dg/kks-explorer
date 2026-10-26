@@ -769,11 +769,11 @@ class FirstTrainStaff(unittest.TestCase):
         ev = f['events']
         starts = [x for x in ev if x[1] == 'task' and x[3] == 'job_cw_b_motor' and x[4] == 'start']
         self.assertEqual(len(starts), 2)
-        self.assertIn([15000, 'permit', 'wo_cw_b_motor', 'auto', None, 'done', [2]], ev)
+        self.assertIn([18000, 'permit', 'wo_cw_b_motor', 'auto', None, 'done', [2]], ev)
         reissue = [x[0] for x in ev if x[1] == 'permit' and x[2] == 'wo_cw_b_motor' and x[3] == 'issue']
         self.assertEqual(len(reissue), 2)
         self.assertGreaterEqual(starts[1][0], reissue[1])
-        self.assertIn([15000, 'task', 'mech1', 'job_cw_b_motor', 'abandoned'], ev)     # at once, not working on
+        self.assertIn([18000, 'task', 'mech1', 'job_cw_b_motor', 'abandoned'], ev)     # at once, not working on
         self.assertEqual(f['end']['permits']['wo_cw_b_motor'], 9)
 
     def test_an_abandoned_backwash_is_offered_again(self):

@@ -359,6 +359,8 @@ func open_panel(p: String) -> void:
 		toggle_alarms()
 	elif p == "procedure" and not procedure.visible:
 		toggle_procedure()
+	elif p == "crew" and not crew.visible:
+		open_crew()
 	elif p == "permits" or p.begins_with("permit:"):
 		open_permits(p.substr(7) if p.begins_with("permit:") else "")
 	elif p.begins_with("card:"):
@@ -1250,12 +1252,17 @@ func _each_frame(delta: float) -> void:
 		_toast_tick(delta)
 		return
 	_sync_events()
+	_ui_t += delta
 	_horn_tick()
 	_blink += delta
+	# the clock's text changes with a step or the speed; in fast-forward (a step or more every frame) it is shown
+	# again FAST_UI_HZ times a second, as the alarms' counts (_horn_tick)
 	var tk := Vector3i(clock.engine.step_no, clock.speed, roundi(clock.ff_rate()) if clock.speed == SimClock.Speed.FAST else 0)
-	if tk != _time_key or clock.engine != _time_engine:     # (the clock's text changes with a step or the speed)
+	if clock.engine != _time_engine or (tk != _time_key and (tk.y != _time_key.y or tk.y != SimClock.Speed.FAST
+			or _ui_t - _time_t >= 1.0 / FAST_UI_HZ)):
 		_time_key = tk
 		_time_engine = clock.engine
+		_time_t = _ui_t
 		_time.text = "%s %s" % [clock_text(), {0: "paused", 1: "×1", 2: "×%.0f" % clock.ff_rate()}[clock.speed]]
 	_place_t += delta
 	if _place_t >= 0.25:
@@ -1267,7 +1274,11 @@ func _each_frame(delta: float) -> void:
 		_t_hint = 0.0
 		_look_hint()
 	sounds.listener_at = eye()
-	arrows.queue_redraw()
+	# the arrow to the equipment pointed at follows the view each frame while there is one (once more when it goes)
+	var arrow: bool = pointer != null and pointer.visible
+	if arrow or _arrow_drawn:
+		arrows.queue_redraw()
+	_arrow_drawn = arrow
 	_fit_t += delta
 	if _fit_t >= 0.25:
 		_fit_t = 0.0
@@ -1279,8 +1290,14 @@ var _max_h := 0.0
 var _alarms_engine = null       # _horn_tick: the engine and step its counts are of
 var _alarms_step := -1
 var _alarms_unack := 0
-var _time_engine = null         # the clock's text: the engine, step, speed and rate it shows
+var _alarms_speed := -1
+var _alarms_t := 0.0
+var _time_engine = null         # the clock's text: the engine, step, speed and rate it shows, and when (_ui_t)
 var _time_key := Vector3i(-1, -1, -1)
+var _time_t := 0.0
+var _ui_t := 0.0                # seconds of frames gone
+const FAST_UI_HZ := 4.0         # in fast-forward the bar's clock and alarms are shown again at most this often
+var _arrow_drawn := false       # the arrows' layer was drawn with an arrow last frame
 
 
 ## The side panels as tall as their content (up to the bottom of the screen), so the view and the sticks stay free.
@@ -1352,12 +1369,17 @@ func _state_pos(mi: int, state: String) -> int:
 
 
 ## The alarms' horn and button, and fast-forward's button. What they show changes only with a model step (every input
-## is applied in one, a restart makes another engine): looked at again only then, not every frame.
+## is applied in one, a restart makes another engine): looked at again only then, not every frame; and in fast-forward,
+## which runs steps every frame, FAST_UI_HZ times a second. Fast-forward stops on any alarm the horn sounds for
+## (SimClock.ff_blocked), so the horn is never late: the speed's change has it looked at again at once.
 func _horn_tick() -> void:
 	var e = clock.engine
-	if e != _alarms_engine or e.step_no != _alarms_step:
+	if e != _alarms_engine or clock.speed != _alarms_speed or (e.step_no != _alarms_step
+			and (clock.speed != SimClock.Speed.FAST or _ui_t - _alarms_t >= 1.0 / FAST_UI_HZ)):
 		_alarms_engine = e
 		_alarms_step = e.step_no
+		_alarms_speed = clock.speed
+		_alarms_t = _ui_t
 		var top := 0
 		var unack := 0
 		var active := 0

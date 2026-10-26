@@ -29,6 +29,9 @@ var _hat := {}                  # person -> wearing the hat (checked twice a sec
 var _hat_t := 1.0
 var _drove := false             # this view filled the avatars' people (and may clear them)
 var _look0 = null               # the look of a role without its own (the avatars' first)
+var _step_e = null              # drive(): the engine and step _anims is of (what a person does changes with a step)
+var _step_n := -1
+var _anim_of := PackedStringArray()     # person -> what they are seen doing when not walking, at that step
 ## A task step's kind to what the person is seen doing (docs/PLANT3D.md §18.3); a `work` step says its own `anim`.
 const STEP_ANIM := {"read": "inspect", "meet": "talk", "say": "radio", "call": "radio", "wait": "idle", "ack": "type",
 	"permit": "write", "lock": "wrench", "unlock": "wrench"}
@@ -161,6 +164,12 @@ func drive(delta: float) -> void:
 	var check_hat := _hat_t >= 0.5
 	if check_hat:
 		_hat_t = 0.0
+	var fresh: bool = e != _step_e or e.step_no != _step_n
+	if fresh:
+		_step_e = e
+		_step_n = e.step_no
+		_anim_of.resize(sm.people.size())
+		_anim_of.fill("?")
 	var n := 0
 	for pi in sm.people.size():
 		if pi == e.st_trainee:
@@ -198,7 +207,12 @@ func drive(delta: float) -> void:
 		if _look0 == null:
 			_look0 = avatars.info.looks.keys()[0]
 		p.look = avatars.info.roles.get(role, _look0)
-		p.anim = "" if speed > 0.0 else _anim(e, sm, pi, place)
+		if speed > 0.0:
+			p.anim = ""
+		else:
+			if _anim_of[pi] == "?":         # (once a step: the place is the same through it)
+				_anim_of[pi] = _anim(e, sm, pi, place)
+			p.anim = _anim_of[pi]
 		p.scale = 0.94 + 0.12 * float((pi * 37) % 11) / 10.0
 		if check_hat or not _hat.has(pi):     # (twice a second: what is worn and where changes with the steps)
 			if sm.zone_ids.is_empty():

@@ -16,7 +16,7 @@
 ##   map=1                   start on the overview map
 ##   scenario=ID             the scenario the plant starts in (default cold_iron)
 ##   procedure=ID            follow that procedure or tour from the start
-##   panels=alarms,procedure,card:CODE   open these panels (the frame measurement with the UI open)
+##   panels=alarms,procedure,crew,card:CODE   open these panels (the frame measurement with the UI open)
 ##   speed=fast              start the plant in fast-forward (the model's share of a core, measured in a walk)
 ##   crews=1                 the crews at work round the walker (S2's and S3's staff): the scenario `shift_cold` (or
 ##                           scenario=ID, one with staff), no role taken (free mode), at normal speed unless speed=fast;

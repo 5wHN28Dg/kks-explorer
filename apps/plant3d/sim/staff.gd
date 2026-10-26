@@ -777,11 +777,12 @@ func step(e) -> void:
 			drop_kept(e, mine, people[e.st_trainee]["id"])
 			keep(e, e.st_trainee, mine, {})
 	else:
+		var absent: Dictionary = e._absent     # (made when the run starts, never changed in a step)
 		for pi in np:
 			if pi == e.st_trainee:
-				if not e._absent.has(pi):
+				if not absent.has(pi):
 					trainee_turn(e, pi, tin)
-			elif n >= e.sp_wake[pi] and not e._absent.has(pi):
+			elif n >= e.sp_wake[pi] and not absent.has(pi):
 				turn(e, pi)
 	# 5. unsafe acts, then the reactions to them
 	var moved := false
@@ -1522,10 +1523,15 @@ func _act_now(e, pi: int, k: int) -> Array:
 ## and the trainee always): the others' acts stay as they are, as the reference finds them by looking at everyone.
 func act_phase(e, n: int, permit_moved: bool) -> void:
 	var started := []
+	# (the engine's fields read once: neither changes in this loop, and a field of an untyped object is looked up by
+	# name each time it is read)
+	var absent: Dictionary = e._absent
+	var touched: PackedByteArray = e._touched
+	var tr: int = e.st_trainee
 	for pi in people.size():
-		if e._absent.has(pi):
+		if not permit_moved and pi != tr and not touched[pi]:
 			continue
-		if not permit_moved and pi != e.st_trainee and not e._touched[pi]:
+		if absent.has(pi):
 			continue
 		var acts: Array = e.sp_acts[pi]
 		for k in 3:
@@ -1549,17 +1555,21 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 			# step it starts or any later one while it lasts; once per act
 			if acting.is_empty() and not looked:
 				looked = true
+				var acts_now: Array = e.sp_acts
 				for pi in people.size():
-					var aa: Array = e.sp_acts[pi]
+					var aa: Array = acts_now[pi]
 					if aa[0] != null or aa[1] != null or aa[2] != null:
 						acting.append(pi)
+			var all_acts: Array = e.sp_acts
+			var made_all: Dictionary = e.st_made
 			for pi in acting:
+				var aa: Array = all_acts[pi]
 				for k in 3:
-					var a = e.sp_acts[pi][k]
+					var a = aa[k]
 					if a == null or (v != "*" and v != ACT_KINDS[k]):
 						continue
 					var made := Vector4i(ri, pi, k, a[1])      # (not the source key: made every step, it cost)
-					if e.st_made.has(made):
+					if made_all.has(made):
 						continue
 					var obs := observer(e, r["roles"], pi)
 					if obs == -1:
@@ -1603,9 +1613,11 @@ func observer(e, role_list: Array, ai: int) -> int:
 	var zs := zones_of(e, ai)
 	if zs == 0:
 		return -1
+	var on: PackedByteArray = e.sp_on
+	var absent: Dictionary = e._absent
 	for r in role_list:
 		for qi in role_people.get(r, PackedInt32Array()):
-			if e.sp_on[qi] and not e._absent.has(qi) and qi != ai and (zs & zones_of(e, qi)) != 0:
+			if on[qi] and qi != ai and not absent.has(qi) and (zs & zones_of(e, qi)) != 0:
 				return qi
 	return -1
 

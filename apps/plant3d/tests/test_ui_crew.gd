@@ -308,6 +308,44 @@ func _ccr_operator(tree: SceneTree, ui, p: Array) -> void:
 	var made = e.events.filter(func(ev): return ev[1] == "op" and ev[2] == "30PAC10AA102" and ev.size() == 8 and ev[7] == me)
 	if made.is_empty() or made[-1][6] != "screen":
 		p.append("an op from a card in the control room was not made from the screens: %s" % str(made))
+	# what each one of the crews is seen doing is worked out once a step (people_view.gd _anim_of): steps later, and on
+	# a frame after the first of a step, the same as worked out afresh
+	var av = ui.people.avatars
+	if av != null:
+		var anims := func(): return av.people.map(func(q): return "%s/%s/%s" % [q.at, q.anim, q.speed])
+		ui.people.drive(1.0 / 60.0)
+		var before: Array = anims.call()
+		ui.clock.run_steps(300)
+		ui.people.drive(1.0 / 60.0)
+		ui.people.drive(1.0 / 60.0)
+		var cached: Array = anims.call()
+		ui.people._step_n = -1
+		ui.people.drive(1.0 / 60.0)
+		var fresh: Array = anims.call()
+		if cached != fresh:
+			p.append("what the crews are seen doing, kept through a step, is not what they do (%s, not %s)" % [cached, fresh])
+		if cached == before:
+			p.append("300 steps later the crews are all as they were (the check above proves nothing)")
+	# the radio's new lines are written into the lines shown, the panel not built again (crew_panel.gd _radio_lines)
+	ui.open_crew()
+	ui.crew._sig = ""
+	ui.crew.refresh()
+	var radio_n: int = ui.crew._radio.size()
+	var labs: Array = ui.crew._radio_labels.duplicate()
+	var sig0: String = ui.crew._sig
+	for i in 300:
+		ui.clock.run_steps(10)
+		ui.crew.refresh()
+		if ui.crew._radio.size() > radio_n:
+			break
+	if ui.crew._radio.size() == radio_n:
+		p.append("no new line on the radio in 3000 steps (the check below proves nothing)")
+	else:
+		var last_line: String = ui.crew._radio[-1]
+		if not App.texts(ui.crew).contains(last_line):
+			p.append("the radio's newest line is not on the panel: %s" % last_line)
+		if labs.size() == ui.crew.RADIO_LINES and ui.crew._sig == sig0 and ui.crew._radio_labels != labs:
+			p.append("the panel was built again for a new line on the radio")
 
 
 ## A run with the crews saved and restored: the same at every step after (people, queues, random streams).

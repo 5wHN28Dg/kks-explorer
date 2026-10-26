@@ -10,6 +10,8 @@
 ## every control is a button or a line edit that takes the focus (Esc or B closes, as the other panels).
 extends PanelContainer
 
+const RADIO_LINES := 10         # the radio's last lines shown
+
 const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
 
 const W = preload("res://ui/widgets.gd")
@@ -26,6 +28,8 @@ var _seen := 0                  # events read so far (the radio log and readings
 var _engine = null
 var _j := 0                     # the jumps made up to the event read last (each line's time is its own clock's)
 var _radio: Array = []          # [step, text] of every message and call
+var _radio_labels: Array = []   # the radio's last lines on the panel (Labels, oldest first)
+var _radio_shown := -1          # how many of _radio's lines there were when they were shown
 var _reads: Dictionary = {}     # person -> their read events
 
 
@@ -85,12 +89,12 @@ func _signature(e) -> String:
 		return "none"
 	var tr: int = e.st_trainee
 	var cur = e.sp_cur[tr] if tr != -1 else null
-	# (free mode shows the roles or a line, and the radio's last lines: only the radio's count changes it; the
-	# sleep button's state, fast-forward's, only with a role)
+	# (free mode shows the roles or a line, and the radio's last lines; the sleep button's state, fast-forward's,
+	# only with a role. The radio's new lines alone are written into the lines shown, without a rebuild: refresh)
 	return "%d|%d|%s|%s|%d|%d|%d|%s|%d|%s" % [tr, e.step_no if tr == -1 and e.step_no < 2 else 0,
 			str(cur["task"]) + str(cur["step"]) + str(cur["st"].get("dest", "")) if cur != null else "",
 			(str(e.sp_queue[tr].size()) + "/" + str(e.sp_slots[tr].size())) if tr != -1 else "", e.st_unacked,
-			_radio_count(e), e.st_t_at, str(e.fast_forward()) if tr != -1 else "", e.J, _safety_sig(e) if tr != -1 else ""]
+			_reads_count(e), e.st_t_at, str(e.fast_forward()) if tr != -1 else "", e.J, _safety_sig(e) if tr != -1 else ""]
 
 
 ## What the PPE and unsafe-act part shows depends on (S2): what the trainee wears, their zones, every act going on,
@@ -107,9 +111,10 @@ func _safety_sig(e) -> String:
 			str(ui.at_locker()), near]
 
 
-func _radio_count(e) -> int:
+## The trainee's readings so far (their sheet); the events read first.
+func _reads_count(e) -> int:
 	_follow(e)
-	return _radio.size() * 7 + _reads.get(e._sm.people[e.st_trainee]["id"] if e.st_trainee != -1 else "", []).size()
+	return _reads.get(e._sm.people[e.st_trainee]["id"] if e.st_trainee != -1 else "", []).size()
 
 
 ## Reads the events once each (the list only grows within a run): the radio log and the readings.
@@ -143,6 +148,8 @@ func refresh() -> void:
 		_follow(e)
 	var sig := _signature(e)
 	if sig == _sig:
+		if _radio.size() != _radio_shown:
+			_radio_lines()
 		return
 	_sig = sig
 	var typed := entry.text if entry != null and is_instance_valid(entry) else ""
@@ -509,8 +516,12 @@ func _safety(e, sm) -> void:
 func _radio_log(e, sm) -> void:
 	body.add_child(W.label("Radio", 20, Color(1.0, 0.85, 0.4)))
 	var lines := _radio
-	for l in lines.slice(maxi(0, lines.size() - 10)):
-		body.add_child(W.label(l, 16))
+	_radio_labels.clear()
+	_radio_shown = lines.size()
+	for l in lines.slice(maxi(0, lines.size() - RADIO_LINES)):
+		var lab := W.label(l, 16)
+		_radio_labels.append(lab)
+		body.add_child(lab)
 	if e.st_trainee == -1:
 		return
 	var me: Dictionary = sm.people[e.st_trainee]
@@ -533,6 +544,23 @@ func _radio_log(e, sm) -> void:
 	body.add_child(b)
 	if open_permit:
 		body.add_child(W.label("(no sleeping while a permit is open)", 16, W.DIM))
+
+
+## The radio's last lines written into the labels shown (new messages, nothing else changed): no rebuild of the
+## panel, which loses no focus and makes no new controls (in fast-forward the radio has new lines every refresh).
+## Fewer labels than lines to show (the log was shorter): the panel is built again.
+func _radio_lines() -> void:
+	var want := mini(_radio.size(), RADIO_LINES)
+	var ok := _radio_labels.size() == want
+	for lab in _radio_labels:
+		ok = ok and is_instance_valid(lab) and lab.is_inside_tree()
+	if not ok:
+		_sig = ""
+		refresh()
+		return
+	_radio_shown = _radio.size()
+	for k in want:
+		(_radio_labels[k] as Label).text = _radio[_radio.size() - want + k]
 
 
 func _next_shift(e) -> String:

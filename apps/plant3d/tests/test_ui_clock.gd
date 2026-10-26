@@ -110,6 +110,31 @@ func run(tree: SceneTree) -> Array:
 	c.set_speed(SimClock.Speed.FAST)
 	if c.speed == SimClock.Speed.FAST:
 		p.append("fast-forward was taken with an alarm unacknowledged")
+	# the bar in fast-forward (steps every frame): its clock and alarms shown again FAST_UI_HZ times a second, not every
+	# frame; at once when the speed changes
+	ui.restart("cold_iron")
+	c.set_speed(SimClock.Speed.FAST)
+	ui._each_frame(1.0 / 60.0)
+	var shown := 0
+	var last_text: String = ui._time.text
+	var scans := 0
+	var last_scan: float = ui._alarms_t
+	for i in 60:                # 1 s of frames at 60 fps, a step in each
+		c.run_steps(1)
+		ui._each_frame(1.0 / 60.0)
+		if ui._time.text != last_text:
+			shown += 1
+			last_text = ui._time.text
+		if ui._alarms_t != last_scan:
+			scans += 1
+			last_scan = ui._alarms_t
+	if shown < 3 or shown > int(ui.FAST_UI_HZ) + 1 or scans < 3 or scans > int(ui.FAST_UI_HZ) + 1:
+		p.append("in 1 s of fast-forward the bar's clock was shown %d times and the alarms looked at %d (about %d)"
+				% [shown, scans, int(ui.FAST_UI_HZ)])
+	c.set_speed(SimClock.Speed.NORMAL)
+	ui._each_frame(1.0 / 60.0)
+	if not String(ui._time.text).ends_with("×1") or not String(ui._time.text).begins_with(c.clock_text()):
+		p.append("the bar's clock did not show 1× and the time at once: %s (%s)" % [ui._time.text, c.clock_text()])
 	# a hold at 1× (a procedure step done, no pause): the steps not run that frame come in the next
 	ui.restart("cold_iron")
 	c.set_speed(SimClock.Speed.NORMAL)
