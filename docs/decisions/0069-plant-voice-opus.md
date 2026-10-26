@@ -21,7 +21,7 @@ x86-64 and Windows x64/ARM64, from a Godot 4.7 app, within the Note 9's budgets,
 | SpeexDSP | 1.2.1, BSD-3-Clause; a resampler (Godot's input is 44.1 or 48 kHz; Opus takes 8/12/16/24/48 kHz) | [D] github.com/xiph/speexdsp |
 | TwoVoIP | github.com/goatchurchprime/two-voip-godot-4: MIT; libopus 1.5.2, RNNoise, SpeexDSP built in; built by its CI for every Godot platform (Android included); v6.6 2026-09-23, pushed 2026-10-19, 187 stars; one maintainer; its README and v6.6 notes plan a v7 redesign of playback; releases as a prebuilt zip | [K] the repository, its README and releases, checked 2026-10-26 |
 | godot-cpp | MIT, the official C++ bindings for GDExtension; extensions are meant to load in later 4.y | [D] |
-| Our native toolchains | the NDK (libkks.so), llvm-mingw for Windows x64 and ARM64 (0047, 0053), gcc on Linux | android/nim/build.sh, apps/windows |
+| Our native toolchains | the NDK (libkks.so), llvm-mingw for Windows x64 and ARM64 (0047, 0053); the Linux build runs inside the Flatpak, so it is built in the Flatpak SDK matching `org.godotengine.godot.BaseApp//4.7` (the laptop's newer glibc already kept the importer off Debian 13) | android/nim/build.sh, apps/windows, CLAUDE.local deployment notes |
 
 ## Alternatives
 
@@ -47,8 +47,9 @@ user.
   message, about 30 kbit/s per talker with our headers and encryption; an adaptive jitter buffer of 60–200 ms.
 - **Capture:** `AudioServer.get_input_frames` while push-to-talk is held in a session; encoding and decoding on a
   worker thread, never the main thread.
-- **No echo canceller:** push-to-talk with one talker per channel (the host grants the floor) and half duplex (a
-  talker's own playback of that channel muted), so a speaker never feeds its microphone. Noise left to Opus's VOIP
+- **No echo canceller:** push-to-talk with one talker per channel (the host grants the floor), all playback muted
+  while push-to-talk is held, and voice from players on the same LAN not played by default (they are in earshot), so
+  a speaker never feeds a microphone that is sending. Noise left to Opus's VOIP
   mode; RNNoise (BSD-3) can be added if rooms prove loud.
 - **Radio sound:** a band-pass bus and squelch clips (CC0) on playback.
 - **Permissions:** Android `RECORD_AUDIO` (asked when voice is first turned on), Flatpak `--socket=pulseaudio`, MSIX

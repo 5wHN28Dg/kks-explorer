@@ -14,7 +14,7 @@ the Note 9's frame rules and over mobile networks?
 | | Finding | Source |
 |---|---|---|
 | The engine | a fixed 0.1 s step; inputs queued for step 1; every value an IEEE double in the reference's order; bit for bit with the Python reference on glibc and on the Note 9's bionic; not yet run on Windows (a lag's factor calls the C library's `exp`) | apps/plant3d/sim/README.md, CAPABILITIES.md §8 [V] |
-| Its cost | about 2.5 ms a step on the Note 9 (release build with the WTP; staff ≤ 0.3 ms more); fast-forward capped near 8–12× there | sim/README.md, PLANT3D.md §18.4 [V] |
+| Its cost | 0.77–0.81 ms a step on the Note 9 (release build with the WTP, the generated program, 2026-10-23); fast-forward capped at 31–33× there (a quarter of a core) | sim/README.md "Faster, the same bits" [V] |
 | The state | thousands of values, machine and alarm states, permits, the staff's queues and per-person random streams; the save holds it all (37 KB at the end of the cold start before staff) and restores a run bit for bit | ui/run_save.gd, apps/plant3d/README.md [V] |
 | The NPCs | already a pure function of the seed and the inputs (0062): nothing to send for them | PLANT3D.md §17 |
 | What must feel instant | walking, looking, the panels: all local, outside the engine | the app |
@@ -25,11 +25,12 @@ the Note 9's frame rules and over mobile networks?
 ## Alternatives
 
 1. **Lockstep, host as sequencer** (the user's choice): only inputs travel; a turn of 2 steps; inputs take effect
-   at the turn after they reach the host. Cost: 0.3–0.7 s from press to effect on mobile data. Desyncs must be
+   at the turn after they reach the host. Cost: 0.3–0.8 s from press to effect on mobile data. Desyncs must be
    detected (hashes) and repaired (snapshots).
 2. **Lockstep with rollback** (GGPO style): each player predicts and re-runs on late inputs. Saves the delay, but
-   re-running 10 steps costs 25 ms on the Note 9 (a frame), every state must be kept per step, and the staff's
-   placement after a jump (≤ 50 ms) would be re-run too. The plant reacts in seconds; the delay doesn't matter.
+   every step's state must be copied (the save's copy is 0.75 ms on the Note 9), late inputs re-run the steps since
+   (about 8 ms for 10) and with them the staff's placement after a jump (≤ 50 ms). The plant reacts in seconds; the
+   delay doesn't matter.
 3. **The host simulates and streams state** (Godot's replication): the clients run no engine. The state is
    thousands of values plus the staff, and the engine has no delta encoding; the bandwidth and the host's upload
    would grow with the plant, and it breaks "the same simulation everywhere" (the debrief, saved runs and continue
@@ -45,7 +46,8 @@ the Note 9's frame rules and over mobile networks?
   fast-forward cap, never a dropped committed step. Positions travel beside it, unreliable, at 5 Hz.
 - **Several trainees in the engine** (§3.3): `players`, the slot on every trainee input, per-slot task state,
   `release`/reclaim made by the host; reference, GDScript and vectors in one milestone (MP1).
-- **Digests every 50 steps** of the saved state without its logs (§4); a mismatch resyncs that player from the host's
+- **Digests every 50 steps** (a stride in fast-forward) of the saved state without its logs, packed arrays hashed
+  directly, ≤ 1 ms each on the Note 9 (§4); a mismatch resyncs that player from the host's
   snapshot and writes a desync report; the host is the reference.
 - **Late join and rejoin by the save's snapshot** (§5); **host migration** to the lowest connected slot with the
   highest committed step among the players (§5.3).

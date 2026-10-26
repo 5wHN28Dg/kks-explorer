@@ -23,6 +23,7 @@ Godot 4.7 is the same on the three targets for everything in the first rows; the
 | Walkdown's identity | device keys, root-signed certificates, the log, TLS with pinned peer IDs (PROTOCOL-v2 §2, §15, §16) and the relay room key (0050): all in the Nim core, which the plant app doesn't link (0054 §2) | PROTOCOL-v2, 0050, 0054 |
 | Walkdown's relay | a Worker with one Durable Object per room, hibernating WebSockets, auto-answered pings, a Python twin with the same protocol | relay/src/index.js, relay/twin.py, 0012 |
 | Free plan | Durable Objects: 100,000 requests and 13,000 GB-s a day, SQLite storage 5 GB; incoming WebSocket messages 20 to a request, outgoing and protocol pings free; auto-responses not billed; past a limit operations fail until 00:00 UTC | [D] developers.cloudflare.com/durable-objects/platform/pricing |
+| Where a room runs | a Durable Object is created near its first request; location hints are best effort, and Durable Objects don't spawn in the Middle East, Africa or South America (a hint there lands nearby) | [D] developers.cloudflare.com/durable-objects/reference/data-location |
 | Rate limiting binding | periods of 10 or 60 s, per Cloudflare location, approximate; the page doesn't say whether the free plan has it | [D] developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit |
 | Hole punching | Walkdown's direct path: STUN (stun.cloudflare.com, stun.l.google.com), candidates through the relay, punching; per-destination carrier NATs can't be punched, so phones on mobile data often use the pipe | PROTOCOL-v2 §18, kksl/udp.nim, CLAUDE.md lessons |
 | QR | Godot has no QR class; a phone's camera app opens a `walkdown-plant://` link, which the app already handles (0056) | [S] 4.7 doc/classes; 0056 |
@@ -48,12 +49,14 @@ Godot 4.7 is the same on the three targets for everything in the first rows; the
   sent in `hello`; RFC 7518's AES-128-CBC-HMAC-SHA-256 on every packet with the header as AAD; replay windows. What it
   does not protect against (one member forging the host on a LAN path) is detected by the digests and accepted
   (MULTIPLAYER.md §1.3, §10). Removal moves the session to new keys.
-- **Transport (b):** LAN UDP with beacons on port 47820 (the code finds its session), direct UDP between each player
+- **Transport (b):** LAN UDP with a broadcast query on discovery port 47820 answered with an HMAC under K (the code
+  finds its session), direct UDP between each player
   and the host after STUN and punching as Walkdown does, the relay otherwise; reliability by acks and RFC 6298
-  retransmission over every path, so a player moves between paths without losing a message.
+  retransmission per stream over every path, fragments for long messages on UDP, so a player moves between paths
+  without losing a message; the host forwards broadcasts between UDP players and the relay (MULTIPLAYER.md §9.4).
 - **Relay (b):** `relay-plant/`, a Worker with one Durable Object per room, hibernating WebSockets, rooms created with
-  SHA-256(admit), relay IDs on every message, the limits of §9.1 (9 sockets, 64 KiB, 60 msg/s, 24 h, empty rooms
-  deleted after 10 min); `relay-plant/twin.py` as its twin; deployed only on a free-plan account, checked by the
+  SHA-256(admit), 16-bit relay IDs on every message, a host claim for routing, the limits of §9.1 (12 sockets,
+  64 KiB, 60 msg/s and 120 for the host, 24 h, empty rooms deleted after 10 min, counters in memory); `relay-plant/twin.py` as its twin; deployed only on a free-plan account, checked by the
   deploy step; its URL in `CLAUDE.local.md` and an ignored build file. Estimated 8–14 hours of 8-player relay play a
   day within the free plan (§9.1), measured in MP4.
 - **Permissions:** Android `INTERNET`, `CHANGE_WIFI_MULTICAST_STATE`; Flatpak `--share=network`; MSIX `internetClient`,
@@ -62,7 +65,9 @@ Godot 4.7 is the same on the three targets for everything in the first rows; the
 
 ## When to revisit
 
-- if trainees outside one class use it (strangers in a session): then per-player identity (libsodium or the core);
+- if trainees outside one class use it (strangers in a session), or if P must stay secret on a LAN too (today a
+  player who captures the Wi-Fi's traffic can learn another's P, MULTIPLAYER.md §1.3): then per-player identity
+  (libsodium or the core), or the host's RSA key (`Crypto.generate_rsa`) with its fingerprint in the link and QR;
 - if the free plan's allowance is reached in practice (MP4's counts) or Cloudflare changes it;
 - if the app moves to target SDK 37 (the local network permission at run time);
 - if the rate limiting binding turns out to be unavailable and rooms are abused.
@@ -70,6 +75,7 @@ Godot 4.7 is the same on the three targets for everything in the first rows; the
 Sources: https://www.rfc-editor.org/rfc/rfc7518#section-5.2.3 · https://www.rfc-editor.org/rfc/rfc5869 ·
 https://developers.cloudflare.com/durable-objects/platform/pricing/ ·
 https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/ ·
+https://developers.cloudflare.com/durable-objects/reference/data-location/ ·
 https://developer.android.com/privacy-and-security/local-network-permission ·
 https://developer.android.com/reference/android/net/wifi/WifiManager.MulticastLock ·
 https://docs.flatpak.org/en/latest/sandbox-permissions.html ·

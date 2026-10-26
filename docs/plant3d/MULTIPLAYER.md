@@ -27,11 +27,17 @@ and the code are the keys of §1.3.
 The host picks a scenario, or a saved run (§7.4), and **Online** or **This Wi-Fi only**, and gets an **invite**:
 - a **code** of 16 characters from Crockford's base32 alphabet (no I, L, O or U), shown in four groups
   (`K3QX-9F2M-HT4C-7PWD`): 75 random bits and a 5-bit check (the first 5 bits of SHA-256(`"wdp-code-v1\n"` +
-  the first 15 characters)), so that a typo is caught before anything is sent;
+  the first 15 characters)), so that a typo is caught before anything is sent (all but one in 32 random typos);
+  typing is forgiving as Crockford's decoding is (I and L read as 1, O as 0, lower case as upper case, dashes and
+  spaces ignored);
 - the **link** `walkdown-plant://join/<code>` and its **QR code** on the host's screen. A phone's own camera app opens
   the link, and the app's existing link path (decision 0056) starts the join, so the plant app needs **no camera
   permission and no QR reader**. The QR code is drawn by a small GDScript encoder of our own (byte mode, error
-  correction M; Godot has no QR class [S 4.7 doc/classes]).
+  correction M; Godot has no QR class [S 4.7 doc/classes]). `join` is a new link kind (PLANT3D.md §6 and
+  `sim/links.gd` gain it in MP2). Not every camera app offers to open a scheme other than http(s) from a QR code:
+  MP2 tries the Note 9's camera app and Google Lens, and the code under the QR code is always there to type. On a
+  desktop a link starts a second instance of the app, which joins on its own (the running instance keeps its run;
+  `autosave.gd`'s claim keeps the two from saving over each other).
 
 The code is the session's only secret: whoever holds it may join (§1.3 explains why that is enough here). It is shown
 to the room as Walkdown shows an invite, and it is gone when the session ends.
@@ -39,7 +45,7 @@ to the room as Walkdown shows an invite, and it is gone when the session ends.
 ### 1.2 Join
 
 The joiner types the code, follows the link, or scans the QR code with the camera app. The app then:
-1. looks for the session on the LAN for 2 s (§9.3: beacons carry the room ID derived from the code);
+1. looks for the session on the LAN for 2 s (§9.3: a broadcast query with the room ID derived from the code);
 2. if none answers and the code's session is online, enters the relay room (§9.1);
 3. sends `hello` (§2.2) to the host, with its **display name** (1–24 characters, typed once and kept in the app's
    settings) and a fresh random **P**;
@@ -62,12 +68,14 @@ out (four native builds per release for this alone). So (decision 0068):
 
 - **From the code** (its 75 random bits as the input key material, `S`), with HKDF-SHA-256 (RFC 5869) built on
   `HMACContext`, salt `"walkdown-plant-mp-v1"`:
-  - `room` = 16 bytes, info `"room"`: the relay room (32 hex characters) and the LAN beacon's ID;
+  - `room` = 16 bytes, info `"room"`: the relay room (32 hex characters) and the LAN query's ID (§9.3);
   - `admit` = 32 bytes, info `"admit"`: the relay's admission token (the relay keeps only its SHA-256);
   - **K** = 32 bytes, info `"group"`: the session key for messages to everyone.
-- **P**: 32 random bytes each player makes when it joins and sends to the host in its `hello` (under K). Messages
-  between that player and the host are under P, so another player can't make an input that the host takes as
-  someone else's.
+- **P**: 32 random bytes each player makes when it joins and sends to the host in its `hello` (under K, addressed
+  to the host alone). Messages between that player and the host are under P, so another player who never saw that
+  `hello` can't make an input that the host takes as someone else's. Through the relay no other player receives it
+  (the relay delivers a packet only to its `to`, §9.1); on a LAN, a player who captures the Wi-Fi's traffic (a
+  shared-key network) or spoofs the host's address can learn it. That is the real guarantee of (c).
 - **Encryption:** AEAD_AES_128_CBC_HMAC_SHA_256 of RFC 7518 §5.2.3 (the JOSE "A128CBC-HS256"): the 32-byte key's
   first half is the MAC key and its second half the AES key, a random 16-byte IV per message, PKCS#7 padding, the
   tag the first 16 bytes of HMAC-SHA-256 over (AAD ‖ IV ‖ ciphertext ‖ AAD length in bits as a 64-bit big-endian
@@ -78,10 +86,11 @@ out (four native builds per release for this alone). So (decision 0068):
   more than 256 below the highest seen from that sender under that key.
 
 **What this does not give, and why that is accepted:** players are trusted classmates. One who holds K can read
-the session and could forge a broadcast as the host on a path that doesn't say who sent it: the relay tags every
-message with its sender's socket (§9.1), so only a direct UDP path between players on one LAN (where an IP address
-can be spoofed) is open to it. Such a forgery desyncs the others, who are then resynced from the host under their P
-(§4). A player can always disrupt a session by playing it badly; the host can remove them (§2.4), which moves the
+the session's broadcasts and could forge a broadcast as the host on a path that doesn't say who sent it: the relay
+tags every message with its sender's socket (§9.1), so only a LAN (where an IP address can be spoofed and traffic
+captured) is open to it. Such a forgery desyncs the others, who are then resynced from the host under their P (§4);
+on a LAN the same player could also learn another's P (above) and make inputs as them. Protecting P on a LAN as
+well would need a key the joiner can check, which a typed code can't carry (decision 0068, "When to revisit"). A player can always disrupt a session by playing it badly; the host can remove them (§2.4), which moves the
 session to new keys. Whoever reads the code over a shoulder can join: the host sees every join in the roster and
 removes strangers.
 
@@ -95,55 +104,71 @@ Every transport (LAN UDP, direct UDP, the relay) carries the same packets:
 |---|---|---|
 | version | 1 | 1 |
 | key | 1 | 0: K; 1: P of the player in `from` or `to` (whichever is not the host); 2: none (only `punch`, §9.2) |
-| from | 1 | the sender's slot; 255 before it has one (its `hello`) |
+| from | 1 | the slot that made the packet; 255 before it has one (its `hello`) |
 | to | 1 | a slot, or 255 for everyone |
 | epoch | 2 | the host epoch (§5.3); packets of an older epoch are dropped, except `last` |
-| number | 4 | the sender's packet number, from 1, per key |
-| ack, ack mask | 4 + 4 | the highest reliable packet number received from the addressee and the 32 before it (§2.3) |
+| number | 4 | the packet number of `from` under this key, from 1: the replay counter (§1.3) |
 | body | | IV, ciphertext and tag (§1.3) of one or more messages |
 
 A packet is at most 1,200 bytes on UDP (one datagram without fragmentation on any common path) and at most 64 KiB
-through the relay. The header is 18 bytes; encryption adds 16 (IV) + 1–16 (padding) + 16 (tag).
+through the relay. The header is 10 bytes; encryption adds 16 (IV) + 1–16 (padding) + 16 (tag). A packet carries
+messages of one key only (the key byte says which). A host forwarding a packet (§9.4) passes it on unchanged: its
+`from`, number and tag stay the original sender's.
 
 ### 2.2 Message kinds
 
-Each message inside a body is a kind (1 byte), a length (2 bytes) and its fields. Inputs are the trace format of
+Each message inside a body is a kind (1 byte), a length (2 bytes), for a reliable message its stream sequence
+(4 bytes, §2.3), and its fields. Inputs are the trace format of
 PLANT3D.md §12 and §17.6, as strict JSON text (read with `sim/json_strict.gd`, at most 512 bytes each): the same
 form the vectors, the save and the debrief already use.
 
-| Kind | Channel | From → to | Fields |
-|---|---|---|---|
-| `hello` | reliable | joiner → host | display name, P, the app version (`RunSave.app_version()`), the content hash, a rejoin token or none (§5.2) |
-| `welcome` / `refuse` | reliable | host → joiner | slot, roster, settings / a reason (`full`, `version`, `content`, `removed`, `closed`) |
-| `roster` | reliable | host → all | every slot: name, role (a person or none), connected, transport, ready flags |
-| `input` | reliable | player → host | the player's input number (from 1), the input |
-| `commit` | reliable | host → all | epoch, first and last step of the turn, the inputs scheduled in it as `[step, slot, input number, input]` |
-| `hash` | reliable | everyone → host | step, the state digest (§4) |
-| `snap` | reliable | host → one player | snapshot chunks (§3) |
-| `control` | reliable | player → host, host → all | pause, run, fast-forward votes, the jump vote, instructor mode (§7) |
-| `pos` | unreliable | player → all | the player's position, heading, pitch, gait, at 5 Hz (§6.3) |
-| `voice` | unreliable | player → all | channel, talk-spurt number, Opus frames (§8) |
-| `talk` | reliable | player → host, host → all | ask for, grant, refuse and end a channel's floor (§8.4) |
-| `ping` / `pong` | unreliable | any | a time stamp, for round-trip times |
-| `last` / `newhost` | reliable | players → candidate / new host → all | (§5.3) |
-| `remove` / `rekey` | reliable | host → one / each other player | (§2.4) |
-| `bye` | reliable | any | leaving |
+| Kind | Channel | From → to | Key | Fields |
+|---|---|---|---|---|
+| `hello` | reliable | joiner → host | K | display name, P, the app version (`RunSave.app_version()`), the content hash, a rejoin token or none (§5.2) |
+| `welcome` / `refuse` | reliable | host → joiner | P | slot, roster, settings / a reason (`full`, `version`, `content`, `removed`, `closed`) |
+| `roster` | reliable | host → all | K | every slot: name, role (a person or none), connected, path, LAN address, ready flags, SHA-256 of its rejoin token |
+| `input` | reliable | player → host | P | the player's input number (from 1), the input |
+| `commit` | reliable | host → all | K | epoch, first and last step of the turn, the digest stride (§4), the inputs scheduled in it as `[step, slot, input number, input]` |
+| `hash` | reliable | everyone → host | P | step, the state digest (§4) |
+| `snap` | reliable | host → one player | P | the snapshot (§5.1), in fragments |
+| `control` | reliable | player → host / host → all | P / K | pause, run, fast-forward votes and caps, the jump vote, instructor mode (§7) |
+| `pos` | unreliable | player → all | K | the player's position, heading, pitch, gait, at 5 Hz (§6.3) |
+| `voice` | unreliable | player → all | K | channel, talk-spurt number, frame number, Opus frames (§8) |
+| `talk` | reliable | player → host / host → all | P / K | ask for, grant, refuse and end a channel's floor (§8.4) |
+| `ping` / `pong` | unreliable | any | P with the host, else K | a time stamp, for round-trip times |
+| `ack` | unreliable | any | the acknowledged stream's | stream, the highest sequence received in order, a 32-bit mask of those after it (§2.3) |
+| `frag` | as its message | any | its message's | message ID (2 bytes), index, count, a piece of a reliable message too long for one UDP packet (§2.3) |
+| `last` | reliable | player → candidate | K | (§5.3) |
+| `newhost` | reliable | new host → all | K | (§5.3) |
+| `remove` / `rekey` | reliable | host → one / each other player | P | (§2.4) |
+| `bye` | reliable | any | P with the host, else K | leaving |
 
 ### 2.3 Reliability
 
-Reliable messages ride in packets that the addressee acknowledges (the header's ack and mask, sent in the next
-packet back, or alone after 50 ms); an unacknowledged packet is sent again after an RTO computed as in RFC 6298
-(200 ms to 4 s), as Walkdown's reliable UDP does (PROTOCOL-v2 §18). Reliable messages are delivered in order per
-sender. Through the relay (a WebSocket over TCP) nothing is lost, but the same numbers and acks are kept so that a
-player can move between the relay and UDP (§9) without losing or repeating a message. Unreliable messages are never
-sent again.
+- **Streams.** Reliable messages travel in streams, each with its own sequence numbers from 1 (not the packet
+  numbers, which count every packet for replay protection): one per player and direction between that player and
+  the host (under P), and the host's broadcast stream (under K, every reliable host → all message), plus the
+  migration streams of §5.3 (each player's to the candidate). Every addressee acknowledges each stream with `ack`
+  (cumulative sequence and a mask), in the next packet back or alone after 50 ms; for the broadcast stream every
+  player acknowledges on its own and the host keeps each player's position.
+- **Delivery:** in order per stream; a message is sent again after an RTO computed as in RFC 6298 (200 ms to 4 s),
+  as Walkdown's reliable UDP does (PROTOCOL-v2 §18), to those that haven't acknowledged it (a broadcast message
+  resent to one player goes to that player alone). Unreliable messages never ride in a packet with reliable ones
+  and are never sent again.
+- **Long messages:** on UDP a reliable message longer than fits in one packet (a commit with many inputs, `welcome`,
+  a full `roster`, the snapshot) is cut into `frag` pieces with one message ID; the receiver reassembles at most
+  64 KiB per message (the snapshot: its own limit, §5.1) and 256 KiB in all per sender, and drops pieces beyond that.
+  Through the relay the whole message goes in one relay message (≤ 64 KiB) or, for the snapshot, in 60 KiB pieces.
+- **Through the relay** (a WebSocket over TCP) nothing is lost, but the same sequences and acks are kept, so that a
+  player can move between the relay and UDP (§9) without losing or repeating a message.
 
 ### 2.4 Leaving and removing
 
 `bye`, or no packet for 10 s, marks a player disconnected in the roster. Their person goes to the NPCs (§6.2) after
 60 s unless they rejoin. The host may **remove** a player: it sends `remove`, then a new code's keys (a new room,
-admit and K, made by the host from 75 new random bits) to each remaining player under their P in `rekey`; everyone
-moves to the new room and LAN ID. The removed player still knows the old code, which now opens nothing. The host's
+admit and K, made by the host from 75 new random bits) to each remaining player under their P in `rekey`; the host
+creates the new relay room first, the others enter it (retrying `no such session` for 10 s) and send a new `hello`
+with their old P and rejoin token, and the LAN query (§9.3) uses the new room ID. The removed player still knows the old code, which now opens nothing. The host's
 screen shows the new code for anyone who should join later.
 
 ## 3. Lockstep (decision 0067)
@@ -159,7 +184,12 @@ step.
   inputs that take effect in them, each at the turn's first step C + 1, in the order the host received them (its own
   included, through the same path as anyone's). No player, the host included, runs a step that isn't committed.
 - **T, the turn:** 2 steps (0.2 s) at 1×. In fast-forward the host closes more steps per 0.2 s of real time (§7.2).
-  A turn with no inputs is a commit with an empty list (about 40 bytes); a paused session sends none.
+  A turn with no inputs is a commit with an empty list (about 70 bytes with header and encryption); a paused session
+  sends none, only a `ping` every second.
+- **The host runs before it commits:** it runs each step of the turn on its own engine, then sends the commit. In
+  fast-forward it ends the turn early at the step after which the engine no longer offers fast-forward (§7.2), so no
+  player runs past that point at the fast rate; the next turns are at 1×. The host runs without a jitter buffer; its
+  committed step is always the step its own engine has reached.
 - **Inputs:** a player's UI no longer queues an input in the engine: it hands it to the session (`input`), shows it
   as sent (the op's button as pressed, "sending…"), and the input takes effect in every engine when its commit
   arrives. The player keeps each input until a commit lists its number, sends it again after a host change (§5.3),
@@ -178,17 +208,24 @@ player has to feel at once (walking, looking, the buttons) is local and not in t
 the lockstep (§6.3). So an input that takes effect 0.3–0.5 s after the press is acceptable, the way Age of Empires'
 commands took effect two turns of 200 ms later and still played over 28.8k modems with 250–500 ms latency
 (Bettner and Terrano, "1500 Archers on a 28.8", GDC 2001). Rollback would save that delay at the cost of keeping
-and re-running states: a model step is 2.5 ms on the Note 9 (sim/README.md, the release build with the WTP), so
-re-running 10 steps after each late input costs 25 ms, a frame. Streaming the state from the host would need the
+and re-running states: a copy of the whole state every step (the save's copy takes about 0.75 ms on the Note 9,
+apps/plant3d/README.md), and on a late input the steps since re-run (0.77–0.81 ms each there, sim/README.md "Faster,
+the same bits"; 10 steps are about 8 ms, a quarter of a frame) with the staff's jump placement (≤ 50 ms, §18.4)
+whenever a jump falls inside. None of that buys anything for a plant that answers in seconds. Streaming the state
+from the host would need the
 state in every message (thousands of values and the staff) or a delta scheme the engine doesn't have, and it would
 end "the same simulation everywhere" (decision 0067 compares the three).
 
 **Latency to expect:** mobile networks' median latency is about 45–50 ms (Ookla's US reports: T-Mobile 46 ms in
 H2 2025, 49 ms in H2 2024) to under 20 ms in the best (Qatar, 18 ms, Speedtest Global Index June 2025), with longer
-tails and worse on congested cells. Through the relay a message goes player → Cloudflare → host: two such paths. An
-input then takes effect after its trip to the host (≈ 50–150 ms), the wait for the next commit (0–200 ms), the
-commit's trip back (≈ 50–150 ms) and the jitter buffer (200 ms): about 0.3–0.7 s on mobile data, 0.25–0.45 s on a
-Wi-Fi. MP2 and MP4 measure it on the Note 9 (§13) against a budget of **0.5 s median, 1 s at the 95th percentile**
+tails and worse on congested cells. These are secondary reports of US and Gulf networks, not of the users' own; MP4's
+measurement on the Note 9 is the evidence that counts. Through the relay a message goes player → the nearest
+Cloudflare location → the data centre where the room's Durable Object lives → host. A Durable Object is created near
+its first request, but Durable Objects don't run in the Middle East, Africa or South America: rooms made there land
+in a nearby region, which adds that hop's round trip [D durable-objects/reference/data-location]. An input then takes
+effect after its trip to the host (≈ 50–200 ms), the wait for the next commit (0–200 ms), the commit's trip back
+(≈ 50–200 ms) and the jitter buffer (200 ms): about 0.3–0.8 s on mobile data, 0.25–0.45 s on a Wi-Fi. MP4 records
+where the room landed. MP2 and MP4 measure it on the Note 9 (§13) against a budget of **0.5 s median, 1 s at the 95th percentile**
 on mobile data, input made to effect seen.
 
 ### 3.3 Several trainees in one engine
@@ -216,16 +253,21 @@ Today the staff step has one trainee (`st_trainee`, PLANT3D.md §17.4). A sessio
 ## 4. State hashes and desyncs
 
 **The digest:** SHA-256 over the engine's state as the save keeps it (`RunSave.engine_fields`: every script variable
-but the compiled program), encoded field by field in sorted name order with `var_to_bytes`, **without** `events`,
-`inputs` and the debrief's logs (they only grow, and what they record is in the state too). Same Godot release, same
-field order, doubles as their bits: the same state gives the same bytes on every platform, which MP1 checks (the
-digest of every vector run's every 50th step equal on Linux, Android and Windows). Cost target: ≤ 0.5 ms on the Note
-9 for the first train with staff (MP1 measures it with `tests/bench_save.gd`'s method; the save's copy took about
-0.75 ms there in all, events included).
+but the compiled program), **without** `events`, `inputs` and the debrief's logs (they only grow, and what they record
+is in the state too), field by field in sorted name order: a packed array's bytes go straight into the
+`HashingContext` (`cur`, `prev`, `mem` and the other `Packed…Array`s, by far the largest part: no encoding), the
+small Arrays and Dictionaries through `var_to_bytes`. Same Godot release, same field order, doubles as their bits:
+the same state gives the same bytes on every platform, which MP1 checks (the digest of every vector run's every
+50th step equal on Linux, Android and Windows). The save's whole cost (copy 0.75 ms, then encoding and writing,
+about 4.5 ms on the Note 9 by apps/plant3d/README.md's estimate) is not the digest's: it encodes the logs and
+everything as Variants. **Budget: ≤ 1 ms per digest on the Note 9** for the first train with staff; MP1 measures it,
+and if it misses, the digest's state is copied on the main thread and hashed on a worker thread.
 
-**When:** every player sends `hash` for every step that is a multiple of **N = 50** (5 s of model time at 1×; at 10×
-every 0.5 s of real time, so at most 1 ms a second of the Note 9's main thread). The host keeps its own digests of the
-last 20 such steps.
+**When:** every player sends `hash` for every step that is a multiple of **50 × the digest stride**. The stride is in
+every commit (so every player hashes the same steps): 1 at 1× (every 5 s of model time); in fast-forward the host
+sets it to the session's rate divided by 10, rounded up (at 30× every 150 steps, every 0.5 s of real time). So a
+player makes at most about 2 digests a second, 2 ms a second of the Note 9's main thread. The host keeps its own
+digests of the last 20 such steps.
 
 **On a mismatch** with the host's digest: the host marks the player desynced in the roster and sends it a snapshot
 (§5.1's form) at its current committed step; the player throws its engine away, loads the snapshot and plays on from
@@ -246,13 +288,17 @@ README already plans.
 
 ### 5.1 The snapshot
 
-The host takes the snapshot at a committed step C: the run save's payload (`ui/run_save.gd`: the engine's state with
-`events` and `inputs`, so that the joiner's debrief and alarm list are whole; the scenario; the content hash and app
-version) without the host's own UI, tracker and position, plus the session's state (roster, roles, settings, the
-committed step). It is encoded as the save is (`var_to_bytes`, no objects), compressed with zstd (Godot's
-`PackedByteArray.compress(FileAccess.COMPRESSION_ZSTD)`), and sent under the joiner's P in `snap` messages of 1,100
-bytes (UDP) or 60 KiB (relay), at most 16 MiB in all. The joiner checks it with the save's own strict checks (the
-fields and their types must be this engine's, `autosave.gd` `check`) and refuses anything else.
+The host takes the snapshot at a committed step C. It is its own Dictionary, not a run save (the save's `decode`
+and `autosave.check` require the UI, player and tracker parts and refuse other keys): `{"app", "content",
+"scenario", "engine", "session"}`, where `engine` is exactly the save's engine part (with `events` and `inputs`, so
+that the joiner's debrief and alarm list are whole) and `session` the roster, roles, settings and C. It is encoded as
+the save is (`var_to_bytes`, no objects) and compressed with zstd (`PackedByteArray.compress(FileAccess
+.COMPRESSION_ZSTD)`). The first piece says the uncompressed length; the joiner refuses one over the save's
+`MAX_BYTES` (64 MiB), decompresses with `decompress(length, FileAccess.COMPRESSION_ZSTD)` (`decompress_dynamic`
+doesn't take zstd [S 4.7 PackedByteArray.xml]), and refuses a result of any other length. It is sent under the
+joiner's P (UDP `frag` pieces or 60 KiB relay pieces), at most 16 MiB compressed. The joiner checks `app`,
+`content` and `scenario` as the save does, and `engine` with the save's own engine check (`RunSave.check` and
+`autosave.gd`'s engine contents: the fields and their types must be this engine's), and refuses anything else.
 
 The joiner keeps every commit after C that arrives while it loads, then runs from C + 1 to the present at its
 catch-up rate. The snapshot's encoding and compression run on a worker thread on the host (as the periodic save's do,
@@ -285,13 +331,17 @@ Every player has the whole state and the commits, so any of them can go on as ho
    fetches the commits it lacks from the player who has them (everyone keeps the last 600 commits, two minutes at
    1×). The old host's commits are taken as they are: they were already committed, and some players may have run
    them.
-4. It sends `newhost` to everyone: epoch + 1, its slot, its relay ID and LAN address, the committed step, and the
-   commits each player lacks. Everyone runs to that step and follows the new host from the next turn; inputs that
+4. It sends `newhost` to everyone: epoch + 1, its slot, its relay ID and LAN address, and the committed step; then
+   the commits each player lacks, as ordinary `commit` messages to that player. A player accepts `newhost` only
+   after it has itself found the host gone (step 1) or within 10 s of having sent its `last`, only for the next
+   epoch, and only from the expected candidate: the lowest connected slot, or the k-th after 5 s × k (by its relay
+   ID through the relay, its roster address on UDP). Everyone runs to that step and follows the new host from the
+   next turn; inputs that
    weren't committed are sent to it again (§3.1). Its first digest exchange at the next multiple of 50 confirms that
    everyone agrees.
 5. If the candidate doesn't send `newhost` within 5 s, the next lowest slot takes over (the k-th waits 5 s × k).
 
-The new host takes over beacons (§9.3), saving (§7.4), the talk floors (every floor is ended) and the roster; its
+The new host takes over the LAN query's answers (§9.3), saving (§7.4), the talk floors (every floor is ended) and the roster; its
 roster carries a SHA-256 of each player's rejoin token, so it can take rejoins it never gave out. The old host, if it
 comes back, is an ordinary player rejoining with its token. A network split that elects two hosts gives two epochs:
 when the groups meet again, the higher epoch (then the lower host slot) wins and the others are resynced from its
@@ -371,17 +421,22 @@ don't see the instructor panel.
   bus with `AudioEffectCapture` reading its frames, or the experimental `AudioServer.set_input_device_active`
   with `get_input_frames(n)` and `get_input_frames_available()` (float stereo frames at `get_input_mix_rate()`) [S
   4.7 doc/classes/AudioServer.xml]. We use the latter: no bus and no stream player.
-- **Android:** Godot's OpenSL ES driver asks for `RECORD_AUDIO` when input starts (`request_permission`) and records
-  with the default preset, so the platform's echo canceller and noise suppressor are **not** applied [S 4.7
-  platform/android/audio_driver_opensl.cpp]. The export needs the `RECORD_AUDIO` permission ticked.
+- **Android:** Godot's OpenSL ES driver asks for `RECORD_AUDIO` when input starts (`request_permission`, which is
+  asynchronous: the first start fails while the dialog is up) and records 44.1 kHz mono in buffers of 2,048 frames
+  (about 46 ms, counted in the mouth-to-ear budget) with the default preset, so the platform's echo canceller and
+  noise suppressor are **not** applied [S 4.7 platform/android/audio_driver_opensl.cpp]. So the app asks with
+  `OS.request_permission("android.permission.RECORD_AUDIO")` when voice is turned on, waits for
+  `on_request_permissions_result`, and only then starts input. The export needs the `RECORD_AUDIO` permission
+  ticked.
 - **Playback:** `AudioStreamGenerator` with `push_buffer`, one call per decoded 20 ms frame [D].
 
 ### 8.2 The codec and library
 
 **Opus** (RFC 6716), through a small GDExtension of our own, **`wdp_voice`** (C++ against godot-cpp, MIT), built
 from pinned sources: **libopus 1.5.2** (BSD-3-Clause) and **SpeexDSP 1.2.1**'s resampler (BSD-3-Clause), for Android
-arm64-v8a (the NDK, as `libkks.so`), Linux x86-64 (the Flatpak) and Windows x86-64 and ARM64 (the two MSIX packages) (llvm-mingw, decisions 0047,
-0053). Its interface: an encoder (`encode(PackedVector2Array frames) -> PackedByteArray`, taking the mix rate's
+arm64-v8a (the NDK, as `libkks.so`), Linux x86-64 (built in the Flatpak's own SDK, matching
+`org.godotengine.godot.BaseApp//4.7`'s runtime, so that its glibc is the one it runs on) and Windows x86-64 and
+ARM64 (the two MSIX packages; llvm-mingw, decisions 0047, 0053). Its interface: an encoder (`encode(PackedVector2Array frames) -> PackedByteArray`, taking the mix rate's
 frames, down-mixing, resampling and encoding 20 ms at a time) and a decoder (`decode(packet or empty for a lost one)
 -> PackedVector2Array` at the output mix rate, with Opus's loss concealment and in-band FEC). TwoVoIP
 (github.com/goatchurchprime/two-voip-godot-4, MIT, the same Xiph libraries plus RNNoise, built for every Godot
@@ -399,7 +454,9 @@ Mono, 16 kHz (wideband: a radio's band is narrower), `OPUS_APPLICATION_VOIP`, 20
 in-band FEC on with the expected loss set from the measured loss, no DTX (push-to-talk sends only while talking).
 Two frames per `voice` message (40 ms): about 80 bytes of Opus, 12 of fields, 18 of header and 33–48 of encryption,
 so about 150 bytes per 40 ms, **30 kbit/s** per talker (plus UDP/IP or WebSocket framing). The receiver keeps a
-jitter buffer of 60–200 ms (adaptive), decodes a lost frame by FEC or concealment, and plays it on the radio's bus:
+jitter buffer of 60–200 ms (adaptive), decodes a lost frame by FEC or concealment, and plays it on the radio's bus
+(with two frames per message, in-band FEC rebuilds only the second frame of a lost message from the next one; above
+5 % measured loss the sender sends one frame per message):
 a band-pass of 300–3,000 Hz and light distortion (Godot's `AudioEffectBandPassFilter` and `AudioEffectDistortion`),
 the squelch clicks at the start and end of a talk spurt as CC0 clips (0054 §7).
 
@@ -414,15 +471,20 @@ the squelch clicks at the start and end of a talk spurt as CC0 clips (0054 §7).
   floor (`talk`); the frames captured meanwhile are kept, and sent once granted (dropped, with a busy tone, when
   refused). The floor ends when the button is released or after 30 s.
 - **Half duplex:** while a player talks, their own playback of that channel is muted. So a phone's speaker never
-  feeds its own microphone, and no echo canceller is needed; noise suppression is left to Opus's VOIP mode (RNNoise,
-  BSD-3, can be added to `wdp_voice` later if trainees' rooms prove too loud).
+  feeds its own microphone; all voice playback is muted while push-to-talk is held (also the channels a free-mode
+  player or instructor hears).
+- **Players in one room:** a phone's speaker playing A's voice next to A comes back into A's microphone at the next
+  press, and everyone in the room hears each voice twice. So voice from players reached over the LAN is not played
+  by default (they are in earshot; a setting turns it on, for headsets or separate rooms). Headsets are recommended
+  where players share a room and use the relay. No echo canceller; noise suppression is left to Opus's VOIP mode
+  (RNNoise, BSD-3, can be added to `wdp_voice` later if trainees' rooms prove too loud).
 - NPCs' radio messages stay text in the radio log (§18.7), and players' voice is not recorded or saved anywhere.
 
 ### 8.5 Permissions per platform
 
 | | Android | Linux (Flatpak) | Windows (MSIX) |
 |---|---|---|---|
-| Network | `INTERNET` (and `CHANGE_WIFI_MULTICAST_STATE` for the LAN beacons, §9.3); normal permissions, granted at install | `--share=network` | `internetClient`, `privateNetworkClientServer` (the LAN) |
+| Network | `INTERNET` (and `CHANGE_WIFI_MULTICAST_STATE` for the LAN query, §9.3); normal permissions, granted at install | `--share=network` | `internetClient`, `privateNetworkClientServer` (the LAN) |
 | Microphone | `RECORD_AUDIO`, asked at run time when voice is first turned on in a session | `--socket=pulseaudio` (the microphone through PipeWire's Pulse server) | `microphone` device capability; Windows' privacy setting must allow desktop apps |
 
 **Android's network permission can't be switched on and off:** `INTERNET` is granted at install for as long as the app
@@ -434,7 +496,7 @@ S 4.7 platform/android/java/app/config.gradle]. A move to target 37 must add the
 
 ## 9. Transport (decision 0068)
 
-Three paths carry the packets of §2; a session may use all three at once, chosen per player:
+Three paths carry the packets of §2; a session may use all three at once, chosen per player (who forwards: §9.4):
 
 ### 9.1 The relay
 
@@ -446,20 +508,28 @@ clone) offer This Wi-Fi only.
 
 - `GET /v1/room/<room>` (32 hex characters) upgrades to a WebSocket. The first message is text:
   `{"t": "hello", "admit": <32 bytes, base64url>, "create": true | false}`.
-  - `create: true`: the room must not exist; the relay stores SHA-256(admit) and the creation time (SQLite storage),
-    and the socket becomes relay ID 1.
-  - `create: false`: the room must exist and SHA-256(admit) match; the socket gets the next relay ID (1–255, never
-    reused within the room).
-  - The answer: `{"t": "welcome", "id", "peers": [ids]}`, or `{"t": "error", "why"}` and close (`exists`,
-    `no such session`, `bad admit`, `full`, `limit`). Members hear `{"t": "joined", "id"}` and `{"t": "left", "id"}`.
-- Then binary messages: the sender writes `to` (1 byte: a relay ID, 0 for every other member) before the packet;
-  the relay replaces it with `from` (the sender's relay ID) and passes the packet on unread. It never sees K, P or
-  the code: it holds a hash of `admit`, and `admit` and `room` are HKDF outputs that don't reveal the code.
-- The roster maps relay IDs to slots, so a player accepts a host packet only from the host's relay ID.
-- **Limits:** 9 sockets per room (8 players and one rejoin overlapping); a message ≤ 64 KiB; per socket at most 60
-  messages a second averaged over 10 s (burst 200) and 256 KiB/s; a room lives at most 24 h; an empty room is deleted
-  10 minutes after its last socket closed (rejoin after a short drop); a room's hello attempts at most 10 a minute.
-  Anything over a limit closes the socket with `limit`.
+  - `create: true`: the room must not exist; the relay stores SHA-256(admit) and the creation time (SQLite storage:
+    one row per room), and the socket becomes relay ID 1 and the room's host.
+  - `create: false`: the room must exist and SHA-256(admit) match; the socket gets the next relay ID (16 bits, from
+    1, never reused within the room).
+  - The answer: `{"t": "welcome", "id", "peers": [ids], "host": id or null}`, or `{"t": "error", "why"}` and close
+    (`exists`, `no such session`, `bad admit`, `full`, `limit`). Members hear `{"t": "joined", "id"}`,
+    `{"t": "left", "id"}` and `{"t": "host", "id"}`.
+  - `{"t": "host"}` from a member makes it the room's host (after a migration, §5.3) and tells everyone. The relay
+    can't check the claim (it holds no key); it is routing only: players accept host packets by the rules of §5.3,
+    and a joiner sends its `hello` to the relay's host.
+- Then binary messages: the sender writes `to` (2 bytes: a relay ID, 0 for every other member) before one or more
+  packets, each with a 2-byte length; the relay replaces `to` with `from` (the sender's relay ID) and passes the
+  packets on unread. It never sees K, P or the code: it holds a hash of `admit`, and `admit` and `room` are HKDF
+  outputs that don't reveal the code.
+- The roster maps relay IDs to slots, so a player accepts a host packet only from the host's relay ID, and a
+  forwarded packet (§9.4) only from the host's.
+- **Limits:** 12 sockets per room (8 players and rejoins overlapping during a host change); a message ≤ 64 KiB; per
+  socket at most 60 messages a second averaged over 10 s (burst 200) and 256 KiB/s, the room's host 120 a second (it
+  forwards, §9.4); a room lives at most 24 h; an empty room is deleted 10 minutes after its last socket closed
+  (rejoin after a short drop); a room's hello attempts at most 10 a minute. Anything over a limit closes the socket
+  with `limit`. The counters live in the Durable Object's memory, never its storage (the free plan allows 100,000
+  rows written a day); a room evicted from memory starts its counters again.
 - **Room creation per address:** the Workers rate limiting binding (10 or 60 s periods, per Cloudflare location,
   approximate [D workers/runtime-apis/bindings/rate-limit]) at 10 rooms a minute per IP address, if MP4 finds it
   available on the free plan; otherwise no extra limit (the free plan's daily ceiling below still bounds everything,
@@ -468,10 +538,11 @@ clone) offer This Wi-Fi only.
   day; a WebSocket's incoming messages count 20 to a request, outgoing messages and protocol pings nothing; past a
   limit, operations fail until 00:00 UTC (no charge on the free plan). A room with steady traffic never hibernates,
   so it is billed its wall time at 128 MB: 450 GB-s an hour, **≈ 28 room-hours a day**. Incoming messages with
-  8 players all on the relay: the host's commit-and-positions bundle 5 a second, each other player's
-  positions-and-inputs bundle 5 a second (35), and while someone talks 25 a second from the talker (a `voice` message
-  is sent once with `to` = 0 and fanned out by the relay). About 40 messages a second idle and 65 while someone
-  talks: ≈ 7,000–12,000 requests an hour, **≈ 8–14 hours of 8-player relay play a day**; a session of 2 costs about
+  8 players all on the relay: each player sends one relay message every 0.2 s carrying its packets of that time
+  (positions under K; inputs, hashes and acks under P; the host's commit), so 8 × 5 = 40 a second, and while someone
+  talks 25 a second from the talker (a `voice` packet is sent once with `to` = 0 and fanned out by the relay); a host
+  forwarding for players on UDP adds at most its own 5 a second and the forwarded voice. About 40 messages a second
+  idle and 65 while someone talks: ≈ 7,000–12,000 requests an hour, **≈ 8–14 hours of 8-player relay play a day**; a session of 2 costs about
   a fifth. Players on the LAN or on direct UDP cost nothing beyond their hello. MP4 measures the real counts in
   Cloudflare's analytics and writes them here.
 - **Deploying:** only on an account on the **Workers Free plan** (a paid account would be billed past the free
@@ -483,39 +554,61 @@ clone) offer This Wi-Fi only.
 As Walkdown's direct path (PROTOCOL-v2 §18, `kksl/udp.nim`), between each player and the host only:
 - each side's UDP socket (`PacketPeerUDP`) asks STUN (RFC 5389 binding request, written in GDScript; the servers
   Walkdown uses: `stun.cloudflare.com:3478`, `stun.l.google.com:19302`) for its public address;
-- the two exchange candidates (the public address and their own IPv4 addresses, at most 8) as a reliable message
-  through the relay, under P;
+- the two exchange candidates (the public address, their own IPv4 addresses and their global IPv6 addresses, at most
+  8; the socket bound dual-stack, as Walkdown's listeners are) as a reliable message through the relay, under P.
+  Many mobile carriers give phones a global IPv6 address with no NAT, where punching through the phone's stateful
+  firewall usually works;
 - both send `punch` packets (key 2: a fixed body with an HMAC under P, so a stranger's packets are dropped) to every
   candidate every 100 ms for 3 s; the first answered address becomes that player's path, and the relay stays as the
   fallback;
 - a path silent for 3 s (no packet; a keep-alive every 1 s) falls back to the relay; the punch is tried again after
   60 s. A carrier NAT that maps per destination can't be punched (the lesson in CLAUDE.md), so phones on mobile data
-  will often stay on the relay.
+  without IPv6 will often stay on the relay.
 
 ### 9.3 The LAN
 
-- The host listens on a UDP port (47820, or the next free of the following 9) and sends a **beacon** every second to
-  255.255.255.255 and to each IPv4 interface's broadcast address on port 47820: `"WDPB"`, version, the first 8 bytes
-  of `room`, the host's port, and 8 bytes of HMAC under K over them. A joiner with the code recognises its session;
-  anyone else sees only that some session is there.
+- **Query and answer**, not beacons: the host (and every player, so that a new host after §5.3 answers at once)
+  listens on the **discovery port** 47820; its session traffic uses another port, any free one. A joiner sends,
+  from an ephemeral port, a query every 250 ms for 2 s to 255.255.255.255 and each IPv4 interface's broadcast address
+  on the discovery port: `"WDPQ"`, version, the first 8 bytes of `room`, 8 random bytes. A host whose room matches
+  answers to the query's address: `"WDPA"`, version, the joiner's random bytes, the session port, and 16 bytes of HMAC
+  under K over them, so only the code's holder can make a valid answer and a stranger learns only that someone
+  answered. Only one process per machine can hold the discovery port: a second host on one machine (the harness, two
+  windows) is found by typing its address, shown on its screen; the harness gives each instance its own ports on
+  the command line.
 - Android filters broadcasts unless the app holds a `WifiManager.MulticastLock` (the `CHANGE_WIFI_MULTICAST_STATE`
-  permission), taken while a session is being looked for or hosted, through Godot's `JavaClassWrapper` and the
-  AndroidRuntime plugin (as 0056 reads the Intent) [D JavaClassWrapper; to verify in MP2]. If a phone still hears no
-  beacon (client isolation on the Wi-Fi), the joiner can type the host's address shown on its screen.
+  permission), taken while the app hosts or plays a session, through Godot's `JavaClassWrapper` and the
+  AndroidRuntime plugin (as 0056 reads the Intent) [D JavaClassWrapper; to verify in MP2]. If no host answers (client
+  isolation on the Wi-Fi), the joiner can type the host's address shown on its screen.
 - Windows asks the firewall question the first time a desktop app listens; MP2 checks what the MSIX's
   `privateNetworkClientServer` capability does there in the VM.
+
+### 9.4 Who forwards what
+
+The session is a star around the host. Each player sends everything on its one path: to the host (LAN or direct
+UDP), or through the relay. The relay fans out a packet sent to 0; UDP paths reach only the host. So:
+- a broadcast (`pos`, `voice`, under K) from a player on UDP goes to the host, which forwards it unchanged to every
+  other player on UDP and, once, to the relay with `to` = 0 if any player is on the relay;
+- a broadcast that the host receives through the relay is forwarded to every player on UDP;
+- the host's own broadcasts (commits, `roster`, its `pos`) go to every UDP player and once to the relay;
+- a receiver takes a broadcast whose `from` is not the packet's transport sender only when the transport sender is
+  the host (its address or relay ID); packets keep their original `from`, number and tag, so the replay window is
+  per original sender;
+- the host bundles what it forwards into its own relay messages (several packets per message, §9.1), at most 5 a
+  second plus forwarded voice, within its 120 a second.
 
 ## 10. Security and privacy
 
 **The relay and the network** see packet sizes, times and which relay IDs talk; never inputs, names, voice or the
-code. A stranger without the code can't enter a relay room (no admit), can't decode a beacon, and can't make a packet
-any player accepts.
+code. A stranger without the code can't enter a relay room (no admit), can't make a valid LAN answer, and can't make
+a packet any player accepts.
 
 **A malicious player** (holding K and their own P):
 | They can | The effect | What limits it |
 |---|---|---|
 | Make wild inputs as themselves | the engine refuses what the rules refuse, the same on every player; what it allows is "playing badly" | the host removes them (§2.4); the debrief shows who did what |
-| Make inputs as another player | not through the host: inputs are taken only under the sender's P, and the commit names the slot | — |
+| Make inputs as another player | through the relay, no: inputs are taken only under the sender's P, which travelled to the host alone, and the commit names the slot; on a LAN, yes if they capture that player's `hello` or spoof the host (§1.3) | the debrief names the slot; the host removes them |
+| Forge a LAN answer or `newhost` | an answer needs K (a player has it): a joiner could be led to them instead of the host; a `newhost` is accepted only from the expected candidate after the host is found gone (§5.3) | through the relay, sender tags; on a LAN, the joiner's hello then fails (no session state), and digests catch the rest |
 | Flood inputs or voice | | the host takes at most 20 inputs per player per turn and 1 KiB of them, and at most one `talk` request a second; beyond that it drops and warns; the relay's per-socket limits |
 | Send wrong hashes | they are resynced; they can't make the host resync others | only the host's digest counts |
 | Forge a host broadcast (commit) on a LAN by spoofing the host's address | the others desync, are detected within N steps and resynced under their P | the relay path is not open to it (sender tags) |
@@ -529,7 +622,8 @@ outside content out because of the engine's security response (0041); session pa
 read by our own code, and snapshots come only from the session's host.
 
 **Privacy:** display names are what the player types; no account, no device identity, nothing kept after the session
-but the saves of §7.4 and desync reports (§4), all on the device. The microphone is open only while push-to-talk is
+but the saves of §7.4 and desync reports (§4), all on the device. Online sessions also ask Cloudflare's and Google's
+STUN servers (§9.2) for the device's public address, which tells them that address and the time. The microphone is open only while push-to-talk is
 held in a session.
 
 ## 11. Performance budgets on the Note 9
@@ -539,16 +633,16 @@ that the app causes, peak PSS ≤ 1.5 GB, first walkable frame ≤ 15 s). Multip
 
 | | Budget | Notes |
 |---|---|---|
-| Session layer per frame (receive, decrypt, parse, send) | ≤ 0.5 ms mean, ≤ 2 ms max | about 15 packets a second in, at 1×; `AESContext` and `HMACContext` are native |
+| Session layer per frame (receive, decrypt, parse, send) | ≤ 0.5 ms mean, ≤ 2 ms max | about 40 packets a second in with 7 others at 1× (35 positions, 5 commits), about 30 more per talker; `AESContext` and `HMACContext` are native |
 | Model steps | as alone (≤ 2.1 ms a step, §18.4) | lockstep runs the same steps a single player would; catching up is capped by `cpu_share` like fast-forward |
-| State digest | ≤ 0.5 ms every 50 steps | §4 |
+| State digest | ≤ 1 ms each, at most about 2 a second | §4 |
 | Snapshot (host) | ≤ 1 ms on the main thread; encoding on a worker thread | §5.1 |
 | Snapshot load (joiner) | off the frame except the final swap (≤ 5 ms), under a "Joining…" screen | |
 | Other players drawn | within §18.4's skinned budget (12) | §6.3 |
 | Voice encode | ≤ 1 ms per 20 ms frame on a worker thread (WorkerThreadPool), never the main thread | measured in MP5; libopus at complexity 5, 16 kHz mono |
 | Voice decode | ≤ 0.3 ms per 20 ms frame per talker, on the same worker | one talker per channel, at most 3 channels |
 | Memory | ≤ 30 MB PSS for the session, buffers and voice | |
-| Network | idle ≈ 3 kbit/s per player in each direction (positions, commits), ≈ 30 kbit/s per talker; through the host on direct paths, voice to 7 players ≈ 210 kbit/s up from the host | |
+| Network | idle, per player: up ≈ 4 kbit/s (positions, acks), down ≈ 25 kbit/s with 7 others (35 positions and 5 commits a second at about 70–90 bytes each); ≈ 30 kbit/s per talker to each listener; a host forwarding for players on UDP sends each forwarded packet to each of them (voice to 6 players ≈ 180 kbit/s up) | plus UDP/IP or WebSocket framing |
 
 MP2, MP5 and MP6 measure these on the Note 9 with the walk among other players (§13); a milestone that misses a
 budget isn't done.
@@ -561,8 +655,9 @@ budget isn't done.
   code's check character; replay windows.
 - **The multi-instance harness** (`apps/plant3d/net/tests/`): N headless Godot processes (`--headless`, the engine and
   the session layer without rendering; the synthetic plant for most tests, the first train for one) driven by a
-  Python runner that scripts each player's inputs and reads each one's digests. Each instance is light (no scenes),
-  so 8 instances fit the 1 GiB this design was written under; CI runs them in the `plant3d` job.
+  Python runner that scripts each player's inputs and reads each one's digests, each instance on its own ports. How
+  many fit is measured in MP2 (each instance's PSS with the synthetic plant and with the first train), and the
+  runs are made under a memory-capped scope (`MemoryMax`, never `MemoryHigh`); CI runs them in the `plant3d` job.
   - 2, 3 and 8 players for 10 model minutes with inputs from all: every digest equal at every 50th step, and every
     player's event log equal to a single engine fed the same commits;
   - late join at minute 5 and rejoin after a kill; claims of one person by two players (one refused everywhere);
@@ -578,7 +673,8 @@ budget isn't done.
   input-to-effect delay.
 - **The relay:** `relay-plant/twin.py`, the Python twin of the Worker (as `relay/twin.py` is of Walkdown's), used by
   the harness; the same protocol tests run against the real Worker in workerd (`npx wrangler dev`) on the laptop
-  before each deploy. Tests of the limits, admit, create races, 9th socket, the empty-room deletion.
+  before each deploy. Tests of the limits, admit, create races, the 13th socket, host claims, the empty-room
+  deletion, relay IDs past 255.
 - **No network outside a session:** a test starts the app's main scene headless, plays a single-player run and checks
   that no socket was opened (the session layer's own counter, and on Linux `/proc/self/net` sockets of the process).
 - **Voice:** `wdp_voice` round trip on a CC0 speech clip (the decoded signal against the original: delay and level),
@@ -597,10 +693,10 @@ is until the project is complete) and keeps the frame rules on the Note 9. Sizes
 | # | Milestone | Size | Needs | Ships | Measured |
 |---|---|---|---|---|---|
 | MP0 | **This design**: MULTIPLAYER.md, decisions 0067–0069, CAPABILITIES.md | S | — | the plan | — |
-| MP1 | **Lockstep-ready engine:** several trainees (§3.3) in the reference, the GDScript and the vectors; `release` and reclaim; the state digest (§4); the vectors on Windows (the factors stored if `exp` differs); one input path in the app (every UI input through `ui/inputs.gd`, which a single-player run feeds straight to the engine) | M | S3 | single-player unchanged; vectors for 1–3 players | digest cost on the Note 9 ≤ 0.5 ms; digests equal on three platforms |
-| MP2 | **LAN sessions:** the code and link, keys and AEAD (§1.3) with their vectors, packets and reliability (§2), beacons and join, the lobby and role claims, commits and the jitter buffer, hashes and resync, late join and rejoin, pause and the ready-for-fast vote, instructor seat, other players' avatars and `pos`, host and player saves; the harness and netsim; Android `INTERNET` and the multicast lock; the Flatpak's and MSIX's network permissions | L | MP1 | 2–8 players on one Wi-Fi | harness: 8 instances agree; the Note 9 + laptop + Windows VM in one session; input-to-effect ≤ 0.5 s median on the Wi-Fi; the Note 9 walk with 2 players within the frame rules; session layer ≤ 0.5 ms a frame |
+| MP1 | **Lockstep-ready engine:** several trainees (§3.3) in the reference, the GDScript and the vectors; `release` and reclaim; the state digest (§4); the vectors on Windows (the factors stored if `exp` differs); one input path in the app (every UI input through `ui/inputs.gd`, which a single-player run feeds straight to the engine) | M | S3 | single-player unchanged; vectors for 1–3 players | digest cost on the Note 9 ≤ 1 ms; digests equal on three platforms |
+| MP2 | **LAN sessions:** the code and link (`join` in PLANT3D.md §6 and `sim/links.gd`; the Note 9's camera app tried), keys and AEAD (§1.3) with their vectors, packets, streams, fragments and reliability (§2), the LAN query and join, forwarding (§9.4), the lobby and role claims, commits and the jitter buffer, hashes and resync, late join and rejoin, pause and the ready-for-fast vote, instructor seat, other players' avatars and `pos`, host and player saves; the harness and netsim; Android `INTERNET` and the multicast lock; the Flatpak's and MSIX's network permissions | L | MP1 | 2–8 players on one Wi-Fi | harness: 8 instances agree; the Note 9 + laptop + Windows VM in one session; input-to-effect ≤ 0.5 s median on the Wi-Fi; the Note 9 walk with 2 players within the frame rules; session layer ≤ 0.5 ms a frame |
 | MP3 | **Host migration and removal:** §5.3's election, `last`/`newhost`, inputs resent, removal and rekey; the host-kill and removal harness runs | M | MP2 | a session that survives its host | harness: new host within 5 s at 150 ms and at 400 ms with loss, no step lost |
-| MP4 | **Online:** `relay-plant/` (Worker, twin, tests, pinned wrangler, its README), deployed after the twin and workerd tests pass, on a free-plan account (§9.1); the relay path in the app; direct UDP (STUN, candidates, punch, fallback) | L | MP2 | play from anywhere | the Note 9 on mobile data + laptop: RTT, input-to-effect ≤ 0.5 s median and ≤ 1 s p95; requests per session-hour from Cloudflare's analytics written into §9.1 |
+| MP4 | **Online:** `relay-plant/` (Worker, twin, tests, pinned wrangler, its README), deployed after the twin and workerd tests pass, on a free-plan account (§9.1); the relay path in the app; direct UDP (STUN, candidates, punch, fallback) | L | MP2 | play from anywhere | the Note 9 on mobile data + laptop: RTT, input-to-effect ≤ 0.5 s median and ≤ 1 s p95; requests per session-hour from Cloudflare's analytics and where the room's Durable Object landed, written into §9.1 |
 | MP5 | **Voice:** decision 0069's `wdp_voice` built from pinned sources for the four packages' targets (its licence notices in About), capture with `get_input_frames`, push-to-talk, channels and floor, jitter buffer, radio bus; `RECORD_AUDIO` and the desktop permissions | L | MP2 | push-to-talk on the radio | encode ≤ 1 ms / decode ≤ 0.3 ms per frame on the Note 9; mouth-to-ear ≤ 400 ms on the Wi-Fi; the frame rules with one talker; the APK still ≤ 150 MB |
 | MP6 | **A full session measured:** 8 players (the Note 9, the laptop, the VM and harness bots) through a shift with fast-forward and a jump, voice on; the Note 9's 10-minute walk among 7 players | M | MP3, MP4, MP5 | the whole feature, measured | the frame rules on the Note 9 with 7 others drawn and one talker; no desync in 60 minutes |
 
