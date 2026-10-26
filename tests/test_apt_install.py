@@ -9,7 +9,7 @@ at 10 to 60 kB/s through all three attempts) after a pause that doubles. The arc
 (APT_DEB_CACHE, .github/actions/apt-cache): a cached archive is used only when its SHA-256 is the one apt's lists give,
 what a failed run got is kept, and only checked archives are saved (apt-cache-key.sh). Every job that installs
 packages restores that cache before and saves it after. tools/download.sh tries a failed download again."""
-import fnmatch, hashlib, os, re, shutil, subprocess, tempfile, time, unittest
+import fnmatch, hashlib, os, re, shutil, subprocess, tempfile, textwrap, time, unittest
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 SCRIPT = os.path.join(REPO, '.github', 'scripts', 'apt-install.sh')
@@ -396,6 +396,25 @@ class AptInstall(unittest.TestCase):
         self.assertEqual(self.key(), '')
         os.makedirs(self.cache)
         self.assertEqual(self.key(), '')
+
+    def test_the_cache_name_reaches_the_key(self):
+        """the action's first step, run as on a runner: each job's name is in its cache key (os-release's NAME, read
+        in the same shell, once made every job's prefix end in -Ubuntu-, one cache for all)"""
+        with open(os.path.join(REPO, '.github', 'actions', 'apt-cache', 'action.yml'), encoding='utf-8') as f:
+            action = f.read()
+        step = action[action.index('    - id: where\n'):]
+        step = step[:step.index('\n    - ', 1)]
+        script = textwrap.dedent(step[step.index('      run: |\n') + len('      run: |\n'):])
+        out = os.path.join(self.dir, 'out')
+        open(out, 'w').close()
+        env = dict(os.environ, GITHUB_OUTPUT=out, MODE='restore', HOME=self.dir,
+                   **{k: 'gnome-e2e' for k in re.findall(r'^\s+(\w+): \$\{\{ inputs\.name \}\}', step, re.M)})
+        r = subprocess.run(['bash', '-e', '-c', script], env=env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(out) as f:
+            lines = dict(l.split('=', 1) for l in f.read().splitlines())
+        self.assertRegex(lines['prefix'], r'^apt-debs-[a-z0-9.]+-[0-9.]+-[a-z0-9_]+-gnome-e2e-$')
+        self.assertEqual(lines['dir'], os.path.join(self.dir, '.cache', 'apt-debs'))
 
     # --- tools/download.sh ---
 

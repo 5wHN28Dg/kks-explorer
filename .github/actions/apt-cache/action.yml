@@ -21,13 +21,14 @@ runs:
     - id: where
       shell: bash
       env:
-        NAME: ${{ inputs.name }}
+        CACHE_NAME: ${{ inputs.name }}
         MODE: ${{ inputs.mode }}
       run: |
         case "$MODE" in restore|save) ;; *) echo "::error::apt-cache: mode is restore or save, not '$MODE'"; exit 1 ;; esac
-        . /etc/os-release
+        # (os-release read in a subshell: it sets NAME and others, which must not reach this step's variables)
+        release=$(. /etc/os-release && echo "$ID-$VERSION_ID")
         echo "dir=$HOME/.cache/apt-debs" >> "$GITHUB_OUTPUT"
-        echo "prefix=apt-debs-$ID-$VERSION_ID-$(uname -m)-$NAME-" >> "$GITHUB_OUTPUT"
+        echo "prefix=apt-debs-$release-$(uname -m)-$CACHE_NAME-" >> "$GITHUB_OUTPUT"
     - if: inputs.mode == 'restore'
       id: restore
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

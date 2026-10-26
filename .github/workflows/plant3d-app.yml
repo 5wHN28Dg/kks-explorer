@@ -14,7 +14,7 @@ on:
             'tests/test_plant3d.py', 'tests/test_plant3d_staff.py', 'tests/shards.py',
             'tests/test_plant3d_bench.py', 'docs/plant3d/FIRST-TRAIN.md', 'tools/plant3d/**',
             'platform/windows/fetch-llvm-mingw.sh', '.github/workflows/plant3d-app.yml', '.github/scripts/apt-install.sh',
-            '.github/scripts/apt-cache-key.sh', '.github/actions/apt-cache/**']
+            '.github/scripts/apt-cache-key.sh', '.github/actions/apt-cache/**', 'tools/download.sh']
   push:
     branches: [main]
     paths: ['apps/plant3d/**', 'data/plant3d/**', 'ref/plant3d.py', 'ref/plant3d_staff.py', 'ref/sjson.py', 'ref/courses.py',
@@ -22,7 +22,7 @@ on:
             'tests/test_plant3d.py', 'tests/test_plant3d_staff.py', 'tests/shards.py',
             'tests/test_plant3d_bench.py', 'docs/plant3d/FIRST-TRAIN.md', 'tools/plant3d/**',
             'platform/windows/fetch-llvm-mingw.sh', '.github/workflows/plant3d-app.yml', '.github/scripts/apt-install.sh',
-            '.github/scripts/apt-cache-key.sh', '.github/actions/apt-cache/**']
+            '.github/scripts/apt-cache-key.sh', '.github/actions/apt-cache/**', 'tools/download.sh']
   workflow_dispatch:
 
 permissions:

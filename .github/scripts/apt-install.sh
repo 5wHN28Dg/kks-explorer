@@ -89,7 +89,8 @@ phase() {
     echo "::group::apt: $what (attempt $i of $tries, at most ${secs}s)"
     code=0; sudo timeout -k 15 "$secs" env DEBIAN_FRONTEND=noninteractive "$@" || code=$?
     echo "::endgroup::"
-    [ -z "${AFTER:-}" ] || "$AFTER"
+    # (the cache is a help: its failure is a warning, never the step's failure)
+    [ -z "${AFTER:-}" ] || "$AFTER" || echo "::warning::apt cache: storing the archives failed"
     if [ $code -eq 0 ]; then
       echo "apt: $what took $((SECONDS - t0))s"; return 0
     fi
@@ -125,9 +126,12 @@ plan_cache() {
     f=${e%% *}; h=${e#* }
     [ -f "$DEB_CACHE/$f" ] || continue
     if [ "$(sha_of "$DEB_CACHE/$f")" = "$h" ]; then
-      sudo cp "$DEB_CACHE/$f" "$ARCHIVES/$f"
-      echo "$f" >> "$DEB_CACHE/.used"
-      hit=$((hit + 1)); bytes=$((bytes + $(stat -c %s "$DEB_CACHE/$f")))
+      if sudo cp "$DEB_CACHE/$f" "$ARCHIVES/$f"; then
+        echo "$f" >> "$DEB_CACHE/.used"
+        hit=$((hit + 1)); bytes=$((bytes + $(stat -c %s "$DEB_CACHE/$f")))
+      else
+        echo "::warning::apt cache: could not copy $f into $ARCHIVES; it is downloaded"
+      fi
     else
       echo "::warning::apt cache: $f is not the archive the package lists name (SHA-256): deleted, downloaded again"
       rm -f "$DEB_CACHE/$f"
