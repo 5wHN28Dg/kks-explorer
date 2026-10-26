@@ -155,15 +155,15 @@ jobs:
           KKS_IMPORT: /tmp/kksimp/kks_import
         run: .venv/bin/python platform/linux/e2e/test_server_http.py /tmp/kkslinux/kks_server -v
 
-  # in three shards side by side (tests/shards.py): one test run was over 20 minutes, most of it the Walkdown Plant
-  # vectors built and replayed, which have shards of their own
+  # in five shards side by side (tests/shards.py): one test run was over 20 minutes, most of it the Walkdown Plant
+  # vectors built and replayed and the staff's day, which have shards of their own
   python:
     runs-on: ubuntu-26.04
-    timeout-minutes: 30  # (main's, from when the job was one; each shard has taken under 9 minutes)
+    timeout-minutes: 30  # (main's, from when the job was one; tests/shards.py keeps each shard under half of it)
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2]
+        shard: [0, 1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
