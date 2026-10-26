@@ -151,7 +151,7 @@ form the vectors, the save and the debrief already use.
 | `pos` | unreliable | player → all | K | the player's position, heading, pitch, gait, at 5 Hz (§6.3) |
 | `voice` | unreliable | player → all | K | channel, talk-spurt number, frame number, Opus frames (§8) |
 | `talk` | reliable | player → host / host → all | P / K | ask for, grant, refuse and end a channel's floor (§8.4) |
-| `ping` / `pong` | unreliable | any | P with the host, else K | a time stamp, for round-trip times |
+| `ping` / `pong` | unreliable | any (paused: never through the relay, §3.1) | P with the host, else K | a time stamp, for round-trip times |
 | `ack` | unreliable | any | the acknowledged stream's | stream, the highest sequence received in order, a 32-bit mask of those after it (§2.3) |
 | `frag` | as its message | any | its message's | message ID (2 bytes), index (2 bytes), count (2 bytes), a piece of a reliable message too long for one UDP packet (§2.3); each piece is its own stream message with its own sequence |
 | `last` | reliable | player → candidate | K | committed step, digest, uncommitted inputs, RSA public key (§5.3) |
@@ -606,7 +606,7 @@ clone) offer This Wi-Fi only.
   text `{"t":"ping"}` every 25 s, which the relay answers by `setWebSocketAutoResponse` without waking the object
   (as Walkdown's), so a paused room hibernates and costs no duration. The relay reads each socket's last ping time
   (`getWebSocketAutoResponseTimestamp`) when the room's alarm runs, so the pings count as activity: a paused room
-  stays open, up to its 24 h, for one alarm (one request) every 10 minutes. A paused host's every-second `ping`
+  stays open, up to its 24 h, for one alarm (one request, and perhaps one row written) every 10 minutes. A paused host's every-second `ping`
   (§3.1, §5.3) does not go through the relay: each binary message would wake the room and keep it from hibernating
   (450 GB-s an hour, below).
 - **Room creation:** one more Durable Object counts the rooms created per UTC day and refuses `create` beyond 200

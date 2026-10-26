@@ -163,6 +163,7 @@ class Room:
         self.admit, self.created = admit_hash, created
         self.next_id, self.id_floor = 1, 1 + ID_BLOCK
         self.empty_since = None
+        self.alarm = 0           # when the Worker's alarm would next run (the quiet check runs only then)
         self.last_active = 0     # the last message of a member that has left (the others' are in their Conn)
         self.sockets = []        # every Conn of the room, admitted or not
         self.flow = {}           # relay ID -> [msgs bucket, bytes bucket, Window, slow_at]
@@ -386,11 +387,13 @@ class Relay:
                 elif room.members():
                     # a member silent past `quiet` is closed (the Worker does it at its alarm), unless every member
                     # is: then the idle rule decides
-                    quiet = [o for o in room.members() if now - o.la >= L['quiet']]
-                    if len(quiet) < len(room.members()):
-                        for o in quiet:
-                            self._refuse(o, 'quiet')
                     last = max([room.created, room.last_active] + [o.la for o in room.members()])
+                    if now >= (room.alarm or room.created + min(L['idle'], L['empty'], L['maxAge'])):
+                        quiet = [o for o in room.members() if now - o.la >= L['quiet']]
+                        if len(quiet) < len(room.members()):
+                            for o in quiet:
+                                self._refuse(o, 'quiet')
+                        room.alarm = min(room.created + L['maxAge'], last + L['idle'])
                     why = 'idle' if now >= last + L['idle'] else None
                 else:
                     why = 'idle' if now >= (room.empty_since or room.created) + L['empty'] else None

@@ -326,19 +326,28 @@ class Behaviour(Base):
         room2, admit2, _ = self.session(1)
         self.assertEqual(self.client(room2).hello(admit2, False)['t'], 'welcome')
 
+    def fresh_minute(self):
+        """Waits, if needed, so that the next few seconds stay in one wall-clock minute: workerd's rate limiting
+        binding counts in 60 s windows aligned to the clock, so 11 creates across a boundary would all pass."""
+        if time.time() % 60 > 45:
+            time.sleep(60.5 - time.time() % 60)
+
     def test_ip_creates(self):
         ip = rnd_ip()
+        self.fresh_minute()
         for i in range(10):
             self.assertEqual(self._hello(rnd_room(), os.urandom(32), True, ip).json()['t'], 'welcome')
         self.refused(self._hello(rnd_room(), os.urandom(32), True, ip), 'limit')
         self.assertEqual(self._hello(rnd_room(), os.urandom(32), True).json()['t'], 'welcome')
         # an IPv6 client counts by its /64
         prefix = '2001:db8:%x:%x' % tuple(os.urandom(2))
+        self.fresh_minute()
         for i in range(10):
             self.assertEqual(self._hello(rnd_room(), os.urandom(32), True, f'{prefix}::{i + 1:x}').json()['t'], 'welcome')
         self.refused(self._hello(rnd_room(), os.urandom(32), True, f'{prefix}::beef'), 'limit')
         # also when `::` stands for zeros of the prefix itself (2001:db8:x:0::/64 written 2001:db8:x::1)
         prefix = '2001:db8:%x' % (int.from_bytes(os.urandom(2), 'big') | 1)
+        self.fresh_minute()
         for i in range(10):
             self.assertEqual(self._hello(rnd_room(), os.urandom(32), True, f'{prefix}::{i + 1:x}').json()['t'], 'welcome')
         self.refused(self._hello(rnd_room(), os.urandom(32), True, f'{prefix}:0:1:2:3:4'), 'limit')
@@ -604,6 +613,31 @@ class Quiet(Base):
                 break
         self.assertEqual(m, {'t': 'left', 'id': 2})
         self.assertIsNone(self.ping_for([a, c], 1))   # the room stays open for the others
+
+    def test_quiet_members_while_others_come_and_go(self):
+        # a leaver's last activity stays in the room, but never counts as a silent member's own: silent members (the
+        # first and the last joined, whichever the room hands it to) are still closed while a player reconnects again
+        # and again
+        room, admit, (g1, a, g2) = self.session(3)
+        t0, gone = time.time(), set()
+        while len(gone) < 2 and time.time() - t0 < QUIET['idle'] / 1000 + QUIET['quiet'] / 1000 + 8:
+            c = Client(self.server.url, room, headers={'CF-Connecting-IP': rnd_ip()})
+            if c.hello(admit, False)['t'] == 'welcome':
+                c.text(b'{"t":"ping"}')
+                c.json()
+            c.close()
+            t1 = time.time()
+            while time.time() - t1 < 0.6:
+                got = self.ping_for([a], 0.2)
+                if got and got[1] in ({'t': 'left', 'id': 1}, {'t': 'left', 'id': 3}):
+                    gone.add(got[1]['id'])
+        self.assertEqual(gone, {1, 3}, 'a silent member was never closed')
+        for g in (g1, g2):
+            while True:   # (it heard the others come and go first)
+                m = g.json()
+                if m['t'] not in ('joined', 'left'):
+                    break
+            self.assertEqual(m, {'t': 'error', 'why': 'quiet'})
 
 
 class TwinRelay(Behaviour, unittest.TestCase):

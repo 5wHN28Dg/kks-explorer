@@ -110,8 +110,9 @@ export class Room extends DurableObject {
     this.flow = new Map();      // relay ID -> {msgs, bytes, win, slowAt}: in memory only, as §9.1 says
     this.failed = [];           // times of failed hellos (the last minute)
     this.joined = [];           // times of successful hellos (the last minute)
-    this.lastActive = 0;        // the last message the object saw; also in each sender's attachment (`la`), which
-                                // survives hibernation
+    this.lastActive = 0;        // the last message the object saw. Each sender's own is in its attachment (`la`),
+                                // and a leaver's is kept in a member's `rl` (room-level, never read as that member's
+                                // own activity): attachments survive hibernation
     this.nextId = 0;            // the next relay ID; 0: read the reserved floor from storage first
     this.idCeil = 0;
   }
@@ -307,9 +308,10 @@ export class Room extends DurableObject {
     this.flow.delete(a.id);
     const rest = this.members(ws);
     // the leaver's last activity stays in the room (hibernation keeps only the attachments)
-    if (a.la && rest.length) {
+    const left = Math.max(a.la || 0, a.rl || 0);
+    if (left && rest.length) {
       const [o, other] = rest[0];
-      if (!o.la || o.la < a.la) other.serializeAttachment({...o, la: a.la});
+      if (!o.rl || o.rl < left) other.serializeAttachment({...o, rl: left});
     }
     this.tell({t: 'left', id: a.id}, ws);
     if (!rest.length && this.row()) {
@@ -344,7 +346,7 @@ export class Room extends DurableObject {
     let due = row.created + L.maxAge;
     if (members.length) {
       let last = Math.max(row.created, this.lastActive);
-      for (const [o, ws] of members) last = Math.max(last, active(o, ws));
+      for (const [o, ws] of members) last = Math.max(last, active(o, ws), o.rl || 0);
       due = Math.min(due, last + L.idle);
     } else {
       due = Math.min(due, (row.empty_since ?? row.created) + L.empty);
