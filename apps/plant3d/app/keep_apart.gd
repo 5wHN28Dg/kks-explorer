@@ -280,8 +280,9 @@ func _place(i: int, id: int) -> void:
 		var s: float = clampf(s_at[i] - sg * _lag[id], 0.0, l.length)
 		var r := lane_room(l, s, sg)
 		_lat[id] = clampf(_lat[id], r.x, r.y) if r.x <= r.y else (r.x + r.y) * 0.5
-		pos[i] = l.at(s, sg * _lat[id]) + _off[id]
-		fwd[i] = l.forward(s) * sg
+		var a: float = l.heading(s)     # (once: the side and the way along are both of it)
+		pos[i] = l.point(s) + Vector3(-sin(a), 0.0, cos(a)) * (sg * _lat[id]) + _off[id]
+		fwd[i] = Vector3(cos(a), 0.0, sin(a)) * sg
 		speed[i] = speed_in[i]
 	else:
 		_off[id] = _clamp_stand(rooms[i], _off[id])

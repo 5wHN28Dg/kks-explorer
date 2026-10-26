@@ -1944,9 +1944,45 @@ HRSG's stair was walked up to 30 m above the ground.
   1.8 m above the feet) touching nothing but doors, the feet within 5 cm of what is under them, every stair way on
   its steps for some of it, never a run, and every door 1 m wide or more walked through on the mesh;
   `test_staff_paths.gd` builds a line round a beam on a scene of its own.
-- Not yet (phases 3 and 4): doors opening for people (they open for the walker only, app/door.gd: a person passes
-  through a shut leaf), turning eased at a line's corners, the lane and keeping apart, the crowd's lanes, the
-  standing places (a person at a place is drawn at its point, up to 5 cm above the floor).
+
+**As built (2026-10-27, phase 3): turning, lanes, keeping apart, doors.** View only: the engine, its vectors and
+`ref/plant3d.py` are unchanged, and every player's screen draws the same engine the same way.
+- **The room beside the lines and round the places** (`builder/lane_room.gd`, at the content build, in
+  `built/staff_paths.bin` format 2): every 0.1 m along each line, how far to its left and right a person may be drawn
+  (to 0.9 m), and round each place in 32 directions (to 0.6 m): a capsule of 0.38 m (the walker's 0.3 m and the margin
+  that keeps a person between two samples clear at 0.3 m) swept sideways touching nothing but doors, the floor every
+  5 cm within 8 cm of the one under the line (not off a flight's side, a step or a platform's edge), and on the
+  walkable mesh where the line is. A line's room changes by at most 1 m a metre along it (nobody at its edge jumps)
+  and goes to nothing at its places; on a ladder there is none. About 160 KB; about 30 s of the build.
+- **Turning** (`ui/people_view.gd`): a line's heading turns through each corner over 0.5 m either side of it
+  (`app/lanes.gd`), and the person turns towards it, and at a place towards its `yaw`, at most 5 rad a second of plant
+  time, easing in; someone who jumped in the engine (a fast-forward's jump, a restored run) faces their way at once.
+- **Lanes and keeping apart** (`app/keep_apart.gd`): a walker keeps 0.35 m to the right of the line (two meeting pass
+  each other); someone within 0.7 m moves them further aside, and when that is not enough holds them back along the
+  line (standing, then catching up at up to 35 % faster: never more than 1.5 m behind, never behind the place they
+  left, caught up before the place they go to); someone standing at a place steps up to 0.5 m aside; the seated and
+  lying are not moved, nor is anyone walked straight (a way without a line). Everyone keeps clear of the walkers (the
+  group `walkers`: the trainee, and the other players' avatars when they come), who are never pushed. Aside at up to
+  1.2 m/s, back at 0.3 m/s; always within the room. Where there is no room for both (a stair, a doorway) two people
+  can still come close: in the shift's first four minutes, 93 of about 56,000 walker-frames had someone within 0.4 m.
+- **The crowd's lanes** (`app/crowd.gd`): the frames, camp and water plant walks' routes have their room measured as
+  the lines' (`built/crowd_lanes.bin`); each lane (0.35 to 0.85 m, those at work 0.8 m) is kept within it and turns
+  through the corners; a route the build did not measure is walked on its line. Phase 1 had found 15 % of the
+  industrial lanes' points inside stairs and rails. The frames route itself now leaves HRSG 1's top landing by the
+  walkway (its stair's top, (102, 50, 30) in the content, is on the landing's east rail) and crosses the roof along
+  y = 56 instead of along the landing's rails (3 m longer).
+- **Doors open for people** (`app/people_doors.gd`, from `app/people.gd`, 4 times a second): anyone walking at a door
+  within 2.5 m of its leaf (or 2 s at their speed), or through it, presses it (open, and 3 s more); found by a grid of
+  8 m cells, made again when the interiors' doors come and go.
+- Tests: `test_staff_ways.gd` checks every 5 cm along every line, at its room's edges and in the lane both ways, and
+  round every place, and the crowd's lanes on the three routes at their widths: the capsule clear of all but doors,
+  the floor within 10 cm of the line's; `test_people_motion.gd` keeps people apart on a scene of its own (meeting,
+  crossing, overtaking, a player on the line, a wall, two at one place: never within 0.6 m), runs the shift's first
+  four minutes frame by frame (no turn faster than the limit, no jump, every walker's capsule clear), and walks
+  through every door at a walk and a run (its leaf never touches them); `test_people.gd` the crowd's corners.
+- Not yet (phase 4): the standing places (a person at a place is drawn at its point, up to 5 cm above the floor; 20
+  lines start at a place whose point is not clear, so their room there is none), facing the equipment, feet on the
+  floor, clip speeds matched.
 
 ### 18.2 Avatars
 
