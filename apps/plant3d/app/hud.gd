@@ -76,11 +76,15 @@ func setup(m) -> void:
 	bar.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	bar.position = Vector2(-560, 12)
 	bar.add_theme_constant_override("separation", 10)
+	# right-aligned in a fixed width, Fly and Use first: when the gamepad hides them (or a touch brings them back)
+	# Map and Settings stay where they are, so that the tap that switches lands on the button it began on
+	bar.alignment = BoxContainer.ALIGNMENT_END
 	root.add_child(bar)
 	fly_btn = _button(bar, "Fly", func(): main.player.toggle_fly())
-	map_btn = _button(bar, "Map", func(): main.toggle_map())
 	use_btn = _button(bar, "Use", func(): main.player.press_door())
+	map_btn = _button(bar, "Map", func(): main.toggle_map())
 	settings_btn = _button(bar, "Settings", func(): show_settings(not panel.visible))
+	bar.size = Vector2(4 * 120 + 3 * 10, 64)
 	var ud := VBoxContainer.new()
 	ud.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
 	ud.position = Vector2(-140, -120)
@@ -300,12 +304,12 @@ func pad_on() -> bool:
 
 func _on_input_changed(_pad: bool) -> void:
 	refresh()
-	if pad_on():
-		focus_panel()
+	if pad_on() and focus_panel():
+		input.swallow = true     # the press that gave a panel the focus doesn't also move it on, or act
 
 ## A gamepad has just become the controls: the panel on top takes the focus, so that the D-pad and A work it at once
-## (panels opened while touching took none).
-func focus_panel() -> void:
+## (panels opened while touching took none). True when it gave the focus to something.
+func focus_panel() -> bool:
 	var fo := get_viewport().gui_get_focus_owner()
 	if panel.visible:
 		if fo == null or not panel.is_ancestor_of(fo):
@@ -313,9 +317,9 @@ func focus_panel() -> void:
 				about.back.grab_focus()
 			else:
 				about_btn.grab_focus()
-		return
-	if main.ui != null:
-		main.ui.focus_top()
+			return true
+		return false
+	return main.ui != null and main.ui.focus_top()
 
 func refresh() -> void:
 	var screens: bool = main.ui != null and main.ui.screens_open()      # the control room screens take the view
@@ -328,17 +332,15 @@ func refresh() -> void:
 	fly_btn.text = "Walk" if flying else "Fly"
 	fly_btn.visible = not screens and not pad   # walking and flying do nothing on the screens; Y on a gamepad
 	use_btn.visible = not screens and not pad   # A on a gamepad
-	map_btn.text = "Map (Back)" if pad else "Map"
-	settings_btn.text = "Settings (Start)" if pad else "Settings"
 	for i in updown.size():
 		_show(updown[i], touch and flying and not main.map.active and not screens, [["up", "down"][i]])
 	pad_hint.visible = pad and not main.map.active
 	if screens:
 		pad_hint.text = "Gamepad: D-pad or left stick between items, A opens, LB RB screens, X or B leaves"
 	elif flying:
-		pad_hint.text = "Gamepad: Y walk, RB up, LB down, A use, X control room, B closes"
+		pad_hint.text = "Gamepad: Y walk, RB up, LB down, A use, Back map, Start settings, X control room, B closes"
 	else:
-		pad_hint.text = "Gamepad: Y fly, A use or a part's card, X control room, D-pad alarms procedures pause fast, B closes"
+		pad_hint.text = "Gamepad: Y fly, A use or a part's card, Back map, Start settings, X control room, D-pad alarms procedures pause fast, B closes"
 
 ## Hides or shows a touch control. Hidden while a thumb holds it, Godot's VirtualJoystick (and a held button) would
 ## keep its actions pressed and the walker walking: they are let go, and what a gamepad or a key holds for the same

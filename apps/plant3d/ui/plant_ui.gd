@@ -486,25 +486,28 @@ func wants_focus() -> bool:
 
 
 ## A gamepad has just become the controls (app/hud.gd focus_panel): the top panel, in close_top's order, takes the
-## focus unless it has it already (its first button); the screens' canvas when no panel is over them.
-func focus_top() -> void:
+## focus unless it has it already (its first button); the screens' canvas when no panel is over them; first of all
+## the saved run's offer at the start (Continue or New run). True when it gave the focus to something.
+func focus_top() -> bool:
 	var fo := root.get_viewport().gui_get_focus_owner()
+	if autosave != null and autosave.offering():
+		return _focus_in(autosave.offer_panel, fo)
 	for p in [trainer, permits, debrief, alarms, card]:
 		if p.visible:
-			_focus_in(p, fo)
-			return
+			return _focus_in(p, fo)
 	if screens_open():
+		var had: bool = mimic.canvas.has_focus()
 		mimic.take_focus()
-		return
+		return not had and mimic.canvas.has_focus()
 	for p in [procedure, crew]:
 		if p.visible:
-			_focus_in(p, fo)
-			return
+			return _focus_in(p, fo)
+	return false
 
 
-func _focus_in(p: Control, fo: Control) -> void:
+func _focus_in(p: Control, fo: Control) -> bool:
 	if fo != null and p.is_ancestor_of(fo) and fo.is_visible_in_tree():
-		return
+		return false
 	# as the panel's own open() does: its tab (alarms, debrief), else its body's first control, else the Close button
 	var b: Control = null
 	if "_tabs" in p and "tab" in p and p._tabs.has(p.tab):
@@ -515,6 +518,7 @@ func _focus_in(p: Control, fo: Control) -> void:
 		b = _first_focusable(p)
 	if b != null:
 		b.grab_focus()
+	return b != null
 
 
 static func _first_focusable(n: Node) -> Control:

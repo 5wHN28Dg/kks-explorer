@@ -7,8 +7,10 @@
 ##   touch     the screen is touched, or the last gamepad disconnects: the touch controls come back (on a touch
 ##             screen) until a gamepad is used again
 ##
-## The keyboard and the mouse change neither (Android can send a gamepad's B or Start as a key as well; and the
-## touch controls never show without a touch screen anyway). The settings' "Touch controls" (app/hud.gd) chooses
+## A key or a mouse button (not one made from a touch) takes the controls from the gamepad on a desktop, where the
+## gamepad's line and the hidden Fly and Use buttons would otherwise stay while the keyboard and mouse are used; not
+## on a phone, where Android can send a gamepad's buttons as keys as well. A finger moving that was down before the
+## gamepad took over doesn't count: only a new touch does. The settings' "Touch controls" (app/hud.gd) chooses
 ## what this decides: Automatic follows it, Always and Never don't.
 extends Node
 
@@ -18,6 +20,8 @@ const PUSH := 0.5        # a stick or trigger pushed this far is the gamepad in 
 
 var pad := false         # the gamepad is the controls in use
 var pads := {}           # connected gamepads' device ids (kept here: tests connect and disconnect by the signal)
+var keys_count := not OS.has_feature("mobile")   # keys and mouse buttons take the controls from the gamepad
+var swallow := false     # set by a `changed` handler: the event that switched is used up (app/hud.gd focus_panel)
 
 ## The gamepads connected now: one is the controls in use from the start.
 func scan() -> void:
@@ -46,14 +50,21 @@ func _on_connection(device: int, connected: bool) -> void:
 ## other node's _input can mark it handled: app/hud.gd puts this node last under the window's root, and the last
 ## child sees an event first.
 func _input(e: InputEvent) -> void:
+	swallow = false
 	note(e)
+	if swallow:
+		swallow = false
+		get_viewport().set_input_as_handled()
 
 ## The last input decides: a gamepad's press or push, or a touch.
 func note(e: InputEvent) -> void:
 	if (e is InputEventJoypadButton and e.pressed) or (e is InputEventJoypadMotion and absf(e.axis_value) >= PUSH):
 		pads[e.device] = true        # (a gamepad whose connection came before this node did)
 		_switch(true)
-	elif (e is InputEventScreenTouch and e.pressed) or e is InputEventScreenDrag:
+	elif e is InputEventScreenTouch and e.pressed:
+		_switch(false)
+	elif keys_count and e.device != InputEvent.DEVICE_ID_EMULATION and ((e is InputEventKey and e.pressed and not e.echo)
+			or (e is InputEventMouseButton and e.pressed)):
 		_switch(false)
 
 func _switch(on: bool) -> void:

@@ -100,8 +100,9 @@ Controls (R7):
 - **Gamepad or touch** (`app/input_mode.gd`): with Settings → Touch controls on Automatic (the default), a gamepad
   connecting (or one connected at the start, or its buttons or sticks used) hides the touch sticks, Fly, Use and the
   flying buttons, names the gamepad's buttons in the bar and a line under the status, and gives the top panel the
-  focus; touching the screen brings the touch controls back until the gamepad is used again, and so does the last
-  gamepad disconnecting. Always keeps them shown, Never hidden. A stick hidden under a thumb lets its actions go.
+  focus (and the press that switched does nothing else); a new touch brings the touch controls back until the
+  gamepad is used again, and so does the last gamepad disconnecting (on a desktop, a key or a mouse click too).
+  Always keeps them shown, Never hidden. A stick hidden under a thumb lets its actions go.
 - **The plant (ui/):** E (gamepad A) or a click or tap on a part opens its card; L (D-pad up) the alarms, P (D-pad
   left) procedures and tours, T the permits to work (gamepad: a card's permit button or the procedures panel), K
   (D-pad down) pause and run, the full stop (D-pad right) fast-forward, H (X) to the control room and its screens,
