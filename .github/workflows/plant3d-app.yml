@@ -77,7 +77,42 @@ jobs:
           key: kit-textures-${{ hashFiles('apps/plant3d/kit/fetch_textures.sh') }}
       - name: Godot 4.7.2 and the JDK 17 of its Android Gradle build (pinned)
         run: tools/plant3d/bench/fetch_godot.sh && tools/plant3d/fetch_jdk.sh
+      # wdp_voice (decision 0069) for this machine, built as for the Flatpak (in its runtime's SDK), so that the app's
+      # tests run the voice codec (tests/test_voice.gd: build.sh makes it required once the library is there) and the
+      # Linux export carries it; the other platforms' libraries are built by the voice job
+      - name: The Flatpak SDK the Linux voice library is built in (org.freedesktop.Sdk//26.08)
+        run: |
+          sudo apt-get install -y --no-install-recommends flatpak
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.freedesktop.Sdk//26.08
+      - name: wdp_voice for Linux x86-64 (pinned sources)
+        run: WDP_JOBS=4 apps/plant3d/voice/build.sh linux-x86_64 && cat apps/plant3d/voice/bin/BUILD-INFO.txt | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Content check, content build, the app's tests, headless exports
         run: apps/plant3d/build.sh export
       - name: Sizes
         run: ls -l apps/plant3d/export/check apps/plant3d/export/check/linux apps/plant3d/export/check/windows apps/plant3d/export/check/windows-arm64 | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # wdp_voice, the voice codec (decision 0069), for each platform the plant ships on, from its pinned sources, each
+  # built twice in fresh folders and compared (apps/plant3d/voice/build.sh WDP_CHECK_REPRO=1): the libraries'
+  # SHA-256 go to the summary (the same toolchains on the maintainer's laptop give the same bytes)
+  voice:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [linux-x86_64, android-arm64, windows-x86_64, windows-arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The toolchain (the Flatpak SDK; the NDK the plant's voice library pins; llvm-mingw comes with build.sh)
+        run: |
+          case "${{ matrix.target }}" in
+            linux-*)
+              sudo apt-get install -y --no-install-recommends flatpak
+              flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+              flatpak install --user -y --noninteractive flathub org.freedesktop.Sdk//26.08 ;;
+            android-*)
+              yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.2.12479018" >/dev/null ;;
+          esac
+      - name: wdp_voice ${{ matrix.target }}, built twice and compared
+        run: WDP_JOBS=4 WDP_CHECK_REPRO=1 apps/plant3d/voice/build.sh ${{ matrix.target }} && cat apps/plant3d/voice/bin/BUILD-INFO.txt | tee -a "$GITHUB_STEP_SUMMARY"

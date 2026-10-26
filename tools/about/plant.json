@@ -1,10 +1,20 @@
 {
- "note": "The third-party assets Walkdown Plant carries, besides the Godot Engine (its own notices come from Engine.get_license_info() and Engine.get_copyright_info() at run time, decision 0054 §7) and the sounds (synthesised by tools/plant3d/sounds; any recorded clip has its licence in data/plant3d/sounds.json). Geometry and the weathering's noise are made by the build itself.",
+ "note": "The third-party assets and code Walkdown Plant carries, besides the Godot Engine (its own notices come from Engine.get_license_info() and Engine.get_copyright_info() at run time, decision 0054 §7) and the sounds (synthesised by tools/plant3d/sounds; any recorded clip has its licence in data/plant3d/sounds.json). Geometry and the weathering's noise are made by the build itself.",
  "licenses": {
   "CC0-1.0": {
    "name": "Creative Commons Zero v1.0 Universal",
    "url": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
    "text": true
+  },
+  "BSD-3-Clause": {
+   "name": "BSD 3-Clause \"New\" or \"Revised\" License",
+   "url": "https://opensource.org/license/bsd-3-clause",
+   "text": false
+  },
+  "MIT": {
+   "name": "MIT License",
+   "url": "https://opensource.org/license/mit",
+   "text": false
   }
  },
  "assets": [
@@ -106,6 +116,36 @@
    "source": "https://kaylousberg.itch.io/kaykit-character-animations (KayKit_Character_Animations_1.1.zip, the free download)",
    "use": "the people's skeleton and their clips (walking, running, idling, sitting, tool work), on bodies and work clothes of our own (apps/plant3d/builder/people/)",
    "pinned_by": "apps/plant3d/people/kaykit/SOURCE.json (SHA-256 of the archive and of each committed file; people/fetch_kaykit.sh checks them)"
+  },
+  {
+   "id": "libopus",
+   "name": "Opus audio codec (libopus) 1.5.2, Xiph.Org Foundation and contributors",
+   "license": "BSD-3-Clause",
+   "url": "https://opus-codec.org/",
+   "source": "https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz",
+   "use": "voice between players: encoding and decoding speech (wdp_voice, apps/plant3d/voice/)",
+   "pinned_by": "apps/plant3d/voice/build.sh (SHA-256)",
+   "notice": "opus"
+  },
+  {
+   "id": "speexdsp",
+   "name": "SpeexDSP 1.2.1 (its resampler), Xiph.Org Foundation and contributors",
+   "license": "BSD-3-Clause",
+   "url": "https://github.com/xiph/speexdsp",
+   "source": "https://downloads.xiph.org/releases/speex/speexdsp-1.2.1.tar.gz",
+   "use": "voice between players: resampling between the audio device's rate and the codec's (wdp_voice, apps/plant3d/voice/)",
+   "pinned_by": "apps/plant3d/voice/build.sh (SHA-256)",
+   "notice": "speexdsp"
+  },
+  {
+   "id": "godot-cpp",
+   "name": "godot-cpp 10.0.0, Godot Engine contributors",
+   "license": "MIT",
+   "url": "https://github.com/godotengine/godot-cpp",
+   "source": "https://codeload.github.com/godotengine/godot-cpp/tar.gz/10.0.0-stable",
+   "use": "the C++ bindings the voice codec's extension is built with (wdp_voice, apps/plant3d/voice/)",
+   "pinned_by": "apps/plant3d/voice/build.sh (SHA-256)",
+   "notice": "godot-cpp"
   }
  ]
 }

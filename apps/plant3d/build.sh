@@ -22,6 +22,15 @@ TARGETS="${*:-android-debug android-release linux windows windows-arm64}"
 GODOT="${GODOT:-$("$ROOT/tools/plant3d/bench/fetch_godot.sh")}"
 T="timeout ${GODOT_TIMEOUT:-600}"   # a script that fails to compile leaves Godot running: never wait for ever
 
+# 0. wdp_voice, the voice codec (decision 0069, voice/build.sh): a release builds it for all four platforms from its
+#    pinned sources (so the libraries are this commit's); other builds use what voice/bin/ holds (CI builds the Linux
+#    one first), and a platform without its library exports without voice
+if [ "$MODE" = release ]; then
+  "$HERE/voice/build.sh" || { echo "wdp_voice did not build: a release carries voice on every platform" >&2; exit 1; }
+fi
+# the voice test must find the extension wherever its library for this machine is there (tests/test_voice.gd)
+[ -s "$HERE/voice/bin/libwdp_voice.linux.x86_64.so" ] && [ "$(uname -m)" = x86_64 ] && export WDP_VOICE_REQUIRED=1
+
 # 1. The content, strictly (Godot's own JSON reader is not strict: PLANT3D.md §1)
 (cd "$ROOT" && python3 -c "import sys; from ref import plant3d as P; b = P.check_dir('data/plant3d'); print('content: valid')")
 
@@ -196,6 +205,25 @@ exp() {  # renderer debug|release preset output
   $T "$GODOT" $GPU --rendering-method "$1" --path "$HERE" "--export-$2" "$3" "$4" >>"$HERE/.export.log" 2>&1 ||
     { tail -30 "$HERE/.export.log"; echo "export $3 ($2) failed" >&2; exit 1; }
   [ -s "$4" ] || { tail -30 "$HERE/.export.log"; echo "export $3 ($2) made nothing" >&2; exit 1; }
+  # wdp_voice's library goes with every export whose platform voice/bin/ has one (a release has all four)
+  voice_lib=""
+  case "$3" in
+    Android*) voice_lib=libwdp_voice.android.arm64.so ;;
+    Linux) voice_lib=libwdp_voice.linux.x86_64.so ;;
+    Windows) voice_lib=libwdp_voice.windows.x86_64.dll ;;
+    "Windows ARM64") voice_lib=libwdp_voice.windows.arm64.dll ;;
+  esac
+  if [ -s "$HERE/voice/bin/$voice_lib" ]; then
+    case "$4" in
+      *.apk) unzip -l "$4" | grep -q " lib/arm64-v8a/$voice_lib\$" || { echo "$4 has no lib/arm64-v8a/$voice_lib" >&2; exit 1; } ;;
+      *) cmp -s "$HERE/voice/bin/$voice_lib" "$(dirname "$4")/$voice_lib" || { echo "the export has no $(dirname "$4")/$voice_lib" >&2; exit 1; } ;;
+    esac
+    echo "  with voice: $voice_lib"
+  elif [ "$MODE" = release ]; then
+    echo "a release must carry voice: no voice/bin/$voice_lib" >&2; exit 1
+  else
+    echo "  without voice (no voice/bin/$voice_lib: voice/build.sh)"
+  fi
   case "$4" in *.apk)
     # the export plugin's intent filter must be in the APK (a plugin that didn't run leaves no link handler)
     "$(ls -d "$ANDROID_HOME"/build-tools/* | grep -v -- '-rc' | sort -V | tail -1)/aapt2" dump xmltree "$4" --file AndroidManifest.xml |

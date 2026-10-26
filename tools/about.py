@@ -17,7 +17,9 @@ The version is not in it: each program knows its own (VERSION at build time) and
 
   python3 tools/about.py --plant [--check]   the same for Walkdown Plant: apps/plant3d/about.json (format
                                              "walkdown-plant-about", version 1) from tools/about/plant.json: {note,
-                                             assets: [{id, name, license (SPDX), url, source, use, pinned_by}],
+                                             assets: [{id, name, license (SPDX), url, source, use, pinned_by,
+                                             notice (optional: a file in tools/about/notices/, the part's own
+                                             licence file with its copyright lines, put in verbatim)}],
                                              licenses: {<SPDX id>: {name, url, text}}} with each licence's full text
                                              (tools/about/licenses/). The plant's build packs it (built/about.json).
 
@@ -196,7 +198,13 @@ def build_plant(repo=REPO):
         meta = src['licenses'][lid]
         licenses[lid] = {'name': meta['name'], 'url': meta['url'],
                          'text': read(repo, SRC, 'licenses', lid + '.txt') if meta.get('text') else None}
-    return {'format': 'walkdown-plant-about', 'version': 1, 'note': src['note'], 'assets': src['assets'],
+    assets = []
+    for a in src['assets']:
+        a = dict(a)
+        if a.get('notice'):   # BSD and MIT ask for the copyright lines and terms to go with the program
+            a['notice'] = read(repo, SRC, 'notices', a['notice'] + '.txt')
+        assets.append(a)
+    return {'format': 'walkdown-plant-about', 'version': 1, 'note': src['note'], 'assets': assets,
             'licenses': licenses}
 
 

@@ -83,6 +83,8 @@ static func sections() -> Array:
 		var lines := PackedStringArray([str(a.get("note", ""))])
 		for x in a.get("assets", []):
 			lines.append("\n%s: %s\n%s\nUsed for %s." % [x.get("name", "?"), x.get("license", "?"), x.get("url", ""), x.get("use", "")])
+			if x.get("notice", "") is String and x.get("notice", "") != "":   # its own licence file (BSD, MIT: the code)
+				lines.append(str(x.notice).strip_edges())
 		out.append(["Assets", "\n".join(lines)])
 		var lic: Dictionary = a.get("licenses", {})
 		for id in lic:

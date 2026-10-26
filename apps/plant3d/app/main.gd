@@ -34,7 +34,9 @@
 ##                           it (builder/plant_builder.gd far_merge)
 ##   crowd=N                 (walk) N people round the walker (app/crowd.gd): what people cost (milestone A1)
 ##   people_skinned=N        that many skinned avatars instead of the tier's (measuring), people_shadows=0 theirs off
-##   On a phone walk.txt takes probe, fx_off, fx_on, max_fps, crowd, people_skinned, people_shadows and shot too
+##   voice=bench             wdp_voice's test scene instead of the plant (voice/demo/voice_wav.gd: the codec's round
+##                           trip and its time per 20 ms frame, `VOICE` lines in the log; milestone MP5's measurement)
+##   On a phone walk.txt takes voice, probe, fx_off, fx_on, max_fps, crowd, people_skinned, people_shadows and shot too
 ##   (phone/frames.sh's WALK_EXTRA, phone/shots.sh); a shot's line in result.txt gives the view's draw calls, triangles
 ##   and GPU time (median of 30 frames)
 extends Node3D
@@ -95,6 +97,9 @@ var probing := false     # the tier probe is running: no map, no tier changes, n
 func _ready() -> void:
 	_launch("ready")
 	_options()
+	if opts.get("voice", "") == "bench":   # the voice codec measured alone (MP5): no plant
+		get_tree().change_scene_to_file.call_deferred("res://voice/demo/voice_wav.tscn")
+		return
 	cf = Quality.settings()
 	OS.delta_smoothing = false
 	_environment()
@@ -251,7 +256,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "shot"]:   # nothing else from a shared folder (probe, fx_off, fx_on, max_fps, the people's and shot: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "shot", "voice"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's and shot: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
