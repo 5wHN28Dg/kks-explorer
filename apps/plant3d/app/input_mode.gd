@@ -36,11 +36,11 @@ func _exit_tree() -> void:
 func _on_connection(device: int, connected: bool) -> void:
 	if connected:
 		pads[device] = true
-		_set(true)
+		_switch(true)
 	else:
 		pads.erase(device)
 		if pads.is_empty():
-			_set(false)
+			_switch(false)
 
 ## Before the GUI and the walker see an event (the touch that brings the sticks back reaches them), and before any
 ## other node's _input can mark it handled: app/hud.gd puts this node last under the window's root, and the last
@@ -52,11 +52,11 @@ func _input(e: InputEvent) -> void:
 func note(e: InputEvent) -> void:
 	if (e is InputEventJoypadButton and e.pressed) or (e is InputEventJoypadMotion and absf(e.axis_value) >= PUSH):
 		pads[e.device] = true        # (a gamepad whose connection came before this node did)
-		_set(true)
+		_switch(true)
 	elif (e is InputEventScreenTouch and e.pressed) or e is InputEventScreenDrag:
-		_set(false)
+		_switch(false)
 
-func _set(on: bool) -> void:
+func _switch(on: bool) -> void:
 	if pad != on:
 		pad = on
 		changed.emit(on)
