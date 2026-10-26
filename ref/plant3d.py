@@ -2559,7 +2559,7 @@ class Engine:
                 Packed(PACKED_BYTE, [1 if self.latched[t['id']] else 0 for t in self.trips]),
                 Packed(PACKED_INT64, [self.trip_count[t['id']] for t in self.trips]),
                 [[g, t] for g, t in sorted(self.first_out.items())],
-                [self.astate[a['id']] for a in self.alarms],
+                '|'.join(self.astate[a['id']] for a in self.alarms),
                 Packed(PACKED_INT64, [self.acount[a['id']] for a in self.alarms]),
                 Packed(PACKED_INT64, [self.shelved.get(a['id'], -1) for a in self.alarms]),
                 Packed(PACKED_BYTE, [1 if self.il_prev[x['id']] else 0 for x in m.interlocks]),

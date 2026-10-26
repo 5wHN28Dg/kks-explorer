@@ -2603,13 +2603,11 @@ class StaffRun:
         def key(k):         # a reaction source as the app keeps it: its parts joined by |
             return None if k is None else '|'.join(str(x) for x in k)
 
-        def inst(x):
-            if x is None:
-                return None
+        def inst(pi, where, x):
             act = x['act']
             if act is not None:
                 act = [act[0], ACT_KINDS.index(act[1]), act[2]]
-            return [x['task'], x['prio'], x['made'], x['order'], x['step'], x['work'], x['code'], x['alarm'],
+            return [pi, where, x['task'], x['prio'], x['made'], x['order'], x['step'], x['work'], x['code'], x['alarm'],
                     key(x['src']), x['idle'], x['started'], x['int'], x['owner'], act, key(x.get('orig'))]
 
         def i64(v):         # (a 64-bit field's two's complement)
@@ -2640,9 +2638,8 @@ class StaffRun:
                 Packed(PACKED_INT32, [len(p.slots) for p in people]),
                 Packed(PACKED_INT32, [p.pos if p.pos is not None else -1 for p in people]),
                 [list(p.leg) if p.leg is not None else [] for p in people],
-                [inst(p.cur) for p in people],
-                [[inst(x) for x in p.queue] for p in people],
-                [[inst(x) for x in p.held] for p in people],
+                [inst(p.i, w, x) for p in people
+                 for w, xs in ((0, [p.cur] if p.cur is not None else []), (1, p.queue), (2, p.held)) for x in xs],
                 Packed(PACKED_INT32, [p.res if p.res is not None else -1 for p in people]),
                 Packed(PACKED_INT32, [p.occ if p.occ is not None else -1 for p in people]),
                 [p.result for p in people],

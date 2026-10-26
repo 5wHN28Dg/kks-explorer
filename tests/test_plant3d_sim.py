@@ -63,8 +63,11 @@ class Hasher:
 
     def __init__(self, start):
         self.start, self.chunks, self.h, self.last, self.vals = start, [], hashlib.sha256(), None, {}
+        self.states = []        # the state digest (PLANT3D.md §17.14) of every 50th step, as run_vectors.gd's `state`
 
     def add(self, e, keep=None):
+        if e.step_no % 50 == 0:
+            self.states.append(e.digest())
         b = struct.pack(f'<{len(e.names)}d', *e.cur)
         if keep and keep[0] <= e.step_no <= keep[1]:
             self.vals[e.step_no] = b
@@ -110,7 +113,7 @@ def steps_runs(valid_files, steps, keep=None, prefix=''):
             h.add(e, kk)
         assert j == len(s['inputs']), f'{run}: inputs after the end'
         h.end()
-        out[run] = (0, h.chunks, e.names, h.vals)
+        out[run] = (0, h.chunks, e.names, h.vals, h.states)
     return out
 
 
@@ -164,7 +167,7 @@ def day_runs(b, d, out, k):
             e.step()
             h.add(e, k(name))
         h.end()
-        out[name] = (0, h.chunks, e.names, h.vals)
+        out[name] = (0, h.chunks, e.names, h.vals, h.states)
 
 
 def staff_run(files, r, kk):
@@ -188,7 +191,7 @@ def staff_run(files, r, kk):
         e.step()
         h.add(e, kk)
     h.end()
-    return (0, h.chunks, e.names, h.vals)
+    return (0, h.chunks, e.names, h.vals, h.states)
 
 
 def train_runs(b, name, t, out, k, prefix=''):
@@ -212,7 +215,7 @@ def train_runs(b, name, t, out, k, prefix=''):
     h.end()
     if t['until'] in base_steps:
         bases[t['until']] = e.clone()
-    out[name] = (0, h.chunks, e.names, h.vals)
+    out[name] = (0, h.chunks, e.names, h.vals, h.states)
     for f in t['forks']:
         x = bases[f['base_step']].clone()
         fin = sorted(f['inputs'], key=lambda y: y[0])
@@ -225,7 +228,7 @@ def train_runs(b, name, t, out, k, prefix=''):
             x.step()
             h.add(x, k(prefix + f['id']))
         h.end()
-        out[prefix + f['id']] = (f['base_step'] + 1, h.chunks, x.names, h.vals)
+        out[prefix + f['id']] = (f['base_step'] + 1, h.chunks, x.names, h.vals, h.states)
 
 
 def number_corpus():
@@ -306,9 +309,10 @@ class GdscriptEngine(unittest.TestCase):
             got = json.load(f)
         ref = reference_runs(self.V, V2=self.V2)
         self.assertEqual(sorted(got), sorted(ref))
-        for run, (start, chunks, names, _) in ref.items():
+        for run, (start, chunks, names, _, states) in ref.items():
             g = got[run]
             self.assertEqual(g['from'], start, run)
+            self.assertEqual(g['state'], states, f'{run}: the state digests (PLANT3D.md §17.14)')
             bad = next((i for i, (a, b) in enumerate(zip(g['chunks'], chunks)) if a != b), None)
             if bad is None and len(g['chunks']) == len(chunks):
                 continue

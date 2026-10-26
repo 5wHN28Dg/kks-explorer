@@ -149,12 +149,13 @@ func _app(tree: SceneTree, p: Array) -> void:
 	# queued and not yet stepped when the run is saved: a version 2 op, a reading, an arrival
 	ui.inputs.sink = Callable()
 	ui.clock.set_speed(ui.clock.Speed.PAUSED)
+	var queued: int = e.queue.size()
 	ui.inputs.op("00PGC10AP001", "stop", null, null, "local", ui.me())
 	ui.inputs.read("00QFB10CP001", 1.0)
 	ui.inputs.arrive("gate")
 	ui.inputs.task_ack()
-	if e.queue.size() != 4:
-		p.append("the inputs were not queued for the save (%d)" % e.queue.size())
+	if e.queue.size() != queued + 4:
+		p.append("the inputs were not queued for the save (%d, %d before)" % [e.queue.size(), queued])
 	var why: String = ui.autosave.check(ui.autosave.payload())
 	if why != "":
 		p.append("a run saved with inputs queued is refused: %s" % why)

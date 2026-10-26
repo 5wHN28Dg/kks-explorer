@@ -1875,7 +1875,7 @@ func digest_tree() -> Array:
 		for p in _iso[k][1].size():
 			if lockbits[_iso[k][4] + p]:
 				lk.append([k, p, lockers[Vector2i(k, p)]])
-	return [step_no, mem, mstate, latched, trip_count, fo, astate, acount, shelved, il_prev, fd, ff, pstate,
+	return [step_no, mem, mstate, latched, trip_count, fo, "|".join(astate), acount, shelved, il_prev, fd, ff, pstate,
 			_sorted_pairs(ptw), ptw_count, _sorted_pairs(acceptor), holder, lk, _digest_staff()]
 
 
@@ -1885,20 +1885,15 @@ func _digest_staff():
 	var np: int = sp_on.size()
 	var slots := PackedInt32Array()
 	slots.resize(np)
-	var cur_i := []
-	var queue_i := []
-	var held_i := []
+	var insts := []         # every task instance: [person, 0 current / 1 queued / 2 held, …], person by person
 	for pi in np:
 		slots[pi] = sp_slots[pi].size()
-		cur_i.append(_digest_inst(sp_cur[pi]))
-		var q := []
+		if sp_cur[pi] != null:
+			insts.append(_digest_inst(pi, 0, sp_cur[pi]))
 		for x in sp_queue[pi]:
-			q.append(_digest_inst(x))
-		queue_i.append(q)
-		var h := []
+			insts.append(_digest_inst(pi, 1, x))
 		for x in sp_held[pi]:
-			h.append(_digest_inst(x))
-		held_i.append(h)
+			insts.append(_digest_inst(pi, 2, x))
 	var left := PackedInt32Array(st_left.keys())
 	left.sort()
 	var mk: Array = st_made.keys()
@@ -1908,15 +1903,14 @@ func _digest_staff():
 		made.append([k.x, k.y, k.z, k.w])
 	return [J, st_order, st_session, st_players, st_acks, st_t_from, st_kept, _sorted_pairs(st_holder),
 			_sorted_pairs(st_given), st_vprev, st_pending, left, made, npc_queue, sp_on, sp_duty, sp_duties, sp_planned,
-			slots, sp_pos, sp_leg, cur_i, queue_i, held_i, sp_res, sp_occ, sp_result, sp_rng, sp_worn, sp_acts, sp_zin]
+			slots, sp_pos, sp_leg, insts, sp_res, sp_occ, sp_result, sp_rng, sp_worn, sp_acts, sp_zin]
 
 
-## A task instance in the digest: everything but its step's own progress ("st").
-static func _digest_inst(x):
-	if x == null:
-		return null
-	return [x["task"], x["prio"], x["made"], x["order"], x["step"], x["work"], x["code"], x["alarm"], x["src"],
-			x["idle"], x["started"], x["int"], x["owner"], x["act"], x.get("orig")]
+## A task instance in the digest: its person, where it is (0 current, 1 queued, 2 held) and everything but its step's
+## own progress ("st").
+static func _digest_inst(pi: int, where: int, x: Dictionary) -> Array:
+	return [pi, where, x["task"], x["prio"], x["made"], x["order"], x["step"], x["work"], x["code"], x["alarm"],
+			x["src"], x["idle"], x["started"], x["int"], x["owner"], x["act"], x.get("orig")]
 
 
 static func _sorted_pairs(d: Dictionary) -> Array:

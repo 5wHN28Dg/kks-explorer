@@ -297,7 +297,24 @@ Today the staff step has one trainee (`st_trainee`, PLANT3D.md §17.4). A sessio
 
 ## 4. State hashes and desyncs
 
-**The digest:** SHA-256 over the engine's state as the save keeps it (`RunSave.engine_fields`: every script variable
+**The digest (as built in MP1): PLANT3D.md §17.14**, in both engines (`engine.gd digest()`, `ref/plant3d.py
+Engine.digest()`), with vectors: SHA-256 over a tag, the values' doubles and the Godot Variant encoding of a *digest
+tree* that holds every part of the state the next steps read (machines, trips, alarms and their counters, shelves,
+faults, permits, locks, the timers' counts; the staff's people, duties, places, ways, task instances, queues, held
+jobs, reservations, reaction sources, kept offers, random streams, PPE, unsafe acts, the players' slots and counts, the
+NPCs' inputs for the next step), each in a fixed order and form. It differs from the plan below, which hashed the
+save's fields as GDScript keeps them: the reference could not make that (its state is kept in other forms), so the
+tree is a form of its own that both make, and it leaves out what an implementation may keep its own way (a task step's
+own progress: the app counts an NPC's work when they wake, the reference every step), with what the logs only record
+and what is derived (§17.14 says what and why). A difference hidden in a task step's progress shows by the step after
+that step ends. Godot's `var_to_bytes` is the encoding (a future Godot that changes it is a "When to revisit" of 0067:
+the vectors' digests would fail first).
+
+**Its cost** (`apps/plant3d/sim/tests/bench_digest.gd`; on a phone the app's `digest=bench`, app/digest_bench.gd): the
+first train with its staff (shift_cold, 66 people, about 40 task instances, 38 KB hashed) at five points of the shift:
+laptop COST_LAPTOP; Note 9 COST_NOTE9.
+
+The plan, as written before the code: SHA-256 over the engine's state as the save keeps it (`RunSave.engine_fields`: every script variable
 but the compiled program), **without** `events`, `inputs` and the debrief's logs (they only grow, and what they record
 is in the state too), field by field in sorted name order: a packed array's bytes go straight into the
 `HashingContext` (`cur`, `prev`, `mem` and the other `Packed…Array`s, by far the largest part: no encoding), the

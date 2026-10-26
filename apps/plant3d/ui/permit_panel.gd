@@ -156,10 +156,11 @@ func ask_lock(point: int, again := false) -> void:
 	var copy = e.clone()
 	var wid := work
 	var me = ui.me()                # the trainee's person: the lock is theirs (§17.1)
+	var slot: int = ui.inputs.slot  # (a session run's lock carries the player's slot, §17.13)
 	var box := {}
 	check = {"work": wid, "point": point, "engine": e, "box": box, "state": "checking", "answer": {},
 			"step": e.step_no, "tries": int(check.get("tries", 0)) + 1,
-			"task": WorkerThreadPool.add_task(func(): box["answer"] = copy.lock_effects(wid, point, 100, me))}
+			"task": WorkerThreadPool.add_task(func(): box["answer"] = copy.lock_effects(wid, point, 100, me, slot))}
 	_sig = ""
 	refresh()
 
