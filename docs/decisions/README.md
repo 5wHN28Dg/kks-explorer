@@ -63,7 +63,7 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0066](0066-plant-site-and-camp.md) | Walkdown Plant's site: the WTP north-east of the cooling tower, a camp 130 m beyond the plant gate, packs per zone, interiors loaded near their doors | proposed |
 | [0067](0067-plant-multiplayer-lockstep.md) | Walkdown Plant multiplayer: deterministic lockstep with the host as sequencer (turns of 2 steps, digests every 50 steps, snapshots for late join and resync, host migration), no rollback | proposed; lockstep decided by the user 2026-10-26 |
 | [0068](0068-plant-multiplayer-transport.md) | Walkdown Plant multiplayer: keys from a 16-character invite code, AES-128-CBC-HMAC-SHA-256 from Godot's primitives, our own packets over LAN UDP, direct UDP and a new free-plan Cloudflare relay | proposed; relay and direct UDP decided by the user 2026-10-26 |
-| [0069](0069-plant-voice-opus.md) | Walkdown Plant voice: Opus through our own GDExtension `wdp_voice` (libopus, SpeexDSP resampler, pinned sources), push-to-talk, half duplex, no echo canceller | proposed |
+| [0069](0069-plant-voice-opus.md) | Walkdown Plant voice: Opus through our own GDExtension `wdp_voice` (libopus, SpeexDSP resampler, pinned sources), push-to-talk, half duplex, no echo canceller | accepted; native part built (MP5, 2026-10-26) |
 
 ## Audit of existing dependencies (2026-09-30)
 

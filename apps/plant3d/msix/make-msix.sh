@@ -41,6 +41,10 @@ layout() {  # DIR PFX
   case "$SUBJECT" in *'|'*|*'&'*|*'<'*|*'>'*|*'"'*) echo "the certificate's subject has characters the manifest can't take: $SUBJECT" >&2; exit 2 ;; esac
   rm -rf "$1"; mkdir -p "$1/Assets"
   cp "$EXE" "$1/WalkdownPlant.exe"
+  # wdp_voice, the voice codec (decision 0069): the export puts its DLL beside the exe, where Godot looks for it
+  VDLL=libwdp_voice.windows.x86_64.dll; [ "$EXPORT_DIR" = windows-arm64 ] && VDLL=libwdp_voice.windows.arm64.dll
+  [ -s "$(dirname "$EXE")/$VDLL" ] || { echo "no $(dirname "$EXE")/$VDLL beside the exe: build.sh release $EXPORT_DIR" >&2; exit 2; }
+  cp "$(dirname "$EXE")/$VDLL" "$1/$VDLL"
   GODOT="${GODOT:-$("$REPO/tools/plant3d/bench/fetch_godot.sh")}"
   timeout 120 "$GODOT" --headless --path "$APP" --script res://msix/logos.gd -- "$1/Assets" >/dev/null 2>&1 ||
     { echo "the logos were not made (msix/logos.gd)" >&2; exit 1; }

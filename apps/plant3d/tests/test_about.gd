@@ -47,6 +47,11 @@ func run(tree: SceneTree) -> Array:
 	for a in assets.assets:
 		if not shown.contains("%s: %s" % [a.name, a.license]):
 			p.append("About does not list %s with its licence" % a.name)
+	for a in assets.assets:   # the code's own licence files (wdp_voice's libraries, decision 0069), each in full
+		if a.has("notice") and not shown.contains(str(a.notice).strip_edges()):
+			p.append("About does not carry the notice of %s" % a.name)
+	if not shown.contains("Copyright (c) 2017-present Godot Engine contributors") or not shown.contains("Xiph.Org"):
+		p.append("About does not carry the voice codec's notices (godot-cpp, libopus, SpeexDSP)")
 	if not shown.contains("Creative Commons Legal Code"):
 		p.append("About does not carry the CC0 text")
 	if not shown.contains(Engine.get_license_text().strip_edges().get_slice("\n", 0)):

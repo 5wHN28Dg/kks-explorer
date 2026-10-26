@@ -1,0 +1,5 @@
+/* wdp_voice exports its entry point alone: libopus, the resampler and godot-cpp stay inside (and unused code goes) */
+{
+  global: wdp_voice_library_init;
+  local: *;
+};

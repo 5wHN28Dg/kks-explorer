@@ -20,12 +20,17 @@ modules:
     buildsystem: simple
     build-commands:
       - install -Dm644 walkdown-plant.pck ${FLATPAK_DEST}/bin/godot-runner.pck
+      # wdp_voice, the voice codec (decision 0069): beside the runner, where Godot looks for an exported extension's
+      # library; built in this runtime's SDK (apps/plant3d/voice/build.sh linux-x86_64)
+      - install -Dm755 libwdp_voice.linux.x86_64.so ${FLATPAK_DEST}/bin/libwdp_voice.linux.x86_64.so
       - install -Dm644 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
       - install -Dm644 icon.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
     sources:
       - type: file
         path: ../export/linux/walkdown-plant.pck
+      - type: file
+        path: ../export/linux/libwdp_voice.linux.x86_64.so   # (build.sh release linux puts it beside the .pck)
       - type: file
         path: io.github._5wHN28Dg.WalkdownPlant.desktop
       - type: file

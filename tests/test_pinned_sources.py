@@ -14,7 +14,8 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 BOM = os.path.join(REPO, 'pinned-sources.cdx.json')
 # the build scripts that fetch third-party sources and tools
 SCRIPTS = ['platform/windows/*.sh', 'packaging/windows/*.sh', 'importer/fetch_mupdf.sh', 'android/nim/fetch_sqlite.sh',
-           'platform/web/build-wasm.sh', 'android/app2/build.gradle.kts', 'apps/gnome/flatpak/*.yml']
+           'platform/web/build-wasm.sh', 'android/app2/build.gradle.kts', 'apps/gnome/flatpak/*.yml',
+           'apps/plant3d/voice/*.sh']
 STRONG = {'SHA-256', 'SHA-384', 'SHA-512', 'SHA3-256', 'SHA3-384', 'SHA3-512', 'BLAKE2B-256', 'BLAKE2B-384',
           'BLAKE2B-512', 'BLAKE3'}
 
@@ -79,7 +80,7 @@ class PinnedSources(unittest.TestCase):
     def test_known_sources_listed(self):
         names = {c['name'] for c in self.bom['components']}
         for n in ('libjxl', 'highway', 'brotli', 'skcms', 'zxing-cpp', 'zlib', 'mupdf', 'sqlite-amalgamation', 'emsdk',
-                  'nim', 'llvm-mingw', 'osslsigncode'):
+                  'nim', 'llvm-mingw', 'osslsigncode', 'godot-cpp', 'opus', 'speexdsp'):
             self.assertIn(n, names)
 
     def test_no_gcc_mingw_toolchain(self):
