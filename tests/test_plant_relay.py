@@ -506,6 +506,16 @@ class Behaviour(Base):
         while h.json() != {'t': 'pong'}:
             pass
 
+    def test_host_burst(self):
+        # the creating host's first burst is the host's 400 messages, not a player's 200 (the bucket used to start at 200,
+        # which made test_ids_past_255 fail on a fast runner: its host is slowed after 200 + 120/s)
+        _, _, (h, a) = self.session(2)
+        for i in range(390):
+            h.packets(2, i.to_bytes(2, 'big'))
+        self.assertEqual(self.count(a, 1.5), 390)
+        h.text(b'{"t":"ping"}')
+        self.assertEqual(h.json(), {'t': 'pong'})   # no `slow` before it
+
     def test_bytes_per_second(self):
         _, _, (a, b) = self.session(2)
         big = b'\0\x01\xff\xfc' + os.urandom(65532)
