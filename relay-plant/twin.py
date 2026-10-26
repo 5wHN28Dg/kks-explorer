@@ -475,7 +475,9 @@ class Client:
         port = u.port or (443 if u.scheme == 'wss' else 80)
         s = socket.create_connection((u.hostname, port), timeout=timeout)
         if u.scheme == 'wss':
-            s = ssl.create_default_context().wrap_socket(s, server_hostname=u.hostname)
+            ctx = ssl.create_default_context()
+            ctx.minimum_version = ssl.TLSVersion.TLSv1_2   # (Cloudflare offers 1.2 and 1.3)
+            s = ctx.wrap_socket(s, server_hostname=u.hostname)
         key = base64.b64encode(os.urandom(16)).decode()
         extra = ''.join(f'{k}: {v}\r\n' for k, v in (headers or {}).items())
         host = u.hostname if not u.port else f'{u.hostname}:{u.port}'

@@ -10,7 +10,7 @@ import {DurableObject} from 'cloudflare:workers';
 const ROOM = /^[0-9a-f]{32}$/, ADMIT = /^[A-Za-z0-9_-]{43}$/;
 
 // MULTIPLAYER.md §9.1's limits. Only the timings and two counts (rooms a day, joins a minute) can be changed, for the tests against
-// `wrangler dev` (`--var RELAY_LIMITS:{...}`): deploy.sh refuses a wrangler.toml that sets any variable.
+// `wrangler dev` (`--var RELAY_LIMITS:{...}`): deploy.py refuses a wrangler.toml that sets any variable.
 export const LIMITS = {
   members: 12,            // sockets per room that have said hello
   pending: 12,            // sockets per room still to say hello
@@ -155,7 +155,9 @@ export class Room extends DurableObject {
   async webSocketMessage(ws, msg) {
     const a = ws.deserializeAttachment();
     if (!a || a.gone) return;
-    if (!a.id) return this.hello(ws, a, msg);
+    // a hello is being checked (it waits on the hash, the day's count): anything the client sends meanwhile, before
+    // its welcome, is dropped, never taken for a second hello
+    if (!a.id) return a.hello ? undefined : this.hello(ws, a, msg);
     const now = Date.now(), size = typeof msg === 'string' ? new TextEncoder().encode(msg).length : msg.byteLength;
     if (!this.admitFlow(ws, a, size, now)) return;
     if (typeof msg === 'string') {
@@ -198,12 +200,17 @@ export class Room extends DurableObject {
         !ADMIT.test(m.admit) || typeof m.create !== 'boolean' || Object.keys(m).length !== 3) return fail('bad hello');
     const raw = b64u(m.admit);
     if (raw.length !== 32) return fail('bad hello');
+    ws.serializeAttachment({...a, hello: true});
     const hash = await sha256(raw);
-    // (an await above: the room may have changed meanwhile; everything below up to the next await is one step)
+    // (after each await the socket may have gone and the room changed: both are read again; everything below up to
+    // the next await is one step)
+    if (ws.deserializeAttachment()?.gone) return;
     if (m.create) {
       if (this.row()) return this.refuse(ws, 'exists');
-      if (!(await this.mayCreate(a.ip, now))) return this.refuse(ws, 'limit');
+      let may = false;
+      try { may = await this.mayCreate(a.ip, now) } catch (e) {}
       if (ws.deserializeAttachment()?.gone) return;
+      if (!may) return this.refuse(ws, 'limit');
       if (this.row()) return this.refuse(ws, 'exists');   // another create won while this one asked
       const sql = this.ctx.storage.sql;
       sql.exec('CREATE TABLE IF NOT EXISTS room (admit BLOB NOT NULL, created INTEGER NOT NULL, id_floor INTEGER NOT NULL, empty_since INTEGER)');
@@ -231,7 +238,7 @@ export class Room extends DurableObject {
   admit(ws, a, now, creator) {
     const id = this.nextId++, others = this.members(ws);
     this.joined.push(now);
-    ws.serializeAttachment({...a, id, host: creator, lb: 0});
+    ws.serializeAttachment({...ws.deserializeAttachment(), id, host: creator, lb: 0, hello: false});
     const host = others.find(([o]) => o.host);
     this.send(ws, {t: 'welcome', id, peers: others.map(([o]) => o.id), host: creator ? id : host ? host[0].id : null});
     this.tell({t: 'joined', id}, ws);

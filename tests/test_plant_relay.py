@@ -173,6 +173,28 @@ class Behaviour(Base):
         c.text({'t': 'hello', 'admit': twin.base64.urlsafe_b64encode(admit).decode().rstrip('='), 'create': create})
         return c
 
+    def test_messages_right_after_the_hello(self):
+        # a client that sends before its welcome arrived (a packet, a host claim) keeps its place: what it sent
+        # before it was admitted is dropped, never taken for a second hello
+        room, admit = rnd_room(), os.urandom(32)
+        h = self.client(room)
+        a = twin.base64.urlsafe_b64encode(admit).decode().rstrip('=')
+        h.text({'t': 'hello', 'admit': a, 'create': True})
+        h.packets(0, b'early')
+        h.text({'t': 'host'})
+        self.assertEqual(h.json(), {'t': 'welcome', 'id': 1, 'peers': [], 'host': 1})
+        j = self.client(room)
+        j.text({'t': 'hello', 'admit': a, 'create': False})
+        j.packets(1, b'early too')
+        self.assertEqual(j.json(), {'t': 'welcome', 'id': 2, 'peers': [1], 'host': 1})
+        self.assertEqual(h.json(), {'t': 'joined', 'id': 2})
+        j.packets(1, b'later')
+        while True:
+            who, ps = unframe(h.binary())
+            if ps == [b'later']:
+                self.assertEqual(who, 2)
+                break
+
     def test_no_such_session(self):
         self.refused(self._hello(rnd_room(), os.urandom(32), False), 'no such session')
 
@@ -268,6 +290,7 @@ class Behaviour(Base):
         for t in ts:
             t.join()
         self.assertEqual(sorted(m['t'] for m in out), ['error', 'welcome', 'welcome'], out)
+        self.assertIn({'t': 'error', 'why': 'full'}, out)
 
     def test_failed_hellos_per_room(self):
         room, admit, _ = self.session(1)
@@ -419,10 +442,7 @@ class Behaviour(Base):
                 break
         t0 = time.time()
         while True:
-            try:
-                m = b.json(10)
-            except (ConnectionResetError, OSError):
-                break
+            m = b.json(10)   # (a close before the `limit` error fails here)
             if m == {'t': 'error', 'why': 'limit'}:
                 self.assertClosed(b)
                 break
@@ -467,13 +487,20 @@ class Behaviour(Base):
             self.assertEqual(unframe(b.binary()), (1, [b'x']))
             a.text(b'{"t":"ping"}')   # (pings alone don't count)
             time.sleep(0.3)
-        # then silence: closed, and the room is gone
-        for c in (a, b):
-            while True:
-                m = c.json(MAIN['idle'] / 1000 + 6)
-                if m != {'t': 'pong'}:
-                    break
-            self.assertEqual(m, {'t': 'error', 'why': 'idle'})
+        # then no binary message, only pings: closed, and the room is gone
+        t1, m = time.time(), None
+        while m is None and time.time() - t1 < MAIN['idle'] / 1000 + 6:
+            a.text(b'{"t":"ping"}')
+            try:
+                while True:
+                    m = a.json(0.5)
+                    if m != {'t': 'pong'}:
+                        break
+                    m = None
+            except TimeoutError:
+                m = None
+        self.assertEqual(m, {'t': 'error', 'why': 'idle'})
+        self.assertEqual(b.json(5), {'t': 'error', 'why': 'idle'})
         self.refused(self._hello(room, admit, False), 'no such session')
         # and the code's room can be made again
         self.assertEqual(self.client(room).hello(admit, True)['id'], 1)
@@ -560,9 +587,14 @@ class Deploy(unittest.TestCase):
 
     def test_plans(self):
         self.assertEqual(self.d.paid_plans([]), [])
-        self.assertEqual(self.d.paid_plans([{'rate_plan': {'id': 'workers_free'}}, {'rate_plan': {'id': 'pro'}}]), [])
-        self.assertEqual(self.d.paid_plans([{'rate_plan': {'id': 'workers_paid'}, 'scope': 'account'}]), ['workers_paid'])
-        self.assertEqual(self.d.paid_plans([{'rate_plan': {'id': 'WORKERS_BUNDLED'}}]), ['WORKERS_BUNDLED'])
+        self.assertEqual(self.d.paid_plans([{'rate_plan': {'id': 'free'}, 'price': 0}]), [])
+        self.assertEqual(self.d.paid_plans([{'rate_plan': {'id': 'workers_free'}, 'price': 0.0}]), [])
+        for paid in [{'rate_plan': {'id': 'workers_paid'}, 'scope': 'account', 'price': 5},
+                     {'rate_plan': {'id': 'workers_paid'}, 'price': 0},
+                     {'rate_plan': {'id': 'pro'}, 'price': 25},
+                     {'rate_plan': {'id': 'something_new'}},          # no price: not understood
+                     {'rate_plan': {'id': 'x'}, 'price': '0'}, 'junk']:
+            self.assertEqual(len(self.d.paid_plans([paid])), 1, paid)
 
     def check(self, answer):
         from unittest import mock
@@ -577,10 +609,11 @@ class Deploy(unittest.TestCase):
 
     def test_fails_closed(self):
         for answer in [OSError('no network'), {'success': False, 'errors': [{'code': 10000}], 'result': None},
-                       {'success': True, 'result': None}, {'success': True, 'result': [{'rate_plan': {'id': 'workers_paid'}}]}]:
+                       {'success': True, 'result': None}, {'success': True, 'result': [{'rate_plan': {'id': 'workers_paid'}, 'price': 5}]},
+                       {'success': True, 'result': [{'rate_plan': {'id': 'unknown'}}]}]:
             with self.assertRaises(SystemExit, msg=answer):
                 self.check(answer)
-        self.check({'success': True, 'result': [{'rate_plan': {'id': 'workers_free'}}]})
+        self.check({'success': True, 'result': [{'rate_plan': {'id': 'free'}, 'price': 0}]})
         self.check({'success': True, 'result': []})
 
     def test_config_has_no_vars(self):

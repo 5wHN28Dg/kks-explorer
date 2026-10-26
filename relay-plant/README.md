@@ -27,6 +27,8 @@ app's session harness.
     - `exists`, `no such session`, `bad admit`, `full`, `limit`;
     - `bad hello` (not the hello above);
     - `no hello` (none within 10 s).
+- A client waits for its `welcome` before sending anything else: what arrives while its hello is being checked is
+  dropped.
 - Members hear `{"t":"joined","id"}`, `{"t":"left","id"}` and `{"t":"host","id"}`. A member's text `{"t":"host"}`
   makes it the host, for routing only (the relay can't check the claim).
 - Binary messages, at most 64 KiB, are framed like this:
@@ -63,9 +65,10 @@ starts its counters again.
 
 ## Deploy
 
-**Free plan only:** a paid account would be billed past the free allowance. `deploy.py` checks the account's
-subscriptions through Cloudflare's API and stops unless it can confirm the account has no paid Workers plan. If the
-subscriptions can't be read, it deploys nothing.
+**Free plan only:** a paid account would be billed past the free allowance. `deploy.py` reads the account's
+subscriptions through Cloudflare's API. It stops if any of them could be billed: a price other than 0, a Workers plan
+other than the free one, or anything it doesn't understand. Workers Paid is an account subscription, so a Free
+account has none of these. If the subscriptions can't be read, it deploys nothing.
 
 You need:
 - Node.js 22 or newer;

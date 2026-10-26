@@ -30,11 +30,17 @@ def wrangler(*args, capture=True):
 
 
 def paid_plans(subscriptions):
-    """The Workers subscriptions in an account's list that are not the free plan."""
+    """The subscriptions in an account's list that could be billed: any with a price that is not a number 0, and any
+    Workers plan other than the free one. The Workers Paid plan is an account subscription ($5 a month), so an account
+    on Workers Free has none of these; anything not understood counts as paid (the check fails closed)."""
     out = []
     for s in subscriptions:
-        rp = (s.get('rate_plan') or {}).get('id') or ''
-        if 'worker' in rp.lower() and rp.lower() not in ('workers_free', 'free'):
+        if not isinstance(s, dict):
+            out.append(repr(s)[:40]); continue
+        rp = str((s.get('rate_plan') or {}).get('id') or '?')
+        price = s.get('price')
+        if isinstance(price, bool) or not isinstance(price, (int, float)) or price != 0 or \
+                ('worker' in rp.lower() and rp.lower() not in ('workers_free', 'free')):
             out.append(rp)
     return out
 

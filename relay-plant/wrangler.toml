@@ -1,5 +1,5 @@
-# Walkdown Plant's multiplayer relay (docs/plant3d/MULTIPLAYER.md §9.1). Deploy with deploy.sh (README.md), which
-# checks the account is on the Workers Free plan first. No [vars] here: deploy.sh refuses a config that sets any.
+# Walkdown Plant's multiplayer relay (docs/plant3d/MULTIPLAYER.md §9.1). Deploy with deploy.py (README.md), which
+# checks the account is on the Workers Free plan first. No [vars] here: deploy.py refuses a config that sets any.
 name = "walkdown-plant-relay"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
