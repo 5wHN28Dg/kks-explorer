@@ -22,13 +22,21 @@ class Shards(unittest.TestCase):
     def test_every_test_runs_once(self):
         tests = shards.discover()
         names = {shards.name_of(t) for t in tests}
-        for cls, k in shards.HEAVY.items():
-            self.assertIn(cls, names, f'{cls} (shard {k}) is not a test class any more: update tests/shards.py')
+        ids = [t.id() for t in tests]
+        self.assertEqual(len(ids), len(set(ids)))
+        for key, k in shards.HEAVY.items():
+            self.assertTrue(key in ids or key in names,
+                            f'{key} (shard {k}) is not a test or a test class any more: update tests/shards.py')
             self.assertTrue(0 < k < shards.SHARDS)
         per = [sum(1 for t in tests if shards.shard_of(t) == k) for k in range(shards.SHARDS)]
         self.assertEqual(sum(per), len(tests))
         self.assertTrue(all(per), per)
         self.assertIn('test_shards.Shards', names)
+        # a test named by its id goes to its own shard, not its class's
+        day = next((t for t in tests if t.id() == 'test_plant3d.Vectors2.test_frozen_day'), None)
+        self.assertIsNotNone(day, 'no test_plant3d.Vectors2.test_frozen_day: update tests/shards.py')
+        self.assertEqual(shards.shard_of(day), shards.HEAVY.get('test_plant3d.Vectors2.test_frozen_day'),
+                         'test_frozen_day is not named by its id in HEAVY: update this check')
 
     def test_every_content_test_runs_once(self):
         tests = shards.discover_content()
