@@ -4,9 +4,17 @@
 ## docs/PLANT3D.md §18.1), some standing at work beside it, all kept within AHEAD m ahead of the walker and BEHIND m
 ## behind (one who falls out of that comes back in at its other end). No path search at run time: positions are
 ## points along the route's polyline. The same people every run (a fixed seed).
+## The lanes keep within the room the content build measured beside the route (builder/staff_paths.gd, LANES: a 0.3 m
+## capsule clear of all but doors, on the same floor, on the walkable mesh; builder/lane_room.gd), turning smoothly
+## through its corners (app/lanes.gd); on a route the build did not measure, everyone walks on the route itself.
 extends Node
 
 const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+const Lanes = preload("res://app/lanes.gd")
+const KeepApart = preload("res://app/keep_apart.gd")
+
+const LANES := "res://built/crowd_lanes.bin"
+const LANES_FORMAT := "walkdown-plant-crowd-lanes-1"
 
 const AHEAD := 22.0
 const BEHIND := 18.0
@@ -21,6 +29,7 @@ var length := 0.0
 var s_walker := 0.0
 var crowd: Array = []    # per person: {s, dir, speed, lane, work, anim}
 var loop := false        # the route ends where it starts (the frames and camp walks): people go round it
+var line                 # app/lanes.gd: the route, its corners and the room beside it
 var _lost := 0.0
 ## Whether a place is on a road or outside the process areas (main.gd's area test): there people carry their hats
 ## (PLANT3D.md §18.2 as built). Checked twice a second.
@@ -32,15 +41,13 @@ var _road_t := 1.0         # squared distance from the walker to the route at it
 func setup(route: Array, w: Node3D, people, count: int) -> void:
 	walker = w
 	people_node = people
-	for st in route:
-		if st.has("to"):
-			if pts.size() == 0 or (pts[pts.size() - 1] as Vector3).distance_to(st.to) > 0.01:
-				pts.append(st.to)
-	cum.append(0.0)
-	for i in range(1, pts.size()):
-		cum.append(cum[i - 1] + pts[i - 1].distance_to(pts[i]))
-	length = cum[cum.size() - 1]
-	loop = pts.size() > 2 and pts[0].distance_to(pts[pts.size() - 1]) < 1.0
+	pts = route_points(route)
+	if pts.size() < 2:
+		return
+	loop = looped(pts)
+	line = Lanes.make(pts, room_of(pts), loop)
+	cum = line.cum
+	length = line.length
 	# placed before the first frame is drawn, and moved before the people node places them in each frame
 	process_priority = -1
 	var rng := RandomNumberGenerator.new()
@@ -90,24 +97,62 @@ func _each_frame(delta: float) -> void:
 		# on a loop round it; on an open route kept within its ends (no one drawn at the far end)
 		var s: float = fposmod(c.s, length) if loop else clampf(c.s, 0.0, length)
 		var k := _segment(s)
-		var a: Vector3 = pts[k]
-		var b: Vector3 = pts[k + 1]
-		var f := (s - cum[k]) / maxf(1e-4, cum[k + 1] - cum[k])
-		var dir := (b - a)
+		var dir: Vector3 = pts[k + 1] - pts[k]
 		var flat := Vector3(dir.x, 0, dir.z)
-		var fwd := flat.normalized() if flat.length() > 1e-3 else Vector3.FORWARD
-		if not c.work:
-			fwd *= c.dir
-		var right := fwd.cross(Vector3.UP).normalized()
+		var sg: float = c.dir if not c.work else 1.0
+		var fwd: Vector3 = line.forward(s) * sg       # (turning through the corners)
+		var right := fwd.cross(Vector3.UP)
 		var p: Dictionary = people_node.people[i]
+		var r: Vector2 = KeepApart.lane_room(line, s, sg)
 		var lane: float = c.lane if not c.work else 0.8
-		p.at = a.lerp(b, f) + right * lane
+		lane = clampf(lane, r.x, r.y) if r.x <= r.y else (r.x + r.y) * 0.5
+		p.at = line.at(s, sg * lane)
 		var face := fwd if not c.work else -right   # workers face the route
 		p.yaw = atan2(-face.x, -face.z)
 		p.speed = 0.0 if c.work else c.speed
 		p.on = "stairs" if absf(dir.y) > 0.3 * maxf(0.01, flat.length()) else ""
 		if check_road:
 			p.hat = not road_at.call(p.at)
+
+
+## A route's points as the crowd walks them (and the build measures their lanes): its steps' `to`, without repeats.
+static func route_points(route: Array) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for st in route:
+		if st.has("to"):
+			if out.size() == 0 or (out[out.size() - 1] as Vector3).distance_to(st.to) > 0.01:
+				out.append(st.to)
+	return out
+
+
+## Whether a route ends where it starts (people go round it).
+static func looped(p: PackedVector3Array) -> bool:
+	return p.size() > 2 and p[0].distance_to(p[p.size() - 1]) < 1.0
+
+
+## The room the build measured beside the route `p` (LANES), or none: a route the build did not measure (another
+## walk), or the build's of other points.
+static func room_of(p: PackedVector3Array, file: String = LANES) -> PackedByteArray:
+	if not FileAccess.file_exists(file):
+		return PackedByteArray()
+	var f := FileAccess.open(file, FileAccess.READ)
+	var d = f.get_var() if f != null else null
+	if typeof(d) != TYPE_DICTIONARY or d.get("format", "") != LANES_FORMAT or typeof(d.get("routes")) != TYPE_ARRAY:
+		return PackedByteArray()
+	for r in d.routes:
+		if typeof(r) != TYPE_ARRAY or r.size() != 2 or not (r[0] is PackedVector3Array) or not (r[1] is PackedByteArray):
+			continue
+		var q: PackedVector3Array = r[0]
+		if q.size() != p.size():
+			continue
+		var same := true
+		for i in q.size():
+			if q[i].distance_to(p[i]) > 0.01:
+				same = false
+				break
+		if same:
+			return r[1]
+	return PackedByteArray()
 
 
 func _segment(s: float) -> int:

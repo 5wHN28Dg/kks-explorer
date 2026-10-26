@@ -15,6 +15,7 @@
 extends Node3D
 
 const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+const PeopleDoors = preload("res://app/people_doors.gd")
 
 const INFO := "res://built/people/people.json"
 ## docs/PLANT3D.md §18.3's `anim` values to the clips (builder/people/rig.gd); a value not here plays `idle`.
@@ -40,6 +41,7 @@ var camera: Camera3D
 var avatars: Array = []         # the pool: {node, body, anim, person, look, lod, clip, acc}
 var posed := {}                 # look -> pose -> MultiMeshInstance3D
 var _assign_t := 1.0
+var doors = PeopleDoors.new(0.5 / PeopleDoors.HZ)   # the doors open for them (app/people_doors.gd), between _assign's
 var _clock := 0.0
 var _scene: PackedScene
 var _meshes := {}               # path -> Mesh
@@ -123,6 +125,8 @@ func _process(delta: float) -> void:
 
 
 func _each_frame(delta: float) -> void:
+	if is_inside_tree():
+		doors.tick(get_tree(), people, delta)
 	if camera == null or cfg.is_empty():
 		return
 	var t0 := Time.get_ticks_usec()

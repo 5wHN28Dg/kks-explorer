@@ -12,6 +12,7 @@ const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goe
 
 const Plant = preload("res://app/plant.gd")
 const StaffWays = preload("res://app/staff_ways.gd")
+const KeepApart = preload("res://app/keep_apart.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const MAP_LAYER := 2
 const COLOURS := {"shift_sup": Color(0.95, 0.95, 0.95), "ccr_op": Color(0.25, 0.55, 1.0),
@@ -41,6 +42,17 @@ var _anim_of := PackedStringArray()     # person -> what they are seen doing whe
 const STEP_ANIM := {"read": "inspect", "meet": "talk", "say": "radio", "call": "radio", "wait": "idle", "ack": "type",
 	"permit": "write", "lock": "wrench", "unlock": "wrench"}
 const SEATED := ["desk", "seat", "table"]
+const TURN := 5.0               # radians a second of plant time a person turns at most
+const TURN_EASE := 10.0         # and, nearing the heading, a tenth of what is left in a tenth of a second
+var apart := KeepApart.new()    # where people are drawn: lanes, keeping apart (app/keep_apart.gd)
+var _who := PackedInt32Array()  # per one given to `apart`: the person
+var _on := PackedStringArray()
+var _place := PackedInt32Array()
+var _line := PackedByteArray()  # 1: on a built line (else walked straight, or standing)
+var _d := PackedVector3Array()  # the straight way's heading, where walked straight
+var drawn := PackedInt32Array()     # per avatar person drive() gave: the person (the tests)
+var drawn_kind := PackedByteArray() # and how app/keep_apart.gd took them (WALKING, STANDING, FIXED)
+var drawn_fresh := PackedByteArray()  # and whether they were new or jumped this frame (their heading set, not turned)
 const ON_NAMES := ["", "stairs", "ladder"]   # app/staff_ways.gd's ON_… to app/people.gd's `on`
 
 
@@ -178,42 +190,102 @@ func drive(delta: float) -> void:
 		_step_n = e.step_no
 		_anim_of.resize(sm.people.size())
 		_anim_of.fill("?")
-	var n := 0
+	var dt: float = delta * ui.clock.rate()       # plant time (paused: nobody moves or turns)
+	# everyone on screen to `apart`, then where it draws them
+	apart.begin()
+	_who.resize(0)
+	_on.resize(0)
+	_place.resize(0)
+	_line.resize(0)
+	_d.resize(0)
+	for w in get_tree().get_nodes_in_group("walkers"):   # the trainee and the other players: kept clear of
+		if w is Node3D:
+			apart.fixed(-1, (w as Node3D).global_position)
+			_who.append(-1)
+			_on.append("")
+			_place.append(-1)
+			_line.append(0)
+			_d.append(Vector3.ZERO)
 	var me: int = ui.my_person()          # (the trainee's own person is the walker)
 	for pi in sm.people.size():
 		if pi == me:
 			continue
-		var at := Vector3.INF
-		var speed := 0.0
-		var on := ""
 		var leg: Array = e.sp_leg[pi]
 		var place := -1
+		var on := ""
+		var on_line := 0
+		var d := Vector3.ZERO
 		if not leg.is_empty():
 			var steps: float = maxf(1.0, float(leg[3] - leg[2]))
 			var k := clampf((float(e.step_no - leg[2]) + frac) / steps, 0.0, 1.0)
-			var d: Vector3
 			if ways != null and ways.walk(mini(leg[0], leg[1]) * _at.size() + maxi(leg[0], leg[1]), leg[0], k,
 					steps * SimClock.STEP):
-				at = ways.pos
-				d = ways.dir
-				speed = ways.speed if k < 1.0 else 0.0
+				apart.walker(pi, ways.line, ways.s, ways.sgn, ways.speed if k < 1.0 else 0.0)
 				on = ON_NAMES[ways.on]
+				on_line = 1
 			else:
 				var a: Vector3 = _at[leg[0]]
 				var b: Vector3 = _at[leg[1]]
-				at = a.lerp(b, k)
 				d = b - a
-				speed = a.distance_to(b) / (steps * SimClock.STEP) if k < 1.0 else 0.0
+				# walked straight (no line built): not moved aside, others keep clear
+				apart.fixed(pi, a.lerp(b, k))
 				if absf(d.y) > 0.3 * maxf(0.01, Vector2(d.x, d.z).length()):
 					on = "stairs"
-			var flat := Vector2(d.x, d.z)
-			if flat.length() > 0.05:
-				_yaw[pi] = atan2(-flat.x, -flat.y)
+				if k >= 1.0:
+					d = Vector3.ZERO
 		elif e.sp_pos[pi] != -1:
 			place = e.sp_pos[pi]
-			at = _at[place]
-		if at == Vector3.INF:
+			var pl: Dictionary = sm.places[place]
+			if sm.kind[place] in SEATED or sm.kind[place] == "bed" or pl.get("pose", "") in ["sit", "lie"]:
+				apart.fixed(pi, _at[place])      # seated or lying: not moved off the seat
+			else:
+				apart.stander(pi, _at[place], ways.place_room[place] if ways != null and place < ways.place_room.size() \
+						else PackedByteArray())
+		else:
 			continue
+		_who.append(pi)
+		_on.append(on)
+		_place.append(place)
+		_line.append(on_line)
+		_d.append(d)
+	apart.solve(dt)
+	var n := 0
+	drawn.resize(0)
+	drawn_kind.resize(0)
+	drawn_fresh.resize(0)
+	for i in apart.n:
+		var pi := _who[i]
+		if pi < 0:
+			continue
+		var at: Vector3 = apart.pos[i]
+		var speed := 0.0
+		var place := _place[i]
+		var target = null
+		if _line[i] == 1:
+			speed = apart.speed[i]
+			var f: Vector3 = apart.fwd[i]
+			if f.length() > 0.05:
+				target = atan2(-f.x, -f.z)
+		elif place == -1:
+			var d := _d[i]
+			var leg: Array = e.sp_leg[pi]
+			var steps: float = maxf(1.0, float(leg[3] - leg[2]))
+			var k := clampf((float(e.step_no - leg[2]) + frac) / steps, 0.0, 1.0)
+			speed = d.length() / (steps * SimClock.STEP) if k < 1.0 else 0.0
+			if Vector2(d.x, d.z).length() > 0.05:
+				target = atan2(-d.x, -d.z)
+		elif sm.places[place].has("yaw"):
+			target = -deg_to_rad(float(sm.places[place]["yaw"]))   # (plant: degrees clockwise from north)
+		var cur = _yaw.get(pi)
+		if cur == null and target == null:
+			_yaw[pi] = 0.0          # (facing north until they have somewhere to face: from there they turn)
+		if target != null:
+			if cur == null or apart.fresh[i] == 1:
+				cur = target
+			else:
+				var left := angle_difference(cur, target)
+				cur = wrapf(cur + clampf(left * minf(1.0, TURN_EASE * dt), -TURN * dt, TURN * dt), -PI, PI)
+			_yaw[pi] = cur
 		if n >= out.size():
 			out.append({})
 		var p: Dictionary = out[n]
@@ -221,12 +293,14 @@ func drive(delta: float) -> void:
 		p.at = at
 		p.yaw = _yaw.get(pi, 0.0)
 		p.speed = speed
-		p.on = on
+		p.on = _on[i]
 		if _look0 == null:
 			_look0 = avatars.info.looks.keys()[0]
 		p.look = avatars.info.roles.get(role, _look0)
 		if speed > 0.0:
 			p.anim = ""
+		elif _line[i] == 1 and apart.speed_in[i] > 0.0:
+			p.anim = "idle"                 # held back on the way (app/keep_apart.gd): standing, then catching up
 		else:
 			if _anim_of[pi] == "?":         # (once a step: the place is the same through it)
 				_anim_of[pi] = _anim(e, sm, pi, place)
@@ -241,6 +315,9 @@ func drive(delta: float) -> void:
 				# seen)
 				_hat[pi] = hat_on(e, sm, pi)
 		p.hat = _hat[pi]
+		drawn.append(pi)
+		drawn_kind.append(apart.kind[i])
+		drawn_fresh.append(apart.fresh[i])
 		n += 1
 	out.resize(n)
 
