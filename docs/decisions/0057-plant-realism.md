@@ -349,7 +349,9 @@ rule here is unchanged (≥ 95 % at ≥ 30 fps, peak PSS, first start, the 1.2×
 What the sun's shadow pass draws for nothing is gone, and the picture stays the same. 0066 records an earlier, broader
 attempt ("what stands inside buildings casts no shadow"), which was taken out because it gained nothing within one
 walk's spread. This one is narrower and was measured in GPU cycles. A frame's GPU cycles are its GPU time times the
-Mali clock in effect, so they don't move with DVFS or heat. `tools/plant3d/bench/gpu_cycles.py` computes them, and
+Mali clock in effect. They move much less with DVFS and heat than milliseconds do, but not at all only for work bound by
+the GPU's core: time spent waiting on memory doesn't shrink with a faster clock, so a slower clock counts fewer cycles.
+`tools/plant3d/bench/gpu_cycles.py` computes them, and
 `shadow_ab=` with `shadow_ab.py` switches groups of casters in turn within one walk.
 
 - **Where the cost was** (Note 9, `frames` walk, `shadow_ab=`, about 11 M cycles a frame with everything on):
@@ -383,14 +385,32 @@ walks with `probe=1` and `SAMPLE=1`; "stress" means `scenario=shift_cold`, fast,
 | `crews=1` | 10.17 (12.6) → 9.02 (11.7) | 23.7 → 24.4 | 98.1 → 97.7 % | 0 → 0 |
 | `frames` | 10.30 (12.9) → 8.85 (10.1) | 21.4 → 26.4 | 99.2 → 96.8 % | 1 → 0 |
 
-- **The GPU's work per frame fell by 9–14 %** in every walk.
+- **The GPU's work per frame fell, by about 4–5 %.** The table's 9–14 % is inflated by the clocks. This change's
+  walks ran at 335–424 MHz and main's at 442–483 MHz, and the walks' cycle counts fall with the clock.
+  - The saving grew with the clock gap: 14 % at −148 MHz, 9.6 % at −26 MHz.
+  - Aligning the two `frames` walks in 20 s bins and extrapolating to equal clocks gives about 4 % (adversarial review).
+  - The A/B bounds it too. The groups this change touches cost 0.40 M (kerbs, terrain and wall) and 0.18 M (lamps,
+    steel, liners) when switched off entirely, and it removes only part of each: at most about 0.6 of 11 M cycles.
+  - The 0.18 M of the lamps (and the people's 0.17 M) is within the spread of the groups measured as costing nothing
+    (+0.02 to +0.18 M).
+  - A back-to-back pair from the same temperature, or with the GPU clock pinned, would settle the size. Not done:
+    the phone was shared.
 - **Milliseconds and frame rates don't compare here.** Three of this change's walks started 3.4–3.6 °C warmer than
   main's, because the phone was shared that night. The Mali clock then ran at 335–376 MHz instead of 442–483 MHz.
   - The one walk that started as cool as main's (stress, 29.9 °C, 424 MHz) had a mean GPU time of 24.2 ms (main
     24.8 and 25.2 ms) and 96.2 % of frames at 30 fps or better (main 94.9 and 93.5 %). It still had one frame over
     100 ms that the app caused (102.0 ms).
   - The stress walks of both builds have such frames: main's earlier ones in 0066, and its `frames` walk here.
-- **The look:** the phone's 20 views (`phone/shots.sh`, baked) and the laptop's 22 views (unbaked, taken on the first split, which is the same
-  geometry) are identical
-  between main and this change. The only phone pixels that differ are the clock on the HUD, and three laptop hall
-  views differ by run-to-run noise.
+- **First start:** this change's walks reached the first frame in 12.4–16.4 s (main 11.3–11.9 s) and loaded in
+  1.71–2.31 s (main 1.55–1.61 s). The cool walk was also 4–10 % slower. The warm phone explains most of it, but there
+  are 81 more meshes to load. Not settled.
+- **The look:** no difference to see. Phone, 20 views (`phone/shots.sh`, baked), compared with the HUD's clock masked:
+  - every view differs slightly, a mean of 0.035–0.31 of 255;
+  - 11 views have speckles along the edges of pipes, beams and floors differing by more than 8, up to 1,473 pixels
+    of 2.4 M (gt_mid). gt_door has 139 pixels over 32;
+  - the likely cause is the new bake (1,112 → 1,193 baked meshes). No main-against-main phone repeat was taken to
+    prove it is noise;
+  - the kerb and boundary wall views, including one at a square's edge, differ by at most 16: no seam.
+
+  Laptop, 22 views (unbaked, taken on the first split, which has the same geometry): within the run-to-run noise of
+  main against main.

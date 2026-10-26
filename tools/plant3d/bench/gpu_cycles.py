@@ -3,8 +3,9 @@
   gpu_cycles.py RESULTS_DIR...
 Each RESULTS_DIR is a phone/frames.sh walk with probe=1 and SAMPLE=1 (frames.csv, samp.txt, clock.txt). A frame's GPU
 work is its GPU time (Godot's own, frames.csv) times the Mali clock of the 200 ms sample it began in (samp.txt), as in
-shadow_ab.py: cycles, which the phone's DVFS and its thermal limit (the clock falls from 455 to 338 MHz as it warms)
-do not move, where GPU milliseconds do. The first SKIP s of frames (the start) are left out. Per walk: the frames,
+shadow_ab.py: cycles, which move far less than GPU milliseconds with the phone's DVFS and its thermal limit (the clock
+falls from 455 to 338 MHz as it warms). Not at all only for work bound by the GPU's core: memory stalls don't shrink with
+the clock, so walks at a lower clock count fewer cycles. Compare walks at similar clocks (the mean clock is printed). The first SKIP s of frames (the start) are left out. Per walk: the frames,
 the mean, median and 95th percentile of M cycles a frame, the mean GPU time and the mean clock."""
 import argparse
 import bisect
