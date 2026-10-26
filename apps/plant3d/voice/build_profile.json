@@ -1,0 +1,9 @@
+{
+	"_note": "godot-cpp builds only the engine classes wdp_voice uses and those godot-cpp's own core includes (OS, Engine, SceneTree): smaller and faster to build",
+	"enabled_classes": [
+		"RefCounted",
+		"OS",
+		"Engine",
+		"SceneTree"
+	]
+}

@@ -13,3 +13,6 @@
 /kit/tex/
 # the behaviour engine's .uid files: Godot writes them; sim/ has its own owner, who keeps them out (as on main)
 /sim/*.uid
+
+# wdp_voice: its libraries and the .gdextension naming them, made by voice/build.sh (never committed)
+/voice/bin/
