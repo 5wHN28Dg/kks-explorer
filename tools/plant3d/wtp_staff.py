@@ -134,6 +134,7 @@ MESSAGES = {
     'demin_low': 'Demineralised water tank low at the train: more transfer please',
     'transfer_on': 'Transfer pumps running to the train\'s demineralised water tank',
     'prepared': 'Equipment out of service and safe for its isolation',
+    'mf_tripped': 'Mixed bed feed pump tripped on the degassed water tank\'s low level: checked locally',
 }
 
 
@@ -321,6 +322,12 @@ def tasks(models):
     task('answer_alarm_wtp', 'Answer the WTP alarm', [DESK, {'ack': '$'}] + CHEM_GEAR + [
         {'go': {'kks': '$'}}, {'work': [2, 4], 'anim': 'inspect'}, say('alarm_checked', 'shift_sup')], priority=2)
     reacts.append({'on': {'alarm': 2}, 'areas': WTP_AREAS, 'roles': ['wtp_op'], 'task': 'answer_alarm_wtp'})
+    # the mixed bed feed pumps' trips on the degassed water tank's low-low level have no alarm of their own: their
+    # trip is answered
+    for x in 'ab':
+        reacts.append({'on': {'trip': f'mf_{x}_trip_ll'}, 'roles': ['wtp_op'], 'task': 'mf_trip'})
+    task('mf_trip', 'A mixed bed feed pump tripped: check the degassed water tank', [
+        DESK, _go('00GCK10AP001'), {'work': [2, 4], 'anim': 'inspect'}, say('mf_tripped', 'shift_sup')], priority=1)
     # the train's call when its demineralised water tank runs low (WATER-TREATMENT §8): the control room asks the
     # WTP for more transfer; the WTP operator starts the transfer pumps that are not running
     task('demin_transfer', 'More demineralised water to the train', [
@@ -365,5 +372,8 @@ def gas_test(work):
     """A confined-space job's gas test (PLANT3D §15.2): the detector's reading at the vessel's manhole."""
     if work.startswith('wo_mb_'):
         code = f'00GCF1{1 if work[6] == "a" else 2}CQ003'
-        return [_go(code), {'read': code, 'expect': [19.5, 23.5], 'tol': 0.2, 'test': 'gas'}]
+        # (and nobody goes in unless the air is breathable: a failed test abandons the job, the permit left accepted
+        # for the supervisor and the HSE officer to see)
+        return [_go(code), {'read': code, 'expect': [19.5, 23.5], 'tol': 0.2, 'test': 'gas'},
+                wait(f'mb_{work[6]}_air_ok', 1)]
     return []

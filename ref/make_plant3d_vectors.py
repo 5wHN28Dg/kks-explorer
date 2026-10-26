@@ -1898,7 +1898,9 @@ REJECTS_STAFF += [
         'on': {'finding': TANK}, 'roles': ['ccr_op'], 'task': 'note_valve'})),
     ('a confined-space work whose task has no gas test', 'bad_ref', _set(WORK + [1, 'permit'], 'confined')),
     ('a hot work whose gas test comes after its first work step', 'bad_ref', _all(
-        _set(WORK + [1, 'permit'], 'hot'), _app(TASK(32) + ['steps'], {'read': GAUGE, 'test': 'gas'}))),
+        _set(WORK + [1, 'permit'], 'hot'), _app(TASK(32) + ['steps'], {'read': GAUGE, 'expect': [0, 10],
+                                                                        'test': 'gas'}))),
+    ('a gas test without its safe range', 'missing_key', _app(TASK(32) + ['steps'], {'read': GAUGE, 'test': 'gas'})),
 ]
 REJECTS_SAFETY = [
     ('a zone that needs no PPE', 'bad_length', _st(lambda st: st['zones'][0].__setitem__('ppe', []))),
@@ -2202,7 +2204,8 @@ def wtp_staff_mini():
                         'steps': [{'go': {'kks': '$'}}, {'work': 2}], 'priority': 2})
     T = {t['id']: t for t in st['tasks']}
     T['round']['steps'][1]['expect'] = [1, 2]
-    T['cal_gauge']['steps'] = [{'go': {'kks': GAUGE}}, {'read': GAUGE, 'tol': 0.1, 'test': 'gas'}, {'work': 5}]
+    T['cal_gauge']['steps'] = [{'go': {'kks': GAUGE}}, {'read': GAUGE, 'expect': [0, 10], 'tol': 0.1, 'test': 'gas'},
+                               {'work': 5}]
     return st
 
 

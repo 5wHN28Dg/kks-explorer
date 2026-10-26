@@ -233,9 +233,11 @@ func _day(e, sm, pi: int) -> void:
 	if sl.is_empty():
 		return
 	body.add_child(W.label("Your day:", 18, W.DIM))
+	var today: int = e.clock() / 864000
 	for s in sl.slice(0, 8):
 		var t: int = s[0] % 864000 / 10
-		body.add_child(W.label("%02d:%02d  %s" % [t / 3600, (t / 60) % 60, sm.tasks[s[4]]["title"]], 18))
+		var day: String = "" if s[0] / 864000 == today else "tomorrow "
+		body.add_child(W.label("%s%02d:%02d  %s" % [day, t / 3600, (t / 60) % 60, sm.tasks[s[4]]["title"]], 18))
 
 
 static func _num(x) -> String:

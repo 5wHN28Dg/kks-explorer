@@ -283,6 +283,7 @@ static func draw(e, pi: int) -> int:
 # ---------------------------------------------------------------- a run's start
 
 func init_run(e, scen: Dictionary) -> void:
+	_slots(e)               # (filled here, on the engine's own thread, never during a step: clones share them)
 	var x: Dictionary = scen["staff"]
 	var seed: int = x["seed"]
 	e._absent = {}

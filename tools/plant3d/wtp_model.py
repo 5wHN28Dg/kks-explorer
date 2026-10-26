@@ -256,6 +256,9 @@ def wtp():
         m.state(f'ro_{x}_orp_drift', 0, f'00GCB2{n}CQ002', 'mV')
         m.state(f'ro_{x}_cond_drift', 0, f'00GCB2{n}CQ001', 'µS/cm')
         m.const(f'mb_{x}_o2', 20.9, '% O₂')         # the air in the vessel, opened and ventilated for a work
+        m.cmp(f'mb_{x}_o2_lo', f'mb_{x}_o2', '>=', 19.5)    # breathable: 19.5–23.5 % oxygen
+        m.cmp(f'mb_{x}_o2_hi', f'mb_{x}_o2', '<=', 23.5)
+        m.AND(f'mb_{x}_air_ok', [f'mb_{x}_o2_lo', f'mb_{x}_o2_hi'])
     drive(m, 'dg', '00GCH10AN001', 1, True)
     # the CIP skid (W3): the tank's sequence writes its fill, drain and chemical; the heater is worked by hand
     for st_, kks in (('cip_fill', '00GCB30BB001'), ('cip_drain', '00GCB30BB001'), ('cip_chem', '00GCB30BB001'),

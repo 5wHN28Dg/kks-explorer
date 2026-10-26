@@ -613,6 +613,8 @@ class Staff:
                     num(s['expect'][1], f'{ws}.expect', s['expect'][0])
                 num(s.get('tol', 0), f'{ws}.tol', 0)
                 need(s.get('test', 'gas') == 'gas', 'bad_value', f'{ws}.test: gas')
+                need('test' not in s or 'expect' in s, 'missing_key', f'{ws}.expect: a gas test has its safe range '
+                                                                       f'(§17.12)')
             elif k == 'op':
                 keys(s, ('op',), ('else',), ws)
                 keys(x, ('kks', 'do', 'where'), ('value', 'trip'), f'{ws}.op')
