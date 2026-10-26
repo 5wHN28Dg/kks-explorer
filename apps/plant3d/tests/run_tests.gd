@@ -43,7 +43,7 @@ func _run() -> void:
 	files.sort()
 	var failed := 0
 	for s in some:
-		if not files.has(s + ".gd"):
+		if not files.has(s + ".gd") and (only == "" or s == only):
 			print("FAIL run_tests.gd: no test file %s.gd (--files)" % s)
 			failed += 1
 	# the runner's own check: a script error inside a test function must be seen (it returns [] after one)

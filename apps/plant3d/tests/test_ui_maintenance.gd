@@ -86,6 +86,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 	if not ui.crew.visible:
 		ui.open_crew()
 	if e.st_unacked > 0:
+		_fresh(ui)                      # (rebuilt every round before: an alarm seen without waiting for the panel's own refresh)
 		var seen := App.find_button(ui.crew, "Seen")
 		if seen:
 			seen.pressed.emit()

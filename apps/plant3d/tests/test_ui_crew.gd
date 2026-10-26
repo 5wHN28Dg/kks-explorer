@@ -45,6 +45,7 @@ func _play(ui, readings: Dictionary) -> bool:
 	var sm = e._sm
 	var pi: int = e.st_trainee
 	if e.st_unacked > 0:
+		_fresh(ui)                      # (rebuilt every round before: an alarm seen without waiting for the panel's own refresh)
 		var seen := App.find_button(ui.crew, "Seen")
 		if seen:
 			seen.pressed.emit()
