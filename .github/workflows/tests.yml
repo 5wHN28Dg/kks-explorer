@@ -248,7 +248,8 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/pip install -q -r requirements-dev.txt
-          .venv/bin/playwright install --with-deps ${{ matrix.engine }}
+          .github/scripts/playwright-deps.sh ${{ matrix.engine }}
+          .venv/bin/playwright install ${{ matrix.engine }}
       - name: The browser client on v2 plant data (test_web_v2)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
         run: .venv/bin/python platform/linux/e2e/test_web_v2.py -v -k ${{ matrix.engine }}

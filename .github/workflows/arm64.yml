@@ -104,7 +104,7 @@ jobs:
           echo "$HOME/nim/bin" >> "$GITHUB_PATH"
       - name: The Nim core's tests on ARM64
         run: |
-          sudo apt-get update -q && sudo apt-get install -yq libgnutls28-dev zlib1g-dev >/dev/null
+          .github/scripts/apt-install.sh libgnutls28-dev zlib1g-dev
           cd core && nim test
 
   flatpak-arm64:

@@ -1,5 +1,5 @@
 #!/bin/bash
-# apt-get install for the CI jobs (tests.yml), every phase bounded in time.
+# apt-get install for the CI jobs (every workflow), every phase bounded in time.
 #
 # Why (2026-10-26): the gnome-e2e job ran into its 40-minute limit three times in one morning, on main and on a PR,
 # each time silent inside `apt-get install ... >/dev/null` right after `apt-get update` had finished; in python
@@ -16,7 +16,7 @@
 #   .github/scripts/apt-install.sh PACKAGE...
 # The limits can be set for the test (tests/test_apt_install.py): APT_TRIES, APT_UPDATE_SECS, APT_DOWNLOAD_SECS,
 # APT_INSTALL_SECS. The defaults add up to at most 26 minutes, inside the shortest job limit (30).
-# Not covered: `playwright install --with-deps` in the web jobs runs apt itself.
+# Playwright's browser packages come through here too (playwright-deps.sh), not `playwright install --with-deps`.
 set -euo pipefail
 [ $# -gt 0 ] || { echo "usage: $0 PACKAGE..." >&2; exit 2; }
 TRIES=${APT_TRIES:-3}
