@@ -459,7 +459,7 @@ class GdscriptEngineEdges(unittest.TestCase):
             self.assertIn(f'PROGRAM straight-line={len(E["steps"])} interpreter=0', r.stdout)
             with open(dig, encoding='utf-8') as f:
                 got = json.load(f)
-        for run, (start, chunks, _, _) in steps_runs(V['valid'][0]['files'], E['steps']).items():
+        for run, (start, chunks, *_) in steps_runs(V['valid'][0]['files'], E['steps']).items():
             self.assertEqual(got[run]['chunks'], chunks, run)
 
 
@@ -499,7 +499,7 @@ class GdscriptEngineInterpreter(unittest.TestCase):
                 self.assertIn(f'PROGRAM straight-line=0 interpreter={len(vec["steps"])}', r.stdout)
                 with open(dig, encoding='utf-8') as f:
                     got = json.load(f)
-                for run, (start, chunks, _, _) in steps_runs(V['valid'][0]['files'], vec['steps']).items():
+                for run, (start, chunks, *_) in steps_runs(V['valid'][0]['files'], vec['steps']).items():
                     self.assertEqual(got[run]['chunks'], chunks, f'{name} {run}')
             # format 2's unit runs (permits, isolations, the hold node), without its runs of the first train's content
             # (train, water plant, the staff's day: they need the content's model, which --only=v2 doesn't load) nor
@@ -519,7 +519,7 @@ class GdscriptEngineInterpreter(unittest.TestCase):
             self.assertIn(f'PROGRAM straight-line=0 interpreter={len(V2["steps"])}', r.stdout)
             with open(dig, encoding='utf-8') as f:
                 got = json.load(f)
-            for run, (start, chunks, _, _) in steps_runs(V2['valid'][0]['files'], V2['steps'], prefix='v2/').items():
+            for run, (start, chunks, *_) in steps_runs(V2['valid'][0]['files'], V2['steps'], prefix='v2/').items():
                 self.assertEqual(got[run]['chunks'], chunks, run)
 
 
