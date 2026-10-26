@@ -35,7 +35,8 @@ class Shards(unittest.TestCase):
         # a test named by its id goes to its own shard, not its class's
         day = next((t for t in tests if t.id() == 'test_plant3d.Vectors2.test_frozen_day'), None)
         self.assertIsNotNone(day, 'no test_plant3d.Vectors2.test_frozen_day: update tests/shards.py')
-        self.assertEqual(shards.shard_of(day), shards.HEAVY['test_plant3d.Vectors2.test_frozen_day'])
+        self.assertEqual(shards.shard_of(day), shards.HEAVY.get('test_plant3d.Vectors2.test_frozen_day'),
+                         'test_frozen_day is not named by its id in HEAVY: update this check')
 
     def test_every_content_test_runs_once(self):
         tests = shards.discover_content()
