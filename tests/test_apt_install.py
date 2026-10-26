@@ -79,7 +79,8 @@ class AptInstall(unittest.TestCase):
     def test_tests_yml_installs_only_through_the_script(self):
         with open(os.path.join(WORKFLOWS, 'tests.yml'), encoding='utf-8') as f:
             text = f.read()
-        self.assertEqual(re.findall(r'apt-get[ \t]+(?:\S+[ \t]+)*?install', text), [])
+        text = text.replace('\\\n', ' ')   # a command continued over lines is one line
+        self.assertEqual(re.findall(r'\bapt(?:-get)?[ \t]+(?:\S+[ \t]+)*?install\b', text), [])
         self.assertGreaterEqual(text.count('.github/scripts/apt-install.sh '), 8)
 
 

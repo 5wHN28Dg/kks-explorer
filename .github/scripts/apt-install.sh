@@ -2,10 +2,11 @@
 # apt-get install for the CI jobs (tests.yml), every phase bounded in time.
 #
 # Why (2026-10-26): the gnome-e2e job ran into its 40-minute limit three times in one morning, on main and on a PR,
-# and python shard 0 into its 30 minutes once, each time inside `apt-get install` (silenced by >/dev/null)
-# right after `apt-get update` had finished: the runner's Ubuntu mirror stalled the download. The same installs
-# normally take 1 to 3 minutes; a slow mirror took up to 15. apt's own timeout (Acquire::http::Timeout) only ends a
-# connection that sends nothing at all, so a trickling one hung the job until it was cancelled.
+# each time silent inside `apt-get install ... >/dev/null` right after `apt-get update` had finished; in python
+# shard 0 the same silent install of ffmpeg took 21 minutes and the job then ran out of its 30. The same installs
+# normally take 1 to 3 minutes, and a slow one took 15. The output was hidden, so where it hung is not proven; the
+# varying times point to the runner's Ubuntu mirror stalling the download. apt's own timeout
+# (Acquire::http::Timeout) only ends a connection that sends nothing at all, so a trickling one held the job.
 #
 # So: the index update and the package download each run under `timeout` and are tried again (a download that is
 # tried again keeps the packages it has and resumes the partial one), and only then are the packages installed from
@@ -14,14 +15,16 @@
 #
 #   .github/scripts/apt-install.sh PACKAGE...
 # The limits can be set for the test (tests/test_apt_install.py): APT_TRIES, APT_UPDATE_SECS, APT_DOWNLOAD_SECS,
-# APT_INSTALL_SECS.
+# APT_INSTALL_SECS. The defaults add up to at most 26 minutes, inside the shortest job limit (30).
+# Not covered: `playwright install --with-deps` in the web jobs runs apt itself.
 set -euo pipefail
 [ $# -gt 0 ] || { echo "usage: $0 PACKAGE..." >&2; exit 2; }
 TRIES=${APT_TRIES:-3}
-UPDATE_SECS=${APT_UPDATE_SECS:-180}
-DOWNLOAD_SECS=${APT_DOWNLOAD_SECS:-300}
-INSTALL_SECS=${APT_INSTALL_SECS:-600}
-APT=(apt-get -q -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Dpkg::Use-Pty=0)
+UPDATE_SECS=${APT_UPDATE_SECS:-120}
+DOWNLOAD_SECS=${APT_DOWNLOAD_SECS:-240}
+INSTALL_SECS=${APT_INSTALL_SECS:-480}
+APT=(apt-get -q -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Dpkg::Use-Pty=0
+     -o DPkg::Lock::Timeout=60)
 
 # run "$@" as root under a time limit; TRIES attempts when $1 is "retry", one when it is "once"
 phase() {
