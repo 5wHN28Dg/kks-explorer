@@ -10,6 +10,9 @@ plays any role), permits to work and isolations that change the model, and the s
 treatment plant, camp). Its content plans: docs/plant3d/STAFF.md, WATER-TREATMENT.md, SITE.md; its milestones:
 docs/plant3d/MILESTONES.md; decisions 0062–0066. Format 1 content stays valid under format 2 (§14).
 
+**Multiplayer (DRAFT 2026-10-26):** docs/plant3d/MULTIPLAYER.md (deterministic lockstep of this engine, decisions
+0067–0069). It changes §17.4 (several trainees, one per player) with its own vectors in milestone MP1.
+
 The plant you walk through in Walkdown Plant is **data**, like a course: a *description* (where every piece of
 equipment, pipe and structure is), built from a **kit of parametric parts** (what each kind of thing looks like), made
 alive by a **behaviour model** (how values change when someone operates the plant), and used by **procedures and
