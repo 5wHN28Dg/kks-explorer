@@ -263,7 +263,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews and shot: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "shadow_ab"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot and shadow_ab: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
@@ -458,6 +458,12 @@ func _start_walk() -> void:
 		frame_probe = preload("res://app/frame_probe.gd").new()
 		frame_probe.main = self
 		add_child(frame_probe)
+		if opts.has("shadow_ab"):   # each group of shadow casters' GPU cost, switched in turn (app/shadow_ab.gd)
+			var ab := preload("res://app/shadow_ab.gd").new()
+			ab.name = "shadow_ab"
+			ab.setup(String(opts.shadow_ab), [plant, people])
+			add_child(ab)
+			frame_probe.counters["shadow_ab"] = func(): return ab.switches
 	if opts.walk == "screens":
 		ui.open_panel("screens")
 		screens_walk = true
