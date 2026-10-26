@@ -71,7 +71,7 @@ static func _press(pm, name: String) -> String:
 
 
 ## The Crew panel rebuilt from the engine as it is now, whatever its own signature says (the panel's buttons are
-## looked for in it). Only where the step needs the panel: rebuilt every round, it took ~75 % of this test's time.
+## looked for in it). Only where the step needs the panel: forced every round, it took ~75 % of this test's time.
 static func _fresh(ui) -> void:
 	ui.crew._sig = ""
 	ui.crew.refresh()
@@ -93,6 +93,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 	var cur = e.sp_cur[pi]
 	if cur == null:
 		return false
+	ui.crew.refresh()       # every state the panel passes through drawn, as the app does (its signature); forced below
 	var s: Dictionary = sm.tasks[cur["task"]]["steps"][cur["step"]]
 	if s.has("go") or s.has("meet"):
 		var dest = cur["st"].get("dest", cur["st"].get("place"))
