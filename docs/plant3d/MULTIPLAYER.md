@@ -347,7 +347,7 @@ host's device is the odd one out (a platform difference), and the session stops 
 report rather than demoting everyone; the players may start again with another host. The host keeps its digests for
 3 minutes of real time; a hash for a step older than that is ignored.
 
-**Known risk before any session:** the engine is bit for bit with the reference on glibc and bionic but not yet run on
+**Checked in MP1 (2026-10-26):** the Windows 11 VM ran every vector with Godot 4.7.2's Windows build: all passed, and every run's value digests and state digests were Linux's (`tools/plant3d/vectors_windows.sh`), so no stored factors are needed. The Note 9 ran the digest bench only (above); bionic's `exp` was checked on every vector run on 2026-10-16. **The risk as it was written:** the engine is bit for bit with the reference on glibc and bionic but not yet run on
 Windows, whose C library's `exp` makes a lag's factor (sim/README.md, CAPABILITIES.md §8). MP1 runs the vectors on
 Windows; if any digest differs, the build computes the factors on Linux and stores them in the compiled model, as the
 README already plans.
