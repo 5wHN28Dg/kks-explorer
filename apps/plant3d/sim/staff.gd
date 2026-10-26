@@ -289,8 +289,12 @@ func init_run(e, scen: Dictionary) -> void:
 	e._absent = {}
 	for a in x.get("absent", []):
 		e._absent[person_ix[a]] = true
-	e.st_trainee = person_ix[x["trainee"]] if x.get("trainee") != null else -1
-	e._fixed_trainee = e.st_trainee != -1
+	# the players (§17.13): the scenario's trainee is slot 0's (a session run's host's); a session's other slots and a
+	# single-player run without one play nobody at the start
+	e.st_players.fill(-1)
+	if x.get("trainee") != null:
+		e.st_players[0] = person_ix[x["trainee"]]
+	e._fixed_trainee = e.st_players[0] != -1
 	var n := people.size()
 	e.sp_on.resize(n)
 	e.sp_planned.resize(n)
@@ -460,8 +464,7 @@ func place_all(e, c: int, old: int) -> void:
 			e.sp_occ[pi] = place
 		if task != null:
 			give(e, pi, task, prio_of(task), null, null, null, null, false)
-	if e.st_trainee != -1:
-		e.st_t_at = e.sp_pos[e.st_trainee]
+	e.st_t_from.fill(-1)
 
 
 func first_place(e, tid: String) -> int:
@@ -534,8 +537,10 @@ func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count 
 	e.sp_wake[pi] = 0
 	if made_by != null:
 		e.st_given[made_by] = e.st_given.get(made_by, 0) + 1
-	if count and pi == e.st_trainee:
-		e.st_unacked += 1
+	if count:
+		var k: int = e.st_players.find(pi)
+		if k != -1:
+			e.st_acks[k] += 1
 	return true
 
 
@@ -656,28 +661,91 @@ func release(e, inst: Dictionary) -> void:
 			e.st_given.erase(src)
 
 
-# ---------------------------------------------------------------- step 1: the trainee's inputs (§17.6)
+# ---------------------------------------------------------------- step 1: the players' inputs (§17.6, §17.13)
 
-func t_input(e, item: Array) -> void:
+## A player's input in step 1: role, release, task_ack and jump handled here, the rest kept for step 9. slot is the
+## input's (0 in a single-player run).
+func t_input(e, item: Array, slot: int = 0) -> void:
 	var k: String = item[0]
+	var ses: bool = e.st_session
 	if k == "role":
 		var pid = item[1]
-		var ok: bool = e.step_no == 1 and not e._fixed_trainee and e.st_trainee == -1 \
-				and typeof(pid) == TYPE_STRING and person_ix.has(pid) and not e._absent.has(person_ix[pid]) \
+		var ok: bool = typeof(pid) == TYPE_STRING and person_ix.has(pid) and not e._absent.has(person_ix[pid]) \
 				and roles[people[person_ix[pid]]["role"]]["play"]
-		e._ev(["role", pid, "done" if ok else "refused"])
+		if ses:
+			# at any step: a person nobody plays, for a slot that plays nobody
+			ok = ok and e.st_players[slot] == -1 and not e.st_players.has(person_ix[pid])
+		else:
+			ok = ok and e.step_no == 1 and not e._fixed_trainee and e.st_players[0] == -1
+		e._ev(["role", pid, "done" if ok else "refused", slot] if ses else ["role", pid, "done" if ok else "refused"])
 		if ok:
-			e.st_trainee = person_ix[pid]
-			e.st_t_at = e.sp_pos[e.st_trainee]
+			claim(e, slot, person_ix[pid])
+		return
+	if k == "release":
+		var pi: int = e.st_players[slot]
+		e._ev(["release", people[pi]["id"] if pi != -1 else null, "done" if pi != -1 else "refused", slot])
+		if pi != -1:
+			let_go(e, slot)
 		return
 	if k == "task_ack":
-		e.st_unacked = 0
-		e._ev(["task_ack"])
+		e.st_acks[slot] = 0
+		e._ev(["task_ack", slot] if ses else ["task_ack"])
 		return
 	if k == "jump":
 		jump(e, item[1])
 		return
-	e.st_t_in.append(item)
+	e.st_t_in.append([slot, item])
+
+
+## A person becomes slot's (§17.13): an NPC's current task (not the idle task) paused as a pre-emption pauses it, to be
+## taken up again at their turn; one on a way is between places from now on (the place they left kept for a
+## release); their zones those their place or way gives them now; nothing counted or kept for the slot.
+func claim(e, slot: int, pi: int) -> void:
+	var zs := zones_of(e, pi)           # (as an NPC's, before they become the slot's)
+	e.st_t_from[slot] = -1
+	var leg: Array = e.sp_leg[pi]
+	if not leg.is_empty():
+		e.st_t_from[slot] = leg[0]
+		e.sp_leg[pi] = []
+		e.sp_pos[pi] = -1
+	var c = e.sp_cur[pi]
+	if c != null:
+		var x: Dictionary = c["st"]
+		# a work or a stay counted up to the step before, as the reference's (one by one) has it: an NPC asleep in it
+		# is counted when they wake (turn), and from now on the slot's person counts their own
+		if x.has("left") and x.has("last") and not x.get("resumed", false) and x["last"] < e.step_no - 1:
+			x["left"] -= e.step_no - 1 - x["last"]
+			x["last"] = e.step_no - 1
+		if x.has("place") and x["place"] == null:
+			x["place"] = -1             # (a player's step keeps "no place" as -1, an NPC's as null)
+		if not c["idle"]:
+			x.erase("busy")
+			pause(e, pi)
+	e.sp_result[pi] = null
+	e.sp_zin[pi] = zs
+	e.st_players[slot] = pi
+	e.st_acks[slot] = 0
+	e.st_kept[slot] = []
+
+
+## Slot's person becomes an NPC at once (§17.13): their current task (not the idle task) paused, to be taken up at
+## their next turn; one between places put back at the place they last left.
+func let_go(e, slot: int) -> void:
+	var pi: int = e.st_players[slot]
+	e.st_players[slot] = -1
+	var c = e.sp_cur[pi]
+	if c != null:
+		var x: Dictionary = c["st"]
+		if x.has("place") and typeof(x["place"]) == TYPE_INT and x["place"] == -1:
+			x["place"] = null
+		if not c["idle"]:
+			pause(e, pi)
+	if e.sp_pos[pi] == -1 and e.st_t_from[slot] != -1:
+		e.sp_pos[pi] = e.st_t_from[slot]
+	e.st_t_from[slot] = -1
+	e.st_acks[slot] = 0
+	e.st_kept[slot] = []
+	e.sp_wake[pi] = 0
 
 
 static func is_hhmm(x) -> bool:
@@ -697,7 +765,7 @@ func jump(e, to) -> void:
 	var t: int = (old / DAY) * DAY + hhmm(to) * MINUTE
 	while t <= old:
 		t += DAY
-	var ok: bool = e.st_trainee == -1 or e.st_unacked == 0
+	var ok: bool = e.unacked(-1) == 0
 	if ok and not e.ff_model():
 		ok = false
 	if ok:
@@ -739,39 +807,42 @@ func step(e) -> void:
 				e._ev(["task", people[pi]["id"], inst["task"], "skipped"])
 		place_all(e, nw, old)
 		jump_step = true
-	var tr: int = e.st_trainee
-	if tr != -1:
-		for item in tin:
-			if item[0] == "arrive" and typeof(item[1]) == TYPE_STRING and pix.has(item[1]):
-				e.st_t_at = pix[item[1]]
-				e.sp_pos[tr] = e.st_t_at
-				if e.sp_occ[tr] != e.st_t_at:
-					leave_place(e, tr)          # a place held is let go when the trainee is elsewhere
-				if e.sp_res[tr] == e.st_t_at:
-					e.sp_occ[tr] = e.sp_res[tr]
-					e.sp_res[tr] = -1
-			elif item[0] == "leave" and typeof(item[1]) == TYPE_STRING and pix.get(item[1], -2) == e.st_t_at:
-				e.st_t_at = -1
-				e.sp_pos[tr] = -1
-				leave_place(e, tr)
-			elif item[0] == "ppe" and typeof(item[1]) == TYPE_STRING and PPE.has(item[1]) \
-					and typeof(item[2]) == TYPE_INT and (item[2] == 0 or item[2] == 1):
-				if item[2] == 1:
-					e.sp_worn[tr] |= 1 << PPE.find(item[1])
-				else:
-					e.sp_worn[tr] &= ~(1 << PPE.find(item[1]))
-			elif item[0] == "zone" and typeof(item[1]) == TYPE_STRING and zone_ix.has(item[1]) \
-					and typeof(item[2]) == TYPE_STRING and (item[2] == "in" or item[2] == "out"):
-				if item[2] == "in":
-					e.sp_zin[tr] |= 1 << int(zone_ix[item[1]])
-				else:
-					e.sp_zin[tr] &= ~(1 << int(zone_ix[item[1]]))
-			elif item[0] == "stop":
-				t_stop(e, tr, item[1])
-	else:
-		for item in tin:
+	# the players' arrive, leave, ppe, zone and stop inputs, in the order made, each for its slot's person now (a slot
+	# playing nobody is in free mode: its stop refused, the others nothing)
+	for si in tin:
+		var slot: int = si[0]
+		var item: Array = si[1]
+		var tr: int = e.st_players[slot]
+		if tr == -1:
 			if item[0] == "stop":       # free mode: no person to stop work with
 				e._ev(["stop", null, item[1], null, null, "refused", ["authority"]])
+			continue
+		if item[0] == "arrive" and typeof(item[1]) == TYPE_STRING and pix.has(item[1]):
+			e.sp_pos[tr] = pix[item[1]]
+			if e.sp_occ[tr] != e.sp_pos[tr]:
+				leave_place(e, tr)          # a place held is let go when the trainee is elsewhere
+			if e.sp_res[tr] == e.sp_pos[tr]:
+				e.sp_occ[tr] = e.sp_res[tr]
+				e.sp_res[tr] = -1
+		elif item[0] == "leave" and typeof(item[1]) == TYPE_STRING and e.sp_pos[tr] != -1 \
+				and pix.get(item[1], -2) == e.sp_pos[tr]:
+			e.st_t_from[slot] = e.sp_pos[tr]
+			e.sp_pos[tr] = -1
+			leave_place(e, tr)
+		elif item[0] == "ppe" and typeof(item[1]) == TYPE_STRING and PPE.has(item[1]) \
+				and typeof(item[2]) == TYPE_INT and (item[2] == 0 or item[2] == 1):
+			if item[2] == 1:
+				e.sp_worn[tr] |= 1 << PPE.find(item[1])
+			else:
+				e.sp_worn[tr] &= ~(1 << PPE.find(item[1]))
+		elif item[0] == "zone" and typeof(item[1]) == TYPE_STRING and zone_ix.has(item[1]) \
+				and typeof(item[2]) == TYPE_STRING and (item[2] == "in" or item[2] == "out"):
+			if item[2] == "in":
+				e.sp_zin[tr] |= 1 << int(zone_ix[item[1]])
+			else:
+				e.sp_zin[tr] &= ~(1 << int(zone_ix[item[1]]))
+		elif item[0] == "stop":
+			t_stop(e, tr, item[1])
 	# 1. duties, then slots
 	var day: int = c / DAY
 	var np := people.size()
@@ -781,16 +852,24 @@ func step(e) -> void:
 	react(e, n)
 	# 4. people
 	if jump_step:
-		if e.st_trainee != -1 and not e._absent.has(e.st_trainee):
-			var mine := _mine(e)            # their actions of this step are kept all the same (§17.8)
-			drop_kept(e, mine, people[e.st_trainee]["id"])
-			keep(e, e.st_trainee, mine, {})
+		for slot in e.st_players.size():                # their actions of this step are kept all the same (§17.8)
+			var ti: int = e.st_players[slot]
+			if ti != -1 and not e._absent.has(ti):
+				var mine := _mine(e)
+				drop_kept(e, mine, people[ti]["id"], slot)
+				keep(e, ti, mine, {}, slot)
 	else:
 		var absent: Dictionary = e._absent     # (made when the run starts, never changed in a step)
+		var players: PackedInt32Array = e.st_players
 		for pi in np:
-			if pi == e.st_trainee:
+			var slot: int = players.find(pi)
+			if slot != -1:
 				if not absent.has(pi):
-					trainee_turn(e, pi, tin)
+					var mine_in := []
+					for si in tin:
+						if si[0] == slot:
+							mine_in.append(si[1])
+					trainee_turn(e, pi, mine_in, slot)
 			elif n >= e.sp_wake[pi] and not absent.has(pi):
 				turn(e, pi)
 	# 5. unsafe acts, then the reactions to them
@@ -919,7 +998,7 @@ func react(e, n: int) -> void:
 					if typeof(h) == TYPE_STRING and person_ix.has(h):
 						holds[person_ix[h]] = 1
 		for pi in holds.size():
-			if holds[pi] and pi != e.st_trainee and not e._absent.has(pi) and not e.sp_on[pi] \
+			if holds[pi] and not e.st_players.has(pi) and not e._absent.has(pi) and not e.sp_on[pi] \
 					and e.sp_pos[pi] == -1 and e.sp_leg[pi].is_empty() and _left_locks(e, pi):
 				now[pi] = true
 				if not e.st_left.has(pi):
@@ -1028,7 +1107,8 @@ func select(e, pi: int):
 	var cur = e.sp_cur[pi]
 	var q: Array = e.sp_queue[pi]
 	var pid: String = people[pi]["id"]
-	if cur != null and not e.sp_on[pi] and pi != e.st_trainee and not cur["idle"] \
+	var npc: bool = not e.st_players.has(pi)
+	if cur != null and not e.sp_on[pi] and npc and not cur["idle"] \
 			and not cur["st"].get("busy", false) and tasks[cur["task"]].get("resume", "") == "next_duty":
 		pause(e, pi)                # a job left unfinished at the duty's end: held for the next (§17.10)
 		for k in q.size():
@@ -1038,7 +1118,7 @@ func select(e, pi: int):
 		e.sp_held[pi].append(cur)
 		e._ev(["task", pid, cur["task"], "held"])
 		cur = null
-	if cur == null and not e.sp_on[pi] and pi != e.st_trainee:
+	if cur == null and not e.sp_on[pi] and npc:
 		var keep := []
 		for qq in q:
 			if tasks[qq["task"]].get("resume", "") == "next_duty":
@@ -1063,7 +1143,7 @@ func select(e, pi: int):
 		if not cur["started"]:
 			cur["started"] = true
 			e._ev(["task", pid, cur["task"], "start"])
-		if e.sp_pos[pi] == -1 and pi != e.st_trainee:
+		if e.sp_pos[pi] == -1 and npc:
 			e.sp_pos[pi] = gate
 			e._ev(["move", pid, null, places[gate]["id"], e.step_no])
 	if cur == null and e.sp_on[pi]:
@@ -1074,10 +1154,10 @@ func select(e, pi: int):
 		e.sp_cur[pi] = cur
 		e.st_order += 1
 		e._ev(["task", pid, idle, "start"])
-		if e.sp_pos[pi] == -1 and pi != e.st_trainee:
+		if e.sp_pos[pi] == -1 and npc:
 			e.sp_pos[pi] = gate
 			e._ev(["move", pid, null, places[gate]["id"], e.step_no])
-	if cur == null and not e.sp_on[pi] and e.sp_pos[pi] != -1 and pi != e.st_trainee:
+	if cur == null and not e.sp_on[pi] and e.sp_pos[pi] != -1 and npc:
 		leave_place(e, pi)
 		e._ev(["move", pid, places[e.sp_pos[pi]]["id"], null, e.step_no])
 		e.sp_pos[pi] = -1
@@ -1088,7 +1168,7 @@ func select(e, pi: int):
 func pause(e, pi: int) -> void:
 	var cur: Dictionary = e.sp_cur[pi]
 	var st: Dictionary = cur["st"]
-	if st.has("left") and st.has("last") and pi != e.st_trainee:
+	if st.has("left") and st.has("last") and not e.st_players.has(pi):
 		# the steps slept through up to the last one before the pause count; on resuming, one step does
 		var m: int = e.step_no - 1
 		if st["last"] < m and not st.get("resumed", false):
@@ -1489,7 +1569,7 @@ func stop_step(e, pi: int, cur: Dictionary) -> String:
 ## A person's zones as a bit mask (§16.2): their place's; on a way, those both its ends list; the trainee's from
 ## their zone inputs; none off site.
 func zones_of(e, pi: int) -> int:
-	if pi == e.st_trainee:
+	if e.st_players.has(pi):
 		return e.sp_zin[pi]
 	var leg: Array = e.sp_leg[pi]
 	if not leg.is_empty():
@@ -1536,9 +1616,9 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 	# name each time it is read)
 	var absent: Dictionary = e._absent
 	var touched: PackedByteArray = e._touched
-	var tr: int = e.st_trainee
+	var players: PackedInt32Array = e.st_players
 	for pi in people.size():
-		if not permit_moved and pi != tr and not touched[pi]:
+		if not permit_moved and not touched[pi] and not players.has(pi):
 			continue
 		if absent.has(pi):
 			continue
@@ -1897,9 +1977,10 @@ func lock_round(e, pi: int, cur: Dictionary, s: Dictionary):
 
 func say(e, pi: int, msg: String, to: String) -> void:
 	e._ev(["say", people[pi]["id"], msg, to])
-	var t: int = e.st_trainee
-	if t != -1 and t != pi and (to == people[t]["id"] or to == people[t]["role"]):
-		e.st_unacked += 1
+	for k in e.st_players.size():
+		var t: int = e.st_players[k]
+		if t != -1 and t != pi and (to == people[t]["id"] or to == people[t]["role"]):
+			e.st_acks[k] += 1
 
 
 func wait(e, cur: Dictionary, w: Dictionary) -> String:
@@ -1936,7 +2017,7 @@ func meet(e, pi: int, cur: Dictionary, mt: Dictionary, trainee: bool) -> String:
 		if r != "next":
 			return r
 		x.erase("dest")
-	elif e.st_t_at != x["place"]:
+	elif e.sp_pos[pi] != x["place"]:
 		return "wait"
 	if not x.has("meet_since") and not x.get("met", false):
 		x["meet_since"] = e.step_no
@@ -1960,7 +2041,7 @@ func meet(e, pi: int, cur: Dictionary, mt: Dictionary, trainee: bool) -> String:
 			return "wait"
 	elif x["last"] < e.step_no:
 		if trainee:
-			if e.st_t_at == x["place"]:
+			if e.sp_pos[pi] == x["place"]:
 				x["left"] -= 1
 			x["last"] = e.step_no
 		else:
@@ -1985,15 +2066,16 @@ static func _count(x: Dictionary, n: int) -> void:
 
 # ---------------------------------------------------------------- the trainee's person (§17.4)
 
-func trainee_turn(e, pi: int, tin: Array) -> void:
+## A player's person's turn (§17.4): tin, their slot's inputs of this step in the order made.
+func trainee_turn(e, pi: int, tin: Array, slot: int) -> void:
 	var used := []
 	used.resize(tin.size())
 	used.fill(false)
 	var mine := _mine(e)
-	drop_kept(e, mine, people[pi]["id"])
+	drop_kept(e, mine, people[pi]["id"], slot)
 	var took := {}
-	trainee_steps(e, pi, tin, used, mine, took)
-	keep(e, pi, mine, took)
+	trainee_steps(e, pi, tin, used, mine, took, slot)
+	keep(e, pi, mine, took, slot)
 	for k in tin.size():
 		if used[k]:
 			continue
@@ -2019,7 +2101,7 @@ func _mine(e) -> Array:
 	return mine
 
 
-func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dictionary) -> void:
+func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dictionary, slot: int) -> void:
 	var n: int = e.step_no
 	var pid: String = people[pi]["id"]
 	for _k in 64:
@@ -2038,18 +2120,18 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 					x["dest"] = rt[0]
 					if not rt[1]:
 						reserve(e, pi, rt[0])
-			if r != "fail" and e.st_t_at == x["dest"]:
+			if r != "fail" and e.sp_pos[pi] != -1 and e.sp_pos[pi] == x["dest"]:
 				r = "next"
-				if e.sp_res[pi] == e.st_t_at:
+				if e.sp_res[pi] == e.sp_pos[pi]:
 					e.sp_occ[pi] = e.sp_res[pi]
 					e.sp_res[pi] = -1
 		elif s.has("work"):
 			if not x.has("left"):
 				x["left"] = mins(e, pi, s["work"]) * tpm
 				x["last"] = n
-				x["place"] = e.st_t_at
+				x["place"] = e.sp_pos[pi]
 			elif x["last"] < n:
-				if e.st_t_at == x["place"]:
+				if e.sp_pos[pi] == x["place"]:
 					x["left"] -= 1
 				x["last"] = n
 			r = "next" if x["left"] <= 0 else "wait"
@@ -2120,7 +2202,7 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 					r = "next"
 					break
 			if typeof(r) == TYPE_STRING and r == "wait" and _first_look(x) \
-					and early_done(e, pi, cur, "op", [o["kks"], o["do"], o["where"]], o):
+					and early_done(e, pi, cur, "op", [o["kks"], o["do"], o["where"]], o, slot):
 				r = "next"
 		elif s.has("permit"):
 			var w = cur["work"] if s["permit"]["work"] == "$" else s["permit"]["work"]
@@ -2133,7 +2215,7 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 					r = "next"
 					break
 			if typeof(r) == TYPE_STRING and r == "wait" and _first_look(x) \
-					and early_done(e, pi, cur, "permit", [w, a], null):
+					and early_done(e, pi, cur, "permit", [w, a], null, slot):
 				r = "next"
 		elif s.has("handover") and s["handover"] == "take":
 			if lock_target(e, pi, cur, s, null).x == -1:
@@ -2189,7 +2271,7 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 						got.append(y[3])
 				if not x.has("seen"):
 					for pt in pts:
-						if not got.has(pt) and early_done(e, pi, cur, k, [w, pt], null):
+						if not got.has(pt) and early_done(e, pi, cur, k, [w, pt], null, slot):
 							got.append(pt)
 					x["seen"] = true
 				if got.size() == pts.size():
@@ -2210,7 +2292,7 @@ static func _first_look(x: Dictionary) -> bool:
 
 
 ## A machine entered by a command or an action in this step: an earlier command of it no longer holds.
-func drop_kept(e, mine: Array, me: String) -> void:
+func drop_kept(e, mine: Array, me: String, slot: int) -> void:
 	var moved := {}
 	for y in mine:
 		if y[1] == "machine" and y[5] != "next":
@@ -2223,18 +2305,19 @@ func drop_kept(e, mine: Array, me: String) -> void:
 	if moved.is_empty() and relocked.is_empty():
 		return
 	var out := []
-	for r in e.st_early:
+	for r in e.st_kept[slot]:
 		if r[0] == "op" and r[5] != null and moved.has(r[5]):
 			continue
 		if r[0] == "unlock" and relocked.has([r[2], r[3]]):
 			continue
 		out.append(r)
-	e.st_early = out
+	e.st_kept[slot] = out
 
 
 ## Their actions done in this step that no step of theirs took: kept for a step that becomes current later.
-func keep(e, pi: int, mine: Array, took: Dictionary) -> void:
+func keep(e, pi: int, mine: Array, took: Dictionary, slot: int) -> void:
 	var pid: String = people[pi]["id"]
+	var early: Array = e.st_kept[slot]
 	for j in mine.size():
 		var y: Array = mine[j]
 		if took.has(j):
@@ -2244,22 +2327,23 @@ func keep(e, pi: int, mine: Array, took: Dictionary) -> void:
 			if y.size() > 7 and y[4] == "done" and _same(y[7], pid):
 				var oc = e.op_entry(y[2], y[3], null)
 				var mc = oc["o"].get("machine") if oc != null else null
-				e.st_early.append(["op", y[0], y[2], y[3], y[6], mc])
+				early.append(["op", y[0], y[2], y[3], y[6], mc])
 		elif kind == "permit" or kind == "lock" or kind == "unlock":
 			if y[5] == "done" and _same(y[4], pid):
 				if kind == "permit":
-					e.st_early.append(["permit", y[0], y[2], y[3], e.ptw.get(y[2])])
+					early.append(["permit", y[0], y[2], y[3], e.ptw.get(y[2])])
 				else:
-					e.st_early.append([kind, y[0], y[2], y[3]])
-	if e.st_early.size() > EARLY_KEPT:
-		e.st_early = e.st_early.slice(e.st_early.size() - EARLY_KEPT)
+					early.append([kind, y[0], y[2], y[3]])
+	if early.size() > EARLY_KEPT:
+		e.st_kept[slot] = early.slice(early.size() - EARLY_KEPT)
 
 
 ## The earliest kept action of this kind that matches (op: code, do, where; permit: work, action; lock or unlock:
 ## work, point) and still holds is taken for the step: removed from the kept ones, with the event `early`.
-func early_done(e, pi: int, cur: Dictionary, kind: String, want: Array, o) -> bool:
-	for k in e.st_early.size():
-		var q: Array = e.st_early[k]
+func early_done(e, pi: int, cur: Dictionary, kind: String, want: Array, o, slot: int) -> bool:
+	var early: Array = e.st_kept[slot]
+	for k in early.size():
+		var q: Array = early[k]
 		if q[0] != kind:
 			continue
 		var ok := false
@@ -2270,7 +2354,7 @@ func early_done(e, pi: int, cur: Dictionary, kind: String, want: Array, o) -> bo
 		else:
 			ok = _same(q[2], want[0]) and q[3] == want[1] and _lock_holds(e, kind, want[0], want[1], pi)
 		if ok:
-			e.st_early.remove_at(k)
+			early.remove_at(k)
 			e._ev(["early", people[pi]["id"], cur["task"], cur["step"], q[0], q[1]])
 			return true
 	return false
