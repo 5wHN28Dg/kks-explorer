@@ -59,8 +59,8 @@ What the evidence-first-engineering skill needs to know here:
   checks.
 - `tests.yml`: the test suites on x86-64, one job each: `core`, `platform-linux`, `importer`, `linux-build` (server and
   importer for the jobs below), `server-http`, `python`, `web` (Chromium, WebKit, Firefox), `gnome-e2e` (headless),
-  `windows-build` and `windows-test` (windows-2022). Not required by main yet; the full Windows UIA e2e and real phones
-  stay manual.
+  `windows-build` and `windows-test` (windows-2022), `plant-relay` (Walkdown Plant's relay in workerd). Not
+  required by main yet; the full Windows UIA e2e and real phones stay manual.
 - **No Android e2e on CI (the user, 2026-10-09):** GitHub's emulator took ~40 min, ~21 min split over three, which is
   no faster than the laptop's emulator. So before merging any change to `android/`, `core/` or the JNI, run the
   Android e2e here (`test_app2.py`, `test_direct.py`; `test_update.py` when the update path changes), and say so in the
@@ -69,8 +69,8 @@ What the evidence-first-engineering skill needs to know here:
   against `web-size.json`. Any change needs `python3 tools/web_size.py --update` in the same PR, and the PR says why
   growth is worth it.
 - `android.yml` and `arm64.yml` build the apps (actions pinned by SHA).
-- A change that touches only prose (`*.md` other than `relay/README.md` and `vendor/fonts/README.md`, which tests
-  read, and `docs/`) runs `policy.yml` alone: the three build and test workflows skip it.
+- A change that touches only prose (`*.md` other than `relay/README.md`, `relay-plant/README.md` and
+  `vendor/fonts/README.md`, which tests read, and `docs/`) runs `policy.yml` alone: the three build and test workflows skip it.
   `docs/plant3d/FIRST-TRAIN.md` is read by tests too (`tests/test_plant3d.py`), so a change to it runs `tests.yml`.
 
 ## The system
@@ -100,7 +100,9 @@ What the evidence-first-engineering skill needs to know here:
   - shared desktop code: `apps/common`;
   - web client: index.html, admin.html, learning.html, course.html, common.js, sw.js, tiles.js. Views are built as
     elements (`K.h`), never markup.
-- **Relay:** a Cloudflare Worker (`relay/`); `relay/twin.py` is the test twin.
+- **Relay:** a Cloudflare Worker (`relay/`); `relay/twin.py` is the test twin. Walkdown Plant's multiplayer relay is
+  a separate Worker (`relay-plant/`, its twin `relay-plant/twin.py`), deployed only on the Workers Free plan by
+  `relay-plant/deploy.py`; its URL, like Walkdown's relay's, never goes in tracked files.
 - **Courses:** a JSON content model with declarative figures (`docs/COURSES.md`, `data/courses/`), rendered natively
   on each platform and on the web.
 - **Photos and QR:** JPEG XL everywhere (libjxl, and our own WebAssembly build in `vendor/kks/`); zxing-cpp for QR.

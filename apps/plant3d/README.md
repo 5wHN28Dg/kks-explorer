@@ -98,6 +98,12 @@ Controls (R7):
   back to the control room.
 - **Touch:** two sticks, Godot's own `VirtualJoystick`, driving the same actions as a gamepad's sticks: move on the
   left (analogue, as the gamepad's), look on the right. There are buttons for Fly, Map, Use, Settings, and Up and Down while flying.
+- **Gamepad or touch** (`app/input_mode.gd`): with Settings → Touch controls on Automatic (the default), a gamepad
+  connecting (or one connected at the start, or its buttons or sticks used) hides the touch sticks, Fly, Use and the
+  flying buttons, names the gamepad's buttons in the bar and a line under the status, and gives the top panel the
+  focus (a D-pad, stick or A press that switched doesn't also move that focus on); a new touch brings the touch controls back until the
+  gamepad is used again, and so does the last gamepad disconnecting (on a desktop, a key or a mouse click too).
+  Always keeps them shown, Never hidden. A stick hidden under a thumb lets its actions go.
 - **The plant (ui/):** E (gamepad A) or a click or tap on a part opens its card; L (D-pad up) the alarms, P (D-pad
   left) procedures and tours, T the permits to work (gamepad: a card's permit button or the procedures panel), K
   (D-pad down) pause and run, the full stop (D-pad right) fast-forward, H (X) to the control room and its screens,
@@ -336,7 +342,13 @@ Choosing a tier:
 
 ```
 godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tests.gd [-- --only=test_walk]
+PLANT_TEST_SHARD=1 apps/plant3d/build.sh tests   # one of CI's shards of the test files (tests/shards.py app)
 ```
+
+CI runs the test files in shards side by side (`tests/shards.py`, `APP`; `tests/test_shards.py` checks that every file
+runs in exactly one): shard 0 in the job that makes the exports, the others in `app-tests`. A new test file goes to
+shard 0; one that makes a shard grow past about 150 s on the laptop (a quarter of `build.sh`'s 600 s on CI) goes to
+another shard or one of its own.
 
 - `test_walk`: up the 30 m stair tower of HRSG 1, across the roof, up the stack's ladder to +40, and back down to the
   ground; the condenser pit's stair; every stair and ladder both ways; and the walking directions: from the control
@@ -348,6 +360,9 @@ godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tes
   toggled), a touch stick, gradual speeding up and slowing down, the settings' pace, a stair's and a ladder's limits
   running and walking, the footsteps' stride and level, the head bob and reduced motion. `test_walk` walks every
   stair and ladder walking, running and at the slow pace; `test_gait` climbs a flight at the slowest step (0.5 m/s).
+- `test_gamepad_switch`: gamepad or touch: connecting and disconnecting, the last input used, the settings' Automatic,
+  Always and Never and the old saved values, no touch stick left pressing after a gamepad press, and the top panel's
+  focus when the gamepad takes over.
 - `test_ui_walk_route`: the walking directions in the app (shown, redrawn, found again off the way, hidden in flight
   and by other steps) and the gamepad's X for the control room.
 - `test_frames_route`: the phone's walk, once.

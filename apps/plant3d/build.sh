@@ -1,6 +1,7 @@
 #!/bin/sh
 # Builds Walkdown Plant (decision 0054): checks the content, makes the pre-built plant, runs the tests, exports.
-#   apps/plant3d/build.sh                     the content check, the plant (built/) and the tests
+#   apps/plant3d/build.sh [tests]             the content check, the plant (built/) and the tests (PLANT_TEST_SHARD=N:
+#                                             only shard N's test files, tests/shards.py app: CI's shards)
 #   apps/plant3d/build.sh export [TARGET…]    and the exports, unbaked and unsigned, into export/check/ (CI)
 #   tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh release [TARGET…]
 #                                             the release exports, shaders baked (needs a rendering device: the
@@ -21,6 +22,21 @@ MODE="${1:-}"; [ $# -gt 0 ] && shift
 TARGETS="${*:-android-debug android-release linux windows windows-arm64}"
 GODOT="${GODOT:-$("$ROOT/tools/plant3d/bench/fetch_godot.sh")}"
 T="timeout ${GODOT_TIMEOUT:-600}"   # a script that fails to compile leaves Godot running: never wait for ever
+# CI runs the test files in shards side by side (tests/shards.py app, the workflow's matrix): PLANT_TEST_SHARD=N runs
+# shard N's files only (step 3); unset, every file runs
+ONLY=""
+if [ -n "${PLANT_TEST_SHARD:-}" ]; then
+  ONLY=$(python3 "$ROOT/tests/shards.py" app "$PLANT_TEST_SHARD") || { echo "no app test shard $PLANT_TEST_SHARD" >&2; exit 2; }
+fi
+
+# 0. wdp_voice, the voice codec (decision 0069, voice/build.sh): a release builds it for all four platforms from its
+#    pinned sources (so the libraries are this commit's); other builds use what voice/bin/ holds (CI builds the Linux
+#    one first), and a platform without its library exports without voice
+if [ "$MODE" = release ]; then
+  env -u WDP_LINUX_HOST -u WDP_SDK_COMMIT "$HERE/voice/build.sh" || { echo "wdp_voice did not build: a release carries voice on every platform" >&2; exit 1; }
+fi
+# the voice test must find the extension wherever its library for this machine is there (tests/test_voice.gd)
+[ -s "$HERE/voice/bin/libwdp_voice.linux.x86_64.so" ] && [ "$(uname -m)" = x86_64 ] && export WDP_VOICE_REQUIRED=1
 
 # 1. The content, strictly (Godot's own JSON reader is not strict: PLANT3D.md §1)
 (cd "$ROOT" && python3 -c "import sys; from ref import plant3d as P; b = P.check_dir('data/plant3d'); print('content: valid')")
@@ -88,12 +104,17 @@ mkdir -p "$TDATA/godot"
 for d in "${XDG_DATA_HOME:-$HOME/.local/share}/godot"/*; do
   if [ -e "$d" ] && [ "$(basename "$d")" != app_userdata ]; then ln -s "$d" "$TDATA/godot/"; fi
 done
-# (the tests have a limit of their own: one Godot runs them all, past 10 minutes on CI's runner since S3 (main's run
-# of 2026-10-26 was stopped in test_walk), the limit each other step gets; a test that hangs is still stopped)
-XDG_DATA_HOME="$TDATA" timeout "${GODOT_TEST_TIMEOUT:-1500}" "$GODOT" --headless --fixed-fps 60 --path "$HERE" --script res://tests/run_tests.gd >"$HERE/.test.log" 2>&1 ||
+[ -n "$ONLY" ] && echo "tests: shard $PLANT_TEST_SHARD of tests/shards.py app: $ONLY"
+# shellcheck disable=SC2086
+XDG_DATA_HOME="$TDATA" $T "$GODOT" --headless --fixed-fps 60 --path "$HERE" --script res://tests/run_tests.gd \
+    ${ONLY:+-- --files=$ONLY} >"$HERE/.test.log" 2>&1 ||
   { grep -vE "^$|Jolt Physics job|jolt_job_system" "$HERE/.test.log" | tail -30; grep -E "^FAIL" "$HERE/.test.log" | head -40
     echo "tests failed (apps/plant3d/.test.log)" >&2; exit 1; }
 grep -E "^(ok|FAIL)|passed" "$HERE/.test.log"
+if [ -n "$ONLY" ]; then   # every file the shard names ran (the runner fails a name it has no file for)
+  n=$(printf '%s\n' "$ONLY" | tr ',' '\n' | wc -l)
+  grep -qx "$n of $n test files passed" "$HERE/.test.log" || { echo "shard $PLANT_TEST_SHARD did not run its $n test files" >&2; exit 1; }
+fi
 grep -qF "tests' user data: $TDATA/" "$HERE/.test.log" ||
   { grep "tests' user data" "$HERE/.test.log"; echo "the tests did not run in their own data folder" >&2; exit 1; }
 # a script error inside a test ends that test's function early without a failure of its own: never a pass
@@ -104,7 +125,7 @@ if awk '/SCRIPT ERROR/ { e = 1; next } e { if ($0 !~ /fixtures\/script_error\.gd
   exit 1
 fi
 
-[ -n "$MODE" ] || exit 0
+case "$MODE" in ""|tests) exit 0 ;; esac
 
 # 4. The lightmap (release and bake): the editor on the private display bakes built/lit.scn into built/lightmap/
 #    (builder/bake/bake_plugin.gd), then Godot imports what it baked. An export without it lights the plant by the
@@ -198,6 +219,25 @@ exp() {  # renderer debug|release preset output
   $T "$GODOT" $GPU --rendering-method "$1" --path "$HERE" "--export-$2" "$3" "$4" >>"$HERE/.export.log" 2>&1 ||
     { tail -30 "$HERE/.export.log"; echo "export $3 ($2) failed" >&2; exit 1; }
   [ -s "$4" ] || { tail -30 "$HERE/.export.log"; echo "export $3 ($2) made nothing" >&2; exit 1; }
+  # wdp_voice's library goes with every export whose platform voice/bin/ has one (a release has all four)
+  voice_lib=""
+  case "$3" in
+    Android*) voice_lib=libwdp_voice.android.arm64.so ;;
+    Linux) voice_lib=libwdp_voice.linux.x86_64.so ;;
+    Windows) voice_lib=libwdp_voice.windows.x86_64.dll ;;
+    "Windows ARM64") voice_lib=libwdp_voice.windows.arm64.dll ;;
+  esac
+  if [ -s "$HERE/voice/bin/$voice_lib" ]; then
+    case "$4" in
+      *.apk) unzip -l "$4" | grep -q " lib/arm64-v8a/$voice_lib\$" || { echo "$4 has no lib/arm64-v8a/$voice_lib" >&2; exit 1; } ;;
+      *) cmp -s "$HERE/voice/bin/$voice_lib" "$(dirname "$4")/$voice_lib" || { echo "the export has no $(dirname "$4")/$voice_lib" >&2; exit 1; } ;;
+    esac
+    echo "  with voice: $voice_lib"
+  elif [ "$MODE" = release ]; then
+    echo "a release must carry voice: no voice/bin/$voice_lib" >&2; exit 1
+  else
+    echo "  without voice (no voice/bin/$voice_lib: voice/build.sh)"
+  fi
   case "$4" in *.apk)
     # the export plugin's intent filter must be in the APK (a plugin that didn't run leaves no link handler)
     "$(ls -d "$ANDROID_HOME"/build-tools/* | grep -v -- '-rc' | sort -V | tail -1)/aapt2" dump xmltree "$4" --file AndroidManifest.xml |

@@ -482,9 +482,61 @@ func in_control_room() -> bool:
 	return p.x >= b[0][0] and p.x <= b[1][0] and -p.z >= b[0][1] and -p.z <= b[1][1]
 
 
-## Gamepad or keyboard in use (no touch screen): panels take the focus so that they can be worked without a mouse.
+## Gamepad or keyboard in use (no touch screen, or the gamepad the controls in use: app/input_mode.gd): panels take
+## the focus so that they can be worked without a mouse.
 func wants_focus() -> bool:
-	return not DisplayServer.is_touchscreen_available()
+	if main.hud == null:
+		return not DisplayServer.is_touchscreen_available()
+	return not main.hud.touch_screen or main.hud.pad_on()
+
+
+## A gamepad has just become the controls (app/hud.gd focus_panel): the top panel, in close_top's order, takes the
+## focus unless it has it already (its first button); the screens' canvas when no panel is over them; first of all
+## the saved run's offer at the start (Continue or New run). True when it gave the focus to something.
+func focus_top() -> bool:
+	var fo := root.get_viewport().gui_get_focus_owner()
+	if autosave != null and autosave.offering():
+		return _focus_in(autosave.offer_panel, fo)
+	for p in [trainer, permits, debrief, alarms, card]:
+		if p.visible:
+			return _focus_in(p, fo)
+	if screens_open():
+		var had: bool = mimic.canvas.has_focus()
+		mimic.take_focus()
+		return not had and mimic.canvas.has_focus()
+	for p in [procedure, crew]:
+		if p.visible:
+			return _focus_in(p, fo)
+	return false
+
+
+func _focus_in(p: Control, fo: Control) -> bool:
+	if fo != null and p.is_ancestor_of(fo) and fo.is_visible_in_tree():
+		return false
+	# as the panel's own open() does: its tab (alarms, debrief), else its body's first control, else the Close button
+	var b: Control = null
+	if "_tabs" in p and "tab" in p and p._tabs.has(p.tab):
+		b = p._tabs[p.tab]
+	if b == null and "body" in p and p.body != null:
+		b = _first_focusable(p.body)
+	if b == null:
+		b = _first_focusable(p)
+	if b != null:
+		b.grab_focus()
+	return b != null
+
+
+## The first button that can take the focus (a text field would bring up the phone's keyboard, and the D-pad would
+## move its cursor; the panels' own open() choose buttons too).
+static func _first_focusable(n: Node) -> Control:
+	for c in n.get_children():
+		if c is Control and c.is_visible_in_tree():
+			if c is BaseButton and c.focus_mode == Control.FOCUS_ALL and not c.disabled:
+				return c
+			var f := _first_focusable(c)
+			if f != null:
+				return f
+	return null
 
 
 # ------------------------------------------------------------------ the trainee's inputs to the plant
@@ -1412,14 +1464,16 @@ func _horn_tick() -> void:
 ## The part at the middle of the view (keyboard, mouse captured, gamepad): its code and a hint.
 func _look_hint() -> void:
 	hover = ""
-	var show := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or not Input.get_connected_joypads().is_empty()
+	var pad: bool = main.hud != null and main.hud.pad_on()
+	var show := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or pad
 	if show and not main.map.active and not main.hud.panel.visible and not screens_open():
 		var cam: Camera3D = player.camera
 		var c: String = index.pick(cam, root.get_viewport_rect().size * 0.5, player.get_world_3d().direct_space_state, [player.get_rid()])
 		if c != "" and index.distance(c, eye()) <= HINT_RANGE:
 			hover = c
 	var what := "the screens" if info.part_of(hover) == "operator_desk" else "its card"
-	_hint.text = ("+\n%s  %s\nE or A: %s" % [hover, info.name_of(hover), what]) if hover != "" else ("+" if show and not screens_open() else "")
+	var key := "A" if pad else "E"
+	_hint.text = ("+\n%s  %s\n%s: %s" % [hover, info.name_of(hover), key, what]) if hover != "" else ("+" if show and not screens_open() else "")
 
 
 func _unhandled_input(ev: InputEvent) -> void:

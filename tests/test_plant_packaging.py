@@ -35,6 +35,9 @@ class MsixLayout(unittest.TestCase):
         exe = os.path.join(cls.tmp, 'WalkdownPlant.exe')
         with open(exe, 'wb') as f:
             f.write(b'MZ stand-in')
+        for dll in ('libwdp_voice.windows.x86_64.dll', 'libwdp_voice.windows.arm64.dll'):   # the voice codec (0069)
+            with open(os.path.join(cls.tmp, dll), 'wb') as f:
+                f.write(b'MZ ' + dll.encode())
         cls.out = {}
         for arch in ('x86_64', 'aarch64'):
             d = os.path.join(cls.tmp, arch)
@@ -78,7 +81,8 @@ class MsixLayout(unittest.TestCase):
 
     def test_the_files_and_logos(self):
         d = self.out['x86_64']
-        self.assertEqual(sorted(os.listdir(d)), ['AppxManifest.xml', 'Assets', 'WalkdownPlant.exe'])
+        self.assertEqual(sorted(os.listdir(d)), ['AppxManifest.xml', 'Assets', 'WalkdownPlant.exe',
+                                                 'libwdp_voice.windows.x86_64.dll'])
         for name, px in (('Square44x44Logo', 44), ('Square150x150Logo', 150), ('StoreLogo', 50)):
             with open(os.path.join(d, 'Assets', name + '.png'), 'rb') as f:
                 head = f.read(24)
@@ -90,6 +94,22 @@ class MsixLayout(unittest.TestCase):
         self.assertEqual(len(refs), 3)
         for ref in refs:
             self.assertTrue(os.path.exists(os.path.join(d, 'Assets', ref)), ref)
+
+
+    def test_the_voice_codec_of_each_architecture(self):
+        """wdp_voice's DLL (decision 0069) beside the exe, the architecture's own; a layout without it is refused"""
+        for arch, dll in (('x86_64', 'libwdp_voice.windows.x86_64.dll'), ('aarch64', 'libwdp_voice.windows.arm64.dll')):
+            with open(os.path.join(self.out[arch], dll), 'rb') as f:
+                self.assertEqual(f.read(), b'MZ ' + dll.encode())
+        self.assertNotIn('libwdp_voice.windows.x86_64.dll', os.listdir(self.out['aarch64']))
+        lone = os.path.join(self.tmp, 'lone')
+        os.makedirs(lone)
+        shutil.copy(os.path.join(self.tmp, 'WalkdownPlant.exe'), lone)
+        r = subprocess.run(['sh', os.path.join(APP, 'msix', 'make-msix.sh'), '--layout', os.path.join(self.tmp, 'x'),
+                            os.path.join(self.tmp, 'cert', 'test.pfx')], capture_output=True, text=True,
+                           env={**os.environ, 'PLANT_EXE': os.path.join(lone, 'WalkdownPlant.exe'), 'GODOT': godot()})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('libwdp_voice.windows.x86_64.dll', r.stderr)
 
 
 class Exports(unittest.TestCase):

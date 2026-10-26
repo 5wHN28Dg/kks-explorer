@@ -1,0 +1,379 @@
+// Walkdown Plant's multiplayer relay (docs/plant3d/MULTIPLAYER.md §9.1, decision 0068): a Cloudflare Worker with one
+// Durable Object per session room. The same protocol as relay-plant/twin.py. It never sees K, P or the invite code:
+// a room is admitted by SHA-256(admit), and the packets it passes on are end-to-end encrypted and never read.
+//   GET /v1/room/<room>   room = 32 lowercase hex characters; upgrades to a WebSocket
+// The first message is text: {"t":"hello","admit":<32 bytes base64url>,"create":true|false}. Then binary messages:
+// `to` (2 bytes, big-endian: a relay ID, 0 for every other member) and one or more packets, each a 2-byte big-endian
+// length and that many bytes. The relay replaces `to` with the sender's relay ID and passes the message on.
+import {DurableObject} from 'cloudflare:workers';
+
+const ROOM = /^[0-9a-f]{32}$/, ADMIT = /^[A-Za-z0-9_-]{43}$/, L_TEXT_MAX = 65536;
+
+// MULTIPLAYER.md §9.1's limits. Only the timings and two counts (rooms a day, joins a minute) can be changed, for the tests against
+// `wrangler dev` (`--var RELAY_LIMITS:{...}`): deploy.py refuses a wrangler.toml that sets any variable.
+export const LIMITS = {
+  members: 12,            // sockets per room that have said hello
+  pending: 12,            // sockets per room still to say hello
+  message: 65536,         // bytes per binary message
+  text: 512,              // bytes per text message
+  rate: 60, hostRate: 120,               // messages a second (token bucket)
+  burst: 200, hostBurst: 400,            // the bucket's size
+  bytes: 256 * 1024, byteBurst: 1 << 20, // bytes a second, and the bucket's size
+  cut: 3,                 // at this many times a rate, kept for `window` ms, the socket is closed (`limit`)
+  window: 10000,
+  idle: 600000,           // no member sent anything, not even a ping, for this long: the room is closed and deleted
+  quiet: 120000,          // a member that sent nothing, not even a ping, for this long is closed at the room's next alarm
+  empty: 600000,          // nobody in it for this long: the same
+  maxAge: 86400000,       // a room lives at most this long
+  hello: 10000,           // a socket must say hello within this
+  failed: 30,             // failed hellos per room per minute; beyond, every hello is refused (`limit`)
+  joins: 60,              // successful hellos per room per minute
+  daily: 200,             // rooms created per UTC day
+};
+const TUNABLE = ['idle', 'quiet', 'empty', 'maxAge', 'hello', 'daily', 'joins'];
+
+export function limitsOf(env) {
+  const l = {...LIMITS};
+  if (typeof env?.RELAY_LIMITS === 'string') {
+    try {
+      const o = JSON.parse(env.RELAY_LIMITS);
+      for (const k of TUNABLE) if (Number.isInteger(o[k]) && o[k] > 0) l[k] = o[k];
+    } catch (e) {}
+  }
+  return l;
+}
+
+export default {
+  async fetch(req, env) {
+    const p = new URL(req.url).pathname.split('/');
+    if (!(p.length === 4 && p[1] === 'v1' && p[2] === 'room' && ROOM.test(p[3])))
+      return new Response('Walkdown Plant relay\n', {status: 404});
+    if (req.method !== 'GET' || req.headers.get('Upgrade')?.toLowerCase() !== 'websocket')
+      return new Response('expected a WebSocket', {status: 426});
+    return env.ROOMS.get(env.ROOMS.idFromName(p[3])).fetch(req);
+  },
+};
+
+const b64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - s.length % 4) % 4)), c => c.charCodeAt(0));
+const sha256 = async b => new Uint8Array(await crypto.subtle.digest('SHA-256', b));
+const same = (a, b) => {
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i];
+  return d === 0;
+};
+const ID_BLOCK = 16;
+// the rate limiting key of a client address: an IPv6 address by its /64 (one subscriber's prefix), IPv4 as it is
+export function addressKey(ip) {
+  if (!ip.includes(':')) return ip;
+  const [head, tail] = ip.toLowerCase().split('::');   // (a `::` may stand for zeros of the prefix itself)
+  const h = head ? head.split(':') : [], t = tail === undefined ? [] : tail ? tail.split(':') : [];
+  const g = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t];
+  return g.slice(0, 4).map(x => (parseInt(x, 16) || 0).toString(16)).join(':') + '::/64';
+}   // relay IDs are reserved in storage this many at a time (one row write per 16 joins)
+
+// One token bucket: `rate` a second, at most `size` kept.
+class Bucket {
+  constructor(rate, size, now) { this.rate = rate; this.size = size; this.v = size; this.at = now }
+  take(n, now, rate, size) {
+    this.rate = rate; this.size = size;
+    this.v = Math.min(this.size, this.v + (now - this.at) * this.rate / 1000); this.at = now;
+    if (this.v < n) return false;
+    this.v -= n; return true;
+  }
+}
+
+// What a socket sent in the last `window` ms, in 1 s slots: for closing a socket far over its limit.
+class Window {
+  constructor() { this.slots = new Map() }
+  add(now, msgs, bytes, window) {
+    const s = Math.floor(now / 1000);
+    const cur = this.slots.get(s) || [0, 0];
+    cur[0] += msgs; cur[1] += bytes; this.slots.set(s, cur);
+    let m = 0, b = 0;
+    for (const [k, v] of this.slots) {
+      if (k <= s - window / 1000) this.slots.delete(k);
+      else { m += v[0]; b += v[1] }
+    }
+    return [m, b];
+  }
+}
+
+export class Room extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.env = env;
+    this.L = limitsOf(env);
+    // answered without waking the object, so a paused room hibernates (as Walkdown's relay does); the alarm reads
+    // each socket's last one (getWebSocketAutoResponseTimestamp), so pings alone keep a paused room open
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"t":"ping"}', '{"t":"pong"}'));
+    this.flow = new Map();      // relay ID -> {msgs, bytes, win, slowAt}: in memory only, as §9.1 says
+    this.failed = [];           // times of failed hellos (the last minute)
+    this.joined = [];           // times of successful hellos (the last minute)
+    this.lastActive = 0;        // the last message the object saw. Each sender's own is in its attachment (`la`),
+                                // and a leaver's is kept in a member's `rl` (room-level, never read as that member's
+                                // own activity): attachments survive hibernation
+    this.nextId = 0;            // the next relay ID; 0: read the reserved floor from storage first
+    this.idCeil = 0;
+  }
+
+  // ---------- storage: one row per room ----------
+  row() {
+    const t = this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'room'").toArray();
+    if (!t.length) return null;
+    return this.ctx.storage.sql.exec('SELECT admit, created, id_floor, empty_since FROM room').toArray()[0] || null;
+  }
+
+  sockets(except) { return this.ctx.getWebSockets().filter(ws => ws !== except) }
+  members(except) {
+    const out = [];
+    for (const ws of this.sockets(except)) {
+      const a = ws.deserializeAttachment();
+      if (a?.id && !a.gone) out.push([a, ws]);
+    }
+    return out;
+  }
+
+  send(ws, obj) { try { ws.send(JSON.stringify(obj)) } catch (e) {} }
+  // an error, then the socket is closed; a member that is closed (`limit`) leaves as if it had closed itself
+  refuse(ws, why) {
+    this.send(ws, {t: 'error', why});
+    return this.gone(ws, 1008, why);
+  }
+  tell(obj, except) { const s = JSON.stringify(obj); for (const [, ws] of this.members(except)) try { ws.send(s) } catch (e) {} }
+
+  async fetch(req) {
+    const now = Date.now();
+    // sockets that never said hello in time go first: they don't keep a stranger's place
+    let pending = 0;
+    for (const ws of this.sockets()) {
+      const a = ws.deserializeAttachment();
+      if (a && !a.id && !a.gone) {
+        if (now - a.at > this.L.hello) this.refuse(ws, 'no hello');
+        else pending++;
+      }
+    }
+    if (pending >= this.L.pending) return new Response('too many waiting', {status: 429});
+    const [client, server] = Object.values(new WebSocketPair());
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({at: now, ip: req.headers.get('CF-Connecting-IP') || ''});
+    // no timer for the hello's 10 s (a pending timer keeps the object awake, which a stranger could use to burn the
+    // day's duration): a silent socket costs nothing while the object hibernates, and is closed by the next
+    // connection's sweep above or by the room's alarm
+    return new Response(null, {status: 101, webSocket: client});
+  }
+
+  async webSocketMessage(ws, msg) {
+    const a = ws.deserializeAttachment();
+    if (!a || a.gone) return;
+    // a hello is being checked (it waits on the hash, the day's count): anything the client sends meanwhile, before
+    // its welcome, is dropped, never taken for a second hello
+    if (!a.id) return a.hello ? undefined : this.hello(ws, a, msg);
+    const now = Date.now();
+    // (a text longer than any allowed message isn't encoded: it is dropped, and counted at its most)
+    const size = typeof msg !== 'string' ? msg.byteLength : msg.length > L_TEXT_MAX ? msg.length * 3 : new TextEncoder().encode(msg).length;
+    if (!this.admitFlow(ws, a, size, now)) return;
+    this.lastActive = now;
+    if (!a.la || now - a.la >= 1000) ws.serializeAttachment({...a, la: now});
+    if (typeof msg === 'string') {
+      if (size > this.L.text) return;
+      let m; try { m = JSON.parse(msg) } catch (e) { return }
+      if (m?.t === 'ping') { this.send(ws, {t: 'pong'}); return }
+      if (m?.t === 'host') this.claimHost(ws, a);
+      return;
+    }
+    this.forward(ws, a, new Uint8Array(msg), now);
+  }
+
+  // the per-socket limits: false when the message is dropped (or the socket closed)
+  admitFlow(ws, a, size, now) {
+    const host = !!a.host, L = this.L;
+    let f = this.flow.get(a.id);
+    if (!f) this.flow.set(a.id, f = {msgs: new Bucket(L.rate, L.burst, now), bytes: new Bucket(L.bytes, L.byteBurst, now), win: new Window(), slowAt: 0});
+    const rate = host ? L.hostRate : L.rate;
+    const [m, b] = f.win.add(now, 1, size, L.window);
+    if (m > L.cut * rate * L.window / 1000 || b > L.cut * L.bytes * L.window / 1000) {
+      this.refuse(ws, 'limit');
+      return false;
+    }
+    if (size > L.message || !f.msgs.take(1, now, rate, host ? L.hostBurst : L.burst) || !f.bytes.take(size, now, L.bytes, L.byteBurst)) {
+      if (now - f.slowAt >= 1000) { f.slowAt = now; this.send(ws, {t: 'slow'}) }
+      return false;
+    }
+    return true;
+  }
+
+  async hello(ws, a, msg) {
+    const now = Date.now(), L = this.L;
+    this.failed = this.failed.filter(t => now - t < 60000);
+    this.joined = this.joined.filter(t => now - t < 60000);
+    if (this.failed.length >= L.failed) return this.refuse(ws, 'limit');
+    const fail = why => { this.failed.push(now); this.refuse(ws, why) };
+    if (typeof msg !== 'string' || msg.length > L.text || new TextEncoder().encode(msg).length > L.text) return fail('bad hello');
+    let m; try { m = JSON.parse(msg) } catch (e) { return fail('bad hello') }
+    if (!m || typeof m !== 'object' || Array.isArray(m) || m.t !== 'hello' || typeof m.admit !== 'string' ||
+        !ADMIT.test(m.admit) || typeof m.create !== 'boolean' || Object.keys(m).length !== 3) return fail('bad hello');
+    const raw = b64u(m.admit);
+    if (raw.length !== 32) return fail('bad hello');
+    ws.serializeAttachment({...a, hello: true});
+    const hash = await sha256(raw);
+    // (after each await the socket may have gone and the room changed: both are read again; everything below up to
+    // the next await is one step)
+    if (ws.deserializeAttachment()?.gone) return;
+    if (m.create) {
+      if (this.row()) return this.refuse(ws, 'exists');
+      let may = false;
+      try { may = await this.mayCreate(a.ip, now) } catch (e) {}
+      if (ws.deserializeAttachment()?.gone) return;
+      if (!may) return this.refuse(ws, 'limit');
+      if (this.row()) return this.refuse(ws, 'exists');   // another create won while this one asked
+      const sql = this.ctx.storage.sql;
+      sql.exec('CREATE TABLE IF NOT EXISTS room (admit BLOB NOT NULL, created INTEGER NOT NULL, id_floor INTEGER NOT NULL, empty_since INTEGER)');
+      sql.exec('INSERT INTO room (admit, created, id_floor, empty_since) VALUES (?, ?, ?, NULL)', hash.buffer, now, 1 + ID_BLOCK);
+      this.nextId = 1; this.idCeil = 1 + ID_BLOCK; this.lastActive = 0;
+      this.admit(ws, a, now, true);   // before the next await: the creator is relay ID 1
+      await this.ctx.storage.setAlarm(now + Math.min(L.idle, L.empty, L.maxAge));
+      return;
+    }
+    const row = this.row();
+    // (not counted as a failed hello: players retry a new room's `no such session` after a removal, §2.4)
+    if (!row || now - row.created >= L.maxAge) return this.refuse(ws, 'no such session');
+    if (!same(new Uint8Array(row.admit), hash)) return fail('bad admit');
+    const members = this.members(ws);
+    if (members.length >= L.members) return this.refuse(ws, 'full');
+    if (this.joined.length >= L.joins) return this.refuse(ws, 'limit');
+    if (!this.nextId) { this.nextId = row.id_floor; this.idCeil = row.id_floor }
+    if (this.nextId > 65535) return this.refuse(ws, 'full');
+    if (this.nextId >= this.idCeil) {   // reserve the next block before handing out any of it
+      this.idCeil = Math.min(this.nextId + ID_BLOCK, 65536);
+      this.ctx.storage.sql.exec('UPDATE room SET id_floor = ?', this.idCeil);
+    }
+    return this.admit(ws, a, now, false);
+  }
+
+  admit(ws, a, now, creator) {
+    const id = this.nextId++, others = this.members(ws);
+    this.joined.push(now);
+    ws.serializeAttachment({...ws.deserializeAttachment(), id, host: creator, la: now, hello: false});
+    const host = others.find(([o]) => o.host);
+    this.send(ws, {t: 'welcome', id, peers: others.map(([o]) => o.id), host: creator ? id : host ? host[0].id : null});
+    this.tell({t: 'joined', id}, ws);
+  }
+
+  claimHost(ws, a) {
+    if (a.host) return;
+    for (const [o, other] of this.members(ws)) if (o.host) other.serializeAttachment({...o, host: false});
+    ws.serializeAttachment({...a, host: true});
+    this.tell({t: 'host', id: a.id});
+  }
+
+  forward(ws, a, b, now) {
+    // framing: `to`, then packets of 2-byte length; anything else is dropped unread
+    if (b.length < 5) return;
+    let i = 2;
+    while (i < b.length) {
+      if (i + 2 > b.length) return;
+      const n = (b[i] << 8) | b[i + 1];
+      if (n === 0 || i + 2 + n > b.length) return;
+      i += 2 + n;
+    }
+    const to = (b[0] << 8) | b[1];
+    if (to === a.id) return;
+    const out = b.slice();
+    out[0] = a.id >> 8; out[1] = a.id & 255;
+    for (const [o, other] of this.members(ws)) {
+      if (to === 0 || o.id === to) try { other.send(out) } catch (e) {}
+    }
+  }
+
+  async mayCreate(ip, now) {
+    // the Workers rate limiting binding (per Cloudflare location, approximate): 10 rooms a minute per address
+    if (this.env.CREATE_LIMIT && ip) {   // (an error here refuses the create: the caller counts it as `limit`)
+      if (!(await this.env.CREATE_LIMIT.limit({key: addressKey(ip)})).success) return false;
+    }
+    // and at most `daily` rooms per UTC day, counted by one Durable Object
+    const day = new Date(now).toISOString().slice(0, 10);
+    return await this.env.DAILY.get(this.env.DAILY.idFromName('rooms')).take(day, this.L.daily);
+  }
+
+  async webSocketClose(ws) { await this.gone(ws) }
+  async webSocketError(ws) { await this.gone(ws) }
+
+  async gone(ws, code = 1000, reason = 'bye') {
+    const a = ws.deserializeAttachment();
+    if (!a || a.gone) return;
+    ws.serializeAttachment({...a, gone: true});
+    try { ws.close(code, reason) } catch (e) {}
+    if (!a.id) return;
+    this.flow.delete(a.id);
+    const rest = this.members(ws);
+    // the leaver's last activity stays in the room (hibernation keeps only the attachments)
+    const left = Math.max(a.la || 0, a.rl || 0);
+    if (left && rest.length) {
+      const [o, other] = rest[0];
+      if (!o.rl || o.rl < left) other.serializeAttachment({...o, rl: left});
+    }
+    this.tell({t: 'left', id: a.id}, ws);
+    if (!rest.length && this.row()) {
+      const now = Date.now();
+      this.ctx.storage.sql.exec('UPDATE room SET empty_since = ?', now);
+      const due = await this.ctx.storage.getAlarm();
+      if (!due || due > now + this.L.empty) await this.ctx.storage.setAlarm(now + this.L.empty);
+    }
+  }
+
+  async alarm() {
+    const now = Date.now(), L = this.L, row = this.row();
+    for (const ws of this.sockets()) {   // sockets that never said hello
+      const a = ws.deserializeAttachment();
+      if (a && !a.id && !a.gone && !a.hello && now - a.at > L.hello) this.refuse(ws, 'no hello');
+    }
+    if (!row) { await this.ctx.storage.deleteAll(); return }
+    // a member's last activity: its last message, or its last ping (answered by the runtime while the object slept)
+    const active = (o, ws) => {
+      let t = Math.max(o.at || 0, o.la || 0);
+      try { t = Math.max(t, this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() || 0) } catch (e) {}
+      return t;
+    };
+    let members = this.members();
+    if (now < row.created + L.maxAge) {
+      // a member silent past `quiet` (a device gone without closing its socket, such as a paused host's: §5.3) is
+      // closed, and the others hear `left`; when every member is silent, the idle rule below decides
+      const quiet = members.filter(([o, ws]) => now - active(o, ws) >= L.quiet);
+      if (quiet.length < members.length) for (const [, ws] of quiet) this.refuse(ws, 'quiet');
+      members = this.members();
+    }
+    let due = row.created + L.maxAge;
+    if (members.length) {
+      let last = Math.max(row.created, this.lastActive);
+      for (const [o, ws] of members) last = Math.max(last, active(o, ws), o.rl || 0);
+      due = Math.min(due, last + L.idle);
+    } else {
+      due = Math.min(due, (row.empty_since ?? row.created) + L.empty);
+    }
+    if (now < due) { await this.ctx.storage.setAlarm(due); return }
+    const why = now >= row.created + L.maxAge ? 'expired' : 'idle';
+    for (const ws of this.sockets()) {
+      const a = ws.deserializeAttachment();
+      if (a) ws.serializeAttachment({...a, gone: true});
+      this.send(ws, {t: 'error', why});
+      try { ws.close(1000, why) } catch (e) {}
+    }
+    this.flow.clear(); this.nextId = 0; this.idCeil = 0; this.lastActive = 0;
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+  }
+}
+
+// Rooms created per UTC day (one object for the whole relay; one request per room created).
+export class Daily extends DurableObject {
+  take(day, max) {
+    const sql = this.ctx.storage.sql;
+    sql.exec('CREATE TABLE IF NOT EXISTS days (day TEXT PRIMARY KEY, n INTEGER NOT NULL)');
+    sql.exec('DELETE FROM days WHERE day <> ?', day);
+    const n = sql.exec('SELECT n FROM days WHERE day = ?', day).toArray()[0]?.n ?? 0;
+    if (n >= max) return false;
+    sql.exec('INSERT INTO days (day, n) VALUES (?, ?) ON CONFLICT (day) DO UPDATE SET n = excluded.n', day, n + 1);
+    return true;
+  }
+}

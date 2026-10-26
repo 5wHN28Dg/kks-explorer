@@ -9,12 +9,12 @@ name: Tests
 on:
   pull_request:
     # prose-only changes (CLAUDE.md, READMEs, docs/) don't build or test anything; the files tests read do
-    paths: ['**', '!*.md', '!**/*.md', '!docs/**', 'relay/README.md', 'vendor/fonts/README.md',
+    paths: ['**', '!*.md', '!**/*.md', '!docs/**', 'relay/README.md', 'relay-plant/README.md', 'vendor/fonts/README.md',
             'docs/plant3d/FIRST-TRAIN.md']
   push:
     branches: [main]
     # prose-only changes (CLAUDE.md, READMEs, docs/) don't build or test anything; the files tests read do
-    paths: ['**', '!*.md', '!**/*.md', '!docs/**', 'relay/README.md', 'vendor/fonts/README.md',
+    paths: ['**', '!*.md', '!**/*.md', '!docs/**', 'relay/README.md', 'relay-plant/README.md', 'vendor/fonts/README.md',
             'docs/plant3d/FIRST-TRAIN.md']
   workflow_dispatch:
 
@@ -181,6 +181,25 @@ jobs:
         env:
           KKS_REQUIRE_FFMPEG: '1'
         run: .venv/bin/python tests/shards.py ${{ matrix.shard }}
+
+  # Walkdown Plant's relay (relay-plant/, docs/plant3d/MULTIPLAYER.md §9.1): the protocol tests against the real Worker
+  # in workerd, through the wrangler pinned in relay-plant/package-lock.json (the twin's run is in `python`)
+  plant-relay:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: The pinned wrangler (npm ci checks every package's integrity hash)
+        working-directory: relay-plant
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: The relay tests against the Worker in workerd
+        env:
+          KKS_PLANT_RELAY_WORKERD: '1'
+          WRANGLER_SEND_METRICS: 'false'
+        run: python3 -m unittest -v -k Workerd tests.test_plant_relay
 
   # the web client's download size against web-size.json (tools/web_size.py): any change needs the baseline updated in
   # the same PR, and the PR says why growth is worth it

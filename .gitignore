@@ -35,6 +35,11 @@ keystore.properties
 # wrangler (relay/): local state and caches
 relay/.wrangler/
 relay/node_modules/
+# wrangler (relay-plant/, Walkdown Plant's relay): local state, caches and local variables; its deployed URL is never
+# written into the repository
+relay-plant/.wrangler/
+relay-plant/node_modules/
+relay-plant/.dev.vars
 # the manager's working copy of the plant data (M5b: drawings are published by sync, never committed)
 plant-data/
 # private notes about the plant for Claude Code (plant name, reader accuracy per sheet): never commit

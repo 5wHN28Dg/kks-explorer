@@ -1,0 +1,29 @@
+# Walkdown Plant's multiplayer relay (docs/plant3d/MULTIPLAYER.md §9.1). Deploy with deploy.py (README.md), which
+# checks the account is on the Workers Free plan first. No [vars] here: deploy.py refuses a config that sets any.
+name = "walkdown-plant-relay"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+preview_urls = false
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[durable_objects.bindings]]
+name = "DAILY"
+class_name = "Daily"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room", "Daily"]
+
+# 10 rooms created a minute per client address (per Cloudflare location, approximate); the Room asks it only when a
+# room is created
+[[ratelimits]]
+name = "CREATE_LIMIT"
+namespace_id = "1068"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60

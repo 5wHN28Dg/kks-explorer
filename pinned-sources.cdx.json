@@ -413,6 +413,132 @@
     }
    ],
    "purl": "pkg:generic/microsoft.windows.sdk.buildtools@10.0.28000.2705?download_url=https%3A%2F%2Fapi.nuget.org%2Fv3-flatcontainer%2Fmicrosoft.windows.sdk.buildtools%2F10.0.28000.2705%2Fmicrosoft.windows.sdk.buildtools.10.0.28000.2705.nupkg"
+  },
+  {
+   "type": "library",
+   "name": "godot-cpp",
+   "version": "10.0.0-stable",
+   "description": "Godot's C++ bindings for GDExtension: Walkdown Plant's voice codec extension (wdp_voice, decision 0069), against Godot 4.7's API",
+   "licenses": [
+    {
+     "license": {
+      "id": "MIT"
+     }
+    }
+   ],
+   "purl": "pkg:generic/godot-cpp@10.0.0-stable?download_url=https%3A%2F%2Fcodeload.github.com%2Fgodotengine%2Fgodot-cpp%2Ftar.gz%2F10.0.0-stable",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://codeload.github.com/godotengine/godot-cpp/tar.gz/10.0.0-stable",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "ebbf64f0f8f8b8b66bc4bc4d3797db97f95b19cf0dfb5b3f8cf56683d9df7db4"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "apps/plant3d/voice/build.sh"
+    }
+   ]
+  },
+  {
+   "type": "library",
+   "name": "opus",
+   "version": "1.5.2",
+   "description": "libopus: Walkdown Plant's voice codec (wdp_voice, decision 0069)",
+   "licenses": [
+    {
+     "license": {
+      "id": "BSD-3-Clause"
+     }
+    }
+   ],
+   "purl": "pkg:generic/opus@1.5.2?download_url=https%3A%2F%2Fdownloads.xiph.org%2Freleases%2Fopus%2Fopus-1.5.2.tar.gz",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "apps/plant3d/voice/build.sh"
+    }
+   ]
+  },
+  {
+   "type": "library",
+   "name": "speexdsp",
+   "version": "1.2.1",
+   "description": "SpeexDSP: its resampler only, in Walkdown Plant's voice codec (wdp_voice, decision 0069)",
+   "licenses": [
+    {
+     "license": {
+      "id": "BSD-3-Clause"
+     }
+    }
+   ],
+   "purl": "pkg:generic/speexdsp@1.2.1?download_url=https%3A%2F%2Fdownloads.xiph.org%2Freleases%2Fspeex%2Fspeexdsp-1.2.1.tar.gz",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://downloads.xiph.org/releases/speex/speexdsp-1.2.1.tar.gz",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "8c777343e4a6399569c72abc38a95b24db56882c83dbdb6c6424a5f4aeb54d3d"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "apps/plant3d/voice/build.sh"
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "org.freedesktop.Sdk",
+   "version": "26.08.3",
+   "description": "the Flatpak SDK Walkdown Plant's Linux voice library (wdp_voice, decision 0069) is built in: the runtime of org.godotengine.godot.BaseApp//4.7; its OSTree commit (SHA-256) pinned",
+   "licenses": [
+    {
+     "expression": "MIT AND GPL-2.0-or-later AND LGPL-2.1-or-later"
+    }
+   ],
+   "purl": "pkg:generic/org.freedesktop.Sdk@26.08.3?download_url=https%3A%2F%2Fdl.flathub.org%2Frepo%2F",
+   "externalReferences": [
+    {
+     "type": "distribution",
+     "url": "https://dl.flathub.org/repo/",
+     "hashes": [
+      {
+       "alg": "SHA-256",
+       "content": "3311c13c67b602315c39cf5310de129dd3460d04b6c8cf5be1b2cbc42c51abd7"
+      }
+     ]
+    }
+   ],
+   "properties": [
+    {
+     "name": "walkdown:fetched-by",
+     "value": "apps/plant3d/voice/build.sh (flatpak; CI's plant3d-app.yml voice job)"
+    }
+   ]
   }
  ]
 }

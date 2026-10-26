@@ -174,6 +174,10 @@ needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, 
 (W1, A1, C1) adds one kind of load and is measured alone before the next adds another; S4, the busiest hour, comes
 last, when the per-tier counts are known from A1.
 
+**Multiplayer** (the user, 2026-10-26): its own milestones MP1–MP6 in docs/plant3d/MULTIPLAYER.md §13 (decisions
+0067–0069). MP1 needs S3 (the engine's staff as built); it changes the engine (several trainees), so it goes before
+S4 or alongside it with S4 rebased on it.
+
 ## When to stop and ask the user (the user, 2026-10-22)
 
 - **If A1 measures fewer than 4 animated (skinned) people on the Note 9** within the frame rules: stop and ask before

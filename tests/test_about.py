@@ -251,9 +251,43 @@ class PlantAbout(unittest.TestCase):
         for n in fetched:
             self.assertIn(n + '_2K-JPG.zip', {x.replace('get?file=', '') for x in names}, n)
         self.assertIn(sky, names)
+        voice = [a for a in d['assets'] if 'voice/build.sh' in a['pinned_by']]
         for a in d['assets']:
-            self.assertEqual(a['license'], 'CC0-1.0', a['id'])
+            if a not in voice:
+                self.assertEqual(a['license'], 'CC0-1.0', a['id'])
         self.assertIn('CC0 1.0 Universal', d['licenses']['CC0-1.0']['text'])
+
+    def test_the_voice_codecs_code_is_listed_with_its_notices(self):
+        """wdp_voice (decision 0069): every source apps/plant3d/voice/build.sh fetches is in About, under its
+        permissive licence, with its own licence file (copyright lines and terms) in full"""
+        with open(os.path.join(REPO, 'apps', 'plant3d', 'about.json'), encoding='utf-8') as f:
+            d = json.load(f)
+        with open(os.path.join(REPO, 'apps', 'plant3d', 'voice', 'build.sh'), encoding='utf-8') as f:
+            urls = re.findall(r'^fetch \S+ (https://\S+) [0-9a-f]{64}$', f.read(), re.M)
+        self.assertEqual(len(urls), 3)
+        by_source = {a['source']: a for a in d['assets']}
+        for u in urls:
+            self.assertIn(u, by_source)
+            a = by_source[u]
+            self.assertIn(a['license'], ('BSD-3-Clause', 'MIT'), a['id'])
+            self.assertIn('voice/build.sh', a['pinned_by'])
+            self.assertIn('Copyright', a['notice'])
+            self.assertIn('THE SOFTWARE IS PROVIDED "AS IS"' if a['license'] == 'MIT' else 'Redistribution and use',
+                          a['notice'])
+            self.assertIn(a['license'], d['licenses'])
+        # the runtimes linked into the libraries (Android and Windows: LLVM's; Windows: MinGW-w64's; Linux: GCC's)
+        ids = {a['id']: a for a in d['assets']}
+        for i in ('llvm-runtime', 'mingw-w64', 'gcc-runtime'):
+            self.assertIn(i, ids)
+        apache = d['licenses']['Apache-2.0 WITH LLVM-exception']['text']
+        self.assertIn('Apache License', apache)
+        self.assertIn('LLVM Exceptions to the Apache 2.0 License', apache)
+        self.assertIn('MinGW-w64', ids['mingw-w64']['notice'])
+        # the SpeexDSP file compiled in carries its own notice, and libopus's files' copyright holders are all named
+        self.assertIn('Thorvald Natvig', by_source['https://downloads.xiph.org/releases/speex/speexdsp-1.2.1.tar.gz']['notice'])
+        opus = by_source['https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz']['notice']
+        for holder in ('Koen Vos', 'Cisco Systems', 'Google Inc.', 'Parrot', 'Vidyo', 'John Ridges'):
+            self.assertIn(holder, opus)
 
 if __name__ == '__main__':
     unittest.main()
