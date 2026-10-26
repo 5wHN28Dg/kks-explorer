@@ -45,6 +45,14 @@ the Note 9's bionic (Android 10, 2026-10-16: every value at every step of every 
 digests). Windows (its CRT's `exp`) is not run yet; if it ever differs, the build (0054) can store the factors
 computed on Linux in the compiled model.
 
+**Several trainees and the state digest (milestone MP1, 2026-10-26).** `PlantEngine.new(model, scenario, true)` makes
+a session run (docs/PLANT3D.md §17.13): every input carries its slot (the methods' `slot` argument; the vectors' form
+ends with it), `trainee(slot)`, `unacked(slot)` and `t_at(slot)` read a player's person, count of new tasks and place
+(the single-player run's trainee is slot 0's: `trainee()`). `digest()` is the state digest of §17.14, which the
+reference makes the same (`ref/plant3d.py Engine.digest`, `ref/godot_variant.py`); `run_vectors.gd` checks the stored
+digests of the staff runs, the day and its forks, and writes every run's (`state`, every 50th step) with `--digests`.
+`tests/bench_digest.gd` measures its cost (MULTIPLAYER.md §4). The app makes every input through `ui/inputs.gd`.
+
 **Where there is no reference result.** The claim covers what the reference can run: content whose values stay finite
 (the validator bounds each number below 10⁹, but a product of many can overflow, and the reference then raises in a
 `select` or `wrap`), and inputs whose names are text or null and whose values are numbers, booleans or null (the

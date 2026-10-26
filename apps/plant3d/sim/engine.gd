@@ -13,6 +13,11 @@ extends RefCounted
 ## point) answers what a lock would do (§15.6) without changing the run. Every input is also kept in
 ## `inputs` as [the step it takes effect in, kind, …], the vectors' input form.
 ##
+## A session run (docs/PLANT3D.md §17.13, docs/plant3d/MULTIPLAYER.md §3.3: `new(model, scenario, true)`) has up to
+## SLOTS players: every input names its slot (the methods' `slot` argument, the input form's last element) and is
+## handled for the person that slot plays. A single-player run's inputs have no slot (its trainee is slot 0's).
+## digest() is the state digest of PLANT3D.md §17.14 (MULTIPLAYER.md §4).
+##
 ## Arithmetic notes (what makes it bit-exact, each mirrored from the reference):
 ## - every value is a float (IEEE 754 double); content numbers are read correctly rounded (json_strict.gd);
 ## - sum and product fold left from 0.0 and 1.0; min and max keep the first of equal values (Python's min/max), so
@@ -24,6 +29,7 @@ const PlantModel = preload("plant_model.gd")
 const Staff = preload("staff.gd")
 
 const STEP := 0.1
+const SLOTS := 8                    # a session run's slots, 0 to 7 (§17.13)
 
 # node kinds, the commonest first (the evaluator tests them in this order)
 enum {K_GE, K_GT, K_LE, K_LT, K_OF, K_PRODUCT, K_AND, K_SUM, K_NOT, K_DIFF, K_MAX, K_SELECT, K_OR, K_MIN, K_CONST,
@@ -119,21 +125,23 @@ var _fixed_trainee := false         # the scenario names the trainee
 var _show := {}                     # code -> its show binding's value name or number
 var _fault_kks := {}                # scenario fault id -> its code or null
 var _npc_pending := 0               # the NPCs' inputs in this step's step 1 (set every step)
+var _npc_evs := {}                  # this step's events of NPC inputs whose person a slot took in step 1 (§17.13)
 # the staff's state (§17; saved with the run, copied by clone): st_ for the run, sp_ per person in file order
 var J := 0                          # the jumps made, in tenths of a clock second
 var npc_queue: Array = []           # the NPCs' inputs made in step 9, for the next step's step 1
 var ev_mark := 0                    # where this step's events begin
 var st_order := 0                   # task instances made
-var st_unacked := 0                 # given to the trainee since their last task_ack (§17.6)
-var st_trainee := -1                # the trainee's person, -1 for none (free mode)
-var st_t_at := -1                   # the place the trainee is at (arrive, leave), -1 for none
-var st_t_in: Array = []             # the trainee's inputs for step 9
+var st_session := false             # a session run (§17.13): every input with its slot
+var st_players := PackedInt32Array()    # per slot: the person it plays, -1 for none (a single-player run: slot 0)
+var st_acks := PackedInt32Array()   # per slot: tasks given to its person since their last task_ack (§17.6)
+var st_t_from := PackedInt32Array() # per slot: the place its person last left (a release puts them back), -1
+var st_t_in: Array = []             # the players' inputs for step 9: [slot, input], in the order made
 var st_jumped: Array = []           # [old clock, new clock] of a jump in this step
 var st_holder := {}                 # place -> the person reserving or occupying it
 var st_given := {}                  # reaction source -> instances of it still queued or current
 var st_vprev: Array = []            # per reaction on a value: its truth after the previous step
 var st_next1 := 0                   # the clock at which phase 1 next has something to do (staff.gd _phase1)
-var st_early: Array = []            # the trainee's done actions no step took yet (§17.8): [kind, step, …]
+var st_kept: Array = []             # per slot: its person's done actions no step took yet (§17.8): [kind, step, …]
 var st_pending: Array = []          # offers for a permit nobody was on duty to take (§17.10), staff.gd offer()
 var st_left := {}                   # people off site with a lock at the last phase 2 (§17.9): index -> true
 var sp_on := PackedByteArray()
@@ -156,11 +164,20 @@ var sp_acts: Array = []             # per person: an Array per act kind (staff.g
 var sp_zin := PackedInt64Array()    # the trainee's zones from their zone inputs: a bit per zone (file order)
 var st_made := {}                   # `seen` reactions made, once per act (§16.7): source key -> true
 var _touched := PackedByteArray()   # people whose acts may have changed in this step's step 9 (staff.gd: scratch)
+var _in_slot := 0                   # the slot of the player's input being handled (step 1, and its locks in step 3)
 
 
-func _init(model = null, scenario = null) -> void:
+func _init(model = null, scenario = null, session := false) -> void:
+	st_players.resize(SLOTS)
+	st_players.fill(-1)
+	st_acks.resize(SLOTS)
+	st_t_from.resize(SLOTS)
+	st_t_from.fill(-1)
+	for k in SLOTS:
+		st_kept.append([])
 	if model == null:
 		return          # clone() fills the rest
+	st_session = session
 	m = model
 	sc = m.scenarios[scenario] if typeof(scenario) == TYPE_STRING else scenario
 	for v in m.values:
@@ -442,54 +459,62 @@ func _step0() -> void:
 
 # ---------------------------------------------------------------- trainee inputs
 
-func _q(item: Array) -> void:
+func _q(item: Array, slot = null) -> void:
+	if st_session:
+		if slot == null:
+			push_error("engine: a session run's input names its slot: " + str(item))
+			return
+		item = item + [slot]
+	elif slot != null:
+		push_error("engine: a single-player run's inputs have no slot: " + str(item))
+		return
 	inputs.append([step_no + 1] + item)
 	queue.append(item)
 
 
 ## An op; with `where` it is a version 2 op (§17.1), made at `where` by `person`.
-func op(kks, do, value = null, trip = null, where = null, person = null) -> void:
+func op(kks, do, value = null, trip = null, where = null, person = null, slot = null) -> void:
 	if where == null and person == null:
-		_q(["op", kks, do, value, trip])
+		_q(["op", kks, do, value, trip], slot)
 	else:
-		_q(["op", kks, do, value, trip, where, person])
+		_q(["op", kks, do, value, trip, where, person], slot)
 
 
-func ack(alarm) -> void:
-	_q(["ack", alarm])
+func ack(alarm, slot = null) -> void:
+	_q(["ack", alarm], slot)
 
 
-func shelve(alarm, seconds) -> void:
-	_q(["shelve", alarm, seconds])
+func shelve(alarm, seconds, slot = null) -> void:
+	_q(["shelve", alarm, seconds], slot)
 
 
-func unshelve(alarm) -> void:
-	_q(["unshelve", alarm])
+func unshelve(alarm, slot = null) -> void:
+	_q(["unshelve", alarm], slot)
 
 
-func fault(fid) -> void:
-	_q(["fault", fid])
+func fault(fid, slot = null) -> void:
+	_q(["fault", fid], slot)
 
 
-func repair(fid) -> void:
-	_q(["repair", fid])
+func repair(fid, slot = null) -> void:
+	_q(["repair", fid], slot)
 
 
 ## The trainee's repair under a work's permit (§15.5): checked in step 1, made in step 3 with the trainer's repairs.
-func repair_under(fid, work, person = null) -> void:
-	_q(["repair", fid, work, person])
+func repair_under(fid, work, person = null, slot = null) -> void:
+	_q(["repair", fid, work, person], slot)
 
 
-func permit(work, action, person = null) -> void:
-	_q(["permit", work, action, person])
+func permit(work, action, person = null, slot = null) -> void:
+	_q(["permit", work, action, person], slot)
 
 
-func lock(work, point, person = null) -> void:
-	_q(["lock", work, point, person])
+func lock(work, point, person = null, slot = null) -> void:
+	_q(["lock", work, point, person], slot)
 
 
-func unlock(work, point, person = null) -> void:
-	_q(["unlock", work, point, person])
+func unlock(work, point, person = null, slot = null) -> void:
+	_q(["unlock", work, point, person], slot)
 
 
 ## The compiled op of a code, do and trip (staff.gd: the trainee's actions before their step), null for none.
@@ -500,63 +525,97 @@ func op_entry(kks, do, trip):
 
 ## A lock removal by authority (§15.1): another person's lock taken off by a supervisor, with the reason; with
 ## `named`, the lock of `owner` (else the point's earliest).
-func remove_lock(work, point, person, reason, owner = null, named := false) -> void:
+func remove_lock(work, point, person, reason, owner = null, named := false, slot = null) -> void:
 	if named:
-		_q(["remove_lock", work, point, person, reason, owner])
+		_q(["remove_lock", work, point, person, reason, owner], slot)
 	else:
-		_q(["remove_lock", work, point, person, reason])
+		_q(["remove_lock", work, point, person, reason], slot)
 
 
 # format 2's trainee inputs for the staff (§17.6)
-func role(person) -> void:
-	_q(["role", person])
+func role(person, slot = null) -> void:
+	_q(["role", person], slot)
 
 
-func task_ack() -> void:
-	_q(["task_ack"])
+## A session run's player's person handed to the NPCs (§17.13); the host makes it.
+func release(slot) -> void:
+	_q(["release"], slot)
 
 
-func arrive(place) -> void:
-	_q(["arrive", place])
+func task_ack(slot = null) -> void:
+	_q(["task_ack"], slot)
 
 
-func leave(place) -> void:
-	_q(["leave", place])
+func arrive(place, slot = null) -> void:
+	_q(["arrive", place], slot)
 
 
-func read(code, value) -> void:
-	_q(["read", code, value])
+func leave(place, slot = null) -> void:
+	_q(["leave", place], slot)
 
 
-func say(message, to) -> void:
-	_q(["say", message, to])
+func read(code, value, slot = null) -> void:
+	_q(["read", code, value], slot)
 
 
-func pick(index) -> void:
-	_q(["pick", index])
+func say(message, to, slot = null) -> void:
+	_q(["say", message, to], slot)
 
 
-func radio_call(role_id, task, work = null) -> void:
-	_q(["call", role_id, task, work])
+func pick(index, slot = null) -> void:
+	_q(["pick", index], slot)
 
 
-func jump(hhmm) -> void:
-	_q(["jump", hhmm])
+func radio_call(role_id, task, work = null, slot = null) -> void:
+	_q(["call", role_id, task, work], slot)
+
+
+func jump(hhmm, slot = null) -> void:
+	_q(["jump", hhmm], slot)
 
 
 ## The trainee puts a PPE item on (1) or takes it off (0), at a locker (§17.6, §17.11).
-func ppe(item, on) -> void:
-	_q(["ppe", item, on])
+func ppe(item, on, slot = null) -> void:
+	_q(["ppe", item, on], slot)
 
 
 ## The trainee entered ("in") or left ("out") a zone (§16.2).
-func zone(zone_id, how) -> void:
-	_q(["zone", zone_id, how])
+func zone(zone_id, how, slot = null) -> void:
+	_q(["zone", zone_id, how], slot)
 
 
 ## The trainee stops an unsafe act of that person's (§16.7, §17.11).
-func stop_act(person) -> void:
-	_q(["stop", person])
+func stop_act(person, slot = null) -> void:
+	_q(["stop", person], slot)
+
+
+# ---------------------------------------------------------------- the players (§17.13)
+
+## The person slot plays, -1 for none (a single-player run's trainee is slot 0's).
+func trainee(slot: int = 0) -> int:
+	return st_players[slot] if slot >= 0 and slot < SLOTS else -1
+
+
+## The slot playing person pi, -1 for an NPC.
+func slot_of(pi: int) -> int:
+	return st_players.find(pi) if pi >= 0 else -1
+
+
+## The tasks given to slot's person since their last task_ack (0 without one); slot -1: every player's together.
+func unacked(slot: int = 0) -> int:
+	if slot == -1:
+		var t := 0
+		for k in SLOTS:
+			if st_players[k] != -1:
+				t += st_acks[k]
+		return t
+	return st_acks[slot] if slot >= 0 and slot < SLOTS and st_players[slot] != -1 else 0
+
+
+## The place slot's person is at, -1 between places, off site or without one.
+func t_at(slot: int = 0) -> int:
+	var pi := trainee(slot)
+	return sp_pos[pi] if pi != -1 else -1
 
 
 ## The plant clock in tenths of a clock second (§16.1): C(n) = S + n × day_scale + J.
@@ -576,48 +635,56 @@ func fault_code(fid):
 	return _fault_kks.get(fid)
 
 
-## Queues an input in the vectors' form [step, kind, …] (the step is not checked here).
+## Queues an input in the vectors' form [step, kind, …] (a session run's: [step, kind, …, slot]; the step is not
+## checked here).
 func apply_input(item: Array) -> void:
+	var slot = null
+	if st_session:
+		slot = item[-1] if item.size() > 2 else null
+		item = item.slice(0, -1)
+		if slot == null:
+			push_error("engine: a session run's input names its slot: " + str(item))
+			return
 	match item[1]:
 		"op":
 			if item.size() == 8:
-				op(item[2], item[3], item[4], item[5], item[6], item[7])
+				op(item[2], item[3], item[4], item[5], item[6], item[7], slot)
 			else:
-				op(item[2], item[3], item[4], item[5])
+				op(item[2], item[3], item[4], item[5], null, null, slot)
 		"ack":
-			ack(item[2])
+			ack(item[2], slot)
 		"shelve":
-			shelve(item[2], item[3])
+			shelve(item[2], item[3], slot)
 		"unshelve":
-			unshelve(item[2])
+			unshelve(item[2], slot)
 		"fault":
-			fault(item[2])
+			fault(item[2], slot)
 		"repair":
 			if item.size() > 3:
-				repair_under(item[2], item[3], item[4])
+				repair_under(item[2], item[3], item[4], slot)
 			else:
-				repair(item[2])
+				repair(item[2], slot)
 		"permit":
-			permit(item[2], item[3], item[4])
+			permit(item[2], item[3], item[4], slot)
 		"lock":
-			lock(item[2], item[3], item[4])
+			lock(item[2], item[3], item[4], slot)
 		"unlock":
-			unlock(item[2], item[3], item[4])
+			unlock(item[2], item[3], item[4], slot)
 		"remove_lock":
 			if item.size() > 6:
-				remove_lock(item[2], item[3], item[4], item[5], item[6], true)
+				remove_lock(item[2], item[3], item[4], item[5], item[6], true, slot)
 			else:
-				remove_lock(item[2], item[3], item[4], item[5])
+				remove_lock(item[2], item[3], item[4], item[5], null, false, slot)
 		"role", "arrive", "leave", "pick", "jump":
-			_q([item[1], item[2]])
-		"task_ack":
-			task_ack()
+			_q([item[1], item[2]], slot)
+		"release", "task_ack":
+			_q([item[1]], slot)
 		"read", "say", "ppe", "zone":
-			_q([item[1], item[2], item[3]])
+			_q([item[1], item[2], item[3]], slot)
 		"stop":
-			_q(["stop", item[2]])
+			_q(["stop", item[2]], slot)
 		"call":
-			radio_call(item[2], item[3], item[4] if item.size() > 4 else null)
+			radio_call(item[2], item[3], item[4] if item.size() > 4 else null, slot)
 		_:
 			push_error("engine: unknown input " + str(item))
 
@@ -712,15 +779,17 @@ func _n_locked(k: int) -> int:
 ## for inputs naming no person, and a person's role must have the authority (and for `accept`, the work's
 ## discipline; `done` and `return` are the acceptor's, or another's with `accept` and the discipline while the
 ## acceptor is off duty or absent).
-func _authority(person, npc: bool, need: String, discipline = null, by_acceptor := false, work = null) -> bool:
+func _authority(person, npc: bool, need: String, discipline = null, by_acceptor := false, work = null,
+		slot: int = -1) -> bool:
 	if _sm == null:
 		return person != null
+	var tr: int = st_players[_in_slot if slot == -1 else slot]     # the input's player's person (§17.13)
 	if person == null:
-		return not npc and st_trainee != -1
+		return not npc and tr != -1
 	if typeof(person) != TYPE_STRING or not _sm.person_ix.has(person):
 		return true
 	var pi: int = _sm.person_ix[person]
-	if not npc and (st_trainee == -1 or pi != st_trainee):
+	if not npc and (tr == -1 or pi != tr):
 		return true
 	var rid: String = _sm.people[pi]["role"]
 	if not _sm.auth[rid].has(need):
@@ -800,10 +869,10 @@ func _repair_under(fid, work, person) -> bool:
 
 ## What a lock would do (§15.6): the trips and priority 1 alarms that come within `horizon` steps with the lock made
 ## after the inputs already queued, and not without it. Changes nothing in this run.
-func lock_effects(work, point, horizon: int = 100, person = null) -> Dictionary:
+func lock_effects(work, point, horizon: int = 100, person = null, slot: int = 0) -> Dictionary:
 	var a = clone()
 	var b = clone()
-	a.queue.append(["lock", work, point, person])
+	a.queue.append(["lock", work, point, person, slot] if st_session else ["lock", work, point, person])
 	var na: int = a.events.size()
 	var nb: int = b.events.size()
 	a.step(horizon)
@@ -1344,6 +1413,17 @@ const _FAST_TABLE := """static func table(fa: PackedFloat64Array, f: int, cnt: i
 """
 
 
+## An NPC's input applied: its result is the NPC's, unless a slot took the person in this step's step 1 (§17.13): then
+## the input is applied all the same, but nobody waits on it and its events are no step of the player's.
+func _npc_result(pid, r: String, k0: int) -> void:
+	var pi: int = _sm.person_ix[pid]
+	if st_session and st_players.has(pi):
+		for k in range(k0, events.size()):
+			_npc_evs[k] = true
+	else:
+		sp_result[pi] = r
+
+
 func _step() -> void:
 	step_no += 1
 	ev_mark = events.size()
@@ -1359,33 +1439,49 @@ func _step() -> void:
 	queue = []
 	var nt := q.size()
 	_npc_pending = npc_queue.size()     # a jump waits for the NPCs' inputs of the step before (§17.8)
+	_npc_evs = {}
 	if not npc_queue.is_empty():
 		q = q + npc_queue
 		npc_queue = []
 	for qi in q.size():
 		var item: Array = q[qi]
 		var npc := qi >= nt
+		var slot := 0
+		if st_session and not npc:
+			# a session run's input: its slot last (§17.13); one without a slot does nothing, with no event
+			var sl = item[-1] if item.size() > 1 else null
+			if typeof(sl) != TYPE_INT or sl < 0 or sl >= SLOTS:
+				continue
+			slot = sl
+			item = item.slice(0, -1)
+		_in_slot = slot
 		var kind: String = item[0]
 		if kind == "op":
+			var k0 := events.size()
 			var r := _op(item, moved, npc)
 			if npc:
-				sp_result[_sm.person_ix[item[6]]] = r
+				_npc_result(item[6], r, k0)
 			continue
 		if kind == "permit":
+			var k0 := events.size()
 			var r := _permit(item[1], item[2], item[3], dones, npc)
 			if npc:
-				sp_result[_sm.person_ix[item[3]]] = r
+				_npc_result(item[3], r, k0)
 			continue
 		if kind == "lock" or kind == "unlock" or kind == "remove_lock":
-			noted.append([item, npc])
+			noted.append([item, npc, slot])
 			continue
+		if kind == "release" and not st_session:
+			continue        # (a session run's input: a single-player run has no slots)
 		if kind == "role" or kind == "task_ack" or kind == "arrive" or kind == "leave" or kind == "read" \
 				or kind == "say" or kind == "pick" or kind == "call" or kind == "jump" or kind == "ppe" \
-				or kind == "zone" or kind == "stop":
+				or kind == "zone" or kind == "stop" or kind == "release":
 			if _sm != null:
-				_sm.t_input(self, item)
+				_sm.t_input(self, item, slot)
 			elif kind == "role":
-				_ev(["role", item[1], "refused"])
+				_ev(["role", item[1], "refused", slot] if st_session else ["role", item[1], "refused"])
+			elif kind == "release":
+				_ev(["release", null, "refused", slot])
 			elif kind == "jump":
 				_ev(["jump", clock(), null, "refused"])
 			continue
@@ -1438,10 +1534,12 @@ func _step() -> void:
 	# 3. the locks and unlocks noted in step 1, in the order made; the permits' automatic moves (§15.3)
 	for nd in noted:
 		var item: Array = nd[0]
+		_in_slot = nd[2]
+		var k0 := events.size()
 		var r := _lock(item[0], item[1], item[2], item[3], vals, nd[1], item[4] if item.size() > 4 else null,
 				item.size() > 5, item[5] if item.size() > 5 else null)
 		if nd[1]:
-			sp_result[_sm.person_ix[item[3]]] = r
+			_npc_result(item[3], r, k0)
 	for wi in _wk.size():
 		var st := pstate[wi]
 		if st < 2 or st > 7 or st == 6:
@@ -1614,7 +1712,7 @@ func _op(item: Array, moved: Dictionary, npc := false) -> String:
 			failed.append("where")
 		elif _authority(item[6], npc, "operate_" + where):
 			failed.append("authority")
-	elif _sm != null and st_trainee != -1 and not npc:
+	elif _sm != null and st_players[_in_slot] != -1 and not npc:
 		failed.append("authority")      # a trainee playing a person names where and who (§17.1)
 	var needs: PackedInt32Array = c["needs"]
 	for k in needs.size():
@@ -1673,9 +1771,10 @@ func isolations_locking(code) -> Array:
 	return _locking(code).map(func(x): return String(x).trim_suffix("_locked"))
 
 
-## §7.9, and with a trainee's person no task given to them since their last task_ack (§17.6).
+## §7.9, and with a trainee's person no task given to them since their last task_ack (§17.6); in a session run, none
+## given to any player's person since their own (§17.13).
 func fast_forward() -> bool:
-	return ff_model() and (_sm == null or st_trainee == -1 or st_unacked == 0)
+	return ff_model() and (_sm == null or unacked(-1) == 0)
 
 
 ## §7.9: no unacknowledged alarm, no active priority 1 alarm, no machine in a watched state.
@@ -1743,13 +1842,101 @@ func snapshot(with_values: bool = true) -> Dictionary:
 		s["worn"] = wa[0]
 		s["acts"] = wa[1]
 		s["vehicles"] = {}
-		s["unacked"] = st_unacked
+		s["unacked"] = unacked(-1)
+		if st_session:
+			var pl := []
+			for k in SLOTS:
+				if st_players[k] != -1:
+					pl.append([k, _sm.people[st_players[k]]["id"], st_acks[k]])
+			s["players"] = pl
 	if with_values:
 		var vals := {}
 		for i in n:
 			vals[names[i]] = cur[i]
 		s["values"] = vals
 	return s
+
+
+# ---------------------------------------------------------------- the state digest (§17.14)
+
+const DIGEST_TAG := "wdp-digest-1\n"
+
+## The state digest of docs/PLANT3D.md §17.14 (docs/plant3d/MULTIPLAYER.md §4): SHA-256 over the tag, the values'
+## doubles and the Variant encoding (var_to_bytes) of digest_tree(). Two engines of one model that will go on the same
+## way from here have the same digest, on every platform; the reference (ref/plant3d.py state_digest) makes the same.
+func digest() -> PackedByteArray:
+	var ctx := HashingContext.new()
+	ctx.start(HashingContext.HASH_SHA256)
+	ctx.update(DIGEST_TAG.to_ascii_buffer())
+	ctx.update(cur.slice(0, n).to_byte_array())
+	ctx.update(var_to_bytes(digest_tree()))
+	return ctx.finish()
+
+
+## What the digest covers besides the values (§17.14): every part of the state that the next steps read, in a form
+## of its own (sorted where the engine keeps a Dictionary); not the logs (events, inputs), the inputs still queued,
+## the previous step's values, the constants, nor what an implementation may keep differently (a task step's own
+## progress, the staff step's wake-ups and its next phase 1, the derived locks per code and lockbits).
+func digest_tree() -> Array:
+	var fo := []
+	var groups: Array = first_out.keys()
+	groups.sort()
+	for g in groups:
+		fo.append([g, first_out[g]])
+	var fd: Array = faults_done.keys()
+	fd.sort()
+	var ff: Array = faults_fixed.keys()
+	ff.sort()
+	var lk := []
+	for k in _iso.size():
+		for p in _iso[k][1].size():
+			if lockbits[_iso[k][4] + p]:
+				lk.append([k, p, lockers[Vector2i(k, p)]])
+	return [step_no, mem, mstate, latched, trip_count, fo, "|".join(astate), acount, shelved, il_prev, fd, ff, pstate,
+			_sorted_pairs(ptw), ptw_count, _sorted_pairs(acceptor), holder, lk, _digest_staff()]
+
+
+func _digest_staff():
+	if _sm == null:
+		return null
+	var np: int = sp_on.size()
+	var slots := PackedInt32Array()
+	slots.resize(np)
+	var insts := []         # every task instance: [person, 0 current / 1 queued / 2 held, …], person by person
+	for pi in np:
+		slots[pi] = sp_slots[pi].size()
+		if sp_cur[pi] != null:
+			insts.append(_digest_inst(pi, 0, sp_cur[pi]))
+		for x in sp_queue[pi]:
+			insts.append(_digest_inst(pi, 1, x))
+		for x in sp_held[pi]:
+			insts.append(_digest_inst(pi, 2, x))
+	var left := PackedInt32Array(st_left.keys())
+	left.sort()
+	var mk: Array = st_made.keys()
+	mk.sort()
+	var made := []
+	for k in mk:
+		made.append([k.x, k.y, k.z, k.w])
+	return [J, st_order, st_session, st_players, st_acks, st_t_from, st_kept, _sorted_pairs(st_holder),
+			_sorted_pairs(st_given), st_vprev, st_pending, left, made, npc_queue, sp_on, sp_duty, sp_duties, sp_planned,
+			slots, sp_pos, sp_leg, insts, sp_res, sp_occ, sp_result, sp_rng, sp_worn, sp_acts, sp_zin]
+
+
+## A task instance in the digest: its person, where it is (0 current, 1 queued, 2 held) and everything but its step's
+## own progress ("st").
+static func _digest_inst(pi: int, where: int, x: Dictionary) -> Array:
+	return [pi, where, x["task"], x["prio"], x["made"], x["order"], x["step"], x["work"], x["code"], x["alarm"],
+			x["src"], x["idle"], x["started"], x["int"], x["owner"], x["act"], x.get("orig")]
+
+
+static func _sorted_pairs(d: Dictionary) -> Array:
+	var keys: Array = d.keys()
+	keys.sort()
+	var out := []
+	for k in keys:
+		out.append([k, d[k]])
+	return out
 
 
 ## The values in slot order (declared, ext, machine states, trip latches), as doubles.
@@ -1765,14 +1952,14 @@ func clone():
 			"_faults", "_fault_ix", "_auto_faults", "_all_faults", "_tr_when", "_tr_need", "_al_when", "_al_clear",
 			"_al_sup", "_al_need", "_ops", "_iso", "_wk", "_state_kks", "_v2", "step_no", "ptw_count",
 			"_sm", "_S", "_ds", "_absent", "_fixed_trainee", "_show", "_fault_kks", "J", "ev_mark", "st_order",
-			"st_unacked", "st_trainee", "st_t_at", "st_next1"]:
+			"st_session", "st_next1"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
-			"lockbits", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_worn",
+			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_worn",
 			"sp_zin"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",
-			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_early",
+			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_kept",
 			"st_left", "st_pending", "st_made",
 			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result", "sp_held", "sp_acts"]:
 		c.set(k, get(k).duplicate(true))

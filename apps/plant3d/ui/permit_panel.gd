@@ -121,7 +121,7 @@ func _each_frame(delta: float) -> void:
 
 func send(action: String) -> void:
 	var e = ui.clock.engine
-	e.permit(work, action, ui.me())
+	ui.inputs.permit(work, action, ui.me())
 	_sent(str([work, action]), "permit", work, action, e.step_no + 1)
 
 
@@ -132,16 +132,16 @@ func send_remove(point: int, reason: String, owner = null) -> void:
 		return
 	_reasons.erase(str([work, point]))
 	var e = ui.clock.engine
-	e.remove_lock(work, point, ui.me(), reason.left(200), owner, true)
+	ui.inputs.remove_lock(work, point, ui.me(), reason.left(200), owner)
 	_sent(str([work, "remove_lock", point]), "remove_lock", work, point, e.step_no + 1)
 
 
 func send_lock(kind: String, point: int) -> void:
 	var e = ui.clock.engine
 	if kind == "lock":
-		e.lock(work, point, ui.me())
+		ui.inputs.lock(work, point, ui.me())
 	else:
-		e.unlock(work, point, ui.me())
+		ui.inputs.unlock(work, point, ui.me())
 	_sent(str([work, kind, point]), kind, work, point, e.step_no + 1)
 
 
@@ -156,10 +156,11 @@ func ask_lock(point: int, again := false) -> void:
 	var copy = e.clone()
 	var wid := work
 	var me = ui.me()                # the trainee's person: the lock is theirs (§17.1)
+	var slot: int = ui.inputs.slot  # (a session run's lock carries the player's slot, §17.13)
 	var box := {}
 	check = {"work": wid, "point": point, "engine": e, "box": box, "state": "checking", "answer": {},
 			"step": e.step_no, "tries": int(check.get("tries", 0)) + 1,
-			"task": WorkerThreadPool.add_task(func(): box["answer"] = copy.lock_effects(wid, point, 100, me))}
+			"task": WorkerThreadPool.add_task(func(): box["answer"] = copy.lock_effects(wid, point, 100, me, slot))}
 	_sig = ""
 	refresh()
 
@@ -506,10 +507,11 @@ func _isolation(e, w: Dictionary, st: int) -> void:
 			else:
 				if other == null:
 					other = y
-		if locked and e._sm != null and e.st_trainee != -1:
-			mate = e._sm._to_take_at(e, e.st_trainee, k, lks)
+		var mp: int = ui.my_person()
+		if locked and e._sm != null and mp != -1:
+			mate = e._sm._to_take_at(e, mp, k, lks)
 			# the trainee's remove_locks step names whose lock goes (§17.9): that one, when it is here
-			var c = e.sp_cur[e.st_trainee]
+			var c = e.sp_cur[mp]
 			if c != null and e._sm.tasks[c["task"]]["steps"][c["step"]].has("remove_locks") \
 					and c.get("owner") != null and e._sm._has(lks, c["owner"]):
 				other = c["owner"]

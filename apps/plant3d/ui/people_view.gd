@@ -1,5 +1,7 @@
 ## The crews on screen: each person at their logical place (§17.3: the engine's position is the truth), moved along a
-## way by the fraction of its time gone (the clock's part-step too, so they walk smoothly); a dot per person on the
+## way by the fraction of its time gone (the clock's part-step too, so they walk smoothly), on the way's line as the
+## content build found it on the navigation mesh (app/staff_ways.gd: round machines, through doors, up the steps;
+## the straight line between its places when the build has none); a dot per person on the
 ## overview map (its render layer), updated 4 times a second. The people themselves are app/people.gd's avatars
 ## (milestone A1), driven from here every frame: where they are, which way they face, how fast they walk, what their
 ## task's step has them do (STEP_ANIM), their look by role, the hat carried outside the process areas. A build without
@@ -9,6 +11,7 @@ extends Node3D
 const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
 
 const Plant = preload("res://app/plant.gd")
+const StaffWays = preload("res://app/staff_ways.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const MAP_LAYER := 2
 const COLOURS := {"shift_sup": Color(0.95, 0.95, 0.95), "ccr_op": Color(0.25, 0.55, 1.0),
@@ -22,6 +25,8 @@ var capsules: MultiMeshInstance3D
 var dots: MultiMeshInstance3D
 var _t := 0.0
 var _at: Array = []             # per place: its position (Godot frame)
+var ways = null                 # app/staff_ways.gd: the ways' lines (null: none built, walked straight)
+var _ways_of = null             # the staff model `ways` is for
 var shown := 0                  # people drawn at the last update (tests)
 var avatars                     # app/people.gd, when the build has the people
 var _yaw := {}                  # person -> the way they last faced
@@ -36,6 +41,7 @@ var _anim_of := PackedStringArray()     # person -> what they are seen doing whe
 const STEP_ANIM := {"read": "inspect", "meet": "talk", "say": "radio", "call": "radio", "wait": "idle", "ack": "type",
 	"permit": "write", "lock": "wrench", "unlock": "wrench"}
 const SEATED := ["desk", "seat", "table"]
+const ON_NAMES := ["", "stairs", "ladder"]   # app/staff_ways.gd's ON_… to app/people.gd's `on`
 
 
 func setup(u) -> void:
@@ -44,6 +50,10 @@ func setup(u) -> void:
 		avatars = ui.main.people
 	capsules = _mm(_capsule(), 1)
 	dots = _mm(_dot(), 1 << (MAP_LAYER - 1))
+	# the ways' lines read now, in the start, not in a drawn frame (the file is read once per staff model)
+	var e = ui.clock.engine if ui != null and ui.clock != null else null
+	if e != null and e._sm != null:
+		_places(e._sm)
 
 
 func _capsule() -> Mesh:
@@ -107,20 +117,21 @@ func update() -> void:
 		dots.multimesh.instance_count = 0
 		shown = 0
 		return
-	if _at.size() != sm.places.size():
-		_at.clear()
-		for pl in sm.places:
-			_at.append(Plant.g(pl["at"][0], pl["at"][1], pl["at"][2]))
+	_places(sm)
 	var xs := []
 	var cs := []
+	var me: int = ui.my_person()          # (the trainee's own person is the walker)
 	for pi in sm.people.size():
-		if pi == e.st_trainee:
+		if pi == me:
 			continue
 		var p := Vector3.INF
 		var leg: Array = e.sp_leg[pi]
 		if not leg.is_empty():
 			var k := clampf(float(e.step_no - leg[2]) / maxf(1.0, float(leg[3] - leg[2])), 0.0, 1.0)
-			p = (_at[leg[0]] as Vector3).lerp(_at[leg[1]], k)
+			if ways != null and ways.walk(mini(leg[0], leg[1]) * _at.size() + maxi(leg[0], leg[1]), leg[0], k, 1.0):
+				p = ways.pos
+			else:
+				p = (_at[leg[0]] as Vector3).lerp(_at[leg[1]], k)
 		elif e.sp_pos[pi] != -1:
 			p = _at[e.sp_pos[pi]]
 		if p == Vector3.INF:
@@ -154,10 +165,7 @@ func drive(delta: float) -> void:
 			_drove = false
 		return
 	_drove = true
-	if _at.size() != sm.places.size():
-		_at.clear()
-		for pl in sm.places:
-			_at.append(Plant.g(pl["at"][0], pl["at"][1], pl["at"][2]))
+	_places(sm)
 	var frac: float = clampf(ui.clock.acc / SimClock.STEP, 0.0, 1.0)
 	avatars.time_scale = ui.clock.rate()
 	_hat_t += delta
@@ -171,8 +179,9 @@ func drive(delta: float) -> void:
 		_anim_of.resize(sm.people.size())
 		_anim_of.fill("?")
 	var n := 0
+	var me: int = ui.my_person()          # (the trainee's own person is the walker)
 	for pi in sm.people.size():
-		if pi == e.st_trainee:
+		if pi == me:
 			continue
 		var at := Vector3.INF
 		var speed := 0.0
@@ -180,17 +189,26 @@ func drive(delta: float) -> void:
 		var leg: Array = e.sp_leg[pi]
 		var place := -1
 		if not leg.is_empty():
-			var a: Vector3 = _at[leg[0]]
-			var b: Vector3 = _at[leg[1]]
 			var steps: float = maxf(1.0, float(leg[3] - leg[2]))
 			var k := clampf((float(e.step_no - leg[2]) + frac) / steps, 0.0, 1.0)
-			at = a.lerp(b, k)
-			speed = a.distance_to(b) / (steps * SimClock.STEP) if k < 1.0 else 0.0
-			var flat := Vector2(b.x - a.x, b.z - a.z)
+			var d: Vector3
+			if ways != null and ways.walk(mini(leg[0], leg[1]) * _at.size() + maxi(leg[0], leg[1]), leg[0], k,
+					steps * SimClock.STEP):
+				at = ways.pos
+				d = ways.dir
+				speed = ways.speed if k < 1.0 else 0.0
+				on = ON_NAMES[ways.on]
+			else:
+				var a: Vector3 = _at[leg[0]]
+				var b: Vector3 = _at[leg[1]]
+				at = a.lerp(b, k)
+				d = b - a
+				speed = a.distance_to(b) / (steps * SimClock.STEP) if k < 1.0 else 0.0
+				if absf(d.y) > 0.3 * maxf(0.01, Vector2(d.x, d.z).length()):
+					on = "stairs"
+			var flat := Vector2(d.x, d.z)
 			if flat.length() > 0.05:
 				_yaw[pi] = atan2(-flat.x, -flat.y)
-			if absf(b.y - a.y) > 0.3 * maxf(0.01, flat.length()):
-				on = "stairs"
 		elif e.sp_pos[pi] != -1:
 			place = e.sp_pos[pi]
 			at = _at[place]
@@ -225,6 +243,17 @@ func drive(delta: float) -> void:
 		p.hat = _hat[pi]
 		n += 1
 	out.resize(n)
+
+
+## The places' positions and the ways' lines, made again when the staff model changes.
+func _places(sm) -> void:
+	if _at.size() == sm.places.size() and _ways_of == sm:
+		return
+	_at.clear()
+	for pl in sm.places:
+		_at.append(Plant.g(pl["at"][0], pl["at"][1], pl["at"][2]))
+	_ways_of = sm
+	ways = StaffWays.open(sm, _at)
 
 
 ## What a person not walking is seen doing: their task step's, or sitting at a desk, seat or table.

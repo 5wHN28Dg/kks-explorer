@@ -63,8 +63,11 @@ class Hasher:
 
     def __init__(self, start):
         self.start, self.chunks, self.h, self.last, self.vals = start, [], hashlib.sha256(), None, {}
+        self.states = []        # the state digest (PLANT3D.md §17.14) of every 50th step, as run_vectors.gd's `state`
 
     def add(self, e, keep=None):
+        if e.step_no % 50 == 0:
+            self.states.append(e.digest())
         b = struct.pack(f'<{len(e.names)}d', *e.cur)
         if keep and keep[0] <= e.step_no <= keep[1]:
             self.vals[e.step_no] = b
@@ -110,7 +113,7 @@ def steps_runs(valid_files, steps, keep=None, prefix=''):
             h.add(e, kk)
         assert j == len(s['inputs']), f'{run}: inputs after the end'
         h.end()
-        out[run] = (0, h.chunks, e.names, h.vals)
+        out[run] = (0, h.chunks, e.names, h.vals, h.states)
     return out
 
 
@@ -149,9 +152,10 @@ def reference_runs(V, keep=None, V2=None):
 def day_runs(b, d, out, k):
     """The first train's day and its runs with a trainee (the vectors' `day`), as reference_runs."""
     from ref import make_plant3d_vectors as G
-    for name, inputs, until, sid in [('v2/day', [], d['until'], d['scenario'])] + [
-            ('v2/day/' + f['id'], f['inputs'], f['until'], f.get('scenario', d['scenario'])) for f in d['forks']]:
-        e = P.Engine(b, sid)
+    for name, inputs, until, sid, ses in [('v2/day', [], d['until'], d['scenario'], False)] + [
+            ('v2/day/' + f['id'], f['inputs'], f['until'], f.get('scenario', d['scenario']), f.get('session', False))
+            for f in d['forks']]:
+        e = P.Engine(b, sid, ses)
         h = Hasher(0)
         h.add(e, k(name))
         inputs = sorted(inputs, key=lambda x: x[0])
@@ -163,7 +167,7 @@ def day_runs(b, d, out, k):
             e.step()
             h.add(e, k(name))
         h.end()
-        out[name] = (0, h.chunks, e.names, h.vals)
+        out[name] = (0, h.chunks, e.names, h.vals, h.states)
 
 
 def staff_run(files, r, kk):
@@ -175,7 +179,7 @@ def staff_run(files, r, kk):
         F['staff.json'] = json.dumps(r['staff']).encode()
     for rel, v in r.get('files', {}).items():
         F[rel] = json.dumps(v).encode()
-    e = P.Engine(P.check_files(F), 's1')
+    e = P.Engine(P.check_files(F), 's1', r.get('session', False))
     h = Hasher(0)
     h.add(e, kk)
     inputs = sorted(r['inputs'], key=lambda x: x[0])
@@ -187,7 +191,7 @@ def staff_run(files, r, kk):
         e.step()
         h.add(e, kk)
     h.end()
-    return (0, h.chunks, e.names, h.vals)
+    return (0, h.chunks, e.names, h.vals, h.states)
 
 
 def train_runs(b, name, t, out, k, prefix=''):
@@ -211,7 +215,7 @@ def train_runs(b, name, t, out, k, prefix=''):
     h.end()
     if t['until'] in base_steps:
         bases[t['until']] = e.clone()
-    out[name] = (0, h.chunks, e.names, h.vals)
+    out[name] = (0, h.chunks, e.names, h.vals, h.states)
     for f in t['forks']:
         x = bases[f['base_step']].clone()
         fin = sorted(f['inputs'], key=lambda y: y[0])
@@ -224,7 +228,7 @@ def train_runs(b, name, t, out, k, prefix=''):
             x.step()
             h.add(x, k(prefix + f['id']))
         h.end()
-        out[prefix + f['id']] = (f['base_step'] + 1, h.chunks, x.names, h.vals)
+        out[prefix + f['id']] = (f['base_step'] + 1, h.chunks, x.names, h.vals, h.states)
 
 
 def number_corpus():
@@ -305,9 +309,10 @@ class GdscriptEngine(unittest.TestCase):
             got = json.load(f)
         ref = reference_runs(self.V, V2=self.V2)
         self.assertEqual(sorted(got), sorted(ref))
-        for run, (start, chunks, names, _) in ref.items():
+        for run, (start, chunks, names, _, states) in ref.items():
             g = got[run]
             self.assertEqual(g['from'], start, run)
+            self.assertEqual(g['state'], states, f'{run}: the state digests (PLANT3D.md §17.14)')
             bad = next((i for i, (a, b) in enumerate(zip(g['chunks'], chunks)) if a != b), None)
             if bad is None and len(g['chunks']) == len(chunks):
                 continue
@@ -454,7 +459,7 @@ class GdscriptEngineEdges(unittest.TestCase):
             self.assertIn(f'PROGRAM straight-line={len(E["steps"])} interpreter=0', r.stdout)
             with open(dig, encoding='utf-8') as f:
                 got = json.load(f)
-        for run, (start, chunks, _, _) in steps_runs(V['valid'][0]['files'], E['steps']).items():
+        for run, (start, chunks, *_) in steps_runs(V['valid'][0]['files'], E['steps']).items():
             self.assertEqual(got[run]['chunks'], chunks, run)
 
 
@@ -494,7 +499,7 @@ class GdscriptEngineInterpreter(unittest.TestCase):
                 self.assertIn(f'PROGRAM straight-line=0 interpreter={len(vec["steps"])}', r.stdout)
                 with open(dig, encoding='utf-8') as f:
                     got = json.load(f)
-                for run, (start, chunks, _, _) in steps_runs(V['valid'][0]['files'], vec['steps']).items():
+                for run, (start, chunks, *_) in steps_runs(V['valid'][0]['files'], vec['steps']).items():
                     self.assertEqual(got[run]['chunks'], chunks, f'{name} {run}')
             # format 2's unit runs (permits, isolations, the hold node), without its runs of the first train's content
             # (train, water plant, the staff's day: they need the content's model, which --only=v2 doesn't load) nor
@@ -514,7 +519,7 @@ class GdscriptEngineInterpreter(unittest.TestCase):
             self.assertIn(f'PROGRAM straight-line=0 interpreter={len(V2["steps"])}', r.stdout)
             with open(dig, encoding='utf-8') as f:
                 got = json.load(f)
-            for run, (start, chunks, _, _) in steps_runs(V2['valid'][0]['files'], V2['steps'], prefix='v2/').items():
+            for run, (start, chunks, *_) in steps_runs(V2['valid'][0]['files'], V2['steps'], prefix='v2/').items():
                 self.assertEqual(got[run]['chunks'], chunks, run)
 
 

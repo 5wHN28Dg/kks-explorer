@@ -55,6 +55,14 @@ the Note 9's frame rules and over mobile networks?
   from the host or a named seat; the host's save is the session's; players keep a copy and may continue alone (§7).
 - The Windows `exp` check comes first (MP1): if it differs, the build stores the factors.
 
+## As built
+
+- **MP1 (2026-10-26):** several trainees in the reference, the GDScript and the vectors (PLANT3D.md §17.13: slots,
+  `role` at any step, `release`, per-slot counts and kept actions), the state digest (§17.14: a digest tree of its own
+  that both engines make, Godot's Variant encoding, SHA-256; the hashing of the save's fields as planned could not be
+  made by the reference), its vectors, and one input path in the app (`ui/inputs.gd`). Its cost and the Windows run:
+  MULTIPLAYER.md §4.
+
 ## When to revisit
 
 - if the measured press-to-effect on mobile data misses 1 s at the 95th percentile (MP4): a 1-step turn, or a

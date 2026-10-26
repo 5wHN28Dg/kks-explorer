@@ -42,6 +42,7 @@ var left := 0.0                 # metres still to walk along it, from the last c
 var chevrons := 0               # how many are drawn
 const ALPHA := 0.85              # the chevrons' (walk_route.gdshader's default)
 var warmed := false             # the chevrons' pipeline queued (_warm_up)
+var warm_up := true             # whether setup() queues it (not in the content build: builder/staff_paths.gd)
 var stats := {"setup_us": 0, "moves": 0, "points": 0, "point_us_max": 0, "finds": 0, "find_us_max": 0, "find_us_sum": 0, "draws": 0, "draw_us_max": 0, "draw_us_sum": 0}
 
 var _mesh: ArrayMesh
@@ -55,10 +56,13 @@ var _pending := ""              # "find" or "draw" on the next physics tick
 
 
 ## Loads the pre-built navigation mesh into this world's navigation map and joins the ends of every stair and ladder
-## with a link (builder/nav_bake.gd leaves them out of the mesh).
-func setup(_plant = null) -> String:
+## with a link (builder/nav_bake.gd leaves them out of the mesh). `mesh`: another one than NAV's (the content build's,
+## builder/staff_paths.gd).
+func setup(_plant = null, mesh: NavigationMesh = null) -> String:
 	var t0 := Time.get_ticks_usec()
-	var nm := load(NAV) as NavigationMesh if ResourceLoader.exists(NAV) else null
+	var nm := mesh
+	if nm == null:
+		nm = load(NAV) as NavigationMesh if ResourceLoader.exists(NAV) else null
 	if nm == null:
 		error = "no navigation mesh (%s): run apps/plant3d/build.sh" % NAV
 		return error
@@ -95,7 +99,8 @@ func setup(_plant = null) -> String:
 	add_child(_mi)
 	_mi.visible = false
 	stats.setup_us = Time.get_ticks_usec() - t0
-	_warm_up.call_deferred()
+	if warm_up:
+		_warm_up.call_deferred()
 	return ""
 
 

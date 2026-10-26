@@ -525,7 +525,9 @@ def camp():
                   windows=windows_along('n', 40, 4, z=1.8, w=1.6, h=1.2, skip=(20,)) +
                   windows_along('e', 20, 4, z=1.8, w=1.6, h=1.2) + windows_along('w', 20, 4, z=1.8, w=1.6, h=1.2))
     s += [box_road('camp_mess_walk', -341, my1, -339, ROAD_Y[0], 'concrete'),
-          st('camp_mess_canopy', 'canopy', [-340, 8, 0], params={'length': 8, 'width': 3.0, 'height': 2.8}),
+          # 3.2 m wide: posts down both sides (kit/parts_site.gd canopy; at 3.0 m one line of posts down the middle
+          # stood in the double door's doorway)
+          st('camp_mess_canopy', 'canopy', [-340, 8, 0], params={'length': 8, 'width': 3.2, 'height': 2.8}),
           box_road('camp_mess_service', mx0 + 8, -24, mx0 + 12, my0, 'concrete'),
           # the kitchen's skip bins beside its service road
           st('camp_skip_1', 'skip_bin', [-345.5, -20.5, 0], 90), st('camp_skip_2', 'skip_bin', [-345.5, -23.2, 0], 90)]
@@ -584,11 +586,13 @@ def block1_inside():
         xr = bx + pitch * k                       # the room's west wall
         for side, wy, num, open_ in (('s', cy0, 101 + k, k == 0), ('n', cy1, 107 + k, k == 0)):
             dx = r3(xr + 1.0)
+            # 1.0 m: the walking directions' mesh keeps 0.4 m from each jamb (apps/plant3d/builder/nav_bake.gd
+            # AGENT_RADIUS), and a 0.9 m door left none of the room on it
             if open_:
-                openings.append({'kind': 'door', 'at': [dx, wy], 'width': 0.9})
-                s.append(st(f'block1_in_door_{num}', 'door', [dx, wy, 0], 180 if side == 's' else 0, params={'width': 0.9}))
+                openings.append({'kind': 'door', 'at': [dx, wy], 'width': 1.0})
+                s.append(st(f'block1_in_door_{num}', 'door', [dx, wy, 0], 180 if side == 's' else 0, params={'width': 1.0}))
             else:
-                openings.append({'kind': 'door_closed', 'at': [dx, wy], 'width': 0.9})
+                openings.append({'kind': 'door_closed', 'at': [dx, wy], 'width': 1.0})
             face = 0 if side == 's' else 180      # the number faces the corridor
             signs.append(sign(str(num), [r3(dx + 0.85), r3(wy + (-0.2 if side == 's' else 0.2)), 1.7], face, 0.15))
     # the two rooms shown: a bathroom in the corner by the corridor, then bed, desk, chair, wardrobe

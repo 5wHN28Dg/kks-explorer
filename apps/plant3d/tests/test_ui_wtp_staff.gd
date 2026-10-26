@@ -52,10 +52,10 @@ static func _fresh(ui) -> void:
 func _play(tree: SceneTree, ui, log: Array) -> bool:
 	var e = ui.clock.engine
 	var sm = e._sm
-	var pi: int = e.st_trainee
+	var pi: int = e.trainee()
 	if not ui.crew.visible:
 		ui.open_crew()
-	if e.st_unacked > 0:
+	if e.unacked() > 0:
 		_fresh(ui)                      # (rebuilt every round before: an alarm seen without waiting for the panel's own refresh)
 		var seen := App.find_button(ui.crew, "Seen")
 		if seen:
@@ -67,7 +67,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 	var s: Dictionary = sm.tasks[cur["task"]]["steps"][cur["step"]]
 	if s.has("go") or s.has("meet") or s.has("work"):
 		var dest = cur["st"].get("dest", cur["st"].get("place"))
-		if dest != null and dest >= 0 and e.st_t_at != dest:
+		if dest != null and dest >= 0 and e.t_at() != dest:
 			_fresh(ui)
 			var b := App.find_button(ui.crew, "Take me there")
 			if b == null:
@@ -162,7 +162,7 @@ static func _has_ev(e, want: Array) -> bool:
 
 
 static func _where(e, msg: String) -> String:
-	var pi: int = e.st_trainee
+	var pi: int = e.trainee()
 	var cur = e.sp_cur[pi]
 	return "%s (the trainee's task %s step %s)" % [msg, str(cur["task"]) if cur else "none",
 			str(cur["step"]) if cur else ""]

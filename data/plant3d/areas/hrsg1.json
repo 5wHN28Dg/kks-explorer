@@ -49,8 +49,8 @@
   {"id": "hrsg1_drum_platform", "part": "platform", "at": [103, 61, 32], "params": {"outline": [[0, 0], [44, 0], [44, 8], [0, 8]], "deck": "grating"}},
   {"id": "hrsg1_drum_stair", "part": "stair", "params": {"foot": [100.6, 66.5, 30], "top": [103.27, 66.5, 32], "layout": "straight", "width": 1.0}},
   {"id": "hrsg1_walkway", "part": "platform", "at": [150, 63, 30], "params": {"outline": [[0, 0], [6, 0], [6, 4], [0, 4]], "deck": "grating"}},
-  {"id": "hrsg1_stack_platform", "part": "platform", "kks": "10UHN10", "at": [155.5, 60.5, 40], "params": {"outline": [[0, 0], [9, 0], [9, 9], [0, 9]], "openings": [[[1, 1], [8, 1], [8, 8], [1, 8]]], "deck": "grating"}},
-  {"id": "hrsg1_stack_ladder", "part": "ladder", "params": {"foot": [155.6, 65, 30], "top": 40, "facing": 90}}
+  {"id": "hrsg1_stack_platform", "part": "platform", "kks": "10UHN10", "at": [155, 60, 40], "params": {"outline": [[0, 0], [10, 0], [10, 10], [0, 10]], "openings": [[[1.5, 1.5], [8.5, 1.5], [8.5, 8.5], [1.5, 8.5]]], "deck": "grating"}},
+  {"id": "hrsg1_stack_ladder", "part": "ladder", "params": {"foot": [155.1, 65, 30], "top": 40, "facing": 90}}
  ],
  "signs": [
   {"text": "HRSG 1 10HNA10", "at": [122, 53.9, 6], "yaw": 180, "size": 0.4},
