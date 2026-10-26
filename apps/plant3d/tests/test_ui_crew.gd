@@ -403,6 +403,13 @@ func _save(ui, p: Array) -> void:
 	else:
 		RunSave.apply(f3, bytes_to_var(var_to_bytes(with_kept)))
 		f3.step(50)                 # (react() reads it every step: no error)
+	# a job whose source or caller names no reaction on a value (an edited save) is abandoned without an offer kept
+	for bad_inst in [{"src": "zz|value|nope", "orig": null}, {"src": null, "orig": "x"},
+			{"src": "%d|value|no_such_value" % ri, "orig": null}]:
+		var n_kept: int = f3.st_pending.size()
+		sm.value_again(f3, bad_inst)
+		if f3.st_pending.size() != n_kept:
+			p.append("a job from no reaction on a value kept an offer: %s" % str(bad_inst))
 	var wrong := kept.duplicate()
 	wrong[8] = "no_such_value"
 	with_kept["st_pending"] = [wrong]

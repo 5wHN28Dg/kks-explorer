@@ -110,6 +110,16 @@ func run(tree: SceneTree) -> Array:
 	c.set_speed(SimClock.Speed.FAST)
 	if c.speed == SimClock.Speed.FAST:
 		p.append("fast-forward was taken with an alarm unacknowledged")
+	# the horn for that alarm sounds again when Mute is turned off, paused as well (the alarms are looked at again
+	# then, not only at a step)
+	c.set_speed(SimClock.Speed.PAUSED)
+	ui._each_frame(1.0 / 60.0)
+	var horn0: int = ui._horn
+	ui._setting("mute", true)
+	ui._setting("mute", false)
+	ui._each_frame(1.0 / 60.0)
+	if horn0 <= 0 or ui._horn != horn0:
+		p.append("after Mute on and off, paused, the horn is %d, not the alarm's %d" % [ui._horn, horn0])
 	# the bar in fast-forward (steps every frame): its clock and alarms shown again FAST_UI_HZ times a second, not every
 	# frame; at once when the speed changes
 	ui.restart("cold_iron")

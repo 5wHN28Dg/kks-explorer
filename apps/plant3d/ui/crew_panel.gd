@@ -30,6 +30,8 @@ var _j := 0                     # the jumps made up to the event read last (each
 var _radio: Array = []          # [step, text] of every message and call
 var _radio_labels: Array = []   # the radio's last lines on the panel (Labels, oldest first)
 var _radio_shown := -1          # how many of _radio's lines there were when they were shown
+var _head: Label = null         # the trainee's header line (role, duty, clock) and its text before the clock
+var _head_text := ""
 var _reads: Dictionary = {}     # person -> their read events
 
 
@@ -98,8 +100,9 @@ func _signature(e) -> String:
 			_safety_sig(e) + _me_sig(e) if tr != -1 else ""]
 
 
-## What else the trainee's part shows (its header's duty and clock minute, the waiting tasks' priorities, whether a
-## permit is open: the sleep button): these used to come along with the radio's new lines, which no longer rebuild
+## What else the trainee's part shows (its header's duty, the waiting tasks' priorities, whether a permit is open:
+## the sleep button): these used to come along with the radio's new lines, which no longer rebuild it. The header's
+## clock is written into its label at each refresh (_head)
 func _me_sig(e) -> String:
 	var tr: int = e.st_trainee
 	var open_permit := false
@@ -108,7 +111,7 @@ func _me_sig(e) -> String:
 	var prios := ""
 	for inst in e.sp_queue[tr]:
 		prios += str(inst["prio"])
-	return "|%d|%s|%s|%s" % [e.sp_on[tr], ui.clock_text(), prios, str(open_permit)]
+	return "|%d|%s|%s" % [e.sp_on[tr], prios, str(open_permit)]
 
 
 ## What the PPE and unsafe-act part shows depends on (S2): what the trainee wears, their zones, every act going on,
@@ -164,6 +167,8 @@ func refresh() -> void:
 	if sig == _sig:
 		if _radio.size() != _radio_shown:
 			_radio_lines()
+		if e._sm != null and e.st_trainee != -1 and is_instance_valid(_head) and _head.is_inside_tree():
+			_head.text = _head_text + ui.clock_text()       # (the clock, a new minute: no rebuild)
 		return
 	_sig = sig
 	var typed := entry.text if entry != null and is_instance_valid(entry) else ""
@@ -230,7 +235,9 @@ func _me(e, sm) -> void:
 	var p: Dictionary = sm.people[pi]
 	title.text = "Crew: you are %s" % p["call"]
 	var duty := "on duty" if e.sp_on[pi] else "off duty"
-	body.add_child(W.label("%s, %s, %s" % [sm.roles[p["role"]]["title"], duty, ui.clock_text()], 18, W.DIM))
+	_head = W.label("%s, %s, %s" % [sm.roles[p["role"]]["title"], duty, ui.clock_text()], 18, W.DIM)
+	_head_text = _head.text.trim_suffix(ui.clock_text())
+	body.add_child(_head)
 	if e.st_unacked > 0:
 		var row := HBoxContainer.new()
 		row.add_child(W.label("%d new for you" % e.st_unacked, 20, Color(1.0, 0.75, 0.2)))

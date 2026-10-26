@@ -348,6 +348,7 @@ func _setting(key: String, on: bool) -> void:
 			sounds.muted = on
 			horn_changed.emit(0)
 			_horn = -1                  # the next tick sounds the horn again if an alarm wants it
+			_alarms_step = -1           # (and looks at the alarms again, paused as well)
 
 
 ## Opens a panel by name (the command line's panels=…): alarms, procedure, card:CODE. (Not the instructor's:

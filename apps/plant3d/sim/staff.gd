@@ -601,8 +601,10 @@ func offer(e, role_list: Array, tid: String, prio: int, src, w, code, alarm, pw,
 ## it; null for none.
 static func vkey(inst: Dictionary):
 	var s = inst["src"]
-	if typeof(s) == TYPE_STRING and s.contains("|value|"):
-		return s
+	if typeof(s) == TYPE_STRING:
+		var parts := String(s).split("|", true, 2)      # (as the reference's (reaction, "value", name))
+		if parts.size() == 3 and parts[1] == "value" and parts[0].is_valid_int():
+			return s
 	return inst.get("orig")
 
 
@@ -612,7 +614,14 @@ func value_again(e, inst: Dictionary) -> void:
 	var k = vkey(inst)
 	if k == null:
 		return
+	if typeof(k) != TYPE_STRING:
+		return
 	var parts: PackedStringArray = String(k).split("|", true, 2)
+	# (the engine's own keys always pass; a run restored from an edited save may hold anything)
+	if parts.size() != 3 or parts[1] != "value" or not parts[0].is_valid_int() \
+			or parts[0].to_int() < 0 or parts[0].to_int() >= reactions.size() \
+			or reactions[parts[0].to_int()]["on"].get("value") != parts[2] or not e.ix.has(parts[2]):
+		return
 	var v: String = parts[2]
 	if not e.truth(v):
 		return
