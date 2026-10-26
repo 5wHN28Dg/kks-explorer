@@ -315,10 +315,10 @@ class Behaviour(Base):
         self.refused(self._hello(rnd_room(), os.urandom(32), True, ip), 'limit')
         self.assertEqual(self._hello(rnd_room(), os.urandom(32), True).json()['t'], 'welcome')
         # an IPv6 client counts by its /64
+        prefix = '2001:db8:%x:%x' % tuple(os.urandom(2))
         for i in range(10):
-            ip6 = '2001:db8:%x:%x::%x' % (os.urandom(1)[0], os.urandom(1)[0], i + 1) if i == 0 else ip6.rsplit(':', 1)[0] + ':%x' % (i + 1)
-            self.assertEqual(self._hello(rnd_room(), os.urandom(32), True, ip6).json()['t'], 'welcome')
-        self.refused(self._hello(rnd_room(), os.urandom(32), True, ip6.rsplit('::', 1)[0] + '::beef'), 'limit')
+            self.assertEqual(self._hello(rnd_room(), os.urandom(32), True, f'{prefix}::{i + 1:x}').json()['t'], 'welcome')
+        self.refused(self._hello(rnd_room(), os.urandom(32), True, f'{prefix}::beef'), 'limit')
 
     def test_hello_timeout(self):
         room, admit, _ = self.session(1)
