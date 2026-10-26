@@ -89,14 +89,14 @@ func _signature(e) -> String:
 	var sm = e._sm
 	if sm == null:
 		return "none"
-	var tr: int = e.st_trainee
+	var tr: int = ui.my_person()
 	var cur = e.sp_cur[tr] if tr != -1 else null
 	# (free mode shows the roles or a line, and the radio's last lines; the sleep button's state, fast-forward's,
 	# only with a role. The radio's new lines alone are written into the lines shown, without a rebuild: refresh)
 	return "%d|%d|%s|%s|%d|%d|%d|%s|%d|%s" % [tr, e.step_no if tr == -1 and e.step_no < 2 else 0,
 			str(cur["task"]) + str(cur["step"]) + str(cur["st"].get("dest", "")) if cur != null else "",
-			(str(e.sp_queue[tr].size()) + "/" + str(e.sp_slots[tr].size())) if tr != -1 else "", e.st_unacked,
-			_reads_count(e), e.st_t_at, str(e.fast_forward()) if tr != -1 else "", e.J,
+			(str(e.sp_queue[tr].size()) + "/" + str(e.sp_slots[tr].size())) if tr != -1 else "", e.unacked(ui.inputs.slot),
+			_reads_count(e), e.t_at(ui.inputs.slot), str(e.fast_forward()) if tr != -1 else "", e.J,
 			_safety_sig(e) + _me_sig(e) if tr != -1 else ""]
 
 
@@ -104,7 +104,7 @@ func _signature(e) -> String:
 ## the sleep button): these used to come along with the radio's new lines, which no longer rebuild it. The header's
 ## clock is written into its label at each refresh (_head)
 func _me_sig(e) -> String:
-	var tr: int = e.st_trainee
+	var tr: int = ui.my_person()
 	var open_permit := false
 	for st in e.pstate:
 		open_permit = open_permit or (st >= 1 and st <= 7)
@@ -124,14 +124,14 @@ func _safety_sig(e) -> String:
 	for qi in sm.people.size():
 		if e.sp_acts[qi] != [null, null, null] and ui.near_person(qi):
 			near += str(qi) + ","
-	return "%d/%d/%s/%s/%s" % [e.sp_worn[e.st_trainee], e.sp_zin[e.st_trainee], str(e.sp_acts.hash()),
+	return "%d/%d/%s/%s/%s" % [e.sp_worn[ui.my_person()], e.sp_zin[ui.my_person()], str(e.sp_acts.hash()),
 			str(ui.at_locker()), near]
 
 
 ## The trainee's readings so far (their sheet); the events read first.
 func _reads_count(e) -> int:
 	_follow(e)
-	return _reads.get(e._sm.people[e.st_trainee]["id"] if e.st_trainee != -1 else "", []).size()
+	return _reads.get(e._sm.people[ui.my_person()]["id"] if ui.my_person() != -1 else "", []).size()
 
 
 ## Reads the events once each (the list only grows within a run): the radio log and the readings.
@@ -167,7 +167,7 @@ func refresh() -> void:
 	if sig == _sig:
 		if _radio.size() != _radio_shown:
 			_radio_lines()
-		if e._sm != null and e.st_trainee != -1 and is_instance_valid(_head) and _head.is_inside_tree():
+		if e._sm != null and ui.my_person() != -1 and is_instance_valid(_head) and _head.is_inside_tree():
 			_head.text = _head_text + ui.clock_text()       # (the clock, a new minute: no rebuild)
 		return
 	_sig = sig
@@ -187,7 +187,7 @@ func refresh() -> void:
 				var s := sid as String
 				body.add_child(W.button("Start: " + ui.model.scenarios[s].get("title", s), func(): ui.start_shift(s)))
 		return
-	if e.st_trainee == -1:
+	if ui.my_person() == -1:
 		_roles(e, sm)
 	else:
 		_me(e, sm)
@@ -233,17 +233,17 @@ func _roles(e, sm) -> void:
 # ------------------------------------------------------------------ the trainee's tasks (§18.7)
 
 func _me(e, sm) -> void:
-	var pi: int = e.st_trainee
+	var pi: int = ui.my_person()
 	var p: Dictionary = sm.people[pi]
 	title.text = "Crew: you are %s" % p["call"]
 	var duty := "on duty" if e.sp_on[pi] else "off duty"
 	_head = W.label("%s, %s, %s" % [sm.roles[p["role"]]["title"], duty, ui.clock_text()], 18, W.DIM)
 	_head_text = _head.text.trim_suffix(ui.clock_text())
 	body.add_child(_head)
-	if e.st_unacked > 0:
+	if e.unacked(ui.inputs.slot) > 0:
 		var row := HBoxContainer.new()
-		row.add_child(W.label("%d new for you" % e.st_unacked, 20, Color(1.0, 0.75, 0.2)))
-		row.add_child(W.button("Seen", func(): ui.clock.engine.task_ack()))
+		row.add_child(W.label("%d new for you" % e.unacked(ui.inputs.slot), 20, Color(1.0, 0.75, 0.2)))
+		row.add_child(W.button("Seen", func(): ui.inputs.task_ack()))
 		body.add_child(row)
 	var cur = e.sp_cur[pi]
 	if cur == null:
@@ -330,7 +330,7 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 	if s.has("ppe"):
 		if typeof(s["ppe"]) == TYPE_STRING and s["ppe"] == "off":
 			return "Take the PPE off at the locker"
-		return "Put on at the locker: %s" % ", ".join(ppe_items(sm, e, s["ppe"]))
+		return "Put on at the locker: %s" % ", ".join(ppe_items(sm, ui.my_person(), s["ppe"]))
 	if s.has("stop"):
 		var a = cur.get("act")
 		if a == null:
@@ -340,8 +340,8 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 		var what: String = {"take": "Take over the locks of your post", "give": "Hand over your locks (remove each "
 				+ "once the incoming person's lock is on)"}.get(s.get("handover"), "Remove by authority the locks "
 				+ "of %s" % str(cur.get("owner")))
-		if k_is_cur(cur, s, sm) and e.st_trainee != -1:
-			var left: Array = sm.points_left(e, e.st_trainee, cur, s)
+		if k_is_cur(cur, s, sm) and ui.my_person() != -1:
+			var left: Array = sm.points_left(e, ui.my_person(), cur, s)
 			var names := []
 			for key in left:
 				names.append(e._iso[key.x][1][key.y][0])
@@ -383,7 +383,7 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 			dest = null         # (a work step begun between places: no place to go back to)
 		if dest != null:
 			var d: int = dest
-			if e.st_t_at == d:
+			if e.t_at(ui.inputs.slot) == d:
 				row.add_child(W.label("You are there.", 18, W.OK_COLOUR))
 			else:
 				row.add_child(W.button("Take me there", func(): ui.go_to_place(d)))
@@ -398,14 +398,14 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 	if s.has("say"):
 		var msg: String = s["say"]
 		var to: String = s["to"]
-		row.add_child(W.button("Send", func(): ui.clock.engine.say(msg, to)))
+		row.add_child(W.button("Send", func(): ui.inputs.say(msg, to)))
 	if s.has("call"):
 		var c: Dictionary = s["call"]
-		row.add_child(W.button("Call", func(): ui.clock.engine.radio_call(c["role"], c["task"], c.get("work"))))
+		row.add_child(W.button("Call", func(): ui.inputs.radio_call(c["role"], c["task"], c.get("work"))))
 	if s.has("choose"):
 		for k in s["choose"].size():
 			var kk: int = k
-			row.add_child(W.button(sm.tasks[s["choose"][k][1]]["title"], func(): ui.clock.engine.pick(kk)))
+			row.add_child(W.button(sm.tasks[s["choose"][k][1]]["title"], func(): ui.inputs.pick(kk)))
 	if s.has("ack") and cur["alarm"] != null:
 		var a: String = cur["alarm"]
 		row.add_child(W.button("Acknowledge", func(): ui.ack(a)))
@@ -428,8 +428,8 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 	if s.has("stop") and cur.get("act") != null:
 		var qi: int = cur["act"][0]
 		_stop_controls(e, sm, row, qi)
-	if (s.has("handover") or s.has("remove_locks")) and e.st_trainee != -1:
-		var left: Array = sm.points_left(e, e.st_trainee, cur, s)
+	if (s.has("handover") or s.has("remove_locks")) and ui.my_person() != -1:
+		var left: Array = sm.points_left(e, ui.my_person(), cur, s)
 		if not left.is_empty():
 			var wi: int = e.holder[left[0].x]
 			if wi != -1:
@@ -453,8 +453,8 @@ func _stop_controls(e, sm, row: Control, qi: int) -> void:
 
 
 ## A PPE step's items in words.
-static func ppe_items(sm, e, x) -> PackedStringArray:
-	var items: Array = x if typeof(x) == TYPE_ARRAY else sm.roles[sm.people[e.st_trainee]["role"]].get("ppe", [])
+static func ppe_items(sm, pi: int, x) -> PackedStringArray:
+	var items: Array = x if typeof(x) == TYPE_ARRAY else sm.roles[sm.people[pi]["role"]].get("ppe", [])
 	var out := PackedStringArray()
 	for it in items:
 		out.append(PPE_WORDS.get(it, it))
@@ -482,7 +482,7 @@ static func act_text(sm, kind: int, a) -> String:
 func _safety(e, sm) -> void:
 	if sm.zone_ids.is_empty():
 		return
-	var pi: int = e.st_trainee
+	var pi: int = ui.my_person()
 	var worn: int = e.sp_worn[pi]
 	var on := PackedStringArray()
 	for k in sm.PPE.size():
@@ -508,7 +508,7 @@ func _safety(e, sm) -> void:
 		for k in sm.PPE.size():
 			var item: String = sm.PPE[k]
 			if worn & (1 << k):
-				var b := W.button("Take off " + PPE_WORDS.get(item, item), func(): ui.clock.engine.ppe(item, 0))
+				var b := W.button("Take off " + PPE_WORDS.get(item, item), func(): ui.inputs.ppe(item, 0))
 				b.name = "off_" + item
 				row.add_child(b)
 	for k in 3:
@@ -545,9 +545,9 @@ func _radio_log(e, sm) -> void:
 		_radio_labels.append(lab)
 		body.add_child(lab)
 	_fill_radio()
-	if e.st_trainee == -1:
+	if ui.my_person() == -1:
 		return
-	var me: Dictionary = sm.people[e.st_trainee]
+	var me: Dictionary = sm.people[ui.my_person()]
 	var row := HFlowContainer.new()
 	body.add_child(row)
 	for key in sm.callable:
@@ -557,9 +557,9 @@ func _radio_log(e, sm) -> void:
 		var role := parts[1]
 		var task := parts[2]
 		row.add_child(W.button("Call %s: %s" % [role.replace("_", " "), sm.tasks[task]["title"]],
-				func(): ui.clock.engine.radio_call(role, task, null)))
+				func(): ui.inputs.radio_call(role, task, null)))
 	var nxt := _next_shift(e)
-	var b := W.button("Sleep to %s" % nxt, func(): ui.clock.engine.jump(nxt))
+	var b := W.button("Sleep to %s" % nxt, func(): ui.inputs.jump(nxt))
 	var open_permit := false
 	for s in e.pstate:
 		open_permit = open_permit or (s >= 1 and s <= 7)

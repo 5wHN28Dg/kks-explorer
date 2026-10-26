@@ -39,6 +39,7 @@ const Trends = preload("res://ui/trends.gd")
 const CrewPanel = preload("res://ui/crew_panel.gd")
 const PeopleView = preload("res://ui/people_view.gd")
 const Plant = preload("res://app/plant.gd")
+const Inputs = preload("res://ui/inputs.gd")
 
 const CONTENT := "res://built/content"
 const REACH := 6.0              # metres: within this a trainee works the equipment's local controls
@@ -55,6 +56,7 @@ var model
 var info
 var index
 var clock
+var inputs                      # ui/inputs.gd: every input of the trainee's to the plant goes through it (MP1)
 var tracker
 var bindings
 var sounds
@@ -133,6 +135,8 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	clock = SimClock.new()
 	clock.name = "clock"
 	add_child(clock)
+	inputs = Inputs.new()
+	inputs.clock = clock
 	clock.stepped.connect(_on_step)
 	clock.speed_changed.connect(_on_speed)
 	pointer = Pointer.new()
@@ -548,9 +552,9 @@ func do_op(o: Dictionary, value) -> void:
 		# playing a person (§17.1): made from the screens or at the equipment, by them
 		# (where the card offers it: the screens, or the control room away from the equipment; else at it)
 		var where := "screen" if screens_open() or (in_control_room() and not near(o["kks"])) else "local"
-		clock.engine.op(o["kks"], o["do"], value, o.get("trip"), where, who)
+		inputs.op(o["kks"], o["do"], value, o.get("trip"), where, who)
 	else:
-		clock.engine.op(o["kks"], o["do"], value, o.get("trip"))
+		inputs.op(o["kks"], o["do"], value, o.get("trip"))
 	_pending.append([key, o, clock.engine.step_no + 1])
 	var paused: bool = clock.speed == SimClock.Speed.PAUSED
 	results[key] = {"state": "sent", "text": "Sent%s" % (": it takes effect when the plant runs (paused)" if paused else "…")}
@@ -558,10 +562,13 @@ func do_op(o: Dictionary, value) -> void:
 
 ## The person the trainee plays (§17.4), null in free mode.
 func me():
-	var e = clock.engine if clock != null else null
-	if e == null or e._sm == null or e.st_trainee == -1:
-		return null
-	return e._sm.people[e.st_trainee]["id"]
+	var pi: int = inputs.person() if inputs != null else -1
+	return clock.engine._sm.people[pi]["id"] if pi != -1 else null
+
+
+## The person the trainee plays as an index (§17.4), -1 in free mode or without staff.
+func my_person() -> int:
+	return inputs.person() if inputs != null else -1
 
 
 ## The plant clock (§16.1) when the run has staff, else model time.
@@ -583,13 +590,14 @@ func start_shift(scenario: String) -> void:
 func take_role(pid: String) -> void:
 	var e = clock.engine
 	if pid != "":
-		e.role(pid)
+		inputs.role(pid)
 		clock.run_steps(1)
-		if e.st_trainee != -1:
+		var pi := my_person()
+		if pi != -1:
 			_arrived = -2
 			_zones = -1
-			go_to_place(e.sp_pos[e.st_trainee] if e.sp_pos[e.st_trainee] != -1 else e._sm.gate)
-			toast("You are %s. Your tasks are in the Crew panel." % e._sm.people[e.st_trainee]["call"])
+			go_to_place(e.sp_pos[pi] if e.sp_pos[pi] != -1 else e._sm.gate)
+			toast("You are %s. Your tasks are in the Crew panel." % e._sm.people[pi]["call"])
 		else:
 			toast("That role could not be taken.")
 	else:
@@ -618,13 +626,14 @@ func write_reading(code: String, text: String) -> void:
 	if not t.is_valid_float():
 		toast("Type the number the gauge shows.")
 		return
-	clock.engine.read(code, t.to_float())
+	inputs.read(code, t.to_float())
 
 
 ## Whether the trainee stands at a locker place (PPE is put on and taken off there, PLANT3D §17.11).
 func at_locker() -> bool:
 	var e = clock.engine
-	return e._sm != null and e.st_t_at != -1 and e._sm.kind[e.st_t_at] == "locker"
+	var at: int = e.t_at(inputs.slot)
+	return e._sm != null and at != -1 and e._sm.kind[at] == "locker"
 
 
 ## The walker to the nearest locker (the control building's locker room, or the WTP's lockers for the face shield
@@ -650,21 +659,22 @@ func go_to_locker() -> void:
 func put_on(x) -> void:
 	var e = clock.engine
 	var sm = e._sm
-	if sm == null or e.st_trainee == -1:
+	var pi := my_person()
+	if sm == null or pi == -1:
 		return
 	if not at_locker():
 		toast("PPE is put on at a locker.")
 		return
-	var worn: int = e.sp_worn[e.st_trainee]
+	var worn: int = e.sp_worn[pi]
 	if typeof(x) == TYPE_STRING and x == "off":
 		for k in sm.PPE.size():
 			if worn & (1 << k):
-				e.ppe(sm.PPE[k], 0)
+				inputs.ppe(sm.PPE[k], 0)
 		return
-	var items: Array = x if typeof(x) == TYPE_ARRAY else sm.roles[sm.people[e.st_trainee]["role"]].get("ppe", [])
+	var items: Array = x if typeof(x) == TYPE_ARRAY else sm.roles[sm.people[pi]["role"]].get("ppe", [])
 	for it in items:
 		if not (worn & (1 << sm.PPE.find(it))):
-			e.ppe(it, 1)
+			inputs.ppe(it, 1)
 
 
 ## Whether the trainee is within talking reach (3 m) of a person, where the engine has them (a place, or along a way).
@@ -700,7 +710,7 @@ func stop_work(pid: String) -> void:
 	if not near_person(sm.person_ix[pid]):
 		toast("Go to them first: work is stopped face to face.")
 		return
-	e.stop_act(pid)
+	inputs.stop_act(pid)
 
 
 ## The zone inputs (§17.6): the zones whose outline holds the walker (within their heights), as they change.
@@ -713,15 +723,16 @@ func _zone_tick(e, here: Vector3) -> void:
 		var zd: Dictionary = sm.d["zones"][z]
 		if here.z > float(zd["z"][0]) and here.z < float(zd["z"][1]) and _inside(here.x, here.y, zd["outline"]):
 			zm |= 1 << z
+	var pi := my_person()
 	if _zones == -1:
-		_zones = e.sp_zin[e.st_trainee]
+		_zones = e.sp_zin[pi]
 	if zm == _zones:
 		return
-	var worn: int = e.sp_worn[e.st_trainee]
+	var worn: int = e.sp_worn[pi]
 	for z in sm.zone_ids.size():
 		var bit: int = 1 << z
 		if (zm & bit) and not (_zones & bit):
-			e.zone(sm.zone_ids[z], "in")
+			inputs.zone(sm.zone_ids[z], "in")
 			var miss := PackedStringArray()
 			for k in sm.PPE.size():
 				if sm.zone_ppe[z] & (1 << k) and not (worn & (1 << k)):
@@ -729,7 +740,7 @@ func _zone_tick(e, here: Vector3) -> void:
 			var zt: String = sm.d["zones"][z].get("title", sm.zone_ids[z])
 			toast("Entering the %s%s" % [zt.to_lower(), (": you need " + ", ".join(miss)) if not miss.is_empty() else ""])
 		elif (_zones & bit) and not (zm & bit):
-			e.zone(sm.zone_ids[z], "out")
+			inputs.zone(sm.zone_ids[z], "out")
 	_zones = zm
 
 
@@ -747,7 +758,8 @@ static func _inside(x: float, y: float, poly: Array) -> bool:
 ## The arrive and leave inputs (§17.6): the trainee is at a place when within 1.5 m of it (2 m up or down).
 func _place_tick() -> void:
 	var e = clock.engine
-	if e._sm == null or e.st_trainee == -1:
+	var pi := my_person()
+	if e._sm == null or pi == -1:
 		return
 	var sm = e._sm
 	if e.J != _jumps and e.st_jumped.is_empty():
@@ -755,8 +767,8 @@ func _place_tick() -> void:
 		_jumps = e.J
 		_arrived = -2
 		_zones = -1
-		if e.sp_pos[e.st_trainee] != -1:
-			go_to_place(e.sp_pos[e.st_trainee])
+		if e.sp_pos[pi] != -1:
+			go_to_place(e.sp_pos[pi])
 		toast("The clock jumped to %s." % clock_text())
 		return
 	var g: Vector3 = player.global_position
@@ -772,16 +784,16 @@ func _place_tick() -> void:
 		if d < bd:
 			bd = d
 			best = i
-	var now: int = e.st_t_at if _arrived == -2 else _arrived
+	var now: int = e.sp_pos[pi] if _arrived == -2 else _arrived
 	if best != -1 and best != now:
 		if now >= 0:
-			e.leave(sm.places[now]["id"])
-		e.arrive(sm.places[best]["id"])
+			inputs.leave(sm.places[now]["id"])
+		inputs.arrive(sm.places[best]["id"])
 		_arrived = best
 	elif best == -1 and now >= 0:
 		var at: Array = sm.places[now]["at"]
 		if Vector2(at[0] - here.x, at[1] - here.y).length() > 2.5:
-			e.leave(sm.places[now]["id"])
+			inputs.leave(sm.places[now]["id"])
 			_arrived = -1
 
 
@@ -790,35 +802,35 @@ func op_result(o: Dictionary) -> Dictionary:
 
 
 func ack(alarm: String, sound := true) -> void:
-	clock.engine.ack(alarm)
+	inputs.ack(alarm)
 	if sound:
 		sounds.once("horn_ack")
 
 
 func shelve(alarm: String, seconds: float) -> void:
-	clock.engine.shelve(alarm, seconds)
+	inputs.shelve(alarm, seconds)
 	toast("Shelved for %s of plant time." % W.model_time(int(seconds * 10)))
 
 
 func unshelve(alarm: String) -> void:
-	clock.engine.unshelve(alarm)
+	inputs.unshelve(alarm)
 
 
 func fault(fid: String) -> void:
-	clock.engine.fault(fid)
+	inputs.fault(fid)
 	toast("Fault pressed: it acts in the next step.")
 
 
 ## A fault's repair (PLANT3D §7.8): from the instructor's panel, or, in a plant without permits to work (version 1),
 ## by the trainee at its equipment (the card).
 func repair(fid: String) -> void:
-	clock.engine.repair(fid)
+	inputs.repair(fid)
 	toast("Repaired: it acts in the next step.")
 
 
 ## The trainee's repair at the equipment under a work's permit to work (PLANT3D §15.5, a version 2 plant).
 func repair_under(fid: String, wid: String) -> void:
-	clock.engine.repair_under(fid, wid, me())
+	inputs.repair_under(fid, wid, me())
 	toast("Repaired under the permit: it acts in the next step.")
 
 
@@ -852,7 +864,7 @@ func restart(scenario: String, quiet := false) -> void:
 	crew._sig = ""
 	if not quiet:
 		toast("The plant restarted: %s." % model.scenarios[scenario].get("title", scenario))
-	if clock.engine._sm != null and clock.engine.st_trainee == -1:
+	if clock.engine._sm != null and my_person() == -1:
 		clock.set_speed(SimClock.Speed.PAUSED)
 		open_crew()
 
@@ -1562,9 +1574,10 @@ func _draw_arrows() -> void:
 ## Unsafe acts and stopped work concerning the trainee (PLANT3D §16.7, §17.11), as a line on the screen.
 func _safety_toast(e, ev: Array) -> void:
 	var sm = e._sm
-	if sm == null or e.st_trainee == -1:
+	var pi := my_person()
+	if sm == null or pi == -1:
 		return
-	var me_id: String = sm.people[e.st_trainee]["id"]
+	var me_id: String = sm.people[pi]["id"]
 	if ev[1] == "unsafe" and ev[2] == me_id:
 		var k: int = sm.ACT_KINDS.find(ev[3])
 		toast("Unsafe act: you are " + CrewPanel.act_text(sm, k, [ev[4], ev[0], false]))
