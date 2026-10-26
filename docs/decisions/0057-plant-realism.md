@@ -343,3 +343,74 @@ rule here is unchanged (≥ 95 % at ≥ 30 fps, peak PSS, first start, the 1.2×
 - **Not judged:** a walk without `SAMPLE=1` cannot exclude any frame. A walk that would pass only by excluding frames
   is not judged, and is walked again, when it is a `STRESS=1` walk, when it had reclaim in more than 1 % of its
   sample pairs, or when its log has more `SPIKE` lines than its `over100`. A frame the log lost counts as the app's.
+
+## The shadow casters (2026-10-26)
+
+What the sun's shadow pass draws for nothing is gone, and the picture stays the same. 0066 records an earlier, broader
+attempt ("what stands inside buildings casts no shadow"), which was taken out because it gained nothing within one
+walk's spread. This one is narrower and was measured in GPU cycles. A frame's GPU cycles are its GPU time times the
+Mali clock in effect. They move much less with DVFS and heat than milliseconds do, but not at all only for work bound by
+the GPU's core: time spent waiting on memory doesn't shrink with a faster clock, so a slower clock counts fewer cycles.
+`tools/plant3d/bench/gpu_cycles.py` computes them, and
+`shadow_ab=` with `shadow_ab.py` switches groups of casters in turn within one walk.
+
+- **Where the cost was** (Note 9, `frames` walk, `shadow_ab=`, about 11 M cycles a frame with everything on):
+  - every caster off: −2.6 to −2.9 M cycles a frame; the sun's shadow off altogether: −3.9 M; two cascades instead of
+    four: −0.4 M;
+  - the kerbs, the terrain and the boundary wall: −0.4 M. The kerbs and the wall were each one mesh half a kilometre
+    long, drawn into all four cascades wherever the walker stood;
+  - the hall lamps, roof steel and liners: −0.2 M; the people: −0.2 M;
+  - the terrain, the river, the floors and the windows: no measurable cost.
+- **The kerbs and the boundary wall** are one mesh per 48 m square (`SHADOW_CELL`): 47 kerb meshes and 36 wall meshes.
+  Each cascade now draws only the squares near the walker.
+  - Every kerb block, panel and pilaster lies whole in the square of its own centre (`cell_tool`). A first version split
+    by triangle, which cut faces between two meshes and so between two lightmap charts, a possible seam every 48 m
+    (blind review). `test_shadow_casters.gd` fails on that version (30 wall meshes held cut faces).
+  - Same texel size, material and vertex format as before.
+- **Under the roofs** (`shade_under_roofs`): a piece casts no sun shadow when every ray from it toward the sun leaves its
+  building through solid wall or roof, never through a door, a pipe's opening or a roof opening.
+  - That is 114k of the 914k shadow-casting triangles, mostly hall lamps and roof steel.
+  - The buildings' own walls and roofs keep casting, and anything that moves with a door keeps its shadow.
+  - The bake is unaffected: Godot 4.7.2's lightmapper does not read `cast_shadow` (`scene/3d/lightmap_gi.cpp`,
+    `modules/lightmapper_rd`), so the hall lamps' baked shadows stay.
+  - The sun's direction comes from `Lighting.to_sun`, in the build and in the app alike. The test checks every piece the
+    build left shaded against the app's own sun.
+
+Note 9 (`lean+vis`, baked release APKs of main at c7e4538 and of this change, both signed with the test key; 600 s
+walks with `probe=1` and `SAMPLE=1`; "stress" means `scenario=shift_cold`, fast, 24 people with the crew panel open):
+
+| Walk | GPU M cycles a frame, mean (p95): main → this | GPU ms mean, main → this | ≥ 30 fps, main → this | app frames > 100 ms |
+|---|---|---|---|---|
+| stress ×2 | 11.00, 11.05 (14.3, 14.2) → 10.00, 9.99 (12.9, 13.1) | 24.8, 25.2 → 27.6, 24.2 | 94.9, 93.5 → 90.9, 96.2 % | 0, 0 → 3, 1 |
+| `crews=1` | 10.17 (12.6) → 9.02 (11.7) | 23.7 → 24.4 | 98.1 → 97.7 % | 0 → 0 |
+| `frames` | 10.30 (12.9) → 8.85 (10.1) | 21.4 → 26.4 | 99.2 → 96.8 % | 1 → 0 |
+
+- **The GPU's work per frame fell, by about 4–5 %.** The table's 9–14 % is inflated by the clocks. This change's
+  walks ran at 335–424 MHz and main's at 442–483 MHz, and the walks' cycle counts fall with the clock.
+  - The saving grew with the clock gap: 14 % at −148 MHz, 9.6 % at −26 MHz.
+  - Aligning the two `frames` walks in 20 s bins and extrapolating to equal clocks gives about 4 % (adversarial review).
+  - The A/B bounds it too. The groups this change touches cost 0.40 M (kerbs, terrain and wall) and 0.18 M (lamps,
+    steel, liners) when switched off entirely, and it removes only part of each: at most about 0.6 of 11 M cycles.
+  - The 0.18 M of the lamps (and the people's 0.17 M) is within the spread of the groups measured as costing nothing
+    (+0.02 to +0.18 M).
+  - A back-to-back pair from the same temperature, or with the GPU clock pinned, would settle the size. Not done:
+    the phone was shared.
+- **Milliseconds and frame rates don't compare here.** Three of this change's walks started 3.4–3.6 °C warmer than
+  main's, because the phone was shared that night. The Mali clock then ran at 335–376 MHz instead of 442–483 MHz.
+  - The one walk that started as cool as main's (stress, 29.9 °C, 424 MHz) had a mean GPU time of 24.2 ms (main
+    24.8 and 25.2 ms) and 96.2 % of frames at 30 fps or better (main 94.9 and 93.5 %). It still had one frame over
+    100 ms that the app caused (102.0 ms).
+  - The stress walks of both builds have such frames: main's earlier ones in 0066, and its `frames` walk here.
+- **First start:** this change's walks reached the first frame in 12.4–16.4 s (main 11.3–11.9 s) and loaded in
+  1.71–2.31 s (main 1.55–1.61 s). The cool walk was also 4–10 % slower. The warm phone explains most of it, but there
+  are 81 more meshes to load. Not settled.
+- **The look:** no difference to see. Phone, 20 views (`phone/shots.sh`, baked), compared with the HUD's clock masked:
+  - every view differs slightly, a mean of 0.035–0.31 of 255;
+  - 11 views have speckles along the edges of pipes, beams and floors differing by more than 8, up to 1,473 pixels
+    of 2.4 M (gt_mid). gt_door has 139 pixels over 32;
+  - the likely cause is the new bake (1,112 → 1,193 baked meshes). No main-against-main phone repeat was taken to
+    prove it is noise;
+  - the kerb and boundary wall views, including one at a square's edge, differ by at most 16: no seam.
+
+  Laptop, 22 views (unbaked, taken on the first split, which has the same geometry): within the run-to-run noise of
+  main against main.

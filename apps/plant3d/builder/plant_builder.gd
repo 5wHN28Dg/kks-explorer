@@ -43,6 +43,7 @@ var pits: Array = []             # {id, area, outline, depth}
 ## areas (low buildings seen from afar: a quarter of the texels, so the bake's atlas and the package stay near the first
 ## train's)
 var texel_scale := 1.0
+var to_sun := Lighting.to_sun({})   # the way to the sun the app lights from (build_all: the built sky's)
 const SITE_TEXEL_SCALE := 2.0
 var kit_structures: Array = []   # the structures the parts kit draws (planting, vehicles, furniture): {s, area}
 var rack_tiers: Array = []       # pipe racks' tiers, where pipes rest: {outline, z}
@@ -505,6 +506,9 @@ func _mesh_node(parent: Node, name: String, st: SurfaceTool, mat: Material, texe
 	st.generate_tangents()
 	st.index()
 	var arr := st.commit_to_arrays()
+	return _mesh_of(mi, parent, arr, st, mat, texel, baked)
+
+func _mesh_of(mi: MeshInstance3D, parent: Node, arr: Array, st: SurfaceTool, mat: Material, texel: float, baked: bool) -> MeshInstance3D:
 	var lit: Mesh = null
 	if not arr.is_empty() and arr[Mesh.ARRAY_INDEX] != null:
 		lit = Lightmap.unwrap(Lightmap.white(arr), texel * texel_scale, false)
@@ -517,6 +521,40 @@ func _mesh_node(parent: Node, name: String, st: SurfaceTool, mat: Material, texe
 	Lightmap.mark(mi, lit != null and baked)
 	parent.add_child(mi)
 	return mi
+
+## A long mesh across the site (the ring road's kerbs, the boundary wall's panels) as one mesh per SHADOW_CELL square,
+## named NAME_0, NAME_1 …, each with its own lightmap UV2 at the same texel: the sun's shadow draws each cascade's
+## casters by their boxes, and one mesh half a kilometre long was drawn whole into all four cascades wherever the walker
+## stood (the Note 9: about 0.4 M GPU cycles a frame for the kerbs, terrain and wall; decision 0057, "The shadow
+## casters"). The caller adds each whole piece (a kerb block, a panel, a pilaster) to `cell_tool` of its own centre, so
+## no piece is cut between two meshes and two lightmap charts (a seam at a square's edge). The same triangles, material
+## and vertex format: the look is unchanged. Returns the meshes made.
+const SHADOW_CELL := 48.0
+
+## The SurfaceTool of the SHADOW_CELL square that holds plan point `c` (a piece's centre), in `cells` (Vector2i -> it).
+static func cell_tool(cells: Dictionary, c: Vector2) -> SurfaceTool:
+	var key := Vector2i(int(floor(c.x / SHADOW_CELL)), int(floor(c.y / SHADOW_CELL)))
+	if not cells.has(key):
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		cells[key] = st
+	return cells[key]
+
+func _mesh_cells(parent: Node, name: String, cells: Dictionary, mat: Material, texel := Lightmap.TEXEL) -> Array:
+	var out: Array = []
+	var k := 0
+	for key in cells:
+		var st: SurfaceTool = cells[key]
+		st.generate_tangents()
+		st.index()
+		var arr := st.commit_to_arrays()
+		var mi := MeshInstance3D.new()
+		mi.name = "%s_%d" % [name, k]
+		var pst := SurfaceTool.new()   # (the fallback when the unwrapper fails: the square's own arrays)
+		pst.create_from_arrays(arr)
+		out.append(_mesh_of(mi, parent, arr, pst, mat, texel, true))
+		k += 1
+	return out
 
 func _st() -> SurfaceTool:
 	var st := SurfaceTool.new()
@@ -664,6 +702,7 @@ func build_all(out_dir: String) -> int:
 			errors.append(si.error)
 			return err + 1
 		print("build: sky: the sun %.1f° up at %.1f°, sky to sun on the ground %.2f, %d ms" % [si.sun_elevation, si.sun_azimuth, si.sky_to_sun, Time.get_ticks_msec() - t0])
+		to_sun = Lighting.to_sun(si)
 	else:
 		warnings.append("no sky photograph (kit/fetch_textures.sh): a physical sky instead")
 		print("build: warning: no sky photograph, a physical sky instead")
@@ -895,6 +934,9 @@ func _area(root: Node3D, a: Dictionary) -> void:
 		hlod(root, a.id, _far_items(a), root, keep)
 	elif a.data.get("pack", "") in ["wtp", "base"] and a.data.get("load", "") != "inside":
 		far_merge(root, a.id)
+	var hidden := shade_under_roofs(root, a.id)
+	if hidden > 0:
+		print("build: area %s: %d pieces under roofs cast no sun shadow (a roof's already covers it)" % [a.id, hidden])
 
 # ------------------------------------------------------------------ the far view of the site and the camp (HLOD)
 
@@ -1188,12 +1230,157 @@ func _mark_inside(root: Node3D, id: String) -> void:
 				gi.visibility_range_end = r
 				gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 
+## The sun's shadow of what a roof already shades (decision 0057, "The shadow casters"): a piece standing wholly inside
+## one of the area's buildings (`inside_building`; a building's own part, its lamps or roof steel, within the middle of
+## its walls) casts no shadow when every ray from its box towards the sun
+## (`to_sun`) leaves the building through solid wall or roof, away from every door, pipe opening and roof opening (by
+## ROOF_SHADE_MARGIN): whatever its shadow falls on is then in the wall's or the roof's shadow already, so the shadow
+## pass draws it for nothing. Windows and louvres are drawn on solid wall (`_building`) and stop the sun. Pieces that
+## move (doors) keep casting. Returns the pieces switched off.
+const ROOF_SHADE_MARGIN := 0.5
+
+func shade_under_roofs(root: Node3D, id: String) -> int:
+	var mine: Array = buildings.filter(func(b): return b.area == id)
+	if mine.is_empty() or to_sun.y < 0.05:
+		return 0
+	var holes := {}   # building id -> roof_shade_holes
+	var n := 0
+	for node in root.find_children("*", "GeometryInstance3D", true, false):
+		var gi := node as GeometryInstance3D
+		if gi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF or _in_door(gi):
+			continue
+		var box = shade_box(gi)
+		if box == null:
+			continue
+		var b = inside_building(box, mine)
+		if b == null:
+			# a building's own part inside it (its lamps, the steel under its roof): within its walls' middle
+			var own := _building_of(gi)
+			if own != "":
+				b = inside_building(box, mine.filter(func(q): return q.id == own), 0.0)
+		if b == null:
+			continue
+		if not holes.has(b.id):
+			holes[b.id] = roof_shade_holes(b)
+		if roof_shades(box, b, holes[b.id], to_sun):
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			gi.set_meta("roof_shaded", true)
+			n += 1
+	return n
+
+## The building a node is part of (its body's meta `building`), or "".
+static func _building_of(n: Node) -> String:
+	var p := n.get_parent()
+	while p != null:
+		if p.has_meta("building"):
+			return String(p.get_meta("building"))
+		p = p.get_parent()
+	return ""
+
+## A drawn piece's box in its area's frame from its own geometry (a MultiMesh's every instance); null for anything
+## else.
+static func shade_box(gi: GeometryInstance3D):
+	var xf := _global_xf(gi)
+	var box: AABB
+	if gi is MeshInstance3D and (gi as MeshInstance3D).mesh != null:
+		box = xf * (gi as MeshInstance3D).mesh.get_aabb()
+	elif gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh != null and (gi as MultiMeshInstance3D).multimesh.mesh != null:
+		var mm := (gi as MultiMeshInstance3D).multimesh
+		if mm.instance_count == 0:
+			return null
+		var m := mm.mesh.get_aabb()
+		box = xf * (mm.get_instance_transform(0) * m)
+		for i in range(1, mm.instance_count):
+			box = box.merge(xf * (mm.get_instance_transform(i) * m))
+	else:
+		return null
+	return box
+
+## A building's openings the sun comes in by: {walls: [[a, c, [t0, z0, t1, z1] …] per wall with any], roof: [plan
+## polygons]}, as `_building` cuts them (a door's `at` its sill, others' their centre; on the roof from h − 0.5 up).
+func roof_shade_holes(b: Dictionary) -> Dictionary:
+	var pg: PackedVector2Array = b.outline
+	var h: float = b.height
+	var walls: Array = []
+	for i in pg.size():
+		var a := pg[i]
+		var c := pg[(i + 1) % pg.size()]
+		var u := (c - a).normalized()
+		var cuts: Array = []
+		for o in b.openings:
+			if o.kind in ["louvre", "window"]:
+				continue   # on solid wall
+			var oc := _opening_plan(b, o)
+			var oz := float(o.at[2])
+			if oz >= h - 0.5 or Geometry2D.get_closest_point_to_segment(oc, a, c).distance_to(oc) > 0.05:
+				continue
+			var t := (oc - a).dot(u)
+			var zb := oz if o.kind == "door" else oz - float(o.height) * 0.5
+			cuts.append([t - float(o.width) * 0.5, zb, t + float(o.width) * 0.5, zb + float(o.height)])
+		if not cuts.is_empty():
+			walls.append([a, c, cuts])
+	return {"walls": walls, "roof": roof_holes_of(b)}
+
+## Whether every ray from `box` (area frame, y up) towards the sun leaves building b by solid wall or roof: where the
+## rays from the box meet each wall's plane (the hull of the box's corners carried along their rays to it, and of
+## where the box itself crosses it: only rays going towards a plane meet it) and the roof's, they keep
+## ROOF_SHADE_MARGIN clear of every opening there.
+static func roof_shades(box: AABB, b: Dictionary, holes: Dictionary, sun: Vector3) -> bool:
+	var corners: Array = []
+	var gb := box.grow(0.05)   # (a flat piece's box has no thickness)
+	for k in 8:
+		var q := gb.get_endpoint(k)
+		corners.append([Vector2(q.x, -q.z), q.y])   # plan point, height
+	var d := Vector2(sun.x, -sun.z)   # the ray's way in plan, per unit of its length
+	for w in holes.walls:
+		var a: Vector2 = w[0]
+		var u: Vector2 = (w[1] - w[0]).normalized()
+		var nrm := Vector2(-u.y, u.x)
+		var dn := nrm.dot(d)
+		if absf(dn) < 1e-6:
+			continue   # rays along the wall never meet it
+		var ss: Array = []   # each corner's way along its ray to the plane (negative: the plane is behind it)
+		for cq in corners:
+			ss.append(nrm.dot(a - cq[0]) / dn)
+		var pts := PackedVector2Array()
+		for k in 8:
+			if ss[k] >= 0.0:
+				var cq: Array = corners[k]
+				pts.append(Vector2((cq[0] + d * ss[k] - a).dot(u), cq[1] + sun.y * ss[k]))
+			for j in range(k + 1, 8):   # the box's edges that cross the plane: their crossing is on it
+				if [1, 2, 4].has(k ^ j) and (ss[k] < 0.0) != (ss[j] < 0.0):
+					var f: float = ss[k] / (ss[k] - ss[j])
+					var pk: Array = corners[k]
+					var pj: Array = corners[j]
+					var c: Vector2 = pk[0].lerp(pj[0], f)
+					pts.append(Vector2((c - a).dot(u), lerpf(pk[1], pj[1], f)))
+		if pts.is_empty():
+			continue   # the whole box is past this wall's plane: no ray from it meets the wall
+		var hull := Geometry2D.convex_hull(pts) if pts.size() >= 3 else pts
+		for cut in w[2]:
+			var m := ROOF_SHADE_MARGIN
+			var r := PackedVector2Array([Vector2(cut[0] - m, cut[1] - m), Vector2(cut[2] + m, cut[1] - m),
+				Vector2(cut[2] + m, cut[3] + m), Vector2(cut[0] - m, cut[3] + m)])
+			if hull.size() < 4 or not Geometry2D.intersect_polygons(hull, r).is_empty():
+				return false   # (a hull with no area: kept, rather than trusting a degenerate overlap test)
+	if not holes.roof.is_empty():
+		var h := float(b.height)
+		var pts := PackedVector2Array()
+		for cq in corners:
+			pts.append(cq[0] + d * ((h - cq[1]) / sun.y))
+		var hull := Geometry2D.convex_hull(pts)
+		for hp in holes.roof:
+			for big in Geometry2D.offset_polygon(hp, ROOF_SHADE_MARGIN):
+				if not Geometry2D.intersect_polygons(hull, big).is_empty():
+					return false
+	return true
+
 ## The building (of `bs`) a piece's box stands wholly inside, or null: every corner in plan at least WALL_T inside its
 ## outline (a door, a pipe through the wall or a cell of pipework reaching outdoors is not inside) and its top under
 ## the roof (a filter house standing on it is not inside).
-static func inside_building(box: AABB, bs: Array):
+static func inside_building(box: AABB, bs: Array, inset := WALL_T):
 	for b in bs:
-		var inner := Geometry2D.offset_polygon(b.outline, -WALL_T)
+		var inner: Array = Geometry2D.offset_polygon(b.outline, -inset) if inset > 0.0 else [b.outline]
 		if inner.size() != 1 or box.end.y > float(b.height) + 0.01:
 			continue
 		var ok := true

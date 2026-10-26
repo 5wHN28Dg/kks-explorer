@@ -48,6 +48,16 @@ static func sky() -> Sky:
 	s.sky_material = pm
 	return s
 
+## The way to the sun (a unit vector, y up) for a built sky's `sky.json` (its sun's elevation and azimuth), or the
+## sun without a built sky (SUN_ROT) for an empty one: sun() lights the plant from there, and the content build leaves
+## out the shadow casters a roof already shades from there (builder/plant_builder.gd `shade_under_roofs`).
+static func to_sun(info: Dictionary) -> Vector3:
+	if info.is_empty():
+		return Basis.from_euler(SUN_ROT * (PI / 180.0)).z
+	var el := deg_to_rad(float(info.sun_elevation))
+	var az := deg_to_rad(float(info.sun_azimuth))
+	return Vector3(cos(el) * sin(az), sin(el), -cos(el) * cos(az))
+
 static func sun() -> DirectionalLight3D:
 	var l := DirectionalLight3D.new()
 	l.name = "sun"
@@ -55,10 +65,7 @@ static func sun() -> DirectionalLight3D:
 	if info.is_empty():
 		l.rotation_degrees = SUN_ROT
 	else:
-		var el := deg_to_rad(float(info.sun_elevation))
-		var az := deg_to_rad(float(info.sun_azimuth))
-		var to_sun := Vector3(cos(el) * sin(az), sin(el), -cos(el) * cos(az))
-		l.basis = Basis.looking_at(-to_sun, Vector3.UP)   # a directional light shines along its -z
+		l.basis = Basis.looking_at(-to_sun(info), Vector3.UP)   # a directional light shines along its -z
 	l.light_energy = SUN_ENERGY
 	l.light_color = SUN_COLOUR
 	l.shadow_enabled = true

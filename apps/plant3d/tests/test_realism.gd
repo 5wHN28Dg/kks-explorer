@@ -54,7 +54,7 @@ func run(tree: SceneTree) -> Array:
 		p.append("the fences and the gate are found (%d)" % sheets)
 	# the site
 	var ground := plant.get_node_or_null("ground")
-	for want in ["ground", "yard_0", "road", "verge", "kerbs", "drain", "drain_cover", "boundary_wall", "terrain"]:
+	for want in ["ground", "yard_0", "road", "verge", "kerbs_0", "drain", "drain_cover", "boundary_wall", "terrain"]:
 		if ground == null or ground.find_child(want, true, false) == null:
 			p.append("the site has its %s" % want)
 	var terrain := ground.find_child("terrain", true, false) as MeshInstance3D if ground != null else null
@@ -163,25 +163,31 @@ func run(tree: SceneTree) -> Array:
 		if wm == null or float(wm.get_shader_parameter("top_edge")) != 1.0:
 			p.append("%s: streaks hang from the panels' tops" % mname)
 	var wall_node := ground.find_child("boundary_wall", true, false) if ground != null else null
-	var panels := wall_node.get_node_or_null("panels") as MeshInstance3D if wall_node != null else null
-	if panels == null:
+	# (its panels in a mesh per square: builder/plant_builder.gd _mesh_cells)
+	var panels: Array = wall_node.find_children("panels_*", "MeshInstance3D", false, false) if wall_node != null else []
+	if panels.is_empty():
 		p.append("the boundary wall's panels are found")
 	else:
-		var cols: PackedColorArray = panels.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
-		var ys: PackedVector3Array = panels.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var top_y := -INF
+		for pm in panels:
+			for v in (pm.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+				top_y = maxf(top_y, v.y)
 		var bad := 0
 		var high := 0
-		var top_y := -INF
-		for v in ys:
-			top_y = maxf(top_y, v.y)
-		for i in cols.size():
-			var top := (roundf(cols[i].r * 255.0) + cols[i].g) * 0.25
-			if top + 0.02 < ys[i].y - panels.global_position.y:   # a pier's own top too (they stand 0.15 m higher)
-				bad += 1
-			if top > top_y - panels.global_position.y + 0.02:   # nor above the wall: no streak would reach it
-				high += 1
-		if cols.is_empty() or bad > 0 or high > 0:
-			p.append("the wall's vertices carry its top (%d vertices above it, %d with a top over the wall)" % [bad, high])
+		var none := 0
+		for pm in panels:
+			var cols: PackedColorArray = pm.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
+			var ys: PackedVector3Array = pm.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+			if cols.is_empty():
+				none += 1
+			for i in cols.size():
+				var top := (roundf(cols[i].r * 255.0) + cols[i].g) * 0.25
+				if top + 0.02 < ys[i].y - pm.global_position.y:   # a pier's own top too (they stand 0.15 m higher)
+					bad += 1
+				if top > top_y - pm.global_position.y + 0.02:   # nor above the wall: no streak would reach it
+					high += 1
+		if none > 0 or bad > 0 or high > 0:
+			p.append("the wall's vertices carry its top (%d vertices above it, %d with a top over the wall, %d meshes without)" % [bad, high, none])
 	# the ground varies (patches, ruts by the road, a track out of the gate); insulated pipe is lapped cladding
 	var terr := load("res://built/materials/terrain.tres") as ShaderMaterial
 	if terr == null or float(terr.get_shader_parameter("macro")) <= 0.0 or (terr.get_shader_parameter("track") as Vector4).length() < 1.0 \
