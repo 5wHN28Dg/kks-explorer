@@ -1919,6 +1919,35 @@ places differ.
   placed at its logical position the next time it is out of view.
 - Doors open for people as for the trainee; vehicles drive on `drive` ways along their road polylines.
 
+**As built (2026-10-26, the user's plan for people's movement, phase 2):** until then an avatar was placed on the
+straight line between a way's places, and its check compared the mesh path with the way's length, which had itself
+been measured on that path: 140 of the 299 ways' straight lines went through machines, pipes, rails or walls, and the
+HRSG's stair was walked up to 30 m above the ground.
+- The content build (`builder/staff_paths.gd`, after the mesh) finds every way of staff.json on the mesh as the
+  walking directions do (stairs along their own paths), puts the feet down on what a walker stands on every 0.1 m (a
+  floor, a deck, a stair's slope: the one the walking test climbs, through the treads' nosings, so on a flight the feet
+  are up to one riser above the back of a tread) and keeps the points that hold the line within 1 cm: `built/staff_paths.bin` (about 1,000 points, 36 KB). Each stretch is timed by its kind at staff.json's speeds
+  (`walk`, `stair`, `ladder`), the whole scaled to the way's time, so the walk clip and the stair clip each play
+  near their own speed; the avatar's `speed` is the stretch's length over its time, and `on` is `stairs` on the
+  steps. The app (`app/staff_ways.gd`) reads it once and searches no path; a way without a line, or whose line does
+  not end at its places, is still walked straight.
+- Way lengths stay the mesh paths' (`tools/plant3d/staff_layout.json`, + 2 %), measured again on the new mesh: the
+  engine is unchanged; the content's timings move a little. They are measured by the content tool, not by the build:
+  after a change to the mesh, run `tests/staff_layout.gd` again (train_staff.py's steps); the test fails a line more
+  than 10 % off its way's length.
+- The mesh keeps 0.4 m from what is in the way (decision 0059's bake at the walker's 0.3 m left its edge touching
+  them); the stack platform's ring is 1.5 m wide for it, and the camp's room doors 1.0 m (0.9 m left the rooms off
+  the mesh; the bathrooms' 0.7 m doors were off it before); an end of a switchback stair reached across its landing's
+  corner (where its rails meet the floor's) is left out: the stair is left from the landing's middle; a work place is moved up to 0.1 m clear of a corner the
+  mesh cuts.
+- `tests/test_staff_ways.gd` walks every line both ways: within 10 % of the way's length, a 0.3 m capsule (0.4 to
+  1.8 m above the feet) touching nothing but doors, the feet within 5 cm of what is under them, every stair way on
+  its steps for some of it, never a run, and every door 1 m wide or more walked through on the mesh;
+  `test_staff_paths.gd` builds a line round a beam on a scene of its own.
+- Not yet (phases 3 and 4): doors opening for people (they open for the walker only, app/door.gd: a person passes
+  through a shut leaf), turning eased at a line's corners, the lane and keeping apart, the crowd's lanes, the
+  standing places (a person at a place is drawn at its point, up to 5 cm above the floor).
+
 ### 18.2 Avatars
 
 - Bodies are CC0 exports of MakeHuman (MPFB) with CC0 clothes only, our own work clothes and PPE (coveralls,

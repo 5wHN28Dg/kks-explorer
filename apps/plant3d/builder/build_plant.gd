@@ -7,6 +7,7 @@ extends SceneTree
 const Builder = preload("res://builder/plant_builder.gd")
 const NavBake = preload("res://builder/nav_bake.gd")
 const People = preload("res://builder/people/build_people.gd")
+const StaffPaths = preload("res://builder/staff_paths.gd")
 
 func _init() -> void:
 	var args := {}
@@ -46,11 +47,11 @@ func _init() -> void:
 		return
 	print("build: people: %d looks, triangles %s, %d bones, %d clips, gait speeds %s" % [ps.looks.size(), ps.triangles,
 		ps.bones, ps.clips.size(), ps.speeds])
-	_nav.call_deferred(out, b)
+	_nav.call_deferred(out, b, data)
 
 ## The walking directions' navigation mesh, from the scenes just saved (builder/nav_bake.gd); deferred, so that the
 ## scenes are parsed inside the running tree.
-func _nav(out: String, b) -> void:
+func _nav(out: String, b, data: String) -> void:
 	var m = JSON.parse_string(FileAccess.get_file_as_string(out.path_join("plant.json")))
 	var scenes: Array = [m.ground]
 	for a in m.areas:
@@ -67,6 +68,23 @@ func _nav(out: String, b) -> void:
 		return
 	print("build: navigation mesh: %d polygons (%d out of reach dropped), %d vertices, %d doors and %d stairs left out, baked in %d tiles of %d (the rest without floor; %d polygons split on their seams), %d bytes, %d ms" % [
 		r.polygons, r.dropped, r.vertices, r.doors, r.stairs, r.tiles, r.grid, r.splits, r.bytes, r.ms])
+	# the staff's ways as people walk them, on that mesh, with the scenes standing (builder/staff_paths.gd)
+	var world := Node3D.new()
+	world.name = "staff_paths_source"
+	root.add_child(world)
+	for path in scenes:
+		world.add_child((load(path) as PackedScene).instantiate())
+	await physics_frame
+	await physics_frame
+	var nm := ResourceLoader.load(out.path_join(NavBake.OUT), "", ResourceLoader.CACHE_MODE_IGNORE) as NavigationMesh
+	var sp: Dictionary = await StaffPaths.build(world, nm, data.path_join("staff.json"), out)
+	world.free()
+	if sp.has("error"):
+		printerr("build: ", sp.error)
+		quit(1)
+		return
+	if sp.ways > 0:
+		print("build: staff paths: %d ways, %d points, %d bytes, %d ms" % [sp.ways, sp.points, sp.bytes, sp.ms])
 	quit(0)
 
 func _clear(dir: String) -> void:

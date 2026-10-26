@@ -268,7 +268,7 @@
   {"id": "camp_mess_door1", "part": "door", "at": [-340.0, 4.0, 0], "params": {"kind": "double", "width": 1.8, "height": 2.4}},
   {"id": "camp_mess_door2", "part": "door", "at": [-350.0, -16.0, 0], "yaw": 180, "params": {"kind": "personnel", "width": 1.0, "height": 2.1}},
   {"id": "camp_mess_walk", "part": "road", "at": [-341, 4, 0], "params": {"outline": [[0, 0], [2.0, 0], [2.0, 8.0], [0, 8.0]], "surface": "concrete"}},
-  {"id": "camp_mess_canopy", "part": "canopy", "at": [-340, 8, 0], "params": {"length": 8, "width": 3.0, "height": 2.8}},
+  {"id": "camp_mess_canopy", "part": "canopy", "at": [-340, 8, 0], "params": {"length": 8, "width": 3.2, "height": 2.8}},
   {"id": "camp_mess_service", "part": "road", "at": [-352, -24, 0], "params": {"outline": [[0, 0], [4.0, 0], [4.0, 8.0], [0, 8.0]], "surface": "concrete"}},
   {"id": "camp_skip_1", "part": "skip_bin", "at": [-345.5, -20.5, 0], "yaw": 90},
   {"id": "camp_skip_2", "part": "skip_bin", "at": [-345.5, -23.2, 0], "yaw": 90},
