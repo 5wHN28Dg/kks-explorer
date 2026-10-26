@@ -389,8 +389,8 @@ walks with `probe=1` and `SAMPLE=1`; "stress" means `scenario=shift_cold`, fast,
   - The one walk that started as cool as main's (stress, 29.9 °C, 424 MHz) had a mean GPU time of 24.2 ms (main
     24.8 and 25.2 ms) and 96.2 % of frames at 30 fps or better (main 94.9 and 93.5 %). It still had one frame over
     100 ms that the app caused (102.0 ms).
-  - The stress walks of both builds have such frames: main's earlier ones in 0066, and its `crews` and `frames` walks
-    here.
-- **The look:** the phone's 20 views (`phone/shots.sh`, baked) and the laptop's 22 views (unbaked) are identical
+  - The stress walks of both builds have such frames: main's earlier ones in 0066, and its `frames` walk here.
+- **The look:** the phone's 20 views (`phone/shots.sh`, baked) and the laptop's 22 views (unbaked, taken on the first split, which is the same
+  geometry) are identical
   between main and this change. The only phone pixels that differ are the clock on the HUD, and three laptop hall
   views differ by run-to-run noise.
