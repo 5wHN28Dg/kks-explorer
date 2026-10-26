@@ -33,7 +33,8 @@ class Shards(unittest.TestCase):
         self.assertTrue(all(per), per)
         self.assertIn('test_shards.Shards', names)
         # a test named by its id goes to its own shard, not its class's
-        day = next(t for t in tests if t.id() == 'test_plant3d.Vectors2.test_frozen_day')
+        day = next((t for t in tests if t.id() == 'test_plant3d.Vectors2.test_frozen_day'), None)
+        self.assertIsNotNone(day, 'no test_plant3d.Vectors2.test_frozen_day: update tests/shards.py')
         self.assertEqual(shards.shard_of(day), shards.HEAVY['test_plant3d.Vectors2.test_frozen_day'])
 
     def test_every_content_test_runs_once(self):

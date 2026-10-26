@@ -47,7 +47,8 @@ CONTENT = {
     # run again with fast-forward: ~48 s
     'test_plant3d.Vectors.test_frozen_train': 1,
     'test_plant3d.ColdStart': 1,
-    # the held job's PPE over a night (~273 s on CI; content shard 0 had reached 18.8 of the job's 40 minutes)
+    # the held job's PPE over a night (CI, 2026-10-26: ~273 s; content shard 0 had reached 18.8 of the job's 40
+    # minutes, shard 1 4.5)
     'test_plant3d_staff.FirstTrainStaff.test_ppe_on_before_a_held_job_and_for_the_supervisors': 1,
     # the hot restart made again (~68 s); format 1's train (~110 s) and hot restart (~45 s) replayed; format 2's
     # train part made again (the cold start and the permit forks, ~64 s)
@@ -63,8 +64,9 @@ CONTENT = {
     'test_plant3d.Vectors2.test_frozen_day': 4,
     'test_plant3d.Vectors2.test_frozen_wtp_cip': 4,
     'test_plant3d.Vectors2.test_train_forks_replay': 4,
-    # shard 0 the rest (~5 min): the water treatment model's tests (~140 s, which share their procedure runs), the staff
-    # (~125 s), the bench (~20 s, with Godot), the content and the validator
+    # shard 0 the rest (CI, 2026-10-26: ~14 min after the PPE test left it): the staff's day replayed (~778 s on CI),
+    # the water treatment model's tests (~158 s on CI, which share their procedure runs), the staff's other tests, the
+    # bench (~20 s, with Godot), the content and the validator
 }
 
 APP_DIR = os.path.join(os.path.dirname(HERE), 'apps', 'plant3d', 'tests')
