@@ -16,7 +16,12 @@ const OUT := "nav.res"
 ## The walker (app/player.gd): a 0.3 m capsule, 1.8 m tall (the stack platform at +40 leaves it 0.4 m between the
 ## stack and the rail: no room to spare). Floors and platforms are level and stairs are links: a ledge is
 ## climbed only as high as the capsule rides up one, r (1 - cos 46°) = 0.09 m (a machine's base is not).
-const AGENT_RADIUS := 0.3
+## The mesh keeps AGENT_RADIUS from what is in the way, which Recast rounds up to whole cells: 4, 0.4 m. Baked at the
+## walker's 0.3 m (3 cells) its edge lay exactly 0.3 m from a machine or a wall, and the paths along it touched them:
+## people drawn on those paths (app/staff_ways.gd) brushed through the casings (29 of the staff's 299 ways,
+## 2026-10-26). The cell more keeps the walker's capsule clear by the edge's own error (a cell).
+const WALKER_RADIUS := 0.3
+const AGENT_RADIUS := 0.35
 const AGENT_HEIGHT := 1.8
 const AGENT_CLIMB := 0.09
 const AGENT_SLOPE := 20.0
@@ -119,11 +124,16 @@ static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, 
 ## A stair's way (its path, Godot's axes) with the floor in front of each end, APPROACH metres on, where its link
 ## joins the mesh: straight on from the flight if the walker's capsule fits along there and finds the end's floor,
 ## else the nearest direction that does (a stair arriving at a landing's corner turns onto it). [] when none does.
-static func stair_way(space: PhysicsDirectSpaceState3D, path: Array) -> Array:
+## An end reached along a level stretch the capsule does not fit (a switchback's top is the corner of its rectangle,
+## where the landing's rails meet the floor's) is left out: the way leaves the landing from its middle instead.
+static func stair_way(space: PhysicsDirectSpaceState3D, path0: Array) -> Array:
+	var path := path0.duplicate()
+	for end in [0, -1]:
+		var i := 0 if end == 0 else path.size() - 1
+		var j := 1 if end == 0 else path.size() - 2
+		if path.size() > 2 and absf(path[i].y - path[j].y) < 0.01 and not fits(space, path[j], path[i]):
+			path.remove_at(i)
 	var out := path.duplicate()
-	var cap := CapsuleShape3D.new()
-	cap.radius = AGENT_RADIUS
-	cap.height = AGENT_HEIGHT - 0.2
 	for end in [0, path.size() - 1]:
 		var p: Vector3 = path[end]
 		var k := 1 if end == 0 else path.size() - 2
@@ -139,16 +149,11 @@ static func stair_way(space: PhysicsDirectSpaceState3D, path: Array) -> Array:
 			var dir := d.rotated(Vector3.UP, deg_to_rad(a))
 			var q := p + dir * APPROACH
 			var floor := space.intersect_ray(PhysicsRayQueryParameters3D.create(q + Vector3.UP * 0.5, q + Vector3.DOWN * 0.5))
-			if floor.is_empty() or absf(floor.position.y - p.y) > 0.1 or floor.normal.y < 0.9:
+			# a floor, not the stair's own landing (the way would turn back onto the stair)
+			if floor.is_empty() or absf(floor.position.y - p.y) > 0.1 or floor.normal.y < 0.9 or floor.collider.has_meta("stair"):
 				continue
-			# the capsule, 0.35 m above the floor (clear of a flight's slope, which starts above the floor at its foot),
-			# along from the end to there
-			var sq := PhysicsShapeQueryParameters3D.new()
-			sq.shape = cap
-			sq.transform = Transform3D(Basis(), p + Vector3.UP * (0.35 + 0.8))
-			sq.motion = q - p
-			var m := space.cast_motion(sq)
-			if m.size() == 2 and m[0] >= 1.0:
+			# the walker's capsule fits along from the end to there
+			if fits(space, p, Vector3(q.x, p.y, q.z)):
 				found = Vector3(q.x, floor.position.y, q.z)
 				break
 		if found == Vector3.INF:
@@ -158,6 +163,22 @@ static func stair_way(space: PhysicsDirectSpaceState3D, path: Array) -> Array:
 		else:
 			out.push_back(found)
 	return out
+
+## Whether the walker's capsule (WALKER_RADIUS, from 0.4 m above the feet to their height, 1.8 m: clear of a
+## flight's slope, which starts above the floor at its foot, and of a kerb) touches nothing anywhere along from `a`
+## to `b` (the feet), every 0.1 m: the check tests/test_staff_ways.gd makes on the staff's ways.
+static func fits(space: PhysicsDirectSpaceState3D, a: Vector3, b: Vector3) -> bool:
+	var cap := CapsuleShape3D.new()
+	cap.radius = WALKER_RADIUS
+	cap.height = AGENT_HEIGHT - 0.4
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = cap
+	var n := maxi(1, ceili(a.distance_to(b) / 0.1))
+	for k in n + 1:
+		q.transform = Transform3D(Basis(), a.lerp(b, float(k) / n) + Vector3.UP * (0.4 + cap.height * 0.5))
+		if not space.intersect_shape(q, 1).is_empty():
+			return false
+	return true
 
 static func _g(p: Vector3) -> Vector3:
 	return Vector3(p.x, p.z, -p.y)

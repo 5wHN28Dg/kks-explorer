@@ -54,7 +54,7 @@ func _run() -> void:
 		if not ui.index.has(code):
 			print("staff_layout: no equipment %s in the scene" % code)
 			continue
-		var p: Vector3 = r.point_for(ui.index.box(code))
+		var p: Vector3 = clear_of(main, r.point_for(ui.index.box(code)))
 		out["stand"][code] = plant_of(p)
 		places["kks:" + code] = plant_of(p)
 	var pts: Array = req["points"]
@@ -87,6 +87,30 @@ func _run() -> void:
 			out["edges"].size()])
 	main.free()
 	quit(0)
+
+
+## A stand point moved out of the walker's capsule's way (0.3 m, 0.4 to 1.8 m above the feet: tests/test_staff_ways.gd),
+## at most 0.1 m along the floor: the mesh keeps 0.4 m from a machine's side but cuts a corner to 0.28 m (Recast's
+## contour), and the walkable point nearest to a machine is often that corner.
+static func clear_of(main: Node, p: Vector3) -> Vector3:
+	var space: PhysicsDirectSpaceState3D = main.get_world_3d().direct_space_state
+	var cap := CapsuleShape3D.new()
+	cap.radius = 0.3
+	cap.height = 1.4
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = cap
+	q.exclude = [main.player.get_rid()]
+	var at := p
+	for i in 10:
+		q.transform = Transform3D(Basis(), at + Vector3.UP * 1.1)
+		var rest := space.get_rest_info(q)
+		if rest.is_empty():
+			return at
+		var away := Vector3(at.x - rest.point.x, 0.0, at.z - rest.point.z)
+		if away.length() < 1e-3 or at.distance_to(p) > 0.1:
+			break
+		at += away.normalized() * 0.01
+	return p if at.distance_to(p) > 0.1 else at
 
 
 static func _rise(points: PackedVector3Array) -> float:

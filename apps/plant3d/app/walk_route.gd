@@ -55,10 +55,13 @@ var _pending := ""              # "find" or "draw" on the next physics tick
 
 
 ## Loads the pre-built navigation mesh into this world's navigation map and joins the ends of every stair and ladder
-## with a link (builder/nav_bake.gd leaves them out of the mesh).
-func setup(_plant = null) -> String:
+## with a link (builder/nav_bake.gd leaves them out of the mesh). `mesh`: another one than NAV's (the content build's,
+## builder/staff_paths.gd).
+func setup(_plant = null, mesh: NavigationMesh = null) -> String:
 	var t0 := Time.get_ticks_usec()
-	var nm := load(NAV) as NavigationMesh if ResourceLoader.exists(NAV) else null
+	var nm := mesh
+	if nm == null:
+		nm = load(NAV) as NavigationMesh if ResourceLoader.exists(NAV) else null
 	if nm == null:
 		error = "no navigation mesh (%s): run apps/plant3d/build.sh" % NAV
 		return error

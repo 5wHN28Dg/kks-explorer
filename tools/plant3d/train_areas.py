@@ -641,9 +641,11 @@ def hrsg1():
         st('hrsg1_drum_platform', 'platform', [103, 61, 32], outline=rect(44, 8), deck='grating'),
         stair_straight('hrsg1_drum_stair', [100.6, 66.5, 30], 'e', 2),
         st('hrsg1_walkway', 'platform', [150, 63, 30], outline=rect(6, 4), deck='grating'),
-        st('hrsg1_stack_platform', 'platform', [155.5, 60.5, 40], kks='10UHN10', outline=rect(9, 9),
-           openings=[box(1, 1, 8, 8)], deck='grating'),
-        st('hrsg1_stack_ladder', 'ladder', params={'foot': [155.6, 65, 30], 'top': 40, 'facing': 90}),
+        # a ring 1.5 m wide round the stack's 7 m square (1.0 m left the walking directions' mesh, which keeps 0.4 m from
+        # the stack and the rail, nothing at the ladder: apps/plant3d/builder/nav_bake.gd AGENT_RADIUS)
+        st('hrsg1_stack_platform', 'platform', [155, 60, 40], kks='10UHN10', outline=rect(10, 10),
+           openings=[box(1.5, 1.5, 8.5, 8.5)], deck='grating'),
+        st('hrsg1_stack_ladder', 'ladder', params={'foot': [155.1, 65, 30], 'top': 40, 'facing': 90}),
     ]
     signs = [sign('HRSG 1 10HNA10', [122, 53.9, 6], 180), sign('HP drum 10HAD30BB001', [110, 61.2, 33.5], 180),
              sign('Feedwater pumps', [113, 46.5, 2.5], 180), sign('Stack 10HNE10', [160, 61, 2.5], 180)]
