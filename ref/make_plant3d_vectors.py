@@ -2730,6 +2730,14 @@ def session_runs():
                         [10, 'say', 'all_well', 'a_fo1', 0], [12, 'jump', '19:00', 1], [40, 'jump', '19:00', 0],
                         [60, 'task_ack', 0], [61, 'jump', '19:00', 0], [64, 'release', 1],
                         [65, 'role', 'a_fo1', 1]]), 400, 10),
+        ('a claim while the NPC\'s input is in flight (§17.13): slot 0 takes the field operator of crew C in the '
+         'step their valve op, made in the step before, is applied: the op is done as the NPC\'s, but nobody waits on '
+         'it and it is no step of the player\'s (their task\'s step is theirs to do again); slot 0 released later',
+         {}, None, Session([Trainee(slot=0, quiet=True)],
+                           when=[(lambda e: e.step_no > 1 and any(x[0] == 'op' and x[-1] == 'c_fo'
+                                                                  for x in e.npc_queue), ('role', 'c_fo', 0)),
+                                 (lambda e: e.step_no > 150 and e.staff.players.get(0) is not None, ('release', 0))]),
+         300, 10),
     ]
 
 

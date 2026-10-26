@@ -1828,8 +1828,9 @@ decision 0067), chosen when the engine is made and kept for the run (saved with 
   person becomes the slot's (a single-player run's `role` at step 1 only does that, as §17.4 says; the rest of this
   item is a session run's): their current task, unless it is the idle task, is paused as a pre-emption pauses it
   (§17.3, §17.8: its step's place and reservation looked for again, its `work` keeping the time left, the input an NPC
-  waits on forgotten: that input itself is still applied, in this step, as the NPC's) and taken up again at their
-  turn; a person walking a way is between places from then on (the way given up; the place it started from kept as the
+  waits on forgotten: that input itself is still applied, in this step, as the NPC's; it sets no outcome to wait for,
+  and its events are no step or kept action of the player's, so the paused step is theirs to do) and taken up again at
+  their turn; a person walking a way is between places from then on (the way given up; the place it started from kept as the
   place they left); their zones are, from then on, those their place or way gave them at that moment, changed by the
   slot's `zone` inputs; the slot's count of new tasks starts at 0 and its kept actions (§17.8) are none.
 - **`[n, "release", slot]`** (made by the session's host only, MULTIPLAYER.md §3.3): done when the slot plays a person,
@@ -2142,14 +2143,15 @@ Format 1's file keeps its synthetic parts byte for byte; its `train` and `hot` r
 now version 2: the same inputs and events, every format 1 value the same at every snapshot, with the new values and
 the snapshot keys `permits`, `ptw` and `locked` added. S1 adds the staff's `steps` and `day`.
 
-**Added for milestone MP1** (2026-10-26, §17.13, §17.14): `staff.runs` gains three session runs (`"session": true`,
+**Added for milestone MP1** (2026-10-26, §17.13, §17.14): `staff.runs` gains four session runs (`"session": true`,
 inputs with their slot last): two players from step 1 with the claims refused in that step, inputs without a valid
 slot, a player's inputs naming another slot's person and a version 1 op refused, a free slot's ops in the commit's
 order (two in one step, either way round) and its stop refused, each slot's new tasks counted for it and fast-forward
 held by one; three players with a release while walking between places (put back at the place left), a reclaim while
 walking a way as an NPC, a release while working, a claim of a person asleep in a work step, a release of an empty
 slot and a claim of another slot's person refused; the scenario's trainee as slot 0 with jumps refused by either
-slot's new tasks and then accepted, a release and a reclaim. `day` gains a session fork (`session_cw_alarm`: the CW
+slot's new tasks and then accepted, a release and a reclaim; a claim in the step the NPC's op made the step before is
+applied (done as the NPC's, no step of the player's). `day` gains a session fork (`session_cw_alarm`: the CW
 field operator released while walking to the alarm and taken back by another slot). Every staff run, the day and every
 fork carry `digests`: the state digest (§17.14) of step 0 and of every 50th step.
 

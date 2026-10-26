@@ -790,7 +790,14 @@ budget isn't done.
   Linux, Android (the Note 9) and Windows (the VM) for every vector run every 50 steps. As built: the staff runs, the
   day and its forks carry their digests (`digests`), which `run_vectors.gd` checks on every platform it runs on; every
   other run's digests are in its `--digests` output (`state`), which `tests/test_plant3d_sim.py` compares with the
-  reference's, and a run on another platform with Linux's.
+  reference's, and a run on another platform with Linux's. Checked on Linux and Windows; **not yet on Android**: the
+  Note 9 ran the digest's timing only (`digest=bench`), so `run_vectors.gd --digests` on the Note 9, compared with
+  Linux's, is the first thing MP2 does before two devices compare digests in a session.
+- **Before MP2 takes inputs from other devices:** a committed input whose kind is not a text, or whose length is not
+  its kind's, must do nothing in both engines (the GDScript stops with a script error on a kind that is not a text,
+  halfway through a step; MP1's inputs come from the app alone, which makes none such), and a slot that plays nobody
+  has free mode's powers (PLANT3D.md §17.13): MP2 settles which slots may play nobody (the instructor's seat only, or
+  any) and what the host does with the others' inputs.
 - **The crypto:** RFC 5869's HKDF test cases and RFC 7518 Appendix B.1's AEAD vector through our GDScript code; the
   code's check character; replay windows.
 - **The multi-instance harness** (`apps/plant3d/net/tests/`): N headless Godot processes (`--headless`, the engine and

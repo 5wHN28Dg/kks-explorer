@@ -1483,7 +1483,7 @@ class StaffRun:
         # 4. people
         if jump_step:
             for slot in sorted(self.players):   # their actions of this step are kept all the same (§17.8)
-                mine = [x for x in e.events[e.ev_mark:] if x[0] == n]
+                mine = self.mine(n)
                 self.drop_kept(mine, self.people[self.players[slot]].id, slot)
                 self.keep(self.people[self.players[slot]], mine, set(), slot)
         else:
@@ -2346,13 +2346,19 @@ class StaffRun:
         return 'next' if x['left'] <= 0 else 'wait'
 
     # --- the trainee's person (§17.4): every step waits for its input
+    def mine(self, n):
+        """This step's events a player's step or kept action may match: not those of an NPC's input applied after a
+        slot took its person (§17.13)."""
+        e = self.e
+        return [x for k, x in enumerate(e.events[e.ev_mark:], e.ev_mark) if x[0] == n and k not in e.npc_evs]
+
     def trainee_turn(self, p, tin, slot):
         """A player's person's turn (§17.4): tin, their slot's inputs of this step in the order made."""
         e = self.e
         st = self.st
         n = e.step_no
         used = [False] * len(tin)
-        mine = [x for x in e.events[e.ev_mark:] if x[0] == n]
+        mine = self.mine(n)
         self.drop_kept(mine, p.id, slot)
         took = set()
         self.trainee_steps(p, tin, used, mine, took, slot)

@@ -2096,7 +2096,8 @@ func trainee_turn(e, pi: int, tin: Array, slot: int) -> void:
 func _mine(e) -> Array:
 	var mine := []
 	for k in range(e.ev_mark, e.events.size()):
-		if e.events[k][0] == e.step_no:
+		# not the events of an NPC's input applied after a slot took its person (§17.13)
+		if e.events[k][0] == e.step_no and not e._npc_evs.has(k):
 			mine.append(e.events[k])
 	return mine
 

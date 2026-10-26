@@ -1704,6 +1704,7 @@ class Engine:
         self.J = 0
         self.npc_queue = []             # the NPCs' inputs made in step 9, for the next step's step 1
         self.npc_pending = 0
+        self.npc_evs = set()            # this step's events of NPC inputs whose person a slot took in step 1 (§17.13)
         self.ev_mark = 0                # where this step's events begin
         self.staff = None
         if b.staff is not None and 'staff' in sc:
@@ -2240,6 +2241,17 @@ class Engine:
                 self._enter(mc, a['to'], 'action')
                 moved.add(mc['id'])
 
+    def _npc_result(self, pid, r, k0):
+        """An NPC's input applied: its result is the NPC's, unless a slot took the person in this step's step 1
+        (§17.13): then the input is applied all the same, but nobody waits on it and its events are no step of the
+        player's."""
+        sr = self.staff
+        pi = sr.st.person_ix[pid]
+        if self.session and pi in sr.players.values():
+            self.npc_evs.update(range(k0, len(self.events)))
+        else:
+            sr.people[pi].result = r
+
     def step(self, n=1):
         for _ in range(n):
             self._step()
@@ -2261,6 +2273,7 @@ class Engine:
         q, self.queue = self.queue, []
         nq, self.npc_queue = self.npc_queue, []
         self.npc_pending = len(nq)      # a jump waits for the NPCs' inputs of the step before (§17.8)
+        self.npc_evs = set()
         sr = self.staff
         for npc, item in [(False, x) for x in q] + [(True, x) for x in nq]:
             slot = 0
@@ -2272,13 +2285,15 @@ class Engine:
             self.in_slot = slot
             kind = item[0]
             if kind == 'op':
+                k0 = len(self.events)
                 r = self._op(item[1:], prev, moved, npc)
                 if npc:
-                    sr.people[sr.st.person_ix[item[6]]].result = r
+                    self._npc_result(item[6], r, k0)
             elif kind == 'permit':
+                k0 = len(self.events)
                 r = self._permit(item[1], item[2], item[3], dones, npc)
                 if npc:
-                    sr.people[sr.st.person_ix[item[3]]].result = r
+                    self._npc_result(item[3], r, k0)
             elif kind in ('lock', 'unlock'):
                 noted.append((item + (None, NO_OWNER), npc, slot))
             elif kind == 'remove_lock':
@@ -2336,9 +2351,10 @@ class Engine:
         # 3. the locks and unlocks noted in step 1, in the order made; the permits' automatic moves (§15.3)
         for (kind, work, point, person, reason, owner), npc, slot in noted:
             self.in_slot = slot
+            k0 = len(self.events)
             r = self._lock(kind, work, point, person, vals, npc, reason, owner)
             if npc:
-                sr.people[sr.st.person_ix[person]].result = r
+                self._npc_result(person, r, k0)
         for w in self.m.works:
             wid, iso = w['id'], w.get('isolation')
             k = self.n_locked(iso) if iso is not None else 0

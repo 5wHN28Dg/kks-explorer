@@ -125,6 +125,7 @@ var _fixed_trainee := false         # the scenario names the trainee
 var _show := {}                     # code -> its show binding's value name or number
 var _fault_kks := {}                # scenario fault id -> its code or null
 var _npc_pending := 0               # the NPCs' inputs in this step's step 1 (set every step)
+var _npc_evs := {}                  # this step's events of NPC inputs whose person a slot took in step 1 (§17.13)
 # the staff's state (§17; saved with the run, copied by clone): st_ for the run, sp_ per person in file order
 var J := 0                          # the jumps made, in tenths of a clock second
 var npc_queue: Array = []           # the NPCs' inputs made in step 9, for the next step's step 1
@@ -1412,6 +1413,17 @@ const _FAST_TABLE := """static func table(fa: PackedFloat64Array, f: int, cnt: i
 """
 
 
+## An NPC's input applied: its result is the NPC's, unless a slot took the person in this step's step 1 (§17.13): then
+## the input is applied all the same, but nobody waits on it and its events are no step of the player's.
+func _npc_result(pid, r: String, k0: int) -> void:
+	var pi: int = _sm.person_ix[pid]
+	if st_session and st_players.has(pi):
+		for k in range(k0, events.size()):
+			_npc_evs[k] = true
+	else:
+		sp_result[pi] = r
+
+
 func _step() -> void:
 	step_no += 1
 	ev_mark = events.size()
@@ -1427,6 +1439,7 @@ func _step() -> void:
 	queue = []
 	var nt := q.size()
 	_npc_pending = npc_queue.size()     # a jump waits for the NPCs' inputs of the step before (§17.8)
+	_npc_evs = {}
 	if not npc_queue.is_empty():
 		q = q + npc_queue
 		npc_queue = []
@@ -1444,14 +1457,16 @@ func _step() -> void:
 		_in_slot = slot
 		var kind: String = item[0]
 		if kind == "op":
+			var k0 := events.size()
 			var r := _op(item, moved, npc)
 			if npc:
-				sp_result[_sm.person_ix[item[6]]] = r
+				_npc_result(item[6], r, k0)
 			continue
 		if kind == "permit":
+			var k0 := events.size()
 			var r := _permit(item[1], item[2], item[3], dones, npc)
 			if npc:
-				sp_result[_sm.person_ix[item[3]]] = r
+				_npc_result(item[3], r, k0)
 			continue
 		if kind == "lock" or kind == "unlock" or kind == "remove_lock":
 			noted.append([item, npc, slot])
@@ -1520,10 +1535,11 @@ func _step() -> void:
 	for nd in noted:
 		var item: Array = nd[0]
 		_in_slot = nd[2]
+		var k0 := events.size()
 		var r := _lock(item[0], item[1], item[2], item[3], vals, nd[1], item[4] if item.size() > 4 else null,
 				item.size() > 5, item[5] if item.size() > 5 else null)
 		if nd[1]:
-			sp_result[_sm.person_ix[item[3]]] = r
+			_npc_result(item[3], r, k0)
 	for wi in _wk.size():
 		var st := pstate[wi]
 		if st < 2 or st > 7 or st == 6:

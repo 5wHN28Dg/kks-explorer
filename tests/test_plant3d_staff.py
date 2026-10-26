@@ -780,8 +780,8 @@ class SessionRuns(unittest.TestCase):
     def ev(self, k, kind):
         return [x for x in self.runs[k]['events'] if x[1] == kind]
 
-    def test_three_session_runs_and_a_session_fork(self):
-        self.assertEqual(len(self.runs), 3)
+    def test_four_session_runs_and_a_session_fork(self):
+        self.assertEqual(len(self.runs), 4)
         bad = [x for r in self.runs for x in r['inputs'] if not (type(x[-1]) is int and 0 <= x[-1] < 8)]
         self.assertEqual(bad, [[1, 'role', 'a_fo2', 9], [1, 'role', 'a_fo2', 'x']])     # (on purpose: nothing)
         self.assertEqual([f['id'] for f in self.V['day']['forks'] if f.get('session')], ['session_cw_alarm'])
@@ -836,6 +836,25 @@ class SessionRuns(unittest.TestCase):
         j = self.ev(2, 'jump')
         self.assertEqual([x[4] for x in j], ['refused', 'refused', 'done', 'done'])
         self.assertIn([10, 'say', 'a_sup', 'all_well', 'a_fo1'], self.runs[2]['events'])
+
+    def test_an_npcs_input_in_flight_is_no_step_of_the_player(self):
+        """The adversarial review's finding: an NPC's op made in step 9, applied in the next step's step 1 after a
+        slot took the person there, is the NPC's (done all the same), but nobody waits on it and the player's turn
+        does not take it as their step: before the fix it moved the player's task on and left `result` set."""
+        e = P.Engine(self.b, 's1', session=True)
+        e.step(59)
+        p = next(q for q in e.staff.people if q.id == 'c_fo')
+        self.assertEqual((p.cur['task'], p.cur['step']), ('open_valve', 1))
+        self.assertTrue(any(x[0] == 'op' and x[-1] == 'c_fo' for x in e.npc_queue))
+        e.role('c_fo', slot=1)
+        e.step()
+        self.assertIn([60, 'op', P_VALVE, 'open', 'done', [], 'local', 'c_fo'], e.events)
+        self.assertIsNone(p.result)
+        self.assertEqual((p.cur['task'], p.cur['step']), ('open_valve', 1))
+        # the vectors' fourth session run pins the same claim for the GDScript engine
+        r = self.runs[3]
+        n = next(x[0] for x in r['events'] if x[1] == 'role' and x[2] == 'c_fo' and x[3] == 'done')
+        self.assertTrue([x for x in r['events'] if x[0] == n and x[1] == 'op' and x[-1] == 'c_fo'])
 
     def test_a_single_player_run_ignores_release(self):
         e = P.Engine(self.b, 's1')

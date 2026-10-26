@@ -176,7 +176,9 @@ last, when the per-tier counts are known from A1.
 
 **Multiplayer** (the user, 2026-10-26): its own milestones MP1–MP6 in docs/plant3d/MULTIPLAYER.md §13 (decisions
 0067–0069). MP1 needs S3 (the engine's staff as built); it changes the engine (several trainees), so it goes before
-S4 or alongside it with S4 rebased on it. **MP1 built 2026-10-26** (PLANT3D.md §17.13–§17.14, MULTIPLAYER.md §3.3, §4).
+S4 or alongside it with S4 rebased on it. **MP1 built 2026-10-26** (PLANT3D.md §17.13–§17.14, MULTIPLAYER.md §3.3, §4),
+all but one check: the state digests on Android (the Note 9 ran only the digest's timing), MP2's first step
+(MULTIPLAYER.md §12).
 
 ## When to stop and ask the user (the user, 2026-10-22)
 

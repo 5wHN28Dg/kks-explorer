@@ -5,8 +5,9 @@
 ##   not to the engine;
 ## - the app's own buttons go through it (a role taken, an op made, an alarm acknowledged, a reading written, the
 ##   Crew panel's Seen);
-## - a run saved with inputs still queued (a version 2 op, a staff input) is offered back: the saved run's check knew
-##   only format 1's input sizes and refused them as damaged.
+## - a run saved with inputs still queued (a version 2 op, a staff input: every kind) is offered back, and continued
+##   it goes on as the run never saved: the saved run's check knew only format 1's input sizes and refused them as
+##   damaged.
 extends RefCounted
 
 const App = preload("res://tests/ui_app.gd")
@@ -146,19 +147,54 @@ func _app(tree: SceneTree, p: Array) -> void:
 	for k in ["role", "op", "ack", "read"]:
 		if not k in kinds:
 			p.append("the app's %s did not go through inputs.gd (sent: %s)" % [k, str(kinds)])
-	# queued and not yet stepped when the run is saved: a version 2 op, a reading, an arrival
+	# queued and not yet stepped when the run is saved: every kind of input a run alone takes
 	ui.inputs.sink = Callable()
 	ui.clock.set_speed(ui.clock.Speed.PAUSED)
 	var queued: int = e.queue.size()
-	ui.inputs.op("00PGC10AP001", "stop", null, null, "local", ui.me())
+	var me = ui.me()
+	ui.inputs.op("00PGC10AP001", "stop", null, null, "local", me)
+	ui.inputs.op("00PGC10AP001", "start")
 	ui.inputs.read("00QFB10CP001", 1.0)
 	ui.inputs.arrive("gate")
+	ui.inputs.leave("gate")
 	ui.inputs.task_ack()
-	if e.queue.size() != queued + 4:
+	ui.inputs.ack("x")
+	ui.inputs.shelve("x", 30.0)
+	ui.inputs.unshelve("x")
+	ui.inputs.fault("cw_b_motor")
+	ui.inputs.repair("cw_b_motor")
+	ui.inputs.repair_under("cw_b_motor", "wo_cw_b_motor", me)
+	ui.inputs.permit("wo_cw_b_motor", "request", me)
+	ui.inputs.lock("wo_cw_b_motor", 0, me)
+	ui.inputs.unlock("wo_cw_b_motor", 0, me)
+	ui.inputs.remove_lock("wo_cw_b_motor", 0, me, "Gone home", null)
+	ui.inputs.remove_lock("wo_cw_b_motor", 0, me, "Gone home", "a_fo1")
+	ui.inputs.say("all_well", "channel")
+	ui.inputs.pick(0)
+	ui.inputs.radio_call("field_op", "check_alarm", null)
+	ui.inputs.jump("06:00")
+	ui.inputs.ppe("helmet", 1)
+	ui.inputs.zone("z", "in")
+	ui.inputs.stop_act("a_fo1")
+	ui.inputs.send(["release"])
+	if e.queue.size() != queued + 25:
 		p.append("the inputs were not queued for the save (%d, %d before)" % [e.queue.size(), queued])
-	var why: String = ui.autosave.check(ui.autosave.payload())
+	var saved: Dictionary = ui.autosave.payload()
+	var why: String = ui.autosave.check(saved)
 	if why != "":
 		p.append("a run saved with inputs queued is refused: %s" % why)
+	else:
+		# continued from the save, the run goes on as the run that was never saved
+		ui.autosave.restore(saved)
+		var back = ui.clock.engine
+		ui.clock.set_speed(ui.clock.Speed.PAUSED)
+		if back == e or back.queue.size() != e.queue.size():
+			p.append("the restored run did not get its queued inputs back")
+		for i in 60:
+			e.step()
+			back.step()
+		if back.digest() != e.digest() or var_to_bytes(back.events) != var_to_bytes(e.events):
+			p.append("the run continued from the save went another way than the run never saved")
 	main.free()
 
 
