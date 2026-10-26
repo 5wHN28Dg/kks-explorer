@@ -149,7 +149,7 @@ func _colleague(tree: SceneTree) -> Array:
 			holder = str(ev[2])
 		if ev[1] == "remove_lock" or (ev[1] == "task" and ev[3] == "remove_left_locks"):
 			p.append("the colleague's lock was removed by authority (or its removal given): %s" % str(ev))
-	var me: int = e.st_trainee
+	var me: int = e.trainee()
 	for inst in e.sp_queue[me] + ([e.sp_cur[me]] if e.sp_cur[me] != null else []):
 		if inst["task"] == "remove_left_locks":
 			p.append("the supervisor was asked to remove the colleague's lock")

@@ -230,7 +230,7 @@ func _repair_note(e, rp: Array, near: bool, asked: bool) -> String:
 		if e._n_locked(k) < x["points"].size():
 			return "Under its permit to work only with its isolation in place: a point of it is not locked"
 		# who may repair under it: as the permit's done, the acceptor (the engine's own rule, §15.5)
-		if e._sm != null and e._authority(ui.me(), false, "accept", w["discipline"], true, w["id"]):
+		if e._sm != null and e._authority(ui.me(), false, "accept", w["discipline"], true, w["id"], ui.inputs.slot):
 			return ("Only whoever accepted the permit repairs it under the permit (another %s technician while they "
 					+ "are off shift): not your role") % Permits.DISCIPLINES.get(w["discipline"], w["discipline"]).to_lower()
 		# another work's lock on the code: the repair would not be made (§15.1)

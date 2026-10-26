@@ -508,28 +508,29 @@ def unit_bundle(model, init, faults):
     return F, check(F)
 
 
-def apply(e, item):
+def apply(e, item, slot=None):
+    """An input in the vectors' form [step, kind, …] (a session run's with its slot last: apply_staff) made on e."""
     kind = item[1]
     if kind == 'op':
-        e.op(*item[2:6])
+        e.op(*item[2:6], slot=slot)
     elif kind == 'ack':
-        e.ack(item[2])
+        e.ack(item[2], slot=slot)
     elif kind == 'shelve':
-        e.shelve(item[2], item[3])
+        e.shelve(item[2], item[3], slot=slot)
     elif kind == 'unshelve':
-        e.unshelve(item[2])
+        e.unshelve(item[2], slot=slot)
     elif kind == 'fault':
-        e.fault(item[2])
+        e.fault(item[2], slot=slot)
     elif kind == 'repair' and len(item) > 3:
-        e.repair_under(item[2], item[3], item[4])
+        e.repair_under(item[2], item[3], item[4], slot=slot)
     elif kind == 'repair':
-        e.repair(item[2])
+        e.repair(item[2], slot=slot)
     elif kind == 'permit':
-        e.permit(item[2], item[3], item[4])
+        e.permit(item[2], item[3], item[4], slot=slot)
     elif kind in ('lock', 'unlock'):
-        getattr(e, kind)(item[2], item[3], item[4])
+        getattr(e, kind)(item[2], item[3], item[4], slot=slot)
     elif kind == 'remove_lock':
-        e.remove_lock(item[2], item[3], item[4], item[5], *item[6:7], named=len(item) > 6)
+        e.remove_lock(item[2], item[3], item[4], item[5], *item[6:7], named=len(item) > 6, slot=slot)
     else:
         raise ValueError(kind)
 
@@ -1980,6 +1981,46 @@ def build_rejects_staff():
     return out
 
 
+INPUTS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
+          'remove_lock', 'role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump', 'ppe', 'zone',
+          'stop')
+
+
+class Slotted:
+    """An engine as one player of a session run sees it: every input it makes carries the player's slot."""
+
+    def __init__(self, e, slot):
+        self._e, self._slot = e, slot
+
+    def __getattr__(self, name):
+        f = getattr(self._e, name)
+        if name in INPUTS:
+            return lambda *a, **kw: f(*a, slot=self._slot, **kw)
+        return f
+
+
+class Session:
+    """Several players of a session run (§17.13), each a Trainee with its slot, made in the order given at each step
+    (the commit's order); `extra` inputs with their slot last; `when`: [(condition(e), input)] made once, at the
+    first step whose condition holds (a claim or a release while someone walks or works)."""
+    session = True
+
+    def __init__(self, players, extra=(), when=()):
+        self.players, self.extra, self.when = players, list(extra), [list(w) + [False] for w in when]
+        self.order = None           # steps at which the players go in the reverse order
+
+    def __call__(self, e):
+        n = e.step_no + 1
+        for x in [x for x in self.extra if x[0] == n]:
+            apply_staff(e, x)
+        for w in self.when:
+            if not w[2] and w[0](e):
+                w[2] = True
+                apply_staff(e, [n] + list(w[1]))
+        for pl in (reversed(self.players) if n % 7 == 0 else self.players):
+            pl(e)
+
+
 class Trainee:
     """Plays the trainee's person in the generator as the app would, from what the person's current step asks:
     walks to its place (an arrive after `walk` steps, a leave first), types readings (`wrong` of them off by 1),
@@ -1987,8 +2028,9 @@ class Trainee:
     `extra`: more inputs at given steps ([step, kind, …]). The inputs it makes are the vector's (Recorder.inputs)."""
 
     def __init__(self, walk=40, wrong=(), ack_after=5, extra=(), quiet=False, wake=0, ahead=None, undo=False,
-                 back=False, pick=0):
+                 back=False, pick=0, slot=None):
         self.walk, self.wrong, self.ack_after, self.extra = walk, set(wrong), ack_after, list(extra)
+        self.slot = slot            # a session run's player (§17.13): its inputs carry the slot; None: single-player
         self.pick = pick            # which of a choose's tasks they take
         self.stop_to = {}
         self.back = back            # walk back to a work step left half done by a pause (§17.9's runs)
@@ -2006,17 +2048,22 @@ class Trainee:
         for x in [x for x in self.extra if x[0] == n]:
             apply_staff(e, x)
         sr = e.staff
-        if sr.trainee is None or self.quiet or n < self.wake:
+        k = self.slot if self.slot is not None else 0
+        ti = sr.players.get(k)
+        if ti is None or self.quiet or n < self.wake:
+            self.going = None if ti is None else self.going
             return
-        if sr.unacked:
+        io = Slotted(e, self.slot) if self.slot is not None else e
+        if sr.acks.get(k, 0):
             if self.unacked_since is None:
                 self.unacked_since = n
             if n - self.unacked_since >= self.ack_after:
-                e.task_ack()
+                io.task_ack()
                 self.unacked_since = None
         else:
             self.unacked_since = None
-        p = sr.people[sr.trainee]
+        p = sr.people[ti]
+        e = io                      # (every input below is this player's)
         cur = p.cur
         if cur is None:
             return
@@ -2048,8 +2095,8 @@ class Trainee:
                     w = cur['work'] if t['permit']['work'] == '$' else t['permit']['work']
                     e.permit(w, t['permit']['action'], me)
                 elif self.ahead == 'all' and ('lock' in t or 'unlock' in t):
-                    k = 'lock' if 'lock' in t else 'unlock'
-                    getattr(e, k)(cur['work'] if t[k]['work'] == '$' else t[k]['work'], t[k]['point'], me)
+                    lk = 'lock' if 'lock' in t else 'unlock'
+                    getattr(e, lk)(cur['work'] if t[lk]['work'] == '$' else t[lk]['work'], t[lk]['point'], me)
                 else:
                     break
         if 'stop' in s and cur['act'] is not None:
@@ -2058,11 +2105,11 @@ class Trainee:
                 self.stop_to[(cur['order'], cur['step'])] = q.pos if q.pos is not None else \
                     (q.leg[1] if q.leg is not None else None)
             place = self.stop_to[(cur['order'], cur['step'])]
-        if place is not None and sr.t_at != place:
+        if place is not None and sr.at(k) != place:
             if self.going is None or self.going[0] != place:
                 self.going = (place, n + self.walk)
-                if sr.t_at is not None:
-                    e.leave(sr.st.places[sr.t_at]['id'])
+                if sr.at(k) is not None:
+                    e.leave(sr.st.places[sr.at(k)]['id'])
             elif n >= self.going[1]:
                 e.arrive(sr.st.places[place]['id'])
                 self.going = None
@@ -2136,19 +2183,25 @@ class Trainee:
 
 
 def apply_staff(e, item):
+    """An input in the vectors' form [step, kind, …], a session run's with its slot last (§17.13), made on e."""
+    slot = None
+    if e.session:
+        slot, item = item[-1], item[:-1]
     kind = item[1]
     if kind == 'op' and len(item) == 8:
-        e.op(*item[2:8])
+        e.op(*item[2:8], slot=slot)
     elif kind in ('role', 'arrive', 'leave', 'pick', 'jump', 'stop'):
-        getattr(e, kind)(item[2])
+        getattr(e, kind)(item[2], slot=slot)
     elif kind == 'task_ack':
-        e.task_ack()
+        e.task_ack(slot=slot)
+    elif kind == 'release':
+        e.release(slot)
     elif kind in ('read', 'say', 'ppe', 'zone'):
-        getattr(e, kind)(item[2], item[3])
+        getattr(e, kind)(item[2], item[3], slot=slot)
     elif kind == 'call':
-        e.call(item[2], item[3], item[4])
+        e.call(item[2], item[3], item[4], slot=slot)
     else:
-        apply(e, item)
+        apply(e, item, slot)
 
 
 def staff_files(scenario=None, staff=None):
@@ -2598,13 +2651,104 @@ def staff_runs():
          'operator given its note once while it lasts', {}, wtp, Trainee(), 2400, 20),
         ('findings with the trainee as field operator 1 of crew A: a reading typed right but out of its range given '
          'to the supervisor, a misread one not', {'trainee': 'a_fo1'}, wtp, Trainee(wrong=(1,)), 2400, 20),
+    ] + session_runs()
+
+
+def _work_now(pid, cond):
+    """A condition of a Session's `when`: person pid's current step is a `work` with what cond says of its state."""
+    def f(e):
+        sr = e.staff
+        p = sr.people[sr.st.person_ix[pid]]
+        if p.cur is None:
+            return False
+        s = sr.st.tasks[p.cur['task']]['steps'][p.cur['step']]
+        return 'work' in s and 'left' in p.cur['st'] and cond(p.cur['st'], e.step_no)
+    return f
+
+
+def _walking(pid, npc=None):
+    """pid is on a way (an NPC) or between places (a player); npc: and is (True) or isn't (False) an NPC."""
+    def f(e):
+        sr = e.staff
+        i = sr.st.person_ix[pid]
+        p = sr.people[i]
+        if npc is not None and (sr.slot_of(i) is None) != npc:
+            return False
+        return p.leg is not None if sr.slot_of(i) is None else (p.pos is None and p.cur is not None)
+    return f
+
+
+def session_runs():
+    """Session runs (§17.13, docs/plant3d/MULTIPLAYER.md §3.3, milestone MP1): several players, each input with
+    its slot last, made in the commit's order (the players' order is reversed every seventh step)."""
+    return [
+        ('a session (§17.13), two players from step 1: slot 0 takes field operator 1 of crew A, slot 1 the control '
+         'room operator, in one step; slot 2 asking for field operator 1 (another slot\'s person) and slot 1 for a '
+         'second person refused; inputs with no valid slot do nothing; slot 1\'s permit approval and op naming '
+         'slot 0\'s person refused (authority), its version 1 op refused too (it plays a person); free slot 2\'s '
+         'version 1 ops done in the commit\'s order, two in one step; its stop refused (free mode) and slot 3\'s '
+         'task_ack made; the instructor\'s fault from slot 2; each player\'s tasks counted for their own slot, slot 1 '
+         'seeing its new tasks late: fast-forward held while it has any',
+         {}, None, Session([Trainee(slot=0, wrong=(1,), ack_after=2), Trainee(slot=1, ack_after=60)],
+                           extra=[[1, 'role', 'a_fo1', 0], [1, 'role', 'a_ccr', 1], [1, 'role', 'a_fo1', 2],
+                                  [1, 'role', 'a_fo2', 1], [1, 'role', 'a_fo2', 9], [1, 'role', 'a_fo2', 'x'],
+                                  [40, 'permit', 'wo_pump', 'approve', 'a_fo1', 1],
+                                  [40, 'op', PUMP, 'stop', None, None, 'local', 'a_fo1', 1],
+                                  [41, 'op', PUMP, 'stop', None, None, 1],
+                                  [50, 'op', VALVE, 'open', None, None, 2], [50, 'op', VALVE, 'close', None, None, 2],
+                                  [51, 'op', VALVE, 'close', None, None, 2], [51, 'op', VALVE, 'open', None, None, 2],
+                                  [52, 'stop', 'a_fo1', 2], [52, 'task_ack', 3], [901, 'fault', 'f1', 2]]),
+         2400, 20),
+        ('three players, a release and reclaims mid-task (§17.13): slots 0, 1 and 2 take field operator 1, the '
+         'control room operator and the supervisor; the host releases slot 0 while its person walks between places '
+         '(put back at the place left, then their task taken up as an NPC); slot 3 takes them back while they walk '
+         'a way (from then between places, the way given up) and is released while they work (the work counted on '
+         'by the NPC); slot 0 takes field operator 2 while asleep in a work step (counted to the step before); a '
+         'release of a slot playing nobody refused, a claim of a person slot 1 plays refused, the released person '
+         'claimed again by slot 4',
+         {}, None, Session([Trainee(slot=0), Trainee(slot=1), Trainee(slot=2, quiet=True), Trainee(slot=3, walk=25),
+                            Trainee(slot=4)],
+                           extra=[[1, 'role', 'a_fo1', 0], [1, 'role', 'a_ccr', 1], [1, 'role', 'a_sup', 2],
+                                  [3, 'release', 5], [4, 'role', 'a_ccr', 4], [901, 'fault', 'f1', 2]],
+                           when=[(lambda e: e.step_no > 150 and _walking('a_fo1', False)(e)
+                                  and e.staff.t_from.get(0) is not None, ('release', 0)),
+                                 (lambda e: e.step_no > 400 and _walking('a_fo1', True)(e), ('role', 'a_fo1', 3)),
+                                 (lambda e: e.step_no > 700 and e.staff.players.get(3) is not None
+                                  and _work_now('a_fo1', lambda x, n: x['left'] > 3)(e), ('release', 3)),
+                                 (lambda e: e.step_no > 300 and _work_now('a_fo2', lambda x, n: x['left'] > 20)(e),
+                                  ('role', 'a_fo2', 0)),
+                                 (lambda e: e.step_no > 1500 and e.staff.slot_of(e.staff.st.person_ix['a_fo1']) is None,
+                                  ('role', 'a_fo1', 4))]),
+         2400, 20),
+        ('the scenario\'s trainee is the host\'s, slot 0 (the supervisor at 10:30); slot 1 takes field operator 1 at '
+         'step 3 (any step, in a session); a jump refused while slot 0 has unseen tasks, one refused while slot 1 '
+         'has (the supervisor\'s radio message to field operator 1 counts for slot 1), then accepted once both have '
+         'seen theirs: every player placed again, as the trainee is; slot 1 released and its person claimed again',
+         {'trainee': 'a_sup', 'start': {'day': 1, 'time': '10:30'}}, None,
+         Session([Trainee(slot=0, quiet=True), Trainee(slot=1, ack_after=25)],
+                 extra=[[2, 'fault', 'f1', 0], [3, 'role', 'a_fo1', 1], [5, 'jump', '18:00', 0], [8, 'task_ack', 0],
+                        [10, 'say', 'all_well', 'a_fo1', 0], [12, 'jump', '19:00', 1], [40, 'jump', '19:00', 0],
+                        [60, 'task_ack', 0], [61, 'jump', '19:00', 0], [64, 'release', 1],
+                        [65, 'role', 'a_fo1', 1]]), 400, 10),
+        ('a claim while the NPC\'s input is in flight (§17.13): slot 0 takes the field operator of crew C in the '
+         'step their valve op, made in the step before, is applied: the op is done as the NPC\'s, but nobody waits on '
+         'it and it is no step of the player\'s (their task\'s step is theirs to do again); slot 0 released later',
+         {}, None, Session([Trainee(slot=0, quiet=True)],
+                           when=[(lambda e: e.step_no > 1 and any(x[0] == 'op' and x[-1] == 'c_fo'
+                                                                  for x in e.npc_queue), ('role', 'c_fo', 0)),
+                                 (lambda e: e.step_no > 150 and e.staff.players.get(0) is not None, ('release', 0))]),
+         300, 10),
     ]
+
+
+DIGEST_EVERY = 50           # the state digest (§17.14) of every 50th step, step 0's first (MULTIPLAYER.md §4)
 
 
 def build_staff():
     base = mini_staff()
     out = []
     for why, sc_change, staff, player, until, every in staff_runs():
+        session = getattr(player, 'session', False)
         sc = copy.deepcopy(base['scenarios/s1.json'])
         for k, v in sc_change.items():
             if k == 'start':
@@ -2617,15 +2761,19 @@ def build_staff():
             more = {'model/a1.json': safety_files()['model/a1.json']}
             F.update(more)
         b = check(F)
-        e = P.Recorder(b, 's1')
+        e = P.Recorder(b, 's1', session)
         states = [e.snapshot()]
+        digests = [e.digest()]
         while e.step_no < until:
             player(e)
             e.step()
             if e.step_no % every == 0 or e.step_no == until:
                 states.append(e.snapshot())
+            if e.step_no % DIGEST_EVERY == 0:
+                digests.append(e.digest())
         out.append(dict({'why': why, 'scenario': sc, 'staff': staff, 'inputs': e.inputs, 'until': until,
-                         'every': every, 'states': states, 'events': e.events}, **({'files': more} if more else {})))
+                         'every': every, 'states': states, 'events': e.events, 'digests': digests},
+                        **({'files': more} if more else {}), **({'session': True} if session else {})))
     return out
 
 
@@ -2663,6 +2811,18 @@ def day_forks():
                      ['unlock', 'wo_cond_p2_cal', 0, 'ic1', 'done']]}),
         ('trainee_hse', Trainee(extra=[[1, 'role', 'hse2']]), 36000,
          {'trainee': 'hse2', 'events': [['stop', 'hse2', 'con5', 'unsafe', 'wo_paint_cw', 'done']]}),
+        # MP1 (§17.13): a session on the first train: two players from step 1 (the CW field operator and a control
+        # room operator), the instructor's fault from a third slot, the field operator released by the host while
+        # walking to the alarm and taken back by a fourth slot while walking on as an NPC
+        ('session_cw_alarm', Session([Trainee(slot=0), Trainee(slot=1, ack_after=30), Trainee(slot=3)],
+                                     extra=[[1, 'role', 'a_fo_cw', 0], [1, 'role', 'a_ccr1', 1],
+                                            [7000, 'fault', 'cw_b_valve_stuck', 2]],
+                                     when=[(lambda e: e.step_no > 7100 and _walking('a_fo_cw', False)(e),
+                                            ('release', 0)),
+                                           (lambda e: e.step_no > 7400 and _walking('a_fo_cw', True)(e),
+                                            ('role', 'a_fo_cw', 3))]), 12000,
+         {'events': [['role', 'a_fo_cw', 'done', 0], ['release', 'a_fo_cw', 'done', 0],
+                     ['role', 'a_fo_cw', 'done', 3]]}),
         ('trainee_contractor', Trainee(pick=1, extra=[[1, 'role', 'con6']]), 36000,
          {'trainee': 'con6', 'events': [['unsafe', 'con6', 'unsafe', 'wo_paint_cw'], ['stop', None, 'con6', 'unsafe']]}),
         # milestone S3: the water treatment plant's people. On shift_wtp (filter 1 due at about 06:05, mixed bed A's
@@ -2734,23 +2894,30 @@ def build_day(b=None):
     sid = 'shift_cold'
     e = P.Recorder(b, sid)
     snaps = [e.snapshot(values=False)]
+    digests = [e.digest()]
     while e.step_no < DAY_STEPS:
         e.step()
         if e.step_no % DAY_EVERY == 0:
             snaps.append(e.snapshot(values=False))
+        if e.step_no % DIGEST_EVERY == 0:
+            digests.append(e.digest())
     forks = []
     for fid, player, until, expect, *scen in day_forks():
-        f = P.Recorder(b, scen[0] if scen else sid)
+        session = getattr(player, 'session', False)
+        f = P.Recorder(b, scen[0] if scen else sid, session)
         n0 = 0
+        fd = [f.digest()]
         while f.step_no < until:
             player(f)
             f.step()
+            if f.step_no % DIGEST_EVERY == 0:
+                fd.append(f.digest())
         forks.append(dict({'id': fid, 'inputs': f.inputs, 'until': until, 'events': f.events[n0:],
                            'end': f.snapshot(values=False), 'expect': expect,
-                           'values': {k: f.v(k) for k in sorted(expect.get('end', {}))}},
-                          **({'scenario': scen[0]} if scen else {})))
+                           'values': {k: f.v(k) for k in sorted(expect.get('end', {}))}, 'digests': fd},
+                          **({'scenario': scen[0]} if scen else {}), **({'session': True} if session else {})))
     return {'scenario': sid, 'until': DAY_STEPS, 'every': DAY_EVERY, 'events': e.events, 'states': snaps,
-            'forks': forks}
+            'forks': forks, 'digests': digests}
 
 
 def parts2():
@@ -2764,7 +2931,9 @@ def parts2():
                           'by its procedure (`wtp`, as format 1\'s `train`); W3: an RO train cleaned in place '
                           '(`wtp_cip`) and a mixed bed regenerated (`wtp_regen`) by their procedures; milestone S1: the '
                           'staff (§16–§17): `staff` holds a synthetic plant with staff, its rejects and its runs (every '
-                          'event, a snapshot every `every` steps), `day` the first train\'s day shift.'),
+                          'event, a snapshot every `every` steps), `day` the first train\'s day shift. MP1: session '
+                          'runs (`session`: several players, each input with its slot last, §17.13), and the state '
+                          'digest (§17.14) of every 50th step of the staff runs, the day and its forks (`digests`).'),
         'valid': lambda: [{'why': 'the synthetic plant as version 2', 'files': {k: json.dumps(v, ensure_ascii=False)
                                                                                for k, v in F.items()},
                            'counts': check(F).counts}],

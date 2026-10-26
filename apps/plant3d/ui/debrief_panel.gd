@@ -113,7 +113,7 @@ func refresh(full := false) -> void:
 		return
 	_events = -2 if tr != null and tr.ev_to != -1 else n
 	var old: Array = entries() if not full else []
-	data = Debrief.collect(e, ui.info, tr)
+	data = Debrief.collect(e, ui.info, tr, ui.inputs.slot)
 	title.text = data.title
 	_summary.text = "\n".join(Debrief.summary_lines(data))
 	var list := entries()

@@ -82,10 +82,10 @@ static func _fresh(ui) -> void:
 func _play(tree: SceneTree, ui, log: Array) -> bool:
 	var e = ui.clock.engine
 	var sm = e._sm
-	var pi: int = e.st_trainee
+	var pi: int = e.trainee()
 	if not ui.crew.visible:
 		ui.open_crew()
-	if e.st_unacked > 0:
+	if e.unacked() > 0:
 		_fresh(ui)                      # (rebuilt every round before: an alarm seen without waiting for the panel's own refresh)
 		var seen := App.find_button(ui.crew, "Seen")
 		if seen:
@@ -97,7 +97,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 	var s: Dictionary = sm.tasks[cur["task"]]["steps"][cur["step"]]
 	if s.has("go") or s.has("meet"):
 		var dest = cur["st"].get("dest", cur["st"].get("place"))
-		if dest != null and e.st_t_at != dest:
+		if dest != null and e.t_at() != dest:
 			_fresh(ui)
 			var b := App.find_button(ui.crew, "Take me there")
 			if b == null:
@@ -108,7 +108,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 	elif s.has("work"):
 		# a work step counts only where it started: back there after a call away (the Crew panel's own button)
 		var at = cur["st"].get("place")
-		if at != null and e.st_t_at != at:
+		if at != null and e.t_at() != at:
 			_fresh(ui)
 			var b := App.find_button(ui.crew, "Take me there")
 			if b == null:
@@ -162,7 +162,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 			# at the point's equipment first (a lock is made within reach of it, PLANT3D §15.6)
 			var iso: Dictionary = e.m.isolations[e.m.isolation_ix[e.m.works[e.m.work_ix[w]]["isolation"]]]
 			var wp: int = sm.work_at.get(iso["points"][pt]["kks"], -1)
-			if wp != -1 and e.st_t_at != wp:
+			if wp != -1 and e.t_at() != wp:
 				ui.go_to_place(wp)
 				ui._place_tick()
 				return true
@@ -232,7 +232,7 @@ func _ic_calibration(tree: SceneTree) -> Array:
 	var log := []
 	var done := func(): return _closed(e, CAL)
 	if not await _steps(tree, ui, done, 4000, log):
-		var cur = e.sp_cur[e.st_trainee]
+		var cur = e.sp_cur[e.trainee()]
 		var msg := "the calibration's permit was not closed (now %s, state %d, the task %s step %s)" % [
 				ui.clock_text(), e.pstate[e.m.work_ix[CAL]], str(cur["task"]) if cur else "none",
 				str(cur["step"]) if cur else ""]
@@ -306,10 +306,10 @@ func _ic_corrective(tree: SceneTree) -> Array:
 	ui.close_card()
 	var closed := func(): return _closed(e, LS)
 	if not await _steps(tree, ui, closed, 4000, log):
-		var cur = e.sp_cur[e.st_trainee]
+		var cur = e.sp_cur[e.trainee()]
 		p.append("the limit switch's permit was not closed (state %d, now %s, the task %s step %s at %d, queue %s)" % [
 				e.pstate[wi], ui.clock_text(), str(cur["task"]) if cur else "none", str(cur["step"]) if cur else "",
-				e.st_t_at, str(e.sp_queue[e.st_trainee].map(func(q): return q["task"]))])
+				e.t_at(), str(e.sp_queue[e.trainee()].map(func(q): return q["task"]))])
 	var repairs: Array = e.events.filter(func(ev): return ev[1] == "repair" and ev[2] == "cw_b_ls" and ev.size() == 3)
 	if repairs.size() != 1:
 		p.append("the limit switch was repaired %d times (expected once: the work's done finds it repaired)" %
@@ -337,7 +337,7 @@ func _hse_stop(tree: SceneTree) -> Array:
 	var log := []
 	var stopped := func(): return _has_ev(e, ["stop", "hse2", "con5", "unsafe", "wo_paint_cw", "done"])
 	if not await _steps(tree, ui, stopped, 6000, log):
-		var cur = e.sp_cur[e.st_trainee]
+		var cur = e.sp_cur[e.trainee()]
 		var msg := "the HSE officer did not stop the contractor's shortcut (now %s, the task %s)" % [ui.clock_text(),
 				str(cur["task"]) if cur else "none"]
 		main.free()
