@@ -124,8 +124,27 @@ open) two walks gave 95.06 % and 94.94 % at ≥ 30 fps, people's CPU 1.41 ms (at
 ms at normal speed (budget 2.1), no frame over 100 ms that the app caused (one walk not judged: 1.03 % reclaim, its
 two frames of 100.0 and 101.3 ms both inside reclaim). The scripts there took 11.7 ms a frame in fast-forward and
 5.3 ms after it, against 4.3 ms in the crowd alone: fast-forward's model, the staff's steps and the Crew panel together.
-A walk that runs the crews in free mode at normal speed (a walk option to take no role) would measure S2's own crowd;
-none exists yet.
+(Those walks' Crew panel was not open: `panels=crew` was not an option then; it is now.)
+
+**The scripts' time with the staff (2026-10-26).** The `crews` walk (`crews=1`: S2's and S3's staff at work in free
+mode, at normal speed) and `probe=1`'s `SCRIPTS` lines, which give each part's time in the scripts a frame. Then: the
+model's work in a frame capped at 8 ms whatever the frame before (`ui/sim_clock.gd` `FRAME_MS`, cut within the frame
+in fast-forward), the bar's alarms and clock once a step (4 times a second in fast-forward), the Crew panel's radio
+lines written into fixed labels, the bindings' and the people's work once a step or when the eye has moved, the staff
+step's loops without repeated field lookups; every vector unchanged. Note 9, lean+vis, release builds, cool starts
+(≤ 30.0 °C), `SAMPLE=1`, two walks each (the stress walk: `scenario=shift_cold`, `speed=fast`, `crowd=24`):
+
+| walk | before: ≥ 30 fps | after: ≥ 30 fps | scripts a frame, mean / worst (ms) |
+|---|---|---|---|
+| `crews` | 99.39 %, 97.21 % | 99.41 %, 97.86 % | 4.08–4.44 / 22 → 2.58–2.82 / 21 (the UI 1.4 → 0.2) |
+| stress, fast-forward part | 93.01 %, 91.02 % (no Crew panel) | 94.41 % (no panel); 90.91 %, 94.59 % (Crew panel open) | 12.3–12.4 / 65–73 → 10.1–10.7 / 26–49 (model and staff at most 7.5 ms a frame, was 32 + 13) |
+| `frames` (no staff) | | 98.70 % | |
+
+No frame over 100 ms that the app caused, except one of 104.3 ms in the first stress walk with the Crew panel (in
+normal speed, scripts 13 ms: the GPU; that walk had reclaim in 2.15 % of its samples, so it is walked again by the
+rule: the second passed). The stress walk stays near 91–95 %: its frames over 33 ms are the GPU's (24 skinned and
+posed people, the median GPU time 23–27 ms), not the scripts'. The first build of this work rebuilt the Crew panel for
+each of the radio's first ten lines (up to 94 ms in a frame on the Note 9): the radio's lines are in fixed labels now.
 
 **S3 as built (2026-10-26):** the water treatment plant worked by its people (PLANT3D.md §17.12): a WTP operator and
 a shift chemist in each crew and two chemists on days, at STAFF.md §1's numbers; the WTP's places measured on the

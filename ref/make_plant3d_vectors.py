@@ -2629,57 +2629,67 @@ def build_staff():
     return out
 
 
-# The first train's day (§19 `day`): the scenario with staff from its start (05:30) through the day shift, seed 1 and
+# The first train's day (§19 `day`): the scenario with staff from its start (05:00) through the day shift, seed 1 and
 # no trainee; and runs from the same start with a trainee or a trainer's fault: (id, scenario's staff changes, the
 # Trainee player, steps, expectations checked by tests/test_plant3d_staff.py).
-DAY_STEPS = 75000            # 05:30 to 18:00 at day_scale 6
+DAY_STEPS = 78000            # 05:00 to 18:00 at day_scale 6
 DAY_EVERY = 6000             # a snapshot every clock hour
 def day_forks():
+    # (the steps from the scenarios' start at 05:00: 3000 steps are half an hour of the clock)
     return [
-        ('field_cw_alarm', Trainee(extra=[[1, 'role', 'a_fo_cw'], [4000, 'fault', 'cw_b_valve_stuck']]), 15000,
+        ('field_cw_alarm', Trainee(extra=[[1, 'role', 'a_fo_cw'], [7000, 'fault', 'cw_b_valve_stuck']]), 18000,
          {'trainee': 'a_fo_cw', 'events': [['task', None, 'answer_alarm', 'start'], ['call', None, 'field_op', 'check_alarm']]}),
-        ('ccr_instruction', Trainee(extra=[[1, 'role', 'a_ccr1'], [3200, 'call', 'field_op', 'ccw_cooler_in', None]]),
+        ('ccr_instruction', Trainee(extra=[[1, 'role', 'a_ccr1'], [6200, 'call', 'field_op', 'ccw_cooler_in', None]]),
          9000, {'trainee': 'a_ccr1', 'end': {'ccw_cooler': 1}}),
-        ('npc_permit', Trainee(extra=[[10000, 'fault', 'cw_b_motor']]), 36000,
+        ('npc_permit', Trainee(extra=[[13000, 'fault', 'cw_b_motor']]), 39000,
          {'permits': {'wo_cw_b_motor': 9}, 'repaired': ['cw_b_motor']}),
         # §17.10 (a bug the review found): the breaker's lock removed by authority while the job is in progress
         # suspends the permit; re-isolated and issued again, the job is offered again
-        ('job_suspended', Trainee(extra=[[10000, 'fault', 'cw_b_motor'],
-                                         [15000, 'remove_lock', 'wo_cw_b_motor', 0, None, 'Breaker needed for a test',
-                                          'a_eap']]), 36000,
+        ('job_suspended', Trainee(extra=[[13000, 'fault', 'cw_b_motor'],
+                                         [18000, 'remove_lock', 'wo_cw_b_motor', 0, None, 'Breaker needed for a test',
+                                          'a_eap']]), 39000,
          {'permits': {'wo_cw_b_motor': 9}, 'repaired': ['cw_b_motor']}),
-        ('sup_late', Trainee(wake=9000, extra=[[1, 'role', 'a_sup'], [4000, 'fault', 'ccw_a_motor']]), 36000,
+        ('sup_late', Trainee(wake=12000, extra=[[1, 'role', 'a_sup'], [7000, 'fault', 'ccw_a_motor']]), 39000,
          {'trainee': 'a_sup', 'permits': {'wo_ccw_a_motor': 9}}),
         # milestone S2: the week's calibration puts a drift right; a corrective job of the instruments' technicians;
         # the trainee as an I&C technician, an HSE officer, a contractor who takes the shortcut
-        ('npc_cal', Trainee(extra=[[3000, 'fault', 'cond_p2_drift']]), 30000,
+        ('npc_cal', Trainee(extra=[[6000, 'fault', 'cond_p2_drift']]), 33000,
          {'permits': {'wo_cond_p2_cal': 9}, 'repaired': ['cond_p2_drift'], 'end': {'cond_p2_drift': 0}}),
-        ('npc_ls', Trainee(extra=[[10000, 'fault', 'cw_b_ls']]), 40000,
+        ('npc_ls', Trainee(extra=[[13000, 'fault', 'cw_b_ls']]), 43000,
          {'permits': {'wo_cw_b_ls': 9}, 'repaired': ['cw_b_ls'], 'end': {'cw_b_ls_fault': 0}}),
-        ('trainee_ic', Trainee(extra=[[1, 'role', 'ic1'], [3000, 'fault', 'cond_p2_drift']]), 30000,
+        ('trainee_ic', Trainee(extra=[[1, 'role', 'ic1'], [6000, 'fault', 'cond_p2_drift']]), 33000,
          {'trainee': 'ic1', 'permits': {'wo_cond_p2_cal': 9}, 'repaired': ['cond_p2_drift'],
           'events': [['lock', 'wo_cond_p2_cal', 0, 'ic1', 'done'], ['permit', 'wo_cond_p2_cal', 'accept', 'ic1', 'done'],
                      ['unlock', 'wo_cond_p2_cal', 0, 'ic1', 'done']]}),
-        ('trainee_hse', Trainee(extra=[[1, 'role', 'hse2']]), 33000,
+        ('trainee_hse', Trainee(extra=[[1, 'role', 'hse2']]), 36000,
          {'trainee': 'hse2', 'events': [['stop', 'hse2', 'con5', 'unsafe', 'wo_paint_cw', 'done']]}),
-        ('trainee_contractor', Trainee(pick=1, extra=[[1, 'role', 'con6']]), 33000,
+        ('trainee_contractor', Trainee(pick=1, extra=[[1, 'role', 'con6']]), 36000,
          {'trainee': 'con6', 'events': [['unsafe', 'con6', 'unsafe', 'wo_paint_cw'], ['stop', None, 'con6', 'unsafe']]}),
         # milestone S3: the water treatment plant's people. On shift_wtp (filter 1 due at about 06:05, mixed bed A's
         # silica over the laboratory's limit from about 06:50): the shift supervisor orders the backwash and the WTP
         # operator runs it; the shift chemist's sample finds the silica and the WTP operator regenerates the bed; the
         # same with the trainee as the WTP operator and as the shift chemist
-        ('wtp_npc', Trainee(), 40000,
+        ('wtp_npc', Trainee(), 43000,
          {'events': [['task', 'a_sup', 'order_backwash_1', 'start'], ['call', 'a_sup', 'wtp_op', 'backwash_1'],
                      ['op', '00GBB11AT001', 'backwash', 'done', [], 'screen', 'a_wtp'],
                      ['task', 'a_wtp', 'backwash_1', 'done'],
                      ['read', 'a_chem', '00GCF11CQ002', None, 'out_of_range'],
                      ['op', '00GCF11AT001', 'regenerate', 'done', [], 'screen', 'a_wtp'],
                      ['task', 'a_wtp', 'mb_regen_a', 'done']]}, 'shift_wtp'),
-        ('trainee_wtp', Trainee(extra=[[1, 'role', 'a_wtp']]), 12000,
+        # §17.12 (S3's limit, fixed): filter 2's backwash started by the trainer just before the WTP operator's makes
+        # filter 1's refused (one at a time), and the job is abandoned with the head loss still high; the supervisor's
+        # order is offered again when the next shift supervisor comes on (18:00), and the night's WTP operator runs it
+        ('backwash_again', Trainee(extra=[[7700, 'op', '00GBB12AT001', 'backwash', None, None, 'screen', None]]),
+         80000,
+         {'events': [['op', '00GBB11AT001', 'backwash', 'refused', ['bw_free'], 'screen', 'a_wtp'],
+                     ['task', 'a_wtp', 'backwash_1', 'abandoned'], ['duty', None, 'on'],
+                     ['task', None, 'order_backwash_1', 'start'], ['call', None, 'wtp_op', 'backwash_1'],
+                     ['op', '00GBB11AT001', 'backwash', 'done']]}, 'shift_wtp'),
+        ('trainee_wtp', Trainee(extra=[[1, 'role', 'a_wtp']]), 15000,
          {'trainee': 'a_wtp', 'events': [['call', 'a_sup', 'wtp_op', 'backwash_1'],
                                          ['op', '00GBB11AT001', 'backwash', 'done', [], 'screen', 'a_wtp'],
                                          ['task', 'a_wtp', 'backwash_1', 'done']]}, 'shift_wtp'),
-        ('trainee_chem', Trainee(extra=[[1, 'role', 'a_chem']]), 20000,
+        ('trainee_chem', Trainee(extra=[[1, 'role', 'a_chem']]), 23000,
          {'trainee': 'a_chem', 'events': [['read', 'a_chem', '00GCF11CQ002', None, 'out_of_range'],
                                           ['task', 'a_wtp', 'mb_regen_a', 'start'],
                                           ['op', '00GCF11AT001', 'regenerate', 'done', [], 'screen', 'a_wtp']]},
@@ -2687,14 +2697,14 @@ def day_forks():
         # on shift_cold: the train's call when its demineralised water tank runs low (its drain left open), the WTP's
         # cartridge change under a permit (the RO train changed over and isolated by the WTP operator), an RO trip's
         # flush (the bisulphite pump failed: chlorine on the RO feed)
-        ('demin_call', Trainee(extra=[[3000, 'fault', 'dm_drain']]), 28000,
+        ('demin_call', Trainee(extra=[[6000, 'fault', 'dm_drain']]), 31000,
          {'events': [['task', None, 'call_wtp_demin', 'start'], ['call', None, 'wtp_op', 'demin_transfer'],
                      ['op', '00GHC10AP002', 'start', 'done', [], 'screen', 'a_wtp']]}),
-        ('wtp_cartridge', Trainee(extra=[[3000, 'fault', 'cart_a_clog']]), 45000,
+        ('wtp_cartridge', Trainee(extra=[[6000, 'fault', 'cart_a_clog']]), 48000,
          {'permits': {'wo_cart_a': 9}, 'repaired': ['cart_a_clog'],
           'events': [['permit', 'wo_cart_a', 'request', 'a_wtp', 'done'], ['lock', 'wo_cart_a', 0, 'a_wtp', 'done'],
                      ['unlock', 'wo_cart_a', 0, 'a_wtp', 'done']]}),
-        ('ro_trip', Trainee(extra=[[3000, 'fault', 'sbs_pump']]), 15000,
+        ('ro_trip', Trainee(extra=[[6000, 'fault', 'sbs_pump']]), 18000,
          {'events': [['trip', 'ro_a_trip_orp'], ['task', 'a_wtp', 'ro_trip_a_orp', 'start'],
                      ['op', '00GCB21CQ002', 'reset', 'done'], ['op', '00GCB21AT001', 'flush', 'done'],
                      ['task', 'a_wtp', 'ro_trip_a_orp', 'done']]}),
@@ -2702,14 +2712,14 @@ def day_forks():
         # on at the CIP skid), a mixed bed's internals as a confined-space job (the beds changed over, the bed and its
         # feed pump locked, the gas test, the work), RO B's ORP analyser calibrated after a drift (the train and the
         # analyser locked by the WTP operator and the I&C technician)
-        ('wtp_cip', Trainee(extra=[[3000, 'fault', 'ro_a_fouling']]), 75000,
+        ('wtp_cip', Trainee(extra=[[6000, 'fault', 'ro_a_fouling']]), 78000,
          {'events': [['task', 'a_wtp', 'cip_ro_a', 'start'], ['op', '00GCB30BB001', 'add_caustic', 'done'],
                      ['op', '00GCB21AT001', 'clean', 'done']]}),
-        ('wtp_resin', Trainee(extra=[[3000, 'fault', 'mb_a_resin']]), 45000,
+        ('wtp_resin', Trainee(extra=[[6000, 'fault', 'mb_a_resin']]), 48000,
          {'permits': {'wo_mb_a_resin': 9}, 'repaired': ['mb_a_resin'],
           'events': [['read', None, '00GCF11CQ003', None, 'ok'], ['lock', 'wo_mb_a_resin', 0, 'a_eap', 'done'],
                      ['lock', 'wo_mb_a_resin', 1, 'a_wtp', 'done']]}),
-        ('wtp_orp_cal', Trainee(extra=[[3000, 'fault', 'ro_b_orp_drift']]), 40000,
+        ('wtp_orp_cal', Trainee(extra=[[6000, 'fault', 'ro_b_orp_drift']]), 43000,
          {'permits': {'wo_ro_b_orp_cal': 9}, 'repaired': ['ro_b_orp_drift'], 'end': {'ro_b_orp_drift': 0},
           'events': [['lock', 'wo_ro_b_orp_cal', 0, 'a_wtp', 'done'], ['lock', 'wo_ro_b_orp_cal', 1, None, 'done']]}),
     ]

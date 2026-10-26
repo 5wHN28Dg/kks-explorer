@@ -1182,7 +1182,7 @@ class StaffRun:
         return None
 
     # --- giving tasks (§17.3)
-    def give(self, p, tid, prio, made_by, work, code, alarm, count=True, owner=None, act=None):
+    def give(self, p, tid, prio, made_by, work, code, alarm, count=True, owner=None, act=None, orig=None):
         """Queues an instance of task tid for person p; returns False (event unassigned) when the queue is full."""
         if len(p.queue) + (1 if p.cur is not None and not p.cur['idle'] else 0) >= MAX['queue']:
             self.e.ev('task', None, tid, 'unassigned')
@@ -1192,7 +1192,7 @@ class StaffRun:
             work = t['work']
         inst = {'task': tid, 'prio': prio, 'made': self.e.step_no, 'order': self.order, 'step': 0, 'st': {},
                 'work': work, 'code': code, 'alarm': alarm, 'src': made_by, 'idle': False, 'started': False,
-                'int': t.get('interruptible', True), 'owner': owner, 'act': act}
+                'int': t.get('interruptible', True), 'owner': owner, 'act': act, 'orig': orig}
         self.order += 1
         p.queue.append(inst)
         p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
@@ -1202,7 +1202,7 @@ class StaffRun:
             self.unacked += 1
         return True
 
-    def assign(self, roles, tid, prio, made_by, work, code, alarm, owner=None, act=None):
+    def assign(self, roles, tid, prio, made_by, work, code, alarm, owner=None, act=None, orig=None):
         """Who gets a task (§17.3): the first free on-duty person of its roles (roles in order, then index), else the
         first on-duty one, else nobody."""
         cands = []
@@ -1222,23 +1222,48 @@ class StaffRun:
         if iso is not None:
             for p in cands:
                 if any(same(h, p.id) for (i, j), held in self.e.locks.items() if i == iso for h in held):
-                    return self.give(p, tid, prio, made_by, work, code, alarm, owner=owner, act=act)
+                    return self.give(p, tid, prio, made_by, work, code, alarm, owner=owner, act=act, orig=orig)
         for p in cands:
             c = p.cur
             if c is None or c['idle'] or (c['prio'] > prio and c['int']):
-                return self.give(p, tid, prio, made_by, work, code, alarm, owner=owner, act=act)
-        return self.give(cands[0], tid, prio, made_by, work, code, alarm, owner=owner, act=act)
+                return self.give(p, tid, prio, made_by, work, code, alarm, owner=owner, act=act, orig=orig)
+        return self.give(cands[0], tid, prio, made_by, work, code, alarm, owner=owner, act=act, orig=orig)
 
 
-    def offer(self, roles, tid, prio, src, w, code, alarm, pw, owner=None):
+    def offer(self, roles, tid, prio, src, w, code, alarm, pw, owner=None, orig=None):
         """assign(), and an offer for a permit's work (pw) that found nobody of its roles on duty is kept, to be made
         again when one comes on (§17.10)."""
         nobody = not any(p.role in roles and p.on and p.id not in self.absent for p in self.people)
-        if not self.assign(roles, tid, prio, src, w, code, alarm, owner) and nobody \
+        if not self.assign(roles, tid, prio, src, w, code, alarm, owner, orig=orig) and nobody \
                 and isinstance(pw, str) and pw in self.e.pstate and 1 <= self.e.pstate[pw] <= 8:
             ident = src if src is not None else ('call', tuple(roles), tid, w)
             if all(x[0] != ident for x in self.pending):
                 self.pending.append([ident, src, list(roles), tid, prio, w, code, pw, self.e.pstate[pw]])
+
+    @staticmethod
+    def vkey(inst):
+        """The reaction on a value a job comes from (§17.12): its own source, or the one whose task called it."""
+        s = inst['src']
+        if isinstance(s, tuple) and len(s) == 3 and s[1] == 'value':
+            return s
+        return inst.get('orig')
+
+    def value_again(self, inst):
+        """A job of a reaction on a value abandoned while the value is still true: the reaction's offer is kept, to be
+        made again when someone of its roles comes on duty (§17.12, as §17.10's offers nobody could take)."""
+        k = self.vkey(inst)
+        if k is None or not self.e.truth(k[2]) or any(x[0] == k for x in self.pending):
+            return
+        r = self.st.reactions[k[0]]
+        w = r.get('work')
+        self.pending.append([k, k, list(r['roles']), r['task'],
+                             r.get('priority', self.st.tasks[r['task']].get('priority', 3)), w,
+                             self.e.works[w]['kks'] if w is not None else None, None, k[2]])
+
+    def value_busy(self, k):
+        """Someone has a job of that reaction on a value (current, queued or held)."""
+        return any(self.vkey(q) == k for p in self.people
+                   for q in ([p.cur] if p.cur is not None else []) + p.queue + p.held)
 
     def release(self, inst):
         if inst['src'] is not None:
@@ -1558,6 +1583,7 @@ class StaffRun:
                 for inst in [q for q in p.queue if job(q)] + [q for q in p.held if job(q)]:
                     e.ev('task', p.id, inst['task'], 'abandoned')
                     self.release(inst)
+                    self.value_again(inst)
                 p.queue = [q for q in p.queue if not job(q)]
                 p.held = [q for q in p.held if not job(q)]
         for p in self.people:
@@ -1573,6 +1599,15 @@ class StaffRun:
             came = {self.people[st.person_ix[x[2]]].role for x in evs if x[1] == 'duty' and x[3] == 'on'}
             keep = []
             for ident, src, roles, tid, prio, w, code, pw, state in self.pending:
+                if pw is None:
+                    # a job of a reaction on a value, abandoned: kept while the value is true, offered again when
+                    # someone of its roles comes on and nobody has a job of it (§17.12)
+                    if not e.truth(state):
+                        continue
+                    if self.value_busy(src) or not came.intersection(roles) \
+                            or not self.assign(roles, tid, prio, src, w, code, None):
+                        keep.append([ident, src, roles, tid, prio, w, code, pw, state])
+                    continue
                 if e.pstate.get(pw) != state or (src is not None and src in self.given) or (src is None and any(
                         q['task'] == tid and q['work'] == w for p in self.people
                         for q in ([p.cur] if p.cur is not None else []) + p.queue)):
@@ -1680,6 +1715,8 @@ class StaffRun:
         self.release(cur)
         self.unreserve(p)
         p.cur = None
+        if how == 'abandoned':
+            self.value_again(cur)
 
     def unreserve(self, p):
         if p.res is not None:
@@ -1902,7 +1939,7 @@ class StaffRun:
             w = cur['work'] if w == '$' else w
             e.ev('call', p.id, c['role'], c['task'], w, 'done')
             self.offer([c['role']], c['task'], st.tasks[c['task']].get('priority', 3), None, w, cur['code'],
-                       cur['alarm'], w)
+                       cur['alarm'], w, orig=self.vkey(cur))
             return 'next'
         if 'choose' in s:
             tot = sum(w for w, _ in s['choose'])
@@ -2308,7 +2345,7 @@ class StaffRun:
                         w = cur['work'] if w == '$' else w
                         e.ev('call', p.id, c['role'], c['task'], w, 'done')
                         self.offer([c['role']], c['task'], st.tasks[c['task']].get('priority', 3), None, w,
-                                   cur['code'], cur['alarm'], w)
+                                   cur['code'], cur['alarm'], w, orig=self.vkey(cur))
                         r = 'next'
                         break
             elif 'choose' in s:

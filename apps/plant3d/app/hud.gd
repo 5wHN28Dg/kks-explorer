@@ -6,6 +6,8 @@
 ## gamepad's buttons; touching the screen brings them back.
 extends CanvasLayer
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const Quality = preload("res://app/quality.gd")
 const Player = preload("res://app/player.gd")
 const About = preload("res://app/about.gd")
@@ -378,6 +380,12 @@ static func held(action: StringName) -> float:
 	return s
 
 func _process(_d: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(_d)
+	Cost.add(Cost.OTHER, _c0)
+
+
+func _each_frame(_d: float) -> void:
 	var p: Vector3 = main.player.global_position
 	var mode: String = ["walking", "flying", "on a ladder"][main.player.mode]
 	if main.player.mode == Player.Mode.WALK and Vector2(main.player.velocity.x, main.player.velocity.z).length() > Player.JOG_SPEED + 0.2:

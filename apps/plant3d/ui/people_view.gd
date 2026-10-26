@@ -6,6 +6,8 @@
 ## them (no built/people/) shows a capsule per person instead. The trainee's own person is not drawn (the walker).
 extends Node3D
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const Plant = preload("res://app/plant.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const MAP_LAYER := 2
@@ -26,6 +28,10 @@ var _yaw := {}                  # person -> the way they last faced
 var _hat := {}                  # person -> wearing the hat (checked twice a second)
 var _hat_t := 1.0
 var _drove := false             # this view filled the avatars' people (and may clear them)
+var _look0 = null               # the look of a role without its own (the avatars' first)
+var _step_e = null              # drive(): the engine and step _anims is of (what a person does changes with a step)
+var _step_n := -1
+var _anim_of := PackedStringArray()     # person -> what they are seen doing when not walking, at that step
 ## A task step's kind to what the person is seen doing (docs/PLANT3D.md §18.3); a `work` step says its own `anim`.
 const STEP_ANIM := {"read": "inspect", "meet": "talk", "say": "radio", "call": "radio", "wait": "idle", "ack": "type",
 	"permit": "write", "lock": "wrench", "unlock": "wrench"}
@@ -77,6 +83,12 @@ func _mm(mesh: Mesh, layers: int) -> MultiMeshInstance3D:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.PEOPLE_VIEW, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if avatars != null:
 		drive(delta)
 	_t += delta
@@ -152,6 +164,12 @@ func drive(delta: float) -> void:
 	var check_hat := _hat_t >= 0.5
 	if check_hat:
 		_hat_t = 0.0
+	var fresh: bool = e != _step_e or e.step_no != _step_n
+	if fresh:
+		_step_e = e
+		_step_n = e.step_no
+		_anim_of.resize(sm.people.size())
+		_anim_of.fill("?")
 	var n := 0
 	for pi in sm.people.size():
 		if pi == e.st_trainee:
@@ -186,16 +204,24 @@ func drive(delta: float) -> void:
 		p.yaw = _yaw.get(pi, 0.0)
 		p.speed = speed
 		p.on = on
-		p.look = avatars.info.roles.get(role, avatars.info.looks.keys()[0])
-		p.anim = "" if speed > 0.0 else _anim(e, sm, pi, place)
-		p.scale = 0.94 + 0.12 * float((pi * 37) % 11) / 10.0
-		if sm.zone_ids.is_empty():
-			if check_hat or not _hat.has(pi):
-				_hat[pi] = ui.main.area_at(at) != "Between the areas"
+		if _look0 == null:
+			_look0 = avatars.info.looks.keys()[0]
+		p.look = avatars.info.roles.get(role, _look0)
+		if speed > 0.0:
+			p.anim = ""
 		else:
-			# with zones (milestone S2): the hat on the head where a zone needs it and the person wears it; in the
-			# hand elsewhere (the road variant), and so too for one who has taken it off in a zone (an unsafe act seen)
-			_hat[pi] = hat_on(e, sm, pi)
+			if _anim_of[pi] == "?":         # (once a step: the place is the same through it)
+				_anim_of[pi] = _anim(e, sm, pi, place)
+			p.anim = _anim_of[pi]
+		p.scale = 0.94 + 0.12 * float((pi * 37) % 11) / 10.0
+		if check_hat or not _hat.has(pi):     # (twice a second: what is worn and where changes with the steps)
+			if sm.zone_ids.is_empty():
+				_hat[pi] = ui.main.area_at(at) != "Between the areas"
+			else:
+				# with zones (milestone S2): the hat on the head where a zone needs it and the person wears it; in the
+				# hand elsewhere (the road variant), and so too for one who has taken it off in a zone (an unsafe act
+				# seen)
+				_hat[pi] = hat_on(e, sm, pi)
 		p.hat = _hat[pi]
 		n += 1
 	out.resize(n)

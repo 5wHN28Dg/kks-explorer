@@ -10,6 +10,8 @@
 ## upload). The target's point, a search and the chevrons each take a drawn frame of their own.
 extends Node3D
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const NAV := "res://built/nav.res"
 const WARM_UP_S := 1.5
 const SHADER := preload("res://app/walk_route.gdshader")   # a file, so that the export's shader baker has it
@@ -301,6 +303,12 @@ func shown() -> bool:
 ## Once per drawn frame (the lean tier draws 30 frames a second, with two physics ticks in some of them): at most
 ## one of the target's point, a search and a redraw in any frame.
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.OTHER, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if not active() or player == null:
 		return
 	_t += delta

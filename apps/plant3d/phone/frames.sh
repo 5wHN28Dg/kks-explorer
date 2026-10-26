@@ -7,6 +7,9 @@
 #   APK=path  another APK (default export/walkdown-plant.apk, build.sh release)
 #   WALK_EXTRA="procedure=cold_start\npanels=alarms,procedure\nspeed=fast\n"   more options for the walk (app/main.gd)
 #   WALK_EXTRA="walk=screens\n"   the control room's screens instead of the walk, each in turn for 10 s (their cost)
+#   WALK_EXTRA="crews=1\n"   the frames walk among the crews at work (S2's and S3's staff in free mode, at normal speed):
+#             one of the frame rules' walks (with frames, wtp and camp; docs/plant3d/MILESTONES.md); with probe=1 the
+#             result's SCRIPTS lines say where the scripts' time went (app/script_cost.gd)
 #   WALK_EXTRA="probe=1\n"   and frames.csv, where each frame's time went (app/frame_probe.gd), pulled beside result.txt
 #   STRESS=1  (the Note 9 only) the phone's memory under pressure, as when its own services start: 2 MB a second written
 #             to a file in /data/local/tmp through the walk, deleted after. The kernel's reclaim (kswapd) then stalls

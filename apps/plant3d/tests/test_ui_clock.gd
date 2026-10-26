@@ -71,6 +71,24 @@ func run(tree: SceneTree) -> Array:
 	c._process(1.0 / 60.0)
 	if c.engine.step_no - s5 != 2:
 		p.append("the frame after a capped one ran %d steps, not its own 2" % (c.engine.step_no - s5))
+	# a long frame (a hitch: 0.25 s counted) gives the next at most FRAME_MS of model work, not a quarter of 0.25 s:
+	# at 1 ms a step, 8 steps (not 62)
+	c.step_ms = 1.0
+	c.acc = 0.0
+	var s6: int = c.engine.step_no
+	c._process(0.25)
+	if c.engine.step_no - s6 > int(SimClock.FRAME_MS / 1.0):
+		p.append("a frame after a 0.25 s one ran %d steps of 1 ms, over %.0f ms" % [c.engine.step_no - s6, SimClock.FRAME_MS])
+	# and when the steps cost more than their measured average (here said to be 0.01 ms: the budget allows them all),
+	# fast-forward stops at FRAME_MS of real time within the frame, and what is left is not owed
+	c.step_ms = 0.01
+	c.acc = 0.0
+	var s7: int = c.engine.step_no
+	var t7 := Time.get_ticks_usec()
+	c._process(0.25)
+	var ms7 := (Time.get_ticks_usec() - t7) / 1000.0
+	if c.engine.step_no == s7 or ms7 > SimClock.FRAME_MS * 1.5 or c.acc != 0.0:
+		p.append("a frame of underestimated steps took %.1f ms for %d steps, %.2f s left owed" % [ms7, c.engine.step_no - s7, c.acc])
 	c.step_ms = 0.3
 	# fast-forward stops by itself when an alarm comes up: closed cooling water pump A runs, then its motor fails
 	c.set_speed(SimClock.Speed.PAUSED)
@@ -92,6 +110,41 @@ func run(tree: SceneTree) -> Array:
 	c.set_speed(SimClock.Speed.FAST)
 	if c.speed == SimClock.Speed.FAST:
 		p.append("fast-forward was taken with an alarm unacknowledged")
+	# the horn for that alarm sounds again when Mute is turned off, paused as well (the alarms are looked at again
+	# then, not only at a step)
+	c.set_speed(SimClock.Speed.PAUSED)
+	ui._each_frame(1.0 / 60.0)
+	var horn0: int = ui._horn
+	ui._setting("mute", true)
+	ui._setting("mute", false)
+	ui._each_frame(1.0 / 60.0)
+	if horn0 <= 0 or ui._horn != horn0:
+		p.append("after Mute on and off, paused, the horn is %d, not the alarm's %d" % [ui._horn, horn0])
+	# the bar in fast-forward (steps every frame): its clock and alarms shown again FAST_UI_HZ times a second, not every
+	# frame; at once when the speed changes
+	ui.restart("cold_iron")
+	c.set_speed(SimClock.Speed.FAST)
+	ui._each_frame(1.0 / 60.0)
+	var shown := 0
+	var last_text: String = ui._time.text
+	var scans := 0
+	var last_scan: float = ui._alarms_t
+	for i in 60:                # 1 s of frames at 60 fps, a step in each
+		c.run_steps(1)
+		ui._each_frame(1.0 / 60.0)
+		if ui._time.text != last_text:
+			shown += 1
+			last_text = ui._time.text
+		if ui._alarms_t != last_scan:
+			scans += 1
+			last_scan = ui._alarms_t
+	if shown < 3 or shown > int(ui.FAST_UI_HZ) + 1 or scans < 3 or scans > int(ui.FAST_UI_HZ) + 1:
+		p.append("in 1 s of fast-forward the bar's clock was shown %d times and the alarms looked at %d (about %d)"
+				% [shown, scans, int(ui.FAST_UI_HZ)])
+	c.set_speed(SimClock.Speed.NORMAL)
+	ui._each_frame(1.0 / 60.0)
+	if not String(ui._time.text).ends_with("×1") or not String(ui._time.text).begins_with(c.clock_text()):
+		p.append("the bar's clock did not show 1× and the time at once: %s (%s)" % [ui._time.text, c.clock_text()])
 	# a hold at 1× (a procedure step done, no pause): the steps not run that frame come in the next
 	ui.restart("cold_iron")
 	c.set_speed(SimClock.Speed.NORMAL)

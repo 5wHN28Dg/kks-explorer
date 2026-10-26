@@ -78,11 +78,12 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--map=1` | starts on the overview map |
 | `--scenario=ID` | the scenario the plant starts in (default `cold_iron`) |
 | `--procedure=ID` | follows that procedure or tour from the start |
-| `--panels=alarms,procedure,card:CODE` | opens these panels |
+| `--panels=alarms,procedure,crew,card:CODE` | opens these panels |
 | `--speed=fast` | starts the plant in fast-forward |
 | `walkdown-plant://kks/CODE`, `walkdown-plant://procedure/ID[/STEP]` | a link (docs/PLANT3D.md §6), anywhere on the command line; a start with a link takes none of the options above (a crafted link could add its own) |
 | `--fx_off=fog,lightmap,shadow`, `--fx_on=ssao,sdfgi,ssil,volfog,glow` | effects off or on, to measure what each costs |
 | `--walk=frames --crowd=N` | the walk among N people (`app/crowd.gd`: walking the route both ways and at work beside it, kept round the walker): what people cost; `--people_skinned=N` that many skinned avatars instead of the tier's, `--people_shadows=0` without their shadows; the result's `PEOPLE` line has their CPU time and the bands' counts |
+| `--walk=frames --crews=1` | the walk among the crews at work (S2's and S3's staff, `shift_cold` unless `--scenario` names another with staff, no role taken, at normal speed unless `--speed=fast`): what the staff cost, the frame rules' `crews` walk; with `--probe=1` the result's `SCRIPTS` lines give each part's time in the scripts a frame (the model, step 9, the people, the Crew panel, the UI, the screens, bindings, sounds, the saves; `app/script_cost.gd`) |
 | `--fx_on=bicubic` | the lightmap's bicubic filter where the app turns it off (phones, Adreno GPUs: `app/lighting.gd`), to see that fault again |
 | `--fx_off=occlusion`, `--fx_off=farview`, `--fx_off=wtp`, `--fx_off=interiors` | the buildings' occluders unused; the merged far views unused (every piece drawn at every distance, as before them: `builder/plant_builder.gd` `far_merge`); the WTP and intake hidden; the rooms near their doors never loaded: to measure what each costs or saves |
 | `--probe=1` | (with a walk) `frames.csv` beside `result.txt`: per frame the physics steps, the scripts, the draw (the render thread and any wait for the GPU) and the GPU time (`app/frame_probe.gd`) |

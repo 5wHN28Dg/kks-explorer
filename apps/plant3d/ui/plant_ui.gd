@@ -10,6 +10,8 @@
 ## way on foot to the equipment it points at (app/walk_route.gd).
 extends CanvasLayer
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const W = preload("res://ui/widgets.gd")
 const Quality = preload("res://app/quality.gd")
 const PlantModel = preload("res://sim/plant_model.gd")
@@ -346,6 +348,7 @@ func _setting(key: String, on: bool) -> void:
 			sounds.muted = on
 			horn_changed.emit(0)
 			_horn = -1                  # the next tick sounds the horn again if an alarm wants it
+			_alarms_step = -1           # (and looks at the alarms again, paused as well)
 
 
 ## Opens a panel by name (the command line's panels=…): alarms, procedure, card:CODE. (Not the instructor's:
@@ -357,6 +360,8 @@ func open_panel(p: String) -> void:
 		toggle_alarms()
 	elif p == "procedure" and not procedure.visible:
 		toggle_procedure()
+	elif p == "crew" and not crew.visible:
+		open_crew()
 	elif p == "permits" or p.begins_with("permit:"):
 		open_permits(p.substr(7) if p.begins_with("permit:") else "")
 	elif p.begins_with("card:"):
@@ -1290,25 +1295,43 @@ func _refresh_bar() -> void:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.UI, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if clock == null:
 		_toast_tick(delta)
 		return
 	_sync_events()
+	_ui_t += delta
 	_horn_tick()
 	_blink += delta
-	_time.text = "%s %s" % [clock_text(), {0: "paused", 1: "×1", 2: "×%.0f" % clock.ff_rate()}[clock.speed]]
+	# the clock's text changes with a step or the speed; in fast-forward (a step or more every frame) it is shown
+	# again FAST_UI_HZ times a second, as the alarms' counts (_horn_tick)
+	var tk := Vector3i(clock.engine.step_no, clock.speed, roundi(clock.ff_rate()) if clock.speed == SimClock.Speed.FAST else 0)
+	if clock.engine != _time_engine or (tk != _time_key and (tk.y != _time_key.y or tk.y != SimClock.Speed.FAST
+			or _ui_t - _time_t >= 1.0 / FAST_UI_HZ)):
+		_time_key = tk
+		_time_engine = clock.engine
+		_time_t = _ui_t
+		_time.text = "%s %s" % [clock_text(), {0: "paused", 1: "×1", 2: "×%.0f" % clock.ff_rate()}[clock.speed]]
 	_place_t += delta
 	if _place_t >= 0.25:
 		_place_t = 0.0
 		_place_tick()
-	_ff_btn.disabled = clock.ff_blocked() != ""
 	_toast_tick(delta)
 	_t_hint += delta
 	if _t_hint >= 0.1:
 		_t_hint = 0.0
 		_look_hint()
 	sounds.listener_at = eye()
-	arrows.queue_redraw()
+	# the arrow to the equipment pointed at follows the view each frame while there is one (once more when it goes)
+	var arrow: bool = pointer != null and pointer.visible
+	if arrow or _arrow_drawn:
+		arrows.queue_redraw()
+	_arrow_drawn = arrow
 	_fit_t += delta
 	if _fit_t >= 0.25:
 		_fit_t = 0.0
@@ -1317,6 +1340,17 @@ func _process(delta: float) -> void:
 
 var _fit_t := 0.0
 var _max_h := 0.0
+var _alarms_engine = null       # _horn_tick: the engine and step its counts are of
+var _alarms_step := -1
+var _alarms_unack := 0
+var _alarms_speed := -1
+var _alarms_t := 0.0
+var _time_engine = null         # the clock's text: the engine, step, speed and rate it shows, and when (_ui_t)
+var _time_key := Vector3i(-1, -1, -1)
+var _time_t := 0.0
+var _ui_t := 0.0                # seconds of frames gone
+const FAST_UI_HZ := 4.0         # in fast-forward the bar's clock and alarms are shown again at most this often
+var _arrow_drawn := false       # the arrows' layer was drawn with an arrow last frame
 
 
 ## The side panels as tall as their content (up to the bottom of the screen), so the view and the sticks stay free.
@@ -1387,25 +1421,39 @@ func _state_pos(mi: int, state: String) -> int:
 	return model.machines[mi]["_ids"].find(state)
 
 
+## The alarms' horn and button, and fast-forward's button. What they show changes only with a model step (every input
+## is applied in one, a restart makes another engine): looked at again only then, not every frame; and in fast-forward,
+## which runs steps every frame, FAST_UI_HZ times a second. Fast-forward stops on any alarm the horn sounds for
+## (SimClock.ff_blocked), so the horn is never late: the speed's change has it looked at again at once.
 func _horn_tick() -> void:
 	var e = clock.engine
-	var top := 0
-	var unack := 0
-	for k in e._al.size():
-		var s: String = e.astate[k]
-		if (s == "active_unack" or s == "cleared_unack") and e.shelved[k] == -1 and not AlarmPanel.suppressed(e, k):
-			unack += 1
-			var pr: int = e._al[k][5]
-			if top == 0 or pr < top:
-				top = pr
-	if top != _horn:
-		_horn = top
-		horn_changed.emit(top)
-	var active := 0
-	for k in e._al.size():
-		if e.astate[k] != "normal" and e.shelved[k] == -1 and not AlarmPanel.suppressed(e, k):
+	if e != _alarms_engine or clock.speed != _alarms_speed or (e.step_no != _alarms_step
+			and (clock.speed != SimClock.Speed.FAST or _ui_t - _alarms_t >= 1.0 / FAST_UI_HZ)):
+		_alarms_engine = e
+		_alarms_step = e.step_no
+		_alarms_speed = clock.speed
+		_alarms_t = _ui_t
+		var top := 0
+		var unack := 0
+		var active := 0
+		for k in e._al.size():
+			var s: String = e.astate[k]
+			if s == "normal" or e.shelved[k] != -1 or AlarmPanel.suppressed(e, k):
+				continue
 			active += 1
-	_alarm_btn.text = "Alarms %d" % active if active > 0 else "Alarms"
+			if s == "active_unack" or s == "cleared_unack":
+				unack += 1
+				var pr: int = e._al[k][5]
+				if top == 0 or pr < top:
+					top = pr
+		_alarms_unack = unack
+		if top != _horn:
+			_horn = top
+			horn_changed.emit(top)
+		_alarm_btn.text = "Alarms %d" % active if active > 0 else "Alarms"
+		_ff_btn.disabled = clock.ff_blocked() != ""
+	var unack := _alarms_unack
+	var top := _horn
 	if unack > 0:
 		var on := fmod(_blink, 0.8) < 0.5
 		_alarm_btn.modulate = W.PRIO_COLOURS.get(top, Color.WHITE) if on else Color.WHITE

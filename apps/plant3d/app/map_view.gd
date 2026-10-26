@@ -3,6 +3,8 @@
 ## right-drag or two fingers' turn to rotate; a tap or click on a floor puts the trainee there.
 extends Node3D
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const LAYER := 2
 var cam: Camera3D
 var marker: MeshInstance3D
@@ -65,6 +67,12 @@ func show_map(on: bool) -> void:
 		player.camera.make_current()
 
 func _process(_delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(_delta)
+	Cost.add(Cost.OTHER, _c0)
+
+
+func _each_frame(_delta: float) -> void:
 	if not active:
 		return
 	marker.global_position = player.global_position + Vector3.UP * 4.0

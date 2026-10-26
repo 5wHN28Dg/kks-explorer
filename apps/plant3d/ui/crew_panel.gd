@@ -10,6 +10,10 @@
 ## every control is a button or a line edit that takes the focus (Esc or B closes, as the other panels).
 extends PanelContainer
 
+const RADIO_LINES := 10         # the radio's last lines shown
+
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const W = preload("res://ui/widgets.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 
@@ -24,6 +28,10 @@ var _seen := 0                  # events read so far (the radio log and readings
 var _engine = null
 var _j := 0                     # the jumps made up to the event read last (each line's time is its own clock's)
 var _radio: Array = []          # [step, text] of every message and call
+var _radio_labels: Array = []   # the radio's last lines on the panel (Labels, oldest first)
+var _radio_shown := -1          # how many of _radio's lines there were when they were shown
+var _head: Label = null         # the trainee's header line (role, duty, clock) and its text before the clock
+var _head_text := ""
 var _reads: Dictionary = {}     # person -> their read events
 
 
@@ -62,6 +70,12 @@ func _first(n: Node) -> Control:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.CREW, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if not visible:
 		return
 	_t += delta
@@ -77,10 +91,27 @@ func _signature(e) -> String:
 		return "none"
 	var tr: int = e.st_trainee
 	var cur = e.sp_cur[tr] if tr != -1 else null
+	# (free mode shows the roles or a line, and the radio's last lines; the sleep button's state, fast-forward's,
+	# only with a role. The radio's new lines alone are written into the lines shown, without a rebuild: refresh)
 	return "%d|%d|%s|%s|%d|%d|%d|%s|%d|%s" % [tr, e.step_no if tr == -1 and e.step_no < 2 else 0,
 			str(cur["task"]) + str(cur["step"]) + str(cur["st"].get("dest", "")) if cur != null else "",
-			(str(e.sp_queue[tr].size()) + "/" + str(e.sp_slots[tr].size())) if tr != -1 else "", e.st_unacked, e.events.size() / 50 if tr == -1 else
-			_radio_count(e), e.st_t_at, str(e.fast_forward()), e.J, _safety_sig(e) if tr != -1 else ""]
+			(str(e.sp_queue[tr].size()) + "/" + str(e.sp_slots[tr].size())) if tr != -1 else "", e.st_unacked,
+			_reads_count(e), e.st_t_at, str(e.fast_forward()) if tr != -1 else "", e.J,
+			_safety_sig(e) + _me_sig(e) if tr != -1 else ""]
+
+
+## What else the trainee's part shows (its header's duty, the waiting tasks' priorities, whether a permit is open:
+## the sleep button): these used to come along with the radio's new lines, which no longer rebuild it. The header's
+## clock is written into its label at each refresh (_head)
+func _me_sig(e) -> String:
+	var tr: int = e.st_trainee
+	var open_permit := false
+	for st in e.pstate:
+		open_permit = open_permit or (st >= 1 and st <= 7)
+	var prios := ""
+	for inst in e.sp_queue[tr]:
+		prios += str(inst["prio"])
+	return "|%d|%s|%s" % [e.sp_on[tr], prios, str(open_permit)]
 
 
 ## What the PPE and unsafe-act part shows depends on (S2): what the trainee wears, their zones, every act going on,
@@ -97,9 +128,10 @@ func _safety_sig(e) -> String:
 			str(ui.at_locker()), near]
 
 
-func _radio_count(e) -> int:
+## The trainee's readings so far (their sheet); the events read first.
+func _reads_count(e) -> int:
 	_follow(e)
-	return _radio.size() * 7 + _reads.get(e._sm.people[e.st_trainee]["id"] if e.st_trainee != -1 else "", []).size()
+	return _reads.get(e._sm.people[e.st_trainee]["id"] if e.st_trainee != -1 else "", []).size()
 
 
 ## Reads the events once each (the list only grows within a run): the radio log and the readings.
@@ -133,6 +165,10 @@ func refresh() -> void:
 		_follow(e)
 	var sig := _signature(e)
 	if sig == _sig:
+		if _radio.size() != _radio_shown:
+			_radio_lines()
+		if e._sm != null and e.st_trainee != -1 and is_instance_valid(_head) and _head.is_inside_tree():
+			_head.text = _head_text + ui.clock_text()       # (the clock, a new minute: no rebuild)
 		return
 	_sig = sig
 	var typed := entry.text if entry != null and is_instance_valid(entry) else ""
@@ -143,6 +179,8 @@ func refresh() -> void:
 	W.clear(body)
 	var sm = e._sm
 	if sm == null:
+		_radio_labels.clear()           # (no radio in this run: nothing for _radio_lines to fill)
+		_radio_shown = _radio.size()
 		body.add_child(W.label("No crews in this run: the plant as format 1, the trainee alone.", 18, W.DIM))
 		for sid in ui.model.scenarios:
 			if ui.model.scenarios[sid].has("staff"):
@@ -199,7 +237,9 @@ func _me(e, sm) -> void:
 	var p: Dictionary = sm.people[pi]
 	title.text = "Crew: you are %s" % p["call"]
 	var duty := "on duty" if e.sp_on[pi] else "off duty"
-	body.add_child(W.label("%s, %s, %s" % [sm.roles[p["role"]]["title"], duty, ui.clock_text()], 18, W.DIM))
+	_head = W.label("%s, %s, %s" % [sm.roles[p["role"]]["title"], duty, ui.clock_text()], 18, W.DIM)
+	_head_text = _head.text.trim_suffix(ui.clock_text())
+	body.add_child(_head)
 	if e.st_unacked > 0:
 		var row := HBoxContainer.new()
 		row.add_child(W.label("%d new for you" % e.st_unacked, 20, Color(1.0, 0.75, 0.2)))
@@ -499,8 +539,12 @@ func _safety(e, sm) -> void:
 func _radio_log(e, sm) -> void:
 	body.add_child(W.label("Radio", 20, Color(1.0, 0.85, 0.4)))
 	var lines := _radio
-	for l in lines.slice(maxi(0, lines.size() - 10)):
-		body.add_child(W.label(l, 16))
+	_radio_labels.clear()
+	for k in RADIO_LINES:           # (all of them made now, those with no line yet hidden: _radio_lines fills them)
+		var lab := W.label("", 16)
+		_radio_labels.append(lab)
+		body.add_child(lab)
+	_fill_radio()
 	if e.st_trainee == -1:
 		return
 	var me: Dictionary = sm.people[e.st_trainee]
@@ -523,6 +567,30 @@ func _radio_log(e, sm) -> void:
 	body.add_child(b)
 	if open_permit:
 		body.add_child(W.label("(no sleeping while a permit is open)", 16, W.DIM))
+
+
+## The radio's last lines written into its labels (new messages, nothing else changed): no rebuild of the panel,
+## which loses no focus and makes no new controls (in fast-forward the radio has new lines every refresh; building
+## the panel again for each of the first lines cost up to 50 ms on the laptop). Labels gone (the panel built without
+## the radio): the panel is built again.
+func _radio_lines() -> void:
+	var ok := _radio_labels.size() == RADIO_LINES
+	for lab in _radio_labels:
+		ok = ok and is_instance_valid(lab) and lab.is_inside_tree()
+	if not ok:
+		_sig = ""
+		refresh()
+		return
+	_fill_radio()
+
+
+func _fill_radio() -> void:
+	_radio_shown = _radio.size()
+	var want := mini(_radio.size(), RADIO_LINES)
+	for k in RADIO_LINES:
+		var lab: Label = _radio_labels[k]
+		lab.visible = k < want
+		lab.text = _radio[_radio.size() - want + k] if k < want else ""
 
 
 func _next_shift(e) -> String:

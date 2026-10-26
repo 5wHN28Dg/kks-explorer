@@ -16,8 +16,11 @@
 ##   map=1                   start on the overview map
 ##   scenario=ID             the scenario the plant starts in (default cold_iron)
 ##   procedure=ID            follow that procedure or tour from the start
-##   panels=alarms,procedure,card:CODE   open these panels (the frame measurement with the UI open)
+##   panels=alarms,procedure,crew,card:CODE   open these panels (the frame measurement with the UI open)
 ##   speed=fast              start the plant in fast-forward (the model's share of a core, measured in a walk)
+##   crews=1                 the crews at work round the walker (S2's and S3's staff): the scenario `shift_cold` (or
+##                           scenario=ID, one with staff), no role taken (free mode), at normal speed unless speed=fast;
+##                           the people on screen are the staff's (what the crews cost: the frame rules' `crews` walk)
 ##   probe=1                 (walk) frames.csv beside result.txt: where each frame's time goes (app/frame_probe.gd)
 ##   max_fps=N               at most N frames a second (0: no cap): what a cap does to a phone's heat and long frames
 ##   pipeline_save_mb=N      save the pipeline cache every N MB of new pipelines instead of the project's 0.25
@@ -36,7 +39,8 @@
 ##   people_skinned=N        that many skinned avatars instead of the tier's (measuring), people_shadows=0 theirs off
 ##   voice=bench             wdp_voice's test scene instead of the plant (voice/demo/voice_wav.gd: the codec's round
 ##                           trip and its time per 20 ms frame, `VOICE` lines in the log; milestone MP5's measurement)
-##   On a phone walk.txt takes voice, probe, fx_off, fx_on, max_fps, crowd, people_skinned, people_shadows and shot too
+##   On a phone walk.txt takes voice, probe, fx_off, fx_on, max_fps, crowd, people_skinned, people_shadows, crews and
+##   shot too
 ##   (phone/frames.sh's WALK_EXTRA, phone/shots.sh); a shot's line in result.txt gives the view's draw calls, triangles
 ##   and GPU time (median of 30 frames)
 extends Node3D
@@ -53,6 +57,7 @@ const Lighting = preload("res://app/lighting.gd")
 const Interiors = preload("res://app/interiors.gd")
 const People = preload("res://app/people.gd")
 const Crowd = preload("res://app/crowd.gd")
+const ScriptCost = preload("res://app/script_cost.gd")
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
 
 var cf: ConfigFile
@@ -209,11 +214,13 @@ func _ready() -> void:
 	ui = PlantUi.new()
 	ui.name = "ui"
 	add_child(ui)
-	ui.setup(self, opts.get("scenario", "cold_iron"))
+	ui.setup(self, opts.get("scenario", "shift_cold" if opts.has("crews") else "cold_iron"))
 	ui.add_settings(hud.extra)
 	_launch("ui")
 	if opts.has("procedure") and ui.clock != null and ui.model.procedures.has(opts.procedure):
 		ui.start_procedure(opts.procedure, null, false)
+	if opts.has("crews") and ui.clock != null and ui.clock.engine._sm != null:
+		ui.take_role("")   # free mode: the crews work round the walker, nobody's role taken
 	for p in String(opts.get("panels", "")).split(",", false):
 		ui.open_panel(p)
 	if opts.get("speed", "") == "fast" and ui.clock != null:
@@ -222,7 +229,7 @@ func _ready() -> void:
 	# a procedure, a speed) is saved to a file of its own, never over a trainee's run, and offers nothing
 	if ui.autosave != null:
 		var own := false
-		for k in ["walk", "shot", "scenario", "procedure", "speed"]:
+		for k in ["walk", "shot", "scenario", "procedure", "speed", "crews"]:
 			own = own or opts.has(k)
 		if own:
 			ui.autosave.path = "user://run-options.save"
@@ -256,7 +263,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "shot", "voice"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's and shot: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews and shot: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
@@ -552,8 +559,12 @@ func _finish() -> void:
 			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576, first_frame_ms, plant.load_ms])
 	else:
 		_say("RESULT no frames (stuck=%d)" % stuck_count)
-	if people != null and crowd != null:
-		_say("PEOPLE crowd=%d skinned_max=%d %s" % [people.people.size(), int(people.cfg.skinned), people.summary()])
+	if people != null and (crowd != null or opts.has("crews")):
+		_say("PEOPLE %s=%d skinned_max=%d %s" % ["crowd" if crowd != null else "crews", people.people.size(),
+				int(people.cfg.skinned), people.summary()])
+	if frame_probe != null:
+		for l in ScriptCost.lines():
+			_say(l)
 	if screens_walk:
 		var m = ui.mimic
 		_say("MIMIC screens_open=%s frames=%d draw_max_us=%d draw_mean_us=%d frames_over_2ms=%d longest_piece_us=%d (the pieces' drawing only)" % [

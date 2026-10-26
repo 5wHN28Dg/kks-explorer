@@ -2,6 +2,8 @@
 ## HUD (ui/plant_ui.gd) adds the arrow at the screen's edge and the distance when it is out of view.
 extends Node3D
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 var code := ""
 var box := AABB()
 var _frame: MeshInstance3D
@@ -59,6 +61,12 @@ func top() -> Vector3:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.OTHER, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if not visible:
 		return
 	_t += delta

@@ -319,6 +319,49 @@ func _ccr_operator(tree: SceneTree, ui, p: Array) -> void:
 	var made = e.events.filter(func(ev): return ev[1] == "op" and ev[2] == "30PAC10AA102" and ev.size() == 8 and ev[7] == me)
 	if made.is_empty() or made[-1][6] != "screen":
 		p.append("an op from a card in the control room was not made from the screens: %s" % str(made))
+	# what each one of the crews is seen doing is worked out once a step (people_view.gd _anim_of): steps later, and on
+	# a frame after the first of a step, the same as worked out afresh
+	var av = ui.people.avatars
+	if av != null:
+		var anims := func(): return av.people.map(func(q): return "%s/%s/%s" % [q.at, q.anim, q.speed])
+		ui.people.drive(1.0 / 60.0)
+		var before: Array = anims.call()
+		ui.clock.run_steps(300)
+		ui.people.drive(1.0 / 60.0)
+		ui.people.drive(1.0 / 60.0)
+		var cached: Array = anims.call()
+		ui.people._step_n = -1
+		ui.people.drive(1.0 / 60.0)
+		var fresh: Array = anims.call()
+		if cached != fresh:
+			p.append("what the crews are seen doing, kept through a step, is not what they do (%s, not %s)" % [cached, fresh])
+		if cached == before:
+			p.append("300 steps later the crews are all as they were (the check above proves nothing)")
+	# the radio's new lines are written into the lines shown, the panel not built again (crew_panel.gd _radio_lines)
+	ui.open_crew()
+	ui.crew._sig = ""
+	ui.crew.refresh()
+	var radio_n: int = ui.crew._radio.size()
+	var labs: Array = ui.crew._radio_labels.duplicate()
+	var sig0: String = ui.crew._sig
+	for i in 300:
+		ui.clock.run_steps(10)
+		ui.crew.refresh()
+		if ui.crew._radio.size() > radio_n:
+			break
+	if ui.crew._radio.size() == radio_n:
+		p.append("no new line on the radio in 3000 steps (the check below proves nothing)")
+	else:
+		var last_line: String = ui.crew._radio[-1]
+		if not App.texts(ui.crew).contains(last_line):
+			p.append("the radio's newest line is not on the panel: %s" % last_line)
+		if labs.size() == ui.crew.RADIO_LINES and ui.crew._sig == sig0 and ui.crew._radio_labels != labs:
+			p.append("the panel was built again for a new line on the radio")
+	# what the trainee's part shows besides the radio still follows the run: its header's clock, a clock minute later
+	ui.clock.run_steps(100)
+	ui.crew.refresh()
+	if not App.texts(ui.crew).contains(ui.clock_text()):
+		p.append("the Crew panel's header does not show the clock a minute later (%s)" % ui.clock_text())
 
 
 ## A run with the crews saved and restored: the same at every step after (people, queues, random streams).
@@ -345,3 +388,41 @@ func _save(ui, p: Array) -> void:
 		f2.step()
 	if var_to_bytes(e.snapshot()) != var_to_bytes(f2.snapshot()) or var_to_bytes(e.events) != var_to_bytes(f2.events):
 		p.append("the restored run with staff differs from the uninterrupted one")
+	# a reaction on a value's offer kept after its job was abandoned (PLANT3D §17.12): a save with one is taken, one
+	# that names another value than its reaction's is refused
+	var sm = e._sm
+	var ri := -1
+	for i in sm.reactions.size():
+		if sm.reactions[i]["on"].has("value"):
+			ri = i
+			break
+	if ri == -1:
+		p.append("no reaction on a value in shift_cold's staff")
+		return
+	var r: Dictionary = sm.reactions[ri]
+	var v: String = r["on"]["value"]
+	var key := "%d|value|%s" % [ri, v]
+	var w = r.get("work")
+	var kept := [key, key, r["roles"].duplicate(), r["task"], sm.prio_of(r["task"]), w,
+			m.works[m.work_ix[w]]["kks"] if w != null else null, null, v]
+	var with_kept := data.duplicate(true)
+	with_kept["st_pending"] = [kept]
+	var f3 = PlantEngine.new(m, "shift_cold")
+	var why: String = ui.autosave._engine_contents(f3, with_kept)
+	if why != "":
+		p.append("a save with a reaction on a value's kept offer was refused: %s" % why)
+	else:
+		RunSave.apply(f3, bytes_to_var(var_to_bytes(with_kept)))
+		f3.step(50)                 # (react() reads it every step: no error)
+	# a job whose source or caller names no reaction on a value (an edited save) is abandoned without an offer kept
+	for bad_inst in [{"src": "zz|value|nope", "orig": null}, {"src": null, "orig": "x"},
+			{"src": "%d|value|no_such_value" % ri, "orig": null}]:
+		var n_kept: int = f3.st_pending.size()
+		sm.value_again(f3, bad_inst)
+		if f3.st_pending.size() != n_kept:
+			p.append("a job from no reaction on a value kept an offer: %s" % str(bad_inst))
+	var wrong := kept.duplicate()
+	wrong[8] = "no_such_value"
+	with_kept["st_pending"] = [wrong]
+	if ui.autosave._engine_contents(PlantEngine.new(m, "shift_cold"), with_kept) == "":
+		p.append("a save whose kept offer names a value its reaction is not on was taken")

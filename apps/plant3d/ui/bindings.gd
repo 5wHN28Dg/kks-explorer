@@ -13,6 +13,8 @@
 ## the state change now (these markers carry the meta `ui` and are not part of the plant's geometry).
 extends Node
 
+const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
+
 const Mat = preload("res://kit/materials.gd")
 const RANGE := 60.0             # metres: farther parts are not updated (nobody sees them move)
 const SHOW_RANGE := 8.0         # local displays are read up close
@@ -24,7 +26,10 @@ var cam: Camera3D
 var reduced_motion := false
 var sounds                      # ui/sound_player.gd or null
 var clock                       # ui/sim_clock.gd: shafts turn with plant time (still while paused, faster at fast-forward)
-var _anims: Array = []          # [node, channel, slot, scale, base transform, meta]
+var _anims: Array = []          # [node, channel, slot, scale, base transform, group's kids, position, anim_kind]
+var _near: Array = []           # the _anims within RANGE + NEAR_MARGIN of _near_eye: the only ones looked at each frame
+var _near_eye := Vector3.INF    # where the eye was when _near was made (made again once it has moved NEAR_MARGIN)
+const NEAR_MARGIN := 10.0
 var _lamps: Array = []          # [node, slot, kind, lit material, unlit material, last]
 var _shows: Array = []          # [label, slot, value name, last text]
 var _shakes: Array = []         # [node position, slot, scale]
@@ -38,7 +43,8 @@ func setup(e, idx, info, camera: Camera3D) -> void:
 	index = idx
 	_info = info
 	cam = camera
-	_anims.clear(); _lamps.clear(); _shows.clear(); _shakes.clear()
+	_anims.clear(); _lamps.clear(); _shows.clear(); _shakes.clear(); _near.clear()
+	_near_eye = Vector3.INF
 	if sounds != null:
 		sounds.unbind_all()
 	for b in info.m.bind:
@@ -56,7 +62,11 @@ func setup(e, idx, info, camera: Camera3D) -> void:
 				for ch in piece.get_children():
 					if ch is Node3D and ch.has_meta("anim_kind"):
 						kids.append([ch, ch.transform])
-			_anims.append([piece, b["anim"], e.ix[b["of"]], float(b.get("scale", 1.0)), piece.transform, kids])
+			# (where the piece is, for the range: a piece turns or moves by a few centimetres, never across the plant;
+			# its kind read once, not every frame)
+			_anims.append([piece, b["anim"], e.ix[b["of"]], float(b.get("scale", 1.0)), piece.transform, kids,
+					piece.global_position if piece.is_inside_tree() else Vector3.INF,
+					String(piece.get_meta("anim_kind", ""))])
 			if b["anim"] == "contacts" and sounds != null:
 				sounds.watch_breaker(n, e.ix[b["of"]])
 		elif b.has("lamp"):
@@ -176,18 +186,33 @@ func _mat(kind: String, lit: bool) -> ShaderMaterial:
 
 
 func _process(delta: float) -> void:
+	var _c0 := Time.get_ticks_usec()
+	_each_frame(delta)
+	Cost.add(Cost.BINDINGS, _c0)
+
+
+func _each_frame(delta: float) -> void:
 	if engine == null or cam == null:
 		return
 	var eye := cam.global_position
 	var cur: PackedFloat64Array = engine.cur
 	var dt: float = delta * (clock.rate() if clock != null else 1.0)
-	for a in _anims:
-		var piece: Node3D = a[0]
-		if piece.global_position.distance_squared_to(eye) > RANGE * RANGE:
+	# (the pieces near the eye, found again only when it has moved far enough that one could have come in range)
+	if _near_eye == Vector3.INF or _near_eye.distance_squared_to(eye) > NEAR_MARGIN * NEAR_MARGIN:
+		_near_eye = eye
+		_near.clear()
+		for a in _anims:
+			if a[6] == Vector3.INF and (a[0] as Node3D).is_inside_tree():
+				a[6] = (a[0] as Node3D).global_position
+			if (a[6] as Vector3).distance_to(eye) <= RANGE + NEAR_MARGIN:
+				_near.append(a)
+	for a in _near:
+		if (a[6] as Vector3).distance_squared_to(eye) > RANGE * RANGE:
 			continue
+		var piece: Node3D = a[0]
 		var x: float = cur[a[2]]
-		if piece.has_meta("anim_kind"):
-			if piece.get_meta("anim_kind") == "group":
+		if a[7] != "":
+			if a[7] == "group":
 				for ch in a[5]:
 					_kit_move(ch[0], ch[1], x, a[3], dt)
 			else:

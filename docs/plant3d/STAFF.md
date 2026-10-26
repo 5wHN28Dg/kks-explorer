@@ -60,7 +60,7 @@ shows as 23. Tasks' clock minutes are set so a round of 12 readings takes about 
 |---|---|---|---|
 | 05:15–05:45 | night crew on duty; day crew wakes, breakfast | | mess open |
 | 05:40 | bus from the camp gate | | |
-| 05:45–06:00 | handover at each post (slots at `start-0:15`): the control room desk, the field office, the WTP panel (shift log, open permits, alarms, running equipment); the night crew goes off duty at 06:00 | | |
+| 05:45–06:00 | handover at each post (slots at `start-0:15`): the control room desk, the field office, the WTP panel (shift log, open permits, alarms, running equipment); the WTP's people, about 40 minutes' walk from the gate, come in at 05:15 (`start-0:45`) to be there by then; the night crew goes off duty at 06:00 | | |
 | 06:30 | | buses at 06:30 and 06:45 | |
 | 07:00–07:20 | | toolbox talk per discipline (HSE officer visits one); the maintenance supervisors' daily work list | |
 | 07:30 | supervisor at the morning meeting (control building) | managers, maintenance supervisors, HSE, chemist | |

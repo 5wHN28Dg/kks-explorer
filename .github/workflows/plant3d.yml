@@ -49,7 +49,9 @@ concurrency:
 jobs:
   engine-vectors:
     runs-on: ubuntu-26.04
-    timeout-minutes: 30
+    # (every vector through the engine took 23-28 minutes since S3's day and forks, and runs past 30 were stopped,
+    # main's of 2026-10-26 too: a limit for a hang, not a gate on the time)
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # the editor's zip only (no export templates): checked by SHA-512 on every run, cached or not

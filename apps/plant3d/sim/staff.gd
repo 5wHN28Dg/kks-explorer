@@ -518,7 +518,7 @@ static func _enqueue(e, pi: int, inst: Dictionary) -> void:
 
 
 func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count := true, owner = null,
-		act = null) -> bool:
+		act = null, orig = null) -> bool:
 	var c = e.sp_cur[pi]
 	if e.sp_queue[pi].size() + (1 if c != null and not c["idle"] else 0) >= QUEUE_MAX:
 		e._ev(["task", null, tid, "unassigned"])
@@ -528,7 +528,7 @@ func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count 
 		work = t["work"]
 	var inst := {"task": tid, "prio": prio, "made": e.step_no, "order": e.st_order, "step": 0, "st": {},
 			"work": work, "code": code, "alarm": alarm, "src": made_by, "idle": false, "started": false,
-			"int": t.get("interruptible", true), "owner": owner, "act": act}
+			"int": t.get("interruptible", true), "owner": owner, "act": act, "orig": orig}
 	e.st_order += 1
 	_enqueue(e, pi, inst)
 	e.sp_wake[pi] = 0
@@ -540,7 +540,7 @@ func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count 
 
 
 func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, alarm, owner = null,
-		act = null) -> bool:
+		act = null, orig = null) -> bool:
 	var cands := []
 	for r in role_list:
 		for pi in people.size():
@@ -559,12 +559,12 @@ func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, al
 			for pi in cands:
 				for key in e.lockers:
 					if key.x == ii and _has(e.lockers[key], people[pi]["id"]):
-						return give(e, pi, tid, prio, made_by, work, code, alarm, true, owner, act)
+						return give(e, pi, tid, prio, made_by, work, code, alarm, true, owner, act, orig)
 	for pi in cands:
 		var c = e.sp_cur[pi]
 		if c == null or c["idle"] or (c["prio"] > prio and c["int"]):
-			return give(e, pi, tid, prio, made_by, work, code, alarm, true, owner, act)
-	return give(e, cands[0], tid, prio, made_by, work, code, alarm, true, owner, act)
+			return give(e, pi, tid, prio, made_by, work, code, alarm, true, owner, act, orig)
+	return give(e, cands[0], tid, prio, made_by, work, code, alarm, true, owner, act, orig)
 
 
 ## Whether someone has an instance of this task for this work, current or queued (a kept call given again).
@@ -581,13 +581,13 @@ func _given_again(e, tid: String, w) -> bool:
 
 ## assign(), and an offer for a permit's work (pw) that found nobody of its roles on duty is kept, to be made again
 ## when one comes on (§17.10).
-func offer(e, role_list: Array, tid: String, prio: int, src, w, code, alarm, pw, owner = null) -> void:
+func offer(e, role_list: Array, tid: String, prio: int, src, w, code, alarm, pw, owner = null, orig = null) -> void:
 	var nobody := true
 	for pi in people.size():
 		if role_list.has(people[pi]["role"]) and e.sp_on[pi] and not e._absent.has(pi):
 			nobody = false
 			break
-	if not assign(e, role_list, tid, prio, src, w, code, alarm, owner) and nobody \
+	if not assign(e, role_list, tid, prio, src, w, code, alarm, owner, null, orig) and nobody \
 			and typeof(pw) == TYPE_STRING and e.m.work_ix.has(pw) and e.pstate[e.m.work_ix[pw]] >= 1 \
 			and e.pstate[e.m.work_ix[pw]] <= 8:
 		var ident: String = src if src != null else "call|%s|%s|%s" % ["/".join(role_list), tid, str(w)]
@@ -595,6 +595,57 @@ func offer(e, role_list: Array, tid: String, prio: int, src, w, code, alarm, pw,
 			if pd[0] == ident:
 				return
 		e.st_pending.append([ident, src, role_list.duplicate(), tid, prio, w, code, pw, e.pstate[e.m.work_ix[pw]]])
+
+
+## The reaction on a value a job comes from (§17.12): its own source ("ri|value|name"), or the one whose task called
+## it; null for none.
+static func vkey(inst: Dictionary):
+	var s = inst["src"]
+	if typeof(s) == TYPE_STRING:
+		var parts := String(s).split("|", true, 2)      # (as the reference's (reaction, "value", name))
+		if parts.size() == 3 and parts[1] == "value" and parts[0].is_valid_int():
+			return s
+	return inst.get("orig")
+
+
+## A job of a reaction on a value abandoned while the value is still true: the reaction's offer is kept, to be made
+## again when someone of its roles comes on duty (§17.12, as §17.10's offers nobody could take).
+func value_again(e, inst: Dictionary) -> void:
+	var k = vkey(inst)
+	if k == null:
+		return
+	if typeof(k) != TYPE_STRING:
+		return
+	var parts: PackedStringArray = String(k).split("|", true, 2)
+	# (the engine's own keys always pass; a run restored from an edited save may hold anything)
+	if parts.size() != 3 or parts[1] != "value" or not parts[0].is_valid_int() \
+			or parts[0].to_int() < 0 or parts[0].to_int() >= reactions.size() \
+			or reactions[parts[0].to_int()]["on"].get("value") != parts[2] or not e.ix.has(parts[2]):
+		return
+	var v: String = parts[2]
+	if not e.truth(v):
+		return
+	for pd in e.st_pending:
+		if pd[0] == k:
+			return
+	var r: Dictionary = reactions[int(parts[0])]
+	var w = r.get("work")
+	e.st_pending.append([k, k, r["roles"].duplicate(), r["task"],
+			int(r["priority"]) if r.has("priority") else prio_of(r["task"]), w,
+			e.m.works[e.m.work_ix[w]]["kks"] if w != null else null, null, v])
+
+
+## Someone has a job of that reaction on a value (current, queued or held).
+func value_busy(e, k: String) -> bool:
+	for pi in people.size():
+		var all: Array = e.sp_queue[pi] + e.sp_held[pi]
+		if e.sp_cur[pi] != null:
+			all.append(e.sp_cur[pi])
+		for q in all:
+			var vk = vkey(q)
+			if typeof(vk) == TYPE_STRING and vk == k:
+				return true
+	return false
 
 
 func release(e, inst: Dictionary) -> void:
@@ -735,11 +786,12 @@ func step(e) -> void:
 			drop_kept(e, mine, people[e.st_trainee]["id"])
 			keep(e, e.st_trainee, mine, {})
 	else:
+		var absent: Dictionary = e._absent     # (made when the run starts, never changed in a step)
 		for pi in np:
 			if pi == e.st_trainee:
-				if not e._absent.has(pi):
+				if not absent.has(pi):
 					trainee_turn(e, pi, tin)
-			elif n >= e.sp_wake[pi] and not e._absent.has(pi):
+			elif n >= e.sp_wake[pi] and not absent.has(pi):
 				turn(e, pi)
 	# 5. unsafe acts, then the reactions to them
 	var moved := false
@@ -845,6 +897,7 @@ func react(e, n: int) -> void:
 			for inst in gone_q:
 				e._ev(["task", people[pi]["id"], inst["task"], "abandoned"])
 				release(e, inst)
+				value_again(e, inst)
 				e.sp_wake[pi] = 0
 			e.sp_queue[pi] = keep_q
 			e.sp_held[pi] = keep_h
@@ -881,7 +934,19 @@ func react(e, n: int) -> void:
 				came[people[person_ix[x[2]]]["role"]] = true
 		var keep := []
 		for pd in e.st_pending:
-			# [ident, src or null, roles, task, prio, work given, code, permit's work, its state then]
+			# [ident, src or null, roles, task, prio, work given, code, permit's work, its state then]; a job of a
+			# reaction on a value, abandoned: [key, key, roles, task, prio, work, code, null, the value's name], kept
+			# while the value is true, offered again when someone of its roles comes on and nobody has a job of it
+			if pd[7] == null:
+				if not e.truth(pd[8]):
+					continue
+				var came_v := false
+				for ro in pd[2]:
+					if came.has(ro):
+						came_v = true
+				if value_busy(e, pd[0]) or not came_v or not assign(e, pd[2], pd[3], pd[4], pd[1], pd[5], pd[6], null):
+					keep.append(pd)
+				continue
 			if e.pstate[e.m.work_ix[pd[7]]] != pd[8] or (pd[1] != null and e.st_given.has(pd[1])) \
 					or (pd[1] == null and _given_again(e, pd[3], pd[5])):
 				continue            # moved on, or given meanwhile (a call: the same task and work given again)
@@ -1043,6 +1108,8 @@ func finish(e, pi: int, how: String) -> void:
 	release(e, cur)
 	unreserve(e, pi)
 	e.sp_cur[pi] = null
+	if how == "abandoned":
+		value_again(e, cur)
 
 
 func unreserve(e, pi: int) -> void:
@@ -1294,7 +1361,7 @@ func run(e, pi: int, cur: Dictionary):
 		var w = c.get("work", "$")
 		w = cur["work"] if w == "$" else w
 		e._ev(["call", pid, c["role"], c["task"], w, "done"])
-		offer(e, [c["role"]], c["task"], prio_of(c["task"]), null, w, cur["code"], cur["alarm"], w)
+		offer(e, [c["role"]], c["task"], prio_of(c["task"]), null, w, cur["code"], cur["alarm"], w, null, vkey(cur))
 		return "next"
 	if s.has("choose"):
 		var tot := 0
@@ -1465,10 +1532,15 @@ func _act_now(e, pi: int, k: int) -> Array:
 ## and the trainee always): the others' acts stay as they are, as the reference finds them by looking at everyone.
 func act_phase(e, n: int, permit_moved: bool) -> void:
 	var started := []
+	# (the engine's fields read once: neither changes in this loop, and a field of an untyped object is looked up by
+	# name each time it is read)
+	var absent: Dictionary = e._absent
+	var touched: PackedByteArray = e._touched
+	var tr: int = e.st_trainee
 	for pi in people.size():
-		if e._absent.has(pi):
+		if not permit_moved and pi != tr and not touched[pi]:
 			continue
-		if not permit_moved and pi != e.st_trainee and not e._touched[pi]:
+		if absent.has(pi):
 			continue
 		var acts: Array = e.sp_acts[pi]
 		for k in 3:
@@ -1492,17 +1564,21 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 			# step it starts or any later one while it lasts; once per act
 			if acting.is_empty() and not looked:
 				looked = true
+				var acts_now: Array = e.sp_acts
 				for pi in people.size():
-					var aa: Array = e.sp_acts[pi]
+					var aa: Array = acts_now[pi]
 					if aa[0] != null or aa[1] != null or aa[2] != null:
 						acting.append(pi)
+			var all_acts: Array = e.sp_acts
+			var made_all: Dictionary = e.st_made
 			for pi in acting:
+				var aa: Array = all_acts[pi]
 				for k in 3:
-					var a = e.sp_acts[pi][k]
+					var a = aa[k]
 					if a == null or (v != "*" and v != ACT_KINDS[k]):
 						continue
 					var made := Vector4i(ri, pi, k, a[1])      # (not the source key: made every step, it cost)
-					if e.st_made.has(made):
+					if made_all.has(made):
 						continue
 					var obs := observer(e, r["roles"], pi)
 					if obs == -1:
@@ -1546,9 +1622,11 @@ func observer(e, role_list: Array, ai: int) -> int:
 	var zs := zones_of(e, ai)
 	if zs == 0:
 		return -1
+	var on: PackedByteArray = e.sp_on
+	var absent: Dictionary = e._absent
 	for r in role_list:
 		for qi in role_people.get(r, PackedInt32Array()):
-			if e.sp_on[qi] and not e._absent.has(qi) and qi != ai and (zs & zones_of(e, qi)) != 0:
+			if on[qi] and qi != ai and not absent.has(qi) and (zs & zones_of(e, qi)) != 0:
 				return qi
 	return -1
 
@@ -2011,7 +2089,8 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 					var w = c.get("work", "$")
 					w = cur["work"] if w == "$" else w
 					e._ev(["call", pid, c["role"], c["task"], w, "done"])
-					offer(e, [c["role"]], c["task"], prio_of(c["task"]), null, w, cur["code"], cur["alarm"], w)
+					offer(e, [c["role"]], c["task"], prio_of(c["task"]), null, w, cur["code"], cur["alarm"], w, null,
+							vkey(cur))
 					r = "next"
 					break
 		elif s.has("choose"):
