@@ -179,6 +179,8 @@ func refresh() -> void:
 	W.clear(body)
 	var sm = e._sm
 	if sm == null:
+		_radio_labels.clear()           # (no radio in this run: nothing for _radio_lines to fill)
+		_radio_shown = _radio.size()
 		body.add_child(W.label("No crews in this run: the plant as format 1, the trainee alone.", 18, W.DIM))
 		for sid in ui.model.scenarios:
 			if ui.model.scenarios[sid].has("staff"):
@@ -538,11 +540,11 @@ func _radio_log(e, sm) -> void:
 	body.add_child(W.label("Radio", 20, Color(1.0, 0.85, 0.4)))
 	var lines := _radio
 	_radio_labels.clear()
-	_radio_shown = lines.size()
-	for l in lines.slice(maxi(0, lines.size() - RADIO_LINES)):
-		var lab := W.label(l, 16)
+	for k in RADIO_LINES:           # (all of them made now, those with no line yet hidden: _radio_lines fills them)
+		var lab := W.label("", 16)
 		_radio_labels.append(lab)
 		body.add_child(lab)
+	_fill_radio()
 	if e.st_trainee == -1:
 		return
 	var me: Dictionary = sm.people[e.st_trainee]
@@ -567,21 +569,28 @@ func _radio_log(e, sm) -> void:
 		body.add_child(W.label("(no sleeping while a permit is open)", 16, W.DIM))
 
 
-## The radio's last lines written into the labels shown (new messages, nothing else changed): no rebuild of the
-## panel, which loses no focus and makes no new controls (in fast-forward the radio has new lines every refresh).
-## Fewer labels than lines to show (the log was shorter): the panel is built again.
+## The radio's last lines written into its labels (new messages, nothing else changed): no rebuild of the panel,
+## which loses no focus and makes no new controls (in fast-forward the radio has new lines every refresh; building
+## the panel again for each of the first lines cost up to 50 ms on the laptop). Labels gone (the panel built without
+## the radio): the panel is built again.
 func _radio_lines() -> void:
-	var want := mini(_radio.size(), RADIO_LINES)
-	var ok := _radio_labels.size() == want
+	var ok := _radio_labels.size() == RADIO_LINES
 	for lab in _radio_labels:
 		ok = ok and is_instance_valid(lab) and lab.is_inside_tree()
 	if not ok:
 		_sig = ""
 		refresh()
 		return
+	_fill_radio()
+
+
+func _fill_radio() -> void:
 	_radio_shown = _radio.size()
-	for k in want:
-		(_radio_labels[k] as Label).text = _radio[_radio.size() - want + k]
+	var want := mini(_radio.size(), RADIO_LINES)
+	for k in RADIO_LINES:
+		var lab: Label = _radio_labels[k]
+		lab.visible = k < want
+		lab.text = _radio[_radio.size() - want + k] if k < want else ""
 
 
 func _next_shift(e) -> String:
