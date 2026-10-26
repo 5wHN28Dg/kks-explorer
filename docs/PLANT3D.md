@@ -1735,6 +1735,60 @@ Zones, PPE, unsafe acts, the safety walk and stopping work (§16.2, §16.6, §16
   tower fan 4's bearings, CCW pump B's insulation test, the condenser pressure transmitters' calibration, which puts
   a drift right). Every role but the guards' plays.
 
+### 17.12 As built for milestone S3 (2026-10-26)
+
+The water treatment plant's people (docs/plant3d/STAFF.md, WATER-TREATMENT.md §7 "Staff"), in both engines and the
+vectors (§19). What S3 adds to §16–§17:
+- **Reactions by area.** A reaction on an alarm or a trip may name `"areas"` (1–64 area ids of the plant, no repeat;
+  `bad_ref`, `dup_id`; on any other reaction `unknown_key`): it is then made only for the alarms and trips of the model
+  files of those areas (a model file's `area`, §7). So the main control room answers the train's alarms and the WTP
+  operator the WTP's and the intake's, and an RO train's trip is not the train's trip call (the WTP's trips are
+  answered through their alarms, an RO train's trip also by its own reset and flush, and the mixed bed feed pumps'
+  trips on the degassed water tank's low-low level, which have no alarm, by a reaction to the trip).
+- **Findings.** A reaction may be `{"on": {"finding": code or "*"}}` (a code with a `show` binding, `bad_ref`): a
+  `read` event of that code (any, for `"*"`) with the result `out_of_range`, the trainee's as an NPC's (a misreading is
+  no finding). Made at the end of phase 5 (§17.2), after the reactions to unsafe acts, in reaction order, each reading
+  in the order made; given by §17.3; the instance's `"$"` code is the code read, its work the reaction's `work`; its
+  source is the reaction and the code (a second finding of the code while the task it gave is queued or current is
+  skipped, §16.7). The laboratory's silica result that makes the WTP operator regenerate a mixed bed is one.
+- **The gas test** of a `hot` or `confined` work's task (§15.2: a `read` with `"test": "gas"` before its first `work`
+  step) is checked by the validator from S3 (`bad_ref`), when the first confined-space job (a mixed bed's internals)
+  comes to the staff, and the read must give its safe range (`expect`, `missing_key`). The content reads a portable
+  detector's oxygen at the vessel's manhole (`00GCF1nCQ003`, 19.5–23.5 %), then waits a minute for the air to be
+  breathable: a failed test abandons the job before anyone goes in.
+- **The first train's content** (`tools/plant3d/wtp_staff.py`, joined by `train_staff.py`): a WTP operator and a shift
+  chemist in each crew, two chemists on days (STAFF.md §1), after S2's people in the file; the WTP's places measured on
+  the navigation mesh like the train's (its control room with the WTP desk's two places and four lockers, the
+  laboratory, the walk from the train and to the intake); zones over its yards, its hall (hearing protection), the
+  intake's pump house, and the chemical areas (the chemical store, the regenerant tanks and CIP skid: face shield and
+  apron, put on at the WTP's lockers by the tasks that go there); the WTP's handover at its desk and the laboratory;
+  the WTP operator's round twice a shift, four hours apart (fourteen readings over the whole plant, about an hour and a
+  half of the clock: the walks are not compressed); the chemists' samples (the sample panel's SDI, the laboratory's analyses,
+  the mixed beds' silica at the laboratory's action limit of 15 µg/kg, under the analysers' alarm at 20) and the
+  chemical stock and dosing check; a filter's backwash ordered by the shift supervisor when its head loss is due (a
+  value reaction), a mixed bed's regeneration on the laboratory's finding, an RO train's cleaning in place when its
+  normalised flow is down 10 % (a value reaction), an RO trip's reset and flush, a regenerant or coagulant tank refilled from
+  the bulk delivery when a check finds it low (the tanker's unloading is not built, WATER-TREATMENT §9; vehicles are
+  S4's); the train's control room calling the WTP when its demineralised water tank runs low (a value reaction, and
+  a radio request of the control room operator's); the WTP's works under permits, asked for by the WTP operator when
+  a fault makes one (cartridge changes, the RO analysers' calibrations, a mixed bed's internals, an RO train's
+  membranes), its equipment taken out of service and its process points locked by the WTP operator (the other stream
+  put in service first), the electrical points by the electrical authorised person and the instrument points by the
+  I&C technician once they are safe; the I&C maintenance supervisor's week adds the standby RO train's analysers.
+- **The model** (`wtp_model.py`) gains the cartridge changes (`wo_cart_a`, `wo_cart_b`, repairing the clogging under
+  the RO train's isolation), the RO analysers' drifts (trainer's faults) and their calibrations under an isolation of
+  the analyser and the train (its ORP trip and permeate dump read the analyser, whose shown value is held while it
+  is isolated, §15.4: the train is locked out meanwhile), the gas test points, and `show`
+  bindings for the readings the people take (the SDI, the filtered water turbidity, the dosing and regenerant tanks).
+- **Left as they are** (the reviews of S3): the WTP's people walk about half an hour from the gate, so the incoming
+  WTP operator and shift chemist reach their handover after the outgoing one's duty has ended, and the meeting, which
+  counts only people on duty (§17.8), is held alone (the locks are handed over all the same: taking over a lock needs
+  no meeting); a value reaction's job abandoned (a backwash refused, a wait that timed out) is not given again until
+  its value turns false and true again; the gas test point reads a constant (the air of a vessel opened and
+  ventilated for the work).
+- **The scenario `shift_wtp`:** shift_cold with filter 1 nearly due (its head loss reaches 2.2 m at about 06:05) and
+  mixed bed A further used (its silica passes 15 µg/kg at about 06:50, the analyser's alarm at about 08:15).
+
 ## 18. People on screen (the app; not in the vectors)
 
 ### 18.1 Walking
@@ -1972,6 +2026,18 @@ with its expectations (`refused`, `lock_refused`, `permits`, `repaired`, alarms 
 Format 1's file keeps its synthetic parts byte for byte; its `train` and `hot` runs follow the first train's content,
 now version 2: the same inputs and events, every format 1 value the same at every snapshot, with the new values and
 the snapshot keys `permits`, `ptw` and `locked` added. S1 adds the staff's `steps` and `day`.
+
+**Added for milestone S3** (2026-10-26, §17.12): `staff.runs` gains two runs on the synthetic plant with reactions by
+area (an alarm reaction of area a1's given, one of area a2's never, the trip's call limited to a2 not made) and
+findings (each reading of the stopped pump's gauge out of its range given to the supervisor, the code read their
+`"$"`; a `"*"` finding given once while its task lasts; the trainee's reading typed right a finding, a misread one
+not); `staff.reject` gains `areas` and `finding`'s rule breaks and the gas test's (a confined-space work's task
+without one, a hot work's after its first work step). `day` follows the S3 content, and its forks may name their own
+`scenario` (default the day's): on `shift_wtp`, the WTP's day without a trainee (the backwash ordered and run, the
+chemist's finding, the regeneration), the trainee as the WTP operator (the backwash) and as the shift chemist (the
+silica logged, the NPC operator regenerating); on `shift_cold`, the train's call for demineralised water (the tank's
+drain left open), a cartridge change under a permit, an RO trip's reset and flush, RO A's cleaning in place, a mixed
+bed's internals as a confined-space job (its gas test), RO B's ORP analyser calibrated after a drift.
 
 **As built for milestone S1** (2026-10-23, §17.8): `staff` holds a synthetic version 2 plant with a clock at
 `day_scale` 60 and staff (`files`, `counts`): two crews of operators on a rotation, a shift supervisor, an electrical

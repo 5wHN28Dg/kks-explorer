@@ -413,7 +413,7 @@ func _day(d: Dictionary, m) -> void:
 		df = diff(_reads_as(e.events, d["events"]), d["events"], "day events")
 	_result("v2/day (%d steps)" % d["until"], df)
 	for f in d["forks"]:
-		var x = PlantEngine.new(m, d["scenario"])
+		var x = PlantEngine.new(m, f.get("scenario", d["scenario"]))     # (S3's forks run on shift_wtp)
 		var inputs := by_step(f["inputs"])
 		var i := 0
 		_hash_begin("v2/day/" + f["id"], 0)

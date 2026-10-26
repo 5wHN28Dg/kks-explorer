@@ -328,7 +328,11 @@ def treatment_building():
                        child(f'00GCF1{n}CQ002', f'Mixed bed {L} outlet silica', 'local_panel', [1.3, 0.3, 0],
                              {'width': 0.4, 'height': 0.6}, 180),
                        pg(f'00GCF1{n}CP001', f'Mixed bed {L} outlet strainer differential pressure', [0, 2],
-                          [0.9, 0.9, 0.9])]))
+                          [0.9, 0.9, 0.9]),
+                       # beside the side manhole (+x, low on the shell): the gas test point of a confined-space
+                       # entry, where the portable detector's reading is taken (milestone S3)
+                       child(f'00GCF1{n}CQ003', f'Mixed bed {L} manhole gas test point', 'local_panel',
+                             [1.15, 0.55, 0.2], {'width': 0.3, 'height': 0.3}, 270)]))
     eqs.append(eq('00GCP10BB001', 'Regeneration acid tank (hydrochloric acid)', 'chemical_tank', [303.5, 53.3, 0], 0,
                   {'d': 1.4, 'height': 2.2, 'bund': True}, 'side'))
     eqs.append(eq('00GCP20BB001', 'Regeneration caustic tank (sodium hydroxide)', 'chemical_tank', [307.5, 53.3, 0], 0,

@@ -917,6 +917,7 @@ class Model:
         self.states = set()
         self.machine_targets, self.machine_cmds, self.trip_refs = [], [], []
         self.isolations, self.works = [], []     # format 2 (§15)
+        self.area_of = {}                        # ('alarm' or 'trip', id) -> its model file's area (§17.12)
         self.iso_codes, self.work_isos = [], []  # (code, where), (isolation id, where): resolved in finish()
         self.version = 1                         # of the model file being added
 
@@ -958,6 +959,7 @@ class Model:
             self.check_machine(m, f'{rel}: machine {m.get("id", i) if isinstance(m, dict) else i}')
         for i, t in enumerate(lst(d.get('trips', []), f'{rel}.trips', 0, 500)):
             self.check_trip(t, f'{rel}: trip {t.get("id", i) if isinstance(t, dict) else i}')
+            self.area_of[('trip', t['id'])] = aid
         for i, o in enumerate(lst(d.get('ops', []), f'{rel}.ops', 0, 4000)):
             self.check_op(o, f'{rel}: op {i} ({o.get("kks", "?")} {o.get("do", "?")})' if isinstance(o, dict) else rel)
         for i, x in enumerate(lst(d.get('interlocks', []), f'{rel}.interlocks', 0, 1000)):
@@ -974,6 +976,7 @@ class Model:
             self.interlocks.append(x)
         for i, a in enumerate(capped(d.get('alarms', []), f'{rel}.alarms', 'alarms')):
             self.check_alarm(a, f'{rel}: alarm {a.get("id", i) if isinstance(a, dict) else i}')
+            self.area_of[('alarm', a['id'])] = aid
         need(len(self.alarms) <= MAX['alarms'], 'limit', f'{rel}: the joined model has over {MAX["alarms"]} alarms')
         for i, x in enumerate(lst(d.get('bind', []), f'{rel}.bind', 0, 8000)):
             self.check_bind(x, f'{rel}: binding {i}')
@@ -1684,6 +1687,7 @@ class Engine:
         self._step0()
         # format 2's staff (§16–§17): the clock, and the people when the plant has staff and the scenario says so
         self.alarm_of = {a['id']: a for a in m.alarms}
+        self.area_of = m.area_of
         self.show = {}
         for x in m.bind:
             if 'show' in x:

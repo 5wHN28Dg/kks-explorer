@@ -345,6 +345,17 @@ The model is still `tools/plant3d/wtp_model.py`, the procedures `wtp_content.py`
   has `stop_cleaning`); the regenerants' water is not drawn from any tank; the
   pit's discharge does not carry its excess away (it is discharged only near neutral).
 
+## 8d. As built in S3 (its people, 2026-10-26)
+
+The WTP's staff (`tools/plant3d/wtp_staff.py`; PLANT3D.md §17.12, MILESTONES.md S3): a WTP operator and a shift
+chemist per crew, two chemists on days, working it as §7 "Staff" says. The model gains the cartridge changes under the
+RO train's isolation (`wo_cart_a`, `wo_cart_b`), the RO analysers' drifts (40 mV of ORP, 15 µS/cm of permeate
+conductivity: trainer's faults) and their calibrations under an instrument isolation with the train off line (the
+shown value held while isolated), a gas test point at each mixed bed's manhole (`00GCF1nCQ003`, the portable
+detector's oxygen: the confined-space job's air test), and `show` bindings for what the people read (the SDI at the
+sample panel, the filtered water turbidity, the dosing and regenerant tanks' levels). The laboratory's action limit
+for a mixed bed's silica is 15 µg/kg (ours), under the analysers' alarm at 20: the laboratory finds it first.
+
 ## 9. Not built (deliberately)
 
 Ultrafiltration, EDI and a second RO pass (0065); chemical unloading from tankers; the water's real chemistry (no

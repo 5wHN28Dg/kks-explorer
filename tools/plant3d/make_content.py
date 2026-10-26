@@ -107,6 +107,7 @@ def build():
     for s in train_content.scenarios(state_kks):
         files[f'scenarios/{s["id"]}.json'] = s
     files['scenarios/shift_cold.json'] = train_staff.scenario(files['scenarios/cold_iron.json'])
+    files['scenarios/shift_wtp.json'] = train_staff.scenario_wtp(files['scenarios/cold_iron.json'])
     files['staff.json'] = train_staff.staff(models, train_staff.load_layout())
     for p in [train_content.cold_start(), train_content.hot_restart()] + train_content.tours() + \
             wtp_content.procedures() + site_areas.tours():

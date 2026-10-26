@@ -65,6 +65,8 @@ var callable := {}                   # "caller role\nrole\ntask" -> true: the ra
 var react_kind := PackedStringArray()  # per reaction: what it is on
 var value_reactions := PackedInt32Array()   # the reactions on a value
 var act_reactions := PackedInt32Array()     # the reactions on an unsafe act (§16.7)
+var finding_reactions := PackedInt32Array() # the reactions on a reading out of its range (§17.12)
+var value_slot := PackedInt32Array()        # per reaction on a value (value_reactions' order): its engine slot
 var zone_ids: Array = []             # the zones' ids, in file order
 var zone_ix := {}                    # zone id -> its index
 var zone_ppe := PackedInt32Array()   # per zone: the PPE it needs, a bit per item of PPE
@@ -205,6 +207,8 @@ func _build(m, doc: Dictionary) -> void:
 			value_reactions.append(i)
 		elif react_kind[i] == "unsafe":
 			act_reactions.append(i)
+		elif react_kind[i] == "finding":
+			finding_reactions.append(i)
 		elif react_kind[i] == "lock_left":
 			has_left = true
 	messages = doc["messages"]
@@ -279,6 +283,7 @@ static func draw(e, pi: int) -> int:
 # ---------------------------------------------------------------- a run's start
 
 func init_run(e, scen: Dictionary) -> void:
+	_slots(e)               # (filled here, on the engine's own thread, never during a step: clones share them)
 	var x: Dictionary = scen["staff"]
 	var seed: int = x["seed"]
 	e._absent = {}
@@ -744,8 +749,17 @@ func step(e) -> void:
 			moved = true
 			break
 	act_phase(e, n, moved)
-	for i in value_reactions:
-		e.st_vprev[i] = e.truth(reactions[i]["on"]["value"])
+	findings(e, n)
+	_slots(e)
+	for j in value_reactions.size():
+		e.st_vprev[value_reactions[j]] = e.cur[value_slot[j]] >= 0.5
+
+
+## The engine slots of the values reactions are on (every engine of one model has the same).
+func _slots(e) -> void:
+	if value_slot.size() != value_reactions.size():
+		for i in value_reactions:
+			value_slot.append(e.ix[reactions[i]["on"]["value"]])
 
 
 ## Phase 1 (duties, then slots), run only when the clock reaches the next duty boundary, slot or planning day of
@@ -886,13 +900,25 @@ func react(e, n: int) -> void:
 	evs = rel
 	if evs.is_empty() and value_reactions.is_empty() and gone.is_empty():
 		return
-	for ri in reactions.size():
+	# (most steps: only the reactions on a value can be made, looked at alone in reaction order; milestone S3's
+	# value reactions made a pass over every reaction each step cost a third of the staff step)
+	if evs.is_empty() and gone.is_empty():
+		_slots(e)
+		var edge := false       # (a value turning true is rare: most steps end here)
+		for j in value_reactions.size():
+			var pv = e.st_vprev[value_reactions[j]]
+			if e.cur[value_slot[j]] >= 0.5 and typeof(pv) == TYPE_BOOL and not pv:
+				edge = true
+				break
+		if not edge:
+			return
+	var idxs = value_reactions if evs.is_empty() and gone.is_empty() else range(reactions.size())
+	for ri in idxs:
 		var r: Dictionary = reactions[ri]
 		var k: String = react_kind[ri]
 		if evs.is_empty() and k != "value" and k != "lock_left":
 			continue
 		var v = r["on"][k]
-		var prio: int = int(r.get("priority", prio_of(r["task"])))
 		var hits := []          # [source key, work, code, alarm]
 		if k == "value":
 			var now: bool = e.truth(v)
@@ -905,9 +931,10 @@ func react(e, n: int) -> void:
 			for x in evs:
 				if k == "alarm" and x[1] == "alarm" and x[3] == "active_unack":
 					var a: Dictionary = e.m.alarms[e._al_ix[x[2]]]
-					if a["priority"] <= v:
+					if a["priority"] <= v and (not r.has("areas") or r["areas"].has(e.m.alarm_area[x[2]])):
 						hits.append(["alarm|" + x[2], null, a["where"], x[2]])
-				elif k == "trip" and x[1] == "trip" and (v == "*" or v == x[2]):
+				elif k == "trip" and x[1] == "trip" and (v == "*" or v == x[2]) \
+						and (not r.has("areas") or r["areas"].has(e.m.trip_area[x[2]])):
 					hits.append(["trip|" + x[2], null, null, null])
 				elif k == "fault" and x[1] == "fault" and x[2] == v:
 					hits.append(["fault|" + v, null, e.fault_code(v), null])
@@ -915,6 +942,9 @@ func react(e, n: int) -> void:
 					var nw: int = x[6][0] if x[3] == "auto" else PERMIT_TO[x[3]]
 					if STATE_NAMES[nw] == v and (not r.has("work") or r["work"] == x[2]):
 						hits.append(["permit|" + x[2], x[2], e.m.works[e.m.work_ix[x[2]]]["kks"], null])
+		if hits.is_empty():
+			continue
+		var prio: int = int(r["priority"]) if r.has("priority") else prio_of(r["task"])
 		for h in hits:
 			var key: String = str(ri) + "|" + h[0]
 			if e.st_given.has(key):
@@ -1487,6 +1517,28 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 				var key := "%d|unsafe|%s|%s|%d" % [ri, people[sk[0]]["id"], ACT_KINDS[k], n]
 				if (v == "*" or v == ACT_KINDS[k]) and not e.st_given.has(key):
 					assign(e, r["roles"], r["task"], prio, key, null, null, null, null, [sk[0], k, n])
+
+
+## Phase 5's end (§17.12): the readings of this step out of their range given by the reactions on a finding, in
+## reaction order, each reading in the order made; the task's "$" code is the code read.
+func findings(e, n: int) -> void:
+	if finding_reactions.is_empty():
+		return
+	var found := []
+	for k in range(e.ev_mark, e.events.size()):
+		var x: Array = e.events[k]
+		if x[0] == n and x[1] == "read" and x[5] == "out_of_range":
+			found.append(x)
+	if found.is_empty():
+		return
+	for ri in finding_reactions:
+		var r: Dictionary = reactions[ri]
+		var v: String = r["on"]["finding"]
+		var prio: int = int(r.get("priority", prio_of(r["task"])))
+		for x in found:
+			var key := "%d|finding|%s" % [ri, x[3]]
+			if (v == "*" or v == x[3]) and not e.st_given.has(key):
+				assign(e, r["roles"], r["task"], prio, key, r.get("work"), x[3], null)
 
 
 ## Who of the roles sees an act of person ai: on duty, in a zone ai is in now (§16.7); -1 for nobody.

@@ -570,13 +570,22 @@ func at_locker() -> bool:
 	return e._sm != null and e.st_t_at != -1 and e._sm.kind[e.st_t_at] == "locker"
 
 
-## The walker to the first locker of the content's locker room.
+## The walker to the nearest locker (the control building's locker room, or the WTP's lockers for the face shield
+## and apron of chemical work, milestone S3).
 func go_to_locker() -> void:
 	var sm = clock.engine._sm
+	var me: Vector3 = player.global_position
+	var best := -1
+	var bd := INF
 	for i in sm.places.size():
 		if sm.kind[i] == "locker":
-			go_to_place(i)
-			return
+			var at: Array = sm.places[i]["at"]
+			var d: float = me.distance_squared_to(Plant.g(at[0], at[1], at[2]))
+			if d < bd:
+				bd = d
+				best = i
+	if best != -1:
+		go_to_place(best)
 
 
 ## The trainee puts on their role's PPE ("role") or the listed items, or takes everything off ("off"), at a locker:

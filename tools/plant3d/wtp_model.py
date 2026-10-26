@@ -121,6 +121,11 @@ FAULTS = [  # trainer faults (WATER-TREATMENT §7), each repaired at its equipme
     ('mb_a_resin', {'mb_a_resin': 1}, 'Mixed bed A: a broken underdrain lateral leaks resin into the outlet strainer'),
     ('mb_b_resin', {'mb_b_resin': 1}, 'Mixed bed B: a broken underdrain lateral leaks resin into the outlet strainer'),
     ('cip_heater', {'cip_heat_fault': 1}, 'The CIP tank heater\'s thermostat sticks: the solution overheats'),
+    # S3: the analysers' drifts, put right by the I&C technicians' calibrations under a permit
+    ('ro_a_orp_drift', {'ro_a_orp_drift': 40}, 'RO A feed ORP analyser drifts: reads 40 mV high'),
+    ('ro_b_orp_drift', {'ro_b_orp_drift': 40}, 'RO B feed ORP analyser drifts: reads 40 mV high'),
+    ('ro_a_cond_drift', {'ro_a_cond_drift': 15}, 'RO A permeate conductivity analyser drifts: reads 15 µS/cm high'),
+    ('ro_b_cond_drift', {'ro_b_cond_drift': 15}, 'RO B permeate conductivity analyser drifts: reads 15 µS/cm high'),
 ]
 # repaired only by a work under a permit (hands inside the equipment, STAFF.md), not at the equipment
 BY_WORK = {'mb_a_resin', 'mb_b_resin'}
@@ -246,6 +251,14 @@ def wtp():
         m.state(f'ro_{x}_conc_fault', 0, f'00GCB2{n}AA301')
         m.state(f'mb_{x}_fast', 0, f'00GCF1{n}AT001')
         m.state(f'mb_{x}_resin', 0, f'00GCF1{n}AT001')
+        # the RO train's analysers drift (a fault the trainer sets): the I&C technicians' calibration under a permit
+        # puts it back to 0 (milestone S3, WATER-TREATMENT §7 "Staff")
+        m.state(f'ro_{x}_orp_drift', 0, f'00GCB2{n}CQ002', 'mV')
+        m.state(f'ro_{x}_cond_drift', 0, f'00GCB2{n}CQ001', 'µS/cm')
+        m.const(f'mb_{x}_o2', 20.9, '% O₂')         # the air in the vessel, opened and ventilated for a work
+        m.cmp(f'mb_{x}_o2_lo', f'mb_{x}_o2', '>=', 19.5)    # breathable: 19.5–23.5 % oxygen
+        m.cmp(f'mb_{x}_o2_hi', f'mb_{x}_o2', '<=', 23.5)
+        m.AND(f'mb_{x}_air_ok', [f'mb_{x}_o2_lo', f'mb_{x}_o2_hi'])
     drive(m, 'dg', '00GCH10AN001', 1, True)
     # the CIP skid (W3): the tank's sequence writes its fill, drain and chemical; the heater is worked by hand
     for st_, kks in (('cip_fill', '00GCB30BB001'), ('cip_drain', '00GCB30BB001'), ('cip_chem', '00GCB30BB001'),
@@ -548,7 +561,11 @@ def wtp():
         m.cmp(f'{p}_suct_ok', f'{p}_suct', '>=', 1.5)
         m.cmp(f'{p}_suct_low', f'{p}_suct', '<', 1)
         m.AND(f'{p}_suct_ll', [f'{p}_suct_low', f'{p}_hp'])
-        m.lag(f'{p}_orp', 'orp_sp', 20, init=200, unit='mV', kks=f'00GCB2{n}CQ002')
+        # the feed ORP as the water has it, and as its analyser shows it: with the analyser's drift, its last reading
+        # while it is isolated for its calibration (PLANT3D §15.4); the alarms and the trip read the analyser
+        m.lag(f'{p}_orp_m', 'orp_sp', 20, init=200, unit='mV')
+        m.sum(f'{p}_orp_tx', [f'{p}_orp_m', f'{p}_orp_drift'], 'mV')
+        m.hold(f'{p}_orp', f'{p}_orp_tx', f'iso_{p}_orp_complete', 'mV', f'00GCB2{n}CQ002')
         m.cmp(f'{p}_orp_h0', f'{p}_orp', '>', 250)
         m.cmp(f'{p}_orp_hh0', f'{p}_orp', '>', 300)
         m.AND(f'{p}_orp_h', [f'{p}_orp_h0', f'{p}_hp'])
@@ -603,7 +620,9 @@ def wtp():
         m.tab(f'{p}_su_k', f'{p}_su', [[0, 4], [1, 1]])
         m.tab(f'{p}_leak_k', f'{p}_leak', [[0, 1], [1, 5]])
         m.prod(f'{p}_cond_sp', ['feed_cond', f'{p}_pass', f'{p}_su_k', f'{p}_leak_k', f'{p}_dmg_k'])
-        m.lag(f'{p}_cond', f'{p}_cond_sp', 20, init=26.56 if x == 'a' else 102.4, unit='µS/cm', kks=f'00GCB2{n}CQ001')
+        m.lag(f'{p}_cond_m', f'{p}_cond_sp', 20, init=26.56 if x == 'a' else 102.4, unit='µS/cm')
+        m.sum(f'{p}_cond_tx', [f'{p}_cond_m', f'{p}_cond_drift'], 'µS/cm')
+        m.hold(f'{p}_cond', f'{p}_cond_tx', f'iso_{p}_cond_complete', 'µS/cm', f'00GCB2{n}CQ001')
         m.cmp(f'{p}_cond_h0', f'{p}_cond', '>', 50)
         m.AND(f'{p}_cond_h', [f'{p}_cond_h0', f'{p}_is3'])
         m.delay(f'{p}_cond_hd', f'{p}_cond_h', 10)
@@ -1091,6 +1110,19 @@ def wtp():
                                                        'breaker racked out')])
         m.work(f'wo_ro_{x}_membranes', ro, f'RO train {L}: membrane elements replaced', 'mech', 'general',
                f'iso_ro_{x}', f'ro_{x}_cl_damage')
+        # milestone S3: the cartridges changed with the RO train isolated (its high-pressure pump draws through them),
+        # and the train's analysers calibrated with it off line (its ORP trip and its permeate dump read them)
+        m.work(f'wo_cart_{x}', f'00GCB1{n}AT001', f'Cartridge filter {L}: cartridges changed', 'mech', 'general',
+               f'iso_ro_{x}', f'cart_{x}_clog')
+        for a, what, code in (('orp', 'feed ORP analyser', f'00GCB2{n}CQ002'),
+                              ('cond', 'permeate conductivity analyser', f'00GCB2{n}CQ001')):
+            # (the train locked out too: its ORP trip and its permeate dump read the analyser, held while isolated)
+            m.isolation(f'iso_ro_{x}_{a}', f'RO train {L}: its {what}, the train off line',
+                        [(ro, 'process', f'ro_{x}_stopped', 'Train stopped; its start locked out on the WTP desk and '
+                                                            'tagged'),
+                         (code, 'instrument', f'ro_{x}_stopped', 'The analyser\'s sample valve shut and tagged')])
+            m.work(f'wo_ro_{x}_{a}_cal', code, f'RO train {L} {what}: calibration', 'inst', 'general',
+                   f'iso_ro_{x}_{a}', f'ro_{x}_{a}_drift')
     m.start_stop('00GBS20AT001', 'fp', ok=False)
 
     # ---------------------------------------------------------------- alarms (§6)
@@ -1179,8 +1211,18 @@ def wtp():
         m.b(kks=f'00GCB2{n}CQ002', show=f'ro_{x}_orp')
         m.b(kks=f'00GCF1{n}CQ001', show=f'mb_{x}_cond')
         m.b(kks=f'00GCF1{n}CQ002', show=f'mb_{x}_si')
+        # a mixed bed's manhole gas test (a confined-space permit's air test before anyone goes in, PLANT3D §15.2):
+        # the portable detector's oxygen reading, normal air in the vessel ventilated for the work
+        m.b(kks=f'00GCF1{n}CQ003', show=f'mb_{x}_o2')
         m.b(kks=f'00GCL10CL00{n}', show=f'dt_{x}_lvl')
         m.b(kks=f'00GNR10AP00{n}', lamp='running', of=f'nr_{x}_cmd')
+    # what the chemists and the WTP operator read on their rounds and in the laboratory (milestone S3): the SDI at
+    # the sample panel, the filtered water turbidity at the filter bank, the dosing and regenerant tanks' levels
+    m.b(kks='00QUG10', show='sdi')
+    m.b(kks='00GBB10', show='fl_ntu')
+    m.b(kks='00GBN10BB001', show='cg_lvl')
+    m.b(kks='00GCP10BB001', show='gp_hcl_lvl')
+    m.b(kks='00GCP20BB001', show='gp_naoh_lvl')
     m.b(kks='00GCH10AN001', anim='shaft', of='dg_run', scale=25)
     m.b(kks='00GCH10AN001', sound='motor_small', gain={'of': 'dg_run', 'table': [[0, 0], [1, 0.6]]})
     m.b(kks='00GCH10AN001', lamp='running', of='dg_run')

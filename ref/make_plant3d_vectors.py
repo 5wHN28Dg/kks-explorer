@@ -1888,6 +1888,20 @@ def _pl(st, pid):
     return next(p for p in st['places'] if p['id'] == pid)
 
 
+# milestone S3 (§17.12, §15.2)
+REJECTS_STAFF += [
+    ('areas on a value reaction', 'unknown_key', _set(STF + ['reactions', 3, 'areas'], ['a1'])),
+    ('areas naming an area the plant lacks', 'bad_ref', _set(STF + ['reactions', 0, 'areas'], ['a9'])),
+    ('areas empty', 'bad_length', _set(STF + ['reactions', 0, 'areas'], [])),
+    ('an area twice in a reaction\'s areas', 'dup_id', _set(STF + ['reactions', 1, 'areas'], ['a1', 'a1'])),
+    ('a finding on a code without a show binding', 'bad_ref', _app(STF + ['reactions'], {
+        'on': {'finding': TANK}, 'roles': ['ccr_op'], 'task': 'note_valve'})),
+    ('a confined-space work whose task has no gas test', 'bad_ref', _set(WORK + [1, 'permit'], 'confined')),
+    ('a hot work whose gas test comes after its first work step', 'bad_ref', _all(
+        _set(WORK + [1, 'permit'], 'hot'), _app(TASK(32) + ['steps'], {'read': GAUGE, 'expect': [0, 10],
+                                                                        'test': 'gas'}))),
+    ('a gas test without its safe range', 'missing_key', _app(TASK(32) + ['steps'], {'read': GAUGE, 'test': 'gas'})),
+]
 REJECTS_SAFETY = [
     ('a zone that needs no PPE', 'bad_length', _st(lambda st: st['zones'][0].__setitem__('ppe', []))),
     ('a zone\'s PPE item that is not one', 'bad_value', _st(lambda st: st['zones'][0].__setitem__('ppe', ['cape']))),
@@ -2172,6 +2186,29 @@ def handover_staff():
     return st
 
 
+def wtp_staff_mini():
+    """The synthetic staff with milestone S3's reactions (§17.12): the alarm reaction limited to area a1's alarms (the
+    pump's high pressure: given), a second one on area a2's (it has none: never given), the trip's call limited to
+    area a2 (the pump's trip in a1: not called); the round's gauge expected at 1–2 bar, so each reading of a stopped
+    pump is a finding, given to the supervisor (who walks to the gauge, the code read) and, on any finding, to the
+    control room operator once while their task lasts; the gauge's calibration task with a gas test (a read with
+    "test": "gas", allowed in any task)."""
+    st = copy.deepcopy(mini_staff()['staff.json'])
+    R = st['reactions']
+    R[0]['areas'] = ['a1']
+    R[1]['areas'] = ['a2']
+    R.append({'on': {'alarm': 2}, 'areas': ['a2'], 'roles': ['field_op'], 'task': 'check_pump'})
+    R.append({'on': {'finding': GAUGE}, 'roles': ['shift_sup'], 'task': 'note_finding'})
+    R.append({'on': {'finding': '*'}, 'roles': ['ccr_op'], 'task': 'note_valve', 'priority': 2})
+    st['tasks'].append({'id': 'note_finding', 'title': 'Look at the gauge the round found out of range',
+                        'steps': [{'go': {'kks': '$'}}, {'work': 2}], 'priority': 2})
+    T = {t['id']: t for t in st['tasks']}
+    T['round']['steps'][1]['expect'] = [1, 2]
+    T['cal_gauge']['steps'] = [{'go': {'kks': GAUGE}}, {'read': GAUGE, 'expect': [0, 10], 'tol': 0.1, 'test': 'gas'},
+                               {'work': 5}]
+    return st
+
+
 def overnight_staff():
     """The handover staff with an instrument technician on days (§17.10): the gauge's calibration permit raised by
     inputs, isolated by the technician's own lock, issued by the supervisor, and a two-hour job that resumes at their
@@ -2385,6 +2422,7 @@ def staff_runs():
     late['people'].append({'id': 'n_sup', 'role': 'shift_sup', 'roster': 'late', 'call': 'Relief super'})
     at5 = {'start': {'day': 1, 'time': '17:00'}}
     safety = safety_staff()
+    wtp = wtp_staff_mini()
     extra_person = copy.deepcopy(mini_staff()['staff.json'])
     extra_person['people'].append({'id': 'a_fo3', 'role': 'field_op', 'roster': 'shift', 'crew': 'a',
                                    'call': 'Field 3 A'})
@@ -2552,6 +2590,14 @@ def staff_runs():
                         [1700, 'ppe', 'helmet', 0]]), 2600, 20),
         ('a Tuesday (day 2) from 08:30: the HSE officer\'s Tuesday walk is made, Monday\'s are not',
          {'start': {'day': 2, 'time': '08:30'}}, safety, Trainee(), 400, 20),
+        # milestone S3 (§17.12): reactions by area, and findings
+        ('reactions by area and findings, no trainee: the pump started from the screen trips; its alarm (area a1) '
+         'answered by the control room, the reaction on area a2\'s alarms never given, the trip not called (its '
+         'reaction is on area a2\'s trips); every round reading of the stopped pump\'s gauge out of its range: the '
+         'supervisor given the look at the code read, again only once the first look is over, and the control room '
+         'operator given its note once while it lasts', {}, wtp, Trainee(), 2400, 20),
+        ('findings with the trainee as field operator 1 of crew A: a reading typed right but out of its range given '
+         'to the supervisor, a misread one not', {'trainee': 'a_fo1'}, wtp, Trainee(wrong=(1,)), 2400, 20),
     ]
 
 
@@ -2618,6 +2664,54 @@ def day_forks():
          {'trainee': 'hse2', 'events': [['stop', 'hse2', 'con5', 'unsafe', 'wo_paint_cw', 'done']]}),
         ('trainee_contractor', Trainee(pick=1, extra=[[1, 'role', 'con6']]), 33000,
          {'trainee': 'con6', 'events': [['unsafe', 'con6', 'unsafe', 'wo_paint_cw'], ['stop', None, 'con6', 'unsafe']]}),
+        # milestone S3: the water treatment plant's people. On shift_wtp (filter 1 due at about 06:05, mixed bed A's
+        # silica over the laboratory's limit from about 06:50): the shift supervisor orders the backwash and the WTP
+        # operator runs it; the shift chemist's sample finds the silica and the WTP operator regenerates the bed; the
+        # same with the trainee as the WTP operator and as the shift chemist
+        ('wtp_npc', Trainee(), 40000,
+         {'events': [['task', 'a_sup', 'order_backwash_1', 'start'], ['call', 'a_sup', 'wtp_op', 'backwash_1'],
+                     ['op', '00GBB11AT001', 'backwash', 'done', [], 'screen', 'a_wtp'],
+                     ['task', 'a_wtp', 'backwash_1', 'done'],
+                     ['read', 'a_chem', '00GCF11CQ002', None, 'out_of_range'],
+                     ['op', '00GCF11AT001', 'regenerate', 'done', [], 'screen', 'a_wtp'],
+                     ['task', 'a_wtp', 'mb_regen_a', 'done']]}, 'shift_wtp'),
+        ('trainee_wtp', Trainee(extra=[[1, 'role', 'a_wtp']]), 12000,
+         {'trainee': 'a_wtp', 'events': [['call', 'a_sup', 'wtp_op', 'backwash_1'],
+                                         ['op', '00GBB11AT001', 'backwash', 'done', [], 'screen', 'a_wtp'],
+                                         ['task', 'a_wtp', 'backwash_1', 'done']]}, 'shift_wtp'),
+        ('trainee_chem', Trainee(extra=[[1, 'role', 'a_chem']]), 20000,
+         {'trainee': 'a_chem', 'events': [['read', 'a_chem', '00GCF11CQ002', None, 'out_of_range'],
+                                          ['task', 'a_wtp', 'mb_regen_a', 'start'],
+                                          ['op', '00GCF11AT001', 'regenerate', 'done', [], 'screen', 'a_wtp']]},
+         'shift_wtp'),
+        # on shift_cold: the train's call when its demineralised water tank runs low (its drain left open), the WTP's
+        # cartridge change under a permit (the RO train changed over and isolated by the WTP operator), an RO trip's
+        # flush (the bisulphite pump failed: chlorine on the RO feed)
+        ('demin_call', Trainee(extra=[[3000, 'fault', 'dm_drain']]), 28000,
+         {'events': [['task', None, 'call_wtp_demin', 'start'], ['call', None, 'wtp_op', 'demin_transfer'],
+                     ['op', '00GHC10AP002', 'start', 'done', [], 'screen', 'a_wtp']]}),
+        ('wtp_cartridge', Trainee(extra=[[3000, 'fault', 'cart_a_clog']]), 45000,
+         {'permits': {'wo_cart_a': 9}, 'repaired': ['cart_a_clog'],
+          'events': [['permit', 'wo_cart_a', 'request', 'a_wtp', 'done'], ['lock', 'wo_cart_a', 0, 'a_wtp', 'done'],
+                     ['unlock', 'wo_cart_a', 0, 'a_wtp', 'done']]}),
+        ('ro_trip', Trainee(extra=[[3000, 'fault', 'sbs_pump']]), 15000,
+         {'events': [['trip', 'ro_a_trip_orp'], ['task', 'a_wtp', 'ro_trip_a_orp', 'start'],
+                     ['op', '00GCB21CQ002', 'reset', 'done'], ['op', '00GCB21AT001', 'flush', 'done'],
+                     ['task', 'a_wtp', 'ro_trip_a_orp', 'done']]}),
+        # the RO's cleaning in place when RO A fouls fast (the other train started, A cleaned with the chemical PPE
+        # on at the CIP skid), a mixed bed's internals as a confined-space job (the beds changed over, the bed and its
+        # feed pump locked, the gas test, the work), RO B's ORP analyser calibrated after a drift (the train and the
+        # analyser locked by the WTP operator and the I&C technician)
+        ('wtp_cip', Trainee(extra=[[3000, 'fault', 'ro_a_fouling']]), 75000,
+         {'events': [['task', 'a_wtp', 'cip_ro_a', 'start'], ['op', '00GCB30BB001', 'add_caustic', 'done'],
+                     ['op', '00GCB21AT001', 'clean', 'done']]}),
+        ('wtp_resin', Trainee(extra=[[3000, 'fault', 'mb_a_resin']]), 45000,
+         {'permits': {'wo_mb_a_resin': 9}, 'repaired': ['mb_a_resin'],
+          'events': [['read', None, '00GCF11CQ003', None, 'ok'], ['lock', 'wo_mb_a_resin', 0, 'a_eap', 'done'],
+                     ['lock', 'wo_mb_a_resin', 1, 'a_wtp', 'done']]}),
+        ('wtp_orp_cal', Trainee(extra=[[3000, 'fault', 'ro_b_orp_drift']]), 40000,
+         {'permits': {'wo_ro_b_orp_cal': 9}, 'repaired': ['ro_b_orp_drift'], 'end': {'ro_b_orp_drift': 0},
+          'events': [['lock', 'wo_ro_b_orp_cal', 0, 'a_wtp', 'done'], ['lock', 'wo_ro_b_orp_cal', 1, None, 'done']]}),
     ]
 
 
@@ -2627,7 +2721,7 @@ def day_bundle():
 
 def build_day(b=None):
     b = b or day_bundle()
-    sid = next(k for k, v in b.scenarios.items() if 'staff' in v)
+    sid = 'shift_cold'
     e = P.Recorder(b, sid)
     snaps = [e.snapshot(values=False)]
     while e.step_no < DAY_STEPS:
@@ -2635,15 +2729,16 @@ def build_day(b=None):
         if e.step_no % DAY_EVERY == 0:
             snaps.append(e.snapshot(values=False))
     forks = []
-    for fid, player, until, expect in day_forks():
-        f = P.Recorder(b, sid)
+    for fid, player, until, expect, *scen in day_forks():
+        f = P.Recorder(b, scen[0] if scen else sid)
         n0 = 0
         while f.step_no < until:
             player(f)
             f.step()
-        forks.append({'id': fid, 'inputs': f.inputs, 'until': until, 'events': f.events[n0:],
-                      'end': f.snapshot(values=False), 'expect': expect,
-                      'values': {k: f.v(k) for k in sorted(expect.get('end', {}))}})
+        forks.append(dict({'id': fid, 'inputs': f.inputs, 'until': until, 'events': f.events[n0:],
+                           'end': f.snapshot(values=False), 'expect': expect,
+                           'values': {k: f.v(k) for k in sorted(expect.get('end', {}))}},
+                          **({'scenario': scen[0]} if scen else {})))
     return {'scenario': sid, 'until': DAY_STEPS, 'every': DAY_EVERY, 'events': e.events, 'states': snaps,
             'forks': forks}
 
