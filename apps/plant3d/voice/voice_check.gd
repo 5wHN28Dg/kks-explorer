@@ -128,19 +128,21 @@ static func compare(a: PackedVector2Array, b: PackedVector2Array, max_delay: int
 	var n := mini(a.size(), b.size()) - max_delay
 	if n <= 0:
 		return {"delay": -1, "level_db": -INF, "snr_db": -INF}
-	# the delay by cross-correlation on every other sample (cheap, enough to find the peak), then refined
+	# the delay by cross-correlation over 4,000 points spread along the signal (enough to find the peak, cheap in
+	# GDScript), every other delay first, then refined
+	var stride := maxi(1, n / 4000)
 	var best := 0
 	var best_c := -INF
 	for d in range(0, max_delay, 2):
 		var c := 0.0
-		for i in range(0, n, 4):
+		for i in range(0, n, stride):
 			c += a[i].x * b[i + d].x
 		if c > best_c:
 			best_c = c
 			best = d
-	for d in range(maxi(0, best - 2), mini(max_delay, best + 3)):
+	for d in range(maxi(0, best - 1), mini(max_delay, best + 2)):
 		var c := 0.0
-		for i in range(0, n, 4):
+		for i in range(0, n, stride):
 			c += a[i].x * b[i + d].x
 		if c > best_c:
 			best_c = c

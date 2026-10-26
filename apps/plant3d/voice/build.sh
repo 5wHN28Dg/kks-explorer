@@ -69,11 +69,13 @@ build_one() { # target dir_for_the_library
       if [ -n "${WDP_LINUX_HOST:-}" ]; then
         configure_build "$t" "$b" "$o" -DWDP_SUFFIX=linux.x86_64
       else
-        flatpak info --user "$SDK_REF" >/dev/null 2>&1 || flatpak info --system "$SDK_REF" >/dev/null 2>&1 ||
-          { echo "the Linux build needs $SDK_REF (flatpak install flathub $SDK_REF), or WDP_LINUX_HOST=1 for a local check" >&2; exit 2; }
+        # the user's installation first, else the system's (naming one: with both, flatpak run would ask)
+        if flatpak info --user "$SDK_REF" >/dev/null 2>&1; then INST=--user
+        elif flatpak info --system "$SDK_REF" >/dev/null 2>&1; then INST=--system
+        else echo "the Linux build needs $SDK_REF (flatpak install flathub $SDK_REF), or WDP_LINUX_HOST=1 for a local check" >&2; exit 2; fi
         rm -rf "$b"; mkdir -p "$b" "$o"
         # the SDK sees only the sources, this folder and the output (nothing else of the home folder), no network
-        flatpak run --die-with-parent --unshare=network --filesystem="$WORK" --filesystem="$HERE" --filesystem="$o" \
+        flatpak run "$INST" --die-with-parent --unshare=network --filesystem="$WORK" --filesystem="$HERE" --filesystem="$o" \
           --env=SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" --command=sh "$SDK_REF" -c '
             set -e
             cmake -S "$1" -B "$2" -G Ninja -DCMAKE_BUILD_TYPE=Release -DWDP_SRC="$3" -DWDP_OUT="$4" -DWDP_SUFFIX=linux.x86_64
@@ -119,7 +121,7 @@ toolchain_of() { # target -> one line naming the toolchain
   case "$1" in
     linux-x86_64)
       if [ -n "${WDP_LINUX_HOST:-}" ]; then echo "host $(gcc --version | head -1) (not for release)"
-      else echo "$SDK_REF $(flatpak info "$SDK_REF" 2>/dev/null | sed -n 's/^ *Version: //p' | head -1) commit $(flatpak info "$SDK_REF" 2>/dev/null | sed -n 's/^ *Commit: //p' | head -1)"; fi ;;
+      else echo "$SDK_REF $(flatpak info "$INST" "$SDK_REF" 2>/dev/null | sed -n 's/^ *Version: //p' | head -1) commit $(flatpak info "$INST" "$SDK_REF" 2>/dev/null | sed -n 's/^ *Commit: //p' | head -1)"; fi ;;
     android-arm64) echo "NDK $(sed -n 's/^Pkg.Revision *= *//p' "$NDK/source.properties")" ;;
     windows-*) echo "llvm-mingw $(cat "$DEV/llvm-mingw/VERSION.kks")" ;;
   esac

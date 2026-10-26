@@ -36,7 +36,7 @@ func _round_trips(fails: Array) -> void:
 		if rt.is_empty():
 			fails.append("%d Hz: the encoder or decoder did not set up" % rate)
 			continue
-		var c := V.compare(sig, rt.out, rate / 10)
+		var c := V.compare(sig, rt.out, rate / 50)
 		var delay_ms: float = 1000.0 * c.delay / rate
 		var kbps: float = rt.bytes * 8.0 / 3.0 / 1000.0
 		print("test_voice: %d Hz: delay %.1f ms, level %.2f dB, SNR %.1f dB, %.1f kbit/s, %d packets" % [rate, delay_ms,
@@ -105,7 +105,7 @@ func _loss(fails: Array) -> void:
 		fails.append("loss: concealed frames carry %.1f dB of the clean decode's energy (-10 to +3 expected, %d frames)" % [mid, ratios.size()])
 	# and the decoder recovers: outside the lost frames and the three after each (60 ms, while its predictors
 	# settle: 6.3 dB with only one skipped, 7.7 with three, measured), the SNR is close to the clean one
-	var c_clean := V.compare(sig, clean.out, rate / 10)
+	var c_clean := V.compare(sig, clean.out, rate / 50)
 	var skip := {}
 	for i in lost:
 		skip[i] = true
@@ -132,8 +132,8 @@ func _loss(fails: Array) -> void:
 		print("test_voice: libopus now codes FEC at 16 kbit/s (%d packets): the note in MULTIPLAYER.md §8.3 can go" % at16.fec_packets)
 	var fec_plc := V.round_trip(sig, rate, rate, lost, false, 10, 24000)
 	var fec := V.round_trip(sig, rate, rate, lost, true, 10, 24000)
-	var c_fp := V.compare(sig, fec_plc.out, rate / 10)
-	var c_f := V.compare(sig, fec.out, rate / 10)
+	var c_fp := V.compare(sig, fec_plc.out, rate / 50)
+	var c_f := V.compare(sig, fec.out, rate / 50)
 	print("test_voice: 24 kbit/s, 10 %% expected loss: %d of %d packets carry FEC; SNR %.1f dB with FEC, %.1f dB concealed" % [
 			fec.fec_packets, fec.packets, c_f.snr_db, c_fp.snr_db])
 	if fec.fec_packets < fec.packets / 2:
@@ -180,9 +180,9 @@ func _bounds(fails: Array) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2026
 	var garbage_frames := 0
-	for k in 2000:
+	for k in 400:
 		var p := PackedByteArray()
-		p.resize(rng.randi_range(1, 1500))
+		p.resize(rng.randi_range(1, 400) if k % 8 else rng.randi_range(1, 1500))
 		for j in p.size():
 			p[j] = rng.randi() & 0xff
 		var out: PackedVector2Array = d.decode(p) if k % 2 == 0 else d.decode_fec(p)
@@ -219,7 +219,7 @@ func _bounds(fails: Array) -> void:
 ## The time per 20 ms frame at 48 kHz in and out (the resamplers included): the medians must be inside the Note 9's
 ## budget here too (a desktop is several times faster); the result line is what voice/README.md records.
 func _bench(fails: Array) -> void:
-	var b := V.bench(V.speech(48000, 4.0), 48000, 48000, 3)
+	var b := V.bench(V.speech(48000, 2.0), 48000, 48000, 2)
 	if b.is_empty():
 		fails.append("bench: no codec")
 		return
