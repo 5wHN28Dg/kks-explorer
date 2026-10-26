@@ -461,7 +461,7 @@ func _start_walk() -> void:
 		if opts.has("shadow_ab"):   # each group of shadow casters' GPU cost, switched in turn (app/shadow_ab.gd)
 			var ab := preload("res://app/shadow_ab.gd").new()
 			ab.name = "shadow_ab"
-			ab.setup(String(opts.shadow_ab), [plant, people])
+			ab.setup(String(opts.shadow_ab), [plant, people], sun)
 			add_child(ab)
 			frame_probe.counters["shadow_ab"] = func(): return ab.switches
 	if opts.walk == "screens":
