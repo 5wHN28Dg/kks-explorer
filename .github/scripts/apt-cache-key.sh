@@ -13,6 +13,7 @@ declare -A used=()
 if [ -f "$DIR/.used" ]; then
   while IFS= read -r f; do [ -n "$f" ] && used[$f]=1; done < "$DIR/.used"
 fi
+chmod -R u+w "$DIR" 2>/dev/null || true
 shopt -s nullglob dotglob
 for p in "$DIR"/*; do
   f=${p##*/}

@@ -105,14 +105,14 @@ jobs:
           key: mupdf-${{ env.IMAGE }}-${{ hashFiles('importer/fetch_mupdf.sh') }}
       - uses: ./.github/actions/apt-cache   # the job's Ubuntu archives from earlier runs (checked by SHA-256 when used)
         id: apt-cache
-        with: {name: importer, mode: restore}
+        with: {name: apt-nim, mode: restore}   # the same packages ($APT_NIM) in importer, linux-build and server-http: one cache
       - name: Libraries, MuPDF
         run: |
           .github/scripts/apt-install.sh $APT_NIM
           [ -f ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
       - uses: ./.github/actions/apt-cache   # what this run checked and used, for the next (also after a failure)
         if: always() && steps.apt-cache.outcome == 'success'
-        with: {name: importer, mode: save}
+        with: {name: apt-nim, mode: save}
       - name: The importer's tests
         working-directory: importer
         run: |
@@ -135,14 +135,14 @@ jobs:
           key: mupdf-${{ env.IMAGE }}-${{ hashFiles('importer/fetch_mupdf.sh') }}
       - uses: ./.github/actions/apt-cache   # the job's Ubuntu archives from earlier runs (checked by SHA-256 when used)
         id: apt-cache
-        with: {name: linux-build, mode: restore}
+        with: {name: apt-nim, mode: restore}   # the same packages ($APT_NIM) in importer, linux-build and server-http: one cache
       - name: Libraries, MuPDF
         run: |
           .github/scripts/apt-install.sh $APT_NIM
           [ -f ~/.local/kksdev/src/mupdf-1.28.5-source/build/release/libmupdf.a ] || sh importer/fetch_mupdf.sh >/dev/null
       - uses: ./.github/actions/apt-cache   # what this run checked and used, for the next (also after a failure)
         if: always() && steps.apt-cache.outcome == 'success'
-        with: {name: linux-build, mode: save}
+        with: {name: apt-nim, mode: save}
       - name: kks_server and kks_import
         run: |
           (cd platform/linux && nim c -d:release -o:/tmp/kkslinux/kks_server kks_server.nim)
@@ -165,7 +165,7 @@ jobs:
           name: linux-bin
       - uses: ./.github/actions/apt-cache   # the job's Ubuntu archives from earlier runs (checked by SHA-256 when used)
         id: apt-cache
-        with: {name: server-http, mode: restore}
+        with: {name: apt-nim, mode: restore}   # the same packages ($APT_NIM) in importer, linux-build and server-http: one cache
       - name: Binaries and their libraries
         run: |
           tar xf linux-bin.tar -C /tmp
@@ -173,7 +173,7 @@ jobs:
           test -x /tmp/kkslinux/kks_server && test -x /tmp/kksimp/kks_import   # else the Drawings tests would skip
       - uses: ./.github/actions/apt-cache   # what this run checked and used, for the next (also after a failure)
         if: always() && steps.apt-cache.outcome == 'success'
-        with: {name: server-http, mode: save}
+        with: {name: apt-nim, mode: save}
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/pip

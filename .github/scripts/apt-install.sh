@@ -146,6 +146,7 @@ store_cache() {
   for e in "${NEED[@]}"; do
     f=${e%% *}; h=${e#* }
     if [ ! -f "$DEB_CACHE/$f" ] && [ -f "$ARCHIVES/$f" ] && [ "$(sha_of "$ARCHIVES/$f")" = "$h" ]; then
+      rm -rf "$DEB_CACHE/$f.part"   # (never written through: a .part could be a link)
       cp "$ARCHIVES/$f" "$DEB_CACHE/$f.part" && mv "$DEB_CACHE/$f.part" "$DEB_CACHE/$f"
       echo "$f" >> "$DEB_CACHE/.used"
       added=$((added + 1))

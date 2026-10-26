@@ -2,8 +2,9 @@
 # or failing mirror (2026-10-26: Azure's at 10 to 60 kB/s) is met only when packages change. Used twice in a job:
 # `mode: restore` before its first apt-install.sh (sets APT_DEB_CACHE for the job's later steps), `mode: save` after
 # its last, with `if: always() && steps.<restore step>.outcome == 'success'`, so that a failed or cancelled run still
-# keeps what it got. Nothing from the cache is trusted: apt-install.sh copies a cached archive in only when its SHA-256
-# is the one the signed package lists give (and deletes it otherwise), and only archives it checked are saved
+# keeps what it got (on main; a pull request saves only when it found no cache at all). Nothing from the cache is
+# trusted: only its regular *.deb files are kept, and apt-install.sh copies one in only when its SHA-256 is the one
+# the signed package lists give (and deletes it otherwise), and only archives it checked are saved
 # (.github/scripts/apt-cache-key.sh). The key is the cache's name, the Ubuntu release, the machine and the hash of
 # the archives' names and SHA-256: saved again only when they change; restored by the newest with the same name.
 name: apt archive cache
@@ -42,8 +43,11 @@ runs:
         DIR: ${{ steps.where.outputs.dir }}
         MATCHED: ${{ steps.restore.outputs.cache-matched-key }}
       run: |
+        # only regular *.deb files are taken from a restored cache (each is still checked by SHA-256 before use):
+        # anything else (a .used or .part from elsewhere, links, folders) is removed first
         mkdir -p "$DIR"
-        rm -f "$DIR/.used"
+        chmod -R u+w "$DIR"
+        find "$DIR" -mindepth 1 -maxdepth 1 \( ! -type f -o ! -name '*.deb' \) -exec rm -rf {} +
         echo "APT_DEB_CACHE=$DIR" >> "$GITHUB_ENV"
         echo "APT_DEB_CACHE_RESTORED=$MATCHED" >> "$GITHUB_ENV"
         n=$(find "$DIR" -maxdepth 1 -name '*.deb' | wc -l)
@@ -60,6 +64,10 @@ runs:
           echo "apt cache: nothing checked to save"
         elif [ "$PREFIX$h" = "${APT_DEB_CACHE_RESTORED:-}" ]; then
           echo "apt cache: unchanged ($PREFIX$h), not saved again"
+        elif [ "$GITHUB_EVENT_NAME" = pull_request ] && [ -n "${APT_DEB_CACHE_RESTORED:-}" ]; then
+          # a pull request's caches serve only that pull request: it saves one only when there was none to start
+          # from, and main's runs keep the shared ones current (the repository's cache space is full)
+          echo "apt cache: changed, but a pull request with a cache to start from does not save another"
         else
           echo "apt cache: saving $(find "$DIR" -maxdepth 1 -name '*.deb' | wc -l) archive(s), $(du -sh "$DIR" | cut -f1), as $PREFIX$h"
           echo "key=$PREFIX$h" >> "$GITHUB_OUTPUT"

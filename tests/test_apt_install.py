@@ -397,6 +397,93 @@ class AptInstall(unittest.TestCase):
         os.makedirs(self.cache)
         self.assertEqual(self.key(), '')
 
+    def action_step(self, marker, env):
+        """runs the apt-cache action's step that contains `marker` as the runner would (bash -e), with `env`; returns
+        the result and what it wrote to $GITHUB_OUTPUT and $GITHUB_ENV"""
+        with open(os.path.join(REPO, '.github', 'actions', 'apt-cache', 'action.yml'), encoding='utf-8') as f:
+            action = f.read()
+        steps = action.split('\n    - ')
+        step = next(st for st in steps if marker in st)
+        script = textwrap.dedent(step[step.index('      run: |\n') + len('      run: |\n'):])
+        out, genv = os.path.join(self.dir, 'gh-out'), os.path.join(self.dir, 'gh-env')
+        for p in (out, genv):
+            open(p, 'w').close()
+        e = dict(os.environ, GITHUB_OUTPUT=out, GITHUB_ENV=genv, HOME=self.dir,
+                 GITHUB_ACTION_PATH=os.path.join(REPO, '.github', 'actions', 'apt-cache'), **env)
+        r = subprocess.run(['bash', '-e', '-c', script], env=e, capture_output=True, text=True, timeout=30)
+        res = {}
+        for p in (out, genv):
+            with open(p) as f:
+                res.update(l.split('=', 1) for l in f.read().splitlines() if '=' in l)
+        return r, step, res
+
+    def poisoned_cache(self):
+        d = os.path.join(self.dir, '.cache', 'apt-debs')
+        os.makedirs(os.path.join(d, '.used'))                 # a folder where a list was
+        os.makedirs(os.path.join(d, 'ro'))
+        os.chmod(os.path.join(d, 'ro'), 0o555)                # a folder that cannot simply be emptied
+        victim = os.path.join(self.dir, 'victim')
+        with open(victim, 'w') as f:
+            f.write('mine')
+        os.symlink(victim, os.path.join(d, 'ffmpeg_1.deb.part'))   # a link where a download is written
+        os.symlink(victim, os.path.join(d, 'libx_2.deb'))
+        with open(os.path.join(d, 'ok_1.deb'), 'w') as f:
+            f.write('x')
+        return d, victim
+
+    def test_a_restored_cache_keeps_only_its_regular_archives(self):
+        d, victim = self.poisoned_cache()
+        r, _, res = self.action_step('steps.restore.outputs.cache-matched-key',
+                                     {'DIR': os.path.join(self.dir, '.cache', 'apt-debs'), 'MATCHED': 'apt-debs-x-'})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(os.listdir(d), ['ok_1.deb'])
+        with open(victim) as f:
+            self.assertEqual(f.read(), 'mine')
+        self.assertEqual(res['APT_DEB_CACHE'], d)
+        self.assertIn('apt-debs-x-: 1 archive(s)', r.stdout)
+
+    def test_a_download_is_never_written_through_a_link_in_the_cache(self):
+        pool = self.debs('pool', ffmpeg__1=b'ff1')
+        self.cache_setup(pool)
+        os.makedirs(self.cache)
+        victim = os.path.join(self.dir, 'victim')
+        with open(victim, 'w') as f:
+            f.write('mine')
+        os.symlink(victim, os.path.join(self.cache, 'ffmpeg_1.deb.part'))
+        r, _, _ = self.run_script(0, 'ffmpeg')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(victim) as f:
+            self.assertEqual(f.read(), 'mine')
+        self.assertFalse(os.path.islink(os.path.join(self.cache, 'ffmpeg_1.deb')))
+
+    def test_the_key_script_empties_a_folder_it_cannot_write(self):
+        self.cache = os.path.join(self.dir, 'c')
+        os.makedirs(os.path.join(self.cache, 'ro'))
+        open(os.path.join(self.cache, 'ro', 'x.deb'), 'w').close()
+        os.chmod(os.path.join(self.cache, 'ro'), 0o555)
+        self.assertEqual(self.key(), '')
+        self.assertEqual(os.listdir(self.cache), [])
+
+    def save_key(self, event, restored, contents=b'ff1'):
+        d = os.path.join(self.dir, '.cache', 'apt-debs')
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, 'ffmpeg_1.deb'), 'wb') as f:
+            f.write(contents)
+        with open(os.path.join(d, '.used'), 'w') as f:
+            f.write('ffmpeg_1.deb\n')
+        r, _, res = self.action_step('id: key', {'DIR': d, 'PREFIX': 'apt-debs-u-x-core-', 'GITHUB_EVENT_NAME': event,
+                                                 'APT_DEB_CACHE_RESTORED': restored})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return res.get('key', '')
+
+    def test_when_the_cache_is_saved(self):
+        self.assertRegex(self.save_key('push', ''), r'^apt-debs-u-x-core-[0-9a-f]{32}$')            # main, new
+        self.assertRegex(self.save_key('push', 'apt-debs-u-x-core-old'), r'-[0-9a-f]{32}$')          # main, changed
+        self.assertRegex(self.save_key('pull_request', ''), r'-[0-9a-f]{32}$')   # a pull request with nothing to start from
+        self.assertEqual(self.save_key('pull_request', 'apt-debs-u-x-core-old'), '')   # a pull request's changes: not saved
+        same = self.save_key('push', '')
+        self.assertEqual(self.save_key('push', same), '')                                            # unchanged
+
     def test_the_cache_name_reaches_the_key(self):
         """the action's first step, run as on a runner: each job's name is in its cache key (os-release's NAME, read
         in the same shell, once made every job's prefix end in -Ubuntu-, one cache for all)"""
@@ -478,7 +565,7 @@ class AptInstall(unittest.TestCase):
                 self.assertLess(text.index('steps.voice-src.outputs.key'), text.index('WDP_JOBS=4'))   # before the build
 
     def test_every_job_that_installs_packages_restores_and_saves_the_cache(self):
-        n = 0
+        n, names = 0, {}
         for wf in sorted(os.listdir(WORKFLOWS)):
             with open(os.path.join(WORKFLOWS, wf), encoding='utf-8') as f:
                 text = f.read()
@@ -498,7 +585,13 @@ class AptInstall(unittest.TestCase):
                     self.assertEqual(restore.group(1), save.group(1))
                     self.assertLess(restore.end(), calls[0])
                     self.assertGreater(save.start(), calls[-1])
+                    installs = re.findall(r'\.github/scripts/(?:apt-install|playwright-deps)\.sh [^\n]*', body)
+                    names.setdefault(restore.group(1), set()).add(tuple(installs))
         self.assertGreaterEqual(n, 10)   # tests.yml's eight, arm64's linux-arm64, plant3d-app's voice
+        # a cache name is shared only by jobs that install the same packages (else each would replace the other's)
+        for name, sets in names.items():
+            self.assertEqual(len(sets), 1, (name, sets))
+        self.assertIn('apt-nim', names)
 
 
 def split_jobs(text):
