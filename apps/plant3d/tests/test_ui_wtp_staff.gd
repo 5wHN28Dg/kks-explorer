@@ -129,8 +129,10 @@ func _steps(tree: SceneTree, ui, done: Callable, limit: int, log: Array) -> bool
 	for i in limit:
 		if done.call():
 			return true
-		await _play(tree, ui, log)
-		ui.clock.run_steps(10)
+		# (a step played: its outcome in the next steps; nothing to do: the clock runs on further, the suite's time on
+		# CI is bounded)
+		var played: bool = await _play(tree, ui, log)
+		ui.clock.run_steps(10 if played else 60)
 		if i % 8 == 0:
 			await tree.process_frame       # (the panels' old rows are freed at the frame's end)
 	return done.call()
