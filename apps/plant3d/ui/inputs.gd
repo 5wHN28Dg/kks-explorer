@@ -4,7 +4,7 @@
 ## run's engine at once and takes effect in the engine's next step, as it always has (send() returns that step). In a
 ## session (MP2), `sink` takes it to the session, which sends it to the host; every player's engine gets it with the
 ## commit that schedules it, with this player's slot, and send() returns -1 (not known yet).
-## tests/test_inputs_path.py checks that nothing in the app makes an input any other way.
+## tests/test_plant3d_inputs.py checks that nothing in the app makes an input any other way.
 extends RefCounted
 
 var clock               # ui/sim_clock.gd: its engine is the run's (a restart or a loaded save replaces it)

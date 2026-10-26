@@ -1348,6 +1348,11 @@ class StaffRun:
         it, to be taken up again at their turn; one on a way is between places from now on (the place they left kept
         for a release); their zones those their place or way gives them now; nothing counted or kept for the slot."""
         p = self.people[pi]
+        if not self.session:             # a single-player run's role at step 1 (§17.4): the person just becomes theirs
+            self.players[slot] = pi
+            self.acks[slot] = 0
+            self.kept[slot] = []
+            return
         zs = self.zones_of(p)            # (as an NPC's, before they become the slot's)
         self.t_from[slot] = None
         if p.leg is not None:

@@ -307,7 +307,10 @@ save's fields as GDScript keeps them: the reference could not make that (its sta
 tree is a form of its own that both make, and it leaves out what an implementation may keep its own way (a task step's
 own progress: the app counts an NPC's work when they wake, the reference every step), with what the logs only record
 and what is derived (§17.14 says what and why). A difference hidden in a task step's progress shows by the step after
-that step ends. Godot's `var_to_bytes` is the encoding (a future Godot that changes it is a "When to revisit" of 0067:
+that step ends, which for a long `work` (an hour's job) can be thousands of steps later: accepted, because what could
+make two players' progress differ (a float, an input missed or applied twice) changes the values, events or task
+steps the digest does cover at once; a difference confined to a step's own counter would need an engine bug that the
+vectors (both engines, every step's events) are there to catch. Godot's `var_to_bytes` is the encoding (a future Godot that changes it is a "When to revisit" of 0067:
 the vectors' digests would fail first).
 
 **Its cost** (`apps/plant3d/sim/tests/bench_digest.gd`; on a phone the app's `digest=bench`, app/digest_bench.gd): the

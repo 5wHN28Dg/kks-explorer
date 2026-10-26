@@ -306,6 +306,16 @@ class StaffVectors(unittest.TestCase):
     def run_named(self, start):
         return next(r for r in self.runs if r['why'].startswith(start))['events']
 
+    def test_actions_made_on_the_way(self):
+        """The runs of actions before their step make them while walking: a leave comes before the first early event
+        (the generator once lost the leave to a variable reused for the lock's kind, MP1's blind review)."""
+        r = next(r for r in self.runs if r['why'].startswith('actions before their step'))
+        made = [x[6] for x in r['events'] if x[1] == 'early']
+        self.assertTrue(made)
+        for m in made:      # the action was made while walking: their last arrive or leave before it was a leave
+            moves = [x for x in r['inputs'] if x[1] in ('arrive', 'leave') and x[0] <= m]
+            self.assertEqual(moves[-1][1], 'leave', f'the action made at {m} was not made on the way')
+
     def test_actions_before_their_step(self):
         """§17.8 (the user, 2026-10-23): an op, lock or permit action of the trainee's made before its step is current
         counts when the step becomes current if it still holds (event early); one that no longer holds is made

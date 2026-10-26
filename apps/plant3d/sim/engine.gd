@@ -778,10 +778,11 @@ func _n_locked(k: int) -> int:
 ## for inputs naming no person, and a person's role must have the authority (and for `accept`, the work's
 ## discipline; `done` and `return` are the acceptor's, or another's with `accept` and the discipline while the
 ## acceptor is off duty or absent).
-func _authority(person, npc: bool, need: String, discipline = null, by_acceptor := false, work = null) -> bool:
+func _authority(person, npc: bool, need: String, discipline = null, by_acceptor := false, work = null,
+		slot: int = -1) -> bool:
 	if _sm == null:
 		return person != null
-	var tr: int = st_players[_in_slot]      # the input's player's person (§17.13)
+	var tr: int = st_players[_in_slot if slot == -1 else slot]     # the input's player's person (§17.13)
 	if person == null:
 		return not npc and tr != -1
 	if typeof(person) != TYPE_STRING or not _sm.person_ix.has(person):

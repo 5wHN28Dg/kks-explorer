@@ -3,7 +3,8 @@ extends SceneTree
 ## (§17.8): a `leave` naming no place keeps what the trainee holds; someone already standing at a place they are sent
 ## to holds it; the trainee's meeting seat is theirs again after a pause; a machine command kept for a later step is
 ## dropped when its machine is entered by a command or an action, not by its own `next`; a kept unlock is dropped
-## when its point is locked again; a paused step is looked at again when it resumes. Prints "STAFF_EDGES bad=N" and each failure.
+## when its point is locked again; a paused step is looked at again when it resumes; a session player's work begun
+## between places, paused and handed to the NPCs, is counted on by the NPC as the reference's (no place: null). Prints "STAFF_EDGES bad=N" and each failure.
 ##   godot --headless --script apps/plant3d/sim/tests/check_staff_edges.gd -- [VECTORS2]
 const PlantModel = preload("../plant_model.gd")
 const PlantEngine = preload("../engine.gd")
@@ -26,6 +27,7 @@ func _init() -> void:
 	_standing_there()
 	_meeting_seat()
 	_kept_command_dropped()
+	_work_between_places()
 	for b in _bad:
 		print("FAIL ", b)
 	print("STAFF_EDGES bad=%d" % _bad.size())
@@ -137,3 +139,41 @@ func _kept_command_dropped() -> void:
 	sm.pause(e, tp)
 	if st.has("seen"):
 		_bad.append("a paused step keeps its first look")
+
+
+## A session run's player starts a work step between places (no place), the task is pre-empted into their queue, the
+## slot is released: the NPC takes it up and counts the work on, as the reference does (its "no place" is None for a
+## player and an NPC alike); with -1 kept for the player's, the NPC walked to place -1 and abandoned the task.
+func _work_between_places() -> void:
+	var e = PlantEngine.new(PlantModel.from_files(_files), "s1", true)
+	e.role("a_fo1", 0)
+	e.step()
+	var sm = e._sm
+	var pi: int = e.trainee(0)
+	if pi == -1:
+		_bad.append("slot 0 did not take a_fo1")
+		return
+	sm.give(e, pi, "tea", 1, null, null, null, null, false)
+	e.sp_pos[pi] = -1
+	if e.sp_cur[pi] != null:
+		sm.pause(e, pi)
+	var cur: Dictionary = sm.select(e, pi)
+	cur["step"] = 1                 # the tea's work step, between places
+	sm.trainee_steps(e, pi, [], [], [], {}, 0)
+	var x: Dictionary = cur["st"]
+	if not x.has("left") or x.get("place", 0) != null:
+		_bad.append("a player's work begun between places keeps its place as %s, not null" % str(x.get("place")))
+		return
+	var left: int = x["left"]
+	sm.pause(e, pi)                 # pre-empted: into the queue
+	e.release(0)
+	var n0: int = e.events.size()
+	e.step(3)
+	for k in range(n0, e.events.size()):
+		var ev: Array = e.events[k]
+		if ev[1] == "task" and ev[2] == "a_fo1" and ev[4] == "abandoned":
+			_bad.append("the NPC abandoned the work it took over: %s" % str(ev))
+			return
+	var c = e.sp_cur[pi]
+	if c == null or c["task"] != "tea" or c["st"].get("left", left) >= left:
+		_bad.append("the NPC did not count on the work it took over: %s" % str(c))

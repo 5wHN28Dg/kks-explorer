@@ -701,6 +701,11 @@ func t_input(e, item: Array, slot: int = 0) -> void:
 ## taken up again at their turn; one on a way is between places from now on (the place they left kept for a
 ## release); their zones those their place or way gives them now; nothing counted or kept for the slot.
 func claim(e, slot: int, pi: int) -> void:
+	if not e.st_session:                # a single-player run's role at step 1 (§17.4): the person just becomes theirs
+		e.st_players[slot] = pi
+		e.st_acks[slot] = 0
+		e.st_kept[slot] = []
+		return
 	var zs := zones_of(e, pi)           # (as an NPC's, before they become the slot's)
 	e.st_t_from[slot] = -1
 	var leg: Array = e.sp_leg[pi]
@@ -716,8 +721,6 @@ func claim(e, slot: int, pi: int) -> void:
 		if x.has("left") and x.has("last") and not x.get("resumed", false) and x["last"] < e.step_no - 1:
 			x["left"] -= e.step_no - 1 - x["last"]
 			x["last"] = e.step_no - 1
-		if x.has("place") and x["place"] == null:
-			x["place"] = -1             # (a player's step keeps "no place" as -1, an NPC's as null)
 		if not c["idle"]:
 			x.erase("busy")
 			pause(e, pi)
@@ -735,9 +738,6 @@ func let_go(e, slot: int) -> void:
 	e.st_players[slot] = -1
 	var c = e.sp_cur[pi]
 	if c != null:
-		var x: Dictionary = c["st"]
-		if x.has("place") and typeof(x["place"]) == TYPE_INT and x["place"] == -1:
-			x["place"] = null
 		if not c["idle"]:
 			pause(e, pi)
 	if e.sp_pos[pi] == -1 and e.st_t_from[slot] != -1:
@@ -2129,9 +2129,9 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 			if not x.has("left"):
 				x["left"] = mins(e, pi, s["work"]) * tpm
 				x["last"] = n
-				x["place"] = e.sp_pos[pi]
+				x["place"] = e.sp_pos[pi] if e.sp_pos[pi] != -1 else null    # (no place: null, as an NPC's)
 			elif x["last"] < n:
-				if e.sp_pos[pi] == x["place"]:
+				if _same(e.sp_pos[pi] if e.sp_pos[pi] != -1 else null, x["place"]):
 					x["left"] -= 1
 				x["last"] = n
 			r = "next" if x["left"] <= 0 else "wait"

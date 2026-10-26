@@ -2095,8 +2095,8 @@ class Trainee:
                     w = cur['work'] if t['permit']['work'] == '$' else t['permit']['work']
                     e.permit(w, t['permit']['action'], me)
                 elif self.ahead == 'all' and ('lock' in t or 'unlock' in t):
-                    k = 'lock' if 'lock' in t else 'unlock'
-                    getattr(e, k)(cur['work'] if t[k]['work'] == '$' else t[k]['work'], t[k]['point'], me)
+                    lk = 'lock' if 'lock' in t else 'unlock'
+                    getattr(e, lk)(cur['work'] if t[lk]['work'] == '$' else t[lk]['work'], t[lk]['point'], me)
                 else:
                     break
         if 'stop' in s and cur['act'] is not None:

@@ -1825,7 +1825,8 @@ decision 0067), chosen when the engine is made and kept for the run (saved with 
   staff inputs do nothing (its `stop` is refused, `authority`, as in free mode).
 - **`[n, "role", person, slot]`** at any step: done when the person is a `play` role, not `absent`, played by no slot,
   and the slot plays nobody; refused otherwise. Event `[n, "role", person, "done" | "refused", slot]`. When done, the
-  person becomes the slot's: their current task, unless it is the idle task, is paused as a pre-emption pauses it
+  person becomes the slot's (a single-player run's `role` at step 1 only does that, as §17.4 says; the rest of this
+  item is a session run's): their current task, unless it is the idle task, is paused as a pre-emption pauses it
   (§17.3, §17.8: its step's place and reservation looked for again, its `work` keeping the time left, the input an NPC
   waits on forgotten: that input itself is still applied, in this step, as the NPC's) and taken up again at their
   turn; a person walking a way is between places from then on (the way given up; the place it started from kept as the
@@ -1868,7 +1869,7 @@ an array, `int` an integer):
 2. the stateful nodes' counters, the timers' and delays' step counts in program order (`i64`);
 3. each machine's state as its index, model order (`i32`); each trip's latch (`b`) and its `delay` count (`i64`);
 4. the first-out records, `[[group, trip], …]` sorted by group;
-5. each alarm's state as its name (`[…]` of text), its `delay` count (`i64`) and the step its shelf ends, −1 when not
+5. each alarm's state as its name, all of them as one text joined by `|` (model order), its `delay` count (`i64`) and the step its shelf ends, −1 when not
    shelved (`i64`); each interlock's `when` after the last step (`b`);
 6. the faults applied and those repaired since, each a sorted array of ids;
 7. each work's permit state (`i32`); the permits' numbers `[[work, number], …]` sorted by work; the count of permits
