@@ -341,7 +341,13 @@ Choosing a tier:
 
 ```
 godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tests.gd [-- --only=test_walk]
+PLANT_TEST_SHARD=1 apps/plant3d/build.sh tests   # one of CI's shards of the test files (tests/shards.py app)
 ```
+
+CI runs the test files in shards side by side (`tests/shards.py`, `APP`; `tests/test_shards.py` checks that every file
+runs in exactly one): shard 0 in the job that makes the exports, the others in `app-tests`. A new test file goes to
+shard 0; one that makes a shard grow past about 150 s on the laptop (a quarter of `build.sh`'s 600 s on CI) goes to
+another shard or one of its own.
 
 - `test_walk`: up the 30 m stair tower of HRSG 1, across the roof, up the stack's ladder to +40, and back down to the
   ground; the condenser pit's stair; every stair and ladder both ways; and the walking directions: from the control

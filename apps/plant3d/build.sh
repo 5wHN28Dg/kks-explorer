@@ -1,6 +1,7 @@
 #!/bin/sh
 # Builds Walkdown Plant (decision 0054): checks the content, makes the pre-built plant, runs the tests, exports.
-#   apps/plant3d/build.sh                     the content check, the plant (built/) and the tests
+#   apps/plant3d/build.sh [tests]             the content check, the plant (built/) and the tests (PLANT_TEST_SHARD=N:
+#                                             only shard N's test files, tests/shards.py app: CI's shards)
 #   apps/plant3d/build.sh export [TARGET…]    and the exports, unbaked and unsigned, into export/check/ (CI)
 #   tools/plant3d/bench/offscreen.sh apps/plant3d/build.sh release [TARGET…]
 #                                             the release exports, shaders baked (needs a rendering device: the
@@ -21,6 +22,12 @@ MODE="${1:-}"; [ $# -gt 0 ] && shift
 TARGETS="${*:-android-debug android-release linux windows windows-arm64}"
 GODOT="${GODOT:-$("$ROOT/tools/plant3d/bench/fetch_godot.sh")}"
 T="timeout ${GODOT_TIMEOUT:-600}"   # a script that fails to compile leaves Godot running: never wait for ever
+# CI runs the test files in shards side by side (tests/shards.py app, the workflow's matrix): PLANT_TEST_SHARD=N runs
+# shard N's files only (step 3); unset, every file runs
+ONLY=""
+if [ -n "${PLANT_TEST_SHARD:-}" ]; then
+  ONLY=$(python3 "$ROOT/tests/shards.py" app "$PLANT_TEST_SHARD") || { echo "no app test shard $PLANT_TEST_SHARD" >&2; exit 2; }
+fi
 
 # 0. wdp_voice, the voice codec (decision 0069, voice/build.sh): a release builds it for all four platforms from its
 #    pinned sources (so the libraries are this commit's); other builds use what voice/bin/ holds (CI builds the Linux
@@ -97,10 +104,17 @@ mkdir -p "$TDATA/godot"
 for d in "${XDG_DATA_HOME:-$HOME/.local/share}/godot"/*; do
   if [ -e "$d" ] && [ "$(basename "$d")" != app_userdata ]; then ln -s "$d" "$TDATA/godot/"; fi
 done
-XDG_DATA_HOME="$TDATA" $T "$GODOT" --headless --fixed-fps 60 --path "$HERE" --script res://tests/run_tests.gd >"$HERE/.test.log" 2>&1 ||
+[ -n "$ONLY" ] && echo "tests: shard $PLANT_TEST_SHARD of tests/shards.py app: $ONLY"
+# shellcheck disable=SC2086
+XDG_DATA_HOME="$TDATA" $T "$GODOT" --headless --fixed-fps 60 --path "$HERE" --script res://tests/run_tests.gd \
+    ${ONLY:+-- --files=$ONLY} >"$HERE/.test.log" 2>&1 ||
   { grep -vE "^$|Jolt Physics job|jolt_job_system" "$HERE/.test.log" | tail -30; grep -E "^FAIL" "$HERE/.test.log" | head -40
     echo "tests failed (apps/plant3d/.test.log)" >&2; exit 1; }
 grep -E "^(ok|FAIL)|passed" "$HERE/.test.log"
+if [ -n "$ONLY" ]; then   # every file the shard names ran (the runner fails a name it has no file for)
+  n=$(printf '%s\n' "$ONLY" | tr ',' '\n' | wc -l)
+  grep -qx "$n of $n test files passed" "$HERE/.test.log" || { echo "shard $PLANT_TEST_SHARD did not run its $n test files" >&2; exit 1; }
+fi
 grep -qF "tests' user data: $TDATA/" "$HERE/.test.log" ||
   { grep "tests' user data" "$HERE/.test.log"; echo "the tests did not run in their own data folder" >&2; exit 1; }
 # a script error inside a test ends that test's function early without a failure of its own: never a pass
@@ -111,7 +125,7 @@ if awk '/SCRIPT ERROR/ { e = 1; next } e { if ($0 !~ /fixtures\/script_error\.gd
   exit 1
 fi
 
-[ -n "$MODE" ] || exit 0
+case "$MODE" in ""|tests) exit 0 ;; esac
 
 # 4. The lightmap (release and bake): the editor on the private display bakes built/lit.scn into built/lightmap/
 #    (builder/bake/bake_plugin.gd), then Godot imports what it baked. An export without it lights the plant by the

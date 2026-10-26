@@ -1,5 +1,6 @@
 ## The app's tests (decision 0054 §10: a SceneTree script of our own, no test framework):
 ##   godot --headless --fixed-fps 60 --path apps/plant3d --script res://tests/run_tests.gd [-- --only=NAME]
+##   … [-- --files=NAME,NAME…]   those test files only, each of which must exist (CI's shards: tests/shards.py app)
 ## Each test_*.gd here has `func run(tree) -> Array` (a coroutine allowed) returning the failures (strings). Exits 0
 ## when every test passed, 1 otherwise. Needs the built plant (build.sh) for the walking tests.
 extends SceneTree
@@ -26,15 +27,25 @@ func _init() -> void:
 func _run() -> void:
 	Autosave.default_path = TEST_SAVE
 	var only := ""
+	var some: Array = []     # --files=: a shard's test files (tests/shards.py app), each of which must be here
+	var given_files := false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--only="):
 			only = a.substr(7)
+		elif a.begins_with("--files="):
+			given_files = true
+			some = Array(a.substr(8).split(",", false))
 	var files: Array = []
 	for f in DirAccess.get_files_at("res://tests"):
-		if f.begins_with("test_") and f.ends_with(".gd") and (only == "" or f.get_basename() == only):
+		if f.begins_with("test_") and f.ends_with(".gd") and (only == "" or f.get_basename() == only) \
+				and (not given_files or some.has(f.get_basename())):
 			files.append(f)
 	files.sort()
 	var failed := 0
+	for s in some:
+		if not files.has(s + ".gd"):
+			print("FAIL run_tests.gd: no test file %s.gd (--files)" % s)
+			failed += 1
 	# the runner's own check: a script error inside a test function must be seen (it returns [] after one)
 	print("tests' user data: %s" % OS.get_user_data_dir())   # build.sh checks it is the run's own folder
 	print("(the runner checks that it sees script errors: one is expected next)")

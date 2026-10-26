@@ -1,13 +1,17 @@
 """Runs one shard of a set of Python tests, for the CI jobs that run their shards side by side. Every test of the set
-runs in exactly one shard (tests/test_shards.py checks). Two sets:
+runs in exactly one shard (tests/test_shards.py checks). Three sets:
 - `python` (.github/workflows/tests.yml): every test `unittest discover -s tests` finds; the slow Walkdown Plant vector
   classes named in HEAVY have shards of their own, every other test (and any module that fails to load) is in shard 0;
 - `content` (.github/workflows/plant3d-app.yml, the Walkdown Plant content tests): the modules in CONTENT_MODULES; the
   tests and classes named in CONTENT have the shards given there, every other test (and any module that fails to
-  load) is in shard 0.
+  load) is in shard 0;
+- `app` (.github/workflows/plant3d-app.yml, the Walkdown Plant app's Godot tests, apps/plant3d/tests/test_*.gd): the
+  files named in APP have the shards given there, every other one is in shard 0. This one only names a shard's files:
+  apps/plant3d/build.sh runs them (PLANT_TEST_SHARD=N; unset, every file).
   .venv/bin/python tests/shards.py N            (a `python` shard, N from 0 to SHARDS - 1)
   python3 tests/shards.py content N             (a `content` shard, N from 0 to CONTENT_SHARDS - 1)
-  .venv/bin/python tests/shards.py [content] list   (each shard's test count)"""
+  python3 tests/shards.py app N                 (an `app` shard's test files, comma-separated, N from 0 to APP_SHARDS - 1)
+  .venv/bin/python tests/shards.py [content|app] list   (each shard's test count)"""
 import os, sys, unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -45,6 +49,34 @@ CONTENT = {
     # (~125 s), the bench (~20 s, with Godot), the content and the validator
 }
 
+APP_DIR = os.path.join(os.path.dirname(HERE), 'apps', 'plant3d', 'tests')
+APP_SHARDS = 4
+# a test file's name (without .gd): its shard. All in one run they took 598 s of build.sh's 600 s on CI (2026-10-26)
+# and were cut off now and then; 413 s on the laptop since three UI tests stopped rebuilding the Crew panel every round
+# (from 592 s). Times on the laptop, 2026-10-26 (CI's runners took 1 to 1.6 times as long). Keep each shard well under
+# half of the 600 s on CI; a file that makes its shard grow past ~150 s here goes to another one or to a shard of its own.
+APP = {
+    # the walking tests: every stair, ladder and route walked (~170 s; ~167 s on CI)
+    'test_walk': 1,
+    # the overnight jobs (~38 s), the route's frames (~27 s), maintenance (~25 s): ~90 s
+    'test_ui_overnight': 2,
+    'test_frames_route': 2,
+    'test_ui_maintenance': 2,
+    # the cold start through the screens and the panels (~15 s, ~14 s), the saved run (~13 s), the RO cleaning (~10 s),
+    # the water plant's staff (~9 s), the mixed-bed regeneration (~9 s), the parts kit (~7 s), the water plant's start
+    # (~6 s), the crew (~6 s): ~89 s
+    'test_ui_screens_cold_start': 3,
+    'test_ui_cold_start': 3,
+    'test_run_save': 3,
+    'test_ui_ro_cip': 3,
+    'test_ui_wtp_staff': 3,
+    'test_ui_mb_regen': 3,
+    'test_kit': 3,
+    'test_ui_wtp_start': 3,
+    'test_ui_crew': 3,
+    # shard 0 the rest (~64 s), in the job that also makes the exports
+}
+
 
 def tests_of(suite):
     for t in suite:
@@ -76,7 +108,31 @@ def discover_content():
     return list(tests_of(unittest.TestLoader().loadTestsFromNames(CONTENT_MODULES)))
 
 
+def app_files():
+    """Every app test file's name (without .gd), as tests/run_tests.gd finds them: test_*.gd."""
+    return sorted(f[:-3] for f in os.listdir(APP_DIR) if f.startswith('test_') and f.endswith('.gd'))
+
+
+def app_shard_of(name):
+    return APP.get(name, 0)
+
+
 def main(args):
+    if args[:1] == ['app']:
+        files, arg = app_files(), (args[1] if len(args) > 1 else '')
+        if arg == 'list':
+            for k in range(APP_SHARDS):
+                print(k, sum(1 for f in files if app_shard_of(f) == k))
+            return 0
+        k = int(arg)
+        if not 0 <= k < APP_SHARDS:
+            raise SystemExit(f'a shard from 0 to {APP_SHARDS - 1}')
+        mine = [f for f in files if app_shard_of(f) == k]
+        if not mine:
+            print(f'no test files in app shard {k}', file=sys.stderr)
+            return 1
+        print(','.join(mine))
+        return 0
     if args[:1] == ['content']:
         tests, of, n, args = discover_content(), content_shard_of, CONTENT_SHARDS, args[1:]
     else:

@@ -70,6 +70,13 @@ static func _press(pm, name: String) -> String:
 	return ""
 
 
+## The Crew panel rebuilt from the engine as it is now, whatever its own signature says (the panel's buttons are
+## looked for in it). Only where the step needs the panel: rebuilt every round, it took ~75 % of this test's time.
+static func _fresh(ui) -> void:
+	ui.crew._sig = ""
+	ui.crew.refresh()
+
+
 ## Plays the trainee's current step as a trainee would, from the Crew panel and the permit form (true when something
 ## was done). The walker is put at a place by "Take me there" (the walk itself is not what is tested here).
 func _play(tree: SceneTree, ui, log: Array) -> bool:
@@ -85,12 +92,11 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 	var cur = e.sp_cur[pi]
 	if cur == null:
 		return false
-	ui.crew._sig = ""
-	ui.crew.refresh()
 	var s: Dictionary = sm.tasks[cur["task"]]["steps"][cur["step"]]
 	if s.has("go") or s.has("meet"):
 		var dest = cur["st"].get("dest", cur["st"].get("place"))
 		if dest != null and e.st_t_at != dest:
+			_fresh(ui)
 			var b := App.find_button(ui.crew, "Take me there")
 			if b == null:
 				return false
@@ -101,6 +107,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 		# a work step counts only where it started: back there after a call away (the Crew panel's own button)
 		var at = cur["st"].get("place")
 		if at != null and e.st_t_at != at:
+			_fresh(ui)
 			var b := App.find_button(ui.crew, "Take me there")
 			if b == null:
 				log.append("a work step away from its place offers no way back: %s" % App.texts(ui.crew).left(300))
@@ -109,6 +116,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 			ui._place_tick()
 			return true
 	elif s.has("ppe"):
+		_fresh(ui)
 		var b := App.find_button(ui.crew, "Put it on")
 		if b == null:
 			b = App.find_button(ui.crew, "Take me to a locker")
@@ -121,6 +129,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 		b.pressed.emit()
 		return true
 	elif s.has("say"):
+		_fresh(ui)
 		var b := App.find_button(ui.crew, "Send")
 		if b:
 			b.pressed.emit()
@@ -129,6 +138,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 		e.pick(0)
 		return true
 	elif s.has("stop"):
+		_fresh(ui)
 		var b := App.find_button(ui.crew, "Stop the work")
 		if b == null:
 			b = App.find_button(ui.crew, "Take me to them")
