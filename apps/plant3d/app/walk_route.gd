@@ -42,6 +42,7 @@ var left := 0.0                 # metres still to walk along it, from the last c
 var chevrons := 0               # how many are drawn
 const ALPHA := 0.85              # the chevrons' (walk_route.gdshader's default)
 var warmed := false             # the chevrons' pipeline queued (_warm_up)
+var warm_up := true             # whether setup() queues it (not in the content build: builder/staff_paths.gd)
 var stats := {"setup_us": 0, "moves": 0, "points": 0, "point_us_max": 0, "finds": 0, "find_us_max": 0, "find_us_sum": 0, "draws": 0, "draw_us_max": 0, "draw_us_sum": 0}
 
 var _mesh: ArrayMesh
@@ -98,7 +99,8 @@ func setup(_plant = null, mesh: NavigationMesh = null) -> String:
 	add_child(_mi)
 	_mi.visible = false
 	stats.setup_us = Time.get_ticks_usec() - t0
-	_warm_up.call_deferred()
+	if warm_up:
+		_warm_up.call_deferred()
 	return ""
 
 

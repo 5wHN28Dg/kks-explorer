@@ -35,6 +35,7 @@ static func build(parent: Node, nm: NavigationMesh, staff_file: String, built_di
 	if typeof(d) != TYPE_DICTIONARY:
 		return {"error": "staff paths: cannot read " + staff_file}
 	var route := WalkRoute.new()
+	route.warm_up = false
 	parent.add_child(route)
 	var err: String = route.setup(null, nm)
 	if err != "":

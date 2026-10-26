@@ -95,19 +95,24 @@ func run(tree: SceneTree) -> Array:
 				skip.append(n.get_rid())
 		var lb := 0
 		var samples := 0
+		var on_stairs := 0
 		for w in sm.d["ways"]:
 			var ia: int = sm.pix[w[0]]
 			var ib: int = sm.pix[w[1]]
 			var steps: int = sm.ways[mini(ia, ib) * at.size() + maxi(ia, ib)]
 			var res := check_line(ways, space, skip, ia, ib, at.size(), steps * SimClock.STEP, float(w[2]))
 			samples += res[1]
+			on_stairs += res[2]
 			for e in res[0]:
 				p.append("way %s–%s: %s" % [w[0], w[1], e])
 				lb += 1
 			if lb > 30:
 				p.append("… more")
 				break
-		print("staff ways: %d lines walked, %d points checked" % [ways.lines.size(), samples])
+		print("staff ways: %d lines walked, %d points checked, %d on stairs" % [ways.lines.size(), samples, on_stairs])
+		# the stairs' ways are among them, walked on the steps (the HRSG's, the cooling tower's, the turbine hall's)
+		if on_stairs < 200:
+			p.append("only %d points of the lines are on stairs" % on_stairs)
 	print("staff ways: %d places, %d ways checked on the mesh" % [sm.places.size(), m.staff.d["ways"].size()])
 	main.free()
 	return p
@@ -120,7 +125,7 @@ static func check_line(ways, space: PhysicsDirectSpaceState3D, skip: Array[RID],
 	var out: Array = []
 	var key := mini(ia, ib) * places + maxi(ia, ib)
 	if not ways.lines.has(key):
-		return [["no line (built/staff_paths.bin)"], 0]
+		return [["no line (built/staff_paths.bin)"], 0, 0]
 	var pts: PackedVector3Array = ways.lines[key][0]
 	var length := 0.0
 	for i in range(1, pts.size()):
@@ -137,13 +142,14 @@ static func check_line(ways, space: PhysicsDirectSpaceState3D, skip: Array[RID],
 	var n := maxi(2, ceili(length / SAMPLE))
 	var hits := {}
 	var feet := {}
+	var stairs := 0
 	var fast := 0.0
 	for dir in 2:
 		var from := ia if dir == 0 else ib
 		for i in n + 1:
 			var k := float(i) / n
 			if not ways.walk(key, from, k, seconds):
-				return [["walk() found no line"], 0]
+				return [["walk() found no line"], 0, 0]
 			var at: Vector3 = ways.pos
 			fast = maxf(fast, ways.speed)
 			if dir == 1:
@@ -154,6 +160,8 @@ static func check_line(ways, space: PhysicsDirectSpaceState3D, skip: Array[RID],
 				var name := String(c.get_parent().name) + "/" + String(c.name) if c.get_parent() != null else String(c.name)
 				if not hits.has(name):
 					hits[name] = at
+			if ways.on == StaffWays.ON_STAIRS:
+				stairs += 1
 			if ways.on != StaffWays.ON_LADDER:
 				var y: float = StaffPaths.surface(space, at, 0.3, 0.5, skip)
 				var gap: float = 0.5 if is_nan(y) else at.y - y
@@ -169,4 +177,4 @@ static func check_line(ways, space: PhysicsDirectSpaceState3D, skip: Array[RID],
 				"above" if feet[at] > 0.0 else "into"])
 	if fast > PeopleView.RUN_FROM:
 		out.append("walked at %.2f m/s somewhere (a run from %.1f m/s)" % [fast, PeopleView.RUN_FROM])
-	return [out, (n + 1)]
+	return [out, n + 1, stairs]

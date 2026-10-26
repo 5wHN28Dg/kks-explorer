@@ -208,6 +208,7 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 			doing[q.anim if q.speed == 0.0 else "walking"] = true
 		if doing.size() < 2:
 			p.append("the crews are seen doing more than one thing (%s)" % str(doing.keys()))
+		p.append_array(_on_line(ui, e))
 		var sm = e._sm
 		for c in [[{"read": "x"}, "inspect"], [{"work": 5, "anim": "write"}, "write"], [{"work": 5}, "use"],
 				[{"op": {"where": ["screen"]}}, "type"], [{"say": "m"}, "radio"], [{"meet": {}}, "talk"]]:
@@ -426,3 +427,46 @@ func _save(ui, p: Array) -> void:
 	with_kept["st_pending"] = [wrong]
 	if ui.autosave._engine_contents(PlantEngine.new(m, "shift_cold"), with_kept) == "":
 		p.append("a save whose kept offer names a value its reaction is not on was taken")
+
+
+## A person half-way up the HRSG's stair way is drawn on the way's built line (app/staff_ways.gd), on its steps, walking
+## at the line's speed with the stair clip: not on the straight line from its foot to its top, which ran up to 30 m
+## above the ground (until 2026-10-26).
+func _on_line(ui, e) -> Array:
+	var pv = ui.people
+	var sm = e._sm
+	if pv.ways == null:
+		return ["the people view has no built lines (app/staff_ways.gd)"]
+	var ia: int = sm.pix["p_h_foot"]
+	var ib: int = sm.pix["p_h_30"]
+	var key: int = mini(ia, ib) * sm.places.size() + maxi(ia, ib)
+	var st: int = sm.ways[key]
+	var who := -1
+	for pi in sm.people.size():
+		if pi != e.st_trainee and e.sp_pos[pi] != -1 and e.sp_leg[pi].is_empty():
+			who = pi
+			break
+	if who == -1:
+		return ["nobody standing to put on the stair way"]
+	var saved_leg = e.sp_leg[who]
+	e.sp_leg[who] = [ib, ia, e.step_no - st / 2, e.step_no - st / 2 + st]
+	pv.drive(0.0)
+	var frac: float = clampf(ui.clock.acc / SimClock.STEP, 0.0, 1.0)
+	var k := (float(st / 2) + frac) / float(st)
+	pv.ways.walk(key, ib, k, st * SimClock.STEP)
+	var want: Vector3 = pv.ways.pos
+	var chord: Vector3 = pv._at[ib].lerp(pv._at[ia], k)
+	var found := false
+	for q in pv.avatars.people:
+		if q.at.distance_to(want) < 0.01 and q.speed > 0.0 and absf(q.speed - pv.ways.speed) < 1e-4:
+			found = true
+	e.sp_leg[who] = saved_leg
+	pv.drive(0.0)
+	var out: Array = []
+	if not found:
+		out.append("nobody is drawn at %s half-way down the HRSG's stair way's line (the straight line's point: %s)" % [
+				str(want), str(chord)])
+	if want.distance_to(chord) < 1.0:
+		out.append("the stair way's line is within 1 m of the straight line half-way (%s, %s)" % [str(want), str(chord)])
+	return out
+

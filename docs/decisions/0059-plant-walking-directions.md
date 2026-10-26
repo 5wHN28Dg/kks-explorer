@@ -31,7 +31,8 @@ navigation mesh of our own.
 ## Choice
 
 - The content build bakes `built/nav.res` (cell 0.1 m, 0.03 m high, the walker's 0.3 m radius and 1.8 m height, climb 0.09 m:
-  what the walker's capsule rides up), doors left out, stairs left out and obstructed, unreachable islands dropped; the
+  what the walker's capsule rides up; since 2026-10-26 a radius of 0.35 m, which Recast rounds up to 0.4 m: at 0.3 m the
+  mesh's edge touched machines and walls, and people drawn on its paths brushed through them, PLANT3D §18.1), doors left out, stairs left out and obstructed, unreachable islands dropped; the
   stairs' and ladders' ways (each stair's path plus the floor in front of each end, checked with the walker's capsule
   against the stair's rails) are kept in the mesh's metadata.
 - The app loads it into the world's navigation map with one link per stair and ladder, finds a way when the step's
