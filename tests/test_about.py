@@ -275,6 +275,19 @@ class PlantAbout(unittest.TestCase):
             self.assertIn('THE SOFTWARE IS PROVIDED "AS IS"' if a['license'] == 'MIT' else 'Redistribution and use',
                           a['notice'])
             self.assertIn(a['license'], d['licenses'])
+        # the runtimes linked into the libraries (Android and Windows: LLVM's; Windows: MinGW-w64's; Linux: GCC's)
+        ids = {a['id']: a for a in d['assets']}
+        for i in ('llvm-runtime', 'mingw-w64', 'gcc-runtime'):
+            self.assertIn(i, ids)
+        apache = d['licenses']['Apache-2.0 WITH LLVM-exception']['text']
+        self.assertIn('Apache License', apache)
+        self.assertIn('LLVM Exceptions to the Apache 2.0 License', apache)
+        self.assertIn('MinGW-w64', ids['mingw-w64']['notice'])
+        # the SpeexDSP file compiled in carries its own notice, and libopus's files' copyright holders are all named
+        self.assertIn('Thorvald Natvig', by_source['https://downloads.xiph.org/releases/speex/speexdsp-1.2.1.tar.gz']['notice'])
+        opus = by_source['https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz']['notice']
+        for holder in ('Koen Vos', 'Cisco Systems', 'Google Inc.', 'Parrot', 'Vidyo', 'John Ridges'):
+            self.assertIn(holder, opus)
 
 if __name__ == '__main__':
     unittest.main()

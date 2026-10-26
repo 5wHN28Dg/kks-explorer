@@ -35,6 +35,10 @@ func _run() -> void:
 	print("VOICE %s on %s (%s), %s: %d frames at %d Hz" % [ClassDB.class_call_static("WdpVoiceEncoder", "opus_version"),
 			OS.get_name(), OS.get_model_name(), path, frames.size(), rate])
 	var rt := V.round_trip(frames, rate, rate)
+	if rt.is_empty():
+		print("VOICE %s: the codec takes 8 to 192 kHz, not %d Hz" % [path, rate])
+		get_tree().quit(1)
+		return
 	var c := V.compare(frames, rt.out, rate / 50)
 	print("VOICE round trip: delay %.1f ms, level %.2f dB, SNR %.1f dB, %d packets, %.1f kbit/s" % [1000.0 * c.delay / rate,
 			c.level_db, c.snr_db, rt.packets, rt.bytes * 8.0 / (frames.size() / float(rate)) / 1000.0])

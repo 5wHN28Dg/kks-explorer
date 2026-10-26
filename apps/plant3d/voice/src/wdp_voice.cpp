@@ -29,6 +29,8 @@
 #include <opus.h>
 #include <speex_resampler.h>
 
+#include "wdp_core.h"
+
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -40,56 +42,11 @@ namespace {
 constexpr int OPUS_RATE = 16000;                  // wideband (§8.3)
 constexpr int FRAME = OPUS_RATE / 50;             // 20 ms = 320 samples
 constexpr int MAX_FRAME = OPUS_RATE * 120 / 1000; // the longest an Opus packet decodes to: 120 ms
-constexpr int MAX_PACKET = 1275 * 3;              // the longest valid Opus packet (RFC 6716 §3.2.5: 1275 bytes a
-                                                  // frame, 120 ms in at most 6 frames of 20 ms is under this for our
-                                                  // rates; anything longer is refused unparsed)
+constexpr int MAX_PACKET = WDP_MAX_PACKET;        // our own limit (wdp_core.h): a longer packet is refused unparsed
 constexpr int ENCODE_BUFFER = 1276;               // one 20 ms frame's packet: at most 1275 bytes + 1
 constexpr int MAX_PENDING_MS = 30000;             // the floor's 30 s limit (§8.4): beyond it the input is dropped
 constexpr int MIN_RATE = 8000;
 constexpr int MAX_RATE = 192000;
-constexpr int RESAMPLE_QUALITY = SPEEX_RESAMPLER_QUALITY_VOIP;
-
-// Resamples `in` (mono) into `out` (appended), consuming all of it. The resampler may not take every input sample
-// at once, so this loops with an output buffer sized from the ratio.
-void resample(SpeexResamplerState *rs, int in_rate, int out_rate, const float *in, size_t n, std::vector<float> &out) {
-	if (rs == nullptr) {
-		out.insert(out.end(), in, in + n);
-		return;
-	}
-	size_t done = 0;
-	float buf[4096];
-	while (done < n) {
-		spx_uint32_t in_len = (spx_uint32_t)((n - done) > 1024 ? 1024 : (n - done));
-		// 1024 input samples at most become 1024 * out_rate / in_rate (+ a few in the filter): ≤ 1024 * 24 + 64
-		// for 8 kHz to 192 kHz, more than buf holds, so the output length is also capped at buf's size; the
-		// resampler then takes fewer input samples (in_len is updated to what it used)
-		spx_uint32_t out_len = (spx_uint32_t)(sizeof(buf) / sizeof(buf[0]));
-		if (speex_resampler_process_float(rs, 0, in + done, &in_len, buf, &out_len) != RESAMPLER_ERR_SUCCESS) {
-			return;
-		}
-		out.insert(out.end(), buf, buf + out_len);
-		if (in_len == 0 && out_len == 0) {
-			return; // (cannot happen with a valid state: never loop for ever)
-		}
-		done += in_len;
-	}
-}
-
-SpeexResamplerState *make_resampler(int from, int to) {
-	if (from == to) {
-		return nullptr;
-	}
-	int err = 0;
-	SpeexResamplerState *rs = speex_resampler_init(1, (spx_uint32_t)from, (spx_uint32_t)to, RESAMPLE_QUALITY, &err);
-	if (rs == nullptr || err != RESAMPLER_ERR_SUCCESS) {
-		if (rs != nullptr) {
-			speex_resampler_destroy(rs);
-		}
-		return nullptr;
-	}
-	speex_resampler_skip_zeros(rs);
-	return rs;
-}
 
 } // namespace
 
@@ -104,7 +61,7 @@ class WdpVoiceEncoder : public RefCounted {
 	int expected_loss = 0;
 	std::vector<float> pending; // mono, 16 kHz, not yet encoded
 	size_t head = 0;            // pending[head:] is still to be encoded
-	int64_t dropped = 0;        // samples dropped beyond MAX_PENDING_MS
+	int64_t dropped = 0;        // samples dropped beyond MAX_PENDING_MS since setup or the last reset
 
 	void free_all() {
 		if (enc != nullptr) {
@@ -117,6 +74,7 @@ class WdpVoiceEncoder : public RefCounted {
 		}
 		pending.clear();
 		head = 0;
+		dropped = 0;
 		mix_rate = 0;
 	}
 
@@ -247,6 +205,7 @@ public:
 	void reset() {
 		pending.clear();
 		head = 0;
+		dropped = 0;
 		if (enc != nullptr) {
 			opus_encoder_ctl(enc, OPUS_RESET_STATE);
 		}
@@ -414,7 +373,7 @@ public:
 		if (len <= 0 || len > MAX_PACKET) {
 			return false;
 		}
-		return opus_packet_has_lbrr(p_packet.ptr(), (opus_int32)len) == 1;
+		return wdp_packet_has_fec(p_packet.ptr(), (int)len);
 	}
 };
 

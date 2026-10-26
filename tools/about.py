@@ -21,7 +21,9 @@ The version is not in it: each program knows its own (VERSION at build time) and
                                              notice (optional: a file in tools/about/notices/, the part's own
                                              licence file with its copyright lines, put in verbatim)}],
                                              licenses: {<SPDX id>: {name, url, text}}} with each licence's full text
-                                             (tools/about/licenses/). The plant's build packs it (built/about.json).
+                                             (tools/about/licenses/; "files" names them when they are more than one,
+                                             as for an exception: Apache-2.0 WITH LLVM-exception). The plant's build
+                                             packs it (built/about.json).
 
 data/about.json (format "walkdown-about", version 1): an object with
   name, summary, developer: strings
@@ -197,7 +199,8 @@ def build_plant(repo=REPO):
     for lid in sorted({a['license'] for a in src['assets']}):
         meta = src['licenses'][lid]
         licenses[lid] = {'name': meta['name'], 'url': meta['url'],
-                         'text': read(repo, SRC, 'licenses', lid + '.txt') if meta.get('text') else None}
+                         'text': '\n\n'.join(read(repo, SRC, 'licenses', f + '.txt') for f in meta.get('files', [lid]))
+                                 if meta.get('text') else None}
     assets = []
     for a in src['assets']:
         a = dict(a)

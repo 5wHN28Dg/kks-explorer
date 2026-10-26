@@ -196,6 +196,10 @@ func _bounds(fails: Array) -> void:
 				break
 	if ClassDB.class_call_static("WdpVoiceDecoder", "packet_has_fec", long) or ClassDB.class_call_static("WdpVoiceDecoder", "packet_has_fec", PackedByteArray()):
 		fails.append("bounds: packet_has_fec said yes to an empty or over-long packet")
+	# a SILK packet whose first frame is empty: libopus's own check read past it (tests/native_test.cpp shows the
+	# read under the sanitizer); ours parses first and says no
+	if d.packet_has_fec(PackedByteArray([0x08])):
+		fails.append("bounds: packet_has_fec said yes to a packet with an empty frame")
 	# the decoder still works after all that
 	d.reset()
 	e.reset()
@@ -212,8 +216,8 @@ func _bounds(fails: Array) -> void:
 		fails.append("bounds: 31 s pushed: %d packets ready, %d samples dropped (1500 and about 16000 expected)" % [
 				e.packets_ready(), e.get_dropped_samples()])
 	e.reset()
-	if e.packets_ready() != 0:
-		fails.append("bounds: reset kept %d packets" % e.packets_ready())
+	if e.packets_ready() != 0 or e.get_dropped_samples() != 0:
+		fails.append("bounds: reset kept %d packets, %d dropped samples counted" % [e.packets_ready(), e.get_dropped_samples()])
 
 
 ## The time per 20 ms frame at 48 kHz in and out (the resamplers included): the medians must be inside the Note 9's

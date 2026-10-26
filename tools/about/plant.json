@@ -15,6 +15,25 @@
    "name": "MIT License",
    "url": "https://opensource.org/license/mit",
    "text": false
+  },
+  "Apache-2.0 WITH LLVM-exception": {
+   "name": "Apache License 2.0 with LLVM Exceptions",
+   "url": "https://llvm.org/LICENSE.txt",
+   "text": true,
+   "files": [
+    "Apache-2.0",
+    "LLVM-exception"
+   ]
+  },
+  "LicenseRef-MinGW-w64-runtime": {
+   "name": "MinGW-w64 runtime licence (its notice below)",
+   "url": "https://sourceforge.net/p/mingw-w64/mingw-w64/ci/master/tree/COPYING.MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt",
+   "text": false
+  },
+  "GPL-3.0-or-later WITH GCC-exception-3.1": {
+   "name": "GNU GPL 3.0 or later with the GCC Runtime Library Exception 3.1",
+   "url": "https://www.gnu.org/licenses/gcc-exception-3.1.html",
+   "text": false
   }
  },
  "assets": [
@@ -146,6 +165,34 @@
    "use": "the C++ bindings the voice codec's extension is built with (wdp_voice, apps/plant3d/voice/)",
    "pinned_by": "apps/plant3d/voice/build.sh (SHA-256)",
    "notice": "godot-cpp"
+  },
+  {
+   "id": "llvm-runtime",
+   "name": "LLVM libc++, libc++abi, libunwind, compiler-rt (the NDK's and llvm-mingw's)",
+   "license": "Apache-2.0 WITH LLVM-exception",
+   "url": "https://llvm.org",
+   "source": "https://github.com/mstorsjo/llvm-mingw/releases/tag/20260922 and the Android NDK 27.2.12479018",
+   "use": "the C++ runtime linked into the voice codec's library on Android and Windows (wdp_voice, apps/plant3d/voice/)",
+   "pinned_by": "apps/plant3d/voice/build.sh (the NDK's version; llvm-mingw by platform/windows/fetch-llvm-mingw.sh, SHA-256)"
+  },
+  {
+   "id": "mingw-w64",
+   "name": "MinGW-w64 runtime (llvm-mingw)",
+   "license": "LicenseRef-MinGW-w64-runtime",
+   "url": "https://www.mingw-w64.org",
+   "source": "https://github.com/mstorsjo/llvm-mingw/releases/tag/20260922",
+   "use": "the start-up code and the C runtime's interface linked into the voice codec's Windows libraries (wdp_voice)",
+   "pinned_by": "platform/windows/fetch-llvm-mingw.sh (SHA-256), used by apps/plant3d/voice/build.sh",
+   "notice": "mingw-w64"
+  },
+  {
+   "id": "gcc-runtime",
+   "name": "GCC's libstdc++ and libgcc (the Flatpak SDK's)",
+   "license": "GPL-3.0-or-later WITH GCC-exception-3.1",
+   "url": "https://gcc.gnu.org",
+   "source": "org.freedesktop.Sdk//26.08 (Flathub)",
+   "use": "the C++ runtime linked into the voice codec's Linux library (wdp_voice); the runtime exception puts no conditions on it",
+   "pinned_by": "apps/plant3d/voice/build.sh (the SDK's branch, its commit recorded in BUILD-INFO.txt)"
   }
  ]
 }

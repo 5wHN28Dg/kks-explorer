@@ -4,6 +4,13 @@
 cmake_minimum_required(VERSION 3.22)
 project(wdp_voice LANGUAGES C CXX)
 
+option(WDP_NATIVE_TEST "build tests/native_test.cpp with the sanitizers instead of the extension (build.sh native-test)" OFF)
+if(WDP_NATIVE_TEST)
+  set(WDP_OUT "${CMAKE_BINARY_DIR}" CACHE PATH "" FORCE)
+  set(WDP_SUFFIX native-test CACHE STRING "" FORCE)
+  add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g)
+  add_link_options(-fsanitize=address,undefined)
+endif()
 set(WDP_SRC "" CACHE PATH "the unpacked, checked sources: godot-cpp, opus, speexdsp (build.sh)")
 set(WDP_OUT "" CACHE PATH "where the library goes")
 set(WDP_SUFFIX "" CACHE STRING "the library's platform suffix, e.g. linux.x86_64")
@@ -33,6 +40,13 @@ add_library(wdp_resampler STATIC "${WDP_SRC}/speexdsp/libspeexdsp/resample.c")
 target_compile_definitions(wdp_resampler PUBLIC OUTSIDE_SPEEX RANDOM_PREFIX=wdp FLOATING_POINT)
 target_include_directories(wdp_resampler PUBLIC "${WDP_SRC}/speexdsp/include/speex"
                                          PRIVATE "${WDP_SRC}/speexdsp/libspeexdsp")
+
+if(WDP_NATIVE_TEST)
+  add_executable(wdp_native_test tests/native_test.cpp)
+  target_link_libraries(wdp_native_test PRIVATE opus wdp_resampler)
+  set_target_properties(wdp_native_test PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS OFF)
+  return()
+endif()
 
 # godot-cpp 10.0.0 against Godot 4.7's API, only the classes wdp_voice uses (build_profile.json)
 set(GODOTCPP_TARGET template_release CACHE STRING "" FORCE)

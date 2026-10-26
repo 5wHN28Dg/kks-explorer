@@ -26,6 +26,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # the Flatpak SDK the Linux voice library is built in, at the commit the laptop's builds used
+  # (freedesktop-sdk-26.08.3): the same bytes as there (apps/plant3d/voice/build.sh refuses another commit)
+  WDP_SDK_COMMIT: 3311c13c67b602315c39cf5310de129dd3460d04b6c8cf5be1b2cbc42c51abd7
+
 concurrency:
   group: plant3d-app-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -82,9 +87,11 @@ jobs:
       # Linux export carries it; the other platforms' libraries are built by the voice job
       - name: The Flatpak SDK the Linux voice library is built in (org.freedesktop.Sdk//26.08)
         run: |
+          sudo apt-get update
           sudo apt-get install -y --no-install-recommends flatpak
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y --noninteractive flathub org.freedesktop.Sdk//26.08
+          flatpak update --user -y --noninteractive --commit="$WDP_SDK_COMMIT" org.freedesktop.Sdk//26.08
       - name: wdp_voice for Linux x86-64 (pinned sources)
         run: WDP_JOBS=4 apps/plant3d/voice/build.sh linux-x86_64 && cat apps/plant3d/voice/bin/BUILD-INFO.txt | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Content check, content build, the app's tests, headless exports
@@ -101,18 +108,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [linux-x86_64, android-arm64, windows-x86_64, windows-arm64]
+        target: [linux-x86_64, android-arm64, windows-x86_64, windows-arm64, native-test]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The toolchain (the Flatpak SDK; the NDK the plant's voice library pins; llvm-mingw comes with build.sh)
         run: |
           case "${{ matrix.target }}" in
             linux-*)
+              sudo apt-get update
               sudo apt-get install -y --no-install-recommends flatpak
               flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-              flatpak install --user -y --noninteractive flathub org.freedesktop.Sdk//26.08 ;;
+              flatpak install --user -y --noninteractive flathub org.freedesktop.Sdk//26.08
+              flatpak update --user -y --noninteractive --commit="$WDP_SDK_COMMIT" org.freedesktop.Sdk//26.08 ;;
             android-*)
               yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.2.12479018" >/dev/null ;;
           esac
-      - name: wdp_voice ${{ matrix.target }}, built twice and compared
+      - name: wdp_voice ${{ matrix.target }}, built twice and compared (native-test: the sanitizer test)
         run: WDP_JOBS=4 WDP_CHECK_REPRO=1 apps/plant3d/voice/build.sh ${{ matrix.target }} && cat apps/plant3d/voice/bin/BUILD-INFO.txt | tee -a "$GITHUB_STEP_SUMMARY"
