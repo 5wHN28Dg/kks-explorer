@@ -522,71 +522,38 @@ func _mesh_of(mi: MeshInstance3D, parent: Node, arr: Array, st: SurfaceTool, mat
 	parent.add_child(mi)
 	return mi
 
-## A long mesh across the site (the ring road's kerbs, the boundary wall's panels) as one mesh per SHADOW_CELL square
-## (by each triangle's centre), named NAME_0, NAME_1 …, each with its own lightmap UV2 at the same texel: the sun's
-## shadow draws each cascade's casters by their boxes, and one mesh half a kilometre long was drawn whole into all four
-## cascades wherever the walker stood (the Note 9: about 0.4 M GPU cycles a frame for the kerbs, terrain and wall;
-## decision 0057, "The shadow casters"). The same triangles, material and vertex format: the look is unchanged.
-## Returns the meshes made.
+## A long mesh across the site (the ring road's kerbs, the boundary wall's panels) as one mesh per SHADOW_CELL square,
+## named NAME_0, NAME_1 …, each with its own lightmap UV2 at the same texel: the sun's shadow draws each cascade's
+## casters by their boxes, and one mesh half a kilometre long was drawn whole into all four cascades wherever the walker
+## stood (the Note 9: about 0.4 M GPU cycles a frame for the kerbs, terrain and wall; decision 0057, "The shadow
+## casters"). The caller adds each whole piece (a kerb block, a panel, a pilaster) to `cell_tool` of its own centre, so
+## no piece is cut between two meshes and two lightmap charts (a seam at a square's edge). The same triangles, material
+## and vertex format: the look is unchanged. Returns the meshes made.
 const SHADOW_CELL := 48.0
 
-func _mesh_cells(parent: Node, name: String, st: SurfaceTool, mat: Material, texel := Lightmap.TEXEL) -> Array:
-	st.generate_tangents()
-	st.index()
-	var arr := st.commit_to_arrays()
+## The SurfaceTool of the SHADOW_CELL square that holds plan point `c` (a piece's centre), in `cells` (Vector2i -> it).
+static func cell_tool(cells: Dictionary, c: Vector2) -> SurfaceTool:
+	var key := Vector2i(int(floor(c.x / SHADOW_CELL)), int(floor(c.y / SHADOW_CELL)))
+	if not cells.has(key):
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		cells[key] = st
+	return cells[key]
+
+func _mesh_cells(parent: Node, name: String, cells: Dictionary, mat: Material, texel := Lightmap.TEXEL) -> Array:
 	var out: Array = []
 	var k := 0
-	for part in split_by_cell(arr, SHADOW_CELL):
+	for key in cells:
+		var st: SurfaceTool = cells[key]
+		st.generate_tangents()
+		st.index()
+		var arr := st.commit_to_arrays()
 		var mi := MeshInstance3D.new()
 		mi.name = "%s_%d" % [name, k]
-		var pst := SurfaceTool.new()   # (the fallback when the unwrapper fails: the part's own arrays)
-		pst.create_from_arrays(part)
-		out.append(_mesh_of(mi, parent, part, pst, mat, texel, true))
+		var pst := SurfaceTool.new()   # (the fallback when the unwrapper fails: the square's own arrays)
+		pst.create_from_arrays(arr)
+		out.append(_mesh_of(mi, parent, arr, pst, mat, texel, true))
 		k += 1
-	return out
-
-## One triangle surface's arrays split by the square (side `cell`, in the plan: x and z) of each triangle's centre:
-## the squares' arrays, each with only the vertices its triangles use, in the order the squares are first met.
-static func split_by_cell(arr: Array, cell: float) -> Array:
-	if arr.is_empty() or arr[Mesh.ARRAY_INDEX] == null:
-		return []
-	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
-	var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-	var tris := {}   # Vector2i -> PackedInt32Array of the square's indices (into arr)
-	for t in range(0, idx.size(), 3):
-		var c := (vs[idx[t]] + vs[idx[t + 1]] + vs[idx[t + 2]]) / 3.0
-		var key := Vector2i(int(floor(c.x / cell)), int(floor(c.z / cell)))
-		if not tris.has(key):
-			tris[key] = PackedInt32Array()
-		var l: PackedInt32Array = tris[key]
-		l.append_array([idx[t], idx[t + 1], idx[t + 2]])
-		tris[key] = l
-	var out: Array = []
-	for key in tris:
-		var old: PackedInt32Array = tris[key]
-		var remap := {}   # old vertex -> new
-		var order := PackedInt32Array()
-		var nidx := PackedInt32Array()
-		for i in old:
-			if not remap.has(i):
-				remap[i] = order.size()
-				order.append(i)
-			nidx.append(remap[i])
-		var part: Array = []
-		part.resize(Mesh.ARRAY_MAX)
-		for a in Mesh.ARRAY_MAX:
-			var src = arr[a]
-			if src == null or a == Mesh.ARRAY_INDEX:
-				continue
-			var per := 4 if a == Mesh.ARRAY_TANGENT else 1   # (a tangent is four floats)
-			var dst = src.duplicate()
-			dst.resize(order.size() * per)
-			for j in order.size():
-				for q in per:
-					dst[j * per + q] = src[order[j] * per + q]
-			part[a] = dst
-		part[Mesh.ARRAY_INDEX] = nidx
-		out.append(part)
 	return out
 
 func _st() -> SurfaceTool:

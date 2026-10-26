@@ -208,7 +208,7 @@ static func _bbox(pg: PackedVector2Array) -> Rect2:
 ## Kerbs along both edges of the road (drawn only: a walker steps over 12 cm), and a drain channel with a grating
 ## cover in the gravel along the road's inner edge (the cover is walkable).
 func _kerbs_and_drain(root: Node3D, road_in: Rect2, road_out: Rect2, drain_in: Rect2) -> void:
-	var kerb: SurfaceTool = b._st()
+	var kerb := {}   # a SurfaceTool per square (b.cell_tool)
 	for ring in [[road_in.grow(0.15), road_in], [road_out, road_out.grow(-0.15)]]:
 		for pc in Geom.decompose(poly_of(ring[0]), [poly_of(ring[1])]):
 			_striped(kerb, pc)
@@ -225,7 +225,7 @@ func _kerbs_and_drain(root: Node3D, road_in: Rect2, road_out: Rect2, drain_in: R
 const KERB_STRIPE := 1.0
 const KERB_YELLOW := Color(0.92, 0.70, 0.08, 0.3)
 const KERB_WHITE := Color(0.90, 0.90, 0.87, 0.3)
-func _striped(st: SurfaceTool, pc: PackedVector2Array) -> void:
+func _striped(cells: Dictionary, pc: PackedVector2Array) -> void:
 	var r := _bbox(pc)
 	var along_x := r.size.x >= r.size.y
 	var L := r.size.x if along_x else r.size.y
@@ -235,6 +235,7 @@ func _striped(st: SurfaceTool, pc: PackedVector2Array) -> void:
 		var t1 := L * (k + 1) / n
 		var q := Rect2(r.position + (Vector2(t0, 0) if along_x else Vector2(0, t0)),
 			Vector2(t1 - t0, r.size.y) if along_x else Vector2(r.size.x, t1 - t0))
+		var st: SurfaceTool = b.cell_tool(cells, q.get_center())   # each block whole in its square's mesh
 		st.set_color(KERB_YELLOW if k % 2 == 0 else KERB_WHITE)
 		Geom.add_prism(st, poly_of(q), 0.0, KERB_H)
 
@@ -307,7 +308,7 @@ static func _ccw(a: Vector2, c: Vector2, d: Vector2) -> bool:
 ## where a road the content lays at ground level crosses its line (the plant gate), a pilaster on each side.
 func _wall(root: Node3D, r: Rect2) -> void:
 	var body: StaticBody3D = b._body(root, "boundary_wall")
-	var st: SurfaceTool = b._st()
+	var st := {}   # a SurfaceTool per square (b.cell_tool): each panel and pilaster whole in its square's mesh
 	var gate: SurfaceTool = b._st()
 	var pg := poly_of(r)
 	var gate_c := Vector2(r.get_center().x, r.position.y)   # the south side's middle
@@ -336,10 +337,10 @@ func _wall(root: Node3D, r: Rect2) -> void:
 				if is_gate:
 					b._wall_panel(gate, body, p0, p1, 0.0, WALL_H - 0.4, 0.08)
 				else:
-					b._wall_panel(st, body, p0, p1, 0.0, WALL_H, 0.2)
-				_pilaster(st, p0)
+					b._wall_panel(b.cell_tool(st, mid), body, p0, p1, 0.0, WALL_H, 0.2)
+				_pilaster(b.cell_tool(st, p0), p0)
 			if t1 < L - 1e-3:
-				_pilaster(st, a2 + d * t1)   # the gate post on the far side of a gap
+				_pilaster(b.cell_tool(st, a2 + d * t1), a2 + d * t1)   # the gate post on the far side of a gap
 	b._mesh_cells(body, "panels", st, b._mat("wall_concrete"), Lightmap.GROUND_TEXEL)   # per square: the sun's cascades
 	b._mesh_node(body, "gate", gate, b._mat("fence"), Lightmap.SHEET_TEXEL)   # a thin sheet: a fine texel
 

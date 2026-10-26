@@ -16,10 +16,15 @@ var sun: DirectionalLight3D
 var switches := 0           # counted by frame_probe.gd (an event per switch)
 var _t := 0.0
 var _saved := {}            # node -> its own casting setting
+var _sun_on := true         # the sun's own shadow settings (the tier's, fx_off=…), restored in every state
+var _sun_mode := DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 
 
 func setup(spec: String, under: Array, the_sun: DirectionalLight3D = null) -> void:
 	sun = the_sun
+	if sun != null:
+		_sun_on = sun.shadow_enabled
+		_sun_mode = sun.directional_shadow_mode
 	for g in spec.split(",", false):
 		groups.append(g.split("+", false))
 	roots = under
@@ -47,8 +52,8 @@ func _apply(s: int) -> void:
 			(n as GeometryInstance3D).cast_shadow = _saved[n]
 	_saved.clear()
 	if sun != null:
-		sun.shadow_enabled = true
-		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+		sun.shadow_enabled = _sun_on
+		sun.directional_shadow_mode = _sun_mode
 	if s == 0:
 		return
 	var words: PackedStringArray = groups[s - 1]

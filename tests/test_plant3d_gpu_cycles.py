@@ -60,6 +60,13 @@ class ShadowAbTest(unittest.TestCase):
             self.assertRegex(r, r"kerbs +off: -1\.00 Mcycles")
             self.assertRegex(r, r"lamp_\+roof_steel +off: -2\.50 Mcycles")
 
+    def test_empty_groups_dropped(self):
+        # the app reads the groups with split(",", false): a stray comma must not shift the states
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, "walk.txt"), "w").write("shadow_ab=kerbs,,lamp_+roof_steel,\n")
+            self.assertEqual(A.groups_of(d), ["kerbs", "lamp_+roof_steel"])
+
+
 
 if __name__ == '__main__':
     unittest.main()

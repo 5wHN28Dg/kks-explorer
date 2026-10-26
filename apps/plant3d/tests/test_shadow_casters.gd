@@ -1,9 +1,9 @@
 ## The sun's shadow casters (decision 0057, "The shadow casters"; builder/plant_builder.gd): what the shadow pass draws
 ## for nothing is left out without changing what is seen.
 ## - Long meshes across the site (the ring road's kerbs, the boundary wall's panels) are a mesh per SHADOW_CELL square,
-##   so that each cascade draws only the squares near the walker: `split_by_cell` keeps every triangle, with its
-##   vertices' every attribute, exactly once, each square's triangles in that square; in the built plant no kerb or
-##   panel mesh spans more than a square (and a triangle's reach).
+##   so that each cascade draws only the squares near the walker: each piece (a kerb block, a panel, a pilaster) whole
+##   in the square of its centre (`cell_tool`), never cut between two meshes (two lightmap charts: a seam); in the
+##   built plant no kerb or panel mesh spans more than a square (and a piece's reach), and none holds part of a piece.
 ## - A piece under a roof casts no shadow only when every ray from it to the sun leaves its building through solid wall
 ##   or roof (`roof_shades`): never through a door, a pipe's opening or a roof opening; in the built plant some do,
 ##   each stands inside a building of its area, and every building's own walls and roof still cast.
@@ -12,6 +12,7 @@ extends RefCounted
 const Plant = preload("res://app/plant.gd")
 const Builder = preload("res://builder/plant_builder.gd")
 const Lighting = preload("res://app/lighting.gd")
+const Geom = preload("res://builder/geom.gd")
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
@@ -20,69 +21,59 @@ func run(tree: SceneTree) -> Array:
 	p.append_array(_built(tree))
 	return p
 
-## A triangle as text: its three vertices' position, normal, colour, UV and tangent (an order-free key).
-static func _tri_key(arr: Array, idx: PackedInt32Array, t: int) -> String:
-	var vs: Array = []
-	for k in 3:
-		var i := idx[t + k]
-		var tg: PackedFloat32Array = arr[Mesh.ARRAY_TANGENT]
-		vs.append("%s %s %s %s %s" % [arr[Mesh.ARRAY_VERTEX][i], arr[Mesh.ARRAY_NORMAL][i], arr[Mesh.ARRAY_COLOR][i],
-			arr[Mesh.ARRAY_TEX_UV][i], [tg[i * 4], tg[i * 4 + 1], tg[i * 4 + 2], tg[i * 4 + 3]]])
-	vs.sort()
-	return "|".join(vs)
+## The edges of `mi`'s triangles that are some face's diagonal (not along an axis) and that an odd number of its
+## triangles use: a quad face cut between two meshes leaves its diagonal in one triangle of each. Whole closed blocks
+## (and faces that coincide, two blocks end to end) use each diagonal an even number of times.
+static func cut_diagonals(mesh: Mesh) -> int:
+	var n := {}
+	for s in mesh.get_surface_count():
+		var arr := mesh.surface_get_arrays(s)
+		var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array(range(vs.size()))
+		for t in range(0, idx.size(), 3):
+			for e in 3:
+				var a: Vector3 = (vs[idx[t + e]] * 1000.0).round()
+				var c: Vector3 = (vs[idx[t + (e + 1) % 3]] * 1000.0).round()
+				var d := (c - a).abs()
+				if int(d.x > 0.5) + int(d.y > 0.5) + int(d.z > 0.5) < 2:
+					continue
+				var ka := str(a)
+				var kc := str(c)
+				var key := ka + "|" + kc if ka < kc else kc + "|" + ka
+				n[key] = int(n.get(key, 0)) + 1
+	var odd := 0
+	for k in n:
+		odd += n[k] % 2
+	return odd
 
 func _split() -> Array:
 	var p: Array = []
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# kerb-like blocks along x, from -100 m to 150 m, each a quad 2 m long, coloured by its place
-	for k in 125:
-		var x0 := -100.0 + k * 2.0
-		st.set_color(Color(k / 125.0, 0.5, 1.0 - k / 125.0))
-		for q in [Vector3(x0, 0, 0), Vector3(x0 + 2.0, 0, 0), Vector3(x0 + 2.0, 0, -0.3),
-				Vector3(x0, 0, 0), Vector3(x0 + 2.0, 0, -0.3), Vector3(x0, 0, -0.3)]:
-			st.set_normal(Vector3.UP)
-			st.set_uv(Vector2(q.x, q.z))
-			st.add_vertex(q)
-	st.generate_tangents()
-	st.index()
-	var arr := st.commit_to_arrays()
-	var parts := Builder.split_by_cell(arr, Builder.SHADOW_CELL)
-	var want := {}
-	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
-	for t in range(0, idx.size(), 3):
-		want[_tri_key(arr, idx, t)] = int(want.get(_tri_key(arr, idx, t), 0)) + 1
-	var got := {}
-	var squares := {}
-	for part in parts:
-		var pi: PackedInt32Array = part[Mesh.ARRAY_INDEX]
-		var pv: PackedVector3Array = part[Mesh.ARRAY_VERTEX]
-		if (part[Mesh.ARRAY_TANGENT] as PackedFloat32Array).size() != pv.size() * 4 or (part[Mesh.ARRAY_COLOR] as PackedColorArray).size() != pv.size():
-			p.append("a square's arrays keep one tangent (four floats) and one colour per vertex")
-		var sq := {}
-		for t in range(0, pi.size(), 3):
-			var k := _tri_key(part, pi, t)
-			got[k] = int(got.get(k, 0)) + 1
-			var c := (pv[pi[t]] + pv[pi[t + 1]] + pv[pi[t + 2]]) / 3.0
-			sq[Vector2i(int(floor(c.x / Builder.SHADOW_CELL)), int(floor(c.z / Builder.SHADOW_CELL)))] = true
-		if sq.size() != 1:
-			p.append("each square's mesh holds that square's triangles only (%d squares)" % sq.size())
-		for s in sq:
-			if squares.has(s):
-				p.append("a square is one mesh, not two (%s)" % s)
-			squares[s] = true
-		var used := {}
-		for i in pi:
-			used[i] = true
-		if used.size() != pv.size():
-			p.append("a square's mesh holds only the vertices its triangles use (%d of %d)" % [used.size(), pv.size()])
-	if got != want:
-		p.append("split by square, every triangle is kept once with its vertices as they were (%d kinds of %d)" % [got.size(), want.size()])
-	# -100 … 150 m in 48 m squares: -144…-96, -96…-48, …, 144…192: seven
-	if parts.size() != 7:
-		p.append("250 m of kerb is seven squares' meshes (%d)" % parts.size())
-	if not Builder.split_by_cell([], Builder.SHADOW_CELL).is_empty():
-		p.append("nothing to split is no mesh")
+	var bld := Builder.new()
+	var cells := {}
+	# kerb-like blocks along plan x from -100 m to 150 m, 2.5 m each (some across a square's edge: -97.5 … -95)
+	for k in 100:
+		var x0 := -100.0 + k * 2.5
+		var st := Builder.cell_tool(cells, Vector2(x0 + 1.25, 0.15))
+		st.set_color(Color(k / 100.0, 0.5, 1.0 - k / 100.0))
+		Geom.add_prism(st, PackedVector2Array([Vector2(x0, 0), Vector2(x0 + 2.5, 0), Vector2(x0 + 2.5, 0.3), Vector2(x0, 0.3)]), 0.0, 0.12)
+	var root := Node3D.new()
+	var ms: Array = bld._mesh_cells(root, "kerbs", cells, StandardMaterial3D.new(), 0.25)
+	# -100 … 150 m in 48 m squares by the blocks' centres: -144…-96, …, 144…192: seven
+	if ms.size() != 7:
+		p.append("250 m of kerb is seven squares' meshes (%d)" % ms.size())
+	var tris := 0
+	for mi in ms:
+		tris += (mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+		var bx: AABB = mi.mesh.get_aabb()
+		if bx.size.x > Builder.SHADOW_CELL + 2.5:
+			p.append("%s spans one square and a block (%.1f m)" % [mi.name, bx.size.x])
+		if cut_diagonals(mi.mesh) != 0:
+			p.append("%s holds whole blocks only (%d cut faces)" % [mi.name, cut_diagonals(mi.mesh)])
+		if mi.gi_mode != GeometryInstance3D.GI_MODE_STATIC or not (mi.mesh.surface_get_format(0) & Mesh.ARRAY_FORMAT_TEX_UV2):
+			p.append("%s is baked (lightmap UV2)" % mi.name)
+	if tris != 100 * 12:
+		p.append("every block's triangles are kept once (%d of %d)" % [tris, 1200])
+	root.free()
 	return p
 
 func _shades() -> Array:
@@ -167,8 +158,15 @@ func _built(tree: SceneTree) -> Array:
 				p.append("%s spans one square (%.0f × %.0f m)" % [mi.name, bx.size.x, bx.size.z])
 			if mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 				p.append("%s still casts its shadow" % mi.name)
+			if cut_diagonals(mi.mesh) != 0:
+				p.append("%s holds whole pieces only (%d cut faces)" % [mi.name, cut_diagonals(mi.mesh)])
+			# each square is baked like the whole mesh was: lightmap UV2 from the unwrapper, at the texel's size
+			if mi.gi_mode != GeometryInstance3D.GI_MODE_STATIC or not (mi.mesh.surface_get_format(0) & Mesh.ARRAY_FORMAT_TEX_UV2) \
+					or mi.mesh.lightmap_size_hint == Vector2i.ZERO:
+				p.append("%s is baked: lightmap UV2 and a size hint" % mi.name)
 	# under the roofs
 	var shaded := 0
+	var app_sun := Lighting.to_sun(Lighting.sky_info())
 	for a in bld.areas:
 		var area := plant.get_node_or_null("area_" + a.id) as Node3D
 		if area == null:
@@ -185,6 +183,10 @@ func _built(tree: SceneTree) -> Array:
 					p.append("%s, shaded by a roof, stands inside a building of its area" % area.get_path_to(gi))
 				if Builder._in_door(gi):
 					p.append("%s moves with a door: it keeps its shadow" % area.get_path_to(gi))
+				# shaded under the sun the app shines from (the build took its sun from the same sky: Lighting.to_sun)
+				var b = Builder.inside_building(bx, mine, 0.0) if bx != null else null
+				if b != null and not Builder.roof_shades(bx, b, bld.roof_shade_holes(b), app_sun):
+					p.append("%s is shaded from the app's sun" % area.get_path_to(gi))
 		for b in mine:
 			var body := area.find_child(b.id, true, false)
 			if body == null:

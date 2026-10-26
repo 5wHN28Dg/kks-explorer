@@ -22,7 +22,7 @@ import reclaim_frames as R  # noqa: E402  (engine_start: the frames' times on th
 def groups_of(d):
     for line in open(os.path.join(d, "walk.txt")):
         if line.startswith("shadow_ab="):
-            return line.strip().split("=", 1)[1].split(",")
+            return [g for g in line.strip().split("=", 1)[1].split(",") if g]   # as the app: empty groups dropped
     raise SystemExit("walk.txt has no shadow_ab= line")
 
 
