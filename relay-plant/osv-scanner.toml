@@ -1,0 +1,105 @@
+# osv-scanner reads this file for the lockfile in this directory (it does not look in parent directories).
+#
+# wrangler is the relay's deploy tool (#52): it runs on the maintainer's machine and none of it is deployed (the Worker
+# is src/index.js alone). Its local simulator (miniflare) requires sharp, whose prebuilt libvips binaries are
+# LGPL-3.0-or-later. That license is not on license-allowlist.txt, which is for shipped code, so those packages are
+# left out of the license check, as android/app2/osv-scanner.toml does for the Android build tools. Pinned to the
+# checked version: a new version gets checked again before an entry moves.
+
+[[PackageOverrides]]
+name = "@img/sharp-libvips-darwin-arm64"
+version = "1.3.4"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, LGPL-3.0-or-later (package.json), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "@img/sharp-libvips-darwin-x64"
+version = "1.3.4"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, LGPL-3.0-or-later (package.json), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "@img/sharp-libvips-linux-arm"
+version = "1.3.4"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, LGPL-3.0-or-later (package.json), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "@img/sharp-libvips-linux-arm64"
+version = "1.3.4"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, LGPL-3.0-or-later (package.json), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "@img/sharp-libvips-linux-ppc64"
+version = "1.3.4"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, LGPL-3.0-or-later (package.json), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "@img/sharp-libvips-linux-riscv64"
+version = "1.3.4"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, LGPL-3.0-or-later (package.json), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "@img/sharp-libvips-linux-s390x"
+version = "1.3.4"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, LGPL-3.0-or-later (package.json), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "@img/sharp-libvips-linux-x64"
+version = "1.3.4"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, LGPL-3.0-or-later (package.json), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "@img/sharp-libvips-linuxmusl-arm64"
+version = "1.3.4"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, LGPL-3.0-or-later (package.json), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "@img/sharp-libvips-linuxmusl-x64"
+version = "1.3.4"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, LGPL-3.0-or-later (package.json), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "@img/sharp-wasm32"
+version = "0.35.5"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, Apache-2.0 AND LGPL-3.0-or-later AND MIT (package.json), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "@img/sharp-win32-arm64"
+version = "0.35.5"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, Apache-2.0 AND LGPL-3.0-or-later (package.json), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "@img/sharp-win32-ia32"
+version = "0.35.5"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, Apache-2.0 AND LGPL-3.0-or-later (package.json), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "@img/sharp-win32-x64"
+version = "0.35.5"
+ecosystem = "npm"
+license.ignore = true
+reason = "deploy tool (wrangler's local simulator), never deployed; its license, Apache-2.0 AND LGPL-3.0-or-later (package.json), is not on the allowlist, which is for shipped code"

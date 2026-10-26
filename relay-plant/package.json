@@ -1,0 +1,16 @@
+{
+  "name": "walkdown-plant-relay",
+  "private": true,
+  "description": "Walkdown Plant's multiplayer relay (a Cloudflare Worker, docs/plant3d/MULTIPLAYER.md \u00a79.1). wrangler is pinned here and in package-lock.json; deploy with deploy.sh (README.md).",
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "wrangler": "4.148.0"
+  },
+  "overrides": {
+    "sharp": "0.35.5",
+    "undici": "7.30.1"
+  }
+}
