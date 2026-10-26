@@ -3,7 +3,7 @@
   pinned somewhere (the vulnerability scan and the release audit read that file, so it must not drift);
 - each listed source has what DEP-8 asks for: name, version, URL, a SHA-256-or-stronger hash or a full commit,
   a license;
-- wrangler is pinned exactly in relay/package.json and package-lock.json, with integrity hashes;
+- wrangler is pinned exactly in relay/ and relay-plant/'s package.json and package-lock.json, with integrity hashes;
 - the Windows toolchain is llvm-mingw alone (0053): Ubuntu's mingw-w64/GCC/binutils packages are neither fetched nor
   listed;
 - the Windows zlib is built without its gz* file functions (#58; needs the llvm-mingw toolchain, else skipped).
@@ -104,19 +104,23 @@ class PinnedSources(unittest.TestCase):
 
 class Relay(unittest.TestCase):
     def test_wrangler_pinned(self):
-        with open(os.path.join(REPO, 'relay', 'package.json'), encoding='utf-8') as f:
-            pkg = json.load(f)
-        ver = pkg['devDependencies']['wrangler']
-        self.assertRegex(ver, r'^\d+\.\d+\.\d+$', 'an exact version, no range')
-        with open(os.path.join(REPO, 'relay', 'package-lock.json'), encoding='utf-8') as f:
-            lock = json.load(f)
-        self.assertEqual(lock['packages']['node_modules/wrangler']['version'], ver)
-        for k, v in lock['packages'].items():
-            if k and not v.get('link'):
-                self.assertTrue(v.get('integrity', '').startswith('sha512-'), k)
-        with open(os.path.join(REPO, 'relay', 'README.md'), encoding='utf-8') as f:
-            readme = f.read()
-        self.assertIn('npm ci', readme)
+        for folder in ('relay', 'relay-plant'):   # Walkdown's relay and Walkdown Plant's
+            with self.subTest(folder):
+                with open(os.path.join(REPO, folder, 'package.json'), encoding='utf-8') as f:
+                    pkg = json.load(f)
+                ver = pkg['devDependencies']['wrangler']
+                self.assertRegex(ver, r'^\d+\.\d+\.\d+$', 'an exact version, no range')
+                with open(os.path.join(REPO, folder, 'package-lock.json'), encoding='utf-8') as f:
+                    lock = json.load(f)
+                self.assertEqual(lock['packages']['node_modules/wrangler']['version'], ver)
+                for k, v in lock['packages'].items():
+                    if k and not v.get('link'):
+                        self.assertTrue(v.get('integrity', '').startswith('sha512-'), k)
+                with open(os.path.join(REPO, folder, 'README.md'), encoding='utf-8') as f:
+                    readme = f.read()
+                self.assertIn('npm ci', readme)
+                # the dependency scan reads the folder's own osv-scanner.toml (it does not look in parent folders)
+                self.assertTrue(os.path.exists(os.path.join(REPO, folder, 'osv-scanner.toml')))
 
 
 LLVM_MINGW = os.path.expanduser('~/.local/kksdev/llvm-mingw/bin')

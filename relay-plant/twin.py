@@ -62,6 +62,7 @@ class Conn:
         self.gone = False
         self.at = now_ms()
         self.ip = ''
+        self.room = None       # the Room once admitted
 
     def _read(self, n):
         while len(self.buf) < n:
@@ -177,8 +178,10 @@ class Relay:
 
     # ---------- the Durable Object's handlers ----------
     def _refuse(self, c, why):
-        c.gone = True
+        """An error, then the socket is closed; a member that is closed (`limit`) leaves as if it had closed itself.
+        Called with the lock held."""
         c.text({'t': 'error', 'why': why})
+        self._leave(c)
         c.close(1008, why)
 
     def _tell(self, room, obj, except_=None):
@@ -254,6 +257,7 @@ class Relay:
         c.id, c.host = room.next_id, creator
         room.next_id += 1
         room.sockets.append(c)
+        c.room = room
         room.empty_since = None
         self.joined.setdefault(name, []).append(now)
         host = next((o.id for o in others if o.host), None)
@@ -333,21 +337,25 @@ class Relay:
             except OSError:
                 pass
 
-    def gone(self, name, c):
-        with self.lock:
-            w = self.waiting.get(name, [])
+    def _leave(self, c):
+        if c.gone:
+            return
+        c.gone = True
+        for w in self.waiting.values():
             if c in w:
                 w.remove(c)
-            room = self.rooms.get(name)
-            was = c.id and not c.gone and room is not None and c in room.sockets
-            c.gone = True
-            if room and c in room.sockets:
-                room.sockets.remove(c)
-                room.flow.pop(c.id, None)
-            if was:
-                self._tell(room, {'t': 'left', 'id': c.id})
-                if not room.members():
-                    room.empty_since = self.clock()
+        room = c.room
+        if room is None or c not in room.sockets:
+            return
+        room.sockets.remove(c)
+        room.flow.pop(c.id, None)
+        self._tell(room, {'t': 'left', 'id': c.id})
+        if not room.members():
+            room.empty_since = self.clock()
+
+    def gone(self, name, c):
+        with self.lock:
+            self._leave(c)
         c.close()
 
     def tick(self):

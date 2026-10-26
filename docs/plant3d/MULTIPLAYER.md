@@ -622,6 +622,14 @@ clone) offer This Wi-Fi only.
 - **Deploying:** only on an account on the **Workers Free plan** (a paid account would be billed past the free
   allowance). The deploy step checks the account's plan through the Cloudflare API first and stops if it is not the
   free plan.
+- **As built** (MP4's server side, 2026-10-26; details and deploy steps in `relay-plant/README.md`):
+  - every 2-byte number in the binary framing is big-endian, and a message that doesn't frame is dropped;
+  - besides the errors above, a hello can get `bad hello` (not the hello above) or `no hello` (none within 10 s);
+    a room that is closed tells its sockets `idle` or `expired`;
+  - at most 12 sockets may wait for their hello at once, and 60 hellos a minute may succeed in a room;
+  - the host's burst is 400 messages, a player's 200; the byte rate has a burst of 1 MiB;
+  - `relay-plant/deploy.py` reads the account's subscriptions with an API token that has Billing Read (wrangler's own
+    login can't), deploys nothing if it can't, and writes the address only to a file outside the repository.
 
 ### 9.2 Direct UDP
 
@@ -751,8 +759,8 @@ budget isn't done.
   at 150 ms ± 50 ms with 5 % loss and at 400 ms with 15 % loss must still agree, and the harness reports the
   input-to-effect delay.
 - **The relay:** `relay-plant/twin.py`, the Python twin of the Worker (as `relay/twin.py` is of Walkdown's), used by
-  the harness; the same protocol tests run against the real Worker in workerd (`npx wrangler dev`) on the laptop
-  before each deploy. Tests of the limits, admit, create races, the 13th socket, host claims, the empty-room
+  the harness; the same protocol tests (`tests/test_plant_relay.py`) run against the real Worker in workerd
+  (`npx wrangler dev`) on the laptop before each deploy, and in CI's `plant-relay` job. Tests of the limits, admit, create races, the 13th socket, host claims, the empty-room
   deletion, relay IDs past 255.
 - **No network outside a session:** a test starts the app's main scene headless, plays a single-player run and checks
   that no socket was opened (the session layer's own counter, and on Linux `/proc/self/net` sockets of the process).

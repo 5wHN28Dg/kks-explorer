@@ -9,7 +9,7 @@ import {DurableObject} from 'cloudflare:workers';
 
 const ROOM = /^[0-9a-f]{32}$/, ADMIT = /^[A-Za-z0-9_-]{43}$/;
 
-// MULTIPLAYER.md §9.1's limits. Only the timings (and the day's room count) can be changed, for the tests against
+// MULTIPLAYER.md §9.1's limits. Only the timings and two counts (rooms a day, joins a minute) can be changed, for the tests against
 // `wrangler dev` (`--var RELAY_LIMITS:{...}`): deploy.sh refuses a wrangler.toml that sets any variable.
 export const LIMITS = {
   members: 12,            // sockets per room that have said hello
@@ -29,7 +29,7 @@ export const LIMITS = {
   joins: 60,              // successful hellos per room per minute
   daily: 200,             // rooms created per UTC day
 };
-const TUNABLE = ['idle', 'empty', 'maxAge', 'hello', 'daily'];
+const TUNABLE = ['idle', 'empty', 'maxAge', 'hello', 'daily', 'joins'];
 
 export function limitsOf(env) {
   const l = {...LIMITS};
@@ -123,11 +123,10 @@ export class Room extends DurableObject {
   }
 
   send(ws, obj) { try { ws.send(JSON.stringify(obj)) } catch (e) {} }
+  // an error, then the socket is closed; a member that is closed (`limit`) leaves as if it had closed itself
   refuse(ws, why) {
-    const a = ws.deserializeAttachment();
-    if (a) ws.serializeAttachment({...a, gone: true});
     this.send(ws, {t: 'error', why});
-    try { ws.close(1008, why) } catch (e) {}
+    return this.gone(ws, 1008, why);
   }
   tell(obj, except) { const s = JSON.stringify(obj); for (const [, ws] of this.members(except)) try { ws.send(s) } catch (e) {} }
 
@@ -279,11 +278,11 @@ export class Room extends DurableObject {
   async webSocketClose(ws) { await this.gone(ws) }
   async webSocketError(ws) { await this.gone(ws) }
 
-  async gone(ws) {
+  async gone(ws, code = 1000, reason = 'bye') {
     const a = ws.deserializeAttachment();
     if (!a || a.gone) return;
     ws.serializeAttachment({...a, gone: true});
-    try { ws.close(1000, 'bye') } catch (e) {}
+    try { ws.close(code, reason) } catch (e) {}
     if (!a.id) return;
     this.flow.delete(a.id);
     const rest = this.members(ws);
