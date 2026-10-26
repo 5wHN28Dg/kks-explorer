@@ -22,7 +22,7 @@ across the internet.
   [server](https://github.com/5wHN28Dg/kks-explorer/wiki/Server) and
   [releasing](https://github.com/5wHN28Dg/kks-explorer/wiki/Releasing).
 - **Building and testing:** [Development](https://github.com/5wHN28Dg/kks-explorer/wiki/Development), and the README
-  of each part (`core/`, `apps/gnome/`, `apps/windows/`, `android/app2/`, `importer/`, `relay/`).
+  of each part (`core/`, `apps/gnome/`, `apps/windows/`, `android/app2/`, `importer/`, `relay/`, `relay-plant/`).
 - **Specifications:** `docs/PROTOCOL-v2.md` (the log, sync, the v1 import), `docs/PATHSTORE.md` (drawings),
   `docs/COURSES.md` (courses), `docs/GLYPHLIB.md` (the reader's glyph library).
 - **Why things are the way they are:** `docs/decisions/` and the development policy `docs/evidence-first-*.md`.
