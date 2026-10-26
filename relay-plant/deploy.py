@@ -40,7 +40,7 @@ def paid_plans(subscriptions):
         rp = str((s.get('rate_plan') or {}).get('id') or '?')
         price = s.get('price')
         if isinstance(price, bool) or not isinstance(price, (int, float)) or price != 0 or \
-                ('worker' in rp.lower() and rp.lower() not in ('workers_free', 'free')):
+                rp.lower() not in ('workers_free', 'free'):   # (only the free plans' IDs: an unknown plan is refused)
             out.append(rp)
     return out
 

@@ -606,7 +606,7 @@ class Deploy(unittest.TestCase):
                      {'rate_plan': {'id': 'workers_paid'}, 'price': 0},
                      {'rate_plan': {'id': 'pro'}, 'price': 25},
                      {'rate_plan': {'id': 'something_new'}},          # no price: not understood
-                     {'rate_plan': {'id': 'x'}, 'price': '0'}, 'junk']:
+                     {'rate_plan': {'id': 'x'}, 'price': '0'}, {'rate_plan': {'id': 'enterprise'}, 'price': 0}, 'junk']:
             self.assertEqual(len(self.d.paid_plans([paid])), 1, paid)
 
     def check(self, answer):
