@@ -81,3 +81,10 @@ parser recurses into a long expression or `elif` chain).
 | Note 9, the clock's fast-forward cap (a quarter of a core) | 13× and 9× | 33× and 31× |
 
 (The release APKs for this were exported without the lightmap's bake, which changes nothing the model does.)
+
+**A frame's model work (2026-10-26).** The app's clock (`ui/sim_clock.gd`) runs at most `FRAME_MS` (8 ms) of steps in
+a frame, counted from each step's measured cost with the staff's step 9 and what follows it in the app, however long
+the frame before was (a frame held for 0.25 s used to give the next a quarter of 0.25 s: 62 ms); in fast-forward it
+also stops at 8 ms of real time within the frame, should the steps cost more than their average, and what that leaves
+out is not owed. On the Note 9 the model and staff then took at most 7.5 ms in a frame of fast-forward (32 and 13 ms
+before). The staff step on the laptop (`bench_step.gd` `staff_step9`): 67 → 50 µs on average, the same bits.
