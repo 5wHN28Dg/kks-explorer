@@ -7,7 +7,7 @@
 // length and that many bytes. The relay replaces `to` with the sender's relay ID and passes the message on.
 import {DurableObject} from 'cloudflare:workers';
 
-const ROOM = /^[0-9a-f]{32}$/, ADMIT = /^[A-Za-z0-9_-]{43}$/;
+const ROOM = /^[0-9a-f]{32}$/, ADMIT = /^[A-Za-z0-9_-]{43}$/, L_TEXT_MAX = 65536;
 
 // MULTIPLAYER.md §9.1's limits. Only the timings and two counts (rooms a day, joins a minute) can be changed, for the tests against
 // `wrangler dev` (`--var RELAY_LIMITS:{...}`): deploy.py refuses a wrangler.toml that sets any variable.
@@ -61,7 +61,9 @@ const same = (a, b) => {
   for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i];
   return d === 0;
 };
-const ID_BLOCK = 16;   // relay IDs are reserved in storage this many at a time (one row write per 16 joins)
+const ID_BLOCK = 16;
+// the rate limiting key of a client address: an IPv6 address by its /64 (one subscriber's prefix), IPv4 as it is
+export const addressKey = ip => ip.includes(':') ? ip.toLowerCase().split(':').slice(0, 4).join(':') + '::/64' : ip;   // relay IDs are reserved in storage this many at a time (one row write per 16 joins)
 
 // One token bucket: `rate` a second, at most `size` kept.
 class Bucket {
@@ -145,10 +147,9 @@ export class Room extends DurableObject {
     const [client, server] = Object.values(new WebSocketPair());
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({at: now, ip: req.headers.get('CF-Connecting-IP') || ''});
-    setTimeout(() => {
-      const a = server.deserializeAttachment();
-      if (a && !a.id && !a.gone) this.refuse(server, 'no hello');
-    }, this.L.hello);
+    // no timer for the hello's 10 s (a pending timer keeps the object awake, which a stranger could use to burn the
+    // day's duration): a silent socket costs nothing while the object hibernates, and is closed by the next
+    // connection's sweep above or by the room's alarm
     return new Response(null, {status: 101, webSocket: client});
   }
 
@@ -158,7 +159,9 @@ export class Room extends DurableObject {
     // a hello is being checked (it waits on the hash, the day's count): anything the client sends meanwhile, before
     // its welcome, is dropped, never taken for a second hello
     if (!a.id) return a.hello ? undefined : this.hello(ws, a, msg);
-    const now = Date.now(), size = typeof msg === 'string' ? new TextEncoder().encode(msg).length : msg.byteLength;
+    const now = Date.now();
+    // (a text longer than any allowed message isn't encoded: it is dropped, and counted at its most)
+    const size = typeof msg !== 'string' ? msg.byteLength : msg.length > L_TEXT_MAX ? msg.length * 3 : new TextEncoder().encode(msg).length;
     if (!this.admitFlow(ws, a, size, now)) return;
     if (typeof msg === 'string') {
       if (size > this.L.text) return;
@@ -194,7 +197,7 @@ export class Room extends DurableObject {
     this.joined = this.joined.filter(t => now - t < 60000);
     if (this.failed.length >= L.failed) return this.refuse(ws, 'limit');
     const fail = why => { this.failed.push(now); this.refuse(ws, why) };
-    if (typeof msg !== 'string' || new TextEncoder().encode(msg).length > L.text) return fail('bad hello');
+    if (typeof msg !== 'string' || msg.length > L.text || new TextEncoder().encode(msg).length > L.text) return fail('bad hello');
     let m; try { m = JSON.parse(msg) } catch (e) { return fail('bad hello') }
     if (!m || typeof m !== 'object' || Array.isArray(m) || m.t !== 'hello' || typeof m.admit !== 'string' ||
         !ADMIT.test(m.admit) || typeof m.create !== 'boolean' || Object.keys(m).length !== 3) return fail('bad hello');
@@ -221,7 +224,8 @@ export class Room extends DurableObject {
       return;
     }
     const row = this.row();
-    if (!row || now - row.created >= L.maxAge) return fail('no such session');
+    // (not counted as a failed hello: players retry a new room's `no such session` after a removal, §2.4)
+    if (!row || now - row.created >= L.maxAge) return this.refuse(ws, 'no such session');
     if (!same(new Uint8Array(row.admit), hash)) return fail('bad admit');
     const members = this.members(ws);
     if (members.length >= L.members) return this.refuse(ws, 'full');
@@ -274,8 +278,8 @@ export class Room extends DurableObject {
 
   async mayCreate(ip, now) {
     // the Workers rate limiting binding (per Cloudflare location, approximate): 10 rooms a minute per address
-    if (this.env.CREATE_LIMIT && ip) {
-      try { if (!(await this.env.CREATE_LIMIT.limit({key: ip})).success) return false } catch (e) {}
+    if (this.env.CREATE_LIMIT && ip) {   // (an error here refuses the create: the caller counts it as `limit`)
+      if (!(await this.env.CREATE_LIMIT.limit({key: addressKey(ip)})).success) return false;
     }
     // and at most `daily` rooms per UTC day, counted by one Durable Object
     const day = new Date(now).toISOString().slice(0, 10);
@@ -309,6 +313,10 @@ export class Room extends DurableObject {
 
   async alarm() {
     const now = Date.now(), L = this.L, row = this.row();
+    for (const ws of this.sockets()) {   // sockets that never said hello
+      const a = ws.deserializeAttachment();
+      if (a && !a.id && !a.gone && !a.hello && now - a.at > L.hello) this.refuse(ws, 'no hello');
+    }
     if (!row) { await this.ctx.storage.deleteAll(); return }
     const members = this.members();
     let due = row.created + L.maxAge;

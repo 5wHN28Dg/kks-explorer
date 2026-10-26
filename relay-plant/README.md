@@ -52,14 +52,16 @@ starts its counters again.
 - **Closing a socket:** at three times a rate, counted over 10 s, the socket is closed with `limit` (a busy host is
   slowed, not cut off).
 - **Text messages:** at most 512 bytes. A longer one is ignored.
-- **Hellos:** 12 sockets may wait for their hello at once (a 13th gets HTTP 429). A socket has 10 s to say hello.
-- **Failed hellos:** 30 a minute per room (bad admit, no such session, bad hello). After that, every hello to the room
-  is refused with `limit` until the minute is over.
+- **Hellos:** 12 sockets may wait for their hello at once (a 13th gets HTTP 429). A socket has 10 s to say hello; a
+  silent one is closed by the room's next connection or its alarm (no timer per socket, which would keep the room
+  awake).
+- **Failed hellos:** 30 a minute per room (bad admit, bad hello). After that, every hello to the room is refused with
+  `limit` until the minute is over. `no such session` is not counted: players retry a new room after a removal (§2.4).
 - **Joins:** at most 60 successful hellos a minute per room.
 - **Room lifetime:** a room lives at most 24 h. It is closed and deleted after 10 minutes with no binary message (pings
   don't count), or 10 minutes empty.
 - **Room creation:** at most 200 rooms a UTC day, counted by the `Daily` Durable Object. At most 10 a minute per
-  client address, through the Workers rate limiting binding (`CREATE_LIMIT`, per Cloudflare location, approximate).
+  client address (an IPv6 address by its /64), through the Workers rate limiting binding (`CREATE_LIMIT`, per Cloudflare location, approximate).
   The binding is only asked when a room is created. Cloudflare's page doesn't say whether the free plan has it. If a
   deploy says it doesn't, remove the `[[ratelimits]]` block: the Worker runs without it.
 

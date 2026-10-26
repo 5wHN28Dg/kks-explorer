@@ -60,9 +60,13 @@ def check_free(account, token):
 
 
 def config_ok():
-    with open(os.path.join(HERE, 'wrangler.toml'), encoding='utf-8') as f:
-        text = f.read()
-    if re.search(r'^\s*\[\s*vars\s*\]|^\s*vars\s*=', text, re.M):
+    import tomllib
+    with open(os.path.join(HERE, 'wrangler.toml'), 'rb') as f:
+        cfg = tomllib.load(f)
+
+    def has_vars(t):
+        return isinstance(t, dict) and ('vars' in t or any(has_vars(v) for v in (t.get('env') or {}).values()))
+    if has_vars(cfg):
         stop('wrangler.toml sets variables: the deployed relay must run with the spec\'s limits alone')
 
 

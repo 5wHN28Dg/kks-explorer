@@ -11,6 +11,11 @@ ADMIT_RE = re.compile(r'[A-Za-z0-9_-]{43}')
 MAX_FRAME = 1 << 20   # Cloudflare's largest WebSocket message; anything above is cut off
 ID_BLOCK = 16
 
+
+def address_key(ip):
+    """The rate limiting key of a client address: an IPv6 address by its /64, IPv4 as it is (as in src/index.js)."""
+    return ':'.join(ip.lower().split(':')[:4]) + '::/64' if ':' in ip else ip
+
 # MULTIPLAYER.md §9.1 (the same names and values as LIMITS in src/index.js)
 LIMITS = {
     'members': 12, 'pending': 12, 'message': 65536, 'text': 512,
@@ -239,7 +244,7 @@ class Relay:
                 room = self.rooms[name] = Room(h, now)
                 return self._admit(name, room, c, now, True)
             if not room or now - room.created >= L['maxAge']:
-                return fail('no such session')
+                self._refuse(c, 'no such session'); return False   # (not counted: retries after a removal, §2.4)
             if not hmac.compare_digest(room.admit, h):
                 return fail('bad admit')
             if len(room.members()) >= L['members']:
@@ -266,6 +271,7 @@ class Relay:
         return True
 
     def _may_create(self, ip, now):
+        ip = address_key(ip) if ip else ip
         if ip:
             t = self.ip_creates[ip] = [x for x in self.ip_creates.get(ip, []) if now - x < 60000]
             if len(t) >= self.L['ipCreates']:

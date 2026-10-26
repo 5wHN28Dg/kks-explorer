@@ -298,6 +298,12 @@ class Behaviour(Base):
             self.refused(self._hello(room, os.urandom(32), False), 'bad admit')
         # the 31st in the minute is refused unread, even with the right admit
         self.refused(self._hello(room, admit, False), 'limit')
+        # a room that doesn't exist (yet) can be asked any number of times: players retry a new room after a
+        # removal (§2.4), and its host can still create it
+        room3, admit3 = rnd_room(), os.urandom(32)
+        for i in range(35):
+            self.refused(self._hello(room3, admit3, False), 'no such session')
+        self.assertEqual(self.client(room3).hello(admit3, True)['id'], 1)
         # another room is not affected
         room2, admit2, _ = self.session(1)
         self.assertEqual(self.client(room2).hello(admit2, False)['t'], 'welcome')
@@ -308,11 +314,18 @@ class Behaviour(Base):
             self.assertEqual(self._hello(rnd_room(), os.urandom(32), True, ip).json()['t'], 'welcome')
         self.refused(self._hello(rnd_room(), os.urandom(32), True, ip), 'limit')
         self.assertEqual(self._hello(rnd_room(), os.urandom(32), True).json()['t'], 'welcome')
+        # an IPv6 client counts by its /64
+        for i in range(10):
+            ip6 = '2001:db8:%x:%x::%x' % (os.urandom(1)[0], os.urandom(1)[0], i + 1) if i == 0 else ip6.rsplit(':', 1)[0] + ':%x' % (i + 1)
+            self.assertEqual(self._hello(rnd_room(), os.urandom(32), True, ip6).json()['t'], 'welcome')
+        self.refused(self._hello(rnd_room(), os.urandom(32), True, ip6.rsplit('::', 1)[0] + '::beef'), 'limit')
 
     def test_hello_timeout(self):
         room, admit, _ = self.session(1)
         c = self.client(room)
-        self.refused(c, 'no hello', timeout=MAIN['hello'] / 1000 + 4)
+        time.sleep(MAIN['hello'] / 1000 + 0.5)
+        self.client(room)   # the next connection closes a socket that stayed silent (there is no timer per socket)
+        self.refused(c, 'no hello', timeout=4)
 
     def test_waiting_sockets_capped(self):
         room = rnd_room()
@@ -629,11 +642,11 @@ class Deploy(unittest.TestCase):
 class NoUrl(unittest.TestCase):
     """The deployed relay's address is never in the repository: only the placeholder form in the docs."""
     def test_no_workers_dev_address(self):
-        out = subprocess.run(['git', 'grep', '-nIE', r'[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev', '--', '.'],
+        out = subprocess.run(['git', 'grep', '-niIE', r'[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev', '--', '.'],
                              cwd=REPO, capture_output=True, text=True).stdout
         # (the placeholder `example`, as in `wss://kks-relay.example.workers.dev`, is not an address)
         bad = [l for l in out.splitlines()
-               if any(sub != 'example' for sub in re.findall(r'[a-z0-9-]+\.([a-z0-9-]+)\.workers\.dev', l))]
+               if any(sub != 'example' for sub in re.findall(r'[a-z0-9-]+\.([a-z0-9-]+)\.workers\.dev', l.lower()))]
         self.assertEqual(bad, [])
 
 
