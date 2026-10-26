@@ -1,15 +1,24 @@
 ## What lies over the view: the touch controls (two sticks: move on the left, look on the right, Godot's own
 ## VirtualJoystick driving the same actions as a gamepad's sticks), the buttons (walk/fly, map, use, up and down in
 ## flight, settings), a line saying where the trainee is and how, and the settings panel (the quality tier, with
-## "Automatic" saying what it chose and why, the walking pace and whether the run key toggles, and About: app/about.gd).
+## "Automatic" saying what it chose and why, the touch controls, the walking pace and whether the run key toggles, and
+## About: app/about.gd). With a gamepad in use (app/input_mode.gd) the touch controls hide and the bar names the
+## gamepad's buttons; touching the screen brings them back.
 extends CanvasLayer
 
 const Quality = preload("res://app/quality.gd")
 const Player = preload("res://app/player.gd")
 const About = preload("res://app/about.gd")
+const InputMode = preload("res://app/input_mode.gd")
+const TOUCH := ["auto", "on", "off"]   # the settings' values of "Touch controls": Automatic, Always, Never
 
 var main   # app/main.gd
 var status: Label
+var input: InputMode           # gamepad or touch in use
+var touch_screen := DisplayServer.is_touchscreen_available()   # (the tests set it: headless has none)
+var pad_hint: Label            # the gamepad's buttons, under the status line while the gamepad is in use
+var map_btn: Button
+var settings_btn: Button
 var sticks: Array = []
 var fly_btn: Button
 var use_btn: Button
@@ -38,6 +47,14 @@ func setup(m) -> void:
 	status.add_theme_constant_override("outline_size", 6)
 	status.add_theme_color_override("font_outline_color", Color.BLACK)
 	root.add_child(status)
+	pad_hint = Label.new()
+	pad_hint.name = "pad_hint"
+	pad_hint.position = Vector2(16, 44)
+	pad_hint.add_theme_font_size_override("font_size", 18)
+	pad_hint.add_theme_constant_override("outline_size", 6)
+	pad_hint.add_theme_color_override("font_outline_color", Color.BLACK)
+	pad_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(pad_hint)
 	# the two sticks (shown on touch screens, or when chosen in the settings)
 	for side in [["move", Control.PRESET_BOTTOM_LEFT], ["look", Control.PRESET_BOTTOM_RIGHT]]:
 		var j := VirtualJoystick.new()
@@ -59,11 +76,15 @@ func setup(m) -> void:
 	bar.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	bar.position = Vector2(-560, 12)
 	bar.add_theme_constant_override("separation", 10)
+	# right-aligned in a fixed width, Fly and Use first: when the gamepad hides them (or a touch brings them back)
+	# Map and Settings stay where they are, so that the tap that switches lands on the button it began on
+	bar.alignment = BoxContainer.ALIGNMENT_END
 	root.add_child(bar)
 	fly_btn = _button(bar, "Fly", func(): main.player.toggle_fly())
-	_button(bar, "Map", func(): main.toggle_map())
 	use_btn = _button(bar, "Use", func(): main.player.press_door())
-	_button(bar, "Settings", func(): show_settings(not panel.visible))
+	map_btn = _button(bar, "Map", func(): main.toggle_map())
+	settings_btn = _button(bar, "Settings", func(): show_settings(not panel.visible))
+	bar.size = Vector2(4 * 120 + 3 * 10, 64)
 	var ud := VBoxContainer.new()
 	ud.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
 	ud.position = Vector2(-140, -120)
@@ -78,8 +99,26 @@ func setup(m) -> void:
 		ud.add_child(b)
 		updown.append(b)
 	_settings(root)
+	input = InputMode.new()
+	input.name = "input_mode"
+	input.scan()
+	input.changed.connect(_on_input_changed)
+	_place_input.call_deferred()
 	apply_gait()
 	refresh()
+
+## The input mode goes last under the window's root (app/input_mode.gd: it sees every event first); it goes with the HUD.
+func _place_input() -> void:
+	if is_inside_tree() and input != null and not input.is_inside_tree():
+		get_tree().root.add_child(input)
+
+func _exit_tree() -> void:
+	if input != null and is_instance_valid(input):
+		if input.is_inside_tree():
+			input.queue_free()
+		else:
+			input.free()
+		input = null
 
 func _button(parent: Control, text: String, f: Callable) -> Button:
 	var b := Button.new()
@@ -129,6 +168,12 @@ func _settings(root: Control) -> void:
 		touch_opt.add_item(s)
 	touch_opt.item_selected.connect(_on_touch)
 	row2.add_child(touch_opt)
+	var touch_note := Label.new()
+	touch_note.name = "touch_note"
+	touch_note.text = "Automatic: the sticks and walking buttons show on a touch screen, and hide while a gamepad is in use (connected, or its buttons or sticks used); touching the screen brings them back until the gamepad is used again, and they come back when the last gamepad is disconnected. Always: shown, gamepad or not. Never: hidden (walk with a gamepad or the keyboard)."
+	touch_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	touch_note.custom_minimum_size = Vector2(620, 0)
+	v.add_child(touch_note)
 	var row_g := HBoxContainer.new()
 	v.add_child(row_g)
 	var lg := Label.new(); lg.text = "Walking pace  "; row_g.add_child(lg)
@@ -207,7 +252,7 @@ func show_settings(on: bool) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		var mode: String = main.cf.get_value("quality", "mode", "auto")
 		tier_opt.selected = ["auto", "full", "lean+vis"].find(mode)
-		touch_opt.selected = ["auto", "on", "off"].find(main.cf.get_value("controls", "touch", "auto"))
+		touch_opt.selected = TOUCH.find(touch_setting())
 		var pi: int = Player.PACES.keys().find(main.cf.get_value("controls", "pace", "normal"))
 		pace_opt.selected = pi if pi >= 0 else Player.PACES.keys().find("normal")     # as apply_gait: unknown is normal
 		run_toggle_cb.set_pressed_no_signal(main.cf.get_value("controls", "run_toggle", false))
@@ -220,7 +265,7 @@ func _on_tier(i: int) -> void:
 	show_settings(true)
 
 func _on_touch(i: int) -> void:
-	main.cf.set_value("controls", "touch", ["auto", "on", "off"][i])
+	main.cf.set_value("controls", "touch", TOUCH[i])
 	Quality.save(main.cf)
 	refresh()
 
@@ -239,22 +284,98 @@ func apply_gait() -> void:
 	main.player.pace = Player.PACES.get(main.cf.get_value("controls", "pace", "normal"), Player.WALK_SPEED)
 	main.player.run_toggle = main.cf.get_value("controls", "run_toggle", false) == true
 
+## The settings' "Touch controls": "auto" (Automatic, the default), "on" (Always) or "off" (Never). Saved settings keep
+## their meaning: "on" and "off" were the explicit choices before the gamepad switch and still are; anything else (an
+## unknown value, a hand-edited true or false) reads as its nearest: true Always, false Never, else Automatic.
+func touch_setting() -> String:
+	var t = main.cf.get_value("controls", "touch", "auto")
+	if t is bool:
+		return "on" if t else "off"
+	return t if t is String and t in TOUCH else "auto"
+
+## The touch controls show: Always; or Automatic on a touch screen while the gamepad is not the controls in use.
 func touch_on() -> bool:
-	var t: String = main.cf.get_value("controls", "touch", "auto")
-	return t == "on" or (t == "auto" and DisplayServer.is_touchscreen_available())
+	var t := touch_setting()
+	return t == "on" or (t == "auto" and touch_screen and not pad_on())
+
+## The gamepad is the controls in use (app/input_mode.gd).
+func pad_on() -> bool:
+	return input != null and input.pad
+
+func _on_input_changed(_pad: bool) -> void:
+	refresh()
+	if pad_on() and focus_panel():
+		input.swallow = true     # the press that gave a panel the focus doesn't also move it on, or act
+
+## A gamepad has just become the controls: the panel on top takes the focus, so that the D-pad and A work it at once
+## (panels opened while touching took none). True when it gave the focus to something.
+func focus_panel() -> bool:
+	var fo := get_viewport().gui_get_focus_owner()
+	if panel.visible:
+		if fo == null or not panel.is_ancestor_of(fo):
+			if about.visible:
+				about.back.grab_focus()
+			else:
+				about_btn.grab_focus()
+			return true
+		return false
+	return main.ui != null and main.ui.focus_top()
 
 func refresh() -> void:
 	var screens: bool = main.ui != null and main.ui.screens_open()      # the control room screens take the view
 	main.player.input_enabled = not (main.map.active or panel.visible or main.probing or screens)
 	var touch := touch_on()
+	var pad := pad_on() and not touch       # (with touch controls Always, the bar stays as it is)
 	for s in sticks:
-		s.visible = touch and not main.map.active and not screens
+		_show(s, touch and not main.map.active and not screens, [s.action_left, s.action_right, s.action_up, s.action_down])
 	var flying: bool = main.player.mode == Player.Mode.FLY
 	fly_btn.text = "Walk" if flying else "Fly"
-	fly_btn.visible = not screens            # walking and flying do nothing on the screens
-	use_btn.visible = not screens
-	for b in updown:
-		b.visible = touch and flying and not main.map.active and not screens
+	fly_btn.visible = not screens and not pad   # walking and flying do nothing on the screens; Y on a gamepad
+	use_btn.visible = not screens and not pad   # A on a gamepad
+	for i in updown.size():
+		_show(updown[i], touch and flying and not main.map.active and not screens, [["up", "down"][i]])
+	pad_hint.visible = pad and not main.map.active
+	if screens:
+		pad_hint.text = "Gamepad: D-pad or left stick between items, A opens, LB RB screens, X or B leaves"
+	elif flying:
+		pad_hint.text = "Gamepad: Y walk, RB up, LB down, A use, Back map, Start settings, X control room, B closes"
+	else:
+		pad_hint.text = "Gamepad: Y fly, A use or a part's card, Back map, Start settings, X control room, D-pad alarms procedures pause fast, B closes"
+
+## Hides or shows a touch control. Hidden while a thumb holds it, Godot's VirtualJoystick (and a held button) would
+## keep its actions pressed and the walker walking: they are let go, and what a gamepad or a key holds for the same
+## actions is pressed again (the gamepad's push that hid the stick is already counted in when this runs). A hidden
+## VirtualJoystick still follows the drags of the thumb that held it (measured, 4.7.2): it is stopped while hidden.
+func _show(c: Control, on: bool, actions: Array) -> void:
+	if c.visible == on:
+		return
+	c.visible = on
+	c.process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
+	if on:
+		return
+	for a in actions:
+		Input.action_release(a)
+		var s := held(a)
+		if s > 0.0:
+			Input.action_press(a, s)
+
+## How strongly a gamepad or a key holds an action now (0 when none does).
+static func held(action: StringName) -> float:
+	var s := 0.0
+	var dz := InputMap.action_get_deadzone(action)
+	for e in InputMap.action_get_events(action):
+		if e is InputEventKey and Input.is_physical_key_pressed(e.physical_keycode):
+			s = 1.0
+		elif e is InputEventJoypadButton:
+			for d in Input.get_connected_joypads():
+				if Input.is_joy_button_pressed(d, e.button_index):
+					s = 1.0
+		elif e is InputEventJoypadMotion:
+			for d in Input.get_connected_joypads():
+				var v := Input.get_joy_axis(d, e.axis) * signf(e.axis_value)
+				if v > dz:
+					s = maxf(s, clampf(inverse_lerp(dz, 1.0, v), 0.0, 1.0))
+	return s
 
 func _process(_d: float) -> void:
 	var p: Vector3 = main.player.global_position
