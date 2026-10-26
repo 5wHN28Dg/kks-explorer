@@ -50,6 +50,10 @@ func setup(u) -> void:
 		avatars = ui.main.people
 	capsules = _mm(_capsule(), 1)
 	dots = _mm(_dot(), 1 << (MAP_LAYER - 1))
+	# the ways' lines read now, in the start, not in a drawn frame (the file is read once per staff model)
+	var e = ui.clock.engine if ui != null and ui.clock != null else null
+	if e != null and e._sm != null:
+		_places(e._sm)
 
 
 func _capsule() -> Mesh:
