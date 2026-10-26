@@ -40,9 +40,11 @@ func run(tree: SceneTree) -> Array:
 	tree.root.size = Vector2i(1280, 720)             # (the headless window is 64 px: the sticks would be outside it)
 	hud.touch_screen = true                          # (headless has no touch screen)
 	main.cf.set_value("controls", "touch", "auto")
+	if hud.input == null or not hud.input.is_inside_tree() or hud.input.get_parent() != tree.root \
+			or hud.input.get_index() != tree.root.get_child_count() - 1:
+		main.free()
+		return p + ["the input mode is not the last child of the window's root (it must see events before the panels)"]
 	hud.input.keys_count = true                      # (as on a desktop; the phone's case is in mode())
-	if hud.input == null or not hud.input.is_inside_tree() or hud.input.get_parent() != tree.root:
-		p.append("the input mode is not under the window's root (it must see events before the panels)")
 	p.append_array(hud_switch(main))
 	p.append_array(settings(main))
 	p.append_array(await no_stuck(tree, main))
@@ -296,7 +298,43 @@ func no_stuck(tree: SceneTree, main) -> Array:
 	await tree.process_frame
 	if Input.is_action_pressed("move_forward"):
 		p.append("the hidden touch stick pressed move_forward again a frame later")
+	var d2 := InputEventScreenDrag.new()             # the thumb still on the screen, moving: the stick is hidden
+	d2.position = at - Vector2(0, 180)
+	d2.relative = Vector2(0, 20)
+	Input.parse_input_event(d2)
+	await tree.process_frame
+	if Input.is_action_pressed("move_forward") or not hud.input.pad:
+		p.append("the thumb under the hidden move stick, moving, pressed move_forward again (or took the controls back)")
 	Input.parse_input_event(_touch(at - Vector2(0, 200), false))
+	await tree.process_frame
+	# the look stick the same way
+	var look: VirtualJoystick = hud.sticks[1]
+	Input.parse_input_event(_touch(Vector2(5, 5)))
+	Input.parse_input_event(_touch(Vector2(5, 5), false))
+	await tree.process_frame
+	var lat: Vector2 = tree.root.get_final_transform() * look.get_global_rect().get_center()   # (window pixels)
+	Input.parse_input_event(_touch(lat, true, 1))
+	await tree.process_frame
+	await tree.process_frame
+	var ld := InputEventScreenDrag.new()
+	ld.index = 1
+	ld.position = lat - Vector2(200, 0)
+	ld.relative = Vector2(-1, 0)
+	Input.parse_input_event(ld)
+	await tree.process_frame
+	await tree.process_frame
+	if Input.get_action_strength("look_left") <= 0.0:
+		p.append("the look stick dragged left does not press look_left (the test's touch missed it?)")
+	Input.parse_input_event(_button(true, JOY_BUTTON_X))
+	Input.parse_input_event(_button(false, JOY_BUTTON_X))
+	ld.position = lat - Vector2(180, 0)
+	Input.parse_input_event(ld)
+	await tree.process_frame
+	if look.visible or Input.is_action_pressed("look_left"):
+		p.append("the look stick under a thumb, hidden by a gamepad press, still presses look_left")
+	Input.parse_input_event(_touch(lat - Vector2(180, 0), false, 1))
+	await tree.process_frame
+	main.ui.close_top()                              # (X: the control room's screens)
 	await tree.process_frame
 	if main.player.mode == Player.Mode.FLY:
 		main.player.toggle_fly()                     # (Y flew)
@@ -362,7 +400,7 @@ func focus(tree: SceneTree, main) -> Array:
 	var hud = main.hud
 	var ui = main.ui
 	var vp: Viewport = tree.root
-	for which in ["alarms", "procedure", "crew", "settings"]:
+	for which in ["alarms", "procedure", "crew", "card", "settings"]:
 		hud.input.note(_touch(Vector2(5, 5)))
 		var fo := vp.gui_get_focus_owner()
 		if fo:
@@ -375,6 +413,8 @@ func focus(tree: SceneTree, main) -> Array:
 				ui.toggle_procedure(); box = ui.procedure
 			"crew":
 				ui.toggle_crew(); box = ui.crew
+			"card":
+				ui.open_card("30PAC10AA101"); box = ui.card    # (its set point has a text field)
 			"settings":
 				hud.show_settings(true); box = hud.panel
 		await tree.process_frame
@@ -390,6 +430,8 @@ func focus(tree: SceneTree, main) -> Array:
 			p.append("%s open when the gamepad took over: the focus is on %s, not in the panel" % [which, fo])
 		elif which == "alarms" and fo != ui.alarms._tabs[ui.alarms.tab]:
 			p.append("the press that switched moved the alarm list's focus on, to %s" % fo)
+		elif not fo is BaseButton:
+			p.append("%s: the gamepad's focus went to %s, not a button (a text field brings up the keyboard)" % [which, fo])
 		elif which == "settings" and fo != hud.about_btn:
 			p.append("the press that switched moved the settings' focus on, to %s" % fo)
 		if ui.clock.speed != speed0:

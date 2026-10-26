@@ -521,10 +521,12 @@ func _focus_in(p: Control, fo: Control) -> bool:
 	return b != null
 
 
+## The first button that can take the focus (a text field would bring up the phone's keyboard, and the D-pad would
+## move its cursor; the panels' own open() choose buttons too).
 static func _first_focusable(n: Node) -> Control:
 	for c in n.get_children():
 		if c is Control and c.is_visible_in_tree():
-			if c.focus_mode == Control.FOCUS_ALL and not (c is BaseButton and c.disabled):
+			if c is BaseButton and c.focus_mode == Control.FOCUS_ALL and not c.disabled:
 				return c
 			var f := _first_focusable(c)
 			if f != null:

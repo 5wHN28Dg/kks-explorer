@@ -29,9 +29,12 @@ func scan() -> void:
 	for d in Input.get_connected_joypads():
 		pads[d] = true
 	pad = not pads.is_empty()
+	if not Input.joy_connection_changed.is_connected(_on_connection):   # (from now: none missed before _ready)
+		Input.joy_connection_changed.connect(_on_connection)
 
 func _ready() -> void:
-	Input.joy_connection_changed.connect(_on_connection)
+	if not Input.joy_connection_changed.is_connected(_on_connection):
+		Input.joy_connection_changed.connect(_on_connection)
 
 func _exit_tree() -> void:
 	if Input.joy_connection_changed.is_connected(_on_connection):
@@ -52,9 +55,19 @@ func _on_connection(device: int, connected: bool) -> void:
 func _input(e: InputEvent) -> void:
 	swallow = false
 	note(e)
-	if swallow:
-		swallow = false
+	if swallow and _navigates(e):
 		get_viewport().set_input_as_handled()
+	swallow = false
+
+## The GUI's own moves and presses (D-pad, left stick, A): on the control just given the focus they would move it on
+## or press it. Other buttons (X to the control room, Y fly …) keep their jobs.
+static func _navigates(e: InputEvent) -> bool:
+	if e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A:
+		return true
+	for a in ["ui_up", "ui_down", "ui_left", "ui_right", "ui_accept", "ui_select", "ui_focus_next", "ui_focus_prev"]:
+		if InputMap.has_action(a) and e.is_action(a):
+			return true
+	return false
 
 ## The last input decides: a gamepad's press or push, or a touch.
 func note(e: InputEvent) -> void:

@@ -344,11 +344,13 @@ func refresh() -> void:
 
 ## Hides or shows a touch control. Hidden while a thumb holds it, Godot's VirtualJoystick (and a held button) would
 ## keep its actions pressed and the walker walking: they are let go, and what a gamepad or a key holds for the same
-## actions is pressed again (the gamepad's push that hid the stick is already counted in when this runs).
+## actions is pressed again (the gamepad's push that hid the stick is already counted in when this runs). A hidden
+## VirtualJoystick still follows the drags of the thumb that held it (measured, 4.7.2): it is stopped while hidden.
 func _show(c: Control, on: bool, actions: Array) -> void:
 	if c.visible == on:
 		return
 	c.visible = on
+	c.process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
 	if on:
 		return
 	for a in actions:
