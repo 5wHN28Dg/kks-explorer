@@ -507,7 +507,7 @@ class Behaviour(Base):
             pass
 
     def test_host_burst(self):
-        # a new host's first burst is the host's 400 messages, not a player's 200 (the bucket used to start at 200,
+        # the creating host's first burst is the host's 400 messages, not a player's 200 (the bucket used to start at 200,
         # which made test_ids_past_255 fail on a fast runner: its host is slowed after 200 + 120/s)
         _, _, (h, a) = self.session(2)
         for i in range(390):

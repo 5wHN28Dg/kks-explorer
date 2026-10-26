@@ -304,7 +304,7 @@ class Relay:
             burst = L['hostBurst'] if c.host else L['burst']
             fl = room.flow.get(c.id)
             if not fl:
-                # a host's bucket starts full at the host's burst, not a player's (as the Worker)
+                # the host when it first sends (the creator) starts with a full host's bucket, not a player's (as the Worker)
                 fl = room.flow[c.id] = [Bucket(burst, now), Bucket(L['byteBurst'], now), Window(), -1e18]
             m, b = fl[2].add(now, 1, size, L['window'])
             if m > L['cut'] * rate * L['window'] / 1000 or b > L['cut'] * L['bytes'] * L['window'] / 1000:
