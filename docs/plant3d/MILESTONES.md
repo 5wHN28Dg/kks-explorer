@@ -103,7 +103,7 @@ navigation mesh (its control room with the WTP desk and lockers, the laboratory,
 train and to the intake) and its zones (yards, the hall's hearing protection, face shield and apron in the chemical
 areas); the WTP operator's rounds and the chemists' samples and stock checks, each reading checked against the
 model; the sequences run from the WTP's desk: a filter's backwash ordered by the shift supervisor, a mixed bed's
-regeneration on the laboratory's silica finding, an RO train's cleaning in place, an RO trip's flush, the regenerant
+regeneration on the laboratory's silica finding, an RO train's cleaning in place, an RO trip's reset and flush, the regenerant
 tanks' bulk delivery; the train's control room calling the WTP when its demineralised water runs low; the WTP's jobs
 under permits (cartridge changes and the RO analysers' calibrations added to the model, a mixed bed's internals with
 its gas test), the other stream put in service and the process points locked by the WTP operator. Two engine

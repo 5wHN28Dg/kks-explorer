@@ -1113,9 +1113,11 @@ def wtp():
                f'iso_ro_{x}', f'cart_{x}_clog')
         for a, what, code in (('orp', 'feed ORP analyser', f'00GCB2{n}CQ002'),
                               ('cond', 'permeate conductivity analyser', f'00GCB2{n}CQ001')):
-            m.isolation(f'iso_ro_{x}_{a}', f'RO train {L}: its {what}',
-                        [(code, 'instrument', f'ro_{x}_stopped', 'The analyser\'s sample valve shut and tagged; the RO '
-                                                                 'train off line')])
+            # (the train locked out too: its ORP trip and its permeate dump read the analyser, held while isolated)
+            m.isolation(f'iso_ro_{x}_{a}', f'RO train {L}: its {what}, the train off line',
+                        [(ro, 'process', f'ro_{x}_stopped', 'Train stopped; its start locked out on the WTP desk and '
+                                                            'tagged'),
+                         (code, 'instrument', f'ro_{x}_stopped', 'The analyser\'s sample valve shut and tagged')])
             m.work(f'wo_ro_{x}_{a}_cal', code, f'RO train {L} {what}: calibration', 'inst', 'general',
                    f'iso_ro_{x}_{a}', f'ro_{x}_{a}_drift')
     m.start_stop('00GBS20AT001', 'fp', ok=False)

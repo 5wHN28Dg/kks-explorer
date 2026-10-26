@@ -33,7 +33,7 @@ EDGES = [
     ('p_wtp_w', 'p_wtp_dt'), ('p_wtp_nw', 'p_wtp_dt'), ('p_wtp_n', 'p_wtp_bw'), ('p_wtp_bw', 'p_wtp_fw'),
     ('p_wtp_fw', 'p_wtp_fst'), ('p_wtp_fst', 'p_wtp_fdk'), ('p_wtp_nw', 'p_wtp_ft'), ('p_wtp_fw', 'p_wtp_ft'),
     ('p_wtp_n', 'p_wtp_ne'), ('p_wtp_lab', 'p_wtp_e'), ('p_wtp_e', 'p_wtp_se'), ('p_wtp_se', 'p_wtp_chs'),
-    ('p_wtp_chs', 'p_wtp_chin'), ('p_wtp_chin', 'p_wtp_chn'), ('p_wtp_chn', 'p_wtp_ne'), ('p_wtp_chn', 'p_wtp_pit'),
+    ('p_wtp_chin', 'p_wtp_chn'), ('p_wtp_chn', 'p_wtp_ne'), ('p_wtp_chn', 'p_wtp_pit'),
     ('p_wtp_chs', 'p_wtp_r4'), ('p_wtp_r4', 'p_int_sw'), ('p_int_sw', 'p_int_w'), ('p_int_w', 'p_int_in'),
     ('p_wtp_r2', 'p_wtp_se'), ('p_int_in', 'p_int_s'), ('p_int_s', 'p_int_se'), ('p_wtp_pit', 'p_wtp_cl'),
     ('p_wtp_ne', 'p_wtp_cl'), ('p_wtp_ft', 'p_wtp_ftn'), ('p_wtp_fst', 'p_wtp_ftn'), ('p_wtp_hw', 'p_wtp_mb'),
@@ -83,7 +83,7 @@ WTP_AREAS = ['wtp', 'intake']
 # room (the hall, the demineralised water tanks, the filtered water tank, the filters, the clarifiers, the intake,
 # the pit), each with the range it holds running normally (tests/test_plant3d_staff.py checks them on shift_cold).
 # The site is large and walking is not compressed (STAFF.md §2): a round takes about an hour and a half of the clock,
-# so it is made every four hours
+# so it is made twice a shift, four hours apart (the last ends before the handover)
 ROUND = [
     ('00GCB21CQ002', [0, 250], 5), ('00GCB11CP001', [0, 1], 0.05), ('00GCL10CL001', [25, 100], 1),
     ('00GBL10CL001', [30, 100], 1), ('00GBB11CP001', [0, 2.2], 0.05), ('00GBB12CP001', [0, 2.2], 0.05),
@@ -215,7 +215,7 @@ def routines(slot):
     return [
         {'id': 'wtp_shift', 'idle': 'idle_wtp', 'slots': [
             slot('start-0:25', 'gear_up'), slot('start-0:25', 'handover_take_wtp'),
-            slot('start+1:00', 'round_wtp', every='4:00', until='end-2:00'), slot('end-0:15', 'handover_give_wtp')]},
+            slot('start+1:00', 'round_wtp', every='4:00', until='end-3:30'), slot('end-0:15', 'handover_give_wtp')]},
         {'id': 'chem_shift', 'idle': 'idle_lab', 'slots': [
             slot('start-0:25', 'gear_up'), slot('start-0:25', 'handover_take_lab'),
             slot('start+1:30', 'wtp_samples', every='4:00', until='end-1:00'), slot('start+3:30', 'chem_stock'),
@@ -279,8 +279,10 @@ def tasks(models):
         o, no = _other(x), 3 - n
         bed, obed = f'00GCF1{n}AT001', f'00GCF1{no}AT001'
         task(f'mb_regen_{x}', f'Regenerate mixed bed {x.upper()}', [
-            DESK, scr(obed, 'in_service'), scr(f'00GCK10AP00{no}', 'start'), wait(f'mb_{o}_making', 30),
-            scr(f'00GCK10AP00{n}', 'stop'), scr(bed, 'standby'), scr(bed, 'regenerate'), say('regen_on', 'shift_sup'),
+            # (each change-over op refused as already made goes on: a standby bed found exhausted is regenerated too)
+            DESK, scr(obed, 'in_service', **{'else': 2}), scr(f'00GCK10AP00{no}', 'start', **{'else': 3}),
+            wait(f'mb_{o}_making', 30), scr(f'00GCK10AP00{n}', 'stop', **{'else': 5}),
+            scr(bed, 'standby', **{'else': 6}), scr(bed, 'regenerate'), say('regen_on', 'shift_sup'),
             wait(f'mb_{x}_rdy', 90)] + CHEM_GEAR + reads([('00GCP10BB001', [15, 100], 1),
                                                          ('00GCP20BB001', [15, 100], 1)]) + [
             DESK, scr(bed, 'inject'), wait(f'mb_{x}_airrdy', 150), scr('00GCP30AN001', 'start'),
@@ -304,15 +306,20 @@ def tasks(models):
             scr('00GNR10BB001', 'neutralise'), say('cip_done', 'shift_sup')]
         task(f'cip_ro_{x}', f'Clean RO train {x.upper()} in place', steps, priority=2)
         reacts.append({'on': {'value': f'ro_{x}_nflow_l'}, 'roles': ['wtp_op'], 'task': f'cip_ro_{x}'})
-        # an RO trip stops the train without its flush (W2): the operator flushes it from the desk and reports
-        task(f'ro_trip_{x}', f'RO train {x.upper()} tripped: flush it', [
-            DESK, scr(ro, 'flush', **{'else': 2}), say('ro_flushed', 'shift_sup')], priority=1)
-        for t in ('suct', 'p', 'orp'):
-            reacts.append({'on': {'trip': f'ro_{x}_trip_{t}'}, 'roles': ['wtp_op'], 'task': f'ro_trip_{x}'})
-    # the WTP's alarms answered at the WTP: acknowledged at its desk, looked at locally, reported
-    task('answer_alarm_wtp', 'Answer the WTP alarm', [DESK, {'ack': '$'}, {'go': {'kks': '$'}},
-                                                      {'work': [2, 4], 'anim': 'inspect'},
-                                                      say('alarm_checked', 'shift_sup')], priority=1)
+        # an RO trip stops the train without its flush (W2): the operator resets the trip from the desk (its cause
+        # gone with the high-pressure pump stopped), flushes the train with permeate and reports; a refusal abandons
+        # the task (the debrief shows it), never a report of a flush not made
+        for t, code in (('suct', f'00GCB2{n}CP002'), ('p', f'00GCB2{n}CP001'), ('orp', f'00GCB2{n}CQ002')):
+            tid = f'ro_{x}_trip_{t}'
+            task(f'ro_trip_{x}_{t}', f'RO train {x.upper()} tripped: reset and flush it', [
+                DESK, {'op': {'kks': code, 'do': 'reset', 'trip': tid, 'where': 'screen'}}, scr(ro, 'flush'),
+                say('ro_flushed', 'shift_sup')], priority=1)
+            reacts.append({'on': {'trip': tid}, 'roles': ['wtp_op'], 'task': f'ro_trip_{x}_{t}'})
+    # the WTP's alarms answered at the WTP (its trips too, through their alarms): acknowledged at its desk, looked at
+    # locally with the chemical PPE on (several of them are at the dosing skids), reported; after an RO trip's own
+    # task, which comes first
+    task('answer_alarm_wtp', 'Answer the WTP alarm', [DESK, {'ack': '$'}] + CHEM_GEAR + [
+        {'go': {'kks': '$'}}, {'work': [2, 4], 'anim': 'inspect'}, say('alarm_checked', 'shift_sup')], priority=2)
     reacts.append({'on': {'alarm': 2}, 'areas': WTP_AREAS, 'roles': ['wtp_op'], 'task': 'answer_alarm_wtp'})
     # the train's call when its demineralised water tank runs low (WATER-TREATMENT §8): the control room asks the
     # WTP for more transfer; the WTP operator starts the transfer pumps that are not running

@@ -2692,8 +2692,23 @@ def day_forks():
           'events': [['permit', 'wo_cart_a', 'request', 'a_wtp', 'done'], ['lock', 'wo_cart_a', 0, 'a_wtp', 'done'],
                      ['unlock', 'wo_cart_a', 0, 'a_wtp', 'done']]}),
         ('ro_trip', Trainee(extra=[[3000, 'fault', 'sbs_pump']]), 15000,
-         {'events': [['trip', 'ro_a_trip_orp'], ['task', 'a_wtp', 'ro_trip_a', 'start'],
-                     ['op', '00GCB21AT001', 'flush']]}),
+         {'events': [['trip', 'ro_a_trip_orp'], ['task', 'a_wtp', 'ro_trip_a_orp', 'start'],
+                     ['op', '00GCB21CQ002', 'reset', 'done'], ['op', '00GCB21AT001', 'flush', 'done'],
+                     ['task', 'a_wtp', 'ro_trip_a_orp', 'done']]}),
+        # the RO's cleaning in place when RO A fouls fast (the other train started, A cleaned with the chemical PPE
+        # on at the CIP skid), a mixed bed's internals as a confined-space job (the beds changed over, the bed and its
+        # feed pump locked, the gas test, the work), RO B's ORP analyser calibrated after a drift (the train and the
+        # analyser locked by the WTP operator and the I&C technician)
+        ('wtp_cip', Trainee(extra=[[3000, 'fault', 'ro_a_fouling']]), 75000,
+         {'events': [['task', 'a_wtp', 'cip_ro_a', 'start'], ['op', '00GCB30BB001', 'add_caustic', 'done'],
+                     ['op', '00GCB21AT001', 'clean', 'done']]}),
+        ('wtp_resin', Trainee(extra=[[3000, 'fault', 'mb_a_resin']]), 45000,
+         {'permits': {'wo_mb_a_resin': 9}, 'repaired': ['mb_a_resin'],
+          'events': [['read', None, '00GCF11CQ003', None, 'ok'], ['lock', 'wo_mb_a_resin', 0, 'a_eap', 'done'],
+                     ['lock', 'wo_mb_a_resin', 1, 'a_wtp', 'done']]}),
+        ('wtp_orp_cal', Trainee(extra=[[3000, 'fault', 'ro_b_orp_drift']]), 40000,
+         {'permits': {'wo_ro_b_orp_cal': 9}, 'repaired': ['ro_b_orp_drift'], 'end': {'ro_b_orp_drift': 0},
+          'events': [['lock', 'wo_ro_b_orp_cal', 0, 'a_wtp', 'done'], ['lock', 'wo_ro_b_orp_cal', 1, None, 'done']]}),
     ]
 
 

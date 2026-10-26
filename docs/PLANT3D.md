@@ -1742,7 +1742,8 @@ vectors (§19). What S3 adds to §16–§17:
 - **Reactions by area.** A reaction on an alarm or a trip may name `"areas"` (1–64 area ids of the plant, no repeat;
   `bad_ref`, `dup_id`; on any other reaction `unknown_key`): it is then made only for the alarms and trips of the model
   files of those areas (a model file's `area`, §7). So the main control room answers the train's alarms and the WTP
-  operator the WTP's and the intake's, and an RO train's trip is not the train's trip call.
+  operator the WTP's and the intake's, and an RO train's trip is not the train's trip call (the WTP's trips are
+  answered through their alarms, each trip having one, and an RO train's trip also by its own reset and flush).
 - **Findings.** A reaction may be `{"on": {"finding": code or "*"}}` (a code with a `show` binding, `bad_ref`): a
   `read` event of that code (any, for `"*"`) with the result `out_of_range`, the trainee's as an NPC's (a misreading is
   no finding). Made at the end of phase 5 (§17.2), after the reactions to unsafe acts, in reaction order, each reading
@@ -1758,12 +1759,12 @@ vectors (§19). What S3 adds to §16–§17:
   laboratory, the walk from the train and to the intake); zones over its yards, its hall (hearing protection), the
   intake's pump house, and the chemical areas (the chemical store, the regenerant tanks and CIP skid: face shield and
   apron, put on at the WTP's lockers by the tasks that go there); the WTP's handover at its desk and the laboratory;
-  the WTP operator's round every four hours (fourteen readings over the whole plant, about an hour and a half of the
-  clock: the walks are not compressed); the chemists' samples (the sample panel's SDI, the laboratory's analyses,
+  the WTP operator's round twice a shift, four hours apart (fourteen readings over the whole plant, about an hour and a
+  half of the clock: the walks are not compressed); the chemists' samples (the sample panel's SDI, the laboratory's analyses,
   the mixed beds' silica at the laboratory's action limit of 15 µg/kg, under the analysers' alarm at 20) and the
   chemical stock and dosing check; a filter's backwash ordered by the shift supervisor when its head loss is due (a
   value reaction), a mixed bed's regeneration on the laboratory's finding, an RO train's cleaning in place when its
-  normalised flow is down 10 % (a value reaction), an RO trip's flush, a regenerant or coagulant tank refilled from
+  normalised flow is down 10 % (a value reaction), an RO trip's reset and flush, a regenerant or coagulant tank refilled from
   the bulk delivery when a check finds it low (the tanker's unloading is not built, WATER-TREATMENT §9; vehicles are
   S4's); the train's control room calling the WTP when its demineralised water tank runs low (a value reaction, and
   a radio request of the control room operator's); the WTP's works under permits, asked for by the WTP operator when
@@ -1772,8 +1773,9 @@ vectors (§19). What S3 adds to §16–§17:
   put in service first), the electrical points by the electrical authorised person and the instrument points by the
   I&C technician once they are safe; the I&C maintenance supervisor's week adds the standby RO train's analysers.
 - **The model** (`wtp_model.py`) gains the cartridge changes (`wo_cart_a`, `wo_cart_b`, repairing the clogging under
-  the RO train's isolation), the RO analysers' drifts (trainer's faults) and their calibrations under an instrument
-  isolation (the train off line: the shown value held while isolated, §15.4), the gas test points, and `show`
+  the RO train's isolation), the RO analysers' drifts (trainer's faults) and their calibrations under an isolation of
+  the analyser and the train (its ORP trip and permeate dump read the analyser, whose shown value is held while it
+  is isolated, §15.4: the train is locked out meanwhile), the gas test points, and `show`
   bindings for the readings the people take (the SDI, the filtered water turbidity, the dosing and regenerant tanks).
 - **The scenario `shift_wtp`:** shift_cold with filter 1 nearly due (its head loss reaches 2.2 m at about 06:05) and
   mixed bed A further used (its silica passes 15 µg/kg at about 06:50, the analyser's alarm at about 08:15).
@@ -2025,7 +2027,8 @@ without one, a hot work's after its first work step). `day` follows the S3 conte
 `scenario` (default the day's): on `shift_wtp`, the WTP's day without a trainee (the backwash ordered and run, the
 chemist's finding, the regeneration), the trainee as the WTP operator (the backwash) and as the shift chemist (the
 silica logged, the NPC operator regenerating); on `shift_cold`, the train's call for demineralised water (the tank's
-drain left open), a cartridge change under a permit, an RO trip's flush.
+drain left open), a cartridge change under a permit, an RO trip's reset and flush, RO A's cleaning in place, a mixed
+bed's internals as a confined-space job (its gas test), RO B's ORP analyser calibrated after a drift.
 
 **As built for milestone S1** (2026-10-23, §17.8): `staff` holds a synthetic version 2 plant with a clock at
 `day_scale` 60 and staff (`files`, `counts`): two crews of operators on a rotation, a shift supervisor, an electrical

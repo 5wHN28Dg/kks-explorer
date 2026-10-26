@@ -944,10 +944,14 @@ class FirstTrainStaff(unittest.TestCase):
         order = [next((x[0] for x in ev if x[1:1 + len(w)] == w), None) for w in wants]
         self.assertNotIn(None, order)
         self.assertEqual(order, sorted(order))
-        self.assertFalse([x for x in ev if x[1] == 'unsafe'], 'everyone at the WTP wears the PPE of its zones')
+        wtp_people = {p['id'] for p in self.b.staff.people if p['role'] in ('wtp_op', 'shift_chem', 'chemist')}
+        for f in self.day['forks']:
+            if f.get('scenario') == 'shift_wtp' or f['id'].startswith(('wtp_', 'demin_', 'ro_')):
+                self.assertFalse([x for x in f['events'] if x[1] == 'unsafe' and x[2] in wtp_people],
+                                 f'{f["id"]}: everyone at the WTP wears the PPE of its zones')
         worn = [x for x in forks['wtp_npc']['inputs'] if x[1] == 'ppe']
         self.assertFalse(worn)          # (no trainee: the NPCs' PPE is theirs)
-        for f in ('demin_call', 'wtp_cartridge', 'ro_trip'):
+        for f in ('demin_call', 'wtp_cartridge', 'ro_trip', 'wtp_resin', 'wtp_orp_cal', 'wtp_cip'):
             self.assertFalse([x for x in forks[f]['events'] if x[1] in ('lock', 'unlock') and x[5] != 'done'], f)
         # the WTP's alarms go to its own operator, the train's to the main control room (§17.12)
         def answered(f):
@@ -963,6 +967,8 @@ class FirstTrainStaff(unittest.TestCase):
         who = {x[2] for x in ev if x[1] == 'read'}
         self.assertTrue({'a_wtp', 'a_chem', 'chem1', 'chem2'} <= who, who)
         self.assertFalse([x for x in ev if x[1] == 'task' and x[3].startswith(('backwash_', 'mb_regen_', 'cip_ro_'))])
+        self.assertFalse([x for x in ev if x[1] == 'read' and x[2] in who - {'a_fo_gt', 'a_fo_st', 'a_fo_cw'}
+                          and x[5] != 'ok'])
 
 
 if __name__ == '__main__':
