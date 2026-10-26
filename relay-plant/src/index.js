@@ -188,15 +188,18 @@ export class Room extends DurableObject {
   // the per-socket limits: false when the message is dropped (or the socket closed)
   admitFlow(ws, a, size, now) {
     const host = !!a.host, L = this.L;
+    const rate = host ? L.hostRate : L.rate, burst = host ? L.hostBurst : L.burst;
     let f = this.flow.get(a.id);
-    if (!f) this.flow.set(a.id, f = {msgs: new Bucket(L.rate, L.burst, now), bytes: new Bucket(L.bytes, L.byteBurst, now), win: new Window(), slowAt: 0});
-    const rate = host ? L.hostRate : L.rate;
+    // a socket that is the host when it first sends (the room's creator) starts with a full host's bucket (400), not
+    // a player's (200): else the creator's first burst was cut short at 200 + 120/s (§9.1). A player who claims host
+    // later keeps its bucket, which refills to 400 at the host's rate.
+    if (!f) this.flow.set(a.id, f = {msgs: new Bucket(rate, burst, now), bytes: new Bucket(L.bytes, L.byteBurst, now), win: new Window(), slowAt: 0});
     const [m, b] = f.win.add(now, 1, size, L.window);
     if (m > L.cut * rate * L.window / 1000 || b > L.cut * L.bytes * L.window / 1000) {
       this.refuse(ws, 'limit');
       return false;
     }
-    if (size > L.message || !f.msgs.take(1, now, rate, host ? L.hostBurst : L.burst) || !f.bytes.take(size, now, L.bytes, L.byteBurst)) {
+    if (size > L.message || !f.msgs.take(1, now, rate, burst) || !f.bytes.take(size, now, L.bytes, L.byteBurst)) {
       if (now - f.slowAt >= 1000) { f.slowAt = now; this.send(ws, {t: 'slow'}) }
       return false;
     }
