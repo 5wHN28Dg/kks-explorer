@@ -25,10 +25,12 @@ def files_of(V, run=None):
     return F
 
 
-def replay(V, run):
+def replay(V, run, digests=None):
     b = P.check_files(files_of(V, run))
-    e = P.Engine(b, 's1')
+    e = P.Engine(b, 's1', run.get('session', False))
     states = [plain(e.snapshot())]
+    if digests is not None:
+        digests.append(e.digest())
     inputs = run['inputs']
     i = 0
     while e.step_no < run['until']:
@@ -38,6 +40,8 @@ def replay(V, run):
         e.step()
         if e.step_no % run['every'] == 0 or e.step_no == run['until']:
             states.append(plain(e.snapshot()))
+        if digests is not None and e.step_no % G.DIGEST_EVERY == 0:
+            digests.append(e.digest())
     return e, states
 
 
@@ -58,11 +62,13 @@ class StaffVectors(unittest.TestCase):
 
     def test_runs_replay(self):
         for run in self.runs:
-            e, states = replay(self.V, run)
+            digests = []
+            e, states = replay(self.V, run, digests)
             d = close(plain(e.events), run['events'])
             self.assertIsNone(d, f'{run["why"][:60]}: {d}')
             d = close(states, run['states'])
             self.assertIsNone(d, d)
+            self.assertEqual(digests, run['digests'], f'{run["why"][:60]}: the state digests (§17.14)')
 
     def test_valid_counts(self):
         b = P.check_files(files_of(self.V))
@@ -253,7 +259,7 @@ class StaffVectors(unittest.TestCase):
         e.step()
         sr = e.staff
         tp = sr.people[sr.trainee]
-        sr.t_at = tp.pos = None
+        tp.pos = None
         seat = next(i for i, q in enumerate(sr.st.places) if q['kind'] == 'seat' and i not in sr.holder)
         tp.occ = seat
         sr.holder[seat] = tp.i
@@ -283,7 +289,7 @@ class StaffVectors(unittest.TestCase):
         e.step()
         sr = e.staff
         tp = sr.people[sr.trainee]
-        sr.t_at = tp.pos = None
+        tp.pos = None
         sr.leave_place(tp)
         room = next(r for r in sr.st.rooms if sr.st.meet_place(r, sr.holder) is not None
                     and sr.st.places[sr.st.meet_place(r, sr.holder)]['kind'] in ('seat', 'desk', 'table'))
@@ -299,6 +305,16 @@ class StaffVectors(unittest.TestCase):
 
     def run_named(self, start):
         return next(r for r in self.runs if r['why'].startswith(start))['events']
+
+    def test_actions_made_on_the_way(self):
+        """The runs of actions before their step make them while walking: a leave comes before the first early event
+        (the generator once lost the leave to a variable reused for the lock's kind, MP1's blind review)."""
+        r = next(r for r in self.runs if r['why'].startswith('actions before their step'))
+        made = [x[6] for x in r['events'] if x[1] == 'early']
+        self.assertTrue(made)
+        for m in made:      # the action was made while walking: their last arrive or leave before it was a leave
+            moves = [x for x in r['inputs'] if x[1] in ('arrive', 'leave') and x[0] <= m]
+            self.assertEqual(moves[-1][1], 'leave', f'the action made at {m} was not made on the way')
 
     def test_actions_before_their_step(self):
         """§17.8 (the user, 2026-10-23): an op, lock or permit action of the trainee's made before its step is current
@@ -343,19 +359,19 @@ class StaffVectors(unittest.TestCase):
         e.role('a_fo1')
         e.step()
         sr = e.staff
-        sr.early = [['op', 1, 'K', 'start', 'local', 'm'], ['op', 1, 'K2', 'open', 'local', None], ['lock', 1, 'w', 0]]
-        sr.drop_kept([[5, 'machine', 'm', 'a', 'b', 'next']], 'a_fo1')
-        self.assertEqual(len(sr.early), 3)
-        sr.drop_kept([[5, 'machine', 'm', 'b', 'c', 'command']], 'a_fo1')
-        self.assertEqual(sr.early, [['op', 1, 'K2', 'open', 'local', None], ['lock', 1, 'w', 0]])
+        sr.kept[0] = [['op', 1, 'K', 'start', 'local', 'm'], ['op', 1, 'K2', 'open', 'local', None], ['lock', 1, 'w', 0]]
+        sr.drop_kept([[5, 'machine', 'm', 'a', 'b', 'next']], 'a_fo1', 0)
+        self.assertEqual(len(sr.kept[0]), 3)
+        sr.drop_kept([[5, 'machine', 'm', 'b', 'c', 'command']], 'a_fo1', 0)
+        self.assertEqual(sr.kept[0], [['op', 1, 'K2', 'open', 'local', None], ['lock', 1, 'w', 0]])
         # a point they locked again: an earlier unlock of theirs no longer holds (adversarial review); another
         # person's lock on it doesn't undo their unlock (locks are personal and stack, §15.1, 2026-10-24)
-        sr.early = [['unlock', 1, 'w', 0], ['unlock', 1, 'w', 1], ['lock', 1, 'w', 0]]
-        sr.drop_kept([[5, 'lock', 'w', 0, 'a_fo1', 'refused', ['state']]], 'a_fo1')
-        sr.drop_kept([[5, 'lock', 'w', 0, 'a_elec', 'done', []]], 'a_fo1')
-        self.assertEqual(len(sr.early), 3)
-        sr.drop_kept([[5, 'lock', 'w', 0, 'a_fo1', 'done', []]], 'a_fo1')
-        self.assertEqual(sr.early, [['unlock', 1, 'w', 1], ['lock', 1, 'w', 0]])
+        sr.kept[0] = [['unlock', 1, 'w', 0], ['unlock', 1, 'w', 1], ['lock', 1, 'w', 0]]
+        sr.drop_kept([[5, 'lock', 'w', 0, 'a_fo1', 'refused', ['state']]], 'a_fo1', 0)
+        sr.drop_kept([[5, 'lock', 'w', 0, 'a_elec', 'done', []]], 'a_fo1', 0)
+        self.assertEqual(len(sr.kept[0]), 3)
+        sr.drop_kept([[5, 'lock', 'w', 0, 'a_fo1', 'done', []]], 'a_fo1', 0)
+        self.assertEqual(sr.kept[0], [['unlock', 1, 'w', 1], ['lock', 1, 'w', 0]])
 
     def test_a_paused_step_is_looked_at_again(self):
         """A step paused by a pre-emption becomes current again when it resumes: its first look is made again."""
@@ -750,6 +766,126 @@ class StaffVectors(unittest.TestCase):
         self.assertEqual(j[-1][4], 'refused')
 
 
+class SessionRuns(unittest.TestCase):
+    """Several trainees in one engine (docs/PLANT3D.md §17.13, milestone MP1) and the state digest (§17.14), by name on
+    the vectors' session runs and on engines made here."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(G.OUT2, encoding='utf-8') as f:
+            cls.V = json.load(f)
+        cls.runs = [r for r in cls.V['staff']['runs'] if r.get('session')]
+        cls.b = P.check_files(files_of(cls.V))
+
+    def ev(self, k, kind):
+        return [x for x in self.runs[k]['events'] if x[1] == kind]
+
+    def test_four_session_runs_and_a_session_fork(self):
+        self.assertEqual(len(self.runs), 4)
+        bad = [x for r in self.runs for x in r['inputs'] if not (type(x[-1]) is int and 0 <= x[-1] < 8)]
+        self.assertEqual(bad, [[1, 'role', 'a_fo2', 9], [1, 'role', 'a_fo2', 'x']])     # (on purpose: nothing)
+        self.assertEqual([f['id'] for f in self.V['day']['forks'] if f.get('session')], ['session_cw_alarm'])
+
+    def test_claims_in_one_step_by_commit_order(self):
+        roles = [x for x in self.ev(0, 'role') if x[0] == 1]
+        self.assertEqual(roles, [[1, 'role', 'a_fo1', 'done', 0], [1, 'role', 'a_ccr', 'done', 1],
+                                 [1, 'role', 'a_fo1', 'refused', 2], [1, 'role', 'a_fo2', 'refused', 1]])
+        self.assertEqual(self.runs[0]['states'][-1]['players'][:2], [[0, 'a_fo1', 0], [1, 'a_ccr', 0]][:2])
+
+    def test_an_input_without_a_valid_slot_does_nothing(self):
+        e = P.Engine(self.b, 's1', session=True)
+        e.queue += [('role', 'a_fo2', 9), ('role', 'a_fo2', 'x'), ('role', 'a_fo2', True), ('ack', 'a1')]
+        e.step()
+        self.assertEqual([x for x in e.events if x[1] in ('role', 'alarm')], [])
+        self.assertEqual(e.staff.players, {})
+
+    def test_authority_by_the_slots_person(self):
+        ev = self.runs[0]['events']
+        self.assertIn([40, 'permit', 'wo_pump', 'approve', 'a_fo1', 'refused', ['authority', 'state']], ev)
+        self.assertIn([40, 'op', P_PUMP, 'stop', 'refused', ['authority'], 'local', 'a_fo1'], ev)
+        self.assertIn([41, 'op', P_PUMP, 'stop', 'refused', ['authority']], ev)     # a version 1 op, slot 1 plays
+        self.assertIn([52, 'stop', None, 'a_fo1', None, None, 'refused', ['authority']], ev)    # free slot 2
+
+    def test_a_free_slots_ops_in_the_commits_order(self):
+        ops = [x[:5] for x in self.runs[0]['events'] if x[1] == 'op' and x[0] in (50, 51)]
+        self.assertEqual(ops, [[50, 'op', P_VALVE, 'open', 'done'], [50, 'op', P_VALVE, 'close', 'done'],
+                               [51, 'op', P_VALVE, 'close', 'done'], [51, 'op', P_VALVE, 'open', 'done']])
+
+    def test_new_tasks_per_slot_and_fast_forward(self):
+        r = self.runs[0]
+        held = [s for s in r['states'] if s['unacked'] > 0]
+        self.assertTrue(held and all(not s['fast_forward'] for s in held))
+        self.assertTrue(any(len([p for p in s['players'] if p[2] > 0]) == 1 for s in held),
+                        'one player alone with new tasks holds fast-forward')
+        acks = {x[2] for x in self.ev(0, 'task_ack')}
+        self.assertEqual(acks, {0, 1, 3})
+
+    def test_release_and_reclaim(self):
+        rel = self.ev(1, 'release')
+        self.assertEqual(rel[0], [3, 'release', None, 'refused', 5])
+        self.assertEqual([x[2:] for x in rel[1:]], [['a_fo1', 'done', 0], ['a_fo1', 'done', 3]])
+        roles = self.ev(1, 'role')
+        self.assertIn([4, 'role', 'a_ccr', 'refused', 4], roles)       # another slot's person
+        self.assertEqual([x[4] for x in roles if x[2] == 'a_fo1' and x[3] == 'done'], [0, 3, 4])
+        # released between places: back at the place left, then walking on as an NPC
+        n = rel[1][0]
+        moves = [x for x in self.runs[1]['events'] if x[0] == n and x[1] == 'move' and x[2] == 'a_fo1']
+        self.assertTrue(moves and moves[0][3] is not None, moves)
+
+    def test_jumps_wait_for_every_players_new_tasks(self):
+        j = self.ev(2, 'jump')
+        self.assertEqual([x[4] for x in j], ['refused', 'refused', 'done', 'done'])
+        self.assertIn([10, 'say', 'a_sup', 'all_well', 'a_fo1'], self.runs[2]['events'])
+
+    def test_an_npcs_input_in_flight_is_no_step_of_the_player(self):
+        """The adversarial review's finding: an NPC's op made in step 9, applied in the next step's step 1 after a
+        slot took the person there, is the NPC's (done all the same), but nobody waits on it and the player's turn
+        does not take it as their step: before the fix it moved the player's task on and left `result` set."""
+        e = P.Engine(self.b, 's1', session=True)
+        e.step(59)
+        p = next(q for q in e.staff.people if q.id == 'c_fo')
+        self.assertEqual((p.cur['task'], p.cur['step']), ('open_valve', 1))
+        self.assertTrue(any(x[0] == 'op' and x[-1] == 'c_fo' for x in e.npc_queue))
+        e.role('c_fo', slot=1)
+        e.step()
+        self.assertIn([60, 'op', P_VALVE, 'open', 'done', [], 'local', 'c_fo'], e.events)
+        self.assertIsNone(p.result)
+        self.assertEqual((p.cur['task'], p.cur['step']), ('open_valve', 1))
+        # the vectors' fourth session run pins the same claim for the GDScript engine
+        r = self.runs[3]
+        n = next(x[0] for x in r['events'] if x[1] == 'role' and x[2] == 'c_fo' and x[3] == 'done')
+        self.assertTrue([x for x in r['events'] if x[0] == n and x[1] == 'op' and x[-1] == 'c_fo'])
+
+    def test_a_single_player_run_ignores_release(self):
+        e = P.Engine(self.b, 's1')
+        e.queue.append(('release',))
+        e.step()
+        self.assertFalse([x for x in e.events if x[1] == 'release'])
+
+    def test_the_digest_covers_the_state_not_the_logs(self):
+        e = P.Engine(self.b, 's1', session=True)
+        e.role('a_fo1', slot=0)
+        e.step(30)
+        d = e.digest()
+        e.events.append([e.step_no, 'note'])            # the log
+        e.ack('a1', slot=0)                             # an input queued, not yet stepped
+        self.assertEqual(e.digest(), d)
+        e.queue.clear()
+        for change in (lambda x: x.staff.people[2].__setattr__('rng', x.staff.people[2].rng ^ 1),
+                       lambda x: x.staff.acks.__setitem__(0, 1),
+                       lambda x: x.staff.players.__setitem__(1, 4),
+                       lambda x: x.cur.__setitem__(0, x.cur[0] + 1e-12),
+                       lambda x: x.mem[next(iter(x.mem))].__setitem__(0, 7) if x.mem else x.acount.__setitem__(
+                           next(iter(x.acount)), 9),
+                       lambda x: x.staff.give(x.staff.people[3], 'tea', 4, None, None, None, None, count=False)):
+            x = e.clone()
+            change(x)
+            self.assertNotEqual(x.digest(), d)
+
+
+P_PUMP, P_VALVE = G.PUMP, G.VALVE
+
+
 class FirstTrainStaff(unittest.TestCase):
     """The first train's staff content (tools/plant3d/train_staff.py, milestone S1) and its `day` vector: the day
     replays from the content; each run with a trainee or a fault does what it was made for; the rounds' ranges hold
@@ -871,7 +1007,7 @@ class FirstTrainStaff(unittest.TestCase):
 
     def test_forks(self):
         for f in self.day['forks']:
-            e = P.Engine(self.b, f.get('scenario', self.day['scenario']))
+            e = P.Engine(self.b, f.get('scenario', self.day['scenario']), f.get('session', False))
             inputs = sorted(f['inputs'], key=lambda x: x[0])
             j = 0
             while e.step_no < f['until']:

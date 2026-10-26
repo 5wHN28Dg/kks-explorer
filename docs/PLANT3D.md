@@ -11,7 +11,8 @@ treatment plant, camp). Its content plans: docs/plant3d/STAFF.md, WATER-TREATMEN
 docs/plant3d/MILESTONES.md; decisions 0062–0066. Format 1 content stays valid under format 2 (§14).
 
 **Multiplayer (DRAFT 2026-10-26):** docs/plant3d/MULTIPLAYER.md (deterministic lockstep of this engine, decisions
-0067–0069). It changes §17.4 (several trainees, one per player) with its own vectors in milestone MP1.
+0067–0069). Milestone MP1 (as built, §17.13–§17.14): several trainees in one engine, one per player's slot, and the
+state digest the players compare, with their vectors.
 
 The plant you walk through in Walkdown Plant is **data**, like a course: a *description* (where every piece of
 equipment, pipe and structure is), built from a **kit of parametric parts** (what each kind of thing looks like), made
@@ -1804,6 +1805,106 @@ vectors (§19). What S3 adds to §16–§17:
 - **The scenario `shift_wtp`:** shift_cold with filter 1 nearly due (its head loss reaches 2.2 m at about 06:05) and
   mixed bed A further used (its silica passes 15 µg/kg at about 06:50, the analyser's alarm at about 08:15).
 
+### 17.13 Several trainees (multiplayer, milestone MP1)
+
+A run is a **single-player run** (everything above, unchanged) or a **session run** (docs/plant3d/MULTIPLAYER.md §3,
+decision 0067), chosen when the engine is made and kept for the run (saved with it). In a session run:
+- **Slots and players.** There are 8 slots, 0 to 7; a slot plays one person or none. At step 0 the scenario's
+  `trainee`, when it names one, is slot 0's (the host's); every other slot plays nobody. A single-player run is the
+  case of slot 0 alone: its trainee is slot 0's person, and everything this section calls "the slot's person" is
+  §17.4's trainee there.
+- **Every input carries its slot** as its last element (`[n, kind, …, slot]`, the trace form of §12 and §17.6 with
+  the slot appended; the vectors' and the commits' form). An input whose last element is not an integer 0 to 7 does
+  nothing and makes no event. Step 1 handles the inputs in the order made (the commit's order, MULTIPLAYER.md §3.1),
+  then the NPCs' as before; each input is handled as a single-player run handles its trainee's, **with its slot's
+  person, as the slot stands at that moment, as the trainee**: the authority and `where` rules of §17.1 (an input
+  naming no person, or another person, while the slot plays one: `authority`; a version 1 op too), the repair under a
+  permit (§15.5). A lock, unlock or removal is checked in step 3 against its slot's person then. A slot that plays
+  nobody is in **free mode**, as a single-player run without a trainee: format 1's inputs and the person-null permit,
+  lock and unlock inputs pass the authority checks, an input naming a person is refused (`authority`), and its
+  staff inputs do nothing (its `stop` is refused, `authority`, as in free mode).
+- **`[n, "role", person, slot]`** at any step: done when the person is a `play` role, not `absent`, played by no slot,
+  and the slot plays nobody; refused otherwise. Event `[n, "role", person, "done" | "refused", slot]`. When done, the
+  person becomes the slot's (a single-player run's `role` at step 1 only does that, as §17.4 says; the rest of this
+  item is a session run's): their current task, unless it is the idle task, is paused as a pre-emption pauses it
+  (§17.3, §17.8: its step's place and reservation looked for again, its `work` keeping the time left, the input an NPC
+  waits on forgotten: that input itself is still applied, in this step, as the NPC's; it sets no outcome to wait for,
+  and its events are no step or kept action of the player's, so the paused step is theirs to do) and taken up again at
+  their turn; a person walking a way is between places from then on (the way given up; the place it started from kept as the
+  place they left); their zones are, from then on, those their place or way gave them at that moment, changed by the
+  slot's `zone` inputs; the slot's count of new tasks starts at 0 and its kept actions (§17.8) are none.
+- **`[n, "release", slot]`** (made by the session's host only, MULTIPLAYER.md §3.3): done when the slot plays a person,
+  who becomes an NPC at once (event `[n, "release", person, "done", slot]`); refused otherwise (`[n, "release", null,
+  "refused", slot]`). Their current task, unless it is the idle task, is paused as above and taken up at their NPC turn
+  (in this step's phase 4); one between places is put back at the place they last left (no event; one who was never at
+  a place is off site, as an NPC); the slot's count of new tasks and its kept actions are cleared. A released person may
+  be taken again by any slot (`role`). A single-player run ignores `release`.
+- **`[n, "task_ack", slot]`** sets that slot's count to 0; event `[n, "task_ack", slot]`.
+- **Counts of new tasks** (§17.6) are per slot: a task given to a slot's person counts for that slot; a `say` to a
+  player's person or role counts for every slot whose person it reaches, other than the speaker's.
+- **Fast-forward** (§17.6) is offered when format 1 offers it and no slot's person has new tasks; a jump likewise
+  (any slot may make it: the host decides who, MULTIPLAYER.md §7.2).
+- **Step 9:** the players' `arrive`, `leave`, `ppe`, `zone` and `stop` inputs are applied at its start in the order
+  made, each to its slot's person at that moment (a slot playing nobody: `stop` refused, the others nothing). A
+  `leave` keeps the place left for that slot. In phase 4 each player's person takes the turn of §17.4 (in person
+  order, as anyone) with their own slot's inputs of the step; at a jump's step each player's actions are kept as
+  §17.8 says. Every rule that §17.1–§17.12 give "the trainee" holds for each player's person, and every rule they
+  give the NPCs for every person no slot plays (leaving the site with a lock, holding a job overnight, the gate).
+- **Snapshots** of a session run add `"players": [[slot, person, count of new tasks], …]` (the slots that play a
+  person, in slot order); `unacked` is the sum of those counts (in a single-player run, the trainee's as before).
+
+### 17.14 The state digest
+
+Every engine can give a **state digest** (MULTIPLAYER.md §4: what the players of a session compare): SHA-256 over
+- the 13 bytes `wdp-digest-1\n`,
+- every value slot's double (declared values, `ext`, machine states, trips' latches and the format 2 values, in slot
+  order: §12's snapshot values), little-endian,
+- the encoding of the **digest tree** in Godot 4.7's binary Variant form (`var_to_bytes`: every value a 4-byte
+  little-endian header with its type, integers in 32 bits when they fit and 64 otherwise, floats in 32 bits when the
+  single-precision value is the same double and 64 otherwise, text as its UTF-8 length and bytes padded to 4, arrays
+  as a count and their elements; `ref/godot_variant.py` writes it for the reference).
+
+The digest tree is an array (types: `b` a byte array, `i32` and `i64` packed arrays of 32- and 64-bit integers, `[…]`
+an array, `int` an integer):
+1. the step (`int`);
+2. the stateful nodes' counters, the timers' and delays' step counts in program order (`i64`);
+3. each machine's state as its index, model order (`i32`); each trip's latch (`b`) and its `delay` count (`i64`);
+4. the first-out records, `[[group, trip], …]` sorted by group;
+5. each alarm's state as its name, all of them as one text joined by `|` (model order), its `delay` count (`i64`) and the step its shelf ends, −1 when not
+   shelved (`i64`); each interlock's `when` after the last step (`b`);
+6. the faults applied and those repaired since, each a sorted array of ids;
+7. each work's permit state (`i32`); the permits' numbers `[[work, number], …]` sorted by work; the count of permits
+   requested (`int`); the acceptors `[[work, person or null], …]` sorted by work; each isolation's holding work as its
+   index, −1 for none (`i32`); the locks `[[isolation index, point, [persons in the order placed]], …]` in model order;
+8. the staff's part, or null without staff: the jumps' total J (`int`), the task instances made (`int`), whether the
+   run is a session run (bool), the 8 slots' persons, −1 for none (`i32`), their counts of new tasks (`i32`), the places
+   they last left, −1 (`i32`), their kept actions (8 arrays of §17.8's records), the reservations and holds
+   `[[place, person], …]` sorted by place, the reaction sources given `[[source, count], …]` sorted by source, each
+   reaction's value truth after the last step (null for a reaction not on a value), the offers kept (§17.10:
+   `[source, source, roles, task, priority, work, code, permit's work, its state or the value's name]`), the people off
+   site with a lock at the last phase 2 (sorted indexes, `i32`; kept only when a reaction is on `lock_left`), the `seen`
+   reactions made `[[reaction, person, act kind, start], …]` sorted, the NPCs' inputs for the next step; then, one
+   array per field over the people in file order: on duty (`b`), the duty (`[start, end]` or `[]`), the duties planned
+   ahead, the last day planned (`i64`), how many slots are still to come (`i32`), the place (−1 for none, `i32`), the
+   way (`[from, to, depart, arrive]` or `[]`), the current task instance or null, the queue, the jobs held, the place
+   reserved and the place held (−1, `i32`), the outcome an NPC waits for (text or null), the random stream (`i64`), the
+   PPE worn (a bit per item of §16.3's list, `i32`), the unsafe acts going on (per kind null or `[zone or work, start,
+   stopped]`), the zones from zone inputs (a bit per zone, `i64`).
+
+A task instance is `[task, priority, step made, order made, step index, work, code, alarm, source, idle, started,
+interruptible, owner, act, source of the job's value reaction]`: an act as `[person, kind index, start]`, a reaction
+source as its parts joined by `|` (`reaction|alarm|id`, `reaction|unsafe|person|kind|start`, …), a kept offer of a
+call as `call|roles joined by /|task|work` (`<null>` for no work).
+
+**What it leaves out, and why:** the event log and the input log (they only grow, and what they record is in the
+state), the inputs still queued for the next step (in a session they arrive with commits and are not state yet), the
+previous step's values (the next step makes them again), the model's constants, and what the specification leaves to
+an implementation: a task step's own progress (a `work`'s or meeting's time left, a `go`'s place found, a lock round's
+point; the app counts an NPC's work only when they wake, the reference every step, §0062), the staff step's wake-ups
+and next phase 1, and what is derived from the rest (the locks per code, the locked points' bits). A difference that is
+only in those shows in the digest by the step after the task step ends, when the instance's step index, events or
+places differ.
+
 ## 18. People on screen (the app; not in the vectors)
 
 ### 18.1 Walking
@@ -2070,6 +2171,18 @@ with its expectations (`refused`, `lock_refused`, `permits`, `repaired`, alarms 
 Format 1's file keeps its synthetic parts byte for byte; its `train` and `hot` runs follow the first train's content,
 now version 2: the same inputs and events, every format 1 value the same at every snapshot, with the new values and
 the snapshot keys `permits`, `ptw` and `locked` added. S1 adds the staff's `steps` and `day`.
+
+**Added for milestone MP1** (2026-10-26, §17.13, §17.14): `staff.runs` gains four session runs (`"session": true`,
+inputs with their slot last): two players from step 1 with the claims refused in that step, inputs without a valid
+slot, a player's inputs naming another slot's person and a version 1 op refused, a free slot's ops in the commit's
+order (two in one step, either way round) and its stop refused, each slot's new tasks counted for it and fast-forward
+held by one; three players with a release while walking between places (put back at the place left), a reclaim while
+walking a way as an NPC, a release while working, a claim of a person asleep in a work step, a release of an empty
+slot and a claim of another slot's person refused; the scenario's trainee as slot 0 with jumps refused by either
+slot's new tasks and then accepted, a release and a reclaim; a claim in the step the NPC's op made the step before is
+applied (done as the NPC's, no step of the player's). `day` gains a session fork (`session_cw_alarm`: the CW
+field operator released while walking to the alarm and taken back by another slot). Every staff run, the day and every
+fork carry `digests`: the state digest (§17.14) of step 0 and of every 50th step.
 
 **Added for milestone S3** (2026-10-26, §17.12): `staff.runs` gains two runs on the synthetic plant with reactions by
 area (an alarm reaction of area a1's given, one of area a2's never, the trip's call limited to a2 not made) and

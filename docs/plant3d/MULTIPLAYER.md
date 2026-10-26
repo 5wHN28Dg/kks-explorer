@@ -219,7 +219,10 @@ step.
 - **Inputs:** a player's UI no longer queues an input in the engine: it hands it to the session (`input`), shows it
   as sent (the op's button as pressed, "sending…"), and the input takes effect in every engine when its commit
   arrives. The player keeps each input until a commit lists its number, sends it again after a host change (§5.3),
-  and the host ignores an input number it has committed already.
+  and the host ignores an input number it has committed already. **As built (MP1):** every input the app makes goes
+  through one path, `apps/plant3d/ui/inputs.gd` (`send([kind, …])`, the trace form without step or slot); alone it
+  queues the input in the run's engine at once, as before, and a session (MP2) sets its `sink` to take it instead.
+  `tests/test_plant3d_inputs.py` checks that nothing else in the app makes an input.
 - **Playing a commit:** a player runs the committed steps at the session's rate (1×, or the fast-forward rate). It
   holds a **jitter buffer**: at 1× it runs at most up to C minus the buffer, which starts at one turn (0.2 s) and
   grows by a turn (to at most 5) whenever a commit arrives later than the buffer covered, shrinking again after
@@ -256,6 +259,18 @@ on mobile data, input made to effect seen.
 
 ### 3.3 Several trainees in one engine
 
+**As built (MP1, 2026-10-26): PLANT3D.md §17.13** is the engine's rule, in the reference, the GDScript and the vectors
+(§19, "Added for milestone MP1"); where it differs from the plan below, it wins. What it settles: a slot that plays
+nobody is exactly a single-player run's free mode (its format 2 inputs naming no person pass, as there); the events
+of a session's `role`, `release` and `task_ack` end with the slot (`[n, "role", person, "done" | "refused", slot]`,
+`[n, "release", person, "done" | "refused", slot]`, `[n, "task_ack", slot]`); a claim or a release pauses the person's
+task as a pre-emption does and their next turn takes it up (a person walking a way when claimed is between places; one
+between places when released goes back to the place they left); an input without a valid slot does nothing. The
+engine is made as a session run (`new(model, scenario, true)`, `Engine(b, scenario, session=True)`), which its save
+and its digest record.
+
+The plan, as written before the code:
+
 Today the staff step has one trainee (`st_trainee`, PLANT3D.md §17.4). A session has up to 8, so the engine changes
 (milestone MP1, reference, GDScript and vectors together, as every engine change):
 - **`players`:** the trainee becomes a list of persons, one per player with a role. The role input becomes
@@ -282,7 +297,31 @@ Today the staff step has one trainee (`st_trainee`, PLANT3D.md §17.4). A sessio
 
 ## 4. State hashes and desyncs
 
-**The digest:** SHA-256 over the engine's state as the save keeps it (`RunSave.engine_fields`: every script variable
+**The digest (as built in MP1): PLANT3D.md §17.14**, in both engines (`engine.gd digest()`, `ref/plant3d.py
+Engine.digest()`), with vectors: SHA-256 over a tag, the values' doubles and the Godot Variant encoding of a *digest
+tree* that holds every part of the state the next steps read (machines, trips, alarms and their counters, shelves,
+faults, permits, locks, the timers' counts; the staff's people, duties, places, ways, task instances, queues, held
+jobs, reservations, reaction sources, kept offers, random streams, PPE, unsafe acts, the players' slots and counts, the
+NPCs' inputs for the next step), each in a fixed order and form. It differs from the plan below, which hashed the
+save's fields as GDScript keeps them: the reference could not make that (its state is kept in other forms), so the
+tree is a form of its own that both make, and it leaves out what an implementation may keep its own way (a task step's
+own progress: the app counts an NPC's work when they wake, the reference every step), with what the logs only record
+and what is derived (§17.14 says what and why). A difference hidden in a task step's progress shows by the step after
+that step ends, which for a long `work` (an hour's job) can be thousands of steps later: accepted, because what could
+make two players' progress differ (a float, an input missed or applied twice) changes the values, events or task
+steps the digest does cover at once; a difference confined to a step's own counter would need an engine bug that the
+vectors (both engines, every step's events) are there to catch. Godot's `var_to_bytes` is the encoding (a future Godot that changes it is a "When to revisit" of 0067:
+the vectors' digests would fail first).
+
+**Its cost** (`apps/plant3d/sim/tests/bench_digest.gd`; on a phone the app's `digest=bench`, app/digest_bench.gd): the
+first train with its staff (shift_cold, 66 people, about 40 task instances, 38 KB hashed) at five points of the shift:
+laptop 0.24 ms median, 0.30 ms
+at the 95th percentile, 0.39 ms the longest; **Note 9 (release build, 2026-10-26): 0.55 ms median, 0.66 ms at the
+95th percentile, 0.86 ms the longest** (0.42–0.64 ms by point, the most when the most tasks are given), of which the
+tree built and encoded is 0.36 ms (the rest SHA-256). Within the budget of 1 ms on the main thread: no worker thread
+is needed. At most about 2 digests a second (below), it is about 0.1 % of a core there.
+
+The plan, as written before the code: SHA-256 over the engine's state as the save keeps it (`RunSave.engine_fields`: every script variable
 but the compiled program), **without** `events`, `inputs` and the debrief's logs (they only grow, and what they record
 is in the state too), field by field in sorted name order: a packed array's bytes go straight into the
 `HashingContext` (`cur`, `prev`, `mem` and the other `Packed…Array`s, by far the largest part: no encoding), the
@@ -311,7 +350,7 @@ host's device is the odd one out (a platform difference), and the session stops 
 report rather than demoting everyone; the players may start again with another host. The host keeps its digests for
 3 minutes of real time; a hash for a step older than that is ignored.
 
-**Known risk before any session:** the engine is bit for bit with the reference on glibc and bionic but not yet run on
+**Checked in MP1 (2026-10-26):** the Windows 11 VM ran every vector with Godot 4.7.2's Windows build: all passed, and every run's value digests and state digests were Linux's (`tools/plant3d/vectors_windows.sh`), so no stored factors are needed. The Note 9 ran the digest bench only (above); bionic's `exp` was checked on every vector run on 2026-10-16. **The risk as it was written:** the engine is bit for bit with the reference on glibc and bionic but not yet run on
 Windows, whose C library's `exp` makes a lag's factor (sim/README.md, CAPABILITIES.md §8). MP1 runs the vectors on
 Windows; if any digest differs, the build computes the factors on Linux and stores them in the compiled model, as the
 README already plans.
@@ -748,7 +787,17 @@ budget isn't done.
 ## 12. Tests
 
 - **The engine (MP1):** the multi-trainee vectors (§3.3) on the reference and GDScript; the digest's equality across
-  Linux, Android (the Note 9) and Windows (the VM) for every vector run every 50 steps.
+  Linux, Android (the Note 9) and Windows (the VM) for every vector run every 50 steps. As built: the staff runs, the
+  day and its forks carry their digests (`digests`), which `run_vectors.gd` checks on every platform it runs on; every
+  other run's digests are in its `--digests` output (`state`), which `tests/test_plant3d_sim.py` compares with the
+  reference's, and a run on another platform with Linux's. Checked on Linux and Windows; **not yet on Android**: the
+  Note 9 ran the digest's timing only (`digest=bench`), so `run_vectors.gd --digests` on the Note 9, compared with
+  Linux's, is the first thing MP2 does before two devices compare digests in a session.
+- **Before MP2 takes inputs from other devices:** a committed input whose kind is not a text, or whose length is not
+  its kind's, must do nothing in both engines (the GDScript stops with a script error on a kind that is not a text,
+  halfway through a step; MP1's inputs come from the app alone, which makes none such), and a slot that plays nobody
+  has free mode's powers (PLANT3D.md §17.13): MP2 settles which slots may play nobody (the instructor's seat only, or
+  any) and what the host does with the others' inputs.
 - **The crypto:** RFC 5869's HKDF test cases and RFC 7518 Appendix B.1's AEAD vector through our GDScript code; the
   code's check character; replay windows.
 - **The multi-instance harness** (`apps/plant3d/net/tests/`): N headless Godot processes (`--headless`, the engine and

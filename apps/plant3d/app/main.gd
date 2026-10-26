@@ -37,6 +37,8 @@
 ##                           it (builder/plant_builder.gd far_merge)
 ##   crowd=N                 (walk) N people round the walker (app/crowd.gd): what people cost (milestone A1)
 ##   people_skinned=N        that many skinned avatars instead of the tier's (measuring), people_shadows=0 theirs off
+##   digest=bench            the state digest's cost on the first train (app/digest_bench.gd, milestone MP1): digest.txt
+##                           in the out folder, then the app quits
 ##   voice=bench             wdp_voice's test scene instead of the plant (voice/demo/voice_wav.gd: the codec's round
 ##                           trip and its time per 20 ms frame, `VOICE` lines in the log; milestone MP5's measurement)
 ##   On a phone walk.txt takes voice, probe, fx_off, fx_on, max_fps, crowd, people_skinned, people_shadows, crews and
@@ -102,6 +104,9 @@ var probing := false     # the tier probe is running: no map, no tier changes, n
 func _ready() -> void:
 	_launch("ready")
 	_options()
+	if opts.get("digest", "") == "bench":  # the state digest's cost (MP1, app/digest_bench.gd): no plant
+		_digest_bench()
+		return
 	if opts.get("voice", "") == "bench":   # the voice codec measured alone (MP5): no plant
 		get_tree().change_scene_to_file.call_deferred("res://voice/demo/voice_wav.tscn")
 		return
@@ -252,6 +257,17 @@ func _unbaked(n: Node) -> void:
 	if g != null and g.gi_mode == GeometryInstance3D.GI_MODE_STATIC and not (n is MeshInstance3D and n.is_in_group("kit_static")):
 		g.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 
+func _digest_bench() -> void:
+	var m = preload("res://sim/plant_model.gd").from_dir("res://built/content")
+	var lines: PackedStringArray = ["ERROR " + m.error] if m.error != "" else preload("res://app/digest_bench.gd").run(m, 200)
+	DirAccess.make_dir_recursive_absolute(out_dir)
+	var f := FileAccess.open(out_dir.path_join("digest.txt"), FileAccess.WRITE)
+	f.store_string("\n".join(lines) + "\n")
+	f.close()
+	for l in lines:
+		_say(l)
+	get_tree().quit()
+
 func _options() -> void:
 	var preset := opts                  # set before the start by a test or a shots script (never by a link or a file)
 	opts = parse_options(OS.get_cmdline_user_args())
@@ -263,7 +279,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews and shot: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews and shot: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))

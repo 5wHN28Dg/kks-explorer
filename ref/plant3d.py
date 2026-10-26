@@ -1639,9 +1639,12 @@ class Engine:
     person) answers what a lock would do (§15.6) without changing the run.
     """
 
-    def __init__(self, b, scenario):
+    def __init__(self, b, scenario, session=False):
         m = b.model
         self.m = m
+        # a session run (§17.13): several players, every input with its slot as its last element; else single-player
+        self.session = session
+        self.in_slot = 0                # the slot of the player's input being handled (step 1, and its locks in step 3)
         sc = b.scenarios[scenario] if isinstance(scenario, str) else scenario
         self.sc = sc
         names = [v[0] for v in m.values] + list(m.ext) + [x['id'] + '_state' for x in m.machines] + \
@@ -1701,11 +1704,12 @@ class Engine:
         self.J = 0
         self.npc_queue = []             # the NPCs' inputs made in step 9, for the next step's step 1
         self.npc_pending = 0
+        self.npc_evs = set()            # this step's events of NPC inputs whose person a slot took in step 1 (§17.13)
         self.ev_mark = 0                # where this step's events begin
         self.staff = None
         if b.staff is not None and 'staff' in sc:
             from ref.plant3d_staff import StaffRun
-            self.staff = StaffRun(self, b.staff, sc)
+            self.staff = StaffRun(self, b.staff, sc, session)
             self.staff.place_all(self.clock())
 
     def clone(self):
@@ -1906,80 +1910,92 @@ class Engine:
             elif i in self.hold0:
                 cur[i] = self.hold0[i](cur, prev)
 
-    # --- trainee inputs
-    def op(self, kks, do, value=None, trip=None, where=None, person=None):
+    # --- trainee inputs (a session run's each with the player's slot, §17.13)
+    def _q(self, item, slot=None):
+        if self.session:
+            assert slot is not None, 'a session run\'s input names its slot'
+            item = item + (slot,)
+        else:
+            assert slot is None, 'a single-player run\'s inputs have no slot'
+        self.queue.append(item)
+
+    def op(self, kks, do, value=None, trip=None, where=None, person=None, slot=None):
         """An op; with `where` it is a version 2 op (§17.1), made at `where` by `person`."""
         if where is None and person is None:
-            self.queue.append(('op', kks, do, value, trip))
+            self._q(('op', kks, do, value, trip), slot)
         else:
-            self.queue.append(('op', kks, do, value, trip, where, person))
+            self._q(('op', kks, do, value, trip, where, person), slot)
 
-    def ack(self, alarm):
-        self.queue.append(('ack', alarm))
+    def ack(self, alarm, slot=None):
+        self._q(('ack', alarm), slot)
 
-    def shelve(self, alarm, seconds):
-        self.queue.append(('shelve', alarm, seconds))
+    def shelve(self, alarm, seconds, slot=None):
+        self._q(('shelve', alarm, seconds), slot)
 
-    def unshelve(self, alarm):
-        self.queue.append(('unshelve', alarm))
+    def unshelve(self, alarm, slot=None):
+        self._q(('unshelve', alarm), slot)
 
-    def fault(self, fid):
-        self.queue.append(('fault', fid))
+    def fault(self, fid, slot=None):
+        self._q(('fault', fid), slot)
 
-    def repair(self, fid):
-        self.queue.append(('repair', fid))
+    def repair(self, fid, slot=None):
+        self._q(('repair', fid), slot)
 
-    def repair_under(self, fid, work, person=None):
-        self.queue.append(('repair', fid, work, person))
+    def repair_under(self, fid, work, person=None, slot=None):
+        self._q(('repair', fid, work, person), slot)
 
-    def permit(self, work, action, person=None):
-        self.queue.append(('permit', work, action, person))
+    def permit(self, work, action, person=None, slot=None):
+        self._q(('permit', work, action, person), slot)
 
-    def lock(self, work, point, person=None):
-        self.queue.append(('lock', work, point, person))
+    def lock(self, work, point, person=None, slot=None):
+        self._q(('lock', work, point, person), slot)
 
-    def unlock(self, work, point, person=None):
-        self.queue.append(('unlock', work, point, person))
+    def unlock(self, work, point, person=None, slot=None):
+        self._q(('unlock', work, point, person), slot)
 
-    def remove_lock(self, work, point, person, reason, owner=None, named=False):
-        self.queue.append(('remove_lock', work, point, person, reason) + ((owner,) if named else ()))
+    def remove_lock(self, work, point, person, reason, owner=None, named=False, slot=None):
+        self._q(('remove_lock', work, point, person, reason) + ((owner,) if named else ()), slot)
 
     # format 2's trainee inputs for the staff (§17.6)
-    def role(self, person):
-        self.queue.append(('role', person))
+    def role(self, person, slot=None):
+        self._q(('role', person), slot)
 
-    def task_ack(self):
-        self.queue.append(('task_ack',))
+    def release(self, slot):
+        """A session run's player's person handed to the NPCs (§17.13)."""
+        self._q(('release',), slot)
 
-    def arrive(self, place):
-        self.queue.append(('arrive', place))
+    def task_ack(self, slot=None):
+        self._q(('task_ack',), slot)
 
-    def leave(self, place):
-        self.queue.append(('leave', place))
+    def arrive(self, place, slot=None):
+        self._q(('arrive', place), slot)
 
-    def read(self, code, value):
-        self.queue.append(('read', code, value))
+    def leave(self, place, slot=None):
+        self._q(('leave', place), slot)
 
-    def say(self, message, to):
-        self.queue.append(('say', message, to))
+    def read(self, code, value, slot=None):
+        self._q(('read', code, value), slot)
 
-    def pick(self, index):
-        self.queue.append(('pick', index))
+    def say(self, message, to, slot=None):
+        self._q(('say', message, to), slot)
 
-    def call(self, role, task, work=None):
-        self.queue.append(('call', role, task, work))
+    def pick(self, index, slot=None):
+        self._q(('pick', index), slot)
 
-    def jump(self, hhmm):
-        self.queue.append(('jump', hhmm))
+    def call(self, role, task, work=None, slot=None):
+        self._q(('call', role, task, work), slot)
 
-    def ppe(self, item, on):
-        self.queue.append(('ppe', item, on))
+    def jump(self, hhmm, slot=None):
+        self._q(('jump', hhmm), slot)
 
-    def zone(self, zone, how):
-        self.queue.append(('zone', zone, how))
+    def ppe(self, item, on, slot=None):
+        self._q(('ppe', item, on), slot)
 
-    def stop(self, person):
-        self.queue.append(('stop', person))
+    def zone(self, zone, how, slot=None):
+        self._q(('zone', zone, how), slot)
+
+    def stop(self, person, slot=None):
+        self._q(('stop', person), slot)
 
     def clock(self):
         """The plant clock in tenths of a clock second (§16.1): C(n) = S + n × day_scale + J."""
@@ -2042,12 +2058,13 @@ class Engine:
         if sr is None:
             return person is not None
         st = sr.st
+        tr = sr.players.get(self.in_slot)      # the input's player's person (§17.13)
         if person is None:
-            return not npc and sr.trainee is not None
+            return not npc and tr is not None
         if not (isinstance(person, str) and person in st.person_ix):
             return True
         p = sr.people[st.person_ix[person]]
-        if not npc and (sr.trainee is None or p.i != sr.trainee):
+        if not npc and (tr is None or p.i != tr):
             return True
         role = st.roles[p.role]
         if need_auth not in role['authority']:
@@ -2187,11 +2204,11 @@ class Engine:
             return False
         return True
 
-    def lock_effects(self, work, point, horizon=100, person=None):
+    def lock_effects(self, work, point, horizon=100, person=None, slot=0):
         """What a lock would do (§15.6): the trips and priority 1 alarms that come within `horizon` steps with the lock
         made after the inputs already queued, and not without it."""
         a, b = self.clone(), self.clone()
-        a.queue.append(('lock', work, point, person))
+        a.queue.append(('lock', work, point, person) + ((slot,) if self.session else ()))
         na, nb = len(a.events), len(b.events)
         a.step(horizon)
         b.step(horizon)
@@ -2224,6 +2241,17 @@ class Engine:
                 self._enter(mc, a['to'], 'action')
                 moved.add(mc['id'])
 
+    def _npc_result(self, pid, r, k0):
+        """An NPC's input applied: its result is the NPC's, unless a slot took the person in this step's step 1
+        (§17.13): then the input is applied all the same, but nobody waits on it and its events are no step of the
+        player's."""
+        sr = self.staff
+        pi = sr.st.person_ix[pid]
+        if self.session and pi in sr.players.values():
+            self.npc_evs.update(range(k0, len(self.events)))
+        else:
+            sr.people[pi].result = r
+
     def step(self, n=1):
         for _ in range(n):
             self._step()
@@ -2245,27 +2273,42 @@ class Engine:
         q, self.queue = self.queue, []
         nq, self.npc_queue = self.npc_queue, []
         self.npc_pending = len(nq)      # a jump waits for the NPCs' inputs of the step before (§17.8)
+        self.npc_evs = set()
         sr = self.staff
         for npc, item in [(False, x) for x in q] + [(True, x) for x in nq]:
+            slot = 0
+            if self.session and not npc:
+                # a session run's input: its slot last (§17.13); one without a slot does nothing, with no event
+                slot, item = item[-1], item[:-1]
+                if not (type(slot) is int and 0 <= slot < 8) or not item:
+                    continue
+            self.in_slot = slot
             kind = item[0]
             if kind == 'op':
+                k0 = len(self.events)
                 r = self._op(item[1:], prev, moved, npc)
                 if npc:
-                    sr.people[sr.st.person_ix[item[6]]].result = r
+                    self._npc_result(item[6], r, k0)
             elif kind == 'permit':
+                k0 = len(self.events)
                 r = self._permit(item[1], item[2], item[3], dones, npc)
                 if npc:
-                    sr.people[sr.st.person_ix[item[3]]].result = r
+                    self._npc_result(item[3], r, k0)
             elif kind in ('lock', 'unlock'):
-                noted.append((item + (None, NO_OWNER), npc))
+                noted.append((item + (None, NO_OWNER), npc, slot))
             elif kind == 'remove_lock':
-                noted.append((item[:5] + (item[5] if len(item) > 5 else NO_OWNER,), npc))
-            elif kind in ('role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump', 'ppe', 'zone',
-                          'stop'):
+                noted.append((item[:5] + (item[5] if len(item) > 5 else NO_OWNER,), npc, slot))
+            elif kind == 'release' and not self.session:
+                continue        # (a session run's input: a single-player run has no slots)
+            elif kind in ('role', 'release', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump',
+                          'ppe', 'zone', 'stop'):
+                tail = (slot,) if self.session else ()
                 if sr is not None:
-                    sr.t_input(item)
+                    sr.t_input(item, slot)
                 elif kind == 'role':
-                    self.ev('role', item[1], 'refused')
+                    self.ev('role', item[1], 'refused', *tail)
+                elif kind == 'release':
+                    self.ev('release', None, 'refused', slot)
                 elif kind == 'jump':
                     self.ev('jump', self.clock(), None, 'refused')
             elif kind in ('ack', 'shelve', 'unshelve') and item[1] not in self.astate:
@@ -2306,10 +2349,12 @@ class Engine:
             cur[i] = fn(cur, prev)
         vals = list(cur)          # conditions in steps 3–7 read the values as step 2 left them
         # 3. the locks and unlocks noted in step 1, in the order made; the permits' automatic moves (§15.3)
-        for (kind, work, point, person, reason, owner), npc in noted:
+        for (kind, work, point, person, reason, owner), npc, slot in noted:
+            self.in_slot = slot
+            k0 = len(self.events)
             r = self._lock(kind, work, point, person, vals, npc, reason, owner)
             if npc:
-                sr.people[sr.st.person_ix[person]].result = r
+                self._npc_result(person, r, k0)
         for w in self.m.works:
             wid, iso = w['id'], w.get('isolation')
             k = self.n_locked(iso) if iso is not None else 0
@@ -2450,7 +2495,7 @@ class Engine:
                 failed.append('where')
             elif self._authority(person, npc, 'operate_' + where):
                 failed.append('authority')
-        elif self.staff is not None and self.staff.trainee is not None and not npc:
+        elif self.staff is not None and self.staff.players.get(self.in_slot) is not None and not npc:
             failed.append('authority')      # a trainee playing a person names where and who (§17.1)
         failed += [nd[0] for nd in o.get('needs', []) if prev[self.ix[nd[0]]] < 0.5]
         if 'machine' in o:
@@ -2488,9 +2533,10 @@ class Engine:
 
     # --- what the vectors compare (§12)
     def fast_forward(self):
-        """§7.9, and with a trainee's person no task given to them since their last task_ack (§17.6)."""
+        """§7.9, and with a trainee's person no task given to them since their last task_ack (§17.6); in a session run, none
+        given to any player's person since their own (§17.13)."""
         sr = self.staff
-        return self.ff_model() and (sr is None or sr.trainee is None or sr.unacked == 0)
+        return self.ff_model() and (sr is None or sr.unacked == 0)
 
     def ff_model(self):
         """§7.9: no unacknowledged alarm, no active priority 1 alarm, no machine in a watched state."""
@@ -2506,6 +2552,40 @@ class Engine:
             if mc['states'][self.mstate[mc['id']]].get('watch', True):
                 return False
         return True
+
+    def digest(self):
+        """The state digest (§17.14): SHA-256 over the tag, the values' doubles and the Godot Variant encoding of
+        digest_tree(), as the app's engine makes it (apps/plant3d/sim/engine.gd digest)."""
+        import hashlib, struct
+        from ref.godot_variant import encode
+        h = hashlib.sha256(b'wdp-digest-1\n')
+        h.update(struct.pack('<%dd' % self.n, *self.cur[:self.n]))
+        h.update(encode(self.digest_tree()))
+        return h.hexdigest()
+
+    def digest_tree(self):
+        from ref.godot_variant import Packed, PACKED_BYTE, PACKED_INT32, PACKED_INT64
+        m = self.m
+        work_ix = {w['id']: k for k, w in enumerate(m.works)}
+        locks = [[k, p, list(self.locks[(x['id'], p)])] for k, x in enumerate(m.isolations)
+                 for p in range(len(x['points'])) if (x['id'], p) in self.locks]
+        mem = [c for v in self.mem.values() for c in v]
+        return [self.step_no, Packed(PACKED_INT64, mem),
+                Packed(PACKED_INT32, [self.mstate[mc['id']] for mc in self.machines]),
+                Packed(PACKED_BYTE, [1 if self.latched[t['id']] else 0 for t in self.trips]),
+                Packed(PACKED_INT64, [self.trip_count[t['id']] for t in self.trips]),
+                [[g, t] for g, t in sorted(self.first_out.items())],
+                '|'.join(self.astate[a['id']] for a in self.alarms),
+                Packed(PACKED_INT64, [self.acount[a['id']] for a in self.alarms]),
+                Packed(PACKED_INT64, [self.shelved.get(a['id'], -1) for a in self.alarms]),
+                Packed(PACKED_BYTE, [1 if self.il_prev[x['id']] else 0 for x in m.interlocks]),
+                sorted(self.faults_done), sorted(self.faults_fixed),
+                Packed(PACKED_INT32, [self.pstate[w['id']] for w in m.works]),
+                [[k, v] for k, v in sorted(self.ptw.items())], self.ptw_count,
+                [[k, v] for k, v in sorted(self.acceptor.items())],
+                Packed(PACKED_INT32, [work_ix[self.holder[x['id']]] if self.holder[x['id']] is not None else -1
+                                      for x in m.isolations]),
+                locks, self.staff.digest_tree() if self.staff is not None else None]
 
     def snapshot(self, values=True):
         s = {'step': self.step_no,
@@ -2526,6 +2606,9 @@ class Engine:
             s['worn'], s['acts'] = self.staff.snap_acts()
             s['vehicles'] = {}
             s['unacked'] = self.staff.unacked
+            if self.session:
+                sr = self.staff
+                s['players'] = [[k, sr.people[sr.players[k]].id, sr.acks.get(k, 0)] for k in sorted(sr.players)]
         if values:
             s['values'] = {n: self.cur[i] for i, n in enumerate(self.names)}
         return s
@@ -2536,85 +2619,13 @@ class Engine:
 class Recorder(Engine):
     """An engine that records every trainee input with the step it takes effect in (the vectors' `input`)."""
 
-    def __init__(self, b, scenario):
-        super().__init__(b, scenario)
+    def __init__(self, b, scenario, session=False):
+        super().__init__(b, scenario, session)
         self.inputs = []
 
-    def _q(self, item):
-        self.inputs.append([self.step_no + 1] + list(item))
-        self.queue.append(item)
-
-    def op(self, kks, do, value=None, trip=None, where=None, person=None):
-        if where is None and person is None:
-            self._q(('op', kks, do, value, trip))
-        else:
-            self._q(('op', kks, do, value, trip, where, person))
-
-    def role(self, person):
-        self._q(('role', person))
-
-    def task_ack(self):
-        self._q(('task_ack',))
-
-    def arrive(self, place):
-        self._q(('arrive', place))
-
-    def leave(self, place):
-        self._q(('leave', place))
-
-    def read(self, code, value):
-        self._q(('read', code, value))
-
-    def say(self, message, to):
-        self._q(('say', message, to))
-
-    def pick(self, index):
-        self._q(('pick', index))
-
-    def call(self, role, task, work=None):
-        self._q(('call', role, task, work))
-
-    def jump(self, hhmm):
-        self._q(('jump', hhmm))
-
-    def ppe(self, item, on):
-        self._q(('ppe', item, on))
-
-    def zone(self, zone, how):
-        self._q(('zone', zone, how))
-
-    def stop(self, person):
-        self._q(('stop', person))
-
-    def ack(self, alarm):
-        self._q(('ack', alarm))
-
-    def shelve(self, alarm, seconds):
-        self._q(('shelve', alarm, seconds))
-
-    def unshelve(self, alarm):
-        self._q(('unshelve', alarm))
-
-    def fault(self, fid):
-        self._q(('fault', fid))
-
-    def repair(self, fid):
-        self._q(('repair', fid))
-
-    def repair_under(self, fid, work, person=None):
-        self._q(('repair', fid, work, person))
-
-    def permit(self, work, action, person=None):
-        self._q(('permit', work, action, person))
-
-    def lock(self, work, point, person=None):
-        self._q(('lock', work, point, person))
-
-    def unlock(self, work, point, person=None):
-        self._q(('unlock', work, point, person))
-
-    def remove_lock(self, work, point, person, reason, owner=None, named=False):
-        self._q(('remove_lock', work, point, person, reason) + ((owner,) if named else ()))
+    def _q(self, item, slot=None):
+        super()._q(item, slot)
+        self.inputs.append([self.step_no + 1] + list(self.queue[-1]))
 
     def clone(self):
         c = super().clone()

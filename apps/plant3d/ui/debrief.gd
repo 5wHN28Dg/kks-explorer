@@ -26,7 +26,8 @@ const ALARM_WORDS := {
 ## (an instructor's input, PLANT3D §15.5: the fault or repair it made, if any, is marked too), step (a procedure step
 ## that ended), start (the procedure began). `dev` is ""
 ## or the deviation in words; `prio` an alarm's or trip's priority (0 otherwise).
-static func collect(engine, info, tracker) -> Dictionary:
+static func collect(engine, info, tracker, slot: int = 0) -> Dictionary:
+	var me_pi: int = engine.trainee(slot) if engine._sm != null else -1        # whose debrief: the slot's person
 	var m = info.m
 	var proc: Dictionary = tracker.proc if tracker != null else {}
 	var from := 0
@@ -174,7 +175,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 				# milestone S2: unsafe acts (PLANT3D §16.7) and work stopped (§17.11), everyone's: whose they were,
 				# and the trainee's own counted
 				var sm_ = engine._sm
-				var me_id: String = sm_.people[engine.st_trainee]["id"] if sm_ != null and engine.st_trainee != -1 else ""
+				var me_id: String = sm_.people[me_pi]["id"] if sm_ != null and me_pi != -1 else ""
 				e.text = safety_text(sm_, ev)
 				if ev[1] == "unsafe" and ev[2] == me_id:
 					e.dev = "your unsafe act"
@@ -186,7 +187,7 @@ static func collect(engine, info, tracker) -> Dictionary:
 			"task":
 				# the trainee's own tasks (PLANT3D §18.7: the debrief's role tab): given, done, abandoned, skipped
 				var sm_ = engine._sm
-				if sm_ == null or engine.st_trainee == -1 or ev[2] != sm_.people[engine.st_trainee]["id"]:
+				if sm_ == null or me_pi == -1 or ev[2] != sm_.people[me_pi]["id"]:
 					continue
 				var tt = sm_.tasks[ev[3]]["title"] if sm_.tasks.has(ev[3]) else str(ev[3])
 				e.text = "Your task %s: %s" % [{"start": "begun", "done": "done", "abandoned": "ABANDONED",

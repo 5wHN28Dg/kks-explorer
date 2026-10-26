@@ -43,8 +43,8 @@ static func _fresh(ui) -> void:
 func _play(ui, readings: Dictionary) -> bool:
 	var e = ui.clock.engine
 	var sm = e._sm
-	var pi: int = e.st_trainee
-	if e.st_unacked > 0:
+	var pi: int = e.trainee()
+	if e.unacked() > 0:
 		_fresh(ui)                      # (rebuilt every round before: an alarm seen without waiting for the panel's own refresh)
 		var seen := App.find_button(ui.crew, "Seen")
 		if seen:
@@ -56,7 +56,7 @@ func _play(ui, readings: Dictionary) -> bool:
 	var s: Dictionary = sm.tasks[cur["task"]]["steps"][cur["step"]]
 	if s.has("go") or s.has("meet"):
 		var dest = cur["st"].get("dest", cur["st"].get("place"))
-		if dest != null and e.st_t_at != dest:
+		if dest != null and e.t_at() != dest:
 			_fresh(ui)
 			var b := App.find_button(ui.crew, "Take me there")
 			if b == null:
@@ -126,7 +126,7 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 		p.append("the plant runs before a role is chosen")
 	App.find_button(ui.crew, "Play Field CW, crew A…").pressed.emit()
 	var e = ui.clock.engine
-	if e.st_trainee == -1 or e._sm.people[e.st_trainee]["id"] != "a_fo_cw":
+	if e.trainee() == -1 or e._sm.people[e.trainee()]["id"] != "a_fo_cw":
 		p.append("the role was not taken: %s" % str(e.events.slice(0, 4)))
 		return
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
@@ -138,7 +138,7 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 				return true
 		return false
 	if not await _steps(tree, ui, readings, round_done, 2500):
-		var cur = e.sp_cur[e.st_trainee]
+		var cur = e.sp_cur[e.trainee()]
 		p.append("the CW round was not done by 07:00+ (now %s, the task %s step %s)" % [ui.clock_text(),
 				str(cur["task"]) if cur else "none", str(cur["step"]) if cur else ""])
 		return
@@ -181,7 +181,7 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 				return true
 		return false
 	if not await _steps(tree, ui, readings, checked, 1500):
-		var cur = e.sp_cur[e.st_trainee]
+		var cur = e.sp_cur[e.trainee()]
 		p.append("the trainee did not check the alarm at the valve (the task %s)" % (str(cur["task"]) if cur else "none"))
 	var at: int = -1
 	for k in range(n0, e.events.size()):
@@ -228,7 +228,7 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 	for k in e._al.size():
 		if e.astate[k] in ["active_unack", "cleared_unack"]:
 			ui.ack(e._al[k][0], false)
-	if e.st_unacked > 0:
+	if e.unacked() > 0:
 		e.task_ack()
 	ui.clock.run_steps(2)
 	ui.crew._sig = ""
@@ -244,10 +244,10 @@ func _field_operator(tree: SceneTree, ui, p: Array) -> void:
 			p.append("the jump was not made: %s" % str(e.events.slice(e.events.size() - 3)))
 		else:
 			ui._place_tick()
-			var pos: int = e.sp_pos[e.st_trainee]
+			var pos: int = e.sp_pos[e.trainee()]
 			ui.clock.run_steps(1)
-			if ui._jumps != e.J or e.st_t_at != pos:
-				p.append("after the jump the app did not follow the placement (%d, at %d)" % [pos, e.st_t_at])
+			if ui._jumps != e.J or e.t_at() != pos:
+				p.append("after the jump the app did not follow the placement (%d, at %d)" % [pos, e.t_at()])
 			# the radio log read again from the start (as after a restore) keeps each line's own time
 			var want := ""
 			var lines := 0
@@ -374,7 +374,7 @@ func _save(ui, p: Array) -> void:
 	e.fault("cw_b_motor")
 	e.step(200)
 	var fields := RunSave.engine_fields(e)
-	for f in ["sp_cur", "sp_queue", "sp_pos", "sp_rng", "st_trainee", "J", "npc_queue"]:
+	for f in ["sp_cur", "sp_queue", "sp_pos", "sp_rng", "st_players", "J", "npc_queue"]:
 		if not f in fields:
 			p.append("the save leaves out the staff's %s" % f)
 	var data := RunSave.capture(e, fields)
@@ -443,7 +443,7 @@ func _on_line(ui, e) -> Array:
 	var st: int = sm.ways[key]
 	var who := -1
 	for pi in sm.people.size():
-		if pi != e.st_trainee and e.sp_pos[pi] != -1 and e.sp_leg[pi].is_empty():
+		if pi != ui.my_person() and e.sp_pos[pi] != -1 and e.sp_leg[pi].is_empty():
 			who = pi
 			break
 	if who == -1:

@@ -116,8 +116,9 @@ func update() -> void:
 	_places(sm)
 	var xs := []
 	var cs := []
+	var me: int = ui.my_person()          # (the trainee's own person is the walker)
 	for pi in sm.people.size():
-		if pi == e.st_trainee:
+		if pi == me:
 			continue
 		var p := Vector3.INF
 		var leg: Array = e.sp_leg[pi]
@@ -174,8 +175,9 @@ func drive(delta: float) -> void:
 		_anim_of.resize(sm.people.size())
 		_anim_of.fill("?")
 	var n := 0
+	var me: int = ui.my_person()          # (the trainee's own person is the walker)
 	for pi in sm.people.size():
-		if pi == e.st_trainee:
+		if pi == me:
 			continue
 		var at := Vector3.INF
 		var speed := 0.0
