@@ -1787,8 +1787,9 @@ vectors (§19). What S3 adds to §16–§17:
   is still true, the reaction's offer is kept (once per reaction), as §17.10's kept offers: in phase 2 of any step
   where someone of its roles comes on duty it is made again (the reaction's task to its roles, §17.3), unless someone
   has a job of that reaction then (current, queued or held: kept for the next such step); it is dropped once the
-  value is false, and kept while a re-offer finds no one free to take it. So a backwash abandoned in the day is
-  ordered again by the next shift supervisor, at 18:00. Placement clears it with the others.
+  value is false, and kept when the re-offer gives it to nobody (§17.3: nobody of its roles on duty, or the queue
+  full). So a backwash abandoned in the day is ordered again by the next shift supervisor, at 18:00. Placement clears
+  it with the others.
 - **The WTP's handovers with both there** (S3's limit, fixed 2026-10-26, by the timing alone): the WTP's people are
   about 40 minutes of the clock from the gate (the control building's locker room on the way), so they come in at
   `start-0:45` and reach the WTP's desk or the laboratory between `start-0:15` and the start, while the outgoing one,

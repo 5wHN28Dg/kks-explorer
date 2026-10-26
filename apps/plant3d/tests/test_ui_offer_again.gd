@@ -1,5 +1,5 @@
 ## An offer nobody could take is made again (docs/PLANT3D.md §17.10; the user, 2026-10-24), played in the app as
-## crew A's supervisor at 05:30, before the day technicians come on: the cooling tower fan's permit issued from the
+## crew A's supervisor early on the first day, before the day technicians come on: the cooling tower fan's permit issued from the
 ## form finds no maintenance supervisor on duty to give the job (unassigned); at 07:00, when they come on, the
 ## supervisor gives it (milestone S2: a maintenance supervisor gives an issued permit's job).
 extends RefCounted
@@ -61,7 +61,7 @@ func run(tree: SceneTree) -> Array:
 	var unassigned := false
 	for ev in e.events:
 		# since S2 an issued permit's job is given by the maintenance supervisors (assign_ct_fan3), none of whom is
-		# on duty at 05:30: theirs is the offer nobody could take
+		# on duty before 07:00: theirs is the offer nobody could take
 		if ev[1] == "task" and ev[2] == null and ev[3] == "assign_ct_fan3" and ev[4] == "unassigned":
 			unassigned = true
 	if not unassigned:

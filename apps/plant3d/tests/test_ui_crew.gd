@@ -346,6 +346,11 @@ func _ccr_operator(tree: SceneTree, ui, p: Array) -> void:
 			p.append("the radio's newest line is not on the panel: %s" % last_line)
 		if labs.size() == ui.crew.RADIO_LINES and ui.crew._sig == sig0 and ui.crew._radio_labels != labs:
 			p.append("the panel was built again for a new line on the radio")
+	# what the trainee's part shows besides the radio still follows the run: its header's clock, a clock minute later
+	ui.clock.run_steps(100)
+	ui.crew.refresh()
+	if not App.texts(ui.crew).contains(ui.clock_text()):
+		p.append("the Crew panel's header does not show the clock a minute later (%s)" % ui.clock_text())
 
 
 ## A run with the crews saved and restored: the same at every step after (people, queues, random streams).
