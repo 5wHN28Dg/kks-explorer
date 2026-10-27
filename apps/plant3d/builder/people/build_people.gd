@@ -5,8 +5,8 @@
 ##   look_<id>_<lod>.res    each look's skinned mesh (builder/people/looks.gd, builder/people/body.gd), LOD 0 and 1
 ##   posed_<id>_<pose>.res  each look's posed band mesh in each pose: unskinned, baked here from the clips
 ##   people.json            what the app needs: the looks and their files, the roles' looks, the clips, the gaits'
-##                          natural speeds (the app scales a clip's speed to the person's, so feet don't slide), the
-##                          triangle counts
+##                          natural speeds and the stair and ladder the climbing clips are made for (the app moves a
+##                          clip on by the way the person goes, so feet don't slide), the triangle counts
 extends RefCounted
 
 const Rig = preload("res://builder/people/rig.gd")
@@ -18,6 +18,12 @@ const Materials = preload("res://kit/materials.gd")
 const POSES := {"stand": ["idle", 0.0], "walk_a": ["walk", 0.25], "walk_b": ["walk", 0.75], "sit": ["sit", 0.0],
 	"work": ["handwheel", 0.0], "carry": ["carry", 0.25]}
 const BUDGET := {"lod0": 4000, "lod1": 1500, "posed": 500}
+## The clips with a foot on the floor all through (ground()): the lowest sole put on it at every key. RAISE_ONLY: a
+## run's feet both leave the floor, so its hips are only raised where a foot would be under it.
+const GROUND := ["idle", "idle_b", "walk", "run", "inspect", "use", "lift", "kneel_work", "wrench", "calibrate", "carry",
+	"talk", "handwheel", "radio", "write"]
+const RAISE_ONLY := ["run"]
+const SOLE_BONES := ["foot.l", "foot.r", "toes.l", "toes.r"]
 const MAX_BONES := 56
 
 var errors: PackedStringArray = []
@@ -45,6 +51,12 @@ func build(out: String) -> Dictionary:
 	var own := rig.own_clips()
 	for k in own:
 		lib.add_animation(k, own[k])
+	# the feet on the floor (KayKit's clips on our longer legs put the standing foot through it, up to 13 cm in the
+	# walk): the hips raised or lowered at each key so that the lowest sole is on the floor
+	var sole := _sole_vertices(rig)
+	for k in GROUND:
+		if lib.has_animation(k):
+			ground(rig.skeleton, lib.get_animation(k), sole[0], sole[1], k in RAISE_ONLY)
 	var road := rig.road_clips(lib.get_animation("walk"), lib.get_animation("idle"))
 	for k in road:
 		lib.add_animation(k, road[k])
@@ -84,10 +96,19 @@ func build(out: String) -> Dictionary:
 	for k in BUDGET:
 		if tri[k] > BUDGET[k]:
 			errors.append("people: %s mesh has %d triangles, the budget is %d (docs/PLANT3D.md §18.4)" % [k, tri[k], BUDGET[k]])
-	# the gaits' natural speeds: how fast the stance foot moves back under the body; a stair's along its slope (two
-	# steps of 0.28 m going and 0.18 m rise a cycle: people's speed on a stair is along it)
-	var speeds := {"walk": _gait_speed(skel, lib.get_animation("walk")), "run": _gait_speed(skel, lib.get_animation("run")),
-		"stairs": Vector2(0.28, 0.18).length() * 2.0 / lib.get_animation("stairs").length, "climb": 0.6 / lib.get_animation("climb").length}
+	# the gaits: how far the point of the sole on the floor has gone back under the body at each moment of the cycle
+	# (gait_curve()), so that the app plays a walk or a run at the moment the ground the person has covered says, and
+	# their standing foot stays put; their natural speeds (that over the cycle's time). The stairs' and the ladder's
+	# clips are played locked to where the person is on the flight or the ladder (a cycle: two treads of the clip's,
+	# two rungs)
+	var gait := {}
+	var speeds := {}
+	for k in ["walk", "run"]:
+		var clip := lib.get_animation(k)
+		var c := gait_curve(skel, clip, sole[0], sole[1])
+		gait[k] = {"length": clip.length, "metres": c[c.size() - 1], "curve": Array(c)}
+		speeds[k] = c[c.size() - 1] / clip.length
+	var stairs := {"going": Rig.STAIR_GOING, "rise": Rig.STAIR_RISE, "rung": Rig.RUNG}
 	# the avatar scene
 	var root := Node3D.new()
 	root.name = "Avatar"
@@ -115,7 +136,7 @@ func build(out: String) -> Dictionary:
 	root.free()
 	var clips := PackedStringArray(lib.get_animation_list())
 	var summary := {"format": "walkdown-plant-people", "version": 1, "avatar": avatar, "looks": looks,
-		"roles": Looks.ROLE_LOOK, "clips": clips, "speeds": speeds, "triangles": tri, "bones": rig.names.size(),
+		"roles": Looks.ROLE_LOOK, "clips": clips, "speeds": speeds, "gait": gait, "stairs": stairs, "triangles": tri, "bones": rig.names.size(),
 		"poses": POSES.keys()}
 	var f := FileAccess.open(out.path_join("people.json"), FileAccess.WRITE)
 	f.store_string(JSON.stringify(summary, " ", false))
@@ -195,25 +216,107 @@ static func _posed(m: ArrayMesh, sk: Skeleton3D, clip: Animation, t: float) -> A
 	return pm
 
 
-## A walking or running clip's natural speed (m/s): the stance foot's speed backwards under the hips, while it is
-## within 3 cm of its lowest.
-static func _gait_speed(sk: Skeleton3D, clip: Animation) -> float:
-	var n := 240
-	var ys := []
-	var zs := []
-	var foot := sk.find_bone("foot.l")
+## The body's vertices that carry the soles (weighted to the feet and toes, below 0.12 m at rest): [their positions,
+## per vertex [bone, weight]…] of the first look's LOD0 (every look has the same boots).
+static func _sole_vertices(rig) -> Array:
+	var m := Body.make(rig.names, Looks.look(Looks.LOOKS.keys()[0]), 2)
+	var a := m.surface_get_arrays(0)
+	var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+	var bones: PackedInt32Array = a[Mesh.ARRAY_BONES]
+	var w: PackedFloat32Array = a[Mesh.ARRAY_WEIGHTS]
+	var ids := []
+	for b in SOLE_BONES:
+		ids.append(rig.names.find(b))
+	var pos := PackedVector3Array()
+	var wts: Array = []
+	for i in v.size():
+		if v[i].y > 0.12:
+			continue
+		var on_foot := 0.0
+		var bw := []
+		for k in 4:
+			if w[i * 4 + k] > 0.0:
+				bw.append([bones[i * 4 + k], w[i * 4 + k]])
+				if bones[i * 4 + k] in ids:
+					on_foot += w[i * 4 + k]
+		if on_foot >= 0.5:
+			pos.append(v[i])
+			wts.append(bw)
+	return [pos, wts]
+
+
+## The lowest sole (m, over the floor) of the skeleton `sk` posed as `clip` at `t`.
+static func lowest_sole(sk: Skeleton3D, clip: Animation, t: float, pos: PackedVector3Array, wts: Array) -> float:
+	var g := global_pose(sk, clip, t)
+	var low := INF
+	for i in pos.size():
+		var p := Vector3.ZERO
+		for bw in wts[i]:
+			var b: int = bw[0]
+			p += ((g[b] as Transform3D) * sk.get_bone_global_rest(b).affine_inverse() * pos[i]) * float(bw[1])
+		low = minf(low, p.y)
+	return low
+
+
+## Puts `clip`'s lowest sole on the floor at every key of its hips' position track (`raise_only`: never lowered).
+static func ground(sk: Skeleton3D, clip: Animation, pos: PackedVector3Array, wts: Array, raise_only: bool) -> void:
 	var hips := sk.find_bone("hips")
+	var up := sk.get_bone_global_rest(sk.get_bone_parent(hips)).basis.inverse() * Vector3.UP
+	for tr in clip.get_track_count():
+		if clip.track_get_type(tr) != Animation.TYPE_POSITION_3D or str(clip.track_get_path(tr)).get_slice(":", 1) != "hips":
+			continue
+		var shifts := PackedFloat32Array()
+		for j in clip.track_get_key_count(tr):
+			var low := lowest_sole(sk, clip, clip.track_get_key_time(tr, j), pos, wts)
+			shifts.append(maxf(0.0, -low) if raise_only else -low)
+		for j in shifts.size():
+			clip.track_set_key_value(tr, j, (clip.track_get_key_value(tr, j) as Vector3) + up * shifts[j])
+
+
+const GAIT_SAMPLES := 240
+
+## A walking or running clip's ground (docs/PLANT3D.md §18.1 as built, phase 4): at GAIT_SAMPLES + 1 moments of its
+## cycle, the metres the person must have covered since its start for the point of the sole on the floor to stay where
+## it is on the ground (the lowest point of the soles while within 2 cm of the floor, followed from one moment to the
+## next: as it goes back under the hips, so far forward). Where no sole is on the floor going back (a run's flight, a
+## foot set down still moving forward) the ground goes on at the clip's mean speed on the floor. KayKit's walk on our
+## legs moves its standing heel back three times as fast as its ball, so a walk played at one rate slides its feet:
+## played by this curve, they stay put.
+static func gait_curve(sk: Skeleton3D, clip: Animation, pos: PackedVector3Array, wts: Array) -> PackedFloat32Array:
+	var n := GAIT_SAMPLES
+	var hips := sk.find_bone("hips")
+	var at: Array = []
 	for k in n + 1:
 		var g := global_pose(sk, clip, clip.length * k / n)
-		var p: Vector3 = (g[foot] as Transform3D).origin
-		var h: Vector3 = (g[hips] as Transform3D).origin
-		ys.append(p.y)
-		zs.append(p.z - h.z)
-	var low: float = ys.min()
+		var hz: float = (g[hips] as Transform3D).origin.z
+		var pts := PackedVector3Array()
+		for i in pos.size():
+			var p := Vector3.ZERO
+			for bw in wts[i]:
+				var b: int = bw[0]
+				p += ((g[b] as Transform3D) * sk.get_bone_global_rest(b).affine_inverse() * pos[i]) * float(bw[1])
+			pts.append(Vector3(p.x, p.y, p.z - hz))
+		at.append(pts)
+	var back := PackedFloat32Array()     # per step: how far the point on the floor went back, or -1 for none
+	back.resize(n)
 	var dist := 0.0
-	var time := 0.0
+	var steps := 0
 	for k in n:
-		if ys[k] < low + 0.03 and ys[k + 1] < low + 0.03:
-			dist += zs[k] - zs[k + 1]
-			time += clip.length / n
-	return dist / time if time > 0.0 else 0.0
+		var a: PackedVector3Array = at[k]
+		var b: PackedVector3Array = at[k + 1]
+		var low := 0
+		for i in a.size():
+			if a[i].y < a[low].y:
+				low = i
+		var d := a[low].z - b[low].z
+		if a[low].y <= 0.02 and b[low].y <= 0.02 and d > 0.0:
+			back[k] = d
+			dist += d
+			steps += 1
+		else:
+			back[k] = -1.0
+	var mean := dist / steps if steps > 0 else 0.0
+	var out := PackedFloat32Array([0.0])
+	for k in n:
+		out.append(out[k] + (back[k] if back[k] >= 0.0 else mean))
+	return out

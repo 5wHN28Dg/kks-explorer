@@ -39,14 +39,25 @@ func tick(tree: SceneTree, people: Array, delta: float, rate := 1.0) -> void:
 	check(tree, people, rate)
 
 
+## The grid made now (at the start: app/people.gd setup()), not in the first frame that checks.
+func prepare(tree: SceneTree) -> void:
+	_sig = _signature(tree)
+	_index(tree)
+
+
+static func _signature(tree: SceneTree) -> int:
+	var sig := 0
+	for d in tree.get_nodes_in_group("doors"):
+		sig = (sig * 31 + d.get_instance_id()) & 0x7fffffffffff
+	return sig
+
+
 ## Every person walking at or through a door presses it.
 ## `rate`: how fast the plant's time runs (fast-forward: people walk that much faster on screen, the doors open in
 ## real time; their look-ahead stops at REACH, so beyond about ×3 a door opens late).
 func check(tree: SceneTree, people: Array, rate := 1.0) -> void:
 	# made again when the doors change (the interiors' come and go: two may change places with the same count)
-	var sig := 0
-	for d in tree.get_nodes_in_group("doors"):
-		sig = (sig * 31 + d.get_instance_id()) & 0x7fffffffffff
+	var sig := _signature(tree)
 	if sig != _sig or _count < 0:
 		_sig = sig
 		_index(tree)
