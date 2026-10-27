@@ -1997,9 +1997,14 @@ func _send_control(c: Dictionary) -> void:
 	if _send_p != null:
 		_send_p.push(Wire.Kind.CONTROL, JSON.stringify(c).to_utf8_buffer())
 	else:
-		_unsent_controls.append(c)      # (no stream before the welcome: sent with it; past the cap the oldest go,
-		if _unsent_controls.size() > MAX_UNSENT_CONTROLS:   # so that the latest state, an away, stays)
-			_unsent_controls.pop_front()
+		# no stream before the welcome: sent with it, in order. Only the latest of each kind is kept (the last claim,
+		# the last away), so the queue stays short and an early claim is never pushed out by many aways
+		var kind := ",".join(c.keys())
+		for i in range(_unsent_controls.size() - 1, -1, -1):
+			if ",".join(_unsent_controls[i].keys()) == kind:
+				_unsent_controls.remove_at(i)
+		if _unsent_controls.size() < MAX_UNSENT_CONTROLS:
+			_unsent_controls.append(c)
 
 
 func claim(person: String) -> void:
