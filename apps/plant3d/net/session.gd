@@ -88,6 +88,7 @@ var paused_by := -1
 var fast := false                       # the session is in fast-forward
 var rate := 1.0                         # the session's rate (1, or the fast-forward rate)
 var why_ended := ""
+var final := false                      # ended for good (left, ended by the host, refused): its rejoin token goes too
 var roster := []                        # [{slot, name, person, connected, away, ready, fast, desync, observer, instructor, host}]
 var settings := {"instructors": []}     # (nothing in them is secret from the players)
 var ff_choice := FF_MAX                 # the host's own choice of fast-forward rate
@@ -318,6 +319,7 @@ func join(code_text: String, address := "") -> String:
 func leave() -> void:
 	if role == Role.NONE:
 		return
+	final = true
 	if state == State.RUN or state == State.LOBBY:
 		if role == Role.HOST:
 			for s in peers:
@@ -357,6 +359,9 @@ func active() -> bool:
 
 func _exit_tree() -> void:
 	close()
+	if not _welcome_job.is_empty():
+		WorkerThreadPool.wait_for_task_completion(_welcome_job["id"])
+		_welcome_job = {}
 	for id in _report_jobs:
 		WorkerThreadPool.wait_for_task_completion(id)
 	_report_jobs.clear()
@@ -455,6 +460,7 @@ func _poll_job() -> void:
 		scenario = job["d"]["scenario"]
 		if typeof(job["d"]["session"].get("settings")) == TYPE_DICTIONARY:
 			settings = job["d"]["session"]["settings"]
+	_what.append("install")
 	var t0 := Time.get_ticks_usec()
 	_install(r)
 	stats["swap_ms"] = (Time.get_ticks_usec() - t0) / 1000.0
@@ -518,6 +524,7 @@ func _process(delta: float) -> void:
 	if state == State.FINDING:
 		_query()
 	elif state == State.JOINING:
+		_poll_welcome()
 		_hello()
 	if role == Role.HOST:
 		_host_frame(delta)
@@ -529,12 +536,16 @@ func _process(delta: float) -> void:
 	var us := Time.get_ticks_usec() - t0 - _step_us
 	_step_us = 0
 	stats["us"] = us
+	if us > stats["us_max"]:
+		stats["us_max_what"] = ",".join(_what)   # what the worst frame did (the measurements)
 	stats["us_max"] = maxi(stats["us_max"], us)
+	_what.clear()
 	stats["us_sum"] += us
 	stats["frames"] += 1
 
 
 var _step_us := 0                       # this frame's model steps (the session layer's own time is the rest)
+var _what := PackedStringArray()         # what this frame's session layer did beyond the ordinary (its worst frame's)
 var _dirty := false                     # a reliable message waits: sent at the end of this frame, not the next tick
 
 
@@ -542,6 +553,13 @@ func _timed_step() -> void:
 	var t := Time.get_ticks_usec()
 	_run_step()
 	_step_us += Time.get_ticks_usec() - t
+	# a procedure step done (the tracker's hold, ui/sim_clock.gd): a notice, and the pause the player chose (§7.2)
+	if clock.hold:
+		clock.hold = false
+		if clock.pause_on_hold:
+			request_pause()
+		else:
+			notice.emit("A procedure step is done.")
 
 
 ## Model steps a frame may take: as the clock budgets them (cpu_share of the frame, at most FRAME_MS).
@@ -1008,6 +1026,7 @@ func _unrel(peer, kind: int, fields: PackedByteArray) -> void:
 
 
 func _on_hello(f: PackedByteArray, inc: int, ip: String, port: int) -> void:
+	_what.append("hello")
 	var r := JsonStrict.parse(f)
 	if not r.get("ok", false) or typeof(r["value"]) != TYPE_DICTIONARY:
 		return
@@ -1049,7 +1068,8 @@ func _on_hello(f: PackedByteArray, inc: int, ip: String, port: int) -> void:
 		for q in peers.values():
 			if q.connected:
 				live += 1
-		if live >= SLOTS or _next_slot >= 256 - 1:
+		# 8 slots a session, never given twice (§1: a player who left comes back to theirs with its token)
+		if live >= SLOTS or _next_slot >= SLOTS:
 			_refuse(ip, port, inc, "full")
 			return
 		p = Peer.new()
@@ -1432,6 +1452,7 @@ func _check_reports(s: int) -> void:
 ## Sends a snapshot of the committed step to these players (taken at most once per 2 s; encoded and compressed on a
 ## worker thread, §5.1).
 func _send_snapshot(slots: Array, desync: Dictionary) -> void:
+	_what.append("take snapshot")
 	_turn_close()
 	_catch_up()
 	var step: int = clock.engine.step_no
@@ -1531,9 +1552,33 @@ func _on_welcome(f: PackedByteArray, ip: String, port: int) -> void:
 		return
 	if w["slot"] < 1 or w["slot"] >= 255 or not model.scenarios.has(w["scenario"]):
 		return
-	var p := Crypt.crypto().decrypt(_rsa, Marshalls.base64_to_raw(w["p"]))
-	if p.size() != 32:
+	if not _welcome_job.is_empty():
+		return                              # (a repeated welcome while P is being decrypted)
+	# P decrypted on a worker thread: an RSA-2048 private-key operation takes about 12 ms on the Note 9 (§11: the
+	# session layer's frame stays under 2 ms)
+	var job := {"w": w, "ip": ip, "port": port, "p": PackedByteArray(), "key": _rsa}
+	job["id"] = WorkerThreadPool.add_task(func(): job["p"] = Crypt.crypto().decrypt(job["key"], Marshalls.base64_to_raw(job["w"]["p"])))
+	_welcome_job = job
+	_what.append("welcome")
+
+
+var _welcome_job := {}
+
+
+## The welcome's P decrypted: the session joined.
+func _poll_welcome() -> void:
+	if _welcome_job.is_empty() or not WorkerThreadPool.is_task_completed(_welcome_job["id"]):
 		return
+	WorkerThreadPool.wait_for_task_completion(_welcome_job["id"])
+	var job := _welcome_job
+	_welcome_job = {}
+	if job["p"].size() != 32 or state != State.JOINING:
+		return
+	_take_welcome(job["w"], job["p"], job["ip"], job["port"])
+
+
+func _take_welcome(w: Dictionary, p: PackedByteArray, ip: String, port: int) -> void:
+	_what.append("joined")
 	_p = p
 	slot = w["slot"]
 	_token = Marshalls.base64_to_raw(w["token"])
@@ -1578,6 +1623,7 @@ func _on_refuse(f: PackedByteArray) -> void:
 	var words := {"full": "the session is full (8 players)", "version": "the host runs another version of the app",
 			"content": "the host's plant content differs", "removed": "you were removed from the session",
 			"closed": "the session has ended"}
+	final = why in ["removed", "closed"]
 	_end("Could not join: " + words.get(why, "refused"))
 
 
@@ -1600,6 +1646,7 @@ func _player_message(kind: int, f: PackedByteArray) -> void:
 		Wire.Kind.SNAP:
 			_on_snapshot(f)
 		Wire.Kind.BYE:
+			final = true
 			_end("The host ended the session.")
 
 
@@ -1616,6 +1663,7 @@ func _trim_player_commits() -> void:
 
 
 func _on_roster(m: Dictionary) -> void:
+	_what.append("roster")
 	if typeof(m.get("roster")) != TYPE_ARRAY:
 		return
 	var rs := []
@@ -1645,6 +1693,7 @@ func _on_roster(m: Dictionary) -> void:
 
 
 func _on_snapshot(f: PackedByteArray) -> void:
+	_what.append("snapshot %d B" % f.size())
 	if f.size() < 10:
 		return
 	var raw_len := Crypt.u32(f, 0)
@@ -1665,6 +1714,7 @@ func _on_snapshot(f: PackedByteArray) -> void:
 ## Before loading the host's snapshot over its own state: both digests, the step, its state and the snapshot, to
 ## user://desync/ (§4), so that the cause can be found.
 func _desync_report(desync: Dictionary, snap: Dictionary) -> void:
+	_what.append("desync report")
 	var dir := "user://desync"
 	DirAccess.make_dir_recursive_absolute(dir)
 	var e = clock.engine
@@ -1800,6 +1850,8 @@ func set_away(on: bool) -> void:
 		_roster_changed()
 		_flush(true)
 	else:
+		if not on:
+			_host_last_rx = _now_s()        # (the host was not heard while the app was in the background)
 		_send_control({"away": on})
 		_flush(true)
 

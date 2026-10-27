@@ -44,6 +44,8 @@ to the room as Walkdown shows an invite, and it is gone when the session ends.
 
 ### 1.2 Join
 
+**As built (MP2):** §14 says where the build differs from what follows.
+
 The joiner types the code, follows the link, or scans the QR code with the camera app. The app then:
 1. looks for the session on the LAN for 2 s (§9.3: a broadcast query with the room ID derived from the code);
 2. if none answers and the code's session is online, enters the relay room (§9.1);
@@ -110,6 +112,8 @@ removes strangers.
 
 ### 2.1 Packets
 
+**As built (MP2):** §14 says where the build differs from what follows.
+
 Every transport (LAN UDP, direct UDP, the relay) carries the same packets:
 
 | Field | Size | Meaning |
@@ -161,6 +165,8 @@ form the vectors, the save and the debrief already use.
 
 ### 2.3 Reliability
 
+**As built (MP2):** §14 says where the build differs from what follows.
+
 - **Streams.** Reliable messages travel in streams, each with its own sequence numbers from 1 (not the packet
   numbers, which count every packet for replay protection): one per player and direction between that player and
   the host (under P), and the host's broadcast stream (under K, every reliable host → all message), plus the
@@ -199,6 +205,8 @@ screen shows the new code for anyone who should join later.
 ## 3. Lockstep (decision 0067)
 
 ### 3.1 The rule
+
+**As built (MP2):** §14 says where the build differs from what follows.
 
 Every player runs the whole engine (`sim/engine.gd`), from the same start, with the same inputs at the same steps, so
 every player has the same plant bit for bit, as the vectors already require between the reference and the app on
@@ -359,6 +367,8 @@ README already plans.
 
 ### 5.1 The snapshot
 
+**As built (MP2):** §14 says where the build differs from what follows.
+
 The host takes the snapshot at a committed step C. It is its own Dictionary, not a run save (the save's `decode`
 and `autosave.check` require the UI, player and tracker parts and refuse other keys): `{"app", "content",
 "scenario", "engine", "session"}`, where `engine` is exactly the save's engine part (with `events` and `inputs`, so
@@ -491,6 +501,8 @@ role). The host drops trainer inputs from other slots (§3.3). Every such input 
 today, so every player's debrief shows them. Other players don't see the instructor panel.
 
 ### 7.4 Saved runs
+
+**As built (MP2):** §14 says where the build differs from what follows.
 
 - **The host saves the session** as a single player saves a run (every 5 s while it changes, on going to the
   background), to `user://mp-host.save`, never over the single-player `user://run.save`. It is a file of its own
@@ -703,6 +715,8 @@ As Walkdown's direct path (PROTOCOL-v2 §18, `kksl/udp.nim`), between each playe
 
 ### 9.3 The LAN
 
+**As built (MP2):** §14 says where the build differs from what follows.
+
 - **Query and answer**, not beacons: the host (and every player, so that a new host after §5.3 answers at once)
   listens on the **discovery port** 47820; its session traffic uses another port, any free one. A joiner sends,
   from an ephemeral port, a query every 250 ms for 2 s to 255.255.255.255 and each IPv4 interface's broadcast address
@@ -793,6 +807,9 @@ budget isn't done.
   reference's, and a run on another platform with Linux's. Checked on Linux and Windows; **not yet on Android**: the
   Note 9 ran the digest's timing only (`digest=bench`), so `run_vectors.gd --digests` on the Note 9, compared with
   Linux's, is the first thing MP2 does before two devices compare digests in a session.
+- **Settled in MP2 (§14):** inputs from the network are checked in the session layer, so the engines never see a
+  malformed one; any slot may play nobody; the trainer's inputs come from the host and the instructor seats. As
+  planned:
 - **Before MP2 takes inputs from other devices:** a committed input whose kind is not a text, or whose length is not
   its kind's, must do nothing in both engines (the GDScript stops with a script error on a kind that is not a text,
   halfway through a step; MP1's inputs come from the app alone, which makes none such), and a slot that plays nobody
@@ -849,6 +866,8 @@ is until the project is complete) and keeps the frame rules on the Note 9. Sizes
 | MP4 | **Online:** `relay-plant/` (Worker, twin, tests, pinned wrangler, its README), deployed after the twin and workerd tests pass, on a free-plan account (§9.1); the relay path in the app; direct UDP (STUN, candidates, punch, fallback) | L | MP2 | play from anywhere | the Note 9 on mobile data + laptop: RTT, input-to-effect ≤ 0.5 s median and ≤ 1 s p95; requests per session-hour from Cloudflare's analytics and where the room's Durable Object landed, written into §9.1 |
 | MP5 | **Voice:** decision 0069's `wdp_voice` built from pinned sources for the four packages' targets (its licence notices in About), capture with `get_input_frames`, push-to-talk, channels and floor, jitter buffer, radio bus; `RECORD_AUDIO` and the desktop permissions | L | MP2 | push-to-talk on the radio | encode ≤ 1 ms / decode ≤ 0.3 ms per frame on the Note 9; mouth-to-ear ≤ 400 ms on the Wi-Fi; the frame rules with one talker; the APK still ≤ 150 MB |
 | MP6 | **A full session measured:** 8 players (the Note 9, the laptop, the VM and harness bots) through a shift with fast-forward and a jump, voice on; the Note 9's 10-minute walk among 7 players | M | MP3, MP4, MP5 | the whole feature, measured | the frame rules on the Note 9 with 7 others drawn and one talker; no desync in 60 minutes |
+
+**MP2 built 2026-10-27** (§14): everything in its row but MP3's host changes; its measurements are in §14.
 
 **Order:** MP1 → MP2, then MP3, MP4 and MP5 in any order (each needs only MP2), then MP6.
 

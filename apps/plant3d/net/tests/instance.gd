@@ -130,6 +130,12 @@ func _do(a: Dictionary) -> void:
 			session.set_instructor(int(a["slot"]), a.get("on", true))
 		"away":
 			session.set_away(a.get("on", true))
+			if a.has("freeze"):
+				# Android's background: the main loop stops (§7.5); nothing of the session runs until it is back
+				session.set_process(false)
+				create_timer(float(a["freeze"]), true, false, true).timeout.connect(func():
+					session.set_process(true)
+					session.set_away(false))
 		"desync":
 			clock.engine.cur[int(a.get("value", 0))] += 1.0
 			clock.engine.prev[int(a.get("value", 0))] += 1.0

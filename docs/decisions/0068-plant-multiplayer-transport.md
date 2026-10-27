@@ -68,6 +68,14 @@ Godot 4.7 is the same on the three targets for everything in the first rows; the
   `privateNetworkClientServer`. None can be granted only during a session; the app opens no socket outside one, and a
   test checks it. 0054 §8 is amended accordingly.
 
+## As built
+
+- **MP2 (2026-10-27, the LAN; MULTIPLAYER.md §14):** the keys, the AEAD, packets, streams with fragments, the LAN query
+  and join, forwarding, rejoin and the packages' network permissions in `apps/plant3d/net/`, against RFC 5869's and
+  RFC 7518's vectors. The LAN query goes to 255.255.255.255 and each address's /24 broadcast address (Godot gives no
+  netmask); `hello`, `welcome` and `refuse` are repeated, not carried by a stream; a reliable message names its stream.
+  No new dependency: the QR code is our own encoder (`net/qr.gd`), checked against an independent one's matrices.
+
 ## When to revisit
 
 - if trainees outside one class use it (strangers in a session), or if P must stay secret on a LAN too (today a

@@ -868,6 +868,9 @@ func fast_forward() -> void:
 
 
 func restart(scenario: String, quiet := false) -> void:
+	if session != null and session.active():
+		toast("Not while a session is open: every player's plant would differ. The host starts a new session for another scenario.")
+		return
 	stop_procedure()
 	run_tracker = null
 	clock.start(model, scenario)
@@ -1326,7 +1329,8 @@ func _session_ended(why: String) -> void:
 		session_panel.note(why)
 	DisplayServer.screen_set_keep_on(false)
 	AndroidNet.multicast(false)
-	Session.forget_session()
+	if session.final:
+		Session.forget_session()        # (a session lost, not ended, can still be joined again with the token)
 	_drop_session.call_deferred()
 	clock.driven = false
 	clock.speed = SimClock.Speed.PAUSED

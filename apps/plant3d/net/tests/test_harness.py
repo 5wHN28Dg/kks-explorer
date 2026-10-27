@@ -73,13 +73,18 @@ class Base(unittest.TestCase):
 
 
 class Players(Base):
-    def run_players(self, n, minutes, link=None):
+    def run_players(self, n, minutes, link=None, ninth=False):
         t_end = 3 + minutes * M
         self.h.host([{"t": 2.5, "do": "start"}] + inputs(3, t_end, 20, 0) + ends(t_end, host=True))
         for k in range(1, n):
             self.h.join(inputs(4, t_end - 2, 20, k) + ends(t_end + 0.5), f'p{k}',
                         link=link(k) if link else None)
+        if ninth:
+            time.sleep(8)
+            self.h.join([{"t": 20, "do": "quit"}], 'ninth')      # a ninth player: the session is full (8 slots)
         res = self.h.wait_all(t_end + 120)
+        if ninth:
+            self.assertIn('full', res.pop('ninth')['why_ended'])
         host = self.agree(res)
         # every input reached its commit: none still sending
         for k in range(1, n):
@@ -102,7 +107,7 @@ class Players(Base):
         self.assertIn(res['p1']['slot'], res['p2']['positions'])
 
     def test_eight_players(self):
-        res = self.run_players(8, 10)
+        res = self.run_players(8, 10, ninth=True)
         pss = [r['pss_kb'] for r in res.values()]
         print(f'\n8 players: PSS per instance {min(pss) // 1024}-{max(pss) // 1024} MB')
         self.assertEqual(sorted(r['slot'] for r in res.values()), list(range(8)))
@@ -201,6 +206,26 @@ class Joins(Base):
         self.assertEqual(len(jumps), 1, jumps)                   # made once, by the host, when both had voted
         gaps = [b[4] - a[4] for a, b in zip(host['commits'], host['commits'][1:])]
         self.assertGreaterEqual(max(gaps), 2.5)                  # the player's pause stopped the commits
+
+
+    def test_a_player_in_the_background(self):
+        """§7.5: a player's app in the background for 12 s (its main loop stopped, as Android stops it) keeps its
+        session and its person, and catches up when it is back."""
+        t_end = 3 + 8 * M
+        # the Wi-Fi asleep with the phone too (nothing waiting in the socket when the app is back): the link down from
+        # just before the freeze until a second after it, through the network simulator
+        sim = self.h.netsim()
+        link = sim.link(9, Impair(outages=[(5.5, 19.5)]), Impair(outages=[(5.5, 19.5)]))
+        sim.start()
+        # (12 s at the harness's 20× is 2,400 steps to catch up: time enough before the end)
+        self.h.host([{"t": 2, "do": "claim", "person": "a_sup"}, {"t": 3, "do": "start"}]
+                    + ends(t_end, quit_after=20, host=True))
+        self.h.join([{"t": 1.5, "do": "claim", "person": "a_ccr1"}, {"t": 6, "do": "away", "freeze": 12}]
+                    + inputs(21, t_end - 3, 3, 4) + ends(t_end + 0.5, quit_after=20), 'p1', link=link)
+        res = self.h.wait_all(120)
+        self.agree(res)
+        self.assertEqual(res['p1']['sending'], 0)
+        self.assertGreaterEqual(res['host']['trainees'][1], 0)     # its person is still its own
 
 
 class Faults(Base):
