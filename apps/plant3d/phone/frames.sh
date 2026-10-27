@@ -190,7 +190,9 @@ deadline=$(( $(date +%s) + SECONDS_ + 240 ))
 while ! sh_ ls "$FILES/result.txt" >/dev/null 2>&1; do
   [ "$(date +%s)" -lt "$deadline" ] || { say "no result in time"; break; }
   sh_ pidof "$PKG" >/dev/null 2>&1 || { say "the app has ended"; break; }
-  mi=$(sh_ dumpsys meminfo "$PKG" 2>/dev/null || true)
+  # by its pid: with Walkdown (io.github.walkdown) on the phone too, `dumpsys meminfo PACKAGE` matches no process and
+  # prints the whole device's summary (every peak read 0 MB on the Note 9, 2026-10-27)
+  mi=$(sh_ dumpsys meminfo "$(sh_ pidof "$PKG" | awk '{print $1}')" 2>/dev/null || true)
   pss=$(echo "$mi" | sed -n 's/^ *TOTAL PSS: *\([0-9]*\).*/\1/p; s/^ *TOTAL *\([0-9][0-9]*\) .*/\1/p' | head -1)
   # the peak's breakdown (native heap, graphics, GL, files): what a change in the peak is made of
   [ -n "$pss" ] && [ "$pss" -gt "$peak" ] && { peak=$pss; echo "$mi" > "$OUT/meminfo_peak.txt"; }

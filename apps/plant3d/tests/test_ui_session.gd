@@ -139,6 +139,12 @@ func run(tree: SceneTree) -> Array:
 	if ui.session == null or ui.session.code != code or ui.session.state != Session.State.FINDING:
 		p.append("a join link did not start a join with its code")
 	ui.end_session()
+	for i in 5:
+		await tree.process_frame
+	ui.session_panel._sig = ""
+	ui.session_panel.refresh()
+	if ui.session_panel.code_edit == null or not ui.session_panel.code_edit.text.contains(Code.pretty(code)):
+		p.append("after a join that found nothing its code is not kept to try again")
 	return _end(main, clock2, s2, open0)
 
 

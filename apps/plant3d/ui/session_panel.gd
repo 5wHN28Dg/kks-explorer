@@ -31,6 +31,7 @@ var _t := 0.0
 var _notices: Array = []
 var _qr_tex: ImageTexture
 var _qr_code := ""
+var _last_code := ""
 
 
 func setup(u) -> void:
@@ -99,6 +100,8 @@ func refresh() -> void:
 		return
 	_sig = sig
 	var keep_code := code_edit.text if code_edit != null and is_instance_valid(code_edit) else ""
+	if keep_code == "" and _last_code != "":
+		keep_code = _last_code             # (a join that found nothing: its code stays, to try with an address)
 	var keep_addr := addr_edit.text if addr_edit != null and is_instance_valid(addr_edit) else ""
 	W.clear(body)
 	var s = ui.session
@@ -185,6 +188,7 @@ func _continue_hosted() -> void:
 func join(code_text: String, address := "") -> void:
 	if name_edit != null and is_instance_valid(name_edit):
 		_save_name(name_edit.text)
+	_last_code = Code.pretty(Code.normalize(code_text)) if Code.normalize(code_text) != "" else code_text
 	var why: String = ui.start_session(false, "", code_text, address.strip_edges(), {})
 	if why != "":
 		note(why)
