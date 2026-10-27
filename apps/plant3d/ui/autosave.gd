@@ -540,6 +540,18 @@ static func _tz_offset() -> int:
 	return int(Time.get_time_zone_from_system().get("bias", 0)) * 60
 
 
+## A join link at a cold start (docs/plant3d/MULTIPLAYER.md §1.2): the offer goes without a choice; the saved run stays
+## as it is, offered at the next solo start, and nothing is saved over it (not armed).
+func withdraw_offer() -> void:
+	if offer_panel == null:
+		return
+	ui.root.get_viewport().size_changed.disconnect(_place_offer)
+	_offer_layer.queue_free()
+	_offer_layer = null
+	offer_panel = null
+	ui.player.scripted = false
+
+
 func _choose(p: Dictionary) -> void:
 	if offer_panel != null:
 		ui.root.get_viewport().size_changed.disconnect(_place_offer)

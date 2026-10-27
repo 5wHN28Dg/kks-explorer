@@ -41,6 +41,8 @@ var _win_t := 0.0
 ## a multiplayer session runs the steps (net/session.gd: only committed steps, MULTIPLAYER.md §3.1): this clock then
 ## never steps by itself, and its speed shows the session's
 var driven := false
+## and a speed asked for goes to the session (a pause, a run, fast-forward by everyone's vote, §7.1, §7.2) instead
+var speed_request := Callable()
 
 
 func start(m, scenario_id: String, session := false) -> void:
@@ -100,6 +102,9 @@ func ff_blocked() -> String:
 
 
 func set_speed(s: int, why := "") -> void:
+	if driven and speed_request.is_valid():
+		speed_request.call(s)
+		return
 	if s == Speed.FAST:
 		var b := ff_blocked()
 		if b != "":
@@ -120,6 +125,14 @@ func run_steps(n: int) -> int:
 		_one()
 		done += 1
 	return done
+
+
+## Takes an engine made elsewhere (a multiplayer session's, made on a worker thread: net/session.gd), keeping the
+## measured step cost.
+func install(e) -> void:
+	engine = e
+	acc = 0.0
+	restarted.emit(engine)
 
 
 ## One step now (a session's committed step), with everything that follows a step.

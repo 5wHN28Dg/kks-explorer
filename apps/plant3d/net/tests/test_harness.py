@@ -46,7 +46,7 @@ class Base(unittest.TestCase):
     def tearDown(self):
         self.h.close()
 
-    def agree(self, res, replay=True, names=None):
+    def agree(self, res, replay=True, names=None, since=None):
         """Every player at the same last step with the same events and digests as the others (and one engine fed the
         host's commits)."""
         names = names or list(res)
@@ -59,7 +59,7 @@ class Base(unittest.TestCase):
             self.assertEqual(r['digest'], host['digest'], n)
             self.assertEqual(r['events_sha'], host['events_sha'], n)
             for s, d in r['digests'].items():
-                if s in host['digests']:
+                if s in host['digests'] and int(s) >= (since or {}).get(n, 0):
                     self.assertEqual(d, host['digests'][s], (n, s))
         for i in self.h.instances:
             self.assertEqual(i.script_errors(), [], i.name)
@@ -139,29 +139,33 @@ class Joins(Base):
     scenario = 'shift_cold'
 
     def test_late_join_and_rejoin_after_kill(self):
-        t_end = 3 + 8 * M
+        t_end = 3 + 12 * M
         self.h.host([{"t": 2, "do": "claim", "person": "a_sup"}, {"t": 3, "do": "start"}]
                     + inputs(3, t_end, 10, 0) + ends(t_end, quit_after=6, host=True))
-        p1 = self.h.join([{"t": 1.5, "do": "claim", "person": "a_ccr1"}] + inputs(4, t_end, 10, 1)
-                         + ends(t_end + 0.5, quit_after=6), 'p1')
+        t0 = time.monotonic()
+
+        def since(t):           # a time on the host's clock, for an instance started now
+            return t - (time.monotonic() - t0)
+        p1 = self.h.join([{"t": 1.5, "do": "claim", "person": "a_ccr1"}] + inputs(4, t_end - 2, 10, 1)
+                         + ends(since(t_end) + 0.5, quit_after=6), 'p1')
         # p2 joins at model minute 5
         time.sleep(3 + 5 * M)
         p2 = self.h.join(inputs(3, 10, 5, 2) + [{"t": 2, "do": "claim", "person": "a_fo_gt"}]
-                         + [{"t": t_end - 5 * M - 3 + 0.5 + 6, "do": "quit"}], 'p2')
+                         + ends(since(t_end) + 0.5, quit_after=6), 'p2')
         # p1 killed at minute 6, back 2 s later (a new process: a new incarnation, its token from its saved file)
         time.sleep(1 * M)
         p1.kill()
         time.sleep(2)
-        p1.plan = inputs(3, 8, 5, 3) + [{"t": t_end - 6 * M - 5 + 0.5 + 6, "do": "quit"}]
+        p1.plan = inputs(4, 9, 5, 3) + ends(since(t_end) + 0.5, quit_after=6)
         p1.start()
         res = self.h.wait_all(120)
         self.agree(res)
         self.assertEqual(res['p1']['slot'], 1)                  # its old slot (§5.2)
         self.assertEqual(res['p2']['slot'], 2)
-        self.assertGreaterEqual(len(res['p1']['delays']), 3)    # its inputs work after the rejoin
+        self.assertEqual(res['p1']['sending'], 0)
+        self.assertEqual(len(res['p1']['delays']), 5)           # its inputs work after the rejoin
         self.assertIn(0, res['p1']['positions'])
         tr = res['host']['trainees']
-        people = ['a_sup', 'a_ccr1', 'a_fo_gt']
         self.assertTrue(all(t >= 0 for t in tr[:3]), tr)        # every claim became the slot's person
         self.assertEqual(len(set(tr[:3])), 3)
         self.assertGreater(res['p2']['load_ms'], 0)
@@ -205,7 +209,11 @@ class Faults(Base):
         self.h.host([{"t": 2.5, "do": "start"}] + ends(t_end, quit_after=6, host=True))
         self.h.join([{"t": 3 + 1 * M, "do": "desync", "value": 5}] + ends(t_end + 0.5, quit_after=6), 'p1')
         res = self.h.wait_all(120)
-        self.agree(res)
+        # (its digests differ from the change until the snapshot replaced its state: within 50 steps and the
+        # snapshot's way, §4)
+        self.agree(res, since={'p1': 3 * 600})
+        bad = [int(s) for s, d in res['p1']['digests'].items() if d != res['host']['digests'].get(s, d)]
+        self.assertTrue(bad and max(bad) - min(bad) <= 150, bad)
         self.assertEqual(res['p1']['stats']['resyncs'], 1)
         self.assertEqual(res['host']['stats']['desyncs'], 1)
         self.assertTrue(res['p1']['report'].startswith('user://desync/'))
@@ -220,14 +228,15 @@ class Faults(Base):
         host = self.agree(res)
         rates = sorted({c[3] for c in host['commits']})
         self.assertGreater(rates[-1], 1.0, rates)                # fast-forward ran
-        self.assertLessEqual(rates[-1], res['p1']['ff_cap'] + 0.01, (rates, res['p1']['ff_cap']))
+        # the slowest player's cap (from its measured step cost, which moves a little), not the host's own (60×)
+        self.assertLessEqual(rates[-1], res['p1']['ff_cap'] * 1.25, (rates, res['p1']['ff_cap']))
 
     def test_floods_junk_replays_and_another_code(self):
         t_end = 3 + 3 * M
         self.h.host([{"t": 2.5, "do": "start"}] + ends(t_end, host=True))
         flood = [{"t": 5, "do": "input", "item": ["ack", "a%d" % k]} for k in range(60)]
         self.h.join(flood + ends(t_end + 0.5), 'p1')
-        self.h.join([{"t": 30, "do": "quit"}], 'stranger', code='0000000000000000')   # (another session's code)
+        self.h.join([{"t": 30, "do": "quit"}], 'stranger', code='000000000000000C')   # (another session's code)
         # junk at the host's ports: random bytes, packets of our version with garbage, a replayed query
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         rng = random.Random(5)

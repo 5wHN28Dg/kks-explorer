@@ -51,7 +51,7 @@ class Instance:
         if os.path.exists(self.out):
             os.remove(self.out)
         with open(self.plan_file, 'w') as f:
-            json.dump(self.plan, f)
+            json.dump(sorted(self.plan, key=lambda a: a.get('t', 0)), f)    # (the instance takes them in order)
         env = dict(os.environ, XDG_DATA_HOME=os.path.join(self.dir, 'xdg'))
         cmd = [self.h.godot, '--headless', '--path', PROJECT, '--script', 'res://net/tests/instance.gd', '--',
                f'--role={self.role}', f'--code={CODE}', f'--data={self.h.data}', f'--scenario={self.h.scenario}',

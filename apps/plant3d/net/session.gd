@@ -67,7 +67,8 @@ var bind_address := "*"
 var log_commits := false               # keep every commit (the harness compares players with one engine fed them)
 var commit_log: Array = []
 var via := ""                           # the harness's network simulator: session traffic to this "ip:port"
-var new_engine := Callable()            # f(scenario): makes the run's engine as a session run (the app's restart)
+var install_engine := Callable()        # f(engine): the app takes a session's engine (ui/plant_ui.gd adopt_engine);
+                                        # unset, the clock alone (the harness)
 var my_pos := Callable()                # f() -> [Vector3, yaw, pitch, gait]: the walker, for `pos`
 
 # ------------------------------------------------------------------ the session
@@ -143,7 +144,6 @@ var _hello_t := 0.0
 var _hello_json := PackedByteArray()
 var _buffer := 1                        # turns
 var _late_t := -1000.0
-var _stalled := false
 var _loading := false                   # a snapshot is being loaded
 var _resyncs: Array = []
 var observer := false
@@ -254,12 +254,12 @@ func host(scenario_id: String, from_save := {}, with_code := "") -> String:
 			close()
 			return "the saved session can't be continued: " + bad
 		scenario = from_save["scenario"]
-		_load_engine(from_save)
+		_install(_build(from_save, scenario))
 		state = State.LOBBY
 		_reclaimable = _people_of(from_save)
 		_continued = true
 	else:
-		_fresh_engine()
+		_install(_build({}, scenario))
 		state = State.LOBBY
 	committed = clock.engine.step_no
 	_roster_changed()
@@ -353,6 +353,12 @@ func active() -> bool:
 
 func _exit_tree() -> void:
 	close()
+	for id in _report_jobs:
+		WorkerThreadPool.wait_for_task_completion(id)
+	_report_jobs.clear()
+	if _job != -1:
+		WorkerThreadPool.wait_for_task_completion(_job)
+		_job = -1
 	if _rsa_thread != null:
 		_rsa_thread.wait_to_finish()
 		_rsa_thread = null
@@ -366,21 +372,102 @@ func _now_s() -> float:
 
 # ================================================================== the engine
 
-func _fresh_engine() -> void:
-	if new_engine.is_valid():
-		new_engine.call(scenario)
+## A session run's engine (sim/engine.gd made with session = true): the scenario's at step 0, or a snapshot's state
+## checked as the save's loader checks a save and put into a fresh engine. A worker thread's work when a player joins or
+## is resynced (§5.1, §11: off the frame but the swap); [engine, ""] or [null, why].
+func _build(d: Dictionary, scen: String) -> Array:
+	var PlantEngine = load("res://sim/engine.gd")
+	if d.is_empty():
+		return [PlantEngine.new(model, scen, true), ""]
+	var bad := Snapshot.check(d, model, content)
+	if bad != "":
+		return [null, bad]
+	var e = PlantEngine.new(model, d["scenario"], true)
+	RunSave.apply(e, d["engine"])
+	return [e, ""]
+
+
+## The engine made: the run's from now on (the main thread's part, the swap).
+func _install(r: Array) -> void:
+	var e = r[0]
+	clock.model = model
+	clock.scenario = scenario
+	if install_engine.is_valid():
+		install_engine.call(e)
 	else:
-		clock.start(model, scenario, true)
+		clock.install(e)
 	clock.driven = true
-	clock.set_speed(SimClock.Speed.PAUSED)
-
-
-func _load_engine(d: Dictionary) -> void:
-	scenario = d["scenario"]
-	_fresh_engine()
-	RunSave.apply(clock.engine, d["engine"])
 	clock.acc = 0.0
-	engine_replaced.emit(clock.engine)
+	if state != State.RUN or paused:
+		clock.speed = SimClock.Speed.PAUSED
+	engine_replaced.emit(e)
+
+
+var _job := -1                          # the worker's task making an engine, -1 for none
+var _job_data: Dictionary = {}
+
+
+## Starts making the engine on a worker thread: from a snapshot's bytes (decoded and checked there) or the scenario.
+func _start_job(raw_len: int, z: PackedByteArray, step: int, desync: Dictionary) -> void:
+	_loading = true
+	var job := {"raw_len": raw_len, "z": z, "step": step, "desync": desync, "scenario": scenario, "r": null,
+			"d": null, "t0": Time.get_ticks_usec()}
+	_job_data = job
+	_job = WorkerThreadPool.add_task(_job_work.bind(job))
+
+
+func _job_work(job: Dictionary) -> void:
+	if job["z"].is_empty():
+		job["r"] = _build({}, job["scenario"])
+		return
+	var d = Snapshot.decode(job["raw_len"], job["z"])
+	if typeof(d) == TYPE_STRING:
+		job["r"] = [null, d]
+		return
+	if d["session"]["step"] != job["step"]:
+		job["r"] = [null, "its step is damaged"]
+		return
+	job["d"] = d
+	job["r"] = _build(d, d["scenario"])
+
+
+func _poll_job() -> void:
+	if _job == -1 or not WorkerThreadPool.is_task_completed(_job):
+		return
+	WorkerThreadPool.wait_for_task_completion(_job)
+	_job = -1
+	var job := _job_data
+	_job_data = {}
+	var r: Array = job["r"]
+	if r[0] == null:
+		_end("The host's snapshot can't be loaded: " + r[1])
+		return
+	if not job["desync"].is_empty() and clock.engine != null:
+		_desync_report(job["desync"], job["d"])
+		stats["resyncs"] += 1
+		_resyncs.append(_now)
+		notice.emit("Resynchronised with the host")
+	if job["d"] != null:
+		scenario = job["d"]["scenario"]
+		if typeof(job["d"]["session"].get("settings")) == TYPE_DICTIONARY:
+			settings = job["d"]["session"]["settings"]
+	var t0 := Time.get_ticks_usec()
+	_install(r)
+	stats["swap_ms"] = (Time.get_ticks_usec() - t0) / 1000.0
+	stats["load_ms"] = (Time.get_ticks_usec() - job["t0"]) / 1000.0
+	_loading = false
+	var step: int = job["step"]
+	committed = maxi(committed, step)
+	for k in _commits.keys():
+		if _commits[k]["first"] <= step:
+			_commits.erase(k)
+	_acc = 0.0
+	if job["d"] != null:
+		_send_control({"loaded": true})
+	if state == State.RUN:
+		clock.speed = SimClock.Speed.PAUSED if paused else (SimClock.Speed.FAST if fast else SimClock.Speed.NORMAL)
+		clock.speed_changed.emit(clock.speed, "")
+	changed.emit()
 
 
 ## Runs one committed step: the commit's inputs first when it starts here (in its order, each checked as the host
@@ -419,7 +506,7 @@ var _stride := 1
 # ================================================================== the frame
 
 func _process(delta: float) -> void:
-	if role == Role.NONE or state == State.ENDED:
+	if role == Role.NONE or state == State.ENDED or _udp == null:
 		return
 	var t0 := Time.get_ticks_usec()
 	_now = _now_s()
@@ -433,7 +520,8 @@ func _process(delta: float) -> void:
 	else:
 		_player_frame(delta)
 	_positions()
-	_flush(false)
+	_flush(_dirty)
+	_dirty = false
 	var us := Time.get_ticks_usec() - t0 - _step_us
 	_step_us = 0
 	stats["us"] = us
@@ -443,6 +531,7 @@ func _process(delta: float) -> void:
 
 
 var _step_us := 0                       # this frame's model steps (the session layer's own time is the rest)
+var _dirty := false                     # a reliable message waits: sent at the end of this frame, not the next tick
 
 
 func _timed_step() -> void:
@@ -463,13 +552,72 @@ func _host_frame(delta: float) -> void:
 	_finish_snapshots()
 	if state != State.RUN:
 		return
-	if paused:
-		_turn_close()
+	if fast:
+		_host_fast(delta)
 		return
+	# at 1× the host commits each turn ahead, when its engine reaches the last commit (as built: the inputs of a turn
+	# are known at its start, and a turn at 1× is never cut short), then runs its steps at the pace of the clock; a
+	# pause takes effect after the turn committed
+	_acc += minf(delta, clock.max_frame) / SimClock.STEP
+	var n := floori(_acc + 1e-9)
+	var cap := _budget(delta)
+	if n > cap:
+		n = cap
+		_acc = 0.0
+	else:
+		_acc -= n
+	for i in n:
+		if clock.engine.step_no >= committed:
+			if paused:
+				_acc = 0.0
+				break
+			_commit_ahead()
+		_timed_step()
+	if not paused and clock.engine.step_no >= committed:
+		_commit_ahead()
+	clock.acc = _acc * SimClock.STEP
+
+
+## A 1× turn committed before its steps run: the inputs received since the last commit, at its first step.
+func _commit_ahead() -> void:
+	var first: int = committed + 1
+	var c := {"first": first, "last": committed + _turn_len(1.0), "stride": 1, "rate": 1.0, "inputs": _inbox}
+	_inbox = []
+	for p in peers.values():
+		p.turn_count = 0
+		p.turn_bytes = 0
+	for x in c["inputs"]:
+		if peers.has(x[0]):
+			peers[x[0]].committed_no = maxi(peers[x[0]].committed_no, x[1])
+	_commits[first] = c
+	committed = c["last"]
+	_send_commit(c)
+
+
+func _send_commit(c: Dictionary) -> void:
+	if log_commits:
+		var ins := []
+		for x in c["inputs"]:
+			ins.append([x[0], x[1], x[2].get_string_from_utf8()])
+		commit_log.append([c["first"], c["last"], ins, c["rate"], _now])
+	_broadcast(Wire.Kind.COMMIT, _commit_fields(c))
+	_trim_commits()
+
+
+## The host's engine runs the steps committed already (before a snapshot, before fast-forward begins).
+func _catch_up() -> void:
+	while clock.engine.step_no < committed:
+		_timed_step()
+
+
+## Fast-forward: the host runs a turn's steps, then commits them (§3.1): the engine may stop offering fast-forward
+## within a turn, and no player may run past that point at the fast rate.
+func _host_fast(delta: float) -> void:
 	var e = clock.engine
-	if fast and not e.fast_forward():
+	if not e.fast_forward():
 		_turn_close()
 		_set_fast(false, "Fast-forward stopped: " + clock.ff_blocked())
+		return
 	_acc += minf(delta, clock.max_frame) * rate / SimClock.STEP
 	var n := floori(_acc + 1e-9)
 	var cap := _budget(delta)
@@ -478,12 +626,12 @@ func _host_frame(delta: float) -> void:
 		_acc = 0.0
 	else:
 		_acc -= n
-	var turn_len := TURN if not fast else maxi(TURN, int(round(rate * TURN)))
+	var turn_len := _turn_len(rate)
 	for i in n:
 		if not _turn_open:
 			_turn_begin()
 		_timed_step()
-		if fast and not clock.engine.fast_forward():
+		if not clock.engine.fast_forward():
 			_turn_close()
 			_set_fast(false, "Fast-forward stopped: " + clock.ff_blocked())
 			break
@@ -492,6 +640,12 @@ func _host_frame(delta: float) -> void:
 	if _turn_open and _now - _turn_t >= TURN_S:
 		_turn_close()
 	clock.acc = _acc * SimClock.STEP
+
+
+## The steps a turn closes: 2 at 1× (0.2 s), more in fast-forward, so that commits go out about 5 times a second
+## whatever the rate (§3.1; the harness's model runs faster than real time too, Engine.time_scale).
+static func _turn_len(r: float) -> int:
+	return maxi(TURN, int(round(r * TURN * maxf(1.0, Engine.time_scale))))
 
 
 func _turn_begin() -> void:
@@ -528,13 +682,7 @@ func _turn_close() -> void:
 	var c: Dictionary = _commits[_turn_first]
 	c["last"] = last
 	committed = last
-	if log_commits:
-		var ins := []
-		for x in c["inputs"]:
-			ins.append([x[0], x[1], x[2].get_string_from_utf8()])
-		commit_log.append([c["first"], last, ins, c["rate"], _now])
-	_broadcast(Wire.Kind.COMMIT, _commit_fields(c))
-	_trim_commits()
+	_send_commit(c)
 
 
 func _trim_commits() -> void:
@@ -595,7 +743,7 @@ func _set_fast(on: bool, why := "") -> void:
 		r = maxf(1.0, r)
 		if r <= 1.0:
 			return
-		_turn_close()
+		_catch_up()
 		fast = true
 		rate = r
 	else:
@@ -661,51 +809,50 @@ func _release(p) -> void:
 # ------------------------------------------------------------------ the player's frame
 
 func _player_frame(delta: float) -> void:
+	_poll_job()
 	if state != State.RUN or _loading or clock.engine == null:
 		return
 	if _now - _host_last_rx > SILENT_S and not _away_host:
 		_end("The host can't be reached any more (no host migration yet: MP3).")
 		return
+	# the jitter buffer (§3.1): play at the session's rate, `_buffer` turns behind the last commit; run dry and wait
+	# until that much is committed again (the buffer then one turn longer, at most 5); more than a turn behind it,
+	# catch up faster (never dropping a committed step); shrink again after 30 s without running dry
 	var e = clock.engine
-	var last := committed
-	var turn_len := TURN
-	var c = _commits.get(_last_first)
-	if c != null:
-		turn_len = maxi(TURN, c["last"] - c["first"] + 1)
-	var target := last if paused else last - _buffer * turn_len
-	var behind: int = target - e.step_no
+	var turn_len := _turn_len(rate)
+	var ahead: int = committed - e.step_no
+	if paused:
+		_waiting = false
+	elif _waiting:
+		if ahead < _buffer * turn_len:
+			_acc = 0.0
+			clock.acc = 0.0
+			return
+		_waiting = false
 	var r := rate
-	if behind > 2 * turn_len:
-		r = maxf(rate * 2.0, minf(clock.ff_cap(), FF_MAX))    # catching up (never drops a committed step)
+	if not paused and ahead > (_buffer + 1) * turn_len:
+		r = maxf(rate * 2.0, minf(clock.ff_cap(), FF_MAX))
 	_acc += minf(delta, clock.max_frame) * r / SimClock.STEP
 	var want := floori(_acc + 1e-9)
-	if want > 0 and e.step_no >= last and not paused:
-		if not _stalled and _now - _late_t > 1.0:
-			_buffer = mini(_buffer + 1, MAX_BUFFER)     # a commit came later than the buffer covered
-			_late_t = _now
-		_stalled = true
-	elif e.step_no < last:
-		_stalled = false
-	if _now - _late_t > 30.0 and _buffer > 1:
-		_buffer -= 1
-		_late_t = _now
-	var n := mini(want, maxi(0, behind))
-	n = mini(n, _budget(delta))
+	var n := mini(mini(want, ahead), _budget(delta))
 	_acc = clampf(_acc - n, 0.0, 2.0)
 	for i in n:
-		if not _commits.has(e.step_no + 1) and not _covered(e.step_no + 1):
-			break
 		_timed_step()
-		e = clock.engine
+	if want > ahead and not paused:
+		# ran dry: a commit came later than the buffer covered
+		_waiting = true
+		if _now - _late_t > 1.0:
+			_buffer = mini(_buffer + 1, MAX_BUFFER)
+		_late_t = _now
+	elif _now - _late_t > 30.0 and _buffer > 1:
+		_buffer -= 1
+		_late_t = _now
 	clock.acc = _acc * SimClock.STEP
 
 
-var _last_first := 0
+var _waiting := true                    # the jitter buffer fills before the player plays (and after it ran dry)
 
 
-## Whether step s lies inside a commit received (a commit begins at its first step; its other steps have no inputs).
-func _covered(s: int) -> bool:
-	return s <= committed
 
 
 # ================================================================== receiving
@@ -1190,6 +1337,7 @@ func reserve(person: String, s: int) -> void:
 
 
 func _broadcast(kind: int, f: PackedByteArray) -> void:
+	_dirty = true
 	var seq := _bseq
 	var tmp := Stream.Sender.new(Wire.STREAM_MAIN)
 	tmp.next_seq = seq
@@ -1266,6 +1414,7 @@ func _check_reports(s: int) -> void:
 ## worker thread, §5.1).
 func _send_snapshot(slots: Array, desync: Dictionary) -> void:
 	_turn_close()
+	_catch_up()
 	var step: int = clock.engine.step_no
 	if not _snap_cache.is_empty() and _snap_cache["step"] == step and _now - _snap_cache["t"] < SNAP_EVERY_S:
 		for s in slots:
@@ -1381,12 +1530,12 @@ func _on_welcome(f: PackedByteArray, ip: String, port: int) -> void:
 	_recv_snap.max_message = Snapshot.MAX_COMPRESSED + 1024
 	_next_input = maxi(_next_input, w["next_input"])
 	clock.driven = true
-	if w["state"] == "lobby":
+	if w.get("snap", w["state"] == "run") != true:
 		state = State.LOBBY
-		_fresh_engine()
 		committed = 0
+		_start_job(0, PackedByteArray(), 0, {})       # the scenario at step 0, made on a worker thread
 	else:
-		state = State.RUN
+		state = State.RUN if w["state"] == "run" else State.LOBBY
 		_loading = true
 		committed = w["step"]
 	_save_token()
@@ -1422,7 +1571,6 @@ func _player_message(kind: int, f: PackedByteArray) -> void:
 			if c["first"] <= committed and not _loading:
 				return                      # (one the snapshot had already)
 			_commits[c["first"]] = c
-			_last_first = c["first"]
 			committed = maxi(committed, c["last"])
 			rate = c["rate"]
 			_trim_player_commits()
@@ -1489,40 +1637,10 @@ func _on_snapshot(f: PackedByteArray) -> void:
 	var dr := JsonStrict.parse(f.slice(10, 10 + dl))
 	if dr.get("ok", false) and typeof(dr["value"]) == TYPE_DICTIONARY:
 		desync = dr["value"]
-	var t0 := Time.get_ticks_usec()
-	var d = Snapshot.decode(raw_len, f.slice(10 + dl))
-	if typeof(d) == TYPE_STRING:
-		_end("The host's snapshot can't be loaded: " + d)
-		return
-	var bad := Snapshot.check(d, model, content)
-	if bad != "":
-		_end("The host's snapshot can't be loaded: " + bad)
-		return
-	if d["session"]["step"] != step:
-		_end("The host's snapshot is damaged.")
-		return
-	if not desync.is_empty() and clock.engine != null:
-		_desync_report(desync, d)
-		stats["resyncs"] += 1
-		_resyncs.append(_now)
-		notice.emit("Resynchronised with the host")
-	_load_engine(d)
-	_loading = false
-	committed = maxi(committed, step)
-	for k in _commits.keys():
-		if _commits[k]["first"] <= step:
-			_commits.erase(k)
-	if typeof(d["session"].get("settings")) == TYPE_DICTIONARY:
-		settings = d["session"]["settings"]
-	stats["load_ms"] = (Time.get_ticks_usec() - t0) / 1000.0
-	_acc = 0.0
-	_send_control({"loaded": true})
-	if paused:
-		clock.speed = SimClock.Speed.PAUSED
-	else:
-		clock.speed = SimClock.Speed.FAST if fast else SimClock.Speed.NORMAL
-	clock.speed_changed.emit(clock.speed, "")
-	changed.emit()
+	if _job != -1:
+		WorkerThreadPool.wait_for_task_completion(_job)     # (a newer snapshot: the older one's work is dropped)
+		_job = -1
+	_start_job(raw_len, f.slice(10 + dl), step, desync)
 
 
 ## Before loading the host's snapshot over its own state: both digests, the step, its state and the snapshot, to
@@ -1537,13 +1655,16 @@ func _desync_report(desync: Dictionary, snap: Dictionary) -> void:
 			"digest": e.digest().hex_encode() if e.step_no == desync.get("step", -1) else "", "mine": mine,
 			"snapshot": snap, "unix": int(Time.get_unix_time_from_system())}
 	var name := "%s/desync-%d-%d.bin" % [dir, int(Time.get_unix_time_from_system()), slot]
-	var fa := FileAccess.open(name, FileAccess.WRITE)
-	if fa != null:
-		fa.store_buffer(var_to_bytes(rep).compress(FileAccess.COMPRESSION_ZSTD))
-		fa.close()
 	last_report = name
+	# its encoding and writing on a worker thread (the state copied above is the main thread's part)
+	_report_jobs.append(WorkerThreadPool.add_task(func():
+		var fa := FileAccess.open(name, FileAccess.WRITE)
+		if fa != null:
+			fa.store_buffer(var_to_bytes(rep).compress(FileAccess.COMPRESSION_ZSTD))
+			fa.close()))
 
 
+var _report_jobs: Array = []
 var last_report := ""
 
 
@@ -1579,6 +1700,7 @@ func _send_input(n: int, text: PackedByteArray) -> void:
 	var f := Crypt.be32(n)
 	f.append_array(text)
 	_send_p.push(Wire.Kind.INPUT, f)
+	_dirty = true
 
 
 ## Inputs sent and not yet committed (the UI shows them as "sending…").
@@ -1650,6 +1772,7 @@ func set_away(on: bool) -> void:
 		if on:
 			_pause(HOST_SLOT)
 		_roster_changed()
+		_flush(true)
 	else:
 		_send_control({"away": on})
 		_flush(true)
