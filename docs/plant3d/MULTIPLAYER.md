@@ -900,7 +900,7 @@ version 3). Its matrices equal those of the Python package qrcode 8.2 for the sa
 broadcast address: Godot gives no netmask, a Wi-Fi's /24 is the common case, and a typed address covers the rest (the
 host's IP, or IP:port when its discovery port is not 47820: the harness, or a second host on one machine). A second
 host on a machine whose discovery port is taken says so and is joined by its address. The RSA key is made on a worker
-thread when the join starts (RSA_TBD on the Note 9).
+thread when the join starts (307 ms on the Note 9 from a cool start, 967 ms when it was hot).
 
 **Messages (§2.1–§2.3).**
 - A reliable message carries a stream byte after its kind and length (0: the player's stream with the host, or the
@@ -945,7 +945,7 @@ snapshot, `var_to_bytes` compressed with zstd) is written to `user://desync/` on
 minutes, and it watches. Most players agreeing against the host ends the session ("the host's device differs").
 
 **The snapshot (§5.1).** The joiner decodes, checks and builds the engine on a worker thread; the main thread only
-installs it (the swap: SWAP_TBD on the Note 9). The host copies the state on its main thread (0.5 ms on the laptop for the
+installs it (on the Note 9 a late join's whole load took 197–251 ms off the frame; the swap 0.1 ms). The host copies the state on its main thread (0.5 ms on the laptop for the
 day shift at minute 6) and encodes it on a worker. The host's snapshot is at a commit's end (its engine runs the
 steps already committed first).
 
@@ -961,16 +961,38 @@ and "Continue alone" goes on from it as a single-player run (the others' people 
 
 **Android (§7.5, §9.3).** The screen is kept on while a session is open. Going to the background sends `away` (a host
 pauses the session; a player keeps its person for 120 s). The multicast lock is taken through the AndroidRuntime
-plugin while a session is open (`net/android_net.gd`). MULTICAST_TBD The packages: Android `INTERNET` and
+plugin while a session is open (`net/android_net.gd`). On the Note 9 (Android 10) the lock is taken and the broadcast LAN query found the laptop's session on the Wi-Fi, with no address typed. The packages: Android `INTERNET` and
 `CHANGE_WIFI_MULTICAST_STATE`, Flatpak `--share=network`, MSIX `internetClient` and `privateNetworkClientServer`
 (tests/test_plant3d_links.py). No socket is opened outside a session (`tests/test_net_no_network.gd`: the session
-layer's count and the process's sockets in /proc). FIREWALL_TBD
+layer's count and the process's sockets in /proc). In the Windows 11 VM (on a Private network), installing the MSIX adds an inbound Allow rule for the package (Domain and Private profiles, from `privateNetworkClientServer`); the app, bound on every interface, joined the laptop's session, and no firewall prompt was on the screen at 25 s or 45 s (screenshots). On a Public network that rule doesn't apply: the session's traffic is then only the answers to the app's own packets, which the firewall lets through (not tried).
 
 **Other players (§6.3):** drawn by `net/others_view.gd` at their `pos`, 200 ms behind and interpolated, with their
 names within 15 m. Their avatars are their people's roles' looks, added to the people on screen as someone the trainee
 works with (skinned first). A player's person standing at their place is also drawn there by the staff's view, which
 shows every person but the trainee's own: this view then draws only the name, until they walk away from it. MP6
 measures the crowd with 7 others.
+
+**From the two reviews (blind and adversarial; tests/test_net_attacks.gd and harness runs for each):**
+- **The rejoin token** travels with P inside the RSA encryption (`welcome`'s `p` is P ‖ token) and is new at every
+  welcome. A hello again for an incarnation the host knows is answered only for the RSA key it first came with, since
+  every packet's header shows its incarnation. A token whose player is still heard takes nothing over. Without this,
+  a player holding the code could fetch another's welcome, read the token and take their slot, or a replayed old hello
+  could move a slot.
+- **Replay windows** are kept only for known senders (a player's slot and incarnation, the host's address) and are
+  dropped with an incarnation, at most 256. A player's K packets are taken only from the address its P packets come
+  from, and hashes only for steps the host digested.
+- **A step's digests are judged together:** once every player has reported, or 3 s after the host's digest.
+  Judged one by one, "most players against the host" never fired.
+- **The host's silence** is noticed in the lobby and while a snapshot loads too. When the host is in the background,
+  its players wait up to 120 s. The last packets before the background (away, the pause, a bye) go three times, as
+  nothing is sent again while Android has the app stopped.
+- **Slots** of hellos never followed by their player's packets (15 s) are given again. A player that leaves keeps its
+  token and comes back to its slot. An input the host won't take is told to its player, and a snapshot says which
+  inputs it holds, so no input is left "sending…".
+- **A procedure's "pause when a step is done"** stops the frame's steps first; in fast-forward a turn had been left
+  open.
+- **After a session** the app goes back to the player's own run (saved before the session, or the scenario afresh,
+  saved from then on). "Continue alone" moves the player's person to slot 0, the single-player run's.
 
 **Not in MP2:** host migration and removal (MP3; a player whose host is silent for 10 s ends its session), the relay
 and direct UDP (MP4), voice (MP5).
@@ -997,4 +1019,34 @@ Each instance of the first train is 98–174 MB of PSS (8 at once, measured by t
 Input to effect through the simulator (two players, median and 95th percentile): 0.64 s and 0.75 s at 150 ms ± 50 ms
 with 5 % loss; 1.48 s and 2.42 s at 400 ms with 15 % loss (MP4 measures mobile data on the Note 9).
 
-**Measured on the devices (2026-10-27):** DEVICES_TBD
+**Measured on the devices (2026-10-27).** Test-signed release builds of this branch (the APK 142.8 MB), the Note 9
+on the Wi-Fi (5 GHz), the laptop as the host (`instance.gd`, headless, bound to every interface), the frames walk
+joined as it starts (`mp=`, an input every 3 s):
+- **The engine's vectors on the Note 9** (`tools/plant3d/vectors_android.sh`): 245 passed. Every run's value digests
+  and its 32,217 state digests equal Linux's. (This is §12's first step: two devices then compare digests in a
+  session.)
+- **The LAN query on the Note 9** found the laptop's session by broadcast with no address typed: the multicast lock
+  works.
+- **Laptop, Note 9 and the Windows 11 VM in one session**, with inputs committed from all three and no desync. The VM
+  renders without a GPU, at 0.5 s a frame, and still keeps up.
+
+The Note 9 against §11's budgets:
+
+| | Budget | Measured |
+|---|---|---|
+| Session layer a frame | ≤ 0.5 ms mean, ≤ 2 ms max | 0.29 ms mean. Before P's decryption moved off the frame, the join's worst was 12.4 ms. Since: 2.57 ms, with 4 of 22,134 frames over 2 ms, none of them a join, a snapshot or a roster |
+| Input to effect on the Wi-Fi | ≤ 0.5 s median | 317 ms median, 521 ms p95, 637 ms at most (201 inputs); 334 ms median in the first, short walk |
+| RSA key | (measured) | 307 ms from a cool start, 997 ms in a warm phone, on a worker thread |
+| Snapshot load (late join) | off the frame but the swap ≤ 5 ms | 167–251 ms in all, the swap 0.1 ms |
+| Network | idle ≈ 4 kbit/s up, the rest ≈ 25 kbit/s down with 7 others | with one other player and an input every 3 s: 6.3 kbit/s up, 7.6 kbit/s down |
+| State digests | ≤ 1 ms, about 2 a second | no desync in any device session |
+
+**The frame rules with two players** (cool start, 30.0 °C, `SAMPLE=1`, `probe=1`):
+- 98.25 % of frames at ≥ 30 fps;
+- first walkable frame 12.6 s.
+
+One frame of 173 ms at 566 s counts as the app's. It was GPU time: 166 ms on the GPU, 4.3 ms of scripts, 822 draws, at
+a place 330 m from the other player. The walk had reclaim in 5.95 % of its samples, so the rule says walk again:
+WALK_AGAIN_TBD
+
+Peak PSS: PSS_TBD
