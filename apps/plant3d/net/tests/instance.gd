@@ -2,7 +2,7 @@
 ## headless, no rendering. Driven by a plan of actions; writes what it saw to a JSON file at the end.
 ##   godot --headless --path apps/plant3d --script res://net/tests/instance.gd -- --role=host|join --code=CODE
 ##     --data=DIR --scenario=ID --name=NAME --disc=PORT --port=PORT [--addr=IP:PORT] [--via=IP:PORT] [--speed=N]
-##     --plan=FILE --out=FILE
+##     --plan=FILE --out=FILE [--probe=1]
 ## The plan is a JSON array of actions, each {"t": seconds since the start (real time)} or {"step": the engine's
 ## step}, and "do": input (item), claim (person), ready, start, pause, run, fast (on), jump (hhmm), instructor (slot,
 ## on), away (on), desync (a value of the engine changed), leave, quit. On quit (or when the session ends) it writes
@@ -59,6 +59,7 @@ func _init() -> void:
 	session.bind_address = "127.0.0.1" if opts.get("local", "1") == "1" else "*"
 	session.via = opts.get("via", "")
 	session.log_commits = true
+	session.probe_sched = opts.get("probe", "") == "1"   # the layer's slow frames' thread time (stats "slow")
 	session.my_pos = _walker
 	session.notice.connect(func(t): notices.append(t))
 	session.ended.connect(func(_w): _finish())

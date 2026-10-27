@@ -160,7 +160,7 @@ var _away := false
 
 # what the session measured (the harness and the phone)
 var stats := {"delays": [], "us": 0, "us_max": 0, "us_sum": 0, "frames": 0, "desyncs": 0, "resyncs": 0,
-		"snap_ms": 0.0, "dropped": 0, "rtt": -1.0}
+		"snap_ms": 0.0, "dropped": 0, "rtt": -1.0, "slow": []}
 
 # other players' positions: slot -> [[t, Vector3, yaw, pitch, gait], …] (the last few)
 var positions := {}
@@ -552,6 +552,9 @@ var _stride := 1
 func _process(delta: float) -> void:
 	if role == Role.NONE or state == State.ENDED or _udp == null:
 		return
+	var sched0 := sched_now() if probe_sched else PackedInt64Array()
+	var got0: int = _udp.got
+	var sent0: int = _udp.sent
 	var t0 := Time.get_ticks_usec()
 	_now = _now_s()
 	_receive()
@@ -560,6 +563,7 @@ func _process(delta: float) -> void:
 	elif state == State.JOINING:
 		_poll_welcome()
 		_hello()
+	var t1 := Time.get_ticks_usec()
 	if role == Role.HOST:
 		_host_frame(delta)
 	else:
@@ -567,20 +571,53 @@ func _process(delta: float) -> void:
 	if _hold_pause and (role == Role.PLAYER or not _turn_open):
 		_hold_pause = false
 		request_pause()
+	var t2 := Time.get_ticks_usec()
 	_positions()
+	var t3 := Time.get_ticks_usec()
 	_flush(_dirty)
 	_dirty = false
-	var us := Time.get_ticks_usec() - t0 - _step_us
-	_step_us = 0
+	var t4 := Time.get_ticks_usec()
+	var us := t4 - t0 - _step_us
 	stats["us"] = us
 	if us > 2000:
 		stats["over_2ms"] = stats.get("over_2ms", 0) + 1
+	if us > SLOW_US and stats["slow"].size() < MAX_SLOW:
+		# where a slow frame's time went (MP2's follow-up: the layer's worst frames): its parts, the packets in and
+		# out, and with probe_sched the thread's own time on a CPU and waiting for one (/proc/thread-self/schedstat)
+		var f := {"us": us, "receive": t1 - t0, "frame": t2 - t1 - _step_us, "steps": _step_us, "positions": t3 - t2,
+			"flush": t4 - t3, "in": _udp.got - got0, "out": _udp.sent - sent0, "what": ",".join(_what), "t": _now}
+		if probe_sched:
+			var sched1 := sched_now()
+			if sched0.size() == 2 and sched1.size() == 2:
+				f["run"] = (sched1[0] - sched0[0]) / 1000
+				f["wait"] = (sched1[1] - sched0[1]) / 1000
+		stats["slow"].append(f)
+	_step_us = 0
 	if us > stats["us_max"]:
 		stats["us_max_what"] = ",".join(_what)   # what the worst frame did (the measurements)
 	stats["us_max"] = maxi(stats["us_max"], us)
 	_what.clear()
 	stats["us_sum"] += us
 	stats["frames"] += 1
+
+
+const SLOW_US := 1500                   # a frame of the layer this long is kept in stats["slow"] with its parts
+const MAX_SLOW := 64
+## Measuring only (mp_probe=1, the harness's --probe=1): read this thread's time on a CPU and waiting for one around
+## each frame of the layer, so that a slow frame shows whether the layer worked or its thread was not running.
+var probe_sched := false
+
+
+## [ns on a CPU, ns runnable but waiting] of the calling thread (Linux and Android: /proc/thread-self/schedstat),
+## or [] where there is none.
+static func sched_now() -> PackedInt64Array:
+	var f := FileAccess.open("/proc/thread-self/schedstat", FileAccess.READ)
+	if f == null:
+		return PackedInt64Array()
+	var p := f.get_as_text().split(" ", false)
+	if p.size() < 2:
+		return PackedInt64Array()
+	return PackedInt64Array([int(p[0]), int(p[1])])
 
 
 var _step_us := 0                       # this frame's model steps (the session layer's own time is the rest)
