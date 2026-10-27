@@ -1040,7 +1040,7 @@ The Note 9 against §11's budgets:
 
 | | Budget | Measured |
 |---|---|---|
-| Session layer a frame | ≤ 0.5 ms mean, ≤ 2 ms max | 0.27 ms mean. **The maximum is 2.13 ms**, in 2 of 24,193 frames over 2 ms, so it still misses its budget by 0.13 ms (below). History: 12.4 ms before P's decryption moved off the frame; 2.57 ms at MP2 (4 of 22,134); then 6.1 ms and 10.4 ms in the join, until the join's slow parts moved off the frame (2026-10-28) |
+| Session layer a frame | ≤ 0.5 ms mean, ≤ 2 ms max | 0.27 ms mean. **The maximum is 2.13 ms**, in 2 of 24,193 frames over 2 ms, so it still misses its budget by 0.13 ms (below). History: 12.4 ms before P's decryption moved off the frame; 2.57 ms at MP2 (4 of 22,134); then 10.4 ms (a walk's join frame, with 8 packets in) and 6.1 ms (the join's LAN query) in the follow-up's walks, until the join's slow parts moved off the frame (2026-10-28) |
 | Input to effect on the Wi-Fi | ≤ 0.5 s median | 317 ms median, 521 ms p95, 637 ms at most (201 inputs); 334 ms median in the first, short walk |
 | RSA key | (measured) | 307 ms from a cool start, 997 ms in a warm phone, on a worker thread |
 | Snapshot load (late join) | off the frame but the swap ≤ 5 ms | 167–251 ms in all, the swap 0.1 ms |
@@ -1059,13 +1059,15 @@ the join fix) had 99.27 % of frames at ≥ 30 fps and 4 frames of 100–172 ms, 
 That walk is not judged (3.02 % reclaim).
 
 **The session's memory: about 21–23 MB, against its 30 MB budget.** There is no session-only counter in a release
-build (`OS.get_static_memory_usage` reads 0 there). It was measured as the PSS of the same build in a two-player walk
-and in a solo walk, starting at 30.4 and 30.7 °C, sampled every 10 s by pid:
+build (`OS.get_static_memory_usage` reads 0 there). It was measured as the PSS of one build in two other walks than the
+one above: a two-player walk and a solo walk, starting at 30.4 and 30.7 °C, sampled every 10 s by pid. (The cool
+walk above peaked at 1,088 MB too.)
 - peak 1,088 MB against 1,067 MB;
 - median after the start 1,078 MB against 1,055 MB.
 
-At the peaks, native heap was +11 MB and EGL +9.6 MB (the other player's avatar is drawn). This rests on one walk of
-each, so the difference carries the walks' own spread, which is a few MB.
+At the peaks, native heap was +11 MB and EGL +9.6 MB. The EGL part is the other player's avatar being drawn, which is
+counted here as the session's on purpose: it is there only because of the session. This rests on one walk of each,
+so the difference carries the walks' own spread, which is a few MB.
 
 **The session layer's worst frames** (`mp_probe=1`: each frame over 1.5 ms with its parts and its packets' times):
 - **The join (fixed).** On the Note 9 the worst frames were the join's:

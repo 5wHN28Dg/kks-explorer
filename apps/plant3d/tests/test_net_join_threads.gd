@@ -24,6 +24,18 @@ func run(tree: SceneTree) -> Array:
 		await tree.process_frame
 	if s._query_t < 0.0:
 		p.append("the LAN query went out once the addresses were there")
+	# a token forgotten before its write ran (the host ended the session right after the welcome) stays forgotten:
+	# the write is held back by holding the mutex here (the main thread's own lock is recursive)
+	s._token = PackedByteArray([9, 9, 9])
+	Session._token_mutex.lock()
+	s._save_token()
+	Session.forget_session()
+	Session._token_mutex.unlock()
+	for id in s._save_jobs:
+		WorkerThreadPool.wait_for_task_completion(id)
+	s._save_jobs.clear()
+	if FileAccess.file_exists(Session.SESSION_FILE):
+		p.append("a token forgotten before its write came back on disk")
 	s._token = PackedByteArray([1, 2, 3])
 	s._save_token()
 	tree.root.remove_child(s)             # (_exit_tree waits for the token's write)

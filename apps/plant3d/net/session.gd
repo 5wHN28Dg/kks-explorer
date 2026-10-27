@@ -102,6 +102,7 @@ var _rsa_thread: Thread
 ## device's addresses took 6 ms of a frame and the hello's public key and saved token 2 ms): {addrs, token}
 var _prep_thread: Thread
 var _prep := {}
+const PREP_MAX_S := 10.0
 var _save_jobs: Array = []              # the rejoin token written on a worker thread (task ids)
 var rsa_ms := -1.0                      # its generation's time (measured on the Note 9, §13)
 var _udp: Udp
@@ -374,7 +375,9 @@ func _prep_ready() -> bool:
 static var record_threads := false
 static var threads_seen := {}
 static func _record_thread(what: String) -> void:
+	_token_mutex.lock()                 # (written from several threads)
 	threads_seen[what] = "main" if OS.get_thread_caller_id() == OS.get_main_thread_id() else "worker"
+	_token_mutex.unlock()
 
 
 ## Leaves the session (a player) or ends it (the host). The players keep a copy of the run (§7.4).
@@ -2149,10 +2152,16 @@ func set_away(on: bool) -> void:
 # ================================================================== the LAN query (§9.3)
 
 func _query() -> void:
+	# (the window counts from the first query, once the preparation is ready: _prep_ready sets it; a preparation
+	# that never ends gives up after PREP_MAX_S)
+	if not _prep_ready():
+		if _now > _query_until + PREP_MAX_S:
+			_end("The device's network addresses could not be read.")
+		return
 	if _now > _query_until:
 		_end("No session with that code answered on this network. If the network keeps devices apart, type the host's address.")
 		return
-	if _now - _query_t < QUERY_EVERY or not _prep_ready():
+	if _now - _query_t < QUERY_EVERY:
 		return
 	_query_t = _now
 	var q := "WDPQ".to_ascii_buffer()
@@ -2249,18 +2258,22 @@ func _save_token() -> void:
 	_token_mutex.unlock()
 	# (the file on a worker thread: a write to storage took a frame's ms on the Note 9 at the welcome)
 	_save_jobs.append(WorkerThreadPool.add_task(_write_token.bind(JSON.stringify(
-			{"code": code, "token": Marshalls.raw_to_base64(_token)}))))
+			{"code": code, "token": Marshalls.raw_to_base64(_token)}), _forgotten)))
 
 
-static func _write_token(text: String) -> void:
+static func _write_token(text: String, forgotten_then: int) -> void:
 	if record_threads:
 		_record_thread("token file")
 	_token_mutex.lock()                 # (two welcomes' writes one after the other)
-	var f := FileAccess.open(SESSION_FILE, FileAccess.WRITE)
-	if f != null:
-		f.store_string(text)
-		f.close()
+	if forgotten_then == _forgotten:    # (a session forgotten since: its token must not come back on disk)
+		var f := FileAccess.open(SESSION_FILE, FileAccess.WRITE)
+		if f != null:
+			f.store_string(text)
+			f.close()
 	_token_mutex.unlock()
+
+
+static var _forgotten := 0              # forget_session()s so far
 
 
 static var _token_mutex := Mutex.new()
@@ -2287,6 +2300,7 @@ static func _saved_token_locked(for_code: String) -> PackedByteArray:
 
 static func forget_session() -> void:
 	_token_mutex.lock()
+	_forgotten += 1
 	_tokens.clear()
 	if FileAccess.file_exists(SESSION_FILE):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(SESSION_FILE))
