@@ -567,7 +567,9 @@ func _process(delta: float) -> void:
 	# the frame rules judge normal play only (the user, 2026-10-27): in a measured walk each change of speed is logged
 	# with the phone's monotonic clock from the start (speed=fast fast-forwards before the walk begins), so that
 	# phone/frames.sh leaves fast-forward's frames out of what the screen showed, which counts from the first frame
-	var ff: bool = ui != null and ui.clock != null and ui.clock.speed == SimClock.Speed.FAST
+	# (a player still catching up on turns committed in fast-forward runs fast-forward's steps at 1×: net/session.gd)
+	var ff: bool = ui != null and ui.clock != null and (ui.clock.speed == SimClock.Speed.FAST or
+		(ui.session != null and ui.session.ff_tail))
 	if ff != _walk_ff and opts.has("walk"):
 		_walk_ff = ff
 		_say("SPEED %s at %.1f s, uptime %d ms" % ["fast-forward" if ff else "normal", t_walk, WalkFrames.uptime_ms()])
@@ -585,6 +587,8 @@ func _process(delta: float) -> void:
 	var now := Time.get_ticks_usec()
 	var ms := (now - last_us) / 1000.0
 	last_us = now
+	if t_walk <= 5.0:
+		frames.seen(ff)   # (not measured; a fast-forward that stops now still marks the next frame)
 	if t_walk > 5.0:
 		# fast-forward's frames are counted apart (app/walk_frames.gd)
 		var g: float = RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())

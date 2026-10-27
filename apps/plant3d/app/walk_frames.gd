@@ -35,6 +35,12 @@ func add(ms: float, gpu_ms: float, ff: bool) -> bool:
 	return true
 
 
+## A frame not measured (the walk's first 5 s): only its speed is kept, so that the first measured frame after a
+## fast-forward that stopped then is still fast-forward's.
+func seen(ff: bool) -> void:
+	_was_ff = ff
+
+
 ## "median=… p95=… p99=… max=…" of `t` (ms), sorted here; "" when empty.
 static func stats(t: PackedFloat32Array, prefix := "") -> String:
 	var n := t.size()

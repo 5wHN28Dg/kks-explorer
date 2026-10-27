@@ -218,7 +218,9 @@ a logcat -d -v epoch -T "$t0.000" > "$OUT/logcat.txt" 2>/dev/null || true
 if [ -s "$OUT/sf.txt" ] && [ -s "$OUT/result.txt" ]; then
   { grep -m1 '^layer:' "$OUT/sf_summary.txt" || true
     python3 -I "$HERE/../../tools/plant3d/bench/sf_frames.py" "$OUT/sf.txt" --speeds "$OUT/result.txt"; } > "$OUT/sf_summary.new" &&
-    mv "$OUT/sf_summary.new" "$OUT/sf_summary.txt" || echo "!!! sf_frames.py could not count the frames at 1x" >&2
+    mv "$OUT/sf_summary.new" "$OUT/sf_summary.txt" ||
+    { echo "!!! sf_frames.py could not count the frames at 1x" >&2
+      echo "NOT JUDGED at 1x: sf_frames.py --speeds failed; the counts above are every frame's, fast-forward's included" >> "$OUT/sf_summary.txt"; }
 fi
 start=$(grep -m1 -E "START u0 .*$PKG" "$OUT/logcat.txt" | awk '{print $1}' || true)
 first=$(grep -m1 "plant: first frame" "$OUT/logcat.txt" | awk '{print $1}' || true)

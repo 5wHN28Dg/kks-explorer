@@ -185,6 +185,8 @@ evidence. Exactly:
 - **Normal play only** (the user, 2026-10-27): the rule (and the ≥ 30 fps one) judge the frames played at 1×;
   fast-forward may drop frames on a phone. Its long frames are `SPIKE_FF` lines, which `reclaim_frames.py` lists
   but does not judge, and its RESULT's `over100` counts the frames at 1× (`app/walk_frames.gd`, MILESTONES.md).
+  In a session, a player still running the turns committed in fast-forward after it stopped counts as
+  fast-forward too (`net/session.gd` `ff_tail`). A walk in fast-forward throughout has nothing to judge (`NOT JUDGED`).
 - The evidence is kept with the walk: `rule.txt` in its results folder (the judgement, the thresholds it used, and the
   two sample lines that show each excluded frame's reclaim), beside `samp.txt`, `logcat.txt` and the walk's
   `trace.pftrace` when it was traced. `phone/frames.sh` writes it after every `SAMPLE=1` walk

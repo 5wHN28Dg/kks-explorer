@@ -94,6 +94,16 @@ class FrameRuleTest(unittest.TestCase):
             # (the FASTFORWARD line's count: one of its two SPIKE_FF lines was lost from the log)
             self.assertIn("600 frames in fast-forward left out, 2 of them over 100 ms", t)
             self.assertIn("180.0 ms at 45.0 s: in fast-forward, not judged", t)
+            # a walk in fast-forward throughout (speed=fast): no frame at 1x, nothing judged, so it doesn't pass
+            with open(os.path.join(d, "result.txt"), "w") as f:
+                f.write("FASTFORWARD frames=600 over100=2 max=180.0ms: not judged\n"
+                        "RESULT tier=lean+vis renderer=mobile walk=frames frames=0 over100=0 ff_frames=600 stuck=0\n")
+            r = R.rule(d)
+            self.assertFalse(r["passes"])
+            self.assertFalse(r["judged"])
+            t = R.rule_text(d)
+            self.assertIn("NOT JUDGED", t)
+            self.assertIn("no frame at 1x (every frame in fast-forward): nothing to judge", t)
 
     def test_reclaim_excluded_and_app_counted(self):
         with tempfile.TemporaryDirectory() as d:

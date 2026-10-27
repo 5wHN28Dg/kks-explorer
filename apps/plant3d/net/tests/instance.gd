@@ -28,6 +28,7 @@ var done := false
 var walk_a := 0.0
 var notices: Array = []
 var _printed := false
+var ff_tail_frames := 0  # frames with the session still catching up on fast-forward's turns (session.ff_tail)
 
 
 func _init() -> void:
@@ -89,6 +90,8 @@ func _on_step(e) -> void:
 func _process(_delta: float) -> bool:
 	if done:
 		return true
+	if session.ff_tail:
+		ff_tail_frames += 1
 	var now := (Time.get_ticks_msec() - t0) / 1000.0
 	var step: int = clock.engine.step_no if clock.engine != null else -1
 	while not plan.is_empty():
@@ -162,7 +165,7 @@ func _finish() -> void:
 		"positions": session.positions.keys(), "commits": session.commit_log if session.is_host() else [],
 		"scenario": session.scenario, "buffer": session.buffer_turns(), "sending": session.sending(),
 		"trainees": _trainees(e), "pss_kb": _pss(), "udp": [Udp.opened, Udp.open_now],
-		"ff_cap": clock.ff_cap(), "load_ms": session.stats.get("load_ms", -1.0),
+		"ff_cap": clock.ff_cap(), "ff_tail_frames": ff_tail_frames, "ff_tail": session.ff_tail, "load_ms": session.stats.get("load_ms", -1.0),
 	}
 	var f := FileAccess.open(opts["out"], FileAccess.WRITE)
 	f.store_string(JSON.stringify(out))

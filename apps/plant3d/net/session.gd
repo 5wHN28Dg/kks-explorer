@@ -917,6 +917,8 @@ func _player_frame(delta: float) -> void:
 	var r := rate
 	if not paused and ahead > (_buffer + 1) * turn_len:
 		r = maxf(rate * 2.0, minf(clock.ff_cap(), FF_MAX))
+	elif not fast:
+		ff_tail = false
 	_acc += minf(delta, clock.max_frame) * r / SimClock.STEP
 	var want := floori(_acc + 1e-9)
 	var n := mini(mini(want, ahead), _budget(delta))
@@ -937,6 +939,9 @@ func _player_frame(delta: float) -> void:
 	clock.acc = _acc * SimClock.STEP
 
 
+## a player still catching up on turns committed in fast-forward after it stopped: its frames run fast-forward's
+## steps at 1× (a measured walk counts them as fast-forward's: app/walk_frames.gd); false again once it has caught up
+var ff_tail := false
 var _waiting := true                    # the jitter buffer fills before the player plays (and after it ran dry)
 
 
@@ -1833,6 +1838,7 @@ func _on_roster(m: Dictionary) -> void:
 		settings = m["settings"]
 	if was_fast and not fast:
 		_my_fast = false
+		ff_tail = role == Role.PLAYER     # (the turns committed in fast-forward still to run: _player_frame)
 	if clock != null:
 		var sp: int = SimClock.Speed.PAUSED if paused or state != State.RUN else (SimClock.Speed.FAST if fast else SimClock.Speed.NORMAL)
 		if sp != clock.speed or (state == State.RUN and not was_run):

@@ -30,6 +30,11 @@ func _counts() -> Array:
 		p.append("%d GPU times for %d frames" % [w.gpu.size(), w.times.size()])
 	if w.ff_frames != 3 or w.ff_over100 != 2 or w.ff_max != 150.0:
 		p.append("fast-forward: %d frames, %d over 100 ms, longest %.1f ms (want 3, 2, 150)" % [w.ff_frames, w.ff_over100, w.ff_max])
+	# a fast-forward that stops in the walk's first 5 s (not measured): the first measured frame is still its
+	var w5 := WalkFrames.new()
+	w5.seen(true)
+	if w5.add(40.0, 1.0, false) or not w5.add(20.0, 1.0, false):
+		p.append("the first measured frame after a fast-forward that stopped in the first 5 s is fast-forward's")
 	if Array(w.ff_times) != [30.0, 150.0, 110.0]:
 		p.append("fast-forward's frames' times %s" % str(w.ff_times))
 	if WalkFrames.stats(w.ff_times) != "median=110.0ms p95=150.0ms p99=150.0ms max=150.0ms" or WalkFrames.stats(PackedFloat32Array()) != "":
