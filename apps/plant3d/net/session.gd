@@ -618,7 +618,7 @@ static func sched_now() -> PackedInt64Array:
 	var f := FileAccess.open("/proc/thread-self/schedstat", FileAccess.READ)
 	if f == null:
 		return PackedInt64Array()
-	var p := f.get_as_text().split(" ", false)
+	var p := f.get_line().split(" ", false)   # (a /proc file's length is 0: get_as_text reads nothing)
 	if p.size() < 2:
 		return PackedInt64Array()
 	return PackedInt64Array([int(p[0]), int(p[1])])
