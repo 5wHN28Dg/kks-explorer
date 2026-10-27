@@ -63,7 +63,7 @@ def below_pins(coords, pinned):
 
 
 # the configurations whose libraries go into an APK: <flavor><Debug|Release>RuntimeClasspath, not the tests'
-APK_RUNTIME = re.compile(r'^[a-z]*(Debug|Release)RuntimeClasspath$')
+APK_RUNTIME = re.compile(r'^([a-z]+(Debug|Release)|debug|release)RuntimeClasspath$')
 
 
 def runtime(texts):
@@ -136,6 +136,10 @@ class PlantAndroidDeps(unittest.TestCase):
         self.assertEqual(sorted(exempt - locked(self.locks)), [])   # each exemption names a version the build uses
         # licenses only: no vulnerability ignored, no package left out of the scan
         self.assertNotIn('IgnoredVulns', toml)
+        for o in parsed['PackageOverrides']:
+            self.assertNotIn('ignore', o, o['name'])
+            self.assertNotIn('vulnerability', o, o['name'])
+            self.assertEqual(set(o.get('license', {})) - {'ignore', 'override'}, set(), o['name'])
         self.assertIsNone(re.search(r'^(ignore|vulnerability\.ignore)\s*=', toml, re.M))
         for block in toml.split('[[PackageOverrides]]')[1:]:
             if 'license.ignore' in block:
@@ -153,7 +157,7 @@ class PlantAndroidDeps(unittest.TestCase):
         self.assertTrue(older('32.0.1-jre', '33.7.2-jre'))
         self.assertFalse(older('2.0.6.1', '2.0.6.1'))
         self.assertEqual(runtime(['g:a:1=standardReleaseRuntimeClasspath,x\ng:b:1=standardDebugAndroidTestRuntimeClasspath\n'
-                                  'g:c:1=_internal-unified-test-platform-core\n']), {'g:a:1'})
+                                  'g:c:1=_internal-unified-test-platform-core\ng:d:1=releaseRuntimeClasspath\n']), {'g:a:1', 'g:d:1'})
         self.assertEqual(license_exempt('[[PackageOverrides]]\nname = "g:a"\nversion = "1"\nlicense.ignore = true\n'
                                         '[[PackageOverrides]]\nname = "g:b"\nversion = "2"\nlicense.override = ["MIT"]\n'), {'g:a:1'})
         self.assertTrue(older('2.0.6', '2.0.6.1'))

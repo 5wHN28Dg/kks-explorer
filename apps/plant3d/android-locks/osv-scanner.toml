@@ -170,7 +170,7 @@ name = "junit:junit"
 version = "4.13.2"
 ecosystem = "Maven"
 license.ignore = true
-reason = "build-time only, not in the APK: the template's instrumented-test configurations (androidTest), never part of an export; its license, EPL-1.0 (POM), is not on the allowlist, which is for shipped code"
+reason = "build-time only, not in the APK: the template's androidTest configurations (every flavor; they build the test APK, never part of an export); its license, EPL-1.0 (POM), is not on the allowlist, which is for shipped code"
 
 [[PackageOverrides]]
 name = "com.google.testing.platform:android-device-provider-local"
