@@ -189,9 +189,12 @@ all but one check: the state digests on Android (the Note 9 ran only the digest'
 **MP2 built 2026-10-27** (LAN sessions; MULTIPLAYER.md §14): sessions of 2 to 8 players on one Wi-Fi, through
 "Together" on the bar; the harness of headless players in CI's `multiplayer` job; the Note 9 ran every engine vector
 with Linux's digests, joined the laptop's session on the Wi-Fi by its broadcast query, and played in one session with
-the laptop and the Windows VM. Its measurements are in MULTIPLAYER.md §14. **Not done yet:** the frame rules' walk
-with two players is still to be judged (the walk made had too much reclaim, and the phone did not cool for a second),
-the session's memory is still to be measured, and the session layer's worst frame (2.57 ms) misses its 2 ms budget.
+the laptop and the Windows VM. Its measurements are in MULTIPLAYER.md §14.
+- **Done since (2026-10-28):** the two-player walk from a cool start passed the frame rules (99.54 % of frames at
+  ≥ 30 fps, no frame over 100 ms); the session's memory is about 21–23 MB against 30 MB.
+- **Not done yet:** the session layer's worst frame is 2.13 ms against its 2 ms budget, in 2 of 24,193 frames. The
+  join's slow parts are fixed. What remains looks like the thread not getting the CPU, which is not proven on
+  Android.
 
 ## When to stop and ask the user (the user, 2026-10-22)
 

@@ -868,8 +868,9 @@ is until the project is complete) and keeps the frame rules on the Note 9. Sizes
 | MP5 | **Voice:** decision 0069's `wdp_voice` built from pinned sources for the four packages' targets (its licence notices in About), capture with `get_input_frames`, push-to-talk, channels and floor, jitter buffer, radio bus; `RECORD_AUDIO` and the desktop permissions | L | MP2 | push-to-talk on the radio | encode ≤ 1 ms / decode ≤ 0.3 ms per frame on the Note 9; mouth-to-ear ≤ 400 ms on the Wi-Fi; the frame rules with one talker; the APK still ≤ 150 MB |
 | MP6 | **A full session measured:** 8 players (the Note 9, the laptop, the VM and harness bots) through a shift with fast-forward and a jump, voice on; the Note 9's 10-minute walk among 7 players | M | MP3, MP4, MP5 | the whole feature, measured | the frame rules on the Note 9 with 7 others drawn and one talker; no desync in 60 minutes |
 
-**MP2 built 2026-10-27** (§14): everything in its row. Its measurements are in §14; three are still open there (the
-two-player walk judged by the frame rules, the session's memory, and the session layer's worst frame).
+**MP2 built 2026-10-27** (§14): everything in its row. Its measurements are in §14. The follow-ups (2026-10-28)
+passed the two-player frame-rule walk from a cool start and measured the session's memory. The session layer's worst
+frame is still open: 2.13 ms against its 2 ms budget, in 2 of 24,193 frames.
 
 **Order:** MP1 → MP2, then MP3, MP4 and MP5 in any order (each needs only MP2), then MP6.
 
@@ -1039,20 +1040,46 @@ The Note 9 against §11's budgets:
 
 | | Budget | Measured |
 |---|---|---|
-| Session layer a frame | ≤ 0.5 ms mean, ≤ 2 ms max | 0.29 ms mean. Before P's decryption moved off the frame, the join's worst was 12.4 ms. Since: 2.57 ms, with 4 of 22,134 frames over 2 ms, none of them a join, a snapshot or a roster. **The maximum misses its budget**, cause not found yet |
+| Session layer a frame | ≤ 0.5 ms mean, ≤ 2 ms max | 0.27 ms mean. **The maximum is 2.13 ms**, in 2 of 24,193 frames over 2 ms, so it still misses its budget by 0.13 ms (below). History: 12.4 ms before P's decryption moved off the frame; 2.57 ms at MP2 (4 of 22,134); then 6.1 ms and 10.4 ms in the join, until the join's slow parts moved off the frame (2026-10-28) |
 | Input to effect on the Wi-Fi | ≤ 0.5 s median | 317 ms median, 521 ms p95, 637 ms at most (201 inputs); 334 ms median in the first, short walk |
 | RSA key | (measured) | 307 ms from a cool start, 997 ms in a warm phone, on a worker thread |
 | Snapshot load (late join) | off the frame but the swap ≤ 5 ms | 167–251 ms in all, the swap 0.1 ms |
 | Network | idle ≈ 4 kbit/s up, the rest ≈ 25 kbit/s down with 7 others | with one other player and an input every 3 s: 6.3 kbit/s up, 7.6 kbit/s down |
 | State digests | ≤ 1 ms, about 2 a second | no desync in any device session |
 
-**The frame rules with two players** (cool start, 30.0 °C, `SAMPLE=1`, `probe=1`):
-- 98.25 % of frames at ≥ 30 fps;
-- first walkable frame 12.6 s.
+**The frame rules with two players: passed** (2026-10-28; cool start at 27.3 °C, `SAMPLE=1`, `probe=1`, the join
+fix below). The rules judge normal play only, and this walk had no fast-forward.
+- 99.54 % of frames at ≥ 30 fps on the screen;
+- no frame over 100 ms (the app's longest was 60.4 ms);
+- reclaim in 1.21 % of the samples, but no frame was excluded, so the plain rule applies;
+- first walkable frame 12.1 s, peak PSS 1,088 MB.
 
-One frame of 173 ms at 566 s counts as the app's. It was GPU time: 166 ms on the GPU, 4.3 ms of scripts, 822 draws, at
-a place 330 m from the other player. The walk had reclaim in 5.95 % of its samples, so the rule says walk again. **Not yet walked again:** the phone, on its charger at 100 %, did not cool back to
-30.0 °C within two hours. So MP2's frame-rule walk with two players is still to be judged.
+MP2's own walk had one frame of 173 ms in 5.95 % reclaim. An earlier cool-start walk of this follow-up (26.4 °C, before
+the join fix) had 99.27 % of frames at ≥ 30 fps and 4 frames of 100–172 ms, all inside the kernel's memory reclaim.
+That walk is not judged (3.02 % reclaim).
 
-Peak PSS was not read: `phone/frames.sh` read `dumpsys meminfo` by the package's name, which matches no process when
-Walkdown is installed too. It now reads it by the pid. The session's ≤ 30 MB is therefore still to be measured.
+**The session's memory: about 21–23 MB, against its 30 MB budget.** There is no session-only counter in a release
+build (`OS.get_static_memory_usage` reads 0 there). It was measured as the PSS of the same build in a two-player walk
+and in a solo walk, starting at 30.4 and 30.7 °C, sampled every 10 s by pid:
+- peak 1,088 MB against 1,067 MB;
+- median after the start 1,078 MB against 1,055 MB.
+
+At the peaks, native heap was +11 MB and EGL +9.6 MB (the other player's avatar is drawn). This rests on one walk of
+each, so the difference carries the walks' own spread, which is a few MB.
+
+**The session layer's worst frames** (`mp_probe=1`: each frame over 1.5 ms with its parts and its packets' times):
+- **The join (fixed).** On the Note 9 the worst frames were the join's:
+  - 6.1 ms with no packet, the LAN query's addresses (`IP.get_local_addresses`);
+  - 2.3 ms at the first hello (the public key's PEM and the saved token's file);
+  - 1.6 ms at the welcome (writing the token's file).
+  These now run on worker threads (`tests/test_net_join_threads.gd`), and the join's frames measured 1.8 and 1.9 ms.
+- **The rest (not fixed).** The remaining frames over 1.5 ms are ordinary work that occasionally takes several times
+  longer. The same 78-byte packet took 220–450 µs to open and handle in most frames, and 950–1,760 µs in others.
+  Sealing one packet took about 330 µs, or 1.3–1.5 ms in others. These frames don't cluster with joins, snapshots,
+  rosters or any kind of packet.
+  - That points at the thread not getting the CPU (another thread, or a slow core) rather than the layer's code.
+    It is not proven: the app cannot read its thread's scheduling counters on Android
+    (`/proc/thread-self/schedstat`: open error 1; on Linux they are read).
+  - On the laptop, two 5-minute harness sessions at 1× had a worst frame of 0.86–1.9 ms. The frames over 1.5 ms came
+    while other jobs loaded the CPUs.
+  - Over 2 ms: 2 of 24,193 frames (2.13 and 2.03 ms).
