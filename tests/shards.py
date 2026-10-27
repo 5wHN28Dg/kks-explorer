@@ -30,9 +30,11 @@ HEAVY = {
     # night (~191 s): ~644 s
     'test_plant3d.Vectors2': 2,
     'test_plant3d_staff.FirstTrainStaff.test_ppe_on_before_a_held_job_and_for_the_supervisors': 2,
-    # format 2's first train's day made again (~485 s)
+    # format 2's first train's day made again (~485 s; since the reference's speed-up, its day and forks made side by
+    # side in up to 4 processes (make_plant3d_vectors.side_by_side), 126 s on the laptop, from 1032 s)
     'test_plant3d.Vectors2.test_frozen_day': 3,
-    # the staff's day's forks replayed (~583 s; with the day replayed too, ~96 s, the job took 15 of its 30 minutes)
+    # the staff's day's forks replayed (~583 s; with the day replayed too, ~96 s, the job took 15 of its 30 minutes;
+    # since the speed-up, side by side: 110 s on the laptop)
     'test_plant3d_staff.FirstTrainStaff.test_forks': 4,
     # shard 0 the rest (~450 s): the staff's other tests (the day replayed), the water treatment model, the sounds,
     # everything else
@@ -61,8 +63,9 @@ CONTENT = {
     'test_plant3d.Vectors2.test_frozen_wtp': 3,
     'test_plant3d.Vectors2.test_wtp_replays': 3,
     'test_plant3d.Vectors2.test_frozen_wtp_regen': 3,
-    # the first train's day made again (~118 s here, ~485 s on CI), the RO cleaning (~46 s); format 2's train forks
-    # replayed (~69 s) in shard 2 (the job had reached 18.3 of its 40 minutes on CI)
+    # the first train's day made again (~890 s on CI, 2026-10-27; 126 s here since the reference's speed-up, side by
+    # side), the RO cleaning (~46 s); format 2's train forks replayed (~69 s) in shard 2 (the job had reached 18.3 of
+    # its 40 minutes on CI)
     'test_plant3d.Vectors2.test_frozen_day': 4,
     'test_plant3d.Vectors2.test_frozen_wtp_cip': 4,
     'test_plant3d.Vectors2.test_train_forks_replay': 2,

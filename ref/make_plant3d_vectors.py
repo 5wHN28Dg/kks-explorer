@@ -21,6 +21,42 @@ DATA = os.path.join(ROOT, 'data', 'plant3d')
 SNAP_EVERY = 6000           # model steps between full snapshots of the cold start (10 min)
 
 
+def jobs():
+    """How many processes side_by_side uses: KKS_REF_JOBS, else up to 4, leaving a core."""
+    return int(os.environ.get('KKS_REF_JOBS') or max(1, min(4, (os.cpu_count() or 2) - 1)))
+
+
+_SIDE = []          # side_by_side's function, for its workers
+
+
+def _side(i):
+    return _SIDE[-1](i)
+
+
+def side_by_side(fn, n, cost=None, procs=None):
+    """[fn(i) for i in range(n)], made in up to jobs() processes when there are several: runs that don't depend on
+    each other (each from a fresh engine or its own clone), so the result is the same either way. The workers are
+    forked: they have everything as this process has it now (fn may be a closure; only i and fn(i) are pickled).
+    cost(i): roughly how long fn(i) takes; the longest are started first. The fork start method is what makes the
+    results the same as one after the other (the workers keep this process's state, string hash seed included): keep
+    it. Not to be called inside fn with more than one process (pool workers can't have children)."""
+    procs = jobs() if procs is None else procs
+    if procs <= 1 or n <= 1:
+        return [fn(i) for i in range(n)]
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+    order = sorted(range(n), key=lambda i: -cost(i)) if cost else list(range(n))
+    _SIDE.append(fn)
+    try:
+        # (a ProcessPoolExecutor, not a Pool: a worker killed by the system, out of memory, makes it raise
+        # BrokenProcessPool where a Pool would wait for its result for ever)
+        with ProcessPoolExecutor(min(procs, n), mp_context=multiprocessing.get_context('fork')) as pool:
+            made = dict(zip(order, pool.map(_side, order)))
+    finally:
+        _SIDE.pop()
+    return [made[i] for i in range(n)]
+
+
 def R(x):
     """Round floats for the file (readers compare to 1e-6)."""
     if isinstance(x, float):
@@ -850,27 +886,36 @@ def run_fork(base, actions, probes=()):
 
 def build_train(b, scenario='cold_iron', procedure='cold_start', fork_list=None):
     e, log, bases = run_cold_start(b, scenario, procedure)
-    # the snapshots: replay the inputs on a fresh engine (also proves the inputs alone reproduce the run)
-    r = P.Engine(b, scenario)
-    snaps = []
     inputs = e.inputs
-    k = 0
-    while r.step_no < e.step_no:
-        nxt = min(e.step_no, (r.step_no // SNAP_EVERY + 1) * SNAP_EVERY)
-        part = [x for x in inputs if r.step_no < x[0] <= nxt]
-        replay(r, part, nxt)
-        snaps.append(r.snapshot())
-        k += 1
-    assert r.events == e.events, 'replaying the recorded inputs gives other events'
-    forks = []
-    for fid, base, actions, expect in (FORKS if fork_list is None else fork_list):
+
+    def snapshots():
+        """The snapshots: replay the inputs on a fresh engine (also proves the inputs alone reproduce the run)."""
+        r = P.Engine(b, scenario)
+        snaps = []
+        while r.step_no < e.step_no:
+            nxt = min(e.step_no, (r.step_no // SNAP_EVERY + 1) * SNAP_EVERY)
+            part = [x for x in inputs if r.step_no < x[0] <= nxt]
+            replay(r, part, nxt)
+            snaps.append(r.snapshot())
+        assert r.events == e.events, 'replaying the recorded inputs gives other events'
+        return snaps
+
+    fl = FORKS if fork_list is None else fork_list
+
+    def fork(i):
+        fid, base, actions, expect = fl[i]
         probes = sorted(set(expect.get('max', {})) | set(expect.get('end', {})))
         f, start, fin, fev, seen, effects = run_fork(bases[base], actions, probes)
         fork = {'id': fid, 'base_step': start, 'inputs': fin, 'until': f.step_no, 'events': fev,
                 'end': f.snapshot(values=False), 'expect': expect}
         if probes:
             fork['seen'] = seen
-        forks.append(fork)
+        return fork
+
+    # the replay and the forks side by side (each fork from its own clone of its base); the replay first, the longest
+    made = side_by_side(lambda i: snapshots() if i == 0 else fork(i - 1), 1 + len(fl),
+                        cost=lambda i: e.step_no if i == 0 else 0)
+    snaps, forks = made[0], made[1:]
     return {'scenario': scenario, 'procedure': procedure, 'inputs': inputs, 'until': e.step_no,
             'steps': [[sid, n] for sid, n in log], 'snapshot_every': SNAP_EVERY, 'snapshots': snaps,
             'events': e.events, 'forks': forks}
@@ -2892,17 +2937,23 @@ def day_bundle():
 def build_day(b=None):
     b = b or day_bundle()
     sid = 'shift_cold'
-    e = P.Recorder(b, sid)
-    snaps = [e.snapshot(values=False)]
-    digests = [e.digest()]
-    while e.step_no < DAY_STEPS:
-        e.step()
-        if e.step_no % DAY_EVERY == 0:
-            snaps.append(e.snapshot(values=False))
-        if e.step_no % DIGEST_EVERY == 0:
-            digests.append(e.digest())
-    forks = []
-    for fid, player, until, expect, *scen in day_forks():
+
+    def day():
+        e = P.Recorder(b, sid)
+        snaps = [e.snapshot(values=False)]
+        digests = [e.digest()]
+        while e.step_no < DAY_STEPS:
+            e.step()
+            if e.step_no % DAY_EVERY == 0:
+                snaps.append(e.snapshot(values=False))
+            if e.step_no % DIGEST_EVERY == 0:
+                digests.append(e.digest())
+        return e.events, snaps, digests
+
+    fl = day_forks()
+
+    def fork(i):
+        fid, player, until, expect, *scen = fl[i]
         session = getattr(player, 'session', False)
         f = P.Recorder(b, scen[0] if scen else sid, session)
         n0 = 0
@@ -2912,11 +2963,16 @@ def build_day(b=None):
             f.step()
             if f.step_no % DIGEST_EVERY == 0:
                 fd.append(f.digest())
-        forks.append(dict({'id': fid, 'inputs': f.inputs, 'until': until, 'events': f.events[n0:],
-                           'end': f.snapshot(values=False), 'expect': expect,
-                           'values': {k: f.v(k) for k in sorted(expect.get('end', {}))}, 'digests': fd},
-                          **({'scenario': scen[0]} if scen else {}), **({'session': True} if session else {})))
-    return {'scenario': sid, 'until': DAY_STEPS, 'every': DAY_EVERY, 'events': e.events, 'states': snaps,
+        return dict({'id': fid, 'inputs': f.inputs, 'until': until, 'events': f.events[n0:],
+                     'end': f.snapshot(values=False), 'expect': expect,
+                     'values': {k: f.v(k) for k in sorted(expect.get('end', {}))}, 'digests': fd},
+                    **({'scenario': scen[0]} if scen else {}), **({'session': True} if session else {}))
+
+    # the day and each fork from a fresh engine: side by side, the longest first
+    made = side_by_side(lambda i: day() if i == 0 else fork(i - 1), 1 + len(fl),
+                        cost=lambda i: DAY_STEPS if i == 0 else fl[i - 1][2])
+    (events, snaps, digests), forks = made[0], made[1:]
+    return {'scenario': sid, 'until': DAY_STEPS, 'every': DAY_EVERY, 'events': events, 'states': snaps,
             'forks': forks, 'digests': digests}
 
 

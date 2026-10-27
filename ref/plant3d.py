@@ -8,6 +8,7 @@ and model evaluator must agree with this on ref/vectors/plant3d-v1.json.
     Engine(bundle, scenario)   -> the model at step 0; queue operations, then .step()
 """
 import math, os, re
+from operator import itemgetter
 from ref import sjson
 from ref.courses import FormatError, need, keys, is_num, num, ident, text, lst, check_table, table_at, Course
 
@@ -1683,6 +1684,16 @@ class Engine:
         self.step_no = 0
         self.watch = {}
         self.state_kks = {self.ix[name]: n['kks'] for name, n, kind in m.values if kind == 'state' and 'kks' in n}
+        # steps 4-7's reads of the model as value indexes and step counts, worked out once (the model doesn't change)
+        ix = self.ix
+        self.il_prog = [(x, ix[x['when']]) for x in m.interlocks]
+        self.mc_prog = [(mc, [[(ix[c], to) for c, to in st.get('next', [])] for st in mc['states']])
+                        for mc in self.machines]
+        self.trip_prog = [(t, ix[t['when']], max(1, steps(t.get('delay', 0)))) for t in self.trips]
+        # (alarm id, its code, the indexes of when, suppress and clear (None without), the delay in steps)
+        self.alarm_prog = [(a['id'], a['kks'], ix[a['when']], ix[a['suppress']] if 'suppress' in a else None,
+                            ix[a['clear']] if 'clear' in a else None, max(1, steps(a.get('delay', 0))))
+                           for a in self.alarms]
         self._compile()
         for fid, f in self.faults.items():
             if isinstance(f.get('when'), dict):
@@ -1733,24 +1744,24 @@ class Engine:
         c.faults_fixed = set(self.faults_fixed)
         return c
 
-    # --- compile nodes to closures over (cur, prev, mem)
+    # --- compile nodes to closures over (cur, prev)
     def _r(self, r):
+        """An input as a function of a list of values (the step's `cur`, or `prev` for a stateful node's input): a
+        value's own (an itemgetter, read in C), or a constant's."""
         if is_num(r):
             c = float(r)
-            return lambda cur, prev: c
-        i = self.ix[r]
-        return lambda cur, prev, i=i: cur[i]
+            return lambda vals: c
+        return itemgetter(self.ix[r])
 
-    def _p(self, r):
-        """A stateful node's input: the previous step's value."""
-        if is_num(r):
-            c = float(r)
-            return lambda cur, prev: c
-        i = self.ix[r]
-        return lambda cur, prev, i=i: prev[i]
+    def _rs(self, refs):
+        """Several inputs at once: a function of a list of values giving theirs in order (a tuple or a list)."""
+        if len(refs) > 1 and not any(is_num(r) for r in refs):
+            return itemgetter(*[self.ix[r] for r in refs])
+        fs = [self._r(r) for r in refs]
+        return lambda vals: [f(vals) for f in fs]
 
     def _compile(self):
-        self.prog = []          # (index, fn(cur, prev) -> value) for stateless and stateful nodes
+        self.prog = []          # (index, fn(cur, prev) -> value, stateful) for stateless and stateful nodes
         self.init = [0.0] * self.n
         self.mem = {}
         self.hold0 = {}         # holds without an init (their own or the scenario's): their input at step 0 (§15.4)
@@ -1764,8 +1775,11 @@ class Engine:
                 self.hold0[i] = self._r(n['hold'])
             if fn is not None:
                 self.prog.append((i, fn, kind in STATEFUL))
+        self.prog2 = [(i, fn) for i, fn, _ in self.prog]       # (step 2's loop: the same, without the flag)
 
     def _node(self, i, n, kind):
+        """A node as fn(cur, prev) -> its value this step. Stateless nodes read this step's values (cur), stateful
+        ones their inputs' previous values (prev), except a hold's input (§15.4)."""
         R = self._r
         if kind == 'const':
             c = float(n['const'])
@@ -1774,85 +1788,90 @@ class Engine:
             return None
         if kind == 'of':
             f, t, st = R(n['of']), [[float(a), float(b)] for a, b in n['table']], bool(n.get('step'))
-            return lambda cur, prev: table_at(t, f(cur, prev), st)
+            return lambda cur, prev: table_at(t, f(cur), st)
         if kind in ('sum', 'product', 'min', 'max', 'and', 'or'):
-            fs = [R(r) for r in n[kind]]
+            get = self._rs(n[kind])
             if kind == 'sum':
                 def g(cur, prev):
                     s = 0.0
-                    for f in fs:
-                        s = s + f(cur, prev)
+                    for x in get(cur):
+                        s = s + x
                     return s
             elif kind == 'product':
                 def g(cur, prev):
                     s = 1.0
-                    for f in fs:
-                        s = s * f(cur, prev)
+                    for x in get(cur):
+                        s = s * x
                     return s
             elif kind == 'min':
                 def g(cur, prev):
-                    return min(f(cur, prev) for f in fs)
+                    return min(get(cur))
             elif kind == 'max':
                 def g(cur, prev):
-                    return max(f(cur, prev) for f in fs)
+                    return max(get(cur))
             elif kind == 'and':
                 def g(cur, prev):
-                    return 1.0 if all(f(cur, prev) >= 0.5 for f in fs) else 0.0
+                    for x in get(cur):
+                        if not x >= 0.5:        # (NaN is not true)
+                            return 0.0
+                    return 1.0
             else:
                 def g(cur, prev):
-                    return 1.0 if any(f(cur, prev) >= 0.5 for f in fs) else 0.0
+                    for x in get(cur):
+                        if x >= 0.5:
+                            return 1.0
+                    return 0.0
             return g
         if kind == 'diff':
             a, b = R(n['diff'][0]), R(n['diff'][1])
-            return lambda cur, prev: a(cur, prev) - b(cur, prev)
+            return lambda cur, prev: a(cur) - b(cur)
         if kind == 'select':
             s, cs = R(n['select']), [R(r) for r in n['cases']]
             k = len(cs)
-            return lambda cur, prev: cs[min(max(math.floor(s(cur, prev)), 0), k - 1)](cur, prev)
+            return lambda cur, prev: cs[min(max(math.floor(s(cur)), 0), k - 1)](cur)
         if kind == 'cmp':
             a, op, b = R(n['cmp'][0]), n['cmp'][1], R(n['cmp'][2])
             if op == '>=':
-                return lambda cur, prev: 1.0 if a(cur, prev) >= b(cur, prev) else 0.0
+                return lambda cur, prev: 1.0 if a(cur) >= b(cur) else 0.0
             if op == '>':
-                return lambda cur, prev: 1.0 if a(cur, prev) > b(cur, prev) else 0.0
+                return lambda cur, prev: 1.0 if a(cur) > b(cur) else 0.0
             if op == '<=':
-                return lambda cur, prev: 1.0 if a(cur, prev) <= b(cur, prev) else 0.0
-            return lambda cur, prev: 1.0 if a(cur, prev) < b(cur, prev) else 0.0
+                return lambda cur, prev: 1.0 if a(cur) <= b(cur) else 0.0
+            return lambda cur, prev: 1.0 if a(cur) < b(cur) else 0.0
         if kind == 'not':
             a = R(n['not'])
-            return lambda cur, prev: 0.0 if a(cur, prev) >= 0.5 else 1.0
-        P = self._p
+            return lambda cur, prev: 0.0 if a(cur) >= 0.5 else 1.0
         if kind == 'lag':
-            u = P(n['lag'])
+            u = R(n['lag'])
             up = 1 - math.exp(-STEP / n['tau'])
             dn = 1 - math.exp(-STEP / n.get('tau_down', n['tau']))
             def g(cur, prev):
-                x, y = u(cur, prev), prev[i]
+                x, y = u(prev), prev[i]
                 return y + (x - y) * (up if x >= y else dn)
             return g
         if kind == 'ramp':
-            u = P(n['ramp'])
+            u = R(n['ramp'])
             ru, rd = n['rate'] * STEP, n.get('rate_down', n['rate']) * STEP
             def g(cur, prev):
-                x, y = u(cur, prev), prev[i]
+                x, y = u(prev), prev[i]
                 if x >= y:
                     return min(x, y + ru)
                 return max(x, y - rd)
             return g
         if kind == 'integrate':
-            u, gain, lo, hi = P(n['integrate']), n['gain'], n['min'], n['max']
-            return lambda cur, prev: min(max(prev[i] + gain * u(cur, prev) * STEP, lo), hi)
+            u, gain, lo, hi = R(n['integrate']), n['gain'], n['min'], n['max']
+            return lambda cur, prev: min(max(prev[i] + gain * u(prev) * STEP, lo), hi)
         if kind == 'latch':
-            s, r = P(n['latch']), P(n['reset'])
-            return lambda cur, prev: 0.0 if r(cur, prev) >= 0.5 else (1.0 if s(cur, prev) >= 0.5 else prev[i])
+            s, r = R(n['latch']), R(n['reset'])
+            return lambda cur, prev: 0.0 if r(prev) >= 0.5 else (1.0 if s(prev) >= 0.5 else prev[i])
         if kind == 'delay':
-            u = P(n['delay'])
+            u = R(n['delay'])
             n_on, n_off = steps(n['on']), steps(n.get('off', 0))
             self.mem[i] = [0, 0]
             mem = self.mem[i]
             def g(cur, prev):
                 y = prev[i]
-                if u(cur, prev) >= 0.5:
+                if u(prev) >= 0.5:
                     mem[0] += 1
                     mem[1] = 0
                     if y < 0.5 and mem[0] >= n_on:
@@ -1865,11 +1884,11 @@ class Engine:
                 return y
             return g
         if kind == 'timer':
-            u = P(n['timer'])
+            u = R(n['timer'])
             self.mem[i] = [0]
             mem = self.mem[i]
             def g(cur, prev):
-                if u(cur, prev) >= 0.5:
+                if u(prev) >= 0.5:
                     mem[0] += 1
                 else:
                     mem[0] = 0
@@ -1877,12 +1896,12 @@ class Engine:
             return g
         if kind == 'hold':
             # §15.4: the input as this step computed it while `when` (as the previous step left it) is false
-            u, wh = R(n['hold']), P(n['when'])
-            return lambda cur, prev: prev[i] if wh(cur, prev) >= 0.5 else u(cur, prev)
+            u, wh = R(n['hold']), R(n['when'])
+            return lambda cur, prev: prev[i] if wh(prev) >= 0.5 else u(cur)
         if kind == 'wrap':
-            u, per = P(n['wrap']), float(n['period'])
+            u, per = R(n['wrap']), float(n['period'])
             def g(cur, prev):
-                x = prev[i] + u(cur, prev) * STEP
+                x = prev[i] + u(prev) * STEP
                 return x - per * math.floor(x / per)
             return g
         raise AssertionError(kind)
@@ -1908,7 +1927,7 @@ class Engine:
             if not stateful:
                 cur[i] = fn(cur, prev)
             elif i in self.hold0:
-                cur[i] = self.hold0[i](cur, prev)
+                cur[i] = self.hold0[i](cur)
 
     # --- trainee inputs (a session run's each with the player's slot, §17.13)
     def _q(self, item, slot=None):
@@ -2345,7 +2364,7 @@ class Engine:
             if not any(self.latched[t['id']] for t in self.trips if t.get('first_out') == g):
                 del self.first_out[g]
         # 2. values, in order
-        for i, fn, stateful in self.prog:
+        for i, fn in self.prog2:
             cur[i] = fn(cur, prev)
         vals = list(cur)          # conditions in steps 3–7 read the values as step 2 left them
         # 3. the locks and unlocks noted in step 1, in the order made; the permits' automatic moves (§15.3)
@@ -2357,7 +2376,7 @@ class Engine:
                 self._npc_result(person, r, k0)
         for w in self.m.works:
             wid, iso = w['id'], w.get('isolation')
-            k = self.n_locked(iso) if iso is not None else 0
+            k = self.n_locked(iso) if iso is not None and self.locks else 0      # (none locked: 0)
             done = iso is None or k == len(self.isos[iso]['points'])
             st, new = self.pstate[wid], None
             if st == 2 and done:
@@ -2412,32 +2431,31 @@ class Engine:
                 self.ev('repair', fid)
             self._set(w.get('set', {}), wid)
         # 4. interlocks on a rising edge
-        for x in m.interlocks:
-            now = vals[self.ix[x['when']]] >= 0.5
+        for x, wi in self.il_prog:
+            now = vals[wi] >= 0.5
             if now and not self.il_prev[x['id']]:
                 self.ev('interlock', x['id'])
                 self._actions(x['do'], moved)
             self.il_prev[x['id']] = now
         # 5. machines: at most one move each, by the first true next
-        for mc in self.machines:
+        for mc, nexts in self.mc_prog:
             if mc['id'] in moved:
                 continue
-            st = mc['states'][self.mstate[mc['id']]]
-            for c, to in st.get('next', []):
-                if vals[self.ix[c]] >= 0.5:
+            for c, to in nexts[self.mstate[mc['id']]]:
+                if vals[c] >= 0.5:
                     self._enter(mc, to, 'next')
                     moved.add(mc['id'])
                     break
         # 6. trips
-        for t in self.trips:
+        for t, wi, nd in self.trip_prog:
             tid = t['id']
             if self.latched[tid]:
                 continue
-            if vals[self.ix[t['when']]] >= 0.5:
+            if vals[wi] >= 0.5:
                 self.trip_count[tid] += 1
             else:
                 self.trip_count[tid] = 0
-            if self.trip_count[tid] >= max(1, steps(t.get('delay', 0))):
+            if self.trip_count[tid] >= nd:
                 self.latched[tid] = True
                 cur[self.ix[tid + '_latched']] = 1.0
                 g = t.get('first_out')
@@ -2449,19 +2467,19 @@ class Engine:
                 self.ev('trip', tid, first)
                 self._actions(t['do'], set())
         # 7. alarms
-        for a in self.alarms:
-            aid = a['id']
-            sup = 'suppress' in a and vals[self.ix[a['suppress']]] >= 0.5 or bool(self.code_locks.get(a['kks']))
-            if aid in self.shelved and self.shelved[aid] <= self.step_no:
-                del self.shelved[aid]
+        code_locks, shelved, acount = self.code_locks, self.shelved, self.acount
+        for aid, kks, wi, si, ci, nd in self.alarm_prog:
+            sup = si is not None and vals[si] >= 0.5 or bool(code_locks) and bool(code_locks.get(kks))
+            if aid in shelved and shelved[aid] <= self.step_no:
+                del shelved[aid]
                 self.ev('unshelve', aid)
-            if sup or aid in self.shelved:
-                self.acount[aid] = 0
+            if sup or aid in shelved:
+                acount[aid] = 0
                 continue
-            on = vals[self.ix[a['when']]] >= 0.5
-            self.acount[aid] = self.acount[aid] + 1 if on else 0
-            active = self.acount[aid] >= max(1, steps(a.get('delay', 0)))
-            clear = vals[self.ix[a['clear']]] >= 0.5 if 'clear' in a else not on
+            on = vals[wi] >= 0.5
+            acount[aid] = acount[aid] + 1 if on else 0
+            active = acount[aid] >= nd
+            clear = vals[ci] >= 0.5 if ci is not None else not on
             s = self.astate[aid]
             new = s
             if s == 'normal' and active:

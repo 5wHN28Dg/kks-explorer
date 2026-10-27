@@ -1006,7 +1006,11 @@ class FirstTrainStaff(unittest.TestCase):
                          'a normal day finds nothing out of range')
 
     def test_forks(self):
-        for f in self.day['forks']:
+        forks = self.day['forks']
+
+        def replay(i):
+            """Fork i replayed from its inputs on a fresh engine: its events and what its expectations read."""
+            f = forks[i]
             e = P.Engine(self.b, f.get('scenario', self.day['scenario']), f.get('session', False))
             inputs = sorted(f['inputs'], key=lambda x: x[0])
             j = 0
@@ -1015,19 +1019,26 @@ class FirstTrainStaff(unittest.TestCase):
                     G.apply_staff(e, inputs[j])
                     j += 1
                 e.step()
-            self.assertIsNone(close(plain(e.events), f['events']), f['id'])
+            x = f['expect']
+            return (e.events, e.staff.people[e.staff.trainee].id if 'trainee' in x else None,
+                    {k: e.v(k) for k in x.get('end', {})}, {w: e.pstate[w] for w in x.get('permits', {})})
+
+        # the forks side by side (each from a fresh engine), the longest first
+        made = G.side_by_side(replay, len(forks), cost=lambda i: forks[i]['until'])
+        for f, (events, trainee, ends, permits) in zip(forks, made):
+            self.assertIsNone(close(plain(events), f['events']), f['id'])
             x = f['expect']
             if 'trainee' in x:
-                self.assertEqual(e.staff.people[e.staff.trainee].id, x['trainee'], f['id'])
+                self.assertEqual(trainee, x['trainee'], f['id'])
             for k, v in x.get('end', {}).items():
-                self.assertEqual(e.v(k), v, f['id'])
+                self.assertEqual(ends[k], v, f['id'])
             for w, s in x.get('permits', {}).items():
-                self.assertEqual(e.pstate[w], s, f['id'])
+                self.assertEqual(permits[w], s, f['id'])
             for fid in x.get('repaired', []):
-                self.assertIn([fid], [ev[2:] for ev in e.events if ev[1] == 'repair'], f['id'])
+                self.assertIn([fid], [ev[2:] for ev in events if ev[1] == 'repair'], f['id'])
             for want in x.get('events', []):
                 self.assertTrue(any(len(ev) > len(want) and all(w is None or ev[1 + i] == w
-                                                                for i, w in enumerate(want)) for ev in e.events),
+                                                                for i, w in enumerate(want)) for ev in events),
                                 f'{f["id"]}: no event like {want}')
 
     def test_maintenance_and_safety_day(self):
