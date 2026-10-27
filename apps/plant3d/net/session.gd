@@ -46,6 +46,8 @@ const QUERY_EVERY := 0.25
 const QUERY_FOR := 2.0
 const FF_MAX := 60.0
 const SNAP_RELAY_LIMIT := 128 * 1024
+const FORWARD_RATE := 40.0              # a player's broadcasts the host forwards a second (positions 5, voice 25: MP5)
+const FORWARD_BURST := 80.0
 
 enum Role { NONE, HOST, PLAYER }
 enum State { IDLE, FINDING, JOINING, LOBBY, RUN, ENDED }
@@ -191,6 +193,8 @@ class Peer:
 	var token := PackedByteArray()      # the rejoin token it was given (§5.2)
 	var turn_count := 0
 	var turn_bytes := 0
+	var fwd_tokens := FORWARD_BURST       # the broadcasts the host still forwards for it now (a token bucket)
+	var fwd_t := 0.0
 	var loading := false
 
 
@@ -922,7 +926,14 @@ func _host_packet(h: Dictionary, msgs: Array, raw: PackedByteArray, ip: String, 
 		if p == null or p.inc != h["inc"] or not p.connected:
 			return
 		p.last_rx = _now
-		# a player's broadcast (its position): forwarded unchanged to every other player (§9.4)
+		# a player's broadcast (its position): forwarded unchanged to every other player (§9.4), at most FORWARD_RATE
+		# a second from each (a flood is dropped here, §10)
+		p.fwd_tokens = minf(FORWARD_BURST, p.fwd_tokens + (_now - p.fwd_t) * FORWARD_RATE)
+		p.fwd_t = _now
+		if p.fwd_tokens < 1.0:
+			stats["dropped"] += 1
+			return
+		p.fwd_tokens -= 1.0
 		for m in msgs:
 			if m["kind"] == Wire.Kind.POS:
 				_on_pos(h["from"], m["fields"])
@@ -1074,6 +1085,9 @@ func _on_hello(f: PackedByteArray, inc: int, ip: String, port: int) -> void:
 	p.welcome = JSON.stringify(w).to_utf8_buffer()
 	_send_welcome(p)
 	notice.emit("%s %s the session." % [name, "joined" if fresh_slot else "is back in"])
+	# a continued session's lobby offers each player the role they had under the same name (§7.4)
+	if state == State.LOBBY and fresh_slot and _reclaimable.has(name):
+		_claim(p.slot, _reclaimable[name])
 	if state == State.RUN or _continued:
 		p.loading = true
 		_send_snapshot([p.slot], {})
@@ -1224,8 +1238,13 @@ func start() -> String:
 		return "not the host of a session in its lobby"
 	state = State.RUN
 	paused = false
+	if _continued:
+		# a saved session continued (§7.4): its old players' people go back to the crews first, then the claims
+		for k in SLOTS:
+			if clock.engine.trainee(k) != -1:
+				_inbox.append([k, 0, InputCheck.text(["release"])])
 	for q in _all_claims():
-		if q[1] != "" and clock.engine.trainee(q[0]) == -1:
+		if q[1] != "" and (_continued or clock.engine.trainee(q[0]) == -1):
 			_inbox.append([q[0], 0, InputCheck.text(["role", q[1]])])
 	clock.speed = SimClock.Speed.NORMAL
 	clock.speed_changed.emit(clock.speed, "")

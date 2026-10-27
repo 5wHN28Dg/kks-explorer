@@ -12,6 +12,9 @@ mkdir -p "$RT/home/data" "$RT/home/config" "$RT/home/cache" "$RT/home/state"
 # Godot's folder (export templates, keystores, the bench's user data and shader cache) is linked in; OFFSCREEN_GODOT_DATA
 # names another (an empty one: a first start with no shader cache, as on a fresh install)
 ln -s "${OFFSCREEN_GODOT_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/godot}" "$RT/home/data/godot"
+# the user's Flatpak installation too: a release builds wdp_voice's Linux library in its SDK (apps/plant3d/voice/build.sh,
+# `flatpak info --user`), which otherwise isn't found under the private data folder
+[ -d "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak" ] && ln -s "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak" "$RT/home/data/flatpak"
 export XDG_RUNTIME_DIR="$RT" XDG_DATA_HOME="$RT/home/data"
 export XDG_CONFIG_HOME="$RT/home/config" XDG_CACHE_HOME="$RT/home/cache" XDG_STATE_HOME="$RT/home/state"
 unset DISPLAY WAYLAND_DISPLAY
