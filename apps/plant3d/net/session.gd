@@ -64,6 +64,9 @@ var display_name := "Player"
 var discovery_port := DISCOVERY_PORT    # the harness gives every instance its own
 var session_port := 0                   # 0: any free one
 var bind_address := "*"
+var log_commits := false               # keep every commit (the harness compares players with one engine fed them)
+var commit_log: Array = []
+var via := ""                           # the harness's network simulator: session traffic to this "ip:port"
 var new_engine := Callable()            # f(scenario): makes the run's engine as a session run (the app's restart)
 var my_pos := Callable()                # f() -> [Vector3, yaw, pitch, gait]: the walker, for `pos`
 
@@ -525,6 +528,11 @@ func _turn_close() -> void:
 	var c: Dictionary = _commits[_turn_first]
 	c["last"] = last
 	committed = last
+	if log_commits:
+		var ins := []
+		for x in c["inputs"]:
+			ins.append([x[0], x[1], x[2].get_string_from_utf8()])
+		commit_log.append([c["first"], last, ins, c["rate"], _now])
 	_broadcast(Wire.Kind.COMMIT, _commit_fields(c))
 	_trim_commits()
 
@@ -629,7 +637,7 @@ func _check_behind() -> void:
 
 func _watch_peers() -> void:
 	for p in peers.values():
-		var silent := _now - p.last_rx
+		var silent = _now - p.last_rx
 		if p.connected and ((not p.away and silent > SILENT_S) or (p.away and _now - p.away_t > AWAY_S)):
 			p.connected = false
 			p.gone_t = _now
@@ -1707,6 +1715,9 @@ func _on_discovery(b: PackedByteArray, ip: String, port: int) -> void:
 		return
 	host_ip = ip
 	host_port = Crypt.u16(b, 13)
+	if via != "":
+		host_ip = via.substr(0, via.rfind(":"))
+		host_port = via.substr(via.rfind(":") + 1).to_int()
 	epoch = Crypt.u16(b, 15)
 	state = State.JOINING
 	_hello_t = -1.0

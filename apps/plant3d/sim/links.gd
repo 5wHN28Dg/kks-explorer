@@ -4,6 +4,7 @@ extends RefCounted
 ##   Links.read_link("walkdown-plant://kks/30PAC10AP001", model) returns one of
 ##     {"open": "kks", "code", "match", "decode"}   match: exact, without_a3, same_kind, same_equipment or decode
 ##     {"open": "procedure", "id", "step"}           step null for the first step
+##     {"open": "join", "code"}                      a multiplayer session's invite (join_code)
 ##     {"open": "start"}                             anything else: the app's start, with a short message
 
 const PREFIX := "walkdown-plant://"
@@ -42,6 +43,34 @@ static func decode(code: String, kks: Dictionary) -> Dictionary:
 	if g[4] != "":
 		eq = kks["equipment"].get(g[4], kks["measurements"].get(g[4]))
 	return {"unit": kks["units"].get(g[0]), "system": kks["systems"].get(g[2]), "equipment": eq}
+
+
+const CODE_ALPHABET := "0123456789ABCDEFGHJKMNPQRSTVWXYZ"   # Crockford's base32 (docs/plant3d/MULTIPLAYER.md §1.1)
+
+
+## A session's invite code as typed or linked, as ref/plant3d.py join_code reads it: upper and lower case alike, I and L
+## as 1, O as 0, dashes ignored; 16 characters whose last is the first 5 bits of SHA-256("wdp-code-v1\n" + the first
+## 15). The code without dashes, or "".
+static func join_code(text: String) -> String:
+	var s := ""
+	for ch in text.to_upper():
+		if ch == "-":
+			continue
+		if ch == "I" or ch == "L":
+			ch = "1"
+		elif ch == "O":
+			ch = "0"
+		if not CODE_ALPHABET.contains(ch):
+			return ""
+		s += ch
+	if s.length() != 16:
+		return ""
+	var h := HashingContext.new()
+	h.start(HashingContext.HASH_SHA256)
+	h.update(("wdp-code-v1\n" + s.substr(0, 15)).to_utf8_buffer())
+	if CODE_ALPHABET[h.finish()[0] >> 3] != s[15]:
+		return ""
+	return s
 
 
 static func read_link(url, model) -> Dictionary:
@@ -90,6 +119,10 @@ static func read_link(url, model) -> Dictionary:
 				return out
 		out["match"] = "decode"
 		return out
+	if path.size() == 2 and path[0] == "join" and path[1].length() <= 24:
+		var jc := join_code(path[1])
+		if jc != "":
+			return {"open": "join", "code": jc}
 	if (path.size() == 2 or path.size() == 3) and path[0] == "procedure" and model.procedures.has(path[1]):
 		if path.size() == 2:
 			return {"open": "procedure", "id": path[1], "step": null}
