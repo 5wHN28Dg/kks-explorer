@@ -228,8 +228,8 @@ func _measure(tree: SceneTree) -> Array:
 		await tree.process_frame
 	if main.ui.mimic.current == first:
 		p.append("walk=screens did not go on to the next screen")
-	if main.times.is_empty() or main.ui.mimic.frames == 0:
-		p.append("walk=screens counted no frames (%d, the screens %d)" % [main.times.size(), main.ui.mimic.frames])
+	if main.frames.times.is_empty() or main.ui.mimic.frames == 0:
+		p.append("walk=screens counted no frames (%d, the screens %d)" % [main.frames.times.size(), main.ui.mimic.frames])
 	main.free()
 	return p
 

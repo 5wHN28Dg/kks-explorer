@@ -549,7 +549,8 @@ Model time runs at 1× while anything is changing that the trainee should watch.
 offered while no alarm is unacknowledged, no priority 1 alarm is active, and no machine is in a state with
 `"watch": true` (shelved alarms don't count; a suppressed alarm keeps the state it had); it stops by itself when
 one appears. Fast-forward runs more 0.1 s steps per frame (600 per second at 60×); the step never grows. Its cost on
-the Note 9 is measured (0054) and the top speed is capped by what the phone keeps within the frame rule.
+the Note 9 is measured (0054) and the top speed is capped by the model's share of a core (`cpu_share`). The frame
+rules judge normal play only (the user, 2026-10-27): fast-forward may drop frames on a phone (MILESTONES.md).
 
 ### 7.10 One step
 
@@ -2099,8 +2100,9 @@ on the flight or the ladder; the rest by time.
 
 ### 18.4 Budgets per tier
 
-The frame rules don't change (≥ 95 % of frames shown at ≥ 30 fps, none over 100 ms after the first 5 s, peak PSS
-≤ 1.5 GB, first walkable frame ≤ 15 s on the Note 9; 0060's margin: every first start ≤ 13.5 s). People get a fixed
+The frame rules don't change (≥ 95 % of frames shown at ≥ 30 fps, none over 100 ms after the first 5 s, both in
+normal play: fast-forward's frames are not judged, the user 2026-10-27, MILESTONES.md; peak PSS ≤ 1.5 GB, first
+walkable frame ≤ 15 s on the Note 9; 0060's margin: every first start ≤ 13.5 s). People get a fixed
 share, measured with the frames walk among a crowd (MILESTONES.md M3):
 
 | | Note 9 (`lean+vis`) | Laptop (`full`) |

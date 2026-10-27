@@ -780,7 +780,8 @@ push-to-talk press to 10 s after the last release, in a session (§8.4), and is 
 ## 11. Performance budgets on the Note 9
 
 The frame rules don't change (MILESTONES.md: ≥ 95 % of frames at ≥ 30 fps in the 10-minute walk, none over 100 ms
-that the app causes, peak PSS ≤ 1.5 GB, first walkable frame ≤ 15 s). Multiplayer gets this share of the main thread:
+that the app causes, both in normal play: a session's fast-forward may drop frames, the user 2026-10-27; peak PSS ≤
+1.5 GB, first walkable frame ≤ 15 s). Multiplayer gets this share of the main thread:
 
 | | Budget | Notes |
 |---|---|---|
