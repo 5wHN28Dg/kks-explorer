@@ -894,7 +894,10 @@ three SHA-256 cases, RFC 7518 B.1 and an independent Python computation of a cod
 version 3). Its matrices equal those of the Python package qrcode 8.2 for the same text, version and mask
 (`tests/test_net_qr.gd`, four cases with one to four blocks and version bits); zxing-cpp 2.3 reads the invite's code.
 (segno 1.6.6 adds a zero codeword when byte mode's bit stream already ends on a codeword boundary, which ISO/IEC 18004
-7.4.10 doesn't ask for: its matrices differ in the data, so it is not the reference.) PHONE_QR_TBD
+7.4.10 doesn't ask for: its matrices differ in the data, so it is not the reference.) On the Note 9 a `walkdown-plant://join/<code>` Intent (what a camera app sends when its link is tapped), with the code
+in lower case and dashes, started a join with the code read right; after "no session answered", the code stays in
+Together to try again with an address. Whether the Note 9's camera app and Google Lens offer to open the scheme from
+the QR code needs a person to point the phone: not tried yet.
 
 **Joining (§1.2, §9.3).** The LAN query goes to 255.255.255.255 and, for each IPv4 address of the device, its /24's
 broadcast address: Godot gives no netmask, a Wi-Fi's /24 is the common case, and a typed address covers the rest (the
@@ -1034,7 +1037,7 @@ The Note 9 against §11's budgets:
 
 | | Budget | Measured |
 |---|---|---|
-| Session layer a frame | ≤ 0.5 ms mean, ≤ 2 ms max | 0.29 ms mean. Before P's decryption moved off the frame, the join's worst was 12.4 ms. Since: 2.57 ms, with 4 of 22,134 frames over 2 ms, none of them a join, a snapshot or a roster |
+| Session layer a frame | ≤ 0.5 ms mean, ≤ 2 ms max | 0.29 ms mean. Before P's decryption moved off the frame, the join's worst was 12.4 ms. Since: 2.57 ms, with 4 of 22,134 frames over 2 ms, none of them a join, a snapshot or a roster. **The maximum misses its budget**, cause not found yet |
 | Input to effect on the Wi-Fi | ≤ 0.5 s median | 317 ms median, 521 ms p95, 637 ms at most (201 inputs); 334 ms median in the first, short walk |
 | RSA key | (measured) | 307 ms from a cool start, 997 ms in a warm phone, on a worker thread |
 | Snapshot load (late join) | off the frame but the swap ≤ 5 ms | 167–251 ms in all, the swap 0.1 ms |
@@ -1046,7 +1049,8 @@ The Note 9 against §11's budgets:
 - first walkable frame 12.6 s.
 
 One frame of 173 ms at 566 s counts as the app's. It was GPU time: 166 ms on the GPU, 4.3 ms of scripts, 822 draws, at
-a place 330 m from the other player. The walk had reclaim in 5.95 % of its samples, so the rule says walk again:
-WALK_AGAIN_TBD
+a place 330 m from the other player. The walk had reclaim in 5.95 % of its samples, so the rule says walk again. **Not yet walked again:** the phone, on its charger at 100 %, did not cool back to
+30.0 °C within two hours. So MP2's frame-rule walk with two players is still to be judged.
 
-Peak PSS: PSS_TBD
+Peak PSS was not read: `phone/frames.sh` read `dumpsys meminfo` by the package's name, which matches no process when
+Walkdown is installed too. It now reads it by the pid. The session's ≤ 30 MB is therefore still to be measured.
