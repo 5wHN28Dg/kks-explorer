@@ -513,14 +513,14 @@
   {
    "type": "application",
    "name": "org.freedesktop.Sdk",
-   "version": "26.08.3",
+   "version": "26.08.4",
    "description": "the Flatpak SDK Walkdown Plant's Linux voice library (wdp_voice, decision 0069) is built in: the runtime of org.godotengine.godot.BaseApp//4.7; its OSTree commit (SHA-256) pinned",
    "licenses": [
     {
      "expression": "MIT AND GPL-2.0-or-later AND LGPL-2.1-or-later"
     }
    ],
-   "purl": "pkg:generic/org.freedesktop.Sdk@26.08.3?download_url=https%3A%2F%2Fdl.flathub.org%2Frepo%2F",
+   "purl": "pkg:generic/org.freedesktop.Sdk@26.08.4?download_url=https%3A%2F%2Fdl.flathub.org%2Frepo%2F",
    "externalReferences": [
     {
      "type": "distribution",
@@ -528,7 +528,7 @@
      "hashes": [
       {
        "alg": "SHA-256",
-       "content": "3311c13c67b602315c39cf5310de129dd3460d04b6c8cf5be1b2cbc42c51abd7"
+       "content": "a1b744b072d9f55d061e35382547ae80dad8d92abecc1da7dc1818de2daabfd3"
       }
      ]
     }
