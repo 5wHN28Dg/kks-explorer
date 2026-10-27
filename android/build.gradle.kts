@@ -12,8 +12,8 @@ buildscript {
         "org.jdom:jdom2" to "2.0.6.1", "org.bitbucket.b_c:jose4j" to "0.9.6",
         "org.apache.httpcomponents:httpclient" to "4.5.14",
         "com.google.guava:guava" to "33.7.2-jre",   // GHSA-xxph-c9ww-hj94, osv-scanner 2026-10-27
-        // not an advisory: guava 33.7 no longer brings checker-qual 3.43.0 (MIT), which left tensorflow-lite-metadata's
-        // 2.5.8, whose POM names its licence in a way the license check (license-allowlist.txt) can't match
+        // not an advisory: guava 33.7 no longer brings checker-qual 3.43.0, which left tensorflow-lite-metadata's 2.5.8.
+        // Its POM's "The MIT License" fails the license check; osv-scanner.toml's reviewed override covers 3.43.0 only
         "org.checkerframework:checker-qual" to "3.43.0")
     fun older(a: String, b: String): Boolean {
         val x = a.split('.', '-').map { it.toIntOrNull() ?: 0 }; val y = b.split('.', '-').map { it.toIntOrNull() ?: 0 }
