@@ -235,6 +235,11 @@ class Staff:
             else:
                 need(False, 'missing_key', f'work {x["id"]}.task: works of a plant with staff.json name their task '
                                            f'(§15.2)')
+        # the reactions as the step reads them, worked out once: (index, reaction, its `on` kind, its value, priority)
+        self.react_on = [(ri, r) + next(iter(r['on'].items())) +
+                         (r.get('priority', self.tasks[r['task']].get('priority', 3)),)
+                         for ri, r in enumerate(self.reactions)]
+        self.has_left = any(k == 'lock_left' for _, _, k, _, _ in self.react_on)
 
     # --- speeds, places, ways, next
     def check_speeds(self, s):
@@ -1065,6 +1070,8 @@ class StaffRun:
 
     def slot_of(self, pi):
         """The slot playing person pi, or None (an NPC)."""
+        if not self.players:
+            return None
         for k, v in self.players.items():
             if v == pi:
                 return k
@@ -1497,9 +1504,9 @@ class StaffRun:
                     self.turn(p)
         # 5. unsafe acts, then the reactions to them
         self.act_phase(n)
-        for i, r in enumerate(st.reactions):
-            if 'value' in r['on']:
-                self.vprev[i] = e.truth(r['on']['value'])
+        for i, r, k, v, _ in st.react_on:
+            if k == 'value':
+                self.vprev[i] = e.truth(v)
 
     # --- unsafe acts (§16.7, phase 5) and stopping work
     def zones_of(self, p):
@@ -1542,6 +1549,8 @@ class StaffRun:
         for p in self.people:
             if p.id in self.absent:
                 continue
+            if not p.acts and (p.cur is None or p.cur['idle']) and not self.zones_of(p):
+                continue        # (no act going on, and none can start: no task step, no zone)
             for kind in ACT_KINDS:
                 ok, det = self.act_now(p, kind)
                 a = p.acts.get(kind)
@@ -1552,11 +1561,9 @@ class StaffRun:
                     p.acts[kind] = [det, n, False]
                     e.ev('unsafe', p.id, kind, det)
                     started.append((p, kind))
-        for ri, r in enumerate(st.reactions):
-            v = r['on'].get('unsafe')
-            if v is None:
+        for ri, r, k, v, prio in st.react_on:
+            if k != 'unsafe':
                 continue
-            prio = r.get('priority', st.tasks[r['task']].get('priority', 3))
             if r.get('seen'):
                 # the safety walk finds it: the first of its roles (role order, then index) in a zone of the act,
                 # in the step it starts or any later one while it lasts; once per act
@@ -1583,11 +1590,9 @@ class StaffRun:
         # the order made; the task's "$" code is the code read
         found = [x for x in e.events[e.ev_mark:] if x[0] == n and x[1] == 'read' and x[5] == 'out_of_range']
         if found:
-            for ri, r in enumerate(st.reactions):
-                v = r['on'].get('finding')
-                if v is None:
+            for ri, r, k, v, prio in st.react_on:
+                if k != 'finding':
                     continue
-                prio = r.get('priority', st.tasks[r['task']].get('priority', 3))
                 for x in found:
                     key = (ri, 'finding', x[3])
                     if v in ('*', x[3]) and key not in self.given:
@@ -1657,7 +1662,7 @@ class StaffRun:
         # people who left the site with a lock on since the last phase 2 (§17.9)
         now = set()
         gone = []
-        has_left = any('lock_left' in r['on'] for r in st.reactions)
+        has_left = st.has_left
         if has_left and any(x[1] == 'duty' and x[3] == 'on' for x in evs):
             self.left = set()           # someone came on duty: a lock still left is given again (§17.9)
         # a permit back to approved by itself (a suspension): its jobs (tasks with resume, given for that work) are
@@ -1676,9 +1681,10 @@ class StaffRun:
                     self.value_again(inst)
                 p.queue = [q for q in p.queue if not job(q)]
                 p.held = [q for q in p.held if not job(q)]
+        kept = self.kept_works() if has_left and e.locks else None     # (the same for everyone in this loop)
         for p in self.people if has_left else ():     # (looked at only when a reaction is on it, as the app does)
             if self.slot_of(p.i) is None and p.id not in self.absent and not p.on and p.pos is None \
-                    and p.leg is None and self.left_locks(p):
+                    and p.leg is None and self.left_locks(p, kept):
                 now.add(p.i)
                 if p.i not in self.left:
                     gone.append(p)
@@ -1706,9 +1712,9 @@ class StaffRun:
                 if not came.intersection(roles) or not self.assign(roles, tid, prio, src, w, code, None):
                     keep.append([ident, src, roles, tid, prio, w, code, pw, state])
             self.pending = keep
-        for ri, r in enumerate(st.reactions):
-            k, v = next(iter(r['on'].items()))
-            prio = r.get('priority', st.tasks[r['task']].get('priority', 3))
+        for ri, r, k, v, prio in st.react_on:
+            if not evs and k != 'value' and k != 'lock_left':
+                continue        # (no event of this step: nothing to react to)
             hits = []
             if k == 'value':
                 now = e.truth(v)
@@ -2263,9 +2269,12 @@ class StaffRun:
                     out.add(q['work'])
         return out
 
-    def left_locks(self, p):
-        """Whether p holds a lock that is not kept for a held job (§17.10)."""
-        kept = self.kept_works()
+    def left_locks(self, p, kept=None):
+        """Whether p holds a lock that is not kept for a held job (§17.10). kept: kept_works(), when the caller has it."""
+        if not self.e.locks:
+            return False
+        if kept is None:
+            kept = self.kept_works()
         return any(p.id in held and self.e.holder[key[0]] not in kept for key, held in self.e.locks.items())
 
     def to_take(self, p, key, held):

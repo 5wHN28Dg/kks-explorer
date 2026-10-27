@@ -10,11 +10,12 @@ the pinned Godot (decision 0041) headless:
 Needs the Godot editor (KKS_GODOT, else the path tools/plant3d/bench/fetch_godot.sh installs it to); skipped without,
 unless KKS_REQUIRE_GODOT=1 (CI), where a missing Godot fails.
   .venv/bin/python -m unittest tests.test_plant3d_sim"""
-import copy, hashlib, json, os, random, struct, subprocess, sys, tempfile, unittest
+import copy, hashlib, json, os, random, struct, subprocess, sys, tempfile, time, unittest
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, REPO)
 from ref import plant3d as P  # noqa: E402
+from ref import make_plant3d_vectors as G  # noqa: E402
 
 SIM = os.path.join(REPO, 'apps', 'plant3d', 'sim')
 VECTORS = os.path.join(REPO, 'ref', 'vectors', 'plant3d-v1.json')
@@ -64,11 +65,14 @@ class Hasher:
     def __init__(self, start):
         self.start, self.chunks, self.h, self.last, self.vals = start, [], hashlib.sha256(), None, {}
         self.states = []        # the state digest (PLANT3D.md §17.14) of every 50th step, as run_vectors.gd's `state`
+        self.doubles = None     # a struct.Struct for the run's values, made at its first step
 
     def add(self, e, keep=None):
         if e.step_no % 50 == 0:
             self.states.append(e.digest())
-        b = struct.pack(f'<{len(e.names)}d', *e.cur)
+        if self.doubles is None:
+            self.doubles = struct.Struct(f'<{len(e.names)}d')
+        b = self.doubles.pack(*e.cur)
         if keep and keep[0] <= e.step_no <= keep[1]:
             self.vals[e.step_no] = b
         self.h.update(b)
@@ -121,40 +125,87 @@ def steps_runs(valid_files, steps, keep=None, prefix=''):
 WTP_RUNS = ('wtp', 'wtp_cip', 'wtp_regen')
 
 
-def reference_runs(V, keep=None, V2=None):
+def reference_runs(V, keep=None, V2=None, jobs=1):
     """Every run of run_vectors.gd on the reference: {run: (first step hashed, chunk digests, names, kept values)}.
-    keep = (run, from, to) keeps that run's values at those steps."""
+    keep = (run, from, to) keeps that run's values at those steps. jobs > 1 makes the runs side by side in that many
+    processes (ref_tasks: each task's runs are made as they would be one after the other); the result is the same."""
+    tasks = ref_tasks(V, V2)
+    parts = G.side_by_side(lambda i: run_task(V, V2, keep, tasks[i][:2]), len(tasks), cost=lambda i: tasks[i][2],
+                           procs=jobs)
+    out = {}
+    for part in parts:
+        out.update(part)
+    return out
+
+
+def ref_tasks(V, V2):
+    """reference_runs' work as tasks that can be made side by side, in the vectors' order: (kind, which, steps run).
+    A start's forks are in its task (they start from its clones); the day's runs each start from step 0."""
+    t = [('steps', 'v1', sum(len(s['states']) for s in V['steps']))]
+    for name in ('train', 'hot'):
+        t.append(('train', name, train_cost(V[name])))
+    if V2 is not None:
+        t.append(('steps', 'v2', sum(len(s['states']) for s in V2['steps'])))
+        for name in ('train',) + WTP_RUNS:
+            if name in V2:
+                t.append(('train', 'v2/' + name, train_cost(V2[name])))
+        if 'staff' in V2:
+            t.append(('staff', None, sum(r['until'] for r in V2['staff']['runs'])))
+        if 'day' in V2:
+            t.append(('day', None, V2['day']['until']))
+            t += [('day', i, f['until']) for i, f in enumerate(V2['day']['forks'])]
+    return t
+
+
+def train_cost(t):
+    return t['until'] + sum(f['until'] - f['base_step'] for f in t['forks'])
+
+
+_BUNDLE = []        # the content's bundle, checked once per process
+
+
+def bundle():
+    if not _BUNDLE:
+        _BUNDLE.append(P.check_dir(DATA))
+    return _BUNDLE[0]
+
+
+def run_task(V, V2, keep, task):
+    """One of ref_tasks' tasks on the reference: {run: as reference_runs}."""
+    kind, which = task
     out = {}
 
     def k(run):
         return (keep[1], keep[2]) if keep and keep[0] == run else None
 
-    for run, r in steps_runs(V['valid'][0]['files'], V['steps'], keep).items():
-        out[run] = r
-    b = P.check_dir(DATA)
-    for name in ('train', 'hot'):
-        train_runs(b, name, V[name], out, k)
-    if V2 is not None:
-        for run, r in steps_runs(V2['valid'][0]['files'], V2['steps'], keep, 'v2/').items():
-            out[run] = r
-        if 'train' in V2:
-            train_runs(b, 'v2/train', V2['train'], out, k, 'v2/')
-        for run in WTP_RUNS:
-            if run in V2:
-                train_runs(b, f'v2/{run}', V2[run], out, k, 'v2/')
-        for i, r in enumerate(V2.get('staff', {}).get('runs', [])):
+    if kind == 'steps':
+        if which == 'v1':
+            out.update(steps_runs(V['valid'][0]['files'], V['steps'], keep))
+        else:
+            out.update(steps_runs(V2['valid'][0]['files'], V2['steps'], keep, 'v2/'))
+    elif kind == 'train':
+        if which.startswith('v2/'):
+            train_runs(bundle(), which, V2[which[3:]], out, k, 'v2/')
+        else:
+            train_runs(bundle(), which, V[which], out, k)
+    elif kind == 'staff':
+        for i, r in enumerate(V2['staff']['runs']):
             out[f'v2/staff/{i}'] = staff_run(V2['staff']['files'], r, k(f'v2/staff/{i}'))
-        if 'day' in V2:
-            day_runs(b, V2['day'], out, k)
+    else:
+        day_runs(bundle(), V2['day'], out, k, which)
     return out
 
 
-def day_runs(b, d, out, k):
-    """The first train's day and its runs with a trainee (the vectors' `day`), as reference_runs."""
+def day_runs(b, d, out, k, only='all'):
+    """The first train's day and its runs with a trainee (the vectors' `day`), as reference_runs; only: None for the
+    day alone, a fork's index for that fork alone."""
     from ref import make_plant3d_vectors as G
-    for name, inputs, until, sid, ses in [('v2/day', [], d['until'], d['scenario'], False)] + [
-            ('v2/day/' + f['id'], f['inputs'], f['until'], f.get('scenario', d['scenario']), f.get('session', False))
-            for f in d['forks']]:
+    runs = [('v2/day', [], d['until'], d['scenario'], False)] + [
+        ('v2/day/' + f['id'], f['inputs'], f['until'], f.get('scenario', d['scenario']), f.get('session', False))
+        for f in d['forks']]
+    if only != 'all':
+        runs = [runs[0 if only is None else only + 1]]
+    for name, inputs, until, sid, ses in runs:
         e = P.Engine(b, sid, ses)
         h = Hasher(0)
         h.add(e, k(name))
@@ -286,7 +337,26 @@ class GdscriptEngine(unittest.TestCase):
             cls.V2 = json.load(f)
         cls.tmp = tempfile.TemporaryDirectory()
         cls.digest_path = os.path.join(cls.tmp.name, 'digests.json')
-        cls.result = godot('run_vectors.gd', f'--digests={cls.digest_path}')
+        # Godot's run and the reference's side by side: the reference's runs (test_every_value_bit_for_bit's) are
+        # made while Godot runs, its output going to files (a pipe nobody reads would fill and stop it)
+        args = [GODOT, '--headless', '--script', os.path.join(SIM, 'tests', 'run_vectors.gd'), '--',
+                f'--digests={cls.digest_path}']
+        out, err = (os.path.join(cls.tmp.name, x) for x in ('godot.out', 'godot.err'))
+        deadline = time.monotonic() + 1800         # (as godot()'s timeout)
+        with open(out, 'w', encoding='utf-8') as fo, open(err, 'w', encoding='utf-8') as fe:
+            proc = subprocess.Popen(args, stdout=fo, stderr=fe, cwd=REPO)
+            try:
+                cls.ref, cls.ref_error = reference_runs(cls.V, V2=cls.V2, jobs=G.jobs()), None
+            except Exception as x:          # (test_every_value_bit_for_bit's failure, not every test's)
+                cls.ref, cls.ref_error = None, x
+            try:
+                code = proc.wait(timeout=max(0.0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+                raise
+        with open(out, encoding='utf-8') as fo, open(err, encoding='utf-8') as fe:
+            cls.result = subprocess.CompletedProcess(args, code, fo.read(), fe.read())
 
     @classmethod
     def tearDownClass(cls):
@@ -307,7 +377,9 @@ class GdscriptEngine(unittest.TestCase):
     def test_every_value_bit_for_bit(self):
         with open(self.digest_path, encoding='utf-8') as f:
             got = json.load(f)
-        ref = reference_runs(self.V, V2=self.V2)
+        if self.ref_error is not None:
+            raise self.ref_error
+        ref = self.ref
         self.assertEqual(sorted(got), sorted(ref))
         for run, (start, chunks, names, _, states) in ref.items():
             g = got[run]
@@ -327,7 +399,7 @@ class GdscriptEngine(unittest.TestCase):
         r = godot('run_vectors.gd', f'--only={part}', f'--dump={run}:{lo}:{hi}')
         dumped = {int(line.split()[1]): bytes.fromhex(line.split()[2])
                   for line in r.stdout.splitlines() if line.startswith('DUMP ')}
-        ref = reference_runs(self.V, keep=(run, lo, hi), V2=self.V2)[run][3]
+        ref = reference_runs(self.V, keep=(run, lo, hi), V2=self.V2, jobs=G.jobs())[run][3]
         for step in sorted(ref):
             a, b = dumped.get(step), ref[step]
             if a != b:
