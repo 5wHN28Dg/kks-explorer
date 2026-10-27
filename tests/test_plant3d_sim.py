@@ -350,6 +350,10 @@ class GdscriptEngine(unittest.TestCase):
                 cls.ref, cls.ref_error = reference_runs(cls.V, V2=cls.V2, jobs=G.jobs()), None
             except Exception as x:          # (test_every_value_bit_for_bit's failure, not every test's)
                 cls.ref, cls.ref_error = None, x
+            except BaseException:           # (interrupted: Godot is not left running)
+                proc.kill()
+                proc.wait()
+                raise
             try:
                 code = proc.wait(timeout=max(0.0, deadline - time.monotonic()))
             except subprocess.TimeoutExpired:

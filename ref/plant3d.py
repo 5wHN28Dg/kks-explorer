@@ -1690,6 +1690,7 @@ class Engine:
         self.mc_prog = [(mc, [[(ix[c], to) for c, to in st.get('next', [])] for st in mc['states']])
                         for mc in self.machines]
         self.trip_prog = [(t, ix[t['when']], max(1, steps(t.get('delay', 0)))) for t in self.trips]
+        # (alarm id, its code, the indexes of when, suppress and clear (None without), the delay in steps)
         self.alarm_prog = [(a['id'], a['kks'], ix[a['when']], ix[a['suppress']] if 'suppress' in a else None,
                             ix[a['clear']] if 'clear' in a else None, max(1, steps(a.get('delay', 0))))
                            for a in self.alarms]

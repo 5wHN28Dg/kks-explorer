@@ -37,7 +37,9 @@ def side_by_side(fn, n, cost=None, procs=None):
     """[fn(i) for i in range(n)], made in up to jobs() processes when there are several: runs that don't depend on
     each other (each from a fresh engine or its own clone), so the result is the same either way. The workers are
     forked: they have everything as this process has it now (fn may be a closure; only i and fn(i) are pickled).
-    cost(i): roughly how long fn(i) takes; the longest are started first."""
+    cost(i): roughly how long fn(i) takes; the longest are started first. The fork start method is what makes the
+    results the same as one after the other (the workers keep this process's state, string hash seed included): keep
+    it. Not to be called inside fn with more than one process (pool workers can't have children)."""
     procs = jobs() if procs is None else procs
     if procs <= 1 or n <= 1:
         return [fn(i) for i in range(n)]
