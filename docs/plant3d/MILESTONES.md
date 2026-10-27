@@ -180,6 +180,13 @@ S4 or alongside it with S4 rebased on it. **MP1 built 2026-10-26** (PLANT3D.md �
 all but one check: the state digests on Android (the Note 9 ran only the digest's timing), MP2's first step
 (MULTIPLAYER.md §12).
 
+**MP2 built 2026-10-27** (LAN sessions; MULTIPLAYER.md §14): sessions of 2 to 8 players on one Wi-Fi, through
+"Together" on the bar; the harness of headless players in CI's `multiplayer` job; the Note 9 ran every engine vector
+with Linux's digests, joined the laptop's session on the Wi-Fi by its broadcast query, and played in one session with
+the laptop and the Windows VM. Its measurements are in MULTIPLAYER.md §14. **Not done yet:** the frame rules' walk
+with two players is still to be judged (the walk made had too much reclaim, and the phone did not cool for a second),
+the session's memory is still to be measured, and the session layer's worst frame (2.57 ms) misses its 2 ms budget.
+
 ## When to stop and ask the user (the user, 2026-10-22)
 
 - **If A1 measures fewer than 4 animated (skinned) people on the Note 9** within the frame rules: stop and ask before

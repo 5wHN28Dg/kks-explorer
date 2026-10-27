@@ -2,7 +2,8 @@
 <!-- Walkdown Plant's MSIX manifest (decision 0054 §8: identity WalkdownPlant, exe WalkdownPlant.exe, alias
      walkdown-plant.exe, publisher CN=Walkdown). make-msix.sh here fills in @PUBLISHER@ (the signing certificate's
      subject, exactly), @VERSION@ (a.b.c.0 from project.godot's application/config/version) and @ARCH@ (x64 or
-     arm64), as packaging/windows/make-msix.sh does for Walkdown. No network capability: the plant app has none (0054).
+     arm64), as packaging/windows/make-msix.sh does for Walkdown. Network: internetClient and privateNetworkClientServer
+     (the LAN), for multiplayer sessions only (decision 0068; the app opens no socket outside a session).
      walkdown-plant:// links (docs/PLANT3D.md §6) start the app with the URI as its argument (uap3:Protocol's
      Parameters, Windows 10 1607+), after the end-of-options marker, so that Godot's own options can't be injected
      through it (0056); ui/links_in.gd reads it there. -->
@@ -45,6 +46,8 @@
     </Application>
   </Applications>
   <Capabilities>
+    <Capability Name="internetClient" />
+    <Capability Name="privateNetworkClientServer" />
     <rescap:Capability Name="runFullTrust" />
   </Capabilities>
 </Package>

@@ -940,6 +940,14 @@ LINKS = [  # links read against the synthetic plant (§6)
     'walkdown-plant://procedure/t1/s1',
     'walkdown-plant://procedure/p1/nope',
     'walkdown-plant://procedure/zz',
+    'walkdown-plant://join/K3QX9F2MHT4C7PW5',       # a multiplayer session's invite (MULTIPLAYER.md §1.1)
+    'walkdown-plant://join/k3qx-9f2m-ht4c-7pw5',    # read forgivingly: lower case, dashes
+    'walkdown-plant://join/IOABCDEFGHLOJKM9',       # I and L read as 1, O as 0
+    'walkdown-plant://join/K3QX9F2MHT4C7PWS',       # a wrong check character (a typo)
+    'walkdown-plant://join/K3QX9F2MHT4C7PW',        # one short
+    'walkdown-plant://join/U3QX9F2MHT4C7PW5',       # U is not in the alphabet
+    'walkdown-plant://join/K3QX9F2MHT4C7PW5/x',
+    'walkdown-plant://join/',
     'walkdown-plant://course/ppt',
     'walkdown://course/ppt',
     'https://example.org/',

@@ -1083,8 +1083,13 @@ class Vectors(unittest.TestCase):
         self.assertEqual(got['kks/20MAA10AP001']['decode'], {'unit': None, 'system': None, 'equipment': 'Pump'})
         self.assertEqual(got['kks/10MAA10AN001']['match'], 'decode')
         self.assertEqual(got['procedure/p1/start'], {'open': 'procedure', 'id': 'p1', 'step': 'start'})
+        # a multiplayer session's invite (MULTIPLAYER.md §1.1): read forgivingly, a typo refused
+        self.assertEqual(got['join/K3QX9F2MHT4C7PW5'], {'open': 'join', 'code': 'K3QX9F2MHT4C7PW5'})
+        self.assertEqual(got['join/k3qx-9f2m-ht4c-7pw5'], {'open': 'join', 'code': 'K3QX9F2MHT4C7PW5'})
+        self.assertEqual(got['join/IOABCDEFGHLOJKM9'], {'open': 'join', 'code': '10ABCDEFGH10JKM9'})
         for k in ('kks/10lac10ap001', 'kks/10IAC10AP001', 'kks/10LAC10AP0019999999999999', 'kks/10LAC10AP001?x=1',
-                  'procedure/p1/nope', 'course/ppt', 'example.org/'):
+                  'procedure/p1/nope', 'course/ppt', 'example.org/', 'join/K3QX9F2MHT4C7PWS', 'join/K3QX9F2MHT4C7PW',
+                  'join/U3QX9F2MHT4C7PW5', 'join/K3QX9F2MHT4C7PW5/x', 'join/'):
             self.assertEqual(got[k], {'open': 'start'}, k)
 
     def test_train_replay(self):

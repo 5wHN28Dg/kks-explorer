@@ -38,12 +38,17 @@ var model_ms_per_s := 0.0       # wall time the model took in the last second (m
 var _win_steps := 0
 var _win_us := 0
 var _win_t := 0.0
+## a multiplayer session runs the steps (net/session.gd: only committed steps, MULTIPLAYER.md §3.1): this clock then
+## never steps by itself, and its speed shows the session's
+var driven := false
+## and a speed asked for goes to the session (a pause, a run, fast-forward by everyone's vote, §7.1, §7.2) instead
+var speed_request := Callable()
 
 
-func start(m, scenario_id: String) -> void:
+func start(m, scenario_id: String, session := false) -> void:
 	model = m
 	scenario = scenario_id
-	engine = PlantEngine.new(m, scenario_id)
+	engine = PlantEngine.new(m, scenario_id, session)
 	engine.timing = Cost.on         # (a measured walk: step 9's own time, read and cleared after each step)
 	acc = 0.0
 	_calibrate()
@@ -97,6 +102,9 @@ func ff_blocked() -> String:
 
 
 func set_speed(s: int, why := "") -> void:
+	if driven and speed_request.is_valid():
+		speed_request.call(s)
+		return
 	if s == Speed.FAST:
 		var b := ff_blocked()
 		if b != "":
@@ -117,6 +125,19 @@ func run_steps(n: int) -> int:
 		_one()
 		done += 1
 	return done
+
+
+## Takes an engine made elsewhere (a multiplayer session's, made on a worker thread: net/session.gd), keeping the
+## measured step cost.
+func install(e) -> void:
+	engine = e
+	acc = 0.0
+	restarted.emit(engine)
+
+
+## One step now (a session's committed step), with everything that follows a step.
+func step_one() -> void:
+	_one()
 
 
 func _one() -> void:
@@ -147,7 +168,7 @@ func _process(delta: float) -> void:
 		_win_t = 0.0
 		_win_steps = 0
 		_win_us = 0
-	if engine == null or speed == Speed.PAUSED:
+	if engine == null or speed == Speed.PAUSED or driven:
 		return
 	delta = minf(delta, max_frame)
 	acc += delta * rate()

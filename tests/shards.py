@@ -89,6 +89,8 @@ APP = {
     'test_ui_overnight': 2,
     'test_frames_route': 2,
     'test_ui_maintenance': 2,
+    # a multiplayer session through Together, a second player in the same process (MP2; ~20 s)
+    'test_ui_session': 2,
     # the cold start through the screens and the panels (~15 s, ~14 s), the saved run (~13 s), the RO cleaning (~10 s),
     # the water plant's staff (~9 s), the mixed-bed regeneration (~9 s), the parts kit (~7 s), the water plant's start
     # (~6 s), the crew (~6 s): ~89 s

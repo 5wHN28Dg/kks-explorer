@@ -39,6 +39,9 @@
 ##   people_skinned=N        that many skinned avatars instead of the tier's (measuring), people_shadows=0 theirs off
 ##   digest=bench            the state digest's cost on the first train (app/digest_bench.gd, milestone MP1): digest.txt
 ##                           in the out folder, then the app quits
+##   mp=CODE@HOST[:PORT]     (walk) join that LAN session as the walk starts (milestone MP2's measurement: the session
+##                           layer's time a frame, the input-to-effect delay, the RSA key's time: SESSION lines)
+##   mp_inputs=N             and make an input every N seconds (an op on an instrument air compressor, start and stop)
 ##   voice=bench             wdp_voice's test scene instead of the plant (voice/demo/voice_wav.gd: the codec's round
 ##                           trip and its time per 20 ms frame, `VOICE` lines in the log; milestone MP5's measurement)
 ##   On a phone walk.txt takes voice, probe, fx_off, fx_on, max_fps, crowd, people_skinned, people_shadows, crews and
@@ -58,6 +61,7 @@ const PlantUi = preload("res://ui/plant_ui.gd")
 const Lighting = preload("res://app/lighting.gd")
 const Interiors = preload("res://app/interiors.gd")
 const People = preload("res://app/people.gd")
+const MpSession = preload("res://net/session.gd")
 const Crowd = preload("res://app/crowd.gd")
 const ScriptCost = preload("res://app/script_cost.gd")
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
@@ -234,7 +238,7 @@ func _ready() -> void:
 	# a procedure, a speed) is saved to a file of its own, never over a trainee's run, and offers nothing
 	if ui.autosave != null:
 		var own := false
-		for k in ["walk", "shot", "scenario", "procedure", "speed", "crews"]:
+		for k in ["walk", "shot", "scenario", "procedure", "speed", "crews", "mp"]:
 			own = own or opts.has(k)
 		if own:
 			ui.autosave.path = "user://run-options.save"
@@ -248,6 +252,8 @@ func _ready() -> void:
 	elif opts.has("walk"):
 		while probing:
 			await get_tree().process_frame
+		if opts.has("mp"):
+			_mp_join()
 		_start_walk()
 	elif opts.get("map", "") == "1":
 		toggle_map()
@@ -279,7 +285,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "shadow_ab"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest and shadow_ab: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "shadow_ab", "mp", "mp_inputs"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest and shadow_ab: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
@@ -502,6 +508,45 @@ func _start_walk() -> void:
 	auto.start(player, route, looped)
 	last_us = Time.get_ticks_usec()
 
+## mp=CODE@HOST[:PORT]: the walk in a LAN session (MP2's measurement on a phone; the host is the laptop's).
+func _mp_join() -> void:
+	var spec := String(opts.mp)
+	var at := spec.find("@")
+	var why: String = ui.start_session(false, "", spec.substr(0, at) if at > 0 else spec, spec.substr(at + 1) if at > 0 else "", {})
+	_say("SESSION join %s" % (why if why != "" else "started"))
+	if opts.has("mp_inputs"):
+		var every := clampf(float(opts.mp_inputs), 0.5, 60.0)
+		var t := Timer.new()
+		t.wait_time = every
+		t.autostart = true
+		add_child(t)
+		var flip := [false]
+		t.timeout.connect(func():
+			if ui.session != null and ui.session.state == MpSession.State.RUN and not ui.session._loading:
+				flip[0] = not flip[0]
+				ui.inputs.op("00QFA10AN001", "start" if flip[0] else "stop"))
+
+
+func _mp_result() -> void:
+	var s = ui.session if ui != null else null
+	if s == null:
+		_say("SESSION ended %s" % (ui.session_panel._notices.back() if ui != null and not ui.session_panel._notices.is_empty() else "-"))
+		return
+	var st: Dictionary = s.stats
+	var d: Array = st["delays"].duplicate()
+	d.sort()
+	var n := d.size()
+	_say("SESSION state=%d slot=%d step=%d committed=%d frames=%d layer_mean_us=%d layer_max_us=%d rsa_ms=%.0f load_ms=%.0f swap_ms=%.1f buffer=%d rtt_ms=%.0f resyncs=%d" % [
+		s.state, s.slot, ui.clock.engine.step_no, s.committed, st["frames"], st["us_sum"] / maxi(1, st["frames"]), st["us_max"],
+		s.rsa_ms, st.get("load_ms", -1.0), st.get("swap_ms", -1.0), s.buffer_turns(), st["rtt"] * 1000.0, st["resyncs"]])
+	if n > 0:
+		_say("SESSION inputs=%d delay_median_ms=%.0f delay_p95_ms=%.0f delay_max_ms=%.0f sending=%d" % [n, d[n / 2] * 1000.0,
+			d[mini(n - 1, int(n * 0.95))] * 1000.0, d[n - 1] * 1000.0, s.sending()])
+	if s._udp != null:
+		_say("SESSION udp sent=%d (%d B) got=%d (%d B)" % [s._udp.sent, s._udp.sent_bytes, s._udp.got, s._udp.got_bytes])
+	_say("SESSION worst frame: %s; frames over 2 ms: %d" % [st.get("us_max_what", ""), st.get("over_2ms", 0)])
+
+
 ## crowd=N: N people round the walker on `route` (app/crowd.gd), in a walk or in shots.
 func _start_crowd(route: Array) -> void:
 	if opts.has("crowd") and people != null and crowd == null:
@@ -605,6 +650,8 @@ func _finish() -> void:
 		_say("ROUTE finds=%d find_mean=%.2fms find_max=%.2fms builds=%d build_mean=%.2fms build_max=%.2fms moves=%d points=%d point_max=%.2fms" % [
 			rs.finds, rs.find_us_sum / 1000.0 / rs.finds, rs.find_us_max / 1000.0, rs.draws,
 			rs.draw_us_sum / 1000.0 / maxi(rs.draws, 1), rs.draw_us_max / 1000.0, rs.moves, rs.points, rs.point_us_max / 1000.0])
+	if opts.has("mp"):
+		_mp_result()
 	_write_out()
 	if frame_probe != null:
 		frame_probe.write(out_dir)

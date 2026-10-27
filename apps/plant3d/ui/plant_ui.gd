@@ -40,6 +40,12 @@ const CrewPanel = preload("res://ui/crew_panel.gd")
 const PeopleView = preload("res://ui/people_view.gd")
 const Plant = preload("res://app/plant.gd")
 const Inputs = preload("res://ui/inputs.gd")
+const Session = preload("res://net/session.gd")
+const SessionPanel = preload("res://ui/session_panel.gd")
+const OthersView = preload("res://net/others_view.gd")
+const Snapshot = preload("res://net/snapshot.gd")
+const RunSave = preload("res://ui/run_save.gd")
+const AndroidNet = preload("res://net/android_net.gd")
 
 const CONTENT := "res://built/content"
 const REACH := 6.0              # metres: within this a trainee works the equipment's local controls
@@ -77,6 +83,13 @@ var mimic                       # ui/mimic.gd: the screens themselves
 var run_tracker                 # the last procedure followed in this run (kept for its debrief after it is closed)
 var crew                        # ui/crew_panel.gd: the trainee's role, tasks and radio (PLANT3D §18.7)
 var people                      # ui/people_view.gd: the crews as markers in the plant and dots on the map
+var session                     # net/session.gd while a multiplayer session is open (MULTIPLAYER.md), else null
+var session_panel               # ui/session_panel.gd: Together
+var others                      # net/others_view.gd: the other players in the plant
+var _host_save_t := 0.0         # the host's saved session (§7.4): every 5 s while it changes
+var _host_save_step := -1
+var _save_job := -1
+var session_ports: Array = []   # [discovery port, session port] (tests: their own); empty, the defaults
 var _place_t := 0.0
 var _arrived := -2              # the place the last arrive input named (-1: a leave), -2: none sent yet
 var _jumps := 0                 # the engine's J when last looked at: a jump moves the walker to their placed person
@@ -190,6 +203,7 @@ func _build() -> void:
 	_bar_button(bar, "Permits", func(): toggle_permits())
 	_bar_button(bar, "Crew", func(): toggle_crew())
 	_bar_button(bar, "Control room", func(): control_room())
+	_bar_button(bar, "Together", func(): toggle_session())
 	_trainer_btn = _bar_button(bar, "Instructor", func(): toggle_trainer())
 	_trainer_btn.visible = instructor
 	_pause_btn = _bar_button(bar, "Pause", func(): clock.set_speed(SimClock.Speed.PAUSED))
@@ -238,6 +252,10 @@ func _build() -> void:
 	debrief.name = "debrief"
 	root.add_child(debrief)
 	debrief.setup(self)
+	session_panel = SessionPanel.new()
+	session_panel.name = "session_panel"
+	root.add_child(session_panel)
+	session_panel.setup(self)
 	_hint = W.label("", 20, Color.WHITE, false)
 	_hint.add_theme_constant_override("outline_size", 8)
 	_hint.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -293,6 +311,8 @@ func _layout() -> void:
 	permits.size = card.size
 	debrief.position = card.position
 	debrief.size = card.size
+	session_panel.position = procedure.position
+	session_panel.size = procedure.size
 	mimic.position = Vector2(0.0, top0)
 	mimic.size = Vector2(vs.x, vs.y - top0)
 	_hint.position = Vector2(vs.x * 0.5 - 400.0, vs.y * 0.5 + 24.0)
@@ -588,6 +608,11 @@ func start_shift(scenario: String) -> void:
 
 ## The role input (§17.4) for a person, or free mode (""): only before the run's first step.
 func take_role(pid: String) -> void:
+	if session != null and session.active():
+		# a session: a claim, settled by the host (in the lobby first come first served, later by commit order, §6.1)
+		session.claim(pid)
+		toast("Asked for the role: the host settles it." if pid != "" else "Free mode: the crews work around you.")
+		return
 	var e = clock.engine
 	if pid != "":
 		inputs.role(pid)
@@ -843,6 +868,10 @@ func fast_forward() -> void:
 
 
 func restart(scenario: String, quiet := false) -> void:
+	if session != null and session.active():
+		toast("Not while a session is open: every player's plant would differ. The host starts a new session for another scenario.")
+		return
+	inputs.slot = 0
 	stop_procedure()
 	run_tracker = null
 	clock.start(model, scenario)
@@ -1099,6 +1128,7 @@ func toggle_procedure() -> void:
 		close_procedure()
 	else:
 		crew.visible = false
+		session_panel.visible = false
 		procedure.open()
 		_release_mouse()
 
@@ -1121,6 +1151,244 @@ func open_permits(wid := "", code := "") -> void:
 	_release_mouse()
 
 
+# ------------------------------------------------------------------ Together: a multiplayer session (MULTIPLAYER.md)
+
+func toggle_session() -> void:
+	if session_panel.visible:
+		close_session()
+	else:
+		open_session()
+
+
+func open_session() -> void:
+	procedure.visible = false
+	crew.visible = false
+	session_panel.open()
+	_release_mouse()
+
+
+func close_session() -> void:
+	session_panel.visible = false
+	mimic.take_focus()
+
+
+## Hosts (host) or joins a session; "" or why not. The single-player run is saved first and kept apart: a session
+## never saves over it (§7.4).
+func start_session(host: bool, scenario: String, code_text: String, address: String, from_save: Dictionary) -> String:
+	if session != null and session.active():
+		return "A session is open already."
+	_drop_session()
+	if autosave.armed:
+		autosave.save_now()
+	session = Session.new()
+	session.name = "session"
+	add_child(session)
+	session.model = model
+	session.clock = clock
+	session.content = autosave.content
+	session.display_name = session_panel.my_name()
+	if session_ports.size() == 2:
+		session.discovery_port = session_ports[0]
+		session.session_port = session_ports[1]
+	session.install_engine = adopt_engine
+	session.my_pos = _walker_state
+	session.notice.connect(func(t): toast(t); session_panel.note(t))
+	session.ended.connect(_session_ended)
+	session.changed.connect(_session_changed)
+	var why: String = session.host(scenario, from_save) if host else session.join(code_text, address)
+	if why != "":
+		_drop_session()
+		return why
+	autosave.armed = false
+	inputs.sink = session.send_input
+	clock.speed_request = _session_speed
+	others = OthersView.new()
+	others.name = "others"
+	main.add_child(others)
+	others.setup(self, session)
+	DisplayServer.screen_set_keep_on(true)          # (a phone's screen off stops the session, §7.5)
+	var m := AndroidNet.multicast(true)
+	if m != "":
+		push_warning("multicast lock: " + m)
+	_host_save_t = 0.0
+	_host_save_step = -1
+	_session_changed()
+	return ""
+
+
+func _drop_session() -> void:
+	if others != null:
+		others.queue_free()
+		others = null
+	if session != null:
+		session.queue_free()
+		session = null
+	inputs.sink = Callable()
+	clock.speed_request = Callable()
+
+
+## Leaves the session (a player) or ends it (the host).
+func end_session() -> void:
+	if session != null and session.active():
+		session.leave()
+	elif session != null:
+		_session_ended("")
+
+
+func _session_changed() -> void:
+	if session == null:
+		return
+	inputs.slot = maxi(session.slot, 0)
+	session_panel._sig = ""
+	_refresh_bar()
+
+
+## A speed asked for in a session goes to the host (§7.1, §7.2): a pause, a run, the player's vote for fast-forward.
+func _session_speed(s: int) -> void:
+	if session == null or not session.active():
+		return
+	match s:
+		SimClock.Speed.PAUSED:
+			session.request_pause()
+		SimClock.Speed.NORMAL:
+			if session.paused:
+				session.request_run()
+			elif session.fast or session.my_entry().get("fast", false):
+				session.vote_fast(false)
+		SimClock.Speed.FAST:
+			var b: String = clock.ff_blocked()
+			if b != "":
+				toast("No fast-forward: " + b + ".")
+				return
+			session.vote_fast(true)
+			if not session.fast:
+				toast("Ready for fast-forward: it starts when everyone is ready.")
+
+
+## The walker for `pos` (§6.3): feet, heading, pitch, speed in tenths of m/s.
+func _walker_state() -> Array:
+	var v: Vector3 = player.velocity if "velocity" in player else Vector3.ZERO
+	return [player.global_position, player.rotation.y, player.pivot.rotation.x, clampi(int(round(v.length() * 10.0)), 0, 255)]
+
+
+## The session's engine is the run's from now on (a join, a rejoin, a resync: net/session.gd made it on a worker
+## thread). As restart() does, with the panels following the engine's whole log at once (as a loaded save does).
+func adopt_engine(e) -> void:
+	clock.install(e)
+	bindings.use_engine(e)
+	sounds.engine = e
+	sounds.reset_edges()
+	alarms.since.clear()
+	alarms._sig = ""
+	trends.clear()
+	results.clear()
+	_pending.clear()
+	permits.results.clear()
+	permits._pending.clear()
+	permits._sig = ""
+	alarms.on_events(e.events, 0)
+	_ev_seen = e.events.size()
+	_arrived = -2
+	_zones = -1
+	_jumps = e.J
+	crew._sig = ""
+	permits.waiting_from(e)
+
+
+func _session_tick(delta: float) -> void:
+	if session == null or not session.active() or not session.is_host() or session.state != Session.State.RUN:
+		return
+	# the host saves the session every 5 s while it changes, to its own file (§7.4); written on a worker thread
+	_host_save_t += delta
+	if _host_save_t < Autosave.INTERVAL or clock.engine.step_no == _host_save_step:
+		return
+	if _save_job != -1 and not WorkerThreadPool.is_task_completed(_save_job):
+		return
+	if _save_job != -1:
+		WorkerThreadPool.wait_for_task_completion(_save_job)
+	_host_save_t = 0.0
+	_host_save_step = clock.engine.step_no
+	var d := Snapshot.take(clock.engine, session.scenario, autosave.content,
+			{"step": clock.engine.step_no, "roster": session.roster, "settings": session.settings})
+	_save_job = WorkerThreadPool.add_task(func(): Snapshot.write_file(SessionPanel.HOST_SAVE, d))
+
+
+func _session_ended(why: String) -> void:
+	if session == null:
+		return
+	# the players keep a copy of the shared run (§7.4): continued alone from it, or looked at in its debrief
+	var e = clock.engine
+	if e != null and e.st_session and not session.is_host():
+		var d := Snapshot.take(e, session.scenario, autosave.content,
+				{"step": e.step_no, "roster": session.roster, "settings": session.settings, "slot": session.slot})
+		Snapshot.write_file(SessionPanel.LAST_SAVE, d)
+	if _save_job != -1:
+		WorkerThreadPool.wait_for_task_completion(_save_job)
+		_save_job = -1
+	if why != "":
+		toast(why, 8.0)
+		session_panel.note(why)
+	DisplayServer.screen_set_keep_on(false)
+	AndroidNet.multicast(false)
+	if session.final:
+		Session.forget_session()        # (a session lost, not ended, can still be joined again with the token)
+	_drop_session.call_deferred()
+	clock.driven = false
+	clock.speed = SimClock.Speed.PAUSED
+	clock.speed_changed.emit(clock.speed, "")
+	_back_to_solo.call_deferred()
+	open_session.call_deferred()
+
+
+## After a session: the player's own run again (the one saved before it, or the scenario afresh), saved as before;
+## the session's run stays in its copy (Continue alone).
+func _back_to_solo() -> void:
+	inputs.slot = 0
+	var r := RunSave.read(autosave.path)
+	if r["ok"] and autosave.check(r["payload"]) == "":
+		autosave.restore(r["payload"])
+	else:
+		restart(clock.scenario, true)
+	autosave.armed = true
+	clock.set_speed(SimClock.Speed.PAUSED)
+
+
+## The last session's copy goes on as a single-player run (§7.4): the other players' people go to the crews.
+func continue_alone() -> void:
+	var d = Snapshot.read_file(SessionPanel.LAST_SAVE)
+	if typeof(d) == TYPE_STRING:
+		toast("The last session can't be continued: " + d)
+		return
+	var bad := Snapshot.check(d, model, autosave.content)
+	if bad != "":
+		toast("The last session can't be continued: " + bad)
+		return
+	var PlantEngine = load("res://sim/engine.gd")
+	var e = PlantEngine.new(model, d["scenario"], true)
+	RunSave.apply(e, d["engine"])
+	var mine: int = int(d["session"].get("slot", 0)) if typeof(d["session"].get("slot")) == TYPE_INT else 0
+	Session.release_others(e, mine)        # (its own person to slot 0)
+	mine = 0
+	clock.scenario = d["scenario"]
+	adopt_engine(e)
+	inputs.slot = mine
+	clock.driven = false
+	autosave.armed = true
+	close_session()
+	toast("Alone now: the others' roles went to the crews.")
+	clock.set_speed(SimClock.Speed.NORMAL)
+
+
+func _notification(what: int) -> void:
+	if session == null or not session.active():
+		return
+	# Android's lifecycle (§7.5): going to the background stops the main loop, and with it the session
+	if what == NOTIFICATION_APPLICATION_PAUSED:
+		session.set_away(true)
+	elif what == NOTIFICATION_APPLICATION_RESUMED:
+		session.set_away(false)
+
+
 func toggle_crew() -> void:
 	if crew.visible:
 		close_crew()
@@ -1130,6 +1398,7 @@ func toggle_crew() -> void:
 
 func open_crew() -> void:
 	procedure.visible = false
+	session_panel.visible = false
 	crew.open()
 	_release_mouse()
 
@@ -1172,7 +1441,9 @@ func set_instructor(on: bool) -> void:
 
 ## Closes the topmost panel; false when none was open.
 func close_top() -> bool:
-	if trainer.visible:
+	if session_panel.visible:
+		close_session()
+	elif trainer.visible:
 		close_trainer()
 	elif permits.visible:
 		close_permits()
@@ -1267,6 +1538,14 @@ func handle_link(url: String) -> void:
 			open_card(r["code"], note)
 		"procedure":
 			procedure.offer(r["id"], r["step"])
+		"join":
+			# a session's invite (MULTIPLAYER.md §1.1): the code goes to Together and the join starts
+			if session != null and session.active():
+				toast("Already in a session: leave it first to join another.")
+				return
+			autosave.withdraw_offer()
+			open_session()
+			session_panel.join(r["code"])
 		_:
 			toast("This link is not one Walkdown Plant opens.")
 
@@ -1328,11 +1607,14 @@ func _each_frame(delta: float) -> void:
 		_time_key = tk
 		_time_engine = clock.engine
 		_time_t = _ui_t
-		_time.text = "%s %s" % [clock_text(), {0: "paused", 1: "×1", 2: "×%.0f" % clock.ff_rate()}[clock.speed]]
+		var ff: float = session.rate if session != null and session.active() else clock.ff_rate()
+		_time.text = "%s %s" % [clock_text(), {0: "paused", 1: "×1", 2: "×%.0f" % ff}[clock.speed]]
 	_place_t += delta
 	if _place_t >= 0.25:
 		_place_t = 0.0
 		_place_tick()
+	if session != null:
+		_session_tick(delta)
 	_toast_tick(delta)
 	_t_hint += delta
 	if _t_hint >= 0.1:

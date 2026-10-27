@@ -63,6 +63,13 @@ the Note 9's frame rules and over mobile networks?
   made by the reference), its vectors, and one input path in the app (`ui/inputs.gd`). Its cost and the Windows run:
   MULTIPLAYER.md §4.
 
+- **MP2 (2026-10-27, LAN sessions; MULTIPLAYER.md §14):** at 1× the host commits each turn of 2 steps before running it
+  (its inputs are known at its start; committing after running added a turn to every input's delay); in
+  fast-forward it runs a turn, then commits it, as chosen. The jitter buffer plays into its margin and grows by a turn
+  only when it runs dry. Inputs from the network are checked in the session layer (`net/input_check.gd`) on the host
+  and on every player, so the engines are unchanged; any slot may play nobody, the trainer's inputs come from the
+  host and the instructor seats. Snapshots are decoded, checked and made into an engine on a worker thread.
+
 ## When to revisit
 
 - if the measured press-to-effect on mobile data misses 1 s at the 95th percentile (MP4): a 1-step turn, or a
