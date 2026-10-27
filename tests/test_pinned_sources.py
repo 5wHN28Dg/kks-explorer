@@ -124,6 +124,33 @@ class Relay(unittest.TestCase):
                 self.assertTrue(os.path.exists(os.path.join(REPO, folder, 'osv-scanner.toml')))
 
 
+class VoiceSdkPin(unittest.TestCase):
+    """The Flatpak SDK the Linux voice library is built in (decision 0069): one commit, named once in voice/build.sh
+    (SDK_PIN), listed under that commit and its version in pinned-sources.cdx.json, and installed at exactly that
+    commit on CI (plant3d-app.yml reads SDK_PIN from build.sh, and its build step names no other with
+    WDP_SDK_COMMIT)."""
+
+    def test_one_commit_everywhere(self):
+        with open(os.path.join(REPO, 'apps', 'plant3d', 'voice', 'build.sh'), encoding='utf-8') as f:
+            script = f.read()
+        pins = re.findall(r'^SDK_PIN=([0-9a-f]{64})$', script, re.M)
+        self.assertEqual(len(pins), 1, 'one SDK_PIN line in voice/build.sh')
+        with open(BOM, encoding='utf-8') as f:
+            sdk = [c for c in json.load(f)['components'] if c['name'] == 'org.freedesktop.Sdk']
+        self.assertEqual(len(sdk), 1)
+        hashes = [h['content'] for r in sdk[0]['externalReferences'] for h in r.get('hashes', [])]
+        self.assertEqual(hashes, [pins[0]], "pinned-sources.cdx.json lists the SDK at build.sh's SDK_PIN")
+        # the version beside the commit, in the BOM and in build.sh's comment, is the release that commit is
+        self.assertTrue('(freedesktop-sdk-%s)' % sdk[0]['version'] in script,
+                        "build.sh's comment names freedesktop-sdk-%s, the BOM's version" % sdk[0]['version'])
+        self.assertIn('@%s?' % sdk[0]['version'], sdk[0]['purl'])
+        with open(os.path.join(REPO, '.github', 'workflows', 'plant3d-app.yml'), encoding='utf-8') as f:
+            wf = f.read()
+        self.assertIn('flatpak update --user -y --noninteractive --commit="$(sed -n \'s/^SDK_PIN=//p\' '
+                      'apps/plant3d/voice/build.sh)" org.freedesktop.Sdk//26.08', wf)
+        self.assertNotIn('WDP_SDK_COMMIT', wf, 'CI builds at the pinned commit, never a named other one')
+
+
 LLVM_MINGW = os.path.expanduser('~/.local/kksdev/llvm-mingw/bin')
 
 
