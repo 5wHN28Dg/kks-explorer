@@ -1,0 +1,215 @@
+# osv-scanner reads this file for the lockfiles in this directory: Walkdown Plant's Android build tools (decision 0070).
+#
+# None of them is in the APK's runtime classpath (the lockfiles list them under the plugins' classpath, lint's and
+# aapt2's mirror walkdownDetachedTools, and the test configurations). Their metadata names no SPDX license, so each
+# one is named here from its POM (or its parent POM, or the license file in its jar), at the version checked. The
+# entries that Walkdown's own build has too (android/osv-scanner.toml, checked on 2026-10-07) are the same; those for
+# checker-qual 2.5.8 and hamcrest 1.3 were checked on 2026-10-27. Only licenses on license-allowlist.txt are named.
+#
+# The last 12 entries leave build tools out of the license check (the user's decision, 2026-10-27, decision 0070):
+# their license is not on the allowlist, which is for shipped code, and none of them reaches the APK
+# (tests/test_plant_android_deps.py checks that none is in an APK runtime classpath). Licenses only: no vulnerability
+# is ignored here.
+
+[[PackageOverrides]]
+name = "org.bouncycastle:bcprov-jdk18on"
+version = "1.85"
+ecosystem = "Maven"
+license.override = ["MIT"]
+reason = "build tool, not in the APK. POM: 'Bouncy Castle Licence'; the jar's org/bouncycastle/LICENSE is the MIT text"
+
+[[PackageOverrides]]
+name = "org.bouncycastle:bcpkix-jdk18on"
+version = "1.85"
+ecosystem = "Maven"
+license.override = ["MIT"]
+reason = "build tool, not in the APK. POM: 'Bouncy Castle Licence' (the MIT text, as in bcprov's org/bouncycastle/LICENSE)"
+
+[[PackageOverrides]]
+name = "org.bouncycastle:bcutil-jdk18on"
+version = "1.85"
+ecosystem = "Maven"
+license.override = ["MIT"]
+reason = "build tool, not in the APK. POM: 'Bouncy Castle Licence' (the MIT text, as in bcprov's org/bouncycastle/LICENSE)"
+
+[[PackageOverrides]]
+name = "net.sf.jopt-simple:jopt-simple"
+version = "4.9"
+ecosystem = "Maven"
+license.override = ["MIT"]
+reason = "build tool, not in the APK. POM: The MIT License"
+
+[[PackageOverrides]]
+name = "net.sf.kxml:kxml2"
+version = "2.3.0"
+ecosystem = "Maven"
+license.override = ["MIT"]
+reason = "build tool, not in the APK. POM: 'BSD style'; its license text (github.com/kobjects/kxml2, license.txt) is the MIT text"
+
+[[PackageOverrides]]
+name = "net.java.dev.jna:jna"
+version = "5.6.0"
+ecosystem = "Maven"
+license.override = ["Apache-2.0"]
+reason = "build tool, not in the APK. POM: LGPL-2.1 or Apache-2.0; used under Apache-2.0"
+
+[[PackageOverrides]]
+name = "net.java.dev.jna:jna-platform"
+version = "5.6.0"
+ecosystem = "Maven"
+license.override = ["Apache-2.0"]
+reason = "build tool, not in the APK. POM: LGPL-2.1 or Apache-2.0; used under Apache-2.0"
+
+[[PackageOverrides]]
+name = "com.sun.xml.fastinfoset:FastInfoset"
+version = "1.2.16"
+ecosystem = "Maven"
+license.override = ["Apache-2.0"]
+reason = "build tool, not in the APK. parent POM fastinfoset-project: Apache-2.0 or EDL 1.0; used under Apache-2.0"
+
+[[PackageOverrides]]
+name = "com.sun.istack:istack-commons-runtime"
+version = "3.0.8"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "build tool, not in the APK. parent POM istack-commons: EDL 1.0, which is the BSD-3-Clause text"
+
+[[PackageOverrides]]
+name = "jakarta.activation:jakarta.activation-api"
+version = "1.2.1"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "build tool, not in the APK. parent POM com.sun.activation:all: EDL 1.0, which is the BSD-3-Clause text"
+
+[[PackageOverrides]]
+name = "jakarta.xml.bind:jakarta.xml.bind-api"
+version = "2.3.2"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "build tool, not in the APK. parent POM jakarta.xml.bind-api-parent: EDL 1.0, which is the BSD-3-Clause text"
+
+[[PackageOverrides]]
+name = "org.glassfish.jaxb:jaxb-runtime"
+version = "2.3.2"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "build tool, not in the APK. parent POM jaxb-parent: EDL 1.0, which is the BSD-3-Clause text"
+
+[[PackageOverrides]]
+name = "org.glassfish.jaxb:txw2"
+version = "2.3.2"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "build tool, not in the APK. parent POM jaxb-parent: EDL 1.0, which is the BSD-3-Clause text"
+
+[[PackageOverrides]]
+name = "org.jvnet.staxex:stax-ex"
+version = "1.8.1"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "build tool, not in the APK. POM: EDL 1.0, which is the BSD-3-Clause text"
+
+[[PackageOverrides]]
+name = "org.checkerframework:checker-qual"
+version = "2.5.8"
+ecosystem = "Maven"
+license.override = ["MIT"]
+reason = "build tool, not in the APK. POM: The MIT License"
+
+[[PackageOverrides]]
+name = "org.hamcrest:hamcrest-core"
+version = "1.3"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "test library, not in the APK. parent POM hamcrest-parent: New BSD License; the jar's LICENSE.txt is the BSD-3-Clause text"
+
+[[PackageOverrides]]
+name = "org.hamcrest:hamcrest-library"
+version = "1.3"
+ecosystem = "Maven"
+license.override = ["BSD-3-Clause"]
+reason = "test library, not in the APK. parent POM hamcrest-parent: New BSD License (the BSD-3-Clause text, as in hamcrest-core's LICENSE.txt)"
+
+[[PackageOverrides]]
+name = "com.googlecode.juniversalchardet:juniversalchardet"
+version = "1.0.3"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build-time only, not in the APK: the Android Gradle plugin's classpath (sdk-common); its license, MPL-1.1 (POM), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "org.jdom:jdom2"
+version = "2.0.6.1"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build-time only, not in the APK: the Android Gradle plugin's classpath; its license, BSD-style with clauses on the JDOM name (the jar's META-INF/LICENSE.txt; no SPDX identifier), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "org.jetbrains.intellij.deps:trove4j"
+version = "1.0.20200330"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build-time only, not in the APK: the Android Gradle plugin's classpath and lint (walkdownDetachedTools); its license, LGPL-2.1 (POM), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "com.sun.activation:javax.activation"
+version = "1.2.0"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build-time only, not in the APK: the Android Gradle plugin's classpath and lint (walkdownDetachedTools); its license, CDDL/GPLv2 with the classpath exception (parent POM com.sun.activation:all), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "javax.annotation:javax.annotation-api"
+version = "1.3.2"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build-time only, not in the APK: the Android Gradle plugin's classpath and its unified test platform; its license, CDDL + GPLv2 with the classpath exception (POM), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "junit:junit"
+version = "4.13.2"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build-time only, not in the APK: the template's androidTest configurations (every flavor; they build the test APK, never part of an export); its license, EPL-1.0 (POM), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "com.google.testing.platform:android-device-provider-local"
+version = "0.0.9-alpha02"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build-time only, not in the APK: the Android Gradle plugin's unified test platform; its license, the Android Software Development Kit License Agreement (POM), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "com.google.testing.platform:android-driver-instrumentation"
+version = "0.0.9-alpha02"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build-time only, not in the APK: the Android Gradle plugin's unified test platform; its license, the Android Software Development Kit License Agreement (POM), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "com.google.testing.platform:android-test-plugin"
+version = "0.0.9-alpha02"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build-time only, not in the APK: the Android Gradle plugin's unified test platform; its license, the Android Software Development Kit License Agreement (POM), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "com.google.testing.platform:core"
+version = "0.0.9-alpha02"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build-time only, not in the APK: the Android Gradle plugin's unified test platform; its license, the Android Software Development Kit License Agreement (POM), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "com.google.testing.platform:launcher"
+version = "0.0.9-alpha02"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build-time only, not in the APK: the Android Gradle plugin's unified test platform; its license, the Android Software Development Kit License Agreement (POM), is not on the allowlist, which is for shipped code"
+
+[[PackageOverrides]]
+name = "org.tensorflow:tensorflow-lite-metadata"
+version = "0.1.0-rc2"
+ecosystem = "Maven"
+license.ignore = true
+reason = "build-time only, not in the APK: the Android Gradle plugin's classpath; its license, none stated (neither its POM nor its jar names one), is not on the allowlist, which is for shipped code"

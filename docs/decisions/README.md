@@ -64,6 +64,7 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0067](0067-plant-multiplayer-lockstep.md) | Walkdown Plant multiplayer: deterministic lockstep with the host as sequencer (turns of 2 steps, digests every 50 steps, snapshots for late join and resync, host migration), no rollback | proposed; lockstep decided by the user 2026-10-26 |
 | [0068](0068-plant-multiplayer-transport.md) | Walkdown Plant multiplayer: keys from a 16-character invite code, AES-128-CBC-HMAC-SHA-256 from Godot's primitives, our own packets over LAN UDP, direct UDP and a new free-plan Cloudflare relay | proposed; relay and direct UDP decided by the user 2026-10-26 |
 | [0069](0069-plant-voice-opus.md) | Walkdown Plant voice: Opus through our own GDExtension `wdp_voice` (libopus, SpeexDSP resampler, pinned sources), push-to-talk, half duplex, no echo canceller | accepted; native part built (MP5, 2026-10-26) |
+| [0070](0070-plant-android-build-pins.md) | Walkdown Plant's Android build: build tools with advisories raised to fixed versions in the same line (pins applied to Godot's template from settings.gradle, lint's detached configuration included), every configuration locked, the lockfiles scanned by the required check | accepted; 12 build tools out of the license check by the user's decision (licenses only, none in the APK) |
 
 ## Audit of existing dependencies (2026-09-30)
 

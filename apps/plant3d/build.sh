@@ -20,6 +20,12 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 MODE="${1:-}"; [ $# -gt 0 ] && shift
 TARGETS="${*:-android-debug android-release linux windows windows-arm64}"
+# recording the verification file and the lockfiles needs both Android builds: one alone would record only its own
+# configurations over the committed files (decision 0070)
+if [ -n "${PLANT_GRADLE_WRITE_VERIFICATION:-}" ]; then
+  case " $TARGETS " in *" android-debug "*) ;; *) echo "PLANT_GRADLE_WRITE_VERIFICATION needs the targets android-debug and android-release" >&2; exit 2 ;; esac
+  case " $TARGETS " in *" android-release "*) ;; *) echo "PLANT_GRADLE_WRITE_VERIFICATION needs the targets android-debug and android-release" >&2; exit 2 ;; esac
+fi
 GODOT="${GODOT:-$("$ROOT/tools/plant3d/bench/fetch_godot.sh")}"
 T="timeout ${GODOT_TIMEOUT:-600}"   # a script that fails to compile leaves Godot running: never wait for ever
 # CI runs the test files in shards side by side (tests/shards.py app, the workflow's matrix): PLANT_TEST_SHARD=N runs
@@ -159,6 +165,8 @@ mkdir -p "$OUTD/linux" "$OUTD/windows" "$OUTD/windows-arm64"
 # Godot editor settings are left alone.
 JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/temurin-25-jdk-amd64}"
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
+# the Gradle lockfiles of the Android build, under android-locks/ and in the template (decision 0070)
+LOCKS="buildscript-gradle.lockfile gradle.lockfile assetPackInstallTime/buildscript-gradle.lockfile assetPackInstallTime/gradle.lockfile"
 case "$TARGETS" in
   *android*)
     # The Android exports are Gradle builds (the intent filter for walkdown-plant:// links, decision 0056): Godot's
@@ -188,13 +196,25 @@ case "$TARGETS" in
     grep -q PLANT_GRADLE_EXTRA "$GW" ||
       sed -i 's|^APP_ARGS=`save "\$@"`|[ -n "${PLANT_GRADLE_EXTRA:-}" ] \&\& set -- "$@" $PLANT_GRADLE_EXTRA\nAPP_ARGS=`save "$@"`|' "$GW"
     grep -q PLANT_GRADLE_EXTRA "$GW" || { echo "could not add the verification option to the template's gradlew" >&2; exit 2; }
+    # Pins and dependency locking (decision 0070): android-gradle-pins.gradle, applied from the template's
+    # settings.gradle, raises the build tools that have published advisories to fixed versions and locks every
+    # configuration; the lockfiles live in android-locks/ (the same paths as in the template), where the required
+    # vulnerability and license scan (osv-scanner) reads them. Written again with PLANT_GRADLE_WRITE_VERIFICATION=1.
+    cp "$HERE/android-gradle-pins.gradle" "$HERE/android/build/walkdown-pins.gradle"
+    S="$HERE/android/build/settings.gradle"
+    grep -q "^apply from: 'walkdown-pins.gradle'" "$S" || printf "\napply from: 'walkdown-pins.gradle'\n" >> "$S"
     VM="$HERE/android/build/gradle/verification-metadata.xml"
+    for l in $LOCKS; do rm -f "$HERE/android/build/$l"; done
     if [ -n "${PLANT_GRADLE_WRITE_VERIFICATION:-}" ]; then
       rm -f "$VM"
-      export PLANT_GRADLE_EXTRA="--write-verification-metadata sha256"
+      export PLANT_GRADLE_EXTRA="--write-verification-metadata sha256 --write-locks"
     else
       unset PLANT_GRADLE_EXTRA
       cp "$HERE/android-gradle-verification.xml" "$VM"
+      for l in $LOCKS; do
+        [ -f "$HERE/android-locks/$l" ] || { echo "no apps/plant3d/android-locks/$l: the Gradle build is locked (decision 0070)" >&2; exit 2; }
+        cp "$HERE/android-locks/$l" "$HERE/android/build/$l"
+      done
     fi
     GP="$HERE/android/build/gradle.properties"
     sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx2g/' "$GP"
@@ -288,5 +308,10 @@ if [ "$MODE" = release ]; then
 fi
 if [ -n "${PLANT_GRADLE_WRITE_VERIFICATION:-}" ] && [ -f "$HERE/android/build/gradle/verification-metadata.xml" ]; then
   cp "$HERE/android/build/gradle/verification-metadata.xml" "$HERE/android-gradle-verification.xml"
-  echo "recorded apps/plant3d/android-gradle-verification.xml: review its diff before committing it"
+  for l in $LOCKS; do
+    [ -f "$HERE/android/build/$l" ] || { echo "Gradle wrote no $l" >&2; exit 1; }
+    mkdir -p "$(dirname "$HERE/android-locks/$l")"
+    cp "$HERE/android/build/$l" "$HERE/android-locks/$l"
+  done
+  echo "recorded apps/plant3d/android-gradle-verification.xml and android-locks/: review their diff before committing them"
 fi

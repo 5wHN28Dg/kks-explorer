@@ -317,7 +317,11 @@ The Android presets are Gradle builds, so that the export plugin can add the int
 SHA-256 and runs it on a JDK 17 (`tools/plant3d/fetch_jdk.sh`; Gradle 8.11 doesn't run on JDK 25). The release is
 exported unsigned and signed afterwards with `apksigner` (Android SDK build-tools 35 or later, for `zipalign -P`), so
 the key never reaches Gradle; every APK is checked for the intent filter (`aapt2`). Every build dependency Gradle
-resolves is checked against `android-gradle-verification.xml` (0056). On the desktops a link opens a second
+resolves is checked against `android-gradle-verification.xml` (0056). The build tools that have published advisories
+are raised to fixed versions by `android-gradle-pins.gradle`, which `build.sh` applies from the template's
+`settings.gradle`; every configuration Gradle can lock is locked, with a locked mirror of lint's and aapt2's detached ones, by the lockfiles in `android-locks/`, which the required dependency
+check scans (decision 0070). `PLANT_GRADLE_WRITE_VERIFICATION=1 build.sh export android-debug android-release` with an
+empty `GRADLE_USER_HOME` records the verification file and the lockfiles again. On the desktops a link opens a second
 instance when the app already runs.
 `phone/links.sh` checks links on the Note 9 (a cold start and a running app).
 ## Light, sky and materials (R9, decision 0057)
