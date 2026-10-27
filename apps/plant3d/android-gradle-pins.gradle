@@ -1,0 +1,49 @@
+// Walkdown Plant's pins for Godot's Android Gradle template (decision 0070). build.sh copies this file into the
+// template and applies it from its settings.gradle, so it reaches every project of the build: the plugins' classpath
+// (the Android Gradle plugin, Kotlin) and every configuration, lint's included.
+//
+// Tool libraries that the template's plugins bring in at versions with published advisories (osv-scanner over the
+// verification file, 2026-10-27) are raised to the first release in the same line that fixes them all (guava has
+// none in 32.x: 33.7.2-jre, as Walkdown's own build). Never lowers a version. Netty's and protobuf's modules move
+// together, so that no module mixes two releases.
+//
+// Dependency locking: every configuration is locked (STRICT: one missing from the lockfiles fails the build), and
+// the lockfiles are kept in apps/plant3d/android-locks/, where the vulnerability scan (osv-scanner) reads them.
+// `PLANT_GRADLE_WRITE_VERIFICATION=1 build.sh export android-debug android-release` writes them again.
+def patched = [
+    'org.bouncycastle:bcprov-jdk18on': '1.85', 'org.bouncycastle:bcpkix-jdk18on': '1.85',
+    'org.bouncycastle:bcutil-jdk18on': '1.85',
+    'org.jdom:jdom2': '2.0.6.1', 'org.bitbucket.b_c:jose4j': '0.9.6',
+    'org.apache.httpcomponents:httpclient': '4.5.14', 'org.apache.commons:commons-lang3': '3.18.0',
+    'org.apache.commons:commons-compress': '1.26.0', 'commons-io:commons-io': '2.14.0',
+    'com.google.guava:guava': '33.7.2-jre',
+    'com.google.protobuf:protobuf-java': '3.25.5', 'com.google.protobuf:protobuf-java-util': '3.25.5',
+    'org.jetbrains.kotlin:kotlin-gradle-plugin': '2.4.20',
+]
+['buffer', 'codec', 'codec-http', 'codec-http2', 'codec-socks', 'common', 'handler', 'handler-proxy', 'resolver',
+ 'transport', 'transport-native-unix-common'].each { patched["io.netty:netty-$it".toString()] = '4.1.137.Final' }
+
+def older = { String a, String b ->
+    def x = a.split(/[.-]/).collect { it.isInteger() ? it.toInteger() : 0 }
+    def y = b.split(/[.-]/).collect { it.isInteger() ? it.toInteger() : 0 }
+    for (int i = 0; i < Math.max(x.size(), y.size()); i++) {
+        int d = (i < x.size() ? x[i] : 0) - (i < y.size() ? y[i] : 0)
+        if (d != 0) return d < 0
+    }
+    return false
+}
+def pin = { Configuration c ->
+    c.resolutionStrategy.eachDependency { DependencyResolveDetails d ->
+        def fix = patched["${d.requested.group}:${d.requested.name}".toString()]
+        if (fix != null && d.requested.version != null && older(d.requested.version, fix)) {
+            d.useVersion(fix)
+            d.because('published advisories')
+        }
+    }
+}
+gradle.allprojects { Project p ->
+    p.buildscript.configurations.configureEach { pin(it) }
+    p.buildscript.dependencyLocking { lockAllConfigurations(); lockMode = LockMode.STRICT }
+    p.configurations.configureEach { pin(it) }
+    p.dependencyLocking { lockAllConfigurations(); lockMode = LockMode.STRICT }
+}
