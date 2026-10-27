@@ -73,7 +73,7 @@ mid-range today. Same 512 px tiles, median of 5; `tools/m6/android-bench` (remov
 **GPU drawing:** measured in 0016. It is not faster for this content; tiles are drawn on the CPU and the GPU only
 composites. Windows is unmeasured: no Windows machine.
 
-Sources: tools/m6/tile_bench.py, tools/m6/grid_bench.py, tools/m6/write_paths.py, tools/m6/android-bench/ (removed 2026-10-27; in git history at 0aae63fccb) (investigation tools, not product code; run in a folder holding <sheet>.pdf, <sheet>-merged.svg/.pdf); docs/m6/CAPABILITIES.md §2
+Sources: tools/m6/tile_bench.py, tools/m6/grid_bench.py, tools/m6/write_paths.py, tools/m6/android-bench/ (investigation tools; android-bench removed 2026-10-27, in git history at 0aae63fccb; not product code; run in a folder holding <sheet>.pdf, <sheet>-merged.svg/.pdf); docs/m6/CAPABILITIES.md §2
 
 **Addendum 2026-09-30, while writing docs/PATHSTORE.md:**
 - The `.kkp` body is deflate-compressed: uncompressed it measured 2–2.5× the PDF, compressed 0.6–1.0×.

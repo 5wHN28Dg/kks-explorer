@@ -60,7 +60,7 @@ GPU pictures match (phone GPU vs PdfRenderer at 4×: 0.06–0.13 % of pixels dif
 **Revisit:**
 - if a platform's GPU path renderer changes a lot (e.g. GSK's path rendering matures);
 - on Windows once it can be measured;
-- if devices change: re-run `tools/m6` on the new ones.
+- if devices change: re-run `tools/m6` on the new ones (the Android app from git history, see Sources).
 
-Sources: tools/m6/gsk_bench.py, tools/m6/grid_bench.py (`TILE=` sets the frame size), tools/m6/android-bench (removed 2026-10-27; in git history at 0aae63fccb)
-(`adb shell am start -n kks.bench/.Bench --ei tile 1440`); docs/decisions/0015-drawing-format.md
+Sources: tools/m6/gsk_bench.py, tools/m6/grid_bench.py (`TILE=` sets the frame size), tools/m6/android-bench
+(`adb shell am start -n kks.bench/.Bench --ei tile 1440`; removed 2026-10-27, in git history at 0aae63fccb); docs/decisions/0015-drawing-format.md
