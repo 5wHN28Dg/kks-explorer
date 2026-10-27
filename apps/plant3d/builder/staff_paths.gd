@@ -6,11 +6,16 @@
 ## app searches no path at run time.
 ##
 ## The file (FileAccess.store_var): {"format": FORMAT, "ways": {"A|B": [points, times, on, room]}, "places": {id:
-## room}}, a way by its places' ids as staff.json has it, its points from A to B (Godot's frame, the feet), `times` the
+## [room, stand, yaw]}}, a way by its places' ids as staff.json has it, its points from A to B (Godot's frame, the feet), `times` the
 ## fraction of the way's time at each point (0 to 1: a stair's steps walked at the staff's stair speed, a ladder
 ## climbed at its ladder speed, the rest at the walking speed), `on` per stretch between two points (ON_FLOOR,
 ## ON_STAIRS or ON_LADDER), `room` the room beside the line and a place's room round it (builder/lane_room.gd: where
-## people may be drawn off the line and the place, app/keep_apart.gd).
+## people may be drawn off the line and the place, app/keep_apart.gd). A place's `stand` is where a person stands
+## there (phase 4): its point with the feet put on the floor under it, moved to the nearest point within STAND_SEARCH
+## where a 0.3 m capsule touches nothing but doors when the point itself is not clear (none is, 2026-10-27); a seat,
+## desk, table or bed as staff.json has it. Its `yaw` (Godot's: facing -Z at 0; NAN for none) is the way a person
+## standing there faces: at a work place, the equipment they work on (facing()), at a seat as staff.json says. The
+## ways' lines run between the stand points.
 ##
 ## And the measurement crowd's lanes (app/crowd.gd) on the walks' routes it is given (app/routes.gd): CROWD_OUT,
 ## {"format": CROWD_FORMAT, "routes": [[points, room], …]}, a route by its points as app/crowd.gd route_points()
@@ -34,6 +39,14 @@ const SAMPLE := 0.1             # metres between the points a way's feet are put
 const KEEP := 0.01              # metres a thinned line may leave the feet's (Douglas-Peucker)
 const SNAP := 0.6               # metres above and below the mesh a walkable surface is looked for
 const STEEP := 0.3              # rise over run above which a stretch is stairs (the flights are about 0.7)
+const RADIUS := 0.3             # the walker's capsule (0.4 to 1.8 m above the feet): a place's stand point is clear of it
+const STAND_SEARCH := 0.4       # metres a place's stand point may be moved to be clear
+const SEATED := ["desk", "seat", "table", "bed"]
+const FACE_DIRS := 72           # directions looked in for a work place's equipment
+const FACE_HEIGHTS := [0.3, 0.7, 1.1, 1.5, 1.9]
+const FACE_REACH := 8.0         # metres (a work place within 8 m of its equipment: tests/test_staff_ways.gd)
+const FACE_NEAR := 3.0          # metres: something beside an instrument overhead, faced instead
+const SceneIndex = preload("res://ui/scene_index.gd")
 
 
 ## Finds and saves the ways of the staff in `staff_file` (staff.json) on the mesh `nm`, in the world of `parent`,
@@ -71,8 +84,22 @@ static func build(parent: Node, nm: NavigationMesh, staff_file: String, built_di
 	var out := {"ways": 0, "points": 0, "bytes": 0}
 	if d != null:
 		var at := {}
+		var yaw := {}
+		var idx := SceneIndex.new()
+		idx.scan(parent)
 		for p in d["places"]:
-			at[p["id"]] = Vector3(p["at"][0], p["at"][2], -p["at"][1])
+			var g := Vector3(p["at"][0], p["at"][2], -p["at"][1])
+			if p.get("kind", "") in SEATED or p.get("pose", "") in ["sit", "lie"]:
+				at[p["id"]] = g
+				yaw[p["id"]] = -deg_to_rad(float(p["yaw"])) if p.has("yaw") else NAN
+				continue
+			at[p["id"]] = stand_point(space, lr, g, doors)
+			var y := NAN
+			if p.has("kks"):
+				y = facing(space, idx, String(p["kks"]), at[p["id"]], doors)
+			if is_nan(y) and p.has("yaw"):
+				y = -deg_to_rad(float(p["yaw"]))
+			yaw[p["id"]] = y
 		var speeds: Dictionary = d["speeds"]
 		var ways := {}
 		var points := 0
@@ -89,7 +116,7 @@ static func build(parent: Node, nm: NavigationMesh, staff_file: String, built_di
 			points += line[0].size()
 		var rooms := {}
 		for id in at:
-			rooms[id] = lr.place(at[id])
+			rooms[id] = [lr.place(at[id]), at[id], float(yaw[id])]
 		var path := built_dir.path_join(OUT)
 		var fo := FileAccess.open(path, FileAccess.WRITE)
 		if fo == null:
@@ -117,6 +144,92 @@ static func build(parent: Node, nm: NavigationMesh, staff_file: String, built_di
 	out["crowd_room"] = lr.stats
 	out["ms"] = Time.get_ticks_msec() - t0
 	return out
+
+
+## Where a person stands at a place whose point is `at` (Godot's frame): the floor under it, and if a RADIUS capsule
+## there touches anything but a door (`exclude`), the nearest point within STAND_SEARCH on the same floor (8 cm), on
+## the walkable mesh, where it does not.
+static func stand_point(space: PhysicsDirectSpaceState3D, lr, at: Vector3, exclude: Array[RID]) -> Vector3:
+	var y: float = lr.floor_at(at)
+	var p := at if is_nan(y) else Vector3(at.x, y, at.z)
+	if _clear(space, p, exclude):
+		return p
+	var r := 0.05
+	while r <= STAND_SEARCH + 1e-4:
+		for i in 32:
+			var a := TAU * i / 32.0
+			var c := p + Vector3(cos(a), 0.0, sin(a)) * r
+			var yc: float = lr.floor_at(c)
+			if is_nan(yc) or absf(yc - p.y) > 0.08:
+				continue
+			c.y = yc
+			if lr.on_mesh(c) and _clear(space, c, exclude):
+				return c
+		r += 0.05
+	return p
+
+
+static func _clear(space: PhysicsDirectSpaceState3D, feet: Vector3, exclude: Array[RID]) -> bool:
+	var cap := CapsuleShape3D.new()
+	cap.radius = RADIUS
+	cap.height = 1.4 + 2.0 * (RADIUS - 0.3)
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = cap
+	q.exclude = exclude
+	q.transform = Transform3D(Basis(), feet + Vector3.UP * 1.1)
+	return space.intersect_shape(q, 1).is_empty()
+
+
+## The way someone standing at `at` faces to work on `kks` (Godot's yaw: facing -Z at 0), or NAN: towards the nearest
+## of its colliders that rays level from the feet's height to 1.9 m meet first within FACE_REACH, at the middle of the
+## directions that meet it within 5 cm of the nearest (the middle of its face, not a corner); a part without one
+## (an instrument's bounds are its meshes'), towards the nearest point of its bounds, or their middle when standing
+## within them; when both are within 15 cm in plan (an instrument overhead), towards the equipment it is on (the
+## nearest collider of a code beginning with its system and number, e.g. 10MBD10 for 10MBD10CY001), or else the
+## nearest of any code within FACE_NEAR (the machine or the pipe beside it); else NAN (overhead: as they came).
+static func facing(space: PhysicsDirectSpaceState3D, idx, kks: String, at: Vector3, exclude: Array[RID]) -> float:
+	var y := _facing_rays(space, kks, at, exclude)
+	if not is_nan(y) or not idx.has(kks):
+		return y
+	var b: AABB = idx.box(kks)
+	var to := at.clamp(b.position, b.end) - at
+	if Vector2(to.x, to.z).length() < 0.15:
+		to = b.get_center() - at
+	if Vector2(to.x, to.z).length() >= 0.15:
+		return atan2(-to.x, -to.z)
+	if kks.length() > 7:
+		y = _facing_rays(space, kks.substr(0, 7), at, exclude)
+	return y if not is_nan(y) else _facing_rays(space, "", at, exclude, FACE_NEAR)
+
+
+static func _facing_rays(space: PhysicsDirectSpaceState3D, kks: String, at: Vector3, exclude: Array[RID],
+		reach := FACE_REACH) -> float:
+	var dist := PackedFloat32Array()
+	dist.resize(FACE_DIRS)
+	var best := -1
+	for i in FACE_DIRS:
+		var a := TAU * i / FACE_DIRS
+		var dir := Vector3(cos(a), 0.0, sin(a))
+		dist[i] = INF
+		for h in FACE_HEIGHTS:
+			var q := PhysicsRayQueryParameters3D.create(at + Vector3.UP * h, at + Vector3.UP * h + dir * reach)
+			q.exclude = exclude
+			var r := space.intersect_ray(q)
+			if not r.is_empty() and SceneIndex.code_of(r.collider).begins_with(kks) and SceneIndex.code_of(r.collider) != "":
+				dist[i] = minf(dist[i], (r.position - q.from).length())
+		if dist[i] < INF and (best < 0 or dist[i] < dist[best]):
+			best = i
+	if best >= 0:
+		# the directions either side of the nearest that meet it within 5 cm of it, and their middle
+		var lo := 0
+		while lo < FACE_DIRS / 2 and dist[posmod(best - lo - 1, FACE_DIRS)] <= dist[best] + 0.05:
+			lo += 1
+		var hi := 0
+		while hi < FACE_DIRS / 2 and dist[(best + hi + 1) % FACE_DIRS] <= dist[best] + 0.05:
+			hi += 1
+		var a := TAU * (best + (hi - lo) * 0.5) / FACE_DIRS
+		return atan2(-cos(a), -sin(a))
+	return NAN
 
 
 ## A way's line with the feet down: from `a` along the route's points (`marks` as app/walk_route.gd find() gives them)

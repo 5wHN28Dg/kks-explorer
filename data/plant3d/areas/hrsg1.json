@@ -44,7 +44,7 @@
  ],
  "structures": [
   {"id": "hrsg1_roof", "part": "platform", "kks": "10UHA10", "at": [95, 54, 30], "params": {"outline": [[0, 0], [55, 0], [55, 22], [0, 22]], "deck": "grating"}},
-  {"id": "hrsg1_landing_30", "part": "platform", "at": [95, 46, 30], "params": {"outline": [[0, 0], [7, 0], [7, 8], [0, 8]], "deck": "grating"}},
+  {"id": "hrsg1_landing_30", "part": "platform", "at": [95, 46, 30], "params": {"outline": [[0, 0], [8, 0], [8, 8], [0, 8]], "deck": "grating"}},
   {"id": "hrsg1_stair", "part": "stair", "params": {"foot": [95, 46, 0], "top": [102, 50, 30], "layout": "switchback", "width": 1.2}},
   {"id": "hrsg1_drum_platform", "part": "platform", "at": [103, 61, 32], "params": {"outline": [[0, 0], [44, 0], [44, 8], [0, 8]], "deck": "grating"}},
   {"id": "hrsg1_drum_stair", "part": "stair", "params": {"foot": [100.6, 66.5, 30], "top": [103.27, 66.5, 32], "layout": "straight", "width": 1.0}},

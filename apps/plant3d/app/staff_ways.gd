@@ -3,13 +3,16 @@
 ## from built/staff_paths.bin. ui/people_view.gd moves a person along their way's line by the fraction of the leg's
 ## time gone; no path is searched at run time. A way whose line is not in the file, or whose line does not end at its
 ## places (another staff file than the build's), is walked straight, as before. Each line comes with the room beside it
-## and each place with the room round it (builder/lane_room.gd), where people may be drawn off them (app/keep_apart.gd).
+## and each place with the room round it (builder/lane_room.gd), where people may be drawn off them (app/keep_apart.gd),
+## and where a person stands at it and which way they face (phase 4: the feet on the floor, clear, facing the
+## equipment worked on; builder/staff_paths.gd stand_point() and facing()).
 extends RefCounted
 
 const Lanes = preload("res://app/lanes.gd")
 
 const FILE := "res://built/staff_paths.bin"
-const FORMAT := "walkdown-plant-staff-paths-2"
+const FORMAT := "walkdown-plant-staff-paths-3"
+const STAND_MOVED := 0.5        # metres a place's stand point may be from its point (the build moves it at most 0.4)
 const ON_FLOOR := 0
 const ON_STAIRS := 1
 const ON_LADDER := 2
@@ -18,6 +21,8 @@ const ENDS_Y := 0.6
 
 var lines := {}                 # a * places + b (a < b) -> [points, times, on, the place its points start at, Lanes]
 var place_room: Array = []      # per place: the room round it (builder/lane_room.gd place(), cm), or an empty array
+var stand := PackedVector3Array()   # per place: where a person stands at it (the feet; its point where the build has none)
+var yaw := PackedFloat32Array()     # per place: the way they face there (radians, Godot's: -Z at 0), NAN: as they came
 
 # walk()'s answer
 var pos := Vector3.ZERO         # the feet
@@ -30,7 +35,7 @@ var sgn := 1.0                  # 1: walked the way its points run, -1: back alo
 
 
 ## The lines of the staff `sm` (sim/staff.gd) whose places are at `at` (Godot's frame, by place number), or null
-## when the build has none.
+## when the build has none. The lines run between the places' stand points.
 static func open(sm, at: Array, file: String = FILE):
 	if not FileAccess.file_exists(file):
 		return null
@@ -42,6 +47,22 @@ static func open(sm, at: Array, file: String = FILE):
 		return null
 	var out = new()
 	var np: int = sm.places.size()
+	# where people stand at the places (a place the build has none for, or too far from its point: the point itself)
+	out.place_room.resize(np)
+	out.stand.resize(np)
+	out.yaw.resize(np)
+	var rooms = d.get("places")
+	for i in np:
+		var r = rooms.get(sm.places[i]["id"]) if rooms is Dictionary else null
+		out.stand[i] = at[i]
+		out.yaw[i] = NAN
+		out.place_room[i] = PackedByteArray()
+		if r is Array and r.size() == 3 and r[0] is PackedByteArray and r[1] is Vector3 and typeof(r[2]) == TYPE_FLOAT \
+				and (is_finite(r[2]) or is_nan(r[2])) \
+				and (r[1] as Vector3).is_finite() and (r[1] as Vector3).distance_to(at[i]) <= STAND_MOVED:
+			out.place_room[i] = r[0]
+			out.stand[i] = r[1]
+			out.yaw[i] = r[2]
 	for key in d.ways:
 		var ab: PackedStringArray = String(key).split("|")
 		var w = d.ways[key]
@@ -58,15 +79,10 @@ static func open(sm, at: Array, file: String = FILE):
 			continue
 		var a: int = sm.pix[ab[0]]
 		var b: int = sm.pix[ab[1]]
-		if not _near(pts[0], at[a]) or not _near(pts[pts.size() - 1], at[b]):
+		if not _near(pts[0], out.stand[a]) or not _near(pts[pts.size() - 1], out.stand[b]):
 			continue
 		# (a room of the wrong length is no room: Lanes.make leaves it out, and the line is walked on its middle)
 		out.lines[mini(a, b) * np + maxi(a, b)] = [pts, t, o, a, Lanes.make(pts, room)]
-	out.place_room.resize(np)
-	var rooms = d.get("places")
-	for i in np:
-		var r = rooms.get(sm.places[i]["id"]) if rooms is Dictionary else null
-		out.place_room[i] = r if r is PackedByteArray else PackedByteArray()
 	return out
 
 

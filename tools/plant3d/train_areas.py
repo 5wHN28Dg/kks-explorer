@@ -636,7 +636,8 @@ def hrsg1():
     ]
     structures = [
         st('hrsg1_roof', 'platform', [95, 54, 30], kks='10UHA10', outline=rect(55, 22), deck='grating'),
-        st('hrsg1_landing_30', 'platform', [95, 46, 30], outline=rect(7, 8), deck='grating'),
+        # 8 m east to west: the stair's top, (102, 50), 1 m inside it (at 7 m it was on its east rail)
+        st('hrsg1_landing_30', 'platform', [95, 46, 30], outline=rect(8, 8), deck='grating'),
         stair_tower('hrsg1_stair', [95, 46, 0], [102, 50, 30]),
         st('hrsg1_drum_platform', 'platform', [103, 61, 32], outline=rect(44, 8), deck='grating'),
         stair_straight('hrsg1_drum_stair', [100.6, 66.5, 30], 'e', 2),
