@@ -1950,7 +1950,7 @@ HRSG's stair was walked up to 30 m above the ground.
 own (it follows the frames' lengths and that screen's walker).
 - **The room beside the lines and round the places** (`builder/lane_room.gd`, at the content build, in
   `built/staff_paths.bin` format 2): every 0.1 m along each line, how far to its left and right a person may be drawn
-  (to 0.9 m), and round each place in 32 directions (to 0.6 m): a capsule of 0.41 m (the walker's 0.3 m and the margin
+  (to 0.9 m), and round each place in 32 directions (to 0.6 m, its doors shut): a capsule of 0.41 m (the walker's 0.3 m and the margin
   that keeps a person between two samples clear at 0.3 m) swept sideways touching nothing but doors, the floor every
   5 cm within 8 cm of the one under the line (not off a flight's side, a step or a platform's edge), and on the
   walkable mesh where the line is. A line's room changes by at most 1 m a metre along it (nobody at its edge jumps)
@@ -1976,10 +1976,11 @@ own (it follows the frames' lengths and that screen's walker).
   industrial lanes' points inside stairs and rails. The frames route itself now leaves HRSG 1's top landing by the
   walkway (its stair's top, (102, 50, 30) in the content, is on the landing's east rail) and crosses the roof along
   y = 56 instead of along the landing's rails (3 m longer).
-- **Doors open for people** (`app/people_doors.gd`, from `app/people.gd`, 4 times a second): anyone walking at a door
+- **Doors open for people** (`app/people_doors.gd`, from `app/people.gd`, 4 times a second): anyone standing within 0.45 m of a leaf keeps it open; anyone walking at a door
   (by the way they walk, not their heading, which trails it round a corner) within 2.5 m of its leaf (or 2 s at their
   speed), or within 1.6 m of it at its width, presses it (open, and 3 s more); found by a grid of 8 m cells, made
-  again when the doors change (the interiors' come and go).
+  again when the doors change (the interiors' come and go). In fast-forward the look-ahead grows with the plant's
+  speed up to 8 m: beyond about ×3 a door opens late.
 - Tests: `test_staff_ways.gd` checks every 5 cm along every line, at its room's edges and in the lane both ways, and
   round every place, and the crowd's lanes on the three routes at their widths: the capsule clear of all but doors,
   the floor within 10 cm of the line's, the points no more than 5 cm apart as drawn (closer where the side turns); `test_people_motion.gd` keeps people apart on a scene of its own (meeting,
