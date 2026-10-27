@@ -354,7 +354,7 @@ static func check_stands(sm, ways, space: PhysicsDirectSpaceState3D, skip: Array
 			if code.begins_with(kks) or (code.begins_with(kks.substr(0, 7)) and _overhead(idx, kks, s)):
 				how = 0
 				break
-			if code != "" and (r.position - rq.from).length() <= 3.0 and how < 0:
+			if code != "" and (r.position - rq.from).length() <= 3.0 and how < 0 and _overhead(idx, kks, s):
 				how = 2
 		if how != 0 and idx.has(kks):
 			var b: AABB = idx.box(kks)

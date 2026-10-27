@@ -309,6 +309,11 @@ func drive(delta: float) -> void:
 		_spd[pi] = speed
 		_was[pi] = at
 		_was_ok[pi] = 1
+		# on a ladder: towards its rungs, whichever way they came (down from its top they come at it from behind)
+		var lh := ladder_heading(avatars.treads, _on[i], at)
+		if not is_nan(lh):
+			target = lh
+			track = true
 		var cur = _yaw.get(pi)
 		if cur == null and target == null:
 			_yaw[pi] = 0.0          # (facing north until they have somewhere to face: from there they turn)
@@ -403,6 +408,14 @@ func _anim(e, sm, pi: int, place: int) -> String:
 		a = "sit"
 	return a
 
+
+
+## The way someone on a ladder (`on`, at `at`) faces: its rungs (app/stair_treads.gd); NAN when not on one.
+static func ladder_heading(treads, on: String, at: Vector3) -> float:
+	if on != "ladder" or treads == null:
+		return NAN
+	var lk: int = treads.on_ladder(at)
+	return float(treads.ladders[lk][3]) if lk >= 0 else NAN
 
 
 ## Whether a person's hard hat is on their head (PLANT3D §17.11): they wear one and stand in a zone that needs it.

@@ -58,6 +58,7 @@ static func open(sm, at: Array, file: String = FILE):
 		out.yaw[i] = NAN
 		out.place_room[i] = PackedByteArray()
 		if r is Array and r.size() == 3 and r[0] is PackedByteArray and r[1] is Vector3 and typeof(r[2]) == TYPE_FLOAT \
+				and (is_finite(r[2]) or is_nan(r[2])) \
 				and (r[1] as Vector3).is_finite() and (r[1] as Vector3).distance_to(at[i]) <= STAND_MOVED:
 			out.place_room[i] = r[0]
 			out.stand[i] = r[1]

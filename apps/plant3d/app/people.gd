@@ -18,7 +18,8 @@
 ## that the foot on the floor stays where it is, however the person is moved (their way, keeping apart, catching up,
 ## fast-forward); on a flight a person is drawn on the line
 ## through the treads' middles and the stairs' clip (up or down) is locked to where they are along it, a step a tread;
-## on a ladder the climbing clip to their height, two rungs a cycle, facing the rungs (app/stair_treads.gd).
+## on a ladder the climbing clip to their height, two rungs a cycle (app/stair_treads.gd; ui/people_view.gd turns them
+## to face its rungs).
 extends Node3D
 
 const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
@@ -274,7 +275,6 @@ func _skinned(delta: float) -> void:
 			var lk: int = treads.on_ladder(at)
 			if lk >= 0:
 				phase = fposmod((at.y - float(treads.ladders[lk][1])) / (2.0 * rung), 1.0)
-				yaw = float(treads.ladders[lk][3])     # facing the rungs, whichever way they came
 				size = 1.0      # (the clip's hands and feet on rungs 0.3 m apart: not scaled with the person)
 		a.node.transform = Transform3D(Basis(Vector3.UP, yaw + PI).scaled(Vector3.ONE * size), at)
 		var d := at.distance_to(cam)
@@ -297,7 +297,10 @@ func _skinned(delta: float) -> void:
 			a.clip = clip
 			a.gait = ""
 			a.anim.play(clip, 0.0 if first else BLEND)
-			if first:
+			if clip in LOCKED and phase >= 0.0:
+				# at its moment for where they are now: the crossfade then runs at the clip's own pace, not in a jump
+				a.anim.seek(phase * a.anim.current_animation_length, true)
+			elif first:
 				# each person at their own point of the cycle
 				a.anim.seek(fmod(float(a.person) * 0.37, 1.0) * a.anim.current_animation_length, true)
 		# advanced at the rate for its distance, not at all out of view (docs/PLANT3D.md §18.3)
@@ -320,7 +323,9 @@ func _skinned(delta: float) -> void:
 						a.d = gait_d(c[0], cur / len)
 					var gone := 0.0 if a.last == Vector3.INF else Vector2(at.x - a.last.x, at.z - a.last.z).length()
 					a.d = fposmod(a.d + gone / sc, c[1])
-					var step := fposmod(gait_t(c[0], a.d) * len - cur, len)
+					var step := fposmod(gait_t(c[0], a.d) * len - cur, len) if gone > 0.0 else 0.0
+					if step > len - 1e-6:
+						step = 0.0      # (the same moment, a rounding apart: not a whole cycle on)
 					_move(a, step)
 					a.rate = step / dt if dt > 0.0 else 0.0
 				else:

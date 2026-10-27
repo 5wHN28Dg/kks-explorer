@@ -18,6 +18,7 @@ const StairTreads = preload("res://app/stair_treads.gd")
 const BP = preload("res://builder/people/build_people.gd")
 const Feet = preload("res://tests/feet.gd")
 const Lanes = preload("res://app/lanes.gd")
+const PeopleView = preload("res://ui/people_view.gd")
 
 const SOLE_FLOOR := 0.01        # m
 const ON := 0.005               # m: a sole this near its floor is on it (a foot coming down is not yet)
@@ -28,7 +29,7 @@ const TREAD := 0.03             # m
 const SUNK := 0.02              # m
 const STAIR_SLIDE := 0.12       # of the ground covered (a stair's going is up to 3 cm off the clip's: STANCE × that)
 const RUNG_OFF := 0.03          # m
-const BLEND_GONE := 0.25        # m a person on a stair covers in app/people.gd's crossfade, and more
+const BLEND_GONE := 0.3        # m a person on a stair covers in app/people.gd's crossfade, and more
 const DT := 1.0 / 60.0
 const TURN := 5.0               # rad/s: ui/people_view.gd's
 const SHARE := {"skinned": 1, "skinned_range": 25.0, "lod0_range": 10.0, "anim_near": 10.0, "posed_range": 80.0,
@@ -384,7 +385,7 @@ func _ladder(tree: SceneTree, info: Dictionary, treads) -> Array:
 		var made := _people(tree, info, treads)
 		var ppl = made[2]
 		ppl.people[0]["scale"] = 1.06 if not down else 0.94
-		# the way the rungs are from the ladder's foot (its heading), and the person coming at it facing away
+		# the way the rungs are from the ladder's foot (its heading)
 		var face := Vector3(-sin(float(l[3])), 0.0, -cos(float(l[3])))
 		var v := 0.3
 		var y0 := foot if not down else top
@@ -400,7 +401,15 @@ func _ladder(tree: SceneTree, info: Dictionary, treads) -> Array:
 		for i in n:
 			var y := lerpf(y0, y1, float(i) / n)
 			var at := Vector3((l[0] as Vector2).x, y, (l[0] as Vector2).y)
-			if not _step(ppl, made[1], at, float(l[3]) + PI, Vector3.ZERO, "ladder", DT):
+			# (facing as ui/people_view.gd turns them: its rungs, whichever way they came)
+			var lh: float = PeopleView.ladder_heading(treads, "ladder", at)
+			if is_nan(lh) or absf(angle_difference(lh, float(l[3]))) > 1e-4:
+				p.append("someone on the ladder at %s is not turned to its rungs" % str(at))
+				break
+			if PeopleView.ladder_heading(treads, "", at) == PeopleView.ladder_heading(treads, "", at):
+				p.append("someone not on a ladder is turned to one")
+				break
+			if not _step(ppl, made[1], at, lh, Vector3.ZERO, "ladder", DT):
 				continue
 			if y < foot + 2.0 * rung or y > top - 2.0 * rung:
 				continue

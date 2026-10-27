@@ -413,7 +413,9 @@ static func _leaves(tree: SceneTree, main) -> Array:
 		var shut: Transform3D = d.get_parent_node_3d().global_transform * d.closed_xf
 		var w: float = d.width
 		var h: float = d.height
+		d.set_physics_process(false)      # (its own step would put the leaf back where its openness says)
 		d.transform = d.closed_xf
+		await tree.physics_frame
 		await tree.physics_frame
 		var spots := []
 		var x := -w * 0.5 - 0.6
@@ -430,6 +432,10 @@ static func _leaves(tree: SceneTree, main) -> Array:
 		for state in [0.25, 0.5, 0.75, 1.0]:
 			d.transform = d.closed_xf.translated_local(Vector3(0, state * h, 0) if d.kind == "roller" else Vector3(state * w, 0, 0))
 			await tree.physics_frame
+			await tree.physics_frame
+			if d.global_transform.origin.distance_to((d.get_parent_node_3d().global_transform * d.transform).origin) > 1e-3 \
+					or d.transform.origin.distance_to(d.closed_xf.origin) < 0.2 * state * minf(w, h):
+				p.append("door %s: its leaf was not where the check put it" % d.name)
 			for feet in spots:
 				tried += 1
 				q.transform = Transform3D(Basis(), feet + Vector3.UP * (player.HEIGHT * 0.5 + 0.05))
@@ -438,6 +444,7 @@ static func _leaves(tree: SceneTree, main) -> Array:
 						reached += 1
 						break
 		d.transform = d.closed_xf
+		d.set_physics_process(true)
 		if reached > 0:
 			p.append("door %s: its leaf, opening, reaches %d points where the walker stands" % [d.name, reached])
 	await tree.physics_frame

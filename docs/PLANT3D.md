@@ -2016,7 +2016,7 @@ the engine and `ref/plant3d.py` are unchanged. No foot or hand IK yet: the clips
   first riser to half one past its last (where the line meets the landings: beyond, on the landing, walking), and plays
   the clip locked to where they are along the flight, a step a tread, at the clip's own size (a person's ±6 % height
   comes back as they step off: the steps are a tread long whoever takes them). Someone standing still on a flight
-  (held back, paused) stands on the highest tread under their feet: across a nosing, on the upper tread, over the
+  (held back) stands on the highest tread under their feet: across a nosing, on the upper tread, over the
   lower one's edge. The stepped body was the other way: without IK, a body stepped up
   at a nosing lifts the standing foot off its tread with it, unless the clip is locked to the treads anyway; and a
   clip made for planted feet needs the body moving smoothly. The posed band, which has no clips, is drawn on the
@@ -2026,8 +2026,9 @@ the engine and `ref/plant3d.py` are unchanged. No foot or hand IK yet: the clips
   step, the standing foot sliding 3.2 to 9.0 % of the ground covered; standing still at a nosing and between, a foot
   on its tread within 1.6 cm.
 - **Ladder**: its clip likewise, hands and feet holding rungs 0.3 m apart (each moved up two rungs in a quarter cycle,
-  the body two rungs a cycle), locked to the height climbed over the ladder's foot, at the clip's size and facing the
-  rungs whichever way the person came: a foot on a rung and a hand at one within 1 mm.
+  the body two rungs a cycle), locked to the height climbed over the ladder's foot, at the clip's size;
+  `ui/people_view.gd` turns them to face its rungs (at most 5 rad a second), whichever way they came: a foot on a rung
+  and a hand at one within 1 mm. (No staff way uses a ladder yet.)
 - **Clip speeds matched** (`app/people.gd`): a walk or a run is played at the moment of its cycle that the ground the
   person has covered in plan says (`people.json` `gait`: at 240 moments of the cycle, how far the point of the sole on
   the floor has gone back under the hips), however they are moved: their way, keeping apart, catching up,
@@ -2046,8 +2047,8 @@ the engine and `ref/plant3d.py` are unchanged. No foot or hand IK yet: the clips
   of a pool avatar's AnimationPlayer built its caches in the frame the pool first took people (0.66 ms instead of 0.06
   on the laptop, about ten times that on the Note 9: the likely cause of the 21 ms "avatars" frame at 8 to 10 s); the
   grid's first build took 0.2 ms. A door opened for someone else cannot push the trainee: its leaf slides inside the
-  wall's thickness (or up) and reaches none of 54,640 points where the walker stands at the 29 doors (checked at four
-  openings), and a doorway is kept open by the walker standing in it (`app/door.gd`).
+  wall's thickness (or up) and reaches none of the points where the walker stands at the 29 doors (checked with the
+  leaf held at four openings, the doors' own step stopped meanwhile), and a doorway is kept open by the walker standing in it (`app/door.gd`).
 - **Content**: HRSG 1's landing at +30 is 8 m wide (at 7 m the stair's top, (102, 50, 30), was on its east rail). The
   frames walk takes the stair to its top again and goes north onto the roof at x = 102 before y = 56 (34.85 m each way
   instead of 35.2: compare frame walks across this with the route's change in mind). The walking mesh's paths up the
