@@ -1544,5 +1544,41 @@ class Bake(unittest.TestCase):
         self.assertLess(write, bake, 'the import settings come before the bake writes its image')
 
 
+class SideBySide(unittest.TestCase):
+    """ref/make_plant3d_vectors.py's side_by_side, which the generator and the vector tests make independent runs
+    with in several processes: the same results, in the same order, as one after the other."""
+
+    def test_same_as_one_after_another(self):
+        made = {'base': 7}           # a closure's state, as the workers have it when forked
+
+        def fn(i):
+            return [i, made['base'] * i, os.getpid()]
+        n = 9
+        got = G.side_by_side(fn, n, cost=lambda i: i % 4, procs=3)
+        self.assertEqual([g[:2] for g in got], [[i, 7 * i] for i in range(n)])
+        self.assertNotIn(os.getpid(), {g[2] for g in got}, 'made in other processes')
+        self.assertEqual(G.side_by_side(fn, n, procs=1), [fn(i) for i in range(n)])
+        self.assertEqual({g[2] for g in G.side_by_side(fn, n, procs=1)}, {os.getpid()})
+
+    def test_a_failure_reaches_the_caller(self):
+        def fn(i):
+            if i == 2:
+                raise AssertionError('run 2 differs')
+            return i
+        with self.assertRaisesRegex(AssertionError, 'run 2 differs'):
+            G.side_by_side(fn, 4, procs=2)
+
+    def test_jobs(self):
+        old = os.environ.get('KKS_REF_JOBS')
+        try:
+            os.environ['KKS_REF_JOBS'] = '1'
+            self.assertEqual(G.jobs(), 1)
+            del os.environ['KKS_REF_JOBS']
+            self.assertTrue(1 <= G.jobs() <= 4)
+        finally:
+            if old is not None:
+                os.environ['KKS_REF_JOBS'] = old
+
+
 if __name__ == '__main__':
     unittest.main()
