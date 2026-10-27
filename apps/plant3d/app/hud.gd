@@ -118,8 +118,10 @@ func _exit_tree() -> void:
 	if input != null and is_instance_valid(input):
 		if input.is_inside_tree():
 			input.queue_free()
-		else:
+		elif input.get_parent() == null:   # never placed: nothing else frees it
 			input.free()
+		# else: out of the tree but still under the root, which is tearing the tree down at a quit (it left before
+		# the HUD: it is the root's last child) and frees it itself; freeing it here corrupted the heap (tests/test_app_quit.gd)
 		input = null
 
 func _button(parent: Control, text: String, f: Callable) -> Button:

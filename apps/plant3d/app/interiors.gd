@@ -168,7 +168,7 @@ func _dying_ids() -> Array:
 func _exit_tree() -> void:
 	for id in items:
 		for p in items[id].pending:
-			if is_instance_valid(p[1]) and not (p[1] as Node).is_inside_tree():
+			if is_instance_valid(p[1]) and (p[1] as Node).get_parent() == null:   # (one under a parent goes with it)
 				(p[1] as Node).free()
 		items[id].pending = []
 
