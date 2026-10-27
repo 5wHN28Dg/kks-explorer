@@ -1335,7 +1335,21 @@ func _session_ended(why: String) -> void:
 	clock.driven = false
 	clock.speed = SimClock.Speed.PAUSED
 	clock.speed_changed.emit(clock.speed, "")
+	_back_to_solo.call_deferred()
 	open_session.call_deferred()
+
+
+## After a session: the player's own run again (the one saved before it, or the scenario afresh), saved as before;
+## the session's run stays in its copy (Continue alone).
+func _back_to_solo() -> void:
+	inputs.slot = 0
+	var r := RunSave.read(autosave.path)
+	if r["ok"] and autosave.check(r["payload"]) == "":
+		autosave.restore(r["payload"])
+	else:
+		restart(clock.scenario, true)
+	autosave.armed = true
+	clock.set_speed(SimClock.Speed.PAUSED)
 
 
 ## The last session's copy goes on as a single-player run (§7.4): the other players' people go to the crews.

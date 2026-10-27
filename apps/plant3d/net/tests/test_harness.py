@@ -195,11 +195,13 @@ class Joins(Base):
         t_end = 3 + 6 * M
         self.h.host([{"t": 2, "do": "claim", "person": "a_sup"}, {"t": 3, "do": "start"},
                      {"t": 3 + 2 * M, "do": "jump", "hhmm": "18:30"},
-                     {"t": 3 + 4.5 * M, "do": "away"}, {"t": 3 + 4.5 * M + 2, "do": "away", "on": False},
-                     {"t": 3 + 4.5 * M + 2.5, "do": "run"}] + ends(t_end, quit_after=5, host=True))
+                     # the host's app in the background for 12 s (its main loop stopped: no packets at all), then back:
+                     # its players wait for it (§7.5), it runs the session again
+                     {"t": 3 + 4.5 * M, "do": "away", "freeze": 12}, {"t": 3 + 4.5 * M + 13, "do": "run"}]
+                    + ends(t_end + 14, quit_after=5, host=True))
         self.h.join([{"t": 1.5, "do": "claim", "person": "a_ccr1"},
                      {"t": 3 + 1 * M, "do": "pause"}, {"t": 3 + 1 * M + 3, "do": "run"},
-                     {"t": 3 + 2.2 * M, "do": "jump", "hhmm": "18:30"}] + ends(t_end + 0.5, quit_after=5), 'p1')
+                     {"t": 3 + 2.2 * M, "do": "jump", "hhmm": "18:30"}] + ends(t_end + 14.5, quit_after=5), 'p1')
         res = self.h.wait_all(120)
         host = self.agree(res)
         jumps = [x for c in host['commits'] for x in c[2] if '"jump"' in x[2]]
@@ -243,6 +245,19 @@ class Faults(Base):
         self.assertEqual(res['host']['stats']['desyncs'], 1)
         self.assertTrue(res['p1']['report'].startswith('user://desync/'))
 
+    def test_the_host_differs(self):
+        """§4: when most players agree with each other against the host, the session ends ("the host's device
+        differs") instead of resynchronising them to the host's state."""
+        t_end = 3 + 4 * M
+        self.h.host([{"t": 2.5, "do": "start"}, {"t": 3 + 1 * M, "do": "desync", "value": 5}]
+                    + ends(t_end, quit_after=6, host=True))
+        for k in (1, 2):
+            self.h.join(ends(t_end + 0.5, quit_after=6), f'p{k}')
+        res = self.h.wait_all(120)
+        self.assertIn("host's device differs", res['host']['why_ended'])
+        for k in (1, 2):
+            self.assertEqual(res[f'p{k}']['stats']['resyncs'], 0)
+
     def test_fast_forward_at_the_slowest_cap(self):
         t_end = 3 + 4 * M
         self.h.host([{"t": 2.5, "do": "start"}, {"t": 4, "do": "fast"}] + ends(t_end, quit_after=6, host=True))
@@ -278,6 +293,7 @@ class Faults(Base):
         self.agree(res, names=['host', 'p1'])
         self.assertGreater(res['host']['stats']['dropped'], 0)   # the flood: at most 20 a turn (§10)
         self.assertLessEqual(len(res['p1']['delays']), 60)
+        self.assertEqual(res['p1']['sending'], 0)                 # the inputs dropped were told: none left waiting
         self.assertIn('No session with that code', res['stranger']['why_ended'])
 
 

@@ -128,6 +128,11 @@ func run(tree: SceneTree) -> Array:
 		p.append("the player was told: " + s2.why_ended)
 	if ui.clock.driven or ui.inputs.sink.is_valid():
 		p.append("after the session the clock and the inputs are not the app's own again")
+	# the player's own run again: a single-player run, slot 0, saved
+	await _wait(tree, func(): return not ui.clock.engine.st_session, 5.0)
+	if ui.clock.engine.st_session or ui.inputs.slot != 0 or not ui.autosave.armed:
+		p.append("after the session the app is not back to a single-player run (session run %s, slot %d, saving %s)"
+				% [str(ui.clock.engine.st_session), ui.inputs.slot, str(ui.autosave.armed)])
 	# a join link starts a join with its code (no host answers here: it is cancelled)
 	var code := Code.make()
 	ui.handle_link("walkdown-plant://join/" + Code.pretty(code).to_lower())
