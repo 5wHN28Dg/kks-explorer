@@ -4,7 +4,8 @@
 ##     --data=DIR --scenario=ID --name=NAME --disc=PORT --port=PORT [--addr=IP:PORT] [--via=IP:PORT] [--speed=N]
 ##     --plan=FILE --out=FILE [--probe=1]
 ## The plan is a JSON array of actions, each {"t": seconds since the start (real time)} or {"step": the engine's
-## step}, and "do": input (item), claim (person), ready, start, pause, run, fast (on), jump (hhmm), instructor (slot,
+## step}, and optionally {"inputs_from": [slot, n]} (the host: wait until n inputs of that slot are committed) and
+## {"after": seconds since the action before it ran}, and "do": input (item), claim (person), ready, start, pause, run, fast (on), jump (hhmm), instructor (slot,
 ## on), away (on), desync (a value of the engine changed), leave, quit. On quit (or when the session ends) it writes
 ## --out: its slot, its step, every 50th step's state digest, its events' hash and count, the input-to-effect delays,
 ## its session statistics and (the host) every commit.
@@ -28,6 +29,7 @@ var done := false
 var walk_a := 0.0
 var notices: Array = []
 var _printed := false
+var _last_done := 0.0   # when the last action ran (s since the start)
 var early := 0          # actions done before the session's welcome (the player still finding or joining it)
 
 
@@ -99,11 +101,26 @@ func _process(_delta: float) -> bool:
 			break
 		if a.has("step") and step < int(a["step"]):
 			break
+		if a.has("inputs_from") and _committed_from(int(a["inputs_from"][0])) < int(a["inputs_from"][1]):
+			break
+		if a.has("after") and now < _last_done + float(a["after"]):
+			break
 		plan.pop_front()
+		_last_done = now
 		_do(a)
 		if done:
 			return true
 	return false
+
+
+## The inputs of `slot` committed so far (the host's commit log).
+func _committed_from(slot: int) -> int:
+	var n := 0
+	for c in session.commit_log:
+		for x in c[2]:
+			if int(x[0]) == slot:
+				n += 1
+	return n
 
 
 func _do(a: Dictionary) -> void:

@@ -229,10 +229,12 @@ class Joins(Base):
         link = sim.link(9, up, down)
         sim.start()
         # (12 s at the harness's 20× is 2,400 steps to catch up: time enough before the end.) The host's clock runs
-        # START_DELAY s and the player's start-up ahead of the player's: it starts the run once the player has joined
-        # its lobby and claimed (a lobby join, as before), and pauses well after the player's last input
-        self.h.host([{"t": 2, "do": "claim", "person": "a_sup"}, {"t": 3 + START_DELAY + 3, "do": "start"}]
-                    + ends(t_end + START_DELAY + 10, quit_after=20, host=True))
+        # START_DELAY s and the player's start-up ahead of the player's, which a busy runner makes long (12 s and
+        # more on 4 loaded CPUs): it starts the run once the player should have joined its lobby, and pauses once the
+        # player's claim and its 3 inputs are committed (not at a time of its own, which came before the player's
+        # inputs there), then quits 20 s later
+        self.h.host([{"t": 2, "do": "claim", "person": "a_sup"}, {"t": 3 + START_DELAY + 3, "do": "start"},
+                     {"t": t_end, "inputs_from": [1, 4], "do": "pause"}, {"t": t_end, "after": 20, "do": "quit"}])
         time.sleep(START_DELAY)
         p1 = self.h.join([{"t": 1.5, "do": "claim", "person": "a_ccr1"}, {"t": 6, "do": "away", "freeze": 12}]
                          + inputs(21, t_end - 3, 3, 4) + ends(t_end + 0.5, quit_after=20), 'p1', link=link)
