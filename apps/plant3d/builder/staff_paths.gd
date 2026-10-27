@@ -45,6 +45,7 @@ const SEATED := ["desk", "seat", "table", "bed"]
 const FACE_DIRS := 72           # directions looked in for a work place's equipment
 const FACE_HEIGHTS := [0.3, 0.7, 1.1, 1.5, 1.9]
 const FACE_REACH := 8.0         # metres (a work place within 8 m of its equipment: tests/test_staff_ways.gd)
+const FACE_NEAR := 3.0          # metres: something beside an instrument overhead, faced instead
 const SceneIndex = preload("res://ui/scene_index.gd")
 
 
@@ -185,7 +186,7 @@ static func _clear(space: PhysicsDirectSpaceState3D, feet: Vector3, exclude: Arr
 ## (an instrument's bounds are its meshes'), towards the nearest point of its bounds, or their middle when standing
 ## within them; when both are within 15 cm in plan (an instrument overhead), towards the equipment it is on (the
 ## nearest collider of a code beginning with its system and number, e.g. 10MBD10 for 10MBD10CY001), or else the
-## nearest of any code (the machine or the pipe beside it); else NAN.
+## nearest of any code within FACE_NEAR (the machine or the pipe beside it); else NAN (overhead: as they came).
 static func facing(space: PhysicsDirectSpaceState3D, idx, kks: String, at: Vector3, exclude: Array[RID]) -> float:
 	var y := _facing_rays(space, kks, at, exclude)
 	if not is_nan(y) or not idx.has(kks):
@@ -198,10 +199,11 @@ static func facing(space: PhysicsDirectSpaceState3D, idx, kks: String, at: Vecto
 		return atan2(-to.x, -to.z)
 	if kks.length() > 7:
 		y = _facing_rays(space, kks.substr(0, 7), at, exclude)
-	return y if not is_nan(y) else _facing_rays(space, "", at, exclude)
+	return y if not is_nan(y) else _facing_rays(space, "", at, exclude, FACE_NEAR)
 
 
-static func _facing_rays(space: PhysicsDirectSpaceState3D, kks: String, at: Vector3, exclude: Array[RID]) -> float:
+static func _facing_rays(space: PhysicsDirectSpaceState3D, kks: String, at: Vector3, exclude: Array[RID],
+		reach := FACE_REACH) -> float:
 	var dist := PackedFloat32Array()
 	dist.resize(FACE_DIRS)
 	var best := -1
@@ -210,7 +212,7 @@ static func _facing_rays(space: PhysicsDirectSpaceState3D, kks: String, at: Vect
 		var dir := Vector3(cos(a), 0.0, sin(a))
 		dist[i] = INF
 		for h in FACE_HEIGHTS:
-			var q := PhysicsRayQueryParameters3D.create(at + Vector3.UP * h, at + Vector3.UP * h + dir * FACE_REACH)
+			var q := PhysicsRayQueryParameters3D.create(at + Vector3.UP * h, at + Vector3.UP * h + dir * reach)
 			q.exclude = exclude
 			var r := space.intersect_ray(q)
 			if not r.is_empty() and SceneIndex.code_of(r.collider).begins_with(kks) and SceneIndex.code_of(r.collider) != "":

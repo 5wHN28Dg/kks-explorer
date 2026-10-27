@@ -5,6 +5,9 @@
 extends RefCounted
 
 const BP = preload("res://builder/people/build_people.gd")
+## of the ground covered, at most (tests/test_people_feet.gd SLIDE: KayKit's walk sets a foot down still moving forward,
+## and the crossfades between standing and walking slide, without IK)
+const SLIDE := 0.15
 
 var pos := PackedVector3Array()     # the sole's vertices at rest
 var wts: Array = []                 # per vertex: [[bone, weight]…]

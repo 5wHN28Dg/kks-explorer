@@ -23,7 +23,7 @@ const SOLE_FLOOR := 0.01        # m
 const ON := 0.005               # m: a sole this near its floor is on it (a foot coming down is not yet)
 ## of the ground covered: what is left is where KayKit's walk sets a foot down still moving forward (for one update)
 ## and the crossfades between standing and walking (no IK yet); a walk played at one rate slid 60 to 70 %
-const SLIDE := 0.15
+const SLIDE := Feet.SLIDE
 const TREAD := 0.03             # m
 const SUNK := 0.02              # m
 const STAIR_SLIDE := 0.12       # of the ground covered (a stair's going is up to 3 cm off the clip's: STANCE × that)

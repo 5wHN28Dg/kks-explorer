@@ -40,6 +40,9 @@ const LENGTH := 0.1         # a line's length off its way's, at most (and 5 cm)
 const OFFSET_STEP := 0.05   # m between the points checked beside a line (the room's samples and half way between),
                             # nearer where its side turns: no drawn point more than this from the last checked
 const SIDE_FEET := 0.1      # m: the floor beside a line off the one under it, at most (the build keeps 8 cm)
+const STAND_FLOOR := 0.01   # m: a person standing at a place off the floor, at most (the clips' soles: tests/test_people_feet.gd)
+const FACE_OFF := 0.52      # radians (30°): a work place's way to face off the way to its equipment's bounds, at most
+const SceneIndex = preload("res://ui/scene_index.gd")
 
 
 func run(tree: SceneTree) -> Array:
@@ -139,7 +142,7 @@ func run(tree: SceneTree) -> Array:
 		var stand_n := 0
 		var solid: Array[RID] = [main.player.get_rid()]     # (round a place the doors count: nobody opens them there)
 		for i in sm.places.size():
-			var res := check_place(ways.place_room[i], at[i], space, solid)
+			var res := check_place(ways.place_room[i], ways.stand[i], space, solid)
 			stand_n += res[1]
 			for e in res[0]:
 				p.append("place %s: %s" % [sm.places[i]["id"], e])
@@ -147,6 +150,7 @@ func run(tree: SceneTree) -> Array:
 			if sb > 40:
 				break
 		print("staff ways: %d points beside the lines checked, %d round the places" % [side_n, stand_n])
+		p.append_array(check_stands(sm, ways, space, skip, ui.index))
 		print("staff ways: %d lines walked, %d points checked, %d on stairs" % [ways.lines.size(), samples, on_stairs])
 		# the stairs' ways are among them, walked on the steps (the HRSG's, the cooling tower's, the turbine hall's)
 		if on_stairs < 200:
@@ -293,6 +297,79 @@ static func check_place(room: PackedByteArray, at: Vector3, space: PhysicsDirect
 			out.append("%.2f m from it towards %s the feet are off the floor" % [r, str(dir)])
 			break
 	return [out, checked]
+
+
+## Where people stand at the places (phase 4, app/staff_ways.gd `stand` and `yaw`, builder/staff_paths.gd): at every
+## place but a seat, desk, table or bed, the feet within STAND_FLOOR of the floor and a 0.3 m capsule (0.4 to 1.8 m
+## above them) touching nothing but doors; at every work place, a way to face that looks at its equipment: a level
+## ray that way from the feet's height to 1.9 m meets it (or the equipment it is on: its code's first seven
+## characters) within 8 m, or the way is within FACE_OFF of the nearest point of its bounds; or, for an instrument
+## overhead with nothing of its own to look at, a ray meets something with a code within 3 m.
+static func check_stands(sm, ways, space: PhysicsDirectSpaceState3D, skip: Array[RID], idx) -> Array:
+	var out: Array = []
+	var cap := CapsuleShape3D.new()
+	cap.radius = RADIUS
+	cap.height = 1.4
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = cap
+	q.exclude = skip
+	var n := 0
+	var faced := [0, 0, 0, 0]
+	for i in sm.places.size():
+		var pl: Dictionary = sm.places[i]
+		if pl["kind"] in StaffPaths.SEATED or pl.get("pose", "") in ["sit", "lie"]:
+			continue
+		n += 1
+		var s: Vector3 = ways.stand[i]
+		var y: float = StaffPaths.surface(space, s, 0.5, 0.6, skip)
+		if is_nan(y) or absf(s.y - y) > STAND_FLOOR:
+			out.append("place %s: a person standing there is %.3f m off the floor" % [pl["id"], s.y - y if not is_nan(y) else INF])
+		q.transform = Transform3D(Basis(), s + Vector3.UP * 1.1)
+		var hit := space.intersect_shape(q, 1)
+		if not hit.is_empty():
+			out.append("place %s: a person standing there touches %s" % [pl["id"], String(hit[0].collider.name)])
+		if pl["kind"] != "work":
+			continue
+		var yaw: float = ways.yaw[i]
+		var kks0: String = pl["kks"]
+		if is_nan(yaw):
+			# (only under an instrument overhead, nothing of its own or beside it to look at: as they came)
+			var b0: AABB = idx.box(kks0) if idx.has(kks0) else AABB()
+			var to0 := s.clamp(b0.position, b0.end) - s
+			if not idx.has(kks0) or Vector2(to0.x, to0.z).length() >= 0.15:
+				out.append("work place %s: a person working there faces no way of their own" % pl["id"])
+			else:
+				faced[3] += 1
+			continue
+		var f := Vector3(-sin(yaw), 0.0, -cos(yaw))
+		var kks: String = pl["kks"]
+		var how := -1
+		for h in StaffPaths.FACE_HEIGHTS:
+			var rq := PhysicsRayQueryParameters3D.create(s + Vector3.UP * h, s + Vector3.UP * h + f * 8.0)
+			rq.exclude = skip
+			var r := space.intersect_ray(rq)
+			if r.is_empty():
+				continue
+			var code := SceneIndex.code_of(r.collider)
+			if code.begins_with(kks.substr(0, 7)):
+				how = 0
+				break
+			if code != "" and (r.position - rq.from).length() <= 3.0 and how < 0:
+				how = 2
+		if how != 0 and idx.has(kks):
+			var b: AABB = idx.box(kks)
+			var to := s.clamp(b.position, b.end) - s
+			if Vector2(to.x, to.z).length() < 0.15:
+				to = b.get_center() - s
+			if Vector2(to.x, to.z).length() >= 0.15 and absf(angle_difference(atan2(-to.x, -to.z), yaw)) <= FACE_OFF:
+				how = 1
+		if how < 0:
+			out.append("work place %s: a person working there faces away from %s" % [pl["id"], kks])
+		else:
+			faced[how] += 1
+	print("staff ways: %d standing places checked; work places facing their equipment by a ray %d, by its bounds %d, overhead (facing what is beside them) %d, overhead (as they came) %d" % [
+		n, faced[0], faced[1], faced[2], faced[3]])
+	return out
 
 
 ## A way's line as people walk it from place `ia` to place `ib` (and back), the way taking `seconds` and being

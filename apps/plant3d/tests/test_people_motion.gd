@@ -24,11 +24,15 @@ const MIN_APART := 0.6          # metres between two people's centres, at least,
 const RADIUS := 0.3             # the walker's capsule (0.4 to 1.8 m above the feet)
 const DT := 1.0 / 60.0
 const SECONDS := 240.0          # of the shift's start, frame by frame
+const FEET_SECONDS := 60.0      # of them with the skinned avatars' feet followed (tests/feet.gd)
+const Feet = preload("res://tests/feet.gd")
+const Quality = preload("res://app/quality.gd")
 
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
 	p += await _apart(tree)
+	p += await _set_off(tree)
 	p += await _crews(tree)
 	return p
 
@@ -192,6 +196,21 @@ func _crews(tree: SceneTree) -> Array:
 	var close := 0
 	var acc := 0.0
 	var drive_us := 0
+	# phase 4: everyone standing still at a place for a second faces its way (a work place: its equipment); and the
+	# skinned walkers' feet, the first FEET_SECONDS (tests/feet.gd: how far the sole on the floor slides)
+	var still := {}
+	var facing: Array = []
+	var faced := 0
+	var feet = Feet.of(pv.avatars.info)
+	if pv.avatars.cfg.is_empty():      # (no tier headless: the phone's share)
+		pv.avatars.apply_share(Quality.people_share("lean+vis", {}))
+	var slides := {}                # avatar slot -> [person, tests/feet.gd]
+	var cam := Camera3D.new()
+	main.add_child(cam)
+	var cam0: Camera3D = pv.avatars.camera
+	var watch := -1
+	var slid := 0.0
+	var covered := 0.0
 	for f in int(SECONDS / DT):
 		acc += DT
 		while acc >= SimClock.STEP:
@@ -202,6 +221,40 @@ func _crews(tree: SceneTree) -> Array:
 		pv.drive(DT)
 		drive_us += Time.get_ticks_usec() - t0
 		var ppl: Array = pv.avatars.people
+		if f * DT < FEET_SECONDS:
+			pv.avatars.camera = cam         # (only here: people_view keeps people apart by the trainee's camera)
+			if f % 15 == 0:
+				pv.avatars._assign()
+			# (the camera kept with a walker, so that walkers are among the skinned)
+			if f % 15 == 0 and ppl.size() > 0:
+				var follow := -1
+				for k in ppl.size():
+					if pv.drawn_kind[k] == KeepApart.WALKING and (follow < 0 or pv.drawn[k] == watch):
+						follow = k
+				if follow >= 0:
+					watch = pv.drawn[follow]
+					cam.global_position = (ppl[follow].at as Vector3) + Vector3(0, 2.5, 4.0)
+					cam.look_at(ppl[follow].at)
+			pv.avatars._skinned(DT)
+			pv.avatars.camera = cam0
+			for slot in pv.avatars.avatars.size():
+				var av: Dictionary = pv.avatars.avatars[slot]
+				if av.person < 0 or av.person >= ppl.size() or not av.clip in ["walk", "walk_road", "run"] \
+						or ppl[av.person].get("on", "") != "":
+					slides.erase(slot)
+					continue
+				if av.acc != 0.0:
+					continue            # (its clip moves on 30 or 15 times a second)
+				var who: int = pv.drawn[av.person]
+				if not slides.has(slot) or slides[slot][0] != who:
+					slides[slot] = [who, Feet.of(pv.avatars.info)]
+				var body: Vector3 = ppl[av.person].at
+				var ft = slides[slot][1]
+				var s0: float = ft.slid
+				var c0: float = ft.covered
+				ft.slide(feet.world(av.node), body, func(_q): return body.y, 0.005)
+				slid += ft.slid - s0
+				covered += ft.covered - c0
 		for k in ppl.size():
 			var pi: int = pv.drawn[k]
 			var q_at: Vector3 = ppl[k].at
@@ -225,6 +278,17 @@ func _crews(tree: SceneTree) -> Array:
 			yaw[pi] = y
 			at[pi] = q_at
 			var kind: int = pv.drawn_kind[k]
+			# standing still at a place with a way to face: facing it once they have stood a second
+			var pl0: int = e.sp_pos[pi] if kind == KeepApart.STANDING else -1
+			if pl0 >= 0 and float(ppl[k].speed) <= PeopleView.STILL and not is_nan(pv.ways.yaw[pl0]):
+				still[pi] = still.get(pi, 0) + 1
+				if still[pi] > int(1.0 / DT):
+					faced += 1
+					if absf(angle_difference(y, pv.ways.yaw[pl0])) > 0.05 and facing.size() < 5:
+						facing.append("person %d stood a second at %s facing %.2f rad off its way" % [pi,
+								e._sm.places[pl0]["id"], angle_difference(y, pv.ways.yaw[pl0])])
+			else:
+				still.erase(pi)
 			var check := kind == KeepApart.WALKING
 			if kind == KeepApart.STANDING:
 				var pl: int = e.sp_pos[pi]
@@ -243,6 +307,16 @@ func _crews(tree: SceneTree) -> Array:
 					close += 1
 	print("people motion: crews: %d walker-frames, %d turning, %d person-frames within 0.4 m of another; drive() %.1f us a frame" % [
 			walking, turned, close, float(drive_us) / (SECONDS / DT)])
+	pv.avatars.camera = cam0
+	print("people motion: crews: %d person-frames standing at their places facing their way; the walkers' standing feet slid %.2f m over %.2f m (%.1f %%) in the first %.0f s" % [
+			faced, slid, covered, 100.0 * slid / maxf(covered, 1e-6), FEET_SECONDS])
+	p.append_array(facing)
+	if faced < 1000:
+		p.append("only %d person-frames standing still at their places: the facing check proves little" % faced)
+	if covered < 20.0:
+		p.append("the skinned walkers covered only %.1f m: the feet check proves little" % covered)
+	elif slid > Feet.SLIDE * covered:
+		p.append("the crews' standing feet slid %.2f m over %.2f m walked" % [slid, covered])
 	p.append_array(turns)
 	p.append_array(jumps)
 	p.append_array(fresh)
@@ -252,7 +326,124 @@ func _crews(tree: SceneTree) -> Array:
 	if turned < 100:
 		p.append("people turned in only %d frames" % turned)
 	p.append_array(_doors(tree, main))
+	p.append_array(await _leaves(tree, main))
 	main.free()
+	return p
+
+
+## Setting off from beside a place (phase 4): someone a player has moved aside at their place who then walks off along
+## a line carries what is left of that offset onto it only where the build measured room, round the place or beside
+## the line (a post stands just off the way, between the two): until 2026-10-27 it was carried unclamped for a
+## quarter of a second.
+func _set_off(tree: SceneTree) -> Array:
+	var p: Array = []
+	var vp := SubViewport.new()
+	vp.own_world_3d = true
+	vp.world_3d = World3D.new()
+	tree.root.add_child(vp)
+	var world := Node3D.new()
+	vp.add_child(world)
+	_box(world, Vector3(0, -0.1, 0), Vector3(20, 0.2, 20))
+	_box(world, Vector3(0.45, 1.0, 0.55), Vector3(0.1, 2.0, 0.1))       # the post
+	for i in 3:
+		await tree.physics_frame
+	var space := world.get_world_3d().direct_space_state
+	var lr := LaneRoom.new(space, null, [])
+	var place := Vector3.ZERO
+	var room: PackedByteArray = lr.place(place)
+	var l = Lanes.make(PackedVector3Array([place, Vector3(6, 0, 0)]))
+	l.room = lr.line(l, true)
+	var ka := KeepApart.new()
+	var q := _capsule_query()
+	var aside := 0.0
+	var outside := 0.0
+	for f in int(5.0 / DT):
+		var t := f * DT
+		ka.begin()
+		if t < 2.0:
+			ka.fixed(-1, Vector3(0, 0, -0.2))         # a player beside the place: they step aside
+			ka.stander(1, place, room)
+		else:
+			ka.walker(1, l, minf((t - 2.0) * 1.3, l.length), 1.0, 1.3)
+		ka.solve(DT)
+		var i := 1 if t < 2.0 else 0
+		var at: Vector3 = ka.pos[i]
+		if t < 2.0:
+			aside = at.distance_to(place)
+			continue
+		# in measured room: round the place (its room in that direction) or beside the line (its room there)
+		var d := Vector3(at.x, 0, at.z)
+		var in_place := d.length() < 1e-4 or d.length() <= KeepApart.stand_room(room, d.normalized()) + 0.01
+		var s: float = clampf(at.x, 0.0, l.length)
+		var r: Vector2 = KeepApart.lane_room(l, s, 1.0)
+		var in_line := at.z >= r.x - 0.01 and at.z <= r.y + 0.01
+		if not (in_place or in_line):
+			outside = maxf(outside, minf(d.length() - KeepApart.stand_room(room, d.normalized()), maxf(r.x - at.z, at.z - r.y)))
+		if _hits(space, q, at):
+			p.append("setting off from beside a place: drawn at %s, in the post" % str(at))
+			break
+	if aside < 0.3:
+		p.append("setting off from beside a place: the player moved them only %.2f m aside (the scene proves little)" % aside)
+	if outside > 0.0:
+		p.append("setting off from beside a place: drawn up to %.3f m outside the room measured round the place and beside the line" % outside)
+	print("people motion: setting off from %.2f m beside a place: %.3f m outside the measured room at most" % [aside, outside])
+	vp.free()
+	return p
+
+
+## A door opened for someone else never pushes the trainee (phase 4): at every door, at a quarter, half, three
+## quarters and fully open, its leaf reaches no point where the walker stands with the doors shut (sliding leaves move
+## inside the wall, roller doors up; the doorway itself is kept open by the trainee standing in it: app/door.gd).
+static func _leaves(tree: SceneTree, main) -> Array:
+	var p: Array = []
+	var player = main.player
+	var space: PhysicsDirectSpaceState3D = main.get_world_3d().direct_space_state
+	var cap := CapsuleShape3D.new()
+	cap.radius = player.RADIUS
+	cap.height = player.HEIGHT - 0.1
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = cap
+	q.exclude = [player.get_rid()]
+	var doors := 0
+	var tried := 0
+	for d in tree.get_nodes_in_group("doors"):
+		if not ("closed_xf" in d) or not d.has_method("press"):
+			continue
+		doors += 1
+		var shut: Transform3D = d.get_parent_node_3d().global_transform * d.closed_xf
+		var w: float = d.width
+		var h: float = d.height
+		d.transform = d.closed_xf
+		await tree.physics_frame
+		var spots := []
+		var x := -w * 0.5 - 0.6
+		while x <= 1.5 * w + 0.6:
+			var z := -0.6
+			while z <= 0.6:
+				var feet: Vector3 = shut * Vector3(x, 0.0, z)
+				q.transform = Transform3D(Basis(), feet + Vector3.UP * (player.HEIGHT * 0.5 + 0.05))
+				if space.intersect_shape(q, 1).is_empty():
+					spots.append(feet)
+				z += 0.05
+			x += 0.1
+		var reached := 0
+		for state in [0.25, 0.5, 0.75, 1.0]:
+			d.transform = d.closed_xf.translated_local(Vector3(0, state * h, 0) if d.kind == "roller" else Vector3(state * w, 0, 0))
+			await tree.physics_frame
+			for feet in spots:
+				tried += 1
+				q.transform = Transform3D(Basis(), feet + Vector3.UP * (player.HEIGHT * 0.5 + 0.05))
+				for r in space.intersect_shape(q, 8):
+					if r.collider == d:
+						reached += 1
+						break
+		d.transform = d.closed_xf
+		if reached > 0:
+			p.append("door %s: its leaf, opening, reaches %d points where the walker stands" % [d.name, reached])
+	await tree.physics_frame
+	if doors < 25 or tried < 10000:
+		p.append("only %d doors and %d points checked for their leaves" % [doors, tried])
+	print("people motion: %d doors' leaves checked against %d points where the walker stands" % [doors, tried])
 	return p
 
 
