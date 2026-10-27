@@ -2056,6 +2056,15 @@ the engine and `ref/plant3d.py` are unchanged. No foot or hand IK yet: the clips
   instead of 35.2: compare frame walks across this with the route's change in mind). The walking mesh's paths up the
   tower now end at that corner, 0.8 m longer: `tools/plant3d/staff_layout.json` measured again, two ways' lengths moved
   (p_h_foot–p_h_30 94.2 to 95.0 m, w_10lba30aa901–p_h_30 6.85 to 7.4 m) and the v2 vectors were made again.
+- **Measured on the Note 9** (2026-10-27): release builds without the lightmap's bake, `lean+vis`, the 10-minute
+  `frames` walk with `crews=1` and `probe=1`, each run started at a battery temperature of at most 30 °C; before =
+  main at eb7ad79, after = this phase (two runs each, on routes 0.7 m apart, above). ms a frame, mean / largest:
+  people_view 0.86 / 3.50 and 0.88 / 2.68 before, 0.85 / 2.97 and 0.84 / 2.79 after; avatars 0.64 / 2.48 and
+  0.65 / 3.74 before, 0.62 / 2.08 and 0.63 / 2.46 after; the people's CPU (§18.4, ≤ 2 ms) 0.59 and 0.60 before,
+  0.58 and 0.58 after (largest 2.41, 3.72 / 2.10, 2.40). No frame over 100 ms in any run; frames at ≥ 30 fps 98.90 %
+  and 98.72 % before, 99.49 % and 99.43 % after; largest frame 85.7 and 53.7 ms before, 64.7 and 63.8 ms after. The
+  21 ms "avatars" frame did not come back in either "before" run, so these runs neither confirm nor rule out its cause;
+  after, the avatars' largest frames came at 435 s and 50 s, not in the first seconds.
 
 ### 18.2 Avatars
 
