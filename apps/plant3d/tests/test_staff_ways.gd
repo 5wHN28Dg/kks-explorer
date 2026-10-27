@@ -302,9 +302,9 @@ static func check_place(room: PackedByteArray, at: Vector3, space: PhysicsDirect
 ## Where people stand at the places (phase 4, app/staff_ways.gd `stand` and `yaw`, builder/staff_paths.gd): at every
 ## place but a seat, desk, table or bed, the feet within STAND_FLOOR of the floor and a 0.3 m capsule (0.4 to 1.8 m
 ## above them) touching nothing but doors; at every work place, a way to face that looks at its equipment: a level
-## ray that way from the feet's height to 1.9 m meets it (or the equipment it is on: its code's first seven
-## characters) within 8 m, or the way is within FACE_OFF of the nearest point of its bounds; or, for an instrument
-## overhead with nothing of its own to look at, a ray meets something with a code within 3 m.
+## ray that way from the feet's height to 1.9 m meets it within 8 m, or the way is within FACE_OFF of the nearest
+## point of its bounds; for an instrument overhead, a ray meets the equipment it is on (its code's first seven
+## characters) or, with nothing of its own to look at, something with a code within 3 m.
 static func check_stands(sm, ways, space: PhysicsDirectSpaceState3D, skip: Array[RID], idx) -> Array:
 	var out: Array = []
 	var cap := CapsuleShape3D.new()
@@ -351,7 +351,7 @@ static func check_stands(sm, ways, space: PhysicsDirectSpaceState3D, skip: Array
 			if r.is_empty():
 				continue
 			var code := SceneIndex.code_of(r.collider)
-			if code.begins_with(kks.substr(0, 7)):
+			if code.begins_with(kks) or (code.begins_with(kks.substr(0, 7)) and _overhead(idx, kks, s)):
 				how = 0
 				break
 			if code != "" and (r.position - rq.from).length() <= 3.0 and how < 0:
@@ -370,6 +370,15 @@ static func check_stands(sm, ways, space: PhysicsDirectSpaceState3D, skip: Array
 	print("staff ways: %d standing places checked; work places facing their equipment by a ray %d, by its bounds %d, overhead (facing what is beside them) %d, overhead (as they came) %d" % [
 		n, faced[0], faced[1], faced[2], faced[3]])
 	return out
+
+
+## Whether `kks`'s bounds are over `s` (within 15 cm in plan): an instrument overhead, faced by what it is on.
+static func _overhead(idx, kks: String, s: Vector3) -> bool:
+	if not idx.has(kks):
+		return true
+	var b: AABB = idx.box(kks)
+	var to := s.clamp(b.position, b.end) - s
+	return Vector2(to.x, to.z).length() < 0.15
 
 
 ## A way's line as people walk it from place `ia` to place `ib` (and back), the way taking `seconds` and being

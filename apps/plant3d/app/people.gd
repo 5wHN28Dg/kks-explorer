@@ -18,7 +18,7 @@
 ## that the foot on the floor stays where it is, however the person is moved (their way, keeping apart, catching up,
 ## fast-forward); on a flight a person is drawn on the line
 ## through the treads' middles and the stairs' clip (up or down) is locked to where they are along it, a step a tread;
-## on a ladder the climbing clip to their height, a rung a quarter cycle (app/stair_treads.gd).
+## on a ladder the climbing clip to their height, two rungs a cycle, facing the rungs (app/stair_treads.gd).
 extends Node3D
 
 const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
@@ -35,6 +35,7 @@ const ANIM_CLIP := {"inspect": "inspect", "talk": "talk", "radio": "radio", "typ
 ## and those locked to where the person is on a flight or a ladder.
 const GAIT := {"walk": "walk", "walk_road": "walk", "run": "run"}
 const LOCKED := ["stairs", "stairs_down", "climb"]
+const SOLE_HALF := 0.13         # m: half a sole's length (standing, the soles' middle is at the feet point)
 ## Which posed band pose stands for a clip (docs/PLANT3D.md §18.4: stand, walk A and B, sit, work, carry).
 const CLIP_POSE := {"sit": "sit", "type": "sit", "sleep": "sit", "handwheel": "work", "wrench": "work",
 	"calibrate": "work", "kneel_work": "work", "inspect": "work", "use": "work", "write": "work", "carry": "carry",
@@ -214,8 +215,8 @@ func _assign() -> void:
 		a.node.visible = true
 
 
-func _clip_of(p: Dictionary, down := false) -> String:
-	var on: String = p.get("on", "")
+func _clip_of(p: Dictionary, down := false, flat := false) -> String:
+	var on: String = "" if flat else p.get("on", "")
 	var s: float = p.get("speed", 0.0)
 	if on == "ladder":
 		return "climb"
@@ -247,7 +248,9 @@ func _skinned(delta: float) -> void:
 		# on a flight: on its treads' line, and which way (up or down), and where along it; on a ladder: how high
 		var phase := -1.0
 		var down := false
+		var flat := false               # on a flight's slope but off its treads' line: walked as on the landing
 		var on: String = p.get("on", "")
+		var size := sc
 		if treads != null and on == "stairs":
 			var fk: int = treads.on_flight(at)
 			if fk >= 0:
@@ -256,13 +259,24 @@ func _skinned(delta: float) -> void:
 				if way.length_squared() < 0.25:
 					way = Vector2(-sin(yaw), -cos(yaw))
 				down = way.dot(treads.dir) < 0.0
-				at.y = treads.mid(fk, treads.t)
-				phase = fposmod((-treads.t if down else treads.t) / (2.0 * treads.going), 1.0)
+				if not treads.on_treads(fk, treads.t):
+					at.y = treads.tread(fk, treads.t)     # (the slope's foot over the landing: on the landing)
+					flat = true
+				elif float(p.get("speed", 0.0)) <= STILL:
+					# standing still on a flight: on the highest tread under their feet (both soles level, no IK: across
+					# a nosing they stand on the upper tread, over the lower one's edge, never into the step)
+					at.y = treads.tread(fk, treads.t + SOLE_HALF)
+				else:
+					at.y = treads.mid(fk, treads.t)
+					phase = fposmod((-treads.t if down else treads.t) / (2.0 * treads.going), 1.0)
+					size = 1.0      # (the clip's steps a tread long: not scaled with the person)
 		elif treads != null and on == "ladder":
 			var lk: int = treads.on_ladder(at)
 			if lk >= 0:
 				phase = fposmod((at.y - float(treads.ladders[lk][1])) / (2.0 * rung), 1.0)
-		a.node.transform = Transform3D(Basis(Vector3.UP, yaw + PI).scaled(Vector3.ONE * sc), at)
+				yaw = float(treads.ladders[lk][3])     # facing the rungs, whichever way they came
+				size = 1.0      # (the clip's hands and feet on rungs 0.3 m apart: not scaled with the person)
+		a.node.transform = Transform3D(Basis(Vector3.UP, yaw + PI).scaled(Vector3.ONE * size), at)
 		var d := at.distance_to(cam)
 		# LOD0 within its range; taken again only KEEP inside it (no flicker at the edge)
 		var edge := float(cfg.lod0_range) - (KEEP if a.lod == 1 else 0.0)
@@ -277,7 +291,7 @@ func _skinned(delta: float) -> void:
 			l0 += 1
 		else:
 			l1 += 1
-		var clip := _clip_of(p, down)
+		var clip := _clip_of(p, down, flat)
 		if clip != a.clip:
 			var first: bool = a.clip == ""
 			a.clip = clip
@@ -375,8 +389,13 @@ func _posed() -> void:
 		var clip := _clip_of(p)
 		if treads != null and p.get("on", "") == "stairs":
 			var fk: int = treads.on_flight(at)
-			if fk >= 0:
-				at.y = treads.mid(fk, treads.t)     # (on its treads' line, as the skinned)
+			if fk >= 0:     # (as the skinned: on its treads' line, or the treads under them)
+				if not treads.on_treads(fk, treads.t):
+					at.y = treads.tread(fk, treads.t)
+				elif float(p.get("speed", 0.0)) <= STILL:
+					at.y = treads.tread(fk, treads.t + SOLE_HALF)
+				else:
+					at.y = treads.mid(fk, treads.t)
 		var pose: String
 		if clip in ["walk", "walk_road", "run", "stairs", "stairs_down", "climb"]:
 			# walk A and B in turn, 4 times a second, each person at their own moment

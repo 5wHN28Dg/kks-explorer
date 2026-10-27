@@ -2,8 +2,10 @@
 ## manifest's flights and ladders (builder/plant_builder.gd). A person on a flight is walked along the slope a walker
 ## climbs (through the treads' nosings, up to a riser above the back of a tread); app/people.gd draws them on the line
 ## through the treads' middles instead (half a riser lower: their standing foot on its tread) and plays the stairs'
-## clip locked to where they are along the flight, a step a tread (builder/people/rig.gd stair_clip()); on a ladder the
-## climbing clip is locked to their height over its foot, a rung a quarter cycle (climb_clip()).
+## clip locked to where they are along the flight, a step a tread (builder/people/rig.gd stair_clip()), from half a
+## going before its first riser to half one past its last (where that line meets the landings; standing still, on the
+## tread under them); on a ladder the climbing clip is locked to their height over its foot, two rungs a cycle
+## (climb_clip()), facing its rungs.
 ## Found by a grid of CELL metres: only the people on a flight or a ladder look (`on`), and then only its cell's.
 extends RefCounted
 
@@ -13,7 +15,7 @@ const NEAR_Y := 0.6             # metres off the slope's height that still count
 
 ## per flight: [a (plan, Godot x and z), dir (plan, unit), across (plan, unit), run, going, rise, y0, steps, half width]
 var flights: Array = []
-## per ladder: [plan (x, z), foot height, top height]
+## per ladder: [plan (x, z), foot height, top height, the climber's heading (Godot's yaw: towards the rungs)]
 var ladders: Array = []
 var _cells := {}                # Vector2i -> flights' indices
 var _ladder_cells := {}
@@ -42,7 +44,8 @@ static func of(manifest: Dictionary):
 			out._add_flight([Vector2(a.x, a.z), d, Vector2(-d.y, d.x), run, g, (b.y - a.y) / k, a.y, k, float(fl.width) * 0.5])
 	for l in manifest.get("ladders", []):
 		var f: Array = l.foot
-		out._add_ladder([Vector2(f[0], f[2]), float(f[1]), float(l.top)])
+		var fr := deg_to_rad(float(l.get("facing", 0.0)))
+		out._add_ladder([Vector2(f[0], f[2]), float(f[1]), float(l.top), atan2(-sin(fr), cos(fr))])
 	return out if not (out.flights.is_empty() and out.ladders.is_empty()) else null
 
 
@@ -115,6 +118,12 @@ func mid(k: int, tt: float) -> float:
 	var fl: Array = flights[k]
 	var g: float = fl[4]
 	return clampf(fl[6] + (tt / g + 0.5) * fl[5], fl[6], fl[6] + fl[5] * fl[7])
+
+
+## Whether `tt` along flight `k` is where its treads' line runs between the landings' levels (the stairs' clip there).
+func on_treads(k: int, tt: float) -> bool:
+	var fl: Array = flights[k]
+	return tt >= -0.5 * float(fl[4]) and tt <= float(fl[3]) + 0.5 * float(fl[4])
 
 
 ## The top of the tread under `tt` on flight `k` (the landings beyond its ends).

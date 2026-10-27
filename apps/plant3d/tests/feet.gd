@@ -16,6 +16,8 @@ var left := PackedByteArray()       # per vertex: 1 on the left foot
 var slid := 0.0                     # metres the point on the floor moved
 var covered := 0.0                  # metres the person covered meanwhile (in plan)
 var worst := 0.0                    # the most it moved over one stance
+var updates := 0                    # slide()'s calls
+var on_floor := 0                   # and those with a point of a sole on the floor
 var _foot := -1
 var _vertex := -1
 var _prev := PackedVector3Array()
@@ -111,6 +113,15 @@ func slide(pts: PackedVector3Array, body: Vector3, floor_of: Callable, on := 0.0
 	_foot = foot
 	_vertex = lo if gap <= on else -1
 	_prev = pts
+	updates += 1
+	if _vertex >= 0:
+		on_floor += 1
+
+
+## Not followed through a gap (updates left out): the next one starts again.
+func gap() -> void:
+	_vertex = -1
+	_body = Vector3.INF
 
 
 func ratio() -> float:

@@ -2001,7 +2001,8 @@ the engine and `ref/plant3d.py` are unchanged. No foot or hand IK yet: the clips
   overhead, the equipment it is on (its code's first seven characters), else whatever with a code is within 3 m;
   one, overhead with nothing beside it, keeps the way the person came. Someone standing still at a place turns to it
   (`ui/people_view.gd`). `test_staff_ways.gd` checks every place: the feet within 1 cm of the floor, the capsule
-  clear, each work place's way looking at its equipment (a ray meets it, or within 30° of its bounds).
+  clear, each work place's way looking at its equipment (a ray meets it, or within 30° of its bounds; for an
+  instrument overhead, what it is on or beside it).
 - **Feet on the floor** (`builder/people/build_people.gd` ground()): KayKit's clips on our longer legs put the walk's
   standing foot up to 13 cm through the floor, the idle's 1 cm; the build raises or lowers the hips at every key so
   that the lowest sole is on the floor (a run's only raised): within 1 cm in every clip with a foot on the floor
@@ -2011,15 +2012,22 @@ the engine and `ref/plant3d.py` are unchanged. No foot or hand IK yet: the clips
   the standing foot on its tread's middle while the body moves along the line through the treads' middles, two treads
   a cycle, the other foot lifted over the nosings, its IK corrected until the feet are within 1 mm of where the keys
   put them. The app (`app/stair_treads.gd`, from the built manifest's flights) draws someone on a flight on that line,
-  half a riser under the slope they are walked along (which runs through the nosings), and plays the clip locked to
-  where they are along the flight, a step a tread. The stepped body was the other way: without IK, a body stepped up
+  half a riser under the slope they are walked along (which runs through the nosings), from half a going before its
+  first riser to half one past its last (where the line meets the landings: beyond, on the landing, walking), and plays
+  the clip locked to where they are along the flight, a step a tread, at the clip's own size (a person's ±6 % height
+  comes back as they step off: the steps are a tread long whoever takes them). Someone standing still on a flight
+  (held back, paused) stands on the highest tread under their feet: across a nosing, on the upper tread, over the
+  lower one's edge. The stepped body was the other way: without IK, a body stepped up
   at a nosing lifts the standing foot off its tread with it, unless the clip is locked to the treads anyway; and a
   clip made for planted feet needs the body moving smoothly. The posed band, which has no clips, is drawn on the
-  same line. `test_people_feet.gd` walks three stairs up and down (their treads checked against the steps as drawn):
-  one foot on its tread within 3 mm on HRSG 1's (within 1.2 cm on the control building's, the farthest from the
-  clip's tread), no sole more than 1.4 cm inside a step, the standing foot sliding 1.6 to 8.9 % of the ground covered.
-- **Ladder**: its clip likewise, hands and feet holding rungs 0.3 m apart (a quarter cycle each), locked to the
-  height climbed over the ladder's foot: a foot on a rung and a hand at one within 1 mm.
+  same line. `test_people_feet.gd` walks three stairs up and down, from a going of landing below to one above, as the
+  tallest and the shortest (their treads checked against the steps as drawn): one foot on its tread within 1.2 cm
+  (but in the walk's and the stairs' crossfades where the line meets the landings), no sole more than 1.4 cm inside a
+  step, the standing foot sliding 3.2 to 9.0 % of the ground covered; standing still at a nosing and between, a foot
+  on its tread within 1.6 cm.
+- **Ladder**: its clip likewise, hands and feet holding rungs 0.3 m apart (each moved up two rungs in a quarter cycle,
+  the body two rungs a cycle), locked to the height climbed over the ladder's foot, at the clip's size and facing the
+  rungs whichever way the person came: a foot on a rung and a hand at one within 1 mm.
 - **Clip speeds matched** (`app/people.gd`): a walk or a run is played at the moment of its cycle that the ground the
   person has covered in plan says (`people.json` `gait`: at 240 moments of the cycle, how far the point of the sole on
   the floor has gone back under the hips), however they are moved: their way, keeping apart, catching up,
@@ -2030,7 +2038,8 @@ the engine and `ref/plant3d.py` are unchanged. No foot or hand IK yet: the clips
   ground covered; measured 6.5 % at 1.3 m/s, 10.7 % at 0.6, 6.7 % at 2.0, 8.0 % running, 9.9 % round a corner in a
   lane, 13.9 % held back and catching up, 9.4 % pushed aside, and 7.4 % for the crews' skinned walkers over their first
   minute. What is left is KayKit's walk setting a foot down still moving forward (for one update) and the crossfades
-  between standing and walking: IK's work.
+  between standing and walking: IK's work. Beyond about ×25 of fast-forward a walker covers more than the walk's
+  cycle (1.14 m) between two of its updates, and the steps shown no longer follow the ground (a blur at that speed).
 - **Phase 3's leftovers**: what is left of where someone stood beside their place as they set off is kept where the
   build measured room, round that place or beside the line (less of it where neither has: `test_people_motion.gd`, a
   post beside the way). The avatars' clips are played once at the start and the doors' grid made then: the first play

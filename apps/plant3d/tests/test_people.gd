@@ -217,6 +217,14 @@ func _bands(tree: SceneTree, info: Dictionary) -> Array:
 		return ["people: " + err]
 	ppl.camera = cam
 	ppl.set_process(false)   # stepped by hand here
+	# made at the start, not in the first frames (docs/PLANT3D.md §18.1 as built, phase 4): the doors' grid, and every
+	# pool avatar's clips played once (the first play of an AnimationPlayer builds its caches)
+	if ppl.doors._count < 0:
+		p.append("the people's door grid is made at their setup")
+	for a in ppl.avatars:
+		if (a.anim as AnimationPlayer).current_animation == "":
+			p.append("a pool avatar's clips are played once at the setup")
+			break
 	var look: String = info.looks.keys()[0]
 	ppl.people = [
 		{"at": Vector3(0, 0, -5), "yaw": 0.0, "speed": 1.4, "anim": "", "look": look, "on": ""},           # 0 walking, 5 m

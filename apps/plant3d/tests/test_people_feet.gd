@@ -28,6 +28,7 @@ const TREAD := 0.03             # m
 const SUNK := 0.02              # m
 const STAIR_SLIDE := 0.12       # of the ground covered (a stair's going is up to 3 cm off the clip's: STANCE × that)
 const RUNG_OFF := 0.03          # m
+const BLEND_GONE := 0.25        # m a person on a stair covers in app/people.gd's crossfade, and more
 const DT := 1.0 / 60.0
 const TURN := 5.0               # rad/s: ui/people_view.gd's
 const SHARE := {"skinned": 1, "skinned_range": 25.0, "lod0_range": 10.0, "anim_near": 10.0, "posed_range": 80.0,
@@ -165,8 +166,9 @@ func _level(tree: SceneTree, info: Dictionary) -> Array:
 		var name: String = c[0]
 		print("people feet: %s: the standing foot slid %.3f m over %.2f m (%.1f %%), at most %.3f m in a stance" % [
 			name, f.slid, f.covered, 100.0 * f.ratio(), f.worst])
-		if f.covered < 1.0:
-			p.append("%s: the person covered only %.2f m" % [name, f.covered])
+		if f.covered < 1.0 or f.on_floor < 0.3 * f.updates:
+			p.append("%s: the person covered only %.2f m, a sole on the floor at %d of %d updates (the check proves little)" % [
+				name, f.covered, f.on_floor, f.updates])
 		elif f.ratio() > SLIDE:
 			p.append("%s: the standing foot slid %.3f m over %.2f m (%.1f %%), %.3f m in one stance" % [name, f.slid,
 				f.covered, 100.0 * f.ratio(), f.worst])
@@ -290,6 +292,7 @@ func _stairs(tree: SceneTree, info: Dictionary, treads) -> Array:
 		for down in [false, true]:
 			var made := _people(tree, info, treads)
 			var ppl = made[2]
+			ppl.people[0]["scale"] = 1.06 if not down else 0.94     # (the tallest and the shortest)
 			var f = Feet.of(info)
 			var v := 0.42     # m/s in plan: staff.json's stair speed (0.5 m/s along the slope)
 			var t0 := -1.0 if not down else run + 1.0
@@ -307,7 +310,12 @@ func _stairs(tree: SceneTree, info: Dictionary, treads) -> Array:
 				var vel := Vector3(dir.x, 0, dir.y) * (v if not down else -v)
 				var yaw := atan2(-vel.x, -vel.z)
 				var adv := _step(ppl, made[1], Vector3(pl.x, y, pl.y), yaw, vel, on, DT)
-				if not adv or t < 0.5 * g or t > run - 0.5 * g:
+				# (the whole flight and a going of landing either side, but while the clip changes between the walk's and
+				# the stairs' where the treads' line meets the landings: a crossfade, app/people.gd BLEND)
+				if not adv:
+					continue
+				if absf(t + 0.5 * g) < BLEND_GONE or absf(t - run - 0.5 * g) < BLEND_GONE:
+					f.gap()
 					continue
 				var pts: PackedVector3Array = feet.world(ppl.avatars[0].node)
 				var tread_of := func(q: Vector3) -> float:
@@ -324,8 +332,27 @@ func _stairs(tree: SceneTree, info: Dictionary, treads) -> Array:
 						worst_sunk = into
 						worst_at = "the body %.3f m along it, the sole's point %.3f m along it, %.3f high" % [t, tq, q.y]
 				f.slide(pts, Vector3(pl.x, y, pl.y), tread_of, ON)
-			print("people feet: %s: standing foot off its tread %.3f m at worst, a sole %.3f m under a tread at worst, slid %.3f m over %.2f m (%.1f %%)" % [
-				name, worst_tread, worst_sunk, f.slid, f.covered, 100.0 * f.ratio()])
+			# standing still on the flight (held back, or paused): at a nosing and at a tread's middle
+			var still_worst := 0.0
+			for tt in [3.0 * g, 3.5 * g, 4.0 * g]:
+				var pl: Vector2 = a + dir * tt
+				var yaw := atan2(-dir.x, -dir.y) if not down else atan2(dir.x, dir.y)
+				for i in 30:
+					_step(ppl, made[1], Vector3(pl.x, StairTreads.slope(fl, tt), pl.y), yaw, Vector3.ZERO, "stairs", DT)
+				var pts: PackedVector3Array = feet.world(ppl.avatars[0].node)
+				# each foot rests on a tread: some point of its sole on the tread under it
+				var rest := [INF, INF]
+				for qi in pts.size():
+					var q: Vector3 = pts[qi]
+					var sd := 0 if feet.left[qi] == 1 else 1
+					rest[sd] = minf(rest[sd], absf(q.y - treads.tread(k, (Vector2(q.x, q.z) - a).dot(dir))))
+				still_worst = maxf(still_worst, maxf(rest[0], rest[1]))
+				for q in pts:
+					still_worst = maxf(still_worst, _into(treads, k, (Vector2(q.x, q.z) - a).dot(dir), q.y))
+			if still_worst > TREAD:
+				p.append("%s: standing still on the flight, a foot %.3f m off its tread or into a step" % [name, still_worst])
+			print("people feet: %s: standing foot off its tread %.3f m at worst, a sole %.3f m under a tread at worst, slid %.3f m over %.2f m (%.1f %%); standing still %.3f m off" % [
+				name, worst_tread, worst_sunk, f.slid, f.covered, 100.0 * f.ratio(), still_worst])
 			if worst_tread > TREAD:
 				p.append("%s: at times no foot stands on its tread (%.3f m off it)" % [name, worst_tread])
 			if worst_sunk > SUNK:
@@ -356,6 +383,9 @@ func _ladder(tree: SceneTree, info: Dictionary, treads) -> Array:
 	for down in [false, true]:
 		var made := _people(tree, info, treads)
 		var ppl = made[2]
+		ppl.people[0]["scale"] = 1.06 if not down else 0.94
+		# the way the rungs are from the ladder's foot (its heading), and the person coming at it facing away
+		var face := Vector3(-sin(float(l[3])), 0.0, -cos(float(l[3])))
 		var v := 0.3
 		var y0 := foot if not down else top
 		var y1 := top if not down else foot
@@ -370,7 +400,7 @@ func _ladder(tree: SceneTree, info: Dictionary, treads) -> Array:
 		for i in n:
 			var y := lerpf(y0, y1, float(i) / n)
 			var at := Vector3((l[0] as Vector2).x, y, (l[0] as Vector2).y)
-			if not _step(ppl, made[1], at, 0.0, Vector3.ZERO, "ladder", DT):
+			if not _step(ppl, made[1], at, float(l[3]) + PI, Vector3.ZERO, "ladder", DT):
 				continue
 			if y < foot + 2.0 * rung or y > top - 2.0 * rung:
 				continue
@@ -387,8 +417,11 @@ func _ladder(tree: SceneTree, info: Dictionary, treads) -> Array:
 			var sk2: Skeleton3D = node.get_node("Skeleton3D")
 			var hand := INF
 			for w in wrists:
-				var wy: float = (sk2.global_transform * sk2.get_bone_global_pose(w)).origin.y
-				hand = minf(hand, absf(wy - (foot + roundf((wy - foot) / rung) * rung)))
+				var wp: Vector3 = (sk2.global_transform * sk2.get_bone_global_pose(w)).origin
+				var wy: float = wp.y
+				# (at a rung in height, and at the rungs in plan: 0.25 m from the foot towards them, within 8 cm)
+				var ahead := (wp - at).dot(face)
+				hand = minf(hand, maxf(absf(wy - (foot + roundf((wy - foot) / rung) * rung)), maxf(0.0, absf(ahead - 0.27) - 0.08)))
 			worst_hand = maxf(worst_hand, hand)
 			# the foot that stands, while it stands: how far it moves up or down
 			var sy2: float = pts[lo[s_on]].y
