@@ -20,6 +20,7 @@ from harness import Harness, CODE  # noqa: E402
 from netsim import Impair  # noqa: E402
 
 SPEED = 20
+START_DELAY = 4.0      # s: a player started this late (a busy runner: test_a_player_in_the_background)
 M = 60.0 / SPEED          # real seconds per model minute
 
 OPS = [["op", "00QFA10AN001", "start", None, None], ["op", "00PGC10AP001", "start", None, None],
@@ -219,20 +220,30 @@ class Joins(Base):
         session and its person, and catches up when it is back."""
         t_end = 3 + 8 * M
         # the Wi-Fi asleep with the phone too (nothing waiting in the socket when the app is back): the link down from
-        # just before the freeze until a second after it, through the network simulator
+        # just after the player sent `away` until a second and a half after it is back, through the network simulator.
+        # The outage is set on the player's own clock once it has started (its READY): set from the simulator's start,
+        # a player that started late on a busy runner had its LAN query or its `away` inside the outage (CI, PR #277),
+        # so it never joined, or the host saw it silent, not away. It starts START_DELAY s late here on purpose.
+        up, down = Impair(), Impair()
         sim = self.h.netsim()
-        link = sim.link(9, Impair(outages=[(5.5, 19.5)]), Impair(outages=[(5.5, 19.5)]))
+        link = sim.link(9, up, down)
         sim.start()
-        # (12 s at the harness's 20× is 2,400 steps to catch up: time enough before the end)
+        # (12 s at the harness's 20× is 2,400 steps to catch up: time enough before the end; the host pauses after the
+        # player's last input, which comes START_DELAY s and its start later on the host's clock)
         self.h.host([{"t": 2, "do": "claim", "person": "a_sup"}, {"t": 3, "do": "start"}]
-                    + ends(t_end, quit_after=20, host=True))
-        self.h.join([{"t": 1.5, "do": "claim", "person": "a_ccr1"}, {"t": 6, "do": "away", "freeze": 12}]
-                    + inputs(21, t_end - 3, 3, 4) + ends(t_end + 0.5, quit_after=20), 'p1', link=link)
+                    + ends(t_end + START_DELAY + 3, quit_after=20, host=True))
+        time.sleep(START_DELAY)
+        p1 = self.h.join([{"t": 1.5, "do": "claim", "person": "a_ccr1"}, {"t": 6, "do": "away", "freeze": 12}]
+                         + inputs(21, t_end - 3, 3, 4) + ends(t_end + 0.5, quit_after=20), 'p1', link=link)
+        p1.wait_ready()
+        t = time.monotonic() - sim.t0          # the player's clock's 0 on the simulator's
+        up.outages.append((t + 6.5, t + 19.5))
+        down.outages.append((t + 6.5, t + 19.5))
         res = self.h.wait_all(120)
         self.agree(res)
         self.assertEqual(res['p1']['sending'], 0)
         self.assertGreaterEqual(res['host']['trainees'][1], 0)     # its person is still its own
-
+        self.assertNotIn('p1 has lost the connection.', res['host']['notices'])   # away, not gone
 
     def test_controls_before_the_welcome(self):
         """A claim and the app's going to the background and back, made while the player is still joining (its RSA
