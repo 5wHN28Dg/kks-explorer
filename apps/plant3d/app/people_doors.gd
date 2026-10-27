@@ -12,13 +12,15 @@ const SIDE := 0.5               # metres beyond a door's edges that someone walk
 const NEAR := 2.5               # metres in front of or behind its leaf at which it opens for someone walking at it
 const LEAD := 2.0               # seconds ahead: a faster walker's door opens this long before they reach it
 const REACH := 8.0              # metres: the farthest that is looked (LEAD at a run, and more)
-const IN := 1.0                 # metres from its leaf within which it opens for anyone walking (passing through it)
+const IN := 1.6                 # metres from its leaf within which it opens for anyone walking at its width (through it,
+                                # or turning into it)
 const TOWARDS := 0.3            # walking at a door: the cosine of the angle off its normal, at least (not along it)
 const STILL := 0.15             # m/s: slower than this is standing (app/people.gd)
 
 var _doors: Array = []          # [door, its shut transform's inverse (global), half its width and SIDE, its height]
 var _cells := {}                # Vector2i -> Array of _doors' indices
 var _count := -1
+var _sig := 0
 var _t := 0.0
 var pressed := 0                # presses made (the tests)
 
@@ -38,7 +40,12 @@ func tick(tree: SceneTree, people: Array, delta: float) -> void:
 
 ## Every person walking at or through a door presses it.
 func check(tree: SceneTree, people: Array) -> void:
-	if tree.get_node_count_in_group("doors") != _count:
+	# made again when the doors change (the interiors' come and go: two may change places with the same count)
+	var sig := 0
+	for d in tree.get_nodes_in_group("doors"):
+		sig = (sig * 31 + d.get_instance_id()) & 0x7fffffffffff
+	if sig != _sig or _count < 0:
+		_sig = sig
 		_index(tree)
 	for p in people:
 		var v: float = p.get("speed", 0.0)
@@ -48,8 +55,11 @@ func check(tree: SceneTree, people: Array) -> void:
 		var list = _cells.get(Vector2i(floori(at.x / CELL), floori(at.z / CELL)))
 		if list == null:
 			continue
-		var yaw: float = p.get("yaw", 0.0)
-		var f := Vector3(-sin(yaw), 0.0, -cos(yaw))
+		# the way they walk (`dir`, from their line), else the way they face
+		var f: Vector3 = p.get("dir", Vector3.ZERO)
+		if f.length_squared() < 0.25:
+			var yaw: float = p.get("yaw", 0.0)
+			f = Vector3(-sin(yaw), 0.0, -cos(yaw))
 		for k in list:
 			var d: Array = _doors[k]
 			if not is_instance_valid(d[0]):

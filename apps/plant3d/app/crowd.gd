@@ -19,6 +19,8 @@ const LANES_FORMAT := "walkdown-plant-crowd-lanes-1"
 const AHEAD := 22.0
 const BEHIND := 18.0
 const LANE := 0.35
+const TURN := 5.0               # radians a second a person turns at most (ui/people_view.gd's)
+const TURN_EASE := 10.0
 const WORK := ["inspect", "radio", "write", "handwheel", "calibrate", "talk", "wrench", "idle"]
 
 var people_node          # app/people.gd
@@ -108,7 +110,17 @@ func _each_frame(delta: float) -> void:
 		lane = clampf(lane, r.x, r.y) if r.x <= r.y else (r.x + r.y) * 0.5
 		p.at = line.at(s, sg * lane)
 		var face := fwd if not c.work else -right   # workers face the route
-		p.yaw = atan2(-face.x, -face.z)
+		var want := atan2(-face.x, -face.z)
+		# turned towards it at most TURN radians a second, easing in (a sharp corner turned within a few cm of the
+		# route's line would otherwise turn them in a frame); at the start and when brought round to the walker, at once
+		if not c.has("yaw") or delta <= 0.0 or absf(c.s - c.get("s_was", c.s)) > 5.0:
+			c.yaw = want
+		else:
+			var left := angle_difference(c.yaw, want)
+			c.yaw = wrapf(c.yaw + clampf(left * minf(1.0, TURN_EASE * delta), -TURN * delta, TURN * delta), -PI, PI)
+		c.s_was = c.s
+		p.yaw = c.yaw
+		p.dir = fwd if not c.work else Vector3.ZERO
 		p.speed = 0.0 if c.work else c.speed
 		p.on = "stairs" if absf(dir.y) > 0.3 * maxf(0.01, flat.length()) else ""
 		if check_road:

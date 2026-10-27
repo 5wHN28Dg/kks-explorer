@@ -21,6 +21,7 @@ const SEP := 0.7                # metres between two people's centres, kept wher
 const LANE := 0.35              # metres to the right of the line a walker keeps to
 const NEAR_DY := 1.2            # metres apart in height beyond which two people don't meet (two floors)
 const PUSH_RATE := 1.2          # m/s: aside, away from someone
+const SETTLE_RATE := 2.0        # m/s: someone setting off from beside their place onto their line
 const BACK_RATE := 0.3          # m/s: back to the lane, or to the place's point, when nobody is near
 const LAG_MAX := 1.5            # metres a walker may be drawn behind where they are
 const CATCH := 0.35             # a late walker catches up at up to this fraction faster than their line's speed
@@ -168,11 +169,12 @@ func solve(dt: float) -> void:
 		_near[i] = 0
 		fresh[i] = 0
 		var id := ids[i]
-		if kind[i] == FIXED or id < 0:
+		if id < 0:
 			pos[i] = base[i]
 			fwd[i] = Vector3.ZERO
 			speed[i] = 0.0
 			continue
+		# (the fixed too: someone getting up from a desk sets off from where they sat, not as one who jumped)
 		_grow(id)
 		var logical := base[i]
 		var jumped := _seen[id] != _frame - 1 or \
@@ -187,14 +189,19 @@ func solve(dt: float) -> void:
 			if kind[i] == WALKING:
 				_lat[id] = 0.0
 				_lag[id] = 0.0
-				_off[id] = _drawn[id] - logical
-				_off[id].y = 0.0
-			else:
-				_off[id] = _drawn[id] - logical
-				_off[id].y = 0.0
+			_off[id] = _drawn[id] - logical
+			_off[id].y = 0.0
+			if kind[i] == FIXED:
+				_off[id] = Vector3.ZERO
 		_seen[id] = _frame
 		_kind[id] = kind[i]
 		_logical[id] = logical
+		if kind[i] == FIXED:
+			pos[i] = base[i]
+			fwd[i] = Vector3.ZERO
+			speed[i] = 0.0
+			_drawn[id] = pos[i]
+			continue
 		_place(i, id)
 	# who is too near whom (along x, then the pairs that close)
 	if n > 1:
@@ -258,7 +265,7 @@ func solve(dt: float) -> void:
 			var l = lines[i]
 			var prog: float = s_at[i] if sgn[i] > 0.0 else l.length - s_at[i]
 			_lag[id] = clampf(_lag[id], 0.0, minf(LAG_MAX, minf(prog, 0.5 * (l.length - prog))))
-			_off[id] = _off[id].move_toward(Vector3.ZERO, PUSH_RATE * dt)
+			_off[id] = _off[id].move_toward(Vector3.ZERO, SETTLE_RATE * dt)
 			_place(i, id)
 			speed[i] = maxf(0.0, v - (_lag[id] - lag0) / dt) if dt > 0.0 else v
 		else:

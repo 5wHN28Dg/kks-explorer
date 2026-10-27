@@ -292,6 +292,8 @@ func drive(delta: float) -> void:
 		var role: String = sm.people[pi]["role"]
 		p.at = at
 		p.yaw = _yaw.get(pi, 0.0)
+		# the way they walk (the doors open by it: app/people_doors.gd; their heading trails it round a corner)
+		p.dir = apart.fwd[i] if _line[i] == 1 else Vector3(_d[i].x, 0.0, _d[i].z).normalized()
 		p.speed = speed
 		p.on = _on[i]
 		if _look0 == null:
@@ -365,3 +367,8 @@ static func hat_on(e, sm, pi: int) -> bool:
 		if zm & (1 << z) and (sm.zone_ppe[z] & helmet) != 0:
 			return true
 	return false
+
+
+## Where the engine has person `pi` this frame, as app/keep_apart.gd took it (the tests: did they jump?).
+func _logical_of(pi: int) -> Vector3:
+	return apart._logical[pi] if pi < apart._logical.size() else Vector3.INF

@@ -13,9 +13,14 @@ const Lanes = preload("res://app/lanes.gd")
 const StaffPaths = preload("res://builder/staff_paths.gd")
 const KeepApart = preload("res://app/keep_apart.gd")
 
-## The walker's 0.3 m and 8 cm: a person between two samples (up to 5 cm along from one) with the room between them
-## (up to 5 cm off either's at K) stays clear at 0.3 m: √(0.05² + 0.05²) < 0.08.
-const RADIUS := 0.38
+## The walker's 0.3 m and 9 cm: a person between two samples (up to 5 cm along from one) with the room between them
+## (up to 5 cm off either's at K), where the line's side turns (up to ARC between two samples, at most half of it to
+## the nearer) stays clear at 0.3 m: √(0.05² + 0.05² + 0.04²) < 0.09.
+const RADIUS := 0.39
+## Where the line turns, the room is at most ARC over the turn between two samples (radians): someone off the line
+## sweeps an arc as its side turns, and between two samples it is at most ARC long (a corner turned within a few cm
+## leaves no room: people go round it on the line).
+const ARC := 0.08
 const MAX := 0.9                # metres looked for on either side of a line
 const K := 1.0                  # metres the room may change by per metre along the line
 const FLOOR_STEP := 0.05
@@ -183,6 +188,11 @@ func line(l, taper: bool) -> PackedByteArray:
 		var base := c + side * b
 		hi[j] = b + room(base, side, MAX - b, y0, mesh)
 		lo[j] = b - room(base, -side, MAX + b, y0, mesh)
+		var turn := maxf(absf(wrapf(l.heading(minf(s + Lanes.STEP, l.length)) - l.heading(s), -PI, PI)),
+				absf(wrapf(l.heading(s) - l.heading(maxf(s - Lanes.STEP, 0.0)), -PI, PI)))
+		if turn > 1e-4:
+			hi[j] = minf(hi[j], ARC / turn)
+			lo[j] = maxf(lo[j], -ARC / turn)
 		if taper:
 			var e := K * minf(s, l.length - s)
 			hi[j] = minf(hi[j], e)

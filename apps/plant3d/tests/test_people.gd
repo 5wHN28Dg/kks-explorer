@@ -80,7 +80,7 @@ func _crowd(tree: SceneTree) -> Array:
 			# (a corner: the lane's side turns over 1 m of the route, so its outer edge goes up to 1 + 0.85 π / 2 m)
 			if moved > 2.5 * v / 60.0 + 0.005 and moved < 5.0:    # (5 m and more: brought back round to the walker)
 				jumps += 1
-			if moved < 5.0 and absf(angle_difference(last_yaw[k], q.yaw)) > 1.6 * v / 60.0 + 1e-3:
+			if moved < 5.0 and absf(angle_difference(last_yaw[k], q.yaw)) > c.TURN / 60.0 + 1e-4:
 				turns += 1
 			last[k] = q.at
 			last_yaw[k] = q.yaw
@@ -104,7 +104,7 @@ func _crowd(tree: SceneTree) -> Array:
 	if jumps > 0:
 		p.append("the crowd's people jumped %d times (more than their lane's corner allows in a frame)" % jumps)
 	if turns > 0:
-		p.append("the crowd's people turned faster than their corners %d times" % turns)
+		p.append("the crowd's people turned faster than %.1f rad/s %d times" % [c.TURN, turns])
 	if lanes_used < 0.3:
 		p.append("the crowd walks on the route, not in its lanes beside it (%.2f m at most)" % lanes_used)
 	# the staff's view (ui/people_view.gd) in a run without staff leaves the crowd's people alone

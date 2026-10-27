@@ -37,7 +37,8 @@ const SAMPLE := 0.1         # m between the points of a line checked
 const RADIUS := 0.3         # m: the walker's capsule (app/player.gd)
 const FEET := 0.05          # m: the feet off what is under them
 const LENGTH := 0.1         # a line's length off its way's, at most (and 5 cm)
-const OFFSET_STEP := 0.05   # m between the points checked beside a line (the room's samples and half way between)
+const OFFSET_STEP := 0.05   # m between the points checked beside a line (the room's samples and half way between),
+                            # nearer where its side turns: no drawn point more than this from the last checked
 const SIDE_FEET := 0.1      # m: the floor beside a line off the one under it, at most (the build keeps 8 cm)
 
 
@@ -216,9 +217,8 @@ static func check_room(l, space: PhysicsDirectSpaceState3D, skip: Array[RID], la
 	var lanes: Array = [lane, -lane]
 	for m in more:
 		lanes.append_array([m, -m])
-	var n := ceili(l.length / OFFSET_STEP)
-	for i in n + 1:
-		var s := minf(i * OFFSET_STEP, l.length)
+	var s := 0.0
+	while true:
 		var r: Vector2 = l.room_at(s)
 		if r.x > r.y + 1e-4:
 			out.append("its room at %.2f m is the wrong way round (%s)" % [s, str(r)])
@@ -247,6 +247,14 @@ static func check_room(l, space: PhysicsDirectSpaceState3D, skip: Array[RID], la
 				if bad <= 6:
 					out.append(problem)
 				break
+		if s >= l.length:
+			break
+		# the next point OFFSET_STEP on, or nearer where the side turns: no drawn point moves more than OFFSET_STEP
+		var widest := maxf(absf(r.x), absf(r.y))
+		for w in lanes:
+			widest = maxf(widest, minf(absf(w), maxf(absf(r.x), absf(r.y))))
+		var rate := absf(wrapf(l.heading(minf(s + 0.01, l.length)) - l.heading(s), -PI, PI)) / 0.01
+		s = minf(s + maxf(0.002, OFFSET_STEP / (1.0 + widest * rate)), l.length)
 	if bad > 6:
 		out.append("… %d more points" % (bad - 6))
 	return [out, checked]

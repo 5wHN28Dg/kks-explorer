@@ -184,6 +184,9 @@ func _crews(tree: SceneTree) -> Array:
 	var turned := 0
 	var turns: Array = []
 	var jumps: Array = []
+	var fresh: Array = []
+	var seen := {}
+	var logical := {}
 	var hits: Array = []
 	var walking := 0
 	var close := 0
@@ -200,6 +203,13 @@ func _crews(tree: SceneTree) -> Array:
 			var pi: int = pv.drawn[k]
 			var q_at: Vector3 = ppl[k].at
 			var y: float = ppl[k].yaw
+			# set at once (not turned to) only when new or jumped: never for someone drawn the frame before who has
+			# not jumped in the engine (getting up from a seat, setting off from a place, a walk without a line)
+			if pv.drawn_fresh[k] == 1 and seen.get(pi, -1) == f - 1 and \
+					(pv._logical_of(pi) - logical.get(pi, Vector3.INF)).length() < 2.0 and fresh.size() < 5:
+				fresh.append("person %d's heading was set, not turned to, at %s" % [pi, str(q_at)])
+			seen[pi] = f
+			logical[pi] = pv._logical_of(pi)
 			if pv.drawn_fresh[k] == 0 and yaw.has(pi):
 				var d := absf(angle_difference(yaw[pi], y))
 				if d > PeopleView.TURN * DT + 1e-4 and turns.size() < 5:
@@ -220,7 +230,7 @@ func _crews(tree: SceneTree) -> Array:
 				check = place_clear[pl] and q_at.distance_to(pv._at[pl]) > 0.01
 			if kind == KeepApart.WALKING:
 				walking += 1
-			if check and f % 6 == 0 and _hits(space, q, q_at) and hits.size() < 8:
+			if check and _hits(space, q, q_at) and hits.size() < 8:
 				hits.append("person %d drawn at %s (%s): the capsule touches %s" % [pi, str(q_at),
 						"walking" if kind == KeepApart.WALKING else "standing aside",
 						str(space.intersect_shape(q, 1)[0].collider.get_parent().name)])
@@ -231,6 +241,7 @@ func _crews(tree: SceneTree) -> Array:
 	print("people motion: crews: %d walker-frames, %d turning, %d person-frames within 0.4 m of another" % [walking, turned, close])
 	p.append_array(turns)
 	p.append_array(jumps)
+	p.append_array(fresh)
 	p.append_array(hits)
 	if walking < 2000:
 		p.append("only %d walker-frames in the shift's start: the check proves little" % walking)
@@ -254,15 +265,23 @@ static func _doors(tree: SceneTree, main) -> Array:
 		var shut: Transform3D = par.global_transform * door.closed_xf
 		var z: Vector3 = shut.basis.z.normalized()
 		var bad := ""
+		# through its middle, and as far to either side as the room beside a line through it allows (the jambs and the
+		# build's 0.39 m capsule: builder/lane_room.gd)
+		var aside := maxf(0.0, float(door.width) * 0.5 - 0.39)
 		for v in [1.3, 3.2]:
 			for side in [1.0, -1.0]:
 				for phase in [0.0, 0.24]:
-					if bad == "":
-						bad = _through(tree, door, shut, z * side, v, phase)
+					for x in [0.0, aside, -aside]:
+						if bad == "":
+							bad = _through(tree, door, shut, z * side, v, phase, shut.basis.x.normalized() * x)
+		# round a corner 1.5 m before it, their heading still along the first leg (it trails: ui/people_view.gd)
+		for side in [1.0, -1.0]:
+			if bad == "":
+				bad = _corner(tree, door, shut, z * side)
 		if bad != "":
 			out.append("door %s: %s" % [door.name, bad])
-		# walking away from it from just beyond its leaf, and past it 3 m in front: shut
-		for w in [[shut.origin - z * 1.2, -z], [shut.origin + z * 3.0 - shut.basis.x * 4.0, shut.basis.x]]:
+		# walking away from it from 2 m beyond its leaf, and past it 3 m in front: shut
+		for w in [[shut.origin - z * 2.0, -z], [shut.origin + z * 3.0 - shut.basis.x * 4.0, shut.basis.x]]:
 			var pd := PeopleDoors.new()
 			var o: Vector3 = w[0]
 			var dir: Vector3 = w[1]
@@ -279,29 +298,61 @@ static func _doors(tree: SceneTree, main) -> Array:
 	return out
 
 
-## Someone walking along `dir` through `door` (its shut transform `shut`) at `v` m/s from 6 m before its leaf to 1.5 m
-## beyond, the door checked by app/people_doors.gd from `phase` s in: "" or what went wrong.
-static func _through(tree: SceneTree, door, shut: Transform3D, dir: Vector3, v: float, phase: float) -> String:
-	var pd := PeopleDoors.new(phase)
-	var from := shut.origin - dir * 6.0
+## Someone walking along the door's leaf 1.5 m before it, then turning through it along `dir`, facing along the first
+## leg all the time: "" or what went wrong.
+static func _corner(tree: SceneTree, door, shut: Transform3D, dir: Vector3) -> String:
+	var pd := PeopleDoors.new(0.24)
+	var across: Vector3 = shut.basis.x.normalized()
+	var turn := shut.origin - dir * 1.5
+	var path := [[turn - across * 4.0, turn], [turn, shut.origin + dir * 1.5]]
 	var inv := shut.affine_inverse()
+	var out := ""
+	for leg in path:
+		var a: Vector3 = leg[0]
+		var b: Vector3 = leg[1]
+		var d := (b - a).normalized()
+		for f in int(a.distance_to(b) / 1.3 / DT):
+			var at := a + d * (1.3 * f * DT)
+			pd.tick(tree, [{"at": at, "speed": 1.3, "yaw": atan2(-across.x, -across.z), "dir": d}], DT)
+			door._physics_process(DT)
+			if out == "" and _touches(door, inv * at):
+				out = "its leaf (open %.2f) touches someone who turned through it at a walk" % door.openness
+	door.openness = 0.0
+	door.hold = 0.0
+	door.transform = door.closed_xf
+	return out
+
+
+## Whether the door's leaf where it is now (app/door.gd: slid aside along its width, or a roller up by its height)
+## touches someone at `lp` (in the shut door's frame, the feet), their capsule RADIUS from 0.4 to 1.8 m up.
+static func _touches(door, lp: Vector3) -> bool:
 	var w: float = door.width
 	var h: float = door.height
+	var off_x: float = 0.0 if door.kind == "roller" else door.openness * w
+	var off_y: float = door.openness * h if door.kind == "roller" else 0.0
+	var dx := maxf(0.0, absf(lp.x - off_x) - w * 0.5)
+	var dz := maxf(0.0, absf(lp.z) - 0.04)
+	var dy := maxf(0.0, maxf(off_y - 1.8, 0.4 - (off_y + h)))
+	return Vector3(dx, dy, dz).length() < RADIUS
+
+
+## Someone walking along `dir` through `door` (its shut transform `shut`) at `v` m/s from 6 m before its leaf to 1.5 m
+## beyond, the door checked by app/people_doors.gd from `phase` s in: "" or what went wrong.
+static func _through(tree: SceneTree, door, shut: Transform3D, dir: Vector3, v: float, phase: float,
+		aside: Vector3) -> String:
+	var pd := PeopleDoors.new(phase)
+	var from := shut.origin - dir * 6.0 + aside
+	var inv := shut.affine_inverse()
 	var out := ""
 	var steps := int(7.5 / v / DT)
 	for f in steps:
 		var at := from + dir * (v * f * DT)
-		pd.tick(tree, [{"at": at, "speed": v, "yaw": atan2(-dir.x, -dir.z)}], DT)
+		pd.tick(tree, [{"at": at, "speed": v, "yaw": atan2(-dir.x, -dir.z), "dir": dir}], DT)
 		door._physics_process(DT)
-		# the leaf where it is now (app/door.gd): slid aside along its width, or a roller up by its height
-		var off_x: float = 0.0 if door.kind == "roller" else door.openness * w
-		var off_y: float = door.openness * h if door.kind == "roller" else 0.0
 		var lp := inv * at
-		var dx := maxf(0.0, absf(lp.x - off_x) - w * 0.5)
-		var dz := maxf(0.0, absf(lp.z) - 0.04)
-		var dy := maxf(0.0, maxf(off_y - 1.8, 0.4 - (off_y + h)))
-		if Vector3(dx, dy, dz).length() < RADIUS:
-			out = "its leaf (open %.2f) touches someone walking through it at %.1f m/s, %.2f m from it" % [door.openness, v, lp.z]
+		if _touches(door, lp):
+			out = "its leaf (open %.2f) touches someone walking through it at %.1f m/s, %.2f m from it, %.2f m off its middle" % [
+					door.openness, v, lp.z, lp.x]
 			break
 	door.openness = 0.0
 	door.hold = 0.0
