@@ -185,7 +185,7 @@ func check(p: Dictionary) -> String:
 
 ## What the app indexes with inside the engine's state (the generic check sees only fields, types and lengths): a
 ## file whose hash matches but whose contents were changed must not break the session. "" when it fits.
-func _engine_contents(fresh, d: Dictionary) -> String:
+static func _engine_contents(fresh, d: Dictionary) -> String:
 	if d.get("step_no", 0) < 0:
 		return "a negative step"
 	if d.has("mstate"):

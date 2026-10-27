@@ -38,12 +38,15 @@ var model_ms_per_s := 0.0       # wall time the model took in the last second (m
 var _win_steps := 0
 var _win_us := 0
 var _win_t := 0.0
+## a multiplayer session runs the steps (net/session.gd: only committed steps, MULTIPLAYER.md §3.1): this clock then
+## never steps by itself, and its speed shows the session's
+var driven := false
 
 
-func start(m, scenario_id: String) -> void:
+func start(m, scenario_id: String, session := false) -> void:
 	model = m
 	scenario = scenario_id
-	engine = PlantEngine.new(m, scenario_id)
+	engine = PlantEngine.new(m, scenario_id, session)
 	engine.timing = Cost.on         # (a measured walk: step 9's own time, read and cleared after each step)
 	acc = 0.0
 	_calibrate()
@@ -119,6 +122,11 @@ func run_steps(n: int) -> int:
 	return done
 
 
+## One step now (a session's committed step), with everything that follows a step.
+func step_one() -> void:
+	_one()
+
+
 func _one() -> void:
 	var t0 := Time.get_ticks_usec()
 	engine.step()
@@ -147,7 +155,7 @@ func _process(delta: float) -> void:
 		_win_t = 0.0
 		_win_steps = 0
 		_win_us = 0
-	if engine == null or speed == Speed.PAUSED:
+	if engine == null or speed == Speed.PAUSED or driven:
 		return
 	delta = minf(delta, max_frame)
 	acc += delta * rate()
