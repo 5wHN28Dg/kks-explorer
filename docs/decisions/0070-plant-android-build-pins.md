@@ -26,7 +26,7 @@ OSV database on 2026-10-27, [V] verified here.
 ## Choice
 
 - `apps/plant3d/android-gradle-pins.gradle`: the fixed versions (raised only, never lowered; netty's and protobuf's
-  modules together), every configuration locked in STRICT mode. `build.sh` copies it into the template and applies
+  modules together), every configuration Gradle can lock locked in STRICT mode. `build.sh` copies it into the template and applies
   it from `settings.gradle`.
 - The lockfiles live in `apps/plant3d/android-locks/` (the template's paths), which `build.sh` copies into the template
   before each export; a configuration missing from them fails the build. The required `dependencies` check scans

@@ -319,7 +319,7 @@ exported unsigned and signed afterwards with `apksigner` (Android SDK build-tool
 the key never reaches Gradle; every APK is checked for the intent filter (`aapt2`). Every build dependency Gradle
 resolves is checked against `android-gradle-verification.xml` (0056). The build tools that have published advisories
 are raised to fixed versions by `android-gradle-pins.gradle`, which `build.sh` applies from the template's
-`settings.gradle`; every configuration is locked by the lockfiles in `android-locks/`, which the required dependency
+`settings.gradle`; every configuration Gradle can lock is locked, with a locked mirror of lint's and aapt2's detached ones, by the lockfiles in `android-locks/`, which the required dependency
 check scans (decision 0070). `PLANT_GRADLE_WRITE_VERIFICATION=1 build.sh export android-debug android-release` with an
 empty `GRADLE_USER_HOME` records the verification file and the lockfiles again. On the desktops a link opens a second
 instance when the app already runs.

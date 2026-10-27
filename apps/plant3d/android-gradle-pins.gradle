@@ -86,6 +86,6 @@ gradle.allprojects { Project p ->
         }
         p.dependencies.add(c.name, "com.android.tools.lint:lint-gradle:$lint")
         p.dependencies.add(c.name, "com.android.tools.build:aapt2:$agp-${props.getProperty('aapt2Version')}")
-        p.afterEvaluate { c.incoming.resolutionResult.root }
+        p.afterEvaluate { c.resolvedConfiguration.rethrowFailure() }   // the graph only; a lock mismatch fails here
     }
 }
