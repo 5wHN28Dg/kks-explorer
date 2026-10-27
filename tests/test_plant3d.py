@@ -1568,6 +1568,15 @@ class SideBySide(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'run 2 differs'):
             G.side_by_side(fn, 4, procs=2)
 
+    def test_a_killed_worker_is_an_error_not_a_hang(self):
+        """A worker killed by the system (out of memory) fails the call: a multiprocessing.Pool waited for ever."""
+        code = ('import os, signal, sys; sys.path.insert(0, sys.argv[1]); from ref import make_plant3d_vectors as G\n'
+                'G.side_by_side(lambda i: os.kill(os.getpid(), signal.SIGKILL) if i == 1 else i, 3, procs=2)')
+        import subprocess
+        r = subprocess.run([sys.executable, '-c', code, ROOT], capture_output=True, text=True, timeout=120)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('BrokenProcessPool', r.stderr)
+
     def test_jobs(self):
         old = os.environ.get('KKS_REF_JOBS')
         try:

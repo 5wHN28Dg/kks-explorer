@@ -44,11 +44,14 @@ def side_by_side(fn, n, cost=None, procs=None):
     if procs <= 1 or n <= 1:
         return [fn(i) for i in range(n)]
     import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
     order = sorted(range(n), key=lambda i: -cost(i)) if cost else list(range(n))
     _SIDE.append(fn)
     try:
-        with multiprocessing.get_context('fork').Pool(min(procs, n)) as pool:
-            made = dict(zip(order, pool.map(_side, order, chunksize=1)))
+        # (a ProcessPoolExecutor, not a Pool: a worker killed by the system, out of memory, makes it raise
+        # BrokenProcessPool where a Pool would wait for its result for ever)
+        with ProcessPoolExecutor(min(procs, n), mp_context=multiprocessing.get_context('fork')) as pool:
+            made = dict(zip(order, pool.map(_side, order)))
     finally:
         _SIDE.pop()
     return [made[i] for i in range(n)]

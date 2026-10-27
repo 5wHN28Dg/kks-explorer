@@ -347,18 +347,15 @@ class GdscriptEngine(unittest.TestCase):
         with open(out, 'w', encoding='utf-8') as fo, open(err, 'w', encoding='utf-8') as fe:
             proc = subprocess.Popen(args, stdout=fo, stderr=fe, cwd=REPO)
             try:
-                cls.ref, cls.ref_error = reference_runs(cls.V, V2=cls.V2, jobs=G.jobs()), None
-            except Exception as x:          # (test_every_value_bit_for_bit's failure, not every test's)
-                cls.ref, cls.ref_error = None, x
-            except BaseException:           # (interrupted: Godot is not left running)
-                proc.kill()
-                proc.wait()
-                raise
-            try:
+                try:
+                    cls.ref, cls.ref_error = reference_runs(cls.V, V2=cls.V2, jobs=G.jobs()), None
+                except Exception as x:          # (test_every_value_bit_for_bit's failure, not every test's)
+                    cls.ref, cls.ref_error = None, x
                 code = proc.wait(timeout=max(0.0, deadline - time.monotonic()))
-            except subprocess.TimeoutExpired:
+            except BaseException:               # timed out or interrupted: Godot is not left running
                 proc.kill()
                 proc.wait()
+                cls.tmp.cleanup()
                 raise
         with open(out, encoding='utf-8') as fo, open(err, encoding='utf-8') as fe:
             cls.result = subprocess.CompletedProcess(args, code, fo.read(), fe.read())
