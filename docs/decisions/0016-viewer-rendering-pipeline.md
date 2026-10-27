@@ -8,7 +8,7 @@ laptop?
 **Setup:** same sheets and path data as 0015; off-screen frames; median of 5 after 2 warm-up frames.
 - Laptop: i7-12700H with Iris Xe, GTK 4.22 (GSK OpenGL, Vulkan and Cairo renderers), `tools/m6/gsk_bench.py`.
 - Phone: Galaxy Note 9, Android 10; `HardwareRenderer` + `RenderNode` vs a software Canvas on a Bitmap,
-  `tools/m6/android-bench`.
+  `tools/m6/android-bench` (removed 2026-10-27; in git history at 0aae63fccb).
 
 The GPU times include finishing the frame and reading it back. On a screen there is no read-back, but the frame
 still has to finish. On the laptop, "record" (building the node tree) runs in Python and would be faster in compiled
@@ -62,5 +62,5 @@ GPU pictures match (phone GPU vs PdfRenderer at 4×: 0.06–0.13 % of pixels dif
 - on Windows once it can be measured;
 - if devices change: re-run `tools/m6` on the new ones.
 
-Sources: tools/m6/gsk_bench.py, tools/m6/grid_bench.py (`TILE=` sets the frame size), tools/m6/android-bench
+Sources: tools/m6/gsk_bench.py, tools/m6/grid_bench.py (`TILE=` sets the frame size), tools/m6/android-bench (removed 2026-10-27; in git history at 0aae63fccb)
 (`adb shell am start -n kks.bench/.Bench --ei tile 1440`); docs/decisions/0015-drawing-format.md
