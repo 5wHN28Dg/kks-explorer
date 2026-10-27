@@ -98,6 +98,11 @@ var ff_choice := FF_MAX                 # the host's own choice of fast-forward 
 
 var _rsa: CryptoKey                     # this process's RSA key (§1.3), made once
 var _rsa_thread: Thread
+## The join's other slow parts, made on a thread of their own when it starts (MP2's follow-up: on the Note 9 the
+## device's addresses took 6 ms of a frame and the hello's public key and saved token 2 ms): {addrs, token}
+var _prep_thread: Thread
+var _prep := {}
+var _save_jobs: Array = []              # the rejoin token written on a worker thread (task ids)
 var rsa_ms := -1.0                      # its generation's time (measured on the Note 9, §13)
 var _udp: Udp
 var _disc: Udp                          # the host's discovery socket; a joiner's query socket
@@ -220,12 +225,15 @@ func _init() -> void:
 ## Makes this process's RSA key on a worker thread (§1.3: when the join or host screen opens).
 static var _proc_rsa: CryptoKey          # this process's RSA key, made once (§1.3)
 static var _proc_rsa_ms := -1.0
+static var _proc_rsa_pem := ""
+var _rsa_pem := ""
 
 
 func prepare_key() -> void:
 	if _rsa == null and _proc_rsa != null:
 		_rsa = _proc_rsa
 		rsa_ms = _proc_rsa_ms
+		_rsa_pem = _proc_rsa_pem
 	if _rsa != null or _rsa_thread != null:
 		return
 	_rsa_thread = Thread.new()
@@ -235,7 +243,10 @@ func prepare_key() -> void:
 func _make_rsa() -> Array:
 	var t0 := Time.get_ticks_usec()
 	var k := Crypt.crypto().generate_rsa(2048)
-	return [k, (Time.get_ticks_usec() - t0) / 1000.0]
+	var ms := (Time.get_ticks_usec() - t0) / 1000.0
+	if record_threads:
+		_record_thread("public key")
+	return [k, ms, k.save_to_string(true)]      # (the hello's public key, encoded here too: 2 ms on the Note 9)
 
 
 func _key_ready() -> bool:
@@ -249,8 +260,10 @@ func _key_ready() -> bool:
 	_rsa_thread = null
 	_rsa = r[0]
 	rsa_ms = r[1]
+	_rsa_pem = r[2]
 	_proc_rsa = _rsa
 	_proc_rsa_ms = rsa_ms
+	_proc_rsa_pem = _rsa_pem
 	return true
 
 
@@ -330,8 +343,36 @@ func join(code_text: String, address := "") -> String:
 	_query_t = -1.0
 	_query_rand = Crypt.random_bytes(8)
 	prepare_key()
+	_prep = {}
+	_prep_thread = Thread.new()
+	_prep_thread.start(_prepare_join.bind(code, address == ""))
 	changed.emit()
 	return ""
+
+
+## (on _prep_thread) the device's broadcast addresses (a LAN query without an address) and the saved rejoin token.
+func _prepare_join(for_code: String, want_addrs: bool) -> Dictionary:
+	if record_threads:
+		_record_thread("prepare")
+	return {"addrs": broadcast_addresses() if want_addrs else [], "token": _saved_token_of(for_code)}
+
+
+## The join's preparation, once its thread is done (false until then; the frame never waits for it).
+func _prep_ready() -> bool:
+	if not _prep.is_empty():
+		return true
+	if _prep_thread == null or _prep_thread.is_alive():
+		return false
+	_prep = _prep_thread.wait_to_finish()
+	_prep_thread = null
+	return true
+
+
+## Tests: the threads the join's slow parts ran on (main or worker), by name.
+static var record_threads := false
+static var threads_seen := {}
+static func _record_thread(what: String) -> void:
+	threads_seen[what] = "main" if OS.get_thread_caller_id() == OS.get_main_thread_id() else "worker"
 
 
 ## Leaves the session (a player) or ends it (the host). The players keep a copy of the run (§7.4).
@@ -395,6 +436,12 @@ func _exit_tree() -> void:
 	if _rsa_thread != null:
 		_rsa_thread.wait_to_finish()
 		_rsa_thread = null
+	if _prep_thread != null:
+		_prep_thread.wait_to_finish()
+		_prep_thread = null
+	for id in _save_jobs:
+		WorkerThreadPool.wait_for_task_completion(id)
+	_save_jobs.clear()
 	for id in _snap_jobs:
 		WorkerThreadPool.wait_for_task_completion(id)
 
@@ -2096,7 +2143,7 @@ func _query() -> void:
 	if _now > _query_until:
 		_end("No session with that code answered on this network. If the network keeps devices apart, type the host's address.")
 		return
-	if _now - _query_t < QUERY_EVERY:
+	if _now - _query_t < QUERY_EVERY or not _prep_ready():
 		return
 	_query_t = _now
 	var q := "WDPQ".to_ascii_buffer()
@@ -2111,13 +2158,15 @@ func _query() -> void:
 			port = _query_to.substr(_query_to.rfind(":") + 1).to_int()
 		_disc.send(ip, port, q)
 		return
-	for a in broadcast_addresses():
+	for a in _prep["addrs"]:
 		_disc.send(a, discovery_port, q)
 
 
 ## 255.255.255.255 and, for each IPv4 address of this device, its /24's broadcast address (Godot gives no netmask: a
 ## Wi-Fi's /24 is the common case; a typed address covers the rest).
 static func broadcast_addresses() -> Array:
+	if record_threads:
+		_record_thread("addresses")
 	var out := ["255.255.255.255"]
 	for a in IP.get_local_addresses():
 		var parts: PackedStringArray = a.split(".")
@@ -2164,12 +2213,12 @@ func _on_discovery(b: PackedByteArray, ip: String, port: int) -> void:
 func _hello() -> void:
 	if _now - _hello_t < HELLO_EVERY:
 		return
-	if not _key_ready():
+	if not _key_ready() or not _prep_ready():
 		return
 	_hello_t = _now
 	if _hello_json.is_empty():
-		var tok = _saved_token()
-		var hi := {"name": display_name, "rsa": _rsa.save_to_string(true), "app": RunSave.app_version(),
+		var tok: PackedByteArray = _tokens.get(code, _prep["token"])
+		var hi := {"name": display_name, "rsa": _rsa_pem, "app": RunSave.app_version(),
 				"content": content, "token": Marshalls.raw_to_base64(tok) if not tok.is_empty() else null}
 		_hello_json = JSON.stringify(hi).to_utf8_buffer()
 	_send_k_to(host_ip, host_port, Wire.NOBODY, [Wire.msg(Wire.Kind.HELLO, _hello_json)], Wire.NOBODY)
@@ -2185,18 +2234,35 @@ static var _tokens := {}                # code -> token, while the app runs
 
 func _save_token() -> void:
 	_tokens[code] = _token
+	# (the file on a worker thread: a write to storage took a frame's ms on the Note 9 at the welcome)
+	_save_jobs.append(WorkerThreadPool.add_task(_write_token.bind(JSON.stringify(
+			{"code": code, "token": Marshalls.raw_to_base64(_token)}))))
+
+
+static func _write_token(text: String) -> void:
+	if record_threads:
+		_record_thread("token file")
+	_token_mutex.lock()                 # (two welcomes' writes one after the other)
 	var f := FileAccess.open(SESSION_FILE, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"code": code, "token": Marshalls.raw_to_base64(_token)}))
+		f.store_string(text)
 		f.close()
+	_token_mutex.unlock()
+
+
+static var _token_mutex := Mutex.new()
 
 
 func _saved_token() -> PackedByteArray:
-	if _tokens.has(code):
-		return _tokens[code]
+	return _saved_token_of(code)
+
+
+static func _saved_token_of(for_code: String) -> PackedByteArray:
+	if _tokens.has(for_code):
+		return _tokens[for_code]
 	if FileAccess.file_exists(SESSION_FILE):
 		var r := JsonStrict.parse_text(FileAccess.get_file_as_string(SESSION_FILE))
-		if r.get("ok", false) and typeof(r["value"]) == TYPE_DICTIONARY and r["value"].get("code") == code \
+		if r.get("ok", false) and typeof(r["value"]) == TYPE_DICTIONARY and r["value"].get("code") == for_code \
 				and typeof(r["value"].get("token")) == TYPE_STRING:
 			return Marshalls.base64_to_raw(r["value"]["token"])
 	return PackedByteArray()
