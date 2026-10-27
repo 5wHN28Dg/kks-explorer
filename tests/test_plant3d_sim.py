@@ -8,7 +8,8 @@ the pinned Godot (decision 0041) headless:
 - its strict JSON reader reads every number as Python's float() does (the content's, the vectors', and hard cases:
   halfway points, subnormals, the largest double, long decimals) and passes the strict JSON vectors (v2-json.json).
 Needs the Godot editor (KKS_GODOT, else the path tools/plant3d/bench/fetch_godot.sh installs it to); skipped without,
-unless KKS_REQUIRE_GODOT=1 (CI), where a missing Godot fails.
+unless KKS_REQUIRE_GODOT=1 (CI), where a missing Godot fails. The reference's runs are made while Godot runs, side by
+side in up to 4 processes (KKS_REF_JOBS=N for N; 1: one after the other).
   .venv/bin/python -m unittest tests.test_plant3d_sim"""
 import copy, hashlib, json, os, random, struct, subprocess, sys, tempfile, time, unittest
 
