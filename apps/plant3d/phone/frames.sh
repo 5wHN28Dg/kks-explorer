@@ -234,6 +234,6 @@ if [ -s "$OUT/frames.csv" ] && [ -n "$ff" ]; then
     $c["t_ms"] > ff + 5000 { p += $c["surf_pipes"] + $c["spec_pipes"]
       if ($c["frame_ms"] > 100) printf "PROBE frame %.1f ms at +%.1f s: gpu %.1f ms, draw %.1f ms, scripts %.1f ms, physics %.1f ms, %d draws, events [%s]\n",
         $c["frame_ms"], ($c["t_ms"] - ff) / 1000, $c["gpu_ms"], $c["draw_ms"], $c["proc_ms"], $c["phys_ms"], $c["draws"], $c["events"] }
-    END { printf "PROBE pipelines compiled after the first 5 s: %d\n", p }' "$OUT/frames.csv" | tee "$OUT/probe_summary.txt"
+    END { printf "PROBE pipelines compiled after the first 5 s: %d (PROBE lines: every frame, fast-forward'"'"'s too: not the rule)\n", p }' "$OUT/frames.csv" | tee "$OUT/probe_summary.txt"
 fi
 echo "results: $OUT"

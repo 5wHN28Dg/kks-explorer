@@ -53,7 +53,10 @@ func _walk(tree: SceneTree) -> Array:
 	for i in 5:
 		await tree.process_frame
 	var normal0: int = main.frames.times.size()
-	main.ui.clock.speed = SimClock.Speed.FAST   # (directly: whether fast-forward is offered is not this test's)
+	# (directly, and the clock driven from outside so that it never stops fast-forward itself: whether fast-forward
+	# is offered is not this test's)
+	main.ui.clock.driven = true
+	main.ui.clock.speed = SimClock.Speed.FAST
 	for i in 10:
 		await tree.process_frame
 	main.last_us = Time.get_ticks_usec() - 150000

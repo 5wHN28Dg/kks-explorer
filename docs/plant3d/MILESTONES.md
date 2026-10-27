@@ -17,7 +17,8 @@ the frames played at 1× (or paused); fast-forward may drop frames on phones. Th
 apart (`app/walk_frames.gd`: the frame that starts or stops it counts as fast-forward's; its `FASTFORWARD` and
 `SPIKE_FF` lines), and `phone/frames.sh` counts what the screen showed without them (`sf_frames.py --speeds`, from
 the walk's `SPEED` lines on the phone's monotonic clock); both tools say in their output that they judged the frames
-at 1×. Walks measured before this change judged every frame, fast-forward's included. A milestone that misses them is not done; cutting scope to meet them is the user's call ("When to stop and ask the user", below).
+at 1×. Walks measured before this change judged every frame, fast-forward's included (the stress walks' fast-forward
+parts below among them). A milestone that misses the frame rules is not done; cutting scope to meet them is the user's call ("When to stop and ask the user", below).
 
 Sizes: **S** one pull request; **M** two to four; **L** five to eight.
 

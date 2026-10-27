@@ -155,11 +155,14 @@ def rule(d):
         raise SystemExit("no RESULT line with over100= in result.txt: the walk did not finish")
     log = _lines(os.path.join(d, "logcat.txt")) if os.path.exists(os.path.join(d, "logcat.txt")) else []
     frames, seen, walk0, walk1 = [], set(), None, None
-    ff_spikes, ff_frames = [], None
+    ff_spikes, ff_frames, ff_over100 = [], None, None
     for line in _lines(os.path.join(d, "result.txt")):
         m = re.search(r"^RESULT .*\bff_frames=(\d+)", line)
         if m:
             ff_frames = int(m.group(1))
+        m = re.search(r"^FASTFORWARD .*\bover100=(\d+)", line)
+        if m:
+            ff_over100 = int(m.group(1))
     for line in log:
         m0 = re.match(r"\s*(\d+\.\d+)\s.*plant: (first frame drawn|RESULT )", line)
         if m0:
@@ -206,7 +209,8 @@ def rule(d):
     judged = (share <= MAX_SHARE and not stressed and not extra) or n_rec == 0
     return {"frames": frames, "app": n_app, "reclaim": n_rec, "lost": lost, "share": share, "judged": judged,
             "stressed": stressed, "extra": extra, "sampled": bool(s), "passes": judged and n_app == 0,
-            "ff_frames": ff_frames, "ff_spikes": ff_spikes}
+            "ff_frames": ff_frames, "ff_spikes": ff_spikes,
+            "ff_over100": len(ff_spikes) if ff_over100 is None else ff_over100}
 
 
 def rule_text(d):
@@ -224,7 +228,7 @@ def rule_text(d):
                    "any frame of it in fast-forward is judged too)")
     else:
         out.append("  judged: the frames played at 1x only (the rules judge normal play; the user, 2026-10-27): %d frames "
-                   "in fast-forward left out, %d of them over %.0f ms" % (r["ff_frames"], len(r["ff_spikes"]), RULE_MS))
+                   "in fast-forward left out, %d of them over %.0f ms" % (r["ff_frames"], r["ff_over100"], RULE_MS))
     if r["stressed"]:
         out.append("  a STRESS=1 walk (memory pressure made on purpose), or no state.txt to tell: not judged")
     if r["extra"]:
@@ -257,7 +261,7 @@ def main(argv=None):
     print(t, end="")
     if a.rule or not os.path.exists(os.path.join(a.dir, "frames.csv")) or not os.path.exists(os.path.join(a.dir, "samp.txt")):
         return 0
-    print("kernel scanning            frames   GPU over %.0f ms" % a.over)
+    print("kernel scanning            frames   GPU over %.0f ms   (every frame of the walk, fast-forward's too: not the rule)" % a.over)
     for name, n, long_ in bands(a.dir, a.over):
         if n:
             print("  %-22s %8d   %5d (%.2f %%)" % (name, n, long_, 100.0 * long_ / n))

@@ -330,7 +330,8 @@ its first start, the Honor.
 The Note 9's last frames over 100 ms came while the phone's kernel reclaimed memory, not from what the app drew (0066,
 "The last frame spikes"). So the rule "no frame over 100 ms after the first 5 s" now counts only the frames the app
 causes. A frame inside a traced burst of the kernel's memory reclaim is excluded, with its evidence kept. Every other
-rule here is unchanged (≥ 95 % at ≥ 30 fps, peak PSS, first start, the 1.2× rule).
+rule here is unchanged (≥ 95 % at ≥ 30 fps, peak PSS, first start, the 1.2× rule). (The user, 2026-10-27: both frame
+rules judge normal play only; fast-forward may drop frames on a phone: MILESTONES.md.)
 
 - **Inside reclaim** means this: a sample of `phone/frames.sh SAMPLE=1` (every 0.2–0.3 s) that overlaps the frame
   shows kswapd or direct reclaim scanning at least one page, or a direct-reclaim stall, since the sample before

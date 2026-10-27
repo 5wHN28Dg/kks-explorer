@@ -82,7 +82,7 @@ class FrameRuleTest(unittest.TestCase):
             t = R.rule_text(d)   # (a RESULT of before: no ff_frames=)
             self.assertIn("judged: every frame after the first 5 s (a walk from before", t)
             with open(os.path.join(d, "result.txt"), "w") as f:
-                f.write("FASTFORWARD frames=600 over100=1 max=180.0ms: not judged\n"
+                f.write("FASTFORWARD frames=600 over100=2 max=180.0ms: not judged\n"
                         "RESULT tier=lean+vis frames=100 max=1ms over100=0 ff_frames=600 gpu_median=1ms\n")
             r = R.rule(d)
             self.assertEqual((r["app"], r["reclaim"], r["lost"]), (0, 0, 0))
@@ -91,7 +91,8 @@ class FrameRuleTest(unittest.TestCase):
             t = R.rule_text(d)
             self.assertIn("PASSES", t)
             self.assertIn("judged: the frames played at 1x only", t)
-            self.assertIn("600 frames in fast-forward left out, 1 of them over 100 ms", t)
+            # (the FASTFORWARD line's count: one of its two SPIKE_FF lines was lost from the log)
+            self.assertIn("600 frames in fast-forward left out, 2 of them over 100 ms", t)
             self.assertIn("180.0 ms at 45.0 s: in fast-forward, not judged", t)
 
     def test_reclaim_excluded_and_app_counted(self):

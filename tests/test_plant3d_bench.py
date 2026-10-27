@@ -152,8 +152,10 @@ class SurfaceFlingerFrames(unittest.TestCase):
         self.assertNotIn('judged:', whole)
         out = self._run(sf, speeds)
         self.assertIn('judged: the frames played at 1x only', out)
-        self.assertIn('10 frames in fast-forward left out', out)
-        self.assertIn('frames shown below 30 fps (>=3 refreshes): 0 of 16 = 0.00 %; at >=30 fps: 100.00 %', out)
+        # (the 8th to 10th frames too, presented 33, 17 and 1 ms before the logged start: within FF_BEFORE_MS, as the
+        # app logs a change the frame after it happened)
+        self.assertIn('13 frames in fast-forward left out', out)
+        self.assertIn('frames shown below 30 fps (>=3 refreshes): 0 of 13 = 0.00 %; at >=30 fps: 100.00 %', out)
         # a walk without fast-forward: every frame judged, and the output says it was looked for
         out = self._run(sf, 'RESULT tier=lean+vis over100=0\n')
         self.assertIn('the walk had no fast-forward', out)
@@ -163,8 +165,12 @@ class SurfaceFlingerFrames(unittest.TestCase):
         self.assertTrue(out.startswith('NOT JUDGED'), out)
         # fast-forward to the end of the walk: everything after its start left out
         out = self._run(sf, f'SPEED fast-forward at 30.0 s, uptime {ff_on} ms\n')
-        self.assertIn('17 frames in fast-forward left out', out)
-        self.assertIn('0 of 9 ', out)
+        self.assertIn('20 frames in fast-forward left out', out)
+        self.assertIn('0 of 6 ', out)
+        # fast-forward through the whole walk: nothing to judge, said so (no division by zero)
+        out = self._run(sf, 'SPEED fast-forward at 0.0 s, uptime 1 ms\n')
+        self.assertIn('26 frames in fast-forward left out', out)
+        self.assertIn('no frame to judge', out)
 
 
 if __name__ == '__main__':

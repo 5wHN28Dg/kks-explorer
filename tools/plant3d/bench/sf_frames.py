@@ -7,13 +7,14 @@ one poll saw both of them, so a gap between polls that do not overlap is a hole 
 The frame rules judge normal play only (the user, 2026-10-27): with --speeds, the walk's result.txt (or its log), its
 `SPEED fast-forward|normal at T s, uptime U ms` lines (app/main.gd: U is the phone's monotonic clock, the one
 SurfaceFlinger stamps its present times with) say when the walk was in fast-forward, and a frame presented from the
-start of fast-forward to FF_AFTER_MS after its end is left out (the frames in flight when it stopped carry its work).
+start of fast-forward (less FF_BEFORE_MS) to FF_AFTER_MS after its end is left out (the frames in flight when it stopped carry its work).
 A walk with fast-forward whose times are unknown (uptime -1) is not judged. Without --speeds every frame counts."""
 import re
 import sys
 from collections import Counter
 
 FF_AFTER_MS = 100.0   # frames presented this long after fast-forward stopped are still its own
+FF_BEFORE_MS = 50.0   # and this long before its logged start (the app logs a change the frame after it happened)
 
 
 def speeds(path):
@@ -61,7 +62,7 @@ def summary(sf_path, spans=None):
 
     def fast(t_ns):
         ms = t_ns / 1e6
-        return any(s <= ms and (e is None or ms <= e + FF_AFTER_MS) for s, e in spans or ())
+        return any(s - FF_BEFORE_MS <= ms and (e is None or ms <= e + FF_AFTER_MS) for s, e in spans or ())
 
     held, holes, holetime, left_out = [], 0, 0.0, 0
     for a, b in zip(ts, ts[1:]):
@@ -81,6 +82,9 @@ def summary(sf_path, spans=None):
     if spans is not None:
         out.append(f"judged: the frames played at 1x only (the frame rules judge normal play; the user, 2026-10-27): " +
                    (f"{left_out} frames in fast-forward left out" if spans else "the walk had no fast-forward"))
+    if n == 0:
+        out.append("no frame to judge (every frame in fast-forward, or in a hole in the polling)")
+        return "\n".join(out)
     for k in sorted(c):
         out.append(f"held {k} refreshes: {c[k]} ({100*c[k]/n:.2f} %)")
     slow = sum(v for k, v in c.items() if k >= 3)
