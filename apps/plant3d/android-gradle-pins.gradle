@@ -32,18 +32,59 @@ def older = { String a, String b ->
     }
     return false
 }
+def plain = { String v -> v != null && v ==~ /[0-9][0-9A-Za-z.\-]*/ }   // a version, not a range
 def pin = { Configuration c ->
     c.resolutionStrategy.eachDependency { DependencyResolveDetails d ->
         def fix = patched["${d.requested.group}:${d.requested.name}".toString()]
-        if (fix != null && d.requested.version != null && older(d.requested.version, fix)) {
+        if (fix != null && plain(d.requested.version) && older(d.requested.version, fix)) {
             d.useVersion(fix)
             d.because('published advisories')
         }
     }
 }
+// The same raise on every dependency a component declares, before Gradle fetches it: this reaches the configurations
+// the rule above can't, the detached ones the Android Gradle plugin makes for lint and aapt2 (8.6.1's LintFromMaven)
+def raise = { ComponentMetadataDetails details ->
+    details.allVariants { v ->
+        def each = { deps ->
+            deps.each { dep ->
+                def fix = patched["${dep.group}:${dep.name}".toString()]
+                def req = dep.versionConstraint.requiredVersion ?: dep.versionConstraint.preferredVersion
+                if (fix != null && plain(req) && older(req, fix)) {
+                    dep.version { require(fix) }
+                    dep.because('published advisories')
+                }
+            }
+        }
+        v.withDependencies(each)
+        v.withDependencyConstraints(each)
+    }
+}
 gradle.allprojects { Project p ->
     p.buildscript.configurations.configureEach { pin(it) }
+    p.buildscript.dependencies.components.all(raise)
     p.buildscript.dependencyLocking { lockAllConfigurations(); lockMode = LockMode.STRICT }
     p.configurations.configureEach { pin(it) }
+    p.dependencies.components.all(raise)
     p.dependencyLocking { lockAllConfigurations(); lockMode = LockMode.STRICT }
+    // Lint and aapt2 come from detached configurations, which Gradle can't lock: the same dependencies (lint-gradle
+    // at the plugin's lint version, as LintFromMaven declares it; aapt2 at the plugin's version and aapt2 build, as
+    // Aapt2FromMaven does) in a configuration of ours are locked and resolved on every build (so STRICT checks them),
+    // and so in the lockfile the scan reads. Only their graph is resolved: no jar is downloaded for it.
+    p.plugins.withId('com.android.application') { plugin ->
+        def cl = plugin.getClass().classLoader
+        def version = cl.loadClass('com.android.Version')
+        def lint = version.getField('ANDROID_TOOLS_BASE_VERSION').get(null)
+        def agp = version.getField('ANDROID_GRADLE_PLUGIN_VERSION').get(null)
+        def props = new Properties()
+        cl.getResourceAsStream('com/android/build/gradle/internal/res/aapt2_version.properties').withCloseable { props.load(it) }
+        def c = p.configurations.create('walkdownDetachedTools') {
+            canBeConsumed = false
+            canBeResolved = true
+            description = "lint's and aapt2's dependencies, locked for the vulnerability scan (decision 0070)"
+        }
+        p.dependencies.add(c.name, "com.android.tools.lint:lint-gradle:$lint")
+        p.dependencies.add(c.name, "com.android.tools.build:aapt2:$agp-${props.getProperty('aapt2Version')}")
+        p.afterEvaluate { c.incoming.resolutionResult.root }
+    }
 }
