@@ -11,6 +11,9 @@
 #             one of the frame rules' walks (with frames, wtp and camp; docs/plant3d/MILESTONES.md); with probe=1 the
 #             result's SCRIPTS lines say where the scripts' time went (app/script_cost.gd)
 #   WALK_EXTRA="probe=1\n"   and frames.csv, where each frame's time went (app/frame_probe.gd), pulled beside result.txt
+#   The frame rules judge normal play only (the user, 2026-10-27): the frames played in fast-forward are counted
+#             apart (the result's FASTFORWARD line, SPIKE_FF lines; RESULT, CADENCE and SPIKE are the frames at 1×), and
+#             sf_summary.txt counts what the screen showed without them (sf_frames.py --speeds, which says so)
 #   STRESS=1  (the Note 9 only) the phone's memory under pressure, as when its own services start: 2 MB a second written
 #             to a file in /data/local/tmp through the walk, deleted after. The kernel's reclaim (kswapd) then stalls
 #             single GPU frames to 50-160 ms (decision 0066, "The last frame spikes"): a walk that reproduces them
@@ -210,11 +213,20 @@ echo "after: battery $(echo "$b" | sed -n 's/^ *level: //p' | head -1)% temperat
 echo "peak_pss_sampled=$((peak / 1024))MB" >> "$OUT/state.txt"
 a logcat -d -v epoch -T "$t0.000" > "$OUT/logcat.txt" 2>/dev/null || true
 [ -s "$OUT/result.txt" ] || sed -n 's/.*plant: //p' "$OUT/logcat.txt" > "$OUT/result.txt"
+# the frame rules judge normal play only (the user, 2026-10-27): what the screen showed, counted again without the
+# frames presented in fast-forward (the result's SPEED lines; sf_frames.py says which frames it judged)
+if [ -s "$OUT/sf.txt" ] && [ -s "$OUT/result.txt" ]; then
+  { grep -m1 '^layer:' "$OUT/sf_summary.txt" || true
+    python3 -I "$HERE/../../tools/plant3d/bench/sf_frames.py" "$OUT/sf.txt" --speeds "$OUT/result.txt"; } > "$OUT/sf_summary.new" &&
+    mv "$OUT/sf_summary.new" "$OUT/sf_summary.txt" ||
+    { echo "!!! sf_frames.py could not count the frames at 1x" >&2
+      echo "NOT JUDGED at 1x: sf_frames.py --speeds failed; the counts above are every frame's, fast-forward's included" >> "$OUT/sf_summary.txt"; }
+fi
 start=$(grep -m1 -E "START u0 .*$PKG" "$OUT/logcat.txt" | awk '{print $1}' || true)
 first=$(grep -m1 "plant: first frame" "$OUT/logcat.txt" | awk '{print $1}' || true)
 [ -n "$start" ] && [ -n "$first" ] && echo "start_to_first_frame=$(echo "$first - $start" | bc)s" >> "$OUT/state.txt"
 cat "$OUT/state.txt"
-grep -E "tier|loaded|first frame|STUCK|SPIKE|CADENCE|RESULT" "$OUT/result.txt" || say "no result.txt (see $OUT/logcat.txt)"
+grep -E "tier|loaded|first frame|STUCK|SPIKE|SPEED|FASTFORWARD|CADENCE|RESULT" "$OUT/result.txt" || say "no result.txt (see $OUT/logcat.txt)"
 cat "$OUT/sf_summary.txt"
 # with probe=1: the pipelines compiled after the start's first 5 s (each one a possible hitch: decision 0060) and
 # every frame over 100 ms with where its time went (GPU or not) and what the app started in it
@@ -224,6 +236,6 @@ if [ -s "$OUT/frames.csv" ] && [ -n "$ff" ]; then
     $c["t_ms"] > ff + 5000 { p += $c["surf_pipes"] + $c["spec_pipes"]
       if ($c["frame_ms"] > 100) printf "PROBE frame %.1f ms at +%.1f s: gpu %.1f ms, draw %.1f ms, scripts %.1f ms, physics %.1f ms, %d draws, events [%s]\n",
         $c["frame_ms"], ($c["t_ms"] - ff) / 1000, $c["gpu_ms"], $c["draw_ms"], $c["proc_ms"], $c["phys_ms"], $c["draws"], $c["events"] }
-    END { printf "PROBE pipelines compiled after the first 5 s: %d\n", p }' "$OUT/frames.csv" | tee "$OUT/probe_summary.txt"
+    END { printf "PROBE pipelines compiled after the first 5 s: %d (PROBE lines: every frame, fast-forward'"'"'s too: not the rule)\n", p }' "$OUT/frames.csv" | tee "$OUT/probe_summary.txt"
 fi
 echo "results: $OUT"

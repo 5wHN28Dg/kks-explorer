@@ -319,6 +319,20 @@ class Faults(Base):
         # the slowest player's cap (from its measured step cost, which moves a little), not the host's own (60×)
         self.assertLessEqual(rates[-1], res['p1']['ff_cap'] * 1.25, (rates, res['p1']['ff_cap']))
 
+    def test_catching_up_after_fast_forward(self):
+        """When fast-forward stops, a player still has turns committed in fast-forward to run and catches up on them
+        at 1×: those frames are fast-forward's work (session.ff_tail, which a measured walk counts as fast-forward:
+        app/walk_frames.gd, the frame rules judge normal play only), and the mark goes once it has caught up."""
+        t_end = 3 + 3 * M
+        self.h.host([{"t": 2.5, "do": "start"}, {"t": 4, "do": "fast"}, {"t": 9, "do": "fast", "on": False}]
+                    + ends(t_end, host=True))
+        self.h.join([{"t": 4.5, "do": "fast"}] + ends(t_end + 0.5), 'p1')
+        res = self.h.wait_all(120)
+        host = self.agree(res)
+        self.assertGreater(max(c[3] for c in host['commits']), 1.0)   # fast-forward ran
+        self.assertGreater(res['p1']['ff_tail_frames'], 0)            # then the player caught up, marked
+        self.assertFalse(res['p1']['ff_tail'])                        # and caught up before the end
+
     def test_floods_junk_replays_and_another_code(self):
         t_end = 3 + 3 * M
         self.h.host([{"t": 2.5, "do": "start"}] + ends(t_end, host=True))

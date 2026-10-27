@@ -7,7 +7,7 @@
 - an unknown lever is reported, not ignored silently.
 Needs the Godot editor (KKS_GODOT, else the path tools/plant3d/bench/fetch_godot.sh installs it to); skipped without.
   .venv/bin/python -m unittest tests.test_plant3d_bench"""
-import math, os, re, subprocess, tempfile, unittest
+import math, os, re, shutil, subprocess, tempfile, unittest
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 BENCH = os.path.join(REPO, 'tools', 'plant3d', 'bench')
@@ -115,6 +115,62 @@ class SurfaceFlingerFrames(unittest.TestCase):
         self.assertIn('held 3 refreshes: 1 ', out)
         self.assertIn('held 18 refreshes: 1 ', out)
         self.assertIn('frames shown below 30 fps (>=3 refreshes): 2 of 9 = 22.22 %', out)
+
+    def _run(self, sf_text, speeds=None):
+        d = tempfile.mkdtemp()
+        try:
+            with open(os.path.join(d, 'sf.txt'), 'w') as f:
+                f.write(sf_text)
+            args = ['python3', '-I', os.path.join(BENCH, 'sf_frames.py'), os.path.join(d, 'sf.txt')]
+            if speeds is not None:
+                with open(os.path.join(d, 'result.txt'), 'w') as f:
+                    f.write(speeds)
+                args += ['--speeds', os.path.join(d, 'result.txt')]
+            return subprocess.run(args, capture_output=True, text=True, check=True).stdout
+        finally:
+            shutil.rmtree(d)
+
+    def test_fast_forward_left_out(self):
+        """The frame rules judge normal play only (the user, 2026-10-27): with --speeds, the frames presented in
+        fast-forward (the walk's SPEED lines, on the phone's monotonic clock, as SurfaceFlinger's) and up to 100 ms
+        after it are left out, and the output says so; with fast-forward at unknown times the walk is not judged."""
+        per = 16_666_666
+        t, rows, at = 1_000_000_000, [], []
+        # 10 frames of 1 refresh, 6 of 4 refreshes (fast-forward), then one of 3 refreshes and three of 1 presented
+        # within 100 ms after it stopped (still its own), then 7 of 1 refresh
+        for held in [1] * 10 + [4] * 6 + [3] + [1] * 10:
+            t += held * per
+            rows.append(f'0\t{t}\t0')
+            at.append(t)
+        sf = '\n'.join([str(per)] + rows) + '\n'
+        ff_on, ff_off = at[9] // 1_000_000 + 1, at[15] // 1_000_000 + 1   # (ms) from just after the 10th frame
+        speeds = ('first frame drawn 9000 ms after the engine started\n'
+                  f'SPEED fast-forward at 30.0 s, uptime {ff_on} ms\nSPIKE_FF 150.0 ms at 31.0 s\n'
+                  f'SPEED normal at 31.6 s, uptime {ff_off} ms\nRESULT tier=lean+vis over100=0\n')
+        whole = self._run(sf)
+        self.assertIn('frames shown below 30 fps (>=3 refreshes): 7 of 26 ', whole)
+        self.assertNotIn('judged:', whole)
+        out = self._run(sf, speeds)
+        self.assertIn('judged: the frames played at 1x only', out)
+        # (the 8th to 10th frames too, presented 33, 17 and 1 ms before the logged start: within FF_BEFORE_MS, as the
+        # app logs a change the frame after it happened)
+        self.assertIn('13 frames in fast-forward left out', out)
+        self.assertIn('frames shown below 30 fps (>=3 refreshes): 0 of 13 = 0.00 %; at >=30 fps: 100.00 %', out)
+        # a walk without fast-forward: every frame judged, and the output says it was looked for
+        out = self._run(sf, 'RESULT tier=lean+vis over100=0\n')
+        self.assertIn('the walk had no fast-forward', out)
+        self.assertIn('7 of 26 ', out)
+        # fast-forward with no time on the phone's clock (not Android, or the clock unreadable): not judged
+        out = self._run(sf, 'SPEED fast-forward at 30.0 s, uptime -1 ms\nSPEED normal at 31.6 s, uptime -1 ms\n')
+        self.assertTrue(out.startswith('NOT JUDGED'), out)
+        # fast-forward to the end of the walk: everything after its start left out
+        out = self._run(sf, f'SPEED fast-forward at 30.0 s, uptime {ff_on} ms\n')
+        self.assertIn('20 frames in fast-forward left out', out)
+        self.assertIn('0 of 6 ', out)
+        # fast-forward through the whole walk: nothing to judge, said so (no division by zero)
+        out = self._run(sf, 'SPEED fast-forward at 0.0 s, uptime 1 ms\n')
+        self.assertIn('26 frames in fast-forward left out', out)
+        self.assertIn('no frame to judge', out)
 
 
 if __name__ == '__main__':

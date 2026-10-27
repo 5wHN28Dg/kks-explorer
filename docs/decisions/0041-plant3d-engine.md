@@ -276,7 +276,8 @@ Findings:
 60 Hz screen, and a frame held for two refreshes counts as 30 fps. By the clock such a frame measures 33.1–34 ms, so
 the 95th-percentile frame time alone (33.8 ms) is not the test. The test is the share of frames held for three
 refreshes or more, which must stay at or under 5 %. It is counted from Android's present times
-(`sf_frames.sh`). The bench's loop-interval count erred high in the one run measured both ways (2.1 % against
+(`sf_frames.sh`). (The user, 2026-10-27: the rule, and the one of no frame over 100 ms, judge normal play only; in
+Walkdown Plant's fast-forward a phone may drop frames: MILESTONES.md.) The bench's loop-interval count erred high in the one run measured both ways (2.1 % against
 0.10 %), but it is not a bound frame by frame. The SurfaceFlinger evidence is one plugged-in run (567 of its 600 s);
 on battery only the loop count exists (1.9 %), which is within the rule too.
 

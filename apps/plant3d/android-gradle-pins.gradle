@@ -1,0 +1,91 @@
+// Walkdown Plant's pins for Godot's Android Gradle template (decision 0070). build.sh copies this file into the
+// template and applies it from its settings.gradle, so it reaches every project of the build: the plugins' classpath
+// (the Android Gradle plugin, Kotlin) and every configuration, lint's included.
+//
+// Tool libraries that the template's plugins bring in at versions with published advisories (osv-scanner over the
+// verification file, 2026-10-27) are raised to the first release in the same line that fixes them all (guava has
+// none in 32.x: 33.7.2-jre, as Walkdown's own build). Never lowers a version. Netty's and protobuf's modules move
+// together, so that no module mixes two releases.
+//
+// Dependency locking: every configuration is locked (STRICT: one missing from the lockfiles fails the build), lint's
+// and aapt2's detached ones through a mirror (below), and
+// the lockfiles are kept in apps/plant3d/android-locks/, where the vulnerability scan (osv-scanner) reads them.
+// `PLANT_GRADLE_WRITE_VERIFICATION=1 build.sh export android-debug android-release` writes them again.
+def patched = [
+    'org.bouncycastle:bcprov-jdk18on': '1.85', 'org.bouncycastle:bcpkix-jdk18on': '1.85',
+    'org.bouncycastle:bcutil-jdk18on': '1.85',
+    'org.jdom:jdom2': '2.0.6.1', 'org.bitbucket.b_c:jose4j': '0.9.6',
+    'org.apache.httpcomponents:httpclient': '4.5.14', 'org.apache.commons:commons-lang3': '3.18.0',
+    'org.apache.commons:commons-compress': '1.26.0', 'commons-io:commons-io': '2.14.0',
+    'com.google.guava:guava': '33.7.2-jre',
+    'com.google.protobuf:protobuf-java': '3.25.5', 'com.google.protobuf:protobuf-java-util': '3.25.5',
+    'org.jetbrains.kotlin:kotlin-gradle-plugin': '2.4.20',
+]
+['buffer', 'codec', 'codec-http', 'codec-http2', 'codec-socks', 'common', 'handler', 'handler-proxy', 'resolver',
+ 'transport', 'transport-native-unix-common'].each { patched["io.netty:netty-$it".toString()] = '4.1.137.Final' }
+
+def older = { String a, String b ->
+    def x = a.split(/[.-]/).collect { it.isInteger() ? it.toInteger() : 0 }
+    def y = b.split(/[.-]/).collect { it.isInteger() ? it.toInteger() : 0 }
+    for (int i = 0; i < Math.max(x.size(), y.size()); i++) {
+        int d = (i < x.size() ? x[i] : 0) - (i < y.size() ? y[i] : 0)
+        if (d != 0) return d < 0
+    }
+    return false
+}
+def plain = { String v -> v != null && v ==~ /[0-9][0-9A-Za-z.\-]*/ }   // a version, not a range
+def pin = { Configuration c ->
+    c.resolutionStrategy.eachDependency { DependencyResolveDetails d ->
+        def fix = patched["${d.requested.group}:${d.requested.name}".toString()]
+        if (fix != null && plain(d.requested.version) && older(d.requested.version, fix)) {
+            d.useVersion(fix)
+            d.because('published advisories')
+        }
+    }
+}
+// The same raise on every dependency a component declares, before Gradle fetches it: this reaches the configurations
+// the rule above can't, the detached ones the Android Gradle plugin makes for lint and aapt2 (8.6.1's LintFromMaven)
+def raise = { ComponentMetadataDetails details ->
+    details.allVariants { v ->
+        def each = { deps ->
+            deps.each { dep ->
+                def fix = patched["${dep.group}:${dep.name}".toString()]
+                def req = dep.versionConstraint.requiredVersion ?: dep.versionConstraint.preferredVersion
+                if (fix != null && plain(req) && older(req, fix)) {
+                    dep.version { require(fix) }
+                    dep.because('published advisories')
+                }
+            }
+        }
+        v.withDependencies(each)
+        v.withDependencyConstraints(each)
+    }
+}
+gradle.allprojects { Project p ->
+    p.buildscript.configurations.configureEach { pin(it) }
+    p.buildscript.dependencies.components.all(raise)
+    p.buildscript.dependencyLocking { lockAllConfigurations(); lockMode = LockMode.STRICT }
+    p.configurations.configureEach { pin(it) }
+    p.dependencies.components.all(raise)
+    p.dependencyLocking { lockAllConfigurations(); lockMode = LockMode.STRICT }
+    // Lint and aapt2 come from detached configurations, which Gradle can't lock: the same dependencies (lint-gradle
+    // at the plugin's lint version, as LintFromMaven declares it; aapt2 at the plugin's version and aapt2 build, as
+    // Aapt2FromMaven does) in a configuration of ours are locked and resolved on every build (so STRICT checks them),
+    // and so in the lockfile the scan reads. Only their graph is resolved: no jar is downloaded for it.
+    p.plugins.withId('com.android.application') { plugin ->
+        def cl = plugin.getClass().classLoader
+        def version = cl.loadClass('com.android.Version')
+        def lint = version.getField('ANDROID_TOOLS_BASE_VERSION').get(null)
+        def agp = version.getField('ANDROID_GRADLE_PLUGIN_VERSION').get(null)
+        def props = new Properties()
+        cl.getResourceAsStream('com/android/build/gradle/internal/res/aapt2_version.properties').withCloseable { props.load(it) }
+        def c = p.configurations.create('walkdownDetachedTools') {
+            canBeConsumed = false
+            canBeResolved = true
+            description = "lint's and aapt2's dependencies, locked for the vulnerability scan (decision 0070)"
+        }
+        p.dependencies.add(c.name, "com.android.tools.lint:lint-gradle:$lint")
+        p.dependencies.add(c.name, "com.android.tools.build:aapt2:$agp-${props.getProperty('aapt2Version')}")
+        p.afterEvaluate { c.resolvedConfiguration.rethrowFailure() }   // the graph only; a lock mismatch fails here
+    }
+}
