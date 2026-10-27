@@ -13,10 +13,10 @@ const Lanes = preload("res://app/lanes.gd")
 const StaffPaths = preload("res://builder/staff_paths.gd")
 const KeepApart = preload("res://app/keep_apart.gd")
 
-## The walker's 0.3 m and 9 cm: a person between two samples (up to 5 cm along from one) with the room between them
-## (up to 5 cm off either's at K), where the line's side turns (up to ARC between two samples, at most half of it to
-## the nearer) stays clear at 0.3 m: √(0.05² + 0.05² + 0.04²) < 0.09.
-const RADIUS := 0.39
+## The walker's 0.3 m and 11 cm: a person between two samples is within 5 cm along of one, the room between them up to
+## 5 cm off that one's (at K), and the side's turn moves them up to ARC / 2 = 4 cm more, along the line too: at most
+## √((0.05 + 0.04)² + 0.05²) = 0.103 from a point measured clear.
+const RADIUS := 0.41
 ## Where the line turns, the room is at most ARC over the turn between two samples (radians): someone off the line
 ## sweeps an arc as its side turns, and between two samples it is at most ARC long (a corner turned within a few cm
 ## leaves no room: people go round it on the line).
@@ -155,6 +155,10 @@ func line(l, taper: bool) -> PackedByteArray:
 	var hi := PackedFloat32Array()
 	lo.resize(n)
 	hi.resize(n)
+	var lo0 := PackedFloat32Array()     # as measured (clear), before the limits below
+	var hi0 := PackedFloat32Array()
+	lo0.resize(n)
+	hi0.resize(n)
 	for j in n:
 		stats.samples += 1
 		var s: float = l.sample_s(j)
@@ -188,8 +192,18 @@ func line(l, taper: bool) -> PackedByteArray:
 		var base := c + side * b
 		hi[j] = b + room(base, side, MAX - b, y0, mesh)
 		lo[j] = b - room(base, -side, MAX + b, y0, mesh)
-		var turn := maxf(absf(wrapf(l.heading(minf(s + Lanes.STEP, l.length)) - l.heading(s), -PI, PI)),
-				absf(wrapf(l.heading(s) - l.heading(maxf(s - Lanes.STEP, 0.0)), -PI, PI)))
+		lo0[j] = lo[j]
+		hi0[j] = hi[j]
+		# the most the heading turns within a sample either side (at the ends and at every corner between: a zig-zag
+		# shorter than a sample turns and turns back)
+		var turn := 0.0
+		var h0: float = l.heading(s)
+		var at_s: Array = [maxf(s - Lanes.STEP, 0.0), minf(s + Lanes.STEP, l.length)]
+		for k in l.pts.size():
+			if absf(l.cum[k] - s) <= Lanes.STEP:
+				at_s.append_array([maxf(l.cum[k] - 0.005, 0.0), minf(l.cum[k] + 0.005, l.length)])
+		for x in at_s:
+			turn = maxf(turn, absf(wrapf(l.heading(x) - h0, -PI, PI)))
 		if turn > 1e-4:
 			hi[j] = minf(hi[j], ARC / turn)
 			lo[j] = maxf(lo[j], -ARC / turn)
@@ -216,9 +230,15 @@ func line(l, taper: bool) -> PackedByteArray:
 			hi[n - 1] = z
 	var out := PackedByteArray()
 	for j in n:
-		if lo[j] > hi[j]:
+		if taper and (j == 0 or j == n - 1):
+			lo[j] = 0.0         # (at its places: the person is at the place's point, as the engine has them)
+			hi[j] = 0.0
+		elif lo[j] > hi[j]:
 			stats.squeezed += 1
+			# one place: the middle, within what was measured clear there (not a spot found blocked)
 			var m := (lo[j] + hi[j]) * 0.5
+			if lo0[j] <= hi0[j]:
+				m = clampf(m, lo0[j], hi0[j])
 			lo[j] = m
 			hi[j] = m
 		out.append_array(Lanes.pack(lo[j], hi[j]))
@@ -241,11 +261,14 @@ func place(at: Vector3) -> PackedByteArray:
 	var y0 := floor_at(at)
 	if is_nan(y0):
 		y0 = at.y
-	if not _fits(at, y0):
-		return out
-	var mesh := on_mesh(Vector3(at.x, y0, at.z))
-	for i in DIRS:
-		var a := TAU * i / DIRS
-		out[i] = clampi(floori(room(at, Vector3(cos(a), 0.0, sin(a)), STAND_MAX, y0, mesh) * 100.0), 0, 255)
+	# (the doors solid: someone standing is not walking through one, and nobody opens it for them)
+	var skip := q.exclude
+	q.exclude = []
+	if _fits(at, y0):
+		var mesh := on_mesh(Vector3(at.x, y0, at.z))
+		for i in DIRS:
+			var a := TAU * i / DIRS
+			out[i] = clampi(floori(room(at, Vector3(cos(a), 0.0, sin(a)), STAND_MAX, y0, mesh) * 100.0), 0, 255)
+	q.exclude = skip
 	return out
 

@@ -126,7 +126,7 @@ func _process(delta: float) -> void:
 
 func _each_frame(delta: float) -> void:
 	if is_inside_tree():
-		doors.tick(get_tree(), people, delta)
+		doors.tick(get_tree(), people, delta, time_scale)
 	if camera == null or cfg.is_empty():
 		return
 	var t0 := Time.get_ticks_usec()

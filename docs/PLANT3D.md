@@ -1950,7 +1950,7 @@ HRSG's stair was walked up to 30 m above the ground.
 own (it follows the frames' lengths and that screen's walker).
 - **The room beside the lines and round the places** (`builder/lane_room.gd`, at the content build, in
   `built/staff_paths.bin` format 2): every 0.1 m along each line, how far to its left and right a person may be drawn
-  (to 0.9 m), and round each place in 32 directions (to 0.6 m): a capsule of 0.39 m (the walker's 0.3 m and the margin
+  (to 0.9 m), and round each place in 32 directions (to 0.6 m): a capsule of 0.41 m (the walker's 0.3 m and the margin
   that keeps a person between two samples clear at 0.3 m) swept sideways touching nothing but doors, the floor every
   5 cm within 8 cm of the one under the line (not off a flight's side, a step or a platform's edge), and on the
   walkable mesh where the line is. A line's room changes by at most 1 m a metre along it (nobody at its edge jumps)

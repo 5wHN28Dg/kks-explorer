@@ -204,7 +204,7 @@ func solve(dt: float) -> void:
 			continue
 		_place(i, id)
 	# who is too near whom (along x, then the pairs that close)
-	if n > 1:
+	if n > 1 and n <= 4096:       # (the pairs' keys carry the index in 12 bits: the world's people are at most 200)
 		var keys := PackedInt64Array()
 		keys.resize(n)
 		for i in n:

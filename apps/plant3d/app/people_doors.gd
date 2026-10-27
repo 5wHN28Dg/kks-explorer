@@ -15,6 +15,7 @@ const REACH := 8.0              # metres: the farthest that is looked (LEAD at a
 const IN := 1.6                 # metres from its leaf within which it opens for anyone walking at its width (through it,
                                 # or turning into it)
 const TOWARDS := 0.3            # walking at a door: the cosine of the angle off its normal, at least (not along it)
+const DOORWAY := 0.45           # metres from its leaf within which it stays open for someone standing there
 const STILL := 0.15             # m/s: slower than this is standing (app/people.gd)
 
 var _doors: Array = []          # [door, its shut transform's inverse (global), half its width and SIDE, its height]
@@ -30,16 +31,18 @@ func _init(phase := 0.0) -> void:
 
 
 ## The check, when it is due (every 1 / HZ s): `people` as app/people.gd has them.
-func tick(tree: SceneTree, people: Array, delta: float) -> void:
+func tick(tree: SceneTree, people: Array, delta: float, rate := 1.0) -> void:
 	_t += delta
 	if _t < 1.0 / HZ:
 		return
 	_t = 0.0
-	check(tree, people)
+	check(tree, people, rate)
 
 
 ## Every person walking at or through a door presses it.
-func check(tree: SceneTree, people: Array) -> void:
+## `rate`: how fast the plant's time runs (fast-forward: people walk that much faster on screen, the doors open in
+## real time; their look-ahead stops at REACH, so beyond about ×3 a door opens late).
+func check(tree: SceneTree, people: Array, rate := 1.0) -> void:
 	# made again when the doors change (the interiors' come and go: two may change places with the same count)
 	var sig := 0
 	for d in tree.get_nodes_in_group("doors"):
@@ -48,9 +51,7 @@ func check(tree: SceneTree, people: Array) -> void:
 		_sig = sig
 		_index(tree)
 	for p in people:
-		var v: float = p.get("speed", 0.0)
-		if v <= STILL:
-			continue
+		var v: float = float(p.get("speed", 0.0)) * rate      # (on screen)
 		var at: Vector3 = p.at
 		var list = _cells.get(Vector2i(floori(at.x / CELL), floori(at.z / CELL)))
 		if list == null:
@@ -68,6 +69,12 @@ func check(tree: SceneTree, people: Array) -> void:
 			var xf: Transform3D = d[1]
 			var local: Vector3 = xf * at
 			if absf(local.x) > d[2] or local.y < -1.0 or local.y > d[3]:
+				continue
+			if v <= STILL:
+				# standing (or held back, or paused) in its doorway: kept open; anywhere else, not opened
+				if absf(local.z) <= DOORWAY:
+					d[0].press()
+					pressed += 1
 				continue
 			if absf(local.z) > minf(REACH, maxf(NEAR, v * LEAD + 0.5)):
 				continue

@@ -12,7 +12,7 @@
 ## People are drawn off their lines and places only within the room the build measured beside them (phase 3,
 ## app/keep_apart.gd, app/lanes.gd): every OFFSET_STEP metres along every line, at the room's edges on both sides and in
 ## the lane either way it is walked, the capsule touches nothing but doors and the feet are within SIDE_FEET of a floor;
-## round every place, at the edge of its room in every direction, likewise. The measurement crowd's lanes on the walks'
+## round every place, at the edge of its room in every direction, likewise, the doors counted as shut. The measurement crowd's lanes on the walks'
 ## routes (app/crowd.gd, built/crowd_lanes.bin) the same, at its lanes' widths too.
 ## Until 2026-10-26 this test measured the mesh's path against the way's length, which was measured on that same path,
 ## while people were drawn along the straight line between the places: through machines and rails, floating up the
@@ -137,8 +137,9 @@ func run(tree: SceneTree) -> Array:
 				p.append("… more")
 				break
 		var stand_n := 0
+		var solid: Array[RID] = [main.player.get_rid()]     # (round a place the doors count: nobody opens them there)
 		for i in sm.places.size():
-			var res := check_place(ways.place_room[i], at[i], space, skip)
+			var res := check_place(ways.place_room[i], at[i], space, solid)
 			stand_n += res[1]
 			for e in res[0]:
 				p.append("place %s: %s" % [sm.places[i]["id"], e])

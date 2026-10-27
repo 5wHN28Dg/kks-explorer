@@ -266,8 +266,8 @@ static func _doors(tree: SceneTree, main) -> Array:
 		var z: Vector3 = shut.basis.z.normalized()
 		var bad := ""
 		# through its middle, and as far to either side as the room beside a line through it allows (the jambs and the
-		# build's 0.39 m capsule: builder/lane_room.gd)
-		var aside := maxf(0.0, float(door.width) * 0.5 - 0.39)
+		# build's 0.41 m capsule: builder/lane_room.gd)
+		var aside := maxf(0.0, float(door.width) * 0.5 - 0.41)
 		for v in [1.3, 3.2]:
 			for side in [1.0, -1.0]:
 				for phase in [0.0, 0.24]:
@@ -293,6 +293,15 @@ static func _doors(tree: SceneTree, main) -> Array:
 			door.hold = 0.0
 			if opened:
 				out.append("door %s: opened for someone walking %s it" % [door.name, "away from" if w[1] == -z else "past"])
+		# someone standing in its doorway keeps it open; someone standing 1 m off it does not open it
+		for st in [[0.3, true], [1.0, false]]:
+			var pd := PeopleDoors.new()
+			door.hold = 0.0
+			pd.check(tree, [{"at": shut.origin + z * float(st[0]), "speed": 0.0, "yaw": 0.0}])
+			if (door.hold > 0.0) != st[1]:
+				out.append("door %s: %s for someone standing %.1f m from it" % [door.name,
+						"not kept open" if st[1] else "opened", st[0]])
+			door.hold = 0.0
 	if n < 30:
 		out.append("only %d doors checked" % n)
 	return out
