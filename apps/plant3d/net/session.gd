@@ -602,8 +602,11 @@ func _process(delta: float) -> void:
 				f["run"] = (sched1[0] - sched0[0]) / 1000
 				f["wait"] = (sched1[1] - sched0[1]) / 1000
 				f["switches"] = sched1[2] - sched0[2]
+		if not _pk_us.is_empty():
+			f["packets"] = " / ".join(_pk_us)
 		stats["slow"].append(f)
 	_step_us = 0
+	_pk_us.clear()
 	if us > stats["us_max"]:
 		stats["us_max_what"] = ",".join(_what)   # what the worst frame did (the measurements)
 	stats["us_max"] = maxi(stats["us_max"], us)
@@ -624,11 +627,17 @@ var probe_sched := false
 static func sched_now() -> PackedInt64Array:
 	var f := FileAccess.open("/proc/thread-self/schedstat", FileAccess.READ)
 	if f == null:
+		sched_error = "open: error %d" % FileAccess.get_open_error()
 		return PackedInt64Array()
 	var p := f.get_line().split(" ", false)   # (a /proc file's length is 0: get_as_text reads nothing)
 	if p.size() < 3:
+		sched_error = "read %d fields" % p.size()
 		return PackedInt64Array()
 	return PackedInt64Array([int(p[0]), int(p[1]), int(p[2])])
+
+## why sched_now() last gave nothing ("" when it read): the walk's SESSION probe line says it
+static var sched_error := ""
+var _pk_us := PackedStringArray()       # (probe) this frame's packets in: their size and the time each took
 
 
 var _step_us := 0                       # this frame's model steps (the session layer's own time is the rest)
@@ -999,7 +1008,12 @@ func _receive() -> void:
 	if _udp == null:
 		return
 	for pk in _udp.poll():
-		_on_packet(pk[0], pk[1], pk[2])
+		if probe_sched and _pk_us.size() < 16:
+			var tp := Time.get_ticks_usec()
+			_on_packet(pk[0], pk[1], pk[2])
+			_pk_us.append("%d B %d us" % [pk[0].size(), Time.get_ticks_usec() - tp])
+		else:
+			_on_packet(pk[0], pk[1], pk[2])
 
 
 func _on_packet(b: PackedByteArray, ip: String, port: int) -> void:

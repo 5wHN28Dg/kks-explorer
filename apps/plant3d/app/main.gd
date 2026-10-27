@@ -554,10 +554,14 @@ func _mp_result() -> void:
 	_say("SESSION worst frame: %s; frames over 2 ms: %d" % [st.get("us_max_what", ""), st.get("over_2ms", 0)])
 	# the layer's slow frames (over 1.5 ms) and where their time went: receive (decrypt, parse), frame (beside the
 	# model's steps), positions, flush (seal, send); with mp_probe=1 the thread's time on a CPU (run) and waiting (wait)
+	if s.probe_sched:
+		_say("SESSION probe: schedstat %s" % ("read" if MpSession.sched_error == "" else "not read (%s)" % MpSession.sched_error))
 	for f in st.get("slow", []):
 		_say("SESSION slow %d us at %.1f s: receive %d, frame %d (steps %d apart), positions %d, flush %d; packets in %d, out %d; run %s, wait %s, switches %s; %s" % [
 			f["us"], f["t"], f["receive"], f["frame"], f["steps"], f["positions"], f["flush"], f["in"], f["out"],
 			str(f.get("run", "-")), str(f.get("wait", "-")), str(f.get("switches", "-")), f["what"]])
+		if f.has("packets"):
+			_say("SESSION slow packets: %s" % f["packets"])
 
 
 ## crowd=N: N people round the walker on `route` (app/crowd.gd), in a walk or in shots.
