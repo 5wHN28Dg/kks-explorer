@@ -295,8 +295,8 @@ func drive(delta: float) -> void:
 		# up, a lane round a corner), and while they move they face that way, so that the walk's standing foot stays
 		# put (app/people.gd moves the clip on by the same ground); paused, as they were
 		var track := false
-		if dt > 0.0:
-			if _was_ok[pi] == 1 and apart.fresh[i] == 0:
+		if _was_ok[pi] == 1 and apart.fresh[i] == 0:
+			if dt > 0.0:
 				var mv := Vector2(at.x - _was[pi].x, at.z - _was[pi].z)
 				var v := mv.length() / dt
 				if place != -1 or _line[i] == 1 or v > STILL:
@@ -304,9 +304,9 @@ func drive(delta: float) -> void:
 				if v > STILL:
 					target = atan2(-mv.x, -mv.y)
 					track = true
-			_spd[pi] = speed
-		else:
-			speed = _spd[pi]
+			else:
+				speed = _spd[pi]
+		_spd[pi] = speed
 		_was[pi] = at
 		_was_ok[pi] = 1
 		var cur = _yaw.get(pi)
