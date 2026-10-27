@@ -16,6 +16,12 @@ def read(*p):
 
 
 class PlantLinks(unittest.TestCase):
+    def test_flatpak_network(self):
+        """Multiplayer (0068): the Flatpak shares the network (a static permission; the app opens no socket outside a
+        session)."""
+        y = read(PLANT, 'flatpak', 'io.github._5wHN28Dg.WalkdownPlant.yml')
+        self.assertRegex(y, r'(?m)^  - --share=network\b')
+
     def test_flatpak_desktop_file(self):
         d = read(PLANT, 'flatpak', 'io.github._5wHN28Dg.WalkdownPlant.desktop')
         self.assertIn('MimeType=x-scheme-handler/walkdown-plant;', d.splitlines())
@@ -31,7 +37,8 @@ class PlantLinks(unittest.TestCase):
         p = app.find('f:Extensions/uap3:Extension/uap3:Protocol', ns)
         self.assertEqual((p.get('Name'), p.get('Parameters')), ('walkdown-plant', '-- "%1"'))
         caps = [c.get('Name') for c in m.find('f:Capabilities', ns)]
-        self.assertEqual(caps, ['runFullTrust'])                # no network: the plant app has none (0054)
+        # the network for multiplayer sessions only (0068): the Internet and the LAN; nothing else
+        self.assertEqual(caps, ['internetClient', 'privateNetworkClientServer', 'runFullTrust'])
 
     def test_android_export_plugin(self):
         e = read(PLANT, 'addons', 'walkdown_plant_android', 'export.gd')
@@ -44,6 +51,10 @@ class PlantLinks(unittest.TestCase):
             if 'platform="Android"' in block:
                 opts = presets.split('[preset.' + block.split(']')[0] + '.options]')[1].split('[preset.')[0]
                 self.assertIn('gradle_build/use_gradle_build=true', opts)   # the plugin's manifest needs Gradle
+                # multiplayer (0068): INTERNET, and the multicast lock for the LAN query (MULTIPLAYER.md §9.3); no other
+                # permission (RECORD_AUDIO is MP5's, asked at run time)
+                self.assertEqual(sorted(x for x in re.findall(r'(?m)^permissions/([a-z_]+)=true$', opts)),
+                                 ['change_wifi_multicast_state', 'internet'])
 
     def test_walkdown_takes_what_it_registers(self):
         """Walkdown registers walkdown:// on Android, GNOME (and its Flatpak) and Windows (decision 0058), and the

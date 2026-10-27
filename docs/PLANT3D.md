@@ -255,6 +255,7 @@ functions (I indicate, A alarm, T transmit, S switch, C control; H/L, HH/LL for 
 |---|---|
 | `walkdown-plant://kks/<code>` | Walkdown Plant at that equipment: highlighted, with its card; the trainee chooses to walk or fly there |
 | `walkdown-plant://procedure/<id>` and `…/<id>/<step>` | a procedure or tour (§8), at its first or that step |
+| `walkdown-plant://join/<code>` | the join of a multiplayer session with that invite code (docs/plant3d/MULTIPLAYER.md §1.1): 16 characters of Crockford's base32 with a check character, read as Crockford's decoding reads (any case, I and L as 1, O as 0, dashes ignored); a code with a wrong check character opens the app at its start (MP2) |
 | `walkdown://kks/<code>` | Walkdown at the tag with that code, on its drawing (as a course's code link) |
 | `walkdown://course/<course>` and `…/<course>/<page>` | Walkdown's course renderer at that course or page |
 
@@ -268,8 +269,9 @@ functions (I indicate, A alarm, T transmit, S switch, C control; H/L, HH/LL for 
   "a feedwater pump in this plant: 10LAC10AP001"; for a code without equipment letters, a system-level code of the
   same system), else the same equipment letters, else the code's decoding only, with letters the plant's tables
   don't have shown as "not in this plant's key". Of several codes of that kind the lowest in code order is shown.
-  The reference is `read_link` in `ref/plant3d.py`, and the vectors' `links` (§12) pin it. The code is not stored or sent
-  anywhere: Walkdown Plant has no network access (0054).
+  The reference is `read_link` in `ref/plant3d.py` (and `join_code` for a `join` link), and the vectors' `links` (§12)
+  pin it. A KKS code is not stored or sent anywhere; the network is used only while a multiplayer session is open
+  (decision 0068).
 - **A link out with nothing to open it** (Walkdown not installed): the app says so instead of failing silently.
 
 **Links into Walkdown** (0058). Walkdown's Android, GNOME and Windows apps register the `walkdown` scheme; the web client

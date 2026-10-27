@@ -44,6 +44,8 @@ to the room as Walkdown shows an invite, and it is gone when the session ends.
 
 ### 1.2 Join
 
+**As built (MP2):** §14 says where the build differs from what follows.
+
 The joiner types the code, follows the link, or scans the QR code with the camera app. The app then:
 1. looks for the session on the LAN for 2 s (§9.3: a broadcast query with the room ID derived from the code);
 2. if none answers and the code's session is online, enters the relay room (§9.1);
@@ -110,6 +112,8 @@ removes strangers.
 
 ### 2.1 Packets
 
+**As built (MP2):** §14 says where the build differs from what follows.
+
 Every transport (LAN UDP, direct UDP, the relay) carries the same packets:
 
 | Field | Size | Meaning |
@@ -161,6 +165,8 @@ form the vectors, the save and the debrief already use.
 
 ### 2.3 Reliability
 
+**As built (MP2):** §14 says where the build differs from what follows.
+
 - **Streams.** Reliable messages travel in streams, each with its own sequence numbers from 1 (not the packet
   numbers, which count every packet for replay protection): one per player and direction between that player and
   the host (under P), and the host's broadcast stream (under K, every reliable host → all message), plus the
@@ -199,6 +205,8 @@ screen shows the new code for anyone who should join later.
 ## 3. Lockstep (decision 0067)
 
 ### 3.1 The rule
+
+**As built (MP2):** §14 says where the build differs from what follows.
 
 Every player runs the whole engine (`sim/engine.gd`), from the same start, with the same inputs at the same steps, so
 every player has the same plant bit for bit, as the vectors already require between the reference and the app on
@@ -359,6 +367,8 @@ README already plans.
 
 ### 5.1 The snapshot
 
+**As built (MP2):** §14 says where the build differs from what follows.
+
 The host takes the snapshot at a committed step C. It is its own Dictionary, not a run save (the save's `decode`
 and `autosave.check` require the UI, player and tracker parts and refuse other keys): `{"app", "content",
 "scenario", "engine", "session"}`, where `engine` is exactly the save's engine part (with `events` and `inputs`, so
@@ -491,6 +501,8 @@ role). The host drops trainer inputs from other slots (§3.3). Every such input 
 today, so every player's debrief shows them. Other players don't see the instructor panel.
 
 ### 7.4 Saved runs
+
+**As built (MP2):** §14 says where the build differs from what follows.
 
 - **The host saves the session** as a single player saves a run (every 5 s while it changes, on going to the
   background), to `user://mp-host.save`, never over the single-player `user://run.save`. It is a file of its own
@@ -703,6 +715,8 @@ As Walkdown's direct path (PROTOCOL-v2 §18, `kksl/udp.nim`), between each playe
 
 ### 9.3 The LAN
 
+**As built (MP2):** §14 says where the build differs from what follows.
+
 - **Query and answer**, not beacons: the host (and every player, so that a new host after §5.3 answers at once)
   listens on the **discovery port** 47820; its session traffic uses another port, any free one. A joiner sends,
   from an ephemeral port, a query every 250 ms for 2 s to 255.255.255.255 and each IPv4 interface's broadcast address
@@ -793,6 +807,9 @@ budget isn't done.
   reference's, and a run on another platform with Linux's. Checked on Linux and Windows; **not yet on Android**: the
   Note 9 ran the digest's timing only (`digest=bench`), so `run_vectors.gd --digests` on the Note 9, compared with
   Linux's, is the first thing MP2 does before two devices compare digests in a session.
+- **Settled in MP2 (§14):** inputs from the network are checked in the session layer, so the engines never see a
+  malformed one; any slot may play nobody; the trainer's inputs come from the host and the instructor seats. As
+  planned:
 - **Before MP2 takes inputs from other devices:** a committed input whose kind is not a text, or whose length is not
   its kind's, must do nothing in both engines (the GDScript stops with a script error on a kind that is not a text,
   halfway through a step; MP1's inputs come from the app alone, which makes none such), and a slot that plays nobody
@@ -850,9 +867,191 @@ is until the project is complete) and keeps the frame rules on the Note 9. Sizes
 | MP5 | **Voice:** decision 0069's `wdp_voice` built from pinned sources for the four packages' targets (its licence notices in About), capture with `get_input_frames`, push-to-talk, channels and floor, jitter buffer, radio bus; `RECORD_AUDIO` and the desktop permissions | L | MP2 | push-to-talk on the radio | encode ≤ 1 ms / decode ≤ 0.3 ms per frame on the Note 9; mouth-to-ear ≤ 400 ms on the Wi-Fi; the frame rules with one talker; the APK still ≤ 150 MB |
 | MP6 | **A full session measured:** 8 players (the Note 9, the laptop, the VM and harness bots) through a shift with fast-forward and a jump, voice on; the Note 9's 10-minute walk among 7 players | M | MP3, MP4, MP5 | the whole feature, measured | the frame rules on the Note 9 with 7 others drawn and one talker; no desync in 60 minutes |
 
+**MP2 built 2026-10-27** (§14): everything in its row. Its measurements are in §14; three are still open there (the
+two-player walk judged by the frame rules, the session's memory, and the session layer's worst frame).
+
 **Order:** MP1 → MP2, then MP3, MP4 and MP5 in any order (each needs only MP2), then MP6.
 
 **When to stop and ask the user:** the Cloudflare account isn't on the free plan (§9.1); the APK would pass 150 MB
 with `wdp_voice` (it adds about 1 MB); a platform can't build `wdp_voice` (voice dropped there?); the measured
 input-to-effect on mobile data misses 1 s at the 95th percentile (a turn of 1 step, or a regional relay, is then a
 choice); Windows' `exp` differs and the stored factors change the vectors.
+
+## 14. MP2 as built (2026-10-27): LAN sessions
+
+The session layer is `apps/plant3d/net/` (its files' headers say what each does): `crypto.gd` (HKDF, the AEAD, big-endian
+numbers), `code.gd` (the code and its keys), `wire.gd` (packets, messages, the replay window), `stream.gd` (reliable
+streams and fragments), `input_check.gd`, `snapshot.gd`, `udp.gd`, `qr.gd`, `session.gd` (everything else),
+`others_view.gd`, `android_net.gd`; the app's side is `ui/session_panel.gd` ("Together" on the bar) and
+`ui/plant_ui.gd`. Where this differs from §1–§12, this section says how it was built and why.
+
+**The code and its keys (§1.1, §1.3).** S is the 15 characters' 5-bit values one after another, most significant bit
+first, padded with 5 zero bits to 10 bytes. The LAN key is HKDF(K, info `"lan"`) with the session's salt. RFC 5869's
+three SHA-256 cases, RFC 7518 B.1 and an independent Python computation of a code's keys are
+`tests/test_net_crypto.gd`. The `join` link is in `sim/links.gd`, `ref/plant3d.py` (`join_code`) and the vectors'
+`links`; a code with a wrong check character opens the app at its start.
+
+**The QR code (§1.1).** `net/qr.gd`: byte mode, level M, versions 1–10, the mask with the lowest penalty (the link is
+version 3). Its matrices equal those of the Python package qrcode 8.2 for the same text, version and mask
+(`tests/test_net_qr.gd`, four cases with one to four blocks and version bits); zxing-cpp 2.3 reads the invite's code.
+(segno 1.6.6 adds a zero codeword when byte mode's bit stream already ends on a codeword boundary, which ISO/IEC 18004
+7.4.10 doesn't ask for: its matrices differ in the data, so it is not the reference.) On the Note 9 a `walkdown-plant://join/<code>` Intent (what a camera app sends when its link is tapped), with the code
+in lower case and dashes, started a join with the code read right; after "no session answered", the code stays in
+Together to try again with an address. Whether the Note 9's camera app and Google Lens offer to open the scheme from
+the QR code needs a person to point the phone: not tried yet.
+
+**Joining (§1.2, §9.3).** The LAN query goes to 255.255.255.255 and, for each IPv4 address of the device, its /24's
+broadcast address: Godot gives no netmask, a Wi-Fi's /24 is the common case, and a typed address covers the rest (the
+host's IP, or IP:port when its discovery port is not 47820: the harness, or a second host on one machine). A second
+host on a machine whose discovery port is taken says so and is joined by its address. The RSA key is made on a worker
+thread when the join starts (307 ms on the Note 9 from a cool start, 967 ms when it was hot).
+
+**Messages (§2.1–§2.3).**
+- A reliable message carries a stream byte after its kind and length (0: the player's stream with the host, or the
+  host's broadcast stream; 1: the snapshot's), so the two streams under P are told apart.
+- `hello`, `welcome` and `refuse` ride no stream: a joiner has no slot and so no stream before its `welcome`. The
+  joiner sends `hello` every 0.5 s until it is answered, and the host answers each `hello` of an incarnation it knows
+  with the same `welcome` (the same slot, the same P).
+- `ack` carries the acknowledged stream's key byte and stream byte; a player sends all its acks (the broadcast
+  stream's included) to the host under its P, and acks ride in packets with reliable messages.
+- The fields: `input`, `commit`, `hash`, `pos`, `ack`, `ping` and the snapshot's header are binary (big-endian);
+  `hello`, `welcome`, `refuse`, `roster` and `control` are strict JSON. `pos` is §6.3's 24 bytes, its gait byte the
+  walker's speed in tenths of a metre a second (what the avatars' clips follow).
+- The broadcast stream has one numbering; the host keeps a sender per player (its window, timeouts and acks), and a
+  joiner's starts at the `welcome`'s sequence.
+- A reliable message is sent in the frame it was made (inputs and commits); acknowledgements and timeouts at least
+  every 50 ms.
+- Both ends ping every second (the round trip; the player's step for the host; a paused host's sign of life).
+- The host forwards at most 40 broadcasts a second from each player (a burst of 80), and drops the rest (§10).
+
+**Lockstep (§3.1).**
+- **At 1× the host commits each turn ahead:** when its engine reaches the last commit it commits the next 2 steps with
+  the inputs received since, then runs them at the clock's pace. The inputs of a turn are known at its start, and a
+  turn at 1× is never cut short (a pause takes effect after the turn committed). Committing after running, as planned,
+  added a whole turn to every input's delay. **In fast-forward** the host runs a turn's steps, then commits them, as
+  §3.1 says: the engine may stop offering fast-forward within a turn.
+- A turn is 2 steps at 1× and the rate × 2 in fast-forward, so commits go out about 5 times a second at any rate. (The
+  harness runs the model faster than real time, Engine.time_scale; a turn is that many times longer there.)
+- **The jitter buffer:** a player plays at the session's rate, `buffer` turns behind the last commit. When it runs dry
+  it waits until that much is committed again, and the buffer grows by a turn (at most 5). More than a turn behind it,
+  it catches up faster (never dropping a committed step). After 30 s without running dry the buffer shrinks.
+- **Inputs from the network (§12):** checked in the session layer, not the engines (`net/input_check.gd`). An input is
+  strict JSON of at most 512 bytes, with a kind the app makes, that kind's length and the types `ui/inputs.gd` makes.
+  The host drops anything else before a commit, and every player skips an input in a commit that fails the check, so
+  the engines never see a kind that is not a text. **Which slots may play nobody:** any (free mode, §6.1). The
+  trainer's inputs (a fault, a repair without a permit, a lock removed by authority naming no person) are taken from
+  the host's slot and the instructor seats only; `release` and `jump` from the host alone (the jump is voted). The
+  engine's own rules (§17.13) decide the rest.
+
+**Digests and resync (§4):** as planned, the host's digest of each step a multiple of 50 × the stride kept for 3
+minutes; a player whose digest differs is sent a snapshot, and its desync report (both digests, its state and the
+snapshot, `var_to_bytes` compressed with zstd) is written to `user://desync/` on a worker thread. Twice within 10
+minutes, and it watches. Most players agreeing against the host ends the session ("the host's device differs").
+
+**The snapshot (§5.1).** The joiner decodes, checks and builds the engine on a worker thread; the main thread only
+installs it (on the Note 9 a late join's whole load took 197–251 ms off the frame; the swap 0.1 ms). The host copies the state on its main thread (0.5 ms on the laptop for the
+day shift at minute 6) and encodes it on a worker. The host's snapshot is at a commit's end (its engine runs the
+steps already committed first).
+
+**Rejoin (§5.2):** the token is kept in memory and in `user://mp-session.json`; a player that comes back gets its
+slot, its inputs' numbering from the last one committed, and its person when it is still free.
+
+**Saved sessions (§7.4).** The host writes `user://mp-host.save` every 5 s while the run changes, on a worker thread.
+In MP2 it holds the snapshot's parts (`net/snapshot.gd`: the container of `run_save.gd` with the magic
+`"WDPMSAV\n"`); the host's own place and procedure are not in it yet. "Continue the saved session" hosts it with a
+new code. In its lobby a player joining under a name of the save is offered that person again. At its start every
+old player's person is released, then the claims are committed. A player writes `user://mp-last.save` when its session ends,
+and "Continue alone" goes on from it as a single-player run (the others' people released).
+
+**Android (§7.5, §9.3).** The screen is kept on while a session is open. Going to the background sends `away` (a host
+pauses the session; a player keeps its person for 120 s). The multicast lock is taken through the AndroidRuntime
+plugin while a session is open (`net/android_net.gd`). On the Note 9 (Android 10) the lock is taken and the broadcast LAN query found the laptop's session on the Wi-Fi, with no address typed. The packages: Android `INTERNET` and
+`CHANGE_WIFI_MULTICAST_STATE`, Flatpak `--share=network`, MSIX `internetClient` and `privateNetworkClientServer`
+(tests/test_plant3d_links.py). No socket is opened outside a session (`tests/test_net_no_network.gd`: the session
+layer's count and the process's sockets in /proc). In the Windows 11 VM (on a Private network), installing the MSIX adds an inbound Allow rule for the package (Domain and Private profiles, from `privateNetworkClientServer`); the app, bound on every interface, joined the laptop's session, and no firewall prompt was on the screen at 25 s or 45 s (screenshots). On a Public network that rule doesn't apply: the session's traffic is then only the answers to the app's own packets, which the firewall lets through (not tried).
+
+**Other players (§6.3):** drawn by `net/others_view.gd` at their `pos`, 200 ms behind and interpolated, with their
+names within 15 m. Their avatars are their people's roles' looks, added to the people on screen as someone the trainee
+works with (skinned first). A player's person standing at their place is also drawn there by the staff's view, which
+shows every person but the trainee's own: this view then draws only the name, until they walk away from it. MP6
+measures the crowd with 7 others.
+
+**From the two reviews (blind and adversarial; tests/test_net_attacks.gd and harness runs for each):**
+- **The rejoin token** travels with P inside the RSA encryption (`welcome`'s `p` is P ‖ token) and is new at every
+  welcome. A hello again for an incarnation the host knows is answered only for the RSA key it first came with, since
+  every packet's header shows its incarnation. A token whose player is still heard takes nothing over. Without this,
+  a player holding the code could fetch another's welcome, read the token and take their slot, or a replayed old hello
+  could move a slot.
+- **Replay windows** are kept only for known senders (a player's slot and incarnation, the host's address) and are
+  dropped with an incarnation, at most 256. A player's K packets are taken only from the address its P packets come
+  from, and hashes only for steps the host digested.
+- **A step's digests are judged together:** once every player has reported, or 3 s after the host's digest.
+  Judged one by one, "most players against the host" never fired.
+- **The host's silence** is noticed in the lobby and while a snapshot loads too. When the host is in the background,
+  its players wait up to 120 s. The last packets before the background (away, the pause, a bye) go three times, as
+  nothing is sent again while Android has the app stopped.
+- **Slots** of hellos never followed by their player's packets (15 s) are given again. A player that leaves keeps its
+  token and comes back to its slot. An input the host won't take is told to its player, and a snapshot says which
+  inputs it holds, so no input is left "sending…".
+- **A procedure's "pause when a step is done"** stops the frame's steps first; in fast-forward a turn had been left
+  open.
+- **After a session** the app goes back to the player's own run (saved before the session, or the scenario afresh,
+  saved from then on). "Continue alone" moves the player's person to slot 0, the single-player run's.
+
+**Not in MP2:** host migration and removal (MP3; a player whose host is silent for 10 s ends its session), the relay
+and direct UDP (MP4), voice (MP5).
+
+**The harness (§12).** `apps/plant3d/net/tests/`:
+- `instance.gd`: a headless player driven by a plan of actions;
+- `replay.gd`: one engine fed the host's commits;
+- `netsim.py`: a UDP proxy per link, with latency, jitter, loss, duplication and outages, from a seed;
+- `harness.py` and `test_harness.py`: the runs, in CI's `multiplayer` job;
+- `vm_session.py`: the Windows VM's check.
+
+The runs, each player's digests at every 50th step and events checked against every other player's and against the
+replay:
+- 2, 3 and 8 players for 10 model minutes (at 20× real time) with inputs from all;
+- a late join at minute 5, and a rejoin after a kill;
+- two joins at once, and one person claimed twice (in the lobby and later);
+- the jump vote, a pause by a player, the host away;
+- an injected desync, resynced within 150 steps;
+- fast-forward at the slowest player's cap;
+- an input flood, junk and replays at the host's ports, another session's code;
+- 150 ms ± 50 ms with 5 % loss and 400 ms with 15 % loss through the network simulator.
+
+Each instance of the first train is 98–174 MB of PSS (8 at once, measured by the instances), so CI's runner takes 8.
+Input to effect through the simulator (two players, median and 95th percentile): 0.64 s and 0.75 s at 150 ms ± 50 ms
+with 5 % loss; 1.48 s and 2.42 s at 400 ms with 15 % loss (MP4 measures mobile data on the Note 9).
+
+**Measured on the devices (2026-10-27).** Test-signed release builds of this branch (the APK 142.8 MB), the Note 9
+on the Wi-Fi (5 GHz), the laptop as the host (`instance.gd`, headless, bound to every interface), the frames walk
+joined as it starts (`mp=`, an input every 3 s):
+- **The engine's vectors on the Note 9** (`tools/plant3d/vectors_android.sh`): 245 passed. Every run's value digests
+  and its 32,217 state digests equal Linux's. (This is §12's first step: two devices then compare digests in a
+  session.)
+- **The LAN query on the Note 9** found the laptop's session by broadcast with no address typed: the multicast lock
+  works.
+- **Laptop, Note 9 and the Windows 11 VM in one session**, with inputs committed from all three and no desync. The VM
+  renders without a GPU, at 0.5 s a frame, and still keeps up.
+
+The Note 9 against §11's budgets:
+
+| | Budget | Measured |
+|---|---|---|
+| Session layer a frame | ≤ 0.5 ms mean, ≤ 2 ms max | 0.29 ms mean. Before P's decryption moved off the frame, the join's worst was 12.4 ms. Since: 2.57 ms, with 4 of 22,134 frames over 2 ms, none of them a join, a snapshot or a roster. **The maximum misses its budget**, cause not found yet |
+| Input to effect on the Wi-Fi | ≤ 0.5 s median | 317 ms median, 521 ms p95, 637 ms at most (201 inputs); 334 ms median in the first, short walk |
+| RSA key | (measured) | 307 ms from a cool start, 997 ms in a warm phone, on a worker thread |
+| Snapshot load (late join) | off the frame but the swap ≤ 5 ms | 167–251 ms in all, the swap 0.1 ms |
+| Network | idle ≈ 4 kbit/s up, the rest ≈ 25 kbit/s down with 7 others | with one other player and an input every 3 s: 6.3 kbit/s up, 7.6 kbit/s down |
+| State digests | ≤ 1 ms, about 2 a second | no desync in any device session |
+
+**The frame rules with two players** (cool start, 30.0 °C, `SAMPLE=1`, `probe=1`):
+- 98.25 % of frames at ≥ 30 fps;
+- first walkable frame 12.6 s.
+
+One frame of 173 ms at 566 s counts as the app's. It was GPU time: 166 ms on the GPU, 4.3 ms of scripts, 822 draws, at
+a place 330 m from the other player. The walk had reclaim in 5.95 % of its samples, so the rule says walk again. **Not yet walked again:** the phone, on its charger at 100 %, did not cool back to
+30.0 °C within two hours. So MP2's frame-rule walk with two players is still to be judged.
+
+Peak PSS was not read: `phone/frames.sh` read `dumpsys meminfo` by the package's name, which matches no process when
+Walkdown is installed too. It now reads it by the pid. The session's ≤ 30 MB is therefore still to be measured.

@@ -185,7 +185,7 @@ func check(p: Dictionary) -> String:
 
 ## What the app indexes with inside the engine's state (the generic check sees only fields, types and lengths): a
 ## file whose hash matches but whose contents were changed must not break the session. "" when it fits.
-func _engine_contents(fresh, d: Dictionary) -> String:
+static func _engine_contents(fresh, d: Dictionary) -> String:
 	if d.get("step_no", 0) < 0:
 		return "a negative step"
 	if d.has("mstate"):
@@ -538,6 +538,18 @@ func _place_offer() -> void:
 
 static func _tz_offset() -> int:
 	return int(Time.get_time_zone_from_system().get("bias", 0)) * 60
+
+
+## A join link at a cold start (docs/plant3d/MULTIPLAYER.md §1.2): the offer goes without a choice; the saved run stays
+## as it is, offered at the next solo start, and nothing is saved over it (not armed).
+func withdraw_offer() -> void:
+	if offer_panel == null:
+		return
+	ui.root.get_viewport().size_changed.disconnect(_place_offer)
+	_offer_layer.queue_free()
+	_offer_layer = null
+	offer_panel = null
+	ui.player.scripted = false
 
 
 func _choose(p: Dictionary) -> void:

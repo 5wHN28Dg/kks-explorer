@@ -18,6 +18,7 @@ geometry at their described positions, made by the builder.
 | `people/` | the people's source files: KayKit's CC0 animations and mannequin (`people/kaykit/`, committed, each file pinned by SHA-256 in its `SOURCE.json`; `people/fetch_kaykit.sh` checks them against the archive). The build makes the people from them (`builder/people/`: our own bodies, work clothes and PPE on KayKit's skeleton, its clips retargeted, our own work poses, the posed band's meshes) into `built/people/`; the app draws them (`app/people.gd`) |
 | `addons/walkdown_plant_android/` | editor-only: the export plugin that adds the `walkdown-plant://` intent filter to the Android manifest (decision 0056) |
 | `msix/` | the MSIX: its manifest (identity, alias, the `walkdown-plant` protocol), `make-msix.sh` (the package, as Walkdown's), `logos.gd` (the logos from `icon.svg`) |
+| `net/` | multiplayer (docs/plant3d/MULTIPLAYER.md, decisions 0067–0068; milestone MP2, LAN sessions): the session layer (`session.gd`: the lobby, commits, the jitter buffer, digests and resync, late join and rejoin), its keys and AEAD (`crypto.gd`, `code.gd`), packets and reliable streams (`wire.gd`, `stream.gd`), the inputs it takes (`input_check.gd`), snapshots and saved sessions (`snapshot.gd`), the invite's QR code (`qr.gd`), the other players in the plant (`others_view.gd`), Android's multicast lock (`android_net.gd`); `net/tests/` the multi-instance harness (below) |
 | `sim/` | the behaviour engine (the model's evaluator). It has its own owner; the project hosts it (`walkdown_plant/sim/path` in `project.godot`) |
 | `tests/` | the app's tests: `run_tests.gd` runs every `test_*.gd` |
 | `phone/frames.sh` | one frame-time run on a phone |
@@ -88,6 +89,8 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--fx_off=occlusion`, `--fx_off=farview`, `--fx_off=wtp`, `--fx_off=interiors` | the buildings' occluders unused; the merged far views unused (every piece drawn at every distance, as before them: `builder/plant_builder.gd` `far_merge`); the WTP and intake hidden; the rooms near their doors never loaded: to measure what each costs or saves |
 | `--probe=1` | (with a walk) `frames.csv` beside `result.txt`: per frame the physics steps, the scripts, the draw (the render thread and any wait for the GPU) and the GPU time (`app/frame_probe.gd`) |
 | `--pipeline_save_mb=N` | saves the pipeline cache every N MB of new pipelines (the project: 0.25) |
+| `--walk=frames --mp=CODE@HOST[:PORT]` | the walk in a LAN session, joined as it starts (a phone takes it from `walk.txt` too: `phone/frames.sh`'s `WALK_EXTRA`); `--mp_inputs=N` makes an input every N seconds; the result's `SESSION` lines give the session layer's time a frame, the input-to-effect delays, the RSA key's time and the snapshot's load and swap |
+| `walkdown-plant://join/CODE` | a link that joins that session (MULTIPLAYER.md §1.1); a phone's camera app opens it from the host's QR code |
 
 Controls (R7):
 
@@ -217,6 +220,22 @@ generated straight-line code (0.8 ms a step, the same results bit for bit: apps/
 - **Links out:** a course link in a procedure opens Walkdown's course (`walkdown://course/…`); Walkdown takes
   `kks` and `course` links on Android, GNOME and Windows (decision 0058; `ui/links_in.gd` `WALKDOWN_TAKES`). Without
   Walkdown installed, the plant says so.
+
+## Multiplayer (MP2: this Wi-Fi)
+
+"Together" on the bar: host a session (a scenario, or the saved session), or join one by its code (and the host's
+address when the network keeps devices apart). The host's panel shows the code, its link and QR code, and the
+players; roles are claimed in the lobby (the Crew panel's role list claims too) and the host starts the run. The bar's
+Pause, 1× and Fast go to the session: anyone pauses, the host or the one who paused runs again, fast-forward starts
+when everyone is ready, at the slowest device's rate. MULTIPLAYER.md §14 says what was built.
+
+The harness (`net/tests/`, CI's `multiplayer` job): `python3 -m unittest discover -s apps/plant3d/net/tests -v`
+(Godot from `$GODOT` or the pinned fetch; `WDP_KEEP=1` keeps each instance's folder, log and output). Each run starts
+headless players of the first train on the loopback (`instance.gd`, with a plan of actions), some through the network
+simulator (`netsim.py`), and checks every player's digests and events against the others' and against one engine fed
+the host's commits (`replay.gd`). A device session uses `instance.gd` as the host on this laptop, bound to every
+interface (`--local=0`), with `--data=built/content`. A Windows VM joins with `vm_session.py`. The engine's vectors run on a phone
+with `tools/plant3d/vectors_android.sh`.
 
 ## Saved runs
 

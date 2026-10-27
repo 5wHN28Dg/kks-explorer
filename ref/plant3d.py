@@ -7,7 +7,7 @@ and model evaluator must agree with this on ref/vectors/plant3d-v1.json.
     check_files({rel: bytes})  -> Bundle
     Engine(bundle, scenario)   -> the model at step 0; queue operations, then .step()
 """
-import math, os, re
+import hashlib, math, os, re
 from operator import itemgetter
 from ref import sjson
 from ref.courses import FormatError, need, keys, is_num, num, ident, text, lst, check_table, table_at, Course
@@ -2692,6 +2692,26 @@ def decode(code, kks):
             'equipment': eq if g[4] else None}
 
 
+CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'   # Crockford's base32 (docs/plant3d/MULTIPLAYER.md §1.1)
+
+
+def join_code(text):
+    """A session's invite code as typed or linked (docs/plant3d/MULTIPLAYER.md §1.1): read as Crockford's decoding
+    reads (upper and lower case alike, I and L as 1, O as 0, dashes ignored), 16 characters whose last is the first 5
+    bits of SHA-256("wdp-code-v1\n" + the first 15); the code without dashes, or None."""
+    s = ''
+    for ch in text.upper():
+        if ch == '-':
+            continue
+        ch = {'I': '1', 'L': '1', 'O': '0'}.get(ch, ch)
+        if ch not in CODE_ALPHABET:
+            return None
+        s += ch
+    if len(s) != 16 or CODE_ALPHABET[hashlib.sha256(('wdp-code-v1\n' + s[:15]).encode()).digest()[0] >> 3] != s[15]:
+        return None
+    return s
+
+
 def read_link(url, b):
     """What a link opens in Walkdown Plant (§6). Returns one of
         {'open': 'kks', 'code', 'match', 'decode'}   match: 'exact', 'without_a3' (the A3 letter dropped),
@@ -2699,6 +2719,7 @@ def read_link(url, b):
                                                        'same_equipment' (same equipment letters), or
                                                        'decode' (no equipment of that kind: code is the one asked)
         {'open': 'procedure', 'id', 'step'}             step None for the first step
+        {'open': 'join', 'code'}                        a multiplayer session's invite (join_code)
         {'open': 'start'}                               anything else: the app's start, with a short message
     `decode` is always the decoding of the code asked (after cutting it to the grammar)."""
     start = {'open': 'start'}
@@ -2726,6 +2747,10 @@ def read_link(url, b):
             if same:
                 return dict(out, code=same[0], match='same_equipment')
         return dict(out, match='decode')
+    if len(path) == 2 and path[0] == 'join' and len(path[1]) <= 24:
+        code = join_code(path[1])
+        if code is not None:
+            return {'open': 'join', 'code': code}
     if len(path) in (2, 3) and path[0] == 'procedure' and path[1] in b.procedures:
         steps = [s['id'] for s in b.procedures[path[1]]['steps']]
         if len(path) == 2:

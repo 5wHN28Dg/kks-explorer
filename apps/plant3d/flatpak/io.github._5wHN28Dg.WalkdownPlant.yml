@@ -12,6 +12,7 @@ base-version: '4.7'
 command: godot-runner
 finish-args:
   - --share=ipc
+  - --share=network            # multiplayer sessions only (decision 0068): no socket is opened outside one
   - --socket=x11               # Godot's default display driver (Wayland is opt-in in 4.7)
   - --socket=pulseaudio
   - --device=all               # the GPU, and gamepads
