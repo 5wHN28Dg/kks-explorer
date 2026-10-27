@@ -133,8 +133,9 @@ class VoiceSdkPin(unittest.TestCase):
     def test_one_commit_everywhere(self):
         with open(os.path.join(REPO, 'apps', 'plant3d', 'voice', 'build.sh'), encoding='utf-8') as f:
             script = f.read()
+        self.assertEqual(len(re.findall(r'^\s*SDK_PIN=', script, re.M)), 1, 'one SDK_PIN line in voice/build.sh')
         pins = re.findall(r'^SDK_PIN=([0-9a-f]{64})$', script, re.M)
-        self.assertEqual(len(pins), 1, 'one SDK_PIN line in voice/build.sh')
+        self.assertEqual(len(pins), 1, 'SDK_PIN is a full commit')
         with open(BOM, encoding='utf-8') as f:
             sdk = [c for c in json.load(f)['components'] if c['name'] == 'org.freedesktop.Sdk']
         self.assertEqual(len(sdk), 1)
@@ -146,9 +147,21 @@ class VoiceSdkPin(unittest.TestCase):
         self.assertIn('@%s?' % sdk[0]['version'], sdk[0]['purl'])
         with open(os.path.join(REPO, '.github', 'workflows', 'plant3d-app.yml'), encoding='utf-8') as f:
             wf = f.read()
-        self.assertIn('flatpak update --user -y --noninteractive --commit="$(sed -n \'s/^SDK_PIN=//p\' '
-                      'apps/plant3d/voice/build.sh)" org.freedesktop.Sdk//26.08', wf)
+        # the SDK's install and update are whole lines, in that order, and no other line touches the SDK (a
+        # commented-out or `|| true` update, or a later unpinned one, would let CI build at another commit)
+        install = 'flatpak install --user -y --noninteractive flathub org.freedesktop.Sdk//26.08'
+        update = ('flatpak update --user -y --noninteractive --commit="$(sed -n \'s/^SDK_PIN=//p\' '
+                  'apps/plant3d/voice/build.sh)" org.freedesktop.Sdk//26.08 ;;')
+        sdk_lines = [l.strip() for l in wf.splitlines() if 'org.freedesktop.Sdk' in l or 'flatpak update' in l]
+        self.assertEqual(sdk_lines, [install, update])
+        self.assertIn('org.freedesktop.Sdk//26.08', script, "build.sh's SDK branch is the one CI installs")
         self.assertNotIn('WDP_SDK_COMMIT', wf, 'CI builds at the pinned commit, never a named other one')
+        # the voice job (the release's toolchains) builds in the SDK, never with the runner's own compiler (the app's
+        # test jobs do, on purpose: their Godot can't load the SDK's build)
+        voice = re.search(r'^  voice:\n(.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)', wf, re.M | re.S)
+        self.assertIsNotNone(voice, 'the voice job in plant3d-app.yml')
+        self.assertNotIn('WDP_LINUX_HOST', voice.group(1), "the voice job builds in the SDK, not with the host's GCC")
+        self.assertIn(update, voice.group(1), "the voice job installs the pinned SDK")
 
 
 LLVM_MINGW = os.path.expanduser('~/.local/kksdev/llvm-mingw/bin')
