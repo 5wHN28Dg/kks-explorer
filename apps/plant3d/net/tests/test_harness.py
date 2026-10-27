@@ -76,8 +76,12 @@ class Players(Base):
     def run_players(self, n, minutes, link=None, ninth=False):
         t_end = 3 + minutes * M
         self.h.host([{"t": 2.5, "do": "start"}] + inputs(3, t_end, 20, 0) + ends(t_end, host=True))
+        t0 = time.monotonic()
         for k in range(1, n):
-            self.h.join(inputs(4, t_end - 2, 20, k) + ends(t_end + 0.5), f'p{k}',
+            # (times on the host's clock: a player started later, on a busy machine, still makes its inputs before
+            # the host's pause)
+            off = time.monotonic() - t0
+            self.h.join([dict(a, t=a['t'] - off) for a in inputs(4, t_end - 6, 20, k) + ends(t_end + 0.5)], f'p{k}',
                         link=link(k) if link else None)
         if ninth:
             time.sleep(8)
