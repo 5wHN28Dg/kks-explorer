@@ -138,14 +138,25 @@ func _assets(info: Dictionary) -> Array:
 	for r in ROLES:
 		if not info.roles.has(r) or not info.looks.has(info.roles[r]):
 			p.append("role %s has a look" % r)
-	for c in ["idle", "walk", "run", "stairs", "climb", "inspect", "talk", "radio", "type", "sit", "write",
+	for c in ["idle", "walk", "run", "stairs", "stairs_down", "climb", "inspect", "talk", "radio", "type", "sit", "write",
 			"kneel_work", "wrench", "handwheel", "calibrate", "carry", "sleep", "lift", "walk_road", "idle_road"]:
 		if not c in info.clips:
 			p.append("the clip %s is built" % c)
-	for k in ["walk", "run", "stairs", "climb"]:
+	for k in ["walk", "run"]:
 		var v: float = info.speeds.get(k, 0.0)
 		if v <= 0.2 or v > 6.0:
 			p.append("the %s clip has a natural speed (%.2f m/s)" % [k, v])
+		# its ground over the cycle (app/people.gd plays it at the moment the ground covered says): only growing
+		var c: Array = info.get("gait", {}).get(k, {}).get("curve", [])
+		if c.size() < 100 or absf(float(c[c.size() - 1]) - v * float(info.gait[k].length)) > 1e-3:
+			p.append("the %s clip has its ground over its cycle (%d points)" % [k, c.size()])
+		else:
+			for i in range(1, c.size()):
+				if float(c[i]) < float(c[i - 1]):
+					p.append("the %s clip's ground goes back at %d of %d" % [k, i, c.size()])
+					break
+	if not (info.get("stairs", {}).get("going", 0.0) > 0.2 and info.stairs.rise > 0.1 and info.stairs.rung > 0.2):
+		p.append("the stair and the ladder the climbing clips are made for (%s)" % str(info.get("stairs")))
 	if not info.speeds.walk < info.speeds.run:
 		p.append("the run is faster than the walk at its natural speed (%s)" % str(info.speeds))
 	for id in info.looks:
@@ -206,6 +217,14 @@ func _bands(tree: SceneTree, info: Dictionary) -> Array:
 		return ["people: " + err]
 	ppl.camera = cam
 	ppl.set_process(false)   # stepped by hand here
+	# made at the start, not in the first frames (docs/PLANT3D.md §18.1 as built, phase 4): the doors' grid, and every
+	# pool avatar's clips played once (the first play of an AnimationPlayer builds its caches)
+	if ppl.doors._count < 0:
+		p.append("the people's door grid is made at their setup")
+	for a in ppl.avatars:
+		if (a.anim as AnimationPlayer).current_animation == "":
+			p.append("a pool avatar's clips are played once at the setup")
+			break
 	var look: String = info.looks.keys()[0]
 	ppl.people = [
 		{"at": Vector3(0, 0, -5), "yaw": 0.0, "speed": 1.4, "anim": "", "look": look, "on": ""},           # 0 walking, 5 m
@@ -229,11 +248,11 @@ func _bands(tree: SceneTree, info: Dictionary) -> Array:
 			p.append("a walker walks and a person at a valve turns its handwheel (%s, %s)" % [who[0].clip, who[1].clip])
 		if who[0].lod != 0 or (who[0].body as MeshInstance3D).mesh.resource_path != info.looks[look].lod0:
 			p.append("LOD0 within 10 m")
-		var want: float = 1.4 / float(info.speeds.walk)
-		if absf(who[0].speed_scale - want) > 1e-3:
-			p.append("the walk is played at the walker's speed over the clip's (%.3f, not %.3f)" % [who[0].speed_scale, want])
-		if absf(who[1].speed_scale - 1.0) > 1e-6:
-			p.append("a work clip is played at its own speed (%.3f)" % who[1].speed_scale)
+		var e := _walked(ppl, who[0], info, "walk", 0.3)
+		if e != "":
+			p.append(e)
+		if absf(who[1].rate - 1.0) > 1e-6:
+			p.append("a work clip is played at its own speed (%.3f)" % who[1].rate)
 	# the posed band: the runner (no slot left), the seated two; nobody beyond 80 m
 	if ppl.stats.posed != 3:
 		p.append("three people in the posed band (%d)" % ppl.stats.posed)
@@ -286,11 +305,13 @@ func _bands(tree: SceneTree, info: Dictionary) -> Array:
 		if a.person >= 0:
 			last[a.person] = a.anim.current_animation_position
 	for i in 60:
+		ppl.people[0].at = Vector3(0, 0, -5.0 - 1.4 * (i + 1) / 60.0)   # (walking: a walk moves on by the ground covered)
 		ppl._skinned(1.0 / 60.0)
 		for a in ppl.avatars:
 			if a.person >= 0 and a.anim.current_animation_position != last[a.person]:
 				adv[a.person] += 1   # the clip itself moved on (not only the rate's timer)
 				last[a.person] = a.anim.current_animation_position
+	ppl.people[0].at = Vector3(0, 0, -5)
 	if adv.get(0, 0) < 28 or adv.get(0, 0) > 31 or adv.get(1, 0) < 14 or adv.get(1, 0) > 16:
 		p.append("clips advanced 30 times a second within 10 m and 15 beyond (%s)" % str(adv))
 	ppl.people[1].at = Vector3(1, 0, 18)   # behind the camera
@@ -310,8 +331,10 @@ func _bands(tree: SceneTree, info: Dictionary) -> Array:
 		if a.person == 0:
 			if a.clip != "walk_road" or not (a.body as MeshInstance3D).mesh.resource_path.ends_with("_road_0.res"):
 				p.append("a walker on a road carries the hat (%s, %s)" % [a.clip, (a.body as MeshInstance3D).mesh.resource_path])
-			if absf(a.speed_scale - 1.4 / float(info.speeds.walk)) > 1e-3:
-				p.append("the hat-carrying walk keeps the walk's speed")
+			ppl._skinned(1.0 / 30.0)      # (into the road's walk)
+			var e := _walked(ppl, a, info, "walk", 0.3)
+			if e != "":
+				p.append("the hat-carrying walk keeps the walk's ground: " + e)
 	ppl.people[0].erase("hat")
 	# someone the trainee works with gets a slot first, though further away
 	ppl.people[1].at = Vector3(1, 0, -8)
@@ -366,8 +389,33 @@ func _bands(tree: SceneTree, info: Dictionary) -> Array:
 		var got: String = ppl._clip_of(c[0])
 		if got != c[1]:
 			p.append("%s plays %s (%s)" % [str(c[0]), c[1], got])
+	if ppl._clip_of({"speed": 0.4, "on": "stairs"}, true) != "stairs_down":
+		p.append("someone going down a flight plays the stairs' clip down")
 	root.free()
 	return p
+
+
+## Person 0, on avatar `a`, walks `metres` straight on, an update at a time (app/people.gd, 30 a second): the clip is
+## then at the moment of its cycle (people.json's `gait` curve of `gait`) that much further ground says (docs/PLANT3D.md
+## §18.1 as built, phase 4: the foot on the floor stays put). "" or what went wrong; they are put back where they were.
+static func _walked(ppl, a: Dictionary, info: Dictionary, gait: String, metres: float) -> String:
+	var at: Vector3 = ppl.people[0].at
+	var d0: float = a.d
+	var n := 10
+	for i in n:
+		ppl.people[0].at = at + Vector3(0, 0, -metres * (i + 1) / n)
+		ppl._skinned(1.0 / 30.0)
+	var curve := PackedFloat32Array(info.gait[gait].curve)
+	var want_d := fposmod(d0 + metres / float(ppl.people[0].get("scale", 1.0)), curve[curve.size() - 1])
+	var want_t: float = People.gait_t(curve, want_d) * a.anim.current_animation_length
+	var out := ""
+	if absf(a.d - want_d) > 1e-3 and absf(absf(a.d - want_d) - curve[curve.size() - 1]) > 1e-3:
+		out = "%.2f m walked moved the walk on by %.3f m of its ground, not %.3f" % [metres, a.d - d0, metres]
+	elif absf(a.anim.current_animation_position - want_t) > 2e-3:
+		out = "the walk is at %.3f s of its cycle, not %.3f where its ground says" % [a.anim.current_animation_position, want_t]
+	ppl.people[0].at = at
+	ppl._skinned(1.0 / 30.0)
+	return out
 
 
 ## The tiers' shares (docs/PLANT3D.md §18.4, set by milestone A1's measurement).

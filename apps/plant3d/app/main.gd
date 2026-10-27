@@ -63,6 +63,7 @@ const PlantUi = preload("res://ui/plant_ui.gd")
 const Lighting = preload("res://app/lighting.gd")
 const Interiors = preload("res://app/interiors.gd")
 const People = preload("res://app/people.gd")
+const StairTreads = preload("res://app/stair_treads.gd")
 const MpSession = preload("res://net/session.gd")
 const Crowd = preload("res://app/crowd.gd")
 const ScriptCost = preload("res://app/script_cost.gd")
@@ -187,6 +188,8 @@ func _ready() -> void:
 			_say("people: " + perr)
 			people.queue_free()
 			people = null
+		else:
+			people.treads = StairTreads.of(plant.manifest)   # their feet on the stairs' treads and the ladders' rungs
 	if early:
 		plant.visible = false
 		Quality.apply_ranges(get_viewport())   # the tier's visibility ranges, on the plant's pieces now loaded

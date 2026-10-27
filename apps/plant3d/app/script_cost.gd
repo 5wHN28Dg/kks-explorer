@@ -17,6 +17,8 @@ static var frames := PackedInt64Array([0, 0])
 ## frame in microseconds, at [speed * (parts + 1) + part] (flat: a packed array taken out of an Array is a copy)
 static var sums := PackedInt64Array()
 static var maxs := PackedInt64Array()
+static var max_at := PackedInt64Array()        # when each largest frame came (ms since start())
+static var _t0 := 0
 static var times_normal := PackedFloat32Array()   # the scripts' whole per frame (ms)
 static var times_fast := PackedFloat32Array()
 
@@ -30,6 +32,9 @@ static func start() -> void:
 	sums.fill(0)
 	maxs.resize(sums.size())
 	maxs.fill(0)
+	max_at.resize(sums.size())
+	max_at.fill(0)
+	_t0 = Time.get_ticks_msec()
 	times_normal = PackedFloat32Array()
 	times_fast = PackedFloat32Array()
 
@@ -48,7 +53,9 @@ static func frame(fast: bool, scripts_us: int) -> void:
 	var o := f * (NAMES.size() + 1)
 	for i in NAMES.size():
 		sums[o + i] += cur[i]
-		maxs[o + i] = maxi(maxs[o + i], cur[i])
+		if cur[i] > maxs[o + i]:
+			maxs[o + i] = cur[i]
+			max_at[o + i] = Time.get_ticks_msec() - _t0
 	var k := o + NAMES.size()
 	sums[k] += scripts_us
 	maxs[k] = maxi(maxs[k], scripts_us)
@@ -78,4 +85,10 @@ static func lines() -> PackedStringArray:
 		out.append("SCRIPTS %s frames=%d scripts=%.2f/%.2f p95=%.2f p99=%.2f (ms a frame: mean/largest) %s" % [
 			"fast" if f == 1 else "normal", n, sums[k] / 1000.0 / n, maxs[k] / 1000.0, t[int(n * 0.95)], t[int(n * 0.99)],
 			" ".join(parts)])
+		# and when each part's largest frame came (seconds since the measuring began): a one-off at the start, or not
+		var at := PackedStringArray()
+		for i in NAMES.size():
+			if maxs[o + i] > 0:
+				at.append("%s=%.1fs" % [NAMES[i], max_at[o + i] / 1000.0])
+		out.append("SCRIPTS_AT %s %s" % ["fast" if f == 1 else "normal", " ".join(at)])
 	return out

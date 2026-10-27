@@ -59,6 +59,8 @@ var _kind := PackedByteArray()
 var _logical := PackedVector3Array()    # their logical point last frame
 var _drawn := PackedVector3Array()
 var _fwd := PackedVector3Array()        # walking: the way they walked where drawn last frame
+var _from := PackedVector3Array()       # standing: their place's point; walking: the place they set off from
+var _from_room: Array = []              # and its room (what is left of their offset from it is kept in it or the line's)
 var _frame := 0
 var _push := PackedVector3Array()
 var _near := PackedByteArray()
@@ -121,6 +123,8 @@ func _grow(id: int) -> void:
 	_logical.resize(m)
 	_drawn.resize(m)
 	_fwd.resize(m)
+	_from.resize(m)
+	_from_room.resize(m)
 	var old := _seen.size()
 	_seen.resize(m)
 	for k in range(old, m):
@@ -186,6 +190,11 @@ func solve(dt: float) -> void:
 				_off[id] = Vector3.ZERO
 		var _kind_was := _kind[id]
 		var logical_was := _logical[id]
+		if kind[i] == STANDING:
+			_from[id] = logical
+			_from_room[id] = rooms[i]
+		elif kind[i] == WALKING and (jumped or _kind_was == FIXED):
+			_from_room[id] = null       # (what is left of an offset is from a place only when they set off from one)
 		_seen[id] = _frame
 		_kind[id] = kind[i]
 		_logical[id] = logical
@@ -289,7 +298,24 @@ func _place(i: int, id: int) -> void:
 		_lat[id] = clampf(_lat[id], r.x, r.y) if r.x <= r.y else (r.x + r.y) * 0.5
 		var k: int = l.seg(s)
 		var a: float = l.heading_in(s, k)     # (once: the side and the way along are both of it)
-		pos[i] = l.point_in(s, k) + Vector3(-sin(a), 0.0, cos(a)) * (sg * _lat[id]) + _off[id]
+		var on_line: Vector3 = l.point_in(s, k) + Vector3(-sin(a), 0.0, cos(a)) * (sg * _lat[id])
+		pos[i] = on_line
+		var off := _off[id]
+		if off.length_squared() > 1e-10:
+			# what is left of where they stood beside their place, as they set off: kept where the build measured
+			# room, round the place they left or beside the line; less of it where neither has room
+			if not _room_for(on_line + off, id, l, s, sg, a):
+				var lo := 0.0
+				var hi := 1.0
+				for it in 7:
+					var m := (lo + hi) * 0.5
+					if _room_for(on_line + off * m, id, l, s, sg, a):
+						lo = m
+					else:
+						hi = m
+				off *= lo
+				_off[id] = off
+			pos[i] = on_line + off
 		fwd[i] = Vector3(cos(a), 0.0, sin(a)) * sg
 		speed[i] = speed_in[i]
 	else:
@@ -297,3 +323,21 @@ func _place(i: int, id: int) -> void:
 		pos[i] = base[i] + _off[id]
 		fwd[i] = Vector3.ZERO
 		speed[i] = 0.0
+
+
+## Whether `p` (the feet, level with the line) is where the build measured room for walker `id` on `l` at `s`: round
+## the place they set off from, or beside the line within its room there (the side `a`'s, walked along `sg`).
+func _room_for(p: Vector3, id: int, l, s: float, sg: float, a: float) -> bool:
+	var room = _from_room[id]
+	if room != null:
+		var d := Vector3(p.x - _from[id].x, 0.0, p.z - _from[id].z)
+		var dl := d.length()
+		if dl < 1e-4 or dl <= stand_room(room, d / dl) + 1e-3:
+			return true
+	var c: Vector3 = l.point(s)
+	var right := Vector3(-sin(a), 0.0, cos(a)) * sg
+	var fwd := Vector3(cos(a), 0.0, sin(a)) * sg
+	var lat := (p - c).dot(right)
+	var along := (p - c).dot(fwd)
+	var r := lane_room(l, clampf(s + along * sg, 0.0, l.length), sg)
+	return lat >= r.x - 1e-3 and lat <= r.y + 1e-3

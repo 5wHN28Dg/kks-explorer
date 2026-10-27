@@ -1975,9 +1975,9 @@ own (it follows the frames' lengths and that screen's walker).
 - **The crowd's lanes** (`app/crowd.gd`): the frames, camp and water plant walks' routes have their room measured as
   the lines' (`built/crowd_lanes.bin`); each lane (0.35 to 0.85 m, those at work 0.8 m) is kept within it and turns
   through the corners; a route the build did not measure is walked on its line. Phase 1 had found 15 % of the
-  industrial lanes' points inside stairs and rails. The frames route itself now leaves HRSG 1's top landing by the
-  walkway (its stair's top, (102, 50, 30) in the content, is on the landing's east rail) and crosses the roof along
-  y = 56 instead of along the landing's rails (3 m longer).
+  industrial lanes' points inside stairs and rails. The frames route itself left HRSG 1's top landing by the walkway
+  (its stair's top, (102, 50, 30) in the content, was on the landing's east rail) and crossed the roof along y = 56
+  instead of along the landing's rails (3 m longer); phase 4 widened the landing (below).
 - **Doors open for people** (`app/people_doors.gd`, from `app/people.gd`, 4 times a second): anyone standing within 0.45 m of a leaf keeps it open; anyone walking at a door
   (by the way they walk, not their heading, which trails it round a corner) within 2.5 m of its leaf (or 2 s at their
   speed), or within 1.6 m of it at its width, presses it (open, and 3 s more); found by a grid of 8 m cells, made
@@ -1990,9 +1990,81 @@ own (it follows the frames' lengths and that screen's walker).
   four minutes frame by frame (no turn faster than the limit, no heading set at once but on a jump, no jump, every
   walker's capsule clear every frame), and walks through every door at a walk and a run, through its middle and as far
   to either side as the room allows, and round a corner 1.5 m before it (its leaf never touches them); `test_people.gd` the crowd's corners.
-- Not yet (phase 4): the standing places (a person at a place is drawn at its point, up to 5 cm above the floor; a
-  few lines start at a place whose point is not clear, so their room there is none), facing the equipment, feet on the
-  floor, clip speeds matched.
+
+**As built (2026-10-27, phase 4): standing places, feet, clip speeds.** View only but for the content fix at the end:
+the engine and `ref/plant3d.py` are unchanged. No foot or hand IK yet: the clips, and how they are played, put the feet.
+- **Standing places** (`builder/staff_paths.gd`, `built/staff_paths.bin` format 3, read by `app/staff_ways.gd`): every
+  place but a seat, desk, table or bed has a stand point, its point with the feet put on the floor under it (the 160
+  work places were 5 cm up: the walking mesh's height, where the layout tool measured them), moved to the nearest point
+  within 0.4 m where a 0.3 m capsule touches nothing but doors when it is not clear there (none needed it); the ways'
+  lines run between the stand points. A work place has the way a person working there faces: towards the nearest of
+  its equipment's colliders that level rays from the feet's height to 1.9 m meet within 8 m (the middle of the
+  directions that meet it within 5 cm of the nearest), else the nearest point of its bounds; for an instrument
+  overhead, the equipment it is on (its code's first seven characters), else whatever with a code is within 3 m;
+  one, overhead with nothing beside it, keeps the way the person came. Someone standing still at a place turns to it
+  (`ui/people_view.gd`). `test_staff_ways.gd` checks every place: the feet within 1 cm of the floor, the capsule
+  clear, each work place's way looking at its equipment (a ray meets it, or within 30° of its bounds; for an
+  instrument overhead, what it is on or beside it).
+- **Feet on the floor** (`builder/people/build_people.gd` ground()): KayKit's clips on our longer legs put the walk's
+  standing foot up to 13 cm through the floor, the idle's 1 cm; the build raises or lowers the hips at every key so
+  that the lowest sole is on the floor (a run's only raised): within 1 cm in every clip with a foot on the floor
+  (`test_people_feet.gd`).
+- **Stairs: a matched stair-climb clip phase**, not the body's height stepped per tread. The stairs' clip is ours:
+  the build makes it, up and down, for a tread of 0.275 by 0.19 m (the plant's are 0.264 to 0.306 by 0.171 to 0.196):
+  the standing foot on its tread's middle while the body moves along the line through the treads' middles, two treads
+  a cycle, the other foot lifted over the nosings, its IK corrected until the feet are within 1 mm of where the keys
+  put them. The app (`app/stair_treads.gd`, from the built manifest's flights) draws someone on a flight on that line,
+  half a riser under the slope they are walked along (which runs through the nosings), from half a going before its
+  first riser to half one past its last (where the line meets the landings: beyond, on the landing, walking), and plays
+  the clip locked to where they are along the flight, a step a tread, at the clip's own size (a person's ±6 % height
+  comes back as they step off: the steps are a tread long whoever takes them). Someone standing still on a flight
+  (held back) stands on the highest tread under their feet: across a nosing, on the upper tread, over the
+  lower one's edge. The stepped body was the other way: without IK, a body stepped up
+  at a nosing lifts the standing foot off its tread with it, unless the clip is locked to the treads anyway; and a
+  clip made for planted feet needs the body moving smoothly. The posed band, which has no clips, is drawn on the
+  same line. `test_people_feet.gd` walks three stairs up and down, from a going of landing below to one above, as the
+  tallest and the shortest (their treads checked against the steps as drawn): one foot on its tread within 1.2 cm
+  (but in the walk's and the stairs' crossfades where the line meets the landings), no sole more than 1.4 cm inside a
+  step, the standing foot sliding 3.2 to 9.0 % of the ground covered; standing still at a nosing and between, a foot
+  on its tread within 1.6 cm.
+- **Ladder**: its clip likewise, hands and feet holding rungs 0.3 m apart (each moved up two rungs in a quarter cycle,
+  the body two rungs a cycle), locked to the height climbed over the ladder's foot, at the clip's size;
+  `ui/people_view.gd` turns them to face its rungs (at most 5 rad a second), whichever way they came: a foot on a rung
+  and a hand at one within 1 mm. (No staff way uses a ladder yet.)
+- **Clip speeds matched** (`app/people.gd`): a walk or a run is played at the moment of its cycle that the ground the
+  person has covered in plan says (`people.json` `gait`: at 240 moments of the cycle, how far the point of the sole on
+  the floor has gone back under the hips), however they are moved: their way, keeping apart, catching up,
+  fast-forward. Played at one rate a walk slid its feet 60 to 70 % of the ground covered (KayKit's walk on our legs
+  moves its standing heel back three times as fast as its ball). Someone drawn moving faces the way they move (the
+  walk's standing foot slid sideways when they stepped aside), turning at most 5 rad a second, and their speed (what
+  clip) is the ground they cover where drawn. Tolerance: the point of the sole on the floor moves at most 15 % of the
+  ground covered; measured 6.5 % at 1.3 m/s, 10.7 % at 0.6, 6.7 % at 2.0, 8.0 % running, 9.9 % round a corner in a
+  lane, 13.9 % held back and catching up, 9.4 % pushed aside, and 7.4 % for the crews' skinned walkers over their first
+  minute. What is left is KayKit's walk setting a foot down still moving forward (for one update) and the crossfades
+  between standing and walking: IK's work. Beyond about ×25 of fast-forward a walker covers more than the walk's
+  cycle (1.14 m) between two of its updates, and the steps shown no longer follow the ground (a blur at that speed).
+- **Phase 3's leftovers**: what is left of where someone stood beside their place as they set off is kept where the
+  build measured room, round that place or beside the line (less of it where neither has: `test_people_motion.gd`, a
+  post beside the way). The avatars' clips are played once at the start and the doors' grid made then: the first play
+  of a pool avatar's AnimationPlayer built its caches in the frame the pool first took people (0.66 ms instead of 0.06
+  on the laptop, about ten times that on the Note 9: the likely cause of the 21 ms "avatars" frame at 8 to 10 s); the
+  grid's first build took 0.2 ms. A door opened for someone else cannot push the trainee: its leaf slides inside the
+  wall's thickness (or up) and reaches none of the points where the walker stands at the 29 doors (checked with the
+  leaf held at four openings, the doors' own step stopped meanwhile), and a doorway is kept open by the walker standing in it (`app/door.gd`).
+- **Content**: HRSG 1's landing at +30 is 8 m wide (at 7 m the stair's top, (102, 50, 30), was on its east rail). The
+  frames walk takes the stair to its top again and goes north onto the roof at x = 102 before y = 56 (34.85 m each way
+  instead of 35.2: compare frame walks across this with the route's change in mind). The walking mesh's paths up the
+  tower now end at that corner, 0.8 m longer: `tools/plant3d/staff_layout.json` measured again, two ways' lengths moved
+  (p_h_foot–p_h_30 94.2 to 95.0 m, w_10lba30aa901–p_h_30 6.85 to 7.4 m) and the v2 vectors were made again.
+- **Measured on the Note 9** (2026-10-27): release builds without the lightmap's bake, `lean+vis`, the 10-minute
+  `frames` walk with `crews=1` and `probe=1`, each run started at a battery temperature of at most 30 °C; before =
+  main at eb7ad79, after = this phase (two runs each, on routes 0.7 m apart, above). ms a frame, mean / largest:
+  people_view 0.86 / 3.50 and 0.88 / 2.68 before, 0.85 / 2.97 and 0.84 / 2.79 after; avatars 0.64 / 2.48 and
+  0.65 / 3.74 before, 0.62 / 2.08 and 0.63 / 2.46 after; the people's CPU (§18.4, ≤ 2 ms) 0.59 and 0.60 before,
+  0.58 and 0.58 after (largest 2.41, 3.72 / 2.10, 2.40). No frame over 100 ms in any run; frames at ≥ 30 fps 98.90 %
+  and 98.72 % before, 99.49 % and 99.43 % after; largest frame 85.7 and 53.7 ms before, 64.7 and 63.8 ms after. The
+  21 ms "avatars" frame did not come back in either "before" run, so these runs neither confirm nor rule out its cause;
+  after, the avatars' largest frames came at 435 s and 50 s, not in the first seconds.
 
 ### 18.2 Avatars
 
@@ -2021,7 +2093,9 @@ own (it follows the frames' lengths and that screen's walker).
 An `AnimationTree` per near avatar: idle, walk and run blended by speed, turning in place, and the actions of
 `anim` (`inspect`, `talk`, `radio`, `type`, `sit`, `write`, `kneel_work`, `wrench`, `handwheel`, `calibrate`, `carry`,
 `climb`, `eat`, `sleep`, `lift`). Advanced by the app (manual process mode) at 30 Hz within 10 m, 15 Hz to the end of
-the skinned band, posed meshes beyond (§18.4).
+the skinned band, posed meshes beyond (§18.4). Since phase 4 (§18.1 as built) a walk or a run moves on by the ground
+the person covers, and the stairs' clips (`stairs`, `stairs_down`) and the ladder's are locked to where the person is
+on the flight or the ladder; the rest by time.
 
 ### 18.4 Budgets per tier
 

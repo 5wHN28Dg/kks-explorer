@@ -735,7 +735,11 @@ func build_all(out_dir: String) -> int:
 		"format": "walkdown-plant-built", "version": 1, "title": plant.get("title", ""),
 		"start": {"at": _arr(Geom.g(plant.start.at)), "yaw": float(plant.start.get("yaw", 0))},
 		"ground": out_dir.path_join("ground.scn"), "areas": manifest_areas, "interiors": interiors, "extent": _extent(),
-		"stairs": stairs.map(func(s): return {"id": s.id, "area": s.area, "path": s.lay.path.map(func(p): return _arr(Geom.g([p.x, p.y, p.z])))}),
+		# with each flight's ends (its first riser's foot and its last riser's, Godot's frame), risers and width:
+		# where people's feet go on its treads (app/stair_treads.gd)
+		"stairs": stairs.map(func(s): return {"id": s.id, "area": s.area, "path": s.lay.path.map(func(p): return _arr(Geom.g([p.x, p.y, p.z]))),
+			"flights": s.lay.flights.map(func(fl): return {"a": _arr(Geom.g([fl.a.x, fl.a.y, fl.z0])), "b": _arr(Geom.g([fl.b.x, fl.b.y, fl.z1])),
+				"steps": fl.steps, "width": fl.width})}),
 		"ladders": ladders.map(func(l): return {"id": l.id, "area": l.area, "foot": _arr(Geom.g([l.foot.x, l.foot.y, l.foot.z])),
 			"top": l.top, "facing": l.facing, "exit": _arr(Geom.g([l.exit.x, l.exit.y, l.exit.z]))}),
 		"equipment": equipment.keys().filter(func(k): return not equipment[k].has("child")).map(func(k):
