@@ -19,7 +19,9 @@ OSV database on 2026-10-27, [V] verified here.
 | Fixed versions in the same line | guava: only 33.7.2-jre (no 32.x fix; the version Walkdown's own build uses); protobuf-java 3.25.5; commons-io 2.14.0; netty 4.1.137.Final (the newest fix among its advisories); commons-compress 1.26.0; jose4j 0.9.6; bouncycastle 1.85; jdom2 2.0.6.1; httpclient 4.5.14; kotlin-gradle-plugin 2.4.20 (the first 2.x release with the fix) [O]. |
 | Where the template can take them | The template's root `build.gradle` and `settings.gradle` are Godot's (`build.sh` installs them from the export templates). One line added to `settings.gradle` applies a script of ours to every project (`gradle.allprojects`): a resolution rule on the buildscript classpath and every configuration, as in Walkdown's own `android/build.gradle.kts`, and dependency locking [V]. |
 | What the scan reads | osv-scanner reads Gradle lockfiles by name (`gradle.lockfile`, `buildscript-gradle.lockfile`) wherever they are, and `gradle/verification-metadata.xml`; it skips files git ignores (the template's folder) [O, V]. The verification file lists every version Gradle downloaded metadata for, including the losers of conflict resolution (httpclient 4.5.6 next to 4.5.14), so scanning it would report versions the build does not use; a lockfile lists only the resolved ones [V]. |
-| Kotlin 2.4.20 on the template | The template compiles only Java (`GodotApp.java`); the Kotlin plugin also sets the Kotlin standard library the app bundles, so that moves from 2.1.21 to 2.4.20 (godot-lib, compiled against 2.1, runs on the newer library: Kotlin's standard library keeps binary compatibility) [V]. Gradle 8.11.1 is still supported by the plugin, with a deprecation warning [V]. |
+| Lint and aapt2 | The Android Gradle plugin 8.6.1 resolves lint (`LintFromMaven`) and aapt2 in detached configurations: a rule on the configurations misses them, and Gradle can't lock them. The first pinned build still downloaded guava 32.0.1-jre, bouncycastle 1.77, protobuf 3.22.3, commons-io 2.13.0 and commons-compress 1.21 for lint [V]. A component metadata rule (the same raise on every dependency a component declares) reaches them; the same dependencies declared in a configuration of ours put their graph in the lockfile [V: every jar in the verification file is then in a lockfile, `tests/test_plant_android_deps.py`]. |
+| Licenses | 897 packages scanned, 0 vulnerabilities [V]. The lockfiles bring 29 build tools whose metadata has no SPDX license. 17 get theirs named from the POM or license file, as Walkdown's `android/osv-scanner.toml` does (14 of them the same entries) [V]. 12 have a license that is not on the allowlist or none: juniversalchardet 1.0.3 (MPL-1.1), jdom2 2.0.6.1 (JDOM's BSD-style), trove4j 1.0.20200330 (LGPL-2.1), javax.activation 1.2.0 and javax.annotation-api 1.3.2 (CDDL / GPLv2 with the classpath exception), junit 4.13.2 (EPL-1.0), five com.google.testing.platform 0.0.9-alpha02 modules (the Android SDK license) and tensorflow-lite-metadata 0.1.0-rc2 (none in its POM or jar). Walkdown's own build leaves its equivalents out of the license check with `license.ignore`; this record adds none: **the user decides** (see Choice). |
+| Kotlin 2.4.20 on the template | The template compiles only Java (`GodotApp.java`); the Kotlin plugin also sets the Kotlin standard library the app bundles, so that moves from 2.1.21 to 2.4.20 (godot-lib, compiled against 2.1, runs on the newer library: Kotlin's standard library keeps binary compatibility) [V: dexdump of the debug and release exports against 0.2.1's: every class outside `kotlin/` the same, and their code the same apart from nine calls to a D8 backport helper whose host class moved inside the Kotlin library; the release export, signed with the test key, starts and runs on the Note 9]. Gradle 8.11.1 is still supported by the plugin, with a deprecation warning [V]. |
 
 ## Choice
 
@@ -28,7 +30,14 @@ OSV database on 2026-10-27, [V] verified here.
   it from `settings.gradle`.
 - The lockfiles live in `apps/plant3d/android-locks/` (the template's paths), which `build.sh` copies into the template
   before each export; a configuration missing from them fails the build. The required `dependencies` check scans
-  them, vulnerabilities and licenses.
+  them, vulnerabilities and licenses. Lint's and aapt2's detached configurations are pinned by a component metadata
+  rule and mirrored, locked, in a configuration of ours (`walkdownDetachedTools`).
+- `apps/plant3d/android-locks/osv-scanner.toml` names the licenses of the build tools whose metadata has none, only
+  with licenses on the allowlist. **Open:** the 12 build tools above have a license the allowlist does not allow
+  (it is for shipped code; none of them is in the APK), so the required check fails on them until the user chooses:
+  leave them out of the license check with a reason each, as Walkdown's build does; or stop locking the test
+  configurations (removes junit, the test platform and javax.annotation-api, but not the plugins' own); or something
+  else.
 - `PLANT_GRADLE_WRITE_VERIFICATION=1 build.sh export android-debug android-release`, from an empty
   `GRADLE_USER_HOME`, writes the verification file and the lockfiles again (as in 0056), to review and commit.
 

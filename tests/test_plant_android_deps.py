@@ -1,7 +1,7 @@
 """Walkdown Plant's Android build tools (decision 0070):
 - every library Gradle downloads a jar of (apps/plant3d/android-gradle-verification.xml) is in a lockfile under
   apps/plant3d/android-locks/, which the required vulnerability and license scan (osv-scanner) reads: nothing the build
-  runs escapes the scan (lint's detached configuration did, before its locked mirror);
+  runs escapes the scan (lint and aapt2, in detached configurations, are mirrored in a locked one);
 - no lockfile and no verification entry holds a version below a pin of apps/plant3d/android-gradle-pins.gradle;
 - build.sh applies the pins and installs the lockfiles.
   .venv/bin/python -m unittest tests.test_plant_android_deps"""

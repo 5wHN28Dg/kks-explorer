@@ -7,7 +7,8 @@
 // none in 32.x: 33.7.2-jre, as Walkdown's own build). Never lowers a version. Netty's and protobuf's modules move
 // together, so that no module mixes two releases.
 //
-// Dependency locking: every configuration is locked (STRICT: one missing from the lockfiles fails the build), and
+// Dependency locking: every configuration is locked (STRICT: one missing from the lockfiles fails the build), lint's
+// and aapt2's detached ones through a mirror (below), and
 // the lockfiles are kept in apps/plant3d/android-locks/, where the vulnerability scan (osv-scanner) reads them.
 // `PLANT_GRADLE_WRITE_VERIFICATION=1 build.sh export android-debug android-release` writes them again.
 def patched = [
