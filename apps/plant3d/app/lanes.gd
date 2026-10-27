@@ -65,7 +65,11 @@ func seg(s: float) -> int:
 
 ## The point at `s` along the line.
 func point(s: float) -> Vector3:
-	var i := seg(s)
+	return point_in(s, seg(s))
+
+
+## The point at `s` on stretch `i` (seg(s)).
+func point_in(s: float, i: int) -> Vector3:
 	var span := cum[i + 1] - cum[i]
 	return pts[i].lerp(pts[i + 1], clampf((s - cum[i]) / span, 0.0, 1.0) if span > 0.0 else 0.0)
 
@@ -73,8 +77,12 @@ func point(s: float) -> Vector3:
 ## The heading in plan (atan2(z, x)) at `s`: its stretch's, turning towards the next one's over the last BLEND metres
 ## before a corner and from the last one's over the first after it (half way at the corner).
 func heading(s: float) -> float:
+	return heading_in(s, seg(s))
+
+
+## The heading at `s` on stretch `i` (seg(s)).
+func heading_in(s: float, i: int) -> float:
 	var n := pts.size() - 1
-	var i := seg(s)
 	var a: float = ang[i]
 	var len_i := cum[i + 1] - cum[i]
 	var u := clampf(s - cum[i], 0.0, len_i)

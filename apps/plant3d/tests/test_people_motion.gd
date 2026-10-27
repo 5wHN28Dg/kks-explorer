@@ -191,13 +191,16 @@ func _crews(tree: SceneTree) -> Array:
 	var walking := 0
 	var close := 0
 	var acc := 0.0
+	var drive_us := 0
 	for f in int(SECONDS / DT):
 		acc += DT
 		while acc >= SimClock.STEP:
 			ui.clock.run_steps(1)
 			acc -= SimClock.STEP
 		ui.clock.acc = acc
+		var t0 := Time.get_ticks_usec()
 		pv.drive(DT)
+		drive_us += Time.get_ticks_usec() - t0
 		var ppl: Array = pv.avatars.people
 		for k in ppl.size():
 			var pi: int = pv.drawn[k]
@@ -238,7 +241,8 @@ func _crews(tree: SceneTree) -> Array:
 				if pv.drawn_kind[k] != KeepApart.FIXED and pv.drawn_kind[j] != KeepApart.FIXED and \
 						(ppl[j].at as Vector3).distance_to(q_at) < 0.4:
 					close += 1
-	print("people motion: crews: %d walker-frames, %d turning, %d person-frames within 0.4 m of another" % [walking, turned, close])
+	print("people motion: crews: %d walker-frames, %d turning, %d person-frames within 0.4 m of another; drive() %.1f us a frame" % [
+			walking, turned, close, float(drive_us) / (SECONDS / DT)])
 	p.append_array(turns)
 	p.append_array(jumps)
 	p.append_array(fresh)

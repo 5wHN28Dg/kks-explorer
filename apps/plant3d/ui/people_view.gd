@@ -50,7 +50,11 @@ var _on := PackedStringArray()
 var _place := PackedInt32Array()
 var _line := PackedByteArray()  # 1: on a built line (else walked straight, or standing)
 var _d := PackedVector3Array()  # the straight way's heading, where walked straight
-var drawn := PackedInt32Array()     # per avatar person drive() gave: the person (the tests)
+var _walkers: Array = []
+var _walkers_t := 0.0
+var _seated := PackedByteArray()  # per place: someone there sits or lies (not moved aside)
+var NO_ROOM := PackedByteArray()   # (a place without room: none)
+var drawn := PackedInt32Array()     # per avatar person drive() gave: the person (the tests; as long as their people)
 var drawn_kind := PackedByteArray() # and how app/keep_apart.gd took them (WALKING, STANDING, FIXED)
 var drawn_fresh := PackedByteArray()  # and whether they were new or jumped this frame (their heading set, not turned)
 const ON_NAMES := ["", "stairs", "ladder"]   # app/staff_ways.gd's ON_… to app/people.gd's `on`
@@ -193,25 +197,24 @@ func drive(delta: float) -> void:
 	var dt: float = delta * ui.clock.rate()       # plant time (paused: nobody moves or turns)
 	# everyone on screen to `apart`, then where it draws them
 	apart.begin()
-	_who.resize(0)
-	_on.resize(0)
-	_place.resize(0)
-	_line.resize(0)
-	_d.resize(0)
-	for w in get_tree().get_nodes_in_group("walkers"):   # the trainee and the other players: kept clear of
-		if w is Node3D:
-			apart.fixed(-1, (w as Node3D).global_position)
-			_who.append(-1)
-			_on.append("")
-			_place.append(-1)
-			_line.append(0)
-			_d.append(Vector3.ZERO)
+	_walkers_t -= delta
+	if _walkers_t <= 0.0:              # (looked for twice a second: players come and go seldom)
+		_walkers_t = 0.5
+		_walkers = get_tree().get_nodes_in_group("walkers")
+	for w in _walkers:                 # the trainee and the other players: kept clear of
+		if is_instance_valid(w) and w is Node3D:
+			_row(apart.fixed(-1, (w as Node3D).global_position), -1, "", -1, 0, Vector3.ZERO)
 	var me: int = ui.my_person()          # (the trainee's own person is the walker)
+	# who is too far to be drawn (beyond the posed band, app/people.gd) is not kept apart: their place is all that matters
+	var cam: Vector3 = avatars.camera.global_position if avatars.camera != null else Vector3.INF
+	var far_r: float = float(avatars.cfg.get("posed_range", INF)) + 10.0
+	var far_r2 := far_r * far_r if cam != Vector3.INF else INF
 	for pi in sm.people.size():
 		if pi == me:
 			continue
 		var leg: Array = e.sp_leg[pi]
 		var place := -1
+		var row := -1
 		var on := ""
 		var on_line := 0
 		var d := Vector3.ZERO
@@ -220,39 +223,41 @@ func drive(delta: float) -> void:
 			var k := clampf((float(e.step_no - leg[2]) + frac) / steps, 0.0, 1.0)
 			if ways != null and ways.walk(mini(leg[0], leg[1]) * _at.size() + maxi(leg[0], leg[1]), leg[0], k,
 					steps * SimClock.STEP):
-				apart.walker(pi, ways.line, ways.s, ways.sgn, ways.speed if k < 1.0 else 0.0)
 				on = ON_NAMES[ways.on]
-				on_line = 1
+				if ways.pos.distance_squared_to(cam) > far_r2:
+					# beyond the people drawn: on their line, not kept apart (from where they are when they come in,
+					# into their lane at BACK_RATE)
+					row = apart.fixed(pi, ways.pos)
+					on_line = 2
+					d = ways.dir.normalized() * (ways.speed if k < 1.0 else 0.0)
+				else:
+					row = apart.walker(pi, ways.line, ways.s, ways.sgn, ways.speed if k < 1.0 else 0.0)
+					on_line = 1
 			else:
 				var a: Vector3 = _at[leg[0]]
 				var b: Vector3 = _at[leg[1]]
 				d = b - a
 				# walked straight (no line built): not moved aside, others keep clear
-				apart.fixed(pi, a.lerp(b, k))
+				row = apart.fixed(pi, a.lerp(b, k))
 				if absf(d.y) > 0.3 * maxf(0.01, Vector2(d.x, d.z).length()):
 					on = "stairs"
 				if k >= 1.0:
 					d = Vector3.ZERO
 		elif e.sp_pos[pi] != -1:
 			place = e.sp_pos[pi]
-			var pl: Dictionary = sm.places[place]
-			if sm.kind[place] in SEATED or sm.kind[place] == "bed" or pl.get("pose", "") in ["sit", "lie"]:
-				apart.fixed(pi, _at[place])      # seated or lying: not moved off the seat
+			if _seated[place] == 1 or (_at[place] as Vector3).distance_squared_to(cam) > far_r2:
+				row = apart.fixed(pi, _at[place])      # seated or lying: not moved off the seat
 			else:
-				apart.stander(pi, _at[place], ways.place_room[place] if ways != null and place < ways.place_room.size() \
-						else PackedByteArray())
+				row = apart.stander(pi, _at[place], ways.place_room[place] if ways != null else NO_ROOM)
 		else:
 			continue
-		_who.append(pi)
-		_on.append(on)
-		_place.append(place)
-		_line.append(on_line)
-		_d.append(d)
+		_row(row, pi, on, place, on_line, d)
 	apart.solve(dt)
 	var n := 0
-	drawn.resize(0)
-	drawn_kind.resize(0)
-	drawn_fresh.resize(0)
+	if drawn.size() < apart.n:
+		drawn.resize(apart.n)
+		drawn_kind.resize(apart.n)
+		drawn_fresh.resize(apart.n)
 	for i in apart.n:
 		var pi := _who[i]
 		if pi < 0:
@@ -266,6 +271,10 @@ func drive(delta: float) -> void:
 			var f: Vector3 = apart.fwd[i]
 			if f.length() > 0.05:
 				target = atan2(-f.x, -f.z)
+		elif _line[i] == 2:
+			speed = _d[i].length()
+			if speed > 0.0:
+				target = atan2(-_d[i].x, -_d[i].z)
 		elif place == -1:
 			var d := _d[i]
 			var leg: Array = e.sp_leg[pi]
@@ -317,9 +326,9 @@ func drive(delta: float) -> void:
 				# seen)
 				_hat[pi] = hat_on(e, sm, pi)
 		p.hat = _hat[pi]
-		drawn.append(pi)
-		drawn_kind.append(apart.kind[i])
-		drawn_fresh.append(apart.fresh[i])
+		drawn[n] = pi
+		drawn_kind[n] = apart.kind[i]
+		drawn_fresh[n] = apart.fresh[i]
 		n += 1
 	out.resize(n)
 
@@ -333,6 +342,10 @@ func _places(sm) -> void:
 		_at.append(Plant.g(pl["at"][0], pl["at"][1], pl["at"][2]))
 	_ways_of = sm
 	ways = StaffWays.open(sm, _at)
+	_seated.resize(sm.places.size())
+	for i in sm.places.size():
+		var pl: Dictionary = sm.places[i]
+		_seated[i] = 1 if sm.kind[i] in SEATED or sm.kind[i] == "bed" or pl.get("pose", "") in ["sit", "lie"] else 0
 
 
 ## What a person not walking is seen doing: their task step's, or sitting at a desk, seat or table.
@@ -367,6 +380,23 @@ static func hat_on(e, sm, pi: int) -> bool:
 		if zm & (1 << z) and (sm.zone_ppe[z] & helmet) != 0:
 			return true
 	return false
+
+
+## One given to `apart` (its index `i`): the person, what they walk on, their place, whether on a line, the straight
+## way's heading. (Kept in arrays that only grow: no appending in a drawn frame.)
+func _row(i: int, pi: int, on: String, place: int, on_line: int, d: Vector3) -> void:
+	if i >= _who.size():
+		var m := maxi(16, i * 2)
+		_who.resize(m)
+		_on.resize(m)
+		_place.resize(m)
+		_line.resize(m)
+		_d.resize(m)
+	_who[i] = pi
+	_on[i] = on
+	_place[i] = place
+	_line[i] = on_line
+	_d[i] = d
 
 
 ## Where the engine has person `pi` this frame, as app/keep_apart.gd took it (the tests: did they jump?).

@@ -58,6 +58,7 @@ var _seen := PackedInt32Array()         # the frame each was last added in
 var _kind := PackedByteArray()
 var _logical := PackedVector3Array()    # their logical point last frame
 var _drawn := PackedVector3Array()
+var _fwd := PackedVector3Array()        # walking: the way they walked where drawn last frame
 var _frame := 0
 var _push := PackedVector3Array()
 var _near := PackedByteArray()
@@ -65,25 +66,20 @@ var _near := PackedByteArray()
 
 func begin() -> void:
 	n = 0
-	ids.resize(0)
-	kind.resize(0)
-	lines.clear()
-	s_at.resize(0)
-	sgn.resize(0)
-	speed_in.resize(0)
-	rooms.clear()
-	base.resize(0)
 
 
+## (the arrays keep their size from frame to frame and grow when needed: no appending in a drawn frame)
 func _add(id: int, k: int) -> int:
-	ids.append(id)
-	kind.append(k)
-	lines.append(null)
-	s_at.append(0.0)
-	sgn.append(1.0)
-	speed_in.append(0.0)
-	rooms.append(null)
-	base.append(Vector3.ZERO)
+	if n >= ids.size():
+		var m := maxi(16, ids.size() * 2)
+		for a in [ids, kind, s_at, sgn, speed_in, base, pos, fwd, speed, fresh, _push, _near]:
+			a.resize(m)
+		lines.resize(m)
+		rooms.resize(m)
+	ids[n] = id
+	kind[n] = k
+	lines[n] = null
+	rooms[n] = null
 	n += 1
 	return n - 1
 
@@ -124,6 +120,7 @@ func _grow(id: int) -> void:
 	_kind.resize(m)
 	_logical.resize(m)
 	_drawn.resize(m)
+	_fwd.resize(m)
 	var old := _seen.size()
 	_seen.resize(m)
 	for k in range(old, m):
@@ -157,12 +154,6 @@ static func _clamp_stand(room, off: Vector3) -> Vector3:
 ## Where everyone is drawn after `dt` seconds of plant time.
 func solve(dt: float) -> void:
 	_frame += 1
-	pos.resize(n)
-	fwd.resize(n)
-	speed.resize(n)
-	fresh.resize(n)
-	_push.resize(n)
-	_near.resize(n)
 	# where each is now (their kept offsets on this frame's logical points)
 	for i in n:
 		_push[i] = Vector3.ZERO
@@ -193,6 +184,8 @@ func solve(dt: float) -> void:
 			_off[id].y = 0.0
 			if kind[i] == FIXED:
 				_off[id] = Vector3.ZERO
+		var _kind_was := _kind[id]
+		var logical_was := _logical[id]
 		_seen[id] = _frame
 		_kind[id] = kind[i]
 		_logical[id] = logical
@@ -202,7 +195,13 @@ func solve(dt: float) -> void:
 			speed[i] = 0.0
 			_drawn[id] = pos[i]
 			continue
-		_place(i, id)
+		if kind[i] == WALKING and fresh[i] == 0 and _kind_was == WALKING:
+			# (where they were drawn, moved on as the engine moved them: placed once, below, after the pushes)
+			pos[i] = _drawn[id] + (logical - logical_was)
+			fwd[i] = _fwd[id]
+			speed[i] = speed_in[i]
+		else:
+			_place(i, id)
 	# who is too near whom (along x, then the pairs that close)
 	if n > 1 and n <= 4096:       # (the pairs' keys carry the index in 12 bits: the world's people are at most 200)
 		var keys := PackedInt64Array()
@@ -277,6 +276,7 @@ func solve(dt: float) -> void:
 			_off[id] = _clamp_stand(rooms[i], off)
 			_place(i, id)
 		_drawn[id] = pos[i]
+		_fwd[id] = fwd[i]
 
 
 ## Where person `i` (kept as `id`) is drawn with their kept offsets, clamped to the room: pos, fwd (and speed).
@@ -287,8 +287,9 @@ func _place(i: int, id: int) -> void:
 		var s: float = clampf(s_at[i] - sg * _lag[id], 0.0, l.length)
 		var r := lane_room(l, s, sg)
 		_lat[id] = clampf(_lat[id], r.x, r.y) if r.x <= r.y else (r.x + r.y) * 0.5
-		var a: float = l.heading(s)     # (once: the side and the way along are both of it)
-		pos[i] = l.point(s) + Vector3(-sin(a), 0.0, cos(a)) * (sg * _lat[id]) + _off[id]
+		var k: int = l.seg(s)
+		var a: float = l.heading_in(s, k)     # (once: the side and the way along are both of it)
+		pos[i] = l.point_in(s, k) + Vector3(-sin(a), 0.0, cos(a)) * (sg * _lat[id]) + _off[id]
 		fwd[i] = Vector3(cos(a), 0.0, sin(a)) * sg
 		speed[i] = speed_in[i]
 	else:
