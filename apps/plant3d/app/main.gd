@@ -619,27 +619,7 @@ func _finish() -> void:
 	if auto:
 		auto.stop()
 	set_process(false)
-	var times := frames.times
-	var n := times.size()
-	if frames.ff_frames > 0:
-		_say("FASTFORWARD frames=%d over100=%d max=%.1fms: not judged by the frame rules (normal play only); the RESULT and CADENCE below are the frames at 1×" % [
-			frames.ff_frames, frames.ff_over100, frames.ff_max])
-	if n > 0:
-		var s := times.duplicate(); s.sort()
-		var g := frames.gpu.duplicate(); g.sort()
-		var r1 := 0; var r2 := 0; var r3 := 0; var over100 := 0
-		for d in times:
-			if d <= 17.5: r1 += 1
-			elif d <= 34.2: r2 += 1
-			else: r3 += 1
-			if d > 100.0: over100 += 1
-		_say("CADENCE up_to_17.5ms=%.1f%% up_to_34.2ms=%.1f%% longer=%.1f%%" % [100.0 * r1 / n, 100.0 * r2 / n, 100.0 * r3 / n])
-		_say("RESULT tier=%s renderer=%s walk=%s frames=%d median=%.1fms p95=%.1fms p99=%.1fms max=%.1fms over100=%d ff_frames=%d gpu_median=%.1fms gpu_p95=%.1fms stuck=%d static_mem=%dMB vram=%dMB first_frame=%dms load=%dms" % [
-			tier, Quality.renderer(), opts.walk, n, s[n / 2], s[int(n * 0.95)], s[int(n * 0.99)], s[n - 1], over100, frames.ff_frames,
-			g[n / 2], g[int(n * 0.95)], stuck_count, OS.get_static_memory_usage() / 1048576,
-			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576, first_frame_ms, plant.load_ms])
-	else:
-		_say("RESULT no frames (stuck=%d)" % stuck_count)
+	_frame_result()
 	if people != null and (crowd != null or opts.has("crews")):
 		_say("PEOPLE %s=%d skinned_max=%d %s" % ["crowd" if crowd != null else "crews", people.people.size(),
 				int(people.cfg.skinned), people.summary()])
@@ -670,6 +650,36 @@ func _finish() -> void:
 	if frame_probe != null:
 		frame_probe.write(out_dir)
 	get_tree().quit()
+
+## The walk's frame lines: FASTFORWARD (the frames in fast-forward, not judged), CADENCE and RESULT (the frames at 1×).
+func _frame_result() -> void:
+	var times := frames.times
+	var n := times.size()
+	if frames.ff_frames > 0:
+		# (a walk that stays in fast-forward, speed=fast, still has its frames' statistics here)
+		_say("FASTFORWARD frames=%d over100=%d %s %s: not judged by the frame rules (normal play only); the RESULT and CADENCE below are the frames at 1×" % [
+			frames.ff_frames, frames.ff_over100, WalkFrames.stats(frames.ff_times), WalkFrames.stats(frames.ff_gpu, "gpu_")])
+	if n == 0 and frames.ff_frames > 0:
+		# no frame at 1×: nothing for the rules to judge, but the walk's memory and start are still measured
+		_say("RESULT tier=%s renderer=%s walk=%s frames=0 over100=0 ff_frames=%d stuck=%d static_mem=%dMB vram=%dMB first_frame=%dms load=%dms (every frame in fast-forward: see FASTFORWARD)" % [
+			tier, Quality.renderer(), opts.walk, frames.ff_frames, stuck_count, OS.get_static_memory_usage() / 1048576,
+			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576, first_frame_ms, plant.load_ms])
+	elif n > 0:
+		var s := times.duplicate(); s.sort()
+		var g := frames.gpu.duplicate(); g.sort()
+		var r1 := 0; var r2 := 0; var r3 := 0; var over100 := 0
+		for d in times:
+			if d <= 17.5: r1 += 1
+			elif d <= 34.2: r2 += 1
+			else: r3 += 1
+			if d > 100.0: over100 += 1
+		_say("CADENCE up_to_17.5ms=%.1f%% up_to_34.2ms=%.1f%% longer=%.1f%%" % [100.0 * r1 / n, 100.0 * r2 / n, 100.0 * r3 / n])
+		_say("RESULT tier=%s renderer=%s walk=%s frames=%d median=%.1fms p95=%.1fms p99=%.1fms max=%.1fms over100=%d ff_frames=%d gpu_median=%.1fms gpu_p95=%.1fms stuck=%d static_mem=%dMB vram=%dMB first_frame=%dms load=%dms" % [
+			tier, Quality.renderer(), opts.walk, n, s[n / 2], s[int(n * 0.95)], s[int(n * 0.99)], s[n - 1], over100, frames.ff_frames,
+			g[n / 2], g[int(n * 0.95)], stuck_count, OS.get_static_memory_usage() / 1048576,
+			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576, first_frame_ms, plant.load_ms])
+	else:
+		_say("RESULT no frames (stuck=%d)" % stuck_count)
 
 func _write_out() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)

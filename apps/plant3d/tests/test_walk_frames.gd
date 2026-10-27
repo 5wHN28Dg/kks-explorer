@@ -30,6 +30,10 @@ func _counts() -> Array:
 		p.append("%d GPU times for %d frames" % [w.gpu.size(), w.times.size()])
 	if w.ff_frames != 3 or w.ff_over100 != 2 or w.ff_max != 150.0:
 		p.append("fast-forward: %d frames, %d over 100 ms, longest %.1f ms (want 3, 2, 150)" % [w.ff_frames, w.ff_over100, w.ff_max])
+	if Array(w.ff_times) != [30.0, 150.0, 110.0]:
+		p.append("fast-forward's frames' times %s" % str(w.ff_times))
+	if WalkFrames.stats(w.ff_times) != "median=110.0ms p95=150.0ms p99=150.0ms max=150.0ms" or WalkFrames.stats(PackedFloat32Array()) != "":
+		p.append("stats: %s" % WalkFrames.stats(w.ff_times))
 	if OS.get_name() != "Android" and WalkFrames.uptime_ms() != -1:
 		p.append("uptime_ms() off Android is %d, not -1" % WalkFrames.uptime_ms())
 	return p
@@ -82,5 +86,21 @@ func _walk(tree: SceneTree) -> Array:
 	for l in main.lines:
 		if l.begins_with("SPIKE "):
 			p.append("a frame in fast-forward logged as a judged SPIKE: " + l)
+	main._frame_result()
+	if not "\n".join(main.lines).contains("ff_frames=%d " % main.frames.ff_frames):
+		p.append("RESULT does not count fast-forward's frames")
+	# a walk in fast-forward from start to end (speed=fast): no frame at 1×, still a RESULT (memory, start) and
+	# fast-forward's statistics
+	var only_ff := WalkFrames.new()
+	for ms in [20.0, 40.0, 120.0]:
+		only_ff.add(ms, 5.0, true)
+	main.frames = only_ff
+	main.lines.clear()
+	main._frame_result()
+	var got := "\n".join(main.lines)
+	if not got.contains("FASTFORWARD frames=3 over100=1 median=40.0ms") or not got.contains("gpu_median=5.0ms"):
+		p.append("no FASTFORWARD statistics for a walk all in fast-forward:\n" + got)
+	if not got.contains(" frames=0 over100=0 ff_frames=3 ") or not got.contains("static_mem=") or got.contains("RESULT no frames"):
+		p.append("no RESULT for a walk all in fast-forward:\n" + got)
 	main.free()
 	return p
