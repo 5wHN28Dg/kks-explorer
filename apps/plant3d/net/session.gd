@@ -143,6 +143,8 @@ var _commits := {}                      # first step -> commit {first, last, str
 var committed := 0                      # the highest step committed (the host's: its engine's)
 var _next_input := 1
 var _unsent: Array = []                 # inputs made before the welcome
+var _unsent_controls: Array = []        # controls made before the welcome (a claim, ready, away…), in order
+const MAX_UNSENT_CONTROLS := 64
 var _mine := {}                         # input number -> [text, time made]
 var _query_until := 0.0
 var _query_t := 0.0
@@ -585,7 +587,9 @@ func _process(delta: float) -> void:
 		# where a slow frame's time went (MP2's follow-up: the layer's worst frames): its parts, the packets in and
 		# out, and with probe_sched the thread's own time on a CPU and waiting for one (/proc/thread-self/schedstat)
 		var f := {"us": us, "receive": t1 - t0, "frame": t2 - t1 - _step_us, "steps": _step_us, "positions": t3 - t2,
-			"flush": t4 - t3, "in": _udp.got - got0, "out": _udp.sent - sent0, "what": ",".join(_what), "t": _now}
+			"flush": t4 - t3, "what": ",".join(_what), "t": _now,
+			# (the session may have ended in this frame: its socket is gone then)
+			"in": _udp.got - got0 if _udp != null else -1, "out": _udp.sent - sent0 if _udp != null else -1}
 		if probe_sched:
 			var sched1 := sched_now()
 			if sched0.size() == 2 and sched1.size() == 2:
@@ -1780,7 +1784,11 @@ func _take_welcome(w: Dictionary, p: PackedByteArray, ip: String, port: int, tok
 		_loading = true
 		committed = w["step"]
 	_save_token()
-	# the inputs made before the welcome, and those not yet committed (a rejoin), are sent now
+	# the controls made before the welcome (a claim in the lobby the moment the app joins, the app gone to the
+	# background while it joined), then the inputs made before it and those not yet committed (a rejoin), are sent now
+	for c in _unsent_controls:
+		_send_control(c)
+	_unsent_controls.clear()
 	var again := _mine.keys()
 	again.sort()
 	for n in again:
@@ -1981,6 +1989,8 @@ func _send_control(c: Dictionary) -> void:
 		return
 	if _send_p != null:
 		_send_p.push(Wire.Kind.CONTROL, JSON.stringify(c).to_utf8_buffer())
+	elif _unsent_controls.size() < MAX_UNSENT_CONTROLS:
+		_unsent_controls.append(c)      # (no stream before the welcome: sent with it, never dropped)
 
 
 func claim(person: String) -> void:

@@ -28,6 +28,7 @@ var done := false
 var walk_a := 0.0
 var notices: Array = []
 var _printed := false
+var early := 0          # actions done before the session's welcome (the player still finding or joining it)
 
 
 func _init() -> void:
@@ -106,6 +107,8 @@ func _process(_delta: float) -> bool:
 
 
 func _do(a: Dictionary) -> void:
+	if session.state == Session.State.FINDING or session.state == Session.State.JOINING:
+		early += 1
 	match a["do"]:
 		"input":
 			session.send_input(a["item"])
@@ -163,7 +166,7 @@ func _finish() -> void:
 		"positions": session.positions.keys(), "commits": session.commit_log if session.is_host() else [],
 		"scenario": session.scenario, "buffer": session.buffer_turns(), "sending": session.sending(),
 		"trainees": _trainees(e), "pss_kb": _pss(), "udp": [Udp.opened, Udp.open_now],
-		"ff_cap": clock.ff_cap(), "load_ms": session.stats.get("load_ms", -1.0),
+		"ff_cap": clock.ff_cap(), "load_ms": session.stats.get("load_ms", -1.0), "early": early,
 	}
 	var f := FileAccess.open(opts["out"], FileAccess.WRITE)
 	f.store_string(JSON.stringify(out))

@@ -234,6 +234,23 @@ class Joins(Base):
         self.assertGreaterEqual(res['host']['trainees'][1], 0)     # its person is still its own
 
 
+    def test_controls_before_the_welcome(self):
+        """A claim and the app's going to the background and back, made while the player is still joining (its RSA
+        key, its hello, the welcome on their way), are sent once it is welcomed, not dropped: a claim made at 1.5 s
+        on a busy CI runner came before the welcome and was lost (PR #277's merge of main), so the player had no
+        person."""
+        t_end = 3 + 2 * M
+        self.h.host([{"t": 2, "do": "claim", "person": "a_sup"}, {"t": 3, "do": "start"}]
+                    + ends(t_end, host=True))
+        self.h.join([{"t": 0, "do": "claim", "person": "a_ccr1"}, {"t": 0, "do": "away", "on": True},
+                     {"t": 0, "do": "away", "on": False}] + ends(t_end + 0.5), 'p1')
+        res = self.h.wait_all(120)
+        self.agree(res)
+        self.assertEqual(res['p1']['early'], 3)                    # all three before the welcome
+        self.assertGreaterEqual(res['host']['trainees'][1], 0)     # the claim was committed
+        self.assertEqual([r['person'] for r in res['host']['roster'] if r['slot'] == 1], ['a_ccr1'])
+        self.assertEqual([r['away'] for r in res['host']['roster'] if r['slot'] == 1], [False])
+
     def test_the_host_gone_from_the_lobby(self):
         """A host killed while its players wait in the lobby: they notice (10 s without a packet) instead of waiting
         for ever."""
