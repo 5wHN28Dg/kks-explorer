@@ -1668,6 +1668,13 @@ var _report_jobs: Array = []
 var last_report := ""
 
 
+## A session's run continued alone (§7.4): every other slot's person is released to the NPCs at the next step.
+static func release_others(e, mine: int) -> void:
+	for k in SLOTS:
+		if k != mine and e.trainee(k) != -1:
+			e.apply_input([e.step_no + 1, "release", k])
+
+
 # ================================================================== the player's requests
 
 ## An input from this player (ui/inputs.gd's sink): to the host, which commits it (§3.1).

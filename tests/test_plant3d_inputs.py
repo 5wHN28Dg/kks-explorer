@@ -1,7 +1,7 @@
 """Walkdown Plant's inputs go one way (docs/plant3d/MULTIPLAYER.md §3.1, milestone MP1): every input the app makes for
-the plant goes through apps/plant3d/ui/inputs.gd, the path a session (MP2) takes over. No other script of the app
-calls the engine's input methods or touches its input queue (apps/plant3d/tests/test_inputs.gd checks what the path
-does)."""
+the plant goes through apps/plant3d/ui/inputs.gd, the path a session (MP2) takes over; in a session the session layer
+(apps/plant3d/net/session.gd) alone gives the engine the host's committed inputs. No other script of the app calls the
+engine's input methods or touches its input queue (apps/plant3d/tests/test_inputs.gd checks what the path does)."""
 import os
 import re
 import unittest
@@ -9,6 +9,7 @@ import unittest
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = os.path.join(REPO, 'apps', 'plant3d')
 PATH = os.path.join('ui', 'inputs.gd')
+SESSION = os.path.join('net', 'session.gd')      # the committed inputs, in a session (MP2)
 METHODS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
            'remove_lock', 'role', 'release', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'radio_call', 'jump',
            'ppe', 'zone', 'stop_act', 'apply_input', '_q')
@@ -20,8 +21,10 @@ QUEUE = re.compile(r'\b(?:engine|e|eng|_engine|clock\.engine)\s*\.\s*(queue|npc_
 
 def app_scripts():
     """Every .gd of the app (not its tests, the simulation itself, or the builder's offline tools)."""
-    for top in ('app', 'ui'):
+    for top in ('app', 'ui', 'net'):
         for root, _, files in os.walk(os.path.join(APP, top)):
+            if os.path.relpath(root, APP).startswith(os.path.join('net', 'tests')):
+                continue
             for f in files:
                 if f.endswith('.gd'):
                     yield os.path.relpath(os.path.join(root, f), APP)
@@ -33,7 +36,7 @@ class InputsPath(unittest.TestCase):
         n = 0
         for rel in app_scripts():
             n += 1
-            if rel == PATH:
+            if rel in (PATH, SESSION):
                 continue
             with open(os.path.join(APP, rel), encoding='utf-8') as f:
                 for i, line in enumerate(f, 1):

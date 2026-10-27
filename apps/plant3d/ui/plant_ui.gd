@@ -1124,6 +1124,7 @@ func toggle_procedure() -> void:
 		close_procedure()
 	else:
 		crew.visible = false
+		session_panel.visible = false
 		procedure.open()
 		_release_mouse()
 
@@ -1156,14 +1157,15 @@ func toggle_session() -> void:
 
 
 func open_session() -> void:
-	_right_open(null)
 	procedure.visible = false
 	crew.visible = false
 	session_panel.open()
+	_release_mouse()
 
 
 func close_session() -> void:
 	session_panel.visible = false
+	mimic.take_focus()
 
 
 ## Hosts (host) or joins a session; "" or why not. The single-player run is saved first and kept apart: a session
@@ -1346,9 +1348,7 @@ func continue_alone() -> void:
 	var e = PlantEngine.new(model, d["scenario"], true)
 	RunSave.apply(e, d["engine"])
 	var mine: int = int(d["session"].get("slot", 0)) if typeof(d["session"].get("slot")) == TYPE_INT else 0
-	for k in 8:
-		if k != mine and e.trainee(k) != -1:
-			e.apply_input([e.step_no + 1, "release", k])
+	Session.release_others(e, mine)
 	clock.scenario = d["scenario"]
 	adopt_engine(e)
 	inputs.slot = mine
@@ -1378,6 +1378,7 @@ func toggle_crew() -> void:
 
 func open_crew() -> void:
 	procedure.visible = false
+	session_panel.visible = false
 	crew.open()
 	_release_mouse()
 
