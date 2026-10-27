@@ -13,14 +13,16 @@ on:
             'ref/make_plant3d_vectors.py', 'ref/vectors/plant3d-v1.json', 'ref/vectors/plant3d-v2.json',
             'tests/test_plant3d.py', 'tests/test_plant3d_staff.py', 'tests/shards.py',
             'tests/test_plant3d_bench.py', 'docs/plant3d/FIRST-TRAIN.md', 'tools/plant3d/**',
-            'platform/windows/fetch-llvm-mingw.sh', '.github/workflows/plant3d-app.yml', '.github/scripts/apt-install.sh']
+            'platform/windows/fetch-llvm-mingw.sh', '.github/workflows/plant3d-app.yml', '.github/scripts/apt-install.sh',
+            '.github/scripts/apt-cache-key.sh', '.github/actions/apt-cache/**', 'tools/download.sh']
   push:
     branches: [main]
     paths: ['apps/plant3d/**', 'data/plant3d/**', 'ref/plant3d.py', 'ref/plant3d_staff.py', 'ref/sjson.py', 'ref/courses.py',
             'ref/make_plant3d_vectors.py', 'ref/vectors/plant3d-v1.json', 'ref/vectors/plant3d-v2.json',
             'tests/test_plant3d.py', 'tests/test_plant3d_staff.py', 'tests/shards.py',
             'tests/test_plant3d_bench.py', 'docs/plant3d/FIRST-TRAIN.md', 'tools/plant3d/**',
-            'platform/windows/fetch-llvm-mingw.sh', '.github/workflows/plant3d-app.yml', '.github/scripts/apt-install.sh']
+            'platform/windows/fetch-llvm-mingw.sh', '.github/workflows/plant3d-app.yml', '.github/scripts/apt-install.sh',
+            '.github/scripts/apt-cache-key.sh', '.github/actions/apt-cache/**', 'tools/download.sh']
   workflow_dispatch:
 
 permissions:
@@ -77,6 +79,17 @@ jobs:
           key: kit-textures-${{ hashFiles('apps/plant3d/kit/fetch_textures.sh') }}
       - name: Godot 4.7.2 and the JDK 17 of its Android Gradle build (pinned)
         run: tools/plant3d/bench/fetch_godot.sh && tools/plant3d/fetch_jdk.sh
+      # the voice codec's sources (godot-cpp, libopus, SpeexDSP), keyed on build.sh's pinned SHA-256 lines; build.sh
+      # checks each file's SHA-256 on every run, cached or not, and fetches it again (with retries) when it differs
+      - id: voice-src
+        run: echo "key=voice-src-$(grep -E '^fetch ' apps/plant3d/voice/build.sh | sha256sum | cut -c1-32)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; those sources (SHA-256 checked by build.sh)
+        with:
+          path: |
+            ~/.local/kksdev/src/dl/godot-cpp-*.tar.gz
+            ~/.local/kksdev/src/dl/opus-*.tar.gz
+            ~/.local/kksdev/src/dl/speexdsp-*.tar.gz
+          key: ${{ steps.voice-src.outputs.key }}
       # wdp_voice (decision 0069) for this machine, so that the app's tests run the voice codec (tests/test_voice.gd:
       # build.sh makes it required once the library is there) and the Linux export carries it. Built with the
       # runner's own GCC (WDP_LINUX_HOST): the release's, built in the Flatpak's SDK (the voice job below), needs that
@@ -111,6 +124,17 @@ jobs:
           key: kit-textures-${{ hashFiles('apps/plant3d/kit/fetch_textures.sh') }}
       - name: Godot 4.7.2 (pinned)
         run: tools/plant3d/bench/fetch_godot.sh
+      # the voice codec's sources (godot-cpp, libopus, SpeexDSP), keyed on build.sh's pinned SHA-256 lines; build.sh
+      # checks each file's SHA-256 on every run, cached or not, and fetches it again (with retries) when it differs
+      - id: voice-src
+        run: echo "key=voice-src-$(grep -E '^fetch ' apps/plant3d/voice/build.sh | sha256sum | cut -c1-32)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; those sources (SHA-256 checked by build.sh)
+        with:
+          path: |
+            ~/.local/kksdev/src/dl/godot-cpp-*.tar.gz
+            ~/.local/kksdev/src/dl/opus-*.tar.gz
+            ~/.local/kksdev/src/dl/speexdsp-*.tar.gz
+          key: ${{ steps.voice-src.outputs.key }}
       # as in the job above: tests/test_voice.gd runs the codec wherever its library is there (build.sh requires it then)
       - name: wdp_voice for this runner (pinned sources, the host's GCC)
         run: WDP_JOBS=4 WDP_LINUX_HOST=1 apps/plant3d/voice/build.sh linux-x86_64
@@ -129,6 +153,27 @@ jobs:
         target: [linux-x86_64, android-arm64, windows-x86_64, windows-arm64, native-test]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # the voice codec's sources (godot-cpp, libopus, SpeexDSP), keyed on build.sh's pinned SHA-256 lines; build.sh
+      # checks each file's SHA-256 on every run, cached or not, and fetches it again (with retries) when it differs
+      - id: voice-src
+        run: echo "key=voice-src-$(grep -E '^fetch ' apps/plant3d/voice/build.sh | sha256sum | cut -c1-32)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; those sources (SHA-256 checked by build.sh)
+        with:
+          path: |
+            ~/.local/kksdev/src/dl/godot-cpp-*.tar.gz
+            ~/.local/kksdev/src/dl/opus-*.tar.gz
+            ~/.local/kksdev/src/dl/speexdsp-*.tar.gz
+          key: ${{ steps.voice-src.outputs.key }}
+      # llvm-mingw's release tarball for the Windows targets, keyed on its fetcher (fetch-llvm-mingw.sh checks its SHA-256)
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; checked by SHA-256 when used
+        if: startsWith(matrix.target, 'windows')
+        with:
+          path: ~/.local/kksdev/src/dl/llvm-mingw-*.tar.xz
+          key: llvm-mingw-tarball-${{ hashFiles('platform/windows/fetch-llvm-mingw.sh') }}
+      - uses: ./.github/actions/apt-cache   # the job's Ubuntu archives from earlier runs (checked by SHA-256 when used)
+        id: apt-cache
+        if: startsWith(matrix.target, 'linux')
+        with: {name: voice-linux, mode: restore}
       - name: The toolchain (the Flatpak SDK; the NDK the plant's voice library pins; llvm-mingw comes with build.sh)
         run: |
           case "${{ matrix.target }}" in
@@ -140,5 +185,8 @@ jobs:
             android-*)
               yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.2.12479018" >/dev/null ;;
           esac
+      - uses: ./.github/actions/apt-cache   # what this run checked and used, for the next (also after a failure)
+        if: always() && steps.apt-cache.outcome == 'success'
+        with: {name: voice-linux, mode: save}
       - name: "wdp_voice ${{ matrix.target }}, built twice and compared (native-test: the sanitizer test)"
         run: WDP_JOBS=4 WDP_CHECK_REPRO=1 apps/plant3d/voice/build.sh ${{ matrix.target }} && cat apps/plant3d/voice/bin/BUILD-INFO.txt | tee -a "$GITHUB_STEP_SUMMARY"
