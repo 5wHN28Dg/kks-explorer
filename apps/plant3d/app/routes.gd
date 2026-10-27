@@ -48,9 +48,14 @@ static func pit(plant) -> Array:
 static func frames(plant) -> Array:
 	var r: Array = [_to(-20, 0), _to(-12, 0), _to(-5, 0), _to(-5, 20), _to(2, 20), _to(20, 20), _to(50, 21),
 		_to(74, 5), _to(86, 5), _to(86, 34.5), _to(93.5, 44.5)]
-	r.append_array(_stair(plant, "hrsg1_stair"))
-	r.append_array([_to(101.4, 52.5, 30), _to(130, 56, 30), _to(101.4, 56, 30), _to(101.4, 52.5, 30), _to(101.4, 49.5, 30)])
-	r.append_array(_stair(plant, "hrsg1_stair", true))
+	# (without the stair's last point: its top, (102, 50, 30), is on the landing's east rail; the walkway north of the
+	# landing is x 101.1 to 101.7)
+	r.append_array(_stair(plant, "hrsg1_stair").slice(0, -1))
+	# along the roof's walkway (y 56) and back: the line from the landing's corner straight across to (130, 56) ran
+	# along the landing's rails for 9 m, the walker and the crowd's lanes (app/crowd.gd) touching them (2026-10-27)
+	r.append_array([_to(101.4, 52.5, 30), _to(101.4, 56, 30), _to(130, 56, 30), _to(101.4, 56, 30), _to(101.4, 52.5, 30),
+		_to(101.4, 49.5, 30)])
+	r.append_array(_stair(plant, "hrsg1_stair", true).slice(1))
 	r.append_array([_to(93.5, 44.5), _to(140, 36), _to(165, 36), _to(165, 30)])
 	r.append_array(wtp_loop())
 	r.append_array([_to(165, 30), _to(93.5, 36), _to(-5, 36), _to(-5, 0), _to(-12, 0), _to(-20, 0)])

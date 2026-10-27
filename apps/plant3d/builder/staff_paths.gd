@@ -5,14 +5,25 @@
 ## straight one between its places: through doors and round machines, rails and beams, up and down the steps. The
 ## app searches no path at run time.
 ##
-## The file (FileAccess.store_var): {"format": FORMAT, "ways": {"A|B": [points, times, on]}}, a way by its places'
-## ids as staff.json has it, its points from A to B (Godot's frame, the feet), `times` the fraction of the way's time
-## at each point (0 to 1: a stair's steps walked at the staff's stair speed, a ladder climbed at its ladder speed, the
-## rest at the walking speed), `on` per stretch between two points (ON_FLOOR, ON_STAIRS or ON_LADDER).
+## The file (FileAccess.store_var): {"format": FORMAT, "ways": {"A|B": [points, times, on, room]}, "places": {id:
+## room}}, a way by its places' ids as staff.json has it, its points from A to B (Godot's frame, the feet), `times` the
+## fraction of the way's time at each point (0 to 1: a stair's steps walked at the staff's stair speed, a ladder
+## climbed at its ladder speed, the rest at the walking speed), `on` per stretch between two points (ON_FLOOR,
+## ON_STAIRS or ON_LADDER), `room` the room beside the line and a place's room round it (builder/lane_room.gd: where
+## people may be drawn off the line and the place, app/keep_apart.gd).
+##
+## And the measurement crowd's lanes (app/crowd.gd) on the walks' routes it is given (app/routes.gd): CROWD_OUT,
+## {"format": CROWD_FORMAT, "routes": [[points, room], …]}, a route by its points as app/crowd.gd route_points()
+## makes them, its room as a line's (looped round its end where it ends at its start).
 extends RefCounted
 
 const WalkRoute = preload("res://app/walk_route.gd")
 const StaffWays = preload("res://app/staff_ways.gd")   # the app's reader of the file
+const Lanes = preload("res://app/lanes.gd")
+const LaneRoom = preload("res://builder/lane_room.gd")
+const Crowd = preload("res://app/crowd.gd")
+const CROWD_OUT := "crowd_lanes.bin"
+const CROWD_FORMAT := Crowd.LANES_FORMAT
 
 const OUT := "staff_paths.bin"
 const FORMAT := StaffWays.FORMAT
@@ -26,14 +37,18 @@ const STEEP := 0.3              # rise over run above which a stretch is stairs 
 
 
 ## Finds and saves the ways of the staff in `staff_file` (staff.json) on the mesh `nm`, in the world of `parent`,
-## whose scenes are loaded (their colliders are what the feet are put on). Returns {"ways": n, "points": n, "bytes":
-## n} or {"error": …}; no staff.json: {"ways": 0} and no file.
-static func build(parent: Node, nm: NavigationMesh, staff_file: String, built_dir: String) -> Dictionary:
-	if not FileAccess.file_exists(staff_file):
+## whose scenes are loaded (their colliders are what the feet are put on), with the room beside them and round their
+## places; and the crowd's lanes on `routes` (each a PackedVector3Array, app/crowd.gd route_points()). Returns
+## {"ways": n, "points": n, "bytes": n, "room": LaneRoom stats, "crowd": routes} or {"error": …}; no staff.json:
+## {"ways": 0} and no staff file.
+static func build(parent: Node, nm: NavigationMesh, staff_file: String, built_dir: String, routes: Array = []) -> Dictionary:
+	var d = null
+	if FileAccess.file_exists(staff_file):
+		d = JSON.parse_string(FileAccess.get_file_as_string(staff_file))
+		if typeof(d) != TYPE_DICTIONARY:
+			return {"error": "staff paths: cannot read " + staff_file}
+	elif routes.is_empty():
 		return {"ways": 0}
-	var d = JSON.parse_string(FileAccess.get_file_as_string(staff_file))
-	if typeof(d) != TYPE_DICTIONARY:
-		return {"error": "staff paths: cannot read " + staff_file}
 	var route := WalkRoute.new()
 	route.warm_up = false
 	parent.add_child(route)
@@ -52,32 +67,56 @@ static func build(parent: Node, nm: NavigationMesh, staff_file: String, built_di
 	for n in parent.get_tree().get_nodes_in_group("doors"):
 		if n is CollisionObject3D:
 			doors.append(n.get_rid())
-	var at := {}
-	for p in d["places"]:
-		at[p["id"]] = Vector3(p["at"][0], p["at"][2], -p["at"][1])
-	var speeds: Dictionary = d["speeds"]
-	var ways := {}
-	var points := 0
-	for w in d["ways"]:
-		var a: Vector3 = at[w[0]]
-		var b: Vector3 = at[w[1]]
-		var f: Dictionary = route.find(a, b)
-		if not f.reached:
+	var lr := LaneRoom.new(space, nm, doors)
+	var out := {"ways": 0, "points": 0, "bytes": 0}
+	if d != null:
+		var at := {}
+		for p in d["places"]:
+			at[p["id"]] = Vector3(p["at"][0], p["at"][2], -p["at"][1])
+		var speeds: Dictionary = d["speeds"]
+		var ways := {}
+		var points := 0
+		for w in d["ways"]:
+			var a: Vector3 = at[w[0]]
+			var b: Vector3 = at[w[1]]
+			var f: Dictionary = route.find(a, b)
+			if not f.reached:
+				route.queue_free()
+				return {"error": "staff paths: the way %s–%s is not walkable on the mesh" % [w[0], w[1]]}
+			var line := feet_line(space, a, b, f.points, f.marks, doors)
+			var timed := times(line[0], line[1], speeds)
+			ways["%s|%s" % [w[0], w[1]]] = [line[0], timed, line[1], lr.line(Lanes.make(line[0]), true)]
+			points += line[0].size()
+		var rooms := {}
+		for id in at:
+			rooms[id] = lr.place(at[id])
+		var path := built_dir.path_join(OUT)
+		var fo := FileAccess.open(path, FileAccess.WRITE)
+		if fo == null:
 			route.queue_free()
-			return {"error": "staff paths: the way %s–%s is not walkable on the mesh" % [w[0], w[1]]}
-		var line := feet_line(space, a, b, f.points, f.marks, doors)
-		var timed := times(line[0], line[1], speeds)
-		ways["%s|%s" % [w[0], w[1]]] = [line[0], timed, line[1]]
-		points += line[0].size()
+			return {"error": "staff paths: cannot write " + path}
+		fo.store_var({"format": FORMAT, "ways": ways, "places": rooms})
+		fo.close()
+		out = {"ways": ways.size(), "points": points, "bytes": FileAccess.get_file_as_bytes(path).size()}
+	out["room"] = lr.stats
+	# the crowd's lanes
+	lr.stats = {"samples": 0, "blocked": 0, "squeezed": 0, "moved": 0}
+	var lanes: Array = []
+	for pts in routes:
+		var l = Lanes.make(pts, PackedByteArray(), Crowd.looped(pts))
+		lanes.append([pts, lr.line(l, false)])
 	route.queue_free()
-	var path := built_dir.path_join(OUT)
-	var fo := FileAccess.open(path, FileAccess.WRITE)
-	if fo == null:
-		return {"error": "staff paths: cannot write " + path}
-	fo.store_var({"format": FORMAT, "ways": ways})
-	fo.close()
-	return {"ways": ways.size(), "points": points, "bytes": FileAccess.get_file_as_bytes(path).size(),
-		"ms": Time.get_ticks_msec() - t0}
+	if not routes.is_empty():
+		var cpath := built_dir.path_join(CROWD_OUT)
+		var fc := FileAccess.open(cpath, FileAccess.WRITE)
+		if fc == null:
+			return {"error": "staff paths: cannot write " + cpath}
+		fc.store_var({"format": CROWD_FORMAT, "routes": lanes})
+		fc.close()
+	out["crowd"] = lanes.size()
+	out["crowd_room"] = lr.stats
+	out["ms"] = Time.get_ticks_msec() - t0
+	return out
 
 
 ## A way's line with the feet down: from `a` along the route's points (`marks` as app/walk_route.gd find() gives them)

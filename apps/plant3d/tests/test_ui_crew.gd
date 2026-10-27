@@ -14,6 +14,7 @@ const App = preload("res://tests/ui_app.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const RunSave = preload("res://ui/run_save.gd")
 const PlantEngine = preload("res://sim/engine.gd")
+const KeepApart = preload("res://app/keep_apart.gd")
 
 var _lost_typing := false
 
@@ -429,8 +430,9 @@ func _save(ui, p: Array) -> void:
 		p.append("a save whose kept offer names a value its reaction is not on was taken")
 
 
-## A person a quarter of the way down the HRSG's stair way is drawn on the way's built line (app/staff_ways.gd), walked
-## from the end the leg starts at, facing along it, at the line's speed: not on the straight line from its foot to its
+## A person a quarter of the way down the HRSG's stair way is drawn on the way's built line (app/staff_ways.gd), in their
+## lane beside it (within the room there: app/keep_apart.gd), walked from the end the leg starts at, facing along it,
+## at the line's speed: not on the straight line from its foot to its
 ## top, which ran up to 30 m above the ground (until 2026-10-26).
 func _on_line(ui, e) -> Array:
 	var pv = ui.people
@@ -455,14 +457,17 @@ func _on_line(ui, e) -> Array:
 	var frac: float = clampf(ui.clock.acc / SimClock.STEP, 0.0, 1.0)
 	var k := (float(done) + frac) / float(st)
 	pv.ways.walk(key, ib, k, st * SimClock.STEP)
-	var want: Vector3 = pv.ways.pos
+	# in their lane (app/keep_apart.gd: a person who has just jumped there starts in it), facing along the line
+	var line = pv.ways.line
+	var r: Vector2 = KeepApart.lane_room(line, pv.ways.s, pv.ways.sgn)
+	var want: Vector3 = line.at(pv.ways.s, pv.ways.sgn * clampf(KeepApart.LANE, r.x, r.y))
 	var chord: Vector3 = pv._at[ib].lerp(pv._at[ia], k)
-	var d: Vector3 = pv.ways.dir
+	var d: Vector3 = line.forward(pv.ways.s) * pv.ways.sgn
 	var yaw := atan2(-d.x, -d.z)
 	var found := false
 	for q in pv.avatars.people:
 		if q.at.distance_to(want) < 0.01 and q.speed > 0.0 and absf(q.speed - pv.ways.speed) < 1e-4 and \
-				(Vector2(d.x, d.z).length() <= 0.05 or absf(angle_difference(q.yaw, yaw)) < 0.01):
+				absf(angle_difference(q.yaw, yaw)) < 0.01:
 			found = true
 	e.sp_leg[who] = saved_leg
 	pv.drive(0.0)
