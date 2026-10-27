@@ -33,6 +33,25 @@ func run(tree: SceneTree) -> Array:
 	if s._rsa_pem == "" or not s._rsa_pem.begins_with("-----BEGIN PUBLIC KEY"):
 		p.append("the hello's public key is ready with the key (%s)" % s._rsa_pem.left(30))
 	Session.forget_session()
+	# the saved token read on the preparation thread reaches the hello, for its own code only
+	for c in [["K3QX9F2MHT4C7PW5", "AQID"], ["XXXXXXXXXXXXXXXX", ""]]:
+		var f := FileAccess.open(Session.SESSION_FILE, FileAccess.WRITE)
+		f.store_string(JSON.stringify({"code": c[0], "token": "AQID"}))
+		f.close()
+		var s2 = Session.new()
+		s2.bind_address = "127.0.0.1"
+		s2.discovery_port = 1
+		tree.root.add_child(s2)
+		s2.join("K3QX9F2MHT4C7PW5")
+		var t1 := Time.get_ticks_msec()
+		while Time.get_ticks_msec() - t1 < 8000 and not s2._prep_ready():
+			await tree.process_frame
+		var got := Marshalls.raw_to_base64(s2._prep.get("token", PackedByteArray()))
+		if got != c[1]:
+			p.append("the token saved for %s gives a join of K3QX… the token '%s' (want '%s')" % [c[0], got, c[1]])
+		tree.root.remove_child(s2)
+		s2.free()
+		Session.forget_session()
 	Session.record_threads = false
 	s.free()
 	return p

@@ -365,6 +365,8 @@ func _prep_ready() -> bool:
 		return false
 	_prep = _prep_thread.wait_to_finish()
 	_prep_thread = null
+	if state == State.FINDING:
+		_query_until = _now_s() + QUERY_FOR     # (the query's window from its first query, as before the thread)
 	return true
 
 
@@ -680,6 +682,7 @@ static func sched_now() -> PackedInt64Array:
 	if p.size() < 3:
 		sched_error = "read %d fields" % p.size()
 		return PackedInt64Array()
+	sched_error = ""
 	return PackedInt64Array([int(p[0]), int(p[1]), int(p[2])])
 
 ## why sched_now() last gave nothing ("" when it read): the walk's SESSION probe line says it
@@ -2223,7 +2226,9 @@ func _hello() -> void:
 		return
 	_hello_t = _now
 	if _hello_json.is_empty():
+		_token_mutex.lock()
 		var tok: PackedByteArray = _tokens.get(code, _prep["token"])
+		_token_mutex.unlock()
 		var hi := {"name": display_name, "rsa": _rsa_pem, "app": RunSave.app_version(),
 				"content": content, "token": Marshalls.raw_to_base64(tok) if not tok.is_empty() else null}
 		_hello_json = JSON.stringify(hi).to_utf8_buffer()
@@ -2239,7 +2244,9 @@ static var _tokens := {}                # code -> token, while the app runs
 
 
 func _save_token() -> void:
+	_token_mutex.lock()
 	_tokens[code] = _token
+	_token_mutex.unlock()
 	# (the file on a worker thread: a write to storage took a frame's ms on the Note 9 at the welcome)
 	_save_jobs.append(WorkerThreadPool.add_task(_write_token.bind(JSON.stringify(
 			{"code": code, "token": Marshalls.raw_to_base64(_token)}))))
@@ -2259,11 +2266,15 @@ static func _write_token(text: String) -> void:
 static var _token_mutex := Mutex.new()
 
 
-func _saved_token() -> PackedByteArray:
-	return _saved_token_of(code)
-
-
+## (on the join's preparation thread too: _tokens and the file under _token_mutex)
 static func _saved_token_of(for_code: String) -> PackedByteArray:
+	_token_mutex.lock()
+	var t := _saved_token_locked(for_code)
+	_token_mutex.unlock()
+	return t
+
+
+static func _saved_token_locked(for_code: String) -> PackedByteArray:
 	if _tokens.has(for_code):
 		return _tokens[for_code]
 	if FileAccess.file_exists(SESSION_FILE):
@@ -2275,9 +2286,11 @@ static func _saved_token_of(for_code: String) -> PackedByteArray:
 
 
 static func forget_session() -> void:
+	_token_mutex.lock()
 	_tokens.clear()
 	if FileAccess.file_exists(SESSION_FILE):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(SESSION_FILE))
+	_token_mutex.unlock()
 
 
 # ================================================================== positions (§6.3)
