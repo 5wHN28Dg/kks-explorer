@@ -11,7 +11,10 @@ buildscript {
         "org.bouncycastle:bcutil-jdk18on" to "1.85", "org.apache.commons:commons-lang3" to "3.18.0",
         "org.jdom:jdom2" to "2.0.6.1", "org.bitbucket.b_c:jose4j" to "0.9.6",
         "org.apache.httpcomponents:httpclient" to "4.5.14",
-        "com.google.guava:guava" to "33.7.2-jre")   // GHSA-xxph-c9ww-hj94, osv-scanner 2026-10-27
+        "com.google.guava:guava" to "33.7.2-jre",   // GHSA-xxph-c9ww-hj94, osv-scanner 2026-10-27
+        // not an advisory: guava 33.7 no longer brings checker-qual 3.43.0 (MIT), which left tensorflow-lite-metadata's
+        // 2.5.8, whose POM names its licence in a way the license check (license-allowlist.txt) can't match
+        "org.checkerframework:checker-qual" to "3.43.0")
     fun older(a: String, b: String): Boolean {
         val x = a.split('.', '-').map { it.toIntOrNull() ?: 0 }; val y = b.split('.', '-').map { it.toIntOrNull() ?: 0 }
         for (i in 0 until maxOf(x.size, y.size)) { val d = x.getOrElse(i) { 0 } - y.getOrElse(i) { 0 }; if (d != 0) return d < 0 }
