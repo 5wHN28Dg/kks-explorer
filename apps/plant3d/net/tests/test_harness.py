@@ -228,10 +228,11 @@ class Joins(Base):
         sim = self.h.netsim()
         link = sim.link(9, up, down)
         sim.start()
-        # (12 s at the harness's 20× is 2,400 steps to catch up: time enough before the end; the host pauses after the
-        # player's last input, which comes START_DELAY s and its start later on the host's clock)
-        self.h.host([{"t": 2, "do": "claim", "person": "a_sup"}, {"t": 3, "do": "start"}]
-                    + ends(t_end + START_DELAY + 3, quit_after=20, host=True))
+        # (12 s at the harness's 20× is 2,400 steps to catch up: time enough before the end.) The host's clock runs
+        # START_DELAY s and the player's start-up ahead of the player's: it starts the run once the player has joined
+        # its lobby and claimed (a lobby join, as before), and pauses well after the player's last input
+        self.h.host([{"t": 2, "do": "claim", "person": "a_sup"}, {"t": 3 + START_DELAY + 3, "do": "start"}]
+                    + ends(t_end + START_DELAY + 10, quit_after=20, host=True))
         time.sleep(START_DELAY)
         p1 = self.h.join([{"t": 1.5, "do": "claim", "person": "a_ccr1"}, {"t": 6, "do": "away", "freeze": 12}]
                          + inputs(21, t_end - 3, 3, 4) + ends(t_end + 0.5, quit_after=20), 'p1', link=link)
@@ -244,6 +245,7 @@ class Joins(Base):
         self.assertEqual(res['p1']['sending'], 0)
         self.assertGreaterEqual(res['host']['trainees'][1], 0)     # its person is still its own
         self.assertNotIn('p1 has lost the connection.', res['host']['notices'])   # away, not gone
+        self.assertLessEqual(res['p1']['early'], 1)     # only the claim before the welcome: away came after it
 
     def test_controls_before_the_welcome(self):
         """A claim and the app's going to the background and back, made while the player is still joining (its RSA
@@ -253,14 +255,15 @@ class Joins(Base):
         t_end = 3 + 2 * M
         self.h.host([{"t": 2, "do": "claim", "person": "a_sup"}, {"t": 3, "do": "start"}]
                     + ends(t_end, host=True))
+        # away, back, away again: the host must see the last of them (the player is still away at the end)
         self.h.join([{"t": 0, "do": "claim", "person": "a_ccr1"}, {"t": 0, "do": "away", "on": True},
-                     {"t": 0, "do": "away", "on": False}] + ends(t_end + 0.5), 'p1')
+                     {"t": 0, "do": "away", "on": False}, {"t": 0, "do": "away", "on": True}] + ends(t_end + 0.5), 'p1')
         res = self.h.wait_all(120)
         self.agree(res)
-        self.assertEqual(res['p1']['early'], 3)                    # all three before the welcome
+        self.assertEqual(res['p1']['early'], 4)                    # all four before the welcome
         self.assertGreaterEqual(res['host']['trainees'][1], 0)     # the claim was committed
         self.assertEqual([r['person'] for r in res['host']['roster'] if r['slot'] == 1], ['a_ccr1'])
-        self.assertEqual([r['away'] for r in res['host']['roster'] if r['slot'] == 1], [False])
+        self.assertEqual([r['away'] for r in res['host']['roster'] if r['slot'] == 1], [True])
 
     def test_the_host_gone_from_the_lobby(self):
         """A host killed while its players wait in the lobby: they notice (10 s without a packet) instead of waiting

@@ -555,9 +555,9 @@ func _mp_result() -> void:
 	# the layer's slow frames (over 1.5 ms) and where their time went: receive (decrypt, parse), frame (beside the
 	# model's steps), positions, flush (seal, send); with mp_probe=1 the thread's time on a CPU (run) and waiting (wait)
 	for f in st.get("slow", []):
-		_say("SESSION slow %d us at %.1f s: receive %d, frame %d (steps %d apart), positions %d, flush %d; packets in %d, out %d; run %s, wait %s; %s" % [
+		_say("SESSION slow %d us at %.1f s: receive %d, frame %d (steps %d apart), positions %d, flush %d; packets in %d, out %d; run %s, wait %s, switches %s; %s" % [
 			f["us"], f["t"], f["receive"], f["frame"], f["steps"], f["positions"], f["flush"], f["in"], f["out"],
-			str(f.get("run", "-")), str(f.get("wait", "-")), f["what"]])
+			str(f.get("run", "-")), str(f.get("wait", "-")), str(f.get("switches", "-")), f["what"]])
 
 
 ## crowd=N: N people round the walker on `route` (app/crowd.gd), in a walk or in shots.

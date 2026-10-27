@@ -554,7 +554,7 @@ var _stride := 1
 func _process(delta: float) -> void:
 	if role == Role.NONE or state == State.ENDED or _udp == null:
 		return
-	var sched0 := sched_now() if probe_sched else PackedInt64Array()
+	var sched0 := sched_now() if probe_sched and stats["slow"].size() < MAX_SLOW else PackedInt64Array()
 	var got0: int = _udp.got
 	var sent0: int = _udp.sent
 	var t0 := Time.get_ticks_usec()
@@ -566,6 +566,7 @@ func _process(delta: float) -> void:
 		_poll_welcome()
 		_hello()
 	var t1 := Time.get_ticks_usec()
+	var steps1 := _step_us      # (model steps run inside the receive: a late join's or a resync's catch-up)
 	if role == Role.HOST:
 		_host_frame(delta)
 	else:
@@ -574,6 +575,7 @@ func _process(delta: float) -> void:
 		_hold_pause = false
 		request_pause()
 	var t2 := Time.get_ticks_usec()
+	var steps2 := _step_us
 	_positions()
 	var t3 := Time.get_ticks_usec()
 	_flush(_dirty)
@@ -586,15 +588,20 @@ func _process(delta: float) -> void:
 	if us > SLOW_US and stats["slow"].size() < MAX_SLOW:
 		# where a slow frame's time went (MP2's follow-up: the layer's worst frames): its parts, the packets in and
 		# out, and with probe_sched the thread's own time on a CPU and waiting for one (/proc/thread-self/schedstat)
-		var f := {"us": us, "receive": t1 - t0, "frame": t2 - t1 - _step_us, "steps": _step_us, "positions": t3 - t2,
-			"flush": t4 - t3, "what": ",".join(_what), "t": _now,
+		# (each part without the model steps run inside it; the steps are kept apart, as `us` leaves them out)
+		var f := {"us": us, "receive": t1 - t0 - steps1, "frame": t2 - t1 - (steps2 - steps1), "steps": _step_us,
+			"positions": t3 - t2 - (_step_us - steps2), "flush": t4 - t3, "what": ",".join(_what), "t": _now,
 			# (the session may have ended in this frame: its socket is gone then)
 			"in": _udp.got - got0 if _udp != null else -1, "out": _udp.sent - sent0 if _udp != null else -1}
 		if probe_sched:
 			var sched1 := sched_now()
-			if sched0.size() == 2 and sched1.size() == 2:
+			if sched0.size() == 3 and sched1.size() == 3:
+				# run is the kernel's sum, brought up to date at a tick or a switch only (1-10 ms grain); wait is
+				# exact for a wait that ended within the frame; switches: times the thread was put back on a CPU
+				# (more than 0: it was switched out in the frame). All three cover the whole frame, steps too.
 				f["run"] = (sched1[0] - sched0[0]) / 1000
 				f["wait"] = (sched1[1] - sched0[1]) / 1000
+				f["switches"] = sched1[2] - sched0[2]
 		stats["slow"].append(f)
 	_step_us = 0
 	if us > stats["us_max"]:
@@ -612,16 +619,16 @@ const MAX_SLOW := 64
 var probe_sched := false
 
 
-## [ns on a CPU, ns runnable but waiting] of the calling thread (Linux and Android: /proc/thread-self/schedstat),
+## [ns on a CPU, ns runnable but waiting, times put on a CPU] of the calling thread (Linux and Android: /proc/thread-self/schedstat),
 ## or [] where there is none.
 static func sched_now() -> PackedInt64Array:
 	var f := FileAccess.open("/proc/thread-self/schedstat", FileAccess.READ)
 	if f == null:
 		return PackedInt64Array()
 	var p := f.get_line().split(" ", false)   # (a /proc file's length is 0: get_as_text reads nothing)
-	if p.size() < 2:
+	if p.size() < 3:
 		return PackedInt64Array()
-	return PackedInt64Array([int(p[0]), int(p[1])])
+	return PackedInt64Array([int(p[0]), int(p[1]), int(p[2])])
 
 
 var _step_us := 0                       # this frame's model steps (the session layer's own time is the rest)
@@ -1989,8 +1996,10 @@ func _send_control(c: Dictionary) -> void:
 		return
 	if _send_p != null:
 		_send_p.push(Wire.Kind.CONTROL, JSON.stringify(c).to_utf8_buffer())
-	elif _unsent_controls.size() < MAX_UNSENT_CONTROLS:
-		_unsent_controls.append(c)      # (no stream before the welcome: sent with it, never dropped)
+	else:
+		_unsent_controls.append(c)      # (no stream before the welcome: sent with it; past the cap the oldest go,
+		if _unsent_controls.size() > MAX_UNSENT_CONTROLS:   # so that the latest state, an away, stays)
+			_unsent_controls.pop_front()
 
 
 func claim(person: String) -> void:
