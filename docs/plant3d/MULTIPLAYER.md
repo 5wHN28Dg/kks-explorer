@@ -867,7 +867,8 @@ is until the project is complete) and keeps the frame rules on the Note 9. Sizes
 | MP5 | **Voice:** decision 0069's `wdp_voice` built from pinned sources for the four packages' targets (its licence notices in About), capture with `get_input_frames`, push-to-talk, channels and floor, jitter buffer, radio bus; `RECORD_AUDIO` and the desktop permissions | L | MP2 | push-to-talk on the radio | encode ≤ 1 ms / decode ≤ 0.3 ms per frame on the Note 9; mouth-to-ear ≤ 400 ms on the Wi-Fi; the frame rules with one talker; the APK still ≤ 150 MB |
 | MP6 | **A full session measured:** 8 players (the Note 9, the laptop, the VM and harness bots) through a shift with fast-forward and a jump, voice on; the Note 9's 10-minute walk among 7 players | M | MP3, MP4, MP5 | the whole feature, measured | the frame rules on the Note 9 with 7 others drawn and one talker; no desync in 60 minutes |
 
-**MP2 built 2026-10-27** (§14): everything in its row but MP3's host changes; its measurements are in §14.
+**MP2 built 2026-10-27** (§14): everything in its row. Its measurements are in §14; three are still open there (the
+two-player walk judged by the frame rules, the session's memory, and the session layer's worst frame).
 
 **Order:** MP1 → MP2, then MP3, MP4 and MP5 in any order (each needs only MP2), then MP6.
 
