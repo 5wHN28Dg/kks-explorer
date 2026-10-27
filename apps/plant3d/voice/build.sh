@@ -65,9 +65,9 @@ unpack "$SRC"
 
 NDK="${WDP_NDK:-${ANDROID_HOME:-$HOME/Android/Sdk}/ndk/27.2.12479018}"
 SDK_REF=org.freedesktop.Sdk//26.08
-# the SDK's commit (freedesktop-sdk-26.08.3) the libraries are built with, here and on CI (which installs it with
+# the SDK's commit (freedesktop-sdk-26.08.4) the libraries are built with, here and on CI (which installs it with
 # `flatpak update --commit`): another is refused unless WDP_SDK_COMMIT names it (then its libraries differ)
-SDK_PIN=3311c13c67b602315c39cf5310de129dd3460d04b6c8cf5be1b2cbc42c51abd7
+SDK_PIN=a1b744b072d9f55d061e35382547ae80dad8d92abecc1da7dc1818de2daabfd3
 # fixed for reproducible archives and any tool that reads it
 export SOURCE_DATE_EPOCH=1767225600
 
