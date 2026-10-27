@@ -58,6 +58,10 @@ var drawn := PackedInt32Array()     # per avatar person drive() gave: the person
 var drawn_kind := PackedByteArray() # and how app/keep_apart.gd took them (WALKING, STANDING, FIXED)
 var drawn_fresh := PackedByteArray()  # and whether they were new or jumped this frame (their heading set, not turned)
 const ON_NAMES := ["", "stairs", "ladder"]   # app/staff_ways.gd's ON_… to app/people.gd's `on`
+const STILL := 0.15             # m/s: slower than this is standing (app/people.gd)
+var _was := PackedVector3Array()    # per person: where they were drawn last frame
+var _was_ok := PackedByteArray()    # per person: 1 when _was holds it
+var _spd := PackedFloat32Array()    # per person: the speed they were last drawn moving at (plant m/s)
 
 
 func setup(u) -> void:
@@ -283,8 +287,33 @@ func drive(delta: float) -> void:
 			speed = d.length() / (steps * SimClock.STEP) if k < 1.0 else 0.0
 			if Vector2(d.x, d.z).length() > 0.05:
 				target = atan2(-d.x, -d.z)
+		elif ways != null and not is_nan(ways.yaw[place]):
+			target = ways.yaw[place]        # (facing the equipment they work on: builder/staff_paths.gd facing())
 		elif sm.places[place].has("yaw"):
 			target = -deg_to_rad(float(sm.places[place]["yaw"]))   # (plant: degrees clockwise from north)
+		# how they are drawn moving (phase 4): their speed is the ground they cover where drawn (keeping apart, catching
+		# up, a lane round a corner), and while they move they face that way, so that the walk's standing foot stays
+		# put (app/people.gd moves the clip on by the same ground); paused, as they were
+		var track := false
+		if _was_ok[pi] == 1 and apart.fresh[i] == 0:
+			if dt > 0.0:
+				var mv := Vector2(at.x - _was[pi].x, at.z - _was[pi].z)
+				var v := mv.length() / dt
+				if place != -1 or _line[i] == 1 or v > STILL:
+					speed = v
+				if v > STILL:
+					target = atan2(-mv.x, -mv.y)
+					track = true
+			else:
+				speed = _spd[pi]
+		_spd[pi] = speed
+		_was[pi] = at
+		_was_ok[pi] = 1
+		# on a ladder: towards its rungs, whichever way they came (down from its top they come at it from behind)
+		var lh := ladder_heading(avatars.treads, _on[i], at)
+		if not is_nan(lh):
+			target = lh
+			track = true
 		var cur = _yaw.get(pi)
 		if cur == null and target == null:
 			_yaw[pi] = 0.0          # (facing north until they have somewhere to face: from there they turn)
@@ -292,8 +321,11 @@ func drive(delta: float) -> void:
 			if cur == null or apart.fresh[i] == 1:
 				cur = target
 			else:
+				# turning at most TURN: towards the way they move as they move (no easing in: their heading follows the
+				# way they go, which turns smoothly), easing in towards a place's heading
 				var left := angle_difference(cur, target)
-				cur = wrapf(cur + clampf(left * minf(1.0, TURN_EASE * dt), -TURN * dt, TURN * dt), -PI, PI)
+				var ease := 1.0 if track else minf(1.0, TURN_EASE * dt)
+				cur = wrapf(cur + clampf(left * ease, -TURN * dt, TURN * dt), -PI, PI)
 			_yaw[pi] = cur
 		if n >= out.size():
 			out.append({})
@@ -308,7 +340,7 @@ func drive(delta: float) -> void:
 		if _look0 == null:
 			_look0 = avatars.info.looks.keys()[0]
 		p.look = avatars.info.roles.get(role, _look0)
-		if speed > 0.0:
+		if speed > STILL:
 			p.anim = ""
 		elif _line[i] == 1 and apart.speed_in[i] > 0.0:
 			p.anim = "idle"                 # held back on the way (app/keep_apart.gd): standing, then catching up
@@ -342,6 +374,14 @@ func _places(sm) -> void:
 		_at.append(Plant.g(pl["at"][0], pl["at"][1], pl["at"][2]))
 	_ways_of = sm
 	ways = StaffWays.open(sm, _at)
+	if ways != null:
+		for i in _at.size():
+			_at[i] = ways.stand[i]      # where people stand there: the feet on the floor, clear (phase 4)
+	_was.resize(sm.people.size())
+	_was_ok.resize(sm.people.size())
+	_was_ok.fill(0)
+	_spd.resize(sm.people.size())
+	_spd.fill(0.0)
 	_seated.resize(sm.places.size())
 	for i in sm.places.size():
 		var pl: Dictionary = sm.places[i]
@@ -368,6 +408,14 @@ func _anim(e, sm, pi: int, place: int) -> String:
 		a = "sit"
 	return a
 
+
+
+## The way someone on a ladder (`on`, at `at`) faces: its rungs (app/stair_treads.gd); NAN when not on one.
+static func ladder_heading(treads, on: String, at: Vector3) -> float:
+	if on != "ladder" or treads == null:
+		return NAN
+	var lk: int = treads.on_ladder(at)
+	return float(treads.ladders[lk][3]) if lk >= 0 else NAN
 
 
 ## Whether a person's hard hat is on their head (PLANT3D §17.11): they wear one and stand in a zone that needs it.

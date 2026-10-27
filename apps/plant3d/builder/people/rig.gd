@@ -242,7 +242,10 @@ func limbs(p: Dictionary) -> Dictionary:
 
 
 ## An animation of our own: keys of poses (each a dictionary for limbs() and solve()), equally spaced over `length`.
-func own(keys: Array, length: float, loop: bool, track_root := "Skeleton3D") -> Animation:
+## `exact`: the hands and feet put where the keys say within a millimetre (the limbs' bones bend about axes a little off
+## the lines between their joints, so one IK pass leaves an ankle up to 3 cm off: the climbing clips' standing feet
+## must be on their treads and rungs): the targets corrected by what is left, a few times over.
+func own(keys: Array, length: float, loop: bool, track_root := "Skeleton3D", exact := false) -> Animation:
 	var a := Animation.new()
 	a.length = length
 	a.loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
@@ -259,6 +262,8 @@ func own(keys: Array, length: float, loop: bool, track_root := "Skeleton3D") -> 
 		var p: Dictionary = keys[k % count]
 		var t := length * float(k) / float(count if loop else maxi(1, count - 1))
 		var rots := solve(limbs(p))
+		if exact:
+			rots = _exact(p, rots)
 		for i in names.size():
 			a.rotation_track_insert_key(tracks[i], t, rots[i])
 		var hips_at: Vector3 = p.get("hips_at", JOINTS["hips"])
@@ -267,8 +272,42 @@ func own(keys: Array, length: float, loop: bool, track_root := "Skeleton3D") -> 
 	return a
 
 
+## The rotations of a pose (`p` for limbs(), first solved as `rots`) with its hands and feet where it says: each target
+## moved by what forward kinematics leaves between it and the joint, and solved again.
+func _exact(p: Dictionary, rots: Array) -> Array:
+	var ends := {"step.l": "foot.l", "step.r": "foot.r", "reach.l": "wrist.l", "reach.r": "wrist.r"}
+	var q := p.duplicate()
+	for it in 6:
+		var g := _fk(rots, p.get("hips_at", JOINTS["hips"]))
+		var worst := 0.0
+		for k in ends:
+			if p.has(k):
+				var err: Vector3 = (g[names.find(ends[k])] as Transform3D).origin - (p[k] as Vector3)
+				q[k] = (q[k] as Vector3) - err
+				worst = maxf(worst, err.length())
+		if worst < 0.0005:
+			break
+		rots = solve(limbs(q))
+	return rots
+
+
+## The bones' global transforms for local rotations `rots` with the hips at `hips_at` (the model's frame).
+func _fk(rots: Array, hips_at: Vector3) -> Array:
+	var g: Array = []
+	var hi := names.find("hips")
+	for i in names.size():
+		var rest := skeleton.get_bone_rest(i)
+		var origin := rest.origin
+		var par := skeleton.get_bone_parent(i)
+		if i == hi:
+			origin = skeleton.get_bone_global_rest(par).affine_inverse() * hips_at if par >= 0 else hips_at
+		var local := Transform3D(Basis(rots[i] as Quaternion), origin)
+		g.append(local if par < 0 else (g[par] as Transform3D) * local)
+	return g
+
+
 ## Our clips: the work poses no CC0 source has (docs/PLANT3D.md §18.3: handwheel, radio, write, type, climb, and the
-## stairs' step).
+## stairs' steps up and down).
 func own_clips() -> Dictionary:
 	var out := {}
 	var H: Vector3 = JOINTS["hips"]
@@ -315,38 +354,103 @@ func own_clips() -> Dictionary:
 			"reach.l": Vector3(0.14, 0.58, 0.30), "reach.r": Vector3(-0.14, 0.58, 0.30),
 			"elbow.l": Vector3(1, -0.5, -1), "elbow.r": Vector3(-1, -0.5, -1)})
 	out["sit"] = own(sit, 3.0, true)
-	# a ladder's cycle (rungs 0.3 m apart, the ladder 0.25 m in front): hands and feet in turn, 0.6 m a cycle
-	var ladder := []
-	for k in 4:
-		var hips := H + Vector3(0, 0, 0.02)
-		ladder.append({"hips_at": hips,
-			"reach.l": Vector3(0.2, 1.55 + (0.3 if k == 1 or k == 2 else 0.0), 0.28),
-			"reach.r": Vector3(-0.2, 1.55 + (0.3 if k == 3 or k == 0 else 0.0), 0.28),
-			"elbow.l": Vector3(1, -1, -0.6), "elbow.r": Vector3(-1, -1, -0.6),
-			"step.l": Vector3(0.12, 0.10 + (0.3 if k == 1 or k == 2 else 0.0), 0.18),
-			"step.r": Vector3(-0.12, 0.10 + (0.3 if k == 3 or k == 0 else 0.0), 0.18),
-			"knee.l": Vector3(0, 0, 1), "knee.r": Vector3(0, 0, 1), "chest": Vector3(0, 1, 0.08), "head": Vector3(0, 1, 0.1)})
-	out["climb"] = own(ladder, 1.6, true)
-	# up a stair (0.18 m rise, 0.28 m going): a step each half cycle, the hips rising with it (the avatar's height
-	# follows the stair: the hips move only within the cycle)
-	var stair := []
-	for k in 4:
-		var ph := k / 4.0
-		var lead := "l" if k < 2 else "r"
-		var trail := "r" if lead == "l" else "l"
-		var sx := {"l": 0.1, "r": -0.1}
-		var p := {"hips_at": H + Vector3(0, -0.04 + 0.03 * sin(PI * ph * 2.0), 0.02),
-			"chest": Vector3(0, 1, 0.1), "head": Vector3(0, 1, 0.15),
-			"reach.l": Vector3(0.22, 0.95, 0.04 + (0.08 if lead == "r" else -0.06)), "elbow.l": Vector3(1, 0, -1),
-			"reach.r": Vector3(-0.22, 0.95, 0.04 + (0.08 if lead == "l" else -0.06)), "elbow.r": Vector3(-1, 0, -1)}
-		var sub := k % 2
-		p["step." + lead] = Vector3(sx[lead], 0.09 + (0.18 if sub == 1 else 0.10), 0.20 if sub == 1 else 0.12)
-		p["step." + trail] = Vector3(sx[trail], 0.09 + (0.0 if sub == 1 else 0.02), -0.12 if sub == 1 else -0.05)
-		p["knee.l"] = Vector3(0, 0, 1)
-		p["knee.r"] = Vector3(0, 0, 1)
-		stair.append(p)
-	out["stairs"] = own(stair, 1.3, true)
+	out["climb"] = climb_clip()
+	out["stairs"] = stair_clip(true)
+	out["stairs_down"] = stair_clip(false)
 	return out
+
+
+## A stair's cycle (docs/PLANT3D.md §18.1 as built, phase 4): two steps, a tread each, for a stair of STAIR_GOING and
+## STAIR_RISE, its body moving along the line through the treads' middles (where the app draws a person on a flight,
+## app/stair_treads.gd) by two goings a cycle. The foot that stands is on its tread's middle when the body is above it
+## and stays there while the body moves on: in the body's frame it goes back and down (up a stair) or up (down one)
+## along that line, from STAIR_STANCE goings ahead to as far behind; the other is lifted over the nosings to the tread
+## two on. The app plays it locked to where the person is along the flight (app/people.gd), so its steps fall on the
+## treads; on a stair of another tread the standing foot moves by the difference over a step (the plant's are within
+## 3 cm of this going and 2 cm of this rise).
+const STAIR_GOING := 0.275
+const STAIR_RISE := 0.19
+const STAIR_STANCE := 0.55      # goings either side of the foot's tread that the body moves while it stands
+const STAIR_HIPS := 0.82        # the hips' height over the line (lower than standing: the back leg reaches its tread)
+const ANKLE := 0.087            # the ankle over the sole, the foot level (where the IK puts the foot)
+const FOOT_MID := 0.059         # the middle of the sole ahead of the ankle (heel 0.072 behind it, toes 0.19 ahead)
+const RUNG := 0.3               # a ladder's rungs apart (builder/plant_builder.gd _ladder)
+const KEYS := 24                # keys a cycle of the stairs' and the ladder's clips
+## The foot bone's direction in the model at rest (its +Y): a foot kept so stands level, as standing still.
+const FOOT_FLAT := Vector3(0, -0.719873, 0.694108)
+
+
+func stair_clip(up: bool) -> Animation:
+	var g := STAIR_GOING
+	var r := STAIR_RISE * (1.0 if up else -1.0)
+	var S := STAIR_STANCE * g
+	var keys := []
+	for k in KEYS:
+		var xb := 2.0 * g * k / KEYS          # the body along the flight, from a nosing
+		var p := {"hips_at": Vector3(0, STAIR_HIPS + 0.012 * cos(TAU * 2.0 * k / KEYS), 0.03),
+			"chest": Vector3(0, 1, 0.14 if up else 0.05), "head": Vector3(0, 1, 0.18 if up else 0.1)}
+		for side in ["l", "r"]:
+			var c0 := 0.5 * g if side == "l" else 1.5 * g    # the middles of its treads: c0 + 2g m
+			var u := fposmod(xb - c0 + S, 2.0 * g)           # how far the body has gone since it set this foot down
+			var zf := xb - u + S                             # the middle of the tread it stood on last
+			var at: Vector3
+			if u <= 2.0 * S:
+				var zl := S - u
+				at = Vector3(0.1 if side == "l" else -0.1, r / g * zl + ANKLE, zl - FOOT_MID)
+			else:
+				var s := (u - 2.0 * S) / (2.0 * g - 2.0 * S)
+				# up: lifted first (the toe is at its riser), then forward; down: forward over its own nosing, then down
+				var fx := smoothstep(0.3, 1.0, s) if up else smoothstep(0.0, 0.85, s)
+				var fy := smoothstep(0.0, 0.45, s) if up else smoothstep(0.35, 1.0, s)
+				var wx := zf + 2.0 * g * fx
+				var h := 2.0 * r * fy + 0.06 * sin(PI * s)    # over the tread it left
+				at = Vector3(0.1 if side == "l" else -0.1, h - r / g * (xb - zf) + ANKLE, wx - xb - FOOT_MID)
+			p["step." + side] = at
+			p["knee." + side] = Vector3(0, 0, 1)
+			p["foot." + side] = FOOT_FLAT
+		# the arms swing against the legs
+		var sw := 0.07 * sin(TAU * float(k) / KEYS)
+		p["reach.l"] = Vector3(0.22, 0.86, 0.04 - sw)
+		p["reach.r"] = Vector3(-0.22, 0.86, 0.04 + sw)
+		p["elbow.l"] = Vector3(1, 0, -1)
+		p["elbow.r"] = Vector3(-1, 0, -1)
+		keys.append(p)
+	return own(keys, 1.3, true, "Skeleton3D", true)
+
+
+## A ladder's cycle (rungs RUNG apart, the ladder 0.25 m in front): the body climbs two rungs a cycle; each hand and
+## foot in turn (left foot, right hand, right foot, left hand, a quarter cycle apart) is moved up two rungs in a
+## quarter cycle and holds its rung for the other three, going down in the body's frame as the body climbs. The app
+## plays it locked to the person's height over the ladder's foot (app/people.gd): the hands and feet on the rungs.
+func climb_clip() -> Animation:
+	var keys := []
+	var limbs_at := [["step.l", 0.0, 0.45], ["reach.r", 0.25, 1.8], ["step.r", 0.5, 0.45], ["reach.l", 0.75, 1.8]]
+	var H: Vector3 = JOINTS["hips"]
+	for k in KEYS:
+		var ph := float(k) / KEYS
+		var p := {"hips_at": H + Vector3(0, 0, 0.02), "chest": Vector3(0, 1, 0.08), "head": Vector3(0, 1, 0.1),
+			"elbow.l": Vector3(1, -1, -0.6), "elbow.r": Vector3(-1, -1, -0.6), "knee.l": Vector3(0, 0, 1),
+			"knee.r": Vector3(0, 0, 1)}
+		for l in limbs_at:
+			var u := fposmod(ph - float(l[1]), 1.0)     # since its move began
+			var y: float
+			var out := 0.0
+			if u < 0.25:
+				var s := u / 0.25
+				y = float(l[2]) - 2.0 * RUNG * 0.75 + 2.0 * RUNG * 0.75 * smoothstep(0.0, 1.0, s)
+				out = 0.06 * sin(PI * s)                   # off the rung's front, over the next
+			else:
+				y = float(l[2]) - 2.0 * RUNG * (u - 0.25)   # holding its rung while the body climbs
+			var name: String = l[0]
+			var side := name.substr(name.length() - 1)
+			var x := (0.12 if side == "l" else -0.12) if name.begins_with("step") else (0.2 if side == "l" else -0.2)
+			if name.begins_with("step"):
+				p[name] = Vector3(x, y + 0.015 + ANKLE, 0.18 - out)   # the sole on the rung's top
+				p["foot." + side] = FOOT_FLAT
+			else:
+				p[name] = Vector3(x, y, 0.28 - out)
+		keys.append(p)
+	return own(keys, 1.6, true, "Skeleton3D", true)
 
 
 ## `clip` with the bones that `pose` (for limbs() and solve()) names held still in that pose: the hat carried at the
