@@ -64,6 +64,8 @@ const People = preload("res://app/people.gd")
 const MpSession = preload("res://net/session.gd")
 const Crowd = preload("res://app/crowd.gd")
 const ScriptCost = preload("res://app/script_cost.gd")
+const WalkFrames = preload("res://app/walk_frames.gd")
+const SimClock = preload("res://ui/sim_clock.gd")
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
 
 var cf: ConfigFile
@@ -82,9 +84,9 @@ var sun: DirectionalLight3D
 var env: Environment
 var auto
 var out_dir := ""
-# the frame log of a scripted walk
-var times := PackedFloat32Array()
-var gpu := PackedFloat32Array()
+# the frame log of a scripted walk: the frames the frame rules judge (played at 1×) and those in fast-forward apart
+var frames := WalkFrames.new()
+var _walk_ff := false   # the walk's speed as last logged (SPEED lines)
 var last_us := 0
 var t_walk := 0.0
 var walk_pipelines := -1   # pipelines compiled when the walk's measured part began (PIPELINE lines)
@@ -573,11 +575,19 @@ func _process(delta: float) -> void:
 	var now := Time.get_ticks_usec()
 	var ms := (now - last_us) / 1000.0
 	last_us = now
+	# the frame rules judge normal play only (the user, 2026-10-27): fast-forward's frames are counted apart, and each
+	# change of speed is logged with the phone's monotonic clock (phone/frames.sh leaves the same frames out of what
+	# the screen showed, which counts the walk's first 5 s too)
+	var ff: bool = ui != null and ui.clock != null and ui.clock.speed == SimClock.Speed.FAST
+	if ff != _walk_ff:
+		_walk_ff = ff
+		_say("SPEED %s at %.1f s, uptime %d ms" % ["fast-forward" if ff else "normal", t_walk, WalkFrames.uptime_ms()])
 	if t_walk > 5.0:
-		times.append(ms)
-		gpu.append(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()))
+		var g: float = RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())
+		var judged := frames.add(ms, g, ff)
 		if ms > 100.0:
-			_say("SPIKE %.1f ms at %.1f s, at %s" % [ms, t_walk, str(player.global_position)])
+			# SPIKE: a frame the rule judges; SPIKE_FF: one in fast-forward, which it doesn't
+			_say("%s %.1f ms at %.1f s, at %s" % ["SPIKE" if judged else "SPIKE_FF", ms, t_walk, str(player.global_position)])
 		# a pipeline compiled after the start is a hitch on a phone (decision 0060): logged with where and when
 		var pl := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE) + \
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION)
@@ -586,7 +596,6 @@ func _process(delta: float) -> void:
 				_say("PIPELINE %d compiled at %.1f s (frame %.1f ms), at %s" % [pl - walk_pipelines, t_walk, ms, str(player.global_position)])
 			walk_pipelines = pl
 		# a GPU frame over 100 ms (the screen holds the frame, while the scripts' own frame time stays short)
-		var g: float = gpu[gpu.size() - 1]
 		if g > 66.0:
 			_say("GPU %.1f ms at %.1f s, at %s" % [g, t_walk, str(player.global_position)])
 		if ui != null and ui.clock != null:
@@ -609,10 +618,14 @@ func _finish() -> void:
 	if auto:
 		auto.stop()
 	set_process(false)
+	var times := frames.times
 	var n := times.size()
+	if frames.ff_frames > 0:
+		_say("FASTFORWARD frames=%d over100=%d max=%.1fms: not judged by the frame rules (normal play only); the RESULT and CADENCE below are the frames at 1×" % [
+			frames.ff_frames, frames.ff_over100, frames.ff_max])
 	if n > 0:
 		var s := times.duplicate(); s.sort()
-		var g := gpu.duplicate(); g.sort()
+		var g := frames.gpu.duplicate(); g.sort()
 		var r1 := 0; var r2 := 0; var r3 := 0; var over100 := 0
 		for d in times:
 			if d <= 17.5: r1 += 1
@@ -620,8 +633,8 @@ func _finish() -> void:
 			else: r3 += 1
 			if d > 100.0: over100 += 1
 		_say("CADENCE up_to_17.5ms=%.1f%% up_to_34.2ms=%.1f%% longer=%.1f%%" % [100.0 * r1 / n, 100.0 * r2 / n, 100.0 * r3 / n])
-		_say("RESULT tier=%s renderer=%s walk=%s frames=%d median=%.1fms p95=%.1fms p99=%.1fms max=%.1fms over100=%d gpu_median=%.1fms gpu_p95=%.1fms stuck=%d static_mem=%dMB vram=%dMB first_frame=%dms load=%dms" % [
-			tier, Quality.renderer(), opts.walk, n, s[n / 2], s[int(n * 0.95)], s[int(n * 0.99)], s[n - 1], over100,
+		_say("RESULT tier=%s renderer=%s walk=%s frames=%d median=%.1fms p95=%.1fms p99=%.1fms max=%.1fms over100=%d ff_frames=%d gpu_median=%.1fms gpu_p95=%.1fms stuck=%d static_mem=%dMB vram=%dMB first_frame=%dms load=%dms" % [
+			tier, Quality.renderer(), opts.walk, n, s[n / 2], s[int(n * 0.95)], s[int(n * 0.99)], s[n - 1], over100, frames.ff_frames,
 			g[n / 2], g[int(n * 0.95)], stuck_count, OS.get_static_memory_usage() / 1048576,
 			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576, first_frame_ms, plant.load_ms])
 	else:

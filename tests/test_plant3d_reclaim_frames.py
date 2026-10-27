@@ -70,6 +70,30 @@ def _quiet(n=600, t0=100.0):
 
 
 class FrameRuleTest(unittest.TestCase):
+    def test_fast_forward_not_judged(self):
+        """The frame rules judge normal play only (the user, 2026-10-27): a SPIKE_FF line (a frame over 100 ms in
+        fast-forward, app/walk_frames.gd) is listed but neither the app's nor excluded; the output says the frames at
+        1x are judged. A walk whose RESULT has no ff_frames= is from before: said so."""
+        with tempfile.TemporaryDirectory() as d:
+            ff = ("%.3f  1  2 I godot   : plant: SPEED fast-forward at 40.0 s, uptime 1 ms\n" % 1000140.0 +
+                  "%.3f  1  2 I godot   : plant: SPIKE_FF 180.0 ms at 45.0 s, at (1, 2, 3)\n" % 1000145.0 +
+                  "%.3f  1  2 I godot   : plant: SPEED normal at 50.0 s, uptime 2 ms\n" % 1000150.0)
+            _walk(d, _quiet(), [], over100=0, logcat_extra=ff)
+            t = R.rule_text(d)   # (a RESULT of before: no ff_frames=)
+            self.assertIn("judged: every frame after the first 5 s (a walk from before", t)
+            with open(os.path.join(d, "result.txt"), "w") as f:
+                f.write("FASTFORWARD frames=600 over100=1 max=180.0ms: not judged\n"
+                        "RESULT tier=lean+vis frames=100 max=1ms over100=0 ff_frames=600 gpu_median=1ms\n")
+            r = R.rule(d)
+            self.assertEqual((r["app"], r["reclaim"], r["lost"]), (0, 0, 0))
+            self.assertTrue(r["passes"])
+            self.assertEqual(r["ff_spikes"], [(180.0, 45.0)])
+            t = R.rule_text(d)
+            self.assertIn("PASSES", t)
+            self.assertIn("judged: the frames played at 1x only", t)
+            self.assertIn("600 frames in fast-forward left out, 1 of them over 100 ms", t)
+            self.assertIn("180.0 ms at 45.0 s: in fast-forward, not judged", t)
+
     def test_reclaim_excluded_and_app_counted(self):
         with tempfile.TemporaryDirectory() as d:
             s = _quiet()
@@ -229,6 +253,18 @@ class FramesShTest(unittest.TestCase):
         judge = sh.index('reclaim_frames.py" --rule "$OUT"')
         self.assertLess(pull, judge)
         self.assertLess(judge, sh.index('if [ -n "$stress_on" ]'))   # inside the sampler's part of cleanup
+
+    def test_screen_counted_at_1x(self):
+        """The frame rules judge normal play only (the user, 2026-10-27): phone/frames.sh counts what the screen
+        showed again with the result's SPEED lines (sf_frames.py --speeds) once result.txt is final, into
+        sf_summary.txt, before it prints it."""
+        sh = open(os.path.join(ROOT, "apps", "plant3d", "phone", "frames.sh")).read()
+        final = sh.index('[ -s "$OUT/result.txt" ] || sed')
+        count = sh.index('sf_frames.py" "$OUT/sf.txt" --speeds "$OUT/result.txt"')
+        self.assertLess(sh.index("wait $sf"), count)
+        self.assertLess(final, count)
+        self.assertLess(count, sh.index('cat "$OUT/sf_summary.txt"'))
+        self.assertIn('mv "$OUT/sf_summary.new" "$OUT/sf_summary.txt"', sh)
 
 
 if __name__ == "__main__":

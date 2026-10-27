@@ -19,7 +19,11 @@ other frame is the app's, as is any frame the log lost (over100 against the SPIK
 walk the sampler did not cover. A walk that would pass only by excluding frames is not judged when the kernel
 reclaimed in more than 1 % of its sample pairs (from its first frame to its RESULT; the phone was under pressure
 through it: walk again), when it is a STRESS=1 walk (or has no state.txt), or when its log has more SPIKE lines than
-over100. A walk with no frame excluded is judged as the plain rule. The judgement and, for each frame excluded, the sample lines
+over100. A walk with no frame excluded is judged as the plain rule.
+The frame rules judge normal play only (the user, 2026-10-27): fast-forward may drop frames on a phone. Since then the
+app counts the frames it plays in fast-forward apart (app/walk_frames.gd): its RESULT's over100 and its SPIKE lines are
+the frames at 1×, and a long frame in fast-forward is a SPIKE_FF line, which is listed here but not judged. A walk
+whose RESULT has no ff_frames= is older: any frame of its in fast-forward is judged with the rest (said in the output). The judgement and, for each frame excluded, the sample lines
 that show its reclaim go to RESULTS_DIR/rule.txt, kept with the walk (samp.txt, logcat.txt, a trace.pftrace if one
 was recorded) as its evidence. No frames.csv needed for this part."""
 import argparse
@@ -151,6 +155,11 @@ def rule(d):
         raise SystemExit("no RESULT line with over100= in result.txt: the walk did not finish")
     log = _lines(os.path.join(d, "logcat.txt")) if os.path.exists(os.path.join(d, "logcat.txt")) else []
     frames, seen, walk0, walk1 = [], set(), None, None
+    ff_spikes, ff_frames = [], None
+    for line in _lines(os.path.join(d, "result.txt")):
+        m = re.search(r"^RESULT .*\bff_frames=(\d+)", line)
+        if m:
+            ff_frames = int(m.group(1))
     for line in log:
         m0 = re.match(r"\s*(\d+\.\d+)\s.*plant: (first frame drawn|RESULT )", line)
         if m0:
@@ -159,6 +168,11 @@ def rule(d):
                 walk1 = t
             elif walk0 is None:
                 walk0 = t
+        mf = re.match(r"\s*(\d+\.\d+)\s.*plant: SPIKE_FF (\d+\.?\d*) ms at (\d+\.?\d*) s", line)
+        if mf and line.strip() not in seen:   # (in fast-forward: not the rule's)
+            seen.add(line.strip())
+            ff_spikes.append((float(mf.group(2)), float(mf.group(3))))
+            continue
         # every SPIKE line is a frame over 100 ms (the app logs one only then; "100.0" is 100.01-100.04 ms)
         m = re.match(r"\s*(\d+\.\d+)\s.*plant: SPIKE (\d+\.?\d*) ms at (\d+\.?\d*) s", line)
         if not m or line.strip() in seen:
@@ -191,7 +205,8 @@ def rule(d):
     # the guards matter only to a walk that would pass by excluding frames: with none excluded it is the plain rule
     judged = (share <= MAX_SHARE and not stressed and not extra) or n_rec == 0
     return {"frames": frames, "app": n_app, "reclaim": n_rec, "lost": lost, "share": share, "judged": judged,
-            "stressed": stressed, "extra": extra, "sampled": bool(s), "passes": judged and n_app == 0}
+            "stressed": stressed, "extra": extra, "sampled": bool(s), "passes": judged and n_app == 0,
+            "ff_frames": ff_frames, "ff_spikes": ff_spikes}
 
 
 def rule_text(d):
@@ -204,6 +219,12 @@ def rule_text(d):
            "  samples with reclaim: %.2f %% of the walk%s" % (100.0 * r["share"],
                "" if r["share"] <= MAX_SHARE else " (more than %.0f %%: the phone was under pressure through it, walk again)"
                % (100 * MAX_SHARE))]
+    if r["ff_frames"] is None:
+        out.append("  judged: every frame after the first 5 s (a walk from before the app counted fast-forward apart: "
+                   "any frame of it in fast-forward is judged too)")
+    else:
+        out.append("  judged: the frames played at 1x only (the rules judge normal play; the user, 2026-10-27): %d frames "
+                   "in fast-forward left out, %d of them over %.0f ms" % (r["ff_frames"], len(r["ff_spikes"]), RULE_MS))
     if r["stressed"]:
         out.append("  a STRESS=1 walk (memory pressure made on purpose), or no state.txt to tell: not judged")
     if r["extra"]:
@@ -213,6 +234,8 @@ def rule_text(d):
     for ms, t, why, ev in r["frames"]:
         out.append("  %.1f ms at %.1f s: %s" % (ms, t, "the app's" if why == "app" else "inside reclaim, samples:"))
         out += ["      " + l for l in ev]
+    for ms, t in r["ff_spikes"]:
+        out.append("  %.1f ms at %.1f s: in fast-forward, not judged" % (ms, t))
     out.append("  evidence: %s (samp.txt, logcat.txt%s)" % (os.path.abspath(d),
                ", trace.pftrace" if os.path.exists(os.path.join(d, "trace.pftrace")) else ""))
     out.append("  judged by tools/plant3d/bench/reclaim_frames.py: reclaim = at least %d page(s) scanned or a stall in a "

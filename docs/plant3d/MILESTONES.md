@@ -12,7 +12,12 @@ inside the kernel's memory reclaim is excluded, and its evidence is kept. "Insid
 sample (every 0.2–0.3 s) overlapping the frame shows kswapd or direct reclaim scanning at least one page, or a
 direct-reclaim stall. A walk without `SAMPLE=1` excludes nothing. A walk that would pass only by excluding frames is
 walked again if it was a `STRESS=1` walk or had reclaim in more than 1 % of its samples. `tools/plant3d/bench/reclaim_frames.py` writes the judgement to the walk's
-`rule.txt` (decisions 0057 and 0066). A milestone that misses them is not done; cutting scope to meet them is the user's call ("When to stop and ask the user", below).
+`rule.txt` (decisions 0057 and 0066). **Normal play only** (the user, 2026-10-27): the two frame-time rules (≥ 95 % at ≥ 30 fps, none over 100 ms) judge
+the frames played at 1× (or paused); fast-forward may drop frames on phones. The app counts fast-forward's frames
+apart (`app/walk_frames.gd`: the frame that starts or stops it counts as fast-forward's; its `FASTFORWARD` and
+`SPIKE_FF` lines), and `phone/frames.sh` counts what the screen showed without them (`sf_frames.py --speeds`, from
+the walk's `SPEED` lines on the phone's monotonic clock); both tools say in their output that they judged the frames
+at 1×. Walks measured before this change judged every frame, fast-forward's included. A milestone that misses them is not done; cutting scope to meet them is the user's call ("When to stop and ask the user", below).
 
 Sizes: **S** one pull request; **M** two to four; **L** five to eight.
 
