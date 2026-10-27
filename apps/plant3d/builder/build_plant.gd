@@ -8,6 +8,9 @@ const Builder = preload("res://builder/plant_builder.gd")
 const NavBake = preload("res://builder/nav_bake.gd")
 const People = preload("res://builder/people/build_people.gd")
 const StaffPaths = preload("res://builder/staff_paths.gd")
+const PlantScene = preload("res://app/plant.gd")
+const Routes = preload("res://app/routes.gd")
+const Crowd = preload("res://app/crowd.gd")
 
 func _init() -> void:
 	var args := {}
@@ -77,14 +80,22 @@ func _nav(out: String, b, data: String) -> void:
 	await physics_frame
 	await physics_frame
 	var nm := ResourceLoader.load(out.path_join(NavBake.OUT), "", ResourceLoader.CACHE_MODE_IGNORE) as NavigationMesh
-	var sp: Dictionary = await StaffPaths.build(world, nm, data.path_join("staff.json"), out)
+	# the measured walks' routes, where a measurement's crowd walks (app/crowd.gd: their lanes' room)
+	var plant := PlantScene.new()
+	plant.manifest = m
+	var routes: Array = [Crowd.route_points(Routes.frames(plant)), Crowd.route_points(Routes.camp(plant)),
+		Crowd.route_points(Routes.wtp_loop())]
+	plant.free()
+	var sp: Dictionary = await StaffPaths.build(world, nm, data.path_join("staff.json"), out, routes)
 	world.free()
 	if sp.has("error"):
 		printerr("build: ", sp.error)
 		quit(1)
 		return
 	if sp.ways > 0:
-		print("build: staff paths: %d ways, %d points, %d bytes, %d ms" % [sp.ways, sp.points, sp.bytes, sp.ms])
+		print("build: staff paths: %d ways, %d points, %d bytes, %d ms; room beside them %s" % [sp.ways, sp.points,
+			sp.bytes, sp.ms, str(sp.room)])
+	print("build: crowd lanes: %d routes, room beside them %s" % [sp.crowd, str(sp.crowd_room)])
 	quit(0)
 
 func _clear(dir: String) -> void:

@@ -4,6 +4,7 @@
 ## view, and the tiers' shares.
 extends RefCounted
 
+const Lanes = preload("res://app/lanes.gd")
 const People = preload("res://app/people.gd")
 const Quality = preload("res://app/quality.gd")
 const SHADER := "res://kit/weathered.gdshader"
@@ -30,7 +31,10 @@ func run(tree: SceneTree) -> Array:
 	return p
 
 
-## The measurement's crowd (app/crowd.gd) keeps round the walker when the walk goes round its loop: nobody jumps.
+## The measurement's crowd (app/crowd.gd) keeps round the walker when the walk goes round its loop: nobody jumps, not
+## even at the route's corners and its loop's end in a lane beside it (the lanes' side turns through each corner, and
+## the heading with it: until 2026-10-27 someone 0.6 m right of the route jumped 0.85 m and turned 90° in a frame at
+## each corner).
 func _crowd(tree: SceneTree) -> Array:
 	var p: Array = []
 	var root := Node3D.new()
@@ -48,6 +52,11 @@ func _crowd(tree: SceneTree) -> Array:
 	walker.position = Vector3(0, 0, -5)   # near the loop's end (s = 395 of 400)
 	c.setup(route, walker, ppl, 12)
 	c.set_process(false)
+	# room for the lanes all along it (as the build measures it for the walks' routes: here a floor without walls)
+	var wide := PackedByteArray()
+	for j in Lanes.samples(c.line.length):
+		wide.append_array(Lanes.pack(-0.9, 0.9))
+	c.line.room = wide
 	c._process(1.0 / 60.0)
 	var fewest := 99
 	var start := []
@@ -55,10 +64,32 @@ func _crowd(tree: SceneTree) -> Array:
 		start.append(q.at)
 	if (start[0] as Vector3) == Vector3.ZERO:
 		p.append("the crowd is placed when it is set up, before a frame is drawn")
+	var jumps := 0
+	var turns := 0
+	var last: Array = start.duplicate()
+	var last_yaw: Array = ppl.people.map(func(q): return q.yaw)
+	var lanes_used := 0.0
 	for step in 900:
 		# the walker goes on round the corner and past the loop's start
 		walker.position = walker.position + Vector3(0, 0, 1.4 / 60.0) if walker.position.z < 0.0 else walker.position + Vector3(1.4 / 60.0, 0, 0)
 		c._process(1.0 / 60.0)
+		for k in ppl.people.size():
+			var q: Dictionary = ppl.people[k]
+			var v: float = c.crowd[k].speed
+			var moved := (q.at as Vector3).distance_to(last[k])
+			# (a corner: the lane's side turns over 1 m of the route, so its outer edge goes up to 1 + 0.85 π / 2 m)
+			if moved > 2.5 * v / 60.0 + 0.005 and moved < 5.0:    # (5 m and more: brought back round to the walker)
+				jumps += 1
+			if moved < 5.0 and absf(angle_difference(last_yaw[k], q.yaw)) > c.TURN / 60.0 + 1e-4:
+				turns += 1
+			last[k] = q.at
+			last_yaw[k] = q.yaw
+			var off := INF
+			for e in 4:
+				var a: Vector3 = route[e].to
+				var b: Vector3 = route[e + 1].to
+				off = minf(off, (q.at as Vector3).distance_to(Geometry3D.get_closest_point_to_segment(q.at, a, b)))
+			lanes_used = maxf(lanes_used, off)
 		var near := 0
 		for q in ppl.people:
 			if (q.at as Vector3).distance_to(walker.position) < 26.0:
@@ -70,6 +101,12 @@ func _crowd(tree: SceneTree) -> Array:
 			moved += 1
 	if moved < 6:
 		p.append("the crowd's walkers move along the route (%d of 12 moved)" % moved)
+	if jumps > 0:
+		p.append("the crowd's people jumped %d times (more than their lane's corner allows in a frame)" % jumps)
+	if turns > 0:
+		p.append("the crowd's people turned faster than %.1f rad/s %d times" % [c.TURN, turns])
+	if lanes_used < 0.3:
+		p.append("the crowd walks on the route, not in its lanes beside it (%.2f m at most)" % lanes_used)
 	# the staff's view (ui/people_view.gd) in a run without staff leaves the crowd's people alone
 	var pv = load("res://ui/people_view.gd").new()
 	root.add_child(pv)

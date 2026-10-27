@@ -9,6 +9,11 @@
 ## walker's, 0.4 to 1.8 m above the feet) on it every SAMPLE metres touches no collider but a door's (doors open for
 ## walkers); the feet are within FEET of what a walker stands on (a floor, a deck, a stair's slope, the one the
 ## walking test climbs, through the treads' nosings), except on a ladder; each stair way has a stretch on its steps.
+## People are drawn off their lines and places only within the room the build measured beside them (phase 3,
+## app/keep_apart.gd, app/lanes.gd): every OFFSET_STEP metres along every line, at the room's edges on both sides and in
+## the lane either way it is walked, the capsule touches nothing but doors and the feet are within SIDE_FEET of a floor;
+## round every place, at the edge of its room in every direction, likewise, the doors counted as shut. The measurement crowd's lanes on the walks'
+## routes (app/crowd.gd, built/crowd_lanes.bin) the same, at its lanes' widths too.
 ## Until 2026-10-26 this test measured the mesh's path against the way's length, which was measured on that same path,
 ## while people were drawn along the straight line between the places: through machines and rails, floating up the
 ## HRSG's stair. 45 ways' paths were more than 10 % longer than that line, and nothing compared the two.
@@ -21,6 +26,10 @@ const StaffWays = preload("res://app/staff_ways.gd")
 const StaffPaths = preload("res://builder/staff_paths.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const PeopleView = preload("res://app/people.gd")
+const Lanes = preload("res://app/lanes.gd")
+const KeepApart = preload("res://app/keep_apart.gd")
+const Crowd = preload("res://app/crowd.gd")
+const Routes = preload("res://app/routes.gd")
 
 const ON_MESH := 0.35       # m: a place's distance to the mesh
 const REACH := 8.0          # m: from a work place (at eye height) to its equipment's bounds: a thermocouple high on the exhaust duct is read from the floor below
@@ -28,6 +37,9 @@ const SAMPLE := 0.1         # m between the points of a line checked
 const RADIUS := 0.3         # m: the walker's capsule (app/player.gd)
 const FEET := 0.05          # m: the feet off what is under them
 const LENGTH := 0.1         # a line's length off its way's, at most (and 5 cm)
+const OFFSET_STEP := 0.05   # m between the points checked beside a line (the room's samples and half way between),
+                            # nearer where its side turns: no drawn point more than this from the last checked
+const SIDE_FEET := 0.1      # m: the floor beside a line off the one under it, at most (the build keeps 8 cm)
 
 
 func run(tree: SceneTree) -> Array:
@@ -112,13 +124,175 @@ func run(tree: SceneTree) -> Array:
 			if lb > 30:
 				p.append("… more")
 				break
+		# beside the lines and round the places: where people are drawn off them
+		var side_n := 0
+		var sb := 0
+		for key in ways.lines:
+			var res := check_room(ways.lines[key][4], space, skip, KeepApart.LANE, [])
+			side_n += res[1]
+			for e in res[0]:
+				p.append("the line %s: %s" % [_way_name(sm, ways.lines[key]), e])
+				sb += 1
+			if sb > 30:
+				p.append("… more")
+				break
+		var stand_n := 0
+		var solid: Array[RID] = [main.player.get_rid()]     # (round a place the doors count: nobody opens them there)
+		for i in sm.places.size():
+			var res := check_place(ways.place_room[i], at[i], space, solid)
+			stand_n += res[1]
+			for e in res[0]:
+				p.append("place %s: %s" % [sm.places[i]["id"], e])
+				sb += 1
+			if sb > 40:
+				break
+		print("staff ways: %d points beside the lines checked, %d round the places" % [side_n, stand_n])
 		print("staff ways: %d lines walked, %d points checked, %d on stairs" % [ways.lines.size(), samples, on_stairs])
 		# the stairs' ways are among them, walked on the steps (the HRSG's, the cooling tower's, the turbine hall's)
 		if on_stairs < 200:
 			p.append("only %d points of the lines are on stairs" % on_stairs)
 	print("staff ways: %d places, %d ways checked on the mesh" % [sm.places.size(), m.staff.d["ways"].size()])
+	p.append_array(_crowd_lanes(main))
 	main.free()
 	return p
+
+
+## The measurement crowd's lanes on the frames, camp and water plant walks' routes (app/crowd.gd as it places them).
+static func _crowd_lanes(main) -> Array:
+	var out: Array = []
+	var space: PhysicsDirectSpaceState3D = main.get_world_3d().direct_space_state
+	var skip: Array[RID] = [main.player.get_rid()]
+	for n in main.get_tree().get_nodes_in_group("doors"):
+		if n is CollisionObject3D:
+			skip.append(n.get_rid())
+	var total := 0
+	for name in ["frames", "camp", "wtp"]:
+		var route: Array = Routes.frames(main.plant) if name == "frames" else (Routes.camp(main.plant) if name == "camp" \
+				else Routes.wtp_loop())
+		var pts := Crowd.route_points(route)
+		var room := Crowd.room_of(pts)
+		if room.is_empty():
+			out.append("the crowd's %s route has no lanes built (%s)" % [name, Crowd.LANES])
+			continue
+		var l = Lanes.make(pts, room, Crowd.looped(pts))
+		if l.room.is_empty():
+			out.append("the crowd's %s route's lanes do not fit it" % name)
+			continue
+		# its lanes: 0.35 to 0.85 m right of the route either way it is walked, those at work 0.8 m to its right
+		var res := check_room(l, space, skip, 0.35, [0.6, 0.85, 0.8])
+		total += res[1]
+		for e in res[0].slice(0, 15):
+			out.append("the crowd's %s route: %s" % [name, e])
+		if res[0].size() > 15:
+			out.append("the crowd's %s route: … %d more" % [name, res[0].size() - 15])
+	print("staff ways: %d points of the crowd's lanes checked" % total)
+	return out
+
+
+static func _way_name(sm, l: Array) -> String:
+	var a: int = l[3]
+	var pts: PackedVector3Array = l[0]
+	for w in sm.d["ways"]:
+		if sm.pix[w[0]] == a or sm.pix[w[1]] == a:
+			var other: int = sm.pix[w[1]] if sm.pix[w[0]] == a else sm.pix[w[0]]
+			var b := Layout.godot_of(sm.places[other]["at"])
+			if Vector2(b.x - pts[pts.size() - 1].x, b.z - pts[pts.size() - 1].z).length() < 0.06:
+				return "%s–%s" % [sm.places[a]["id"], sm.places[other]["id"]]
+	return sm.places[a]["id"] + "–?"
+
+
+## Beside a line (app/lanes.gd) where people may be drawn: every OFFSET_STEP metres, at its room's edges and at `lane`
+## (and each of `more`) either side, clamped to the room as app/keep_apart.gd and app/crowd.gd clamp: the capsule
+## touches nothing (but what `skip` leaves out) and the floor there is within SIDE_FEET of the one under the line (not
+## off a flight's side or a step, onto a kerb: the line's own feet are checked above). [problems, points].
+static func check_room(l, space: PhysicsDirectSpaceState3D, skip: Array[RID], lane: float, more: Array) -> Array:
+	var out: Array = []
+	var cap := CapsuleShape3D.new()
+	cap.radius = RADIUS
+	cap.height = 1.4
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = cap
+	q.exclude = skip
+	var checked := 0
+	var bad := 0
+	var lanes: Array = [lane, -lane]
+	for m in more:
+		lanes.append_array([m, -m])
+	var s := 0.0
+	while true:
+		var r: Vector2 = l.room_at(s)
+		if r.x > r.y + 1e-4:
+			out.append("its room at %.2f m is the wrong way round (%s)" % [s, str(r)])
+			return [out, checked]
+		var offs: Array = [r.x, r.y]
+		for w in lanes:
+			offs.append(clampf(w, r.x, r.y))
+		var y0: float = StaffPaths.surface(space, l.point(s), 0.5, 0.6, skip)
+		for o in offs:
+			var at: Vector3 = l.at(s, o)
+			checked += 1
+			q.transform = Transform3D(Basis(), at + Vector3.UP * 1.1)
+			var hit := space.intersect_shape(q, 1)
+			var problem := ""
+			if not hit.is_empty():
+				var c: Node = hit[0].collider
+				problem = "the capsule %.2f m beside it at %.2f m (%s) hits %s" % [o, s, str(at),
+						String(c.get_parent().name) + "/" + String(c.name) if c.get_parent() != null else String(c.name)]
+			else:
+				var y: float = StaffPaths.surface(space, at, 0.5, 0.6, skip)
+				if not is_nan(y0) and (is_nan(y) or absf(y0 - y) > SIDE_FEET):
+					problem = "the feet %.2f m beside it at %.2f m (%s) are %s" % [o, s, str(at),
+							"over nothing" if is_nan(y) else "%.2f m off the floor under it" % (y0 - y)]
+			if problem != "":
+				bad += 1
+				if bad <= 6:
+					out.append(problem)
+				break
+		if s >= l.length:
+			break
+		# the next point OFFSET_STEP on, or nearer where the side turns: no drawn point moves more than OFFSET_STEP
+		var widest := maxf(absf(r.x), absf(r.y))
+		for w in lanes:
+			widest = maxf(widest, minf(absf(w), maxf(absf(r.x), absf(r.y))))
+		var rate := absf(wrapf(l.heading(minf(s + 0.01, l.length)) - l.heading(s), -PI, PI)) / 0.01
+		s = minf(s + maxf(0.002, OFFSET_STEP / (1.0 + widest * rate)), l.length)
+	if bad > 6:
+		out.append("… %d more points" % (bad - 6))
+	return [out, checked]
+
+
+## Round a place where people may be drawn (app/keep_apart.gd): at the edge of its room, in its measured directions
+## and half way between each two, the capsule touches nothing and the floor is within SIDE_FEET of the one under it.
+static func check_place(room: PackedByteArray, at: Vector3, space: PhysicsDirectSpaceState3D, skip: Array[RID]) -> Array:
+	if room.is_empty():
+		return [["no room measured round it"], 0]
+	var cap := CapsuleShape3D.new()
+	cap.radius = RADIUS
+	cap.height = 1.4
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = cap
+	q.exclude = skip
+	var out: Array = []
+	var checked := 0
+	for i in 2 * KeepApart.DIRS:
+		var a := PI * i / KeepApart.DIRS
+		var dir := Vector3(cos(a), 0.0, sin(a))
+		var r := KeepApart.stand_room(room, dir)
+		if r <= 0.0:
+			continue
+		var p := at + dir * r
+		checked += 1
+		q.transform = Transform3D(Basis(), p + Vector3.UP * 1.1)
+		var hit := space.intersect_shape(q, 1)
+		if not hit.is_empty():
+			out.append("%.2f m from it towards %s the capsule hits %s" % [r, str(dir), String(hit[0].collider.name)])
+			break
+		var y: float = StaffPaths.surface(space, p, 0.5, 0.6, skip)
+		var y0: float = StaffPaths.surface(space, at, 0.5, 0.6, skip)
+		if not is_nan(y0) and (is_nan(y) or absf(y0 - y) > SIDE_FEET):
+			out.append("%.2f m from it towards %s the feet are off the floor" % [r, str(dir)])
+			break
+	return [out, checked]
 
 
 ## A way's line as people walk it from place `ia` to place `ib` (and back), the way taking `seconds` and being

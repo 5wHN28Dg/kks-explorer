@@ -71,7 +71,7 @@ func run(tree: SceneTree) -> Array:
 		p.append("the line does not go round the beam (at most %.2f m off the straight line): %s" % [round_by, str(pts)])
 	if length < 8.0 + 1.0:
 		p.append("the line is %.2f m: no longer than the straight line, it goes through the beam" % length)
-	var space: PhysicsDirectSpaceState3D = vp.world_3d.direct_space_state
+	var space: PhysicsDirectSpaceState3D = world.get_world_3d().direct_space_state   # (the viewport's own copy of its world: vp.world_3d's space is empty)
 	var cap := CapsuleShape3D.new()
 	cap.radius = 0.3
 	cap.height = 1.4
