@@ -6,7 +6,7 @@ const FrameProbe = preload("res://app/frame_probe.gd")
 const SAVE := "rendering/rendering_device/pipeline_cache/save_chunk_size_mb"
 
 func run(tree: SceneTree) -> Array:
-	var p: Array = []
+	var p: Array = _script_cost()
 	var was = ProjectSettings.get_setting(SAVE)
 	var main: Node = (load("res://app/main.tscn") as PackedScene).instantiate()
 	main.opts = {"pipeline_save_mb": "2"}
@@ -64,4 +64,24 @@ func run(tree: SceneTree) -> Array:
 	DirAccess.remove_absolute(dir.path_join("frames.csv"))
 	DirAccess.remove_absolute(dir)
 	main.free()
+	return p
+
+
+## app/script_cost.gd's lines: each part's mean and largest frame, and when that largest came (SCRIPTS_AT: a one-off in
+## the first seconds, such as the avatars' first frames, told from one later on).
+static func _script_cost() -> Array:
+	var p: Array = []
+	var Cost = load("res://app/script_cost.gd")
+	var was: bool = Cost.on
+	Cost.start()
+	for f in 3:
+		Cost.add(Cost.AVATARS, Time.get_ticks_usec() - (5000 if f == 1 else 1000))
+		Cost.frame(false, 9000)
+	var lines: PackedStringArray = Cost.lines()
+	Cost.on = was
+	if lines.size() != 2 or not lines[0].begins_with("SCRIPTS normal frames=3") or not lines[0].contains("avatars=2.") \
+			or not lines[0].contains("/5.0"):
+		p.append("the scripts' cost lines (%s)" % str(lines))
+	elif not lines[1].begins_with("SCRIPTS_AT normal") or not lines[1].contains("avatars="):
+		p.append("the scripts' cost lines say when each part's largest frame came (%s)" % str(lines))
 	return p

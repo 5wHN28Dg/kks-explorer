@@ -292,25 +292,25 @@ func _skinned(delta: float) -> void:
 		if a.acc + 1e-4 >= 1.0 / hz:
 			if _in_view(at) or d < 2.0:
 				var dt: float = a.acc * time_scale
+				var len: float = a.anim.current_animation_length
+				var cur: float = a.anim.current_animation_position
 				if clip in LOCKED and phase >= 0.0:
-					a.anim.advance(dt)      # (the blend from the last clip goes on)
-					a.anim.seek(phase * a.anim.current_animation_length, true)
+					# to where they are on the flight or the ladder, the shorter way round (down a ladder: back)
+					_move(a, fposmod(phase * len - cur + len * 0.5, len) - len * 0.5)
 					a.rate = 0.0
 				elif _gait.has(GAIT.get(clip, "")):
 					# at the moment of its cycle the ground covered in plan says: the standing foot stays put
 					var c: Array = _gait[GAIT[clip]]
-					var len: float = a.anim.current_animation_length
 					if a.gait != clip:
 						a.gait = clip
-						a.d = gait_d(c[0], a.anim.current_animation_position / len)
+						a.d = gait_d(c[0], cur / len)
 					var gone := 0.0 if a.last == Vector3.INF else Vector2(at.x - a.last.x, at.z - a.last.z).length()
 					a.d = fposmod(a.d + gone / sc, c[1])
-					var was: float = a.anim.current_animation_position
-					a.anim.advance(dt)      # (the blend from the last clip goes on)
-					a.anim.seek(gait_t(c[0], a.d) * len, true)
-					a.rate = fposmod(a.anim.current_animation_position - was, len) / dt if dt > 0.0 else 0.0
+					var step := fposmod(gait_t(c[0], a.d) * len - cur, len)
+					_move(a, step)
+					a.rate = step / dt if dt > 0.0 else 0.0
 				else:
-					a.anim.advance(dt)
+					_move(a, dt)
 					a.rate = 1.0
 				adv += 1
 			a.acc = 0.0
@@ -319,6 +319,16 @@ func _skinned(delta: float) -> void:
 	stats.advanced = adv
 	stats.lod0 = l0
 	stats.lod1 = l1
+
+
+## Moves avatar `a`'s clip on by `t` seconds of it (back when negative), the blend from the last clip with it: one
+## evaluation of the clip.
+static func _move(a: Dictionary, t: float) -> void:
+	var ap: AnimationPlayer = a.anim
+	var sg := 1.0 if t >= 0.0 else -1.0
+	if ap.speed_scale != sg:
+		ap.speed_scale = sg
+	ap.advance(absf(t))
 
 
 ## The metres covered at the fraction `f` of a gait's cycle (its curve: metres at evenly spaced moments).

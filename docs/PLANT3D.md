@@ -2028,7 +2028,7 @@ the engine and `ref/plant3d.py` are unchanged. No foot or hand IK yet: the clips
   walk's standing foot slid sideways when they stepped aside), turning at most 5 rad a second, and their speed (what
   clip) is the ground they cover where drawn. Tolerance: the point of the sole on the floor moves at most 15 % of the
   ground covered; measured 6.5 % at 1.3 m/s, 10.7 % at 0.6, 6.7 % at 2.0, 8.0 % running, 9.9 % round a corner in a
-  lane, 12.1 % held back and catching up, 9.4 % pushed aside, and 7.4 % for the crews' skinned walkers over their first
+  lane, 13.9 % held back and catching up, 9.4 % pushed aside, and 7.4 % for the crews' skinned walkers over their first
   minute. What is left is KayKit's walk setting a foot down still moving forward (for one update) and the crossfades
   between standing and walking: IK's work.
 - **Phase 3's leftovers**: what is left of where someone stood beside their place as they set off is kept where the
