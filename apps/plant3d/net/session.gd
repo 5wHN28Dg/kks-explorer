@@ -197,6 +197,7 @@ class Peer:
 	var recv_p
 	var welcome := PackedByteArray()    # the welcome's fields (repeated to a repeated hello)
 	var token := PackedByteArray()      # the rejoin token it was given (§5.2)
+	var rsa_pem := ""                   # the public key of its hello (a repeated hello is answered only for it)
 	var turn_count := 0
 	var turn_bytes := 0
 	var fwd_tokens := FORWARD_BURST       # the broadcasts the host still forwards for it now (a token bucket)
@@ -343,7 +344,9 @@ func leave() -> void:
 					peers[s].send_p.push(Wire.Kind.BYE, PackedByteArray())
 		elif _send_p != null:
 			_send_p.push(Wire.Kind.BYE, PackedByteArray())
+		copies = 3
 		_flush(true)
+		copies = 1
 	_end("You left the session." if role == Role.PLAYER else "You ended the session.")
 
 
@@ -570,6 +573,8 @@ func _process(delta: float) -> void:
 	var us := Time.get_ticks_usec() - t0 - _step_us
 	_step_us = 0
 	stats["us"] = us
+	if us > 2000:
+		stats["over_2ms"] = stats.get("over_2ms", 0) + 1
 	if us > stats["us_max"]:
 		stats["us_max_what"] = ",".join(_what)   # what the worst frame did (the measurements)
 	stats["us_max"] = maxi(stats["us_max"], us)
@@ -632,7 +637,7 @@ func _host_frame(delta: float) -> void:
 		_timed_step()
 		if _hold_pause and clock.engine.step_no >= committed:
 			break
-	if not paused and clock.engine.step_no >= committed:
+	if not paused and not _hold_pause and clock.engine.step_no >= committed:
 		_commit_ahead()
 	clock.acc = _acc * SimClock.STEP
 
@@ -861,6 +866,7 @@ func _watch_peers() -> void:
 			# a hello nobody followed (or a forged one): the slot goes back, nothing of it was ever committed
 			peers.erase(p.slot)
 			_by_inc.erase(p.inc)
+			_forget_replay(p.slot, p.inc)
 			_free_slots.append(p.slot)
 			_roster_changed()
 			continue
@@ -889,10 +895,10 @@ func _release(p) -> void:
 
 func _player_frame(delta: float) -> void:
 	_poll_job()
-	if state != State.RUN or _loading or clock.engine == null:
-		return
-	if _now - _host_last_rx > (AWAY_S if _away_host else SILENT_S):
+	if (state == State.RUN or state == State.LOBBY) and _now - _host_last_rx > (AWAY_S if _away_host else SILENT_S):
 		_end("The host can't be reached any more (no host migration yet: MP3).")
+		return
+	if state != State.RUN or _loading or clock.engine == null:
 		return
 	# the jitter buffer (§3.1): play at the session's rate, `_buffer` turns behind the last commit; run dry and wait
 	# until that much is committed again (the buffer then one turn longer, at most 5); more than a turn behind it,
@@ -1017,8 +1023,8 @@ func _host_packet(h: Dictionary, msgs: Array, raw: PackedByteArray, ip: String, 
 					_on_hello(m["fields"], h["inc"], ip, port)
 			return
 		var p = peers.get(h["from"])
-		if p == null or p.inc != h["inc"] or not p.connected:
-			return
+		if p == null or p.inc != h["inc"] or not p.connected or not p.joined or ip != p.ip or port != p.port:
+			return                          # (its address is the one its P packets come from)
 		p.last_rx = _now
 		# a player's broadcast (its position): forwarded unchanged to every other player (§9.4), at most FORWARD_RATE
 		# a second from each (a flood is dropped here, §10)
@@ -1123,12 +1129,14 @@ func _on_hello(f: PackedByteArray, inc: int, ip: String, port: int) -> void:
 	if hi["content"] != content:
 		_refuse(ip, port, inc, "content")
 		return
-	if _by_inc.has(inc):                  # a hello again: the same answer, to where it came from
+	if _by_inc.has(inc):
+		# a hello again (its welcome lost): the same answer, only for the same RSA key, whose holder alone can read
+		# P and the token in it; an incarnation is in every packet's clear header (the adversarial review of MP2)
 		var p0 = peers[_by_inc[inc]]
-		if not p0.joined:
+		if hi["rsa"] == p0.rsa_pem and not p0.joined:
 			p0.ip = ip
 			p0.port = port
-		_send_k_to(ip, port, p0.slot, [Wire.msg(Wire.Kind.WELCOME, p0.welcome)])
+			_send_k_to(ip, port, p0.slot, [Wire.msg(Wire.Kind.WELCOME, p0.welcome)])
 		return
 	var key := CryptoKey.new()
 	if hi["rsa"].length() > 1000 or key.load_from_string(hi["rsa"], true) != OK:
@@ -1140,6 +1148,10 @@ func _on_hello(f: PackedByteArray, inc: int, ip: String, port: int) -> void:
 			if Crypt.same(q.token_hash, th):
 				p = q
 				break
+		# a token whose player is still heard is not taken over (a replayed or stolen hello); its owner, back after a
+		# drop, waits until the host has noticed it gone (SILENT_S) and its hello, repeated, is taken then
+		if p != null and p.connected and p.joined and _now - p.last_rx < SILENT_S:
+			return
 	var fresh_slot := p == null
 	if p == null:
 		var live := 1
@@ -1157,10 +1169,9 @@ func _on_hello(f: PackedByteArray, inc: int, ip: String, port: int) -> void:
 			p.slot = _next_slot
 			_next_slot += 1
 		peers[p.slot] = p
-		p.token = Crypt.random_bytes(16)
-		p.token_hash = Crypt.sha256(p.token)
 	else:
 		_by_inc.erase(p.inc)
+		_forget_replay(p.slot, p.inc)
 		p.joined = false
 		p.set_meta("rejoin", true)
 	p.name = name
@@ -1168,6 +1179,11 @@ func _on_hello(f: PackedByteArray, inc: int, ip: String, port: int) -> void:
 	p.port = port
 	p.inc = inc
 	p.hello_t = _now
+	p.rsa_pem = hi["rsa"]
+	# a new token at every welcome (an old hello replayed carries one that opens nothing), sent with P inside the RSA
+	# encryption: only the joiner reads it
+	p.token = Crypt.random_bytes(16)
+	p.token_hash = Crypt.sha256(p.token)
 	p.connected = true
 	p.gone_t = -1.0
 	p.away = false
@@ -1181,9 +1197,11 @@ func _on_hello(f: PackedByteArray, inc: int, ip: String, port: int) -> void:
 	p.recv_p = Stream.Receiver.new()
 	p.committed_no = p.committed_no if not fresh_slot else 0
 	_by_inc[inc] = p.slot
-	var enc := Crypt.crypto().encrypt(key, p.p)
+	var secret = p.p.duplicate()
+	secret.append_array(p.token)
+	var enc := Crypt.crypto().encrypt(key, secret)
 	var w := {"inc": inc, "slot": p.slot, "epoch": epoch, "p": Marshalls.raw_to_base64(enc),
-			"token": Marshalls.raw_to_base64(p.token), "next_input": p.committed_no + 1, "bseq": _bseq,
+			"next_input": p.committed_no + 1, "bseq": _bseq,
 			"state": "run" if state == State.RUN else "lobby", "scenario": scenario, "step": committed,
 			"snap": state == State.RUN or _continued}
 	p.welcome = JSON.stringify(w).to_utf8_buffer()
@@ -1260,6 +1278,12 @@ func _host_message(p, kind: int, f: PackedByteArray) -> void:
 			p.gone_t = _now
 			notice.emit("%s left the session." % p.name)
 			_roster_changed()
+
+
+## The replay windows of a player's earlier incarnation (it came back with a new one, or its slot was given again).
+func _forget_replay(sl: int, inc: int) -> void:
+	for k in [Wire.KEY_K, Wire.KEY_P]:
+		_replay.erase("%d:%d:%d" % [sl, inc, k])
 
 
 ## An input the host won't commit: its player is told, so it doesn't wait for it ("sending…").
@@ -1491,6 +1515,8 @@ func _broadcast(kind: int, f: PackedByteArray) -> void:
 # ------------------------------------------------------------------ digests and resync (§4, §5.1)
 
 func _on_report(p, s: int, d: PackedByteArray) -> void:
+	if not _host_digests.has(s):
+		return                              # (the host digests every step before its players: anything else is noise)
 	if not _reported.has(s):
 		_reported[s] = {}
 	_reported[s][p.slot] = d
@@ -1660,7 +1686,7 @@ func _on_welcome(f: PackedByteArray, ip: String, port: int) -> void:
 		return
 	var w: Dictionary = r["value"]
 	if w.get("inc") != incarnation or typeof(w.get("slot")) != TYPE_INT or typeof(w.get("p")) != TYPE_STRING \
-			or typeof(w.get("token")) != TYPE_STRING or typeof(w.get("bseq")) != TYPE_INT \
+			or typeof(w.get("bseq")) != TYPE_INT \
 			or typeof(w.get("next_input")) != TYPE_INT or typeof(w.get("scenario")) != TYPE_STRING \
 			or typeof(w.get("step")) != TYPE_INT or not w.get("state") in ["lobby", "run"]:
 		return
@@ -1686,16 +1712,16 @@ func _poll_welcome() -> void:
 	WorkerThreadPool.wait_for_task_completion(_welcome_job["id"])
 	var job := _welcome_job
 	_welcome_job = {}
-	if job["p"].size() != 32 or state != State.JOINING:
+	if job["p"].size() != 48 or state != State.JOINING:
 		return
-	_take_welcome(job["w"], job["p"], job["ip"], job["port"])
+	_take_welcome(job["w"], job["p"].slice(0, 32), job["ip"], job["port"], job["p"].slice(32))
 
 
-func _take_welcome(w: Dictionary, p: PackedByteArray, ip: String, port: int) -> void:
+func _take_welcome(w: Dictionary, p: PackedByteArray, ip: String, port: int, token: PackedByteArray) -> void:
 	_what.append("joined")
 	_p = p
 	slot = w["slot"]
-	_token = Marshalls.base64_to_raw(w["token"])
+	_token = token
 	host_ip = ip
 	host_port = port
 	_host_last_rx = _now
@@ -1861,10 +1887,16 @@ var last_report := ""
 
 
 ## A session's run continued alone (§7.4): every other slot's person is released to the NPCs at the next step.
+## The player's own person moves to slot 0 (a single-player run's, which the app plays from then on: its restarts
+## and saved runs know no other slot).
 static func release_others(e, mine: int) -> void:
 	for k in SLOTS:
 		if k != mine and e.trainee(k) != -1:
 			e.apply_input([e.step_no + 1, "release", k])
+	var pi: int = e.trainee(mine)
+	if mine != 0 and pi != -1:
+		e.apply_input([e.step_no + 1, "release", mine])
+		e.apply_input([e.step_no + 1, "role", e._sm.people[pi]["id"], 0])
 
 
 # ================================================================== the player's requests
@@ -1971,12 +2003,16 @@ func set_away(on: bool) -> void:
 		if on:
 			_pause(HOST_SLOT)
 		_roster_changed()
+		copies = 3
 		_flush(true)
+		copies = 1
 	else:
 		if not on:
 			_host_last_rx = _now_s()        # (the host was not heard while the app was in the background)
 		_send_control({"away": on})
+		copies = 3
 		_flush(true)
+		copies = 1
 
 
 # ================================================================== the LAN query (§9.3)
@@ -2208,7 +2244,9 @@ func _send_k_to(ip: String, port: int, to: int, msgs: Array, from := -2) -> void
 			plain.append_array(m)
 		_knum += 1
 		var f: int = slot if from == -2 else from
-		_udp.send(ip, port, Wire.seal(keys["K"], Wire.header(Wire.KEY_K, f, to, epoch, incarnation, _knum), plain))
+		var sealed := Wire.seal(keys["K"], Wire.header(Wire.KEY_K, f, to, epoch, incarnation, _knum), plain)
+		for c in copies:
+			_udp.send(ip, port, sealed)
 
 
 ## Messages into packets of at most MAX_PLAIN bytes each.
@@ -2273,6 +2311,9 @@ static func _ack_fields(key: int, stream: int, cum: int, mask: int) -> PackedByt
 	return f
 
 
+var copies := 1                         # each packet this many times (the last ones before Android stops the app)
+
+
 func _send_p_packets(ip: String, port: int, to: int, from: int, key: PackedByteArray, msgs: Array, peer) -> void:
 	if msgs.is_empty() or key.is_empty():
 		return
@@ -2287,7 +2328,9 @@ func _send_p_packets(ip: String, port: int, to: int, from: int, key: PackedByteA
 		else:
 			_pnum += 1
 			n = _pnum
-		_udp.send(ip, port, Wire.seal(key, Wire.header(Wire.KEY_P, from, to, epoch, incarnation, n), plain))
+		var sealed := Wire.seal(key, Wire.header(Wire.KEY_P, from, to, epoch, incarnation, n), plain)
+		for c in copies:
+			_udp.send(ip, port, sealed)             # (a copy is dropped by the replay window)
 
 
 # ================================================================== what the UI reads

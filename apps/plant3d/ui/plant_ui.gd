@@ -871,6 +871,7 @@ func restart(scenario: String, quiet := false) -> void:
 	if session != null and session.active():
 		toast("Not while a session is open: every player's plant would differ. The host starts a new session for another scenario.")
 		return
+	inputs.slot = 0
 	stop_procedure()
 	run_tracker = null
 	clock.start(model, scenario)
@@ -1366,7 +1367,8 @@ func continue_alone() -> void:
 	var e = PlantEngine.new(model, d["scenario"], true)
 	RunSave.apply(e, d["engine"])
 	var mine: int = int(d["session"].get("slot", 0)) if typeof(d["session"].get("slot")) == TYPE_INT else 0
-	Session.release_others(e, mine)
+	Session.release_others(e, mine)        # (its own person to slot 0)
+	mine = 0
 	clock.scenario = d["scenario"]
 	adopt_engine(e)
 	inputs.slot = mine

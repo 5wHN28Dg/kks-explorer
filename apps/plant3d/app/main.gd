@@ -544,7 +544,7 @@ func _mp_result() -> void:
 			d[mini(n - 1, int(n * 0.95))] * 1000.0, d[n - 1] * 1000.0, s.sending()])
 	if s._udp != null:
 		_say("SESSION udp sent=%d (%d B) got=%d (%d B)" % [s._udp.sent, s._udp.sent_bytes, s._udp.got, s._udp.got_bytes])
-	_say("SESSION worst frame: %s" % st.get("us_max_what", ""))
+	_say("SESSION worst frame: %s; frames over 2 ms: %d" % [st.get("us_max_what", ""), st.get("over_2ms", 0)])
 
 
 ## crowd=N: N people round the walker on `route` (app/crowd.gd), in a walk or in shots.

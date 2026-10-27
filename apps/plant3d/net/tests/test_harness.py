@@ -230,6 +230,17 @@ class Joins(Base):
         self.assertGreaterEqual(res['host']['trainees'][1], 0)     # its person is still its own
 
 
+    def test_the_host_gone_from_the_lobby(self):
+        """A host killed while its players wait in the lobby: they notice (10 s without a packet) instead of waiting
+        for ever."""
+        host = self.h.host([{"t": 60, "do": "quit"}])
+        self.h.join([{"t": 40, "do": "quit"}], 'p1')
+        time.sleep(6)
+        host.kill()
+        res = self.h.wait_all(60)
+        self.assertIn("can't be reached", res['p1']['why_ended'])
+
+
 class Faults(Base):
     def test_desync_found_and_resynced(self):
         t_end = 3 + 4 * M
