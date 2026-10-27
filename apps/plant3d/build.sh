@@ -20,6 +20,12 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 MODE="${1:-}"; [ $# -gt 0 ] && shift
 TARGETS="${*:-android-debug android-release linux windows windows-arm64}"
+# recording the verification file and the lockfiles needs both Android builds: one alone would record only its own
+# configurations over the committed files (decision 0070)
+if [ -n "${PLANT_GRADLE_WRITE_VERIFICATION:-}" ]; then
+  case " $TARGETS " in *" android-debug "*) ;; *) echo "PLANT_GRADLE_WRITE_VERIFICATION needs the targets android-debug and android-release" >&2; exit 2 ;; esac
+  case " $TARGETS " in *" android-release "*) ;; *) echo "PLANT_GRADLE_WRITE_VERIFICATION needs the targets android-debug and android-release" >&2; exit 2 ;; esac
+fi
 GODOT="${GODOT:-$("$ROOT/tools/plant3d/bench/fetch_godot.sh")}"
 T="timeout ${GODOT_TIMEOUT:-600}"   # a script that fails to compile leaves Godot running: never wait for ever
 # CI runs the test files in shards side by side (tests/shards.py app, the workflow's matrix): PLANT_TEST_SHARD=N runs

@@ -93,6 +93,7 @@ class PlantAndroidDeps(unittest.TestCase):
         self.assertIn('cp "$HERE/android-gradle-pins.gradle" "$HERE/android/build/walkdown-pins.gradle"', sh)
         self.assertIn("apply from: 'walkdown-pins.gradle'", sh)
         self.assertIn('cp "$HERE/android-locks/$l" "$HERE/android/build/$l"', sh)
+        self.assertIn('PLANT_GRADLE_WRITE_VERIFICATION needs the targets android-debug and android-release', sh)
 
     def test_checkers(self):
         x = ('<verification-metadata xmlns="https://schema.gradle.org/dependency-verification"><components>'
