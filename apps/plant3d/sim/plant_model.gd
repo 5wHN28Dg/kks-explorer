@@ -37,6 +37,7 @@ var isolations: Array = []            # format 2 (§15.1), joined in area order
 var works: Array = []                 # format 2 (§15.2)
 var isolation_ix := {}                # id -> position
 var work_ix := {}
+var lifts: Array = []                 # format 2's lifts (§20.1), joined in area order
 var scenarios := {}                   # id -> scenario, in file-name order
 var procedures := {}                  # id -> procedure, in file-name order
 var staff = null                      # sim/staff.gd: staff.json (§16), or null
@@ -247,9 +248,10 @@ func _add_model(d: Dictionary, rel: String) -> void:
 	for w in d.get("works", []):
 		work_ix[w["id"]] = works.size()
 		works.append(w)
+	lifts.append_array(d.get("lifts", []))
 
 
-## The values the engine keeps for permits and isolations (§15.1, §15.3), in slot order.
+## The values the engine keeps for permits and isolations (§15.1, §15.3) and each lift's load (§20.1), in slot order.
 func kept() -> Array:
 	var out := []
 	for x in isolations:
@@ -257,6 +259,8 @@ func kept() -> Array:
 		out.append(x["id"] + "_complete")
 	for w in works:
 		out.append(w["id"] + "_permit")
+	for x in lifts:
+		out.append(x["id"] + "_load")
 	return out
 
 

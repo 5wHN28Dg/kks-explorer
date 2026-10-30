@@ -309,12 +309,14 @@ func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "")
 	files["scenarios/s1.json"] = s["scenario"]
 	files.erase("procedures/p1.json")
 	files.erase("screens.json")
+	for rel in s.get("files", {}):      # (a lift's runs: the kit, the plant's key and area a2 too, §20.9)
+		files[rel] = s["files"][rel]
 	var name := "%ssteps/%d (%s)" % [prefix, k, s["why"]]
 	var m = PlantModel.from_files(files)
 	if m.error != "":
 		_result(name, m.error)
 		return
-	var e = PlantEngine.new(m, "s1")
+	var e = PlantEngine.new(m, "s1", s.get("session", false))
 	_programs[0 if e._fast != null else 1] += 1
 	var run := "%ssteps/%d" % [prefix, k]
 	_hash_begin(run, 0)

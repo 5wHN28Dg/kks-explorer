@@ -49,6 +49,8 @@ SLOTS = 8               # a session run's slots, 0 to 7 (§17.13; docs/plant3d/M
 MAX_POINTS = 64 * 16    # every point of a model's isolations (§14's limits): a lock round's bound in a turn
 HANDOVER_WAIT = 60      # clock minutes an outgoing person waits at a lock for the incoming one's (§17.9)
 WAIT_PLACE = 15         # clock minutes a person waits for a taken place, or for a meeting's people (§16.2, §16.6)
+RIDE_WAIT = 1800        # steps a person waits for a lift before they take the stairs (§20.4)
+RIDE_QUIET = 50         # steps since the last board or alight before a rider closes a gate at another landing
 
 
 
@@ -152,6 +154,24 @@ def next_table(npts, adj):
     return table
 
 
+def route(npts, adj, src, dst):
+    """The points of the quickest route from src to dst by §16.2's rule (next_table's), or None when there is none."""
+    best = {}
+    heap = [(0, (src,))]
+    while heap:
+        cost, path = heapq.heappop(heap)
+        u = path[-1]
+        if u in best:
+            continue
+        best[u] = path
+        if u == dst:
+            return list(path)
+        for v, w in adj[u]:
+            if v not in best:
+                heapq.heappush(heap, (cost + w, path + (v,)))
+    return None
+
+
 # ---------------------------------------------------------------- zones' geometry (the validator only, §16.2)
 
 def seg_dist(x, y, a, b):
@@ -185,7 +205,7 @@ class Staff:
         w = 'staff.json'
         need('vehicles' not in d, 'unknown_key', f'{w}.vehicles: not before milestone S4 (PLANT3D.md §17.8)')
         keys(d, ('format', 'version', 'origin', 'gate', 'speeds', 'places', 'ways', 'next', 'roles', 'rosters',
-                 'people', 'routines', 'tasks', 'messages'), ('reactions', 'zones', 'put_right'), w)
+                 'people', 'routines', 'tasks', 'messages'), ('reactions', 'zones', 'put_right', 'lifts'), w)
         need(d['format'] == STAFF_FORMAT, 'bad_format', f'{w}: format must be "{STAFF_FORMAT}"')
         need(d['version'] == 1 and not isinstance(d['version'], bool), 'bad_version', f'{w}: version must be 1')
         clock = b.plant.get('clock')
@@ -196,6 +216,7 @@ class Staff:
         self.check_speeds(d['speeds'])
         self.check_places(d['places'])
         self.check_zones(d.get('zones', []))
+        self.check_lifts(d.get('lifts', []))
         self.check_ways(d['ways'])
         self.check_next(d['next'])
         self.origin = self.place_ref(d['origin'], f'{w}.origin')
@@ -244,7 +265,7 @@ class Staff:
     # --- speeds, places, ways, next
     def check_speeds(self, s):
         w = 'staff.json.speeds'
-        keys(s, ('walk', 'stair', 'ladder'), ('drive',), w)
+        keys(s, ('walk', 'stair', 'ladder'), ('drive', 'lift'), w)
         for k, v in s.items():
             num(v, f'{w}.{k}', 0.01, 100)
         self.speeds = s
@@ -336,6 +357,31 @@ class Staff:
             need(listed == inside, 'bad_zone', f'{wp}.zones: {listed}, its place lies in {inside} (in file order)')
             self.place_zones.append([self.zone_ix[x] for x in inside])
 
+    def check_lifts(self, lifts):
+        """staff.json's lifts (§20.4): a `point` place per landing of a model lift, in order; a point is a landing of one
+        lift at most."""
+        w = 'staff.json.lifts'
+        lst(lifts, w)
+        model = {x['id']: x for x in self.m.lifts}
+        self.lifts = []             # [(lift id, [landing places])], in file order
+        self.landing = {}           # place index -> (staff lift index, landing index)
+        for i, x in enumerate(lifts):
+            wl = f'{w}[{i}]'
+            keys(x, ('lift', 'landings'), (), wl)
+            need(isinstance(x['lift'], str) and x['lift'] in model, 'bad_ref', f'{wl}.lift: no lift {x["lift"]!r} in '
+                                                                             f'the model')
+            need(x['lift'] not in [y for y, _ in self.lifts], 'dup_id', f'{wl}.lift: {x["lift"]} twice')
+            n = len(model[x['lift']]['landings'])
+            lst(x['landings'], f'{wl}.landings', n, n)
+            pts = []
+            for k, pid in enumerate(x['landings']):
+                q = self.place_ref(pid, f'{wl}.landings[{k}]')
+                need(self.places[q]['kind'] == 'point', 'bad_value', f'{wl}.landings[{k}]: a point place')
+                need(q not in self.landing, 'dup_id', f'{wl}.landings[{k}]: {pid} is a landing already')
+                self.landing[q] = (i, k)
+                pts.append(q)
+            self.lifts.append((x['lift'], pts))
+
     def place_ref(self, x, where):
         need(isinstance(x, str) and x in self.pix, 'bad_ref', f'{where}: no place {x!r}')
         return self.pix[x]
@@ -347,6 +393,8 @@ class Staff:
         self.ways = {}                              # (a, b) -> steps, both directions
         self.adj = [[] for _ in self.points]        # point number -> [(point number, steps)]
         self.stub = {}                              # non-point place -> (its point, steps)
+        self.lift_way = {}                          # (a, b) -> the staff lift index of a lift way (§20.4)
+        walking = [[] for _ in self.points]         # adj without the lift ways: the stairs routes' network
         for i, x in enumerate(ways):
             wi = f'{w}[{i}]'
             lst(x, wi, 4, 4)
@@ -355,7 +403,14 @@ class Staff:
             metres = num(x[2], f'{wi}[2]', 0, 1e5)
             need(metres > 0, 'bad_number', f'{wi}[2]: metres > 0')
             need(x[3] != 'drive', 'unknown_key', f'{wi}[3]: drive ways come with vehicles (milestone S4)')
-            need(x[3] in WALK_MODES, 'bad_value', f'{wi}[3]: one of {WALK_MODES}')
+            need(x[3] in WALK_MODES or x[3] == 'lift' and self.lifts, 'bad_value', f'{wi}[3]: one of {WALK_MODES}'
+                 + (", or 'lift'" if self.lifts else ''))
+            if x[3] == 'lift':
+                need('lift' in self.speeds, 'missing_key', 'staff.json.speeds.lift: a plant with lift ways has a '
+                                                           'nominal lift speed (§20.4)')
+                la, lb = self.landing.get(a), self.landing.get(b)
+                need(la is not None and lb is not None and la[0] == lb[0], 'bad_ref',
+                     f'{wi}: a lift way joins two landings of one lift')
             pa, pb = self.places[a]['at'], self.places[b]['at']
             need(metres + 1e-9 >= math.dist(pa, pb), 'bad_way',
                  f'{wi}: {metres} m is shorter than the straight line between its places ({math.dist(pa, pb):.3f} m)')
@@ -364,9 +419,14 @@ class Staff:
             st = way_steps(metres, self.speeds[x[3]])
             self.ways[key] = st
             ia, ib = a in self.point_no, b in self.point_no
+            if x[3] == 'lift':
+                self.lift_way[key] = self.landing[a][0]
             if ia and ib:
                 self.adj[self.point_no[a]].append((self.point_no[b], st))
                 self.adj[self.point_no[b]].append((self.point_no[a], st))
+                if x[3] != 'lift':
+                    walking[self.point_no[a]].append((self.point_no[b], st))
+                    walking[self.point_no[b]].append((self.point_no[a], st))
             else:
                 need(ia or ib, 'bad_ref', f'{wi}: a way joins a point to a point or a place to its point')
                 p, q = (b, a) if ia else (a, b)
@@ -375,6 +435,15 @@ class Staff:
                 self.stub[p] = (q, st)
         for i, p in enumerate(self.places):
             need(i in self.point_no or i in self.stub, 'bad_ref', f'staff.json: place {p["id"]} has no way to a point')
+        # the stairs beside each lift way (§20.4): the quickest route from each end to the other over the walking ways
+        # alone, by §16.2's rule from its start (place indexes, both ends included)
+        self.stairs = {}
+        for a, b in self.lift_way:
+            for u, v in ((a, b), (b, a)):
+                r = route(len(self.points), walking, self.point_no[u], self.point_no[v])
+                need(r is not None, 'unreachable', f'staff.json: no stairs beside the lift way {self.places[u]["id"]}–'
+                                                   f'{self.places[v]["id"]} (a route over walking ways alone, §20.4)')
+                self.stairs[(u, v)] = [self.points[k] for k in r]
 
     def check_next(self, nx):
         w = 'staff.json.next'
@@ -996,7 +1065,8 @@ def check_scenario_staff(s, b, rel):
 
 class Person:
     __slots__ = ('i', 'id', 'role', 'auth', 'rng', 'on', 'duty', 'duties', 'planned', 'slots', 'pos', 'leg',
-                 'cur', 'queue', 'res', 'occ', 'pending', 'result', 'post', 'held', 'worn', 'acts', 'zin')
+                 'cur', 'queue', 'res', 'occ', 'pending', 'result', 'post', 'held', 'worn', 'acts', 'zin',
+                 'ride', 'stairs', 'lin')
 
 
 
@@ -1029,6 +1099,9 @@ class StaffRun:
             q.worn = set()             # the PPE items worn (§16.3, §17.11)
             q.acts = {}                # unsafe acts going on: kind -> [zone or work, start step, stopped] (§16.7)
             q.zin = set()              # the trainee's zones, from their zone inputs (zone indexes)
+            # a ride (§20.4): [staff lift index, a, b, 0 waiting / 1 aboard, the step the wait began, the destination
+            # of the walk]; the stairs walked instead: [destination, place, …, b]; the step of the last lift input
+            q.ride, q.stairs, q.lin = None, None, -3
             q.post = (p['role'], p.get('routine', st.roles[p['role']]['routine']))     # role, routine (§17.9)
             self.people.append(q)
         self.order = 0                  # instances made, for the queue's order
@@ -1148,6 +1221,11 @@ class StaffRun:
         """Placement (§17.2): at step 0 and after a jump, at clock c."""
         st = self.st
         day = c // DAY
+        e = self.e
+        for x in e.m.lifts:             # the NPCs aboard leave the ride: their alights for the next step (§20.3)
+            for r in e.riders[x['id']]:
+                if isinstance(r, str) and self.slot_of(st.person_ix[r]) is None:
+                    self.queue_alight(x['id'], r)
         self.holder = {}
         self.given = {}
         self.pending = []
@@ -1159,6 +1237,7 @@ class StaffRun:
             p.pos = None
             p.on, p.duty = False, None
             p.worn, p.acts, p.zin = set(), {}, set()
+            p.ride, p.stairs, p.lin = None, None, -3
             if p.id in self.absent:
                 continue
             self.plan(p, day + 1)
@@ -1355,6 +1434,7 @@ class StaffRun:
         it, to be taken up again at their turn; one on a way is between places from now on (the place they left kept
         for a release); their zones those their place or way gives them now; nothing counted or kept for the slot."""
         p = self.people[pi]
+        self.e.slot_rides_as(slot, p.id)
         if not self.session:             # a single-player run's role at step 1 (§17.4): the person just becomes theirs
             self.players[slot] = pi
             self.acks[slot] = 0
@@ -1366,6 +1446,11 @@ class StaffRun:
             self.t_from[slot] = p.leg[0]
             p.leg = None
             p.pos = None
+        if p.ride is not None:           # a ride given up: one aboard stays aboard, the landing kept as the place left
+            if p.pos is None:
+                self.t_from[slot] = p.ride[1]
+            p.ride = None
+        p.stairs = None
         if p.cur is not None and not p.cur['idle']:
             p.cur['st'].pop('busy', None)
             self.pause(p)
@@ -1380,6 +1465,9 @@ class StaffRun:
         at their next turn; one between places put back at the place they last left."""
         pi = self.players.pop(slot)
         p = self.people[pi]
+        for x in self.e.m.lifts:         # a person aboard leaves the ride: their alight for the next step (§20.3)
+            if p.id in self.e.riders[x['id']]:
+                self.queue_alight(x['id'], p.id)
         if p.cur is not None and not p.cur['idle']:
             self.pause(p)
         if p.pos is None and self.t_from.get(slot) is not None:
@@ -1387,6 +1475,11 @@ class StaffRun:
         self.t_from.pop(slot, None)
         self.acks.pop(slot, None)
         self.kept.pop(slot, None)
+
+    def queue_alight(self, lid, pid):
+        """An alight for the next step, unless one is queued already (a release and a jump in one step)."""
+        if ('alight', lid, pid) not in self.e.npc_queue:
+            self.e.npc_queue.append(('alight', lid, pid))
 
     def jump(self, to):
         e = self.e
@@ -1518,6 +1611,9 @@ class StaffRun:
         if p.leg is not None:
             b = st.place_zones[p.leg[1]]
             return [k for k in st.place_zones[p.leg[0]] if k in b]
+        if p.ride is not None and p.pos is None:        # aboard: as on a way between the landings
+            b = st.place_zones[p.ride[2]]
+            return [k for k in st.place_zones[p.ride[1]] if k in b]
         return st.place_zones[p.pos] if p.pos is not None else []
 
     def act_now(self, p, kind):
@@ -1838,6 +1934,8 @@ class StaffRun:
             p.leg = None
             if p.pos == p.res:
                 p.occ, p.res = p.pos, None
+        if p.ride is not None and not self.ride_turn(p):
+            return
         for _ in range(64):
             cur = self.select(p)
             if cur is None:
@@ -1911,16 +2009,134 @@ class StaffRun:
         if p.pos == dest:
             if p.res == dest:               # already standing there: the place reserved is now held
                 p.occ, p.res = dest, None
+            p.stairs = None
             return True
         e = self.e
         st = self.st
-        nx = self.hop(p.pos, dest)
+        sr = p.stairs
+        if sr is not None and (sr[0] != dest or sr[1] != p.pos):
+            sr = p.stairs = None        # (another walk: the stairs were this one's)
+        if sr is not None:
+            nx = sr[2]
+            p.stairs = [dest] + sr[2:] if len(sr) > 3 else None
+        else:
+            nx = self.hop(p.pos, dest)
+            li = st.lift_way.get((min(p.pos, nx), max(p.pos, nx))) if st.lift_way else None
+            if li is not None:          # a lift way: they ride instead of walking it (§20.4)
+                p.ride = [li, p.pos, nx, 0, e.step_no, dest]
+                e.ev('ride', p.id, st.lifts[li][0], st.places[p.pos]['id'], st.places[nx]['id'], 'wait')
+                return False
         steps = st.ways[(min(p.pos, nx), max(p.pos, nx))]
         self.leave_place(p)
         p.leg = (p.pos, nx, e.step_no, e.step_no + steps)
         e.ev('move', p.id, st.places[p.pos]['id'], st.places[nx]['id'], e.step_no + steps)
         p.pos = None
         return False
+
+    def ride_turn(self, p):
+        """A person's turn on a ride (§20.4), with the values as steps 2–8 left them: True when it is over and they go
+        on (off at a landing, or up the stairs), False while it lasts. At most one lift input at a turn (an alight
+        with its gate's close is one) and none at the two turns after one; an op another person made in this step is
+        not made again (nor one done in this step's step 1), and someone who can't board doesn't open the gate (§20.4, as
+        built)."""
+        e = self.e
+        st = self.st
+        n = e.step_no
+        li, a, b, phase, since, dest = p.ride
+        lid, pts = st.lifts[li]
+        x = e.lift_of[lid]
+        lds = x['landings']
+        cur, ix, q = e.cur, e.ix, e.npc_queue
+
+        def T(name):
+            return cur[ix[name]] >= 0.5
+
+        def made(code, do, value=None):
+            # an op of the same code and do done in this step's step 1, or made in this phase 4
+            return any(y[0] == 'op' and y[1] == code and y[2] == do and same(y[3], value) for y in q) or \
+                any(y[1] == 'op' and y[2] == code and y[3] == do and y[4] == 'done' for y in e.events[e.ev_mark:])
+
+        def op(code, do, value=None):
+            if not made(code, do, value) and not e.locking(code):     # (not again; not on a locked code)
+                q.append(('op', code, do, value, None, 'local', p.id))
+                p.lin = n
+
+        rs = e.riders[lid]
+        aboard = p.id in rs
+        if aboard and not phase:        # aboard now: their 3 minutes count again from here
+            p.ride[3], p.ride[4] = 1, n
+            since = n
+        elif not aboard:
+            p.ride[3] = 0
+        can = n > p.lin + 2
+        ia, ib = pts.index(a), pts.index(b)
+        calls = e.lift_calls[e.lift_k[lid]]
+        load = cur[ix[lid + '_load']]
+        over = load > x['rated_kg']
+        ready = T(x['ready'])
+        if not aboard:
+            p.pos = a
+            if not ready or n - since >= RIDE_WAIT:
+                e.ev('ride', p.id, lid, st.places[a]['id'], st.places[b]['id'], 'stairs')
+                p.ride = None
+                p.stairs = [dest] + st.stairs[(a, b)]
+                return True
+            if not can:
+                return False
+            at = T(lds[ia]['at'])
+            boards = sum(1 for y in q if y[0] == 'board' and y[1] == lid)
+            room = load + x['person_kg'] * (1 + boards) <= x['rated_kg']
+            if at and T(lds[ia]['open']):
+                if room and not made(lds[ia]['gate'], 'close'):     # (not into a gate that is shutting)
+                    q.append(('board', lid, p.id))
+                    p.lin = n
+            elif at and T(lds[ia]['shut']):
+                if room:
+                    op(lds[ia]['gate'], 'open')
+            elif not at and not calls >> ia & 1 and not over:
+                op(lds[ia]['call'], 'start')
+            return False
+        p.pos = None
+        if not can:
+            return False
+        c = next((i for i, ld in enumerate(lds) if T(ld['at'])), None)
+        timeout = n - since >= RIDE_WAIT
+        bumped = over and self.last_npc(rs) == p.id
+        if c is not None and (c == ib or not ready or bumped or timeout):
+            # out here: where they are going; the lift not ready; the last NPC in when the cab is over its rated load;
+            # or after 3 minutes aboard (then up or down the stairs)
+            ld = lds[c]
+            if T(ld['open']):
+                alights = sum(1 for y in q if y[0] == 'alight' and y[1] == lid)
+                boards = sum(1 for y in q if y[0] == 'board' and y[1] == lid)
+                q.append(('alight', lid, p.id))
+                p.lin = n
+                if len(rs) - alights + boards == 1 and (c == ib or ready):
+                    op(ld['gate'], 'close')     # the last one out shuts the gate behind them
+                e.ev('ride', p.id, lid, st.places[a]['id'], st.places[b]['id'], 'off')
+                p.ride = None
+                p.pos = pts[c]
+                if c != ib and ready and not bumped and pts[c] != dest:
+                    sr = st.stairs.get((pts[c], self.hop(pts[c], dest)))
+                    if sr is not None:
+                        e.ev('ride', p.id, lid, st.places[a]['id'], st.places[b]['id'], 'stairs')
+                        p.stairs = [dest] + sr
+                return True
+            if T(ld['shut']) or timeout and n - p.lin >= RIDE_QUIET:
+                op(ld['gate'], 'open')  # (after 3 minutes, a gate neither open nor shut too: every 5 s)
+            return False
+        if ready and not over and not calls >> ib & 1:
+            op(x['panel'], 'set', ib)   # where they are going, from the cab's panel
+        elif c is not None and not over and T(lds[c]['open']) and n - e.quiet[lid] >= RIDE_QUIET \
+                and n >= e.lift_dwell[e.lift_k[lid]] and not any(y[0] == 'board' and y[1] == lid for y in q):
+            # (not on someone boarding, nor while the cab stands for those it came for)
+            op(lds[c]['gate'], 'close')
+        return False
+
+    def last_npc(self, rs):
+        """The NPC who boarded last of a lift's riders, or None."""
+        return next((r for r in reversed(rs) if isinstance(r, str) and self.slot_of(self.st.person_ix[r]) is None),
+                    None)
 
     def go(self, p, cur, x, tsec='go'):
         """A go (also a lock's and a meeting's walk): 'next' on arrival, 'wait' on the way, 'fail' without a place
@@ -2657,7 +2873,9 @@ class StaffRun:
                 Packed(PACKED_INT64, [p.planned for p in people]),
                 Packed(PACKED_INT32, [len(p.slots) for p in people]),
                 Packed(PACKED_INT32, [p.pos if p.pos is not None else -1 for p in people]),
-                [list(p.leg) if p.leg is not None else [] for p in people],
+                [list(p.leg) if p.leg is not None else
+                 ['lift', st.lifts[p.ride[0]][0], p.ride[1], p.ride[2], p.ride[3], p.ride[4], p.ride[5]]
+                 if p.ride is not None else [] for p in people],
                 [inst(p.i, w, x) for p in people
                  for w, xs in ((0, [p.cur] if p.cur is not None else []), (1, p.queue), (2, p.held)) for x in xs],
                 Packed(PACKED_INT32, [p.res if p.res is not None else -1 for p in people]),
@@ -2666,7 +2884,9 @@ class StaffRun:
                 Packed(PACKED_INT64, [i64(p.rng) for p in people]),
                 Packed(PACKED_INT32, [sum(1 << k for k, x in enumerate(PPE) if x in p.worn) for p in people]),
                 [[list(p.acts[k]) if k in p.acts else None for k in ACT_KINDS] for p in people],
-                Packed(PACKED_INT64, [i64(sum(1 << k for k in p.zin)) for p in people])]
+                Packed(PACKED_INT64, [i64(sum(1 << k for k in p.zin)) for p in people])] + \
+            ([[Packed(PACKED_INT32, p.stairs or []) for p in people],
+              Packed(PACKED_INT64, [p.lin for p in people])] if st.lifts else [])
 
     # --- the snapshot's part (§17.7)
     def snap_acts(self):
@@ -2684,6 +2904,8 @@ class StaffRun:
         for p in self.people:
             if p.leg is not None:
                 where = ['way', st.places[p.leg[0]]['id'], st.places[p.leg[1]]['id'], p.leg[2], p.leg[3]]
+            elif p.ride is not None and p.pos is None:
+                where = ['lift', st.lifts[p.ride[0]][0], st.places[p.ride[1]]['id'], st.places[p.ride[2]]['id']]
             else:
                 where = st.places[p.pos]['id'] if p.pos is not None else None
             out[p.id] = [where, p.cur['task'] if p.cur is not None else None,

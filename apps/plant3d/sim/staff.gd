@@ -17,6 +17,8 @@ const WAIT_PLACE := 15
 const HANDOVER_WAIT := 60         # clock minutes an outgoing person waits at a lock for the incoming one's (§17.9)
 const MAX_POINTS := 64 * 16       # every point of a model's isolations: a lock round's bound in a turn
 const QUEUE_MAX := 32
+const RIDE_WAIT := 1800           # steps a person waits for a lift before they take the stairs (§20.4)
+const RIDE_QUIET := 50            # steps since the last board or alight before a rider closes a gate elsewhere
 const EARLY_KEPT := 32           # the trainee's actions kept for a later step (§17.8)
 const OPEN_KINDS := ["point", "door", "stop", "muster", "counter", "depot", "work"]
 const PPE := ["helmet", "boots", "glasses", "gloves", "ear", "harness", "face_shield", "apron", "vest"]
@@ -75,6 +77,11 @@ var place_kks: Array = []            # per place: the code of a work place, else
 var role_ppe := {}                   # role -> its PPE, a bit per item
 var put_right := {}                  # act kind -> the task an HSE stop gives the acting person
 var unlocks := {}                    # task -> {work or "$": true} its unlock steps name (§17.11)
+var has_lifts := false               # staff.json has lifts (§20.4): rides, stairs and their digest fields
+var lifts: Array = []                # [lift id, PackedInt32Array of its landings' places], in staff.json's order
+var lift_model: Array = []           # per staff lift: the model's lift entry
+var lift_way := {}                   # a * places + b (a < b) of a lift way -> its staff lift
+var stairs := {}                     # a * places + b of a lift way's ends, either way round -> the stairs' places
 
 
 static func load_from(m, doc: Dictionary):
@@ -152,6 +159,20 @@ func _build(m, doc: Dictionary) -> void:
 		place_kks.append(p.get("kks") if p["kind"] == "work" else null)
 	put_right = doc.get("put_right", {})
 	var np := places.size()
+	var landing := {}
+	for x in doc.get("lifts", []):
+		var pts := PackedInt32Array()
+		for pid in x["landings"]:
+			pts.append(pix[pid])
+			landing[pix[pid]] = lifts.size()
+		lifts.append([x["lift"], pts])
+		for ml in m.lifts:
+			if ml["id"] == x["lift"]:
+				lift_model.append(ml)
+	has_lifts = not lifts.is_empty()
+	var walking: Array = []             # the walking ways between points (the stairs' network): per point [[point, steps]]
+	for _k in points.size():
+		walking.append([])
 	for w in doc["ways"]:
 		if not pix.has(w[0]) or not pix.has(w[1]) or not speeds.has(w[3]):
 			_fail("a way joins no places: " + str(w))
@@ -160,12 +181,30 @@ func _build(m, doc: Dictionary) -> void:
 		var b: int = pix[w[1]]
 		var st := maxi(1, int(ceil(float(w[2]) * 10.0 / float(speeds[w[3]]) - 1e-9)))
 		ways[mini(a, b) * np + maxi(a, b)] = st
+		if w[3] == "lift":
+			lift_way[mini(a, b) * np + maxi(a, b)] = landing[a]
+		elif point_no[a] != -1 and point_no[b] != -1:
+			walking[point_no[a]].append([point_no[b], st])
+			walking[point_no[b]].append([point_no[a], st])
 		if point_no[a] == -1:
 			stub[a] = b
 		elif point_no[b] == -1:
 			stub[b] = a
 	for row in doc["next"]:
 		next.append(PackedInt32Array(row))
+	for key in lift_way:            # the stairs beside each lift way, from each end to the other (§20.4)
+		var ends := [key / np, key % np]
+		for k in 2:
+			var u: int = ends[k]
+			var v: int = ends[1 - k]
+			var r := route(walking, point_no[u], point_no[v])
+			if r.is_empty():
+				_fail("no stairs beside the lift way %s–%s" % [places[u]["id"], places[v]["id"]])
+				return
+			var pl := PackedInt32Array()
+			for x in r:
+				pl.append(points[x])
+			stairs[u * np + v] = pl
 	origin = pix.get(doc["origin"], -1)
 	gate = pix.get(doc["gate"], -1)
 	for r in doc["roles"]:
@@ -225,6 +264,48 @@ func _build(m, doc: Dictionary) -> void:
 				if not unlocks.has(t["id"]):
 					unlocks[t["id"]] = {}
 				unlocks[t["id"]][s["unlock"]["work"]] = true
+
+
+## The points of the quickest route from src to dst by §16.2's rule (the `next` table's: by steps, then the lowest
+## list of point numbers), over adj (per point [[point, steps]]); empty when there is none.
+static func route(adj: Array, src: int, dst: int) -> PackedInt32Array:
+	var n := adj.size()
+	var cost := PackedInt64Array()
+	cost.resize(n)
+	var path: Array = []
+	path.resize(n)
+	var done := PackedByteArray()
+	done.resize(n)
+	path[src] = PackedInt32Array([src])
+	while true:
+		var u := -1
+		for i in n:
+			if not done[i] and path[i] != null and (u == -1 or cost[i] < cost[u]
+					or (cost[i] == cost[u] and _path_less(path[i], path[u]))):
+				u = i
+		if u == -1:
+			return PackedInt32Array()
+		done[u] = 1
+		if u == dst:
+			return path[u]
+		for x in adj[u]:
+			var v: int = x[0]
+			if done[v]:
+				continue
+			var c: int = cost[u] + x[1]
+			var cand: PackedInt32Array = path[u].duplicate()
+			cand.append(v)
+			if path[v] == null or c < cost[v] or (c == cost[v] and _path_less(cand, path[v])):
+				cost[v] = c
+				path[v] = cand
+	return PackedInt32Array()
+
+
+static func _path_less(a: PackedInt32Array, b: PackedInt32Array) -> bool:
+	for i in mini(a.size(), b.size()):
+		if a[i] != b[i]:
+			return a[i] < b[i]
+	return a.size() < b.size()
 
 
 static func ppe_mask(items: Array) -> int:
@@ -305,6 +386,7 @@ func init_run(e, scen: Dictionary) -> void:
 	e.sp_wake.resize(n)
 	e.sp_worn.resize(n)
 	e.sp_zin.resize(n)
+	e.sp_lin.resize(n)
 	for i in n:
 		e.sp_rng[i] = seed_of(seed, i)
 		e.sp_acts.append([null, null, null])
@@ -316,6 +398,8 @@ func init_run(e, scen: Dictionary) -> void:
 		e.sp_queue.append([])
 		e.sp_result.append(null)
 		e.sp_held.append([])
+		e.sp_ride.append([])
+		e.sp_stairs.append(PackedInt32Array())
 	e.st_vprev = []
 	for r in reactions:
 		e.st_vprev.append(e.truth(r["on"]["value"]) if r["on"].has("value") else null)
@@ -400,6 +484,10 @@ func place_all(e, c: int, old: int) -> void:
 	var day: int = c / DAY
 	if e._touched.size() == people.size():
 		e._touched.fill(1)         # everyone's acts looked at again in this step's phase 5
+	for k in e.riders.size():       # the NPCs aboard leave the ride: their alights for the next step (§20.3)
+		for r in e.riders[k]:
+			if typeof(r) == TYPE_STRING and e.slot_of(person_ix[r]) == -1:
+				queue_alight(e, e.m.lifts[k]["id"], r)
 	e.st_holder = {}
 	e.st_given = {}
 	e.st_pending = []
@@ -423,6 +511,9 @@ func place_all(e, c: int, old: int) -> void:
 		e.sp_on[pi] = 0
 		e.sp_duty[pi] = []
 		e.sp_wake[pi] = 0
+		e.sp_ride[pi] = []
+		e.sp_stairs[pi] = PackedInt32Array()
+		e.sp_lin[pi] = -3
 		if e._absent.has(pi):
 			continue
 		plan(e, pi, day + 1)
@@ -701,6 +792,8 @@ func t_input(e, item: Array, slot: int = 0) -> void:
 ## taken up again at their turn; one on a way is between places from now on (the place they left kept for a
 ## release); their zones those their place or way gives them now; nothing counted or kept for the slot.
 func claim(e, slot: int, pi: int) -> void:
+	if not e.riders.is_empty():
+		e.slot_rides_as(slot, people[pi]["id"])
 	if not e.st_session:                # a single-player run's role at step 1 (§17.4): the person just becomes theirs
 		e.st_players[slot] = pi
 		e.st_acks[slot] = 0
@@ -713,6 +806,12 @@ func claim(e, slot: int, pi: int) -> void:
 		e.st_t_from[slot] = leg[0]
 		e.sp_leg[pi] = []
 		e.sp_pos[pi] = -1
+	var ride: Array = e.sp_ride[pi]
+	if not ride.is_empty():             # a ride given up: one aboard stays aboard, the landing kept as the place left
+		if e.sp_pos[pi] == -1:
+			e.st_t_from[slot] = ride[1]
+		e.sp_ride[pi] = []
+	e.sp_stairs[pi] = PackedInt32Array()
 	var c = e.sp_cur[pi]
 	if c != null:
 		var x: Dictionary = c["st"]
@@ -736,6 +835,11 @@ func claim(e, slot: int, pi: int) -> void:
 func let_go(e, slot: int) -> void:
 	var pi: int = e.st_players[slot]
 	e.st_players[slot] = -1
+	var pid: String = people[pi]["id"]
+	for k in e.riders.size():           # a person aboard leaves the ride: their alight for the next step (§20.3)
+		for r in e.riders[k]:
+			if _same(r, pid):
+				queue_alight(e, e.m.lifts[k]["id"], pid)
 	var c = e.sp_cur[pi]
 	if c != null:
 		if not c["idle"]:
@@ -1228,6 +1332,8 @@ func turn(e, pi: int) -> void:
 		if e.sp_pos[pi] == e.sp_res[pi]:
 			e.sp_occ[pi] = e.sp_pos[pi]
 			e.sp_res[pi] = -1
+	if has_lifts and not e.sp_ride[pi].is_empty() and not ride_turn(e, pi):
+		return
 	for _k in 64:
 		var cur = select(e, pi)
 		if cur == null:
@@ -1308,8 +1414,32 @@ func walk(e, pi: int, dest: int) -> bool:
 		if e.sp_res[pi] == dest:        # already standing there: the place reserved is now held
 			e.sp_occ[pi] = dest
 			e.sp_res[pi] = -1
+		if has_lifts:
+			e.sp_stairs[pi] = PackedInt32Array()
 		return true
-	var nx := hop(pos, dest)
+	var nx := -1
+	if has_lifts:
+		var sr: PackedInt32Array = e.sp_stairs[pi]
+		if not sr.is_empty() and (sr[0] != dest or sr[1] != pos):
+			sr = PackedInt32Array()     # (another walk: the stairs were this one's)
+			e.sp_stairs[pi] = sr
+		if not sr.is_empty():
+			nx = sr[2]
+			if sr.size() > 3:
+				var rest := PackedInt32Array([dest])
+				rest.append_array(sr.slice(2))
+				e.sp_stairs[pi] = rest
+			else:
+				e.sp_stairs[pi] = PackedInt32Array()
+		else:
+			nx = hop(pos, dest)
+			var li: int = lift_way.get(mini(pos, nx) * places.size() + maxi(pos, nx), -1)
+			if li != -1:                # a lift way: they ride instead of walking it (§20.4)
+				e.sp_ride[pi] = [li, pos, nx, 0, e.step_no, dest]
+				e._ev(["ride", people[pi]["id"], lifts[li][0], places[pos]["id"], places[nx]["id"], "wait"])
+				return false
+	else:
+		nx = hop(pos, dest)
 	var st: int = ways[mini(pos, nx) * places.size() + maxi(pos, nx)]
 	leave_place(e, pi)
 	e.sp_leg[pi] = [pos, nx, e.step_no, e.step_no + st]
@@ -1338,6 +1468,158 @@ func reserve(e, pi: int, i: int) -> void:
 	unreserve(e, pi)
 	e.sp_res[pi] = i
 	e.st_holder[i] = pi
+
+
+## An alight for the next step, unless one is queued already (a release and a jump in one step).
+static func queue_alight(e, lid: String, pid: String) -> void:
+	for y in e.npc_queue:
+		if y.size() == 3 and _same(y[0], "alight") and _same(y[1], lid) and _same(y[2], pid):
+			return
+	e.npc_queue.append(["alight", lid, pid])
+
+
+## A person's turn on a ride (§20.4), with the values as steps 2–8 left them: true when it is over and they go on (off
+## at a landing, or up the stairs), false while it lasts (ref/plant3d_staff.py ride_turn).
+func ride_turn(e, pi: int) -> bool:
+	var n: int = e.step_no
+	var ride: Array = e.sp_ride[pi]
+	var li: int = ride[0]
+	var a: int = ride[1]
+	var b: int = ride[2]
+	var since: int = ride[4]
+	var dest: int = ride[5]
+	var lid: String = lifts[li][0]
+	var pts: PackedInt32Array = lifts[li][1]
+	var x: Dictionary = lift_model[li]
+	var lds: Array = x["landings"]
+	var pid: String = people[pi]["id"]
+	var k: int = e._lift_ix[lid]
+	var rs: Array = e.riders[k]
+	var aboard := false
+	for r in rs:
+		if _same(r, pid):
+			aboard = true
+			break
+	if aboard and ride[3] == 0:         # aboard now: their 3 minutes count again from here
+		ride[3] = 1
+		ride[4] = n
+		since = n
+	elif not aboard:
+		ride[3] = 0
+	var can: bool = n > e.sp_lin[pi] + 2
+	var ia := pts.find(a)
+	var ib := pts.find(b)
+	var calls: int = e.lift_calls[k]
+	var load: float = e.cur[e._load_slot[k]]
+	var over: bool = load > float(x["rated_kg"])
+	var ready := _t(e, x["ready"])
+	var q: Array = e.npc_queue
+	if not aboard:
+		e.sp_pos[pi] = a
+		if not ready or n - since >= RIDE_WAIT:
+			e._ev(["ride", pid, lid, places[a]["id"], places[b]["id"], "stairs"])
+			e.sp_ride[pi] = []
+			var sr := PackedInt32Array([dest])
+			sr.append_array(stairs[a * places.size() + b])
+			e.sp_stairs[pi] = sr
+			return true
+		if not can:
+			return false
+		var at := _t(e, lds[ia]["at"])
+		var boards := _queued(q, "board", lid)
+		var room: bool = load + float(x["person_kg"]) * (1 + boards) <= float(x["rated_kg"])
+		if at and _t(e, lds[ia]["open"]):
+			if room and not _lift_made(e, lds[ia]["gate"], "close"):    # (not into a gate that is shutting)
+				q.append(["board", lid, pid])
+				e.sp_lin[pi] = n
+		elif at and _t(e, lds[ia]["shut"]):
+			if room:
+				_lift_op(e, pi, lds[ia]["gate"], "open")
+		elif not at and not (calls >> ia & 1) and not over:
+			_lift_op(e, pi, lds[ia]["call"], "start")
+		return false
+	e.sp_pos[pi] = -1
+	if not can:
+		return false
+	var c := -1
+	for j in lds.size():
+		if _t(e, lds[j]["at"]):
+			c = j
+			break
+	var timeout: bool = n - since >= RIDE_WAIT
+	var bumped: bool = over and _same(last_npc(e, rs), pid)
+	if c != -1 and (c == ib or not ready or bumped or timeout):
+		# out here: where they are going; the lift not ready; the last NPC in when the cab is over its rated load; or
+		# after 3 minutes aboard (then up or down the stairs)
+		var ld: Dictionary = lds[c]
+		if _t(e, ld["open"]):
+			var alights := _queued(q, "alight", lid)
+			var boards := _queued(q, "board", lid)
+			q.append(["alight", lid, pid])
+			e.sp_lin[pi] = n
+			if rs.size() - alights + boards == 1 and (c == ib or ready):
+				_lift_op(e, pi, ld["gate"], "close")    # the last one out shuts the gate behind them
+			e._ev(["ride", pid, lid, places[a]["id"], places[b]["id"], "off"])
+			e.sp_ride[pi] = []
+			e.sp_pos[pi] = pts[c]
+			if c != ib and ready and not bumped and pts[c] != dest:
+				var nx := hop(pts[c], dest)
+				var key: int = pts[c] * places.size() + nx
+				if stairs.has(key):
+					e._ev(["ride", pid, lid, places[a]["id"], places[b]["id"], "stairs"])
+					var sr := PackedInt32Array([dest])
+					sr.append_array(stairs[key])
+					e.sp_stairs[pi] = sr
+			return true
+		if _t(e, ld["shut"]) or timeout and n - e.sp_lin[pi] >= RIDE_QUIET:
+			_lift_op(e, pi, ld["gate"], "open")     # (after 3 minutes, a gate neither open nor shut too: every 5 s)
+		return false
+	if ready and not over and not (calls >> ib & 1):
+		_lift_op(e, pi, x["panel"], "set", ib)      # where they are going, from the cab's panel
+	elif c != -1 and not over and _t(e, lds[c]["open"]) and n - e.lift_quiet[k] >= RIDE_QUIET \
+			and n >= e.lift_dwell[k] and _queued(q, "board", lid) == 0:
+		# (not on someone boarding, nor while the cab stands for those it came for)
+		_lift_op(e, pi, lds[c]["gate"], "close")
+	return false
+
+
+static func _queued(q: Array, kind: String, lid: String) -> int:
+	var t := 0
+	for y in q:
+		if _same(y[0], kind) and _same(y[1], lid):
+			t += 1
+	return t
+
+
+## The NPC who boarded last of a lift's riders, or null.
+func last_npc(e, rs: Array):
+	for j in range(rs.size() - 1, -1, -1):
+		if typeof(rs[j]) == TYPE_STRING and e.slot_of(person_ix[rs[j]]) == -1:
+			return rs[j]
+	return null
+
+
+static func _t(e, name: String) -> bool:
+	return e.cur[e.ix[name]] >= 0.5
+
+
+## An op of the same code and do done in this step's step 1, or made in this phase 4 (with the same value).
+static func _lift_made(e, code: String, do: String, value = null) -> bool:
+	for y in e.npc_queue:
+		if y[0] == "op" and _same(y[1], code) and _same(y[2], do) and _same(y[3], value):
+			return true
+	for k in range(e.ev_mark, e.events.size()):
+		var y: Array = e.events[k]
+		if y.size() > 4 and _same(y[1], "op") and _same(y[2], code) and _same(y[3], do) and _same(y[4], "done"):
+			return true
+	return false
+
+
+## A rider's op (a local op by the person), not made again (_lift_made).
+func _lift_op(e, pi: int, code: String, do: String, value = null) -> void:
+	if not _lift_made(e, code, do, value) and e._locking(code).is_empty():     # (not again; not on a locked code)
+		e.npc_queue.append(["op", code, do, value, null, "local", people[pi]["id"]])
+		e.sp_lin[pi] = e.step_no
 
 
 func go(e, pi: int, cur: Dictionary, x) -> String:
@@ -1575,6 +1857,8 @@ func zones_of(e, pi: int) -> int:
 	if not leg.is_empty():
 		return place_zm[leg[0]] & place_zm[leg[1]]
 	var p: int = e.sp_pos[pi]
+	if p == -1 and has_lifts and not e.sp_ride[pi].is_empty():     # aboard: as on a way between the landings
+		return place_zm[e.sp_ride[pi][1]] & place_zm[e.sp_ride[pi][2]]
 	return place_zm[p] if p != -1 else 0
 
 
@@ -2447,6 +2731,9 @@ func snap(e) -> Dictionary:
 		var leg: Array = e.sp_leg[pi]
 		if not leg.is_empty():
 			where = ["way", places[leg[0]]["id"], places[leg[1]]["id"], leg[2], leg[3]]
+		elif has_lifts and e.sp_pos[pi] == -1 and not e.sp_ride[pi].is_empty():
+			var rd: Array = e.sp_ride[pi]
+			where = ["lift", lifts[rd[0]][0], places[rd[1]]["id"], places[rd[2]]["id"]]
 		elif e.sp_pos[pi] != -1:
 			where = places[e.sp_pos[pi]]["id"]
 		var c = e.sp_cur[pi]

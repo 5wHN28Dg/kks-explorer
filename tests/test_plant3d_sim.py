@@ -55,6 +55,8 @@ def apply(e, item):
         e.remove_lock(item[2], item[3], item[4], item[5], *item[6:7], named=len(item) > 6)
     elif kind == 'fault':
         e.fault(item[2])
+    elif kind in ('board', 'alight'):
+        getattr(e, kind)(item[2], item[3])              # a lift's riders (PLANT3D §20.3)
     else:
         raise ValueError(f'an input this harness does not replay: {item}')
 
@@ -97,6 +99,8 @@ def steps_bundle(valid_files, s):
     files['scenarios/s1.json'] = json.dumps(s['scenario']).encode()
     del files['procedures/p1.json']
     del files['screens.json']
+    for rel, v in s.get('files', {}).items():       # (a lift's runs: the kit, the plant's key and area a2, §20.9)
+        files[rel] = json.dumps(v).encode()
     return P.check_files(files)
 
 
@@ -106,13 +110,13 @@ def steps_runs(valid_files, steps, keep=None, prefix=''):
     for i, s in enumerate(steps):
         run = f'{prefix}steps/{i}'
         kk = (keep[1], keep[2]) if keep and keep[0] == run else None
-        e = P.Engine(steps_bundle(valid_files, s), 's1')
+        e = P.Engine(steps_bundle(valid_files, s), 's1', s.get('session', False))
         h = Hasher(0)
         h.add(e, kk)
         j = 0
         while e.step_no < len(s['states']) - 1:
             while j < len(s['inputs']) and s['inputs'][j][0] == e.step_no + 1:
-                apply(e, s['inputs'][j])
+                (G.apply_staff if e.session else apply)(e, s['inputs'][j])
                 j += 1
             e.step()
             h.add(e, kk)

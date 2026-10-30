@@ -567,6 +567,8 @@ def apply(e, item, slot=None):
         getattr(e, kind)(item[2], item[3], item[4], slot=slot)
     elif kind == 'remove_lock':
         e.remove_lock(item[2], item[3], item[4], item[5], *item[6:7], named=len(item) > 6, slot=slot)
+    elif kind in ('board', 'alight'):
+        getattr(e, kind)(item[2], item[3], slot=slot)
     else:
         raise ValueError(kind)
 
@@ -1065,6 +1067,26 @@ def build_rejects2():
         change = {k: t for k, t in text.items() if old.get(k) != t}
         change.update({k: None for k in old if k not in text})
         out.append({'why': why, 'code': code, 'change': change})
+    return out + reject_changes(lift_mini2(), REJECTS_LIFT, base)
+
+
+def reject_changes(start, rejects, base):
+    """Each reject made on a copy of `start`, as a change of the vectors' valid files (`base`)."""
+    out = []
+    for why, code, change in rejects:
+        F = copy.deepcopy(start)
+        change(F)
+        try:
+            check(F)
+        except P.FormatError as e:
+            assert e.code == code, f'{why}: expected {code}, got {e}'
+        else:
+            raise AssertionError(f'{why}: not rejected')
+        text = {k: (v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)) for k, v in F.items()}
+        old = {k: json.dumps(v, ensure_ascii=False) for k, v in base.items()}
+        change = {k: t for k, t in text.items() if old.get(k) != t}
+        change.update({k: None for k in old if k not in text})
+        out.append({'why': why, 'code': code, 'change': change})
     return out
 
 
@@ -1300,7 +1322,7 @@ def build_steps2():
         if effects:
             run['effects'] = effects
         out.append(run)
-    return out
+    return out + build_lift_steps()
 
 
 # Format 2's forks from the cold start (PLANT3D §19; milestone P1: a permit to work on the first train, run in free
@@ -2031,12 +2053,12 @@ def build_rejects_staff():
         change = {k: t for k, t in text.items() if old.get(k) != t}
         change.update({k: None for k in old if k not in text})
         out.append({'why': why, 'code': code, 'change': change})
-    return out
+    return out + reject_changes(lift_staff_files(), REJECTS_LIFT_STAFF, staff_files())   # (the vectors' files)
 
 
 INPUTS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
           'remove_lock', 'role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump', 'ppe', 'zone',
-          'stop')
+          'stop', 'board', 'alight')
 
 
 class Slotted:
@@ -2827,7 +2849,7 @@ def build_staff():
         out.append(dict({'why': why, 'scenario': sc, 'staff': staff, 'inputs': e.inputs, 'until': until,
                          'every': every, 'states': states, 'events': e.events, 'digests': digests},
                         **({'files': more} if more else {}), **({'session': True} if session else {})))
-    return out
+    return out + build_lift_runs()
 
 
 # The first train's day (§19 `day`): the scenario with staff from its start (05:00) through the day shift, seed 1 and
@@ -3039,6 +3061,477 @@ def build():
 
 def dump(v):
     return json.dumps(R(v), ensure_ascii=False, separators=(',', ':')) + '\n'
+
+
+
+# ================================================================ lifts (PLANT3D §20, milestone LIFTS L1)
+
+sys.path.insert(0, os.path.join(ROOT, 'tools', 'plant3d'))
+import lift_model as LM  # noqa: E402
+
+LIFT, LIFT_KKS, LIFT_ZS = 'hlift', '10SNB10', [0, 3, 7.2]
+GATE = [f'{LIFT_KKS}AB{i + 1:03d}' for i in range(3)]
+CALL = [f'{LIFT_KKS}GH{i + 1:03d}' for i in range(3)]
+PANEL, DRIVE, LOADCELL = LIFT_KKS + 'GH010', LIFT_KKS + 'AE001', LIFT_KKS + 'CW001'
+
+
+def lift_content(rated=150):
+    return LM.lift_model(LIFT, LIFT_KKS, LIFT_ZS, rated_kg=rated)
+
+
+def with_lift(F, rated=150, model=None):
+    """F (the synthetic version 2 plant's files) with a three-landing lift made as the content tool makes it
+    (tools/plant3d/lift_model.py): its parts in the kit, its letters in the plant's key, its equipment in area a2, and
+    its values, ops, alarm and `lifts` entry in model a1 (added to `model`, else to F's model); its faults in the
+    scenario. Returns F."""
+    lm = lift_content(rated)
+    c = lm['codes']
+    F['kit.json']['parts'].update({'lift_mast': {'group': 'lifting', 'params': {}},
+                                   'lift_gate': {'group': 'lifting', 'params': {}},
+                                   'control_station': {'group': 'electrical', 'params': {}},
+                                   'load_cell': {'group': 'instruments', 'params': {}}})
+    k = F['plant.json']['kks']
+    k['systems']['SNB'] = 'Lift'
+    k['equipment'].update({'AB': 'Gate', 'AE': 'Drive', 'GH': 'Control station'})
+    k['measurements']['CW'] = 'Weight'
+    parts = [{'kks': c['gates'][i], 'name': f'Landing gate {i}', 'part': 'lift_gate', 'at': [0, -0.7, z]}
+             for i, z in enumerate(LIFT_ZS)]
+    parts += [{'kks': c['calls'][i], 'name': f'Call station {i}', 'part': 'control_station', 'at': [0.8, -0.8, z]}
+              for i, z in enumerate(LIFT_ZS)]
+    parts += [{'kks': c['panel'], 'name': 'Cab panel', 'part': 'control_station', 'at': [0.4, 0, 1]},
+              {'kks': c['load'], 'name': 'Load cell', 'part': 'load_cell', 'at': [0, 0, 0.2]}]
+    F['areas/a2.json']['equipment'] = [{'kks': c['drive'], 'name': 'Service lift', 'part': 'lift_mast',
+                                        'at': [52, 10, 0], 'parts': parts}]
+    m = F['model/a1.json'] if model is None else model
+    m['values'] = m.get('values', []) + lm['values']
+    m['ops'] = m.get('ops', []) + lm['ops']
+    m['alarms'] = m.get('alarms', []) + lm['alarms']
+    m['lifts'] = [lm['lift']]
+    sc = F['scenarios/s1.json']
+    sc['faults'] = sc.get('faults', []) + lm['faults']
+    return F
+
+
+def lift_mini2():
+    """The synthetic version 2 plant with the lift (its rejects' starting point)."""
+    return with_lift(mini2())
+
+
+def lift_unit_runs():
+    """(why, rated load, session, inputs, steps): the lift's unit runs without staff (§20.1, §20.3)."""
+    op = lambda n, code, do, value=None, *slot: [n, 'op', code, do, value, None, *slot]  # noqa: E731
+    return [
+        ('a three-landing lift (§20.1, made as the content tool makes it) and a rider in free mode (§20.3): a gate\'s '
+         'open refused away from the cab; board (the slot is the rider), a second board refused (aboard), an alight '
+         'from no lift (unknown) and a board naming a person without staff (authority); collective control: a call '
+         'remembered while the gate stands open (the cab leaves once it is shut), a call ahead taken on the way, a '
+         'call at the landing where the cab stands (it stays), a call behind served after the turn, a call too close '
+         'ahead passed and served on the way back, two calls either side of a standing cab (the nearer first), a send '
+         'from the panel taken on the way; the emergency stop between landings (the calls forgotten, a call refused: '
+         'not ready) and its release (on to its target); the alight and a second one refused (not_aboard); a drive '
+         'fault on the way and its repair; a gate switch that reads not shut (a call remembered, the cab held) and its '
+         'repair; the riders, the calls and the load in every snapshot', 150, False,
+         [op(1, GATE[1], 'open'), [2, 'board', LIFT, None], [3, 'board', LIFT, None], [3, 'alight', 'nolift', None],
+          [3, 'board', LIFT, 'someone'], op(4, GATE[0], 'open'), op(10, CALL[2], 'start'), op(30, GATE[0], 'close'),
+          op(60, CALL[1], 'start'), op(120, CALL[1], 'start'), op(200, CALL[0], 'start'), op(354, CALL[1], 'start'),
+          op(580, CALL[0], 'start'), op(580, CALL[2], 'start'), op(690, PANEL, 'set', 1), op(700, PANEL, 'stop'),
+          op(710, CALL[2], 'start'), op(730, PANEL, 'start'), op(780, GATE[1], 'open'), [805, 'alight', LIFT, None],
+          [806, 'alight', LIFT, None], op(810, GATE[1], 'close'), op(840, CALL[0], 'start'),
+          [880, 'fault', 'hlift_drive'], op(885, CALL[2], 'start'), [900, 'repair', 'hlift_drive'],
+          [960, 'fault', 'hlift_gate_switch'], op(965, CALL[2], 'start'), [990, 'repair', 'hlift_gate_switch']],
+         1120),
+        ('the overload in a session run without staff (§20.1, §20.3): three free slots board a cab rated for two (the '
+         'load over its rated load, the alarm), a call and a send refused, inputs with no valid slot doing nothing, '
+         'the alarm acknowledged; one alights (cleared), a board of one aboard refused, the cab sent, one alights at '
+         'the middle landing and a call to the bottom landing made there', 150, True,
+         [[1, 'board', LIFT, None, 0], [1, 'board', LIFT, None, 1], [2, 'board', LIFT, None, 2],
+          [3, 'board', LIFT, None, 9], [3, 'alight', LIFT, None, 'x'], op(5, CALL[1], 'start', None, 0),
+          op(5, PANEL, 'set', 1, 1), [6, 'ack', 'hlift_overload', 1], [10, 'alight', LIFT, None, 2],
+          [10, 'board', LIFT, None, 1], op(12, PANEL, 'set', 1, 0), [70, 'alight', LIFT, None, 0],
+          op(70, CALL[0], 'start', None, 2)], 80)]
+
+
+def build_lift_steps():
+    out = []
+    for why, rated, session, inputs, n in lift_unit_runs():
+        F = with_lift(mini2(), rated)
+        model = {'format': 'walkdown-plant-model', 'version': 2, 'area': 'a1'}
+        with_lift(mini2(), rated, model)
+        F['model/a1.json'] = model
+        F['scenarios/s1.json'] = {'format': 'walkdown-plant-scenario', 'version': 2, 'id': 's1', 'title': 'A lift',
+                                  'init': {'ambient_t': 20}, 'faults': lift_content(rated)['faults']}
+        for rel in ('procedures/p1.json', 'screens.json'):
+            del F[rel]
+        e = P.Engine(check(F), 's1', session)
+        states = [e.snapshot()]
+        i = 0
+        while e.step_no < n:
+            while i < len(inputs) and inputs[i][0] == e.step_no + 1:
+                apply_staff(e, inputs[i])
+                i += 1
+            e.step()
+            states.append(e.snapshot())
+        assert i == len(inputs), why
+        out.append(dict({'why': why, 'model': model, 'scenario': F['scenarios/s1.json'],
+                         'files': {k: F[k] for k in ('kit.json', 'plant.json', 'areas/a2.json')}, 'inputs': inputs,
+                         'states': states, 'events': e.events}, **({'session': True} if session else {})))
+    return out
+
+
+def _ops_without(code, do):
+    def f(F):
+        F['model/a1.json']['ops'] = [o for o in F['model/a1.json']['ops'] if (o['kks'], o['do']) != (code, do)]
+    return f
+
+
+def _panel_set(k, v):
+    def f(F):
+        next(o for o in F['model/a1.json']['ops'] if (o['kks'], o['do']) == (PANEL, 'set'))[k] = v
+    return f
+
+
+def _op_of(code, do, key, v):
+    def f(F):
+        next(o for o in F['model/a1.json']['ops'] if (o['kks'], o['do']) == (code, do))[key] = v
+    return f
+
+
+def _value_of(name, key, v):
+    def f(F):
+        next(x for x in F['model/a1.json']['values'] if x[0] == name)[1][key] = v
+    return f
+
+
+def _lift(fn):
+    def f(F):
+        fn(F['model/a1.json']['lifts'])
+    return f
+
+
+LIFTS = ['model/a1.json', 'lifts', 0]
+REJECTS_LIFT = [
+    ('lifts in a version 1 model file', 'unknown_key', _all(
+        _set(MOD + ['version'], 1), _del(MOD + ['works']), _del(MOD + ['isolations']),
+        _set(MOD + ['values', 8], ['p_held', {'product': ['p', 1]}]))),
+    ('a lift id over 26 characters', 'bad_id', _set(LIFTS + ['id'], 'l' * 27)),
+    ('two lifts with one id', 'dup_id', _lift(lambda ls: ls.append(copy.deepcopy(ls[0])))),
+    ('17 lifts', 'limit', _lift(lambda ls: ls.extend(dict(copy.deepcopy(ls[0]), id=f'lift{i}') for i in range(16)))),
+    ('a lift\'s code of a system the plant\'s key lacks', 'bad_kks', _set(LIFTS + ['kks'], '10SNC10')),
+    ('a lift\'s code that is no KKS code', 'bad_kks', _set(LIFTS + ['kks'], 'lift')),
+    ('a lift with an unknown key', 'unknown_key', _set(LIFTS + ['speed'], 0.6)),
+    ('a lift without its landings', 'missing_key', _del(LIFTS + ['landings'])),
+    ('a lift of one landing', 'bad_length', _lift(lambda ls: ls[0].__setitem__('landings', ls[0]['landings'][:1]))),
+    ('a lift of nine landings', 'bad_length', _lift(lambda ls: ls[0]['landings'].extend(
+        dict(ls[0]['landings'][2], z=10 + i) for i in range(6)))),
+    ('landings not rising', 'bad_number', _set(LIFTS + ['landings', 2, 'z'], 3)),
+    ('a rated load below a person\'s', 'bad_number', _set(LIFTS + ['rated_kg'], 70)),
+    ('a person of no weight', 'bad_number', _set(LIFTS + ['person_kg'], 0)),
+    ('a ready value that does not exist', 'bad_ref', _set(LIFTS + ['ready'], 'hlift_ok')),
+    ('an idle value that does not exist', 'bad_ref', _set(LIFTS + ['idle'], 'hlift_still')),
+    ('a landing\'s at value that does not exist', 'bad_ref', _set(LIFTS + ['landings', 1, 'at'], 'hlift_at9')),
+    ('a landing\'s shut value that does not exist', 'bad_ref', _set(LIFTS + ['landings', 0, 'shut'], 'shut')),
+    ('a target that is not a state', 'bad_ref', _set(LIFTS + ['target'], 'hlift_target_z')),
+    ('a panel the plant lacks', 'bad_ref', _set(LIFTS + ['panel'], LIFT_KKS + 'GH099')),
+    ('a call station without its start op', 'bad_ref', _set(LIFTS + ['landings', 1, 'call'], DRIVE)),
+    ('a gate without its close op', 'bad_ref', _ops_without(GATE[2], 'close')),
+    ('a panel without its emergency stop', 'bad_ref', _ops_without(PANEL, 'stop')),
+    ('a panel whose set op writes another state', 'bad_ref', _panel_set('input', 'hlift_estop')),
+    ('a panel whose set op\'s range is not the landings\'', 'bad_ref', _panel_set('range', [0, 3])),
+    ('a lift without the value of its cab\'s height', 'missing_key', _del(LIFTS + ['z'])),
+    ('a cab\'s height that does not exist', 'bad_ref', _set(LIFTS + ['z'], 'hlift_height')),
+    ('a call station that is also a gate', 'dup_id', _set(LIFTS + ['landings', 1, 'call'], GATE[1])),
+    ('two landings with one call station', 'dup_id', _set(LIFTS + ['landings', 2, 'call'], CALL[1])),
+    ('two landings with one gate', 'dup_id', _set(LIFTS + ['landings', 0, 'gate'], GATE[1])),
+    ('a panel that is a landing\'s call station', 'dup_id', _set(LIFTS + ['panel'], CALL[0])),
+    ('two lifts sharing a gate', 'dup_id', _lift(lambda ls: ls.append(dict(copy.deepcopy(ls[0]), id='lift2')))),
+    ('a call whose start sends the cab to another landing', 'bad_ref', _op_of(CALL[1], 'start', 'set',
+                                                                              {'hlift_target': 2})),
+    ('a call whose start sets no target', 'bad_ref', _op_of(CALL[0], 'start', 'set', {'hlift_estop': 0})),
+    ('a gate whose open does not need the cab at its landing', 'bad_ref', _op_of(
+        GATE[2], 'open', 'needs', [['hlift_at0', 'The cab is not at the bottom']])),
+    ('a gate whose open is not made at the gate', 'bad_ref', _op_of(GATE[1], 'open', 'where', ['screen'])),
+    ('a target that starts beyond the landings', 'bad_value', _value_of('hlift_target', 'state', 3)),
+    ('a target that starts between landings', 'bad_value', _value_of('hlift_target', 'state', 0.5)),
+    ('a scenario starting the target beyond the landings', 'bad_value',
+     _set(['scenarios/s1.json', 'init', 'hlift_target'], 5)),
+    ('a value named like a lift\'s load', 'dup_id', lambda F: F['model/a1.json']['values'].insert(
+        0, ['hlift_load', {'const': 1}])),
+    ('a scenario setting a lift\'s load', 'bad_ref', _set(['scenarios/s1.json', 'init', 'hlift_load'], 75)),
+]
+
+
+# the lift's staff (§20.4): a field crew on days and a technician whose role has no local operating authority, on a walking network
+# from the control room past a mess to the lift's three landings, the stairs beside it and a work place at each landing
+def lift_staff(slots):
+    places = []
+
+    def pl(pid, at, kind, **kw):
+        places.append(dict({'id': pid, 'at': at, 'kind': kind}, **kw))
+    pl('desk', [-6, 1, 0], 'desk', room='cr', yaw=90, pose='sit')
+    pl('cr_door', [-2, 0, 0], 'door', room='cr')
+    pl('gate', [0, -10, 0], 'door')
+    for pid, at in (('p0', [0, 0, 0]), ('p1', [30, 0, 0]), ('l0', [52, 10, 0]), ('s1', [56, 10, 1.5]),
+                    ('l1', [52, 10, 3]), ('s2', [56, 10, 5]), ('l2', [52, 10, 7.2])):
+        pl(pid, at, 'point')
+    pl('mess', [30, 4, 0], 'counter')
+    pl('w_low', [53, 12, 0], 'work', kks=LOADCELL)
+    pl('w_mid', [53, 12, 3], 'work', kks=CALL[1])
+    pl('w_top', [53, 12, 7.2], 'work', kks=DRIVE)
+    ways = [['desk', 'p0', 6.1, 'walk'], ['cr_door', 'p0', 2, 'walk'], ['gate', 'p0', 10, 'walk'],
+            ['p0', 'p1', 30, 'walk'], ['mess', 'p1', 4, 'walk'], ['p1', 'l0', 24.2, 'walk'],
+            ['l0', 's1', 8, 'stair'], ['s1', 'l1', 8, 'stair'], ['l1', 's2', 8, 'stair'], ['s2', 'l2', 8, 'stair'],
+            ['l0', 'l1', 3.1, 'lift'], ['l1', 'l2', 4.3, 'lift'], ['l0', 'l2', 7.2, 'lift'],
+            ['w_low', 'l0', 2.3, 'walk'], ['w_mid', 'l1', 2.3, 'walk'], ['w_top', 'l2', 2.3, 'walk']]
+    speeds = {'walk': 1.3, 'stair': 0.5, 'ladder': 0.3, 'lift': 0.3}
+    pts = [p['id'] for p in places if p['kind'] == 'point']
+    adj = [[] for _ in pts]
+    for a, b, metres, mode in ways:
+        if a in pts and b in pts:
+            st = S.way_steps(metres, speeds[mode])
+            adj[pts.index(a)].append((pts.index(b), st))
+            adj[pts.index(b)].append((pts.index(a), st))
+    roles = [{'id': 'field_op', 'title': 'Field operator', 'discipline': 'ops', 'authority': ['operate_local'],
+              'routine': 'free', 'play': True},
+             {'id': 'tech', 'title': 'Technician', 'discipline': 'inst', 'authority': [], 'routine': 'free',
+              'play': True}]
+    people = [{'id': f'f{i}', 'role': 'field_op', 'roster': 'day', 'call': f'Field {i}'} for i in range(1, 6)]
+    people.append({'id': 't1', 'role': 'tech', 'roster': 'day', 'call': 'Tech 1'})
+    routines = [{'id': 'free', 'idle': 'idle', 'slots': []}]
+    for pid, ss in slots.items():
+        routines.append({'id': 'r_' + pid, 'idle': 'idle', 'slots': [{'at': at, 'task': t} for at, t in ss]})
+        next(q for q in people if q['id'] == pid)['routine'] = 'r_' + pid
+    tasks = [{'id': 'idle', 'title': 'In the mess', 'steps': [{'go': 'mess'}, {'work': 30}]},
+             {'id': 'up', 'title': 'Up to the drive', 'steps': [{'go': 'w_top'}, {'work': 5}, {'go': 'mess'},
+                                                                 {'work': 1}]},
+             {'id': 'mid', 'title': 'To the middle landing', 'steps': [{'go': 'w_mid'}, {'work': 2}, {'go': 'mess'}]},
+             {'id': 'from_top', 'title': 'Down from the drive', 'steps': [{'go': 'w_top'}, {'work': 1},
+                                                                          {'go': 'w_low'}, {'work': 1}]},
+             {'id': 'to_top', 'title': 'A look at the drive', 'steps': [{'go': 'w_top'}, {'work': 1}]},
+             {'id': 'mid_up', 'title': 'The middle landing, then the drive', 'steps': [
+                 {'go': 'w_mid'}, {'work': 1}, {'go': 'w_top'}, {'work': 1}, {'go': 'mess'}]}]
+    return {'format': 'walkdown-plant-staff', 'version': 1, 'origin': 'desk', 'gate': 'gate', 'speeds': speeds,
+            'places': places, 'ways': ways, 'next': S.next_table(len(pts), adj),
+            'lifts': [{'lift': LIFT, 'landings': ['l0', 'l1', 'l2']}], 'roles': roles,
+            'rosters': [{'id': 'day', 'kind': 'days', 'days': list(S.WEEK), 'hours': ['05:00', '17:00']}],
+            'people': people, 'routines': routines, 'tasks': tasks, 'messages': {'ok': 'All well'}}
+
+
+def lift_staff_files(rated=150, slots=None, trainee=None):
+    """The staff's synthetic plant (staff_files) with the lift alone in model a1, its own scenario and the lift's
+    staff."""
+    F = staff_files()
+    model = {'format': 'walkdown-plant-model', 'version': 2, 'area': 'a1'}
+    F['scenarios/s1.json'] = {'format': 'walkdown-plant-scenario', 'version': 2, 'id': 's1', 'title': 'A lift',
+                              'init': {'ambient_t': 20}, 'staff': dict({'seed': 1},
+                                                                       **({'trainee': trainee} if trainee else {}))}
+    with_lift(F, rated, model)
+    F['model/a1.json'] = model
+    F['staff.json'] = lift_staff(slots if slots is not None else {})
+    return F
+
+
+LST = ['staff.json']
+REJECTS_LIFT_STAFF = [
+    ('staff lifts naming no lift of the model', 'bad_ref', _set(LST + ['lifts', 0, 'lift'], 'lift2')),
+    ('a lift twice in staff.json', 'dup_id', _app(LST + ['lifts'], {'lift': LIFT, 'landings': ['p0', 'p1', 's1']})),
+    ('a lift\'s landings fewer than the model\'s', 'bad_length', _set(LST + ['lifts', 0, 'landings'], ['l0', 'l2'])),
+    ('a lift\'s landing that is not a point', 'bad_value', _set(LST + ['lifts', 0, 'landings', 0], 'w_low')),
+    ('a lift\'s landing that is no place', 'bad_ref', _set(LST + ['lifts', 0, 'landings', 0], 'l9')),
+    ('a point that is two landings', 'dup_id', _set(LST + ['lifts', 0, 'landings', 2], 'l0')),
+    ('lifts with an unknown key', 'unknown_key', _set(LST + ['lifts', 0, 'speed'], 0.3)),
+    ('lift ways without a lift speed', 'missing_key', _del(LST + ['speeds', 'lift'])),
+    ('a lift way from a landing to another point', 'bad_ref', _set(LST + ['ways', 12], ['l0', 'p1', 30, 'lift'])),
+    ('a lift way shorter than the straight line', 'bad_way', _set(LST + ['ways', 12, 2], 7)),
+    ('a lift way in a plant whose staff has no lifts', 'bad_value', _del(LST + ['lifts'])),
+    ('a lift way with no stairs beside it', 'unreachable', _del(LST + ['ways', 9])),
+]
+
+
+class Scripted:
+    """A single-player run's inputs: `extra` at given steps ([step, kind, …]) and `when`: [(condition(e), input)],
+    each made once, at the first step whose condition holds (as Session's)."""
+    session = False
+
+    def __init__(self, extra=(), when=()):
+        self.extra, self.when = list(extra), [list(w) + [False] for w in when]
+
+    def __call__(self, e):
+        n = e.step_no + 1
+        for x in [x for x in self.extra if x[0] == n]:
+            apply_staff(e, x)
+        for w in self.when:
+            if not w[2] and w[0](e):
+                w[2] = True
+                apply_staff(e, [n] + list(w[1]))
+
+
+def _z(e):
+    return e.v(LIFT + '_z')
+
+
+def _aboard(e, *who):
+    return all(w in e.riders[LIFT] for w in who)
+
+
+def _later(k, steps, cond=lambda e: True):
+    """A condition true `steps` after the step the k-th condition of the same run fired (its step kept in _FIRED)."""
+    return lambda e: k in _FIRED and e.step_no >= _FIRED[k] + steps and cond(e)
+
+
+_FIRED = {}
+
+
+def _fire(k, cond):
+    def f(e):
+        if cond(e):
+            _FIRED.setdefault(k, e.step_no)
+            return True
+        return False
+    return f
+
+
+def lift_runs():
+    """(why, rated load, slots, the scenario's trainee, player, steps, snapshot every)."""
+    up = [('05:31', 'up')]
+    return [
+        ('NPCs on the lift (§20.4): three field operators going up together to a cab rated for two (one opens the '
+         'gate, two board, the third left for the next trip and calling the cab back), a fourth arriving while it is '
+         'away (waiting for it to come back), a technician whose role has no local operating authority riding as '
+         'anyone may (§20.3); the gate closed after 5 s quiet, the cab sent up, each getting off where they are going '
+         '(the last one out closing the gate, none closing it on someone boarding), two coming down together', 150,
+         {'f1': up, 'f2': up, 'f3': up, 'f4': [('05:45', 'up')], 't1': [('05:32', 'up')]}, None, Scripted(), 2400, 50),
+        ('the lift not ready (§20.4): a drive fault with two riders between landings (they wait in the cab, a third '
+         'waiting at the bottom takes the stairs), its repair (the cab goes on, they get off); later the emergency '
+         'stop with a rider aboard at the bottom landing while its gate shuts: the gate opened again, out there and on by '
+         'the stairs; its release',
+         150, {'f1': up, 'f2': up, 'f3': [('05:34', 'up')], 'f4': [('06:45', 'up')]}, None,
+         Scripted(when=[(_fire(0, lambda e: _aboard(e, 'f1', 'f2') and _z(e) >= 3.5), ('fault', 'hlift_drive')),
+                        (_later(0, 380), ('repair', 'hlift_drive')),
+                        (_fire(1, lambda e: _aboard(e, 'f4') and _z(e) == 0 and e.v('hlift_gate0_cmd') == 0
+                               and 0 < e.v('hlift_gate0_pos') < 0.5),
+                         ('op', PANEL, 'stop', None, None)),
+                        (_later(1, 300), ('op', PANEL, 'start', None, None))]), 2400, 50),
+        ('a wait running out (§20.4): the bottom landing\'s gate held open (free mode), a field operator at the top '
+         'waiting 1,800 steps for the cab, then down the stairs', 150, {'f1': [('05:30', 'from_top')]}, None,
+         Scripted(extra=[[1, 'op', GATE[0], 'open', None, None]]), 2600, 50),
+        ('a jump with riders aboard (§20.3): two field operators riding up, a jump while the cab travels: their alights '
+         'made in the next step, everyone placed again at the new clock, the empty cab arriving; then their task again '
+         'from the top, down by the lift', 150, {'f1': up, 'f2': up}, None,
+         Scripted(when=[(lambda e: _aboard(e, 'f1', 'f2') and 0.5 < _z(e) < 6 and not e.npc_queue,
+                         ('jump', '07:00'))]), 1200, 20),
+        ('the trainee riding with NPCs (§20.3): field operator 5 (the scenario\'s trainee) at the bottom landing boards '
+         'the cab with two NPCs (a board naming another person and one naming nobody refused: authority), the NPCs '
+         'getting off at the top and leaving the gate open for the trainee still aboard, the trainee alighting later '
+         '(a second alight refused: not_aboard); the NPCs board again where the gate stands open', 225,
+         {'f1': up, 'f2': up}, 'f5',
+         Scripted(extra=[[2, 'leave', 'mess'], [100, 'arrive', 'l0']],
+                  when=[(_fire(2, lambda e: _aboard(e, 'f1') and e.v('hlift_open0') >= 0.5),
+                         ('board', LIFT, 'f5')),
+                        (_later(2, 0), ('board', LIFT, 'f1')), (_later(2, 0), ('board', LIFT, None)),
+                        (_later(2, 1), ('leave', 'l0')),
+                        (_fire(3, lambda e: e.riders[LIFT] == ['f5'] and e.v('hlift_at2') >= 0.5),
+                         ('alight', LIFT, 'f5')),
+                        (_later(3, 0), ('alight', LIFT, 'f5')), (_later(3, 1), ('arrive', 'l2'))]), 1500, 20),
+        ('a session (§20.3, §17.13): slot 0 takes a field operator riding up (they stay aboard, their ride given up), '
+         'and the host releases them while the cab travels: their alight made in the next step, put back at the '
+         'landing they left and riding again as an NPC, the cab called back for them', 150, {'f1': up, 'f2': up}, None,
+         Session([Trainee(slot=0, quiet=True)],
+                 when=[(_fire(4, lambda e: _aboard(e, 'f1', 'f2') and _z(e) > 1), ('role', 'f1', 0)),
+                       (_later(4, 1, lambda e: _z(e) > 5), ('release', 0))]), 1600, 20),
+        ('collective control with NPCs (§20.1, §20.4): a field operator at the middle landing calls the cab to go '
+         'down, another at the top calls it while it travels up to the first; the first boards and sends it down, '
+         'but it goes on up to the call ahead (in its direction) before it turns, and brings both down', 150, {'f2': [('05:30', 'mid')], 'f1': [('05:30', 'up')]},
+         None, Scripted(), 2600, 50),
+        ('three minutes aboard (§20.4): a field operator boards at the middle landing for the top, the bottom gate\'s '
+         'switch reads not shut (the cab held where it stands); after 3 minutes aboard they open the gate, get off '
+         'and take the stairs; the repair', 150, {'f1': [('05:31', 'mid_up')]}, None,
+         Scripted(when=[(_fire(5, lambda e: _aboard(e, 'f1') and e.v('hlift_at1') >= 0.5
+                                and _ride(e, 'f1') is not None and _ride(e, 'f1')[2] == _place(e, 'l2')), ('fault', 'hlift_gate_switch')),
+                        (_later(5, 2200), ('repair', 'hlift_gate_switch'))]), 3200, 50),
+        ('the trainee and an NPC boarding in one step over the rated load (§20.4): the last NPC in gets off and waits '
+         'for the next trip, the cab goes up with the others (no refused sends), comes back for them', 150,
+         {'f1': up, 'f2': up}, 'f5',
+         Scripted(extra=[[2, 'leave', 'mess'], [100, 'arrive', 'l0']],
+                  when=[(_fire(6, lambda e: ('board', LIFT, 'f2') in e.npc_queue),
+                         ('board', LIFT, 'f5')),
+                        (_fire(7, lambda e: e.v('hlift_at2') >= 0.5 and e.v('hlift_open2') >= 0.5
+                               and 'f1' not in e.riders[LIFT] and 'f5' in e.riders[LIFT]), ('alight', LIFT, 'f5')),
+                        (_later(7, 1), ('arrive', 'l2'))]), 1800, 20),
+        ('a claim and a release while waiting (§20.3, §17.13): slot 0 takes a field operator whose board was made in '
+         'the step before (it is dropped: they stay at the landing), and releases them there, not aboard (no alight); '
+         'they ride on as an NPC', 150, {'f1': up, 'f2': up}, None,
+         Session([Trainee(slot=0, quiet=True)],
+                 when=[(_fire(8, lambda e: ('board', LIFT, 'f1') in e.npc_queue), ('role', 'f1', 0)),
+                       (_later(8, 30), ('release', 0))]), 1400, 20),
+        ('a release and a jump in one step (§20.3): slot 0 takes a field operator aboard, the host releases them and '
+         'jumps in the same step (one alight for them, none refused)', 150, {'f1': up, 'f2': up}, None,
+         Session([Trainee(slot=0, quiet=True)],
+                 when=[(_fire(9, lambda e: _aboard(e, 'f1', 'f2') and _z(e) > 1), ('role', 'f1', 0)),
+                       (_later(9, 20, lambda e: not e.npc_queue), ('release', 0)),
+                       (_later(9, 20, lambda e: not e.npc_queue), ('jump', '07:00', 0))]), 600, 20),
+        ('slots and riders (§20.10): slot 1 boards as nobody, then takes field operator 3 (the rider becomes them) and '
+         'alights as them; slot 0 takes field operator 1 aboard, and in one step releases them and slot 2 takes them '
+         '(the alight queued by the release dropped: they stay aboard)', 225, {'f1': up, 'f2': up}, None,
+         Session([Trainee(slot=0, quiet=True), Trainee(slot=1, quiet=True), Trainee(slot=2, quiet=True)],
+                 when=[(_fire(10, lambda e: _aboard(e, 'f1', 'f2') and e.v('hlift_open0') >= 0.5),
+                        ('board', LIFT, None, 1)),
+                       (_later(10, 5), ('role', 'f3', 1)),
+                       (_later(10, 10), ('role', 'f1', 0)),
+                       (_later(10, 15), ('alight', LIFT, 'f3', 1)),
+                       (_later(10, 40), ('release', 0)), (_later(10, 40), ('role', 'f1', 2))]), 900, 10),
+        ('an op done in step 1 (§20.4, as built): the trainee in free mode opens the bottom gate in the step a field '
+         'operator would; they don\'t press it again', 150, {'f1': up}, None,
+         Scripted(when=[(lambda e: _ride(e, 'f1') is not None and _ride(e, 'f1')[4] == e.step_no
+                         and e.v('hlift_at0') >= 0.5 and e.v('hlift_shut0') >= 0.5,
+                         ('op', GATE[0], 'open', None, None))]), 400, 10),
+        ('the stairs left for another walk (§20.4, as built): the lift stopped while a field operator is at the top, '
+         'they take the stairs down to the mess, and another job at the top, given on the way, takes them back up',
+         150, {'f1': [('05:31', 'to_top'), ('06:35', 'to_top')]}, None,
+         Scripted(when=[(lambda e: _place_of(e, 'f1') == _place(e, 'w_top'), ('op', PANEL, 'stop', None, None))]),
+         2400, 50),
+        ('a jump while someone walks the stairs (§20.4): the lift stopped from the start, a field operator going up '
+         'by the stairs, the jump: everyone placed again, the stairs forgotten', 150, {'f1': up}, None,
+         Scripted(extra=[[1, 'op', PANEL, 'stop', None, None]],
+                  when=[(lambda e: _person(e, 'f1').stairs is not None and _person(e, 'f1').leg is not None
+                         and not e.npc_queue, ('jump', '07:00'))]), 900, 20)]
+
+
+def _person(e, pid):
+    return e.staff.people[e.staff.st.person_ix[pid]]
+
+
+def _ride(e, pid):
+    return _person(e, pid).ride
+
+
+def _place(e, pid):
+    return e.staff.st.pix[pid]
+
+
+def _place_of(e, pid):
+    return _person(e, pid).pos
+
+
+def build_lift_runs():
+    out = []
+    for why, rated, slots, trainee, player, until, every in lift_runs():
+        F = lift_staff_files(rated, slots, trainee)
+        e = P.Recorder(check(F), 's1', player.session)
+        states = [e.snapshot()]
+        digests = [e.digest()]
+        while e.step_no < until:
+            player(e)
+            e.step()
+            if e.step_no % every == 0 or e.step_no == until:
+                states.append(e.snapshot())
+            if e.step_no % DIGEST_EVERY == 0:
+                digests.append(e.digest())
+        more = {k: F[k] for k in ('kit.json', 'plant.json', 'areas/a2.json', 'model/a1.json')}
+        out.append(dict({'why': why, 'scenario': F['scenarios/s1.json'], 'staff': F['staff.json'], 'inputs': e.inputs,
+                         'until': until, 'every': every, 'states': states, 'events': e.events, 'digests': digests,
+                         'files': more}, **({'session': True} if player.session else {})))
+    _FIRED.clear()
+    return out
 
 
 if __name__ == '__main__':
