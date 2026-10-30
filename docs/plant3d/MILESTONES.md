@@ -188,7 +188,13 @@ inputs to the engine), before S4. Its parts, one pull request each:
 - **L2, the lift in the app:** the content (kit parts, the lift on HRSG 1, its model and screen), the cab, gates and
   controls, riding; measured on the Note 9 before and after;
 - **L3, the staff on it:** staff.json's lift and ways, the riders drawn, the day made again;
-- **L4, hoists and the crane:** their content, the procedures, the view; measured on the Note 9.
+- **L4, hoists and the crane:** their content, the procedures, the view; measured on the Note 9. **Built
+  2026-10-30** but for the Note 9's measurement (PLANT3D.md §20.5 "As built"): the roof hoist and the crane as model
+  content, `roof_hoist_lift` and `crane_lift`, the pendants' hold-to-run buttons, the pieces drawn between steps;
+  the roof hoist adds 1,324 triangles at full detail (596 of them in 4 moving pieces, a draw call each: trolley, hook,
+  chain, load; the rest in its cells' meshes, one more there), the crane 952 (904 in 5 moving pieces: bridge,
+  trolley, hook, ropes, crate; its end stops in the runway's four corner cells) in place of the parked crane's 2
+  meshes. They are never in view together: §20.8's 12 draw calls and 20,000 triangles hold with the lift's share.
 
 **Multiplayer** (the user, 2026-10-26): its own milestones MP1–MP6 in docs/plant3d/MULTIPLAYER.md §13 (decisions
 0067–0069). MP1 needs S3 (the engine's staff as built); it changes the engine (several trainees), so it goes before

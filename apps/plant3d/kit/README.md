@@ -59,7 +59,16 @@ node's origin is the pivot; at value 0 the node is as built. Kinds:
 - `translate`: move it along `anim_axis` by `value × anim_travel` metres;
 - `scale`: scale it along `anim_axis` by `value` (0 empty, 1 full);
 - `lamp`: the node holds the unlit lens; its child `on` is the lit lens, hidden until the lamp is on;
-- `group`: the node only holds others that move (a damper's blades): move its children.
+- `group`: the node only holds others that move (a damper's blades): move its children;
+- `slide` (lifting gear, PLANT3D.md §20.5): move it along `anim_axis` by `value × anim_travel` metres, not clamped
+  (the value is a position in metres: `anim_travel` 1), drawn between the model's last two steps by the clock's
+  fraction of a step (`ui/bindings.gd`), and nothing done while the value stands still. A slide nested in another
+  (a crane's `bridge/trolley/hook`) moves with it; every slide's pivot is the part's origin, so a value is the
+  piece's position in the part's frame;
+- `stretch`: a piece drawn 1 m long from its pivot along `anim_axis` (a chain, a crane's ropes), scaled along that
+  axis to `anim_travel − value` metres: it hangs down to the hook whose height the value is, interpolated likewise;
+- `marker`: nothing moves it; it marks a point the app looks for by its name (a hoist's `pendant`, where its buttons
+  are worked from: it rides on the bridge of a crane).
 
 | Part | Node | Kind, axis (node axes) | 0 → 1 | Travel |
 |---|---|---|---|---|
@@ -75,6 +84,12 @@ node's origin is the pivot; at value 0 the node is as built. Kinds:
 | level_glass | `level` | scale along +y from the glass's bottom | empty → full | 1 |
 | breaker | `contacts` | rotate about −z for a GCB (the part's +y), −x for an MV breaker (the flag behind the mechanism's window) | open (green) → closed (red "I") | π/2 |
 | lamp, beacon | `light`, `light/on` | lamp | off → on | 0 |
+| monorail_hoist | `trolley`, `trolley/hook`, `trolley/chain`, `load_y`, `load_y/load_z`; `pendant` (marker) | slide along +y (the beam, from its tip), slide along +z (the hook's seat above the origin), stretch down, the load's slides along +y and +z (its base) | the value in metres | 1; the chain's: from under the hoist to the hook block's top |
+| overhead_crane | `bridge`, `bridge/trolley`, `bridge/trolley/hook`, `bridge/trolley/rope`, `load_y`, `load_y/load_x`, `load_y/load_x/load_z`; `bridge/pendant` (marker) | slide along +y (the runway), along −x (across), along +z; the ropes stretch down; the load's slides along +y, −x, +z | the value in metres | 1; the ropes': from the trolley to the hook block's top |
+
+A `hoist_unit` (a hoist's drive, its hook's latch, its load cell: a code of its own, PLANT3D.md §20.5) draws nothing:
+its hoist draws it, and the app carries its node with the piece it rides on (`kind` hoist and trolley: the trolley;
+bridge: the bridge; latch and load_cell: the hook), so its label, its card's reach and "Show me" follow it.
 
 ## Visibility classes and ranges (§10)
 
