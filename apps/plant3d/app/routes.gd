@@ -6,6 +6,8 @@
 ##           (its west and east doors), along the road, up and down HRSG 1's stair tower, out past the cooling
 ##           tower to the water treatment plant (between the posts of the pipes to the train, through its
 ##           treatment building past the RO trains, round by the demineralised water tanks), and back; looped
+##   lift    up HRSG 1's service lift and down again (PLANT3D §20.8): from the stair tower's foot round to the lift's
+##           gate at grade, a ride to the roof landing (+30 m), a few steps there, the ride down, back to the foot
 ##   camp    the frame-time walk through the site and the camp (milestone C1): out of the control room, along the
 ##           palms to the plant gate, the road to the camp, into block 1 and one of its rooms, along its corridor, across
 ##           the road to the mess hall and between its tables, and back; looped
@@ -58,6 +60,14 @@ static func frames(plant) -> Array:
 	r.append_array(wtp_loop())
 	r.append_array([_to(165, 30), _to(93.5, 36), _to(-5, 36), _to(-5, 0), _to(-12, 0), _to(-20, 0)])
 	return r
+
+## HRSG 1's service lift (train_lift.py: its gates at x 103.22, y 48 facing west, the cab east of them), up and down.
+static func lift(_plant) -> Array:
+	var gate := 102.52            # in front of the gates: where a ride begins and ends (app/walk_route.gd LIFT_FRONT)
+	return [_to(93.5, 44.5), _to(102.5, 45.4), {"to": Plant.g(gate, 48.0, 0.0), "floor": 0.0, "exact": true},
+		{"lift": "10SNB10", "from": 0, "to": 2}, _to(101.4, 48.0, 30), _to(101.4, 52.5, 30),
+		{"to": Plant.g(gate, 48.0, 30.0), "floor": 30.0, "exact": true}, {"lift": "10SNB10", "from": 2, "to": 0},
+		_to(102.5, 45.4), _to(93.5, 44.5)]
 
 ## The camp walk: about 900 m, 11 minutes at a walk; the interiors load on the way (app/interiors.gd).
 static func camp(_plant) -> Array:

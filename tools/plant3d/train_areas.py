@@ -623,7 +623,8 @@ def hrsg1():
              valves=[valve('10LAE30AA001', 'valve_control', 0.7, 'HP superheater spray control valve', dn=80,
                            rating='pn250', actuator='pneumatic')]),
         pipe('10LCQ10BR001', 'HP drum blowdown', 'boiler_water', 80, nz('10HAD30BB001', 'blowdown'),
-             [[100.5, 65, 32.6], [100.5, 52.5, 32.6], [100.5, 52.5, 3.6], [104, 52.5, 3.6], [104, 46, 3.6], [152, 46, 3.6]],
+             # (east of the service lift's mast, x 104.55-105: train_lift.py)
+             [[100.5, 65, 32.6], [100.5, 52.5, 32.6], [100.5, 52.5, 3.6], [105.8, 52.5, 3.6], [105.8, 46, 3.6], [152, 46, 3.6]],
              nz('10LCQ10BB001', 'inlet')),
         pipe('10HAN30BR401', 'HP superheater drains', 'boiler_water', 50, nz('10HNA10', 'sh_drain'),
              [[99, 52.5, 1.5], [99, 52.5, 3.6]], jn('10LCQ10BR001', [100.5, 52.5, 3.6]),

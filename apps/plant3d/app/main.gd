@@ -4,7 +4,7 @@
 ## Options, after `--` on the command line (desktop) or one per line in walk.txt in the app's external files folder
 ## (Android: phone/frames.sh pushes it):
 ##   quality=full|lean+vis   this tier, whatever the settings say
-##   walk=frames|camp|wtp|climb|screens   walk a scripted route (app/routes.gd) and log frame times; `frames` and
+##   walk=frames|camp|wtp|climb|lift|screens walk a scripted route (app/routes.gd) and log frame times; `frames` and
 ##                           `camp` (through the site and the camp, milestone C1) loop; `wtp` loops the frames walk's
 ##                           part in the water treatment plant (its views' cost, without the nine minutes to get there)
 ##                           `screens` stays in the control room with its screens open, showing each in turn for 10 s
@@ -500,8 +500,9 @@ func _start_walk() -> void:
 		last_us = Time.get_ticks_usec()
 		return
 	var looped: bool = opts.walk in ["frames", "camp", "wtp"]
-	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else (Routes.wtp_loop() if opts.walk == "wtp" else Routes.climb(plant)))
+	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else (Routes.wtp_loop() if opts.walk == "wtp" else (Routes.lift(plant) if opts.walk == "lift" else Routes.climb(plant))))
 	auto = Autopilot.new()
+	auto.ui = ui                    # a lift's controls (walk=lift)
 	auto.skip_stuck = true
 	add_child(auto)
 	auto.stuck.connect(func(i, at): stuck_count += 1; _say("STUCK at step %d, %s" % [i, str(at)]))

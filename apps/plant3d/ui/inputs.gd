@@ -128,5 +128,14 @@ func zone(zone_id: String, how: String) -> int:
 	return send(["zone", zone_id, how])
 
 
+## A rider stepping into a lift's cab or out of it (PLANT3D §20.3): the person played, or null in free mode.
+func board(lift: String, person_id) -> int:
+	return send(["board", lift, person_id])
+
+
+func alight(lift: String, person_id) -> int:
+	return send(["alight", lift, person_id])
+
+
 func stop_act(person_id: String) -> int:
 	return send(["stop", person_id])

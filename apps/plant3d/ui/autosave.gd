@@ -212,7 +212,7 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 		var sizes := {"op": [5, 7], "ack": [2], "shelve": [3], "unshelve": [2], "fault": [2], "repair": [2, 4],
 				"permit": [4], "lock": [4], "unlock": [4], "remove_lock": [5, 6], "role": [2], "release": [1],
 				"task_ack": [1], "arrive": [2], "leave": [2], "read": [3], "say": [3], "pick": [2], "call": [4],
-				"jump": [2], "ppe": [3], "zone": [3], "stop": [2]}
+				"jump": [2], "ppe": [3], "zone": [3], "stop": [2], "board": [3], "alight": [3]}
 		for q0 in d["queue"]:
 			var q = q0
 			# a session run's inputs end with their slot (§17.13): looked at without it

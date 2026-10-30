@@ -23,6 +23,7 @@ class M:
         self.values, self.ops, self.interlocks, self.machines = [], [], [], []
         self.alarms, self.trips, self.bind = [], [], []
         self.isolations, self.works = [], []      # format 2 (PLANT3D §15)
+        self.lifts = []                           # format 2 (PLANT3D §20.1)
 
     def v(self, name, node, unit=None, kks=None):
         node = dict(node)
@@ -187,9 +188,9 @@ class M:
         self.works.append(w)
 
     def file(self):
-        v2 = bool(self.isolations or self.works or any('hold' in n for _, n in self.values))
+        v2 = bool(self.isolations or self.works or self.lifts or any('hold' in n for _, n in self.values))
         d = {'format': 'walkdown-plant-model', 'version': 2 if v2 else 1, 'area': self.area}
-        for k in ('values', 'ops', 'interlocks', 'machines', 'alarms', 'trips', 'bind', 'isolations', 'works'):
+        for k in ('values', 'ops', 'interlocks', 'machines', 'alarms', 'trips', 'bind', 'isolations', 'works', 'lifts'):
             if getattr(self, k):
                 d[k] = getattr(self, k)
         return d

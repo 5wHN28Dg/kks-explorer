@@ -64,7 +64,7 @@ func _nav(out: String, b, data: String) -> void:
 	for a in m.get("interiors", []):
 		scenes.append(a.scene)
 	var st: Array = m.start.at
-	var r: Dictionary = await NavBake.bake(root, out, scenes, b.stairs, b.ladders, Vector3(st[0], st[1], st[2]))
+	var r: Dictionary = await NavBake.bake(root, out, scenes, b.stairs, b.ladders, Vector3(st[0], st[1], st[2]), b.lifts_manifest())
 	if r.has("error"):
 		printerr("build: ", r.error)
 		quit(1)

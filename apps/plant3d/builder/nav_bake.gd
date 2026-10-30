@@ -54,7 +54,7 @@ static func params() -> NavigationMesh:
 ## Bakes the built scenes (the ground and the areas, as app/plant.gd loads them) under `parent` (a node in the tree)
 ## and saves the mesh in `built_dir`. `stairs` and `ladders` are the builder's (builder/plant_builder.gd), `start`
 ## the plant's start (Godot's axes). Returns {"error": …} or what was made.
-static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, ladders: Array, start: Vector3) -> Dictionary:
+static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, ladders: Array, start: Vector3, lifts: Array = []) -> Dictionary:
 	var t0 := Time.get_ticks_msec()
 	var root := Node3D.new()
 	root.name = "nav_source"
@@ -98,6 +98,14 @@ static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, 
 				v.append(Vector3(p.x, 0, -p.y))
 			var lo: float = fl.z0 - 0.5
 			src.add_projected_obstruction(v, lo, fl.z1 - 0.15 - lo, false)
+	# each service lift's shaft (its cab, gates and mast: builder/plant_builder.gd lifts_manifest), from under grade to
+	# its mast's top: the cab moves, so the mesh ends at each landing gate (PLANT3D §20.6)
+	for lf in lifts:
+		var v := PackedVector3Array()
+		for p in lf.footprint:
+			v.append(Vector3(float(p[0]), 0, float(p[2])))
+		var lo: float = float(lf.at[1]) - 0.5
+		src.add_projected_obstruction(v, lo, float(lf.get("height", 40.0)) + 0.5, false)
 	var tiled := bake_tiled(nm, src, TILE)
 	if tiled.has("error"):
 		return tiled

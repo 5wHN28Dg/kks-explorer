@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
-import kit, train_areas, train_hoists, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
+import kit, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
 
 OUT = os.path.join(ROOT, 'data', 'plant3d')
 
@@ -93,6 +93,8 @@ def build():
     by_id['hrsg1']['equipment'] += train_hoists.hrsg1_equipment()     # the hoists (PLANT3D §20.5)
     by_id['hrsg1']['signs'] += train_hoists.hrsg1_signs()
     by_id['st']['equipment'] += train_hoists.st_equipment()
+    by_id['hrsg1']['equipment'] += train_lift.equipment()          # the service lift (PLANT3D §20.2)
+    by_id['hrsg1']['structures'] += train_lift.structures()
     plant = train_content.plant(codes(areas), [a['id'] for a in areas])
     plant['clock'] = train_staff.CLOCK          # format 2's plant clock (§16.1): the staff's day
     files = {'kit.json': kit.kit(), 'plant.json': plant,
@@ -102,6 +104,8 @@ def build():
     models = train_model.models() + wtp_model.models()
     for m in models:
         {'hrsg1': train_hoists.roof_hoist, 'st': train_hoists.crane}.get(m.area, lambda _m: None)(m)
+        if m.area == 'hrsg1':
+            train_lift.model(m)
     add_air_permissives(areas, models)
     jobs = train_staff.works_tasks(models)      # with staff.json every work names its task (§15.2)
     for m in models:
