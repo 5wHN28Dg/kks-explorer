@@ -180,6 +180,16 @@ needs all. In time: P1 and W1 first (independent), then S1 with W2, A1 with W3, 
 (W1, A1, C1) adds one kind of load and is measured alone before the next adds another; S4, the busiest hour, comes
 last, when the per-tier counts are known from A1.
 
+**LIFTS** (the user, 2026-10-27; PLANT3D.md §20, decision 0071): a working rack-and-pinion service lift on HRSG 1 (call
+stations, interlocked gates, a cab that carries the trainee and the NPCs; the staff ride it on long climbs) and working
+hoists (the HRSG roof's monorail hoist, the turbine hall's crane in procedures). Size L, after S3 and MP1 (it adds
+inputs to the engine), before S4. Its parts, one pull request each:
+- **L1, the engine:** `lifts`, `board`/`alight`, lift ways and the ride in both engines, the vectors;
+- **L2, the lift in the app:** the content (kit parts, the lift on HRSG 1, its model and screen), the cab, gates and
+  controls, riding; measured on the Note 9 before and after;
+- **L3, the staff on it:** staff.json's lift and ways, the riders drawn, the day made again;
+- **L4, hoists and the crane:** their content, the procedures, the view; measured on the Note 9.
+
 **Multiplayer** (the user, 2026-10-26): its own milestones MP1–MP6 in docs/plant3d/MULTIPLAYER.md §13 (decisions
 0067–0069). MP1 needs S3 (the engine's staff as built); it changes the engine (several trainees), so it goes before
 S4 or alongside it with S4 rebased on it. **MP1 built 2026-10-26** (PLANT3D.md §17.13–§17.14, MULTIPLAYER.md §3.3, §4),

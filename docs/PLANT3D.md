@@ -14,6 +14,10 @@ docs/plant3d/MILESTONES.md; decisions 0062–0066. Format 1 content stays valid 
 0067–0069). Milestone MP1 (as built, §17.13–§17.14): several trainees in one engine, one per player's slot, and the
 state digest the players compare, with their vectors.
 
+**Lifts and hoists (DRAFT 2026-10-30):** §20 (decision 0071): HRSG service lifts that carry the trainee and the
+NPCs, the HRSG roof's hoist and the turbine hall's crane, as model content with riders' inputs and a lift way for
+the staff.
+
 The plant you walk through in Walkdown Plant is **data**, like a course: a *description* (where every piece of
 equipment, pipe and structure is), built from a **kit of parametric parts** (what each kind of thing looks like), made
 alive by a **behaviour model** (how values change when someone operates the plant), and used by **procedures and
@@ -2330,3 +2334,192 @@ field operator (the role input, rounds walked and read, a misreading, calls answ
 operator (the radio instruction, every refusal of §17.1, free radio calls); placement at 10:30 and jumps (refused
 while a task waits for `task_ack` and while a permit is open; accepted; two in a step); an absent operator and a
 call with nobody on duty. The first train's `day` comes with its staff content.
+
+## 20. Lifts and hoists (format 2, milestone LIFTS; DRAFT 2026-10-30)
+
+The user's decision of 2026-10-27: a working rack-and-pinion service lift on each HRSG (call buttons on each landing,
+gates, a cab that carries the trainee and the NPCs; staff ride it on long climbs and their walk times use it), and
+working hoists for heavy parts (a monorail hoist on the HRSG roof, the turbine hall's overhead crane operable in
+procedures). Decision 0071. What is typical of such lifts (0071's findings): a rated load of about 500 kg (6 people at
+75 kg), a car of about 1.0 × 1.2 m, 0.4–1.0 m/s; landing gates interlocked so that the lift can't run unless every
+gate is shut and a gate can't open unless the cab stands at its landing; overload sensing. The plant's lift is
+generic, of that kind; nothing comes from a real plant.
+
+### 20.1 The lift in the model
+
+The cab, its gates and its controls are **content**: values, ops, alarms and faults of §7, made by the content tool
+(`tools/plant3d/train_model.py`), so permissives, the screens, isolations and faults work on them as on any pump. A
+version 2 model file adds `lifts`, which names the handles the engine and the staff need:
+
+```json
+{"id": "hrsg1_lift", "kks": "10SNB10", "rated_kg": 500, "person_kg": 75,
+ "ready": "hrsg1_lift_ready", "idle": "hrsg1_lift_idle",
+ "panel": "10SNB10GH010", "target": "hrsg1_lift_target",
+ "landings": [{"z": 0, "at": "hrsg1_lift_at_0", "open": "hrsg1_lift_open_0", "shut": "hrsg1_lift_shut_0",
+               "call": "10SNB10GH001", "gate": "10SNB10AB001"}, …]}
+```
+
+- **`ready`:** a value, true while the lift may be used (no emergency stop, no fault, not isolated). **`idle`:** true
+  while the cab stands at its target with every gate shut: it takes a call.
+- **Each landing** (2 to 8, `z` the floor's height above the plant's origin, rising strictly): `at` true while the
+  cab stands level there and does not move; `open` and `shut` true while its gate is fully open, fully shut; `call`
+  the landing's call station, whose op `start` calls the cab there; `gate` the gate's code, with ops `open` and
+  `close`.
+- **`panel`** is the cab's control panel: its op `set` writes `target` (a `state`, the landing's index, `range` [0,
+  n − 1]) and sends the cab there; `stop` is the emergency stop and `start` releases it.
+- The validator checks every name (`bad_ref`): the values exist, the ops exist with those `do`s and the `set` op's
+  input and range are `target`'s; `rated_kg` ≥ `person_kg` > 0; at most 16 lifts; an `id` of at most 26 characters.
+- **The value the engine keeps,** `<id>_load` (kg): `person_kg` × the number of riders (§20.3), in the value slots
+  after the works' (§17.7), read by any node and condition as the machines' states are (`dup_id` for a declared value
+  of that name); 0 at step 0 (a scenario can't set it: `bad_ref`).
+
+**How the content tool makes a lift** (not engine rules: what the first train's content does, and the vectors' small
+model too):
+- `<id>_z` = `{"ramp": "<id>_u", "rate": speed}`, the cab's floor; `<id>_u` = `{"select": "<id>_run", "cases":
+  ["<id>_z", "<id>_target_z"]}` placed after it (the ramp reads `_u` as the previous step left it, so while the cab
+  may not run it stays exactly where it is, and a ramp ends exactly on its target); `<id>_target_z` the target
+  landing's `z` (`select`); `<id>_run` = `and` of every gate `shut`, `ready`, and the load not over `rated_kg`.
+- Each gate: a `state` command and a `ramp` of it (2 s to open or shut), `open` = position ≥ 1, `shut` = position ≤ 0.
+- Ops: a landing's call `start` sets `target` to that landing and **needs** `ready`, `idle` (the cab is not
+  travelling and every gate is shut) and the load within `rated_kg`; the panel's `set` needs the same; a gate's `open`
+  needs its landing's `at` (the cab is there and still); `close` needs nothing; the emergency stop sets a state that
+  `ready` reads, `start` clears it. So **no movement with a gate open** (the cab's `_run` is false while a gate is not
+  shut, and a gate opens only where the cab stands), **gates interlocked**, and **an overload limit** (with one
+  person too many the cab refuses every call and send, its buzzer sounds and the alarm `<id>_overload`, priority 3,
+  comes on).
+- Faults: the drive's (`ready` false: the cab stops where it is, between landings too; repaired under a permit, §15.5,
+  the lift's main switch its isolation) and a gate switch that reads not shut (the cab won't run).
+- Speeds: 0.6 m/s (frequency-controlled, a usual figure, 0071), so 30 m takes 50 s; travel is in model time, as any
+  machine.
+
+### 20.2 The first train's lift
+
+HRSG 1 gets a rack-and-pinion lift beside its stair tower: a mast tied to the tower, a cab of 1.0 × 1.2 m (rated
+500 kg, 6 people), landings at grade and at the roof landing (+30) and one between where the tower has a landing,
+each with a landing gate, a call station and a short bridge from the tower's landing; the cab panel inside. Codes:
+`10SNB10` the lift, `AE001` its drive, `AB001`… its landing gates, `GH001`… the call stations, `GH010` the cab
+panel, `CW001` the load cell (KKS `SN` lifts, `SNB` a boiler house's; 0071). On the HRSG's screen, with its state,
+height, load and alarms.
+
+### 20.3 Riders
+
+| Input | Meaning |
+|---|---|
+| `[n, "board", lift, person]` | the person (or `null` in free mode) has stepped into the cab |
+| `[n, "alight", lift, person]` | they have stepped out |
+
+- The trainee's come from the app (§20.7), as `zone` inputs do; an NPC's are made in step 9 and handled in the next
+  step's step 1 as its ops are. In a session run each carries its slot (§17.13).
+- **Step 1**, in the order made: `board` is done when the rider is aboard no lift (else refused, `aboard`); `alight`
+  when they are aboard this one (else refused, `not_aboard`); an unknown lift is `unknown`. The person is checked as a
+  permit input's is (§17.1, §17.13: `authority`). A rider is the person, or for `null` the input's slot. Riders are
+  kept in boarding order; `<lift>_load` changes at once (read by step 2, and by the permissives of the next step's
+  inputs). Event `[n, "board" | "alight", lift, person, "done" | "refused" | "unknown", [reasons]]` (the slot after it
+  in a session run).
+- The engine checks nothing of where a rider stands (the app does, as for zones). Each lift also keeps the step of its
+  last `board` or `alight` done (its **quiet** step, read by the NPCs, §20.4).
+- **People who leave a ride:** placement (step 0, a jump) and a session's `release` of a person aboard queue an
+  `alight` for each NPC aboard, for the next step; a person a player takes while aboard stays aboard (the player
+  alights by walking out).
+- Snapshot: `"riders": {lift: [rider, …]}` (with lifts only), after `locked`.
+
+### 20.4 Staff on the lift
+
+- **staff.json** gains `"lifts": [{"lift": id, "landings": [point, …]}]`: one `point` place per model landing, in
+  order, each landing of one lift at most; and `speeds.lift`, a nominal speed (m/s).
+- **A lift way** `[a, b, metres, "lift"]` joins two landings of one lift (`bad_ref` otherwise); `metres` is the
+  height between them (at least the straight line, `bad_way`). Its time in steps (§16.2's rule at `speeds.lift`) is
+  what `next` uses: the first train's is 0.3 m/s, half the cab's speed, for the gates and a wait. So the staff take
+  the lift when it is quicker by that time (a long climb) and the stairs otherwise.
+- **The stairs beside it:** for each lift way, both engines search at load the quickest route between its ends over
+  the walking ways alone (§16.2's rule, lift ways left out); there must be one (`unreachable`), so a lift that
+  doesn't come never strands anyone.
+- **A ride.** A person whose route's next way is a lift way, at point a for b, rides instead of walking it: event
+  `[n, "ride", person, lift, a, b, "wait"]`; they stand at a (`where` the place a). At each of their turns in phase 4
+  (values as steps 2–8 left them; an NPC makes at most one lift input at a turn and none at the two turns after one,
+  so an input's effect is seen before the next):
+  - **waiting at a:** if the lift is not `ready`, or they have waited 1,800 steps (3 minutes of model time), they
+    take the stairs: event `"stairs"`, and they walk that way's stairs route, leg by leg as any route, then go on;
+    else, with the cab at a (`at`) and its gate `open`: `board` if the load leaves room for them (`person_kg`
+    within `rated_kg`), else wait (the next trip); with the cab at a and the gate `shut`: the gate's `open` op; with
+    the cab elsewhere and `idle`: the landing's call `start`; else wait.
+  - **aboard** (`where` `["lift", lift, a, b]`): with the cab at b and its gate `open`: `alight`, event
+    `[n, "ride", person, lift, a, b, "off"]`, they stand at b and go on; if nobody else is aboard they also make the
+    gate's `close` (it is shut behind them). With the cab at b and the gate `shut`: open it. With the cab at another
+    landing c: its gate `open` and the lift quiet for 50 steps (5 s since the last `board` or `alight`): close it;
+    every gate `shut` and the cab `idle`: the panel's `set` to b; when the lift is not `ready` there: open the gate,
+    alight, and go on from c by the route. Between landings: wait (a cab stopped by a fault holds its riders until it
+    is repaired, as a real one does).
+  - Their ops are `local` ops by the person; a refusal makes its event and changes nothing (the next turn looks
+    again). The trainee's person never rides by this protocol: the trainee walks and rides themselves.
+- A ride is not pre-empted (§17.3's "the next place of its route" is where they get off); a jump's placement ends it.
+- **Digest** (§17.14), with lifts only: after item 8, each lift's riders and quiet step; and in the staff's part, a
+  ride in the person's way field as `["lift", lift, a, b, phase, wait start, last input step]`, and the stairs route
+  being walked (points, `i32`).
+
+### 20.5 Hoists and the crane (content only)
+
+No engine change: each motion is a `state` command of −1, 0 or 1 written by a `set` op (the pendant's hold-to-run
+buttons: pressed sends 1 or −1, released 0), its position an `integrate` of the command times its speed between its
+limits (the limit switches), and a load that stays where it was put down a `hold` (§15.4) of the hook's position while
+not hooked on.
+- **HRSG 1's roof hoist** `10SMF10` (KKS `SMF`, a boiler house's lifting device): a monorail beam on the roof that
+  runs 3 m past its edge over a barriered drop zone at grade, an electric chain hoist on a motorised trolley (rated
+  2,000 kg): the hoist `AE001` (up and down, 0.1 m/s), the trolley `AE002` (along the beam, 0.2 m/s), the hook's
+  latch `AE003` (`close` hooks the load on: needs the hook within 0.3 m above the load's lifting point, over it;
+  `open` unhooks: needs the load resting), the load cell `CW001`. Hoisting needs the load within the rated load.
+- **The turbine hall's crane** `30SMT10` (`SMT`, a turbine house crane), the hall's crane as drawn today made
+  operable: the bridge `AE003` along the hall (0.33 m/s), the trolley `AE002` across (0.17 m/s), the main hoist
+  `AE001` (0.05 m/s), the hook's latch `AE004`, the load cell `CW001`; rated 63 t. Its controls are a pendant hanging
+  from the bridge (reached where the bridge stands) and the same ops on a radio remote in the cab card; a load comes
+  down onto the operating floor or the laydown bay's floor (the floor under the hook, a `step` table of its
+  position).
+- **Loads in procedures:** each hoist has a load (a spare valve on its pallet, 600 kg; a crate of spares, 8 t) whose
+  position is three values the view draws; the procedures `roof_hoist_lift` (the valve from grade to the roof) and
+  `crane_lift` (the crate from the laydown bay onto the operating floor) step through hooking on, hoisting, travelling,
+  lowering and unhooking, each step's `done` a position reached. A load over the rated one (a trainer's fault: the
+  crate heavier than its paper says) refuses the hoist and shows on the load cell. Run in the model alone, both
+  reach their last step (§8).
+
+### 20.6 Navigation mesh and staff paths
+
+- The cab is not on the walking mesh: it moves. The mesh ends at each landing's gate; the shaft and mast are
+  obstacles (0059's bake).
+- `builder/staff_paths.gd` draws no line for a lift way and `test_staff_ways.gd` leaves them out (the stairs routes
+  are walking ways, checked as any). The trainee's walking directions (0059) keep to the stairs.
+
+### 20.7 What the app shows (view only; not in the vectors)
+
+- **The cab** is an `AnimatableBody3D` at `<id>_z` interpolated between the last two steps by the sim clock's
+  fraction, so it moves smoothly at any frame rate; the walker on its floor rides with it (a moving floor, as Godot's
+  `CharacterBody3D` takes it). **Gates** are drawn at their positions and are solid only while shut, so a gate never
+  pushes the walker; when a gate shuts with the walker in its gateway, the walker is put on the side their riding
+  says. The app sends `board` and `alight` four times a second with the zone inputs, from the walker's feet inside or
+  outside the cab's floor.
+- **Controls:** the call stations, the gates' buttons and the cab panel are codes within reach: their cards offer the
+  ops with their refusals (§7.2). The drive's hum while the cab moves, the gates' motors, the overload buzzer.
+- **The riders' view:** the trainee sees the landings pass through the cab's mesh walls; NPCs aboard stand in the
+  cab's six spots (in boarding order) facing the gate, and walk in and out between the spot and the landing's stand
+  point over a second when they board or alight; waiting ones stand at the landing. A rider shows on the map at the
+  lift.
+- **Hoists and the crane:** the bridge, trolley, hook, chain or ropes and the loads drawn at their values,
+  interpolated likewise; the pendant's buttons press while held (touch, mouse, gamepad).
+
+### 20.8 Budgets on the Note 9
+
+The frame rules and §18.4 are unchanged. The lift and the hoists together: at most 12 more draw calls and 20,000
+triangles in view (cab, mast, gates, stations, the monorail and hoist, the crane's moving parts, the loads), their
+scripts at most 0.1 ms a frame (a few transforms, nothing while still); the model's step grows by about 60 values
+(well under 0.05 ms on the Note 9); the staff step stays within 0.3 ms at the shift change (the bench before and
+after). Measured on the Note 9 before and after each app part: the `frames` walk with `crews=1`, `probe=1`, two runs
+each from a battery at most 30 °C (the walk climbs HRSG 1's stair beside the lift).
+
+### 20.9 Vectors
+
+`plant3d-v2.json` gains: in `steps`, a small model with a three-landing lift (a call, the gates, a send, a gate's
+open refused away from the cab, a call refused with a gate open, the emergency stop between landings and its release,
+the overload refused and cleared, `board` and `alight` with their refusals, the riders and the load in the snapshots);
+in `staff.runs`, NPCs riding (two going up together, one waiting for the cab to come back, a full cab leaving one for
+the next trip, a lift not ready sending them by the stairs, a wait running out, a jump with riders aboard, the trainee
+riding with NPCs); in `reject`, the lifts' rule breaks; the first train's `day` made again with the lift; format 1's
+`train` and `hot` with the lift's values added (every input and event kept).

@@ -65,6 +65,7 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0068](0068-plant-multiplayer-transport.md) | Walkdown Plant multiplayer: keys from a 16-character invite code, AES-128-CBC-HMAC-SHA-256 from Godot's primitives, our own packets over LAN UDP, direct UDP and a new free-plan Cloudflare relay | proposed; relay and direct UDP decided by the user 2026-10-26 |
 | [0069](0069-plant-voice-opus.md) | Walkdown Plant voice: Opus through our own GDExtension `wdp_voice` (libopus, SpeexDSP resampler, pinned sources), push-to-talk, half duplex, no echo canceller | accepted; native part built (MP5, 2026-10-26) |
 | [0070](0070-plant-android-build-pins.md) | Walkdown Plant's Android build: build tools with advisories raised to fixed versions in the same line (pins applied to Godot's template from settings.gradle, lint's detached configuration included), every configuration locked, the lockfiles scanned by the required check | accepted; 12 build tools out of the license check by the user's decision (licenses only, none in the APK) |
+| [0071](0071-plant-lifts-and-hoists.md) | Walkdown Plant's lifts and hoists: the cab, gates and hooks as model content of §7's nodes, riders as `board`/`alight` inputs with the load a value the engine keeps, the lift a kind of way the staff ride by a protocol (the stairs beside it when it doesn't come); no new dependency | proposed (LIFTS, 2026-10-30) |
 
 ## Audit of existing dependencies (2026-09-30)
 
