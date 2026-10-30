@@ -2560,7 +2560,7 @@ claims and releases); in `reject`, the lifts' rule breaks; the first train's `da
 Both engines (`ref/plant3d.py`, `ref/plant3d_staff.py`; `apps/plant3d/sim`) agree bit for bit on the lift's parts of
 `plant3d-v2.json`: two unit runs in `steps` (each with its own `files`: the kit, the plant's key and area a2 that the
 lift's codes need; the first walks the collective control through its cases, the second is a session run without
-staff, `"session": true`), fourteen runs in `staff.runs` on a staff of their own (a field crew, a technician, three
+staff, `"session": true`), fifteen runs in `staff.runs` on a staff of their own (a field crew, a technician, three
 landings and the stairs beside them) and the rule breaks in `reject` and `staff.reject`. The first train's lift, its `day` and format 1's `train` and `hot` with the lift come with L2 and L3.
 The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is made by it). What L1 settles that
 §20.1–§20.4 left open:
@@ -2599,8 +2599,15 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
   start). They replace the lift way in that walk: dropped when the person walks to another destination, stands
   elsewhere than the stairs' next place, or arrives.
 - **A session's claim** of a person on a ride ends it: one aboard stays aboard, the landing a kept as the place they
-  left; one waiting stays at a. Their `board` made in the step before (the NPCs' inputs come after the players' in
-  step 1) is dropped, with no event, so they are not aboard; an `alight` is kept (their place is the landing already).
+  left; one waiting stays at a. An NPC's `board` or `alight` of a person a slot holds when it is handled (made in the
+  step before, or queued by a release or a placement, and claimed since) is dropped, with no event: who is aboard
+  changes only by the player's own inputs from then on (the app's `board` and `alight` follow where the walker
+  stands). A slot that rode as nobody (its rider the slot) and takes a person rides as them: the rider becomes the
+  person, or leaves the cab if the person is aboard already (single-player runs too).
+- **Locked controls and the dwell.** An NPC makes no lift op on a code an isolation locks (it would be refused); a
+  waiting one times out to the stairs. A rider closes no gate while the cab stands for the calls it came for (its
+  dwell, §20.1). Only the ops of §20.1 (each landing's call `start`, gate `open` and `close`, the panel's `set`,
+  `stop` and `start`) skip the role authority, and each must be made `local` (`bad_ref`).
 - **The digest's additions** (only with lifts): the engine's tree gains, after item 8, the riders per lift (an array
   of arrays), the quiet steps (`i64`), the calls (`i64`), the directions (`i32`) and the dwell steps (`i64`); the
   staff's way field of a person on a ride is `["lift", lift, a, b, phase (0 waiting, 1 aboard), the step the wait or

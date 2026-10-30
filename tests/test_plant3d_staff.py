@@ -1203,7 +1203,7 @@ class LiftVectors(unittest.TestCase):
             at = [i for i in range(3) if v[f'hlift_at{i}'] >= 0.5]
             if at and (not stops or stops[-1] != at[0]):
                 stops.append(at[0])
-        self.assertEqual(stops, [0, 1, 2, 0, 1, 0, 1, 0])
+        self.assertEqual(stops, [0, 1, 2, 0, 1, 0, 1, 0, 2])
         ev = self.steps[0]['events']
         self.assertIn([10, 'op', '10SNB10GH003', 'start', 'done', []], ev)    # with the gate open: remembered
         self.assertTrue(any(st['calls']['hlift'] == [0, 2] for st in self.steps[0]['states']))
@@ -1212,7 +1212,7 @@ class LiftVectors(unittest.TestCase):
         self.assertEqual(self.steps[0]['states'][970]['calls']['hlift'], [2])
         self.assertEqual(self.steps[0]['states'][-1]['values']['hlift_target'], 2.0)
 
-    def run(self, why):
+    def lift_run(self, why):
         return next(r for r in self.runs if r['why'].startswith(why))
 
     def rides(self, r, who, how):
@@ -1220,7 +1220,7 @@ class LiftVectors(unittest.TestCase):
 
     def test_anyone_rides(self):
         """A technician whose role has no local operating authority rides and works the lift's controls (§20.3)."""
-        r = self.run('NPCs on the lift')
+        r = self.lift_run('NPCs on the lift')
         self.assertTrue(any(e[1] == 'board' and e[3] == 't1' and e[4] == 'done' for e in r['events']))
         self.assertTrue(any(e[1] == 'op' and e[7] == 't1' and e[4] == 'done' for e in r['events'] if len(e) > 7))
         self.assertFalse(self.rides(r, 't1', 'stairs'))
@@ -1228,7 +1228,7 @@ class LiftVectors(unittest.TestCase):
 
     def test_three_minutes_aboard(self):
         """A rider held at a landing that is not theirs gets off after 3 minutes aboard and takes the stairs."""
-        r = self.run('three minutes aboard')
+        r = self.lift_run('three minutes aboard')
         board = next(e[0] for e in r['events'] if e[1] == 'board' and e[2] == 'hlift' and e[3] == 'f1'
                      and e[0] > 400)
         off = self.rides(r, 'f1', 'off')
@@ -1239,7 +1239,7 @@ class LiftVectors(unittest.TestCase):
     def test_overload_resolves(self):
         """The trainee and NPCs boarding in one step over the rated load: the last NPC in steps out at once, nobody
         sends or calls while it is over, the others ride up."""
-        r = self.run('the trainee and an NPC boarding')
+        r = self.lift_run('the trainee and an NPC boarding')
         ev = r['events']
         n = next(e[0] for e in ev if e[1] == 'board' and e[3] == 'f5' and e[4] == 'done')
         self.assertEqual([e[3] for e in ev if e[0] == n and e[1] == 'board' and e[4] == 'done'], ['f5', 'f1', 'f2'])
@@ -1250,7 +1250,7 @@ class LiftVectors(unittest.TestCase):
     def test_claim_of_one_boarding(self):
         """A slot takes a waiting NPC whose board was made in the step before: it is dropped (not aboard, at the
         landing); released there, not aboard, no alight is made."""
-        r = self.run('a claim and a release while waiting')
+        r = self.lift_run('a claim and a release while waiting')
         ev = r['events']
         n = next(e[0] for e in ev if e[1] == 'role' and e[2] == 'f1' and e[3] == 'done')
         rel = next(e[0] for e in ev if e[1] == 'release' and e[2] == 'f1')
@@ -1260,8 +1260,24 @@ class LiftVectors(unittest.TestCase):
         self.assertEqual(st['people']['f1'][0], 'l0')
         self.assertNotIn('f1', st['riders']['hlift'])
 
+    def test_slots_and_riders(self):
+        """A slot riding as nobody that takes a person rides as them; a person released and taken by another slot in
+        one step stays aboard (the release's alight dropped)."""
+        r = self.lift_run('slots and riders')
+        ev = r['events']
+        n = next(e[0] for e in ev if e[1] == 'role' and e[2] == 'f3' and e[3] == 'done')
+        st = next(x for x in r['states'] if x['step'] >= n)
+        self.assertIn('f3', st['riders']['hlift'])
+        self.assertNotIn(1, st['riders']['hlift'])
+        self.assertTrue(any(e[1] == 'alight' and e[3] == 'f3' and e[4] == 'done' for e in ev))
+        rel = next(e[0] for e in ev if e[1] == 'release' and e[2] == 'f1')
+        self.assertTrue(any(e[0] == rel and e[1] == 'role' and e[2] == 'f1' and e[4] == 2 for e in ev))
+        self.assertFalse([e for e in ev if e[1] == 'alight' and e[3] == 'f1'])
+        st = next(x for x in r['states'] if x['step'] >= rel + 2)
+        self.assertIn('f1', st['riders']['hlift'])
+
     def test_release_and_jump_in_one_step(self):
-        r = self.run('a release and a jump in one step')
+        r = self.lift_run('a release and a jump in one step')
         ev = r['events']
         n = next(e[0] for e in ev if e[1] == 'jump' and e[4] == 'done')
         self.assertTrue(any(e[0] == n and e[1] == 'release' and e[3] == 'done' for e in ev))
@@ -1271,7 +1287,7 @@ class LiftVectors(unittest.TestCase):
 
     def test_op_done_in_step_1(self):
         """The trainee opens the gate in the step a waiting NPC would: the NPC doesn't press it again."""
-        r = self.run('an op done in step 1')
+        r = self.lift_run('an op done in step 1')
         ev = r['events']
         n = next(e[0] for e in ev if e[1] == 'op' and e[2] == '10SNB10AB001' and e[3] == 'open' and len(e) == 6)
         self.assertTrue(any(e[0] == n - 1 and e[1] == 'ride' and e[2] == 'f1' and e[6] == 'wait' for e in ev))
@@ -1279,7 +1295,7 @@ class LiftVectors(unittest.TestCase):
                           and len(e) > 6])
 
     def test_stairs_left_for_another_walk(self):
-        r = self.run('the stairs left for another walk')
+        r = self.lift_run('the stairs left for another walk')
         ev = r['events']
         down = self.rides(r, 'f1', 'stairs')[0][0]
         again = next(e[0] for e in ev if e[1] == 'task' and e[2] == 'f1' and e[4] == 'start' and e[0] > down)
@@ -1287,7 +1303,7 @@ class LiftVectors(unittest.TestCase):
         self.assertLess(done - again, 300)      # back up from the stairs' first point, not down to the mess first
 
     def test_jump_on_the_stairs(self):
-        r = self.run('a jump while someone walks the stairs')
+        r = self.lift_run('a jump while someone walks the stairs')
         ev = r['events']
         n = next(e[0] for e in ev if e[1] == 'jump' and e[4] == 'done')
         self.assertTrue(any(e[0] < n for e in self.rides(r, 'f1', 'stairs')))
@@ -1295,7 +1311,7 @@ class LiftVectors(unittest.TestCase):
         self.assertNotEqual(st['people']['f1'][0], None)
 
     def test_rides(self):
-        self.assertEqual(len(self.runs), 14)
+        self.assertEqual(len(self.runs), 15)
         rides = [e for e in self.ev if e[1] == 'ride']
         for how in ('wait', 'off', 'stairs'):
             self.assertTrue(any(e[6] == how for e in rides), how)
@@ -1312,7 +1328,7 @@ class LiftVectors(unittest.TestCase):
                 self.assertTrue(all('riders' not in st for st in r['states']), r['why'][:60])
 
     def test_rejects(self):
-        codes = {r['code'] for r in self.V['staff']['reject'][-12:]} | {r['code'] for r in self.V['reject'][-39:]}
+        codes = {r['code'] for r in self.V['staff']['reject'][-12:]} | {r['code'] for r in self.V['reject'][-40:]}
         for c in ('unknown_key', 'bad_id', 'dup_id', 'limit', 'bad_kks', 'missing_key', 'bad_length', 'bad_number',
                   'bad_ref', 'bad_value', 'bad_way', 'unreachable'):
             self.assertIn(c, codes)

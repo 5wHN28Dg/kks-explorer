@@ -118,7 +118,7 @@ var lift_calls := PackedInt64Array()    # per lift: its collective control's cal
 var lift_dir := PackedInt32Array()      # per lift: its direction of travel (1 up, -1 down, 0 none)
 var lift_dwell := PackedInt64Array()    # per lift: the step before which the cab stands at a landing it served
 var _lift_ctl := {}          # "code|do" of a landing's call start or the panel's set -> Vector2i(lift, landing or -1)
-var _lift_codes := {}        # every lift's controls: ops on them need no role authority (§20.3)
+var _lift_ops := {}          # "code|do" of every lift's ops of §20.1: they need no role authority (§20.3)
 var queue: Array = []
 var events: Array = []
 var inputs: Array = []
@@ -215,12 +215,14 @@ func _init(model = null, scenario = null, session := false) -> void:
 		riders.append([])
 		var x: Dictionary = m.lifts[k]
 		_lift_ctl[x["panel"] + "|set"] = Vector2i(k, -1)
-		_lift_codes[x["panel"]] = true
+		for d in ["set", "stop", "start"]:
+			_lift_ops[x["panel"] + "|" + d] = true
 		for i in x["landings"].size():
 			var ld: Dictionary = x["landings"][i]
 			_lift_ctl[ld["call"] + "|start"] = Vector2i(k, i)
-			_lift_codes[ld["call"]] = true
-			_lift_codes[ld["gate"]] = true
+			_lift_ops[ld["call"] + "|start"] = true
+			_lift_ops[ld["gate"] + "|open"] = true
+			_lift_ops[ld["gate"] + "|close"] = true
 	lift_quiet.resize(m.lifts.size())
 	lift_calls.resize(m.lifts.size())
 	lift_dir.resize(m.lifts.size())
@@ -845,6 +847,30 @@ func _authority(person, npc: bool, need: String, discipline = null, by_acceptor 
 			if sp_on[qi] and not _absent.has(qi):
 				return true
 	return false
+
+
+## A slot that rode as nobody (its rider the slot) takes person pid (§20.10): the rider becomes pid, or leaves the cab
+## when pid is aboard already.
+func slot_rides_as(slot: int, pid: String) -> void:
+	for k in riders.size():
+		var rs: Array = riders[k]
+		var at := -1
+		for j in rs.size():
+			if _same_person(rs[j], slot):
+				at = j
+				break
+		if at == -1:
+			continue
+		var on := false
+		for y in riders:
+			for r in y:
+				if _same_person(r, pid):
+					on = true
+		if on:
+			rs.remove_at(at)
+			cur[_load_slot[k]] = float(m.lifts[k]["person_kg"]) * rs.size()
+		else:
+			rs[at] = pid
 
 
 ## A board or alight input (§20.3), in step 1: done, refused or unknown, with its event at once.
@@ -1553,9 +1579,9 @@ func _step() -> void:
 		if kind == "lock" or kind == "unlock" or kind == "remove_lock":
 			noted.append([item, npc, slot])
 			continue
-		if kind == "board" and npc and st_session and typeof(item[2]) == TYPE_STRING \
+		if (kind == "board" or kind == "alight") and npc and st_session and typeof(item[2]) == TYPE_STRING \
 				and slot_of(_sm.person_ix[item[2]]) != -1:
-			continue        # an NPC's board made before a slot took the person in this step: dropped (§20.3)
+			continue        # an NPC's board or alight made before a slot took the person: dropped (§20.10)
 		if kind == "board" or kind == "alight":
 			_ride(kind, item[1], item[2], npc)
 			continue
@@ -1800,7 +1826,8 @@ func _op(item: Array, moved: Dictionary, npc := false) -> String:
 		var where = item[5]
 		if typeof(where) != TYPE_STRING or not o["where"].has(where):
 			failed.append("where")
-		elif _authority(item[6], npc, "" if typeof(kks) == TYPE_STRING and _lift_codes.has(kks) else "operate_" + where):
+		elif _authority(item[6], npc, "" if typeof(kks) == TYPE_STRING and typeof(do) == TYPE_STRING
+				and _lift_ops.has(kks + "|" + do) else "operate_" + where):
 			failed.append("authority")      # (a lift's controls need no role authority: anyone may ride, §20.3)
 	elif _sm != null and st_players[_in_slot] != -1 and not npc:
 		failed.append("authority")      # a trainee playing a person names where and who (§17.1)
@@ -2136,7 +2163,7 @@ func clone():
 			"_faults", "_fault_ix", "_auto_faults", "_all_faults", "_tr_when", "_tr_need", "_al_when", "_al_clear",
 			"_al_sup", "_al_need", "_ops", "_iso", "_wk", "_state_kks", "_v2", "step_no", "ptw_count",
 			"_sm", "_S", "_ds", "_absent", "_fixed_trainee", "_show", "_fault_kks", "J", "ev_mark", "st_order",
-			"st_session", "st_next1", "_lift_ix", "_load_slot", "_lift_ctl", "_lift_codes"]:
+			"st_session", "st_next1", "_lift_ix", "_load_slot", "_lift_ctl", "_lift_ops"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_worn",

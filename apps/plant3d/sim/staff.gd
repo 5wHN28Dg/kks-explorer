@@ -792,6 +792,8 @@ func t_input(e, item: Array, slot: int = 0) -> void:
 ## taken up again at their turn; one on a way is between places from now on (the place they left kept for a
 ## release); their zones those their place or way gives them now; nothing counted or kept for the slot.
 func claim(e, slot: int, pi: int) -> void:
+	if not e.riders.is_empty():
+		e.slot_rides_as(slot, people[pi]["id"])
 	if not e.st_session:                # a single-player run's role at step 1 (§17.4): the person just becomes theirs
 		e.st_players[slot] = pi
 		e.st_acks[slot] = 0
@@ -1575,7 +1577,8 @@ func ride_turn(e, pi: int) -> bool:
 	if ready and not over and not (calls >> ib & 1):
 		_lift_op(e, pi, x["panel"], "set", ib)      # where they are going, from the cab's panel
 	elif c != -1 and not over and _t(e, lds[c]["open"]) and n - e.lift_quiet[k] >= RIDE_QUIET \
-			and _queued(q, "board", lid) == 0:     # (not on someone boarding)
+			and n >= e.lift_dwell[k] and _queued(q, "board", lid) == 0:
+		# (not on someone boarding, nor while the cab stands for those it came for)
 		_lift_op(e, pi, lds[c]["gate"], "close")
 	return false
 
@@ -1614,7 +1617,7 @@ static func _lift_made(e, code: String, do: String, value = null) -> bool:
 
 ## A rider's op (a local op by the person), not made again (_lift_made).
 func _lift_op(e, pi: int, code: String, do: String, value = null) -> void:
-	if not _lift_made(e, code, do, value):
+	if not _lift_made(e, code, do, value) and e._locking(code).is_empty():     # (not again; not on a locked code)
 		e.npc_queue.append(["op", code, do, value, null, "local", people[pi]["id"]])
 		e.sp_lin[pi] = e.step_no
 

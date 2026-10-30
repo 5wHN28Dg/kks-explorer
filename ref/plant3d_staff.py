@@ -1434,6 +1434,7 @@ class StaffRun:
         it, to be taken up again at their turn; one on a way is between places from now on (the place they left kept
         for a release); their zones those their place or way gives them now; nothing counted or kept for the slot."""
         p = self.people[pi]
+        self.e.slot_rides_as(slot, p.id)
         if not self.session:             # a single-player run's role at step 1 (§17.4): the person just becomes theirs
             self.players[slot] = pi
             self.acks[slot] = 0
@@ -2056,7 +2057,7 @@ class StaffRun:
                 any(y[1] == 'op' and y[2] == code and y[3] == do and y[4] == 'done' for y in e.events[e.ev_mark:])
 
         def op(code, do, value=None):
-            if not made(code, do, value):   # (not again)
+            if not made(code, do, value) and not e.locking(code):     # (not again; not on a locked code)
                 q.append(('op', code, do, value, None, 'local', p.id))
                 p.lin = n
 
@@ -2127,7 +2128,8 @@ class StaffRun:
         if ready and not over and not calls >> ib & 1:
             op(x['panel'], 'set', ib)   # where they are going, from the cab's panel
         elif c is not None and not over and T(lds[c]['open']) and n - e.quiet[lid] >= RIDE_QUIET \
-                and not any(y[0] == 'board' and y[1] == lid for y in q):     # (not on someone boarding)
+                and n >= e.lift_dwell[e.lift_k[lid]] and not any(y[0] == 'board' and y[1] == lid for y in q):
+            # (not on someone boarding, nor while the cab stands for those it came for)
             op(lds[c]['gate'], 'close')
         return False
 

@@ -1376,6 +1376,11 @@ class Model:
                     need((code, do, None) in self.op_keys, 'bad_ref', f'{w}: {code} has no {do!r} op')
             for do in ('set', 'stop', 'start'):
                 need((x['panel'], do, None) in self.op_keys, 'bad_ref', f'{w}: its panel {x["panel"]} has no {do!r} op')
+            for code, do in [(x['panel'], d) for d in ('set', 'stop', 'start')] + \
+                    [(ld[c], d) for ld in x['landings'] for c, d in (('call', 'start'), ('gate', 'open'),
+                                                                      ('gate', 'close'))]:
+                need('local' in self.op_keys[(code, do, None)].get('where', []), 'bad_ref',
+                     f'{w}: {code}\'s {do} is made where the cab or the landing is (local)')
             o = self.op_keys[(x['panel'], 'set', None)]
             need('machine' not in o and o.get('input') == x['target'] and list(o.get('range', ())) == [0, n - 1],
                  'bad_ref', f'{w}: the panel\'s set op writes {x["target"]} over [0, {n - 1}] (the landings)')
@@ -1741,13 +1746,13 @@ class Engine:
         self.lift_dir = [0] * len(m.lifts)
         self.lift_dwell = [0] * len(m.lifts)
         self.lift_ctl = {}               # (code, do) -> (lift index, landing or None for the panel's set): a call
-        self.lift_codes = set()          # every lift's controls: ops on them need no role authority (§20.3)
+        self.lift_ops = set()            # every lift's ops of §20.1 (code, do): they need no role authority (§20.3)
         for k, x in enumerate(m.lifts):
             self.lift_ctl[(x['panel'], 'set')] = (k, None)
-            self.lift_codes.add(x['panel'])
+            self.lift_ops |= {(x['panel'], 'set'), (x['panel'], 'stop'), (x['panel'], 'start')}
             for i, ld in enumerate(x['landings']):
                 self.lift_ctl[(ld['call'], 'start')] = (k, i)
-                self.lift_codes |= {ld['call'], ld['gate']}
+                self.lift_ops |= {(ld['call'], 'start'), (ld['gate'], 'open'), (ld['gate'], 'close')}
         self.names = names
         self.ix = {n: i for i, n in enumerate(names)}
         self.n = len(names)
@@ -2166,6 +2171,20 @@ class Engine:
     def n_locked(self, iso):
         return sum(1 for p in range(len(self.isos[iso]['points'])) if (iso, p) in self.locks)
 
+    def slot_rides_as(self, slot, pid):
+        """A slot that rode as nobody (its rider the slot) takes person pid (§20.10): the rider becomes pid, or leaves
+        the cab when pid is aboard already."""
+        for x in self.m.lifts:
+            rs = self.riders[x['id']]
+            k = next((k for k, r in enumerate(rs) if same_person(r, slot)), None)
+            if k is None:
+                continue
+            if any(same_person(r, pid) for y in self.riders.values() for r in y):
+                del rs[k]
+                self.cur[self.ix[x['id'] + '_load']] = float(x['person_kg']) * len(rs)
+            else:
+                rs[k] = pid
+
     def _ride(self, kind, lift, person, npc):
         """A board or alight input (§20.3), in step 1: done, refused or unknown, with its event at once."""
         tail = (None if npc else self.in_slot,) if self.session else ()
@@ -2439,9 +2458,9 @@ class Engine:
                 r = self._permit(item[1], item[2], item[3], dones, npc)
                 if npc:
                     self._npc_result(item[3], r, k0)
-            elif kind == 'board' and npc and self.session and isinstance(item[2], str) \
+            elif kind in ('board', 'alight') and npc and self.session and isinstance(item[2], str) \
                     and sr.st.person_ix[item[2]] in sr.players.values():
-                continue        # an NPC's board made before a slot took the person in this step: dropped (§20.3)
+                continue        # an NPC's board or alight made before a slot took the person: dropped (§20.10)
             elif kind in ('board', 'alight'):
                 self._ride(kind, item[1], item[2], npc)
             elif kind in ('lock', 'unlock'):
@@ -2644,7 +2663,7 @@ class Engine:
             where, person = item[4], item[5]
             if where not in o['where']:
                 failed.append('where')
-            elif self._authority(person, npc, None if kks in self.lift_codes else 'operate_' + where):
+            elif self._authority(person, npc, None if (kks, do) in self.lift_ops else 'operate_' + where):
                 # (a lift's controls need no role authority: anyone on site may ride, §20.3)
                 failed.append('authority')
         elif self.staff is not None and self.staff.players.get(self.in_slot) is not None and not npc:

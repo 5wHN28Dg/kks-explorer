@@ -3249,6 +3249,7 @@ REJECTS_LIFT = [
     ('a call whose start sets no target', 'bad_ref', _op_of(CALL[0], 'start', 'set', {'hlift_estop': 0})),
     ('a gate whose open does not need the cab at its landing', 'bad_ref', _op_of(
         GATE[2], 'open', 'needs', [['hlift_at0', 'The cab is not at the bottom']])),
+    ('a gate whose open is not made at the gate', 'bad_ref', _op_of(GATE[1], 'open', 'where', ['screen'])),
     ('a target that starts beyond the landings', 'bad_value', _value_of('hlift_target', 'state', 3)),
     ('a target that starts between landings', 'bad_value', _value_of('hlift_target', 'state', 0.5)),
     ('a scenario starting the target beyond the landings', 'bad_value',
@@ -3468,6 +3469,16 @@ def lift_runs():
                  when=[(_fire(9, lambda e: _aboard(e, 'f1', 'f2') and _z(e) > 1), ('role', 'f1', 0)),
                        (_later(9, 20, lambda e: not e.npc_queue), ('release', 0)),
                        (_later(9, 20, lambda e: not e.npc_queue), ('jump', '07:00', 0))]), 600, 20),
+        ('slots and riders (§20.10): slot 1 boards as nobody, then takes field operator 3 (the rider becomes them) and '
+         'alights as them; slot 0 takes field operator 1 aboard, and in one step releases them and slot 2 takes them '
+         '(the alight queued by the release dropped: they stay aboard)', 225, {'f1': up, 'f2': up}, None,
+         Session([Trainee(slot=0, quiet=True), Trainee(slot=1, quiet=True), Trainee(slot=2, quiet=True)],
+                 when=[(_fire(10, lambda e: _aboard(e, 'f1', 'f2') and e.v('hlift_open0') >= 0.5),
+                        ('board', LIFT, None, 1)),
+                       (_later(10, 5), ('role', 'f3', 1)),
+                       (_later(10, 10), ('role', 'f1', 0)),
+                       (_later(10, 15), ('alight', LIFT, 'f3', 1)),
+                       (_later(10, 40), ('release', 0)), (_later(10, 40), ('role', 'f1', 2))]), 900, 10),
         ('an op done in step 1 (§20.4, as built): the trainee in free mode opens the bottom gate in the step a field '
          'operator would; they don\'t press it again', 150, {'f1': up}, None,
          Scripted(when=[(lambda e: _ride(e, 'f1') is not None and _ride(e, 'f1')[4] == e.step_no
