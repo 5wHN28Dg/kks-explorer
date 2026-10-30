@@ -2430,7 +2430,7 @@ height, load and alarms.
 
 - The trainee's come from the app (§20.7), as `zone` inputs do; an NPC's are made in step 9 and handled in the next
   step's step 1 as its ops are. In a session run each carries its slot (§17.13).
-- **Step 1**, in the order made: `board` is done when the rider is aboard no lift (else refused, `aboard`); `alight`
+- **Step 1**, in the order made: `board` is done when the rider is aboard no lift (else refused, `aboard`) and the cab stands at a landing (else refused, `not_at_landing`: §20.10); `alight`
   when they are aboard this one (else refused, `not_aboard`); an unknown lift is `unknown`. The person is checked as a
   permit input's is (§17.1, §17.13: `authority`), with no role authority: anyone on site may use the lift, and the
   ops of its controls (the calls, the gates, the cab's panel) need no role authority either (decided 2026-10-30). A rider is the person, or for `null` the input's slot. Riders are
@@ -2558,9 +2558,9 @@ claims and releases); in `reject`, the lifts' rule breaks; the first train's `da
 ### 20.10 As built for milestone LIFTS L1 (2026-10-30: the engine)
 
 Both engines (`ref/plant3d.py`, `ref/plant3d_staff.py`; `apps/plant3d/sim`) agree bit for bit on the lift's parts of
-`plant3d-v2.json`: two unit runs in `steps` (each with its own `files`: the kit, the plant's key and area a2 that the
-lift's codes need; the first walks the collective control through its cases, the second is a session run without
-staff, `"session": true`), sixteen runs in `staff.runs` on a staff of their own (a field crew, a technician, three
+`plant3d-v2.json`: three unit runs in `steps` (each with its own `files`: the kit, the plant's key and area a2 that the
+lift's codes need; the first walks the collective control through its cases, the second and third are session runs without
+staff, `"session": true`, the third a board refused between landings), sixteen runs in `staff.runs` on a staff of their own (a field crew, a technician, three
 landings and the stairs beside them) and the rule breaks in `reject` and `staff.reject`. The first train's lift, its `day` and format 1's `train` and `hot` with the lift come with L2 and L3.
 The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is made by it). What L1 settles that
 §20.1–§20.4 left open:

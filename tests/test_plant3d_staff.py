@@ -1180,8 +1180,11 @@ class LiftVectors(unittest.TestCase):
         cls.ev = [e for r in cls.runs + cls.steps for e in r['events']]
 
     def test_unit_runs(self):
-        self.assertEqual(len(self.steps), 2)
+        self.assertEqual(len(self.steps), 3)
         ev = [e for s in self.steps for e in s['events']]
+        self.assertIn([30, 'board', 'hlift', None, 'refused', ['not_at_landing'], 1], ev)
+        self.assertIn([30, 'board', 'hlift', None, 'refused', ['aboard', 'not_at_landing'], 0], ev)
+        self.assertIn([150, 'board', 'hlift', None, 'done', [], 1], ev)
         for kind, how, why in (('board', 'refused', ['aboard']), ('alight', 'unknown', []),
                                ('board', 'refused', ['authority']), ('alight', 'refused', ['not_aboard'])):
             self.assertTrue(any(e[1] == kind and e[4] == how and e[5] == why for e in ev), (kind, how, why))
