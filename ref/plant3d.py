@@ -2199,6 +2199,8 @@ class Engine:
             why.append('aboard')
         elif kind == 'alight' and not aboard:
             why.append('not_aboard')
+        if kind == 'board' and not any(self.prev[self.ix[ld['at']]] >= 0.5 for ld in self.lift_of[lift]['landings']):
+            why.append('not_at_landing')        # the cab between landings: its gates are shut (§20.10)
         if why:
             self.ev(kind, lift, person, 'refused', why, *tail)
             return 'refused'

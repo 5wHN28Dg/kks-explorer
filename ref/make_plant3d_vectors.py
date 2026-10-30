@@ -3148,7 +3148,12 @@ def lift_unit_runs():
           [3, 'board', LIFT, None, 9], [3, 'alight', LIFT, None, 'x'], op(5, CALL[1], 'start', None, 0),
           op(5, PANEL, 'set', 1, 1), [6, 'ack', 'hlift_overload', 1], [10, 'alight', LIFT, None, 2],
           [10, 'board', LIFT, None, 1], op(12, PANEL, 'set', 1, 0), [70, 'alight', LIFT, None, 0],
-          op(70, CALL[0], 'start', None, 2)], 80)]
+          op(70, CALL[0], 'start', None, 2)], 80),
+        ('a board between landings in a session run without staff (§20.10): slot 0 boards at the bottom and calls the '
+         'cab to the top; while it travels, slot 1\'s board is refused (not_at_landing) and slot 0\'s second board too '
+         '(aboard, not_at_landing); at the top slot 1 boards', 150, True,
+         [[1, 'board', LIFT, None, 0], op(2, CALL[2], 'start', None, 0), [30, 'board', LIFT, None, 1],
+          [30, 'board', LIFT, None, 0], [150, 'board', LIFT, None, 1]], 160)]
 
 
 def build_lift_steps():
@@ -3493,7 +3498,12 @@ def lift_runs():
          'by the stairs, the jump: everyone placed again, the stairs forgotten', 150, {'f1': up}, None,
          Scripted(extra=[[1, 'op', PANEL, 'stop', None, None]],
                   when=[(lambda e: _person(e, 'f1').stairs is not None and _person(e, 'f1').leg is not None
-                         and not e.npc_queue, ('jump', '07:00'))]), 900, 20)]
+                         and not e.npc_queue, ('jump', '07:00'))]), 900, 20),
+        ('a board between landings refused (§20.10): two field operators riding up in a cab rated for two, the trainee '
+         '(field operator 5) boarding while it travels: refused (not_at_landing; the gates are shut), the load '
+         'unchanged, the cab going on to the top where both get off', 150, {'f1': up, 'f2': up}, 'f5',
+         Scripted(when=[(_fire(11, lambda e: _aboard(e, 'f1', 'f2') and 1 < _z(e) < 6), ('board', LIFT, 'f5'))]),
+         900, 20)]
 
 
 def _person(e, pid):
