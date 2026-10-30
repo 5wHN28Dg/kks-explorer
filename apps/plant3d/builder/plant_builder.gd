@@ -704,7 +704,7 @@ func lifts_manifest() -> Array:
 			continue
 		var foot := []
 		for c in [Vector2(-0.62, -0.68), Vector2(1.25, -0.68), Vector2(1.25, 0.68), Vector2(-0.62, 0.68)]:
-			var w := e.pos + Geom.turn(Vector3(c.x, c.y, 0.0), float(e.yaw))
+			var w: Vector3 = e.pos + Geom.turn(Vector3(c.x, c.y, 0.0), float(e.yaw))
 			foot.append(_arr(Geom.g([w.x, w.y, e.pos.z])))
 		var gates := []
 		for g in equipment:

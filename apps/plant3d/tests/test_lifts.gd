@@ -12,6 +12,7 @@ const SimClock = preload("res://ui/sim_clock.gd")
 
 const LIFT := "hrsg1_lift"
 const KKS := "10SNB10"
+const SPEED_STEP := 0.061         # m: the cab's travel in one step (0.6 m/s)
 
 var p: Array = []
 var tree: SceneTree
@@ -126,6 +127,7 @@ func _ride(ui) -> void:
 	if not _press(ui, KKS + "AB001", "close", "Close the gate"):
 		return
 	await _run(ui, 3.0, func(): return e.truth(LIFT + "_shut0"))
+	await tree.physics_frame
 	if (L["front"] as CollisionShape3D).disabled or (L["gates"][0]["shape"] as CollisionShape3D).disabled:
 		p.append("the cab's front or the gate at grade is not solid once the gate is shut")
 	ui.open_card(KKS + "GH010")
@@ -146,7 +148,8 @@ func _ride(ui) -> void:
 		p.append("the walker was %.2f m off the cab's floor on the ride" % worst[0])
 	if ui.player.global_position.y < 29.8:
 		p.append("the walker did not ride up: at %.2f m" % ui.player.global_position.y)
-	if absf(ui.lifts.cab_height(0) - 30.0) > 0.01:
+	await tree.physics_frame
+	if absf(ui.lifts.cab_height(0) - 30.0) > SPEED_STEP:     # (drawn between the last two steps: within one)
 		p.append("the cab is drawn at %.2f m at the roof" % ui.lifts.cab_height(0))
 	# the panel rides with the cab: within reach up here
 	if not ui.near(KKS + "GH010"):

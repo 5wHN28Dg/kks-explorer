@@ -85,11 +85,17 @@ node's origin is the pivot; at value 0 the node is as built. Kinds:
 | breaker | `contacts` | rotate about −z for a GCB (the part's +y), −x for an MV breaker (the flag behind the mechanism's window) | open (green) → closed (red "I") | π/2 |
 | lamp, beacon | `light`, `light/on` | lamp | off → on | 0 |
 | monorail_hoist | `trolley`, `trolley/hook`, `trolley/chain`, `load_y`, `load_y/load_z`; `pendant` (marker) | slide along +y (the beam, from its tip), slide along +z (the hook's seat above the origin), stretch down, the load's slides along +y and +z (its base) | the value in metres | 1; the chain's: from under the hoist to the hook block's top |
+| service_lift | `cab`, `cab/gate` | slide along +z (no binding: the app's lift, `app/lift.gd`, moves the cab to the model's `z` between steps, and raises the cab's gate with the landing gate where it stands) | the cab floor's height above the part's origin; the cab's gate risen | 1 |
+| lift_gate | `leaf` | translate along +z | shut → open | 2.1 |
 | overhead_crane | `bridge`, `bridge/trolley`, `bridge/trolley/hook`, `bridge/trolley/rope`, `load_y`, `load_y/load_x`, `load_y/load_x/load_z`; `bridge/pendant` (marker) | slide along +y (the runway), along −x (across), along +z; the ropes stretch down; the load's slides along +y, −x, +z | the value in metres | 1; the ropes': from the trolley to the hook block's top |
 
 A `hoist_unit` (a hoist's drive, its hook's latch, its load cell: a code of its own, PLANT3D.md §20.5) draws nothing:
 its hoist draws it, and the app carries its node with the piece it rides on (`kind` hoist and trolley: the trolley;
 bridge: the bridge; latch and load_cell: the hook), so its label, its card's reach and "Show me" follow it.
+
+A `lift_unit` (a service lift's drive, the cab's control panel, its load cell: codes of their own, PLANT3D.md §20.2)
+draws nothing either: the cab draws them, and the app carries their nodes with the cab (the panel gets a small body
+there, so a tap or the centre of the screen picks it).
 
 ## Visibility classes and ranges (§10)
 

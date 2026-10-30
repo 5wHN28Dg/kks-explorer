@@ -53,9 +53,19 @@ func setup(u) -> void:
 		body.set_meta("kks", String(x["kks"]))
 		host.add_child(body)
 		body.transform = piece.transform
+		# the cab's meshes name their far-view parents by relative paths (the build's visibility ranges): kept
+		var vis := []
+		for n in piece.find_children("*", "Node3D", true, false) + [piece]:
+			var n3 := n as Node3D
+			if not n3.visibility_parent.is_empty():
+				vis.append([n3, n3.get_node_or_null(n3.visibility_parent)])
+				n3.visibility_parent = NodePath()     # (set again below: a stale path errors as the piece moves)
 		host.remove_child(piece)
 		body.add_child(piece)
 		piece.transform = Transform3D()
+		for v in vis:
+			if v[1] != null:
+				(v[0] as Node3D).visibility_parent = (v[0] as Node3D).get_path_to(v[1])
 		# the floor, the walls and the roof (the part's frame turned to Godot's), the front a shape of its own
 		_box(body, Vector3(0.02, -0.07, 0.0), Vector3(2 * CAB_X + 0.04, 0.14, 2 * CAB_Y + 0.08))
 		_box(body, Vector3(0.0, CAB_H * 0.5, -(CAB_Y + 0.02)), Vector3(2 * CAB_X, CAB_H, 0.04))
@@ -249,4 +259,25 @@ func cab_height(k: int) -> float:
 	for L in lifts:
 		if L["k"] == k:
 			return float(L["z_draw"])
+	return NAN
+
+
+## Where the n-th rider of lift k stands in its cab (PLANT3D §20.7: six spots, two rows of three, in boarding order,
+## the first nearest the gate), on the cab's floor as drawn now; and the way they face (the gate's, Godot's yaw).
+## INF when the lift is not drawn.
+const SPOTS := [Vector2(-0.22, -0.35), Vector2(-0.22, 0.35), Vector2(-0.22, 0.0), Vector2(0.22, -0.35),
+		Vector2(0.22, 0.35), Vector2(0.22, 0.0)]
+func rider_spot(k: int, n: int) -> Vector3:
+	for L in lifts:
+		if L["k"] == k:
+			var s: Vector2 = SPOTS[clampi(n, 0, SPOTS.size() - 1)]
+			return (L["body"] as Node3D).global_transform * Vector3(s.x, 0.0, s.y)
+	return Vector3.INF
+
+
+func gate_yaw(k: int) -> float:
+	for L in lifts:
+		if L["k"] == k:
+			var f: Vector3 = (L["body"] as Node3D).global_transform.basis * Vector3(-1, 0, 0)
+			return atan2(-f.x, -f.z)
 	return NAN
