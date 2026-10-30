@@ -19,11 +19,13 @@ ROOF_SPEEDS = {'hoist': 0.1, 'trolley': 0.2}            # m/s (an electric chain
 ROOF_RATED = 2000                                       # kg
 ROOF_SLING = 1.2          # the slings' lifting point above the load's base (a valve on its pallet, its sling legs)
 ROOF_TROLLEY = [0.5, 8.0]  # the trolley's limit switches: 0.5 m from the tip, 1 m from the inner end
-ROOF_HOOK = [0.4, 33.1]    # the hook's: 0.4 m above grade (the slack-chain switch over the roof), 0.9 m under the beam
+ROOF_HOOK = [0.4, 32.9]    # the hook's: 0.4 m above grade (the slack-chain switch over the roof), 1.1 m under the beam
+                           # (the hook block's top, 0.45 m over its seat, then stays under the hoist's body)
 ROOF_LANDING = 6.0         # where the procedure puts the valve down on the roof (3 m in from its edge)
 ROOF_CLEAR = 31.3          # a hooked load travels only with its base this high: over the roof's handrail (31.1 m)
 ROOF_VALVE_KG = 600        # the spare valve on its pallet (its paper)
 ROOF_VALVE_HEAVY = 2400    # the trainer's fault: the crate holds a bigger valve than its paper says
+ROOF_HALF = 0.6           # the pallet's half length along the beam (kit/parts_hoists.gd)
 
 # The turbine hall's crane: its runway along the hall's long walls (the building's `crane`, the rail at +26 m), its
 # part's origin at grade at the runway's west end on the hall's centre line, the runway along the hall (yaw 90), so
@@ -41,7 +43,11 @@ CRANE_TROLLEY = [-21.9, 21.9]
 CRANE_HOOK = [0.4, 24.0]
 CRANE_CLEAR = 13.5         # a hooked load travels only with its base over the operating floor's handrail (13.1 m)
 CRANE_CRATE_T = 8          # a crate of spares
-CRANE_LAYDOWN = [76, -21.9, 0]   # the laydown bay: the ground floor's strip along the south wall, by the east end
+CRANE_HALF = 0.82          # the crate's half width across the hall, along the trolley (kit/parts_hoists.gd)
+# the laydown bay: the ground floor's strip along the south wall at the east end, under the bridge's and the
+# trolley's limits, so that both stop over it by themselves (a target a motion runs past is not one a hand can stop
+# on: PLANT3D §20.5 "Hold-to-run")
+CRANE_LAYDOWN = [CRANE_BRIDGE[1], CRANE_TROLLEY[0], 0]
 CRANE_FLOOR_AT = [70, -15]       # where the procedure puts the crate down on the operating floor
 
 
@@ -97,11 +103,15 @@ def hrsg1_signs():
 
 # ---------------------------------------------------------------- the model
 
-def _hoist(m, p, codes, speeds, limits, init, rated, unit_w, mass, sling, clear, floor, bridge=False):
+LOOK = 0.1      # m: how far ahead of the trolley an empty hook's travel looks for a higher floor (> a step's travel)
+
+
+def _hoist(m, p, codes, speeds, limits, init, rated, unit_w, mass, sling, clear, floor, half, bridge=False):
     """One hoist's values, ops, alarm and bindings (PLANT3D §20.5). codes: hoist, trolley, [bridge,] latch, cell,
     and the hoist's own code; limits and init per motion; floor: the step table of the floor under a point, of the
-    trolley's position (the bridge does not change it). A load hangs `sling` + 0.3 m under the hook when its chain
-    is taut (0.3 m of slack in the slings while the hook sits within 0.3 m above their lifting point)."""
+    trolley's position (the bridge does not change it); half: the load's half length along the trolley. A load hangs
+    `sling` + 0.3 m under the hook when its chain is taut (0.3 m of slack in the slings while the hook sits within
+    0.3 m above their lifting point), and comes down on the highest floor under its footprint."""
     hc, tc, lc, cc, own = codes['hoist'], codes['trolley'], codes['latch'], codes['cell'], codes['own']
     m.state(f'{p}_hoist_cmd', 0, hc)
     m.state(f'{p}_trolley_cmd', 0, tc)
@@ -122,34 +132,58 @@ def _hoist(m, p, codes, speeds, limits, init, rated, unit_w, mass, sling, clear,
         m.v(f'{p}_load_y', {'hold': f'{p}_trolley_pos', 'when': f'{p}_free', 'init': init['load'][1]})
     else:
         m.v(f'{p}_load_along', {'hold': f'{p}_trolley_pos', 'when': f'{p}_free', 'init': init['load'][1]})
+    # the floors: under the hook, and under both ends of a load hanging from it (its footprint along the trolley);
+    # a load comes down on the highest of them, and stands level only with all three the same floor
     m.tab(f'{p}_floor', f'{p}_trolley_pos', floor, step=True)
+    for end, sign in (('a', -1), ('b', 1)):
+        m.sum(f'{p}_end_{end}', [f'{p}_trolley_pos', sign * half])
+        m.tab(f'{p}_floor_{end}', f'{p}_end_{end}', floor, step=True)
+    ends = [f'{p}_floor', f'{p}_floor_a', f'{p}_floor_b']
+    m.max(f'{p}_floor_top', ends)
+    m.min(f'{p}_floor_low', ends)
+    m.cmp(f'{p}_level', f'{p}_floor_low', '>=', f'{p}_floor_top')
     m.sum(f'{p}_hang', [f'{p}_hook_height', -round(sling + 0.3, 6)])
-    m.diff(f'{p}_slack', f'{p}_hang', f'{p}_floor')
+    m.diff(f'{p}_slack', f'{p}_hang', f'{p}_floor_top')
     m.cmp(f'{p}_taut', f'{p}_slack', '>=', 0)
     m.cmp(f'{p}_rest', f'{p}_slack', '<=', 0.01)
-    m.max(f'{p}_load_zc', [f'{p}_floor', f'{p}_hang'])
+    m.max(f'{p}_load_zc', [f'{p}_floor_top', f'{p}_hang'])
     m.v(f'{p}_load_height', {'hold': f'{p}_load_zc', 'when': f'{p}_free', 'init': init['load'][2]})
     # the load cell: what hangs on the hook
     m.prod(f'{p}_weight', [f'{p}_latch', f'{p}_taut', f'{p}_mass'], unit_w, cc)
     m.cmp(f'{p}_over', f'{p}_weight', '>', rated)
-    # travel: unhooked, or the load lifted clear of what it would hit
+    # travel: unhooked, or the load lifted clear of what it would hit; and the hook never carried into a higher
+    # floor's edge (an empty hook low over grade stops short of the roof's or the operating floor's edge: it keeps
+    # 0.4 m above the floor under it wherever it goes, as lowering does)
     m.cmp(f'{p}_clear', f'{p}_load_height', '>=', clear)
     m.OR(f'{p}_travel_ok', [f'{p}_free', f'{p}_clear'])
-    m.prod(f'{p}_trolley_v', [f'{p}_trolley_cmd', f'{p}_travel_ok'])
+    m.prod(f'{p}_look', [f'{p}_trolley_cmd', LOOK])
+    m.sum(f'{p}_ahead_at', [f'{p}_trolley_pos', f'{p}_look'])
+    m.tab(f'{p}_floor_ahead', f'{p}_ahead_at', floor, step=True)
+    m.diff(f'{p}_rise', f'{p}_floor_ahead', f'{p}_floor')
+    m.cmp(f'{p}_flat', f'{p}_rise', '<=', 0)
+    m.diff(f'{p}_room_ahead', f'{p}_hook_height', f'{p}_floor_ahead')
+    m.cmp(f'{p}_above_ahead', f'{p}_room_ahead', '>=', 0.4)
+    m.OR(f'{p}_ahead_ok', [f'{p}_flat', f'{p}_above_ahead'])
+    m.AND(f'{p}_trolley_ok', [f'{p}_travel_ok', f'{p}_ahead_ok'])
+    m.prod(f'{p}_trolley_v', [f'{p}_trolley_cmd', f'{p}_trolley_ok'])
     if bridge:
         m.prod(f'{p}_bridge_v', [f'{p}_bridge_cmd', f'{p}_travel_ok'])
     # the hoist: up within the rated load (the overload device stops it as the load starts to lift); down until the
-    # hook is 0.4 m above the floor under it (the slack-chain switch)
-    m.diff(f'{p}_room', f'{p}_hook_height', f'{p}_floor')
+    # hook is 0.4 m above the floor under it (the slack-chain switch), or with a load hooked on, above the highest
+    # floor under the load
+    m.sel(f'{p}_hook_floor', f'{p}_latch', [f'{p}_floor', f'{p}_floor_top'])
+    m.diff(f'{p}_room', f'{p}_hook_height', f'{p}_hook_floor')
     m.cmp(f'{p}_down_ok', f'{p}_room', '>', 0.4)
     m.cmp(f'{p}_up', f'{p}_hoist_cmd', '>', 0)
     m.NOT(f'{p}_up_ok', f'{p}_over')
     m.sel(f'{p}_hoist_ok', f'{p}_up', [f'{p}_down_ok', f'{p}_up_ok'])
     m.prod(f'{p}_hoist_v', [f'{p}_hoist_cmd', f'{p}_hoist_ok'])
-    # the hook at the load's lifting point: within 0.3 m above it, and over it
+    # the hook at the load's slings: from the load's base up to 0.3 m above their lifting point (a hook lowered
+    # past the lifting point only slackens the slings, and the slack-chain switch stops it: a hand that lets go
+    # late still finds the hook at them), over the load, and the load's footprint on one floor
     m.diff(f'{p}_gap', f'{p}_hook_height', f'{p}_load_height')
-    m.tab(f'{p}_gap_ok', f'{p}_gap', [[-1000, 0], [sling, 1], [round(sling + 0.3001, 6), 0]], step=True)
-    near = [f'{p}_gap_ok']
+    m.tab(f'{p}_gap_ok', f'{p}_gap', [[-1000, 0], [0, 1], [round(sling + 0.3001, 6), 0]], step=True)
+    near = [f'{p}_gap_ok', f'{p}_level']
     for ax, pos, load in (('along', 'trolley_pos', 'load_y' if bridge else 'load_along'),
                           ('across', 'bridge_pos', 'load_x')):
         if ax == 'across' and not bridge:
@@ -167,7 +201,9 @@ def _hoist(m, p, codes, speeds, limits, init, rated, unit_w, mass, sling, clear,
          [(f'{p}_at_load', 'The hook is not at the slings: lower it to within 0.3 m above their lifting point, over '
                            'the load')], ('local',))
     m.op(lc, 'open', {f'{p}_latch': 0},
-         [(f'{p}_rest', 'The load is not resting: lower it onto the floor before unhooking')], ('local',))
+         [(f'{p}_rest', 'The load is not resting: lower it onto the floor before unhooking'),
+          (f'{p}_level', 'The load stands over a floor\'s edge: bring it wholly over one floor before unhooking')],
+         ('local',))
     m.alarm(f'{p}_overload', cc, f'{own} overload: the load is over the rated {rated:,} {unit_w}', f'{p}_over', 3,
             own, 'WAH')
     # what is seen: the moving pieces (kit/README.md "Moving parts")
@@ -187,13 +223,12 @@ def _hoist(m, p, codes, speeds, limits, init, rated, unit_w, mass, sling, clear,
 def roof_hoist(m):
     c = ROOF['code']
     p = 'roof_hoist'
-    # the floor under a point of the beam: grade over the drop zone; the roof's deck once a load would stand on its
-    # edge (its half length, 0.6 m, and 0.2 m more from the edge at 3 m)
-    floor = [[-100, 0], [ROOF['edge'] - 0.8, ROOF['deck_z']]]
+    # the floor under a point of the beam: grade over the drop zone, the roof's deck from its edge in
+    floor = [[-100, 0], [ROOF['edge'], ROOF['deck_z']]]
     _hoist(m, p, {'hoist': f'{c}AE001', 'trolley': f'{c}AE002', 'latch': f'{c}AE003', 'cell': f'{c}CW001',
                   'own': c}, ROOF_SPEEDS, {'trolley': ROOF_TROLLEY, 'hook': ROOF_HOOK},
            {'trolley': ROOF_TROLLEY[1], 'hook': ROOF_HOOK[1], 'load': [0, ROOF_TROLLEY[0], 0]}, ROOF_RATED, 'kg',
-           ROOF_VALVE_KG, ROOF_SLING, ROOF_CLEAR, floor)
+           ROOF_VALVE_KG, ROOF_SLING, ROOF_CLEAR, floor, ROOF_HALF)
     # where the procedure's steps end (PLANT3D §8 `done`)
     m.cmp(f'{p}_at_tip', f'{p}_trolley_pos', '<=', ROOF_TROLLEY[0] + 0.001)
     m.cmp(f'{p}_at_landing', f'{p}_trolley_pos', '>=', ROOF_LANDING)
@@ -208,8 +243,8 @@ def crane(m):
                   'cell': f'{c}CW001', 'own': c}, CRANE_SPEEDS,
            {'trolley': CRANE_TROLLEY, 'bridge': CRANE_BRIDGE, 'hook': CRANE_HOOK},
            {'trolley': 0, 'bridge': 66, 'hook': 20, 'load': CRANE_LAYDOWN}, CRANE_RATED, 't', CRANE_CRATE_T,
-           CRANE_SLING, CRANE_CLEAR, floor, bridge=True)
-    m.cmp(f'{p}_at_laydown', f'{p}_bridge_pos', '>=', CRANE_LAYDOWN[0])
+           CRANE_SLING, CRANE_CLEAR, floor, CRANE_HALF, bridge=True)
+    m.cmp(f'{p}_at_laydown', f'{p}_bridge_pos', '>=', CRANE_LAYDOWN[0] - 0.001)
     m.cmp(f'{p}_south', f'{p}_trolley_pos', '<=', CRANE_TROLLEY[0] + 0.001)
     m.cmp(f'{p}_north', f'{p}_trolley_pos', '>=', CRANE_FLOOR_AT[1])
     m.cmp(f'{p}_west', f'{p}_bridge_pos', '<=', CRANE_FLOOR_AT[0])
@@ -291,8 +326,8 @@ def crane_lift():
     c = CRANE['code']
     h, t, b, l = f'{c}AE001', f'{c}AE002', f'{c}AE003', f'{c}AE004'
     S = [
-        _step('travel_east', ['At the crane\'s pendant (', _k(c), '), hold East: run the bridge (', _k(b),
-                              ') to the laydown bay at the hall\'s east end.'], [c], [_op(b, 'set', 1)],
+        _step('travel_east', ['At the crane\'s pendant (', _k(c), '), hold East until the bridge (', _k(b),
+                              ') stops at the hall\'s east end, over the laydown bay.'], [c], [_op(b, 'set', 1)],
               'crane_at_laydown',
               'The laydown bay is the ground floor\'s strip along the south wall: nothing stands over it, so a load '
               'comes up from there past the operating floor\'s edge.'),
