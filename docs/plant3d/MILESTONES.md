@@ -184,7 +184,7 @@ last, when the per-tier counts are known from A1.
 stations, interlocked gates, a cab that carries the trainee and the NPCs; the staff ride it on long climbs) and working
 hoists (the HRSG roof's monorail hoist, the turbine hall's crane in procedures). Size L, after S3 and MP1 (it adds
 inputs to the engine), before S4. Its parts, one pull request each:
-- **L1, the engine:** `lifts`, `board`/`alight`, lift ways and the ride in both engines, the vectors;
+- **L1, the engine:** `lifts`, `board`/`alight`, lift ways and the ride in both engines, the vectors (**built 2026-10-30**, PLANT3D.md §20.10; the content tool's lift `tools/plant3d/lift_model.py`);
 - **L2, the lift in the app:** the content (kit parts, the lift on HRSG 1, its model and screen), the cab, gates and
   controls, riding; measured on the Note 9 before and after;
 - **L3, the staff on it:** staff.json's lift and ways, the riders drawn, the day made again;

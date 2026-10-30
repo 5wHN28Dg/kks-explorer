@@ -1432,14 +1432,15 @@ class Vectors2(unittest.TestCase):
             F['scenarios/s1.json'] = s['scenario']
             del F['procedures/p1.json']
             del F['screens.json']
-            e = P.Engine(G.check(F), 's1')
+            F.update(s.get('files', {}))        # (a lift's runs: the kit, the plant's key and area a2, §20.9)
+            e = P.Engine(G.check(F), 's1', s.get('session', False))
             got = [plain(e.snapshot())]
             i = 0
             inputs = s['inputs']
             asked = []
             while e.step_no < len(s['states']) - 1:
                 while i < len(inputs) and inputs[i][0] == e.step_no + 1:
-                    G.apply(e, inputs[i])
+                    G.apply_staff(e, inputs[i])
                     i += 1
                 asked += [[q[0], q[1], q[2], e.lock_effects(q[1], q[2])] for q in s.get('effects', [])
                           if q[0] == e.step_no]
