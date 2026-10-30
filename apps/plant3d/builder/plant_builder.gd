@@ -2730,6 +2730,21 @@ func _crane(body: Node, frame: SurfaceTool, b: Dictionary) -> void:
 			var p0: Vector2 = cp
 			var p1: Vector2 = at.call(t, s2 + (0.3 if s2 < S * 0.5 else -0.3))
 			Geom.add_prism(frame, Geom._strip(p0, p1, (p1 - p0).normalized().orthogonal(), 0.4), zr - 0.1 - CRANE_RUNWAY_D - 0.7, zr - 0.1 - CRANE_RUNWAY_D)
+	# an operable crane on this runway (an `overhead_crane` part, PLANT3D §20.5) is the kit's, drawn at the model's
+	# values (its bridge, trolley, hook and load): it must fit the runway, and no parked one is drawn
+	var span := S - 2.0 * inset
+	for k in equipment:
+		var e: Dictionary = equipment[k]
+		if e.part != "overhead_crane" or not r.grow(0.05).has_point(Vector2(e.pos.x, e.pos.y)):
+			continue
+		var start: Vector2 = at.call(0.0, S * 0.5)
+		var pr: Dictionary = e.params
+		var yaw_ok := absf(wrapf(float(e.yaw) - (90.0 if along_x else 0.0), -180.0, 180.0)) < 0.01
+		if Vector2(e.pos.x, e.pos.y).distance_to(start) > 0.05 or not yaw_ok or absf(float(pr.get("span", 0)) - span) > 0.05 \
+				or absf(float(pr.get("runway", 0)) - L) > 0.05 or absf(float(pr.get("rail_z", 0)) - zr) > 0.01 or absf(e.pos.z) > 0.01:
+			_err("crane_mismatch", String(k), "an overhead crane in %s stands at its runway's start on the hall's centre line at grade (%.2f, %.2f, 0), along it (yaw %d), its span %.2f m, its runway %.1f m and its rail at %.1f m" % [
+				String(b.id), start.x, start.y, 90 if along_x else 0, span, L, zr])
+		return
 	# the crane, parked a sixth of the hall from its end
 	var yellow := _st()
 	var tc := L / 6.0
