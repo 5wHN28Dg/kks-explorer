@@ -2560,7 +2560,7 @@ claims and releases); in `reject`, the lifts' rule breaks; the first train's `da
 Both engines (`ref/plant3d.py`, `ref/plant3d_staff.py`; `apps/plant3d/sim`) agree bit for bit on the lift's parts of
 `plant3d-v2.json`: two unit runs in `steps` (each with its own `files`: the kit, the plant's key and area a2 that the
 lift's codes need; the first walks the collective control through its cases, the second is a session run without
-staff, `"session": true`), fifteen runs in `staff.runs` on a staff of their own (a field crew, a technician, three
+staff, `"session": true`), sixteen runs in `staff.runs` on a staff of their own (a field crew, a technician, three
 landings and the stairs beside them) and the rule breaks in `reject` and `staff.reject`. The first train's lift, its `day` and format 1's `train` and `hot` with the lift come with L2 and L3.
 The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is made by it). What L1 settles that
 §20.1–§20.4 left open:
@@ -2574,6 +2574,10 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
   gate's `open` and a call done in one step are each checked against the step before, and with the position alone the
   cab set off as the gate began to open and stopped 6 cm below the landing, where no landing's `at` is ever true again.
 - **`board` and `alight`:** the person is checked as a permit input's is, without a role authority (anyone may ride).
+  A `board` is refused (`not_at_landing`, after the other reasons) while no landing's `at` is true as the step before
+  left it: the cab is between landings, its gates shut, and nobody can step in there (a board mid-shaft could put the
+  cab over its rated load between landings and hold the NPCs aboard there). An `alight` is not checked so: a jump's
+  or a release's alights empty a cab wherever it is.
   In a session run the event carries the input's slot after it, `null` for an NPC's. A rider for a `null` person is
   the slot (an integer): the snapshot's `riders` lists persons' ids and slots. The quiet step is 0 at step 0. Placement
   and a release queue the alights before anything of step 9's phase 4 (a released person's own, if they are aboard);

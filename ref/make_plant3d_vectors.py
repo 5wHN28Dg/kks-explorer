@@ -3493,7 +3493,12 @@ def lift_runs():
          'by the stairs, the jump: everyone placed again, the stairs forgotten', 150, {'f1': up}, None,
          Scripted(extra=[[1, 'op', PANEL, 'stop', None, None]],
                   when=[(lambda e: _person(e, 'f1').stairs is not None and _person(e, 'f1').leg is not None
-                         and not e.npc_queue, ('jump', '07:00'))]), 900, 20)]
+                         and not e.npc_queue, ('jump', '07:00'))]), 900, 20),
+        ('a board between landings refused (§20.10): two field operators riding up in a cab rated for two, the trainee '
+         '(field operator 5) boarding while it travels: refused (not_at_landing; the gates are shut), the load '
+         'unchanged, the cab going on to the top where both get off', 150, {'f1': up, 'f2': up}, 'f5',
+         Scripted(when=[(_fire(11, lambda e: _aboard(e, 'f1', 'f2') and 1 < _z(e) < 6), ('board', LIFT, 'f5'))]),
+         900, 20)]
 
 
 def _person(e, pid):

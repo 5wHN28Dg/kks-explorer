@@ -1310,8 +1310,23 @@ class LiftVectors(unittest.TestCase):
         st = next(x for x in r['states'] if x['step'] >= n)
         self.assertNotEqual(st['people']['f1'][0], None)
 
+    def test_board_between_landings(self):
+        """A board while the cab travels between landings is refused (its gates are shut): the trainee can't overload
+        the cab mid-shaft and strand the NPCs aboard; they reach the top and get off."""
+        r = self.lift_run('a board between landings refused')
+        ev = r['events']
+        n = next(e[0] for e in ev if e[1] == 'board' and e[3] == 'f5')
+        self.assertIn([n, 'board', 'hlift', 'f5', 'refused', ['not_at_landing']], ev)
+        self.assertFalse([e for e in ev if e[1] == 'board' and e[3] == 'f5' and e[4] == 'done'])
+        st = next(x for x in r['states'] if x['step'] >= n)
+        self.assertNotIn('f5', st['riders']['hlift'])
+        self.assertEqual(st['values']['hlift_load'], 150.0)
+        self.assertTrue(0 < st['values']['hlift_z'] < 7.2)
+        offs = sorted(e for e in self.rides(r, 'f1', 'off') + self.rides(r, 'f2', 'off') if e[0] > n)
+        self.assertEqual([e[5] for e in offs[:2]], ['l2', 'l2'])
+
     def test_rides(self):
-        self.assertEqual(len(self.runs), 15)
+        self.assertEqual(len(self.runs), 16)
         rides = [e for e in self.ev if e[1] == 'ride']
         for how in ('wait', 'off', 'stairs'):
             self.assertTrue(any(e[6] == how for e in rides), how)
