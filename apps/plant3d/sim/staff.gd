@@ -487,7 +487,7 @@ func place_all(e, c: int, old: int) -> void:
 	for k in e.riders.size():       # the NPCs aboard leave the ride: their alights for the next step (§20.3)
 		for r in e.riders[k]:
 			if typeof(r) == TYPE_STRING and e.slot_of(person_ix[r]) == -1:
-				e.npc_queue.append(["alight", e.m.lifts[k]["id"], r])
+				queue_alight(e, e.m.lifts[k]["id"], r)
 	e.st_holder = {}
 	e.st_given = {}
 	e.st_pending = []
@@ -837,7 +837,7 @@ func let_go(e, slot: int) -> void:
 	for k in e.riders.size():           # a person aboard leaves the ride: their alight for the next step (§20.3)
 		for r in e.riders[k]:
 			if _same(r, pid):
-				e.npc_queue.append(["alight", e.m.lifts[k]["id"], pid])
+				queue_alight(e, e.m.lifts[k]["id"], pid)
 	var c = e.sp_cur[pi]
 	if c != null:
 		if not c["idle"]:
@@ -1468,6 +1468,14 @@ func reserve(e, pi: int, i: int) -> void:
 	e.st_holder[i] = pi
 
 
+## An alight for the next step, unless one is queued already (a release and a jump in one step).
+static func queue_alight(e, lid: String, pid: String) -> void:
+	for y in e.npc_queue:
+		if y.size() == 3 and _same(y[0], "alight") and _same(y[1], lid) and _same(y[2], pid):
+			return
+	e.npc_queue.append(["alight", lid, pid])
+
+
 ## A person's turn on a ride (§20.4), with the values as steps 2–8 left them: true when it is over and they go on (off
 ## at a landing, or up the stairs), false while it lasts (ref/plant3d_staff.py ride_turn).
 func ride_turn(e, pi: int) -> bool:
@@ -1476,121 +1484,139 @@ func ride_turn(e, pi: int) -> bool:
 	var li: int = ride[0]
 	var a: int = ride[1]
 	var b: int = ride[2]
+	var since: int = ride[4]
+	var dest: int = ride[5]
 	var lid: String = lifts[li][0]
 	var pts: PackedInt32Array = lifts[li][1]
 	var x: Dictionary = lift_model[li]
 	var lds: Array = x["landings"]
 	var pid: String = people[pi]["id"]
-	var rs: Array = e.riders[e._lift_ix[lid]]
+	var k: int = e._lift_ix[lid]
+	var rs: Array = e.riders[k]
 	var aboard := false
 	for r in rs:
 		if _same(r, pid):
 			aboard = true
 			break
-	ride[3] = 1 if aboard else 0
+	if aboard and ride[3] == 0:         # aboard now: their 3 minutes count again from here
+		ride[3] = 1
+		ride[4] = n
+		since = n
+	elif not aboard:
+		ride[3] = 0
 	var can: bool = n > e.sp_lin[pi] + 2
 	var ia := pts.find(a)
 	var ib := pts.find(b)
+	var calls: int = e.lift_calls[k]
+	var load: float = e.cur[e._load_slot[k]]
+	var over: bool = load > float(x["rated_kg"])
+	var ready := _t(e, x["ready"])
+	var q: Array = e.npc_queue
 	if not aboard:
 		e.sp_pos[pi] = a
-		if not _t(e, x["ready"]) or n - ride[4] >= RIDE_WAIT or not auth[people[pi]["role"]].has("operate_local"):
+		if not ready or n - since >= RIDE_WAIT:
 			e._ev(["ride", pid, lid, places[a]["id"], places[b]["id"], "stairs"])
 			e.sp_ride[pi] = []
-			var sr := PackedInt32Array([ride[5]])
+			var sr := PackedInt32Array([dest])
 			sr.append_array(stairs[a * places.size() + b])
 			e.sp_stairs[pi] = sr
 			return true
 		if not can:
 			return false
 		var at := _t(e, lds[ia]["at"])
-		var boards := 0
-		for y in e.npc_queue:
-			if y[0] == "board" and _same(y[1], lid):
-				boards += 1
-		var room: bool = e.cur[e._load_slot[e._lift_ix[lid]]] + float(x["person_kg"]) * (1 + boards) \
-				<= float(x["rated_kg"])
+		var boards := _queued(q, "board", lid)
+		var room: bool = load + float(x["person_kg"]) * (1 + boards) <= float(x["rated_kg"])
 		if at and _t(e, lds[ia]["open"]):
-			if room:
-				e.npc_queue.append(["board", lid, pid])
+			if room and not _lift_made(e, lds[ia]["gate"], "close"):    # (not into a gate that is shutting)
+				q.append(["board", lid, pid])
 				e.sp_lin[pi] = n
 		elif at and _t(e, lds[ia]["shut"]):
 			if room:
 				_lift_op(e, pi, lds[ia]["gate"], "open")
-		elif not at and _t(e, x["idle"]):
+		elif not at and not (calls >> ia & 1) and not over:
 			_lift_op(e, pi, lds[ia]["call"], "start")
 		return false
 	e.sp_pos[pi] = -1
 	if not can:
 		return false
-	if _t(e, lds[ib]["at"]):
-		if _t(e, lds[ib]["open"]):
-			var alights := 0
-			for y in e.npc_queue:
-				if y[0] == "alight" and _same(y[1], lid):
-					alights += 1
-			return _ride_off(e, pi, ib, rs.size() - alights == 1)
-		if _t(e, lds[ib]["shut"]):
-			_lift_op(e, pi, lds[ib]["gate"], "open")
-		return false
 	var c := -1
-	for k in lds.size():
-		if _t(e, lds[k]["at"]):
-			c = k
+	for j in lds.size():
+		if _t(e, lds[j]["at"]):
+			c = j
 			break
-	if c == -1:
-		return false                # between landings (or setting off): they wait
-	var ld: Dictionary = lds[c]
-	if not _t(e, x["ready"]):       # stopped at a landing: out there, and on from it by the route
+	var timeout: bool = n - since >= RIDE_WAIT
+	var bumped: bool = over and _same(last_npc(e, rs), pid)
+	if c != -1 and (c == ib or not ready or bumped or timeout):
+		# out here: where they are going; the lift not ready; the last NPC in when the cab is over its rated load; or
+		# after 3 minutes aboard (then up or down the stairs)
+		var ld: Dictionary = lds[c]
 		if _t(e, ld["open"]):
-			return _ride_off(e, pi, c, false)
-		if _t(e, ld["shut"]):
-			_lift_op(e, pi, ld["gate"], "open")
+			var alights := _queued(q, "alight", lid)
+			var boards := _queued(q, "board", lid)
+			q.append(["alight", lid, pid])
+			e.sp_lin[pi] = n
+			if rs.size() - alights + boards == 1 and (c == ib or ready):
+				_lift_op(e, pi, ld["gate"], "close")    # the last one out shuts the gate behind them
+			e._ev(["ride", pid, lid, places[a]["id"], places[b]["id"], "off"])
+			e.sp_ride[pi] = []
+			e.sp_pos[pi] = pts[c]
+			if c != ib and ready and not bumped and pts[c] != dest:
+				var nx := hop(pts[c], dest)
+				var key: int = pts[c] * places.size() + nx
+				if stairs.has(key):
+					e._ev(["ride", pid, lid, places[a]["id"], places[b]["id"], "stairs"])
+					var sr := PackedInt32Array([dest])
+					sr.append_array(stairs[key])
+					e.sp_stairs[pi] = sr
+			return true
+		if _t(e, ld["shut"]) or timeout and n - e.sp_lin[pi] >= RIDE_QUIET:
+			_lift_op(e, pi, ld["gate"], "open")     # (after 3 minutes, a gate neither open nor shut too: every 5 s)
 		return false
-	if _t(e, ld["open"]):
-		if n - e.lift_quiet[e._lift_ix[lid]] >= RIDE_QUIET:
-			_lift_op(e, pi, ld["gate"], "close")
-	else:
-		var all_shut := true
-		for y in lds:
-			if not _t(e, y["shut"]):
-				all_shut = false
-				break
-		if all_shut and _t(e, x["idle"]):
-			_lift_op(e, pi, x["panel"], "set", ib)
+	if ready and not over and not (calls >> ib & 1):
+		_lift_op(e, pi, x["panel"], "set", ib)      # where they are going, from the cab's panel
+	elif c != -1 and not over and _t(e, lds[c]["open"]) and n - e.lift_quiet[k] >= RIDE_QUIET \
+			and _queued(q, "board", lid) == 0:     # (not on someone boarding)
+		_lift_op(e, pi, lds[c]["gate"], "close")
 	return false
+
+
+static func _queued(q: Array, kind: String, lid: String) -> int:
+	var t := 0
+	for y in q:
+		if _same(y[0], kind) and _same(y[1], lid):
+			t += 1
+	return t
+
+
+## The NPC who boarded last of a lift's riders, or null.
+func last_npc(e, rs: Array):
+	for j in range(rs.size() - 1, -1, -1):
+		if typeof(rs[j]) == TYPE_STRING and e.slot_of(person_ix[rs[j]]) == -1:
+			return rs[j]
+	return null
 
 
 static func _t(e, name: String) -> bool:
 	return e.cur[e.ix[name]] >= 0.5
 
 
-## A rider's op (a local op by the person), not made when an op of the same code and do was done in this step's step 1
-## or made in this phase 4 (with the same value).
-func _lift_op(e, pi: int, code: String, do: String, value = null) -> void:
+## An op of the same code and do done in this step's step 1, or made in this phase 4 (with the same value).
+static func _lift_made(e, code: String, do: String, value = null) -> bool:
 	for y in e.npc_queue:
 		if y[0] == "op" and _same(y[1], code) and _same(y[2], do) and _same(y[3], value):
-			return
+			return true
 	for k in range(e.ev_mark, e.events.size()):
 		var y: Array = e.events[k]
 		if y.size() > 4 and _same(y[1], "op") and _same(y[2], code) and _same(y[3], do) and _same(y[4], "done"):
-			return
-	e.npc_queue.append(["op", code, do, value, null, "local", people[pi]["id"]])
-	e.sp_lin[pi] = e.step_no
+			return true
+	return false
 
 
-func _ride_off(e, pi: int, c: int, close: bool) -> bool:
-	var ride: Array = e.sp_ride[pi]
-	var li: int = ride[0]
-	var lid: String = lifts[li][0]
-	var pid: String = people[pi]["id"]
-	e.npc_queue.append(["alight", lid, pid])
-	e.sp_lin[pi] = e.step_no
-	if close:
-		_lift_op(e, pi, lift_model[li]["landings"][c]["gate"], "close")
-	e._ev(["ride", pid, lid, places[ride[1]]["id"], places[ride[2]]["id"], "off"])
-	e.sp_ride[pi] = []
-	e.sp_pos[pi] = lifts[li][1][c]
-	return true
+## A rider's op (a local op by the person), not made again (_lift_made).
+func _lift_op(e, pi: int, code: String, do: String, value = null) -> void:
+	if not _lift_made(e, code, do, value):
+		e.npc_queue.append(["op", code, do, value, null, "local", people[pi]["id"]])
+		e.sp_lin[pi] = e.step_no
 
 
 func go(e, pi: int, cur: Dictionary, x) -> String:

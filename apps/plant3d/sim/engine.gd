@@ -30,6 +30,8 @@ const Staff = preload("staff.gd")
 
 const STEP := 0.1
 const SLOTS := 8                    # a session run's slots, 0 to 7 (§17.13)
+const LIFT_DWELL := 50              # steps a lift's cab stands at a landing it has served before it leaves (§20.1)
+const LIFT_AHEAD := 1.0             # metres: a call made while the cab travels is served on the way this far ahead
 
 # node kinds, the commonest first (the evaluator tests them in this order)
 enum {K_GE, K_GT, K_LE, K_LT, K_OF, K_PRODUCT, K_AND, K_SUM, K_NOT, K_DIFF, K_MAX, K_SELECT, K_OR, K_MIN, K_CONST,
@@ -112,6 +114,11 @@ var _lift_ix := {}           # format 2's lifts (§20.3): id -> position in the 
 var _load_slot := PackedInt32Array()    # per lift: the slot of its <id>_load
 var riders: Array = []       # per lift: its riders in boarding order (a person id, or a slot for a null person)
 var lift_quiet := PackedInt64Array()    # per lift: the step of its last board or alight done
+var lift_calls := PackedInt64Array()    # per lift: its collective control's calls, a bit per landing (§20.1)
+var lift_dir := PackedInt32Array()      # per lift: its direction of travel (1 up, -1 down, 0 none)
+var lift_dwell := PackedInt64Array()    # per lift: the step before which the cab stands at a landing it served
+var _lift_ctl := {}          # "code|do" of a landing's call start or the panel's set -> Vector2i(lift, landing or -1)
+var _lift_codes := {}        # every lift's controls: ops on them need no role authority (§20.3)
 var queue: Array = []
 var events: Array = []
 var inputs: Array = []
@@ -206,7 +213,18 @@ func _init(model = null, scenario = null, session := false) -> void:
 		_lift_ix[m.lifts[k]["id"]] = k
 		_load_slot.append(ix[m.lifts[k]["id"] + "_load"])
 		riders.append([])
+		var x: Dictionary = m.lifts[k]
+		_lift_ctl[x["panel"] + "|set"] = Vector2i(k, -1)
+		_lift_codes[x["panel"]] = true
+		for i in x["landings"].size():
+			var ld: Dictionary = x["landings"][i]
+			_lift_ctl[ld["call"] + "|start"] = Vector2i(k, i)
+			_lift_codes[ld["call"]] = true
+			_lift_codes[ld["gate"]] = true
 	lift_quiet.resize(m.lifts.size())
+	lift_calls.resize(m.lifts.size())
+	lift_dir.resize(m.lifts.size())
+	lift_dwell.resize(m.lifts.size())
 	for x in m.bind:
 		if x.has("show") and not _show.has(x["kks"]):
 			_show[x["kks"]] = x["show"]
@@ -1535,6 +1553,9 @@ func _step() -> void:
 		if kind == "lock" or kind == "unlock" or kind == "remove_lock":
 			noted.append([item, npc, slot])
 			continue
+		if kind == "board" and npc and st_session and typeof(item[2]) == TYPE_STRING \
+				and slot_of(_sm.person_ix[item[2]]) != -1:
+			continue        # an NPC's board made before a slot took the person in this step: dropped (§20.3)
 		if kind == "board" or kind == "alight":
 			_ride(kind, item[1], item[2], npc)
 			continue
@@ -1583,6 +1604,8 @@ func _step() -> void:
 			if shelved[ai] != -1:
 				shelved[ai] = -1
 				_ev(["unshelve", item[1]])
+	if not m.lifts.is_empty():
+		_lift_control()
 	# first-out records clear when no trip of the group is latched
 	for g in first_out.keys():
 		var any := false
@@ -1777,8 +1800,8 @@ func _op(item: Array, moved: Dictionary, npc := false) -> String:
 		var where = item[5]
 		if typeof(where) != TYPE_STRING or not o["where"].has(where):
 			failed.append("where")
-		elif _authority(item[6], npc, "operate_" + where):
-			failed.append("authority")
+		elif _authority(item[6], npc, "" if typeof(kks) == TYPE_STRING and _lift_codes.has(kks) else "operate_" + where):
+			failed.append("authority")      # (a lift's controls need no role authority: anyone may ride, §20.3)
 	elif _sm != null and st_players[_in_slot] != -1 and not npc:
 		failed.append("authority")      # a trainee playing a person names where and who (§17.1)
 	var needs: PackedInt32Array = c["needs"]
@@ -1822,7 +1845,71 @@ func _op(item: Array, moved: Dictionary, npc := false) -> String:
 		var to: int = _mc[mi][2].find(_mc[mi][4][do]["to"])
 		_enter(mi, to, "command")
 		moved[mi] = true
+	if not _lift_ctl.is_empty() and typeof(kks) == TYPE_STRING and typeof(do) == TYPE_STRING:
+		var lc = _lift_ctl.get(kks + "|" + do)
+		if lc != null:                  # a landing's call or the cab's send: the lift remembers it (§20.1)
+			var i: int = lc.y
+			if i == -1:
+				i = clampi(floori(float(value)), 0, m.lifts[lc.x]["landings"].size() - 1)
+			lift_calls[lc.x] |= 1 << i
 	return "done"
+
+
+## Each lift's collective control (§20.1), at the end of step 1: the cab's target from the calls remembered, read
+## against the values as the step before left them (ref/plant3d.py _lift_control).
+func _lift_control() -> void:
+	for k in m.lifts.size():
+		var x: Dictionary = m.lifts[k]
+		var lds: Array = x["landings"]
+		var n := lds.size()
+		var ti: int = ix[x["target"]]
+		var goal := clampi(floori(prev[ti]), 0, n - 1)
+		var calls: int = lift_calls[k]
+		var d: int = lift_dir[k]
+		if prev[ix[x["ready"]]] < 0.5:
+			calls = 0                   # a lift not ready forgets its calls
+		else:
+			var c := -1
+			for i in n:
+				if prev[ix[lds[i]["at"]]] >= 0.5:
+					c = i
+					break
+			if c != -1:                 # standing at a landing
+				if calls >> c & 1:
+					calls &= ~(1 << c)
+					goal = c
+					lift_dwell[k] = step_no + LIFT_DWELL
+				elif step_no < lift_dwell[k]:
+					goal = c
+				elif calls == 0:
+					goal = c
+					d = 0
+				else:
+					var up := -1
+					var down := -1
+					for i in range(c + 1, n):
+						if calls >> i & 1:
+							up = i
+							break
+					for i in range(c - 1, -1, -1):
+						if calls >> i & 1:
+							down = i
+							break
+					if not (d == 1 and up != -1 or d == -1 and down != -1):   # the nearest way, up on a tie
+						d = 1 if up != -1 and (down == -1 or float(lds[up]["z"]) - float(lds[c]["z"])
+								<= float(lds[c]["z"]) - float(lds[down]["z"])) else -1
+					goal = up if d == 1 else down
+			elif d != 0:                # travelling: a call far enough ahead and short of the target, on the way
+				var z: float = prev[ix[x["z"]]]
+				for j in n:
+					var i: int = j if d == 1 else n - 1 - j
+					if calls >> i & 1 and (float(lds[i]["z"]) - z) * d >= LIFT_AHEAD \
+							and (float(lds[goal]["z"]) - float(lds[i]["z"])) * d > 0:
+						goal = i
+						break
+		lift_calls[k] = calls
+		lift_dir[k] = d
+		_write(ti, float(goal))
 
 
 # ---------------------------------------------------------------- what the vectors compare (§12)
@@ -1904,9 +1991,16 @@ func snapshot(with_values: bool = true) -> Dictionary:
 		s["locked"] = lk
 		if not m.lifts.is_empty():
 			var rd := {}
+			var cl := {}
 			for k in m.lifts.size():
 				rd[m.lifts[k]["id"]] = riders[k].duplicate()
+				var on := []
+				for i in m.lifts[k]["landings"].size():
+					if lift_calls[k] >> i & 1:
+						on.append(i)
+				cl[m.lifts[k]["id"]] = on
 			s["riders"] = rd
+			s["calls"] = cl
 	if _sm != null:
 		s["clock"] = clock()
 		s["people"] = _sm.snap(self)
@@ -1969,6 +2063,9 @@ func digest_tree() -> Array:
 	if not m.lifts.is_empty():          # each lift's riders and quiet step (§20.4), with lifts only
 		tree.append(riders)
 		tree.append(lift_quiet)
+		tree.append(lift_calls)
+		tree.append(lift_dir)
+		tree.append(lift_dwell)
 	return tree
 
 
@@ -2000,12 +2097,13 @@ func _digest_staff():
 		for pi in np:
 			var rd: Array = sp_ride[pi]
 			legs.append(sp_leg[pi] if rd.is_empty() else ["lift", _sm.lifts[rd[0]][0], rd[1], rd[2], rd[3], rd[4],
-					sp_lin[pi]])
+					rd[5]])
 	var tree := [J, st_order, st_session, st_players, st_acks, st_t_from, st_kept, _sorted_pairs(st_holder),
 			_sorted_pairs(st_given), st_vprev, st_pending, left, made, npc_queue, sp_on, sp_duty, sp_duties, sp_planned,
 			slots, sp_pos, legs, insts, sp_res, sp_occ, sp_result, sp_rng, sp_worn, sp_acts, sp_zin]
 	if _sm.has_lifts:
 		tree.append(sp_stairs)          # the stairs being walked instead of a ride
+		tree.append(sp_lin)             # the step of each person's last lift input
 	return tree
 
 
@@ -2038,11 +2136,11 @@ func clone():
 			"_faults", "_fault_ix", "_auto_faults", "_all_faults", "_tr_when", "_tr_need", "_al_when", "_al_clear",
 			"_al_sup", "_al_need", "_ops", "_iso", "_wk", "_state_kks", "_v2", "step_no", "ptw_count",
 			"_sm", "_S", "_ds", "_absent", "_fixed_trainee", "_show", "_fault_kks", "J", "ev_mark", "st_order",
-			"st_session", "st_next1", "_lift_ix", "_load_slot"]:
+			"st_session", "st_next1", "_lift_ix", "_load_slot", "_lift_ctl", "_lift_codes"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_worn",
-			"sp_zin", "lift_quiet", "sp_lin"]:
+			"sp_zin", "lift_quiet", "sp_lin", "lift_calls", "lift_dir", "lift_dwell"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",
 			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_kept",

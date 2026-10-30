@@ -7,7 +7,7 @@ names their handles for the engine and the staff. Used by the first train's cont
     m['values'], m['ops'], m['alarms'], m['lift'], m['faults'], m['codes']
 
 What it makes, for a lift `L` with landings 0 … n−1 (heights z rising):
-- `L_target` (a state: the landing the cab is sent to), `L_estop` (the emergency stop), `L_main` (the main switch,
+- `L_target` (a state: the landing the cab is sent to; the engine's collective control writes it, §20.1), `L_estop` (the emergency stop), `L_main` (the main switch,
   1 on: an isolation's point), `L_drive_fault` (the drive's fault), per gate `L_gate<i>_cmd` (its command) and
   `L_gate<i>_switch` (a fault of its switch: it reads not shut);
 - the gates' positions (ramps of their commands, `gate_s` to open or shut), `open` and `shut`;
@@ -17,7 +17,8 @@ What it makes, for a lift `L` with landings 0 … n−1 (heights z rising):
 - the cab's floor `L_z`, a ramp of `L_u` at `speed`, and `L_u` = `L_z` while the cab may not run, else the target's
   height (a ramp reads its input as the previous step left it, so a cab that may not run stays exactly where it is);
 - per landing `L_at<i>`: level there and not about to move; `L_idle`: at its target with every gate shut;
-- ops: each landing's call `start` and the panel's `set` need ready, idle and the load; a gate's `open` needs its
+- ops: each landing's call `start` and the panel's `set` need ready and the load (the engine remembers the call, at
+  any time, and serves the calls in the order of travel); a gate's `open` needs its
   landing's `at`; `close` needs nothing; the panel's `stop` and `start` press and release the emergency stop;
 - the alarm `L_overload` (priority 3) while the load is over the rated load;
 - the scenario faults `L_drive` (the drive) and `L_gate_switch` (landing 0's gate switch reads not shut).
@@ -71,7 +72,6 @@ def lift_model(lid, kks, zs, *, rated_kg=500, person_kg=75, speed=0.6, gate_s=2)
     t_le = val(f'{L}_tz_le', {'cmp': [z, '<=', tz]})
     idle = val(f'{L}_idle', {'and': [t_ge, t_le] + shut})
     needs = [[ready, 'The lift is not ready: stopped, faulted or switched off'],
-             [idle, 'The cab is travelling or a gate is not shut'],
              [load_ok, 'The cab is over its rated load']]
     ops = [{'kks': codes['calls'][i], 'do': 'start', 'set': {target: i}, 'needs': needs, 'where': ['local']}
            for i in range(n)]
@@ -89,7 +89,7 @@ def lift_model(lid, kks, zs, *, rated_kg=500, person_kg=75, speed=0.6, gate_s=2)
                'kks': codes['drive']},
               {'id': f'{L}_gate_switch', 'set': {switch[0]: 1}, 'repair': {switch[0]: 0},
                'text': 'A landing gate switch reads not shut', 'kks': codes['gates'][0]}]
-    lift = {'id': lid, 'kks': kks, 'rated_kg': rated_kg, 'person_kg': person_kg, 'ready': ready, 'idle': idle,
+    lift = {'id': lid, 'kks': kks, 'rated_kg': rated_kg, 'person_kg': person_kg, 'ready': ready, 'idle': idle, 'z': z,
             'panel': codes['panel'], 'target': target,
             'landings': [{'z': zs[i], 'at': at[i], 'open': opened[i], 'shut': shut[i], 'call': codes['calls'][i],
                           'gate': codes['gates'][i]} for i in range(n)]}

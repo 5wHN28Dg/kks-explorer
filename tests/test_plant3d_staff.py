@@ -1191,10 +1191,111 @@ class LiftVectors(unittest.TestCase):
         self.assertTrue(any(e[1] == 'op' and e[4] == 'refused' and e[5] == ['hlift_at1'] for e in ev))
         loads = {st['values']['hlift_load'] for s in self.steps for st in s['states']}
         self.assertEqual(loads, {0.0, 75.0, 150.0, 225.0})
-        self.assertTrue(all('riders' in st for s in self.steps for st in s['states']))
+        self.assertTrue(all('riders' in st and 'calls' in st for s in self.steps for st in s['states']))
+
+    def test_collective_control(self):
+        """The first unit run's stops (§20.1, the user's decision of 2026-10-30): a call ahead taken on the way up (1
+        before 2), a call behind after the turn (0), a call passed too close ahead served on the way back (1 after 0),
+        the nearer of two calls either side first (0 before 2), the panel's send taken on the way (1)."""
+        stops = []
+        for st in self.steps[0]['states']:
+            v = st['values']
+            at = [i for i in range(3) if v[f'hlift_at{i}'] >= 0.5]
+            if at and (not stops or stops[-1] != at[0]):
+                stops.append(at[0])
+        self.assertEqual(stops, [0, 1, 2, 0, 1, 0, 1, 0])
+        ev = self.steps[0]['events']
+        self.assertIn([10, 'op', '10SNB10GH003', 'start', 'done', []], ev)    # with the gate open: remembered
+        self.assertTrue(any(st['calls']['hlift'] == [0, 2] for st in self.steps[0]['states']))
+        # the emergency stop forgets the calls; the gate switch holds the cab with a call remembered
+        self.assertEqual(self.steps[0]['states'][701]['calls']['hlift'], [])
+        self.assertEqual(self.steps[0]['states'][970]['calls']['hlift'], [2])
+        self.assertEqual(self.steps[0]['states'][-1]['values']['hlift_target'], 2.0)
+
+    def run(self, why):
+        return next(r for r in self.runs if r['why'].startswith(why))
+
+    def rides(self, r, who, how):
+        return [e for e in r['events'] if e[1] == 'ride' and e[2] == who and e[6] == how]
+
+    def test_anyone_rides(self):
+        """A technician whose role has no local operating authority rides and works the lift's controls (§20.3)."""
+        r = self.run('NPCs on the lift')
+        self.assertTrue(any(e[1] == 'board' and e[3] == 't1' and e[4] == 'done' for e in r['events']))
+        self.assertTrue(any(e[1] == 'op' and e[7] == 't1' and e[4] == 'done' for e in r['events'] if len(e) > 7))
+        self.assertFalse(self.rides(r, 't1', 'stairs'))
+        self.assertFalse([e for r in self.runs for e in r['events'] if e[1] == 'op' and 'authority' in e[5]])
+
+    def test_three_minutes_aboard(self):
+        """A rider held at a landing that is not theirs gets off after 3 minutes aboard and takes the stairs."""
+        r = self.run('three minutes aboard')
+        board = next(e[0] for e in r['events'] if e[1] == 'board' and e[2] == 'hlift' and e[3] == 'f1'
+                     and e[0] > 400)
+        off = self.rides(r, 'f1', 'off')
+        stairs = self.rides(r, 'f1', 'stairs')
+        self.assertTrue(any(e[4:6] == ['l1', 'l2'] and e[0] >= board + 1800 for e in off), off)
+        self.assertTrue(any(e[4:6] == ['l1', 'l2'] and e[0] >= board + 1800 for e in stairs), stairs)
+
+    def test_overload_resolves(self):
+        """The trainee and NPCs boarding in one step over the rated load: the last NPC in steps out at once, nobody
+        sends or calls while it is over, the others ride up."""
+        r = self.run('the trainee and an NPC boarding')
+        ev = r['events']
+        n = next(e[0] for e in ev if e[1] == 'board' and e[3] == 'f5' and e[4] == 'done')
+        self.assertEqual([e[3] for e in ev if e[0] == n and e[1] == 'board' and e[4] == 'done'], ['f5', 'f1', 'f2'])
+        self.assertTrue(any(e[1] == 'alight' and e[3] == 'f2' and n < e[0] <= n + 5 for e in ev))
+        self.assertFalse([e for e in ev if e[1] == 'op' and e[4] == 'refused'])
+        self.assertTrue(any(e[1] == 'alight' and e[3] == 'f1' and e[4] == 'done' for e in ev))
+
+    def test_claim_of_one_boarding(self):
+        """A slot takes a waiting NPC whose board was made in the step before: it is dropped (not aboard, at the
+        landing); released there, not aboard, no alight is made."""
+        r = self.run('a claim and a release while waiting')
+        ev = r['events']
+        n = next(e[0] for e in ev if e[1] == 'role' and e[2] == 'f1' and e[3] == 'done')
+        rel = next(e[0] for e in ev if e[1] == 'release' and e[2] == 'f1')
+        self.assertFalse([e for e in ev if e[1] == 'board' and e[3] == 'f1' and n <= e[0] <= rel])
+        self.assertFalse([e for e in ev if e[1] == 'alight' and e[3] == 'f1' and e[0] <= rel + 1])
+        st = next(x for x in r['states'] if x['step'] >= n)
+        self.assertEqual(st['people']['f1'][0], 'l0')
+        self.assertNotIn('f1', st['riders']['hlift'])
+
+    def test_release_and_jump_in_one_step(self):
+        r = self.run('a release and a jump in one step')
+        ev = r['events']
+        n = next(e[0] for e in ev if e[1] == 'jump' and e[4] == 'done')
+        self.assertTrue(any(e[0] == n and e[1] == 'release' and e[3] == 'done' for e in ev))
+        self.assertEqual(sorted(e[3] for e in ev if e[1] == 'alight' and e[0] == n + 1 and e[4] == 'done'),
+                         ['f1', 'f2'])
+        self.assertFalse([e for e in ev if e[1] == 'alight' and e[4] != 'done'])
+
+    def test_op_done_in_step_1(self):
+        """The trainee opens the gate in the step a waiting NPC would: the NPC doesn't press it again."""
+        r = self.run('an op done in step 1')
+        ev = r['events']
+        n = next(e[0] for e in ev if e[1] == 'op' and e[2] == '10SNB10AB001' and e[3] == 'open' and len(e) == 6)
+        self.assertTrue(any(e[0] == n - 1 and e[1] == 'ride' and e[2] == 'f1' and e[6] == 'wait' for e in ev))
+        self.assertFalse([e for e in ev if e[1] == 'op' and e[2] == '10SNB10AB001' and e[3] == 'open'
+                          and len(e) > 6])
+
+    def test_stairs_left_for_another_walk(self):
+        r = self.run('the stairs left for another walk')
+        ev = r['events']
+        down = self.rides(r, 'f1', 'stairs')[0][0]
+        again = next(e[0] for e in ev if e[1] == 'task' and e[2] == 'f1' and e[4] == 'start' and e[0] > down)
+        done = next(e[0] for e in ev if e[1] == 'task' and e[2] == 'f1' and e[4] == 'done' and e[0] > again)
+        self.assertLess(done - again, 300)      # back up from the stairs' first point, not down to the mess first
+
+    def test_jump_on_the_stairs(self):
+        r = self.run('a jump while someone walks the stairs')
+        ev = r['events']
+        n = next(e[0] for e in ev if e[1] == 'jump' and e[4] == 'done')
+        self.assertTrue(any(e[0] < n for e in self.rides(r, 'f1', 'stairs')))
+        st = next(x for x in r['states'] if x['step'] >= n)
+        self.assertNotEqual(st['people']['f1'][0], None)
 
     def test_rides(self):
-        self.assertEqual(len(self.runs), 6)
+        self.assertEqual(len(self.runs), 14)
         rides = [e for e in self.ev if e[1] == 'ride']
         for how in ('wait', 'off', 'stairs'):
             self.assertTrue(any(e[6] == how for e in rides), how)
@@ -1211,10 +1312,18 @@ class LiftVectors(unittest.TestCase):
                 self.assertTrue(all('riders' not in st for st in r['states']), r['why'][:60])
 
     def test_rejects(self):
-        codes = {r['code'] for r in self.V['staff']['reject'][-12:]} | {r['code'] for r in self.V['reject'][-26:]}
+        codes = {r['code'] for r in self.V['staff']['reject'][-12:]} | {r['code'] for r in self.V['reject'][-39:]}
         for c in ('unknown_key', 'bad_id', 'dup_id', 'limit', 'bad_kks', 'missing_key', 'bad_length', 'bad_number',
                   'bad_ref', 'bad_value', 'bad_way', 'unreachable'):
             self.assertIn(c, codes)
+        whys = {r['why']: r['code'] for r in self.V['reject']}
+        for why, code in (('two landings with one call station', 'dup_id'), ('a call station that is also a gate', 'dup_id'),
+                          ('two landings with one gate', 'dup_id'),
+                          ('a call whose start sends the cab to another landing', 'bad_ref'),
+                          ('a gate whose open does not need the cab at its landing', 'bad_ref'),
+                          ('a target that starts beyond the landings', 'bad_value'),
+                          ('a scenario starting the target beyond the landings', 'bad_value')):
+            self.assertEqual(whys.get(why), code, why)
 
     def test_stairs_route_by_the_rule(self):
         b = P.check_files({k: (v if isinstance(v, str) else json.dumps(v)).encode()
@@ -1223,3 +1332,29 @@ class LiftVectors(unittest.TestCase):
         ids = lambda xs: [st.places[x]['id'] for x in xs]  # noqa: E731
         self.assertEqual(ids(st.stairs[(st.pix['l0'], st.pix['l2'])]), ['l0', 's1', 'l1', 's2', 'l2'])
         self.assertEqual(ids(st.stairs[(st.pix['l2'], st.pix['l1'])]), ['l2', 's2', 'l1'])
+
+
+class LiftDigest(unittest.TestCase):
+    """The digest (§17.14, §20.10) carries what a lift run keeps: a person's last lift input step off a ride too (it
+    holds back their next one), and the lift's calls, direction and dwell step."""
+
+    def engine(self):
+        F = G.lift_staff_files(150, {'f1': [('05:31', 'up')]})
+        e = P.Engine(G.check(F), 's1')
+        e.step(300)
+        return e
+
+    def test_last_lift_input_off_a_ride(self):
+        e = self.engine()
+        c = e.clone()
+        p = c.staff.people[c.staff.st.person_ix['f2']]
+        self.assertIsNone(p.ride)
+        p.lin = c.step_no
+        self.assertNotEqual(e.digest(), c.digest())
+
+    def test_collective_control_state(self):
+        e = self.engine()
+        for k, v in (('lift_calls', 5), ('lift_dir', -1), ('lift_dwell', e.step_no + 7)):
+            c = e.clone()
+            getattr(c, k)[0] = v
+            self.assertNotEqual(e.digest(), c.digest(), k)

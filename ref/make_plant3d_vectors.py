@@ -3123,18 +3123,23 @@ def lift_unit_runs():
     return [
         ('a three-landing lift (§20.1, made as the content tool makes it) and a rider in free mode (§20.3): a gate\'s '
          'open refused away from the cab; board (the slot is the rider), a second board refused (aboard), an alight '
-         'from no lift (unknown) and a board naming a person without staff (authority); the gate opened and shut, a '
-         'call refused with a gate open, the cab sent up from its panel; the emergency stop between landings (a call '
-         'refused: not ready, not idle) and its release; the alight and a second one refused (not_aboard); called '
-         'back down, a drive fault on the way and its repair; a gate switch that reads not shut (a call refused) and '
-         'its repair; the riders and the load in every snapshot', 150, False,
+         'from no lift (unknown) and a board naming a person without staff (authority); collective control: a call '
+         'remembered while the gate stands open (the cab leaves once it is shut), a call ahead taken on the way, a '
+         'call at the landing where the cab stands (it stays), a call behind served after the turn, a call too close '
+         'ahead passed and served on the way back, two calls either side of a standing cab (the nearer first), a send '
+         'from the panel taken on the way; the emergency stop between landings (the calls forgotten, a call refused: '
+         'not ready) and its release (on to its target); the alight and a second one refused (not_aboard); a drive '
+         'fault on the way and its repair; a gate switch that reads not shut (a call remembered, the cab held) and its '
+         'repair; the riders, the calls and the load in every snapshot', 150, False,
          [op(1, GATE[1], 'open'), [2, 'board', LIFT, None], [3, 'board', LIFT, None], [3, 'alight', 'nolift', None],
           [3, 'board', LIFT, 'someone'], op(4, GATE[0], 'open'), op(10, CALL[2], 'start'), op(30, GATE[0], 'close'),
-          op(55, PANEL, 'set', 2), op(80, PANEL, 'stop'), op(90, CALL[0], 'start'), op(110, PANEL, 'start'),
-          op(215, GATE[2], 'open'), [240, 'alight', LIFT, None], [241, 'alight', LIFT, None],
-          op(250, GATE[2], 'close'), op(280, CALL[0], 'start'), [320, 'fault', 'hlift_drive'],
-          op(330, CALL[1], 'start'), [340, 'repair', 'hlift_drive'], [430, 'fault', 'hlift_gate_switch'],
-          op(435, CALL[1], 'start'), [440, 'repair', 'hlift_gate_switch'], op(445, CALL[1], 'start')], 520),
+          op(60, CALL[1], 'start'), op(120, CALL[1], 'start'), op(200, CALL[0], 'start'), op(354, CALL[1], 'start'),
+          op(580, CALL[0], 'start'), op(580, CALL[2], 'start'), op(690, PANEL, 'set', 1), op(700, PANEL, 'stop'),
+          op(710, CALL[2], 'start'), op(730, PANEL, 'start'), op(780, GATE[1], 'open'), [805, 'alight', LIFT, None],
+          [806, 'alight', LIFT, None], op(810, GATE[1], 'close'), op(840, CALL[0], 'start'),
+          [880, 'fault', 'hlift_drive'], op(885, CALL[2], 'start'), [900, 'repair', 'hlift_drive'],
+          [960, 'fault', 'hlift_gate_switch'], op(965, CALL[2], 'start'), [990, 'repair', 'hlift_gate_switch']],
+         1120),
         ('the overload in a session run without staff (§20.1, §20.3): three free slots board a cab rated for two (the '
          'load over its rated load, the alarm), a call and a send refused, inputs with no valid slot doing nothing, '
          'the alarm acknowledged; one alights (cleared), a board of one aboard refused, the cab sent, one alights at '
@@ -3185,6 +3190,18 @@ def _panel_set(k, v):
     return f
 
 
+def _op_of(code, do, key, v):
+    def f(F):
+        next(o for o in F['model/a1.json']['ops'] if (o['kks'], o['do']) == (code, do))[key] = v
+    return f
+
+
+def _value_of(name, key, v):
+    def f(F):
+        next(x for x in F['model/a1.json']['values'] if x[0] == name)[1][key] = v
+    return f
+
+
 def _lift(fn):
     def f(F):
         fn(F['model/a1.json']['lifts'])
@@ -3220,13 +3237,29 @@ REJECTS_LIFT = [
     ('a panel without its emergency stop', 'bad_ref', _ops_without(PANEL, 'stop')),
     ('a panel whose set op writes another state', 'bad_ref', _panel_set('input', 'hlift_estop')),
     ('a panel whose set op\'s range is not the landings\'', 'bad_ref', _panel_set('range', [0, 3])),
+    ('a lift without the value of its cab\'s height', 'missing_key', _del(LIFTS + ['z'])),
+    ('a cab\'s height that does not exist', 'bad_ref', _set(LIFTS + ['z'], 'hlift_height')),
+    ('a call station that is also a gate', 'dup_id', _set(LIFTS + ['landings', 1, 'call'], GATE[1])),
+    ('two landings with one call station', 'dup_id', _set(LIFTS + ['landings', 2, 'call'], CALL[1])),
+    ('two landings with one gate', 'dup_id', _set(LIFTS + ['landings', 0, 'gate'], GATE[1])),
+    ('a panel that is a landing\'s call station', 'dup_id', _set(LIFTS + ['panel'], CALL[0])),
+    ('two lifts sharing a gate', 'dup_id', _lift(lambda ls: ls.append(dict(copy.deepcopy(ls[0]), id='lift2')))),
+    ('a call whose start sends the cab to another landing', 'bad_ref', _op_of(CALL[1], 'start', 'set',
+                                                                              {'hlift_target': 2})),
+    ('a call whose start sets no target', 'bad_ref', _op_of(CALL[0], 'start', 'set', {'hlift_estop': 0})),
+    ('a gate whose open does not need the cab at its landing', 'bad_ref', _op_of(
+        GATE[2], 'open', 'needs', [['hlift_at0', 'The cab is not at the bottom']])),
+    ('a target that starts beyond the landings', 'bad_value', _value_of('hlift_target', 'state', 3)),
+    ('a target that starts between landings', 'bad_value', _value_of('hlift_target', 'state', 0.5)),
+    ('a scenario starting the target beyond the landings', 'bad_value',
+     _set(['scenarios/s1.json', 'init', 'hlift_target'], 5)),
     ('a value named like a lift\'s load', 'dup_id', lambda F: F['model/a1.json']['values'].insert(
         0, ['hlift_load', {'const': 1}])),
     ('a scenario setting a lift\'s load', 'bad_ref', _set(['scenarios/s1.json', 'init', 'hlift_load'], 75)),
 ]
 
 
-# the lift's staff (§20.4): a field crew on days and a technician who may not work local controls, on a walking network
+# the lift's staff (§20.4): a field crew on days and a technician whose role has no local operating authority, on a walking network
 # from the control room past a mess to the lift's three landings, the stairs beside it and a work place at each landing
 def lift_staff(slots):
     places = []
@@ -3271,7 +3304,10 @@ def lift_staff(slots):
                                                                  {'work': 1}]},
              {'id': 'mid', 'title': 'To the middle landing', 'steps': [{'go': 'w_mid'}, {'work': 2}, {'go': 'mess'}]},
              {'id': 'from_top', 'title': 'Down from the drive', 'steps': [{'go': 'w_top'}, {'work': 1},
-                                                                          {'go': 'w_low'}, {'work': 1}]}]
+                                                                          {'go': 'w_low'}, {'work': 1}]},
+             {'id': 'to_top', 'title': 'A look at the drive', 'steps': [{'go': 'w_top'}, {'work': 1}]},
+             {'id': 'mid_up', 'title': 'The middle landing, then the drive', 'steps': [
+                 {'go': 'w_mid'}, {'work': 1}, {'go': 'w_top'}, {'work': 1}, {'go': 'mess'}]}]
     return {'format': 'walkdown-plant-staff', 'version': 1, 'origin': 'desk', 'gate': 'gate', 'speeds': speeds,
             'places': places, 'ways': ways, 'next': S.next_table(len(pts), adj),
             'lifts': [{'lift': LIFT, 'landings': ['l0', 'l1', 'l2']}], 'roles': roles,
@@ -3359,9 +3395,9 @@ def lift_runs():
     return [
         ('NPCs on the lift (§20.4): three field operators going up together to a cab rated for two (one opens the '
          'gate, two board, the third left for the next trip and calling the cab back), a fourth arriving while it is '
-         'away (waiting for it to come back), a technician who may not work local controls taking the stairs; the '
-         'gate closed after 5 s quiet, the cab sent up, each getting off where they are going (the last one out '
-         'closing the gate), two coming down together', 150,
+         'away (waiting for it to come back), a technician whose role has no local operating authority riding as '
+         'anyone may (§20.3); the gate closed after 5 s quiet, the cab sent up, each getting off where they are going '
+         '(the last one out closing the gate, none closing it on someone boarding), two coming down together', 150,
          {'f1': up, 'f2': up, 'f3': up, 'f4': [('05:45', 'up')], 't1': [('05:32', 'up')]}, None, Scripted(), 2400, 50),
         ('the lift not ready (§20.4): a drive fault with two riders between landings (they wait in the cab, a third '
          'waiting at the bottom takes the stairs), its repair (the cab goes on, they get off); later the emergency '
@@ -3400,7 +3436,69 @@ def lift_runs():
          'landing they left and riding again as an NPC, the cab called back for them', 150, {'f1': up, 'f2': up}, None,
          Session([Trainee(slot=0, quiet=True)],
                  when=[(_fire(4, lambda e: _aboard(e, 'f1', 'f2') and _z(e) > 1), ('role', 'f1', 0)),
-                       (_later(4, 1, lambda e: _z(e) > 5), ('release', 0))]), 1600, 20)]
+                       (_later(4, 1, lambda e: _z(e) > 5), ('release', 0))]), 1600, 20),
+        ('collective control with NPCs (§20.1, §20.4): a field operator at the middle landing calls the cab to go '
+         'down, another at the top calls it while it travels up to the first; the first boards and sends it down, '
+         'but it goes on up to the call ahead (in its direction) before it turns, and brings both down', 150, {'f2': [('05:30', 'mid')], 'f1': [('05:30', 'up')]},
+         None, Scripted(), 2600, 50),
+        ('three minutes aboard (§20.4): a field operator boards at the middle landing for the top, the bottom gate\'s '
+         'switch reads not shut (the cab held where it stands); after 3 minutes aboard they open the gate, get off '
+         'and take the stairs; the repair', 150, {'f1': [('05:31', 'mid_up')]}, None,
+         Scripted(when=[(_fire(5, lambda e: _aboard(e, 'f1') and e.v('hlift_at1') >= 0.5
+                                and _ride(e, 'f1') is not None and _ride(e, 'f1')[2] == _place(e, 'l2')), ('fault', 'hlift_gate_switch')),
+                        (_later(5, 2200), ('repair', 'hlift_gate_switch'))]), 3200, 50),
+        ('the trainee and an NPC boarding in one step over the rated load (§20.4): the last NPC in gets off and waits '
+         'for the next trip, the cab goes up with the others (no refused sends), comes back for them', 150,
+         {'f1': up, 'f2': up}, 'f5',
+         Scripted(extra=[[2, 'leave', 'mess'], [100, 'arrive', 'l0']],
+                  when=[(_fire(6, lambda e: ('board', LIFT, 'f2') in e.npc_queue),
+                         ('board', LIFT, 'f5')),
+                        (_fire(7, lambda e: e.v('hlift_at2') >= 0.5 and e.v('hlift_open2') >= 0.5
+                               and 'f1' not in e.riders[LIFT] and 'f5' in e.riders[LIFT]), ('alight', LIFT, 'f5')),
+                        (_later(7, 1), ('arrive', 'l2'))]), 1800, 20),
+        ('a claim and a release while waiting (§20.3, §17.13): slot 0 takes a field operator whose board was made in '
+         'the step before (it is dropped: they stay at the landing), and releases them there, not aboard (no alight); '
+         'they ride on as an NPC', 150, {'f1': up, 'f2': up}, None,
+         Session([Trainee(slot=0, quiet=True)],
+                 when=[(_fire(8, lambda e: ('board', LIFT, 'f1') in e.npc_queue), ('role', 'f1', 0)),
+                       (_later(8, 30), ('release', 0))]), 1400, 20),
+        ('a release and a jump in one step (§20.3): slot 0 takes a field operator aboard, the host releases them and '
+         'jumps in the same step (one alight for them, none refused)', 150, {'f1': up, 'f2': up}, None,
+         Session([Trainee(slot=0, quiet=True)],
+                 when=[(_fire(9, lambda e: _aboard(e, 'f1', 'f2') and _z(e) > 1), ('role', 'f1', 0)),
+                       (_later(9, 20, lambda e: not e.npc_queue), ('release', 0)),
+                       (_later(9, 20, lambda e: not e.npc_queue), ('jump', '07:00', 0))]), 600, 20),
+        ('an op done in step 1 (§20.4, as built): the trainee in free mode opens the bottom gate in the step a field '
+         'operator would; they don\'t press it again', 150, {'f1': up}, None,
+         Scripted(when=[(lambda e: _ride(e, 'f1') is not None and _ride(e, 'f1')[4] == e.step_no
+                         and e.v('hlift_at0') >= 0.5 and e.v('hlift_shut0') >= 0.5,
+                         ('op', GATE[0], 'open', None, None))]), 400, 10),
+        ('the stairs left for another walk (§20.4, as built): the lift stopped while a field operator is at the top, '
+         'they take the stairs down to the mess, and another job at the top, given on the way, takes them back up',
+         150, {'f1': [('05:31', 'to_top'), ('06:35', 'to_top')]}, None,
+         Scripted(when=[(lambda e: _place_of(e, 'f1') == _place(e, 'w_top'), ('op', PANEL, 'stop', None, None))]),
+         2400, 50),
+        ('a jump while someone walks the stairs (§20.4): the lift stopped from the start, a field operator going up '
+         'by the stairs, the jump: everyone placed again, the stairs forgotten', 150, {'f1': up}, None,
+         Scripted(extra=[[1, 'op', PANEL, 'stop', None, None]],
+                  when=[(lambda e: _person(e, 'f1').stairs is not None and _person(e, 'f1').leg is not None
+                         and not e.npc_queue, ('jump', '07:00'))]), 900, 20)]
+
+
+def _person(e, pid):
+    return e.staff.people[e.staff.st.person_ix[pid]]
+
+
+def _ride(e, pid):
+    return _person(e, pid).ride
+
+
+def _place(e, pid):
+    return e.staff.st.pix[pid]
+
+
+def _place_of(e, pid):
+    return _person(e, pid).pos
 
 
 def build_lift_runs():

@@ -41,13 +41,23 @@ queued by step 9 for the next step's step 1 (as their ops are), and a value the 
   (`speeds.lift`); a person who takes it walks to the landing and rides by the protocol of PLANT3D.md §20.4, making
   inputs as anyone; a lift that is not ready, or a wait over 3 minutes of model time, sends them up the stairs: each
   lift way's route without lift ways, searched by both engines at load.
+- **Collective control** (the user's decision of 2026-10-30, replacing "a call is accepted only while the cab is
+  idle"): the cab remembers every landing call and every send from its panel and serves them in the order of travel,
+  going on in its direction while calls lie ahead, then turning (PLANT3D.md §20.1). It lives in the engine (both
+  engines, bit for bit): the calls, the direction and a dwell step per lift, the target written at the end of step 1.
+  Content alone could hold the calls as latches, but not the choice of the next landing in travel order without a
+  growing web of nodes per landing pair; the engine already keeps each lift's riders.
+- Gates are powered and push-button (open only with the cab at that landing; the cab runs only with every gate
+  shut; NPCs shut the gate behind them). Anyone on site may use the lift: its controls need no role authority.
+  NPCs wait up to 3 minutes for it, aboard too, then take the stairs (at once when it is not in service).
 - Hoists and the turbine hall's crane are content only (no engine change), operated by `set` ops and used in
   procedures.
 - The view (cab, gates, riders, hooks, loads) follows the model's values, interpolated between steps; nothing of it
   is in the vectors.
 
-**Revisit** if a lift needs collective control (several calls served in one trip) or the trainee's walking
-directions should use lifts (a navigation link per lift): both are possible on top of this.
+**Revisit** if a lift needs direction-selective calls (up and down buttons per landing) or a car that opens its own
+gates. The trainee's walking directions take the lift when it is quicker (the user, 2026-10-30): the app's part
+(L2, L3), from staff.json's lift ways and their nominal time.
 
 Sources: [S1] Modern Power Systems, "Three Alimak elevators give access to the HRSGs",
 https://www.modernpowersystems.com/whitepapers/three-alimak-elevators-give-access-to-the-hrsgs/ · [S2] Alimak, "SE/SE Ex

@@ -28,6 +28,8 @@ PERMIT_KINDS = ('general', 'electrical', 'hot', 'confined')
 # a permit's states (§15.3) and the actions that move it: the states each is taken in, and where it goes
 PERMIT_STATES = ('none', 'requested', 'approved', 'isolated', 'issued', 'accepted', 'done', 'returned', 'deisolated',
                  'closed', 'cancelled')
+LIFT_DWELL = 50     # steps a lift's cab stands at a landing it has served before it leaves for another call (§20.1)
+LIFT_AHEAD = 1.0    # metres: a call made while the cab travels is served on the way when its landing lies this far ahead
 NO_OWNER = object()      # a removal by authority that names no owner: the point's earliest lock (§15.1)
 
 
@@ -991,13 +993,14 @@ class Model:
         for i, x in enumerate(lst(d.get('works', []), f'{rel}.works')):
             self.check_work(x, f'{rel}: work {x.get("id", i) if isinstance(x, dict) else i}')
         need(len(self.works) <= MAX['works'], 'limit', f'{rel}: the joined model has over {MAX["works"]} works')
-        for i, x in enumerate(lst(d.get('lifts', []), f'{rel}.lifts')):
+        need(len(self.lifts) + len(lst(d.get('lifts', []), f'{rel}.lifts')) <= MAX['lifts'], 'limit',
+             f'{rel}: the joined model has over {MAX["lifts"]} lifts')
+        for i, x in enumerate(d.get('lifts', [])):
             self.check_lift(x, f'{rel}: lift {x.get("id", i) if isinstance(x, dict) else i}')
-        need(len(self.lifts) <= MAX['lifts'], 'limit', f'{rel}: the joined model has over {MAX["lifts"]} lifts')
 
     def check_lift(self, x, w):
         """§20.1: the handles of a lift that is model content (its values and ops are checked in finish())."""
-        keys(x, ('id', 'kks', 'rated_kg', 'person_kg', 'ready', 'idle', 'panel', 'target', 'landings'), (), w)
+        keys(x, ('id', 'kks', 'rated_kg', 'person_kg', 'ready', 'idle', 'z', 'panel', 'target', 'landings'), (), w)
         need(isinstance(x['id'], str) and ID_RE.fullmatch(x['id']) and len(x['id']) <= 26, 'bad_id',
              f'{w}: id of at most 26 characters')
         need(x['id'] not in {y['id'] for y in self.lifts}, 'dup_id', w)
@@ -1005,7 +1008,7 @@ class Model:
         num(x['person_kg'], f'{w}.person_kg', 0, 1e4)
         need(x['person_kg'] > 0, 'bad_number', f'{w}.person_kg: above 0')
         num(x['rated_kg'], f'{w}.rated_kg', x['person_kg'], 1e6)
-        for k in ('ready', 'idle'):
+        for k in ('ready', 'idle', 'z'):
             self.cond(x[k], f'{w}.{k}')
         self.kks_ref(x['panel'], f'{w}.panel')
         need(isinstance(x['target'], str), 'bad_ref', f'{w}.target: a state value')
@@ -1020,6 +1023,11 @@ class Model:
                 self.cond(ld[k], f'{wl}.{k}')
             self.kks_ref(ld['call'], f'{wl}.call')
             self.kks_ref(ld['gate'], f'{wl}.gate')
+        # the panel, the calls and the gates are each a code of their own, of this lift alone
+        codes = [x['panel']] + [ld[k] for ld in x['landings'] for k in ('call', 'gate')]
+        taken = {c for y in self.lifts for c in [y['panel']] + [ld[k] for ld in y['landings'] for k in ('call', 'gate')]}
+        for i, c in enumerate(codes):
+            need(c not in codes[:i] and c not in taken, 'dup_id', f'{w}: {c} is two of the lifts\' controls')
         self.lifts.append(x)
 
     def check_isolation(self, x, w):
@@ -1371,6 +1379,17 @@ class Model:
             o = self.op_keys[(x['panel'], 'set', None)]
             need('machine' not in o and o.get('input') == x['target'] and list(o.get('range', ())) == [0, n - 1],
                  'bad_ref', f'{w}: the panel\'s set op writes {x["target"]} over [0, {n - 1}] (the landings)')
+            for i, ld in enumerate(x['landings']):
+                o = self.op_keys[(ld['call'], 'start', None)]
+                t = o.get('set', {}).get(x['target'])
+                need('machine' not in o and is_num(t) and t == i, 'bad_ref',
+                     f'{w}: the call {ld["call"]}\'s start sets {x["target"]} to {i} (its landing)')
+                o = self.op_keys[(ld['gate'], 'open', None)]
+                need(any(nd[0] == ld['at'] for nd in o.get('needs', [])), 'bad_ref',
+                     f'{w}: the gate {ld["gate"]}\'s open needs {ld["at"]} (the cab standing at its landing)')
+            t = self.values[self.index[x['target']]][1]['state']
+            need(t in range(n) and not isinstance(t, bool), 'bad_value',
+                 f'{w}: {x["target"]} starts at a landing\'s index, 0 to {n - 1}')
 
 
 # ---------------------------------------------------------------- the control room screens (screens.json, §7.11)
@@ -1547,6 +1566,9 @@ def check_scenario(s, m, rel):
             need(n['min'] <= v <= n['max'], 'bad_value', f'{rel}.init.{k}: within min and max')
         elif kind == 'wrap':
             need(0 <= v < n['period'], 'bad_value', f'{rel}.init.{k}: within [0, period)')
+        for x in m.lifts:
+            need(k != x['target'] or v in range(len(x['landings'])), 'bad_value',
+                 f'{rel}.init.{k}: a landing\'s index of lift {x["id"]}, 0 to {len(x["landings"]) - 1}')
     for e in m.ext:
         need(e in s['init'], 'missing_key', f'{rel}.init: the scenario sets every ext value ({e})')
     trips = {t['id'] for t in m.trips}
@@ -1710,8 +1732,22 @@ class Engine:
         # format 2's lifts (§20.3): each lift's riders in boarding order (a person, or a slot for a null person) and
         # the step of its last board or alight done (its quiet step)
         self.lift_of = {x['id']: x for x in m.lifts}
+        self.lift_k = {x['id']: k for k, x in enumerate(m.lifts)}
         self.riders = {x['id']: [] for x in m.lifts}
         self.quiet = {x['id']: 0 for x in m.lifts}
+        # its collective control (§20.1): the landings called (a bit each, from the calls and the cab's panel), the
+        # direction of travel (1 up, -1 down, 0 none) and the step before which the cab stands at a landing it served
+        self.lift_calls = [0] * len(m.lifts)
+        self.lift_dir = [0] * len(m.lifts)
+        self.lift_dwell = [0] * len(m.lifts)
+        self.lift_ctl = {}               # (code, do) -> (lift index, landing or None for the panel's set): a call
+        self.lift_codes = set()          # every lift's controls: ops on them need no role authority (§20.3)
+        for k, x in enumerate(m.lifts):
+            self.lift_ctl[(x['panel'], 'set')] = (k, None)
+            self.lift_codes.add(x['panel'])
+            for i, ld in enumerate(x['landings']):
+                self.lift_ctl[(ld['call'], 'start')] = (k, i)
+                self.lift_codes |= {ld['call'], ld['gate']}
         self.names = names
         self.ix = {n: i for i, n in enumerate(names)}
         self.n = len(names)
@@ -1787,6 +1823,8 @@ class Engine:
             setattr(c, k, list(getattr(self, k)))
         c.riders = {k: list(v) for k, v in self.riders.items()}
         c.quiet = dict(self.quiet)
+        for k in ('lift_calls', 'lift_dir', 'lift_dwell'):
+            setattr(c, k, list(getattr(self, k)))
         if self.staff is not None:
             c.staff = self.staff.copy(c)
         for k in ('mstate', 'latched', 'trip_count', 'first_out', 'astate', 'acount', 'shelved', 'il_prev',
@@ -2401,6 +2439,9 @@ class Engine:
                 r = self._permit(item[1], item[2], item[3], dones, npc)
                 if npc:
                     self._npc_result(item[3], r, k0)
+            elif kind == 'board' and npc and self.session and isinstance(item[2], str) \
+                    and sr.st.person_ix[item[2]] in sr.players.values():
+                continue        # an NPC's board made before a slot took the person in this step: dropped (§20.3)
             elif kind in ('board', 'alight'):
                 self._ride(kind, item[1], item[2], npc)
             elif kind in ('lock', 'unlock'):
@@ -2449,6 +2490,8 @@ class Engine:
                 if self.v2:
                     self.ev('instructor', 'repair', item[1])
                 asked.append(item[1])
+        if self.m.lifts:
+            self._lift_control(prev)
         # first-out records clear when no trip of the group is latched
         for g in list(self.first_out):
             if not any(self.latched[t['id']] for t in self.trips if t.get('first_out') == g):
@@ -2601,7 +2644,8 @@ class Engine:
             where, person = item[4], item[5]
             if where not in o['where']:
                 failed.append('where')
-            elif self._authority(person, npc, 'operate_' + where):
+            elif self._authority(person, npc, None if kks in self.lift_codes else 'operate_' + where):
+                # (a lift's controls need no role authority: anyone on site may ride, §20.3)
                 failed.append('authority')
         elif self.staff is not None and self.staff.players.get(self.in_slot) is not None and not npc:
             failed.append('authority')      # a trainee playing a person names where and who (§17.1)
@@ -2637,7 +2681,52 @@ class Engine:
             mc = next(x for x in self.machines if x['id'] == o['machine'])
             self._enter(mc, mc['commands'][do]['to'], 'command')
             moved.add(mc['id'])
+        lc = self.lift_ctl.get((kks, do))
+        if lc is not None:              # a landing's call or the cab's send: the lift remembers it (§20.1)
+            k, i = lc
+            if i is None:
+                i = min(max(math.floor(value), 0), len(self.m.lifts[k]['landings']) - 1)
+            self.lift_calls[k] |= 1 << i
         return 'done'
+
+    def _lift_control(self, prev):
+        """Each lift's collective control (§20.1), at the end of step 1: the cab's target from the calls remembered,
+        read against the values as the step before left them; the target written as the lift's ops write it."""
+        for k, x in enumerate(self.m.lifts):
+            lds = x['landings']
+            n = len(lds)
+            ti = self.ix[x['target']]
+            goal = min(max(math.floor(prev[ti]), 0), n - 1)
+            calls, d = self.lift_calls[k], self.lift_dir[k]
+            if prev[self.ix[x['ready']]] < 0.5:
+                calls = 0               # a lift not ready forgets its calls (it goes on to its target when ready)
+            else:
+                c = next((i for i, ld in enumerate(lds) if prev[self.ix[ld['at']]] >= 0.5), None)
+                if c is not None:       # standing at a landing
+                    if calls >> c & 1:  # called here: served (it stays, for the gate)
+                        calls &= ~(1 << c)
+                        goal = c
+                        self.lift_dwell[k] = self.step_no + LIFT_DWELL
+                    elif self.step_no < self.lift_dwell[k]:
+                        goal = c
+                    elif not calls:
+                        goal, d = c, 0
+                    else:
+                        up = [i for i in range(c + 1, n) if calls >> i & 1]
+                        down = [i for i in range(c - 1, -1, -1) if calls >> i & 1]
+                        if not (d == 1 and up or d == -1 and down):     # nothing ahead: the nearest way, up on a tie
+                            d = 1 if up and (not down or lds[up[0]]['z'] - lds[c]['z']
+                                             <= lds[c]['z'] - lds[down[0]]['z']) else -1
+                        goal = up[0] if d == 1 else down[0]
+                elif d != 0:            # travelling: a call far enough ahead and short of the target is taken on the way
+                    z = prev[self.ix[x['z']]]
+                    for i in (range(n) if d == 1 else range(n - 1, -1, -1)):
+                        if calls >> i & 1 and (lds[i]['z'] - z) * d >= LIFT_AHEAD \
+                                and (lds[goal]['z'] - lds[i]['z']) * d > 0:
+                            goal = i
+                            break
+            self.lift_calls[k], self.lift_dir[k] = calls, d
+            self._write(ti, float(goal))
 
     # --- what the vectors compare (§12)
     def fast_forward(self):
@@ -2695,7 +2784,9 @@ class Engine:
                                       for x in m.isolations]),
                 locks, self.staff.digest_tree() if self.staff is not None else None] + \
             ([[list(self.riders[x['id']]) for x in m.lifts],
-              Packed(PACKED_INT64, [self.quiet[x['id']] for x in m.lifts])] if m.lifts else [])
+              Packed(PACKED_INT64, [self.quiet[x['id']] for x in m.lifts]),
+              Packed(PACKED_INT64, self.lift_calls), Packed(PACKED_INT32, self.lift_dir),
+              Packed(PACKED_INT64, self.lift_dwell)] if m.lifts else [])
 
     def snapshot(self, values=True):
         s = {'step': self.step_no,
@@ -2712,6 +2803,8 @@ class Engine:
                            if (x['id'], p) in self.locks]
             if self.m.lifts:
                 s['riders'] = {x['id']: list(self.riders[x['id']]) for x in self.m.lifts}
+                s['calls'] = {x['id']: [i for i in range(len(x['landings'])) if self.lift_calls[k] >> i & 1]
+                              for k, x in enumerate(self.m.lifts)}
         if self.staff is not None:
             s['clock'] = self.clock()
             s['people'] = self.staff.snap()

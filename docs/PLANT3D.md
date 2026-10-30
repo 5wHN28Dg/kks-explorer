@@ -2353,22 +2353,42 @@ version 2 model file adds `lifts`, which names the handles the engine and the st
 
 ```json
 {"id": "hrsg1_lift", "kks": "10SNB10", "rated_kg": 500, "person_kg": 75,
- "ready": "hrsg1_lift_ready", "idle": "hrsg1_lift_idle",
+ "ready": "hrsg1_lift_ready", "idle": "hrsg1_lift_idle", "z": "hrsg1_lift_z",
  "panel": "10SNB10GH010", "target": "hrsg1_lift_target",
  "landings": [{"z": 0, "at": "hrsg1_lift_at_0", "open": "hrsg1_lift_open_0", "shut": "hrsg1_lift_shut_0",
                "call": "10SNB10GH001", "gate": "10SNB10AB001"}, …]}
 ```
 
 - **`ready`:** a value, true while the lift may be used (no emergency stop, no fault, not isolated). **`idle`:** true
-  while the cab stands at its target with every gate shut: it takes a call.
+  while the cab stands at its target with every gate shut (for the screens and the view). **`z`:** the value of the
+  cab floor's height (m), which the collective control reads.
 - **Each landing** (2 to 8, `z` the floor's height above the plant's origin, rising strictly): `at` true while the
   cab stands level there and does not move; `open` and `shut` true while its gate is fully open, fully shut; `call`
   the landing's call station, whose op `start` calls the cab there; `gate` the gate's code, with ops `open` and
   `close`.
 - **`panel`** is the cab's control panel: its op `set` writes `target` (a `state`, the landing's index, `range` [0,
   n − 1]) and sends the cab there; `stop` is the emergency stop and `start` releases it.
+- **Collective control** (the user's decision of 2026-10-30): the cab remembers every landing's call and every send
+  from its panel, and serves them in the order of travel, as a building lift's collective control does. The engine
+  keeps per lift the landings called (a bit each), the direction of travel and a dwell step, and writes `target` at the
+  end of step 1, after every input of the step, from the values as the step before left them:
+  - a call `start` or a panel `set` that is done adds its landing to the calls (a `set` of a value v: the landing
+    ⌊v⌋, as `select` reads it);
+  - while the lift is not `ready` it forgets its calls (the cab goes on to its target when it is ready again);
+  - with the cab standing at a landing c (its `at`): a call at c is served (cleared; the cab stays, and stands there
+    for 50 steps, 5 s, before it leaves for another call, so that someone can open the gate); after that, with no
+    calls it stays (no direction); else it goes on in its direction to the nearest landing called ahead, and when
+    none is ahead it turns to the nearest landing called (by height; up on a tie);
+  - with the cab between landings, travelling: a landing called ahead in its direction, at least 1 m beyond the cab's
+    floor (its stopping distance) and short of its target, becomes the target; one closer is passed and served on
+    the way back;
+  - `target` is written as an op writes it (skipped while its code is locked, §15.1). A cab can't move while a gate
+    is open, so a call made while someone boards is served when the gate is shut.
 - The validator checks every name (`bad_ref`): the values exist, the ops exist with those `do`s and the `set` op's
-  input and range are `target`'s; `rated_kg` ≥ `person_kg` > 0; at most 16 lifts; an `id` of at most 26 characters.
+  input and range are `target`'s, each landing's call `start` sets `target` to that landing and its gate's `open`
+  needs that landing's `at`; the panel, the calls and the gates are each a code of their own, of one lift (`dup_id`);
+  `target` starts at a landing's index, in the model and in a scenario's `init` (`bad_value`); `rated_kg` ≥
+  `person_kg` > 0; at most 16 lifts; an `id` of at most 26 characters.
 - **The value the engine keeps,** `<id>_load` (kg): `person_kg` × the number of riders (§20.3), in the value slots
   after the works' (§17.7), read by any node and condition as the machines' states are (`dup_id` for a declared value
   of that name); 0 at step 0 (a scenario can't set it: `bad_ref`).
@@ -2380,13 +2400,13 @@ model too):
   may not run it stays exactly where it is, and a ramp ends exactly on its target); `<id>_target_z` the target
   landing's `z` (`select`); `<id>_run` = `and` of every gate `shut`, `ready`, and the load not over `rated_kg`.
 - Each gate: a `state` command and a `ramp` of it (2 s to open or shut), `open` = position ≥ 1, `shut` = position ≤ 0.
-- Ops: a landing's call `start` sets `target` to that landing and **needs** `ready`, `idle` (the cab is not
-  travelling and every gate is shut) and the load within `rated_kg`; the panel's `set` needs the same; a gate's `open`
-  needs its landing's `at` (the cab is there and still); `close` needs nothing; the emergency stop sets a state that
-  `ready` reads, `start` clears it. So **no movement with a gate open** (the cab's `_run` is false while a gate is not
-  shut, and a gate opens only where the cab stands), **gates interlocked**, and **an overload limit** (with one
-  person too many the cab refuses every call and send, its buzzer sounds and the alarm `<id>_overload`, priority 3,
-  comes on).
+- Ops: a landing's call `start` sets `target` to that landing (the collective control then picks the target from
+  the calls) and **needs** `ready` and the load within `rated_kg`, at any time (the cab remembers it); the panel's
+  `set` needs the same; a gate's `open` needs its landing's `at` (the cab is there and still); `close` needs nothing;
+  the emergency stop sets a state that `ready` reads, `start` clears it. So **no movement with a gate open** (the
+  cab's `_run` is false while a gate is not shut, and a gate opens only where the cab stands), **gates interlocked**,
+  and **an overload limit** (with one person too many the cab refuses every call and send, its buzzer sounds and the
+  alarm `<id>_overload`, priority 3, comes on).
 - Faults: the drive's (`ready` false: the cab stops where it is, between landings too; repaired under a permit, §15.5,
   the lift's main switch its isolation) and a gate switch that reads not shut (the cab won't run).
 - Speeds: 0.6 m/s (frequency-controlled, a usual figure, 0071), so 30 m takes 50 s; travel is in model time, as any
@@ -2412,7 +2432,8 @@ height, load and alarms.
   step's step 1 as its ops are. In a session run each carries its slot (§17.13).
 - **Step 1**, in the order made: `board` is done when the rider is aboard no lift (else refused, `aboard`); `alight`
   when they are aboard this one (else refused, `not_aboard`); an unknown lift is `unknown`. The person is checked as a
-  permit input's is (§17.1, §17.13: `authority`). A rider is the person, or for `null` the input's slot. Riders are
+  permit input's is (§17.1, §17.13: `authority`), with no role authority: anyone on site may use the lift, and the
+  ops of its controls (the calls, the gates, the cab's panel) need no role authority either (decided 2026-10-30). A rider is the person, or for `null` the input's slot. Riders are
   kept in boarding order; `<lift>_load` changes at once (read by step 2, and by the permissives of the next step's
   inputs). Event `[n, "board" | "alight", lift, person, "done" | "refused" | "unknown", [reasons]]` (the slot after it
   in a session run).
@@ -2442,20 +2463,25 @@ height, load and alarms.
     take the stairs: event `"stairs"`, and they walk that way's stairs route, leg by leg as any route, then go on;
     else, with the cab at a (`at`) and its gate `open`: `board` if the load leaves room for them (`person_kg`
     within `rated_kg`), else wait (the next trip); with the cab at a and the gate `shut`: the gate's `open` op; with
-    the cab elsewhere and `idle`: the landing's call `start`; else wait.
-  - **aboard** (`where` `["lift", lift, a, b]`): with the cab at b and its gate `open`: `alight`, event
-    `[n, "ride", person, lift, a, b, "off"]`, they stand at b and go on; if nobody else is aboard they also make the
-    gate's `close` (it is shut behind them). With the cab at b and the gate `shut`: open it. With the cab at another
-    landing c: its gate `open` and the lift quiet for 50 steps (5 s since the last `board` or `alight`): close it;
-    every gate `shut` and the cab `idle`: the panel's `set` to b; when the lift is not `ready` there: open the gate,
-    alight, and go on from c by the route. Between landings: wait (a cab stopped by a fault holds its riders until it
-    is repaired, as a real one does).
+    the cab elsewhere: the landing's call `start` unless a is called already or the cab is over its rated load; else
+    wait.
+  - **aboard** (`where` `["lift", lift, a, b]`; their 3 minutes count again from boarding): with the cab standing at
+    a landing c where they get off (c = b; or the lift not `ready`; or the cab over its rated load and they are the
+    last NPC in; or 3 minutes aboard): with its gate `open`: `alight`, event `[n, "ride", person, lift, a, b,
+    "off"]`, they stand at c and go on; the last one out (nobody else aboard or boarding) also makes the gate's `close`
+    (shut behind them), unless the lift is not ready away from b. After 3 minutes they go on by the stairs (event
+    `"stairs"`) when their route's next way from c is a lift way; the last NPC in waits for the next trip (they go on
+    by the route, so ride again). With the gate `shut`: open it (after 3 minutes also a gate neither open nor shut,
+    every 5 s: a gate switch at fault). Otherwise: the panel's `set` to b unless b is called already (or the lift is
+    not ready, or over its rated load); else, with the cab at a landing c, its gate `open`, the lift quiet for 50
+    steps (5 s since the last `board` or `alight`) and nobody boarding: close it. Between landings: wait (a cab
+    stopped by a fault holds its riders until it is repaired, as a real one does).
   - Their ops are `local` ops by the person; a refusal makes its event and changes nothing (the next turn looks
     again). The trainee's person never rides by this protocol: the trainee walks and rides themselves.
 - A ride is not pre-empted (§17.3's "the next place of its route" is where they get off); a jump's placement ends it.
-- **Digest** (§17.14), with lifts only: after item 8, each lift's riders and quiet step; and in the staff's part, a
-  ride in the person's way field as `["lift", lift, a, b, phase, wait start, last input step]`, and the stairs route
-  being walked (points, `i32`).
+- **Digest** (§17.14), with lifts only: after item 8, each lift's riders, quiet step, calls, direction and dwell
+  step; and in the staff's part, a ride in the person's way field as `["lift", lift, a, b, phase, wait start,
+  destination]`, the stairs route being walked (points, `i32`) and each person's last lift input step (`i64`).
 
 ### 20.5 Hoists and the crane (content only)
 
@@ -2486,7 +2512,10 @@ not hooked on.
 - The cab is not on the walking mesh: it moves. The mesh ends at each landing's gate; the shaft and mast are
   obstacles (0059's bake).
 - `builder/staff_paths.gd` draws no line for a lift way and `test_staff_ways.gd` leaves them out (the stairs routes
-  are walking ways, checked as any). The trainee's walking directions (0059) keep to the stairs.
+  are walking ways, checked as any). The trainee's walking directions (0059) take the lift whenever it is quicker
+  (the user's decision of 2026-10-30; the app's part, L2 and L3): staff.json's lift ways and `speeds.lift` give a ride's
+  nominal time, which the app compares with the stairs' walk as the staff's `next` does; the engine needs nothing more
+  for it.
 
 ### 20.7 What the app shows (view only; not in the vectors)
 
@@ -2516,33 +2545,39 @@ each from a battery at most 30 °C (the walk climbs HRSG 1's stair beside the li
 
 ### 20.9 Vectors
 
-`plant3d-v2.json` gains: in `steps`, a small model with a three-landing lift (a call, the gates, a send, a gate's
-open refused away from the cab, a call refused with a gate open, the emergency stop between landings and its release,
-the overload refused and cleared, `board` and `alight` with their refusals, the riders and the load in the snapshots);
-in `staff.runs`, NPCs riding (two going up together, one waiting for the cab to come back, a full cab leaving one for
-the next trip, a lift not ready sending them by the stairs, a wait running out, a jump with riders aboard, the trainee
-riding with NPCs); in `reject`, the lifts' rule breaks; the first train's `day` made again with the lift; format 1's
+`plant3d-v2.json` gains: in `steps`, a small model with a three-landing lift (the collective control: a call
+remembered while a gate is open, taken on the way, at the standing cab, behind, too close ahead, either side; a send,
+a gate's open refused away from the cab, the emergency stop between landings and its release, the overload refused
+and cleared, `board` and `alight` with their refusals, the riders, the calls and the load in the snapshots); in
+`staff.runs`, NPCs riding (two going up together, one waiting for the cab to come back, a full cab leaving one for
+the next trip, a call ahead served before the turn, a lift not ready sending them by the stairs, a wait running out,
+3 minutes aboard, an overloaded cab, a jump with riders aboard and one on the stairs, the trainee riding with NPCs,
+claims and releases); in `reject`, the lifts' rule breaks; the first train's `day` made again with the lift; format 1's
 `train` and `hot` with the lift's values added (every input and event kept).
 
 ### 20.10 As built for milestone LIFTS L1 (2026-10-30: the engine)
 
 Both engines (`ref/plant3d.py`, `ref/plant3d_staff.py`; `apps/plant3d/sim`) agree bit for bit on the lift's parts of
 `plant3d-v2.json`: two unit runs in `steps` (each with its own `files`: the kit, the plant's key and area a2 that the
-lift's codes need; the second a session run without staff, `"session": true`), six runs in `staff.runs` on a staff of
-their own (a field crew, a technician, three landings and the stairs beside them) and the rule breaks in `reject` and
-`staff.reject`. The first train's lift, its `day` and format 1's `train` and `hot` with the lift come with L2 and L3.
+lift's codes need; the first walks the collective control through its cases, the second is a session run without
+staff, `"session": true`), fourteen runs in `staff.runs` on a staff of their own (a field crew, a technician, three
+landings and the stairs beside them) and the rule breaks in `reject` and `staff.reject`. The first train's lift, its `day` and format 1's `train` and `hot` with the lift come with L2 and L3.
 The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is made by it). What L1 settles that
 §20.1–§20.4 left open:
 - **The model's `lifts`:** `kks` is a code of the plant's key (`bad_kks`), the panel, call and gate codes are codes of
   the plant with the ops §20.1 names (`bad_ref`), `z` rises strictly (`bad_number`); `<id>_load` follows the works'
-  `<work>_permit` in the value slots, lifts in model order.
+  `<work>_permit` in the value slots, lifts in model order. The limit of 16 is checked before each lift's rules.
+- **The collective control** (§20.1) keeps per lift the calls (`i64`, a bit per landing), the direction (`i32`) and
+  the dwell's end step (`i64`, 0 at step 0); it runs after the trainee's and the NPCs' inputs of step 1 and before
+  the first-out records. The snapshot gains `"calls": {lift: [landing, …]}` (rising), after `riders`.
 - **The content's `_run`** is also false while any gate is commanded open (its command, not only its position): a
   gate's `open` and a call done in one step are each checked against the step before, and with the position alone the
   cab set off as the gate began to open and stopped 6 cm below the landing, where no landing's `at` is ever true again.
 - **`board` and `alight`:** the person is checked as a permit input's is, without a role authority (anyone may ride).
   In a session run the event carries the input's slot after it, `null` for an NPC's. A rider for a `null` person is
   the slot (an integer): the snapshot's `riders` lists persons' ids and slots. The quiet step is 0 at step 0. Placement
-  and a release queue the alights before anything of step 9's phase 4 (a released person's own, if they are aboard).
+  and a release queue the alights before anything of step 9's phase 4 (a released person's own, if they are aboard);
+  an alight already queued is not queued again (a release and a jump in one step make one).
 - **The ride's first turn** is the turn after the one where it begins (its `wait` event). An NPC's lift input at turn n
   makes none at n + 1 and n + 2, across rides too (an alight ending one ride counts for the next); the alight and the
   gate's `close` it brings are one input. While waiting at a they stand at a; aboard they are at no place (`where`
@@ -2551,21 +2586,27 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
   code, `do` and value) or that was done in this step's step 1 (the same code and `do`): three people at a gate press
   it once. The room for a board counts the boards made in this phase 4, and someone waiting without room neither
   boards nor opens the gate (else they and the riders open and shut it in turn). "Nobody else is aboard" leaves out
-  the riders alighting in this phase 4, so the last of several getting off together shuts the gate.
-- **Who rides.** A person whose role lacks `operate_local` takes the stairs at their first turn (event `stairs`): the
-  ops are local ops by the person (§17.1), and one who can't work them would never get the cab. Getting off where the
-  lift is not ready, at a landing c other than b, makes the `off` event of the ride (a, b) and leaves the gate open;
-  they stand at c and go on by the route. The trainee boarding with NPCs in one step can overload the cab: it stays
-  until someone steps out, and the riders' sends are refused (each a refused op event) until then.
+  the riders alighting in this phase 4 and counts those boarding in it, so the last of several getting off together
+  shuts the gate, and not on someone stepping in; nobody boards through a gate whose `close` was done in this step's
+  step 1 or made in this phase 4, and a rider closes no gate while someone's board is queued.
+- **Who rides.** Anyone (decided 2026-10-30): the lift's controls need no role authority (§20.3), so a person whose
+  role lacks `operate_local` rides as anyone does. Getting off away from b (the lift not ready, the last NPC in of an
+  overloaded cab, or 3 minutes aboard) makes the `off` event of the ride (a, b); they stand at c and go on by the
+  route, after 3 minutes by the stairs of the lift way their route takes from c (a second event, `stairs`). The trainee
+  boarding with NPCs in one step can overload the cab: the last NPC in steps out (they ride again, the next trip), and
+  nobody sends or calls the cab while it is over its rated load, so no refused requests repeat.
 - **The stairs** are searched from each end of a lift way to the other (two routes, each by §16.2's rule from its
   start). They replace the lift way in that walk: dropped when the person walks to another destination, stands
   elsewhere than the stairs' next place, or arrives.
 - **A session's claim** of a person on a ride ends it: one aboard stays aboard, the landing a kept as the place they
-  left; one waiting stays at a.
+  left; one waiting stays at a. Their `board` made in the step before (the NPCs' inputs come after the players' in
+  step 1) is dropped, with no event, so they are not aboard; an `alight` is kept (their place is the landing already).
 - **The digest's additions** (only with lifts): the engine's tree gains, after item 8, the riders per lift (an array
-  of arrays) and the quiet steps (`i64`); the staff's way field of a person on a ride is `["lift", lift, a, b, phase (0
-  waiting, 1 aboard), wait start, last lift input step]` (a and b as place indexes), and one more field per person
-  closes the staff's part: the stairs being walked, `[destination, place, …, b]` (`i32`, empty when none).
+  of arrays), the quiet steps (`i64`), the calls (`i64`), the directions (`i32`) and the dwell steps (`i64`); the
+  staff's way field of a person on a ride is `["lift", lift, a, b, phase (0 waiting, 1 aboard), the step the wait or
+  the ride began, destination]` (a, b and the destination as place indexes), and two more fields close the staff's
+  part: per person the stairs being walked, `[destination, place, …, b]` (`i32`, empty when none), and the steps of
+  their last lift input (`i64`, −3 when none since placement).
 - **staff.json:** `speeds.lift` may be given; a plant with a lift way must give it (`missing_key`). A lift way in a
   plant whose staff.json has no `lifts` is `bad_value` (an unknown mode); one whose ends are not landings of one lift
   is `bad_ref`; a lift way whose stairs don't exist is `unreachable`.

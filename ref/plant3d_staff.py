@@ -1225,7 +1225,7 @@ class StaffRun:
         for x in e.m.lifts:             # the NPCs aboard leave the ride: their alights for the next step (§20.3)
             for r in e.riders[x['id']]:
                 if isinstance(r, str) and self.slot_of(st.person_ix[r]) is None:
-                    e.npc_queue.append(('alight', x['id'], r))
+                    self.queue_alight(x['id'], r)
         self.holder = {}
         self.given = {}
         self.pending = []
@@ -1466,7 +1466,7 @@ class StaffRun:
         p = self.people[pi]
         for x in self.e.m.lifts:         # a person aboard leaves the ride: their alight for the next step (§20.3)
             if p.id in self.e.riders[x['id']]:
-                self.e.npc_queue.append(('alight', x['id'], p.id))
+                self.queue_alight(x['id'], p.id)
         if p.cur is not None and not p.cur['idle']:
             self.pause(p)
         if p.pos is None and self.t_from.get(slot) is not None:
@@ -1474,6 +1474,11 @@ class StaffRun:
         self.t_from.pop(slot, None)
         self.acks.pop(slot, None)
         self.kept.pop(slot, None)
+
+    def queue_alight(self, lid, pid):
+        """An alight for the next step, unless one is queued already (a release and a jump in one step)."""
+        if ('alight', lid, pid) not in self.e.npc_queue:
+            self.e.npc_queue.append(('alight', lid, pid))
 
     def jump(self, to):
         e = self.e
@@ -2036,7 +2041,7 @@ class StaffRun:
         e = self.e
         st = self.st
         n = e.step_no
-        li, a, b, _, since, dest = p.ride
+        li, a, b, phase, since, dest = p.ride
         lid, pts = st.lifts[li]
         x = e.lift_of[lid]
         lds = x['landings']
@@ -2045,32 +2050,32 @@ class StaffRun:
         def T(name):
             return cur[ix[name]] >= 0.5
 
+        def made(code, do, value=None):
+            # an op of the same code and do done in this step's step 1, or made in this phase 4
+            return any(y[0] == 'op' and y[1] == code and y[2] == do and same(y[3], value) for y in q) or \
+                any(y[1] == 'op' and y[2] == code and y[3] == do and y[4] == 'done' for y in e.events[e.ev_mark:])
+
         def op(code, do, value=None):
-            # (not again: an op of the same code and do done in this step's step 1, or made in this phase 4)
-            if not any(y[0] == 'op' and y[1] == code and y[2] == do and same(y[3], value) for y in q) and \
-                    not any(y[1] == 'op' and y[2] == code and y[3] == do and y[4] == 'done'
-                            for y in e.events[e.ev_mark:]):
+            if not made(code, do, value):   # (not again)
                 q.append(('op', code, do, value, None, 'local', p.id))
                 p.lin = n
 
-        def off(c, close):
-            q.append(('alight', lid, p.id))
-            p.lin = n
-            if close:
-                op(lds[c]['gate'], 'close')
-            e.ev('ride', p.id, lid, st.places[a]['id'], st.places[b]['id'], 'off')
-            p.ride = None
-            p.pos = pts[c]
-            return True
-
         rs = e.riders[lid]
         aboard = p.id in rs
-        p.ride[3] = 1 if aboard else 0
+        if aboard and not phase:        # aboard now: their 3 minutes count again from here
+            p.ride[3], p.ride[4] = 1, n
+            since = n
+        elif not aboard:
+            p.ride[3] = 0
         can = n > p.lin + 2
         ia, ib = pts.index(a), pts.index(b)
+        calls = e.lift_calls[e.lift_k[lid]]
+        load = cur[ix[lid + '_load']]
+        over = load > x['rated_kg']
+        ready = T(x['ready'])
         if not aboard:
             p.pos = a
-            if not T(x['ready']) or n - since >= RIDE_WAIT or 'operate_local' not in p.auth:
+            if not ready or n - since >= RIDE_WAIT:
                 e.ev('ride', p.id, lid, st.places[a]['id'], st.places[b]['id'], 'stairs')
                 p.ride = None
                 p.stairs = [dest] + st.stairs[(a, b)]
@@ -2079,43 +2084,57 @@ class StaffRun:
                 return False
             at = T(lds[ia]['at'])
             boards = sum(1 for y in q if y[0] == 'board' and y[1] == lid)
-            room = cur[ix[lid + '_load']] + x['person_kg'] * (1 + boards) <= x['rated_kg']
+            room = load + x['person_kg'] * (1 + boards) <= x['rated_kg']
             if at and T(lds[ia]['open']):
-                if room:
+                if room and not made(lds[ia]['gate'], 'close'):     # (not into a gate that is shutting)
                     q.append(('board', lid, p.id))
                     p.lin = n
             elif at and T(lds[ia]['shut']):
                 if room:
                     op(lds[ia]['gate'], 'open')
-            elif not at and T(x['idle']):
+            elif not at and not calls >> ia & 1 and not over:
                 op(lds[ia]['call'], 'start')
             return False
         p.pos = None
         if not can:
             return False
-        if T(lds[ib]['at']):
-            if T(lds[ib]['open']):
-                alights = sum(1 for y in q if y[0] == 'alight' and y[1] == lid)
-                return off(ib, len(rs) - alights == 1)
-            if T(lds[ib]['shut']):
-                op(lds[ib]['gate'], 'open')
-            return False
-        c = next((k for k, ld in enumerate(lds) if T(ld['at'])), None)
-        if c is None:
-            return False                # between landings (or setting off): they wait
-        ld = lds[c]
-        if not T(x['ready']):           # stopped at a landing: out there, and on from it by the route
+        c = next((i for i, ld in enumerate(lds) if T(ld['at'])), None)
+        timeout = n - since >= RIDE_WAIT
+        bumped = over and self.last_npc(rs) == p.id
+        if c is not None and (c == ib or not ready or bumped or timeout):
+            # out here: where they are going; the lift not ready; the last NPC in when the cab is over its rated load;
+            # or after 3 minutes aboard (then up or down the stairs)
+            ld = lds[c]
             if T(ld['open']):
-                return off(c, False)
-            if T(ld['shut']):
-                op(ld['gate'], 'open')
+                alights = sum(1 for y in q if y[0] == 'alight' and y[1] == lid)
+                boards = sum(1 for y in q if y[0] == 'board' and y[1] == lid)
+                q.append(('alight', lid, p.id))
+                p.lin = n
+                if len(rs) - alights + boards == 1 and (c == ib or ready):
+                    op(ld['gate'], 'close')     # the last one out shuts the gate behind them
+                e.ev('ride', p.id, lid, st.places[a]['id'], st.places[b]['id'], 'off')
+                p.ride = None
+                p.pos = pts[c]
+                if c != ib and ready and not bumped and pts[c] != dest:
+                    sr = st.stairs.get((pts[c], self.hop(pts[c], dest)))
+                    if sr is not None:
+                        e.ev('ride', p.id, lid, st.places[a]['id'], st.places[b]['id'], 'stairs')
+                        p.stairs = [dest] + sr
+                return True
+            if T(ld['shut']) or timeout and n - p.lin >= RIDE_QUIET:
+                op(ld['gate'], 'open')  # (after 3 minutes, a gate neither open nor shut too: every 5 s)
             return False
-        if T(ld['open']):
-            if n - e.quiet[lid] >= RIDE_QUIET:
-                op(ld['gate'], 'close')
-        elif all(T(y['shut']) for y in lds) and T(x['idle']):
-            op(x['panel'], 'set', ib)
+        if ready and not over and not calls >> ib & 1:
+            op(x['panel'], 'set', ib)   # where they are going, from the cab's panel
+        elif c is not None and not over and T(lds[c]['open']) and n - e.quiet[lid] >= RIDE_QUIET \
+                and not any(y[0] == 'board' and y[1] == lid for y in q):     # (not on someone boarding)
+            op(lds[c]['gate'], 'close')
         return False
+
+    def last_npc(self, rs):
+        """The NPC who boarded last of a lift's riders, or None."""
+        return next((r for r in reversed(rs) if isinstance(r, str) and self.slot_of(self.st.person_ix[r]) is None),
+                    None)
 
     def go(self, p, cur, x, tsec='go'):
         """A go (also a lock's and a meeting's walk): 'next' on arrival, 'wait' on the way, 'fail' without a place
@@ -2853,7 +2872,7 @@ class StaffRun:
                 Packed(PACKED_INT32, [len(p.slots) for p in people]),
                 Packed(PACKED_INT32, [p.pos if p.pos is not None else -1 for p in people]),
                 [list(p.leg) if p.leg is not None else
-                 ['lift', st.lifts[p.ride[0]][0], p.ride[1], p.ride[2], p.ride[3], p.ride[4], p.lin]
+                 ['lift', st.lifts[p.ride[0]][0], p.ride[1], p.ride[2], p.ride[3], p.ride[4], p.ride[5]]
                  if p.ride is not None else [] for p in people],
                 [inst(p.i, w, x) for p in people
                  for w, xs in ((0, [p.cur] if p.cur is not None else []), (1, p.queue), (2, p.held)) for x in xs],
@@ -2864,7 +2883,8 @@ class StaffRun:
                 Packed(PACKED_INT32, [sum(1 << k for k, x in enumerate(PPE) if x in p.worn) for p in people]),
                 [[list(p.acts[k]) if k in p.acts else None for k in ACT_KINDS] for p in people],
                 Packed(PACKED_INT64, [i64(sum(1 << k for k in p.zin)) for p in people])] + \
-            ([[Packed(PACKED_INT32, p.stairs or []) for p in people]] if st.lifts else [])
+            ([[Packed(PACKED_INT32, p.stairs or []) for p in people],
+              Packed(PACKED_INT64, [p.lin for p in people])] if st.lifts else [])
 
     # --- the snapshot's part (§17.7)
     def snap_acts(self):
