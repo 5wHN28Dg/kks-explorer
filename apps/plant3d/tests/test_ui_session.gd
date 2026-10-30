@@ -105,12 +105,17 @@ func run(tree: SceneTree) -> Array:
 	if not await _wait(tree, func(): return _has(ui.clock.engine, ["task_ack", 1]) and _has(clock2.engine, ["task_ack", 0]), 10.0):
 		p.append("an input did not reach the other player's plant")
 	# both ride the lift (PLANT3D §20.3, §20.7): each player's board, with their slot, reaches both plants
-	s2.send_input(["board", "hrsg1_lift", "a_ccr1"])
-	ui.inputs.board("hrsg1_lift", ui.me())
+	# (the host's walker is not in the cab: its own app/lift.gd sends its alight; the second player has no walker)
+	var who2: String = clock2.engine._sm.people[clock2.engine.trainee(1)]["id"]
+	var who1 = ui.me()
+	ui.lifts.set_physics_process(false)
+	s2.send_input(["board", "hrsg1_lift", who2])
+	ui.inputs.board("hrsg1_lift", who1)
 	if not await _wait(tree, func(): return ui.clock.engine.riders[0].size() == 2 and clock2.engine.riders[0].size() == 2, 10.0):
-		p.append("the players' boards did not reach both plants (host %s, player %s)" % [str(ui.clock.engine.riders[0]), str(clock2.engine.riders[0])])
-	elif ui.clock.engine.riders[0] != clock2.engine.riders[0] or not ui.clock.engine.riders[0].has("a_ccr1") or not ui.clock.engine.riders[0].has("a_sup"):
+		p.append("the players' boards did not reach both plants (host %s, player %s; events %s)" % [str(ui.clock.engine.riders[0]), str(clock2.engine.riders[0]), str(ui.clock.engine.events.filter(func(ev): return ev[1] == "board"))])
+	elif ui.clock.engine.riders[0] != clock2.engine.riders[0] or not ui.clock.engine.riders[0].has(who2) or not ui.clock.engine.riders[0].has(who1):
 		p.append("the riders differ or are not the players' people: %s, %s" % [str(ui.clock.engine.riders[0]), str(clock2.engine.riders[0])])
+	ui.lifts.set_physics_process(true)
 	# the other player in the plant
 	if not await _wait(tree, func(): return ui.others != null and ui.others.shown.has(1), 5.0):
 		p.append("the other player is not drawn")

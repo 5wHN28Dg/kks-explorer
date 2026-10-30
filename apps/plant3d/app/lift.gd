@@ -32,6 +32,7 @@ var _now := 0.0
 var _step_seen := -1              # the engine's step at the last frame, and when it changed (a session's steps)
 var _step_t := 0.0
 var _step_dt := 0.1
+var _last_who = null              # who rode for this player at the last check (a person taken while aboard)
 var walker_aboard := -1           # the lift index the walker is aboard (the engine's riders), -1 none (tests read it)
 
 
@@ -236,6 +237,8 @@ func _ride_tick() -> void:
 		return
 	var who = _me()
 	var feet := p.global_position
+	var taken: bool = typeof(who) != typeof(_last_who) or who != _last_who
+	_last_who = who
 	walker_aboard = -1
 	for L in lifts:
 		var k: int = L["k"]
@@ -243,6 +246,10 @@ func _ride_tick() -> void:
 		if aboard:
 			walker_aboard = k
 		var inside := feet_inside(L, feet)
+		if aboard and not inside and taken:
+			# a person taken while aboard stays aboard (§20.3): the walker steps in where they stood
+			p.global_position = (L["body"] as Node3D).global_transform * Vector3(0, 0.05, 0)
+			continue
 		if inside == aboard or _now - _sent_t < RETRY:
 			continue
 		var lid := String(L["x"]["id"])
