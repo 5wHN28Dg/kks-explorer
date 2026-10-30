@@ -98,6 +98,12 @@ var ff_choice := FF_MAX                 # the host's own choice of fast-forward 
 
 var _rsa: CryptoKey                     # this process's RSA key (§1.3), made once
 var _rsa_thread: Thread
+## The join's other slow parts, made on a thread of their own when it starts (MP2's follow-up: on the Note 9 the
+## device's addresses took 6 ms of a frame and the hello's public key and saved token 2 ms): {addrs, token}
+var _prep_thread: Thread
+var _prep := {}
+const PREP_MAX_S := 10.0
+var _save_jobs: Array = []              # the rejoin token written on a worker thread (task ids)
 var rsa_ms := -1.0                      # its generation's time (measured on the Note 9, §13)
 var _udp: Udp
 var _disc: Udp                          # the host's discovery socket; a joiner's query socket
@@ -143,6 +149,8 @@ var _commits := {}                      # first step -> commit {first, last, str
 var committed := 0                      # the highest step committed (the host's: its engine's)
 var _next_input := 1
 var _unsent: Array = []                 # inputs made before the welcome
+var _unsent_controls: Array = []        # controls made before the welcome (a claim, ready, away…), in order
+const MAX_UNSENT_CONTROLS := 64
 var _mine := {}                         # input number -> [text, time made]
 var _query_until := 0.0
 var _query_t := 0.0
@@ -160,7 +168,7 @@ var _away := false
 
 # what the session measured (the harness and the phone)
 var stats := {"delays": [], "us": 0, "us_max": 0, "us_sum": 0, "frames": 0, "desyncs": 0, "resyncs": 0,
-		"snap_ms": 0.0, "dropped": 0, "rtt": -1.0}
+		"snap_ms": 0.0, "dropped": 0, "rtt": -1.0, "slow": []}
 
 # other players' positions: slot -> [[t, Vector3, yaw, pitch, gait], …] (the last few)
 var positions := {}
@@ -218,12 +226,15 @@ func _init() -> void:
 ## Makes this process's RSA key on a worker thread (§1.3: when the join or host screen opens).
 static var _proc_rsa: CryptoKey          # this process's RSA key, made once (§1.3)
 static var _proc_rsa_ms := -1.0
+static var _proc_rsa_pem := ""
+var _rsa_pem := ""
 
 
 func prepare_key() -> void:
 	if _rsa == null and _proc_rsa != null:
 		_rsa = _proc_rsa
 		rsa_ms = _proc_rsa_ms
+		_rsa_pem = _proc_rsa_pem
 	if _rsa != null or _rsa_thread != null:
 		return
 	_rsa_thread = Thread.new()
@@ -233,7 +244,10 @@ func prepare_key() -> void:
 func _make_rsa() -> Array:
 	var t0 := Time.get_ticks_usec()
 	var k := Crypt.crypto().generate_rsa(2048)
-	return [k, (Time.get_ticks_usec() - t0) / 1000.0]
+	var ms := (Time.get_ticks_usec() - t0) / 1000.0
+	if record_threads:
+		_record_thread("public key")
+	return [k, ms, k.save_to_string(true)]      # (the hello's public key, encoded here too: 2 ms on the Note 9)
 
 
 func _key_ready() -> bool:
@@ -247,8 +261,10 @@ func _key_ready() -> bool:
 	_rsa_thread = null
 	_rsa = r[0]
 	rsa_ms = r[1]
+	_rsa_pem = r[2]
 	_proc_rsa = _rsa
 	_proc_rsa_ms = rsa_ms
+	_proc_rsa_pem = _rsa_pem
 	return true
 
 
@@ -328,8 +344,40 @@ func join(code_text: String, address := "") -> String:
 	_query_t = -1.0
 	_query_rand = Crypt.random_bytes(8)
 	prepare_key()
+	_prep = {}
+	_prep_thread = Thread.new()
+	_prep_thread.start(_prepare_join.bind(code, address == ""))
 	changed.emit()
 	return ""
+
+
+## (on _prep_thread) the device's broadcast addresses (a LAN query without an address) and the saved rejoin token.
+func _prepare_join(for_code: String, want_addrs: bool) -> Dictionary:
+	if record_threads:
+		_record_thread("prepare")
+	return {"addrs": broadcast_addresses() if want_addrs else [], "token": _saved_token_of(for_code)}
+
+
+## The join's preparation, once its thread is done (false until then; the frame never waits for it).
+func _prep_ready() -> bool:
+	if not _prep.is_empty():
+		return true
+	if _prep_thread == null or _prep_thread.is_alive():
+		return false
+	_prep = _prep_thread.wait_to_finish()
+	_prep_thread = null
+	if state == State.FINDING:
+		_query_until = _now_s() + QUERY_FOR     # (the query's window from its first query, as before the thread)
+	return true
+
+
+## Tests: the threads the join's slow parts ran on (main or worker), by name.
+static var record_threads := false
+static var threads_seen := {}
+static func _record_thread(what: String) -> void:
+	_token_mutex.lock()                 # (written from several threads)
+	threads_seen[what] = "main" if OS.get_thread_caller_id() == OS.get_main_thread_id() else "worker"
+	_token_mutex.unlock()
 
 
 ## Leaves the session (a player) or ends it (the host). The players keep a copy of the run (§7.4).
@@ -393,6 +441,12 @@ func _exit_tree() -> void:
 	if _rsa_thread != null:
 		_rsa_thread.wait_to_finish()
 		_rsa_thread = null
+	if _prep_thread != null:
+		_prep_thread.wait_to_finish()
+		_prep_thread = null
+	for id in _save_jobs:
+		WorkerThreadPool.wait_for_task_completion(id)
+	_save_jobs.clear()
 	for id in _snap_jobs:
 		WorkerThreadPool.wait_for_task_completion(id)
 
@@ -552,6 +606,9 @@ var _stride := 1
 func _process(delta: float) -> void:
 	if role == Role.NONE or state == State.ENDED or _udp == null:
 		return
+	var sched0 := sched_now() if probe_sched and stats["slow"].size() < MAX_SLOW else PackedInt64Array()
+	var got0: int = _udp.got
+	var sent0: int = _udp.sent
 	var t0 := Time.get_ticks_usec()
 	_now = _now_s()
 	_receive()
@@ -560,6 +617,8 @@ func _process(delta: float) -> void:
 	elif state == State.JOINING:
 		_poll_welcome()
 		_hello()
+	var t1 := Time.get_ticks_usec()
+	var steps1 := _step_us      # (model steps run inside the receive: a late join's or a resync's catch-up)
 	if role == Role.HOST:
 		_host_frame(delta)
 	else:
@@ -567,20 +626,71 @@ func _process(delta: float) -> void:
 	if _hold_pause and (role == Role.PLAYER or not _turn_open):
 		_hold_pause = false
 		request_pause()
+	var t2 := Time.get_ticks_usec()
+	var steps2 := _step_us
 	_positions()
+	var t3 := Time.get_ticks_usec()
 	_flush(_dirty)
 	_dirty = false
-	var us := Time.get_ticks_usec() - t0 - _step_us
-	_step_us = 0
+	var t4 := Time.get_ticks_usec()
+	var us := t4 - t0 - _step_us
 	stats["us"] = us
 	if us > 2000:
 		stats["over_2ms"] = stats.get("over_2ms", 0) + 1
+	if us > SLOW_US and stats["slow"].size() < MAX_SLOW:
+		# where a slow frame's time went (MP2's follow-up: the layer's worst frames): its parts, the packets in and
+		# out, and with probe_sched the thread's own time on a CPU and waiting for one (/proc/thread-self/schedstat)
+		# (each part without the model steps run inside it; the steps are kept apart, as `us` leaves them out)
+		var f := {"us": us, "receive": t1 - t0 - steps1, "frame": t2 - t1 - (steps2 - steps1), "steps": _step_us,
+			"positions": t3 - t2 - (_step_us - steps2), "flush": t4 - t3, "what": ",".join(_what), "t": _now,
+			# (the session may have ended in this frame: its socket is gone then)
+			"in": _udp.got - got0 if _udp != null else -1, "out": _udp.sent - sent0 if _udp != null else -1}
+		if probe_sched:
+			var sched1 := sched_now()
+			if sched0.size() == 3 and sched1.size() == 3:
+				# run is the kernel's sum, brought up to date at a tick or a switch only (1-10 ms grain); wait is
+				# exact for a wait that ended within the frame; switches: times the thread was put back on a CPU
+				# (more than 0: it was switched out in the frame). All three cover the whole frame, steps too.
+				f["run"] = (sched1[0] - sched0[0]) / 1000
+				f["wait"] = (sched1[1] - sched0[1]) / 1000
+				f["switches"] = sched1[2] - sched0[2]
+		if not _pk_us.is_empty():
+			f["packets"] = " / ".join(_pk_us)
+		stats["slow"].append(f)
+	_step_us = 0
+	_pk_us.clear()
 	if us > stats["us_max"]:
 		stats["us_max_what"] = ",".join(_what)   # what the worst frame did (the measurements)
 	stats["us_max"] = maxi(stats["us_max"], us)
 	_what.clear()
 	stats["us_sum"] += us
 	stats["frames"] += 1
+
+
+const SLOW_US := 1500                   # a frame of the layer this long is kept in stats["slow"] with its parts
+const MAX_SLOW := 64
+## Measuring only (mp_probe=1, the harness's --probe=1): read this thread's time on a CPU and waiting for one around
+## each frame of the layer, so that a slow frame shows whether the layer worked or its thread was not running.
+var probe_sched := false
+
+
+## [ns on a CPU, ns runnable but waiting, times put on a CPU] of the calling thread (Linux and Android: /proc/thread-self/schedstat),
+## or [] where there is none.
+static func sched_now() -> PackedInt64Array:
+	var f := FileAccess.open("/proc/thread-self/schedstat", FileAccess.READ)
+	if f == null:
+		sched_error = "open: error %d" % FileAccess.get_open_error()
+		return PackedInt64Array()
+	var p := f.get_line().split(" ", false)   # (a /proc file's length is 0: get_as_text reads nothing)
+	if p.size() < 3:
+		sched_error = "read %d fields" % p.size()
+		return PackedInt64Array()
+	sched_error = ""
+	return PackedInt64Array([int(p[0]), int(p[1]), int(p[2])])
+
+## why sched_now() last gave nothing ("" when it read): the walk's SESSION probe line says it
+static var sched_error := ""
+var _pk_us := PackedStringArray()       # (probe) this frame's packets in: their size and the time each took
 
 
 var _step_us := 0                       # this frame's model steps (the session layer's own time is the rest)
@@ -956,7 +1066,12 @@ func _receive() -> void:
 	if _udp == null:
 		return
 	for pk in _udp.poll():
-		_on_packet(pk[0], pk[1], pk[2])
+		if probe_sched and _pk_us.size() < 16:
+			var tp := Time.get_ticks_usec()
+			_on_packet(pk[0], pk[1], pk[2])
+			_pk_us.append("%d B %d us" % [pk[0].size(), Time.get_ticks_usec() - tp])
+		else:
+			_on_packet(pk[0], pk[1], pk[2])
 
 
 func _on_packet(b: PackedByteArray, ip: String, port: int) -> void:
@@ -1748,7 +1863,11 @@ func _take_welcome(w: Dictionary, p: PackedByteArray, ip: String, port: int, tok
 		_loading = true
 		committed = w["step"]
 	_save_token()
-	# the inputs made before the welcome, and those not yet committed (a rejoin), are sent now
+	# the controls made before the welcome (a claim in the lobby the moment the app joins, the app gone to the
+	# background while it joined), then the inputs made before it and those not yet committed (a rejoin), are sent now
+	for c in _unsent_controls:
+		_send_control(c)
+	_unsent_controls.clear()
 	var again := _mine.keys()
 	again.sort()
 	for n in again:
@@ -1950,6 +2069,15 @@ func _send_control(c: Dictionary) -> void:
 		return
 	if _send_p != null:
 		_send_p.push(Wire.Kind.CONTROL, JSON.stringify(c).to_utf8_buffer())
+	else:
+		# no stream before the welcome: sent with it, in order. Only the latest of each kind is kept (the last claim,
+		# the last away), so the queue stays short and an early claim is never pushed out by many aways
+		var kind := ",".join(c.keys())
+		for i in range(_unsent_controls.size() - 1, -1, -1):
+			if ",".join(_unsent_controls[i].keys()) == kind:
+				_unsent_controls.remove_at(i)
+		if _unsent_controls.size() < MAX_UNSENT_CONTROLS:
+			_unsent_controls.append(c)
 
 
 func claim(person: String) -> void:
@@ -2024,6 +2152,12 @@ func set_away(on: bool) -> void:
 # ================================================================== the LAN query (§9.3)
 
 func _query() -> void:
+	# (the window counts from the first query, once the preparation is ready: _prep_ready sets it; a preparation
+	# that never ends gives up after PREP_MAX_S)
+	if not _prep_ready():
+		if _now > _query_until + PREP_MAX_S:
+			_end("The device's network addresses could not be read.")
+		return
 	if _now > _query_until:
 		_end("No session with that code answered on this network. If the network keeps devices apart, type the host's address.")
 		return
@@ -2042,13 +2176,15 @@ func _query() -> void:
 			port = _query_to.substr(_query_to.rfind(":") + 1).to_int()
 		_disc.send(ip, port, q)
 		return
-	for a in broadcast_addresses():
+	for a in _prep["addrs"]:
 		_disc.send(a, discovery_port, q)
 
 
 ## 255.255.255.255 and, for each IPv4 address of this device, its /24's broadcast address (Godot gives no netmask: a
 ## Wi-Fi's /24 is the common case; a typed address covers the rest).
 static func broadcast_addresses() -> Array:
+	if record_threads:
+		_record_thread("addresses")
 	var out := ["255.255.255.255"]
 	for a in IP.get_local_addresses():
 		var parts: PackedStringArray = a.split(".")
@@ -2095,12 +2231,14 @@ func _on_discovery(b: PackedByteArray, ip: String, port: int) -> void:
 func _hello() -> void:
 	if _now - _hello_t < HELLO_EVERY:
 		return
-	if not _key_ready():
+	if not _key_ready() or not _prep_ready():
 		return
 	_hello_t = _now
 	if _hello_json.is_empty():
-		var tok = _saved_token()
-		var hi := {"name": display_name, "rsa": _rsa.save_to_string(true), "app": RunSave.app_version(),
+		_token_mutex.lock()
+		var tok: PackedByteArray = _tokens.get(code, _prep["token"])
+		_token_mutex.unlock()
+		var hi := {"name": display_name, "rsa": _rsa_pem, "app": RunSave.app_version(),
 				"content": content, "token": Marshalls.raw_to_base64(tok) if not tok.is_empty() else null}
 		_hello_json = JSON.stringify(hi).to_utf8_buffer()
 	_send_k_to(host_ip, host_port, Wire.NOBODY, [Wire.msg(Wire.Kind.HELLO, _hello_json)], Wire.NOBODY)
@@ -2115,28 +2253,58 @@ static var _tokens := {}                # code -> token, while the app runs
 
 
 func _save_token() -> void:
+	_token_mutex.lock()
 	_tokens[code] = _token
-	var f := FileAccess.open(SESSION_FILE, FileAccess.WRITE)
-	if f != null:
-		f.store_string(JSON.stringify({"code": code, "token": Marshalls.raw_to_base64(_token)}))
-		f.close()
+	_token_mutex.unlock()
+	# (the file on a worker thread: a write to storage took a frame's ms on the Note 9 at the welcome)
+	_save_jobs.append(WorkerThreadPool.add_task(_write_token.bind(JSON.stringify(
+			{"code": code, "token": Marshalls.raw_to_base64(_token)}), _forgotten)))
 
 
-func _saved_token() -> PackedByteArray:
-	if _tokens.has(code):
-		return _tokens[code]
+static func _write_token(text: String, forgotten_then: int) -> void:
+	if record_threads:
+		_record_thread("token file")
+	_token_mutex.lock()                 # (two welcomes' writes one after the other)
+	if forgotten_then == _forgotten:    # (a session forgotten since: its token must not come back on disk)
+		var f := FileAccess.open(SESSION_FILE, FileAccess.WRITE)
+		if f != null:
+			f.store_string(text)
+			f.close()
+	_token_mutex.unlock()
+
+
+static var _forgotten := 0              # forget_session()s so far
+
+
+static var _token_mutex := Mutex.new()
+
+
+## (on the join's preparation thread too: _tokens and the file under _token_mutex)
+static func _saved_token_of(for_code: String) -> PackedByteArray:
+	_token_mutex.lock()
+	var t := _saved_token_locked(for_code)
+	_token_mutex.unlock()
+	return t
+
+
+static func _saved_token_locked(for_code: String) -> PackedByteArray:
+	if _tokens.has(for_code):
+		return _tokens[for_code]
 	if FileAccess.file_exists(SESSION_FILE):
 		var r := JsonStrict.parse_text(FileAccess.get_file_as_string(SESSION_FILE))
-		if r.get("ok", false) and typeof(r["value"]) == TYPE_DICTIONARY and r["value"].get("code") == code \
+		if r.get("ok", false) and typeof(r["value"]) == TYPE_DICTIONARY and r["value"].get("code") == for_code \
 				and typeof(r["value"].get("token")) == TYPE_STRING:
 			return Marshalls.base64_to_raw(r["value"]["token"])
 	return PackedByteArray()
 
 
 static func forget_session() -> void:
+	_token_mutex.lock()
+	_forgotten += 1
 	_tokens.clear()
 	if FileAccess.file_exists(SESSION_FILE):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(SESSION_FILE))
+	_token_mutex.unlock()
 
 
 # ================================================================== positions (§6.3)

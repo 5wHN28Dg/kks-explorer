@@ -42,6 +42,8 @@
 ##   mp=CODE@HOST[:PORT]     (walk) join that LAN session as the walk starts (milestone MP2's measurement: the session
 ##                           layer's time a frame, the input-to-effect delay, the RSA key's time: SESSION lines)
 ##   mp_inputs=N             and make an input every N seconds (an op on an instrument air compressor, start and stop)
+##   mp_probe=1              and read the session layer's thread time around each of its frames (its slow frames' run
+##                           and wait in the SESSION slow lines)
 ##   voice=bench             wdp_voice's test scene instead of the plant (voice/demo/voice_wav.gd: the codec's round
 ##                           trip and its time per 20 ms frame, `VOICE` lines in the log; milestone MP5's measurement)
 ##   On a phone walk.txt takes voice, probe, fx_off, fx_on, max_fps, crowd, people_skinned, people_shadows, crews and
@@ -290,7 +292,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "shadow_ab", "mp", "mp_inputs"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest and shadow_ab: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "shadow_ab", "mp", "mp_inputs", "mp_probe"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest and shadow_ab: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
@@ -519,6 +521,8 @@ func _mp_join() -> void:
 	var at := spec.find("@")
 	var why: String = ui.start_session(false, "", spec.substr(0, at) if at > 0 else spec, spec.substr(at + 1) if at > 0 else "", {})
 	_say("SESSION join %s" % (why if why != "" else "started"))
+	if ui.session != null:
+		ui.session.probe_sched = opts.get("mp_probe", "") == "1"
 	if opts.has("mp_inputs"):
 		var every := clampf(float(opts.mp_inputs), 0.5, 60.0)
 		var t := Timer.new()
@@ -550,6 +554,16 @@ func _mp_result() -> void:
 	if s._udp != null:
 		_say("SESSION udp sent=%d (%d B) got=%d (%d B)" % [s._udp.sent, s._udp.sent_bytes, s._udp.got, s._udp.got_bytes])
 	_say("SESSION worst frame: %s; frames over 2 ms: %d" % [st.get("us_max_what", ""), st.get("over_2ms", 0)])
+	# the layer's slow frames (over 1.5 ms) and where their time went: receive (decrypt, parse), frame (beside the
+	# model's steps), positions, flush (seal, send); with mp_probe=1 the thread's time on a CPU (run) and waiting (wait)
+	if s.probe_sched:
+		_say("SESSION probe: schedstat %s" % ("read" if MpSession.sched_error == "" else "not read (%s)" % MpSession.sched_error))
+	for f in st.get("slow", []):
+		_say("SESSION slow %d us at %.1f s: receive %d, frame %d (steps %d apart), positions %d, flush %d; packets in %d, out %d; run %s, wait %s, switches %s; %s" % [
+			f["us"], f["t"], f["receive"], f["frame"], f["steps"], f["positions"], f["flush"], f["in"], f["out"],
+			str(f.get("run", "-")), str(f.get("wait", "-")), str(f.get("switches", "-")), f["what"]])
+		if f.has("packets"):
+			_say("SESSION slow packets: %s" % f["packets"])
 
 
 ## crowd=N: N people round the walker on `route` (app/crowd.gd), in a walk or in shots.

@@ -2,9 +2,10 @@
 ## headless, no rendering. Driven by a plan of actions; writes what it saw to a JSON file at the end.
 ##   godot --headless --path apps/plant3d --script res://net/tests/instance.gd -- --role=host|join --code=CODE
 ##     --data=DIR --scenario=ID --name=NAME --disc=PORT --port=PORT [--addr=IP:PORT] [--via=IP:PORT] [--speed=N]
-##     --plan=FILE --out=FILE
+##     --plan=FILE --out=FILE [--probe=1]
 ## The plan is a JSON array of actions, each {"t": seconds since the start (real time)} or {"step": the engine's
-## step}, and "do": input (item), claim (person), ready, start, pause, run, fast (on), jump (hhmm), instructor (slot,
+## step}, and optionally {"inputs_from": [slot, n]} (the host: wait until n inputs of that slot are committed) and
+## {"after": seconds since the action before it ran}, and "do": input (item), claim (person), ready, start, pause, run, fast (on), jump (hhmm), instructor (slot,
 ## on), away (on), desync (a value of the engine changed), leave, quit. On quit (or when the session ends) it writes
 ## --out: its slot, its step, every 50th step's state digest, its events' hash and count, the input-to-effect delays,
 ## its session statistics and (the host) every commit.
@@ -28,6 +29,8 @@ var done := false
 var walk_a := 0.0
 var notices: Array = []
 var _printed := false
+var _last_done := 0.0   # when the last action ran (s since the start)
+var early := 0          # actions done before the session's welcome (the player still finding or joining it)
 var ff_tail_frames := 0  # frames with the session still catching up on fast-forward's turns (session.ff_tail)
 
 
@@ -60,6 +63,7 @@ func _init() -> void:
 	session.bind_address = "127.0.0.1" if opts.get("local", "1") == "1" else "*"
 	session.via = opts.get("via", "")
 	session.log_commits = true
+	session.probe_sched = opts.get("probe", "") == "1"   # the layer's slow frames' thread time (stats "slow")
 	session.my_pos = _walker
 	session.notice.connect(func(t): notices.append(t))
 	session.ended.connect(func(_w): _finish())
@@ -100,14 +104,31 @@ func _process(_delta: float) -> bool:
 			break
 		if a.has("step") and step < int(a["step"]):
 			break
+		if a.has("inputs_from") and _committed_from(int(a["inputs_from"][0])) < int(a["inputs_from"][1]):
+			break
+		if a.has("after") and now < _last_done + float(a["after"]):
+			break
 		plan.pop_front()
+		_last_done = now
 		_do(a)
 		if done:
 			return true
 	return false
 
 
+## The inputs of `slot` committed so far (the host's commit log).
+func _committed_from(slot: int) -> int:
+	var n := 0
+	for c in session.commit_log:
+		for x in c[2]:
+			if int(x[0]) == slot:
+				n += 1
+	return n
+
+
 func _do(a: Dictionary) -> void:
+	if session.state == Session.State.FINDING or session.state == Session.State.JOINING:
+		early += 1
 	match a["do"]:
 		"input":
 			session.send_input(a["item"])
@@ -165,7 +186,7 @@ func _finish() -> void:
 		"positions": session.positions.keys(), "commits": session.commit_log if session.is_host() else [],
 		"scenario": session.scenario, "buffer": session.buffer_turns(), "sending": session.sending(),
 		"trainees": _trainees(e), "pss_kb": _pss(), "udp": [Udp.opened, Udp.open_now],
-		"ff_cap": clock.ff_cap(), "ff_tail_frames": ff_tail_frames, "ff_tail": session.ff_tail, "load_ms": session.stats.get("load_ms", -1.0),
+		"ff_cap": clock.ff_cap(), "ff_tail_frames": ff_tail_frames, "ff_tail": session.ff_tail, "load_ms": session.stats.get("load_ms", -1.0), "early": early,
 	}
 	var f := FileAccess.open(opts["out"], FileAccess.WRITE)
 	f.store_string(JSON.stringify(out))
