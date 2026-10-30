@@ -825,6 +825,31 @@ class Hoists(unittest.TestCase):
         self.assertLessEqual(hook['max'] + block, bz - under)
         self.assertEqual(hook['init'], hook['max'])
 
+    def test_the_latch_is_worked_only_with_the_trolley_still(self):
+        """Hooking on while the trolley runs would snap the load under a hook that has gone on, over a floor's edge
+        (the adversarial review: the pallet jumped onto the roof's edge at 30 m): refused until it stands."""
+        e = P.Recorder(self.b, 'cold_iron')
+        e.op('10SMF10AE002', 'set', -1)             # to the tip, over the valve
+        self.run_s(e, 60)
+        e.op('10SMF10AE001', 'set', -1)
+        self.until(e, 'roof_hoist_at_load', 600)
+        e.op('10SMF10AE001', 'set', 0)
+        e.op('10SMF10AE002', 'set', 1)              # In, and at once hook on, still over the valve
+        e.step()
+        e.step()
+        self.assertEqual(e.v('roof_hoist_at_load'), 1)
+        n0 = len(e.events)
+        e.op('10SMF10AE003', 'close')
+        e.step()
+        self.assertEqual(self.ops(e, n0)[0][4:], ['refused', ['roof_hoist_still']])
+        e.op('10SMF10AE002', 'set', 0)
+        e.step()
+        e.step()
+        n0 = len(e.events)
+        e.op('10SMF10AE003', 'close')
+        e.step()
+        self.assertEqual(self.ops(e, n0)[0][4], 'done', self.ops(e, n0))
+
     def until(self, e, name, limit_s=600):
         for _ in range(round(limit_s * 10)):
             if e.v(name):

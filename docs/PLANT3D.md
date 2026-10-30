@@ -2495,7 +2495,9 @@ under the hoist's body). The crane's part stands at grade at
   of the hook, the crate 0.82 m): for the roof hoist grade up to 3 m from the tip (the roof's edge), the roof's deck
   (+30) beyond; for the crane the operating floor (+12) between y −20 and 20, grade outside it. A load over a floor's
   edge comes down on the edge, never through it, and stays hooked: the latch closes and opens only on a load whose
-  footprint is wholly on one floor (`<p>_level`). The hook comes down to 0.4 m above the floor under it (with a load
+  footprint is wholly on one floor (`<p>_level`), and with the trolley and the bridge standing still (`<p>_still`;
+  one held against its limit switch stands), since a load hooked on while they move snaps under where the hook has
+  gone. The hook comes down to 0.4 m above the floor under it (with a load
   hooked on, above the highest floor under the load) and no lower (a slack-chain switch), and travel keeps it so: the
   trolley looks 0.1 m ahead, and an empty hook low over grade stops short of a higher floor's edge until it is raised.
   The load snaps under the hook (by up to 0.3 m) the step after the latch closes.
@@ -2512,7 +2514,9 @@ under the hoist's body). The crane's part stands at grade at
   card points there. Pressed sends 1 or −1, released 0, and a motion held is let go (0 sent, at the equipment) when
   its buttons can no longer be worked: out of reach, the card closed or rebuilt, the app in the background or out of
   focus. A saved run continued lets go of every motion saved running (no hand is on a button then): it stops as if
-  let go the moment the run was saved. A row whose code has `open` and `close` (the hook's latch) is two buttons
+  let go the moment the run was saved. In a session the host does the same for everyone when a saved session
+  continues, and when a player leaves or loses the connection (`net/session.gd` `_let_go_held`: whose hand held it is
+  not known, so a player still holding a button presses it again). A row whose code has `open` and `close` (the hook's latch) is two buttons
   pressed once, worked at the hook: within reach of the latch's code, which rides on it.
 - **Targets a hand can stop on.** A hand lets a button go some tenths of a second after it sees the target, a slow one
   seconds after, so every target a procedure's step ends on is one the motion can't run far past: a limit switch (the
@@ -2520,9 +2524,9 @@ under the hoist's body). The crane's part stands at grade at
   bay being under both; the hooks' top limits), the slack-chain switch (lowering to the slings: the latch closes with
   the hook anywhere from the load's base up to 0.3 m over the slings' lifting point, a hook lowered past it only
   slackening them), or a threshold with metres of room past it (bringing a load in over the roof or the operating
-  floor, the bridge west to the set-down place). Corrections are allowed: a hold-to-run button pressed either way on a
-  motion the current step works (its own, or the one it lets go after the last step's target) is inching onto the
-  target, never a deviation.
+  floor, the bridge west to the set-down place). Corrections are allowed: a hold-to-run button pressed against the way
+  its motion was going (the current step's own press, or the last step's when this one lets it go) is inching back
+  onto the target, never a deviation; pressed the other way, or another motion, it is one.
 - **Hold-to-run runs at 1× only.** Fast-forward is refused while any hold-to-run command is not 0 and stops the
   moment one starts (`ui/sim_clock.gd` `held_motion`, read from the model's values, so a session's host applies it
   too): at 60× a hand a third of a second late has let a motion run 20 s. Running such a motion at 1× inside

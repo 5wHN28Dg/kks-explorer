@@ -168,6 +168,25 @@ def _hoist(m, p, codes, speeds, limits, init, rated, unit_w, mass, sling, clear,
     m.prod(f'{p}_trolley_v', [f'{p}_trolley_cmd', f'{p}_trolley_ok'])
     if bridge:
         m.prod(f'{p}_bridge_v', [f'{p}_bridge_cmd', f'{p}_travel_ok'])
+    # the trolley and the bridge standing still: the latch is worked only then (a load hooked on while they move would
+    # snap under a hook that has gone on, its footprint perhaps over a floor's edge); one held against its limit switch
+    # stands still
+    still = []
+    for ax, lim in (('trolley', limits['trolley']), ('bridge', limits.get('bridge'))):
+        if lim is None or (ax == 'bridge' and not bridge):
+            continue
+        m.cmp(f'{p}_{ax}_fwd', f'{p}_{ax}_v', '>', 0)
+        m.cmp(f'{p}_{ax}_back', f'{p}_{ax}_v', '<', 0)
+        m.cmp(f'{p}_{ax}_at_hi', f'{p}_{ax}_pos', '>=', lim[1])
+        m.cmp(f'{p}_{ax}_at_lo', f'{p}_{ax}_pos', '<=', lim[0])
+        m.AND(f'{p}_{ax}_held_hi', [f'{p}_{ax}_fwd', f'{p}_{ax}_at_hi'])
+        m.AND(f'{p}_{ax}_held_lo', [f'{p}_{ax}_back', f'{p}_{ax}_at_lo'])
+        # (held against its limit: no travel)
+        m.OR(f'{p}_{ax}_stopped', [f'{p}_{ax}_held_hi', f'{p}_{ax}_held_lo'])
+        m.eq(f'{p}_{ax}_zero', f'{p}_{ax}_v', 0)
+        m.OR(f'{p}_{ax}_still', [f'{p}_{ax}_zero', f'{p}_{ax}_stopped'])
+        still.append(f'{p}_{ax}_still')
+    m.AND(f'{p}_still', still)
     # the hoist: up within the rated load (the overload device stops it as the load starts to lift); down until the
     # hook is 0.4 m above the floor under it (the slack-chain switch), or with a load hooked on, above the highest
     # floor under the load
@@ -197,12 +216,14 @@ def _hoist(m, p, codes, speeds, limits, init, rated, unit_w, mass, sling, clear,
     m.op(tc, 'set', None, (), ('local',), input=f'{p}_trolley_cmd', range=[-1, 1])
     if bridge:
         m.op(codes['bridge'], 'set', None, (), ('local',), input=f'{p}_bridge_cmd', range=[-1, 1])
+    moving = (f'{p}_still', 'The trolley or the bridge is moving: let it stop over the load first')
     m.op(lc, 'close', {f'{p}_latch': 1},
          [(f'{p}_at_load', 'The hook is not at the slings: lower it to within 0.3 m above their lifting point, over '
-                           'the load')], ('local',))
+                           'the load'), moving], ('local',))
     m.op(lc, 'open', {f'{p}_latch': 0},
          [(f'{p}_rest', 'The load is not resting: lower it onto the floor before unhooking'),
-          (f'{p}_level', 'The load stands over a floor\'s edge: bring it wholly over one floor before unhooking')],
+          (f'{p}_level', 'The load stands over a floor\'s edge: bring it wholly over one floor before unhooking'),
+          moving],
          ('local',))
     m.alarm(f'{p}_overload', cc, f'{own} overload: the load is over the rated {rated:,} {unit_w}', f'{p}_over', 3,
             own, 'WAH')

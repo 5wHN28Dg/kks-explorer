@@ -3,7 +3,7 @@
 ## process, over the loopback) joins by the code and the host's address; both claim roles in the lobby and the host
 ## presses Start; both plants then run the same steps (the same state digests); an input of each reaches the other's
 ## plant; the bar's Pause pauses the session for both; the other player is drawn where its `pos` says; the host's
-## End ends it for the joiner too, and the app's clock is its own again. A join link starts a join with its code.
+## End ends it for the joiner too (a player released while holding a hoist's button has it let go by the host first), and the app's clock is its own again. A join link starts a join with its code.
 extends RefCounted
 
 const App = preload("res://tests/ui_app.gd")
@@ -114,6 +114,13 @@ func run(tree: SceneTree) -> Array:
 	ui.clock.set_speed(SimClock.Speed.NORMAL)
 	if not await _wait(tree, func(): return not s2.paused, 5.0):
 		p.append("the host's 1× did not run the session again")
+	# a player holding a hoist's button (PLANT3D §20.5) who leaves: the host lets go of it for them, on both plants
+	s2.send_input(["op", "10SMF10AE002", "set", -1, null, "local", "a_ccr1"])
+	if not await _wait(tree, func(): return ui.clock.engine.v("roof_hoist_trolley_cmd") == -1.0, 10.0):
+		p.append("the player's held Out did not reach the host's plant")
+	hs._release(hs.peers[1])
+	if not await _wait(tree, func(): return ui.clock.engine.v("roof_hoist_trolley_cmd") == 0.0 and clock2.engine.v("roof_hoist_trolley_cmd") == 0.0, 10.0):
+		p.append("the player released, their held Out runs on (host %s, player %s)" % [ui.clock.engine.v("roof_hoist_trolley_cmd"), clock2.engine.v("roof_hoist_trolley_cmd")])
 	# the host ends it
 	ui.session_panel._sig = ""
 	ui.session_panel.refresh()

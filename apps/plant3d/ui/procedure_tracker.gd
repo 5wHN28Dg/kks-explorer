@@ -188,6 +188,23 @@ func _find(step: Dictionary, ev: Array, inp: Array, with_value: bool) -> int:
 	return -1
 
 
+## The way a hold-to-run motion of this code goes in this procedure now (1 or -1; 0 when none): this step's press
+## of it, else the last step's when this one lets it go.
+func _heading(kks: String) -> float:
+	var lets_go := false
+	for d in current().get("do", []):
+		if d["kks"] == kks and d["do"] == "set":
+			var v = _num(d.get("value"))
+			if v != null and v != 0.0:
+				return v
+			lets_go = true
+	if lets_go and index > 0:
+		for d in steps[index - 1].get("do", []):
+			if d["kks"] == kks and d["do"] == "set" and _num(d.get("value")) != null and _num(d.get("value")) != 0.0:
+				return _num(d["value"])
+	return 0.0
+
+
 func _op_done(ev: Array, inp: Array, engine, at := -1) -> void:
 	if is_tour() or index < 0:
 		return
@@ -195,9 +212,10 @@ func _op_done(ev: Array, inp: Array, engine, at := -1) -> void:
 	var k := _find(current(), ev, inp, true)
 	if k == -1 and ev[3] == "set" and inp.size() > 5 \
 			and not _release_op({"kks": ev[2], "do": "set", "value": 0}, engine).is_empty():
-		# a hold-to-run button (PLANT3D §20.5): let go, never a deviation; pressed either way on a motion this step
-		# works (its own, or the one it lets go after the last step's target), a correction onto the target
-		if _num(inp[4]) == 0.0 or want.any(func(d): return d["kks"] == ev[2] and d["do"] == "set"):
+		# a hold-to-run button (PLANT3D §20.5): let go, never a deviation; pressed against the way its motion was
+		# going (this step's own motion, or the one it lets go after the last step's target), a correction back onto
+		# the target
+		if _num(inp[4]) == 0.0 or _num(inp[4]) == -_heading(ev[2]):
 			return
 	if k == -1:
 		var loose := _find(current(), ev, inp, false)
