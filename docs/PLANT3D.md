@@ -2430,7 +2430,7 @@ height, load and alarms.
 
 - The trainee's come from the app (§20.7), as `zone` inputs do; an NPC's are made in step 9 and handled in the next
   step's step 1 as its ops are. In a session run each carries its slot (§17.13).
-- **Step 1**, in the order made: `board` is done when the rider is aboard no lift (else refused, `aboard`) and the cab stands at a landing (else refused, `not_at_landing`: §20.10); `alight`
+- **Step 1**, in the order made: `board` is done when the rider is aboard no lift (else refused, `aboard`) and the cab stands level at a landing, not about to leave (a landing's `at`; else refused, `not_at_landing`: §20.10); `alight`
   when they are aboard this one (else refused, `not_aboard`); an unknown lift is `unknown`. The person is checked as a
   permit input's is (§17.1, §17.13: `authority`), with no role authority: anyone on site may use the lift, and the
   ops of its controls (the calls, the gates, the cab's panel) need no role authority either (decided 2026-10-30). A rider is the person, or for `null` the input's slot. Riders are
@@ -2575,7 +2575,7 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
   cab set off as the gate began to open and stopped 6 cm below the landing, where no landing's `at` is ever true again.
 - **`board` and `alight`:** the person is checked as a permit input's is, without a role authority (anyone may ride).
   A `board` is refused (`not_at_landing`, after the other reasons) while no landing's `at` is true as the step before
-  left it: the cab is between landings, its gates shut, and nobody can step in there (a board mid-shaft could put the
+  left it (level there and not about to leave): the cab is between landings or setting off, its gates shut, and nobody can step in there (a board mid-shaft could put the
   cab over its rated load between landings and hold the NPCs aboard there). An `alight` is not checked so: a jump's
   or a release's alights empty a cab wherever it is.
   In a session run the event carries the input's slot after it, `null` for an NPC's. A rider for a `null` person is
