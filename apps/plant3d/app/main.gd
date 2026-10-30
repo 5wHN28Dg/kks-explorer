@@ -499,8 +499,8 @@ func _start_walk() -> void:
 		ui.mimic.reset_cost()
 		last_us = Time.get_ticks_usec()
 		return
-	var looped: bool = opts.walk in ["frames", "camp", "wtp"]
-	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else (Routes.wtp_loop() if opts.walk == "wtp" else Routes.climb(plant)))
+	var looped: bool = opts.walk in ["frames", "camp", "wtp", "hoist"]
+	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else (Routes.wtp_loop() if opts.walk == "wtp" else (Routes.hoist(plant) if opts.walk == "hoist" else Routes.climb(plant))))
 	auto = Autopilot.new()
 	auto.skip_stuck = true
 	add_child(auto)
@@ -508,7 +508,7 @@ func _start_walk() -> void:
 	auto.finished.connect(_finish)
 	_start_crowd(route)
 	var st: Array = plant.start()
-	if opts.walk not in ["frames", "camp"]:
+	if opts.walk not in ["frames", "camp", "hoist"]:
 		player.global_position = route[0].to
 	else:
 		player.global_position = st[0]

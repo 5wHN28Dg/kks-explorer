@@ -82,8 +82,8 @@ func run(tree: SceneTree) -> Array:
 		if not App.texts(ui.session_panel).contains("Second"):
 			p.append("the host's panel does not list the second player")
 	ui.take_role("a_sup")
-	s2.claim("a_ccr1")
-	await _wait(tree, func(): return hs.peers.has(1) and hs.peers[1].person == "a_ccr1", 5.0)
+	s2.claim("a_fo_st")
+	await _wait(tree, func(): return hs.peers.has(1) and hs.peers[1].person == "a_fo_st", 5.0)
 	ui.session_panel._sig = ""
 	ui.session_panel.refresh()
 	var start := App.find_button(ui.session_panel, "Start")
@@ -115,7 +115,7 @@ func run(tree: SceneTree) -> Array:
 	if not await _wait(tree, func(): return not s2.paused, 5.0):
 		p.append("the host's 1× did not run the session again")
 	# a player holding a hoist's button (PLANT3D §20.5) who leaves: the host lets go of it for them, on both plants
-	s2.send_input(["op", "10SMF10AE002", "set", -1, null, "local", "a_ccr1"])
+	s2.send_input(["op", "10SMF10AE002", "set", -1, null, "local", "a_fo_st"])
 	if not await _wait(tree, func(): return ui.clock.engine.v("roof_hoist_trolley_cmd") == -1.0, 10.0):
 		p.append("the player's held Out did not reach the host's plant")
 	hs._release(hs.peers[1])
