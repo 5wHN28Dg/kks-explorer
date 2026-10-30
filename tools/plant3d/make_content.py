@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
-import kit, train_areas, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
+import kit, train_areas, train_hoists, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
 
 OUT = os.path.join(ROOT, 'data', 'plant3d')
 
@@ -89,6 +89,10 @@ def add_air_permissives(areas, models):
 def build():
     """{relative path: text} for everything under data/plant3d."""
     areas = site_areas.add_to_train(train_areas.areas()) + wtp_areas.areas() + site_areas.areas()
+    by_id = {a['id']: a for a in areas}
+    by_id['hrsg1']['equipment'] += train_hoists.hrsg1_equipment()     # the hoists (PLANT3D §20.5)
+    by_id['hrsg1']['signs'] += train_hoists.hrsg1_signs()
+    by_id['st']['equipment'] += train_hoists.st_equipment()
     plant = train_content.plant(codes(areas), [a['id'] for a in areas])
     plant['clock'] = train_staff.CLOCK          # format 2's plant clock (§16.1): the staff's day
     files = {'kit.json': kit.kit(), 'plant.json': plant,
@@ -96,6 +100,8 @@ def build():
     for a in areas:
         files[f'areas/{a["id"]}.json'] = a
     models = train_model.models() + wtp_model.models()
+    for m in models:
+        {'hrsg1': train_hoists.roof_hoist, 'st': train_hoists.crane}.get(m.area, lambda _m: None)(m)
     add_air_permissives(areas, models)
     jobs = train_staff.works_tasks(models)      # with staff.json every work names its task (§15.2)
     for m in models:
@@ -110,7 +116,7 @@ def build():
     files['scenarios/shift_wtp.json'] = train_staff.scenario_wtp(files['scenarios/cold_iron.json'])
     files['staff.json'] = train_staff.staff(models, train_staff.load_layout())
     for p in [train_content.cold_start(), train_content.hot_restart()] + train_content.tours() + \
-            wtp_content.procedures() + site_areas.tours():
+            wtp_content.procedures() + site_areas.tours() + train_hoists.procedures():
         files[f'procedures/{p["id"]}.json'] = p
     return {k: dump(v) for k, v in sorted(files.items())}
 

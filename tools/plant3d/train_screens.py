@@ -26,8 +26,10 @@ def screens():
     """The train's screens, worked from the main control room's desks, then the water treatment plant's: its
     overview is on every desk (the main control room reads it), the rest on the WTP's own desk only (PLANT3D §14:
     `desks`). Each screen says its desks: without them it would be on every desk."""
+    import train_hoists
     out = train()
     for sc in out['screens']:
+        sc['groups'] += train_hoists.screen_groups().get(sc['id'], [])
         sc['desks'] = list(MAIN)
     out['overview']['desks'] = list(MAIN)
     out['screens'] += wtp()

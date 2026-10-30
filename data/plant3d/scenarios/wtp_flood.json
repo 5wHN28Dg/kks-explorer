@@ -101,6 +101,7 @@
   {"id": "ro_a_cond_drift", "set": {"ro_a_cond_drift": 15}, "text": "RO A permeate conductivity analyser drifts: reads 15 µS/cm high", "kks": "00GCB21CQ001", "repair": {"ro_a_cond_drift": 0}},
   {"id": "ro_b_cond_drift", "set": {"ro_b_cond_drift": 15}, "text": "RO B permeate conductivity analyser drifts: reads 15 µS/cm high", "kks": "00GCB22CQ001", "repair": {"ro_b_cond_drift": 0}},
   {"id": "ro_a_cl_damage", "set": {"ro_a_dmg": 1}, "text": "RO A: the membranes oxidised by chlorine pass salt (new membranes needed)", "when": "ro_a_cl_dmg_c", "repair": {"ro_a_dmg": 0}},
-  {"id": "ro_b_cl_damage", "set": {"ro_b_dmg": 1}, "text": "RO B: the membranes oxidised by chlorine pass salt (new membranes needed)", "when": "ro_b_cl_dmg_c", "repair": {"ro_b_dmg": 0}}
+  {"id": "ro_b_cl_damage", "set": {"ro_b_dmg": 1}, "text": "RO B: the membranes oxidised by chlorine pass salt (new membranes needed)", "when": "ro_b_cl_dmg_c", "repair": {"ro_b_dmg": 0}},
+  {"id": "roof_hoist_heavy", "set": {"roof_hoist_mass": 2400}, "text": "The spare valve's crate weighs 2,400 kg, not the 600 kg on its paper (the roof hoist is rated 2,000 kg)", "repair": {"roof_hoist_mass": 600}}
  ]
 }

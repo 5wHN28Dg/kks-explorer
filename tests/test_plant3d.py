@@ -73,7 +73,8 @@ class Content(unittest.TestCase):
         self.assertGreaterEqual(c['equipment'], 150)
         self.assertGreaterEqual(c['pipes'], 25)
         self.assertGreaterEqual(c['tours'], 1)
-        self.assertEqual(c['procedures'], 7)          # the cold start, the hot restart, the WTP's three (W2) and two (W3)
+        self.assertEqual(c['procedures'], 9)          # the cold start, the hot restart, the WTP's three (W2) and two (W3),
+        #                                               the roof hoist's and the crane's lifts (§20.5)
         self.assertLessEqual(c['values'], P.MAX['values'])
 
     def test_screens_show_every_code_of_the_model(self):
@@ -714,6 +715,100 @@ class WaterTreatmentModel(unittest.TestCase):
         # a mixed bed lasts about three clock days at design: 1/72 of its capacity per clock hour
         rate = 40 * 26.56 * 1 * 1 * nodes['mb_a_rate']['product'][-1]
         self.assertAlmostEqual(rate, 1 / 72, places=6)
+
+
+class Hoists(unittest.TestCase):
+    """PLANT3D §20.5: HRSG 1's roof hoist and the turbine hall's crane as model content. Both lifts run by their
+    procedures in the model alone; the hook goes on only at the slings and comes off only with the load resting; a
+    hooked load travels only once it is lifted clear; a load over the rated one stops the hoist as it starts to lift
+    and shows on the load cell (the trainer's fault); the limit switches hold each motion in its travel."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.b = P.check_dir(DATA)
+
+    def ops(self, e, n0):
+        return [x for x in e.events[n0:] if x[1] == 'op']
+
+    def run_s(self, e, s):
+        for _ in range(round(s * 10)):
+            e.step()
+
+    def test_both_lifts_run_in_the_model_alone(self):
+        for pid, last, end in (('roof_hoist_lift', 'clear', {'roof_hoist_load_along': (6.0, 0.1),
+                                                              'roof_hoist_load_height': (30.0, 0.001)}),
+                               ('crane_lift', 'clear', {'crane_load_x': (70.0, 0.1), 'crane_load_y': (-15.0, 0.1),
+                                                        'crane_load_height': (12.0, 0.001)})):
+            with self.subTest(pid):
+                e, log, _ = procedure_run(self.b, pid)
+                self.assertEqual(log[-1][0], last)
+                self.assertTrue(all(x[4] == 'done' for x in e.events if x[1] == 'op'))
+                self.assertEqual({x[1] for x in e.events} - {'op'}, set(), 'no alarm on the way')
+                for name, (want, tol) in end.items():
+                    self.assertAlmostEqual(e.v(name), want, delta=tol, msg=name)
+                self.assertLess(log[-1][1] / 600, 20, 'a lift of a quarter of an hour or so')
+
+    def test_an_overweight_load_stops_the_hoist_and_shows_on_the_load_cell(self):
+        _, _, bases = procedure_run(self.b, 'roof_hoist_lift')
+        e = bases['hoist'].clone()          # hooked on at grade, resting
+        e.fault('roof_hoist_heavy')
+        e.op('10SMF10AE001', 'set', 1)
+        self.run_s(e, 60)
+        self.assertEqual(e.v('roof_hoist_weight'), 2400)
+        # the load leaves the ground by at most one step's travel, the step in which the device weighs it
+        self.assertLessEqual(e.v('roof_hoist_load_height'), 0.01 + 1e-9, 'the load stays on the ground')
+        self.assertEqual(e.v('roof_hoist_rest'), 1, 'resting: it can be unhooked')
+        self.assertLess(e.v('roof_hoist_hook_height'), 1.52, 'the hook stops as the chain comes taut')
+        self.assertEqual(e.snapshot()['alarms'].get('roof_hoist_overload'), 'active_unack')
+        # put right (the right crate): it lifts
+        e.repair('roof_hoist_heavy')
+        self.run_s(e, 30)
+        self.assertGreater(e.v('roof_hoist_load_height'), 2)
+        self.assertEqual(e.v('roof_hoist_weight'), 600)
+
+    def test_the_hook_goes_on_only_at_the_slings_and_comes_off_only_resting(self):
+        e = P.Recorder(self.b, 'cold_iron')
+        n0 = len(e.events)
+        e.op('10SMF10AE003', 'close')           # the hook at the top of the beam, over the roof
+        e.step()
+        self.assertEqual(self.ops(e, n0)[0][4:], ['refused', ['roof_hoist_at_load']])
+        _, _, bases = procedure_run(self.b, 'roof_hoist_lift')
+        e = bases['trolley_in'].clone()         # hooked, the valve hanging clear of the roof's handrail
+        n0 = len(e.events)
+        e.op('10SMF10AE003', 'open')
+        e.step()
+        self.assertEqual(self.ops(e, n0)[0][4:], ['refused', ['roof_hoist_rest']])
+        self.assertEqual(e.v('roof_hoist_latch'), 1)
+
+    def test_a_hooked_load_travels_only_once_lifted_clear(self):
+        _, _, bases = procedure_run(self.b, 'crane_lift')
+        e = bases['hoist'].clone()              # hooked on in the laydown bay, resting
+        x0, y0 = e.v('crane_bridge_pos'), e.v('crane_trolley_pos')
+        e.op('30SMT10AE002', 'set', 1)
+        e.op('30SMT10AE003', 'set', -1)
+        self.run_s(e, 10)
+        self.assertEqual((e.v('crane_bridge_pos'), e.v('crane_trolley_pos')), (x0, y0))
+        e.op('30SMT10AE002', 'set', 0)
+        e.op('30SMT10AE003', 'set', 0)
+        e.op('30SMT10AE001', 'set', 1)
+        while e.v('crane_load_height') < 13.5:
+            e.step()
+        e.op('30SMT10AE001', 'set', 0)
+        e.op('30SMT10AE002', 'set', 1)
+        self.run_s(e, 10)
+        self.assertAlmostEqual(e.v('crane_trolley_pos'), y0 + 1.7, delta=0.02)
+        self.assertAlmostEqual(e.v('crane_load_y'), e.v('crane_trolley_pos'), delta=1e-9, msg='the load goes with it')
+
+    def test_limit_switches_and_the_floor_under_the_hook(self):
+        e = P.Recorder(self.b, 'cold_iron')
+        e.op('10SMF10AE002', 'set', 1)          # the trolley at its inner limit already
+        e.op('30SMT10AE001', 'set', -1)         # the crane's hook over the operating floor
+        self.run_s(e, 300)
+        self.assertEqual(e.v('roof_hoist_trolley_pos'), 8.0)
+        self.assertAlmostEqual(e.v('crane_hook_height'), 12.4, delta=0.006, msg='0.4 m above the operating floor')
+        e.op('10SMF10AE002', 'set', -1)
+        self.run_s(e, 60)
+        self.assertEqual(e.v('roof_hoist_trolley_pos'), 0.5)
 
 
 class Validator(unittest.TestCase):

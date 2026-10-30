@@ -68,6 +68,10 @@ VALVE = {'dn': I(6, 4000, 100), 'rating': E(['pn10', 'pn16', 'pn25', 'pn40', 'pn
          'actuator': E(['manual', 'gear', 'electric', 'pneumatic', 'hydraulic'], 'manual'),
          'handwheel': E(['top', 'left', 'right'], 'top')}
 RANGE = {'range': T('pair'), 'unit': TXT('bar')}
+# a hoist's pendant: per row the code whose ops it works and its two buttons' words (PLANT3D §20.5)
+PENDANT = {'type': 'records', 'max': 6,
+           'fields': {'code': {'type': 'text', 'max': 16}, 'minus': {'type': 'text', 'max': 16},
+                      'plus': {'type': 'text', 'max': 16}}}
 
 # Planting by species (SITE.md §4: every plant has a purpose; species grown in hot, dry, saline ground in the region)
 SPECIES = ['date_palm', 'tamarisk', 'oleander', 'bougainvillea', 'saltbush', 'caper', 'dracaena']
@@ -169,6 +173,19 @@ PARTS = {
                      {'inlet': ([0, ['d', -0.5, -0.3], 0.8], 's')}, None, ['side']),
     'filter_house': part('machines', {'length': N(2, 40, 14), 'width': N(2, 30, 12), 'height': N(2, 20, 8)},
                          None, None, ['side']),
+    # lifting gear (PLANT3D §20.5): their moving pieces drawn at the model's values, interpolated between its steps
+    # (apps/plant3d/kit/README.md "Moving parts": slide, stretch); `pendant` names the hold-to-run buttons of the
+    # pendant's rows (the app's card), `sling` the load's lifting point above its base (the model's too)
+    'monorail_hoist': part('machines', {'length': N(2, 30, 9), 'beam_z': N(3, 80, 34), 'deck_z': N(0, 78, 30),
+                                        'edge': N(0.5, 10, 3), 'zone': N(0, 10, 5), 'sling': N(0.3, 10, 1.2),
+                                        'pendant': PENDANT},
+                           None, ['trolley', 'hook', 'chain', 'load_y', 'load_z'], ['beam']),
+    'overhead_crane': part('machines', {'runway': N(5, 300, 80), 'span': N(5, 60, 48), 'rail_z': N(6, 78, 26),
+                                        'pendant_x': N(-30, 30, 0), 'pendant_z': N(0.5, 78, 1.2),
+                                        'sling': N(0.3, 10, 3), 'remote': B(False), 'pendant': PENDANT},
+                           None, ['bridge', 'trolley', 'hook', 'rope', 'load_y', 'load_x', 'load_z']),
+    # a drive, latch or load cell riding on its hoist's trolley, bridge or hook: a code of its own, drawn by its hoist
+    'hoist_unit': part('instruments', {'kind': E(['hoist', 'trolley', 'bridge', 'latch', 'load_cell'])}),
     # rotating
     'pump_horizontal': part('rotating', {'flow_m3h': N(0.1, 50000, 100), 'head_m': N(1, 3000, 50),
                                          'motor_kw': N(0.1, 20000, 30), 'length': N(1, 12, 3)},
