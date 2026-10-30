@@ -24,7 +24,7 @@ MAST_TOP = 33.6         # the mast's top: over the cab's roof rail at the top la
 SPEED = 0.6              # m/s (frequency-controlled, 0071)
 RATED_KG = 500
 WORKS = False            # the drive's repair under a permit: with the staff's lift (milestone LIFTS L3)
-LANDING_NAMES = ['grade', '+16.7 m (the stair tower\'s landing)', '+30 m (the roof)']
+LANDING_NAMES = ['grade', '+16.7 m', 'roof']
 
 
 def codes():
@@ -36,18 +36,18 @@ def equipment():
     call station."""
     c = codes()
     x0, y0, _ = AT
-    units = [{'kks': c['drive'], 'name': 'Service lift: drive', 'part': 'lift_unit', 'at': [0.62, 0, 1.2],
+    units = [{'kks': c['drive'], 'name': 'Lift drive', 'part': 'lift_unit', 'at': [0.62, 0, 1.2],
               'params': {'kind': 'drive'}},
-             {'kks': c['panel'], 'name': 'Service lift: cab control panel', 'part': 'lift_unit',
+             {'kks': c['panel'], 'name': 'Lift cab panel', 'part': 'lift_unit',
               'at': [0.2, 0.55, 1.25], 'params': {'kind': 'panel'}},
-             {'kks': c['load'], 'name': 'Service lift: load cell', 'part': 'lift_unit', 'at': [0, 0, -0.1],
+             {'kks': c['load'], 'name': 'Lift load cell', 'part': 'lift_unit', 'at': [0, 0, -0.1],
               'params': {'kind': 'load_cell'}}]
     out = [{'kks': KKS, 'name': 'HRSG 1 service lift', 'part': 'service_lift', 'at': list(AT),
             'params': {'mast': MAST_TOP}, 'plate': 'mast', 'parts': units}]
     for i, z in enumerate(ZS):
-        out.append({'kks': c['gates'][i], 'name': f'Service lift: landing gate at {LANDING_NAMES[i]}',
+        out.append({'kks': c['gates'][i], 'name': f'Lift gate, {LANDING_NAMES[i]}',
                     'part': 'lift_gate', 'at': [GATE_X, y0, z]})
-        out.append({'kks': c['calls'][i], 'name': f'Service lift: call station at {LANDING_NAMES[i]}',
+        out.append({'kks': c['calls'][i], 'name': f'Lift call, {LANDING_NAMES[i]}',
                     'part': 'lift_call', 'at': [GATE_X - 0.06, round(y0 - 0.7, 6), z]})
     return out
 
