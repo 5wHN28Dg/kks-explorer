@@ -23,6 +23,7 @@ const Snapshot = preload("res://net/snapshot.gd")
 const RunSave = preload("res://ui/run_save.gd")
 const JsonStrict = preload("res://sim/json_strict.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
+const Pendant = preload("res://ui/pendant.gd")
 
 const DISCOVERY_PORT := 47820
 const SLOTS := 8
@@ -788,7 +789,7 @@ func _catch_up() -> void:
 ## within a turn, and no player may run past that point at the fast rate.
 func _host_fast(delta: float) -> void:
 	var e = clock.engine
-	if not e.fast_forward():
+	if not clock.ff_ok():
 		_turn_close()
 		_set_fast(false, "Fast-forward stopped: " + clock.ff_blocked())
 		return
@@ -808,7 +809,7 @@ func _host_fast(delta: float) -> void:
 		if _hold_pause:
 			_turn_close()
 			break
-		if not clock.engine.fast_forward():
+		if not clock.ff_ok():
 			_turn_close()
 			_set_fast(false, "Fast-forward stopped: " + clock.ff_blocked())
 			break
@@ -985,6 +986,7 @@ func _watch_peers() -> void:
 			p.connected = false
 			p.gone_t = _now
 			notice.emit("%s has lost the connection." % p.name)
+			_let_go_held(p.slot, p.person)
 			_roster_changed()
 		if not p.connected and not p.released and p.gone_t >= 0.0 and _now - p.gone_t > RELEASE_S:
 			_release(p)
@@ -998,7 +1000,23 @@ func _release(p) -> void:
 	p.released = true
 	if state == State.RUN and p.person != "":
 		_inbox.append([p.slot, 0, InputCheck.text(["release"])])
+	_let_go_held(p.slot, "")
 	_roster_changed()
+
+
+## The host lets go of every hold-to-run motion running (PLANT3D §20.5: a `set` op of -1 to 1 whose command is not
+## 0) in the next commit, for a player who left or lost the connection (from their slot, as their person, at the
+## equipment: whose hand held which button is not known, so a player still holding one presses it again), or from a
+## slot without a person (`person` ""; after its `release`, or a saved session continued: every slot's released
+## first): a free-mode op, which needs no role's authority.
+func _let_go_held(from: int, person: String, lobby := false) -> void:
+	if role != Role.HOST or (state != State.RUN and not lobby) or clock == null or clock.engine == null:
+		return
+	var e = clock.engine
+	for o in e.m.op_keys.values():
+		if Pendant.hold_to_run(o) and e.ix.has(String(o.get("input", ""))) and e.v(o["input"]) != 0.0:
+			var inp: Array = ["op", o["kks"], "set", 0, null, "local", person] if person != "" else ["op", o["kks"], "set", 0, null]
+			_inbox.append([from, 0, InputCheck.text(inp)])
 
 
 # ------------------------------------------------------------------ the player's frame
@@ -1397,6 +1415,7 @@ func _host_message(p, kind: int, f: PackedByteArray) -> void:
 			p.connected = false
 			p.gone_t = _now
 			notice.emit("%s left the session." % p.name)
+			_let_go_held(p.slot, p.person)
 			_roster_changed()
 
 
@@ -1500,10 +1519,12 @@ func start() -> String:
 	state = State.RUN
 	paused = false
 	if _continued:
-		# a saved session continued (§7.4): its old players' people go back to the crews first, then the claims
+		# a saved session continued (§7.4): its old players' people go back to the crews first, then no button is held
+		# (PLANT3D §20.5), then the claims
 		for k in SLOTS:
 			if clock.engine.trainee(k) != -1:
 				_inbox.append([k, 0, InputCheck.text(["release"])])
+		_let_go_held(HOST_SLOT, "", true)
 	for q in _all_claims():
 		if q[1] != "" and (_continued or clock.engine.trainee(q[0]) == -1):
 			_inbox.append([q[0], 0, InputCheck.text(["role", q[1]])])

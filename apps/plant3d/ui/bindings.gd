@@ -34,6 +34,10 @@ var _lamps: Array = []          # [node, slot, kind, lit material, unlit materia
 var _shows: Array = []          # [label, slot, value name, last text]
 var _shakes: Array = []         # [node position, slot, scale]
 var _info
+## Lifting gear (PLANT3D §20.5, kit/README.md "Moving parts"): pieces that slide by a value in metres or stretch to
+## it, drawn between the model's last two steps by the clock's fraction of a step; and the codes that ride on them
+var _slides: Array = []         # [piece, slot, kind, axis (node axes), travel, base transform, last value drawn]
+var _riders: Array = []         # [unit's node, the piece it rides on, its transform in the piece's frame, code]
 var _t_show := 0.0
 var _mat_cache := {}
 
@@ -43,7 +47,7 @@ func setup(e, idx, info, camera: Camera3D) -> void:
 	index = idx
 	_info = info
 	cam = camera
-	_anims.clear(); _lamps.clear(); _shows.clear(); _shakes.clear(); _near.clear()
+	_anims.clear(); _lamps.clear(); _shows.clear(); _shakes.clear(); _near.clear(); _slides.clear(); _riders.clear()
 	_near_eye = Vector3.INF
 	if sounds != null:
 		sounds.unbind_all()
@@ -57,6 +61,11 @@ func setup(e, idx, info, camera: Camera3D) -> void:
 			continue
 		if b.has("anim"):
 			var piece := _piece(n, b["anim"], idx.box(b["kks"]))
+			if String(piece.get_meta("anim_kind", "")) in ["slide", "stretch"]:
+				_slides.append([piece, e.ix[b["of"]], String(piece.get_meta("anim_kind")),
+						(piece.get_meta("anim_axis", Vector3.UP) as Vector3).normalized(), float(piece.get_meta("anim_travel", 1.0)),
+						_base(piece), NAN])
+				continue
 			var kids := []
 			if piece.get_meta("anim_kind", "") == "group":
 				for ch in piece.get_children():
@@ -93,6 +102,76 @@ func setup(e, idx, info, camera: Camera3D) -> void:
 			_shakes.append([idx.center(b["kks"]), e.ix[b["shake"]], float(b.get("scale", 1.0))])
 			if sounds != null and sounds.is_surge(info.units.get(b["shake"], "")):
 				sounds.watch_surge(n, e.ix[b["shake"]], float(b.get("scale", 1.0)))
+
+
+	_ride_setup()
+
+
+## The piece's transform as built (value 0), kept on it: a second setup finds it moved.
+static func _base(piece: Node3D) -> Transform3D:
+	if not piece.has_meta("anim_base"):
+		piece.set_meta("anim_base", piece.transform)
+	return piece.get_meta("anim_base")
+
+
+## The codes riding on a hoist (`hoist_unit` parts, kit/parts_hoists.gd): each with the piece it rides on, and where
+## it stands in that piece's frame as both were built.
+const RIDES := {"hoist": "trolley", "trolley": "trolley", "bridge": "bridge", "latch": "hook", "load_cell": "hook"}
+func _ride_setup() -> void:
+	for a in _info.m.areas:
+		for e in a.get("equipment", []):
+			if not e.get("part", "") in ["monorail_hoist", "overhead_crane"]:
+				continue
+			var host: Node3D = index.nodes.get(e["kks"])
+			if host == null:
+				continue
+			for c in e.get("parts", []):
+				var un: Node3D = index.nodes.get(c["kks"])
+				var piece := host.find_child(String(RIDES.get(c.get("params", {}).get("kind", ""), "")), true, false) as Node3D
+				if un == null or piece == null or not un.is_inside_tree():
+					continue
+				if not un.has_meta("ride_offset"):
+					un.set_meta("ride_offset", piece.global_transform.affine_inverse() * un.global_transform)
+				_riders.append([un, piece, un.get_meta("ride_offset"), String(c["kks"])])
+
+
+## The clock's fraction of a step since the last one (0 to 1): pieces are drawn between the last two steps' values.
+## A session's steps come from it (the clock does not step by itself): the last step's values, then.
+func _frac() -> float:
+	if clock == null or clock.driven:
+		return 1.0
+	return clampf(clock.acc / clock.STEP, 0.0, 1.0)
+
+
+## Lifting gear's pieces at their values, interpolated; the riding codes with them (and their bounds made again: their
+## cards' reach and "Show me"). Nothing is done while nothing moves.
+func _each_slide() -> void:
+	if _slides.is_empty() or engine == null:
+		return
+	var cur: PackedFloat64Array = engine.cur
+	var prev: PackedFloat64Array = engine.prev
+	var f := _frac()
+	var moved := false
+	for sl in _slides:
+		var k: int = sl[1]
+		var x: float = cur[k] if prev.size() <= k else lerpf(prev[k], cur[k], f)
+		if x == sl[6]:
+			continue
+		sl[6] = x
+		moved = true
+		var piece: Node3D = sl[0]
+		var base: Transform3D = sl[5]
+		var ax: Vector3 = sl[3]
+		if sl[2] == "slide":
+			piece.transform = Transform3D(base.basis, base.origin + base.basis * (ax * x * float(sl[4])))
+		else:
+			var a := ax.abs()
+			var len := maxf(float(sl[4]) - x, 0.001)
+			piece.transform = Transform3D(base.basis * Basis.from_scale(Vector3.ONE - a + a * len), base.origin)
+	if moved:
+		for r in _riders:
+			(r[0] as Node3D).global_transform = (r[1] as Node3D).global_transform * (r[2] as Transform3D)
+			index.forget(r[3])
 
 
 ## Points the bindings at another engine (a restarted scenario) without rebuilding the nodes: slots are the same.
@@ -194,6 +273,7 @@ func _process(delta: float) -> void:
 func _each_frame(delta: float) -> void:
 	if engine == null or cam == null:
 		return
+	_each_slide()
 	var eye := cam.global_position
 	var cur: PackedFloat64Array = engine.cur
 	var dt: float = delta * (clock.rate() if clock != null else 1.0)

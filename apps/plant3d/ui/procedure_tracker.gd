@@ -5,6 +5,8 @@
 ## stop of a tour, ends when the trainee presses Next.
 extends RefCounted
 
+const PlantModel = preload("res://sim/plant_model.gd")
+
 signal step_changed(index: int)           # a new current step (or -1: the procedure is finished)
 signal step_done(step_id: String)         # a step's `done` turned true
 signal deviation(text: String)
@@ -85,7 +87,21 @@ func _go(i: int, engine) -> void:
 		end_step = engine.step_no if engine != null else 0
 	start_step = engine.step_no if engine != null else 0
 	did = {}
+	# a hold-to-run button the step expects let go (PLANT3D §20.5): done already when its motion stands still
+	if engine != null and index >= 0:
+		for d in steps[index].get("do", []):
+			var o: Dictionary = _release_op(d, engine)
+			if not o.is_empty() and engine.v(o["input"]) == 0.0:
+				did[_key(d)] = true
 	step_changed.emit(index)
+
+
+## The op of an expected release of a hold-to-run motion (a `set` of -1 to 1 asked with 0), else {}.
+static func _release_op(d: Dictionary, engine) -> Dictionary:
+	if d.get("do", "") != "set" or _num(d.get("value")) != 0.0:
+		return {}
+	var o: Dictionary = engine.m.op_keys.get(PlantModel.op_key(d["kks"], "set", null), {})
+	return o if o.get("range", []) == [-1, 1] else {}
 
 
 ## The trainee's Next: ends a step that has no `done` (and every tour stop); a step with `done` ends by itself.
@@ -172,11 +188,35 @@ func _find(step: Dictionary, ev: Array, inp: Array, with_value: bool) -> int:
 	return -1
 
 
+## The way a hold-to-run motion of this code goes in this procedure now (1 or -1; 0 when none): this step's press
+## of it, else the last step's when this one lets it go.
+func _heading(kks: String) -> float:
+	var lets_go := false
+	for d in current().get("do", []):
+		if d["kks"] == kks and d["do"] == "set":
+			var v = _num(d.get("value"))
+			if v != null and v != 0.0:
+				return v
+			lets_go = true
+	if lets_go and index > 0:
+		for d in steps[index - 1].get("do", []):
+			if d["kks"] == kks and d["do"] == "set" and _num(d.get("value")) != null and _num(d.get("value")) != 0.0:
+				return _num(d["value"])
+	return 0.0
+
+
 func _op_done(ev: Array, inp: Array, engine, at := -1) -> void:
 	if is_tour() or index < 0:
 		return
 	var want: Array = current().get("do", [])
 	var k := _find(current(), ev, inp, true)
+	if k == -1 and ev[3] == "set" and inp.size() > 5 \
+			and not _release_op({"kks": ev[2], "do": "set", "value": 0}, engine).is_empty():
+		# a hold-to-run button (PLANT3D §20.5): let go, never a deviation; pressed against the way its motion was
+		# going (this step's own motion, or the one it lets go after the last step's target), a correction back onto
+		# the target
+		if _num(inp[4]) == 0.0 or _num(inp[4]) == -_heading(ev[2]):
+			return
 	if k == -1:
 		var loose := _find(current(), ev, inp, false)
 		if loose != -1:

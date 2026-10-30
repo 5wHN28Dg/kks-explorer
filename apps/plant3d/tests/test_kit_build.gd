@@ -47,7 +47,9 @@ func run(tree: SceneTree) -> Array:
 			if eq == null:
 				p.append("%s: the binding's equipment %s is a node" % [f, b.kks])
 				continue
-			var mv: Node = eq.get_node_or_null(NodePath(b.anim))
+			# (by name under the equipment's node, as ui/bindings.gd finds it: nested in another moving node, a
+			# crane's bridge/trolley/hook, too)
+			var mv: Node = eq.find_child(b.anim, true, false)
 			if mv == null:
 				p.append("%s: %s has a node %s for its binding" % [f, b.kks, b.anim])
 				continue

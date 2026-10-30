@@ -82,9 +82,11 @@ func run(tree: SceneTree) -> Array:
 			if fb.position.y > 0.01 or fb.end.y < h - 1.0:
 				p.append("%s: its columns stand from the floor to the roof steel (%.1f to %.1f)" % [id, fb.position.y, fb.end.y])
 		var crane := body.get_node_or_null("crane") as MeshInstance3D
-		var has_crane: bool = id in ["st_hall", "gt1_hall"]
+		# the gas turbine hall's crane is parked (drawn by the builder); the turbine hall's is the operable 30SMT10
+		# (PLANT3D §20.5, drawn by the kit), so no parked one there
+		var has_crane: bool = id == "gt1_hall"
 		if (crane != null) != has_crane:
-			p.append("%s: an overhead crane only in the turbine halls" % id)
+			p.append("%s: a parked overhead crane only in the gas turbine hall (the turbine hall's is operable)" % id)
 		elif crane != null:
 			var cb := crane.global_transform * crane.mesh.get_aabb()
 			if crane.material_override != mats.rail:

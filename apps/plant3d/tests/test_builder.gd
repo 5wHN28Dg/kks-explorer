@@ -46,6 +46,30 @@ func _crane() -> void:
 		check(got == c[4], "a crane on its rail at %.1f m in a %s hall %.0f m high (%d corners): %s, not %s" % [c[1], c[3], c[0], c[2].size(), c[4] if c[4] != "" else "accepted", got if got != "" else "accepted"])
 		check((body.get_node_or_null("crane") != null) == (c[4] != "crane_unsupported"), "the crane is drawn where it runs")
 		body.free()
+	# an operable crane on the runway (PLANT3D §20.5): the kit draws it, no parked one; one that does not fit its
+	# runway is refused
+	var span := 50.0 - 2.0 * (Builder.WALL_T * 0.5 + Builder.LINER_T + Builder.CRANE_INSET)
+	for c in [[Vector3(0, 25, 0), 90.0, span, ""], [Vector3(0, 25, 0), 90.0, 48.0, "crane_mismatch"],
+			[Vector3(0, 20, 0), 90.0, span, "crane_mismatch"], [Vector3(0, 25, 0), 0.0, span, "crane_mismatch"]]:
+		var b := Builder.new()
+		b.equipment["30SMT10"] = {"pos": c[0], "yaw": c[1], "part": "overhead_crane",
+			"params": {"span": c[2], "runway": 80.0, "rail_z": 26.0}}
+		var body := Node3D.new()
+		var frame := SurfaceTool.new()
+		frame.begin(Mesh.PRIMITIVE_TRIANGLES)
+		b._crane(body, frame, {"id": "hall", "outline": Geom.rect(0, 0, 80, 50), "height": 32.0, "crane": 26.0, "cladding": "metal"})
+		var got := ""
+		for e in b.errors:
+			got = String(e).get_slice(" ", 0)
+		check(got == c[3], "an operable crane at %s yaw %.0f span %.2f: %s, not %s" % [str(c[0]), c[1], c[2], c[3] if c[3] != "" else "accepted", got if got != "" else "accepted"])
+		check(body.get_node_or_null("crane") == null, "no parked crane is drawn where an operable one runs")
+		body.free()
+	# an overhead crane on no hall's runway (outside a hall, or in one without a crane) is refused
+	var b3 := Builder.new()
+	b3.equipment["30SMT10"] = {"pos": Vector3(0, 25, 0), "yaw": 90.0, "part": "overhead_crane", "params": {}}
+	b3.equipment["30SMT20"] = {"pos": Vector3(500, 25, 0), "yaw": 90.0, "part": "overhead_crane", "params": {}}
+	b3.runway_cranes["30SMT10"] = true
+	check(b3.orphan_cranes() == 1 and b3.errors.size() == 1 and String(b3.errors[0]).begins_with("crane_mismatch 30SMT20"), "an overhead crane on no runway is not refused: %s" % str(b3.errors))
 	# columns step aside from openings at any height (a pipe's way 7 to 11 m up, a window), none where there is no room
 	check(is_equal_approx(Builder.column_place(10.0, 50.0, []), 10.0), "a column where it is wanted when nothing is in the way")
 	var t := Builder.column_place(25.0, 50.0, [[18.0, 32.0, 7.0, 11.0]])

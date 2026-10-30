@@ -1,0 +1,21 @@
+{
+ "format": "walkdown-plant-procedure",
+ "version": 1,
+ "id": "roof_hoist_lift",
+ "title": "Lift a spare valve onto HRSG 1's roof",
+ "kind": "procedure",
+ "scenario": "cold_iron",
+ "intro": [
+  {"p": ["Lift a spare valve on its pallet from the drop zone at grade onto HRSG 1's roof with the roof's monorail hoist (", {"link": ["10SMF10"], "to": {"kks": "10SMF10"}}, "): hook on at grade, hoist, bring it in over the roof, set it down and unhook. The pendant's buttons run a motion only while they are held."]}
+ ],
+ "steps": [
+  {"id": "trolley_out", "text": ["At the roof hoist's pendant (", {"link": ["10SMF10"], "to": {"kks": "10SMF10"}}, "), hold Out until the trolley (", {"link": ["10SMF10AE002"], "to": {"kks": "10SMF10AE002"}}, ") stops at the end of the beam, over the drop zone."], "at": ["10SMF10", "10SMF10AE002"], "go": "walk", "do": [{"kks": "10SMF10AE002", "do": "set", "value": -1}], "ordered": true, "done": "roof_hoist_at_tip", "why": [{"p": ["The beam runs 3 m past the roof's edge: a load lifted there clears the casing, and the barriered zone under it keeps everyone out of its way."]}]},
+  {"id": "lower", "text": ["Release Out, then hold Down: lower the hook (", {"link": ["10SMF10AE001"], "to": {"kks": "10SMF10AE001"}}, ") to the valve's slings at grade."], "at": ["10SMF10AE001", "10SMF10"], "go": "walk", "do": [{"kks": "10SMF10AE002", "do": "set", "value": 0}, {"kks": "10SMF10AE001", "do": "set", "value": -1}], "ordered": true, "done": "roof_hoist_at_load"},
+  {"id": "hook_on", "text": ["Release Down and, at the hook, close its latch (", {"link": ["10SMF10AE003"], "to": {"kks": "10SMF10AE003"}}, ") on the slings."], "at": ["10SMF10AE003"], "go": "walk", "do": [{"kks": "10SMF10AE001", "do": "set", "value": 0}, {"kks": "10SMF10AE003", "do": "close"}], "ordered": true, "done": "roof_hoist_latch", "why": [{"p": ["The latch keeps the slings from jumping off the hook when the chain goes slack."]}]},
+  {"id": "hoist", "text": ["Back at the pendant on the roof, hold Up: hoist the valve until it clears the roof's handrail. Watch the load cell (", {"link": ["10SMF10CW001"], "to": {"kks": "10SMF10CW001"}}, ")."], "at": ["10SMF10", "10SMF10CW001"], "go": "walk", "do": [{"kks": "10SMF10AE001", "do": "set", "value": 1}], "ordered": true, "done": "roof_hoist_clear", "why": [{"p": ["The hoist is rated 2,000 kg: a heavier load stops it as it starts to lift, and the load cell shows what hangs on the hook."]}]},
+  {"id": "trolley_in", "text": ["Release Up, then hold In: bring the valve in over the roof, 3 m from its edge."], "at": ["10SMF10AE002"], "go": "walk", "do": [{"kks": "10SMF10AE001", "do": "set", "value": 0}, {"kks": "10SMF10AE002", "do": "set", "value": 1}], "ordered": true, "done": "roof_hoist_at_landing", "why": [{"p": ["The trolley moves a hooked load only once it is clear of the handrail: it would drag it into the roof's edge."]}]},
+  {"id": "lower_roof", "text": ["Release In, then hold Down: set the valve down on the roof."], "at": ["10SMF10AE001"], "go": "walk", "do": [{"kks": "10SMF10AE002", "do": "set", "value": 0}, {"kks": "10SMF10AE001", "do": "set", "value": -1}], "ordered": true, "done": "roof_hoist_rest"},
+  {"id": "unhook", "text": ["Release Down and open the hook's latch (", {"link": ["10SMF10AE003"], "to": {"kks": "10SMF10AE003"}}, ") to unhook the slings."], "at": ["10SMF10AE003"], "go": "walk", "do": [{"kks": "10SMF10AE001", "do": "set", "value": 0}, {"kks": "10SMF10AE003", "do": "open"}], "ordered": true, "done": "roof_hoist_free", "why": [{"p": ["The latch opens only with the load resting: a hanging load must never be unhooked."]}]},
+  {"id": "clear", "text": ["Hold Up to raise the empty hook clear of the valve, then release."], "at": ["10SMF10AE001"], "go": "walk", "do": [{"kks": "10SMF10AE001", "do": "set", "value": 1}], "ordered": true, "done": "roof_hoist_hook_clear"}
+ ]
+}
