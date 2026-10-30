@@ -349,7 +349,8 @@ class StaffVectors(unittest.TestCase):
         self.assertEqual(sum(1 for x in mech if x[1] == 'repair' and len(x) == 3), 1)   # the done repairs nothing more
         for r in self.runs:      # the NPCs' repairs are their work's done, under the permit
             for x in r['events']:
-                if x[1] == 'repair' and len(x) == 3 and x[0] != 1101:
+                if x[1] == 'repair' and len(x) == 3 and x[0] != 1101 and \
+                        [x[0], 'instructor', 'repair', x[2]] not in r['events']:     # (not a trainer's: §15.5)
                     self.assertTrue(any(y[0] == x[0] and y[1] == 'permit' and y[3] == 'done' and y[5] == 'done'
                                         for y in r['events']), (r['why'][:40], x))
 
@@ -774,7 +775,8 @@ class SessionRuns(unittest.TestCase):
     def setUpClass(cls):
         with open(G.OUT2, encoding='utf-8') as f:
             cls.V = json.load(f)
-        cls.runs = [r for r in cls.V['staff']['runs'] if r.get('session')]
+        # MP1's (a lift's session run, §20.10, is LiftVectors')
+        cls.runs = [r for r in cls.V['staff']['runs'] if r.get('session') and 'lifts' not in (r['staff'] or {})]
         cls.b = P.check_files(files_of(cls.V))
 
     def ev(self, k, kind):
@@ -1162,3 +1164,62 @@ class FirstTrainStaff(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class LiftVectors(unittest.TestCase):
+    """Lifts (PLANT3D.md §20, milestone LIFTS L1): the vectors pin what §20.9 lists for the engine (the unit runs in
+    `steps`, the NPCs' rides in `staff.runs`, the rule breaks in `reject` and `staff.reject`), and the reference keeps
+    every run without lifts as it was (no riders in snapshots, no digest fields)."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(G.OUT2, encoding='utf-8') as f:
+            cls.V = json.load(f)
+        cls.runs = [r for r in cls.V['staff']['runs'] if 'lifts' in (r['staff'] or {})]
+        cls.steps = [s for s in cls.V['steps'] if 'lifts' in s['model']]
+        cls.ev = [e for r in cls.runs + cls.steps for e in r['events']]
+
+    def test_unit_runs(self):
+        self.assertEqual(len(self.steps), 2)
+        ev = [e for s in self.steps for e in s['events']]
+        for kind, how, why in (('board', 'refused', ['aboard']), ('alight', 'unknown', []),
+                               ('board', 'refused', ['authority']), ('alight', 'refused', ['not_aboard'])):
+            self.assertTrue(any(e[1] == kind and e[4] == how and e[5] == why for e in ev), (kind, how, why))
+        self.assertIn([2, 'alarm', 'hlift_overload', 'active_unack'], ev)
+        self.assertTrue(any(e[1] == 'op' and e[4] == 'refused' and e[5] == ['hlift_load_ok'] for e in ev))
+        self.assertTrue(any(e[1] == 'op' and e[4] == 'refused' and 'hlift_ready' in e[5] for e in ev))
+        self.assertTrue(any(e[1] == 'op' and e[4] == 'refused' and e[5] == ['hlift_at1'] for e in ev))
+        loads = {st['values']['hlift_load'] for s in self.steps for st in s['states']}
+        self.assertEqual(loads, {0.0, 75.0, 150.0, 225.0})
+        self.assertTrue(all('riders' in st for s in self.steps for st in s['states']))
+
+    def test_rides(self):
+        self.assertEqual(len(self.runs), 6)
+        rides = [e for e in self.ev if e[1] == 'ride']
+        for how in ('wait', 'off', 'stairs'):
+            self.assertTrue(any(e[6] == how for e in rides), how)
+        self.assertTrue(any(e[1] == 'jump' and e[4] == 'done' for e in self.ev))
+        self.assertTrue(any(e[1] == 'release' and e[3] == 'done' for e in self.ev))
+        aboard = [w for r in self.runs for st in r['states'] for w, _, _ in st['people'].values()
+                  if isinstance(w, list) and w[0] == 'lift']
+        self.assertTrue(aboard)
+        self.assertTrue(any(len(st['riders']['hlift']) == 3 for r in self.runs for st in r['states']))
+
+    def test_no_lift_no_change(self):
+        for r in self.V['staff']['runs']:
+            if r not in self.runs:
+                self.assertTrue(all('riders' not in st for st in r['states']), r['why'][:60])
+
+    def test_rejects(self):
+        codes = {r['code'] for r in self.V['staff']['reject'][-12:]} | {r['code'] for r in self.V['reject'][-26:]}
+        for c in ('unknown_key', 'bad_id', 'dup_id', 'limit', 'bad_kks', 'missing_key', 'bad_length', 'bad_number',
+                  'bad_ref', 'bad_value', 'bad_way', 'unreachable'):
+            self.assertIn(c, codes)
+
+    def test_stairs_route_by_the_rule(self):
+        b = P.check_files({k: (v if isinstance(v, str) else json.dumps(v)).encode()
+                           for k, v in G.lift_staff_files().items()})
+        st = b.staff
+        ids = lambda xs: [st.places[x]['id'] for x in xs]  # noqa: E731
+        self.assertEqual(ids(st.stairs[(st.pix['l0'], st.pix['l2'])]), ['l0', 's1', 'l1', 's2', 'l2'])
+        self.assertEqual(ids(st.stairs[(st.pix['l2'], st.pix['l1'])]), ['l2', 's2', 'l1'])

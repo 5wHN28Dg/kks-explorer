@@ -2053,7 +2053,7 @@ def build_rejects_staff():
         change = {k: t for k, t in text.items() if old.get(k) != t}
         change.update({k: None for k in old if k not in text})
         out.append({'why': why, 'code': code, 'change': change})
-    return out + reject_changes(lift_staff_files(), REJECTS_LIFT_STAFF, base)
+    return out + reject_changes(lift_staff_files(), REJECTS_LIFT_STAFF, staff_files())   # (the vectors' files)
 
 
 INPUTS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
