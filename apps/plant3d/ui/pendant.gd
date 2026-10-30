@@ -2,10 +2,12 @@
 ## (`pendant`: the code it works and its two buttons' words). A motion's buttons are hold-to-run: pressed (touch,
 ## mouse, or a gamepad's or keyboard's accept on the focused button) they send its `set` op with 1 or -1, released
 ## they send 0; a motion is also let go when its button can no longer be worked (out of reach, the card closed or
-## rebuilt), so a motion never runs on unattended. The motions are worked within reach of the pendant (a node named
-## `pendant` under the hoist's: on the bridge for a crane, it moves with it) or, for a crane with a radio remote,
-## within REMOTE_REACH of its hook; the hook's latch (a row whose code has `open` and `close` ops) at the hook itself,
-## within reach of the latch's own code, which rides on it.
+## rebuilt, the app going to the background or losing the focus), so a motion never runs on unattended; a saved run
+## continued lets go of every motion it was saved with (`stop_all`). The motions are worked within reach of the
+## pendant (a node named `pendant` under the hoist's: on the bridge for a crane, it moves with it) or, for a crane
+## with a radio remote, within REMOTE_REACH of its hook with the hook, the load or the trolley in sight (nothing solid
+## between the trainee's eyes and it, as for a desk's screens); the hook's latch (a row whose code has `open` and
+## `close` ops) at the hook itself, within reach of the latch's own code, which rides on it.
 extends VBoxContainer
 
 const W = preload("res://ui/widgets.gd")
@@ -110,9 +112,27 @@ func reach() -> String:
 	if pend != null and pend.global_position.distance_to(me) <= ui.REACH:
 		return "pendant"
 	var hook := host.find_child("hook", true, false) as Node3D
-	if _remote and hook != null and hook.global_position.distance_to(me) <= REMOTE_REACH:
+	if _remote and hook != null and hook.global_position.distance_to(me) <= REMOTE_REACH and in_sight(host):
 		return "remote"
 	return ""
+
+
+## The radio remote's operator sees what they move: the hook, the load or the trolley, with nothing solid between
+## their eyes and it (a wall, a floor).
+func in_sight(host: Node3D) -> bool:
+	var eye: Vector3 = ui.eye()
+	var space: PhysicsDirectSpaceState3D = ui.player.get_world_3d().direct_space_state
+	for nm in ["hook", "load_z", "trolley"]:
+		var n := host.find_child(nm, true, false) as Node3D
+		if n == null:
+			continue
+		var to: Vector3 = n.global_position + (Vector3.UP * 0.3 if nm == "load_z" else Vector3.ZERO)
+		var q := PhysicsRayQueryParameters3D.create(eye, to)
+		q.exclude = [ui.player.get_rid()]
+		var hit := space.intersect_ray(q)
+		if hit.is_empty() or (hit["position"] as Vector3).distance_to(to) < 0.5:
+			return true
+	return false
 
 
 func offered(i: int) -> bool:
@@ -136,13 +156,27 @@ func release(i: int) -> void:
 	if not held.has(i):
 		return
 	held.erase(i)
-	ui.do_op(rows[i][6], 0)
+	ui.do_op(rows[i][6], 0, "local")        # let go where it was held (from the control room too, after a jump)
 	refresh()
 
 
 func release_all() -> void:
 	for i in held.keys():
 		release(i)
+
+
+func _notification(what: int) -> void:
+	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_WM_WINDOW_FOCUS_OUT]:
+		release_all()                   # the app left: no hand on the button any more
+
+
+## Lets go of every hold-to-run motion whose command is not 0 (a saved run continued: no button is held now). The
+## motion stops as if let go the moment the run was saved (it takes one step more, as any let-go).
+static func stop_all(u) -> void:
+	var e = u.clock.engine
+	for o in e.m.op_keys.values():
+		if hold_to_run(o) and e.ix.has(String(o.get("input", ""))) and e.v(o["input"]) != 0.0:
+			u.do_op(o, 0, "local")
 
 
 func tap(i: int, dir: int) -> void:

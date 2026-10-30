@@ -1,7 +1,7 @@
 ## Runs the behaviour engine (sim/engine.gd) in the app: fixed 0.1 s model steps, decoupled from the frames
 ## (docs/PLANT3D.md §7.9, §7.10). Pause, 1× and fast-forward. Fast-forward is offered only while the engine allows it
-## (no unacknowledged alarm, no active priority 1 alarm, no machine in a watched state) and stops by itself the moment
-## that changes. Its speed is capped so that the model never takes more than `cpu_share` of one core, from the
+## (no unacknowledged alarm, no active priority 1 alarm, no machine in a watched state; and in the app, no hold-to-run
+## motion running: `held_motion`) and stops by itself the moment that changes. Its speed is capped so that the model never takes more than `cpu_share` of one core, from the
 ## measured cost of a step (decision 0054; with the water treatment plant about 0.8 ms a step on the Note 9, so about
 ## 30× there; 60× on a laptop: sim/README.md).
 extends Node
@@ -43,6 +43,8 @@ var _win_t := 0.0
 var driven := false
 ## and a speed asked for goes to the session (a pause, a run, fast-forward by everyone's vote, §7.1, §7.2) instead
 var speed_request := Callable()
+var _held_of = null             # the model `_held` was made for
+var _held: Array = []           # [value slot, code]: the hold-to-run motions' commands (held_motion)
 
 
 func start(m, scenario_id: String, session := false) -> void:
@@ -80,10 +82,37 @@ func rate() -> float:
 	return 0.0
 
 
+## Fast-forward allowed now: the engine's rule (§7.9) and no hold-to-run motion running (`held_motion`).
+func ff_ok() -> bool:
+	return engine != null and engine.fast_forward() and held_motion() == ""
+
+
+## A hold-to-run motion running (PLANT3D §20.5, a `set` op of -1 to 1 whose input is not 0): its code, or "". Such a
+## motion runs at 1× only: a hand on a hoist's button can't stop it on target at 60× (a third of a second late is
+## 20 s of travel), so fast-forward is refused while one runs and stops the moment one starts. Read from the model's
+## values, so a session's host and every player see the same.
+func held_motion() -> String:
+	if engine == null:
+		return ""
+	if _held_of != engine.m:
+		_held_of = engine.m
+		_held = []
+		for o in engine.m.op_keys.values():
+			if o.get("do", "") == "set" and o.get("range", []) == [-1, 1] and engine.ix.has(String(o.get("input", ""))):
+				_held.append([engine.ix[o["input"]], String(o["kks"])])
+	for h in _held:
+		if engine.cur[h[0]] != 0.0:
+			return h[1]
+	return ""
+
+
 ## Why fast-forward isn't allowed now, in words, or "" when it is.
 func ff_blocked() -> String:
 	if engine == null:
 		return "no plant"
+	var hm := held_motion()
+	if hm != "":
+		return "%s is running (a hold-to-run motion runs at 1× only: let its button go)" % hm
 	var e = engine
 	for k in e._al.size():
 		var s: String = e.astate[k]
@@ -193,7 +222,7 @@ func _process(delta: float) -> void:
 			acc = 0.0
 			break
 		# (after the first, the check at the end of the step before has looked at this very state)
-		if i == 0 and speed == Speed.FAST and not engine.fast_forward():
+		if i == 0 and speed == Speed.FAST and not ff_ok():
 			set_speed(Speed.NORMAL, "Fast-forward stopped: " + ff_blocked())
 			break
 		_one()
@@ -205,7 +234,7 @@ func _process(delta: float) -> void:
 			elif speed == Speed.FAST:
 				set_speed(Speed.NORMAL, "Fast-forward stopped: a procedure step is done")
 			break
-		if speed == Speed.FAST and not engine.fast_forward():
+		if speed == Speed.FAST and not ff_ok():
 			set_speed(Speed.NORMAL, "Fast-forward stopped: " + ff_blocked())
 			break
 	if speed == sp and ran < n and not timed_out:

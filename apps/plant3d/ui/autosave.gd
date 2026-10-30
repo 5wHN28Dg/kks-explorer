@@ -16,6 +16,7 @@ const PlantEngine = preload("res://sim/engine.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const Tracker = preload("res://ui/procedure_tracker.gd")
 const W = preload("res://ui/widgets.gd")
+const Pendant = preload("res://ui/pendant.gd")
 
 const INTERVAL := 5.0           # seconds of real time between saves while the run changes
 
@@ -448,6 +449,7 @@ func restore(p: Dictionary) -> void:
 		rt.steps = rt.proc.get("steps", [])
 		RunSave.apply(rt, run["tracker"])
 		ui.run_tracker = rt
+	Pendant.stop_all(ui)            # no hold-to-run button is held now (PLANT3D §20.5): saved running, it stops
 	var c: Dictionary = p["clock"]
 	ui.clock.ff_want = c["ff_want"]
 	ui.clock.pause_on_hold = c["pause_on_hold"]

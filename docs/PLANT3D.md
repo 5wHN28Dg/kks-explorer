@@ -2485,16 +2485,20 @@ not hooked on.
 **As built (milestone L4, 2026-10-30)** (`tools/plant3d/train_hoists.py`, the kit's `monorail_hoist`,
 `overhead_crane` and `hoist_unit`, `ui/pendant.gd`):
 - **Positions.** The roof hoist's part stands at grade under the beam's tip: the trolley's position is metres from
-  the tip (limits 0.5 and 8.0), the hook's height metres above grade (0.4 to 33.1). The crane's part stands at grade at
+  the tip (limits 0.5 and 8.0), the hook's height metres above grade (0.4 to 32.9: at the top the hook block stays
+under the hoist's body). The crane's part stands at grade at
   the runway's west end on the hall's centre line, so its bridge's and trolley's positions are the plant's x (12 to 77:
   clear of the +6 m mezzanine) and y (−21.9 to 21.9), the hook's height 0.4 to 24. The crane's load is three values
   (x, y, height); the roof hoist's two (along the beam, height): it moves in the beam's line only.
 - **Hanging and resting.** A hooked load hangs its slings' lifting point plus 0.3 m under the hook once the chain is
-  taut (the 0.3 m the hook may sit above the lifting point when the latch closes is slack); otherwise it rests on the
-  floor under it: for the roof hoist grade up to 2.2 m from the tip, the roof's deck (+30) beyond (a load half over
-  the edge stands on it); for the crane the operating floor (+12) between y −20 and 20, grade outside it. The hook
-  comes down to 0.4 m above that floor and no lower (a slack-chain switch). The load snaps under the hook (by up to
-  0.3 m) the step after the latch closes.
+  taut; otherwise it rests on the highest floor under its footprint along the trolley (the pallet 0.6 m either side
+  of the hook, the crate 0.82 m): for the roof hoist grade up to 3 m from the tip (the roof's edge), the roof's deck
+  (+30) beyond; for the crane the operating floor (+12) between y −20 and 20, grade outside it. A load over a floor's
+  edge comes down on the edge, never through it, and stays hooked: the latch closes and opens only on a load whose
+  footprint is wholly on one floor (`<p>_level`). The hook comes down to 0.4 m above the floor under it (with a load
+  hooked on, above the highest floor under the load) and no lower (a slack-chain switch), and travel keeps it so: the
+  trolley looks 0.1 m ahead, and an empty hook low over grade stops short of a higher floor's edge until it is raised.
+  The load snaps under the hook (by up to 0.3 m) the step after the latch closes.
 - **The load cell** reads the load's weight while it is hooked on and the chain taut. **Overload:** hoisting up stops
   while the cell reads over the rated load (alarm `<p>_overload`, priority 3, `WAH`, on the load cell): a heavy load
   leaves the floor by at most one step's travel (1 cm), stays resting, and can be unhooked. **Travel:** the trolley and
@@ -2505,24 +2509,41 @@ not hooked on.
   (`repair`). The crane has its overload stop all the same.
 - **Hold-to-run** is a `set` op with `range` [−1, 1] on the motion's drive. The app works it only from the hoist's
   pendant, a row per record of the part's `pendant` parameter (the code and its two buttons' words); the drive's own
-  card points there. Pressed sends 1 or −1, released 0, and a motion held is let go (0 sent) when its buttons can no
-  longer be worked: out of reach, the card closed or rebuilt. A row whose code has `open` and `close` (the hook's
-  latch) is two buttons pressed once, worked at the hook: within reach of the latch's code, which rides on it.
+  card points there. Pressed sends 1 or −1, released 0, and a motion held is let go (0 sent, at the equipment) when
+  its buttons can no longer be worked: out of reach, the card closed or rebuilt, the app in the background or out of
+  focus. A saved run continued lets go of every motion saved running (no hand is on a button then): it stops as if
+  let go the moment the run was saved. A row whose code has `open` and `close` (the hook's latch) is two buttons
+  pressed once, worked at the hook: within reach of the latch's code, which rides on it.
+- **Targets a hand can stop on.** A hand lets a button go some tenths of a second after it sees the target, a slow one
+  seconds after, so every target a procedure's step ends on is one the motion can't run far past: a limit switch (the
+  roof trolley at the beam's tip, the crane's bridge at its east end and its trolley at the south wall, the laydown
+  bay being under both; the hooks' top limits), the slack-chain switch (lowering to the slings: the latch closes with
+  the hook anywhere from the load's base up to 0.3 m over the slings' lifting point, a hook lowered past it only
+  slackening them), or a threshold with metres of room past it (bringing a load in over the roof or the operating
+  floor, the bridge west to the set-down place). Corrections are allowed: a hold-to-run button pressed either way on a
+  motion the current step works (its own, or the one it lets go after the last step's target) is inching onto the
+  target, never a deviation.
+- **Hold-to-run runs at 1× only.** Fast-forward is refused while any hold-to-run command is not 0 and stops the
+  moment one starts (`ui/sim_clock.gd` `held_motion`, read from the model's values, so a session's host applies it
+  too): at 60× a hand a third of a second late has let a motion run 20 s. Running such a motion at 1× inside
+  fast-forward would be the same as refusing it, with a speed shown that isn't the plant's.
 - **Pendants:** the roof hoist's is a pendant station on the beam's inner portal, on the roof; the crane's hangs from
   the bridge over the operating floor's south side (+13.2 m) and travels with it; "a radio remote in the cab card" is
-  the crane's card (the crane has no cab) working the same rows within 30 m of its hook.
+  the crane's card (the crane has no cab) working the same rows within 30 m of its hook with the hook, the load or the
+  trolley in sight: nothing solid (a wall, a floor) between the trainee's eyes and it, as a desk's screens are seen.
 - **Procedures** (scenario `cold_iron`): each step presses a button (its `do`), and its `done` is the position
-  reached; the next step's `do` lets that button go first (`set` 0), as the model alone needs it. The procedure
+  reached (a target a hand can stop on, above); the next step's `do` lets that button go first (`set` 0), as the model
+  alone needs it. The procedure
   tracker never counts a button let go as a deviation, and an expected let-go is done already when its motion stands
   still. The roof lift takes about 12 minutes of model time, the crane's about 16.
 - **Drawing:** the kit's moving kinds `slide`, `stretch` and `marker` (kit/README.md "Moving parts"), nested channels
   (a crane's `bridge/trolley/hook`); the drives, the latch and the load cell are `hoist_unit` parts (codes of their
   own) drawn by their hoist, whose nodes the app carries with the piece they ride on. The builder draws a hall's
-  parked crane only where no `overhead_crane` stands on its runway, and refuses one that doesn't fit it
-  (`crane_mismatch`). The drop zone's barrier and the portals' posts are solid: the walking mesh gained them
+  parked crane only where no `overhead_crane` stands on its runway, and refuses one that doesn't fit it or stands on
+  no hall's runway (`crane_mismatch`); the roof's steel is checked against the kit crane's height (rail + 2.75 m). The drop zone's barrier and the portals' posts are solid: the walking mesh gained them
   (24,234 to 24,300 polygons); `tests/staff_layout.gd` run again changed no way.
 - **Screens:** the hoists are on their units' screens (HRSG 1: Roof monorail hoist; ST: Turbine hall crane), not left
-  out (the first train leaves out only hand valves). **Values:** 76 more (34 the roof hoist's, 42 the crane's).
+  out (the first train leaves out only hand valves). **Values:** 110 more (51 the roof hoist's, 59 the crane's).
 
 ### 20.6 Navigation mesh and staff paths
 

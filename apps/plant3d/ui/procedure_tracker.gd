@@ -193,9 +193,12 @@ func _op_done(ev: Array, inp: Array, engine, at := -1) -> void:
 		return
 	var want: Array = current().get("do", [])
 	var k := _find(current(), ev, inp, true)
-	if k == -1 and ev[3] == "set" and inp.size() > 5 and _num(inp[4]) == 0.0 \
+	if k == -1 and ev[3] == "set" and inp.size() > 5 \
 			and not _release_op({"kks": ev[2], "do": "set", "value": 0}, engine).is_empty():
-		return                          # a hold-to-run button let go: never a deviation (PLANT3D §20.5)
+		# a hold-to-run button (PLANT3D §20.5): let go, never a deviation; pressed either way on a motion this step
+		# works (its own, or the one it lets go after the last step's target), a correction onto the target
+		if _num(inp[4]) == 0.0 or want.any(func(d): return d["kks"] == ev[2] and d["do"] == "set"):
+			return
 	if k == -1:
 		var loose := _find(current(), ev, inp, false)
 		if loose != -1:

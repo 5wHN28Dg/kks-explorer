@@ -64,6 +64,22 @@ func _crane() -> void:
 		check(got == c[3], "an operable crane at %s yaw %.0f span %.2f: %s, not %s" % [str(c[0]), c[1], c[2], c[3] if c[3] != "" else "accepted", got if got != "" else "accepted"])
 		check(body.get_node_or_null("crane") == null, "no parked crane is drawn where an operable one runs")
 		body.free()
+	# the roof's steel is checked against the kit crane's trolley housing (rail + 2.75 m), which stands 0.1 m higher
+	# than the parked crane's trolley: a rail 2.70 m under the steel is refused
+	var steel_lo: float = 20.0 - Builder.LINER_T - Builder.PURLIN_D - Builder.truss_depth(30.0)
+	var b2 := Builder.new()
+	var body2 := Node3D.new()
+	var frame2 := SurfaceTool.new()
+	frame2.begin(Mesh.PRIMITIVE_TRIANGLES)
+	b2._crane(body2, frame2, {"id": "hall", "outline": Geom.rect(0, 0, 80, 30), "height": 20.0, "crane": steel_lo - 0.05 - 2.70, "cladding": "metal"})
+	check(b2.errors.size() == 1 and String(b2.errors[0]).begins_with("crane_clash"), "a crane rail 2.70 m under the roof's steel is not refused (the kit crane is 2.75 m high): %s" % str(b2.errors))
+	body2.free()
+	# an overhead crane on no hall's runway (outside a hall, or in one without a crane) is refused
+	var b3 := Builder.new()
+	b3.equipment["30SMT10"] = {"pos": Vector3(0, 25, 0), "yaw": 90.0, "part": "overhead_crane", "params": {}}
+	b3.equipment["30SMT20"] = {"pos": Vector3(500, 25, 0), "yaw": 90.0, "part": "overhead_crane", "params": {}}
+	b3.runway_cranes["30SMT10"] = true
+	check(b3.orphan_cranes() == 1 and b3.errors.size() == 1 and String(b3.errors[0]).begins_with("crane_mismatch 30SMT20"), "an overhead crane on no runway is not refused: %s" % str(b3.errors))
 	# columns step aside from openings at any height (a pipe's way 7 to 11 m up, a window), none where there is no room
 	check(is_equal_approx(Builder.column_place(10.0, 50.0, []), 10.0), "a column where it is wanted when nothing is in the way")
 	var t := Builder.column_place(25.0, 50.0, [[18.0, 32.0, 7.0, 11.0]])

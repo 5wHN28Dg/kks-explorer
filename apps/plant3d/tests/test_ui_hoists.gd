@@ -3,7 +3,9 @@
 ## motions offered only within reach of the pendant and the hook's latch only at the hook, a motion let go when its
 ## card closes, the moving pieces and the codes riding on them drawn at the model's values between its steps; and the
 ## turbine hall's crane worked through its procedure from its pendant (which travels with the bridge) and its radio
-## remote, the procedure ending with no deviation (a button let go is never one).
+## remote, the procedure ending with no deviation (a button let go is never one, nor a short correction onto the
+## target). Buttons are let go as a hand does: 0.3 to 0.5 s after the target is reached, some a slow hand's 1.5 to
+## 3 s. Fast-forward is refused while a motion runs, and a saved run continued with a button held stands still.
 extends RefCounted
 
 const App = preload("res://tests/ui_app.gd")
@@ -27,6 +29,7 @@ func run(t: SceneTree) -> Array:
 	await _roof(ui)
 	await _crane(ui)
 	main.free()
+	await _saved_held()
 	return p
 
 
@@ -81,9 +84,16 @@ func _roof(ui) -> void:
 	if (out[2] as Button).disabled:
 		p.append("the trolley's Out is not offered at the pendant (%s)" % ui.card._pendant._where.text)
 	var latch := _row(ui, "10SMF10AE003")
-	# 1. Out, by touch: pressed sends -1, released 0
+	# 1. Out, by touch: pressed sends -1, released 0; fast-forward stops when it starts
+	ui.clock.set_speed(ui.clock.Speed.FAST)
+	var was_fast: bool = ui.clock.speed == ui.clock.Speed.FAST
 	var n0: int = e.inputs.size()
 	(out[2] as Button).button_down.emit()
+	ui.clock._process(0.05)
+	ui.clock._process(0.05)
+	if not was_fast or ui.clock.speed == ui.clock.Speed.FAST:
+		p.append("fast-forward was not on before Out (%s), or did not stop when Out was held (%s)" % [str(was_fast), ui.clock.ff_blocked()])
+	ui.clock.set_speed(ui.clock.Speed.NORMAL)
 	if _sent(ui, n0) != "-1":
 		p.append("pressing Out sent %s, not -1" % _sent(ui, n0))
 	var trolley: Node3D = ui.index.nodes["10SMF10"].find_child("trolley", true, false)
@@ -91,6 +101,7 @@ func _roof(ui) -> void:
 	var unit_at: Vector3 = ui.index.nodes["10SMF10AE002"].global_position
 	if not App.run_until(ui, "roof_hoist_at_tip", 600):
 		p.append("the trolley did not reach the beam's tip")
+	ui.clock.run_steps(4)               # let go 0.4 s late (the trolley stands at its limit)
 	await tree.process_frame
 	(out[2] as Button).button_up.emit()
 	if _sent(ui, n0) != "0":
@@ -125,6 +136,7 @@ func _roof(ui) -> void:
 	ui.clock.acc = 0.0
 	if not App.run_until(ui, "roof_hoist_at_load", 5000):
 		p.append("the hook did not come down to the valve's slings")
+	ui.clock.run_steps(40)              # a slow hand: let go 4 s late (the slack-chain switch stops the hook)
 	ev = InputEventAction.new()
 	ev.action = "ui_accept"
 	ev.pressed = false
@@ -153,6 +165,11 @@ func _roof(ui) -> void:
 	n0 = e.inputs.size()
 	_mouse(up, true)
 	await tree.process_frame
+	# fast-forward is refused while a hold-to-run motion runs (it runs at 1× only)
+	ui.clock.run_steps(1)
+	ui.clock.set_speed(ui.clock.Speed.FAST)
+	if ui.clock.speed == ui.clock.Speed.FAST or not ui.clock.ff_blocked().contains("hold-to-run"):
+		p.append("fast-forward is offered with Up held: %s (%s)" % [str(ui.clock.speed), ui.clock.ff_blocked()])
 	if _sent(ui, n0) != "1":
 		var hov = tree.root.gui_get_hovered_control()
 		p.append("pressing Up with the mouse sent %s, not 1 (under the pointer: %s)" % [_sent(ui, n0), str(hov.get_path()) if hov else "nothing"])
@@ -164,13 +181,17 @@ func _roof(ui) -> void:
 		p.append("letting the mouse go on Up sent %s, not 0" % _sent(ui, n0))
 	# 5. In, then Down onto the roof
 	var inb: Button = _row(ui, "10SMF10AE002")[3]
+	ui.clock.run_steps(3)
 	inb.button_down.emit()
 	if not App.run_until(ui, "roof_hoist_at_landing", 1000):
 		p.append("the trolley did not bring the valve in over the roof")
+	ui.clock.run_steps(5)
 	inb.button_up.emit()
+	ui.clock.run_steps(3)
 	down.button_down.emit()
 	if not App.run_until(ui, "roof_hoist_rest", 1000):
 		p.append("the valve was not set down on the roof")
+	ui.clock.run_steps(4)
 	down.button_up.emit()
 	ui.clock.run_steps(2)
 	await tree.process_frame
@@ -250,17 +271,18 @@ func _crane(ui) -> void:
 	if _row(ui, "30SMT10AE003").is_empty():
 		p.append("the crane's card has no pendant")
 		return
-	# [step, the row, minus (-1) or plus (1), where to stand ("pendant", "remote", "hook"), done]
-	for s in [["travel_east", "30SMT10AE003", 1, "pendant", "crane_at_laydown"],
-			["trolley_south", "30SMT10AE002", -1, "pendant", "crane_south"],
-			["lower", "30SMT10AE001", -1, "pendant", "crane_at_load"],
-			["hook_on", "30SMT10AE004", 1, "hook", "crane_latch"],
-			["hoist", "30SMT10AE001", 1, "remote", "crane_clear"],
-			["trolley_north", "30SMT10AE002", 1, "remote", "crane_north"],
-			["travel_west", "30SMT10AE003", -1, "pendant", "crane_west"],
-			["lower_floor", "30SMT10AE001", -1, "pendant", "crane_rest"],
-			["unhook", "30SMT10AE004", -1, "hook", "crane_free"],
-			["clear", "30SMT10AE001", 1, "pendant", "crane_hook_clear"]]:
+	# [step, the row, minus (-1) or plus (1), where to stand ("pendant", "remote", "hook"), done, let go this many
+	#  steps (0.1 s) after done: 0.3 to 0.5 s, a slow hand's 1.5 s at the bay and 3 s on the way down to the crate]
+	for s in [["travel_east", "30SMT10AE003", 1, "pendant", "crane_at_laydown", 15],
+			["trolley_south", "30SMT10AE002", -1, "pendant", "crane_south", 4],
+			["lower", "30SMT10AE001", -1, "pendant", "crane_at_load", 30],
+			["hook_on", "30SMT10AE004", 1, "hook", "crane_latch", 0],
+			["hoist", "30SMT10AE001", 1, "remote", "crane_clear", 5],
+			["trolley_north", "30SMT10AE002", 1, "remote", "crane_north", 3],
+			["travel_west", "30SMT10AE003", -1, "pendant", "crane_west", 5],
+			["lower_floor", "30SMT10AE001", -1, "pendant", "crane_rest", 4],
+			["unhook", "30SMT10AE004", -1, "hook", "crane_free", 0],
+			["clear", "30SMT10AE001", 1, "pendant", "crane_hook_clear", 3]]:
 		if ui.tracker.current().get("id", "") != s[0]:
 			p.append("the crane's procedure is at %s, not %s" % [ui.tracker.current().get("id", "(ended)"), s[0]])
 			return
@@ -274,6 +296,13 @@ func _crane(ui) -> void:
 				var h: Vector3 = ui.index.nodes["30SMT10AE004"].global_position
 				await _stand(ui, gd(h.x + 1.5, -h.z + (1.5 if -h.z < -20.0 else 1.0), 12.05 if h.y > 11.0 else 0.05))
 		var r := _row(ui, s[1])
+		if s[0] == "lower_floor":
+			# a correction onto the target: West let go a little past the set-down place, East pressed for 0.4 s
+			var east: Button = _row(ui, "30SMT10AE003")[3]
+			east.button_down.emit()
+			ui.clock.run_steps(4)
+			east.button_up.emit()
+			ui.clock.run_steps(1)
 		var b: Button = r[2] if s[2] < 0 else r[3]
 		if b.disabled:
 			p.append("step %s: %s is not offered (%s; %s)" % [s[0], b.text, s[3], ui.card._pendant._where.text])
@@ -287,7 +316,8 @@ func _crane(ui) -> void:
 		if not App.run_until(ui, s[4], 20000):
 			p.append("step %s: %s did not come" % [s[0], s[4]])
 			return
-		ui.clock.run_steps(1)
+		ui.clock.run_steps(s[5])
+		await tree.process_frame
 		if r[1]:
 			b.button_up.emit()
 		ui.clock.run_steps(1)
@@ -301,3 +331,44 @@ func _crane(ui) -> void:
 		p.append("the crate is not drawn on the operating floor where the model has it: %s" % str(crate.global_position))
 	ui.stop_procedure()
 	ui.close_card()
+
+
+## A run saved with a hold-to-run button down (a periodic save, before any release went out), then continued: no
+## button is held in the continued run, so the motion stops (as if let go the moment the run was saved) and stays.
+func _saved_held() -> void:
+	const Autosave = preload("res://ui/autosave.gd")
+	const RunSave = preload("res://ui/run_save.gd")
+	var path: String = Autosave.default_path
+	RunSave.remove(path)
+	var main := App.start(tree)
+	var ui = main.ui
+	await tree.process_frame
+	await _stand(ui, gd(123.0, 71.0, 30.05))
+	ui.open_card("10SMF10")
+	await tree.process_frame
+	(_row(ui, "10SMF10AE002")[2] as Button).button_down.emit()     # Out held
+	ui.clock.run_steps(5)
+	var e = ui.clock.engine
+	if e.v("roof_hoist_trolley_cmd") != -1.0:
+		p.append("Out held did not run the trolley")
+	if not ui.autosave.save_now():
+		p.append("the run with Out held was not saved")
+	var at_save: float = e.v("roof_hoist_trolley_pos")
+	main.free()
+	main = App.start(tree)
+	ui = main.ui
+	var cont := App.find_button(ui, "Continue")
+	if cont == null:
+		p.append("the run saved with Out held was not offered")
+		main.free()
+		RunSave.remove(path)
+		return
+	cont.pressed.emit()
+	await tree.process_frame
+	ui.clock.run_steps(100)
+	e = ui.clock.engine
+	var moved: float = absf(e.v("roof_hoist_trolley_pos") - at_save)
+	if e.v("roof_hoist_trolley_cmd") != 0.0 or moved > 0.2 * 0.1 + 1e-6:
+		p.append("the continued run kept Out held: the command %s, the trolley moved %.3f m in 10 s" % [e.v("roof_hoist_trolley_cmd"), moved])
+	main.free()
+	RunSave.remove(path)

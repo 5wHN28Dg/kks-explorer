@@ -788,7 +788,7 @@ func _catch_up() -> void:
 ## within a turn, and no player may run past that point at the fast rate.
 func _host_fast(delta: float) -> void:
 	var e = clock.engine
-	if not e.fast_forward():
+	if not clock.ff_ok():
 		_turn_close()
 		_set_fast(false, "Fast-forward stopped: " + clock.ff_blocked())
 		return
@@ -808,7 +808,7 @@ func _host_fast(delta: float) -> void:
 		if _hold_pause:
 			_turn_close()
 			break
-		if not clock.engine.fast_forward():
+		if not clock.ff_ok():
 			_turn_close()
 			_set_fast(false, "Fast-forward stopped: " + clock.ff_blocked())
 			break

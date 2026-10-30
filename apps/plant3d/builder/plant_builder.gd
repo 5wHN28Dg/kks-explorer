@@ -33,6 +33,7 @@ var warnings := PackedStringArray()
 var kit: Dictionary
 var plant: Dictionary
 var areas: Array = []            # [{id, rel, data}]
+var runway_cranes := {}         # kks -> true: the overhead cranes found on a hall's runway (_crane)
 var equipment := {}              # kks -> {pos: plant Vector3, yaw, part, params, area}
 var surfaces: Array = []         # walkable: {id, kind, z, outline, holes, thick, rails, deck, area}
 var stairs: Array = []           # {id, area, foot, top, layout, width, st, lay}
@@ -730,6 +731,8 @@ func build_all(out_dir: String) -> int:
 			interiors.append(entry)
 		else:
 			manifest_areas.append(entry)
+	# an operable crane runs on a hall's crane runway (_crane checks it fits there): one anywhere else is refused
+	err += orphan_cranes()
 	err += _bake_scene(out_dir, [out_dir.path_join("ground.scn")] + manifest_areas.map(func(a): return a.scene))
 	var manifest := {
 		"format": "walkdown-plant-built", "version": 1, "title": plant.get("title", ""),
@@ -2696,6 +2699,20 @@ const CRANE_INSET := 0.9      # the rail's centre from the liner's face
 const CRANE_RUNWAY_D := 1.0
 const CRANE_GIRDER_D := 1.6
 const CRANE_MIN := 6.0        # the lowest rail: the hook block hangs 3.3 m below it
+## the crane's top above its rail: the kit's operable crane's trolley housing (kit/parts_hoists.gd: the trolley on
+## the girders at rail + 1.75, its housing 1.0 m high), the parked crane's trolley (0.15 + CRANE_GIRDER_D + 0.9)
+## a little lower: the roof's steel is checked against the higher
+const CRANE_TOP := 2.75
+## The overhead cranes standing on no hall's crane runway: each an error (`crane_mismatch`); their number.
+func orphan_cranes() -> int:
+	var n := 0
+	for k in equipment:
+		if equipment[k].part == "overhead_crane" and not runway_cranes.has(k):
+			_err("crane_mismatch", String(k), "an overhead crane stands at the start of a hall's crane runway (a building with `crane`), on the hall's floor plan")
+			n += 1
+	return n
+
+
 func _crane(body: Node, frame: SurfaceTool, b: Dictionary) -> void:
 	var g := steel_grid(b)
 	var r: Rect2 = g.r
@@ -2708,8 +2725,8 @@ func _crane(body: Node, frame: SurfaceTool, b: Dictionary) -> void:
 		return
 	# the trolley's top must clear the roof's trusses (or rafters)
 	var steel_lo: float = float(b.height) - LINER_T - PURLIN_D - (truss_depth(S) if S >= TRUSS_MIN else rafter_depth(S))
-	if zr + 0.15 + CRANE_GIRDER_D + 0.9 > steel_lo - 0.05:
-		_err("crane_clash", String(b.id), "the crane on its rail at %.1f m reaches %.2f m, into the roof steel from %.2f m" % [zr, zr + 0.15 + CRANE_GIRDER_D + 0.9, steel_lo])
+	if zr + CRANE_TOP > steel_lo - 0.05:
+		_err("crane_clash", String(b.id), "the crane on its rail at %.1f m reaches %.2f m, into the roof steel from %.2f m" % [zr, zr + CRANE_TOP, steel_lo])
 	var at := func(t: float, s2: float) -> Vector2:
 		return r.position + (Vector2(t, s2) if along_x else Vector2(s2, t))
 	var inset := WALL_T * 0.5 + LINER_T + CRANE_INSET
@@ -2737,6 +2754,7 @@ func _crane(body: Node, frame: SurfaceTool, b: Dictionary) -> void:
 		var e: Dictionary = equipment[k]
 		if e.part != "overhead_crane" or not r.grow(0.05).has_point(Vector2(e.pos.x, e.pos.y)):
 			continue
+		runway_cranes[k] = true
 		var start: Vector2 = at.call(0.0, S * 0.5)
 		var pr: Dictionary = e.params
 		var yaw_ok := absf(wrapf(float(e.yaw) - (90.0 if along_x else 0.0), -180.0, 180.0)) < 0.01
