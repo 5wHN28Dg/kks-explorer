@@ -286,34 +286,36 @@ def roof_hoist_lift():
 
 
 def crane_lift():
+    """The steps worked at the pendant are at the crane's own code (its drives ride on the bridge and trolley, 26 m
+    up: no walk ends within reach of them); the latch's are at the hook."""
     c = CRANE['code']
     h, t, b, l = f'{c}AE001', f'{c}AE002', f'{c}AE003', f'{c}AE004'
     S = [
         _step('travel_east', ['At the crane\'s pendant (', _k(c), '), hold East: run the bridge (', _k(b),
-                              ') to the laydown bay at the hall\'s east end.'], [c, b], [_op(b, 'set', 1)],
+                              ') to the laydown bay at the hall\'s east end.'], [c], [_op(b, 'set', 1)],
               'crane_at_laydown',
               'The laydown bay is the ground floor\'s strip along the south wall: nothing stands over it, so a load '
               'comes up from there past the operating floor\'s edge.'),
         _step('trolley_south', ['Release East, then hold South until the trolley (', _k(t), ') stops over the '
-                                'crate.'], [t], [_op(b, 'set', 0), _op(t, 'set', -1)], 'crane_south'),
-        _step('lower', ['Release South, then hold Down: lower the hook (', _k(h), ') to the crate\'s sling.'], [h],
+                                'crate.'], [c], [_op(b, 'set', 0), _op(t, 'set', -1)], 'crane_south'),
+        _step('lower', ['Release South, then hold Down: lower the hook (', _k(h), ') to the crate\'s sling.'], [c],
               [_op(t, 'set', 0), _op(h, 'set', -1)], 'crane_at_load'),
         _step('hook_on', ['Release Down and close the hook\'s latch (', _k(l), ') on the sling.'], [l],
               [_op(h, 'set', 0), _op(l, 'close')], 'crane_latch'),
         _step('hoist', ['Hold Up: hoist the crate until it clears the operating floor\'s handrail. The load cell (',
-                        _k(f'{c}CW001'), ') shows its weight.'], [h, f'{c}CW001'], [_op(h, 'set', 1)],
+                        _k(f'{c}CW001'), ') shows its weight.'], [c, f'{c}CW001'], [_op(h, 'set', 1)],
               'crane_clear',
               f'The crane is rated {CRANE_RATED} t; the bridge and the trolley move a hooked load only once it is '
               'clear of the floor\'s edge.'),
-        _step('trolley_north', ['Release Up, then hold North: bring the crate in over the operating floor.'], [t],
+        _step('trolley_north', ['Release Up, then hold North: bring the crate in over the operating floor.'], [c],
               [_op(h, 'set', 0), _op(t, 'set', 1)], 'crane_north'),
         _step('travel_west', ['Release North, then hold West: travel the bridge to the set-down place, clear of the '
-                              'turbine.'], [b], [_op(t, 'set', 0), _op(b, 'set', -1)], 'crane_west'),
-        _step('lower_floor', ['Release West, then hold Down: set the crate down on the operating floor.'], [h],
+                              'turbine.'], [c], [_op(t, 'set', 0), _op(b, 'set', -1)], 'crane_west'),
+        _step('lower_floor', ['Release West, then hold Down: set the crate down on the operating floor.'], [c],
               [_op(b, 'set', 0), _op(h, 'set', -1)], 'crane_rest'),
         _step('unhook', ['Release Down and open the hook\'s latch (', _k(l), ').'], [l],
               [_op(h, 'set', 0), _op(l, 'open')], 'crane_free'),
-        _step('clear', ['Hold Up to raise the empty hook clear, then release.'], [h], [_op(h, 'set', 1)],
+        _step('clear', ['Hold Up to raise the empty hook clear, then release.'], [c], [_op(h, 'set', 1)],
               'crane_hook_clear'),
     ]
     return {'format': 'walkdown-plant-procedure', 'version': 1, 'id': 'crane_lift',
