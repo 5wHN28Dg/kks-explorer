@@ -9,6 +9,7 @@
 extends RefCounted
 
 const App = preload("res://tests/ui_app.gd")
+const Builder = preload("res://builder/plant_builder.gd")
 
 var p: Array = []
 var tree: SceneTree
@@ -326,6 +327,14 @@ func _crane(ui) -> void:
 		p.append("the crane's procedure did not finish (at %s)" % ui.tracker.current().get("id", ""))
 	if not ui.tracker.deviations.is_empty():
 		p.append("the crane's procedure noted deviations: %s" % str(ui.tracker.deviations.map(func(d): return d[1])))
+	# the crane's trolley (its frame, drum and housing) is no higher than the builder's check of the roof's steel
+	var tnode: Node3D = ui.index.nodes["30SMT10"].find_child("trolley", true, false)
+	var top := -INF
+	for mi in [tnode] + tnode.get_children():
+		if mi is MeshInstance3D and not String(mi.name) in ["hook", "rope"]:
+			top = maxf(top, ((mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()).end.y)
+	if top == -INF or top > 26.0 + Builder.CRANE_TOP + 0.001:
+		p.append("the crane's trolley reaches %.3f m, above its rail + CRANE_TOP (%.2f m) the roof is checked against" % [top, 26.0 + Builder.CRANE_TOP])
 	var crate: Node3D = ui.index.nodes["30SMT10"].find_child("load_z", true, false)
 	if crate.global_position.distance_to(gd(e.v("crane_load_x"), e.v("crane_load_y"), 12.0)) > 0.02:
 		p.append("the crate is not drawn on the operating floor where the model has it: %s" % str(crate.global_position))

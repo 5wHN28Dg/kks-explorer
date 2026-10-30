@@ -2540,7 +2540,7 @@ under the hoist's body). The crane's part stands at grade at
   (a crane's `bridge/trolley/hook`); the drives, the latch and the load cell are `hoist_unit` parts (codes of their
   own) drawn by their hoist, whose nodes the app carries with the piece they ride on. The builder draws a hall's
   parked crane only where no `overhead_crane` stands on its runway, and refuses one that doesn't fit it or stands on
-  no hall's runway (`crane_mismatch`); the roof's steel is checked against the kit crane's height (rail + 2.75 m). The drop zone's barrier and the portals' posts are solid: the walking mesh gained them
+  no hall's runway (`crane_mismatch`); the kit crane's trolley is drawn no higher than the parked one's (rail + 2.65 m), which the roof's steel is checked against. The drop zone's barrier and the portals' posts are solid: the walking mesh gained them
   (24,234 to 24,300 polygons); `tests/staff_layout.gd` run again changed no way.
 - **Screens:** the hoists are on their units' screens (HRSG 1: Roof monorail hoist; ST: Turbine hall crane), not left
   out (the first train leaves out only hand valves). **Values:** 110 more (51 the roof hoist's, 59 the crane's).

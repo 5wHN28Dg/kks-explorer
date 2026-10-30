@@ -2699,10 +2699,10 @@ const CRANE_INSET := 0.9      # the rail's centre from the liner's face
 const CRANE_RUNWAY_D := 1.0
 const CRANE_GIRDER_D := 1.6
 const CRANE_MIN := 6.0        # the lowest rail: the hook block hangs 3.3 m below it
-## the crane's top above its rail: the kit's operable crane's trolley housing (kit/parts_hoists.gd: the trolley on
-## the girders at rail + 1.75, its housing 1.0 m high), the parked crane's trolley (0.15 + CRANE_GIRDER_D + 0.9)
-## a little lower: the roof's steel is checked against the higher
-const CRANE_TOP := 2.75
+## the crane's top above its rail, the parked crane's trolley (0.15 + CRANE_GIRDER_D + 0.9) and the kit's operable
+## crane's (kit/parts_hoists.gd: its frame on the girders at rail + 1.75, its drum and housing 0.9 m over it; the
+## app's test_ui_hoists.gd measures it): the roof's steel is checked against it
+const CRANE_TOP := 2.65
 ## The overhead cranes standing on no hall's crane runway: each an error (`crane_mismatch`); their number.
 func orphan_cranes() -> int:
 	var n := 0
