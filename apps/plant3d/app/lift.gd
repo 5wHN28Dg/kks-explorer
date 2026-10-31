@@ -19,7 +19,8 @@ const LEAF_H := 2.05
 const LEAF_RISE := 2.1
 const GATE_HALF := 0.6
 const TICK := 0.25                # the board/alight check, as the zone inputs (ui/plant_ui.gd _place_tick)
-const RETRY := 1.0                # s before the same board or alight is sent again (its step not seen yet)
+const RETRY := 1.0                # s before a board or alight is sent again (its step not seen yet); doubled after
+const RETRY_MAX := 16.0           # each one that changed nothing (a refusal), up to this
 const FLOOR_TOP := 0.02           # the cab floor's top over its landing (kit/parts_lifts.gd)
 
 var ui                            # ui/plant_ui.gd
@@ -28,6 +29,8 @@ var lifts: Array = []             # per drawn lift: {x (model's), k (engine's li
 								  #  z_draw, slot_z (value slot), slots of each landing's gate position and at}
 var _tick := 0.0
 var _sent_t := -100.0             # when the last board or alight was sent (s, this node's clock)
+var _retry := RETRY               # the wait before the next one
+var _sent_board := -1             # the lift of the last board sent
 var _now := 0.0
 var _step_seen := -1              # the engine's step at the last frame, and when it changed (a session's steps)
 var _step_t := 0.0
@@ -158,7 +161,7 @@ func _move(force: bool) -> void:
 			L["front_solid"] = front_solid
 			(L["front"] as CollisionShape3D).disabled = not front_solid
 			if front_solid:
-				_clear_gateway(L, L["body"] as Node3D, Vector3(-CAB_X - 0.02, 0, 0), L["k"] == walker_aboard)
+				_clear_gateway(L, L["body"] as Node3D, Vector3(-CAB_X - 0.02, 0, 0), _riding(e, L))
 		if L["cab_gate"] != null:
 			var cg: Node3D = L["cab_gate"]
 			var rise := open_here * LEAF_RISE
@@ -173,7 +176,7 @@ func _move(force: bool) -> void:
 				g["solid"] = solid
 				(g["shape"] as CollisionShape3D).disabled = not solid
 				if solid:
-					_clear_gateway(L, g["node"] as Node3D, Vector3.ZERO, L["k"] == walker_aboard)
+					_clear_gateway(L, g["node"] as Node3D, Vector3.ZERO, _riding(e, L))
 		if z == L["z_draw"] and not force:
 			continue
 		L["z_draw"] = z
@@ -184,6 +187,15 @@ func _move(force: bool) -> void:
 		for u in L["units"]:
 			(u[0] as Node3D).global_transform = body.global_transform * (u[1] as Transform3D)
 			ui.index.forget(String(u[2]))
+
+
+## Whether the walker rides this lift for the gates: aboard as the engine has it now, or a board of theirs sent and
+## not yet answered (a session's commit takes a while: stepped in, they are not put back out).
+func _riding(e, L: Dictionary) -> bool:
+	if ui == null or ui.player == null:
+		return false
+	var who = _me()
+	return _aboard(e, L["k"], who) or (_now - _sent_t < 3.0 and _sent_board == L["k"])
 
 
 ## The landing the cab stands at (its `at`), -1 between landings.
@@ -246,19 +258,25 @@ func _ride_tick() -> void:
 		if aboard:
 			walker_aboard = k
 		var inside := feet_inside(L, feet)
+		if inside == aboard:
+			_retry = RETRY             # where they stand is what the engine has: the next change is sent at once
 		if aboard and not inside and taken:
 			# a person taken while aboard stays aboard (§20.3): the walker steps in where they stood
 			p.global_position = (L["body"] as Node3D).global_transform * Vector3(0, 0.05, 0)
 			continue
-		if inside == aboard or _now - _sent_t < RETRY:
+		if inside == aboard or _now - _sent_t < _retry:
 			continue
 		var lid := String(L["x"]["id"])
+		var again: bool = _now - _sent_t < _retry + 2.0 * TICK     # the last one changed nothing: wait longer
 		if inside and _at_landing(L, e.cur) != -1:
 			ui.inputs.board(lid, ui.me())
-			_sent_t = _now
 		elif not inside:
 			ui.inputs.alight(lid, ui.me())
-			_sent_t = _now
+		else:
+			continue
+		_retry = minf(_retry * 2.0, RETRY_MAX) if again else RETRY
+		_sent_t = _now
+		_sent_board = k if inside else -1
 
 
 ## The lift the code's node rides on or belongs to, and the height its cab is drawn at (tests).

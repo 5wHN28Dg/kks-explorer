@@ -28,6 +28,7 @@ const STAIR_COST := 1.5         # and a stair walked a little slower than a floo
 const LINK_REACH := 1.0         # builder/nav_bake.gd: a stair's or a ladder's ends are this near the mesh
 const LIFT_LAYER := 2           # the lifts' links (PLANT3D §20.6): searched with them and without them
 const LIFT_FRONT := 0.7         # m in front of a landing gate's sill: where a ride begins and ends
+const LIFT_ENTER := 20.0        # a ride's cost to board, in metres of walking
 
 ## The staff's nominal speeds (staff.json `speeds`, §16.2; `lift` §20.4): the walking directions take a lift when its
 ## ride is quicker than the stairs by these, as the staff's `next` does (§20.6; the user, 2026-10-30)
@@ -174,6 +175,8 @@ func add_lifts(lifts: Array) -> void:
 				var path := [fronts[i], fronts[j]]
 				var l: RID = _link("lift", "%s %d %d" % [lf.kks, i, j], path, 1.0)
 				NavigationServer3D.link_set_navigation_layers(l, LIFT_LAYER)
+				# boarding costs (the call, the gates, the wait): one ride, not two in a row through a landing between
+				NavigationServer3D.link_set_enter_cost(l, LIFT_ENTER)
 				links[l]["from"] = i
 				links[l]["to"] = j
 				links[l]["lift"] = String(lf.kks)
@@ -493,8 +496,9 @@ func _build() -> void:
 		var b := pts[i]
 		var l := a.distance_to(b)
 		var flat := Vector3(b.x - a.x, 0, b.z - a.z)
-		var ladder: bool = String(route.marks[i]).begins_with("ladder ") and route.marks[i] == route.marks[i - 1]
-		if ladder or l <= 0.01:   # up or down a ladder: nothing drawn on its rungs, the way goes on at its other end
+		var m_i := String(route.marks[i])
+		var ladder: bool = (m_i.begins_with("ladder ") or m_i.begins_with("lift ")) and route.marks[i] == route.marks[i - 1]
+		if ladder or l <= 0.01:   # up or down a ladder or a lift: nothing drawn up its height, the way goes on at its other end
 			next = maxf(next, along + l)
 			along += l
 			continue
