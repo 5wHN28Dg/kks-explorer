@@ -2705,7 +2705,8 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
   `hrsg1_lift_gate_switch` are in every first-train scenario. KKS letters added to the key: `SNB`, `AB`, `GH`.
 - **The kit** (`kit/parts_lifts.gd`): `service_lift` (the mast with its rack, the base enclosure at grade, the cab with
   its own gate: moving pieces `cab` and `cab/gate`), `lift_gate` (posts, header, the `leaf` that rises 2.1 m),
-  `lift_call`, and `lift_unit` (the drive, the cab's panel and its load cell, drawn by the cab). The builder leaves no
+  `lift_call`, and `lift_unit` (the drive, whose cabinet with the main switch the lift draws at the mast's foot, and the
+  cab's panel and its load cell, drawn by the cab). The builder leaves no
   handrail across a landing gate, and lists the lifts in the built plant's manifest (`lifts`: the cab's origin, its
   footprint, its gates); the bake obstructs each shaft's footprint from under grade to the mast's top, so the mesh ends
   at each gate.
@@ -2713,8 +2714,8 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
   between the last two steps (the clock's fraction; in a session, the time since the last step over the time between
   the last two); the walker rides it as a moving floor. The landing gates' leaves get a body solid only while their
   position is 0; the cab's front is solid unless the cab stands at a landing whose gate is not shut. A gate (or the
-  front) that becomes solid with the walker in its gateway puts the walker on the side their riding says. The drive,
-  the panel and the load cell ride with the cab (the panel with a small body, so a tap or the centre of the screen
+  front) that becomes solid with the walker in its gateway puts the walker on the side their riding says. The panel and
+  the load cell ride with the cab (the panel with a small body, so a tap or the centre of the screen
   picks it). `board` and `alight` (ui/inputs.gd) are sent every 0.25 s when the engine's riders differ from where the
   walker's feet are (in the cab's floor or not), at most once a second, a board only while the cab stands at a
   landing; a person taken while aboard puts the walker in the cab.

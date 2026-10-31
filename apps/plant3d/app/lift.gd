@@ -2,7 +2,7 @@
 ## at its model height `z`, drawn between the model's last two steps so that it moves smoothly at any frame rate, as an
 ## AnimatableBody3D the walker stands on and rides with; its landing gates solid only while shut (a gate never pushes
 ## the walker), the cab's own front solid unless it stands at a landing whose gate is open; the codes riding on the cab
-## (its drive, panel and load cell) carried with it; and the trainee's `board` and `alight` (§20.3), sent with the zone
+## (its panel and load cell; the drive's cabinet stands at the mast's foot) carried with it; and the trainee's `board` and `alight` (§20.3), sent with the zone
 ## inputs' rhythm (four times a second) from the walker's feet inside or outside the cab's floor, through the one input
 ## path (ui/inputs.gd), so a session's players each ride as themselves.
 ##
@@ -92,8 +92,8 @@ func setup(u) -> void:
 			L["at"].append(e.ix[ld["at"]])
 		for c in ui.info.parts_of.get(String(x["kks"]), []):
 			var un: Node3D = ui.index.nodes.get(c)
-			if un == null:
-				continue
+			if un == null or ui.info.lift_role.get(c, [null, ""])[1] == "drive":
+				continue        # (the drive's cabinet stands at the mast's foot)
 			# the panel is pressed where it is drawn: a small body to pick it by
 			if ui.info.lift_role.get(c, [null, ""])[1] == "panel":
 				_box(un, Vector3.ZERO, Vector3(0.24, 0.34, 0.08))

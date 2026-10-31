@@ -7,7 +7,7 @@
 ##   lift_gate     origin at the gate's sill, the leaf across y: leaf (translate along +z, 0 shut, 1 open: risen
 ##                 LEAF_RISE m)
 ##   lift_call     origin at the landing's floor under the station
-##   lift_unit     a drive, the cab's panel or its load cell: drawn by the cab (nothing of its own)
+##   lift_unit     the drive (its cabinet at the mast's foot), the cab's panel or its load cell: drawn by the lift
 extends RefCounted
 
 const CAB_X := 0.5               # the cab's inside: x -0.5 .. 0.5 (front to back), y -0.6 .. 0.6, floor to roof 2.3 m
@@ -48,6 +48,13 @@ static func service_lift(_part: String, g) -> void:
 			[Vector2(x1 + 0.15, -CAB_Y - 0.15), Vector2(x1 + 0.15, CAB_Y + 0.15)],
 			[Vector2(x1 + 0.15, CAB_Y + 0.15), Vector2(-CAB_X - 0.05, CAB_Y + 0.15)]]:
 		_panel(g, e[0], e[1], 0.0, 2.2)
+	# the drive's control cabinet with its main switch, at the mast's foot outside the enclosure (the drive's code)
+	m.use("paint_grey", "form")
+	m.box_lh(Vector3(x1 + 0.2, -0.3, 0.5), Vector3(x1 + 0.45, 0.3, 1.7))
+	m.box_lh(Vector3(x1 + 0.28, -0.04, 0.0), Vector3(x1 + 0.36, 0.04, 0.5))
+	m.use("paint_red", "form")
+	m.box(Vector3(x1 + 0.46, 0.0, 1.15), Vector3(0.04, 0.1, 0.1))
+	g.solid_box(Vector3(x1 + 0.2, -0.3, 0.0), Vector3(x1 + 0.45, 0.3, 1.7))
 	# the cab: floor, walls of mesh panels on three sides, its roof with a guard rail, the drive behind it on the mast,
 	# the control panel and a lamp inside
 	var cab = g.move("cab", Vector3.ZERO, Vector3(0, 0, 1), "slide", 1.0)

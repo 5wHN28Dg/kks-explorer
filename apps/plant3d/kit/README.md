@@ -94,8 +94,9 @@ its hoist draws it, and the app carries its node with the piece it rides on (`ki
 bridge: the bridge; latch and load_cell: the hook), so its label, its card's reach and "Show me" follow it.
 
 A `lift_unit` (a service lift's drive, the cab's control panel, its load cell: codes of their own, PLANT3D.md §20.2)
-draws nothing either: the cab draws them, and the app carries their nodes with the cab (the panel gets a small body
-there, so a tap or the centre of the screen picks it).
+draws nothing either: the lift draws them (the drive's cabinet with the main switch at the mast's foot), and the app
+carries the panel's and the load cell's nodes with the cab (the panel gets a small body there, so a tap or the centre
+of the screen picks it).
 
 ## Visibility classes and ranges (§10)
 
