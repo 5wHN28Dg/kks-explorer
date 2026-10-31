@@ -454,6 +454,8 @@ func restore(p: Dictionary) -> void:
 	ui.clock.ff_want = c["ff_want"]
 	ui.clock.pause_on_hold = c["pause_on_hold"]
 	ui.clock.set_speed(c["speed"])
+	if ui.lifts != null:
+		ui.lifts.snap()             # the cabs where the run has them, before the walker is put down (one may be in one)
 	var pl = ui.player
 	var pd: Dictionary = p["player"]
 	if ui._flight:

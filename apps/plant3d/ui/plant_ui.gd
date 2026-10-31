@@ -887,6 +887,8 @@ func restart(scenario: String, quiet := false) -> void:
 	run_tracker = null
 	clock.start(model, scenario)
 	bindings.use_engine(clock.engine)
+	if lifts != null:
+		lifts.snap()
 	sounds.engine = clock.engine
 	sounds.reset_edges()
 	alarms.since.clear()
@@ -1287,6 +1289,8 @@ func _walker_state() -> Array:
 func adopt_engine(e) -> void:
 	clock.install(e)
 	bindings.use_engine(e)
+	if lifts != null:
+		lifts.snap()
 	sounds.engine = e
 	sounds.reset_edges()
 	alarms.since.clear()

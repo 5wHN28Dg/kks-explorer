@@ -2725,8 +2725,11 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
 - **Directions** (`app/walk_route.gd`): a navigation link between every two landings of each lift, in front of their
   gates (0.7 m), on a navigation layer of its own; `find()` searches with the lifts and, when the way rides one, again
   without, and keeps the quicker by the staff's speeds (a ride's height at `speeds.lift`, stairs and ladders along
-  their paths, floors at a walk): to the roof from the tower's foot it rides, to the tower's +10 m landing it climbs.
-  The autopilot rides a lift step (`{"lift", "from", "to"}`: call, open, step in, shut, send, open, step out, shut);
+  their paths, floors at a walk): to the roof from the tower's foot it rides. Two rides in a row through a landing
+  between are made one. The stair tower is out of the mesh (a link from its foot to its top), so the bridge at +16.7 m
+  is joined to the tower's own way there: the bake adds two ways of the stair, from its foot to the bridge and from the
+  bridge to its top (`hrsg1_stair@k`), and keeps the bridge (the lifts' landings are links for its reachability).
+  The autopilot rides a lift step (`{"lift", "from", "dest"}`: call, open, step in, shut, send, open, step out, shut);
   `walk=lift` is the measured walk that rides it.
 - **Sounds:** the drive's `motor_small` while the cab travels, each gate's `door_roller` while its leaf moves, the
   overload buzzer (`horn_p3` at the load cell).

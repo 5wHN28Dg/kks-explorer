@@ -6,7 +6,7 @@
 ##                                           than REACH, and a walker that came in from the side turned onto the stair
 ##                                           off its line and caught its side: app/walk_route.gd steps)
 ##   {"ladder": id, "dir": "up" | "down"}    climb a ladder (from its foot, or from its top's step-off point)
-##   {"lift": code, "from": i, "to": j}      ride a service lift from in front of landing i's gate to landing j
+##   {"lift": code, "from": i, "dest": j}    ride a service lift from in front of landing i's gate to landing j
 ##                                           (PLANT3D §20.7): call the cab, open the gate, step in, close it, send the
 ##                                           cab from its panel, open the gate at j and step out, shutting it behind;
 ##                                           the controls through `ui` (ui/plant_ui.gd do_op: the one input path), as
@@ -199,6 +199,12 @@ func _press(code: String, do: String, value = null) -> void:
 			return
 
 
+## Whether a call or a send would be taken: the lift ready and within its rated load (else it would be refused, as
+## a trainee sees on the card; the autopilot waits for that to change, or gives up after RIDE_MAX).
+func _callable(e, x: Dictionary) -> bool:
+	return e.v(x["ready"]) >= 0.5 and e.v(String(x["id"]) + "_load_ok") >= 0.5
+
+
 func _lift(s: Dictionary) -> bool:
 	var lv := _lift_of(String(s.lift))
 	if lv.is_empty():
@@ -208,7 +214,7 @@ func _lift(s: Dictionary) -> bool:
 	var L: Dictionary = lv[1]
 	var e = ui.clock.engine
 	var a: int = int(s["from"])
-	var b: int = int(s["to"])
+	var b: int = int(s["dest"])
 	var lds: Array = x["landings"]
 	var body: Node3D = L["body"]
 	player.drive = Vector2.ZERO
@@ -216,9 +222,9 @@ func _lift(s: Dictionary) -> bool:
 		0:  # the cab here with its gate open: in; else open the gate where it stands, else call it
 			if e.v(lds[a]["at"]) >= 0.5 and e.v(lds[a]["open"]) >= 0.5:
 				_phase = 2
-			elif e.v(lds[a]["at"]) >= 0.5 and e.v(lds[a]["shut"]) >= 0.5:
-				_press(lds[a]["gate"], "open")
-			elif e.v(lds[a]["at"]) < 0.5 and not (e.lift_calls[L["k"]] >> a & 1):
+			elif e.v(lds[a]["at"]) >= 0.5 and e.v(lds[a]["shut"]) >= 0.5 and e.v(String(x["id"]) + "_gate%d_cmd" % a) < 0.5:
+				_press(lds[a]["gate"], "open")       # (once: it opens in 2 s)
+			elif e.v(lds[a]["at"]) < 0.5 and not (e.lift_calls[L["k"]] >> a & 1) and _callable(e, x):
 				_press(lds[a]["call"], "start")      # (once: the cab remembers a call)
 		2:  # step in, to the cab's middle
 			var c := body.global_position + Vector3.UP * 0.05
@@ -234,9 +240,9 @@ func _lift(s: Dictionary) -> bool:
 			if e.v(lds[b]["at"]) >= 0.5:
 				if e.v(lds[b]["open"]) >= 0.5:
 					_phase = 6
-				else:
+				elif e.v(String(x["id"]) + "_gate%d_cmd" % b) < 0.5:
 					_press(lds[b]["gate"], "open")
-			elif e.v(x["target"]) != float(b) and not (e.lift_calls[L["k"]] >> b & 1):
+			elif e.v(x["target"]) != float(b) and not (e.lift_calls[L["k"]] >> b & 1) and _callable(e, x):
 				_press(x["panel"], "set", b)         # (once: the cab remembers a send)
 		6:  # out, to in front of the gate
 			var g: Node3D = ui.index.nodes.get(String(lds[b]["gate"]))
@@ -260,7 +266,7 @@ func _place_after(s: Dictionary) -> void:
 	elif s.has("lift"):
 		var lv := _lift_of(String(s.lift))
 		if not lv.is_empty():
-			var g: Node3D = ui.index.nodes.get(String(lv[0]["landings"][int(s["to"])]["gate"]))
+			var g: Node3D = ui.index.nodes.get(String(lv[0]["landings"][int(s["dest"])]["gate"]))
 			if g != null:
 				player.global_position = g.global_transform * Vector3(-0.7, 0.05, 0.0)
 	elif s.has("ladder"):

@@ -31,6 +31,8 @@ var _tick := 0.0
 var _sent_t := -100.0             # when the last board or alight was sent (s, this node's clock)
 var _retry := RETRY               # the wait before the next one
 var _sent_board := -1             # the lift of the last board sent
+var _sent_step := -1              # the engine's step when the last board or alight was sent: none again before it
+								  # has run (paused, the same input would only be queued again for the same step)
 var _now := 0.0
 var _step_seen := -1              # the engine's step at the last frame, and when it changed (a session's steps)
 var _step_t := 0.0
@@ -198,6 +200,30 @@ func _riding(e, L: Dictionary) -> bool:
 	return _aboard(e, L["k"], who) or (_now - _sent_t < 3.0 and _sent_board == L["k"])
 
 
+## Every cab at its height now, at once (not interpolated, and in the physics server before the next physics frame): a
+## run put back or replaced (ui/autosave.gd restore, a restart, a session's engine) places the walker after this, and
+## a walker continued in the cab at +30 must find its floor there, not the cab of the run before.
+func snap() -> void:
+	var e = ui.clock.engine if ui != null else null
+	if e == null:
+		return
+	for L in lifts:
+		var body: AnimatableBody3D = L["body"]
+		var z: float = e.cur[L["slot_z"]]
+		var xf: Transform3D = L["base"]
+		xf.origin.y += z - float(L["z0"])
+		body.sync_to_physics = false
+		body.transform = xf
+		body.force_update_transform()
+		PhysicsServer3D.body_set_state(body.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, body.global_transform)
+		body.sync_to_physics = true
+		L["z_draw"] = z
+		for u in L["units"]:
+			(u[0] as Node3D).global_transform = body.global_transform * (u[1] as Transform3D)
+			ui.index.forget(String(u[2]))
+	_sent_step = -1
+
+
 ## The landing the cab stands at (its `at`), -1 between landings.
 func _at_landing(L: Dictionary, cur: PackedFloat64Array) -> int:
 	for i in L["at"].size():
@@ -264,7 +290,7 @@ func _ride_tick() -> void:
 			# a person taken while aboard stays aboard (§20.3): the walker steps in where they stood
 			p.global_position = (L["body"] as Node3D).global_transform * Vector3(0, 0.05, 0)
 			continue
-		if inside == aboard or _now - _sent_t < _retry:
+		if inside == aboard or _now - _sent_t < _retry or e.step_no <= _sent_step:
 			continue
 		var lid := String(L["x"]["id"])
 		var again: bool = _now - _sent_t < _retry + 2.0 * TICK     # the last one changed nothing: wait longer
@@ -276,6 +302,7 @@ func _ride_tick() -> void:
 			continue
 		_retry = minf(_retry * 2.0, RETRY_MAX) if again else RETRY
 		_sent_t = _now
+		_sent_step = e.step_no
 		_sent_board = k if inside else -1
 
 
