@@ -25,8 +25,9 @@ import wtp_staff  # noqa: E402  (the water treatment plant's people, milestone S
 
 CLOCK = {'day_scale': 6, 'start': {'day': 1, 'time': '06:00'},
          'week': ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']}
-# a lift way's nominal speed (PLANT3D §20.4): half the cab's 0.6 m/s, for the gates and a wait
-SPEEDS = {'walk': 1.3, 'stair': 0.5, 'ladder': 0.3, 'lift': 0.3}
+# a lift way's nominal speed (PLANT3D §20.4, §20.12): three quarters of the cab's 0.6 m/s, for the gates and the
+# dwell (at half, 0.3, the ride to the roof took 100 s against the tower's stair's 91 s: nobody would ride)
+SPEEDS = {'walk': 1.3, 'stair': 0.5, 'ladder': 0.3, 'lift': 0.45}
 K = 8                       # nearest points measured for each place's way into the network
 STAIR_RISE = 2.0            # a way that climbs and comes down more than this (m) is walked at stair speed
 
