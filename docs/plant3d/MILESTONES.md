@@ -187,7 +187,8 @@ inputs to the engine), before S4. Its parts, one pull request each:
 - **L1, the engine:** `lifts`, `board`/`alight`, lift ways and the ride in both engines, the vectors (**built 2026-10-30**, PLANT3D.md §20.10; the content tool's lift `tools/plant3d/lift_model.py`);
 - **L2, the lift in the app:** the content (kit parts, the lift on HRSG 1, its model and screen), the cab, gates and
   controls, riding; measured on the Note 9 before and after (**built 2026-11-01**, PLANT3D.md §20.11);
-- **L3, the staff on it:** staff.json's lift and ways, the riders drawn, the day made again;
+- **L3, the staff on it:** staff.json's lift and ways, the riders drawn, the day made again (**built 2026-11-01**,
+  PLANT3D.md §20.12);
 - **L4, hoists and the crane:** their content, the procedures, the view; measured on the Note 9. **Built
   2026-10-30** but for the Note 9's measurement (PLANT3D.md §20.5 "As built"): the roof hoist and the crane as model
   content, `roof_hoist_lift` and `crane_lift`, the pendants' hold-to-run buttons, the pieces drawn between steps;

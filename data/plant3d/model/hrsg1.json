@@ -414,7 +414,8 @@
   {"id": "iso_hrsg1_lift", "text": "HRSG 1 service lift: main switch", "points": [{"kks": "10SNB10AE001", "kind": "electrical", "how": "Main switch off, locked and tagged", "safe": "hrsg1_lift_main_off"}]}
  ],
  "works": [
-  {"id": "wo_scaffold_hrsg", "kks": "10HAD10BB001", "title": "HRSG 1 drum platform: scaffold round the LP drum for its insulation", "discipline": "civil", "permit": "general", "task": "job_scaffold_hrsg"}
+  {"id": "wo_scaffold_hrsg", "kks": "10HAD10BB001", "title": "HRSG 1 drum platform: scaffold round the LP drum for its insulation", "discipline": "civil", "permit": "general", "task": "job_scaffold_hrsg"},
+  {"id": "wo_hrsg1_lift_drive", "kks": "10SNB10AE001", "title": "HRSG 1 service lift: drive repair", "discipline": "mech", "permit": "general", "isolation": "iso_hrsg1_lift", "repairs": "hrsg1_lift_drive", "task": "job_hrsg1_lift_drive"}
  ],
  "lifts": [
   {"id": "hrsg1_lift", "kks": "10SNB10", "rated_kg": 500, "person_kg": 75, "ready": "hrsg1_lift_ready", "idle": "hrsg1_lift_idle", "z": "hrsg1_lift_z", "panel": "10SNB10GH010", "target": "hrsg1_lift_target", "landings": [{"z": 0, "at": "hrsg1_lift_at0", "open": "hrsg1_lift_open0", "shut": "hrsg1_lift_shut0", "call": "10SNB10GH001", "gate": "10SNB10AB001"}, {"z": 16.666666666666668, "at": "hrsg1_lift_at1", "open": "hrsg1_lift_open1", "shut": "hrsg1_lift_shut1", "call": "10SNB10GH002", "gate": "10SNB10AB002"}, {"z": 30, "at": "hrsg1_lift_at2", "open": "hrsg1_lift_open2", "shut": "hrsg1_lift_shut2", "call": "10SNB10GH003", "gate": "10SNB10AB003"}]}

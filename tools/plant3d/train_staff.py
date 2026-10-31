@@ -310,7 +310,8 @@ def network(models, layout):
     # the lift's ways: their metres the height between their landings (§20.4)
     for i in range(len(LIFT_POINTS)):
         for j in range(i + 1, len(LIFT_POINTS)):
-            ways.append([LIFT_POINTS[i], LIFT_POINTS[j], round(abs(train_lift.ZS[j] - train_lift.ZS[i]), 6), 'lift'])
+            ways.append([LIFT_POINTS[i], LIFT_POINTS[j], math.ceil(abs(train_lift.ZS[j] - train_lift.ZS[i]) * 20 - 1e-9) / 20,
+                         'lift'])      # (to the next 5 cm up, as _metres: never under the straight line)
     pts = list(POINTS)
     adj = [[] for _ in pts]
     for a, b, metres, mode in ways:
