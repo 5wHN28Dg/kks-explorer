@@ -23,7 +23,7 @@ GATE_X = 103.22          # the landing gates' leaves, 8 cm in front of the cab's
 MAST_TOP = 33.6         # the mast's top: over the cab's roof rail at the top landing
 SPEED = 0.6              # m/s (frequency-controlled, 0071)
 RATED_KG = 500
-WORKS = False            # the drive's repair under a permit: with the staff's lift (milestone LIFTS L3)
+WORKS = True             # the drive's repair under a permit (milestone LIFTS L3: its job in staff.json)
 LANDING_NAMES = ['grade', '+16.7 m (the stair tower\'s landing)', '+30 m (the roof)']
 
 

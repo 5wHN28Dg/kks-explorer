@@ -82,6 +82,8 @@ func run(tree: SceneTree) -> Array:
 				p.append("work place %s: %s's local ops are out of the card's reach (%.1f m)" % [pl["id"], pl["kks"],
 						ui.index.distance(pl["kks"], g + Vector3.UP * 1.0)])
 	for w in m.staff.d["ways"]:
+		if w[3] == "lift":
+			continue        # a ride, not a walk: its stairs are walking ways, checked as any (PLANT3D §20.6)
 		var a: Vector3 = Layout.godot_of(sm.places[sm.pix[w[0]]]["at"])
 		var b: Vector3 = Layout.godot_of(sm.places[sm.pix[w[1]]]["at"])
 		var f: Dictionary = r.find(a, b)
@@ -113,6 +115,8 @@ func run(tree: SceneTree) -> Array:
 		var samples := 0
 		var on_stairs := 0
 		for w in sm.d["ways"]:
+			if w[3] == "lift":
+				continue
 			var ia: int = sm.pix[w[0]]
 			var ib: int = sm.pix[w[1]]
 			var steps: int = sm.ways[mini(ia, ib) * at.size() + maxi(ia, ib)]

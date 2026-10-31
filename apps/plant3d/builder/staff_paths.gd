@@ -104,6 +104,8 @@ static func build(parent: Node, nm: NavigationMesh, staff_file: String, built_di
 		var ways := {}
 		var points := 0
 		for w in d["ways"]:
+			if w[3] == "lift":
+				continue        # a ride: no line (PLANT3D §20.6; the riders are drawn in the cab, ui/people_view.gd)
 			var a: Vector3 = at[w[0]]
 			var b: Vector3 = at[w[1]]
 			var f: Dictionary = route.find(a, b)

@@ -62,6 +62,14 @@ const STILL := 0.15             # m/s: slower than this is standing (app/people.
 var _was := PackedVector3Array()    # per person: where they were drawn last frame
 var _was_ok := PackedByteArray()    # per person: 1 when _was holds it
 var _spd := PackedFloat32Array()    # per person: the speed they were last drawn moving at (plant m/s)
+## Riders (PLANT3D §20.7): who stands in a lift's cab ([lift, place in boarding order]), each drawn at their spot in the
+## cab facing its gate; stepping in or out they walk between the landing and the spot (their offset from where they are
+## going shrinks at RIDE_STEP m/s of plant time)
+var _aboard := {}                   # person id -> [engine's lift, n]
+var _rode := PackedByteArray()      # per person: drawn in a cab last frame
+var _roff := PackedVector3Array()   # per person: where they are drawn less where they are going, stepping in or out
+var _ride_yaw := {}                 # person -> the gate's heading while aboard
+const RIDE_STEP := 1.2
 
 
 func setup(u) -> void:
@@ -141,6 +149,7 @@ func update() -> void:
 	var xs := []
 	var cs := []
 	var me: int = ui.my_person()          # (the trainee's own person is the walker)
+	_fill_aboard(e)
 	for pi in sm.people.size():
 		if pi == me:
 			continue
@@ -152,6 +161,9 @@ func update() -> void:
 				p = ways.pos
 			else:
 				p = (_at[leg[0]] as Vector3).lerp(_at[leg[1]], k)
+		elif _aboard.has(sm.people[pi]["id"]) and ui.lifts != null:
+			var ab: Array = _aboard[sm.people[pi]["id"]]
+			p = ui.lifts.rider_spot(ab[0], ab[1])        # a rider: at the lift (§20.7)
 		elif e.sp_pos[pi] != -1:
 			p = _at[e.sp_pos[pi]]
 		if p == Vector3.INF:
@@ -209,6 +221,8 @@ func drive(delta: float) -> void:
 		if is_instance_valid(w) and w is Node3D:
 			_row(apart.fixed(-1, (w as Node3D).global_position), -1, "", -1, 0, Vector3.ZERO)
 	var me: int = ui.my_person()          # (the trainee's own person is the walker)
+	_fill_aboard(e)
+	_ride_yaw.clear()
 	# who is too far to be drawn (beyond the posed band, app/people.gd) is not kept apart: their place is all that matters
 	var cam: Vector3 = avatars.camera.global_position if avatars.camera != null else Vector3.INF
 	var far_r: float = float(avatars.cfg.get("posed_range", INF)) + 10.0
@@ -247,6 +261,18 @@ func drive(delta: float) -> void:
 					on = "stairs"
 				if k >= 1.0:
 					d = Vector3.ZERO
+		elif _aboard.has(sm.people[pi]["id"]) and ui.lifts != null:
+			# in a cab (§20.7): at their spot, facing the gate, kept clear of (not moved aside)
+			var ab: Array = _aboard[sm.people[pi]["id"]]
+			var spot: Vector3 = ui.lifts.rider_spot(ab[0], ab[1])
+			if spot == Vector3.INF:
+				continue
+			row = apart.fixed(pi, _stepping(pi, spot, true, dt))
+			_ride_yaw[pi] = ui.lifts.gate_yaw(ab[0])
+		elif e.sp_pos[pi] != -1 and _rode[pi] == 1 or e.sp_pos[pi] != -1 and _roff[pi] != Vector3.ZERO:
+			# just stepped out of a cab: walking to the landing's place
+			place = e.sp_pos[pi]
+			row = apart.fixed(pi, _stepping(pi, _at[place], false, dt))
 		elif e.sp_pos[pi] != -1:
 			place = e.sp_pos[pi]
 			if _seated[place] == 1 or (_at[place] as Vector3).distance_squared_to(cam) > far_r2:
@@ -279,6 +305,8 @@ func drive(delta: float) -> void:
 			speed = _d[i].length()
 			if speed > 0.0:
 				target = atan2(-_d[i].x, -_d[i].z)
+		elif _ride_yaw.has(pi):
+			target = _ride_yaw[pi]
 		elif place == -1:
 			var d := _d[i]
 			var leg: Array = e.sp_leg[pi]
@@ -365,6 +393,26 @@ func drive(delta: float) -> void:
 	out.resize(n)
 
 
+## Who stands in a lift's cab: person id -> [the engine's lift, place in boarding order].
+func _fill_aboard(e) -> void:
+	_aboard.clear()
+	for k in e.riders.size():
+		for j in e.riders[k].size():
+			if typeof(e.riders[k][j]) == TYPE_STRING:
+				_aboard[e.riders[k][j]] = [k, j]
+
+
+## Where a person stepping into a cab (`into`) or out of one is drawn: their offset from `to` (set from where they were
+## drawn when they stepped) shrinks at RIDE_STEP m/s of plant time.
+func _stepping(pi: int, to: Vector3, into: bool, dt: float) -> Vector3:
+	var was_in: bool = _rode[pi] == 1
+	if was_in != into:
+		_roff[pi] = (_was[pi] - to) if _was_ok[pi] == 1 and _was[pi].distance_to(to) < 3.0 else Vector3.ZERO
+		_rode[pi] = 1 if into else 0
+	_roff[pi] = _roff[pi].move_toward(Vector3.ZERO, RIDE_STEP * dt)
+	return to + _roff[pi]
+
+
 ## The places' positions and the ways' lines, made again when the staff model changes.
 func _places(sm) -> void:
 	if _at.size() == sm.places.size() and _ways_of == sm:
@@ -381,6 +429,8 @@ func _places(sm) -> void:
 	_was_ok.resize(sm.people.size())
 	_was_ok.fill(0)
 	_spd.resize(sm.people.size())
+	_rode.resize(sm.people.size())
+	_roff.resize(sm.people.size())
 	_spd.fill(0.0)
 	_seated.resize(sm.places.size())
 	for i in sm.places.size():
