@@ -18,6 +18,9 @@ const MAST_W := 0.45
 const LEAF_RISE := 2.1           # a landing gate's leaf rises this far to open (the walker passes under it)
 const LEAF_H := 2.05
 const GATE_HALF := 0.6           # a landing gate's posts at y ±0.6 (the bridges are 1.2 m wide)
+## The cab floor's top, 2 cm over its landing: one plane with the floor it stands at would fight in the depth buffer
+## (tests/test_ground.gd MIN_GAP); the walker steps over 2 cm as over a sill (app/lift.gd's floor body matches)
+const FLOOR_TOP := 0.02
 
 static func service_lift(_part: String, g) -> void:
 	var m = g.m
@@ -41,21 +44,15 @@ static func service_lift(_part: String, g) -> void:
 	g.solid_box(Vector3(x0 - 0.04, -hw, 0.0), Vector3(x1, hw, top))
 	g.plate("mast", Vector3(x1 + 0.01, 0.0, 1.6), Vector3(1, 0, 0))
 	# the base enclosure at grade: mesh panels round the cab's and the mast's footprint, its front the bottom gate
-	m.use("paint_frame", "form")
-	m.box_lh(Vector3(-CAB_X - 0.1, -CAB_Y - 0.25, -0.05), Vector3(x1 + 0.25, CAB_Y + 0.25, 0.0))     # the pad
 	for e in [[Vector2(-CAB_X - 0.05, -CAB_Y - 0.15), Vector2(x1 + 0.15, -CAB_Y - 0.15)],
 			[Vector2(x1 + 0.15, -CAB_Y - 0.15), Vector2(x1 + 0.15, CAB_Y + 0.15)],
 			[Vector2(x1 + 0.15, CAB_Y + 0.15), Vector2(-CAB_X - 0.05, CAB_Y + 0.15)]]:
 		_panel(g, e[0], e[1], 0.0, 2.2)
-	# buffers under the cab
-	m.use("paint_black", "form")
-	for y in [-0.3, 0.3]:
-		m.cyl(Vector3(0.0, y, 0.0), Vector3(0.0, y, 0.25), 0.08, -1.0, 8)
 	# the cab: floor, walls of mesh panels on three sides, its roof with a guard rail, the drive behind it on the mast,
 	# the control panel and a lamp inside
 	var cab = g.move("cab", Vector3.ZERO, Vector3(0, 0, 1), "slide", 1.0)
 	cab.use("steel_dark", "form")
-	cab.box_lh(Vector3(-CAB_X, -CAB_Y - 0.04, -0.14), Vector3(CAB_X + 0.04, CAB_Y + 0.04, 0.0))
+	cab.box_lh(Vector3(-CAB_X, -CAB_Y - 0.04, FLOOR_TOP - 0.14), Vector3(CAB_X + 0.04, CAB_Y + 0.04, FLOOR_TOP))
 	cab.use("paint_yellow", "form")
 	for y in [-CAB_Y - 0.04, CAB_Y]:
 		for x in [-CAB_X, CAB_X]:
@@ -105,7 +102,7 @@ static func lift_gate(_part: String, g) -> void:
 		g.solid_box(Vector3(-0.03, y - 0.03, 0.0), Vector3(0.03, y + 0.03, 2.2))
 	m.box_lh(Vector3(-0.03, -GATE_HALF, h - 0.06), Vector3(0.03, GATE_HALF, h))
 	m.use("paint_black", "identify")
-	m.box_lh(Vector3(-0.035, -GATE_HALF + 0.03, 0.0), Vector3(0.035, GATE_HALF - 0.03, 0.01))   # the sill
+	m.box_lh(Vector3(-0.035, -GATE_HALF + 0.03, 0.0), Vector3(0.035, GATE_HALF - 0.03, 0.02))   # the sill
 	var lf = g.move("leaf", Vector3.ZERO, Vector3(0, 0, 1), "translate", LEAF_RISE)
 	lf.use("paint_yellow", "form")
 	var w := GATE_HALF - 0.04

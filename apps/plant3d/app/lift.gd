@@ -20,7 +20,7 @@ const LEAF_RISE := 2.1
 const GATE_HALF := 0.6
 const TICK := 0.25                # the board/alight check, as the zone inputs (ui/plant_ui.gd _place_tick)
 const RETRY := 1.0                # s before the same board or alight is sent again (its step not seen yet)
-const AT_EPS := 0.02              # m: the cab stands at a landing
+const FLOOR_TOP := 0.02           # the cab floor's top over its landing (kit/parts_lifts.gd)
 
 var ui                            # ui/plant_ui.gd
 var lifts: Array = []             # per drawn lift: {x (model's), k (engine's lift index), host, body, front, piece,
@@ -68,7 +68,7 @@ func setup(u) -> void:
 			if v[1] != null:
 				(v[0] as Node3D).visibility_parent = (v[0] as Node3D).get_path_to(v[1])
 		# the floor, the walls and the roof (the part's frame turned to Godot's), the front a shape of its own
-		_box(body, Vector3(0.02, -0.07, 0.0), Vector3(2 * CAB_X + 0.04, 0.14, 2 * CAB_Y + 0.08))
+		_box(body, Vector3(0.02, FLOOR_TOP - 0.07, 0.0), Vector3(2 * CAB_X + 0.04, 0.14, 2 * CAB_Y + 0.08))
 		_box(body, Vector3(0.0, CAB_H * 0.5, -(CAB_Y + 0.02)), Vector3(2 * CAB_X, CAB_H, 0.04))
 		_box(body, Vector3(0.0, CAB_H * 0.5, CAB_Y + 0.02), Vector3(2 * CAB_X, CAB_H, 0.04))
 		_box(body, Vector3(CAB_X + 0.02, CAB_H * 0.5, 0.0), Vector3(0.04, CAB_H, 2 * CAB_Y))
