@@ -899,6 +899,13 @@ func _ride(kind: String, lift, person, npc: bool) -> String:
 			why.append("aboard")
 	elif at == -1:
 		why.append("not_aboard")
+	if kind == "board":
+		var level := false
+		for ld in m.lifts[k]["landings"]:
+			if prev[ix[ld["at"]]] >= 0.5:
+				level = true
+		if not level:
+			why.append("not_at_landing")      # the cab between landings: its gates are shut (§20.10)
 	var tail := ([null if npc else _in_slot] if st_session else [])
 	if not why.is_empty():
 		_ev([kind, lift, person, "refused", why] + tail)
