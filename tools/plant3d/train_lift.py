@@ -36,7 +36,9 @@ def equipment():
     call station."""
     c = codes()
     x0, y0, _ = AT
-    units = [{'kks': c['drive'], 'name': 'Lift drive', 'part': 'lift_unit', 'at': [0.62, 0, 1.2],
+    # the drive's control cabinet with the main switch at the mast's foot (outside the base enclosure: worked from
+    # grade wherever the cab is); the panel and the load cell ride on the cab (app/lift.gd)
+    units = [{'kks': c['drive'], 'name': 'Lift drive', 'part': 'lift_unit', 'at': [1.55, 0, 1.1],
               'params': {'kind': 'drive'}},
              {'kks': c['panel'], 'name': 'Lift cab panel', 'part': 'lift_unit',
               'at': [0.2, 0.55, 1.25], 'params': {'kind': 'panel'}},

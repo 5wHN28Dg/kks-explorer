@@ -2431,7 +2431,7 @@ height, load and alarms.
 
 - The trainee's come from the app (§20.7), as `zone` inputs do; an NPC's are made in step 9 and handled in the next
   step's step 1 as its ops are. In a session run each carries its slot (§17.13).
-- **Step 1**, in the order made: `board` is done when the rider is aboard no lift (else refused, `aboard`); `alight`
+- **Step 1**, in the order made: `board` is done when the rider is aboard no lift (else refused, `aboard`) and the cab stands level at a landing, not about to leave (a landing's `at`; else refused, `not_at_landing`: §20.10); `alight`
   when they are aboard this one (else refused, `not_aboard`); an unknown lift is `unknown`. The person is checked as a
   permit input's is (§17.1, §17.13: `authority`), with no role authority: anyone on site may use the lift, and the
   ops of its controls (the calls, the gates, the cab's panel) need no role authority either (decided 2026-10-30). A rider is the person, or for `null` the input's slot. Riders are
@@ -2626,9 +2626,9 @@ claims and releases); in `reject`, the lifts' rule breaks; the first train's `da
 ### 20.10 As built for milestone LIFTS L1 (2026-10-30: the engine)
 
 Both engines (`ref/plant3d.py`, `ref/plant3d_staff.py`; `apps/plant3d/sim`) agree bit for bit on the lift's parts of
-`plant3d-v2.json`: two unit runs in `steps` (each with its own `files`: the kit, the plant's key and area a2 that the
-lift's codes need; the first walks the collective control through its cases, the second is a session run without
-staff, `"session": true`), fifteen runs in `staff.runs` on a staff of their own (a field crew, a technician, three
+`plant3d-v2.json`: three unit runs in `steps` (each with its own `files`: the kit, the plant's key and area a2 that the
+lift's codes need; the first walks the collective control through its cases, the second and third are session runs without
+staff, `"session": true`, the third a board refused between landings), sixteen runs in `staff.runs` on a staff of their own (a field crew, a technician, three
 landings and the stairs beside them) and the rule breaks in `reject` and `staff.reject`. The first train's lift, its `day` and format 1's `train` and `hot` with the lift come with L2 and L3.
 The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is made by it). What L1 settles that
 §20.1–§20.4 left open:
@@ -2642,6 +2642,10 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
   gate's `open` and a call done in one step are each checked against the step before, and with the position alone the
   cab set off as the gate began to open and stopped 6 cm below the landing, where no landing's `at` is ever true again.
 - **`board` and `alight`:** the person is checked as a permit input's is, without a role authority (anyone may ride).
+  A `board` is refused (`not_at_landing`, after the other reasons) while no landing's `at` is true as the step before
+  left it (level there and not about to leave): the cab is between landings or setting off, its gates shut, and nobody can step in there (a board mid-shaft could put the
+  cab over its rated load between landings and hold the NPCs aboard there). An `alight` is not checked so: a jump's
+  or a release's alights empty a cab wherever it is.
   In a session run the event carries the input's slot after it, `null` for an NPC's. A rider for a `null` person is
   the slot (an integer): the snapshot's `riders` lists persons' ids and slots. The quiet step is 0 at step 0. Placement
   and a release queue the alights before anything of step 9's phase 4 (a released person's own, if they are aboard);
@@ -2701,7 +2705,8 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
   `hrsg1_lift_gate_switch` are in every first-train scenario. KKS letters added to the key: `SNB`, `AB`, `GH`.
 - **The kit** (`kit/parts_lifts.gd`): `service_lift` (the mast with its rack, the base enclosure at grade, the cab with
   its own gate: moving pieces `cab` and `cab/gate`), `lift_gate` (posts, header, the `leaf` that rises 2.1 m),
-  `lift_call`, and `lift_unit` (the drive, the cab's panel and its load cell, drawn by the cab). The builder leaves no
+  `lift_call`, and `lift_unit` (the drive, whose cabinet with the main switch the lift draws at the mast's foot, and the
+  cab's panel and its load cell, drawn by the cab). The builder leaves no
   handrail across a landing gate, and lists the lifts in the built plant's manifest (`lifts`: the cab's origin, its
   footprint, its gates); the bake obstructs each shaft's footprint from under grade to the mast's top, so the mesh ends
   at each gate.
@@ -2709,8 +2714,8 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
   between the last two steps (the clock's fraction; in a session, the time since the last step over the time between
   the last two); the walker rides it as a moving floor. The landing gates' leaves get a body solid only while their
   position is 0; the cab's front is solid unless the cab stands at a landing whose gate is not shut. A gate (or the
-  front) that becomes solid with the walker in its gateway puts the walker on the side their riding says. The drive,
-  the panel and the load cell ride with the cab (the panel with a small body, so a tap or the centre of the screen
+  front) that becomes solid with the walker in its gateway puts the walker on the side their riding says. The panel and
+  the load cell ride with the cab (the panel with a small body, so a tap or the centre of the screen
   picks it). `board` and `alight` (ui/inputs.gd) are sent every 0.25 s when the engine's riders differ from where the
   walker's feet are (in the cab's floor or not), at most once a second, a board only while the cab stands at a
   landing; a person taken while aboard puts the walker in the cab.
@@ -2720,8 +2725,11 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
 - **Directions** (`app/walk_route.gd`): a navigation link between every two landings of each lift, in front of their
   gates (0.7 m), on a navigation layer of its own; `find()` searches with the lifts and, when the way rides one, again
   without, and keeps the quicker by the staff's speeds (a ride's height at `speeds.lift`, stairs and ladders along
-  their paths, floors at a walk): to the roof from the tower's foot it rides, to the tower's +10 m landing it climbs.
-  The autopilot rides a lift step (`{"lift", "from", "to"}`: call, open, step in, shut, send, open, step out, shut);
+  their paths, floors at a walk): to the roof from the tower's foot it rides. Two rides in a row through a landing
+  between are made one. The stair tower is out of the mesh (a link from its foot to its top), so the bridge at +16.7 m
+  is joined to the tower's own way there: the bake adds two ways of the stair, from its foot to the bridge and from the
+  bridge to its top (`hrsg1_stair@k`), and keeps the bridge (the lifts' landings are links for its reachability).
+  The autopilot rides a lift step (`{"lift", "from", "dest"}`: call, open, step in, shut, send, open, step out, shut);
   `walk=lift` is the measured walk that rides it.
 - **Sounds:** the drive's `motor_small` while the cab travels, each gate's `door_roller` while its leaf moves, the
   overload buzzer (`horn_p3` at the load cell).

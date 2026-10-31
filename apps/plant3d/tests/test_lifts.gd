@@ -3,11 +3,14 @@
 ## the roof from the panel's landing buttons and rides it up, the walker carried by the cab's floor all the way; opens
 ## the gate at the top and steps out (the `alight`). The gates are solid only while shut, the cab's front only away
 ## from an open landing gate; a gate's open is refused where the cab is not; the panel's buttons are offered only
-## within reach. The walking directions take the lift to the roof (quicker than the stairs by the staff's speeds) and
-## the stairs to the tower's +10 m landing (quicker than riding to +16.7 m and walking down).
+## within reach. The walking directions take the lift to the roof and to the landing at +16.7 m (one ride, not two
+## through the landing between), and no way they choose is slower than the stairs' by the staff's speeds. A saved run
+## continued in the cab at the roof puts the walker back in it; the autopilot walks down through the gates with a stop at
+## +16.7 m, pressing each control once; a gate shutting on the walker in its gateway puts them out on the landing.
 extends RefCounted
 
 const App = preload("res://tests/ui_app.gd")
+const Autopilot = preload("res://app/autopilot.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 
 const LIFT := "hrsg1_lift"
@@ -34,6 +37,8 @@ func run(t: SceneTree) -> Array:
 		main.free()
 		return ["the lift is not drawn: %s" % str(ui.lifts.lifts.size() if ui.lifts != null else null)]
 	await _ride(ui)
+	await _walked_down(ui)
+	await _gateway(ui)
 	_directions(ui)
 	_speeds(ui)
 	main.free()
@@ -151,6 +156,20 @@ func _ride(ui) -> void:
 	await tree.physics_frame
 	if absf(ui.lifts.cab_height(0) - 30.0) > SPEED_STEP:     # (drawn between the last two steps: within one)
 		p.append("the cab is drawn at %.2f m at the roof" % ui.lifts.cab_height(0))
+	# a run saved in the cab at the roof and continued (the app killed mid-ride): the walker is put back in the cab up
+	# here, not on the roof of the cab the fresh run had at grade, and stays aboard
+	var saved: Dictionary = ui.autosave.payload()
+	ui.autosave.restore(saved)
+	# the cab is where the run has it before the walker is put down (not where the fresh run drew it, at grade)
+	if absf((L["body"] as Node3D).global_position.y - ui.clock.engine.v(LIFT + "_z")) > 0.01:
+		p.append("continued, the walker is put down before the cab is moved to the run's height: cab at %.2f m, the run's %.2f m" % [(L["body"] as Node3D).global_position.y, ui.clock.engine.v(LIFT + "_z")])
+	for i in 30:
+		await tree.physics_frame
+	if ui.player.global_position.y < 29.8 or not ui.lifts.feet_inside(L, ui.player.global_position) or not e.riders[0].has(0):
+		e = ui.clock.engine
+		p.append("continued in the cab at the roof, the walker is at %s (cab at %.2f m, riders %s)" % [str(ui.player.global_position), ui.lifts.cab_height(0), str(ui.clock.engine.riders[0])])
+	e = ui.clock.engine
+	body = L["body"]
 	# the panel rides with the cab: within reach up here
 	if not ui.near(KKS + "GH010"):
 		p.append("the cab's panel did not ride up with the cab")
@@ -166,6 +185,64 @@ func _ride(ui) -> void:
 		p.append("the walker fell stepping out: at %.2f m" % ui.player.global_position.y)
 
 
+## Down again with the autopilot, as a trainee walks it: through the open gates into the cab and out (no teleporting),
+## a stop at the tower's landing at +16.7 m (off, the gate shut behind, on again), then down to grade, the walker
+## carried down by the cab's floor; every control pressed once (the cab remembers its calls and sends).
+func _walked_down(ui) -> void:
+	var e = ui.clock.engine
+	var n0: int = e.inputs.size()
+	var auto := Autopilot.new()
+	auto.ui = ui
+	ui.main.add_child(auto)
+	var stuck := [0]
+	auto.stuck.connect(func(_i, _at): stuck[0] += 1)
+	auto.start(ui.player, [{"lift": KKS, "from": 2, "dest": 1}, {"lift": KKS, "from": 1, "dest": 0}])
+	var lowest := [INF]
+	var done := await _run(ui, 240.0, func():
+		lowest[0] = minf(lowest[0], ui.player.global_position.y - ui.lifts.cab_height(0))
+		return not auto.running)
+	auto.stop()
+	auto.queue_free()
+	if not done or stuck[0] > 0:
+		p.append("the walk down by the lift did not finish (stuck %d, at %s, step %d phase %d)" % [stuck[0], str(ui.player.global_position), auto.i, auto._phase])
+		return
+	if ui.player.global_position.y > 0.3 or not e.riders[0].is_empty():
+		p.append("the walk down did not end off the cab at grade: at %s, riders %s" % [str(ui.player.global_position), str(e.riders[0])])
+	var stops: int = e.events.slice(n0).filter(func(ev): return ev[1] == "alight" and ev[4] == "done").size()
+	if stops != 2:
+		p.append("the walk down got off %d times, not twice (at +16.7 m and at grade)" % stops)
+	var presses := {}
+	for ins in e.inputs.slice(n0):
+		if ins[1] == "op":
+			var key := "%s %s %s" % [ins[2], ins[3], str(ins[4])]
+			presses[key] = presses.get(key, 0) + 1
+	for key in presses:
+		if presses[key] > 1:
+			p.append("the autopilot pressed %s %d times: %s" % [key, presses[key], str(e.events.slice(n0).filter(func(ev): return ev[1] == "op" and String(ev[2]).begins_with(KKS)))])
+
+
+## A gate shutting on the walker in its gateway puts them on the side their riding says: not aboard, out on the landing.
+func _gateway(ui) -> void:
+	var e = ui.clock.engine
+	var L: Dictionary = ui.lifts.lifts[0]
+	if not e.truth(LIFT + "_at0"):
+		p.append("the cab is not at grade for the gateway check")
+		return
+	ui.do_op(ui.info.ops_of[KKS + "AB001"].filter(func(o): return o["do"] == "open")[0], null)
+	await _run(ui, 4.0, func(): return e.truth(LIFT + "_open0"))
+	var g: Node3D = L["gates"][0]["node"]
+	ui.lifts.set_physics_process(false)          # (no board from standing there: they are not aboard)
+	await _stand(ui, g.global_transform * Vector3(0.05, 0.05, 0.0))
+	ui.do_op(ui.info.ops_of[KKS + "AB001"].filter(func(o): return o["do"] == "close")[0], null)
+	ui.lifts.set_physics_process(true)
+	await _run(ui, 4.0, func(): return e.truth(LIFT + "_shut0"))
+	for i in 3:
+		await tree.physics_frame
+	var l: Vector3 = g.global_transform.affine_inverse() * ui.player.global_position
+	if l.x > -0.3:
+		p.append("the gate shut on the walker in its gateway, who was left at %.2f m from its plane" % l.x)
+
+
 func _directions(ui) -> void:
 	var r = ui.route
 	if not r.ready_to_find():
@@ -176,11 +253,29 @@ func _directions(ui) -> void:
 	if not up.reached or not " ".join(up.marks).contains("lift " + KKS + " 0 2"):
 		p.append("the way to the roof does not take the lift: %s" % str(up.marks))
 	var steps: Array = r.steps(up)
-	if not steps.any(func(s): return s.has("lift") and s["from"] == 0 and s["to"] == 2):
+	if not steps.any(func(s): return s.has("lift") and s["from"] == 0 and s["dest"] == 2):
 		p.append("the way to the roof has no ride for the autopilot: %s" % str(steps))
-	var low: Dictionary = r.find(from, gd(101.4, 48.0, 10.0))
-	if not low.reached or " ".join(low.marks).contains("lift "):
-		p.append("the way to the tower's +10 m landing takes the lift (or fails): %s" % str(low.marks))
+	var mid: Dictionary = r.find(from, gd(102.4, 48.0, 50.0 / 3.0))
+	if not mid.reached or not " ".join(mid.marks).contains("lift " + KKS + " 0 1"):
+		p.append("the way to the tower's landing at +16.7 m does not take the lift there: %s" % str(mid.marks))
+	# no chevrons up the ride's height (the route's mesh: none above the grade's front and under the roof's)
+	r.route = up
+	r._build()
+	var v: PackedVector3Array = r._mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] if r._mesh.get_surface_count() > 0 else PackedVector3Array()
+	var front := gd(102.52, 48.0, 0.0)
+	var in_shaft := 0
+	for q in v:
+		if Vector2(q.x - front.x, q.z - front.z).length() < 0.4 and q.y > 2.0 and q.y < 28.0:
+			in_shaft += 1
+	if in_shaft > 0:
+		p.append("the directions draw %d chevron vertices up the lift's height" % in_shaft)
+	r.route = {}
+	# whichever way it takes, it is the quicker by the staff's speeds: never slower than the stairs' way
+	for to in [gd(101.4, 52.5, 30.0), gd(102.4, 48.0, 50.0 / 3.0), gd(110.0, 61.0, 32.0)]:
+		var f: Dictionary = r.find(from, to)
+		var st: Dictionary = r._find(from, to, 1)
+		if st.reached and r.time_of(f) > r.time_of(st) + 1e-6:
+			p.append("the way to %s takes %.0f s by the staff's speeds, the stairs' %.0f s" % [str(to), r.time_of(f), r.time_of(st)])
 
 
 ## The walking directions time a ride as the staff do: their speeds are staff.json's (walk_route.gd keeps them).

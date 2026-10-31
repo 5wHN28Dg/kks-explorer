@@ -288,6 +288,8 @@ func equipment(parent: Node3D, kks: String, top: bool) -> Node3D:
 			mi.mesh = L.mesh
 			mi.material_override = b._mat(L.mat)
 			Lightmap.mark(mi, false)   # it moves: the sky's light (builder/lightmap.gd mark)
+			if e.part == "service_lift":
+				mi.set_meta("hlod_keep", true)   # a lift's cab moves: merged into the far view it would stay at grade
 			if L.cls == "detail":
 				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				mi.add_to_group("detail", true)

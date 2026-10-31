@@ -65,8 +65,8 @@ static func frames(plant) -> Array:
 static func lift(_plant) -> Array:
 	var gate := 102.52            # in front of the gates: where a ride begins and ends (app/walk_route.gd LIFT_FRONT)
 	return [_to(93.5, 44.5), _to(102.5, 45.4), {"to": Plant.g(gate, 48.0, 0.0), "floor": 0.0, "exact": true},
-		{"lift": "10SNB10", "from": 0, "to": 2}, _to(101.4, 48.0, 30), _to(101.4, 52.5, 30),
-		{"to": Plant.g(gate, 48.0, 30.0), "floor": 30.0, "exact": true}, {"lift": "10SNB10", "from": 2, "to": 0},
+		{"lift": "10SNB10", "from": 0, "dest": 2}, _to(101.4, 48.0, 30), _to(101.4, 52.5, 30),
+		{"to": Plant.g(gate, 48.0, 30.0), "floor": 30.0, "exact": true}, {"lift": "10SNB10", "from": 2, "dest": 0},
 		_to(102.5, 45.4), _to(93.5, 44.5)]
 
 ## The roof hoist's walk (LIFTS L4, PLANT3D §20.8): the frames walk's way up HRSG 1's stair, across the roof to the
