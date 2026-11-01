@@ -2,7 +2,7 @@
 
 Date 2026-11-01 · Scope: docs/plant3d/WORKSHOP.md, `apps/plant3d/kit`, `apps/plant3d/builder`, a new
 `apps/plant3d/workshop/`, `apps/plant3d/sim` (a bench loader), `ref/` (two validators, a vector file),
-`tools/plant3d/workshop/`, `data/plant3d/workshop/` and `data/plant3d/bench/` · Status: **proposed**, written before
+`tools/plant3d/workshop/`, `data/plant3d/workshop/` (its `bench/` folder for the bench models) · Status: **proposed**, written before
 any code (milestone K0) under the user's Workshop spec and their decisions of 2026-11-01 (this record's number; the
 APK limit raised to 250 MB; the plant not paused in a session; hands-on work later) · Extends 0041, 0054, 0055, 0057,
 0060, 0067; no new dependency
@@ -27,6 +27,7 @@ frame rules and the package its limit, and (e) the later hands-on programme (007
 | The engine | a model object (values, ops keyed by `(kks, do, trip)`, machines, trips, alarms, faults) stepped by `sim/engine.gd` and the reference's `Engine`; nothing in the step needs a KKS code's grammar | [S] `sim/plant_model.gd`, `sim/engine.gd` |
 | The plant's sequences | `st_start` (9 states) and `gt1_start` (11) with their trips, made by `tools/plant3d/train_model.py` and checked against the committed files | [V] |
 | Building by script on the phone | 0041's 20–28 s first frame was mostly the bench reading meshes back from the GPU; still, the app builds no geometry (0054 §4) | [V] 0041 |
+| A viewport's world | a 3D node draws in its viewport's world: swapping the main viewport's `world_3d` would carry the plant and the player's body into the Workshop's world; a `SubViewport` with `own_world_3d` keeps them apart | [D] class_viewport |
 | Multiplayer | the session's clock is the host's; any player may pause it; positions travel as `pos` at 5 Hz outside the engine | [V] MULTIPLAYER.md §6.3, §7.1 |
 
 ## Alternatives
@@ -58,7 +59,7 @@ frame on the phone.
   checked against its replacements' box (1 mm).
 - **Scenes:** `built/workshop/<part>.scn`, pre-built, loaded on a worker thread; plant material names resolved at show
   time; the part's own frame.
-- **Bench:** `walkdown-plant-bench` v1, format 1's node kinds, ops at components, trainer faults, one start state,
+- **Bench:** `walkdown-plant-bench` v1, format 1's node kinds and `hold`, ops at components, trainer faults, one start state,
   bindings by component (§7.7's plus `flow`, `heat`, `pressure`); `ref/plant3d_bench.py`, `sim/bench_model.gd`,
   `ref/vectors/plant3d-bench-v1.json`; plant sequences taken by `tools/plant3d/workshop/make_bench.py` and checked.
   `mirror` (K6) maps plant bindings of the equipment onto bench values.
@@ -66,16 +67,19 @@ frame on the phone.
   discard by up to three planes and an instance-uniform heat/pressure ramp), `ws_cap`, `ws_xray`, `ws_flow` (unshaded).
   Their pipelines are queued in a hidden frame after the plant's first walkable frame, and the Workshop's load draws
   hidden once before the machine's first frame.
-- **The plant meanwhile:** its own `World3D` is swapped out, not freed. Single play pauses the clock (held inputs
+- **The plant meanwhile:** the Workshop draws in a full-screen `SubViewport` with its own world, and the main
+  viewport's 3D drawing is turned off; the plant stays in its world, not moved or freed. Single play pauses the clock (held inputs
   released, speed restored on return; autosave unaffected). In a session the plant runs on and the person stands
   where it was left (the user, 2026-11-01); the bench runs locally, outside the session.
 - **Rules (Note 9, `lean+vis`):** Workshop button to the machine's first frame ≤ 2.0 s with pipelines compiled, ≤ 5.0 s
   with an empty cache; back to the plant ≤ 1.0 s; after the first frame no frame over 100 ms and ≥ 95 % at ≥ 30 fps
   over the scripted Workshop walk; peak PSS ≤ 1.5 GB with the plant held; one kind ≤ 120,000 triangles and ≤ 300 draw
-  calls in any view; a bench step ≤ 0.3 ms; the whole Workshop ≤ 20 MB of package. The budgets are measured with the
-  transmitter in K1 and K3 and with the steam turbine in K4b, and written here as built.
-- **Later (0073):** component ids are ≤ 16-character identifiers; fasteners are groups of addressable items with
-  `tool`, `torque_nm` and `pattern` reserved; anchors name terminals and test points; the assembly needs carry a
+  calls in any view; a bench step ≤ 0.3 ms; the whole Workshop ≤ 20 MB of package; the same rules in a session.
+  The budgets are measured with the transmitter in K1 and K3 and with the turbines in K4a, K4b, K5a and K5b, and
+  written here as built.
+- **Later (0073):** component ids are ≤ 16-character identifiers; fasteners are groups of addressable items (their
+  sizes, tools, torques and patterns, and components' damaged states, live in realism's service file per kind, keyed
+  by these ids); anchors name terminals and test points; the assembly needs carry a
   placing and a removing sentence, which the hand actions reuse.
 
 ## Capability matrix

@@ -8,7 +8,8 @@ trees, fasteners, assembly sentences and bench models; §14 says what this file 
 
 **Name.** The site already has workshop buildings, among them an I&C workshop with a calibration bench (SITE.md). In
 code and text this is "the Workshop mode" wherever the two could be confused; its code lives in
-`apps/plant3d/workshop/`, its data in `data/plant3d/workshop/` and `data/plant3d/bench/`.
+`apps/plant3d/workshop/`, its data in `data/plant3d/workshop/` (the bench models in its `bench/` folder). "Bench"
+here is the Workshop's bench model; the performance bench of 0041 (`tools/plant3d/bench/`) is another thing.
 
 ## 1. What it is
 
@@ -38,18 +39,24 @@ picture is a bug. Shapes of internals, stage counts, blade orientation and assem
 
 **Leaving** returns the trainee to exactly where they were: same place, view, panels and speed.
 
-**How it is drawn.** The Workshop is its own `World3D` (its own environment: a neutral floor, soft studio light, no
-sky) swapped onto the main viewport; the plant's nodes stay in the tree, untouched, and are not drawn. The plant's 3D
-sounds fall silent with it (the listener is in the other world); the app's non-positional ambience is paused while
-away. Leaving swaps the plant's world back: no reload.
+**How it is drawn.** The Workshop is a full-screen `SubViewport` with a world of its own (`own_world_3d`: a neutral
+floor, soft studio light, no sky, its own physics space), and the main viewport stops drawing 3D (`disable_3d`)
+while it is open. The plant is neither moved nor freed: its nodes stay in their world, its physics goes on (the
+player's body keeps standing on its floor), only its drawing stops. Swapping the main viewport's `world_3d` instead
+would drag every node under it, the plant and the player's body included, into the Workshop's world. The plant's
+sounds are muted on their bus and the app's non-positional ambience paused while away. Leaving hides the Workshop's
+viewport and turns the main one's 3D back on: no reload. K1 checks this on the Note 9 (the plant's GPU time is gone
+while the Workshop shows; nothing falls).
 
 **Single play: the plant's clock pauses** (the default the spec set; nothing found that it breaks):
 - any hold-to-run input (a hoist's or crane's pendant, `held_motion`) is released first, as when the pendant closes;
 - `sim_clock` goes to PAUSED and the speed before (1×, fast-forward or already paused) is restored on leaving;
-- staff, lifts mid-ride, procedures and permits wait with the clock; nothing in the model changes, so the autosave
-  writes nothing new (it saves only while the run changes) and still saves at once on going to the background;
+- staff, lifts mid-ride, procedures and permits wait with the clock. The autosave writes once more (the clock's speed
+  is in the save's signature, `ui/autosave.gd`), then nothing while the model stands still, and still saves at once
+  on going to the background;
 - the Workshop's own state (exploded, handled, its bench run) is UI state and is not saved: if Android ends the app
-  while it is open, the run continues in the plant where the trainee stood.
+  while it is open, the run continues in the plant where the trainee stood, paused as it was saved (the trainee
+  presses play; the speed before the Workshop is not kept across the restart).
 
 **Multiplayer: the plant does NOT pause** (the user, 2026-11-01). The session's clock runs on as everyone else plays:
 - the player's person stands where they left it, and the other players see it standing (the walker makes no inputs;
@@ -59,7 +66,9 @@ away. Leaving swaps the plant's world back: no reload.
   with **Back to the plant**;
 - the Workshop's bench model runs locally, outside the session: it makes no session inputs and is not in the state
   digest;
-- a mark over the person ("in the Workshop") would need a flag in `pos`, a MULTIPLAYER.md change: not part of K0–K6.
+- a mark over the person ("in the Workshop") would need a flag in `pos`, a MULTIPLAYER.md change: not part of K0–K6;
+- the plant's engine, the session layer and the others' avatars keep their CPU behind the Workshop (only the plant's
+  drawing stops): the Workshop's rules are measured in a session as well (§8).
 
 **Entering never builds geometry.** The scene is pre-built (§5) and loaded with `ResourceLoader.load_threaded_request`;
 the app calls `Kit.make()` only in the builder (0054 §4).
@@ -117,17 +126,20 @@ component, a binding at no component, a flow path the generator doesn't make).
 ### 4.1 Components
 
 - **Ids** are identifiers of at most 16 characters (`[a-z_][a-z0-9_]{0,15}`), unique within the kind. Short, because
-  the realism programme names model states `<equipment prefix>_<component>_<state>` within the 32-character value
-  names (REALISM.md §2.4).
+  the realism programme names model states `<equipment prefix>_<component>_<state>` (REALISM.md §2.4) and value
+  names are identifiers of at most 32 characters (PLANT3D.md §1): that leaves 14 characters for the prefix, the state
+  and the two underscores, which the realism content tool has to keep to (or it maps long names to short ones).
 - **Tree:** each component has a `parent` (another component, or none for the machine's top level). Depth at most 6.
 - **Root `body`:** a generator that declares no components puts everything in one component `body`. So every kit part
   can be shown in the Workshop (outside only, not taken apart) with no extra code; a kind gets its tree when its
   generator declares one.
 - **Generator side** (per component): `pivot` (part frame, metres), the box it builds (measured), `explode` (a
   direction in the part frame and a distance in metres; default: from the parent's box centre to the component's,
-  0.6 of the parent's size that way), `sym` (rotational symmetry for snapping: an axis and n, 0 = any angle),
+  0.6 of the parent's size that way; where the two centres coincide, as a rotor's in its casing, straight up, the
+  parent's height plus a tenth), `sym` (rotational symmetry for snapping: an axis and n, 0 = any angle),
   `anchors` (named points: terminals, test points, lifting eyes, a vent screw), `anim` (a moving piece: kind, axis
-  and travel as kit/README.md "Moving parts" defines; the plant's anim channels are components of this kind), `thin`
+  and travel as kit/README.md "Moving parts" defines; each of the plant's anim channels is a component with `anim`, and
+  the components inside a moving piece, such as a rotor's blade rows, are its children in the tree), `thin`
   (a sheet or a glass that is not a closed solid, §7.2).
 - **Data side** (per component): `name` (1–60 characters), `does` (1–300), `material` (1–80, as words: "316L
   stainless steel"), `sealed` with `sealed_why` (its children never come apart: "The sensor module is sealed at the
@@ -137,7 +149,8 @@ component, a binding at no component, a flow path the generator doesn't make).
 
 `kit/mesh.gd` keys its layers by material, visibility class and size bucket only. It gains two pieces of state, set
 by the generator around its primitives:
-- `comp`: the current component id (`g.comp(id, spec)` declares it and makes it current);
+- `comp`: the current component id (`g.comp(id, spec)` declares it, makes it current and selects the layer again for
+  the current material, so a component can change between primitives without a new `use()`);
 - `only`: `""` (shared: plant and Workshop), `"workshop"` (insides, split halves, closing faces: never in the plant)
   or `"plant"` (a merged stand-in the Workshop replaces, see below).
 
@@ -149,11 +162,21 @@ in the cache key):
 - **Workshop mode:** the layer key is `comp|material|class|bucket`, `"plant"` pieces are not written, and the result
   gains `components`, `fasteners`, `flows` and `anchors`.
 
-**One source of truth.** Shared pieces are written once and land in both. A `"plant"` piece names the components that
-replace it (`replaced_by`), and a test checks that their joined box is the stand-in's within 1 mm and of the same
-material: that keeps the outside the trainee sees in the Workshop the one they walk past, without changing the plant
-when a casing is split into halves. Changing a shared piece does change the plant: then the lightmap is baked again
-and the plant's Note 9 walk is run again (§10).
+**One source of truth.** Shared pieces are written once and land in both. The rules that keep the Workshop's outside
+the plant's (the tolerance the spec allows, stated here):
+- a `"plant"` piece names the components that replace it (`replaced_by`); their joined box is the stand-in's within
+  1 mm, their material the same, and their triangles per material between the stand-in's and 1.5 times it (split
+  faces and joint flanges added); the gallery's side-by-side pictures (§10) show the shape;
+- a `"workshop"` piece is either **hidden** in the assembled machine (inside the outer surface: insides, inner faces of
+  a split, closing faces) or a **small outside piece** the plant doesn't draw: a fastener group, a cover's thread or a
+  screw head, each no larger than 30 mm, marked `outside` in the generator and listed by the test with its size;
+  anything larger seen from outside is shared;
+- changing a shared piece changes the plant: then the lightmap is baked again and the plant's Note 9 walk is run
+  again (§10).
+
+So K1a keeps the plant byte for byte: the transmitter's covers are split from its housing as `"workshop"` halves of a
+`"plant"` stand-in, its terminal block, electronics and sensor insides are hidden pieces, and its flange bolts and
+cover locking screws are small outside pieces.
 
 **Retrofitting.** Each generator's `use()` calls stay; a generator gains `g.comp()` and `g.only()` calls around groups
 of primitives. Moving pieces' mesh builders (`g.move`) carry `comp` too. Proved on the transmitter alone first (K1a),
@@ -175,20 +198,22 @@ Handling (§4.5) is applied on top and cleared by Reset; the slider never reads 
 
 ### 4.4 Fasteners
 
-- **Generator side:** `g.fasteners(id, items, kind, size)`: a group of identical fasteners, each item a transform
+- **Generator side:** `g.fasteners(id, items, kind)`: a group of identical fasteners, each item a transform
   (position and axis) in the part frame; drawn as one MultiMesh (one draw call per material), each item addressable by
   its index, so a later milestone can treat one bolt alone. `kind`: `bolt`, `stud_nut`, `screw`, `cap_screw`,
   `threaded_cover`, `clamp`, `gland`, `pin`, `circlip`, `key`.
-- **Data side:** `name` ("8 casing bolts"), `joins` (the components it holds together, at least two), `size` (the
-  thread or width across flats, as words: "M24", "7/16-20 UNF", "17 mm A/F"), `sources`. Reserved for the hands-on
-  milestones and refused in Workshop data of version 1 (`unknown_key`): `tool`, `torque_nm`, `pattern` (§14).
+- **Data side:** `name` ("8 casing bolts"), `joins` (the components it holds together, at least two), `sources`.
+- **Not here:** fasteners' sizes, the tools that fit them, torque values and tightening patterns, and components'
+  damaged states belong to the realism programme's service file per kind (`data/plant3d/service/<part>.json`,
+  REALISM.md §2.4), keyed by these group and component ids; the Workshop's properties panel shows a size once that
+  file has one. The Workshop data file has no such keys (`unknown_key`).
 - "What it's fastened to" in the properties panel comes from `joins`.
 
 ### 4.5 What is free to move
 
 One relation serves assembly, disassembly and free handling: the assembly steps' `needs` (§4.6). A component is
 **free** when no component that needs it is at home (in place and not exploded); a sealed component's children are
-never free (trying says `sealed_why`). In the fully exploded view every component is free. Picking up a part that
+never free (trying says `sealed_why`). In the fully exploded view every component but a sealed one's children is free. Picking up a part that
 isn't free shows the first holding step's removal sentence.
 
 ### 4.6 Assembly
@@ -248,7 +273,7 @@ The data file's `assembly` is the guided order, one step per component or fasten
 ### 6.1 Its own format
 
 Plant models are one file per area with bindings that name KKS codes; a part on the bench has no code. So bench
-models are a format of their own, `walkdown-plant-bench`, version 1, one file per kind in `data/plant3d/bench/`, with
+models are a format of their own, `walkdown-plant-bench`, version 1, one file per kind in `data/plant3d/workshop/bench/`, with
 their own validator and vectors. Format 1 is not changed and format 2 is not bent.
 
 ```json
@@ -269,7 +294,10 @@ their own validator and vectors. Format 1 is not changed and format 2 is not ben
  "mirror": [{"value": "p_applied", "from": {"bind": "show"}}]}
 ```
 
-- **The model:** `values` with format 1's node kinds only (§7.1; no `hold`, no staff), `ops` (§7.2) whose `at` is a
+- **The model:** `values` with format 1's node kinds and format 2's `hold` (§7.1, §15.4: a blocked impulse line
+  holds what was trapped; the steam turbine's model uses `hold` too); no staff, no isolations or works. Node kinds the
+  plant's format gains later (REALISM.md's `draw` and `wear`) come to bench models as a version 2 of this format, with
+  its vectors, when the realism milestones need them on the bench. `ops` (§7.2) whose `at` is a
   component or `bench` in place of `kks`, interlocks, machines, trips, alarms (§7.3–§7.6), `faults` as a scenario's
   trainer faults (no `when`; pressed from the bench panel, with their `repair`), and one starting state `start` (a
   scenario's `init`). The same 0.1 s step (§7.10), the same arithmetic and refusals.
@@ -292,7 +320,8 @@ their own validator and vectors. Format 1 is not changed and format 2 is not ben
 - **Reference:** `ref/plant3d_bench.py` validates bench files (strict JSON, the rules above, every binding's
   component checked against the kind's data file's components) and turns one into the model the reference's `Engine`
   steps. **App:** `sim/bench_model.gd` loads it into the same shape `sim/plant_model.gd` gives, and `sim/engine.gd`
-  steps it. An op's key is `(at, do, trip)` where the plant's is `(kks, do, trip)`. If the engine needs any change for
+  steps it. The loaders turn each `at` into the engine's `kks` field (ops, faults, bindings), so the engine finds an
+op by `(at, do, trip)` exactly as it finds a plant op by `(kks, do, trip)`, with no change. If the engine needs any change for
   this, it is made in both engines with vectors, and `plant3d-v1.json` and `plant3d-v2.json` stay byte for byte.
 - **Vectors:** `ref/vectors/plant3d-bench-v1.json` (made by `ref/make_plant3d_bench_vectors.py`): `valid` and
   `reject` items, and `steps` for every committed bench file (its inputs: Start, slider moves, each fault and its
@@ -345,10 +374,11 @@ structures' own vertex format, since removed) and a discarding one at 7.
 | plant materials | opaque, lit | K1–K2: the space, the tree, explode, handling (no new pipeline) | today's |
 | `ws_lit` | opaque, lit, `discard` by up to three planes | K3 on: every component; heat and pressure ramps from an `instance uniform` (at most 16 per shader: Godot's limit) and the selection's emission | `weathered.gdshaderinc` |
 | `ws_cap` | unshaded, `cull_front`, the same planes | the cut faces (below): `ws_lit`'s next pass on solid components | new, small |
-| `ws_xray` | unshaded, `blend_mix`, `depth_draw_never` | X-ray (an edge-weighted see-through), and the assembly's ghost in another colour | new, small |
+| `ws_xray` | unshaded, `blend_mix`, `depth_draw_never` | from K2: the assembly's ghost; from K3 the X-ray too (an edge-weighted see-through, in another colour) | new, small |
 | `ws_flow` | unshaded, `blend_add` | flow particles: one MultiMesh of quads per path, moved along the path in the vertex shader (the path in a small texture; speed and density as uniforms) | new, small |
 
-One new lit shader and three unshaded ones. Each milestone counts its pipelines (`pipelines compiled`, and
+One new lit shader and three unshaded ones: `ws_xray` arrives with K2 (counted and pre-warmed there), the other three
+with K3. Each milestone counts its pipelines (`pipelines compiled`, and
 `phone/launch.sh`'s log on the Note 9) before and after; 0057's numbers suggest about 7 for `ws_lit` and a few each
 for the unshaded ones, to be measured in K3 and written into 0072.
 
@@ -394,9 +424,10 @@ the Workshop. The Workshop's own, on the Note 9 (`lean+vis`, release build, cool
 | After the first frame of the machine | no frame over 100 ms while orbiting, exploding, X-raying, cutting, sectioning and running; ≥ 95 % of frames at ≥ 30 fps over the Workshop walk |
 | The Workshop walk (scripted, `app/workshop_walk.gd`) | 3 minutes on a fixed camera orbit: assembled, exploded 0 → 1 → 0, X-ray, cutaway, a section sweep, Start to full speed at 2×, a fault, Stop, exploded and running where allowed |
 | Peak PSS | ≤ 1.5 GB with the plant held behind it |
-| One kind's scene | ≤ 120,000 triangles (all components, insides included); ≤ 300 draw calls in any view of the walk (the plant's busiest measured 479 at p95 within the frame rules, 0041) |
+| One kind's scene | ≤ 120,000 triangles (all components, insides included); ≤ 300 draw calls in any view of the walk, `ws_cap`'s second pass included (it is drawn only while a cut or section is on, on the components the cut reaches) (the plant's busiest measured 479 at p95 within the frame rules, 0041) |
 | The bench step | ≤ 0.3 ms on the Note 9 (a bench model is a fraction of the plant's 1.4 ms) |
 | Pipelines | counted per milestone, none compiled after the first frame of the machine |
+| In a session | the same rules with the plant's engine, the session and a second player running behind the Workshop (a laptop host and the Note 9), measured in K1 and K3 |
 
 **On the phone, cut what looks nice before what the trainee needs** (R9a), in this order: soft shadows, the X-ray's
 edge weighting, the flow particles' density (down to a third, never their direction or speed), the floor's texture.
@@ -418,17 +449,20 @@ Past 250 MB: stop and ask (packs on demand are the user's call).
 | `sim/bench_model.gd` | the bench file into the engine's model shape |
 | `ref/plant3d_bench.py`, `ref/plant3d_workshop.py` | the validators (bench; Workshop data: strict JSON, keys, identifiers, assembly integrity, sources) |
 | `tools/plant3d/workshop/` | `make_bench.py` and the bench sources per kind |
-| `data/plant3d/workshop/<part>.json`, `data/plant3d/bench/<part>.json` | the data |
+| `data/plant3d/workshop/<part>.json`, `data/plant3d/workshop/bench/<part>.json` | the data |
 
 A test reads every script in `apps/plant3d/workshop/` and fails on any part id of kit.json in it.
 
 **Adding a new part kind with no Workshop code** (checked against this plan for K0): the kind's generator gains its
 `g.comp()`, `g.only()`, `g.fasteners()` and flow paths; `data/plant3d/workshop/<part>.json` gives its words, order,
-views and sources; `data/plant3d/bench/<part>.json` (or its bench source for the tool) gives its model and bindings;
-any new sound goes into sounds.json. The card's button, the settings list, the builder, the gallery and the tests find
-the kind from its data file. Nothing else changes. A test fixture proves it: a kind made for the tests only (a
-generator in `tests/fixtures/` added to a test kit through `Kit.use_kit`, its data files beside it) builds, loads,
-explodes, assembles and runs.
+views and sources; `data/plant3d/workshop/bench/<part>.json` (or its bench source for the tool) gives its model and
+bindings; a new sound goes into sounds.json (a synth sound made by the sound tools, a recording under 0055's rules). The card's button, the settings list, the builder, the gallery and the tests find
+the kind from its data file. Nothing else changes. A test fixture proves it: a kind made for the tests only, its
+generator in `tests/fixtures/` and its data files beside it. Today the kit's part list is fixed in code (`MAKERS` is
+a constant and `_script()` a `match` over the generator scripts; `Kit.use_kit` replaces only kit.json), so K1a adds a
+generic hook, `Kit.register(part, script, budget)`, which the tests use to add the fixture (the app's own kinds stay in
+`MAKERS`). The fixture grows with the milestones: it builds and loads in K1a, explodes and is handled in K1, is
+assembled in K2 and runs in K3.
 
 ## 10. Tests and pictures
 
@@ -438,7 +472,7 @@ In `apps/plant3d/tests/` and, for data, the Python suites:
 - the assembly is complete (every component and group placed once), every need names an existing component, and the
   guided order passes its own needs;
 - the Workshop build's outside matches the plant's: `Kit.make()` in both modes for the same parameters, before the
-  builder's 12 m cells: shared pieces identical, `"plant"` pieces matched by their `replaced_by` boxes (1 mm, same
+  builder's 12 m cells: shared pieces identical, `"plant"` pieces matched by their `replaced_by` (box within 1 mm, same
   material), `"workshop"` pieces only in the Workshop;
 - plant mode is byte for byte what it was (K1a, every part); `BUDGET` and `tests/test_kit.gd` unchanged; the
   Workshop's own budget per kind (§8) checked;
@@ -451,7 +485,7 @@ In `apps/plant3d/tests/` and, for data, the Python suites:
 exploded, cut away and running, on `full` and `lean+vis`. They go on the wiki and are linked from the PR, never
 committed.
 
-**The Note 9** for every milestone that changes what is drawn or run (K1, K3, K4b, K5b at least): the Workshop's
+**The Note 9** for every milestone that changes what is drawn or run (K1, K3, K4a, K4b, K5a, K5b at least: K4a and K5a are where the big scenes first show): the Workshop's
 rules of §8, and the plant's walk again when a shared piece changed. Each milestone appends an "as built" paragraph
 to MILESTONES.md.
 
@@ -502,15 +536,19 @@ communicator, clamp meter, multimeter, opening covers, wiring, troubleshooting, 
 breakdowns, and weather. The Workshop keeps tools and wear out of K0–K6, but its data is shaped so that those
 milestones add to it without reworking it:
 - **One source for jobs.** REALISM.md's hand actions are made by its content tool from this file's component trees,
-  fastener groups and sizes, and the assembly `needs` with their two sentences (§4.6): the Workshop's sentences are
-  the jobs' sentences. Component ids are short identifiers (§4.1) so their states fit model value names.
-- **Fasteners are groups of addressable items** (§4.4): a later version adds `tool`, `torque_nm` and `pattern` (the
-  tightening order) per group and a torque state per item, without changing the geometry or the explode function.
+  fastener groups and the assembly `needs` with their two sentences (§4.6): the Workshop's sentences are the jobs'
+  sentences. Component ids are short identifiers (§4.1) so their states fit model value names.
+- **The service file beside the Workshop's** (`data/plant3d/service/<part>.json`, REALISM.md §2.4) holds what the
+  Workshop leaves out of its scope, keyed by its ids: fasteners' sizes and the tools that fit them, torque values and
+  tightening patterns, components' damaged states. The Workshop's data file never holds these, so there is one home
+  for each fact.
+- **Fasteners are groups of addressable items** (§4.4): the service file's torque and pattern apply per group, and a
+  torque state per item, without changing the geometry or the explode function.
 - **Anchors** (§4.1) are the points where wires land and probes and clamps go (terminals, test terminals, a cable's
   core): the meters' `point` names them.
 - **Faults are bench data at a component** (§6.1): internal faults (a torn diaphragm, a worn seat, a rubbing seal) and
-  hidden causes are more faults and values in the bench model, and wear is a bench value read by bindings; the engine
-  and the Workshop's code stay as they are.
+  hidden causes are more faults and values in the bench model, and wear is a bench value read by bindings; the
+  Workshop's code stays as it is, and the bench format gains the plant's new node kinds as its version 2 (§6.1).
 - **Component states.** The Workshop's handling state (home, off, a cover open, a fastener group in or out) is UI
   state now; the hands-on milestones make the same states model values for equipment a job names, read by the
   component scene placed in the plant (§5: materials by name, the part's own frame, a scene per instance's
