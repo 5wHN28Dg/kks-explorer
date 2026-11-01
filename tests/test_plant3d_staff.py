@@ -1087,8 +1087,10 @@ class FirstTrainStaff(unittest.TestCase):
             arrive = [x[0] for x in ev if x[1] == 'move' and x[2] == who and str(x[4]).startswith(room)
                       and x[0] < done[0]]
             self.assertTrue(arrive, who)
-            self.assertTrue(at(5, 45) <= arrive[-1] < at(6, 0), (who, arrive[-1]))
-            self.assertLessEqual(done[0] - arrive[-1], 15 * 100 + 60, who)     # met at once: 15 minutes, and the say
+            self.assertTrue(at(5, 30) <= arrive[-1] < at(6, 0), (who, arrive[-1]))     # (by the 05:02 bus since S4)
+            # met at once: 15 minutes and the say, and since S4 up to 5 minutes more for the outgoing one (placed on their
+            # round at 05:00) to come back: the bus brings the incoming one before 05:50
+            self.assertLessEqual(done[0] - arrive[-1], 20 * 100 + 60, who)
         # the evening's too, in the fork that runs past 18:00
         f = next(f for f in self.day['forks'] if f['id'] == 'backwash_again')
         for tid in ('handover_take_wtp', 'handover_take_lab'):
