@@ -277,9 +277,71 @@ the laptop and the Windows VM. Its measurements are in MULTIPLAYER.md §14.
 
 - **If A1 measures fewer than 4 animated (skinned) people on the Note 9** within the frame rules: stop and ask before
   going on.
-- **If the APK passes 250 MB** (W1, A1, C1 or later; 150 MB until the user raised it on 2026-11-01): stop and ask
-  before going on (packs on demand, 0054 §6, would need a network permission). The desktop packages (MSIX, Flatpak) may grow to about 300 MB (the user,
+- **If the APK passes 250 MB** (raised from 150 MB by the user, 2026-11-01; W1, A1, C1 or later): stop and ask before going on (packs on demand, 0054 §6,
+  would need a network permission). The desktop packages (MSIX, Flatpak) may grow to about 300 MB (the user,
   2026-10-23); stop and ask if one passes that. Compress wherever it costs nothing. `tools/plant_release.py` refuses
   a package over its budget.
 - Decided already: animations from KayKit (CC0) first; CMU's motion capture allowed if they look too stiff, its
   notice in the About screen (0063). The camp as SITE.md describes it; planting by SITE.md §4.
+
+## Realism (the user, 2026-11-01; docs/plant3d/REALISM.md, decision 0073)
+
+The user chose to add all of: hands-on work and tools, ageing and breakdowns, weather, documents and discussions, work
+management, HSE in depth, electrical and mechanical crafts with condition monitoring, and engineering and compliance.
+The Workshop (WORKSHOP.md, K0–K6, decision 0072) is built first; realism's designs run in parallel with it and its
+builds follow. Every milestone below is shippable and measured as the rules at the top of this file say; the
+programme's own budgets are REALISM.md §11.
+
+| # | Milestone | Size | Needs | Ships |
+|---|---|---|---|---|
+| RL0 | **The plan:** REALISM.md, decision 0073, these rows, CAPABILITIES.md | S | — | the plan |
+| RE1 | **Realism engine base** (REALISM.md §2.1, §2.7–§2.9): the world seed, streams by id, clock values and time bases, the step order's new places, the digest's new parts, `plant3d-realism.json` with its first items, the byte check of the v1 and v2 vectors; the model step measured on the Note 9 on a synthetic model of the planned size (§11's 600 values) | S | S4a | the base every realism engine piece builds on; nothing new drawn |
+| HW1 | **Hands-on engine** (REALISM.md §2.3–§2.7): `tools.json` and carried tools, `hands`, `meters` and `read via`, HART ops, hidden causes and `cures`, NPC slips, in the reference and the GDScript engine bit for bit, with vectors; the step's cost | M | RE1, K3 | jobs can be written and checked; nothing new drawn |
+| HW2 | **The transmitter in the field:** the work view (§3.3), the builder's unmerged equipment with jobs, the tool tray, the multimeter, clamp meter and HART communicator screens; the condenser pressure transmitters' jobs (open up, connect, read, reconfigure, replace, close up, loop check) generated from the Workshop's tree; the Note 9 walk with `job=` | M | HW1 | an I&C technician's transmitter job, step by step with tools |
+| HW3 | **Hidden causes:** the transmitter's five causes and the tests that tell them apart, the debrief's diagnosis tab, the failed part opened in the Workshop (§3.5) | M | HW2, DC2 | troubleshooting where the cause must be found |
+| HW4 | **Commissioning and decommissioning** (§3.4): works of kind `commission`, loop checks, stroke tests, a motor's first run, `in_service` states, decommissioning with the drawing's revision | M | HW3, HW5, EC2, DC1 | a new instrument and a motor brought into service; equipment taken out |
+| HW5 | **More kinds in the field:** the control valve and positioner, a horizontal pump, a motor, from the Workshop's trees (K6) | L | HW2, K6 | hands-on jobs on valves, pumps and motors |
+| HW6 | **Ordering the work:** supervisors and engineers give jobs to NPC technicians, NPCs' hand actions drawn, hold points checked by the trainee | M | HW5 | do it yourself or order it |
+| AG1 | **Wear engine** (§2.2, §4.2): `draw` and `wear` nodes, `renews`, wear across jumps, `age_rate`, their vectors | S | RE1 | ageing can be written |
+| AG2 | **The first train ages:** wear items on pumps, fans, valves, transmitters, filters, the condenser, the GT compressor; early signs bound (sound, heat, trends, shake); seeded failures; the scenarios' ages; the Note 9 walk | L | AG1 | equipment that wears and fails on its own, with signs to find |
+| AG3 | **Condition monitoring** (§9.3): the vibration data collector and spectrum, the thermal camera (the Workshop's heat view), oil samples and lab results | M | AG2, HW2, K4b | vibration, thermography and oil analysis rounds |
+| WX1 | **Weather engine** (§5.1): `weather.json`, step 1w, the driven `ext` values, seasons by `year_day`, scripted and fixed weather, the instructor's input, vectors | S | RE1 | weather that the model and every player share |
+| WX2 | **Weather in the model** (§5.2): the GT's ambient tables, inlet filters and compressor fouling, the cooling tower, water ingress causes, frozen impulse lines, lightning; filter change and compressor wash procedures | M | WX1, AG2 | weather that changes output, alarms and faults |
+| WX3 | **Weather seen and heard** (§5.4): sky, fog, particles, wet and dusty surfaces, sounds; pipelines counted; the Note 9 walk with `weather=sandstorm` and `weather=rain` | M | WX1 | weather to see and hear |
+| WX4 | **Weather and people** (§5.3): stopped outdoor work, slippery stairs and `pace`, `ppe_when`, visibility and driving; the heat rule comes with HS3 | M | WX1, HS1 | the staff work in the weather |
+| DC1 | **Generic P&IDs** (§6.1): the generator, `walkdown-plant-drawing`, the viewer with hot spots, revisions | M | — | the first train's P&IDs in the app |
+| DC2 | **Equipment manuals** (§6.2): the format, the transmitter's, the control valve's and a pump's manuals with figures from the Workshop | M | K3, DC1 | manuals read from the card and the job |
+| DC3 | **Discussions** (§6.3): the format, the `discuss` step in both engines with vectors, the first five discussions | M | DC2, S4b, AG2 | two engineers who differ talk it through, the trainee takes part |
+| WM1 | **Work orders and job history** (§7.1): `wo` states and inputs, failure codes, generated history, the work order panel | M | HW1, S4b | work orders from notification to closure |
+| WM2 | **Stores and spares** (§7.2): the catalogue, stock, issue and order inputs, deliveries, look-alike parts checked at fitting; the storekeeper's tasks; jumps to a date | M | WM1, DC2 | the wrong part and waiting for a delivery |
+| WM3 | **Handover and logbooks** (§7.3): `log` inputs, NPC entries, the handover sheet and its check | M | WM1 | shift handover that can miss something |
+| WM4 | **Outage planning** (§7.4): the plan tool, critical path and conflicts, `plan` slots, the outage run over days | L | WM2, HW5, MC2, HS2, AG2 | a major outage planned and run |
+| HS1 | **JSA and toolbox talks** (§8.1): the hazard library, the `jsa` input and the issue refusal, toolbox talks with content | M | HW1, S4b | every job starts with its JSA and toolbox talk |
+| HS2 | **Confined space, hot work, height** (§8.2): continuous gas monitoring, entry log, standby person, fire watch, scaffold tags | M | HS1 | the three high-risk permits in depth |
+| HS3 | **Reports, drills and heat** (§8.3, §8.4): report input, incident investigation, emergencies and muster headcounts, the heat rule in the staff step | M | HS1, WX1 | near-miss reports, drills, heat stress |
+| EC1 | **Switching and racking** (§9.1): the MV switchgear's positions and interlocks, `switch_effects`, switching programmes, prove dead, arc-flash zones | M | HW2 | the electrical authorised person's switching |
+| EC2 | **Electrical tests** (§9.1): megger and PI, relay secondary injection, battery and UPS checks | M | EC1, AG2 | an electrician's test day |
+| MC1 | **Alignment and balancing** (§9.2) | M | HW5, AG3 | laser alignment and balancing of a pump set |
+| MC2 | **Bearings, seals, lubrication, packing** (§9.2) | M | HW5, AG2 | the mechanical technician's jobs |
+| EN1 | **Root-cause analysis** (§10.1): the RCA tool over the run's evidence, checked against the hidden cause | M | HW3, DC3 | an RCA after a trip |
+| EN2 | **Management of change** (§10.2): change objects, `approve_change`, setpoints behind a change, drawing revisions | M | DC1, HW4 | a change from request to the revised drawing |
+| EN3 | **Alarm management** (§10.3): alarm KPIs, bad actors, `priority_of`, rationalisation through changes | S | EN2 | alarm rationalisation with its effect on the next run |
+| EN4 | **Emissions and cycle chemistry** (§10.4, §10.5): NOx/CO/O₂ and the CEMS, averages and reports; the sample panel, lab analyses, action levels, dosing, a condenser tube leak | M | HW2, WM3 | emissions reports and the chemist's cycle chemistry |
+
+The K rows (the Workshop) come with WORKSHOP.md's own plan (K0), written in parallel; the K numbers here follow the
+user's Workshop spec.
+
+**Order.** RL0 now. After the Workshop: the engine foundations RE1, then HW1, AG1 and WX1 (no drawing; each with its
+vectors); then the tracks, each adding one kind of load measured alone on the Note 9 before the next: HW2 (the work
+view), WX3 (weather drawn), DC1 (documents). Then, as dependencies allow and memory and the one Note 9 permit, in
+parallel: hands-on HW3–HW6, ageing AG2–AG3, weather WX2 and WX4, documents DC2–DC3, work management WM1–WM3, HSE
+HS1–HS3, crafts EC1–EC2 and MC1–MC2, engineering EN1–EN4. WM4, the outage, comes last.
+
+**When to stop and ask the user (realism):** the model step passes 2.1 ms on the Note 9 with realism content (fast-
+forward below 12×); a public source can't be found for a procedure, failure mode or limit (don't invent it and
+present it as real); an engine milestone would alter `plant3d-v1.json` or `plant3d-v2.json`, or a content milestone an input, event or
+earlier value of their runs or any synthetic item (REALISM.md §2); the APK passes
+250 MB; the frame rules can't be met without cutting something the trainee learns from.
+
+**Questions for the user (realism, 2026-11-01):** the decisions listed in decision 0073 ("Open for the user"). Until
+answered, the plan uses the first option of each.
