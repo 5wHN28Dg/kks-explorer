@@ -160,8 +160,8 @@ func _move(force: bool) -> void:
 		var moving := false
 		for L in lifts:
 			var s0: int = L["slot_z"]
-			if prev.size() > s0 and prev[s0] != cur[s0]:
-				moving = true
+			if prev.size() > s0 and prev[s0] != cur[s0] and lerpf(prev[s0], cur[s0], f) != float(L["z_draw"]):
+				moving = true       # (between two steps' heights and drawn elsewhere: not when paused there)
 		if not moving:
 			return
 	_moved_at = e.step_no

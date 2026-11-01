@@ -44,6 +44,12 @@ func run(t: SceneTree) -> Array:
 		await tree.physics_frame
 	if ui.lifts.draws != d0:
 		p.append("the lift's view drew %d times in 30 frames with nothing moving" % (ui.lifts.draws - d0))
+	# running, the cab standing: once a step, not every frame
+	var s0: int = ui.clock.engine.step_no
+	d0 = ui.lifts.draws
+	await _run(ui, 1.0)
+	if ui.lifts.draws - d0 > ui.clock.engine.step_no - s0 + 1:
+		p.append("the lift's view drew %d times in %d steps with the cab standing" % [ui.lifts.draws - d0, ui.clock.engine.step_no - s0])
 	await _ride(ui)
 	await _walked_down(ui)
 	await _gateway(ui)
@@ -151,6 +157,15 @@ func _ride(ui) -> void:
 	to_top.pressed.emit()
 	# the ride: the walker stays on the cab's floor all the way up
 	var worst := [0.0]              # (a lambda captures by value: the worst kept in an array)
+	# paused mid-ride: nothing drawn again while the clock stands
+	await _run(ui, 5.0)
+	for i in 3:
+		await tree.physics_frame
+	var dr: int = ui.lifts.draws
+	for i in 30:
+		await tree.physics_frame
+	if ui.lifts.draws != dr:
+		p.append("paused mid-ride, the lift's view drew %d times in 30 frames" % (ui.lifts.draws - dr))
 	var rode := await _run(ui, 70.0, func():
 		worst[0] = maxf(worst[0], absf(ui.player.global_position.y - body.global_position.y))
 		return e.truth(LIFT + "_at2"))
