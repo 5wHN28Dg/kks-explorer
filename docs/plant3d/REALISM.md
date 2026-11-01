@@ -286,7 +286,19 @@ inputs and values, so a session needs no new message kind: the new inputs travel
 | Model step (base load, mean) | built (2,271 values) | + 600 | + 1,000 |
 |---|---|---|---|
 | Laptop (headless, `bench_realism.gd`) | 0.223 ms | 0.274 ms (+0.051) | 0.302 ms (+0.079) |
-| Note 9 (release build, `step=bench`) | NOTE9_BUILT | NOTE9_600 | NOTE9_1000 |
+| Note 9 (release build, `step=bench`) | 0.418 ms | 0.505 ms (+0.087) | 0.554 ms (+0.136) |
+
+The Note 9 (2026-11-01, a test-signed release build of this branch, battery 26.6 °C at the start; evidence in
+`~/kks-work/build/re1/` on the maintainer's laptop): two runs. Each load measures the train as built first; in the
+second run that first figure was 0.714 ms (the cold start's 0.708), against 0.418 in the first, while its 600 and
+1,000 loads matched the first run's (0.504 and 0.563 ms at base load); the first run's three figures keep the
+laptop's ratio (1.87×, 1.84×, 1.83×), so the second run's built figure is taken as the phone's scheduler (the bench
+thread on a slow core), not the model. Added cost: about 0.15 µs a value at 600 and 0.14 at 1,000, well under §11's
+"roughly 0.7 µs a value" (which was read from the app's walk with the water treatment plant, rendering and staff
+alongside, not from the model alone). So the 1,000 values of J0's question cost +0.136 ms in the model alone, within
+the 0.4 ms share; in the app the step has measured about 3× the bench's (1.36–1.45 ms in S2's walk against 0.42 here),
+and if the added cost scaled the same way it would be about +0.26 ms at 600 and +0.41 ms at 1,000, at the share's
+edge. A walk with the load in the app is not possible yet (the app runs only shipped content).
 
 ## 3. Hands-on work and tools
 

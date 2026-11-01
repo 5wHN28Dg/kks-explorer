@@ -1752,7 +1752,7 @@ class Engine:
             from ref.plant3d_staff import start_tenths
             clock = b.plant['clock']
             self.world = {'seed': world_seed(sc), 'year_day': sc['world'].get('year_day', 1),
-                          'S': start_tenths(sc.get('start', clock['start'])), 'ds': clock['day_scale']}
+                          'S': start_tenths(sc.get('start', clock['start']))}
             names = names + list(NAMES)
         # format 2 (§15): permits and isolations
         self.v2 = b.version == 2

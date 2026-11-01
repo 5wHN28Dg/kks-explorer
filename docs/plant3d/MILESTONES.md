@@ -326,7 +326,7 @@ programme's own budgets are REALISM.md §11.
 | # | Milestone | Size | Needs | Ships |
 |---|---|---|---|---|
 | RL0 | **The plan:** REALISM.md, decision 0073, these rows, CAPABILITIES.md | S | — | the plan |
-| RE1 | **Realism engine base** (REALISM.md §2.1, §2.7–§2.9): the world seed, streams by id, clock values and time bases, the step order's new places, the digest's new parts, `plant3d-realism.json` with its first items, the byte check of the v1 and v2 vectors; the model step measured on the Note 9 on a synthetic model of the planned size (§11's 600 values, and 1,000 for the question below) | S | S4a | the base every realism engine piece builds on; nothing new drawn |
+| RE1 | **Realism engine base** (REALISM.md §2.1, §2.7–§2.9): the world seed, streams by id, clock values and time bases, the step order's new places, the digest's new parts, `plant3d-realism.json` with its first items, the byte check of the v1 and v2 vectors; the model step measured on the Note 9 on a synthetic model of the planned size (§11's 600 values, and 1,000 for the question below) (**built 2026-11-01**, REALISM.md §2.10: the Note 9's model step 0.418 ms as built, +0.087 ms with 600 values, +0.136 ms with 1,000) | S | S4a | the base every realism engine piece builds on; nothing new drawn |
 | HW1 | **Hands-on engine** (REALISM.md §2.3–§2.7): `tools.json` and carried tools, `hands`, `meters` and `read via`, HART ops, hidden causes and `cures`, NPC slips, in the reference and the GDScript engine bit for bit, with vectors; the step's cost | M | RE1, K3 | jobs can be written and checked; nothing new drawn |
 | HW2 | **The transmitter in the field:** the work view (§3.3), the builder's unmerged equipment with jobs, the tool tray, the multimeter, clamp meter and HART communicator screens; the condenser pressure transmitters' jobs (open up, connect, read, reconfigure, replace, close up, loop check) generated from the Workshop's tree; the Note 9 walk with `job=` | M | HW1 | an I&C technician's transmitter job, step by step with tools |
 | HW3 | **Hidden causes:** the transmitter's five causes and the tests that tell them apart, the debrief's diagnosis tab, the failed part opened in the Workshop (§3.5) | M | HW2, DC2 | troubleshooting where the cause must be found |
@@ -433,7 +433,9 @@ plant app only; NPC speech text only), and every other part of the job added (J1
 **Question for the user (realism):** the model step's share with the new plant systems of J1–J4 (fuel gas and
 distillate, emergency diesel, instrument air, fire water and CO₂, switchyard, excitation: an estimated 300–400 values
 more than §11's 600, past the 0.4 ms share at about 0.7 µs a value): widen the share (the step still ≤ 2.1 ms),
-model them more coarsely, or load them only in scenarios that use them (REALISM.md J0, decision 0073). RE1 measures
-the step at 600 and 1,000 added values. Until answered, the milestones that add these systems (OP4, OP5, OP6, IC4,
+model them more coarsely, or load them only in scenarios that use them (REALISM.md J0, decision 0073). RE1 measured
+the step at 600 and 1,000 added values (REALISM.md §2.10): +0.087 and +0.136 ms in the model alone on the Note 9,
+within the share; scaled as the app's walk has measured the step against the bench (about 3×), about +0.26 and
++0.41 ms. Until answered, the milestones that add these systems (OP4, OP5, OP6, IC4,
 EC3, EC6) wait for the answer: §11's 600 values are already shared out and none of its parts covers them; every
 other milestone fits within §11 as it stands.

@@ -20,6 +20,8 @@ on:
       - 'ref/vectors/plant3d-realism.json'
       - 'ref/vectors/v2-json.json'
       - 'tests/test_plant3d_sim.py'
+      - 'apps/plant3d/app/step_bench.gd'
+      - 'tools/plant3d/realism_synth.py'
       - 'tools/plant3d/bench/fetch_godot.sh'
       - '.github/workflows/plant3d.yml'
   push:
@@ -39,6 +41,8 @@ on:
       - 'ref/vectors/plant3d-realism.json'
       - 'ref/vectors/v2-json.json'
       - 'tests/test_plant3d_sim.py'
+      - 'apps/plant3d/app/step_bench.gd'
+      - 'tools/plant3d/realism_synth.py'
       - 'tools/plant3d/bench/fetch_godot.sh'
       - '.github/workflows/plant3d.yml'
   workflow_dispatch:

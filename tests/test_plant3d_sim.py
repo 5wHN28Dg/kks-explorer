@@ -544,6 +544,14 @@ class GdscriptRealism(unittest.TestCase):
                 self.assertEqual(got[run]['state'], states, f'{run} {extra}: the state digests')
                 self.assertEqual(names[-2:], ['world_hour', 'world_day'], run)
 
+    def test_loader_guard(self):
+        """The loader refuses a scenario without `world` when the model reads a clock value, and the step bench
+        answers a load it can't read with its ERROR line (sim/tests/check_world.gd)."""
+        r = godot('check_world.gd', os.path.join(REPO, 'ref', 'vectors', 'plant3d-realism.json'), timeout=300)
+        no_errors(self, r)
+        self.assertIn('WORLD bad=0', r.stdout, r.stdout[-4000:])
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+
     def test_step_bench(self):
         """The step bench with a synthetic realism load (app/step_bench.gd, as the phone's `step=bench` runs it):
         the train as built and with 600 values both load, run the cold start and step at base load."""

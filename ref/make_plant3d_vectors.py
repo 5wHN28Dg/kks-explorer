@@ -3990,7 +3990,7 @@ def build3():
 if __name__ == '__main__':
     bad = 0
     for out, make in ((OUT, build), (OUT2, build2), (OUT3, build3)):
-        if '--only-v2' in sys.argv and out == OUT:
+        if '--only-v2' in sys.argv and out != OUT2:
             continue
         if '--only-realism' in sys.argv and out != OUT3:
             continue

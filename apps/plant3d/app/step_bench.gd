@@ -29,15 +29,20 @@ static func read_dir(path: String) -> Dictionary:
 	return files
 
 
-## files with a synthetic load (realism_synth.py's output, its text) applied as realism_synth.apply does; "" when it
-## can't be read.
+## files with a synthetic load (realism_synth.py's output, its text) applied as realism_synth.apply does; {} when it
+## can't be read (a load comes from a phone's shared folder: never trusted to be well formed).
 static func with_load(files: Dictionary, synth_text: String) -> Dictionary:
 	var r := JsonStrict.parse(synth_text.to_utf8_buffer(), 1000)
-	if not r.ok:
+	if not r.ok or typeof(r.value) != TYPE_DICTIONARY or typeof(r.value.get("area")) != TYPE_STRING \
+			or typeof(r.value.get("values")) != TYPE_ARRAY:
 		return {}
 	var out := files.duplicate()
 	var rel := "model/%s.json" % r.value["area"]
+	if not files.has(rel):
+		return {}
 	var mr := JsonStrict.parse(files[rel], 1000)
+	if not mr.ok:
+		return {}
 	var m: Dictionary = mr.value
 	m["values"] = m["values"] + r.value["values"]
 	m["version"] = 2
@@ -61,7 +66,7 @@ static func run(files: Dictionary, loads: Dictionary, base_steps: int = 6000) ->
 		var f: Dictionary = files if label == "" else with_load(files, loads[label])
 		var name: String = "built" if label == "" else label
 		if f.is_empty():
-			out.append("ERROR %s: the load is not strict JSON" % name)
+			out.append("ERROR %s: the load can't be read (strict JSON with an area of the plant and values)" % name)
 			continue
 		var m = PlantModel.from_files(f)
 		if m.error != "":

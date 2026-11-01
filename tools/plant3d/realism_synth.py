@@ -1,7 +1,7 @@
 """A synthetic realism load for the first train (docs/plant3d/REALISM.md §11, milestone RE1): N model values shaped
 like the realism content to come, appended to the last area's model file, to measure the model step before any of
-that content is written. Never shipped: the bench reads it from a file (apps/plant3d/sim/tests/bench_step.gd
---synth=PATH; on a phone the app's `step=bench`, apps/plant3d/app/step_bench.gd, from its files folder).
+that content is written. Never shipped: the bench reads it from a file (apps/plant3d/sim/tests/bench_realism.gd
+--synth=LABEL:PATH; on a phone the app's `step=bench`, apps/plant3d/app/step_bench.gd, from its files folder).
 
     python3 tools/plant3d/realism_synth.py N [OUT]      (N: 600 is §11's plan; 1,000 with the new plant systems, J0)
 

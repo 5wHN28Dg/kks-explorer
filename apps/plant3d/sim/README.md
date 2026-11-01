@@ -10,6 +10,7 @@ The plant's behaviour model (docs/PLANT3D.md §7, and format 2's permits, isolat
 | `plant_model.gd` | loads `data/plant3d` (or a `{path: text}` set of files): the joined model, scenarios, procedures and the plant's codes |
 | `engine.gd` | the 0.1 s step of §7.10: values, operations and permissives, interlocks, machines, trips with first-out, alarms with suppression and shelving, faults; permits to work, locks and the writes they skip (§15, free mode); snapshots and fast-forward |
 | `staff.gd` | staff.json (§16) as the engine runs it, and the staff step (step 9, §17): duties, routines, queues, routes by the `next` table, reservations, reactions, the task steps, the trainee's person, jumps, the per-person random streams. It holds only what is built from the content; the run's staff state is the engine's `st_`/`sp_` variables, so saved runs and clones keep it |
+| `world.gd` | the realism base (docs/plant3d/REALISM.md §2.1, §2.10): the world's seed, its random streams by purpose and item, the clock values `world_hour` and `world_day`; bit for bit with `ref/plant3d_world.py` on `ref/vectors/plant3d-realism.json` (`run_vectors.gd --only=realism`; `tests/check_world.gd` the loader's guard; `tests/bench_realism.gd` the step with synthetic realism loads) |
 | `procedure.gd` | a procedure run in the model alone, as a trainee who does each step |
 | `links.gd` | `walkdown-plant://` links (§6) |
 

@@ -106,6 +106,7 @@ class RealismVectors(unittest.TestCase):
             with self.assertRaises(P.FormatError, msg=r['why']) as cm:
                 P.check_files(F)
             self.assertEqual(cm.exception.code, r['code'], f'{r["why"]}: {cm.exception}')
+            self.assertIn('world', str(cm.exception), f'{r["why"]}: caught by another rule? {cm.exception}')
 
     def test_runs_replay(self):
         for r in self.st['runs']:
