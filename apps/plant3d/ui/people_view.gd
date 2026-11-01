@@ -69,6 +69,7 @@ var _spd := PackedFloat32Array()    # per person: the speed they were last drawn
 var _aboard := {}                   # person id -> [engine's lift, n]
 var _rode := PackedByteArray()      # per person: drawn in a cab last frame
 var _roff := PackedVector3Array()   # per person: where they are drawn less where they are going, stepping in or out
+var _spot := PackedInt32Array()     # per person: their spot in the cab (its index) when last drawn there
 var _ride_yaw := {}                 # person -> the gate's heading while aboard
 const RIDE_STEP := 1.2
 
@@ -248,7 +249,7 @@ func drive(delta: float) -> void:
 			var spot: Vector3 = ui.lifts.rider_spot(ab[0], ab[1])
 			if spot == Vector3.INF:
 				continue
-			row = apart.fixed(pi, _stepping(pi, spot, true, dt))
+			row = apart.fixed(pi, _stepping(pi, spot, true, dt, ab[1]))
 			_ride_yaw[pi] = ui.lifts.gate_yaw(ab[0])
 		elif not leg.is_empty():
 			var steps: float = maxf(1.0, float(leg[3] - leg[2]))
@@ -415,11 +416,13 @@ func _fill_aboard(e) -> void:
 
 ## Where a person stepping into a cab (`into`) or out of one is drawn: their offset from `to` (set from where they were
 ## drawn when they stepped) shrinks at RIDE_STEP m/s of plant time.
-func _stepping(pi: int, to: Vector3, into: bool, dt: float) -> Vector3:
+func _stepping(pi: int, to: Vector3, into: bool, dt: float, spot := -1) -> Vector3:
 	var was_in: bool = _rode[pi] == 1
-	if was_in != into:
+	# (moved up a spot when someone ahead of them got off: they step over to it, as in and out)
+	if was_in != into or (into and spot != _spot[pi]):
 		_roff[pi] = (_was[pi] - to) if _was_ok[pi] == 1 and _was[pi].distance_to(to) < 3.0 else Vector3.ZERO
 		_rode[pi] = 1 if into else 0
+		_spot[pi] = spot
 	_roff[pi] = _roff[pi].move_toward(Vector3.ZERO, RIDE_STEP * dt)
 	return to + _roff[pi]
 
@@ -444,6 +447,8 @@ func _places(sm) -> void:
 	_rode.fill(0)
 	_roff.resize(sm.people.size())
 	_roff.fill(Vector3.ZERO)
+	_spot.resize(sm.people.size())
+	_spot.fill(-1)
 	_spd.fill(0.0)
 	_seated.resize(sm.places.size())
 	for i in sm.places.size():

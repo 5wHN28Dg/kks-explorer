@@ -2756,7 +2756,8 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
 - **The people view** (`ui/people_view.gd`): a person in a cab (the engine's riders) is drawn at their spot in it (six,
   in boarding order, `app/lift.gd rider_spot`), on the cab's floor as drawn now, facing its gate, given to the keeping
   apart as fixed (not moved out of the cab, the others keep clear); stepping in or out they are drawn walking between
-  the landing's place and their spot (their offset shrinks at 1.2 m/s of plant time); on the map at the lift.
+  the landing's place and their spot (their offset shrinks at 1.2 m/s of plant time), and moved up a spot when
+  someone who boarded before them gets off they step over to it the same way; on the map at the lift.
 - `builder/staff_paths.gd` draws no line for a lift way; `tests/test_staff_ways.gd` leaves them out (their stairs are
   walking ways, checked as any).
 - **Tests:** `tests/test_lift_riders.gd` (an NPC riding in the day shift drawn in the cab at their spot facing the

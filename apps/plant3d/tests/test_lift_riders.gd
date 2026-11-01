@@ -2,7 +2,8 @@
 ## shift run until an NPC waits for the cab at grade; from there frame by frame at normal speed: they walk from the
 ## landing into the cab without a jump (within two seconds at their spot, on its floor, facing the gate), they are on
 ## the map at the lift while aboard, they stay in the cab while it travels; and from the step they get off (their
-## ride's "off" event) they walk out without a jump, their step-out done within three seconds.
+## ride's "off" event) they walk out without a jump, their step-out done within three seconds. A rider moved up a
+## spot steps over to it.
 extends RefCounted
 
 const App = preload("res://tests/ui_app.gd")
@@ -123,5 +124,17 @@ func run(tree: SceneTree) -> Array:
 			p.append("%s jumped %.2f m in a frame stepping out of the cab" % [who, worst_out])
 		if not out_done:
 			p.append("%s is still stepping out three seconds after getting off" % who)
+	# a rider moved up a spot (someone boarded before them got off): drawn stepping over to it, not jumping there
+	var q: int = (pi + 1) % e._sm.people.size()
+	var a0: Vector3 = ui.lifts.rider_spot(0, 1)
+	var a1: Vector3 = ui.lifts.rider_spot(0, 0)
+	pv._was[q] = a0
+	pv._was_ok[q] = 1
+	pv._rode[q] = 1
+	pv._spot[q] = 1
+	pv._roff[q] = Vector3.ZERO
+	var first: Vector3 = pv._stepping(q, a1, true, 1.0 / 60.0, 0)
+	if first.distance_to(a0) > JUMP:
+		p.append("a rider moved up a spot is drawn %.2f m away in one frame" % first.distance_to(a0))
 	main.free()
 	return p
