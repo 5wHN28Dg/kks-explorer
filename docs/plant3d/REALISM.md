@@ -162,6 +162,13 @@ digests.
   wear out of its scope) in a file of its own per part kind, `data/plant3d/service/<kind>.json`, beside the Workshop's
   data, and generates the hand actions of each piece of equipment a job names, with states named `<equipment
   prefix>_<component>_<state>`. The validator refuses a hand action whose component the part kind's tree lacks.
+- **Names that fit** (with WORKSHOP.md's ids, decision 0072): a value name is an identifier of at most 32 characters
+  (PLANT3D.md §1) and a Workshop component id at most 16, so the prefix, the state and the two underscores share the
+  other 16. The rule, fixed so that no name is shortened case by case: the equipment prefix is a short alias of at
+  most 8 characters given per piece of equipment in the service file (`"alias": "cpt1"` for the first condenser
+  pressure transmitter; unique in the plant), and a state name is at most 6 characters (`off`, `open`, `loose`,
+  `torn`), so every generated name fits (8 + 1 + 16 + 1 + 6 = 32). The content tool refuses an alias or a state
+  over its length, and the validator refuses any value name over 32 characters as it does today (`bad_id`).
 - **What a hand action does to the plant** is ordinary model content: a lifted wire opens the loop, the current falls
   to 0, the control system marks the value bad and alarms. Cause and effect stay in the model.
 - **Limits:** at most 2,000 hand actions. Values stay within §1's 4,000 a model; the cost per value (§11) is the real
