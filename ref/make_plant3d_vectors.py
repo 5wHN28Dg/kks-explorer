@@ -3666,6 +3666,7 @@ def camp_rejects():
     def veh(f):
         return _st(lambda st: f(st['vehicles'][0]))
     return [
+        ('a home that is not a room\'s name', 'bad_ref', _st(lambda st: st['people'][1].__setitem__('home', ['room1']))),
         ('two people with one home', 'bad_ref', _st(lambda st: st['people'][1].__setitem__('home', 'room1'))),
         ('a person without a home among people with homes', 'bad_ref', _st(lambda st: st['people'][2].pop('home'))),
         ('a home that is not off site', 'bad_ref', _st(lambda st: _splace(st, 'bed_1').pop('off_site'))),
@@ -3712,6 +3713,15 @@ def camp_rejects():
             'ride', {'from': 'camp_stop', 'to': 'camp_stop'}))),
         ('a ride no run makes', 'bad_ref', _st(lambda st: [v.__setitem__('runs', v['runs'][:1])
                                                            for v in st['vehicles']])),
+        ('drive ways in a file without vehicles', 'bad_ref', _st(lambda st: (st.__setitem__('vehicles', []),
+                                                                             [t['steps'].clear() or t['steps'].append(
+                                                                                 {'work': 1}) for t in st['tasks']
+                                                                              if t['id'] in ('commute_in',
+                                                                                             'commute_out')]))),
+        ('a run whose drive to its first stop takes over 12 clock hours', 'bad_number',
+         _st(lambda st: next(w for w in st['ways'] if w[:2] == ['depot', 'camp_stop']).__setitem__(2, 6000))),
+        ('an off-duty task held for the next duty', 'bad_ref',
+         _st(lambda st: _stask(st, 'meal').__setitem__('resume', 'next_duty'))),
         ('a driver absent', 'bad_ref', lambda F: F['scenarios/s1.json']['staff'].__setitem__('absent', ['drv1'])),
     ]
 

@@ -237,6 +237,11 @@ class Staff:
         self.check_rosters(d['rosters'])
         self.check_people(d['people'])
         self.check_vehicles(d.get('vehicles', []))
+        # (the drive network matters only with vehicles: a file without them keeps S1's rules, §21)
+        need(self.vehicles or not any(x[3] == 'drive' for x in d['ways']), 'bad_ref',
+             f'{w}.ways: drive ways only with vehicles (§21.4)')
+        need(not self.vehicles or len(self.drive_places) <= MAX['drive_places'], 'limit',
+             f'{w}: over {MAX["drive_places"]} stops and depots')
         need(self.homes or not any('off' in r for r in self.role_list), 'bad_ref',
              f'{w}.roles: an off-duty routine (`off`) only in a file with homes (§21.2)')
         need(self.homes or not any(self.off_site), 'bad_ref', f'{w}.places: off_site only in a file with homes (§21.1)')
@@ -408,8 +413,6 @@ class Staff:
         self.stub = {}                              # non-point place -> (its point, steps)
         self.lift_way = {}                          # (a, b) -> the staff lift index of a lift way (§20.4)
         walking = [[] for _ in self.points]         # adj without the lift ways: the stairs routes' network
-        need(len(self.drive_places) <= MAX['drive_places'], 'limit', f'{w}: over {MAX["drive_places"]} stops and '
-                                                                     f'depots')
         self.drive_adj = [[] for _ in self.drive_places]    # drive number -> [(drive number, steps)] (§21.4)
         for i, x in enumerate(ways):
             wi = f'{w}[{i}]'
@@ -589,8 +592,9 @@ class Staff:
             if 'home' not in p:
                 self.home.append(None)
                 continue
+            need(isinstance(p['home'], str), 'bad_ref', f'{wp}.home: a room')
             beds = [j for j in self.rooms.get(p['home'], []) if self.places[j]['kind'] == 'bed']
-            need(isinstance(p['home'], str) and beds, 'bad_ref', f'{wp}.home: no room {p["home"]!r} with a bed')
+            need(beds, 'bad_ref', f'{wp}.home: no room {p["home"]!r} with a bed')
             need(beds[0] not in self.home, 'bad_ref', f'{wp}.home: room {p["home"]} is another person\'s home')
             self.home.append(beds[0])
             need(self.off_site[beds[0]], 'bad_ref', f'{wp}.home: its bed is not off site (§21.1: off duty, people go '
@@ -645,6 +649,8 @@ class Staff:
                     need(len(set(days)) == len(days), 'dup_id', f'{wr}.days')
                 # its leaving time: `at` less the drive from home to its first stop, in clock minutes rounded up
                 lead = -(-self.drive_steps(home, stops[0]) // self.tpm)
+                need(lead <= 720, 'bad_number', f'{wr}: its drive from {v["home"]} to its first stop takes over 12 clock '
+                                                f'hours (§21.4)')
                 runs.append({'at': at, 'stops': stops, 'dwell': r['dwell'], 'days': days, 'lead': lead})
             self.vehicle_ix[v['id']] = i
             self.vehicles.append({'id': v['id'], 'kind': v['kind'], 'seats': v['seats'], 'driver': v['driver'],
@@ -735,9 +741,11 @@ class Staff:
                 need(r['off'] not in duty, 'bad_ref', f'staff.json: role {rid}.off: {r["off"]} is a duty routine')
                 self.off_routines.add(r['off'])
         for rid, r in self.routines.items():
-            for k, (at, every, until, _, _) in enumerate(r['slots']):
+            for k, (at, every, until, task, _) in enumerate(r['slots']):
                 ws = f'staff.json.routines.{rid}.slots[{k}]'
                 if rid in self.off_routines:
+                    need(task not in self.tasks or 'resume' not in self.tasks[task], 'bad_ref',
+                         f'{ws}: an off-duty task is no job held for the next duty (`resume`, §21.2)')
                     need(every is None, 'bad_ref', f'{ws}: an off-duty slot is not repeated (§21.2)')
                     need(at[0] in ('prev', 'next', 'clock'), 'bad_clock', f'{ws}.at: prev±H:MM, next±H:MM or HH:MM in '
                                                                            f'an off-duty routine')
@@ -1371,7 +1379,9 @@ class StaffRun:
                 ts = self.slot_times(p, du)
                 for t, k, n, task in ts:
                     p.slots.append((t, du[0], k, n, task, du))
-                p.spans.append((min([du[0]] + [x[0] for x in ts]), max([du[1]] + [x[0] for x in ts]), du[0], du[1]))
+                if p.home is not None:      # (spans are only read with homes, §21.2)
+                    p.spans.append((min([du[0]] + [x[0] for x in ts]), max([du[1]] + [x[0] for x in ts]), du[0],
+                                    du[1]))
         if p.offday is not None:
             for d in range(p.offday + 1, upto):
                 self.off_slots(p, d)
@@ -1814,12 +1824,7 @@ class StaffRun:
                     p.on, p.duty = True, p.duties.pop(0)
                     e.ev('duty', p.id, 'on')
                     if p.home is not None:      # the off-duty slots' tasks end: the duty comes first (§21.2)
-                        if p.cur is not None and p.cur.get('offr'):
-                            self.finish(p, 'skipped')
-                        for q in [q for q in p.queue if q.get('offr')]:
-                            e.ev('task', p.id, q['task'], 'skipped')
-                            self.release(q)
-                        p.queue = [q for q in p.queue if not q.get('offr')]
+                        self.end_off(p)
                     held, p.held = p.held, []   # the jobs held overnight come back (§17.10)
                     for h in held:
                         p.queue.append(h)
@@ -1830,6 +1835,8 @@ class StaffRun:
                 continue
             while p.slots and p.slots[0][0] <= c:
                 s = p.slots.pop(0)
+                if p.home is not None and s[5] is not None:
+                    self.end_off(p)             # (a duty's slot: its span has begun, §21.2)
                 self.give(p, s[4], st.tasks[s[4]].get('priority', 3), None, None, None, None,
                           off=p.home is not None and s[5] is None)
         # 2. reactions
@@ -1864,10 +1871,10 @@ class StaffRun:
         """The zones a person is in, in file order (§16.2): their place's; on a way, those both its ends list; the
         trainee's from their zone inputs; none off site."""
         st = self.st
+        if p.aboard is not None:        # aboard a vehicle: in no zone, a player too (§21.4)
+            return []
         if self.slot_of(p.i) is not None:
             return sorted(p.zin)
-        if p.aboard is not None:        # aboard a vehicle: in no zone (§21.4)
-            return []
         if p.leg is not None:
             b = st.place_zones[p.leg[1]]
             return [k for k in st.place_zones[p.leg[0]] if k in b]
@@ -2631,6 +2638,16 @@ class StaffRun:
         if not p.duties:
             return c
         return p.duties[0][0] - (int(m.group(1)) * 60 + int(m.group(2))) * MINUTE
+
+    def end_off(self, p):
+        """The tasks off-duty slots made end `skipped`, the current one first, then the queue's in order (§21.2)."""
+        e = self.e
+        if p.cur is not None and p.cur.get('offr'):
+            self.finish(p, 'skipped')
+        for q in [q for q in p.queue if q.get('offr')]:
+            e.ev('task', p.id, q['task'], 'skipped')
+            self.release(q)
+        p.queue = [q for q in p.queue if not q.get('offr')]
 
     def came(self, p):
         """An NPC with a home off duty who comes to an off-site place leaves their PPE behind (§21.1)."""

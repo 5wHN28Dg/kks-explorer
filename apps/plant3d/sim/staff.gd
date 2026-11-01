@@ -226,12 +226,13 @@ func _build(m, doc: Dictionary) -> void:
 			for x in r:
 				pl.append(points[x])
 			stairs[u * np + v] = pl
-	for i in drive_places.size():   # a vehicle's routes, by §16.2's rule (§21.4)
-		var row := PackedInt32Array()
-		for j in drive_places.size():
-			var r := route(drive_adj, i, j) if i != j else PackedInt32Array()
-			row.append(r[1] if r.size() > 1 else -1)
-		drive_next.append(row)
+	if not doc.get("vehicles", []).is_empty():
+		for i in drive_places.size():   # a vehicle's routes, by §16.2's rule (§21.4): one search per place
+			var paths := routes_from(drive_adj, i)
+			var row := PackedInt32Array()
+			for j in drive_places.size():
+				row.append(paths[j][1] if i != j and paths[j] != null and paths[j].size() > 1 else -1)
+			drive_next.append(row)
 	origin = pix.get(doc["origin"], -1)
 	gate = pix.get(doc["gate"], -1)
 	for r in doc["roles"]:
@@ -345,6 +346,39 @@ static func route(adj: Array, src: int, dst: int) -> PackedInt32Array:
 				cost[v] = c
 				path[v] = cand
 	return PackedInt32Array()
+
+
+## The quickest routes from src to every node by §16.2's rule (as route()'s, all at once): per node its points from
+## src, or null when it is not reached.
+static func routes_from(adj: Array, src: int) -> Array:
+	var n := adj.size()
+	var cost := PackedInt64Array()
+	cost.resize(n)
+	var path: Array = []
+	path.resize(n)
+	var done := PackedByteArray()
+	done.resize(n)
+	path[src] = PackedInt32Array([src])
+	while true:
+		var u := -1
+		for i in n:
+			if not done[i] and path[i] != null and (u == -1 or cost[i] < cost[u]
+					or (cost[i] == cost[u] and _path_less(path[i], path[u]))):
+				u = i
+		if u == -1:
+			return path
+		done[u] = 1
+		for x in adj[u]:
+			var v: int = x[0]
+			if done[v]:
+				continue
+			var c: int = cost[u] + x[1]
+			var cand: PackedInt32Array = path[u].duplicate()
+			cand.append(v)
+			if path[v] == null or c < cost[v] or (c == cost[v] and _path_less(cand, path[v])):
+				cost[v] = c
+				path[v] = cand
+	return path
 
 
 static func _path_less(a: PackedInt32Array, b: PackedInt32Array) -> bool:
@@ -554,7 +588,8 @@ func plan(e, pi: int, upto: int) -> void:
 		for x in mine:
 			lo = mini(lo, x[0])
 			hi = maxi(hi, x[0])
-		e.sp_spans[pi].append([lo, hi, du[0], du[1]])     # its span (§21.2)
+		if home[pi] != -1:          # its span (§21.2; only read with homes)
+			e.sp_spans[pi].append([lo, hi, du[0], du[1]])
 		slots.append_array(mine)
 	if home[pi] != -1:
 		for day in range(e.sp_offday[pi] + 1, upto):
@@ -1195,17 +1230,7 @@ func _phase1(e, c: int, day: int) -> void:
 				e.sp_wake[pi] = 0
 				e._ev(["duty", people[pi]["id"], "on"])
 				if home[pi] != -1:      # the off-duty slots' tasks end: the duty comes first (§21.2)
-					var cc = e.sp_cur[pi]
-					if cc != null and cc.get("offr", false):
-						finish(e, pi, "skipped")
-					var kq := []
-					for q in e.sp_queue[pi]:
-						if q.get("offr", false):
-							e._ev(["task", people[pi]["id"], q["task"], "skipped"])
-							release(e, q)
-						else:
-							kq.append(q)
-					e.sp_queue[pi] = kq
+					end_off(e, pi)
 				var held: Array = e.sp_held[pi]  # the jobs held overnight come back (§17.10)
 				e.sp_held[pi] = []
 				for h in held:
@@ -1217,6 +1242,8 @@ func _phase1(e, c: int, day: int) -> void:
 		var sl: Array = e.sp_slots[pi]
 		while not sl.is_empty() and sl[0][0] <= c:
 			var s: Array = sl.pop_front()
+			if home[pi] != -1 and s[5] != null:
+				end_off(e, pi)              # (a duty's slot: its span has begun, §21.2)
 			give(e, pi, s[4], prio_of(s[4]), null, null, null, null, true, null, null, null,
 					home[pi] != -1 and s[5] == null)
 	var nx: int = (day + 1) * DAY            # the next day, planned when it begins, at the latest
@@ -2058,6 +2085,22 @@ static func _step_at(e, t: int) -> int:
 	return (d + e._ds - 1) / e._ds if d > 0 else 0
 
 
+## The tasks off-duty slots made end `skipped`, the current one first, then the queue's in order (§21.2).
+func end_off(e, pi: int) -> void:
+	var cc = e.sp_cur[pi]
+	if cc != null and cc.get("offr", false):
+		finish(e, pi, "skipped")
+		e.sp_wake[pi] = 0
+	var kq := []
+	for q in e.sp_queue[pi]:
+		if q.get("offr", false):
+			e._ev(["task", people[pi]["id"], q["task"], "skipped"])
+			release(e, q)
+		else:
+			kq.append(q)
+	e.sp_queue[pi] = kq
+
+
 ## An NPC with a home off duty who comes to an off-site place leaves their PPE behind (§21.1).
 func came(e, pi: int) -> void:
 	var p: int = e.sp_pos[pi]
@@ -2351,10 +2394,10 @@ func stop_step(e, pi: int, cur: Dictionary) -> String:
 ## A person's zones as a bit mask (§16.2): their place's; on a way, those both its ends list; the trainee's from
 ## their zone inputs; none off site.
 func zones_of(e, pi: int) -> int:
+	if e.sp_aboard[pi] != -1:           # aboard a vehicle: in no zone, a player too (§21.4)
+		return 0
 	if e.st_players.has(pi):
 		return e.sp_zin[pi]
-	if e.sp_aboard[pi] != -1:           # aboard a vehicle: in no zone (§21.4)
-		return 0
 	var leg: Array = e.sp_leg[pi]
 	if not leg.is_empty():
 		return place_zm[leg[0]] & place_zm[leg[1]]
