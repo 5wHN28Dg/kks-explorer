@@ -784,8 +784,10 @@ class CampRuns(unittest.TestCase):
     def test_placement_off_duty_by_off_slots(self):
         people = self.morning['states'][0]['people']
         self.assertTrue(people['a_ccr'][0].startswith('mess_'), people['a_ccr'])   # breakfast at next-1:00
-        self.assertEqual(people['a_ccr'][1], 'breakfast')
-        self.assertEqual(people['mech1'][1], 'sleep_night')                        # sleep from next-3:00
+        self.assertEqual(people['mech1'][0], 'bed_8')                              # asleep at home from next-3:00
+        later = self.morning['states'][1]['people']                                # (the queued tasks start at step 1)
+        self.assertEqual(later['a_ccr'][1], 'breakfast')
+        self.assertEqual(later['mech1'][1], 'sleep_night')
         self.assertEqual(people['c_fo'][0] is not None, True)                       # the night crew at work
         self.assertTrue(all(w is not None for w, _, _ in people.values()), 'with homes nobody is off site')
 
@@ -808,8 +810,10 @@ class CampRuns(unittest.TestCase):
         self.assertFalse(self.ev(r, 'aboard', 'a_fo2', 'bus', 'camp_stop', 'on'))
         done = self.ev(r, 'task', 'a_fo2', 'commute_in', 'done')
         self.assertTrue(done)
+        came = [x[5] for x in r['events'] if x[1] == 'move' and x[2] == 'a_fo2' and x[4] == 'camp_stop']
         walks = [x for x in r['events'] if x[1] == 'move' and x[2] == 'a_fo2' and x[3] == 'camp_stop']
-        self.assertTrue(walks and walks[0][0] >= 400 + 300 - 100, walks)
+        self.assertTrue(came and walks, (came, walks))
+        self.assertEqual(walks[0][0] - came[0], 300, 'the walk begins 30 clock minutes after the arrival at the stop')
 
     def test_the_trainees_get_on_and_its_refusals(self):
         self.assertEqual([x[6] for x in self.ev(self.rider, 'aboard', 'a_fo1') if x[5] == 'refused'],
@@ -846,13 +850,11 @@ class CampRuns(unittest.TestCase):
         self.assertTrue([x for x in self.ev(r, 'aboard', 'drv1', 'bus', 'depot', 'off') if x[-1] == 1])
 
     def test_a_duty_ends_the_off_duty_tasks(self):
-        # crew A's people at breakfast or at home when their duty starts at 06:00: no off-duty slot's task is current
-        # in the step after it (each ended, skipped, or long done)
+        # crew A's electrician has no handover: their free time at next-0:20 runs into the duty, which ends it
         r = self.morning
-        st = next(s for s in r['states'] if s['step'] > 600)
-        for pid in ('a_ccr', 'a_sup', 'a_elec'):
-            self.assertNotIn(st['people'][pid][1], ('breakfast', 'meal', 'free_time', 'gym_time', 'room_time',
-                                                    'sleep_night', 'rest_home'), pid)
+        on = [x[0] for x in r['events'] if x[1:4] == ['duty', 'a_elec', 'on']]
+        sk = [x for x in r['events'] if x[1] == 'task' and x[2] == 'a_elec' and x[4] == 'skipped']
+        self.assertTrue(on and sk and sk[0][0] == on[0] and sk[0][3] in ('gym_time', 'room_time'), (on, sk))
 
     def test_files_without_homes_are_unchanged(self):
         # every staff run before the camp's keeps no vehicles in its snapshots
@@ -869,7 +871,8 @@ class SessionRuns(unittest.TestCase):
         with open(G.OUT2, encoding='utf-8') as f:
             cls.V = json.load(f)
         # MP1's (a lift's session run, §20.10, is LiftVectors')
-        cls.runs = [r for r in cls.V['staff']['runs'] if r.get('session') and 'lifts' not in (r['staff'] or {})]
+        cls.runs = [r for r in cls.V['staff']['runs'] if r.get('session') and 'lifts' not in (r['staff'] or {})
+                    and 'vehicles' not in (r['staff'] or {})]   # (a camp's session run, §21.4, is CampRuns')
         cls.b = P.check_files(files_of(cls.V))
 
     def ev(self, k, kind):

@@ -3611,6 +3611,8 @@ def with_camp(st):
         {'id': 'off_std', 'idle': 'rest_home', 'slots': [
             {'at': 'prev+0:20', 'task': 'meal'}, {'at': 'prev+1:00', 'task': 'free_time'},
             {'at': 'next-3:00', 'task': 'sleep_night'}, {'at': 'next-1:00', 'task': 'breakfast'},
+            {'at': 'next-0:20', 'task': 'free_time'},     # (outside the spans of duties without a handover: runs into the
+                                                          # duty, which ends it, §21.2)
             {'at': '12:30', 'task': 'meal'}, {'at': '10:00', 'task': 'free_time', 'days': ['sun']}]},
         {'id': 'drv_shift', 'idle': 'drv_idle', 'slots': [{'at': 'start+0:30', 'task': 'bus_check'}]}]
     mess = {'go': {'kind': 'seat', 'room': 'mess'}}
