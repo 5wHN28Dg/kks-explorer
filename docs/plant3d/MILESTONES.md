@@ -189,12 +189,19 @@ inputs to the engine), before S4. Its parts, one pull request each:
   controls, riding; measured on the Note 9 before and after (**built 2026-11-01**, PLANT3D.md §20.11);
 - **L3, the staff on it:** staff.json's lift and ways, the riders drawn, the day made again;
 - **L4, hoists and the crane:** their content, the procedures, the view; measured on the Note 9. **Built
-  2026-10-30** but for the Note 9's measurement (PLANT3D.md §20.5 "As built"): the roof hoist and the crane as model
+  2026-10-30, measured 2026-11-01** (PLANT3D.md §20.5 "As built"): the roof hoist and the crane as model
   content, `roof_hoist_lift` and `crane_lift`, the pendants' hold-to-run buttons, the pieces drawn between steps;
   the roof hoist adds 1,324 triangles at full detail (596 of them in 4 moving pieces, a draw call each: trolley, hook,
   chain, load; the rest in its cells' meshes, one more there), the crane 952 (904 in 5 moving pieces: bridge,
   trolley, hook, ropes, crate; its end stops in the runway's four corner cells) in place of the parked crane's 2
   meshes. They are never in view together: §20.8's 12 draw calls and 20,000 triangles hold with the lift's share.
+  On the Note 9 (a release build without the lightmap, as the baseline before it; `frames` walk, `crews=1`,
+  `probe=1`, 600 s, from a battery at 28.0 and 30.0 °C): frames median 22.4 and 29.3 ms, p95 36.5 and 37.1 ms, none
+  over 100 ms, scripts 3.16 and 3.35 ms a frame (bindings 0.35 and 0.36), VRAM 159 MB; the baseline (two runs before
+  L4): median 20.7 and 23.6 ms, p95 36.5 and 36.3 ms, scripts 3.09 and 3.19 (bindings 0.32 and 0.33), VRAM 159 MB.
+  The `hoist` walk (up HRSG 1's stair to the roof hoist's pendant, 300 s): median 19.1 ms, p95 36.6 ms, one frame of
+  128 ms that the rule excludes as the kernel's memory reclaim. All three walks saw reclaim in 1.1 to 1.7 % of their
+  samples, over the rule's 1 %, so the frame rule does not judge them (the baseline's was 0.09 %).
 
 **Multiplayer** (the user, 2026-10-26): its own milestones MP1–MP6 in docs/plant3d/MULTIPLAYER.md §13 (decisions
 0067–0069). MP1 needs S3 (the engine's staff as built); it changes the engine (several trainees), so it goes before

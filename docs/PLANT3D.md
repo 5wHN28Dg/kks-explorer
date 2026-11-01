@@ -2526,7 +2526,9 @@ under the hoist's body). The crane's part stands at grade at
   gone. The hook comes down to 0.4 m above the floor under it (with a load
   hooked on, above the highest floor under the load) and no lower (a slack-chain switch), and travel keeps it so: the
   trolley looks 0.1 m ahead, and an empty hook low over grade stops short of a higher floor's edge until it is raised.
-  The load snaps under the hook (by up to 0.3 m) the step after the latch closes.
+  The load snaps under the hook (by up to 0.3 m) the step after the latch closes. Not modelled: what stands on a floor (the crane's
+  floor table knows the operating floor, not the turbines and the generator on it), so a load set down there in free
+  play may stand inside a machine; the procedure's set-down place is clear of them.
 - **The load cell** reads the load's weight while it is hooked on and the chain taut. **Overload:** hoisting up stops
   while the cell reads over the rated load (alarm `<p>_overload`, priority 3, `WAH`, on the load cell): a heavy load
   leaves the floor by at most one step's travel (1 cm), stays resting, and can be unhooked. **Travel:** the trolley and
