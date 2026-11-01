@@ -29,6 +29,7 @@ var _at: Array = []             # per place: its position (Godot frame)
 var ways = null                 # app/staff_ways.gd: the ways' lines (null: none built, walked straight)
 var _ways_of = null             # the staff model `ways` is for
 var shown := 0                  # people drawn at the last update (tests)
+var dot_at: Array = []          # where they are on the map at the last update (tests: a headless run keeps no instances)
 var avatars                     # app/people.gd, when the build has the people
 var _yaw := {}                  # person -> the way they last faced
 var _hat := {}                  # person -> wearing the hat (checked twice a second)
@@ -171,6 +172,7 @@ func update() -> void:
 		xs.append(p)
 		cs.append(COLOURS.get(sm.people[pi]["role"], Color.GRAY))
 	shown = xs.size()
+	dot_at = xs
 	if avatars != null:
 		capsules.multimesh.instance_count = 0   # the avatars show them
 	for mi in [capsules, dots]:

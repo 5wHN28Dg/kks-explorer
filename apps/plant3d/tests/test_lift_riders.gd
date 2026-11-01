@@ -64,6 +64,8 @@ func run(tree: SceneTree) -> Array:
 	var travelled := false
 	var left_cab := false
 	var checked := false
+	var map_n := -1
+	var map_d := INF
 	for i in 60 * 600:
 		await tree.process_frame
 		t += 1.0 / 60.0
@@ -84,9 +86,9 @@ func run(tree: SceneTree) -> Array:
 			in_cab_ok = ui.lifts.feet_inside(L, at + Vector3.UP * 0.05) and at.distance_to(spot) < 0.15
 			faced = absf(angle_difference(float(d.yaw), ui.lifts.gate_yaw(0))) < 0.3
 			pv.update()
-			var mm: MultiMesh = pv.dots.multimesh
-			for k in mm.instance_count:
-				var o: Vector3 = mm.get_instance_transform(k).origin
+			map_n = pv.dot_at.size()
+			for o in pv.dot_at:
+				map_d = minf(map_d, Vector2(o.x - spot.x, o.z - spot.z).length())
 				if Vector2(o.x - spot.x, o.z - spot.z).length() < 0.3:
 					on_map = true
 		if aboard and e.v("hrsg1_lift_moving") >= 0.5 and at != Vector3.INF:
@@ -111,7 +113,7 @@ func run(tree: SceneTree) -> Array:
 		if not faced:
 			p.append("%s in the cab does not face the gate" % who)
 		if not on_map:
-			p.append("%s aboard is not on the map at the lift" % who)
+			p.append("%s aboard is not on the map at the lift (dots %d, nearest %.2f m)" % [who, map_n, map_d])
 		if not travelled or left_cab:
 			p.append("%s was not drawn in the travelling cab (travelled %s, out of it %s)" % [who, str(travelled), str(left_cab)])
 	if off_t < 0.0:
