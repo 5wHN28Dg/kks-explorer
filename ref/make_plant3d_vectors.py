@@ -3666,6 +3666,7 @@ def camp_rejects():
     def veh(f):
         return _st(lambda st: f(st['vehicles'][0]))
     return [
+        ('a home that is not a room\'s name', 'bad_ref', _st(lambda st: st['people'][1].__setitem__('home', ['room1']))),
         ('two people with one home', 'bad_ref', _st(lambda st: st['people'][1].__setitem__('home', 'room1'))),
         ('a person without a home among people with homes', 'bad_ref', _st(lambda st: st['people'][2].pop('home'))),
         ('a home that is not off site', 'bad_ref', _st(lambda st: _splace(st, 'bed_1').pop('off_site'))),

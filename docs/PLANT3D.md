@@ -2888,7 +2888,8 @@ content (S4b).
   each vehicle's arrival and departure before its runs are made, so a vehicle that came home in this step may set off
   again in it. Phase 3 is not run in a jump's step (as phase 4). The runs looked at are those of days C − 1 to C + 1.
 - **The driver** is the first person of the role, in index order, on duty, not absent, aboard no vehicle, not on a
-  lift ride (waiting or aboard, §20.4) and in no lift's riders (§20.3); an NPC before a player (a player is taken only
+  lift ride (waiting or aboard, §20.4) and in no lift's riders (§20.3) (a driver's role's people are never `absent`,
+  §17.4, `bad_ref`); an NPC before a player (a player is taken only
   when no NPC driver is available: the engine then drives, §21.8). They are taken from where they are:
   a way or a stairs route given up, a place held and a reservation let go; their current task paused as a pre-emption
   pauses it whatever its priority and `interruptible` (the idle task ended `done`), an input whose outcome they wait
@@ -2901,12 +2902,13 @@ content (S4b).
 - **Getting on** (phase 4, at an NPC's turn): an NPC whose `ride` step stands at its `from` gets on the first vehicle,
   in file order, standing there (arrived, not departed) on a run whose later stops include the step's `to`, while a
   seat is free: `[n, "aboard", person, vehicle, from, "on", []]`.
-- **`ride`** `{"from": stop, "to": stop}` (stop places, different; some vehicle's run visits `from` and later `to`,
-  `bad_ref`): an NPC goes to `from` (a `go`) and waits there; the step is done when they stand at `to` (at once when
+- **`ride`** `{"from": stop, "to": stop}` (stop places, different, `bad_value`; some vehicle's run visits `from` and
+  later `to`, `bad_ref`): an NPC goes to `from` (a `go`) and waits there; the step is done when they stand at `to` (at once when
   they already do). At their turn
   at the stop they get on if they can; if not, and 30 clock minutes have passed since their arrival there, the step
   becomes a `go` to `to` (they walk). Pre-emption is checked while they wait at the stop; a pause forgets the wait's
-  start (they go to the stop again and wait 30 minutes from their arrival).
+  start (they go to the stop again and wait 30 minutes from their arrival); a ride already given up for a walk stays a
+  walk after a pause.
 - **The trainee's `ride`** is done when they stand at `to`: by their `arrive` there (they walked) or by getting off
   there. Their input `[n, "get_on", vehicle]` (§17.6; in a session with its slot, §17.13) is applied at the start of
   step 9 with their `arrive`, `leave`, `ppe`, `zone` and `stop` inputs, in the order made: done (`"on"`) when the
@@ -3014,10 +3016,12 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   bit for bit: homes and off site, off-duty routines with their spans and the planning one day further back, the two
   idle tasks, `go: "home"`, `sleep`, vehicles with their drive routes (searched at load), runs, drivers (NPCs first,
   nobody in a cab), getting on and off, `ride` and the player's `get_on` with its reasons, the digest's fields, the
-  snapshot's `vehicles`; a lift's `board` is refused (`aboard`) while its person is on a vehicle. A run's tasks made by
+  snapshot's `vehicles`; a lift's `board` is refused (`aboard`) while its person is on a vehicle. From the blind
+  review: a player aboard is in no zone too (their zone inputs count again once off), a home that is not a room's name
+  is refused rather than failing the validator, and duty spans are kept only for people with homes. A run's tasks made by
   off-duty slots end `skipped` when a duty starts (the adversarial review of the plan: a sleep or a meal never runs into
   a shift), and placement after a duty's end picks only its slots after the end.
-- **Validator:** every rule break of §21 (`staff.reject`'s 34 new items, below). The four S1 rejects that refused the
+- **Validator:** every rule break of §21 (`staff.reject`'s 35 new items, below). The four S1 rejects that refused the
   S4 keys are each a rule of S4 now (vehicles or a place off site without homes, a home that is no room with a bed, a
   ride from places that are not there, a drive way without a driving speed): their codes and changes are new, their
   places in the list kept.
@@ -3028,7 +3032,7 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   the trainee riding (get_on refused for an unknown vehicle and with no ride step, then on and off; a jump with the
   pickup out); the trainee walking instead (refused on the way, not at the stop); the trainee as the driver; a lock
   left off site and removed by authority; a jump to the evening; a session with a player released aboard and the
-  driver claimed while driving. `staff.reject` gains 30 rule breaks on the camp file and 4 of S4's keys without homes.
+  driver claimed while driving. `staff.reject` gains 31 rule breaks on the camp file and 4 of S4's keys without homes.
   Every other item of the file is unchanged (a JSON comparison of the old and the new file: only `staff.reject`'s
   items 7–10 and the seven appended runs differ). `tests/test_plant3d_staff.py CampRuns` checks the runs' story by
   name.

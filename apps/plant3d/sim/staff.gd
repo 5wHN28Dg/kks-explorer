@@ -554,7 +554,8 @@ func plan(e, pi: int, upto: int) -> void:
 		for x in mine:
 			lo = mini(lo, x[0])
 			hi = maxi(hi, x[0])
-		e.sp_spans[pi].append([lo, hi, du[0], du[1]])     # its span (§21.2)
+		if home[pi] != -1:          # its span (§21.2; only read with homes)
+			e.sp_spans[pi].append([lo, hi, du[0], du[1]])
 		slots.append_array(mine)
 	if home[pi] != -1:
 		for day in range(e.sp_offday[pi] + 1, upto):
@@ -2351,10 +2352,10 @@ func stop_step(e, pi: int, cur: Dictionary) -> String:
 ## A person's zones as a bit mask (§16.2): their place's; on a way, those both its ends list; the trainee's from
 ## their zone inputs; none off site.
 func zones_of(e, pi: int) -> int:
+	if e.sp_aboard[pi] != -1:           # aboard a vehicle: in no zone, a player too (§21.4)
+		return 0
 	if e.st_players.has(pi):
 		return e.sp_zin[pi]
-	if e.sp_aboard[pi] != -1:           # aboard a vehicle: in no zone (§21.4)
-		return 0
 	var leg: Array = e.sp_leg[pi]
 	if not leg.is_empty():
 		return place_zm[leg[0]] & place_zm[leg[1]]

@@ -589,8 +589,9 @@ class Staff:
             if 'home' not in p:
                 self.home.append(None)
                 continue
+            need(isinstance(p['home'], str), 'bad_ref', f'{wp}.home: a room')
             beds = [j for j in self.rooms.get(p['home'], []) if self.places[j]['kind'] == 'bed']
-            need(isinstance(p['home'], str) and beds, 'bad_ref', f'{wp}.home: no room {p["home"]!r} with a bed')
+            need(beds, 'bad_ref', f'{wp}.home: no room {p["home"]!r} with a bed')
             need(beds[0] not in self.home, 'bad_ref', f'{wp}.home: room {p["home"]} is another person\'s home')
             self.home.append(beds[0])
             need(self.off_site[beds[0]], 'bad_ref', f'{wp}.home: its bed is not off site (§21.1: off duty, people go '
@@ -1371,7 +1372,9 @@ class StaffRun:
                 ts = self.slot_times(p, du)
                 for t, k, n, task in ts:
                     p.slots.append((t, du[0], k, n, task, du))
-                p.spans.append((min([du[0]] + [x[0] for x in ts]), max([du[1]] + [x[0] for x in ts]), du[0], du[1]))
+                if p.home is not None:      # (spans are only read with homes, §21.2)
+                    p.spans.append((min([du[0]] + [x[0] for x in ts]), max([du[1]] + [x[0] for x in ts]), du[0],
+                                    du[1]))
         if p.offday is not None:
             for d in range(p.offday + 1, upto):
                 self.off_slots(p, d)
@@ -1864,10 +1867,10 @@ class StaffRun:
         """The zones a person is in, in file order (§16.2): their place's; on a way, those both its ends list; the
         trainee's from their zone inputs; none off site."""
         st = self.st
+        if p.aboard is not None:        # aboard a vehicle: in no zone, a player too (§21.4)
+            return []
         if self.slot_of(p.i) is not None:
             return sorted(p.zin)
-        if p.aboard is not None:        # aboard a vehicle: in no zone (§21.4)
-            return []
         if p.leg is not None:
             b = st.place_zones[p.leg[1]]
             return [k for k in st.place_zones[p.leg[0]] if k in b]

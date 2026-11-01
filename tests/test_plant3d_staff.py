@@ -856,6 +856,23 @@ class CampRuns(unittest.TestCase):
         sk = [x for x in r['events'] if x[1] == 'task' and x[2] == 'a_elec' and x[4] == 'skipped']
         self.assertTrue(on and sk and sk[0][0] == on[0] and sk[0][3] in ('gym_time', 'room_time'), (on, sk))
 
+    def test_a_player_aboard_is_in_no_zone(self):
+        # (the blind review of S4a: a player's zones came from their zone inputs even aboard)
+        run = self.rider
+        b = P.check_files(files_of(self.V, run))
+        e = P.Engine(b, 's1')
+        inputs, i = run['inputs'], 0
+        sr = e.staff
+        p = sr.people[sr.st.person_ix['a_fo1']]
+        while p.aboard is None and e.step_no < run['until']:
+            while i < len(inputs) and inputs[i][0] == e.step_no + 1:
+                G.apply_staff(e, inputs[i])
+                i += 1
+            e.step()
+        self.assertIsNotNone(p.aboard)
+        p.zin = {0}
+        self.assertEqual(sr.zones_of(p), [])
+
     def test_files_without_homes_are_unchanged(self):
         # every staff run before the camp's keeps no vehicles in its snapshots
         for run in self.V['staff']['runs'][:-7]:
