@@ -2741,7 +2741,7 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
 ### 20.12 As built for milestone LIFTS L3 (2026-11-01: the staff on the lift)
 
 - **staff.json** (`tools/plant3d/train_staff.py`): `lifts: [{"lift": "hrsg1_lift", "landings": ["p_lift0", "p_lift1",
-  "p_lift2"]}]`, the three points 0.7 m in front of the landing gates (where the directions begin and end a ride);
+  "p_lift2"]}]`, the three points 0.8 m in front of the landing gates (where the directions begin and end a ride);
   `speeds.lift` 0.45 m/s, three quarters of the cab's speed for the gates and the dwell (§20.4's 0.3 made the ride to
   the roof, 100 s, slower than the tower's stair, 91 s at the staff's 0.5 m/s along its 45 m: nobody rode); a lift way between every two landings (metres: the height between them); walking ways from the
   tower's foot to the grade's point and from the roof's to the tower's top, and the tower's stair to and from the point

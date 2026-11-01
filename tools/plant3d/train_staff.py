@@ -73,7 +73,7 @@ EDGES += wtp_staff.EDGES
 import train_lift  # noqa: E402
 LIFT_POINTS = [f'p_lift{i}' for i in range(len(train_lift.ZS))]
 for _i, _z in enumerate(train_lift.ZS):
-    POINTS[LIFT_POINTS[_i]] = (round(train_lift.GATE_X - 0.7, 6), train_lift.AT[1], _z)
+    POINTS[LIFT_POINTS[_i]] = (round(train_lift.GATE_X - 0.8, 6), train_lift.AT[1], _z)
 EDGES += [('p_h_foot', 'p_lift0'), ('p_lift2', 'p_h_30'), ('p_h_foot', 'p_lift1'), ('p_lift1', 'p_h_30')]
 # The control building's rooms (its ground floor: the control room, the field office, the maintenance workshop)
 # and the gate where people come on site (until the camp and its buses, milestone S4).

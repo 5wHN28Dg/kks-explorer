@@ -44,7 +44,7 @@ func run(tree: SceneTree) -> Array:
 	for i in 30:
 		await tree.physics_frame
 		pv.drive(DT)
-	var k := pv.drawn.find(pi)
+	var k: int = pv.drawn.find(pi)
 	if k == -1:
 		p.append("%s in the cab is not drawn" % who)
 	else:
