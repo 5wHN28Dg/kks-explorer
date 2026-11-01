@@ -176,6 +176,10 @@ var sp_zin := PackedInt64Array()    # the trainee's zones from their zone inputs
 var sp_ride: Array = []             # a ride (§20.4): [staff lift, a, b, 0 waiting / 1 aboard, wait start, destination] or []
 var sp_stairs: Array = []           # the stairs walked instead of a ride: [destination, place, …, b], or empty
 var sp_lin := PackedInt64Array()    # the step of a person's last lift input
+var st_veh: Array = []              # per vehicle (§21.4): staff.gd vehicle_home()'s fields
+var sp_aboard := PackedInt32Array() # the vehicle a person is aboard, -1
+var sp_offday := PackedInt64Array() # the last day whose off-duty slots are made, -1 without a home (§21.2)
+var sp_spans: Array = []            # per person: their planned duties' spans [span start, span end, start, end]
 var st_made := {}                   # `seen` reactions made, once per act (§16.7): source key -> true
 var _touched := PackedByteArray()   # people whose acts may have changed in this step's step 9 (staff.gd: scratch)
 var _in_slot := 0                   # the slot of the player's input being handled (step 1, and its locks in step 3)
@@ -588,6 +592,11 @@ func task_ack(slot = null) -> void:
 	_q(["task_ack"], slot)
 
 
+## The player's person gets on a vehicle standing at their stop (§21.4).
+func get_on(vehicle, slot = null) -> void:
+	_q(["get_on", vehicle], slot)
+
+
 func arrive(place, slot = null) -> void:
 	_q(["arrive", place], slot)
 
@@ -717,7 +726,7 @@ func apply_input(item: Array) -> void:
 				remove_lock(item[2], item[3], item[4], item[5], item[6], true, slot)
 			else:
 				remove_lock(item[2], item[3], item[4], item[5], null, false, slot)
-		"role", "arrive", "leave", "pick", "jump":
+		"role", "arrive", "leave", "pick", "jump", "get_on":
 			_q([item[1], item[2]], slot)
 		"release", "task_ack":
 			_q([item[1]], slot)
@@ -895,8 +904,9 @@ func _ride(kind: String, lift, person, npc: bool) -> String:
 			for r in x:
 				if Staff._same(who, r):
 					on = true
-		if on:
-			why.append("aboard")
+		if on or (typeof(who) == TYPE_STRING and _sm != null and _sm.person_ix.has(who)
+				and sp_aboard.size() > 0 and sp_aboard[_sm.person_ix[who]] != -1):
+			why.append("aboard")        # (in a cab already, or on a vehicle, §21.4)
 	elif at == -1:
 		why.append("not_aboard")
 	if kind == "board":
@@ -1596,7 +1606,7 @@ func _step() -> void:
 			continue        # (a session run's input: a single-player run has no slots)
 		if kind == "role" or kind == "task_ack" or kind == "arrive" or kind == "leave" or kind == "read" \
 				or kind == "say" or kind == "pick" or kind == "call" or kind == "jump" or kind == "ppe" \
-				or kind == "zone" or kind == "stop" or kind == "release":
+				or kind == "zone" or kind == "stop" or kind == "release" or kind == "get_on":
 			if _sm != null:
 				_sm.t_input(self, item, slot)
 			elif kind == "role":
@@ -2041,7 +2051,7 @@ func snapshot(with_values: bool = true) -> Dictionary:
 		var wa: Array = _sm.snap_acts(self)
 		s["worn"] = wa[0]
 		s["acts"] = wa[1]
-		s["vehicles"] = {}
+		s["vehicles"] = _sm.snap_vehicles(self)
 		s["unacked"] = unacked(-1)
 		if st_session:
 			var pl := []
@@ -2112,12 +2122,13 @@ func _digest_staff():
 	var insts := []         # every task instance: [person, 0 current / 1 queued / 2 held, …], person by person
 	for pi in np:
 		slots[pi] = sp_slots[pi].size()
+		var hh: bool = _sm.has_homes
 		if sp_cur[pi] != null:
-			insts.append(_digest_inst(pi, 0, sp_cur[pi]))
+			insts.append(_digest_inst_h(pi, 0, sp_cur[pi]) if hh else _digest_inst(pi, 0, sp_cur[pi]))
 		for x in sp_queue[pi]:
-			insts.append(_digest_inst(pi, 1, x))
+			insts.append(_digest_inst_h(pi, 1, x) if hh else _digest_inst(pi, 1, x))
 		for x in sp_held[pi]:
-			insts.append(_digest_inst(pi, 2, x))
+			insts.append(_digest_inst_h(pi, 2, x) if hh else _digest_inst(pi, 2, x))
 	var left := PackedInt32Array(st_left.keys())
 	left.sort()
 	var mk: Array = st_made.keys()
@@ -2138,6 +2149,19 @@ func _digest_staff():
 	if _sm.has_lifts:
 		tree.append(sp_stairs)          # the stairs being walked instead of a ride
 		tree.append(sp_lin)             # the step of each person's last lift input
+	if _sm.has_homes:                   # the vehicles, who is aboard, the off-duty planning (§21.5)
+		var vs := []
+		for vh in st_veh:
+			var rp := PackedInt32Array()
+			var rt := PackedInt32Array()
+			for rd in vh["riders"]:
+				rp.append(rd[0])
+				rt.append(rd[1])
+			vs.append([vh["at"], vh["leg"], vh["run"], vh["dep"], vh["k"], vh["until"], vh["driver"], rp, rt,
+					vh["floor"], vh["done"]])
+		tree.append(vs)
+		tree.append(sp_aboard)
+		tree.append(sp_offday)
 	return tree
 
 
@@ -2145,7 +2169,15 @@ func _digest_staff():
 ## own progress ("st").
 static func _digest_inst(pi: int, where: int, x: Dictionary) -> Array:
 	return [pi, where, x["task"], x["prio"], x["made"], x["order"], x["step"], x["work"], x["code"], x["alarm"],
-			x["src"], x["idle"], x["started"], x["int"], x["owner"], x["act"], x.get("orig")]
+			x["src"], 2 if x.get("off", false) else x["idle"], x["started"], x["int"], x["owner"], x["act"],
+			x.get("orig")]
+
+
+## With homes (§21.5) an instance also says whether an off-duty slot made it.
+static func _digest_inst_h(pi: int, where: int, x: Dictionary) -> Array:
+	var a := _digest_inst(pi, where, x)
+	a.append(1 if x.get("offr", false) else (2 if x.has("dslot") else 0))
+	return a
 
 
 static func _sorted_pairs(d: Dictionary) -> Array:
@@ -2174,12 +2206,12 @@ func clone():
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_worn",
-			"sp_zin", "lift_quiet", "sp_lin", "lift_calls", "lift_dir", "lift_dwell"]:
+			"sp_zin", "lift_quiet", "sp_lin", "lift_calls", "lift_dir", "lift_dwell", "sp_aboard", "sp_offday"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",
 			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_kept",
 			"st_left", "st_pending", "st_made",
 			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result", "sp_held", "sp_acts",
-			"riders", "sp_ride", "sp_stairs"]:
+			"riders", "sp_ride", "sp_stairs", "st_veh", "sp_spans"]:
 		c.set(k, get(k).duplicate(true))
 	return c

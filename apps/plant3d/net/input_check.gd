@@ -28,6 +28,7 @@ const FORMS := {
 	"role": [["s"]], "release": [[]], "task_ack": [[]], "arrive": [["s"]], "leave": [["s"]], "read": [["s", "n"]],
 	"say": [["s", "s"]], "pick": [["i"]], "call": [["s", "s", "zs"]], "jump": [["s"]], "ppe": [["s", "i"]],
 	"zone": [["s", "s"]], "stop": [["s"]], "board": [["s", "zs"]], "alight": [["s", "zs"]],
+	"get_on": [["s"]],
 }
 
 
