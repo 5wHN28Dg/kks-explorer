@@ -2813,6 +2813,10 @@ content (S4b).
   (`done`) when anything is queued or the duty ends, an off one when anything is queued or a duty starts; either is
   started again at the next turn with the queue empty. In the digest (§17.14) an instance's `idle` is false, true (a
   duty's) or the integer 2 (an off one).
+- **Within a span, the duty's idle task:** a person with a home who is off duty but within one of their duties' spans
+  (come in early by the bus, before the handover; or after the end, before the commute home) and has nothing queued
+  runs their duty routine's idle task, not the off-duty one (S4b: the first train's day workers, off the bus 20 minutes
+  before their toolbox talk, walked home again).
 - **A duty's span** runs from the earlier of its start and its routine's first slot to the later of its end and its
   routine's last slot (slots by `days` as made). Spans are worked out from the roster and the routine as each duty is
   planned and kept for four days (they are not §17.8's list of duties to come, which drops a duty once it has begun).
@@ -2958,11 +2962,9 @@ task instance (§17.14) ends with the kind of slot that made it (1 an off-duty s
   and recreation room, the camp office, the court, the guard booths; the admin building's offices, meeting room and the
   store; points along the camp's walkways, the road to the plant gate and the admin area, measured on the navigation
   mesh as the train's (tests/staff_layout.gd) and checked by the build.
-- **Buses:** two buses at the depot, driven by the driver on duty: in at 05:15 (the WTP's people), 05:40, 17:15 and
-  17:40; the night crew out at 06:20 and the day crew at 18:20; the day workers in at 06:30 and 06:45 and out at 16:15;
-  their lunch at 11:45 and back at 13:00. Anyone may walk instead. The content's test checks that the runs of each
-  driver role never overlap (from a run's leaving time to its return home), so no run is skipped for want of a
-  driver.
+- **Buses:** the bus at the depot, driven by the driver on duty, at the shift changes and the day workers' times (as
+  built: §21.12). Anyone may walk instead. The content's test checks that the runs of each driver role never overlap
+  (from a run's leaving time to its return home), so no run is skipped for want of a driver.
 - **Off duty:** meals at the mess (before a day shift, at midday for the day workers, 17:30–19:30), then a `choose`
   among the gym, the laundry, the prayer room, the recreation room and the own room by weights per role; sleep before
   the next duty (`next-…`, so a night crew sleeps by day with the same routine), and the off-duty idle task at home
@@ -3047,4 +3049,35 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   items 7–10 and the eight appended runs differ). `tests/test_plant3d_staff.py CampRuns` checks the runs' story by
   name.
 - Not yet: the first train's content (S4b), the app (S4c), the Note 9 (S4d).
+
+### 21.12 As built for milestone S4b (2026-11-01: the first train's full day)
+
+- **The content** (`tools/plant3d/camp_staff.py`, joined by `train_staff.py`): the guards (two a crew: the plant
+  gate's post with a patrol of the site every two hours, the camp gate's with one of the camp), the plant manager, the
+  operations and maintenance managers and the three engineers on days (offices and the meeting room on the admin
+  building's ground floor; the morning meeting at 07:30; the managers' walk-round on Mondays at 10:00, PPE on at the
+  control building's lockers; the engineers' look at the day's jobs in the workshops at 14:00), a driver a crew on
+  `driver_shift`, the storekeeper at the store's counter, six camp staff on `camp_early` (04:30–13:00) and `camp_late`
+  (12:00–20:30): 91 people, a room each in the eight blocks (block 1's two open rooms to crew A's CW field operator and
+  first control room operator, every other bed a hidden place by its block's door). Places west of the fence (x −140)
+  are off site; the mess's seats, the gym's, the recreation and prayer rooms', the laundry's; 118 points, 529 places.
+  Places that stand behind furniture are moved to the walkable point beside it (`staff_layout.gd`'s new `snap`).
+- **The bus** (one: the camp's second bus stays parked, one driver is on duty at a time): the WTP's people straight to
+  the control building at 05:02 and 17:02 (they then walk to the WTP, about 40 minutes of the clock); the shift crews at
+  05:40 and 17:40, the day workers at 06:35 (to the control building) and 06:50 (to the plant gate: the managers, the
+  engineers, the storekeeper); home at 06:25, 16:15 and 18:25; 45 seats. Commutes are duty slots (`start−0:50` for the
+  crews and the day workers, `start−0:35` for the gate's riders, `start−1:40` for the WTP's, who walk home), each a
+  `ride` of priority 1 that nothing pre-empts while waiting.
+- **Off duty:** `off_shift` (a meal half an hour after the duty, free time chosen among the gym, recreation room,
+  laundry, prayer room and room, sleep from `next−9:30` to `next−1:30`, breakfast at `next−1:15`), `off_days` (the day
+  workers' later times, a Sunday lunch) and `off_camp`; the off-duty idle task at home.
+- **The scenarios** keep 05:00; `shift_cold`'s seed is 2 (8 before: with S4's timings its day had one shortcut, seed
+  2's has two, each found and stopped by an HSE officer as S2's test asks).
+- **The vectors:** `day` runs 24 clock hours (144,000 steps); the earlier forks are made again on it (`sup_late`'s
+  supervisor, woken at 07:00, walks in; `backwash_again`'s trainer's backwash moved to 06:42, before the WTP
+  operator's, now earlier), with new forks for each role that plays from S4 (the driver, the plant manager, the
+  operations and maintenance managers, the three engineers: through the morning meeting), the trainee riding the bus
+  in and home, and a day crew's evening in the camp to the jump. The generator's trainee tries each standing bus once
+  (a full one: the next).
+- **The app:** people at a `hidden` place are drawn by nobody (`ui/people_view.gd`; `tests/test_camp_people.gd`).
 

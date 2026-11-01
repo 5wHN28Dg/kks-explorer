@@ -226,7 +226,7 @@ inputs to the engine), before S4. Its parts, one pull request each:
   validator's rules; `staff.runs` on a synthetic plant with a camp and `staff.reject` (every earlier vector item
   unchanged: the S4 keys are new, and a file without homes or vehicles runs as before, checked by a JSON comparison
   of the old and new file).
-- **S4b, the content:** the missing roles (guards, managers and engineers, drivers, the storekeeper, the camp staff:
+- **S4b, the content** (**built 2026-11-01**, PLANT3D.md §21.12)**:** the missing roles (guards, managers and engineers, drivers, the storekeeper, the camp staff:
   91 people), homes in the camp, the camp's and the admin building's places measured on the navigation mesh, the gate
   at the plant gate, the buses' stops, drive ways and runs, meals, the morning meeting, the evening; `day` made again
   over 24 clock hours with its forks and the new ones (§21.9); the staff step's cost on the laptop.

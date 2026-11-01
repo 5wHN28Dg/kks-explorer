@@ -1453,8 +1453,9 @@ func select(e, pi: int):
 		if keep.size() != q.size():
 			q.clear()
 			q.append_array(keep)
-	if cur != null and cur["idle"] and (not q.is_empty() or (bool(e.sp_on[pi]) if cur.get("off", false)
-			else not e.sp_on[pi])):     # (a duty's idle task at the duty's end, an off one at its start, §21.2)
+	var work: bool = e.sp_on[pi] or (home[pi] != -1 and in_span(e, pi))  # (a duty's idle task within its span)
+	if cur != null and cur["idle"] and (not q.is_empty() or (work if cur.get("off", false)
+			else not work)):     # (a duty's idle task at the duty's end, an off one at its start, §21.2)
 		e._ev(["task", pid, cur["task"], "done"])
 		e.sp_cur[pi] = null
 		cur = null
@@ -1473,11 +1474,11 @@ func select(e, pi: int):
 			e._ev(["move", pid, null, places[gate]["id"], e.step_no])
 	if cur == null and (e.sp_on[pi] or home[pi] != -1):
 		# the idle task: the duty's on duty, the off-duty routine's off duty with a home (§21.2)
-		var idle := idle_of(pi) if e.sp_on[pi] else off_idle_of(pi)
+		var idle := idle_of(pi) if work else off_idle_of(pi)
 		cur = {"task": idle, "prio": 6, "made": e.step_no, "order": e.st_order, "step": 0, "st": {}, "work": null,
 				"code": null, "alarm": null, "src": null, "idle": true, "started": true, "int": true, "owner": null,
 				"act": null}
-		if not e.sp_on[pi]:
+		if not work:
 			cur["off"] = true
 		e.sp_cur[pi] = cur
 		e.st_order += 1
@@ -1569,6 +1570,12 @@ func turn(e, pi: int) -> void:
 			return
 		var r = run(e, pi, cur)
 		if typeof(r) == TYPE_STRING and r == "wait":
+			if cur["idle"] and not cur.get("off", false) and not e.sp_on[pi] and home[pi] != -1:
+				# a duty's idle task off duty within its span: awake when the span ends (the reference's select
+				# looks at every turn, §21.2)
+				var se := _span_end(e, pi)
+				if se >= 0:
+					e.sp_wake[pi] = mini(e.sp_wake[pi], _step_at(e, se + 1))
 			return
 		advance(e, pi, r)
 
@@ -2089,6 +2096,24 @@ func sleep_until(e, pi: int, u: String) -> int:
 static func _step_at(e, t: int) -> int:
 	var d: int = t - e._S - e.J
 	return (d + e._ds - 1) / e._ds if d > 0 else 0
+
+
+## The end of the span the clock lies in, -1 for none.
+func _span_end(e, pi: int) -> int:
+	var c: int = e.clock()
+	for x in e.sp_spans[pi]:
+		if x[0] <= c and c <= x[1]:
+			return x[1]
+	return -1
+
+
+## The clock lies within one of the person's duties' spans (§21.2).
+func in_span(e, pi: int) -> bool:
+	var c: int = e.clock()
+	for x in e.sp_spans[pi]:
+		if x[0] <= c and c <= x[1]:
+			return true
+	return false
 
 
 ## The tasks off-duty slots made end `skipped`, the current one first, then the queue's in order (§21.2).

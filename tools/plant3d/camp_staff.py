@@ -211,8 +211,9 @@ def commute(rid, routine):
         return [slot('start-0:50', 'bus_in_gate'), slot('end+0:05', 'bus_out_gate')]
     if rid in SHIFT_ROUTINES:
         return [slot('start-0:50', 'bus_in'), slot('end+0:05', 'bus_out')]
-    if rid in WTP_ROUTINES:
-        return [slot('start-1:30', 'bus_in'), slot('end+0:05', 'walk_out')]
+    if rid in WTP_ROUTINES:         # (their PPE put on with the commute: the routine's own gear_up is dropped)
+        routine['slots'] = [x for x in routine['slots'] if x['task'] != 'gear_up']
+        return [slot('start-1:40', 'bus_in_wtp'), slot('end+0:05', 'walk_out')]
     if rid in DAY_TO_CR:
         return [slot('start-0:50', 'bus_in'), slot('end+0:05', 'bus_out')]
     if rid in DAY_TO_GATE:
@@ -266,6 +267,9 @@ def tasks():
          interruptible=False)
     task('bus_out', 'The bus to the camp', [{'ride': {'from': 'cr_stop', 'to': 'camp_stop'}}, {'go': 'home'},
                                             {'work': 5}], priority=2)
+    task('bus_in_wtp', 'The bus to the plant, PPE on at the control building', [
+        {'ride': {'from': 'camp_stop', 'to': 'cr_stop'}}, {'go': {'kind': 'locker', 'room': 'lockers'}},
+        {'ppe': 'role'}], priority=1, interruptible=False)
     task('walk_out', 'Home to the camp on foot (the WTP is far from the bus)', [{'go': 'home'}, {'work': 5}],
          priority=2)
     task('bus_in_gate', 'The bus to the plant gate', [{'ride': {'from': 'camp_stop', 'to': 'gate_stop'}}],
@@ -322,8 +326,10 @@ def vehicles():
     """The bus (the camp's second bus stays parked: one driver is on duty at a time, §21.6)."""
     to_plant = ['camp_stop', 'gate_stop', 'cr_stop']
     to_camp = ['cr_stop', 'gate_stop', 'camp_stop']
-    runs = [(t, to_plant) for t in ('05:15', '05:40', '06:35', '06:50', '17:15', '17:40')] + \
+    wtp = ['camp_stop', 'cr_stop']      # (the WTP's people: straight to the control building, then the walk)
+    runs = [(t, wtp) for t in ('05:02', '17:02')] + \
+        [(t, to_plant) for t in ('05:40', '06:35', '06:50', '17:40')] + \
         [(t, to_camp) for t in ('06:25', '16:15', '18:25')]
     runs.sort()
-    return [{'id': 'bus_1', 'kind': 'bus', 'seats': 30, 'driver': 'driver', 'home': 'bus_depot',
+    return [{'id': 'bus_1', 'kind': 'bus', 'seats': 45, 'driver': 'driver', 'home': 'bus_depot',
              'runs': [{'at': t, 'stops': s, 'dwell': 1} for t, s in runs]}]

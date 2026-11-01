@@ -117,9 +117,10 @@ plant, and the debrief lists the night crew's slots as done by the other crew.
 
 ## 6. What the first content holds
 
-**As built through S3 (2026-10-26):** the operators (S1), the maintenance disciplines, HSE and the contractors (S2), and
-the water treatment plant's operator and chemists (S3, PLANT3D.md §17.12); the guards, the managers and engineers,
-the drivers, the storekeeper and the camp staff come with S4.
+**As built through S4 (2026-11-01):** the operators (S1), the maintenance disciplines, HSE and the contractors (S2),
+the water treatment plant's operator and chemists (S3, PLANT3D.md §17.12), and the guards, the managers and engineers,
+the drivers, the storekeeper and the camp staff, everyone's home in the camp, the bus and the off-duty routines (S4,
+PLANT3D.md §21.12). The camp staff work two shifts every day (04:30–13:00 and 12:00–20:30) so the meals are covered.
 
 M2–M4 (MILESTONES.md) build this in steps: first the operators and the permit flow on the first train, then the
 maintenance disciplines with their jobs, then the WTP's people, then the camp and the full day. Scenario seeds pick a

@@ -709,7 +709,8 @@ def scenario(cold):
     s['id'] = 'shift_cold'
     s['title'] = 'Day shift, the plant cold: the operators\' crews at work (choose a role)'
     s['start'] = {'day': 1, 'time': '05:00'}
-    s['staff'] = {'seed': 8}        # (a day whose draws give two contractors' shortcuts, both found by HSE: S2)
+    s['staff'] = {'seed': 2}        # (a day whose draws give two contractors' shortcuts, both found by HSE: S2; seed 8
+                                    # until S4's full day changed everyone's timings)
     return s
 
 

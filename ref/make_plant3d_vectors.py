@@ -2257,7 +2257,12 @@ class Trainee:
             vi = next((vi for vi in range(len(sr.veh)) if sr.stands_for(vi, fr, to)), None)
             if vi is None:
                 return
-            e.get_on(sr.st.vehicles[vi]['id'])
+            V = sr.veh[vi]
+            k2 = key + ('bus', vi, V['dep'], V['k'])      # once per vehicle standing there (full: the next one)
+            if k2 not in self.done:
+                self.done.add(k2)
+                e.get_on(sr.st.vehicles[vi]['id'])
+            return
         else:
             return
         self.done.add(key)
@@ -2870,7 +2875,7 @@ def build_staff():
 # The first train's day (§19 `day`): the scenario with staff from its start (05:00) through the day shift, seed 1 and
 # no trainee; and runs from the same start with a trainee or a trainer's fault: (id, scenario's staff changes, the
 # Trainee player, steps, expectations checked by tests/test_plant3d_staff.py).
-DAY_STEPS = 78000            # 05:00 to 18:00 at day_scale 6
+DAY_STEPS = 144000           # 05:00 to 05:00 the next day at day_scale 6 (the full day, PLANT3D §21.9)
 DAY_EVERY = 6000             # a snapshot every clock hour
 def day_forks():
     # (the steps from the scenarios' start at 05:00: 3000 steps are half an hour of the clock)
@@ -2887,7 +2892,8 @@ def day_forks():
                                          [18000, 'remove_lock', 'wo_cw_b_motor', 0, None, 'Breaker needed for a test',
                                           'a_eap']]), 39000,
          {'permits': {'wo_cw_b_motor': 9}, 'repaired': ['cw_b_motor']}),
-        ('sup_late', Trainee(wake=12000, extra=[[1, 'role', 'a_sup'], [7000, 'fault', 'ccw_a_motor']]), 39000,
+        ('sup_late', Trainee(wake=12000, ride='walk', extra=[[1, 'role', 'a_sup'], [7000, 'fault', 'ccw_a_motor']]),
+         45000,
          {'trainee': 'a_sup', 'permits': {'wo_ccw_a_motor': 9}}),
         # milestone S2: the week's calibration puts a drift right; a corrective job of the instruments' technicians;
         # the trainee as an I&C technician, an HSE officer, a contractor who takes the shortcut
@@ -2900,7 +2906,7 @@ def day_forks():
           'events': [['lock', 'wo_cond_p2_cal', 0, 'ic1', 'done'], ['permit', 'wo_cond_p2_cal', 'accept', 'ic1', 'done'],
                      ['unlock', 'wo_cond_p2_cal', 0, 'ic1', 'done']]}),
         ('trainee_hse', Trainee(extra=[[1, 'role', 'hse2']]), 36000,
-         {'trainee': 'hse2', 'events': [['stop', 'hse2', 'con5', 'unsafe', 'wo_paint_cw', 'done']]}),
+         {'trainee': 'hse2', 'events': [['stop', 'hse2', 'con6', 'unsafe', 'wo_paint_cw', 'done']]}),
         # MP1 (§17.13): a session on the first train: two players from step 1 (the CW field operator and a control
         # room operator), the instructor's fault from a third slot, the field operator released by the host while
         # walking to the alarm and taken back by a fourth slot while walking on as an NPC
@@ -2929,8 +2935,8 @@ def day_forks():
         # §17.12 (S3's limit, fixed): filter 2's backwash started by the trainer just before the WTP operator's makes
         # filter 1's refused (one at a time), and the job is abandoned with the head loss still high; the supervisor's
         # order is offered again when the next shift supervisor comes on (18:00), and the night's WTP operator runs it
-        ('backwash_again', Trainee(extra=[[7700, 'op', '00GBB12AT001', 'backwash', None, None, 'screen', None]]),
-         80000,
+        ('backwash_again', Trainee(extra=[[6700, 'op', '00GBB12AT001', 'backwash', None, None, 'screen', None]]),
+         86000,
          {'events': [['op', '00GBB11AT001', 'backwash', 'refused', ['bw_free'], 'screen', 'a_wtp'],
                      ['task', 'a_wtp', 'backwash_1', 'abandoned'], ['duty', None, 'on'],
                      ['task', None, 'order_backwash_1', 'start'], ['call', None, 'wtp_op', 'backwash_1'],
@@ -2972,6 +2978,31 @@ def day_forks():
         ('wtp_orp_cal', Trainee(extra=[[6000, 'fault', 'ro_b_orp_drift']]), 43000,
          {'permits': {'wo_ro_b_orp_cal': 9}, 'repaired': ['ro_b_orp_drift'], 'end': {'ro_b_orp_drift': 0},
           'events': [['lock', 'wo_ro_b_orp_cal', 0, 'a_wtp', 'done'], ['lock', 'wo_ro_b_orp_cal', 1, None, 'done']]}),
+        # milestone S4 (PLANT3D §21.9): the roles that play from S4, each through its morning; the trainee riding the
+        # bus in and home; a day crew's evening in the camp to the jump to the next shift
+        ('trainee_driver', Trainee(extra=[[1, 'role', 'a_drv']]), 12000,
+         {'trainee': 'a_drv', 'events': [['aboard', 'a_drv', 'bus_1', None, 'on'], ['vehicle', 'bus_1', 'cr_stop',
+                                                                                    'arrive']]}),
+        ('trainee_pm', Trainee(extra=[[1, 'role', 'pm']]), 20000,
+         {'trainee': 'pm', 'events': [['aboard', 'pm', 'bus_1', 'camp_stop', 'on'],
+                                      ['task', 'pm', 'morning_meeting', 'done']]}),
+        ('trainee_om', Trainee(extra=[[1, 'role', 'om']]), 20000,
+         {'trainee': 'om', 'events': [['task', 'om', 'morning_meeting', 'done']]}),
+        ('trainee_mm', Trainee(extra=[[1, 'role', 'mm']]), 20000,
+         {'trainee': 'mm', 'events': [['task', 'mm', 'morning_meeting', 'done']]}),
+        ('trainee_ice', Trainee(extra=[[1, 'role', 'ice']]), 20000,
+         {'trainee': 'ice', 'events': [['task', 'ice', 'morning_meeting', 'done']]}),
+        ('trainee_mce', Trainee(extra=[[1, 'role', 'mce']]), 20000,
+         {'trainee': 'mce', 'events': [['task', 'mce', 'morning_meeting', 'done']]}),
+        ('trainee_ele', Trainee(extra=[[1, 'role', 'ele']]), 20000,
+         {'trainee': 'ele', 'events': [['task', 'ele', 'morning_meeting', 'done']]}),
+        ('trainee_rides', Trainee(extra=[[1, 'role', 'a_fo_cw']]), 82000,
+         {'trainee': 'a_fo_cw', 'events': [['aboard', 'a_fo_cw', 'bus_1', 'camp_stop', 'on'],
+                                           ['aboard', 'a_fo_cw', 'bus_1', 'cr_stop', 'off'],
+                                           ['aboard', 'a_fo_cw', 'bus_1', 'cr_stop', 'on'],
+                                           ['aboard', 'a_fo_cw', 'bus_1', 'camp_stop', 'off']]}),
+        ('evening_jump', Trainee(extra=[[1, 'role', 'a_ccr1'], [88000, 'jump', '05:00']]), 90000,
+         {'trainee': 'a_ccr1', 'events': [['task', 'a_ccr1', 'meal', 'done'], ['jump', None, None, 'done']]}),
     ]
 
 

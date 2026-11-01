@@ -1067,8 +1067,9 @@ class FirstTrainStaff(unittest.TestCase):
         self.assertGreater(orders[1][0], gone[0])
         sup = orders[1][2]
         self.assertNotEqual(sup, 'a_sup')
-        self.assertIn([orders[1][0], 'duty', sup, 'on'], ev)        # offered as they came on (18:00)
-        self.assertEqual(orders[1][0], (18 - 5) * 6000)
+        # offered as they came on (18:00), started once they reached it (S4: the night crew on its bus, its handover)
+        self.assertTrue(any(x[1:] == ['duty', sup, 'on'] and x[0] <= orders[1][0] for x in ev), orders)
+        self.assertLess(orders[1][0], (18 - 5) * 6000 + 1000)      # within ten clock minutes of 18:00
         done = [x for x in ev if x[1] == 'op' and x[2] == '00GBB11AT001' and x[4] == 'done']
         self.assertTrue(done and done[-1][0] > orders[1][0])
         self.assertNotEqual(done[-1][7], 'a_wtp')                   # the night's WTP operator
@@ -1106,21 +1107,29 @@ class FirstTrainStaff(unittest.TestCase):
         roles = {p['role'] for p in st.people}
         self.assertEqual(roles, {'shift_sup', 'ccr_op', 'field_op', 'elec_ap', 'mech_tech', 'elec_tech', 'ic_tech',
                                  'maint_sup', 'hse_officer', 'contractor_sup', 'contractor', 'wtp_op', 'shift_chem',
-                                 'chemist'})
-        self.assertEqual(sum(1 for p in st.people if p['roster'] == 'shift'), 36)
+                                 'chemist', 'guard', 'plant_mgr', 'ops_mgr', 'maint_mgr', 'ic_eng', 'mech_eng',
+                                 'elec_eng', 'driver', 'store', 'camp'})
+        self.assertEqual(sum(1 for p in st.people if p['roster'] == 'shift'), 44)    # (S4: two guards a crew)
+        # milestone S4 (STAFF.md §1): 12 a crew on the rotation (the driver on their own), 43 on days, 91; a home each
+        self.assertEqual(len(st.people), 91)
+        self.assertEqual(sum(1 for p in st.people if p['roster'] in ('shift', 'driver_shift')), 48)
+        self.assertTrue(st.homes and len({p['home'] for p in st.people}) == 91)
         # STAFF.md §1's numbers on days (milestone S2), and every role played
         count = lambda r: sum(1 for p in st.people if p['role'] == r)  # noqa: E731
         self.assertEqual([count(r) for r in ('mech_tech', 'elec_tech', 'ic_tech', 'maint_sup', 'hse_officer',
                                              'contractor_sup', 'contractor')], [6, 4, 4, 3, 2, 1, 8])
         # milestone S3: a WTP operator and a shift chemist in each crew, two chemists on days (STAFF.md §1)
         self.assertEqual([count(r) for r in ('wtp_op', 'shift_chem', 'chemist')], [4, 4, 2])
-        self.assertTrue(all(r['play'] for r in st.roles.values()))
+        # every role plays but the guards', the storekeeper's and the camp staff's (STAFF.md §1)
+        self.assertEqual({r['id'] for r in st.roles.values() if not r['play']}, {'guard', 'store', 'camp'})
+        self.assertEqual([count(r) for r in ('guard', 'driver', 'camp', 'store', 'plant_mgr', 'ops_mgr', 'maint_mgr',
+                                             'ic_eng', 'mech_eng', 'elec_eng')], [8, 4, 6, 1, 1, 1, 1, 1, 1, 1])
         self.assertEqual({z['id'] for z in st.zones}, {'gt_hall', 'st_hall', 'hrsg', 'rack', 'bop', 'cw_house', 'ct',
                                                         'trafo', 'wtp_yard_w', 'wtp_yard_n', 'wtp_yard_e', 'wtp_hall',
                                                         'wtp_regen', 'wtp_chem', 'intake'})
         # S2's people keep their places in the file too; S3's come after them
-        self.assertEqual([p['id'] for p in st.people[56:]], ['a_wtp', 'a_chem', 'b_wtp', 'b_chem', 'c_wtp', 'c_chem',
-                                                             'd_wtp', 'd_chem', 'chem1', 'chem2'])
+        self.assertEqual([p['id'] for p in st.people[56:66]], ['a_wtp', 'a_chem', 'b_wtp', 'b_chem', 'c_wtp',
+                                                               'c_chem', 'd_wtp', 'd_chem', 'chem1', 'chem2'])
         self.assertEqual(set(st.put_right), {'ppe', 'permit', 'unsafe'})
         # S1's people keep their places in the file (so their random streams), S2's come after them
         self.assertEqual([p['id'] for p in st.people[:32]][-4:], ['mech1', 'mech2', 'elec1', 'ic1'])
@@ -1197,8 +1206,8 @@ class FirstTrainStaff(unittest.TestCase):
         req = [x[4] for x in ev if x[1] == 'permit' and x[2] in ('wo_paint_cw', 'wo_scaffold_hrsg') and x[3] == 'request']
         self.assertEqual(req, ['ms_mech', 'ms_mech'])
         stops = [x[2:6] for x in ev if x[1] == 'stop']
-        self.assertEqual(sorted(stops), [['hse1', 'con2', 'unsafe', 'wo_scaffold_hrsg'],
-                                         ['hse2', 'con5', 'unsafe', 'wo_paint_cw']])
+        self.assertEqual(sorted(stops), [['hse1', 'con1', 'unsafe', 'wo_scaffold_hrsg'],
+                                         ['hse2', 'con6', 'unsafe', 'wo_paint_cw']])
         self.assertFalse([x for x in ev if x[1] in ('lock', 'unlock', 'remove_lock') and x[5] != 'done'])
         self.assertFalse([x for x in ev if x[1] == 'unsafe' and x[3] == 'ppe'], 'everyone in the zones wears PPE')
         # the snapshot's PPE: the HSE officers and the contractors in theirs at 10:00 (snapshots on the hour from 05:00)
@@ -1290,10 +1299,25 @@ class FirstTrainStaff(unittest.TestCase):
         self.assertEqual(answered('ro_trip'), [('a_wtp', 'answer_alarm_wtp')], 'an RO trip is the WTP\'s, not the train\'s')
         self.assertEqual(answered('demin_call'), [('a_ccr1', 'answer_alarm')], 'the plant\'s demin tank is the train\'s')
 
+    def test_the_full_day_with_the_bus(self):
+        """Milestone S4 on the first train's day (PLANT3D §21.12): every run of the bus is made (none skipped for want of
+        a driver: the runs never overlap), the crews and the day workers ride in and home, nobody is left aboard, the
+        off-duty people eat and sleep in the camp."""
+        ev = self.day['events']
+        self.assertFalse([x for x in ev if x[1] == 'vehicle' and x[4] == 'skipped'])
+        runs = [x for x in ev if x[1] == 'vehicle' and x[3] == 'bus_depot' and x[4] == 'depart']
+        self.assertEqual(len(runs), 9)                  # the day's runs from 05:02 to 05:00 the next day
+        on = [x for x in ev if x[1] == 'aboard' and x[5] == 'on' and x[3] != 'bus_depot']
+        self.assertGreater(len(on), 80, 'the crews and the day workers ride')
+        self.assertEqual(self.day['states'][-1]['vehicles']['bus_1'][1], [], 'nobody left aboard at the end')
+        meals = {x[2] for x in ev if x[1] == 'task' and x[3] in ('meal', 'breakfast') and x[4] == 'done'}
+        self.assertGreater(len(meals), 40)
+        self.assertTrue([x for x in ev if x[1] == 'task' and x[3] == 'sleep' and x[4] == 'done'])
+
     def test_a_shift_day_finds_nothing_at_the_wtp(self):
         """shift_cold's day (the `day` run) has the WTP's people at work: rounds, samples and the stock check, all
         within their ranges, and no WTP sequence started."""
-        ev = self.day['events']
+        ev = [x for x in self.day['events'] if x[0] <= 78000]       # (the day shift: the full day runs on, S4)
         who = {x[2] for x in ev if x[1] == 'read'}
         self.assertTrue({'a_wtp', 'a_chem', 'chem1', 'chem2'} <= who, who)
         self.assertFalse([x for x in ev if x[1] == 'task' and x[3].startswith(('backwash_', 'mb_regen_', 'cip_ro_'))])
