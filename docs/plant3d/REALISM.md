@@ -35,7 +35,7 @@ and chose to add all of the following:
 2. Ageing runs at a **training rate per scenario**, with real rates also available (§4.3).
 3. Weather in free play is **on, seeded by season** for the hot dry climate (§5.1).
 4. Emissions are judged against the **IFC / World Bank Group EHS guidelines for thermal power plants** (§10.4).
-5. Costs are shown as **man-hours, parts and MWh lost**, with no currency (§15, §22).
+5. Costs are shown as **man-hours, parts and MWh lost**, with no currency (§15, J7).
 6. The generated P&IDs appear **in the plant app only** (§6.1).
 7. NPC speech is **text only** (§6.3, §15).
 
@@ -63,6 +63,7 @@ drawings read at the cabinet, fine dust on every flat surface). Nothing of that 
 | HSE (§8) | JSAs, toolbox talks, confined space, hot work, height, reports, drills, heat | permits, zones, PPE, unsafe acts, `muster` places | JSA input, entrants, standby and fire watch, heat rules | forms |
 | Crafts (§9) | switching, racking, megger, relay tests, batteries; alignment, balancing, bearings, seals, lubrication, packing; vibration, thermography, oil | hands-on, wear, model content | `switch_effects` query | spectrum and thermal views |
 | Engineering (§10) | root cause, management of change, alarm rationalisation, emissions, cycle chemistry | event log, first-out, S3's lab | change objects; alarm priority from a value | analysis tools in the debrief |
+| The rest of the job (J1–J8) | operations, electrical, I&C, mechanical, HSE and environment, chemistry, stores and planning, people and administration | everything above; S4's staff | J0: grid events, the `count` node, forces and bypasses, permit conflicts, zone barriers, authorisations, duty hours, passes and languages, order approvals | panels and forms per item |
 
 **What stays out of the engine.** Anything that changes the plant, a person or what another player sees is in the
 engine (it has to be the same on every player of a session and in the reference, MULTIPLAYER.md §3). Pure views
@@ -204,11 +205,15 @@ digests.
 - **Step 1** (inputs, as §17.1, each where it comes, its event at once): `tool`, `hand` (started, or done at once),
   `read` with a meter, `hart` ops, and the inputs of the later sections: `wo` (§7.1), `issue` and `order` (§7.2),
   `log` and `handover_check` (§7.3), `plan` (§7.4), `jsa` (§8.1), `enter` and `exit` (§8.2), `report` (§8.3), `moc`
-  (§10.2), `pace` (§5.3), `weather` (the instructor's). Their reasons are listed in the order each section gives;
-  `jsa` comes after §15.3's `authority`, `state`, `iso_busy`.
-- **Step 1w** (new, only with `world.weather`): the weather (§5.1). It writes the `ext` values it drives; every node
-  reads an `ext` value as step 1w left it in this step (as a `state` is read as it stands after this step's ops).
-- **Step 2:** unchanged.
+  (§10.2), `pace` (§5.3), `weather` (the instructor's), and J0's: `grid` (the instructor's), `force`, `pass`,
+  `order_approve`. Their reasons are listed in the order each section gives; `jsa` comes after §15.3's `authority`,
+  `state`, `iso_busy`, and `simops` after `jsa`; an authority naming an `auth` record is refused as `authority`.
+- **Step 1w** (new, only with `world.weather` or `world.grid`): the clock values (§2.1, with `world`), then the
+  weather (§5.1), then the grid events (J0). It writes the `ext` values it drives; every node reads an `ext` value as
+  step 1w left it in this step (as a `state` is read as it stands after this step's ops).
+- **Step 2:** unchanged, except with `forces` (J0): each forced value's node is computed as before into a slot of its
+  own (`<value>_raw`, for the screens' "forced" mark), and the value's own slot then takes the force's `to` (or the
+  value held when the force went on), so every later node, and steps 3–9, read the forced value.
 - **Step 3:** after §15's locks and automatic moves and the repairs (format 1's, under a permit, then `done`'s, each
   with causes, §2.6): renewals (§2.2), hand actions whose minutes end, then deliveries whose clock time is reached
   (§7.2), in that order.
@@ -217,7 +222,9 @@ digests.
   file), plan slots (§7.4), the standby and fire-watch acts (§8.2, works with `permit` `confined` or `hot` and the
   `standby`/`fire_watch` keys of their tasks), zones' `ppe_when` (§5.3), running on wet stairs (§5.3, zones with
   `"wet_when"`), the heat rule (§8.4, roles with `work_rate` and `world.weather`), NPC slips (§3.1, task steps with
-  `slip`), and vehicle runs' `needs` (§5.3). It still writes no value: everything it does is an input or a person's
+  `slip`), vehicle runs' `needs` (§5.3), and J0's duty-hour limits (`fatigue`: the callout refused, the `fatigue`
+  act), zone barriers (`barrier_when`), passes at the gate (`passes`) and who understood what (`languages`). It
+  still writes no value: everything it does is an input or a person's
   state, as before.
 
 ### 2.8 The digest
@@ -228,7 +235,9 @@ and each driven lag's value; every stream's state (causes, stores, lab, slips); 
 counts per place and each person's `carried`; each person's busy hand action and end clock, `pace`, heat counters and
 rest state (whole clock tenths); stock, orders and deliveries pending; work orders' states and data; logbook and
 report counts; JSA records per work; toolbox-talk attendance; entrants per work; plan slots added; change objects'
-states. Everything the next steps read is in it, as §17.14 requires.
+states; and J0's: the grid event running and its start, each force's state and held value, each person's duty-hour
+counters and days worked, the passes issued, the orders waiting for approval, and the `count` nodes' counters (with
+the stateful nodes'). Everything the next steps read is in it, as §17.14 requires.
 
 ### 2.9 What stays as it is
 
@@ -753,8 +762,9 @@ distillate systems, the emergency diesel, instrument air, fire water and CO₂, 
 model values to the first train (estimated 300–400, as built per milestone). §11's 600 values were sized before them,
 and at about 0.7 µs a value on the Note 9 the two together would pass the 0.4 ms share. So RE1 measures the step at
 600 and at 1,000 added values, and whether to widen the share or model these systems more coarsely is the user's
-question (MILESTONES.md, "Questions for the user (realism)"). Until answered, each milestone fits within §11 as it
-stands and counts its values.
+question (MILESTONES.md, "Question for the user (realism)"). Until answered, the milestones that add these systems
+(OP4, OP5, OP6, IC4, EC3, EC6) wait for the answer, since §11's 600 values are already shared out; every other
+milestone fits within §11 as it stands and counts its values.
 
 ### J1. Operations
 
@@ -805,7 +815,7 @@ stands and counts its values.
 | Item | What the trainee does | Model, engine | Source | Milestone |
 |---|---|---|---|---|
 | GT borescope inspection | borescopes the compressor and hot gas path through the ports, grades what is seen against limits | findings as tables of AG's wear (pictures generated per grade); a view through the tool | [GER3620] | MC3 |
-| Combustion and hot-gas-path inspections | the inspection packages, their scope and their findings, due by J7's counts | works per package (WM4) | [GER3620] | MC3 |
+| Combustion and hot-gas-path inspections | the inspection packages, their scope and their findings, due by J7's counts | works per package (the outage, WM4, uses them) | [GER3620] | MC3 |
 | HRSG tube leaks and NDT | spots a tube leak's signs (makeup up, noise, a drum's level), locates it in the outage, chooses the NDT method (UT thickness, radiography, magnetic particle, dye penetrant) and reads the result | leak as a fault with a cause (flow-accelerated corrosion, corrosion fatigue) tied to chemistry (§10.5) | [Dooley], [ASME-V] | MC4 |
 | In-place safety valve testing | tests a safety valve's set pressure in place with a lift-assist device, adjusts, seals | a meter of the lift force against the system pressure | [ASME-PTC25], [API576] | MC5 |
 | Statutory pressure-vessel inspections | the written scheme of examination, inspection due dates, preparing a vessel for the inspector | due dates in clock days; works | [PSSR], [API510] | MC5 |
@@ -896,8 +906,8 @@ The Workshop is built first (K0–K6, WORKSHOP.md). The realism pieces that don'
 (the user, 2026-11-01): RE1, AG1, WX1 and DC1 (the generated P&IDs). Hands-on work waits for the Workshop's K3 (HW1
 needs it); everything else follows its dependencies in MILESTONES.md. Within realism:
 - **foundations first:** the engine pieces (§2) in four milestones that add no drawing (RE1: world seed, streams,
-  clock values and the step's cost at the planned size, with no Workshop dependency; then HW1, AG1, WX1), each with
-  its vectors;
+  clock values and the step's cost at the planned size, with no Workshop dependency; then AG1 and WX1 alongside the
+  Workshop, and HW1 after its K3), each with its vectors;
 - **then the tracks**, each adding one kind of load measured alone: hands-on (HW2–HW6), ageing and monitoring
   (AG2–AG3), weather (WX2–WX4), documents (DC1–DC3), work management (WM1–WM4), HSE (HS1–HS3), crafts (EC1–EC2,
   MC1–MC2), engineering (EN1–EN4), and the rest of the job (J1–J8): operations (OP1–OP8), electrical (EC3–EC7), I&C
@@ -917,7 +927,10 @@ The table with sizes, needs and what each ships is in MILESTONES.md.
   minutes (busy, abandoned by leaving), tools' counts per place, jumps with permits open and wear across a jump,
   the weather step (hour boundaries, a jump across hours, scripted and fixed weather, the instructor's input), stock and
   deliveries, logbook and report inputs, the JSA refusal, entrants and the standby and fire watch acts, the heat rule,
-  change objects and `priority_of`, `discuss` with and without a trainee, `plan` slots, `switch_effects`; runs on the
+  change objects and `priority_of`, `discuss` with and without a trainee, `plan` slots, `switch_effects`; J0's grid
+  events (scripted, the instructor's, step 1w without weather), `count` nodes, forces and bypasses (a later node and a
+  trip reading the forced value, the raw slot, `approve_force`), the `simops` refusal, zone barriers, expired
+  authorisations, duty-hour limits, passes and languages, order approvals; runs on the
   first train's content with forks per area; the digests of every 50th step.
 - **The byte check:** after the engine milestones, `plant3d-v1.json` and `plant3d-v2.json` regenerated by the new
   reference equal the committed files; after a content milestone, their synthetic items still do, and their content
@@ -992,11 +1005,7 @@ Textbooks:
 For the rest of the job (J1–J8):
 
 Standards (bought, not copied; NFPA's codes are also free to read online after sign-in):
-- [RfG] Commission Regulation (EU) 2016/631, requirements for grid connection of generators (frequency response,
-  islanding), https://eur-lex.europa.eu/eli/reg/2016/631/oj · [NERC-BAL003] NERC BAL-003, Frequency response and
-  frequency bias setting · [NERC-EOP005] NERC EOP-005, System restoration from blackstart resources · [NERC-COM002]
-  NERC COM-002, Operating personnel communications protocols (all three free at
-  https://www.nerc.com/pa/Stand/Pages/ReliabilityStandards.aspx) · [NFPA110] NFPA 110, Emergency and standby power
+- [NFPA110] NFPA 110, Emergency and standby power
   systems · [NFPA12] NFPA 12, Carbon dioxide extinguishing systems (lockout before entry) · [NFPA25] NFPA 25,
   Inspection, testing and maintenance of water-based fire protection systems · [NFPA72] NFPA 72, National fire alarm
   and signaling code · [NFPA101] NFPA 101, Life safety code (emergency lighting tests) · [NFPA55] NFPA 55, Compressed
@@ -1029,6 +1038,11 @@ Standards (bought, not copied; NFPA's codes are also free to read online after s
   systems: their audits).
 
 Public guidance and regulations (free to read):
+- [RfG] Commission Regulation (EU) 2016/631, requirements for grid connection of generators (frequency response,
+  islanding), https://eur-lex.europa.eu/eli/reg/2016/631/oj · [NERC-BAL003] NERC BAL-003, Frequency response and
+  frequency bias setting · [NERC-EOP005] NERC EOP-005, System restoration from blackstart resources · [NERC-COM002]
+  NERC COM-002, Operating personnel communications protocols (all three free at
+  https://www.nerc.com/pa/Stand/Pages/ReliabilityStandards.aspx)
 - [IFC-EHS-Gen] IFC/World Bank, General EHS Guidelines (2007: wastewater, noise, hazardous materials, waste),
   https://www.ifc.org/ehsguidelines · [OSHA-SHIB-bump] US OSHA, Verification of calibration for direct-reading
   portable gas monitors (2013), https://www.osha.gov/publications/shib093013 · [NIST800-82] NIST SP 800-82r3, Guide

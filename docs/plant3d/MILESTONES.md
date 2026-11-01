@@ -331,7 +331,7 @@ programme's own budgets are REALISM.md §11.
 | EN3 | **Alarm management** (§10.3): alarm KPIs, bad actors, `priority_of`, rationalisation through changes | S | EN2 | alarm rationalisation with its effect on the next run |
 | EN4 | **Emissions and cycle chemistry** (§10.4, §10.5): NOx/CO/O₂ and the CEMS, averages and reports; the sample panel, lab analyses, action levels, dosing, a condenser tube leak | M | HW2, WM3 | emissions reports and the chemist's cycle chemistry |
 | | **The rest of the job** (REALISM.md J1–J8; J0 for the engine additions and the step's cost) | | | |
-| OP1 | **Grid events** (J0): `grid.json`, `world.grid`, the instructor's `grid` input, `grid_hz` and `grid_demand` driven in step 1w, vectors in both engines | S | RE1 | the grid that every player shares |
+| OP1 | **Grid events** (J0): `grid.json`, `world.grid`, the instructor's `grid` input, `grid_hz` and `grid_demand` driven in step 1w, vectors in both engines | S | RE1, WX1 | the grid that every player shares |
 | OP2 | **Dispatch and frequency response** (J1): the grid operator's instructions on the radio and their repeat back, load ramps, droop and deadband | M | OP1, S4b | the block dispatched by the grid |
 | OP3 | **Islanding and black start** (J1): house load or trip on grid loss, the black-start diesel, the dead-block restart, energising to the grid | M | OP2, OP5, EC3, EC6 | a restart from dead |
 | OP4 | **Fuel gas and dual fuel** (J1): the fuel gas station, the distillate system, the online changeover; the filters as wear items | M | AG2 | fuel supply rounds and a changeover under load |
@@ -340,9 +340,9 @@ programme's own budgets are REALISM.md §11.
 | OP7 | **Duty/standby changeovers** (J1): the rota, the standby's auto-start test | S | S4b | routine changeovers |
 | OP8 | **Performance and heat rate** (J1): heat rate and corrected output, losses found, the weekly report | M | WX2, AG2 | performance monitoring with its causes |
 | EC3 | **Excitation and synchronising** (J2): AVR auto and manual, capability limits, synchronising within limits | M | EC1, OP2 | a generator synchronised by hand |
-| EC4 | **Transformer oil DGA** (J2): the oil sample, lab gases by hidden cause, the decision | M | AG2, HW1 | DGA interpreted and acted on |
+| EC4 | **Transformer oil DGA** (J2): the oil sample, lab gases by hidden cause, the decision | M | AG3, HW1 | DGA interpreted and acted on |
 | EC5 | **Earthing, cathodic protection, cable faults** (J2): fall-of-potential test, pipe-to-soil potentials, TDR location | M | EC2 | three electrical test jobs |
-| EC6 | **Switchyard operations** (J2): switching under the grid operator's instructions, interlocks | M | EC1, OP1 | switchyard switching with the grid operator |
+| EC6 | **Switchyard operations** (J2): switching under the grid operator's instructions, interlocks | M | EC1, OP2 | switchyard switching with the grid operator |
 | EC7 | **Emergency lighting tests** (J2): monthly and yearly tests, a failed fitting | S | AG1, EC2 | the lighting test round |
 | IC1 | **Forces and bypasses** (J0, J3): the `forces` key, `approve_force`, the register, handover facts, vectors in both engines | M | RE1, WM3 | the forcing and bypass register |
 | IC2 | **SIS proof tests** (J3): a trip loop proof-tested end to end under a bypass | M | IC1, HW2 | a proof test recorded |
@@ -353,7 +353,7 @@ programme's own budgets are REALISM.md §11.
 | IC7 | **Vibration monitoring system setup** (J3): probes' gap and scale factor, alarm and trip settings | M | AG3, IC2 | a machinery protection check |
 | IC8 | **GT combustion tuning** (J3): dynamics and emissions per mode, tuning, seasonal retune | M | EN4, WX2, OP4 | combustion tuned |
 | IC9 | **Compression fittings and Ex inspections** (J3): tube fitting make-up and leak test, Ex inspections | M | HW5 | tubing work; a hazardous-area inspection |
-| MC3 | **GT inspections** (J4): borescope with graded findings, combustion and hot-gas-path packages | M | AG2, HW5 | what an inspection finds |
+| MC3 | **GT inspections** (J4): borescope with graded findings, combustion and hot-gas-path packages | M | AG2, AG4, HW5 | what an inspection finds |
 | MC4 | **HRSG tube leaks and NDT** (J4): leak signs, location, NDT methods, the cause tied to chemistry | M | AG2, HS6, EN4 | a tube leak found and its cause |
 | MC5 | **Safety valves and pressure vessels** (J4): in-place set-pressure tests, the written scheme and due dates | M | AG1, HW5 | statutory inspections |
 | MC6 | **Lifting gear and lift plans** (J4): examination dates and tags, a lift plan with wind limits | M | HW5, WX4 | certified gear and a planned lift |
@@ -368,12 +368,12 @@ programme's own budgets are REALISM.md §11.
 | CH1 | **Cooling tower treatment** (J6): cycles, blowdown, inhibitor and biocide, Legionella risk and samples | M | AG2, EN4 | the cooling tower's chemistry |
 | CH2 | **Fuel gas analysis** (J6): the chromatograph, Wobbe index, the fuel specification | S | OP4, EN4 | fuel gas quality |
 | CH3 | **Lab calibration and the chemical inventory** (J6): buffers and standards, the log, GHS labels and SDS | S | EN4, IC5 | a traceable lab and safe chemicals |
-| WM5 | **Requisitions and OEM engineers** (J0, J7): order approvals (vectors), the OEM's engineer under the service agreement | M | WM2, S4b | parts bought and the OEM on site |
+| WM5 | **Requisitions and OEM engineers** (J0, J7): order approvals (vectors), the OEM's engineer under the service agreement (arriving as a scheduled task) | M | RE1, WM2, S4b | parts bought and the OEM on site |
 | WM6 | **KPIs and budgets** (J7): availability, forced outage rate, MTBF, PM compliance, backlog; hours and parts against budget (no currency) | M | WM1, OP8 | the maintenance manager's numbers |
 | WM7 | **Critical spares, shelf life, stock audits** (J7): criticality, preservation, expiry, cycle counts | M | WM2 | a store that is kept honest |
 | AG4 | **GT intervals in equivalent hours and starts** (J7): factored hours and starts (`count`), tied to AG2's wear, inspections due | M | AG2, OP4 | the next outage's date from the machine's history |
 | PA1 | **Training records and authorisations** (J0, J8): the `auth` key, expiry, the training matrix, vectors | S | RE1, S4b | authorisations that expire |
-| PA2 | **Fatigue and overtime** (J0, J8): duty hours, limits, the `fatigue` act, vectors | M | S4b | callouts within the limits |
+| PA2 | **Fatigue and overtime** (J0, J8): duty hours, limits, the `fatigue` act, vectors | M | RE1, S4b | callouts within the limits |
 | PA3 | **Reports and audits** (J8): daily and monthly reports; ISO and insurance audits | M | WM6, HS5 | reports and audits |
 | PA4 | **Visitors, passes, languages** (J0, J8): passes at the gate, languages at talks and handovers, vectors | M | S4b, HS4 | the gate and multinational crews |
 
@@ -381,12 +381,15 @@ The K rows (the Workshop) come with WORKSHOP.md's own plan (K0), written in para
 user's Workshop spec.
 
 **Order** (the user, 2026-11-01). RL0 now. Alongside the Workshop: RE1, then AG1 and WX1 (no drawing; each with its
-vectors), and DC1 (documents, measured alone on the Note 9). After the Workshop's K3: HW1, then the tracks, each
+vectors), and DC1 (documents, measured alone on the Note 9). After the Workshop's K3: HW1, then the tracks (the
+new tracks' rows that don't need K3, such as OP1, OP7, PA1 and PA2, wait by choice, to keep the Workshop first, not
+because they need it), each
 adding one kind of load measured alone on the Note 9 before the next: HW2 (the work view), WX3 (weather drawn).
 Then, as dependencies allow and memory and the one Note 9 permit, in parallel: hands-on HW3–HW6, ageing AG2–AG4,
 weather WX2 and WX4, documents DC2–DC3, work management WM1–WM3 and WM5–WM7, HSE HS1–HS6 and EV1–EV2, crafts EC1–EC7
 and MC1–MC9, engineering EN1–EN4, operations OP1–OP8, I&C IC1–IC9, chemistry CH1–CH3, people PA1–PA4. The engine
-pieces among them (OP1, IC1, HS5, HS6, WM5, PA1, PA2, PA4: J0) start their tracks. WM4, the outage, comes last.
+pieces among them (OP1, IC1, HS5, HS6, WM5, PA1, PA2, PA4: J0) come first among their track's new rows, and AG1
+gains the `count` node. WM4, the outage, comes last.
 
 **When to stop and ask the user (realism):** the model step passes 2.1 ms on the Note 9 with realism content (fast-
 forward below 12×); a public source can't be found for a procedure, failure mode or limit (don't invent it and
@@ -403,4 +406,6 @@ plant app only; NPC speech text only), and every other part of the job added (J1
 distillate, emergency diesel, instrument air, fire water and CO₂, switchyard, excitation: an estimated 300–400 values
 more than §11's 600, past the 0.4 ms share at about 0.7 µs a value): widen the share (the step still ≤ 2.1 ms),
 model them more coarsely, or load them only in scenarios that use them (REALISM.md J0, decision 0073). RE1 measures
-the step at 600 and 1,000 added values. Until answered, each milestone fits within §11 as it stands.
+the step at 600 and 1,000 added values. Until answered, the milestones that add these systems (OP4, OP5, OP6, IC4,
+EC3, EC6) wait for the answer: §11's 600 values are already shared out and none of its parts covers them; every
+other milestone fits within §11 as it stands.

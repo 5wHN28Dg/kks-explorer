@@ -54,7 +54,9 @@ format (0060); (iii) a separate Workshop-like space for every job: loses the pla
   sentences: one source), hidden causes with `cures`, the weather step 1w driving `ext` values from a table file,
   and smaller pieces per area (stock and deliveries, logbook, report and JSA inputs, entrants with standby and fire
   watch acts, a heat rule, change objects, an alarm's priority from a value, the `discuss` and `plan` inputs, the
-  `switch_effects` query). Every addition is gated by its own key. Vectors in `ref/vectors/plant3d-realism.json`; the engine milestones leave
+  `switch_effects` query), and for the rest of the job (REALISM.md J0) grid events, a `count` node, forces and
+  bypasses, permit conflicts, zone barriers, authorisations, duty hours, passes and languages, and order approvals.
+  Every addition is gated by its own key. Vectors in `ref/vectors/plant3d-realism.json`; the engine milestones leave
   `plant3d-v1.json` and `plant3d-v2.json` byte for byte, and content milestones regenerate their content runs with
   every input, event and earlier value kept (as P1 and W2 did).
 - **Ageing:** the P-F curve's signs as tables of wear; lives drawn once per run from the seed; a scenario's age and an
