@@ -220,6 +220,24 @@ inputs to the engine), before S4. Its parts, one pull request each:
   128 ms that the rule excludes as the kernel's memory reclaim. All three walks saw reclaim in 1.1 to 1.7 % of their
   samples, over the rule's 1 %, so the frame rule does not judge them (the baseline's was 0.09 %).
 
+**S4, the full day: the plan (2026-11-01; PLANT3D.md §21).** Four pull requests, each measured and reviewed:
+- **S4a, the engine:** homes and off site, off-duty routines, `go: "home"`, `sleep`, vehicles, `drive` ways, runs
+  and drivers, `ride` and the trainee's `ride` input, in the reference and the GDScript engine bit for bit; the
+  validator's rules; `staff.runs` on a synthetic plant with a camp and `staff.reject` (every earlier vector item
+  unchanged: the S4 keys are new, and a file without homes or vehicles runs as before, checked by a JSON comparison
+  of the old and new file).
+- **S4b, the content:** the missing roles (guards, managers and engineers, drivers, the storekeeper, the camp staff:
+  91 people), homes in the camp, the camp's and the admin building's places measured on the navigation mesh, the gate
+  at the plant gate, the buses' stops, drive ways and runs, meals, the morning meeting, the evening; `day` made again
+  over 24 clock hours with its forks and the new ones (§21.9); the staff step's cost on the laptop.
+- **S4c, the app:** the vehicles drawn and on the map, people at hidden places and in unloaded interiors not drawn,
+  the trainee's bus ride, the off-duty Crew panel, the debrief per role.
+- **S4d, the Note 9:** the `gate` walk at the shift change (PLANT3D.md §21.10), two judged cool runs, the staff step on
+  the phone.
+
+**Questions for the user (S4):** should a trainee who plays a driver steer the bus (driving controls; the bus's
+position then the trainee's inputs), or ride in the cab while the engine drives (built: PLANT3D.md §21.8)?
+
 **Multiplayer** (the user, 2026-10-26): its own milestones MP1–MP6 in docs/plant3d/MULTIPLAYER.md §13 (decisions
 0067–0069). MP1 needs S3 (the engine's staff as built); it changes the engine (several trainees), so it goes before
 S4 or alongside it with S4 rebased on it. **MP1 built 2026-10-26** (PLANT3D.md §17.13–§17.14, MULTIPLAYER.md §3.3, §4),
