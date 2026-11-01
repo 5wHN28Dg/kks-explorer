@@ -316,21 +316,24 @@ hands-on work builds on K1a–K3 (REALISM.md).
 
 The user chose to add all of: hands-on work and tools, ageing and breakdowns, weather, documents and discussions, work
 management, HSE in depth, electrical and mechanical crafts with condition monitoring, and engineering and compliance.
-The Workshop (WORKSHOP.md, K0–K6, decision 0072) is built first; realism's designs run in parallel with it and its
-builds follow. Every milestone below is shippable and measured as the rules at the top of this file say; the
+On the same day they added every other part of the job they listed (REALISM.md J1–J8: operations, electrical, I&C,
+mechanical, HSE and environment, chemistry, stores and planning, people and administration). The Workshop
+(WORKSHOP.md, K0–K6, decision 0072) is built first, and the realism pieces that don't need it are built alongside it
+(the user, 2026-11-01): RE1, AG1, WX1 and DC1. Hands-on work waits for the Workshop's K3; the rest follows the Needs
+column. Every milestone below is shippable and measured as the rules at the top of this file say; the
 programme's own budgets are REALISM.md §11.
 
 | # | Milestone | Size | Needs | Ships |
 |---|---|---|---|---|
 | RL0 | **The plan:** REALISM.md, decision 0073, these rows, CAPABILITIES.md | S | — | the plan |
-| RE1 | **Realism engine base** (REALISM.md §2.1, §2.7–§2.9): the world seed, streams by id, clock values and time bases, the step order's new places, the digest's new parts, `plant3d-realism.json` with its first items, the byte check of the v1 and v2 vectors; the model step measured on the Note 9 on a synthetic model of the planned size (§11's 600 values) | S | S4a | the base every realism engine piece builds on; nothing new drawn |
+| RE1 | **Realism engine base** (REALISM.md §2.1, §2.7–§2.9): the world seed, streams by id, clock values and time bases, the step order's new places, the digest's new parts, `plant3d-realism.json` with its first items, the byte check of the v1 and v2 vectors; the model step measured on the Note 9 on a synthetic model of the planned size (§11's 600 values, and 1,000 for the question below) | S | S4a | the base every realism engine piece builds on; nothing new drawn |
 | HW1 | **Hands-on engine** (REALISM.md §2.3–§2.7): `tools.json` and carried tools, `hands`, `meters` and `read via`, HART ops, hidden causes and `cures`, NPC slips, in the reference and the GDScript engine bit for bit, with vectors; the step's cost | M | RE1, K3 | jobs can be written and checked; nothing new drawn |
 | HW2 | **The transmitter in the field:** the work view (§3.3), the builder's unmerged equipment with jobs, the tool tray, the multimeter, clamp meter and HART communicator screens; the condenser pressure transmitters' jobs (open up, connect, read, reconfigure, replace, close up, loop check) generated from the Workshop's tree; the Note 9 walk with `job=` | M | HW1 | an I&C technician's transmitter job, step by step with tools |
 | HW3 | **Hidden causes:** the transmitter's five causes and the tests that tell them apart, the debrief's diagnosis tab, the failed part opened in the Workshop (§3.5) | M | HW2, DC2 | troubleshooting where the cause must be found |
 | HW4 | **Commissioning and decommissioning** (§3.4): works of kind `commission`, loop checks, stroke tests, a motor's first run, `in_service` states, decommissioning with the drawing's revision | M | HW3, HW5, EC2, DC1 | a new instrument and a motor brought into service; equipment taken out |
 | HW5 | **More kinds in the field:** the control valve and positioner, a horizontal pump, a motor, from the Workshop's trees (K6) | L | HW2, K6 | hands-on jobs on valves, pumps and motors |
 | HW6 | **Ordering the work:** supervisors and engineers give jobs to NPC technicians, NPCs' hand actions drawn, hold points checked by the trainee | M | HW5 | do it yourself or order it |
-| AG1 | **Wear engine** (§2.2, §4.2): `draw` and `wear` nodes, `renews`, wear across jumps, `age_rate`, their vectors | S | RE1 | ageing can be written |
+| AG1 | **Wear engine** (§2.2, §4.2): `draw` and `wear` nodes, `renews`, wear across jumps, `age_rate`, the `count` node (J0), their vectors | S | RE1 | ageing can be written |
 | AG2 | **The first train ages:** wear items on pumps, fans, valves, transmitters, filters, the condenser, the GT compressor; early signs bound (sound, heat, trends, shake); seeded failures; the scenarios' ages; the Note 9 walk | L | AG1 | equipment that wears and fails on its own, with signs to find |
 | AG3 | **Condition monitoring** (§9.3): the vibration data collector and spectrum, the thermal camera (the Workshop's heat view), oil samples and lab results | M | AG2, HW2, K4b | vibration, thermography and oil analysis rounds |
 | WX1 | **Weather engine** (§5.1): `weather.json`, step 1w, the driven `ext` values, seasons by `year_day`, scripted and fixed weather, the instructor's input, vectors | S | RE1 | weather that the model and every player share |
@@ -343,7 +346,7 @@ programme's own budgets are REALISM.md §11.
 | WM1 | **Work orders and job history** (§7.1): `wo` states and inputs, failure codes, generated history, the work order panel | M | HW1, S4b | work orders from notification to closure |
 | WM2 | **Stores and spares** (§7.2): the catalogue, stock, issue and order inputs, deliveries, look-alike parts checked at fitting; the storekeeper's tasks; jumps to a date | M | WM1, DC2 | the wrong part and waiting for a delivery |
 | WM3 | **Handover and logbooks** (§7.3): `log` inputs, NPC entries, the handover sheet and its check | M | WM1 | shift handover that can miss something |
-| WM4 | **Outage planning** (§7.4): the plan tool, critical path and conflicts, `plan` slots, the outage run over days | L | WM2, HW5, MC2, HS2, AG2 | a major outage planned and run |
+| WM4 | **Outage planning** (§7.4): the plan tool, critical path and conflicts, `plan` slots, the outage run over days | L | WM2, HW5, MC2, MC3, HS2, AG2, AG4 | a major outage planned and run |
 | HS1 | **JSA and toolbox talks** (§8.1): the hazard library, the `jsa` input and the issue refusal, toolbox talks with content | M | HW1, S4b | every job starts with its JSA and toolbox talk |
 | HS2 | **Confined space, hot work, height** (§8.2): continuous gas monitoring, entry log, standby person, fire watch, scaffold tags | M | HS1 | the three high-risk permits in depth |
 | HS3 | **Reports, drills and heat** (§8.3, §8.4): report input, incident investigation, emergencies and muster headcounts, the heat rule in the staff step | M | HS1, WX1 | near-miss reports, drills, heat stress |
@@ -355,15 +358,66 @@ programme's own budgets are REALISM.md §11.
 | EN2 | **Management of change** (§10.2): change objects, `approve_change`, setpoints behind a change, drawing revisions | M | DC1, HW4 | a change from request to the revised drawing |
 | EN3 | **Alarm management** (§10.3): alarm KPIs, bad actors, `priority_of`, rationalisation through changes | S | EN2 | alarm rationalisation with its effect on the next run |
 | EN4 | **Emissions and cycle chemistry** (§10.4, §10.5): NOx/CO/O₂ and the CEMS, averages and reports; the sample panel, lab analyses, action levels, dosing, a condenser tube leak | M | HW2, WM3 | emissions reports and the chemist's cycle chemistry |
+| | **The rest of the job** (REALISM.md J1–J8; J0 for the engine additions and the step's cost) | | | |
+| OP1 | **Grid events** (J0): `grid.json`, `world.grid`, the instructor's `grid` input, `grid_hz` and `grid_demand` driven in step 1w, vectors in both engines | S | RE1, WX1 | the grid that every player shares |
+| OP2 | **Dispatch and frequency response** (J1): the grid operator's instructions on the radio and their repeat back, load ramps, droop and deadband | M | OP1, S4b | the block dispatched by the grid |
+| OP3 | **Islanding and black start** (J1): house load or trip on grid loss, the black-start diesel, the dead-block restart, energising to the grid | M | OP2, OP5, EC3, EC6 | a restart from dead |
+| OP4 | **Fuel gas and dual fuel** (J1): the fuel gas station, the distillate system, the online changeover; the filters as wear items | M | AG2 | fuel supply rounds and a changeover under load |
+| OP5 | **Emergency diesel** (J1): the diesel and its transfer, the monthly test run, the auto start on loss of the essential board | M | EC1, AG1 | the diesel's test day |
+| OP6 | **Fire protection tests and CO₂ lockout** (J1): fire pumps, deluge and detection tests, the GT enclosure's CO₂ locked out before entry | M | HS2 | fire system tests; a safe enclosure entry |
+| OP7 | **Duty/standby changeovers** (J1): the rota, the standby's auto-start test | S | S4b | routine changeovers |
+| OP8 | **Performance and heat rate** (J1): heat rate and corrected output, losses found, the weekly report | M | WX2, AG2 | performance monitoring with its causes |
+| EC3 | **Excitation and synchronising** (J2): AVR auto and manual, capability limits, synchronising within limits | M | EC1, OP2 | a generator synchronised by hand |
+| EC4 | **Transformer oil DGA** (J2): the oil sample, lab gases by hidden cause, the decision | M | AG3, HW1 | DGA interpreted and acted on |
+| EC5 | **Earthing, cathodic protection, cable faults** (J2): fall-of-potential test, pipe-to-soil potentials, TDR location | M | EC2 | three electrical test jobs |
+| EC6 | **Switchyard operations** (J2): switching under the grid operator's instructions, interlocks | M | EC1, OP2 | switchyard switching with the grid operator |
+| EC7 | **Emergency lighting tests** (J2): monthly and yearly tests, a failed fitting | S | AG1, EC2 | the lighting test round |
+| IC1 | **Forces and bypasses** (J0, J3): the `forces` key, `approve_force`, the register, handover facts, vectors in both engines | M | RE1, WM3 | the forcing and bypass register |
+| IC2 | **SIS proof tests** (J3): a trip loop proof-tested end to end under a bypass | M | IC1, HW2 | a proof test recorded |
+| IC3 | **PID loop tuning** (J3): step tests, gains, stiction told from tuning | M | AG2 | a loop tuned |
+| IC4 | **Instrument air** (J3): compressors, dryers, header, fail positions, moisture causes | M | AG2, OP7 | the air system and its failures |
+| IC5 | **Calibration traceability and bump tests** (J3): tools' calibration days, certificates, portable and fixed gas detector bump tests | M | HW1 | traceable tools; bump-tested detectors |
+| IC6 | **DCS backups, removable media, patching** (J3): backups, the scan kiosk, patches through a change | M | EN2, HW1 | control system housekeeping |
+| IC7 | **Vibration monitoring system setup** (J3): probes' gap and scale factor, alarm and trip settings | M | AG3, IC2 | a machinery protection check |
+| IC8 | **GT combustion tuning** (J3): dynamics and emissions per mode, tuning, seasonal retune | M | EN4, WX2, OP4 | combustion tuned |
+| IC9 | **Compression fittings and Ex inspections** (J3): tube fitting make-up and leak test, Ex inspections | M | HW5 | tubing work; a hazardous-area inspection |
+| MC3 | **GT inspections** (J4): borescope with graded findings, combustion and hot-gas-path packages | M | AG2, AG4, HW5 | what an inspection finds |
+| MC4 | **HRSG tube leaks and NDT** (J4): leak signs, location, NDT methods, the cause tied to chemistry | M | AG2, HS6, EN4 | a tube leak found and its cause |
+| MC5 | **Safety valves and pressure vessels** (J4): in-place set-pressure tests, the written scheme and due dates | M | AG1, HW5 | statutory inspections |
+| MC6 | **Lifting gear and lift plans** (J4): examination dates and tags, a lift plan with wind limits | M | HW5, WX4 | certified gear and a planned lift |
+| MC7 | **Steam traps and CUI** (J4): a trap survey, CUI locations inspected | M | AG3 | trap and CUI rounds |
+| MC8 | **Chemical cleaning** (J4): an HRSG or condenser clean as an outage job | M | MC4, EV1 | a chemical clean |
+| MC9 | **Welding qualifications** (J4): welder and procedure checks before hot work | S | PA1, HS2 | qualified welding |
+| HS4 | **Induction, first aid, ERT** (J5): inductions, the first response and CPR steps, the emergency response team | M | HS3, PA1 | site inductions and first response |
+| HS5 | **Audits and simultaneous operations** (J0, J5): permit and lockout audits, permit conflicts (`conflicts`, vectors) | M | HS2 | audited permits; conflicting work refused |
+| HS6 | **Hydrogen, chlorine, radiation** (J0, J5): zone barriers (`barrier_when`, vectors), hydrogen purging, chlorine drills, gauges' shutters, radiography barriers | M | HS2 | the special hazards |
+| EV1 | **Waste and spills** (J5): segregation, records, a spill contained and reported | S | HS3 | spill response |
+| EV2 | **Wastewater and noise** (J5): discharge monitoring against the IFC limits, a noise survey, hearing protection zones | M | EN4, WX4 | environmental monitoring |
+| CH1 | **Cooling tower treatment** (J6): cycles, blowdown, inhibitor and biocide, Legionella risk and samples | M | AG2, EN4 | the cooling tower's chemistry |
+| CH2 | **Fuel gas analysis** (J6): the chromatograph, Wobbe index, the fuel specification | S | OP4, EN4 | fuel gas quality |
+| CH3 | **Lab calibration and the chemical inventory** (J6): buffers and standards, the log, GHS labels and SDS | S | EN4, IC5 | a traceable lab and safe chemicals |
+| WM5 | **Requisitions and OEM engineers** (J0, J7): order approvals (vectors), the OEM's engineer under the service agreement (arriving as a scheduled task) | M | RE1, WM2, S4b | parts bought and the OEM on site |
+| WM6 | **KPIs and budgets** (J7): availability, forced outage rate, MTBF, PM compliance, backlog; hours and parts against budget (no currency) | M | WM1, OP8 | the maintenance manager's numbers |
+| WM7 | **Critical spares, shelf life, stock audits** (J7): criticality, preservation, expiry, cycle counts | M | WM2 | a store that is kept honest |
+| AG4 | **GT intervals in equivalent hours and starts** (J7): factored hours and starts (`count`), tied to AG2's wear, inspections due | M | AG2, OP4 | the next outage's date from the machine's history |
+| PA1 | **Training records and authorisations** (J0, J8): the `auth` key, expiry, the training matrix, vectors | S | RE1, S4b | authorisations that expire |
+| PA2 | **Fatigue and overtime** (J0, J8): duty hours, limits, the `fatigue` act, vectors | M | RE1, S4b | callouts within the limits |
+| PA3 | **Reports and audits** (J8): daily and monthly reports; ISO and insurance audits | M | WM6, HS5 | reports and audits |
+| PA4 | **Visitors, passes, languages** (J0, J8): passes at the gate, languages at talks and handovers, vectors | M | S4b, HS4 | the gate and multinational crews |
 
 The K rows (the Workshop) come with WORKSHOP.md's own plan (K0), written in parallel; the K numbers here follow the
 user's Workshop spec.
 
-**Order.** RL0 now. After the Workshop: the engine foundations RE1, then HW1, AG1 and WX1 (no drawing; each with its
-vectors); then the tracks, each adding one kind of load measured alone on the Note 9 before the next: HW2 (the work
-view), WX3 (weather drawn), DC1 (documents). Then, as dependencies allow and memory and the one Note 9 permit, in
-parallel: hands-on HW3–HW6, ageing AG2–AG3, weather WX2 and WX4, documents DC2–DC3, work management WM1–WM3, HSE
-HS1–HS3, crafts EC1–EC2 and MC1–MC2, engineering EN1–EN4. WM4, the outage, comes last.
+**Order** (the user, 2026-11-01). RL0 now. Alongside the Workshop: RE1, then AG1 and WX1 (no drawing; each with its
+vectors), and DC1 (documents, measured alone on the Note 9). After the Workshop's K3: HW1, then the tracks (the
+new tracks' rows that don't need K3, such as OP1, OP7, PA1 and PA2, wait by choice, to keep the Workshop first, not
+because they need it), each
+adding one kind of load measured alone on the Note 9 before the next: HW2 (the work view), WX3 (weather drawn).
+Then, as dependencies allow and memory and the one Note 9 permit, in parallel: hands-on HW3–HW6, ageing AG2–AG4,
+weather WX2 and WX4, documents DC2–DC3, work management WM1–WM3 and WM5–WM7, HSE HS1–HS6 and EV1–EV2, crafts EC1–EC7
+and MC1–MC9, engineering EN1–EN4, operations OP1–OP8, I&C IC1–IC9, chemistry CH1–CH3, people PA1–PA4. The engine
+pieces among them (OP1, IC1, HS5, HS6, WM5, PA1, PA2, PA4: J0) come first among their track's new rows, and AG1
+gains the `count` node. WM4, the outage, comes last.
 
 **When to stop and ask the user (realism):** the model step passes 2.1 ms on the Note 9 with realism content (fast-
 forward below 12×); a public source can't be found for a procedure, failure mode or limit (don't invent it and
@@ -371,5 +425,15 @@ present it as real); an engine milestone would alter `plant3d-v1.json` or `plant
 earlier value of their runs or any synthetic item (REALISM.md §2); the APK passes
 250 MB; the frame rules can't be met without cutting something the trainee learns from.
 
-**Questions for the user (realism, 2026-11-01):** the decisions listed in decision 0073 ("Open for the user"). Until
-answered, the plan uses the first option of each.
+**Decided by the user (realism, 2026-11-01):** the seven questions of decision 0073 (alongside the Workshop: RE1, AG1,
+WX1, DC1; ageing at a training rate per scenario with real rates available; free-play weather on, seeded by season;
+emissions against the IFC / World Bank Group EHS guidelines; costs as man-hours, parts and MWh lost; P&IDs in the
+plant app only; NPC speech text only), and every other part of the job added (J1–J8).
+
+**Question for the user (realism):** the model step's share with the new plant systems of J1–J4 (fuel gas and
+distillate, emergency diesel, instrument air, fire water and CO₂, switchyard, excitation: an estimated 300–400 values
+more than §11's 600, past the 0.4 ms share at about 0.7 µs a value): widen the share (the step still ≤ 2.1 ms),
+model them more coarsely, or load them only in scenarios that use them (REALISM.md J0, decision 0073). RE1 measures
+the step at 600 and 1,000 added values. Until answered, the milestones that add these systems (OP4, OP5, OP6, IC4,
+EC3, EC6) wait for the answer: §11's 600 values are already shared out and none of its parts covers them; every
+other milestone fits within §11 as it stands.
