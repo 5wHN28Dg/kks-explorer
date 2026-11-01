@@ -32,7 +32,7 @@ const LIFT_ENTER := 20.0        # a ride's cost to board, in metres of walking
 
 ## The staff's nominal speeds (staff.json `speeds`, §16.2; `lift` §20.4): the walking directions take a lift when its
 ## ride is quicker than the stairs by these, as the staff's `next` does (§20.6; the user, 2026-10-30)
-var speeds := {"walk": 1.3, "stair": 0.5, "ladder": 0.3, "lift": 0.3}
+var speeds := {"walk": 1.3, "stair": 0.5, "ladder": 0.3, "lift": 0.45}
 var map := RID()
 var region := RID()
 var links := {}                 # link RID -> {kind: "stair" | "ladder", id, path: the way along it, foot first}
@@ -203,7 +203,7 @@ func time_of(rt: Dictionary) -> float:
 		var d := pts[k - 1].distance_to(pts[k])
 		if m != "" and m == rt.marks[k - 1]:
 			if m.begins_with("lift "):
-				t += absf(pts[k].y - pts[k - 1].y) / maxf(float(speeds.get("lift", 0.3)), 0.01)
+				t += absf(pts[k].y - pts[k - 1].y) / maxf(float(speeds.get("lift", 0.45)), 0.01)
 			elif m.begins_with("ladder "):
 				t += d / maxf(float(speeds.get("ladder", 0.3)), 0.01)
 			else:
@@ -269,6 +269,12 @@ func find(from: Vector3, to: Vector3) -> Dictionary:
 	if b.reached and not a.reached or b.reached == a.reached and time_of(b) <= time_of(a):
 		return b
 	return a
+
+
+## The way on foot alone (no lift): the staff's walking ways are measured and checked by it (tests/staff_layout.gd,
+## tests/test_staff_ways.gd), a lift way being a way of its own (PLANT3D §20.4).
+func find_walking(from: Vector3, to: Vector3) -> Dictionary:
+	return _find(from, to, 1)
 
 
 func _find(from: Vector3, to: Vector3, layers: int) -> Dictionary:

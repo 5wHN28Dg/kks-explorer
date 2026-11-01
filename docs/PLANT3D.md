@@ -2739,3 +2739,26 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
 - **Tests:** `tests/test_lifts.gd` (the ride from grade to the roof through the cards, the walker on the cab's floor,
   the gates' and the front's bodies, the panel's reach, the directions), `test_ui_session.gd` (both players' boards
   reach both plants), `tests/test_plant3d.py ServiceLift` (the landings are the tower's; a ride in the model alone).
+
+### 20.12 As built for milestone LIFTS L3 (2026-11-01: the staff on the lift)
+
+- **staff.json** (`tools/plant3d/train_staff.py`): `lifts: [{"lift": "hrsg1_lift", "landings": ["p_lift0", "p_lift1",
+  "p_lift2"]}]`, the three points 1 m in front of the landing gates (where the waiting stand: room round them clear of the gate's
+  leaf, solid in the app while shut);
+  `speeds.lift` 0.45 m/s, three quarters of the cab's speed for the gates and the dwell (§20.4's 0.3 made the ride to
+  the roof, 100 s, slower than the tower's stair, 91 s at the staff's 0.5 m/s along its 45 m: nobody rode); a lift way between every two landings (metres: the height between them); walking ways from the
+  tower's foot to the grade's point and from the roof's to the tower's top, and the tower's stair to and from the point
+  at +16.7 m (the bake's two stair ways there, §20.11). The drive's repair under a permit, `wo_hrsg1_lift_drive` (its
+  isolation the main switch, its job in staff.json, its work place in front of the drive's cabinet), comes with it.
+  The staff's `next` then rides on the long climbs: from the tower's foot to the roof it is quicker by the lift.
+- **The first train's day** (`plant3d-v2.json` `day`) made again with the lift: the NPCs who go up to the roof ride it.
+  Format 1's `train` and `hot` carry the lift's values (every input and event kept, made in L2).
+- **The people view** (`ui/people_view.gd`): a person in a cab (the engine's riders) is drawn at their spot in it (six,
+  in boarding order, `app/lift.gd rider_spot`), on the cab's floor as drawn now, facing its gate, given to the keeping
+  apart as fixed (not moved out of the cab, the others keep clear); stepping in or out they are drawn walking between
+  the landing's place and their spot (their offset shrinks at 1.2 m/s of plant time), and moved up a spot when
+  someone who boarded before them gets off they step over to it the same way; on the map at the lift.
+- `builder/staff_paths.gd` draws no line for a lift way; `tests/test_staff_ways.gd` leaves them out (their stairs are
+  walking ways, checked as any).
+- **Tests:** `tests/test_lift_riders.gd` (an NPC riding in the day shift drawn in the cab at their spot facing the
+  gate, on the map, and walking out without a jump).

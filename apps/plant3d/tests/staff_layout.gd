@@ -72,12 +72,12 @@ func _run() -> void:
 		var res := []
 		for j in mini(k, near.size()):
 			var q: String = near[j][1]
-			var f: Dictionary = r.find(g, godot_of(places[q]))
+			var f: Dictionary = r.find_walking(g, godot_of(places[q]))
 			if f["reached"]:
 				res.append([q, snappedf(f["length"], 0.01), snappedf(_rise(f["points"]), 0.01)])
 		out["stubs"][id] = res
 	for e in req["edges"]:
-		var f: Dictionary = r.find(godot_of(places[e[0]]), godot_of(places[e[1]]))
+		var f: Dictionary = r.find_walking(godot_of(places[e[0]]), godot_of(places[e[1]]))
 		out["edges"]["%s|%s" % [e[0], e[1]]] = [snappedf(f["length"], 0.01), snappedf(_rise(f["points"]), 0.01),
 				f["reached"]]
 	var fo := FileAccess.open(opts.get("out", "user://staff_layout.json"), FileAccess.WRITE)

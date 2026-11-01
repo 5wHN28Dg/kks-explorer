@@ -25,7 +25,9 @@ import wtp_staff  # noqa: E402  (the water treatment plant's people, milestone S
 
 CLOCK = {'day_scale': 6, 'start': {'day': 1, 'time': '06:00'},
          'week': ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']}
-SPEEDS = {'walk': 1.3, 'stair': 0.5, 'ladder': 0.3}
+# a lift way's nominal speed (PLANT3D §20.4, §20.12): three quarters of the cab's 0.6 m/s, for the gates and the
+# dwell (at half, 0.3, the ride to the roof took 100 s against the tower's stair's 91 s: nobody would ride)
+SPEEDS = {'walk': 1.3, 'stair': 0.5, 'ladder': 0.3, 'lift': 0.45}
 K = 8                       # nearest points measured for each place's way into the network
 STAIR_RISE = 2.0            # a way that climbs and comes down more than this (m) is walked at stair speed
 
@@ -65,6 +67,14 @@ EDGES = [
 # indexes, and so the train's routes, unchanged)
 POINTS.update(wtp_staff.POINTS)
 EDGES += wtp_staff.EDGES
+# milestone LIFTS L3: HRSG 1's service lift (train_lift.py), a point 1 m in front of each landing gate (where a waiting
+# person stands: room round them clear of the gate's leaf, which the app makes solid while shut), joined to the tower's foot and its top on
+# foot, the landing between by the tower's stair; a lift way between every two landings (PLANT3D §20.4)
+import train_lift  # noqa: E402
+LIFT_POINTS = [f'p_lift{i}' for i in range(len(train_lift.ZS))]
+for _i, _z in enumerate(train_lift.ZS):
+    POINTS[LIFT_POINTS[_i]] = (round(train_lift.GATE_X - 1.0, 6), train_lift.AT[1], _z)
+EDGES += [('p_h_foot', 'p_lift0'), ('p_lift2', 'p_h_30'), ('p_h_foot', 'p_lift1'), ('p_lift1', 'p_h_30')]
 # The control building's rooms (its ground floor: the control room, the field office, the maintenance workshop)
 # and the gate where people come on site (until the camp and its buses, milestone S4).
 ANCHORS = {
@@ -298,6 +308,11 @@ def network(models, layout):
             raise SystemExit(f'train_staff: {p["id"]} reaches no point on the mesh')
         q, m, rise = min(stubs, key=lambda s: (s[1], s[0]))
         ways.append([p['id'], q, _metres(m, at[p['id']], at[q]), 'stair' if rise > STAIR_RISE else 'walk'])
+    # the lift's ways: their metres the height between their landings (§20.4)
+    for i in range(len(LIFT_POINTS)):
+        for j in range(i + 1, len(LIFT_POINTS)):
+            ways.append([LIFT_POINTS[i], LIFT_POINTS[j], math.ceil(abs(train_lift.ZS[j] - train_lift.ZS[i]) * 20 - 1e-9) / 20,
+                         'lift'])      # (to the next 5 cm up from the height: never under the straight line)
     pts = list(POINTS)
     adj = [[] for _ in pts]
     for a, b, metres, mode in ways:
@@ -657,6 +672,7 @@ def staff(models, layout):
     T += wt
     model_reacts = model_reacts + wr
     return {'format': 'walkdown-plant-staff', 'version': 1, 'origin': 'cr_desk_a', 'gate': 'gate', 'speeds': SPEEDS,
+            'lifts': [{'lift': train_lift.LIFT, 'landings': list(LIFT_POINTS)}],
             'places': places, 'ways': ways, 'next': nxt, 'zones': zones, 'roles': roles(), 'rosters': rosters(),
             'people': people(), 'routines': routines(), 'tasks': T, 'reactions': reactions(model_reacts),
             'messages': MESSAGES, 'put_right': {'ppe': 'put_on_ppe', 'permit': 'ask_permit',
@@ -698,8 +714,12 @@ def works_tasks(models):
 if __name__ == '__main__':
     sys.path.insert(0, HERE)
     sys.path.insert(0, ROOT)
-    import train_model, wtp_model  # noqa: E402
+    import train_model, wtp_model, train_hoists  # noqa: E402
     models = train_model.models() + wtp_model.models()
+    for m in models:                # as make_content.py adds them: the hoists and the lift (PLANT3D §20)
+        {'hrsg1': train_hoists.roof_hoist, 'st': train_hoists.crane}.get(m.area, lambda _m: None)(m)
+        if m.area == 'hrsg1':
+            train_lift.model(m)
     if '--requests' in sys.argv:
         path = sys.argv[sys.argv.index('--requests') + 1]
         with open(path, 'w', encoding='utf-8') as f:

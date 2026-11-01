@@ -82,9 +82,11 @@ func run(tree: SceneTree) -> Array:
 				p.append("work place %s: %s's local ops are out of the card's reach (%.1f m)" % [pl["id"], pl["kks"],
 						ui.index.distance(pl["kks"], g + Vector3.UP * 1.0)])
 	for w in m.staff.d["ways"]:
+		if w[3] == "lift":
+			continue        # a ride, not a walk: its stairs are walking ways, checked as any (PLANT3D §20.6)
 		var a: Vector3 = Layout.godot_of(sm.places[sm.pix[w[0]]]["at"])
 		var b: Vector3 = Layout.godot_of(sm.places[sm.pix[w[1]]]["at"])
-		var f: Dictionary = r.find(a, b)
+		var f: Dictionary = r.find_walking(a, b)
 		if not f["reached"]:
 			p.append("way %s–%s: not walkable on the mesh" % [w[0], w[1]])
 			bad += 1
@@ -106,13 +108,15 @@ func run(tree: SceneTree) -> Array:
 	else:
 		var space: PhysicsDirectSpaceState3D = main.get_world_3d().direct_space_state
 		var skip: Array[RID] = [main.player.get_rid()]
-		for n in tree.get_nodes_in_group("doors"):
+		for n in tree.get_nodes_in_group("doors") + tree.get_nodes_in_group("lift_bodies"):
 			if n is CollisionObject3D:
-				skip.append(n.get_rid())
+				skip.append(n.get_rid())        # (they move: the lifts' gates and cabs as the doors, app/lift.gd)
 		var lb := 0
 		var samples := 0
 		var on_stairs := 0
 		for w in sm.d["ways"]:
+			if w[3] == "lift":
+				continue
 			var ia: int = sm.pix[w[0]]
 			var ib: int = sm.pix[w[1]]
 			var steps: int = sm.ways[mini(ia, ib) * at.size() + maxi(ia, ib)]
@@ -166,7 +170,7 @@ static func _crowd_lanes(main) -> Array:
 	var out: Array = []
 	var space: PhysicsDirectSpaceState3D = main.get_world_3d().direct_space_state
 	var skip: Array[RID] = [main.player.get_rid()]
-	for n in main.get_tree().get_nodes_in_group("doors"):
+	for n in main.get_tree().get_nodes_in_group("doors") + main.get_tree().get_nodes_in_group("lift_bodies"):
 		if n is CollisionObject3D:
 			skip.append(n.get_rid())
 	var total := 0
