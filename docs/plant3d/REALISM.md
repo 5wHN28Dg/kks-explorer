@@ -1,6 +1,7 @@
 # Walkdown Plant: the realism programme
 
-**Status: DRAFT 2026-11-01**, written before any code. Decision: 0073. Milestones: MILESTONES.md, "Realism".
+**Status: DRAFT 2026-11-01**, written before any code; the user's decisions of 2026-11-01 are in (below and decision
+0073). Decision: 0073. Milestones: MILESTONES.md, "Realism".
 Format: docs/PLANT3D.md format 2 (§14–§21), with the additions of §2 below. The Workshop (docs/plant3d/WORKSHOP.md,
 decision 0072, being written in parallel from the user's Workshop spec: its names here follow that spec until K0
 settles them) is built first; this programme builds on its component trees and bench models. Everything here is
@@ -25,6 +26,18 @@ and chose to add all of the following:
 - **Electrical and mechanical crafts and condition monitoring** (§9).
 - **Engineering and compliance** (§10): root-cause analysis, management of change with drawing updates, alarm
   management, emissions reporting, the chemistry lab.
+- **The rest of the job** (J1–J8, added by the user the same day): operations, electrical, I&C, mechanical, HSE
+  and environment, chemistry, stores and planning, people and administration, each as listed there.
+
+**The user's answers (2026-11-01)** to the plan's questions:
+1. The parts that don't need the Workshop are built **alongside it**: RE1, AG1, WX1 and DC1 (the generated P&IDs).
+   Hands-on work waits for the Workshop's K3 (§12).
+2. Ageing runs at a **training rate per scenario**, with real rates also available (§4.3).
+3. Weather in free play is **on, seeded by season** for the hot dry climate (§5.1).
+4. Emissions are judged against the **IFC / World Bank Group EHS guidelines for thermal power plants** (§10.4).
+5. Costs are shown as **man-hours, parts and MWh lost**, with no currency (§15, J7).
+6. The generated P&IDs appear **in the plant app only** (§6.1).
+7. NPC speech is **text only** (§6.3, §15).
 
 **The rule (R6, as the Workshop states it).** Fake the physics; never fake what the trainee learns from. Free to fake:
 how a value is computed (tables, lags, sampled curves made by the content tools), particle rain, the look of dust.
@@ -50,6 +63,7 @@ drawings read at the cabinet, fine dust on every flat surface). Nothing of that 
 | HSE (§8) | JSAs, toolbox talks, confined space, hot work, height, reports, drills, heat | permits, zones, PPE, unsafe acts, `muster` places | JSA input, entrants, standby and fire watch, heat rules | forms |
 | Crafts (§9) | switching, racking, megger, relay tests, batteries; alignment, balancing, bearings, seals, lubrication, packing; vibration, thermography, oil | hands-on, wear, model content | `switch_effects` query | spectrum and thermal views |
 | Engineering (§10) | root cause, management of change, alarm rationalisation, emissions, cycle chemistry | event log, first-out, S3's lab | change objects; alarm priority from a value | analysis tools in the debrief |
+| The rest of the job (J1–J8) | operations, electrical, I&C, mechanical, HSE and environment, chemistry, stores and planning, people and administration | everything above; S4's staff | J0: grid events, the `count` node, forces and bypasses, permit conflicts, zone barriers, authorisations, duty hours, passes and languages, order approvals | panels and forms per item |
 
 **What stays out of the engine.** Anything that changes the plant, a person or what another player sees is in the
 engine (it has to be the same on every player of a session and in the reference, MULTIPLAYER.md §3). Pure views
@@ -148,6 +162,13 @@ digests.
   wear out of its scope) in a file of its own per part kind, `data/plant3d/service/<kind>.json`, beside the Workshop's
   data, and generates the hand actions of each piece of equipment a job names, with states named `<equipment
   prefix>_<component>_<state>`. The validator refuses a hand action whose component the part kind's tree lacks.
+- **Names that fit** (with WORKSHOP.md's ids, decision 0072): a value name is an identifier of at most 32 characters
+  (PLANT3D.md §1) and a Workshop component id at most 16, so the prefix, the state and the two underscores share the
+  other 16. The rule, fixed so that no name is shortened case by case: the equipment prefix is a short alias of at
+  most 8 characters given per piece of equipment in the service file (`"alias": "cpt1"` for the first condenser
+  pressure transmitter; unique in the plant), and a state name is at most 6 characters (`off`, `open`, `loose`,
+  `torn`), so every generated name fits (8 + 1 + 16 + 1 + 6 = 32). The content tool refuses an alias or a state
+  over its length, and the validator refuses any value name over 32 characters as it does today (`bad_id`).
 - **What a hand action does to the plant** is ordinary model content: a lifted wire opens the loop, the current falls
   to 0, the control system marks the value bad and alarms. Cause and effect stay in the model.
 - **Limits:** at most 2,000 hand actions. Values stay within §1's 4,000 a model; the cost per value (§11) is the real
@@ -191,11 +212,15 @@ digests.
 - **Step 1** (inputs, as §17.1, each where it comes, its event at once): `tool`, `hand` (started, or done at once),
   `read` with a meter, `hart` ops, and the inputs of the later sections: `wo` (§7.1), `issue` and `order` (§7.2),
   `log` and `handover_check` (§7.3), `plan` (§7.4), `jsa` (§8.1), `enter` and `exit` (§8.2), `report` (§8.3), `moc`
-  (§10.2), `pace` (§5.3), `weather` (the instructor's). Their reasons are listed in the order each section gives;
-  `jsa` comes after §15.3's `authority`, `state`, `iso_busy`.
-- **Step 1w** (new, only with `world.weather`): the weather (§5.1). It writes the `ext` values it drives; every node
-  reads an `ext` value as step 1w left it in this step (as a `state` is read as it stands after this step's ops).
-- **Step 2:** unchanged.
+  (§10.2), `pace` (§5.3), `weather` (the instructor's), and J0's: `grid` (the instructor's), `force`, `pass`,
+  `order_approve`. Their reasons are listed in the order each section gives; `jsa` comes after §15.3's `authority`,
+  `state`, `iso_busy`, and `simops` after `jsa`; an authority naming an `auth` record is refused as `authority`.
+- **Step 1w** (new, only with `world.weather` or `world.grid`): the clock values (§2.1, with `world`), then the
+  weather (§5.1), then the grid events (J0). It writes the `ext` values it drives; every node reads an `ext` value as
+  step 1w left it in this step (as a `state` is read as it stands after this step's ops).
+- **Step 2:** unchanged, except with `forces` (J0): each forced value's node is computed as before into a slot of its
+  own (`<value>_raw`, for the screens' "forced" mark), and the value's own slot then takes the force's `to` (or the
+  value held when the force went on), so every later node, and steps 3–9, read the forced value.
 - **Step 3:** after §15's locks and automatic moves and the repairs (format 1's, under a permit, then `done`'s, each
   with causes, §2.6): renewals (§2.2), hand actions whose minutes end, then deliveries whose clock time is reached
   (§7.2), in that order.
@@ -204,7 +229,9 @@ digests.
   file), plan slots (§7.4), the standby and fire-watch acts (§8.2, works with `permit` `confined` or `hot` and the
   `standby`/`fire_watch` keys of their tasks), zones' `ppe_when` (§5.3), running on wet stairs (§5.3, zones with
   `"wet_when"`), the heat rule (§8.4, roles with `work_rate` and `world.weather`), NPC slips (§3.1, task steps with
-  `slip`), and vehicle runs' `needs` (§5.3). It still writes no value: everything it does is an input or a person's
+  `slip`), vehicle runs' `needs` (§5.3), and J0's duty-hour limits (`fatigue`: the callout refused, the `fatigue`
+  act), zone barriers (`barrier_when`), passes at the gate (`passes`) and who understood what (`languages`). It
+  still writes no value: everything it does is an input or a person's
   state, as before.
 
 ### 2.8 The digest
@@ -215,7 +242,9 @@ and each driven lag's value; every stream's state (causes, stores, lab, slips); 
 counts per place and each person's `carried`; each person's busy hand action and end clock, `pace`, heat counters and
 rest state (whole clock tenths); stock, orders and deliveries pending; work orders' states and data; logbook and
 report counts; JSA records per work; toolbox-talk attendance; entrants per work; plan slots added; change objects'
-states. Everything the next steps read is in it, as §17.14 requires.
+states; and J0's: the grid event running and its start, each force's state and held value, each person's duty-hour
+counters and days worked, the passes issued, the orders waiting for approval, and the `count` nodes' counters (with
+the stateful nodes'). Everything the next steps read is in it, as §17.14 requires.
 
 ### 2.9 What stays as it is
 
@@ -389,7 +418,8 @@ A run lasts hours of model time; real wear takes months. So:
   the content tool computes from "months
   since overhaul" by duty (so a trainer picks "6 months after the outage").
 - **`age_rate`** (an `ext` value): 1 is real time on the plant clock; training scenarios use a rate at which an item
-  near the end of its life shows its signs within a shift. The scenario says which. A trainee is never told a failure
+  near the end of its life shows its signs within a shift. The scenario says which (the user, 2026-11-01: a training
+  rate per scenario by default, real rates available; the trainee doesn't pick it). A trainee is never told a failure
   is coming; the signs are there for whoever looks.
 
 ### 4.4 Maps onto
@@ -417,7 +447,9 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
   content milestone WX2 adds them, and every scenario then sets them as §7.8 says; with weather on, the scenario's
   values are their step 0 values and the weather moves them).
 - `world.weather`: `{"season": id}` (seeded), `{"fixed": kind}`, or `{"script": [[day, "HH:MM", kind], …]}` for a
-  trainer's day. The instructor's input `[n, "weather", kind]` (its `instructor` event).
+  trainer's day. **Free play has weather on** (the user, 2026-11-01): its scenario carries `{"season": id}` for the
+  season of its `year_day`, so the hot dry climate below plays out from the world seed; a scenario that needs clear
+  skies says `{"fixed": "clear"}`. The instructor's input `[n, "weather", kind]` (its `instructor` event).
 - **Climate:** the generic site is a hot desert plain (SITE.md): long hot dry summers with dust and sandstorms on the
   north-westerly wind, short mild winters with a few rain days, thunderstorms in spring and autumn, rare frost on
   winter nights. Tables from public regional climate data ([WBCCKP]) and WMO's definitions ([WMO]: a
@@ -482,8 +514,7 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
   pinch zoom, tap a code to open its card or "take me there". Layout is automatic (systems per sheet, flow left to
   right) and checked by the tool (no crossing text, no symbol overlap).
 - **Revisions:** an implemented change (§10.2) adds a revision with a cloud round what changed.
-- **In Walkdown too (a question for the user):** the same sheets could be exported as PDF and imported by
-  `kks-import`, making a public demo plant for Walkdown.
+- **In Walkdown Plant only** (the user, 2026-11-01): the sheets are not exported for `kks-import` or Walkdown.
 
 ### 6.2 Equipment manuals
 
@@ -706,7 +737,8 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
   daily zero and span check with calibration gases (an I&C job), a failed analyser's substitute data.
 - Hourly and daily averages corrected to 15 % O₂ (`wear` nodes as clock accumulators reset on the hour's change,
   `hold` nodes keeping the last hour's result, §2.1–§2.2), limits from a generic
-  regulatory frame ([IFC-EHS] by default; [IED] as an alternative: a question for the user), an exceedance report
+  regulatory frame: the IFC / World Bank Group EHS guidelines for thermal power plants ([IFC-EHS]; the user,
+  2026-11-01: their limits for combustion turbines on natural gas and their fuel-oil alternative), an exceedance report
   and the operators' response (load change, combustion mode).
 
 ### 10.5 The chemistry lab and sampling
@@ -717,6 +749,176 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
   blowdown as ops; a condenser tube leak as a fault with its signs (cation conductivity and sodium rising).
 - Builds on S3's chemists and samples (§17.12) and the WTP.
 
+## J. The rest of the job (the user, 2026-11-01)
+
+The user added every other part of the plant's work they listed: operations, electrical, I&C, mechanical, HSE and
+environment, chemistry, stores and planning, people and administration. They are numbered J1–J8 here so that they
+can't be confused with PLANT3D.md's §15–§21, which this file cites by bare number. Each item names what the trainee
+does, how it maps onto the engine and the content, its public source (§14) and its milestone (MILESTONES.md). The R6
+rule holds for all of them. Like everything here, it is generic: a typical combined-cycle plant's equipment as the
+sources describe it, never a real plant's.
+
+### J0. What the engine gains, and what it costs
+
+Most items are content (model values, ops, faults, works, tasks), staff content or views. Ten are small engine
+additions, each gated by its own key so a plant or scenario without it steps exactly as before, each with its items
+in `plant3d-realism.json` and in both engines bit for bit:
+- **Grid events** (OP1, key `world.grid`): `grid.json` (format `walkdown-plant-grid`) gives events (a load request, a
+  frequency dip, the grid lost, the grid back), each a table over clock seconds since it began of the `ext` values
+  `grid_hz` and `grid_demand`; `world.grid` is `{"script": [[day, "HH:MM", event], …]}`, and the instructor's input
+  `[n, "grid", event]` (its `instructor` event) starts one. Driven in step 1w after the weather; without weather, step
+  1w runs for the grid alone. No draws.
+- **A `count` node** (AG1, as a node kind it is refused where format 1 is read): `{"count": ref, "by": ref, "reset":
+  ref, "init": n}` adds `by` (as the previous step left it) on each step where `ref` turns true; for starts, trips and
+  operations counted by events (the gas turbine's starts and trips for its intervals, J7; a breaker's operations).
+- **Forces and bypasses** (IC1, key `forces` in the model): `{"id", "value", "to": number | "hold", "kind": "force" |
+  "bypass", "needs": [...]}`; input `[n, "force", id, "on" | "off", person, reason]` with a new authority
+  `approve_force`, refused with its `needs`' sentences. While on, every reader of the named value reads `to` (or the
+  value as it stood when the force went on) in place of the value step 2 computed; the value itself, for the screens'
+  "forced" mark, is still computed. A bypass of a trip channel is the authorised override that STAFF.md §3 leaves out
+  of format 2: it keeps a 2-out-of-3 trip at 2 out of 2. Forces are handover facts (kind `force`, §7.3) and listed in
+  the digest.
+- **Permit conflicts** (HS5, key `conflicts` in the works file): pairs of permit kinds that must not be live in one
+  area at once (hot work beside a confined-space entry or a gas line opened, radiography beside any work, a lift over
+  a live work); `issue` is refused with the reason `simops` (after `jsa`) while a conflicting permit is issued or
+  accepted in a listed area.
+- **Zone barriers** (HS6, key `barrier_when` on zones): `[[value, sentence]]`; while the value is true, entering the
+  zone is an unsafe act of kind `barrier` (a radiography exposure, a hydrogen purge), read where §16.7 reads zones.
+- **Authorisations** (PA1, key `auth` on people and on authorities): a person's records `{"auth": id, "until_day":
+  d}`; an authority that names an `auth` is held only while `world_day` ≤ `until_day`, so an expired authorisation
+  is refused as `authority` is today, with the sentence naming the record.
+- **Duty hours** (PA2, key `fatigue` in staff.json): each person's clock tenths on duty in the last 24 clock hours and
+  consecutive days worked; a callout or a held-over task that would pass the content's limits is refused for an NPC
+  (the step's `else`), and the trainee's own work past them is an unsafe act of kind `fatigue`.
+- **Passes** (PA4, key `passes` at a gate place) and **languages** (PA4, key `languages` on people): a person or
+  vehicle without a valid pass is stopped at the gate (the guard's task issues one: input `[n, "pass", who, kind,
+  person]`); a `say`, a toolbox talk's point or a handover fact reaches a hearer only if they share a language with
+  the speaker or a person sharing one with each is at the `meet`; otherwise the debrief lists it as not understood.
+- **Order approvals** (WM5, key `approvals` in the stores file): an `order` (§7.2) above the file's quantity or
+  criticality level waits for `[n, "order_approve", order, person]` by a person with a new authority
+  `approve_order` before its lead time starts.
+
+**Budgets.** These additions together are within §11's staff step and weather step shares (they are per-person
+counters, lookups at an input, and one more table in step 1w). The new plant systems are not: the fuel gas and
+distillate systems, the emergency diesel, instrument air, fire water and CO₂, the switchyard and excitation add
+model values to the first train (estimated 300–400, as built per milestone). §11's 600 values were sized before them,
+and at about 0.7 µs a value on the Note 9 the two together would pass the 0.4 ms share. So RE1 measures the step at
+600 and at 1,000 added values, and whether to widen the share or model these systems more coarsely is the user's
+question (MILESTONES.md, "Question for the user (realism)"). Until answered, the milestones that add these systems
+(OP4, OP5, OP6, IC4, EC3, EC6) wait for the answer, since §11's 600 values are already shared out; every other
+milestone fits within §11 as it stands and counts its values.
+
+### J1. Operations
+
+| Item | What the trainee does | Model, engine | Source | Milestone |
+|---|---|---|---|---|
+| Grid dispatch: load changes | takes the grid operator's dispatch instruction on the radio (repeat back), ramps the block within its ramp rate, logs it | the dispatcher's instructions as grid events (J0); the block's load set op and ramp limits are model content | [NERC-COM002], [RfG] | OP1, OP2 |
+| Frequency response | watches the governor answer a frequency dip by its droop (about 4–5 %), no operator action inside the deadband; reports the response | `grid_hz` from a grid event; the GT's droop and deadband as tables in the model | [RfG], [NERC-BAL003], [GER3567] | OP2 |
+| Islanding | the grid is lost: the block runs back to house load or trips, the operator stabilises the island and resynchronises (EC3) | grid lost as an event; house-load and trip logic in the model | [RfG], [NFPA850] | OP3 |
+| Black start | restores the block from dead: the black-start diesel, the essential boards, the GT started on its own power, energising the line to the grid on the operator's instruction | the black-start diesel and the boards as model content; the grid operator's steps as a scenario's grid events | [NERC-EOP005] | OP3 |
+| Fuel gas supply | rounds of the fuel gas station (filters' ΔP, the knock-out drum's level, the heater keeping superheat above the dew point, pressure regulation); a low gas pressure trip | the station's values, faults and works; filters as wear items (§4) | [GEI41040], [GER3620] | OP4 |
+| Dual-fuel changeover | changes over to distillate under load and back by procedure, with the purge and the limits on time on liquid fuel | the GT's fuel modes as a machine; the distillate system | [GEI41047], [GER3620] | OP4 |
+| Emergency diesel test run | the monthly start and loaded run (or load bank), the readings, the auto start on loss of the essential board | the diesel, its batteries (wear, §9.1) and the transfer logic in the model | [NFPA110] | OP5 |
+| Fire protection tests | the fire pumps' weekly run, a deluge valve's trip test, detectors and call points with the fire alarm panel | fire water and detection as model content; tests as tasks | [NFPA25], [NFPA72], [NFPA850] | OP6 |
+| CO₂ lockout before entry | locks out the GT enclosure's CO₂ release (the lock-off valve and the panel's inhibit) and proves it before anyone enters; restores it after | an isolation of the CO₂ system (§15.1) as the entry work's `needs`; entering without it is an unsafe act | [NFPA12] | OP6 |
+| Duty/standby changeovers | the rota's changeover of duty and standby pumps and fans, testing the standby's auto start | tasks on a routine (§16.5); auto-start logic exists | [Moubray] (hidden failures of standby units) | OP7 |
+| Performance and heat-rate monitoring | reads heat rate and corrected output against expected, finds the loss (compressor fouling, condenser fouling, a passing drain), the weekly performance report | nodes computing heat rate and corrections to reference conditions from fuel flow, output and ambient (§5); the report is a view | [ASME-PTC46], [ASME-PTC22], [GER3567] | OP8 |
+
+### J2. Electrical
+
+| Item | What the trainee does | Model, engine | Source | Milestone |
+|---|---|---|---|---|
+| Excitation and synchronising | AVR in auto and manual, the capability curve's limits, synchronising with the synchroscope within the voltage, slip and phase limits, the check-synch relay's block | the generator's voltage, VArs and limits as tables; synchronising as an op with the limits as permissives | [IEEE-C50.13] | EC3 |
+| Transformer oil DGA | takes an oil sample, reads the lab's dissolved gases, interprets them (key gases, ratios) and decides: resample sooner, or take the transformer out | the gases as tables of a hidden cause (overheating, partial discharge, arcing) and wear; results after clock days from the lab stream (§2.1) | [IEEE-C57.104], [IEC60599] | EC4 |
+| Earthing tests | the earth grid's resistance by fall of potential, bonds checked | a meter whose value comes from the grid's state and a seeded corroded bond | [IEEE81], [IEEE80] | EC5 |
+| Cathodic protection | pipe-to-soil potentials at test posts against the protection criterion, the transformer-rectifier's output | values per test post; a coating defect as a cause | [ISO15589-1] | EC5 |
+| Cable fault location | after a failed insulation test: pre-location by time-domain reflectometry, pinpointing, the repair joint | the fault's distance a `draw` node; the meter's trace from it | [IEEE400] | EC5 |
+| Switchyard operations | switching in the switchyard under the grid operator's control: instructions repeated back, isolators and earth switches in their interlocked order | switchyard positions and interlocks (as EC1's) | [NERC-COM002], [IEC61936], [HSG253] | EC6 |
+| Emergency lighting tests | the monthly short test and the yearly full-duration test, a fitting that fails early | fittings' batteries as wear items; tests as tasks | [NFPA101] | EC7 |
+
+### J3. I&C
+
+| Item | What the trainee does | Model, engine | Source | Milestone |
+|---|---|---|---|---|
+| Forcing and bypass register | applies a force or bypass with its approval and reason, keeps the register, removes it after the job; finds a forgotten one at handover | forces (J0); the register is a view of them | [IEC61511] | IC1 |
+| SIS proof tests | proof-tests a trip loop: bypass, inject at the sensor, see the logic and the final element act, restore, record | content over IC1's bypasses, hand actions and meters | [IEC61511], [ISA-TR84.00.03] | IC2 |
+| PID loop tuning | a step test in manual, reading dead time and lag from the trend, tuning gains, seeing hunting from stiction (§4) rather than tuning | a loop's gains as states set by ops with authority; the process response is content | [Astrom], [Liptak] | IC3 |
+| Instrument air | compressors, dryers (dew point), the receiver and header; low air pressure drives valves to their fail positions | the air system in the model; a dryer's failure brings moisture causes (§2.6) | [ISA7.0.01] | IC4 |
+| Calibration traceability | uses only tools within their calibration date, whose certificates trace to a reference; a job done with an out-of-date tool is a finding and its readings are suspect | tools gain a calibration-due day (tool states, §2.3) | [ISO17025], [ISO10012] | IC5 |
+| Fire and gas detector bump tests | bump-tests the portable gas detector before use and tests fixed detectors with test gas | tools' and detectors' states; a failed bump takes the tool out | [OSHA-SHIB-bump], [IEC60079-29-2] | IC5 |
+| DCS backups, USB policy, patching | the engineering station's backups, the removable-media rule (scan kiosk), patches approved through a change (§10.2) | content and a hidden cause (an unscanned stick); views | [IEC62443], [NIST800-82] | IC6 |
+| Vibration monitoring system setup | proximity probes' gap voltage and scale factor checked, alarm and trip settings and their time delays and voting | the monitor's values and meters | [API670] | IC7 |
+| GT combustion tuning | combustion dynamics and emissions read per mode, the tuning's adjustments, a seasonal retune as ambient changes | tables of fuel split, dynamics and NOx/CO (§10.4) | [GER3568], [GER3620] | IC8 |
+| Instrument tube compression fittings | cuts, deburrs, makes up a fitting (the turns from finger-tight, the gap gauge), leak-tests it | hand actions; a fitting under-tightened is a leak cause | [Swagelok] | IC9 |
+| Ex hazardous-area inspections | visual, close and detailed inspections of equipment in a hazardous area (gland, enclosure, marking against the zone) | Ex equipment's states; defects as seeded findings | [IEC60079-17], [IEC60079-14] | IC9 |
+
+### J4. Mechanical
+
+| Item | What the trainee does | Model, engine | Source | Milestone |
+|---|---|---|---|---|
+| GT borescope inspection | borescopes the compressor and hot gas path through the ports, grades what is seen against limits | findings as tables of AG's wear (pictures generated per grade); a view through the tool | [GER3620] | MC3 |
+| Combustion and hot-gas-path inspections | the inspection packages, their scope and their findings, due by J7's counts | works per package (the outage, WM4, uses them) | [GER3620] | MC3 |
+| HRSG tube leaks and NDT | spots a tube leak's signs (makeup up, noise, a drum's level), locates it in the outage, chooses the NDT method (UT thickness, radiography, magnetic particle, dye penetrant) and reads the result | leak as a fault with a cause (flow-accelerated corrosion, corrosion fatigue) tied to chemistry (§10.5) | [Dooley], [ASME-V] | MC4 |
+| In-place safety valve testing | tests a safety valve's set pressure in place with a lift-assist device, adjusts, seals | a meter of the lift force against the system pressure | [ASME-PTC25], [API576] | MC5 |
+| Statutory pressure-vessel inspections | the written scheme of examination, inspection due dates, preparing a vessel for the inspector | due dates in clock days; works | [PSSR], [API510] | MC5 |
+| Lifting gear certification and lift plans | slings and shackles with thorough examination dates and tags, a lift plan for the crane or a hoist (weight, radius, wind limit, exclusion zone) | lifting gear as tools with due days; the plan's limits as the lift work's `needs` (with §5.3's wind) | [LOLER], [L113], [ASME-B30], [BS7121] | MC6 |
+| Steam trap surveys | a trap route with ultrasound and temperature, failed open or closed traps found, losses estimated | traps' states as seeded causes; thermography (§9.3) | [DOE-Steam] | MC7 |
+| Corrosion under insulation | picks suspect locations (temperature range, damaged cladding), removes insulation, inspects | findings as `draw` nodes per location | [API583] | MC7 |
+| Chemical cleaning | an HRSG or condenser chemical clean as an outage job: when it is due (deposit loading), the steps, the waste | works and their chemistry; waste to EV1 | [BW-Steam] | MC8 |
+| Welding qualifications | checks a welder's qualification and continuity and the procedure for a repair before hot work starts | welders' records as authorisations (J0, PA1) | [ASME-IX], [ISO9606-1] | MC9 |
+
+### J5. HSE and environment
+
+| Item | What the trainee does | Model, engine | Source | Milestone |
+|---|---|---|---|---|
+| Site and contractor induction | inducts a visitor or contractor before they work; an uninducted person working is an unsafe act | an induction record as an authorisation (PA1) | [HSG159] | HS4 |
+| First aid and CPR | the first response to an injured person (danger, response, call for help, CPR steps), the shift's first aiders | an incident scenario's tasks and picks (no injuries shown, §15) | [ERC], [OSHA151] | HS4 |
+| The emergency response team | the ERT's call-out, roles and equipment in a drill | staff tasks on an emergency (§8.3) | [OSHA156], [NFPA850] | HS4 |
+| Permit and lockout audits | samples live permits and lockouts against a checklist, records findings | a view over the permits and locks; findings as reports (§8.3) | [HSG250], [OSHA147] | HS5 |
+| Simultaneous operations | sees conflicting permits in one area refused and plans around them | permit conflicts (J0) | [HSG250] | HS5 |
+| Hydrogen hazards | a hydrogen-cooled generator's hydrogen: purity, purging with CO₂ before air, no ignition sources, the barrier during a purge | model values; a zone barrier (J0) | [NFPA55], [NFPA850] | HS6 |
+| Chlorine hazards | the chlorine dosing area's detection, PPE and a leak drill | dosing area content; a drill (§8.3) | [NIOSH-NPG] | HS6 |
+| Radioactive level gauges | the gauge's shutter locked before work near it, the controlled area | the shutter as an isolation point; a zone barrier | [IAEA-GSR3] | HS6 |
+| Radiography barriers | the barrier and warning signs round an NDT exposure, nobody inside | a zone barrier during the exposure work | [IAEA-SSG11] | HS6 |
+| Waste and spill response | waste segregation and records; a spill (transformer oil, diesel unloading) contained with the spill kit and reported | tasks, tools (spill kit) and a report | [IFC-EHS-Gen] | EV1 |
+| Wastewater discharge monitoring | samples and analyses the discharge (pH, oil and grease, suspended solids, residual chlorine, temperature rise) against the limits, reports an exceedance | values from the WTP and cooling tower content; the lab stream | [IFC-EHS], [IFC-EHS-Gen] | EV2 |
+| Noise surveys | a sound level meter round the plant, the hearing protection zones and the boundary's limits | a meter of model sound levels; zones' `ppe_when` (§5.3) from them | [IFC-EHS-Gen], [L108], [OSHA95] | EV2 |
+
+### J6. Chemistry
+
+| Item | What the trainee does | Model, engine | Source | Milestone |
+|---|---|---|---|---|
+| Cooling tower water treatment | cycles of concentration, blowdown, scale inhibitor and biocide dosing, the Legionella risk assessment and samples (results after days) | values; dosing as ops; fouling as wear (§4); the lab stream | [L8], [HSG274], [CTI] | CH1 |
+| Fuel gas analysis | the gas chromatograph's composition, heating value and Wobbe index, sulphur and dew point against the turbine's fuel specification | values from the supply's content | [ISO6974], [ISO6976], [GEI41040] | CH2 |
+| Lab instrument calibration | pH and conductivity meters calibrated with buffers and standards before use, the calibration log | lab tools' states (as IC5) | [ASTM-D1293], [ASTM-D1125], [ISO17025] | CH3 |
+| Chemical inventory and safety data sheets | the inventory, GHS labels, the safety data sheet read before use, the risk assessment | content and views | [GHS], [OSHA1200], [COSHH] | CH3 |
+
+### J7. Stores and planning
+
+Costs are man-hours, parts and MWh lost, never money (the user, 2026-11-01): a budget is a number of crew hours, parts
+drawn and generation lost.
+
+| Item | What the trainee does | Model, engine | Source | Milestone |
+|---|---|---|---|---|
+| Purchase requisitions and approvals | raises a requisition for a part not in stock; approval levels by quantity and criticality | order approvals (J0) | [Palmer] | WM5 |
+| OEM service engineers and long-term service agreements | what the agreement covers (the OEM's engineer leads inspections, the plant's staff support), booking the engineer, their arrival as a scheduled person | an OEM role in staff content with its scope as authorities; arrival as a plan slot (§7.4) | [GER3620] | WM5 |
+| Budgets and KPIs | availability and forced outage rate, MTBF, PM compliance, backlog in crew weeks; the month's hours and parts against the budget | views from the run's events and works | [IEEE762], [EN15341] | WM6 |
+| Critical spares policy | ranks parts by criticality and lead time, sets minimums for critical spares | catalogue content (§7.2) | [ISO55001], [Palmer] | WM7 |
+| Spares preservation and shelf life | preservation rounds (stored motors' shafts turned), parts past their shelf life (elastomers, batteries, grease) refused at issue | parts' expiry days and preservation states | [ISO2230], [SKF] | WM7 |
+| Stock audits | cycle counts; a discrepancy traced to an unrecorded issue | counts from the stores stream (§2.1) | [Palmer] | WM7 |
+| GT maintenance intervals in equivalent operating hours and starts | sees the inspections fall due by the factored hours and starts (fuel, load, trips counting as several starts), plans the next outage from them | `wear` nodes for factored hours and `count` nodes (J0) for starts and trips, tied to AG's wear | [GER3620] | AG4 |
+
+### J8. People and administration
+
+| Item | What the trainee does | Model, engine | Source | Milestone |
+|---|---|---|---|---|
+| Training records and authorisations | the training matrix, who may issue, accept or isolate, an authorisation that expires mid-run | authorisations (J0) | [HSG250], [HSG65] | PA1 |
+| Fatigue and overtime | callouts within the duty-hour limits; a tired person kept on is a risk the debrief names | duty hours (J0) | [HSG256], [API755] | PA2 |
+| Daily and monthly reports | the shift's daily report (generation, events, faults, permits) and the month's (KPIs, J7) | views from the run's events | [IEEE762] | PA3 |
+| ISO and insurance audits | prepares for and takes part in a management-system audit and an insurer's survey; findings and actions | an auditor's visit as staff content; findings as reports | [ISO9001], [ISO14001], [ISO45001], [FM-DS] | PA3 |
+| Visitors and vehicle passes | the guard issues visitor and vehicle passes at the gate; escorts | passes (J0) at S4's gate | [HSG136], [HSG159] | PA4 |
+| Multinational crews and language barriers | a crew without a shared language: an interpreter or a shared-language person at the toolbox talk, pictograms on signs | languages (J0) | [HSG48], [HSE-Migrant] | PA4 |
+
 ## 11. Budgets on the Note 9
 
 The frame rules and §18.4's shares don't change (MILESTONES.md: ≥ 95 % of frames at ≥ 30 fps, none over 100 ms that
@@ -726,7 +928,7 @@ The programme's share, measured in each milestone that draws or runs something n
 | | Note 9 (`lean+vis`) | Laptop (`full`) |
 |---|---|---|
 | Model step, all realism content together | ≤ 0.4 ms added; the whole step ≤ 2.1 ms (§18.4), so fast-forward keeps ≥ 12× | ≤ 0.15 ms |
-| Values added to the first train (the step's cost grows with them: the WTP's 600 values made the step about 1.4× as long, roughly 0.7 µs a value on the Note 9) | ≤ 600 in all: wear items and their signs ≤ 250 (about 40 items of ≤ 6 values: only items a scenario uses get sign tables), component states and meters ≤ 200 (equipment with jobs only; a state no node reads costs a slot, not an evaluation), weather, emissions and chemistry ≤ 150. RE1 measures the step on a synthetic model of this size before any content is written | |
+| Values added to the first train (the step's cost grows with them: the WTP's 600 values made the step about 1.4× as long, roughly 0.7 µs a value on the Note 9) | ≤ 600 in all: wear items and their signs ≤ 250 (about 40 items of ≤ 6 values: only items a scenario uses get sign tables), component states and meters ≤ 200 (equipment with jobs only; a state no node reads costs a slot, not an evaluation), weather, emissions and chemistry ≤ 150. RE1 measures the step on a synthetic model of this size before any content is written, and at 1,000 values for J0's question (the new plant systems of J1–J4) | |
 | Staff step (heat rule, entrants, plans, discussions) | within §18.4's 0.3 ms at the shift change | |
 | Weather step | ≤ 0.02 ms (one draw an hour, ten lags) | |
 | Weather drawn (worst kind: sandstorm or rain; measured among A1's crowd with `crews=1`, where the S2 walks had the least headroom) | GPU ≤ +2 ms median; one emitter, ≤ 2,000 particles within 25 m | ≤ +1 ms; ≤ 8,000 within 40 m |
@@ -742,14 +944,18 @@ call.
 
 ## 12. Order
 
-The Workshop is built first (K0–K6, WORKSHOP.md). Realism's designs run now; its builds follow the Workshop (whether the pieces that don't need the Workshop, RE1, AG1, WX1 and DC1's
-P&IDs, may be built alongside it is the user's question, decision 0073). Within realism:
+The Workshop is built first (K0–K6, WORKSHOP.md). The realism pieces that don't need it are built **alongside it**
+(the user, 2026-11-01): RE1, AG1, WX1 and DC1 (the generated P&IDs). Hands-on work waits for the Workshop's K3 (HW1
+needs it); everything else follows its dependencies in MILESTONES.md. Within realism:
 - **foundations first:** the engine pieces (§2) in four milestones that add no drawing (RE1: world seed, streams,
-  clock values and the step's cost at the planned size, with no Workshop dependency; then HW1, AG1, WX1), each with
-  its vectors;
+  clock values and the step's cost at the planned size, with no Workshop dependency; then AG1 and WX1 alongside the
+  Workshop, and HW1 after its K3), each with its vectors;
 - **then the tracks**, each adding one kind of load measured alone: hands-on (HW2–HW6), ageing and monitoring
   (AG2–AG3), weather (WX2–WX4), documents (DC1–DC3), work management (WM1–WM4), HSE (HS1–HS3), crafts (EC1–EC2,
-  MC1–MC2), engineering (EN1–EN4);
+  MC1–MC2), engineering (EN1–EN4), and the rest of the job (J1–J8): operations (OP1–OP8), electrical (EC3–EC7), I&C
+  (IC1–IC9), mechanical (MC3–MC9), HSE and environment (HS4–HS6, EV1–EV2), chemistry (CH1–CH3), stores and planning
+  (WM5–WM7, AG4), people and administration (PA1–PA4). The engine additions of J0 come first in their tracks (OP1,
+  AG1's `count`, IC1, HS5, HS6, WM5, PA1, PA2, PA4), each with its vectors;
 - **the outage (WM4) last**: it uses nearly everything.
 
 The table with sizes, needs and what each ships is in MILESTONES.md.
@@ -763,7 +969,10 @@ The table with sizes, needs and what each ships is in MILESTONES.md.
   minutes (busy, abandoned by leaving), tools' counts per place, jumps with permits open and wear across a jump,
   the weather step (hour boundaries, a jump across hours, scripted and fixed weather, the instructor's input), stock and
   deliveries, logbook and report inputs, the JSA refusal, entrants and the standby and fire watch acts, the heat rule,
-  change objects and `priority_of`, `discuss` with and without a trainee, `plan` slots, `switch_effects`; runs on the
+  change objects and `priority_of`, `discuss` with and without a trainee, `plan` slots, `switch_effects`; J0's grid
+  events (scripted, the instructor's, step 1w without weather), `count` nodes, forces and bypasses (a later node and a
+  trip reading the forced value, the raw slot, `approve_force`), the `simops` refusal, zone barriers, expired
+  authorisations, duty-hour limits, passes and languages, order approvals; runs on the
   first train's content with forks per area; the digests of every 50th step.
 - **The byte check:** after the engine milestones, `plant3d-v1.json` and `plant3d-v2.json` regenerated by the new
   reference equal the committed files; after a content milestone, their synthetic items still do, and their content
@@ -811,8 +1020,7 @@ Public guidance and regulations (free to read):
   Process safety management, https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.119 · [OSHA3071] US
   OSHA 3071, Job hazard analysis, https://www.osha.gov/sites/default/files/publications/osha3071.pdf · [DOE-RCA] US
   DOE-NE-STD-1004-92, Root cause analysis guidance document · [IFC-EHS] IFC/World Bank, Environmental, Health and
-  Safety Guidelines for Thermal Power Plants (2008), https://www.ifc.org/ehsguidelines · [IED] Directive 2010/75/EU
-  (industrial emissions), Annex V, https://eur-lex.europa.eu/eli/dir/2010/75/oj · [IAPWS-TGD] IAPWS technical guidance
+  Safety Guidelines for Thermal Power Plants (2008), https://www.ifc.org/ehsguidelines · [IAPWS-TGD] IAPWS technical guidance
   documents on cycle chemistry (volatile treatments, phosphate and NaOH treatments, instrumentation),
   https://www.iapws.org/techguide.html · [WMO] WMO, Manual on codes / International Cloud Atlas (dust and sand storm
   definitions), https://cloudatlas.wmo.int · [WBCCKP] World Bank Climate Change Knowledge Portal (regional climatology),
@@ -836,12 +1044,93 @@ Textbooks:
   Handbook. · [Piotrowski] J. Piotrowski, Shaft Alignment Handbook. · [Perry] Perry's Chemical Engineers' Handbook
   (cooling towers). · [CTI] Cooling Technology Institute, publications on cooling tower performance.
 
+For the rest of the job (J1–J8):
+
+Standards (bought, not copied; NFPA's codes are also free to read online after sign-in):
+- [NFPA110] NFPA 110, Emergency and standby power
+  systems · [NFPA12] NFPA 12, Carbon dioxide extinguishing systems (lockout before entry) · [NFPA25] NFPA 25,
+  Inspection, testing and maintenance of water-based fire protection systems · [NFPA72] NFPA 72, National fire alarm
+  and signaling code · [NFPA101] NFPA 101, Life safety code (emergency lighting tests) · [NFPA55] NFPA 55, Compressed
+  gases and cryogenic fluids code (hydrogen) · [ASME-PTC46] ASME PTC 46, Performance test code on overall plant
+  performance · [ASME-PTC22] ASME PTC 22, Performance test code on gas turbines · [ASME-PTC25] ASME PTC 25, Pressure
+  relief devices · [ASME-V] ASME BPVC Section V, Nondestructive examination · [ASME-IX] ASME BPVC Section IX, Welding
+  qualifications · [ASME-B30] ASME B30 series, Cranes, hoists and slings · [BS7121] BS 7121, Code of practice for
+  safe use of cranes · [ISO9606-1] ISO 9606-1, Qualification testing of welders · [IEEE-C50.13] IEEE C50.13,
+  Cylindrical-rotor synchronous generators (capability, synchronising limits) · [IEEE-C57.104] IEEE C57.104,
+  Interpretation of gases generated in mineral oil-immersed transformers · [IEC60599] IEC 60599, Interpretation of
+  dissolved and free gases analysis · [IEEE81] IEEE 81, Measuring earth resistivity, ground impedance and earth
+  surface potentials · [IEEE80] IEEE 80, Safety in AC substation grounding · [ISO15589-1] ISO 15589-1, Cathodic
+  protection of pipeline systems: on-land pipelines · [IEEE400] IEEE 400, Field testing and evaluation of the
+  insulation of shielded power cable systems · [IEEE762] IEEE 762, Definitions for reporting electric generating unit
+  reliability, availability and productivity · [EN15341] EN 15341, Maintenance key performance indicators · [IEC61511]
+  IEC 61511, Functional safety: safety instrumented systems for the process industry (bypasses, proof tests) ·
+  [ISA-TR84.00.03] ISA-TR84.00.03, Mechanical integrity of safety instrumented systems · [ISA7.0.01] ANSI/ISA-7.0.01,
+  Quality standard for instrument air · [ISO17025] ISO/IEC 17025, Competence of testing and calibration laboratories
+  · [ISO10012] ISO 10012, Measurement management systems · [IEC62443] IEC 62443, Security for industrial automation
+  and control systems · [IEC60079-29-2] IEC 60079-29-2, Gas detectors: selection, installation, use and maintenance
+  · [API670] API 670, Machinery protection systems · [IEC60079-17] IEC 60079-17, Explosive atmospheres: electrical
+  installations inspection and maintenance · [IEC60079-14] IEC 60079-14, Explosive atmospheres: electrical
+  installations design, selection and erection · [API510] API 510, Pressure vessel inspection code · [API576] API
+  RP 576, Inspection of pressure-relieving devices · [API583] API RP 583, Corrosion under insulation and fireproofing
+  · [API755] API RP 755, Fatigue risk management systems · [ISO6974] ISO 6974, Natural gas: composition by gas
+  chromatography · [ISO6976] ISO 6976, Natural gas: calorific values, density and Wobbe index from composition ·
+  [ASTM-D1293] ASTM D1293, pH of water · [ASTM-D1125] ASTM D1125, Electrical conductivity of water · [ISO55001] ISO
+  55001, Asset management systems · [ISO2230] ISO 2230, Rubber products: guidelines for storage · [ISO9001] ISO 9001,
+  [ISO14001] ISO 14001, [ISO45001] ISO 45001 (quality, environmental, occupational health and safety management
+  systems: their audits).
+
+Public guidance and regulations (free to read):
+- [RfG] Commission Regulation (EU) 2016/631, requirements for grid connection of generators (frequency response,
+  islanding), https://eur-lex.europa.eu/eli/reg/2016/631/oj · [NERC-BAL003] NERC BAL-003, Frequency response and
+  frequency bias setting · [NERC-EOP005] NERC EOP-005, System restoration from blackstart resources · [NERC-COM002]
+  NERC COM-002, Operating personnel communications protocols (all three free at
+  https://www.nerc.com/pa/Stand/Pages/ReliabilityStandards.aspx)
+- [IFC-EHS-Gen] IFC/World Bank, General EHS Guidelines (2007: wastewater, noise, hazardous materials, waste),
+  https://www.ifc.org/ehsguidelines · [OSHA-SHIB-bump] US OSHA, Verification of calibration for direct-reading
+  portable gas monitors (2013), https://www.osha.gov/publications/shib093013 · [NIST800-82] NIST SP 800-82r3, Guide
+  to operational technology security, https://csrc.nist.gov/pubs/sp/800/82/r3/final · [PSSR] The Pressure Systems
+  Safety Regulations 2000, https://www.legislation.gov.uk/uksi/2000/128, with HSE's ACoP L122 · [LOLER] The Lifting
+  Operations and Lifting Equipment Regulations 1998, https://www.legislation.gov.uk/uksi/1998/2307 · [L113] UK HSE,
+  Safe use of lifting equipment (ACoP L113), https://www.hse.gov.uk/pubns/books/l113.htm · [DOE-Steam] US DOE,
+  steam system tip sheets (inspect and repair steam traps), https://www.energy.gov/eere/amo/steam-systems ·
+  [HSG159] UK HSE, Managing contractors, https://www.hse.gov.uk/pubns/books/hsg159.htm · [ERC] European
+  Resuscitation Council guidelines, https://cprguidelines.eu · [OSHA151] US OSHA 29 CFR 1910.151, Medical services
+  and first aid · [OSHA156] US OSHA 29 CFR 1910.156, Fire brigades · [OSHA147] US OSHA 29 CFR 1910.147, Control of
+  hazardous energy (periodic inspection of lockout procedures) · [OSHA95] US OSHA 29 CFR 1910.95, Occupational noise
+  exposure · [OSHA1200] US OSHA 29 CFR 1910.1200, Hazard communication (all four at
+  https://www.osha.gov/laws-regs/regulations/standardnumber/1910) · [L108] UK HSE, Controlling noise at work (L108),
+  https://www.hse.gov.uk/pubns/books/l108.htm · [NIOSH-NPG] NIOSH pocket guide to chemical hazards (chlorine),
+  https://www.cdc.gov/niosh/npg/ · [IAEA-GSR3] IAEA GSR Part 3, Radiation protection and safety of radiation sources ·
+  [IAEA-SSG11] IAEA SSG-11, Radiation safety in industrial radiography (both at
+  https://www.iaea.org/resources/safety-standards) · [L8] UK HSE, Legionnaires' disease (ACoP L8),
+  https://www.hse.gov.uk/pubns/books/l8.htm · [HSG274] UK HSE, Legionnaires' disease technical guidance, part 1
+  (evaporative cooling systems), https://www.hse.gov.uk/pubns/books/hsg274.htm · [GHS] UN Globally harmonized system
+  of classification and labelling of chemicals, https://unece.org/about-ghs · [COSHH] UK HSE, COSHH,
+  https://www.hse.gov.uk/coshh/ · [HSG256] UK HSE, Managing shift work, https://www.hse.gov.uk/pubns/books/hsg256.htm
+  · [HSG136] UK HSE, A guide to workplace transport safety, https://www.hse.gov.uk/pubns/books/hsg136.htm ·
+  [HSE-Migrant] UK HSE, Migrant workers (communication across languages), https://www.hse.gov.uk/migrant-workers/ ·
+  [FM-DS] FM Global property loss prevention data sheets (free with registration),
+  https://www.fmglobal.com/research-and-resources/fm-global-data-sheets.
+
+Manufacturers' published documents:
+- [GEI41040] GE Vernova, GEI-41040, Specification for fuel gases for combustion in heavy-duty gas turbines ·
+  [GEI41047] GE Vernova, GEI-41047, Heavy-duty gas turbine liquid fuel specifications · [GER3568] GE, GER-3568, Dry
+  low NOx combustion systems for GE heavy-duty gas turbines · [Swagelok] Swagelok, tube fitter's manual and gaugeable
+  tube fitting installation instructions.
+
+Textbooks:
+- [Astrom] K. J. Åström, T. Hägglund, Advanced PID control (ISA, 2006) · [Dooley] R. B. Dooley, W. P. McNaughton,
+  Boiler and HRSG tube failures: theory and practice (2016) · [BW-Steam] Babcock & Wilcox, Steam: its generation and
+  use (chemical cleaning) · [Palmer] R. D. Palmer, Maintenance planning and scheduling handbook (McGraw-Hill).
+
 ## 15. Not in this programme (deliberately)
 
 - Real physics (fluids, heat, electrics, structures): tables and lags only (R6).
 - Free text that the engine interprets: the engine records short texts (reasons, log entries, reports) but never
   reads them.
 - Injuries shown on people, or anything graphic: incidents are reported and investigated, not shown.
-- Speech for NPCs: discussions are text (the platforms' text-to-speech is noted in CAPABILITIES.md, not used).
+- Speech for NPCs: discussions and the radio are text only (the user, 2026-11-01; the platforms' text-to-speech is
+  noted in CAPABILITIES.md, not used).
 - Real plant documents, procedures or data, and anything taken from the user's photos.
-- Money: costs are hours, parts and megawatt-hours lost, not currency (a question for the user).
+- Exporting the generated P&IDs to Walkdown or `kks-import` (the user, 2026-11-01: the plant app only).
+- Money: costs are man-hours, parts and megawatt-hours lost, never currency (the user, 2026-11-01).

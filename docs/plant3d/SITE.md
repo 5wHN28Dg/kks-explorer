@@ -156,7 +156,7 @@ the sails' posts clear of the cars); `apps/plant3d/tests/test_site.gd` the ring 
 ## 5. Performance
 
 - **Packs:** `wtp`, `site` and `camp` are packs of their own (0054 §6), shipped in the one package while it stays
-  under its budget (the APK 150 MB, the desktop packages about 300 MB: the user, 2026-10-23); each milestone
+  under its budget (the APK 250 MB since 2026-11-01, the desktop packages about 300 MB: the user); each milestone
   measures the package sizes.
 - **What the far view costs:** each new area is built like the train's (12 m cells, visibility ranges, merged far
   pieces; 0041, PLANT3D.md §10). Budget per new area, measured on the Note 9 in its milestone: draw calls in any view
