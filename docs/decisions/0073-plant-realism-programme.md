@@ -46,14 +46,16 @@ format (0060); (iii) a separate Workshop-like space for every job: loses the pla
 
 ## Choice
 
-- **(1), (a) and (i).** The engine additions (REALISM.md §2): a world seed with streams per purpose (weather, draw
-  nodes, causes, stores, lab; persons' draws unchanged), clock values readable by nodes, the `draw` and `wear` nodes,
+- **(1), (a) and (i).** The engine additions (REALISM.md §2): a world seed with streams per purpose and item id (FNV-1a of the id, so no item's draw depends on file order;
+  persons' draws unchanged), clock values readable by nodes in a scenario with `world`, clear time bases (clock time
+  for wear, weather and averages; model time for dynamics), the `draw` and `wear` nodes with works' `renews`,
   carried tools, hand actions and meters (made by the content tool from the Workshop's component trees and
   sentences: one source), hidden causes with `cures`, the weather step 1w driving `ext` values from a table file,
   and smaller pieces per area (stock and deliveries, logbook, report and JSA inputs, entrants with standby and fire
   watch acts, a heat rule, change objects, an alarm's priority from a value, the `discuss` and `plan` inputs, the
-  `switch_effects` query). Vectors in `ref/vectors/plant3d-realism.json`; `plant3d-v1.json` and `plant3d-v2.json` stay
-  byte for byte.
+  `switch_effects` query). Every addition is gated by its own key. Vectors in `ref/vectors/plant3d-realism.json`; the engine milestones leave
+  `plant3d-v1.json` and `plant3d-v2.json` byte for byte, and content milestones regenerate their content runs with
+  every input, event and earlier value kept (as P1 and W2 did).
 - **Ageing:** the P-F curve's signs as tables of wear; lives drawn once per run from the seed; a scenario's age and an
   `age_rate` (an `ext` value) for training compression.
 - **Weather:** a Markov chain over weather kinds per clock hour and season, one draw an hour; diurnal tables and lags
@@ -63,7 +65,8 @@ format (0060); (iii) a separate Workshop-like space for every job: loses the pla
   drawn by the app; manuals in COURSES.md's blocks; discussions as content with a `discuss` step whose outcome runs as
   `choose`; text only, no speech.
 - **Thermography** reuses the Workshop's heat view; no new shader.
-- **Budgets** (REALISM.md §11): ≤ 0.3 ms more per model step on the Note 9 (the step ≤ 2.1 ms), weather ≤ +2 ms GPU
+- **Budgets** (REALISM.md §11): ≤ 0.4 ms more per model step on the Note 9 (the step ≤ 2.1 ms) and ≤ 600 more values on the
+  first train (about 0.7 µs a value there), weather ≤ +2 ms GPU
   median at its worst, ≤ 60 MB more PSS, ≤ 15 MB more package, the frame rules unchanged.
 - **Sources:** every procedure, failure mode and limit cites a public source (REALISM.md §14); no plant data.
 
@@ -74,8 +77,7 @@ no PDF renderer) and text-to-speech (available, not used), and the gaps paragrap
 
 ## Open for the user
 
-1. **When realism builds start:** after the whole Workshop, K6 (as the user said, the default), or the tracks that don't
-   need the Workshop (ageing, weather, documents' P&IDs, work management, HSE) after K3, alongside K4–K6.
+1. **When realism builds start:** after the whole Workshop, K6 (as the user said, the default), or the work that doesn't need the Workshop (RE1, AG1, WX1, the P&IDs of DC1) alongside it, before or during K1–K6.
 2. **Ageing speed:** a training rate per scenario with real rates available (default), real rates only, or a setting
    the trainee picks.
 3. **Weather in free play:** on, seeded by season (default), or clear unless a scenario chooses weather.
