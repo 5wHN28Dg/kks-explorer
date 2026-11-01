@@ -84,6 +84,7 @@ var lift_model: Array = []           # per staff lift: the model's lift entry
 var lift_way := {}                   # a * places + b (a < b) of a lift way -> its staff lift
 var stairs := {}                     # a * places + b of a lift way's ends, either way round -> the stairs' places
 var has_homes := false               # every person has a home (§21.1)
+var handovers := {}                  # task -> true: the tasks with a handover step (§21.2)
 var home := PackedInt32Array()       # per person: their home's bed, -1
 var off_site := PackedByteArray()    # per place: 1 when outside the plant's fence (§21.1)
 var vehicles: Array = []             # {id, kind, seats, driver, home, runs: [{at, stops, dwell, days, lead}]} (§21.4)
@@ -252,6 +253,9 @@ func _build(m, doc: Dictionary) -> void:
 		role_people[people[i]["role"]] = rp
 	for t in doc["tasks"]:
 		tasks[t["id"]] = t
+		for x in t["steps"]:
+			if x.has("handover"):
+				handovers[t["id"]] = true
 	for i in people.size():
 		var p: Dictionary = people[i]
 		post.append(str(p["role"]) + "\n" + str(p.get("routine", roles[p["role"]]["routine"])))
@@ -741,7 +745,7 @@ func place_all(e, c: int, old: int) -> void:
 			e.sp_occ[pi] = place
 		if task != null:
 			give(e, pi, task, prio_of(task), null, null, null, null, false, null, null, null,
-					(1 if pick[5] == null else 2) if home[pi] != -1 else 0)
+					(1 if pick[5] == null else 2) if home[pi] != -1 else 0, pick[5][1] if pick[5] != null else 0)
 	e.st_t_from.fill(-1)
 
 
@@ -806,7 +810,7 @@ static func _enqueue(e, pi: int, inst: Dictionary) -> void:
 
 
 func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count := true, owner = null,
-		act = null, orig = null, off := 0) -> bool:
+		act = null, orig = null, off := 0, dend := 0) -> bool:
 	var c = e.sp_cur[pi]
 	if e.sp_queue[pi].size() + (1 if c != null and not c["idle"] else 0) >= QUEUE_MAX:
 		e._ev(["task", null, tid, "unassigned"])
@@ -820,7 +824,7 @@ func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count 
 	if off == 1:
 		inst["offr"] = true         # an off-duty slot's: ended when a duty starts (§21.2)
 	elif off == 2:
-		inst["dslot"] = true        # a duty's slot's: dropped from the queue at the duty's end (§21.2)
+		inst["dslot"] = dend        # a duty's slot's: its duty's end (dropped once home after it, §21.2)
 	e.st_order += 1
 	_enqueue(e, pi, inst)
 	e.sp_wake[pi] = 0
@@ -1222,15 +1226,6 @@ func _phase1(e, c: int, day: int) -> void:
 			e.sp_duty[pi] = []
 			e.sp_wake[pi] = 0
 			e._ev(["duty", people[pi]["id"], "off"])
-			if home[pi] != -1:          # the duty's slots' tasks still queued end with it (§21.2)
-				var kq := []
-				for q in e.sp_queue[pi]:
-					if q.get("dslot", false) and q["started"] and tasks[q["task"]].get("resume", "") != "next_duty":
-						e._ev(["task", people[pi]["id"], q["task"], "skipped"])
-						release(e, q)
-					else:
-						kq.append(q)
-				e.sp_queue[pi] = kq
 		if not e.sp_on[pi]:
 			var dl: Array = e.sp_duties[pi]
 			while not dl.is_empty() and dl[0][1] <= c:
@@ -1256,7 +1251,7 @@ func _phase1(e, c: int, day: int) -> void:
 			if home[pi] != -1 and s[5] != null:
 				end_off(e, pi)              # (a duty's slot: its span has begun, §21.2)
 			give(e, pi, s[4], prio_of(s[4]), null, null, null, null, true, null, null, null,
-					(1 if s[5] == null else 2) if home[pi] != -1 else 0)
+					(1 if s[5] == null else 2) if home[pi] != -1 else 0, s[5][1] if s[5] != null else 0)
 	var nx: int = (day + 1) * DAY            # the next day, planned when it begins, at the latest
 	for pi in np:
 		if e._absent.has(pi):
@@ -2117,6 +2112,18 @@ func came(e, pi: int) -> void:
 	var p: int = e.sp_pos[pi]
 	if home[pi] != -1 and not e.sp_on[pi] and p != -1 and off_site[p] and e.slot_of(pi) == -1:
 		e.sp_worn[pi] = 0
+		# the duty's slots' tasks still queued end there: nobody walks back for them (§21.2); a handover's and a job
+		# held for the next duty stay
+		var kq := []
+		for q in e.sp_queue[pi]:
+			if q.has("dslot") and int(q["dslot"]) <= e.clock() and tasks[q["task"]].get("resume", "") != "next_duty" \
+					and not handovers.has(q["task"]):
+				e._ev(["task", people[pi]["id"], q["task"], "skipped"])
+				release(e, q)
+			else:
+				kq.append(q)
+		if kq.size() != e.sp_queue[pi].size():
+			e.sp_queue[pi] = kq
 
 
 ## Off site (§17.9): without homes, no place and no way; with them, §21.1's rule.

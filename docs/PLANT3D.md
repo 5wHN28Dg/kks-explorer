@@ -2829,9 +2829,9 @@ content (S4b).
 - **A duty comes first:** whenever a slot of a duty is given in phase 1 (before it is given: the first marks the start of
   the duty's span) and when the person comes on duty (their `duty` `on` event), every task an off-duty slot made (current or queued; a `choose`'s task stays its slot's) ends `skipped`, current first, then in
   queue order, before §17.10's held jobs come back. So a meal queued behind a sleep, or a sleep that became current
-  late, never runs into the shift. Likewise at a duty's end (its `duty` `off` event) the tasks its slots made that were
-  started and are paused in the queue (not the current one, nor a job held for the next duty) end `skipped`: a round left paused by the
-  handover is not walked after going home. The digest's instance gains which kind of slot made it (§21.5).
+  late, never runs into the shift. Likewise, when an NPC with a home, off duty, comes to an off-site place (§21.1), the
+  tasks duty slots made that are still queued end `skipped` (not a task with a `handover` step, nor a job held for the
+  next duty): a round left paused by the handover, or given while it ran, is not walked back for after going home. The digest's instance gains which kind of slot made it (§21.5).
 - **Placement** (§17.2) of a person with a home who is off duty at the clock C: when C lies in a duty's span (the first
   such span in duty order), the latest slot of that duty's routine at or before C (when C is at or after the duty's
   end, only its slots at or after the end: the commute home, never the handover or a round); else the latest off slot made (days
@@ -3026,7 +3026,9 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   limit only with vehicles (files without them keep S1's rules); a run's first drive at most 12 hours (so days C − 1 to
   C + 1 see every run); `resume` refused on off-duty tasks; the GDScript engine searches the vehicles' routes once per
   place (it searched once per pair). A duty's slot ends the off-duty slots' tasks as its duty's start does (a night
-  crew's stale meal ran past their bus, found in the first train's content). A run's tasks made by
+  crew's stale meal ran past their bus, found in the first train's content), and a duty's leftover tasks end when its
+  people come home (a round left paused by the handover was walked after going home; the review of that change: kept
+  for handovers, and also for tasks never started or paused after the duty's end). A run's tasks made by
   off-duty slots end `skipped` when a duty starts (the adversarial review of the plan: a sleep or a meal never runs into
   a shift), and placement after a duty's end picks only its slots after the end.
 - **Validator:** every rule break of §21 (`staff.reject`'s 38 new items, below). The four S1 rejects that refused the
@@ -3039,7 +3041,7 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   field operator 1 aboard, field operator 2 walking after 30 minutes; the pickup's run skipped; meals, free time, sleep);
   the trainee riding (get_on refused for an unknown vehicle and with no ride step, then on and off; a jump with the
   pickup out); the trainee walking instead (refused on the way, not at the stop); the trainee as the driver; a lock
-  left off site and removed by authority; a jump to the evening; a duty's end dropping a round its handover paused; a session with a player released aboard and the
+  left off site and removed by authority; a jump to the evening; a duty's end: a round its handover paused dropped once its people are home; a session with a player released aboard and the
   driver claimed while driving. `staff.reject` gains 34 rule breaks on the camp file and 4 of S4's keys without homes.
   Every other item of the file is unchanged (a JSON comparison of the old and the new file: only `staff.reject`'s
   items 7–10 and the eight appended runs differ). `tests/test_plant3d_staff.py CampRuns` checks the runs' story by
