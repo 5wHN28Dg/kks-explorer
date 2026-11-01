@@ -3818,10 +3818,183 @@ def build_camp_runs():
                         **({'session': True} if session else {})))
     return out
 
+# ================================================================ realism (docs/plant3d/REALISM.md, milestone RE1)
+
+from ref import plant3d_world as W      # noqa: E402
+
+OUT3 = os.path.join(ROOT, 'ref', 'vectors', 'plant3d-realism.json')
+# (seed, purpose, item): the streams pinned with their first draws (§2.1); the items are ids of every kind a stream
+# belongs to (a value, a fault, a person, a part, a sample point, the weather), one with text beyond ASCII, and the
+# empty text (FNV-1a's offset basis)
+STREAMS = [(1, 'weather', 'weather'), (7, 'weather', 'weather'), (0, 'weather', 'weather'),
+           (0xFFFFFFFF, 'weather', 'weather'), (7, 'draw', 'brg_life_p1a'), (7, 'draw', 'brg_life_p1b'),
+           (7, 'causes', 'f1'), (7, 'causes', 'f2'), (7, 'stores', 'tx_3051_r2'), (7, 'lab', 'sp_hp_drum'),
+           (7, 'slips', 'mech1'), (7, 'slips', 'mech2'), (7, 'draw', 'f1'), (7, 'causes', 'brg_life_p1a'),
+           (7, 'draw', 'Prüfstand_ä→✓'), (7, 'draw', ''), (123456789, 'causes', '30PAC10AP001'),
+           (2 ** 31, 'slips', 'a_fo1')]
+STREAM_DRAWS = 6
+
+
+def build_streams():
+    out = []
+    for seed, tag, item in STREAMS:
+        s = W.stream(seed, W.TAGS[tag], item)
+        first, rs = s, []
+        for _ in range(STREAM_DRAWS):
+            s, r = W.draw(s)
+            rs.append(r)
+        out.append({'seed': seed, 'tag': tag, 'item': item, 'fnv1a': W.fnv1a(item), 'state': first, 'draws': rs})
+    return out
+
+
+# the synthetic staff plant's model, reading the clock values as content will (§2.1): a table of the hour (the
+# weather's diurnal tables), a comparison, a sum of the day, a lag (clock-time dynamics read through the hour), and a
+# hold of the day (a stateful node reads the previous step's)
+CLOCK_NODES = [['sun', {'of': 'world_hour', 'table': [[0, 0], [6, 0], [12, 1], [18, 0], [24, 0]]}],
+               ['night', {'cmp': ['world_hour', '>=', 18]}],
+               ['day_n', {'sum': ['world_day', 0.5]}],
+               ['hour_lag', {'lag': 'world_hour', 'tau': 30}],
+               ['day_seen', {'hold': 'world_day', 'when': 'night'}]]
+WORLD = {'seed': 7, 'year_day': 200}
+
+
+def realism_files(scenario=None):
+    """The synthetic plant with staff (staff_files) whose model reads the clock values, and whose scenario has a world."""
+    F = staff_files()
+    F['model/a1.json']['values'] += copy.deepcopy(CLOCK_NODES)
+    F['scenarios/s1.json']['world'] = dict(WORLD)
+    if scenario is not None:
+        F['scenarios/s1.json'] = scenario
+    return F
+
+
+SC = ['scenarios/s1.json']
+RMOD = ['model/a1.json']
+
+
+def _sc2(sc):
+    """A second scenario, s2: a copy of s1 with `sc` applied."""
+    def f(F):
+        s2 = copy.deepcopy(F['scenarios/s1.json'])
+        s2['id'] = 's2'
+        sc(s2)
+        F['scenarios/s2.json'] = s2
+    return f
+
+
+REJECTS_WORLD = [
+    ('a world that is not an object', 'bad_type', _set(SC + ['world'], [7])),
+    ('a world with a key RE1 does not know (weather comes with WX1)', 'unknown_key',
+     _set(SC + ['world', 'weather'], {'fixed': 'clear'})),
+    ('a world seed below 0', 'bad_number', _set(SC + ['world', 'seed'], -1)),
+    ('a world seed of 2^32', 'bad_number', _set(SC + ['world', 'seed'], 2 ** 32)),
+    ('a world seed that is not whole', 'bad_number', _set(SC + ['world', 'seed'], 1.5)),
+    ('a world seed that is a boolean', 'bad_number', _set(SC + ['world', 'seed'], True)),
+    ('a year day of 0', 'bad_number', _set(SC + ['world', 'year_day'], 0)),
+    ('a year day of 366', 'bad_number', _set(SC + ['world', 'year_day'], 366)),
+    ('a year day written as 1.0', 'bad_number', _set(SC + ['world', 'year_day'], 1.0)),
+    ('a world in a version 1 scenario', 'unknown_key', _all(_set(SC + ['version'], 1), _del(SC + ['staff']))),
+    ('a value named like a clock value', 'dup_id', _app(RMOD + ['values'], ['world_hour', {'const': 1}])),
+    ('an ext value named like a clock value', 'dup_id', _all(
+        _set(['plant.json', 'ext'], ['ambient_t', 'world_day']), _set(SC + ['init', 'world_day'], 0))),
+    ('a scenario setting a clock value', 'bad_ref', _set(SC + ['init', 'world_hour'], 3)),
+    ('a model reading the clock values with a scenario without a world', 'bad_ref', _del(SC + ['world'])),
+    ('a second scenario without a world', 'bad_ref', _sc2(lambda s: s.pop('world'))),
+    ('a scenario\'s fault reading a clock value in a scenario without a world', 'bad_ref', _all(
+        _set(RMOD + ['values'], staff_files()['model/a1.json']['values']), _del(SC + ['world']),
+        _set(SC + ['faults', 0, 'when'], {'cmp': ['world_hour', '>=', 18]}))),
+    ('a reaction of the staff reading a clock value with a scenario without a world', 'bad_ref', _all(
+        _set(RMOD + ['values'], staff_files()['model/a1.json']['values']), _del(SC + ['world']),
+        _st(lambda st: st['reactions'].append({'on': {'value': 'world_hour'}, 'roles': ['ccr_op'],
+                                               'task': 'answer_alarm'})))),
+    ('a world in a plant without a clock', 'bad_ref', _all(
+        _set(RMOD + ['values'], staff_files()['model/a1.json']['values']), _del(['plant.json', 'clock']),
+        _del(SC + ['staff']), lambda F: F.pop('staff.json'),
+        _set(RMOD + ['works'], [{k: v for k, v in w.items() if k != 'task'}
+                               for w in staff_files()['model/a1.json']['works']]))),
+]
+
+
+def realism_runs():
+    """(why, scenario changes, files, player, steps, snapshot every): the runs of the realism base (§2.1, §2.7)."""
+    rf = realism_files()
+    plain = staff_files()
+    late = {'start': {'day': 1, 'time': '23:00'}}
+    return [
+        ('the clock values across midnight (from 23:00 of day 1, day_scale 60): world_hour from 23.0 by 1/600 a step, '
+         'back to 0 and world_day from 1 to 2 at step 600; the nodes reading them (a table of the hour, a comparison, '
+         'a sum, a lag and a hold of the day); the night crew at work', late, rf, Trainee(quiet=True), 900, 50),
+        ('a jump (§17.6) from 23:00 to 05:45: the clock values take the new clock in the jump\'s own step (step 1w, '
+         'after step 1\'s inputs), world_day 2; stateful nodes read the step before\'s', dict(late, trainee='mech1'),
+         rf, Trainee(extra=[[30, 'jump', '05:45']]), 300, 10),
+        ('the people\'s draws with a world (§2.1): the synthetic staff\'s morning with `world: {}` (the seed the '
+         'staff\'s): every event as without a world (the test replays it without), the clock values beside',
+         {'world': {}}, plain, Trainee(), 1500, 100),
+        ('a world without staff (seed 1, year day 365): the model alone with the clock values, from 05:30',
+         {'world': {'year_day': 365}, 'staff': None}, rf, None, 400, 50),
+    ]
+
+
+def build_realism_runs():
+    out = []
+    for why, change, files, player, until, every in realism_runs():
+        F = copy.deepcopy(files)
+        sc = F['scenarios/s1.json']
+        for k, v in change.items():
+            if k in ('start', 'world'):
+                sc[k] = v
+            elif k == 'staff' and v is None:
+                del sc['staff']
+            else:
+                sc['staff'][k] = v
+        b = check(F)
+        e = P.Recorder(b, 's1')
+        world = [e.world['seed'], e.world['year_day']]
+        states, digests = [e.snapshot()], [e.digest()]
+        while e.step_no < until:
+            if player is not None:
+                player(e)
+            e.step()
+            if e.step_no % every == 0 or e.step_no == until:
+                states.append(e.snapshot())
+            if e.step_no % DIGEST_EVERY == 0:
+                digests.append(e.digest())
+        out.append({'why': why, 'scenario': sc, 'staff': None,
+                    'files': {k: F[k] for k in ('model/a1.json',) if F[k] != realism_files()[k]},
+                    'inputs': e.inputs, 'until': until, 'every': every, 'states': states, 'events': e.events,
+                    'digests': digests, 'world': world})
+    return out
+
+
+def parts3():
+    """The realism vectors part by part (REALISM.md §13), in the file's order."""
+    return {
+        'about': lambda: ('Walkdown Plant realism vectors (docs/plant3d/REALISM.md §13), made by '
+                          'ref/make_plant3d_vectors.py from ref/plant3d.py, ref/plant3d_staff.py and '
+                          'ref/plant3d_world.py. Milestone RE1: the world\'s random streams by purpose and item '
+                          '(`streams`: each stream\'s first state and draws), and the synthetic plant with staff whose '
+                          'model reads the clock values (`staff`: its files, counts, rejects and runs, as '
+                          'plant3d-v2.json\'s `staff`; a run\'s `files` replace the base\'s, its `staff` null keeps '
+                          'the base\'s staff.json; its `world` is the world\'s seed and year day as the engine took '
+                          'them). Numbers compare to 1e-6; the digests (§17.14) of every 50th '
+                          'step are exact.'),
+        'streams': build_streams,
+        'staff': lambda: {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in realism_files().items()},
+                          'counts': check(realism_files()).counts,
+                          'reject': reject_changes(realism_files(), REJECTS_WORLD, realism_files()),
+                          'runs': build_realism_runs()}}
+
+
+def build3():
+    return {k: f() for k, f in parts3().items()}
+
+
 if __name__ == '__main__':
     bad = 0
-    for out, make in ((OUT, build), (OUT2, build2)):
-        if '--only-v2' in sys.argv and out == OUT:
+    for out, make in ((OUT, build), (OUT2, build2), (OUT3, build3)):
+        if '--only-v2' in sys.argv and out != OUT2:
+            continue
+        if '--only-realism' in sys.argv and out != OUT3:
             continue
         text = dump(make())
         if '--write' in sys.argv:

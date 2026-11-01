@@ -41,6 +41,8 @@ var lifts: Array = []                 # format 2's lifts (§20.1), joined in are
 var scenarios := {}                   # id -> scenario, in file-name order
 var procedures := {}                  # id -> procedure, in file-name order
 var staff = null                      # sim/staff.gd: staff.json (§16), or null
+var _reads_world := false             # a name read was a clock value's (REALISM.md §2.1; known())
+var _content_reads_world := false     # the model's or the staff's reads were: every scenario needs `world`
 
 
 ## The key an op is found by (§7.2: its equipment, its `do` and, for a reset, its trip). null when an input's parts
@@ -206,6 +208,14 @@ func _load(files: Dictionary) -> void:
 		if staff.error != "":
 			_fail(staff.error)
 			return
+		for r in sd.get("reactions", []):       # a staff reaction on a value (§16.7) reads it in step 9
+			var on = r.get("on") if typeof(r) == TYPE_DICTIONARY else null
+			if typeof(on) == TYPE_DICTIONARY and (on.get("value") == "world_hour" or on.get("value") == "world_day"):
+				_reads_world = true
+	if version == 2 and (ext.has("world_hour") or ext.has("world_day")):
+		_fail("plant.json: an ext value has the name of a clock value")
+		return
+	_content_reads_world = _reads_world
 	for sid in scenarios:
 		_check_scenario(scenarios[sid])
 
@@ -217,7 +227,7 @@ func _add_model(d: Dictionary, rel: String) -> void:
 		if kind == "":
 			_fail("%s: value %s: not a node of format 1" % [rel, name])
 			return
-		if index.has(name):
+		if index.has(name) or (version == 2 and (name == "world_hour" or name == "world_day")):
 			_fail("%s: value %s: name already used" % [rel, name])
 			return
 		index[name] = values.size()
@@ -277,6 +287,9 @@ func known(name) -> bool:
 	for t in trips:
 		if name == t["id"] + "_latched":
 			return true
+	if version == 2 and (name == "world_hour" or name == "world_day"):
+		_reads_world = true     # the clock values (REALISM.md §2.1): slots only in a scenario with `world`
+		return true
 	return kept().has(name)
 
 
@@ -354,6 +367,7 @@ func _check_actions(acts: Array, where: String) -> void:
 
 func _check_scenario(s: Dictionary) -> void:
 	var w := "scenario " + str(s.get("id"))
+	_reads_world = false
 	for k in s.get("init", {}):
 		if not (index.has(k) or ext.has(k)):
 			_fail("%s: init names no value %s" % [w, k])
@@ -379,6 +393,8 @@ func _check_scenario(s: Dictionary) -> void:
 				else:
 					for r in node_refs(f["when"], kind):
 						_need_ref(r, "%s fault %s" % [w, f["id"]])
+	if (_content_reads_world or _reads_world) and not s.has("world"):
+		_fail("%s: the content reads world_hour or world_day, which only a scenario with world has" % w)
 
 
 func machine_by_id(mid):
