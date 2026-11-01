@@ -1512,7 +1512,7 @@ engines don't have yet:
 - **S2:** `zones`, `put_right`, the `ppe` and `stop` steps, `"unsafe": true`, reactions `on: {"unsafe"}` and `seen`
   (PPE, zones, unsafe acts and the safety walk): built, §17.11;
 - **S4:** `vehicles`, `drive` ways, `ride` and `sleep`, a person's `home`, `"go": "home"`, a role's `off` routine
-  (the camp, the buses, off duty).
+  (the camp, the buses, off duty): designed in §21.
 
 What S1 settles that §16–§17 left open (the engines and the vectors follow these):
 - **The gate.** staff.json has `"gate"`: a `door`, `point` or `muster` place where people come on site and leave it.
@@ -2764,3 +2764,246 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
   walking ways, checked as any).
 - **Tests:** `tests/test_lift_riders.gd` (an NPC riding in the day shift drawn in the cab at their spot facing the
   gate, on the map, and walking out without a jump).
+
+## 21. The full day (format 2, milestone S4; DRAFT 2026-11-01)
+
+What §16–§17 named and S1–S3 left for S4 (§17.8): homes and the camp, off-duty routines, `go: "home"`, `sleep`,
+vehicles with their `drive` ways and runs, `ride`; with them the roles STAFF.md §1 lists that the first train's content
+lacks (guards, managers and engineers, drivers, the storekeeper, the camp staff), meals, the morning meeting, the
+buses at the shift changes and the day workers' times, the evening in the camp, and the debrief per role. Everything
+here is in both engines bit for bit and in the vectors (§19, §21.9) unless marked as the app's. No new technique or
+dependency: the staff model is decision 0062's, people on screen 0063 and 0064's, the camp 0066's.
+
+**A file without homes or vehicles runs exactly as before** (S1–S3 and LIFTS): every rule below applies only with
+them, so the engine's change (S4a) leaves every earlier vector item as it was; the first train's `day` changes with its
+content (S4b).
+
+### 21.1 Homes and off site
+
+- **`home`** (a person): a room of `places` holding at least one `bed` (`bad_ref`); a home room is one person's at
+  most (`bad_ref`). The person's **home** is that room's first `bed` in file order. Either every person has a home or
+  none does (`bad_ref`); a home's bed is an off-site place (`bad_ref`), so people off duty with nothing to do go
+  outside the fence and a lock they keep on is found left (§17.9). A person names no `off` of their own
+  (`unknown_key`): the off-duty routine is the role's.
+- **Places off site:** a place may carry `"off_site": true` (the camp, the road to it, their stops: everything outside
+  the plant's fence); only in a file with homes (`bad_ref`), as `vehicles` are. A person with a home is **off site** at
+  an off-site place, on a way both of whose ends are off site, or aboard a vehicle standing at an off-site place or
+  driving a way both of whose ends are off site; never while riding a lift. That is §17.9's "off site" (a lock left
+  behind) for them.
+- **PPE:** an NPC with a home who is **off duty** and comes to an off-site place (the end of a way, getting off a
+  vehicle) leaves what they wore behind (`worn` emptied: in the locker, §17.11's rule for leaving the site). People on
+  duty keep theirs (the camp's guard, a driver at the depot).
+- **A place hidden from view** may carry `"hidden": true`: the engines ignore it; the app draws nobody there (a bed
+  behind a room's shut door, §21.7).
+- **No coming and going at the gate:** a person with a home always has a place, a way, a lift or a vehicle (an
+  `absent` person has none, as before). §17.8's appearing at the gate and leaving from where they stand are only for
+  people without a home. staff.json's `gate` is still required, and with homes means nothing to the engines (the app
+  shows it).
+
+### 21.2 Off-duty routines
+
+- **A role's `off`** names a routine (§16.5): the person's routine off duty; only with homes (`bad_ref`). Every role of
+  a person with a home has one (`bad_ref`); a routine is either a duty routine (a role's or a person's `routine`) or an `off`, never both
+  (`bad_ref`). An off routine's slots' `at` is `prev±H:MM` (from the end of a duty), `next±H:MM` (from the start of a
+  duty), each at most ±12:00, or `HH:MM`; `every` is refused there (`bad_ref`) and a duty routine's `at` and `until`
+  stay `start±`/`end±`/`HH:MM` (`bad_clock`); `days` (weekdays) means the weekday of the day the slot's time falls on.
+- **The off-duty idle task** is the off routine's `idle`: an NPC or a player off duty with nothing queued runs it
+  (priority 6), as the duty's idle task runs on duty (§17.8). An idle instance is a duty's or an off one: a duty's ends
+  (`done`) when anything is queued or the duty ends, an off one when anything is queued or a duty starts; either is
+  started again at the next turn with the queue empty. In the digest (§17.14) an instance's `idle` is false, true (a
+  duty's) or the integer 2 (an off one).
+- **A duty's span** runs from the earlier of its start and its routine's first slot to the later of its end and its
+  routine's last slot (slots by `days` as made). Spans are worked out from the roster and the routine as each duty is
+  planned and kept for four days (they are not §17.8's list of duties to come, which drops a duty once it has begun).
+- **Which off slots are made.** For each day d: the candidate times on day d (from d's 00:00 to the next) are each
+  `HH:MM` slot's time on d, each `prev` slot's time from the end of every duty planned, and each `next` slot's time from
+  the start of every duty planned. A candidate is made when it lies within no duty's span (both ends included) and its
+  `days`, when given, list its weekday. Day d's off slots are made when the person's duties are planned through day
+  d + 1, so every duty whose span or offsets reach day d is known (a span reaches at most 36 hours after its duty's
+  start: a duty of 24 hours and an `end+12:00`, a duty routine's `HH:MM` slot lying within 24 hours of the start; and
+  at most 12 hours before it: `start−12:00`, `next−12:00`; so day d needs the duties of days d − 2 to d + 1). Placement plans a person with a home from day C − 3 (one day earlier than
+  §17.8), so their off slots of days C − 1 and C are made; later days' are made as each day's duties are planned. An
+  off slot can never share a time with a duty's slot (it lies outside every span); slots are kept in the order (time,
+  duty start or the day's 00:00, slot index, repetition).
+- **A duty comes first:** when a person with a home comes on duty (their `duty` `on` event in phase 1), every task an
+  off-duty slot made (current or queued; a `choose`'s task stays its slot's) ends `skipped`, current first, then in
+  queue order, before §17.10's held jobs come back. So a meal queued behind a sleep, or a sleep that became current
+  late, never runs into the shift. The digest's instance gains whether an off-duty slot made it (§21.5).
+- **Placement** (§17.2) of a person with a home who is off duty at the clock C: when C lies in a duty's span (the first
+  such span in duty order), the latest slot of that duty's routine at or before C (when C is at or after the duty's
+  end, only its slots at or after the end: the commute home, never the handover or a round); else the latest off slot made (days
+  C − 1 and C) at or before C and after the end of the last span ending before C. That task's first place, and the task
+  queued (not counted in `unacked`); with none, the off-duty idle task's first place; if that has none, home. Off-duty
+  people wear nothing at placement. On duty as before.
+- **A task's first place** (§17.8) also counts `{"go": "home"}` and `sleep` (home) and `ride` (its `from`), in step
+  order with the `go` and `meet` steps.
+- Off-duty slots give the trainee tasks like any slot: they count in `unacked` and stop fast-forward, as "until my next
+  task" intends.
+
+### 21.3 The steps `go: "home"` and `sleep`
+
+- **`{"go": "home"}`:** a go to the person's home (an NPC walks; the trainee `arrive`s). Only with homes (`bad_ref`).
+- **`{"sleep": {"until": "HH:MM" | "next-H:MM"}}`** (H from 0 to 12, MM two digits; `bad_clock`): the time T is fixed
+  when the step first becomes current and kept across pauses: `HH:MM` its first occurrence at or after the clock then;
+  `next-H:MM` the start of the person's next duty not yet begun (the first of §17.8's duties to come) less the
+  offset, and with none planned (a day off), the clock then, so the step ends at once. An NPC walks home (a `go`) and
+  lies there; the step is done at their turn at home with C ≥ T (on arrival when T has passed). The trainee's step is
+  done in the first step with C ≥ T wherever they are (or they jump, §17.6). Pre-emption is checked while they lie
+  there, as during a `work`: a task wanting an unbroken night is `interruptible: false`. Only with homes (`bad_ref`);
+  `sleep` counts as a step that takes time for off-duty tasks (§16.6); an idle task still needs a `work` of a minute or
+  more (§17.8).
+
+### 21.4 Vehicles and their runs
+
+**staff.json `vehicles`** (at most 16; only with homes, `bad_ref`), §16.8's form, settled so:
+
+```json
+{"id": "bus_1", "kind": "bus", "seats": 30, "driver": "driver", "home": "bus_depot",
+ "runs": [{"at": "05:40", "stops": ["camp_stop", "gate_stop", "cr_stop"], "dwell": 2, "days": ["mon", …]}]}
+```
+
+- `kind` `bus`, `pickup` or `suv` (what the app draws); `seats` 1–60 (riders; the driver takes no seat); `driver` a
+  role with the authority `drive` (`authority`); `home` a place of kind `depot`; `runs` 1–32, each with `at` (`HH:MM`, its
+  departure from its first stop), `stops` (2–16 `stop` or `depot` places, none twice in a row), `dwell` (clock minutes
+  at each stop after the first, 0–30) and optional `days`. Vehicle ids are unique among vehicles and lifts (`dup_id`).
+  `speeds.drive` is required with drive ways (`missing_key`).
+- **`drive` ways** `[a, b, metres, "drive"]` join only `stop` and `depot` places (`bad_way`); a stop or depot also has
+  its walking stub (§16.2). Every place of a vehicle's runs is reached from its home over drive ways (`unreachable`). A
+  drive way's time in steps is §16.2's rule at `speeds.drive`. **A vehicle's route** between two places is the quickest
+  over drive ways by steps, ties by the lowest list of place indexes (§16.2's rule over the stops and depots numbered
+  in place order, at most 64), searched by both engines at load. The vehicle drives it way by way; a place on the way
+  that is not the run's next stop is passed without standing or an event.
+- **A run's times.** A run runs on a day d when it has no `days` or d's weekday is in them; its departure D is d's `at`,
+  its leaving time L = D less the route's steps from home to its first stop in whole clock minutes rounded up (zero when
+  the first stop is home). Per vehicle the runs are taken in the order (L, run index) over the days; in phase 3 of the
+  first step with C ≥ L a run is **made**: unless L is before the clock of the last placement (so a run whose L is the
+  placement clock is made, and one whose L fell in a jump's gap is not); the vehicle not at home (another run) or no
+  driver available skip it: `[n, "vehicle", id, first stop, "skipped"]`.
+- **A run.** The driver gets on (below); `[n, "vehicle", id, home, "depart"]`; it drives to the first stop and arrives
+  (`"arrive"`; at once when that is home). Arriving at a stop in step a, those aboard whose stored `to` it is get off
+  (at the run's last stop, everyone), in the order they got on: `[n, "aboard", person, vehicle, stop, "off", []]`, each
+  standing at the stop. It departs (`"depart"`) in phase 3 of the first step n > a with, at the first stop, C(n) ≥ D;
+  at a later stop, n ≥ a + max(1, `dwell` × steps per clock minute); at the last stop, n = a + 1, for home, where it
+  arrives and the driver gets off (`"off"`, standing at the depot). Vehicles move in phase 3 (§17.2), in file order,
+  each vehicle's arrival and departure before its runs are made, so a vehicle that came home in this step may set off
+  again in it. Phase 3 is not run in a jump's step (as phase 4). The runs looked at are those of days C − 1 to C + 1.
+- **The driver** is the first person of the role, in index order, on duty, not absent, aboard no vehicle, not on a
+  lift ride (waiting or aboard, §20.4) and in no lift's riders (§20.3); an NPC before a player (a player is taken only
+  when no NPC driver is available: the engine then drives, §21.8). They are taken from where they are:
+  a way or a stairs route given up, a place held and a reservation let go; their current task paused as a pre-emption
+  pauses it whatever its priority and `interruptible` (the idle task ended `done`), an input whose outcome they wait
+  for forgotten as §17.13's claim forgets it; `[n, "aboard", person, vehicle, place or null, "on", []]`, the place they
+  stood at. A driver whose duty ends during the run stays aboard until home.
+- **Aboard** (a driver or a rider) a person takes no turn: no `select`, no held jobs, no idle task ended or started,
+  no pre-emption; tasks given to them queue. They are not free (§17.3). They are in no zone. They get off only as above,
+  at the `to` stored when they got on, whatever became of their task meanwhile. A `stop` step aimed at a person aboard
+  waits until they stand at a place or the act is over, as for a trainee between places (§17.11).
+- **Getting on** (phase 4, at an NPC's turn): an NPC whose `ride` step stands at its `from` gets on the first vehicle,
+  in file order, standing there (arrived, not departed) on a run whose later stops include the step's `to`, while a
+  seat is free: `[n, "aboard", person, vehicle, from, "on", []]`.
+- **`ride`** `{"from": stop, "to": stop}` (stop places, different; some vehicle's run visits `from` and later `to`,
+  `bad_ref`): an NPC goes to `from` (a `go`) and waits there; the step is done when they stand at `to` (at once when
+  they already do). At their turn
+  at the stop they get on if they can; if not, and 30 clock minutes have passed since their arrival there, the step
+  becomes a `go` to `to` (they walk). Pre-emption is checked while they wait at the stop; a pause forgets the wait's
+  start (they go to the stop again and wait 30 minutes from their arrival).
+- **The trainee's `ride`** is done when they stand at `to`: by their `arrive` there (they walked) or by getting off
+  there. Their input `[n, "get_on", vehicle]` (§17.6; in a session with its slot, §17.13) is applied at the start of
+  step 9 with their `arrive`, `leave`, `ppe`, `zone` and `stop` inputs, in the order made: done (`"on"`) when the
+  vehicle is one of the file's, their person stands at a stop where it stands on a run whose later stops include
+  their current step's `to`, that step is a `ride` whose `from` is that stop, and a seat is free; otherwise `[n,
+  "aboard", person, vehicle, place or null, "refused", [reasons]]` with the first of `unknown`, `aboard` (they are on a
+  vehicle or in a lift's cab; a lift's `board` is likewise refused, `aboard`, while they are on a vehicle), `no_ride` (no current `ride` step), `not_at_stop` (not at its `from`, or no vehicle of that id standing
+  there going to its `to`), `full`; a slot playing nobody: person null, `authority`. Their `arrive` and `leave` are
+  ignored while aboard, and so is their turn's task progress (their actions are kept as §17.8 says). A player who takes
+  a person aboard keeps them aboard; a release leaves them aboard as an NPC. The `aboard` events carry the slot last in
+  a session run (as `board`'s, §20.3).
+- **A jump:** every vehicle is home again with nobody aboard (placement places everyone); a run in progress makes no
+  more events.
+- **Snapshot** (§17.7): `vehicles` `{id: [place or [from, to, depart, arrive] (the drive way being driven), [people
+  aboard: the driver first, then the riders in the order they got on]]}`, where the key already stands (after `acts`,
+  empty without vehicles); a person aboard is
+  `["vehicle", id]`.
+
+### 21.5 The state digest with homes and vehicles
+
+With homes, the digest's staff part (§17.14 item 8) gains at its end (after LIFTS' two fields when there are lifts):
+per vehicle `[place or −1, way [from, to, depart, arrive] or [], run index or −1, its departure D or 0, the index of
+the stop it is at or driving to (its run's length when going home), the step from which it may depart, driver index or
+−1, riders (i32), their `to` (i32), the placement clock, the last run made or skipped as [L, run index] or []]`; per
+person the vehicle they are aboard (−1, i32) and the last day whose off slots are made (−1 without a home, i64); and each
+task instance (§17.14) ends with whether an off-duty slot made it (a bool). A ride's and a sleep's progress are a task step's own and left out (§17.14).
+
+### 21.6 The first train's full day (content, milestone S4)
+
+- **The roles STAFF.md §1 lists that are missing**, at its numbers: two security guards per crew (the plant gate's
+  and the camp gate's booths, a patrol of the fence line every two hours); the plant manager, the operations and
+  maintenance managers and the I&C, mechanical and electrical engineers on days (offices in the admin building, the
+  morning meeting at 07:30, the plant manager's walk-round on the first day of the week with an HSE officer, the
+  engineers' reviews of their discipline's jobs at the workshops); a driver per crew on `driver_shift` (05:00–17:00,
+  17:00–05:00); the storekeeper (the store's counter in the admin area); six camp staff on a roster of their own that
+  covers the meals (two cooks, two cleaners, two in the laundry, in an early and a late shift: STAFF.md §1 updated).
+  91 people.
+- **The gate:** staff.json's `gate` moves to the plant gate's house (it was by the control building). Bus stops at the
+  camp gate, the plant gate and the control building; the camp's parking is the depot.
+- **Homes:** 96 rooms in the eight blocks, one person each. Block 1's corridor is walkable (§18.5's interior): its two
+  open rooms' beds are real places; every other room's bed is a hidden place at its door (block 1's corridor) or at
+  its block's entrance (the shells of blocks 2–8).
+- **The camp's places:** the mess hall's seats, the serving counter and the kitchen's, the gym, laundry, prayer room
+  and recreation room, the camp office, the court, the guard booths; the admin building's offices, meeting room and the
+  store; points along the camp's walkways, the road to the plant gate and the admin area, measured on the navigation
+  mesh as the train's (tests/staff_layout.gd) and checked by the build.
+- **Buses:** two buses at the depot, driven by the driver on duty: in at 05:15 (the WTP's people), 05:40, 17:15 and
+  17:40; the night crew out at 06:20 and the day crew at 18:20; the day workers in at 06:30 and 06:45 and out at 16:15;
+  their lunch at 11:45 and back at 13:00. Anyone may walk instead. The content's test checks that the runs of each
+  driver role never overlap (from a run's leaving time to its return home), so no run is skipped for want of a
+  driver.
+- **Off duty:** meals at the mess (before a day shift, at midday for the day workers, 17:30–19:30), then a `choose`
+  among the gym, the laundry, the prayer room, the recreation room and the own room by weights per role; sleep before
+  the next duty (`next-…`, so a night crew sleeps by day with the same routine), and the off-duty idle task at home
+  between (a day off).
+- **The scenarios with staff** start at 05:00 as before.
+
+### 21.7 What the app shows (view only; not in the vectors)
+
+- **Vehicles** drawn as the kit's `vehicle` parts (the camp's two parked buses become the staff's vehicles: drawn at
+  the depot when home), moving along their drive ways' road polylines made by the build (the right-hand lane), at the
+  fraction of each way's time gone; the people aboard are not drawn; on the map as squares.
+- **People** at a `hidden` place are not drawn, nor in an interior that is not loaded (§18.5).
+- **The trainee's ride:** at a stop with their `ride` step current and a bus standing there that goes to its `to`, the
+  Crew panel offers "Get on the bus" (keyboard, gamepad and touch); aboard (as a rider, or as the driver the engine
+  took, from wherever they were), the walker is hidden and the camera rides in the bus; getting off puts the walker at
+  the stop or the depot. Walking instead is always possible.
+- **Off duty:** the Crew panel shows the off-duty task (a meal, free time, sleep) and keeps "Sleep to the next shift".
+- **The debrief per role** (§18.7): a tab with the trainee's role's day: each task of theirs, done, late (started more
+  than 15 clock minutes after it was given), abandoned or skipped, the slots a jump skipped shown as the night the
+  other crew covered (the engine records only those `skipped` events, §17.6).
+
+### 21.8 Choices made here (the docs left them open)
+
+- **A trainee who plays a driver rides in the cab while the engine drives** the run's route and timetable (runs must
+  be the same everywhere: lockstep, MULTIPLAYER.md §3); between runs they do the driver's other tasks. Steering a bus
+  would need driving controls and the vehicle's position as the trainee's inputs: a question for the user (MILESTONES
+  "Questions").
+- **People with homes never vanish:** the camp is in the world (§21.1), so off-duty people are drawn there and on the
+  road; the gate is where the fence is crossed.
+
+### 21.9 Vectors
+
+`staff.runs` gains runs on a synthetic plant with a camp (its own staff file): homes and the off-duty routine (meals,
+a `choose` of free time, sleep before the next duty with `next-`, the off-duty idle task at home), placement off duty
+in a span, between spans and after a jump, a bus run with its driver taken from their task, people getting on and off,
+a ride with no bus becoming a walk, a run skipped for no driver, a lock left by a person who goes home to the camp
+(`lock_left` off site), the trainee getting on (each refusal) and walking instead, the trainee as the driver, and a
+session run with a player aboard. `staff.reject` gains every new rule break. `day` covers 24 clock hours from 05:00
+(144,000 steps, a snapshot every clock hour, 2,881 digests) with the S4 content; its forks are made again on it, with
+new ones: the trainee as a driver, as the plant manager, the operations and maintenance managers and each engineer
+(each new role that plays), riding the bus in and home, and a day crew's evening in the camp to the jump.
+
+### 21.10 Budgets
+
+- The staff step (§18.4) stays ≤ 0.3 ms on the Note 9 at the busiest step (the shift change with the buses): about
+  95 µs on the laptop by S2's ratio; measured with `bench_step.gd`.
+- The Note 9's frame rules hold on a new `gate` walk: the shift change at the plant gate (05:40–06:20, the buses in and
+  out, the crews through the gate), 10 minutes at 1×, the phone's 12 skinned people, two judged cool runs.
+- The buses add at most 2 draw calls each in view and their triangles fit §18.4's people share.
