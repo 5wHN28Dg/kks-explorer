@@ -1,8 +1,9 @@
 # 0073 Walkdown Plant's realism programme: everything that changes the plant in the deterministic engine, hands-on jobs from the Workshop's trees, seeded wear and weather, generated documents
 
 Date 2026-11-01 · Scope: docs/plant3d/REALISM.md, docs/PLANT3D.md format 2 (additions), `ref/plant3d.py`,
-`ref/plant3d_staff.py`, `apps/plant3d/sim`, the content tools, the app · Status: **proposed**, written before any code
-under the user's decision of 2026-11-01 (add every area of realism they listed) · Extends 0054, 0057, 0060, 0062,
+`ref/plant3d_staff.py`, `apps/plant3d/sim`, the content tools, the app · Status: **accepted** (the user's answers of
+2026-11-01, below), written before any code under the user's decision of 2026-11-01 (add every area of realism they
+listed, and then every other part of the job: REALISM.md J1–J8) · Extends 0054, 0057, 0060, 0062,
 0067, 0071, 0072 (the Workshop); no new dependency
 
 **Question:** how do hands-on jobs with tools, ageing and spontaneous failures, weather, documents and discussions,
@@ -75,17 +76,30 @@ format (0060); (iii) a separate Workshop-like space for every job: loses the pla
 CAPABILITIES.md §8 gains rows for weather (depth fog, GPU particles, global shader parameters), documents (2D drawing;
 no PDF renderer) and text-to-speech (available, not used), and the gaps paragraph names them.
 
+## Decided by the user, 2026-11-01
+
+1. **When realism builds start:** the parts that don't need the Workshop (RE1, AG1, WX1 and DC1's generated P&IDs)
+   are built alongside it; hands-on work waits for the Workshop's K3.
+2. **Ageing speed:** a training rate per scenario, with real rates also available.
+3. **Weather in free play:** on, seeded by season for the hot dry climate.
+4. **Emissions limits:** the IFC / World Bank Group EHS guidelines for thermal power plants.
+5. **Money:** costs as man-hours, parts and MWh lost, with no currency.
+6. **Generated P&IDs:** in the plant app only (not exported for `kks-import`).
+7. **NPC speech:** text only.
+8. **The rest of the job:** the user added every other part of the work they listed (operations, electrical, I&C,
+   mechanical, HSE and environment, chemistry, stores and planning, people and administration). REALISM.md J1–J8
+   fits each into a track with milestones, dependencies and public sources; J0 lists the ten small engine
+   additions they need, each gated by its own key with its vectors in `plant3d-realism.json` (grid events, a `count`
+   node, forces and bypasses, permit conflicts, zone barriers, authorisations, duty hours, passes, languages, and order approvals).
+
 ## Open for the user
 
-1. **When realism builds start:** after the whole Workshop, K6 (as the user said, the default), or the work that doesn't need the Workshop (RE1, AG1, WX1, the P&IDs of DC1) alongside it, before or during K1–K6.
-2. **Ageing speed:** a training rate per scenario with real rates available (default), real rates only, or a setting
-   the trainee picks.
-3. **Weather in free play:** on, seeded by season (default), or clear unless a scenario chooses weather.
-4. **Emissions limits:** the IFC/World Bank guidelines (default), or the EU's industrial emissions directive.
-5. **Money:** costs as hours, parts and megawatt-hours lost (default), or a generic currency for spares and downtime.
-6. **Walkdown demo plant:** keep the generated P&IDs in Walkdown Plant only (default), or also export them for
-   `kks-import` as a public demo plant for Walkdown.
-7. **NPC speech:** text only (default), or the platforms' text-to-speech for discussions and the radio.
+1. **The model step's share with the new plant systems** (REALISM.md J0): the fuel gas and distillate systems, the
+   emergency diesel, instrument air, fire water and CO₂, the switchyard and excitation add an estimated 300–400 model
+   values on top of §11's 600, which at about 0.7 µs a value on the Note 9 would pass the 0.4 ms share. Either widen
+   the share (the step still ≤ 2.1 ms, fast-forward ≥ 12×), or model these systems more coarsely, or load them only
+   in scenarios that use them. RE1 measures the step at 600 and 1,000 added values to inform it. Until answered, each
+   milestone fits within §11 as it stands.
 
 **When to revisit:** if the model step with realism content passes its budget on the Note 9; if a trainer needs a
 job the hand actions can't say (a bounded addition with vectors, never scripting); if Godot's particles or global
