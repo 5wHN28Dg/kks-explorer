@@ -224,6 +224,41 @@ inputs and values, so a session needs no new message kind: the new inputs travel
 (MULTIPLAYER.md §3.1). §17.6's sentence "a jump draws no random numbers" gains "except the weather's hourly draws
 (§5.1)" in a scenario with weather.
 
+### 2.10 As built for milestone RE1 (2026-11-01: the world, its streams, the clock values)
+
+- **Where:** `ref/plant3d_world.py` (the reference) and `apps/plant3d/sim/world.gd` (the app's engine), with small
+  hooks in `ref/plant3d.py` and `apps/plant3d/sim/engine.gd` (the slots, step 0, step 1w) and the loader's names
+  (`plant_model.gd`). Vectors: `ref/vectors/plant3d-realism.json` (`streams`, and `staff`: the synthetic plant with
+  staff whose model reads the clock values, its rejects and four runs, as plant3d-v2.json's `staff`), made by
+  `ref/make_plant3d_vectors.py --only-realism --write`; `run_vectors.gd --only=realism` replays them (not in its
+  default parts). Tests: `tests/test_plant3d_realism.py`, `tests/test_plant3d_sim.py` `GdscriptRealism` (every value's
+  bits and the state digests, with the generated program and the interpreter).
+- **`world` in RE1** holds `seed` and `year_day` only; `weather`, `age` and `changes` are unknown keys until WX1, AG2
+  and EN2 define them. Refused: a `world` in a version 1 scenario (`unknown_key`), not an object (`bad_type`), a seed
+  or year day out of range or not a whole number (`bad_number`), a plant without a clock (`bad_ref`).
+- **The clock values' names** are readable in every version 2 plant (a value or `ext` value of either name is
+  `dup_id`), and their two slots exist only in a scenario with `world`, after every other slot (after the lifts'
+  loads too). So that no engine reads a slot that isn't there, a version 2 plant whose content names `world_hour` or
+  `world_day` anywhere (the model files, staff.json, a procedure, screens.json, a scenario's faults) needs `world` in
+  every scenario (`bad_ref`): `"world": {}` is enough.
+- **Step 1w** writes the two values after step 1's inputs and first-out records, so a jump's own step reads the new
+  clock; step 0 writes them at C(0). A stateful node reads the previous step's, as for any value.
+- **The digest:** RE1 adds no part to the digest tree: the clock values are values (in the digest's doubles), the
+  world's seed is a constant, and no stream draws yet. Each later milestone adds its streams' states as §2.8 lists.
+- **The byte check:** `plant3d-v1.json` and `plant3d-v2.json` made again by the new reference are byte for byte the
+  committed files (`make_plant3d_vectors.py` without `--write`: "up to date").
+- **A load of the planned size** (§11): `tools/plant3d/realism_synth.py N` makes N model values shaped like the
+  realism content (wear items with their signs, component states and meters, diurnal tables with lags, emissions
+  sums and holds, and above 600 the first train's own mix of node kinds) on the last area of the first train, with a
+  `world` in every scenario; never shipped. `apps/plant3d/app/step_bench.gd` measures the step over the cold start and
+  at base load with and without it: `apps/plant3d/sim/tests/bench_realism.gd` on a desktop, the app's `step=bench`
+  option on a phone (the loads pushed as `realism-*.json` into its files folder, the result in `step.txt` there).
+
+| Model step (base load, mean) | built (2,271 values) | + 600 | + 1,000 |
+|---|---|---|---|
+| Laptop (headless, `bench_realism.gd`) | 0.223 ms | 0.274 ms (+0.051) | 0.302 ms (+0.079) |
+| Note 9 (release build, `step=bench`) | NOTE9_BUILT | NOTE9_600 | NOTE9_1000 |
+
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does
