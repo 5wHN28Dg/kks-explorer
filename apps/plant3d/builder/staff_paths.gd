@@ -108,7 +108,7 @@ static func build(parent: Node, nm: NavigationMesh, staff_file: String, built_di
 				continue        # a ride: no line (PLANT3D §20.6; the riders are drawn in the cab, ui/people_view.gd)
 			var a: Vector3 = at[w[0]]
 			var b: Vector3 = at[w[1]]
-			var f: Dictionary = route.find(a, b)
+			var f: Dictionary = route.find_walking(a, b)
 			if not f.reached:
 				route.queue_free()
 				return {"error": "staff paths: the way %s–%s is not walkable on the mesh" % [w[0], w[1]]}

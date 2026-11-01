@@ -155,15 +155,15 @@ func update() -> void:
 			continue
 		var p := Vector3.INF
 		var leg: Array = e.sp_leg[pi]
-		if not leg.is_empty():
+		if _aboard.has(sm.people[pi]["id"]) and ui.lifts != null:
+			var ab: Array = _aboard[sm.people[pi]["id"]]
+			p = ui.lifts.rider_spot(ab[0], ab[1])        # a rider: at the lift (§20.7), a next leg begun or not
+		elif not leg.is_empty():
 			var k := clampf(float(e.step_no - leg[2]) / maxf(1.0, float(leg[3] - leg[2])), 0.0, 1.0)
 			if ways != null and ways.walk(mini(leg[0], leg[1]) * _at.size() + maxi(leg[0], leg[1]), leg[0], k, 1.0):
 				p = ways.pos
 			else:
 				p = (_at[leg[0]] as Vector3).lerp(_at[leg[1]], k)
-		elif _aboard.has(sm.people[pi]["id"]) and ui.lifts != null:
-			var ab: Array = _aboard[sm.people[pi]["id"]]
-			p = ui.lifts.rider_spot(ab[0], ab[1])        # a rider: at the lift (§20.7)
 		elif e.sp_pos[pi] != -1:
 			p = _at[e.sp_pos[pi]]
 		if p == Vector3.INF:
@@ -236,13 +236,30 @@ func drive(delta: float) -> void:
 		var on := ""
 		var on_line := 0
 		var d := Vector3.ZERO
-		if not leg.is_empty():
+		# in a cab (the engine's riders), or just stepped out of one (drawn walking from their spot, §20.7): the engine
+		# may start their next leg in the step they get off, before their alight is done
+		var aboard_now: bool = ui.lifts != null and _aboard.has(sm.people[pi]["id"])
+		var stepping_out: bool = not aboard_now and (_rode[pi] == 1 or _roff[pi] != Vector3.ZERO)
+		if aboard_now:
+			# at their spot, facing the gate, kept clear of (not moved aside)
+			var ab: Array = _aboard[sm.people[pi]["id"]]
+			var spot: Vector3 = ui.lifts.rider_spot(ab[0], ab[1])
+			if spot == Vector3.INF:
+				continue
+			row = apart.fixed(pi, _stepping(pi, spot, true, dt))
+			_ride_yaw[pi] = ui.lifts.gate_yaw(ab[0])
+		elif not leg.is_empty():
 			var steps: float = maxf(1.0, float(leg[3] - leg[2]))
 			var k := clampf((float(e.step_no - leg[2]) + frac) / steps, 0.0, 1.0)
 			if ways != null and ways.walk(mini(leg[0], leg[1]) * _at.size() + maxi(leg[0], leg[1]), leg[0], k,
 					steps * SimClock.STEP):
 				on = ON_NAMES[ways.on]
-				if ways.pos.distance_squared_to(cam) > far_r2:
+				if stepping_out:
+					# out of the cab onto their way: from where they were drawn, on the line's point, not kept apart
+					row = apart.fixed(pi, _stepping(pi, ways.pos, false, dt))
+					on_line = 2
+					d = ways.dir.normalized() * (ways.speed if k < 1.0 else 0.0)
+				elif ways.pos.distance_squared_to(cam) > far_r2:
 					# beyond the people drawn: on their line, not kept apart (from where they are when they come in,
 					# into their lane at BACK_RATE)
 					row = apart.fixed(pi, ways.pos)
@@ -256,20 +273,12 @@ func drive(delta: float) -> void:
 				var b: Vector3 = _at[leg[1]]
 				d = b - a
 				# walked straight (no line built): not moved aside, others keep clear
-				row = apart.fixed(pi, a.lerp(b, k))
+				row = apart.fixed(pi, _stepping(pi, a.lerp(b, k), false, dt) if stepping_out else a.lerp(b, k))
 				if absf(d.y) > 0.3 * maxf(0.01, Vector2(d.x, d.z).length()):
 					on = "stairs"
 				if k >= 1.0:
 					d = Vector3.ZERO
-		elif _aboard.has(sm.people[pi]["id"]) and ui.lifts != null:
-			# in a cab (§20.7): at their spot, facing the gate, kept clear of (not moved aside)
-			var ab: Array = _aboard[sm.people[pi]["id"]]
-			var spot: Vector3 = ui.lifts.rider_spot(ab[0], ab[1])
-			if spot == Vector3.INF:
-				continue
-			row = apart.fixed(pi, _stepping(pi, spot, true, dt))
-			_ride_yaw[pi] = ui.lifts.gate_yaw(ab[0])
-		elif e.sp_pos[pi] != -1 and _rode[pi] == 1 or e.sp_pos[pi] != -1 and _roff[pi] != Vector3.ZERO:
+		elif e.sp_pos[pi] != -1 and stepping_out:
 			# just stepped out of a cab: walking to the landing's place
 			place = e.sp_pos[pi]
 			row = apart.fixed(pi, _stepping(pi, _at[place], false, dt))
@@ -430,7 +439,9 @@ func _places(sm) -> void:
 	_was_ok.fill(0)
 	_spd.resize(sm.people.size())
 	_rode.resize(sm.people.size())
+	_rode.fill(0)
 	_roff.resize(sm.people.size())
+	_roff.fill(Vector3.ZERO)
 	_spd.fill(0.0)
 	_seated.resize(sm.places.size())
 	for i in sm.places.size():

@@ -1,19 +1,27 @@
-## The staff on HRSG 1's lift in the app (docs/PLANT3D.md §20.7, milestone LIFTS L3): the first train's day shift run
-## until an NPC rides the cab while it travels; they are drawn in the cab (on its floor, within its walls, at their
-## spot in boarding order, facing the gate), kept there by the keeping apart (not moved out of the cab), on the map at
-## the lift; and once they step out at the landing, drawn walking from the cab to the landing's place within a couple
-## of seconds, never further than a step's walk at a time.
+## The staff on HRSG 1's lift in the app (docs/PLANT3D.md §20.7, §20.12, milestone LIFTS L3): the first train's day
+## shift run until an NPC waits for the cab at grade; from there frame by frame at normal speed: they walk from the
+## landing into the cab without a jump (within two seconds at their spot, on its floor, facing the gate), they are on
+## the map at the lift while aboard, they stay in the cab while it travels; and from the step they get off (their
+## ride's "off" event) they walk out without a jump, their step-out done within three seconds.
 extends RefCounted
 
 const App = preload("res://tests/ui_app.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 
 const LIMIT := 36000            # steps of the shift (an hour of model time) for a ride to come
-const DT := 1.0 / 60.0
+const JUMP := 0.1               # m in one frame at most (6 m/s at 60 frames a second: no teleport)
+
+var p: Array = []
+
+
+func _drawn(pv, pi: int):
+	for k in pv.avatars.people.size():
+		if k < pv.drawn.size() and pv.drawn[k] == pi:
+			return pv.avatars.people[k]
+	return null
 
 
 func run(tree: SceneTree) -> Array:
-	var p: Array = []
 	var main := App.start(tree)
 	var ui = main.ui
 	if ui == null or ui.clock == null or not ui.model.scenarios.has("shift_cold") or ui.people == null:
@@ -28,61 +36,90 @@ func run(tree: SceneTree) -> Array:
 	var pv = ui.people
 	var e = ui.clock.engine
 	var L: Dictionary = ui.lifts.lifts[0]
+	# paused, to the step where someone begins to wait for the cab at grade; then frame by frame at normal speed
 	var who := ""
 	var n := 0
-	while n < LIMIT:
+	while n < LIMIT and who == "":
+		var n0: int = e.events.size()
 		ui.clock.run_steps(1)
 		n += 1
-		if e.riders[0].size() > 0 and typeof(e.riders[0][0]) == TYPE_STRING and e.v("hrsg1_lift_moving") >= 0.5:
-			who = e.riders[0][0]
-			break
+		for ev in e.events.slice(n0):
+			if ev[1] == "ride" and ev[6] == "wait" and ev[4] == "p_lift0":
+				who = ev[2]
 	if who == "":
 		main.free()
-		return ["nobody rode the lift in the first %d steps of the day shift" % LIMIT]
+		return ["nobody waited for the lift at grade in the first %d steps of the day shift" % LIMIT]
 	var pi: int = e._sm.person_ix[who]
-	# a few frames: the cab and the people drawn where the engine says
-	for i in 30:
-		await tree.physics_frame
-		pv.drive(DT)
-	var k: int = pv.drawn.find(pi)
-	if k == -1:
-		p.append("%s in the cab is not drawn" % who)
-	else:
-		var at: Vector3 = pv.avatars.people[k].at
-		if not ui.lifts.feet_inside(L, at + Vector3.UP * 0.05):
-			p.append("%s is drawn at %s, not in the cab (at %.2f m)" % [who, str(at), ui.lifts.cab_height(0)])
-		var spot: Vector3 = ui.lifts.rider_spot(0, 0)
-		if at.distance_to(spot) > 0.3:
-			p.append("the first rider is drawn %.2f m from the first spot" % at.distance_to(spot))
-		var yaw: float = pv.avatars.people[k].yaw
-		if absf(angle_difference(yaw, ui.lifts.gate_yaw(0))) > 0.5:
-			p.append("%s in the cab does not face the gate (%.2f, the gate %.2f)" % [who, yaw, ui.lifts.gate_yaw(0)])
-	pv.update()
-	if pv.shown < 1:
-		p.append("nobody on the map")
-	# off at a landing: drawn walking out to the landing's place, no frame's move longer than a brisk walk's
 	ui.clock.set_speed(SimClock.Speed.NORMAL)
 	var was := Vector3.INF
-	var worst := 0.0
-	var after := -1
-	for i in 12000:
+	var worst_in := 0.0
+	var boarded := -1.0
+	var t := 0.0
+	var in_cab_ok := false
+	var faced := false
+	var on_map := false
+	var off_t := -1.0
+	var worst_out := 0.0
+	var out_done := false
+	var travelled := false
+	var left_cab := false
+	var checked := false
+	for i in 60 * 600:
 		await tree.process_frame
-		if after == -1 and not e.riders[0].has(who):
-			after = i
-		if after != -1 and i > after + 150:
+		t += 1.0 / 60.0
+		var d = _drawn(pv, pi)
+		var at: Vector3 = d.at if d != null else Vector3.INF
+		var aboard: bool = e.riders[0].has(who)
+		if at != Vector3.INF and was != Vector3.INF:
+			if off_t < 0.0:
+				worst_in = maxf(worst_in, at.distance_to(was))
+			else:
+				worst_out = maxf(worst_out, at.distance_to(was))
+		was = at
+		if aboard and boarded < 0.0:
+			boarded = t
+		if aboard and boarded >= 0.0 and t - boarded > 2.0 and not checked and d != null:
+			checked = true
+			var spot: Vector3 = ui.lifts.rider_spot(0, e.riders[0].find(who))
+			in_cab_ok = ui.lifts.feet_inside(L, at + Vector3.UP * 0.05) and at.distance_to(spot) < 0.15
+			faced = absf(angle_difference(float(d.yaw), ui.lifts.gate_yaw(0))) < 0.3
+			pv.update()
+			var mm: MultiMesh = pv.dots.multimesh
+			for k in mm.instance_count:
+				var o: Vector3 = mm.get_instance_transform(k).origin
+				if Vector2(o.x - spot.x, o.z - spot.z).length() < 0.3:
+					on_map = true
+		if aboard and e.v("hrsg1_lift_moving") >= 0.5 and at != Vector3.INF:
+			travelled = true
+			if not ui.lifts.feet_inside(L, at + Vector3.UP * 0.05):
+				left_cab = true
+		if off_t < 0.0 and boarded >= 0.0:
+			for ev in e.events.slice(maxi(0, e.events.size() - 40)):
+				if ev[1] == "ride" and ev[2] == who and ev[6] == "off":
+					off_t = t
+		if off_t >= 0.0 and t - off_t > 3.0:
+			out_done = pv._roff[pi] == Vector3.ZERO and pv._rode[pi] == 0
 			break
-		k = pv.drawn.find(pi)
-		if k == -1:
-			was = Vector3.INF
-			continue
-		var at2: Vector3 = pv.avatars.people[k].at
-		if was != Vector3.INF and after != -1:
-			worst = maxf(worst, at2.distance_to(was))
-		was = at2
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
-	if after == -1:
+	if boarded < 0.0:
+		p.append("%s never boarded" % who)
+	else:
+		if worst_in > JUMP:
+			p.append("%s jumped %.2f m in a frame stepping into the cab or riding" % [who, worst_in])
+		if not in_cab_ok:
+			p.append("%s is not at their spot in the cab two seconds after boarding" % who)
+		if not faced:
+			p.append("%s in the cab does not face the gate" % who)
+		if not on_map:
+			p.append("%s aboard is not on the map at the lift" % who)
+		if not travelled or left_cab:
+			p.append("%s was not drawn in the travelling cab (travelled %s, out of it %s)" % [who, str(travelled), str(left_cab)])
+	if off_t < 0.0:
 		p.append("%s never got off" % who)
-	elif worst > 0.1:
-		p.append("%s jumped %.2f m in a frame stepping out of the cab" % [who, worst])
+	else:
+		if worst_out > JUMP:
+			p.append("%s jumped %.2f m in a frame stepping out of the cab" % [who, worst_out])
+		if not out_done:
+			p.append("%s is still stepping out three seconds after getting off" % who)
 	main.free()
 	return p
