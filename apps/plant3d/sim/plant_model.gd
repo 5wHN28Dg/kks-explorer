@@ -277,6 +277,8 @@ func known(name) -> bool:
 	for t in trips:
 		if name == t["id"] + "_latched":
 			return true
+	if version == 2 and (name == "world_hour" or name == "world_day"):
+		return true     # the clock values (REALISM.md §2.1): slots only in a scenario with `world` (the validator's rule)
 	return kept().has(name)
 
 

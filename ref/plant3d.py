@@ -426,6 +426,16 @@ class Plant:
         b.model = m
         if 'screens.json' in files:
             check_screens(parse(files, 'screens.json'), m, b)
+        if b.version == 2:
+            # the clock values (REALISM.md §2.1) have slots only in a scenario with `world`: content that names one
+            # (the model, the staff, a procedure, the screens, a scenario's faults) runs only in scenarios with it
+            from ref.plant3d_world import names_in, NAMES
+            reads = any(names_in(parse(files, rel)) for rel in sorted(files)
+                        if rel.startswith(('model/', 'procedures/')) or rel in ('staff.json', 'screens.json'))
+            for sid, s in b.scenarios.items():
+                need('world' in s or not (reads or names_in(s.get('faults', []))), 'bad_ref',
+                     f'scenarios/{sid}.json: the content reads {" or ".join(NAMES)}, which only a scenario with '
+                     f'`world` has (REALISM.md §2.1)')
         c = b.counts
         c.update(areas=len(b.areas), codes=len(self.codes), equipment=len(self.equipment), pipes=len(b.pipes),
                  structures=len(b.structures), stairs=len(self.stairs), ladders=len(self.ladders),
@@ -936,7 +946,14 @@ class Model:
         """Names any condition may read: values, ext, machine states, trip latches, and the permits' and isolations'
         values (format 2)."""
         return set(self.index) | set(self.ext) | {m['id'] + '_state' for m in self.machines} | \
-            {t['id'] + '_latched' for t in self.trips} | set(self.kept())
+            {t['id'] + '_latched' for t in self.trips} | set(self.kept()) | set(self.world_names())
+
+    def world_names(self):
+        """The clock values (REALISM.md §2.1): readable in a version 2 plant, kept only in a scenario with `world`."""
+        if self.b.version != 2:
+            return ()
+        from ref.plant3d_world import NAMES
+        return NAMES
 
     def add(self, d, aid, rel):
         v2 = ('isolations', 'works', 'lifts')
@@ -1366,6 +1383,8 @@ class Model:
         for name in self.kept():
             need(name not in self.index and name not in self.ext, 'dup_id',
                  f'{name}: a value or ext value has the name of a permit\'s, isolation\'s or lift\'s value (§15, §20.1)')
+        for name in self.world_names():
+            need(name not in self.ext, 'dup_id', f'{name}: an ext value has the name of a clock value (REALISM.md §2.1)')
         # the lifts' ops (§20.1): a landing's call `start`, its gate's `open` and `close`, the panel's `set` (of the
         # target, over the landings' indexes), `stop` (the emergency stop) and `start` (its release)
         for x in self.lifts:
@@ -1548,14 +1567,17 @@ def check_screens(s, m, b):
 
 
 def check_scenario(s, m, rel):
-    keys(s, ('format', 'version', 'id', 'title', 'init'), ('latched', 'faults', 'staff', 'start'), rel)
+    keys(s, ('format', 'version', 'id', 'title', 'init'), ('latched', 'faults', 'staff', 'start', 'world'), rel)
     v = fmt(s, 'scenario', rel, m.b.version)
-    for k in ('staff', 'start'):
+    for k in ('staff', 'start', 'world'):
         need(v == 2 or k not in s, 'unknown_key', f'{rel}.{k}: only in a version 2 scenario (§14)')
     if v == 2:
         from ref.plant3d_staff import check_scenario_staff
         need('start' not in s or m.b.plant.get('clock') is not None, 'bad_ref', f'{rel}.start: the plant has no clock')
         check_scenario_staff(s, m.b, rel)
+        if 'world' in s:
+            from ref.plant3d_world import check_world
+            check_world(s, m.b, rel)
     ident(s['id'], rel)
     name_text(s['title'], rel)
     need(isinstance(s['init'], dict), 'bad_type', f'{rel}.init')
@@ -1723,6 +1745,15 @@ class Engine:
         self.sc = sc
         names = [v[0] for v in m.values] + list(m.ext) + [x['id'] + '_state' for x in m.machines] + \
             [t['id'] + '_latched' for t in m.trips] + m.kept()
+        # the realism base (REALISM.md §2.1): a scenario with `world` has its seed and the clock values' slots, last
+        self.world = None
+        if 'world' in sc:
+            from ref.plant3d_world import NAMES, world_seed
+            from ref.plant3d_staff import start_tenths
+            clock = b.plant['clock']
+            self.world = {'seed': world_seed(sc), 'year_day': sc['world'].get('year_day', 1),
+                          'S': start_tenths(sc.get('start', clock['start'])), 'ds': clock['day_scale']}
+            names = names + list(NAMES)
         # format 2 (§15): permits and isolations
         self.v2 = b.version == 2
         self.isos = {x['id']: x for x in m.isolations}
@@ -2018,6 +2049,8 @@ class Engine:
         for t in sc.get('latched', []):
             self.latched[t] = True
             cur[self.ix[t + '_latched']] = 1.0
+        if self.world is not None:
+            self._world_clock(self.world['S'])        # step 0's clock (§16.1: C(0) = S)
         prev = list(cur)
         for i, fn, stateful in self.prog:
             if not stateful:
@@ -2127,6 +2160,11 @@ class Engine:
     def clock(self):
         """The plant clock in tenths of a clock second (§16.1): C(n) = S + n × day_scale + J."""
         return self.S + self.step_no * self.ds + self.J
+
+    def _world_clock(self, c):
+        """The clock values' slots at the clock c (REALISM.md §2.1), the last two of the values."""
+        from ref.plant3d_world import clock_values
+        self.cur[self.n - 2], self.cur[self.n - 1] = clock_values(c)
 
     def shown(self, code, vals):
         """The value a code's `show` binding shows, in the given values."""
@@ -2528,6 +2566,9 @@ class Engine:
         for g in list(self.first_out):
             if not any(self.latched[t['id']] for t in self.trips if t.get('first_out') == g):
                 del self.first_out[g]
+        # 1w. the realism base (REALISM.md §2.7): the clock values at this step's clock, a jump of step 1 included
+        if self.world is not None:
+            self._world_clock(self.clock())
         # 2. values, in order
         for i, fn in self.prog2:
             cur[i] = fn(cur, prev)
