@@ -136,6 +136,9 @@ from Godot 4 (0041), so the rows below say what the platform gives underneath an
 | Documents in the app: generated P&IDs and manuals (realism, 0073) | ❌ no PDF renderer in Godot [D]: our own drawing format drawn with 2D meshes and `draw_*` calls on a CanvasItem, manuals in COURSES.md's blocks [—] | ❌ same | ❌ same |
 | Text-to-speech (realism, 0073) | ✅ `DisplayServer.tts_speak` over SAPI [D]; not used (discussions are text) | ✅ the same over speech-dispatcher, if installed [D]; not used | ✅ the same over Android's TextToSpeech [D]; not used |
 | A walk's speed on the screen's clock (the frame rules judge normal play only, the user 2026-10-27) | — the frame rules are measured on the Note 9 | — same | ✅ `android.os.SystemClock.uptimeMillis` is CLOCK_MONOTONIC [D], the clock of SurfaceFlinger's present times (`dumpsys SurfaceFlinger --latency`) [S]; read through `JavaClassWrapper` (`app/walk_frames.gd`) at each change of speed, so `sf_frames.py --speeds` leaves fast-forward's frames out [—, not yet read on a device] |
+| See-through, cut and capped surfaces (the Workshop mode, 0072) | ✅ engine: `ALPHA` sends a material to the transparent pipeline; `discard` in a fragment shader (it defeats the depth prepass for that shader); render modes `cull_front`, `cull_disabled`, `blend_mix`, `blend_add`, `depth_draw_never` [D spatial_shader, shading_language]; cut faces capped by drawing closed shells' back faces (the kit's meshes are 64–94 % closed today: the Workshop's components are closed by the generators) [V, 2026-11-01]; 🟡 stencil modes exist in 4.7, marked experimental [D] | ✅ same | ✅ same, Mobile renderer [D]; the extra pipelines (one lit variant, three unshaded) to be counted on the Note 9 in K3 (0060's rule) [—] |
+| Per-instance shader values (heat and pressure colours per component) | ✅ `instance uniform`: at most 16 a shader, scalars and vectors only, no textures or arrays [D shading_language] | ✅ same | ✅ same [D]; not yet run on the Note 9 [—] |
+| A second 3D world beside the held plant (the Workshop) | ✅ engine: a `SubViewport` with `own_world_3d` (its own world, environment and physics space) shown full screen, the main viewport's 3D off (`disable_3d`); setting the main viewport's `world_3d` instead would move every 3D node under it into the new world [D class_viewport, class_world3d]; not yet built [—] | ✅ same | ✅ same; its cost with the plant held measured on the Note 9 in K1 [—] |
 
 Sources (Godot 4.7): https://docs.godotengine.org/en/stable/about/system_requirements.html ·
 https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_android.html ·
@@ -157,7 +160,8 @@ https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Ope
 
 **Gaps for Walkdown Plant:** the engine itself (Godot, 0041); the Android deep link (a plugin of ours, 0054); audio
 synthesis on the phone (loops made at build time); shader baking only outside CI (release builds on the laptop);
-NPC behaviour (ours, 0062), far characters (no impostors: posed meshes, 0064). Multiplayer (2026-10-26, docs/plant3d/MULTIPLAYER.md): no AEAD or key
+NPC behaviour (ours, 0062), far characters (no impostors: posed meshes, 0064). The Workshop mode (0072): no engine-made cut caps (back faces of closed
+shells instead; stencil is experimental in 4.7). Multiplayer (2026-10-26, docs/plant3d/MULTIPLAYER.md): no AEAD or key
 agreement in GDScript (an AEAD built from AES-CBC and HMAC, keys from the invite code, 0068); no Opus in Godot (our
 GDExtension, 0069); no QR class (our encoder; phones open the link with their camera app); Android's network
 permission granted for the whole install. Realism (2026-11-01, 0073): no PDF renderer (our own drawing format for the generated P&IDs);
