@@ -565,13 +565,14 @@ static func _first_focusable(n: Node) -> Control:
 
 # ------------------------------------------------------------------ the trainee's inputs to the plant
 
-func do_op(o: Dictionary, value) -> void:
+func do_op(o: Dictionary, value, at := "") -> void:
 	var key := Tracker.op_key(o["kks"], o["do"], o.get("trip"))
 	var who = me()
 	if who != null:
 		# playing a person (§17.1): made from the screens or at the equipment, by them
-		# (where the card offers it: the screens, or the control room away from the equipment; else at it)
-		var where := "screen" if screens_open() or (in_control_room() and not near(o["kks"])) else "local"
+		# (where the card offers it: the screens, or the control room away from the equipment; else at it; `at` when
+		# the caller knows: a hold-to-run button let go is let go where it was held, ui/pendant.gd)
+		var where := at if at != "" else ("screen" if screens_open() or (in_control_room() and not near(o["kks"])) else "local")
 		inputs.op(o["kks"], o["do"], value, o.get("trip"), where, who)
 	else:
 		inputs.op(o["kks"], o["do"], value, o.get("trip"))

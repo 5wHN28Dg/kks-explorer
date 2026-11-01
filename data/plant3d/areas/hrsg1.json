@@ -27,7 +27,8 @@
   {"kks": "10HAC30AC001", "name": "HP economiser stage 1", "part": "hrsg_module", "at": [128, 65, 2], "yaw": 90, "params": {"kind": "economiser", "width": 20, "depth": 2.5, "height": 26}, "plate": "door"},
   {"kks": "10HAC20", "name": "IP economiser", "part": "hrsg_module", "at": [133, 65, 2], "yaw": 90, "params": {"kind": "economiser", "width": 20, "depth": 2.5, "height": 26}, "plate": "door"},
   {"kks": "10HAD10", "name": "LP evaporator", "part": "hrsg_module", "at": [138, 65, 2], "yaw": 90, "params": {"kind": "evaporator", "width": 20, "depth": 2.5, "height": 26}, "plate": "door"},
-  {"kks": "10HAC10", "name": "LP economiser", "part": "hrsg_module", "at": [143, 65, 2], "yaw": 90, "params": {"kind": "economiser", "width": 20, "depth": 2.5, "height": 26}, "plate": "door"}
+  {"kks": "10HAC10", "name": "LP economiser", "part": "hrsg_module", "at": [143, 65, 2], "yaw": 90, "params": {"kind": "economiser", "width": 20, "depth": 2.5, "height": 26}, "plate": "door"},
+  {"kks": "10SMF10", "name": "HRSG 1 roof monorail hoist", "part": "monorail_hoist", "at": [125, 79, 0], "yaw": 180, "params": {"length": 9, "beam_z": 34, "deck_z": 30, "edge": 3, "zone": 5, "sling": 1.2, "pendant": [{"code": "10SMF10AE001", "minus": "Down", "plus": "Up"}, {"code": "10SMF10AE002", "minus": "Out", "plus": "In"}, {"code": "10SMF10AE003", "minus": "Unhook", "plus": "Hook on"}]}, "plate": "beam", "parts": [{"kks": "10SMF10AE001", "name": "Roof hoist: chain hoist", "part": "hoist_unit", "at": [0, 0, 33.65], "params": {"kind": "hoist"}}, {"kks": "10SMF10AE002", "name": "Roof hoist: trolley drive", "part": "hoist_unit", "at": [0.35, 0, 34.15], "params": {"kind": "trolley"}}, {"kks": "10SMF10AE003", "name": "Roof hoist: hook latch", "part": "hoist_unit", "at": [0, 0, 0.1], "params": {"kind": "latch"}}, {"kks": "10SMF10CW001", "name": "Roof hoist: load cell", "part": "hoist_unit", "at": [0, 0, 0.35], "params": {"kind": "load_cell"}}]}
  ],
  "pipes": [
   {"kks": "10LBA30BR001", "name": "HP steam to the steam turbine", "medium": "steam_hp", "dn": 300, "from": {"kks": "10HNA10", "nozzle": "hp_steam"}, "points": [[98, 61, 33], [98, 47, 33], [93.5, 47, 33], [93.5, 47, 10], [81, 47, 10], [81, 4, 10], [65, 4, 10], [65, 0, 10]], "to": {"kks": "30MAA10", "nozzle": "hp_inlet"}, "insulation_mm": 250, "arrows": 15, "valves": [{"kks": "10LBA30AA901", "part": "valve_safety", "at": 0.06, "name": "HP superheater outlet safety valve", "params": {"dn": 100, "rating": "pn160", "set_bar": 135}, "plate": "body"}, {"kks": "30MAA10AA201", "part": "valve_gate", "at": 0.975, "name": "HP stop valve", "params": {"dn": 300, "rating": "pn160", "actuator": "hydraulic"}, "plate": "body"}, {"kks": "30MAA10AA001", "part": "valve_control", "at": 0.99, "name": "HP control valve", "params": {"dn": 300, "rating": "pn160", "actuator": "hydraulic"}, "plate": "body"}], "parts": [{"kks": "10LBA30CT001", "part": "temperature_element", "at": 0.04, "side": "top", "name": "HP steam temperature", "params": {"range": [0, 650]}}, {"kks": "30MAA10CT001", "part": "temperature_element", "at": 0.95, "side": "top", "name": "HP turbine inlet steam temperature", "params": {"range": [0, 650]}}]},
@@ -56,6 +57,7 @@
   {"text": "HRSG 1 10HNA10", "at": [122, 53.9, 6], "yaw": 180, "size": 0.4},
   {"text": "HP drum 10HAD30BB001", "at": [110, 61.2, 33.5], "yaw": 180, "size": 0.4},
   {"text": "Feedwater pumps", "at": [113, 46.5, 2.5], "yaw": 180, "size": 0.4},
-  {"text": "Stack 10HNE10", "at": [160, 61, 2.5], "yaw": 180, "size": 0.4}
+  {"text": "Stack 10HNE10", "at": [160, 61, 2.5], "yaw": 180, "size": 0.4},
+  {"text": "Drop zone: keep clear while the roof hoist works", "at": [126.6, 81.35, 1.3], "yaw": 0, "size": 0.25}
  ]
 }

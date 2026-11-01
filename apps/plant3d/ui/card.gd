@@ -10,6 +10,7 @@ const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goe
 const W = preload("res://ui/widgets.gd")
 const JsonStrict = preload("res://sim/json_strict.gd")
 const Permits = preload("res://ui/permits.gd")
+const Pendant = preload("res://ui/pendant.gd")
 
 var ui                          # ui/plant_ui.gd
 var code := ""
@@ -23,6 +24,7 @@ var _lock: Label                # "LOCKED OUT PTW-0001": the code is locked by a
 var _works: Array = []          # [work, button]: the permits to work on this equipment
 var _ops: Array = []            # [op, button, permissives label, feedback label, entry or null, note label]
 var _repairs: Array = []        # [fault, box, button, note label, work or {}]: the scenario's faults repaired here
+var _pendant = null             # ui/pendant.gd: a hoist's pendant (PLANT3D §20.5)
 var _t := 0.0
 
 
@@ -39,9 +41,15 @@ func setup(u) -> void:
 	body = parts[1]
 	title = parts[2]
 	visible = false
+	visibility_changed.connect(func():
+		if not visible and _pendant != null:
+			_pendant.release_all())         # the card closed while a motion was held: it stops
 
 
 func open(c: String, note := "") -> void:
+	if _pendant != null:
+		_pendant.release_all()          # a motion held on the card being replaced stops (its buttons go)
+		_pendant = null
 	code = c
 	var info = ui.info
 	W.clear(body)
@@ -87,8 +95,21 @@ func open(c: String, note := "") -> void:
 		body.add_child(wb)
 		_works.append([wd, wb])
 	var ops: Array = info.ops_of.get(c, [])
+	# a hoist's motions and latch are worked from its pendant, in the hoist's card (PLANT3D §20.5)
+	var hoist: String = Pendant.hoist_of(info, c)
+	if hoist != "":
+		ops = []
+		body.add_child(W.label("Worked from the pendant of %s (%s)." % [hoist, info.name_of(hoist)], 17, W.DIM))
+		var pb := W.button("Pendant", func(): ui.open_card(hoist))
+		pb.name = "to_pendant"
+		body.add_child(pb)
+	if Pendant.is_hoist(info, c):
+		_pendant = Pendant.new()
+		_pendant.name = "pendant"
+		body.add_child(_pendant)
+		_pendant.setup(ui, c)
 	var repairable: bool = ui.clock.engine.sc.get("faults", []).any(func(f): return f.get("kks", "") == c and f.has("repair"))
-	if ops.is_empty() and not repairable:
+	if ops.is_empty() and not repairable and hoist == "" and _pendant == null:
 		body.add_child(W.label("Nothing to operate here: it is watched, not worked.", 17, W.DIM))
 	elif not ops.is_empty():
 		body.add_child(W.label("Operations", 22))
@@ -271,6 +292,8 @@ func _each_frame(delta: float) -> void:
 func refresh() -> void:
 	if not visible or code == "":
 		return
+	if _pendant != null:
+		_pendant.refresh()
 	var info = ui.info
 	var e = ui.clock.engine
 	var near: bool = ui.near(code)

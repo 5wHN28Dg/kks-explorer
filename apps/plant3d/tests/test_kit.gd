@@ -46,8 +46,11 @@ func run(_tree: SceneTree) -> Array:
 				for k in mv.layers:
 					_valid(part + "/" + mv.name, k, mv.layers[k])
 			var names: Array = res.moving.map(func(mv): return mv.name)
+			# a channel is the node of that name (bindings.gd finds it under the part's node): at the top, or nested
+			# under another moving node (a crane's bridge/trolley/hook, PLANT3D §20.5), and only one of that name
+			var leaves: Array = names.map(func(nm): return String(nm).get_slice("/", String(nm).get_slice_count("/") - 1))
 			for a in spec.get("anim", []):
-				check(a in names, "%s: the anim channel %s is a moving node (has %s)" % [part, a, str(names)])
+				check(leaves.count(a) == 1, "%s: the anim channel %s is one moving node (has %s)" % [part, a, str(names)])
 			for pl in spec.get("plates", []):
 				check(res.plates.has(pl), "%s: the plate point %s exists (has %s)" % [part, pl, str(res.plates.keys())])
 		report.append("%s %d" % [part, worst])

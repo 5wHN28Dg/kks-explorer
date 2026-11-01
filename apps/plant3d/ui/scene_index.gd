@@ -23,6 +23,11 @@ func _walk(n: Node) -> void:
 		_walk(c)
 
 
+## A part that moved (a code riding on a hoist, ui/bindings.gd): its bounds are measured again when next asked.
+func forget(code: String) -> void:
+	_boxes.erase(code)
+
+
 func has(code: String) -> bool:
 	return nodes.has(code)
 

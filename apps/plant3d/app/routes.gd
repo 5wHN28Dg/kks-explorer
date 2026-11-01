@@ -59,6 +59,18 @@ static func frames(plant) -> Array:
 	r.append_array([_to(165, 30), _to(93.5, 36), _to(-5, 36), _to(-5, 0), _to(-12, 0), _to(-20, 0)])
 	return r
 
+## The roof hoist's walk (LIFTS L4, PLANT3D §20.8): the frames walk's way up HRSG 1's stair, across the roof to the
+## hoist's pendant on its inner portal (the beam, the trolley and the drop zone in view), and back down.
+static func hoist(plant) -> Array:
+	var r: Array = [_to(-20, 0), _to(-12, 0), _to(-5, 0), _to(-5, 20), _to(2, 20), _to(20, 20), _to(50, 21),
+		_to(74, 5), _to(86, 5), _to(86, 34.5), _to(93.5, 44.5)]
+	r.append_array(_stair(plant, "hrsg1_stair"))
+	r.append_array([_to(102, 56, 30), _to(122.5, 56, 30), _to(122.5, 70.2, 30), _to(122.5, 56, 30), _to(102, 56, 30)])
+	r.append_array(_stair(plant, "hrsg1_stair", true))
+	r.append_array([_to(93.5, 44.5), _to(86, 34.5), _to(86, 5), _to(74, 5), _to(50, 21), _to(20, 20), _to(2, 20),
+		_to(-5, 20), _to(-5, 0), _to(-12, 0), _to(-20, 0)])
+	return r
+
 ## The camp walk: about 900 m, 11 minutes at a walk; the interiors load on the way (app/interiors.gd).
 static func camp(_plant) -> Array:
 	var out: Array = [_to(-20, 0), _to(-12, 0), _to(-5, 0), _to(-5, 21.2), _to(-42, 21.2), _to(-50, 22), _to(-139, 22),

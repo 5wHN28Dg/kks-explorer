@@ -105,6 +105,8 @@ table leaves a choice:
 | 10LBB10, 10LBC10 | Hot reheat, cold reheat (train 1 side) | LBB, LBC [E2] |
 | 10LCQ10BB001 | Blowdown tank | LCQ [E2] |
 | 10UHA10 | HRSG 1 structure | UHA [E2] |
+| 10SMF10 | HRSG 1 roof monorail hoist (PLANT3D §20.5) | SMF boiler house lifting gear [E2] |
+| 10SMF10AE001–003, CW001 | Its chain hoist, trolley drive and hook latch; its load cell | AE [E2]; CW weight [E2] |
 | **Steam turbine unit (G = 3)** | | |
 | 30MAA10, 30MAB10, 30MAC10 | HP turbine; IP and LP turbines (one IP/LP casing) | MAA, MAB, MAC [E2], [W] |
 | 30MAD10CG001 | ST axial displacement (the thrust bearing's protection) | CG position [E2] |
@@ -139,6 +141,8 @@ table leaves a choice:
 | 30PAD10BB001, CL001 | Cooling tower basin, its level | |
 | 30PAR10AA001 | Cooling tower makeup control valve | PAR [E2] |
 | 30UMA10, 30UQA10, 30URA10 | Turbine hall, CW pump house, cooling tower structure | UMA, UQA, URA [E2] |
+| 30SMT10 | Turbine hall crane (PLANT3D §20.5) | SMT turbine house crane [E2] |
+| 30SMT10AE001–004, CW001 | Its main hoist, trolley drive, bridge drives and hook latch; its load cell | AE [E2]; CW weight [E2] |
 | **Common (G = 0)** | | |
 | 00QFA10AN001, AN002 | Instrument air compressors | QFA [E2] |
 | 00QFB10CP001 | Instrument air header pressure | QFB [E2] |

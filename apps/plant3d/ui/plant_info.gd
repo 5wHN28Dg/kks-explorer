@@ -21,6 +21,9 @@ var lamps_of := {}                 # code -> [[kind, value]]
 var position_of := {}              # code -> the value a stem, disc or blades binding moves (0–1)
 var units := {}                    # value name -> unit
 var parts := {}                    # code -> the kit part it is drawn with (equipment and its parts)
+var params := {}                   # code -> its part's parameters as the content gives them
+var parent_of := {}                # a part's code -> its equipment's
+var parts_of := {}                 # equipment's code -> its parts' codes
 
 
 func _init(model) -> void:
@@ -32,6 +35,8 @@ func _init(model) -> void:
 			_name(e, a["id"])
 			for c in e.get("parts", []):
 				_name(c, a["id"])
+				parent_of[c["kks"]] = e["kks"]
+				_add(parts_of, e["kks"], c["kks"])
 		for p in a.get("pipes", []):
 			_name(p, a["id"])
 			for kind in ["valves", "parts"]:
@@ -75,10 +80,15 @@ func _name(e: Dictionary, area: String) -> void:
 	area_of[e["kks"]] = area
 	if e.has("part"):
 		parts[e["kks"]] = e["part"]
+		params[e["kks"]] = e.get("params", {})
 
 
 func part_of(code: String) -> String:
 	return parts.get(code, "")
+
+
+func params_of(code: String) -> Dictionary:
+	return params.get(code, {})
 
 
 ## The operator desks of the plant (`operator_desk` parts), in content order: their screens are worked there.

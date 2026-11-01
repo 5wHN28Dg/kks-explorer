@@ -22,7 +22,9 @@ SYSTEMS = {
     'MKC': 'Generator excitation', 'PAB': 'Circulating water piping', 'PAC': 'Circulating water pumps',
     'PAD': 'Cooling tower', 'PAR': 'Cooling tower makeup water', 'PGB': 'Closed cooling water coolers',
     'PGC': 'Closed cooling water pumps', 'QFA': 'Instrument air compressors', 'QFB': 'Instrument air distribution',
-    'QHA': 'Auxiliary boiler', 'CWA': 'Main control desk A', 'CWB': 'Main control desk B',
+    'QHA': 'Auxiliary boiler',
+    # lifting gear (PLANT3D §20.5): the key's overhead cranes, hoists and lifting devices, by building
+    'SMF': 'Boiler house lifting gear: hoists and cranes', 'SMT': 'Turbine hall crane', 'CWA': 'Main control desk A', 'CWB': 'Main control desk B',
     'UCA': 'Control building', 'UHA': 'HRSG structure', 'UHN': 'Stack structure',
     'UMA': 'Turbine hall', 'UMB': 'Gas turbine hall', 'UQA': 'Circulating water pump house',
     'URA': 'Cooling tower structure',
@@ -48,7 +50,7 @@ EQUIPMENT = {'AA': 'Valve or damper with its actuator', 'AC': 'Heat exchanger or
              'BR': 'Pipe', 'BS': 'Silencer'}
 MEASUREMENTS = {'CB': 'Radiation (flame)', 'CF': 'Flow', 'CG': 'Position or displacement', 'CL': 'Level',
                 'CP': 'Pressure', 'CQ': 'Analysis (water quality)', 'CS': 'Speed', 'CT': 'Temperature',
-                'CY': 'Vibration'}
+                'CW': 'Weight or force', 'CY': 'Vibration'}
 
 # each medium: its colour group, its band's colour, and the service name stencilled on its pipes
 MEDIA = {'cooling_water': ('water', '#2e7d32', 'Cooling water'), 'raw_water': ('water', '#558b2f', 'Raw water'),
@@ -257,7 +259,8 @@ HOT_INIT = {'st_casing_t': 480, 'hp_casing_seen': 480, 'hp_tw': 280, 'hp_tsat_sl
 
 def scenarios(state_kks):
     import wtp_model
-    faults = [fault(f, s, t, state_kks) for f, s, t in FAULTS] + wtp_model.faults(state_kks)
+    import train_hoists
+    faults = [fault(f, s, t, state_kks) for f, s, t in FAULTS] + wtp_model.faults(state_kks) + train_hoists.faults()
     latched = ['gt1_trip_lube', 'st_trip_lube', 'st_trip_cond_p']
     return [{'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'cold_iron',
              'title': 'Cold start after a long outage', 'init': dict(COLD_INIT), 'latched': latched,
