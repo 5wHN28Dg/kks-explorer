@@ -2120,6 +2120,10 @@ class Engine:
     def stop(self, person, slot=None):
         self._q(('stop', person), slot)
 
+    def get_on(self, vehicle, slot=None):
+        """The player's person gets on a vehicle standing at their stop (§21.4)."""
+        self._q(('get_on', vehicle), slot)
+
     def clock(self):
         """The plant clock in tenths of a clock second (§16.1): C(n) = S + n × day_scale + J."""
         return self.S + self.step_no * self.ds + self.J
@@ -2185,6 +2189,12 @@ class Engine:
             else:
                 rs[k] = pid
 
+    def _on_vehicle(self, who):
+        """Whether a person (an id) is aboard a staff vehicle (§21.4)."""
+        sr = self.staff
+        return sr is not None and isinstance(who, str) and who in sr.st.person_ix and \
+            sr.people[sr.st.person_ix[who]].aboard is not None
+
     def _ride(self, kind, lift, person, npc):
         """A board or alight input (§20.3), in step 1: done, refused or unknown, with its event at once."""
         tail = (None if npc else self.in_slot,) if self.session else ()
@@ -2195,8 +2205,9 @@ class Engine:
         who = self.in_slot if person is None else person
         rs = self.riders[lift]
         aboard = any(same_person(who, r) for r in rs)
-        if kind == 'board' and any(same_person(who, r) for x in self.riders.values() for r in x):
-            why.append('aboard')
+        if kind == 'board' and (any(same_person(who, r) for x in self.riders.values() for r in x) or
+                                self._on_vehicle(who)):
+            why.append('aboard')        # (in a cab already, or on a vehicle, §21.4)
         elif kind == 'alight' and not aboard:
             why.append('not_aboard')
         if kind == 'board' and not any(self.prev[self.ix[ld['at']]] >= 0.5 for ld in self.lift_of[lift]['landings']):
@@ -2472,7 +2483,7 @@ class Engine:
             elif kind == 'release' and not self.session:
                 continue        # (a session run's input: a single-player run has no slots)
             elif kind in ('role', 'release', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump',
-                          'ppe', 'zone', 'stop'):
+                          'ppe', 'zone', 'stop', 'get_on'):
                 tail = (slot,) if self.session else ()
                 if sr is not None:
                     sr.t_input(item, slot)
@@ -2830,7 +2841,7 @@ class Engine:
             s['clock'] = self.clock()
             s['people'] = self.staff.snap()
             s['worn'], s['acts'] = self.staff.snap_acts()
-            s['vehicles'] = {}
+            s['vehicles'] = self.staff.snap_vehicles()
             s['unacked'] = self.staff.unacked
             if self.session:
                 sr = self.staff

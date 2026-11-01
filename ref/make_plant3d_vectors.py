@@ -11,7 +11,7 @@
 
 FROZEN once the app's evaluator uses it (PLANT3D §12): a change of format or model makes a new file.
   python3 ref/make_plant3d_vectors.py [--write]"""
-import copy, json, os, sys
+import copy, json, math, os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ref import plant3d as P
 
@@ -1860,11 +1860,13 @@ REJECTS_STAFF = [
     ('a slot more than 12 hours from its duty', 'bad_clock', _set(STF + ['routines', 0, 'slots', 0, 'at'],
                                                                    'start-12:01')),
     ('a slot\'s every of 0:00', 'bad_clock', _set(STF + ['routines', 1, 'slots', 1, 'every'], '0:00')),
-    ('vehicles before milestone S4', 'unknown_key', _set(STF + ['vehicles'], [])),
-    ('a person\'s home before milestone S4', 'unknown_key', _set(STF + ['people', 0, 'home'], 'camp_b1_r12')),
-    ('a ride step before milestone S4', 'unknown_key', _set(TASK(0) + ['steps', 0],
-                                                            {'ride': {'from': 'a', 'to': 'b'}})),
-    ('a drive way before milestone S4', 'unknown_key', _set(STF + ['ways', 0, 3], 'drive')),
+    # (until S4 these four were the S4 keys refused; since S4, PLANT3D §21, each is a rule of its own)
+    ('a vehicle in a file without homes', 'bad_ref', _set(STF + ['vehicles'], [
+        {'id': 'bus', 'kind': 'bus', 'seats': 9, 'driver': 'ccr_op', 'home': 'p1', 'runs': []}])),
+    ('a person\'s home that is no room with a bed', 'bad_ref', _set(STF + ['people', 0, 'home'], 'camp_b1_r12')),
+    ('a ride step from places that are not there', 'bad_ref', _set(TASK(0) + ['steps', 0],
+                                                                   {'ride': {'from': 'a', 'to': 'b'}})),
+    ('a drive way without a driving speed', 'missing_key', _set(STF + ['ways', 0, 3], 'drive')),
     ('a place unreached from the control room', 'unreachable', _all(
         _app(STF + ['places'], {'id': 'p6', 'at': [50, 0, 0], 'kind': 'point'}),
         lambda F: F['staff.json'].__setitem__('next', [r + [-1] for r in F['staff.json']['next']] + [[-1] * 7]))),
@@ -2053,12 +2055,14 @@ def build_rejects_staff():
         change = {k: t for k, t in text.items() if old.get(k) != t}
         change.update({k: None for k in old if k not in text})
         out.append({'why': why, 'code': code, 'change': change})
-    return out + reject_changes(lift_staff_files(), REJECTS_LIFT_STAFF, staff_files())   # (the vectors' files)
+    return out + reject_changes(lift_staff_files(), REJECTS_LIFT_STAFF, staff_files()) + \
+        reject_changes(staff_files(None, with_camp(mini_staff()['staff.json'])), camp_rejects(), staff_files()) + \
+        reject_changes(staff_files(), plain_camp_rejects(), staff_files())   # (the vectors' files)
 
 
 INPUTS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
           'remove_lock', 'role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump', 'ppe', 'zone',
-          'stop', 'board', 'alight')
+          'stop', 'board', 'alight', 'get_on')
 
 
 class Slotted:
@@ -2103,8 +2107,9 @@ class Trainee:
     `extra`: more inputs at given steps ([step, kind, …]). The inputs it makes are the vector's (Recorder.inputs)."""
 
     def __init__(self, walk=40, wrong=(), ack_after=5, extra=(), quiet=False, wake=0, ahead=None, undo=False,
-                 back=False, pick=0, slot=None):
+                 back=False, pick=0, slot=None, ride='bus'):
         self.walk, self.wrong, self.ack_after, self.extra = walk, set(wrong), ack_after, list(extra)
+        self.ride = ride            # a ride step (§21.4): 'bus' (to its stop, on the first vehicle there) or 'walk'
         self.slot = slot            # a session run's player (§17.13): its inputs carry the slot; None: single-player
         self.pick = pick            # which of a choose's tasks they take
         self.stop_to = {}
@@ -2154,6 +2159,10 @@ class Trainee:
             place = x.get('place')
         elif 'work' in s and x.get('place') is not None and self.back:
             place = x['place']          # back to a work left half done (a pause took them elsewhere)
+        elif 'ride' in s and p.aboard is None:
+            fr, to = sr.st.pix[s['ride']['from']], sr.st.pix[s['ride']['to']]
+            if p.pos != to:
+                place = to if self.ride == 'walk' else fr
         for at, o in [u for u in self.undo_at if u[0] == n]:
             e.op(o['kks'], {'open': 'close', 'close': 'open'}[o['do']], None, None, o['where'], me)
         if self.ahead and 'go' in s and (cur['order'], cur['step']) not in self.ahead_done:
@@ -2243,6 +2252,12 @@ class Trainee:
                 e.ppe(it, 0 if s['ppe'] == 'off' else 1)
         elif 'stop' in s and cur['act'] is not None:
             e.stop(sr.people[cur['act'][0]].id)
+        elif 'ride' in s and p.aboard is None and self.ride == 'bus':
+            fr, to = sr.st.pix[s['ride']['from']], sr.st.pix[s['ride']['to']]
+            vi = next((vi for vi in range(len(sr.veh)) if sr.stands_for(vi, fr, to)), None)
+            if vi is None:
+                return
+            e.get_on(sr.st.vehicles[vi]['id'])
         else:
             return
         self.done.add(key)
@@ -2265,7 +2280,7 @@ def apply_staff(e, item):
     kind = item[1]
     if kind == 'op' and len(item) == 8:
         e.op(*item[2:8], slot=slot)
-    elif kind in ('role', 'arrive', 'leave', 'pick', 'jump', 'stop'):
+    elif kind in ('role', 'arrive', 'leave', 'pick', 'jump', 'stop', 'get_on'):
         getattr(e, kind)(item[2], slot=slot)
     elif kind == 'task_ack':
         e.task_ack(slot=slot)
@@ -2849,7 +2864,7 @@ def build_staff():
         out.append(dict({'why': why, 'scenario': sc, 'staff': staff, 'inputs': e.inputs, 'until': until,
                          'every': every, 'states': states, 'events': e.events, 'digests': digests},
                         **({'files': more} if more else {}), **({'session': True} if session else {})))
-    return out + build_lift_runs()
+    return out + build_lift_runs() + build_camp_runs()
 
 
 # The first train's day (§19 `day`): the scenario with staff from its start (05:00) through the day shift, seed 1 and
@@ -3543,6 +3558,249 @@ def build_lift_runs():
     _FIRED.clear()
     return out
 
+
+
+# ---------------------------------------------------------------- milestone S4: the camp, off duty, vehicles (§21)
+
+def with_camp(st):
+    """A synthetic staff file with a camp (PLANT3D §21): points to it along the road, its stops and the depot off site
+    with the plant gate's and the control room's stops, drive ways, a mess, a gym and fourteen rooms (a hidden bed in
+    two), a home for everyone, the off-duty routine (meals, free time chosen, sleep before the next duty with `next-`,
+    rest at home) for every role, a driver on days, a bus and a pickup; the field operators ride in and out."""
+    st = copy.deepcopy(st)
+    P, W = st['places'], st['ways']
+    at = {q['id']: q['at'] for q in P}
+
+    def pl(pid, xyz, kind, off=True, stub=None, **kw):
+        P.append(dict({'id': pid, 'at': xyz, 'kind': kind}, **({'off_site': True} if off else {}), **kw))
+        at[pid] = xyz
+        if stub is not None:
+            W.append([pid, stub, round(math.dist(xyz, at[stub]) + 0.5, 2), 'walk'])
+    pl('g0', [-20, 0, 0], 'point', off=False)
+    pl('c0', [-60, 0, 0], 'point')
+    pl('c1', [-70, 10, 0], 'point')
+    W += [['p0', 'g0', 20, 'walk'], ['g0', 'c0', 40, 'walk'], ['c0', 'c1', 14.5, 'walk']]
+    pl('camp_stop', [-60, -4, 0], 'stop', stub='c0')
+    pl('gate_stop', [-20, -4, 0], 'stop', off=False, stub='g0')
+    pl('cr_stop', [0, -4, 0], 'stop', off=False, stub='p0')
+    pl('depot', [-66, -6, 0], 'depot', stub='c0')
+    W += [['depot', 'camp_stop', 7, 'drive'], ['camp_stop', 'gate_stop', 40, 'drive'],
+          ['gate_stop', 'cr_stop', 20, 'drive']]
+    pl('mess_door', [-56, 6, 0], 'door', stub='c0', room='mess')
+    for k in range(4):
+        pl(f'mess_{k}', [-54 + k, 9, 0], 'seat', stub='c0', room='mess', pose='sit')
+    pl('gym_1', [-64, 14, 0], 'seat', stub='c1', room='gym')
+    for k in range(14):
+        pl(f'bed_{k + 1}', [-72 - k, 14, 0], 'bed', stub='c1', room=f'room{k + 1}', pose='lie',
+           **({'hidden': True} if k in (3, 4) else {}))
+    st['speeds']['drive'] = 8
+    for r in st['roles']:
+        r['off'] = 'off_std'
+    st['roles'].append({'id': 'driver', 'title': 'Driver', 'discipline': 'transport', 'authority': ['drive'],
+                        'routine': 'drv_shift', 'play': True, 'off': 'off_std'})
+    st['rosters'].append({'id': 'drv', 'kind': 'days', 'days': ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+                          'hours': ['05:00', '17:00']})
+    st['people'].append({'id': 'drv1', 'role': 'driver', 'roster': 'drv', 'call': 'Driver'})
+    for i, q in enumerate(st['people']):
+        q['home'] = f'room{i + 1}'
+    for r in st['routines']:
+        if r['id'] in ('field_shift', 'field_shift2'):
+            r['slots'] = [{'at': 'start-0:45', 'task': 'commute_in'}] + r['slots'] + \
+                [{'at': 'end+0:05', 'task': 'commute_out'}]
+    st['routines'] += [
+        {'id': 'off_std', 'idle': 'rest_home', 'slots': [
+            {'at': 'prev+0:20', 'task': 'meal'}, {'at': 'prev+1:00', 'task': 'free_time'},
+            {'at': 'next-3:00', 'task': 'sleep_night'}, {'at': 'next-1:00', 'task': 'breakfast'},
+            {'at': '12:30', 'task': 'meal'}, {'at': '10:00', 'task': 'free_time', 'days': ['sun']}]},
+        {'id': 'drv_shift', 'idle': 'drv_idle', 'slots': [{'at': 'start+0:30', 'task': 'bus_check'}]}]
+    mess = {'go': {'kind': 'seat', 'room': 'mess'}}
+    st['tasks'] += [
+        {'id': 'meal', 'title': 'A meal at the mess', 'steps': [mess, {'work': 20, 'anim': 'eat'}]},
+        {'id': 'breakfast', 'title': 'Breakfast', 'steps': [mess, {'work': [10, 15], 'anim': 'eat'}]},
+        {'id': 'free_time', 'title': 'Free time', 'steps': [{'choose': [[2, 'gym_time'], [1, 'room_time']]}]},
+        {'id': 'gym_time', 'title': 'The gym', 'priority': 4, 'steps': [{'go': 'gym_1'}, {'work': [20, 40]}]},
+        {'id': 'room_time', 'title': 'In the room', 'priority': 4, 'steps': [{'go': 'home'}, {'work': 30}]},
+        {'id': 'sleep_night', 'title': 'Sleep', 'priority': 4, 'interruptible': False,
+         'steps': [{'sleep': {'until': 'next-1:00'}}]},
+        {'id': 'rest_home', 'title': 'At home', 'steps': [{'go': 'home'}, {'work': 30, 'anim': 'sleep'}]},
+        {'id': 'drv_idle', 'title': 'At the depot', 'steps': [{'go': 'depot'}, {'work': 20}]},
+        {'id': 'bus_check', 'title': 'The bus\'s checks', 'steps': [{'go': 'depot'}, {'work': 10}]},
+        {'id': 'commute_in', 'title': 'The bus to the plant', 'priority': 2,
+         'steps': [{'ride': {'from': 'camp_stop', 'to': 'cr_stop'}}]},
+        {'id': 'commute_out', 'title': 'The bus to the camp', 'priority': 1,
+         'steps': [{'ride': {'from': 'cr_stop', 'to': 'camp_stop'}}, {'go': 'home'}]}]
+    st['vehicles'] = [
+        {'id': 'bus', 'kind': 'bus', 'seats': 1, 'driver': 'driver', 'home': 'depot', 'runs': [
+            {'at': '05:40', 'stops': ['camp_stop', 'gate_stop', 'cr_stop'], 'dwell': 1},
+            {'at': '06:25', 'stops': ['cr_stop', 'gate_stop', 'camp_stop'], 'dwell': 1},
+            {'at': '09:00', 'stops': ['camp_stop', 'cr_stop'], 'dwell': 0, 'days': ['sun']},
+            {'at': '17:40', 'stops': ['camp_stop', 'gate_stop', 'cr_stop'], 'dwell': 1},
+            {'at': '18:25', 'stops': ['cr_stop', 'gate_stop', 'camp_stop'], 'dwell': 1}]},
+        {'id': 'van', 'kind': 'pickup', 'seats': 3, 'driver': 'driver', 'home': 'depot', 'runs': [
+            {'at': '05:45', 'stops': ['camp_stop', 'cr_stop'], 'dwell': 0},
+            {'at': '07:30', 'stops': ['camp_stop', 'gate_stop'], 'dwell': 2}]}]
+    speeds = st['speeds']
+    pts = [q['id'] for q in P if q['kind'] == 'point']
+    adj = [[] for _ in pts]
+    for a, b, metres, mode in W:
+        if a in pts and b in pts and mode != 'drive':
+            w = S.way_steps(metres, speeds[mode])
+            adj[pts.index(a)].append((pts.index(b), w))
+            adj[pts.index(b)].append((pts.index(a), w))
+    st['next'] = S.next_table(len(pts), adj)
+    return st
+
+
+def _stask(st, tid):
+    return next(t for t in st['tasks'] if t['id'] == tid)
+
+
+def _splace(st, pid):
+    return next(q for q in st['places'] if q['id'] == pid)
+
+
+def camp_rejects():
+    """The rule breaks of milestone S4's keys (§21), each on the synthetic staff with a camp."""
+    def veh(f):
+        return _st(lambda st: f(st['vehicles'][0]))
+    return [
+        ('two people with one home', 'bad_ref', _st(lambda st: st['people'][1].__setitem__('home', 'room1'))),
+        ('a person without a home among people with homes', 'bad_ref', _st(lambda st: st['people'][2].pop('home'))),
+        ('a home that is not off site', 'bad_ref', _st(lambda st: _splace(st, 'bed_1').pop('off_site'))),
+        ('a role of people with homes without an off-duty routine', 'bad_ref',
+         _st(lambda st: st['roles'][0].pop('off'))),
+        ('an off-duty routine that does not exist', 'bad_ref', _st(lambda st: st['roles'][0].__setitem__('off', 'x'))),
+        ('a duty routine named as an off-duty routine', 'bad_ref',
+         _st(lambda st: st['roles'][0].__setitem__('off', 'ccr_shift'))),
+        ('an off-duty slot repeated', 'bad_ref', _st(lambda st: next(r for r in st['routines'] if r['id'] == 'off_std')
+                                                     ['slots'][0].update({'every': '1:00', 'until': 'prev+3:00'}))),
+        ('an off-duty slot from a duty\'s start', 'bad_clock',
+         _st(lambda st: next(r for r in st['routines'] if r['id'] == 'off_std')['slots'][0].__setitem__('at',
+                                                                                                   'start+1:00'))),
+        ('a duty slot from the duty before', 'bad_clock',
+         _st(lambda st: st['routines'][0]['slots'][0].__setitem__('at', 'prev+1:00'))),
+        ('a sleep until 24:00', 'bad_clock', _st(lambda st: _stask(st, 'sleep_night')['steps'][0].__setitem__(
+            'sleep', {'until': '24:00'}))),
+        ('a sleep until more than 12 hours before the next duty', 'bad_clock',
+         _st(lambda st: _stask(st, 'sleep_night')['steps'][0].__setitem__('sleep', {'until': 'next-12:01'}))),
+        ('a sleep step with another key', 'unknown_key',
+         _st(lambda st: _stask(st, 'sleep_night')['steps'][0]['sleep'].__setitem__('minutes', 5))),
+        ('a place off site that is not true', 'bad_value', _st(lambda st: _splace(st, 'c0').__setitem__('off_site',
+                                                                                                    False))),
+        ('a hidden place that is not true', 'bad_value', _st(lambda st: _splace(st, 'bed_4').__setitem__('hidden', 1))),
+        ('a vehicle of an unknown kind', 'bad_value', veh(lambda v: v.__setitem__('kind', 'tram'))),
+        ('a vehicle without seats', 'bad_number', veh(lambda v: v.__setitem__('seats', 0))),
+        ('a vehicle driven by a role without drive', 'authority', veh(lambda v: v.__setitem__('driver', 'ccr_op'))),
+        ('a vehicle whose home is not a depot', 'bad_value', veh(lambda v: v.__setitem__('home', 'camp_stop'))),
+        ('a vehicle twice', 'dup_id', _st(lambda st: st['vehicles'][1].__setitem__('id', 'bus'))),
+        ('a run with one stop', 'bad_length', veh(lambda v: v['runs'][0].__setitem__('stops', ['camp_stop']))),
+        ('a run stopping at a point', 'bad_value', veh(lambda v: v['runs'][0]['stops'].__setitem__(1, 'c0'))),
+        ('a run at one stop twice in a row', 'bad_ref', veh(lambda v: v['runs'][0]['stops'].__setitem__(1,
+                                                                                                    'camp_stop'))),
+        ('a run\'s dwell of 31 minutes', 'bad_number', veh(lambda v: v['runs'][0].__setitem__('dwell', 31))),
+        ('a run at a time that is no clock time', 'bad_clock', veh(lambda v: v['runs'][0].__setitem__('at', '5:40'))),
+        ('a run on a day that is not a weekday', 'bad_value', veh(lambda v: v['runs'][0].__setitem__('days',
+                                                                                                 ['moon']))),
+        ('a run to a stop no drive way reaches', 'unreachable', _st(lambda st: (
+            st['places'].append({'id': 'far_stop', 'at': [-60, 30, 0], 'kind': 'stop', 'off_site': True}),
+            st['ways'].append(['far_stop', 'c1', 23, 'walk']),
+            st['vehicles'][0]['runs'][0]['stops'].append('far_stop')))),
+        ('a drive way to a point', 'bad_way', _st(lambda st: st['ways'].append(['depot', 'c1', 20, 'drive']))),
+        ('a ride from a stop to itself', 'bad_value', _st(lambda st: _stask(st, 'commute_in')['steps'][0].__setitem__(
+            'ride', {'from': 'camp_stop', 'to': 'camp_stop'}))),
+        ('a ride no run makes', 'bad_ref', _st(lambda st: [v.__setitem__('runs', v['runs'][:1])
+                                                           for v in st['vehicles']])),
+        ('a driver absent', 'bad_ref', lambda F: F['scenarios/s1.json']['staff'].__setitem__('absent', ['drv1'])),
+    ]
+
+
+def plain_camp_rejects():
+    """S4's keys in a file without homes (§21.1–§21.4)."""
+    return [
+        ('a place off site in a file without homes', 'bad_ref', _st(lambda st: st['places'][0].__setitem__('off_site',
+                                                                                                         True))),
+        ('an off-duty routine in a file without homes', 'bad_ref',
+         _st(lambda st: st['roles'][0].__setitem__('off', 'ccr_shift'))),
+        ('a go home in a file without homes', 'bad_ref', _st(lambda st: st['tasks'][0]['steps'].__setitem__(
+            0, {'go': 'home'}))),
+        ('a sleep in a file without homes', 'bad_ref', _st(lambda st: st['tasks'][0]['steps'].insert(
+            0, {'sleep': {'until': '05:00'}}))),
+    ]
+
+
+def camp_runs():
+    """(why, scenario changes, staff, player, steps, snapshot every), as staff_runs (§21.9)."""
+    camp = with_camp(mini_staff()['staff.json'])
+    hand = with_camp(handover_staff())
+    at5 = {'start': {'day': 1, 'time': '05:00'}}
+    return [
+        ('the camp\'s morning (seed 1, from 05:00): everyone placed at home, at breakfast or at work by their slots '
+         'and spans; the bus\'s first run (one seat: field operator 1 of crew A on, field operator 2 walks after 30 '
+         'minutes), the pickup\'s run skipped (its driver on the bus), the night crew home by the 06:25 run, meals, '
+         'free time chosen, sleep before the next duty, the off-duty idle task at home, a Sunday run never made',
+         at5, camp, Trainee(quiet=True), 3600, 60),
+        ('the trainee as field operator 1 of crew A, field operator 2 absent (§21.4): get_on refused (an unknown '
+         'vehicle; no ride step), then on the bus at the camp stop and off at the control room\'s; their shift; a jump '
+         'at 07:30 to 17:50 while the pickup is on its run (done: every vehicle home, nobody aboard)',
+         dict(at5, trainee='a_fo1', absent=['a_fo2']), camp, Trainee(ride='bus', ack_after=3, extra=[
+             [2, 'get_on', 'tram'], [3, 'get_on', 'bus'], [1500, 'jump', '17:50']]), 3000, 60),
+        ('the trainee walks instead of riding (§21.4): field operator 1 walks to the control room\'s stop, the step '
+         'done by their arrival there; a get_on refused on the way (not at the stop)',
+         dict(at5, trainee='a_fo1'), camp, Trainee(ride='walk', extra=[[170, 'get_on', 'bus']]), 900, 30),
+        ('the trainee as the driver (§21.8): taken from their bus check into the bus at 05:39, the run driven by the '
+         'engine, off at the depot; the night crew\'s run and the pickup\'s later',
+         dict(at5, trainee='drv1'), camp, Trainee(), 1700, 30),
+        ('a lock left off site (§21.1, §17.9): crew B\'s electrician absent; an outgoing holder goes home to the camp '
+         'with their lock on, off site there, and crew B\'s supervisor removes it by authority; the evening runs '
+         'skipped (the driver off duty)',
+         dict({'start': {'day': 1, 'time': '17:00'}}, absent=['b_elec']), hand, Trainee(extra=[[2, 'fault', 'f1']]),
+         2200, 40),
+        ('a jump at once to 17:45 (§21.4, §21.2): placement in the evening (people off duty placed by their off slots, '
+         'the outgoing day crew by the slots after their duty\'s end), every vehicle home; the evening run skipped',
+         dict(at5, trainee='mech1'), camp, Trainee(extra=[[20, 'jump', '17:45']]), 600, 20),
+        ('a session with players aboard (§21.4, §17.13), field operator 2 absent: slot 0 field operator 1 on the bus, '
+         'released while aboard (rides on as an NPC, off at the control room\'s stop), slot 1 takes the driver while '
+         'driving (stays aboard, off at the depot)',
+         dict(at5, absent=['a_fo2']), camp, Session([Trainee(slot=0, ride='bus'), Trainee(slot=1, quiet=True)],
+                                                  extra=[[1, 'role', 'a_fo1', 0]],
+                                                  when=[(lambda e: _aboard_v(e, 'a_fo1'), ('release', 0)),
+                                                        (lambda e: _aboard_v(e, 'drv1') and e.step_no > 420,
+                                                         ('role', 'drv1', 1))]), 1200, 30),
+    ]
+
+
+def _aboard_v(e, pid):
+    sr = e.staff
+    return sr.people[sr.st.person_ix[pid]].aboard is not None
+
+
+def build_camp_runs():
+    base = mini_staff()
+    out = []
+    for why, sc_change, staff, player, until, every in camp_runs():
+        session = getattr(player, 'session', False)
+        sc = copy.deepcopy(base['scenarios/s1.json'])
+        for k, v in sc_change.items():
+            if k == 'start':
+                sc['start'] = v
+            else:
+                sc['staff'][k] = v
+        F = staff_files(sc, staff)
+        b = check(F)
+        e = P.Recorder(b, 's1', session)
+        states = [e.snapshot()]
+        digests = [e.digest()]
+        while e.step_no < until:
+            player(e)
+            e.step()
+            if e.step_no % every == 0 or e.step_no == until:
+                states.append(e.snapshot())
+            if e.step_no % DIGEST_EVERY == 0:
+                digests.append(e.digest())
+        out.append(dict({'why': why, 'scenario': sc, 'staff': staff, 'inputs': e.inputs, 'until': until,
+                         'every': every, 'states': states, 'events': e.events, 'digests': digests},
+                        **({'session': True} if session else {})))
+    return out
 
 if __name__ == '__main__':
     bad = 0

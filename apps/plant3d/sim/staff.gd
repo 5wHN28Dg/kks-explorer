@@ -19,6 +19,7 @@ const MAX_POINTS := 64 * 16       # every point of a model's isolations: a lock 
 const QUEUE_MAX := 32
 const RIDE_WAIT := 1800           # steps a person waits for a lift before they take the stairs (§20.4)
 const RIDE_QUIET := 50            # steps since the last board or alight before a rider closes a gate elsewhere
+const RIDE_WAIT_MIN := 30         # clock minutes a person waits at a stop before walking instead (§21.4)
 const EARLY_KEPT := 32           # the trainee's actions kept for a later step (§17.8)
 const OPEN_KINDS := ["point", "door", "stop", "muster", "counter", "depot", "work"]
 const PPE := ["helmet", "boots", "glasses", "gloves", "ear", "harness", "face_shield", "apron", "vest"]
@@ -82,6 +83,14 @@ var lifts: Array = []                # [lift id, PackedInt32Array of its landing
 var lift_model: Array = []           # per staff lift: the model's lift entry
 var lift_way := {}                   # a * places + b (a < b) of a lift way -> its staff lift
 var stairs := {}                     # a * places + b of a lift way's ends, either way round -> the stairs' places
+var has_homes := false               # every person has a home (§21.1)
+var home := PackedInt32Array()       # per person: their home's bed, -1
+var off_site := PackedByteArray()    # per place: 1 when outside the plant's fence (§21.1)
+var vehicles: Array = []             # {id, kind, seats, driver, home, runs: [{at, stops, dwell, days, lead}]} (§21.4)
+var vehicle_ix := {}                 # vehicle id -> its index
+var drive_no := PackedInt32Array()   # per place: its number among the stops and depots, -1
+var drive_places := PackedInt32Array()   # the stops and depots, in place order
+var drive_next: Array = []           # per drive number: PackedInt32Array of the next drive number to each, -1
 
 
 static func load_from(m, doc: Dictionary):
@@ -102,7 +111,7 @@ static func hhmm(x) -> int:
 
 ## A slot's `at` or `until`: [0 start / 1 end / 2 clock, minutes].
 static func at_ref(x: String) -> Array:
-	for k in [["start", 0], ["end", 1]]:
+	for k in [["start", 0], ["end", 1], ["prev", 3], ["next", 4]]:
 		if x.begins_with(k[0]):
 			var rest := x.substr(k[0].length())
 			var sign := -1 if rest[0] == "-" else 1
@@ -141,6 +150,11 @@ func _build(m, doc: Dictionary) -> void:
 			rooms[p["room"]] = r
 		if p["kind"] == "work" and not work_at.has(p["kks"]):
 			work_at[p["kks"]] = places.size() - 1
+		off_site.append(1 if p.get("off_site", false) == true else 0)
+		drive_no.append(-1)
+		if p["kind"] == "stop" or p["kind"] == "depot":
+			drive_no[-1] = drive_places.size()
+			drive_places.append(places.size() - 1)
 	for r in rooms:
 		door[r] = -1
 		for i in rooms[r]:
@@ -173,6 +187,9 @@ func _build(m, doc: Dictionary) -> void:
 	var walking: Array = []             # the walking ways between points (the stairs' network): per point [[point, steps]]
 	for _k in points.size():
 		walking.append([])
+	var drive_adj: Array = []           # per drive number: [[drive number, steps]] (§21.4)
+	for _k in drive_places.size():
+		drive_adj.append([])
 	for w in doc["ways"]:
 		if not pix.has(w[0]) or not pix.has(w[1]) or not speeds.has(w[3]):
 			_fail("a way joins no places: " + str(w))
@@ -181,6 +198,10 @@ func _build(m, doc: Dictionary) -> void:
 		var b: int = pix[w[1]]
 		var st := maxi(1, int(ceil(float(w[2]) * 10.0 / float(speeds[w[3]]) - 1e-9)))
 		ways[mini(a, b) * np + maxi(a, b)] = st
+		if w[3] == "drive":
+			drive_adj[drive_no[a]].append([drive_no[b], st])
+			drive_adj[drive_no[b]].append([drive_no[a], st])
+			continue
 		if w[3] == "lift":
 			lift_way[mini(a, b) * np + maxi(a, b)] = landing[a]
 		elif point_no[a] != -1 and point_no[b] != -1:
@@ -205,6 +226,12 @@ func _build(m, doc: Dictionary) -> void:
 			for x in r:
 				pl.append(points[x])
 			stairs[u * np + v] = pl
+	for i in drive_places.size():   # a vehicle's routes, by §16.2's rule (§21.4)
+		var row := PackedInt32Array()
+		for j in drive_places.size():
+			var r := route(drive_adj, i, j) if i != j else PackedInt32Array()
+			row.append(r[1] if r.size() > 1 else -1)
+		drive_next.append(row)
 	origin = pix.get(doc["origin"], -1)
 	gate = pix.get(doc["gate"], -1)
 	for r in doc["roles"]:
@@ -227,6 +254,25 @@ func _build(m, doc: Dictionary) -> void:
 	for i in people.size():
 		var p: Dictionary = people[i]
 		post.append(str(p["role"]) + "\n" + str(p.get("routine", roles[p["role"]]["routine"])))
+		home.append(-1)
+		if p.has("home"):           # the home room's first bed (§21.1)
+			has_homes = true
+			for j in rooms.get(p["home"], PackedInt32Array()):
+				if kind[j] == "bed":
+					home[i] = j
+					break
+	for v in doc.get("vehicles", []):
+		var runs := []
+		for r in v["runs"]:
+			var stops := PackedInt32Array()
+			for x in r["stops"]:
+				stops.append(pix[x])
+			var lead_steps := drive_steps(pix[v["home"]], stops[0])
+			runs.append({"at": hhmm(r["at"]), "stops": stops, "dwell": int(r["dwell"]), "days": r.get("days"),
+					"lead": (lead_steps + tpm - 1) / tpm})
+		vehicle_ix[v["id"]] = vehicles.size()
+		vehicles.append({"id": v["id"], "kind": v["kind"], "seats": int(v["seats"]), "driver": v["driver"],
+				"home": pix[v["home"]], "runs": runs})
 	for r in doc["routines"]:
 		var slots := []
 		for s in r["slots"]:
@@ -258,7 +304,7 @@ func _build(m, doc: Dictionary) -> void:
 					callable[r["id"] + "\n" + s["call"]["role"] + "\n" + s["call"]["task"]] = true
 	for t in tasks.values():
 		for s in t["steps"]:
-			if s.has("go") and typeof(s["go"]) == TYPE_STRING and not pix.has(s["go"]):
+			if s.has("go") and typeof(s["go"]) == TYPE_STRING and s["go"] != "home" and not pix.has(s["go"]):
 				_fail("task %s: no place %s" % [t["id"], s["go"]])
 			if s.has("unlock"):
 				if not unlocks.has(t["id"]):
@@ -317,6 +363,23 @@ static func ppe_mask(items: Array) -> int:
 	return m
 
 
+## The next place on a vehicle's route from a to b (§21.4), -1 at b.
+func drive_hop(a: int, b: int) -> int:
+	if a == b:
+		return -1
+	return drive_places[drive_next[drive_no[a]][drive_no[b]]]
+
+
+## The steps of a vehicle's route from a to b.
+func drive_steps(a: int, b: int) -> int:
+	var t := 0
+	while a != b:
+		var c := drive_hop(a, b)
+		t += int(ways[mini(a, c) * places.size() + maxi(a, c)])
+		a = c
+	return t
+
+
 func prio_of(tid: String) -> int:
 	return int(tasks[tid].get("priority", 3))
 
@@ -325,6 +388,16 @@ func prio_of(tid: String) -> int:
 func routine_of(pi: int) -> Dictionary:
 	var p: Dictionary = people[pi]
 	return routines[p.get("routine", roles[p["role"]]["routine"])]
+
+
+func off_idle_of(pi: int) -> String:
+	return routines[roles[people[pi]["role"]]["off"]]["idle"]
+
+
+## A vehicle standing at home, on no run (§21.4).
+static func vehicle_home(v: Dictionary) -> Dictionary:
+	return {"at": v["home"], "leg": [], "run": -1, "dep": 0, "k": 0, "to": v["home"], "until": 0, "driver": -1,
+			"riders": [], "floor": 0, "done": []}
 
 
 func idle_of(pi: int) -> String:
@@ -387,6 +460,8 @@ func init_run(e, scen: Dictionary) -> void:
 	e.sp_worn.resize(n)
 	e.sp_zin.resize(n)
 	e.sp_lin.resize(n)
+	e.sp_aboard.resize(n)
+	e.sp_offday.resize(n)
 	for i in n:
 		e.sp_rng[i] = seed_of(seed, i)
 		e.sp_acts.append([null, null, null])
@@ -400,6 +475,7 @@ func init_run(e, scen: Dictionary) -> void:
 		e.sp_held.append([])
 		e.sp_ride.append([])
 		e.sp_stairs.append(PackedInt32Array())
+		e.sp_spans.append([])
 	e.st_vprev = []
 	for r in reactions:
 		e.st_vprev.append(e.truth(r["on"]["value"]) if r["on"].has("value") else null)
@@ -458,6 +534,8 @@ func plan(e, pi: int, upto: int) -> void:
 			continue
 		e.sp_duties[pi].append(du)
 		var mine := []
+		var lo: int = du[0]
+		var hi: int = du[1]
 		var wd: String = weekday(du[0])
 		for k in r["slots"].size():
 			var s: Array = r["slots"][k]
@@ -473,9 +551,51 @@ func plan(e, pi: int, upto: int) -> void:
 					mine.append([t, du[0], k, rep, s[5], du])
 					t += s[2] * MINUTE
 					rep += 1
+		for x in mine:
+			lo = mini(lo, x[0])
+			hi = maxi(hi, x[0])
+		e.sp_spans[pi].append([lo, hi, du[0], du[1]])     # its span (§21.2)
 		slots.append_array(mine)
+	if home[pi] != -1:
+		for day in range(e.sp_offday[pi] + 1, upto):
+			off_slots(e, pi, day)
+		e.sp_offday[pi] = maxi(e.sp_offday[pi], upto - 1)
+		var keep := []
+		for x in e.sp_spans[pi]:
+			if x[1] >= (upto - 4) * DAY:
+				keep.append(x)
+		e.sp_spans[pi] = keep
 	slots.sort_custom(_slot_less)
 	e.sp_planned[pi] = upto
+
+
+## The off-duty slots of a day (§21.2): each candidate time on it within no duty's span.
+func off_slots(e, pi: int, day: int) -> void:
+	var ro: Dictionary = routines[roles[people[pi]["role"]]["off"]]
+	var lo: int = day * DAY
+	var hi: int = lo + DAY
+	var wd: String = week[posmod(day - 1, 7)]
+	var spans: Array = e.sp_spans[pi]
+	for k in ro["slots"].size():
+		var s: Array = ro["slots"][k]
+		if s[6] != null and not s[6].has(wd):
+			continue
+		var ts := []
+		if s[0] == 2:
+			ts = [lo + s[1] * MINUTE]
+		else:
+			for x in spans:
+				ts.append((x[3] if s[0] == 3 else x[2]) + s[1] * MINUTE)
+		for t in ts:
+			if t < lo or t >= hi:
+				continue
+			var inside := false
+			for x in spans:
+				if x[0] <= t and t <= x[1]:
+					inside = true
+					break
+			if not inside:
+				e.sp_slots[pi].append([t, lo, k, 0, s[5], null])
 
 
 # ---------------------------------------------------------------- placement (§17.2)
@@ -493,7 +613,15 @@ func place_all(e, c: int, old: int) -> void:
 	e.st_pending = []
 	e.st_made = {}
 	e.st_next1 = 0
+	e.st_veh = []                   # every vehicle home, nobody aboard (§21.4)
+	for v in vehicles:
+		var vh := vehicle_home(v)
+		vh["floor"] = c             # (a run whose leaving time is before the placement is not made)
+		e.st_veh.append(vh)
 	for pi in people.size():
+		e.sp_aboard[pi] = -1
+		e.sp_spans[pi] = []
+		e.sp_offday[pi] = -1
 		e.sp_worn[pi] = 0
 		e.sp_zin[pi] = 0
 		e.sp_acts[pi] = [null, null, null]
@@ -514,6 +642,9 @@ func place_all(e, c: int, old: int) -> void:
 		e.sp_ride[pi] = []
 		e.sp_stairs[pi] = PackedInt32Array()
 		e.sp_lin[pi] = -3
+		if home[pi] != -1:          # planned from a day earlier: their off slots of days C − 1 and C (§21.2)
+			e.sp_planned[pi] = day - 4
+			e.sp_offday[pi] = day - 2
 		if e._absent.has(pi):
 			continue
 		plan(e, pi, day + 1)
@@ -532,6 +663,26 @@ func place_all(e, c: int, old: int) -> void:
 		for s in e.sp_slots[pi]:
 			if s[0] <= c and not duty.is_empty() and s[5] == duty and s[0] >= duty[0]:
 				pick = s
+		if duty.is_empty() and home[pi] != -1:
+			# off duty with a home (§21.2): in a duty's span, its latest slot at or before C; else the latest off slot
+			# at or before C after the last span's end
+			var span = null
+			for x in e.sp_spans[pi]:
+				if x[0] <= c and c <= x[1]:
+					span = x
+					break
+			if span != null:
+				for s in e.sp_slots[pi]:    # (after the duty's end, only its slots after the end: §21.2)
+					if s[0] <= c and s[5] != null and s[5][0] == span[2] and (c < span[3] or s[0] >= span[3]):
+						pick = s
+			else:
+				var last := -1
+				for x in e.sp_spans[pi]:
+					if x[1] < c:
+						last = maxi(last, x[1])
+				for s in e.sp_slots[pi]:
+					if last < s[0] and s[0] <= c and s[5] == null:
+						pick = s
 		if old != -1:
 			for s in e.sp_slots[pi]:
 				if old < s[0] and s[0] < c:
@@ -541,27 +692,35 @@ func place_all(e, c: int, old: int) -> void:
 			if s[0] > c:
 				rest.append(s)
 		e.sp_slots[pi] = rest
-		if not e.sp_on[pi]:
+		if not e.sp_on[pi] and home[pi] == -1:
 			continue
 		var task = pick[4] if pick != null else null
-		var place := first_place(e, task) if task != null else -1
+		var place := first_place(e, task, pi) if task != null else -1
 		if place == -1:
-			place = first_place(e, idle_of(pi))
+			place = first_place(e, idle_of(pi) if e.sp_on[pi] else off_idle_of(pi), pi)
 		if place == -1:
-			place = origin
+			place = origin if e.sp_on[pi] else home[pi]
 		e.sp_pos[pi] = place
 		if not open[place] and not e.st_holder.has(place):
 			e.st_holder[place] = pi
 			e.sp_occ[pi] = place
 		if task != null:
-			give(e, pi, task, prio_of(task), null, null, null, null, false)
+			give(e, pi, task, prio_of(task), null, null, null, null, false, null, null, null,
+					home[pi] != -1 and pick[5] == null)
 	e.st_t_from.fill(-1)
 
 
-func first_place(e, tid: String) -> int:
+## A task's first place (§17.8): its first go's or meeting's (a sleep's: home; a ride's: its stop, §21).
+func first_place(e, tid: String, pi: int) -> int:
 	for s in tasks[tid]["steps"]:
+		if s.has("sleep"):
+			return home[pi]
+		if s.has("ride"):
+			return pix[s["ride"]["from"]]
 		if s.has("go"):
 			var x = s["go"]
+			if typeof(x) == TYPE_STRING and x == "home":
+				return home[pi]
 			if typeof(x) == TYPE_STRING:
 				return pix[x]
 			if x.has("kks"):
@@ -612,7 +771,7 @@ static func _enqueue(e, pi: int, inst: Dictionary) -> void:
 
 
 func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count := true, owner = null,
-		act = null, orig = null) -> bool:
+		act = null, orig = null, off := false) -> bool:
 	var c = e.sp_cur[pi]
 	if e.sp_queue[pi].size() + (1 if c != null and not c["idle"] else 0) >= QUEUE_MAX:
 		e._ev(["task", null, tid, "unassigned"])
@@ -623,6 +782,8 @@ func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count 
 	var inst := {"task": tid, "prio": prio, "made": e.step_no, "order": e.st_order, "step": 0, "st": {},
 			"work": work, "code": code, "alarm": alarm, "src": made_by, "idle": false, "started": false,
 			"int": t.get("interruptible", true), "owner": owner, "act": act, "orig": orig}
+	if off:
+		inst["offr"] = true         # an off-duty slot's: ended when a duty starts (§21.2)
 	e.st_order += 1
 	_enqueue(e, pi, inst)
 	e.sp_wake[pi] = 0
@@ -658,7 +819,7 @@ func assign(e, role_list: Array, tid: String, prio: int, made_by, work, code, al
 						return give(e, pi, tid, prio, made_by, work, code, alarm, true, owner, act, orig)
 	for pi in cands:
 		var c = e.sp_cur[pi]
-		if c == null or c["idle"] or (c["prio"] > prio and c["int"]):
+		if e.sp_aboard[pi] == -1 and (c == null or c["idle"] or (c["prio"] > prio and c["int"])):
 			return give(e, pi, tid, prio, made_by, work, code, alarm, true, owner, act, orig)
 	return give(e, cands[0], tid, prio, made_by, work, code, alarm, true, owner, act, orig)
 
@@ -844,7 +1005,7 @@ func let_go(e, slot: int) -> void:
 	if c != null:
 		if not c["idle"]:
 			pause(e, pi)
-	if e.sp_pos[pi] == -1 and e.st_t_from[slot] != -1:
+	if e.sp_pos[pi] == -1 and e.sp_aboard[pi] == -1 and e.st_t_from[slot] != -1:
 		e.sp_pos[pi] = e.st_t_from[slot]
 	e.st_t_from[slot] = -1
 	e.st_acks[slot] = 0
@@ -920,8 +1081,17 @@ func step(e) -> void:
 		if tr == -1:
 			if item[0] == "stop":       # free mode: no person to stop work with
 				e._ev(["stop", null, item[1], null, null, "refused", ["authority"]])
+			elif item[0] == "get_on":   # (nobody to get on, §21.4)
+				var ev := ["aboard", null, item[1], null, "refused", ["authority"]]
+				if e.st_session:
+					ev.append(slot)
+				e._ev(ev)
 			continue
-		if item[0] == "arrive" and typeof(item[1]) == TYPE_STRING and pix.has(item[1]):
+		if (item[0] == "arrive" or item[0] == "leave") and e.sp_aboard[tr] != -1:
+			continue                    # (ignored aboard a vehicle, §21.4)
+		if item[0] == "get_on":
+			t_get_on(e, tr, item[1])
+		elif item[0] == "arrive" and typeof(item[1]) == TYPE_STRING and pix.has(item[1]):
 			e.sp_pos[tr] = pix[item[1]]
 			if e.sp_occ[tr] != e.sp_pos[tr]:
 				leave_place(e, tr)          # a place held is let go when the trainee is elsewhere
@@ -954,6 +1124,10 @@ func step(e) -> void:
 		_phase1(e, c, day)
 	# 2. reactions
 	react(e, n)
+	# 3. vehicles (§21.4), not in a jump's step (as phase 4)
+	if not jump_step:
+		for vi in vehicles.size():
+			vehicle_turn(e, vi)
 	# 4. people
 	if jump_step:
 		for slot in e.st_players.size():                # their actions of this step are kept all the same (§17.8)
@@ -1020,6 +1194,18 @@ func _phase1(e, c: int, day: int) -> void:
 				e.sp_duty[pi] = dl.pop_front()
 				e.sp_wake[pi] = 0
 				e._ev(["duty", people[pi]["id"], "on"])
+				if home[pi] != -1:      # the off-duty slots' tasks end: the duty comes first (§21.2)
+					var cc = e.sp_cur[pi]
+					if cc != null and cc.get("offr", false):
+						finish(e, pi, "skipped")
+					var kq := []
+					for q in e.sp_queue[pi]:
+						if q.get("offr", false):
+							e._ev(["task", people[pi]["id"], q["task"], "skipped"])
+							release(e, q)
+						else:
+							kq.append(q)
+					e.sp_queue[pi] = kq
 				var held: Array = e.sp_held[pi]  # the jobs held overnight come back (§17.10)
 				e.sp_held[pi] = []
 				for h in held:
@@ -1031,7 +1217,8 @@ func _phase1(e, c: int, day: int) -> void:
 		var sl: Array = e.sp_slots[pi]
 		while not sl.is_empty() and sl[0][0] <= c:
 			var s: Array = sl.pop_front()
-			give(e, pi, s[4], prio_of(s[4]), null, null, null, null)
+			give(e, pi, s[4], prio_of(s[4]), null, null, null, null, true, null, null, null,
+					home[pi] != -1 and s[5] == null)
 	var nx: int = (day + 1) * DAY            # the next day, planned when it begins, at the latest
 	for pi in np:
 		if e._absent.has(pi):
@@ -1103,7 +1290,7 @@ func react(e, n: int) -> void:
 						holds[person_ix[h]] = 1
 		for pi in holds.size():
 			if holds[pi] and not e.st_players.has(pi) and not e._absent.has(pi) and not e.sp_on[pi] \
-					and e.sp_pos[pi] == -1 and e.sp_leg[pi].is_empty() and _left_locks(e, pi):
+					and off_site_now(e, pi) and _left_locks(e, pi):
 				now[pi] = true
 				if not e.st_left.has(pi):
 					gone.append(pi)
@@ -1233,7 +1420,8 @@ func select(e, pi: int):
 		if keep.size() != q.size():
 			q.clear()
 			q.append_array(keep)
-	if cur != null and cur["idle"] and (not q.is_empty() or not e.sp_on[pi]):
+	if cur != null and cur["idle"] and (not q.is_empty() or (bool(e.sp_on[pi]) if cur.get("off", false)
+			else not e.sp_on[pi])):     # (a duty's idle task at the duty's end, an off one at its start, §21.2)
 		e._ev(["task", pid, cur["task"], "done"])
 		e.sp_cur[pi] = null
 		cur = null
@@ -1247,21 +1435,24 @@ func select(e, pi: int):
 		if not cur["started"]:
 			cur["started"] = true
 			e._ev(["task", pid, cur["task"], "start"])
-		if e.sp_pos[pi] == -1 and npc:
+		if e.sp_pos[pi] == -1 and npc and home[pi] == -1:
 			e.sp_pos[pi] = gate
 			e._ev(["move", pid, null, places[gate]["id"], e.step_no])
-	if cur == null and e.sp_on[pi]:
-		var idle := idle_of(pi)
+	if cur == null and (e.sp_on[pi] or home[pi] != -1):
+		# the idle task: the duty's on duty, the off-duty routine's off duty with a home (§21.2)
+		var idle := idle_of(pi) if e.sp_on[pi] else off_idle_of(pi)
 		cur = {"task": idle, "prio": 6, "made": e.step_no, "order": e.st_order, "step": 0, "st": {}, "work": null,
 				"code": null, "alarm": null, "src": null, "idle": true, "started": true, "int": true, "owner": null,
 				"act": null}
+		if not e.sp_on[pi]:
+			cur["off"] = true
 		e.sp_cur[pi] = cur
 		e.st_order += 1
 		e._ev(["task", pid, idle, "start"])
-		if e.sp_pos[pi] == -1 and npc:
+		if e.sp_pos[pi] == -1 and npc and home[pi] == -1:
 			e.sp_pos[pi] = gate
 			e._ev(["move", pid, null, places[gate]["id"], e.step_no])
-	if cur == null and not e.sp_on[pi] and e.sp_pos[pi] != -1 and npc:
+	if cur == null and not e.sp_on[pi] and e.sp_pos[pi] != -1 and npc and home[pi] == -1:
 		leave_place(e, pi)
 		e._ev(["move", pid, places[e.sp_pos[pi]]["id"], null, e.step_no])
 		e.sp_pos[pi] = -1
@@ -1321,6 +1512,9 @@ func turn(e, pi: int) -> void:
 	var n: int = e.step_no
 	if n < e.sp_wake[pi]:
 		return
+	if e.sp_aboard[pi] != -1:       # aboard a vehicle: no turn (§21.4); getting off wakes them
+		e.sp_wake[pi] = 1 << 62
+		return
 	e._touched[pi] = 1
 	var leg: Array = e.sp_leg[pi]
 	if not leg.is_empty():
@@ -1332,6 +1526,7 @@ func turn(e, pi: int) -> void:
 		if e.sp_pos[pi] == e.sp_res[pi]:
 			e.sp_occ[pi] = e.sp_pos[pi]
 			e.sp_res[pi] = -1
+		came(e, pi)
 	if has_lifts and not e.sp_ride[pi].is_empty() and not ride_turn(e, pi):
 		return
 	for _k in 64:
@@ -1379,7 +1574,9 @@ func advance(e, pi: int, r) -> void:
 ## A go's target: [place, taken], [-1, false] when there is none.
 func resolve(e, pi: int, cur: Dictionary, x) -> Array:
 	var i: int
-	if typeof(x) == TYPE_STRING:
+	if typeof(x) == TYPE_STRING and x == "home":
+		i = home[pi]
+	elif typeof(x) == TYPE_STRING:
 		i = pix[x]
 	elif x.has("kks"):
 		var code = cur["code"] if x["kks"] == "$" else x["kks"]
@@ -1683,6 +1880,38 @@ func run(e, pi: int, cur: Dictionary):
 	var pid: String = people[pi]["id"]
 	if s.has("go"):
 		return go(e, pi, cur, s["go"])
+	if s.has("sleep"):                  # home, lying there until T (§21.3)
+		if not x.has("T"):
+			x["T"] = sleep_until(e, pi, s["sleep"]["until"])
+		var rs := go(e, pi, cur, home[pi])
+		if rs != "next":
+			return rs
+		if e.clock() >= x["T"]:
+			return "next"
+		e.sp_wake[pi] = _step_at(e, x["T"])
+		return "wait"
+	if s.has("ride"):                   # to the stop, on a vehicle or on foot after 30 minutes (§21.4)
+		var fr: int = pix[s["ride"]["from"]]
+		var to: int = pix[s["ride"]["to"]]
+		if x.get("walk", false):
+			return go(e, pi, cur, to)
+		if e.sp_pos[pi] == to:
+			return "next"
+		if not x.has("since"):
+			var rg := go(e, pi, cur, fr)
+			if rg != "next":
+				return rg
+			for k in ["dest", "target", "waiting", "wait_since"]:
+				x.erase(k)
+			x["since"] = n
+		for vi in vehicles.size():
+			if stands_for(e, vi, fr, to) and e.st_veh[vi]["riders"].size() < int(vehicles[vi]["seats"]):
+				get_on(e, pi, vi, to)
+				return "wait"
+		if n - int(x["since"]) >= RIDE_WAIT_MIN * tpm:
+			x["walk"] = true
+			return go(e, pi, cur, to)
+		return "wait"
 	if s.has("work"):
 		if not x.has("left"):
 			x["left"] = mins(e, pi, s["work"]) * tpm
@@ -1809,6 +2038,277 @@ func run(e, pi: int, cur: Dictionary):
 	return "next"
 
 
+## A sleep's time T (§21.3): HH:MM's first occurrence at or after the clock; next-H:MM from the next duty not yet
+## begun (the clock when none is planned).
+func sleep_until(e, pi: int, u: String) -> int:
+	var c: int = e.clock()
+	if is_hhmm(u):
+		var t: int = (c / DAY) * DAY + hhmm(u) * MINUTE
+		return t if t >= c else t + DAY
+	var hm := u.substr(5).split(":")
+	var dl: Array = e.sp_duties[pi]
+	if dl.is_empty():
+		return c
+	return int(dl[0][0]) - (hm[0].to_int() * 60 + hm[1].to_int()) * MINUTE
+
+
+## The first step whose clock reaches t (§16.1), under the jumps made so far.
+static func _step_at(e, t: int) -> int:
+	var d: int = t - e._S - e.J
+	return (d + e._ds - 1) / e._ds if d > 0 else 0
+
+
+## An NPC with a home off duty who comes to an off-site place leaves their PPE behind (§21.1).
+func came(e, pi: int) -> void:
+	var p: int = e.sp_pos[pi]
+	if home[pi] != -1 and not e.sp_on[pi] and p != -1 and off_site[p] and e.slot_of(pi) == -1:
+		e.sp_worn[pi] = 0
+
+
+## Off site (§17.9): without homes, no place and no way; with them, §21.1's rule.
+func off_site_now(e, pi: int) -> bool:
+	if home[pi] == -1:
+		return e.sp_pos[pi] == -1 and e.sp_leg[pi].is_empty()
+	var vi: int = e.sp_aboard[pi]
+	if vi != -1:
+		var vh: Dictionary = e.st_veh[vi]
+		if not vh["leg"].is_empty():
+			return off_site[vh["leg"][0]] == 1 and off_site[vh["leg"][1]] == 1
+		return off_site[vh["at"]] == 1
+	var leg: Array = e.sp_leg[pi]
+	if not leg.is_empty():
+		return off_site[leg[0]] == 1 and off_site[leg[1]] == 1
+	var p: int = e.sp_pos[pi]
+	return (not has_lifts or e.sp_ride[pi].is_empty()) and p != -1 and off_site[p] == 1
+
+
+# ---------------------------------------------------------------- vehicles (§21.4)
+
+## Vehicle vi stands at fr (arrived, not departed) on a run whose later stops include to.
+func stands_for(e, vi: int, fr: int, to: int) -> bool:
+	var vh: Dictionary = e.st_veh[vi]
+	if vh["run"] == -1 or not vh["leg"].is_empty() or vh["at"] != fr:
+		return false
+	var stops: PackedInt32Array = vehicles[vi]["runs"][vh["run"]]["stops"]
+	var k: int = vh["k"]
+	if k >= stops.size() or stops[k] != fr:
+		return false
+	for j in range(k + 1, stops.size()):
+		if stops[j] == to:
+			return true
+	return false
+
+
+## A session run's events of a player's person carry the slot (§21.4, as §20.3's).
+func _tail(e, pi: int) -> Array:
+	if not e.st_session:
+		return []
+	var k: int = e.slot_of(pi)
+	return [k] if k != -1 else []
+
+
+func get_on(e, pi: int, vi: int, to: int) -> void:
+	var ev := ["aboard", people[pi]["id"], vehicles[vi]["id"], places[e.sp_pos[pi]]["id"], "on", []]
+	ev.append_array(_tail(e, pi))
+	e._ev(ev)
+	leave_place(e, pi)
+	e.sp_pos[pi] = -1
+	e.sp_aboard[pi] = vi
+	e.st_veh[vi]["riders"].append([pi, to])
+	e._touched[pi] = 1
+
+
+func get_off(e, pi: int, vi: int, at: int) -> void:
+	var ev := ["aboard", people[pi]["id"], vehicles[vi]["id"], places[at]["id"], "off", []]
+	ev.append_array(_tail(e, pi))
+	e._ev(ev)
+	e.sp_aboard[pi] = -1
+	e.sp_pos[pi] = at
+	e.sp_wake[pi] = 0
+	e._touched[pi] = 1
+	came(e, pi)
+
+
+## The vehicle's next run to look at, [L, run index, D], or []: the runs in the order (L, index) over the days, after
+## the last one looked at and not before the placement.
+func runs_due(e, vi: int, c: int) -> Array:
+	var v: Dictionary = vehicles[vi]
+	var vh: Dictionary = e.st_veh[vi]
+	var best := []
+	var day: int = c / DAY
+	var done: Array = vh["done"]
+	for d in [day - 1, day, day + 1]:
+		var wd: String = week[posmod(d - 1, 7)]
+		for k in v["runs"].size():
+			var r: Dictionary = v["runs"][k]
+			if r["days"] != null and not r["days"].has(wd):
+				continue
+			var dd: int = (d * 1440 + int(r["at"])) * MINUTE
+			var l: int = dd - int(r["lead"]) * MINUTE
+			if l < vh["floor"]:
+				continue
+			if not done.is_empty() and (l < done[0] or (l == done[0] and k <= done[1])):
+				continue
+			if best.is_empty() or l < best[0] or (l == best[0] and k < best[1]):
+				best = [l, k, dd]
+	return best
+
+
+## The vehicle drives on towards its target: the next way of its route, or there.
+func drive_on(e, vi: int) -> void:
+	var vh: Dictionary = e.st_veh[vi]
+	if vh["at"] == vh["to"]:
+		arrived(e, vi)
+		return
+	var a: int = vh["at"]
+	var nx := drive_hop(a, vh["to"])
+	var n: int = e.step_no
+	vh["leg"] = [a, nx, n, n + int(ways[mini(a, nx) * places.size() + maxi(a, nx)])]
+	vh["at"] = -1
+
+
+## The vehicle is at its target: a stop of its run (event, people off, its stand) or home (the driver off).
+func arrived(e, vi: int) -> void:
+	var vh: Dictionary = e.st_veh[vi]
+	var v: Dictionary = vehicles[vi]
+	var n: int = e.step_no
+	var at: int = vh["at"]
+	var r: Dictionary = v["runs"][vh["run"]]
+	var stops: PackedInt32Array = r["stops"]
+	e._ev(["vehicle", v["id"], places[at]["id"], "arrive"])
+	if vh["k"] >= stops.size():         # home: the driver gets off at the depot
+		get_off(e, vh["driver"], vi, at)
+		vh["run"] = -1
+		vh["driver"] = -1
+		vh["dep"] = 0
+		vh["k"] = 0
+		vh["until"] = 0
+		vh["riders"] = []
+		return
+	var last: bool = vh["k"] == stops.size() - 1
+	var stay := []
+	for rd in vh["riders"]:
+		if last or rd[1] == at:
+			get_off(e, rd[0], vi, at)
+		else:
+			stay.append(rd)
+	vh["riders"] = stay
+	if vh["k"] == 0 or last:
+		vh["until"] = n + 1
+	else:
+		vh["until"] = n + maxi(1, int(r["dwell"]) * tpm)
+
+
+## Phase 3 for one vehicle: an arrival, a departure, then the runs due (§21.4).
+func vehicle_turn(e, vi: int) -> void:
+	var vh: Dictionary = e.st_veh[vi]
+	var v: Dictionary = vehicles[vi]
+	var n: int = e.step_no
+	var c: int = e.clock()
+	if not vh["leg"].is_empty() and vh["leg"][3] <= n:
+		vh["at"] = vh["leg"][1]
+		vh["leg"] = []
+		drive_on(e, vi)
+	if vh["run"] != -1 and vh["leg"].is_empty() and vh["at"] == vh["to"] and n >= vh["until"] \
+			and (vh["k"] != 0 or c >= vh["dep"]) and vh["k"] < v["runs"][vh["run"]]["stops"].size():
+		e._ev(["vehicle", v["id"], places[vh["at"]]["id"], "depart"])
+		var stops: PackedInt32Array = v["runs"][vh["run"]]["stops"]
+		vh["k"] += 1
+		vh["to"] = stops[vh["k"]] if vh["k"] < stops.size() else v["home"]
+		drive_on(e, vi)
+	while true:
+		var due := runs_due(e, vi, c)
+		if due.is_empty() or due[0] > c:
+			break
+		vh["done"] = [due[0], due[1]]
+		var stops: PackedInt32Array = v["runs"][due[1]]["stops"]
+		var q := -1
+		if vh["run"] == -1:
+			var player := -1                # (NPCs first)
+			for pi in role_people.get(v["driver"], PackedInt32Array()):
+				if e.sp_on[pi] and not e._absent.has(pi) and e.sp_aboard[pi] == -1 \
+						and (not has_lifts or e.sp_ride[pi].is_empty()) and not _in_cab(e, pi):
+					if e.slot_of(pi) == -1:
+						q = pi
+						break
+					if player == -1:
+						player = pi
+			if q == -1:
+				q = player
+		if q == -1:
+			e._ev(["vehicle", v["id"], places[stops[0]]["id"], "skipped"])
+			continue
+		vh["run"] = due[1]
+		vh["dep"] = due[2]
+		vh["k"] = 0
+		vh["to"] = stops[0]
+		vh["driver"] = q
+		vh["riders"] = []
+		take_driver(e, q, vi)
+		e._ev(["vehicle", v["id"], places[vh["at"]]["id"], "depart"])
+		drive_on(e, vi)
+
+
+## The driver gets on at the vehicle's home, taken from where they are (§21.4).
+func take_driver(e, pi: int, vi: int) -> void:
+	var at: int = e.sp_pos[pi]
+	var ev := ["aboard", people[pi]["id"], vehicles[vi]["id"], places[at]["id"] if at != -1 else null, "on", []]
+	ev.append_array(_tail(e, pi))
+	e._ev(ev)
+	e.sp_leg[pi] = []
+	if has_lifts:
+		e.sp_stairs[pi] = PackedInt32Array()
+	leave_place(e, pi)
+	unreserve(e, pi)
+	e.sp_pos[pi] = -1
+	e.sp_aboard[pi] = vi
+	e._touched[pi] = 1
+	var cur = e.sp_cur[pi]
+	if cur != null:
+		if cur["idle"]:
+			e._ev(["task", people[pi]["id"], cur["task"], "done"])
+			e.sp_cur[pi] = null
+		else:
+			cur["st"].erase("busy")
+			e.sp_result[pi] = null
+			pause(e, pi)
+
+
+## Whether a person is among any lift's riders (§20.3).
+func _in_cab(e, pi: int) -> bool:
+	var pid: String = people[pi]["id"]
+	for x in e.riders:
+		for r in x:
+			if _same(r, pid):
+				return true
+	return false
+
+
+## A player's get_on (§21.4): the first reason refusing it, else they are aboard.
+func t_get_on(e, ti: int, vid) -> void:
+	var vi: int = vehicle_ix.get(vid, -1) if typeof(vid) == TYPE_STRING else -1
+	var cur = e.sp_cur[ti]
+	var s: Dictionary = tasks[cur["task"]]["steps"][cur["step"]] if cur != null else {}
+	var why := ""
+	var p: int = e.sp_pos[ti]
+	if vi == -1:
+		why = "unknown"
+	elif e.sp_aboard[ti] != -1 or _in_cab(e, ti):
+		why = "aboard"                  # (on a vehicle or in a lift's cab)
+	elif not s.has("ride"):
+		why = "no_ride"
+	elif p != pix[s["ride"]["from"]] or not stands_for(e, vi, p, pix[s["ride"]["to"]]):
+		why = "not_at_stop"
+	elif e.st_veh[vi]["riders"].size() >= int(vehicles[vi]["seats"]):
+		why = "full"
+	if why != "":
+		var ev := ["aboard", people[ti]["id"], vid, places[p]["id"] if p != -1 else null, "refused", [why]]
+		ev.append_array(_tail(e, ti))
+		e._ev(ev)
+		return
+	get_on(e, ti, vi, pix[s["ride"]["to"]])
+
+
 ## A ppe step's items ("role" or a list) as a bit mask.
 func _ppe_of(pi: int, x) -> int:
 	if typeof(x) == TYPE_STRING:
@@ -1853,6 +2353,8 @@ func stop_step(e, pi: int, cur: Dictionary) -> String:
 func zones_of(e, pi: int) -> int:
 	if e.st_players.has(pi):
 		return e.sp_zin[pi]
+	if e.sp_aboard[pi] != -1:           # aboard a vehicle: in no zone (§21.4)
+		return 0
 	var leg: Array = e.sp_leg[pi]
 	if not leg.is_empty():
 		return place_zm[leg[0]] & place_zm[leg[1]]
@@ -2358,7 +2860,8 @@ func trainee_turn(e, pi: int, tin: Array, slot: int) -> void:
 	var mine := _mine(e)
 	drop_kept(e, mine, people[pi]["id"], slot)
 	var took := {}
-	trainee_steps(e, pi, tin, used, mine, took, slot)
+	if e.sp_aboard[pi] == -1:           # (aboard a vehicle: no task progress, §21.4)
+		trainee_steps(e, pi, tin, used, mine, took, slot)
 	keep(e, pi, mine, took, slot)
 	for k in tin.size():
 		if used[k]:
@@ -2437,6 +2940,14 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 					break
 		elif s.has("meet"):
 			r = meet(e, pi, cur, s["meet"], true)
+		elif s.has("sleep"):            # §21.3: done once the clock reaches T, wherever they are
+			if not x.has("T"):
+				x["T"] = sleep_until(e, pi, s["sleep"]["until"])
+			if e.clock() >= x["T"]:
+				r = "next"
+		elif s.has("ride"):             # §21.4: done standing at `to`, by the bus or on foot
+			if e.sp_pos[pi] == pix[s["ride"]["to"]]:
+				r = "next"
 		elif s.has("say"):
 			for k in tin.size():
 				var it: Array = tin[k]
@@ -2724,6 +3235,25 @@ func snap_acts(e) -> Array:
 	return [worn, acts]
 
 
+## `vehicles` (§21.4): {id: [place or [from, to, depart, arrive], [the driver, then the riders]]}.
+func snap_vehicles(e) -> Dictionary:
+	var out := {}
+	for vi in vehicles.size():
+		var vh: Dictionary = e.st_veh[vi]
+		var where
+		if vh["leg"].is_empty():
+			where = places[vh["at"]]["id"]
+		else:
+			where = [places[vh["leg"][0]]["id"], places[vh["leg"][1]]["id"], vh["leg"][2], vh["leg"][3]]
+		var ab := []
+		if vh["driver"] != -1:
+			ab.append(people[vh["driver"]]["id"])
+		for rd in vh["riders"]:
+			ab.append(people[rd[0]]["id"])
+		out[vehicles[vi]["id"]] = [where, ab]
+	return out
+
+
 func snap(e) -> Dictionary:
 	var out := {}
 	for pi in people.size():
@@ -2734,6 +3264,8 @@ func snap(e) -> Dictionary:
 		elif has_lifts and e.sp_pos[pi] == -1 and not e.sp_ride[pi].is_empty():
 			var rd: Array = e.sp_ride[pi]
 			where = ["lift", lifts[rd[0]][0], places[rd[1]]["id"], places[rd[2]]["id"]]
+		elif e.sp_aboard[pi] != -1:
+			where = ["vehicle", vehicles[e.sp_aboard[pi]]["id"]]
 		elif e.sp_pos[pi] != -1:
 			where = places[e.sp_pos[pi]]["id"]
 		var c = e.sp_cur[pi]

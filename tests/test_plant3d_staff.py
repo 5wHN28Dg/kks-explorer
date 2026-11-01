@@ -767,6 +767,99 @@ class StaffVectors(unittest.TestCase):
         self.assertEqual(j[-1][4], 'refused')
 
 
+class CampRuns(unittest.TestCase):
+    """Milestone S4's engine (PLANT3D.md §21): homes, off-duty routines, sleep, vehicles and rides, by name in the
+    vectors' camp runs (the last seven staff runs)."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(G.OUT2, encoding='utf-8') as f:
+            cls.V = json.load(f)
+        cls.runs = {r['why'].split(' (')[0]: r for r in cls.V['staff']['runs'][-7:]}
+        cls.morning, cls.rider, cls.walker, cls.driver, cls.left, cls.jump, cls.session = cls.V['staff']['runs'][-7:]
+
+    def ev(self, run, kind, *head):
+        return [x for x in run['events'] if x[1] == kind and list(x[2:2 + len(head)]) == list(head)]
+
+    def test_placement_off_duty_by_off_slots(self):
+        people = self.morning['states'][0]['people']
+        self.assertTrue(people['a_ccr'][0].startswith('mess_'), people['a_ccr'])   # breakfast at next-1:00
+        self.assertEqual(people['a_ccr'][1], 'breakfast')
+        self.assertEqual(people['mech1'][1], 'sleep_night')                        # sleep from next-3:00
+        self.assertEqual(people['c_fo'][0] is not None, True)                       # the night crew at work
+        self.assertTrue(all(w is not None for w, _, _ in people.values()), 'with homes nobody is off site')
+
+    def test_a_bus_run_with_its_driver_and_a_rider(self):
+        r = self.morning
+        self.assertEqual(self.ev(r, 'aboard', 'drv1', 'bus', 'depot', 'on')[0][0], 390)
+        on = self.ev(r, 'aboard', 'a_fo1', 'bus', 'camp_stop', 'on')
+        off = self.ev(r, 'aboard', 'a_fo1', 'bus', 'cr_stop', 'off')
+        self.assertTrue(on and off and on[0][0] < off[0][0])
+        stops = [x[3] for x in r['events'] if x[1] == 'vehicle' and x[2] == 'bus' and x[4] == 'arrive'][:4]
+        self.assertEqual(stops, ['camp_stop', 'gate_stop', 'cr_stop', 'depot'])
+        dep = [x[0] for x in r['events'] if x[1] == 'vehicle' and x[2] == 'bus' and x[3] == 'camp_stop'
+               and x[4] == 'depart'][0]
+        self.assertEqual(dep, 400, 'it leaves its first stop at 05:40')
+        self.assertTrue(any(x[1:5] == ['vehicle', 'van', 'camp_stop', 'skipped'] for x in r['events']),
+                        'the pickup\'s run has no driver while the bus runs')
+
+    def test_a_ride_becomes_a_walk_after_30_minutes(self):
+        r = self.morning
+        self.assertFalse(self.ev(r, 'aboard', 'a_fo2', 'bus', 'camp_stop', 'on'))
+        done = self.ev(r, 'task', 'a_fo2', 'commute_in', 'done')
+        self.assertTrue(done)
+        walks = [x for x in r['events'] if x[1] == 'move' and x[2] == 'a_fo2' and x[3] == 'camp_stop']
+        self.assertTrue(walks and walks[0][0] >= 400 + 300 - 100, walks)
+
+    def test_the_trainees_get_on_and_its_refusals(self):
+        self.assertEqual([x[6] for x in self.ev(self.rider, 'aboard', 'a_fo1') if x[5] == 'refused'],
+                         [['unknown'], ['no_ride']])
+        self.assertTrue(self.ev(self.rider, 'aboard', 'a_fo1', 'bus', 'camp_stop', 'on'))
+        self.assertTrue(self.ev(self.rider, 'aboard', 'a_fo1', 'bus', 'cr_stop', 'off'))
+        self.assertEqual([x[6] for x in self.ev(self.walker, 'aboard', 'a_fo1') if x[5] == 'refused'],
+                         [['not_at_stop']])
+        self.assertEqual([x[6] for x in self.ev(self.session, 'aboard', 'a_fo1') if x[5] == 'refused'], [],
+                         'field operator 2 absent: a seat for the player')
+
+    def test_a_jump_with_a_vehicle_out(self):
+        r = self.rider
+        j = [x for x in r['events'] if x[1] == 'jump'][0]
+        self.assertEqual(j[4], 'done')
+        n = j[0]
+        snap = next(s for s in r['states'] if s['step'] >= n)
+        self.assertTrue(all(v[0] == 'depot' and v[1] == [] for v in snap['vehicles'].values()), snap['vehicles'])
+
+    def test_the_trainee_as_the_driver(self):
+        self.assertTrue(self.ev(self.driver, 'aboard', 'drv1', 'bus', None, 'on') or
+                        self.ev(self.driver, 'aboard', 'drv1', 'bus', 'depot', 'on'))
+        self.assertTrue(self.ev(self.driver, 'aboard', 'drv1', 'bus', 'depot', 'off'))
+
+    def test_a_lock_left_off_site_is_removed(self):
+        rm = [x for x in self.left['events'] if x[1] == 'remove_lock' and x[5] == 'done']
+        self.assertTrue(rm, 'removed by authority once its holder was home, off site')
+
+    def test_players_aboard(self):
+        r = self.session
+        self.assertTrue(self.ev(r, 'release', 'a_fo1', 'done'))
+        self.assertTrue(self.ev(r, 'aboard', 'a_fo1', 'bus', 'cr_stop', 'off'), 'rode on as an NPC')
+        self.assertTrue(self.ev(r, 'role', 'drv1', 'done', 1))
+        self.assertTrue([x for x in self.ev(r, 'aboard', 'drv1', 'bus', 'depot', 'off') if x[-1] == 1])
+
+    def test_a_duty_ends_the_off_duty_tasks(self):
+        # crew A's people at breakfast or at home when their duty starts at 06:00: no off-duty slot's task is current
+        # in the step after it (each ended, skipped, or long done)
+        r = self.morning
+        st = next(s for s in r['states'] if s['step'] > 600)
+        for pid in ('a_ccr', 'a_sup', 'a_elec'):
+            self.assertNotIn(st['people'][pid][1], ('breakfast', 'meal', 'free_time', 'gym_time', 'room_time',
+                                                    'sleep_night', 'rest_home'), pid)
+
+    def test_files_without_homes_are_unchanged(self):
+        # every staff run before the camp's keeps no vehicles in its snapshots
+        for run in self.V['staff']['runs'][:-7]:
+            self.assertEqual(run['states'][-1].get('vehicles', {}), {})
+
+
 class SessionRuns(unittest.TestCase):
     """Several trainees in one engine (docs/PLANT3D.md §17.13, milestone MP1) and the state digest (§17.14), by name on
     the vectors' session runs and on engines made here."""

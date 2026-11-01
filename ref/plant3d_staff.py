@@ -8,15 +8,15 @@ What milestone S1 builds (PLANT3D.md §17.8 "As built for S1"): the clock, roste
 walking network and its `next` table, place reservations, queues and pre-emption, reactions to alarms, trips, faults,
 values and permits, the task steps go, work, read, op, permit, lock, unlock, say, wait, call, meet, choose and ack,
 the trainee's person and inputs, jumps, fast-forward and the random streams. Zones, PPE, unsafe acts and `stop`
-come with S2; vehicles, `ride`, `sleep`, homes and off-duty routines with S4: their keys are refused until then
-(`unknown_key`), so no content can rely on behaviour the engines don't have.
+come with S2; vehicles, `ride`, `sleep`, homes and off-duty routines with S4 (PLANT3D.md §21).
 """
 import copy, heapq, json, math, re
 from ref.courses import need, keys, is_num, num, ident, lst
 
 STAFF_FORMAT = 'walkdown-plant-staff'
 MAX = {'people': 200, 'roles': 48, 'places': 2000, 'points': 500, 'ways': 6000, 'tasks': 400, 'task_steps': 64,
-       'reactions': 128, 'rosters': 16, 'routines': 64, 'queue': 32, 'zones': 64}
+       'reactions': 128, 'rosters': 16, 'routines': 64, 'queue': 32, 'zones': 64, 'vehicles': 16, 'runs': 32,
+       'drive_places': 64}
 PLACE_KINDS = ('desk', 'seat', 'bed', 'table', 'work', 'door', 'stop', 'locker', 'store', 'counter', 'point', 'muster',
                'depot')
 OPEN_KINDS = ('point', 'door', 'stop', 'muster', 'counter', 'depot', 'work')    # hold anyone (§16.2)
@@ -35,12 +35,16 @@ PERMIT_TO = {'request': 1, 'approve': 2, 'issue': 4, 'accept': 5, 'done': 6, 're
 STATE_NAMES = ('none', 'requested', 'approved', 'isolated', 'issued', 'accepted', 'done', 'returned', 'deisolated',
                'closed', 'cancelled')
 STEP_KINDS = ('go', 'work', 'read', 'op', 'permit', 'lock', 'unlock', 'say', 'wait', 'call', 'meet', 'choose', 'ack',
-              'handover', 'remove_locks', 'ppe', 'stop')
-LATER = {'ride': 'S4', 'sleep': 'S4'}
+              'handover', 'remove_locks', 'ppe', 'stop', 'ride', 'sleep')
+LATER = {}
+VEHICLE_KINDS = ('bus', 'pickup', 'suv')
+DRIVE_KINDS = ('stop', 'depot')     # the places drive ways join (§21.4)
+RIDE_WAIT_MIN = 30      # clock minutes a person waits at a stop before they walk instead (§16.8, §21.4)
 ACT_KINDS = ('ppe', 'permit', 'unsafe')     # an unsafe act's kinds, in the order checked (§16.7, §17.11)
 ZONE_EDGE = 0.01        # a place this near a zone's edge or height limits is bad_zone (§16.2)
 HHMM = re.compile(r'([01][0-9]|2[0-3]):([0-5][0-9])')
-OFFSET = re.compile(r'(start|end)([+-])([0-9]|1[0-2]):([0-5][0-9])')
+OFFSET = re.compile(r'(start|end|prev|next)([+-])([0-9]|1[0-2]):([0-5][0-9])')
+NEXT_OFF = re.compile(r'next-([0-9]|1[0-2]):([0-5][0-9])')     # a sleep's `until` from the next duty (§21.3)
 DUR = re.compile(r'([0-9]|1[0-9]|2[0-4]):([0-5][0-9])')
 DAY = 864000            # tenths of a clock second in a day
 MINUTE = 600
@@ -203,9 +207,9 @@ class Staff:
     def __init__(self, d, b, m):
         self.d, self.b, self.m = d, b, m
         w = 'staff.json'
-        need('vehicles' not in d, 'unknown_key', f'{w}.vehicles: not before milestone S4 (PLANT3D.md §17.8)')
         keys(d, ('format', 'version', 'origin', 'gate', 'speeds', 'places', 'ways', 'next', 'roles', 'rosters',
-                 'people', 'routines', 'tasks', 'messages'), ('reactions', 'zones', 'put_right', 'lifts'), w)
+                 'people', 'routines', 'tasks', 'messages'), ('reactions', 'zones', 'put_right', 'lifts', 'vehicles'),
+             w)
         need(d['format'] == STAFF_FORMAT, 'bad_format', f'{w}: format must be "{STAFF_FORMAT}"')
         need(d['version'] == 1 and not isinstance(d['version'], bool), 'bad_version', f'{w}: version must be 1')
         clock = b.plant.get('clock')
@@ -232,6 +236,10 @@ class Staff:
         self.check_roles(d['roles'])
         self.check_rosters(d['rosters'])
         self.check_people(d['people'])
+        self.check_vehicles(d.get('vehicles', []))
+        need(self.homes or not any('off' in r for r in self.role_list), 'bad_ref',
+             f'{w}.roles: an off-duty routine (`off`) only in a file with homes (§21.2)')
+        need(self.homes or not any(self.off_site), 'bad_ref', f'{w}.places: off_site only in a file with homes (§21.1)')
         self.tasks = {}
         self.task_ix = {}
         tl = lst(d['tasks'], f'{w}.tasks')
@@ -281,8 +289,9 @@ class Staff:
         self.work_at = {}           # code -> its work place (the first)
         for i, p in enumerate(pl):
             wp = f'{w}[{i}]'
-            need(not isinstance(p, dict) or 'depot' not in p, 'unknown_key', f'{wp}.depot: not before milestone S4')
-            keys(p, ('id', 'at', 'kind'), ('room', 'yaw', 'pose', 'kks', 'zones'), wp)
+            keys(p, ('id', 'at', 'kind'), ('room', 'yaw', 'pose', 'kks', 'zones', 'off_site', 'hidden'), wp)
+            for k in ('off_site', 'hidden'):        # §21.1: outside the fence; drawn by nobody (the app's)
+                need(p.get(k, True) is True, 'bad_value', f'{wp}.{k}: true')
             ident(p['id'], f'{wp}.id')
             need(p['id'] not in self.pix, 'dup_id', f'{wp}: place {p["id"]} twice')
             lst(p['at'], f'{wp}.at', 3, 3)
@@ -308,6 +317,10 @@ class Staff:
         need(len(self.points) <= MAX['points'], 'limit', f'{w}: over {MAX["points"]} points')
         need(self.points, 'bad_ref', f'{w}: the walking network has no point')
         self.door = {r: next((i for i in ix if self.places[i]['kind'] == 'door'), None) for r, ix in self.rooms.items()}
+        self.off_site = [p.get('off_site', False) for p in self.places]
+        # the drive network's places (stops and depots, §21.4), numbered in place order
+        self.drive_no = {i: k for k, i in enumerate(i for i, p in enumerate(self.places) if p['kind'] in DRIVE_KINDS)}
+        self.drive_places = sorted(self.drive_no, key=self.drive_no.get)
 
     def check_zones(self, zones):
         """Zones (§16.2): plan outlines with a height range and the PPE needed there; each place's `zones` must list,
@@ -395,6 +408,9 @@ class Staff:
         self.stub = {}                              # non-point place -> (its point, steps)
         self.lift_way = {}                          # (a, b) -> the staff lift index of a lift way (§20.4)
         walking = [[] for _ in self.points]         # adj without the lift ways: the stairs routes' network
+        need(len(self.drive_places) <= MAX['drive_places'], 'limit', f'{w}: over {MAX["drive_places"]} stops and '
+                                                                     f'depots')
+        self.drive_adj = [[] for _ in self.drive_places]    # drive number -> [(drive number, steps)] (§21.4)
         for i, x in enumerate(ways):
             wi = f'{w}[{i}]'
             lst(x, wi, 4, 4)
@@ -402,9 +418,13 @@ class Staff:
             need(a != b, 'bad_ref', f'{wi}: a way joins two places')
             metres = num(x[2], f'{wi}[2]', 0, 1e5)
             need(metres > 0, 'bad_number', f'{wi}[2]: metres > 0')
-            need(x[3] != 'drive', 'unknown_key', f'{wi}[3]: drive ways come with vehicles (milestone S4)')
-            need(x[3] in WALK_MODES or x[3] == 'lift' and self.lifts, 'bad_value', f'{wi}[3]: one of {WALK_MODES}'
-                 + (", or 'lift'" if self.lifts else ''))
+            need(x[3] in WALK_MODES or x[3] == 'lift' and self.lifts or x[3] == 'drive', 'bad_value',
+                 f'{wi}[3]: one of {WALK_MODES}, or drive' + (", or 'lift'" if self.lifts else ''))
+            if x[3] == 'drive':     # a vehicles' way between stops and depots (§21.4)
+                need('drive' in self.speeds, 'missing_key', 'staff.json.speeds.drive: a plant with drive ways has a '
+                                                            'driving speed (§16.8)')
+                need(self.places[a]['kind'] in DRIVE_KINDS and self.places[b]['kind'] in DRIVE_KINDS, 'bad_way',
+                     f'{wi}: a drive way joins two stop or depot places')
             if x[3] == 'lift':
                 need('lift' in self.speeds, 'missing_key', 'staff.json.speeds.lift: a plant with lift ways has a '
                                                            'nominal lift speed (§20.4)')
@@ -418,6 +438,10 @@ class Staff:
             need(key not in self.ways, 'dup_id', f'{wi}: a second way between {x[0]} and {x[1]}')
             st = way_steps(metres, self.speeds[x[3]])
             self.ways[key] = st
+            if x[3] == 'drive':
+                self.drive_adj[self.drive_no[a]].append((self.drive_no[b], st))
+                self.drive_adj[self.drive_no[b]].append((self.drive_no[a], st))
+                continue
             ia, ib = a in self.point_no, b in self.point_no
             if x[3] == 'lift':
                 self.lift_way[key] = self.landing[a][0]
@@ -444,6 +468,8 @@ class Staff:
                 need(r is not None, 'unreachable', f'staff.json: no stairs beside the lift way {self.places[u]["id"]}–'
                                                    f'{self.places[v]["id"]} (a route over walking ways alone, §20.4)')
                 self.stairs[(u, v)] = [self.points[k] for k in r]
+        # a vehicle's routes (§21.4): the quickest over drive ways, §16.2's tie rule, searched once here
+        self.drive_next = next_table(len(self.drive_places), self.drive_adj)
 
     def check_next(self, nx):
         w = 'staff.json.next'
@@ -475,9 +501,8 @@ class Staff:
         self.roles, self.role_ix = {}, {}
         for i, r in enumerate(roles):
             wr = f'{w}[{i}]'
-            need(not isinstance(r, dict) or 'off' not in r, 'unknown_key', f'{wr}.off: off-duty routines come with '
-                                                                           f'milestone S4')
-            keys(r, ('id', 'title', 'discipline', 'authority', 'routine', 'play'), ('look', 'ppe', 'requests'), wr)
+            keys(r, ('id', 'title', 'discipline', 'authority', 'routine', 'play'), ('look', 'ppe', 'requests', 'off'),
+                 wr)
             ident(r['id'], f'{wr}.id')
             need(r['id'] not in self.roles, 'dup_id', f'{wr}: role {r["id"]} twice')
             need(isinstance(r['title'], str) and 1 <= len(r['title']) <= 60, 'bad_type', f'{wr}.title')
@@ -490,6 +515,8 @@ class Staff:
             if 'look' in r:
                 ident(r['look'], f'{wr}.look')
             ident(r['routine'], f'{wr}.routine')
+            if 'off' in r:
+                ident(r['off'], f'{wr}.off')
             need(isinstance(r['play'], bool), 'bad_type', f'{wr}.play: true or false')
             for x in lst(r.get('requests', []), f'{wr}.requests', 0, 32):
                 ident(x, f'{wr}.requests')
@@ -540,9 +567,7 @@ class Staff:
         self.people, self.person_ix = people, {}
         for i, p in enumerate(people):
             wp = f'{w}[{i}]'
-            need(not isinstance(p, dict) or 'home' not in p, 'unknown_key', f'{wp}.home: homes come with the camp '
-                                                                           f'(milestone S4)')
-            keys(p, ('id', 'role', 'roster', 'call'), ('crew', 'routine'), wp)
+            keys(p, ('id', 'role', 'roster', 'call'), ('crew', 'routine', 'home'), wp)
             ident(p['id'], f'{wp}.id')
             need(p['id'] not in self.person_ix and p['id'] not in self.roles, 'dup_id',
                  f'{wp}: {p["id"]} is already a person or a role')
@@ -555,6 +580,90 @@ class Staff:
                 need('crew' not in p, 'unknown_key', f'{wp}.crew: only in a rotation')
             need(isinstance(p['call'], str) and 1 <= len(p['call']) <= 32, 'bad_type', f'{wp}.call: 1–32 characters')
             self.person_ix[p['id']] = i
+        # homes (§21.1): a room with a bed, one person's at most; every person has one or none does
+        self.home = []
+        for i, p in enumerate(people):
+            wp = f'{w}[{i}]'
+            need(('home' in p) == ('home' in people[0]), 'bad_ref', f'{wp}.home: every person has a home or none does '
+                                                                   f'(§21.1)')
+            if 'home' not in p:
+                self.home.append(None)
+                continue
+            beds = [j for j in self.rooms.get(p['home'], []) if self.places[j]['kind'] == 'bed']
+            need(isinstance(p['home'], str) and beds, 'bad_ref', f'{wp}.home: no room {p["home"]!r} with a bed')
+            need(beds[0] not in self.home, 'bad_ref', f'{wp}.home: room {p["home"]} is another person\'s home')
+            self.home.append(beds[0])
+            need(self.off_site[beds[0]], 'bad_ref', f'{wp}.home: its bed is not off site (§21.1: off duty, people go '
+                                                    f'home outside the fence)')
+            need('off' in self.roles[p['role']], 'bad_ref', f'{wp}: role {p["role"]} has no off-duty routine (`off`), '
+                                                           f'and a person with a home needs one (§21.2)')
+        self.homes = bool(people) and 'home' in people[0]
+
+    def check_vehicles(self, vehicles):
+        """staff.json's vehicles (§16.8, §21.4): their driver's role, home depot and runs; each run's places reached
+        from home over drive ways."""
+        w = 'staff.json.vehicles'
+        lst(vehicles, w, 0, MAX['vehicles'])
+        need(self.homes or not vehicles, 'bad_ref', f'{w}: only in a file with homes (§21.4)')
+        self.vehicles, self.vehicle_ix = [], {}
+        lift_ids = {x for x, _ in self.lifts}
+        for i, v in enumerate(vehicles):
+            wv = f'{w}[{i}]'
+            keys(v, ('id', 'kind', 'seats', 'driver', 'home', 'runs'), (), wv)
+            ident(v['id'], f'{wv}.id')
+            need(v['id'] not in self.vehicle_ix and v['id'] not in lift_ids, 'dup_id',
+                 f'{wv}: {v["id"]} is already a vehicle or a lift')
+            need(v['kind'] in VEHICLE_KINDS, 'bad_value', f'{wv}.kind: one of {VEHICLE_KINDS}')
+            need(isinstance(v['seats'], int) and not isinstance(v['seats'], bool) and 1 <= v['seats'] <= 60,
+                 'bad_number', f'{wv}.seats: 1–60')
+            need(v['driver'] in self.roles, 'bad_ref', f'{wv}.driver: no role {v["driver"]!r}')
+            need('drive' in self.roles[v['driver']]['authority'], 'authority', f'{wv}.driver: role {v["driver"]} '
+                                                                              f'lacks drive')
+            home = self.place_ref(v['home'], f'{wv}.home')
+            need(self.places[home]['kind'] == 'depot', 'bad_value', f'{wv}.home: a depot place')
+            runs = []
+            for k, r in enumerate(lst(v['runs'], f'{wv}.runs', 1, MAX['runs'])):
+                wr = f'{wv}.runs[{k}]'
+                keys(r, ('at', 'stops', 'dwell'), ('days',), wr)
+                at = hhmm(r['at'], f'{wr}.at')
+                stops = []
+                for j, x in enumerate(lst(r['stops'], f'{wr}.stops', 2, 16)):
+                    q = self.place_ref(x, f'{wr}.stops[{j}]')
+                    need(self.places[q]['kind'] in DRIVE_KINDS, 'bad_value', f'{wr}.stops[{j}]: a stop or depot place')
+                    need(not stops or stops[-1] != q, 'bad_ref', f'{wr}.stops[{j}]: the same place twice in a row')
+                    hn, qn = self.drive_no[home], self.drive_no[q]
+                    need(hn == qn or self.drive_next[hn][qn] >= 0, 'unreachable',
+                         f'{wr}.stops[{j}]: {x} is not reached from {v["home"]} over drive ways')
+                    stops.append(q)
+                need(isinstance(r['dwell'], int) and not isinstance(r['dwell'], bool) and 0 <= r['dwell'] <= 30,
+                     'bad_number', f'{wr}.dwell: 0–30 clock minutes')
+                days = None
+                if 'days' in r:
+                    days = lst(r['days'], f'{wr}.days', 1, 7)
+                    for x in days:
+                        need(x in WEEK, 'bad_value', f'{wr}.days: of {WEEK}')
+                    need(len(set(days)) == len(days), 'dup_id', f'{wr}.days')
+                # its leaving time: `at` less the drive from home to its first stop, in clock minutes rounded up
+                lead = -(-self.drive_steps(home, stops[0]) // self.tpm)
+                runs.append({'at': at, 'stops': stops, 'dwell': r['dwell'], 'days': days, 'lead': lead})
+            self.vehicle_ix[v['id']] = i
+            self.vehicles.append({'id': v['id'], 'kind': v['kind'], 'seats': v['seats'], 'driver': v['driver'],
+                                  'home': home, 'runs': runs})
+
+    def drive_hop(self, a, b):
+        """The next place on a vehicle's route from a to b (§21.4), or None at b."""
+        if a == b:
+            return None
+        return self.drive_places[self.drive_next[self.drive_no[a]][self.drive_no[b]]]
+
+    def drive_steps(self, a, b):
+        """The steps of a vehicle's route from a to b."""
+        t = 0
+        while a != b:
+            c = self.drive_hop(a, b)
+            t += self.ways[(min(a, c), max(a, c))]
+            a = c
+        return t
 
     # --- routines and tasks
     def at_ref(self, x, where, until=False):
@@ -616,6 +725,25 @@ class Staff:
             if 'routine' in p:
                 need(p['routine'] in self.routines, 'bad_ref', f'staff.json: person {p["id"]}.routine: no routine '
                                                               f'{p["routine"]!r}')
+        # off-duty routines (§21.2): slots from the duty before (prev), the duty after (next) or a clock time, none
+        # repeated; never a duty routine, whose slots are from the duty's start or end
+        duty = {r['routine'] for r in self.roles.values()} | {p['routine'] for p in self.people if 'routine' in p}
+        self.off_routines = set()
+        for rid, r in self.roles.items():
+            if 'off' in r:
+                need(r['off'] in self.routines, 'bad_ref', f'staff.json: role {rid}.off: no routine {r["off"]!r}')
+                need(r['off'] not in duty, 'bad_ref', f'staff.json: role {rid}.off: {r["off"]} is a duty routine')
+                self.off_routines.add(r['off'])
+        for rid, r in self.routines.items():
+            for k, (at, every, until, _, _) in enumerate(r['slots']):
+                ws = f'staff.json.routines.{rid}.slots[{k}]'
+                if rid in self.off_routines:
+                    need(every is None, 'bad_ref', f'{ws}: an off-duty slot is not repeated (§21.2)')
+                    need(at[0] in ('prev', 'next', 'clock'), 'bad_clock', f'{ws}.at: prev±H:MM, next±H:MM or HH:MM in '
+                                                                           f'an off-duty routine')
+                else:
+                    need(at[0] in ('start', 'end', 'clock') and (until is None or until[0] in ('start', 'end', 'clock')),
+                         'bad_clock', f'{ws}: start±H:MM, end±H:MM or HH:MM in a duty routine')
 
     def routine_of(self, i):
         """A person's routine: their own `routine` (§17.8), else their role's."""
@@ -764,6 +892,23 @@ class Staff:
             elif k == 'handover':
                 keys(s, ('handover',), (), ws)
                 need(x in ('take', 'give'), 'bad_value', f'{ws}.handover: "take" or "give" (§17.9)')
+            elif k == 'ride':          # §21.4: from a stop to a stop, by a vehicle whose run goes there
+                keys(s, ('ride',), (), ws)
+                keys(x, ('from', 'to'), (), f'{ws}.ride')
+                a, b = self.place_ref(x['from'], f'{ws}.ride.from'), self.place_ref(x['to'], f'{ws}.ride.to')
+                need(self.places[a]['kind'] == 'stop' and self.places[b]['kind'] == 'stop' and a != b, 'bad_value',
+                     f'{ws}.ride: from a stop to another stop')
+                need(any(a in r['stops'] and b in r['stops'][r['stops'].index(a) + 1:]
+                         for v in self.vehicles for r in v['runs']), 'bad_ref',
+                     f'{ws}.ride: no vehicle\'s run goes from {x["from"]} to {x["to"]}')
+            elif k == 'sleep':         # §21.3: at home until a clock time, or before the next duty
+                keys(s, ('sleep',), (), ws)
+                keys(x, ('until',), (), f'{ws}.sleep')
+                mm = NEXT_OFF.fullmatch(x['until']) if isinstance(x['until'], str) else None
+                need(isinstance(x['until'], str) and (HHMM.fullmatch(x['until']) or mm and
+                                                      int(mm.group(1)) * 60 + int(mm.group(2)) <= 720),
+                     'bad_clock', f'{ws}.sleep.until: HH:MM or next-H:MM (at most 12:00)')
+                need(self.homes, 'bad_ref', f'{ws}.sleep: only in a file with homes (§21.3)')
             elif k == 'remove_locks':
                 keys(s, ('remove_locks',), (), ws)
                 need(isinstance(x, str) and x in self.messages, 'bad_ref', f'{ws}.remove_locks: no message {x!r} '
@@ -797,7 +942,9 @@ class Staff:
     def go_target(self, x, where):
         """A go's target: a place index, or None for {"kks": "$"} and {"kind", "room"}."""
         if isinstance(x, str):
-            need(x != 'home', 'unknown_key', f'{where}.go: "home" comes with the camp (milestone S4)')
+            if x == 'home':         # the person's home (§21.3)
+                need(self.homes, 'bad_ref', f'{where}.go: "home" only in a file with homes')
+                return None
             return self.place_ref(x, f'{where}.go')
         need(isinstance(x, dict), 'bad_type', f'{where}.go')
         if 'kks' in x:
@@ -913,10 +1060,10 @@ class Staff:
         runs = {t: set() for t in self.tasks}
         works = {t: set() for t in self.tasks}       # the works "$" can be in a task
         for rid, r in self.roles.items():
-            ro = self.routines[r['routine']]
-            for s in ro['slots']:
-                runs[s[3]].add(rid)
-            runs[ro['idle']].add(rid)
+            for ro in [self.routines[r['routine']]] + ([self.routines[r['off']]] if 'off' in r else []):
+                for s in ro['slots']:
+                    runs[s[3]].add(rid)
+                runs[ro['idle']].add(rid)
         for i, p in enumerate(self.people):
             ro = self.routine_of(i)
             for s in ro['slots']:
@@ -1050,8 +1197,11 @@ def check_scenario_staff(s, b, rel):
     need(isinstance(x['seed'], int) and not isinstance(x['seed'], bool) and 0 <= x['seed'] < 2 ** 32, 'bad_number',
          f'{rel}.staff.seed: a whole number from 0 to 2^32 − 1')
     absent = lst(x.get('absent', []), f'{rel}.staff.absent')
+    drivers = {v['driver'] for v in st.vehicles}
     for a in absent:
         need(a in st.person_ix, 'bad_ref', f'{rel}.staff.absent: no person {a!r}')
+        need(st.people[st.person_ix[a]]['role'] not in drivers, 'bad_ref', f'{rel}.staff.absent: {a} drives a '
+                                                                         f'vehicle (§17.4)')
     need(len(set(absent)) == len(absent), 'dup_id', f'{rel}.staff.absent')
     t = x.get('trainee')
     if t is not None:
@@ -1066,7 +1216,7 @@ def check_scenario_staff(s, b, rel):
 class Person:
     __slots__ = ('i', 'id', 'role', 'auth', 'rng', 'on', 'duty', 'duties', 'planned', 'slots', 'pos', 'leg',
                  'cur', 'queue', 'res', 'occ', 'pending', 'result', 'post', 'held', 'worn', 'acts', 'zin',
-                 'ride', 'stairs', 'lin')
+                 'ride', 'stairs', 'lin', 'home', 'aboard', 'spans', 'offday')
 
 
 
@@ -1102,6 +1252,10 @@ class StaffRun:
             # a ride (§20.4): [staff lift index, a, b, 0 waiting / 1 aboard, the step the wait began, the destination
             # of the walk]; the stairs walked instead: [destination, place, …, b]; the step of the last lift input
             q.ride, q.stairs, q.lin = None, None, -3
+            q.home = st.home[i]         # their home's bed (§21.1), or None
+            q.aboard = None             # the vehicle they are aboard (§21.4), or None
+            q.spans = []                # their planned duties' spans: (span start, span end, start, end) (§21.2)
+            q.offday = None             # the last day whose off-duty slots are made
             q.post = (p['role'], p.get('routine', st.roles[p['role']]['routine']))     # role, routine (§17.9)
             self.people.append(q)
         self.order = 0                  # instances made, for the queue's order
@@ -1116,6 +1270,7 @@ class StaffRun:
         self.left = set()               # people off site with a lock at the last phase 2 (§17.9)
         self.pending = []               # offers for a permit nobody was on duty to take (§17.10)
         self.made = set()               # (reaction, act) of `seen` reactions made (once per act, §16.7)
+        self.veh = [self.vehicle_home(v) for v in st.vehicles]   # the vehicles' state (§21.4)
 
     def copy(self, e):
         """An independent copy for a clone of the engine (the content is shared)."""
@@ -1206,16 +1361,49 @@ class StaffRun:
         return out
 
     def plan(self, p, upto):
-        """Plans the duties of days up to `upto` (and their slots)."""
+        """Plans the duties of days up to `upto` (and their slots); with homes, the off-duty slots of the days before
+        `upto` whose neighbouring duties are known (§21.2)."""
         d0 = p.planned + 1
         for d in range(d0, upto + 1):
             du = self.duty_on_day(p, d)
             if du is not None:
                 p.duties.append(du)
-                for t, k, n, task in self.slot_times(p, du):
+                ts = self.slot_times(p, du)
+                for t, k, n, task in ts:
                     p.slots.append((t, du[0], k, n, task, du))
+                p.spans.append((min([du[0]] + [x[0] for x in ts]), max([du[1]] + [x[0] for x in ts]), du[0], du[1]))
+        if p.offday is not None:
+            for d in range(p.offday + 1, upto):
+                self.off_slots(p, d)
+            p.offday = max(p.offday, upto - 1)
+            p.spans = [x for x in p.spans if x[1] >= (upto - 4) * DAY]     # (older ones reach no later day)
         p.slots.sort(key=lambda x: x[:4])
         p.planned = upto
+
+    def off_slots(self, p, d):
+        """The off-duty slots of day d (§21.2): each candidate time on d within no duty's span."""
+        st = self.st
+        ro = st.routines[st.roles[p.role]['off']]
+        lo, hi = d * DAY, (d + 1) * DAY
+        wd = st.week[(d - 1) % 7]
+        for k, (at, _, _, task, days) in enumerate(ro['slots']):
+            if days is not None and wd not in days:
+                continue
+            if at[0] == 'clock':
+                ts = [lo + at[1] * MINUTE]
+            elif at[0] == 'prev':
+                ts = [x[3] + at[1] * MINUTE for x in p.spans]
+            else:
+                ts = [x[2] + at[1] * MINUTE for x in p.spans]
+            for t in ts:
+                if lo <= t < hi and not any(x[0] <= t <= x[1] for x in p.spans):
+                    p.slots.append((t, lo, k, 0, task, None))
+
+    @staticmethod
+    def vehicle_home(v):
+        """A vehicle standing at home, on no run (§21.4)."""
+        return {'at': v['home'], 'leg': None, 'run': None, 'dep': 0, 'k': 0, 'to': v['home'], 'until': 0,
+                'until_c': 0, 'driver': None, 'riders': [], 'floor': 0, 'done': None}
 
     def place_all(self, c, old=None):
         """Placement (§17.2): at step 0 and after a jump, at clock c."""
@@ -1230,8 +1418,14 @@ class StaffRun:
         self.given = {}
         self.pending = []
         self.made = set()
+        self.veh = [self.vehicle_home(v) for v in st.vehicles]    # every vehicle home, nobody aboard (§21.4)
+        for V in self.veh:
+            V['floor'] = c              # (a run whose leaving time is before the placement is not made)
         for p in self.people:
             p.duties, p.slots, p.planned = [], [], day - 3
+            p.spans, p.aboard = [], None
+            if p.home is not None:      # planned from a day earlier: their off slots of days C − 1 and C (§21.2)
+                p.planned, p.offday = day - 4, day - 2
             p.cur, p.queue, p.leg, p.res, p.occ, p.pending, p.result = None, [], None, None, None, None, None
             p.held = []
             p.pos = None
@@ -1250,36 +1444,57 @@ class StaffRun:
             for s in p.slots:
                 if s[0] <= c and p.duty is not None and s[5] == p.duty and s[0] >= p.duty[0]:
                     pick = s
+            if p.duty is None and p.home is not None:
+                # off duty with a home (§21.2): in a duty's span, its latest slot at or before C; else the latest off
+                # slot at or before C after the last span's end
+                span = next((x for x in p.spans if x[0] <= c <= x[1]), None)
+                if span is not None:    # (after the duty's end, only its slots after the end: §21.2)
+                    for s in p.slots:
+                        if s[0] <= c and s[5] is not None and s[5][0] == span[2] and (c < span[3] or s[0] >= span[3]):
+                            pick = s
+                else:
+                    last = max([x[1] for x in p.spans if x[1] < c], default=-1)
+                    for s in p.slots:
+                        if last < s[0] <= c and s[5] is None:
+                            pick = s
             if old is not None:
                 for s in p.slots:
                     if old < s[0] < c:
                         self.e.ev('task', p.id, s[4], 'skipped')
             p.slots = [s for s in p.slots if s[0] > c]
-            if not p.on:
+            if not p.on and p.home is None:
                 continue
             if pick is not None:
                 task = pick[4]
             else:
                 task = None
-            place = self.first_place(task) if task is not None else None
-            idle = st.routine_of(p.i)['idle']
+            place = self.first_place(task, p) if task is not None else None
+            idle = st.routine_of(p.i)['idle'] if p.on else st.routines[st.roles[p.role]['off']]['idle']
             if place is None:
-                place = self.first_place(idle)
+                place = self.first_place(idle, p)
             if place is None:
-                place = st.origin
+                place = st.origin if p.on else p.home
             p.pos = place
             if st.places[place]['kind'] not in OPEN_KINDS and place not in self.holder:
                 self.holder[place] = p.i
                 p.occ = place
             if task is not None:
-                self.give(p, task, st.tasks[task].get('priority', 3), None, None, None, None, count=False)
+                self.give(p, task, st.tasks[task].get('priority', 3), None, None, None, None, count=False,
+                          off=p.home is not None and pick[5] is None)
         self.t_from = {}
 
-    def first_place(self, tid):
+    def first_place(self, tid, p):
+        """A task's first place (§17.8): its first go's or meeting's (a sleep's: home; a ride's: its stop, §21)."""
         st = self.st
         for s in st.tasks[tid]['steps']:
+            if 'sleep' in s:
+                return p.home
+            if 'ride' in s:
+                return st.pix[s['ride']['from']]
             if 'go' in s:
                 x = s['go']
+                if x == 'home':
+                    return p.home
                 if isinstance(x, str):
                     return st.pix[x]
                 if 'kks' in x:
@@ -1303,7 +1518,7 @@ class StaffRun:
         return None
 
     # --- giving tasks (§17.3)
-    def give(self, p, tid, prio, made_by, work, code, alarm, count=True, owner=None, act=None, orig=None):
+    def give(self, p, tid, prio, made_by, work, code, alarm, count=True, owner=None, act=None, orig=None, off=False):
         """Queues an instance of task tid for person p; returns False (event unassigned) when the queue is full."""
         if len(p.queue) + (1 if p.cur is not None and not p.cur['idle'] else 0) >= MAX['queue']:
             self.e.ev('task', None, tid, 'unassigned')
@@ -1314,6 +1529,8 @@ class StaffRun:
         inst = {'task': tid, 'prio': prio, 'made': self.e.step_no, 'order': self.order, 'step': 0, 'st': {},
                 'work': work, 'code': code, 'alarm': alarm, 'src': made_by, 'idle': False, 'started': False,
                 'int': t.get('interruptible', True), 'owner': owner, 'act': act, 'orig': orig}
+        if off:
+            inst['offr'] = True         # an off-duty slot's: ended when a duty starts (§21.2)
         self.order += 1
         p.queue.append(inst)
         p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
@@ -1347,7 +1564,7 @@ class StaffRun:
                     return self.give(p, tid, prio, made_by, work, code, alarm, owner=owner, act=act, orig=orig)
         for p in cands:
             c = p.cur
-            if c is None or c['idle'] or (c['prio'] > prio and c['int']):
+            if p.aboard is None and (c is None or c['idle'] or (c['prio'] > prio and c['int'])):
                 return self.give(p, tid, prio, made_by, work, code, alarm, owner=owner, act=act, orig=orig)
         return self.give(cands[0], tid, prio, made_by, work, code, alarm, owner=owner, act=act, orig=orig)
 
@@ -1429,6 +1646,29 @@ class StaffRun:
             return
         self.t_in.append((slot, item))
 
+    def t_get_on(self, tp, vid):
+        """A player's get_on (§21.4): the first reason refusing it, else they are aboard."""
+        st = self.st
+        e = self.e
+        vi = st.vehicle_ix.get(vid) if isinstance(vid, str) else None
+        s = st.tasks[tp.cur['task']]['steps'][tp.cur['step']] if tp.cur is not None else {}
+        why = None
+        if vi is None:
+            why = 'unknown'
+        elif tp.aboard is not None or any(same(tp.id, r) for x in e.riders.values() for r in x):
+            why = 'aboard'                  # (on a vehicle or in a lift's cab)
+        elif 'ride' not in s:
+            why = 'no_ride'
+        elif tp.pos != st.pix[s['ride']['from']] or not self.stands_for(vi, tp.pos, st.pix[s['ride']['to']]):
+            why = 'not_at_stop'
+        elif len(self.veh[vi]['riders']) >= st.vehicles[vi]['seats']:
+            why = 'full'
+        if why is not None:
+            e.ev('aboard', tp.id, vid, st.places[tp.pos]['id'] if tp.pos is not None else None, 'refused', [why],
+                 *self.tail(tp))
+            return
+        self.get_on(tp, vi, st.pix[s['ride']['to']])
+
     def claim(self, slot, pi):
         """A person becomes slot's (§17.13): an NPC's current task (not the idle task) paused as a pre-emption pauses
         it, to be taken up again at their turn; one on a way is between places from now on (the place they left kept
@@ -1470,7 +1710,7 @@ class StaffRun:
                 self.queue_alight(x['id'], p.id)
         if p.cur is not None and not p.cur['idle']:
             self.pause(p)
-        if p.pos is None and self.t_from.get(slot) is not None:
+        if p.pos is None and p.aboard is None and self.t_from.get(slot) is not None:
             p.pos = self.t_from[slot]
         self.t_from.pop(slot, None)
         self.acks.pop(slot, None)
@@ -1523,9 +1763,15 @@ class StaffRun:
             if ti is None:
                 if item[0] == 'stop':       # free mode: no person to stop work with
                     e.ev('stop', None, item[1], None, None, 'refused', ['authority'])
+                elif item[0] == 'get_on':   # (nobody to get on, §21.4)
+                    e.ev('aboard', None, item[1], None, 'refused', ['authority'], *((slot,) if self.session else ()))
                 continue
             tp = self.people[ti]
-            if item[0] == 'arrive' and isinstance(item[1], str) and item[1] in st.pix:
+            if item[0] in ('arrive', 'leave') and tp.aboard is not None:
+                continue                    # (ignored aboard a vehicle, §21.4)
+            if item[0] == 'get_on':
+                self.t_get_on(tp, item[1])
+            elif item[0] == 'arrive' and isinstance(item[1], str) and item[1] in st.pix:
                 tp.pos = st.pix[item[1]]
                 if tp.occ != tp.pos:
                     self.leave_place(tp)        # a place held is let go when the trainee is elsewhere
@@ -1567,6 +1813,13 @@ class StaffRun:
                 if p.duties and p.duties[0][0] <= c:
                     p.on, p.duty = True, p.duties.pop(0)
                     e.ev('duty', p.id, 'on')
+                    if p.home is not None:      # the off-duty slots' tasks end: the duty comes first (§21.2)
+                        if p.cur is not None and p.cur.get('offr'):
+                            self.finish(p, 'skipped')
+                        for q in [q for q in p.queue if q.get('offr')]:
+                            e.ev('task', p.id, q['task'], 'skipped')
+                            self.release(q)
+                        p.queue = [q for q in p.queue if not q.get('offr')]
                     held, p.held = p.held, []   # the jobs held overnight come back (§17.10)
                     for h in held:
                         p.queue.append(h)
@@ -1577,9 +1830,14 @@ class StaffRun:
                 continue
             while p.slots and p.slots[0][0] <= c:
                 s = p.slots.pop(0)
-                self.give(p, s[4], st.tasks[s[4]].get('priority', 3), None, None, None, None)
+                self.give(p, s[4], st.tasks[s[4]].get('priority', 3), None, None, None, None,
+                          off=p.home is not None and s[5] is None)
         # 2. reactions
         self.react(n)
+        # 3. vehicles (§21.4), not in a jump's step (as phase 4)
+        if not jump_step:
+            for vi in range(len(self.veh)):
+                self.vehicle_turn(vi)
         # 4. people
         if jump_step:
             for slot in sorted(self.players):   # their actions of this step are kept all the same (§17.8)
@@ -1608,6 +1866,8 @@ class StaffRun:
         st = self.st
         if self.slot_of(p.i) is not None:
             return sorted(p.zin)
+        if p.aboard is not None:        # aboard a vehicle: in no zone (§21.4)
+            return []
         if p.leg is not None:
             b = st.place_zones[p.leg[1]]
             return [k for k in st.place_zones[p.leg[0]] if k in b]
@@ -1779,8 +2039,8 @@ class StaffRun:
                 p.held = [q for q in p.held if not job(q)]
         kept = self.kept_works() if has_left and e.locks else None     # (the same for everyone in this loop)
         for p in self.people if has_left else ():     # (looked at only when a reaction is on it, as the app does)
-            if self.slot_of(p.i) is None and p.id not in self.absent and not p.on and p.pos is None \
-                    and p.leg is None and self.left_locks(p, kept):
+            if self.slot_of(p.i) is None and p.id not in self.absent and not p.on and self.off_site_now(p) \
+                    and self.left_locks(p, kept):
                 now.add(p.i)
                 if p.i not in self.left:
                     gone.append(p)
@@ -1861,9 +2121,9 @@ class StaffRun:
                 p.queue.remove(q)       # queued jobs off duty: held as they are, no walk to them first
                 p.held.append(q)
                 e.ev('task', p.id, q['task'], 'held')
-        if cur is not None and cur['idle'] and (p.queue or not p.on):
-            e.ev('task', p.id, cur['task'], 'done')
-            p.cur = cur = None
+        if cur is not None and cur['idle'] and (p.queue or (p.on if cur.get('off') else not p.on)):
+            e.ev('task', p.id, cur['task'], 'done')     # (a duty's idle task at the duty's end, an off one at its
+            p.cur = cur = None                           # start, §21.2)
         if cur is not None and p.queue and cur['int'] and p.queue[0]['prio'] < cur['prio'] \
                 and not cur['st'].get('busy'):
             self.pause(p)
@@ -1873,20 +2133,23 @@ class StaffRun:
             if not cur['started']:
                 cur['started'] = True
                 e.ev('task', p.id, cur['task'], 'start')
-            if p.pos is None and npc:
+            if p.pos is None and npc and p.home is None:
                 p.pos = self.st.gate
                 e.ev('move', p.id, None, self.st.places[p.pos]['id'], e.step_no)
-        if cur is None and p.on:
-            idle = self.st.routine_of(p.i)['idle']
+        if cur is None and (p.on or p.home is not None):
+            # the idle task: the duty's on duty, the off-duty routine's off duty with a home (§21.2)
+            idle = self.st.routine_of(p.i)['idle'] if p.on else self.st.routines[self.st.roles[p.role]['off']]['idle']
             cur = p.cur = {'task': idle, 'prio': 6, 'made': e.step_no, 'order': self.order, 'step': 0, 'st': {},
                            'work': None, 'code': None, 'alarm': None, 'src': None, 'idle': True, 'started': True,
                            'int': True, 'owner': None, 'act': None}
+            if not p.on:
+                cur['off'] = True
             self.order += 1
             e.ev('task', p.id, idle, 'start')
-            if p.pos is None and npc:
+            if p.pos is None and npc and p.home is None:
                 p.pos = self.st.gate
                 e.ev('move', p.id, None, self.st.places[p.pos]['id'], e.step_no)
-        if cur is None and not p.on and p.pos is not None and npc:
+        if cur is None and not p.on and p.pos is not None and npc and p.home is None:
             self.leave_place(p)
             e.ev('move', p.id, self.st.places[p.pos]['id'], None, e.step_no)
             p.pos = None
@@ -1927,6 +2190,8 @@ class StaffRun:
     def turn(self, p):
         e = self.e
         n = e.step_no
+        if p.aboard is not None:        # aboard a vehicle: no turn (§21.4)
+            return
         if p.leg is not None:
             if p.leg[3] > n:
                 return
@@ -1934,6 +2199,7 @@ class StaffRun:
             p.leg = None
             if p.pos == p.res:
                 p.occ, p.res = p.pos, None
+            self.came(p)
         if p.ride is not None and not self.ride_turn(p):
             return
         for _ in range(64):
@@ -1977,7 +2243,9 @@ class StaffRun:
     def resolve(self, p, cur, x):
         """A go's target place: (place, taken) or (None, False) when there is none."""
         st = self.st
-        if isinstance(x, str):
+        if x == 'home':
+            i = p.home
+        elif isinstance(x, str):
             i = st.pix[x]
         elif 'kks' in x:
             code = cur['code'] if x['kks'] == '$' else x['kks']
@@ -2213,6 +2481,34 @@ class StaffRun:
         x = cur['st']
         if 'go' in s:
             return self.go(p, cur, s['go'])
+        if 'sleep' in s:                # home, lying there until T (§21.3)
+            if 'T' not in x:
+                x['T'] = self.sleep_until(p, s['sleep']['until'])
+            r = self.go(p, cur, p.home)
+            if r != 'next':
+                return r
+            return 'next' if e.clock() >= x['T'] else 'wait'
+        if 'ride' in s:                 # to the stop, on a vehicle or on foot after 30 minutes (§21.4)
+            fr, to = st.pix[s['ride']['from']], st.pix[s['ride']['to']]
+            if x.get('walk'):
+                return self.go(p, cur, to)
+            if p.pos == to:
+                return 'next'
+            if 'since' not in x:
+                r = self.go(p, cur, fr)
+                if r != 'next':
+                    return r
+                for k in ('dest', 'target', 'waiting', 'wait_since'):
+                    x.pop(k, None)
+                x['since'] = n
+            for vi in range(len(self.veh)):
+                if self.stands_for(vi, fr, to) and len(self.veh[vi]['riders']) < st.vehicles[vi]['seats']:
+                    self.get_on(p, vi, to)
+                    return 'wait'
+            if n - x['since'] >= RIDE_WAIT_MIN * st.tpm:
+                x['walk'] = True
+                return self.go(p, cur, to)
+            return 'wait'
         if 'work' in s:
             if 'left' not in x:
                 x['left'] = self.mins(p, cur, s['work']) * st.tpm
@@ -2322,6 +2618,198 @@ class StaffRun:
         if 'stop' in s:
             return self.stop_step(p, cur)
         raise AssertionError(s)
+
+    def sleep_until(self, p, u):
+        """A sleep's time T (§21.3): HH:MM's first occurrence at or after the clock; next-H:MM from the next duty
+        not yet begun (the clock when none is planned)."""
+        c = self.e.clock()
+        m = HHMM.fullmatch(u)
+        if m:
+            t = (c // DAY) * DAY + (int(m.group(1)) * 60 + int(m.group(2))) * MINUTE
+            return t if t >= c else t + DAY
+        m = NEXT_OFF.fullmatch(u)
+        if not p.duties:
+            return c
+        return p.duties[0][0] - (int(m.group(1)) * 60 + int(m.group(2))) * MINUTE
+
+    def came(self, p):
+        """An NPC with a home off duty who comes to an off-site place leaves their PPE behind (§21.1)."""
+        if p.home is not None and not p.on and p.pos is not None and self.st.off_site[p.pos] \
+                and self.slot_of(p.i) is None:
+            p.worn = set()
+
+    def off_site_now(self, p):
+        """Off site (§17.9): without homes, no place and no way; with them, §21.1's rule."""
+        st = self.st
+        if p.home is None:
+            return p.pos is None and p.leg is None
+        if p.aboard is not None:
+            V = self.veh[p.aboard]
+            if V['leg'] is not None:
+                return st.off_site[V['leg'][0]] and st.off_site[V['leg'][1]]
+            return st.off_site[V['at']]
+        if p.leg is not None:
+            return st.off_site[p.leg[0]] and st.off_site[p.leg[1]]
+        return p.ride is None and p.pos is not None and st.off_site[p.pos]
+
+    # --- vehicles (§21.4)
+    def stands_for(self, vi, fr, to):
+        """Vehicle vi stands at fr (arrived, not departed) on a run whose later stops include to."""
+        V = self.veh[vi]
+        if V['run'] is None or V['leg'] is not None or V['at'] != fr:
+            return False
+        stops = self.st.vehicles[vi]['runs'][V['run']]['stops']
+        return V['k'] < len(stops) and stops[V['k']] == fr and to in stops[V['k'] + 1:]
+
+    def get_on(self, p, vi, to):
+        st = self.st
+        e = self.e
+        e.ev('aboard', p.id, st.vehicles[vi]['id'], st.places[p.pos]['id'], 'on', [], *self.tail(p))
+        self.leave_place(p)
+        p.pos = None
+        p.aboard = vi
+        self.veh[vi]['riders'].append([p.i, to])
+
+    def tail(self, p):
+        """A session run's events of a player's person carry the slot (§21.4, as §20.3's)."""
+        if not self.session:
+            return ()
+        k = self.slot_of(p.i)
+        return (k,) if k is not None else ()
+
+    def get_off(self, p, vi, at):
+        e = self.e
+        e.ev('aboard', p.id, self.st.vehicles[vi]['id'], self.st.places[at]['id'], 'off', [], *self.tail(p))
+        p.aboard = None
+        p.pos = at
+        self.came(p)
+
+    def runs_due(self, vi, c):
+        """The vehicle's next run to look at, (L, run index, D), or None: the runs in the order (L, index) over the
+        days, after the last one looked at and not before the placement."""
+        st = self.st
+        v = st.vehicles[vi]
+        V = self.veh[vi]
+        best = None
+        day = c // DAY
+        for d in (day - 1, day, day + 1):
+            wd = st.week[(d - 1) % 7]
+            for k, r in enumerate(v['runs']):
+                if r['days'] is not None and wd not in r['days']:
+                    continue
+                D = (d * 1440 + r['at']) * MINUTE
+                L = D - r['lead'] * MINUTE
+                if L < V['floor'] or V['done'] is not None and (L, k) <= tuple(V['done']):
+                    continue
+                if best is None or (L, k) < best[:2]:
+                    best = (L, k, D)
+        return best
+
+    def drive_on(self, vi):
+        """The vehicle drives on towards its target: the next way of its route, or there."""
+        st = self.st
+        e = self.e
+        V = self.veh[vi]
+        while True:
+            if V['at'] == V['to']:
+                self.arrived(vi)
+                return
+            nx = st.drive_hop(V['at'], V['to'])
+            n = e.step_no
+            V['leg'] = (V['at'], nx, n, n + st.ways[(min(V['at'], nx), max(V['at'], nx))])
+            V['at'] = None
+            return
+
+    def arrived(self, vi):
+        """The vehicle is at its target: a stop of its run (event, people off, its stand) or home (the driver off)."""
+        st = self.st
+        e = self.e
+        n = e.step_no
+        V = self.veh[vi]
+        v = st.vehicles[vi]
+        stops = v['runs'][V['run']]['stops']
+        e.ev('vehicle', v['id'], st.places[V['at']]['id'], 'arrive')
+        if V['k'] >= len(stops):            # home: the driver gets off at the depot
+            q = self.people[V['driver']]
+            self.get_off(q, vi, V['at'])
+            V.update(run=None, driver=None, dep=0, k=0, until=0, riders=[])
+            return
+        last = V['k'] == len(stops) - 1
+        stay = []
+        for pi, to in V['riders']:
+            if last or to == V['at']:
+                self.get_off(self.people[pi], vi, V['at'])
+            else:
+                stay.append([pi, to])
+        V['riders'] = stay
+        if V['k'] == 0:
+            V['until'] = n + 1          # (and the clock at D)
+        elif last:
+            V['until'] = n + 1
+        else:
+            V['until'] = n + max(1, v['runs'][V['run']]['dwell'] * st.tpm)
+
+    def vehicle_turn(self, vi):
+        """Phase 3 for one vehicle: an arrival, a departure, then the runs due (§21.4)."""
+        st = self.st
+        e = self.e
+        n = e.step_no
+        c = e.clock()
+        V = self.veh[vi]
+        v = st.vehicles[vi]
+        if V['leg'] is not None and V['leg'][3] <= n:
+            V['at'] = V['leg'][1]
+            V['leg'] = None
+            self.drive_on(vi)
+        if V['run'] is not None and V['leg'] is None and V['at'] == V['to'] and n >= V['until'] \
+                and (V['k'] != 0 or c >= V['dep']) and V['k'] < len(v['runs'][V['run']]['stops']):
+            e.ev('vehicle', v['id'], st.places[V['at']]['id'], 'depart')
+            stops = v['runs'][V['run']]['stops']
+            V['k'] += 1
+            V['to'] = stops[V['k']] if V['k'] < len(stops) else v['home']
+            self.drive_on(vi)
+        while True:
+            due = self.runs_due(vi, c)
+            if due is None or due[0] > c:
+                break
+            L, k, D = due
+            V['done'] = [L, k]
+            stops = v['runs'][k]['stops']
+            q = None
+            if V['run'] is None:
+                riding = {r for x in e.riders.values() for r in x}
+                ok = [p for p in self.people if p.role == v['driver'] and p.on and p.id not in self.absent
+                      and p.aboard is None and p.ride is None and p.id not in riding]
+                q = next((p for p in ok if self.slot_of(p.i) is None), ok[0] if ok else None)   # (NPCs first)
+            if q is None:
+                e.ev('vehicle', v['id'], st.places[stops[0]]['id'], 'skipped')
+                continue
+            V.update(run=k, dep=D, k=0, to=stops[0], driver=q.i, riders=[])
+            self.take_driver(q, vi)
+            e.ev('vehicle', v['id'], st.places[V['at']]['id'], 'depart')
+            self.drive_on(vi)
+
+    def take_driver(self, p, vi):
+        """The driver gets on at the vehicle's home, taken from where they are (§21.4)."""
+        e = self.e
+        st = self.st
+        at = p.pos
+        e.ev('aboard', p.id, st.vehicles[vi]['id'], st.places[at]['id'] if at is not None else None, 'on', [],
+             *self.tail(p))
+        p.leg = None
+        p.stairs = None
+        self.leave_place(p)
+        self.unreserve(p)
+        p.pos = None
+        p.aboard = vi
+        if p.cur is not None:
+            if p.cur['idle']:
+                e.ev('task', p.id, p.cur['task'], 'done')
+                p.cur = None
+            else:
+                p.cur['st'].pop('busy', None)
+                p.result = None
+                self.pause(p)
 
     def ppe_items(self, p, x):
         return self.st.roles[p.role].get('ppe', []) if x == 'role' else x
@@ -2586,7 +3074,8 @@ class StaffRun:
         mine = self.mine(n)
         self.drop_kept(mine, p.id, slot)
         took = set()
-        self.trainee_steps(p, tin, used, mine, took, slot)
+        if p.aboard is None:            # (aboard a vehicle: no task progress, §21.4)
+            self.trainee_steps(p, tin, used, mine, took, slot)
         self.keep(p, mine, took, slot)
         # then the radio inputs no step of theirs took: free messages and calls (requests, §18.7)
         for k, item in enumerate(tin):
@@ -2652,6 +3141,14 @@ class StaffRun:
                         break
             elif 'meet' in s:
                 r = self.meet(p, cur, s['meet'], True)
+            elif 'sleep' in s:          # §21.3: done once the clock reaches T, wherever they are
+                if 'T' not in x:
+                    x['T'] = self.sleep_until(p, s['sleep']['until'])
+                if e.clock() >= x['T']:
+                    r = 'next'
+            elif 'ride' in s:           # §21.4: done standing at `to`, by the bus or on foot
+                if p.pos == st.pix[s['ride']['to']]:
+                    r = 'next'
             elif 'say' in s:
                 for k, item in enumerate(tin):
                     if not used[k] and item[0] == 'say' and item[1] == s['say'] and item[2] == s['to']:
@@ -2844,7 +3341,8 @@ class StaffRun:
             if act is not None:
                 act = [act[0], ACT_KINDS.index(act[1]), act[2]]
             return [pi, where, x['task'], x['prio'], x['made'], x['order'], x['step'], x['work'], x['code'], x['alarm'],
-                    key(x['src']), x['idle'], x['started'], x['int'], x['owner'], act, key(x.get('orig'))]
+                    key(x['src']), 2 if x.get('off') else x['idle'], x['started'], x['int'], x['owner'], act,
+                    key(x.get('orig'))] + ([bool(x.get('offr'))] if self.st.homes else [])
 
         def i64(v):         # (a 64-bit field's two's complement)
             return v - (1 << 64) if v >= 1 << 63 else v
@@ -2886,7 +3384,27 @@ class StaffRun:
                 [[list(p.acts[k]) if k in p.acts else None for k in ACT_KINDS] for p in people],
                 Packed(PACKED_INT64, [i64(sum(1 << k for k in p.zin)) for p in people])] + \
             ([[Packed(PACKED_INT32, p.stairs or []) for p in people],
-              Packed(PACKED_INT64, [p.lin for p in people])] if st.lifts else [])
+              Packed(PACKED_INT64, [p.lin for p in people])] if st.lifts else []) + \
+            ([[[V['at'] if V['at'] is not None else -1, list(V['leg']) if V['leg'] is not None else [],
+                V['run'] if V['run'] is not None else -1, V['dep'], V['k'], V['until'],
+                V['driver'] if V['driver'] is not None else -1,
+                Packed(PACKED_INT32, [x[0] for x in V['riders']]), Packed(PACKED_INT32, [x[1] for x in V['riders']]),
+                V['floor'], list(V['done']) if V['done'] is not None else []] for V in self.veh],
+              Packed(PACKED_INT32, [p.aboard if p.aboard is not None else -1 for p in people]),
+              Packed(PACKED_INT64, [p.offday if p.offday is not None else -1 for p in people])]
+             if st.homes else [])
+
+    def snap_vehicles(self):
+        """`vehicles` (§21.4): {id: [place or [from, to, depart, arrive], [the driver, then the riders]]}."""
+        st = self.st
+        out = {}
+        for vi, V in enumerate(self.veh):
+            where = st.places[V['at']]['id'] if V['leg'] is None else \
+                [st.places[V['leg'][0]]['id'], st.places[V['leg'][1]]['id'], V['leg'][2], V['leg'][3]]
+            ab = ([self.people[V['driver']].id] if V['driver'] is not None else []) + \
+                [self.people[pi].id for pi, _ in V['riders']]
+            out[st.vehicles[vi]['id']] = [where, ab]
+        return out
 
     # --- the snapshot's part (§17.7)
     def snap_acts(self):
@@ -2906,6 +3424,8 @@ class StaffRun:
                 where = ['way', st.places[p.leg[0]]['id'], st.places[p.leg[1]]['id'], p.leg[2], p.leg[3]]
             elif p.ride is not None and p.pos is None:
                 where = ['lift', st.lifts[p.ride[0]][0], st.places[p.ride[1]]['id'], st.places[p.ride[2]]['id']]
+            elif p.aboard is not None:
+                where = ['vehicle', st.vehicles[p.aboard]['id']]
             else:
                 where = st.places[p.pos]['id'] if p.pos is not None else None
             out[p.id] = [where, p.cur['task'] if p.cur is not None else None,
