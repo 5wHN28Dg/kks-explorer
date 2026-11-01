@@ -3594,6 +3594,7 @@ def with_camp(st):
         pl(f'bed_{k + 1}', [-72 - k, 14, 0], 'bed', stub='c1', room=f'room{k + 1}', pose='lie',
            **({'hidden': True} if k in (3, 4) else {}))
     st['speeds']['drive'] = 8
+    next(t for t in st['tasks'] if t['id'] == 'handover_give_f')['priority'] = 2     # (it pre-empts a round)
     for r in st['roles']:
         r['off'] = 'off_std'
     st['roles'].append({'id': 'driver', 'title': 'Driver', 'discipline': 'transport', 'authority': ['drive'],
@@ -3770,6 +3771,9 @@ def camp_runs():
         ('a jump at once to 17:45 (§21.4, §21.2): placement in the evening (people off duty placed by their off slots, '
          'the outgoing day crew by the slots after their duty\'s end), every vehicle home; the evening run skipped',
          dict(at5, trainee='mech1'), camp, Trainee(extra=[[20, 'jump', '17:45']]), 600, 20),
+        ('a duty\'s end (§21.2): crew A\'s field operators placed at 17:30 on their round, which their handover at '
+         '17:45 pre-empts; at 18:00 the paused round ends with the duty (skipped), and they go home on the bus',
+         {'start': {'day': 1, 'time': '17:30'}}, camp, Trainee(quiet=True), 700, 20),
         ('a session with players aboard (§21.4, §17.13), field operator 2 absent: slot 0 field operator 1 on the bus, '
          'released while aboard (rides on as an NPC, off at the control room\'s stop), slot 1 takes the driver while '
          'driving (stays aboard, off at the depot)',

@@ -741,7 +741,7 @@ func place_all(e, c: int, old: int) -> void:
 			e.sp_occ[pi] = place
 		if task != null:
 			give(e, pi, task, prio_of(task), null, null, null, null, false, null, null, null,
-					home[pi] != -1 and pick[5] == null)
+					(1 if pick[5] == null else 2) if home[pi] != -1 else 0)
 	e.st_t_from.fill(-1)
 
 
@@ -806,7 +806,7 @@ static func _enqueue(e, pi: int, inst: Dictionary) -> void:
 
 
 func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count := true, owner = null,
-		act = null, orig = null, off := false) -> bool:
+		act = null, orig = null, off := 0) -> bool:
 	var c = e.sp_cur[pi]
 	if e.sp_queue[pi].size() + (1 if c != null and not c["idle"] else 0) >= QUEUE_MAX:
 		e._ev(["task", null, tid, "unassigned"])
@@ -817,8 +817,10 @@ func give(e, pi: int, tid: String, prio: int, made_by, work, code, alarm, count 
 	var inst := {"task": tid, "prio": prio, "made": e.step_no, "order": e.st_order, "step": 0, "st": {},
 			"work": work, "code": code, "alarm": alarm, "src": made_by, "idle": false, "started": false,
 			"int": t.get("interruptible", true), "owner": owner, "act": act, "orig": orig}
-	if off:
+	if off == 1:
 		inst["offr"] = true         # an off-duty slot's: ended when a duty starts (§21.2)
+	elif off == 2:
+		inst["dslot"] = true        # a duty's slot's: dropped from the queue at the duty's end (§21.2)
 	e.st_order += 1
 	_enqueue(e, pi, inst)
 	e.sp_wake[pi] = 0
@@ -1220,6 +1222,15 @@ func _phase1(e, c: int, day: int) -> void:
 			e.sp_duty[pi] = []
 			e.sp_wake[pi] = 0
 			e._ev(["duty", people[pi]["id"], "off"])
+			if home[pi] != -1:          # the duty's slots' tasks still queued end with it (§21.2)
+				var kq := []
+				for q in e.sp_queue[pi]:
+					if q.get("dslot", false) and q["started"] and tasks[q["task"]].get("resume", "") != "next_duty":
+						e._ev(["task", people[pi]["id"], q["task"], "skipped"])
+						release(e, q)
+					else:
+						kq.append(q)
+				e.sp_queue[pi] = kq
 		if not e.sp_on[pi]:
 			var dl: Array = e.sp_duties[pi]
 			while not dl.is_empty() and dl[0][1] <= c:
@@ -1245,7 +1256,7 @@ func _phase1(e, c: int, day: int) -> void:
 			if home[pi] != -1 and s[5] != null:
 				end_off(e, pi)              # (a duty's slot: its span has begun, §21.2)
 			give(e, pi, s[4], prio_of(s[4]), null, null, null, null, true, null, null, null,
-					home[pi] != -1 and s[5] == null)
+					(1 if s[5] == null else 2) if home[pi] != -1 else 0)
 	var nx: int = (day + 1) * DAY            # the next day, planned when it begins, at the latest
 	for pi in np:
 		if e._absent.has(pi):

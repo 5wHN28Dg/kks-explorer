@@ -769,14 +769,14 @@ class StaffVectors(unittest.TestCase):
 
 class CampRuns(unittest.TestCase):
     """Milestone S4's engine (PLANT3D.md §21): homes, off-duty routines, sleep, vehicles and rides, by name in the
-    vectors' camp runs (the last seven staff runs)."""
+    vectors' camp runs (the last eight staff runs)."""
 
     @classmethod
     def setUpClass(cls):
         with open(G.OUT2, encoding='utf-8') as f:
             cls.V = json.load(f)
-        cls.runs = {r['why'].split(' (')[0]: r for r in cls.V['staff']['runs'][-7:]}
-        cls.morning, cls.rider, cls.walker, cls.driver, cls.left, cls.jump, cls.session = cls.V['staff']['runs'][-7:]
+        cls.morning, cls.rider, cls.walker, cls.driver, cls.left, cls.jump, cls.dutyend, cls.session = \
+            cls.V['staff']['runs'][-8:]
 
     def ev(self, run, kind, *head):
         return [x for x in run['events'] if x[1] == kind and list(x[2:2 + len(head)]) == list(head)]
@@ -889,9 +889,15 @@ class CampRuns(unittest.TestCase):
             self.assertIn(f'"{k}"', sizes, k)
             self.assertIn(f'"{k}"', forms, k)
 
+    def test_a_duty_ends_its_paused_tasks(self):
+        r = self.dutyend
+        off = {(x[0], x[2]) for x in r['events'] if x[1] == 'duty' and x[3] == 'off'}
+        sk = [x for x in r['events'] if x[1] == 'task' and x[4] == 'skipped' and (x[0], x[2]) in off]
+        self.assertTrue(sk and all(x[3] == 'round' for x in sk), sk)
+
     def test_files_without_homes_are_unchanged(self):
         # every staff run before the camp's keeps no vehicles in its snapshots
-        for run in self.V['staff']['runs'][:-7]:
+        for run in self.V['staff']['runs'][:-8]:
             self.assertEqual(run['states'][-1].get('vehicles', {}), {})
 
 
