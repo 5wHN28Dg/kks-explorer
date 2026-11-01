@@ -189,6 +189,22 @@ inputs to the engine), before S4. Its parts, one pull request each:
   controls, riding; measured on the Note 9 before and after (**built 2026-11-01**, PLANT3D.md §20.11);
 - **L3, the staff on it:** staff.json's lift and ways, the riders drawn, the day made again (**built 2026-11-01**,
   PLANT3D.md §20.12);
+- **L2 and L3 measured on the Note 9, 2026-11-01** (main with L2, L3 and L4 in it: these are L4's judged walks too). A
+  release build without the lightmap, signed with the test key, as the baseline's; `frames` walk, `crews=1`,
+  `probe=1`, 600 s, each from a battery at 29.3 to 30.0 °C, `SAMPLE=1`. With L2 and L3 as merged: the first walk saw
+  reclaim in 1.75 % of its samples (not judged), the next two 0.14 and 0.66 %: frames median 26.2 and 27.2 ms, p95
+  36.4 and 36.6 ms, frames over 34.2 ms 22.5 and 21.7 %, none over 100 ms (the rule passes), scripts 3.39 and 3.57 ms
+  a frame (people view 1.08 and 1.16, bindings, the lift's view among them, 0.47 and 0.48), VRAM 159 MB, peak PSS 826
+  and 833 MB. Over §20.8's 0.1 ms for the lift's and the hoists' scripts, so the lift's view now does nothing while
+  still and the people view looks riders up once a step: measured again (reclaim 0.37 and 0.70 %, both judged),
+  median 28.6 and 28.1 ms, p95 37.1 and 36.7 ms, over 34.2 ms 23.9 and 22.6 %, none over 100 ms (passes), scripts
+  3.36 and 3.42 (people view 0.99 and 1.01, bindings 0.44 and 0.45), peak PSS 822 and 864 MB. The baseline before
+  L4 (two runs, reclaim 0.09 %): median 20.7 and 23.6 ms, p95 36.5 and 36.3 ms, over 34.2 ms 23.5 and 21.5 %,
+  scripts 3.09 and 3.19 (people view 0.87 and 0.91, bindings 0.32 and 0.33). The medians sit in the 30 fps band more
+  often than the baseline's (the frames over 34.2 ms, p95 and the rule are unchanged); the lift's and the hoists'
+  scripts together are about 0.1 ms in bindings and 0.1 ms in the people view. The `lift` walk (up HRSG 1's lift to the
+  roof and down again, 2 min 22 s of model time, reclaim 0.00 %): median 28.4 ms, p95 36.4 ms, max 56 ms, the rule
+  passes.
 - **L4, hoists and the crane:** their content, the procedures, the view; measured on the Note 9. **Built
   2026-10-30, measured 2026-11-01** (PLANT3D.md §20.5 "As built"): the roof hoist and the crane as model
   content, `roof_hoist_lift` and `crane_lift`, the pendants' hold-to-run buttons, the pieces drawn between steps;
