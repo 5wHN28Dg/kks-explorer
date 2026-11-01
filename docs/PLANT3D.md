@@ -2829,7 +2829,9 @@ content (S4b).
 - **A duty comes first:** whenever a slot of a duty is given in phase 1 (before it is given: the first marks the start of
   the duty's span) and when the person comes on duty (their `duty` `on` event), every task an off-duty slot made (current or queued; a `choose`'s task stays its slot's) ends `skipped`, current first, then in
   queue order, before §17.10's held jobs come back. So a meal queued behind a sleep, or a sleep that became current
-  late, never runs into the shift. The digest's instance gains whether an off-duty slot made it (§21.5).
+  late, never runs into the shift. Likewise at a duty's end (its `duty` `off` event) the tasks its slots made that were
+  started and are paused in the queue (not the current one, nor a job held for the next duty) end `skipped`: a round left paused by the
+  handover is not walked after going home. The digest's instance gains which kind of slot made it (§21.5).
 - **Placement** (§17.2) of a person with a home who is off duty at the clock C: when C lies in a duty's span (the first
   such span in duty order), the latest slot of that duty's routine at or before C (when C is at or after the duty's
   end, only its slots at or after the end: the commute home, never the handover or a round); else the latest off slot made (days
@@ -2935,7 +2937,7 @@ per vehicle `[place or −1, way [from, to, depart, arrive] or [], run index or 
 the stop it is at or driving to (its run's length when going home), the step from which it may depart, driver index or
 −1, riders (i32), their `to` (i32), the placement clock, the last run made or skipped as [L, run index] or []]`; per
 person the vehicle they are aboard (−1, i32) and the last day whose off slots are made (−1 without a home, i64); and each
-task instance (§17.14) ends with whether an off-duty slot made it (a bool). A ride's and a sleep's progress are a task step's own and left out (§17.14).
+task instance (§17.14) ends with the kind of slot that made it (1 an off-duty slot, 2 a duty's slot, 0 none). A ride's and a sleep's progress are a task step's own and left out (§17.14).
 
 ### 21.6 The first train's full day (content, milestone S4)
 
@@ -3031,16 +3033,16 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   S4 keys are each a rule of S4 now (vehicles or a place off site without homes, a home that is no room with a bed, a
   ride from places that are not there, a drive way without a driving speed): their codes and changes are new, their
   places in the list kept.
-- **Vectors** (`plant3d-v2.json`): `staff.runs` gains seven runs on the synthetic plant with a camp (§21.9; `with_camp`
+- **Vectors** (`plant3d-v2.json`): `staff.runs` gains eight runs on the synthetic plant with a camp (§21.9; `with_camp`
   in `ref/make_plant3d_vectors.py`: a mess, a gym, fourteen rooms, three stops and a depot, a driver on days, a bus of
   one seat and a pickup): the camp's morning (placement at breakfast, asleep and at work; the bus's first run with
   field operator 1 aboard, field operator 2 walking after 30 minutes; the pickup's run skipped; meals, free time, sleep);
   the trainee riding (get_on refused for an unknown vehicle and with no ride step, then on and off; a jump with the
   pickup out); the trainee walking instead (refused on the way, not at the stop); the trainee as the driver; a lock
-  left off site and removed by authority; a jump to the evening; a session with a player released aboard and the
+  left off site and removed by authority; a jump to the evening; a duty's end dropping a round its handover paused; a session with a player released aboard and the
   driver claimed while driving. `staff.reject` gains 34 rule breaks on the camp file and 4 of S4's keys without homes.
   Every other item of the file is unchanged (a JSON comparison of the old and the new file: only `staff.reject`'s
-  items 7–10 and the seven appended runs differ). `tests/test_plant3d_staff.py CampRuns` checks the runs' story by
+  items 7–10 and the eight appended runs differ). `tests/test_plant3d_staff.py CampRuns` checks the runs' story by
   name.
 - Not yet: the first train's content (S4b), the app (S4c), the Note 9 (S4d).
 

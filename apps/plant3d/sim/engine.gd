@@ -2176,7 +2176,7 @@ static func _digest_inst(pi: int, where: int, x: Dictionary) -> Array:
 ## With homes (§21.5) an instance also says whether an off-duty slot made it.
 static func _digest_inst_h(pi: int, where: int, x: Dictionary) -> Array:
 	var a := _digest_inst(pi, where, x)
-	a.append(x.get("offr", false))
+	a.append(1 if x.get("offr", false) else (2 if x.get("dslot", false) else 0))
 	return a
 
 
