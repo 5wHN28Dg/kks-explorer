@@ -184,7 +184,7 @@ static func lift_landing_ways(ways: Array, lifts: Array) -> Array:
 				# of the front, then to the stair's point
 				var r := deg_to_rad(float(lf.get("yaw", 0.0)))
 				var nrm := Vector3(-cos(r), 0.0, -sin(r))      # out of the gate, along the bridge (lift_fronts)
-				var q := f + nrm * (path[k] - f).dot(nrm)
+				var q: Vector3 = f + nrm * (path[k] - f).dot(nrm)
 				q.y = f.y
 				var down := PackedVector3Array(path.slice(0, k + 1))
 				down.append_array([q, f])
