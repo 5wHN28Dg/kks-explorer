@@ -104,7 +104,7 @@ same repository would stop every phone's Walkdown updates. [V] the code.
    `load_resource_pack()`, downloaded like Walkdown's plant data and checked by SHA-256, without a format change.
    Google Play's limits don't bind (GitHub releases, 0022).
    **2026-11-01 (the user):** the APK's limit is raised from 150 MB to **250 MB**, for the Workshop mode's pre-built
-   scenes (docs/plant3d/WORKSHOP.md) among the growth to come; the desktop packages stay at about 300 MB. The stop rule
+   scenes (planned in milestone K0) among the growth to come; the desktop packages stay at about 300 MB. The stop rule
    now reads: stop and ask when the APK passes 250 MB or a desktop package about 300 MB. The 150 MB above and below is
    kept as it was decided.
 7. **Audio.** Recorded clips only under **CC0-1.0** (Freesound with the CC0 filter, Kenney, OpenGameArt CC0, our own
