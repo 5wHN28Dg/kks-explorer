@@ -219,6 +219,24 @@ inputs to the engine), before S4. Its parts, one pull request each:
   The `hoist` walk (up HRSG 1's stair to the roof hoist's pendant, 300 s): median 19.1 ms, p95 36.6 ms, one frame of
   128 ms that the rule excludes as the kernel's memory reclaim. All three walks saw reclaim in 1.1 to 1.7 % of their
   samples, over the rule's 1 %, so the frame rule does not judge them (the baseline's was 0.09 %).
+- **The medians' rise is not the lifts' (checked 2026-11-01).** The user asked why the frames walk's median rose about
+  5 ms over LIFTS. The baseline build (badd6da) and main (0b3dbcbf), built alike and walked alternately on the Note 9
+  the same day (`crews=1`, 600 s, from 30.0 °C or below, judged walks): medians 28.5 and 29.8 ms against 29.5 and
+  29.0 ms; mean frame 26.06 and 26.57 ms against 26.64 and 26.33 ms; GPU median 20.2 and 21.2 ms against 21.2 and
+  20.8 ms; scripts 3.28 and 3.34 ms against 3.58 and 3.53 ms; p95 36.5 to 37.3 ms, none over 100 ms. So the baseline
+  build "regressed" too. Two causes:
+  - this walk's frames fall almost half and half into one refresh (16.7 ms) and two (33.3 ms), so a few percent
+    moving between them moves the median 5 to 8 ms and the mean about 0.6 ms (over all 11 walks the median follows
+    the share at 60 fps: 51.6 % gives 20.7 ms, 44 % gives 29.5 ms);
+  - from about 400 s on, some walks get their GPU clock capped (311 to 351 MHz while 80 to 84 % busy, against 373 to
+    385 MHz in walks without it; the phone's thermal service at cooling level 1 from minutes 4 to 5), on either build
+    at random. The 10-30 baseline walks heated less (to 29.9 and 32.7 °C, against 34.1 to 34.9 °C on 11-01).
+
+  What the lifts do cost, route segment by segment before the cap: scripts about +0.2 ms (accepted by the user), GPU
+  +0.1 to 0.3 ms (within noise), and the lift's sound players about 0.5 s of audio-thread CPU over a walk. **From now
+  on, frames walks are compared by their mean frame time and their share at 60 fps, with the late-walk GPU clock
+  (samp.txt) beside them; their median is not compared.** Evidence: `~/kks-work/build/lifts-perf/runs/` on the
+  maintainer's laptop (each walk's thermals and thread CPU).
 
 **S4, the full day: the plan (2026-11-01; PLANT3D.md §21).** Four pull requests, each measured and reviewed:
 - **S4a, the engine** (**built 2026-11-01**, PLANT3D.md §21.11)**:** homes and off site, off-duty routines, `go: "home"`, `sleep`, vehicles, `drive` ways, runs
