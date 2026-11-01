@@ -891,9 +891,13 @@ class CampRuns(unittest.TestCase):
 
     def test_a_duty_ends_its_paused_tasks(self):
         r = self.dutyend
-        off = {(x[0], x[2]) for x in r['events'] if x[1] == 'duty' and x[3] == 'off'}
-        sk = [x for x in r['events'] if x[1] == 'task' and x[4] == 'skipped' and (x[0], x[2]) in off]
-        self.assertTrue(sk and all(x[3] == 'round' for x in sk), sk)
+        off = min(x[0] for x in r['events'] if x[1] == 'duty' and x[3] == 'off')
+        sk = [x for x in r['events'] if x[1] == 'task' and x[4] == 'skipped']
+        self.assertTrue(sk and all(x[0] > off for x in sk), sk)
+        self.assertEqual({x[2] for x in sk if x[3] == 'round'}, {'a_fo1', 'a_fo2'})
+        for x in sk:        # dropped where they came to the camp: the step their last way there ended
+            came = [m for m in r['events'] if m[1] == 'move' and m[2] == x[2] and m[5] == x[0]]
+            self.assertTrue(came, x)
 
     def test_files_without_homes_are_unchanged(self):
         # every staff run before the camp's keeps no vehicles in its snapshots

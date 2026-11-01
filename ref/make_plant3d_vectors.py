@@ -3772,8 +3772,8 @@ def camp_runs():
          'the outgoing day crew by the slots after their duty\'s end), every vehicle home; the evening run skipped',
          dict(at5, trainee='mech1'), camp, Trainee(extra=[[20, 'jump', '17:45']]), 600, 20),
         ('a duty\'s end (§21.2): crew A\'s field operators placed at 17:30 on their round, which their handover at '
-         '17:45 pre-empts; at 18:00 the paused round ends with the duty (skipped), and they go home on the bus',
-         {'start': {'day': 1, 'time': '17:30'}}, camp, Trainee(quiet=True), 700, 20),
+         '17:45 pre-empts; off duty, the paused round ends when they come to the camp (skipped)',
+         {'start': {'day': 1, 'time': '17:30'}}, camp, Trainee(quiet=True), 1600, 40),
         ('a session with players aboard (§21.4, §17.13), field operator 2 absent: slot 0 field operator 1 on the bus, '
          'released while aboard (rides on as an NPC, off at the control room\'s stop), slot 1 takes the driver while '
          'driving (stays aboard, off at the depot)',

@@ -274,6 +274,7 @@ class Staff:
                          (r.get('priority', self.tasks[r['task']].get('priority', 3)),)
                          for ri, r in enumerate(self.reactions)]
         self.has_left = any(k == 'lock_left' for _, _, k, _, _ in self.react_on)
+        self.handovers = {t['id'] for t in tl if any('handover' in x for x in t['steps'])}   # (§21.2)
 
     # --- speeds, places, ways, next
     def check_speeds(self, s):
@@ -1490,7 +1491,8 @@ class StaffRun:
                 p.occ = place
             if task is not None:
                 self.give(p, task, st.tasks[task].get('priority', 3), None, None, None, None, count=False,
-                          off=(1 if pick[5] is None else 2) if p.home is not None else 0)
+                          off=(1 if pick[5] is None else 2) if p.home is not None else 0,
+                          dend=pick[5][1] if pick[5] is not None else None)
         self.t_from = {}
 
     def first_place(self, tid, p):
@@ -1528,7 +1530,7 @@ class StaffRun:
         return None
 
     # --- giving tasks (§17.3)
-    def give(self, p, tid, prio, made_by, work, code, alarm, count=True, owner=None, act=None, orig=None, off=0):
+    def give(self, p, tid, prio, made_by, work, code, alarm, count=True, owner=None, act=None, orig=None, off=0, dend=None):
         """Queues an instance of task tid for person p; returns False (event unassigned) when the queue is full."""
         if len(p.queue) + (1 if p.cur is not None and not p.cur['idle'] else 0) >= MAX['queue']:
             self.e.ev('task', None, tid, 'unassigned')
@@ -1542,7 +1544,7 @@ class StaffRun:
         if off == 1:
             inst['offr'] = True         # an off-duty slot's: ended when a duty starts (§21.2)
         elif off == 2:
-            inst['dslot'] = True        # a duty's slot's: dropped from the queue at the duty's end (§21.2)
+            inst['dslot'] = dend        # a duty's slot's: its duty's end (dropped once home after it, §21.2)
         self.order += 1
         p.queue.append(inst)
         p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
@@ -1819,13 +1821,6 @@ class StaffRun:
             if p.on and c >= p.duty[1]:
                 p.on, p.duty = False, None
                 e.ev('duty', p.id, 'off')
-                if p.home is not None:          # the duty's slots' tasks paused in the queue end with it (§21.2)
-                    gone = [q for q in p.queue if q.get('dslot') and q['started']
-                            and st.tasks[q['task']].get('resume') != 'next_duty']
-                    for q in gone:
-                        e.ev('task', p.id, q['task'], 'skipped')
-                        self.release(q)
-                    p.queue = [q for q in p.queue if all(q is not g for g in gone)]
             if not p.on:
                 while p.duties and p.duties[0][1] <= c:
                     p.duties.pop(0)
@@ -1847,7 +1842,8 @@ class StaffRun:
                 if p.home is not None and s[5] is not None:
                     self.end_off(p)             # (a duty's slot: its span has begun, §21.2)
                 self.give(p, s[4], st.tasks[s[4]].get('priority', 3), None, None, None, None,
-                          off=(1 if s[5] is None else 2) if p.home is not None else 0)
+                          off=(1 if s[5] is None else 2) if p.home is not None else 0,
+                          dend=s[5][1] if s[5] is not None else None)
         # 2. reactions
         self.react(n)
         # 3. vehicles (§21.4), not in a jump's step (as phase 4)
@@ -2663,6 +2659,17 @@ class StaffRun:
         if p.home is not None and not p.on and p.pos is not None and self.st.off_site[p.pos] \
                 and self.slot_of(p.i) is None:
             p.worn = set()
+            # the duty's slots' tasks still queued end there: nobody walks back for them (§21.2); a handover's and a
+            # job held for the next duty stay
+            st = self.st
+            c = self.e.clock()
+            gone = [q for q in p.queue if q.get('dslot') is not None and q['dslot'] <= c
+                    and st.tasks[q['task']].get('resume') != 'next_duty' and q['task'] not in st.handovers]
+            for q in gone:
+                self.e.ev('task', p.id, q['task'], 'skipped')
+                self.release(q)
+            if gone:
+                p.queue = [q for q in p.queue if all(q is not g for g in gone)]
 
     def off_site_now(self, p):
         """Off site (§17.9): without homes, no place and no way; with them, §21.1's rule."""
@@ -3368,7 +3375,7 @@ class StaffRun:
                 act = [act[0], ACT_KINDS.index(act[1]), act[2]]
             return [pi, where, x['task'], x['prio'], x['made'], x['order'], x['step'], x['work'], x['code'], x['alarm'],
                     key(x['src']), 2 if x.get('off') else x['idle'], x['started'], x['int'], x['owner'], act,
-                    key(x.get('orig'))] + ([1 if x.get('offr') else 2 if x.get('dslot') else 0] if self.st.homes else [])
+                    key(x.get('orig'))] + ([1 if x.get('offr') else 2 if x.get('dslot') is not None else 0] if self.st.homes else [])
 
         def i64(v):         # (a 64-bit field's two's complement)
             return v - (1 << 64) if v >= 1 << 63 else v
