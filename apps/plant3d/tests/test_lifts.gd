@@ -157,8 +157,13 @@ func _ride(ui) -> void:
 	to_top.pressed.emit()
 	# the ride: the walker stays on the cab's floor all the way up
 	var worst := [0.0]              # (a lambda captures by value: the worst kept in an array)
-	# paused mid-ride: nothing drawn again while the clock stands
-	await _run(ui, 5.0)
+	# paused mid-ride (between landings): nothing drawn again while the clock stands; the walker on the floor from the
+	# start
+	await _run(ui, 15.0, func():
+		worst[0] = maxf(worst[0], absf(ui.player.global_position.y - body.global_position.y))
+		return e.v(LIFT + "_z") > 3.0)
+	if e.v(LIFT + "_z") <= 0.5 or e.truth(LIFT + "_at1") or e.truth(LIFT + "_at2"):
+		p.append("the cab is not between landings for the paused check: z %.2f" % e.v(LIFT + "_z"))
 	for i in 3:
 		await tree.physics_frame
 	var dr: int = ui.lifts.draws
