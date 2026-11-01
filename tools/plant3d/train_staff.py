@@ -67,13 +67,13 @@ EDGES = [
 # indexes, and so the train's routes, unchanged)
 POINTS.update(wtp_staff.POINTS)
 EDGES += wtp_staff.EDGES
-# milestone LIFTS L3: HRSG 1's service lift (train_lift.py), a point in front of each landing gate (where the app's
-# walking directions begin and end a ride: app/walk_route.gd LIFT_FRONT), joined to the tower's foot and its top on
+# milestone LIFTS L3: HRSG 1's service lift (train_lift.py), a point 1 m in front of each landing gate (where a waiting
+# person stands: room round them clear of the gate's leaf, which the app makes solid while shut), joined to the tower's foot and its top on
 # foot, the landing between by the tower's stair; a lift way between every two landings (PLANT3D §20.4)
 import train_lift  # noqa: E402
 LIFT_POINTS = [f'p_lift{i}' for i in range(len(train_lift.ZS))]
 for _i, _z in enumerate(train_lift.ZS):
-    POINTS[LIFT_POINTS[_i]] = (round(train_lift.GATE_X - 0.8, 6), train_lift.AT[1], _z)
+    POINTS[LIFT_POINTS[_i]] = (round(train_lift.GATE_X - 1.0, 6), train_lift.AT[1], _z)
 EDGES += [('p_h_foot', 'p_lift0'), ('p_lift2', 'p_h_30'), ('p_h_foot', 'p_lift1'), ('p_lift1', 'p_h_30')]
 # The control building's rooms (its ground floor: the control room, the field office, the maintenance workshop)
 # and the gate where people come on site (until the camp and its buses, milestone S4).
