@@ -221,7 +221,7 @@ inputs to the engine), before S4. Its parts, one pull request each:
   samples, over the rule's 1 %, so the frame rule does not judge them (the baseline's was 0.09 %).
 
 **S4, the full day: the plan (2026-11-01; PLANT3D.md §21).** Four pull requests, each measured and reviewed:
-- **S4a, the engine:** homes and off site, off-duty routines, `go: "home"`, `sleep`, vehicles, `drive` ways, runs
+- **S4a, the engine** (**built 2026-11-01**, PLANT3D.md §21.11)**:** homes and off site, off-duty routines, `go: "home"`, `sleep`, vehicles, `drive` ways, runs
   and drivers, `ride` and the trainee's `ride` input, in the reference and the GDScript engine bit for bit; the
   validator's rules; `staff.runs` on a synthetic plant with a camp and `staff.reject` (every earlier vector item
   unchanged: the S4 keys are new, and a file without homes or vehicles runs as before, checked by a JSON comparison

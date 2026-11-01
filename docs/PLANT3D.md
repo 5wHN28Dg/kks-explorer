@@ -1512,7 +1512,7 @@ engines don't have yet:
 - **S2:** `zones`, `put_right`, the `ppe` and `stop` steps, `"unsafe": true`, reactions `on: {"unsafe"}` and `seen`
   (PPE, zones, unsafe acts and the safety walk): built, §17.11;
 - **S4:** `vehicles`, `drive` ways, `ride` and `sleep`, a person's `home`, `"go": "home"`, a role's `off` routine
-  (the camp, the buses, off duty): designed in §21.
+  (the camp, the buses, off duty): built, §21.
 
 What S1 settles that §16–§17 left open (the engines and the vectors follow these):
 - **The gate.** staff.json has `"gate"`: a `door`, `point` or `muster` place where people come on site and leave it.
@@ -2765,7 +2765,7 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
 - **Tests:** `tests/test_lift_riders.gd` (an NPC riding in the day shift drawn in the cab at their spot facing the
   gate, on the map, and walking out without a jump).
 
-## 21. The full day (format 2, milestone S4; DRAFT 2026-11-01)
+## 21. The full day (format 2, milestone S4; engine built 2026-11-01)
 
 What §16–§17 named and S1–S3 left for S4 (§17.8): homes and the camp, off-duty routines, `go: "home"`, `sleep`,
 vehicles with their `drive` ways and runs, `ride`; with them the roles STAFF.md §1 lists that the first train's content
@@ -2992,3 +2992,30 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
 - The Note 9's frame rules hold on a new `gate` walk: the shift change at the plant gate (05:40–06:20, the buses in and
   out, the crews through the gate), 10 minutes at 1×, the phone's 12 skinned people, two judged cool runs.
 - The buses add at most 2 draw calls each in view and their triangles fit §18.4's people share.
+
+### 21.11 As built for milestone S4a (2026-11-01: the engine)
+
+- **Both engines** (`ref/plant3d_staff.py`, `apps/plant3d/sim/staff.gd`, `apps/plant3d/sim/engine.gd`) carry §21.1–§21.5
+  bit for bit: homes and off site, off-duty routines with their spans and the planning one day further back, the two
+  idle tasks, `go: "home"`, `sleep`, vehicles with their drive routes (searched at load), runs, drivers (NPCs first,
+  nobody in a cab), getting on and off, `ride` and the player's `get_on` with its reasons, the digest's fields, the
+  snapshot's `vehicles`; a lift's `board` is refused (`aboard`) while its person is on a vehicle. A run's tasks made by
+  off-duty slots end `skipped` when a duty starts (the adversarial review of the plan: a sleep or a meal never runs into
+  a shift), and placement after a duty's end picks only its slots after the end.
+- **Validator:** every rule break of §21 (`staff.reject`'s 34 new items, below). The four S1 rejects that refused the
+  S4 keys are each a rule of S4 now (vehicles or a place off site without homes, a home that is no room with a bed, a
+  ride from places that are not there, a drive way without a driving speed): their codes and changes are new, their
+  places in the list kept.
+- **Vectors** (`plant3d-v2.json`): `staff.runs` gains seven runs on the synthetic plant with a camp (§21.9; `with_camp`
+  in `ref/make_plant3d_vectors.py`: a mess, a gym, fourteen rooms, three stops and a depot, a driver on days, a bus of
+  one seat and a pickup): the camp's morning (placement at breakfast, asleep and at work; the bus's first run with
+  field operator 1 aboard, field operator 2 walking after 30 minutes; the pickup's run skipped; meals, free time, sleep);
+  the trainee riding (get_on refused for an unknown vehicle and with no ride step, then on and off; a jump with the
+  pickup out); the trainee walking instead (refused on the way, not at the stop); the trainee as the driver; a lock
+  left off site and removed by authority; a jump to the evening; a session with a player released aboard and the
+  driver claimed while driving. `staff.reject` gains 30 rule breaks on the camp file and 4 of S4's keys without homes.
+  Every other item of the file is unchanged (a JSON comparison of the old and the new file: only `staff.reject`'s
+  items 7–10 and the seven appended runs differ). `tests/test_plant3d_staff.py CampRuns` checks the runs' story by
+  name.
+- Not yet: the first train's content (S4b), the app (S4c), the Note 9 (S4d).
+
