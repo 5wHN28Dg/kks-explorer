@@ -2775,13 +2775,16 @@ here is in both engines bit for bit and in the vectors (§19, §21.9) unless mar
 dependency: the staff model is decision 0062's, people on screen 0063 and 0064's, the camp 0066's.
 
 **A file without homes or vehicles runs exactly as before** (S1–S3 and LIFTS): every rule below applies only with
-them, and every earlier vector item keeps its events, snapshots and digests.
+them, so the engine's change (S4a) leaves every earlier vector item as it was; the first train's `day` changes with its
+content (S4b).
 
 ### 21.1 Homes and off site
 
 - **`home`** (a person): a room of `places` holding at least one `bed` (`bad_ref`); a home room is one person's at
   most (`bad_ref`). The person's **home** is that room's first `bed` in file order. Either every person has a home or
-  none does (`bad_ref`). A person names no `off` of their own (`unknown_key`): the off-duty routine is the role's.
+  none does (`bad_ref`); a home's bed is an off-site place (`bad_ref`), so people off duty with nothing to do go
+  outside the fence and a lock they keep on is found left (§17.9). A person names no `off` of their own
+  (`unknown_key`): the off-duty routine is the role's.
 - **Places off site:** a place may carry `"off_site": true` (the camp, the road to it, their stops: everything outside
   the plant's fence); only in a file with homes (`bad_ref`), as `vehicles` are. A person with a home is **off site** at
   an off-site place, on a way both of whose ends are off site, or aboard a vehicle standing at an off-site place or
@@ -2799,8 +2802,8 @@ them, and every earlier vector item keeps its events, snapshots and digests.
 
 ### 21.2 Off-duty routines
 
-- **A role's `off`** names a routine (§16.5): the person's routine off duty. Every role of a person with a home has one
-  (`bad_ref`); a routine is either a duty routine (a role's or a person's `routine`) or an `off`, never both
+- **A role's `off`** names a routine (§16.5): the person's routine off duty; only with homes (`bad_ref`). Every role of
+  a person with a home has one (`bad_ref`); a routine is either a duty routine (a role's or a person's `routine`) or an `off`, never both
   (`bad_ref`). An off routine's slots' `at` is `prev±H:MM` (from the end of a duty), `next±H:MM` (from the start of a
   duty), each at most ±12:00, or `HH:MM`; `every` is refused there (`bad_ref`) and a duty routine's `at` and `until`
   stay `start±`/`end±`/`HH:MM` (`bad_clock`); `days` (weekdays) means the weekday of the day the slot's time falls on.
@@ -2816,13 +2819,19 @@ them, and every earlier vector item keeps its events, snapshots and digests.
   `HH:MM` slot's time on d, each `prev` slot's time from the end of every duty planned, and each `next` slot's time from
   the start of every duty planned. A candidate is made when it lies within no duty's span (both ends included) and its
   `days`, when given, list its weekday. Day d's off slots are made when the person's duties are planned through day
-  d + 1, so every duty whose span or offsets reach day d is known (a duty lasts at most 24 hours and its span and the
-  offsets reach at most 12 hours beyond it). Placement plans a person with a home from day C − 3 (one day earlier than
+  d + 1, so every duty whose span or offsets reach day d is known (a span reaches at most 36 hours after its duty's
+  start: a duty of 24 hours and an `end+12:00`, a duty routine's `HH:MM` slot lying within 24 hours of the start; and
+  at most 12 hours before it: `start−12:00`, `next−12:00`; so day d needs the duties of days d − 2 to d + 1). Placement plans a person with a home from day C − 3 (one day earlier than
   §17.8), so their off slots of days C − 1 and C are made; later days' are made as each day's duties are planned. An
   off slot can never share a time with a duty's slot (it lies outside every span); slots are kept in the order (time,
   duty start or the day's 00:00, slot index, repetition).
+- **A duty comes first:** when a person with a home comes on duty (their `duty` `on` event in phase 1), every task an
+  off-duty slot made (current or queued; a `choose`'s task stays its slot's) ends `skipped`, current first, then in
+  queue order, before §17.10's held jobs come back. So a meal queued behind a sleep, or a sleep that became current
+  late, never runs into the shift. The digest's instance gains whether an off-duty slot made it (§21.5).
 - **Placement** (§17.2) of a person with a home who is off duty at the clock C: when C lies in a duty's span (the first
-  such span in duty order), the latest slot of that duty's routine at or before C; else the latest off slot made (days
+  such span in duty order), the latest slot of that duty's routine at or before C (when C is at or after the duty's
+  end, only its slots at or after the end: the commute home, never the handover or a round); else the latest off slot made (days
   C − 1 and C) at or before C and after the end of the last span ending before C. That task's first place, and the task
   queued (not counted in `unacked`); with none, the off-duty idle task's first place; if that has none, home. Off-duty
   people wear nothing at placement. On duty as before.
@@ -2854,7 +2863,7 @@ them, and every earlier vector item keeps its events, snapshots and digests.
 ```
 
 - `kind` `bus`, `pickup` or `suv` (what the app draws); `seats` 1–60 (riders; the driver takes no seat); `driver` a
-  role with the authority `drive` (`authority`); `home` a `depot` place; `runs` 1–32, each with `at` (`HH:MM`, its
+  role with the authority `drive` (`authority`); `home` a place of kind `depot`; `runs` 1–32, each with `at` (`HH:MM`, its
   departure from its first stop), `stops` (2–16 `stop` or `depot` places, none twice in a row), `dwell` (clock minutes
   at each stop after the first, 0–30) and optional `days`. Vehicle ids are unique among vehicles and lifts (`dup_id`).
   `speeds.drive` is required with drive ways (`missing_key`).
@@ -2876,9 +2885,11 @@ them, and every earlier vector item keeps its events, snapshots and digests.
   standing at the stop. It departs (`"depart"`) in phase 3 of the first step n > a with, at the first stop, C(n) ≥ D;
   at a later stop, n ≥ a + max(1, `dwell` × steps per clock minute); at the last stop, n = a + 1, for home, where it
   arrives and the driver gets off (`"off"`, standing at the depot). Vehicles move in phase 3 (§17.2), in file order,
-  before the runs are made, each vehicle at most one arrival and one departure in a step.
-- **The driver** is the first person of the role, in index order, on duty, not absent, aboard no vehicle and not on a
-  lift ride (waiting or aboard, §20.4); the trainee too (the engine drives, §21.8). They are taken from where they are:
+  each vehicle's arrival and departure before its runs are made, so a vehicle that came home in this step may set off
+  again in it. Phase 3 is not run in a jump's step (as phase 4). The runs looked at are those of days C − 1 to C + 1.
+- **The driver** is the first person of the role, in index order, on duty, not absent, aboard no vehicle, not on a
+  lift ride (waiting or aboard, §20.4) and in no lift's riders (§20.3); an NPC before a player (a player is taken only
+  when no NPC driver is available: the engine then drives, §21.8). They are taken from where they are:
   a way or a stairs route given up, a place held and a reservation let go; their current task paused as a pre-emption
   pauses it whatever its priority and `interruptible` (the idle task ended `done`), an input whose outcome they wait
   for forgotten as §17.13's claim forgets it; `[n, "aboard", person, vehicle, place or null, "on", []]`, the place they
@@ -2891,7 +2902,8 @@ them, and every earlier vector item keeps its events, snapshots and digests.
   in file order, standing there (arrived, not departed) on a run whose later stops include the step's `to`, while a
   seat is free: `[n, "aboard", person, vehicle, from, "on", []]`.
 - **`ride`** `{"from": stop, "to": stop}` (stop places, different; some vehicle's run visits `from` and later `to`,
-  `bad_ref`): an NPC goes to `from` (a `go`) and waits there; the step is done when they stand at `to`. At their turn
+  `bad_ref`): an NPC goes to `from` (a `go`) and waits there; the step is done when they stand at `to` (at once when
+  they already do). At their turn
   at the stop they get on if they can; if not, and 30 clock minutes have passed since their arrival there, the step
   becomes a `go` to `to` (they walk). Pre-emption is checked while they wait at the stop; a pause forgets the wait's
   start (they go to the stop again and wait 30 minutes from their arrival).
@@ -2901,7 +2913,7 @@ them, and every earlier vector item keeps its events, snapshots and digests.
   vehicle is one of the file's, their person stands at a stop where it stands on a run whose later stops include
   their current step's `to`, that step is a `ride` whose `from` is that stop, and a seat is free; otherwise `[n,
   "aboard", person, vehicle, place or null, "refused", [reasons]]` with the first of `unknown`, `aboard` (they are on a
-  vehicle), `no_ride` (no current `ride` step), `not_at_stop` (not at its `from`, or no vehicle of that id standing
+  vehicle or in a lift's cab; a lift's `board` is likewise refused, `aboard`, while they are on a vehicle), `no_ride` (no current `ride` step), `not_at_stop` (not at its `from`, or no vehicle of that id standing
   there going to its `to`), `full`; a slot playing nobody: person null, `authority`. Their `arrive` and `leave` are
   ignored while aboard, and so is their turn's task progress (their actions are kept as §17.8 says). A player who takes
   a person aboard keeps them aboard; a release leaves them aboard as an NPC. The `aboard` events carry the slot last in
@@ -2909,7 +2921,8 @@ them, and every earlier vector item keeps its events, snapshots and digests.
 - **A jump:** every vehicle is home again with nobody aboard (placement places everyone); a run in progress makes no
   more events.
 - **Snapshot** (§17.7): `vehicles` `{id: [place or [from, to, depart, arrive] (the drive way being driven), [people
-  aboard: the driver first, then the riders in the order they got on]]}`, after `people`; a person aboard is
+  aboard: the driver first, then the riders in the order they got on]]}`, where the key already stands (after `acts`,
+  empty without vehicles); a person aboard is
   `["vehicle", id]`.
 
 ### 21.5 The state digest with homes and vehicles
@@ -2918,8 +2931,8 @@ With homes, the digest's staff part (§17.14 item 8) gains at its end (after LIF
 per vehicle `[place or −1, way [from, to, depart, arrive] or [], run index or −1, its departure D or 0, the index of
 the stop it is at or driving to (its run's length when going home), the step from which it may depart, driver index or
 −1, riders (i32), their `to` (i32), the placement clock, the last run made or skipped as [L, run index] or []]`; per
-person the vehicle they are aboard (−1, i32) and the last day whose off slots are made (−1 without a home, i64). A
-ride's and a sleep's progress are a task step's own and left out (§17.14).
+person the vehicle they are aboard (−1, i32) and the last day whose off slots are made (−1 without a home, i64); and each
+task instance (§17.14) ends with whether an off-duty slot made it (a bool). A ride's and a sleep's progress are a task step's own and left out (§17.14).
 
 ### 21.6 The first train's full day (content, milestone S4)
 
@@ -2942,7 +2955,9 @@ ride's and a sleep's progress are a task step's own and left out (§17.14).
   mesh as the train's (tests/staff_layout.gd) and checked by the build.
 - **Buses:** two buses at the depot, driven by the driver on duty: in at 05:15 (the WTP's people), 05:40, 17:15 and
   17:40; the night crew out at 06:20 and the day crew at 18:20; the day workers in at 06:30 and 06:45 and out at 16:15;
-  their lunch at 11:45 and back at 13:00. Anyone may walk instead.
+  their lunch at 11:45 and back at 13:00. Anyone may walk instead. The content's test checks that the runs of each
+  driver role never overlap (from a run's leaving time to its return home), so no run is skipped for want of a
+  driver.
 - **Off duty:** meals at the mess (before a day shift, at midday for the day workers, 17:30–19:30), then a `choose`
   among the gym, the laundry, the prayer room, the recreation room and the own room by weights per role; sleep before
   the next duty (`next-…`, so a night crew sleeps by day with the same routine), and the off-duty idle task at home
