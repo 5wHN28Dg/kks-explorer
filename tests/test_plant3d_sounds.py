@@ -38,7 +38,7 @@ def read_json(path):
 LIBRARY = read_json(os.path.join(ROOT, 'data', 'plant3d', 'sounds.json'))
 SYNTH = {s['id']: s for s in LIBRARY['sounds'] if s['kind'] == 'synth'}
 SEAM_CLICK_DB = -90         # the synthesised samples: nothing at the seam beyond rounding
-BUDGET_BYTES = 10_000_000   # 0054 §7: 10 MB for the sounds within the 150 MB APK; these are far below
+BUDGET_BYTES = 10_000_000   # 0054 §7: 10 MB for the sounds within the 250 MB APK; these are far below
 
 
 def need_ffmpeg(test):
