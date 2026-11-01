@@ -269,7 +269,11 @@ inputs and values, so a session needs no new message kind: the new inputs travel
   `dup_id`), and their two slots exist only in a scenario with `world`, after every other slot (after the lifts'
   loads too). So that no engine reads a slot that isn't there, a version 2 plant whose content names `world_hour` or
   `world_day` anywhere (the model files, staff.json, a procedure, screens.json, a scenario's faults) needs `world` in
-  every scenario (`bad_ref`): `"world": {}` is enough.
+  every scenario (`bad_ref`): `"world": {}` is enough. The app's loader (`plant_model.gd`, not the validator) keeps
+  the same guard for what it reads (the model, scenario faults, staff reactions on a value) and refuses a value or
+  `ext` value of either name, since the step bench's loads reach it unvalidated.
+- **Saved runs and snapshots** don't carry the world's fields: the engine builds them from the scenario (their
+  names begin with `_`, which `ui/run_save.gd` leaves out), so a save or a host's snapshot can't change the seed.
 - **Step 1w** writes the two values after step 1's inputs and first-out records, so a jump's own step reads the new
   clock; step 0 writes them at C(0). A stateful node reads the previous step's, as for any value.
 - **The digest:** RE1 adds no part to the digest tree: the clock values are values (in the digest's doubles), the

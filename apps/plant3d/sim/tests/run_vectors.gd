@@ -433,6 +433,8 @@ func _staff_run(k: int, r: Dictionary, base: Dictionary, prefix := "v2/staff") -
 		d = diff(_reads_as(e.events, r["events"]), r["events"], "events")
 	if d == "" and r.has("digests"):
 		d = diff(digests[run]["state"], r["digests"], "state digests")
+	if d == "" and r.has("world"):     # the realism runs: the world's seed and year day as the engine took them
+		d = diff([e._world_seed, e._world_year_day], r["world"], "world")
 	_result(name, d)
 
 

@@ -79,7 +79,7 @@ static func run(files: Dictionary, loads: Dictionary, base_steps: int = 6000) ->
 		if r.error != "":
 			out.append("ERROR %s: %s" % [name, r.error])
 			continue
-		out.append("STEP load=%s values=%d world=%s phase=cold_start %s" % [name, m.values.size(), str(e.world),
+		out.append("STEP load=%s values=%d world=%s phase=cold_start %s" % [name, m.values.size(), str(e._world),
 				_stats(e.step_us)])
 		var t := PackedInt64Array()
 		t.resize(base_steps)

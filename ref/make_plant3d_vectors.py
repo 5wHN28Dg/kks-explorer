@@ -3949,6 +3949,7 @@ def build_realism_runs():
                 sc['staff'][k] = v
         b = check(F)
         e = P.Recorder(b, 's1')
+        world = [e.world['seed'], e.world['year_day']]
         states, digests = [e.snapshot()], [e.digest()]
         while e.step_no < until:
             if player is not None:
@@ -3961,7 +3962,7 @@ def build_realism_runs():
         out.append({'why': why, 'scenario': sc, 'staff': None,
                     'files': {k: F[k] for k in ('model/a1.json',) if F[k] != realism_files()[k]},
                     'inputs': e.inputs, 'until': until, 'every': every, 'states': states, 'events': e.events,
-                    'digests': digests})
+                    'digests': digests, 'world': world})
     return out
 
 
@@ -3974,7 +3975,8 @@ def parts3():
                           '(`streams`: each stream\'s first state and draws), and the synthetic plant with staff whose '
                           'model reads the clock values (`staff`: its files, counts, rejects and runs, as '
                           'plant3d-v2.json\'s `staff`; a run\'s `files` replace the base\'s, its `staff` null keeps '
-                          'the base\'s staff.json). Numbers compare to 1e-6; the digests (§17.14) of every 50th '
+                          'the base\'s staff.json; its `world` is the world\'s seed and year day as the engine took '
+                          'them). Numbers compare to 1e-6; the digests (§17.14) of every 50th '
                           'step are exact.'),
         'streams': build_streams,
         'staff': lambda: {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in realism_files().items()},

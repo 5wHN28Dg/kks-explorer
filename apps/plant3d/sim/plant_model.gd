@@ -208,6 +208,13 @@ func _load(files: Dictionary) -> void:
 		if staff.error != "":
 			_fail(staff.error)
 			return
+		for r in sd.get("reactions", []):       # a staff reaction on a value (§16.7) reads it in step 9
+			var on = r.get("on") if typeof(r) == TYPE_DICTIONARY else null
+			if typeof(on) == TYPE_DICTIONARY and (on.get("value") == "world_hour" or on.get("value") == "world_day"):
+				_reads_world = true
+	if version == 2 and (ext.has("world_hour") or ext.has("world_day")):
+		_fail("plant.json: an ext value has the name of a clock value")
+		return
 	_content_reads_world = _reads_world
 	for sid in scenarios:
 		_check_scenario(scenarios[sid])
@@ -220,7 +227,7 @@ func _add_model(d: Dictionary, rel: String) -> void:
 		if kind == "":
 			_fail("%s: value %s: not a node of format 1" % [rel, name])
 			return
-		if index.has(name):
+		if index.has(name) or (version == 2 and (name == "world_hour" or name == "world_day")):
 			_fail("%s: value %s: name already used" % [rel, name])
 			return
 		index[name] = values.size()
