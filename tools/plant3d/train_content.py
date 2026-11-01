@@ -24,7 +24,7 @@ SYSTEMS = {
     'PGC': 'Closed cooling water pumps', 'QFA': 'Instrument air compressors', 'QFB': 'Instrument air distribution',
     'QHA': 'Auxiliary boiler',
     # lifting gear (PLANT3D §20.5): the key's overhead cranes, hoists and lifting devices, by building
-    'SMF': 'Boiler house lifting gear: hoists and cranes', 'SMT': 'Turbine hall crane', 'CWA': 'Main control desk A', 'CWB': 'Main control desk B',
+    'SMF': 'Boiler house lifting gear: hoists and cranes', 'SNB': 'Boiler house lift', 'SMT': 'Turbine hall crane', 'CWA': 'Main control desk A', 'CWB': 'Main control desk B',
     'UCA': 'Control building', 'UHA': 'HRSG structure', 'UHN': 'Stack structure',
     'UMA': 'Turbine hall', 'UMB': 'Gas turbine hall', 'UQA': 'Circulating water pump house',
     'URA': 'Cooling tower structure',
@@ -43,11 +43,11 @@ SYSTEMS = {
     'GNR': 'Neutralisation of waste water', 'QUG': 'Water treatment sampling and laboratory',
     'CWD': 'Water treatment plant control desk', 'UGA': 'Intake structure', 'UGD': 'Water treatment building',
     'UGQ': 'Sludge dewatering building', 'UTS': 'Chemical storage building'}
-EQUIPMENT = {'AA': 'Valve or damper with its actuator', 'AC': 'Heat exchanger or heating surface',
+EQUIPMENT = {'AA': 'Valve or damper with its actuator', 'AB': 'Isolating element, gate or door', 'AC': 'Heat exchanger or heating surface',
              'AE': 'Turning, driving or lifting gear', 'AH': 'Heating or cooling unit', 'AN': 'Fan or compressor',
              'AP': 'Pump unit',
              'AM': 'Mixer or agitator', 'AT': 'Filtering, cleaning or separating unit', 'BB': 'Vessel or tank',
-             'BR': 'Pipe', 'BS': 'Silencer'}
+             'BR': 'Pipe', 'BS': 'Silencer', 'GH': 'Control box or station'}
 MEASUREMENTS = {'CB': 'Radiation (flame)', 'CF': 'Flow', 'CG': 'Position or displacement', 'CL': 'Level',
                 'CP': 'Pressure', 'CQ': 'Analysis (water quality)', 'CS': 'Speed', 'CT': 'Temperature',
                 'CW': 'Weight or force', 'CY': 'Vibration'}
@@ -260,7 +260,8 @@ HOT_INIT = {'st_casing_t': 480, 'hp_casing_seen': 480, 'hp_tw': 280, 'hp_tsat_sl
 def scenarios(state_kks):
     import wtp_model
     import train_hoists
-    faults = [fault(f, s, t, state_kks) for f, s, t in FAULTS] + wtp_model.faults(state_kks) + train_hoists.faults()
+    import train_lift
+    faults = [fault(f, s, t, state_kks) for f, s, t in FAULTS] + wtp_model.faults(state_kks) + train_hoists.faults() + train_lift.faults()
     latched = ['gt1_trip_lube', 'st_trip_lube', 'st_trip_cond_p']
     return [{'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'cold_iron',
              'title': 'Cold start after a long outage', 'init': dict(COLD_INIT), 'latched': latched,

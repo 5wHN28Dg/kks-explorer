@@ -717,6 +717,54 @@ class WaterTreatmentModel(unittest.TestCase):
         self.assertAlmostEqual(rate, 1 / 72, places=6)
 
 
+class ServiceLift(unittest.TestCase):
+    """PLANT3D §20.2: HRSG 1's service lift as model content: its landings at grade, at the stair tower's landing (the
+    fifth flight's top, as the builder lays the stair out) and at the roof landing; called, boarded, shut and sent from
+    its panel in the model alone it takes the rider up in 50 s; its gates, call stations and panel are codes of the
+    plant drawn beside the tower, each landing gate on a floor (the bridges from the tower)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.b = P.check_dir(DATA)
+
+    def test_landings_are_the_towers(self):
+        import train_lift
+        lifts = self.b.model.lifts
+        self.assertEqual([x['id'] for x in lifts], ['hrsg1_lift'])
+        x = lifts[0]
+        tower = next(s for s in json.load(open(os.path.join(DATA, 'areas', 'hrsg1.json')))['structures']
+                     if s['id'] == 'hrsg1_stair')
+        foot, top = tower['params']['foot'], tower['params']['top']
+        flights = math.ceil((top[2] - foot[2]) / 3.6 - 1e-9)
+        dz = (top[2] - foot[2]) / flights
+        self.assertEqual([ld['z'] for ld in x['landings']], [foot[2], foot[2] + dz * 5, top[2]])
+        self.assertEqual(x['rated_kg'], 500)
+        self.assertEqual(train_lift.ZS, [ld['z'] for ld in x['landings']])
+
+    def test_a_ride_to_the_roof_in_the_model_alone(self):
+        e = P.Recorder(self.b, 'cold_iron')
+        e.op('10SNB10GH001', 'start')
+        e.step()
+        e.op('10SNB10AB001', 'open')
+        for _ in range(25):
+            e.step()
+        self.assertTrue(e.truth('hrsg1_lift_open0'))
+        e.board('hrsg1_lift')
+        e.step()
+        self.assertEqual(e.v('hrsg1_lift_load_kg'), 75)
+        e.op('10SNB10AB001', 'close')
+        for _ in range(25):
+            e.step()
+        e.op('10SNB10GH010', 'set', 2)
+        n = 0
+        while not e.truth('hrsg1_lift_at2') and n < 1000:
+            e.step()
+            n += 1
+        self.assertTrue(e.truth('hrsg1_lift_at2'))
+        self.assertAlmostEqual(n / 10, 50, delta=1.5)     # 30 m at 0.6 m/s
+        self.assertTrue(all(x[4] == 'done' for x in e.events if x[1] in ('op', 'board')))
+
+
 class Hoists(unittest.TestCase):
     """PLANT3D §20.5: HRSG 1's roof hoist and the turbine hall's crane as model content. Both lifts run by their
     procedures in the model alone; the hook goes on only at the slings and comes off only with the load resting; a

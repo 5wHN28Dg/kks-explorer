@@ -54,7 +54,7 @@ static func params() -> NavigationMesh:
 ## Bakes the built scenes (the ground and the areas, as app/plant.gd loads them) under `parent` (a node in the tree)
 ## and saves the mesh in `built_dir`. `stairs` and `ladders` are the builder's (builder/plant_builder.gd), `start`
 ## the plant's start (Godot's axes). Returns {"error": …} or what was made.
-static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, ladders: Array, start: Vector3) -> Dictionary:
+static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, ladders: Array, start: Vector3, lifts: Array = []) -> Dictionary:
 	var t0 := Time.get_ticks_msec()
 	var root := Node3D.new()
 	root.name = "nav_source"
@@ -78,6 +78,11 @@ static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, 
 		ways.append({"kind": "stair", "id": s.id, "path": PackedVector3Array(w)})
 	for l in ladders:
 		ways.append({"kind": "ladder", "id": l.id, "path": PackedVector3Array([_g(l.foot), _g(l.exit)])})
+	# a lift's landing on a stair's landing between its foot and its top (HRSG 1's at +16.7 m, PLANT3D §20.11): the
+	# stair is out of the mesh, so its bridge would be an island; it is joined to the stair's way there, down to its
+	# foot and up to its top (two ways of the stair's own, "ID@k"), and to the lift's other landings by the lifts'
+	# links (lift_links): the walkers, the staff's ways and the directions get there on foot as by the lift
+	ways.append_array(lift_landing_ways(ways, lifts))
 	var left_out := {"doors": 0, "stairs": 0}
 	for n in _left_out(root):
 		left_out["stairs" if n.has_meta("stair") else "doors"] += 1
@@ -98,15 +103,24 @@ static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, 
 				v.append(Vector3(p.x, 0, -p.y))
 			var lo: float = fl.z0 - 0.5
 			src.add_projected_obstruction(v, lo, fl.z1 - 0.15 - lo, false)
+	# each service lift's shaft (its cab, gates and mast: builder/plant_builder.gd lifts_manifest), from under grade to
+	# its mast's top: the cab moves, so the mesh ends at each landing gate (PLANT3D §20.6)
+	for lf in lifts:
+		var v := PackedVector3Array()
+		for p in lf.footprint:
+			v.append(Vector3(float(p[0]), 0, float(p[2])))
+		var lo: float = float(lf.at[1]) - 0.5
+		src.add_projected_obstruction(v, lo, float(lf.get("height", 40.0)) + 0.5, false)
 	var tiled := bake_tiled(nm, src, TILE)
 	if tiled.has("error"):
 		return tiled
 	if nm.get_polygon_count() == 0:
 		return {"error": "nav: the navigation mesh is empty"}
-	# the links: each stair's foot and top, each ladder's foot and step-off point
+	# the links: each stair's foot and top, each ladder's foot and step-off point; each lift's landings (their fronts)
 	var links: Array = []
 	for w in ways:
 		links.append([w.path[0], w.path[-1], "%s %s" % [w.kind, w.id]])
+	links.append_array(lift_links(lifts))
 	nm.set_meta("ways", ways)
 	var kept := reachable(nm, start, links)
 	if kept.has("error"):
@@ -120,6 +134,66 @@ static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, 
 	return {"polygons": nm.get_polygon_count(), "dropped": all - nm.get_polygon_count(), "vertices": nm.get_vertices().size(),
 		"doors": left_out.doors, "stairs": left_out.stairs, "tiles": tiled.tiles, "grid": tiled.grid, "splits": tiled.splits, "ms": Time.get_ticks_msec() - t0,
 		"bytes": FileAccess.get_file_as_bytes(path).size()}
+
+const LIFT_FRONT := 0.8         # app/walk_route.gd: a ride begins and ends this far in front of a landing gate
+
+
+## Each lift's landing fronts (Godot's axes), in the order of its gates (rising).
+static func lift_fronts(lf: Dictionary) -> Array:
+	var r := deg_to_rad(float(lf.get("yaw", 0.0)))
+	var out := Vector3(-LIFT_FRONT * cos(r), 0.0, -LIFT_FRONT * sin(r))     # (the part's -x, turned as geom.gd turn)
+	var fronts := []
+	for g in lf.get("gates", []):
+		fronts.append(Vector3(float(g.at[0]), float(g.at[1]), float(g.at[2])) + out)
+	return fronts
+
+
+## The lifts' landings joined to one another (reachable(): an island reached only by the lift is kept).
+static func lift_links(lifts: Array) -> Array:
+	var links := []
+	for lf in lifts:
+		var f := lift_fronts(lf)
+		for i in range(1, f.size()):
+			links.append([f[i - 1], f[i], "lift %s %d %d" % [lf.kks, i - 1, i]])
+	return links
+
+
+## For a lift's landing front that lies beside a stair's landing between its foot and its top: two ways of that stair,
+## from its foot to the front and from the front to its top, each along the stair's own path to its landing at that
+## height and across it to the front.
+static func lift_landing_ways(ways: Array, lifts: Array) -> Array:
+	var out := []
+	for lf in lifts:
+		for f in lift_fronts(lf):
+			for w in ways:
+				if w.kind != "stair":
+					continue
+				var path: PackedVector3Array = w.path
+				if absf(path[0].y - f.y) < 0.3 or absf(path[path.size() - 1].y - f.y) < 0.3:
+					continue        # at the stair's foot or top: on the mesh already
+				var k := -1
+				var best := 4.0
+				for i in path.size():
+					var d := Vector2(path[i].x - f.x, path[i].z - f.z).length()
+					if absf(path[i].y - f.y) < 0.05 and d < best:
+						best = d
+						k = i
+				if k == -1:
+					continue
+				# across the landing square to the bridge (its rails stand either side of the bridge): along the line
+				# of the front, then to the stair's point
+				var r := deg_to_rad(float(lf.get("yaw", 0.0)))
+				var nrm := Vector3(-cos(r), 0.0, -sin(r))      # out of the gate, along the bridge (lift_fronts)
+				var q: Vector3 = f + nrm * (path[k] - f).dot(nrm)
+				q.y = f.y
+				var down := PackedVector3Array(path.slice(0, k + 1))
+				down.append_array([q, f])
+				var up := PackedVector3Array([f, q])
+				up.append_array(path.slice(k))
+				out.append({"kind": "stair", "id": "%s@%d" % [w.id, k], "path": down})
+				out.append({"kind": "stair", "id": "%s@%d+" % [w.id, k], "path": up})
+	return out
+
 
 ## A stair's way (its path, Godot's axes) with the floor in front of each end, APPROACH metres on, where its link
 ## joins the mesh: straight on from the flight if the walker's capsule fits along there and finds the end's floor,

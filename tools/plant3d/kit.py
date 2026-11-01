@@ -186,6 +186,16 @@ PARTS = {
                            None, ['bridge', 'trolley', 'hook', 'rope', 'load_y', 'load_x', 'load_z']),
     # a drive, latch or load cell riding on its hoist's trolley, bridge or hook: a code of its own, drawn by its hoist
     'hoist_unit': part('instruments', {'kind': E(['hoist', 'trolley', 'bridge', 'latch', 'load_cell'])}),
+    # a rack-and-pinion service lift (PLANT3D §20.2): the mast (`mast`, its top above the part's origin, the cab's
+    # floor at the lowest landing) and the cab, a 1.0 x 1.2 m car with its front (the part's -x) open to the landing
+    # gates; the cab is moved by the app (apps/plant3d/app/lift.gd) to the model's `z`, not by a binding
+    'service_lift': part('machines', {'mast': N(3, 120, 33)}, None, ['cab', 'gate'], ['mast']),
+    # a landing gate: its frame, and the leaf that rises to open (`leaf`, its position 0 shut, 1 open)
+    'lift_gate': part('instruments', {}, None, ['leaf']),
+    # a landing's call station (a box with its call button and lamp, on a post)
+    'lift_call': part('instruments', {}),
+    # a drive, the cab's control panel or its load cell: a code of its own riding on the cab, drawn by the lift
+    'lift_unit': part('instruments', {'kind': E(['drive', 'panel', 'load_cell'])}),
     # rotating
     'pump_horizontal': part('rotating', {'flow_m3h': N(0.1, 50000, 100), 'head_m': N(1, 3000, 50),
                                          'motor_kw': N(0.1, 20000, 30), 'length': N(1, 12, 3)},

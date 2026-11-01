@@ -37,6 +37,7 @@ var runway_cranes := {}         # kks -> true: the overhead cranes found on a ha
 var equipment := {}              # kks -> {pos: plant Vector3, yaw, part, params, area}
 var surfaces: Array = []         # walkable: {id, kind, z, outline, holes, thick, rails, deck, area}
 var stairs: Array = []           # {id, area, foot, top, layout, width, st, lay}
+const LIFT_GATE_HALF := 0.6     # a landing gate's posts at ±0.6 m (kit/parts_lifts.gd GATE_HALF)
 var ladders: Array = []          # {id, area, foot, top, facing, exit}
 var buildings: Array = []        # {id, area, outline, height, openings, at}
 var pits: Array = []             # {id, area, outline, depth}
@@ -664,7 +665,8 @@ func _rails(st: SurfaceTool, body: Node, sf: Dictionary) -> int:
 					var i2 := Geom.in_region(m - n * 0.15, sf.outline, sf.holes)
 					if i1 != i2:
 						var q := m - n * 0.15 if i1 else m + n * 0.15
-						on = not walkable_at(q, sf.z, sf.id) and not _near_wall(m, sf.z, 0.4) and not _near_ladder(m, sf.z)
+						on = not walkable_at(q, sf.z, sf.id) and not _near_wall(m, sf.z, 0.4) and not _near_ladder(m, sf.z) \
+								and not _at_lift_gate(m, sf.z)
 				var t0 := float(k) * len / steps
 				if on and run_start < 0.0:
 					run_start = t0
@@ -679,6 +681,41 @@ func _near_wall(p: Vector2, z: float, tol: float) -> bool:
 		if z >= -TOL and z <= b.height and not _wall_edge(b, p, tol).is_empty():
 			return true
 	return false
+
+## Is p in a lift's landing gate at height z (PLANT3D §20.2)? The gate is the edge's guard there: no handrail across it.
+func _at_lift_gate(p: Vector2, z: float) -> bool:
+	for k in equipment:
+		var e: Dictionary = equipment[k]
+		if e.part != "lift_gate" or absf(e.pos.z - z) > TOL:
+			continue
+		var local := Geom.turn(Vector3(p.x - e.pos.x, p.y - e.pos.y, 0.0), -float(e.yaw))
+		if absf(local.x) <= 0.3 and absf(local.y) <= LIFT_GATE_HALF + 0.05:
+			return true
+	return false
+
+## The service lifts for the app (app/lift.gd), the walking directions and the bake (builder/nav_bake.gd), Godot's
+## frame: each lift's code, its cab's origin (the floor's centre at the lowest landing) and yaw, its footprint (the
+## cab, its gate and the mast, plan corners) and each landing gate's sill.
+func lifts_manifest() -> Array:
+	var out := []
+	for k in equipment:
+		var e: Dictionary = equipment[k]
+		if e.part != "service_lift":
+			continue
+		var foot := []
+		for c in [Vector2(-0.62, -0.68), Vector2(1.25, -0.68), Vector2(1.25, 0.68), Vector2(-0.62, 0.68)]:
+			var w: Vector3 = e.pos + Geom.turn(Vector3(c.x, c.y, 0.0), float(e.yaw))
+			foot.append(_arr(Geom.g([w.x, w.y, e.pos.z])))
+		var gates := []
+		for g in equipment:
+			if equipment[g].part == "lift_gate" and String(g).begins_with(String(k)):
+				var gp: Vector3 = equipment[g].pos
+				gates.append({"kks": g, "at": _arr(Geom.g([gp.x, gp.y, gp.z]))})
+		gates.sort_custom(func(a, b): return a.at[1] < b.at[1])
+		out.append({"kks": k, "at": _arr(Geom.g([e.pos.x, e.pos.y, e.pos.z])), "yaw": float(e.yaw), "footprint": foot,
+				"height": float(e.params.get("mast", 33.0)),
+				"gates": gates})
+	return out
 
 func _near_ladder(p: Vector2, z: float) -> bool:
 	for l in ladders:
@@ -748,6 +785,7 @@ func build_all(out_dir: String) -> int:
 		"equipment": equipment.keys().filter(func(k): return not equipment[k].has("child")).map(func(k):
 			var e = equipment[k]
 			return {"kks": k, "name": e.name, "area": e.area, "at": _arr(Geom.g([e.pos.x, e.pos.y, e.pos.z]))}),
+		"lifts": lifts_manifest(),
 		"content": "\n".join(inputs).sha256_text(),
 	}
 	var f := FileAccess.open(out_dir.path_join("plant.json"), FileAccess.WRITE)

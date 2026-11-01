@@ -21,6 +21,7 @@ const SceneIndex = preload("res://ui/scene_index.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const Tracker = preload("res://ui/procedure_tracker.gd")
 const Bindings = preload("res://ui/bindings.gd")
+const LiftView = preload("res://app/lift.gd")
 const SoundPlayer = preload("res://ui/sound_player.gd")
 const Pointer = preload("res://ui/pointer.gd")
 const LinksIn = preload("res://ui/links_in.gd")
@@ -65,6 +66,7 @@ var clock
 var inputs                      # ui/inputs.gd: every input of the trainee's to the plant goes through it (MP1)
 var tracker
 var bindings
+var lifts                         # app/lift.gd: the service lifts' cabs, gates and riding (PLANT3D §20.7)
 var sounds
 var pointer
 var route                       # app/walk_route.gd: the way on foot to what is pointed at, in a "walk" step
@@ -161,6 +163,10 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	var nav_err: String = route.setup()
 	if nav_err != "":
 		push_warning(nav_err)      # no walking directions; everything else works
+	else:
+		# the lifts' rides (PLANT3D §20.6): the directions take one when it is quicker by the staff's speeds (walk_route.gd
+		# speeds: staff.json's, tests/test_lifts.gd checks)
+		route.add_lifts(m.plant.manifest.get("lifts", []))
 	sounds = SoundPlayer.new()
 	sounds.name = "sounds"
 	sounds.walker = player
@@ -174,6 +180,10 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	clock.start(model, scenario)
 	bindings.setup(clock.engine, index, info, player.camera)
 	sounds.engine = clock.engine
+	lifts = LiftView.new()
+	lifts.name = "lifts"
+	m.add_child(lifts)
+	lifts.setup(self)
 	_build()
 	people = PeopleView.new()
 	people.name = "people"
@@ -877,6 +887,8 @@ func restart(scenario: String, quiet := false) -> void:
 	run_tracker = null
 	clock.start(model, scenario)
 	bindings.use_engine(clock.engine)
+	if lifts != null:
+		lifts.snap()
 	sounds.engine = clock.engine
 	sounds.reset_edges()
 	alarms.since.clear()
@@ -1277,6 +1289,8 @@ func _walker_state() -> Array:
 func adopt_engine(e) -> void:
 	clock.install(e)
 	bindings.use_engine(e)
+	if lifts != null:
+		lifts.snap()
 	sounds.engine = e
 	sounds.reset_edges()
 	alarms.since.clear()

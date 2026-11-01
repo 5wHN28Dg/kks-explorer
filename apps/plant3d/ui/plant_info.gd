@@ -24,6 +24,9 @@ var parts := {}                    # code -> the kit part it is drawn with (equi
 var params := {}                   # code -> its part's parameters as the content gives them
 var parent_of := {}                # a part's code -> its equipment's
 var parts_of := {}                 # equipment's code -> its parts' codes
+## A service lift's controls (PLANT3D §20.1): code -> [lift, role, landing]: "call" and "gate" (a landing's), "panel"
+## (the cab's), "drive" (its main switch)
+var lift_role := {}
 
 
 func _init(model) -> void:
@@ -46,6 +49,12 @@ func _init(model) -> void:
 			if s.has("kks"):
 				names[s["kks"]] = s.get("name", _structure_name(s))
 				area_of[s["kks"]] = a["id"]
+	for x in m.lifts:
+		lift_role[x["panel"]] = [x, "panel", -1]
+		lift_role[String(x["kks"]) + "AE001"] = [x, "drive", -1]
+		for i in x["landings"].size():
+			lift_role[x["landings"][i]["call"]] = [x, "call", i]
+			lift_role[x["landings"][i]["gate"]] = [x, "gate", i]
 	for v in m.values:
 		var nd: Dictionary = v[1]
 		if nd.has("unit"):
@@ -184,6 +193,17 @@ static func value_label(name: String) -> String:
 
 func op_label(o: Dictionary) -> String:
 	var d: String = o["do"]
+	var lr: Array = lift_role.get(o["kks"], [])
+	if not lr.is_empty():
+		match [lr[1], d]:
+			["call", "start"]: return "Call the cab here"
+			["gate", "open"]: return "Open the gate"
+			["gate", "close"]: return "Close the gate"
+			["panel", "stop"]: return "Emergency stop"
+			["panel", "start"]: return "Release the emergency stop"
+			["drive", "stop"]: return "Main switch off"
+			["drive", "start"]: return "Main switch on"
+
 	match d:
 		"close_breaker": return "Close breaker"
 		"open_breaker": return "Open breaker"
@@ -197,6 +217,12 @@ func op_label(o: Dictionary) -> String:
 			var t = m.trip_by_id(o["trip"])
 			return "Reset: %s" % (t.get("text", o["trip"]) if t != null else o["trip"])
 	return d.capitalize()
+
+
+## A lift landing's name for its buttons: "grade" or its height ("+16.7 m").
+static func landing_name(x: Dictionary, i: int) -> String:
+	var z: float = float(x["landings"][i]["z"])
+	return "grade" if absf(z) < 0.05 else "%+.1f m" % z
 
 
 ## A failed permissive or check in words (an op's refusal lists value names, §7.2).

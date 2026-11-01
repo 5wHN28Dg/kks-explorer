@@ -2691,3 +2691,51 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
 - **staff.json:** `speeds.lift` may be given; a plant with a lift way must give it (`missing_key`). A lift way in a
   plant whose staff.json has no `lifts` is `bad_value` (an unknown mode); one whose ends are not landings of one lift
   is `bad_ref`; a lift way whose stairs don't exist is `unreachable`.
+
+### 20.11 As built for milestone LIFTS L2 (2026-10-31: the lift in the app)
+
+- **The content** (`tools/plant3d/train_lift.py`, made by `lift_model.py`): HRSG 1's lift `hrsg1_lift` (`10SNB10`),
+  rated 500 kg, 0.6 m/s, gates of 2 s, its landings at grade, at the stair tower's landing at 5 × 30/9 m (the fifth
+  flight's top, as the builder lays the tower out: 16.67 m) and at the roof landing (+30). The cab stands east of the
+  tower (its floor's centre at (103.8, 48)), its gates face west at x 103.22; short grating bridges join the tower's
+  landing at +16.7 and the roof landing to the gates (at grade the gate stands on the ground). The blowdown line's
+  riser moved from x 104 to 105.8, clear of the mast. Besides `lift_model`'s parts the model gains the main switch
+  (the drive's `stop` and `start`, `local` ops with the role authority of any op) and the isolation `iso_hrsg1_lift`
+  on it; the load cell's reading `hrsg1_lift_load_kg` (the engine's load, with its unit and code); `hrsg1_lift_moving`
+  and each gate's `_moving` for the sounds; the gates' leaves bound as `anim`. The drive's repair under a permit (its
+  work, and with it a job in staff.json) comes with L3's staff. The faults `hrsg1_lift_drive` and
+  `hrsg1_lift_gate_switch` are in every first-train scenario. KKS letters added to the key: `SNB`, `AB`, `GH`.
+- **The kit** (`kit/parts_lifts.gd`): `service_lift` (the mast with its rack, the base enclosure at grade, the cab with
+  its own gate: moving pieces `cab` and `cab/gate`), `lift_gate` (posts, header, the `leaf` that rises 2.1 m),
+  `lift_call`, and `lift_unit` (the drive, whose cabinet with the main switch the lift draws at the mast's foot, and the
+  cab's panel and its load cell, drawn by the cab). The builder leaves no
+  handrail across a landing gate, and lists the lifts in the built plant's manifest (`lifts`: the cab's origin, its
+  footprint, its gates); the bake obstructs each shaft's footprint from under grade to the mast's top, so the mesh ends
+  at each gate.
+- **The view** (`app/lift.gd`): the cab is an `AnimatableBody3D` moved in the physics frames to `z` interpolated
+  between the last two steps (the clock's fraction; in a session, the time since the last step over the time between
+  the last two); the walker rides it as a moving floor. The landing gates' leaves get a body solid only while their
+  position is 0; the cab's front is solid unless the cab stands at a landing whose gate is not shut. A gate (or the
+  front) that becomes solid with the walker in its gateway puts the walker on the side their riding says. The panel and
+  the load cell ride with the cab (the panel with a small body, so a tap or the centre of the screen
+  picks it). `board` and `alight` (ui/inputs.gd) are sent every 0.25 s when the engine's riders differ from where the
+  walker's feet are (in the cab's floor or not), at most once a second, a board only while the cab stands at a
+  landing; a person taken while aboard puts the walker in the cab.
+- **Controls:** the cards say what each control does ("Call the cab here", "Open the gate", "Emergency stop", "Main
+  switch off"); the cab's panel sends the cab with a button per landing ("To grade", "To +16.7 m", "To +30.0 m"), not a
+  typed number. Touch, mouse and gamepad reach them as any card's buttons.
+- **Directions** (`app/walk_route.gd`): a navigation link between every two landings of each lift, in front of their
+  gates (0.8 m), on a navigation layer of its own; `find()` searches with the lifts and, when the way rides one, again
+  without, and keeps the quicker by the staff's speeds (a ride's height at `speeds.lift`, stairs and ladders along
+  their paths, floors at a walk): to the roof from the tower's foot it rides. Two rides in a row through a landing
+  between are made one. The stair tower is out of the mesh (a link from its foot to its top), so the bridge at +16.7 m
+  is joined to the tower's own way there: the bake adds two ways of the stair, from its foot to the bridge and from the
+  bridge to its top (`hrsg1_stair@k`), and keeps the bridge (the lifts' landings are links for its reachability).
+  The autopilot rides a lift step (`{"lift", "from", "dest"}`: call, open, step in, shut, send, open, step out, shut);
+  `walk=lift` is the measured walk that rides it.
+- **Sounds:** the drive's `motor_small` while the cab travels, each gate's `door_roller` while its leaf moves, the
+  overload buzzer (`horn_p3` at the load cell).
+- **The screen:** HRSG 1's screen has the lift's group (its state, height, load, alarms).
+- **Tests:** `tests/test_lifts.gd` (the ride from grade to the roof through the cards, the walker on the cab's floor,
+  the gates' and the front's bodies, the panel's reach, the directions), `test_ui_session.gd` (both players' boards
+  reach both plants), `tests/test_plant3d.py ServiceLift` (the landings are the tower's; a ride in the model alone).

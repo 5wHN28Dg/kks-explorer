@@ -3,7 +3,7 @@
 ## process, over the loopback) joins by the code and the host's address; both claim roles in the lobby and the host
 ## presses Start; both plants then run the same steps (the same state digests); an input of each reaches the other's
 ## plant; the bar's Pause pauses the session for both; the other player is drawn where its `pos` says; the host's
-## End ends it for the joiner too (a player released while holding a hoist's button has it let go by the host first), and the app's clock is its own again. A join link starts a join with its code.
+## End ends it for the joiner too; both players' boards of the lift reach both plants (a player released while holding a hoist's button has it let go by the host first), and the app's clock is its own again. A join link starts a join with its code.
 extends RefCounted
 
 const App = preload("res://tests/ui_app.gd")
@@ -104,6 +104,18 @@ func run(tree: SceneTree) -> Array:
 	ui.inputs.task_ack()
 	if not await _wait(tree, func(): return _has(ui.clock.engine, ["task_ack", 1]) and _has(clock2.engine, ["task_ack", 0]), 10.0):
 		p.append("an input did not reach the other player's plant")
+	# both ride the lift (PLANT3D §20.3, §20.7): each player's board, with their slot, reaches both plants
+	# (the host's walker is not in the cab: its own app/lift.gd sends its alight; the second player has no walker)
+	var who2: String = clock2.engine._sm.people[clock2.engine.trainee(1)]["id"]
+	var who1 = ui.me()
+	ui.lifts.set_physics_process(false)
+	s2.send_input(["board", "hrsg1_lift", who2])
+	ui.inputs.board("hrsg1_lift", who1)
+	if not await _wait(tree, func(): return ui.clock.engine.riders[0].size() == 2 and clock2.engine.riders[0].size() == 2, 10.0):
+		p.append("the players' boards did not reach both plants (host %s, player %s; events %s)" % [str(ui.clock.engine.riders[0]), str(clock2.engine.riders[0]), str(ui.clock.engine.events.filter(func(ev): return ev[1] == "board"))])
+	elif ui.clock.engine.riders[0] != clock2.engine.riders[0] or not ui.clock.engine.riders[0].has(who2) or not ui.clock.engine.riders[0].has(who1):
+		p.append("the riders differ or are not the players' people: %s, %s" % [str(ui.clock.engine.riders[0]), str(clock2.engine.riders[0])])
+	ui.lifts.set_physics_process(true)
 	# the other player in the plant
 	if not await _wait(tree, func(): return ui.others != null and ui.others.shown.has(1), 5.0):
 		p.append("the other player is not drawn")

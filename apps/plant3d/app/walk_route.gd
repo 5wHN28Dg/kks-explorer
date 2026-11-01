@@ -26,7 +26,13 @@ const LIFT := 0.1               # metres above the route (the mesh lies a little
 const LADDER_COST := 2.0        # a ladder is climbed at half the walking speed (app/player.gd)
 const STAIR_COST := 1.5         # and a stair walked a little slower than a floor
 const LINK_REACH := 1.0         # builder/nav_bake.gd: a stair's or a ladder's ends are this near the mesh
+const LIFT_LAYER := 2           # the lifts' links (PLANT3D §20.6): searched with them and without them
+const LIFT_FRONT := 0.8         # m in front of a landing gate's sill: where a ride begins and ends
+const LIFT_ENTER := 20.0        # a ride's cost to board, in metres of walking
 
+## The staff's nominal speeds (staff.json `speeds`, §16.2; `lift` §20.4): the walking directions take a lift when its
+## ride is quicker than the stairs by these, as the staff's `next` does (§20.6; the user, 2026-10-30)
+var speeds := {"walk": 1.3, "stair": 0.5, "ladder": 0.3, "lift": 0.3}
 var map := RID()
 var region := RID()
 var links := {}                 # link RID -> {kind: "stair" | "ladder", id, path: the way along it, foot first}
@@ -141,7 +147,7 @@ func _warm_up() -> void:
 	warmed = true
 
 
-func _link(kind: String, id: String, path: Array, cost: float) -> void:
+func _link(kind: String, id: String, path: Array, cost: float) -> RID:
 	var link := NavigationServer3D.link_create()
 	NavigationServer3D.link_set_map(link, map)
 	NavigationServer3D.link_set_bidirectional(link, true)
@@ -149,6 +155,62 @@ func _link(kind: String, id: String, path: Array, cost: float) -> void:
 	NavigationServer3D.link_set_end_position(link, path[-1])
 	NavigationServer3D.link_set_travel_cost(link, cost)
 	links[link] = {"kind": kind, "id": id, "path": path}
+	return link
+
+
+## The service lifts (the built plant's manifest, builder/plant_builder.gd lifts_manifest): a link between every two
+## landings of each, from in front of one gate to in front of the other, on a navigation layer of its own (find()
+## searches with and without them and takes the quicker, by the staff's speeds).
+func add_lifts(lifts: Array) -> void:
+	if not map.is_valid():
+		return
+	for lf in lifts:
+		var gates: Array = lf.get("gates", [])
+		var out := Geom_turn(Vector3(-LIFT_FRONT, 0, 0), float(lf.get("yaw", 0.0)))
+		var fronts := []
+		for g in gates:
+			fronts.append(Vector3(float(g.at[0]), float(g.at[1]), float(g.at[2])) + out)
+		for i in fronts.size():
+			for j in range(i + 1, fronts.size()):
+				var path := [fronts[i], fronts[j]]
+				var l: RID = _link("lift", "%s %d %d" % [lf.kks, i, j], path, 1.0)
+				NavigationServer3D.link_set_navigation_layers(l, LIFT_LAYER)
+				# boarding costs (the call, the gates, the wait): one ride, not two in a row through a landing between
+				NavigationServer3D.link_set_enter_cost(l, LIFT_ENTER)
+				links[l]["from"] = i
+				links[l]["to"] = j
+				links[l]["lift"] = String(lf.kks)
+
+
+## A plan offset (x east, y north in the part's frame) turned by a yaw in degrees, in Godot's axes.
+static func Geom_turn(v: Vector3, yaw_deg: float) -> Vector3:
+	var r := deg_to_rad(yaw_deg)
+	var c := cos(r)
+	var sn := sin(r)
+	# as builder/geom.gd turn() then g(): yaw clockwise from north
+	var x := v.x * c + v.y * sn
+	var y := -v.x * sn + v.y * c
+	return Vector3(x, v.z, -y)
+
+
+## The nominal time of a route (s), by the staff's speeds: a floor walked, a stair's or a ladder's path, a lift's
+## height ridden (§16.2, §20.4).
+func time_of(rt: Dictionary) -> float:
+	var pts: PackedVector3Array = rt.get("points", PackedVector3Array())
+	var t := 0.0
+	for k in range(1, pts.size()):
+		var m: String = rt.marks[k]
+		var d := pts[k - 1].distance_to(pts[k])
+		if m != "" and m == rt.marks[k - 1]:
+			if m.begins_with("lift "):
+				t += absf(pts[k].y - pts[k - 1].y) / maxf(float(speeds.get("lift", 0.3)), 0.01)
+			elif m.begins_with("ladder "):
+				t += d / maxf(float(speeds.get("ladder", 0.3)), 0.01)
+			else:
+				t += d / maxf(float(speeds.get("stair", 0.5)), 0.01)
+		else:
+			t += d / maxf(float(speeds.get("walk", 1.3)), 0.01)
+	return t
 
 
 func _exit_tree() -> void:
@@ -199,11 +261,23 @@ func point_for(box: AABB) -> Vector3:
 ## its own path, its points marked "stair ID" or "ladder ID" (other points ""). `reached` is false when the route
 ## only gets to the walkable point nearest to `to` that can be reached from `from`.
 func find(from: Vector3, to: Vector3) -> Dictionary:
+	var a := _find(from, to, 1 | LIFT_LAYER)
+	if not String(" ".join(a.marks)).contains("lift "):
+		return a
+	# a lift on the way: the stairs' way too, and the quicker by the staff's speeds (§20.6)
+	var b := _find(from, to, 1)
+	if b.reached and not a.reached or b.reached == a.reached and time_of(b) <= time_of(a):
+		return b
+	return a
+
+
+func _find(from: Vector3, to: Vector3, layers: int) -> Dictionary:
 	var t0 := Time.get_ticks_usec()
 	var q := NavigationPathQueryParameters3D.new()
 	q.map = map
 	q.start_position = from
 	q.target_position = to
+	q.navigation_layers = layers
 	q.metadata_flags = NavigationPathQueryParameters3D.PATH_METADATA_INCLUDE_TYPES | NavigationPathQueryParameters3D.PATH_METADATA_INCLUDE_RIDS
 	# every polygon may be searched: Godot stops at 4,096 by default and then returns the way to the nearest point
 	# found so far, which with the site's and the camp's mesh (19,000 polygons) was a way to the foot of a stair, short
@@ -234,6 +308,7 @@ func find(from: Vector3, to: Vector3) -> Dictionary:
 		pts.append(raw[i])
 		marks.append("")
 		i += 1
+	_one_ride(pts, marks)
 	var length := 0.0
 	for k in range(1, pts.size()):
 		length += pts[k - 1].distance_to(pts[k])
@@ -243,6 +318,32 @@ func find(from: Vector3, to: Vector3) -> Dictionary:
 	stats.find_us_max = maxi(stats.find_us_max, us)
 	var reached := pts.size() > 0 and pts[pts.size() - 1].distance_to(NavigationServer3D.map_get_closest_point(map, to)) < 0.3
 	return {"points": pts, "marks": marks, "length": length, "reached": reached, "raw": raw, "types": r.path_types}
+
+
+## Rides through a landing between ("lift K 0 1" then "lift K 1 2") made one ride ("lift K 0 2"): nobody gets out at
+## a landing to call the cab they have just left (the search sees two rides as one).
+static func _one_ride(pts: PackedVector3Array, marks: PackedStringArray) -> void:
+	var k := 1
+	while k + 2 < pts.size():
+		var a := marks[k - 1]
+		var b := marks[k + 1]
+		if a.begins_with("lift ") and a == marks[k] and b.begins_with("lift ") and b == marks[k + 2] \
+				and pts[k].distance_to(pts[k + 1]) < 0.05:
+			var wa := a.split(" ")
+			var wb := b.split(" ")
+			if wa[1] == wb[1]:
+				var seq := [int(wa[2]), int(wa[3]), int(wb[2]), int(wb[3])]
+				var lo: int = mini(mini(seq[0], seq[1]), mini(seq[2], seq[3]))
+				var hi: int = maxi(maxi(seq[0], seq[1]), maxi(seq[2], seq[3]))
+				var m := "lift %s %d %d" % [wa[1], lo, hi]
+				pts.remove_at(k + 1)
+				pts.remove_at(k)
+				marks.remove_at(k + 1)
+				marks.remove_at(k)
+				marks[k - 1] = m
+				marks[k] = m
+				continue
+		k += 1
 
 
 ## The route as app/autopilot.gd's steps: walk to each point (a stair along its path), climb each ladder on the way.
@@ -259,6 +360,19 @@ func steps(rt: Dictionary) -> Array:
 			out.append({"ladder": m.substr(7), "dir": "up" if up else "down"})
 			while i < pts.size() and rt.marks[i] == m:
 				i += 1
+			continue
+		if m.begins_with("lift "):
+			# a ride: walk to the gate's front, then ride (app/autopilot.gd works the calls, gates and panel)
+			var w := m.split(" ")
+			out.append({"to": pts[i], "floor": pts[i].y, "exact": true})
+			var j := i
+			while j + 1 < pts.size() and rt.marks[j + 1] == m:
+				j += 1
+			var lo := int(w[2])
+			var hi := int(w[3])
+			var up: bool = pts[j].y > pts[i].y
+			out.append({"lift": w[1], "from": lo if up else hi, "dest": hi if up else lo})
+			i = j + 1
 			continue
 		if m.begins_with("stair ") and (i == 0 or rt.marks[i - 1] != m):
 			out.append({"to": pts[i], "floor": pts[i].y, "exact": true})
@@ -409,8 +523,9 @@ func _build() -> void:
 		var b := pts[i]
 		var l := a.distance_to(b)
 		var flat := Vector3(b.x - a.x, 0, b.z - a.z)
-		var ladder: bool = String(route.marks[i]).begins_with("ladder ") and route.marks[i] == route.marks[i - 1]
-		if ladder or l <= 0.01:   # up or down a ladder: nothing drawn on its rungs, the way goes on at its other end
+		var m_i := String(route.marks[i])
+		var ladder: bool = (m_i.begins_with("ladder ") or m_i.begins_with("lift ")) and route.marks[i] == route.marks[i - 1]
+		if ladder or l <= 0.01:   # up or down a ladder or a lift: nothing drawn up its height, the way goes on at its other end
 			next = maxf(next, along + l)
 			along += l
 			continue

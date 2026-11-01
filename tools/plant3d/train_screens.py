@@ -27,9 +27,11 @@ def screens():
     overview is on every desk (the main control room reads it), the rest on the WTP's own desk only (PLANT3D §14:
     `desks`). Each screen says its desks: without them it would be on every desk."""
     import train_hoists
+    import train_lift
     out = train()
     for sc in out['screens']:
         sc['groups'] += train_hoists.screen_groups().get(sc['id'], [])
+        sc['groups'] += train_lift.screen_groups().get(sc['id'], [])
         sc['desks'] = list(MAIN)
     out['overview']['desks'] = list(MAIN)
     out['screens'] += wtp()

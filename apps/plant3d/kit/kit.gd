@@ -25,12 +25,14 @@ const P_PIPE = preload("res://kit/parts_pipes.gd")
 const P_SITE = preload("res://kit/parts_site.gd")
 const P_WAT = preload("res://kit/parts_water.gd")
 const P_HOIST = preload("res://kit/parts_hoists.gd")
+const P_LIFT = preload("res://kit/parts_lifts.gd")
 
 ## The parts each generator script makes (structure parts are made by the builder itself, §5, except the site's and
 ## the camp's: planting, vehicles, furniture, PLANT3D.md §18.6).
 const MAKERS := {
 	"gas_turbine": "MACH", "generator": "MACH", "steam_turbine": "MACH", "sfc": "MACH", "turning_gear": "MACH",
 	"filter_house": "MACH", "monorail_hoist": "HOIST", "overhead_crane": "HOIST", "hoist_unit": "HOIST",
+	"service_lift": "LIFT", "lift_gate": "LIFT", "lift_call": "LIFT", "lift_unit": "LIFT",
 	"hrsg": "VES", "hrsg_module": "VES", "drum": "VES", "stack": "VES", "duct": "VES", "silencer": "VES",
 	"tank_vertical": "VES", "vessel_horizontal": "VES", "package_boiler": "VES", "basin": "VES",
 	"pump_horizontal": "ROT", "pump_vertical": "ROT", "fan_axial": "ROT", "compressor_skid": "ROT",
@@ -63,7 +65,7 @@ const MAKERS := {
 ## parameters and the limits of its size parameters).
 const BUDGET := {
 	"gas_turbine": 30000, "generator": 12000, "steam_turbine": 30000, "sfc": 4000, "turning_gear": 4000,
-	"filter_house": 8000, "monorail_hoist": 5000, "overhead_crane": 5000, "hoist_unit": 0, "hrsg": 20000, "hrsg_module": 1500, "drum": 9000, "stack": 26000, "duct": 4000,
+	"filter_house": 8000, "monorail_hoist": 5000, "overhead_crane": 5000, "hoist_unit": 0, "service_lift": 6000, "lift_gate": 600, "lift_call": 200, "lift_unit": 0, "hrsg": 20000, "hrsg_module": 1500, "drum": 9000, "stack": 26000, "duct": 4000,
 	"silencer": 3000, "tank_vertical": 9000, "vessel_horizontal": 6000, "package_boiler": 8000, "basin": 1000,
 	"pump_horizontal": 9000, "pump_vertical": 11000, "fan_axial": 6000, "compressor_skid": 8000,
 	"vacuum_pump_skid": 8000, "motor": 5000, "condenser": 12000, "shell_tube_hx": 6000, "plate_hx": 4000,
@@ -200,6 +202,7 @@ static func _script(part: String):
 		"SITE": return P_SITE
 		"WAT": return P_WAT
 		"HOIST": return P_HOIST
+		"LIFT": return P_LIFT
 	return null
 
 ## Makes a part (cached: the same part with the same parameters and context is made once).

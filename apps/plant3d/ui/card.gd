@@ -25,6 +25,7 @@ var _works: Array = []          # [work, button]: the permits to work on this eq
 var _ops: Array = []            # [op, button, permissives label, feedback label, entry or null, note label]
 var _repairs: Array = []        # [fault, box, button, note label, work or {}]: the scenario's faults repaired here
 var _pendant = null             # ui/pendant.gd: a hoist's pendant (PLANT3D §20.5)
+var _also := {}                 # an op's button -> the other buttons of its row (a lift panel's landings, §20.1)
 var _t := 0.0
 
 
@@ -56,6 +57,7 @@ func open(c: String, note := "") -> void:
 	_values.clear()
 	_ops.clear()
 	_repairs.clear()
+	_also.clear()
 	var nm: String = info.name_of(c)
 	title.text = c + ("\n" + nm if nm != "" else "")
 	if note != "":
@@ -119,7 +121,10 @@ func open(c: String, note := "") -> void:
 		var line := HBoxContainer.new()
 		box.add_child(line)
 		var entry: LineEdit = null
-		if o["do"] == "set":
+		# a lift cab's panel sends the cab to a landing (PLANT3D §20.1): a button for each landing, not a number
+		var lr: Array = info.lift_role.get(c, [])
+		var to_landing: bool = o["do"] == "set" and not lr.is_empty() and lr[1] == "panel"
+		if o["do"] == "set" and not to_landing:
 			entry = LineEdit.new()
 			entry.custom_minimum_size = Vector2(130 * W.scale, 52 * W.scale)
 			entry.placeholder_text = _range_text(o)
@@ -128,8 +133,19 @@ func open(c: String, note := "") -> void:
 				entry.text = _shown(o, want["value"])
 			line.add_child(entry)
 			line.add_child(W.label("%" if _percent(o) else String(info.units.get(o["input"], "")), 18, W.DIM, false))
-		var b := W.button(info.op_label(o), _press.bind(o, entry), 140)
-		line.add_child(b)
+		var b: Button
+		if to_landing:
+			var row_b := []
+			for i in lr[0]["landings"].size():
+				var lb := W.button("To " + info.landing_name(lr[0], i), _send.bind(o, i), 110)
+				lb.name = "lift_to_%d" % i
+				line.add_child(lb)
+				row_b.append(lb)
+			b = row_b[0]
+			_also[b] = row_b.slice(1)
+		else:
+			b = W.button(info.op_label(o), _press.bind(o, entry), 140)
+			line.add_child(b)
 		var note_l := W.label("", 16, W.DIM)
 		box.add_child(note_l)
 		var perm := W.label("", 16, W.DIM)
@@ -274,6 +290,12 @@ func _press(o: Dictionary, entry: LineEdit) -> void:
 	refresh()
 
 
+## A value sent as it is (a lift panel's landing).
+func _send(o: Dictionary, value) -> void:
+	ui.do_op(o, value)
+	refresh()
+
+
 func _process(delta: float) -> void:
 	var _c0 := Time.get_ticks_usec()
 	_each_frame(delta)
@@ -336,6 +358,8 @@ func refresh() -> void:
 		var ok: bool = info.offered(o, near, ctl)
 		var b: Button = row[1]
 		b.disabled = not ok
+		for x in _also.get(b, []):
+			(x as Button).disabled = not ok
 		var w: Array = o.get("where", ["local", "screen"])
 		var note := ""
 		if not ok:
