@@ -18,6 +18,10 @@ state digest the players compare, with their vectors.
 NPCs, the HRSG roof's hoist and the turbine hall's crane, as model content with riders' inputs and a lift way for
 the staff.
 
+**The Workshop mode (DRAFT 2026-11-01):** docs/plant3d/WORKSHOP.md (decision 0072): one kit part alone, taken
+apart, reassembled, run on a bench model of its own format (`walkdown-plant-bench`) and looked inside. It leaves
+formats 1 and 2 as they are.
+
 The plant you walk through in Walkdown Plant is **data**, like a course: a *description* (where every piece of
 equipment, pipe and structure is), built from a **kit of parametric parts** (what each kind of thing looks like), made
 alive by a **behaviour model** (how values change when someone operates the plant), and used by **procedures and
