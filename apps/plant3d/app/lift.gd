@@ -38,6 +38,9 @@ var _step_seen := -1              # the engine's step at the last frame, and whe
 var _step_t := 0.0
 var _step_dt := 0.1
 var _last_who = null              # who rode for this player at the last check (a person taken while aboard)
+var _moved_at := -1                # the step and engine _move last drew (its early out)
+var _moved_e = null
+var draws := 0                    # how many times _move has drawn (tests: nothing while still)
 var walker_aboard := -1           # the lift index the walker is aboard (the engine's riders), -1 none (tests read it)
 
 
@@ -152,6 +155,18 @@ func _move(force: bool) -> void:
 	var f := _frac(e)
 	var cur: PackedFloat64Array = e.cur
 	var prev: PackedFloat64Array = e.prev
+	# nothing to do while no step has run and no cab is between two steps' heights (PLANT3D §20.8: nothing while still)
+	if not force and e.step_no == _moved_at and e == _moved_e:
+		var moving := false
+		for L in lifts:
+			var s0: int = L["slot_z"]
+			if prev.size() > s0 and prev[s0] != cur[s0]:
+				moving = true
+		if not moving:
+			return
+	_moved_at = e.step_no
+	_moved_e = e
+	draws += 1
 	for L in lifts:
 		var s: int = L["slot_z"]
 		var z: float = cur[s] if prev.size() <= s else lerpf(prev[s], cur[s], f)

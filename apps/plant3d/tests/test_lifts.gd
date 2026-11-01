@@ -36,6 +36,14 @@ func run(t: SceneTree) -> Array:
 	if ui.lifts == null or ui.lifts.lifts.size() != 1:
 		main.free()
 		return ["the lift is not drawn: %s" % str(ui.lifts.lifts.size() if ui.lifts != null else null)]
+	# nothing done while still (PLANT3D §20.8): paused, the cab standing, no frame draws it again
+	for i in 3:
+		await tree.physics_frame
+	var d0: int = ui.lifts.draws
+	for i in 30:
+		await tree.physics_frame
+	if ui.lifts.draws != d0:
+		p.append("the lift's view drew %d times in 30 frames with nothing moving" % (ui.lifts.draws - d0))
 	await _ride(ui)
 	await _walked_down(ui)
 	await _gateway(ui)

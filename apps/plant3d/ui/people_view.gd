@@ -66,7 +66,10 @@ var _spd := PackedFloat32Array()    # per person: the speed they were last drawn
 ## Riders (PLANT3D §20.7): who stands in a lift's cab ([lift, place in boarding order]), each drawn at their spot in the
 ## cab facing its gate; stepping in or out they walk between the landing and the spot (their offset from where they are
 ## going shrinks at RIDE_STEP m/s of plant time)
-var _aboard := {}                   # person id -> [engine's lift, n]
+var _ab_k := PackedInt32Array()     # per person: the engine's lift they ride, -1 none (made again when a step has run)
+var _ab_n := PackedInt32Array()     # per person: their place in its riders (boarding order)
+var _ab_at := -1                    # the step and engine _ab_k is of
+var _ab_e = null
 var _rode := PackedByteArray()      # per person: drawn in a cab last frame
 var _roff := PackedVector3Array()   # per person: where they are drawn less where they are going, stepping in or out
 var _spot := PackedInt32Array()     # per person: their spot in the cab (its index) when last drawn there
@@ -157,9 +160,8 @@ func update() -> void:
 			continue
 		var p := Vector3.INF
 		var leg: Array = e.sp_leg[pi]
-		if _aboard.has(sm.people[pi]["id"]) and ui.lifts != null:
-			var ab: Array = _aboard[sm.people[pi]["id"]]
-			p = ui.lifts.rider_spot(ab[0], ab[1])        # a rider: at the lift (§20.7), a next leg begun or not
+		if _ab_k[pi] != -1 and ui.lifts != null:
+			p = ui.lifts.rider_spot(_ab_k[pi], _ab_n[pi])        # a rider: at the lift (§20.7), a next leg begun or not
 		elif not leg.is_empty():
 			var k := clampf(float(e.step_no - leg[2]) / maxf(1.0, float(leg[3] - leg[2])), 0.0, 1.0)
 			if ways != null and ways.walk(mini(leg[0], leg[1]) * _at.size() + maxi(leg[0], leg[1]), leg[0], k, 1.0):
@@ -241,16 +243,15 @@ func drive(delta: float) -> void:
 		var d := Vector3.ZERO
 		# in a cab (the engine's riders), or just stepped out of one (drawn walking from their spot, §20.7): the engine
 		# may start their next leg in the step they get off, before their alight is done
-		var aboard_now: bool = ui.lifts != null and _aboard.has(sm.people[pi]["id"])
+		var aboard_now: bool = _ab_k[pi] != -1 and ui.lifts != null
 		var stepping_out: bool = not aboard_now and (_rode[pi] == 1 or _roff[pi] != Vector3.ZERO)
 		if aboard_now:
 			# at their spot, facing the gate, kept clear of (not moved aside)
-			var ab: Array = _aboard[sm.people[pi]["id"]]
-			var spot: Vector3 = ui.lifts.rider_spot(ab[0], ab[1])
+			var spot: Vector3 = ui.lifts.rider_spot(_ab_k[pi], _ab_n[pi])
 			if spot == Vector3.INF:
 				continue
-			row = apart.fixed(pi, _stepping(pi, spot, true, dt, ab[1]))
-			_ride_yaw[pi] = ui.lifts.gate_yaw(ab[0])
+			row = apart.fixed(pi, _stepping(pi, spot, true, dt, _ab_n[pi]))
+			_ride_yaw[pi] = ui.lifts.gate_yaw(_ab_k[pi])
 		elif not leg.is_empty():
 			var steps: float = maxf(1.0, float(leg[3] - leg[2]))
 			var k := clampf((float(e.step_no - leg[2]) + frac) / steps, 0.0, 1.0)
@@ -405,13 +406,23 @@ func drive(delta: float) -> void:
 	out.resize(n)
 
 
-## Who stands in a lift's cab: person id -> [the engine's lift, place in boarding order].
+## Who stands in a lift's cab: per person the engine's lift and their place in boarding order (once a step).
 func _fill_aboard(e) -> void:
-	_aboard.clear()
+	var sm = e._sm
+	if e == _ab_e and e.step_no == _ab_at and _ab_k.size() == sm.people.size():
+		return              # (riders change only in a step)
+	_ab_e = e
+	_ab_at = e.step_no
+	_ab_k.resize(sm.people.size())
+	_ab_k.fill(-1)
+	_ab_n.resize(sm.people.size())
 	for k in e.riders.size():
 		for j in e.riders[k].size():
 			if typeof(e.riders[k][j]) == TYPE_STRING:
-				_aboard[e.riders[k][j]] = [k, j]
+				var pi: int = sm.person_ix.get(e.riders[k][j], -1)
+				if pi != -1:
+					_ab_k[pi] = k
+					_ab_n[pi] = j
 
 
 ## Where a person stepping into a cab (`into`) or out of one is drawn: their offset from `to` (set from where they were
