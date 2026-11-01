@@ -239,7 +239,7 @@ def routines():
         # off duty (§21.2): a meal after the duty, free time, sleep before the next, breakfast; a day off's meals
         {'id': 'off_shift', 'idle': 'at_home', 'slots': [
             slot('prev+0:30', 'meal'), slot('prev+1:30', 'free_time'), slot('next-9:30', 'sleep'),
-            slot('next-1:15', 'breakfast'), slot('12:30', 'meal'), slot('19:00', 'meal')]},
+            slot('next-1:15', 'breakfast')]},
         {'id': 'off_days', 'idle': 'at_home', 'slots': [
             slot('prev+1:30', 'meal'), slot('prev+2:30', 'free_time'), slot('next-9:00', 'sleep'),
             slot('next-1:30', 'breakfast'), slot('12:30', 'meal', days=['sun'])]},
@@ -314,7 +314,7 @@ def tasks():
                                     {'go': 'mess_serve'}, {'work': 15}])
     task('clean_blocks', 'Cleaning the blocks', [{'go': 'p_bw35'}, {'work': 10}, {'go': 'p_bw55'}, {'work': 10},
                                                  {'go': 'p_bw75'}, {'work': 10}, {'go': 'p_bw95'}, {'work': 10}])
-    task('laundry_work', 'The laundry', [{'go': 'ldy_table'}, {'work': 30}])
+    task('laundry_work', 'The laundry', [{'go': {'kind': 'table', 'room': 'laundry'}, 'else': 1}, {'work': 30}])
     return T
 
 
