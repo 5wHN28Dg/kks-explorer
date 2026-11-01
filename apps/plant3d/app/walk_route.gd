@@ -271,6 +271,12 @@ func find(from: Vector3, to: Vector3) -> Dictionary:
 	return a
 
 
+## The way on foot alone (no lift): the staff's walking ways are measured and checked by it (tests/staff_layout.gd,
+## tests/test_staff_ways.gd), a lift way being a way of its own (PLANT3D §20.4).
+func find_walking(from: Vector3, to: Vector3) -> Dictionary:
+	return _find(from, to, 1)
+
+
 func _find(from: Vector3, to: Vector3, layers: int) -> Dictionary:
 	var t0 := Time.get_ticks_usec()
 	var q := NavigationPathQueryParameters3D.new()

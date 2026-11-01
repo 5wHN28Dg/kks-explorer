@@ -57,6 +57,7 @@ func setup(u) -> void:
 		body.name = "cab_body"
 		body.sync_to_physics = true
 		body.set_meta("kks", String(x["kks"]))
+		body.add_to_group("lift_bodies")      # (moving, as the doors are: the staff's room checks leave them out)
 		host.add_child(body)
 		body.transform = piece.transform
 		# the cab's meshes name their far-view parents by relative paths (the build's visibility ranges): kept
@@ -90,6 +91,7 @@ func setup(u) -> void:
 			if gn != null:
 				var sb := StaticBody3D.new()
 				sb.name = "leaf_body"
+				sb.add_to_group("lift_bodies")
 				gn.add_child(sb)
 				g["shape"] = _box(sb, Vector3(0.0, LEAF_H * 0.5 + 0.03, 0.0), Vector3(0.06, LEAF_H, 2 * GATE_HALF - 0.04))
 			L["gates"].append(g)
