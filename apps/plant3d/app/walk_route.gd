@@ -27,7 +27,7 @@ const LADDER_COST := 2.0        # a ladder is climbed at half the walking speed 
 const STAIR_COST := 1.5         # and a stair walked a little slower than a floor
 const LINK_REACH := 1.0         # builder/nav_bake.gd: a stair's or a ladder's ends are this near the mesh
 const LIFT_LAYER := 2           # the lifts' links (PLANT3D §20.6): searched with them and without them
-const LIFT_FRONT := 0.7         # m in front of a landing gate's sill: where a ride begins and ends
+const LIFT_FRONT := 0.8         # m in front of a landing gate's sill: where a ride begins and ends
 const LIFT_ENTER := 20.0        # a ride's cost to board, in metres of walking
 
 ## The staff's nominal speeds (staff.json `speeds`, §16.2; `lift` §20.4): the walking directions take a lift when its

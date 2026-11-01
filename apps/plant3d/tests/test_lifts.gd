@@ -86,7 +86,7 @@ func _run(ui, seconds: float, until := Callable()) -> bool:
 func _ride(ui) -> void:
 	var e = ui.clock.engine
 	var L: Dictionary = ui.lifts.lifts[0]
-	var front0 := gd(102.52, 48.0, 0.0)
+	var front0 := gd(102.42, 48.0, 0.0)
 	# from the control room the cab's panel buttons are not offered
 	ui.go_control_room(false)
 	ui.open_card(KKS + "GH010")
@@ -177,7 +177,7 @@ func _ride(ui) -> void:
 	if not _press(ui, KKS + "AB003", "open", "Open the gate"):
 		return
 	await _run(ui, 4.0, func(): return e.truth(LIFT + "_open2"))
-	await _stand(ui, gd(102.52, 48.0, 30.05))
+	await _stand(ui, gd(102.42, 48.0, 30.05))
 	await _run(ui, 2.0, func(): return ui.lifts.walker_aboard == -1)
 	if not e.riders[0].is_empty():
 		p.append("the walker out on the roof landing did not alight: riders %s" % str(e.riders[0]))
@@ -262,7 +262,7 @@ func _directions(ui) -> void:
 	r.route = up
 	r._build()
 	var v: PackedVector3Array = r._mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] if r._mesh.get_surface_count() > 0 else PackedVector3Array()
-	var front := gd(102.52, 48.0, 0.0)
+	var front := gd(102.42, 48.0, 0.0)
 	var in_shaft := 0
 	for q in v:
 		if Vector2(q.x - front.x, q.z - front.z).length() < 0.4 and q.y > 2.0 and q.y < 28.0:

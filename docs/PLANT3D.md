@@ -2723,7 +2723,7 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
   switch off"); the cab's panel sends the cab with a button per landing ("To grade", "To +16.7 m", "To +30.0 m"), not a
   typed number. Touch, mouse and gamepad reach them as any card's buttons.
 - **Directions** (`app/walk_route.gd`): a navigation link between every two landings of each lift, in front of their
-  gates (0.7 m), on a navigation layer of its own; `find()` searches with the lifts and, when the way rides one, again
+  gates (0.8 m), on a navigation layer of its own; `find()` searches with the lifts and, when the way rides one, again
   without, and keeps the quicker by the staff's speeds (a ride's height at `speeds.lift`, stairs and ladders along
   their paths, floors at a walk): to the roof from the tower's foot it rides. Two rides in a row through a landing
   between are made one. The stair tower is out of the mesh (a link from its foot to its top), so the bridge at +16.7 m

@@ -63,7 +63,7 @@ static func frames(plant) -> Array:
 
 ## HRSG 1's service lift (train_lift.py: its gates at x 103.22, y 48 facing west, the cab east of them), up and down.
 static func lift(_plant) -> Array:
-	var gate := 102.52            # in front of the gates: where a ride begins and ends (app/walk_route.gd LIFT_FRONT)
+	var gate := 102.42            # in front of the gates: where a ride begins and ends (app/walk_route.gd LIFT_FRONT)
 	return [_to(93.5, 44.5), _to(102.5, 45.4), {"to": Plant.g(gate, 48.0, 0.0), "floor": 0.0, "exact": true},
 		{"lift": "10SNB10", "from": 0, "dest": 2}, _to(101.4, 48.0, 30), _to(101.4, 52.5, 30),
 		{"to": Plant.g(gate, 48.0, 30.0), "floor": 30.0, "exact": true}, {"lift": "10SNB10", "from": 2, "dest": 0},
