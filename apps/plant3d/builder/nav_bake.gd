@@ -135,7 +135,7 @@ static func bake(parent: Node, built_dir: String, scenes: Array, stairs: Array, 
 		"doors": left_out.doors, "stairs": left_out.stairs, "tiles": tiled.tiles, "grid": tiled.grid, "splits": tiled.splits, "ms": Time.get_ticks_msec() - t0,
 		"bytes": FileAccess.get_file_as_bytes(path).size()}
 
-const LIFT_FRONT := 0.7         # app/walk_route.gd: a ride begins and ends this far in front of a landing gate
+const LIFT_FRONT := 0.8         # app/walk_route.gd: a ride begins and ends this far in front of a landing gate
 
 
 ## Each lift's landing fronts (Godot's axes), in the order of its gates (rising).
@@ -180,9 +180,15 @@ static func lift_landing_ways(ways: Array, lifts: Array) -> Array:
 						k = i
 				if k == -1:
 					continue
+				# across the landing square to the bridge (its rails stand either side of the bridge): along the line
+				# of the front, then to the stair's point
+				var r := deg_to_rad(float(lf.get("yaw", 0.0)))
+				var nrm := Vector3(-cos(r), 0.0, -sin(r))      # out of the gate, along the bridge (lift_fronts)
+				var q: Vector3 = f + nrm * (path[k] - f).dot(nrm)
+				q.y = f.y
 				var down := PackedVector3Array(path.slice(0, k + 1))
-				down.append(f)
-				var up := PackedVector3Array([f])
+				down.append_array([q, f])
+				var up := PackedVector3Array([f, q])
 				up.append_array(path.slice(k))
 				out.append({"kind": "stair", "id": "%s@%d" % [w.id, k], "path": down})
 				out.append({"kind": "stair", "id": "%s@%d+" % [w.id, k], "path": up})

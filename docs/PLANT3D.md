@@ -2526,7 +2526,9 @@ under the hoist's body). The crane's part stands at grade at
   gone. The hook comes down to 0.4 m above the floor under it (with a load
   hooked on, above the highest floor under the load) and no lower (a slack-chain switch), and travel keeps it so: the
   trolley looks 0.1 m ahead, and an empty hook low over grade stops short of a higher floor's edge until it is raised.
-  The load snaps under the hook (by up to 0.3 m) the step after the latch closes.
+  The load snaps under the hook (by up to 0.3 m) the step after the latch closes. Not modelled: what stands on a floor (the crane's
+  floor table knows the operating floor, not the turbines and the generator on it), so a load set down there in free
+  play may stand inside a machine; the procedure's set-down place is clear of them.
 - **The load cell** reads the load's weight while it is hooked on and the chain taut. **Overload:** hoisting up stops
   while the cell reads over the rated load (alarm `<p>_overload`, priority 3, `WAH`, on the load cell): a heavy load
   leaves the floor by at most one step's travel (1 cm), stays resting, and can be unhooked. **Travel:** the trolley and
@@ -2723,7 +2725,7 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
   switch off"); the cab's panel sends the cab with a button per landing ("To grade", "To +16.7 m", "To +30.0 m"), not a
   typed number. Touch, mouse and gamepad reach them as any card's buttons.
 - **Directions** (`app/walk_route.gd`): a navigation link between every two landings of each lift, in front of their
-  gates (0.7 m), on a navigation layer of its own; `find()` searches with the lifts and, when the way rides one, again
+  gates (0.8 m), on a navigation layer of its own; `find()` searches with the lifts and, when the way rides one, again
   without, and keeps the quicker by the staff's speeds (a ride's height at `speeds.lift`, stairs and ladders along
   their paths, floors at a walk): to the roof from the tower's foot it rides. Two rides in a row through a landing
   between are made one. The stair tower is out of the mesh (a link from its foot to its top), so the bridge at +16.7 m

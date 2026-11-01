@@ -18,6 +18,7 @@
 extends Node
 
 const Player = preload("res://app/player.gd")
+const WalkRoute = preload("res://app/walk_route.gd")
 const REACH := 0.35
 const EXACT_REACH := 0.1
 const STUCK_S := 5.0
@@ -246,7 +247,7 @@ func _lift(s: Dictionary) -> bool:
 				_press(x["panel"], "set", b)         # (once: the cab remembers a send)
 		6:  # out, to in front of the gate
 			var g: Node3D = ui.index.nodes.get(String(lds[b]["gate"]))
-			var out := g.global_transform * Vector3(-0.7, 0.05, 0.0)
+			var out := g.global_transform * Vector3(-WalkRoute.LIFT_FRONT, 0.05, 0.0)
 			if _stop_at(out):
 				_phase = 7
 		7:  # off (app/lift.gd sends the alight): shut the gate behind
@@ -268,7 +269,7 @@ func _place_after(s: Dictionary) -> void:
 		if not lv.is_empty():
 			var g: Node3D = ui.index.nodes.get(String(lv[0]["landings"][int(s["dest"])]["gate"]))
 			if g != null:
-				player.global_position = g.global_transform * Vector3(-0.7, 0.05, 0.0)
+				player.global_position = g.global_transform * Vector3(-WalkRoute.LIFT_FRONT, 0.05, 0.0)
 	elif s.has("ladder"):
 		var l := _find_ladder(s.ladder)
 		if l:
