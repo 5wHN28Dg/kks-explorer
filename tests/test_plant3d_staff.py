@@ -4,7 +4,7 @@ inputs; each reject is caught with its code; and the rules the vectors pin are c
 midnight and day 0, slots, placement, routes and their tie rule, reservations, pre-emption, reactions and their
 duplicates, the permit flow between NPCs, the trainee's inputs, jumps, fast-forward, the random streams).
   .venv/bin/python -m unittest tests.test_plant3d_staff"""
-import json, os, sys, unittest
+import json, os, re, sys, unittest
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, REPO)
@@ -872,6 +872,22 @@ class CampRuns(unittest.TestCase):
         self.assertIsNotNone(p.aboard)
         p.zin = {0}
         self.assertEqual(sr.zones_of(p), [])
+
+    def test_every_player_input_is_saved_and_carried(self):
+        # (the adversarial review of S4a: a saved run with a get_on queued was refused, a session dropped it) every
+        # input kind the app's engine takes is in the saved run's sizes and the session's forms
+        app = os.path.join(REPO, 'apps', 'plant3d')
+        eng = open(os.path.join(app, 'sim', 'engine.gd'), encoding='utf-8').read()
+        body = eng[eng.index('\tmatch item[1]:'):eng.index('push_error("engine: unknown input "')]
+        kinds = set(re.findall(r'"([a-z_]+)"(?=[,:])', body))
+        save = open(os.path.join(app, 'ui', 'autosave.gd'), encoding='utf-8').read()
+        sizes = save[save.index('var sizes := {'):save.index('}', save.index('var sizes := {'))]
+        forms = open(os.path.join(app, 'net', 'input_check.gd'), encoding='utf-8').read()
+        forms = forms[forms.index('const FORMS := {'):]
+        self.assertIn('get_on', kinds)
+        for k in sorted(kinds):
+            self.assertIn(f'"{k}"', sizes, k)
+            self.assertIn(f'"{k}"', forms, k)
 
     def test_files_without_homes_are_unchanged(self):
         # every staff run before the camp's keeps no vehicles in its snapshots

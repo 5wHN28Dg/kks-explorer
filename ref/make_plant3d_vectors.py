@@ -3713,6 +3713,15 @@ def camp_rejects():
             'ride', {'from': 'camp_stop', 'to': 'camp_stop'}))),
         ('a ride no run makes', 'bad_ref', _st(lambda st: [v.__setitem__('runs', v['runs'][:1])
                                                            for v in st['vehicles']])),
+        ('drive ways in a file without vehicles', 'bad_ref', _st(lambda st: (st.__setitem__('vehicles', []),
+                                                                             [t['steps'].clear() or t['steps'].append(
+                                                                                 {'work': 1}) for t in st['tasks']
+                                                                              if t['id'] in ('commute_in',
+                                                                                             'commute_out')]))),
+        ('a run whose drive to its first stop takes over 12 clock hours', 'bad_number',
+         _st(lambda st: next(w for w in st['ways'] if w[:2] == ['depot', 'camp_stop']).__setitem__(2, 6000))),
+        ('an off-duty task held for the next duty', 'bad_ref',
+         _st(lambda st: _stask(st, 'meal').__setitem__('resume', 'next_duty'))),
         ('a driver absent', 'bad_ref', lambda F: F['scenarios/s1.json']['staff'].__setitem__('absent', ['drv1'])),
     ]
 

@@ -2806,7 +2806,8 @@ content (S4b).
   a person with a home has one (`bad_ref`); a routine is either a duty routine (a role's or a person's `routine`) or an `off`, never both
   (`bad_ref`). An off routine's slots' `at` is `prev±H:MM` (from the end of a duty), `next±H:MM` (from the start of a
   duty), each at most ±12:00, or `HH:MM`; `every` is refused there (`bad_ref`) and a duty routine's `at` and `until`
-  stay `start±`/`end±`/`HH:MM` (`bad_clock`); `days` (weekdays) means the weekday of the day the slot's time falls on.
+  stay `start±`/`end±`/`HH:MM` (`bad_clock`); an off routine's task is no job held for the next duty (`resume`,
+  `bad_ref`: a job would come back at the duty's start); `days` (weekdays) means the weekday of the day the slot's time falls on.
 - **The off-duty idle task** is the off routine's `idle`: an NPC or a player off duty with nothing queued runs it
   (priority 6), as the duty's idle task runs on duty (§17.8). An idle instance is a duty's or an off one: a duty's ends
   (`done`) when anything is queued or the duty ends, an off one when anything is queued or a duty starts; either is
@@ -2825,8 +2826,8 @@ content (S4b).
   §17.8), so their off slots of days C − 1 and C are made; later days' are made as each day's duties are planned. An
   off slot can never share a time with a duty's slot (it lies outside every span); slots are kept in the order (time,
   duty start or the day's 00:00, slot index, repetition).
-- **A duty comes first:** when a person with a home comes on duty (their `duty` `on` event in phase 1), every task an
-  off-duty slot made (current or queued; a `choose`'s task stays its slot's) ends `skipped`, current first, then in
+- **A duty comes first:** whenever a slot of a duty is given in phase 1 (before it is given: the first marks the start of
+  the duty's span) and when the person comes on duty (their `duty` `on` event), every task an off-duty slot made (current or queued; a `choose`'s task stays its slot's) ends `skipped`, current first, then in
   queue order, before §17.10's held jobs come back. So a meal queued behind a sleep, or a sleep that became current
   late, never runs into the shift. The digest's instance gains whether an off-duty slot made it (§21.5).
 - **Placement** (§17.2) of a person with a home who is off duty at the clock C: when C lies in a duty's span (the first
@@ -2871,11 +2872,11 @@ content (S4b).
   its walking stub (§16.2). Every place of a vehicle's runs is reached from its home over drive ways (`unreachable`). A
   drive way's time in steps is §16.2's rule at `speeds.drive`. **A vehicle's route** between two places is the quickest
   over drive ways by steps, ties by the lowest list of place indexes (§16.2's rule over the stops and depots numbered
-  in place order, at most 64), searched by both engines at load. The vehicle drives it way by way; a place on the way
+  in place order, at most 64 with vehicles; drive ways need vehicles, `bad_ref`), searched by both engines at load. The vehicle drives it way by way; a place on the way
   that is not the run's next stop is passed without standing or an event.
 - **A run's times.** A run runs on a day d when it has no `days` or d's weekday is in them; its departure D is d's `at`,
   its leaving time L = D less the route's steps from home to its first stop in whole clock minutes rounded up (zero when
-  the first stop is home). Per vehicle the runs are taken in the order (L, run index) over the days; in phase 3 of the
+  the first stop is home; at most 12 clock hours, `bad_number`). Per vehicle the runs are taken in the order (L, run index) over the days; in phase 3 of the
   first step with C ≥ L a run is **made**: unless L is before the clock of the last placement (so a run whose L is the
   placement clock is made, and one whose L fell in a jump's gap is not); the vehicle not at home (another run) or no
   driver available skip it: `[n, "vehicle", id, first stop, "skipped"]`.
@@ -3018,10 +3019,15 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   nobody in a cab), getting on and off, `ride` and the player's `get_on` with its reasons, the digest's fields, the
   snapshot's `vehicles`; a lift's `board` is refused (`aboard`) while its person is on a vehicle. From the blind
   review: a player aboard is in no zone too (their zone inputs count again once off), a home that is not a room's name
-  is refused rather than failing the validator, and duty spans are kept only for people with homes. A run's tasks made by
+  is refused rather than failing the validator, and duty spans are kept only for people with homes. From the
+  adversarial review: the app's saved runs and the session's input check take `get_on`; drive ways and the 64 stops'
+  limit only with vehicles (files without them keep S1's rules); a run's first drive at most 12 hours (so days C − 1 to
+  C + 1 see every run); `resume` refused on off-duty tasks; the GDScript engine searches the vehicles' routes once per
+  place (it searched once per pair). A duty's slot ends the off-duty slots' tasks as its duty's start does (a night
+  crew's stale meal ran past their bus, found in the first train's content). A run's tasks made by
   off-duty slots end `skipped` when a duty starts (the adversarial review of the plan: a sleep or a meal never runs into
   a shift), and placement after a duty's end picks only its slots after the end.
-- **Validator:** every rule break of §21 (`staff.reject`'s 35 new items, below). The four S1 rejects that refused the
+- **Validator:** every rule break of §21 (`staff.reject`'s 38 new items, below). The four S1 rejects that refused the
   S4 keys are each a rule of S4 now (vehicles or a place off site without homes, a home that is no room with a bed, a
   ride from places that are not there, a drive way without a driving speed): their codes and changes are new, their
   places in the list kept.
@@ -3032,7 +3038,7 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   the trainee riding (get_on refused for an unknown vehicle and with no ride step, then on and off; a jump with the
   pickup out); the trainee walking instead (refused on the way, not at the stop); the trainee as the driver; a lock
   left off site and removed by authority; a jump to the evening; a session with a player released aboard and the
-  driver claimed while driving. `staff.reject` gains 31 rule breaks on the camp file and 4 of S4's keys without homes.
+  driver claimed while driving. `staff.reject` gains 34 rule breaks on the camp file and 4 of S4's keys without homes.
   Every other item of the file is unchanged (a JSON comparison of the old and the new file: only `staff.reject`'s
   items 7–10 and the seven appended runs differ). `tests/test_plant3d_staff.py CampRuns` checks the runs' story by
   name.
