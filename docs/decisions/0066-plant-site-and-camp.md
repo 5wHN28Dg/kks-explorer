@@ -34,6 +34,7 @@ buildings and interiors loaded so that the first start (8.8 s of 15 on the Note 
 
 **When to revisit:** the APK passes 150 MB or a desktop package about 300 MB (packs on demand: a network permission, the user's call, MILESTONES.md);
 the Note 9's walk misses the frame rules near the camp; train 2 is built (its mirror must stay clear).
+Since 2026-11-01 (the user) the APK's limit is 250 MB (0054 §6); the desktop packages' stays about 300 MB.
 
 ## As built (milestone C1, 2026-10-23)
 

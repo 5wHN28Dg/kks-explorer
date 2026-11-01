@@ -70,7 +70,7 @@ user.
   - The builds are reproducible: each is built a second time from sources and folders at other paths, with the same
     bytes, on the laptop and on CI.
 - **Sizes:** Android 0.82 MB, stored uncompressed in the APK, so the APK grows by 0.82 MB (117.5 MB in all, of the
-  150 MB limit). Linux 0.88 MB, Windows x64 0.87 MB, ARM64 0.73 MB.
+  150 MB limit then; 250 MB since 2026-11-01, 0054 §6). Linux 0.88 MB, Windows x64 0.87 MB, ARM64 0.73 MB.
 - **Measured on the speech-like test signal**, per 20 ms frame, 48 kHz in, 44.1 kHz out:
 
   | | Encode, median | Decode, median | Round trip |

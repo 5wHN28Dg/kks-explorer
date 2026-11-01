@@ -277,8 +277,8 @@ the laptop and the Windows VM. Its measurements are in MULTIPLAYER.md §14.
 
 - **If A1 measures fewer than 4 animated (skinned) people on the Note 9** within the frame rules: stop and ask before
   going on.
-- **If the APK passes 150 MB** (W1, A1, C1 or later): stop and ask before going on (packs on demand, 0054 §6,
-  would need a network permission). The desktop packages (MSIX, Flatpak) may grow to about 300 MB (the user,
+- **If the APK passes 250 MB** (W1, A1, C1 or later; 150 MB until the user raised it on 2026-11-01): stop and ask
+  before going on (packs on demand, 0054 §6, would need a network permission). The desktop packages (MSIX, Flatpak) may grow to about 300 MB (the user,
   2026-10-23); stop and ask if one passes that. Compress wherever it costs nothing. `tools/plant_release.py` refuses
   a package over its budget.
 - Decided already: animations from KayKit (CC0) first; CMU's motion capture allowed if they look too stiff, its
