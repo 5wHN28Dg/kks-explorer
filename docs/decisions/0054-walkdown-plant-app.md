@@ -103,6 +103,10 @@ same repository would stop every phone's Walkdown updates. [V] the code.
    PLANT3D.md §3), so when the whole plant outgrows the budget, later areas become `.pck` files loaded with
    `load_resource_pack()`, downloaded like Walkdown's plant data and checked by SHA-256, without a format change.
    Google Play's limits don't bind (GitHub releases, 0022).
+   **2026-11-01 (the user):** the APK's limit is raised from 150 MB to **250 MB**, for the Workshop mode's pre-built
+   scenes (planned in milestone K0) among the growth to come; the desktop packages stay at about 300 MB. The stop rule
+   now reads: stop and ask when the APK passes 250 MB or a desktop package about 300 MB. The 150 MB above and below is
+   kept as it was decided.
 7. **Audio.** Recorded clips only under **CC0-1.0** (Freesound with the CC0 filter, Kenney, OpenGameArt CC0, our own
    recordings released CC0), trimmed and looped by a script; machinery tones and broadband noise synthesised by our
    tools at build time into loops (PLANT3D.md §11). No CC-BY-NC/ND, no "royalty-free" packs whose licence forbids
@@ -173,5 +177,5 @@ same repository would stop every phone's Walkdown updates. [V] the code.
 
 **When to revisit:** if the Note 9 misses the frame rule with this content (0041; the question goes back to the
 user); when the plant app needs the core (progress kept in the plant's log, signed content): then a GDExtension
-binding to `libkks` against the network-free decision above; when the APK passes 150 MB or a desktop package about 300 MB; when Godot's security
+binding to `libkks` against the network-free decision above; when the APK passes 150 MB (250 MB since 2026-11-01, §6) or a desktop package about 300 MB; when Godot's security
 response (0041) changes or the app is to load content we don't make; when Godot's shader baker works headless.

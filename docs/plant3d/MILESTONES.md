@@ -273,6 +273,34 @@ the laptop and the Windows VM. Its measurements are in MULTIPLAYER.md §14.
   join's slow parts are fixed. What remains looks like the thread not getting the CPU, which is not proven on
   Android.
 
+**Workshop** (the user's spec of 2026-11-01; docs/plant3d/WORKSHOP.md, decision 0072): a mode of the app where a
+trainee takes one piece of equipment apart, puts it back in order, runs it on a bench model and looks inside. Its own
+rules on the Note 9 are WORKSHOP.md §8 (entry ≤ 2.0 s, no frame over 100 ms after it, ≤ 120,000 triangles and ≤ 300
+draw calls per kind, ≤ 20 MB for the whole Workshop); the plant's walk is run again when a shared kit piece changes.
+
+| # | Milestone | Size | Needs | Ships |
+|---|---|---|---|---|
+| K0 | **The plan, before code:** WORKSHOP.md, decision 0072, these rows, the capability matrix; the spec's claims checked against the code, the kit's closed shells and the package's bytes per triangle measured (**done 2026-11-01**) | S | — | the plan |
+| K1a | **The component tag and the pre-built scene:** `comp` and `only` in `kit/mesh.gd`, `Kit.make`'s Workshop mode, `builder/workshop_build.gd` and `built/workshop/<part>.scn`, the Workshop data file's validator (`ref/plant3d_workshop.py`); proved on the **pressure transmitter** (its tree: housing and covers, electronics module, display, terminal block, the sealed sensor module, process flange and bolts, vent/drain valves) with the plant unchanged (every part's plant arrays byte for byte, `BUDGET` and `test_kit.gd` as they were; the covers as `"workshop"` halves of a `"plant"` stand-in, small outside pieces listed); `Kit.register` and the data-only fixture kind, built and loaded | M | K0 | the transmitter's Workshop scene, built and tested; nothing new on screen |
+| K1 | **The space:** the Workshop's world, orbit camera, the tree and properties panels, the explode function, free handling, hide/isolate, reset; entry from the card and the settings, the plant paused in single play and running in a session (the Workshop's own `SubViewport`, the plant's 3D drawing off); the Workshop walk and the Note 9's entry and frame rules, alone and in a session; pictures on the wiki | M | K1a | the transmitter taken apart and handled, from the plant and back |
+| K2 | **Guided assembly and disassembly** for the transmitter: steps, ghost, snapping, refusals with their two sentences, fastener groups, the pile; `ws_xray` for the ghost, its pipelines counted and pre-warmed | M | K1 | the transmitter put back together in the right order |
+| K3 | **Run it and see inside** for the transmitter: the bench format, `ref/plant3d_bench.py`, `sim/bench_model.gd`, `plant3d-bench-v1.json` bit for bit; its run (diaphragm, sensed pressure, 4–20 mA on display and terminals), faults (over-range, blocked impulse line, open loop); `ws_lit`, `ws_cap`, `ws_flow` with their pipelines counted and pre-warmed; X-ray, cutaway, section plane; the Note 9, alone and in a session | M | K2 | the transmitter running, cut open, with its faults |
+| K4a | **Steam turbine geometry:** its insides (lagging, casing halves at the horizontal joint, inner casings, rotor with blade rows, blade carriers, bearings and caps, glands, valves, couplings, exhaust hood) from cited public sources, its tree, explode, guided assembly; the plant's outside matched (`"plant"` stand-ins checked against their halves, or the lightmap baked again and the walk run); the Note 9 (the first big scene) | L | K3 | the steam turbine taken apart and rebuilt in overhaul order |
+| K4b | **Steam turbine running:** its bench made from the plant's `st_start` and trips by `make_bench.py`; steam through valves and stages in order, the rotor turning the right way, pressure and temperature falling along the path, flow, heat and pressure views, sound; the Note 9 | M | K4a | the turbine rolled, loaded and tripped on the bench |
+| K5a | **Gas turbine geometry:** intake, compressor stages, combustor, fuel nozzles, turbine stages, exhaust; tree, explode, assembly; the Note 9 | L | K4b | the gas turbine taken apart and rebuilt |
+| K5b | **Gas turbine running:** from `gt1_start` and its trips; air, compression, fuel and flame, expansion, exhaust; the views and sound; the Note 9 | M | K5a | the gas turbine started on the bench |
+| K6 | **The other kinds**, a few per pull request (pumps, control valve with actuator, butterfly, gate and globe valves, motor, generator, fan, the heat exchangers), data and generators only; then the **mirror** from the live plant (WORKSHOP.md §6.5: bench values from the equipment's bindings, read only; the overwrite after step 2 in both engines with vectors) | L | K5b | every rotating machine and valve kind in the Workshop; the plant's equipment opened as it stands |
+
+**Order:** K0 → K1a → K1 → K2 → K3 → K4a → K4b → K5a → K5b → K6. Each draws or runs something new and is measured on
+the Note 9 (K1, K3, K4a, K4b, K5a, K5b at least), with the APK's size before and after (limit 250 MB). The realism programme's
+hands-on work builds on K1a–K3 (REALISM.md).
+
+**Questions for the user (Workshop):**
+- In single play the plant pauses while the Workshop is open, so a mirror (K6) shows the moment the trainee left.
+  Keep that (planned), or let the plant run while a mirror is open?
+- In a session, should other players see a mark over a player who is in the Workshop? It needs a flag in `pos`, which
+  is a change to MULTIPLAYER.md. Planned: not now; the person just stands.
+
 ## When to stop and ask the user (the user, 2026-10-22)
 
 - **If A1 measures fewer than 4 animated (skinned) people on the Note 9** within the frame rules: stop and ask before
