@@ -2721,6 +2721,8 @@ The content tool's lift is `tools/plant3d/lift_model.py` (the vectors' lift is m
   picks it). `board` and `alight` (ui/inputs.gd) are sent every 0.25 s when the engine's riders differ from where the
   walker's feet are (in the cab's floor or not), at most once a second, a board only while the cab stands at a
   landing; a person taken while aboard puts the walker in the cab.
+- **Cost** (§20.8): the view does nothing while no step has run and no cab is drawn anywhere new (paused mid-ride
+  too), and the people view looks the riders up once a step (MILESTONES.md has the Note 9's numbers).
 - **Controls:** the cards say what each control does ("Call the cab here", "Open the gate", "Emergency stop", "Main
   switch off"); the cab's panel sends the cab with a button per landing ("To grade", "To +16.7 m", "To +30.0 m"), not a
   typed number. Touch, mouse and gamepad reach them as any card's buttons.

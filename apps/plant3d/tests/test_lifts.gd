@@ -36,6 +36,20 @@ func run(t: SceneTree) -> Array:
 	if ui.lifts == null or ui.lifts.lifts.size() != 1:
 		main.free()
 		return ["the lift is not drawn: %s" % str(ui.lifts.lifts.size() if ui.lifts != null else null)]
+	# nothing done while still (PLANT3D §20.8): paused, the cab standing, no frame draws it again
+	for i in 3:
+		await tree.physics_frame
+	var d0: int = ui.lifts.draws
+	for i in 30:
+		await tree.physics_frame
+	if ui.lifts.draws != d0:
+		p.append("the lift's view drew %d times in 30 frames with nothing moving" % (ui.lifts.draws - d0))
+	# running, the cab standing: once a step, not every frame
+	var s0: int = ui.clock.engine.step_no
+	d0 = ui.lifts.draws
+	await _run(ui, 1.0)
+	if ui.lifts.draws - d0 > ui.clock.engine.step_no - s0 + 1:
+		p.append("the lift's view drew %d times in %d steps with the cab standing" % [ui.lifts.draws - d0, ui.clock.engine.step_no - s0])
 	await _ride(ui)
 	await _walked_down(ui)
 	await _gateway(ui)
@@ -143,6 +157,20 @@ func _ride(ui) -> void:
 	to_top.pressed.emit()
 	# the ride: the walker stays on the cab's floor all the way up
 	var worst := [0.0]              # (a lambda captures by value: the worst kept in an array)
+	# paused mid-ride (between landings): nothing drawn again while the clock stands; the walker on the floor from the
+	# start
+	await _run(ui, 15.0, func():
+		worst[0] = maxf(worst[0], absf(ui.player.global_position.y - body.global_position.y))
+		return e.v(LIFT + "_z") > 3.0)
+	if e.v(LIFT + "_z") <= 0.5 or e.truth(LIFT + "_at1") or e.truth(LIFT + "_at2"):
+		p.append("the cab is not between landings for the paused check: z %.2f" % e.v(LIFT + "_z"))
+	for i in 3:
+		await tree.physics_frame
+	var dr: int = ui.lifts.draws
+	for i in 30:
+		await tree.physics_frame
+	if ui.lifts.draws != dr:
+		p.append("paused mid-ride, the lift's view drew %d times in 30 frames" % (ui.lifts.draws - dr))
 	var rode := await _run(ui, 70.0, func():
 		worst[0] = maxf(worst[0], absf(ui.player.global_position.y - body.global_position.y))
 		return e.truth(LIFT + "_at2"))
