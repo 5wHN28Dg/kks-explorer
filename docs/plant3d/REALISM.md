@@ -643,6 +643,62 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
 - **Revisions:** an implemented change (§10.2) adds a revision with a cloud round what changed.
 - **In Walkdown Plant only** (the user, 2026-11-01): the sheets are not exported for `kks-import` or Walkdown.
 
+#### 6.1.1 DC1's details (settled 2026-11-02, before the code)
+
+Nothing here comes from a real plant's drawings: the sheets are made from the content alone, with the symbols of the
+public standards. No new dependency (decision 0073 already chose our own format drawn by the app).
+
+- **The set.** A1 landscape sheets (841 × 594 mm) in an ISO 5457 frame (20 mm filing margin on the left, 10 mm on
+  the other sides) with a title block in the bottom right corner after ISO 7200 (the plant's title, the sheet's
+  title, its number `WDP-PID-NNN`, revision, sheet n of m, "generated from the content", "not to scale"). Sheet 001
+  is the **legend**: every symbol used, the line types, the ISA letters and how a KKS code reads. Then a sheet per
+  process area or group of systems, as the tool lists them: gas turbine 1; HRSG 1; the steam turbine and condenser;
+  circulating water and the cooling tower; the auxiliaries; the raw water intake; the water treatment plant in three
+  (pretreatment and filtered water; reverse osmosis and demineralisation; chemicals, sludge and waste water).
+- **What is drawn.** Every equipment item, inline valve and instrument, equipment-mounted instrument and pipe of those
+  areas, except what a P&ID does not show by ISO 10628 practice: electrical equipment (breakers, transformers,
+  switchgear, excitation cabinets, the static frequency converter), control desks, and lifting gear (hoists, the
+  crane, the lift and its gates and calls). Those keep their cards, without a drawing. The tool checks that every
+  other code of the model has exactly one **home** hot spot (the place the card's Drawing button opens).
+- **Symbols** after ISO 10628-2 (equipment, valves) and ISA-5.1 (instruments), drawn by functions of the tool, one per
+  kit part kind (a test fails for a shown part kind without one). Instruments: a field-mounted bubble (no bar), with
+  the first letter from the code's measurement letters (CP P, CT T, CL L, CF F, CS S, CY V, CG Z, CB B, CQ A, CW W)
+  and the succeeding letters from the part (transmitter T, element E, gauge I, glass G, analyser IT, test point P),
+  and the whole KKS code under the letters: a stadium (two half circles joined), since a KKS code is longer than
+  ISA's loop number. Drawn uppercase in a single-stroke lettering of our own after ISO 3098 type B (monospace;
+  2.5 mm for tags, 3.5 for equipment names, 5 and 7 for titles).
+- **Lines.** Process 0.5 mm, DN 300 and over 0.7 mm, instrument process connections 0.25 mm solid; a flow arrow on
+  each pipe; a pipe's label is its code, `DN` size and medium. Where two pipes cross, the later one is broken.
+- **Layout** (automatic, checked). Flow left to right: equipment in columns by the longest path along the pipes
+  (from → to; a cycle broken at its pipe whose source comes later in code order); families (codes differing only in
+  their last digits, same part) stacked; equipment with no pipe in rows below. Instruments in a grid above their
+  equipment. Pipes routed orthogonally on a 2.5 mm grid round symbols and text (A*, with costs for bends and
+  crossings); inline items in their `at` order on the pipe's straight runs; pipe-to-pipe ends as tees; an open end
+  ends in an arrow with its medium's name; an end on another sheet in an off-sheet connector (an arrow pentagon)
+  naming that sheet and the code at the far end, which the viewer opens when tapped. The tool fails the content check
+  if two symbols overlap, a text overlaps another text, a symbol or a line, a code has no home or two, or a character
+  is outside the lettering; its output is the same on every run (tested).
+- **Format** `walkdown-plant-drawing` version 1, a file per sheet in `data/plant3d/drawings/` (made by
+  `make_content.py`, so the committed files are checked like the rest of the content), and an index
+  `drawings/index.json` (`walkdown-plant-drawings`: the sheets in order, each code's home sheet, and the lettering's
+  strokes). A sheet holds, in sheet millimetres with y down: `lines` (`[width, dash, [x, y, …]]`, dash 0 for a solid
+  line), `circles` (`[width, x, y, r]`), `fills` (closed polygons), `texts` (`[x, y, height, angle, align,
+  text]`), `spots` (`[code, x0, y0, x1, y1, home]`), `links` (`[sheet, code, x0, y0, x1, y1]`: the off-sheet
+  connectors), `revisions` (`[rev, text]`, the table) and `clouds` (`[rev, x0, y0, x1, y1]`).
+- **Revisions.** The shipped sheets are revision 0 ("first issue, generated from the content"). The tool's `revise`
+  makes a later revision from changed content with the same generator: a row in the table, and a cloud round every hot
+  spot that is new, gone or moved. DC1 builds and tests that on a synthetic change; EN2's change objects (§10.2) use it.
+- **The viewer** (`ui/drawing_view.gd`): full screen, as the control room's screens, with the 3D view off
+  (`disable_3d`). The sheets in tabs; drag or the left stick pans, pinch, the wheel, the triggers and + and − zoom;
+  a tap on a hot spot opens the card beside the sheet, a tap on a connector the other sheet at that code; the card's
+  **Drawing** button opens the code's home sheet with the code centred and outlined. Opened from the bar
+  ("Drawings") and from cards. Levels of detail: three canvas items per sheet, each recorded once when first needed
+  (far: one-pixel lines, text of 5 mm and over; middle: one-pixel lines and all text; near: line widths in
+  millimetres), the lettering expanded into their line lists; panning and zooming only change their transform.
+  A walk option `walk=drawings` opens each sheet in turn and pans and zooms it, for the Note 9's measurement.
+- **Budgets** (§11): a sheet opens in ≤ 300 ms on the Note 9, ≤ 40 MB more with the sheets open, the frame rules
+  while panning and zooming; DC1's share of the programme's 15 MB of package measured.
+
 ### 6.2 Equipment manuals
 
 - **Format** `walkdown-plant-manual`: COURSES.md's blocks (paragraphs, lists, tables, callouts, figures) per part
