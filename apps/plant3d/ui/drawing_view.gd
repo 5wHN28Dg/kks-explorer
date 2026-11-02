@@ -114,6 +114,20 @@ func is_open() -> bool:
 	return visible
 
 
+## Where the sheet itself starts (below the viewer's bar): the side panels stand below it, the bar stays in reach.
+func canvas_top() -> float:
+	return position.y + bar.size.y + 8.0
+
+
+## The part of the canvas a card does not cover (canvas coordinates): codes are centred in it.
+func clear_rect() -> Rect2:
+	var cs := _canvas_size()
+	var right := cs.x
+	if ui != null and ui.card != null and ui.card.visible:
+		right = clampf(ui.card.position.x - canvas.global_position.x - 16.0, cs.x * 0.4, cs.x)
+	return Rect2(Vector2.ZERO, Vector2(right, cs.y))
+
+
 ## Opens the viewer at a sheet (its id; "" the last one, else the first after the legend), with a code centred and
 ## outlined when given.
 func open(id := "", code := "") -> void:
@@ -208,9 +222,8 @@ func focus_code(code: String) -> void:
 	_sel_box = r
 	if canvas.size.x <= 10:
 		_pending_code = code
-	var cs := _canvas_size()
 	zoom = clampf(maxf(NEAR_Z * 0.8 * W.scale, zoom), min_zoom(), MAX_Z)
-	offset = cs * 0.5 - r.get_center() * zoom
+	offset = clear_rect().get_center() - r.get_center() * zoom
 	_apply()
 
 
@@ -443,11 +456,22 @@ func _draw_canvas() -> void:
 
 # ------------------------------------------------------------------ input
 
+var _pad_shown := false
+
+
 func _process(delta: float) -> void:
 	if not visible:
 		return
-	# the left stick pans
-	var v := Vector2(Input.get_joy_axis(0, JOY_AXIS_LEFT_X), Input.get_joy_axis(0, JOY_AXIS_LEFT_Y)) if Input.get_connected_joypads().size() > 0 else Vector2.ZERO
+	var pad: bool = ui != null and ui.main != null and ui.main.hud != null and ui.main.hud.pad_on()
+	if pad != _pad_shown:
+		_pad_shown = pad
+		canvas.queue_redraw()           # the gamepad's cross comes and goes with the gamepad
+	# the left stick of whichever gamepad is connected pans
+	var v := Vector2.ZERO
+	for dev in Input.get_connected_joypads():
+		var s := Vector2(Input.get_joy_axis(dev, JOY_AXIS_LEFT_X), Input.get_joy_axis(dev, JOY_AXIS_LEFT_Y))
+		if s.length() > v.length():
+			v = s
 	if v.length() > 0.25 and canvas.has_focus():
 		pan(-v * PAN_SPEED * delta)
 
@@ -507,6 +531,17 @@ func _canvas_input(ev: InputEvent) -> void:
 			JOY_BUTTON_RIGHT_SHOULDER: _step(1); canvas.accept_event(); return
 			JOY_BUTTON_RIGHT_STICK: fit(); canvas.accept_event(); return
 			JOY_BUTTON_A: tap(canvas.size * 0.5); canvas.accept_event(); return
+	# the left stick pans (in _process) and the D-pad steps: neither may move the focus off the sheet (Godot's ui_*
+	# actions include them)
+	if ev is InputEventJoypadMotion and (ev.axis == JOY_AXIS_LEFT_X or ev.axis == JOY_AXIS_LEFT_Y):
+		canvas.accept_event()
+		return
+	if ev is InputEventJoypadButton and ev.button_index in [JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_DOWN]:
+		if ev.pressed:
+			pan({JOY_BUTTON_DPAD_LEFT: Vector2(120, 0), JOY_BUTTON_DPAD_RIGHT: Vector2(-120, 0),
+					JOY_BUTTON_DPAD_UP: Vector2(0, 120), JOY_BUTTON_DPAD_DOWN: Vector2(0, -120)}[ev.button_index])
+		canvas.accept_event()
+		return
 	if ev is InputEventJoypadMotion and (ev.axis == JOY_AXIS_TRIGGER_LEFT or ev.axis == JOY_AXIS_TRIGGER_RIGHT):
 		var down: bool = ev.axis_value > 0.5
 		if down and not _trigger.get(ev.axis, false):
@@ -551,7 +586,7 @@ func hit(at: Vector2) -> Array:
 			return ["link", String(l[0]), String(l[1])]
 	var best := ""
 	var area := INF
-	var slop := 1.5 / zoom * W.scale     # a finger's few pixels round small targets
+	var slop := TAP_SLOP * W.scale / zoom     # a finger's width round small targets (screen pixels, in sheet mm)
 	for s in d.get("spots", []):
 		var r := Rect2(Vector2(s[1], s[2]), Vector2(s[3] - s[1], s[4] - s[2])).grow(slop)
 		if r.has_point(p) and r.get_area() < area:

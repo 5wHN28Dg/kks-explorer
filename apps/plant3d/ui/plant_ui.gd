@@ -319,6 +319,8 @@ func _layout() -> void:
 	var top0 := 88.0 + 56.0 * W.scale + 16.0
 	# with the screens open the side panels stand below their tabs and alarm banner, which stay in reach
 	var top := maxf(top0, mimic.canvas_top() + 8.0) if screens_open() else top0
+	if drawings_open():
+		top = maxf(top, drawing_view.canvas_top())      # below the drawings' bar (its sheet list, Fit and Close)
 	var w := minf(560.0 * W.scale, vs.x * 0.45)
 	card.position = Vector2(vs.x - w - 16.0, top)
 	_max_h = vs.y - top - 16.0

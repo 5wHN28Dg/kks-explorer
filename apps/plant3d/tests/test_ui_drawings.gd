@@ -117,6 +117,102 @@ func run(tree: SceneTree) -> Array:
 		dv.open_sheet(String(s["id"]))
 	if dv._lods.size() > DrawingView.KEEP:
 		p.append("%d sheets kept drawn" % dv._lods.size())
+	# input as the trainee gives it: a drag pans and opens nothing, a click on a code opens it, the wheel zooms, keys
+	# and the gamepad's shoulders change sheet, the D-pad pans and keeps the focus on the sheet
+	ui.close_card()
+	dv.open_sheet("hrsg1", "10LAC10AP001")
+	await tree.process_frame
+	var o0: Vector2 = dv.offset
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = Vector2(200, 200)
+	dv._canvas_input(down)
+	var mv := InputEventMouseMotion.new()
+	mv.relative = Vector2(60, 0)
+	mv.position = Vector2(260, 200)
+	dv._canvas_input(mv)
+	var release: InputEventMouseButton = down.duplicate()
+	release.pressed = false
+	release.position = Vector2(260, 200)
+	dv._canvas_input(release)
+	if absf(dv.offset.x - o0.x - 60.0) > 0.5 or ui.card.visible:
+		p.append("a drag moved the sheet by %s and opened %s" % [str(dv.offset - o0), ui.card.code if ui.card.visible else "nothing"])
+	var cc: Vector2 = dv.to_canvas(dv.spot_rect("10LAC10AP002").get_center())
+	for pressed in [true, false]:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = pressed
+		ev.position = cc
+		dv._canvas_input(ev)
+	if ui.card.code != "10LAC10AP002" or not ui.card.visible:
+		p.append("a click on 10LAC10AP002 opened %s" % ui.card.code)
+	# the card stands below the viewer's bar (its Fit and Close stay in reach), and a code is centred clear of it
+	if ui.card.position.y < dv.canvas_top() - 1.0:
+		p.append("the card covers the drawings' bar: %.0f < %.0f" % [ui.card.position.y, dv.canvas_top()])
+	dv.focus_code("10LAC10AP001")
+	var at2: Vector2 = dv.to_canvas(dv.spot_rect("10LAC10AP001").get_center()) + dv.canvas.global_position
+	if at2.x > ui.card.position.x:
+		p.append("the code is centred under the card: %.0f > %.0f" % [at2.x, ui.card.position.x])
+	var z0: float = dv.zoom
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	wheel.pressed = true
+	wheel.position = Vector2(300, 300)
+	dv._canvas_input(wheel)
+	if dv.zoom <= z0:
+		p.append("the wheel did not zoom in")
+	var key := InputEventKey.new()
+	key.physical_keycode = KEY_PAGEDOWN
+	key.pressed = true
+	dv._canvas_input(key)
+	if dv.current != "st":
+		p.append("Page Down opened %s, not the next sheet" % dv.current)
+	var lb := InputEventJoypadButton.new()
+	lb.button_index = JOY_BUTTON_LEFT_SHOULDER
+	lb.pressed = true
+	dv._canvas_input(lb)
+	if dv.current != "hrsg1":
+		p.append("LB opened %s, not the sheet before" % dv.current)
+	dv.zoom_by(4.0)
+	ui.close_card()
+	dv.take_focus()
+	# the first gamepad press switches to the gamepad (app/input_mode.gd), which gives the top panel the focus: with
+	# no card that is the sheet; the next press pans it
+	var dpad := InputEventJoypadButton.new()
+	dpad.button_index = JOY_BUTTON_DPAD_LEFT
+	dpad.pressed = true
+	tree.root.push_input(dpad)
+	var dpad_up: InputEventJoypadButton = dpad.duplicate()
+	dpad_up.pressed = false
+	tree.root.push_input(dpad_up)
+	await tree.process_frame
+	var o1: Vector2 = dv.offset
+	tree.root.push_input(dpad.duplicate())
+	tree.root.push_input(dpad_up.duplicate())
+	await tree.process_frame
+	if dv.offset == o1 or not dv.canvas.has_focus():
+		p.append("the D-pad did not pan the sheet (%s to %s), or took the focus off it (%s)" % [str(o1), str(dv.offset),
+				str(ui.get_viewport().gui_get_focus_owner())])
+	# the bar's Drawings button; the screens and the drawings take each other's place; the map closes them
+	ui.close_card()
+	ui.close_drawings()
+	App.find_button(ui.root, "Drawings").pressed.emit()
+	if not ui.drawings_open():
+		p.append("the bar's Drawings button opened nothing")
+	ui.open_screens()
+	if ui.screens_open():
+		if ui.drawings_open() or not ui.get_viewport().disable_3d:
+			p.append("the screens opened over the drawings, or the plant is drawn under them")
+		ui.open_drawing("30MAA10")
+		if ui.screens_open() or not ui.drawings_open() or not ui.get_viewport().disable_3d:
+			p.append("the drawings did not take the screens' place")
+	main.toggle_map()
+	if ui.drawings_open():
+		p.append("the map opened over the drawings")
+	if main.map.active:
+		main.toggle_map()
+	ui.open_drawing()
 	# Esc closes the card first, then the drawings; the view comes back
 	while ui.close_top():
 		pass

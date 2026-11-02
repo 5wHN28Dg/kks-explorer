@@ -690,7 +690,8 @@ public standards. No new dependency (decision 0073 already chose our own format 
   revision before had it (only what changed moves; a sheet where that no longer fits is laid out afresh): a row in
   the table, and a cloud round every hot spot that is new, gone or moved. DC1 builds and tests that on a synthetic change; EN2's change objects (§10.2) use it.
 - **The viewer** (`ui/drawing_view.gd`): full screen, as the control room's screens, with the 3D view off
-  (`disable_3d`). The sheets in tabs; drag or the left stick pans, pinch, the wheel, the triggers and + and − zoom;
+  (`disable_3d`). A sheet list with Previous and Next above the sheet; drag, the arrows, the D-pad or the left stick
+  pan, pinch, the wheel, the triggers and + and − zoom;
   a tap on a hot spot opens the card beside the sheet, a tap on a connector the other sheet at that code; the card's
   **Drawing** button opens the code's home sheet with the code centred and outlined. Opened from the bar
   ("Drawings") and from cards. Levels of detail: three canvas items per sheet, each recorded once when first needed
