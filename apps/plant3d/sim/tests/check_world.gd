@@ -131,6 +131,36 @@ static func _weather_and_wear(V: Dictionary) -> int:
 	p6["ext"].append("world_wx")
 	f6["plant.json"] = p6
 	cases.append(["an ext value named world_wx", f6, "world_wx"])
+	var w8 := _js(wf["weather.json"])
+	w8["kinds"][1]["targets"].erase("dust_mg")
+	var f8 := wf.duplicate()
+	f8["weather.json"] = w8
+	cases.append(["a kind without a driven value's table", f8, "no table"])
+	var w9 := _js(wf["weather.json"])
+	w9["seasons"][0]["hourly"].append(["fog", "clear", 1])
+	var f9 := wf.duplicate()
+	f9["weather.json"] = w9
+	cases.append(["an hourly row of no kind", f9, "kinds weather.json lacks"])
+	var w10 := _js(wf["weather.json"])
+	w10["seasons"][0]["days"] = [122, 300]
+	var f10 := wf.duplicate()
+	f10["weather.json"] = w10
+	cases.append(["a day in no season", f10, "in no season"])
+	var w11 := _js(wf["weather.json"])
+	w11["seasons"][0]["hourly"][9][2] = 0
+	var f11 := wf.duplicate()
+	f11["weather.json"] = w11
+	cases.append(["a kind with no way on", f11, "no way on"])
+	var s12 := _js(wf["scenarios/s1.json"])
+	s12["world"]["weather"] = {"script": [[1, "06:00", "hot"]]}
+	var f12 := wf.duplicate()
+	f12["scenarios/s1.json"] = s12
+	cases.append(["a script starting after the scenario", f12, "after the scenario's start"])
+	var s13 := _js(wf["scenarios/s1.json"])
+	s13["world"]["weather"] = {"script": [[1, "05:00"]]}
+	var f13 := wf.duplicate()
+	f13["scenarios/s1.json"] = s13
+	cases.append(["a script entry of two items", f13, "can't read"])
 	var af: Dictionary = V["wear"]["files"]
 	if PlantModel.from_files(af).error != "":
 		print("FAIL the wear plant: ", PlantModel.from_files(af).error)

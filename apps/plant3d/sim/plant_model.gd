@@ -12,6 +12,7 @@ extends RefCounted
 
 const JsonStrict = preload("json_strict.gd")
 const Staff = preload("staff.gd")
+const World = preload("world.gd")
 
 const STATELESS := ["const", "state", "of", "sum", "product", "min", "max", "diff", "select", "cmp", "and", "or", "not"]
 const STATEFUL := ["lag", "ramp", "integrate", "latch", "delay", "timer", "wrap", "hold", "draw", "wear", "count"]
@@ -233,10 +234,16 @@ func _load(files: Dictionary) -> void:
 		weather = _read(files, "weather.json")
 		if weather == null:
 			return
+		if version != 2:
+			_fail("weather.json: only in a version 2 plant")
+			return
 		for v in weather.get("values", []):
 			if not ext.has(v.get("id")):
 				_fail("weather.json: %s is not an ext value" % str(v.get("id")))
 				return
+		_check_weather_file()
+		if error != "":
+			return
 	_content_reads_world = _reads_world
 	_content_reads_wx = _reads_wx
 	for sid in scenarios:
@@ -429,12 +436,53 @@ func _check_scenario(s: Dictionary) -> void:
 	if (_content_reads_wx or _reads_wx) and wx == null:
 		_fail("%s: the content reads world_wx, which only a scenario with world.weather has" % w)
 	if wx != null:
-		_check_weather(wx, w)
+		var st = s.get("start", plant.get("clock", {}).get("start", {"day": 1, "time": "00:00"}))
+		_check_weather(wx, w, (int(st["day"]) * 1440 + Staff.hhmm(st["time"])) * 600)
 
 
-## A scenario's world.weather names what weather.json has, and a script starts at or before the scenario (the
-## engine would read no kind otherwise).
-func _check_weather(wx, w: String) -> void:
+## weather.json as far as the engine reads it (REALISM.md §5.1; the validator checks the rest): every kind gives every
+## driven value a table of rows, every hourly row names kinds, every day of the year is in a season, and every kind
+## has a way on in every season (World.build_weather and the engine's _weather would otherwise read index -1).
+func _check_weather_file() -> void:
+	var kinds := []
+	for k in weather.get("kinds", []):
+		kinds.append(k.get("id") if typeof(k) == TYPE_DICTIONARY else null)
+	if kinds.is_empty() or kinds.has(null):
+		_fail("weather.json: no kinds, or a kind that is not an object")
+		return
+	for k in weather["kinds"]:
+		for v in weather.get("values", []):
+			var t = k.get("targets", {}).get(v.get("id")) if typeof(k.get("targets")) == TYPE_DICTIONARY else null
+			if typeof(t) != TYPE_ARRAY or t.is_empty():
+				_fail("weather.json: kind %s gives no table of %s" % [str(k["id"]), str(v.get("id"))])
+				return
+	var covered := {}
+	for s in weather.get("seasons", []):
+		if typeof(s) != TYPE_DICTIONARY or typeof(s.get("days")) != TYPE_ARRAY or s["days"].size() != 2 \
+				or not kinds.has(s.get("start")) or typeof(s.get("hourly")) != TYPE_ARRAY:
+			_fail("weather.json: a season the engine can't read")
+			return
+		for d in World.season_days(s["days"]):
+			covered[d] = true
+		var total := {}
+		for r in s["hourly"]:
+			if typeof(r) != TYPE_ARRAY or r.size() != 3 or not kinds.has(r[0]) or not kinds.has(r[1]):
+				_fail("weather.json: season %s: an hourly row of kinds weather.json lacks" % str(s["id"]))
+				return
+			total[r[0]] = total.get(r[0], 0) + int(r[2])
+		for k in kinds:
+			if total.get(k, 0) < 1:
+				_fail("weather.json: season %s: kind %s has no way on" % [str(s["id"]), str(k)])
+				return
+	for d in range(1, 366):
+		if not covered.has(d):
+			_fail("weather.json: day %d of the year is in no season" % d)
+			return
+
+
+## A scenario's world.weather names what weather.json has, and a script's entries are [day, "HH:MM", kind] with the
+## first at or before the scenario's start (the engine would read no kind otherwise).
+func _check_weather(wx, w: String, start: int) -> void:
 	if weather == null or typeof(wx) != TYPE_DICTIONARY:
 		_fail("%s: world.weather without weather.json" % w)
 		return
@@ -449,8 +497,13 @@ func _check_weather(wx, w: String) -> void:
 			_fail("%s: no weather kind %s" % [w, str(wx["fixed"])])
 	elif wx.has("script") and typeof(wx["script"]) == TYPE_ARRAY and not wx["script"].is_empty():
 		for e in wx["script"]:
-			if not kinds.has(e[2]):
-				_fail("%s: no weather kind %s" % [w, str(e[2])])
+			if typeof(e) != TYPE_ARRAY or e.size() != 3 or typeof(e[0]) not in [TYPE_INT, TYPE_FLOAT] \
+					or typeof(e[1]) != TYPE_STRING or not kinds.has(e[2]):
+				_fail("%s: a weather script entry the engine can't read: %s" % [w, str(e)])
+				return
+		var e0: Array = wx["script"][0]
+		if (int(e0[0]) * 1440 + Staff.hhmm(e0[1])) * 600 > start:
+			_fail("%s: the weather script's first entry is after the scenario's start" % w)
 	else:
 		_fail("%s: world.weather is one of season, fixed or script" % w)
 

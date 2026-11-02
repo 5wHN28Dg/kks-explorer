@@ -124,10 +124,13 @@ static func run(files: Dictionary, loads: Dictionary, base_steps: int = 6000) ->
 const WX_CALLS := 20000
 
 
+## The weather step's mean time over WX_CALLS calls, on a clone (the engine measured is left as it was); a call that
+## changes the kind makes its event, as the step would.
 static func _weather_us(e, gap: int) -> float:
+	var c = e.clone()
 	var s := Time.get_ticks_usec()
 	for k in WX_CALLS:
-		e._weather(gap, e.wx_kind)
+		c._weather(gap, c.wx_kind)
 	return float(Time.get_ticks_usec() - s) / WX_CALLS
 
 

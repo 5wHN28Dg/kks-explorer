@@ -332,6 +332,21 @@ class WearVectors(PartVectors, unittest.TestCase):
         self.assertEqual(e.v('brg_wear'), 1.0)
         self.assertIn([jump[0], 'fault', 'f_brg'], e.events)
 
+    def test_jump_reads_the_rate_before(self):
+        """Run 5: the pump stopped in the jump's own step: run_h adds the previous step's running rate × (gap / 10)
+        and × k though this step's rate is 0; the step after adds nothing."""
+        r = self.st['runs'][5]
+        e = run_on(self.st, r, 29)
+        before, rate = e.v('run_h'), e.v('run_rate')
+        self.assertGreater(rate, 0)
+        e = run_on(self.st, r, 30)
+        ev = [x for x in e.events if x[1] == 'jump'][0]
+        self.assertIn([30, 'op', '10LAC10AP001', 'stop', 'done', [], 'local', 'c_fo'], plain(e.events))
+        self.assertEqual(e.v('run_rate'), 0.0)
+        self.assertEqual(e.v('run_h'), before + rate * ((ev[3] - ev[2]) / 10.0) + rate * (0.1 * 60))
+        e.step()
+        self.assertEqual(e.v('run_h'), e.prev[e.ix['run_h']])
+
     def test_age_rate(self):
         """age_rate scales the wear (§4.3): the training rate 50 against the real rate 1, both from the same duty."""
         a = run_on(self.st, self.st['runs'][0], 300)

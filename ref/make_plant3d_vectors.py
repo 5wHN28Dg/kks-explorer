@@ -4070,6 +4070,10 @@ def wear_runs():
          'step 30: each wear node adds rate × the gap\'s clock seconds once, at the rate of the step before, then '
          'its step, then its max (the bearing to 1, its failure); clock_s by the 24,300 s of the gap',
          dict(late, trainee='mech1', init=running), wf, Trainee(extra=[[30, 'jump', '05:45']]), 300, 10),
+        ('the jump\'s step reads the rate of the step before (§2.2): the trainee (c_fo) stops the pump in the jump\'s '
+         'own step; run_h still adds the running rate × the gap and the step, its rate 0 from the next step',
+         dict(late, trainee='c_fo', init=running), wf,
+         Trainee(extra=[[30, 'jump', '05:45'], [30, 'op', PUMP, 'stop', None, None, 'local', 'c_fo']]), 100, 10),
     ]
 
 
