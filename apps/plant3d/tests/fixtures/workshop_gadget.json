@@ -1,0 +1,21 @@
+{
+ "format": "walkdown-plant-workshop",
+ "version": 1,
+ "part": "test_gadget",
+ "params": {},
+ "sources": [{"id": "fixture", "cite": "A test fixture, not a real machine", "url": "https://example.org/workshop-fixture"}],
+ "components": {
+  "base": {"name": "Base", "does": "Holds the core.", "material": "Steel", "sources": ["fixture"]},
+  "core": {"name": "Core", "does": "Sits inside the base.", "material": "Copper", "sources": ["fixture"]},
+  "lid": {"name": "Lid", "does": "Closes the base.", "material": "Steel", "sources": ["fixture"]}
+ },
+ "fasteners": {
+  "lid_screws": {"name": "2 lid screws", "joins": ["lid", "base"], "sources": ["fixture"]}
+ },
+ "assembly": [
+  {"place": "base", "text": ["Set the base down."], "sources": ["fixture"]},
+  {"place": "core", "text": ["Put the core in the base."], "needs": [["base", "The core goes into the base.", "Take the core out before the base."]], "sources": ["fixture"]},
+  {"place": "lid", "text": ["Fit the lid."], "needs": [["core", "The lid goes on once the core is in.", "Take the lid off before the core comes out."]], "sources": ["fixture"]},
+  {"place": "lid_screws", "text": ["Fit the two lid screws."], "needs": [["lid", "The screws go in once the lid is on.", "Take the screws out before the lid."]], "sources": ["fixture"]}
+ ]
+}

@@ -295,11 +295,16 @@ draw calls per kind, ≤ 20 MB for the whole Workshop); the plant's walk is run 
 the Note 9 (K1, K3, K4a, K4b, K5a, K5b at least), with the APK's size before and after (limit 250 MB). The realism programme's
 hands-on work builds on K1a–K3 (REALISM.md).
 
-**Questions for the user (Workshop):**
-- In single play the plant pauses while the Workshop is open, so a mirror (K6) shows the moment the trainee left.
-  Keep that (planned), or let the plant run while a mirror is open?
-- In a session, should other players see a mark over a player who is in the Workshop? It needs a flag in `pos`, which
-  is a change to MULTIPLAYER.md. Planned: not now; the person just stands.
+**K1a as built (2026-11-02):** `comp` and `only` in the mesh builder, `Kit.make(..., workshop = true)`,
+`Kit.register` with the data-only fixture kind (`tests/fixtures/workshop_gadget.*`), `builder/workshop_build.gd`
+making `built/workshop/pressure_transmitter.scn` (14 components, 2 fastener groups, 1,396 triangles; the plant's part
+272), `ref/plant3d_workshop.py`. The plant is unchanged: `tests/test_kit_frozen.gd` holds every part's plant output
+(1,397 cases) to what main made, and every built plant scene was compared by content with main's build (identical);
+`BUDGET` and `tests/test_kit.gd` as they were. Nothing new on screen, so no Note 9 run (K1 measures).
+
+**Decided by the user (Workshop, 2026-11-02):** in single play the mirror (K6) freezes at the moment the trainee
+left; in a session the other players see an "in the Workshop" mark over a player who is in the Workshop (one flag in
+`pos`, MULTIPLAYER.md §6.3), built with K1.
 
 ## When to stop and ask the user (the user, 2026-10-22)
 
@@ -333,10 +338,10 @@ programme's own budgets are REALISM.md §11.
 | HW4 | **Commissioning and decommissioning** (§3.4): works of kind `commission`, loop checks, stroke tests, a motor's first run, `in_service` states, decommissioning with the drawing's revision | M | HW3, HW5, EC2, DC1 | a new instrument and a motor brought into service; equipment taken out |
 | HW5 | **More kinds in the field:** the control valve and positioner, a horizontal pump, a motor, from the Workshop's trees (K6) | L | HW2, K6 | hands-on jobs on valves, pumps and motors |
 | HW6 | **Ordering the work:** supervisors and engineers give jobs to NPC technicians, NPCs' hand actions drawn, hold points checked by the trainee | M | HW5 | do it yourself or order it |
-| AG1 | **Wear engine** (§2.2, §4.2): `draw` and `wear` nodes, `renews`, wear across jumps, `age_rate`, the `count` node (J0), their vectors | S | RE1 | ageing can be written |
+| AG1 | **Wear engine** (§2.2, §4.2): `draw` and `wear` nodes, `renews`, wear across jumps, `age_rate`, the `count` node (J0), their vectors (**built 2026-11-02**, REALISM.md §2.11) | S | RE1 | ageing can be written |
 | AG2 | **The first train ages:** wear items on pumps, fans, valves, transmitters, filters, the condenser, the GT compressor; early signs bound (sound, heat, trends, shake); seeded failures; the scenarios' ages; the Note 9 walk | L | AG1 | equipment that wears and fails on its own, with signs to find |
 | AG3 | **Condition monitoring** (§9.3): the vibration data collector and spectrum, the thermal camera (the Workshop's heat view), oil samples and lab results | M | AG2, HW2, K4b | vibration, thermography and oil analysis rounds |
-| WX1 | **Weather engine** (§5.1): `weather.json`, step 1w, the driven `ext` values, seasons by `year_day`, scripted and fixed weather, the instructor's input, vectors | S | RE1 | weather that the model and every player share |
+| WX1 | **Weather engine** (§5.1): `weather.json`, step 1w, the driven `ext` values, seasons by `year_day`, scripted and fixed weather, the instructor's input, vectors (**built 2026-11-02**, REALISM.md §2.12) | S | RE1 | weather that the model and every player share |
 | WX2 | **Weather in the model** (§5.2): the GT's ambient tables, inlet filters and compressor fouling, the cooling tower, water ingress causes, frozen impulse lines, lightning; filter change and compressor wash procedures | M | WX1, AG2 | weather that changes output, alarms and faults |
 | WX3 | **Weather seen and heard** (§5.4): sky, fog, particles, wet and dusty surfaces, sounds; pipelines counted; the Note 9 walk with `weather=sandstorm` and `weather=rain` | M | WX1 | weather to see and hear |
 | WX4 | **Weather and people** (§5.3): stopped outdoor work, slippery stairs and `pace`, `ppe_when`, visibility and driving; the heat rule comes with HS3 | M | WX1, HS1 | the staff work in the weather |
@@ -430,12 +435,9 @@ WX1, DC1; ageing at a training rate per scenario with real rates available; free
 emissions against the IFC / World Bank Group EHS guidelines; costs as man-hours, parts and MWh lost; P&IDs in the
 plant app only; NPC speech text only), and every other part of the job added (J1–J8).
 
-**Question for the user (realism):** the model step's share with the new plant systems of J1–J4 (fuel gas and
-distillate, emergency diesel, instrument air, fire water and CO₂, switchyard, excitation: an estimated 300–400 values
-more than §11's 600, past the 0.4 ms share at about 0.7 µs a value): widen the share (the step still ≤ 2.1 ms),
-model them more coarsely, or load them only in scenarios that use them (REALISM.md J0, decision 0073). RE1 measured
-the step at 600 and 1,000 added values (REALISM.md §2.10): +0.087 and +0.136 ms in the model alone on the Note 9,
-within the share; scaled as the app's walk has measured the step against the bench (about 3×), about +0.26 and
-+0.41 ms. Until answered, the milestones that add these systems (OP4, OP5, OP6, IC4,
-EC3, EC6) wait for the answer: §11's 600 values are already shared out and none of its parts covers them; every
-other milestone fits within §11 as it stands.
+**Decided by the user (realism, 2026-11-02):** the new plant systems of J1–J4 (fuel gas and distillate, emergency
+diesel, instrument air, fire water and CO₂, switchyard, excitation: an estimated 300–400 values) **load per scenario**:
+optional content each scenario loads or not, so §11's 600 values and 0.4 ms stay the share of a scenario without them,
+and one that loads some counts them on top, measured with its milestone; an "everything" day is allowed on laptops and
+measured on the Note 9 (REALISM.md J0, decision 0073). This unblocks OP4, OP5, OP6, IC4, EC3 and EC6 (RE1 had measured
++0.087 and +0.136 ms at 600 and 1,000 added values in the model alone on the Note 9, REALISM.md §2.10).

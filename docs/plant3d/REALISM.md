@@ -304,6 +304,117 @@ the 0.4 ms share; in the app the step has measured about 3× the bench's (1.36�
 and if the added cost scaled the same way it would be about +0.26 ms at 600 and +0.41 ms at 1,000, at the share's
 edge. A walk with the load in the app is not possible yet (the app runs only shipped content).
 
+### 2.11 As built for milestone AG1 (2026-11-02: the wear engine)
+
+- **Where:** `ref/plant3d.py` (nodes, works' `renews`, step 0's draws, step 3's renewals) and `apps/plant3d/sim/engine.gd`
+  (the interpreter and the straight-line program both), the loader (`plant_model.gd`). Vectors: `plant3d-realism.json`'s
+  `wear` (the realism base's plant with a pump that wears: its files, counts, 27 rejects and five runs, laid out as
+  `staff`); tests `tests/test_plant3d_realism.py` `WearVectors` (each wear step against the formula, the draws against
+  their streams, counts, renewals, the jump, `age_rate`), `GdscriptRealism` (every value's bits and the digests in
+  the GDScript engine) and `check_world.gd` (the loader's guards).
+- **The nodes** are format 2 node kinds: in a version 1 model file they are refused with format 1's codes (alone
+  `bad_kind`, beside another kind that kind's `unknown_key`, as `hold`). A scenario fault's `when` stays stateless, so
+  none of them can be one; no op, fault or work writes them (they are not states); a scenario's `init` may give any of
+  them (a wear within 0 and `max`).
+- **`draw`** (`{"draw": table, "init": n}`): the table is COURSES.md's (linear between rows); with neither its own
+  `init` nor the scenario's, step 0 takes table(r / 2²⁴) of the first draw of the stream (world seed, purpose `draw`,
+  the value's name), after the scenario's `init` and before the stateless nodes; then it never changes (no program
+  entry). The seed is the world's (its own, else the staff's, else 1), so a scenario without `world` draws too.
+- **`wear`** (`{"wear": rate, "max": b, "reset": ref, "init": n}`; `max` required, a number ≥ 0; `reset` optional): y ←
+  0 when `reset` reads true, else min(b, y + r × k) with r = the rate if it is above 0 (else 0, NaN too), k = 0.1 ×
+  `day_scale` computed once, everything as the previous step left it. A plant without a clock can't have one
+  (`bad_ref`: it counts clock time). **Across a jump** (§17.6), in the jump's own step: y + r × (gap / 10) first (the
+  gap in clock tenths, so the night's clock seconds), then + r × k (the step), then the max; the rate is the previous
+  step's. The gap reaches the program through a slot after the constants (laid out with the main program's, so the
+  generated script still depends on the model alone), written before step 2 and cleared after it; it is never in a
+  snapshot or the digest.
+- **`count`** (`{"count": ref, "by": ref, "reset": ref, "init": n}`; `by` default 1, `reset` optional): adds `by` on
+  each step in which `ref` reads true and read false the step before, all three as the previous step left them; reset
+  true gives 0 (its memory still follows `ref`). Its memory (one per node, in `mem`: so in saves, snapshots and the
+  digest) starts as "not seen false", so a `ref` already true at step 0 (a machine running at the start) is not a start.
+- **`renews`** on a work: 1 to 32 wear values (each a `wear` node, `bad_ref`; once each, `dup_id`), and the work must
+  have an isolation (`missing_key`, as `repairs`: the user's rule that every job that repairs equipment isolates it).
+  In step 3, after every `done`'s repairs and `set`, each work whose permit went to done in this step sets its wear
+  values to 0 when its isolation is complete after this step's locks (a lock removed by authority in done's own step:
+  no renewal); no event of its own (the permit's `done` is the record).
+- **`age_rate`** is no engine rule: an ordinary `ext` value that the content multiplies into each wear's rate (the
+  vectors' bearing: a duty table of the flow × `age_rate` × a constant), so each scenario gives its own (the user,
+  2026-11-01: a training rate per scenario, 50 in the vectors' base; real time is 1, the vectors' second run).
+- **The digest:** no new part: the draws, wears and counts are values, and the counts' memory is in `mem`.
+- **The byte check:** `plant3d-v1.json` and `plant3d-v2.json` made by the new reference are the committed files.
+- **The reference sets `day_scale` before compiling** (and the GDScript engine the clock), since a wear's factor reads
+  it; no earlier value depended on the order.
+
+### 2.12 As built for milestone WX1 (2026-11-02: the weather engine)
+
+- **Where:** `ref/plant3d_world.py` (the file's check, the scenario's `world.weather`, the step) and
+  `apps/plant3d/sim/world.gd` with `engine.gd`'s `_weather`. Vectors: `plant3d-realism.json`'s `weather` (the realism
+  base's plant with weather.json: 44 rejects and six runs); tests `WeatherVectors` (the hourly chain recomputed from the
+  stream and the file, each lag step, the season at midnight, the instructor, the jump's draws, the digest, the people's
+  draws unchanged), `GdscriptRealism`, `check_world.gd`.
+- **`weather.json`** (format `walkdown-plant-weather`, version 1; only in a version 2 plant): `values` (1–16 `{"id",
+  "tau"}`: each an `ext` value of plant.json, its lag in clock minutes, above 0), `kinds` (1–16 `{"id", "targets"}`:
+  a table over `world_hour` from 0 to 24 per driven value, every value given), `seasons` (1–12 `{"id", "days": [first,
+  last], "start": kind, "hourly": [[from, to, weight], …]}`: first > last runs over the year's end; every day of the
+  year in exactly one season; whole weights ≥ 0, a pair once, every kind with a total above 0 and at most 2¹⁶ from it,
+  so the chain can always move on). `world_wx` (the kind's index in `kinds`) is the third engine-kept value, after the
+  clock values, only in a scenario with `world.weather`; its name is reserved like theirs (`dup_id`), and content
+  reading it needs `world.weather` in every scenario (`bad_ref`).
+- **`world.weather`:** one of `{"season": id}` (seeded; the id must be the season of the scenario's start day, the
+  day of the year from `year_day` and the start's day, so a scenario says which season it starts in and the chain
+  starts at that season's `start` kind), `{"fixed": kind}`, or `{"script": [[day, "HH:MM", kind], …]}` (1–256 entries
+  in time order, the first at or before the scenario's start: the kind at step 0 is the last entry at or before it).
+- **Step 1w,** after the clock values: seeded, one draw from the weather stream for each whole hour h the clock passed
+  since the step before (C(n − 1) div 36,000 < h ≤ C(n) div 36,000, so a jump's every hour, in order), the next kind
+  picked from the current kind's row of the season of hour h's day by §17.5's `choose` ((r × T) >> 24 against the
+  running sums; a draw is made at every hour, whether the kind changes or not); scripted, each entry passed in the step
+  (C(n − 1) < its clock ≤ C(n)) sets the kind; fixed, nothing. Then each driven value moves toward its kind's table at
+  this step's `world_hour`: y + (target − y) × f, f = 1 − e^(−0.1 × `day_scale` / (60 × tau)) computed once; in a
+  step with a jump, the value is the target itself. `world_wx` takes the kind.
+- **Who reads it:** a stateless node reads this step's driven values and `world_wx`; a stateful node the previous
+  step's, as for the clock values and every value (§7.1), so §2.7's "every node reads an ext value as step 1w left it"
+  holds for stateless nodes.
+- **Events:** `[n, "weather", from, to]` once in a step whose kind at the end of step 1w differs from the kind before
+  step 1 (a jump across several changes makes one event for the net change); the instructor's `[n, "weather", kind]`
+  sets the kind in step 1 with `[n, "instructor", "weather", kind]` (the seeded chain goes on from it at the next hour, a
+  script at its next entry); in a scenario without weather, or with a kind weather.json lacks, it does nothing and makes
+  no event. A session carries it from the host's and the instructor seats' slots only (net/input_check.gd, as a
+  fault), a save keeps one queued (ui/autosave.gd); the panel's button (ui/inputs.gd) comes with the instructor's
+  panel (WX3).
+- **The digest** gains, with weather only, the kind and the weather stream's state after the lifts' parts (the driven
+  values and `world_wx` are values); a save keeps both (`wx_kind`, `wx_s`), the built tables are rebuilt from the
+  scenario.
+- **§17.6:** a jump still draws nothing for the people; the weather's hourly draws are made in the jump's step.
+
+**The step's cost (AG1 and WX1 together).** `tools/plant3d/realism_synth.py N --engine` makes RE1's synthetic load with
+the engine's own nodes (each wear item a `wear` node, a `draw`n life, the failure against it and a `count`) and the
+weather at §11's size (weather.json with ten driven values: the train's `ambient_t` and `ambient_wb` and eight more
+`ext` values, eight kinds, a draw an hour); the step bench prints a `WEATHER` line, the weather step alone over 20,000
+calls (its lags, and with an hour crossed: a draw and the targets).
+
+| Model step (base load, mean) | built (2,271 values) | + 600 (RE1's shapes) | + 600 `--engine` | + 1,000 `--engine` |
+|---|---|---|---|---|
+| Laptop (headless, `bench_realism.gd`) | 0.205 ms | 0.261 ms (+0.056) | 0.263 ms (+0.058) | 0.265 ms (+0.060) |
+| Note 9, fast core (release build, `step=bench`) | 0.413 ms | 0.498 ms (+0.085) | 0.530 ms (+0.117) | 0.572–0.587 ms (+0.16–0.17) |
+| Note 9, slow core (the same loads when the bench thread ran on a slow core) | 0.714 ms (RE1) | 0.790 ms | 0.826–0.837 ms | 0.905–0.916 ms |
+
+| The weather step alone (10 lags, 20,000 calls) | each step (its lags) | a step with an hour crossed (a draw, the targets) |
+|---|---|---|
+| Laptop | 4.7 µs | 6.1 µs |
+| Note 9, fast core | 10.4 µs | 15.6 µs |
+| Note 9, slow core | 16.3–16.5 µs | 22.9–23.3 µs |
+
+The Note 9 (2026-11-02, a test-signed release build of this branch, two runs of two loads each; evidence in
+`~/kks-work/build/ag1wx1/` on the maintainer's laptop): as in RE1 the bench thread ran some loads on a slow core
+(every figure of such a load about 1.6–2× its fast-core twin, the weather's timing with it), so the table keeps the two
+apart. On the fast core, AG1's nodes and the weather at §11's size add 0.117 ms at 600 values and about 0.17 ms at
+1,000, within the 0.4 ms share; RE1's shapes at 600 measured the same as in RE1 (0.498 ms). **The weather step meets
+§11's ≤ 0.02 ms** in every step on both cores (10.4 and 16.4 µs); the step that crosses an hour (one in 6,000 at the
+train's `day_scale`) takes 15.6 µs on the fast core and 23 µs on the slow one, so its mean over an hour stays under
+0.02 ms. Its first version took 14.0 and 22 µs a step; hoisting the dictionary lookups out of the step and writing the
+table lookup in place (the same comparisons and arithmetic; the vectors unchanged) gave these. The phone's battery was
+at 29–35 °C over the runs.
+
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does
@@ -818,11 +929,17 @@ in `plant3d-realism.json` and in both engines bit for bit:
 counters, lookups at an input, and one more table in step 1w). The new plant systems are not: the fuel gas and
 distillate systems, the emergency diesel, instrument air, fire water and CO₂, the switchyard and excitation add
 model values to the first train (estimated 300–400, as built per milestone). §11's 600 values were sized before them,
-and at about 0.7 µs a value on the Note 9 the two together would pass the 0.4 ms share. So RE1 measures the step at
-600 and at 1,000 added values, and whether to widen the share or model these systems more coarsely is the user's
-question (MILESTONES.md, "Question for the user (realism)"). Until answered, the milestones that add these systems
-(OP4, OP5, OP6, IC4, EC3, EC6) wait for the answer, since §11's 600 values are already shared out; every other
-milestone fits within §11 as it stands and counts its values.
+and at about 0.7 µs a value on the Note 9 the two together would pass the 0.4 ms share. RE1 measured the step at
+600 and at 1,000 added values (§2.10).
+
+**Decided by the user (2026-11-02): the extra plant systems load per scenario.** The fuel gas and distillate systems,
+the emergency diesel, instrument air, fire water and CO₂, the switchyard and excitation are optional content: each
+scenario names the systems it loads, and a scenario without them steps without their values, so §11's 600 values
+(and its 0.4 ms) stay the share of every scenario that loads none of them; one that loads some counts their values on
+top, measured with the milestone that adds them. An "everything" day (every system loaded) is allowed on laptops and
+is measured on the Note 9 (the user's words: allowed on laptops, measured on the phone). This unblocks OP4, OP5, OP6,
+IC4, EC3 and EC6; how a scenario names its systems is settled with the first of them (OP4), in the content format
+(PLANT3D.md format 2), with vectors of a scenario with and without a system.
 
 ### J1. Operations
 
@@ -1050,10 +1167,12 @@ Manufacturers' published manuals and handbooks:
 - [R3051] Emerson, Rosemount 3051 pressure transmitter reference manual (loop resistance for HART, troubleshooting,
   trim). · [DVC] Emerson, Fisher FIELDVUE DVC6200 instruction manual (positioner calibration). · [FCVH] Emerson,
   Control Valve Handbook (packing, stiction, troubleshooting). · [SKF] SKF, Bearing maintenance handbook and rolling
-  bearings catalogue (mounting, heating, relubrication quantity, defect frequencies). · [GER3567] GE Power, GER-3567,
-  Gas turbine performance characteristics. · [GER3620] GE Power, GER-3620, Heavy-duty gas turbine operating and
-  maintenance considerations (inspections, filters, washing, factors on intervals). · [Fluke] Fluke application
-  notes on clamp meters and 4–20 mA loop calibrators.
+  bearings catalogue (mounting, heating, relubrication quantity, defect frequencies). · [GER3567] GE Power Systems,
+  GER-3567H, GE gas turbine performance characteristics (F. J. Brooks, 2000). · [GER3620] GE Vernova, GER-3620P,
+  Heavy-duty gas turbine operating and maintenance considerations (revision P, 2021; inspections, filters, washing,
+  factors on intervals),
+  https://www.gevernova.com/gas-power/resources/technical-downloads/ger-3620p-operation-maintenance-considerations. ·
+  [Fluke] Fluke application notes on clamp meters and 4–20 mA loop calibrators.
 
 Textbooks:
 - [Moubray] J. Moubray, Reliability-centred Maintenance (the P-F curve). · [Liptak] B. Lipták, Instrument Engineers'
@@ -1129,15 +1248,26 @@ Public guidance and regulations (free to read):
   https://www.fmglobal.com/research-and-resources/fm-global-data-sheets.
 
 Manufacturers' published documents:
-- [GEI41040] GE Vernova, GEI-41040, Specification for fuel gases for combustion in heavy-duty gas turbines ·
-  [GEI41047] GE Vernova, GEI-41047, Heavy-duty gas turbine liquid fuel specifications · [GER3568] GE, GER-3568, Dry
-  low NOx combustion systems for GE heavy-duty gas turbines · [Swagelok] Swagelok, tube fitter's manual and gaugeable
-  tube fitting installation instructions.
+- [GEI41040] GE, GEI-41040 (now GE Vernova's), Specification for fuel gases for combustion in heavy-duty gas turbines
+  (revisions up to at least M, 2011; the current revision not confirmed: supplied with the turbine) · [GEI41047] GE,
+  GEI-41047 (now GE Vernova's), Gas turbine liquid fuel specifications (revision H is the one contracts cite; the
+  current revision not confirmed) · [GER3568] GE Power Systems, GER-3568G, Dry low NOx combustion systems for GE
+  heavy-duty gas turbines (L. B. Davis, S. H. Black, 2000) · [Swagelok] Swagelok, Tube fitter's manual (MS-13-03) and
+  the tube fitting installation instructions (MS-12-01, with the gap inspection gauge),
+  https://www.swagelok.com/toolbox/tube-fitting-manual.
+
+Checked 2026-11-02 (web search): every GE number above appears with that title in public sources; GEI-41040 and
+GEI-41047 are not published for download (they come with a turbine) and were seen only in summaries and contracts, so
+they are cited for what those say of them until a copy is in hand.
 
 Textbooks:
-- [Astrom] K. J. Åström, T. Hägglund, Advanced PID control (ISA, 2006) · [Dooley] R. B. Dooley, W. P. McNaughton,
-  Boiler and HRSG tube failures: theory and practice (2016) · [BW-Steam] Babcock & Wilcox, Steam: its generation and
-  use (chemical cleaning) · [Palmer] R. D. Palmer, Maintenance planning and scheduling handbook (McGraw-Hill).
+- [Astrom] K. J. Åström, T. Hägglund, Advanced PID control (ISA, 2006) · [Dooley] **unverified**: cited from memory as
+  R. B. Dooley, W. P. McNaughton, Boiler and HRSG tube failures: theory and practice (2016); no book of that title and
+  year was found on 2026-11-02. It is probably EPRI's report Boiler and heat recovery steam generator tube failures:
+  theory and practice (1012757, three volumes; its authors and year not confirmed), an EPRI product that is not free
+  to read. MC4 needs a public source in its place (or the user's choice to cite EPRI's) before its content is written
+  · [BW-Steam] Babcock & Wilcox, Steam: its generation and use (chemical cleaning) · [Palmer] R. D. Palmer,
+  Maintenance planning and scheduling handbook (McGraw-Hill).
 
 ## 15. Not in this programme (deliberately)
 

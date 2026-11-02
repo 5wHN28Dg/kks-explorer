@@ -11,6 +11,7 @@ const StaffPaths = preload("res://builder/staff_paths.gd")
 const PlantScene = preload("res://app/plant.gd")
 const Routes = preload("res://app/routes.gd")
 const Crowd = preload("res://app/crowd.gd")
+const WorkshopBuild = preload("res://builder/workshop_build.gd")
 
 func _init() -> void:
 	var args := {}
@@ -40,6 +41,14 @@ func _init() -> void:
 		b.kp.instances, b.kp.tris_total, b.kp.cells_made, b.kp.supports])
 	for u in b.kp.unsupported:
 		print("build: warning: nothing to stand a pipe support on under ", u)
+	# the Workshop's scenes (builder/workshop_build.gd, docs/plant3d/WORKSHOP.md §5), after the plant's: its own folder
+	var ws: Dictionary = WorkshopBuild.build_all(out.path_join("workshop"), data.path_join("workshop"), b.equipment)
+	for e in ws.errors:
+		printerr("build: ", e)
+	if not ws.errors.is_empty():
+		quit(1)
+		return
+	print("build: workshop: %d kinds %s" % [ws.built.size(), str(ws.tris)])
 	# the people's avatars, clips and posed meshes (builder/people/build_people.gd)
 	var pb := People.new()
 	var ps: Dictionary = pb.build(out.path_join("people"))

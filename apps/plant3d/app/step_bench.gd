@@ -40,21 +40,39 @@ static func with_load(files: Dictionary, synth_text: String) -> Dictionary:
 	var rel := "model/%s.json" % r.value["area"]
 	if not files.has(rel):
 		return {}
-	var mr := JsonStrict.parse(files[rel], 1000)
+	var mr := _parse(files[rel])
 	if not mr.ok:
 		return {}
 	var m: Dictionary = mr.value
 	m["values"] = m["values"] + r.value["values"]
 	m["version"] = 2
 	out[rel] = m
+	# realism_synth.py --engine: the weather (REALISM.md §5.1, milestone WX1), its ext values set in every scenario
+	var wx = r.value.get("weather")
+	var ext = r.value.get("ext", {})
+	if typeof(wx) != TYPE_NIL and (typeof(wx) != TYPE_DICTIONARY or typeof(ext) != TYPE_DICTIONARY):
+		return {}
+	if wx != null:
+		out["weather.json"] = wx
+		var p: Dictionary = _parse(files["plant.json"]).value
+		p["ext"] = p["ext"] + ext.keys()
+		out["plant.json"] = p
 	for k in files:
 		if k.begins_with("scenarios/"):
-			var sc: Dictionary = JsonStrict.parse(files[k], 1000).value
+			var sc: Dictionary = _parse(files[k]).value
 			sc["version"] = 2
 			if not sc.has("world"):
 				sc["world"] = {}
+			if wx != null:
+				sc["init"].merge(ext, true)
+				sc["world"]["weather"] = {"season": "year"}
 			out[k] = sc
 	return out
+
+
+## A content file as read_dir gives it (its bytes) or as text, parsed.
+static func _parse(x) -> Dictionary:
+	return JsonStrict.parse(x.to_utf8_buffer() if typeof(x) == TYPE_STRING else x, 1000)
 
 
 ## The measurement: loads {label: realism_synth text} ("" for the train as built, always first); its result lines.
@@ -93,7 +111,27 @@ static func run(files: Dictionary, loads: Dictionary, base_steps: int = 6000) ->
 		var per := float(Time.get_ticks_usec() - s2) / base_steps
 		out.append("BATCH load=%s values=%d steps=%d mean_us=%.1f ff_max=%dx" % [name, m.values.size(), base_steps,
 				per, int(1e6 / per / 10.0)])
+		if e._wx != null:
+			# the weather step alone (REALISM.md §11: ≤ 0.02 ms): its lags as in most steps, and with an hour crossed
+			# (one draw, the values set to their targets, as in a jump's step)
+			var lags := _weather_us(e, 0)
+			var hour := _weather_us(e, 36000)
+			out.append("WEATHER load=%s values=%d calls=%d lags_mean_us=%.2f hour_mean_us=%.2f" % [name,
+					e._wx["slots"].size(), WX_CALLS, lags, hour])
 	return out
+
+
+const WX_CALLS := 20000
+
+
+## The weather step's mean time over WX_CALLS calls, on a clone (the engine measured is left as it was); a call that
+## changes the kind makes its event, as the step would.
+static func _weather_us(e, gap: int) -> float:
+	var c = e.clone()
+	var s := Time.get_ticks_usec()
+	for k in WX_CALLS:
+		c._weather(gap, c.wx_kind)
+	return float(Time.get_ticks_usec() - s) / WX_CALLS
 
 
 static func _stats(t: PackedInt64Array) -> String:

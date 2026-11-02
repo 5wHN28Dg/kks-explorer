@@ -218,7 +218,7 @@ def commute(rid, routine):
         return [slot('start-0:50', 'bus_in'), slot('end+0:05', 'bus_out')]
     if rid in WTP_ROUTINES:         # (their PPE put on with the commute: the routine's own gear_up is dropped)
         routine['slots'] = [x for x in routine['slots'] if x['task'] != 'gear_up']
-        return [slot('start-1:40', 'bus_in_wtp'), slot('end+0:05', 'walk_out')]
+        return [slot('start-1:15', 'bus_in_wtp'), slot('end+0:05', 'walk_out')]
     if rid in DAY_TO_CR:
         return [slot('start-0:50', 'bus_in'), slot('end+0:05', 'bus_out')]
     if rid in DAY_WTP:

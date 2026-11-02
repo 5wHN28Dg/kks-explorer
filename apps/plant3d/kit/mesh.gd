@@ -7,6 +7,16 @@
 ## Visibility classes (§10): `form` (what a thing is: drawn to the far plane, LOD only), `identify` (which one and in
 ## which state: never removed for performance), `detail` (bolts, fins, small brackets: a visibility range by size).
 ## `size` is the piece's smallest telling feature in metres; it decides a `detail` piece's range.
+##
+## The Workshop mode (docs/plant3d/WORKSHOP.md §4.2): two more pieces of state, set by the generator around its
+## primitives (through kit.gd's `Gen.comp()` and `Gen.only()`):
+##   `comp_id`  the component the next primitives belong to (`body` until a generator names one);
+##   `only_kind` "" (shared: the plant and the Workshop), "workshop" (insides, split halves, closing faces, small
+##             outside pieces: never in the plant) or "plant" (a merged stand-in the Workshop replaces).
+## In plant mode (`workshop` false, the default) `comp_id` is ignored and "workshop" pieces are written nowhere, so the
+## layers are exactly what they were before the Workshop (tests/test_kit_frozen.gd). In Workshop mode a layer's key is
+## `comp|tag|material|class|bucket` (tag: `shared`, or a "workshop" piece's role: `hidden`, `outside` or `split`),
+## "plant" pieces go to `standins` instead (measured, never drawn), and every only() block is recorded in `pieces`.
 extends RefCounted
 
 const Mat = preload("res://kit/materials.gd")
@@ -18,11 +28,25 @@ var colour := Color(1, 1, 1)
 var xf := Transform3D.IDENTITY   # applied to every primitive (part frame), for groups of pieces placed together
 var seg_scale := 1.0             # the kit's segment density (1 = full detail)
 
+var workshop := false            # the Workshop mode (above)
+var comp_id := "body"
+var only_kind := ""              # "", "workshop" or "plant"
+var only_role := ""              # a "workshop" piece's role: hidden, outside or split
+var standins := []               # Workshop mode: the "plant" pieces, [{replaced_by, layers}], in order
+var pieces := []                 # Workshop mode: every only() block, {comp, kind, role, standin, box, tris}
+var problems := []               # misuse found while building (a generator's mistake, never the content's)
+var _last_use := []              # the last use()'s arguments, to select the layer again when comp or only change
+var _use_skipped := false        # the last use() came inside a "workshop" block in plant mode
+var _stale := false              # the last use() came inside a "workshop" block (either mode): a use() is due after it
+var _piece: Dictionary = {}
+var _standin: Dictionary = {}
+
 ## Selects the layer the next primitives go to. A named material (kit/materials.gd) is drawn with the material it
 ## resolves to, its colour in the vertices; a `detail` piece's layer is its size bucket's. `identify` pieces get no
 ## LODs (a simplifier measures shape, not colour: a band or an arrow could go while it is still seen).
 func use(name: String, cls := "form", size := 0.0) -> void:
 	assert(cls in CLASSES)
+	_last_use = [name, cls, size]
 	var r: Array = Mat.resolve(name)
 	var mat: String = r[0]
 	colour = r[1]
@@ -31,13 +55,65 @@ func use(name: String, cls := "form", size := 0.0) -> void:
 	if cls == "detail":
 		bucket = int(floor(log(maxf(size, 0.001)) / log(2.0)))   # a factor of 2 (§10): pieces of one bucket share a range
 		lk = "detail"
+	_use_skipped = not workshop and only_kind == "workshop"
+	_stale = only_kind == "workshop"
+	if _use_skipped:   # drawn into nothing: plant mode never sees a Workshop piece, not even an empty layer of it
+		cur = _layer(mat, cls, size)
+		return
 	var key := "%s|%s|%d" % [mat, lk, bucket]
-	if not layers.has(key):
-		layers[key] = {"mat": mat, "cls": cls, "size": size, "v": PackedVector3Array(), "n": PackedVector3Array(),
-			"uv": PackedVector2Array(), "c": PackedColorArray(), "idx": PackedInt32Array()}
-	cur = layers[key]
+	var into: Dictionary = layers
+	if workshop:
+		key = "%s|%s|%s" % [comp_id, only_role if only_kind == "workshop" else "shared", key]
+		if only_kind == "plant":
+			into = _standin.layers
+	if not into.has(key):
+		into[key] = _layer(mat, cls, size)
+		if workshop:
+			into[key]["comp"] = comp_id
+			into[key]["tag"] = only_role if only_kind == "workshop" else ("plant" if only_kind == "plant" else "shared")
+	cur = into[key]
 	if cls == "detail":
 		cur.size = minf(cur.size, size) if cur.size > 0.0 else size
+
+func _layer(mat: String, cls: String, size: float) -> Dictionary:
+	return {"mat": mat, "cls": cls, "size": size, "v": PackedVector3Array(), "n": PackedVector3Array(),
+		"uv": PackedVector2Array(), "c": PackedColorArray(), "idx": PackedInt32Array()}
+
+## The component the next primitives belong to (WORKSHOP.md §4.2); the current material's layer is selected again.
+func set_comp(id: String) -> void:
+	comp_id = id
+	if workshop and not _piece.is_empty():   # an only() block goes on into another component: a piece of its own
+		_open_piece()
+	_reselect()
+
+## What the next primitives are: "" shared, "workshop" (role hidden, outside or split) or "plant" (a stand-in the
+## components `replaced_by` replace; none: a mounting the Workshop leaves out). The current material's layer is
+## selected again; after a "workshop" block a generator calls use() before its next shared primitive.
+func set_only(kind: String, role := "hidden", replaced_by: Array = []) -> void:
+	assert(kind in ["", "workshop", "plant"])
+	assert(kind != "workshop" or role in ["hidden", "outside", "split"])
+	only_kind = kind
+	only_role = role if kind == "workshop" else ""
+	_piece = {}
+	_standin = {}
+	if workshop and kind != "":
+		if kind == "plant":
+			_standin = {"replaced_by": replaced_by.duplicate(), "layers": {}}
+			standins.append(_standin)
+		_open_piece()
+	_reselect()
+
+func _open_piece() -> void:
+	_piece = {"comp": comp_id, "kind": only_kind, "role": only_role,
+		"standin": standins.size() - 1 if only_kind == "plant" else -1, "box": AABB(), "verts": 0, "tris": 0}
+	pieces.append(_piece)
+
+func _reselect() -> void:
+	if _stale and only_kind != "workshop":
+		return   # left a "workshop" block: the generator's next use() selects the layer (never one made here; in plant
+		#          mode its primitives go nowhere until then, and a primitive drawn before it is reported)
+	if not _last_use.is_empty():
+		use(_last_use[0], _last_use[1], _last_use[2])
 
 ## Segments round a circle of radius r: one every ~10 cm of circumference, 8 to 48 (fewer with seg_scale < 1).
 func segs(r: float, lo := 8, hi := 48) -> int:
@@ -54,6 +130,12 @@ func _nm(n: Vector3) -> Vector3:
 	return Vector3(q.x, q.z, -q.y)
 
 func _vert(p: Vector3, n: Vector3, uv: Vector2) -> int:
+	if _stale and only_kind != "workshop" and problems.is_empty():
+		problems.append("a piece drawn after a Workshop-only block without a use() first (the plant would lose it)")
+	if not _piece.is_empty():   # Workshop mode: the box of the only() block being drawn
+		var q := _pt(p)
+		_piece.box = AABB(q, Vector3.ZERO) if _piece.verts == 0 else _piece.box.expand(q)
+		_piece.verts += 1
 	cur.v.append(_pt(p))
 	cur.n.append(_nm(n))
 	cur.uv.append(uv)
@@ -63,6 +145,8 @@ func _vert(p: Vector3, n: Vector3, uv: Vector2) -> int:
 ## A triangle a, b, c whose front face is counter-clockwise seen from outside (the normal side). Godot's front faces
 ## are clockwise, and the part-to-Godot change of axes keeps handedness, so the indices are stored reversed.
 func _tri(a: int, b: int, c: int) -> void:
+	if not _piece.is_empty():
+		_piece.tris += 1
 	cur.idx.append(a)
 	cur.idx.append(c)
 	cur.idx.append(b)
@@ -377,9 +461,13 @@ func pipe_path(pts: Array, r: float, bend_r: float, n := 0, skip := {}) -> Array
 
 ## Every layer as mesh arrays in Godot's axes, with tangents; {key: {mat, cls, size, arrays, tris}}.
 func finish() -> Dictionary:
+	return finish_layers(layers)
+
+## Layers (finish()'s, or a stand-in's) as mesh arrays.
+func finish_layers(of: Dictionary) -> Dictionary:
 	var out := {}
-	for k in layers:
-		var L: Dictionary = layers[k]
+	for k in of:
+		var L: Dictionary = of[k]
 		if L.idx.is_empty():
 			continue
 		var arr := []
@@ -393,4 +481,7 @@ func finish() -> Dictionary:
 		st.create_from_arrays(arr)
 		st.generate_tangents()
 		out[k] = {"mat": L.mat, "cls": L.cls, "size": L.size, "arrays": st.commit_to_arrays(), "tris": L.idx.size() / 3}
+		if L.has("comp"):
+			out[k]["comp"] = L.comp
+			out[k]["tag"] = L.tag
 	return out

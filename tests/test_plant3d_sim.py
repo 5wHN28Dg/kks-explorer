@@ -526,9 +526,11 @@ class GdscriptRealism(unittest.TestCase):
     def test_realism_vectors(self):
         with open(os.path.join(REPO, 'ref', 'vectors', 'plant3d-realism.json'), encoding='utf-8') as f:
             V3 = json.load(f)
-        st = V3['staff']
-        want = {f'realism/staff/{i}': staff_run(st['files'], r, None) for i, r in enumerate(st['runs'])}
-        n = 2 + len(st['runs'])
+        want, n = {}, 1
+        for part in ('staff', 'wear', 'weather'):       # RE1, AG1 (REALISM.md §2.2), WX1 (§5.1)
+            st = V3[part]
+            want.update({f'realism/{part}/{i}': staff_run(st['files'], r, None) for i, r in enumerate(st['runs'])})
+            n += 1 + len(st['runs'])
         for extra in ([], ['--interpreter=1']):
             with tempfile.TemporaryDirectory() as d:
                 dig = os.path.join(d, 'digests.json')
@@ -542,7 +544,9 @@ class GdscriptRealism(unittest.TestCase):
             for run, (start, chunks, names, _, states) in want.items():
                 self.assertEqual((got[run]['from'], got[run]['chunks']), (start, chunks), f'{run} {extra}')
                 self.assertEqual(got[run]['state'], states, f'{run} {extra}: the state digests')
-                self.assertEqual(names[-2:], ['world_hour', 'world_day'], run)
+                self.assertEqual(names[-3:] if run.startswith('realism/weather') else names[-2:],
+                                 ['world_hour', 'world_day', 'world_wx'][:3 if run.startswith('realism/weather') else 2],
+                                 run)
 
     def test_loader_guard(self):
         """The loader refuses a scenario without `world` when the model reads a clock value, and the step bench
@@ -554,15 +558,20 @@ class GdscriptRealism(unittest.TestCase):
 
     def test_step_bench(self):
         """The step bench with a synthetic realism load (app/step_bench.gd, as the phone's `step=bench` runs it):
-        the train as built and with 600 values both load, run the cold start and step at base load."""
+        the train as built, with 600 values, and with 600 values of AG1's nodes and WX1's weather (--engine) load,
+        run the cold start and step at base load; the weather step is timed alone."""
         with tempfile.TemporaryDirectory() as d:
-            path = os.path.join(d, 'r600.json')
+            path, epath = os.path.join(d, 'r600.json'), os.path.join(d, 'e600.json')
             subprocess.run([sys.executable, os.path.join(REPO, 'tools', 'plant3d', 'realism_synth.py'), '600', path],
                            check=True, cwd=REPO)
-            r = godot('bench_realism.gd', f'--synth=r600:{path}', '--base-steps=200', timeout=600)
+            subprocess.run([sys.executable, os.path.join(REPO, 'tools', 'plant3d', 'realism_synth.py'), '600', epath,
+                            '--engine'], check=True, cwd=REPO)
+            r = godot('bench_realism.gd', f'--synth=r600:{path},e600:{epath}', '--base-steps=200', timeout=900)
         no_errors(self, r)
         self.assertEqual(r.returncode, 0, r.stdout[-4000:])
-        for load in ('built', 'r600'):
+        self.assertIn('WEATHER load=e600 values=10 ', r.stdout)
+        self.assertNotIn('WEATHER load=r600', r.stdout)
+        for load in ('built', 'r600', 'e600'):
             self.assertIn(f'BATCH load={load} values=', r.stdout)
         self.assertIn('STEP load=r600 values=', r.stdout)
         self.assertIn('world=true phase=cold_start', r.stdout)

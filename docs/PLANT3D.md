@@ -1473,7 +1473,7 @@ quietly); the rest of this step runs as usual. In step 9 of that step, before it
 (event `skipped` for each instance, and for each slot whose time fell in the gap, except one exactly at the new
 clock), each vehicle goes home, reservations are released, and the placement rule runs at the new clock (duties as
 levels: no `duty` events for duties that began or ended in the gap); phase 1 then runs. A jump draws no random
-numbers.
+numbers, except the weather's hourly draws in a scenario with weather (REALISM.md §5.1, §2.12).
 
 **Fast-forward** is a level, part of the snapshot's `fast_forward`: offered when format 1 offers it (§7.9) and the
 trainee's person has no task instance given to them since their last `task_ack` (a new task, a call, a reaction, a
@@ -3075,13 +3075,12 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   05:40 and 17:40, the day workers at 06:35 (to the control building) and 06:50 (to the plant gate: the managers, the
   engineers, the storekeeper); home at 06:25, 16:15 and 18:25; 45 seats. Commutes are duty slots (`start−0:50` for the
   crews and the day workers, `start−0:35` for the managers', engineers' and storekeeper's ride to the gate, `start−0:50`
-  for the plant gate's guards, `start−1:40` for the WTP's operator and shift chemists), each a `ride` of priority 1
+  for the plant gate's guards, `start−1:15` for the WTP's operator and shift chemists), each a `ride` of priority 1
   that nothing pre-empts while waiting; the rides home are priority 3, so they wait for a handover in progress (the
   adversarial review: at priority 2 the bus home took the outgoing supervisor away mid-handover, who walked back from
   the camp to give it). The WTP's people and the day chemists (their lab is at the WTP) walk home.
-  The WTP's morning ride works with little margin: their slot comes about 42 clock minutes before the bus reaches the
-  camp's stop, against the 30 minutes a rider waits there, so a rider whose walk to the stop took under 12 minutes
-  would walk instead; and their breakfast at `next−1:50` is pre-empted by the ride at `start−1:40` (not made).
+  The WTP's slot comes about 17 clock minutes before the bus reaches the camp's stop (at `start−1:40` it came 42
+  before, beyond the 30 minutes a rider waits there: a rider who reached the stop quickly gave up and walked).
 - **Where it departs from §21.6:** the walk-round is the three managers' (on Mondays), without an HSE officer; the
   day workers have no midday meal (a Sunday lunch only, `off_days`); free time's weights are the same for every role;
   the beds of block 1's other rooms are hidden places at its entrance, as the other blocks' are, not at their doors in

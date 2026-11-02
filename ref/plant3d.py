@@ -55,7 +55,8 @@ BLOCKS = ('h', 'p', 'ul', 'ol', 'table', 'callout', 'cards', 'chain')
 SIGN_SYMBOLS = ('M003',)   # safety signs' symbols the app draws (ISO 7010; PLANT3D.md §5)
 FORMATS = {'plant': 'walkdown-plant', 'area': 'walkdown-plant-area', 'model': 'walkdown-plant-model',
            'scenario': 'walkdown-plant-scenario', 'procedure': 'walkdown-plant-procedure',
-           'sounds': 'walkdown-plant-sounds', 'kit': 'walkdown-plant-kit', 'screens': 'walkdown-plant-screens'}
+           'sounds': 'walkdown-plant-sounds', 'kit': 'walkdown-plant-kit', 'screens': 'walkdown-plant-screens',
+           'weather': 'walkdown-plant-weather'}
 # the beginning of a code (§7.11): unit, F0 and the system letters at least, then as far as the grammar of §6 goes
 PREFIX_RE = re.compile(rf'[0-9]{{2}}{L}{{3}}(?:[0-9](?:[0-9](?:{L}(?:{L}(?:[0-9](?:[0-9](?:[0-9]{L}?)?)?)?)?)?)?)?')
 
@@ -303,6 +304,7 @@ class Bundle:
         self.plant = self.kit = self.sounds = self.screens = None
         self.version = 1                           # plant.json's (§14)
         self.staff = None                          # staff.json, checked (ref/plant3d_staff.py), or None
+        self.weather = None                        # weather.json, checked (ref/plant3d_world.py), or None
         self.screen_of = {}                        # code shown on the screens -> (screen id, group id) (§7.11)
         self.areas, self.models = [], []          # in plant.json order
         self.scenarios, self.procedures = {}, {}
@@ -311,6 +313,7 @@ class Bundle:
         self.structures = {}                       # id -> structure
         self.surfaces = []                         # (kind, z, polygon) walkable outlines; pits: ('pit', z, poly)
         self.counts = {}
+        self.workshop = {}                         # part -> the Workshop data file's summary (WORKSHOP.md §4)
 
 
 def load_dir(path):
@@ -341,13 +344,21 @@ def check_files(files):
     """Check a plant given as {relative path: bytes} (the layout of PLANT3D's file table)."""
     b = Bundle()
     for rel in files:
-        need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json') or re.fullmatch(
-            r'(areas|model|procedures|scenarios)/[a-z_][a-z0-9_]{0,31}\.json|sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg', rel),
-            'unknown_key', f'{rel}: not a file of the format')
+        need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json', 'weather.json') or re.fullmatch(
+            r'(areas|model|procedures|scenarios|workshop)/[a-z_][a-z0-9_]{0,31}\.json|sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg',
+            rel), 'unknown_key', f'{rel}: not a file of the format')
     for rel in ('plant.json', 'kit.json', 'sounds.json'):
         need(rel in files, 'missing_key', f'{rel} is missing')
     b.kit = check_kit(parse(files, 'kit.json'))
     Plant(b, files).check()
+    # the Workshop's data per part kind (docs/plant3d/WORKSHOP.md §4, ref/plant3d_workshop.py): not part of the
+    # plant's model, checked here so that the content build reads only checked files
+    from ref import plant3d_workshop as W
+    for rel in sorted(files):
+        if rel.startswith('workshop/'):
+            w = W.check(parse(files, rel), b.kit, rel)
+            need(rel == f'workshop/{w["part"]}.json', 'bad_ref', f'{rel}: named by its part ({w["part"]})')
+            b.workshop[w['part']] = w
     return b
 
 
@@ -411,6 +422,11 @@ class Plant:
             for x in m.works:
                 if 'task' in x:
                     ident(x['task'], f'work {x["id"]}.task')
+        if 'weather.json' in files:
+            # the weather's kinds, driven values and seasons (REALISM.md §5.1, milestone WX1)
+            from ref.plant3d_world import check_weather
+            need(b.version == 2, 'unknown_key', 'weather.json: only in a version 2 plant (REALISM.md §5.1)')
+            b.weather = check_weather(parse(files, 'weather.json'), b, m)
         for rel in sorted(files):
             if rel.startswith('scenarios/'):
                 s = parse(files, rel)
@@ -429,13 +445,20 @@ class Plant:
         if b.version == 2:
             # the clock values (REALISM.md §2.1) have slots only in a scenario with `world`: content that names one
             # (the model, the staff, a procedure, the screens, a scenario's faults) runs only in scenarios with it
-            from ref.plant3d_world import names_in, NAMES
-            reads = any(names_in(parse(files, rel)) for rel in sorted(files)
-                        if rel.startswith(('model/', 'procedures/')) or rel in ('staff.json', 'screens.json'))
+            from ref.plant3d_world import names_in, NAMES, WX_NAME
+            content = [parse(files, rel) for rel in sorted(files)
+                       if rel.startswith(('model/', 'procedures/')) or rel in ('staff.json', 'screens.json')]
+            reads = any(names_in(x) for x in content)
             for sid, s in b.scenarios.items():
                 need('world' in s or not (reads or names_in(s.get('faults', []))), 'bad_ref',
                      f'scenarios/{sid}.json: the content reads {" or ".join(NAMES)}, which only a scenario with '
                      f'`world` has (REALISM.md §2.1)')
+            # likewise the weather's kind (§5.1): its slot only in a scenario with world.weather
+            reads = any(names_in(x, (WX_NAME,)) for x in content)
+            for sid, s in b.scenarios.items():
+                need('weather' in s.get('world', {}) or not (reads or names_in(s.get('faults', []), (WX_NAME,))),
+                     'bad_ref', f'scenarios/{sid}.json: the content reads {WX_NAME}, which only a scenario with '
+                                f'`world.weather` has (REALISM.md §5.1)')
         c = b.counts
         c.update(areas=len(b.areas), codes=len(self.codes), equipment=len(self.equipment), pipes=len(b.pipes),
                  structures=len(b.structures), stairs=len(self.stairs), ladders=len(self.ladders),
@@ -866,7 +889,8 @@ class Plant:
 # ---------------------------------------------------------------- the behaviour model (§7)
 
 STATELESS = ('const', 'state', 'of', 'sum', 'product', 'min', 'max', 'diff', 'select', 'cmp', 'and', 'or', 'not')
-STATEFUL = ('lag', 'ramp', 'integrate', 'latch', 'delay', 'timer', 'wrap', 'hold')
+STATEFUL = ('lag', 'ramp', 'integrate', 'latch', 'delay', 'timer', 'wrap', 'hold', 'draw', 'wear', 'count')
+FORMAT2_NODES = ('hold', 'draw', 'wear', 'count')     # §15.4; REALISM.md §2.2 and J0 (milestone AG1)
 NODE = {
     'const': (('const',), ()), 'state': (('state',), ()), 'of': (('of', 'table'), ('step',)),
     'sum': (('sum',), ()), 'product': (('product',), ()), 'min': (('min',), ()), 'max': (('max',), ()),
@@ -876,17 +900,22 @@ NODE = {
     'integrate': (('integrate', 'gain', 'min', 'max'), ('init',)), 'latch': (('latch', 'reset'), ('init',)),
     'delay': (('delay', 'on'), ('off', 'init')), 'timer': (('timer',), ()), 'wrap': (('wrap', 'period'), ('init',)),
     'hold': (('hold', 'when'), ('init',)),         # format 2 (§15.4)
+    # format 2, the realism programme's wear engine (REALISM.md §2.2, J0; milestone AG1)
+    'draw': (('draw',), ('init',)), 'wear': (('wear', 'max'), ('reset', 'init')),
+    'count': (('count',), ('by', 'reset', 'init')),
 }
 CMP = ('>=', '>', '<=', '<')
 
 
 def v1_hold(n, where):
-    """A `hold` key where format 1 is read (§15.4): refused with format 1's code, which had no hold node: beside
-    another node kind it is that kind's unknown key, alone it is no node kind."""
-    if isinstance(n, dict) and 'hold' in n:
-        other = any(k in n for k in STATEFUL + STATELESS if k != 'hold')
-        need(False, 'unknown_key' if other else 'bad_kind', f'{where}: the hold node is format 2 (a version 2 model '
-                                                             f'file, §15.4)')
+    """A format 2 node's key where format 1 is read (§15.4's `hold`; REALISM.md §2.2's `draw` and `wear`, J0's
+    `count`): refused with format 1's code, which had none of them: beside another node kind it is that kind's unknown
+    key, alone it is no node kind."""
+    if isinstance(n, dict) and any(k in n for k in FORMAT2_NODES):
+        other = any(k in n for k in STATEFUL + STATELESS if k not in FORMAT2_NODES)
+        what = 'the hold node is format 2 (a version 2 model file, §15.4)' if 'hold' in n else \
+            'the draw, wear and count nodes are format 2 (a version 2 model file, REALISM.md §2.2)'
+        need(False, 'unknown_key' if other else 'bad_kind', f'{where}: {what}')
 
 
 def node_kind(n, where):
@@ -913,6 +942,10 @@ def node_refs(n, kind):
         return [n['latch'], n['reset']]
     if kind == 'hold':
         return [n['hold'], n['when']]
+    if kind == 'draw':
+        return []
+    if kind in ('wear', 'count'):
+        return [n[kind]] + [n[k] for k in ('by', 'reset') if k in n]
     return [n[kind]]
 
 
@@ -934,6 +967,7 @@ class Model:
         self.lifts = []                          # format 2's lifts (§20.1), joined in area order
         self.area_of = {}                        # ('alarm' or 'trip', id) -> its model file's area (§17.12)
         self.iso_codes, self.work_isos = [], []  # (code, where), (isolation id, where): resolved in finish()
+        self.renews = []                         # (wear value, where) of works' `renews`: resolved in finish()
         self.version = 1                         # of the model file being added
 
     def kept(self):
@@ -949,11 +983,12 @@ class Model:
             {t['id'] + '_latched' for t in self.trips} | set(self.kept()) | set(self.world_names())
 
     def world_names(self):
-        """The clock values (REALISM.md §2.1): readable in a version 2 plant, kept only in a scenario with `world`."""
+        """The clock values (REALISM.md §2.1) and the weather's kind (§5.1): readable in a version 2 plant, kept only in
+        a scenario with `world` (with `world.weather`)."""
         if self.b.version != 2:
             return ()
-        from ref.plant3d_world import NAMES
-        return NAMES
+        from ref.plant3d_world import NAMES, WX_NAME
+        return NAMES + (WX_NAME,)
 
     def add(self, d, aid, rel):
         v2 = ('isolations', 'works', 'lifts')
@@ -1072,7 +1107,7 @@ class Model:
 
     def check_work(self, x, w):
         """§15.2: a job on equipment that needs a permit."""
-        keys(x, ('id', 'kks', 'title', 'discipline', 'permit'), ('isolation', 'repairs', 'set', 'task'), w)
+        keys(x, ('id', 'kks', 'title', 'discipline', 'permit'), ('isolation', 'repairs', 'set', 'task', 'renews'), w)
         need(isinstance(x['id'], str) and ID_RE.fullmatch(x['id']) and len(x['id']) <= 22, 'bad_id',
              f'{w}: id of at most 22 characters')
         need(x['id'] not in {y['id'] for y in self.works}, 'dup_id', w)
@@ -1093,6 +1128,14 @@ class Model:
             for k, v in x['set'].items():
                 self.pending_set.append((k, f'{w}.set'))
                 num(v, f'{w}.set.{k}')
+        if 'renews' in x:
+            # REALISM.md §2.2: the wear values its done sets to 0 (a renewal repairs: it isolates, as `repairs` does)
+            for i, name in enumerate(lst(x['renews'], f'{w}.renews', 1, 32)):
+                ident(name, f'{w}.renews[{i}]')
+                need(name not in x['renews'][:i], 'dup_id', f'{w}.renews: {name} twice')
+                self.renews.append((name, f'{w}.renews[{i}]'))
+            need('isolation' in x, 'missing_key', f'{w}.isolation: a work that renews equipment isolates it '
+                                                  f'(PLANT3D §15.2, REALISM.md §2.2)')
         if 'task' in x:
             ident(x['task'], f'{w}.task')       # a task of staff.json once the plant has one (§16, milestone S1)
         self.works.append(x)
@@ -1162,6 +1205,14 @@ class Model:
         elif kind == 'wrap':
             num(n['period'], w, 0)
             need(n['period'] > 0, 'bad_number', f'{w}.period > 0')
+        elif kind == 'draw':
+            # REALISM.md §2.2: an inverse distribution over u in [0, 1), read at step 0 from the value's own stream
+            check_table(n['draw'], f'{w}.draw')
+        elif kind == 'wear':
+            # REALISM.md §2.2: a clock-rate accumulator (rate per clock second × 0.1 × day_scale a step), up to max
+            num(n['max'], f'{w}.max', 0)
+            need(self.b.plant.get('clock') is not None, 'bad_ref', f'{w}: a wear node counts clock time; the plant '
+                                                                   f'has no clock (REALISM.md §2.2)')
         if 'init' in n:
             num(n['init'], f'{w}.init')
             if kind in ('latch', 'delay'):
@@ -1170,6 +1221,8 @@ class Model:
                 need(n['min'] <= n['init'] <= n['max'], 'bad_value', f'{w}.init within min and max')
             if kind == 'wrap':
                 need(0 <= n['init'] < n['period'], 'bad_value', f'{w}.init within [0, period)')
+            if kind == 'wear':
+                need(0 <= n['init'] <= n['max'], 'bad_value', f'{w}.init within 0 and max')
         if kind == 'hold':
             # §15.4: the input as this step computed it (an earlier value), `when` as the previous step left it
             self.ref(n['hold'], w, True)
@@ -1367,6 +1420,9 @@ class Model:
         for c, where in self.iso_codes:
             need(c in locks, 'bad_ref', f'{where}: {c} is the code of no state or alarm of the model (a lock must do '
                                         f'something)')
+        for name, where in self.renews:
+            need(name in self.index and self.values[self.index[name]][2] == 'wear', 'bad_ref',
+                 f'{where}: {name} is not a wear value (REALISM.md §2.2)')
         isos = {x['id'] for x in self.isolations}
         for i, where in self.work_isos:
             need(i in isos, 'bad_ref', f'{where}: no isolation {i!r}')
@@ -1593,6 +1649,8 @@ def check_scenario(s, m, rel):
             need(n['min'] <= v <= n['max'], 'bad_value', f'{rel}.init.{k}: within min and max')
         elif kind == 'wrap':
             need(0 <= v < n['period'], 'bad_value', f'{rel}.init.{k}: within [0, period)')
+        elif kind == 'wear':
+            need(0 <= v <= n['max'], 'bad_value', f'{rel}.init.{k}: within 0 and max (REALISM.md §2.2)')
         for x in m.lifts:
             need(k != x['target'] or v in range(len(x['landings'])), 'bad_value',
                  f'{rel}.init.{k}: a landing\'s index of lift {x["id"]}, 0 to {len(x["landings"]) - 1}')
@@ -1754,6 +1812,9 @@ class Engine:
             self.world = {'seed': world_seed(sc), 'year_day': sc['world'].get('year_day', 1),
                           'S': start_tenths(sc.get('start', clock['start']))}
             names = names + list(NAMES)
+            if 'weather' in sc['world']:
+                from ref.plant3d_world import WX_NAME
+                names = names + [WX_NAME]       # the weather's kind (§5.1), after the clock values
         # format 2 (§15): permits and isolations
         self.v2 = b.version == 2
         self.isos = {x['id']: x for x in m.isolations}
@@ -1787,6 +1848,12 @@ class Engine:
         self.names = names
         self.ix = {n: i for i, n in enumerate(names)}
         self.n = len(names)
+        # the weather (REALISM.md §5.1): built from the scenario's world.weather; its state the kind and the stream
+        self.wx = None
+        if self.world is not None and 'weather' in sc['world']:
+            from ref.plant3d_world import build_weather
+            self.wx = build_weather(sc, b, self.ix, self.world['seed'])
+            self.wx_kind, self.wx_s = self.wx['k0'], self.wx['s0']
         self.machines = m.machines
         self.mstate = {}
         self.trips = m.trips
@@ -1817,6 +1884,8 @@ class Engine:
         self.alarm_prog = [(a['id'], a['kks'], ix[a['when']], ix[a['suppress']] if 'suppress' in a else None,
                             ix[a['clear']] if 'clear' in a else None, max(1, steps(a.get('delay', 0))))
                            for a in self.alarms]
+        clock = b.plant.get('clock')
+        self.ds = clock['day_scale'] if clock else 0       # (before _compile: a wear node's factor reads it)
         self._compile()
         for fid, f in self.faults.items():
             if isinstance(f.get('when'), dict):
@@ -1836,6 +1905,7 @@ class Engine:
             from ref.plant3d_staff import start_tenths
             self.S = start_tenths(sc.get('start', clock['start']))
         self.J = 0
+        self.gap = 0            # the clock tenths a jump added in this step's step 1 (REALISM.md §2.2's wear)
         self.npc_queue = []             # the NPCs' inputs made in step 9, for the next step's step 1
         self.npc_pending = 0
         self.npc_evs = set()            # this step's events of NPC inputs whose person a slot took in step 1 (§17.13)
@@ -1892,6 +1962,7 @@ class Engine:
         self.init = [0.0] * self.n
         self.mem = {}
         self.hold0 = {}         # holds without an init (their own or the scenario's): their input at step 0 (§15.4)
+        self.draws = []         # draws without an init (their own or the scenario's): drawn at step 0 (REALISM.md §2.2)
         for i, (name, n, kind) in enumerate(self.m.values):
             fn = self._node(i, n, kind)
             if kind == 'state':
@@ -1900,6 +1971,8 @@ class Engine:
                 self.init[i] = float(n.get('init', 0))
             if kind == 'hold' and 'init' not in n and name not in self.sc['init']:
                 self.hold0[i] = self._r(n['hold'])
+            if kind == 'draw' and 'init' not in n and name not in self.sc['init']:
+                self.draws.append((i, name, [[float(x), float(y)] for x, y in n['draw']]))
             if fn is not None:
                 self.prog.append((i, fn, kind in STATEFUL))
         self.prog2 = [(i, fn) for i, fn, _ in self.prog]       # (step 2's loop: the same, without the flag)
@@ -2025,6 +2098,43 @@ class Engine:
             # §15.4: the input as this step computed it while `when` (as the previous step left it) is false
             u, wh = R(n['hold']), R(n['when'])
             return lambda cur, prev: prev[i] if wh(prev) >= 0.5 else u(cur)
+        if kind == 'draw':
+            return None         # REALISM.md §2.2: a stateful constant, drawn at step 0, never computed again
+        if kind == 'wear':
+            # REALISM.md §2.2: y <- 0 when `reset` reads true, else min(max, y + max(0, rate) x k), k = 0.1 x day_scale
+            # (computed once), the rate and reset as the previous step left them; in a jump's step (§17.6) the gap's
+            # clock seconds are added first, at the same rate: y + rate x (gap / 10), then + rate x k, then the max
+            u, rs, hi, k = R(n['wear']), R(n.get('reset', 0)), float(n['max']), STEP * self.ds
+            eng = self
+            def g(cur, prev):
+                if rs(prev) >= 0.5:
+                    return 0.0
+                r = u(prev)
+                if not r > 0:       # (NaN too: no wear)
+                    r = 0.0
+                y = prev[i]
+                if eng.gap > 0:
+                    y = y + r * (eng.gap / 10.0)
+                y = y + r * k
+                return y if y < hi else hi
+            return g
+        if kind == 'count':
+            # REALISM.md J0: adds `by` on each step in which `ref` turns true (read true, and false the step before),
+            # all three as the previous step left them; `reset` true gives 0. Its memory: 1 when the last read was
+            # false (0 at the start, so a ref already true at step 0 is not counted)
+            u, by, rs = R(n['count']), R(n.get('by', 1)), R(n.get('reset', 0))
+            self.mem[i] = [0]
+            mem = self.mem[i]
+            def g(cur, prev):
+                on = u(prev) >= 0.5
+                edge = on and mem[0] == 1
+                mem[0] = 0 if on else 1
+                if rs(prev) >= 0.5:
+                    return 0.0
+                if edge:
+                    return prev[i] + by(prev)
+                return prev[i]
+            return g
         if kind == 'wrap':
             u, per = R(n['wrap']), float(n['period'])
             def g(cur, prev):
@@ -2051,6 +2161,16 @@ class Engine:
             cur[self.ix[t + '_latched']] = 1.0
         if self.world is not None:
             self._world_clock(self.world['S'])        # step 0's clock (§16.1: C(0) = S)
+        if self.wx is not None:
+            cur[self.wx['slot']] = float(self.wx_kind)    # the weather's kind at step 0; its values the scenario's
+        if self.draws:
+            # REALISM.md §2.2: each draw without an init takes table(u), u = r / 2^24 of one draw from its own stream
+            # (the world's seed, purpose `draw`, the value's name), so no other item moves it
+            from ref.plant3d_world import TAGS, world_seed, stream, draw
+            seed = world_seed(sc)
+            for i, name, t in self.draws:
+                _, r = draw(stream(seed, TAGS['draw'], name))
+                cur[i] = float(table_at(t, r / 16777216.0))
         prev = list(cur)
         for i, fn, stateful in self.prog:
             if not stateful:
@@ -2088,6 +2208,10 @@ class Engine:
 
     def repair(self, fid, slot=None):
         self._q(('repair', fid), slot)
+
+    def weather(self, kind, slot=None):
+        """The instructor's weather (REALISM.md §5.1)."""
+        self._q(('weather', kind), slot)
 
     def repair_under(self, fid, work, person=None, slot=None):
         self._q(('repair', fid, work, person), slot)
@@ -2162,9 +2286,11 @@ class Engine:
         return self.S + self.step_no * self.ds + self.J
 
     def _world_clock(self, c):
-        """The clock values' slots at the clock c (REALISM.md §2.1), the last two of the values."""
+        """The clock values' slots at the clock c (REALISM.md §2.1): after every other value (and before the weather's
+        kind, §5.1)."""
         from ref.plant3d_world import clock_values
-        self.cur[self.n - 2], self.cur[self.n - 1] = clock_values(c)
+        k = self.ix['world_hour']
+        self.cur[k], self.cur[k + 1] = clock_values(c)
 
     def shown(self, code, vals):
         """The value a code's `show` binding shows, in the given values."""
@@ -2484,6 +2610,8 @@ class Engine:
         under = {}          # fault -> the work under whose permit the trainee repairs it (§15.5)
         noted = []          # locks and unlocks, made in step 3 (§17.1)
         dones = []          # works whose permit went to done: their repairs and set in step 3
+        j0 = self.J         # the jumps before this step's inputs (a jump's gap: wear, REALISM.md §2.2; the weather)
+        wx0 = self.wx_kind if self.wx is not None else None     # the weather's kind before them (its event, §5.1)
         # 1. the trainee's inputs, in the order made, then the NPCs' made in the previous step's step 9 (§17.1)
         q, self.queue = self.queue, []
         nq, self.npc_queue = self.npc_queue, []
@@ -2560,15 +2688,26 @@ class Engine:
                 if self.v2:
                     self.ev('instructor', 'repair', item[1])
                 asked.append(item[1])
+            elif kind == 'weather':
+                # the instructor's weather (REALISM.md §5.1): a kind of weather.json, in a scenario with weather; the
+                # seeded chain goes on from it at the next hour, a script at its next entry; else nothing, no event
+                if self.wx is not None and item[1] in self.wx['kinds']:
+                    self.ev('instructor', 'weather', item[1])
+                    self.wx_kind = self.wx['kinds'].index(item[1])
         if self.m.lifts:
             self._lift_control(prev)
         # first-out records clear when no trip of the group is latched
         for g in list(self.first_out):
             if not any(self.latched[t['id']] for t in self.trips if t.get('first_out') == g):
                 del self.first_out[g]
-        # 1w. the realism base (REALISM.md §2.7): the clock values at this step's clock, a jump of step 1 included
+        # 1w. the realism base (REALISM.md §2.7): the clock values at this step's clock, a jump of step 1 included;
+        # then the weather (§5.1)
+        self.gap = self.J - j0
         if self.world is not None:
             self._world_clock(self.clock())
+            if self.wx is not None:
+                from ref.plant3d_world import weather_step
+                weather_step(self, self.gap, wx0)
         # 2. values, in order
         for i, fn in self.prog2:
             cur[i] = fn(cur, prev)
@@ -2636,6 +2775,14 @@ class Engine:
                 self._set(f['repair'], wid)
                 self.ev('repair', fid)
             self._set(w.get('set', {}), wid)
+        # then the renewals (REALISM.md §2.2, §2.7) of the works whose permit went to done, in the order of their
+        # `done`: each wear value set to 0, under the rule of their repairs (the isolation complete after this step's
+        # locks); no state is written, so no lock skips a part of it
+        for wid in dones:
+            w = self.works[wid]
+            if 'renews' in w and self.n_locked(w['isolation']) == len(self.isos[w['isolation']]['points']):
+                for name in w['renews']:
+                    cur[self.ix[name]] = 0.0
         # 4. interlocks on a rising edge
         for x, wi in self.il_prog:
             now = vals[wi] >= 0.5
@@ -2859,7 +3006,8 @@ class Engine:
             ([[list(self.riders[x['id']]) for x in m.lifts],
               Packed(PACKED_INT64, [self.quiet[x['id']] for x in m.lifts]),
               Packed(PACKED_INT64, self.lift_calls), Packed(PACKED_INT32, self.lift_dir),
-              Packed(PACKED_INT64, self.lift_dwell)] if m.lifts else [])
+              Packed(PACKED_INT64, self.lift_dwell)] if m.lifts else []) + \
+            ([Packed(PACKED_INT64, [self.wx_kind, self.wx_s])] if self.wx is not None else [])
 
     def snapshot(self, values=True):
         s = {'step': self.step_no,

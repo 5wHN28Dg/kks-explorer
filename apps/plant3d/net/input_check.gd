@@ -6,7 +6,7 @@
 ##   in a commit that fails this check is skipped by every player alike (a commit made by a host of another build, or
 ##   forged on a LAN, §1.3): the engines never see a kind that is not a text or a length that is not its kind's (the
 ##   GDScript engine stops halfway through a step on those, §12), and every player skips the same inputs.
-## - **Who may make it.** Any slot may play nobody (free mode, §6.1). The trainer's inputs, a fault, a repair without a
+## - **Who may make it.** Any slot may play nobody (free mode, §6.1). The trainer's inputs, a fault, the weather, a repair without a
 ##   permit and a lock removed by authority naming no person (PLANT3D.md §15.5), are taken from the host's slot and
 ##   the instructor seats only (§7.3); `release` and `jump` are the host's alone (the jump is voted, §7.2). Everything
 ##   else is left to the engine's own rules (§17.13: a slot's person, authority, free mode).
@@ -28,7 +28,7 @@ const FORMS := {
 	"role": [["s"]], "release": [[]], "task_ack": [[]], "arrive": [["s"]], "leave": [["s"]], "read": [["s", "n"]],
 	"say": [["s", "s"]], "pick": [["i"]], "call": [["s", "s", "zs"]], "jump": [["s"]], "ppe": [["s", "i"]],
 	"zone": [["s", "s"]], "stop": [["s"]], "board": [["s", "zs"]], "alight": [["s", "zs"]],
-	"get_on": [["s"]],
+	"get_on": [["s"]], "weather": [["s"]],
 }
 
 
@@ -76,7 +76,7 @@ static func text(item: Array) -> PackedByteArray:
 ## Whether the trainer's powers are needed for this input.
 static func trainer_only(item: Array) -> bool:
 	match item[0]:
-		"fault":
+		"fault", "weather":       # the instructor's weather (REALISM.md §5.1) as the trainer's faults
 			return true
 		"repair":
 			return item.size() == 2
