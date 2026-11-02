@@ -1,8 +1,9 @@
 // The Workshop's see-through (docs/plant3d/WORKSHOP.md §7.1, `ws_xray`): unshaded, blended, writing no depth. From
 // K2 the guided assembly's ghost (the next step's part drawn in place); from K3 the X-ray too, edge-weighted, in
-// another colour. A little more opaque where the surface turns away from the eye, so the ghost's outline reads.
+// another colour. A little more opaque where the surface turns away from the eye, so the ghost's outline reads. Not
+// depth-tested: the ghost of a part that goes inside another (the board in the housing) shows through it.
 shader_type spatial;
-render_mode unshaded, blend_mix, depth_draw_never, cull_back, shadows_disabled;
+render_mode unshaded, blend_mix, depth_draw_never, depth_test_disabled, cull_back, shadows_disabled;
 
 uniform vec3 colour : source_color = vec3(0.35, 0.75, 1.0);
 uniform float alpha = 0.35;

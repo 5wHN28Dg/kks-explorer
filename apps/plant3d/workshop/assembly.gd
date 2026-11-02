@@ -103,13 +103,22 @@ func why_not_place(id: String) -> String:
 	return ""
 
 ## Why taking `id` out is refused now: a placed part needs it, that need's second sentence ("" when it may come out).
-func why_not_remove(id: String) -> String:
+## `riding` the placed parts that come out with it (its placed descendants): a placed part outside them that needs one
+## of them refuses too (taking out the housing would take the board a cover needs).
+func why_not_remove(id: String, riding := {}) -> String:
 	for s in steps:
 		var p := String(s.place)
 		if loose.has(p):
 			continue
 		for n in s.get("needs", []):
 			if String(n[0]) == id:
+				return String(n[2])
+	for s in steps:
+		var p := String(s.place)
+		if loose.has(p) or p == id or riding.has(p):
+			continue
+		for n in s.get("needs", []):
+			if riding.has(String(n[0])):
 				return String(n[2])
 	return ""
 

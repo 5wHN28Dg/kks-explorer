@@ -657,7 +657,7 @@ func why_not_free(id: String) -> String:
 				return String(words.get("components", {}).get(at, {}).get("sealed_why", "It is sealed."))
 			at = spec.comps[at].parent
 	if guide.on():
-		return guide.why_not_remove(id) if guide.placed(id) else ""
+		return guide.why_not_remove(id, _riding(id)) if guide.placed(id) else ""
 	var off := Explode.offsets(spec, s, root_id)
 	var foff := Explode.fastener_offsets(spec, s, root_id)
 	for step in words.get("assembly", []):
@@ -722,9 +722,17 @@ func start_guide(mode: String, from := "exploded") -> bool:
 				if mean.length() < bo * 0.5:
 					# items backing out every way (radial screws): the group lies out as a whole, beside its host
 					var host := String(spec.groups[g].host)
-					var dir: Vector3 = spec.comps[host].dir if host != "" else Vector3.UP
-					mean = hm.basis.inverse() * (dir as Vector3).normalized() * maxf(bo, Assembly.snap_tol(machine.get_meta("box", AABB())) * 3.0)
+					# (an explode direction is in the host's parent's frame)
+					var dir: Vector3 = (_parent_m(host, _cur_m).basis * (spec.comps[host].dir as Vector3)) if host != "" else Vector3.UP
+					mean = hm.basis.inverse() * dir.normalized() * maxf(bo, Assembly.snap_tol(machine.get_meta("box", AABB())) * 3.0)
 				at[g] = Transform3D(hm.basis, hm.origin + hm.basis * mean)
+	if mode == "assemble" and from == "exploded":
+		# a part the explode doesn't move (the base everything sits on) stays placed: it is where it goes
+		var tol0 := Assembly.snap_tol(machine.get_meta("box", AABB()))
+		for id in at.keys():
+			var c0: Vector3 = _gcentre.get(id, Vector3.ZERO) if groups.has(id) else Vector3.ZERO
+			if Assembly.near_enough(at[id], home_m(id), c0, [], tol0 * 0.05):
+				at.erase(id)
 	s = 0.0
 	guide.start(mode, words.assembly, spec.comps, at, spec.groups)
 	if panels != null:
@@ -732,6 +740,13 @@ func start_guide(mode: String, from := "exploded") -> bool:
 	note = ""
 	apply()
 	_update_ghost()
+	if mode == "assemble" and from == "pile":
+		var all: AABB = machine.get_meta("box", AABB())
+		for id in guide.loose:
+			var b := _home_box(id)
+			b.position += (guide.loose[id] as Transform3D).origin - home_m(id).origin
+			all = all.merge(b)
+		cam.frame(machine.global_transform * all)   # the pile in view with the machine
 	if panels != null:
 		panels.sync_slider()
 		panels.refresh()
@@ -765,6 +780,23 @@ func _guided_to_handled() -> void:
 			# (a group is turned about its centre: apply() puts h.origin + c - h.basis * c)
 			handled[id] = Transform3D(local.basis, local.origin - c + local.basis * c)
 	apply()
+
+## The placed parts that come out with `id` (its placed descendants and the groups on them, through placed parts only).
+func _riding(id: String) -> Dictionary:
+	var out := {}
+	if not comps.has(id):
+		return out
+	var front: Array = [id]
+	while not front.is_empty():
+		var at: String = front.pop_back()
+		for c in spec.order:
+			if spec.comps[c].parent == at and guide.placed(c):
+				out[c] = true
+				front.append(c)
+		for g in groups:
+			if String(spec.groups[g].host) == at and guide.placed(g):
+				out[g] = true
+	return out
 
 ## A part where it stands now: placed parts at home relative to their parents, loose ones where they lie, in the
 ## machine's frame (so a loose part stays put when its parent moves).
@@ -856,6 +888,7 @@ func _released() -> void:
 	try_place(selected)
 	_update_ghost()   # (a part taken out while assembling is the next step again)
 	if panels != null:
+		panels.selected_changed()   # (a refusal that no longer holds goes)
 		panels.refresh()
 
 ## Places a loose part if it is near enough its place (§4.6); true when it snapped. A refusal goes in `note`.
@@ -989,15 +1022,24 @@ func warm_up(parent: Node) -> void:
 	_warm.visible = false
 	parent.add_child(_warm)
 	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
+		# drawn only when the plant's world is drawn: not while the Workshop (or the screens) has its 3D off, nor
+		# without a camera; until then it waits, and `warmed` says so
+		while not can_draw_warm(get_viewport().get_camera_3d(), get_viewport().disable_3d, is_open):
+			await get_tree().create_timer(1.0).timeout
+			if not is_inside_tree():
+				return
 		var cam3 := get_viewport().get_camera_3d()
-		if cam3 != null:
-			wmat.set_shader_parameter("alpha", 0.0)
-			_warm.global_position = cam3.global_position - cam3.global_transform.basis.z * 2.0
-			_warm.visible = true
-			for i in 3:
-				await RenderingServer.frame_post_draw
-			_warm.visible = false
+		wmat.set_shader_parameter("alpha", 0.0)
+		_warm.global_position = cam3.global_position - cam3.global_transform.basis.z * 2.0
+		_warm.visible = true
+		for i in 3:
+			await RenderingServer.frame_post_draw
+		_warm.visible = false
 	warmed = true
+
+## Whether the Compatibility renderer's warm draw would really be drawn: a camera, the plant's 3D on, the Workshop shut.
+static func can_draw_warm(cam3: Camera3D, disabled_3d: bool, workshop_open: bool) -> bool:
+	return cam3 != null and not disabled_3d and not workshop_open
 
 
 ## The Workshop's own load (§7.1): its scene with a hidden ghost on one of its meshes, so the ghost's pipelines are

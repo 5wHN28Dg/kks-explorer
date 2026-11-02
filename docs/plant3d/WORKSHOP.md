@@ -336,7 +336,7 @@ The data file's `assembly` is the guided order, one step per component or fasten
   refused with the first unmet need's first sentence; removing a component is refused while a placed component needs
   it, with that need's second sentence. Every named component exists.
 - **Snapping:** within 2 % of the part kind's (the whole machine's) box diagonal (at least 5 mm) of home and within 10° of its home orientation,
-  modulo the component's `sym`.
+  modulo the component's `sym` (its axis passes through the component's pivot).
 - **Why not the procedure format (§8):** a procedure's `at` names KKS codes and its `do` names ops of the model; an
   assembly step names components of a part kind with no code, and the trainee's handling is UI state, not model state
   (§6). Bending format 1 (frozen) or format 2 to fit would be worse than a small section of the Workshop's own file
@@ -478,7 +478,7 @@ structures' own vertex format, since removed) and a discarding one at 7.
 | plant materials | opaque, lit | K1–K2: the space, the tree, explode, handling (no new pipeline) | today's |
 | `ws_lit` | opaque, lit, `discard` by up to three planes | K3 on: every component; heat and pressure ramps from an `instance uniform` (at most 16 per shader: Godot's limit) and the selection's emission | `weathered.gdshaderinc` |
 | `ws_cap` | unshaded, `cull_front`, the same planes | the cut faces (below): `ws_lit`'s next pass on solid components | new, small |
-| `ws_xray` | unshaded, `blend_mix`, `depth_draw_never` | from K2: the assembly's ghost; from K3 the X-ray too (an edge-weighted see-through, in another colour) | new, small |
+| `ws_xray` | unshaded, `blend_mix`, `depth_draw_never`, `depth_test_disabled` (K2: the ghost shows through what stands in front of it) | from K2: the assembly's ghost; from K3 the X-ray too (an edge-weighted see-through, in another colour) | new, small |
 | `ws_flow` | unshaded, `blend_add` | flow particles: one MultiMesh of quads per path, moved along the path in the vertex shader (the path in a small texture; speed and density as uniforms) | new, small |
 
 One new lit shader and three unshaded ones: `ws_xray` arrives with K2 (counted and pre-warmed there), the other three

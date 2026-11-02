@@ -64,6 +64,19 @@ func _pure() -> void:
 	g.start("assemble", [{"place": "shell"}, {"place": "inner"}, {"place": "pins"}, {"place": "lid"}, {"place": "bolts"}],
 		comps, {"shell": Transform3D(), "inner": Transform3D(), "pins": Transform3D(), "lid": Transform3D(), "bolts": Transform3D()}, groups)
 	check(not g.loose.has("pins") and g.real_steps() == 3 and g.step_number(3) == 2, "and their steps are not counted")
+	# a parent can't come out while a placed part outside it needs a part that would come out with it
+	var h := Assembly.new()
+	var tree := {"p": {"parent": "", "sealed": false}, "c": {"parent": "p", "sealed": false}, "x": {"parent": "", "sealed": false}}
+	h.start("disassemble", [{"place": "p"}, {"place": "c"}, {"place": "x", "needs": [["c", "x after c", "Take x off first."]]}], tree, {})
+	check(h.why_not_remove("p", {"c": true}) == "Take x off first.", "a parent holding a needed part stays: '%s'" % h.why_not_remove("p", {"c": true}))
+	# the Compatibility renderer's warm draw waits until it would be drawn
+	var WS = load("res://workshop/workshop.gd")   # (untyped)
+	check(not WS.can_draw_warm(null, false, false), "no camera, no warm draw")
+	var c3 := Camera3D.new()
+	check(not WS.can_draw_warm(c3, true, false) and not WS.can_draw_warm(c3, false, true) and WS.can_draw_warm(c3, false, false),
+		"not with the 3D off or the Workshop open")
+	c3.free()
+	check(FileAccess.get_file_as_string("res://workshop/ws_xray.gdshader").contains("depth_test_disabled"), "the ghost shows through the parts in front of it")
 	var box := AABB(Vector3.ZERO, Vector3(0.3, 0.4, 0.0))   # diagonal 0.5 m: 2 % is 10 mm
 	check(is_equal_approx(Assembly.snap_tol(box), 0.01), "2 %% of the box diagonal (%.4f)" % Assembly.snap_tol(box))
 	check(is_equal_approx(Assembly.snap_tol(AABB(Vector3.ZERO, Vector3.ONE * 0.01)), 0.005), "at least 5 mm")
@@ -135,6 +148,11 @@ func _transmitter(tree: SceneTree, ws) -> void:
 			gaps.append(snappedf(r[k].position.x - r[k - 1].end.x, 1e-5))
 	check(gaps.size() >= 1 and gaps.all(func(g): return is_equal_approx(g, gaps[0])), "the pile's rows have even gaps: %s" % str(gaps))
 	check(row.size() == ws.guide.loose.size(), "(every loose part in a row)")
+	var unseen: Array = []
+	for b in row:
+		if not ws.cam.is_position_in_frustum(ws.machine.global_transform * (b as AABB).get_center()):
+			unseen.append(b)
+	check(unseen.is_empty(), "the pile is in view (%d parts out of it)" % unseen.size())
 	if ws.ghost != null and ws.ghost.get_child_count() > 0:
 		check((ws.ghost.get_child(0).material_override as ShaderMaterial).shader.resource_path.ends_with("ws_xray.gdshader"), "the ghost is drawn with ws_xray")
 	# out of order: the flange bolts at their place before the flange: refused with the first sentence, still loose
@@ -143,6 +161,9 @@ func _transmitter(tree: SceneTree, ws) -> void:
 	ws._released()
 	check(ws.guide.loose.has("flange_bolts") and ws.note == "The flange bolts go in once the process flange sits on the sensor module." and ws.panels.note.text == ws.note,
 		"out of order the bolts are refused with the need's sentence: '%s'" % ws.note)
+	ws.guide.loose["flange_bolts"] = ws.target_m("flange_bolts").translated(Vector3(0, -0.2, 0))
+	ws._released()
+	check(ws.panels.note.text == "", "let go far off, the refusal goes: '%s'" % ws.panels.note.text)
 	# loose parts stay where they lie when their parent moves; a part placed on a loose parent rides with it
 	var cover0: Transform3D = ws._cur_m["cover_front"]
 	ws.guide.loose["housing"] = (ws.guide.loose["housing"] as Transform3D).translated(Vector3(0, 0.05, 0))
@@ -237,6 +258,10 @@ func _transmitter(tree: SceneTree, ws) -> void:
 	check(not ws.guide.on() and ws.handled.is_empty() and _near(_transforms(ws), at0) and _groups_home(ws), "Reassemble all brings every loose part home")
 	check(ws.panels.slider.editable, "and the slider works again")
 	ws.start_guide("assemble", "exploded")
+	check(not ws.guide.loose.has("sensor_module") and ws.guide.loose.has("housing"),
+		"from exploded, the part the explode doesn't move is in place already, the rest loose")
+	ws.guide.loose["housing"] = ws.target_m("housing")
+	check(ws.try_place("housing"), "so the housing goes onto it: '%s'" % ws.note)
 	ws.reset()
 	check(not ws.guide.on() and _transforms(ws) == at0 and _groups_home(ws), "Reset ends the steps, every part home")
 
