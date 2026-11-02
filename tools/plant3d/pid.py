@@ -1484,23 +1484,32 @@ class Gen:
         return True
 
     def _arrow(self, sh, grid, pp, segs, taken):
+        """A flow arrow on every pipe (REALISM.md §6.1.1): on its longest free run, in steps along it; on a pipe with
+        no free run of 10 mm a smaller one on a shorter run; none at all is a layout that fails."""
         order = sorted(range(len(segs)), key=lambda si: (-segs[si][3], si))
-        for si in order:
-            a, b, s0, L = segs[si]
-            if L < 10.0:
-                continue
-            for frac in (0.5, 0.3, 0.7, 0.15, 0.85):
-                t = L * frac
-                if any(ts == si and t + 3.0 > f and t - 3.0 < e for ts, f, e in taken):
+        for min_len, half, clear in ((10.0, 1.5, 3.0), (4.0, 1.0, 1.6)):
+            for si in order:
+                a, b, s0, L = segs[si]
+                if L < min_len:
                     continue
-                ux, uy = (b[0] - a[0]) / L, (b[1] - a[1]) / L
-                cx, cy = a[0] + ux * t, a[1] + uy * t
-                px, py = -uy, ux
-                tip = (cx + ux * 1.5, cy + uy * 1.5)
-                sh.fill([tip, (cx - ux * 1.5 + px * 1.2, cy - uy * 1.5 + py * 1.2),
-                         (cx - ux * 1.5 - px * 1.2, cy - uy * 1.5 - py * 1.2)], pp['code'])
-                taken.append((si, t - 2.0, t + 2.0))
-                return
+                fracs = [0.5, 0.3, 0.7, 0.15, 0.85] + [k / 20.0 for k in range(1, 20)]
+                for frac in fracs:
+                    t = L * frac
+                    if t < clear or t > L - clear:
+                        continue
+                    if any(ts == si and t + clear > f and t - clear < e for ts, f, e in taken):
+                        continue
+                    ux, uy = (b[0] - a[0]) / L, (b[1] - a[1]) / L
+                    cx, cy = a[0] + ux * t, a[1] + uy * t
+                    px, py = -uy, ux
+                    w = half * 0.8
+                    tip = (cx + ux * half, cy + uy * half)
+                    sh.fill([tip, (cx - ux * half + px * w, cy - uy * half + py * w),
+                             (cx - ux * half - px * w, cy - uy * half - py * w)], pp['code'])
+                    taken.append((si, t - clear + 1.0, t + clear - 1.0))
+                    pp['arrow'] = (cx, cy)
+                    return
+        raise LayoutError(f'{self.sid}: no room for the flow arrow of {pp["code"]}')
 
     # -------------------------------------------------- the whole sheet
 
@@ -1729,7 +1738,7 @@ def legend(gen, used):
             continue
         shown.add(fn)
         row.append(kind)
-    # three columns of 130 mm: the symbol in a 64 mm cell, its name beside it in lines of 24 characters
+    # four columns of 132 mm: the symbol in a 64 mm cell, its name beside it in lines of 24 characters
     col_x = (40.0, 172.0, 304.0, 436.0)
     y = 60.0
     for r in range(0, len(row), 4):
@@ -1903,13 +1912,9 @@ def make(data=DATA, revisions=None, areas_override=None, pins=None):
         sh = g.make()
         check_sheet(sh)
         sheets[meta['id']] = sh
-        for c, box, home in sh.spots:
-            if home:
-                if c in homes:
-                    raise LayoutError(f'{c} has a home on {homes[c]} and on {meta["id"]}')
-                homes[c] = meta['id']
         used |= {it.kind for it in items.values() if g.home_of.get(it.code) == meta['id']}
         used |= {it.kind for pp in g.pipes for it in pp.get('inline', [])}
+    homes = homes_of(sheets)
     g0 = Gen(plant, areas, 0, items, SHEETS, revisions.get('legend'))
     leg = legend(g0, used)
     check_sheet(leg)
@@ -1933,6 +1938,18 @@ def make(data=DATA, revisions=None, areas_override=None, pins=None):
         'lettering': {'advance': F.ADVANCE, 'cap': F.CAP, 'glyphs': F.table()},
     }
     return sheets, index
+
+
+def homes_of(sheets):
+    """{code: its home sheet's id}; a code with a home on two sheets (or two on one) is refused."""
+    homes = {}
+    for sid, sh in sheets.items():
+        for c, box, home in sh.spots:
+            if home:
+                if c in homes:
+                    raise LayoutError(f'{c} has a home on {homes[c]} and on {sid}')
+                homes[c] = sid
+    return homes
 
 
 def revise(old, new, rev, text):

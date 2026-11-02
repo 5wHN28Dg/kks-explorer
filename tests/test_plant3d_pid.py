@@ -6,7 +6,7 @@
 - an off-sheet connector names a sheet that has its code;
 - a revision clouds what changed and adds a row to the table;
 - the checks refuse overlapping texts and symbols."""
-import copy, json, os, sys, unittest
+import copy, hashlib, json, os, subprocess, sys, unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -131,7 +131,7 @@ class Drawings(unittest.TestCase):
                                     y1 <= pid.FRAME[3], (sid, code))
 
     def test_revision(self):
-        # a synthetic change: a new pressure transmitter on feedwater pump B, and the blowdown tank's name changed
+        # a synthetic change: a new pressure transmitter on feedwater pump B
         areas = copy.deepcopy(self.areas)
         for e in areas['hrsg1']['equipment']:
             if e['kks'] == '10LAC10AP002':
@@ -176,6 +176,83 @@ class Drawings(unittest.TestCase):
         sh.line([(95, 99), (120, 99)], 0.5, 0, 'pipe')
         with self.assertRaisesRegex(pid.LayoutError, 'crosses the text'):
             pid.check_sheet(sh)
+
+    def test_every_pipe_has_a_flow_arrow(self):
+        for sid, sh in self.sheets.items():
+            if sid == 'legend':
+                continue
+            drawn_pipes = {o for w, d, pts, o in sh.lines if o in self.items and self.items[o].role == 'pipe'}
+            self.assertTrue(drawn_pipes)
+            arrows = {o for pts, o in sh.fills if len(pts) == 3}
+            self.assertEqual(drawn_pipes - arrows, set(), sid)
+
+    def test_lines_and_labels(self):
+        sh = self.sheets['hrsg1']
+        widths = lambda code: {w for w, d, pts, o in sh.lines if o == code}
+        self.assertEqual(widths('10LBA30BR001'), {0.7})      # DN 300
+        self.assertEqual(widths('10LCQ10BR001'), {0.5})      # DN 80
+        label = ' '.join(t[5] for t in sh.texts if t[6] == '10LBA30BR001')
+        for part in ('10LBA30BR001', 'DN300', 'HP STEAM'):
+            self.assertIn(part, label)
+        # an off-sheet connector: an arrow pentagon (six points, closed) with the other sheet's number
+        pent = [pts for w, d, pts, o in sh.lines if o.startswith('10LBA30BR001#end')]
+        self.assertTrue(pent and len(pent[0]) == 6 and pent[0][0] == pent[0][-1])
+        self.assertIn('WDP-PID-004', [t[5] for t in sh.texts if t[6] == '10LBA30BR001#end1'])
+        # the title block's fields
+        texts = [t[5] for t in sh.texts]
+        for f in ('WDP-PID-003', '3 OF 10', '0', 'HRSG 1: FEEDWATER, DRUMS AND STEAM', 'GENERIC 2-2-1 COMBINED-CYCLE PLANT'):
+            self.assertIn(f, texts)
+
+    def test_crossings_are_broken(self):
+        plant, areas = self.plant, self.areas
+        n = 0
+        for i, meta in enumerate(pid.SHEETS[1:], 1):
+            g = pid.Gen(plant, areas, i, self.items, pid.SHEETS)
+            sh = g.make()
+            for pp in g.pipes:
+                if not pp.get('crossings'):
+                    continue
+                n += 1
+                pieces = [pts for w, d, pts, o in sh.lines if o == pp['code']]
+                self.assertEqual(len(pieces), len(pp['crossings']) + 1, pp['code'])
+                for c in pp['crossings']:
+                    for pts in pieces:
+                        for a, b in zip(pts, pts[1:]):
+                            self.assertFalse(pid.point_on(c, a, b), (pp['code'], c))
+        self.assertGreater(n, 0, 'no pipe crosses another anywhere: the case is not tested')
+
+    def test_the_legend_shows_every_symbol_used(self):
+        texts = {t[5] for t in self.sheets['legend'].texts}
+        used = {it.kind for it in self.items.values() if pid.drawn(it, self.items) and it.role != 'pipe'}
+        for kind in used:
+            if kind in S.EQUIPMENT:            # equipment names wrap at 24 characters, valves' don't
+                self.assertIn(pid.wrap(S.LEGEND[kind].upper(), 24)[0], texts, kind)
+            elif kind in S.VALVES:
+                self.assertIn(S.LEGEND[kind].upper(), texts, kind)
+        for letters in ('PT', 'ANALYSIS', 'TRANSMITTER', 'HOW A CODE READS (KKS)'):
+            self.assertIn(letters, texts)
+
+    def test_two_homes_are_refused(self):
+        a = pid.Sheet('a', 'WDP-PID-901', 'a')
+        b = pid.Sheet('b', 'WDP-PID-902', 'b')
+        a.spot('10LAC10AP001', (0, 0, 1, 1), True)
+        b.spot('10LAC10AP001', (0, 0, 1, 1), False)
+        self.assertEqual(pid.homes_of({'a': a, 'b': b}), {'10LAC10AP001': 'a'})
+        b.spot('10LAC10AP001', (2, 2, 3, 3), True)
+        with self.assertRaisesRegex(pid.LayoutError, 'home on a and on b'):
+            pid.homes_of({'a': a, 'b': b})
+
+    def test_the_same_whatever_the_hash_seed(self):
+        code = ('import hashlib, sys; sys.path.insert(0, %r); import pid; f = pid.files(); '
+                'print(hashlib.sha256("".join(k + f[k] for k in sorted(f)).encode()).hexdigest())'
+                % os.path.join(ROOT, 'tools', 'plant3d'))
+        out = set()
+        for seed in ('1', '2'):
+            r = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, timeout=300,
+                               env=dict(os.environ, PYTHONHASHSEED=seed))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out.add(r.stdout.strip())
+        self.assertEqual(len(out), 1)
 
 
 if __name__ == '__main__':
