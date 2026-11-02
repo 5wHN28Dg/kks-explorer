@@ -213,7 +213,7 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 				"permit": [4], "lock": [4], "unlock": [4], "remove_lock": [5, 6], "role": [2], "release": [1],
 				"task_ack": [1], "arrive": [2], "leave": [2], "read": [3], "say": [3], "pick": [2], "call": [4],
 				"jump": [2], "ppe": [3], "zone": [3], "stop": [2], "board": [3], "alight": [3],
-				"get_on": [2]}
+				"get_on": [2], "weather": [2]}
 		for q0 in d["queue"]:
 			var q = q0
 			# a session run's inputs end with their slot (§17.13): looked at without it
@@ -225,7 +225,7 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 			if typeof(q) != TYPE_ARRAY or q.is_empty() or typeof(q[0]) != TYPE_STRING:
 				return "a damaged input"
 			if not sizes.has(q[0]) or not q.size() in sizes[q[0]] \
-					or (q[0] in ["fault", "repair"] and typeof(q[1]) != TYPE_STRING) \
+					or (q[0] in ["fault", "repair", "weather"] and typeof(q[1]) != TYPE_STRING) \
 					or (q[0] == "repair" and q.size() == 4 and typeof(q[2]) != TYPE_STRING):
 				return "a damaged input"
 	# the players (PLANT3D §17.13): each slot's person (each played by one slot at most) and the place it last left

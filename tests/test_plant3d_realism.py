@@ -483,6 +483,18 @@ class WeatherVectors(PartVectors, unittest.TestCase):
             self.assertEqual(e.v(v), P.table_at([[float(x), float(y)] for x, y in k['targets'][v]], e.v('world_hour')))
         self.assertEqual(len([x for x in e.events if x[1] == 'weather']), 1 if e.wx_kind != k0 else 0)
 
+    def test_the_instructors_weather_in_a_session_and_a_save(self):
+        """The app's input checks take the weather input (REALISM.md §2.12): a save with one queued loads (its size
+        and a text kind), a session carries it, and only the host or an instructor seat may make it (as a fault)."""
+        app = os.path.join(os.path.dirname(HERE), 'apps', 'plant3d')
+        save = open(os.path.join(app, 'ui', 'autosave.gd'), encoding='utf-8').read()
+        self.assertIn('"weather": [2]', save)
+        self.assertIn('q[0] in ["fault", "repair", "weather"] and typeof(q[1]) != TYPE_STRING', save)
+        chk = open(os.path.join(app, 'net', 'input_check.gd'), encoding='utf-8').read()
+        self.assertIn('"weather": [["s"]]', chk)
+        body = chk[chk.index('static func trainer_only'):chk.index('static func allowed')]
+        self.assertIn('"fault", "weather":', body)
+
     def test_digest_has_the_weather(self):
         e = run_on(self.st, self.st['runs'][0], 10)
         d0 = e.digest()
