@@ -83,6 +83,16 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 			var pts: Array = m.isolations[m.isolation_ix[m.works[m.work_ix[ev[2]]]["isolation"]]]["points"]
 			var lc: String = pts[int(ev[3])]["kks"]
 			locked[lc] = locked.get(lc, 0) + (1 if ev[1] == "lock" else -1)
+		# the trainee's tasks begun and not ended, counted from the run's start (the role tab's "left unfinished")
+		var was_begun := 0
+		if ev[1] == "task" and ev[3] != null and me_pi != -1 and engine._sm != null \
+				and ev[2] == engine._sm.people[me_pi]["id"]:
+			var tk := str(ev[3])
+			was_begun = begun.get(tk, 0)
+			if ev[4] in ["start", "resumed"]:
+				begun[tk] = was_begun + 1
+			elif ev[4] in ["done", "abandoned", "skipped", "held"] and was_begun > 0:
+				begun[tk] = was_begun - 1
 		if i < from:
 			continue
 		var e := {"step": int(ev[0]), "kind": str(ev[1]), "text": "", "code": "", "dev": "", "prio": 0}
@@ -199,12 +209,6 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 				e.text = "Your task %s: %s" % [{"start": "begun", "done": "done", "abandoned": "ABANDONED",
 						"skipped": "skipped", "held": "held to your next duty", "resumed": "resumed"}.get(ev[4], ev[4]), tt]
 				var gk := "%d|%s" % [ev[0], str(ev[3])]
-				var tk := str(ev[3])
-				var was_begun: int = begun.get(tk, 0)
-				if ev[4] in ["start", "resumed"]:
-					begun[tk] = was_begun + 1
-				elif ev[4] in ["done", "abandoned", "skipped", "held"] and was_begun > 0:
-					begun[tk] = was_begun - 1
 				if ev[4] == "start" and given.has(gk) and (int(ev[0]) - int(given[gk])) * engine._ds > LATE_S * 10:
 					# begun more than 15 clock minutes after it was given (§21.7)
 					var mins: int = (int(ev[0]) - int(given[gk])) * engine._ds / 600     # (the clock in tenths of s)

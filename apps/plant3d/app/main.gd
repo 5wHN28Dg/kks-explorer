@@ -531,7 +531,7 @@ func _start_walk() -> void:
 	var looped: bool = opts.walk in ["frames", "camp", "wtp", "hoist", "gate"]
 	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else (Routes.wtp_loop() if opts.walk == "wtp" else (Routes.hoist(plant) if opts.walk == "hoist" else (Routes.lift(plant) if opts.walk == "lift" else (Routes.gate(plant) if opts.walk == "gate" else Routes.climb(plant))))))
 	if opts.walk == "gate":
-		_gate_clock()
+		await _gate_clock()
 	auto = Autopilot.new()
 	auto.ui = ui                    # a lift's controls (walk=lift)
 	auto.skip_stuck = true
@@ -548,7 +548,8 @@ func _start_walk() -> void:
 	last_us = Time.get_ticks_usec()
 
 ## The gate walk's clock: the crews' engine run to GATE_AT (the 05:40 bus in, the night crew going home after it),
-## before the measured frames begin; the clock then runs at 1x.
+## 100 steps a frame, before the measured frames begin; the clock then runs at 1x. A scenario that starts after
+## GATE_AT is measured from its start (the log's GATE line says the clock).
 const GATE_AT := 5 * 3600 + 40 * 60
 func _gate_clock() -> void:
 	var e = ui.clock.engine if ui.clock != null else null
@@ -558,6 +559,7 @@ func _gate_clock() -> void:
 	var t0 := Time.get_ticks_msec()
 	while posmod(e.clock(), 864000) < GATE_AT * 10 and e.step_no < 20000:   # (tenths of a second; the day left out)
 		ui.clock.run_steps(100)
+		await get_tree().process_frame      # (a frame between: never seconds of a held main thread on a phone)
 	ui.clock.set_speed(1)        # (normal: 1x)
 	_say("GATE clock %s after %d steps in %d ms" % [ui.clock_text(), e.step_no, Time.get_ticks_msec() - t0])
 

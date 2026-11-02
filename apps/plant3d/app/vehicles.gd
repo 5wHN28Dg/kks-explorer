@@ -29,6 +29,7 @@ var _now := 0.0
 var _walker_layers := 0
 var _walker_mask := 0
 var _bound = null                 # the staff model the vehicles were bound to (_bind)
+var _ride_yaw := 0.0              # the bus's heading at the last frame the walker rode in it
 
 
 func setup(u, manifest: Dictionary, plant: Node) -> void:
@@ -123,6 +124,7 @@ func _bind(sm) -> void:
 
 ## Every vehicle where the engine has it now (after a load, a jump or a session's resync).
 func snap() -> void:
+	release()               # (the run puts the walker where it belongs: a ride seen again from the engine next frame)
 	var e = ui.clock.engine if ui != null and ui.clock != null else null
 	_bind(e._sm if e != null else null)
 	for V in vehicles:
@@ -202,6 +204,8 @@ static func along(line: PackedVector3Array, k: float, from_home: bool, to_home: 
 	var total := 0.0
 	for i in range(1, line.size()):
 		total += line[i].distance_to(line[i - 1])
+	if total < 1e-3:
+		return Transform3D(parked.basis, line[0])      # (both ends join the road at one point: standing there)
 	var want := k * total
 	var p := line[line.size() - 1]
 	var d := line[line.size() - 1] - line[line.size() - 2]
@@ -276,36 +280,75 @@ func _put(V: Dictionary, xf: Transform3D, force: bool) -> void:
 	sq.position = xf.origin + Vector3(0, 5.0, 0)
 
 
-## The trainee aboard: the walker carried at the seat, off the floor, until the engine puts them off.
+## The trainee aboard: the walker carried at the seat, off the floor, turning with the bus (and looked round with the
+## look stick, which the walker's own physics frame reads when walking), the bus's own body not drawn for its rider
+## (from the seat its windows are paint-dark, its walls seen from inside), until the engine puts them off; then put
+## down at the stop. Only for a vehicle drawn here.
 func _ride(e) -> void:
 	var me: int = ui.my_person() if e._sm != null else -1
 	var vi: int = e.sp_aboard[me] if me != -1 and e.sp_aboard.size() > me else -1
+	var V: Dictionary = {}
+	for x in vehicles:
+		if vi != -1 and x["vi"] == vi:
+			V = x
+	if V.is_empty():
+		vi = -1                 # (a vehicle not drawn: the walker is left as it is)
 	var p = ui.player
 	if p == null:
 		return
 	if vi != walker_aboard:
-		if vi != -1 and walker_aboard == -1:
+		if walker_aboard != -1:
+			# off: the walker put down at the stop first (not inside the bus's solids), then walking again; with
+			# nobody played any more, beside the bus
+			var at: int = e.sp_pos[me] if me != -1 else -1
+			if at != -1:
+				ui.go_to_place(at)
+			else:
+				var W := _drawn(walker_aboard)
+				if not W.is_empty():
+					p.global_position = global_transform * ((W["xf"] as Transform3D) * Vector3(2.5, 0.05, 0.0))
+			release(false)
+		if vi != -1:
 			_walker_layers = p.collision_layer
 			_walker_mask = p.collision_mask
 			p.collision_layer = 0
 			p.collision_mask = 0
 			p.velocity = Vector3.ZERO
 			p.set_physics_process(false)
-		elif vi == -1:
-			# off: the walker put down at the stop first (not inside the bus's solids), then walking again
-			var at: int = e.sp_pos[me] if me != -1 else -1
-			if at != -1:
-				ui.go_to_place(at)
-			p.collision_layer = _walker_layers
-			p.collision_mask = _walker_mask
-			p.set_physics_process(true)
+			(V["body"] as Node3D).visible = false
+			_ride_yaw = (V["xf"] as Transform3D).basis.get_euler().y
 		walker_aboard = vi
 	if vi == -1:
 		return
-	for V in vehicles:
-		if V["vi"] == vi:
-			p.global_position = global_transform * ((V["xf"] as Transform3D) * SEAT)
-			return
+	var xf: Transform3D = V["xf"]
+	var yaw := xf.basis.get_euler().y
+	p.rotation.y += wrapf(yaw - _ride_yaw, -PI, PI)       # (turning with the bus)
+	_ride_yaw = yaw
+	if p.input_enabled:
+		var lv := Input.get_vector("look_left", "look_right", "look_up", "look_down")
+		if lv.length() > 0.0:
+			p.look(lv.x * p.LOOK_RATE * get_physics_process_delta_time(), lv.y * p.LOOK_RATE * get_physics_process_delta_time())
+	p.global_position = global_transform * (xf * SEAT)
+
+
+## The walker let go from a ride without moving it (`moved`: already put down): its collisions and physics back, the
+## bus drawn again. Also after a load, a jump or a session's engine (snap), where the run puts the walker itself.
+func release(moved := true) -> void:
+	var p = ui.player if ui != null else null
+	if walker_aboard != -1 and p != null:
+		p.collision_layer = _walker_layers
+		p.collision_mask = _walker_mask
+		p.set_physics_process(true)
+	for x in vehicles:
+		(x["body"] as Node3D).visible = true
+	walker_aboard = -1
+
+
+func _drawn(vi: int) -> Dictionary:
+	for x in vehicles:
+		if x["vi"] == vi:
+			return x
+	return {}
 
 
 ## Where vehicle `vi` (the engine's index) is drawn now (tests), Vector3.INF if it is not.

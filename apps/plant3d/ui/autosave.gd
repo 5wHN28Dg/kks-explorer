@@ -466,6 +466,8 @@ func restore(p: Dictionary) -> void:
 	ui.clock.set_speed(c["speed"])
 	if ui.lifts != null:
 		ui.lifts.snap()             # the cabs where the run has them, before the walker is put down (one may be in one)
+	if ui.vehicles != null:
+		ui.vehicles.snap()          # the buses likewise (PLANT3D §21.13)
 	var pl = ui.player
 	var pd: Dictionary = p["player"]
 	if ui._flight:

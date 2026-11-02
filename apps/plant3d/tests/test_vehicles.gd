@@ -67,6 +67,7 @@ func run(tree: SceneTree) -> Array:
 	var was_moving := false
 	var jumps := 0
 	var arrivals := 0
+	var jump_what := ""
 	var aboard_at := -1
 	var lane_off := 0
 	for i in 1200:
@@ -81,8 +82,13 @@ func run(tree: SceneTree) -> Array:
 			# arrived at a stop: standing where it was last drawn driving, facing the same way (not turned round)
 			arrivals += 1
 			var now: Transform3D = V["xf"]
-			if now.origin.distance_to(last_moving.origin) > 2.0 or now.basis.z.dot(last_moving.basis.z) < 0.9:
+			# where the drive way it came along ends, facing along its last stretch (just short of its end)
+			var last: Array = V["last"]
+			var line: PackedVector3Array = vv._line(V, last[0], last[1])
+			var end: Transform3D = Vehicles.along(line, 0.999, last[0] == V["home"], last[1] == V["home"], V["parked"])
+			if last[1] != e.st_veh[vi]["at"] or now.origin.distance_to(end.origin) > 0.5 or now.basis.z.dot(end.basis.z) < 0.95:
 				jumps += 1
+				jump_what = "%.1f m, facing %.2f" % [now.origin.distance_to(end.origin), now.basis.z.dot(end.basis.z)]
 		if moving:
 			last_moving = V["xf"]
 		was_moving = moving
@@ -102,7 +108,7 @@ func run(tree: SceneTree) -> Array:
 		if i % 8 == 0:
 			await tree.process_frame       # (the panels' old rows are freed at a frame's end)
 	if arrivals == 0 or jumps > 0:
-		p.append("arriving at its stops (%d) the bus was drawn elsewhere or turned %d times" % [arrivals, jumps])
+		p.append("arriving at its stops (%d) the bus was drawn elsewhere or turned %d times (%s)" % [arrivals, jumps, jump_what])
 	if not moved_seen:
 		p.append("the bus was never drawn moving between two steps on its run")
 	if lane_off > 0:
@@ -115,6 +121,15 @@ func run(tree: SceneTree) -> Array:
 	vv._physics_process(0.0)
 	if vv.walker_aboard != vi or ui.player.is_physics_processing() or ui.player.collision_layer != 0:
 		p.append("aboard, the walker is not carried in the bus (aboard %d, physics %s)" % [vv.walker_aboard, ui.player.is_physics_processing()])
+	if (V["body"] as Node3D).visible:
+		p.append("aboard, the bus's body is drawn for its rider")
+	# the look stick turns the view aboard (the walker's own physics frame, which reads it, is off)
+	var yaw0: float = ui.player.rotation.y
+	Input.action_press("look_right")
+	vv._physics_process(1.0 / 60.0)
+	Input.action_release("look_right")
+	if absf(ui.player.rotation.y - yaw0) < 1e-4:
+		p.append("aboard, the look stick does not turn the view")
 	if ui.player.global_position.distance_to(vv.drawn_at(vi)) > 6.5:
 		p.append("aboard, the walker is %.1f m from the bus" % ui.player.global_position.distance_to(vv.drawn_at(vi)))
 	var off := false
@@ -133,6 +148,11 @@ func run(tree: SceneTree) -> Array:
 			p.append("the trainee got off at %s, not the control building's stop" % (e._sm.places[at]["id"] if at != -1 else "nowhere"))
 		if vv.walker_aboard != -1 or not ui.player.is_physics_processing() or ui.player.collision_layer == 0:
 			p.append("off the bus, the walker is not walking again")
+		if not (V["body"] as Node3D).visible:
+			p.append("off the bus, the bus is not drawn again")
+		var local: Vector3 = (V["xf"] as Transform3D).affine_inverse() * ui.player.global_position
+		if absf(local.x) < 1.6 and absf(local.z) < 6.3:
+			p.append("off the bus, the walker stands inside it (%s in its frame)" % str(local))
 		if at != -1 and ui.player.global_position.distance_to(ui.people._at[at]) > 2.0:
 			p.append("off the bus, the walker is %.1f m from the stop" % ui.player.global_position.distance_to(ui.people._at[at]))
 	# its run over, the bus parked at the depot again

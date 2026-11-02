@@ -812,6 +812,8 @@ func _place_tick() -> void:
 		_jumps = e.J
 		_arrived = -2
 		_zones = -1
+		if vehicles != null:
+			vehicles.snap()         # (every vehicle home again, nobody aboard: §21.4)
 		if e.sp_pos[pi] != -1:
 			go_to_place(e.sp_pos[pi])
 		toast("The clock jumped to %s." % clock_text())
@@ -1309,6 +1311,7 @@ func _walker_state() -> Array:
 ## The session's engine is the run's from now on (a join, a rejoin, a resync: net/session.gd made it on a worker
 ## thread). As restart() does, with the panels following the engine's whole log at once (as a loaded save does).
 func adopt_engine(e) -> void:
+	task_given = {}     # (another engine: its tasks' given steps are not this record's; a resync loses only late marks)
 	clock.install(e)
 	bindings.use_engine(e)
 	if lifts != null:
@@ -1716,7 +1719,12 @@ func _follow_events(evs: Array, from: int) -> void:
 					if me_pi != -1 and ev[2] == e._sm.people[me_pi]["id"]:
 						var c = e.sp_cur[me_pi]
 						if c != null and c["task"] == ev[3]:
-							task_given["%d|%s" % [ev[0], ev[3]]] = int(c["made"])
+							var given := int(c["made"])
+							# a choice's task goes on in its parent's instance (its made kept): given when chosen
+							if i > 0 and evs[i - 1][0] == ev[0] and evs[i - 1][1] == "task" and evs[i - 1][2] == ev[2] \
+									and evs[i - 1][4] == "done":
+								given = int(ev[0])
+							task_given["%d|%s" % [ev[0], ev[3]]] = given
 			"unsafe", "stop":
 				_safety_toast(e, ev)
 			"op":

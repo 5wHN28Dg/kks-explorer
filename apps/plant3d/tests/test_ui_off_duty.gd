@@ -84,10 +84,13 @@ func run(tree: SceneTree) -> Array:
 	# anyone, no permit open, PLANT3D §17.6)
 	var n0: int = e.events.size()
 	var jumped := false
+	var cur_at_jump := ""        # the task the trainee was doing when the jump came (it ends unfinished)
 	for i in 200:
 		_play(ui, e, me)
 		if e.unacked() > 0:
 			ui.inputs.task_ack()
+		var c0 = e.sp_cur[me]
+		cur_at_jump = c0["task"] if c0 != null and c0["started"] else ""
 		ui.inputs.jump(ui.crew._next_shift(e))
 		ui.clock.run_steps(2)
 		for k in range(n0, e.events.size()):
@@ -108,22 +111,13 @@ func run(tree: SceneTree) -> Array:
 		p.append("the role tab lists none of the slots the jump went past")
 	# each in its words: an off-duty slot (a meal, sleep) not made, a duty's (before the shift: the bus, the handover)
 	# covered by the crew on duty
-	# (a task the trainee had begun and not ended when the jump came: left unfinished)
-	var begun := {}
 	var not_made := 0
-	for k in e.events.size():
+	for k in range(n0, e.events.size()):
 		var ev: Array = e.events[k]
-		if ev[1] != "task" or ev[2] != sm.people[me]["id"]:
-			continue
-		var was: int = begun.get(ev[3], 0)
-		if ev[4] in ["start", "resumed"]:
-			begun[ev[3]] = was + 1
-		elif ev[4] in ["done", "abandoned", "skipped", "held"] and was > 0:
-			begun[ev[3]] = was - 1
-		if k < n0 or ev[4] != "skipped":
+		if ev[1] != "task" or ev[2] != sm.people[me]["id"] or ev[4] != "skipped":
 			continue
 		var title: String = sm.tasks[ev[3]]["title"]
-		var want := "left unfinished" if was > 0 else ("not made" if Debrief._off_task(sm, me, ev[3]) else "covered by the crew on duty")
+		var want := "left unfinished" if ev[3] == cur_at_jump else ("not made" if Debrief._off_task(sm, me, ev[3]) else "covered by the crew on duty")
 		not_made += 1 if want == "not made" else 0
 		if not slept.any(func(x): return String(x.text).contains(title) and String(x.text).ends_with(want)):
 			p.append("the role tab does not list the skipped %s as %s" % [ev[3], want])
