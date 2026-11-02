@@ -175,6 +175,8 @@ func run(tree: SceneTree) -> Array:
 	ws.show_all()
 	# a touch pinch, then the emulated mouse's click of its first finger: nothing is selected
 	ws.select("")
+	await tree.process_frame   # (the handle hides with the selection: the touch below takes no handle)
+	check(not ws.handle.visible, "nothing selected, no handle")
 	var tp := InputEventScreenTouch.new()
 	tp.index = 0; tp.position = mid; tp.pressed = true
 	ws._on_view_input(tp)
@@ -188,6 +190,8 @@ func run(tree: SceneTree) -> Array:
 	ws._on_view_input(tp1)
 	tp.pressed = false
 	ws._on_view_input(tp)
+	ws.cam.reset_view()   # (the pinch moved the camera: the point is on the machine again)
+	check(ws.pick(mid) != "", "the pinch's point is on the machine")
 	for pressed in [true, false]:
 		var mb := InputEventMouseButton.new()
 		mb.button_index = MOUSE_BUTTON_LEFT; mb.position = mid; mb.pressed = pressed
@@ -235,8 +239,19 @@ func run(tree: SceneTree) -> Array:
 	ws.select("cover_front")
 	await tree.process_frame
 	check(ws.handle != null and ws.handle.visible, "the handle shows on a free part")
+	# the handle stands at a part's pivot, which it turns about, not at its box's centre (the transmitter's pivots
+	# are at their boxes' centres: the cover's meshes are moved off its pivot for the check, then back)
+	var cf: Node3D = ws.comps["cover_front"]
+	for c in cf.get_children():
+		if c is MeshInstance3D:
+			c.position += Vector3(0.03, 0, 0)
+	await tree.process_frame
 	if ws.handle != null:
-		check(ws.handle.global_position.is_equal_approx(ws.comps["cover_front"].global_position), "the handle stands at the part's pivot, which it turns about")
+		check(ws.handle.global_position.is_equal_approx(cf.global_position) and cf.global_position.distance_to(ws.world_box("cover_front").get_center()) > 0.02,
+			"the handle stands at the part's pivot, which it turns about")
+	for c in cf.get_children():
+		if c is MeshInstance3D:
+			c.position -= Vector3(0.03, 0, 0)
 	# a fastener group turns about its own centre, not its host's origin
 	var fb: Node3D = ws.groups["flange_bolts"]
 	var fsum := Vector3.ZERO
@@ -244,7 +259,7 @@ func run(tree: SceneTree) -> Array:
 		fsum += (t as Transform3D).origin
 	var fc: Vector3 = fsum / (fb.get_meta("items") as Array).size()
 	var fw0: Vector3 = fb.global_transform * fc
-	ws.handled["flange_bolts"] = Transform3D(Basis(Vector3.UP, 0.9), Vector3.ZERO)
+	ws.handled["flange_bolts"] = Transform3D(Basis(Vector3.RIGHT, 0.9), Vector3.ZERO)
 	ws.apply()
 	check((fb.global_transform * fc).distance_to(fw0) < 1e-5, "a turned fastener group keeps its centre (moved %.4f m)" % (fb.global_transform * fc).distance_to(fw0))
 	ws.handled.erase("flange_bolts")
