@@ -66,6 +66,16 @@ static func _form(ui, wid: String, actions: Array) -> Array:
 	return p
 
 
+## Where person pi is and what they do (a failure's message).
+static func _where(e, pi: int) -> String:
+	var sm = e._sm
+	var cur = e.sp_cur[pi]
+	var at: int = e.sp_pos[pi]
+	return "at %s, leg %s, aboard %d, task %s step %s, on duty %s, clock %d" % [sm.places[at]["id"] if at != -1 else "-",
+			str(e.sp_leg[pi]), e.sp_aboard[pi], str(cur["task"]) if cur else "none", str(cur["step"]) if cur else "-",
+			str(e.sp_on[pi]), e.clock()]
+
+
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
 	p += await _overnight(tree)
@@ -103,8 +113,14 @@ func _overnight(tree: SceneTree) -> Array:
 	var ic: int = e._sm.person_ix["ic1"]
 	if not held:
 		p.append("the technician's unfinished job was not held at the end of their duty")
-	if e.sp_pos[ic] != -1:
-		p.append("the technician did not go home")
+	# home in the camp by 18:00 (since S4: a technician kept at the job past 16:00 misses the 16:15 bus, waits half an
+	# hour at the stop and walks, PLANT3D §21.4)
+	_until(ui, 18, 0)
+	for ev in e.events:
+		if ev[1] == "remove_lock" or (ev[1] == "task" and ev[3] == "remove_left_locks"):
+			removal = true
+	if not e._sm.off_site_now(e, ic):     # (gone home: off site, PLANT3D §21.1)
+		p.append("the technician did not go home: %s" % _where(e, ic))
 	if removal:
 		p.append("a day worker's lock left on overnight was removed by authority")
 	if e.pstate[wi] != 4 and e.pstate[wi] != 5:
@@ -155,8 +171,8 @@ func _colleague(tree: SceneTree) -> Array:
 			p.append("the supervisor was asked to remove the colleague's lock")
 	if holder == "" or holder == "ic2":
 		p.append("the job was not held by the other technician: %s" % holder)
-	if e.sp_pos[e._sm.person_ix["ic2"]] != -1:
-		p.append("the isolating technician did not go home")
+	if not e._sm.off_site_now(e, e._sm.person_ix["ic2"]):     # (gone home: off site, PLANT3D §21.1)
+		p.append("the isolating technician did not go home: %s" % _where(e, e._sm.person_ix["ic2"]))
 	if e.lockbits[e._iso[e.m.isolation_ix["iso_cond_p3"]][4]] != 1:
 		p.append("the transmitter is no longer isolated")
 	if e.pstate[wi] != 5:

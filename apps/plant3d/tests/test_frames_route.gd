@@ -1,4 +1,4 @@
-## The frame-time walks' routes (app/routes.gd `frames` and `camp`, measured on the phones) walked once headless, so a
+## The frame-time walks' routes (app/routes.gd `frames`, `camp` and `gate`, measured on the phones) walked once headless, so a
 ## phone run doesn't measure a walker stuck at a door or a pipe: out of the control room, through the turbine hall's
 ## two doors, up and down HRSG 1's stair tower, out to the water treatment plant and through its treatment building,
 ## and back; and to the camp, into block 1's room 101 and the mess hall,
@@ -15,6 +15,7 @@ const Interiors = preload("res://app/interiors.gd")
 func run(tree: SceneTree) -> Array:
 	var problems: Array = await walk(tree, "frames")
 	problems.append_array(await walk(tree, "camp"))
+	problems.append_array(await walk(tree, "gate"))
 	return problems
 
 func walk(tree: SceneTree, which: String) -> Array:
@@ -30,11 +31,11 @@ func walk(tree: SceneTree, which: String) -> Array:
 	var player := Player.new()
 	world.add_child(player)
 	var st0: Array = plant.start()
-	player.global_position = st0[0] + Vector3.UP * 0.05
+	player.global_position = (st0[0] if which != "gate" else Routes.gate(plant)[0].to) + Vector3.UP * 0.05
 	var interiors := Interiors.new()
 	world.add_child(interiors)
 	interiors.setup(plant, player)
-	var route: Array = Routes.frames(plant) if which == "frames" else Routes.camp(plant)
+	var route: Array = Routes.frames(plant) if which == "frames" else (Routes.camp(plant) if which == "camp" else Routes.gate(plant))
 	var inside_seen := {}
 	var auto := Autopilot.new()
 	world.add_child(auto)

@@ -5,7 +5,8 @@
 ##   godot --headless --path apps/plant3d --script res://tests/staff_layout.gd -- --in=REQUESTS --out=LAYOUT
 ## REQUESTS (JSON): {"codes": [code…], "places": {id: [x, y, z]}, "points": [id…], "edges": [[id, id]…], "k": n}
 ## (plant coordinates: x east, y north, z up; "places" holds the points too). LAYOUT (JSON):
-##   {"stand": {code: [x, y, z]}, "on_mesh": {id: metres off the mesh}, "stubs": {id: [[point id, metres, rise]…]},
+##   {"stand": {code: [x, y, z]}, "on_mesh": {id: metres off the mesh}, "snap": {id: the walkable point nearest},
+##    "stubs": {id: [[point id, metres, rise]…]},
 ##    "edges": {"a|b": [metres, rise, reached]}}
 ## Every non-point place (and every code's stand point, as "kks:CODE") is measured to its k nearest points (straight
 ## line), every edge as asked; metres are the way along the mesh (stairs and ladders along their own paths), rise the
@@ -48,7 +49,7 @@ func _run() -> void:
 		print("staff_layout: the navigation map was not ready")
 		quit(1)
 		return
-	var out := {"stand": {}, "on_mesh": {}, "stubs": {}, "edges": {}}
+	var out := {"stand": {}, "on_mesh": {}, "snap": {}, "stubs": {}, "edges": {}}
 	var places: Dictionary = req["places"].duplicate()
 	for code in req["codes"]:
 		if not ui.index.has(code):
@@ -63,6 +64,7 @@ func _run() -> void:
 		var g := godot_of(places[id])
 		var c: Vector3 = NavigationServer3D.map_get_closest_point(r.map, g)
 		out["on_mesh"][id] = snappedf(c.distance_to(g), 0.001)
+		out["snap"][id] = plant_of(c)      # (the walkable point nearest: a seat's place beside its chair, PLANT3D §21.6)
 		if pts.has(id):
 			continue
 		var near := []

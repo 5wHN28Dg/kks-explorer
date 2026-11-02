@@ -121,7 +121,8 @@ func payload() -> Dictionary:
 		"engine": RunSave.capture(e, RunSave.engine_fields(e)),
 		"clock": {"speed": _speed(), "ff_want": ui.clock.ff_want, "pause_on_hold": ui.clock.pause_on_hold},
 		"procedure": pid, "tracker": td, "run": run,
-		"ui": {"results": ui.results.duplicate(true), "pending": ui._pending.duplicate(true)},
+		"ui": {"results": ui.results.duplicate(true), "pending": ui._pending.duplicate(true),
+				"task_given": ui.task_given.duplicate()},
 		"player": {"pos": pl.global_position, "yaw": pl.rotation.y, "pitch": pl.pivot.rotation.x,
 				"fly": pl.mode == pl.Mode.FLY},
 	}
@@ -173,8 +174,8 @@ func check(p: Dictionary) -> String:
 					or run["tracker"]["index"] >= ui.model.procedures[run["procedure"]].get("steps", []).size():
 				return "its debrief's procedure is damaged"
 	var u: Dictionary = p["ui"]
-	if u.size() != 2 or typeof(u.get("results")) != TYPE_DICTIONARY or typeof(u.get("pending")) != TYPE_ARRAY \
-			or not _ui_contents(u):
+	if u.size() != 3 or typeof(u.get("results")) != TYPE_DICTIONARY or typeof(u.get("pending")) != TYPE_ARRAY \
+			or typeof(u.get("task_given")) != TYPE_DICTIONARY or not _ui_contents(u):
 		return "its panels' state is damaged"
 	var pl: Dictionary = p["player"]
 	if pl.size() != 4 or typeof(pl.get("pos")) != TYPE_VECTOR3 or not pl["pos"].is_finite() \
@@ -418,6 +419,9 @@ static func _ui_contents(u: Dictionary) -> bool:
 		if typeof(x) != TYPE_ARRAY or x.size() != 3 or typeof(x[0]) != TYPE_STRING or typeof(x[1]) != TYPE_DICTIONARY \
 				or typeof(x[1].get("kks")) != TYPE_STRING or typeof(x[1].get("do")) != TYPE_STRING or typeof(x[2]) != TYPE_INT:
 			return false
+	for key in u["task_given"]:         # "step|task" -> the step it was given (the debrief's role tab)
+		if typeof(key) != TYPE_STRING or typeof(u["task_given"][key]) != TYPE_INT:
+			return false
 	return true
 
 
@@ -433,6 +437,7 @@ func restore(p: Dictionary) -> void:
 	ui._jumps = e.J                 # a jump made before the save is not one to follow again
 	ui.results = p["ui"]["results"]
 	ui._pending = p["ui"]["pending"]
+	ui.task_given = p["ui"]["task_given"]
 	ui.permits.waiting_from(e)
 	if p["procedure"] != "":
 		ui.start_procedure(p["procedure"], null, false)
@@ -461,6 +466,8 @@ func restore(p: Dictionary) -> void:
 	ui.clock.set_speed(c["speed"])
 	if ui.lifts != null:
 		ui.lifts.snap()             # the cabs where the run has them, before the walker is put down (one may be in one)
+	if ui.vehicles != null:
+		ui.vehicles.snap()          # the buses likewise (PLANT3D §21.13)
 	var pl = ui.player
 	var pd: Dictionary = p["player"]
 	if ui._flight:
