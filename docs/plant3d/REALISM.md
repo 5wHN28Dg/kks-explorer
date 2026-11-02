@@ -378,8 +378,9 @@ edge. A walk with the load in the app is not possible yet (the app runs only shi
   step 1 (a jump across several changes makes one event for the net change); the instructor's `[n, "weather", kind]`
   sets the kind in step 1 with `[n, "instructor", "weather", kind]` (the seeded chain goes on from it at the next hour, a
   script at its next entry); in a scenario without weather, or with a kind weather.json lacks, it does nothing and makes
-  no event. The app's input path (ui/inputs.gd, net/input_check.gd, the save's input check) gains the input with the
-  instructor's panel (WX3); the engine takes it now (`weather(kind)`, `apply_input`).
+  no event. A session carries it from the host's and the instructor seats' slots only (net/input_check.gd, as a
+  fault), a save keeps one queued (ui/autosave.gd); the panel's button (ui/inputs.gd) comes with the instructor's
+  panel (WX3).
 - **The digest** gains, with weather only, the kind and the weather stream's state after the lifts' parts (the driven
   values and `world_wx` are values); a save keeps both (`wx_kind`, `wx_s`), the built tables are rebuilt from the
   scenario.

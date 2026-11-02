@@ -238,6 +238,9 @@ func _load(files: Dictionary) -> void:
 			_fail("weather.json: only in a version 2 plant")
 			return
 		for v in weather.get("values", []):
+			if typeof(v) != TYPE_DICTIONARY:
+				_fail("weather.json: a driven value the engine can't read: %s" % str(v))
+				return
 			if not ext.has(v.get("id")):
 				_fail("weather.json: %s is not an ext value" % str(v.get("id")))
 				return
@@ -450,18 +453,30 @@ func _check_weather_file() -> void:
 	if kinds.is_empty() or kinds.has(null):
 		_fail("weather.json: no kinds, or a kind that is not an object")
 		return
+	for v in weather.get("values", []):
+		if typeof(v) != TYPE_DICTIONARY or not is_num(v.get("tau")) or v["tau"] <= 0:
+			_fail("weather.json: a driven value the engine can't read: %s" % str(v))
+			return
 	for k in weather["kinds"]:
 		for v in weather.get("values", []):
 			var t = k.get("targets", {}).get(v.get("id")) if typeof(k.get("targets")) == TYPE_DICTIONARY else null
 			if typeof(t) != TYPE_ARRAY or t.is_empty():
 				_fail("weather.json: kind %s gives no table of %s" % [str(k["id"]), str(v.get("id"))])
 				return
+			for row in t:
+				if typeof(row) != TYPE_ARRAY or row.size() != 2 or not is_num(row[0]) or not is_num(row[1]):
+					_fail("weather.json: kind %s: a row of %s that is not [x, y]" % [str(k["id"]), str(v.get("id"))])
+					return
 	var covered := {}
 	for s in weather.get("seasons", []):
 		if typeof(s) != TYPE_DICTIONARY or typeof(s.get("days")) != TYPE_ARRAY or s["days"].size() != 2 \
 				or not kinds.has(s.get("start")) or typeof(s.get("hourly")) != TYPE_ARRAY:
 			_fail("weather.json: a season the engine can't read")
 			return
+		for x in s["days"]:
+			if typeof(x) != TYPE_INT or x < 1 or x > 365:
+				_fail("weather.json: season %s: days of the year are 1 to 365" % str(s.get("id")))
+				return
 		for d in World.season_days(s["days"]):
 			covered[d] = true
 		var total := {}

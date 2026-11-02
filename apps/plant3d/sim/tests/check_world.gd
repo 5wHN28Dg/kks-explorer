@@ -161,6 +161,21 @@ static func _weather_and_wear(V: Dictionary) -> int:
 	var f13 := wf.duplicate()
 	f13["scenarios/s1.json"] = s13
 	cases.append(["a script entry of two items", f13, "can't read"])
+	var w14 := _js(wf["weather.json"])
+	w14["seasons"][0]["days"] = [121, 366]
+	var f14 := wf.duplicate()
+	f14["weather.json"] = w14
+	cases.append(["a season's day 366", f14, "1 to 365"])
+	var w15 := _js(wf["weather.json"])
+	w15["kinds"][0]["targets"]["dust_mg"] = [[0], [24, 1]]
+	var f15 := wf.duplicate()
+	f15["weather.json"] = w15
+	cases.append(["a target row of one number", f15, "not [x, y]"])
+	var w16 := _js(wf["weather.json"])
+	w16["values"].append(7)
+	var f16 := wf.duplicate()
+	f16["weather.json"] = w16
+	cases.append(["a driven value that is a number", f16, "can't read"])
 	var af: Dictionary = V["wear"]["files"]
 	if PlantModel.from_files(af).error != "":
 		print("FAIL the wear plant: ", PlantModel.from_files(af).error)

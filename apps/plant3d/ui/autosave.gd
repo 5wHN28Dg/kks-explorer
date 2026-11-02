@@ -189,6 +189,10 @@ func check(p: Dictionary) -> String:
 static func _engine_contents(fresh, d: Dictionary) -> String:
 	if d.get("step_no", 0) < 0:
 		return "a negative step"
+	if fresh._wx != null and d.has("wx_kind") and (d["wx_kind"] < 0 or d["wx_kind"] >= fresh._wx["kinds"].size()):
+		return "weather of a kind the content doesn't have"
+	if fresh._wx != null and d.get("wx_s", 1) == 0:
+		return "a weather stream at 0 (it would never move again)"
 	if d.has("mstate"):
 		for mi in d["mstate"].size():
 			if d["mstate"][mi] < 0 or d["mstate"][mi] >= fresh._mc[mi][2].size():
