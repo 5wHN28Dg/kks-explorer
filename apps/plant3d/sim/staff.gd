@@ -2640,7 +2640,7 @@ func overnight(e, who, work: String) -> bool:
 	if typeof(who) != TYPE_STRING or not person_ix.has(who):
 		return false
 	var pi: int = person_ix[who]
-	return _kept_works(e).has(work) and not e.sp_on[pi] and e.sp_pos[pi] == -1 and e.sp_leg[pi].is_empty()
+	return _kept_works(e).has(work) and not e.sp_on[pi] and off_site_now(e, pi)   # (gone home: §17.9, with homes §21.1)
 
 
 ## The works of anyone's jobs (tasks with resume, given for a work), held, queued or current: every lock on those

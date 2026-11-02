@@ -103,7 +103,7 @@ func _overnight(tree: SceneTree) -> Array:
 	var ic: int = e._sm.person_ix["ic1"]
 	if not held:
 		p.append("the technician's unfinished job was not held at the end of their duty")
-	if e.sp_pos[ic] != -1:
+	if not e._sm.off_site_now(e, ic):     # (gone home: off site, PLANT3D §21.1)
 		p.append("the technician did not go home")
 	if removal:
 		p.append("a day worker's lock left on overnight was removed by authority")
@@ -155,7 +155,7 @@ func _colleague(tree: SceneTree) -> Array:
 			p.append("the supervisor was asked to remove the colleague's lock")
 	if holder == "" or holder == "ic2":
 		p.append("the job was not held by the other technician: %s" % holder)
-	if e.sp_pos[e._sm.person_ix["ic2"]] != -1:
+	if not e._sm.off_site_now(e, e._sm.person_ix["ic2"]):     # (gone home: off site, PLANT3D §21.1)
 		p.append("the isolating technician did not go home")
 	if e.lockbits[e._iso[e.m.isolation_ix["iso_cond_p3"]][4]] != 1:
 		p.append("the transmitter is no longer isolated")

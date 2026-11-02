@@ -136,6 +136,15 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 		if b:
 			b.pressed.emit()
 		return true
+	elif s.has("ride"):
+		# the bus in from the camp or home (milestone S4): the trainee walks instead, from the Crew panel
+		_fresh(ui)
+		var b := App.find_button(ui.crew, "Walk instead")
+		if b == null:
+			return false
+		b.pressed.emit()
+		ui._place_tick()
+		return true
 	elif s.has("choose"):
 		e.pick(0)
 		return true
