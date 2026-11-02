@@ -81,6 +81,24 @@ func _looks() -> Array:
 		p.append("dust haze is a haze, not a storm: %s" % str(by["dust_haze@12"]))
 	if by["fog@2"].ratio != 0.0 or by["fog@2"].fog_density < 0.005:
 		p.append("fog at night is thick and nothing falls: %s" % str(by["fog@2"]))
+	# dawn and dusk in each kind: the model's solar lags its table (tau clock minutes); the sun eases, never jumps
+	var tau := 0.0
+	for v in wx.values:
+		if v.id == "solar":
+			tau = float(v.tau)
+	for k in wx.kinds:
+		var lagged := WeatherView.table_at(k.targets.solar, 0.0)
+		var last := -1.0
+		for minute in range(0, 24 * 60):
+			var h := minute / 60.0
+			lagged += (WeatherView.table_at(k.targets.solar, h) - lagged) * (1.0 - exp(-1.0 / tau))
+			var v := _at(k, h)
+			v.solar = lagged
+			var sun: float = WeatherView.look_of(v, WeatherView.table_at(clear_solar, fposmod(h - tau / 60.0, 24.0))).sun
+			if last >= 0.0 and absf(sun - last) > 0.03:
+				p.append("%s: the sun jumps from %.2f to %.2f at %02d:%02d" % [k.id, last, sun, minute / 60, minute % 60])
+				break
+			last = sun
 	return p
 
 
@@ -304,6 +322,23 @@ func _app(tree: SceneTree) -> Array:
 	ui.clock.stepped.disconnect(count)
 	if want[0] == 0 or wv.flashes - f0 < want[0] - 1 or wv.flashes - f0 > want[0]:
 		p.append("%d flashes in 200 slots, the model's lightning at each slot gives %d" % [wv.flashes - f0, want[0]])
+	# a session's engine installed (a join or a resync): bound at once, before its catch-up steps (no frame between)
+	var e2 = e.clone()
+	ui.clock.install(e2)
+	if wv._engine != e2:
+		p.append("an installed engine is not bound before the next frame: its catch-up's flashes would be lost")
+	e = e2
+	# the Workshop's bench indoors stays dry in the rain
+	for id in WeatherView.VALUES:
+		e.cur[e.ix[id]] = WeatherView.table_at(rk.targets[id], 12.0)
+	main.workshop.is_open = true
+	wv._process(0.1)
+	if float(WeatherView.globals.get("wx_wet")) != 0.0:
+		p.append("the Workshop's materials are wet in the rain")
+	main.workshop.is_open = false
+	wv._process(0.1)
+	if float(WeatherView.globals.get("wx_wet")) < 0.9:
+		p.append("out of the Workshop the plant is not wet again")
 	# back to a scenario without weather: the plant's own look again
 	ui.restart("cold_iron", true)
 	await tree.process_frame

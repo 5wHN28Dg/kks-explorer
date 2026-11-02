@@ -323,7 +323,8 @@ void fragment() {
 	// the weather (uniform control flow: global parameters): under the sky only, by the roof map; a surface at or
 	// above its roof (the roof itself) is outdoors
 	if (wx_wet + wx_dust > 0.001) {
-		vec2 ru = (wpos.xz - wx_roof_rect.xy) / max(wx_roof_rect.zw, vec2(1e-3));
+		// sampled 0.3 m along the normal: a wall's outer face (on the roof map's edge) reads outdoors, its inner indoors
+		vec2 ru = (wpos.xz + wnrm.xz * 0.3 - wx_roof_rect.xy) / max(wx_roof_rect.zw, vec2(1e-3));
 		float roof = textureLod(wx_roof, ru, 0.0).r * 63.75;
 		bool in_map = wx_roof_rect.z > 0.0 && all(greaterThanEqual(ru, vec2(0.0))) && all(lessThan(ru, vec2(1.0)));
 		float sky = (in_map && roof > 0.0 && wpos.y < roof - 0.3) ? 0.0 : 1.0;

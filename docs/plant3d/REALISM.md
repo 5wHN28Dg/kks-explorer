@@ -647,8 +647,10 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
     than the clear haze; its colour toward sand with `dust`, grey with `rain`, a pale mist when the view is short
     without either; its sky affect washes the photographed sky toward it below 8 km (no sky shader, nothing
     reprocessed);
-  - the sun's energy by `solar` against the clear kind's at the hour (from the view at night), its shadows softer
-    under cloud; a lightning flash adds light for 0.15 s;
+  - the sun's energy by `solar` against the clear kind's at the hour (taken `solar`'s lag earlier, as the model's
+    lagged value runs behind its table), blended toward a value from the view while the clear sky's sun is low (the
+    app's sun stays where the photographed sky's is): no jump at dawn or dusk; its shadows softer under cloud; a
+    lightning flash adds light for 0.15 s;
   - one GPUParticles3D round the camera (the phone 2,000 within 25 m, the full tier 8,000 within 40 m: §11), its
     share of them (`amount_ratio`) by how hard it rains (10 mm/h is all) or how much sand blows (dust 1–6 mg/m³),
     rain streaks falling with the wind's push or sand specks along the north-westerly wind; a particle that leaves
@@ -659,17 +661,24 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
   - **wet and dusty surfaces:** global parameters of the one weathered shader (`wx_wet`, `wx_dust`, `wx_rain`,
     `wx_roof`, `wx_roof_rect`): under the sky, wet darkens and glosses what faces up (a little the walls), with
     puddles in the ground's low patches and drops' rings on them (full tier only); laid dust (from `dust`, after a
-    storm, gone where wet) pales flat tops. Uniforms only: no new variant.
+    storm's dust while it settles, gone where wet) pales flat tops; the roof map is read 0.3 m along the surface's
+    normal, so a wall's outer face is outdoors and its inner face indoors. The Workshop's bench (its own world, the
+    same materials) gets none of it. Uniforms only: no new variant.
   - **Heat shimmer** is left out (screen-space, as 0057 left those).
 - **Heard** (ui/sound_player.gd, three new sounds of the synth library, decision 0055): `rain` (loop, also heard on
   the roofs indoors at 0.35), `sand_hiss` (loop, in gusts), `thunder` (a one-shot rumble played after the flash,
-  delayed by the strike's distance at 343 m/s and quieter with it); the wind's existing loop follows `wind`.
-- **Lightning flashes** fall in 2-second slots of the model's steps: a slot flashes when a 32-bit mix of the world
-  seed and the slot's number is under `lightning` × 0.08, at a step and a distance (0.4–6 km) taken from the same
-  number: the same on every device, never this device's random numbers.
+  delayed by the strike's distance at 343 m/s and quieter with it, at most three on their way); the wind's existing
+  loop follows `wind` (as loud as before at the clear kind's 2 m/s, about +5 dB in a sandstorm).
+- **Lightning flashes** fall in 2-second slots of the model's steps: at a slot's first step (the clock's `stepped`,
+  with the engine bound as soon as the clock takes it, so a session's catch-up steps count) the slot flashes when a
+  32-bit mix of the world seed and the slot's number is under the model's `lightning` there × 0.08, at a step and a
+  distance (0.4–6 km) taken from the same number: the same on every device, never this device's random numbers or
+  eased values.
 - **The instructor's panel** has a button per kind in a scenario with weather (the WX1 input `[n, "weather", kind]`).
 - **Measuring:** `weather=KIND` (app/main.gd, with `crews=1`) fixes the scenario's weather at that kind and its driven
-  values at the kind's targets for the start hour.
+  values at the kind's targets for the start hour, for the rest of that process (a restart into it too); ignored with
+  `mp=`. Free play's seeded scenarios start from clear-weather values while their season's chain starts at its
+  `start` kind (summer's `hot`): the values lag toward it from step 0.
 
 ## 6. Documents and discussions
 

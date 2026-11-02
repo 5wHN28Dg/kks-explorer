@@ -54,6 +54,7 @@ var _engine = null
 ## The global shader parameters last set (RenderingServer's own getter is for the editor: the tests read these).
 static var globals := {}
 var _clear_solar: Array = []                # the clear kind's solar table (weather.json), [] without
+var _solar_tau := 0.0                       # solar's lag in clock minutes (weather.json)
 
 ## Makes the emitter (hidden, not emitting) under `parent`, so that its pipelines are compiled in the start's hidden
 ## frame with the plant's (decision 0060).
@@ -147,11 +148,11 @@ static func look_of(v: Dictionary, clear_solar: float) -> Dictionary:
 	var colour := HAZE.lerp(MIST, murk * (1.0 - sand_w) * (1.0 - rain_w))
 	colour = colour.lerp(RAIN_GREY, rain_w)
 	colour = colour.lerp(SAND, sand_w)
-	var sun_f := 1.0
-	if clear_solar > 50.0:
-		sun_f = clampf(solar / clear_solar, 0.1, 1.0)
-	else:   # night or dawn in the model's table: from the view (the app's sun stays where the sky's is)
-		sun_f = clampf(0.15 + 0.85 * minf(vis, 10000.0) / 10000.0 * (1.0 - rain_w), 0.1, 1.0)
+	# by day the model's solar against a clear sky's; at night (the app's sun stays where the sky's is) from the view;
+	# blended over the low sun so that dawn and dusk don't jump
+	var by_view := clampf(0.15 + 0.85 * minf(vis, 10000.0) / 10000.0 * (1.0 - rain_w), 0.1, 1.0)
+	var by_sun := clampf(solar / maxf(clear_solar, 1.0), 0.1, 1.0)
+	var sun_f := lerpf(by_view, by_sun, smoothstep(30.0, 200.0, clear_solar))
 	var rain := clampf(rain_mm / 10.0, 0.0, 1.0)
 	var sand := clampf((dust - 1.0) / 5.0, 0.0, 1.0)
 	var mode := "rain" if rain >= sand else "sand"
@@ -221,6 +222,18 @@ static func mix32(x: int) -> int:
 	x ^= x >> 16
 	return x
 
+## Takes the interaction layer: binds its clock's engine now and whenever the clock takes another (a restart, a
+## session's install before its catch-up steps: their slots' flashes are decided with the new engine).
+func attach(p_ui) -> void:
+	ui = p_ui
+	if ui == null or ui.clock == null:
+		return
+	if not ui.clock.restarted.is_connected(_bind):
+		ui.clock.restarted.connect(_bind)
+	if not ui.clock.stepped.is_connected(_on_step):
+		ui.clock.stepped.connect(_on_step)
+	_bind(ui.clock.engine)
+
 func _process(delta: float) -> void:
 	if ui == null or ui.clock == null:
 		return
@@ -229,14 +242,20 @@ func _process(delta: float) -> void:
 		_bind(e)
 	if not on:
 		return
+	var ws = ui.main.get("workshop") if ui.get("main") != null else null
+	var in_workshop: bool = ws != null and bool(ws.get("is_open"))
 	var a := 1.0 - exp(-delta / SMOOTH)
 	for id in _slots:   # a value the content's weather does not drive keeps look_of's clear-weather default
 		var x := float(e.cur[_slots[id]])
 		drawn[id] = x if not drawn.has(id) else lerpf(float(drawn[id]), x, a)
 	var hour := float(e.v("world_hour")) if e.ix.has("world_hour") else 12.0
-	look = look_of(drawn, table_at(_clear_solar, hour))
+	# the clear sky's solar as the model's lagged solar would be in clear weather: a first-order lag follows a ramp
+	# about tau behind it (else the sun would dip at every dawn while the model's solar catches up)
+	look = look_of(drawn, table_at(_clear_solar, fposmod(hour - _solar_tau / 60.0, 24.0)))
 	_flash(e, delta)
 	_apply(look)
+	if in_workshop:   # the Workshop's bench is indoors: its materials (the same shader) stay dry and clean
+		_apply_globals({"wet": 0.0, "dust_laid": 0.0, "rain": 0.0})
 	if camera != null and is_instance_valid(camera):
 		particles.global_position = camera.global_position
 
@@ -246,7 +265,10 @@ func _bind(e) -> void:
 	_slots.clear()
 	drawn.clear()
 	_thunder.clear()
-	_pending.clear()
+	# flashes still to come stay (a session's resync installs its engine mid-slot); a new run's start at step 0
+	# leaves none
+	var st: int = int(e.step_no) if e != null else 0
+	_pending = _pending.filter(func(f): return int(f[0]) > st)
 	if ui != null and ui.clock != null and not ui.clock.stepped.is_connected(_on_step):
 		ui.clock.stepped.connect(_on_step)
 	on = e != null and e.ix.has("world_wx")
@@ -258,6 +280,9 @@ func _bind(e) -> void:
 		for k in ui.model.weather.get("kinds", []):
 			if k.get("id", "") == "clear":
 				_clear_solar = k.get("targets", {}).get("solar", [])
+		for v in ui.model.weather.get("values", []):
+			if v.get("id", "") == "solar":
+				_solar_tau = float(v.get("tau", 0.0))
 	else:
 		_clear()
 

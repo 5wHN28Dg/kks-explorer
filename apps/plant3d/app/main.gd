@@ -264,7 +264,7 @@ func _ready() -> void:
 		opts["crews"] = "1"       # the gate walk is the crews' shift change (PLANT3D §21.10)
 	ui.setup(self, opts.get("scenario", "shift_cold" if opts.has("crews") else "cold_iron"))
 	ui.add_settings(hud.extra)
-	weather.ui = ui
+	weather.attach(ui)
 	workshop = Workshop.new()
 	workshop.name = "workshop"
 	add_child(workshop)

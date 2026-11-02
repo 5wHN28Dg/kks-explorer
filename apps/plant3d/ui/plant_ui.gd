@@ -187,7 +187,9 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	bindings.sounds = sounds
 	bindings.clock = clock
 	add_child(bindings)
-	if m.opts.has("weather"):   # a measured walk in one weather (app/main.gd `weather=`): fixed, at its targets
+	if m.opts.has("weather") and m.opts.has("mp"):
+		push_warning("weather= is for a measured walk alone: not with mp= (the host's weather rules a session)")
+	elif m.opts.has("weather"):   # a measured walk in one weather (app/main.gd `weather=`): fixed, at its targets
 		if not WeatherView.fix(model.scenarios.get(scenario, {}), model.weather, String(m.opts["weather"])):
 			push_warning("weather=%s: the scenario %s has no weather, or the kind is unknown" % [m.opts["weather"], scenario])
 	clock.start(model, scenario)
