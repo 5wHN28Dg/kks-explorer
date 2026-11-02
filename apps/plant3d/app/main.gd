@@ -639,11 +639,11 @@ func _gate_clock() -> void:
 		await get_tree().process_frame      # (a frame between: never seconds of a held main thread on a phone)
 	ui.clock.set_speed(1)        # (normal: 1x)
 	ScriptCost.steps_from = ScriptCost.step_staff.size()     # (the result's STEPS line: the steps at 1x from here)
-	if frame_probe != null:             # and step 9's phases (engine.gd staff_prof: the STAFF_PHASES line)
-		e.staff_prof.fill(0)
-		for k in e.staff_prof_n:
-			e.staff_prof_n[k] = 0
-		e.staff_prof_on = true
+	if frame_probe != null:             # and step 9's phases (engine.gd _staff_prof: the STAFF_PHASES line)
+		e._staff_prof.fill(0)
+		for k in e._staff_prof_n:
+			e._staff_prof_n[k] = 0
+		e._staff_prof_on = true
 		_phases_from = e.step_no
 	_say("GATE clock %s after %d steps in %d ms" % [ui.clock_text(), e.step_no, Time.get_ticks_msec() - t0])
 
@@ -782,13 +782,13 @@ func _finish() -> void:
 		for l in ScriptCost.lines():
 			_say(l)
 		var e = ui.clock.engine if ui != null and ui.clock != null else null
-		if e != null and e._sm != null and e.staff_prof_on and e.step_no > _phases_from:
+		if e != null and e._sm != null and e._staff_prof_on and e.step_no > _phases_from:
 			var n: int = e.step_no - _phases_from
 			var parts := PackedStringArray()
 			for k in e._sm.PROF_NAMES.size():
-				parts.append("%s=%.1f" % [e._sm.PROF_NAMES[k], float(e.staff_prof[k]) / n])
+				parts.append("%s=%.1f" % [e._sm.PROF_NAMES[k], float(e._staff_prof[k]) / n])
 			_say("STAFF_PHASES steps=%d %s (µs a step) runs=%d due=%d acts=%d" % [n, " ".join(parts),
-					e.staff_prof_n["runs"], e.staff_prof_n["due"], e.staff_prof_n["acts"]])
+					e._staff_prof_n["runs"], e._staff_prof_n["due"], e._staff_prof_n["acts"]])
 	if drawings_walk:
 		var dv = ui.drawing_view
 		var opens: Array = dv.open_ms.values()

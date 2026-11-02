@@ -33,8 +33,8 @@ const PERMIT_AUTH := {"request": "request", "approve": "approve", "issue": "issu
 		"done": "accept", "return": "accept", "close": "issue", "cancel": "approve"}
 
 var error := ""
-## Per-phase timers of step() (tests/bench_staff.gd, the gate walk's STAFF_PHASES): the engine's staff_prof_on,
-## staff_prof (microseconds per PROF_NAMES[k]) and staff_prof_n (the work done, machine-independent: task steps run in
+## Per-phase timers of step() (tests/bench_staff.gd, the gate walk's STAFF_PHASES): the engine's _staff_prof_on,
+## _staff_prof (microseconds per PROF_NAMES[k]) and _staff_prof_n (the work done, machine-independent: task steps run in
 ## people's turns, the vehicles' runs due worked out, people whose acts were looked at in phase 5). On the engine, not
 ## here: this object is shared by an engine's clones, which a worker thread steps (the permit panel's lock check).
 const PROF_NAMES := ["inputs", "duties", "react", "vehicles", "people", "acts", "after"]
@@ -1097,7 +1097,7 @@ func jump(e, to) -> void:
 # ---------------------------------------------------------------- step 9 (§17.2)
 
 func step(e) -> void:
-	var pr: bool = e.staff_prof_on
+	var pr: bool = e._staff_prof_on
 	var pt := Time.get_ticks_usec() if pr else 0
 	var n: int = e.step_no
 	var c: int = e.clock()
@@ -1240,7 +1240,7 @@ func step(e) -> void:
 
 func _prof(e, k: int, t0: int) -> int:
 	var t := Time.get_ticks_usec()
-	e.staff_prof[k] += t - t0
+	e._staff_prof[k] += t - t0
 	return t
 
 
@@ -1608,8 +1608,8 @@ func turn(e, pi: int) -> void:
 			e.sp_wake[pi] = 1 << 62     # nothing to do and off duty: until a task or a duty wakes them
 			return
 		var r = run(e, pi, cur)
-		if e.staff_prof_on:
-			e.staff_prof_n["runs"] += 1
+		if e._staff_prof_on:
+			e._staff_prof_n["runs"] += 1
 		if typeof(r) == TYPE_STRING and r == "wait":
 			if cur["idle"] and not cur.get("off", false) and not e.sp_on[pi] and home[pi] != -1:
 				# a duty's idle task off duty within its span: awake when the span ends (the reference's select
@@ -2267,16 +2267,16 @@ func runs_due(e, vi: int, c: int) -> Array:
 	var day: int = c / DAY
 	var done: Array = vh["done"]
 	# the answer depends only on the day, the floor and the last run made: kept for the next step with the same
-	# (the engine's staff_due_memo, a cache, not the run's state: a clone starts without it)
-	var dm: Array = e.staff_due_memo
+	# (the engine's _staff_due_memo, a cache, not the run's state: a clone starts without it)
+	var dm: Array = e._staff_due_memo
 	if dm.size() != vehicles.size():
 		dm.resize(vehicles.size())
 	var memo = dm[vi]
 	if memo != null and memo[0] == day and memo[1] == vh["floor"] and memo[2] == done:
 		return memo[3]
 	var best := _runs_due(v, vh, day, done)
-	if e.staff_prof_on:
-		e.staff_prof_n["due"] += 1
+	if e._staff_prof_on:
+		e._staff_prof_n["due"] += 1
 	dm[vi] = [day, vh["floor"], done.duplicate(), best]
 	return best
 
@@ -2353,7 +2353,7 @@ func _wake_riders(e, at: int) -> void:
 	for pi in pos.size():
 		if pos[pi] == at and e.sp_cur[pi] != null:
 			var cur: Dictionary = e.sp_cur[pi]
-			if not cur["idle"] and tasks[cur["task"]]["steps"][cur["step"]].has("ride"):
+			if tasks[cur["task"]]["steps"][cur["step"]].has("ride"):     # (an idle task's ride too)
 				e.sp_wake[pi] = 0
 
 
@@ -2579,8 +2579,8 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 				break
 		if absent.has(pi):
 			continue
-		if e.staff_prof_on:
-			e.staff_prof_n["acts"] += 1
+		if e._staff_prof_on:
+			e._staff_prof_n["acts"] += 1
 		var acts: Array = e.sp_acts[pi]
 		for k in 3:
 			var now := _act_now(e, pi, k)
