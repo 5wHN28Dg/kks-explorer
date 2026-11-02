@@ -3184,3 +3184,31 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   (MILESTONES "Questions").
 - Evidence: the maintainer's laptop, `~/kks-work/build/s4d-runs/` (result, sf_summary, rule, samp and frames for
   each walk).
+
+### 21.15 The staff step made faster (2026-11-02: the user's answer to S4d's question)
+
+S4d measured the staff step at about 1.07 ms on the Note 9 at the gate, over §21.10's 0.3 ms. The user chose to
+profile it and speed it up, with no change of behaviour: both engines stay bit for bit, every vector file is byte for
+byte as it was (only the GDScript engine changed; the reference and the vectors did not).
+
+- **Where the time went** (`sim/tests/bench_staff.gd`: `shift_cold` in free mode run to 05:40, then the gate walk's
+  hour timed, 6,000 steps; per phase with `staff.gd`'s `prof_on`): on the laptop 170 to 250 µs a step (the laptop
+  shared with other jobs), of which the people's turns about 60 %, phase 5 (the unsafe acts) about 35 %, the bus about
+  12 %. Within them: the riders waiting at a stop for the bus, each looked at again every step (43,000 of the hour's
+  52,637 task steps run); the bus's next run worked out afresh every step over three days' runs; phase 5 looking at
+  every rider's acts (they had a turn) and then at all 91 people for the safety walk's reaction, with nobody acting.
+- **What changed** (`sim/staff.gd`): a rider waiting at the stop sleeps until their 30 minutes are over (§21.4); a
+  vehicle arriving at a stop wakes those waiting there for a ride (`_wake_riders`), and a task, a duty or a stop wakes
+  them as any sleeper; the bus's next run is kept while the day, the placement's floor and the last run made stay the
+  same (`_due_memo`, a cache of a function of those three, so no run state); phase 5 finds the people to look at
+  natively (`PackedByteArray.find`) and counts "nobody acting" natively (`Array.count`) before looking person by
+  person; the people's loop reads the wake steps once and again after each turn; a few fields of the untyped engine
+  are read into typed locals. Per-phase timers (`prof_on`, `prof`) and counters of the work done (`prof_n`).
+- **The work, counted** (the same on every machine; `tests/test_plant3d_sim.py` `test_staff_work_at_the_gate`): task
+  steps run 52,637 → 10,072, the bus's next run worked out 6,002 → 2, people's acts looked at 53,495 → 10,930.
+- **On the laptop** (`bench_staff.gd`, before and after side by side, three times): 170 to 174 µs → 59 to 60 µs a
+  step (2.9×).
+- **On the Note 9**: NOTE9_RESULTS
+- **The measured walk's STEPS line** (`app/script_cost.gd`, `ui/sim_clock.gd`): each engine step's own staff and model
+  time from the end of the gate walk's clock run, its mean, median, 99th percentile and largest, so the staff step on
+  the phone is read directly rather than worked out from the frames' means.
