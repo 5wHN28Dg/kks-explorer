@@ -101,8 +101,8 @@ ANCHORS = {
     'ldy_table': dict(at=(-353, 48.8, 0), kind='table', room='laundry', yaw=180),
     'camp_desk': dict(at=(-286.5, 27.7, 0), kind='desk', room='camp_office', pose='sit', yaw=180),
     **_beds(),
-    # the admin building's ground floor (§18.5's interior): the permit office's desks, the meeting room, the lobby;
-    # the offices upstairs are reached by its stair
+    # the admin building's ground floor (§18.5's interior): the permit office's desks, the meeting room, the lobby,
+    # the offices
     'adm_door': dict(at=(-108, 98.8, 0), kind='door', room='admin'),
     'adm_permit_1': dict(at=(-114.2, 108.0, 0), kind='desk', room='admin', pose='sit', yaw=0),
     'adm_permit_2': dict(at=(-111.6, 108.0, 0), kind='desk', room='admin', pose='sit', yaw=0),
@@ -205,8 +205,8 @@ def slot(at, task, **kw):
 # who rides which bus in and out (§21.6): the routine's commute slots, by the routine's kind
 SHIFT_ROUTINES = ('sup_shift', 'ccr_shift', 'field_gt', 'field_st', 'field_cw', 'elec_shift', 'guard_plant')
 WTP_ROUTINES = ('wtp_shift', 'chem_shift')
-DAY_TO_CR = ('tech_days', 'ms_mech', 'ms_elec', 'ms_ic', 'hse_days1', 'hse_days2', 'con_sup_days', 'con_days',
-             'chem_days', 'chem_days2')
+DAY_TO_CR = ('tech_days', 'ms_mech', 'ms_elec', 'ms_ic', 'hse_days1', 'hse_days2', 'con_sup_days', 'con_days')
+DAY_WTP = ('chem_days', 'chem_days2')   # (the day chemists: in by the bus, home on foot from the WTP's lab)
 DAY_TO_GATE = ('mgr_days', 'eng_days', 'store_days')
 
 
@@ -221,6 +221,8 @@ def commute(rid, routine):
         return [slot('start-1:40', 'bus_in_wtp'), slot('end+0:05', 'walk_out')]
     if rid in DAY_TO_CR:
         return [slot('start-0:50', 'bus_in'), slot('end+0:05', 'bus_out')]
+    if rid in DAY_WTP:
+        return [slot('start-0:50', 'bus_in'), slot('end+0:05', 'walk_out')]
     if rid in DAY_TO_GATE:
         return [slot('start-0:35', 'bus_in_gate'), slot('end+0:05', 'bus_out_gate')]
     return []
@@ -309,7 +311,7 @@ def tasks():
                                        {'work': 45, 'anim': 'type'}, {'work': 1}])
     task('morning_meeting', 'The morning meeting',
          [{'meet': {'room': 'meeting', 'with': ['plant_mgr', 'ops_mgr', 'maint_mgr'], 'minutes': 30}}], priority=2)
-    task('walk_round', 'The plant manager\'s walk-round', [
+    task('walk_round', 'The managers\' walk-round', [
         {'go': {'kind': 'locker', 'room': 'lockers'}}, {'ppe': 'role'}, {'go': 'p_st_20'}, {'work': 5, 'anim': 'inspect'}, {'go': 'p_gt_in'},
         {'work': 5, 'anim': 'inspect'}, {'go': 'p_cw_o'}, {'work': 5, 'anim': 'inspect'}, {'go': 'p_adm_lobby'}],
          priority=3)

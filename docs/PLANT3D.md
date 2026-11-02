@@ -3074,8 +3074,17 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   the control building at 05:02 and 17:02 (they then walk to the WTP, about 40 minutes of the clock); the shift crews at
   05:40 and 17:40, the day workers at 06:35 (to the control building) and 06:50 (to the plant gate: the managers, the
   engineers, the storekeeper); home at 06:25, 16:15 and 18:25; 45 seats. Commutes are duty slots (`start−0:50` for the
-  crews and the day workers, `start−0:35` for the gate's riders, `start−1:40` for the WTP's, who walk home), each a
-  `ride` of priority 1 that nothing pre-empts while waiting.
+  crews and the day workers, `start−0:35` for the managers', engineers' and storekeeper's ride to the gate, `start−0:50`
+  for the plant gate's guards, `start−1:40` for the WTP's operator and shift chemists), each a `ride` of priority 1
+  that nothing pre-empts while waiting. The WTP's people and the day chemists (their lab is at the WTP) walk home.
+  The WTP's morning ride works with little margin: their slot comes about 42 clock minutes before the bus reaches the
+  camp's stop, against the 30 minutes a rider waits there, so a rider whose walk to the stop took under 12 minutes
+  would walk instead; and at 04:20 their breakfast at `next−1:15` falls inside their span and is not made.
+- **Where it departs from §21.6:** the walk-round is the three managers' (on Mondays), without an HSE officer; the
+  day workers have no midday meal (a Sunday lunch only, `off_days`); free time's weights are the same for every role;
+  the beds of block 1's other rooms are hidden places at its entrance, as the other blocks' are, not at their doors in
+  its corridor; the offices have five desks for six people (the sixth works standing); the content's test of the bus
+  (`test_the_bus_runs_never_overlap`) works out each run's time from staff.json.
 - **Off duty:** `off_shift` (a meal half an hour after the duty, free time chosen among the gym, recreation room,
   laundry, prayer room and room, sleep from `next−9:30` to `next−1:30`, breakfast at `next−1:15`), `off_days` (the day
   workers' later times, a Sunday lunch) and `off_camp`; the off-duty idle task at home.

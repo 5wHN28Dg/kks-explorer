@@ -1316,10 +1316,48 @@ class FirstTrainStaff(unittest.TestCase):
         self.assertGreater(len(meals), 40)
         self.assertTrue([x for x in ev if x[1] == 'task' and x[3] == 'sleep' and x[4] == 'done'])
 
+    def test_the_bus_runs_never_overlap(self):
+        """PLANT3D §21.6: the runs of each vehicle never overlap, from a run's leaving home to its return (so no run
+        is skipped for want of a driver or a bus), worked out from staff.json (the drive ways' lengths at the driving
+        speed, the clock's day scale, each stop's dwell), with a minute to spare; and the drivers' roster has a driver
+        on duty at every run."""
+        with open(os.path.join(G.DATA, 'staff.json'), encoding='utf-8') as f:
+            st = json.load(f)
+        with open(os.path.join(G.DATA, 'plant.json'), encoding='utf-8') as f:
+            scale = json.load(f)['clock']['day_scale']
+        ways = {}
+        for w in st['ways']:
+            if w[3] == 'drive':
+                ways[(w[0], w[1])] = ways[(w[1], w[0])] = w[2]
+        def hop(a, b):          # (the drive ways form a line: from a to b along it)
+            line = ['bus_depot', 'camp_stop', 'gate_stop', 'cr_stop']
+            i, j = line.index(a), line.index(b)
+            step = 1 if j > i else -1
+            return sum(ways[(line[k], line[k + step])] for k in range(i, j, step))
+        def mins(t):
+            h, m = t.split(':')
+            return int(h) * 60 + int(m)
+        for v in st['vehicles']:
+            spans = []
+            for r in v['runs']:
+                stops = r['stops']
+                drive_s = (hop(v['home'], stops[0]) + sum(hop(a, b) for a, b in zip(stops, stops[1:]))
+                           + hop(stops[-1], v['home'])) / st['speeds']['drive'] * scale
+                lead = hop(v['home'], stops[0]) / st['speeds']['drive'] * scale
+                start = mins(r['at']) * 60 - lead
+                spans.append((start, start + drive_s + 60 * r['dwell'] * (len(stops) - 2) + 60, r['at']))
+            spans.sort()
+            for a, b in zip(spans, spans[1:]):
+                self.assertLess(a[1] + 60, b[0], f'{v["id"]}: the run at {a[2]} is not home a minute before {b[2]} leaves')
+        # a driver on duty at each run (the vectors: none skipped over the full day)
+        self.assertFalse([x for x in self.day['events'] if x[1] == 'vehicle' and x[4] == 'skipped'])
+
     def test_a_shift_day_finds_nothing_at_the_wtp(self):
         """shift_cold's day (the `day` run) has the WTP's people at work: rounds, samples and the stock check, all
         within their ranges, and no WTP sequence started."""
-        ev = [x for x in self.day['events'] if x[0] <= 78000]       # (the day shift: the full day runs on, S4)
+        # (the day shift only: in S4's full day the night's WTP operator backwashes the filters as their head loss
+        # grows, which is no finding)
+        ev = [x for x in self.day['events'] if x[0] <= 78000]
         who = {x[2] for x in ev if x[1] == 'read'}
         self.assertTrue({'a_wtp', 'a_chem', 'chem1', 'chem2'} <= who, who)
         self.assertFalse([x for x in ev if x[1] == 'task' and x[3].startswith(('backwash_', 'mb_regen_', 'cip_ro_'))])
