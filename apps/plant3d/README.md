@@ -75,6 +75,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--walk=camp --seconds=600` | the frame-time walk through the site and the camp (milestone C1): to the plant gate, along the road to the camp, into block 1 and the mess hall, and back; its interiors load on the way |
 | `--walk=climb` | the test's route |
 | `--walk=hoist` | up HRSG 1's stair to the roof hoist's pendant and back, looped (LIFTS L4: the hoist in view) |
+| `--walk=gate --seconds=600` | the shift change at the plant gate (milestone S4d): the crews, the clock run to 05:40 first, then the gate road's walkway looped past the bus stop and the gate house at 1x |
 | `--walk=screens` | the control room's screens, each in turn for 10 s: their frame cost (`MIMIC` line) |
 | `--shot=NAME@x,y,z,yaw,pitch;…` | saves PNG views and quits |
 | `--map=1` | starts on the overview map |

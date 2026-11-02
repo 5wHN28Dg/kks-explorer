@@ -4,11 +4,13 @@
 ## Options, after `--` on the command line (desktop) or one per line in walk.txt in the app's external files folder
 ## (Android: phone/frames.sh pushes it):
 ##   quality=full|lean+vis   this tier, whatever the settings say
-##   walk=frames|camp|wtp|climb|lift|screens walk a scripted route (app/routes.gd) and log frame times; `frames` and
+##   walk=frames|camp|wtp|climb|lift|gate|screens walk a scripted route (app/routes.gd) and log frame times; `frames` and
 ##                           `camp` (through the site and the camp, milestone C1) loop; `wtp` loops the frames walk's
 ##                           part in the water treatment plant (its views' cost, without the nine minutes to get there)
 ##                           `screens` stays in the control room with its screens open, showing each in turn for 10 s
-##                           (the screens' cost, ui/mimic.gd)
+##                           (the screens' cost, ui/mimic.gd); `gate` (the shift change at the plant gate, milestone
+##                           S4d) loops the gate road's walkway with the crews (as crews=1) from 05:40, the clock run
+##                           there before the measurement starts
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
 ##   out=DIR                 where result.txt (and shots) go (default: the external files folder on Android, the user
 ##                           data folder elsewhere)
@@ -236,6 +238,8 @@ func _ready() -> void:
 	ui = PlantUi.new()
 	ui.name = "ui"
 	add_child(ui)
+	if opts.get("walk", "") == "gate":
+		opts["crews"] = "1"       # the gate walk is the crews' shift change (PLANT3D §21.10)
 	ui.setup(self, opts.get("scenario", "shift_cold" if opts.has("crews") else "cold_iron"))
 	ui.add_settings(hud.extra)
 	_launch("ui")
@@ -524,8 +528,10 @@ func _start_walk() -> void:
 		ui.mimic.reset_cost()
 		last_us = Time.get_ticks_usec()
 		return
-	var looped: bool = opts.walk in ["frames", "camp", "wtp", "hoist"]
-	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else (Routes.wtp_loop() if opts.walk == "wtp" else (Routes.hoist(plant) if opts.walk == "hoist" else (Routes.lift(plant) if opts.walk == "lift" else Routes.climb(plant)))))
+	var looped: bool = opts.walk in ["frames", "camp", "wtp", "hoist", "gate"]
+	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else (Routes.wtp_loop() if opts.walk == "wtp" else (Routes.hoist(plant) if opts.walk == "hoist" else (Routes.lift(plant) if opts.walk == "lift" else (Routes.gate(plant) if opts.walk == "gate" else Routes.climb(plant))))))
+	if opts.walk == "gate":
+		await _gate_clock()
 	auto = Autopilot.new()
 	auto.ui = ui                    # a lift's controls (walk=lift)
 	auto.skip_stuck = true
@@ -540,6 +546,22 @@ func _start_walk() -> void:
 		player.global_position = st[0]
 	auto.start(player, route, looped)
 	last_us = Time.get_ticks_usec()
+
+## The gate walk's clock: the crews' engine run to GATE_AT (the 05:40 bus in, the night crew going home after it),
+## 100 steps a frame, before the measured frames begin; the clock then runs at 1x. A scenario that starts after
+## GATE_AT is measured from its start (the log's GATE line says the clock).
+const GATE_AT := 5 * 3600 + 40 * 60
+func _gate_clock() -> void:
+	var e = ui.clock.engine if ui.clock != null else null
+	if e == null or e._sm == null:
+		_say("GATE no crews in this scenario")
+		return
+	var t0 := Time.get_ticks_msec()
+	while posmod(e.clock(), 864000) < GATE_AT * 10 and e.step_no < 20000:   # (tenths of a second; the day left out)
+		ui.clock.run_steps(100)
+		await get_tree().process_frame      # (a frame between: never seconds of a held main thread on a phone)
+	ui.clock.set_speed(1)        # (normal: 1x)
+	_say("GATE clock %s after %d steps in %d ms" % [ui.clock_text(), e.step_no, Time.get_ticks_msec() - t0])
 
 ## mp=CODE@HOST[:PORT]: the walk in a LAN session (MP2's measurement on a phone; the host is the laptop's).
 func _mp_join() -> void:

@@ -17,6 +17,7 @@ const Lighting = preload("res://app/lighting.gd")
 const SkyBuild = preload("res://builder/sky.gd")
 const Weather = preload("res://builder/weather.gd")
 const Site = preload("res://builder/site.gd")
+const Fleet = preload("res://builder/fleet.gd")
 const SKY_SRC := "res://kit/tex/sky/kloofendal_48d_partly_cloudy_puresky_2k.hdr"
 
 const SURFACE_PARTS := ["platform", "floor", "grating", "road"]
@@ -48,6 +49,8 @@ var texel_scale := 1.0
 var to_sun := Lighting.to_sun({})   # the way to the sun the app lights from (build_all: the built sky's)
 const SITE_TEXEL_SCALE := 2.0
 var kit_structures: Array = []   # the structures the parts kit draws (planting, vehicles, furniture): {s, area}
+var staff := {}                  # staff.json when the content has one (its vehicles: builder/fleet.gd)
+var fleet := {}                  # structure id -> the staff vehicle it is (drawn as a piece that moves, PLANT3D §21.7)
 var rack_tiers: Array = []       # pipe racks' tiers, where pipes rest: {outline, z}
 var kp                           # the parts kit's placement (builder/kit_place.gd)
 var mats := {}
@@ -86,6 +89,10 @@ func read(data_dir: String) -> bool:
 		var a = _read_json(data_dir.path_join(rel))
 		if a != null:
 			areas.append({"id": aid, "rel": rel, "data": a})
+	# the staff's vehicles (PLANT3D §21.7): which parked vehicle each is, drawn as a piece of its own
+	if FileAccess.file_exists(data_dir.path_join("staff.json")):
+		var sd = _read_json(data_dir.path_join("staff.json"))
+		staff = sd if sd is Dictionary else {}
 	return errors.is_empty()
 
 ## The same from dictionaries (the tests' synthetic plants).
@@ -131,6 +138,7 @@ func collect() -> bool:
 			_collect_structure(s, a)
 	if not errors.is_empty():
 		return false
+	fleet = Fleet.claim(staff, kit_structures)
 	_cut_access()
 	_check()
 	kp = KitPlace.new(self)
@@ -786,6 +794,8 @@ func build_all(out_dir: String) -> int:
 			var e = equipment[k]
 			return {"kks": k, "name": e.name, "area": e.area, "at": _arr(Geom.g([e.pos.x, e.pos.y, e.pos.z]))}),
 		"lifts": lifts_manifest(),
+		# the staff's vehicles: the parked piece each is and the roads of their drive ways (builder/fleet.gd)
+		"vehicles": Fleet.manifest(staff, kit_structures, fleet, surfaces),
 		"content": "\n".join(inputs).sha256_text(),
 	}
 	var f := FileAccess.open(out_dir.path_join("plant.json"), FileAccess.WRITE)

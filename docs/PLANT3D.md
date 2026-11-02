@@ -3118,3 +3118,42 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   the day's start; model and staff together 322 µs. S3's shift change was 56 µs: the 91 people and the bus about
   double it. The phone's is S4d's (§21.10's 0.3 ms).
 
+### 21.13 As built for milestone S4c (2026-11-02: the app)
+
+- **The bus drawn and moving** (view only): `builder/fleet.gd` gives each vehicle of staff.json the parked kit
+  `vehicle` of its kind nearest its home (the first in the content's order on a tie: the camp's first bus is `bus_1`,
+  the second stays parked) and searches each drive way's road on the asphalt (the walkable `road` surfaces) on a 1 m
+  grid, keeping to the road's middle, pulled straight where the asphalt allows; the manifest (`plant.json`
+  `vehicles`) holds the piece and the roads. The build draws the claimed bus as a piece of its own
+  (`builder/kit_place.gd` `vehicle_piece`): its form in one mesh and material, its lamps in another (two draw calls,
+  §21.10), lit by the sky, kept out of the far view's merge. `app/vehicles.gd` makes it an AnimatableBody3D (its solids
+  move with it): parked while home, along its road 1.8 m right of the middle (the right-hand lane, taken and left over
+  10 m at the depot) at the fraction of the drive way's time gone, between two steps as the lifts' cabs are, facing
+  the way it goes, standing at a stop where it arrived; a square over it on the map.
+- **The trainee's ride:** "Get on the bus" sends `get_on`; aboard, the walker is taken off the floor (no collisions,
+  no physics) and carried at a front seat, the camera with it, turning with the bus and looked round with the look
+  stick (the walker's own physics frame, which reads it, is off); the bus's own body is not drawn for its rider (from
+  inside, its windows are paint-dark and its walls face away). When the engine puts them off, the walker is put down
+  at the stop before it walks again (beside the bus when nobody is played any more). After a load, a jump or a
+  session's engine the buses are put where the run has them and the walker is let go where the run puts it.
+  "Walk instead" is not offered aboard; at a full bus the panel says so.
+- **People** at a place inside an interior that is not loaded (§18.5) are drawn by nobody, as at a hidden place.
+- **Off duty:** the Crew panel says "off duty", shows the off-duty task and keeps "Sleep to …" (as before S4c; a test
+  now checks it).
+- **The debrief's role tab** ("Your tasks"): each task of the trainee's begun is recorded with the step it was given
+  (its instance's `made`, `ui/plant_ui.gd` `task_given`, saved with the run); one begun more than 15 clock minutes
+  after it was given says LATE (a deviation); the slots a jump went past are listed as "While you slept": a duty's
+  covered by the crew on duty, an off-duty one (a meal, sleep) not made, a task the trainee had begun and left
+  unfinished; the summary counts them. A choice's task is given when chosen (it goes on in its parent's instance).
+  Another engine (a session's join or resync) starts the record afresh.
+- **Known limits:** other players riding are drawn where their walker is, standing at the seat; NPC avatars on the
+  road are not pushed by the bus; a queued task held to the next duty and resumed shifts the role tab's count of
+  begun tasks by one for that task.
+- **The `gate` walk** (`app/routes.gd`, `walk=gate`): the crews (as `crews=1`), the clock run to 05:40 (100 steps a
+  frame) before the measured frames, then the walker loops the gate road's walkway past the bus stop and the gate house to the fence and
+  back at 1x (10 minutes: 05:40 to 06:40, the 05:40 bus in, the 06:25 one home, the night crew out through the gate).
+- **Tests:** `tests/test_vehicles.gd` (the fleet's rules on a small site; the built bus, its roads on the ground, its
+  draw calls, parked at 05:00, moving on its lane between steps, the trainee riding in and put off at the control
+  building's stop, parked again after its run), `tests/test_ui_off_duty.gd` (the Crew panel off duty, the role tab's
+  late and slept slots after a real jump), `tests/test_camp_people.gd` (people in unloaded interiors),
+  `tests/test_frames_route.gd` (the gate walk's route walked).
