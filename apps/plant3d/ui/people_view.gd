@@ -55,6 +55,8 @@ var _walkers: Array = []
 var _walkers_t := 0.0
 var _seated := PackedByteArray()  # per place: someone there sits or lies (not moved aside)
 var _hidden := PackedByteArray()  # per place: drawn by nobody (a bed behind a shut door, PLANT3D §21.1)
+var _inside: PackedStringArray = PackedStringArray()   # per place: the interior it stands in ("" none, §18.5)
+var _inside_n := -1                # the interiors' count _inside was made for
 var NO_ROOM := PackedByteArray()   # (a place without room: none)
 var drawn := PackedInt32Array()     # per avatar person drive() gave: the person (the tests; as long as their people)
 var drawn_kind := PackedByteArray() # and how app/keep_apart.gd took them (WALKING, STANDING, FIXED)
@@ -169,7 +171,7 @@ func update() -> void:
 				p = ways.pos
 			else:
 				p = (_at[leg[0]] as Vector3).lerp(_at[leg[1]], k)
-		elif e.sp_pos[pi] != -1 and not _hidden[e.sp_pos[pi]]:
+		elif e.sp_pos[pi] != -1 and _shown(e.sp_pos[pi]):
 			p = _at[e.sp_pos[pi]]
 		if p == Vector3.INF:
 			continue
@@ -287,7 +289,7 @@ func drive(delta: float) -> void:
 			# just stepped out of a cab: walking to the landing's place
 			place = e.sp_pos[pi]
 			row = apart.fixed(pi, _stepping(pi, _at[place], false, dt))
-		elif e.sp_pos[pi] != -1 and not _hidden[e.sp_pos[pi]]:
+		elif e.sp_pos[pi] != -1 and _shown(e.sp_pos[pi]):
 			place = e.sp_pos[pi]
 			if _seated[place] == 1 or (_at[place] as Vector3).distance_squared_to(cam) > far_r2:
 				row = apart.fixed(pi, _at[place])      # seated or lying: not moved off the seat
@@ -464,6 +466,7 @@ func _places(sm) -> void:
 	_spd.fill(0.0)
 	_seated.resize(sm.places.size())
 	_hidden.resize(sm.places.size())
+	_inside_n = -1
 	for i in sm.places.size():
 		var pl: Dictionary = sm.places[i]
 		_hidden[i] = 1 if pl.get("hidden", false) == true else 0
@@ -471,6 +474,32 @@ func _places(sm) -> void:
 
 
 ## What a person not walking is seen doing: their task step's, or sitting at a desk, seat or table.
+## Someone standing at place i is drawn: not a hidden place, and not in an interior that is not loaded (§21.7).
+func _shown(i: int) -> bool:
+	if _hidden[i] == 1:
+		return false
+	var ints = _interiors()
+	if ints == null or ints.items.is_empty():
+		return true
+	if _inside_n != ints.items.size() or _inside.size() != _hidden.size():
+		# which interior each place stands in (once the interiors are known)
+		_inside_n = ints.items.size()
+		_inside.resize(_hidden.size())
+		for k in _inside.size():
+			_inside[k] = ""
+			var at: Vector3 = _at[k]
+			for id in ints.items:
+				if (ints.items[id].rect as Rect2).has_point(Vector2(at.x, -at.z)):
+					_inside[k] = id
+	return _inside[i] == "" or ints.loaded(_inside[i])
+
+
+func _interiors():
+	if ui != null and ui.main != null and "interiors" in ui.main:
+		return ui.main.interiors
+	return null
+
+
 func _anim(e, sm, pi: int, place: int) -> String:
 	var cur = e.sp_cur[pi]
 	var a := "idle"

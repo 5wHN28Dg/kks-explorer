@@ -26,7 +26,11 @@ const ALARM_WORDS := {
 ## (an instructor's input, PLANT3D §15.5: the fault or repair it made, if any, is marked too), step (a procedure step
 ## that ended), start (the procedure began). `dev` is ""
 ## or the deviation in words; `prio` an alarm's or trip's priority (0 otherwise).
-static func collect(engine, info, tracker, slot: int = 0) -> Dictionary:
+## `given`: "step|task" of the trainee's tasks begun -> the step each was given (ui/plant_ui.gd task_given): one begun
+## more than LATE_S clock seconds after it was given is late (the role tab, PLANT3D §21.7).
+const LATE_S := 900
+
+static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}) -> Dictionary:
 	var me_pi: int = engine.trainee(slot) if engine._sm != null else -1        # whose debrief: the slot's person
 	var m = info.m
 	var proc: Dictionary = tracker.proc if tracker != null else {}
@@ -49,7 +53,8 @@ static func collect(engine, info, tracker, slot: int = 0) -> Dictionary:
 	var sm := {"ops": 0, "refused": 0, "deviations": 0, "raised": 0, "prio": {1: 0, 2: 0, 3: 0}, "acked": 0,
 			"shelved": 0, "trips": 0, "first_out": PackedStringArray(), "faults": 0, "repairs": 0, "permits": {},
 			"locks": 0, "unlocks": 0, "permit_refused": 0, "by_authority": 0, "early": 0, "instructor": 0,
-			"instructor_run": instructor_count(engine), "unsafe": 0, "stops_made": 0, "stops_of_me": 0}
+			"instructor_run": instructor_count(engine), "unsafe": 0, "stops_made": 0, "stops_of_me": 0, "late": 0,
+			"covered": 0}
 	var by_instructor := {}             # "fault|id" or "repair|id" -> the step of the instructor's input
 	var state := {}                     # alarm id -> its state (from step 0: the run may begin later)
 	var inputs: Array = engine.inputs
@@ -192,6 +197,21 @@ static func collect(engine, info, tracker, slot: int = 0) -> Dictionary:
 				var tt = sm_.tasks[ev[3]]["title"] if sm_.tasks.has(ev[3]) else str(ev[3])
 				e.text = "Your task %s: %s" % [{"start": "begun", "done": "done", "abandoned": "ABANDONED",
 						"skipped": "skipped", "held": "held to your next duty", "resumed": "resumed"}.get(ev[4], ev[4]), tt]
+				var gk := "%d|%s" % [ev[0], str(ev[3])]
+				if ev[4] == "start" and given.has(gk) and (int(ev[0]) - int(given[gk])) * engine._ds > LATE_S * 10:
+					# begun more than 15 clock minutes after it was given (§21.7)
+					var mins: int = (int(ev[0]) - int(given[gk])) * engine._ds / 600     # (the clock in tenths of s)
+					e.text = "Your task begun LATE, %d minutes after it was given: %s" % [mins, tt]
+					e.dev = "begun late"
+					sm.late += 1
+				elif ev[4] == "skipped" and _jumped_at(evs, i, int(ev[0])):
+					# a slot the jump went past (§17.6): a duty's, the night the other crew covered; an off-duty one
+					# (a meal, free time) simply not made
+					if _off_task(sm_, me_pi, str(ev[3])):
+						e.text = "While you slept (the clock jumped): %s, not made" % tt
+					else:
+						e.text = "While you slept (the clock jumped): %s, covered by the crew on duty" % tt
+						sm.covered += 1
 			"early":
 				# §17.8: an action of the trainee's made before its task step, counted when the step came
 				var sm_ = engine._sm
@@ -260,6 +280,32 @@ static func collect(engine, info, tracker, slot: int = 0) -> Dictionary:
 	if sm.instructor_run > 0:
 		title += " · instructor mode used"
 	return {"entries": out, "summary": sm, "title": title, "procedure": not proc.is_empty()}
+
+
+## Task `tid` is one of the off-duty routine's of person pi's role (§21.2).
+static func _off_task(sm, pi: int, tid: String) -> bool:
+	var r: Dictionary = sm.roles[sm.people[pi]["role"]]
+	if not r.has("off") or r["off"] == null or not sm.routines.has(r["off"]):
+		return false
+	var ro: Dictionary = sm.routines[r["off"]]
+	if ro.get("idle", "") == tid:
+		return true
+	for x in ro["slots"]:
+		if x[5] == tid:
+			return true
+	return false
+
+
+## A jump was made in step `step`: a `jump` event done among that step's events (the slots it went past are skipped
+## in the same step, §17.6).
+static func _jumped_at(evs: Array, i: int, step: int) -> bool:
+	for k in [-1, 1]:
+		var j: int = i + k
+		while j >= 0 and j < evs.size() and int(evs[j][0]) == step:
+			if evs[j][1] == "jump" and evs[j][4] == "done":
+				return true
+			j += k
+	return false
 
 
 ## The instructor's actions in the whole run (their `instructor` events, PLANT3D §15.5): a run with any used
@@ -401,6 +447,9 @@ static func summary_lines(d: Dictionary) -> PackedStringArray:
 				(" (%d stopped by HSE)" % sm.stops_of_me) if sm.stops_of_me > 0 else "", sm.stops_made])
 	if sm.early > 0:
 		out.append("Done out of order: %d (made before their task step, counted when it came)" % sm.early)
+	if sm.get("late", 0) > 0 or sm.get("covered", 0) > 0:
+		out.append("Your tasks: %d begun late (more than 15 minutes after given); %d of your duty's covered by the crew on duty while you slept"
+				% [sm.get("late", 0), sm.get("covered", 0)])
 	return out
 
 

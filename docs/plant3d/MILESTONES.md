@@ -248,7 +248,7 @@ inputs to the engine), before S4. Its parts, one pull request each:
   91 people), homes in the camp, the camp's and the admin building's places measured on the navigation mesh, the gate
   at the plant gate, the buses' stops, drive ways and runs, meals, the morning meeting, the evening; `day` made again
   over 24 clock hours with its forks and the new ones (§21.9); the staff step's cost on the laptop.
-- **S4c, the app:** the vehicles drawn and on the map, people at hidden places and in unloaded interiors not drawn,
+- **S4c, the app** (**built 2026-11-02**, PLANT3D.md §21.13)**:** the vehicles drawn and on the map, people at hidden places and in unloaded interiors not drawn,
   the trainee's bus ride, the off-duty Crew panel, the debrief per role.
 - **S4d, the Note 9:** the `gate` walk at the shift change (PLANT3D.md §21.10), two judged cool runs, the staff step on
   the phone.

@@ -3089,3 +3089,33 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   (a full one: the next).
 - **The app:** people at a `hidden` place are drawn by nobody (`ui/people_view.gd`; `tests/test_camp_people.gd`).
 
+### 21.13 As built for milestone S4c (2026-11-02: the app)
+
+- **The bus drawn and moving** (view only): `builder/fleet.gd` gives each vehicle of staff.json the parked kit
+  `vehicle` of its kind nearest its home (the first in the content's order on a tie: the camp's first bus is `bus_1`,
+  the second stays parked) and searches each drive way's road on the asphalt (the walkable `road` surfaces) on a 1 m
+  grid, keeping to the road's middle, pulled straight where the asphalt allows; the manifest (`plant.json`
+  `vehicles`) holds the piece and the roads. The build draws the claimed bus as a piece of its own
+  (`builder/kit_place.gd` `vehicle_piece`): its form in one mesh and material, its lamps in another (two draw calls,
+  §21.10), lit by the sky, kept out of the far view's merge. `app/vehicles.gd` makes it an AnimatableBody3D (its solids
+  move with it): parked while home, along its road 1.8 m right of the middle (the right-hand lane, taken and left over
+  10 m at the depot) at the fraction of the drive way's time gone, between two steps as the lifts' cabs are, facing
+  the way it goes, standing at a stop where it arrived; a square over it on the map.
+- **The trainee's ride:** "Get on the bus" sends `get_on`; aboard, the walker is taken off the floor (no collisions,
+  no physics) and carried at a front seat, the camera with it, until the engine puts them off; then the walker stands
+  at the stop. "Walk instead" is not offered aboard.
+- **People** at a place inside an interior that is not loaded (§18.5) are drawn by nobody, as at a hidden place.
+- **Off duty:** the Crew panel says "off duty", shows the off-duty task and keeps "Sleep to …" (as before S4c; a test
+  now checks it).
+- **The debrief's role tab** ("Your tasks"): each task of the trainee's begun is recorded with the step it was given
+  (its instance's `made`, `ui/plant_ui.gd` `task_given`, saved with the run); one begun more than 15 clock minutes
+  after it was given says LATE (a deviation); the slots a jump went past are listed as "While you slept": a duty's
+  covered by the crew on duty, an off-duty one (a meal, sleep) not made; the summary counts both.
+- **The `gate` walk** (`app/routes.gd`, `walk=gate`): the crews (as `crews=1`), the clock run to 05:40 before the
+  measured frames, then the walker loops the gate road's walkway past the bus stop and the gate house to the fence and
+  back at 1x (10 minutes: 05:40 to 06:40, the 05:40 bus in, the 06:25 one home, the night crew out through the gate).
+- **Tests:** `tests/test_vehicles.gd` (the fleet's rules on a small site; the built bus, its roads on the ground, its
+  draw calls, parked at 05:00, moving on its lane between steps, the trainee riding in and put off at the control
+  building's stop, parked again after its run), `tests/test_ui_off_duty.gd` (the Crew panel off duty, the role tab's
+  late and slept slots after a real jump), `tests/test_camp_people.gd` (people in unloaded interiors),
+  `tests/test_frames_route.gd` (the gate walk's route walked).

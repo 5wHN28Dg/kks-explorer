@@ -22,6 +22,7 @@ const SimClock = preload("res://ui/sim_clock.gd")
 const Tracker = preload("res://ui/procedure_tracker.gd")
 const Bindings = preload("res://ui/bindings.gd")
 const LiftView = preload("res://app/lift.gd")
+const VehicleView = preload("res://app/vehicles.gd")
 const SoundPlayer = preload("res://ui/sound_player.gd")
 const Pointer = preload("res://ui/pointer.gd")
 const LinksIn = preload("res://ui/links_in.gd")
@@ -67,6 +68,9 @@ var inputs                      # ui/inputs.gd: every input of the trainee's to 
 var tracker
 var bindings
 var lifts                         # app/lift.gd: the service lifts' cabs, gates and riding (PLANT3D §20.7)
+var vehicles                      # app/vehicles.gd: the staff's buses on their roads, and the trainee's ride (§21.7)
+var task_given := {}              # "step|task" of each of the trainee's tasks begun -> the step it was given at (made):
+                                  # the debrief's role tab marks one begun late (PLANT3D §21.7); saved with the run
 var sounds
 var pointer
 var route                       # app/walk_route.gd: the way on foot to what is pointed at, in a "walk" step
@@ -185,6 +189,10 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	lifts.name = "lifts"
 	m.add_child(lifts)
 	lifts.setup(self)
+	vehicles = VehicleView.new()
+	vehicles.name = "vehicles"
+	m.add_child(vehicles)
+	vehicles.setup(self, m.plant.manifest, m.plant)
 	_build()
 	people = PeopleView.new()
 	people.name = "people"
@@ -889,6 +897,7 @@ func fast_forward() -> void:
 
 
 func restart(scenario: String, quiet := false) -> void:
+	task_given = {}                  # (a new run: none of its tasks begun yet)
 	if session != null and session.active():
 		toast("Not while a session is open: every player's plant would differ. The host starts a new session for another scenario.")
 		return
@@ -899,6 +908,8 @@ func restart(scenario: String, quiet := false) -> void:
 	bindings.use_engine(clock.engine)
 	if lifts != null:
 		lifts.snap()
+	if vehicles != null:
+		vehicles.snap()
 	sounds.engine = clock.engine
 	sounds.reset_edges()
 	alarms.since.clear()
@@ -1301,6 +1312,8 @@ func adopt_engine(e) -> void:
 	bindings.use_engine(e)
 	if lifts != null:
 		lifts.snap()
+	if vehicles != null:
+		vehicles.snap()
 	sounds.engine = e
 	sounds.reset_edges()
 	alarms.since.clear()
@@ -1695,6 +1708,14 @@ func _follow_events(evs: Array, from: int) -> void:
 	for i in range(from, evs.size()):
 		var ev: Array = evs[i]
 		match ev[1]:
+			"task":
+				# a task of the trainee's begun: when it was given (its instance's step made), for the debrief
+				if ev[3] != null and ev[4] == "start" and e._sm != null:
+					var me_pi := my_person()
+					if me_pi != -1 and ev[2] == e._sm.people[me_pi]["id"]:
+						var c = e.sp_cur[me_pi]
+						if c != null and c["task"] == ev[3]:
+							task_given["%d|%s" % [ev[0], ev[3]]] = int(c["made"])
 			"unsafe", "stop":
 				_safety_toast(e, ev)
 			"op":
