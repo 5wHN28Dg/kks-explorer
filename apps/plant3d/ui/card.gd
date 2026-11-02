@@ -71,6 +71,12 @@ func open(c: String, note := "") -> void:
 	if ui.index.has(c):
 		row.add_child(W.button("Show me", func(): ui.show_me(code)))
 		row.add_child(W.button("Go there", func(): ui.fly_to(code)))
+		# the part kind alone in the Workshop (docs/plant3d/WORKSHOP.md §2), for a kind with Workshop data
+		var kind := String(ui.index.nodes[c].get_meta("part", ""))
+		if ui.workshop_has(kind):
+			var wb := W.button("Workshop", func(): ui.open_workshop(kind, code))
+			wb.name = "workshop"
+			row.add_child(wb)
 	_state = W.label("", 20, Color.WHITE)
 	body.add_child(_state)
 	var vals: Array = info.values_of.get(c, [])

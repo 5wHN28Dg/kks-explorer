@@ -27,6 +27,7 @@ static func build_all(out_dir: String, data_dir: String, equipment: Dictionary) 
 	if not DirAccess.dir_exists_absolute(dir):
 		return out
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_dir))
+	out.errors.append_array(build_ui(out_dir.get_base_dir()))
 	var files := Array(DirAccess.get_files_at(dir))
 	files.sort()
 	for f in files:
@@ -50,6 +51,72 @@ static func build_all(out_dir: String, data_dir: String, equipment: Dictionary) 
 		out.built.append(part)
 		out.tris[part] = r.tris
 	return out
+
+## The Workshop space's own pieces (WORKSHOP.md §3, milestone K1), built here as the kinds are, in the plant's one
+## vertex format and its materials (no new pipeline): `built/workshop_ui/space.scn` with `floor` (a matt disc) and
+## `handle` (the three-axis handle: `arrow_x|y|z` and `ring_x|y|z`, each a node with meta `axis` in Godot's axes, unit
+## size: the app scales it).
+const UI_DIR := "workshop_ui"
+
+static func build_ui(out_dir: String) -> Array:
+	var errs: Array = []
+	var MB = load("res://kit/mesh.gd")
+	var root := Node3D.new()
+	root.name = "space"
+	var fm = MB.new()
+	fm.use("paint_grey", "form")
+	fm.cyl(Vector3(0, 0, -0.02), Vector3(0, 0, 0), 6.0, -1.0, 64)
+	root.add_child(_mesh_node("floor", fm))
+	var handle := Node3D.new()
+	handle.name = "handle"
+	root.add_child(handle)
+	# part frame (x right, y forward, z up) of each Godot axis: x -> x, y (up) -> z, z (south) -> -y
+	var axes := {"x": [Vector3(1, 0, 0), Vector3(1, 0, 0), "paint_red"], "y": [Vector3(0, 1, 0), Vector3(0, 0, 1), "paint_green"],
+		"z": [Vector3(0, 0, 1), Vector3(0, -1, 0), "paint_motor"]}
+	for k in axes:
+		var a: Vector3 = axes[k][1]
+		var am = MB.new()
+		am.use(axes[k][2], "identify")
+		am.cyl(a * 0.08, a * 0.8, 0.018, -1.0, 12)
+		am.cyl(a * 0.8, a * 1.0, 0.055, 0.0, 12, true)
+		var an := _mesh_node("arrow_" + k, am)
+		an.set_meta("axis", axes[k][0])
+		handle.add_child(an)
+		var rm = MB.new()
+		rm.use(axes[k][2], "identify")
+		var ac: Array = MB.across(a)
+		rm.torus(Vector3.ZERO, ac[0], ac[1], 0.62, 0.014, TAU, 48, 8)
+		var rn := _mesh_node("ring_" + k, rm)
+		rn.set_meta("axis", axes[k][0])
+		handle.add_child(rn)
+	for c in root.get_children():
+		_own(root, c)
+	var ps := PackedScene.new()
+	if ps.pack(root) != OK:
+		errs.append("the Workshop space did not pack")
+	root.free()
+	if errs.is_empty():
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_dir.path_join(UI_DIR)))
+		var e := ResourceSaver.save(ps, out_dir.path_join(UI_DIR).path_join("space.scn"), ResourceSaver.FLAG_COMPRESS)
+		if e != OK:
+			errs.append("save the Workshop space: error %d" % e)
+	return errs
+
+static func _mesh_node(name: String, mb) -> Node3D:
+	var n := Node3D.new()
+	n.name = name
+	var layers: Dictionary = mb.finish()
+	for k in layers:
+		var L: Dictionary = layers[k]
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, L.arrays)
+		var mi := MeshInstance3D.new()
+		mi.name = "mesh_" + L.mat
+		mi.mesh = mesh
+		mi.set_meta("mat", L.mat)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		n.add_child(mi)
+	return n
 
 ## A kind's parameters in the Workshop: its data file's, or its first instance's in the plant, or the kit's defaults.
 static func params_for(part: String, data: Dictionary, equipment: Dictionary) -> Dictionary:

@@ -68,9 +68,12 @@ func _process(_delta: float) -> void:
 				_capsule(sl).visible = true
 		elif _capsules.has(sl):
 			_capsules[sl].visible = false
-		var lab := _label(sl, r["name"])
+		# a player in the Workshop (WORKSHOP.md §2: their person stands; `pos` flag bit 0) is marked, seen from afar too
+		var away: bool = session.in_workshop(sl)
+		var lab := _label(sl, (r["name"] + "\nin the Workshop") if away else r["name"])
 		lab.global_position = at + Vector3(0, 2.05, 0)
-		lab.visible = at.distance_to(cam) <= NAME_RANGE
+		lab.modulate = Color(1.0, 0.8, 0.35) if away else Color.WHITE
+		lab.visible = away or at.distance_to(cam) <= NAME_RANGE
 	for sl in _labels.keys():
 		if not seen.has(sl):
 			_labels[sl].queue_free()

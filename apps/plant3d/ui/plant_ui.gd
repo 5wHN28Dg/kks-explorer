@@ -370,6 +370,38 @@ func add_settings(box: VBoxContainer) -> void:
 			Quality.save(cf)
 			_setting(row[0], v))
 		box.add_child(cb)
+	_workshop_settings(box)
+
+
+# ------------------------------------------------------------------ the Workshop (docs/plant3d/WORKSHOP.md §2)
+
+func workshop_has(kind: String) -> bool:
+	return main != null and main.workshop != null and main.workshop.has_kind(kind)
+
+
+## Opens the Workshop on a part kind (from the card: `code`, the equipment; from the settings: none).
+func open_workshop(kind: String, code := "") -> bool:
+	if main == null or main.workshop == null:
+		return false
+	if main.hud != null and main.hud.panel.visible:
+		main.hud.show_settings(false)
+	return main.workshop.open(kind, code)
+
+
+## The settings' Workshop row: a button per part kind the Workshop has.
+func _workshop_settings(box: VBoxContainer) -> void:
+	var kinds: Array = main.workshop.kinds() if main.workshop != null else load("res://workshop/workshop.gd").kinds()
+	if kinds.is_empty():
+		return
+	var row := HBoxContainer.new()
+	row.name = "workshop_kinds"
+	box.add_child(row)
+	row.add_child(W.label("Workshop  ", 20, Color.WHITE, false))
+	var WS = load("res://workshop/workshop.gd")
+	for k in kinds:
+		var b := W.button(WS.title_of(k), func(): open_workshop(k))
+		b.name = "workshop_" + k
+		row.add_child(b)
 
 
 func _setting(key: String, on: bool) -> void:
@@ -1281,7 +1313,9 @@ func _session_speed(s: int) -> void:
 ## The walker for `pos` (§6.3): feet, heading, pitch, speed in tenths of m/s.
 func _walker_state() -> Array:
 	var v: Vector3 = player.velocity if "velocity" in player else Vector3.ZERO
-	return [player.global_position, player.rotation.y, player.pivot.rotation.x, clampi(int(round(v.length() * 10.0)), 0, 255)]
+	# flags (MULTIPLAYER.md §6.3): bit 0, in the Workshop (docs/plant3d/WORKSHOP.md §2)
+	var flags := Session.POS_IN_WORKSHOP if main.workshop_open() else 0
+	return [player.global_position, player.rotation.y, player.pivot.rotation.x, clampi(int(round(v.length() * 10.0)), 0, 255), flags]
 
 
 ## The session's engine is the run's from now on (a join, a rejoin, a resync: net/session.gd made it on a worker
@@ -1786,7 +1820,7 @@ func _look_hint() -> void:
 
 
 func _unhandled_input(ev: InputEvent) -> void:
-	if clock == null or player.scripted:
+	if clock == null or player.scripted or main.workshop_open():
 		return
 	if ev.is_action_pressed("menu") or ev.is_action_pressed("ui_cancel"):
 		if close_top():

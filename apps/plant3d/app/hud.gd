@@ -327,7 +327,7 @@ func focus_panel() -> bool:
 
 func refresh() -> void:
 	var screens: bool = main.ui != null and main.ui.screens_open()      # the control room screens take the view
-	main.player.input_enabled = not (main.map.active or panel.visible or main.probing or screens)
+	main.player.input_enabled = not (main.map.active or panel.visible or main.probing or screens or main.workshop_open())
 	var touch := touch_on()
 	var pad := pad_on() and not touch       # (with touch controls Always, the bar stays as it is)
 	for s in sticks:
