@@ -27,6 +27,7 @@ extends RefCounted
 
 const PlantModel = preload("plant_model.gd")
 const Staff = preload("staff.gd")
+const World = preload("world.gd")
 
 const STEP := 0.1
 const SLOTS := 8                    # a session run's slots, 0 to 7 (§17.13)
@@ -183,6 +184,12 @@ var sp_spans: Array = []            # per person: their planned duties' spans [s
 var st_made := {}                   # `seen` reactions made, once per act (§16.7): source key -> true
 var _touched := PackedByteArray()   # people whose acts may have changed in this step's step 9 (staff.gd: scratch)
 var _in_slot := 0                   # the slot of the player's input being handled (step 1, and its locks in step 3)
+# the realism base (REALISM.md §2.1, sim/world.gd): set from a scenario with `world` (shared by clones; built from
+# the scenario, so never saved or sent in a snapshot: their names begin with "_", ui/run_save.gd)
+var _world := false                 # the scenario has `world`: the clock values' slots are the last two values
+var _world_seed := 0                # its seed (its own, else the staff's, else 1)
+var _world_year_day := 1            # the day of the year of the clock's day 1
+var _w_S := 0                       # the clock at step 0, for step 0's clock values (_S is set after _step0)
 
 
 func _init(model = null, scenario = null, session := false) -> void:
@@ -207,6 +214,13 @@ func _init(model = null, scenario = null, session := false) -> void:
 	for t in m.trips:
 		names.append(t["id"] + "_latched")
 	names.append_array(PackedStringArray(m.kept()))
+	if sc.has("world"):
+		_world = true
+		_world_seed = World.seed_of(sc)
+		_world_year_day = int(sc["world"].get("year_day", 1))
+		var wst: Dictionary = sc.get("start", m.plant["clock"]["start"])
+		_w_S = (int(wst["day"]) * 1440 + Staff.hhmm(wst["time"])) * 600
+		names.append_array(PackedStringArray(World.NAMES))
 	_v2 = m.version == 2
 	n = names.size()
 	for i in n:
@@ -479,6 +493,8 @@ func _step0() -> void:
 		var ti: int = _tr_ix[t]
 		latched[ti] = 1
 		cur[_tr[ti][5]] = 1.0
+	if _world:
+		_world_clock(_w_S)      # step 0's clock (§16.1: C(0) = S)
 	astate.resize(_al.size())
 	astate.fill("normal")
 	acount.resize(_al.size())
@@ -672,6 +688,12 @@ func t_at(slot: int = 0) -> int:
 ## The plant clock in tenths of a clock second (§16.1): C(n) = S + n × day_scale + J.
 func clock() -> int:
 	return _S + step_no * _ds + J
+
+
+## The clock values' slots at the clock c (REALISM.md §2.1), the last two of the values.
+func _world_clock(c: int) -> void:
+	cur[n - 2] = World.hour_of(c)
+	cur[n - 1] = World.day_of(c)
 
 
 ## The value a code's `show` binding shows, in the given values.
@@ -1658,6 +1680,9 @@ func _step() -> void:
 				break
 		if not any:
 			first_out.erase(g)
+	# 1w. the realism base (REALISM.md §2.7): the clock values at this step's clock, a jump of step 1 included
+	if _world:
+		_world_clock(clock())
 	# 2. values, in order (stateful nodes read the previous step's values)
 	if _fast != null:
 		_fast.run(cur, prev, _fa, _ia, mem)
@@ -2202,7 +2227,8 @@ func clone():
 			"_faults", "_fault_ix", "_auto_faults", "_all_faults", "_tr_when", "_tr_need", "_al_when", "_al_clear",
 			"_al_sup", "_al_need", "_ops", "_iso", "_wk", "_state_kks", "_v2", "step_no", "ptw_count",
 			"_sm", "_S", "_ds", "_absent", "_fixed_trainee", "_show", "_fault_kks", "J", "ev_mark", "st_order",
-			"st_session", "st_next1", "_lift_ix", "_load_slot", "_lift_ctl", "_lift_ops"]:
+			"st_session", "st_next1", "_lift_ix", "_load_slot", "_lift_ctl", "_lift_ops", "_world", "_world_seed",
+			"_world_year_day", "_w_S"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_worn",

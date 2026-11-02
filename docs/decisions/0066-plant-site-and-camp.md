@@ -15,7 +15,7 @@ buildings and interiors loaded so that the first start (8.8 s of 15 on the Note 
 | Loading while walking | `ResourceLoader.load_threaded_request` loads a scene on a worker thread; the app shows it when done | [D] class_resourceloader |
 | What the start waits for | pipelines, not geometry: the plant loads in ~0.7 s; every surface's pipelines are queued before the first frame, hidden ones too (0060) | [V] 0060 |
 | The far view | 12 m cells, merged far pieces and visibility ranges kept the first train's draw calls down 93 % (0041) | [V] 0041 |
-| Packs | areas already name their pack; packs can become `.pck` files loaded at run time if the APK passes 150 MB, a desktop package 300 MB (0054 §6, the user 2026-10-23) | 0054 |
+| Packs | areas already name their pack; packs can become `.pck` files loaded at run time if the APK passes 150 MB (250 MB since 2026-11-01), a desktop package 300 MB (0054 §6, the user 2026-10-23) | 0054 |
 
 ## Choice
 
@@ -23,7 +23,7 @@ buildings and interiors loaded so that the first start (8.8 s of 15 on the Note 
   the admin building, workshops and the plant gate west of the control building; the camp 130 m beyond the plant
   gate (x −480 to −260), joined by a road with a walkway: walkable in 2–4 minutes, with buses at the shift changes.
   Clear of train 2's mirror (y −92 to −45) and the buried CW pipes (y −30 to −33).
-- **Packs** `wtp`, `site`, `camp`, in the one package while the APK stays under 150 MB and the desktop packages (MSIX, Flatpak) under
+- **Packs** `wtp`, `site`, `camp`, in the one package while the APK stays under 150 MB (250 MB since 2026-11-01) and the desktop packages (MSIX, Flatpak) under
   about 300 MB (the user, 2026-10-23).
 - **Interiors** (the camp's block 1, the mess and kitchen, prayer room, gym, laundry, recreation; the plant's admin
   building and workshops) are areas of their own with `load: inside`, loaded on a worker thread within 15 m of their
@@ -34,6 +34,7 @@ buildings and interiors loaded so that the first start (8.8 s of 15 on the Note 
 
 **When to revisit:** the APK passes 150 MB or a desktop package about 300 MB (packs on demand: a network permission, the user's call, MILESTONES.md);
 the Note 9's walk misses the frame rules near the camp; train 2 is built (its mirror must stay clear).
+Since 2026-11-01 (the user) the APK's limit is 250 MB (0054 §6); the desktop packages' stays about 300 MB.
 
 ## As built (milestone C1, 2026-10-23)
 

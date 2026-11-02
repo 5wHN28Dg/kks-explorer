@@ -22,7 +22,7 @@ must stay Walkdown's. Nothing is published unless
 - the MSIX packages are Walkdown's (publisher CN=Walkdown, never a test certificate), signed, of this version and for
   the architecture their name says (the manifest and the exe), windows-msix.cer is CN=Walkdown, and the APK is
   signed with the plant's key (CN=Walkdown Plant: never a debug or unsigned build; apksigner from the Android SDK);
-- every package is within its size budget (the user, 2026-10-23): the APK at most 150 MB, the desktop packages
+- every package is within its size budget: the APK at most 250 MB (the user, 2026-11-01), the desktop packages
   (the MSIX packages, the Flatpak bundle) at most 300 MB;
 - every CI run on the commit has finished and passed, the Walkdown Plant app workflow among them (a hard gate);
 - GitHub's latest release is a Walkdown vX.Y.Z before, and still the same one after (if publishing made the plant's
@@ -47,11 +47,11 @@ BUILT_FROM = {'walkdown-plant.apk': re.compile(r'assets/(.*/)?built/build_info\.
               'WalkdownPlant.msix': re.compile(r'WalkdownPlant\.exe'),
               'WalkdownPlant-arm64.msix': re.compile(r'WalkdownPlant\.exe')}
 
-# the size budget per package (the user, 2026-10-23; decision 0054 §6): the APK at most 150 MB (past it, packs on
+# the size budget per package (the user, 2026-10-23 and 2026-11-01; decision 0054 §6): the APK at most 250 MB (past it, packs on
 # demand, which need a network permission: the user's call); the desktop packages may grow to about 300 MB. Still
 # compress wherever it costs nothing.
 MB = 1_000_000
-MAX_BYTES = {'walkdown-plant.apk': 150 * MB, 'WalkdownPlant.msix': 300 * MB, 'WalkdownPlant-arm64.msix': 300 * MB,
+MAX_BYTES = {'walkdown-plant.apk': 250 * MB, 'WalkdownPlant.msix': 300 * MB, 'WalkdownPlant-arm64.msix': 300 * MB,
              'walkdown-plant.flatpak': 300 * MB}
 
 

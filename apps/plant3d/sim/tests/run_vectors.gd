@@ -6,6 +6,8 @@ extends SceneTree
 ## Options:
 ##   --vectors=PATH    the vector file (default ref/vectors/plant3d-v1.json of this checkout)
 ##   --vectors2=PATH   the format 2 vector file (default ref/vectors/plant3d-v2.json); its runs are named v2/…
+##   --vectors3=PATH   the realism vector file (default ref/vectors/plant3d-realism.json, docs/plant3d/REALISM.md §13);
+##                     its runs are named realism/…; read only with --only=realism (never by default)
 ##   --data=PATH       the first train's content (default data/plant3d)
 ##   --digests=PATH    also write the SHA-256 of every value at every step of every run, in chunks of 1000 steps, and
 ##                     the state digest (docs/PLANT3D.md §17.14) of every 50th step (`state`)
@@ -15,7 +17,7 @@ extends SceneTree
 ##                     last lines say how many of the engines made here ran each ("PROGRAM straight-line=N interpreter=M")
 ##   --only=PARTS      some of: valid,steps,links,procedure,train,v2 (default all; procedure and train run both the
 ##                     cold start, `train`, and the hot restart, `hot`; v2 runs the format 2 file's valid plant,
-##                     steps and train forks)
+##                     steps and train forks; realism, the realism file's streams and runs: not in the default)
 ##
 ## What is compared with the file: every event exactly (kinds, names, numbers and their int/float type, booleans);
 ## every snapshot's machines, trips, first-out records, alarms (in the model's order), shelved alarms and fast-forward
@@ -26,6 +28,7 @@ extends SceneTree
 
 const PlantModel = preload("../plant_model.gd")
 const PlantEngine = preload("../engine.gd")
+const World = preload("../world.gd")
 const Procedure = preload("../procedure.gd")
 const Links = preload("../links.gd")
 const JsonStrict = preload("../json_strict.gd")
@@ -87,6 +90,16 @@ func _init() -> void:
 			expected += 1 + V2["staff"]["runs"].size()
 		if V2.has("day"):
 			expected += 1 + V2["day"]["forks"].size()
+	var V3 := {}
+	if parts.has("realism"):
+		var path3: String = opts.get("vectors3", repo.path_join("ref/vectors/plant3d-realism.json"))
+		var r3 := JsonStrict.parse(FileAccess.get_file_as_bytes(path3), 1000)
+		if not r3.ok:
+			_result("read", "%s: %s" % [path3, r3.error])
+			_finish(t0)
+			return
+		V3 = r3.value
+		expected += 1 + 1 + V3["staff"]["runs"].size()     # the streams, the plant's counts, its runs
 	var valid_files: Dictionary = V["valid"][0]["files"]
 	# the starts run by their procedures: the cold start (`train`) and the hot restart (`hot`, where the file has it)
 	var starts := ["train", "hot"].filter(func(k): return V.has(k))
@@ -108,6 +121,9 @@ func _init() -> void:
 			_steps(k, V2["steps"][k], V2["valid"][0]["files"], "v2/")
 		if V2.has("staff"):
 			_staff(V2["staff"])
+	if parts.has("realism"):
+		_streams(V3["streams"])
+		_staff(V3["staff"], "realism/staff")
 	if parts.has("procedure") or parts.has("train") or V2.has("train") or WTP_RUNS.any(func(k): return V2.has(k)):
 		train_model = PlantModel.from_dir(opts.get("data", repo.path_join("data/plant3d")))
 		if train_model.error != "":
@@ -344,10 +360,10 @@ func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "")
 ## Format 2's staff (§16–§17): the synthetic plant with staff loads with the reference's counts, and each run replays
 ## from its inputs: every event (a read's value to the file's precision, everything else exactly) and a snapshot
 ## every `every` steps.
-func _staff(st: Dictionary) -> void:
+func _staff(st: Dictionary, prefix := "v2/staff") -> void:
 	var m = PlantModel.from_files(st["files"])
 	if m.error != "" or m.staff == null:
-		_result("v2/staff: the plant with staff loads", m.error if m.error != "" else "no staff")
+		_result(prefix + ": the plant with staff loads", m.error if m.error != "" else "no staff")
 		return
 	var c: Dictionary = st["counts"]
 	var sm = m.staff
@@ -357,25 +373,43 @@ func _staff(st: Dictionary) -> void:
 	var want := {}
 	for k in got:
 		want[k] = c[k]
-	_result("v2/staff: the plant with staff loads with the reference's counts", diff(got, want, "counts"))
+	_result(prefix + ": the plant with staff loads with the reference's counts", diff(got, want, "counts"))
 	for k in st["runs"].size():
-		_staff_run(k, st["runs"][k], st["files"])
+		_staff_run(k, st["runs"][k], st["files"], prefix)
 
 
-func _staff_run(k: int, r: Dictionary, base: Dictionary) -> void:
+## The realism file's streams (REALISM.md §2.1): each stream's FNV-1a of its item, first state and draws.
+func _streams(items: Array) -> void:
+	var d := ""
+	for x in items:
+		var got := {"fnv1a": World.fnv1a(x["item"]), "state": World.stream(int(x["seed"]), World.TAGS[x["tag"]],
+				x["item"]), "draws": []}
+		var s: int = got["state"]
+		for k in x["draws"].size():
+			var dr: Array = World.draw(s)
+			s = dr[0]
+			got["draws"].append(dr[1])
+		d = diff(got, {"fnv1a": x["fnv1a"], "state": x["state"], "draws": x["draws"]},
+				"stream %s %s %s" % [str(x["seed"]), x["tag"], x["item"]])
+		if d != "":
+			break
+	_result("realism/streams (%d)" % items.size(), d)
+
+
+func _staff_run(k: int, r: Dictionary, base: Dictionary, prefix := "v2/staff") -> void:
 	var files := base.duplicate()
 	files["scenarios/s1.json"] = r["scenario"]
 	if r["staff"] != null:
 		files["staff.json"] = r["staff"]
 	for rel in r.get("files", {}):
 		files[rel] = r["files"][rel]
-	var name := "v2/staff/%d (%s)" % [k, r["why"].left(80)]
+	var name := "%s/%d (%s)" % [prefix, k, r["why"].left(80)]
 	var m = PlantModel.from_files(files)
 	if m.error != "":
 		_result(name, m.error)
 		return
 	var e = PlantEngine.new(m, "s1", r.get("session", false))
-	var run := "v2/staff/%d" % k
+	var run := "%s/%d" % [prefix, k]
 	_hash_begin(run, 0)
 	_hash(e)
 	var states: Array = r["states"]
@@ -399,6 +433,8 @@ func _staff_run(k: int, r: Dictionary, base: Dictionary) -> void:
 		d = diff(_reads_as(e.events, r["events"]), r["events"], "events")
 	if d == "" and r.has("digests"):
 		d = diff(digests[run]["state"], r["digests"], "state digests")
+	if d == "" and r.has("world"):     # the realism runs: the world's seed and year day as the engine took them
+		d = diff([e._world_seed, e._world_year_day], r["world"], "world")
 	_result(name, d)
 
 

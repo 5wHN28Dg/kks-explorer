@@ -518,6 +518,57 @@ def build_edge_vectors(V):
 
 
 @unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptRealism(unittest.TestCase):
+    """ref/vectors/plant3d-realism.json (docs/plant3d/REALISM.md §13, milestone RE1) through the app's engine: the
+    world's streams (sim/world.gd), and the runs with the clock values, every value's bits at every step and the state
+    digests, with the straight-line program and with the interpreter alone."""
+
+    def test_realism_vectors(self):
+        with open(os.path.join(REPO, 'ref', 'vectors', 'plant3d-realism.json'), encoding='utf-8') as f:
+            V3 = json.load(f)
+        st = V3['staff']
+        want = {f'realism/staff/{i}': staff_run(st['files'], r, None) for i, r in enumerate(st['runs'])}
+        n = 2 + len(st['runs'])
+        for extra in ([], ['--interpreter=1']):
+            with tempfile.TemporaryDirectory() as d:
+                dig = os.path.join(d, 'digests.json')
+                r = godot('run_vectors.gd', '--only=realism', f'--digests={dig}', *extra, timeout=300)
+                no_errors(self, r)
+                self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+                self.assertIn(f'VECTORS passed={n} failed=0', r.stdout)
+                with open(dig, encoding='utf-8') as f:
+                    got = json.load(f)
+            self.assertEqual(sorted(got), sorted(want), extra)
+            for run, (start, chunks, names, _, states) in want.items():
+                self.assertEqual((got[run]['from'], got[run]['chunks']), (start, chunks), f'{run} {extra}')
+                self.assertEqual(got[run]['state'], states, f'{run} {extra}: the state digests')
+                self.assertEqual(names[-2:], ['world_hour', 'world_day'], run)
+
+    def test_loader_guard(self):
+        """The loader refuses a scenario without `world` when the model reads a clock value, and the step bench
+        answers a load it can't read with its ERROR line (sim/tests/check_world.gd)."""
+        r = godot('check_world.gd', os.path.join(REPO, 'ref', 'vectors', 'plant3d-realism.json'), timeout=300)
+        no_errors(self, r)
+        self.assertIn('WORLD bad=0', r.stdout, r.stdout[-4000:])
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+
+    def test_step_bench(self):
+        """The step bench with a synthetic realism load (app/step_bench.gd, as the phone's `step=bench` runs it):
+        the train as built and with 600 values both load, run the cold start and step at base load."""
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'r600.json')
+            subprocess.run([sys.executable, os.path.join(REPO, 'tools', 'plant3d', 'realism_synth.py'), '600', path],
+                           check=True, cwd=REPO)
+            r = godot('bench_realism.gd', f'--synth=r600:{path}', '--base-steps=200', timeout=600)
+        no_errors(self, r)
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+        for load in ('built', 'r600'):
+            self.assertIn(f'BATCH load={load} values=', r.stdout)
+        self.assertIn('STEP load=r600 values=', r.stdout)
+        self.assertIn('world=true phase=cold_start', r.stdout)
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
 class GdscriptEngineEdges(unittest.TestCase):
     """edge_steps() through the app's engine: the snapshots, the events and every value's bits."""
 
