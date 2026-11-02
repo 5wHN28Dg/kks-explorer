@@ -195,6 +195,10 @@ var _world_seed := 0                # its seed (its own, else the staff's, else 
 var _world_year_day := 1            # the day of the year of the clock's day 1
 var _w_S := 0                       # the clock at step 0, for step 0's clock values (_S is set after _step0)
 var _wx = null                      # the weather (REALISM.md §5.1, sim/world.gd build_weather), or null
+var _wx_mode := 0                   # its mode (0 seeded, 1 fixed, 2 scripted), slots, lag factors and targets per
+var _wx_slots := PackedInt32Array() # kind (one table per driven value), out of _wx for the step's cost
+var _wx_f := PackedFloat64Array()
+var _wx_t: Array = []
 var wx_kind := 0                    # the weather's kind (its index in weather.json's kinds)
 var wx_s := 0                       # the weather's stream
 
@@ -243,6 +247,10 @@ func _init(model = null, scenario = null, session := false) -> void:
 		_wx = World.build_weather(sc, m.weather, ix, _ds, _world_seed, _w_S)
 		wx_kind = _wx["k0"]
 		wx_s = _wx["s0"]
+		_wx_mode = _wx["mode"]
+		_wx_slots = _wx["slots"]
+		_wx_f = _wx["factors"]
+		_wx_t = _wx["targets"]
 	_compile()
 	_step0()
 	for k in m.lifts.size():
@@ -759,10 +767,11 @@ func _world_clock(c: int) -> void:
 ## from the step before's. As ref/plant3d_world.py weather_step.
 func _weather(gap: int, k_before: int) -> void:
 	var c1 := clock()
-	var c0 := c1 - _ds - gap
 	var k := wx_kind
-	if _wx["mode"] == 0:
-		for h in range(c0 / World.HOUR + 1, c1 / World.HOUR + 1):
+	if _wx_mode == 0:
+		var c0 := c1 - _ds - gap
+		var h1 := c1 / World.HOUR
+		for h in range(c0 / World.HOUR + 1, h1 + 1):
 			var dr: Array = World.draw(wx_s)
 			wx_s = dr[0]
 			var row: Array = _wx["rows"][_wx["season_of"][World.year_day_of(_wx["year_day"], h * World.HOUR)]][k]
@@ -775,23 +784,36 @@ func _weather(gap: int, k_before: int) -> void:
 				if acc > x:
 					k = tos[j]
 					break
-	elif _wx["mode"] == 2:
+	elif _wx_mode == 2:
+		var c0 := c1 - _ds - gap
 		for e in _wx["script"]:
 			if c0 < e[0] and e[0] <= c1:
 				k = e[1]
 	wx_kind = k
-	var hour := cur[n - 3]
-	var slots: PackedInt32Array = _wx["slots"]
-	var fs: PackedFloat64Array = _wx["factors"]
-	var ts: Array = _wx["targets"][k]
-	for j in slots.size():
-		var target := World.table_at(ts[j], hour)
-		if gap > 0:
-			cur[slots[j]] = target
+	var u := cur[n - 3]             # world_hour
+	var ts: Array = _wx_t[k]
+	var c := cur
+	for j in _wx_slots.size():
+		# World.table_at inlined (the same comparisons and arithmetic)
+		var t: PackedFloat64Array = ts[j]
+		var last := t.size() - 2
+		var target: float
+		if u < t[0]:
+			target = t[1]
+		elif u >= t[last]:
+			target = t[last + 1]
 		else:
-			var y := cur[slots[j]]
-			cur[slots[j]] = y + (target - y) * fs[j]
-	cur[n - 1] = float(k)
+			var i := 0
+			while i + 2 <= last and t[i + 2] <= u:
+				i += 2
+			target = t[i + 1] + (t[i + 3] - t[i + 1]) * (u - t[i]) / (t[i + 2] - t[i])
+		var sl := _wx_slots[j]
+		if gap > 0:
+			c[sl] = target
+		else:
+			var y := c[sl]
+			c[sl] = y + (target - y) * _wx_f[j]
+	c[n - 1] = float(k)
 	if k != k_before:
 		_ev(["weather", _wx["kinds"][k_before], _wx["kinds"][k]])
 
@@ -2394,7 +2416,7 @@ func clone():
 			"_al_sup", "_al_need", "_ops", "_iso", "_wk", "_state_kks", "_v2", "step_no", "ptw_count",
 			"_sm", "_S", "_ds", "_absent", "_fixed_trainee", "_show", "_fault_kks", "J", "ev_mark", "st_order",
 			"st_session", "st_next1", "_lift_ix", "_load_slot", "_lift_ctl", "_lift_ops", "_world", "_world_seed",
-			"_world_year_day", "_w_S", "_gap", "_wear_ps", "_draws", "_wx", "wx_kind", "wx_s"]:
+			"_world_year_day", "_w_S", "_gap", "_wear_ps", "_draws", "_wx", "wx_kind", "wx_s", "_wx_mode", "_wx_slots", "_wx_f", "_wx_t"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_worn",

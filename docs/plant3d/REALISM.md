@@ -392,7 +392,28 @@ weather at §11's size (weather.json with ten driven values: the train's `ambien
 `ext` values, eight kinds, a draw an hour); the step bench prints a `WEATHER` line, the weather step alone over 20,000
 calls (its lags, and with an hour crossed: a draw and the targets).
 
-NOTE9_TABLE
+| Model step (base load, mean) | built (2,271 values) | + 600 (RE1's shapes) | + 600 `--engine` | + 1,000 `--engine` |
+|---|---|---|---|---|
+| Laptop (headless, `bench_realism.gd`) | 0.205 ms | 0.261 ms (+0.056) | 0.263 ms (+0.058) | 0.265 ms (+0.060) |
+| Note 9, fast core (release build, `step=bench`) | 0.413 ms | 0.498 ms (+0.085) | 0.530 ms (+0.117) | 0.572–0.587 ms (+0.16–0.17) |
+| Note 9, slow core (the same loads when the bench thread ran on a slow core) | 0.714 ms (RE1) | 0.790 ms | 0.826–0.837 ms | 0.905–0.916 ms |
+
+| The weather step alone (10 lags, 20,000 calls) | each step (its lags) | a step with an hour crossed (a draw, the targets) |
+|---|---|---|
+| Laptop | 4.7 µs | 6.1 µs |
+| Note 9, fast core | 10.4 µs | 15.6 µs |
+| Note 9, slow core | 16.3–16.5 µs | 22.9–23.3 µs |
+
+The Note 9 (2026-11-02, a test-signed release build of this branch, two runs of two loads each; evidence in
+`~/kks-work/build/ag1wx1/` on the maintainer's laptop): as in RE1 the bench thread ran some loads on a slow core
+(every figure of such a load about 1.6–2× its fast-core twin, the weather's timing with it), so the table keeps the two
+apart. On the fast core, AG1's nodes and the weather at §11's size add 0.117 ms at 600 values and about 0.17 ms at
+1,000, within the 0.4 ms share; RE1's shapes at 600 measured the same as in RE1 (0.498 ms). **The weather step meets
+§11's ≤ 0.02 ms** in every step on both cores (10.4 and 16.4 µs); the step that crosses an hour (one in 6,000 at the
+train's `day_scale`) takes 15.6 µs on the fast core and 23 µs on the slow one, so its mean over an hour stays under
+0.02 ms. Its first version took 14.0 and 22 µs a step; hoisting the dictionary lookups out of the step and writing the
+table lookup in place (the same comparisons and arithmetic; the vectors unchanged) gave these. The phone's battery was
+at 29–35 °C over the runs.
 
 ## 3. Hands-on work and tools
 
