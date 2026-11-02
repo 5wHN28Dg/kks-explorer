@@ -3297,3 +3297,33 @@ geometry in the model; none of it changes what the staff do, which depends only 
 - **The Note 9:** a `drive` walk (`app/routes.gd`): the trainee as the day's driver at the 05:40 run, the app's own
   driver (an autopilot on the controls, as the walks' walker) along the run's roads, stopping at each stop, 10
   minutes at 1×; the frame rules, two judged cool runs, and the staff step's STEPS line.
+
+### 21.17 As built for milestone S4e (2026-11-02: the driver steers)
+
+- **Both engines** (`ref/plant3d_staff.py`, `sim/staff.gd`, `sim/engine.gd`) carry §21.16's `drive` input bit for bit:
+  `wheel`, `stop` (arrive, pass, stand), `go`, `auto`, their refusals in §21.16's order, phase 3 leaving a steered
+  vehicle alone, the run's end, a release and a jump giving the wheel back, the snapshot's `["road", from]` and the
+  digest's `[wheel slot, from]` for a steered vehicle. The validator is unchanged (no new keys).
+- **Vectors** (`plant3d-v2.json`): `staff.runs` gains six steered runs on the camp's synthetic plant, from 05:30 (the
+  generator's driver, `Drive` in `ref/make_plant3d_vectors.py`, steers as the app's would): every input and refusal;
+  leaving the first stop early, standing at the depot on the way (the wrong place) and passing a stop (its rider off at
+  the last stop); a bus 40 minutes late (its rider walks after 30, the next run skipped); the wheel given back on the
+  road and standing; a jump while steering; a session with a slot playing nobody and a release while steering. Every
+  earlier item is unchanged (a JSON comparison of the old and new file: only the six runs appended).
+  `tests/test_plant3d_staff.py` `SteeredRuns` checks their story by name.
+- **The app** (`app/bus_drive.gd`): takes the wheel when the trainee's person drives a run, drives the bus as §21.16
+  says (a kinematic bicycle model, `test_move` against the solids and other vehicles, the automatic brake), the
+  driving bar, the doors and wheel buttons and keys, the drive log for the debrief (saved with the run), `pos`'s
+  driving flag (`net/session.gd`), the steered bus drawn where its driver has it (`app/vehicles.gd`). Where §21.16
+  left it open: the stop or depot the doors open at is the run's next one when it is in reach (10 m of the bus's sides
+  and ends), else the nearest; the gate barriers count as raised for the bus.
+- **The drive walk** (`walk=drive`): the day's driver, the clock run to 05:30 with the engine driving, then the app's
+  own driver (`pilot`) keeps the bus exactly on the lane of the run's roads (a measurement's driver, not a player's: a
+  pursuit of the lane with the bicycle model got stuck turning round at the camp's stop among its palms and barrier),
+  braking for people, stopping at each stop and leaving by the timetable. On the laptop, 10 minutes: the 05:40 run and
+  the 06:25 run home driven, each stop within 0 to 2 minutes of the timetable, off route 0 s, 3 near misses (people on
+  the road).
+- **Tests:** `tests/test_bus_drive.gd` (the wheel taken, the driver's seat, the pilot to the first stop and the
+  second, the doors' arrival, the automatic brake and its near miss, a wall stopping the bus dead, the wheel given
+  back, the debrief's rows and summary, the saved log's check, `pos`'s driving flag).
+- **On the Note 9:** NOTE9_DRIVE
