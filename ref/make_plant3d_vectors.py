@@ -2064,7 +2064,7 @@ def build_rejects_staff():
 
 INPUTS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
           'remove_lock', 'role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump', 'ppe', 'zone',
-          'stop', 'board', 'alight', 'get_on', 'weather')
+          'stop', 'board', 'alight', 'get_on', 'drive', 'weather')
 
 
 class Slotted:
@@ -2102,6 +2102,75 @@ class Session:
             pl(e)
 
 
+class Drive:
+    """The trainee as a driver who steers (§21.16), as the app's driver would: takes the wheel once aboard on a run,
+    drives each way in `pace` times the engine's steps (plus `late` steps on the run's first), stops at the run's next
+    target, sets off from the first stop at D (`early`: at once) and from the others after their dwell. `skip`: the
+    run's stop numbers driven past (it stops at the next instead); `wrong`: (stop number, place) where it stands on the
+    way to that stop first; `auto`: [(run number driven, 'road' or 'stand')]: gives the wheel back on the road on the way
+    to the second stop, or standing at the first; `runs`: how many runs it steers (then it leaves the wheel alone)."""
+
+    def __init__(self, pace=1, late=0, early=False, skip=(), wrong=None, auto=(), runs=9):
+        self.pace, self.late, self.early, self.skip, self.wrong, self.auto, self.runs = \
+            pace, late, early, set(skip), wrong, set(auto), runs
+        self.run_no = -1            # the runs driven, counted from 0
+        self.run_key = None
+        self.since = None           # the step it set off or stood still
+        self.wrong_done = False
+        self.gave_back = False
+
+    def __call__(self, e, sr, ti, n):
+        vi = next((vi for vi, V in enumerate(sr.veh) if V['driver'] == ti and V['run'] is not None), None)
+        if vi is None:
+            return False
+        V = sr.veh[vi]
+        st = sr.st
+        vid = st.vehicles[vi]['id']
+        stops = st.vehicles[vi]['runs'][V['run']]['stops']
+        key = (V['run'], V['dep'])
+        if key != self.run_key:
+            self.run_key, self.run_no, self.since, self.wrong_done, self.gave_back = key, self.run_no + 1, None, \
+                False, False
+        if self.run_no >= self.runs or self.gave_back:
+            return True
+        if 'wheel' not in V:
+            e.drive(vid, 'wheel')
+            return True
+        if self.since is None:
+            self.since = n
+        if V['at'] is None:             # on the road
+            if (self.run_no, 'road') in self.auto and V['k'] == 1:
+                self.gave_back = True
+                e.drive(vid, 'auto')
+                return True
+            to = V['to']
+            if V['k'] in self.skip and V['k'] < len(stops) - 1:
+                to = stops[V['k'] + 1]
+            if self.wrong is not None and not self.wrong_done and self.wrong[0] == V['k']:
+                to = st.pix[self.wrong[1]]
+            t = st.drive_steps(V['from'], to) * self.pace + (self.late if self.run_no == 0 and V['k'] == 0 else 0)
+            if n - self.since >= max(1, t):
+                if self.wrong is not None and to == st.pix[self.wrong[1]]:
+                    self.wrong_done = True
+                e.drive(vid, 'stop', st.places[to]['id'])
+                self.since = None
+            return True
+        if (self.run_no, 'stand') in self.auto and V['at'] == V['to'] and V['k'] == 0:
+            self.gave_back = True
+            e.drive(vid, 'auto')
+            return True
+        if V['at'] == V['to'] and V['k'] == 0 and not self.early:
+            if e.clock() >= V['dep']:
+                e.drive(vid, 'go')
+                self.since = None
+            return True
+        dwell = st.vehicles[vi]['runs'][V['run']]['dwell'] * st.tpm if V['at'] == V['to'] else 1
+        if n - self.since >= max(1, dwell):
+            e.drive(vid, 'go')
+            self.since = None
+        return True
+
+
 class Trainee:
     """Plays the trainee's person in the generator as the app would, from what the person's current step asks:
     walks to its place (an arrive after `walk` steps, a leave first), types readings (`wrong` of them off by 1),
@@ -2109,8 +2178,9 @@ class Trainee:
     `extra`: more inputs at given steps ([step, kind, …]). The inputs it makes are the vector's (Recorder.inputs)."""
 
     def __init__(self, walk=40, wrong=(), ack_after=5, extra=(), quiet=False, wake=0, ahead=None, undo=False,
-                 back=False, pick=0, slot=None, ride='bus'):
+                 back=False, pick=0, slot=None, ride='bus', drive=None):
         self.walk, self.wrong, self.ack_after, self.extra = walk, set(wrong), ack_after, list(extra)
+        self.drive = drive          # a Drive: the trainee as a driver who steers (§21.16)
         self.ride = ride            # a ride step (§21.4): 'bus' (to its stop, on the first vehicle there) or 'walk'
         self.slot = slot            # a session run's player (§17.13): its inputs carry the slot; None: single-player
         self.pick = pick            # which of a choose's tasks they take
@@ -2146,6 +2216,8 @@ class Trainee:
             self.unacked_since = None
         p = sr.people[ti]
         e = io                      # (every input below is this player's)
+        if self.drive is not None and self.drive(e, sr, ti, n):
+            return                  # (at the wheel: nothing else of theirs)
         cur = p.cur
         if cur is None:
             return
@@ -2289,6 +2361,8 @@ def apply_staff(e, item):
         e.op(*item[2:8], slot=slot)
     elif kind in ('role', 'arrive', 'leave', 'pick', 'jump', 'stop', 'get_on'):
         getattr(e, kind)(item[2], slot=slot)
+    elif kind == 'drive':
+        e.drive(item[2], item[3], item[4] if len(item) > 4 else None, slot=slot)
     elif kind == 'task_ack':
         e.task_ack(slot=slot)
     elif kind == 'release':
@@ -3815,6 +3889,47 @@ def camp_runs():
                                                   when=[(lambda e: _aboard_v(e, 'a_fo1'), ('release', 0)),
                                                         (lambda e: _aboard_v(e, 'drv1') and e.step_no > 420,
                                                          ('role', 'drv1', 1))]), 1200, 30),
+    ] + steered_runs(camp, at5)
+
+
+def steered_runs(camp, at5):
+    """The driver who steers (§21.16), from 05:30: the 05:40 run is made at 05:39."""
+    at530 = {'start': {'day': 1, 'time': '05:30'}}
+    later = copy.deepcopy(camp)         # the bus's first run to the control room's stop, then the gate's
+    later['vehicles'][0]['runs'][0]['stops'] = ['camp_stop', 'cr_stop', 'gate_stop']
+    return [
+        ('the trainee as the driver who steers (§21.16): drive inputs refused before the run (not the driver, an '
+         'unknown vehicle); the wheel taken on the way to the camp\'s stop, a go refused without it first; field '
+         'operator 1 gets on there, the bus leaves at the run\'s departure, arrives at the gate\'s stop and the '
+         'control room\'s (everyone off), drives home and the run ends there (the wheel the engine\'s again); '
+         'refused: the wheel twice, a stop while standing, a go while moving, a stop at a place that is no stop',
+         dict(at530, trainee='drv1'), camp, Trainee(drive=Drive(runs=1), extra=[
+             [2, 'drive', 'bus', 'wheel'], [3, 'drive', 'tram', 'wheel'], [91, 'drive', 'bus', 'go'],
+             [92, 'drive', 'bus', 'wheel'], [92, 'drive', 'bus', 'go'], [93, 'drive', 'bus', 'stop', 'p0'],
+             [93, 'drive', 'bus', 'fly'], [94, 'drive', 'bus', 'stop', 7], [155, 'drive', 'bus', 'stop', 'cr_stop'],
+             [300, 'drive', 'bus', 'auto']]), 1500, 30),
+        ('a steered run that keeps no timetable (§21.16): the bus leaves the camp\'s stop at once (early), stands at '
+         'the depot on the way to the control room\'s stop (the wrong place: nobody on or off), passes the control '
+         'room\'s stop for the gate\'s (field operator 1, for the control room, stays aboard and gets off at the last '
+         'stop with everyone)',
+         dict(at530, trainee='drv1'), later, Trainee(drive=Drive(runs=1, pace=0.5, early=True, wrong=(1, 'depot'), skip=[1])),
+         1500, 30),
+        ('a late steered bus (§21.16, §21.4): the driver takes 40 minutes to the camp\'s stop; field operator 1 waits '
+         '30 minutes there and walks; the bus comes to an empty stop',
+         dict(at530, trainee='drv1'), camp, Trainee(drive=Drive(runs=1, late=400)), 1500, 30),
+        ('the wheel given back (§21.16): on the road to the gate\'s stop (the engine drives on from the camp\'s stop), '
+         'and on the next run standing at its first stop (the engine leaves by §21.4\'s rule)',
+         dict(at530, trainee='drv1'), camp, Trainee(drive=Drive(runs=2, auto=[(0, 'road'), (1, 'stand')])), 1500, 30),
+        ('a jump while steering (§21.16, §21.4): the bus on the road with the wheel taken; the jump puts it home, '
+         'nobody aboard, the wheel the engine\'s',
+         dict(at530, trainee='drv1'), camp, Trainee(drive=Drive(runs=1), extra=[[120, 'jump', '17:35']]), 400, 20),
+        ('a session with the driver steering (§21.16, §17.13): slot 1 plays nobody (its drive refused, authority); '
+         'slot 0 takes the driver, steers from the depot, and is released on the road to the gate\'s stop: the '
+         'engine drives on from the camp\'s stop, an NPC driver now',
+         at530, camp, Session([Trainee(slot=0, drive=Drive()), Trainee(slot=1, quiet=True)],
+                              extra=[[1, 'role', 'drv1', 0], [5, 'drive', 'bus', 'wheel', 1]],
+                              when=[(lambda e: e.step_no > 110 and e.staff.veh[0]['at'] is None
+                                     and 'wheel' in e.staff.veh[0], ('release', 0))]), 400, 20),
     ]
 
 

@@ -2281,6 +2281,10 @@ class Engine:
         """The player's person gets on a vehicle standing at their stop (§21.4)."""
         self._q(('get_on', vehicle), slot)
 
+    def drive(self, vehicle, action, place=None, slot=None):
+        """The player's person, a vehicle's driver, drives it (§21.16): `wheel`, `stop` at a place, `go` or `auto`."""
+        self._q(('drive', vehicle, action, place) if action == 'stop' else ('drive', vehicle, action), slot)
+
     def clock(self):
         """The plant clock in tenths of a clock second (§16.1): C(n) = S + n × day_scale + J."""
         return self.S + self.step_no * self.ds + self.J
@@ -2649,7 +2653,7 @@ class Engine:
             elif kind == 'release' and not self.session:
                 continue        # (a session run's input: a single-player run has no slots)
             elif kind in ('role', 'release', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump',
-                          'ppe', 'zone', 'stop', 'get_on'):
+                          'ppe', 'zone', 'stop', 'get_on', 'drive'):
                 tail = (slot,) if self.session else ()
                 if sr is not None:
                     sr.t_input(item, slot)

@@ -3272,7 +3272,7 @@ geometry in the model; none of it changes what the staff do, which depends only 
 - **The driving model** (app, `app/bus_drive.gd`): a bicycle model (wheelbase from the kit's bus), speed up to 40 km/h
   forward and 8 km/h reversing, 1.5 m/s² throttle, 4 m/s² brake, 6 m/s² for the automatic one, steering up to 35° at
   low speed narrowing with speed; on the ground (the asphalt's height under it). Doors: the stop input is offered
-  ("Open the doors") only standing still within 8 m of a stop or the depot of the drive network (the nearest, by its
+  ("Open the doors") only standing still within 12 m (a bus's length) of a stop or the depot of the drive network (the nearest, by its
   place), the go input by "Close the doors", and the bus does not move with them open.
 - **Controls:** keyboard W/S or the arrows (throttle, brake and reverse when stopped), A/D or the arrows (steer), Space
   (brake), E (doors), F (give the wheel back / take it); gamepad: right trigger throttle, left trigger brake and

@@ -17,6 +17,9 @@
 ##   crew      R: the crews: the role played, its tasks and the radio (gamepad: the bar's Crew button)
 ##   pause     K, gamepad D-pad down: pause, and run again at 1×
 ##   fast      . (full stop), gamepad D-pad right: fast-forward
+##   driving   at a bus's wheel (app/bus_drive.gd, PLANT3D §21.16): move forward/back and the right/left triggers
+##             (throttle, brake), Space too to brake, move left/right to steer; use (E, A) the doors, fly (F, Y) the
+##             wheel to the engine and back
 ##   home      H, gamepad X: to the control room and its screens, and the screens off again there (B is Godot's
 ##             ui_cancel: it closes the top panel)
 extends Node
@@ -28,12 +31,14 @@ const KEYS := {
 	"alarms": [KEY_L], "procedure": [KEY_P], "pause": [KEY_K], "fast": [KEY_PERIOD], "home": [KEY_H],
 	"permits": [KEY_T], "crew": [KEY_R],
 	"look_left": [], "look_right": [], "look_up": [], "look_down": [],
+	"throttle": [], "brake": [],
 }
 const AXES := {   # action: [axis, direction]
 	"move_forward": [JOY_AXIS_LEFT_Y, -1.0], "move_back": [JOY_AXIS_LEFT_Y, 1.0],
 	"move_left": [JOY_AXIS_LEFT_X, -1.0], "move_right": [JOY_AXIS_LEFT_X, 1.0],
 	"look_left": [JOY_AXIS_RIGHT_X, -1.0], "look_right": [JOY_AXIS_RIGHT_X, 1.0],
 	"look_up": [JOY_AXIS_RIGHT_Y, -1.0], "look_down": [JOY_AXIS_RIGHT_Y, 1.0],
+	"throttle": [JOY_AXIS_TRIGGER_RIGHT, 1.0], "brake": [JOY_AXIS_TRIGGER_LEFT, 1.0],
 }
 const BUTTONS := {
 	"run": [JOY_BUTTON_LEFT_STICK], "fly": [JOY_BUTTON_Y], "up": [JOY_BUTTON_RIGHT_SHOULDER],
