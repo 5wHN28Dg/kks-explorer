@@ -3200,12 +3200,12 @@ byte as it was (only the GDScript engine changed; the reference and the vectors 
 - **What changed** (`sim/staff.gd`): a rider waiting at the stop sleeps until their 30 minutes are over (§21.4); a
   vehicle arriving at a stop wakes those waiting there for a ride (`_wake_riders`), and a task, a duty or a stop wakes
   them as any sleeper; the bus's next run is kept while the day, the placement's floor and the last run made stay the
-  same (the engine's `staff_due_memo`, a cache of a function of those three, so no run state, and on the engine, not on
+  same (the engine's `_staff_due_memo`, a cache of a function of those three, so no run state, and on the engine, not on
   the staff object its clones share: the permit panel's lock check steps clones on a worker thread); phase 5 finds the people to look at
   natively (`PackedByteArray.find`) and counts "nobody acting" natively (`Array.count`) before looking person by
   person; the people's loop reads the wake steps once and again after each turn; a few fields of the untyped engine
-  are read into typed locals. Per-phase timers and counters of the work done, on the engine too (`staff_prof_on`, `staff_prof`,
-  `staff_prof_n`); a measured walk with `probe=1` prints them for the gate walk's steps at 1x (`STAFF_PHASES`).
+  are read into typed locals. Per-phase timers and counters of the work done, on the engine too (`_staff_prof_on`, `_staff_prof`,
+  `_staff_prof_n`); a measured walk with `probe=1` prints them for the gate walk's steps at 1x (`STAFF_PHASES`).
 - **The work, counted** (the same on every machine; `tests/test_plant3d_sim.py` `test_staff_work_at_the_gate`): task
   steps run 52,637 → 10,072, the bus's next run worked out 6,002 → 2, people's acts looked at 53,495 → 10,930.
 - **On the laptop** (`bench_staff.gd`, before and after side by side, three times): 170 to 174 µs → 59 to 60 µs a

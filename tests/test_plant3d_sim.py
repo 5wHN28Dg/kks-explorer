@@ -613,6 +613,48 @@ class GdscriptStaffEdges(unittest.TestCase):
 
 
 @unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptIdleRiders(unittest.TestCase):
+    """A ride in an idle task (the adversarial review of the staff step's speed-up, PLANT3D.md §21.15): the camp's
+    synthetic plant with its off-duty idle task a ride to the control room's stop; people off duty go to the camp's
+    stop, wait there (asleep in the app's engine) and get on when the 05:40 bus comes. The app's engine replays it as the
+    reference made it (a run of its own, not in the vectors)."""
+
+    def test_idle_riders_get_on(self):
+        camp = G.with_camp(G.mini_staff()['staff.json'])
+        for t in camp['tasks']:
+            if t['id'] == 'rest_home':
+                t['steps'] = [{'ride': {'from': 'camp_stop', 'to': 'cr_stop'}}, {'work': 30}]
+        base = G.mini_staff()
+        sc = copy.deepcopy(base['scenarios/s1.json'])
+        sc['start'] = {'day': 1, 'time': '05:00'}
+        e = P.Recorder(G.check(G.staff_files(sc, camp)), 's1', False)
+        states, digests = [e.snapshot()], [e.digest()]
+        while e.step_no < 500:
+            e.step()
+            if e.step_no % 20 == 0:
+                states.append(e.snapshot())
+            if e.step_no % G.DIGEST_EVERY == 0:
+                digests.append(e.digest())
+        on = [x for x in e.events if x[1] == 'aboard' and x[3] == 'bus' and x[4] == 'camp_stop' and x[5] == 'on']
+        self.assertTrue(on, 'someone off duty on the bus')    # (crew A's control room operator, waiting from step 244)
+        with open(VECTORS2, encoding='utf-8') as f:
+            V2 = json.load(f)
+        run = {'why': 'idle riders', 'scenario': sc, 'staff': camp, 'inputs': e.inputs, 'until': 500, 'every': 20,
+               'states': states, 'events': e.events, 'digests': digests}
+        V2 = {'about': V2['about'], 'valid': V2['valid'], 'reject': [], 'steps': [],
+              'staff': dict(V2['staff'], runs=[run], reject=[])}
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'idle.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(V2, f)
+            r = godot('run_vectors.gd', '--only=v2', f'--vectors2={path}', timeout=600)
+        no_errors(self, r)
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+        self.assertIn('VECTORS passed=', r.stdout)
+        self.assertIn(' failed=0', r.stdout, r.stdout[-3000:])
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
 class GdscriptEngineInterpreter(unittest.TestCase):
     """The engine steps with a straight-line GDScript program generated from the model (engine.gd _gen_fast), which
     every other test here runs. Its interpreter (engine.gd _run: step 0, faults' `when` nodes, and every step when the

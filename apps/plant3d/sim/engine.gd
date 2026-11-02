@@ -131,11 +131,12 @@ var step_no := 0
 var timing := false                 # when set, every step's time in microseconds goes to step_us (tests/bench_step.gd)
 var step_us := PackedInt64Array()
 var staff_us := PackedInt64Array()    # with timing: step 9's own time in each step
-## (caches and timers of the staff step, sim/staff.gd: never the run's state; a clone starts without them)
-var staff_due_memo: Array = []        # per vehicle: runs_due's last answer, [day, floor, done, answer]
-var staff_prof_on := false            # step 9's per-phase timers and work counts (tests/bench_staff.gd)
-var staff_prof := PackedInt64Array([0, 0, 0, 0, 0, 0, 0])
-var staff_prof_n := {"runs": 0, "due": 0, "acts": 0}
+## (caches and timers of the staff step, sim/staff.gd: never the run's state, so "_": not saved, ui/run_save.gd; a clone
+## starts without them)
+var _staff_due_memo: Array = []        # per vehicle: runs_due's last answer, [day, floor, done, answer]
+var _staff_prof_on := false            # step 9's per-phase timers and work counts (tests/bench_staff.gd)
+var _staff_prof := PackedInt64Array([0, 0, 0, 0, 0, 0, 0])
+var _staff_prof_n := {"runs": 0, "due": 0, "acts": 0}
 
 # format 2's clock and staff (§16–§17): built from the content and the scenario (shared by clones, not saved)
 var _sm = null                      # sim/staff.gd: the plant's staff.json when the scenario has `staff`, else null

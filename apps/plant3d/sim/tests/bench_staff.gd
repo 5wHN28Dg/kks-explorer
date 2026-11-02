@@ -28,14 +28,14 @@ func _init() -> void:
 	e.step(int(opts.get("lead", "4000")))
 	var sm = e._sm
 	var n := int(opts.get("steps", "6000"))
-	var prof: bool = "staff_prof_on" in e      # (the per-phase timers: not in a build before them)
+	var prof: bool = "_staff_prof_on" in e      # (the per-phase timers: not in a build before them)
 	if prof:
-		e.staff_prof_on = true
+		e._staff_prof_on = true
 	e.timing = true
 	e.step(n)
 	e.timing = false
 	if prof:
-		e.staff_prof_on = false
+		e._staff_prof_on = false
 	var st: PackedInt64Array = e.staff_us
 	var s := Array(st)
 	s.sort()
@@ -45,7 +45,7 @@ func _init() -> void:
 	print("STAFF steps=%d mean_us=%.1f p50_us=%d p99_us=%d max_us=%d" % [st.size(), float(total) / st.size(),
 			s[s.size() / 2], s[int(s.size() * 0.99)], s[-1]])
 	for k in (sm.PROF_NAMES.size() if prof else 0):
-		print("PHASE name=%s mean_us=%.1f" % [sm.PROF_NAMES[k], float(e.staff_prof[k]) / n])
+		print("PHASE name=%s mean_us=%.1f" % [sm.PROF_NAMES[k], float(e._staff_prof[k]) / n])
 	if prof:
-		print("COUNT runs=%d due=%d acts=%d" % [e.staff_prof_n["runs"], e.staff_prof_n["due"], e.staff_prof_n["acts"]])
+		print("COUNT runs=%d due=%d acts=%d" % [e._staff_prof_n["runs"], e._staff_prof_n["due"], e._staff_prof_n["acts"]])
 	quit(0)
