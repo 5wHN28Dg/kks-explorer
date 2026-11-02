@@ -148,7 +148,37 @@ func _roof_map() -> Array:
 		return ["the roof map covers %.1f %% of the plant" % (share * 100.0)]
 	if absf(float(r[2]) - img.get_width() * 0.5) > 1e-6 or absf(float(r[3]) - img.get_height() * 0.5) > 1e-6:
 		return ["the roof map's rect %s does not match its %dx%d half-metre texels" % [str(r), img.get_width(), img.get_height()]]
-	return []
+	# the steam turbine hall's middle is under its roof (at its height); the plant's start, in the open, is not
+	var p: Array = []
+	var st: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://built/content/areas/st.json"))
+	var hall: Dictionary = {}
+	for x in st.get("structures", []):
+		if x.get("part", "") == "building" and hall.is_empty():
+			hall = x
+	if hall.is_empty():
+		return ["no building in areas/st.json"]
+	var c := Vector2.ZERO
+	for q in hall.params.outline:
+		c += Vector2(float(q[0]), float(q[1]))
+	c /= hall.params.outline.size()
+	var yaw := -deg_to_rad(float(hall.get("yaw", 0)))
+	var at := c.rotated(yaw) + Vector2(float(hall.at[0]), float(hall.at[1]))   # plan axes (x east, y north)
+	var h := _roof(img, r, Vector3(at.x, 0.0, -at.y))
+	if absf(h - float(hall.params.height)) > 0.3:
+		p.append("the roof map gives %.2f m over the turbine hall's middle (%s), not its %.1f m" % [h, str(at), float(hall.params.height)])
+	var s0: Array = m.start.at
+	if _roof(img, r, Vector3(float(s0[0]), 0.0, float(s0[2]))) != 0.0:
+		p.append("the roof map puts a roof over the plant's start, in the open")
+	return p
+
+
+## The roof's height over a point (Godot's axes) by the roof map, as the shaders read it.
+static func _roof(img: Image, r: Array, at: Vector3) -> float:
+	var u := (at.x - float(r[0])) / float(r[2])
+	var v := (at.z - float(r[1])) / float(r[3])
+	var i := clampi(int(u * img.get_width()), 0, img.get_width() - 1)
+	var j := clampi(int(v * img.get_height()), 0, img.get_height() - 1)
+	return img.get_pixel(i, j).r8 * 0.25
 
 
 func _app(tree: SceneTree) -> Array:
@@ -207,8 +237,20 @@ func _app(tree: SceneTree) -> Array:
 		p.append("no laid dust in a sandstorm")
 	if main.sun.light_energy > Lighting.SUN_ENERGY * 0.5:
 		p.append("the sun is not dimmed in a sandstorm (%f)" % main.sun.light_energy)
-	if ui.sounds.ambience_gain("sand_hiss") <= 0.0 and ui.sounds.outdoors > 0.5:
-		p.append("no sand heard outdoors in a sandstorm")
+	ui.sounds.outdoors = 1.0
+	if ui.sounds.ambience_gain("sand_hiss") < 0.9 or ui.sounds.ambience_gain("wind") <= 1.5:
+		p.append("no sand or strong wind heard outdoors in a sandstorm: %s" % str(ui.sounds.weather))
+	ui.sounds.outdoors = 0.0
+	if ui.sounds.ambience_gain("sand_hiss") != 0.0:
+		p.append("blown sand heard indoors")
+	if not wv.particles.visible:
+		p.append("the emitter is hidden in a sandstorm")
+	if wv.particles.amount != 8000 or (wv.particles.process_material as ShaderMaterial).get_shader_parameter("half_box").x != 40.0:
+		p.append("the full tier (headless) does not get 8,000 particles within 40 m: %d" % wv.particles.amount)
+	wv.set_tier("lean+vis")
+	if wv.particles.amount != 2000 or (wv.particles.process_material as ShaderMaterial).get_shader_parameter("half_box").x != 25.0:
+		p.append("the phone tier does not get 2,000 particles within 25 m: %d" % wv.particles.amount)
+	wv.set_tier("full")
 	if (wv.particles.global_position - ui.player.camera.global_position).length() > 0.01:
 		p.append("the emitter does not follow the camera")
 	# rain: wet surfaces, rain heard (on the roof too, indoors)
@@ -222,20 +264,39 @@ func _app(tree: SceneTree) -> Array:
 		wv._process(1.0)
 	if float(WeatherView.globals.get("wx_wet")) < 0.9 or wv.look.mode != "rain":
 		p.append("a thunderstorm is not wet and raining")
-	if ui.sounds.ambience_gain("rain") < SoundPlayerRef.ROOF_RAIN * 0.9:
-		p.append("rain is not heard")
+	ui.sounds.outdoors = 1.0
+	if absf(ui.sounds.ambience_gain("rain") - 1.0) > 0.01:
+		p.append("rain is not heard outdoors at its full level: %f" % ui.sounds.ambience_gain("rain"))
+	ui.sounds.outdoors = 0.0
+	if absf(ui.sounds.ambience_gain("rain") - SoundPlayerRef.ROOF_RAIN) > 0.01:
+		p.append("rain on the roof is not heard indoors at ROOF_RAIN")
+	if absf(WeatherView.wind_gain(2.0) - 1.0) > 1e-6:
+		p.append("clear weather's wind is not as loud as before weather")
+	# the flashes follow the model's lightning at each slot's first step (not the eased value): exactly those
+	# flash_in gives, whatever the frames
 	var f0: int = wv.flashes
+	var seed := int(e.get("_world_seed"))
+	var want := [0]
+	var count := func(en):
+		if int(en.step_no) % WeatherView.FLASH_SLOT == 0 and not WeatherView.flash_in(seed,
+				int(en.step_no) / WeatherView.FLASH_SLOT, float(en.cur[en.ix["lightning"]])).is_empty():
+			want[0] += 1
+	ui.clock.stepped.connect(count)
 	for i in 200:
+		e.cur[e.ix["lightning"]] = 1.0 if i % 2 == 0 else 0.3
 		ui.clock.run_steps(WeatherView.FLASH_SLOT)
-		e.cur[e.ix["lightning"]] = 1.0
-		wv._process(0.1)
-	if wv.flashes == f0:
-		p.append("no lightning flash in 400 s of a thunderstorm")
+		wv._process(0.016)
+	ui.clock.run_steps(WeatherView.FLASH_SLOT)
+	wv._process(0.016)
+	ui.clock.stepped.disconnect(count)
+	if want[0] == 0 or wv.flashes - f0 < want[0] - 1 or wv.flashes - f0 > want[0]:
+		p.append("%d flashes in 200 slots, the model's lightning at each slot gives %d" % [wv.flashes - f0, want[0]])
 	# back to a scenario without weather: the plant's own look again
 	ui.restart("cold_iron", true)
 	await tree.process_frame
 	wv._process(0.1)
 	if wv.on or not is_equal_approx(main.env.fog_density, WeatherView.CLEAR_FOG) or wv.particles.amount_ratio != 0.0 \
+			or wv.particles.visible \
 			or WeatherView.globals.get("wx_wet") != 0.0 or not ui.sounds.weather.is_empty():
 		p.append("after a restart without weather the weather is still drawn: on %s, fog %f, ratio %f, wet %s, sounds %s" % [
 			wv.on, main.env.fog_density, wv.particles.amount_ratio, str(WeatherView.globals.get("wx_wet")), str(ui.sounds.weather)])

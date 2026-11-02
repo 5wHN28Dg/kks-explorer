@@ -402,6 +402,8 @@ func choose_tier(to_plant := true) -> void:
 	Quality.apply(tier, get_viewport(), sun, env, to_plant)
 	if people != null and people.cfg != Quality.people_share(tier, opts):
 		people.apply_share(Quality.people_share(tier, opts))
+	if weather != null:
+		weather.set_tier(tier)   # the emitter's size by tier (the tier may be chosen after the plant loads)
 	if hud:
 		hud.refresh()
 	_say("tier %s (%s), renderer %s, %s" % [tier, tier_why, Quality.renderer(), RenderingServer.get_video_adapter_name()])

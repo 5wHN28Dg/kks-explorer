@@ -46,7 +46,8 @@ var drawn := {}                             # the drawn values (eased): VALUES' 
 var look := {}                              # the last look_of(drawn): what was set
 var flashes := 0                            # flashes drawn (the tests read it)
 var _flash_left := 0.0
-var _slot := -1
+var _pending: Array = []                    # flashes to come: [their step, distance]
+const THUNDER_MAX := 3
 var _thunder: Array = []                    # [seconds left, gain dB] of thunder on its way
 var _slots := {}                            # value name -> engine slot
 var _engine = null
@@ -59,8 +60,8 @@ var _clear_solar: Array = []                # the clear kind's solar table (weat
 func setup(parent: Node3D, p_env: Environment, p_sun: DirectionalLight3D, p_tier: String) -> void:
 	env = p_env
 	sun = p_sun
-	tier = "full" if p_tier == "full" else "phone"
-	particles = make_particles(tier)
+	particles = make_particles("phone")
+	set_tier(p_tier)
 	parent.add_child(particles)
 	var rm: Dictionary = {}
 	var pl = parent.get("manifest")
@@ -68,6 +69,21 @@ func setup(parent: Node3D, p_env: Environment, p_sun: DirectionalLight3D, p_tier
 		rm = pl.get("roof_map", {})
 	set_roof_map(rm)
 	_apply_globals({"wet": 0.0, "dust_laid": 0.0, "rain": 0.0})
+
+## The emitter's size for a tier (main.gd's: "full", else the phone's): the tier can be chosen after the plant
+## loads (a desktop's first start measures its GPU) or changed in the settings.
+func set_tier(t: String) -> void:
+	tier = "full" if t == "full" else "phone"
+	size_for(particles, tier)
+
+static func size_for(p: GPUParticles3D, t: String) -> void:
+	var spec: Array = TIERS[t]
+	if p.amount != int(spec[0]):
+		p.amount = int(spec[0])
+	var half := Vector3(float(spec[1]), BOX_HEIGHT, float(spec[1]))
+	p.visibility_aabb = AABB(-half - Vector3.ONE, (half + Vector3.ONE) * 2.0)
+	(p.process_material as ShaderMaterial).set_shader_parameter("half_box", half)
+	((p.draw_pass_1 as QuadMesh).material as ShaderMaterial).set_shader_parameter("far", float(spec[1]))
 
 static func make_particles(t: String) -> GPUParticles3D:
 	var spec: Array = TIERS[t]
@@ -214,8 +230,8 @@ func _process(delta: float) -> void:
 	if not on:
 		return
 	var a := 1.0 - exp(-delta / SMOOTH)
-	for id in VALUES:
-		var x := float(e.cur[_slots[id]]) if _slots.has(id) else float(drawn.get(id, 0.0))
+	for id in _slots:   # a value the content's weather does not drive keeps look_of's clear-weather default
+		var x := float(e.cur[_slots[id]])
 		drawn[id] = x if not drawn.has(id) else lerpf(float(drawn[id]), x, a)
 	var hour := float(e.v("world_hour")) if e.ix.has("world_hour") else 12.0
 	look = look_of(drawn, table_at(_clear_solar, hour))
@@ -230,7 +246,9 @@ func _bind(e) -> void:
 	_slots.clear()
 	drawn.clear()
 	_thunder.clear()
-	_slot = -1
+	_pending.clear()
+	if ui != null and ui.clock != null and not ui.clock.stepped.is_connected(_on_step):
+		ui.clock.stepped.connect(_on_step)
 	on = e != null and e.ix.has("world_wx")
 	_clear_solar = []
 	if on:
@@ -256,6 +274,7 @@ func _clear() -> void:
 		sun.shadow_opacity = 1.0
 	if particles != null:
 		particles.amount_ratio = 0.0
+		particles.visible = false
 	_apply_globals({"wet": 0.0, "dust_laid": 0.0, "rain": 0.0})
 	if ui != null and ui.get("sounds") != null:
 		ui.sounds.weather = {}
@@ -269,6 +288,7 @@ func _apply(l: Dictionary) -> void:
 	sun.shadow_opacity = lerpf(0.25, 1.0, smoothstep(0.2, 0.8, l.sun))
 	_apply_globals(l)
 	particles.amount_ratio = l.ratio
+	particles.visible = l.ratio > 0.001   # nothing drawn in clear weather (its pipelines compiled at the start)
 	var pm := particles.process_material as ShaderMaterial
 	pm.set_shader_parameter("velocity", l.velocity)
 	var dm := (particles.draw_pass_1 as QuadMesh).material as ShaderMaterial
@@ -284,7 +304,11 @@ func _apply(l: Dictionary) -> void:
 		dm.set_shader_parameter("min_length", 0.03)
 		dm.set_shader_parameter("colour", Color(0.72, 0.60, 0.44, 0.55))
 	if ui.get("sounds") != null:
-		ui.sounds.weather = {"wind": clampf(0.35 + l.wind / 12.0, 0.35, 1.6), "rain": l.rain, "sand_hiss": l.sand}
+		ui.sounds.weather = {"wind": wind_gain(l.wind), "rain": l.rain, "sand_hiss": l.sand}
+
+## The wind's loop by the model's wind: as before weather (1) at the clear kind's 2 m/s, about +5 dB in a sandstorm.
+static func wind_gain(w: float) -> float:
+	return clampf(0.6 + 0.2 * w, 0.6, 1.8)
 
 static func _apply_globals(l: Dictionary) -> void:
 	for kv in [["wx_wet", "wet"], ["wx_dust", "dust_laid"], ["wx_rain", "rain"]]:
@@ -292,22 +316,32 @@ static func _apply_globals(l: Dictionary) -> void:
 		globals[kv[0]] = x
 		RenderingServer.global_shader_parameter_set(kv[0], x)
 
-## Lightning: the flashes of the slots the model's step has reached, and their thunder after the distance's delay.
+## Lightning, after every model step (the clock's `stepped`): at each slot's first step, whether a flash falls in it
+## by the model's own `lightning` there (every peer steps the same values: never this device's eased ones), kept until
+## its step comes. Thunder follows a flash after the strike's distance at 343 m/s.
+func _on_step(e) -> void:
+	if not on or e != _engine or not _slots.has("lightning") or int(e.step_no) % FLASH_SLOT != 0:
+		return
+	var f := flash_in(int(e.get("_world_seed")), int(e.step_no) / FLASH_SLOT, float(e.cur[_slots["lightning"]]))
+	if not f.is_empty():
+		_pending.append(f)
+
+## The flashes whose step has come: each counted and lit (several in one frame, in fast play, light it once), the
+## thunder of at most the last THUNDER_MAX of them.
 func _flash(e, delta: float) -> void:
 	_flash_left = maxf(0.0, _flash_left - delta)
-	var k: int = int(e.step_no) / FLASH_SLOT
-	if _slot < 0:
-		_slot = k   # flashes start from now: the slots before this device took the run are not replayed
-	_slot = maxi(_slot, k - 4)   # fast play or a jump: only the last few slots' flashes, not a barrage
-	while _slot < k:
-		var f := flash_in(int(e.get("_world_seed")), _slot, float(look.get("lightning", 0.0)))
-		_slot += 1
-		if f.is_empty():
+	var keep_p: Array = []
+	for f in _pending:
+		if int(f[0]) > int(e.step_no):
+			keep_p.append(f)
 			continue
 		flashes += 1
 		_flash_left = FLASH_TIME
 		var d := float(f[1])
 		_thunder.append([d / 343.0, -20.0 * log(d / 400.0) / log(10.0)])
+	_pending = keep_p
+	if _thunder.size() > THUNDER_MAX:
+		_thunder = _thunder.slice(_thunder.size() - THUNDER_MAX)
 	var keep: Array = []
 	for t in _thunder:
 		t[0] -= delta

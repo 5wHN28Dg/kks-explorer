@@ -15,6 +15,13 @@ varying float fade;
 
 void vertex() {
 	vec3 centre = (MODELVIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;   // the particle, in view space
+	// a particle not emitted (its transform zero: at the eye) or hidden under a roof: put behind the camera, so no
+	// quad is rasterised through the view
+	if (COLOR.a < 0.5 || length(MODEL_MATRIX[0].xyz) < 1e-6) {
+		VERTEX = vec3(0.0, 0.0, 10.0);
+		fade = 0.0;
+		return;
+	}
 	vec3 along = (VIEW_MATRIX * vec4(velocity, 0.0)).xyz * length_s;
 	float len = max(length(along), min_length);
 	vec3 axis = length(along) > 1e-4 ? normalize(along) : vec3(0.0, 1.0, 0.0);
