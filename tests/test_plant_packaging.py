@@ -25,6 +25,14 @@ def godot():
     return p if os.access(p, os.X_OK) else None
 
 
+class Required(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get('KKS_REQUIRE_GODOT'), 'only where KKS_REQUIRE_GODOT=1 (plant3d-app.yml content)')
+    def test_the_msix_tests_are_not_skipped(self):
+        """CI's content job sets KKS_REQUIRE_GODOT=1: MsixLayout's skip would otherwise hide a moved Godot"""
+        self.assertTrue(godot(), 'the pinned Godot is not at ' + '~/.local/kksdev/godot')
+        self.assertTrue(shutil.which('openssl'), 'no openssl')
+
+
 @unittest.skipUnless(godot() and shutil.which('openssl'), 'needs the pinned Godot (logos) and openssl')
 class MsixLayout(unittest.TestCase):
     @classmethod
