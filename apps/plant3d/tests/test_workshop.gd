@@ -188,18 +188,25 @@ func _pieces(part: String, ws: Dictionary) -> void:
 		var arr := (L.mesh as ArrayMesh).surface_get_arrays(0)
 		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 		var nm: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
-		var step := maxi(1, v.size() / 48)
-		var seen := 0
-		# rays turned a little off the axes and from a point a little off the vertex: never exactly along an edge of
-		# the outside (a ray through a shared edge can pass between its two triangles)
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		# each triangle's centre (a corner can lie on the outside it closes against: a ring's outer edge), moved a
+		# little inwards and off any axis; rays turned a little off the axes, never exactly along an outside edge
 		var turn := Basis(Vector3(0.3, 0.7, 0.2).normalized(), 0.13)
-		for i in range(0, v.size(), step):
-			var from: Vector3 = v[i] - nm[i] * 0.0005 + Vector3(1.7e-5, -1.1e-5, 0.6e-5)
+		var ntri := idx.size() / 3
+		var step := maxi(1, ntri / 48)
+		var seen := 0
+		for t in range(0, ntri, step):
+			var a := idx[t * 3]
+			var b := idx[t * 3 + 1]
+			var c := idx[t * 3 + 2]
+			var centre := (v[a] + v[b] + v[c]) / 3.0
+			var n := (nm[a] + nm[b] + nm[c]).normalized()
+			var from: Vector3 = centre - n * 0.0005 + Vector3(1.7e-5, -1.1e-5, 0.6e-5)
 			for d in DIRS:
 				if not _hits(occ, from, (turn * d).normalized()):
 					seen += 1
 					break
-		check(seen == 0, "%s: %s: %d points of a hidden piece are seen from outside" % [part, k, seen])
+		check(seen == 0, "%s: %s: %d triangles of a hidden piece are seen from outside" % [part, k, seen])
 
 func _hits(tris: PackedVector3Array, from: Vector3, dir: Vector3) -> bool:
 	for t in range(0, tris.size(), 3):
