@@ -476,6 +476,8 @@ func _places(sm) -> void:
 ## What a person not walking is seen doing: their task step's, or sitting at a desk, seat or table.
 ## Someone standing at place i is drawn: not a hidden place, and not in an interior that is not loaded (§21.7).
 func _shown(i: int) -> bool:
+	if i >= _hidden.size():
+		return true             # (places not read yet: update() reads them)
 	if _hidden[i] == 1:
 		return false
 	var ints = _interiors()

@@ -21,6 +21,7 @@ func run(tree: SceneTree) -> Array:
 	if sm == null or not sm.has_homes:
 		main.free()
 		return ["the first train's staff have no homes (PLANT3D §21.1)"]
+	ui.people.update()              # (the places read)
 	var hidden := 0
 	var drawn := 0
 	for pi in sm.people.size():
