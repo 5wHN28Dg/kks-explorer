@@ -191,7 +191,7 @@ class Drawings(unittest.TestCase):
         widths = lambda code: {w for w, d, pts, o in sh.lines if o == code}
         self.assertEqual(widths('10LBA30BR001'), {0.7})      # DN 300
         self.assertEqual(widths('10LCQ10BR001'), {0.5})      # DN 80
-        label = ' '.join(t[5] for t in sh.texts if t[6] == '10LBA30BR001')
+        label = ' '.join(t[5] for t in sh.texts if t[6] == '10LBA30BR001#label')
         for part in ('10LBA30BR001', 'DN300', 'HP STEAM'):
             self.assertIn(part, label)
         # an off-sheet connector: an arrow pentagon (six points, closed) with the other sheet's number
@@ -254,6 +254,67 @@ class Drawings(unittest.TestCase):
             out.add(r.stdout.strip())
         self.assertEqual(len(out), 1)
 
+    def test_checks_see_the_exact_geometry(self):
+        # a line through another owner's symbol (a leader through a valve); the pipe the valve sits on may
+        sh = pid.Sheet('t', 'WDP-PID-999', 't')
+        sh.symbols.append(((100, 100, 108, 105), 'V1'))
+        sh.hosts['V1'] = 'P1'
+        sh.line([(90, 102.5), (120, 102.5)], 0.5, 0, 'P1')
+        sh.line([(104, 90), (104, 99.9)], 0.25, 0, 'L1')            # ends on its edge: a joint
+        pid.check_sheet(sh)
+        sh.line([(103, 90), (103, 120)], 0.25, 0, 'L2')
+        with self.assertRaisesRegex(pid.LayoutError, 'runs through the symbol of V1'):
+            pid.check_sheet(sh)
+        # two owners' lines along each other
+        sh = pid.Sheet('t', 'WDP-PID-999', 't')
+        sh.line([(0, 50), (40, 50)], 0.5, 0, 'P1')
+        sh.line([(30, 50), (60, 50)], 0.25, 0, 'P2#label')
+        with self.assertRaisesRegex(pid.LayoutError, 'along each other'):
+            pid.check_sheet(sh)
+        # a text over another owner's filled shape or circle, and a pipe's label on its own pipe
+        sh = pid.Sheet('t', 'WDP-PID-999', 't')
+        sh.text(100, 100, 2.5, 'LABEL', 0, 0, 'P1#label')
+        sh.fill([(101, 98), (103, 98), (102, 99.5)], 'P2')
+        with self.assertRaisesRegex(pid.LayoutError, 'filled shape'):
+            pid.check_sheet(sh)
+        sh = pid.Sheet('t', 'WDP-PID-999', 't')
+        sh.text(100, 100, 2.5, 'LABEL', 0, 0, 'P1#label')
+        sh.line([(95, 99), (120, 99)], 0.5, 0, 'P1')
+        with self.assertRaisesRegex(pid.LayoutError, 'crosses the text'):
+            pid.check_sheet(sh)
+        sh = pid.Sheet('t', 'WDP-PID-999', 't')
+        sh.text(100, 100, 2.5, 'LABEL', 0, 0, '#legend')
+        sh.line([(95, 99), (120, 99)], 0.5, 0, '#sym:pump')
+        with self.assertRaisesRegex(pid.LayoutError, 'crosses the text'):
+            pid.check_sheet(sh)
+
+    def test_content_mistakes_are_named(self):
+        areas = copy.deepcopy(self.areas)
+        areas['bop']['equipment'].append(copy.deepcopy(areas['bop']['equipment'][0]))
+        with self.assertRaisesRegex(pid.LayoutError, 'twice'):
+            pid.items_of(areas)
+        areas = copy.deepcopy(self.areas)
+        areas['wtp']['equipment'].append({'kks': '00GZZ10BB001', 'name': 'A tank no sheet takes',
+                                          'part': 'tank_vertical', 'at': [400, 100, 0]})
+        with self.assertRaisesRegex(pid.LayoutError, 'no sheet takes'):
+            pid.make(areas_override=areas)
+
+    def test_an_item_at_the_pipes_start_goes_with_it(self):
+        # `at` 0.0 is the pipe's very start, not "unset": an item there beside an end on another sheet whose equipment
+        # shares its system group is drawn on that end's stub
+        areas = copy.deepcopy(self.areas)
+        for p in areas['bop']['pipes']:
+            if p['kks'] == '00LBG10BR001':           # turned round: from the HP turbine (on st) to the boiler
+                p['from'], p['to'] = p['to'], p['from']
+                p['valves'][0]['at'] = 0.0               # 30MAW10AA001, beside the turbine
+        items = pid.items_of(areas)
+        ids = [s['id'] for s in pid.SHEETS]
+        inline = {}
+        for sid in ('bop', 'st'):
+            g = pid.Gen(self.plant, areas, ids.index(sid), items, pid.SHEETS)
+            g.collect()
+            inline[sid] = [it.code for pp in g.pipes if pp['code'] == '00LBG10BR001' for it in pp['inline']]
+        self.assertEqual(inline, {'bop': [], 'st': ['30MAW10AA001']})
 
 if __name__ == '__main__':
     unittest.main()

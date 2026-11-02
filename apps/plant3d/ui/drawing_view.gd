@@ -20,7 +20,7 @@ const SELECT := Color(1.0, 0.45, 0.0)
 const FAR_Z := 2.6          # px per mm below which the far level is drawn (2.5 mm text under 6.5 px: unreadable)
 const NEAR_Z := 6.0         # and from which the near one
 const MAX_Z := 30.0
-const FAR_TEXT := 4.9       # the far level's smallest text (mm): the sheet's title, the title block's large lines
+const FAR_TEXT := 4.9       # the far level's smallest text (mm): the sheet's title (7 mm) and the legend's code example
 const KEEP := 3             # sheets kept drawn (the last ones opened); others are freed (memory, REALISM.md §11)
 const TAP_SLOP := 12.0
 const PAN_SPEED := 900.0    # px a second, the stick all the way
@@ -254,10 +254,12 @@ func _clamp() -> void:
 	var cs := _canvas_size()
 	var s := _size_of(current) * zoom
 	var m := 60.0
+	# with a card open the sheet's right edge may go as far as the card's left: a code near it is not left under it
+	var right := clear_rect().size.x
 	if s.x + 2 * m <= cs.x:
 		offset.x = clampf(offset.x, m, cs.x - s.x - m) if cs.x - s.x - m >= m else (cs.x - s.x) * 0.5
 	else:
-		offset.x = clampf(offset.x, cs.x - s.x - m, m)
+		offset.x = clampf(offset.x, right - s.x - m, m)
 	if s.y + 2 * m <= cs.y:
 		offset.y = clampf(offset.y, m, cs.y - s.y - m) if cs.y - s.y - m >= m else (cs.y - s.y) * 0.5
 	else:
@@ -601,6 +603,7 @@ func tap(at: Vector2) -> void:
 	if h.is_empty():
 		return
 	if h[0] == "link":
+		ui.close_card()                  # the card was of a code on the sheet left behind
 		open_sheet(h[1], h[2])
 		return
 	selected = h[1]

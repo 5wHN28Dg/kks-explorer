@@ -213,6 +213,21 @@ func run(tree: SceneTree) -> Array:
 	if main.map.active:
 		main.toggle_map()
 	ui.open_drawing()
+	# a code at the sheet's right edge, opened from its card, is not left under the card
+	ui.open_card("00GHC10AP001")
+	App.find_button(ui.card, "Drawing").pressed.emit()
+	await tree.process_frame
+	var edge: Vector2 = dv.to_canvas(dv.spot_rect("00GHC10AP001").get_center()) + dv.canvas.global_position
+	if dv.current != "wtp2" or edge.x > ui.card.position.x:
+		p.append("00GHC10AP001 on %s is under the card: %.0f > %.0f" % [dv.current, edge.x, ui.card.position.x])
+	# Show me over the drawings shows the code on its sheet (the plant is not drawn behind them)
+	ui.show_me("10LAC10AP001")
+	if not ui.drawings_open() or dv.current != "hrsg1" or dv.selected != "10LAC10AP001":
+		p.append("Show me over the drawings showed %s at %s" % [dv.current, dv.selected])
+	ui.show_me("10BAC10")
+	if ui.drawings_open():
+		p.append("Show me for a code on no sheet left the drawings over the plant")
+	ui.open_drawing()
 	# Esc closes the card first, then the drawings; the view comes back
 	while ui.close_top():
 		pass

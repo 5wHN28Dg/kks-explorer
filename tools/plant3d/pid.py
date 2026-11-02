@@ -95,8 +95,8 @@ def _codes_in(x, out):
 
 
 def items_of(areas):
-    """Every equipment item, part, pipe and inline item of the areas: {code: Item}."""
-    out = {}
+    """Every equipment item, part, pipe and inline item of the areas: {code: Item}. A code given twice is refused."""
+    out = _Once()
     for aid, a in areas.items():
         for e in a.get('equipment', []):
             eq = out[e['kks']] = Item(e['kks'], e.get('name', ''), e['part'], aid, 'equipment', e)
@@ -108,6 +108,13 @@ def items_of(areas):
                 for v in p.get(kind, []):
                     out[v['kks']] = Item(v['kks'], v.get('name', ''), v['part'], aid, 'inline', v, pipe=p['kks'])
     return out
+
+
+class _Once(dict):
+    def __setitem__(self, k, v):
+        if k in self:
+            raise LayoutError(f'{k} is in the content twice')
+        dict.__setitem__(self, k, v)
 
 
 def drawn(it, items):
@@ -154,6 +161,7 @@ class Sheet:
         self.spots, self.links, self.revisions, self.clouds = [], [], [], []
         self.symbols = []          # (box, owner): symbols must not overlap each other
         self.positions = {}        # an equipment block's code -> its symbol's centre (a revision keeps them, revise())
+        self.hosts = {}            # an inline item's code -> the pipe it sits on (the pipe runs through its symbol)
         self.inside = {}           # a code drawn inside another's symbol (an HRSG's heating surfaces) -> that code
 
     def line(self, pts, w, dash, owner):
@@ -605,7 +613,8 @@ class Gen:
                     e = p.get(side, {})
                     if 'kks' not in e:
                         continue
-                    near = (it.at or 0.5) < 0.5 if k == 0 else (it.at or 0.5) > 0.5
+                    at = 0.5 if it.at is None else it.at
+                    near = at < 0.5 if k == 0 else at > 0.5
                     if near and e['kks'][:4] == it.code[:4]:
                         moved_to = self.home_of.get(self._owner(e['kks']))
                 if (moved_to or self.home_of.get(pp['code'])) == self.sid:
@@ -1270,7 +1279,7 @@ class Gen:
                 cx, cy, ux, uy, horiz, box = geo(si, t, rot)
                 if not grid.free_box(box, own, 0.3):
                     continue
-                if is_fe and self._bubble_room(grid, cx, cy, horiz, bw, bh, own) is None:
+                if is_fe and self._bubble_room(grid, cx, cy, horiz, bw, bh, own, pp['code']) is None:
                     continue
                 chosen[(si, t)] = rot
                 return True
@@ -1285,18 +1294,22 @@ class Gen:
         cx, cy, ux, uy, horiz, box = geo(si, t, rot)
         if is_fe:
             S.orifice(S.Pen(sh, cx, cy, it.code, 0 if horiz else 90))
-            bb = self._bubble_at(sh, grid, it, cx, cy, horiz, bw, bh, own)
+            ob = (cx - 1.2, cy - 3.2, cx + 1.2, cy + 3.2) if horiz else (cx - 3.2, cy - 1.2, cx + 3.2, cy + 1.2)
+            sh.symbols.append((ob, it.code))
+            sh.hosts[it.code] = pp['code']
+            bb = self._bubble_at(sh, grid, it, cx, cy, horiz, bw, bh, own, pp['code'])
             sh.spot(it.code, union(box, bb), True)
         else:
             S.VALVES[kind](S.Pen(sh, cx, cy, it.code, rot))
             sh.symbols.append((box, it.code))
+            sh.hosts[it.code] = pp['code']
             sh.spot(it.code, box, True)
         grid.block(box, 0.3)
         taken.append((si, t - length / 2, t + length / 2))
         self.homes.append(it.code)
         return segs[si][2] + t + length / 2
 
-    def _bubble_room(self, grid, cx, cy, horiz, bw, bh, own):
+    def _bubble_room(self, grid, cx, cy, horiz, bw, bh, own, host=None):
         for off in (6.0 + bh / 2, -(6.0 + bh / 2), 11.0 + bh / 2, -(11.0 + bh / 2)):
             if horiz:
                 bx, by = cx, cy - off
@@ -1308,12 +1321,13 @@ class Gen:
                 box = (bx - ww / 2, by - bh / 2, bx + ww / 2, by + bh / 2)
                 lead = (cx - math.copysign(1.0, off) * 1.5, cy, bx + math.copysign(1.0, off) * ww / 2, by)
             lb = (min(lead[0], lead[2]), min(lead[1], lead[3]), max(lead[0], lead[2]), max(lead[1], lead[3]))
-            if grid.free_box(box, own, 0.8) and grid.free_box(lb, own, 0.2):
+            if grid.free_box(box, own, 0.8) and grid.free_box(lb, own, 0.2) and self.clear(self.sh, box, None) and \
+                    self.clear_seg(self.sh, (lead[0], lead[1]), (lead[2], lead[3]), host):
                 return bx, by, box, lead
         return None
 
-    def _bubble_at(self, sh, grid, it, cx, cy, horiz, bw, bh, own):
-        got = self._bubble_room(grid, cx, cy, horiz, bw, bh, own)
+    def _bubble_at(self, sh, grid, it, cx, cy, horiz, bw, bh, own, host=None):
+        got = self._bubble_room(grid, cx, cy, horiz, bw, bh, own, host)
         bx, by, box, lead = got
         S.bubble(S.Pen(sh, bx, by, it.code), it.code, S.isa_letters(it.code, it.kind))
         sh.line([(lead[0], lead[1]), (lead[2], lead[3])], S.THIN, 0, it.code)
@@ -1327,7 +1341,7 @@ class Gen:
         def ok(si, t):
             a, b, s0, L = segs[si]
             ux, uy = (b[0] - a[0]) / L, (b[1] - a[1]) / L
-            return self._bubble_room(grid, a[0] + ux * t, a[1] + uy * t, abs(uy) < 0.5, bw, bh, own) is not None
+            return self._bubble_room(grid, a[0] + ux * t, a[1] + uy * t, abs(uy) < 0.5, bw, bh, own, pp['code']) is not None
 
         want = self._want(pp, it, total)
         got = self._free_spot(segs, total, taken, 3.0, want, after, ok)
@@ -1337,7 +1351,7 @@ class Gen:
         a, b, s0, L = segs[si]
         ux, uy = (b[0] - a[0]) / L, (b[1] - a[1]) / L
         cx, cy = a[0] + ux * t, a[1] + uy * t
-        box = self._bubble_at(sh, grid, it, cx, cy, abs(uy) < 0.5, bw, bh, own)
+        box = self._bubble_at(sh, grid, it, cx, cy, abs(uy) < 0.5, bw, bh, own, pp['code'])
         sh.fill(diamond((cx, cy), 0.7), it.code)
         sh.spot(it.code, box, True)
         taken.append((si, t - 1.5, t + 1.5))
@@ -1389,27 +1403,33 @@ class Gen:
                                 continue
                             if any(overlap(box, t) for t in self.text_boxes):
                                 continue
-                            if not grid.free_box(box, own, 0.2) or not self.clear(sh, box, pp['code']):
+                            if not grid.free_box(box, own, 0.2) or not self.clear(sh, box, None):
                                 continue
-                            if horiz:
-                                for li, t in enumerate(lines):
-                                    sh.text(box[0], box[1] + (li + 1) * (h + 1.0) - 0.6, h, t, 0, 0, pp['code'])
-                            else:
-                                for li, t in enumerate(lines):
-                                    sh.text(box[0] + (li + 1) * (h + 1.0) - 0.6, box[3], h, t, 90, 0, pp['code'])
+                            lead = None
                             if off > 5.0:
-                                # a leader from the label to its line
+                                # a leader from the label to its line, at a point of the run itself
                                 if horiz:
-                                    lx = min(max((box[0] + box[2]) / 2, lo + wmax - 3.0 + 1.0), hi - wmax + 3.0 - 1.0)
+                                    rx0, rx1 = sorted((a[0], b[0]))
+                                    lx = min(max((box[0] + box[2]) / 2, rx0 + 1.0), rx1 - 1.0)
                                     lead = [(lx, box[3] if sidev < 0 else box[1]), (lx, a[1])]
                                 else:
-                                    ly = min(max((box[1] + box[3]) / 2, lo + wmax - 3.0 + 1.0), hi - wmax + 3.0 - 1.0)
+                                    ry0, ry1 = sorted((a[1], b[1]))
+                                    ly = min(max((box[1] + box[3]) / 2, ry0 + 1.0), ry1 - 1.0)
                                     lead = [(box[2] if sidev < 0 else box[0], ly), (a[0], ly)]
+                                if not (box[0] <= lead[0][0] <= box[2] and box[1] <= lead[0][1] <= box[3]):
+                                    continue
                                 lb = (min(lead[0][0], lead[1][0]), min(lead[0][1], lead[1][1]),
                                       max(lead[0][0], lead[1][0]), max(lead[0][1], lead[1][1]))
-                                if not grid.free_box(lb, own, 0.0):
+                                if not grid.free_box(lb, own, 0.0) or not self.clear_seg(sh, lead[0], lead[1], pp['code']):
                                     continue
-                                sh.line(lead, S.THIN, 0, pp['code'])
+                            if horiz:
+                                for li, t in enumerate(lines):
+                                    sh.text(box[0], box[1] + (li + 1) * (h + 1.0) - 0.6, h, t, 0, 0, pp['code'] + '#label')
+                            else:
+                                for li, t in enumerate(lines):
+                                    sh.text(box[0] + (li + 1) * (h + 1.0) - 0.6, box[3], h, t, 90, 0, pp['code'] + '#label')
+                            if lead is not None:
+                                sh.line(lead, S.THIN, 0, pp['code'] + '#label')
                                 grid.block_segment(*lead)
                             grid.block(box, 0.6)
                             self.text_boxes.append(box)
@@ -1430,11 +1450,14 @@ class Gen:
         best = None
         for si, (a, b, s0, L) in enumerate(segs):
             m = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
-            for dy in range(-12, 13):
-                for dx in range(-12, 13):
+            for dy in range(-16, 17):
+                for dx in range(-16, 17):
                     cx, cy = m[0] + dx * G, m[1] + dy * G
                     box = (cx - wmax / 2, cy - hh / 2, cx + wmax / 2, cy + hh / 2)
-                    # the leader: from the box's edge nearest the segment's middle, straight to it
+                    # the leader: from the run's point nearest the box's centre (clear of its ends) to the box's edge
+                    ux, uy = (b[0] - a[0]) / L, (b[1] - a[1]) / L
+                    tt = min(max((cx - a[0]) * ux + (cy - a[1]) * uy, min(1.5, L / 2)), max(L - 1.5, L / 2))
+                    m = (a[0] + ux * tt, a[1] + uy * tt)
                     lx = min(max(m[0], box[0]), box[2])
                     ly = min(max(m[1], box[1]), box[3])
                     d = math.dist((lx, ly), m)
@@ -1442,19 +1465,21 @@ class Gen:
                         continue
                     if box[0] < FRAME[0] + 2 or box[2] > FRAME[2] - 2 or box[1] < FRAME[1] + 2 or box[3] > FRAME[3] - 2:
                         continue
-                    if any(overlap(box, t) for t in self.text_boxes) or not grid.free_box(box, own, 0.3) or \
-                            not self.clear(sh, box, pp['code']):
+                    # on the exact geometry only (the grid's cells keep a margin round everything)
+                    if any(overlap(inflate(box, 0.5), t) for t in self.text_boxes) or not self.clear(sh, inflate(box, 0.3), None):
                         continue
                     lead = ((lx, ly), m)
-                    if not self.clear_line(sh, lead, pp['code']):
+                    # the last resort's leader may cross other pipes (straight across), never a text or a symbol
+                    if not self.clear_line(sh, lead, pp['code']) or \
+                            not self.clear_seg(sh, lead[0], lead[1], pp['code'], cross=True):
                         continue
                     best = (d, box, lead)
         if best is None:
             return False
         _, box, lead = best
         for li, t in enumerate(lines):
-            sh.text(box[0], box[1] + (li + 1) * (h + 1.0) - 0.6, h, t, 0, 0, pp['code'])
-        sh.line(list(lead), S.THIN, 0, pp['code'])
+            sh.text(box[0], box[1] + (li + 1) * (h + 1.0) - 0.6, h, t, 0, 0, pp['code'] + '#label')
+        sh.line(list(lead), S.THIN, 0, pp['code'] + '#label')
         grid.block(box, 0.6)
         self.text_boxes.append(box)
         sh.spot(pp['code'], box, pp['home'])
@@ -1475,11 +1500,38 @@ class Gen:
         b = inflate(box, 0.3)
         if any(overlap(b, s) for s, o in sh.symbols):
             return False
+        if any(overlap(b, poly_box(pts)) for pts, o in sh.fills if o.split('#')[0] != owner):
+            return False
+        if any(overlap(b, (x - r, y - r, x + r, y + r)) for w, x, y, r, o in sh.circles):
+            return False
         for w, dash, pts, lo in sh.lines:
-            if lo.split('#')[0] == owner:
+            if owner is not None and lo.split('#')[0] == owner:
                 continue
             for q0, q1 in zip(pts, pts[1:]):
                 if seg_box(q0, q1, b):
+                    return False
+        return True
+
+    def clear_seg(self, sh, a, b, host, cross=False):
+        """A thin line from a to b (a leader) meets nothing drawn but the pipe it starts on: no text, symbol, filled
+        shape, circle or other line."""
+        for x, y, hgt, an, al, t, o in sh.texts:
+            if seg_box(a, b, inflate(text_box(x, y, hgt, t, an, al), 0.3)):
+                return False
+        for s, o in sh.symbols:
+            if sh.hosts.get(o) != host and seg_box(a, b, inflate(s, 0.2)):
+                return False
+        for pts, o in sh.fills:
+            if o.split('#')[0] != host and seg_box(a, b, inflate(poly_box(pts), 0.2)):
+                return False
+        for w, x, y, r, o in sh.circles:
+            if seg_box(a, b, (x - r, y - r, x + r, y + r)):
+                return False
+        for w, dash, pts, lo in sh.lines:
+            if lo.split('#')[0] == host:
+                continue
+            for q0, q1 in zip(pts, pts[1:]):
+                if segs_meet(a, b, q0, q1) and not (cross and crosses(a, b, q0, q1)):
                     return False
         return True
 
@@ -1537,6 +1589,7 @@ class Gen:
         sh.revisions = [list(r) for r in self.revisions]
         grid = Grid()
         self.partial, self.grid = sh, grid       # what was drawn when a layout fails (to look at it)
+        self.sh = sh
         self.homes = []
         self.text_boxes = []
         frame(sh, grid, self)
@@ -1754,7 +1807,7 @@ def legend(gen, used):
             fn = S.EQUIPMENT[kind][0]
             w, h = sizes[ci]
             cx, cy = col_x[ci] + 33.0, y + rh / 2
-            fn(S.Pen(sh, cx, cy, o), w, h)
+            fn(S.Pen(sh, cx, cy, '#sym:' + kind), w, h)      # its own owner: the check sees its name clear of it
             lines = wrap(S.LEGEND.get(kind, kind.replace('_', ' ')).upper(), 24)
             ty = cy - (len(lines) - 1) * 2.0 + 1.2
             for t in lines:
@@ -1767,8 +1820,8 @@ def legend(gen, used):
     sh.text(x0, yy, 4.0, 'VALVES AND INLINE ITEMS', 0, 0, o)
     yy += 12.0
     for kind in sorted(k for k in used if k in S.VALVES) + (['orifice'] if 'flow_element' in used else []):
-        sh.line([(x0, yy), (x0 + 30, yy)], S.THICK, 0, o)
-        pn = S.Pen(sh, x0 + 15, yy, o)
+        sh.line([(x0, yy), (x0 + 30, yy)], S.THICK, 0, '#sym:' + kind)
+        pn = S.Pen(sh, x0 + 15, yy, '#sym:' + kind)
         (S.orifice if kind == 'orifice' else S.VALVES[kind])(pn)
         sh.text(x0 + 38, yy + 1.2, 2.5, S.LEGEND[kind], 0, 0, o)
         yy += 14.0
@@ -1808,7 +1861,7 @@ def legend(gen, used):
     yy += 14.0
     sh.text(x0, yy, 4.0, 'INSTRUMENTS (ISA-5.1)', 0, 0, o)
     yy += 14.0
-    S.bubble(S.Pen(sh, x0 + 14, yy, o), '10HAD30CP001', 'PT')
+    S.bubble(S.Pen(sh, x0 + 14, yy, '#sym:bubble'), '10HAD30CP001', 'PT')
     sh.text(x0 + 38, yy - 1.0, 2.5, 'Field-mounted instrument: its letters over its KKS code', 0, 0, o)
     sh.text(x0 + 38, yy + 3.5, 2.5, '(here a pressure transmitter, 10HAD30CP001)', 0, 0, o)
     yy += 14.0
@@ -1850,9 +1903,48 @@ def legend(gen, used):
 
 # ================================================================ the set, its checks, revisions
 
+def poly_box(pts):
+    xs, ys = [q[0] for q in pts], [q[1] for q in pts]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def segs_meet(a, b, c, d):
+    """Whether two segments touch (crossing, or overlapping along a line)."""
+    def orient(p, q, r):
+        v = (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+        return 0 if abs(v) < 1e-9 else (1 if v > 0 else -1)
+
+    def on(p, q, r):
+        return min(p[0], q[0]) - 1e-9 <= r[0] <= max(p[0], q[0]) + 1e-9 and \
+            min(p[1], q[1]) - 1e-9 <= r[1] <= max(p[1], q[1]) + 1e-9
+    o1, o2, o3, o4 = orient(a, b, c), orient(a, b, d), orient(c, d, a), orient(c, d, b)
+    if o1 != o2 and o3 != o4:
+        return True
+    return (o1 == 0 and on(a, b, c)) or (o2 == 0 and on(a, b, d)) or (o3 == 0 and on(c, d, a)) or \
+        (o4 == 0 and on(c, d, b))
+
+
+def crosses(a, b, c, d):
+    """Two segments cross at a single point inside both (not along each other, not at an end)."""
+    den = (b[0] - a[0]) * (d[1] - c[1]) - (b[1] - a[1]) * (d[0] - c[0])
+    if abs(den) < 1e-9:
+        return False
+    t = ((c[0] - a[0]) * (d[1] - c[1]) - (c[1] - a[1]) * (d[0] - c[0])) / den
+    u = ((c[0] - a[0]) * (b[1] - a[1]) - (c[1] - a[1]) * (b[0] - a[0])) / den
+    return 0.02 < t < 0.98 and 0.02 < u < 0.98
+
+
+def _cells(box, size=20.0):
+    for i in range(int(box[0] // size), int(box[2] // size) + 1):
+        for j in range(int(box[1] // size), int(box[3] // size) + 1):
+            yield (i, j)
+
+
 def check_sheet(sh, d=None):
-    """The content check's rules for one sheet (REALISM.md §6.1.1): symbols apart, texts clear of each other and of
-    other owners' lines and symbols. Raises LayoutError."""
+    """The content check's rules for one sheet (REALISM.md §6.1.1), on the exact geometry: symbols apart; a text
+    clear of other texts and of other owners' lines, symbols, circles and filled shapes (a pipe's label of its own
+    pipe too); no line through another owner's symbol (a pipe through its own inline items, and a line ending on a
+    symbol, are the drawing's joints); no two owners' lines along each other. Raises LayoutError."""
     tb = [(text_box(x, y, h, t, a, al), t, o) for x, y, h, a, al, t, o in sh.texts]
     for i, (a, ta, oa) in enumerate(tb):
         for b, tb2, ob in tb[i + 1:]:
@@ -1863,17 +1955,62 @@ def check_sheet(sh, d=None):
         for b, ob in sy[i + 1:]:
             if overlap(inflate(a, -0.1), inflate(b, -0.1)):
                 raise LayoutError(f'{sh.id}: the symbols of {oa} and {ob} overlap')
+    base = lambda o: o.split('#')[0] if not o.startswith('#') else o
     for box, t, o in tb:
-        base = o.split('#')[0]
+        sb = inflate(box, -0.2)
         for b, ob in sh.symbols:
-            if ob.split('#')[0] != base and sh.inside.get(base) != ob and overlap(inflate(box, -0.2), b):
+            if ob != o and base(ob) != base(o) and sh.inside.get(base(o)) != ob and overlap(sb, b):
                 raise LayoutError(f'{sh.id}: the text {t!r} lies on the symbol of {ob}')
+        for w, x, y, r, oc in sh.circles:
+            if oc != o and overlap(sb, (x - r, y - r, x + r, y + r)) and not \
+                    (sb[0] >= x - r and sb[2] <= x + r and sb[1] >= y - r and sb[3] <= y + r and base(oc) == base(o)):
+                raise LayoutError(f'{sh.id}: the text {t!r} lies on a circle of {oc}')
+        for pts, of in sh.fills:
+            if of != o and overlap(sb, poly_box(pts)):
+                raise LayoutError(f'{sh.id}: the text {t!r} lies on a filled shape of {of}')
         for w, dash, pts, lo in sh.lines:
-            if lo.split('#')[0] == base or lo.startswith('#') and o.startswith('#'):
+            if lo == o:
                 continue
             for p, q in zip(pts, pts[1:]):
-                if seg_box(p, q, inflate(box, -0.2)):
+                if seg_box(p, q, sb):
                     raise LayoutError(f'{sh.id}: a line of {lo} crosses the text {t!r}')
+    # lines through other owners' symbols
+    grid = {}
+    for k, (b, ob) in enumerate(sh.symbols):
+        for c in _cells(b):
+            grid.setdefault(c, []).append(k)
+    segs_by_axis = {}
+    for w, dash, pts, lo in sh.lines:
+        for p, q in zip(pts, pts[1:]):
+            seen = set()
+            for c in _cells(poly_box([p, q])):
+                for k in grid.get(c, []):
+                    if k in seen:
+                        continue
+                    seen.add(k)
+                    b, ob = sh.symbols[k]
+                    if base(ob) == base(lo) or sh.hosts.get(ob) == base(lo) or sh.inside.get(base(lo)) == ob:
+                        continue
+                    if seg_box(p, q, inflate(b, -0.3)):
+                        big = inflate(b, 0.3)
+                        ends = any(big[0] <= e[0] <= big[2] and big[1] <= e[1] <= big[3] for e in (p, q))
+                        if not ends:
+                            raise LayoutError(f'{sh.id}: a line of {lo} runs through the symbol of {ob}')
+            if lo.startswith('#'):
+                continue
+            if abs(p[1] - q[1]) < 1e-6:
+                segs_by_axis.setdefault(('h', round(p[1], 1)), []).append((min(p[0], q[0]), max(p[0], q[0]), lo))
+            elif abs(p[0] - q[0]) < 1e-6:
+                segs_by_axis.setdefault(('v', round(p[0], 1)), []).append((min(p[1], q[1]), max(p[1], q[1]), lo))
+    # two owners' lines along each other
+    for key, lst in segs_by_axis.items():
+        lst.sort()
+        for i, (a0, a1, la) in enumerate(lst):
+            for b0, b1, lb in lst[i + 1:]:
+                if b0 >= a1 - 0.3:
+                    break
+                if base(la) != base(lb) and min(a1, b1) - max(a0, b0) > 0.3:
+                    raise LayoutError(f'{sh.id}: lines of {la} and {lb} run along each other at {key}')
 
 
 def seg_box(p, q, b):
@@ -1904,6 +2041,9 @@ def make(data=DATA, revisions=None, areas_override=None, pins=None):
     items = items_of(areas)
     revisions = revisions or {}
     sheets, used = {}, set()
+    unassigned = sorted(c for c, it in items.items() if drawn(it, items) and sheet_of_item(it, items) is None)
+    if unassigned:
+        raise LayoutError(f'codes no sheet takes: {unassigned[:20]}')
     homes = {}
     for i, meta in enumerate(SHEETS):
         if i == 0:
@@ -1921,12 +2061,12 @@ def make(data=DATA, revisions=None, areas_override=None, pins=None):
     sheets['legend'] = leg
     # every drawn code has exactly one home (REALISM.md §6.1.1), and every code of the model a P&ID shows is drawn
     want = {c for c, it in items.items() if drawn(it, items)}
-    missing = sorted(want - set(homes))
-    if missing:
-        raise LayoutError(f'codes with no home on any sheet: {missing[:20]}')
     unassigned = sorted(c for c in want if sheet_of_item(items[c], items) is None)
     if unassigned:
         raise LayoutError(f'codes no sheet takes: {unassigned[:20]}')
+    missing = sorted(want - set(homes))
+    if missing:
+        raise LayoutError(f'codes with no home on any sheet: {missing[:20]}')
     absent = sorted(c for c in model_codes if c in items and drawn(items[c], items) and c not in homes)
     if absent:
         raise LayoutError(f'model codes not drawn: {absent[:20]}')

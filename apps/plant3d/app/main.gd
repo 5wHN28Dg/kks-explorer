@@ -529,8 +529,11 @@ func _start_walk() -> void:
 		ui.open_drawing()
 		drawings_walk = ui.drawing_view != null
 		_sheet_i = 0
-		if drawings_walk:
-			ui.drawing_view.open_sheet(String(ui.drawings.sheets[0]["id"]))
+		if not drawings_walk:
+			_say("DRAWINGS none in this build")
+			_finish()
+			return
+		ui.drawing_view.open_sheet(String(ui.drawings.sheets[0]["id"]))
 		last_us = Time.get_ticks_usec()
 		return
 	if opts.walk == "screens":

@@ -394,7 +394,7 @@ def silencer(pn, w, h):
 
 def steam_turbine(pn, w, h):
     pn.poly([(-w / 2, -h * 0.25), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h * 0.25)], THICK)
-    pn.line([(-w / 2 - 3, 0), (w / 2 + 3, 0)], THIN, 1.5)
+    pn.line([(-w / 2 + 1, 0), (w / 2 - 1, 0)], THIN, 1.5)     # the shaft, inside the casing (the pipes come to its sides)
 
 
 def gas_turbine(pn, w, h):

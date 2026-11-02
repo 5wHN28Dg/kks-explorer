@@ -1055,6 +1055,13 @@ func toggle_drawings() -> void:
 
 
 func show_me(code: String) -> void:
+	# over the drawings: the code on its sheet (the plant is not drawn behind them); a code on no sheet in the plant
+	if drawings_open():
+		var sheet := drawing_of(code)
+		if sheet != "":
+			drawing_view.open_sheet(sheet, code)
+			return
+		close_drawings()
 	var on_screens: bool = screens_open() and screens.screen_of.has(code) and mimic.here(screens.screen_of[code][0])
 	if on_screens:
 		# the plant is not drawn under the screens: the code is shown on its screen too (the pointer and the route
