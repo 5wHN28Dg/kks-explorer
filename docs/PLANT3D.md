@@ -2999,7 +2999,8 @@ task instance (§17.14) ends with the kind of slot that made it (1 an off-duty s
 - **A trainee who plays a driver rides in the cab while the engine drives** the run's route and timetable (runs must
   be the same everywhere: lockstep, MULTIPLAYER.md §3); between runs they do the driver's other tasks. Steering a bus
   would need driving controls and the vehicle's position as the trainee's inputs: a question for the user (MILESTONES
-  "Questions").
+  "Questions"). **Answered (the user, 2026-11-02): the trainee steers**; §21.16 plans it (the engine still drives a
+  run whose driver has not taken the wheel: NPC drivers, and a player until their app takes it).
 - **People with homes never vanish:** the camp is in the world (§21.1), so off-duty people are drawn there and on the
   road; the gate is where the fence is crossed.
 
