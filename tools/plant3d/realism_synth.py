@@ -3,7 +3,8 @@ like the realism content to come, appended to the last area's model file, to mea
 that content is written. Never shipped: the bench reads it from a file (apps/plant3d/sim/tests/bench_realism.gd
 --synth=LABEL:PATH; on a phone the app's `step=bench`, apps/plant3d/app/step_bench.gd, from its files folder).
 
-    python3 tools/plant3d/realism_synth.py N [OUT]      (N: 600 is §11's plan; 1,000 with the new plant systems, J0)
+    python3 tools/plant3d/realism_synth.py N [OUT] [--engine]
+                                (N: 600 is §11's plan; 1,000 with the new plant systems, J0)
 
 The shares follow §11's split of the 600 and scale with N:
 - wear items and their signs (5/12): per item a duty table of a running value, a clock-rate accumulator (`integrate`,
@@ -16,7 +17,12 @@ The shares follow §11's split of the 600 and scale with N:
 Above 600 (J0's plant systems: fuel gas, the diesel, instrument air, fire water, the switchyard), the extra values
 follow the first train's own mix of node kinds (comparisons, products, tables, sums, lags, logic).
 Every node reads values of the joined model computed before it, so the stateless rule holds (§7.1); the result is
-deterministic (no randomness: the same N gives the same file)."""
+deterministic (no randomness: the same N gives the same file).
+
+--engine (milestones AG1 and WX1): the wear items use the engine's own nodes (a `wear` node, a life `draw`n at step 0,
+the failure against it, a `count` of failures: duty, wear, life, vibration, failure, count), and the load brings the
+weather (§5.1): 8 more `ext` values and weather.json driving them with the train's ambient_t and ambient_wb (ten
+lags, eight kinds, one season over the year), every scenario's world seeded by it."""
 import json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -31,7 +37,7 @@ def sources(b):
     return [name for name, n, kind in b.model.values if kind in ('lag', 'integrate', 'ramp')]
 
 
-def make(n, b):
+def make(n, b, engine=False):
     src = sources(b)
     out = []
 
@@ -46,6 +52,14 @@ def make(n, b):
     n_comp = n * 4 // 12 if n <= 600 else 200
     n_env = (n if n <= 600 else 600) - n_wear - n_comp
     i = 0
+    while engine and sum(1 for x in out if x[0].startswith('rw')) + 6 <= n_wear:
+        duty = add(f'rw{i}_duty', {'of': s(i), 'table': [[0, 0], [1, 0.00002], [50, 0.0001], [1000, 0.0002]]})
+        wear = add(f'rw{i}_wear', {'wear': duty, 'max': 1})
+        life = add(f'rw{i}_life', {'draw': [[0, 0.5], [0.5, 0.8], [1, 1]]})
+        add(f'rw{i}_vib', {'of': wear, 'table': [[0, 1.2], [0.6, 2.8], [0.9, 7.1], [1, 11]]})
+        fail = add(f'rw{i}_fail', {'cmp': [wear, '>=', life]})
+        add(f'rw{i}_fails', {'count': fail})
+        i += 1
     while sum(1 for x in out if x[0].startswith('rw')) + 6 <= n_wear:
         duty = add(f'rw{i}_duty', {'of': s(i), 'table': [[0, 0], [1, 0.2], [50, 1], [1000, 2]]})
         wear = add(f'rw{i}_wear', {'integrate': duty, 'gain': 0.001, 'min': 0, 'max': 1})
@@ -99,27 +113,57 @@ def make(n, b):
     return out
 
 
-def apply(files, vals):
+# the weather of --engine (WX1's step at §11's size: ten lags, eight kinds, a draw an hour)
+WX_EXT = {'rx_wind': 3, 'rx_rain': 0, 'rx_dust': 0.1, 'rx_vis': 20000, 'rx_solar': 0, 'rx_rh': 20, 'rx_light': 0,
+          'rx_cloud': 0}
+WX_KINDS = ['clear', 'hot', 'dust_haze', 'sandstorm', 'rain', 'thunderstorm', 'cold_clear', 'fog']
+
+
+def weather_doc():
+    vals = ['ambient_t', 'ambient_wb'] + list(WX_EXT)
+    kinds = []
+    for k, kind in enumerate(WX_KINDS):
+        t = {v: [[0, j + k], [6, j + k - 2], [15, j + k + 8], [24, j + k]] for j, v in enumerate(vals)}
+        kinds.append({'id': kind, 'targets': t})
+    rows = [[a, b, 50 if a == b else 5 + (i + j) % 7] for i, a in enumerate(WX_KINDS) for j, b in enumerate(WX_KINDS)]
+    return {'format': 'walkdown-plant-weather', 'version': 1,
+            'values': [{'id': v, 'tau': 20 + 5 * j} for j, v in enumerate(vals)], 'kinds': kinds,
+            'seasons': [{'id': 'year', 'days': [1, 365], 'start': 'clear', 'hourly': rows}]}
+
+
+def apply(files, vals, weather=None, ext=None):
     """files ({rel: parsed JSON}) with the synthetic values appended to the last area's model file and a `world` in
-    every scenario (a version 1 scenario made version 2: its keys are all version 2's too)."""
+    every scenario (a version 1 scenario made version 2: its keys are all version 2's too); with --engine's weather,
+    weather.json, its ext values in plant.json and every scenario, and every scenario's world seeded by it."""
     m = files[f'model/{AREA}.json']
     m['values'] = m['values'] + vals
     m['version'] = 2            # (the hold nodes: a version 1 model file's keys are all version 2's too)
+    if weather is not None:
+        files['weather.json'] = weather
+        files['plant.json']['ext'] = files['plant.json']['ext'] + list(ext)
     for rel, sc in files.items():
         if rel.startswith('scenarios/'):
             sc['version'] = 2
             sc.setdefault('world', {})
+            if weather is not None:
+                sc['init'].update(ext)
+                sc['world']['weather'] = {'season': 'year'}
     return files
 
 
 def main():
     from ref import plant3d as P
-    n = int(sys.argv[1])
+    args = [a for a in sys.argv[1:] if a != '--engine']
+    engine = '--engine' in sys.argv
+    n = int(args[0])
     b = P.check_dir(os.path.join(ROOT, 'data', 'plant3d'))
-    vals = make(n, b)
-    text = json.dumps({'area': AREA, 'values': vals}, separators=(',', ':')) + '\n'
-    if len(sys.argv) > 2:
-        with open(sys.argv[2], 'w', encoding='utf-8') as f:
+    vals = make(n, b, engine)
+    load = {'area': AREA, 'values': vals}
+    if engine:
+        load.update(ext=WX_EXT, weather=weather_doc())
+    text = json.dumps(load, separators=(',', ':')) + '\n'
+    if len(args) > 1:
+        with open(args[1], 'w', encoding='utf-8') as f:
             f.write(text)
     else:
         sys.stdout.write(text)

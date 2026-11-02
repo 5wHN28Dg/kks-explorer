@@ -1473,7 +1473,7 @@ quietly); the rest of this step runs as usual. In step 9 of that step, before it
 (event `skipped` for each instance, and for each slot whose time fell in the gap, except one exactly at the new
 clock), each vehicle goes home, reservations are released, and the placement rule runs at the new clock (duties as
 levels: no `duty` events for duties that began or ended in the gap); phase 1 then runs. A jump draws no random
-numbers.
+numbers, except the weather's hourly draws in a scenario with weather (REALISM.md §5.1, §2.12).
 
 **Fast-forward** is a level, part of the snapshot's `fast_forward`: offered when format 1 offers it (§7.9) and the
 trainee's person has no task instance given to them since their last `task_ack` (a new task, a call, a reaction, a

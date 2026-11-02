@@ -36,7 +36,7 @@ const LIFT_AHEAD := 1.0             # metres: a call made while the cab travels 
 
 # node kinds, the commonest first (the evaluator tests them in this order)
 enum {K_GE, K_GT, K_LE, K_LT, K_OF, K_PRODUCT, K_AND, K_SUM, K_NOT, K_DIFF, K_MAX, K_SELECT, K_OR, K_MIN, K_CONST,
-		K_HOLD, K_LAG, K_INTEGRATE, K_RAMP, K_TIMER, K_LATCH, K_DELAY, K_WRAP}
+		K_HOLD, K_LAG, K_INTEGRATE, K_RAMP, K_TIMER, K_LATCH, K_DELAY, K_WRAP, K_WEAR, K_COUNT}
 const FIRST_STATEFUL := K_LAG
 # a permit's actions (§15.3): the states each is taken in, and where it goes
 const PERMIT_ACTIONS := {"request": [[0, 9, 10], 1], "approve": [[1], 2], "issue": [[3], 4], "accept": [[4], 5],
@@ -61,6 +61,10 @@ var _init_vals := PackedFloat64Array()
 var _nmem := 0
 var _fault_nodes := PackedInt32Array()  # program entries of faults' `when` nodes (evaluated on their own)
 var _scratch := 0                       # the slot a fault's `when` node writes
+var _gap := -1                          # wear nodes' slot after the constants: the clock tenths a jump added in this
+										# step (REALISM.md §2.2), 0 outside step 2; -1 without wear nodes
+var _wear_ps := PackedInt32Array()      # wear nodes' program entries (their gap slot is set once it is known)
+var _draws: Array = []                  # [slot, table] of each draw without an init (REALISM.md §2.2): step 0's
 var _fast = null                        # the program as straight-line GDScript (_gen_fast), or null: _run
 static var _interpret_only := false    # tests: step with _run alone (tests/run_vectors.gd --interpreter=1)
 
@@ -190,6 +194,13 @@ var _world := false                 # the scenario has `world`: the clock values
 var _world_seed := 0                # its seed (its own, else the staff's, else 1)
 var _world_year_day := 1            # the day of the year of the clock's day 1
 var _w_S := 0                       # the clock at step 0, for step 0's clock values (_S is set after _step0)
+var _wx = null                      # the weather (REALISM.md §5.1, sim/world.gd build_weather), or null
+var _wx_mode := 0                   # its mode (0 seeded, 1 fixed, 2 scripted), slots, lag factors and targets per
+var _wx_slots := PackedInt32Array() # kind (one table per driven value), out of _wx for the step's cost
+var _wx_f := PackedFloat64Array()
+var _wx_t: Array = []
+var wx_kind := 0                    # the weather's kind (its index in weather.json's kinds)
+var wx_s := 0                       # the weather's stream
 
 
 func _init(model = null, scenario = null, session := false) -> void:
@@ -221,10 +232,25 @@ func _init(model = null, scenario = null, session := false) -> void:
 		var wst: Dictionary = sc.get("start", m.plant["clock"]["start"])
 		_w_S = (int(wst["day"]) * 1440 + Staff.hhmm(wst["time"])) * 600
 		names.append_array(PackedStringArray(World.NAMES))
+		if sc["world"].has("weather"):
+			names.append(World.WX_NAME)     # the weather's kind (REALISM.md §5.1), after the clock values
 	_v2 = m.version == 2
 	n = names.size()
 	for i in n:
 		ix[names[i]] = i
+	var clock = m.plant.get("clock")
+	if clock != null:
+		_ds = int(clock["day_scale"])
+		var st: Dictionary = sc.get("start", clock["start"])
+		_S = (int(st["day"]) * 1440 + Staff.hhmm(st["time"])) * 600
+	if _world and sc["world"].has("weather"):
+		_wx = World.build_weather(sc, m.weather, ix, _ds, _world_seed, _w_S)
+		wx_kind = _wx["k0"]
+		wx_s = _wx["s0"]
+		_wx_mode = _wx["mode"]
+		_wx_slots = _wx["slots"]
+		_wx_f = _wx["factors"]
+		_wx_t = _wx["targets"]
 	_compile()
 	_step0()
 	for k in m.lifts.size():
@@ -250,11 +276,6 @@ func _init(model = null, scenario = null, session := false) -> void:
 			_show[x["kks"]] = x["show"]
 	for f in sc.get("faults", []):
 		_fault_kks[f["id"]] = f.get("kks")
-	var clock = m.plant.get("clock")
-	if clock != null:
-		_ds = int(clock["day_scale"])
-		var st: Dictionary = sc.get("start", clock["start"])
-		_S = (int(st["day"]) * 1440 + Staff.hhmm(st["time"])) * 600
 	if m.staff != null and sc.has("staff"):
 		_sm = m.staff
 		_sm.init_run(self, sc)
@@ -348,6 +369,26 @@ func _node(i: int, nd: Dictionary, kind: String) -> int:
 			# §15.4: without an init (its own or the scenario's) it takes its input at step 0
 			var free := 1 if not nd.has("init") and not sc["init"].has(names[i]) else 0
 			return _emit(K_HOLD, i, [_ref(nd["hold"]), _ref(nd["when"]), free], [])
+		"draw":
+			# REALISM.md §2.2: a stateful constant, drawn at step 0 unless an init (its own or the scenario's) gives it
+			if not nd.has("init") and not sc["init"].has(names[i]):
+				var t := PackedFloat64Array()
+				for row in nd["draw"]:
+					t.append(float(row[0]))
+					t.append(float(row[1]))
+				_draws.append([i, t])
+			return -1
+		"wear":
+			# REALISM.md §2.2: the rate's factor k = 0.1 × day_scale, the max; the gap slot set in _compile
+			var p := _emit(K_WEAR, i, [_ref(nd["wear"]), _ref(nd.get("reset", 0)), -1],
+					[STEP * float(_ds), float(nd["max"])])
+			_wear_ps.append(p)
+			return p
+		"count":
+			# REALISM.md J0: its memory is 1 when its ref read false the step before (0 at the start)
+			var slot := _nmem
+			_nmem += 1
+			return _emit(K_COUNT, i, [_ref(nd["count"]), _ref(nd.get("by", 1)), _ref(nd.get("reset", 0)), slot], [])
 	push_error("engine: unknown node kind " + kind)
 	return -1
 
@@ -383,6 +424,13 @@ func _compile() -> void:
 			_init_vals[i] = float(v[1].get("init", 0))
 		_node(i, v[1], kind)
 	_nprog = _prog_kind.size()
+	if not _wear_ps.is_empty():
+		# the gap's slot among the constants, laid out with the main program's (the generated script depends on the
+		# model alone): written before step 2 and cleared after it
+		_gap = n + _consts.size()
+		_consts.append(0.0)
+		for p in _wear_ps:
+			_ia[_prog_a[p] + 2] = _gap
 	for k in m.machines.size():
 		var mc = m.machines[k]
 		_mc_ix[mc["id"]] = k
@@ -461,8 +509,11 @@ func _compile() -> void:
 		var off: int = 0 if _iso.is_empty() else _iso[-1][4] + _iso[-1][1].size()
 		_iso.append([x["id"], pts, ix[x["id"] + "_locked"], ix[x["id"] + "_complete"], off])
 	for w in m.works:
+		var rn := PackedInt32Array()        # the wear values its done renews (REALISM.md §2.2)
+		for name in w.get("renews", []):
+			rn.append(ix[name])
 		_wk.append([w["id"], m.isolation_ix[w["isolation"]] if w.has("isolation") else -1, ix[w["id"] + "_permit"],
-				w.get("repairs"), _sets(w.get("set", {}))])
+				w.get("repairs"), _sets(w.get("set", {})), rn])
 	# the constants live after the values, in cur and prev alike
 	_init_vals.append_array(PackedFloat64Array(_consts))
 	_scratch = _init_vals.size()
@@ -495,6 +546,14 @@ func _step0() -> void:
 		cur[_tr[ti][5]] = 1.0
 	if _world:
 		_world_clock(_w_S)      # step 0's clock (§16.1: C(0) = S)
+	if _wx != null:
+		cur[_wx["slot"]] = float(wx_kind)      # the weather's kind at step 0; its values the scenario's (§5.1)
+	if not _draws.is_empty():
+		# REALISM.md §2.2: table(u), u = r / 2^24 of one draw from the value's own stream (purpose draw, its name)
+		var seed := World.seed_of(sc)
+		for d in _draws:
+			var r: int = World.draw(World.stream(seed, World.TAGS["draw"], names[d[0]]))[1]
+			cur[d[0]] = World.table_at(d[1], float(r) / 16777216.0)
 	astate.resize(_al.size())
 	astate.fill("normal")
 	acount.resize(_al.size())
@@ -546,6 +605,11 @@ func unshelve(alarm, slot = null) -> void:
 
 func fault(fid, slot = null) -> void:
 	_q(["fault", fid], slot)
+
+
+## The instructor's weather (REALISM.md §5.1).
+func weather(kind, slot = null) -> void:
+	_q(["weather", kind], slot)
 
 
 func repair(fid, slot = null) -> void:
@@ -690,10 +754,68 @@ func clock() -> int:
 	return _S + step_no * _ds + J
 
 
-## The clock values' slots at the clock c (REALISM.md §2.1), the last two of the values.
+## The clock values' slots at the clock c (REALISM.md §2.1): after every other value (and before the weather's kind).
 func _world_clock(c: int) -> void:
-	cur[n - 2] = World.hour_of(c)
-	cur[n - 1] = World.day_of(c)
+	var k := n - 3 if _wx != null else n - 2
+	cur[k] = World.hour_of(c)
+	cur[k + 1] = World.day_of(c)
+
+
+## Step 1w's weather (REALISM.md §5.1), after the clock values: one draw per whole hour the clock passed since the step
+## before (seeded weather), the script's entries passed (scripted); then each driven value's lag toward its kind's
+## target at world_hour (in a jump's step, the target itself) and world_wx the kind; the event when the kind differs
+## from the step before's. As ref/plant3d_world.py weather_step.
+func _weather(gap: int, k_before: int) -> void:
+	var c1 := clock()
+	var k := wx_kind
+	if _wx_mode == 0:
+		var c0 := c1 - _ds - gap
+		var h1 := c1 / World.HOUR
+		for h in range(c0 / World.HOUR + 1, h1 + 1):
+			var dr: Array = World.draw(wx_s)
+			wx_s = dr[0]
+			var row: Array = _wx["rows"][_wx["season_of"][World.year_day_of(_wx["year_day"], h * World.HOUR)]][k]
+			var x: int = (int(dr[1]) * int(row[2])) >> 24
+			var acc := 0
+			var tos: PackedInt32Array = row[0]
+			var ws: PackedInt32Array = row[1]
+			for j in tos.size():
+				acc += ws[j]
+				if acc > x:
+					k = tos[j]
+					break
+	elif _wx_mode == 2:
+		var c0 := c1 - _ds - gap
+		for e in _wx["script"]:
+			if c0 < e[0] and e[0] <= c1:
+				k = e[1]
+	wx_kind = k
+	var u := cur[n - 3]             # world_hour
+	var ts: Array = _wx_t[k]
+	var c := cur
+	for j in _wx_slots.size():
+		# World.table_at inlined (the same comparisons and arithmetic)
+		var t: PackedFloat64Array = ts[j]
+		var last := t.size() - 2
+		var target: float
+		if u < t[0]:
+			target = t[1]
+		elif u >= t[last]:
+			target = t[last + 1]
+		else:
+			var i := 0
+			while i + 2 <= last and t[i + 2] <= u:
+				i += 2
+			target = t[i + 1] + (t[i + 3] - t[i + 1]) * (u - t[i]) / (t[i + 2] - t[i])
+		var sl := _wx_slots[j]
+		if gap > 0:
+			c[sl] = target
+		else:
+			var y := c[sl]
+			c[sl] = y + (target - y) * _wx_f[j]
+	c[n - 1] = float(k)
+	if k != k_before:
+		_ev(["weather", _wx["kinds"][k_before], _wx["kinds"][k]])
 
 
 ## The value a code's `show` binding shows, in the given values.
@@ -732,6 +854,8 @@ func apply_input(item: Array) -> void:
 			unshelve(item[2], slot)
 		"fault":
 			fault(item[2], slot)
+		"weather":
+			weather(item[2], slot)
 		"repair":
 			if item.size() > 3:
 				repair_under(item[2], item[3], item[4], slot)
@@ -1328,6 +1452,35 @@ func _run(p0: int, p1: int, c: PackedFloat64Array, pv: PackedFloat64Array, state
 			var x := pv[i] + pv[ia[a]] * STEP
 			var per := fa[pf[p]]
 			c[i] = x - per * floor(x / per)
+		elif kind == K_WEAR:
+			# REALISM.md §2.2: 0 when reset reads true, else min(max, y [+ rate × gap / 10] + max(0, rate) × k)
+			var i := outs[p]
+			var f := pf[p]
+			if pv[ia[a + 1]] >= 0.5:
+				c[i] = 0.0
+			else:
+				var r := pv[ia[a]]
+				if not r > 0.0:
+					r = 0.0
+				var y := pv[i]
+				var g := c[ia[a + 2]]
+				if g > 0.0:
+					y = y + r * (g / 10.0)
+				y = y + r * fa[f]
+				c[i] = y if y < fa[f + 1] else fa[f + 1]
+		elif kind == K_COUNT:
+			# REALISM.md J0: + by on a step its ref turns true (its memory: 1 when the last read was false)
+			var i := outs[p]
+			var slot := ia[a + 3]
+			var on := pv[ia[a]] >= 0.5
+			var edge := on and mem[slot] == 1
+			mem[slot] = 0 if on else 1
+			if pv[ia[a + 2]] >= 0.5:
+				c[i] = 0.0
+			elif edge:
+				c[i] = pv[i] + pv[ia[a + 1]]
+			else:
+				c[i] = pv[i]
 		else:
 			push_error("engine: unknown node kind %d" % kind)
 
@@ -1499,6 +1652,15 @@ func _fast_node(p: int) -> String:
 					+ "\t\t\ty = 0.0\n\tc[%d] = y") % [o, r.call(0), sl, sl + 1, sl, f, sl + 1, sl, sl + 1, f + 1, o]
 		K_WRAP:
 			return "\tx = pv[%d] + pv[%d] * STEP\n\ts = fa[%d]\n\tc[%d] = x - s * floor(x / s)" % [o, r.call(0), f, o]
+		K_WEAR:
+			return ("\tif pv[%d] >= 0.5:\n\t\tc[%d] = 0.0\n\telse:\n\t\tx = pv[%d]\n\t\tif not x > 0.0:\n\t\t\tx = 0.0\n"
+					+ "\t\ty = pv[%d]\n\t\tu = c[%d]\n\t\tif u > 0.0:\n\t\t\ty = y + x * (u / 10.0)\n\t\ty = y + x * fa[%d]\n"
+					+ "\t\tc[%d] = y if y < fa[%d] else fa[%d]") % [r.call(1), o, r.call(0), o, r.call(2), f, o, f + 1, f + 1]
+		K_COUNT:
+			var sl: int = r.call(3)
+			return ("\tw = 1 if pv[%d] >= 0.5 else 0\n\ts = 1.0 if w == 1 and mem[%d] == 1 else 0.0\n\tmem[%d] = 1 - w\n"
+					+ "\tif pv[%d] >= 0.5:\n\t\tc[%d] = 0.0\n\telif s == 1.0:\n\t\tc[%d] = pv[%d] + pv[%d]\n\telse:\n"
+					+ "\t\tc[%d] = pv[%d]") % [r.call(0), sl, sl, r.call(2), o, o, o, r.call(1), o, o]
 	push_error("engine: unknown node kind %d" % kind)
 	return "\tpass"
 
@@ -1581,6 +1743,8 @@ func _step() -> void:
 	var under := {}         # fault -> the work (its index) under whose permit the trainee repairs it (§15.5)
 	var noted := []         # locks and unlocks, made in step 3 (§17.1)
 	var dones := []         # works whose permit went to done: their repairs and set in step 3
+	var j0 := J             # the jumps before this step's inputs (a jump's gap: wear, REALISM.md §2.2; the weather)
+	var wx0 := wx_kind      # the weather's kind before them (its event, REALISM.md §5.1)
 	# 1. the trainee's inputs, in the order made, then the NPCs' made in the previous step's step 9 (§17.1)
 	var q := queue
 	queue = []
@@ -1650,6 +1814,13 @@ func _step() -> void:
 			if _v2:
 				_ev(["instructor", "repair", item[1]])
 			asked.append(item[1])
+		elif kind == "weather":
+			# the instructor's weather (REALISM.md §5.1): a kind of weather.json in a scenario with weather; the seeded
+			# chain goes on from it at the next hour, a script at its next entry; else nothing, no event
+			var wk: int = _wx["kinds"].find(item[1]) if _wx != null and typeof(item[1]) == TYPE_STRING else -1
+			if wk != -1:
+				_ev(["instructor", "weather", item[1]])
+				wx_kind = wk
 		elif ai == -1:
 			continue        # an alarm the model doesn't have: nothing happens, no event (§7.10)
 		elif kind == "ack":
@@ -1680,14 +1851,22 @@ func _step() -> void:
 				break
 		if not any:
 			first_out.erase(g)
-	# 1w. the realism base (REALISM.md §2.7): the clock values at this step's clock, a jump of step 1 included
+	# 1w. the realism base (REALISM.md §2.7): the clock values at this step's clock, a jump of step 1 included;
+	# then the weather (§5.1)
+	var gap := J - j0
 	if _world:
 		_world_clock(clock())
+		if _wx != null:
+			_weather(gap, wx0)
+	if _gap != -1:
+		cur[_gap] = float(gap)
 	# 2. values, in order (stateful nodes read the previous step's values)
 	if _fast != null:
 		_fast.run(cur, prev, _fa, _ia, mem)
 	else:
 		_run(0, _nprog, cur, prev, false)
+	if _gap != -1:
+		cur[_gap] = 0.0
 	var vals := cur.duplicate()     # conditions in steps 3–7 read the values as step 2 left them
 	# 3. the locks and unlocks noted in step 1, in the order made; the permits' automatic moves (§15.3)
 	for nd in noted:
@@ -1763,6 +1942,13 @@ func _step() -> void:
 			_apply_set(_faults[fk][4], wi)
 			_ev(["repair", fid])
 		_apply_set(_wk[wi][4], wi)
+	# then the renewals (REALISM.md §2.2, §2.7) of those works, in the order of their done: each wear value set to 0,
+	# under the rule of their repairs (the isolation complete after this step's locks); no state is written
+	for wi in dones:
+		var rn: PackedInt32Array = _wk[wi][5]
+		if not rn.is_empty() and _n_locked(_wk[wi][1]) == _iso[_wk[wi][1]][1].size():
+			for sl in rn:
+				cur[sl] = 0.0
 	# 4. interlocks on a rising edge
 	for k in _il.size():
 		var x = _il[k]
@@ -2135,6 +2321,8 @@ func digest_tree() -> Array:
 		tree.append(lift_calls)
 		tree.append(lift_dir)
 		tree.append(lift_dwell)
+	if _wx != null:                     # the weather's kind and stream (REALISM.md §2.8), with weather only
+		tree.append(PackedInt64Array([wx_kind, wx_s]))
 	return tree
 
 
@@ -2228,7 +2416,7 @@ func clone():
 			"_al_sup", "_al_need", "_ops", "_iso", "_wk", "_state_kks", "_v2", "step_no", "ptw_count",
 			"_sm", "_S", "_ds", "_absent", "_fixed_trainee", "_show", "_fault_kks", "J", "ev_mark", "st_order",
 			"st_session", "st_next1", "_lift_ix", "_load_slot", "_lift_ctl", "_lift_ops", "_world", "_world_seed",
-			"_world_year_day", "_w_S"]:
+			"_world_year_day", "_w_S", "_gap", "_wear_ps", "_draws", "_wx", "wx_kind", "wx_s", "_wx_mode", "_wx_slots", "_wx_f", "_wx_t"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_worn",

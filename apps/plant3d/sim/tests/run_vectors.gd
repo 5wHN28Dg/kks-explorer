@@ -37,6 +37,7 @@ const CHUNK := 1000
 const DIGEST_EVERY := 50        # a state digest every 50 steps (§17.14), step 0's first
 ## the water treatment plant's runs in plant3d-v2.json, each a start by its procedure with forks (W2, W3)
 const WTP_RUNS := ["wtp", "wtp_cip", "wtp_regen"]
+const REALISM_PARTS := ["wear", "weather"]     # the realism file's parts after `staff`, each as `staff` (AG1, WX1)
 
 var repo := ""
 var opts := {}
@@ -100,6 +101,9 @@ func _init() -> void:
 			return
 		V3 = r3.value
 		expected += 1 + 1 + V3["staff"]["runs"].size()     # the streams, the plant's counts, its runs
+		for part in REALISM_PARTS:          # AG1's wear and WX1's weather (REALISM.md §13): counts and runs
+			if V3.has(part):
+				expected += 1 + V3[part]["runs"].size()
 	var valid_files: Dictionary = V["valid"][0]["files"]
 	# the starts run by their procedures: the cold start (`train`) and the hot restart (`hot`, where the file has it)
 	var starts := ["train", "hot"].filter(func(k): return V.has(k))
@@ -124,6 +128,9 @@ func _init() -> void:
 	if parts.has("realism"):
 		_streams(V3["streams"])
 		_staff(V3["staff"], "realism/staff")
+		for part in REALISM_PARTS:
+			if V3.has(part):
+				_staff(V3[part], "realism/" + part)
 	if parts.has("procedure") or parts.has("train") or V2.has("train") or WTP_RUNS.any(func(k): return V2.has(k)):
 		train_model = PlantModel.from_dir(opts.get("data", repo.path_join("data/plant3d")))
 		if train_model.error != "":
