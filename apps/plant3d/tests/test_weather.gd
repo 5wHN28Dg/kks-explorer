@@ -166,9 +166,22 @@ func _roof_map() -> Array:
 	var h := _roof(img, r, Vector3(at.x, 0.0, -at.y))
 	if absf(h - float(hall.params.height)) > 0.3:
 		p.append("the roof map gives %.2f m over the turbine hall's middle (%s), not its %.1f m" % [h, str(at), float(hall.params.height)])
+	# the trainee starts in the control room: under its 12 m roof
 	var s0: Array = m.start.at
-	if _roof(img, r, Vector3(float(s0[0]), 0.0, float(s0[2]))) != 0.0:
-		p.append("the roof map puts a roof over the plant's start, in the open")
+	var hs := _roof(img, r, Vector3(float(s0[0]), 0.0, float(s0[2])))
+	if absf(hs - 12.0) > 0.3:
+		p.append("the roof map gives %.2f m over the plant's start in the control building, not 12 m" % hs)
+	# beside the hall, a few metres beyond its walls along x, one side at least is open ground
+	var half := 0.0
+	for q in hall.params.outline:
+		half = maxf(half, Vector2(float(q[0]), float(q[1])).length())
+	var open_ := 0
+	for dx in [-(half + 4.0), half + 4.0]:
+		var o := Vector2(at.x + dx, at.y)
+		if _roof(img, r, Vector3(o.x, 0.0, -o.y)) == 0.0:
+			open_ += 1
+	if open_ == 0:
+		p.append("no open ground on either side of the turbine hall in the roof map")
 	return p
 
 
