@@ -23,8 +23,8 @@ const RIDE_WAIT_MIN := 30         # clock minutes a person waits at a stop befor
 const EARLY_KEPT := 32           # the trainee's actions kept for a later step (§17.8)
 const OPEN_KINDS := ["point", "door", "stop", "muster", "counter", "depot", "work"]
 const PPE := ["helmet", "boots", "glasses", "gloves", "ear", "harness", "face_shield", "apron", "vest"]
-const ACT_KINDS := ["ppe", "permit", "unsafe"]
-const NO_ACTS := [null, null, null]   # a person's sp_acts with no act going on   # an unsafe act's kinds, in the order checked (§16.7, §17.11)
+const ACT_KINDS := ["ppe", "permit", "unsafe"]   # an unsafe act's kinds, in the order checked (§16.7, §17.11)
+const NO_ACTS := [null, null, null]   # a person's sp_acts with no act going on (phase 5's count)
 const STATE_NAMES := ["none", "requested", "approved", "isolated", "issued", "accepted", "done", "returned",
 		"deisolated", "closed", "cancelled"]
 const PERMIT_TO := {"request": 1, "approve": 2, "issue": 4, "accept": 5, "done": 6, "return": 7, "close": 9,
@@ -33,13 +33,11 @@ const PERMIT_AUTH := {"request": "request", "approve": "approve", "issue": "issu
 		"done": "accept", "return": "accept", "close": "issue", "cancel": "approve"}
 
 var error := ""
-## Per-phase timers of step() (tests/bench_staff.gd): off unless `prof_on`; prof[k] sums microseconds of PROF_NAMES[k].
+## Per-phase timers of step() (tests/bench_staff.gd, the gate walk's STAFF_PHASES): the engine's staff_prof_on,
+## staff_prof (microseconds per PROF_NAMES[k]) and staff_prof_n (the work done, machine-independent: task steps run in
+## people's turns, the vehicles' runs due worked out, people whose acts were looked at in phase 5). On the engine, not
+## here: this object is shared by an engine's clones, which a worker thread steps (the permit panel's lock check).
 const PROF_NAMES := ["inputs", "duties", "react", "vehicles", "people", "acts", "after"]
-var prof_on := false
-var prof := PackedInt64Array([0, 0, 0, 0, 0, 0, 0])
-## With prof_on, how much work the step did (machine-independent): task steps run in people's turns, the vehicles'
-## runs due worked out (not taken from runs_due's cache), people whose acts were looked at in phase 5.
-var prof_n := {"runs": 0, "due": 0, "acts": 0}
 
 var d := {}                          # staff.json as read
 var ds := 6                          # plant.json's clock.day_scale
@@ -96,7 +94,6 @@ var has_homes := false               # every person has a home (§21.1)
 var handovers := {}                  # task -> true: the tasks with a handover step (§21.2)
 var home := PackedInt32Array()       # per person: their home's bed, -1
 var off_site := PackedByteArray()    # per place: 1 when outside the plant's fence (§21.1)
-var _due_memo: Array = []            # per vehicle: runs_due's last answer, [day, floor, done, answer] (a cache)
 var vehicles: Array = []             # {id, kind, seats, driver, home, runs: [{at, stops, dwell, days, lead}]} (§21.4)
 var vehicle_ix := {}                 # vehicle id -> its index
 var drive_no := PackedInt32Array()   # per place: its number among the stops and depots, -1
@@ -288,7 +285,6 @@ func _build(m, doc: Dictionary) -> void:
 		vehicle_ix[v["id"]] = vehicles.size()
 		vehicles.append({"id": v["id"], "kind": v["kind"], "seats": int(v["seats"]), "driver": v["driver"],
 				"home": pix[v["home"]], "runs": runs})
-		_due_memo.append([])
 	for r in doc["routines"]:
 		var slots := []
 		for s in r["slots"]:
@@ -1101,7 +1097,7 @@ func jump(e, to) -> void:
 # ---------------------------------------------------------------- step 9 (§17.2)
 
 func step(e) -> void:
-	var pr := prof_on
+	var pr: bool = e.staff_prof_on
 	var pt := Time.get_ticks_usec() if pr else 0
 	var n: int = e.step_no
 	var c: int = e.clock()
@@ -1172,24 +1168,24 @@ func step(e) -> void:
 		elif item[0] == "stop":
 			t_stop(e, tr, item[1])
 	if pr:
-		pt = _prof(0, pt)
+		pt = _prof(e, 0, pt)
 	# 1. duties, then slots
 	var day: int = c / DAY
 	var np := people.size()
 	if c >= e.st_next1:
 		_phase1(e, c, day)
 	if pr:
-		pt = _prof(1, pt)
+		pt = _prof(e, 1, pt)
 	# 2. reactions
 	react(e, n)
 	if pr:
-		pt = _prof(2, pt)
+		pt = _prof(e, 2, pt)
 	# 3. vehicles (§21.4), not in a jump's step (as phase 4)
 	if not jump_step:
 		for vi in vehicles.size():
 			vehicle_turn(e, vi)
 	if pr:
-		pt = _prof(3, pt)
+		pt = _prof(e, 3, pt)
 	# 4. people
 	if jump_step:
 		for slot in e.st_players.size():                # their actions of this step are kept all the same (§17.8)
@@ -1221,7 +1217,7 @@ func step(e) -> void:
 				turn(e, pi)
 				wake = e.sp_wake
 	if pr:
-		pt = _prof(4, pt)
+		pt = _prof(e, 4, pt)
 	# 5. unsafe acts, then the reactions to them
 	var moved := false
 	for k in range(e.ev_mark, e.events.size()):
@@ -1232,19 +1228,19 @@ func step(e) -> void:
 	act_phase(e, n, moved)
 	findings(e, n)
 	if pr:
-		pt = _prof(5, pt)
+		pt = _prof(e, 5, pt)
 	_slots(e)
 	var vprev: Array = e.st_vprev
 	var vals: PackedFloat64Array = e.cur
 	for j in value_reactions.size():
 		vprev[value_reactions[j]] = vals[value_slot[j]] >= 0.5
 	if pr:
-		_prof(6, pt)
+		_prof(e, 6, pt)
 
 
-func _prof(k: int, t0: int) -> int:
+func _prof(e, k: int, t0: int) -> int:
 	var t := Time.get_ticks_usec()
-	prof[k] += t - t0
+	e.staff_prof[k] += t - t0
 	return t
 
 
@@ -1612,8 +1608,8 @@ func turn(e, pi: int) -> void:
 			e.sp_wake[pi] = 1 << 62     # nothing to do and off duty: until a task or a duty wakes them
 			return
 		var r = run(e, pi, cur)
-		if prof_on:
-			prof_n["runs"] += 1
+		if e.staff_prof_on:
+			e.staff_prof_n["runs"] += 1
 		if typeof(r) == TYPE_STRING and r == "wait":
 			if cur["idle"] and not cur.get("off", false) and not e.sp_on[pi] and home[pi] != -1:
 				# a duty's idle task off duty within its span: awake when the span ends (the reference's select
@@ -2271,14 +2267,17 @@ func runs_due(e, vi: int, c: int) -> Array:
 	var day: int = c / DAY
 	var done: Array = vh["done"]
 	# the answer depends only on the day, the floor and the last run made: kept for the next step with the same
-	# (not the run's state: any engine asking with other ones finds it again)
-	var memo: Array = _due_memo[vi]
-	if not memo.is_empty() and memo[0] == day and memo[1] == vh["floor"] and memo[2] == done:
+	# (the engine's staff_due_memo, a cache, not the run's state: a clone starts without it)
+	var dm: Array = e.staff_due_memo
+	if dm.size() != vehicles.size():
+		dm.resize(vehicles.size())
+	var memo = dm[vi]
+	if memo != null and memo[0] == day and memo[1] == vh["floor"] and memo[2] == done:
 		return memo[3]
 	var best := _runs_due(v, vh, day, done)
-	if prof_on:
-		prof_n["due"] += 1
-	_due_memo[vi] = [day, vh["floor"], done.duplicate(), best]
+	if e.staff_prof_on:
+		e.staff_prof_n["due"] += 1
+	dm[vi] = [day, vh["floor"], done.duplicate(), best]
 	return best
 
 
@@ -2580,8 +2579,8 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 				break
 		if absent.has(pi):
 			continue
-		if prof_on:
-			prof_n["acts"] += 1
+		if e.staff_prof_on:
+			e.staff_prof_n["acts"] += 1
 		var acts: Array = e.sp_acts[pi]
 		for k in 3:
 			var now := _act_now(e, pi, k)
