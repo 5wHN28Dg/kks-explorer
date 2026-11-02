@@ -23,7 +23,8 @@ const RIDE_WAIT_MIN := 30         # clock minutes a person waits at a stop befor
 const EARLY_KEPT := 32           # the trainee's actions kept for a later step (§17.8)
 const OPEN_KINDS := ["point", "door", "stop", "muster", "counter", "depot", "work"]
 const PPE := ["helmet", "boots", "glasses", "gloves", "ear", "harness", "face_shield", "apron", "vest"]
-const ACT_KINDS := ["ppe", "permit", "unsafe"]   # an unsafe act's kinds, in the order checked (§16.7, §17.11)
+const ACT_KINDS := ["ppe", "permit", "unsafe"]
+const NO_ACTS := [null, null, null]   # a person's sp_acts with no act going on   # an unsafe act's kinds, in the order checked (§16.7, §17.11)
 const STATE_NAMES := ["none", "requested", "approved", "isolated", "issued", "accepted", "done", "returned",
 		"deisolated", "closed", "cancelled"]
 const PERMIT_TO := {"request": 1, "approve": 2, "issue": 4, "accept": 5, "done": 6, "return": 7, "close": 9,
@@ -32,6 +33,14 @@ const PERMIT_AUTH := {"request": "request", "approve": "approve", "issue": "issu
 		"done": "accept", "return": "accept", "close": "issue", "cancel": "approve"}
 
 var error := ""
+## Per-phase timers of step() (tests/bench_staff.gd): off unless `prof_on`; prof[k] sums microseconds of PROF_NAMES[k].
+const PROF_NAMES := ["inputs", "duties", "react", "vehicles", "people", "acts", "after"]
+var prof_on := false
+var prof := PackedInt64Array([0, 0, 0, 0, 0, 0, 0])
+## With prof_on, how much work the step did (machine-independent): task steps run in people's turns, the vehicles'
+## runs due worked out (not taken from runs_due's cache), people whose acts were looked at in phase 5.
+var prof_n := {"runs": 0, "due": 0, "acts": 0}
+
 var d := {}                          # staff.json as read
 var ds := 6                          # plant.json's clock.day_scale
 var tpm := 100                       # steps in a clock minute
@@ -87,6 +96,7 @@ var has_homes := false               # every person has a home (§21.1)
 var handovers := {}                  # task -> true: the tasks with a handover step (§21.2)
 var home := PackedInt32Array()       # per person: their home's bed, -1
 var off_site := PackedByteArray()    # per place: 1 when outside the plant's fence (§21.1)
+var _due_memo: Array = []            # per vehicle: runs_due's last answer, [day, floor, done, answer] (a cache)
 var vehicles: Array = []             # {id, kind, seats, driver, home, runs: [{at, stops, dwell, days, lead}]} (§21.4)
 var vehicle_ix := {}                 # vehicle id -> its index
 var drive_no := PackedInt32Array()   # per place: its number among the stops and depots, -1
@@ -278,6 +288,7 @@ func _build(m, doc: Dictionary) -> void:
 		vehicle_ix[v["id"]] = vehicles.size()
 		vehicles.append({"id": v["id"], "kind": v["kind"], "seats": int(v["seats"]), "driver": v["driver"],
 				"home": pix[v["home"]], "runs": runs})
+		_due_memo.append([])
 	for r in doc["routines"]:
 		var slots := []
 		for s in r["slots"]:
@@ -1090,6 +1101,8 @@ func jump(e, to) -> void:
 # ---------------------------------------------------------------- step 9 (§17.2)
 
 func step(e) -> void:
+	var pr := prof_on
+	var pt := Time.get_ticks_usec() if pr else 0
 	var n: int = e.step_no
 	var c: int = e.clock()
 	var tin: Array = e.st_t_in
@@ -1158,17 +1171,25 @@ func step(e) -> void:
 				e.sp_zin[tr] &= ~(1 << int(zone_ix[item[1]]))
 		elif item[0] == "stop":
 			t_stop(e, tr, item[1])
+	if pr:
+		pt = _prof(0, pt)
 	# 1. duties, then slots
 	var day: int = c / DAY
 	var np := people.size()
 	if c >= e.st_next1:
 		_phase1(e, c, day)
+	if pr:
+		pt = _prof(1, pt)
 	# 2. reactions
 	react(e, n)
+	if pr:
+		pt = _prof(2, pt)
 	# 3. vehicles (§21.4), not in a jump's step (as phase 4)
 	if not jump_step:
 		for vi in vehicles.size():
 			vehicle_turn(e, vi)
+	if pr:
+		pt = _prof(3, pt)
 	# 4. people
 	if jump_step:
 		for slot in e.st_players.size():                # their actions of this step are kept all the same (§17.8)
@@ -1180,8 +1201,14 @@ func step(e) -> void:
 	else:
 		var absent: Dictionary = e._absent     # (made when the run starts, never changed in a step)
 		var players: PackedInt32Array = e.st_players
+		var playing := false
+		for p in players:
+			playing = playing or p != -1
+		# (read once, and again after each turn: a turn wakes others; a field of an untyped object is looked up by
+		# name each time it is read)
+		var wake: PackedInt64Array = e.sp_wake
 		for pi in np:
-			var slot: int = players.find(pi)
+			var slot: int = players.find(pi) if playing else -1
 			if slot != -1:
 				if not absent.has(pi):
 					var mine_in := []
@@ -1189,8 +1216,12 @@ func step(e) -> void:
 						if si[0] == slot:
 							mine_in.append(si[1])
 					trainee_turn(e, pi, mine_in, slot)
-			elif n >= e.sp_wake[pi] and not absent.has(pi):
+					wake = e.sp_wake
+			elif n >= wake[pi] and not absent.has(pi):
 				turn(e, pi)
+				wake = e.sp_wake
+	if pr:
+		pt = _prof(4, pt)
 	# 5. unsafe acts, then the reactions to them
 	var moved := false
 	for k in range(e.ev_mark, e.events.size()):
@@ -1200,9 +1231,21 @@ func step(e) -> void:
 			break
 	act_phase(e, n, moved)
 	findings(e, n)
+	if pr:
+		pt = _prof(5, pt)
 	_slots(e)
+	var vprev: Array = e.st_vprev
+	var vals: PackedFloat64Array = e.cur
 	for j in value_reactions.size():
-		e.st_vprev[value_reactions[j]] = e.cur[value_slot[j]] >= 0.5
+		vprev[value_reactions[j]] = vals[value_slot[j]] >= 0.5
+	if pr:
+		_prof(6, pt)
+
+
+func _prof(k: int, t0: int) -> int:
+	var t := Time.get_ticks_usec()
+	prof[k] += t - t0
+	return t
 
 
 ## The engine slots of the values reactions are on (every engine of one model has the same).
@@ -1569,6 +1612,8 @@ func turn(e, pi: int) -> void:
 			e.sp_wake[pi] = 1 << 62     # nothing to do and off duty: until a task or a duty wakes them
 			return
 		var r = run(e, pi, cur)
+		if prof_on:
+			prof_n["runs"] += 1
 		if typeof(r) == TYPE_STRING and r == "wait":
 			if cur["idle"] and not cur.get("off", false) and not e.sp_on[pi] and home[pi] != -1:
 				# a duty's idle task off duty within its span: awake when the span ends (the reference's select
@@ -1651,7 +1696,7 @@ func walk(e, pi: int, dest: int) -> bool:
 		if e.sp_res[pi] == dest:        # already standing there: the place reserved is now held
 			e.sp_occ[pi] = dest
 			e.sp_res[pi] = -1
-		if has_lifts:
+		if has_lifts and not e.sp_stairs[pi].is_empty():
 			e.sp_stairs[pi] = PackedInt32Array()
 		return true
 	var nx := -1
@@ -1951,6 +1996,9 @@ func run(e, pi: int, cur: Dictionary):
 		if n - int(x["since"]) >= RIDE_WAIT_MIN * tpm:
 			x["walk"] = true
 			return go(e, pi, cur, to)
+		# nothing changes for them until the wait is over, a vehicle comes to stand at the stop (arrived() wakes
+		# them) or a task, a duty or a stop wakes them, as for any sleeper
+		e.sp_wake[pi] = int(x["since"]) + RIDE_WAIT_MIN * tpm
 		return "wait"
 	if s.has("work"):
 		if not x.has("left"):
@@ -2220,9 +2268,22 @@ func get_off(e, pi: int, vi: int, at: int) -> void:
 func runs_due(e, vi: int, c: int) -> Array:
 	var v: Dictionary = vehicles[vi]
 	var vh: Dictionary = e.st_veh[vi]
-	var best := []
 	var day: int = c / DAY
 	var done: Array = vh["done"]
+	# the answer depends only on the day, the floor and the last run made: kept for the next step with the same
+	# (not the run's state: any engine asking with other ones finds it again)
+	var memo: Array = _due_memo[vi]
+	if not memo.is_empty() and memo[0] == day and memo[1] == vh["floor"] and memo[2] == done:
+		return memo[3]
+	var best := _runs_due(v, vh, day, done)
+	if prof_on:
+		prof_n["due"] += 1
+	_due_memo[vi] = [day, vh["floor"], done.duplicate(), best]
+	return best
+
+
+func _runs_due(v: Dictionary, vh: Dictionary, day: int, done: Array) -> Array:
+	var best := []
 	for d in [day - 1, day, day + 1]:
 		var wd: String = week[posmod(d - 1, 7)]
 		for k in v["runs"].size():
@@ -2259,6 +2320,7 @@ func arrived(e, vi: int) -> void:
 	var v: Dictionary = vehicles[vi]
 	var n: int = e.step_no
 	var at: int = vh["at"]
+	_wake_riders(e, at)
 	var r: Dictionary = v["runs"][vh["run"]]
 	var stops: PackedInt32Array = r["stops"]
 	e._ev(["vehicle", v["id"], places[at]["id"], "arrive"])
@@ -2283,6 +2345,17 @@ func arrived(e, vi: int) -> void:
 		vh["until"] = n + 1
 	else:
 		vh["until"] = n + maxi(1, int(r["dwell"]) * tpm)
+
+
+## The people waiting at the stop at for a ride (asleep until their wait is over, run()) look again: a vehicle stands
+## there now.
+func _wake_riders(e, at: int) -> void:
+	var pos: PackedInt32Array = e.sp_pos
+	for pi in pos.size():
+		if pos[pi] == at and e.sp_cur[pi] != null:
+			var cur: Dictionary = e.sp_cur[pi]
+			if not cur["idle"] and tasks[cur["task"]]["steps"][cur["step"]].has("ride"):
+				e.sp_wake[pi] = 0
 
 
 ## Phase 3 for one vehicle: an arrival, a departure, then the runs due (§21.4).
@@ -2487,13 +2560,28 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 	# (the engine's fields read once: neither changes in this loop, and a field of an untyped object is looked up by
 	# name each time it is read)
 	var absent: Dictionary = e._absent
-	var touched: PackedByteArray = e._touched
+	var look: PackedByteArray = e._touched     # the people to look at: found natively (a copy: the players added)
 	var players: PackedInt32Array = e.st_players
-	for pi in people.size():
-		if not permit_moved and not touched[pi] and not players.has(pi):
-			continue
+	if not players.is_empty():
+		look = look.duplicate()
+		for p in players:
+			if p >= 0:
+				look[p] = 1
+	var np := people.size()
+	var pi := -1
+	while true:
+		if permit_moved:
+			pi += 1
+			if pi >= np:
+				break
+		else:
+			pi = look.find(1, pi + 1)
+			if pi == -1:
+				break
 		if absent.has(pi):
 			continue
+		if prof_on:
+			prof_n["acts"] += 1
 		var acts: Array = e.sp_acts[pi]
 		for k in 3:
 			var now := _act_now(e, pi, k)
@@ -2510,41 +2598,44 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 	for ri in act_reactions:
 		var r: Dictionary = reactions[ri]
 		var v: String = r["on"]["unsafe"]
-		var prio: int = int(r.get("priority", prio_of(r["task"])))
 		if r.get("seen", false):
 			# the safety walk finds it: the first of its roles (role order, then index) in a zone of the act, in the
 			# step it starts or any later one while it lasts; once per act
 			if acting.is_empty() and not looked:
 				looked = true
 				var acts_now: Array = e.sp_acts
-				for pi in people.size():
-					var aa: Array = acts_now[pi]
+				if acts_now.count(NO_ACTS) == acts_now.size():
+					continue        # nobody acting (most steps: counted natively, not person by person)
+				for ai in people.size():
+					var aa: Array = acts_now[ai]
 					if aa[0] != null or aa[1] != null or aa[2] != null:
-						acting.append(pi)
+						acting.append(ai)
 			var all_acts: Array = e.sp_acts
 			var made_all: Dictionary = e.st_made
-			for pi in acting:
-				var aa: Array = all_acts[pi]
+			for ai in acting:
+				var aa: Array = all_acts[ai]
 				for k in 3:
 					var a = aa[k]
 					if a == null or (v != "*" and v != ACT_KINDS[k]):
 						continue
-					var made := Vector4i(ri, pi, k, a[1])      # (not the source key: made every step, it cost)
+					var made := Vector4i(ri, ai, k, a[1])      # (not the source key: made every step, it cost)
 					if made_all.has(made):
 						continue
-					var obs := observer(e, r["roles"], pi)
+					var obs := observer(e, r["roles"], ai)
 					if obs == -1:
 						continue
 					e.st_made[made] = true
-					var key := "%d|unsafe|%s|%s|%d" % [ri, people[pi]["id"], ACT_KINDS[k], a[1]]
+					var key := "%d|unsafe|%s|%s|%d" % [ri, people[ai]["id"], ACT_KINDS[k], a[1]]
 					if not e.st_given.has(key):
-						give(e, obs, r["task"], prio, key, null, null, null, true, null, [pi, k, a[1]])
+						give(e, obs, r["task"], int(r.get("priority", prio_of(r["task"]))), key, null, null, null, true,
+								null, [ai, k, a[1]])
 		else:
 			for sk in started:
 				var k: int = sk[1]
 				var key := "%d|unsafe|%s|%s|%d" % [ri, people[sk[0]]["id"], ACT_KINDS[k], n]
 				if (v == "*" or v == ACT_KINDS[k]) and not e.st_given.has(key):
-					assign(e, r["roles"], r["task"], prio, key, null, null, null, null, [sk[0], k, n])
+					assign(e, r["roles"], r["task"], int(r.get("priority", prio_of(r["task"]))), key, null, null,
+							null, null, [sk[0], k, n])
 
 
 ## Phase 5's end (§17.12): the readings of this step out of their range given by the reactions on a finding, in

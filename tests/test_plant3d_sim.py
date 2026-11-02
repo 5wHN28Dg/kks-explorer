@@ -11,7 +11,7 @@ Needs the Godot editor (KKS_GODOT, else the path tools/plant3d/bench/fetch_godot
 unless KKS_REQUIRE_GODOT=1 (CI), where a missing Godot fails. The reference's runs are made while Godot runs, side by
 side in up to 4 processes (KKS_REF_JOBS=N for N; 1: one after the other).
   .venv/bin/python -m unittest tests.test_plant3d_sim"""
-import copy, hashlib, json, os, random, struct, subprocess, sys, tempfile, time, unittest
+import copy, hashlib, json, os, random, re, struct, subprocess, sys, tempfile, time, unittest
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, REPO)
@@ -722,6 +722,22 @@ class GdscriptEngineStepCost(unittest.TestCase):
         self.assertIn('PROGRAM straight-line', r.stdout)
         self.assertEqual(r.returncode, 0, r.stdout[-3000:])
         self.assertIn('GATE ok', r.stdout)
+
+    def test_staff_work_at_the_gate(self):
+        """The staff step over the gate walk's hour (bench_staff.gd: 05:40-06:40, the buses and the shift change,
+        PLANT3D.md §21.15): the work it does, counted (the same on every machine). Before the speed-up (2026-11-02)
+        it ran 52,637 task steps in the hour (riders waiting at a stop looked again every step), worked out the bus's
+        next run 6,002 times (every step) and looked at 53,495 people's acts; after it, 10,072, 2 and 10,930."""
+        r = godot('bench_staff.gd', timeout=600)
+        print('\n' + '\n'.join(x for x in r.stdout.splitlines() if x.split(' ')[0] in ('STAFF', 'PHASE', 'COUNT')))
+        no_errors(self, r)
+        self.assertEqual(r.returncode, 0, r.stdout[-3000:])
+        m = re.search(r'^COUNT runs=(\d+) due=(\d+) acts=(\d+)$', r.stdout, re.M)
+        self.assertIsNotNone(m, r.stdout[-3000:])
+        runs, due, acts = (int(x) for x in m.groups())
+        self.assertLess(runs, 15000)
+        self.assertLess(due, 100)
+        self.assertLess(acts, 15000)
 
 
 def no_errors(case, r):
