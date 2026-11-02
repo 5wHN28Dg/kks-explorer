@@ -675,6 +675,24 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
   distance (0.4–6 km) taken from the same number: the same on every device, never this device's random numbers or
   eased values.
 - **The instructor's panel** has a button per kind in a scenario with weather (the WX1 input `[n, "weather", kind]`).
+- **Measured on the Note 9** (2026-11-02; test-signed release builds without the lightmap's bake, as S4's and DC1's
+  walks; the frames walk among the crews, `crews=1`, 600 s, first starts, `SAMPLE=1`; evidence in
+  `~/kks-work/build/wx3/` and the worktree's `results/` on the maintainer's laptop):
+
+  | Run (battery at start) | Mean frame | At 60 fps | At ≥ 30 fps | GPU median / p95 | Over 100 ms (the app's) |
+  |---|---|---|---|---|---|
+  | main, 240 s, warm (31.5 °C; pipelines only, not judged) | 26.61 ms | 48.45 % | 99.11 % | 19.9 / 26.4 ms | 0 |
+  | clear 2 (28.3 °C) | 25.70 ms | 49.25 % | 99.10 % | 19.7 / 26.0 ms | 0 |
+  | sandstorm 1 (25.1 °C) | 25.94 ms | 48.10 % | 98.87 % | 20.0 / 26.4 ms | 0 |
+  | sandstorm 2 (29.6 °C) | 28.45 ms | 37.20 % | 95.14 % | 22.6 / 30.2 ms | 0 |
+
+  The frame rule (no frame over 100 ms the app causes after the first 5 s) passes in every run. The sandstorm's GPU
+  median against clear weather: +0.3 ms in one run and +2.9 ms in the other, begun 4.5 °C warmer (§11 allows +2 ms):
+  about the budget, with the phone's own variation as large as the effect. The first frame's pipelines: main 12
+  surface + 7 specialization, WX3 13 + 8 (the particles' draw pipeline; the process shader's compute pipeline is not
+  in Godot's counts), compiled in the hidden frame; one pipeline compiled later in every walk, at the WTP (500 s in,
+  a 15 ms frame), in clear weather too. First frame 10.2–11.5 s from launch, peak PSS 848–868 MB. Package: the APK
+  121.0 MB of 250, +0.30 MB against main (the three sounds, the roof map, the scripts and shaders).
 - **Measuring:** `weather=KIND` (app/main.gd, with `crews=1`) fixes the scenario's weather at that kind and its driven
   values at the kind's targets for the start hour, for the rest of that process (a restart into it too); ignored with
   `mp=`. Free play's seeded scenarios start from clear-weather values while their season's chain starts at its
