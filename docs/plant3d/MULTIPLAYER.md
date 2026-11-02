@@ -471,10 +471,11 @@ person's role (0063), and they take the skinned slots before NPCs (PLANT3D.md §
 players leave 5 for NPCs). Map dots, names over heads within 15 m, and the roster panel name who plays which role. A
 player's own `arrive`, `leave` and `zone` inputs still come from their walker (§18.7) and travel as inputs.
 
-**Planned change for the Workshop's K1** (the user, 2026-11-02; WORKSHOP.md §2): bit 0 of `pos`'s flags byte
-(byte 21) says "in the Workshop", set by the sender while its Workshop is open (its person stands where it was left,
-the session's clock runs on). The others draw an "in the Workshop" mark over that person. The message keeps its 24
-bytes, and a build without the flag ignores it (the flags byte is sent as 0 today and not read).
+**The Workshop flag** (the user, 2026-11-02; WORKSHOP.md §2; built with the Workshop's K1): bit 0 of `pos`'s flags
+byte (byte 21, `Session.POS_IN_WORKSHOP`) says "in the Workshop", set by the sender while its Workshop is open (its
+person stands where it was left, the session's clock runs on). The others draw the player's name with "in the
+Workshop" under it, in amber, seen from any distance while the flag is set (`net/others_view.gd`). The message keeps
+its 24 bytes; the other bits are 0, and a build before K1 sends 0 there and doesn't read it.
 
 ## 7. Time, pause, fast-forward, instructor mode and saved runs
 

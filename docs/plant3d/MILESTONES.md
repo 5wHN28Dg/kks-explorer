@@ -244,11 +244,11 @@ inputs to the engine), before S4. Its parts, one pull request each:
   validator's rules; `staff.runs` on a synthetic plant with a camp and `staff.reject` (every earlier vector item
   unchanged: the S4 keys are new, and a file without homes or vehicles runs as before, checked by a JSON comparison
   of the old and new file).
-- **S4b, the content:** the missing roles (guards, managers and engineers, drivers, the storekeeper, the camp staff:
+- **S4b, the content** (**built 2026-11-01**, PLANT3D.md §21.12)**:** the missing roles (guards, managers and engineers, drivers, the storekeeper, the camp staff:
   91 people), homes in the camp, the camp's and the admin building's places measured on the navigation mesh, the gate
   at the plant gate, the buses' stops, drive ways and runs, meals, the morning meeting, the evening; `day` made again
   over 24 clock hours with its forks and the new ones (§21.9); the staff step's cost on the laptop.
-- **S4c, the app:** the vehicles drawn and on the map, people at hidden places and in unloaded interiors not drawn,
+- **S4c, the app** (**built 2026-11-02**, PLANT3D.md §21.13)**:** the vehicles drawn and on the map, people at hidden places and in unloaded interiors not drawn,
   the trainee's bus ride, the off-duty Crew panel, the debrief per role.
 - **S4d, the Note 9:** the `gate` walk at the shift change (PLANT3D.md §21.10), two judged cool runs, the staff step on
   the phone.
@@ -294,6 +294,13 @@ draw calls per kind, ≤ 20 MB for the whole Workshop); the plant's walk is run 
 **Order:** K0 → K1a → K1 → K2 → K3 → K4a → K4b → K5a → K5b → K6. Each draws or runs something new and is measured on
 the Note 9 (K1, K3, K4a, K4b, K5a, K5b at least), with the APK's size before and after (limit 250 MB). The realism programme's
 hands-on work builds on K1a–K3 (REALISM.md).
+
+**K1 as built (2026-11-02):** the Workshop's space, tree, take-apart slider, handling, hide/isolate, Reset, Reassemble
+all; entry from the card and the settings; the plant paused in single play and running in a session, with the `pos`
+flag and the others' mark (WORKSHOP.md "As built (K1)"). The Note 9, the transmitter, alone and in a LAN session with
+the laptop hosting: first entry 1.8 / 1.7 s with an empty pipeline cache (≤ 5.0 s), again 32 / 19 ms; back to the plant
+17–67 ms; no frame over 100 ms the app caused, 99.9 % of frames at ≥ 30 fps, mean frame 19.5 / 19.2 ms; peak PSS
+836 / 837 MB. Pictures: the wiki's Workshop page.
 
 **K1a as built (2026-11-02):** `comp` and `only` in the mesh builder, `Kit.make(..., workshop = true)`,
 `Kit.register` with the data-only fixture kind (`tests/fixtures/workshop_gadget.*`), `builder/workshop_build.gd`

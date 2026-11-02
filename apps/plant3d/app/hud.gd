@@ -327,17 +327,18 @@ func focus_panel() -> bool:
 
 func refresh() -> void:
 	var screens: bool = main.ui != null and main.ui.views_open()      # the control room screens or the drawings take the view
-	main.player.input_enabled = not (main.map.active or panel.visible or main.probing or screens)
+	main.player.input_enabled = not (main.map.active or panel.visible or main.probing or screens or main.workshop_open())
 	var touch := touch_on()
 	var pad := pad_on() and not touch       # (with touch controls Always, the bar stays as it is)
+	var away: bool = main.workshop_open()   # the Workshop: its own camera reads the sticks' actions
 	for s in sticks:
-		_show(s, touch and not main.map.active and not screens, [s.action_left, s.action_right, s.action_up, s.action_down])
+		_show(s, touch and not main.map.active and not screens and not away, [s.action_left, s.action_right, s.action_up, s.action_down])
 	var flying: bool = main.player.mode == Player.Mode.FLY
 	fly_btn.text = "Walk" if flying else "Fly"
 	fly_btn.visible = not screens and not pad   # walking and flying do nothing on the screens; Y on a gamepad
 	use_btn.visible = not screens and not pad   # A on a gamepad
 	for i in updown.size():
-		_show(updown[i], touch and flying and not main.map.active and not screens, [["up", "down"][i]])
+		_show(updown[i], touch and flying and not main.map.active and not screens and not away, [["up", "down"][i]])
 	pad_hint.visible = pad and not main.map.active
 	if screens and main.ui.drawings_open():
 		pad_hint.text = "Gamepad: left stick pans, triggers zoom, A opens what is under the cross, LB RB sheets, B leaves"

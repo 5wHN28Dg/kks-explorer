@@ -75,7 +75,8 @@ var commit_log: Array = []
 var via := ""                           # the harness's network simulator: session traffic to this "ip:port"
 var install_engine := Callable()        # f(engine): the app takes a session's engine (ui/plant_ui.gd adopt_engine);
                                         # unset, the clock alone (the harness)
-var my_pos := Callable()                # f() -> [Vector3, yaw, pitch, gait]: the walker, for `pos`
+var my_pos := Callable()                # f() -> [Vector3, yaw, pitch, gait(, flags)]: the walker, for `pos`
+const POS_IN_WORKSHOP := 1              # `pos` flags bit 0: the player is in the Workshop (MULTIPLAYER.md §6.3)
 
 # ------------------------------------------------------------------ the session
 
@@ -2340,7 +2341,7 @@ func _positions() -> void:
 		return
 	if my_pos.is_valid():
 		var w: Array = my_pos.call()
-		var f := pos_fields(_pos_seq, w[0], w[1], w[2], w[3])
+		var f := pos_fields(_pos_seq, w[0], w[1], w[2], w[3], int(w[4]) if w.size() > 4 else 0)
 		_pos_seq += 1
 		var pk := _seal_k(slot, Wire.NOBODY, [Wire.msg(Wire.Kind.POS, f)])
 		if role == Role.HOST:
@@ -2369,8 +2370,8 @@ var _pos_seq := 1
 
 
 ## A `pos` message's fields (24 bytes): sequence u32, x, y, z f32, heading u16, pitch u16 (of a turn), gait u8,
-## flags u8, 2 spare.
-static func pos_fields(seq: int, at: Vector3, yaw: float, pitch: float, gait: int) -> PackedByteArray:
+## flags u8 (bit 0: in the Workshop, POS_IN_WORKSHOP; the others 0), 2 spare.
+static func pos_fields(seq: int, at: Vector3, yaw: float, pitch: float, gait: int, flags := 0) -> PackedByteArray:
 	var f := PackedByteArray()
 	f.resize(24)
 	Crypt.put_u32(f, 0, seq)
@@ -2380,6 +2381,7 @@ static func pos_fields(seq: int, at: Vector3, yaw: float, pitch: float, gait: in
 	Crypt.put_u16(f, 16, int(round(fposmod(yaw, TAU) / TAU * 65536.0)) & 0xffff)
 	Crypt.put_u16(f, 18, int(round(fposmod(pitch, TAU) / TAU * 65536.0)) & 0xffff)
 	f[20] = clampi(gait, 0, 255)
+	f[21] = flags & POS_IN_WORKSHOP
 	return f
 
 
@@ -2397,13 +2399,20 @@ func _on_pos(from: int, f: PackedByteArray) -> void:
 	var l: Array = positions.get(from, [])
 	if not l.is_empty() and l[-1][5] >= seq:
 		return
-	l.append([_now, at, yaw, pitch, f[20], seq])
+	l.append([_now, at, yaw, pitch, f[20], seq, f[21] & POS_IN_WORKSHOP])
 	while l.size() > 8:
 		l.pop_front()
 	positions[from] = l
 
 
+## Whether another player's latest `pos` says they are in the Workshop (WORKSHOP.md §2).
+func in_workshop(s: int) -> bool:
+	var l: Array = positions.get(s, [])
+	return not l.is_empty() and l[-1].size() > 6 and l[-1][6] != 0
+
+
 ## Where another player is drawn: 200 ms behind, interpolated (§6.3). [at, yaw, pitch, gait] or [].
+## (Whether they are in the Workshop: in_workshop.)
 func position_of(s: int, delay := 0.2) -> Array:
 	var l: Array = positions.get(s, [])
 	if l.is_empty():

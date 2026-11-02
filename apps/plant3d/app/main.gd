@@ -4,13 +4,17 @@
 ## Options, after `--` on the command line (desktop) or one per line in walk.txt in the app's external files folder
 ## (Android: phone/frames.sh pushes it):
 ##   quality=full|lean+vis   this tier, whatever the settings say
-##   walk=frames|camp|wtp|climb|lift|screens walk a scripted route (app/routes.gd) and log frame times; `frames` and
+##   walk=frames|camp|wtp|climb|lift|gate|screens walk a scripted route (app/routes.gd) and log frame times; `frames` and
 ##                           `camp` (through the site and the camp, milestone C1) loop; `wtp` loops the frames walk's
 ##                           part in the water treatment plant (its views' cost, without the nine minutes to get there)
 ##                           `screens` stays in the control room with its screens open, showing each in turn for 10 s
-##                           (the screens' cost, ui/mimic.gd); `drawings` opens each generated P&ID in turn for 10 s,
+##                           (the screens' cost, ui/mimic.gd); `gate` (the shift change at the plant gate, milestone
+##                           S4d) loops the gate road's walkway with the crews (as crews=1) from 05:40, the clock run
+##                           there before the measurement starts; `drawings` opens each generated P&ID in turn for 10 s,
 ##                           panning and zooming it (ui/drawing_view.gd: the DRAWINGS lines); drawing_shots=1 saves a
 ##                           picture of each half way
+##   walk=workshop           the Workshop walk (app/workshop_walk.gd, docs/plant3d/WORKSHOP.md §8): 3 minutes in the
+##                           Workshop on `kind=PART` (default the first kind built), then back to the plant
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
 ##   out=DIR                 where result.txt (and shots) go (default: the external files folder on Android, the user
 ##                           data folder elsewhere)
@@ -74,6 +78,7 @@ const Crowd = preload("res://app/crowd.gd")
 const ScriptCost = preload("res://app/script_cost.gd")
 const WalkFrames = preload("res://app/walk_frames.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
+const Workshop = preload("res://workshop/workshop.gd")
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
 
 var cf: ConfigFile
@@ -88,6 +93,7 @@ var player
 var hud
 var map
 var ui      # ui/plant_ui.gd: the engine, the cards, alarms, procedures, links
+var workshop  # workshop/workshop.gd: the Workshop mode (docs/plant3d/WORKSHOP.md)
 var sun: DirectionalLight3D
 var env: Environment
 var auto
@@ -114,6 +120,7 @@ var screens_walk := false   # walk=screens: the control room's screens in turn, 
 var drawings_walk := false  # walk=drawings: each P&ID in turn, panned and zoomed (REALISM.md §6.1.1, DC1)
 var _sheet_i := 0
 var _tours := {}             # walk=drawings: sheet id -> the codes' centres it passes
+var workshop_walk: Node     # walk=workshop: app/workshop_walk.gd
 var _screen_t := 0.0
 var lightmap_filter := ""   # "bicubic" or "bilinear": the lightmap's filter on this device, set before the plant loads (app/lighting.gd lightmap_bicubic)
 var probing := false     # the tier probe is running: no map, no tier changes, no walking until it ends
@@ -241,8 +248,14 @@ func _ready() -> void:
 	ui = PlantUi.new()
 	ui.name = "ui"
 	add_child(ui)
+	if opts.get("walk", "") == "gate":
+		opts["crews"] = "1"       # the gate walk is the crews' shift change (PLANT3D §21.10)
 	ui.setup(self, opts.get("scenario", "shift_cold" if opts.has("crews") else "cold_iron"))
 	ui.add_settings(hud.extra)
+	workshop = Workshop.new()
+	workshop.name = "workshop"
+	add_child(workshop)
+	workshop.setup(self)
 	_launch("ui")
 	if opts.has("procedure") and ui.clock != null and ui.model.procedures.has(opts.procedure):
 		ui.start_procedure(opts.procedure, null, false)
@@ -322,7 +335,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
@@ -413,6 +426,10 @@ func _probe() -> void:
 	probing = false
 	choose_tier()
 
+## The Workshop mode shows (the plant's keys and views wait).
+func workshop_open() -> bool:
+	return workshop != null and workshop.is_open
+
 func toggle_map() -> void:
 	if probing:
 		return
@@ -443,6 +460,8 @@ func area_at(p: Vector3) -> String:
 func _unhandled_input(e: InputEvent) -> void:
 	if player == null or player.scripted or hud == null:   # (hud: made after the start's sky frame)
 		return
+	if workshop_open():
+		return   # the Workshop's own keys (workshop/workshop.gd)
 	if e.is_action_pressed("map"):
 		toggle_map()
 	elif e.is_action_pressed("menu"):
@@ -536,14 +555,23 @@ func _start_walk() -> void:
 		ui.drawing_view.open_sheet(String(ui.drawings.sheets[0]["id"]))
 		last_us = Time.get_ticks_usec()
 		return
+	if opts.walk == "workshop":
+		workshop_walk = preload("res://app/workshop_walk.gd").new()
+		workshop_walk.name = "workshop_walk"
+		add_child(workshop_walk)
+		last_us = Time.get_ticks_usec()
+		workshop_walk.start(self, String(opts.get("kind", "")))
+		return
 	if opts.walk == "screens":
 		ui.open_panel("screens")
 		screens_walk = true
 		ui.mimic.reset_cost()
 		last_us = Time.get_ticks_usec()
 		return
-	var looped: bool = opts.walk in ["frames", "camp", "wtp", "hoist"]
-	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else (Routes.wtp_loop() if opts.walk == "wtp" else (Routes.hoist(plant) if opts.walk == "hoist" else (Routes.lift(plant) if opts.walk == "lift" else Routes.climb(plant)))))
+	var looped: bool = opts.walk in ["frames", "camp", "wtp", "hoist", "gate"]
+	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else (Routes.wtp_loop() if opts.walk == "wtp" else (Routes.hoist(plant) if opts.walk == "hoist" else (Routes.lift(plant) if opts.walk == "lift" else (Routes.gate(plant) if opts.walk == "gate" else Routes.climb(plant))))))
+	if opts.walk == "gate":
+		await _gate_clock()
 	auto = Autopilot.new()
 	auto.ui = ui                    # a lift's controls (walk=lift)
 	auto.skip_stuck = true
@@ -595,6 +623,21 @@ func _drawings_tick(delta: float) -> void:
 	if opts.get("drawing_shots", "0") == "1" and _screen_t - delta < 5.0 and _screen_t >= 5.0:
 		get_viewport().get_texture().get_image().save_png(out_dir.path_join("drawing_%s.png" % dv.current))
 
+## The gate walk's clock: the crews' engine run to GATE_AT (the 05:40 bus in, the night crew going home after it),
+## 100 steps a frame, before the measured frames begin; the clock then runs at 1x. A scenario that starts after
+## GATE_AT is measured from its start (the log's GATE line says the clock).
+const GATE_AT := 5 * 3600 + 40 * 60
+func _gate_clock() -> void:
+	var e = ui.clock.engine if ui.clock != null else null
+	if e == null or e._sm == null:
+		_say("GATE no crews in this scenario")
+		return
+	var t0 := Time.get_ticks_msec()
+	while posmod(e.clock(), 864000) < GATE_AT * 10 and e.step_no < 20000:   # (tenths of a second; the day left out)
+		ui.clock.run_steps(100)
+		await get_tree().process_frame      # (a frame between: never seconds of a held main thread on a phone)
+	ui.clock.set_speed(1)        # (normal: 1x)
+	_say("GATE clock %s after %d steps in %d ms" % [ui.clock_text(), e.step_no, Time.get_ticks_msec() - t0])
 
 ## mp=CODE@HOST[:PORT]: the walk in a LAN session (MP2's measurement on a phone; the host is the laptop's).
 func _mp_join() -> void:
@@ -668,7 +711,7 @@ func _process(delta: float) -> void:
 	if ff != _walk_ff and opts.has("walk"):
 		_walk_ff = ff
 		_say("SPEED %s at %.1f s, uptime %d ms" % ["fast-forward" if ff else "normal", t_walk, WalkFrames.uptime_ms()])
-	if not screens_walk and not drawings_walk and (auto == null or not auto.running):
+	if not screens_walk and not drawings_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
 		return
 	t_walk += delta
 	if drawings_walk:
@@ -714,7 +757,7 @@ func _process(delta: float) -> void:
 				if sim_n % 60 == 0:
 					_say("SIM at %.0f s: %.0f steps/s, %.0f ms of model per s, %.2f ms a step, speed %d, cap %.1fx" % [
 						t_walk, c.steps_per_s, c.model_ms_per_s, c.step_ms, c.speed, c.ff_cap()])
-	if t_walk > walk_seconds + 5.0:
+	if t_walk > walk_seconds + 5.0 and workshop_walk == null:   # (the Workshop walk ends itself: its 3 minutes)
 		_finish()
 
 ## The frame log (as the bench's, decision 0041): wall-clock frame intervals and how many refreshes of a 60 Hz

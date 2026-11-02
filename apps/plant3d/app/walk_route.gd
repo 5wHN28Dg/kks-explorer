@@ -32,7 +32,7 @@ const LIFT_ENTER := 20.0        # a ride's cost to board, in metres of walking
 
 ## The staff's nominal speeds (staff.json `speeds`, §16.2; `lift` §20.4): the walking directions take a lift when its
 ## ride is quicker than the stairs by these, as the staff's `next` does (§20.6; the user, 2026-10-30)
-var speeds := {"walk": 1.3, "stair": 0.5, "ladder": 0.3, "lift": 0.45}
+var speeds := {"walk": 1.3, "stair": 0.5, "ladder": 0.3, "lift": 0.45, "drive": 8.0}   # (drive: a bus, §21.4; the directions walk)
 var map := RID()
 var region := RID()
 var links := {}                 # link RID -> {kind: "stair" | "ladder", id, path: the way along it, foot first}

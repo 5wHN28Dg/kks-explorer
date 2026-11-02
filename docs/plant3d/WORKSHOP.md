@@ -200,8 +200,7 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
   component's meshes at 0 and described in the root's `moving` meta, for K3 and K4b to animate.
 - The join also refuses an assembly that places a part before its parent in the tree, and a fastener group drawn in
   a component its data's `joins` doesn't name; the validator refuses a group placed before the parts it joins.
-- Not yet active: the check that the Workshop's code names no part kind passes trivially until `apps/plant3d/workshop/`
-  exists (K1). The frozen plant check covers the context keys `pipe_od`, `out` and `floor_dz`; parts whose shape
+- The check that the Workshop's code names no part kind is active since K1 (`apps/plant3d/workshop/`). The frozen plant check covers the context keys `pipe_od`, `out` and `floor_dz`; parts whose shape
   depends on other context (nozzles in use, shaft lines, heights above and below) are held only in the cases recorded.
 - **The plant's proof:** `tests/test_kit_frozen.gd` compares a digest of everything plant mode gives (layers in order,
   arrays, LOD triangle counts, moving pieces, plates, solids) for 1,397 cases (every part of the kit with its defaults,
@@ -215,6 +214,39 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
   group cites a source (stricter than "per subassembly"); `assembly` and `views` are optional until K2 and K3.
 - The transmitter in the Workshop: 14 components, 2 fastener groups, 1,396 triangles (the plant's 272).
 
+**As built (K1, 2026-11-02).**
+- `apps/plant3d/workshop/`: `workshop.gd` (the mode: its own `SubViewport` world, the plant's 3D off, the clock paused
+  and its speed restored in single play, the plant running on in a session, the sounds muted, the walker's input and
+  the plant's panels held; picking, the three-axis handle, hide, isolate, show all, Reset, Reassemble all),
+  `explode.gd` (§4.3's pure function; sealed components' children never move; fastener items back out along the
+  scene's `back_axis`, before their component moves), `orbit.gd` (mouse, touch, gamepad), `panels.gd` (the tree, the properties, the slider with
+  "Selected subassembly only", the tools, Back to the plant, the session's strip). The handle and the floor are
+  pre-built too (`built/workshop_ui/space.scn`, the plant's vertex format and materials: no new pipeline), and the
+  selection is the lit material's own emission.
+- Ways in: the card's **Workshop** button (a kind with a built scene) and a row of kinds in the settings panel. Esc,
+  the gamepad's B (or Back to the plant) leaves; leaving a Workshop opened from the settings shows the settings again.
+  On a gamepad the first press puts the focus on the tools (the D-pad moves between them, A presses). It doesn't
+  open during a scripted flight ("Go there"), the tier probe or the map. The touch sticks hide while it shows (let
+  go, as over the screens).
+- A component turns about its pivot and a fastener group about its items' centre; the handle stands there.
+- What is free to move (§4.5) reads the assembly's `needs` when the data has them (K2); until then everything is free
+  but a sealed component's children, which say `sealed_why`.
+- The session's strip counts new alarms since the Workshop opened (unacknowledged, not shelved or suppressed, as the
+  horn counts them), and says so when the session ends while the Workshop shows. Radio calls for the player's role are not in the
+  strip yet (left for K3, which builds the session's Workshop rules again).
+- `pos` carries the Workshop flag (MULTIPLAYER.md §6.3) and the others mark the player.
+- The Workshop walk (`walk=workshop`, `app/workshop_walk.gd`) enters, leaves and enters again, then runs the 3-minute
+  orbit (assembled, 0 → 1 → 0, isolate, show all, a subassembly, the handle, Reset, Reassemble all) and leaves.
+- **The Note 9** (lean+vis, a test-signed release build without the lightmap's bake, a fresh install: an empty
+  pipeline cache; SAMPLE=1 for the reclaim rule), the transmitter, alone / in a LAN session with the laptop hosting:
+  the first entry 1,813 / 1,682 ms (the rule: ≤ 5.0 s with an empty cache, ≤ 2.0 s compiled), the second 32 / 19 ms;
+  back to the plant 17–67 ms (≤ 1.0 s); after the first frame no frame over 100 ms (the frame rule passes, 0 caused by
+  the app), 99.91 / 99.94 % of the frames shown at ≥ 30 fps, mean frame 19.5 / 19.2 ms, median 16.8 ms (67 % of
+  frames within 17.5 ms: the share at 60 fps), GPU median 2.9 / 2.7 ms (the plant's drawing is gone behind it); peak
+  PSS 836 / 837 MB (≤ 1.5 GB); no pipeline compiled after the first 5 s. In the session the plant ran on (3 min 38 s of
+  model time, 14 ms of model a second) and the session layer took 0.30 ms a frame on average, 3.8 ms at most (its own
+  2 ms budget's known excess, MILESTONES.md MP2). The scene is 23 KB and the space 28 KB of the package.
+
 **Retrofitting.** Each generator's `use()` calls stay; a generator gains `g.comp()` and `g.only()` calls around groups
 of primitives. Moving pieces' mesh builders (`g.move`) carry `comp` too. Proved on the transmitter alone first (K1a),
 then one kind per milestone.
@@ -227,9 +259,14 @@ transforms and 1 → 0 restores them exactly:
   s ∈ [d / D, (d + 1) / D], eased (smoothstep), and is at its full distance after it;
 - a component's offset is the sum of its own and its ancestors' `explode` direction × distance × their stage's eased
   progress (children ride out with their subassembly, then leave it);
-- a fastener group's items each back out along their own axis by the group's distance, in the group's stage;
+- bolts back out first, then the part: a fastener group's items each back out along their own axis by the group's
+  distance in the first half of its component's stage, and the components of that level move in the second half (a
+  level with no fastener group uses its whole stage), as in a real take-apart the bolts come out before the flange
+  comes off (the user, 2026-11-02);
 - transform = home transform translated by the offset: computed from home every frame, never accumulated;
-- **subassembly only:** the same function with the selected component as root (its own stages); the rest stays home.
+- **subassembly only:** the same function with the selected component as root (its own stages); the rest stays home,
+  and so do the root's own fastener groups (they hold it to the rest). While it is on, a pick inside that subassembly
+  keeps it taken apart; a pick outside it takes the picked one apart instead.
 
 Handling (§4.5) is applied on top and cleared by Reset; the slider never reads it.
 

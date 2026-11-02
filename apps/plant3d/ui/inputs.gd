@@ -137,5 +137,10 @@ func alight(lift: String, person_id) -> int:
 	return send(["alight", lift, person_id])
 
 
+## The trainee's person gets on a vehicle standing at their stop (PLANT3D §21.4).
+func get_on(vehicle: String) -> int:
+	return send(["get_on", vehicle])
+
+
 func stop_act(person_id: String) -> int:
 	return send(["stop", person_id])

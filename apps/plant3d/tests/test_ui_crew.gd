@@ -94,6 +94,15 @@ func _play(ui, readings: Dictionary) -> bool:
 		_fresh(ui)
 		App.find_button(ui.crew, "Send").pressed.emit()
 		return true
+	elif s.has("ride"):
+		# the bus in from the camp (milestone S4): the trainee walks instead, from the Crew panel
+		_fresh(ui)
+		var b := App.find_button(ui.crew, "Walk instead")
+		if b == null:
+			return false
+		b.pressed.emit()
+		ui._place_tick()
+		return true
 	elif s.has("choose"):
 		ui.clock.engine.pick(0)
 		return true
@@ -303,6 +312,7 @@ func _ccr_operator(tree: SceneTree, ui, p: Array) -> void:
 	for x in ui.model.ops:
 		if x["kks"] == "00PGB10AC001" and x["do"] == "close":
 			o = x
+	ui.go_control_room(false)           # (at the desk: since S4 the shift begins in the camp)
 	ui.open_screens()
 	ui.do_op(o, null)
 	ui.clock.run_steps(1)
