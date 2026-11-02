@@ -16,20 +16,16 @@ varying float fade;
 void vertex() {
 	vec3 centre = (MODELVIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;   // the particle, in view space
 	// a particle not emitted (its transform zero: at the eye) or hidden under a roof: put behind the camera, so no
-	// quad is rasterised through the view
-	if (COLOR.a < 0.5 || length(MODEL_MATRIX[0].xyz) < 1e-6) {
-		VERTEX = vec3(0.0, 0.0, 10.0);
-		fade = 0.0;
-		return;
-	}
+	// quad is rasterised through the view (a vertex function may not return early)
+	bool gone = COLOR.a < 0.5 || length(MODEL_MATRIX[0].xyz) < 1e-6;
 	vec3 along = (VIEW_MATRIX * vec4(velocity, 0.0)).xyz * length_s;
 	float len = max(length(along), min_length);
 	vec3 axis = length(along) > 1e-4 ? normalize(along) : vec3(0.0, 1.0, 0.0);
-	vec3 side = cross(axis, normalize(centre));
+	vec3 side = cross(axis, normalize(centre + vec3(0.0, 0.0, -1e-4)));
 	side = length(side) > 1e-4 ? normalize(side) : vec3(1.0, 0.0, 0.0);
-	VERTEX = centre + side * VERTEX.x * width + axis * VERTEX.y * len;
+	VERTEX = gone ? vec3(0.0, 0.0, 10.0) : centre + side * VERTEX.x * width + axis * VERTEX.y * len;
 	float d = length(centre);
-	fade = COLOR.a * smoothstep(0.4, 1.5, d) * (1.0 - smoothstep(far * 0.6, far, d));
+	fade = gone ? 0.0 : smoothstep(0.4, 1.5, d) * (1.0 - smoothstep(far * 0.6, far, d));
 }
 
 void fragment() {
