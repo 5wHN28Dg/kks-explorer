@@ -699,8 +699,10 @@ func start_guide(mode: String, from := "exploded") -> bool:
 	if mode == "assemble":
 		if from == "pile":
 			var parts: Array = []
+			var rides := Assembly.rides_of(spec.comps, spec.groups)
 			for id in comps.keys() + groups.keys():
-				parts.append({"id": id, "box": _home_box(id)})
+				if not rides.has(id):
+					parts.append({"id": id, "box": _home_box(id)})
 			var off := Assembly.pile(parts, machine.get_meta("box", AABB()))
 			for id in off:
 				var h := home_m(id)
@@ -715,9 +717,18 @@ func start_guide(mode: String, from := "exploded") -> bool:
 				for v in foff.get(g, []):
 					sum += v
 				var hm: Transform3D = _cur_m.get(g, home_m(g))
-				at[g] = Transform3D(hm.basis, hm.origin + hm.basis * (sum / maxf(foff.get(g, []).size(), 1)))
+				var mean: Vector3 = sum / maxf(foff.get(g, []).size(), 1)
+				var bo := float(spec.groups[g].back_out)
+				if mean.length() < bo * 0.5:
+					# items backing out every way (radial screws): the group lies out as a whole, beside its host
+					var host := String(spec.groups[g].host)
+					var dir: Vector3 = spec.comps[host].dir if host != "" else Vector3.UP
+					mean = hm.basis.inverse() * (dir as Vector3).normalized() * maxf(bo, Assembly.snap_tol(machine.get_meta("box", AABB())) * 3.0)
+				at[g] = Transform3D(hm.basis, hm.origin + hm.basis * mean)
 	s = 0.0
-	guide.start(mode, words.assembly, spec.comps, at)
+	guide.start(mode, words.assembly, spec.comps, at, spec.groups)
+	if panels != null:
+		panels.only_cb.set_pressed_no_signal(false)
 	note = ""
 	apply()
 	_update_ghost()
@@ -843,6 +854,7 @@ func _released() -> void:
 	if not guide.on() or selected == "" or not guide.loose.has(selected):
 		return
 	try_place(selected)
+	_update_ghost()   # (a part taken out while assembling is the next step again)
 	if panels != null:
 		panels.refresh()
 
@@ -931,8 +943,9 @@ func step_words() -> String:
 	var st: Dictionary = guide.steps[i]
 	var name := _name_of(String(st.place))
 	var verb := "Next" if guide.mode == "assemble" else "Take out next"
-	var out := "Step %d of %d. %s: %s. " % [i + 1 if guide.mode == "assemble" else guide.steps.size() - i,
-		guide.steps.size(), verb, name]
+	var n := guide.real_steps()
+	var k := guide.step_number(i)
+	var out := "Step %d of %d. %s: %s. " % [k if guide.mode == "assemble" else n - k + 1, n, verb, name]
 	if guide.mode == "assemble":
 		out += " ".join(st.text)
 		if st.has("why"):
@@ -948,9 +961,12 @@ func _name_of(id: String) -> String:
 ## surface in the scene, drawn or not, and compiles them on its worker threads (decision 0060), as the walking
 ## directions' chevron does. The Compatibility renderer compiles a shader only when it draws it: there it is drawn
 ## once, fully transparent, in front of the camera.
+var _warming := false
+
 func warm_up(parent: Node) -> void:
-	if warmed or _warm != null:
+	if warmed or _warming:
 		return
+	_warming = true
 	await get_tree().create_timer(WARM_UP_S).timeout
 	if _warm != null or not is_inside_tree() or not ResourceLoader.exists(SPACE):
 		return
@@ -965,40 +981,55 @@ func warm_up(parent: Node) -> void:
 		return
 	_warm = Node3D.new()
 	_warm.name = "workshop_warm"
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	mi.material_override = xray_mat()
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_warm.add_child(mi)
+	var wmat := ShaderMaterial.new()   # its own: the Compatibility path below sets its alpha, never the ghost's
+	wmat.shader = XRAY
+	_warm.add_child(_xray_pair(mesh, wmat)[0])
+	_warm.add_child(_xray_pair(mesh, wmat)[1])
 	_warm.position = Vector3(0, -1000, 0)
 	_warm.visible = false
 	parent.add_child(_warm)
 	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
 		var cam3 := get_viewport().get_camera_3d()
 		if cam3 != null:
-			_xray_mat.set_shader_parameter("alpha", 0.0)
+			wmat.set_shader_parameter("alpha", 0.0)
 			_warm.global_position = cam3.global_position - cam3.global_transform.basis.z * 2.0
 			_warm.visible = true
 			for i in 3:
 				await RenderingServer.frame_post_draw
 			_warm.visible = false
-			_xray_mat.set_shader_parameter("alpha", XRAY_ALPHA)
 	warmed = true
 
-const XRAY_ALPHA := 0.35
 
 ## The Workshop's own load (§7.1): its scene with a hidden ghost on one of its meshes, so the ghost's pipelines are
 ## queued with the machine's, before the first step shows one.
 func _warm_machine() -> void:
 	for c in machine.find_children("*", "MeshInstance3D", true, false):
 		if (c as MeshInstance3D).mesh != null:
-			var mi := MeshInstance3D.new()
-			mi.name = "ghost_warm"
-			mi.mesh = (c as MeshInstance3D).mesh
-			mi.material_override = xray_mat()
-			mi.visible = false
-			machine.add_child(mi)
+			var w := Node3D.new()
+			w.name = "ghost_warm"
+			var pair := _xray_pair((c as MeshInstance3D).mesh, xray_mat())
+			w.add_child(pair[0])
+			w.add_child(pair[1])
+			w.visible = false
+			machine.add_child(w)
 			return
+
+## A mesh with the X-ray material drawn plain and instanced (a fastener group's ghost is a MultiMesh: its own pipeline
+## variant), both hidden-ready: [MeshInstance3D, MultiMeshInstance3D].
+func _xray_pair(mesh: Mesh, mat: Material) -> Array:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = 1
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.material_override = mat
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return [mi, mmi]
 
 # ------------------------------------------------------------------ picking and the handle
 

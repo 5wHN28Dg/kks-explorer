@@ -265,8 +265,8 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
 - `ws_xray` (`workshop/ws_xray.gdshader`: unshaded, `blend_mix`, `depth_draw_never`, a little more opaque at the
   outline). Queued twice: a hidden mesh of the space's (the plant's vertex format) with it in the plant 4 s after the
   first walkable frame (`warm_up`, as the chevron), and a hidden copy of one of the machine's meshes with it in the
-  Workshop's load.
-- The transmitter's 16 steps follow the 3051 manual's reassembly (§6.5–§6.5.4; its take-apart, §6.4, is the
+  Workshop's load, each drawn plain and instanced (a fastener group's ghost is a MultiMesh).
+- The transmitter's 16 steps (13 the trainee does: the sealed parts' insides come with them) follow the 3051 manual's reassembly (§6.5–§6.5.4; its take-apart, §6.4, is the
   reverse): the sensor module, the housing (needs the module), its set screw, the electronics board, the display, the
   electronics cover (needs the board and the display), the terminal block, the cable gland, the terminal cover (needs
   the terminal block), the process flange (needs the module), its bolts, the drain/vent valves, the manifold. The
@@ -335,7 +335,7 @@ The data file's `assembly` is the guided order, one step per component or fasten
 - `needs`: `[component, sentence when placing too early, sentence when removing too early]`, in order: placing is
   refused with the first unmet need's first sentence; removing a component is refused while a placed component needs
   it, with that need's second sentence. Every named component exists.
-- **Snapping:** within 2 % of the part's box diagonal (at least 5 mm) of home and within 10° of its home orientation,
+- **Snapping:** within 2 % of the part kind's (the whole machine's) box diagonal (at least 5 mm) of home and within 10° of its home orientation,
   modulo the component's `sym`.
 - **Why not the procedure format (§8):** a procedure's `at` names KKS codes and its `do` names ops of the model; an
   assembly step names components of a part kind with no code, and the trainee's handling is UI state, not model state

@@ -14,6 +14,7 @@ const App = preload("res://tests/ui_app.gd")
 const Assembly = preload("res://workshop/assembly.gd")
 const Kit = preload("res://kit/kit.gd")
 const WB = preload("res://builder/workshop_build.gd")
+const Explode = preload("res://workshop/explode.gd")
 
 var p: Array = []
 
@@ -53,6 +54,16 @@ func run(tree: SceneTree) -> Array:
 
 ## Snapping and the pile, as functions.
 func _pure() -> void:
+	# a fastener group on or inside a sealed component rides with it (never loose: the steps can end)
+	var comps := {"shell": {"parent": "", "sealed": true}, "inner": {"parent": "shell", "sealed": false},
+		"lid": {"parent": "", "sealed": false}}
+	var groups := {"pins": {"host": "shell"}, "deep": {"host": "inner"}, "bolts": {"host": "lid"}}
+	check(Assembly.rides_of(comps, groups).keys().size() == 3 and not Assembly.rides_of(comps, groups).has("bolts"),
+		"a sealed part's own and inner fasteners ride with it: %s" % str(Assembly.rides_of(comps, groups).keys()))
+	var g := Assembly.new()
+	g.start("assemble", [{"place": "shell"}, {"place": "inner"}, {"place": "pins"}, {"place": "lid"}, {"place": "bolts"}],
+		comps, {"shell": Transform3D(), "inner": Transform3D(), "pins": Transform3D(), "lid": Transform3D(), "bolts": Transform3D()}, groups)
+	check(not g.loose.has("pins") and g.real_steps() == 3 and g.step_number(3) == 2, "and their steps are not counted")
 	var box := AABB(Vector3.ZERO, Vector3(0.3, 0.4, 0.0))   # diagonal 0.5 m: 2 % is 10 mm
 	check(is_equal_approx(Assembly.snap_tol(box), 0.01), "2 %% of the box diagonal (%.4f)" % Assembly.snap_tol(box))
 	check(is_equal_approx(Assembly.snap_tol(AABB(Vector3.ZERO, Vector3.ONE * 0.01)), 0.005), "at least 5 mm")
@@ -94,16 +105,36 @@ func _pure() -> void:
 func _transmitter(tree: SceneTree, ws) -> void:
 	var w: Dictionary = ws.words
 	var at0 := _transforms(ws)
+	ws.panels.only_cb.button_pressed = true   # (on, as a trainee may have left it)
 	check(ws.start_guide("assemble", "pile"), "the steps start from a pile")
 	var n_loose: int = ws.guide.loose.size()
 	check(n_loose == ws.comps.size() + ws.groups.size() - 3,
 		"every part but the sealed parts' insides lies on the pile (%d)" % n_loose)
 	check(not ws.panels.slider.editable, "the take-apart slider waits while the steps are on")
 	await tree.process_frame
-	check(ws.panels.step_label.text.begins_with("Step 1 of %d" % w.assembly.size()) and ws.panels.step_label.text.contains(w.components.sensor_module.name),
+	check(not ws.panels.only_cb.button_pressed, "the steps uncheck Selected subassembly only")
+	check(ws.panels.step_label.text.begins_with("Step 1 of 13") and ws.panels.step_label.text.contains(w.components.sensor_module.name),
 		"the first step names its part: %s" % ws.panels.step_label.text)
 	check(ws.ghost != null and ws._ghost_id == "sensor_module" and ws.ghost.transform.is_equal_approx(ws.target_m("sensor_module")),
 		"the first step's ghost stands where its part goes")
+	# the pile has no gap where a sealed part's insides would have lain: neighbours in a row are one gap apart
+	var row: Array = []
+	for id in ws.guide.loose:
+		var b: AABB = ws._home_box(id)
+		b.position += (ws.guide.loose[id] as Transform3D).origin - ws.home_m(id).origin
+		row.append(b)
+	row.sort_custom(func(a, b): return a.position.z < b.position.z or (a.position.z == b.position.z and a.position.x < b.position.x))
+	var gaps: Array = []
+	var zs := {}
+	for b in row:
+		zs[snappedf(b.position.z, 1e-5)] = true
+	for z in zs:
+		var r := row.filter(func(b): return absf(b.position.z - z) < 1e-5)
+		r.sort_custom(func(a, b): return a.position.x < b.position.x)
+		for k in range(1, r.size()):
+			gaps.append(snappedf(r[k].position.x - r[k - 1].end.x, 1e-5))
+	check(gaps.size() >= 1 and gaps.all(func(g): return is_equal_approx(g, gaps[0])), "the pile's rows have even gaps: %s" % str(gaps))
+	check(row.size() == ws.guide.loose.size(), "(every loose part in a row)")
 	if ws.ghost != null and ws.ghost.get_child_count() > 0:
 		check((ws.ghost.get_child(0).material_override as ShaderMaterial).shader.resource_path.ends_with("ws_xray.gdshader"), "the ghost is drawn with ws_xray")
 	# out of order: the flange bolts at their place before the flange: refused with the first sentence, still loose
@@ -119,6 +150,7 @@ func _transmitter(tree: SceneTree, ws) -> void:
 	check((ws._cur_m["cover_front"] as Transform3D).is_equal_approx(cover0), "a loose part stays where it lies when its parent is moved")
 	ws.guide.loose["terminal_block"] = ws.target_m("terminal_block")
 	check(ws.try_place("terminal_block"), "a part goes into its loose parent")
+	check(ws.panels.step_label.text.begins_with("Step 1 of 13"), "a part placed out of the guided order leaves the next step as it was")
 	var tb0: Transform3D = ws._cur_m["terminal_block"]
 	ws.guide.loose["housing"] = (ws.guide.loose["housing"] as Transform3D).translated(Vector3(0.02, 0, 0))
 	ws.apply()
@@ -142,6 +174,30 @@ func _transmitter(tree: SceneTree, ws) -> void:
 			ws._released()
 			check(not ws.guide.loose.has(id), "the housing dragged by the handle onto its place snaps there")
 			continue
+		if id == "display":
+			# the board, placed, taken out again by the handle and let go far off: the next step and its ghost are
+			# the board's again
+			ws.select("electronics")
+			await tree.process_frame
+			ws._place_handle()
+			var hc: Vector3 = ws.handle.global_position
+			var sc: float = ws.handle.scale.x
+			var took := false
+			for ax in [Vector3.RIGHT, Vector3.UP, Vector3.BACK]:
+				var mp: Vector2 = ws.cam.unproject_position(hc + ax * sc * 0.6)
+				if ws._grab_handle(mp) and ws._drag.kind == "move":
+					took = true
+					ws._drag_handle(mp + ((ws._drag.b as Vector2) - (ws._drag.a as Vector2)) * 3.0)
+					break
+				ws._drag = {}
+			check(took and ws.guide.loose.has("electronics"), "a placed part picked up by the handle lies loose")
+			ws._drag = {}
+			ws._released()
+			check(ws.guide.loose.has("electronics") and ws._ghost_id == "electronics" and ws.panels.step_label.text.contains(w.components.electronics.name),
+				"taken out while assembling, it is the next step again, its ghost with it (%s)" % ws._ghost_id)
+			ws.guide.loose["electronics"] = ws.target_m("electronics")
+			check(ws.try_place("electronics"), "and goes back")
+			check(ws.panels.step_label.text.begins_with("Step 5 of 13"), "steps are counted as the trainee does them: %s" % ws.panels.step_label.text)
 		var c: Vector3 = ws._gcentre.get(id, Vector3.ZERO) if ws.groups.has(id) else Vector3.ZERO
 		var b := Basis(Vector3(0, 1, 0), deg_to_rad(6.0)) * tg.basis
 		ws.guide.loose[id] = Transform3D(b, tg.origin + tg.basis * c - b * c + Vector3(tol * 0.6, 0, 0))
@@ -178,11 +234,11 @@ func _transmitter(tree: SceneTree, ws) -> void:
 		await tree.process_frame
 		if ws._reassemble_t < 0.0:
 			break
-	check(not ws.guide.on() and ws.handled.is_empty() and _near(_transforms(ws), at0), "Reassemble all brings every loose part home")
+	check(not ws.guide.on() and ws.handled.is_empty() and _near(_transforms(ws), at0) and _groups_home(ws), "Reassemble all brings every loose part home")
 	check(ws.panels.slider.editable, "and the slider works again")
 	ws.start_guide("assemble", "exploded")
 	ws.reset()
-	check(not ws.guide.on() and _transforms(ws) == at0, "Reset ends the steps, every part home")
+	check(not ws.guide.on() and _transforms(ws) == at0 and _groups_home(ws), "Reset ends the steps, every part home")
 
 ## The fixture kind (no Workshop code for it): from exploded, its lid's symmetry, its screws after the lid.
 func _fixture(tree: SceneTree, ws) -> void:
@@ -217,7 +273,24 @@ func _fixture(tree: SceneTree, ws) -> void:
 	ws.guide.loose["lid_screws"] = ws.target_m("lid_screws")
 	check(ws.try_place("lid_screws"), "then the screws")
 	check(ws.guide.done(), "the fixture is assembled")
+	# screws backing out opposite ways (radial): taken apart, the group lies out as a whole, not in its place
+	var its: Array = ws.spec.groups.lid_screws.items.duplicate()
+	var b1: Basis = (its[1] as Transform3D).basis
+	var v1: Vector3 = (b1 * (ws.spec.groups.lid_screws.axis as Vector3)).normalized()
+	var perp := v1.cross(Vector3.UP if absf(v1.y) < 0.9 else Vector3.RIGHT).normalized()
+	its[1] = Transform3D(Basis(perp, PI) * b1, (its[1] as Transform3D).origin)
+	ws.spec.groups.lid_screws.items = its
+	var fo1: Array = Explode.fastener_offsets(ws.spec, 1.0).get("lid_screws", [])
+	check(fo1.size() == 2 and ((fo1[0] as Vector3) + (fo1[1] as Vector3)).length() < 1e-5, "(the screws now back out opposite ways: %s)" % str(fo1))
+	ws.start_guide("assemble", "exploded")
+	var in_lid: Transform3D = (ws.guide.loose["lid"] as Transform3D) * ws.home_m("lid").affine_inverse() * ws.home_m("lid_screws")
+	var away: float = in_lid.origin.distance_to((ws.guide.loose["lid_screws"] as Transform3D).origin)
+	check(away > tol, "screws backing out every way don't lie as if fitted in the loose lid (%.4f m)" % away)
+	ws.reset()
 	check(_transforms(ws)["base"] == at0["base"] and _transforms(ws)["core"] == at0["core"], "its parts where they were built")
+
+func _groups_home(ws) -> bool:
+	return ws.groups.values().all(func(g): return g.transform == Transform3D.IDENTITY)
 
 func _transforms(ws) -> Dictionary:
 	var out := {}

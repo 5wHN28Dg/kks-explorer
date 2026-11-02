@@ -21,21 +21,50 @@ var rides := {}                 # id -> true: inside a sealed component (never l
 
 ## Starts a guided assembly or disassembly over a tree (`comps` {id: {parent, sealed}}, the data's steps); `loose_at`
 ## the parts that lie loose at the start, {id: Transform3D in the machine's frame} (empty for a disassembly).
-func start(m: String, data_steps: Array, comps: Dictionary, loose_at: Dictionary) -> void:
+func start(m: String, data_steps: Array, comps: Dictionary, loose_at: Dictionary, groups := {}) -> void:
 	mode = m
 	steps = data_steps
-	rides.clear()
-	for id in comps:
-		var at: String = comps[id].parent
-		while at != "":
-			if comps[at].sealed:
-				rides[id] = true
-				break
-			at = comps[at].parent
+	rides = rides_of(comps, groups)
 	loose = {}
 	for id in loose_at:
 		if not rides.has(id):
 			loose[id] = loose_at[id]
+
+## The parts inside a sealed component (`comps` {id: {parent, sealed}}, `groups` {id: {host}}): components below a
+## sealed one, and fastener groups on or below one. {id: true}
+static func rides_of(comps: Dictionary, groups := {}) -> Dictionary:
+	var out := {}
+	for id in comps:
+		var at: String = comps[id].parent
+		while at != "":
+			if comps[at].sealed:
+				out[id] = true
+				break
+			at = comps[at].parent
+	for g in groups:
+		var at := String(groups[g].host)
+		while at != "":
+			if comps[at].sealed:
+				out[g] = true
+				break
+			at = comps[at].parent
+	return out
+
+## The steps the trainee does (those of parts that ride inside a sealed one are done with it): their count, and the
+## number of step `i` among them (1 first).
+func real_steps() -> int:
+	var n := 0
+	for s in steps:
+		if not rides.has(String(s.place)):
+			n += 1
+	return n
+
+func step_number(i: int) -> int:
+	var n := 0
+	for k in i + 1:
+		if not rides.has(String(steps[k].place)):
+			n += 1
+	return n
 
 func stop() -> void:
 	mode = ""
@@ -52,7 +81,7 @@ func placed(id: String) -> bool:
 func next_step() -> int:
 	if mode == "assemble":
 		for i in steps.size():
-			if loose.has(String(steps[i].place)):
+			if loose.has(String(steps[i].place)) and not rides.has(String(steps[i].place)):
 				return i
 	elif mode == "disassemble":
 		for i in range(steps.size() - 1, -1, -1):
