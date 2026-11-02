@@ -683,12 +683,15 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
   |---|---|---|---|---|---|
   | main, 240 s, warm (31.5 °C; pipelines only, not judged) | 26.61 ms | 48.45 % | 99.11 % | 19.9 / 26.4 ms | 0 |
   | clear 2 (28.3 °C) | 25.70 ms | 49.25 % | 99.10 % | 19.7 / 26.0 ms | 0 |
+  | clear 3 (29.3 °C) | 26.63 ms | 44.60 % | 98.36 % | 20.9 / 28.1 ms | 0 |
   | sandstorm 1 (25.1 °C) | 25.94 ms | 48.10 % | 98.87 % | 20.0 / 26.4 ms | 0 |
   | sandstorm 2 (29.6 °C) | 28.45 ms | 37.20 % | 95.14 % | 22.6 / 30.2 ms | 0 |
 
   The frame rule (no frame over 100 ms the app causes after the first 5 s) passes in every run. The sandstorm's GPU
-  median against clear weather: +0.3 ms in one run and +2.9 ms in the other, begun 4.5 °C warmer (§11 allows +2 ms):
-  about the budget, with the phone's own variation as large as the effect. The first frame's pipelines: main 12
+  median against clear weather: +1.0 ms on the means of the two runs each (20.3 and 21.3 ms), +1.7 ms between the
+  two warmest runs (29.3 and 29.6 °C), within §11's +2 ms; the phone's own spread between two runs of the same
+  weather is as large (1.2 ms clear, 2.6 ms sandstorm). The first clear run did not start (the phone left adb as it
+  began) and was walked again. The first frame's pipelines: main 12
   surface + 7 specialization, WX3 13 + 8 (the particles' draw pipeline; the process shader's compute pipeline is not
   in Godot's counts), compiled in the hidden frame; one pipeline compiled later in every walk, at the WTP (500 s in,
   a 15 ms frame), in clear weather too. First frame 10.2–11.5 s from launch, peak PSS 848–868 MB. Package: the APK
