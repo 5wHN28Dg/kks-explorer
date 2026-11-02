@@ -628,6 +628,49 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
 - **Heat:** heat shimmer is left out (screen-space; 0057 left those out), the trainee's heat stress shows in the
   Crew panel.
 
+### 5.5 As built for milestone WX3 (2026-11-02: the weather seen and heard)
+
+- **The first train's weather** (`data/plant3d/weather.json`): the eight kinds of §5.1 and four seasons (winter days
+  335–59, spring 60–151, summer 152–273, autumn 274–334) with hourly rows that keep a kind for hours (a sandstorm
+  ends with odds of about one in five an hour; summer has no rain, winter its rain, fog and cold nights, spring and
+  autumn the thunderstorms). It drives only what is drawn: `wind` (m/s), `rain` (mm/h), `dust` (mg/m³),
+  `visibility` (m: under 1 km in a sandstorm, as [WMO]), `solar` (W/m²), `lightning` (0–1) and **`wet`** (0–1, added
+  here: how wet surfaces under the sky are, a 25-minute lag, so they dry after the rain). They are new `ext` values of
+  plant.json that every scenario sets (clear-weather values); `ambient_t`, `ambient_wb` and the plant's reactions stay
+  WX2's, so the weather changes nothing the model computes. **Free play's weather:** the two version 2 scenarios
+  (`shift_cold`, a summer day, year day 196; `shift_wtp`, a spring day, year day 100) carry `{"season": id}`; the
+  version 1 scenarios can't carry `world` and stay clear. `plant3d-v1.json` and `-v2.json` were regenerated: the new
+  values added, every earlier value the same.
+- **Drawn** (`app/weather_view.gd`), every frame from the model's values eased over 2 s (the model's lags already take
+  minutes), so every peer stepping the same run sees the same weather:
+  - the depth fog's density 3 / `visibility` (5 % of the light through at the model's visibility), never thinner
+    than the clear haze; its colour toward sand with `dust`, grey with `rain`, a pale mist when the view is short
+    without either; its sky affect washes the photographed sky toward it below 8 km (no sky shader, nothing
+    reprocessed);
+  - the sun's energy by `solar` against the clear kind's at the hour (from the view at night), its shadows softer
+    under cloud; a lightning flash adds light for 0.15 s;
+  - one GPUParticles3D round the camera (the phone 2,000 within 25 m, the full tier 8,000 within 40 m: §11), its
+    share of them (`amount_ratio`) by how hard it rains (10 mm/h is all) or how much sand blows (dust 1–6 mg/m³),
+    rain streaks falling with the wind's push or sand specks along the north-westerly wind; a particle that leaves
+    the box re-enters at its other side, and one under a roof is not drawn;
+  - **the roof map:** the build rasterises every building's and canopy's plan at half a metre into an R8 texture of
+    the roof's height (quarter metres), `built/roof_map.res`, named in the build's manifest; the particles and the
+    weathered shader read it as a global parameter;
+  - **wet and dusty surfaces:** global parameters of the one weathered shader (`wx_wet`, `wx_dust`, `wx_rain`,
+    `wx_roof`, `wx_roof_rect`): under the sky, wet darkens and glosses what faces up (a little the walls), with
+    puddles in the ground's low patches and drops' rings on them (full tier only); laid dust (from `dust`, after a
+    storm, gone where wet) pales flat tops. Uniforms only: no new variant.
+  - **Heat shimmer** is left out (screen-space, as 0057 left those).
+- **Heard** (ui/sound_player.gd, three new sounds of the synth library, decision 0055): `rain` (loop, also heard on
+  the roofs indoors at 0.35), `sand_hiss` (loop, in gusts), `thunder` (a one-shot rumble played after the flash,
+  delayed by the strike's distance at 343 m/s and quieter with it); the wind's existing loop follows `wind`.
+- **Lightning flashes** fall in 2-second slots of the model's steps: a slot flashes when a 32-bit mix of the world
+  seed and the slot's number is under `lightning` × 0.08, at a step and a distance (0.4–6 km) taken from the same
+  number: the same on every device, never this device's random numbers.
+- **The instructor's panel** has a button per kind in a scenario with weather (the WX1 input `[n, "weather", kind]`).
+- **Measuring:** `weather=KIND` (app/main.gd, with `crews=1`) fixes the scenario's weather at that kind and its driven
+  values at the kind's targets for the start hour.
+
 ## 6. Documents and discussions
 
 ### 6.1 Generic P&IDs

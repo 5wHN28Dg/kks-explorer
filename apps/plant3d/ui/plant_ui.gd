@@ -24,6 +24,7 @@ const Bindings = preload("res://ui/bindings.gd")
 const LiftView = preload("res://app/lift.gd")
 const VehicleView = preload("res://app/vehicles.gd")
 const SoundPlayer = preload("res://ui/sound_player.gd")
+const WeatherView = preload("res://app/weather_view.gd")
 const Pointer = preload("res://ui/pointer.gd")
 const LinksIn = preload("res://ui/links_in.gd")
 const Card = preload("res://ui/card.gd")
@@ -186,6 +187,9 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	bindings.sounds = sounds
 	bindings.clock = clock
 	add_child(bindings)
+	if m.opts.has("weather"):   # a measured walk in one weather (app/main.gd `weather=`): fixed, at its targets
+		if not WeatherView.fix(model.scenarios.get(scenario, {}), model.weather, String(m.opts["weather"])):
+			push_warning("weather=%s: the scenario %s has no weather, or the kind is unknown" % [m.opts["weather"], scenario])
 	clock.start(model, scenario)
 	bindings.setup(clock.engine, index, info, player.camera)
 	sounds.engine = clock.engine
@@ -931,6 +935,12 @@ func shelve(alarm: String, seconds: float) -> void:
 
 func unshelve(alarm: String) -> void:
 	inputs.unshelve(alarm)
+
+
+## The instructor's weather (REALISM.md §5.1), from the instructor's panel.
+func weather(kind: String) -> void:
+	inputs.weather(kind)
+	toast("Weather set: %s, from the next step." % kind.replace("_", " "))
 
 
 func fault(fid: String) -> void:

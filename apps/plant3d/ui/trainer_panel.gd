@@ -90,6 +90,22 @@ func refresh() -> void:
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(l)
 		row.add_child(W.button("Restart in it", func(): ui.restart(id)))
+	# the instructor's weather (REALISM.md §5.1): in a scenario with weather, one button per kind; the kind now first
+	if e.ix.has("world_wx"):
+		body.add_child(W.label("Weather", 22))
+		var kinds: Array = ui.info.m.weather.get("kinds", [])
+		var now := int(e.wx_kind)
+		var cur := String(kinds[now].get("id", "")) if now >= 0 and now < kinds.size() else ""
+		body.add_child(W.label("Now: " + cur.replace("_", " "), 18, W.DIM))
+		var grid := HFlowContainer.new()
+		body.add_child(grid)
+		for k in kinds:
+			var kid := String(k.get("id", ""))
+			var b := W.button(kid.replace("_", " ").capitalize(), func():
+				ui.weather(kid)
+				refresh())
+			b.disabled = kid == cur
+			grid.add_child(b)
 	body.add_child(W.label("Faults", 22))
 	var faults := trainer_faults(e)
 	if faults.is_empty():

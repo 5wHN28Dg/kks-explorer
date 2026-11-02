@@ -1,0 +1,158 @@
+{
+ "format": "walkdown-plant-weather",
+ "version": 1,
+ "values": [
+  {
+   "id": "wind",
+   "tau": 20
+  },
+  {
+   "id": "rain",
+   "tau": 8
+  },
+  {
+   "id": "dust",
+   "tau": 30
+  },
+  {
+   "id": "visibility",
+   "tau": 20
+  },
+  {
+   "id": "solar",
+   "tau": 10
+  },
+  {
+   "id": "lightning",
+   "tau": 3
+  },
+  {
+   "id": "wet",
+   "tau": 25
+  }
+ ],
+ "kinds": [
+  {
+   "id": "clear",
+   "targets": {
+    "wind": [[0, 2], [6, 2], [14, 5], [19, 3], [24, 2]],
+    "rain": [[0, 0], [24, 0]],
+    "dust": [[0, 0.08], [24, 0.08]],
+    "visibility": [[0, 20000], [24, 20000]],
+    "solar": [[0, 0], [5.5, 0], [7, 238], [9, 665], [12.5, 950], [16, 570], [18, 95], [19, 0], [24, 0]],
+    "lightning": [[0, 0], [24, 0]],
+    "wet": [[0, 0], [24, 0]]
+   }
+  },
+  {
+   "id": "hot",
+   "targets": {
+    "wind": [[0, 3], [6, 3], [14, 6], [19, 4], [24, 3]],
+    "rain": [[0, 0], [24, 0]],
+    "dust": [[0, 0.2], [24, 0.2]],
+    "visibility": [[0, 12000], [6, 12000], [15, 8000], [24, 12000]],
+    "solar": [[0, 0], [5.5, 0], [7, 250], [9, 700], [12.5, 1000], [16, 600], [18, 100], [19, 0], [24, 0]],
+    "lightning": [[0, 0], [24, 0]],
+    "wet": [[0, 0], [24, 0]]
+   }
+  },
+  {
+   "id": "dust_haze",
+   "targets": {
+    "wind": [[0, 6], [6, 6], [14, 10], [19, 8], [24, 6]],
+    "rain": [[0, 0], [24, 0]],
+    "dust": [[0, 0.8], [14, 1.5], [24, 0.8]],
+    "visibility": [[0, 4000], [14, 2500], [24, 4000]],
+    "solar": [[0, 0], [5.5, 0], [7, 175], [9, 490], [12.5, 700], [16, 420], [18, 70], [19, 0], [24, 0]],
+    "lightning": [[0, 0], [24, 0]],
+    "wet": [[0, 0], [24, 0]]
+   }
+  },
+  {
+   "id": "sandstorm",
+   "targets": {
+    "wind": [[0, 14], [14, 18], [24, 14]],
+    "rain": [[0, 0], [24, 0]],
+    "dust": [[0, 6], [14, 10], [24, 6]],
+    "visibility": [[0, 600], [14, 300], [24, 600]],
+    "solar": [[0, 0], [5.5, 0], [7, 62], [9, 175], [12.5, 250], [16, 150], [18, 25], [19, 0], [24, 0]],
+    "lightning": [[0, 0], [24, 0]],
+    "wet": [[0, 0], [24, 0]]
+   }
+  },
+  {
+   "id": "rain",
+   "targets": {
+    "wind": [[0, 5], [24, 5]],
+    "rain": [[0, 4], [24, 4]],
+    "dust": [[0, 0.02], [24, 0.02]],
+    "visibility": [[0, 5000], [24, 5000]],
+    "solar": [[0, 0], [5.5, 0], [7, 62], [9, 175], [12.5, 250], [16, 150], [18, 25], [19, 0], [24, 0]],
+    "lightning": [[0, 0], [24, 0]],
+    "wet": [[0, 1], [24, 1]]
+   }
+  },
+  {
+   "id": "thunderstorm",
+   "targets": {
+    "wind": [[0, 12], [24, 12]],
+    "rain": [[0, 15], [24, 15]],
+    "dust": [[0, 0.05], [24, 0.05]],
+    "visibility": [[0, 2000], [24, 2000]],
+    "solar": [[0, 0], [5.5, 0], [7, 30], [9, 84], [12.5, 120], [16, 72], [18, 12], [19, 0], [24, 0]],
+    "lightning": [[0, 1], [24, 1]],
+    "wet": [[0, 1], [24, 1]]
+   }
+  },
+  {
+   "id": "cold_clear",
+   "targets": {
+    "wind": [[0, 1], [6, 1], [14, 4], [19, 2], [24, 1]],
+    "rain": [[0, 0], [24, 0]],
+    "dust": [[0, 0.05], [24, 0.05]],
+    "visibility": [[0, 25000], [24, 25000]],
+    "solar": [[0, 0], [5.5, 0], [7, 150], [9, 420], [12.5, 600], [16, 360], [18, 60], [19, 0], [24, 0]],
+    "lightning": [[0, 0], [24, 0]],
+    "wet": [[0, 0], [24, 0]]
+   }
+  },
+  {
+   "id": "fog",
+   "targets": {
+    "wind": [[0, 1], [24, 1]],
+    "rain": [[0, 0], [24, 0]],
+    "dust": [[0, 0.02], [24, 0.02]],
+    "visibility": [[0, 400], [6, 200], [10, 1500], [12, 4000], [24, 1000]],
+    "solar": [[0, 0], [5.5, 0], [7, 75], [9, 210], [12.5, 300], [16, 180], [18, 30], [19, 0], [24, 0]],
+    "lightning": [[0, 0], [24, 0]],
+    "wet": [[0, 0.3], [24, 0.3]]
+   }
+  }
+ ],
+ "seasons": [
+  {
+   "id": "winter",
+   "days": [335, 59],
+   "start": "cold_clear",
+   "hourly": [["clear", "clear", 94], ["clear", "cold_clear", 3], ["clear", "rain", 2], ["clear", "dust_haze", 1], ["cold_clear", "cold_clear", 92], ["cold_clear", "clear", 5], ["cold_clear", "fog", 2], ["cold_clear", "rain", 1], ["fog", "fog", 70], ["fog", "clear", 30], ["rain", "rain", 85], ["rain", "clear", 14], ["rain", "thunderstorm", 1], ["thunderstorm", "thunderstorm", 60], ["thunderstorm", "rain", 40], ["hot", "clear", 1], ["dust_haze", "dust_haze", 85], ["dust_haze", "clear", 15], ["sandstorm", "dust_haze", 1]]
+  },
+  {
+   "id": "spring",
+   "days": [60, 151],
+   "start": "clear",
+   "hourly": [["clear", "clear", 92], ["clear", "hot", 3], ["clear", "dust_haze", 3], ["clear", "rain", 1], ["clear", "thunderstorm", 1], ["hot", "hot", 92], ["hot", "clear", 5], ["hot", "dust_haze", 3], ["dust_haze", "dust_haze", 85], ["dust_haze", "clear", 9], ["dust_haze", "sandstorm", 6], ["sandstorm", "sandstorm", 80], ["sandstorm", "dust_haze", 20], ["rain", "rain", 85], ["rain", "clear", 13], ["rain", "thunderstorm", 2], ["thunderstorm", "thunderstorm", 65], ["thunderstorm", "rain", 35], ["cold_clear", "clear", 1], ["fog", "clear", 1]]
+  },
+  {
+   "id": "summer",
+   "days": [152, 273],
+   "start": "hot",
+   "hourly": [["clear", "clear", 90], ["clear", "hot", 9], ["clear", "dust_haze", 1], ["hot", "hot", 93], ["hot", "clear", 3], ["hot", "dust_haze", 4], ["dust_haze", "dust_haze", 84], ["dust_haze", "hot", 10], ["dust_haze", "sandstorm", 6], ["sandstorm", "sandstorm", 82], ["sandstorm", "dust_haze", 18], ["rain", "clear", 1], ["thunderstorm", "clear", 1], ["cold_clear", "clear", 1], ["fog", "clear", 1]]
+  },
+  {
+   "id": "autumn",
+   "days": [274, 334],
+   "start": "clear",
+   "hourly": [["clear", "clear", 93], ["clear", "hot", 2], ["clear", "dust_haze", 2], ["clear", "rain", 2], ["clear", "thunderstorm", 1], ["hot", "hot", 90], ["hot", "clear", 10], ["dust_haze", "dust_haze", 85], ["dust_haze", "clear", 11], ["dust_haze", "sandstorm", 4], ["sandstorm", "sandstorm", 80], ["sandstorm", "dust_haze", 20], ["rain", "rain", 85], ["rain", "clear", 14], ["rain", "thunderstorm", 1], ["thunderstorm", "thunderstorm", 65], ["thunderstorm", "rain", 35], ["cold_clear", "cold_clear", 85], ["cold_clear", "clear", 15], ["fog", "fog", 70], ["fog", "clear", 30]]
+  }
+ ]
+}

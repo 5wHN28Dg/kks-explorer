@@ -201,6 +201,18 @@ VOICES = {
     'wind': dict(spl=74, seconds=16, noise_am=[(0.0625, 0.45), (0.1875, 0.25), (0.4375, 0.12)], why=(
         'Wind at the ear: turbulence round the head and the plant\'s structures, broadband and low (pink 30-1,500 Hz), '
         'rising and falling in gusts of several seconds (a 16 s loop, so the gusts don\'t repeat every few)')),
+    # the weather heard (REALISM.md §5.4, WX3): the app sets their gains from the model's rain, dust and lightning
+    'rain': dict(spl=72, drops=(400, 0.25), why=(
+        'Rain at the ear outdoors: drops striking the ground, steel and roof sheeting all round, broadband white '
+        'noise 500-10,000 Hz, with single near drops ringing (as the cooling tower\'s rain, lighter and denser)')),
+    'sand_hiss': dict(spl=70, seconds=16, noise_am=[(0.0625, 0.5), (0.25, 0.2)], why=(
+        'Blown sand: grains hitting steel, sheeting and the ear in gusts, a high hiss (white 1,500-9,000 Hz) rising and '
+        'falling with the wind (a 16 s loop, as the wind\'s)')),
+    'thunder': dict(spl=88, once=dict(kind='rumble', seconds=6.0, tau=1.6), why=(
+        'Thunder from a strike a few kilometres off: the air absorbs the crack\'s high frequencies over that distance, '
+        'so what arrives is a low rumble (brown noise 20-400 Hz with a 40 Hz body) that rolls as sound from the '
+        'channel\'s parts arrives one after another, and dies away over several seconds. The app plays it after the '
+        'flash, delayed by the distance at 343 m/s')),
     'plant_distant': dict(spl=74, noise_am=[(0.125, 0.1)], mains=(100, 200), why=(
         'The plant heard from a few hundred metres: the air and the buildings take the high frequencies away, '
         'leaving a low roar (brown 30-700 Hz: fans, flows, combustion) and the electrical hum of the transformers '
@@ -511,6 +523,17 @@ def render_once(s, v):
 
         slam(0.01, 1.0)
         slam(0.01 + ev['rebound'], 0.33)
+    elif ev['kind'] == 'rumble':
+        # thunder heard from a few kilometres: the air takes the crack's high frequencies, leaving a low rumble that
+        # rolls (its paths from the channel's parts arrive one after another: a slow random swell) and dies away
+        n = int(ev['seconds'] * FS)
+        t = times(n)
+        swell = sum(np.abs(np.sin(2 * np.pi * hz * t + rng.uniform(0, 2 * np.pi))) * g
+                    for hz, g in ((0.6, 0.5), (1.3, 0.3), (2.9, 0.2)))
+        env = np.minimum(1, t / 0.15) * np.exp(-t / ev['tau']) * (0.4 + swell)
+        x = env * nz.get('gain', 1) * band_noise(rng, n, nz['colour'], nz['band'])
+        x = x + sum(tone(t, z['hz'], z.get('gain', 1), 0) * np.exp(-t / ev['tau']) * np.minimum(1, t / 0.3)
+                    for z in tones)
     elif ev['kind'] == 'beeps':
         total = 0.02 + ev['count'] * (ev['on'] + ev['gap']) + 0.05
         n = int(total * FS)

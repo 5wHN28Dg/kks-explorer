@@ -56,7 +56,12 @@ var _walked := 0.0              # metres since the last footstep (or rung)
 var _last_at = null             # the walker's last position (null: none yet)
 var _steps := {}                # step sound id -> its player (two voices each, no node made per step)
 var _rng := RandomNumberGenerator.new()
-var _ambience := {}             # wind / plant_distant -> [players]
+var _ambience := {}             # wind / plant_distant / rain / sand_hiss -> [players]
+## The weather heard (app/weather_view.gd sets it from the model's values, REALISM.md §5.4): each ambience's gain
+## outdoors (wind by `wind`, rain by `rain`, sand by `dust`); rain on the roofs is heard indoors at ROOF_RAIN of it.
+## Empty: no weather, the wind as before.
+var weather := {}
+const ROOF_RAIN := 0.35
 var _doors := {}                # roller door -> its players while it moves
 
 
@@ -322,8 +327,9 @@ func horn(priority: int) -> void:
 	_horn.play()
 
 
-## A one-shot for an engine event at a place: `breaker`, `breaker_open`, `motor_start`, `surge_thud`, `horn_ack`.
-func once(id: String, at: Node3D = null) -> void:
+## A one-shot for an engine event at a place: `breaker`, `breaker_open`, `motor_start`, `surge_thud`, `horn_ack`;
+## `thunder` (app/weather_view.gd) everywhere, at `gain_db`.
+func once(id: String, at: Node3D = null, gain_db := 0.0) -> void:
 	played[id] = played.get(id, 0) + 1
 	if index.is_empty() or muted or not index.has(id):
 		return
@@ -344,6 +350,7 @@ func once(id: String, at: Node3D = null) -> void:
 		else:
 			var p2 := AudioStreamPlayer.new()
 			p2.stream = st
+			p2.volume_db = gain_db
 			add_child(p2)
 			p2.play()
 			p = p2
@@ -495,11 +502,23 @@ func is_outdoors(at: Vector3) -> bool:
 	return true
 
 
+## An ambience's gain now: outdoors (faded in and out of buildings), the wind and the weather's by `weather`.
+func ambience_gain(id: String) -> float:
+	match id:
+		"plant_distant":
+			return outdoors * distant_gain(running)
+		"wind":
+			return outdoors * float(weather.get("wind", 1.0))
+		"rain":
+			return lerpf(ROOF_RAIN, 1.0, outdoors) * float(weather.get("rain", 0.0))
+		_:
+			return outdoors * float(weather.get(id, 0.0))
+
 func _ambience_tick() -> void:
 	var want := 1.0 if is_outdoors(listener_at) else 0.0
 	outdoors = move_toward(outdoors, want, UPDATE / FADE)
-	for id in ["wind", "plant_distant"]:
-		var g := outdoors * (1.0 if id == "wind" else distant_gain(running))
+	for id in ["wind", "plant_distant", "rain", "sand_hiss"]:
+		var g := ambience_gain(id)
 		var on := g > 0.001 and not muted and index.has(id)
 		var ps: Array = _ambience.get(id, [])
 		if on and ps.is_empty():
