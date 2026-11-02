@@ -44,6 +44,29 @@ rendering_device/pipeline_cache/save_chunk_size_mb=0.25
 textures/vram_compression/import_etc2_astc=true
 occlusion_culling/use_occlusion_culling=true
 
+[shader_globals]
+
+wx_wet={
+"type": "float",
+"value": 0.0
+}
+wx_dust={
+"type": "float",
+"value": 0.0
+}
+wx_rain={
+"type": "float",
+"value": 0.0
+}
+wx_roof_rect={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+wx_roof={
+"type": "sampler2D",
+"value": ""
+}
+
 [walkdown_plant]
 
 sim/path="res://sim/"
