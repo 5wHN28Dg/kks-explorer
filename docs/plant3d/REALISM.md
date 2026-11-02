@@ -643,6 +643,85 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
 - **Revisions:** an implemented change (§10.2) adds a revision with a cloud round what changed.
 - **In Walkdown Plant only** (the user, 2026-11-01): the sheets are not exported for `kks-import` or Walkdown.
 
+#### 6.1.1 DC1's details (settled 2026-11-02, before the code)
+
+Nothing here comes from a real plant's drawings: the sheets are made from the content alone, with the symbols of the
+public standards. No new dependency (decision 0073 already chose our own format drawn by the app).
+
+- **The set.** A1 landscape sheets (841 × 594 mm) in an ISO 5457 frame (20 mm filing margin on the left, 10 mm on
+  the other sides) with a title block in the bottom right corner after ISO 7200 (the plant's title, the sheet's
+  title, its number `WDP-PID-NNN`, revision, sheet n of m, "generated from the content", "not to scale"). Sheet 001
+  is the **legend**: every symbol used, the line types, the ISA letters and how a KKS code reads. Then a sheet per
+  process area or group of systems, as the tool lists them: gas turbine 1; HRSG 1; the steam turbine and condenser;
+  circulating water and the cooling tower; the auxiliaries; the raw water intake; the water treatment plant in three
+  (pretreatment and filtered water; reverse osmosis and demineralisation; chemicals, sludge and waste water).
+- **What is drawn.** Every equipment item, inline valve and instrument, equipment-mounted instrument and pipe of those
+  areas, except what a P&ID does not show by ISO 10628 practice: electrical equipment (breakers, transformers,
+  switchgear, excitation cabinets, the static frequency converter), control desks, and lifting gear (hoists, the
+  crane, the lift and its gates and calls). Those keep their cards, without a drawing. The tool checks that every
+  other code of the model has exactly one **home** hot spot (the place the card's Drawing button opens).
+- **Symbols** after ISO 10628-2 (equipment, valves) and ISA-5.1 (instruments), drawn by functions of the tool, one per
+  kit part kind (a test fails for a shown part kind without one). Instruments: a field-mounted bubble (no bar), with
+  the first letter from the code's measurement letters (CP P, CT T, CL L, CF F, CS S, CY V, CG Z, CB B, CQ A, CW W)
+  and the succeeding letters from the part (transmitter T, element E, gauge I, glass G, analyser IT, test point P),
+  and the whole KKS code under the letters: a stadium (two half circles joined), since a KKS code is longer than
+  ISA's loop number. Drawn uppercase in a single-stroke lettering of our own after ISO 3098 type B (monospace;
+  2.5 mm for tags, 3.5 for equipment names, 5 and 7 for titles).
+- **Lines.** Process 0.5 mm, DN 300 and over 0.7 mm, instrument process connections 0.25 mm solid; a flow arrow on
+  each pipe; a pipe's label is its code, `DN` size and medium. Where two pipes cross, the later one is broken.
+- **Layout** (automatic, checked). Flow left to right: equipment in columns by the longest path along the pipes
+  (from → to; a cycle broken at its pipe whose source comes later in code order); families (codes differing only in
+  their last digits, same part) stacked; equipment with no pipe in rows below. Instruments in a grid above their
+  equipment. Pipes routed orthogonally on a 2.5 mm grid round symbols and text (A*, with costs for bends and
+  crossings); inline items in their `at` order on the pipe's straight runs; pipe-to-pipe ends as tees; an open end
+  ends in an arrow with its medium's name; an end on another sheet in an off-sheet connector (an arrow pentagon)
+  naming that sheet and the code at the far end, which the viewer opens when tapped. The tool fails the content check
+  if two symbols overlap, a text overlaps another text, a symbol or a line, a code has no home or two, or a character
+  is outside the lettering; its output is the same on every run (tested).
+- **Format** `walkdown-plant-drawing` version 1, a file per sheet, made by `tools/plant3d/pid.py` at every build of
+  the app into `apps/plant3d/built/drawings/` (a view of the content, never committed: the reference validator's
+  file list stays the plant format's), and an index `index.json` (`walkdown-plant-drawings`: the sheets in order, each code's home sheet, and the lettering's
+  strokes). A sheet holds, in sheet millimetres with y down: `lines` (`[width, dash, [x, y, …]]`, dash 0 for a solid
+  line), `circles` (`[width, x, y, r]`), `fills` (closed polygons), `texts` (`[x, y, height, angle, align,
+  text]`), `spots` (`[code, x0, y0, x1, y1, home]`), `links` (`[sheet, code, x0, y0, x1, y1]`: the off-sheet
+  connectors), `revisions` (`[rev, text]`, the table) and `clouds` (`[rev, x0, y0, x1, y1]`).
+- **Revisions.** The shipped sheets are revision 0 ("first issue, generated from the content"). The tool's `revise`
+  makes a later revision from changed content with the same generator, every equipment block kept where the
+  revision before had it (only what changed moves; a sheet where that no longer fits is laid out afresh): a row in
+  the table, and a cloud round every hot spot that is new, gone or moved. DC1 builds and tests that on a synthetic change; EN2's change objects (§10.2) use it.
+- **The viewer** (`ui/drawing_view.gd`): full screen, as the control room's screens, with the 3D view off
+  (`disable_3d`). A sheet list with Previous and Next above the sheet; drag, the arrows, the D-pad or the left stick
+  pan, pinch, the wheel, the triggers and + and − zoom;
+  a tap on a hot spot opens the card beside the sheet, a tap on a connector the other sheet at that code; the card's
+  **Drawing** button opens the code's home sheet with the code centred and outlined. Opened from the bar
+  ("Drawings") and from cards. Levels of detail: three canvas items per sheet, each recorded once when first needed
+  (far: one-pixel lines, text of 5 mm and over; middle: one-pixel lines and all text; near: line widths in
+  millimetres), the lettering expanded into their line lists; panning and zooming only change their transform.
+  A walk option `walk=drawings` opens each sheet in turn and pans and zooms it, for the Note 9's measurement.
+- **Budgets** (§11): a sheet opens in ≤ 300 ms on the Note 9, ≤ 40 MB more with the sheets open, the frame rules
+  while panning and zooming; DC1's share of the programme's 15 MB of package measured.
+
+#### 6.1.2 As built for milestone DC1 (2026-11-02)
+
+- **The set:** ten sheets (the legend, GT 1, HRSG 1, the steam turbine, CW and the cooling tower, the auxiliaries, the
+  intake, three for the WTP), every drawn code once at home; about 250 KB of JSON made in 2–5 s at every build. The
+  tool's checks work on the exact geometry: symbols apart; texts clear of other texts and of other owners' lines,
+  symbols, circles and filled shapes (and of their own pipe); no line through another owner's symbol (a pipe through
+  its own inline items, and a line ending on a symbol, are joints); no two owners' lines along each other; a flow
+  arrow on every pipe. A sheet that fails is laid out again with other spacings before the build fails.
+- **Layout as built** adds to §6.1.1: an open end whose other end is on a symbol ends just beside it (arrow and
+  medium's name) instead of at the margin; each pipe end keeps a straight approach as long as its inline items need,
+  reserved before any pipe is routed; a label that fits nowhere on its pipe goes to the nearest free place with a
+  leader; a symbol with several pipes on one side is drawn tall enough for them 5 mm apart (round ones keep their size).
+- **The viewer as built:** the levels switch at 2.6 and 6 px/mm (below 2.6 the 2.5 mm text is under 6.5 px); at
+  most three sheets kept drawn. Measured: the laptop (Iris Xe) median frame 4.1 ms, a level made in ≤ 6.1 ms; the
+  Note 9 (`walk=drawings`, 200 s, every sheet panned and zoomed from the whole sheet to 10 px/mm): median 16.7 ms,
+  p95 19.2 ms, longest 39.6 ms, none over 100 ms; the screen showed 98.8 % of frames at 60 fps and 99.97 % at
+  ≥ 30 fps (the three long gaps it saw are the app's start, before the walk); a sheet's first level ready in ≤ 3.2 ms
+  and any level made in ≤ 20.8 ms (budget 300 ms); peak PSS 1,036 MB. Package: +84 KB compressed for the sheets and
+  about 19 KB for the viewer's scripts, of the programme's 15 MB (the APK 143.4 MB of 250).
+- **Not in DC1:** revisions made by change objects (EN2 calls `revise`); manuals (DC2).
+
 ### 6.2 Equipment manuals
 
 - **Format** `walkdown-plant-manual`: COURSES.md's blocks (paragraphs, lists, tables, callouts, figures) per part

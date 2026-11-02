@@ -352,7 +352,7 @@ programme's own budgets are REALISM.md §11.
 | WX2 | **Weather in the model** (§5.2): the GT's ambient tables, inlet filters and compressor fouling, the cooling tower, water ingress causes, frozen impulse lines, lightning; filter change and compressor wash procedures | M | WX1, AG2 | weather that changes output, alarms and faults |
 | WX3 | **Weather seen and heard** (§5.4): sky, fog, particles, wet and dusty surfaces, sounds; pipelines counted; the Note 9 walk with `weather=sandstorm` and `weather=rain` | M | WX1 | weather to see and hear |
 | WX4 | **Weather and people** (§5.3): stopped outdoor work, slippery stairs and `pace`, `ppe_when`, visibility and driving; the heat rule comes with HS3 | M | WX1, HS1 | the staff work in the weather |
-| DC1 | **Generic P&IDs** (§6.1): the generator, `walkdown-plant-drawing`, the viewer with hot spots, revisions | M | — | the first train's P&IDs in the app |
+| DC1 | **Generic P&IDs** (§6.1): the generator, `walkdown-plant-drawing`, the viewer with hot spots, revisions (**built 2026-11-02**, REALISM.md §6.1.2) | M | — | the first train's P&IDs in the app |
 | DC2 | **Equipment manuals** (§6.2): the format, the transmitter's, the control valve's and a pump's manuals with figures from the Workshop | M | K3, DC1 | manuals read from the card and the job |
 | DC3 | **Discussions** (§6.3): the format, the `discuss` step in both engines with vectors, the first five discussions | M | DC2, S4b, AG2 | two engineers who differ talk it through, the trainee takes part |
 | WM1 | **Work orders and job history** (§7.1): `wo` states and inputs, failure codes, generated history, the work order panel | M | HW1, S4b | work orders from notification to closure |

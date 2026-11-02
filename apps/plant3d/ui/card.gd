@@ -77,6 +77,11 @@ func open(c: String, note := "") -> void:
 			var wb := W.button("Workshop", func(): ui.open_workshop(kind, code))
 			wb.name = "workshop"
 			row.add_child(wb)
+	if ui.drawing_of(c) != "":
+		# its home sheet among the generated P&IDs (REALISM.md §6.1.1), the code centred and outlined
+		var db := W.button("Drawing", func(): ui.open_drawing(code))
+		db.name = "to_drawing"
+		row.add_child(db)
 	_state = W.label("", 20, Color.WHITE)
 	body.add_child(_state)
 	var vals: Array = info.values_of.get(c, [])

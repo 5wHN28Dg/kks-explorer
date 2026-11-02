@@ -326,7 +326,7 @@ func focus_panel() -> bool:
 	return main.ui != null and main.ui.focus_top()
 
 func refresh() -> void:
-	var screens: bool = main.ui != null and main.ui.screens_open()      # the control room screens take the view
+	var screens: bool = main.ui != null and main.ui.views_open()      # the control room screens or the drawings take the view
 	main.player.input_enabled = not (main.map.active or panel.visible or main.probing or screens or main.workshop_open())
 	var touch := touch_on()
 	var pad := pad_on() and not touch       # (with touch controls Always, the bar stays as it is)
@@ -340,7 +340,9 @@ func refresh() -> void:
 	for i in updown.size():
 		_show(updown[i], touch and flying and not main.map.active and not screens and not away, [["up", "down"][i]])
 	pad_hint.visible = pad and not main.map.active
-	if screens:
+	if screens and main.ui.drawings_open():
+		pad_hint.text = "Gamepad: left stick pans, triggers zoom, A opens what is under the cross, LB RB sheets, B leaves"
+	elif screens:
 		pad_hint.text = "Gamepad: D-pad or left stick between items, A opens, LB RB screens, X or B leaves"
 	elif flying:
 		pad_hint.text = "Gamepad: Y walk, RB up, LB down, A use, Back map, Start settings, X control room, B closes"

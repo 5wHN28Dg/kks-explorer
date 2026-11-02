@@ -36,6 +36,8 @@ const DebriefPanel = preload("res://ui/debrief_panel.gd")
 const Debrief = preload("res://ui/debrief.gd")
 const WalkRoute = preload("res://app/walk_route.gd")
 const Mimic = preload("res://ui/mimic.gd")
+const Drawings = preload("res://ui/drawings.gd")
+const DrawingView = preload("res://ui/drawing_view.gd")
 const ScreensModel = preload("res://ui/screens_model.gd")
 const Trends = preload("res://ui/trends.gd")
 const CrewPanel = preload("res://ui/crew_panel.gd")
@@ -86,6 +88,8 @@ var debrief
 var screens                     # ui/screens_model.gd: the control room screens made from the model (PLANT3D §7.11)
 var trends                      # ui/trends.gd: the values the screens trend, sampled as the plant runs
 var mimic                       # ui/mimic.gd: the screens themselves
+var drawings                    # ui/drawings.gd: the generated P&IDs (REALISM.md §6.1.1)
+var drawing_view                # ui/drawing_view.gd: their viewer (null without drawings)
 var run_tracker                 # the last procedure followed in this run (kept for its debrief after it is closed)
 var crew                        # ui/crew_panel.gd: the trainee's role, tasks and radio (PLANT3D §18.7)
 var people                      # ui/people_view.gd: the crews as markers in the plant and dots on the map
@@ -222,6 +226,11 @@ func _build() -> void:
 	_bar_button(bar, "Permits", func(): toggle_permits())
 	_bar_button(bar, "Crew", func(): toggle_crew())
 	_bar_button(bar, "Control room", func(): control_room())
+	drawings = Drawings.new()
+	if drawings.error != "":
+		push_warning("drawings: " + drawings.error)       # no Drawings button, no Drawing on the cards
+	else:
+		_bar_button(bar, "Drawings", func(): toggle_drawings())
 	_bar_button(bar, "Together", func(): toggle_session())
 	_trainer_btn = _bar_button(bar, "Instructor", func(): toggle_trainer())
 	_trainer_btn.visible = instructor
@@ -243,6 +252,11 @@ func _build() -> void:
 	mimic.name = "screens"
 	root.add_child(mimic)
 	mimic.setup(self, screens, trends)
+	if drawings.error == "":
+		drawing_view = DrawingView.new()
+		drawing_view.name = "drawings"
+		root.add_child(drawing_view)
+		drawing_view.setup(self, drawings)
 	card = Card.new()
 	card.name = "card"
 	root.add_child(card)
@@ -314,6 +328,8 @@ func _layout() -> void:
 	var top0 := 88.0 + 56.0 * W.scale + 16.0
 	# with the screens open the side panels stand below their tabs and alarm banner, which stay in reach
 	var top := maxf(top0, mimic.canvas_top() + 8.0) if screens_open() else top0
+	if drawings_open():
+		top = maxf(top, drawing_view.canvas_top())      # below the drawings' bar (its sheet list, Fit and Close)
 	var w := minf(560.0 * W.scale, vs.x * 0.45)
 	card.position = Vector2(vs.x - w - 16.0, top)
 	_max_h = vs.y - top - 16.0
@@ -334,6 +350,9 @@ func _layout() -> void:
 	session_panel.size = procedure.size
 	mimic.position = Vector2(0.0, top0)
 	mimic.size = Vector2(vs.x, vs.y - top0)
+	if drawing_view != null:
+		drawing_view.position = Vector2(0.0, top0)
+		drawing_view.size = Vector2(vs.x, vs.y - top0)
 	_hint.position = Vector2(vs.x * 0.5 - 400.0, vs.y * 0.5 + 24.0)
 	_hint.size = Vector2(800.0, 60.0)
 	_layout_toast()
@@ -445,6 +464,8 @@ func open_panel(p: String) -> void:
 		open_permits(p.substr(7) if p.begins_with("permit:") else "")
 	elif p.begins_with("card:"):
 		open_card(p.substr(5))
+	elif p == "drawings" or p.begins_with("drawing:"):
+		open_drawing(p.substr(8) if p.begins_with("drawing:") else "")
 	elif p == "screens" or p.begins_with("screens:"):
 		open_screens_at_desk(p.substr(8) if p.begins_with("screens:") else "")
 
@@ -583,6 +604,10 @@ func focus_top() -> bool:
 		var had: bool = mimic.canvas.has_focus()
 		mimic.take_focus()
 		return not had and mimic.canvas.has_focus()
+	if drawings_open():
+		var had_d: bool = drawing_view.canvas.has_focus()
+		drawing_view.take_focus()
+		return not had_d and drawing_view.canvas.has_focus()
 	for p in [procedure, crew]:
 		if p.visible:
 			return _focus_in(p, fo)
@@ -991,6 +1016,8 @@ func close_card() -> void:
 	card.visible = false
 	card.code = ""
 	mimic.take_focus()
+	if drawing_view != null:
+		drawing_view.take_focus()
 
 
 # ------------------------------------------------------------------ the control room screens
@@ -1006,6 +1033,7 @@ func open_screens(screen_id := "") -> void:
 		toast("The screens are worked at an operator desk: in the control room, or the water treatment plant's." if screens.error == "" else "No control room screens: " + screens.error)
 		return
 	_release_mouse()
+	close_drawings()
 	mimic.open(screens.screen_index(screen_id) if screen_id != "" else -1)
 	# the screens cover the view: the plant is not drawn behind them (the phone's GPU, decision 0041); its sounds go on
 	get_viewport().disable_3d = true
@@ -1017,7 +1045,7 @@ func close_screens() -> void:
 	if mimic == null or not mimic.visible:
 		return
 	mimic.visible = false
-	get_viewport().disable_3d = false
+	get_viewport().disable_3d = drawings_open()
 	main.hud.refresh()
 	_layout()
 
@@ -1034,7 +1062,66 @@ func control_room() -> void:
 	open_screens()
 
 
+# ------------------------------------------------------------------ the P&IDs (REALISM.md §6.1.1)
+
+func drawings_open() -> bool:
+	return drawing_view != null and drawing_view.visible
+
+
+## The screens or the drawings cover the view (the plant is not drawn behind them).
+func views_open() -> bool:
+	return screens_open() or drawings_open()
+
+
+## The sheet a code is drawn on (its home), "" when no P&ID shows it (electrical equipment, lifting gear, desks).
+func drawing_of(code: String) -> String:
+	return drawings.home_of(code) if drawings != null and drawings.error == "" else ""
+
+
+## Opens the drawings: at a code's home sheet with the code centred and outlined, or where they were left.
+func open_drawing(code := "") -> void:
+	if drawing_view == null:
+		toast("No drawings in this build.")
+		return
+	var sheet := drawing_of(code) if code != "" else ""
+	if code != "" and sheet == "":
+		toast("%s is not on a P&ID." % code)
+		return
+	_release_mouse()
+	close_screens()
+	if main.map.active:
+		main.toggle_map()
+	drawing_view.open(sheet, code)
+	# the drawings cover the view: the plant is not drawn behind them (as under the screens; its sounds go on)
+	get_viewport().disable_3d = true
+	main.hud.refresh()
+	_layout()
+
+
+func close_drawings() -> void:
+	if not drawings_open():
+		return
+	drawing_view.visible = false
+	get_viewport().disable_3d = screens_open()
+	main.hud.refresh()
+	_layout()
+
+
+func toggle_drawings() -> void:
+	if drawings_open():
+		close_drawings()
+	else:
+		open_drawing()
+
+
 func show_me(code: String) -> void:
+	# over the drawings: the code on its sheet (the plant is not drawn behind them); a code on no sheet in the plant
+	if drawings_open():
+		var sheet := drawing_of(code)
+		if sheet != "":
+			drawing_view.open_sheet(sheet, code)
+			return
+		close_drawings()
 	var on_screens: bool = screens_open() and screens.screen_of.has(code) and mimic.here(screens.screen_of[code][0])
 	if on_screens:
 		# the plant is not drawn under the screens: the code is shown on its screen too (the pointer and the route
@@ -1058,6 +1145,7 @@ func fly_to(code: String, done: Callable = Callable()) -> void:
 		toast("%s is not drawn in the plant." % code)
 		return
 	close_screens()             # first: show_me points in the plant only with the screens closed
+	close_drawings()
 	show_me(code)
 	var b: AABB = index.box(code)
 	var c := b.get_center()
@@ -1533,6 +1621,8 @@ func close_top() -> bool:
 		close_alarms()
 	elif card.visible:
 		close_card()
+	elif drawings_open():
+		close_drawings()
 	elif screens_open():
 		close_screens()
 	elif procedure.visible:
@@ -1858,14 +1948,14 @@ func _look_hint() -> void:
 	hover = ""
 	var pad: bool = main.hud != null and main.hud.pad_on()
 	var show := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or pad
-	if show and not main.map.active and not main.hud.panel.visible and not screens_open():
+	if show and not main.map.active and not main.hud.panel.visible and not views_open():
 		var cam: Camera3D = player.camera
 		var c: String = index.pick(cam, root.get_viewport_rect().size * 0.5, player.get_world_3d().direct_space_state, [player.get_rid()])
 		if c != "" and index.distance(c, eye()) <= HINT_RANGE:
 			hover = c
 	var what := "the screens" if info.part_of(hover) == "operator_desk" else "its card"
 	var key := "A" if pad else "E"
-	_hint.text = ("+\n%s  %s\n%s: %s" % [hover, info.name_of(hover), key, what]) if hover != "" else ("+" if show and not screens_open() else "")
+	_hint.text = ("+\n%s  %s\n%s: %s" % [hover, info.name_of(hover), key, what]) if hover != "" else ("+" if show and not views_open() else "")
 
 
 func _unhandled_input(ev: InputEvent) -> void:
@@ -1881,7 +1971,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 		control_room(); get_viewport().set_input_as_handled()
 		return
 	# with the screens open the view is theirs (ui/mimic.gd): no picking in the plant; the panels' keys still work
-	if ev.is_action_pressed("use") and hover != "" and not _door_near() and not screens_open():
+	if ev.is_action_pressed("use") and hover != "" and not _door_near() and not views_open():
 		open_card(hover)
 		get_viewport().set_input_as_handled()
 	elif ev.is_action_pressed("alarms"):
@@ -1897,7 +1987,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif ev.is_action_pressed("fast"):
 		fast_forward(); get_viewport().set_input_as_handled()
-	elif ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and not screens_open():
+	elif ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and not views_open():
 		var at: Vector2 = ev.position
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			at = root.get_viewport_rect().size * 0.5

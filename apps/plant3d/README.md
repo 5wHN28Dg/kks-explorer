@@ -77,11 +77,12 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--walk=hoist` | up HRSG 1's stair to the roof hoist's pendant and back, looped (LIFTS L4: the hoist in view) |
 | `--walk=gate --seconds=600` | the shift change at the plant gate (milestone S4d): the crews, the clock run to 05:40 first, then the gate road's walkway looped past the bus stop and the gate house at 1x |
 | `--walk=screens` | the control room's screens, each in turn for 10 s: their frame cost (`MIMIC` line) |
+| `--walk=drawings` | the generated P&IDs, each in turn for 10 s, panned and zoomed from the whole sheet to 9 px/mm and back: their frame cost and how long each sheet and level took to make (`DRAWINGS` line) |
 | `--shot=NAME@x,y,z,yaw,pitch;…` | saves PNG views and quits |
 | `--map=1` | starts on the overview map |
 | `--scenario=ID` | the scenario the plant starts in (default `cold_iron`) |
 | `--procedure=ID` | follows that procedure or tour from the start |
-| `--panels=alarms,procedure,crew,card:CODE` | opens these panels |
+| `--panels=alarms,procedure,crew,card:CODE,drawings,drawing:CODE` | opens these panels |
 | `--speed=fast` | starts the plant in fast-forward |
 | `walkdown-plant://kks/CODE`, `walkdown-plant://procedure/ID[/STEP]` | a link (docs/PLANT3D.md §6), anywhere on the command line; a start with a link takes none of the options above (a crafted link could add its own) |
 | `--fx_off=fog,lightmap,shadow`, `--fx_on=ssao,sdfgi,ssil,volfog,glow` | effects off or on, to measure what each costs |
@@ -142,6 +143,13 @@ generated straight-line code (0.8 ms a step, the same results bit for bit: apps/
   equipment for `local`, in the control room for `screen`. Permissives that fail are listed in the content's words;
   a refused operation says why (a failed permissive, the sequence's state, a trip whose cause is still there, a
   value out of range). A 0–1 command is typed in per cent.
+- **Drawings** (`ui/drawings.gd`, `ui/drawing_view.gd`; docs/plant3d/REALISM.md §6.1.1): the P&IDs of the generic
+  plant, made from the content at every build by `tools/plant3d/pid.py` into `built/drawings` (symbols after
+  ISO 10628-2 and ISA-5.1; nothing from a real plant). The Drawings button opens them, a card's Drawing button at
+  its code (centred and outlined); the plant is not drawn behind them. Drag, the arrows or the left stick pan;
+  pinch, the wheel, + and − or the triggers zoom; Page Up and Down (LB and RB) change sheet; a tap (Enter, or A at
+  the cross) on a code opens its card, on an off-sheet connector the other sheet at that code. Electrical
+  equipment, control desks and lifting gear are on no P&ID and have no Drawing button.
 - **Control room screens** (`ui/mimic.gd`, `ui/screens_model.gd`, `ui/trends.gd`; docs/PLANT3D.md §7.11): the
   Control room button (H, gamepad X) and the operator desks open them, at a desk only: the main control room's (the
   train's screens and the water treatment plant's overview) or the water treatment plant's own (its screens), each
