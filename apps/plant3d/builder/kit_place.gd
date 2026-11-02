@@ -389,6 +389,9 @@ func structure(parent: Node3D, s: Dictionary) -> Node3D:
 		places = kerb_places(s, pr)
 	else:
 		places.append([at, yaw, pr])
+	if b.fleet.has(s.id):
+		vehicle_piece(body, s, places[0])
+		return body
 	for pl in places:
 		var res := Kit.make(s.part, pl[2], {}, seg_scale)
 		var xf := xform({"pos": pl[0], "yaw": pl[1]})
@@ -398,6 +401,47 @@ func structure(parent: Node3D, s: Dictionary) -> Node3D:
 		instances += 1
 		add_solids(body, res.solids, Transform3D(xf.basis, xf.origin))
 	return body
+
+## A staff vehicle's piece (PLANT3D §21.7): not merged into its cell, so that the app moves it (app/vehicles.gd).
+## Under its body, a node "vehicle" at the parked place holding two meshes, its form in one material (the paint's:
+## the colours are the vertices') and its details (lamps) in another, lit by the sky (it moves), kept out of the far
+## view's merge: two draw calls (§21.10). The body keeps its solids.
+func vehicle_piece(body: StaticBody3D, s: Dictionary, pl: Array) -> void:
+	var res := Kit.make(s.part, pl[2], {}, seg_scale)
+	var xf := xform({"pos": pl[0], "yaw": pl[1]})
+	body.set_meta("vehicle", b.fleet[s.id])
+	var piece := Node3D.new()
+	piece.name = "vehicle"
+	piece.transform = xf
+	body.add_child(piece)
+	var groups := {"form": [], "detail": []}
+	for k in res.layers:
+		var L: Dictionary = res.layers[k]
+		groups["detail" if L.cls == "detail" else "form"].append(L)
+	for g in groups:
+		if groups[g].is_empty():
+			continue
+		var st := SurfaceTool.new()
+		for L in groups[g]:
+			st.append_from(L.mesh, 0, Transform3D())
+		var mi := MeshInstance3D.new()
+		mi.name = "mesh_" + g
+		mi.mesh = st.commit()
+		var mat: String = groups[g][0].mat
+		for L in groups[g]:
+			if String(L.mat).begins_with("paint"):
+				mat = L.mat
+				break
+		mi.material_override = b._mat(mat)
+		Lightmap.mark(mi, false)          # it moves: the sky's light (builder/lightmap.gd mark)
+		mi.set_meta("hlod_keep", true)    # (merged into the far view, it would stay parked)
+		if g == "detail":
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.visibility_range_end = 60.0
+		piece.add_child(mi)
+	tris_total += res.tris
+	instances += 1
+	add_solids(body, res.solids, Transform3D(xf.basis, xf.origin))
 
 ## A row's drip line in pieces this long (one mesh, instanced along every row).
 const DRIP_UNIT := 4.0

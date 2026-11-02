@@ -22,6 +22,7 @@ const SimClock = preload("res://ui/sim_clock.gd")
 const Tracker = preload("res://ui/procedure_tracker.gd")
 const Bindings = preload("res://ui/bindings.gd")
 const LiftView = preload("res://app/lift.gd")
+const VehicleView = preload("res://app/vehicles.gd")
 const SoundPlayer = preload("res://ui/sound_player.gd")
 const Pointer = preload("res://ui/pointer.gd")
 const LinksIn = preload("res://ui/links_in.gd")
@@ -67,6 +68,9 @@ var inputs                      # ui/inputs.gd: every input of the trainee's to 
 var tracker
 var bindings
 var lifts                         # app/lift.gd: the service lifts' cabs, gates and riding (PLANT3D §20.7)
+var vehicles                      # app/vehicles.gd: the staff's buses on their roads, and the trainee's ride (§21.7)
+var task_given := {}              # "step|task" of each of the trainee's tasks begun -> the step it was given at (made):
+                                  # the debrief's role tab marks one begun late (PLANT3D §21.7); saved with the run
 var sounds
 var pointer
 var route                       # app/walk_route.gd: the way on foot to what is pointed at, in a "walk" step
@@ -93,6 +97,7 @@ var _host_save_step := -1
 var _save_job := -1
 var session_ports: Array = []   # [discovery port, session port] (tests: their own); empty, the defaults
 var _place_t := 0.0
+var _aboard_was := false            # the trainee's person was on a vehicle at the last place check (§21.4)
 var _arrived := -2              # the place the last arrive input named (-1: a leave), -2: none sent yet
 var _jumps := 0                 # the engine's J when last looked at: a jump moves the walker to their placed person
 var _zones := -1                # the zones the last zone inputs left the trainee in (a bit each), -1: none sent yet
@@ -184,6 +189,10 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	lifts.name = "lifts"
 	m.add_child(lifts)
 	lifts.setup(self)
+	vehicles = VehicleView.new()
+	vehicles.name = "vehicles"
+	m.add_child(vehicles)
+	vehicles.setup(self, m.plant.manifest, m.plant)
 	_build()
 	people = PeopleView.new()
 	people.name = "people"
@@ -839,9 +848,20 @@ func _place_tick() -> void:
 		_jumps = e.J
 		_arrived = -2
 		_zones = -1
+		if vehicles != null:
+			vehicles.snap()         # (every vehicle home again, nobody aboard: §21.4)
 		if e.sp_pos[pi] != -1:
 			go_to_place(e.sp_pos[pi])
 		toast("The clock jumped to %s." % clock_text())
+		return
+	if e.sp_aboard.size() > pi and e.sp_aboard[pi] != -1:
+		_aboard_was = true      # on a vehicle (PLANT3D §21.4): no arrive or leave until off it
+		return
+	if _aboard_was:
+		_aboard_was = false     # off the vehicle: the walker at the stop the engine put them at
+		if e.sp_pos[pi] != -1:
+			go_to_place(e.sp_pos[pi])
+			_arrived = e.sp_pos[pi]
 		return
 	var g: Vector3 = player.global_position
 	var here := Vector3(g.x, -g.z, g.y)
@@ -918,6 +938,8 @@ func restart(scenario: String, quiet := false) -> void:
 	if session != null and session.active():
 		toast("Not while a session is open: every player's plant would differ. The host starts a new session for another scenario.")
 		return
+	task_given = {}                  # (a new run: none of its tasks begun yet)
+	_aboard_was = false              # (a new run: the walker is aboard nothing)
 	inputs.slot = 0
 	stop_procedure()
 	run_tracker = null
@@ -925,6 +947,8 @@ func restart(scenario: String, quiet := false) -> void:
 	bindings.use_engine(clock.engine)
 	if lifts != null:
 		lifts.snap()
+	if vehicles != null:
+		vehicles.snap()
 	sounds.engine = clock.engine
 	sounds.reset_edges()
 	alarms.since.clear()
@@ -1325,10 +1349,13 @@ func _walker_state() -> Array:
 ## The session's engine is the run's from now on (a join, a rejoin, a resync: net/session.gd made it on a worker
 ## thread). As restart() does, with the panels following the engine's whole log at once (as a loaded save does).
 func adopt_engine(e) -> void:
+	task_given = {}     # (another engine: its tasks' given steps are not this record's; a resync loses only late marks)
 	clock.install(e)
 	bindings.use_engine(e)
 	if lifts != null:
 		lifts.snap()
+	if vehicles != null:
+		vehicles.snap()
 	sounds.engine = e
 	sounds.reset_edges()
 	alarms.since.clear()
@@ -1728,6 +1755,19 @@ func _follow_events(evs: Array, from: int) -> void:
 	for i in range(from, evs.size()):
 		var ev: Array = evs[i]
 		match ev[1]:
+			"task":
+				# a task of the trainee's begun: when it was given (its instance's step made), for the debrief
+				if ev[3] != null and ev[4] == "start" and e._sm != null:
+					var me_pi := my_person()
+					if me_pi != -1 and ev[2] == e._sm.people[me_pi]["id"]:
+						var c = e.sp_cur[me_pi]
+						if c != null and c["task"] == ev[3]:
+							var given := int(c["made"])
+							# a choice's task goes on in its parent's instance (its made kept): given when chosen
+							if i > 0 and evs[i - 1][0] == ev[0] and evs[i - 1][1] == "task" and evs[i - 1][2] == ev[2] \
+									and evs[i - 1][4] == "done":
+								given = int(ev[0])
+							task_given["%d|%s" % [ev[0], ev[3]]] = given
 			"unsafe", "stop":
 				_safety_toast(e, ev)
 			"op":

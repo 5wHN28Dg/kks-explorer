@@ -11,6 +11,9 @@
 ##   camp    the frame-time walk through the site and the camp (milestone C1): out of the control room, along the
 ##           palms to the plant gate, the road to the camp, into block 1 and one of its rooms, along its corridor, across
 ##           the road to the mess hall and between its tables, and back; looped
+##   gate    the shift change at the plant gate (milestone S4d, PLANT3D §21.10): along the gate road's walkway from
+##           the control building's walk past the bus stop and the gate house to the fence and back, the buses on the
+##           road beside it and the crews through the gate; looped
 extends RefCounted
 
 const Plant = preload("res://app/plant.gd")
@@ -103,3 +106,8 @@ static func wtp_loop() -> Array:
 	return [_to(258, 31), _to(266, 31), _to(266, 45.5), _to(294, 45.5), _to(294, 56), _to(303, 56), _to(313, 57.2),
 		_to(327, 57.2), _to(327, 71), _to(322, 71), _to(322, 82), _to(296, 82), _to(294, 72), _to(294, 45.5),
 		_to(266, 45.5), _to(266, 31), _to(258, 31)]
+
+
+## The gate walk: about 190 m, two and a half minutes at a walk, along the walkway north of the gate road (y 21 to 23).
+static func gate(_plant) -> Array:
+	return [_to(-45, 22), _to(-108, 22), _to(-135, 22), _to(-108, 22), _to(-45, 22)]

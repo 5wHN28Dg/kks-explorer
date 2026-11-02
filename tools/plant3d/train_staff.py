@@ -22,12 +22,13 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 LAYOUT = os.path.join(HERE, 'staff_layout.json')
 sys.path.insert(0, HERE)
 import wtp_staff  # noqa: E402  (the water treatment plant's people, milestone S3)
+import camp_staff  # noqa: E402  (the camp, the bus and the full day's roles, milestone S4)
 
 CLOCK = {'day_scale': 6, 'start': {'day': 1, 'time': '06:00'},
          'week': ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']}
 # a lift way's nominal speed (PLANT3D §20.4, §20.12): three quarters of the cab's 0.6 m/s, for the gates and the
 # dwell (at half, 0.3, the ride to the roof took 100 s against the tower's stair's 91 s: nobody would ride)
-SPEEDS = {'walk': 1.3, 'stair': 0.5, 'ladder': 0.3, 'lift': 0.45}
+SPEEDS = {'walk': 1.3, 'stair': 0.5, 'ladder': 0.3, 'lift': 0.45, 'drive': camp_staff.DRIVE}
 K = 8                       # nearest points measured for each place's way into the network
 STAIR_RISE = 2.0            # a way that climbs and comes down more than this (m) is walked at stair speed
 
@@ -109,7 +110,10 @@ ANCHORS = {
     'ms_desk_3': dict(at=(-38.5, 9.5, 0), kind='table', room='maint_office', yaw=180, pose='sit'),
     'con_muster': dict(at=(-3, -17, 0), kind='muster'),
     **wtp_staff.ANCHORS,
+    **camp_staff.ANCHORS,           # (milestone S4: the camp, the site's offices, the bus; `gate` at the plant gate)
 }
+POINTS.update(camp_staff.POINTS)
+EDGES += camp_staff.EDGES
 # Zones (PLANT3D §16.2, STAFF.md §4; milestone S2): the process areas, where helmet, boots and glasses are worn; the
 # halls with machines of 85 dB(A) and over add hearing protection. Roads, the control building and the space between
 # the areas are no zone (A1's hat carried there). [x0, y0, x1, y1] in plan (the areas' bounds), heights -10 to 60 m.
@@ -279,11 +283,13 @@ def network(models, layout):
         at[pid] = p
     for pid, a in ANCHORS.items():
         pl = {'id': pid, 'at': list(a['at']), 'kind': a['kind']}
-        for k in ('room', 'yaw', 'pose'):
+        if pid in camp_staff.ANCHORS and pid in camp_staff.SNAP and pid in layout.get('snap', {}):
+            pl['at'] = list(layout['snap'][pid])    # (a seat behind its chair: the walkable point beside it, §21.6)
+        for k in ('room', 'yaw', 'pose', 'hidden'):
             if k in a:
                 pl[k] = a[k]
         places.append(pl)
-        at[pid] = a['at']
+        at[pid] = tuple(pl['at'])
     missing = []
     for code in work_codes(models):
         if code not in layout['stand']:
@@ -294,6 +300,9 @@ def network(models, layout):
         at[pid] = tuple(layout['stand'][code])
     if missing:
         print(f'train_staff: no stand point measured for {missing} (run staff_layout.gd)', file=sys.stderr)
+    for p in places:                # outside the plant's fence (PLANT3D §21.1)
+        if camp_staff.off_site(p['id'], p['at']):
+            p['off_site'] = True
     for a, b in EDGES:
         m, rise, reached = layout['edges'][f'{a}|{b}']
         if not reached:
@@ -313,10 +322,11 @@ def network(models, layout):
         for j in range(i + 1, len(LIFT_POINTS)):
             ways.append([LIFT_POINTS[i], LIFT_POINTS[j], math.ceil(abs(train_lift.ZS[j] - train_lift.ZS[i]) * 20 - 1e-9) / 20,
                          'lift'])      # (to the next 5 cm up from the height: never under the straight line)
+    ways += [[a, b, m, 'drive'] for a, b, m in camp_staff.ROADS]      # the bus's roads (PLANT3D §21.4)
     pts = list(POINTS)
     adj = [[] for _ in pts]
     for a, b, metres, mode in ways:
-        if a in POINTS and b in POINTS:
+        if a in POINTS and b in POINTS and mode != 'drive':
             st = way_steps(metres, SPEEDS[mode])
             adj[pts.index(a)].append((pts.index(b), st))
             adj[pts.index(b)].append((pts.index(a), st))
@@ -671,10 +681,22 @@ def staff(models, layout):
     wt, wr = wtp_staff.tasks(models)
     T += wt
     model_reacts = model_reacts + wr
+    # milestone S4 (PLANT3D §21): the full day's roles, people after everyone before them (no one's draws change),
+    # a home each, every role's off-duty routine, the commutes
+    rl = roles() + camp_staff.roles()
+    for r in rl:
+        r['off'] = camp_staff.off_routine(r['id'])
+    everyone = people() + camp_staff.people()
+    camp_staff.homes(everyone)
+    rts = routines() + camp_staff.routines()
+    for r in rts:
+        r['slots'] = camp_staff.commute(r['id'], r) + r['slots']
     return {'format': 'walkdown-plant-staff', 'version': 1, 'origin': 'cr_desk_a', 'gate': 'gate', 'speeds': SPEEDS,
             'lifts': [{'lift': train_lift.LIFT, 'landings': list(LIFT_POINTS)}],
-            'places': places, 'ways': ways, 'next': nxt, 'zones': zones, 'roles': roles(), 'rosters': rosters(),
-            'people': people(), 'routines': routines(), 'tasks': T, 'reactions': reactions(model_reacts),
+            'places': places, 'ways': ways, 'next': nxt, 'zones': zones, 'roles': rl,
+            'rosters': rosters() + camp_staff.rosters(),
+            'people': everyone, 'routines': rts, 'tasks': T + camp_staff.tasks(), 'reactions': reactions(model_reacts),
+            'vehicles': camp_staff.vehicles(),
             'messages': MESSAGES, 'put_right': {'ppe': 'put_on_ppe', 'permit': 'ask_permit',
                                                 'unsafe': 'leave_shortcut'}}
 
@@ -687,7 +709,8 @@ def scenario(cold):
     s['id'] = 'shift_cold'
     s['title'] = 'Day shift, the plant cold: the operators\' crews at work (choose a role)'
     s['start'] = {'day': 1, 'time': '05:00'}
-    s['staff'] = {'seed': 8}        # (a day whose draws give two contractors' shortcuts, both found by HSE: S2)
+    s['staff'] = {'seed': 2}        # (a day whose draws give two contractors' shortcuts, both found by HSE: S2; seed 8
+                                    # until S4's full day changed everyone's timings)
     return s
 
 

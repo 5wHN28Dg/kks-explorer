@@ -107,5 +107,5 @@
   {"id": "hrsg1_lift_gate_switch", "set": {"hrsg1_lift_gate0_switch": 1}, "repair": {"hrsg1_lift_gate0_switch": 0}, "text": "A landing gate switch reads not shut", "kks": "10SNB10AB001"}
  ],
  "start": {"day": 1, "time": "05:00"},
- "staff": {"seed": 8}
+ "staff": {"seed": 2}
 }
