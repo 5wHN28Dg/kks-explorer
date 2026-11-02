@@ -71,6 +71,11 @@ func open(c: String, note := "") -> void:
 	if ui.index.has(c):
 		row.add_child(W.button("Show me", func(): ui.show_me(code)))
 		row.add_child(W.button("Go there", func(): ui.fly_to(code)))
+	if ui.drawing_of(c) != "":
+		# its home sheet among the generated P&IDs (REALISM.md §6.1.1), the code centred and outlined
+		var db := W.button("Drawing", func(): ui.open_drawing(code))
+		db.name = "to_drawing"
+		row.add_child(db)
 	_state = W.label("", 20, Color.WHITE)
 	body.add_child(_state)
 	var vals: Array = info.values_of.get(c, [])

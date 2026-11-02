@@ -8,7 +8,9 @@
 ##                           `camp` (through the site and the camp, milestone C1) loop; `wtp` loops the frames walk's
 ##                           part in the water treatment plant (its views' cost, without the nine minutes to get there)
 ##                           `screens` stays in the control room with its screens open, showing each in turn for 10 s
-##                           (the screens' cost, ui/mimic.gd)
+##                           (the screens' cost, ui/mimic.gd); `drawings` opens each generated P&ID in turn for 10 s,
+##                           panning and zooming it (ui/drawing_view.gd: the DRAWINGS lines); drawing_shots=1 saves a
+##                           picture of each half way
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
 ##   out=DIR                 where result.txt (and shots) go (default: the external files folder on Android, the user
 ##                           data folder elsewhere)
@@ -109,6 +111,8 @@ var sim_sum_ms := 0.0
 var sim_n := 0
 var sim_t := 0.0
 var screens_walk := false   # walk=screens: the control room's screens in turn, nobody walking
+var drawings_walk := false  # walk=drawings: each P&ID in turn, panned and zoomed (REALISM.md §6.1.1, DC1)
+var _sheet_i := 0
 var _screen_t := 0.0
 var lightmap_filter := ""   # "bicubic" or "bilinear": the lightmap's filter on this device, set before the plant loads (app/lighting.gd lightmap_bicubic)
 var probing := false     # the tier probe is running: no map, no tier changes, no walking until it ends
@@ -416,6 +420,8 @@ func toggle_map() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		if ui != null and ui.screens_open():
 			ui.close_screens()      # the map is over the plant, not under the screens (their keys would go nowhere)
+		if ui != null and ui.drawings_open():
+			ui.close_drawings()
 	hud.refresh()
 
 func _on_jump(to: Vector3) -> void:
@@ -518,6 +524,14 @@ func _start_walk() -> void:
 			ab.setup(String(opts.shadow_ab), [plant, people], sun)
 			add_child(ab)
 			frame_probe.counters["shadow_ab"] = func(): return ab.switches
+	if opts.walk == "drawings":
+		ui.open_drawing()
+		drawings_walk = ui.drawing_view != null
+		_sheet_i = 0
+		if drawings_walk:
+			ui.drawing_view.open_sheet(String(ui.drawings.sheets[0]["id"]))
+		last_us = Time.get_ticks_usec()
+		return
 	if opts.walk == "screens":
 		ui.open_panel("screens")
 		screens_walk = true
@@ -540,6 +554,30 @@ func _start_walk() -> void:
 		player.global_position = st[0]
 	auto.start(player, route, looped)
 	last_us = Time.get_ticks_usec()
+
+## walk=drawings: each sheet in turn for 10 s, from the whole sheet into a slow tour at reading zooms and out again,
+## so that every level of detail is drawn and the paper is panned and zoomed every frame (the frame rules' measure).
+func _drawings_tick(delta: float) -> void:
+	var dv = ui.drawing_view
+	_screen_t += delta
+	if _screen_t >= 10.0:
+		_screen_t = 0.0
+		_sheet_i = (_sheet_i + 1) % ui.drawings.sheets.size()
+		dv.open_sheet(String(ui.drawings.sheets[_sheet_i]["id"]))
+		return
+	var t := _screen_t / 10.0
+	var fit_z: float = dv.min_zoom() / 0.9
+	# zoom: the whole sheet, up to 9 px/mm (near level) and back; the centre wanders across the sheet
+	var z := fit_z * pow(10.0 / fit_z, sin(PI * t))
+	var s: Vector2 = dv._size_of(dv.current)
+	var c := Vector2(s.x * (0.5 + 0.35 * sin(TAU * t)), s.y * (0.5 + 0.3 * sin(2.0 * TAU * t)))
+	dv.zoom = z
+	dv.offset = dv._canvas_size() * 0.5 - c * z
+	dv._apply()
+	# drawing_shots=1: a picture of each sheet half way (the near level), beside result.txt (to look at the drawing)
+	if opts.get("drawing_shots", "0") == "1" and _screen_t - delta < 5.0 and _screen_t >= 5.0:
+		get_viewport().get_texture().get_image().save_png(out_dir.path_join("drawing_%s.png" % dv.current))
+
 
 ## mp=CODE@HOST[:PORT]: the walk in a LAN session (MP2's measurement on a phone; the host is the laptop's).
 func _mp_join() -> void:
@@ -613,9 +651,11 @@ func _process(delta: float) -> void:
 	if ff != _walk_ff and opts.has("walk"):
 		_walk_ff = ff
 		_say("SPEED %s at %.1f s, uptime %d ms" % ["fast-forward" if ff else "normal", t_walk, WalkFrames.uptime_ms()])
-	if not screens_walk and (auto == null or not auto.running):
+	if not screens_walk and not drawings_walk and (auto == null or not auto.running):
 		return
 	t_walk += delta
+	if drawings_walk:
+		_drawings_tick(delta)
 	if screens_walk:
 		if t_walk - delta <= 5.0 and t_walk > 5.0:
 			ui.mimic.reset_cost()       # measured as the frames are: after the first 5 s
@@ -673,6 +713,15 @@ func _finish() -> void:
 	if frame_probe != null:
 		for l in ScriptCost.lines():
 			_say(l)
+	if drawings_walk:
+		var dv = ui.drawing_view
+		var opens: Array = dv.open_ms.values()
+		var builds: Array = dv.build_ms.values()
+		opens.sort()
+		builds.sort()
+		_say("DRAWINGS open=%s sheets=%d open_max_ms=%.1f level_max_ms=%.1f levels=%d (per sheet: %s)" % [str(ui.drawings_open()),
+			opens.size(), opens.back() if not opens.is_empty() else -1.0, builds.back() if not builds.is_empty() else -1.0,
+			builds.size(), JSON.stringify(dv.build_ms)])
 	if screens_walk:
 		var m = ui.mimic
 		_say("MIMIC screens_open=%s frames=%d draw_max_us=%d draw_mean_us=%d frames_over_2ms=%d longest_piece_us=%d (the pieces' drawing only)" % [
