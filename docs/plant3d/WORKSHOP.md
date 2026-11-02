@@ -215,6 +215,34 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
   group cites a source (stricter than "per subassembly"); `assembly` and `views` are optional until K2 and K3.
 - The transmitter in the Workshop: 14 components, 2 fastener groups, 1,396 triangles (the plant's 272).
 
+**As built (K1, 2026-11-02).**
+- `apps/plant3d/workshop/`: `workshop.gd` (the mode: its own `SubViewport` world, the plant's 3D off, the clock paused
+  and its speed restored in single play, the plant running on in a session, the sounds muted, the walker's input and
+  the plant's panels held; picking, the three-axis handle, hide, isolate, show all, Reset, Reassemble all),
+  `explode.gd` (§4.3's pure function; sealed components' children never move; fastener items back out along the
+  scene's `back_axis`), `orbit.gd` (mouse, touch, gamepad), `panels.gd` (the tree, the properties, the slider with
+  "Selected subassembly only", the tools, Back to the plant, the session's strip). The handle and the floor are
+  pre-built too (`built/workshop_ui/space.scn`, the plant's vertex format and materials: no new pipeline), and the
+  selection is the lit material's own emission.
+- Ways in: the card's **Workshop** button (a kind with a built scene) and a row of kinds in the settings panel. Esc
+  or B (or Back to the plant) leaves.
+- What is free to move (§4.5) reads the assembly's `needs` when the data has them (K2); until then everything is free
+  but a sealed component's children, which say `sealed_why`.
+- The session's strip counts new alarms since the Workshop opened; radio calls for the player's role come with the
+  crew's radio in a later milestone (they still reach the crew panel).
+- `pos` carries the Workshop flag (MULTIPLAYER.md §6.3) and the others mark the player.
+- The Workshop walk (`walk=workshop`, `app/workshop_walk.gd`) enters, leaves and enters again, then runs the 3-minute
+  orbit (assembled, 0 → 1 → 0, isolate, show all, a subassembly, the handle, Reset, Reassemble all) and leaves.
+- **The Note 9** (lean+vis, a test-signed release build without the lightmap's bake, a fresh install: an empty
+  pipeline cache; SAMPLE=1 for the reclaim rule), the transmitter, alone / in a LAN session with the laptop hosting:
+  the first entry 1,813 / 1,682 ms (the rule: ≤ 5.0 s with an empty cache, ≤ 2.0 s compiled), the second 32 / 19 ms;
+  back to the plant 17–67 ms (≤ 1.0 s); after the first frame no frame over 100 ms (the frame rule passes, 0 caused by
+  the app), 99.91 / 99.94 % of the frames shown at ≥ 30 fps, mean frame 19.5 / 19.2 ms, median 16.8 ms (67 % of
+  frames within 17.5 ms: the share at 60 fps), GPU median 2.9 / 2.7 ms (the plant's drawing is gone behind it); peak
+  PSS 836 / 837 MB (≤ 1.5 GB); no pipeline compiled after the first 5 s. In the session the plant ran on (3 min 38 s of
+  model time, 14 ms of model a second) and the session layer took 0.30 ms a frame on average, 3.8 ms at most (its own
+  2 ms budget's known excess, MILESTONES.md MP2). The scene is 23 KB and the space 28 KB of the package.
+
 **Retrofitting.** Each generator's `use()` calls stay; a generator gains `g.comp()` and `g.only()` calls around groups
 of primitives. Moving pieces' mesh builders (`g.move`) carry `comp` too. Proved on the transmitter alone first (K1a),
 then one kind per milestone.

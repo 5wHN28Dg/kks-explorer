@@ -78,7 +78,9 @@ frame on the phone.
   over the scripted Workshop walk; peak PSS ≤ 1.5 GB with the plant held; one kind ≤ 120,000 triangles and ≤ 300 draw
   calls in any view; a bench step ≤ 0.3 ms; the whole Workshop ≤ 20 MB of package; the same rules in a session.
   The budgets are measured with the transmitter in K1 and K3 and with the turbines in K4a, K4b, K5a and K5b, and
-  written here as built.
+  written here as built. **K1 (2026-11-02, the Note 9, the transmitter):** first entry 1.8 s with an empty pipeline
+  cache, 19–32 ms after that; back to the plant ≤ 67 ms; no frame over 100 ms, 99.9 % at ≥ 30 fps, mean frame 19.5 ms;
+  peak PSS 837 MB; no new pipeline (the plant's materials); the same in a LAN session with the plant running.
 - **Later (0073):** component ids are ≤ 16-character identifiers; fasteners are groups of addressable items (their
   sizes, tools, torques and patterns, and components' damaged states, live in realism's service file per kind, keyed
   by these ids); anchors name terminals and test points; the assembly needs carry a
