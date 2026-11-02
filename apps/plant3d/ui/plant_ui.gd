@@ -897,11 +897,11 @@ func fast_forward() -> void:
 
 
 func restart(scenario: String, quiet := false) -> void:
-	task_given = {}                  # (a new run: none of its tasks begun yet)
-	_aboard_was = false              # (a new run: the walker is aboard nothing)
 	if session != null and session.active():
 		toast("Not while a session is open: every player's plant would differ. The host starts a new session for another scenario.")
 		return
+	task_given = {}                  # (a new run: none of its tasks begun yet)
+	_aboard_was = false              # (a new run: the walker is aboard nothing)
 	inputs.slot = 0
 	stop_procedure()
 	run_tracker = null
