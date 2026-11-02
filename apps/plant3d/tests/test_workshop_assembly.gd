@@ -15,7 +15,6 @@ const Assembly = preload("res://workshop/assembly.gd")
 const Kit = preload("res://kit/kit.gd")
 const WB = preload("res://builder/workshop_build.gd")
 const Explode = preload("res://workshop/explode.gd")
-const WSs = preload("res://workshop/workshop.gd")
 
 var p: Array = []
 
@@ -48,23 +47,35 @@ func run(tree: SceneTree) -> Array:
 	var gw: Node = ws.machine.find_child("ghost_warm", false, false)
 	check(gw != null, "the Workshop's load queues the ghost's shader with the machine")
 	if gw != null:
-		# for every vertex format a ghost can have: plain for components, instanced for fastener groups (the Note 9
-		# compiled a pipeline at the first ghost of a format the warm-up hadn't drawn)
-		var warm := {}
-		for c in gw.get_children():
-			var m: Mesh = c.mesh if c is MeshInstance3D else c.multimesh.mesh
-			warm[("m" if c is MeshInstance3D else "i") + WSs._format_key(m)] = true
+		# every part's own ghost, as its step builds it, at home (the Note 9 compiled a pipeline at the set screw's
+		# first ghost with only one ghost per vertex format warmed)
 		var missing: Array = []
-		for id in ws.comps:
-			for c in ws.comps[id].get_children():
-				if c is MeshInstance3D and c.mesh != null and not warm.has("m" + WSs._format_key(c.mesh)):
-					missing.append(id)
-		for g in ws.groups:
-			for c in ws.groups[g].get_children():
-				if c is MultiMeshInstance3D and not warm.has("i" + WSs._format_key(c.multimesh.mesh)):
-					missing.append(g)
-		check(missing.is_empty(), "every ghost's vertex format is warmed with the machine (missing: %s)" % str(missing))
-		var wm: ShaderMaterial = gw.get_child(0).material_override
+		for id in ws.comps.keys() + ws.groups.keys():
+			var want: Node3D = ws._ghost_node(id, ws.xray_mat())
+			var got: Node3D = gw.get_node_or_null(NodePath(id))
+			if want.get_child_count() == 0:
+				check(got == null, "no warm ghost for %s, which draws nothing" % id)
+			elif got == null or got.get_child_count() != want.get_child_count() or \
+					not got.transform.is_equal_approx(ws.home_m(id)):
+				missing.append(id)
+			else:
+				for k in want.get_child_count():
+					var a: Node3D = want.get_child(k)
+					var b: Node3D = got.get_child(k)
+					var same := a.get_class() == b.get_class() and a.transform.is_equal_approx(b.transform)
+					if same and a is MeshInstance3D:
+						same = a.mesh == b.mesh
+					elif same:
+						same = a.multimesh.mesh == b.multimesh.mesh and \
+							a.multimesh.instance_count == b.multimesh.instance_count and \
+							a.multimesh.transform_format == b.multimesh.transform_format
+					if not same:
+						missing.append(id)
+						break
+			want.free()
+		check(missing.is_empty() and gw.get_child_count() > 0,
+			"every part's ghost is warmed with the machine, where it will stand (missing or unlike: %s)" % str(missing))
+		var wm: ShaderMaterial = gw.get_child(0).get_child(0).material_override
 		check(not gw.visible and is_equal_approx(float(wm.get_shader_parameter("alpha")), 0.0) and wm != ws.xray_mat(),
 			"drawn unseen in the machine's first frame (its own material at alpha 0), hidden after it")
 	await _transmitter(tree, ws)

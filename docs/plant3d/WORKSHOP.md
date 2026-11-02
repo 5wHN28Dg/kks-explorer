@@ -264,8 +264,10 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
   rows by size, largest first (`Assembly.pile`, a fixed layout).
 - `ws_xray` (`workshop/ws_xray.gdshader`: unshaded, `blend_mix`, `depth_draw_never`, a little more opaque at the
   outline). Queued twice: a hidden mesh of the space's (the plant's vertex format) with it in the plant 4 s after the
-  first walkable frame (`warm_up`, as the chevron), and a hidden copy of one of the machine's meshes with it in the
-  Workshop's load, each drawn plain and instanced (a fastener group's ghost is a MultiMesh).
+  first walkable frame (`warm_up`, as the chevron), drawn plain and instanced (a fastener group's ghost is a
+  MultiMesh); and every part's own ghost, built as its step builds it and standing at home, drawn unseen (alpha 0) in
+  the machine's first frame, hidden after it. One ghost per vertex format was not enough: the Note 9 still compiled a
+  pipeline at the set screw's first ghost, and the laptop's Mobile renderer did too, at the same step.
 - The transmitter's 16 steps (13 the trainee does: the sealed parts' insides come with them) follow the 3051 manual's reassembly (§6.5–§6.5.4; its take-apart, §6.4, is the
   reverse): the sensor module, the housing (needs the module), its set screw, the electronics board, the display, the
   electronics cover (needs the board and the display), the terminal block, the cable gland, the terminal cover (needs

@@ -935,17 +935,23 @@ func _update_ghost() -> void:
 	_ghost_id = want
 	if want == "":
 		return
-	ghost = Node3D.new()
-	ghost.name = "ghost"
-	var src: Node3D = comps.get(want, groups.get(want))
+	ghost = _ghost_node(want, xray_mat())
+	machine.add_child(ghost)
+	ghost.transform = target_m(want)
+
+## A part's ghost (its own meshes, plain or instanced as the part draws them) in `mat`, not yet placed.
+func _ghost_node(id: String, mat: Material) -> Node3D:
+	var g := Node3D.new()
+	g.name = "ghost"
+	var src: Node3D = comps.get(id, groups.get(id))
 	for c in src.get_children():
 		if c is MeshInstance3D and c.mesh != null:
 			var mi := MeshInstance3D.new()
 			mi.mesh = c.mesh
 			mi.transform = c.transform
-			mi.material_override = xray_mat()
+			mi.material_override = mat
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			ghost.add_child(mi)
+			g.add_child(mi)
 		elif c is MultiMeshInstance3D:
 			var mm := MultiMesh.new()
 			mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -957,11 +963,10 @@ func _update_ghost() -> void:
 			var mmi := MultiMeshInstance3D.new()
 			mmi.multimesh = mm
 			mmi.transform = c.transform
-			mmi.material_override = xray_mat()
+			mmi.material_override = mat
 			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			ghost.add_child(mmi)
-	machine.add_child(ghost)
-	ghost.transform = target_m(want)
+			g.add_child(mmi)
+	return g
 
 ## The ghost's material (ws_xray: unshaded, blended, no depth writes; §7.1).
 func xray_mat() -> ShaderMaterial:
@@ -1049,41 +1054,27 @@ static func can_draw_warm(cam3: Camera3D, disabled_3d: bool, workshop_open: bool
 ## The Workshop's own load (§7.1): its scene with a hidden ghost on one of its meshes, so the ghost's pipelines are
 ## queued with the machine's, before the first step shows one.
 func _warm_machine() -> void:
-	# one hidden ghost per vertex format the machine's parts use, plain for the components' meshes and instanced for
-	# the fastener groups' (a pipeline is per format: the Note 9 compiled one at the first ghost of another format)
+	# every part's own ghost, built as its step will build it, where it will stand (home: the machine as built): the
+	# Note 9 compiled a pipeline at a fastener group's first ghost even with a ghost of each vertex format warmed (the
+	# pipelines depend on more than the format), so nothing short of the ghosts themselves is warm enough
 	var w := Node3D.new()
 	w.name = "ghost_warm"
 	if _warm_draw_mat == null:
 		_warm_draw_mat = ShaderMaterial.new()   # the same shader (so the same pipelines), fully transparent
 		_warm_draw_mat.shader = XRAY
 		_warm_draw_mat.set_shader_parameter("alpha", 0.0)
-	var seen := {}
-	for id in comps:
-		for c in (comps[id] as Node3D).get_children():
-			if c is MeshInstance3D and c.mesh != null:
-				var k := "m%s" % _format_key(c.mesh)
-				if not seen.has(k):
-					seen[k] = true
-					w.add_child(_xray_pair(c.mesh, _warm_draw_mat)[0])
-	for g in groups:
-		for c in (groups[g] as Node3D).get_children():
-			if c is MultiMeshInstance3D and c.multimesh != null and c.multimesh.mesh != null:
-				var k := "i%s" % _format_key(c.multimesh.mesh)
-				if not seen.has(k):
-					seen[k] = true
-					w.add_child(_xray_pair(c.multimesh.mesh, _warm_draw_mat)[1])
+	for id in comps.keys() + groups.keys():
+		var g := _ghost_node(id, _warm_draw_mat)
+		if g.get_child_count() == 0:
+			g.free()
+			continue
+		g.name = id
+		g.transform = home_m(id)
+		w.add_child(g)
 	# drawn in the machine's first frame, unseen (alpha 0, no depth written): a hidden instance was not enough on the
 	# Note 9, whose Mobile renderer compiled the ghost's pipelines at its first draw (its lights and the view's state
 	# are part of them); the first frame waits for them instead (WORKSHOP.md §7.1: the load draws them first)
 	machine.add_child(w)
-
-## A mesh's surfaces' vertex formats and primitives, as one key.
-static func _format_key(m: Mesh) -> String:
-	var parts := PackedStringArray()
-	for i in m.get_surface_count():
-		parts.append("%d/%d" % [m.surface_get_format(i) if m is ArrayMesh else 0,
-			(m as ArrayMesh).surface_get_primitive_type(i) if m is ArrayMesh else 0])
-	return ",".join(parts)
 
 ## A mesh with the X-ray material drawn plain and instanced (a fastener group's ghost is a MultiMesh: its own pipeline
 ## variant), both hidden-ready: [MeshInstance3D, MultiMeshInstance3D].
