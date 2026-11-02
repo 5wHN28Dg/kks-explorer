@@ -10,6 +10,7 @@
 extends Node
 
 const Cost = preload("res://app/script_cost.gd")
+const SimClock = preload("res://ui/sim_clock.gd")
 
 const MAX_FWD := 40.0 / 3.6         # m/s
 const MAX_REV := 8.0 / 3.6
@@ -172,7 +173,9 @@ func _frame(delta: float) -> void:
 		_barriers(V["body"])
 		if p != null:
 			p.driving = true
-	if vh["at"] != -1:                  # standing at a place (the doors open): it does not move
+	if ui.clock.speed == SimClock.Speed.PAUSED:
+		speed = 0.0                     # (the plant's clock paused: nothing moves, the bus neither)
+	elif vh["at"] != -1:                # standing at a place (the doors open): it does not move
 		speed = 0.0
 		if pilot and (e.clock() >= vh["dep"] if vh["k"] == 0 else e.step_no >= vh["until"]):
 			doors()                     # (the drive walk: off again by the run's own rule)
@@ -452,6 +455,8 @@ func toggle_wheel() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if driver_of() == -1:
 		return
+	if vi == -1 and not event.is_action_pressed("fly"):
+		return                          # (the engine at the wheel: only F, to take it again; E is the walker's)
 	if event.is_action_pressed("use"):
 		doors()
 		get_viewport().set_input_as_handled()
@@ -542,9 +547,8 @@ func _log_events(e) -> void:
 			if due >= 0:
 				late = int(round(float(e.clock() - (e.step_no - int(x[0])) * e._ds - due) / 600.0))
 		log[-1]["stops"].append([x[3], x[4], late])
-		if x[4] == "arrive" and x[3] == e._sm.places[e._sm.vehicles[_log_vi]["home"]]["id"] \
-				and e.st_veh[_log_vi]["run"] == -1:
-			_log_vi = -1                # (home: the run is over)
+		if x[4] == "arrive" and x[3] == e._sm.places[e._sm.vehicles[_log_vi]["home"]]["id"]:
+			_log_vi = -1                # (home: the run is over, whatever came after it in these steps)
 			break
 	_ev_seen = e.events.size()
 

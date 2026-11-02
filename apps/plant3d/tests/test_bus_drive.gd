@@ -65,6 +65,17 @@ func run(tree: SceneTree) -> Array:
 	var seat: Vector3 = vv.global_transform * (bd.xf * bd.seat)
 	if ui.player.global_position.distance_to(seat) > 0.05:
 		p.append("the walker is not at the driver's seat (%.2f m from it)" % ui.player.global_position.distance_to(seat))
+	# a paused clock: the bus does not move either
+	bd.control = Vector3(1, 0, 0)
+	var still: Vector3 = bd.xf.origin
+	for k in 30:
+		bd._physics_process(1.0 / 30.0)
+	if bd.xf.origin.distance_to(still) > 1e-3:
+		p.append("the bus moved while the plant's clock was paused")
+	bd.control = null
+	# the clock at 1x, stepped here (as a session's clock is: driven, it never steps by itself)
+	ui.clock.driven = true
+	ui.clock.speed = SimClock.Speed.NORMAL
 	# the pilot drives to the camp's stop and opens the doors there; the run leaves at 05:40
 	bd.pilot = true
 	var arrived := -1
@@ -93,9 +104,10 @@ func run(tree: SceneTree) -> Array:
 			await tree.process_frame
 	var drives: Array = e.events.filter(func(x): return x[1] == "drive" and x[2] == drv)
 	if arrived == -1:
+		var msg := "the app's driver never stopped at the first stop (moved %.0f m; at %s; inputs %s)" % [far,
+				str(bd.xf.origin), str(drives).left(400)]
 		main.free()
-		return p + ["the app's driver never stopped at the first stop (moved %.0f m; at %s; inputs %s)" % [far,
-				str(bd.xf.origin), str(drives).left(400)]]
+		return p + [msg]
 	if not drives.any(func(x): return x[4] == "stop" and x[6] == "done"):
 		p.append("no stop input made the arrival: %s" % str(drives).left(300))
 	if left == -1:
@@ -220,6 +232,10 @@ func run(tree: SceneTree) -> Array:
 		p.append("the debrief lists no drive of the trainee's: %s" % str(rows).left(300))
 	if not "\n".join(Debrief.summary_lines(d)).contains("Bus runs you drove: 1"):
 		p.append("the debrief's summary has no bus run: %s" % "\n".join(Debrief.summary_lines(d)))
+	# a new run starts without the old one's bus runs (its debrief and its save)
+	ui.start_shift("shift_cold")
+	if not bd.log.is_empty():
+		p.append("a new run kept the old run's drive log")
 	main.free()
 	return p
 

@@ -3269,7 +3269,7 @@ geometry in the model; none of it changes what the staff do, which depends only 
   frame its motion is tested against the world's solids and the other vehicles (`test_move`); on contact it stops
   dead, no bounce, no push. The gate barriers count as raised for it (the guards'; drawn down, as the engine's bus
   passes them). People never come under it: an automatic brake stops it when a person (an NPC drawn by
-  the people view, another player's avatar, the walker) is within its width and its stopping distance plus 2 m ahead
+  the people view, another player's avatar) is within its width and its stopping distance plus 2 m ahead
   (or behind, reversing); it moves on that way only once they are clear. A brake that came above 2 m/s is a **near
   miss** for the debrief. Nothing of this is an input: it changes nothing in the model.
 - **The driving model** (app, `app/bus_drive.gd`): a bicycle model (wheelbase from the kit's bus), speed up to 40 km/h

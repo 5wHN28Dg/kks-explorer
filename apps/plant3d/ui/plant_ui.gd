@@ -971,6 +971,8 @@ func restart(scenario: String, quiet := false) -> void:
 		return
 	task_given = {}                  # (a new run: none of its tasks begun yet)
 	_aboard_was = false              # (a new run: the walker is aboard nothing)
+	if bus_drive != null:
+		bus_drive.log = []           # (a new run: no bus driven yet; a load puts its own back, ui/autosave.gd)
 	inputs.slot = 0
 	stop_procedure()
 	run_tracker = null
@@ -1452,6 +1454,8 @@ func _walker_state() -> Array:
 ## thread). As restart() does, with the panels following the engine's whole log at once (as a loaded save does).
 func adopt_engine(e) -> void:
 	task_given = {}     # (another engine: its tasks' given steps are not this record's; a resync loses only late marks)
+	if bus_drive != null:
+		bus_drive.log = []  # (likewise the bus runs driven: another engine's record starts afresh)
 	clock.install(e)
 	bindings.use_engine(e)
 	if lifts != null:

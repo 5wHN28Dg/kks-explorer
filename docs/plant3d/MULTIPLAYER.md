@@ -481,7 +481,8 @@ its 24 bytes; the other bits are 0, and a build before K1 sends 0 there and does
 bus's wheel", and byte 22 the vehicle's index in staff.json (0 otherwise). The driver's `pos` is then the driver's
 seat, with the bus's heading (not where they look); the others draw that bus from it, the seat's offset taken off, while
 the engine says that player's slot has its wheel (`net/session.gd` `driving_of`, `app/vehicles.gd`). A build before S4e
-sends 0 there and draws the bus where the engine had it last.
+cannot join a session with one that has it (the app version is checked in `hello`, §2.2): it would not know the
+`drive` input.
 
 ## 7. Time, pause, fast-forward, instructor mode and saved runs
 
