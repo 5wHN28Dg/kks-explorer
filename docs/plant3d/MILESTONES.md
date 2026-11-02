@@ -258,8 +258,11 @@ inputs to the engine), before S4. Its parts, one pull request each:
 measured cost as the budget, or fewer people on the phone? And a second judged gate walk needs the Note 9 off the
 laptop's USB (on it, it stays at 30.6 °C and above, and two of three walks saw too much reclaim to be judged).
 
-**Questions for the user (S4):** should a trainee who plays a driver steer the bus (driving controls; the bus's
-position then the trainee's inputs), or ride in the cab while the engine drives (built: PLANT3D.md §21.8)?
+**Answered (S4, the user, 2026-11-02):** a trainee who plays a driver steers the bus. **S4e, the driver steers**
+(PLANT3D.md §21.16): the `drive` input (wheel, stop, go, auto) in both engines with vectors (every earlier item as it
+was), the app's driving (a kinematic bus, the automatic brake for people, the controls on keyboard, gamepad and touch,
+off route and lateness for the debrief), the driven bus seen by the session's other players, and a `drive` walk on the
+Note 9 (two judged cool runs).
 
 **Multiplayer** (the user, 2026-10-26): its own milestones MP1–MP6 in docs/plant3d/MULTIPLAYER.md §13 (decisions
 0067–0069). MP1 needs S3 (the engine's staff as built); it changes the engine (several trainees), so it goes before

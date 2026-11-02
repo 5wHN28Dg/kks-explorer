@@ -3212,3 +3212,82 @@ byte as it was (only the GDScript engine changed; the reference and the vectors 
 - **The measured walk's STEPS line** (`app/script_cost.gd`, `ui/sim_clock.gd`): each engine step's own staff and model
   time from the end of the gate walk's clock run, its mean, median, 99th percentile and largest, so the staff step on
   the phone is read directly rather than worked out from the frames' means.
+
+### 21.16 The driver steers (the user, 2026-11-02): the plan
+
+When the trainee plays a driver, they drive the bus: steering, speed, braking and stopping at the stops, while the run's
+route and timetable still apply. NPC drivers, and a player who has not taken the wheel, are driven by the engine as
+§21.4 says. Everything that changes the run goes through lockstep inputs; nothing of the bus's driving is in the model.
+
+**The engine keeps a driven bus deterministic by the driver's inputs, not by positions in the model.** The model has
+no continuous positions for anyone: people are at places or on ways, and a player's walker is their own, which says
+only `arrive` and `leave` (§17.4, §18.7; MULTIPLAYER.md §6.3). A steered bus is the same: where it is on the road is
+the driver's app's (its physics, at the frame rate, view only), and the engine hears only what changes the run: the
+driver took the wheel, the bus stands at a place, it set off, the driver gave the wheel back. Positions as model values
+would need the bus's dynamics stepped bit for bit in both engines (floating point at 10 Hz, the driver's analogue
+controls as an input every step, so 10 inputs a second through the session's commits) and the people and the roads as
+geometry in the model; none of it changes what the staff do, which depends only on where the bus stands and when.
+
+- **The input** (§17.6; in a session with its slot, §17.13), applied at the start of step 9 with `get_on` (§21.4), in
+  the order made: `[n, "drive", vehicle, action]` and `[n, "drive", vehicle, "stop", place]`; the event
+  `[n, "drive", person, vehicle, action, place or null, "done" | "refused", [reasons]]` (the slot last in a session
+  run). The first reason that holds refuses it: `unknown` (no such vehicle; for `stop`, a place that is not a `stop`
+  or `depot`), `not_driver` (their person is not the vehicle's driver on a run), then per action:
+  - `wheel`: the driver takes the wheel (`steering` if they have it). On a drive way the bus leaves its way where it
+    is: it is **on the road**, coming from the way's start; standing at a place it stays there.
+  - `stop place`: the bus stands at `place` (`no_wheel` without the wheel, `standing` if it stands already). At the
+    run's next target (its next stop, or home after the last) it **arrives** as §21.4 says (`[n, "vehicle", id, stop,
+    "arrive"]`, those aboard for it off, at home the run ends and the driver gets off). At a later stop of the run, the
+    stops between are **passed** (`[n, "vehicle", id, stop, "passed"]` each, in order; their riders stay aboard to the
+    last stop, where everyone gets off) and it arrives there. Anywhere else (a stop not ahead on the run, the depot
+    before the run's end) it **stands** there: `[n, "vehicle", id, place, "stand"]`, nobody gets on or off.
+  - `go`: it sets off from where it stands (`no_wheel`, `moving` if it is on the road): `[n, "vehicle", id, place,
+    "depart"]`, then on the road. From a stop it arrived at, its run goes on to the next stop (or home), as an engine
+    departure does; from a place it only stood at, its target stays as it was. It may leave the first stop before the
+    run's departure D and any later stop before its dwell is over: the driver decides (a rider who comes later misses
+    it and waits, then walks after 30 minutes, §21.4).
+  - `auto`: the engine drives again (`no_wheel` without it). Standing, the run goes on by §21.4's departure rule from
+    the next step; on the road, the bus drives from the place it came from (`from`) to its target from this step (in
+    the app it is put back on its lane there).
+- **Phase 3** leaves a steered vehicle where its driver has it: no arrival or departure by time; its runs due are made
+  as before (a run due while the steered bus is out is `skipped`: not at home). **A jump** puts every vehicle home
+  with nobody aboard and the wheel back with the engine. **A release** (§17.13) gives the wheel back as `auto` does
+  (an NPC drives on). The run's end at home gives it back too: the driver's app takes it again at the next run.
+- **Riders** get on and off as §21.4 says: a steered bus stands for a rider (`stands_for`) only where it arrived at a
+  stop of its run, not where it stands elsewhere. A rider's `to` that the bus passed is kept: they get off at the last
+  stop with everyone. A bus never brought home keeps its riders aboard.
+- **Late, off route, the wrong place.** The timetable is the run's: D at the first stop, the engine's own times after
+  it (each drive way's steps at `speeds.drive`, then the dwell). A late bus changes nothing in the engine but what
+  late does to everyone: riders wait at most 30 minutes, then walk; the next run is skipped while the bus is out. Off
+  route is the app's (the bus more than 15 m from its run's roads, the roads of the drive ways of its route): a banner
+  while it lasts, the time counted for the debrief. The wrong place is the engine's `stand`. The debrief's role tab
+  (§21.13) lists each run driven: each stop arrived at with its lateness against the timetable (from the events),
+  passed or stood at, the time off route, and the near misses (below).
+- **Collisions, simple and safe, all in the app.** The bus moves kinematically (no rigid-body physics): each physics
+  frame its motion is tested against the world's solids and the other vehicles (`test_move`); on contact it stops
+  dead, no bounce, no push. People never come under it: an automatic brake stops it when a person (an NPC drawn by
+  the people view, another player's avatar, the walker) is within its width and its stopping distance plus 2 m ahead
+  (or behind, reversing); it moves on that way only once they are clear. A brake that came above 2 m/s is a **near
+  miss** for the debrief. Nothing of this is an input: it changes nothing in the model.
+- **The driving model** (app, `app/bus_drive.gd`): a bicycle model (wheelbase from the kit's bus), speed up to 40 km/h
+  forward and 8 km/h reversing, 1.5 m/s² throttle, 4 m/s² brake, 6 m/s² for the automatic one, steering up to 35° at
+  low speed narrowing with speed; on the ground (the asphalt's height under it). Doors: the stop input is offered
+  ("Open the doors") only standing still within 8 m of a stop or the depot of the drive network (the nearest, by its
+  place), the go input by "Close the doors", and the bus does not move with them open.
+- **Controls:** keyboard W/S or the arrows (throttle, brake and reverse when stopped), A/D or the arrows (steer), Space
+  (brake), E (doors), F (give the wheel back / take it); gamepad: right trigger throttle, left trigger brake and
+  reverse, left stick steer, A doors, Y wheel; touch: a steering slider on the left, the throttle and brake pedals on
+  the right, the doors and wheel buttons above them. The look stick and the mouse still look round from the seat.
+- **Seen by others** (MULTIPLAYER.md §6.3): the driver's `pos` is the seat's; flag bit 1 of `pos`'s flags byte says
+  "driving", and byte 22 the vehicle's index: the others draw that bus from the driver's position and heading (the
+  seat's offset taken off) instead of the engine's way, 200 ms behind as any `pos`. A build that doesn't know the bit
+  draws it where the engine has it.
+- **Vectors** (§21.9): `staff.runs` gains steered runs on the camp's synthetic plant: the wheel taken on a drive way and
+  at the depot; arriving at the next stop, a stop passed, standing at the wrong place, leaving the first stop early,
+  every refusal; a rider who gets off at the last stop after their stop was passed; a late bus a rider walks away
+  from; `auto` on the road and standing; a release while steering in a session; a jump while steering. Every earlier
+  item stays as it is (a run nobody steers runs as before; the digest's vehicle part gains `[wheel slot, from]` only
+  for a vehicle steered in the run).
+- **The Note 9:** a `drive` walk (`app/routes.gd`): the trainee as the day's driver at the 05:40 run, the app's own
+  driver (an autopilot on the controls, as the walks' walker) along the run's roads, stopping at each stop, 10
+  minutes at 1×; the frame rules, two judged cool runs, and the staff step's STEPS line.
