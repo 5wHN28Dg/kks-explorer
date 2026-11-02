@@ -40,7 +40,8 @@ HEAVY = {
     # everything else
 }
 
-CONTENT_MODULES = ('test_plant3d', 'test_plant3d_staff', 'test_plant3d_bench', 'test_plant3d_realism', 'test_plant3d_pid')
+CONTENT_MODULES = ('test_plant3d', 'test_plant3d_staff', 'test_plant3d_bench', 'test_plant3d_realism', 'test_plant3d_workshop',
+                   'test_plant3d_pid')
 CONTENT_SHARDS = 6
 # a test's id or its class; times measured on the laptop, 2026-10-24 (CI's runners took about 1.45 times as long):
 # test_plant3d took 27 of its job's 40 minutes on CI as one part, ~18.5 min here. Each shard ~4-5 min here; keep each
@@ -103,6 +104,8 @@ APP = {
     'test_kit': 3,
     'test_ui_wtp_start': 3,
     'test_ui_crew': 3,
+    # the plant's kit output held to its frozen digests (K1a, ~12 s): beside the parts kit's own test
+    'test_kit_frozen': 3,
     # shard 0 the rest (~64 s), in the job that also makes the exports
 }
 
