@@ -295,6 +295,13 @@ draw calls per kind, ≤ 20 MB for the whole Workshop); the plant's walk is run 
 the Note 9 (K1, K3, K4a, K4b, K5a, K5b at least), with the APK's size before and after (limit 250 MB). The realism programme's
 hands-on work builds on K1a–K3 (REALISM.md).
 
+**K1 as built (2026-11-02):** the Workshop's space, tree, take-apart slider, handling, hide/isolate, Reset, Reassemble
+all; entry from the card and the settings; the plant paused in single play and running in a session, with the `pos`
+flag and the others' mark (WORKSHOP.md "As built (K1)"). The Note 9, the transmitter, alone and in a LAN session with
+the laptop hosting: first entry 1.8 / 1.7 s with an empty pipeline cache (≤ 5.0 s), again 32 / 19 ms; back to the plant
+17–67 ms; no frame over 100 ms the app caused, 99.9 % of frames at ≥ 30 fps, mean frame 19.5 / 19.2 ms; peak PSS
+836 / 837 MB. Pictures: the wiki's Workshop page.
+
 **K1a as built (2026-11-02):** `comp` and `only` in the mesh builder, `Kit.make(..., workshop = true)`,
 `Kit.register` with the data-only fixture kind (`tests/fixtures/workshop_gadget.*`), `builder/workshop_build.gd`
 making `built/workshop/pressure_transmitter.scn` (14 components, 2 fastener groups, 1,396 triangles; the plant's part

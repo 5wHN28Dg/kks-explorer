@@ -193,7 +193,8 @@ class Gen:
 	## A group of identical fasteners (WORKSHOP.md §4.4): `items` their transforms (origin at the item's seat, z the
 	## way it backs out) in the frame the static builder draws in now; `draw` draws one item into the mesh builder it
 	## is given, in the item's own frame. A small outside piece of the Workshop: plant mode draws nothing. Its
-	## component in the tree is the current one (the group backs out in that component's stage).
+	## component in the tree is the current one (bolts back out first, then the part: the group backs out in the first
+	## half of that component's stage, and the component moves in the second half: workshop/explode.gd).
 	func fasteners(id: String, kind: String, items: Array, draw: Callable) -> void:
 		if not workshop:
 			return

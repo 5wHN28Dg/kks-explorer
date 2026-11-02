@@ -119,7 +119,7 @@ func payload() -> Dictionary:
 		"app": RunSave.app_version(), "content": content, "scenario": ui.clock.scenario,
 		"saved_unix": int(Time.get_unix_time_from_system()),
 		"engine": RunSave.capture(e, RunSave.engine_fields(e)),
-		"clock": {"speed": ui.clock.speed, "ff_want": ui.clock.ff_want, "pause_on_hold": ui.clock.pause_on_hold},
+		"clock": {"speed": _speed(), "ff_want": ui.clock.ff_want, "pause_on_hold": ui.clock.pause_on_hold},
 		"procedure": pid, "tracker": td, "run": run,
 		"ui": {"results": ui.results.duplicate(true), "pending": ui._pending.duplicate(true),
 				"task_given": ui.task_given.duplicate()},
@@ -588,12 +588,19 @@ func _choose(p: Dictionary) -> void:
 
 # ------------------------------------------------------------------ saving
 
+## The plant's speed to keep: behind the Workshop, the speed it had before (it pauses the clock only while it shows).
+func _speed() -> int:
+	var m = ui.main if "main" in ui else null
+	if m != null and m.get("workshop") != null and m.workshop.is_open:
+		return m.workshop.plant_speed()
+	return ui.clock.speed
+
 func _signature() -> String:
 	var e = ui.clock.engine
 	var tr = ui.tracker
 	var pl = ui.player
 	var pos: Vector3 = pl.global_position.snapped(Vector3(0.25, 0.25, 0.25))
-	return "%s|%s|%d|%d|%d|%s|%d|%s|%s|%.2f|%.2f|%s" % [ui.clock.scenario, str(tr.proc.get("id", "")) if tr != null else "", e.step_no, e.inputs.size(), ui.clock.speed, str(ui.clock.ff_want), int(ui.clock.pause_on_hold),
+	return "%s|%s|%d|%d|%d|%s|%d|%s|%s|%.2f|%.2f|%s" % [ui.clock.scenario, str(tr.proc.get("id", "")) if tr != null else "", e.step_no, e.inputs.size(), _speed(), str(ui.clock.ff_want), int(ui.clock.pause_on_hold),
 			str([tr.index, tr.did.size(), tr.log.size()]) if tr != null else "-", str(pos), pl.rotation.y,
 			pl.pivot.rotation.x, str(ui.results.size())]
 

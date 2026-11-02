@@ -11,6 +11,8 @@
 ##                           (the screens' cost, ui/mimic.gd); `gate` (the shift change at the plant gate, milestone
 ##                           S4d) loops the gate road's walkway with the crews (as crews=1) from 05:40, the clock run
 ##                           there before the measurement starts
+##   walk=workshop           the Workshop walk (app/workshop_walk.gd, docs/plant3d/WORKSHOP.md §8): 3 minutes in the
+##                           Workshop on `kind=PART` (default the first kind built), then back to the plant
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
 ##   out=DIR                 where result.txt (and shots) go (default: the external files folder on Android, the user
 ##                           data folder elsewhere)
@@ -74,6 +76,7 @@ const Crowd = preload("res://app/crowd.gd")
 const ScriptCost = preload("res://app/script_cost.gd")
 const WalkFrames = preload("res://app/walk_frames.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
+const Workshop = preload("res://workshop/workshop.gd")
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
 
 var cf: ConfigFile
@@ -88,6 +91,7 @@ var player
 var hud
 var map
 var ui      # ui/plant_ui.gd: the engine, the cards, alarms, procedures, links
+var workshop  # workshop/workshop.gd: the Workshop mode (docs/plant3d/WORKSHOP.md)
 var sun: DirectionalLight3D
 var env: Environment
 var auto
@@ -111,6 +115,7 @@ var sim_sum_ms := 0.0
 var sim_n := 0
 var sim_t := 0.0
 var screens_walk := false   # walk=screens: the control room's screens in turn, nobody walking
+var workshop_walk: Node     # walk=workshop: app/workshop_walk.gd
 var _screen_t := 0.0
 var lightmap_filter := ""   # "bicubic" or "bilinear": the lightmap's filter on this device, set before the plant loads (app/lighting.gd lightmap_bicubic)
 var probing := false     # the tier probe is running: no map, no tier changes, no walking until it ends
@@ -242,6 +247,10 @@ func _ready() -> void:
 		opts["crews"] = "1"       # the gate walk is the crews' shift change (PLANT3D §21.10)
 	ui.setup(self, opts.get("scenario", "shift_cold" if opts.has("crews") else "cold_iron"))
 	ui.add_settings(hud.extra)
+	workshop = Workshop.new()
+	workshop.name = "workshop"
+	add_child(workshop)
+	workshop.setup(self)
 	_launch("ui")
 	if opts.has("procedure") and ui.clock != null and ui.model.procedures.has(opts.procedure):
 		ui.start_procedure(opts.procedure, null, false)
@@ -321,7 +330,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
@@ -412,6 +421,10 @@ func _probe() -> void:
 	probing = false
 	choose_tier()
 
+## The Workshop mode shows (the plant's keys and views wait).
+func workshop_open() -> bool:
+	return workshop != null and workshop.is_open
+
 func toggle_map() -> void:
 	if probing:
 		return
@@ -440,6 +453,8 @@ func area_at(p: Vector3) -> String:
 func _unhandled_input(e: InputEvent) -> void:
 	if player == null or player.scripted or hud == null:   # (hud: made after the start's sky frame)
 		return
+	if workshop_open():
+		return   # the Workshop's own keys (workshop/workshop.gd)
 	if e.is_action_pressed("map"):
 		toggle_map()
 	elif e.is_action_pressed("menu"):
@@ -522,6 +537,13 @@ func _start_walk() -> void:
 			ab.setup(String(opts.shadow_ab), [plant, people], sun)
 			add_child(ab)
 			frame_probe.counters["shadow_ab"] = func(): return ab.switches
+	if opts.walk == "workshop":
+		workshop_walk = preload("res://app/workshop_walk.gd").new()
+		workshop_walk.name = "workshop_walk"
+		add_child(workshop_walk)
+		last_us = Time.get_ticks_usec()
+		workshop_walk.start(self, String(opts.get("kind", "")))
+		return
 	if opts.walk == "screens":
 		ui.open_panel("screens")
 		screens_walk = true
@@ -635,7 +657,7 @@ func _process(delta: float) -> void:
 	if ff != _walk_ff and opts.has("walk"):
 		_walk_ff = ff
 		_say("SPEED %s at %.1f s, uptime %d ms" % ["fast-forward" if ff else "normal", t_walk, WalkFrames.uptime_ms()])
-	if not screens_walk and (auto == null or not auto.running):
+	if not screens_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
 		return
 	t_walk += delta
 	if screens_walk:
@@ -679,7 +701,7 @@ func _process(delta: float) -> void:
 				if sim_n % 60 == 0:
 					_say("SIM at %.0f s: %.0f steps/s, %.0f ms of model per s, %.2f ms a step, speed %d, cap %.1fx" % [
 						t_walk, c.steps_per_s, c.model_ms_per_s, c.step_ms, c.speed, c.ff_cap()])
-	if t_walk > walk_seconds + 5.0:
+	if t_walk > walk_seconds + 5.0 and workshop_walk == null:   # (the Workshop walk ends itself: its 3 minutes)
 		_finish()
 
 ## The frame log (as the bench's, decision 0041): wall-clock frame intervals and how many refreshes of a 60 Hz
