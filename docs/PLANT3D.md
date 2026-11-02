@@ -3157,3 +3157,29 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   building's stop, parked again after its run), `tests/test_ui_off_duty.gd` (the Crew panel off duty, the role tab's
   late and slept slots after a real jump), `tests/test_camp_people.gd` (people in unloaded interiors),
   `tests/test_frames_route.gd` (the gate walk's route walked).
+
+### 21.14 As built for milestone S4d (2026-11-02: the Note 9)
+
+- **The `gate` walk** (§21.10) on the Note 9: a release build of S4c without the lightmap, signed with the test key
+  (the branch before its adversarial review's fixes: the same drawing, the gate clock run in one frame before the
+  measured ones), `walk=gate`, `probe=1`, `SAMPLE=1`, 600 s, three walks. The phone sat on the laptop's USB at 100 %
+  and did not cool below 30.6 °C (starts at 30.7, 30.9 and 31.1 °C; ends 35.5 to 36.0, thermal status 0).
+
+  | walk | reclaim samples | judged | mean frame | at 60 fps | median | p95 | over 100 ms | scripts a frame |
+  |---|---|---|---|---|---|---|---|---|
+  | 1 | 0.99 % | yes | 25.64 ms | 50.68 % | 23.3 ms | 36.5 ms | 0 | 5.61 ms |
+  | 2 | 1.17 % | no | 25.63 ms | 50.62 % | 23.5 ms | 36.5 ms | 0 | 5.60 ms |
+  | 3 | 1.26 % | no | 25.40 ms | 51.86 % | 22.5 ms | 36.5 ms | 0 | 5.47 ms |
+
+  The frame rule passes in all three (no frame over 100 ms the app caused); walks 2 and 3 saw the kernel's reclaim in
+  more than 1 % of their samples, so the rule does not judge them: **one judged walk of the two asked**. Against the L
+  walks' `frames` walk (mean 26.06 to 26.64 ms, 44 to 52 % at 60 fps) the gate's frames are no worse. GPU median 19.4
+  to 19.7 ms; VRAM 159 MB; peak PSS 808 to 819 MB; 61 crew members on screen at most, 12 skinned (the phone's tier).
+  The people view takes 2.85 to 2.96 ms a frame (1.07 on the L `frames` walk: more people in view at the gate).
+- **The staff step on the phone is over §21.10's 0.3 ms:** the walk's frames carry 0.25 steps each; with the gate
+  clock's one long frame left out, the staff's scripts are about **1.07 ms a step** on average over the walk
+  (05:40 to 06:40), and model and staff together 21.9 to 22.3 ms of a second at 1x (2.2 % of a core; 15.7 on the L
+  `frames` walk). The laptop's bench gives 140 µs at the shift change. Not changed here: a question for the user
+  (MILESTONES "Questions").
+- Evidence: the maintainer's laptop, `~/kks-work/build/s4d-runs/` (result, sf_summary, rule, samp and frames for
+  each walk).
