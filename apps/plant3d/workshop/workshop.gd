@@ -13,6 +13,9 @@ extends CanvasLayer
 const Explode = preload("res://workshop/explode.gd")
 const Orbit = preload("res://workshop/orbit.gd")
 const Panels = preload("res://workshop/panels.gd")
+const Assembly = preload("res://workshop/assembly.gd")
+const XRAY := preload("res://workshop/ws_xray.gdshader")
+const WARM_UP_S := 4.0          # after the plant's first walkable frame: the ghost's pipelines queued (§7.1)
 const SimClock = preload("res://ui/sim_clock.gd")
 const AlarmPanel = preload("res://ui/alarm_panel.gd")
 const DIR := "res://built/workshop"
@@ -80,6 +83,13 @@ var _gcentre := {}              # group id -> its items' centre at home, in its 
 var _no_click := false          # this press became a pinch or a handle drag: its release selects nothing
 var reopen_settings := false    # opened from the settings panel: leaving shows it again (§2: same panels)
 var _prev_focus: Control = null
+var guide := Assembly.new()     # the guided assembly or disassembly (§4.6): which parts are placed, which loose
+var ghost: Node3D               # the next step's part, drawn in place with ws_xray (assembling)
+var _ghost_id := ""
+var _xray_mat: ShaderMaterial
+var _warm: Node3D               # one hidden mesh with ws_xray in the plant's world: its pipelines queued early
+var warmed := false
+var _cur_m := {}                # id -> Transform3D: each part where it stands now, in the machine's frame (apply)
 
 func setup(m) -> void:
 	main = m
@@ -160,6 +170,11 @@ func close() -> void:
 	if machine != null:
 		machine.queue_free()
 		machine = null
+	guide.stop()
+	if ghost != null:
+		ghost.queue_free()
+	ghost = null
+	_ghost_id = ""
 	comps.clear()
 	groups.clear()
 	_hollow.clear()
@@ -420,6 +435,10 @@ func _show_machine(ps: PackedScene) -> void:
 	root_id = ""
 	selected = ""
 	note = ""
+	guide.stop()
+	_ghost_id = ""
+	ghost = null
+	_warm_machine()
 	var box: AABB = machine.get_meta("box", AABB(Vector3.ZERO, Vector3.ONE))
 	var floor_n := world.get_node_or_null("space/floor")
 	if floor_n != null:
@@ -471,6 +490,9 @@ func _fill_items(g: Node3D, offsets: Array) -> void:
 func apply() -> void:
 	if machine == null:
 		return
+	if guide.on():
+		_apply_guided()
+		return
 	var off := Explode.offsets(spec, s, root_id)
 	for id in comps:
 		var t: Transform3D = home[id]
@@ -492,8 +514,15 @@ func apply() -> void:
 		groups[g].transform = t
 		groups[g].visible = not hidden.has(g)
 		_fill_items(groups[g], foff.get(g, []))
+	_cur_m.clear()
+	for id in spec.order:
+		_cur_m[id] = _parent_m(id, _cur_m) * (comps[id] as Node3D).transform
+	for g in groups:
+		_cur_m[g] = _parent_m(g, _cur_m) * (groups[g] as Node3D).transform
 
 func set_slider(v: float) -> void:
+	if guide.on():
+		return   # (the slider waits while the steps are on: Reset or Reassemble all ends them)
 	_reassemble_t = -1.0
 	s = clampf(v, 0.0, 1.0)
 	apply()
@@ -506,6 +535,8 @@ func set_only_selected(on: bool) -> void:
 ## Reassemble all: everything home, animated (the slider to 0, the handling undone).
 func reassemble() -> void:
 	_drag = {}
+	if guide.on():
+		_guided_to_handled()
 	_reassemble_from = s
 	_reassemble_handled = handled.duplicate()
 	_reassemble_t = 0.0
@@ -514,6 +545,7 @@ func reassemble() -> void:
 func reset() -> void:
 	_reassemble_t = -1.0
 	_drag = {}
+	_end_guide()
 	handled.clear()
 	hidden.clear()
 	_unhollow()
@@ -624,6 +656,8 @@ func why_not_free(id: String) -> String:
 			if spec.comps[at].sealed:
 				return String(words.get("components", {}).get(at, {}).get("sealed_why", "It is sealed."))
 			at = spec.comps[at].parent
+	if guide.on():
+		return guide.why_not_remove(id) if guide.placed(id) else ""
 	var off := Explode.offsets(spec, s, root_id)
 	var foff := Explode.fastener_offsets(spec, s, root_id)
 	for step in words.get("assembly", []):
@@ -644,6 +678,327 @@ func _at_home(id: String, off: Dictionary, foff := {}) -> bool:
 		if (v as Vector3).length() > 1e-5:
 			return false
 	return true
+
+# ------------------------------------------------------------------ guided assembly and disassembly (§3, §4.6)
+
+## Starts the steps: "assemble" from "exploded" (every part where the slider at 1 puts it) or from "pile" (laid on the
+## floor by size, workshop/assembly.gd), or "disassemble" from the machine as built. Handling, hiding and the slider
+## are cleared first; the slider waits until Reset or Reassemble all ends the steps.
+func start_guide(mode: String, from := "exploded") -> bool:
+	if machine == null or words.get("assembly", []).is_empty() or not mode in ["assemble", "disassemble"]:
+		return false
+	_end_guide()
+	_reassemble_t = -1.0
+	_drag = {}
+	handled.clear()
+	hidden.clear()
+	_unhollow()
+	only_selected = false
+	root_id = ""
+	var at := {}
+	if mode == "assemble":
+		if from == "pile":
+			var parts: Array = []
+			for id in comps.keys() + groups.keys():
+				parts.append({"id": id, "box": _home_box(id)})
+			var off := Assembly.pile(parts, machine.get_meta("box", AABB()))
+			for id in off:
+				var h := home_m(id)
+				at[id] = Transform3D(h.basis, h.origin + off[id])
+		else:
+			s = 1.0
+			apply()
+			at = _cur_m.duplicate()
+			var foff := Explode.fastener_offsets(spec, 1.0)
+			for g in groups:   # a group lies where its items backed out to (their mean: they back out together)
+				var sum := Vector3.ZERO
+				for v in foff.get(g, []):
+					sum += v
+				var hm: Transform3D = _cur_m.get(g, home_m(g))
+				at[g] = Transform3D(hm.basis, hm.origin + hm.basis * (sum / maxf(foff.get(g, []).size(), 1)))
+	s = 0.0
+	guide.start(mode, words.assembly, spec.comps, at)
+	note = ""
+	apply()
+	_update_ghost()
+	if panels != null:
+		panels.sync_slider()
+		panels.refresh()
+	return true
+
+## The steps ended (everything stays where it stands as handling until Reset puts it home).
+func _end_guide() -> void:
+	if not guide.on():
+		return
+	guide.stop()
+	_update_ghost()
+	if panels != null:
+		panels.refresh()
+
+## The loose parts handed to the handling (relative to their parents), the steps ended: Reassemble all then animates
+## them home as it does handled parts.
+func _guided_to_handled() -> void:
+	apply()
+	var cur := _cur_m.duplicate()
+	var loose: Dictionary = guide.loose.duplicate()
+	_end_guide()
+	handled.clear()
+	for id in loose:
+		var pm := _parent_m(id, cur)
+		var local: Transform3D = pm.affine_inverse() * (loose[id] as Transform3D)
+		if comps.has(id):
+			var h: Transform3D = home[id]
+			handled[id] = Transform3D(local.basis * h.basis.inverse(), local.origin - h.origin)
+		else:
+			var c: Vector3 = _gcentre.get(id, Vector3.ZERO)
+			# (a group is turned about its centre: apply() puts h.origin + c - h.basis * c)
+			handled[id] = Transform3D(local.basis, local.origin - c + local.basis * c)
+	apply()
+
+## A part where it stands now: placed parts at home relative to their parents, loose ones where they lie, in the
+## machine's frame (so a loose part stays put when its parent moves).
+func _apply_guided() -> void:
+	_cur_m.clear()
+	for id in spec.order:
+		var pm := _parent_m(id, _cur_m)
+		var t: Transform3D = home[id]
+		if guide.loose.has(id):
+			t = pm.affine_inverse() * (guide.loose[id] as Transform3D)
+		comps[id].transform = t
+		comps[id].visible = not hidden.has(id)
+		_cur_m[id] = pm * t
+	for g in groups:
+		var pm := _parent_m(g, _cur_m)
+		var t := Transform3D.IDENTITY
+		if guide.loose.has(g):
+			t = pm.affine_inverse() * (guide.loose[g] as Transform3D)
+		groups[g].transform = t
+		groups[g].visible = not hidden.has(g)
+		_fill_items(groups[g], [])
+		_cur_m[g] = pm * t
+	if ghost != null and _ghost_id != "":
+		ghost.transform = target_m(_ghost_id)
+
+## The parent's (a group's host's) transform in the machine's frame from `cur` (identity at the machine's root).
+func _parent_m(id: String, cur: Dictionary) -> Transform3D:
+	var par: String = spec.comps[id].parent if comps.has(id) else String(spec.groups[id].host)
+	if par == "":
+		return Transform3D.IDENTITY
+	return cur.get(par, home_m(par))
+
+## A part's home in the machine's frame (as built).
+func home_m(id: String) -> Transform3D:
+	if groups.has(id):
+		var host := String(spec.groups[id].host)
+		return home_m(host) if host != "" else Transform3D.IDENTITY
+	var t: Transform3D = home[id]
+	var par: String = spec.comps[id].parent
+	return home_m(par) * t if par != "" else t
+
+## Where a part goes now, in the machine's frame: home relative to its parent where that stands (a loose parent too).
+func target_m(id: String) -> Transform3D:
+	var pm := _parent_m(id, _cur_m)
+	return pm * (home[id] as Transform3D) if comps.has(id) else pm
+
+## A part's own box at home in the machine's frame (its own meshes: not its children's).
+func _home_box(id: String) -> AABB:
+	var n: Node3D = comps.get(id, groups.get(id))
+	var hm := home_m(id)
+	var box := AABB()
+	var first := true
+	for c in n.get_children():
+		var parts: Array = []
+		if c is MeshInstance3D and c.mesh != null:
+			parts.append(hm * c.transform * c.mesh.get_aabb())
+		elif c is MultiMeshInstance3D:
+			for t in n.get_meta("items", []):
+				parts.append(hm * c.transform * (t as Transform3D) * c.multimesh.mesh.get_aabb())
+		for b in parts:
+			box = b if first else box.merge(b)
+			first = false
+	return box if not first else AABB(hm.origin, Vector3.ZERO)
+
+## A drag of the handle in the steps: the loose part moved along, or turned about, an axis of the machine's frame.
+func _drag_guided(p: Vector2) -> void:
+	var start: Transform3D = _drag.start
+	var ax: Vector3 = (machine.global_transform.basis.inverse() * (_drag.axis as Vector3)).normalized()
+	var c: Vector3 = _gcentre.get(selected, Vector3.ZERO) if groups.has(selected) else Vector3.ZERO
+	if _drag.kind == "move":
+		var ab: Vector2 = _drag.b - _drag.a
+		var t: float = (p - (_drag.from as Vector2)).dot(ab) / maxf(ab.length_squared(), 1e-6)
+		var reach: float = (machine.get_meta("box", AABB(Vector3.ZERO, Vector3.ONE)) as AABB).size.length()
+		guide.loose[selected] = Transform3D(start.basis, start.origin + ax * clampf(t * float(_drag.len), -reach, reach))
+	else:
+		var cc: Vector2 = _drag.centre
+		var a0 := ((_drag.from as Vector2) - cc).angle()
+		var a1 := (p - cc).angle()
+		var toward := (cam.global_position - handle.global_position).dot(_drag.axis) > 0.0
+		var b := Basis(ax, (a0 - a1) if toward else (a1 - a0)) * start.basis
+		guide.loose[selected] = Transform3D(b, start.origin + start.basis * c - b * c)
+	apply()
+
+## A part let go in the steps: near enough its place and turned right, it snaps there, unless a need isn't met (the
+## data's first sentence says why, and it stays where it was let go); farther, it lies loose (taken out).
+func _released() -> void:
+	if not guide.on() or selected == "" or not guide.loose.has(selected):
+		return
+	try_place(selected)
+	if panels != null:
+		panels.refresh()
+
+## Places a loose part if it is near enough its place (§4.6); true when it snapped. A refusal goes in `note`.
+func try_place(id: String) -> bool:
+	if not guide.loose.has(id):
+		return false
+	var c: Vector3 = _gcentre.get(id, Vector3.ZERO) if groups.has(id) else Vector3.ZERO
+	var sym: Array = comps[id].get_meta("sym", []) if comps.has(id) else []
+	var tol := Assembly.snap_tol(machine.get_meta("box", AABB()))
+	if not Assembly.near_enough(guide.loose[id], target_m(id), c, sym, tol):
+		note = ""
+		return false
+	var why := guide.why_not_place(id)
+	if why != "":
+		note = why
+		if panels != null:
+			panels.selected_changed()
+		return false
+	guide.loose.erase(id)
+	note = ""
+	apply()
+	_update_ghost()
+	if panels != null:
+		panels.selected_changed()
+		panels.refresh()
+	return true
+
+## The next step's ghost: its part's own meshes in place, in ws_xray (assembling only).
+func _update_ghost() -> void:
+	var want := ""
+	if guide.mode == "assemble":
+		var i := guide.next_step()
+		if i >= 0:
+			want = String(guide.steps[i].place)
+	if want == _ghost_id and (want == "" or ghost != null):
+		return
+	if ghost != null:
+		ghost.queue_free()
+		ghost = null
+	_ghost_id = want
+	if want == "":
+		return
+	ghost = Node3D.new()
+	ghost.name = "ghost"
+	var src: Node3D = comps.get(want, groups.get(want))
+	for c in src.get_children():
+		if c is MeshInstance3D and c.mesh != null:
+			var mi := MeshInstance3D.new()
+			mi.mesh = c.mesh
+			mi.transform = c.transform
+			mi.material_override = xray_mat()
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			ghost.add_child(mi)
+		elif c is MultiMeshInstance3D:
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = c.multimesh.mesh
+			var items: Array = src.get_meta("items", [])
+			mm.instance_count = items.size()
+			for k in items.size():
+				mm.set_instance_transform(k, items[k])
+			var mmi := MultiMeshInstance3D.new()
+			mmi.multimesh = mm
+			mmi.transform = c.transform
+			mmi.material_override = xray_mat()
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			ghost.add_child(mmi)
+	machine.add_child(ghost)
+	ghost.transform = target_m(want)
+
+## The ghost's material (ws_xray: unshaded, blended, no depth writes; §7.1).
+func xray_mat() -> ShaderMaterial:
+	if _xray_mat == null:
+		_xray_mat = ShaderMaterial.new()
+		_xray_mat.shader = XRAY
+	return _xray_mat
+
+## The step's words for the panels: "Step 3 of 16: …" with its why, the end, or "" when the steps are off.
+func step_words() -> String:
+	if not guide.on():
+		return ""
+	var i := guide.next_step()
+	if i < 0:
+		return "Assembled: every part is in place." if guide.mode == "assemble" else "Taken apart: every part is out."
+	var st: Dictionary = guide.steps[i]
+	var name := _name_of(String(st.place))
+	var verb := "Next" if guide.mode == "assemble" else "Take out next"
+	var out := "Step %d of %d. %s: %s. " % [i + 1 if guide.mode == "assemble" else guide.steps.size() - i,
+		guide.steps.size(), verb, name]
+	if guide.mode == "assemble":
+		out += " ".join(st.text)
+		if st.has("why"):
+			out += " " + " ".join(st.why)
+	return out
+
+func _name_of(id: String) -> String:
+	var w: Dictionary = words.get("components", {}).get(id, words.get("fasteners", {}).get(id, {}))
+	return String(w.get("name", id))
+
+## The ghost's pipelines (§7.1): a hidden mesh in the plant's vertex format with ws_xray, in the plant's world, some
+## seconds after the plant's first walkable frame (app/main.gd calls this then): Godot queues the pipelines of every
+## surface in the scene, drawn or not, and compiles them on its worker threads (decision 0060), as the walking
+## directions' chevron does. The Compatibility renderer compiles a shader only when it draws it: there it is drawn
+## once, fully transparent, in front of the camera.
+func warm_up(parent: Node) -> void:
+	if warmed or _warm != null:
+		return
+	await get_tree().create_timer(WARM_UP_S).timeout
+	if _warm != null or not is_inside_tree() or not ResourceLoader.exists(SPACE):
+		return
+	var mesh: Mesh = null
+	var sp: Node = (load(SPACE) as PackedScene).instantiate()
+	for c in sp.find_children("*", "MeshInstance3D", true, false):
+		if (c as MeshInstance3D).mesh != null:
+			mesh = (c as MeshInstance3D).mesh
+			break
+	sp.free()
+	if mesh == null:
+		return
+	_warm = Node3D.new()
+	_warm.name = "workshop_warm"
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = xray_mat()
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_warm.add_child(mi)
+	_warm.position = Vector3(0, -1000, 0)
+	_warm.visible = false
+	parent.add_child(_warm)
+	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
+		var cam3 := get_viewport().get_camera_3d()
+		if cam3 != null:
+			_xray_mat.set_shader_parameter("alpha", 0.0)
+			_warm.global_position = cam3.global_position - cam3.global_transform.basis.z * 2.0
+			_warm.visible = true
+			for i in 3:
+				await RenderingServer.frame_post_draw
+			_warm.visible = false
+			_xray_mat.set_shader_parameter("alpha", XRAY_ALPHA)
+	warmed = true
+
+const XRAY_ALPHA := 0.35
+
+## The Workshop's own load (§7.1): its scene with a hidden ghost on one of its meshes, so the ghost's pipelines are
+## queued with the machine's, before the first step shows one.
+func _warm_machine() -> void:
+	for c in machine.find_children("*", "MeshInstance3D", true, false):
+		if (c as MeshInstance3D).mesh != null:
+			var mi := MeshInstance3D.new()
+			mi.name = "ghost_warm"
+			mi.mesh = (c as MeshInstance3D).mesh
+			mi.material_override = xray_mat()
+			mi.visible = false
+			machine.add_child(mi)
+			return
 
 # ------------------------------------------------------------------ picking and the handle
 
@@ -670,6 +1025,7 @@ func _on_view_input(e: InputEvent) -> void:
 		else:
 			if not _drag.is_empty():
 				_drag = {}
+				_released()
 			elif _press_at.distance_to(e.position) < 6.0 and not _no_click:
 				select(pick(e.position))
 			_press_at = Vector2.INF
@@ -692,6 +1048,7 @@ func _on_view_input(e: InputEvent) -> void:
 	if e is InputEventScreenTouch and not e.pressed and e.index == 0:
 		if not _drag.is_empty():
 			_drag = {}
+			_released()
 	if e is InputEventScreenDrag and not _drag.is_empty():
 		if e.index == 0:
 			_drag_handle(e.position)
@@ -849,7 +1206,12 @@ func _grab_handle(p: Vector2) -> bool:
 			got = {"kind": "turn", "axis": ax, "centre": cs, "from": p}
 	if got.is_empty():
 		return false
-	got["start"] = handled.get(selected, Transform3D.IDENTITY)
+	if guide.on():
+		if guide.placed(selected):
+			guide.loose[selected] = _cur_m.get(selected, Transform3D.IDENTITY)   # taken out: it lies loose from now
+		got["start"] = guide.loose[selected]
+	else:
+		got["start"] = handled.get(selected, Transform3D.IDENTITY)
 	_drag = got
 	return true
 
@@ -860,6 +1222,9 @@ static func _seg_dist(p: Vector2, a: Vector2, b: Vector2) -> float:
 
 func _drag_handle(p: Vector2) -> void:
 	if selected == "" or _drag.is_empty():
+		return
+	if guide.on():
+		_drag_guided(p)
 		return
 	var start: Transform3D = _drag.start
 	var ax: Vector3 = _drag.axis
