@@ -4261,7 +4261,8 @@ def weather_runs():
         ('scripted weather: the entry at or before the start (05:00 clear), rain at 06:00, clear at 06:20, dust at '
          '06:40; the instructor\'s sandstorm-like dust at 06:10 holds until the next entry', dict(free, **script), wf,
          Script([(400, 'weather', 'dust')]), 800, 50),
-        ('a jump (§17.6) across seven hours of seeded weather: one draw per whole hour crossed, in order, in the '
+        ('a jump (§17.6) from 23:03 to 05:45 across six whole hours of seeded weather: one draw per whole hour '
+         'crossed, in order, in the '
          'jump\'s step; the driven values set to their targets (the night passed); one weather event for the net '
          'change', {'start': {'day': 1, 'time': '23:00'}, 'trainee': 'mech1'}, wf,
          Trainee(extra=[[30, 'jump', '05:45']]), 300, 10),

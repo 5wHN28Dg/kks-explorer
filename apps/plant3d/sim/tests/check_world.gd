@@ -3,7 +3,10 @@ extends SceneTree
 ##   godot --headless --script apps/plant3d/sim/tests/check_world.gd -- VECTORS3
 ## The realism file's synthetic plant (whose model reads world_hour) loads with its scenario's `world`, and is refused
 ## without it (the engine would otherwise read a slot that isn't there); a step bench load that can't be read is
-## answered as none (StepBench.run then prints its ERROR line), not a crash. Prints "WORLD bad=N"; exit code 0 when N is 0.
+## answered as none (StepBench.run then prints its ERROR line), not a crash. The same for the weather's kind (world_wx:
+## a scenario with world.weather) and what the weather and the wear need of the content (REALISM.md §2.2, §5.1: the
+## weather plant and the wear plant of the file load, and are refused when broken). Prints "WORLD bad=N"; exit code 0
+## when N is 0.
 
 const PlantModel = preload("../plant_model.gd")
 const JsonStrict = preload("../json_strict.gd")
@@ -76,10 +79,72 @@ func _init() -> void:
 	if [e._world, e._world_seed, e._world_year_day] != [true, 7, 200]:
 		print("FAIL the world's fields: ", [e._world, e._world_seed, e._world_year_day])
 		bad += 1
-	for text in ["[1]", "{\"area\": \"nowhere\", \"values\": []}", "{\"area\": 3}", "not json"]:
+	bad += _weather_and_wear(V)
+	for text in ["[1]", "{\"area\": \"nowhere\", \"values\": []}", "{\"area\": 3}", "not json",
+			"{\"area\": \"a1\", \"values\": [], \"weather\": [1]}",
+			"{\"area\": \"a1\", \"values\": [], \"weather\": {}, \"ext\": [1]}"]:
 		if not StepBench.with_load(V["staff"]["files"], text).is_empty():
 			print("FAIL bench load %s: read as a load" % text)
 			bad += 1
 	print("WORLD bad=%d" % bad)
 	if bad == 0:
 		quit(0)
+
+
+static func _js(t) -> Dictionary:
+	return JsonStrict.parse(t.to_utf8_buffer(), 1000).value if typeof(t) == TYPE_STRING else t.duplicate(true)
+
+
+## The weather's and the wear's guards (REALISM.md §2.2, §5.1): the loader refuses what the engine can't run.
+static func _weather_and_wear(V: Dictionary) -> int:
+	var bad := 0
+	var wf: Dictionary = V["weather"]["files"]
+	if PlantModel.from_files(wf).error != "":
+		print("FAIL the weather plant: ", PlantModel.from_files(wf).error)
+		bad += 1
+	var cases := []
+	var sc := _js(wf["scenarios/s1.json"])
+	sc["world"].erase("weather")
+	var f1 := wf.duplicate()
+	f1["scenarios/s1.json"] = sc
+	cases.append(["the model reading world_wx without world.weather", f1, "world_wx"])
+	var f2 := wf.duplicate()
+	var m2 := _js(wf["model/a1.json"])
+	m2["values"].append(["world_wx", {"const": 1}])
+	f2["model/a1.json"] = m2
+	cases.append(["a value named world_wx", f2, "world_wx"])
+	var f3 := wf.duplicate()
+	f3.erase("weather.json")
+	cases.append(["world.weather without weather.json", f3, "weather.json"])
+	var f4 := wf.duplicate()
+	var s4 := _js(wf["scenarios/s1.json"])
+	s4["world"]["weather"] = {"fixed": "snow"}
+	f4["scenarios/s1.json"] = s4
+	cases.append(["fixed weather of no kind", f4, "snow"])
+	var f5 := wf.duplicate()
+	var w5 := _js(wf["weather.json"])
+	w5["values"][1]["id"] = "dust"
+	f5["weather.json"] = w5
+	cases.append(["a driven value that is not an ext value", f5, "dust"])
+	var f6 := wf.duplicate()
+	var p6 := _js(wf["plant.json"])
+	p6["ext"].append("world_wx")
+	f6["plant.json"] = p6
+	cases.append(["an ext value named world_wx", f6, "world_wx"])
+	var af: Dictionary = V["wear"]["files"]
+	if PlantModel.from_files(af).error != "":
+		print("FAIL the wear plant: ", PlantModel.from_files(af).error)
+		bad += 1
+	var f7 := af.duplicate()
+	var m7 := _js(af["model/a1.json"])
+	for w in m7["works"]:
+		if w["id"] == "wo_pump":
+			w["renews"] = ["brg_life"]
+	f7["model/a1.json"] = m7
+	cases.append(["a work renewing a draw", f7, "brg_life"])
+	for c in cases:
+		var err: String = PlantModel.from_files(c[1]).error
+		if not err.contains(c[2]):
+			print("FAIL %s: %s" % [c[0], "loaded" if err == "" else err])
+			bad += 1
+	return bad

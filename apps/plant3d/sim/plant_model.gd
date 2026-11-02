@@ -225,9 +225,10 @@ func _load(files: Dictionary) -> void:
 				_reads_world = true
 			if typeof(on) == TYPE_DICTIONARY and on.get("value") == "world_wx":
 				_reads_wx = true
-	if version == 2 and (ext.has("world_hour") or ext.has("world_day") or ext.has("world_wx")):
-		_fail("plant.json: an ext value has the name of a clock value or the weather's kind")
-		return
+	for nm in ["world_hour", "world_day", "world_wx"]:
+		if version == 2 and ext.has(nm):
+			_fail("plant.json: the ext value %s has the name of a clock value or the weather's kind" % nm)
+			return
 	if files.has("weather.json") and files["weather.json"] != null:
 		weather = _read(files, "weather.json")
 		if weather == null:
