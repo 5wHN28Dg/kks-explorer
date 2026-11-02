@@ -986,7 +986,7 @@ class CampRuns(unittest.TestCase):
 
     def test_files_without_homes_are_unchanged(self):
         # every staff run before the camp's keeps no vehicles in its snapshots
-        for run in self.V['staff']['runs'][:-8]:
+        for run in self.V['staff']['runs'][:-8 - STEERED]:
             self.assertEqual(run['states'][-1].get('vehicles', {}), {})
 
 

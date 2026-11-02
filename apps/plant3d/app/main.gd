@@ -578,7 +578,9 @@ func _start_walk() -> void:
 	if opts.walk == "gate":
 		await _gate_clock()
 	if opts.walk == "drive":
+		ui.bus_drive.want_wheel = false     # (the engine drives while the clock runs to the walk's start)
 		await _gate_clock(DRIVE_AT)
+		ui.bus_drive.want_wheel = true
 		ui.bus_drive.pilot = true
 		drive_walk = true
 		last_us = Time.get_ticks_usec()
@@ -801,6 +803,9 @@ func _finish() -> void:
 		for r in ui.bus_drive.log:
 			_say("DRIVE %s stops=%s off_route_s=%.0f near_misses=%d" % [r["vehicle"], str(r["stops"]), r["off_route_s"],
 					r["near_misses"]])
+		var bd = ui.bus_drive
+		_say("DRIVE_END at %s speed %.1f blocked %d (last by %s) clock %s" % [str(bd.xf.origin), bd.speed, bd.blocked,
+				bd.blocked_by, ui.clock_text()])
 	if drawings_walk:
 		var dv = ui.drawing_view
 		var opens: Array = dv.open_ms.values()

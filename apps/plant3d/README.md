@@ -76,6 +76,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--walk=climb` | the test's route |
 | `--walk=hoist` | up HRSG 1's stair to the roof hoist's pendant and back, looped (LIFTS L4: the hoist in view) |
 | `--walk=gate --seconds=600` | the shift change at the plant gate (milestone S4d): the crews, the clock run to 05:40 first, then the gate road's walkway looped past the bus stop and the gate house at 1x |
+| `--walk=drive --seconds=600` | the driver who steers (milestone S4e, PLANT3D §21.16): the day's bus driver among the crews, the clock run to 05:30 first (the engine driving), then the app drives the runs from the cab (app/bus_drive.gd pilot): on its lane, stopping at each stop, leaving by the timetable; the result's DRIVE lines |
 | `--walk=screens` | the control room's screens, each in turn for 10 s: their frame cost (`MIMIC` line) |
 | `--walk=drawings` | the generated P&IDs, each in turn for 10 s, panned and zoomed from the whole sheet to 9 px/mm and back: their frame cost and how long each sheet and level took to make (`DRAWINGS` line) |
 | `--shot=NAME@x,y,z,yaw,pitch;…` | saves PNG views and quits |

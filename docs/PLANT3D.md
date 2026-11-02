@@ -3265,19 +3265,23 @@ geometry in the model; none of it changes what the staff do, which depends only 
   passed or stood at, the time off route, and the near misses (below).
 - **Collisions, simple and safe, all in the app.** The bus moves kinematically (no rigid-body physics): each physics
   frame its motion is tested against the world's solids and the other vehicles (`test_move`); on contact it stops
-  dead, no bounce, no push. People never come under it: an automatic brake stops it when a person (an NPC drawn by
+  dead, no bounce, no push. The gate barriers count as raised for it (the guards'; drawn down, as the engine's bus
+  passes them). People never come under it: an automatic brake stops it when a person (an NPC drawn by
   the people view, another player's avatar, the walker) is within its width and its stopping distance plus 2 m ahead
   (or behind, reversing); it moves on that way only once they are clear. A brake that came above 2 m/s is a **near
   miss** for the debrief. Nothing of this is an input: it changes nothing in the model.
 - **The driving model** (app, `app/bus_drive.gd`): a bicycle model (wheelbase from the kit's bus), speed up to 40 km/h
   forward and 8 km/h reversing, 1.5 m/s² throttle, 4 m/s² brake, 6 m/s² for the automatic one, steering up to 35° at
   low speed narrowing with speed; on the ground (the asphalt's height under it). Doors: the stop input is offered
-  ("Open the doors") only standing still within 12 m (a bus's length) of a stop or the depot of the drive network (the nearest, by its
+  ("Open the doors") only standing still with a stop or the depot within 10 m of the bus's sides and ends of the drive network (the nearest, by its
   place), the go input by "Close the doors", and the bus does not move with them open.
-- **Controls:** keyboard W/S or the arrows (throttle, brake and reverse when stopped), A/D or the arrows (steer), Space
-  (brake), E (doors), F (give the wheel back / take it); gamepad: right trigger throttle, left trigger brake and
-  reverse, left stick steer, A doors, Y wheel; touch: a steering slider on the left, the throttle and brake pedals on
-  the right, the doors and wheel buttons above them. The look stick and the mouse still look round from the seat.
+- **Controls** (the walker's own actions, app/controls.gd, so every way of playing has them): keyboard W/S or the
+  arrows (throttle; brake, and reverse once stopped), A/D or the arrows (steer), Space (brake), E (doors), F (give the
+  wheel to the engine and take it back); gamepad: right trigger or the left stick up (throttle), left trigger or the
+  stick down (brake, reverse), the left stick sideways (steer), A doors, Y wheel; touch: the left touch stick as the
+  gamepad's left stick, and the driving bar's buttons ("Open the doors", "Close the doors", "Let the engine drive",
+  "Take the wheel") at the bottom of the screen, with the speed, the next stop, its time and lateness, "OFF ROUTE" and
+  "BRAKING". The look stick and the mouse still look round from the seat.
 - **Seen by others** (MULTIPLAYER.md §6.3): the driver's `pos` is the seat's; flag bit 1 of `pos`'s flags byte says
   "driving", and byte 22 the vehicle's index: the others draw that bus from the driver's position and heading (the
   seat's offset taken off) instead of the engine's way, 200 ms behind as any `pos`. A build that doesn't know the bit

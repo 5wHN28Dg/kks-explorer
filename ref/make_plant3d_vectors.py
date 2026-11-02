@@ -2164,7 +2164,8 @@ class Drive:
                 e.drive(vid, 'go')
                 self.since = None
             return True
-        dwell = st.vehicles[vi]['runs'][V['run']]['dwell'] * st.tpm if V['at'] == V['to'] else 1
+        dwell = st.vehicles[vi]['runs'][V['run']]['dwell'] * st.tpm \
+            if V['at'] == V['to'] and not (V['k'] == 0 and self.early) else 1
         if n - self.since >= max(1, dwell):
             e.drive(vid, 'go')
             self.since = None

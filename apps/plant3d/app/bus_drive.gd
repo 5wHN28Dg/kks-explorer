@@ -9,6 +9,8 @@
 ## run). The bar at the bottom of the screen shows the speed, the next stop and the buttons while driving.
 extends Node
 
+const Cost = preload("res://app/script_cost.gd")
+
 const MAX_FWD := 40.0 / 3.6         # m/s
 const MAX_REV := 8.0 / 3.6
 const ACCEL := 1.5                  # m/s²
@@ -17,7 +19,7 @@ const AUTO_BRAKE := 6.0
 const ROLL := 0.3                   # coasting
 const MAX_STEER := deg_to_rad(35.0)
 const STEER_RATE := deg_to_rad(60.0)    # how fast the wheels turn, per second
-const DOOR_RANGE := 12.0            # m from a stop or depot place: the doors may be opened there (a bus's length)
+const DOOR_RANGE := 10.0            # m from the bus's sides and ends to a stop or depot place: the doors may open there
 const OFF_ROUTE := 15.0             # m from the run's roads
 const NEAR_MISS := 2.0              # m/s: an automatic brake above it is a near miss
 const CLEAR := 2.0                  # m beyond the stopping distance that must be clear of people
@@ -32,13 +34,17 @@ var want_wheel := true              # the trainee steers (the wheel button: the 
 var control = null                  # tests: Vector3(throttle, brake, steer) for the controls
 var pilot := false                  # the drive walk (app/main.gd walk=drive): the app drives the run itself, on its
 									# lane along the run's roads, stopping at each stop and leaving by the timetable
+									# (_rail)
 var braking := false                # the automatic brake holds (someone ahead)
 var extra_people: Array = []        # tests: more people (global positions) for the automatic brake
 var blocked := 0                    # physics frames a solid stopped it (the drive walk's DRIVE line, tests)
 var blocked_by := ""                # what it ran into last
-var _reversing := false             # the pilot backing up (a three-point turn)
-var _rev_from := Vector3.ZERO
-var _blocked_seen := 0
+var _rail_key := ""                 # the drive walk's lane: for which [from, to], its points, how far along it is
+var _rail_path := PackedVector3Array()
+var _rail_s := 0.0
+var _barrier_done := {}             # the bodies the barriers were let through for
+var _route_key := ""                # the run's roads from here (off route), and for which state of the run
+var _route: Array = []
 var off_route := false
 var log: Array = []                 # per run driven: {"vehicle", "dep", "stops": [[stop, "arrive"|"passed"|"stand",
 									#  late clock minutes or null]], "off_route_s", "near_misses"}
@@ -125,6 +131,12 @@ func mine(k: int) -> bool:
 func _physics_process(delta: float) -> void:
 	if ui == null or ui.clock == null or ui.vehicles == null:
 		return
+	var c0 := Time.get_ticks_usec()
+	_frame(delta)
+	Cost.add(Cost.BINDINGS, c0)         # (as the vehicles' own frame, app/vehicles.gd)
+
+
+func _frame(delta: float) -> void:
 	var e = ui.clock.engine
 	var k := driver_of()
 	var p = ui.player
@@ -152,8 +164,10 @@ func _physics_process(delta: float) -> void:
 		xf = V["xf"]
 		speed = 0.0
 		steer = 0.0
+		_rail_key = ""
 		_measure(V)
 		_new_run(e, k, vh)
+		_barriers(V["body"])
 		if p != null:
 			p.driving = true
 	if vh["at"] != -1:                  # standing at a place (the doors open): it does not move
@@ -168,7 +182,10 @@ func _physics_process(delta: float) -> void:
 
 ## One physics frame of driving: the controls, the automatic brake, the bicycle model, the solids, the ground.
 func _drive(V: Dictionary, delta: float) -> void:
-	var c: Vector3 = control if control != null else (_pilot(V) if pilot else _controls())
+	if pilot and control == null:
+		_rail(V, delta)
+		return
+	var c: Vector3 = control if control != null else _controls()
 	var throttle := clampf(c.x, 0.0, 1.0)
 	var brake := clampf(c.y, 0.0, 1.0)
 	var target := clampf(c.z, -1.0, 1.0) * MAX_STEER * clampf(1.0 - absf(speed) / (MAX_FWD * 1.6), 0.35, 1.0)
@@ -185,14 +202,14 @@ func _drive(V: Dictionary, delta: float) -> void:
 		a = throttle * BRAKE
 	else:
 		a = -signf(speed) * minf(ROLL, absf(speed) / maxf(delta, 1e-3))
-	var hazard := _people_ahead()
+	# the way it moves, or would move from a standstill: someone there and it brakes, or does not set off
+	var way := signf(speed) if absf(speed) > 1e-3 else signf(a)
+	var hazard := way != 0.0 and _people_ahead(way)
 	if hazard:
 		if not braking and absf(speed) > NEAR_MISS and not log.is_empty():
 			log[-1]["near_misses"] += 1
-		braking = true
 		a = -signf(speed) * minf(AUTO_BRAKE, absf(speed) / maxf(delta, 1e-3))
-	else:
-		braking = false
+	braking = hazard or (braking and absf(speed) > 1e-3 and way != 0.0 and _people_ahead(way))
 	speed = clampf(speed + a * delta, -MAX_REV, MAX_FWD)
 	if hazard and absf(speed) < STILL:
 		speed = 0.0
@@ -207,7 +224,8 @@ func _drive(V: Dictionary, delta: float) -> void:
 	var body: AnimatableBody3D = V["body"]
 	var nx := Transform3D(basis, xf.origin + move)
 	var hit := KinematicCollision3D.new()
-	if body.is_inside_tree() and body.test_move(body.global_transform, (body.get_parent() as Node3D).global_transform.basis * move, hit):
+	var g: Transform3D = (body.get_parent() as Node3D).global_transform if body.is_inside_tree() else Transform3D()
+	if body.is_inside_tree() and body.test_move(g * xf, g.basis * move, hit):
 		speed = 0.0                     # a solid or another vehicle: stopped dead, no bounce
 		blocked += 1
 		var who = hit.get_collider()
@@ -217,59 +235,84 @@ func _drive(V: Dictionary, delta: float) -> void:
 	xf = nx
 
 
-## The drive walk's driver: pure pursuit of a point 10 m ahead on the lane of the roads to the run's next target, at
-## up to 8 m/s, slowing to stop at the road's end there, then the doors.
-func _pilot(V: Dictionary) -> Vector3:
+## The drive walk's driver (a measurement's, not a player's): the bus kept on the lane of the roads to the run's next
+## target, exactly (the engine's own path: what its bus passes, this one passes too; a solid in the way is counted in
+## `blocked`, not obeyed), at up to 8 m/s, accelerating and braking as the controls do, braking for people ahead,
+## stopping at the road's end there, then the doors. Where the next road starts away from the last one's end (a turn
+## at a stop where the run goes back the way it came) it is put on it.
+func _rail(V: Dictionary, delta: float) -> void:
 	var e = ui.clock.engine
 	var vh: Dictionary = e.st_veh[vi]
-	var path: PackedVector3Array = ui.vehicles.lane_path(V, int(vh.get("from", vh["to"])), int(vh["to"]))
+	var key := "%d|%d" % [int(vh.get("from", vh["to"])), int(vh["to"])]
+	if key != _rail_key:
+		_rail_key = key
+		_rail_path = ui.vehicles.lane_path(V, int(vh.get("from", vh["to"])), int(vh["to"]))
+		_rail_s = _project(_rail_path, xf.origin)
+	var path := _rail_path
 	if path.size() < 2:
-		return Vector3(0, 1, 0)
-	var end := path[path.size() - 1]
-	var left := Vector2(end.x - xf.origin.x, end.z - xf.origin.z).length()
-	var le: Vector3 = xf.affine_inverse() * end
-	if left < 3.0 or left < 10.0 and le.z > -1.0:      # there, or just past it: stops and opens the doors
-		if absf(speed) < STILL:
-			doors()
-		return Vector3(0, 1, 0)
-	# the nearest point of the path, then 10 m on along it
+		speed = 0.0
+		return
+	var total := 0.0
+	for i in range(1, path.size()):
+		total += path[i].distance_to(path[i - 1])
+	var left := total - _rail_s
+	var want := minf(8.0, sqrt(maxf(0.0, 2.0 * 3.0 * (left - 0.5))))
+	var a := ACCEL if speed < want else -BRAKE
+	var hazard := _people_ahead(1.0)
+	if hazard:
+		if not braking and speed > NEAR_MISS and not log.is_empty():
+			log[-1]["near_misses"] += 1
+		a = -AUTO_BRAKE
+	braking = hazard
+	speed = clampf(speed + a * delta, 0.0, want if not hazard else MAX_FWD)
+	if left < 0.6 and speed < STILL:
+		speed = 0.0
+		doors()
+		return
+	_rail_s = minf(total, _rail_s + speed * delta)
+	var at := _at_along(path, _rail_s)
+	var body: AnimatableBody3D = V["body"]
+	var nx := Transform3D(Basis.looking_at(at[1], Vector3.UP), at[0])
+	var g: Transform3D = (body.get_parent() as Node3D).global_transform if body.is_inside_tree() else Transform3D()
+	if body.is_inside_tree() and body.test_move(g * xf, g.basis * (nx.origin - xf.origin)):
+		blocked += 1
+	nx.origin.y = _ground(nx.origin, body)
+	xf = nx
+
+
+## How far along `line` the point nearest p is (in plan).
+static func _project(line: PackedVector3Array, p: Vector3) -> float:
 	var best := INF
-	var bi := 0
-	for i in path.size():
-		var d := Vector2(path[i].x - xf.origin.x, path[i].z - xf.origin.z).length()
+	var at := 0.0
+	var run := 0.0
+	var q := Vector2(p.x, p.z)
+	for i in range(1, line.size()):
+		var a := Vector2(line[i - 1].x, line[i - 1].z)
+		var b := Vector2(line[i].x, line[i].z)
+		var ab := b - a
+		var L := ab.length()
+		var t := 0.0 if L < 1e-6 else clampf((q - a).dot(ab) / (L * L), 0.0, 1.0)
+		var d := q.distance_to(a + ab * t)
 		if d < best:
 			best = d
-			bi = i
-	var ahead := path[path.size() - 1]
+			at = run + t * L
+		run += L
+	return at
+
+
+## [the point, the heading (unit, level)] at distance s along line.
+static func _at_along(line: PackedVector3Array, s: float) -> Array:
 	var run := 0.0
-	for i in range(bi + 1, path.size()):
-		run += path[i].distance_to(path[i - 1])
-		if run >= 10.0:
-			ahead = path[i]
-			break
-	var l: Vector3 = xf.affine_inverse() * ahead
-	var alpha := atan2(-l.x, -l.z)
-	# the way on is behind it (a turn at a stop where the run goes back the way it came) or a solid blocks it: backs up
-	# turning the other way until the way on is ahead (a three-point turn), then forward again
-	var stuck := blocked > _blocked_seen
-	_blocked_seen = blocked
-	if not _reversing and (absf(alpha) > 1.75 or stuck and speed >= 0.0):
-		_reversing = true
-		_rev_from = xf.origin
-	elif _reversing and (absf(alpha) < 0.9 or stuck and speed <= 0.0 or xf.origin.distance_to(_rev_from) > 12.0):
-		_reversing = false
-	if _reversing:
-		if speed > STILL:
-			return Vector3(0, 1, -signf(alpha))
-		return Vector3(0, 1 if speed > -2.0 else 0.0, -signf(alpha))
-	var ld := maxf(Vector2(l.x, l.z).length(), 1.0)
-	var ang := atan(wheelbase * 2.0 * sin(alpha) / ld)
-	var want := minf(8.0, sqrt(maxf(0.0, 2.0 * 1.5 * (left - 2.0))))
-	if absf(alpha) > 0.6:
-		want = minf(want, 3.0)
-	var th := 1.0 if speed < want - 0.3 else 0.0
-	var br := 1.0 if speed > want + 0.8 else 0.0
-	return Vector3(th, br, clampf(ang / MAX_STEER, -1.0, 1.0))
+	for i in range(1, line.size()):
+		var L := line[i].distance_to(line[i - 1])
+		if run + L >= s and L > 1e-6:
+			var d := line[i] - line[i - 1]
+			d.y = 0.0
+			return [line[i - 1].lerp(line[i], (s - run) / L), d.normalized() if d.length() > 1e-6 else Vector3.FORWARD]
+		run += L
+	var d := line[line.size() - 1] - line[line.size() - 2]
+	d.y = 0.0
+	return [line[line.size() - 1], d.normalized() if d.length() > 1e-6 else Vector3.FORWARD]
 
 
 ## The controls as Vector3(throttle, brake, steer): W/S and the left stick (or the left touch stick), the triggers,
@@ -285,9 +328,7 @@ func _controls() -> Vector3:
 
 ## Someone within the bus's width (and half a metre) ahead of it, closer than its stopping distance and CLEAR (behind
 ## it when reversing): the people the crews view draws, the session's other players.
-func _people_ahead() -> bool:
-	if absf(speed) < 1e-3:
-		return false
+func _people_ahead(way: float) -> bool:
 	var reach := speed * speed / (2.0 * AUTO_BRAKE) + CLEAR
 	var gx: Transform3D = ui.vehicles.global_transform * xf
 	var inv := gx.affine_inverse()
@@ -295,9 +336,9 @@ func _people_ahead() -> bool:
 		var l: Vector3 = inv * at
 		if absf(l.x) > half_w + 0.5 or absf(l.y) > 3.0:
 			continue
-		if speed > 0.0 and l.z <= front and l.z >= front - reach:
+		if way > 0.0 and l.z <= front and l.z >= front - reach:
 			return true
-		if speed < 0.0 and l.z >= back and l.z <= back + reach:
+		if way < 0.0 and l.z >= back and l.z <= back + reach:
 			return true
 	return false
 
@@ -332,6 +373,24 @@ func _ground(at: Vector3, body: Node3D) -> float:
 	if hit.is_empty():
 		return at.y
 	return (g.affine_inverse() * (hit["position"] as Vector3)).y
+
+
+## The gate barriers are raised for the bus (the guard's; drawn down, as the engine's bus passes them too): no
+## collision between them and the bus. Looked for once among the areas' structures.
+func _barriers(body: PhysicsBody3D) -> void:
+	if _barrier_done.has(body):
+		return
+	_barrier_done[body] = true
+	var plant = ui.main.plant if "main" in ui and ui.main != null and "plant" in ui.main else null
+	if plant == null:
+		return
+	for area in plant.get_children():
+		var st: Node = area.get_node_or_null("structures")
+		if st == null:
+			continue
+		for b in st.get_children():
+			if b is PhysicsBody3D and b.get_meta("structure", "") == "barrier":
+				body.add_collision_exception_with(b)
 
 
 ## The bus's size from its meshes (body frame).
@@ -415,17 +474,23 @@ func _track(e, k: int, vh: Dictionary, delta: float) -> void:
 	var V: Dictionary = ui.vehicles._drawn(k)
 	_near = -1
 	var best := DOOR_RANGE
+	var inv := xf.affine_inverse()
 	for i in sm.drive_places:
 		if not sm.drive_reaches(sm.vehicles[k]["home"], i):
 			continue
-		var at: Vector3 = ui.vehicles.place_xz(i)
-		var d := Vector2(at.x - xf.origin.x, at.z - xf.origin.z).length()
-		if d < best:
-			best = d
+		# (from the bus's sides and ends: a stop beside it, the doors open onto it)
+		var l: Vector3 = inv * ui.vehicles.place_xz(i)
+		var d := Vector2(maxf(absf(l.x) - half_w, 0.0), maxf(maxf(front - l.z, l.z - back), 0.0)).length()
+		if d < best or i == int(vh["to"]) and d < DOOR_RANGE:      # (the run's next stop first, in reach)
+			best = d if i != int(vh["to"]) else -1.0
 			_near = i
 	# off route: the roads of the route's ways from where it came (or set off) to its next target and on to the end
 	var far := INF
-	for line in ui.vehicles.route_lines(V, k):
+	var key := "%d|%d|%d|%d|%d" % [k, int(vh["run"]), int(vh["k"]), int(vh.get("from", -1)), int(vh["to"])]
+	if key != _route_key:               # (the roads looked up again only when the run moves on)
+		_route_key = key
+		_route = ui.vehicles.route_lines(V, k)
+	for line in _route:
 		far = minf(far, _dist(line, xf.origin))
 	off_route = far > OFF_ROUTE and far != INF
 	if off_route and not log.is_empty():

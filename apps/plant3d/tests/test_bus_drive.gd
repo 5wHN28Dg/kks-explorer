@@ -37,6 +37,8 @@ func run(tree: SceneTree) -> Array:
 	if drv == "":
 		main.free()
 		return p + ["no bus driver on duty at the shift's start"]
+	if main._day_driver() != drv:
+		p.append("the drive walk would play %s, not the driver on duty %s" % [main._day_driver(), drv])
 	ui.take_role(drv)
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
 	var me: int = e.trainee()
@@ -114,8 +116,9 @@ func run(tree: SceneTree) -> Array:
 				info += " size %s" % str(c.shape.size)
 		p.append("what stopped the bus: " + info)
 	if second == -1:
-		p.append("the app's driver never reached the run's second stop (moved %.0f m, at %s, speed %.2f, blocked %d by %s, %s)" % [far,
-				str(bd.xf.origin), bd.speed, bd.blocked, bd.blocked_by, str(e.st_veh[vi]).left(200)])
+		p.append("the app's driver never reached the run's second stop (moved %.0f m, at %s, speed %.2f, blocked %d by %s, near %d, the stop %.1f m away, %s)" % [far,
+				str(bd.xf.origin), bd.speed, bd.blocked, bd.blocked_by, bd._near,
+				vv.place_xz(e.st_veh[vi]["to"]).distance_to(bd.xf.origin), str(e.st_veh[vi]).left(200)])
 	if bd.log.is_empty() or bd.log[-1]["stops"].size() < 1:
 		p.append("the run driven is not in the drive log: %s" % str(bd.log))
 	# while it drove, the bus was drawn where the app had it
@@ -134,8 +137,8 @@ func run(tree: SceneTree) -> Array:
 			bd._physics_process(1.0 / 30.0)
 		if absf(bd.speed) > 0.01 or not bd.braking:
 			p.append("someone ahead and the bus did not stop (%.2f m/s)" % bd.speed)
-		if bd.log[-1]["near_misses"] != near0 + 1:
-			p.append("the brake above 2 m/s is not one near miss (%d)" % (bd.log[-1]["near_misses"] - near0))
+		if bd.log[-1]["near_misses"] < near0 + 1:      # (at least: the crews' people on the road may add theirs)
+			p.append("the brake above 2 m/s is not a near miss")
 		var hold: Vector3 = bd.xf.origin
 		for k in 30:
 			bd._physics_process(1.0 / 30.0)
@@ -152,10 +155,12 @@ func run(tree: SceneTree) -> Array:
 		main.add_child(wall)
 		wall.global_transform = Transform3D(vv.global_transform.basis * bd.xf.basis,
 				vv.global_transform * (bd.xf * Vector3(0, 2, bd.front - 4.0)))
+		await tree.physics_frame        # (in the physics space from its next step)
+		await tree.physics_frame
 		for k in 240:
 			bd._physics_process(1.0 / 30.0)
 		var l: Vector3 = (vv.global_transform * bd.xf).affine_inverse() * wall.global_position
-		if l.z > bd.front + 0.01 - 0.25 or absf(bd.speed) > 0.01:
+		if l.z > bd.front - 0.15 or absf(bd.speed) > 0.01:     # (the wall's middle 0.25 m in: its face at the front)
 			p.append("the bus went into a wall ahead (its front at %.2f, the wall at %.2f)" % [bd.front, l.z])
 		wall.free()
 		bd.control = null
