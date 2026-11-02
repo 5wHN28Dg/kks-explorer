@@ -80,8 +80,30 @@ func setup(u, manifest: Dictionary, plant: Node) -> void:
 		sq.ignore_occlusion_culling = true
 		add_child(sq)
 		vehicles.append({"id": String(mv["id"]), "vi": -1, "body": body, "home": -1, "parked": parked, "roads": roads,
-				"square": sq, "xf": Transform3D(), "last": [], "stand_key": "", "stand_xf": parked})
+				"square": sq, "xf": Transform3D(), "last": [], "stand_key": "", "stand_xf": parked, "size": measure(body)})
 	snap()
+
+
+## A vehicle's size from its meshes in its body's frame (-Z forward): half its width, its front and back, a wheelbase
+## and the driver's seat (the walker's feet; left of the middle, right-hand traffic). {} for none.
+static func measure(body: Node3D) -> Dictionary:
+	var box := AABB()
+	var first := true
+	for m in body.find_children("*", "MeshInstance3D", true, false):
+		if (m as MeshInstance3D).mesh == null:
+			continue
+		var t := (m as Node3D).transform
+		var q := (m as Node).get_parent()
+		while q != null and q != body and q is Node3D:
+			t = (q as Node3D).transform * t
+			q = q.get_parent()
+		var b: AABB = t * (m as MeshInstance3D).get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+	if first or box.size.z < 2.0:
+		return {}
+	return {"half_w": box.size.x / 2.0, "front": box.position.z, "back": box.end.z, "wheelbase": box.size.z * 0.55,
+			"seat": Vector3(box.position.x + box.size.x * 0.25, box.position.y + 0.4, box.position.z + 1.3)}
 
 
 ## n's transform in the plant's frame (its parents' up to the plant node put together).
@@ -129,7 +151,10 @@ func snap() -> void:
 	release()               # (the run puts the walker where it belongs: a ride seen again from the engine next frame)
 	var e = ui.clock.engine if ui != null and ui.clock != null else null
 	_bind(e._sm if e != null else null)
+	if "bus_drive" in ui and ui.bus_drive != null:
+		ui.bus_drive.reset()            # (a steered bus: its driver takes it again from where the run has it)
 	for V in vehicles:
+		V["xf"] = Transform3D()         # (not where it was drawn before: pose() falls back to the run's place)
 		var xf := pose(V, 0.0)
 		_put(V, xf, true)
 
@@ -145,7 +170,14 @@ func pose(V: Dictionary, f: float) -> Transform3D:
 		if d != null:
 			return d
 		var o = _driven_by_other(V, vh)
-		return o if o != null else V["xf"]
+		if o != null:
+			return o
+		if V["xf"] != Transform3D():
+			return V["xf"]              # (where it was last drawn)
+		# (nothing drawn yet: a load or a join while it is steered) standing where it stands, or at the place it came
+		# from on the road
+		var at: int = vh["at"] if vh["at"] != -1 else int(vh.get("from", V["home"]))
+		return V["parked"] if at == V["home"] else _standing(V, at)
 	var leg: Array = vh["leg"]
 	if leg.is_empty():
 		var at: int = vh["at"]
@@ -177,7 +209,7 @@ func _driven_by_other(V: Dictionary, vh: Dictionary):
 	if at.is_empty():
 		return null
 	var basis := Basis(Vector3.UP, float(at[1]))
-	var seat: Vector3 = ui.bus_drive.seat if "bus_drive" in ui and ui.bus_drive != null else DRIVER_SEAT
+	var seat: Vector3 = V["size"].get("seat", DRIVER_SEAT)
 	return Transform3D(basis, global_transform.affine_inverse() * (at[0] as Vector3) - basis * seat)
 
 

@@ -2796,6 +2796,8 @@ class StaffRun:
             V = self.veh[p.aboard]
             if V['leg'] is not None:
                 return st.off_site[V['leg'][0]] and st.off_site[V['leg'][1]]
+            if V['at'] is None:             # steered, on the road (§21.16): as on a way from where it came to its target
+                return st.off_site[V['from']] and st.off_site[V['to']]
             return st.off_site[V['at']]
         if p.leg is not None:
             return st.off_site[p.leg[0]] and st.off_site[p.leg[1]]

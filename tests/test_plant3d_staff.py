@@ -767,7 +767,7 @@ class StaffVectors(unittest.TestCase):
         self.assertEqual(j[-1][4], 'refused')
 
 
-STEERED = 6         # the steered runs at the end of the staff runs (§21.16)
+STEERED = 8         # the steered runs at the end of the staff runs (§21.16)
 
 
 class SteeredRuns(unittest.TestCase):
@@ -777,7 +777,8 @@ class SteeredRuns(unittest.TestCase):
     def setUpClass(cls):
         with open(G.OUT2, encoding='utf-8') as f:
             cls.V = json.load(f)
-        cls.steer, cls.wrong, cls.late, cls.auto, cls.jump, cls.session = cls.V['staff']['runs'][-STEERED:]
+        cls.steer, cls.wrong, cls.late, cls.auto, cls.jump, cls.session, cls.standing, cls.locks = \
+            cls.V['staff']['runs'][-STEERED:]
 
     def ev(self, run, kind, *head):
         return [x for x in run['events'] if x[1] == kind and list(x[2:2 + len(head)]) == list(head)]
@@ -834,6 +835,24 @@ class SteeredRuns(unittest.TestCase):
         self.assertTrue(gate and gate[0] > autos[0], 'the engine drove on to the gate\'s stop')
         dep = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'cr_stop', 'depart') if x[0] > autos[1]]
         self.assertTrue(dep, 'and left the next run\'s first stop by its own rule')
+
+    def test_the_wheel_taken_standing_and_given_back_at_the_wrong_place(self):
+        r = self.standing
+        wheel = [x[0] for x in r['events'] if x[1] == 'drive' and x[4] == 'wheel' and x[6] == 'done'][0]
+        gate = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'gate_stop', 'arrive')][0]
+        dep = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'gate_stop', 'depart')][0]
+        self.assertTrue(gate < wheel < dep, 'taken while it stood at the gate\'s stop')
+        auto = [x[0] for x in r['events'] if x[1] == 'drive' and x[4] == 'auto' and x[6] == 'done'][0]
+        stand = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'depot', 'stand')][0]
+        cr = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'cr_stop', 'arrive')][0]
+        self.assertTrue(stand <= auto < cr, 'given back at the depot, the engine drove on to the control room\'s stop')
+
+    def test_riders_off_site_on_the_road(self):
+        # (the blind review of S4e: the reference failed on a steered bus on the road with neither place nor way)
+        r = self.locks
+        self.assertTrue(self.ev(r, 'aboard', 'a_fo1', 'bus', 'camp_stop', 'on'))
+        snaps = [s for s in r['states'] if s['vehicles']['bus'][0][0] == 'road']
+        self.assertTrue(snaps, 'the run was steered on the road')
 
     def test_a_jump_while_steering(self):
         r = self.jump

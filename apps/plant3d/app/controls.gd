@@ -18,7 +18,7 @@
 ##   pause     K, gamepad D-pad down: pause, and run again at 1×
 ##   fast      . (full stop), gamepad D-pad right: fast-forward
 ##   driving   at a bus's wheel (app/bus_drive.gd, PLANT3D §21.16): move forward/back and the right/left triggers
-##             (throttle, brake), Space too to brake, move left/right to steer; use (E, A) the doors, fly (F, Y) the
+##             (throttle, brake), Space (gamepad RB: the up action) too to brake, move left/right to steer; use (E, A) the doors, fly (F, Y) the
 ##             wheel to the engine and back
 ##   home      H, gamepad X: to the control room and its screens, and the screens off again there (B is Godot's
 ##             ui_cancel: it closes the top panel)

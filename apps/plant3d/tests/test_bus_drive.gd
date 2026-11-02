@@ -127,6 +127,23 @@ func run(tree: SceneTree) -> Array:
 	# the automatic brake: someone just ahead of the moving bus stops it
 	var steered: bool = e.st_veh[vi].has("wheel") and e.st_veh[vi]["at"] == -1
 	if steered:
+		# one drive input at a time: asked twice before the engine has the first, sent once
+		var q0: int = e.queue.size()
+		bd._send(e, vi, "go")
+		bd._send(e, vi, "go")
+		if e.queue.size() != q0 + 1:
+			p.append("a drive input asked twice was sent %d times" % (e.queue.size() - q0))
+		e.queue.resize(q0)
+		# a load (or a join) while steering: the bus where the run has it, not at the plant's origin, and taken again
+		var was: Vector3 = bd.xf.origin
+		vv.snap()
+		if (V["xf"] as Transform3D).origin.length() < 1.0 or (V["xf"] as Transform3D).origin.distance_to(was) > 500.0 \
+				or bd.vi != -1:
+			p.append("after a load while steering the bus is at %s (it was at %s), driven %d" % [
+					str((V["xf"] as Transform3D).origin), str(was), bd.vi])
+		bd._physics_process(1.0 / 30.0)
+		if bd.vi != vi or bd.xf.origin.distance_to((V["xf"] as Transform3D).origin) > 0.01:
+			p.append("after a load the app does not take the bus up where it stands")
 		bd.control = Vector3(1, 0, 0)
 		for k in 60:
 			bd._physics_process(1.0 / 30.0)
@@ -173,6 +190,29 @@ func run(tree: SceneTree) -> Array:
 	bd._physics_process(1.0 / 30.0)
 	if bd.vi != -1 or ui.player.driving:
 		p.append("with the engine at the wheel the app still drives")
+	# the run's end at the depot is in its log, and the engine-driven run after it is not
+	for i in 4000:
+		ui.clock.run_steps(1)
+		bd._physics_process(1.0 / 30.0)
+		if e.st_veh[vi]["run"] == -1:
+			break
+	bd._physics_process(1.0 / 30.0)
+	var stops: Array = bd.log[-1]["stops"]
+	var home_id: String = sm.places[sm.vehicles[vi]["home"]]["id"]
+	if stops.is_empty() or stops[-1][0] != home_id or stops[-1][1] != "arrive":
+		p.append("the run's arrival home is not the last of its log: %s" % str(stops))
+	var n_logged: int = stops.size()
+	var runs_logged: int = bd.log.size()
+	for i in 3000:
+		ui.clock.run_steps(1)
+		bd._physics_process(1.0 / 30.0)
+		if e.st_veh[vi]["run"] != -1 and e.events[-1][1] == "vehicle":
+			break
+	for i in 300:
+		ui.clock.run_steps(1)
+		bd._physics_process(1.0 / 30.0)
+	if bd.log.size() != runs_logged or bd.log[-1]["stops"].size() != n_logged:
+		p.append("an engine-driven run went into the drive log: %s" % str(bd.log).left(300))
 	# the debrief: the drives in the role tab, the runs in the summary
 	var d: Dictionary = Debrief.collect(e, ui.info, null, ui.inputs.slot, ui.task_given, bd.log)
 	var rows: Array = d.entries.filter(func(x): return x.kind == "drive")

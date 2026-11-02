@@ -2107,12 +2107,14 @@ class Drive:
     drives each way in `pace` times the engine's steps (plus `late` steps on the run's first), stops at the run's next
     target, sets off from the first stop at D (`early`: at once) and from the others after their dwell. `skip`: the
     run's stop numbers driven past (it stops at the next instead); `wrong`: (stop number, place) where it stands on the
-    way to that stop first; `auto`: [(run number driven, 'road' or 'stand')]: gives the wheel back on the road on the way
-    to the second stop, or standing at the first; `runs`: how many runs it steers (then it leaves the wheel alone)."""
+    way to that stop first; `auto`: [(run number driven, 'road', 'stand' or 'wrong')]: gives the wheel back on the road
+    on the way to the second stop, standing at the first, or standing at the wrong place; `wheel_at`: the wheel taken
+    only once the engine's bus stands at that stop number; `runs`: how many runs it steers (then it leaves the wheel alone)."""
 
-    def __init__(self, pace=1, late=0, early=False, skip=(), wrong=None, auto=(), runs=9):
+    def __init__(self, pace=1, late=0, early=False, skip=(), wrong=None, auto=(), runs=9, wheel_at=0):
         self.pace, self.late, self.early, self.skip, self.wrong, self.auto, self.runs = \
             pace, late, early, set(skip), wrong, set(auto), runs
+        self.wheel_at = wheel_at    # the wheel taken only once the bus stands at this stop number of the run
         self.run_no = -1            # the runs driven, counted from 0
         self.run_key = None
         self.since = None           # the step it set off or stood still
@@ -2134,6 +2136,8 @@ class Drive:
         if self.run_no >= self.runs or self.gave_back:
             return True
         if 'wheel' not in V:
+            if self.wheel_at and not (V['at'] is not None and V['k'] >= self.wheel_at):
+                return True
             e.drive(vid, 'wheel')
             return True
         if self.since is None:
@@ -2154,6 +2158,10 @@ class Drive:
                     self.wrong_done = True
                 e.drive(vid, 'stop', st.places[to]['id'])
                 self.since = None
+            return True
+        if (self.run_no, 'wrong') in self.auto and V['at'] != V['to']:
+            self.gave_back = True
+            e.drive(vid, 'auto')
             return True
         if (self.run_no, 'stand') in self.auto and V['at'] == V['to'] and V['k'] == 0:
             self.gave_back = True
@@ -3925,12 +3933,21 @@ def steered_runs(camp, at5):
          'nobody aboard, the wheel the engine\'s',
          dict(at530, trainee='drv1'), camp, Trainee(drive=Drive(runs=1), extra=[[120, 'jump', '17:35']]), 400, 20),
         ('a session with the driver steering (§21.16, §17.13): slot 1 plays nobody (its drive refused, authority); '
-         'slot 0 takes the driver, steers from the depot, and is released on the road to the gate\'s stop: the '
+         'slot 0 takes the driver, steers from the depot\'s way, and is released on the road to the gate\'s stop: the '
          'engine drives on from the camp\'s stop, an NPC driver now',
          at530, camp, Session([Trainee(slot=0, drive=Drive()), Trainee(slot=1, quiet=True)],
                               extra=[[1, 'role', 'drv1', 0], [5, 'drive', 'bus', 'wheel', 1]],
                               when=[(lambda e: e.step_no > 110 and e.staff.veh[0]['at'] is None
                                      and 'wheel' in e.staff.veh[0], ('release', 0))]), 400, 20),
+        ('the wheel taken standing and given back at the wrong place (§21.16): the engine drives to the gate\'s stop, '
+         'the driver takes the wheel standing there, sets off, stands at the depot on the way to the control room\'s '
+         'stop and gives the wheel back there: the engine drives on from the depot',
+         dict(at530, trainee='drv1'), camp, Trainee(drive=Drive(runs=1, wheel_at=1, wrong=(2, 'depot'),
+                                                                 auto=[(0, 'wrong')])), 600, 20),
+        ('riders on a steered bus where locks are held (§21.16, §21.1): on the road the bus is off site as a way from where '
+         'it came to its target is (the left locks\' check asks for its riders each step)',
+         dict(at530, trainee='drv1'), with_camp(handover_staff()), Trainee(drive=Drive(runs=1),
+                                                                           extra=[[2, 'fault', 'f1']]), 1200, 40),
     ]
 
 

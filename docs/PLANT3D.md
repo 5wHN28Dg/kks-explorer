@@ -3233,8 +3233,8 @@ geometry in the model; none of it changes what the staff do, which depends only 
 - **The input** (§17.6; in a session with its slot, §17.13), applied at the start of step 9 with `get_on` (§21.4), in
   the order made: `[n, "drive", vehicle, action]` and `[n, "drive", vehicle, "stop", place]`; the event
   `[n, "drive", person, vehicle, action, place or null, "done" | "refused", [reasons]]` (the slot last in a session
-  run). The first reason that holds refuses it: `unknown` (no such vehicle; for `stop`, a place that is not a `stop`
-  or `depot`), `not_driver` (their person is not the vehicle's driver on a run), then per action:
+  run). The first reason that holds refuses it: `unknown` (no such vehicle, an action not one of the four; for `stop`, a place
+  that is not a `stop` or `depot` the vehicle's home reaches over drive ways), `not_driver` (their person is not the vehicle's driver on a run), then per action:
   - `wheel`: the driver takes the wheel (`steering` if they have it). On a drive way the bus leaves its way where it
     is: it is **on the road**, coming from the way's start; standing at a place it stays there.
   - `stop place`: the bus stands at `place` (`no_wheel` without the wheel, `standing` if it stands already). At the
@@ -3248,8 +3248,8 @@ geometry in the model; none of it changes what the staff do, which depends only 
     departure does; from a place it only stood at, its target stays as it was. It may leave the first stop before the
     run's departure D and any later stop before its dwell is over: the driver decides (a rider who comes later misses
     it and waits, then walks after 30 minutes, §21.4).
-  - `auto`: the engine drives again (`no_wheel` without it). Standing, the run goes on by §21.4's departure rule from
-    the next step; on the road, the bus drives from the place it came from (`from`) to its target from this step (in
+  - `auto`: the engine drives again (`no_wheel` without it). Standing, the run goes on by §21.4's departure rule (in
+    this step's phase 3 already, the input being applied before it); on the road, the bus drives from the place it came from (`from`) to its target from this step (in
     the app it is put back on its lane there).
 - **Phase 3** leaves a steered vehicle where its driver has it: no arrival or departure by time; its runs due are made
   as before (a run due while the steered bus is out is `skipped`: not at home). **A jump** puts every vehicle home
@@ -3280,7 +3280,8 @@ geometry in the model; none of it changes what the staff do, which depends only 
 - **Controls** (the walker's own actions, app/controls.gd, so every way of playing has them): keyboard W/S or the
   arrows (throttle; brake, and reverse once stopped), A/D or the arrows (steer), Space (brake), E (doors), F (give the
   wheel to the engine and take it back); gamepad: right trigger or the left stick up (throttle), left trigger or the
-  stick down (brake, reverse), the left stick sideways (steer), A doors, Y wheel; touch: the left touch stick as the
+  stick down (brake, reverse), RB (brake, the flight's up action), the left stick sideways (steer), A doors, Y wheel
+  (given to the engine it stays so for the next runs, until taken again); touch: the left touch stick as the
   gamepad's left stick, and the driving bar's buttons ("Open the doors", "Close the doors", "Let the engine drive",
   "Take the wheel") at the bottom of the screen, with the speed, the next stop, its time and lateness, "OFF ROUTE" and
   "BRAKING". The look stick and the mouse still look round from the seat.
@@ -3288,13 +3289,15 @@ geometry in the model; none of it changes what the staff do, which depends only 
   "driving", and byte 22 the vehicle's index: the others draw that bus from the driver's position and heading (the
   seat's offset taken off) instead of the engine's way, 200 ms behind as any `pos`. A build that doesn't know the bit
   draws it where the engine has it.
-- **Vectors** (§21.9): `staff.runs` gains steered runs on the camp's synthetic plant: the wheel taken on a drive way and
-  at the depot; arriving at the next stop, a stop passed, standing at the wrong place, leaving the first stop early,
+- **Vectors** (§21.9): `staff.runs` gains steered runs on the camp's synthetic plant: the wheel taken on a drive way (a
+  run's driver is taken and the bus sets off in one phase 3, so the app's wheel comes on its first way); arriving at the next stop, a stop passed, standing at the wrong place, leaving the first stop early,
   every refusal; a rider who gets off at the last stop after their stop was passed; a late bus a rider walks away
-  from; `auto` on the road and standing; a release while steering in a session; a jump while steering. Every earlier
+  from; `auto` on the road, standing at a stop and at the wrong place; the wheel taken standing; a release while
+  steering in a session; a jump while steering; riders on a steered bus where locks are held (off site on the
+  road). Every earlier
   item stays as it is (a run nobody steers runs as before; the digest's vehicle part gains `[wheel slot, from]` only
   for a vehicle steered in the run).
-- **The Note 9:** a `drive` walk (`app/routes.gd`): the trainee as the day's driver at the 05:40 run, the app's own
+- **The Note 9:** a `drive` walk (`app/main.gd`, `walk=drive`): the trainee as the day's driver at the 05:40 run, the app's own
   driver (an autopilot on the controls, as the walks' walker) along the run's roads, stopping at each stop, 10
   minutes at 1×; the frame rules, two judged cool runs, and the staff step's STEPS line.
 

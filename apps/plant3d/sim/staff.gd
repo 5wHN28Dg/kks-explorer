@@ -2215,6 +2215,8 @@ func off_site_now(e, pi: int) -> bool:
 		var vh: Dictionary = e.st_veh[vi]
 		if not vh["leg"].is_empty():
 			return off_site[vh["leg"][0]] == 1 and off_site[vh["leg"][1]] == 1
+		if vh["at"] == -1:              # steered, on the road (§21.16): as on a way from where it came to its target
+			return off_site[vh["from"]] == 1 and off_site[vh["to"]] == 1
 		return off_site[vh["at"]] == 1
 	var leg: Array = e.sp_leg[pi]
 	if not leg.is_empty():

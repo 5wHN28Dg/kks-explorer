@@ -1442,7 +1442,7 @@ func _walker_state() -> Array:
 	var yaw: float = player.rotation.y
 	if vk != -1:                        # (the bus's heading, not where its driver looks)
 		flags |= Session.POS_DRIVING
-		v = Vector3(bus_drive.speed, 0, 0)
+		v = Vector3.ZERO                # (seated: its avatar is not walking)
 		yaw = (vehicles.global_transform.basis * bus_drive.xf.basis).get_euler().y
 	return [player.global_position, yaw, player.pivot.rotation.x, clampi(int(round(v.length() * 10.0)), 0, 255), flags,
 			maxi(vk, 0)]

@@ -53,8 +53,11 @@ var front := -6.0
 var back := 6.0
 var wheelbase := 6.0
 var seat := Vector3(-0.7, 0.4, -4.6)    # the driver's seat (the walker's feet)
-var _sent := -1                     # the step an input was last sent at (one at a time, until the engine has it)
+var _sent := -1                     # the step the last drive input was sent at, and what it was (_send)
+var _sent_key := ""
 var _ev_seen := 0
+var _log_vi := -1                   # the vehicle whose run is being logged, -1 none, and that run [run, D]
+var _log_run := [-1, 0]
 var _bar: Control
 var _label: Label
 var _doors: Button
@@ -138,6 +141,7 @@ func _physics_process(delta: float) -> void:
 
 func _frame(delta: float) -> void:
 	var e = ui.clock.engine
+	_log_events(e)
 	var k := driver_of()
 	var p = ui.player
 	if k == -1:
@@ -150,13 +154,11 @@ func _frame(delta: float) -> void:
 	if V.is_empty():
 		_bar.visible = false
 		return
-	_log_events(e, k)
 	if not vh.has("wheel"):
 		if vi != -1:
 			_end()
-		if want_wheel and _sent != e.step_no:
-			_sent = e.step_no
-			ui.inputs.drive(ui.clock.engine._sm.vehicles[k]["id"], "wheel")
+		if want_wheel:
+			_send(e, k, "wheel")
 		_show(e, k, vh)
 		return
 	if vi != k:                         # the wheel is theirs from now: the bus where it is drawn
@@ -172,7 +174,7 @@ func _frame(delta: float) -> void:
 			p.driving = true
 	if vh["at"] != -1:                  # standing at a place (the doors open): it does not move
 		speed = 0.0
-		if pilot and _sent != e.step_no and (e.clock() >= vh["dep"] if vh["k"] == 0 else e.step_no >= vh["until"]):
+		if pilot and (e.clock() >= vh["dep"] if vh["k"] == 0 else e.step_no >= vh["until"]):
 			doors()                     # (the drive walk: off again by the run's own rule)
 	else:
 		_drive(V, delta)
@@ -393,24 +395,16 @@ func _barriers(body: PhysicsBody3D) -> void:
 				body.add_collision_exception_with(b)
 
 
-## The bus's size from its meshes (body frame).
+## The bus's size (app/vehicles.gd measured it from its meshes when it was set up: the same on every machine).
 func _measure(V: Dictionary) -> void:
-	var box := AABB()
-	var first := true
-	for c in (V["body"] as Node).get_children():
-		for m in [c] + c.find_children("*", "MeshInstance3D", true, false):
-			if m is MeshInstance3D and (m as MeshInstance3D).mesh != null:
-				var b: AABB = (V["body"] as Node3D).global_transform.affine_inverse() * (m as MeshInstance3D).global_transform * (m as MeshInstance3D).get_aabb() \
-						if (m as Node3D).is_inside_tree() else (m as Node3D).transform * (m as MeshInstance3D).get_aabb()
-				box = b if first else box.merge(b)
-				first = false
-	if first or box.size.z < 2.0:
+	var z: Dictionary = V.get("size", {})
+	if z.is_empty():
 		return
-	half_w = box.size.x / 2.0
-	front = box.position.z
-	back = box.end.z
-	wheelbase = box.size.z * 0.55
-	seat = Vector3(box.position.x + box.size.x * 0.25, box.position.y + 0.4, front + 1.3)
+	half_w = z["half_w"]
+	front = z["front"]
+	back = z["back"]
+	wheelbase = z["wheelbase"]
+	seat = z["seat"]
 
 
 ## Where the trainee's bus is drawn (app/vehicles.gd pose), or null when they don't drive it.
@@ -421,18 +415,27 @@ func pose_of(k: int):
 ## The doors' button: open them standing still within reach of a stop or the depot ("stop" there), close them standing
 ## ("go").
 func doors() -> void:
-	if vi == -1 or _sent == ui.clock.engine.step_no:
+	if vi == -1:
 		return
 	var e = ui.clock.engine
 	var vh: Dictionary = e.st_veh[vi]
-	var id: String = e._sm.vehicles[vi]["id"]
 	if vh["at"] != -1:
-		_sent = e.step_no
-		ui.inputs.drive(id, "go")
+		_send(e, vi, "go")
 	elif absf(speed) < STILL and _near != -1:
-		_sent = e.step_no
 		speed = 0.0
-		ui.inputs.drive(id, "stop", e._sm.places[_near]["id"])
+		_send(e, vi, "stop", e._sm.places[_near]["id"])
+
+
+## One drive input at a time: the same one is not sent again while the vehicle is as it was when it went (in a
+## session the host takes a few steps to commit it), unless 50 steps have gone by without it taking effect.
+func _send(e, k: int, action: String, place := "") -> void:
+	var vh: Dictionary = e.st_veh[k]
+	var key := "%s|%s|%d|%s|%d|%d" % [action, place, k, str(vh.has("wheel")), int(vh["at"]), int(vh["k"])]
+	if key == _sent_key and e.step_no - _sent < 50:
+		return
+	_sent_key = key
+	_sent = e.step_no
+	ui.inputs.drive(e._sm.vehicles[k]["id"], action, place)
 
 
 ## The wheel's button: give it to the engine ("auto"), or take it again.
@@ -441,10 +444,9 @@ func toggle_wheel() -> void:
 	if k == -1:
 		return
 	var e = ui.clock.engine
-	want_wheel = not e.st_veh[k].has("wheel")
-	if not want_wheel and _sent != e.step_no:
-		_sent = e.step_no
-		ui.inputs.drive(e._sm.vehicles[k]["id"], "auto")
+	want_wheel = not e.st_veh[k].has("wheel")      # (kept for the next runs too, until pressed again)
+	if not want_wheel:
+		_send(e, k, "auto")
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -509,45 +511,67 @@ static func _dist(line: PackedVector3Array, p: Vector3) -> float:
 	return best
 
 
-## A run driven: its record in the log (once per run).
+## A run driven: its record in the log (once per run); its events are logged from now (_log_events) until the
+## vehicle is home.
 func _new_run(e, k: int, vh: Dictionary) -> void:
 	var id: String = e._sm.vehicles[k]["id"]
+	_log_vi = k
+	_log_run = [int(vh["run"]), int(vh["dep"])]
+	_ev_seen = e.events.size()
 	if not log.is_empty() and log[-1]["vehicle"] == id and log[-1]["dep"] == vh["dep"]:
 		return
 	log.append({"vehicle": id, "dep": vh["dep"], "stops": [], "off_route_s": 0.0, "near_misses": 0})
-	_ev_seen = e.events.size()
 
 
-## The run's arrivals, stops passed and places stood at since the last frame, each arrival with its lateness against
-## the timetable (clock minutes, rounded).
-func _log_events(e, k: int) -> void:
-	if log.is_empty() or _ev_seen > e.events.size():
+## The driven run's arrivals, stops passed and places stood at since the last frame, the arrival home included, each
+## arrival with its lateness against the timetable at the step it came (clock minutes, rounded); nothing of other runs.
+func _log_events(e) -> void:
+	if _ev_seen > e.events.size():
+		_ev_seen = e.events.size()
+	if _log_vi == -1 or log.is_empty():
 		_ev_seen = e.events.size()
 		return
-	var id: String = e._sm.vehicles[k]["id"]
+	var id: String = e._sm.vehicles[_log_vi]["id"]
 	for j in range(_ev_seen, e.events.size()):
 		var x: Array = e.events[j]
 		if x[1] != "vehicle" or x[2] != id or not x[4] in ["arrive", "passed", "stand"]:
 			continue
 		var late = null
 		if x[4] == "arrive":
-			var due := timetable(e, k, x[3])
+			var due := timetable_of(e, _log_vi, int(_log_run[0]), int(_log_run[1]), x[3])
 			if due >= 0:
-				late = int(round(float(e.clock() - due) / 600.0))
+				late = int(round(float(e.clock() - (e.step_no - int(x[0])) * e._ds - due) / 600.0))
 		log[-1]["stops"].append([x[3], x[4], late])
+		if x[4] == "arrive" and x[3] == e._sm.places[e._sm.vehicles[_log_vi]["home"]]["id"] \
+				and e.st_veh[_log_vi]["run"] == -1:
+			_log_vi = -1                # (home: the run is over)
+			break
 	_ev_seen = e.events.size()
+
+
+## After a load, a jump or another engine: nothing driven until the app has the wheel again, nothing logged from the
+## old engine's events, the bus put where the run has it (app/vehicles.gd snap).
+func reset() -> void:
+	_end()
+	_log_vi = -1
+	_ev_seen = ui.clock.engine.events.size() if ui != null and ui.clock != null else 0
+	_sent_key = ""
 
 
 ## When the run's engine would have the vehicle arrive at stop `id` (clock tenths), -1 when it is not on the run: D at
 ## the first stop, then each way's steps at the plant's day scale and each later stop's dwell (§21.16).
 static func timetable(e, k: int, id: String) -> int:
-	var sm = e._sm
 	var vh: Dictionary = e.st_veh[k]
 	if vh["run"] == -1:
 		return -1
-	var r: Dictionary = sm.vehicles[k]["runs"][vh["run"]]
+	return timetable_of(e, k, int(vh["run"]), int(vh["dep"]), id)
+
+
+static func timetable_of(e, k: int, run: int, dep: int, id: String) -> int:
+	var sm = e._sm
+	var r: Dictionary = sm.vehicles[k]["runs"][run]
 	var stops: PackedInt32Array = r["stops"]
-	var t: int = vh["dep"]
+	var t: int = dep
 	for j in stops.size():
 		if j > 0:
 			t += sm.drive_steps(stops[j - 1], stops[j]) * e._ds
