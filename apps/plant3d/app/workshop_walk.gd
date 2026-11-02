@@ -4,7 +4,7 @@
 ## the selected subassembly taken apart; a part moved and turned with the handle; Reset; taken apart again and put
 ## back with Reassemble all; then back to the plant. The camera turns round the machine all the while. It logs
 ## `WORKSHOP` lines: the entry (button to the machine's first frame), the exit (back to the plant's first frame) and
-## the scene's triangles; main.gd's frame log judges the frames from 5 s after the walk began until it leaves. K3 adds
+## the scene's triangles (it enters, leaves and enters again first: the first entry and a second one); main.gd's frame log judges the frames from 5 s after the walk began until it leaves. K3 adds
 ## the X-ray, cutaway, section and running to the walk.
 extends Node
 
@@ -30,7 +30,18 @@ func start(m, k := "") -> void:
 		main._finish()
 		return
 	await ws.shown
-	main._say("WORKSHOP kind=%s entry=%.0fms load=%.0fms tris=%d" % [kind, ws.entry_ms, ws.load_ms, int(ws.machine.get_meta("tris", 0))])
+	main._say("WORKSHOP kind=%s entry=%.0fms load=%.0fms tris=%d (the first entry)" % [kind, ws.entry_ms, ws.load_ms, int(ws.machine.get_meta("tris", 0))])
+	# out and in again: the exit, and an entry with everything it needs already compiled and loaded once
+	for i in 30:
+		await get_tree().process_frame
+	ws.close()
+	await ws.left
+	main._say("WORKSHOP exit=%.0fms (after the first entry)" % ws.exit_ms)
+	for i in 60:
+		await get_tree().process_frame
+	ws.open(kind)
+	await ws.shown
+	main._say("WORKSHOP entry=%.0fms load=%.0fms (the second entry)" % [ws.entry_ms, ws.load_ms])
 	running = true
 
 func _process(delta: float) -> void:
