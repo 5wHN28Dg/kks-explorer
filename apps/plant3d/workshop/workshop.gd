@@ -89,6 +89,7 @@ var _ghost_id := ""
 var _xray_mat: ShaderMaterial
 var _warm: Node3D               # one hidden mesh with ws_xray in the plant's world: its pipelines queued early
 var warmed := false
+var _warm_draw_mat: ShaderMaterial   # ws_xray at alpha 0: the Workshop load's unseen draw of every ghost format
 var _cur_m := {}                # id -> Transform3D: each part where it stands now, in the machine's frame (apply)
 
 func setup(m) -> void:
@@ -449,6 +450,9 @@ func _show_machine(ps: PackedScene) -> void:
 	panels.machine_shown()
 	apply()
 	await main._drawn()   # the next frame drawn (headless: the next frame)
+	var gw := machine.get_node_or_null("ghost_warm") if machine != null else null
+	if gw != null:
+		gw.visible = false   # (drawn, unseen, in the first frame: its pipelines are ready for the first ghost)
 	if not is_open or gen != _gen:
 		return   # left (and maybe entered again) meanwhile
 	entry_ms = (Time.get_ticks_usec() - _t0) / 1000.0
@@ -1049,6 +1053,10 @@ func _warm_machine() -> void:
 	# the fastener groups' (a pipeline is per format: the Note 9 compiled one at the first ghost of another format)
 	var w := Node3D.new()
 	w.name = "ghost_warm"
+	if _warm_draw_mat == null:
+		_warm_draw_mat = ShaderMaterial.new()   # the same shader (so the same pipelines), fully transparent
+		_warm_draw_mat.shader = XRAY
+		_warm_draw_mat.set_shader_parameter("alpha", 0.0)
 	var seen := {}
 	for id in comps:
 		for c in (comps[id] as Node3D).get_children():
@@ -1056,15 +1064,17 @@ func _warm_machine() -> void:
 				var k := "m%s" % _format_key(c.mesh)
 				if not seen.has(k):
 					seen[k] = true
-					w.add_child(_xray_pair(c.mesh, xray_mat())[0])
+					w.add_child(_xray_pair(c.mesh, _warm_draw_mat)[0])
 	for g in groups:
 		for c in (groups[g] as Node3D).get_children():
 			if c is MultiMeshInstance3D and c.multimesh != null and c.multimesh.mesh != null:
 				var k := "i%s" % _format_key(c.multimesh.mesh)
 				if not seen.has(k):
 					seen[k] = true
-					w.add_child(_xray_pair(c.multimesh.mesh, xray_mat())[1])
-	w.visible = false
+					w.add_child(_xray_pair(c.multimesh.mesh, _warm_draw_mat)[1])
+	# drawn in the machine's first frame, unseen (alpha 0, no depth written): a hidden instance was not enough on the
+	# Note 9, whose Mobile renderer compiled the ghost's pipelines at its first draw (its lights and the view's state
+	# are part of them); the first frame waits for them instead (WORKSHOP.md §7.1: the load draws them first)
 	machine.add_child(w)
 
 ## A mesh's surfaces' vertex formats and primitives, as one key.

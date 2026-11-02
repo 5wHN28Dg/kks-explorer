@@ -64,6 +64,9 @@ func run(tree: SceneTree) -> Array:
 				if c is MultiMeshInstance3D and not warm.has("i" + WSs._format_key(c.multimesh.mesh)):
 					missing.append(g)
 		check(missing.is_empty(), "every ghost's vertex format is warmed with the machine (missing: %s)" % str(missing))
+		var wm: ShaderMaterial = gw.get_child(0).material_override
+		check(not gw.visible and is_equal_approx(float(wm.get_shader_parameter("alpha")), 0.0) and wm != ws.xray_mat(),
+			"drawn unseen in the machine's first frame (its own material at alpha 0), hidden after it")
 	await _transmitter(tree, ws)
 	await _fixture(tree, ws)
 	ws.close()
