@@ -193,7 +193,13 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
 - `Gen.fasteners(id, kind, items, draw)` (one item drawn by `draw` in its own frame, z the way it backs out; `kind`
   one of the list above, checked by the join) and `Gen.flow(id, points)`; fasteners are Workshop-only small outside
   pieces. A moving piece's builder (`g.move`) follows `comp()` and `only()` like the static one.
-- An only() block that runs on into another component (`comp()` inside it) is recorded as a piece of each.
+- An only() block that runs on into another component (`comp()` inside it) is recorded as a piece of each. A
+  `"split"` piece must belong to a component that replaces a stand-in (the tests refuse any other).
+- In the scene a fastener item backs out along its basis.y (Godot's axes; the generator's z), meta `back_axis`; the
+  MultiMeshes get their instance transforms from the `items` meta at load. Moving pieces are drawn with their
+  component's meshes at 0 and described in the root's `moving` meta, for K3 and K4b to animate.
+- The join also refuses an assembly that places a part before its parent in the tree, and a fastener group drawn in
+  a component its data's `joins` doesn't name; the validator refuses a group placed before the parts it joins.
 - Not yet active: the check that the Workshop's code names no part kind passes trivially until `apps/plant3d/workshop/`
   exists (K1). The frozen plant check covers the context keys `pipe_od`, `out` and `floor_dz`; parts whose shape
   depends on other context (nozzles in use, shaft lines, heights above and below) are held only in the cases recorded.
