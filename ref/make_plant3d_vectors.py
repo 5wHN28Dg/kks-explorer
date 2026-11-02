@@ -569,6 +569,8 @@ def apply(e, item, slot=None):
         e.remove_lock(item[2], item[3], item[4], item[5], *item[6:7], named=len(item) > 6, slot=slot)
     elif kind in ('board', 'alight'):
         getattr(e, kind)(item[2], item[3], slot=slot)
+    elif kind == 'weather':
+        e.weather(item[2], slot=slot)
     else:
         raise ValueError(kind)
 
@@ -2062,7 +2064,7 @@ def build_rejects_staff():
 
 INPUTS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
           'remove_lock', 'role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump', 'ppe', 'zone',
-          'stop', 'board', 'alight', 'get_on')
+          'stop', 'board', 'alight', 'get_on', 'weather')
 
 
 class Slotted:
@@ -3884,8 +3886,8 @@ def _sc2(sc):
 
 REJECTS_WORLD = [
     ('a world that is not an object', 'bad_type', _set(SC + ['world'], [7])),
-    ('a world with a key RE1 does not know (weather comes with WX1)', 'unknown_key',
-     _set(SC + ['world', 'weather'], {'fixed': 'clear'})),
+    ('a world with a key not known yet (age comes with AG2)', 'unknown_key',
+     _set(SC + ['world', 'age'], {'months': 6})),
     ('a world seed below 0', 'bad_number', _set(SC + ['world', 'seed'], -1)),
     ('a world seed of 2^32', 'bad_number', _set(SC + ['world', 'seed'], 2 ** 32)),
     ('a world seed that is not whole', 'bad_number', _set(SC + ['world', 'seed'], 1.5)),
@@ -3966,6 +3968,384 @@ def build_realism_runs():
     return out
 
 
+# ---------------------------------------------------------------- milestone AG1: the wear engine (REALISM.md §2.2, J0)
+
+PUMP, VALVE = '10LAC10AP001', '10LAB10AA001'
+# the synthetic staff plant's pump wears as content will (§4.2): a duty table of its flow times the scenario's
+# age_rate (§4.3) gives a bearing's wear per clock second; its life is drawn from the seed; its signs are tables of
+# the wear (the P-F curve); its starts and trips are counted (J0); clock_s and run_h are wear nodes of time
+WEAR_NODES = [['brg_duty', {'of': 'flow', 'table': [[0, 0], [1, 1]]}],
+              ['brg_rate', {'product': ['brg_duty', 'age_rate', 0.000002]}],
+              ['brg_new', {'state': 0, 'kks': PUMP}],
+              ['brg_wear', {'wear': 'brg_rate', 'reset': 'brg_new', 'max': 1, 'unit': '%', 'kks': PUMP}],
+              ['brg_life', {'draw': [[0, 0.3], [1, 0.9]]}],
+              ['brg_life_b', {'draw': [[0, 0.3], [0.5, 0.5], [1, 0.9]], 'init': 0.42}],
+              ['brg_life_c', {'draw': [[0, 0.1], [1, 0.2]]}],
+              ['brg_bad', {'cmp': ['brg_wear', '>=', 'brg_life']}],
+              ['brg_vib', {'of': 'brg_wear', 'table': [[0, 1], [0.5, 2], [1, 8]], 'unit': 'mm/s'}],
+              ['pump_starts', {'count': 'pump_cmd'}],
+              ['pump_trips', {'count': 'brg_bad', 'by': 8, 'reset': 'brg_new'}],
+              ['run_rate', {'product': ['pump_cmd', 0.0002777777777777778]}],
+              ['run_h', {'wear': 'run_rate', 'max': 100000}],
+              ['clock_s', {'wear': 1, 'max': 900000000}]]
+WEAR_FAULTS = [{'id': 'f_brg', 'when': 'brg_bad', 'set': {'pump_cmd': 0, 'pump_worn': 1},
+                'text': 'The pump\'s bearing fails', 'kks': PUMP, 'repair': {'pump_worn': 0}},
+               {'id': 'f_new', 'set': {'brg_new': 1}, 'text': 'A new bearing (the trainer\'s reset)',
+                'repair': {'brg_new': 0}}]
+
+
+def wear_files():
+    """The realism base's plant (realism_files) with the pump's wear: WEAR_NODES, the ext value age_rate (50: a
+    training rate), the bearing's failure and the trainer's reset as faults, the pump's work renewing the bearing;
+    its pressure scaled so that the pump runs without tripping."""
+    F = realism_files()
+    F['plant.json']['ext'] = F['plant.json']['ext'] + ['age_rate']
+    m = F['model/a1.json']
+    m['values'] = [['p', dict(n, product=['flow', 3])] if k == 'p' else [k, n] for k, n in m['values']]
+    m['values'] += copy.deepcopy(WEAR_NODES)
+    for w in m['works']:
+        if w['id'] == 'wo_pump':
+            w['renews'] = ['brg_wear']
+    sc = F['scenarios/s1.json']
+    sc['init']['age_rate'] = 50
+    sc['faults'] = sc['faults'] + copy.deepcopy(WEAR_FAULTS)
+    return F
+
+
+class Script:
+    """Inputs at given steps: [(step, engine method, args…)], each made just before that step."""
+
+    def __init__(self, items):
+        self.items = items
+
+    def __call__(self, e):
+        for x in self.items:
+            if x[0] == e.step_no + 1:
+                getattr(e, x[1])(*x[2:])
+
+
+START_PUMP = [(1, 'op', VALVE, 'open', None, None), (2, 'op', PUMP, 'start', None, None)]
+
+
+def renewal(unlock_with_done=False):
+    """The pump stopped and isolated at step 600, its work's permit through to done at step 650 (§2.2's renewal):
+    with unlock_with_done, a lock removed by authority in done's own step leaves the isolation incomplete (no
+    renewal)."""
+    a = START_PUMP + [(600, 'op', PUMP, 'stop', None, None), (600, 'op', VALVE, 'close', None, None),
+                      (601, 'permit', 'wo_pump', 'request', None), (602, 'permit', 'wo_pump', 'approve', None),
+                      (603, 'lock', 'wo_pump', 0, None), (603, 'lock', 'wo_pump', 1, None),
+                      (605, 'permit', 'wo_pump', 'issue', None), (606, 'permit', 'wo_pump', 'accept', None),
+                      (650, 'permit', 'wo_pump', 'done', None)]
+    if unlock_with_done:
+        a.append((650, 'remove_lock', 'wo_pump', 1, None, 'Called away'))
+    else:
+        a += [(652, 'permit', 'wo_pump', 'return', None), (653, 'unlock', 'wo_pump', 0, None),
+              (653, 'unlock', 'wo_pump', 1, None), (655, 'permit', 'wo_pump', 'close', None)]
+    return Script(a)
+
+
+def wear_runs():
+    """(why, scenario changes, files, player, steps, snapshot every): AG1's runs (§2.2, §4.2–§4.3, J0)."""
+    wf = wear_files()
+    free = {'staff': None}          # free mode: no staff in the scenario (the permits made as the several roles)
+    late = {'start': {'day': 1, 'time': '23:00'}}
+    running = {'pump_cmd': 1, 'valve_cmd': 1, 'flow': 1}
+    return [
+        ('the bearing wears while the pump runs (age_rate 50, a training rate: 6e-4 a step at full flow), up to its '
+         'life drawn at step 0 from its own stream; the fault at that step; a count of starts and of trips (by 8); '
+         'the trainer\'s reset (f_new) zeroes the wear and the trips\' count; the pump started again wears from 0, '
+         'its failure not applied again; run_h counts running hours, clock_s clock seconds; the draws with an init '
+         '(their own) keep it', free, wf, Script(START_PUMP + [(1800, 'fault', 'f_new'), (1850, 'repair', 'f_new'),
+                                                               (1900, 'op', PUMP, 'start', None, None)]), 2600, 100),
+        ('the plant\'s age and a real rate (§4.3): the scenario starts the wear at 0.25, the starts\' count at 3, '
+         'run_h at 1200, gives brg_life_c, and age_rate 1 (real time: 1.2e-5 a step)',
+         dict(free, init={'brg_wear': 0.25, 'brg_life_c': 0.15, 'age_rate': 1, 'pump_starts': 3, 'run_h': 1200}),
+         wf, Script(START_PUMP), 600, 50),
+        ('a renewal (§2.2): the pump\'s work renews the bearing when its permit goes to done with its isolation '
+         'complete: the wear 0 in that step\'s step 3, read by the next step', dict(free, init={'brg_life': 0.95}),
+         wf, renewal(), 700, 10),
+        ('no renewal with a lock removed by authority in done\'s own step (§2.2, as its repairs: the isolation is '
+         'incomplete after that step\'s locks)', dict(free, init={'brg_life': 0.95}), wf, renewal(True), 700, 10),
+        ('wear across a jump (§2.2, §17.6): from 23:00 with the pump running, the trainee (mech1) jumps to 05:45 at '
+         'step 30: each wear node adds rate × the gap\'s clock seconds once, at the rate of the step before, then '
+         'its step, then its max (the bearing to 1, its failure); clock_s by the 24,300 s of the gap',
+         dict(late, trainee='mech1', init=running), wf, Trainee(extra=[[30, 'jump', '05:45']]), 300, 10),
+    ]
+
+
+def build_runs(runs, base):
+    """A part's runs as the realism base's (build_realism_runs), each with the files that differ from the part's
+    base (`files`), its world as the engine took it."""
+    out = []
+    for why, change, files, player, until, every in runs:
+        F = copy.deepcopy(files)
+        sc = F['scenarios/s1.json']
+        for k, v in change.items():
+            if k in ('start', 'world'):
+                sc[k] = v
+            elif k == 'init':
+                sc['init'] = dict(sc['init'], **v)
+            elif k == 'staff' and v is None:
+                del sc['staff']
+            else:
+                sc['staff'][k] = v
+        b = check(F)
+        e = P.Recorder(b, 's1')
+        world = [e.world['seed'], e.world['year_day']]
+        states, digests = [e.snapshot()], [e.digest()]
+        while e.step_no < until:
+            if player is not None:
+                player(e)
+            e.step()
+            if e.step_no % every == 0 or e.step_no == until:
+                states.append(e.snapshot())
+            if e.step_no % DIGEST_EVERY == 0:
+                digests.append(e.digest())
+        out.append({'why': why, 'scenario': sc, 'staff': None,
+                    'files': {k: F[k] for k in sorted(F) if k != 'scenarios/s1.json' and F[k] != base.get(k)},
+                    'inputs': e.inputs, 'until': until, 'every': every, 'states': states, 'events': e.events,
+                    'digests': digests, 'world': world})
+    return out
+
+
+A2M = 'model/a2.json'
+WMOD = ['model/a1.json']
+WORKS = WMOD + ['works']
+
+
+def _v1_a2(node):
+    """A version 1 model file of area a2 with one value."""
+    return lambda F: F.__setitem__(A2M, {'format': 'walkdown-plant-model', 'version': 1, 'area': 'a2',
+                                         'values': [['x', node]]})
+
+
+def _value(name, node):
+    """Value `name` of model/a1.json replaced by `node`."""
+    def f(F):
+        F['model/a1.json']['values'] = [[k, node if k == name else n] for k, n in F['model/a1.json']['values']]
+    return f
+
+
+def _work(wid, fn):
+    def f(F):
+        fn(next(w for w in F['model/a1.json']['works'] if w['id'] == wid))
+    return f
+
+
+def _no_clock(F):
+    """The wear plant without a clock: no staff, no world, no clock values (as REJECTS_WORLD's last)."""
+    F['model/a1.json']['values'] = [v for v in F['model/a1.json']['values'] if v[0] not in [c[0] for c in CLOCK_NODES]]
+    del F['plant.json']['clock']
+    del F['scenarios/s1.json']['staff']
+    del F['scenarios/s1.json']['world']
+    F.pop('staff.json')
+    F['model/a1.json']['works'] = [{k: v for k, v in w.items() if k != 'task'} for w in F['model/a1.json']['works']]
+
+
+# (why, code, change, a fragment of the message: the rule that caught it)
+REJECTS_WEAR = [
+    ('a draw node in a version 1 model file', 'bad_kind', _v1_a2({'draw': [[0, 0], [1, 1]]}), 'format 2'),
+    ('a wear node (with its max) in a version 1 model file', 'unknown_key', _v1_a2({'wear': 1, 'max': 1}),
+     'format 2'),
+    ('a count node in a version 1 model file', 'bad_kind', _v1_a2({'count': 'x'}), 'format 2'),
+    ('a draw table whose x decreases', 'bad_table', _value('brg_life', {'draw': [[1, 0.3], [0, 0.9]]}), '.draw'),
+    ('a draw table that is not a list', 'bad_type', _value('brg_life', {'draw': 0.5}), '.draw'),
+    ('a draw with an unknown key', 'unknown_key', _value('brg_life', {'draw': [[0, 0], [1, 1]], 'seed': 3}),
+     '.seed'),
+    ('a wear node without its max', 'missing_key', _value('brg_wear', {'wear': 'brg_rate'}), '.max'),
+    ('a wear node with a max below 0', 'bad_number', _value('brg_wear', {'wear': 'brg_rate', 'max': -1}), '.max'),
+    ('a wear node with an init above its max', 'bad_value', _value('brg_wear', {'wear': 'brg_rate', 'max': 1,
+                                                                                 'init': 2}), 'within 0 and max'),
+    ('a scenario starting a wear above its max', 'bad_value', _set(SC + ['init', 'brg_wear'], 1.5),
+     'within 0 and max'),
+    ('a scenario starting a wear below 0', 'bad_value', _set(SC + ['init', 'brg_wear'], -0.1), 'within 0 and max'),
+    ('a wear node reading no value', 'bad_ref', _value('brg_wear', {'wear': 'brg_rat', 'max': 1}), 'brg_rat'),
+    ('a wear node whose reset is no value', 'bad_ref', _value('brg_wear', {'wear': 'brg_rate', 'max': 1,
+                                                                            'reset': 'zz'}), 'zz'),
+    ('a wear node with a key of another node', 'unknown_key', _value('brg_wear', {'wear': 'brg_rate', 'max': 1,
+                                                                                   'tau': 3}), '.tau'),
+    ('a wear node beside a lag', 'bad_kind', _value('brg_wear', {'wear': 'brg_rate', 'max': 1, 'lag': 'flow',
+                                                                  'tau': 3}), 'exactly one node kind'),
+    ('a wear node in a plant without a clock', 'bad_ref', _no_clock, 'has no clock'),
+    ('a count reading no value', 'bad_ref', _value('pump_starts', {'count': 'pump_cm'}), 'pump_cm'),
+    ('a count by no value', 'bad_ref', _value('pump_starts', {'count': 'pump_cmd', 'by': 'x8'}), 'x8'),
+    ('a count with an init that is text', 'bad_number', _value('pump_starts', {'count': 'pump_cmd', 'init': 'a'}),
+     '.init'),
+    ('a fault whose when is a wear node', 'bad_kind', _set(SC + ['faults', 1, 'when'], {'wear': 1, 'max': 1}),
+     'a stateless node'),
+    ('a fault setting a draw', 'bad_ref', _set(SC + ['faults', 1, 'set'], {'brg_life': 0.5}), 'brg_life'),
+    ('an op setting a wear', 'bad_ref', _app(WMOD + ['ops'], {'kks': PUMP, 'do': 'close_breaker', 'set': {'brg_wear': 0},
+                                                             'where': ['local']}), 'brg_wear'),
+    ('a work renewing a value that is not a wear', 'bad_ref', _work('wo_pump', lambda w: w.__setitem__(
+        'renews', ['brg_life'])), 'not a wear value'),
+    ('a work renewing no value', 'bad_ref', _work('wo_pump', lambda w: w.__setitem__('renews', ['brg_wea'])),
+     'not a wear value'),
+    ('a work renewing one wear twice', 'dup_id', _work('wo_pump', lambda w: w.__setitem__(
+        'renews', ['brg_wear', 'brg_wear'])), 'twice'),
+    ('a work renewing nothing', 'bad_length', _work('wo_pump', lambda w: w.__setitem__('renews', [])), 'renews'),
+    ('a work renewing without an isolation', 'missing_key', _work('wo_gauge', lambda w: (
+        w.pop('isolation'), w.__setitem__('renews', ['clock_s']))), 'renews equipment'),
+]
+
+
+def wear_part():
+    wf = wear_files()
+    return {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in wf.items()},
+            'counts': check(wf).counts,
+            'reject': reject_changes(wf, [r[:3] for r in REJECTS_WEAR], wf),
+            'runs': build_runs(wear_runs(), wf)}
+
+
+# ---------------------------------------------------------------- milestone WX1: the weather engine (REALISM.md §5.1)
+
+def _rows(*xs):
+    return [list(x) for x in xs]
+
+
+WEATHER = {'format': 'walkdown-plant-weather', 'version': 1,
+           'values': [{'id': 'ambient_t', 'tau': 30}, {'id': 'dust_mg', 'tau': 10}],
+           'kinds': [{'id': 'clear', 'targets': {'ambient_t': [[0, 24], [6, 20], [15, 34], [24, 24]],
+                                                 'dust_mg': [[0, 0.1], [24, 0.1]]}},
+                     {'id': 'hot', 'targets': {'ambient_t': [[0, 32], [6, 29], [15, 48], [24, 32]],
+                                               'dust_mg': [[0, 0.3], [24, 0.3]]}},
+                     {'id': 'dust', 'targets': {'ambient_t': [[0, 30], [15, 40], [24, 30]],
+                                                'dust_mg': [[0, 5], [14, 20], [24, 5]]}},
+                     {'id': 'rain', 'targets': {'ambient_t': [[0, 15], [24, 15]], 'dust_mg': [[0, 0], [24, 0]]}}],
+           'seasons': [{'id': 'summer', 'days': [121, 300], 'start': 'hot',
+                        'hourly': _rows(('clear', 'clear', 40), ('clear', 'hot', 40), ('clear', 'dust', 20),
+                                        ('hot', 'hot', 50), ('hot', 'dust', 30), ('hot', 'clear', 20),
+                                        ('dust', 'dust', 30), ('dust', 'clear', 50), ('dust', 'hot', 20),
+                                        ('rain', 'clear', 1))},
+                       {'id': 'winter', 'days': [301, 120], 'start': 'clear',
+                        'hourly': _rows(('clear', 'clear', 50), ('clear', 'rain', 50), ('rain', 'rain', 40),
+                                        ('rain', 'clear', 60), ('hot', 'clear', 1), ('dust', 'clear', 1))}]}
+# the model reading the weather as content will: a stateless table of a driven value, a stateful lag of it, and the
+# kind's index
+WEATHER_NODES = [['amb_hot', {'cmp': ['ambient_t', '>=', 33]}],
+                 ['amb_slow', {'lag': 'ambient_t', 'tau': 60}],
+                 ['wx_wet', {'cmp': ['world_wx', '>=', 3]}]]
+
+
+def weather_files():
+    """The realism base's plant with weather: weather.json, the ext value dust_mg, the model reading them, and the
+    scenario seeded by season (summer: year day 200, start day 1)."""
+    F = realism_files()
+    F['weather.json'] = copy.deepcopy(WEATHER)
+    F['plant.json']['ext'] = F['plant.json']['ext'] + ['dust_mg']
+    F['model/a1.json']['values'] += copy.deepcopy(WEATHER_NODES)
+    sc = F['scenarios/s1.json']
+    sc['init']['dust_mg'] = 0.2
+    sc['world']['weather'] = {'season': 'summer'}
+    return F
+
+
+def weather_runs():
+    """(why, scenario changes, files, player, steps, snapshot every): WX1's runs (§5.1)."""
+    wf = weather_files()
+    free = {'staff': None}
+    winter_eve = {'world': {'seed': 11, 'year_day': 300, 'weather': {'season': 'summer'}},
+                  'start': {'day': 1, 'time': '22:30'}}
+    script = {'world': {'seed': 7, 'year_day': 200, 'weather': {'script': [
+        [1, '05:00', 'clear'], [1, '06:00', 'rain'], [1, '06:20', 'clear'], [1, '06:40', 'dust']]}}}
+    return [
+        ('seeded weather (summer, seed 7) from 05:30 for six clock hours: one draw from the weather stream at each '
+         'whole hour, the next kind from the current kind\'s row; ambient_t and dust_mg lag toward their kind\'s '
+         'table at world_hour (tau 30 and 10 clock minutes: factors 1 − e^(−6 / (60 tau))); world_wx the kind; the '
+         'nodes reading them', free, wf, None, 3600, 300),
+        ('the season changes at midnight (year day 300 is summer\'s last): the hours\' draws after midnight use '
+         'winter\'s rows (rain at 01:00, which summer\'s rows never give)', dict(free, **winter_eve), wf, None, 1500, 100),
+        ('fixed weather and the instructor (§5.1): fixed clear; the instructor sets dust at step 200 (its event, '
+         'then the weather event in step 1w), an unknown kind at step 300 does nothing, rain at step 400',
+         dict(free, world={'seed': 7, 'year_day': 200, 'weather': {'fixed': 'clear'}}), wf,
+         Script([(200, 'weather', 'dust'), (300, 'weather', 'snow'), (400, 'weather', 'rain')]), 700, 50),
+        ('scripted weather: the entry at or before the start (05:00 clear), rain at 06:00, clear at 06:20, dust at '
+         '06:40; the instructor\'s sandstorm-like dust at 06:10 holds until the next entry', dict(free, **script), wf,
+         Script([(400, 'weather', 'dust')]), 800, 50),
+        ('a jump (§17.6) across seven hours of seeded weather: one draw per whole hour crossed, in order, in the '
+         'jump\'s step; the driven values set to their targets (the night passed); one weather event for the net '
+         'change', {'start': {'day': 1, 'time': '23:00'}, 'trainee': 'mech1'}, wf,
+         Trainee(extra=[[30, 'jump', '05:45']]), 300, 10),
+        ('the people\'s draws with weather (§2.1): the synthetic staff\'s morning with seeded weather: the same events '
+         'as without weather but the weather\'s own (the test replays it without)', {}, wf, Trainee(), 1500, 100),
+    ]
+
+
+WX = ['weather.json']
+SEA = WX + ['seasons']
+
+
+def _weather_of(sc_world_weather):
+    return _set(SC + ['world', 'weather'], sc_world_weather)
+
+
+REJECTS_WEATHER = [
+    ('weather.json of another format', 'bad_format', _set(WX + ['format'], 'walkdown-plant-climate'), 'format'),
+    ('weather.json of version 2', 'bad_version', _set(WX + ['version'], 2), 'version'),
+    ('weather.json without seasons', 'missing_key', _del(WX + ['seasons']), 'seasons'),
+    ('weather.json with an unknown key', 'unknown_key', _set(WX + ['climate'], 'desert'), 'climate'),
+    ('a driven value that is not an ext value', 'bad_ref', _set(WX + ['values', 1, 'id'], 'dust'), 'not an ext value'),
+    ('a driven value twice', 'dup_id', _set(WX + ['values', 1, 'id'], 'ambient_t'), 'twice'),
+    ('a lag of 0 minutes', 'bad_number', _set(WX + ['values', 0, 'tau'], 0), 'tau'),
+    ('no driven values', 'bad_length', _set(WX + ['values'], []), 'values'),
+    ('17 kinds', 'bad_length', _set(WX + ['kinds'], [{'id': f'k{i}', 'targets': {}} for i in range(17)]), 'kinds'),
+    ('a kind twice', 'dup_id', _set(WX + ['kinds', 3, 'id'], 'clear'), 'twice'),
+    ('a kind without a target of a driven value', 'missing_key', _del(WX + ['kinds', 1, 'targets', 'dust_mg']),
+     'every kind gives'),
+    ('a target of a value weather.json does not drive', 'bad_ref', _set(WX + ['kinds', 1, 'targets', 'wind'],
+                                                                         [[0, 1], [24, 1]]), 'targets.wind'),
+    ('a target table not from 0 to 24', 'bad_table', _set(WX + ['kinds', 0, 'targets', 'dust_mg'],
+                                                          [[1, 0.1], [24, 0.1]]), 'from 0 to 24'),
+    ('a target table whose x decreases', 'bad_table', _set(WX + ['kinds', 0, 'targets', 'dust_mg'],
+                                                           [[0, 0.1], [24, 0.1], [12, 0]]), 'decreases'),
+    ('a season\'s day 366', 'bad_number', _set(SEA + [0, 'days'], [121, 366]), 'days of the year'),
+    ('a day in two seasons', 'bad_value', _set(SEA + [0, 'days'], [120, 300]), 'too'),
+    ('a day in no season', 'bad_value', _set(SEA + [0, 'days'], [122, 300]), 'in no season'),
+    ('a season starting with no kind', 'bad_ref', _set(SEA + [0, 'start'], 'sandstorm'), 'no kind'),
+    ('two seasons with one id', 'dup_id', _set(SEA + [1, 'id'], 'summer'), 'twice'),
+    ('an hourly row of a kind weather.json lacks', 'bad_ref', _app(SEA + [0, 'hourly'], ['fog', 'clear', 1]),
+     'of kinds'),
+    ('an hourly row of two items', 'bad_length', _app(SEA + [0, 'hourly'], ['rain', 'hot']), 'hourly'),
+    ('a negative weight', 'bad_number', _set(SEA + [0, 'hourly', 0, 2], -1), 'whole weight'),
+    ('a weight that is not whole', 'bad_number', _set(SEA + [0, 'hourly', 0, 2], 1.5), 'whole weight'),
+    ('one row twice', 'dup_id', _app(SEA + [0, 'hourly'], ['clear', 'clear', 5]), 'twice'),
+    ('a kind with no way on in a season', 'bad_value', _set(SEA + [0, 'hourly', 9, 2], 0), 'no way on'),
+    ('the weights from a kind over 2^16', 'limit', _set(SEA + [0, 'hourly', 0, 2], 65500), '2^16'),
+    ('weather.json in a plant whose scenario names it, removed', 'bad_ref', lambda F: F.pop('weather.json'),
+     'no weather.json'),
+    ('world.weather that is a list', 'bad_type', _weather_of(['summer']), 'an object'),
+    ('world.weather with two keys', 'bad_value', _weather_of({'season': 'summer', 'fixed': 'hot'}), 'one of'),
+    ('world.weather with an unknown key', 'unknown_key', _weather_of({'climate': 'desert'}), 'climate'),
+    ('a season weather.json lacks', 'bad_ref', _weather_of({'season': 'spring'}), 'no season'),
+    ('a season the start day is not in', 'bad_value', _weather_of({'season': 'winter'}), 'not in season'),
+    ('fixed weather of no kind', 'bad_ref', _weather_of({'fixed': 'snow'}), 'no kind'),
+    ('an empty script', 'bad_length', _weather_of({'script': []}), 'script'),
+    ('a script entry of no kind', 'bad_ref', _weather_of({'script': [[1, '05:00', 'snow']]}), 'no kind'),
+    ('a script out of order', 'bad_value', _weather_of({'script': [[1, '05:00', 'hot'], [1, '04:00', 'clear']]}),
+     'after the entry before'),
+    ('a script whose first entry is after the start', 'bad_value', _weather_of({'script': [[1, '06:00', 'hot']]}),
+     'at or before'),
+    ('a script entry at a bad time', 'bad_clock', _weather_of({'script': [[1, '5:00', 'hot']]}), 'HH:MM'),
+    ('a script entry on day 0', 'bad_number', _weather_of({'script': [[0, '05:00', 'hot']]}), 'day'),
+    ('a value named like the weather\'s kind', 'dup_id', _app(WMOD + ['values'], ['world_wx', {'const': 1}]),
+     'world_wx'),
+    ('an ext value named like the weather\'s kind', 'dup_id', _all(
+        _set(['plant.json', 'ext'], ['ambient_t', 'dust_mg', 'world_wx']), _set(SC + ['init', 'world_wx'], 0)),
+     'world_wx'),
+    ('a scenario setting the weather\'s kind', 'bad_ref', _set(SC + ['init', 'world_wx'], 1), 'world_wx'),
+    ('the model reading world_wx in a scenario with a world but no weather', 'bad_ref',
+     _del(SC + ['world', 'weather']), 'world.weather'),
+    ('a second scenario without weather', 'bad_ref', _sc2(lambda s: s['world'].pop('weather')), 'world.weather'),
+]
+
+
+def weather_part():
+    wf = weather_files()
+    return {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in wf.items()},
+            'counts': check(wf).counts,
+            'reject': reject_changes(wf, [r[:3] for r in REJECTS_WEATHER], wf),
+            'runs': build_runs(weather_runs(), wf)}
+
+
 def parts3():
     """The realism vectors part by part (REALISM.md §13), in the file's order."""
     return {
@@ -3976,13 +4356,19 @@ def parts3():
                           'model reads the clock values (`staff`: its files, counts, rejects and runs, as '
                           'plant3d-v2.json\'s `staff`; a run\'s `files` replace the base\'s, its `staff` null keeps '
                           'the base\'s staff.json; its `world` is the world\'s seed and year day as the engine took '
-                          'them). Numbers compare to 1e-6; the digests (§17.14) of every 50th '
-                          'step are exact.'),
+                          'them). Milestone AG1 (§2.2, §4.2–§4.3, J0): `wear`, the same plant with a pump that wears '
+                          '(draw, wear and count nodes, a work\'s renews, age_rate, wear across a jump), as `staff`; '
+                          'milestone WX1 (§5.1): `weather`, the same plant with weather.json and the weather step '
+                          '(seeded by season, fixed, scripted, the instructor\'s input, a jump). A run\'s `files` are '
+                          'those that differ from its part\'s. Numbers compare to 1e-6; the digests (§17.14) of every '
+                          '50th step are exact.'),
         'streams': build_streams,
         'staff': lambda: {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in realism_files().items()},
                           'counts': check(realism_files()).counts,
                           'reject': reject_changes(realism_files(), REJECTS_WORLD, realism_files()),
-                          'runs': build_realism_runs()}}
+                          'runs': build_realism_runs()},
+        'wear': wear_part,
+        'weather': weather_part}
 
 
 def build3():

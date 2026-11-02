@@ -14,7 +14,7 @@ const JsonStrict = preload("json_strict.gd")
 const Staff = preload("staff.gd")
 
 const STATELESS := ["const", "state", "of", "sum", "product", "min", "max", "diff", "select", "cmp", "and", "or", "not"]
-const STATEFUL := ["lag", "ramp", "integrate", "latch", "delay", "timer", "wrap", "hold"]
+const STATEFUL := ["lag", "ramp", "integrate", "latch", "delay", "timer", "wrap", "hold", "draw", "wear", "count"]
 
 var error := ""
 var plant := {}
@@ -41,8 +41,11 @@ var lifts: Array = []                 # format 2's lifts (§20.1), joined in are
 var scenarios := {}                   # id -> scenario, in file-name order
 var procedures := {}                  # id -> procedure, in file-name order
 var staff = null                      # sim/staff.gd: staff.json (§16), or null
+var weather = null                    # weather.json (REALISM.md §5.1), or null
+var _reads_wx := false                # a name read was the weather's kind (world_wx; known())
 var _reads_world := false             # a name read was a clock value's (REALISM.md §2.1; known())
 var _content_reads_world := false     # the model's or the staff's reads were: every scenario needs `world`
+var _content_reads_wx := false        # likewise world_wx: every scenario needs `world.weather`
 
 
 ## The key an op is found by (§7.2: its equipment, its `do` and, for a reset, its trip). null when an input's parts
@@ -89,6 +92,14 @@ static func node_refs(n: Dictionary, kind: String) -> Array:
 			return [n["latch"], n["reset"]]
 		"hold":
 			return [n["hold"], n["when"]]
+		"draw":
+			return []
+		"wear", "count":
+			var out := [n[kind]]
+			for k in ["by", "reset"]:
+				if n.has(k):
+					out.append(n[k])
+			return out
 	return [n[kind]]
 
 
@@ -104,7 +115,7 @@ static func is_num(x) -> bool:
 static func from_dir(path: String):
 	var files := {}
 	var top := path.trim_suffix("/")
-	for rel in ["plant.json", "kit.json", "sounds.json", "staff.json"]:
+	for rel in ["plant.json", "kit.json", "sounds.json", "staff.json", "weather.json"]:
 		if FileAccess.file_exists(top + "/" + rel):
 			files[rel] = FileAccess.get_file_as_bytes(top + "/" + rel)
 	for sub in ["areas", "model", "scenarios", "procedures"]:
@@ -212,10 +223,21 @@ func _load(files: Dictionary) -> void:
 			var on = r.get("on") if typeof(r) == TYPE_DICTIONARY else null
 			if typeof(on) == TYPE_DICTIONARY and (on.get("value") == "world_hour" or on.get("value") == "world_day"):
 				_reads_world = true
-	if version == 2 and (ext.has("world_hour") or ext.has("world_day")):
-		_fail("plant.json: an ext value has the name of a clock value")
+			if typeof(on) == TYPE_DICTIONARY and on.get("value") == "world_wx":
+				_reads_wx = true
+	if version == 2 and (ext.has("world_hour") or ext.has("world_day") or ext.has("world_wx")):
+		_fail("plant.json: an ext value has the name of a clock value or the weather's kind")
 		return
+	if files.has("weather.json") and files["weather.json"] != null:
+		weather = _read(files, "weather.json")
+		if weather == null:
+			return
+		for v in weather.get("values", []):
+			if not ext.has(v.get("id")):
+				_fail("weather.json: %s is not an ext value" % str(v.get("id")))
+				return
 	_content_reads_world = _reads_world
+	_content_reads_wx = _reads_wx
 	for sid in scenarios:
 		_check_scenario(scenarios[sid])
 
@@ -227,7 +249,7 @@ func _add_model(d: Dictionary, rel: String) -> void:
 		if kind == "":
 			_fail("%s: value %s: not a node of format 1" % [rel, name])
 			return
-		if index.has(name) or (version == 2 and (name == "world_hour" or name == "world_day")):
+		if index.has(name) or (version == 2 and (name == "world_hour" or name == "world_day" or name == "world_wx")):
 			_fail("%s: value %s: name already used" % [rel, name])
 			return
 		index[name] = values.size()
@@ -290,6 +312,9 @@ func known(name) -> bool:
 	if version == 2 and (name == "world_hour" or name == "world_day"):
 		_reads_world = true     # the clock values (REALISM.md §2.1): slots only in a scenario with `world`
 		return true
+	if version == 2 and name == "world_wx":
+		_reads_wx = true        # the weather's kind (REALISM.md §5.1): a slot only in a scenario with world.weather
+		return true
 	return kept().has(name)
 
 
@@ -347,6 +372,9 @@ func _finish() -> void:
 		if w.has("isolation") and not isolation_ix.has(w["isolation"]):
 			_fail("work %s: no isolation %s" % [w["id"], str(w["isolation"])])
 		_check_set(w.get("set", {}), "work " + w["id"])
+		for name in w.get("renews", []):        # REALISM.md §2.2: wear values, renewed under an isolation
+			if not index.has(name) or values[index[name]][2] != "wear" or not w.has("isolation"):
+				_fail("work %s: renews %s, not a wear value or without an isolation" % [w["id"], str(name)])
 
 
 func _check_set(s: Dictionary, where: String) -> void:
@@ -368,6 +396,7 @@ func _check_actions(acts: Array, where: String) -> void:
 func _check_scenario(s: Dictionary) -> void:
 	var w := "scenario " + str(s.get("id"))
 	_reads_world = false
+	_reads_wx = false
 	for k in s.get("init", {}):
 		if not (index.has(k) or ext.has(k)):
 			_fail("%s: init names no value %s" % [w, k])
@@ -395,6 +424,34 @@ func _check_scenario(s: Dictionary) -> void:
 						_need_ref(r, "%s fault %s" % [w, f["id"]])
 	if (_content_reads_world or _reads_world) and not s.has("world"):
 		_fail("%s: the content reads world_hour or world_day, which only a scenario with world has" % w)
+	var wx = s.get("world", {}).get("weather") if typeof(s.get("world")) == TYPE_DICTIONARY else null
+	if (_content_reads_wx or _reads_wx) and wx == null:
+		_fail("%s: the content reads world_wx, which only a scenario with world.weather has" % w)
+	if wx != null:
+		_check_weather(wx, w)
+
+
+## A scenario's world.weather names what weather.json has, and a script starts at or before the scenario (the
+## engine would read no kind otherwise).
+func _check_weather(wx, w: String) -> void:
+	if weather == null or typeof(wx) != TYPE_DICTIONARY:
+		_fail("%s: world.weather without weather.json" % w)
+		return
+	var kinds := []
+	for k in weather.get("kinds", []):
+		kinds.append(k.get("id"))
+	if wx.has("season"):
+		if not weather.get("seasons", []).any(func(x): return x.get("id") == wx["season"]):
+			_fail("%s: no season %s" % [w, str(wx["season"])])
+	elif wx.has("fixed"):
+		if not kinds.has(wx["fixed"]):
+			_fail("%s: no weather kind %s" % [w, str(wx["fixed"])])
+	elif wx.has("script") and typeof(wx["script"]) == TYPE_ARRAY and not wx["script"].is_empty():
+		for e in wx["script"]:
+			if not kinds.has(e[2]):
+				_fail("%s: no weather kind %s" % [w, str(e[2])])
+	else:
+		_fail("%s: world.weather is one of season, fixed or script" % w)
 
 
 func machine_by_id(mid):
