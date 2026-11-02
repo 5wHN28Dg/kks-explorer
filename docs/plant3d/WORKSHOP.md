@@ -177,8 +177,31 @@ the plant's (the tolerance the spec allows, stated here):
   again (§10).
 
 So K1a keeps the plant byte for byte: the transmitter's covers are split from its housing as `"workshop"` halves of a
-`"plant"` stand-in, its terminal block, electronics and sensor insides are hidden pieces, and its flange bolts and
-cover locking screws are small outside pieces.
+`"plant"` stand-in, its terminal block, electronics and sensor insides are hidden pieces, and its flange bolts, drain/
+vent valves and housing rotation set screw are small outside pieces (the 3051's manual names no cover locking screw).
+
+**As built (K1a, 2026-11-02).**
+- `Gen.comp(id, spec)` and `Gen.only(kind, arg)` in `kit/kit.gd` (on the mesh builder `set_comp`, `set_only`): `only()`
+  shared; `only("workshop")` hidden, `only("workshop", "outside")` a small outside piece, `only("workshop", "split")` a
+  piece of a component that replaces a stand-in; `only("plant", [components])` the stand-in (an empty list: a mounting
+  the plant draws and the Workshop leaves out, such as a free-standing transmitter's stand pipe). After a `"workshop"`
+  block the generator calls `use()` again; a primitive drawn before it is reported (`problems`), and plant mode never
+  makes a layer, not even an empty one, for a Workshop piece (the layers' order is the builder's cells' order).
+- The Workshop mode's layer key is `comp|tag|material|class|bucket` (tag `shared`, `hidden`, `outside` or `split`), so
+  the tests can tell the pieces apart; the scene merges a component's pieces per material.
+- `Gen.fasteners(id, kind, items, draw)` (one item drawn by `draw` in its own frame, z the way it backs out) and
+  `Gen.flow(id, points)`; fasteners are Workshop-only small outside pieces.
+- **The plant's proof:** `tests/test_kit_frozen.gd` compares a digest of everything plant mode gives (layers in order,
+  arrays, LOD triangle counts, moving pieces, plates, solids) for 1,397 cases (every part of the kit with its defaults,
+  the content's parameter sets, its limits, and instruments standing every way) with `tests/fixtures/kit_plant.json`,
+  recorded from main's code before the change; a meant change to the plant records it again with
+  `tests/kit_frozen.gd` and then bakes the lightmap and runs the plant's Note 9 walk. Every built scene of the plant
+  (231 files: areas, ground, materials, navigation, people) was also compared by content with main's build: identical.
+- **The data file** is made like the rest of `data/plant3d` by `tools/plant3d/make_content.py`, from a module per kind
+  in `tools/plant3d/workshop/` (`test_plant3d` checks that the committed files are what it makes). `ref/plant3d.py`'s
+  content check accepts `workshop/<part>.json` and runs `ref/plant3d_workshop.py` on it. Every component and fastener
+  group cites a source (stricter than "per subassembly"); `assembly` and `views` are optional until K2 and K3.
+- The transmitter in the Workshop: 14 components, 2 fastener groups, 1,396 triangles (the plant's 272).
 
 **Retrofitting.** Each generator's `use()` calls stay; a generator gains `g.comp()` and `g.only()` calls around groups
 of primitives. Moving pieces' mesh builders (`g.move`) carry `comp` too. Proved on the transmitter alone first (K1a),
