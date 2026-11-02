@@ -1,6 +1,7 @@
 """Walkdown Plant's packages (decision 0054 §8): the MSIX's folder (apps/plant3d/msix/make-msix.sh --layout: the
 manifest filled from the certificate and the app's version, the walkdown-plant protocol after the end-of-options
-marker as decision 0056 says, no network capability, the logos at their sizes) with a test certificate only, and the
+marker as decision 0056 says, the capabilities exactly: the network for multiplayer sessions (decision 0068: internetClient
+and privateNetworkClientServer) and runFullTrust, the logos at their sizes) with a test certificate only, and the
 Flatpak's AppStream release entry made from the app's version (apps/plant3d/flatpak/build.sh --metainfo).
   .venv/bin/python -m unittest tests.test_plant_packaging"""
 import os, re, shutil, struct, subprocess, sys, tempfile, unittest
@@ -75,9 +76,14 @@ class MsixLayout(unittest.TestCase):
         [alias] = app.findall('f:Extensions/uap3:Extension/uap3:AppExecutionAlias/desktop:ExecutionAlias', NS)
         self.assertEqual(alias.get('Alias'), 'walkdown-plant.exe')
 
-    def test_no_network_and_full_trust_only(self):
-        caps = [c.get('Name') for c in self.manifest().find('f:Capabilities', NS)]
-        self.assertEqual(caps, ['runFullTrust'])
+    def test_capabilities_are_multiplayer_network_and_full_trust_only(self):
+        # decision 0068 and docs/m6/CAPABILITIES.md: the Internet and the LAN for multiplayer sessions, and full trust;
+        # nothing else
+        for arch in ('x86_64', 'aarch64'):
+            caps = [(c.tag, c.get('Name')) for c in self.manifest(arch).find('f:Capabilities', NS)]
+            self.assertEqual(caps, [('{%s}Capability' % NS['f'], 'internetClient'),
+                                    ('{%s}Capability' % NS['f'], 'privateNetworkClientServer'),
+                                    ('{%s}Capability' % NS['rescap'], 'runFullTrust')], arch)
 
     def test_the_files_and_logos(self):
         d = self.out['x86_64']
