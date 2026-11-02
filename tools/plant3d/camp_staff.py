@@ -26,7 +26,7 @@ POINTS = {
     'p_ldy_n': (-361, 40, 0), 'p_off': (-284, 23.5, 0), 'p_cpark': (-276, -8, 0),
     'p_adm_s': (-94, 30, 0), 'p_adm_ws': (-97, 57, 0), 'p_adm_n': (-100, 92, 0), 'p_adm_door': (-108, 95, 0),
     'p_adm_lobby': (-108, 101.5, 0), 'p_adm_meet': (-101, 102, 0), 'p_ws_in': (-110, 57, 0),
-    'p_store': (-80, 55, 0),
+    'p_store': (-84, 52, 0),
 }
 EDGES = [
     ('p_w20', 'p_s40'), ('p_s40', 'p_s90'), ('p_s90', 'p_gate_in'), ('p_gate_in', 'p_rw_e'), ('p_rw_e', 'p_rw_w'),
@@ -115,8 +115,13 @@ ANCHORS = {
     'adm_lobby_seat': dict(at=(-111.6, 102.2, 0), kind='seat', room='admin', pose='sit', yaw=270),
     # the workshops' I&C calibration bench and the store's counter
     'ws_cal': dict(at=(-123.4, 62.3, 0), kind='table', room='ic_shop', pose='sit', yaw=180),
-    'store_counter': dict(at=(-80, 53.2, 0), kind='store', yaw=0),
+    'store_counter': dict(at=(-81.3, 52, 0), kind='store', yaw=90),
 }
+
+# the places among the furniture (seats, beds, the counters): a person stands or sits at the walkable point beside
+# where the furniture is (staff_layout.gd's `snap`), clear of it
+SNAP = {pid for pid, a in ANCHORS.items() if a['kind'] in ('seat', 'bed', 'desk', 'table', 'store', 'counter')
+        and not a.get('hidden')} | {'gate'}
 
 # The bus's roads (metres along the road: the depot to the camp gate's stop, along the road to the plant gate, on to
 # the control building's stop)

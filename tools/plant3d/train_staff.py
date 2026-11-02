@@ -283,7 +283,7 @@ def network(models, layout):
         at[pid] = p
     for pid, a in ANCHORS.items():
         pl = {'id': pid, 'at': list(a['at']), 'kind': a['kind']}
-        if pid in camp_staff.ANCHORS and layout['on_mesh'].get(pid, 0) > 0.3 and pid in layout.get('snap', {}):
+        if pid in camp_staff.ANCHORS and pid in camp_staff.SNAP and pid in layout.get('snap', {}):
             pl['at'] = list(layout['snap'][pid])    # (a seat behind its chair: the walkable point beside it, §21.6)
         for k in ('room', 'yaw', 'pose', 'hidden'):
             if k in a:
