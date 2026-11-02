@@ -1315,6 +1315,16 @@ class FirstTrainStaff(unittest.TestCase):
         meals = {x[2] for x in ev if x[1] == 'task' and x[3] in ('meal', 'breakfast') and x[4] == 'done'}
         self.assertGreater(len(meals), 40)
         self.assertTrue([x for x in ev if x[1] == 'task' and x[3] == 'sleep' and x[4] == 'done'])
+        # (the adversarial review of S4b) no handover given up because its giver went home first (the bus home waits
+        # for the handover: priority 3), no driver put aboard from nowhere (on duty 20 minutes before the first
+        # run), nobody's sleep cut short, and breakfast skipped only by the 05:00 placement and the WTP's 04:20 and
+        # 16:20 bus
+        self.assertFalse([x for x in ev if x[1] == 'task' and 'handover' in x[3] and x[4] == 'abandoned'])
+        self.assertFalse([x for x in ev if x[1] == 'aboard' and x[4] is None])
+        self.assertFalse([x for x in ev if x[1] == 'task' and x[3] == 'sleep' and x[4] == 'skipped'])
+        wtp = {'a_wtp', 'a_chem', 'b_wtp', 'b_chem', 'c_wtp', 'c_chem', 'd_wtp', 'd_chem'}
+        self.assertFalse([x for x in ev if x[1] == 'task' and x[3] == 'breakfast' and x[4] == 'skipped'
+                          and x[0] > 6000 and x[2] not in wtp])
 
     def test_the_bus_runs_never_overlap(self):
         """PLANT3D §21.6: the runs of each vehicle never overlap, from a run's leaving home to its return (so no run

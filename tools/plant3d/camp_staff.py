@@ -157,7 +157,7 @@ def rosters():
     week = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
     return [{'id': 'driver_shift', 'kind': 'rotation', 'cycle': ['D', 'D', 'N', 'N', 'O', 'O', 'O', 'O'],
              'crews': {'a': 0, 'b': 2, 'c': 4, 'd': 6},
-             'hours': {'D': ['05:00', '17:00'], 'N': ['17:00', '05:00']}},
+             'hours': {'D': ['04:40', '16:40'], 'N': ['16:40', '04:40']}},
             {'id': 'camp_early', 'kind': 'days', 'days': week, 'hours': ['04:30', '13:00']},
             {'id': 'camp_late', 'kind': 'days', 'days': week, 'hours': ['12:00', '20:30']}]
 
@@ -247,7 +247,7 @@ def routines():
         # off duty (§21.2): a meal after the duty, free time, sleep before the next, breakfast; a day off's meals
         {'id': 'off_shift', 'idle': 'at_home', 'slots': [
             slot('prev+0:30', 'meal'), slot('prev+1:30', 'free_time'), slot('next-9:30', 'sleep'),
-            slot('next-1:15', 'breakfast')]},
+            slot('next-1:50', 'breakfast')]},
         {'id': 'off_days', 'idle': 'at_home', 'slots': [
             slot('prev+1:30', 'meal'), slot('prev+2:30', 'free_time'), slot('next-9:00', 'sleep'),
             slot('next-1:30', 'breakfast'), slot('12:30', 'meal', days=['sun'])]},
@@ -273,16 +273,16 @@ def tasks():
     task('bus_in', 'The bus to the plant', [{'ride': {'from': 'camp_stop', 'to': 'cr_stop'}}], priority=1,
          interruptible=False)
     task('bus_out', 'The bus to the camp', [{'ride': {'from': 'cr_stop', 'to': 'camp_stop'}}, {'go': 'home'},
-                                            {'work': 5}], priority=2)
+                                            {'work': 5}], priority=3)
     task('bus_in_wtp', 'The bus to the plant, PPE on at the control building', [
         {'ride': {'from': 'camp_stop', 'to': 'cr_stop'}}, {'go': {'kind': 'locker', 'room': 'lockers'}},
         {'ppe': 'role'}], priority=1, interruptible=False)
     task('walk_out', 'Home to the camp on foot (the WTP is far from the bus)', [{'go': 'home'}, {'work': 5}],
-         priority=2)
+         priority=3)
     task('bus_in_gate', 'The bus to the plant gate', [{'ride': {'from': 'camp_stop', 'to': 'gate_stop'}}],
          priority=1, interruptible=False)
     task('bus_out_gate', 'The bus to the camp', [{'ride': {'from': 'gate_stop', 'to': 'camp_stop'}}, {'go': 'home'},
-                                                 {'work': 5}], priority=2)
+                                                 {'work': 5}], priority=3)
     task('meal', 'A meal at the mess', [mess, {'work': [20, 35], 'anim': 'eat'}])
     task('breakfast', 'Breakfast at the mess', [mess, {'work': [10, 20], 'anim': 'eat'}])
     task('free_time', 'Free time', [{'choose': [[3, 'gym_time'], [2, 'rec_time'], [2, 'laundry_time'],
@@ -296,7 +296,7 @@ def tasks():
     task('prayer_time', 'The prayer room', [{'go': {'kind': 'seat', 'room': 'prayer'}, 'else': 2}, {'work': 15},
                                             {'go': 'home'}], priority=4)
     task('room_time', 'In the room', [{'go': 'home'}, {'work': [30, 60]}], priority=4)
-    task('sleep', 'Sleep', [{'sleep': {'until': 'next-1:30'}}], priority=4, interruptible=False)
+    task('sleep', 'Sleep', [{'sleep': {'until': 'next-2:00'}}], priority=4, interruptible=False)
     task('at_home', 'At home', [{'go': 'home'}, {'work': 60, 'anim': 'sleep'}])
     task('guard_at_gate', 'At the plant gate', [{'go': 'gate_post'}, {'work': 30}])
     task('guard_at_camp', 'At the camp gate', [{'go': 'camp_post'}, {'work': 30}])

@@ -2957,8 +2957,8 @@ task instance (§17.14) ends with the kind of slot that made it (1 an off-duty s
   and the camp gate's booths, a patrol of the fence line every two hours); the plant manager, the operations and
   maintenance managers and the I&C, mechanical and electrical engineers on days (offices in the admin building, the
   morning meeting at 07:30, the plant manager's walk-round on the first day of the week with an HSE officer, the
-  engineers' reviews of their discipline's jobs at the workshops); a driver per crew on `driver_shift` (05:00–17:00,
-  17:00–05:00); the storekeeper (the store's counter in the admin area); six camp staff on a roster of their own that
+  engineers' reviews of their discipline's jobs at the workshops); a driver per crew on `driver_shift` (04:40–16:40,
+  16:40–04:40 as built); the storekeeper (the store's counter in the admin area); six camp staff on a roster of their own that
   covers the meals (two cooks, two cleaners, two in the laundry, in an early and a late shift: STAFF.md §1 updated).
   91 people.
 - **The gate:** staff.json's `gate` moves to the plant gate's house (it was by the control building). Bus stops at the
@@ -3065,7 +3065,7 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   operations and maintenance managers and the three engineers on days (offices and the meeting room on the admin
   building's ground floor; the morning meeting at 07:30; the managers' walk-round on Mondays at 10:00, PPE on at the
   control building's lockers; the engineers' look at the day's jobs in the workshops at 14:00), a driver a crew on
-  `driver_shift`, the storekeeper at the store's counter, six camp staff on `camp_early` (04:30–13:00) and `camp_late`
+  `driver_shift` (04:40–16:40 and 16:40–04:40: at the depot before the first run of the duty), the storekeeper at the store's counter, six camp staff on `camp_early` (04:30–13:00) and `camp_late`
   (12:00–20:30): 91 people, a room each in the eight blocks (block 1's two open rooms to crew A's CW field operator and
   first control room operator, every other bed a hidden place by its block's door). Places west of the fence (x −140)
   are off site; the mess's seats, the gym's, the recreation and prayer rooms', the laundry's; 118 points, 529 places.
@@ -3076,17 +3076,22 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   engineers, the storekeeper); home at 06:25, 16:15 and 18:25; 45 seats. Commutes are duty slots (`start−0:50` for the
   crews and the day workers, `start−0:35` for the managers', engineers' and storekeeper's ride to the gate, `start−0:50`
   for the plant gate's guards, `start−1:40` for the WTP's operator and shift chemists), each a `ride` of priority 1
-  that nothing pre-empts while waiting. The WTP's people and the day chemists (their lab is at the WTP) walk home.
+  that nothing pre-empts while waiting; the rides home are priority 3, so they wait for a handover in progress (the
+  adversarial review: at priority 2 the bus home took the outgoing supervisor away mid-handover, who walked back from
+  the camp to give it). The WTP's people and the day chemists (their lab is at the WTP) walk home.
   The WTP's morning ride works with little margin: their slot comes about 42 clock minutes before the bus reaches the
   camp's stop, against the 30 minutes a rider waits there, so a rider whose walk to the stop took under 12 minutes
-  would walk instead; and at 04:20 their breakfast at `next−1:15` falls inside their span and is not made.
+  would walk instead; and their breakfast at `next−1:50` is pre-empted by the ride at `start−1:40` (not made).
 - **Where it departs from §21.6:** the walk-round is the three managers' (on Mondays), without an HSE officer; the
   day workers have no midday meal (a Sunday lunch only, `off_days`); free time's weights are the same for every role;
   the beds of block 1's other rooms are hidden places at its entrance, as the other blocks' are, not at their doors in
-  its corridor; the offices have five desks for six people (the sixth works standing); the content's test of the bus
+  its corridor; the offices have five desks for six people (the sixth works standing); people on rest days (and a
+  night crew after its last night) have no sleep task, only the off-duty idle task at home; the incoming guard's idle
+  at the gate's post is given up once while the outgoing one still holds it; the content's test of the bus
   (`test_the_bus_runs_never_overlap`) works out each run's time from staff.json.
 - **Off duty:** `off_shift` (a meal half an hour after the duty, free time chosen among the gym, recreation room,
-  laundry, prayer room and room, sleep from `next−9:30` to `next−1:30`, breakfast at `next−1:15`), `off_days` (the day
+  laundry, prayer room and room, sleep from `next−9:30` to `next−2:00`, breakfast at `next−1:50`: an hour before the
+  bus in, as the walks take their time of the clock), `off_days` (the day
   workers' later times, a Sunday lunch) and `off_camp`; the off-duty idle task at home.
 - **The scenarios** keep 05:00; `shift_cold`'s seed is 2 (8 before: with S4's timings its day had one shortcut, seed
   2's has two, each found and stopped by an HSE officer as S2's test asks).
@@ -3096,6 +3101,10 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   operations and maintenance managers, the three engineers: through the morning meeting), the trainee riding the bus
   in and home, and a day crew's evening in the camp to the jump. The generator's trainee tries each standing bus once
   (a full one: the next).
+- **Known limits:** a jump to a time inside a commute window (06:51–06:59, 17:41–18:05) places the people it concerns
+  at the stop or at home by the duty's state, and their day goes on from there (they may wait out a bus that has gone
+  and walk); the Crew panel's own jump goes to the next shift's start, outside them. The Crew panel's "Walk instead",
+  "Take me to the stop" and "Take me home" put the walker there at once, as "Take me there" does.
 - **The engine** (both, bit for bit): a person with a home off duty but within one of their duties' spans runs the
   duty's idle task (§21.2). It changes five of S4a's camp runs in `staff.runs` (items 50, 51 and 53–55: the people off
   the bus before their duty, and run 51's trainee, who tries each standing bus once); every other item of the file
