@@ -103,6 +103,8 @@ APP = {
     'test_kit': 3,
     'test_ui_wtp_start': 3,
     'test_ui_crew': 3,
+    # the plant's kit output held to its frozen digests (K1a, ~12 s): beside the parts kit's own test
+    'test_kit_frozen': 3,
     # shard 0 the rest (~64 s), in the job that also makes the exports
 }
 
