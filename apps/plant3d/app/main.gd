@@ -113,6 +113,7 @@ var sim_t := 0.0
 var screens_walk := false   # walk=screens: the control room's screens in turn, nobody walking
 var drawings_walk := false  # walk=drawings: each P&ID in turn, panned and zoomed (REALISM.md §6.1.1, DC1)
 var _sheet_i := 0
+var _tours := {}             # walk=drawings: sheet id -> the codes' centres it passes
 var _screen_t := 0.0
 var lightmap_filter := ""   # "bicubic" or "bilinear": the lightmap's filter on this device, set before the plant loads (app/lighting.gd lightmap_bicubic)
 var probing := false     # the tier probe is running: no map, no tier changes, no walking until it ends
@@ -570,14 +571,17 @@ func _drawings_tick(delta: float) -> void:
 	# zoom: the whole sheet, up to 9 px/mm (near level) and back; the centre wanders across the sheet
 	var z := fit_z * pow(10.0 / fit_z, sin(PI * t))
 	# the centre moves through five of the sheet's codes, spread over its list, so that the view is on the drawing
-	var homes: Array = dv.set_.sheet(dv.current).get("spots", []).filter(func(s): return int(s[5]) == 1)
+	if not _tours.has(dv.current):         # once per sheet (not the viewer's cost)
+		var homes: Array = dv.set_.sheet(dv.current).get("spots", []).filter(func(s): return int(s[5]) == 1)
+		var st: Array = []
+		for i in (5 if homes.size() >= 2 else 0):
+			var sp: Array = homes[int(i * (homes.size() - 1) / 4.0)]
+			st.append(Vector2((sp[1] + sp[3]) * 0.5, (sp[2] + sp[4]) * 0.5))
+		_tours[dv.current] = st
+	var stops: Array = _tours[dv.current]
 	var s: Vector2 = dv._size_of(dv.current)
 	var c := s * 0.5
-	if homes.size() >= 2:
-		var stops: Array = []
-		for i in 5:
-			var sp: Array = homes[int(i * (homes.size() - 1) / 4.0)]
-			stops.append(Vector2((sp[1] + sp[3]) * 0.5, (sp[2] + sp[4]) * 0.5))
+	if not stops.is_empty():
 		var f := t * 4.0
 		var i0 := mini(int(f), 3)
 		c = (stops[i0] as Vector2).lerp(stops[i0 + 1], f - i0)
