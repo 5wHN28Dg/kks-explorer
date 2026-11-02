@@ -124,6 +124,7 @@ func run(tree: SceneTree) -> Array:
 	main.cf.set_value("controls", "touch", "on")
 	main.hud.refresh()
 	check(main.hud.sticks.all(func(st): return st.visible), "touch controls on: the sticks show in the plant")
+	var d3_before: bool = main.get_viewport().disable_3d   # (the control room's screens may keep it off)
 	var pend := FakePendant.new()
 	pend.clock = ui.clock
 	ui.card._pendant = pend
@@ -324,7 +325,7 @@ func run(tree: SceneTree) -> Array:
 	# back to the plant
 	ws.close()
 	await ws.left
-	check(not ws.is_open and not main.get_viewport().disable_3d, "back in the plant, its 3D drawn again")
+	check(not ws.is_open and main.get_viewport().disable_3d == d3_before, "back in the plant, its 3D drawn as before (%s)" % d3_before)
 	check(ui.clock.speed == SimClock.Speed.NORMAL, "the plant's speed before the Workshop is back")
 	check(not ui.sounds.muted, "the plant's sounds are back")
 	check(main.player.global_position.distance_to(at) < 0.01 and main.player.rotation.distance_to(look) < 1e-4, "the trainee stands where they were (%s, was %s)" % [str(main.player.global_position), str(at)])
@@ -643,6 +644,13 @@ func _review_checks(tree: SceneTree, ws, w: Dictionary, at0: Dictionary) -> void
 
 ## The adversarial reviews' findings on the way in and out (each check fails without its fix).
 func _review_plant_checks(tree: SceneTree, main, ws, ui) -> void:
+	# with the plant drawn before, it is drawn again after
+	main.get_viewport().disable_3d = false
+	ws.open("pressure_transmitter")
+	await _wait_shown(tree, ws)
+	ws.close()
+	await ws.left
+	check(not main.get_viewport().disable_3d, "back in the plant, its 3D drawn again")
 	# the control room's screens keep the plant's 3D off: leaving the Workshop leaves it off
 	main.get_viewport().disable_3d = true
 	ws.open("pressure_transmitter")
