@@ -569,8 +569,18 @@ func _drawings_tick(delta: float) -> void:
 	var fit_z: float = dv.min_zoom() / 0.9
 	# zoom: the whole sheet, up to 9 px/mm (near level) and back; the centre wanders across the sheet
 	var z := fit_z * pow(10.0 / fit_z, sin(PI * t))
+	# the centre moves through five of the sheet's codes, spread over its list, so that the view is on the drawing
+	var homes: Array = dv.set_.sheet(dv.current).get("spots", []).filter(func(s): return int(s[5]) == 1)
 	var s: Vector2 = dv._size_of(dv.current)
-	var c := Vector2(s.x * (0.5 + 0.35 * sin(TAU * t)), s.y * (0.5 + 0.3 * sin(2.0 * TAU * t)))
+	var c := s * 0.5
+	if homes.size() >= 2:
+		var stops: Array = []
+		for i in 5:
+			var sp: Array = homes[int(i * (homes.size() - 1) / 4.0)]
+			stops.append(Vector2((sp[1] + sp[3]) * 0.5, (sp[2] + sp[4]) * 0.5))
+		var f := t * 4.0
+		var i0 := mini(int(f), 3)
+		c = (stops[i0] as Vector2).lerp(stops[i0 + 1], f - i0)
 	dv.zoom = z
 	dv.offset = dv._canvas_size() * 0.5 - c * z
 	dv._apply()
