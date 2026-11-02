@@ -701,6 +701,27 @@ public standards. No new dependency (decision 0073 already chose our own format 
 - **Budgets** (§11): a sheet opens in ≤ 300 ms on the Note 9, ≤ 40 MB more with the sheets open, the frame rules
   while panning and zooming; DC1's share of the programme's 15 MB of package measured.
 
+#### 6.1.2 As built for milestone DC1 (2026-11-02)
+
+- **The set:** ten sheets (the legend, GT 1, HRSG 1, the steam turbine, CW and the cooling tower, the auxiliaries, the
+  intake, three for the WTP), every drawn code once at home; about 250 KB of JSON made in 2–5 s at every build. The
+  tool's checks work on the exact geometry: symbols apart; texts clear of other texts and of other owners' lines,
+  symbols, circles and filled shapes (and of their own pipe); no line through another owner's symbol (a pipe through
+  its own inline items, and a line ending on a symbol, are joints); no two owners' lines along each other; a flow
+  arrow on every pipe. A sheet that fails is laid out again with other spacings before the build fails.
+- **Layout as built** adds to §6.1.1: an open end whose other end is on a symbol ends just beside it (arrow and
+  medium's name) instead of at the margin; each pipe end keeps a straight approach as long as its inline items need,
+  reserved before any pipe is routed; a label that fits nowhere on its pipe goes to the nearest free place with a
+  leader; a symbol with several pipes on one side is drawn tall enough for them 5 mm apart (round ones keep their size).
+- **The viewer as built:** the levels switch at 2.6 and 6 px/mm (below 2.6 the 2.5 mm text is under 6.5 px); at
+  most three sheets kept drawn. Measured: the laptop (Iris Xe) median frame 4.1 ms, a level made in ≤ 6.1 ms; the
+  Note 9 (`walk=drawings`, 200 s, every sheet panned and zoomed from the whole sheet to 10 px/mm): median 16.7 ms,
+  p95 19.2 ms, longest 39.6 ms, none over 100 ms; the screen showed 98.8 % of frames at 60 fps and 99.97 % at
+  ≥ 30 fps (the three long gaps it saw are the app's start, before the walk); a sheet's first level ready in ≤ 3.2 ms
+  and any level made in ≤ 20.8 ms (budget 300 ms); peak PSS 1,036 MB. Package: +84 KB compressed for the sheets and
+  about 19 KB for the viewer's scripts, of the programme's 15 MB (the APK 143.4 MB of 250).
+- **Not in DC1:** revisions made by change objects (EN2 calls `revise`); manuals (DC2).
+
 ### 6.2 Equipment manuals
 
 - **Format** `walkdown-plant-manual`: COURSES.md's blocks (paragraphs, lists, tables, callouts, figures) per part
