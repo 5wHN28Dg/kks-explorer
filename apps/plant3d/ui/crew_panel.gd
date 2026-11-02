@@ -323,6 +323,11 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 		return "Wait: " + (str(s["wait"].get("until")) if s["wait"].has("until") else "permit %s" % str(s["wait"]["permit"]))
 	if s.has("meet"):
 		return "Meet in the %s" % String(s["meet"]["room"]).replace("_", " ")
+	if s.has("ride"):
+		return "The bus from %s to %s (or walk)" % [_place_name(sm, s["ride"]["from"]), _place_name(sm, s["ride"]["to"])]
+	if s.has("sleep"):
+		var u: String = s["sleep"]["until"]
+		return "Sleep at home until %s" % (u if not u.begins_with("next") else "before the next shift")
 	if s.has("choose"):
 		return "Choose what next"
 	if s.has("ack"):
@@ -387,6 +392,31 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 				row.add_child(W.label("You are there.", 18, W.OK_COLOUR))
 			else:
 				row.add_child(W.button("Take me there", func(): ui.go_to_place(d)))
+	if s.has("ride"):
+		# at the stop with a bus there that goes where the step goes: get on; else to the stop, or walk instead
+		var fr: int = sm.pix[s["ride"]["from"]]
+		var to: int = sm.pix[s["ride"]["to"]]
+		var me: int = ui.my_person()
+		var bus := -1
+		for vi in sm.vehicles.size():
+			if sm.stands_for(e, vi, fr, to):
+				bus = vi
+				break
+		if me != -1 and e.sp_aboard[me] != -1:
+			row.add_child(W.label("On the bus.", 18, W.OK_COLOUR))
+		elif bus != -1 and e.t_at(ui.inputs.slot) == fr and e.st_veh[bus]["riders"].size() >= int(sm.vehicles[bus]["seats"]):
+			row.add_child(W.label("The bus is full: wait for the next, or walk.", 18, W.DIM))
+		elif bus != -1 and e.t_at(ui.inputs.slot) == fr:
+			var vid: String = sm.vehicles[bus]["id"]
+			row.add_child(W.button("Get on the bus", func(): ui.inputs.get_on(vid)))
+		elif e.t_at(ui.inputs.slot) != fr:
+			row.add_child(W.button("Take me to the stop", func(): ui.go_to_place(fr)))
+		if me == -1 or e.sp_aboard[me] == -1:      # (aboard: the engine puts them off at the stop)
+			row.add_child(W.button("Walk instead", func(): ui.go_to_place(to)))
+	if s.has("sleep") and ui.my_person() != -1 and sm.home[ui.my_person()] != -1:
+		var h: int = sm.home[ui.my_person()]
+		if e.t_at(ui.inputs.slot) != h:
+			row.add_child(W.button("Take me home", func(): ui.go_to_place(h)))
 	if s.has("read"):
 		entry = LineEdit.new()
 		_entry_code = "%s/%s/%s" % [s["read"], str(cur["order"]), str(cur["step"])]

@@ -93,6 +93,7 @@ var _host_save_step := -1
 var _save_job := -1
 var session_ports: Array = []   # [discovery port, session port] (tests: their own); empty, the defaults
 var _place_t := 0.0
+var _aboard_was := false            # the trainee's person was on a vehicle at the last place check (§21.4)
 var _arrived := -2              # the place the last arrive input named (-1: a leave), -2: none sent yet
 var _jumps := 0                 # the engine's J when last looked at: a jump moves the walker to their placed person
 var _zones := -1                # the zones the last zone inputs left the trainee in (a bit each), -1: none sent yet
@@ -807,6 +808,15 @@ func _place_tick() -> void:
 			go_to_place(e.sp_pos[pi])
 		toast("The clock jumped to %s." % clock_text())
 		return
+	if e.sp_aboard.size() > pi and e.sp_aboard[pi] != -1:
+		_aboard_was = true      # on a vehicle (PLANT3D §21.4): no arrive or leave until off it
+		return
+	if _aboard_was:
+		_aboard_was = false     # off the vehicle: the walker at the stop the engine put them at
+		if e.sp_pos[pi] != -1:
+			go_to_place(e.sp_pos[pi])
+			_arrived = e.sp_pos[pi]
+		return
 	var g: Vector3 = player.global_position
 	var here := Vector3(g.x, -g.z, g.y)
 	_zone_tick(e, here)
@@ -879,6 +889,7 @@ func fast_forward() -> void:
 
 
 func restart(scenario: String, quiet := false) -> void:
+	_aboard_was = false              # (a new run: the walker is aboard nothing)
 	if session != null and session.active():
 		toast("Not while a session is open: every player's plant would differ. The host starts a new session for another scenario.")
 		return

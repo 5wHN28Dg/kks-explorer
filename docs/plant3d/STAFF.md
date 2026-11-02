@@ -38,10 +38,10 @@ first train's content uses the same numbers (people have work enough with the WT
 | Contractor supervisor (`contractor_sup`) | days | 1 | request, accept | yes | the contractors' permits and their toolbox talk |
 | Contractor (`contractor`) | days | 8 (two teams) | — | yes | scaffolding, insulation, painting, civil jobs under their supervisor's permit; the shortcuts the safety walk finds |
 | Storekeeper (`store`) | days | 1 | — | no | tool and spares issue |
-| Driver (`driver`) | `driver_shift`: the same rotation, 05:00–17:00 and 17:00–05:00, so the shift-change runs fall inside a duty | 1 | drive | yes | the bus runs of the shift (the shift changes and the day workers' times, PLANT3D.md §16.8); a pickup for jobs between them |
-| Camp staff: cook, cleaner, laundry (`camp`) | days | 6 | — | no | mess hall, rooms, laundry |
+| Driver (`driver`) | `driver_shift`: the same rotation, 04:40–16:40 and 16:40–04:40, so the shift-change runs fall inside a duty | 1 | drive | yes | the bus runs of the shift (the shift changes and the day workers' times, PLANT3D.md §16.8); a pickup for jobs between them |
+| Camp staff: cook, cleaner, laundry (`camp`) | `camp_early` 04:30–13:00, `camp_late` 12:00–20:30, every day | 6 | — | no | mess hall, rooms, laundry |
 
-12 people per crew (48 on the rotation, 12 on duty at a time) and 43 on days: 91 people, under the 200 limit; in
+12 people per crew (48 on the rotation, 12 on duty at a time) and 43 off the rotation (37 on days, the 6 camp staff on their own two shifts): 91 people, under the 200 limit; in
 the plant at 10:00 on a weekday about 50, at night 12 (and the camp staff in the camp).
 
 Role disciplines (PLANT3D.md §16.3): operators, the supervisor and the electrical authorised person `ops`; I&C
@@ -117,9 +117,10 @@ plant, and the debrief lists the night crew's slots as done by the other crew.
 
 ## 6. What the first content holds
 
-**As built through S3 (2026-10-26):** the operators (S1), the maintenance disciplines, HSE and the contractors (S2), and
-the water treatment plant's operator and chemists (S3, PLANT3D.md §17.12); the guards, the managers and engineers,
-the drivers, the storekeeper and the camp staff come with S4.
+**As built through S4 (2026-11-01):** the operators (S1), the maintenance disciplines, HSE and the contractors (S2),
+the water treatment plant's operator and chemists (S3, PLANT3D.md §17.12), and the guards, the managers and engineers,
+the drivers, the storekeeper and the camp staff, everyone's home in the camp, the bus and the off-duty routines (S4,
+PLANT3D.md §21.12). The camp staff work two shifts every day (04:30–13:00 and 12:00–20:30) so the meals are covered.
 
 M2–M4 (MILESTONES.md) build this in steps: first the operators and the permit flow on the first train, then the
 maintenance disciplines with their jobs, then the WTP's people, then the camp and the full day. Scenario seeds pick a

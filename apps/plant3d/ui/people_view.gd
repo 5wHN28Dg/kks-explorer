@@ -54,6 +54,7 @@ var _d := PackedVector3Array()  # the straight way's heading, where walked strai
 var _walkers: Array = []
 var _walkers_t := 0.0
 var _seated := PackedByteArray()  # per place: someone there sits or lies (not moved aside)
+var _hidden := PackedByteArray()  # per place: drawn by nobody (a bed behind a shut door, PLANT3D §21.1)
 var NO_ROOM := PackedByteArray()   # (a place without room: none)
 var drawn := PackedInt32Array()     # per avatar person drive() gave: the person (the tests; as long as their people)
 var drawn_kind := PackedByteArray() # and how app/keep_apart.gd took them (WALKING, STANDING, FIXED)
@@ -168,7 +169,7 @@ func update() -> void:
 				p = ways.pos
 			else:
 				p = (_at[leg[0]] as Vector3).lerp(_at[leg[1]], k)
-		elif e.sp_pos[pi] != -1:
+		elif e.sp_pos[pi] != -1 and not _hidden[e.sp_pos[pi]]:
 			p = _at[e.sp_pos[pi]]
 		if p == Vector3.INF:
 			continue
@@ -286,7 +287,7 @@ func drive(delta: float) -> void:
 			# just stepped out of a cab: walking to the landing's place
 			place = e.sp_pos[pi]
 			row = apart.fixed(pi, _stepping(pi, _at[place], false, dt))
-		elif e.sp_pos[pi] != -1:
+		elif e.sp_pos[pi] != -1 and not _hidden[e.sp_pos[pi]]:
 			place = e.sp_pos[pi]
 			if _seated[place] == 1 or (_at[place] as Vector3).distance_squared_to(cam) > far_r2:
 				row = apart.fixed(pi, _at[place])      # seated or lying: not moved off the seat
@@ -462,8 +463,10 @@ func _places(sm) -> void:
 	_spot.fill(-1)
 	_spd.fill(0.0)
 	_seated.resize(sm.places.size())
+	_hidden.resize(sm.places.size())
 	for i in sm.places.size():
 		var pl: Dictionary = sm.places[i]
+		_hidden[i] = 1 if pl.get("hidden", false) == true else 0
 		_seated[i] = 1 if sm.kind[i] in SEATED or sm.kind[i] == "bed" or pl.get("pose", "") in ["sit", "lie"] else 0
 
 

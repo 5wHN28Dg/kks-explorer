@@ -2133,7 +2133,8 @@ class StaffRun:
                 p.queue.remove(q)       # queued jobs off duty: held as they are, no walk to them first
                 p.held.append(q)
                 e.ev('task', p.id, q['task'], 'held')
-        if cur is not None and cur['idle'] and (p.queue or (p.on if cur.get('off') else not p.on)):
+        work = p.on or p.home is not None and self.in_span(p)     # (a duty's idle task within its span, §21.2)
+        if cur is not None and cur['idle'] and (p.queue or (work if cur.get('off') else not work)):
             e.ev('task', p.id, cur['task'], 'done')     # (a duty's idle task at the duty's end, an off one at its
             p.cur = cur = None                           # start, §21.2)
         if cur is not None and p.queue and cur['int'] and p.queue[0]['prio'] < cur['prio'] \
@@ -2150,11 +2151,11 @@ class StaffRun:
                 e.ev('move', p.id, None, self.st.places[p.pos]['id'], e.step_no)
         if cur is None and (p.on or p.home is not None):
             # the idle task: the duty's on duty, the off-duty routine's off duty with a home (§21.2)
-            idle = self.st.routine_of(p.i)['idle'] if p.on else self.st.routines[self.st.roles[p.role]['off']]['idle']
+            idle = self.st.routine_of(p.i)['idle'] if work else self.st.routines[self.st.roles[p.role]['off']]['idle']
             cur = p.cur = {'task': idle, 'prio': 6, 'made': e.step_no, 'order': self.order, 'step': 0, 'st': {},
                            'work': None, 'code': None, 'alarm': None, 'src': None, 'idle': True, 'started': True,
                            'int': True, 'owner': None, 'act': None}
-            if not p.on:
+            if not work:
                 cur['off'] = True
             self.order += 1
             e.ev('task', p.id, idle, 'start')
@@ -2643,6 +2644,11 @@ class StaffRun:
         if not p.duties:
             return c
         return p.duties[0][0] - (int(m.group(1)) * 60 + int(m.group(2))) * MINUTE
+
+    def in_span(self, p):
+        """The clock lies within one of the person's duties' spans (§21.2)."""
+        c = self.e.clock()
+        return any(x[0] <= c <= x[1] for x in p.spans)
 
     def end_off(self, p):
         """The tasks off-duty slots made end `skipped`, the current one first, then the queue's in order (§21.2)."""
