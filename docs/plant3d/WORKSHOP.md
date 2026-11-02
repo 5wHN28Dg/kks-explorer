@@ -200,8 +200,7 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
   component's meshes at 0 and described in the root's `moving` meta, for K3 and K4b to animate.
 - The join also refuses an assembly that places a part before its parent in the tree, and a fastener group drawn in
   a component its data's `joins` doesn't name; the validator refuses a group placed before the parts it joins.
-- Not yet active: the check that the Workshop's code names no part kind passes trivially until `apps/plant3d/workshop/`
-  exists (K1). The frozen plant check covers the context keys `pipe_od`, `out` and `floor_dz`; parts whose shape
+- The check that the Workshop's code names no part kind is active since K1 (`apps/plant3d/workshop/`). The frozen plant check covers the context keys `pipe_od`, `out` and `floor_dz`; parts whose shape
   depends on other context (nozzles in use, shaft lines, heights above and below) are held only in the cases recorded.
 - **The plant's proof:** `tests/test_kit_frozen.gd` compares a digest of everything plant mode gives (layers in order,
   arrays, LOD triangle counts, moving pieces, plates, solids) for 1,397 cases (every part of the kit with its defaults,
@@ -228,8 +227,8 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
   or B (or Back to the plant) leaves.
 - What is free to move (§4.5) reads the assembly's `needs` when the data has them (K2); until then everything is free
   but a sealed component's children, which say `sealed_why`.
-- The session's strip counts new alarms since the Workshop opened; radio calls for the player's role come with the
-  crew's radio in a later milestone (they still reach the crew panel).
+- The session's strip counts new alarms since the Workshop opened. Radio calls for the player's role are not in the
+  strip yet (left for K3, which builds the session's Workshop rules again).
 - `pos` carries the Workshop flag (MULTIPLAYER.md §6.3) and the others mark the player.
 - The Workshop walk (`walk=workshop`, `app/workshop_walk.gd`) enters, leaves and enters again, then runs the 3-minute
   orbit (assembled, 0 → 1 → 0, isolate, show all, a subassembly, the handle, Reset, Reassemble all) and leaves.
