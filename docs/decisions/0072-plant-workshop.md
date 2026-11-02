@@ -69,8 +69,10 @@ frame on the phone.
   hidden once before the machine's first frame.
 - **The plant meanwhile:** the Workshop draws in a full-screen `SubViewport` with its own world, and the main
   viewport's 3D drawing is turned off; the plant stays in its world, not moved or freed. Single play pauses the clock (held inputs
-  released, speed restored on return; autosave unaffected). In a session the plant runs on and the person stands
-  where it was left (the user, 2026-11-01); the bench runs locally, outside the session.
+  released, speed restored on return; autosave unaffected), so a mirror freezes at the moment the trainee left (the
+  user, 2026-11-02). In a session the plant runs on and the person stands where it was left (the user, 2026-11-01),
+  with an "in the Workshop" mark over it for the others (one flag in `pos`, the user, 2026-11-02); the bench runs
+  locally, outside the session.
 - **Rules (Note 9, `lean+vis`):** Workshop button to the machine's first frame ≤ 2.0 s with pipelines compiled, ≤ 5.0 s
   with an empty cache; back to the plant ≤ 1.0 s; after the first frame no frame over 100 ms and ≥ 95 % at ≥ 30 fps
   over the scripted Workshop walk; peak PSS ≤ 1.5 GB with the plant held; one kind ≤ 120,000 triangles and ≤ 300 draw
@@ -87,12 +89,14 @@ frame on the phone.
 CAPABILITIES.md §8 gains rows for see-through, cut and capped surfaces (render modes, discard, back faces, stencil
 experimental), per-instance uniforms, and a second 3D world on the same viewport.
 
-## Open for the user
+## Decided by the user (2026-11-02)
 
-None blocking K1a. Questions raised with K0 (MILESTONES.md, "Workshop"):
-1. **Mirror in single play:** the paused plant's moment (default), or let the plant run while a mirror is open.
-2. **A mark over a player who is in the Workshop** in a session (a flag in `pos`, a MULTIPLAYER.md change): not now
-   (default), or with K1.
+The two questions raised with K0:
+1. **Mirror in single play:** it freezes at the moment the trainee left (the plant stays paused while the Workshop,
+   and so a mirror, is open). WORKSHOP.md §6.5.
+2. **A mark over a player who is in the Workshop** in a session: yes. The others see an "in the Workshop" mark over
+   that player's person; it needs one flag in `pos` (bit 0 of its existing flags byte, so the message keeps its 24
+   bytes), a planned change of MULTIPLAYER.md §6.3, built with K1. WORKSHOP.md §2.
 
 **When to revisit:** if `ws_lit` costs more than about 10 pipelines or its background compile costs the plant's frames
 on the Note 9 (then compile at the Workshop's load only); if a kind can't stay within 120,000 triangles without losing

@@ -264,6 +264,26 @@ meshes, 330 pipe supports. The first train (2026-10-16): 302,944 triangles at fu
 12 m, 6 m for detail; pipes and large parts cut by cell); 176 pipe
 supports. The bench that decided the engine (0041) had 1.46 M triangles.
 
+## The Workshop mode (docs/plant3d/WORKSHOP.md §4)
+
+`Kit.make(part, params, ctx, seg_scale, true)` runs the same generator with its component tags: `g.comp(id, spec)`
+names the component the next primitives belong to, `g.only(...)` says whether they are shared with the plant, the
+Workshop's alone (hidden insides, small outside pieces, split halves) or a merged stand-in the plant draws instead,
+`g.fasteners()` and `g.flow()` add fastener groups and flow paths. Plant mode ignores all of it: its output is held to
+what it was by `tests/test_kit_frozen.gd` (record again with `tests/kit_frozen.gd` only for a meant change to the
+plant, then bake the lightmap and run the plant's Note 9 walk). A part whose generator declares no components is one
+component, `body`. `Kit.register(part, script, budget)` adds a kind from outside the kit (the tests' fixture kind).
+
+What each kind simplifies, and its sources (the data file `data/plant3d/workshop/<part>.json` cites them):
+- **pressure_transmitter** (Rosemount 3051 reference manual, §6.4–§6.5): the valve manifold is one block with three
+  handles; the process flange carries two drain/vent valves and four bolts into the sensor module; the sensor
+  module is sealed (its isolating diaphragm and sensing cell are simple solids); the housing is the plant's drum split
+  into the housing (two compartments) and its two screwed covers, with the electronics board and the LCD on the
+  display side and the terminal block on the field side, held on the module's neck by the housing rotation set
+  screw. The two alignment screws and the O-rings are not drawn; the two isolating diaphragms are one disk; the
+  plant's one block is the process flange and the module's coplanar base together, so the flange bolts' shanks end
+  in it.
+
 ## Tables and their sources
 
 The kit derives what a part looks like from what its content says it is (§9: content says what the equipment *is*).

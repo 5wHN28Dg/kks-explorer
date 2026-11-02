@@ -66,7 +66,8 @@ while the Workshop shows; nothing falls).
   with **Back to the plant**;
 - the Workshop's bench model runs locally, outside the session: it makes no session inputs and is not in the state
   digest;
-- a mark over the person ("in the Workshop") would need a flag in `pos`, a MULTIPLAYER.md change: not part of K0–K6;
+- the other players see an "in the Workshop" mark over that player's person (the user, 2026-11-02): one flag in
+  `pos` (bit 0 of its flags byte, MULTIPLAYER.md §6.3), set while the Workshop is open; built with K1;
 - the plant's engine, the session layer and the others' avatars keep their CPU behind the Workshop (only the plant's
   drawing stops): the Workshop's rules are measured in a session as well (§8).
 
@@ -127,8 +128,9 @@ component, a binding at no component, a flow path the generator doesn't make).
 
 - **Ids** are identifiers of at most 16 characters (`[a-z_][a-z0-9_]{0,15}`), unique within the kind. Short, because
   the realism programme names model states `<equipment prefix>_<component>_<state>` (REALISM.md §2.4) and value
-  names are identifiers of at most 32 characters (PLANT3D.md §1): that leaves 14 characters for the prefix, the state
-  and the two underscores, which the realism content tool has to keep to (or it maps long names to short ones).
+  names are identifiers of at most 32 characters (PLANT3D.md §1): that leaves 16 characters for the prefix, the state
+  and the two underscores. REALISM.md §2.4 fixes how they are shared, so no name is shortened case by case: an
+  equipment alias of at most 8 characters and a state of at most 6 (8 + 1 + 16 + 1 + 6 = 32).
 - **Tree:** each component has a `parent` (another component, or none for the machine's top level). Depth at most 6.
 - **Root `body`:** a generator that declares no components puts everything in one component `body`. So every kit part
   can be shown in the Workshop (outside only, not taken apart) with no extra code; a kind gets its tree when its
@@ -175,8 +177,43 @@ the plant's (the tolerance the spec allows, stated here):
   again (§10).
 
 So K1a keeps the plant byte for byte: the transmitter's covers are split from its housing as `"workshop"` halves of a
-`"plant"` stand-in, its terminal block, electronics and sensor insides are hidden pieces, and its flange bolts and
-cover locking screws are small outside pieces.
+`"plant"` stand-in, its terminal block, electronics and sensor insides are hidden pieces, and its flange bolts, drain/
+vent valves and housing rotation set screw are small outside pieces (the 3051's manual names no cover locking screw).
+
+**As built (K1a, 2026-11-02).**
+- `Gen.comp(id, spec)` and `Gen.only(kind, arg)` in `kit/kit.gd` (on the mesh builder `set_comp`, `set_only`): `only()`
+  shared; `only("workshop")` hidden, `only("workshop", "outside")` a small outside piece, `only("workshop", "split")` a
+  piece of a component that replaces a stand-in; `only("plant", [components])` the stand-in (an empty list: a mounting
+  the plant draws and the Workshop leaves out, such as a free-standing transmitter's stand pipe). After a `"workshop"`
+  block the generator calls `use()` again; a primitive drawn before it is reported in both modes (`Kit.problems`,
+  which `tests/test_kit_frozen.gd` fails on; the Workshop result's `problems`, which the join refuses), and plant mode never
+  makes a layer, not even an empty one, for a Workshop piece (the layers' order is the builder's cells' order).
+- The Workshop mode's layer key is `comp|tag|material|class|bucket` (tag `shared`, `hidden`, `outside` or `split`), so
+  the tests can tell the pieces apart; the scene merges a component's pieces per material.
+- `Gen.fasteners(id, kind, items, draw)` (one item drawn by `draw` in its own frame, z the way it backs out; `kind`
+  one of the list above, checked by the join) and `Gen.flow(id, points)`; fasteners are Workshop-only small outside
+  pieces. A moving piece's builder (`g.move`) follows `comp()` and `only()` like the static one.
+- An only() block that runs on into another component (`comp()` inside it) is recorded as a piece of each. A
+  `"split"` piece must belong to a component that replaces a stand-in (the tests refuse any other).
+- In the scene a fastener item backs out along its basis.y (Godot's axes; the generator's z), meta `back_axis`; the
+  MultiMeshes get their instance transforms from the `items` meta at load. Moving pieces are drawn with their
+  component's meshes at 0 and described in the root's `moving` meta, for K3 and K4b to animate.
+- The join also refuses an assembly that places a part before its parent in the tree, and a fastener group drawn in
+  a component its data's `joins` doesn't name; the validator refuses a group placed before the parts it joins.
+- Not yet active: the check that the Workshop's code names no part kind passes trivially until `apps/plant3d/workshop/`
+  exists (K1). The frozen plant check covers the context keys `pipe_od`, `out` and `floor_dz`; parts whose shape
+  depends on other context (nozzles in use, shaft lines, heights above and below) are held only in the cases recorded.
+- **The plant's proof:** `tests/test_kit_frozen.gd` compares a digest of everything plant mode gives (layers in order,
+  arrays, LOD triangle counts, moving pieces, plates, solids) for 1,397 cases (every part of the kit with its defaults,
+  the content's parameter sets, its limits, and instruments standing every way) with `tests/fixtures/kit_plant.json`,
+  recorded from main's code before the change; a meant change to the plant records it again with
+  `tests/kit_frozen.gd` and then bakes the lightmap and runs the plant's Note 9 walk. Every built scene of the plant
+  (231 files: areas, ground, materials, navigation, people) was also compared by content with main's build: identical.
+- **The data file** is made like the rest of `data/plant3d` by `tools/plant3d/make_content.py`, from a module per kind
+  in `tools/plant3d/workshop/` (`test_plant3d` checks that the committed files are what it makes). `ref/plant3d.py`'s
+  content check accepts `workshop/<part>.json` and runs `ref/plant3d_workshop.py` on it. Every component and fastener
+  group cites a source (stricter than "per subassembly"); `assembly` and `views` are optional until K2 and K3.
+- The transmitter in the Workshop: 14 components, 2 fastener groups, 1,396 triangles (the plant's 272).
 
 **Retrofitting.** Each generator's `use()` calls stay; a generator gains `g.comp()` and `g.only()` calls around groups
 of primitives. Moving pieces' mesh builders (`g.move`) carry `comp` too. Proved on the transmitter alone first (K1a),
@@ -198,7 +235,7 @@ Handling (§4.5) is applied on top and cleared by Reset; the slider never reads 
 
 ### 4.4 Fasteners
 
-- **Generator side:** `g.fasteners(id, items, kind)`: a group of identical fasteners, each item a transform
+- **Generator side:** `g.fasteners(id, kind, items, draw)`: a group of identical fasteners, each item a transform
   (position and axis) in the part frame; drawn as one MultiMesh (one draw call per material), each item addressable by
   its index, so a later milestone can treat one bolt alone. `kind`: `bolt`, `stud_nut`, `screw`, `cap_screw`,
   `threaded_cover`, `clamp`, `gland`, `pin`, `circlip`, `key`.
@@ -253,8 +290,9 @@ The data file's `assembly` is the guided order, one step per component or fasten
 
 - **Built ahead of time, like the areas.** `builder/` makes `built/workshop/<part>.scn` for every kind with a data
   file (the export already packs `built/*`), from `Kit.make(..., workshop = true)` with the data file's `params`
-  (validated against kit.json's parameters; default: the first train's instance of that kind where it has one, so
-  the Workshop shows the turbine the trainee walks past).
+  (validated against kit.json's parameters; default: the plant's first instance of that kind, in the content's order,
+  where it has one, so the Workshop shows the turbine the trainee walks past; the scene keeps them in its `params`
+  meta, and the tests check that very shape).
 - **Nodes:** one `Node3D` per component at its pivot, named by its id, nested as the tree; under it one
   `MeshInstance3D` per material (the component's pieces merged per material: no 12 m cells, no instancing, no LODs: one
   machine seen close); fastener groups as `MultiMeshInstance3D` with their items' transforms in a meta (as the plant's
@@ -357,8 +395,9 @@ name is written in bench data:
 - `{"machine": true}`: the equipment's machine's state (by its `kks`), mapped onto the bench machine's states by name.
 
 In a mirror the bench steps as usual but each mirrored value is overwritten after step 2 by the plant's, its ops and
-faults are not offered, and the panel says "Mirror of `<code>`, read only". In single play the plant is paused, so
-the mirror shows the moment the trainee left; in a session it follows the plant live. The overwrite is an engine
+faults are not offered, and the panel says "Mirror of `<code>`, read only". In single play the mirror **freezes at the
+moment the trainee left** (the user, 2026-11-02): the plant is paused, and the plant does not run while a mirror is
+open; in a session it follows the plant live. The overwrite is an engine
 addition (both engines, vectors) made in K6.
 
 ## 7. Shaders and cut faces
