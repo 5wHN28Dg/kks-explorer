@@ -62,22 +62,25 @@ func run(tree: SceneTree) -> Array:
 				for k in want.get_child_count():
 					var a: Node3D = want.get_child(k)
 					var b: Node3D = got.get_child(k)
-					var same := a.get_class() == b.get_class() and a.transform.is_equal_approx(b.transform)
+					var bm: ShaderMaterial = b.material_override as ShaderMaterial
+					var same: bool = a.get_class() == b.get_class() and a.transform.is_equal_approx(b.transform) and \
+						a.cast_shadow == b.cast_shadow and bm != null and bm != ws.xray_mat() and \
+						bm.shader == ws.xray_mat().shader and is_equal_approx(float(bm.get_shader_parameter("alpha")), 0.0)
 					if same and a is MeshInstance3D:
 						same = a.mesh == b.mesh
 					elif same:
 						same = a.multimesh.mesh == b.multimesh.mesh and \
 							a.multimesh.instance_count == b.multimesh.instance_count and \
 							a.multimesh.transform_format == b.multimesh.transform_format
+						for n in a.multimesh.instance_count if same else 0:
+							same = same and a.multimesh.get_instance_transform(n).is_equal_approx(b.multimesh.get_instance_transform(n))
 					if not same:
 						missing.append(id)
 						break
 			want.free()
 		check(missing.is_empty() and gw.get_child_count() > 0,
-			"every part's ghost is warmed with the machine, where it will stand (missing or unlike: %s)" % str(missing))
-		var wm: ShaderMaterial = gw.get_child(0).get_child(0).material_override
-		check(not gw.visible and is_equal_approx(float(wm.get_shader_parameter("alpha")), 0.0) and wm != ws.xray_mat(),
-			"drawn unseen in the machine's first frame (its own material at alpha 0), hidden after it")
+			"every part's ghost is warmed with the machine, where it will stand, in ws_xray at alpha 0 (its own material) (missing or unlike: %s)" % str(missing))
+		check(not gw.visible, "drawn unseen in the machine's first frame, hidden after it")
 	await _transmitter(tree, ws)
 	await _fixture(tree, ws)
 	ws.close()

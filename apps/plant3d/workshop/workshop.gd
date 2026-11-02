@@ -89,7 +89,7 @@ var _ghost_id := ""
 var _xray_mat: ShaderMaterial
 var _warm: Node3D               # one hidden mesh with ws_xray in the plant's world: its pipelines queued early
 var warmed := false
-var _warm_draw_mat: ShaderMaterial   # ws_xray at alpha 0: the Workshop load's unseen draw of every ghost format
+var _warm_draw_mat: ShaderMaterial   # ws_xray at alpha 0: the Workshop load's unseen draw of every part's ghost
 var _cur_m := {}                # id -> Transform3D: each part where it stands now, in the machine's frame (apply)
 
 func setup(m) -> void:
@@ -1051,8 +1051,8 @@ static func can_draw_warm(cam3: Camera3D, disabled_3d: bool, workshop_open: bool
 	return cam3 != null and not disabled_3d and not workshop_open
 
 
-## The Workshop's own load (§7.1): its scene with a hidden ghost on one of its meshes, so the ghost's pipelines are
-## queued with the machine's, before the first step shows one.
+## The Workshop's own load (§7.1): every part's ghost drawn unseen in the machine's first frame, so the ghosts'
+## pipelines are compiled with the machine's, before the first step shows one.
 func _warm_machine() -> void:
 	# every part's own ghost, built as its step will build it, where it will stand (home: the machine as built): the
 	# Note 9 compiled a pipeline at a fastener group's first ghost even with a ghost of each vertex format warmed (the
