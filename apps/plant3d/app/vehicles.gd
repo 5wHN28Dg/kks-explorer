@@ -77,7 +77,7 @@ func setup(u, manifest: Dictionary, plant: Node) -> void:
 		sq.ignore_occlusion_culling = true
 		add_child(sq)
 		vehicles.append({"id": String(mv["id"]), "vi": -1, "body": body, "home": -1, "parked": parked, "roads": roads,
-				"square": sq, "xf": Transform3D(), "stop_xf": {}})
+				"square": sq, "xf": Transform3D(), "last": [], "stand_key": "", "stand_xf": parked})
 	snap()
 
 
@@ -111,7 +111,8 @@ func _bind(sm) -> void:
 	for V in vehicles:
 		V["vi"] = -1
 		V["home"] = -1
-		V["stop_xf"] = {}
+		V["last"] = []
+		V["stand_key"] = ""
 		if sm == null or not "vehicles" in sm:
 			continue
 		for k in sm.vehicles.size():
@@ -140,23 +141,42 @@ func pose(V: Dictionary, f: float) -> Transform3D:
 		var at: int = vh["at"]
 		if at == V["home"] or at == -1:
 			return V["parked"]
-		return V["stop_xf"].get(at, _standing(V, at))
+		# standing at a stop: where its last drive way ended, facing as it came (a load or a jump: the end of a road
+		# into it); worked out once per stop and way
+		var last: Array = V["last"]
+		var key := "%d|%s" % [at, str(last)]
+		if key != V["stand_key"]:
+			V["stand_key"] = key
+			V["stand_xf"] = _arrived(V, last) if not last.is_empty() and last[1] == at else _standing(V, at)
+		return V["stand_xf"]
 	var k := clampf((float(e.step_no) + f - float(leg[2])) / maxf(1.0, float(leg[3] - leg[2])), 0.0, 1.0)
-	var sm = e._sm
-	var a: String = sm.places[leg[0]]["id"]
-	var b: String = sm.places[leg[1]]["id"]
-	var line: PackedVector3Array
-	if V["roads"].has(a + "|" + b):
-		line = V["roads"][a + "|" + b]
-	elif V["roads"].has(b + "|" + a):
-		line = (V["roads"][b + "|" + a] as PackedVector3Array).duplicate()
-		line.reverse()
-	else:
+	V["last"] = [int(leg[0]), int(leg[1])]
+	var line := _line(V, leg[0], leg[1])
+	if line.is_empty():
 		return V["xf"]
-	var xf := along(line, k, leg[0] == V["home"], leg[1] == V["home"], V["parked"])
-	if k >= 1.0:
-		V["stop_xf"][leg[1]] = xf
-	return xf
+	return along(line, k, leg[0] == V["home"], leg[1] == V["home"], V["parked"])
+
+
+## The road from place a to place b (reversed when only b to a is there), empty for none.
+func _line(V: Dictionary, a: int, b: int) -> PackedVector3Array:
+	var sm = ui.clock.engine._sm
+	var ia: String = sm.places[a]["id"]
+	var ib: String = sm.places[b]["id"]
+	if V["roads"].has(ia + "|" + ib):
+		return V["roads"][ia + "|" + ib]
+	if V["roads"].has(ib + "|" + ia):
+		var line := (V["roads"][ib + "|" + ia] as PackedVector3Array).duplicate()
+		line.reverse()
+		return line
+	return PackedVector3Array()
+
+
+## Where a vehicle that drove `last` ([from, to]) stands at its end.
+func _arrived(V: Dictionary, last: Array) -> Transform3D:
+	var line := _line(V, last[0], last[1])
+	if line.is_empty():
+		return V["parked"]
+	return along(line, 1.0, last[0] == V["home"], last[1] == V["home"], V["parked"])
 
 
 ## A vehicle standing at stop `at` it has not been seen to arrive at (a load, a jump): at the end of a road into it.
@@ -272,6 +292,10 @@ func _ride(e) -> void:
 			p.velocity = Vector3.ZERO
 			p.set_physics_process(false)
 		elif vi == -1:
+			# off: the walker put down at the stop first (not inside the bus's solids), then walking again
+			var at: int = e.sp_pos[me] if me != -1 else -1
+			if at != -1:
+				ui.go_to_place(at)
 			p.collision_layer = _walker_layers
 			p.collision_mask = _walker_mask
 			p.set_physics_process(true)

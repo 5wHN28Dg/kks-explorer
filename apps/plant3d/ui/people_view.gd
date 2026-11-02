@@ -473,7 +473,6 @@ func _places(sm) -> void:
 		_seated[i] = 1 if sm.kind[i] in SEATED or sm.kind[i] == "bed" or pl.get("pose", "") in ["sit", "lie"] else 0
 
 
-## What a person not walking is seen doing: their task step's, or sitting at a desk, seat or table.
 ## Someone standing at place i is drawn: not a hidden place, and not in an interior that is not loaded (§21.7).
 func _shown(i: int) -> bool:
 	if i >= _hidden.size():
@@ -493,6 +492,7 @@ func _shown(i: int) -> bool:
 			for id in ints.items:
 				if (ints.items[id].rect as Rect2).has_point(Vector2(at.x, -at.z)):
 					_inside[k] = id
+					break
 	return _inside[i] == "" or ints.loaded(_inside[i])
 
 
@@ -502,6 +502,7 @@ func _interiors():
 	return null
 
 
+## What a person not walking is seen doing: their task step's, or sitting at a desk, seat or table.
 func _anim(e, sm, pi: int, place: int) -> String:
 	var cur = e.sp_cur[pi]
 	var a := "idle"

@@ -55,6 +55,7 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 			"locks": 0, "unlocks": 0, "permit_refused": 0, "by_authority": 0, "early": 0, "instructor": 0,
 			"instructor_run": instructor_count(engine), "unsafe": 0, "stops_made": 0, "stops_of_me": 0, "late": 0,
 			"covered": 0}
+	var begun := {}                     # the trainee's task id -> instances begun and not yet ended (the role tab)
 	var by_instructor := {}             # "fault|id" or "repair|id" -> the step of the instructor's input
 	var state := {}                     # alarm id -> its state (from step 0: the run may begin later)
 	var inputs: Array = engine.inputs
@@ -198,6 +199,12 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 				e.text = "Your task %s: %s" % [{"start": "begun", "done": "done", "abandoned": "ABANDONED",
 						"skipped": "skipped", "held": "held to your next duty", "resumed": "resumed"}.get(ev[4], ev[4]), tt]
 				var gk := "%d|%s" % [ev[0], str(ev[3])]
+				var tk := str(ev[3])
+				var was_begun: int = begun.get(tk, 0)
+				if ev[4] in ["start", "resumed"]:
+					begun[tk] = was_begun + 1
+				elif ev[4] in ["done", "abandoned", "skipped", "held"] and was_begun > 0:
+					begun[tk] = was_begun - 1
 				if ev[4] == "start" and given.has(gk) and (int(ev[0]) - int(given[gk])) * engine._ds > LATE_S * 10:
 					# begun more than 15 clock minutes after it was given (§21.7)
 					var mins: int = (int(ev[0]) - int(given[gk])) * engine._ds / 600     # (the clock in tenths of s)
@@ -206,8 +213,10 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 					sm.late += 1
 				elif ev[4] == "skipped" and _jumped_at(evs, i, int(ev[0])):
 					# a slot the jump went past (§17.6): a duty's, the night the other crew covered; an off-duty one
-					# (a meal, free time) simply not made
-					if _off_task(sm_, me_pi, str(ev[3])):
+					# (a meal, free time) simply not made; a task the trainee had begun and left, ended by the jump
+					if was_begun > 0:
+						e.text = "While you slept (the clock jumped): %s, left unfinished" % tt
+					elif _off_task(sm_, me_pi, str(ev[3])):
 						e.text = "While you slept (the clock jumped): %s, not made" % tt
 					else:
 						e.text = "While you slept (the clock jumped): %s, covered by the crew on duty" % tt

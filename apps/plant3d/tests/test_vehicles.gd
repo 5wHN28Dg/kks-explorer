@@ -11,6 +11,7 @@ const App = preload("res://tests/ui_app.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const Vehicles = preload("res://app/vehicles.gd")
 const Fleet = preload("res://builder/fleet.gd")
+const Builder = preload("res://builder/plant_builder.gd")
 
 
 func run(tree: SceneTree) -> Array:
@@ -62,6 +63,10 @@ func run(tree: SceneTree) -> Array:
 	var me: int = e.trainee()
 	var vi: int = V["vi"]
 	var moved_seen := false
+	var last_moving := Transform3D()
+	var was_moving := false
+	var jumps := 0
+	var arrivals := 0
 	var aboard_at := -1
 	var lane_off := 0
 	for i in 1200:
@@ -71,7 +76,17 @@ func run(tree: SceneTree) -> Array:
 		_play(ui, e, me)
 		ui.clock.run_steps(5)
 		vv._physics_process(0.0)
-		if not e.st_veh[vi]["leg"].is_empty():
+		var moving: bool = not e.st_veh[vi]["leg"].is_empty()
+		if was_moving and not moving and e.st_veh[vi]["at"] != V["home"]:
+			# arrived at a stop: standing where it was last drawn driving, facing the same way (not turned round)
+			arrivals += 1
+			var now: Transform3D = V["xf"]
+			if now.origin.distance_to(last_moving.origin) > 2.0 or now.basis.z.dot(last_moving.basis.z) < 0.9:
+				jumps += 1
+		if moving:
+			last_moving = V["xf"]
+		was_moving = moving
+		if moving:
 			var a: Vector3 = vv.drawn_at(vi)
 			ui.clock.acc = ui.clock.STEP * 0.5        # half a step on: drawn between the two
 			vv._physics_process(0.0)
@@ -86,6 +101,8 @@ func run(tree: SceneTree) -> Array:
 					lane_off += 1
 		if i % 8 == 0:
 			await tree.process_frame       # (the panels' old rows are freed at a frame's end)
+	if arrivals == 0 or jumps > 0:
+		p.append("arriving at its stops (%d) the bus was drawn elsewhere or turned %d times" % [arrivals, jumps])
 	if not moved_seen:
 		p.append("the bus was never drawn moving between two steps on its run")
 	if lane_off > 0:
@@ -104,14 +121,13 @@ func run(tree: SceneTree) -> Array:
 	for i in 600:
 		ui.clock.run_steps(5)
 		vv._physics_process(0.0)
-		ui._place_tick()
 		if e.sp_aboard[me] == -1:
-			off = true
+			off = true          # (looked at before the place check: the walker is put down by the vehicles' own frame)
 			break
+		ui._place_tick()
 	if not off:
 		p.append("the trainee was never put off the bus")
 	else:
-		vv._physics_process(0.0)
 		var at: int = e.sp_pos[me]
 		if at == -1 or e._sm.places[at]["id"] != "cr_stop":
 			p.append("the trainee got off at %s, not the control building's stop" % (e._sm.places[at]["id"] if at != -1 else "nowhere"))
@@ -167,20 +183,23 @@ static func _off_road(V: Dictionary, e, leg: Array, h: Vector3) -> float:
 	return best
 
 
-## Every point of the roads (and the middle of each stretch) is on the asphalt.
-static func _on_asphalt(main, mv: Dictionary, p: Array) -> void:
-	var space: PhysicsDirectSpaceState3D = main.get_world_3d().direct_space_state
+## Every point of the roads (and the middle of each stretch) is on the asphalt: inside a walkable `road` surface whose
+## surface is asphalt, as the content build collects them (builder/plant_builder.gd).
+static func _on_asphalt(_main, mv: Dictionary, p: Array) -> void:
+	var b = Builder.new()
+	if not b.read(ProjectSettings.globalize_path("res://").path_join("../../data/plant3d").simplify_path()) or not b.collect():
+		p.append("the content could not be read for the asphalt check: %s" % str(b.errors).left(200))
+		return
+	var asphalt: Array = b.surfaces.filter(func(sf): return sf.kind == "road" and String(sf.get("surface", "")) in ["asphalt", ""])
 	for k in mv["roads"]:
 		var line: Array = mv["roads"][k]
 		for i in line.size():
-			var pts: Array = [line[i]]
+			var pts: Array = [Vector2(line[i][0], line[i][1])]
 			if i > 0:
-				pts.append([(line[i][0] + line[i - 1][0]) * 0.5, (line[i][1] + line[i - 1][1]) * 0.5])
+				pts.append(Vector2(line[i][0] + line[i - 1][0], line[i][1] + line[i - 1][1]) * 0.5)
 			for q in pts:
-				var from := Vector3(float(q[0]), 0.5, -float(q[1]))     # (under the parked bus's roof)
-				var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, from + Vector3.DOWN * 40.0))
-				if hit.is_empty() or absf(hit.position.y) > 0.6:
-					p.append("the road %s leaves the ground at %s" % [k, str(q)])
+				if not asphalt.any(func(sf): return Geometry2D.is_point_in_polygon(q, sf.outline)):
+					p.append("the road %s leaves the asphalt at %s" % [k, str(q)])
 					return
 
 
