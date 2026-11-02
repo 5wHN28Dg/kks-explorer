@@ -19,6 +19,11 @@ static var sums := PackedInt64Array()
 static var maxs := PackedInt64Array()
 static var max_at := PackedInt64Array()        # when each largest frame came (ms since start())
 static var _t0 := 0
+## per engine step while measuring (ui/sim_clock.gd): step 9's own time and the rest of the step's (µs); the result's
+## STEPS line covers the steps from `steps_from` (app/main.gd sets it after the gate walk's clock run)
+static var step_staff := PackedInt32Array()
+static var step_model := PackedInt32Array()
+static var steps_from := 0
 static var times_normal := PackedFloat32Array()   # the scripts' whole per frame (ms)
 static var times_fast := PackedFloat32Array()
 
@@ -37,6 +42,9 @@ static func start() -> void:
 	_t0 = Time.get_ticks_msec()
 	times_normal = PackedFloat32Array()
 	times_fast = PackedFloat32Array()
+	step_staff = PackedInt32Array()
+	step_model = PackedInt32Array()
+	steps_from = 0
 
 
 static func add(part: int, t0: int) -> void:
@@ -91,4 +99,17 @@ static func lines() -> PackedStringArray:
 			if maxs[o + i] > 0:
 				at.append("%s=%.1fs" % [NAMES[i], max_at[o + i] / 1000.0])
 		out.append("SCRIPTS_AT %s %s" % ["fast" if f == 1 else "normal", " ".join(at)])
+	# the engine's steps, each on its own (fast-forward's too): step 9 (the staff) and the rest of the step
+	if step_staff.size() > steps_from:
+		var st := Array(step_staff.slice(steps_from))
+		var mo := Array(step_model.slice(steps_from))
+		var n := st.size()
+		var ss := 0
+		var sm := 0
+		for k in n:
+			ss += st[k]
+			sm += mo[k]
+		st.sort()
+		out.append("STEPS from=%d steps=%d staff_mean_us=%.1f staff_p50_us=%d staff_p99_us=%d staff_max_us=%d model_mean_us=%.1f" % [
+			steps_from, n, float(ss) / n, st[n / 2], st[int(n * 0.99)], st[-1], float(sm) / n])
 	return out

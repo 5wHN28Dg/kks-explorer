@@ -637,6 +637,7 @@ func _gate_clock() -> void:
 		ui.clock.run_steps(100)
 		await get_tree().process_frame      # (a frame between: never seconds of a held main thread on a phone)
 	ui.clock.set_speed(1)        # (normal: 1x)
+	ScriptCost.steps_from = ScriptCost.step_staff.size()     # (the result's STEPS line: the steps at 1x from here)
 	_say("GATE clock %s after %d steps in %d ms" % [ui.clock_text(), e.step_no, Time.get_ticks_msec() - t0])
 
 ## mp=CODE@HOST[:PORT]: the walk in a LAN session (MP2's measurement on a phone; the host is the laptop's).
