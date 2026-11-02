@@ -32,6 +32,7 @@ func run(tree: SceneTree) -> Array:
 	var ran = _round_trip(m, PlantEngine, p)
 	_round_trip(m, load("res://tests/fixtures/engine_plus.gd"), p)
 	_round_trip_wtp(m, p)
+	_round_trip_weather(p)
 	if ran != null:
 		_compiled_fixed(m, ran, p)
 	_file(m, p)
@@ -140,6 +141,50 @@ func _round_trip(m, script, p: Array):
 		if RunSave.check(plain, RunSave.engine_fields(plain), got["payload"]["engine"]) == "":
 			p.append("a plain engine took a save with fields it doesn't have")
 	return e
+
+
+## The realism vectors' weather plant (REALISM.md §2.12) and wear plant (§2.11) saved mid-run, across an hour's draw and
+## the instructor's input still queued: put back into a fresh engine, the run goes on bit for bit (the weather's kind
+## and stream, the counts' memory); a save whose weather kind is outside weather.json's, or whose stream is 0, is refused.
+func _round_trip_weather(p: Array) -> void:
+	const JsonStrict = preload("res://sim/json_strict.gd")
+	var path := ProjectSettings.globalize_path("res://").path_join("../../ref/vectors/plant3d-realism.json").simplify_path()
+	var V: Dictionary = JsonStrict.parse(FileAccess.get_file_as_bytes(path), 1000).value
+	for part in ["weather", "wear"]:
+		var m = PlantModel.from_files(V[part]["files"])
+		if m.error != "":
+			p.append("the realism %s plant did not load: %s" % [part, m.error])
+			continue
+		var e = PlantEngine.new(m, "s1")
+		e.step(295)
+		if part == "weather":
+			e.weather("dust")
+		else:
+			e.op("10LAB10AA001", "open")
+			e.op("10LAC10AP001", "start")
+		var f2 = PlantEngine.new(m, "s1")
+		var cap := RunSave.capture(e, RunSave.engine_fields(e))
+		var bad := RunSave.check(f2, RunSave.engine_fields(f2), cap)
+		if bad == "":
+			bad = Autosave._engine_contents(f2, cap)
+		if bad != "":
+			p.append("realism %s: a fresh engine refuses its own save: %s" % [part, bad])
+			continue
+		RunSave.apply(f2, cap)
+		for k in 700:
+			e.step()
+			f2.step()
+			if f2.cur != e.cur or f2.digest() != e.digest():
+				p.append("realism %s: the restored run differs at step %d" % [part, e.step_no])
+				break
+		if part == "weather":
+			if not e.events.any(func(x): return x[1] == "instructor"):
+				p.append("realism weather: the queued instructor's input was not carried")
+			for c in [{"wx_kind": 4}, {"wx_kind": -1}, {"wx_s": 0}]:
+				var t := cap.duplicate()
+				t.merge(c, true)
+				if Autosave._engine_contents(f2, t) == "":
+					p.append("realism weather: a save with %s was taken" % str(c))
 
 
 ## The water treatment plant's day work (W3) saved in the middle of its sequences: an RO train being cleaned in place

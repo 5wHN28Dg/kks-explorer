@@ -78,7 +78,7 @@ format (0060); (iii) a separate Workshop-like space for every job: loses the pla
 CAPABILITIES.md §8 gains rows for weather (depth fog, GPU particles, global shader parameters), documents (2D drawing;
 no PDF renderer) and text-to-speech (available, not used), and the gaps paragraph names them.
 
-## Decided by the user, 2026-11-01
+## Decided by the user, 2026-11-01 (and 2026-11-02, item 9)
 
 1. **When realism builds start:** the parts that don't need the Workshop (RE1, AG1, WX1 and DC1's generated P&IDs)
    are built alongside it; hands-on work waits for the Workshop's K3.
@@ -94,14 +94,17 @@ no PDF renderer) and text-to-speech (available, not used), and the gaps paragrap
    additions they need, each gated by its own key with its vectors in `plant3d-realism.json` (grid events, a `count`
    node, forces and bypasses, permit conflicts, zone barriers, authorisations, duty hours, passes, languages, and order approvals).
 
+9. **The new plant systems load per scenario** (2026-11-02; REALISM.md J0): the fuel gas and distillate systems,
+   the emergency diesel, instrument air, fire water and CO₂, the switchyard and excitation (an estimated 300–400 model
+   values) are optional content that each scenario loads or not, so §11's 600 values and 0.4 ms remain the share of a
+   scenario without them; a scenario that loads some counts them on top, measured with its milestone. An "everything"
+   day is allowed on laptops and measured on the Note 9. The other options were a wider share or coarser models. This
+   unblocks OP4, OP5, OP6, IC4, EC3 and EC6. (RE1 had measured +0.087 ms at 600 values and +0.136 ms at 1,000 in the
+   model alone on the Note 9, REALISM.md §2.10.)
+
 ## Open for the user
 
-1. **The model step's share with the new plant systems** (REALISM.md J0): the fuel gas and distillate systems, the
-   emergency diesel, instrument air, fire water and CO₂, the switchyard and excitation add an estimated 300–400 model
-   values on top of §11's 600, which at about 0.7 µs a value on the Note 9 would pass the 0.4 ms share. Either widen
-   the share (the step still ≤ 2.1 ms, fast-forward ≥ 12×), or model these systems more coarsely, or load them only
-   in scenarios that use them. RE1 measures the step at 600 and 1,000 added values to inform it. Until answered, each
-   milestone fits within §11 as it stands.
+None at present.
 
 **When to revisit:** if the model step with realism content passes its budget on the Note 9; if a trainer needs a
 job the hand actions can't say (a bounded addition with vectors, never scripting); if Godot's particles or global
