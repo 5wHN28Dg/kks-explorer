@@ -1045,16 +1045,35 @@ static func can_draw_warm(cam3: Camera3D, disabled_3d: bool, workshop_open: bool
 ## The Workshop's own load (§7.1): its scene with a hidden ghost on one of its meshes, so the ghost's pipelines are
 ## queued with the machine's, before the first step shows one.
 func _warm_machine() -> void:
-	for c in machine.find_children("*", "MeshInstance3D", true, false):
-		if (c as MeshInstance3D).mesh != null:
-			var w := Node3D.new()
-			w.name = "ghost_warm"
-			var pair := _xray_pair((c as MeshInstance3D).mesh, xray_mat())
-			w.add_child(pair[0])
-			w.add_child(pair[1])
-			w.visible = false
-			machine.add_child(w)
-			return
+	# one hidden ghost per vertex format the machine's parts use, plain for the components' meshes and instanced for
+	# the fastener groups' (a pipeline is per format: the Note 9 compiled one at the first ghost of another format)
+	var w := Node3D.new()
+	w.name = "ghost_warm"
+	var seen := {}
+	for id in comps:
+		for c in (comps[id] as Node3D).get_children():
+			if c is MeshInstance3D and c.mesh != null:
+				var k := "m%s" % _format_key(c.mesh)
+				if not seen.has(k):
+					seen[k] = true
+					w.add_child(_xray_pair(c.mesh, xray_mat())[0])
+	for g in groups:
+		for c in (groups[g] as Node3D).get_children():
+			if c is MultiMeshInstance3D and c.multimesh != null and c.multimesh.mesh != null:
+				var k := "i%s" % _format_key(c.multimesh.mesh)
+				if not seen.has(k):
+					seen[k] = true
+					w.add_child(_xray_pair(c.multimesh.mesh, xray_mat())[1])
+	w.visible = false
+	machine.add_child(w)
+
+## A mesh's surfaces' vertex formats and primitives, as one key.
+static func _format_key(m: Mesh) -> String:
+	var parts := PackedStringArray()
+	for i in m.get_surface_count():
+		parts.append("%d/%d" % [m.surface_get_format(i) if m is ArrayMesh else 0,
+			(m as ArrayMesh).surface_get_primitive_type(i) if m is ArrayMesh else 0])
+	return ",".join(parts)
 
 ## A mesh with the X-ray material drawn plain and instanced (a fastener group's ghost is a MultiMesh: its own pipeline
 ## variant), both hidden-ready: [MeshInstance3D, MultiMeshInstance3D].

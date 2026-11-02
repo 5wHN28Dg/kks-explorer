@@ -15,6 +15,7 @@ const Assembly = preload("res://workshop/assembly.gd")
 const Kit = preload("res://kit/kit.gd")
 const WB = preload("res://builder/workshop_build.gd")
 const Explode = preload("res://workshop/explode.gd")
+const WSs = preload("res://workshop/workshop.gd")
 
 var p: Array = []
 
@@ -44,7 +45,25 @@ func run(tree: SceneTree) -> Array:
 	if not await _wait_shown(tree, ws):
 		main.free()
 		return p + ["the transmitter's Workshop did not show"]
-	check(ws.machine.find_child("ghost_warm", false, false) != null, "the Workshop's load queues the ghost's shader with the machine")
+	var gw: Node = ws.machine.find_child("ghost_warm", false, false)
+	check(gw != null, "the Workshop's load queues the ghost's shader with the machine")
+	if gw != null:
+		# for every vertex format a ghost can have: plain for components, instanced for fastener groups (the Note 9
+		# compiled a pipeline at the first ghost of a format the warm-up hadn't drawn)
+		var warm := {}
+		for c in gw.get_children():
+			var m: Mesh = c.mesh if c is MeshInstance3D else c.multimesh.mesh
+			warm[("m" if c is MeshInstance3D else "i") + WSs._format_key(m)] = true
+		var missing: Array = []
+		for id in ws.comps:
+			for c in ws.comps[id].get_children():
+				if c is MeshInstance3D and c.mesh != null and not warm.has("m" + WSs._format_key(c.mesh)):
+					missing.append(id)
+		for g in ws.groups:
+			for c in ws.groups[g].get_children():
+				if c is MultiMeshInstance3D and not warm.has("i" + WSs._format_key(c.multimesh.mesh)):
+					missing.append(g)
+		check(missing.is_empty(), "every ghost's vertex format is warmed with the machine (missing: %s)" % str(missing))
 	await _transmitter(tree, ws)
 	await _fixture(tree, ws)
 	ws.close()
