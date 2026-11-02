@@ -50,6 +50,8 @@ var _slot := -1
 var _thunder: Array = []                    # [seconds left, gain dB] of thunder on its way
 var _slots := {}                            # value name -> engine slot
 var _engine = null
+## The global shader parameters last set (RenderingServer's own getter is for the editor: the tests read these).
+static var globals := {}
 var _clear_solar: Array = []                # the clear kind's solar table (weather.json), [] without
 
 ## Makes the emitter (hidden, not emitting) under `parent`, so that its pipelines are compiled in the start's hidden
@@ -108,6 +110,7 @@ static func set_roof_map(rm: Dictionary) -> void:
 		rect = Vector4.ZERO
 		var img := Image.create(1, 1, false, Image.FORMAT_R8)
 		tex = ImageTexture.create_from_image(img)
+	globals["wx_roof_rect"] = rect
 	RenderingServer.global_shader_parameter_set("wx_roof_rect", rect)
 	RenderingServer.global_shader_parameter_set("wx_roof", tex)
 
@@ -284,9 +287,10 @@ func _apply(l: Dictionary) -> void:
 		ui.sounds.weather = {"wind": clampf(0.35 + l.wind / 12.0, 0.35, 1.6), "rain": l.rain, "sand_hiss": l.sand}
 
 static func _apply_globals(l: Dictionary) -> void:
-	RenderingServer.global_shader_parameter_set("wx_wet", float(l.get("wet", 0.0)))
-	RenderingServer.global_shader_parameter_set("wx_dust", float(l.get("dust_laid", 0.0)))
-	RenderingServer.global_shader_parameter_set("wx_rain", float(l.get("rain", 0.0)))
+	for kv in [["wx_wet", "wet"], ["wx_dust", "dust_laid"], ["wx_rain", "rain"]]:
+		var x := float(l.get(kv[1], 0.0))
+		globals[kv[0]] = x
+		RenderingServer.global_shader_parameter_set(kv[0], x)
 
 ## Lightning: the flashes of the slots the model's step has reached, and their thunder after the distance's delay.
 func _flash(e, delta: float) -> void:

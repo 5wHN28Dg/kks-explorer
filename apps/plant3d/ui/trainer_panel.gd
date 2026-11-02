@@ -75,8 +75,8 @@ func refresh() -> void:
 			pending[item[1]] = true
 		elif item[0] == "repair":
 			fixing[item[1]] = true
-	var sig := "%s|%s|%s|%s|%s" % [ui.clock.scenario, str(e.faults_done.keys()), str(e.faults_fixed.keys()),
-			str(pending.keys()), str(fixing.keys())]
+	var sig := "%s|%s|%s|%s|%s|%d" % [ui.clock.scenario, str(e.faults_done.keys()), str(e.faults_fixed.keys()),
+			str(pending.keys()), str(fixing.keys()), int(e.wx_kind) if e.ix.has("world_wx") else -1]
 	if sig == _sig:
 		return
 	_sig = sig

@@ -202,10 +202,10 @@ VOICES = {
         'Wind at the ear: turbulence round the head and the plant\'s structures, broadband and low (pink 30-1,500 Hz), '
         'rising and falling in gusts of several seconds (a 16 s loop, so the gusts don\'t repeat every few)')),
     # the weather heard (REALISM.md §5.4, WX3): the app sets their gains from the model's rain, dust and lightning
-    'rain': dict(spl=72, drops=(400, 0.25), why=(
+    'rain': dict(spl=76, drops=(400, 0.25), why=(
         'Rain at the ear outdoors: drops striking the ground, steel and roof sheeting all round, broadband white '
         'noise 500-10,000 Hz, with single near drops ringing (as the cooling tower\'s rain, lighter and denser)')),
-    'sand_hiss': dict(spl=70, seconds=16, noise_am=[(0.0625, 0.5), (0.25, 0.2)], why=(
+    'sand_hiss': dict(spl=76, seconds=16, noise_am=[(0.0625, 0.5), (0.25, 0.2)], why=(
         'Blown sand: grains hitting steel, sheeting and the ear in gusts, a high hiss (white 1,500-9,000 Hz) rising and '
         'falling with the wind (a 16 s loop, as the wind\'s)')),
     'thunder': dict(spl=88, once=dict(kind='rumble', seconds=6.0, tau=1.6), why=(

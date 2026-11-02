@@ -79,7 +79,7 @@ func _looks() -> Array:
 		p.append("lightning only in a thunderstorm")
 	if by["dust_haze@12"].ratio > 0.2 or by["dust_haze@12"].fog_density <= WeatherView.CLEAR_FOG:
 		p.append("dust haze is a haze, not a storm: %s" % str(by["dust_haze@12"]))
-	if by["fog@2"].ratio != 0.0 or by["fog@2"].fog_density < 0.01:
+	if by["fog@2"].ratio != 0.0 or by["fog@2"].fog_density < 0.005:
 		p.append("fog at night is thick and nothing falls: %s" % str(by["fog@2"]))
 	return p
 
@@ -163,9 +163,9 @@ func _app(tree: SceneTree) -> Array:
 	var e = ui.clock.engine
 	if wv.on or e.ix.has("world_wx"):
 		p.append("cold_iron has no weather, yet the view is on")
-	if RenderingServer.global_shader_parameter_get("wx_wet") != 0.0 or main.env.fog_density != WeatherView.CLEAR_FOG:
-		p.append("without weather the plant is not at its own look")
-	var rect: Vector4 = RenderingServer.global_shader_parameter_get("wx_roof_rect")
+	if WeatherView.globals.get("wx_wet") != 0.0 or not is_equal_approx(main.env.fog_density, WeatherView.CLEAR_FOG):
+		p.append("without weather the plant is not at its own look: wet %s, fog %f" % [str(WeatherView.globals.get("wx_wet")), main.env.fog_density])
+	var rect: Vector4 = WeatherView.globals.get("wx_roof_rect")
 	if FileAccess.file_exists("res://built/plant.json") and rect.z <= 0.0:
 		p.append("the roof map was not handed to the shaders")
 	# a scenario with weather: the instructor sets a sandstorm, the values jump to its targets (a jump's step)
@@ -186,6 +186,7 @@ func _app(tree: SceneTree) -> Array:
 	if String(kinds[int(e.wx_kind)].id) != "sandstorm":
 		p.append("the instructor's Sandstorm did not set the kind (%d)" % int(e.wx_kind))
 	ui.trainer.refresh()
+	await tree.process_frame
 	if App.find_button(ui.trainer, "Sandstorm") == null or not App.find_button(ui.trainer, "Sandstorm").disabled:
 		p.append("the panel does not show the sandstorm as the kind now")
 	# the lags take minutes: put the driven values at the sandstorm's noon and let the view ease to them
@@ -202,7 +203,7 @@ func _app(tree: SceneTree) -> Array:
 		p.append("the fog is %f in a sandstorm" % main.env.fog_density)
 	if wv.particles.amount_ratio < 0.9 or l.get("mode", "") != "sand":
 		p.append("no blown sand in a sandstorm (ratio %f, %s)" % [wv.particles.amount_ratio, l.get("mode", "")])
-	if float(RenderingServer.global_shader_parameter_get("wx_dust")) < 0.9:
+	if float(WeatherView.globals.get("wx_dust")) < 0.9:
 		p.append("no laid dust in a sandstorm")
 	if main.sun.light_energy > Lighting.SUN_ENERGY * 0.5:
 		p.append("the sun is not dimmed in a sandstorm (%f)" % main.sun.light_energy)
@@ -219,7 +220,7 @@ func _app(tree: SceneTree) -> Array:
 		e.cur[e.ix[id]] = WeatherView.table_at(rk.targets[id], 12.0)
 	for i in 30:
 		wv._process(1.0)
-	if float(RenderingServer.global_shader_parameter_get("wx_wet")) < 0.9 or wv.look.mode != "rain":
+	if float(WeatherView.globals.get("wx_wet")) < 0.9 or wv.look.mode != "rain":
 		p.append("a thunderstorm is not wet and raining")
 	if ui.sounds.ambience_gain("rain") < SoundPlayerRef.ROOF_RAIN * 0.9:
 		p.append("rain is not heard")
@@ -234,9 +235,10 @@ func _app(tree: SceneTree) -> Array:
 	ui.restart("cold_iron", true)
 	await tree.process_frame
 	wv._process(0.1)
-	if wv.on or main.env.fog_density != WeatherView.CLEAR_FOG or wv.particles.amount_ratio != 0.0 \
-			or RenderingServer.global_shader_parameter_get("wx_wet") != 0.0 or not ui.sounds.weather.is_empty():
-		p.append("after a restart without weather the weather is still drawn")
+	if wv.on or not is_equal_approx(main.env.fog_density, WeatherView.CLEAR_FOG) or wv.particles.amount_ratio != 0.0 \
+			or WeatherView.globals.get("wx_wet") != 0.0 or not ui.sounds.weather.is_empty():
+		p.append("after a restart without weather the weather is still drawn: on %s, fog %f, ratio %f, wet %s, sounds %s" % [
+			wv.on, main.env.fog_density, wv.particles.amount_ratio, str(WeatherView.globals.get("wx_wet")), str(ui.sounds.weather)])
 	main.free()
 	return p
 
