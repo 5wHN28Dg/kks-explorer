@@ -337,14 +337,15 @@ func _hse_stop(tree: SceneTree) -> Array:
 	var main := App.start(tree)
 	var ui = main.ui
 	ui.player.set_physics_process(false)
-	_scenario(ui, "test_hse", "06:30")
+	_scenario(ui, "test_hse", "05:00")     # (as the day's: a shortcut in the paint job, seed 2, PLANT3D §21.12)
 	var why: String = await _take(tree, ui, "test_hse", "Play Safety 2 (coming on shift)")
 	if why != "":
 		main.free()
 		return [why]
 	var e = ui.clock.engine
 	var log := []
-	var stopped := func(): return _has_ev(e, ["stop", "hse2", "con5", "unsafe", "wo_paint_cw", "done"])
+	# (whichever contractor the seed has take the shortcut: since S4's timings it is not always the same one)
+	var stopped := func(): return _has_ev(e, ["stop", "hse2", null, "unsafe", "wo_paint_cw", "done"])
 	if not await _steps(tree, ui, stopped, 6000, log):
 		var cur = e.sp_cur[e.trainee()]
 		var msg := "the HSE officer did not stop the contractor's shortcut (now %s, the task %s)" % [ui.clock_text(),
@@ -352,19 +353,23 @@ func _hse_stop(tree: SceneTree) -> Array:
 		main.free()
 		return p + log.slice(0, 3) + [msg]
 	p += log.slice(0, 3)
-	if not _has_ev(e, ["task", "con5", "con_paint_cw_short", "abandoned"]):
+	var con := ""
+	for ev in e.events:
+		if ev[1] == "stop" and ev[2] == "hse2" and ev[4] == "unsafe" and ev[5] == "wo_paint_cw" and ev[6] == "done":
+			con = ev[3]
+	if not _has_ev(e, ["task", con, "con_paint_cw_short", "abandoned"]):
 		p.append("the contractor's shortcut was not abandoned when stopped")
-	if not _has_ev(e, ["task", "con5", "leave_shortcut", "start"]):
+	if not _has_ev(e, ["task", con, "leave_shortcut", "start"]):
 		p.append("the contractor was not given the put-right task")
 	if not e.inputs.any(func(x): return x[1] == "zone" and x[2] == "cw_house" and x[3] == "in"):
 		p.append("no zone input for the CW pump house")
 	# the people's hats: a contractor in the pump house wears theirs on the head (PLANT3D §18.2, §17.11)
-	if not ui.people.hat_on(e, e._sm, e._sm.person_ix["con5"]):
+	if not ui.people.hat_on(e, e._sm, e._sm.person_ix[con]):
 		p.append("the contractor in the pump house does not show the hard hat on")
 	ui.open_debrief()
 	ui.debrief._tab("safety")
 	var t := App.texts(ui.debrief)
-	if not t.contains("Work stopped by Safety 2") or not t.contains("Unsafe act: Contractor 5"):
+	if not t.contains("Work stopped by Safety 2") or not t.contains("Unsafe act: " + e._sm.people[e._sm.person_ix[con]]["call"]):
 		p.append("the debrief's Safety tab: %s" % t.left(500))
 	ui.close_debrief()
 	_save(ui, p)

@@ -3087,5 +3087,17 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   operations and maintenance managers, the three engineers: through the morning meeting), the trainee riding the bus
   in and home, and a day crew's evening in the camp to the jump. The generator's trainee tries each standing bus once
   (a full one: the next).
-- **The app:** people at a `hidden` place are drawn by nobody (`ui/people_view.gd`; `tests/test_camp_people.gd`).
+- **The engine** (both, bit for bit): a person with a home off duty but within one of their duties' spans runs the
+  duty's idle task (§21.2). It changes five of S4a's camp runs in `staff.runs` (items 50, 51 and 53–55: the people off
+  the bus before their duty, and run 51's trainee, who tries each standing bus once); every other item of the file
+  other than `day` is as it was (a JSON comparison of the old and the new file).
+- **The app:** people at a `hidden` place are drawn by nobody (`ui/people_view.gd`; `tests/test_camp_people.gd`); the
+  Crew panel describes a `ride` step (to the stop, "Get on the bus" when one stands there going to its `to`, or
+  "Walk instead") and a `sleep` step ("Take me home"); off the bus the walker stands at the stop the engine put them
+  at. The permit form's "lock stays on until its job is done" uses §21.1's off site (with homes nobody is placeless),
+  and the app's tests play the bus step by walking instead.
+- **The staff step's cost** on the laptop (`sim/tests/bench_step.gd`, the laptop shared with other jobs): 125 µs a step
+  on average over a day's 24,000 steps (p99 337 µs), 127 µs at the shift change with the bus (p99 180 µs), 164 µs at
+  the day's start; model and staff together 322 µs. S3's shift change was 56 µs: the 91 people and the bus about
+  double it. The phone's is S4d's (§21.10's 0.3 ms).
 
