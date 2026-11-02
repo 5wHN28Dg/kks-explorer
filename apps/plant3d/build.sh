@@ -68,6 +68,11 @@ for d in areas model scenarios procedures; do
   mkdir -p "$HERE/built/content/$d"
   cp "$ROOT/data/plant3d/$d/"*.json "$HERE/built/content/$d/"
 done
+# the generated P&IDs (docs/plant3d/REALISM.md §6.1.1, tools/plant3d/pid.py): a view of the content, made at every
+# build, never committed; the app reads them from built/drawings (ui/drawings.gd)
+python3 "$ROOT/tools/plant3d/pid.py" "$HERE/built/drawings" >"$HERE/.drawings.log" 2>&1 ||
+  { tail -5 "$HERE/.drawings.log"; echo "the P&IDs were not made (apps/plant3d/.drawings.log)" >&2; exit 1; }
+cat "$HERE/.drawings.log"
 # what About shows (app/about.gd): the third-party assets' notices, and the commit this build is made of and whether
 # the checkout had changes (tools/plant_release.py finds the commit in the packages: the release's own)
 cp "$HERE/about.json" "$HERE/built/about.json"

@@ -153,6 +153,7 @@ class Sheet:
         self.lines, self.circles, self.fills, self.texts = [], [], [], []
         self.spots, self.links, self.revisions, self.clouds = [], [], [], []
         self.symbols = []          # (box, owner): symbols must not overlap each other
+        self.positions = {}        # an equipment block's code -> its symbol's centre (a revision keeps them, revise())
         self.inside = {}           # a code drawn inside another's symbol (an HRSG's heating surfaces) -> that code
 
     def line(self, pts, w, dash, owner):
@@ -488,7 +489,8 @@ def F_trim(t, n):
 # ================================================================ the generator
 
 class Gen:
-    def __init__(self, plant, areas, sheet_index, items, sheets_meta, revisions=None, gap=(34.0, 18.0)):
+    def __init__(self, plant, areas, sheet_index, items, sheets_meta, revisions=None, gap=(34.0, 18.0), pins=None):
+        self.pins = pins or {}
         self.plant, self.areas, self.items = plant, areas, items
         self.si = sheet_index
         self.meta = sheets_meta[sheet_index]
@@ -785,6 +787,9 @@ class Gen:
         for b in blocks.values():
             b.x = round(b.x / G) * G
             b.y = round(b.y / G) * G
+            # a later revision keeps every block where the one before had it (only what changed moves)
+            if b.code in self.pins:
+                b.x, b.y = self.pins[b.code]
             if b.y + b.down > y1 + 0.01 or b.y - b.up < y0 - 0.01:
                 raise LayoutError(f'{self.sid}: {b.code} falls outside the sheet (the sheet is too full)')
         bl = sorted(blocks.values(), key=lambda b: b.code)
@@ -1501,12 +1506,19 @@ class Gen:
 
     def make(self):
         self.collect()
-        for gap in ((34.0, 18.0), (44.0, 24.0), (26.0, 16.0), (56.0, 30.0), (20.0, 14.0), (16.0, 12.0)):
+        tries = [(34.0, 18.0), (44.0, 24.0), (26.0, 16.0), (56.0, 30.0), (20.0, 14.0), (16.0, 12.0)]
+        if self.pins:
+            tries = [self.pins.get('#gap', tries[0])] + tries
+        for gap in tries:
             self.gap = gap
             try:
-                return self._make()
+                sh = self._make()
+                sh.positions['#gap'] = self.gap
+                return sh
             except LayoutError as e:
                 last = e
+                if self.pins:
+                    self.pins = {}       # pinned places that no longer fit: the sheet is laid out afresh
                 for b in self.blocks.values():
                     b.ports = {'L': [], 'R': []}
         raise last
@@ -1523,6 +1535,7 @@ class Gen:
         self.assign_ports()
         for c in sorted(self.blocks):
             self.blocks[c].draw(sh, grid, self.homes)
+            sh.positions[c] = (self.blocks[c].x, self.blocks[c].y)
         self.place_local_ends(sh, grid)
         self.place_margins()
         self.margin_tip = {}
@@ -1874,7 +1887,7 @@ def seg_box(p, q, b):
     return True
 
 
-def make(data=DATA, revisions=None, areas_override=None):
+def make(data=DATA, revisions=None, areas_override=None, pins=None):
     """Every sheet: ({sheet id: Sheet}, index dict). `revisions` {sheet id: [[rev, text], …]} for a revised set."""
     plant, areas, model_codes = load(data)
     if areas_override is not None:
@@ -1886,7 +1899,7 @@ def make(data=DATA, revisions=None, areas_override=None):
     for i, meta in enumerate(SHEETS):
         if i == 0:
             continue
-        g = Gen(plant, areas, i, items, SHEETS, revisions.get(meta['id']))
+        g = Gen(plant, areas, i, items, SHEETS, revisions.get(meta['id']), pins=(pins or {}).get(meta['id']))
         sh = g.make()
         check_sheet(sh)
         sheets[meta['id']] = sh

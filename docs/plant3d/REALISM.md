@@ -678,16 +678,17 @@ public standards. No new dependency (decision 0073 already chose our own format 
   naming that sheet and the code at the far end, which the viewer opens when tapped. The tool fails the content check
   if two symbols overlap, a text overlaps another text, a symbol or a line, a code has no home or two, or a character
   is outside the lettering; its output is the same on every run (tested).
-- **Format** `walkdown-plant-drawing` version 1, a file per sheet in `data/plant3d/drawings/` (made by
-  `make_content.py`, so the committed files are checked like the rest of the content), and an index
-  `drawings/index.json` (`walkdown-plant-drawings`: the sheets in order, each code's home sheet, and the lettering's
+- **Format** `walkdown-plant-drawing` version 1, a file per sheet, made by `tools/plant3d/pid.py` at every build of
+  the app into `apps/plant3d/built/drawings/` (a view of the content, never committed: the reference validator's
+  file list stays the plant format's), and an index `index.json` (`walkdown-plant-drawings`: the sheets in order, each code's home sheet, and the lettering's
   strokes). A sheet holds, in sheet millimetres with y down: `lines` (`[width, dash, [x, y, …]]`, dash 0 for a solid
   line), `circles` (`[width, x, y, r]`), `fills` (closed polygons), `texts` (`[x, y, height, angle, align,
   text]`), `spots` (`[code, x0, y0, x1, y1, home]`), `links` (`[sheet, code, x0, y0, x1, y1]`: the off-sheet
   connectors), `revisions` (`[rev, text]`, the table) and `clouds` (`[rev, x0, y0, x1, y1]`).
 - **Revisions.** The shipped sheets are revision 0 ("first issue, generated from the content"). The tool's `revise`
-  makes a later revision from changed content with the same generator: a row in the table, and a cloud round every hot
-  spot that is new, gone or moved. DC1 builds and tests that on a synthetic change; EN2's change objects (§10.2) use it.
+  makes a later revision from changed content with the same generator, every equipment block kept where the
+  revision before had it (only what changed moves; a sheet where that no longer fits is laid out afresh): a row in
+  the table, and a cloud round every hot spot that is new, gone or moved. DC1 builds and tests that on a synthetic change; EN2's change objects (§10.2) use it.
 - **The viewer** (`ui/drawing_view.gd`): full screen, as the control room's screens, with the 3D view off
   (`disable_3d`). The sheets in tabs; drag or the left stick pans, pinch, the wheel, the triggers and + and − zoom;
   a tap on a hot spot opens the card beside the sheet, a tap on a connector the other sheet at that code; the card's
