@@ -247,6 +247,34 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
   model time, 14 ms of model a second) and the session layer took 0.30 ms a frame on average, 3.8 ms at most (its own
   2 ms budget's known excess, MILESTONES.md MP2). The scene is 23 KB and the space 28 KB of the package.
 
+**As built (K2, 2026-11-02).**
+- `apps/plant3d/workshop/assembly.gd` (pure: the steps, placed and loose parts, the two sentences, snapping, the
+  pile) and the steps in `workshop.gd`: **Assemble from exploded**, **Assemble from a pile**, **Take apart step by
+  step**. A part is placed (at home relative to its parent, riding with it wherever that stands) or loose, with a
+  transform in the machine's own frame, so a loose part stays where it lies when its parent is moved, and a part may
+  be put into a parent that is still loose (the terminal block into a housing on the pile). The insides of a sealed
+  component are never loose: their steps are done with it. The slider waits while the steps are on; Reset ends them
+  with every part home, Reassemble all animates the loose parts home.
+- The next step's words (its `text` and `why`) show above the tools; assembling, its ghost stands where the part goes
+  (its own meshes, `ws_xray`, beside a loose parent too). A part let go within 2 % of the machine's box diagonal (at
+  least 5 mm) and 10° of its place, modulo its `sym` (a group judged at its items' centre), snaps there unless a need
+  is unmet: then the need's first sentence shows and the part stays loose. A placed part that a placed part needs
+  can't be picked up (the need's second sentence). One step per fastener group, the group moved as one.
+- The pile: every part (not a sealed one's insides) on the floor in front of the machine, in its home orientation, in
+  rows by size, largest first (`Assembly.pile`, a fixed layout).
+- `ws_xray` (`workshop/ws_xray.gdshader`: unshaded, `blend_mix`, `depth_draw_never`, a little more opaque at the
+  outline). Queued twice: a hidden mesh of the space's (the plant's vertex format) with it in the plant 4 s after the
+  first walkable frame (`warm_up`, as the chevron), and a hidden copy of one of the machine's meshes with it in the
+  Workshop's load.
+- The transmitter's 16 steps follow the 3051 manual's reassembly (§6.5–§6.5.4; its take-apart, §6.4, is the
+  reverse): the sensor module, the housing (needs the module), its set screw, the electronics board, the display, the
+  electronics cover (needs the board and the display), the terminal block, the cable gland, the terminal cover (needs
+  the terminal block), the process flange (needs the module), its bolts, the drain/vent valves, the manifold. The
+  electronics cover is now sealed (the manual's spare parts list its window with it).
+- The fixture kind is assembled from exploded in the tests (its lid's four-fold symmetry).
+- The Workshop walk keeps its 3 minutes with the K1 phases shortened, then takes the machine apart step by step (each
+  part drawn out and let go) and puts it back from a pile (each part drawn to its place and snapped).
+
 **Retrofitting.** Each generator's `use()` calls stay; a generator gains `g.comp()` and `g.only()` calls around groups
 of primitives. Moving pieces' mesh builders (`g.move`) carry `comp` too. Proved on the transmitter alone first (K1a),
 then one kind per milestone.
