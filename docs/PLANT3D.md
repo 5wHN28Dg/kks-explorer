@@ -3314,6 +3314,10 @@ geometry in the model; none of it changes what the staff do, which depends only 
   road and standing; a jump while steering; a session with a slot playing nobody and a release while steering. Every
   earlier item is unchanged (a JSON comparison of the old and new file: only the six runs appended).
   `tests/test_plant3d_staff.py` `SteeredRuns` checks their story by name.
+- **A fix found on the way** (S4a's, not steering's): a session's player who plays a driver, released aboard, went on
+  with the task the run took them from by counting every step since the player's last count at once (the GDScript
+  engine; ended on arrival), where the reference counts an NPC's work a step a turn: `let_go` now marks such tasks as
+  resumed (`tests/test_plant3d_sim.py` `GdscriptReleasedDriver`, which failed without it).
 - **The app** (`app/bus_drive.gd`): takes the wheel when the trainee's person drives a run, drives the bus as §21.16
   says (a kinematic bicycle model, `test_move` against the solids and other vehicles, the automatic brake), the
   driving bar, the doors and wheel buttons and keys, the drive log for the debrief (saved with the run), `pos`'s

@@ -1053,6 +1053,13 @@ func let_go(e, slot: int) -> void:
 		for r in e.riders[k]:
 			if _same(r, pid):
 				queue_alight(e, e.m.lifts[k]["id"], pid)
+	# their work counted by the player's rule (§17.4: a step at a time) is an NPC's from now: its next count is one
+	# step, not the steps since the player's last (a task paused while they were played, e.g. a driver taken into a
+	# cab, §21.4; the reference counts an NPC's work turn by turn)
+	for inst in e.sp_queue[pi] + e.sp_held[pi]:
+		var st: Dictionary = inst["st"]
+		if st.has("left") and st.has("last"):
+			st["resumed"] = true
 	var c = e.sp_cur[pi]
 	if c != null:
 		if not c["idle"]:
