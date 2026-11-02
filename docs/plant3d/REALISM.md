@@ -1050,9 +1050,10 @@ Manufacturers' published manuals and handbooks:
 - [R3051] Emerson, Rosemount 3051 pressure transmitter reference manual (loop resistance for HART, troubleshooting,
   trim). · [DVC] Emerson, Fisher FIELDVUE DVC6200 instruction manual (positioner calibration). · [FCVH] Emerson,
   Control Valve Handbook (packing, stiction, troubleshooting). · [SKF] SKF, Bearing maintenance handbook and rolling
-  bearings catalogue (mounting, heating, relubrication quantity, defect frequencies). · [GER3567] GE Power, GER-3567,
-  Gas turbine performance characteristics. · [GER3620] GE Power, GER-3620, Heavy-duty gas turbine operating and
-  maintenance considerations (inspections, filters, washing, factors on intervals). · [Fluke] Fluke application
+  bearings catalogue (mounting, heating, relubrication quantity, defect frequencies). · [GER3567] GE Power Systems,
+  GER-3567H, GE gas turbine performance characteristics (F. J. Brooks, 2000). · [GER3620] GE Vernova, GER-3620P,
+  Heavy-duty gas turbine operating and maintenance considerations (revision P, 2021; inspections, filters, washing,
+  factors on intervals), https://www.gevernova.com/gas-power/resources/technical-downloads/ger-3620p-operation-maintenance-considerations. · [Fluke] Fluke application
   notes on clamp meters and 4–20 mA loop calibrators.
 
 Textbooks:
@@ -1129,14 +1130,23 @@ Public guidance and regulations (free to read):
   https://www.fmglobal.com/research-and-resources/fm-global-data-sheets.
 
 Manufacturers' published documents:
-- [GEI41040] GE Vernova, GEI-41040, Specification for fuel gases for combustion in heavy-duty gas turbines ·
-  [GEI41047] GE Vernova, GEI-41047, Heavy-duty gas turbine liquid fuel specifications · [GER3568] GE, GER-3568, Dry
-  low NOx combustion systems for GE heavy-duty gas turbines · [Swagelok] Swagelok, tube fitter's manual and gaugeable
-  tube fitting installation instructions.
+- [GEI41040] GE Vernova, GEI-41040, Specification for fuel gases for combustion in heavy-duty gas turbines
+  (revisions up to at least M, 2011; the current revision not confirmed: supplied with the turbine) · [GEI41047] GE,
+  GEI-41047, Gas turbine liquid fuel specifications (revision H is the one contracts cite; the current revision not
+  confirmed) · [GER3568] GE Power Systems, GER-3568G, Dry low NOx combustion systems for GE heavy-duty gas turbines
+  (L. B. Davis, S. H. Black, 2000) · [Swagelok] Swagelok, Tube fitter's manual (MS-13-03) and the tube fitting
+  installation instructions (MS-12-01, with the gap inspection gauge), https://www.swagelok.com/toolbox/tube-fitting-manual.
+
+Checked 2026-11-02 (web search): every GE number above exists with that title; GEI-41040 and GEI-41047 are not
+published by GE for download (they come with a turbine), so they are cited for what public summaries and contracts say
+of them until a copy is in hand.
 
 Textbooks:
-- [Astrom] K. J. Åström, T. Hägglund, Advanced PID control (ISA, 2006) · [Dooley] R. B. Dooley, W. P. McNaughton,
-  Boiler and HRSG tube failures: theory and practice (2016) · [BW-Steam] Babcock & Wilcox, Steam: its generation and
+- [Astrom] K. J. Åström, T. Hägglund, Advanced PID control (ISA, 2006) · [Dooley] **unverified**: cited from memory
+  as R. B. Dooley, W. P. McNaughton, Boiler and HRSG tube failures: theory and practice (2016); a 2026-11-02 search
+  found no such publicly available book, only EPRI's report Boiler and heat recovery steam generator tube failures:
+  theory and practice (1012757, three volumes), which is sold to EPRI members, not free. MC4 needs a public source in
+  its place (or the user's choice to cite EPRI's) before its content is written · [BW-Steam] Babcock & Wilcox, Steam: its generation and
   use (chemical cleaning) · [Palmer] R. D. Palmer, Maintenance planning and scheduling handbook (McGraw-Hill).
 
 ## 15. Not in this programme (deliberately)
