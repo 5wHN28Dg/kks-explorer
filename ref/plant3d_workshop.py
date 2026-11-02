@@ -16,7 +16,7 @@ VERSION = 1
 CID = re.compile(r'[a-z_][a-z0-9_]{0,15}')      # component and fastener group ids (§4.1: at most 16 characters)
 SID = re.compile(r'[a-z_][a-z0-9_]{0,31}')      # source ids
 MAX = {'components': 200, 'fasteners': 64, 'sources': 64, 'steps': 400, 'needs': 16, 'planes': 2}
-FASTENER_KINDS = ('bolt', 'stud_nut', 'screw', 'cap_screw', 'threaded_cover', 'clamp', 'gland', 'pin', 'circlip', 'key')
+# (fastener kinds come from the generator: the content build's join checks them, builder/workshop_build.gd)
 
 
 def cid(x, where):
@@ -67,9 +67,11 @@ def check(w, kit=None, where='workshop', parts=None):
         srcs[s['id']] = 0
 
     def cite(lst_, sw):
-        for x in lst(lst_, sw, 1, 16):
-            need(x in srcs, 'bad_ref', f'{sw}: no source {x!r}')
+        xs = lst(lst_, sw, 1, 16)
+        for x in xs:
+            need(isinstance(x, str) and x in srcs, 'bad_ref', f'{sw}: no source {x!r}')
             srcs[x] += 1
+        need(len(set(xs)) == len(xs), 'dup_id', f'{sw}: a source cited twice')
 
     comps = w['components']
     need(isinstance(comps, dict) and 1 <= len(comps) <= MAX['components'], 'bad_length',
@@ -97,9 +99,9 @@ def check(w, kit=None, where='workshop', parts=None):
         keys(d, ('name', 'joins', 'sources'), (), gw)
         words(d['name'], f'{gw}.name', 60)
         joins = lst(d['joins'], f'{gw}.joins', 2, 16)
-        need(len(set(joins)) == len(joins), 'dup_id', f'{gw}.joins')
         for j in joins:
-            need(j in comps, 'bad_ref', f'{gw}.joins: no component {j!r}')
+            need(isinstance(j, str) and j in comps, 'bad_ref', f'{gw}.joins: no component {j!r}')
+        need(len(set(joins)) == len(joins), 'dup_id', f'{gw}.joins')
         cite(d['sources'], f'{gw}.sources')
     steps = 0
     if 'assembly' in w:
@@ -121,6 +123,9 @@ def _assembly(a, comps, fast, cite, tx, where):
         p = s['place']
         need(isinstance(p, str) and (p in comps or p in fast), 'bad_ref', f'{sw}.place: no component or group {p!r}')
         need(p not in placed, 'dup_id', f'{sw}.place: {p} is placed twice')
+        if p in fast:          # a fastener group goes in once the components it joins are there
+            for j in fast[p]['joins']:
+                need(j in placed, 'bad_order', f'{sw}.place: {p} before {j}, which it joins')
         tx.run(s['text'], f'{sw}.text')
         if 'why' in s:
             tx.run(s['why'], f'{sw}.why')
@@ -142,7 +147,7 @@ def _assembly(a, comps, fast, cite, tx, where):
 def _views(v, comps, where):
     keys(v, (), ('xray_all', 'cutaway', 'run_exploded'), where)
     for c in lst(v.get('xray_all', []), f'{where}.xray_all', 0, MAX['components']):
-        need(c in comps, 'bad_ref', f'{where}.xray_all: no component {c!r}')
+        need(isinstance(c, str) and c in comps, 'bad_ref', f'{where}.xray_all: no component {c!r}')
     if 'cutaway' in v:
         cw = f'{where}.cutaway'
         keys(v['cutaway'], ('planes',), ('keep',), cw)
@@ -155,12 +160,12 @@ def _views(v, comps, where):
             need(abs(sum(x * x for x in n) - 1.0) < 1e-6, 'bad_number', f'{pw}.normal: a unit vector')
             num(pl['offset'], f'{pw}.offset', -0.5, 0.5)
         for c in lst(v['cutaway'].get('keep', []), f'{cw}.keep', 0, MAX['components']):
-            need(c in comps, 'bad_ref', f'{cw}.keep: no component {c!r}')
+            need(isinstance(c, str) and c in comps, 'bad_ref', f'{cw}.keep: no component {c!r}')
     if 'run_exploded' in v:
         r = v['run_exploded']
         rw = f'{where}.run_exploded'
         if r is not True:
             keys(r, ('allowed', 'why'), (), rw)
             for c in lst(r['allowed'], f'{rw}.allowed', 0, MAX['components']):
-                need(c in comps, 'bad_ref', f'{rw}.allowed: no component {c!r}')
+                need(isinstance(c, str) and c in comps, 'bad_ref', f'{rw}.allowed: no component {c!r}')
             words(r['why'], f'{rw}.why', 300)

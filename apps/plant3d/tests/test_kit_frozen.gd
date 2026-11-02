@@ -28,6 +28,8 @@ func run(_tree: SceneTree) -> Array:
 	for part in Frozen.parts():
 		if not covered.has(part):
 			problems.append("%s: no frozen case (a new part: record the digests again with tests/kit_frozen.gd)" % part)
+	for pr in Kit.problems:
+		problems.append("a generator's misuse of comp()/only(): " + pr)
 	if d.cases.size() < 1000:
 		problems.append("only %d frozen cases" % d.cases.size())
 	Kit.clear_cache()

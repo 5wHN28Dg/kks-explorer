@@ -5,11 +5,16 @@
 ##
 ## The scene: the root `Node3D` (named by the part; meta `workshop`: the data file's words, order, views and sources,
 ## `tris`, `box`, `flows`), then one `Node3D` per component at its pivot, named by its id and nested as the tree (metas
-## `id`, `depth`, `box` in the part's frame, `explode` [direction, metres], `sym`, `anchors` (part frame), `anim`,
+## `id`, `depth`, `box` (the part's frame in Godot's axes), `explode` [direction, metres], `sym`, `anchors`
+## (relative to the component's pivot, Godot's axes), `anim`,
 ## `thin`), each with one `MeshInstance3D` per material (its pieces merged, relative to the pivot; meta `mat`: the
 ## plant's material name, resolved when the scene is shown) and its fastener groups (a `Node3D` per group, metas
-## `id`, `kind`, `items` (transforms relative to the component's pivot: Godot's headless renderer keeps no MultiMesh
-## data), `back_out` (metres), with a `MultiMeshInstance3D` per material). Same frame as the plant's part (kit/README.md
+## `id`, `kind`, `items` (transforms relative to the component's pivot, in Godot's axes: the generator's "z, the way it
+## backs out" is an item's basis.y here, the meta `back_axis`), `back_out` (metres), with a `MultiMeshInstance3D` per
+## material whose instance transforms the app sets from `items` at load (Godot's headless renderer, which the build
+## runs under, keeps no MultiMesh data). The moving pieces (§7.7 anim channels) are drawn with their component's
+## meshes where they stand at 0, and described in the root's meta `moving` ([{name, pivot, axis, kind, travel}],
+## Godot's axes) for the milestones that animate them (K3, K4b). Same frame as the plant's part (kit/README.md
 ## "Frames"): origin and axes of the part.
 extends RefCounted
 
@@ -17,6 +22,7 @@ const Kit = preload("res://kit/kit.gd")
 const CID := "^[a-z_][a-z0-9_]{0,15}$"
 const MAX_DEPTH := 6
 const TRIS_MAX := 120000   # one kind's scene, all components and insides (WORKSHOP.md §8)
+const FASTENER_KINDS := ["bolt", "stud_nut", "screw", "cap_screw", "threaded_cover", "clamp", "gland", "pin", "circlip", "key"]
 
 ## Builds every kind with a data file in `data_dir` into `out_dir`. `equipment` (the plant builder's, kks -> {part,
 ## params}) gives a kind's parameters where its data file has none: the first instance of that kind in the plant.
@@ -131,7 +137,7 @@ static func params_for(part: String, data: Dictionary, equipment: Dictionary) ->
 ## One kind's Workshop scene: {scene: PackedScene, tris, res (Kit.make's Workshop result), errors}. `ctx` as Kit.make's
 ## (default: the part standing free, upright).
 static func scene(part: String, data: Dictionary, params: Dictionary, ctx := {}) -> Dictionary:
-	var out := {"scene": null, "tris": 0, "res": {}, "errors": []}
+	var out := {"scene": null, "tris": 0, "res": {}, "errors": [], "params": params}
 	if not Kit.has_part(part):
 		out.errors.append("the kit has no part %s" % part)
 		return out
@@ -144,6 +150,7 @@ static func scene(part: String, data: Dictionary, params: Dictionary, ctx := {})
 	if not out.errors.is_empty():
 		return out
 	var root := _nodes(part, res, data)
+	root.set_meta("params", params)   # what it was built with (the tests check that very shape)
 	for c in root.get_children():
 		_own(root, c)
 	var ps := PackedScene.new()
@@ -194,15 +201,25 @@ static func join(res: Dictionary, data: Dictionary) -> Array:
 			errs.append("fastener group %s: the generator makes it, the data file doesn't name it" % f.id)
 		if f.items.is_empty():
 			errs.append("fastener group %s: no items" % f.id)
+		if not f.kind in FASTENER_KINDS:
+			errs.append("fastener group %s: its kind %s is none of WORKSHOP.md §4.4's" % [f.id, f.kind])
 	for id in fwords:
 		if not groups.has(id):
 			errs.append("fastener group %s: the data file names it, the generator doesn't make it" % id)
 		for j in fwords[id].get("joins", []):
 			if not gen.has(j):
 				errs.append("fastener group %s: joins %s, which is no component" % [id, j])
+	for f in res.fasteners:
+		if fwords.has(f.id) and f.parent != "body" and gen.has(f.parent) and not f.parent in fwords[f.id].get("joins", []):
+			errs.append("fastener group %s: drawn in %s, which its data's joins don't name" % [f.id, f.parent])
+	var placed := {}
 	for s in data.get("assembly", []):
-		if not (gen.has(s.get("place", "")) or groups.has(s.get("place", ""))):
-			errs.append("assembly: a step places %s, which the generator doesn't make" % s.get("place", ""))
+		var pl: String = s.get("place", "")
+		if not (gen.has(pl) or groups.has(pl)):
+			errs.append("assembly: a step places %s, which the generator doesn't make" % pl)
+		elif gen.has(pl) and gen[pl].parent != "" and not placed.has(gen[pl].parent):
+			errs.append("assembly: %s is placed before %s, its parent in the tree" % [pl, gen[pl].parent])
+		placed[pl] = true
 		for n in s.get("needs", []):
 			if not gen.has(n[0]):
 				errs.append("assembly: a step needs %s, which the generator doesn't make" % n[0])
@@ -276,7 +293,10 @@ static func _nodes(part: String, res: Dictionary, data: Dictionary) -> Node3D:
 		n.set_meta("box", c.box)
 		n.set_meta("explode", explode_of(c, pbox))
 		n.set_meta("sym", c.sym)
-		n.set_meta("anchors", c.anchors)
+		var anchors := {}         # relative to the pivot: they ride with the component
+		for k in c.anchors:
+			anchors[k] = c.anchors[k] - c.pivot
+		n.set_meta("anchors", anchors)
 		n.set_meta("anim", c.anim)
 		n.set_meta("thin", c.thin)
 	# each component's pieces merged per material, relative to its pivot (the moving pieces where they stand at 0)
@@ -307,6 +327,7 @@ static func _nodes(part: String, res: Dictionary, data: Dictionary) -> Node3D:
 		g.set_meta("kind", f.kind)
 		g.set_meta("items", items)
 		g.set_meta("back_out", maxf(0.01, 2.0 * f.box.size.length()))
+		g.set_meta("back_axis", Vector3.UP)   # in an item's own basis (Godot's axes: the part frame's z)
 		host.add_child(g)
 		var mats := {}
 		for k in f.layers:
@@ -331,6 +352,10 @@ static func _nodes(part: String, res: Dictionary, data: Dictionary) -> Node3D:
 	root.set_meta("tris", res.tris)
 	root.set_meta("box", whole)
 	root.set_meta("flows", res.flows)
+	var moving: Array = []
+	for mv in res.moving:
+		moving.append({"name": mv.name, "pivot": mv.pivot, "axis": mv.axis, "kind": mv.kind, "travel": mv.travel})
+	root.set_meta("moving", moving)
 	return root
 
 static func _add(per: Dictionary, comp: String, mat: String, arr: Array, shift: Vector3) -> void:

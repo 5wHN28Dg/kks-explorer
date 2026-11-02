@@ -109,6 +109,7 @@ class Gen:
 	var fastener_groups: Array = []
 	var flows := {}
 	var cur_comp := "body"
+	var cur_only := ["", "hidden", []]   # the current only(): kind, role, replaced_by (moving builders made later take it)
 
 	func _init(params: Dictionary, context: Dictionary, MBs) -> void:
 		p = params
@@ -142,6 +143,7 @@ class Gen:
 			mb.seg_scale = seg_scale
 			mb.workshop = workshop
 			mb.comp_id = cur_comp
+			mb.set_only(cur_only[0], cur_only[1], cur_only[2])
 			moving[name] = {"pivot": pivot, "axis": axis.normalized(), "kind": kind, "travel": travel, "mb": mb}
 		return moving[name].mb
 
@@ -183,6 +185,7 @@ class Gen:
 	func only(kind := "", arg = null) -> void:
 		var role: String = arg if arg is String else "hidden"
 		var by: Array = arg if arg is Array else []
+		cur_only = [kind, role, by]
 		m.set_only(kind, role, by)
 		for n in moving:
 			moving[n].mb.set_only(kind, role, by)
@@ -235,6 +238,7 @@ class Gen:
 		return nozzle_name in ctx.get("used", [])
 
 static var _cache := {}
+static var problems: Array = []   # generators' misuse of comp()/only(), "part: what" (kept until the process ends)
 static var _kit_json: Dictionary = {}
 
 static func kit_json() -> Dictionary:
@@ -259,6 +263,7 @@ static func register(part: String, script: Script, budget: int) -> bool:
 	if MAKERS.has(part) or script == null or budget <= 0:
 		return false
 	_registered[part] = {"script": script, "budget": budget}
+	clear_cache()   # never a result made by a script registered before under that name
 	return true
 
 static func unregister(part: String) -> void:
@@ -325,6 +330,16 @@ static func make(part: String, params: Dictionary, ctx := {}, seg_scale := 1.0, 
 	if s == null:
 		return {}
 	s.call(part, part, g)
+	# a generator's misuse of comp()/only() (kit/mesh.gd `problems`), reported in either mode: in plant mode here and
+	# in `problems` (tests/test_kit_frozen.gd fails on any), in Workshop mode in its result too
+	var found: Array = g.m.problems.duplicate()
+	for n in g.moving:
+		found.append_array(g.moving[n].mb.problems)
+	for f in found:
+		var msg := "%s: %s" % [part, f]
+		if not problems.has(msg):
+			problems.append(msg)
+			push_error("kit: " + msg)
 	if workshop:
 		var w := _workshop_result(part, g)
 		_cache[key] = w
@@ -350,8 +365,10 @@ static func make(part: String, params: Dictionary, ctx := {}, seg_scale := 1.0, 
 ##   fasteners   [{id, kind, parent, items: [Transform3D], layers, box}] (items in the part's Godot frame, layers in an
 ##               item's own)
 ##   flows       {id: [points]}
-##   standins    [{replaced_by, layers: {mat|class|bucket key: {mat, cls, size, mesh, tris}}, box}]
-##   pieces      [{comp, kind, role, standin, box, tris}] every only() block
+##   standins    [{replaced_by, layers: {comp|shared|mat|class|bucket key: {mat, cls, size, mesh, tris}}, box, moving}]
+##               (`moving`: the moving piece's name, "" for the static builder's; its layers are relative to that pivot)
+##   pieces      [{comp, kind, role, standin, box, tris, moving}] every only() block (static and moving builders'; a
+##               moving piece's box relative to its pivot)
 ##   problems    the generator's mistakes (a piece in an undeclared component, a misuse of only())
 static func _workshop_result(part: String, g) -> Dictionary:
 	var res := {"part": part, "workshop": true, "layers": _ws_meshes(g.m.finish(), Vector3.ZERO), "moving": [],
@@ -402,15 +419,11 @@ static func _workshop_result(part: String, g) -> Dictionary:
 			"box": one if one != null else AABB()})
 	for id in g.flows:
 		res.flows[id] = g.flows[id].map(func(q): return _gv(q))
-	for si in g.m.standins:
-		var layers := _ws_meshes(g.m.finish_layers(si.layers), Vector3.ZERO)
-		var bb = null
-		for k in layers:
-			bb = _merge_box(bb, layers[k].mesh.get_aabb())
-		res.standins.append({"replaced_by": si.replaced_by, "layers": layers, "box": bb if bb != null else AABB()})
-	for pc in g.m.pieces:
-		res.pieces.append({"comp": pc.comp, "kind": pc.kind, "role": pc.role, "standin": pc.standin, "box": pc.box,
-			"tris": pc.tris})
+	var builders: Array = [["", g.m, Vector3.ZERO]]
+	for n in g.moving:
+		builders.append([n, g.moving[n].mb, _gv(g.moving[n].pivot)])
+	for bd in builders:
+		_ws_pieces(res, bd[0], bd[1], bd[2])
 	var n := 0
 	for k in res.layers:
 		n += res.layers[k].tris[0]
@@ -422,6 +435,23 @@ static func _workshop_result(part: String, g) -> Dictionary:
 			n += f.layers[k].tris[0] * f.items.size()
 	res["tris"] = n
 	return res
+
+## A builder's stand-ins and only() blocks into the result (`moving`: its moving piece's name, "" the static builder;
+## `pivot`: that piece's pivot in Godot's axes, its layers and boxes made relative to it as its meshes are).
+static func _ws_pieces(res: Dictionary, moving: String, mb, pivot: Vector3) -> void:
+	var first: int = res.standins.size()
+	for si in mb.standins:
+		var layers := _ws_meshes(mb.finish_layers(si.layers), pivot)
+		var bb = null
+		for k in layers:
+			bb = _merge_box(bb, layers[k].mesh.get_aabb())
+		res.standins.append({"replaced_by": si.replaced_by, "layers": layers, "box": bb if bb != null else AABB(),
+			"moving": moving})
+	for pc in mb.pieces:
+		var box: AABB = pc.box
+		box.position -= pivot
+		res.pieces.append({"comp": pc.comp, "kind": pc.kind, "role": pc.role,
+			"standin": first + pc.standin if pc.standin >= 0 else -1, "box": box, "tris": pc.tris, "moving": moving})
 
 static func _merge_box(a, b: AABB) -> AABB:
 	return b if a == null else (a as AABB).merge(b)

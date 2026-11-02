@@ -280,7 +280,9 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   module is sealed (its isolating diaphragm and sensing cell are simple solids); the housing is the plant's drum split
   into the housing (two compartments) and its two screwed covers, with the electronics board and the LCD on the
   display side and the terminal block on the field side, held on the module's neck by the housing rotation set
-  screw. The two alignment screws and the O-rings are not drawn.
+  screw. The two alignment screws and the O-rings are not drawn; the two isolating diaphragms are one disk; the
+  plant's one block is the process flange and the module's coplanar base together, so the flange bolts' shanks end
+  in it.
 
 ## Tables and their sources
 

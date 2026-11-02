@@ -138,6 +138,21 @@ class WorkshopData(unittest.TestCase):
         w = copy.deepcopy(self.fixture)
         w['assembly'][0]['text'] = 'not a run'
         self.refused(w, 'bad_type')
+        w = copy.deepcopy(self.fixture)
+        w['assembly'].insert(0, w['assembly'].pop())   # the screws before the lid and base they join
+        self.refused(w, 'bad_order')
+
+    def test_odd_values_are_refused_not_crashes(self):
+        for path, value in ((('components', 'base', 'sources'), [['fixture']]),
+                            (('fasteners', 'lid_screws', 'joins'), [['lid'], 'base']),
+                            (('components', 'base', 'sources'), ['fixture', 'fixture'])):
+            w = copy.deepcopy(self.fixture)
+            w[path[0]][path[1]][path[2]] = value
+            with self.assertRaises(FormatError, msg=str(value)):
+                W.check(w, None, 'w', parts={'test_gadget'})
+        w = copy.deepcopy(self.fixture)
+        w['views'] = {'xray_all': [{}]}
+        self.refused(w, 'bad_ref')
 
     def test_views(self):
         w = copy.deepcopy(self.fixture)

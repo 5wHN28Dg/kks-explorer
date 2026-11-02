@@ -36,11 +36,19 @@ func run(_tree: SceneTree) -> Array:
 		var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(data_dir.path_join(f)))
 		var part: String = data.part
 		kinds += 1
+		# the parameters the build made its scene with (the plant's first instance of the kind), else the defaults
 		var params := WB.params_for(part, data, {})
+		var built := "res://built/workshop/%s.scn" % part
+		if ResourceLoader.exists(built):
+			var bs: Node = (load(built) as PackedScene).instantiate()
+			params = bs.get_meta("params", params)
+			bs.free()
 		_kind(part, data, params)
 		_built(part, data)
 	check(kinds >= 1, "a kind with Workshop data (the pressure transmitter)")
 	_fixture()
+	_misuse()
+	_pieces_owned()
 	_body()
 	_no_part_ids()
 	Kit.clear_cache()
@@ -93,7 +101,7 @@ func _outside(part: String, plant: Dictionary, ws: Dictionary) -> void:
 				_count(got, mv.name + "/" + _plant_key(k), mv.layers[k].mesh, 1)
 	for si in ws.standins:
 		for k in si.layers:
-			_count(got, _plant_key(k), si.layers[k].mesh, 1)
+			_count(got, (si.moving + "/" if si.moving != "" else "") + _plant_key(k), si.layers[k].mesh, 1)
 	var keys := {}
 	for k in want:
 		keys[k] = true
@@ -119,8 +127,12 @@ func _outside(part: String, plant: Dictionary, ws: Dictionary) -> void:
 		var stand_tris := {}
 		for k in si.layers:
 			stand_tris[si.layers[k].mat] = stand_tris.get(si.layers[k].mat, 0) + si.layers[k].tris[0]
-		for k in ws.layers:
-			var L: Dictionary = ws.layers[k]
+		var from: Dictionary = ws.layers
+		for mv in ws.moving:
+			if mv.name == si.moving:
+				from = mv.layers
+		for k in from:
+			var L: Dictionary = from[k]
 			if L.tag == "split" and L.comp in si.replaced_by:
 				var bb: AABB = L.mesh.get_aabb()
 				box = bb if not any else box.merge(bb)
@@ -136,6 +148,24 @@ func _outside(part: String, plant: Dictionary, ws: Dictionary) -> void:
 				"%s: %s: %d triangles of %s against the stand-in's %d (1 to 1.5 times)" % [part, str(si.replaced_by), n, mat, stand_tris[mat]])
 		for mat in tris:
 			check(stand_tris.has(mat), "%s: %s add the material %s, which their stand-in hasn't" % [part, str(si.replaced_by), mat])
+	# a "split" piece belongs to a component that replaces a stand-in: never a large outside shape of the Workshop's own
+	var replacing := {}
+	for si in ws.standins:
+		for c in si.replaced_by:
+			replacing[c] = true
+	for pr in _all_layers(ws):
+		var L: Dictionary = pr[0]
+		check(L.tag != "split" or replacing.has(L.comp), "%s: %s has split pieces but replaces no stand-in" % [part, L.comp])
+
+## Every layer, static and moving, with the offset that places it in the part's frame ([layer, offset]).
+func _all_layers(ws: Dictionary) -> Array:
+	var out: Array = []
+	for k in ws.layers:
+		out.append([ws.layers[k], Vector3.ZERO, k])
+	for mv in ws.moving:
+		for k in mv.layers:
+			out.append([mv.layers[k], mv.pivot, mv.name + "/" + k])
+	return out
 
 ## comp|tag|mat|class|bucket -> mat|class|bucket
 func _plant_key(k: String) -> String:
@@ -174,15 +204,17 @@ func _pieces(part: String, ws: Dictionary) -> void:
 	print("workshop: %s small outside pieces: %s" % [part, ", ".join(listed)])
 	# the outside the trainee sees assembled: shared and split pieces
 	var occ := PackedVector3Array()
-	for k in ws.layers:
-		var L: Dictionary = ws.layers[k]
+	for pr in _all_layers(ws):
+		var L: Dictionary = pr[0]
 		if L.tag in ["shared", "split"]:
 			var arr := (L.mesh as ArrayMesh).surface_get_arrays(0)
 			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 			for i in (arr[Mesh.ARRAY_INDEX] as PackedInt32Array):
-				occ.append(v[i])
-	for k in ws.layers:
-		var L: Dictionary = ws.layers[k]
+				occ.append(v[i] + pr[1])
+	for pr in _all_layers(ws):
+		var L: Dictionary = pr[0]
+		var k: String = pr[2]
+		var off: Vector3 = pr[1]
 		if L.tag != "hidden":
 			continue
 		var arr := (L.mesh as ArrayMesh).surface_get_arrays(0)
@@ -193,13 +225,13 @@ func _pieces(part: String, ws: Dictionary) -> void:
 		# little inwards and off any axis; rays turned a little off the axes, never exactly along an outside edge
 		var turn := Basis(Vector3(0.3, 0.7, 0.2).normalized(), 0.13)
 		var ntri := idx.size() / 3
-		var step := maxi(1, ntri / 48)
+		var step := maxi(1, ntri / 400)   # every triangle of a small part; a big kind's sampled
 		var seen := 0
 		for t in range(0, ntri, step):
 			var a := idx[t * 3]
 			var b := idx[t * 3 + 1]
 			var c := idx[t * 3 + 2]
-			var centre := (v[a] + v[b] + v[c]) / 3.0
+			var centre := (v[a] + v[b] + v[c]) / 3.0 + off
 			var n := (nm[a] + nm[b] + nm[c]).normalized()
 			var from: Vector3 = centre - n * 0.0005 + Vector3(1.7e-5, -1.1e-5, 0.6e-5)
 			for d in DIRS:
@@ -218,8 +250,8 @@ func _hits(tris: PackedVector3Array, from: Vector3, dir: Vector3) -> bool:
 ## of times.
 func _closed(part: String, ws: Dictionary) -> void:
 	var by := {}
-	for k in ws.layers:
-		var L: Dictionary = ws.layers[k]
+	for pr in _all_layers(ws):
+		var L: Dictionary = pr[0]
 		if not by.has(L.comp):
 			by[L.comp] = []
 		by[L.comp].append(L.mesh)
@@ -307,6 +339,14 @@ func _fixture() -> void:
 	var errs := WB.join(Kit.make("test_gadget", {}, {}, 1.0, true), bad)
 	check(errs.any(func(e): return e.contains("ghost")) and errs.any(func(e): return e.contains("core")),
 		"the join refuses a component on one side only: %s" % str(errs))
+	# the tree's order in the assembly: a child is never placed before its parent
+	var swapped := data.duplicate(true)
+	var steps: Array = swapped.assembly
+	var core_step = steps[1]
+	steps.remove_at(1)
+	steps.insert(0, core_step)
+	var oerrs := WB.join(Kit.make("test_gadget", {}, {}, 1.0, true), swapped)
+	check(oerrs.any(func(e): return e.contains("before base")), "the join refuses a part placed before its parent: %s" % str(oerrs))
 	Kit.unregister("test_gadget")
 	check(not Kit.has_part("test_gadget"), "the fixture kind is gone after unregister")
 
@@ -332,3 +372,31 @@ func _no_part_ids() -> void:
 		for id in ids:
 			var rx := RegEx.create_from_string("[\"']%s[\"']" % id)   # as a string: the code names no kind
 			check(rx.search(text) == null, "workshop/%s names the part %s" % [f, id])
+
+## A generator's misuse of the tags is reported in both modes, and the join refuses it and an unknown fastener kind.
+func _misuse() -> void:
+	var script: Script = load("res://tests/fixtures/workshop_misuse.gd")
+	Kit.register("test_misuse", script, 1000)
+	var before: int = Kit.problems.size()
+	Kit.make("test_misuse", {}, {})
+	check(Kit.problems.size() > before and str(Kit.problems).contains("test_misuse"), "plant mode reports a piece drawn after a Workshop block without use()")
+	var ws := Kit.make("test_misuse", {}, {}, 1.0, true)
+	check(not ws.problems.is_empty(), "Workshop mode reports it too")
+	var data := {"components": {"base": {}}, "fasteners": {"rivets": {"joins": ["base", "base"]}}}
+	var errs := WB.join(ws, data)
+	check(errs.any(func(e): return e.contains("the generator")), "the join refuses the generator's misuse: %s" % str(errs))
+	check(errs.any(func(e): return e.contains("rivet") and e.contains("kind")), "the join refuses an unknown fastener kind: %s" % str(errs))
+	Kit.problems = Kit.problems.filter(func(x): return not String(x).begins_with("test_misuse"))
+	Kit.unregister("test_misuse")
+
+## Every only() block is recorded under the component it was drawn in (a block running on into the next component
+## starts a piece of its own).
+func _pieces_owned() -> void:
+	var ws := Kit.make("pressure_transmitter", Kit.params_of("pressure_transmitter", {}), {}, 1.0, true)
+	var comps := {}
+	for pc in ws.pieces:
+		if pc.tris > 0:
+			comps[pc.comp] = true
+	for id in ["isolator", "sensor_cell", "electronics", "display", "terminal_block"]:
+		check(comps.has(id), "a Workshop piece is recorded under %s (%s)" % [id, str(comps.keys())])
+
