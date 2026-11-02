@@ -28,7 +28,8 @@ static func _walk(n: Node, parent: String, words: Dictionary, comps: Dictionary,
 			order.append(id)
 			_walk(c, id, words, comps, groups, order)
 		elif c.has_meta("items"):
-			groups[c.get_meta("id")] = {"host": parent, "items": c.get_meta("items"), "back_out": float(c.get_meta("back_out"))}
+			groups[c.get_meta("id")] = {"host": parent, "items": c.get_meta("items"), "back_out": float(c.get_meta("back_out")),
+				"axis": c.get_meta("back_axis", Vector3.UP)}
 
 ## Smoothstep of t clamped to [0, 1].
 static func ease01(t: float) -> float:
@@ -95,7 +96,8 @@ static func offsets(spec: Dictionary, s: float, root := "") -> Dictionary:
 		out[id] = (c.dir as Vector3) * c.dist * p
 	return out
 
-## Each fastener group's items' offsets at s: {group: [Vector3 per item]} (each along its own axis, z).
+## Each fastener group's items' offsets at s: {group: [Vector3 per item]} (each along its own back-out axis: the
+## scene's `back_axis` in the item's basis, Godot's axes).
 static func fastener_offsets(spec: Dictionary, s: float, root := "") -> Dictionary:
 	var L := levels(spec, root)
 	var glv: Dictionary = L[1]
@@ -108,6 +110,6 @@ static func fastener_offsets(spec: Dictionary, s: float, root := "") -> Dictiona
 		var gr: Dictionary = spec.groups[g]
 		var items: Array = []
 		for t in gr.items:
-			items.append((t as Transform3D).basis.z.normalized() * gr.back_out * p)
+			items.append(((t as Transform3D).basis * (gr.axis as Vector3)).normalized() * gr.back_out * p)
 		out[g] = items
 	return out

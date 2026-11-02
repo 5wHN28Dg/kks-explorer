@@ -55,8 +55,11 @@ func run(tree: SceneTree) -> Array:
 	ui.open_card(code)
 	var wbtn: Button = ui.card.find_child("workshop", true, false)
 	check(wbtn != null, "the card of %s offers the Workshop" % code)
+	for i in 30:   # the walker settles on the floor first
+		await tree.physics_frame
 	var at: Vector3 = main.player.global_position
 	var look: Vector3 = main.player.rotation
+	var panels_before := [ui.alarms.visible, ui.card.visible]
 	if wbtn == null:
 		main.free()
 		return p
@@ -109,6 +112,9 @@ func run(tree: SceneTree) -> Array:
 		if t1[id] != at0[id]:
 			moved += 1
 	check(moved >= 6, "taken apart, the parts moved (%d)" % moved)
+	var fo: Dictionary = Explode.fastener_offsets(ws.spec, 1.0)
+	check(fo.has("flange_bolts") and (fo.flange_bolts[0] as Vector3).y < -0.001 and absf((fo.flange_bolts[0] as Vector3).x) < 1e-4,
+		"the flange bolts back out downwards, along their own axis: %s" % str(fo.get("flange_bolts")))
 	check(t1["isolator"] == at0["isolator"] and t1["sensor_cell"] == at0["sensor_cell"], "a sealed part's children never come apart")
 	ws.set_slider(0.0)
 	check(_transforms(ws) == at0, "back to 0, every transform is exactly as built")
@@ -158,8 +164,8 @@ func run(tree: SceneTree) -> Array:
 	check(not ws.is_open and not main.get_viewport().disable_3d, "back in the plant, its 3D drawn again")
 	check(ui.clock.speed == SimClock.Speed.NORMAL, "the plant's speed before the Workshop is back")
 	check(not ui.sounds.muted, "the plant's sounds are back")
-	check(main.player.global_position.distance_to(at) < 0.01 and main.player.rotation.distance_to(look) < 1e-4, "the trainee stands where they were")
-	check(ui.root.visible and main.hud.visible and ui.alarms.visible and ui.card.visible, "the plant's panels are as they were")
+	check(main.player.global_position.distance_to(at) < 0.01 and main.player.rotation.distance_to(look) < 1e-4, "the trainee stands where they were (%s, was %s)" % [str(main.player.global_position), str(at)])
+	check(ui.root.visible and main.hud.visible and [ui.alarms.visible, ui.card.visible] == panels_before, "the plant's panels are as they were")
 	check(ws.exit_ms >= 0.0, "the exit is measured (%.0f ms)" % ws.exit_ms)
 	await tree.process_frame
 	check(main.player.input_enabled or ui.screens_open(), "the walker walks again")
@@ -170,6 +176,7 @@ func run(tree: SceneTree) -> Array:
 	ws.open("pressure_transmitter")
 	check(ui.clock.speed == SimClock.Speed.NORMAL, "in a session the plant does not pause")
 	await _wait_shown(tree, ws)
+	await tree.process_frame
 	check(ws.panels.strip.visible and ws.panels.strip.text.contains("runs on"), "in a session the strip says the plant runs on")
 	ws.close()
 	await ws.left

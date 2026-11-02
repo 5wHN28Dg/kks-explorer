@@ -148,6 +148,7 @@ func machine_shown() -> void:
 	for b in tools:
 		b.disabled = false
 	slider.editable = true
+	_strip_n = -1
 	only_cb.set_pressed_no_signal(false)
 	sync_slider()
 	_fill_tree(top_name, w)

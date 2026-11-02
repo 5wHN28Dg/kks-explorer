@@ -91,7 +91,7 @@ static func kinds() -> Array:
 static func has_kind(p: String) -> bool:
 	return p != "" and ResourceLoader.exists(DIR.path_join(p + ".scn"))
 
-## "pressure_transmitter" -> "Pressure transmitter" (the list's words; the scene's own words come with it).
+## "some_part_kind" -> "Some part kind" (the list's words; the scene's own words come with it).
 static func title_of(p: String) -> String:
 	return p.replace("_", " ").capitalize().substr(0, 1) + p.replace("_", " ").substr(1)
 
@@ -136,7 +136,7 @@ func close() -> void:
 	_back_to_plant()
 	if main.hud != null:
 		main.hud.refresh()
-	await RenderingServer.frame_post_draw
+	await main._drawn()   # the next frame drawn (headless: the next frame)
 	exit_ms = (Time.get_ticks_usec() - t0) / 1000.0
 	left.emit()
 
@@ -347,7 +347,7 @@ func _show_machine(ps: PackedScene) -> void:
 	cam.set_home()
 	panels.machine_shown()
 	apply()
-	await RenderingServer.frame_post_draw
+	await main._drawn()   # the next frame drawn (headless: the next frame)
 	if not is_open:
 		return
 	entry_ms = (Time.get_ticks_usec() - _t0) / 1000.0
