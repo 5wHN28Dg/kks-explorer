@@ -1,9 +1,10 @@
 ## The Workshop's explode function (docs/plant3d/WORKSHOP.md §4.3): the slider's value s in [0, 1] gives every
 ## component's offset by a pure function, so the same s always gives the same transforms and 1 -> 0 restores them
 ## exactly. Each level of the tree below the chosen root moves in its own stage of s (level d of D during
-## [d / D, (d + 1) / D], eased by smoothstep), children ride out with their subassembly and then leave it; a fastener
-## group's items back out along their own axis in the stage of the level below their component. The children of a
-## sealed component never come apart. Nothing here knows any part kind.
+## [d / D, (d + 1) / D], eased by smoothstep), children ride out with their subassembly and then leave it. Bolts back
+## out first, then the part: a fastener group's items back out along their own axis in the first half of their
+## component's stage, and the components of that level move in its second half (a level without fastener groups uses
+## its whole stage). The children of a sealed component never come apart. Nothing here knows any part kind.
 extends RefCounted
 
 ## The tree read from a Workshop scene (builder/workshop_build.gd): {comps: {id: {parent, dir, dist, sealed}},
@@ -37,7 +38,8 @@ static func ease01(t: float) -> float:
 	return t * t * (3.0 - 2.0 * t)
 
 ## The levels below `root` ("" the whole machine): {id: level} for every component that moves (a sealed component's
-## descendants don't), and D, the number of levels (fastener groups count as a level below their host).
+## descendants don't), the fastener groups' levels (their host's: they back out in its stage, before it moves; 0 for
+## a group on the root), D, the number of levels, and the set of levels that hold fastener groups.
 static func levels(spec: Dictionary, root := "") -> Array:
 	var lv := {}
 	var deepest := -1
@@ -50,12 +52,25 @@ static func levels(spec: Dictionary, root := "") -> Array:
 	var glv := {}
 	for g in spec.groups:
 		var host: String = spec.groups[g].host
-		var d: int = 0 if host == root else (lv[host] + 1 if lv.has(host) else -1)
+		var d: int = 0 if host == root else (lv[host] if lv.has(host) else -1)
 		if d < 0 or (host != "" and (spec.comps[host].sealed or _in_sealed(spec, host))):
 			continue   # a sealed component's fasteners are its own insides: they stay with it
 		glv[g] = d
 		deepest = maxi(deepest, d)
-	return [lv, glv, deepest + 1]
+	var bolted := {}
+	for g in glv:
+		bolted[glv[g]] = true
+	return [lv, glv, deepest + 1, bolted]
+
+## The eased progress of level d's components at s (D levels): the second half of the stage when fastener groups back
+## out in it first, else the whole stage.
+static func _comp_progress(s: float, d: int, D: int, bolted: Dictionary) -> float:
+	var t := s * D - d
+	return ease01(t * 2.0 - 1.0) if bolted.has(d) else ease01(t)
+
+## The eased progress of a fastener group of level d at s: the first half of its component's stage.
+static func _group_progress(s: float, d: int, D: int) -> float:
+	return ease01((s * D - d) * 2.0)
 
 ## A component's level below root (0: root's children), -1 when it isn't below root or a sealed ancestor holds it.
 static func _level(spec: Dictionary, id: String, root: String) -> int:
@@ -90,8 +105,7 @@ static func offsets(spec: Dictionary, s: float, root := "") -> Dictionary:
 	if D <= 0:
 		return out
 	for id in lv:
-		var d: int = lv[id]
-		var p := ease01(s * D - d)
+		var p := _comp_progress(s, lv[id], D, L[3])
 		var c: Dictionary = spec.comps[id]
 		out[id] = (c.dir as Vector3) * c.dist * p
 	return out
@@ -106,7 +120,7 @@ static func fastener_offsets(spec: Dictionary, s: float, root := "") -> Dictiona
 	if D <= 0:
 		return out
 	for g in glv:
-		var p := ease01(s * D - glv[g])
+		var p := _group_progress(s, glv[g], D)
 		var gr: Dictionary = spec.groups[g]
 		var items: Array = []
 		for t in gr.items:

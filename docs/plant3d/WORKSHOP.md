@@ -219,7 +219,7 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
   and its speed restored in single play, the plant running on in a session, the sounds muted, the walker's input and
   the plant's panels held; picking, the three-axis handle, hide, isolate, show all, Reset, Reassemble all),
   `explode.gd` (§4.3's pure function; sealed components' children never move; fastener items back out along the
-  scene's `back_axis`), `orbit.gd` (mouse, touch, gamepad), `panels.gd` (the tree, the properties, the slider with
+  scene's `back_axis`, before their component moves), `orbit.gd` (mouse, touch, gamepad), `panels.gd` (the tree, the properties, the slider with
   "Selected subassembly only", the tools, Back to the plant, the session's strip). The handle and the floor are
   pre-built too (`built/workshop_ui/space.scn`, the plant's vertex format and materials: no new pipeline), and the
   selection is the lit material's own emission.
@@ -259,7 +259,10 @@ transforms and 1 → 0 restores them exactly:
   s ∈ [d / D, (d + 1) / D], eased (smoothstep), and is at its full distance after it;
 - a component's offset is the sum of its own and its ancestors' `explode` direction × distance × their stage's eased
   progress (children ride out with their subassembly, then leave it);
-- a fastener group's items each back out along their own axis by the group's distance, in the group's stage;
+- bolts back out first, then the part: a fastener group's items each back out along their own axis by the group's
+  distance in the first half of its component's stage, and the components of that level move in the second half (a
+  level with no fastener group uses its whole stage), as in a real take-apart the bolts come out before the flange
+  comes off (the user, 2026-11-02);
 - transform = home transform translated by the offset: computed from home every frame, never accumulated;
 - **subassembly only:** the same function with the selected component as root (its own stages); the rest stays home.
 

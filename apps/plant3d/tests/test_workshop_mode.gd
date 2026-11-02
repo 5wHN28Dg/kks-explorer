@@ -219,7 +219,15 @@ func run(tree: SceneTree) -> Array:
 	check(t1["isolator"] == at0["isolator"] and t1["sensor_cell"] == at0["sensor_cell"], "a sealed part's children never come apart")
 	ws.set_slider(0.0)
 	check(_transforms(ws) == at0, "back to 0, every transform is exactly as built")
-	ws.set_slider(0.1)
+	# bolts back out first, then the part: at the end of the first stage's first half the flange bolts are out, the
+	# flange home
+	var D: int = Explode.levels(ws.spec)[2]
+	ws.set_slider(0.5 / D)
+	var bolts_out := _transforms(ws)
+	var fo_q: Dictionary = Explode.fastener_offsets(ws.spec, 0.5 / D)
+	check(bolts_out["process_flange"] == at0["process_flange"] and (fo_q.flange_bolts[0] as Vector3).is_equal_approx(fo.flange_bolts[0]),
+		"the flange bolts are fully out before the process flange moves")
+	ws.set_slider(0.75 / D)
 	var early := _transforms(ws)
 	check(early["housing"] != at0["housing"] and early["cover_front"].origin == at0["cover_front"].origin, "the top level comes out first, its parts after")
 	# the selected subassembly alone
@@ -459,11 +467,21 @@ func _fixture_explode() -> void:
 	check(Explode.offsets(spec, 0.42) == Explode.offsets(spec, 0.42), "the same s, the same offsets")
 	var half := Explode.offsets(spec, 0.5)
 	var full := Explode.offsets(spec, 1.0)
-	# levels: base, lid (0); core, lid_screws (1): D = 2, so at 0.5 the top level is out and the next not begun
+	# levels: base, lid, lid_screws (0); core (1): D = 2, so at 0.5 the top level is out and the next not begun
 	check((half["lid"] as Vector3).is_equal_approx(full["lid"]) and (half["core"] as Vector3) == Vector3.ZERO, "the top level is out by half way, the next level not begun")
 	check((full["core"] as Vector3).length() > 0.0, "fully exploded, the core leaves the base")
 	var fo := Explode.fastener_offsets(spec, 1.0)
 	check(fo.has("lid_screws") and fo.lid_screws.size() == 2 and (fo.lid_screws[0] as Vector3).length() > 0.0, "the screws back out")
+	# bolts back out first, then the part (the user, 2026-11-02): the screws are fully out at a quarter, the lid not moved
+	var q_off := Explode.offsets(spec, 0.25)
+	var q_fo := Explode.fastener_offsets(spec, 0.25)
+	check((q_off["lid"] as Vector3) == Vector3.ZERO and (q_fo.lid_screws[0] as Vector3).is_equal_approx(fo.lid_screws[0]),
+		"the screws are fully out before the lid moves: lid %s, screw %s" % [q_off["lid"], q_fo.lid_screws[0]])
+	var e_off := Explode.offsets(spec, 0.1)
+	var e_fo := Explode.fastener_offsets(spec, 0.1)
+	check((e_off["lid"] as Vector3) == Vector3.ZERO and (e_fo.lid_screws[0] as Vector3).length() > 0.0,
+		"while the screws back out, the lid stays home")
+	check((Explode.offsets(spec, 0.375)["lid"] as Vector3).length() > 0.0, "after the screws, the lid comes off")
 	# §4.5: a part held by a fastener group is free once the group has backed out
 	var ws := Workshop.new()
 	ws.spec = spec
