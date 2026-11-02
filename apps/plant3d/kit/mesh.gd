@@ -37,6 +37,7 @@ var pieces := []                 # Workshop mode: every only() block, {comp, kin
 var problems := []               # misuse found while building (a generator's mistake, never the content's)
 var _last_use := []              # the last use()'s arguments, to select the layer again when comp or only change
 var _use_skipped := false        # the last use() came inside a "workshop" block in plant mode
+var _stale := false              # the last use() came inside a "workshop" block (either mode): a use() is due after it
 var _piece: Dictionary = {}
 var _standin: Dictionary = {}
 
@@ -55,6 +56,7 @@ func use(name: String, cls := "form", size := 0.0) -> void:
 		bucket = int(floor(log(maxf(size, 0.001)) / log(2.0)))   # a factor of 2 (§10): pieces of one bucket share a range
 		lk = "detail"
 	_use_skipped = not workshop and only_kind == "workshop"
+	_stale = only_kind == "workshop"
 	if _use_skipped:   # drawn into nothing: plant mode never sees a Workshop piece, not even an empty layer of it
 		cur = _layer(mat, cls, size)
 		return
@@ -80,6 +82,8 @@ func _layer(mat: String, cls: String, size: float) -> Dictionary:
 ## The component the next primitives belong to (WORKSHOP.md §4.2); the current material's layer is selected again.
 func set_comp(id: String) -> void:
 	comp_id = id
+	if workshop and not _piece.is_empty():   # an only() block goes on into another component: a piece of its own
+		_open_piece()
 	_reselect()
 
 ## What the next primitives are: "" shared, "workshop" (role hidden, outside or split) or "plant" (a stand-in the
@@ -96,14 +100,18 @@ func set_only(kind: String, role := "hidden", replaced_by: Array = []) -> void:
 		if kind == "plant":
 			_standin = {"replaced_by": replaced_by.duplicate(), "layers": {}}
 			standins.append(_standin)
-		_piece = {"comp": comp_id, "kind": kind, "role": only_role, "standin": standins.size() - 1 if kind == "plant" else -1,
-			"box": AABB(), "verts": 0, "tris": 0}
-		pieces.append(_piece)
+		_open_piece()
 	_reselect()
 
+func _open_piece() -> void:
+	_piece = {"comp": comp_id, "kind": only_kind, "role": only_role,
+		"standin": standins.size() - 1 if only_kind == "plant" else -1, "box": AABB(), "verts": 0, "tris": 0}
+	pieces.append(_piece)
+
 func _reselect() -> void:
-	if _use_skipped and only_kind != "workshop":
-		return   # left a "workshop" block in plant mode: the generator's next use() selects the layer (never one made here)
+	if _stale and only_kind != "workshop":
+		return   # left a "workshop" block: the generator's next use() selects the layer (never one made here; in plant
+		#          mode its primitives go nowhere until then, and a primitive drawn before it is reported)
 	if not _last_use.is_empty():
 		use(_last_use[0], _last_use[1], _last_use[2])
 
@@ -122,8 +130,8 @@ func _nm(n: Vector3) -> Vector3:
 	return Vector3(q.x, q.z, -q.y)
 
 func _vert(p: Vector3, n: Vector3, uv: Vector2) -> int:
-	if _use_skipped and only_kind != "workshop" and problems.is_empty():
-		problems.append("a piece drawn after a Workshop-only block without a use() first: the plant would lose it")
+	if _stale and only_kind != "workshop" and problems.is_empty():
+		problems.append("a piece drawn after a Workshop-only block without a use() first (the plant would lose it)")
 	if not _piece.is_empty():   # Workshop mode: the box of the only() block being drawn
 		var q := _pt(p)
 		_piece.box = AABB(q, Vector3.ZERO) if _piece.verts == 0 else _piece.box.expand(q)

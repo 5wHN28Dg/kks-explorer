@@ -185,12 +185,18 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
   shared; `only("workshop")` hidden, `only("workshop", "outside")` a small outside piece, `only("workshop", "split")` a
   piece of a component that replaces a stand-in; `only("plant", [components])` the stand-in (an empty list: a mounting
   the plant draws and the Workshop leaves out, such as a free-standing transmitter's stand pipe). After a `"workshop"`
-  block the generator calls `use()` again; a primitive drawn before it is reported (`problems`), and plant mode never
+  block the generator calls `use()` again; a primitive drawn before it is reported in both modes (`Kit.problems`,
+  which `tests/test_kit_frozen.gd` fails on; the Workshop result's `problems`, which the join refuses), and plant mode never
   makes a layer, not even an empty one, for a Workshop piece (the layers' order is the builder's cells' order).
 - The Workshop mode's layer key is `comp|tag|material|class|bucket` (tag `shared`, `hidden`, `outside` or `split`), so
   the tests can tell the pieces apart; the scene merges a component's pieces per material.
-- `Gen.fasteners(id, kind, items, draw)` (one item drawn by `draw` in its own frame, z the way it backs out) and
-  `Gen.flow(id, points)`; fasteners are Workshop-only small outside pieces.
+- `Gen.fasteners(id, kind, items, draw)` (one item drawn by `draw` in its own frame, z the way it backs out; `kind`
+  one of the list above, checked by the join) and `Gen.flow(id, points)`; fasteners are Workshop-only small outside
+  pieces. A moving piece's builder (`g.move`) follows `comp()` and `only()` like the static one.
+- An only() block that runs on into another component (`comp()` inside it) is recorded as a piece of each.
+- Not yet active: the check that the Workshop's code names no part kind passes trivially until `apps/plant3d/workshop/`
+  exists (K1). The frozen plant check covers the context keys `pipe_od`, `out` and `floor_dz`; parts whose shape
+  depends on other context (nozzles in use, shaft lines, heights above and below) are held only in the cases recorded.
 - **The plant's proof:** `tests/test_kit_frozen.gd` compares a digest of everything plant mode gives (layers in order,
   arrays, LOD triangle counts, moving pieces, plates, solids) for 1,397 cases (every part of the kit with its defaults,
   the content's parameter sets, its limits, and instruments standing every way) with `tests/fixtures/kit_plant.json`,
@@ -223,7 +229,7 @@ Handling (§4.5) is applied on top and cleared by Reset; the slider never reads 
 
 ### 4.4 Fasteners
 
-- **Generator side:** `g.fasteners(id, items, kind)`: a group of identical fasteners, each item a transform
+- **Generator side:** `g.fasteners(id, kind, items, draw)`: a group of identical fasteners, each item a transform
   (position and axis) in the part frame; drawn as one MultiMesh (one draw call per material), each item addressable by
   its index, so a later milestone can treat one bolt alone. `kind`: `bolt`, `stud_nut`, `screw`, `cap_screw`,
   `threaded_cover`, `clamp`, `gland`, `pin`, `circlip`, `key`.
@@ -278,8 +284,9 @@ The data file's `assembly` is the guided order, one step per component or fasten
 
 - **Built ahead of time, like the areas.** `builder/` makes `built/workshop/<part>.scn` for every kind with a data
   file (the export already packs `built/*`), from `Kit.make(..., workshop = true)` with the data file's `params`
-  (validated against kit.json's parameters; default: the first train's instance of that kind where it has one, so
-  the Workshop shows the turbine the trainee walks past).
+  (validated against kit.json's parameters; default: the plant's first instance of that kind, in the content's order,
+  where it has one, so the Workshop shows the turbine the trainee walks past; the scene keeps them in its `params`
+  meta, and the tests check that very shape).
 - **Nodes:** one `Node3D` per component at its pivot, named by its id, nested as the tree; under it one
   `MeshInstance3D` per material (the component's pieces merged per material: no 12 m cells, no instancing, no LODs: one
   machine seen close); fastener groups as `MultiMeshInstance3D` with their items' transforms in a meta (as the plant's

@@ -147,7 +147,8 @@ static func _transmitter(g, level: bool) -> void:
 	var bolt := func(b) -> void:
 		b.use("steel", "detail", 0.006)
 		b.cyl(Vector3(0, 0, 0), Vector3(0, 0, 0.006), 0.0065, -1.0, 6)      # the head, below the flange
-		b.cyl(Vector3(0, 0, -0.024), Vector3(0, 0, 0), 0.003, -1.0, 6)      # the shank, inside it
+		b.cyl(Vector3(0, 0, -0.020), Vector3(0, 0, 0), 0.003, -1.0, 6)      # the shank, inside it (the block is the flange
+		#   and the module's coplanar base in one: the plant's shape; the bolts' shanks end in it)
 	g.fasteners("flange_bolts", "bolt", bolts, bolt)
 	g.comp("sensor_module", {"explode": [Vector3(0, 0, 1), 0.0]})
 	m.use("steel", "identify")

@@ -5,7 +5,8 @@
 ##
 ## The scene: the root `Node3D` (named by the part; meta `workshop`: the data file's words, order, views and sources,
 ## `tris`, `box`, `flows`), then one `Node3D` per component at its pivot, named by its id and nested as the tree (metas
-## `id`, `depth`, `box` in the part's frame, `explode` [direction, metres], `sym`, `anchors` (part frame), `anim`,
+## `id`, `depth`, `box` (the part's frame in Godot's axes), `explode` [direction, metres], `sym`, `anchors`
+## (relative to the component's pivot, Godot's axes), `anim`,
 ## `thin`), each with one `MeshInstance3D` per material (its pieces merged, relative to the pivot; meta `mat`: the
 ## plant's material name, resolved when the scene is shown) and its fastener groups (a `Node3D` per group, metas
 ## `id`, `kind`, `items` (transforms relative to the component's pivot: Godot's headless renderer keeps no MultiMesh
@@ -17,6 +18,7 @@ const Kit = preload("res://kit/kit.gd")
 const CID := "^[a-z_][a-z0-9_]{0,15}$"
 const MAX_DEPTH := 6
 const TRIS_MAX := 120000   # one kind's scene, all components and insides (WORKSHOP.md §8)
+const FASTENER_KINDS := ["bolt", "stud_nut", "screw", "cap_screw", "threaded_cover", "clamp", "gland", "pin", "circlip", "key"]
 
 ## Builds every kind with a data file in `data_dir` into `out_dir`. `equipment` (the plant builder's, kks -> {part,
 ## params}) gives a kind's parameters where its data file has none: the first instance of that kind in the plant.
@@ -64,7 +66,7 @@ static func params_for(part: String, data: Dictionary, equipment: Dictionary) ->
 ## One kind's Workshop scene: {scene: PackedScene, tris, res (Kit.make's Workshop result), errors}. `ctx` as Kit.make's
 ## (default: the part standing free, upright).
 static func scene(part: String, data: Dictionary, params: Dictionary, ctx := {}) -> Dictionary:
-	var out := {"scene": null, "tris": 0, "res": {}, "errors": []}
+	var out := {"scene": null, "tris": 0, "res": {}, "errors": [], "params": params}
 	if not Kit.has_part(part):
 		out.errors.append("the kit has no part %s" % part)
 		return out
@@ -77,6 +79,7 @@ static func scene(part: String, data: Dictionary, params: Dictionary, ctx := {})
 	if not out.errors.is_empty():
 		return out
 	var root := _nodes(part, res, data)
+	root.set_meta("params", params)   # what it was built with (the tests check that very shape)
 	for c in root.get_children():
 		_own(root, c)
 	var ps := PackedScene.new()
@@ -127,6 +130,8 @@ static func join(res: Dictionary, data: Dictionary) -> Array:
 			errs.append("fastener group %s: the generator makes it, the data file doesn't name it" % f.id)
 		if f.items.is_empty():
 			errs.append("fastener group %s: no items" % f.id)
+		if not f.kind in FASTENER_KINDS:
+			errs.append("fastener group %s: its kind %s is none of WORKSHOP.md §4.4's" % [f.id, f.kind])
 	for id in fwords:
 		if not groups.has(id):
 			errs.append("fastener group %s: the data file names it, the generator doesn't make it" % id)
@@ -209,7 +214,10 @@ static func _nodes(part: String, res: Dictionary, data: Dictionary) -> Node3D:
 		n.set_meta("box", c.box)
 		n.set_meta("explode", explode_of(c, pbox))
 		n.set_meta("sym", c.sym)
-		n.set_meta("anchors", c.anchors)
+		var anchors := {}         # relative to the pivot: they ride with the component
+		for k in c.anchors:
+			anchors[k] = c.anchors[k] - c.pivot
+		n.set_meta("anchors", anchors)
 		n.set_meta("anim", c.anim)
 		n.set_meta("thin", c.thin)
 	# each component's pieces merged per material, relative to its pivot (the moving pieces where they stand at 0)

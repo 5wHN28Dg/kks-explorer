@@ -36,11 +36,19 @@ func run(_tree: SceneTree) -> Array:
 		var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(data_dir.path_join(f)))
 		var part: String = data.part
 		kinds += 1
+		# the parameters the build made its scene with (the plant's first instance of the kind), else the defaults
 		var params := WB.params_for(part, data, {})
+		var built := "res://built/workshop/%s.scn" % part
+		if ResourceLoader.exists(built):
+			var bs: Node = (load(built) as PackedScene).instantiate()
+			params = bs.get_meta("params", params)
+			bs.free()
 		_kind(part, data, params)
 		_built(part, data)
 	check(kinds >= 1, "a kind with Workshop data (the pressure transmitter)")
 	_fixture()
+	_misuse()
+	_pieces_owned()
 	_body()
 	_no_part_ids()
 	Kit.clear_cache()
@@ -332,3 +340,31 @@ func _no_part_ids() -> void:
 		for id in ids:
 			var rx := RegEx.create_from_string("[\"']%s[\"']" % id)   # as a string: the code names no kind
 			check(rx.search(text) == null, "workshop/%s names the part %s" % [f, id])
+
+## A generator's misuse of the tags is reported in both modes, and the join refuses it and an unknown fastener kind.
+func _misuse() -> void:
+	var script: Script = load("res://tests/fixtures/workshop_misuse.gd")
+	Kit.register("test_misuse", script, 1000)
+	var before: int = Kit.problems.size()
+	Kit.make("test_misuse", {}, {})
+	check(Kit.problems.size() > before and str(Kit.problems).contains("test_misuse"), "plant mode reports a piece drawn after a Workshop block without use()")
+	var ws := Kit.make("test_misuse", {}, {}, 1.0, true)
+	check(not ws.problems.is_empty(), "Workshop mode reports it too")
+	var data := {"components": {"base": {}}, "fasteners": {"rivets": {"joins": ["base", "base"]}}}
+	var errs := WB.join(ws, data)
+	check(errs.any(func(e): return e.contains("the generator")), "the join refuses the generator's misuse: %s" % str(errs))
+	check(errs.any(func(e): return e.contains("rivet") and e.contains("kind")), "the join refuses an unknown fastener kind: %s" % str(errs))
+	Kit.problems = Kit.problems.filter(func(x): return not String(x).begins_with("test_misuse"))
+	Kit.unregister("test_misuse")
+
+## Every only() block is recorded under the component it was drawn in (a block running on into the next component
+## starts a piece of its own).
+func _pieces_owned() -> void:
+	var ws := Kit.make("pressure_transmitter", Kit.params_of("pressure_transmitter", {}), {}, 1.0, true)
+	var comps := {}
+	for pc in ws.pieces:
+		if pc.tris > 0:
+			comps[pc.comp] = true
+	for id in ["isolator", "sensor_cell", "electronics", "display", "terminal_block"]:
+		check(comps.has(id), "a Workshop piece is recorded under %s (%s)" % [id, str(comps.keys())])
+
