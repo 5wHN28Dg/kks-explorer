@@ -295,11 +295,9 @@ draw calls per kind, ≤ 20 MB for the whole Workshop); the plant's walk is run 
 the Note 9 (K1, K3, K4a, K4b, K5a, K5b at least), with the APK's size before and after (limit 250 MB). The realism programme's
 hands-on work builds on K1a–K3 (REALISM.md).
 
-**Questions for the user (Workshop):**
-- In single play the plant pauses while the Workshop is open, so a mirror (K6) shows the moment the trainee left.
-  Keep that (planned), or let the plant run while a mirror is open?
-- In a session, should other players see a mark over a player who is in the Workshop? It needs a flag in `pos`, which
-  is a change to MULTIPLAYER.md. Planned: not now; the person just stands.
+**Decided by the user (Workshop, 2026-11-02):** in single play the mirror (K6) freezes at the moment the trainee
+left; in a session the other players see an "in the Workshop" mark over a player who is in the Workshop (one flag in
+`pos`, MULTIPLAYER.md §6.3), built with K1.
 
 ## When to stop and ask the user (the user, 2026-10-22)
 

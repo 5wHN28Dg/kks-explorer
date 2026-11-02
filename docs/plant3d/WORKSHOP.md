@@ -66,7 +66,8 @@ while the Workshop shows; nothing falls).
   with **Back to the plant**;
 - the Workshop's bench model runs locally, outside the session: it makes no session inputs and is not in the state
   digest;
-- a mark over the person ("in the Workshop") would need a flag in `pos`, a MULTIPLAYER.md change: not part of K0–K6;
+- the other players see an "in the Workshop" mark over that player's person (the user, 2026-11-02): one flag in
+  `pos` (bit 0 of its flags byte, MULTIPLAYER.md §6.3), set while the Workshop is open; built with K1;
 - the plant's engine, the session layer and the others' avatars keep their CPU behind the Workshop (only the plant's
   drawing stops): the Workshop's rules are measured in a session as well (§8).
 
@@ -127,8 +128,9 @@ component, a binding at no component, a flow path the generator doesn't make).
 
 - **Ids** are identifiers of at most 16 characters (`[a-z_][a-z0-9_]{0,15}`), unique within the kind. Short, because
   the realism programme names model states `<equipment prefix>_<component>_<state>` (REALISM.md §2.4) and value
-  names are identifiers of at most 32 characters (PLANT3D.md §1): that leaves 14 characters for the prefix, the state
-  and the two underscores, which the realism content tool has to keep to (or it maps long names to short ones).
+  names are identifiers of at most 32 characters (PLANT3D.md §1): that leaves 16 characters for the prefix, the state
+  and the two underscores. REALISM.md §2.4 fixes how they are shared, so no name is shortened case by case: an
+  equipment alias of at most 8 characters and a state of at most 6 (8 + 1 + 16 + 1 + 6 = 32).
 - **Tree:** each component has a `parent` (another component, or none for the machine's top level). Depth at most 6.
 - **Root `body`:** a generator that declares no components puts everything in one component `body`. So every kit part
   can be shown in the Workshop (outside only, not taken apart) with no extra code; a kind gets its tree when its
@@ -357,8 +359,9 @@ name is written in bench data:
 - `{"machine": true}`: the equipment's machine's state (by its `kks`), mapped onto the bench machine's states by name.
 
 In a mirror the bench steps as usual but each mirrored value is overwritten after step 2 by the plant's, its ops and
-faults are not offered, and the panel says "Mirror of `<code>`, read only". In single play the plant is paused, so
-the mirror shows the moment the trainee left; in a session it follows the plant live. The overwrite is an engine
+faults are not offered, and the panel says "Mirror of `<code>`, read only". In single play the mirror **freezes at the
+moment the trainee left** (the user, 2026-11-02): the plant is paused, and the plant does not run while a mirror is
+open; in a session it follows the plant live. The overwrite is an engine
 addition (both engines, vectors) made in K6.
 
 ## 7. Shaders and cut faces

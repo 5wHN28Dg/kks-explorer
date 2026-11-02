@@ -103,9 +103,20 @@ static func _stand(g, top: Vector3) -> void:
 
 ## A pressure (or differential pressure) transmitter: its valve manifold, the sensor and the electronics housing with
 ## its display; on a stand when it stands free.
+##
+## Its Workshop tree (docs/plant3d/WORKSHOP.md §4, after the Rosemount 3051's reference manual: data/plant3d/workshop/
+## pressure_transmitter.json names the sources): the valve manifold; the process flange with its drain/vent valves and
+## the four flange bolts into the sealed sensor module (its isolating diaphragm and sensing cell inside); the housing,
+## split from the plant's one closed drum into the housing and its two screwed covers (the display cover with its
+## window, the terminal-side cover), held on the module's neck by its set screw, with the electronics module, the
+## display and the terminal block inside and the cable gland on its side. The plant draws exactly what it drew before (the drum is the
+## covers' and housing's "plant" stand-in; the insides are hidden pieces, the bolts, screws and valves small outside
+## pieces the plant never drew).
 static func _transmitter(g, level: bool) -> void:
 	var m = g.m
 	var t := _local(g, m)
+	var hz := 0.22   # the housing's axis (along x, the display at +x)
+	g.comp("manifold", {"explode": [Vector3(0, 0, -1), 0.10]})
 	m.use("steel", "form")
 	if level:   # two impulse legs to the vessel (the high and the low tap)
 		for k: float in [-1.0, 1.0]:
@@ -118,18 +129,99 @@ static func _transmitter(g, level: bool) -> void:
 	m.use("paint_red", "detail", 0.02)
 	for k: float in [-1.0, 0.0, 1.0]:
 		m.cyl(Vector3(0.03 * k, 0.03, 0.08), Vector3(0.03 * k, 0.055, 0.08), 0.006, -1.0, 6)
+	g.comp("process_flange", {"explode": [Vector3(0, 0, -1), 0.05]})
 	m.use("steel", "identify")
-	m.box(Vector3(0, 0, 0.125), Vector3(0.09, 0.09, 0.04))          # the coplanar sensor flange
-	m.cyl(Vector3(0, 0, 0.145), Vector3(0, 0, 0.19), 0.025, -1.0, 12)
-	m.use("paint_motor", "identify")                                   # the housing (makers paint them blue)
-	m.cyl(Vector3(-0.06, 0, 0.22), Vector3(0.06, 0, 0.22), 0.05, -1.0, 16)
+	m.box(Vector3(0, 0, 0.125), Vector3(0.09, 0.09, 0.04))          # the coplanar process flange
+	g.comp("drain_vents", {"parent": "process_flange", "explode": [Vector3(0, 1, 0), 0.03]})
+	for k: float in [-1.0, 1.0]:                                      # its two drain/vent valves, on the flange's sides
+		g.only("workshop", "outside")
+		m.use("steel", "detail", 0.01)
+		m.cyl(Vector3(0.045 * k, 0.02, 0.118), Vector3(0.057 * k, 0.02, 0.118), 0.0045, -1.0, 6)
+		m.cyl(Vector3(0.057 * k, 0.02, 0.118), Vector3(0.061 * k, 0.02, 0.118), 0.0025, -1.0, 6)
+	g.only()
+	g.comp("process_flange")
+	var bolts: Array = []   # up through the flange into the sensor module: each backs out downwards (its z)
+	for i in 4:
+		bolts.append(Transform3D(Basis(Vector3(1, 0, 0), Vector3(0, -1, 0), Vector3(0, 0, -1)),
+			Vector3(0.036 * (1 if i % 2 == 0 else -1), 0.037 * (1 if i < 2 else -1), 0.105)))
+	var bolt := func(b) -> void:
+		b.use("steel", "detail", 0.006)
+		b.cyl(Vector3(0, 0, 0), Vector3(0, 0, 0.006), 0.0065, -1.0, 6)      # the head, below the flange
+		b.cyl(Vector3(0, 0, -0.024), Vector3(0, 0, 0), 0.003, -1.0, 6)      # the shank, inside it
+	g.fasteners("flange_bolts", "bolt", bolts, bolt)
+	g.comp("sensor_module", {"explode": [Vector3(0, 0, 1), 0.0]})
+	m.use("steel", "identify")
+	m.cyl(Vector3(0, 0, 0.145), Vector3(0, 0, 0.19), 0.025, -1.0, 12)   # its neck (the module's housing)
+	g.comp("isolator", {"parent": "sensor_module", "explode": [Vector3(0, 0, -1), 0.02]})
+	g.only("workshop")
+	m.use("chrome", "identify")
+	m.cyl(Vector3(0, 0, 0.1465), Vector3(0, 0, 0.1485), 0.018, -1.0, 16)   # the isolating diaphragm
+	g.comp("sensor_cell", {"parent": "sensor_module", "explode": [Vector3(0, 0, 1), 0.02]})
+	m.use("steel", "identify")
+	m.cyl(Vector3(0, 0, 0.155), Vector3(0, 0, 0.18), 0.015, -1.0, 12)   # the sensing cell (fill fluid, sensing diaphragm)
+	g.only()
+	# the housing (makers paint them blue): in the plant one closed drum, in the Workshop the housing and its covers
+	var a := Vector3(-0.06, 0, hz)
+	var bq := Vector3(0.06, 0, hz)
+	g.comp("housing", {"explode": [Vector3(0, 0, 1), 0.12]})
+	m.use("paint_motor", "identify")
+	g.only("plant", ["housing", "cover_front", "cover_back"])
+	m.cyl(a, bq, 0.05, -1.0, 16)
+	g.only("workshop", "split")
+	m.cyl(a, bq, 0.05, -1.0, 16, false)                               # its outer wall: the drum's side, as drawn
+	g.only("workshop")
+	m._inner(a, bq, 0.044, 16)                                        # the compartments' walls
+	m.ring(a, Vector3(-1, 0, 0), 0.044, 0.05, 16)
+	m.ring(bq, Vector3(1, 0, 0), 0.044, 0.05, 16)
+	m.cyl(Vector3(-0.003, 0, hz), Vector3(0.003, 0, hz), 0.044, -1.0, 16)   # the wall between the two compartments
+	for k: float in [-1.0, 1.0]:
+		var side := "cover_front" if k > 0.0 else "cover_back"
+		g.comp(side, {"parent": "housing", "explode": [Vector3(k, 0, 0), 0.08], "sym": [Vector3(1, 0, 0), 0]})
+		g.only("workshop", "split")
+		m.use("paint_motor", "identify")
+		m.disk(Vector3(0.06 * k, 0, hz), Vector3(k, 0, 0), 0.05, 16)  # its face: the drum's end, as drawn
+		g.only("workshop")
+		m.cyl(Vector3(0.058 * k, 0, hz), Vector3(0.06 * k, 0, hz), 0.05, -1.0, 16, false)   # its rim, in the housing's wall
+		m.disk(Vector3(0.058 * k, 0, hz), Vector3(-k, 0, 0), 0.05, 16)
+		m.use("steel", "identify")
+		m.tube(Vector3(0.052 * k, 0, hz), Vector3(0.058 * k, 0, hz), 0.0435, 0.040, 16)   # its thread, in the housing
+	g.comp("window", {"parent": "cover_front", "thin": true})
+	g.only()
 	m.use("glass", "identify")
-	m.disk(Vector3(0.0605, 0, 0.22), Vector3(1, 0, 0), 0.035, 16)  # the display
+	m.disk(Vector3(0.0605, 0, hz), Vector3(1, 0, 0), 0.035, 16)  # the display's window
+	g.comp("electronics", {"parent": "housing", "explode": [Vector3(1, 0, 0), 0.05]})
+	g.only("workshop")
+	m.use("paint_green", "identify")
+	m.box(Vector3(0.024, 0, hz), Vector3(0.036, 0.05, 0.05))         # the electronics module, in the display side
+	g.comp("display", {"parent": "electronics", "explode": [Vector3(1, 0, 0), 0.04]})
+	m.use("paint_grey", "identify")
+	m.box(Vector3(0.047, 0, hz), Vector3(0.006, 0.05, 0.04))         # the LCD display, behind the window
+	g.comp("terminal_block", {"parent": "housing", "explode": [Vector3(-1, 0, 0), 0.05],
+		"anchors": {"sig_plus": Vector3(-0.042, -0.012, hz + 0.01), "sig_minus": Vector3(-0.042, 0.012, hz + 0.01),
+			"test_plus": Vector3(-0.042, -0.012, hz - 0.012), "test_minus": Vector3(-0.042, 0.012, hz - 0.012)}})
+	m.use("paint_black", "identify")
+	m.box(Vector3(-0.028, 0, hz), Vector3(0.024, 0.05, 0.05))        # the terminal block, in the field side
+	m.use("chrome", "identify")
+	for y: float in [-0.012, 0.012]:
+		for z: float in [0.01, -0.012]:
+			m.cyl(Vector3(-0.040, y, hz + z), Vector3(-0.043, y, hz + z), 0.004, -1.0, 8)   # its terminal screws
+	g.comp("cable_gland", {"parent": "housing", "explode": [Vector3(0, -1, 0), 0.04]})
+	g.only()
 	m.use("paint_darkgrey", "detail", 0.02)
-	m.cyl(Vector3(0, -0.05, 0.22), Vector3(0, -0.08, 0.22), 0.012, -1.0, 6)   # cable gland
-	g.plate("body", t * Vector3(-0.065, 0, 0.22), t.basis * Vector3(-1, 0, 0), "small")
+	m.cyl(Vector3(0, -0.05, hz), Vector3(0, -0.08, hz), 0.012, -1.0, 6)   # cable gland
+	g.comp("housing")
+	var screw := func(b) -> void:
+		b.use("steel", "detail", 0.004)
+		b.cyl(Vector3(0, 0, 0), Vector3(0, 0, 0.0025), 0.0025, -1.0, 6)
+		b.cyl(Vector3(0, 0, -0.005), Vector3(0, 0, 0), 0.0012, -1.0, 6)
+	# the housing rotation set screw, in the housing's underside beside the sensor module's neck: it backs out downwards
+	g.fasteners("set_screw", "screw", [Transform3D(Basis(Vector3(1, 0, 0), Vector3(0, -1, 0), Vector3(0, 0, -1)),
+		Vector3(0.032, 0, hz - 0.0498))], screw)
+	g.plate("body", t * Vector3(-0.065, 0, hz), t.basis * Vector3(-1, 0, 0), "small")
 	g.axis_line = [t * Vector3.ZERO, t * Vector3(0, 0, 0.25)]
+	g.only("plant")   # a free-standing transmitter's stand pipe: the plant's mounting, not part of the instrument
 	_stand(g, t * Vector3(0, -0.06, 0.15))
+	g.only()
 
 static func pressure_transmitter(_part: String, g) -> void:
 	_transmitter(g, false)

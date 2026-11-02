@@ -11,6 +11,11 @@
 ##            cylinders, `axis` the part's centre line (children's instruments face away from it)
 ## ctx carries what the builder knows about the surroundings (README "Context"): the DN table, the nozzles pipes end
 ## on, a shaft line shared with neighbours, the height of what stands above or below.
+##
+## make(part, params, ctx, seg_scale, true) is the Workshop mode (docs/plant3d/WORKSHOP.md §4.2): the same generator
+## with its component tags. Its layers are keyed `comp|tag|material|class|bucket` (no LODs: one machine seen close), and
+## it gives the component tree (`components`), the fastener groups, flow paths, the stand-ins the plant draws in place
+## of split components, and every Workshop-only piece with its box (`pieces`). Plant mode is untouched by it.
 extends RefCounted
 
 const MB = preload("res://kit/mesh.gd")
@@ -99,6 +104,11 @@ class Gen:
 	var axis_line: Array = [Vector3.ZERO, Vector3(0, 0, 1)]
 	var dn_table: Array = []
 	var seg_scale := 1.0
+	var workshop := false     # the Workshop mode (WORKSHOP.md §4.2): comp(), only(), fasteners() and flow() count
+	var components := {}      # id -> its spec in the part frame (Workshop mode)
+	var fastener_groups: Array = []
+	var flows := {}
+	var cur_comp := "body"
 
 	func _init(params: Dictionary, context: Dictionary, MBs) -> void:
 		p = params
@@ -130,8 +140,75 @@ class Gen:
 		if not moving.has(name):
 			var mb = _mb_script.new()
 			mb.seg_scale = seg_scale
+			mb.workshop = workshop
+			mb.comp_id = cur_comp
 			moving[name] = {"pivot": pivot, "axis": axis.normalized(), "kind": kind, "travel": travel, "mb": mb}
 		return moving[name].mb
+
+	## Declares a component and makes it current for the next primitives (WORKSHOP.md §4.1, §4.2). Points and
+	## directions are in the frame the static builder draws in now (its `xf`), as its primitives are. spec:
+	##   parent    another component's id ("" or absent: the machine's top level)
+	##   pivot     the component's origin (default: its box's centre)
+	##   explode   [direction, metres] (default: the builder's, from the parent's box centre)
+	##   sym       [axis, n] rotational symmetry for snapping (n 0: any angle)
+	##   anchors   {name: point} terminals, test points, lifting eyes
+	##   anim      the moving piece (g.move's name) this component is
+	##   thin      true for a sheet or a glass, not a closed solid (§7.2)
+	## In plant mode it only selects the layer again (nothing changes).
+	func comp(id: String, spec := {}) -> void:
+		cur_comp = id
+		if workshop and not components.has(id):
+			var t: Transform3D = m.xf
+			var c := {"parent": spec.get("parent", ""), "thin": spec.get("thin", false), "anim": spec.get("anim", "")}
+			if spec.has("pivot"):
+				c["pivot"] = t * (spec.pivot as Vector3)
+			if spec.has("explode"):
+				c["explode"] = [(t.basis * (spec.explode[0] as Vector3)).normalized(), float(spec.explode[1])]
+			if spec.has("sym"):
+				c["sym"] = [(t.basis * (spec.sym[0] as Vector3)).normalized(), int(spec.sym[1])]
+			var an := {}
+			for k in spec.get("anchors", {}):
+				an[k] = t * (spec.anchors[k] as Vector3)
+			c["anchors"] = an
+			components[id] = c
+		m.set_comp(id)
+		for n in moving:
+			moving[n].mb.set_comp(id)
+
+	## What the next primitives are (WORKSHOP.md §4.2): only() shared; only("workshop") hidden insides, inner faces,
+	## closing faces; only("workshop", "outside") a small outside piece the plant doesn't draw (at most 30 mm);
+	## only("workshop", "split") a piece of a component that replaces a stand-in; only("plant", [components]) a merged
+	## stand-in those components replace (none: a mounting the Workshop leaves out). After a "workshop" block call
+	## use() again before the next shared primitive.
+	func only(kind := "", arg = null) -> void:
+		var role: String = arg if arg is String else "hidden"
+		var by: Array = arg if arg is Array else []
+		m.set_only(kind, role, by)
+		for n in moving:
+			moving[n].mb.set_only(kind, role, by)
+
+	## A group of identical fasteners (WORKSHOP.md §4.4): `items` their transforms (origin at the item's seat, z the
+	## way it backs out) in the frame the static builder draws in now; `draw` draws one item into the mesh builder it
+	## is given, in the item's own frame. A small outside piece of the Workshop: plant mode draws nothing. Its
+	## component in the tree is the current one (the group backs out in that component's stage).
+	func fasteners(id: String, kind: String, items: Array, draw: Callable) -> void:
+		if not workshop:
+			return
+		var mb = _mb_script.new()
+		mb.seg_scale = seg_scale
+		mb.workshop = true
+		mb.comp_id = id
+		mb.set_only("workshop", "outside")
+		draw.call(mb)
+		var xs: Array = []
+		for it in items:
+			xs.append(m.xf * (it as Transform3D))
+		fastener_groups.append({"id": id, "kind": kind, "parent": cur_comp, "items": xs, "mb": mb})
+
+	## A flow path (WORKSHOP.md §4.1): a polyline in the frame the static builder draws in now. Workshop mode only.
+	func flow(id: String, pts: Array) -> void:
+		if workshop:
+			flows[id] = pts.map(func(q): return m.xf * (q as Vector3))
 
 	func plate(name: String, at: Vector3, normal: Vector3, kind := "large") -> void:
 		plates[name] = {"at": at, "normal": normal.normalized(), "kind": kind}
@@ -171,7 +248,28 @@ static func use_kit(k: Dictionary) -> void:
 	_kit_json = k
 
 static func has_part(part: String) -> bool:
-	return MAKERS.has(part)
+	return MAKERS.has(part) or _registered.has(part)
+
+## Kinds added from outside the kit's own list (WORKSHOP.md §9): `script` a generator (a static function named as the
+## part, as the kit's own), `budget` its triangles at full detail. The tests add a data-only fixture kind this way;
+## the app's kinds stay in MAKERS, and a registered kind never replaces one of them.
+static var _registered := {}
+
+static func register(part: String, script: Script, budget: int) -> bool:
+	if MAKERS.has(part) or script == null or budget <= 0:
+		return false
+	_registered[part] = {"script": script, "budget": budget}
+	return true
+
+static func unregister(part: String) -> void:
+	_registered.erase(part)
+	clear_cache()
+
+## A part's triangle budget at full detail: BUDGET's, or a registered kind's.
+static func budget_of(part: String) -> int:
+	if _registered.has(part):
+		return _registered[part].budget
+	return BUDGET.get(part, 0)
 
 ## The part's parameters with the kit's defaults filled in.
 static func params_of(part: String, given) -> Dictionary:
@@ -190,6 +288,8 @@ static func nozzle_spec(part: String, n: String) -> Dictionary:
 	return kit_json().get("parts", {}).get(part, {}).get("nozzles", {}).get(n, {})
 
 static func _script(part: String):
+	if not MAKERS.has(part) and _registered.has(part):
+		return _registered[part].script
 	match MAKERS.get(part, ""):
 		"MACH": return P_MACH
 		"ROT": return P_ROT
@@ -206,8 +306,10 @@ static func _script(part: String):
 	return null
 
 ## Makes a part (cached: the same part with the same parameters and context is made once).
-static func make(part: String, params: Dictionary, ctx := {}, seg_scale := 1.0) -> Dictionary:
+static func make(part: String, params: Dictionary, ctx := {}, seg_scale := 1.0, workshop := false) -> Dictionary:
 	var key := "%s|%s|%s|%.2f" % [part, JSON.stringify(params, "", true), JSON.stringify(_ctx_key(ctx), "", true), seg_scale]
+	if workshop:
+		key += "|workshop"
 	if _cache.has(key):
 		return _cache[key]
 	var c := ctx.duplicate()
@@ -217,10 +319,16 @@ static func make(part: String, params: Dictionary, ctx := {}, seg_scale := 1.0) 
 	var g := Gen.new(params, c, MB)
 	g.m.seg_scale = seg_scale
 	g.seg_scale = seg_scale
+	g.workshop = workshop
+	g.m.workshop = workshop
 	var s = _script(part)
 	if s == null:
 		return {}
 	s.call(part, part, g)
+	if workshop:
+		var w := _workshop_result(part, g)
+		_cache[key] = w
+		return w
 	var res := {"part": part, "layers": _meshes(g.m.finish(), Vector3.ZERO), "moving": [], "plates": {}, "solids": g.solids,
 		"axis": [_gv(g.axis_line[0]), _gv(g.axis_line[1])]}
 	for n in g.moving:
@@ -233,6 +341,119 @@ static func make(part: String, params: Dictionary, ctx := {}, seg_scale := 1.0) 
 	res["tris"] = tris_of(res)
 	_cache[key] = res
 	return res
+
+## The Workshop mode's result (WORKSHOP.md §4.2): every shape in the part's Godot frame.
+##   layers      {key: {mat, cls, size, comp, tag, mesh, tris}} static pieces, keyed comp|tag|mat|class|bucket, no LODs
+##   moving      as plant mode's, each layer with its comp and tag
+##   components  [{id, parent, pivot, box, explode, sym, anchors, anim, thin}] in declaration order (`body` alone when
+##               the generator declares none); box: the component's static and moving pieces; explode [] = default
+##   fasteners   [{id, kind, parent, items: [Transform3D], layers, box}] (items in the part's Godot frame, layers in an
+##               item's own)
+##   flows       {id: [points]}
+##   standins    [{replaced_by, layers: {mat|class|bucket key: {mat, cls, size, mesh, tris}}, box}]
+##   pieces      [{comp, kind, role, standin, box, tris}] every only() block
+##   problems    the generator's mistakes (a piece in an undeclared component, a misuse of only())
+static func _workshop_result(part: String, g) -> Dictionary:
+	var res := {"part": part, "workshop": true, "layers": _ws_meshes(g.m.finish(), Vector3.ZERO), "moving": [],
+		"plates": {}, "solids": g.solids, "axis": [_gv(g.axis_line[0]), _gv(g.axis_line[1])], "components": [],
+		"fasteners": [], "flows": {}, "standins": [], "pieces": [], "problems": g.m.problems.duplicate()}
+	for n in g.moving:
+		var mv: Dictionary = g.moving[n]
+		res.moving.append({"name": n, "pivot": _gv(mv.pivot), "axis": _gv(mv.axis).normalized(), "kind": mv.kind,
+			"travel": mv.travel, "layers": _ws_meshes(mv.mb.finish(), _gv(mv.pivot))})
+		res.problems.append_array(mv.mb.problems)
+	for n in g.plates:
+		var pl: Dictionary = g.plates[n]
+		res.plates[n] = {"at": _gv(pl.at), "normal": _gv(pl.normal), "kind": pl.kind}
+	var comps: Dictionary = g.components.duplicate(true)
+	if comps.is_empty():
+		comps["body"] = {"parent": "", "thin": false, "anim": "", "anchors": {}}
+	# each component's box from its pieces (the moving ones where they stand at value 0)
+	var boxes := {}
+	for k in res.layers:
+		var L: Dictionary = res.layers[k]
+		boxes[L.comp] = _merge_box(boxes.get(L.comp), L.mesh.get_aabb())
+	for mv in res.moving:
+		for k in mv.layers:
+			var L: Dictionary = mv.layers[k]
+			var bb: AABB = L.mesh.get_aabb()
+			bb.position += mv.pivot
+			boxes[L.comp] = _merge_box(boxes.get(L.comp), bb)
+	for id in boxes:
+		if not comps.has(id):
+			res.problems.append("pieces in the component %s, which the generator never declared" % id)
+	for id in comps:
+		var c: Dictionary = comps[id]
+		var box: AABB = boxes.get(id, AABB())
+		var piv: Vector3 = _gv(c.pivot) if c.has("pivot") else box.get_center()
+		res.components.append({"id": id, "parent": c.parent, "pivot": piv, "box": box,
+			"explode": [_gv(c.explode[0]), c.explode[1]] if c.has("explode") else [],
+			"sym": [_gv(c.sym[0]), c.sym[1]] if c.has("sym") else [],
+			"anchors": _gv_dict(c.anchors), "anim": c.anim, "thin": c.thin})
+	for fg in g.fastener_groups:
+		var items: Array = []
+		for t in fg.items:
+			items.append(_gt(t))
+		var layers := _ws_meshes(fg.mb.finish(), Vector3.ZERO)
+		var one = null
+		for k in layers:
+			one = _merge_box(one, layers[k].mesh.get_aabb())
+		res.fasteners.append({"id": fg.id, "kind": fg.kind, "parent": fg.parent, "items": items, "layers": layers,
+			"box": one if one != null else AABB()})
+	for id in g.flows:
+		res.flows[id] = g.flows[id].map(func(q): return _gv(q))
+	for si in g.m.standins:
+		var layers := _ws_meshes(g.m.finish_layers(si.layers), Vector3.ZERO)
+		var bb = null
+		for k in layers:
+			bb = _merge_box(bb, layers[k].mesh.get_aabb())
+		res.standins.append({"replaced_by": si.replaced_by, "layers": layers, "box": bb if bb != null else AABB()})
+	for pc in g.m.pieces:
+		res.pieces.append({"comp": pc.comp, "kind": pc.kind, "role": pc.role, "standin": pc.standin, "box": pc.box,
+			"tris": pc.tris})
+	var n := 0
+	for k in res.layers:
+		n += res.layers[k].tris[0]
+	for mv in res.moving:
+		for k in mv.layers:
+			n += mv.layers[k].tris[0]
+	for f in res.fasteners:
+		for k in f.layers:
+			n += f.layers[k].tris[0] * f.items.size()
+	res["tris"] = n
+	return res
+
+static func _merge_box(a, b: AABB) -> AABB:
+	return b if a == null else (a as AABB).merge(b)
+
+static func _gv_dict(d: Dictionary) -> Dictionary:
+	var out := {}
+	for k in d:
+		out[k] = _gv(d[k])
+	return out
+
+## A part-frame transform in Godot's axes (for a mesh whose vertices are in Godot's axes too).
+static func _gt(t: Transform3D) -> Transform3D:
+	var C := Basis(Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0))   # columns: part x, y, z in Godot's axes
+	return Transform3D(C * t.basis * C.inverse(), _gv(t.origin))
+
+## The Workshop's meshes: as _meshes but without LODs, each keeping its component and tag.
+static func _ws_meshes(layers: Dictionary, origin: Vector3) -> Dictionary:
+	var out := {}
+	for k in layers:
+		var L: Dictionary = layers[k]
+		var arr: Array = L.arrays
+		if origin != Vector3.ZERO:
+			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			for i in v.size():
+				v[i] -= origin
+			arr[Mesh.ARRAY_VERTEX] = v
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		mesh.resource_name = k
+		out[k] = {"mat": L.mat, "cls": L.cls, "size": L.size, "comp": L.get("comp", ""), "tag": L.get("tag", ""),
+			"mesh": mesh, "tris": [L.tris]}
+	return out
 
 ## The context keys that change a part's shape (the rest is the builder's bookkeeping).
 static func _ctx_key(ctx: Dictionary) -> Dictionary:

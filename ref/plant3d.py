@@ -311,6 +311,7 @@ class Bundle:
         self.structures = {}                       # id -> structure
         self.surfaces = []                         # (kind, z, polygon) walkable outlines; pits: ('pit', z, poly)
         self.counts = {}
+        self.workshop = {}                         # part -> the Workshop data file's summary (WORKSHOP.md §4)
 
 
 def load_dir(path):
@@ -342,12 +343,20 @@ def check_files(files):
     b = Bundle()
     for rel in files:
         need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json') or re.fullmatch(
-            r'(areas|model|procedures|scenarios)/[a-z_][a-z0-9_]{0,31}\.json|sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg', rel),
-            'unknown_key', f'{rel}: not a file of the format')
+            r'(areas|model|procedures|scenarios|workshop)/[a-z_][a-z0-9_]{0,31}\.json|sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg',
+            rel), 'unknown_key', f'{rel}: not a file of the format')
     for rel in ('plant.json', 'kit.json', 'sounds.json'):
         need(rel in files, 'missing_key', f'{rel} is missing')
     b.kit = check_kit(parse(files, 'kit.json'))
     Plant(b, files).check()
+    # the Workshop's data per part kind (docs/plant3d/WORKSHOP.md §4, ref/plant3d_workshop.py): not part of the
+    # plant's model, checked here so that the content build reads only checked files
+    from ref import plant3d_workshop as W
+    for rel in sorted(files):
+        if rel.startswith('workshop/'):
+            w = W.check(parse(files, rel), b.kit, rel)
+            need(rel == f'workshop/{w["part"]}.json', 'bad_ref', f'{rel}: named by its part ({w["part"]})')
+            b.workshop[w['part']] = w
     return b
 
 
