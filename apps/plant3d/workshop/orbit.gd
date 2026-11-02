@@ -73,6 +73,10 @@ func zoom(f: float) -> void:
 	dist *= f
 	place()
 
+## Every finger let go (the Workshop closed with one down: no release will come for it).
+func release_all() -> void:
+	_touches.clear()
+
 ## A pointer event over the view (in the view's pixels). True when it was the camera's.
 func handle(e: InputEvent, view_h: float) -> bool:
 	if e is InputEventScreenTouch:
@@ -111,10 +115,11 @@ func handle(e: InputEvent, view_h: float) -> bool:
 			return true
 	return false
 
-## The gamepad's sticks (the look and move actions), each frame.
-func sticks(delta: float) -> void:
+## The gamepad's sticks (the look and move actions), each frame. `move`, when given, stands for the move actions
+## (the Workshop gives the left stick alone while its panels have the focus: the arrow keys walk between them then).
+func sticks(delta: float, move := Vector2.INF) -> void:
 	var lv := Input.get_vector("look_left", "look_right", "look_up", "look_down")
-	var mv := Input.get_vector("move_left", "move_right", "move_back", "move_forward")
+	var mv := Input.get_vector("move_left", "move_right", "move_back", "move_forward") if move == Vector2.INF else move
 	if lv.length() < 0.15 and mv.length() < 0.15:
 		return
 	yaw -= lv.x * PAD_RATE * delta

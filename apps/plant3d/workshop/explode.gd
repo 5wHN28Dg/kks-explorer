@@ -39,7 +39,7 @@ static func ease01(t: float) -> float:
 
 ## The levels below `root` ("" the whole machine): {id: level} for every component that moves (a sealed component's
 ## descendants don't), the fastener groups' levels (their host's: they back out in its stage, before it moves; 0 for
-## a group on the root), D, the number of levels, and the set of levels that hold fastener groups.
+## a group on the whole machine's root; a group on a chosen subassembly's root stays home with it), D, the number of levels, and the set of levels that hold fastener groups.
 static func levels(spec: Dictionary, root := "") -> Array:
 	var lv := {}
 	var deepest := -1
@@ -52,6 +52,8 @@ static func levels(spec: Dictionary, root := "") -> Array:
 	var glv := {}
 	for g in spec.groups:
 		var host: String = spec.groups[g].host
+		if root != "" and host == root:
+			continue   # the chosen subassembly's own fasteners hold it to the rest, which stays home: so do they
 		var d: int = 0 if host == root else (lv[host] if lv.has(host) else -1)
 		if d < 0 or (host != "" and (spec.comps[host].sealed or _in_sealed(spec, host))):
 			continue   # a sealed component's fasteners are its own insides: they stay with it

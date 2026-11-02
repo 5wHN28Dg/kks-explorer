@@ -1572,7 +1572,12 @@ func _on_step_changed(_i: int) -> void:
 
 # ------------------------------------------------------------------ links in
 
+var held_link := ""   # a link that came while the Workshop showed: handled on leaving it
+
 func handle_link(url: String) -> void:
+	if main != null and main.has_method("workshop_open") and main.workshop_open():
+		held_link = url   # opened when the trainee is back in the plant (workshop/workshop.gd close): not unseen behind it
+		return
 	var r: Dictionary = Links.read_link(url, model)
 	print("plant: link %s opens %s" % [url.left(80), JSON.stringify(r)])
 	match r["open"]:

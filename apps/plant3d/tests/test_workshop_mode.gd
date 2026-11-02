@@ -295,6 +295,8 @@ func run(tree: SceneTree) -> Array:
 	ws.show_all()
 	check(ws.hidden.is_empty() and _all_meshes_shown(ws), "Show all shows them again")
 	ws.reset()
+	await _review_checks(tree, ws, w, at0)
+	ws.reset()
 	# Reassemble all animates home
 	ws.set_slider(1.0)
 	ws.reassemble()
@@ -303,6 +305,22 @@ func run(tree: SceneTree) -> Array:
 		if ws.s == 0.0:
 			break
 	check(ws.s == 0.0 and _transforms(ws) == at0, "Reassemble all brings everything home")
+	# Reassemble all from a handled part: half way it is on its way, at the end home
+	ws.handled["cover_front"] = Transform3D(Basis(Vector3.UP, 0.7), Vector3(0.05, 0.02, 0))
+	ws.set_slider(1.0)
+	ws.reassemble()
+	var mid_seen := false
+	for i in 120:
+		await tree.process_frame
+		if ws._reassemble_t > 0.0 and ws._reassemble_t < Workshop.REASSEMBLE_S * 0.8 and ws.handled.has("cover_front"):
+			var hm: Transform3D = ws.handled["cover_front"]
+			mid_seen = mid_seen or (hm != Transform3D.IDENTITY and hm.origin.length() < Vector3(0.05, 0.02, 0).length() - 1e-4)
+		if ws.s == 0.0 and ws._reassemble_t < 0.0:
+			break
+	check(mid_seen, "Reassemble all brings a handled part home step by step")
+	check(ws.s == 0.0 and ws.handled.is_empty() and _transforms(ws) == at0, "and ends with it exactly home")
+	check(Explode.fastener_offsets(ws.spec, 0.0).values().all(func(a): return a.all(func(v): return v == Vector3.ZERO))
+		and ws.groups.values().all(func(g): return g.transform == Transform3D.IDENTITY), "at 0 every fastener item is home too")
 	# back to the plant
 	ws.close()
 	await ws.left
@@ -387,6 +405,16 @@ func run(tree: SceneTree) -> Array:
 		await tree.process_frame
 		check(ws.panels.strip.text.contains("1 new alarm"), "the strip counts a new alarm: %s" % ws.panels.strip.text)
 		ui.clock.engine.astate[sk] = "normal"
+	# an alarm unacknowledged at entry is acknowledged by another player and a new one comes: it still counts
+	var old_k := _free_alarm(ui.clock.engine)
+	if old_k >= 0:
+		ui.clock.engine.astate[old_k] = "active_unack"
+		ws._alarms_at = ws.call("_unacked_keys") if ws.has_method("_unacked_keys") else ws.call("_unacked")   # (as at entry)
+		var new_k := _free_alarm(ui.clock.engine)
+		ui.clock.engine.astate[old_k] = "normal"
+		ui.clock.engine.astate[new_k] = "active_unack"
+		check(ws.new_alarms() == 1, "an old alarm acknowledged and a new one raised: one new alarm (%d)" % ws.new_alarms())
+		ui.clock.engine.astate[new_k] = "normal"
 	ws.force_session = false   # the session ends while the Workshop shows
 	await tree.process_frame
 	check(ws.panels.strip.text.contains("ended"), "the strip says the session ended: %s" % ws.panels.strip.text)
@@ -394,6 +422,7 @@ func run(tree: SceneTree) -> Array:
 	await ws.left
 	ws.force_session = false
 	check(ui.clock.speed == SimClock.Speed.NORMAL, "leaving a session's Workshop leaves the plant's speed alone")
+	await _review_plant_checks(tree, main, ws, ui)
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
 	main.free()
 	return p
@@ -492,8 +521,14 @@ func _fixture_explode() -> void:
 		ws.groups[g] = root
 	ws.s = 0.0
 	check(ws.why_not_free("lid") == "Take the screws out before the lid.", "assembled, the lid is held by its screws: %s" % ws.why_not_free("lid"))
+	ws.hidden["lid_screws"] = true
+	check(ws.why_not_free("lid") == "Take the screws out before the lid.", "hidden screws still hold the lid: %s" % ws.why_not_free("lid"))
+	ws.hidden.clear()
 	ws.s = 1.0
 	check(ws.why_not_free("lid") == "", "fully exploded, the screws out, the lid is free: %s" % ws.why_not_free("lid"))
+	# the lid taken apart alone: its own screws hold it to the base, which stays home, so they stay too
+	var lfo := Explode.fastener_offsets(spec, 1.0, "lid")
+	check(not lfo.has("lid_screws") or (lfo.lid_screws[0] as Vector3) == Vector3.ZERO, "a subassembly's own fasteners stay home with it: %s" % str(lfo))
 	ws.free()
 	root.free()
 
@@ -512,6 +547,129 @@ func _sealed_edges() -> void:
 	check(not sub.has("core") or (sub.core as Vector3) == Vector3.ZERO, "a part inside a sealed one, taken apart alone, stays whole: %s" % str(sub))
 	var fo := Explode.fastener_offsets(spec, 1.0)
 	check(not fo.has("shell_pins") and fo.has("lid_bolts"), "a sealed component's own fasteners stay; another's back out: %s" % str(fo.keys()))
+	# and they can't be picked up either (§4.5: a sealed component's insides are never free)
+	var ws := Workshop.new()
+	ws.spec = spec
+	ws.words = {"components": {"shell": {"sealed_why": "The shell is sealed."}}}
+	for id in spec.comps:
+		ws.comps[id] = true
+	for g in spec.groups:
+		ws.groups[g] = true
+	check(ws.why_not_free("shell_pins") == "The shell is sealed.", "a sealed component's fasteners are not free: '%s'" % ws.why_not_free("shell_pins"))
+	check(ws.why_not_free("lid_bolts") == "", "another's are")
+	ws.free()
+
+## The adversarial reviews' findings, on the shown machine (each check fails without its fix).
+func _review_checks(tree: SceneTree, ws, w: Dictionary, at0: Dictionary) -> void:
+	# a tree pick of a sealed part's child says why it can't be picked up, as a pick in the view does
+	ws.select("isolator")
+	check(ws.note == w.components.sensor_module.sealed_why, "a tree pick of a sealed part's child says why: '%s'" % ws.note)
+	# "Selected subassembly only": a pick inside the subassembly taken apart keeps it apart; a pick outside takes that one
+	ws.select("housing")
+	ws.set_only_selected(true)
+	ws.set_slider(1.0)
+	var apart := _transforms(ws)
+	ws.select("cover_front")
+	check(ws.root_id == "housing" and _transforms(ws) == apart, "a pick inside the subassembly taken apart keeps it apart (root %s)" % ws.root_id)
+	ws.select("process_flange")
+	check(ws.root_id == "process_flange", "a pick outside it takes that one apart (root %s)" % ws.root_id)
+	ws.set_only_selected(false)
+	ws.set_slider(0.0)
+	# a drag held as Reset, a new selection, Hide or Reassemble comes: it moves nothing afterwards
+	var fake := {"kind": "move", "axis": Vector3.RIGHT, "a": Vector2.ZERO, "b": Vector2(100, 0), "len": 0.05,
+		"from": Vector2.ZERO, "start": Transform3D.IDENTITY}
+	ws.select("cover_front")
+	ws._drag = fake.duplicate()
+	ws.reset()
+	ws._drag_handle(Vector2(50, 0))
+	check(ws.handled.is_empty(), "a drag held through Reset moves nothing after it (%s)" % str(ws.handled.keys()))
+	ws.select("cover_front")
+	ws._drag = fake.duplicate()
+	ws.select("terminal_block")
+	ws._drag_handle(Vector2(50, 0))
+	check(not ws.handled.has("terminal_block"), "a drag held through a change of selection doesn't move the new part")
+	ws._drag = fake.duplicate()
+	ws.hide_selected()
+	ws._drag_handle(Vector2(50, 0))
+	check(ws.handled.is_empty(), "a drag held through Hide moves nothing")
+	ws.reset()
+	# a drag along an arrow never throws the part farther than the machine's size
+	ws.select("cover_front")
+	var near_on := fake.duplicate()
+	near_on.b = Vector2(2, 0)
+	ws._drag = near_on
+	ws._drag_handle(Vector2(2000, 0))
+	var reach: float = (ws.machine.get_meta("box") as AABB).size.length()
+	check(ws.handled.has("cover_front") and (ws.handled.cover_front as Transform3D).origin.length() <= reach + 1e-4,
+		"a drag along a short arrow stays within the machine's size (%.2f m, size %.2f m)" % [(ws.handled.get("cover_front", Transform3D()) as Transform3D).origin.length(), reach])
+	ws._drag = {}
+	ws.reset()
+	# an arrow seen end on can't be taken
+	ws.select("cover_front")
+	await tree.process_frame
+	var hc: Vector3 = ws.handle.global_position
+	ws.cam.target = hc
+	ws.cam.yaw = PI / 2.0
+	ws.cam.pitch = 0.0
+	ws.cam.place()
+	ws._place_handle()
+	var took: bool = ws._grab_handle(ws.cam.unproject_position(hc))
+	check(not took or absf((ws._drag.axis as Vector3).dot(Vector3.RIGHT)) < 0.5, "an arrow seen end on is not taken (%s)" % str(ws._drag.get("axis")))
+	ws._drag = {}
+	ws.cam.reset_view()
+	# the handle hides on a part whose parent is hidden
+	ws.hidden["housing"] = true
+	ws.apply()
+	ws.select("cover_front")
+	ws._place_handle()
+	check(not ws.handle.visible, "no handle on a part inside a hidden one")
+	ws.reset()
+	# the move keys (the arrows) walk between the tools while one has the focus: they don't zoom
+	ws.panels.slider.grab_focus()
+	var d0: float = ws.cam.dist
+	Input.action_press("move_forward")
+	ws._process(0.1)
+	Input.action_release("move_forward")
+	check(is_equal_approx(ws.cam.dist, d0), "the arrow keys don't zoom while the tools have the focus (%.3f, was %.3f)" % [ws.cam.dist, d0])
+	var jm := InputEventJoypadMotion.new()
+	jm.axis = JOY_AXIS_LEFT_Y
+	jm.axis_value = -1.0
+	ws.get_viewport().push_input(jm)
+	jm.axis_value = 0.0
+	ws.get_viewport().push_input(jm)
+	check(ws.get_viewport().gui_get_focus_owner() == ws.panels.slider, "the left stick doesn't walk between the tools")
+	ws.panels.slider.release_focus()
+	ws.select("")
+
+## The adversarial reviews' findings on the way in and out (each check fails without its fix).
+func _review_plant_checks(tree: SceneTree, main, ws, ui) -> void:
+	# the control room's screens keep the plant's 3D off: leaving the Workshop leaves it off
+	main.get_viewport().disable_3d = true
+	ws.open("pressure_transmitter")
+	await _wait_shown(tree, ws)
+	ws.close()
+	await ws.left
+	check(main.get_viewport().disable_3d, "back to the control room's screens, the plant's 3D stays off")
+	main.get_viewport().disable_3d = false
+	# single play: an autosave while the Workshop shows keeps the plant's speed from before, not paused
+	ui.clock.set_speed(SimClock.Speed.NORMAL)
+	ws.open("pressure_transmitter")
+	await _wait_shown(tree, ws)
+	check(ui.autosave == null or int(ui.autosave.payload().clock.speed) == SimClock.Speed.NORMAL,
+		"an autosave in the Workshop keeps the plant's speed from before")
+	# a link that comes while the Workshop shows waits for the plant
+	ui.close_card()
+	ui.handle_link("walkdown-plant://kks/30PAC10AP001")
+	check(not ui.card.visible and String(ui.get("held_link")) != "", "a link doesn't open a card unseen behind the Workshop")
+	# a finger down as the Workshop closes is not left in the camera
+	var tp := InputEventScreenTouch.new()
+	tp.index = 0; tp.position = Vector2(50, 50); tp.pressed = true
+	ws._on_view_input(tp)
+	ws.close()
+	await ws.left
+	check(ws.cam._touches.is_empty(), "no finger is left down after the Workshop closed")
+	check(ui.card.visible and ui.card.code == "30PAC10AP001" and String(ui.get("held_link")) == "", "back in the plant, the link opens its card")
+	ui.close_card()
 
 ## Framing a small part keeps the zoom's reach out to the whole machine.
 func _orbit_limits(tree: SceneTree) -> void:

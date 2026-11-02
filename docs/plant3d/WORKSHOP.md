@@ -264,7 +264,9 @@ transforms and 1 → 0 restores them exactly:
   level with no fastener group uses its whole stage), as in a real take-apart the bolts come out before the flange
   comes off (the user, 2026-11-02);
 - transform = home transform translated by the offset: computed from home every frame, never accumulated;
-- **subassembly only:** the same function with the selected component as root (its own stages); the rest stays home.
+- **subassembly only:** the same function with the selected component as root (its own stages); the rest stays home,
+  and so do the root's own fastener groups (they hold it to the rest). While it is on, a pick inside that subassembly
+  keeps it taken apart; a pick outside it takes the picked one apart instead.
 
 Handling (§4.5) is applied on top and cleared by Reset; the slider never reads it.
 

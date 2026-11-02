@@ -19,6 +19,8 @@ const DIR := "res://built/workshop"
 const SPACE := "res://built/workshop_ui/space.scn"
 const MATS := "res://built/materials/%s.tres"
 const HANDLE_PX := 16.0         # a pointer this near an arrow or ring of the handle takes it
+const ARROW_MIN_PX := 24.0      # an arrow seen nearly end on (shorter than this on screen) can't be taken: a small drag
+								# along it would throw the part far
 const REASSEMBLE_S := 0.8       # seconds Reassemble all takes
 
 signal shown(part: String)      # the machine's first frame was drawn (entry measured)
@@ -59,6 +61,7 @@ var _prev_muted := false
 var _prev_mouse := Input.MOUSE_MODE_VISIBLE
 var _prev_hud := true
 var _prev_ui := true
+var _prev_3d := false             # the main viewport's 3D off before (the control room's screens keep it off)
 var _session := false
 var _mats := {}                 # name -> Material
 var _lit := {}                  # name -> Material with the selection's emission
@@ -69,7 +72,7 @@ var _reassemble_handled := {}
 var _drag := {}                 # the handle being dragged: {kind, axis, start…}
 var _press_at := Vector2.INF
 var _last_click := 0
-var _alarms_at := 0             # (a session) unacknowledged alarms when the Workshop opened
+var _alarms_at := {}            # (a session) the alarms unacknowledged when the Workshop opened: {key: true}
 var _gen := 0                   # one per entry and exit: a coroutine of an earlier one ends quietly
 var _orphans: Array = []        # threaded loads left by a close during loading, collected when done
 var _hollow := {}               # id -> true: an ancestor whose own meshes Isolate hid
@@ -150,6 +153,10 @@ func close() -> void:
 	_loading = ""
 	_drag = {}
 	_reassemble_t = -1.0
+	_no_click = false
+	_press_at = Vector2.INF
+	if cam != null:
+		cam.release_all()   # a finger down as the Workshop closed lifts nowhere it can be seen
 	if machine != null:
 		machine.queue_free()
 		machine = null
@@ -164,6 +171,10 @@ func close() -> void:
 	if container != null:
 		container.visible = false
 	_back_to_plant()
+	if ui != null and "held_link" in ui and ui.held_link != "":
+		var url: String = ui.held_link
+		ui.held_link = ""
+		ui.handle_link(url)   # a link that came while the Workshop showed, now that the plant is seen
 	if main.hud != null:
 		main.hud.refresh()
 	await main._drawn()   # the next frame drawn (headless: the next frame)
@@ -186,7 +197,7 @@ func _leave_plant() -> void:
 		ui.sounds.muted = true
 		ui.horn_changed.emit(0)
 	if _session and ui.clock != null and ui.clock.engine != null:
-		_alarms_at = _unacked()
+		_alarms_at = _unacked_keys()
 	_prev_mouse = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_prev_focus = main.get_viewport().gui_get_focus_owner()
@@ -196,10 +207,11 @@ func _leave_plant() -> void:
 	if ui != null and ui.root != null:
 		_prev_ui = ui.root.visible
 		ui.root.visible = false
+	_prev_3d = main.get_viewport().disable_3d
 	main.get_viewport().disable_3d = true
 
 func _back_to_plant() -> void:
-	main.get_viewport().disable_3d = false
+	main.get_viewport().disable_3d = _prev_3d
 	if ui != null and ui.root != null:
 		ui.root.visible = _prev_ui
 	if main.hud != null:
@@ -221,23 +233,36 @@ func _back_to_plant() -> void:
 		_prev_focus.grab_focus()
 	_prev_focus = null
 
-## Unacknowledged alarms as the horn counts them (ui/plant_ui.gd _horn_tick: not shelved, not suppressed).
-func _unacked() -> int:
+## The alarms unacknowledged as the horn counts them (ui/plant_ui.gd _horn_tick: not shelved, not suppressed), by
+## their key: {key: true}.
+func _unacked_keys() -> Dictionary:
 	var e = ui.clock.engine
-	var n := 0
+	var out := {}
 	if e == null or not "astate" in e:
-		return 0
+		return out
 	for k in e.astate.size():
 		var st := String(e.astate[k])
 		if (st == "active_unack" or st == "cleared_unack") and e.shelved[k] == -1 and not AlarmPanel.suppressed(e, k):
-			n += 1
-	return n
+			out[k] = true
+	return out
 
-## (A session) new alarms since the Workshop opened.
+## (A session) new alarms since the Workshop opened: those unacknowledged now that weren't then (another player
+## acknowledging an old one doesn't hide a new one).
 func new_alarms() -> int:
 	if not _session or ui == null or ui.clock == null:
 		return 0
-	return maxi(0, _unacked() - _alarms_at)
+	var n := 0
+	for k in _unacked_keys():
+		if not _alarms_at.has(k):
+			n += 1
+	return n
+
+## The plant's speed as it stands behind the Workshop: the speed it had before in single play (the clock is paused only
+## while the Workshop shows), else the clock's. An autosave stores this one.
+func plant_speed() -> int:
+	if is_open and _prev_speed >= 0:
+		return _prev_speed
+	return ui.clock.speed if ui != null and ui.clock != null else -1
 
 # ------------------------------------------------------------------ the space
 
@@ -339,7 +364,7 @@ func _process(delta: float) -> void:
 		return
 	if machine == null:
 		return
-	cam.sticks(delta)
+	cam.sticks(delta, _pad_move() if _panel_focused() else Vector2.INF)
 	if _reassemble_t >= 0.0:
 		_reassemble_t += delta
 		var k := clampf(_reassemble_t / REASSEMBLE_S, 0.0, 1.0)
@@ -480,6 +505,7 @@ func set_only_selected(on: bool) -> void:
 
 ## Reassemble all: everything home, animated (the slider to 0, the handling undone).
 func reassemble() -> void:
+	_drag = {}
 	_reassemble_from = s
 	_reassemble_handled = handled.duplicate()
 	_reassemble_t = 0.0
@@ -487,6 +513,7 @@ func reassemble() -> void:
 ## Reset: every part at the transform it was built with, at once; everything shown.
 func reset() -> void:
 	_reassemble_t = -1.0
+	_drag = {}
 	handled.clear()
 	hidden.clear()
 	_unhollow()
@@ -499,12 +526,17 @@ func reset() -> void:
 func select(id: String) -> void:
 	if selected != "":
 		_highlight(selected, false)
+	var was := selected
 	selected = id if (comps.has(id) or groups.has(id)) else ""
+	if selected != was:
+		_drag = {}   # a drag held on the part before (a second finger's tap in the tree) doesn't move this one
 	if selected != "":
 		_highlight(selected, true)
-	if only_selected:
+	# with "Selected subassembly only" on, a pick inside the subassembly taken apart looks at it; a pick outside it
+	# takes that one apart instead
+	if only_selected and not (root_id != "" and comps.has(selected) and (selected == root_id or _under(selected, root_id))):
 		root_id = selected if comps.has(selected) else ""
-	note = ""
+	note = why_not_free(selected)   # (the tree's pick says why a part can't be picked up, as the view's does)
 	if panels != null:
 		panels.selected_changed()
 	apply()
@@ -519,6 +551,7 @@ func _highlight(id: String, on: bool) -> void:
 
 func hide_selected() -> void:
 	if selected != "":
+		_drag = {}
 		hidden[selected] = true
 		apply()
 
@@ -526,6 +559,7 @@ func hide_selected() -> void:
 func isolate() -> void:
 	if selected == "":
 		return
+	_drag = {}
 	hidden.clear()
 	_unhollow()
 	var keep := {}
@@ -551,6 +585,7 @@ func isolate() -> void:
 	apply()
 
 func show_all() -> void:
+	_drag = {}
 	hidden.clear()
 	_unhollow()
 	apply()
@@ -583,8 +618,8 @@ func _ancestor_of(a: String, id: String) -> bool:
 func why_not_free(id: String) -> String:
 	if id == "" or not (comps.has(id) or groups.has(id)):
 		return ""
-	if comps.has(id):
-		var at: String = spec.comps[id].parent
+	if comps.has(id) or groups.has(id):
+		var at: String = spec.comps[id].parent if comps.has(id) else String(spec.groups[id].host)
 		while at != "":
 			if spec.comps[at].sealed:
 				return String(words.get("components", {}).get(at, {}).get("sealed_why", "It is sealed."))
@@ -598,9 +633,8 @@ func why_not_free(id: String) -> String:
 	return ""
 
 ## In place and not taken apart: a component not moved by the explode, a fastener group whose items haven't backed out.
+## (Hidden is a way of looking, not of taking apart: a hidden part still holds what it held.)
 func _at_home(id: String, off: Dictionary, foff := {}) -> bool:
-	if hidden.has(id):
-		return false
 	if handled.has(id):
 		return false
 	var o: Vector3 = off.get(id, Vector3.ZERO)
@@ -637,13 +671,7 @@ func _on_view_input(e: InputEvent) -> void:
 			if not _drag.is_empty():
 				_drag = {}
 			elif _press_at.distance_to(e.position) < 6.0 and not _no_click:
-				var hit := pick(e.position)
-				select(hit)
-				if hit != "":
-					var why := why_not_free(hit)
-					note = why
-					if panels != null:
-						panels.selected_changed()
+				select(pick(e.position))
 			_press_at = Vector2.INF
 			_no_click = false
 		container.accept_event()
@@ -755,12 +783,23 @@ func world_box(id: String) -> AABB:
 func _place_handle() -> void:
 	if handle == null:
 		return
-	var on := selected != "" and why_not_free(selected) == "" and not hidden.has(selected)
+	var on := selected != "" and why_not_free(selected) == "" and shown_part(selected) and _reassemble_t < 0.0
 	handle.visible = on
 	if not on:
 		return
 	handle.global_position = turn_centre(selected)
 	handle.scale = Vector3.ONE * (cam.global_position.distance_to(handle.global_position) * 0.18)
+
+## Whether a part is shown: neither it nor a component it sits in is hidden.
+func shown_part(id: String) -> bool:
+	if hidden.has(id):
+		return false
+	var at: String = spec.comps[id].parent if comps.has(id) else String(spec.groups.get(id, {}).get("host", ""))
+	while at != "":
+		if hidden.has(at):
+			return false
+		at = spec.comps[at].parent
+	return true
 
 ## Where the handle stands and the part turns about, in the Workshop's world: a component's pivot (its node's
 ## origin), a fastener group's items' centre.
@@ -775,7 +814,9 @@ func turn_centre(id: String) -> Vector3:
 
 ## Takes an arrow or a ring of the handle under the pointer. True when one was taken.
 func _grab_handle(p: Vector2) -> bool:
-	if handle == null or not handle.visible:
+	if handle == null or not handle.visible or _reassemble_t >= 0.0:
+		return false
+	if cam.is_position_behind(handle.global_position):
 		return false
 	var c := handle.global_position
 	var sc := handle.scale.x
@@ -787,10 +828,12 @@ func _grab_handle(p: Vector2) -> bool:
 		if arrow == null:
 			continue
 		var ax: Vector3 = arrow.get_meta("axis")
+		if cam.is_position_behind(c + ax * sc * 0.1) or cam.is_position_behind(c + ax * sc * 1.0):
+			continue   # (a point behind the camera projects mirrored)
 		var a := cam.unproject_position(c + ax * sc * 0.1)
 		var b := cam.unproject_position(c + ax * sc * 1.0)
 		var d := _seg_dist(p, a, b)
-		if d < best:
+		if d < best and a.distance_to(b) >= ARROW_MIN_PX:
 			best = d
 			got = {"kind": "move", "axis": ax, "a": a, "b": b, "len": sc * 0.9, "from": p}
 		var ring_d := INF
@@ -798,8 +841,9 @@ func _grab_handle(p: Vector2) -> bool:
 		var w: Vector3 = ax.cross(u).normalized()
 		for i in 48:
 			var ang := TAU * i / 48.0
-			var q := cam.unproject_position(c + (u * cos(ang) + w * sin(ang)) * sc * 0.62)
-			ring_d = minf(ring_d, q.distance_to(p))
+			var rp := c + (u * cos(ang) + w * sin(ang)) * sc * 0.62
+			if not cam.is_position_behind(rp):
+				ring_d = minf(ring_d, cam.unproject_position(rp).distance_to(p))
 		if ring_d < best:
 			best = ring_d
 			got = {"kind": "turn", "axis": ax, "centre": cs, "from": p}
@@ -825,7 +869,10 @@ func _drag_handle(p: Vector2) -> void:
 	if _drag.kind == "move":
 		var ab: Vector2 = _drag.b - _drag.a
 		var t: float = (p - (_drag.from as Vector2)).dot(ab) / maxf(ab.length_squared(), 1e-6)
-		handled[selected] = Transform3D(start.basis, start.origin + lax * t * float(_drag.len))
+		# never farther than the machine's size from where the drag began
+		var reach: float = (machine.get_meta("box", AABB(Vector3.ZERO, Vector3.ONE)) as AABB).size.length()
+		var dist := clampf(t * float(_drag.len), -reach, reach)
+		handled[selected] = Transform3D(start.basis, start.origin + lax * dist)
 	else:
 		var c: Vector2 = _drag.centre
 		var a0 := ((_drag.from as Vector2) - c).angle()
@@ -841,6 +888,9 @@ func _drag_handle(p: Vector2) -> void:
 ## the first button or D-pad press puts the focus on the slider when no Workshop control has it, so the D-pad moves
 ## between the tools; A presses (or toggles) the focused one; B leaves, as Esc does.
 func _input(e: InputEvent) -> void:
+	if is_open and machine != null and e is InputEventJoypadMotion and e.axis in [JOY_AXIS_LEFT_X, JOY_AXIS_LEFT_Y]:
+		get_viewport().set_input_as_handled()   # the left stick zooms and pans; only the D-pad walks between the tools
+		return
 	if not is_open or not e is InputEventJoypadButton or panels == null:
 		return
 	var fo := get_viewport().gui_get_focus_owner()
@@ -861,6 +911,23 @@ func _input(e: InputEvent) -> void:
 		a.action = "ui_accept"
 		a.pressed = e.pressed
 		get_viewport().push_input(a)
+
+## The left stick alone (forward up), any pad: the move actions without the keys.
+func _pad_move() -> Vector2:
+	var best := Vector2.ZERO
+	for d in Input.get_connected_joypads():
+		var v := Vector2(Input.get_joy_axis(d, JOY_AXIS_LEFT_X), -Input.get_joy_axis(d, JOY_AXIS_LEFT_Y))
+		if v.length() > best.length():
+			best = v
+	return best if best.length() >= 0.15 else Vector2.ZERO
+
+## Whether one of the Workshop's controls has the focus: the move stick and the arrow keys walk between the controls
+## then, and only the look stick turns the camera.
+func _panel_focused() -> bool:
+	if panels == null:
+		return false
+	var fo := get_viewport().gui_get_focus_owner()
+	return fo != null and panels.is_ancestor_of(fo) and fo.is_visible_in_tree()
 
 func _unhandled_input(e: InputEvent) -> void:
 	if not is_open:
