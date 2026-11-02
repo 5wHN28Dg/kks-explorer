@@ -38,10 +38,10 @@ first train's content uses the same numbers (people have work enough with the WT
 | Contractor supervisor (`contractor_sup`) | days | 1 | request, accept | yes | the contractors' permits and their toolbox talk |
 | Contractor (`contractor`) | days | 8 (two teams) | — | yes | scaffolding, insulation, painting, civil jobs under their supervisor's permit; the shortcuts the safety walk finds |
 | Storekeeper (`store`) | days | 1 | — | no | tool and spares issue |
-| Driver (`driver`) | `driver_shift`: the same rotation, 05:00–17:00 and 17:00–05:00, so the shift-change runs fall inside a duty | 1 | drive | yes | the bus runs of the shift (the shift changes and the day workers' times, PLANT3D.md §16.8); a pickup for jobs between them |
-| Camp staff: cook, cleaner, laundry (`camp`) | days | 6 | — | no | mess hall, rooms, laundry |
+| Driver (`driver`) | `driver_shift`: the same rotation, 04:40–16:40 and 16:40–04:40, so the shift-change runs fall inside a duty | 1 | drive | yes | the bus runs of the shift (the shift changes and the day workers' times, PLANT3D.md §16.8); a pickup for jobs between them |
+| Camp staff: cook, cleaner, laundry (`camp`) | `camp_early` 04:30–13:00, `camp_late` 12:00–20:30, every day | 6 | — | no | mess hall, rooms, laundry |
 
-12 people per crew (48 on the rotation, 12 on duty at a time) and 43 on days: 91 people, under the 200 limit; in
+12 people per crew (48 on the rotation, 12 on duty at a time) and 43 off the rotation (37 on days, the 6 camp staff on their own two shifts): 91 people, under the 200 limit; in
 the plant at 10:00 on a weekday about 50, at night 12 (and the camp staff in the camp).
 
 Role disciplines (PLANT3D.md §16.3): operators, the supervisor and the electrical authorised person `ops`; I&C

@@ -101,8 +101,8 @@ ANCHORS = {
     'ldy_table': dict(at=(-353, 48.8, 0), kind='table', room='laundry', yaw=180),
     'camp_desk': dict(at=(-286.5, 27.7, 0), kind='desk', room='camp_office', pose='sit', yaw=180),
     **_beds(),
-    # the admin building's ground floor (§18.5's interior): the permit office's desks, the meeting room, the lobby;
-    # the offices upstairs are reached by its stair
+    # the admin building's ground floor (§18.5's interior): the permit office's desks, the meeting room, the lobby,
+    # the offices
     'adm_door': dict(at=(-108, 98.8, 0), kind='door', room='admin'),
     'adm_permit_1': dict(at=(-114.2, 108.0, 0), kind='desk', room='admin', pose='sit', yaw=0),
     'adm_permit_2': dict(at=(-111.6, 108.0, 0), kind='desk', room='admin', pose='sit', yaw=0),
@@ -157,7 +157,7 @@ def rosters():
     week = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
     return [{'id': 'driver_shift', 'kind': 'rotation', 'cycle': ['D', 'D', 'N', 'N', 'O', 'O', 'O', 'O'],
              'crews': {'a': 0, 'b': 2, 'c': 4, 'd': 6},
-             'hours': {'D': ['05:00', '17:00'], 'N': ['17:00', '05:00']}},
+             'hours': {'D': ['04:40', '16:40'], 'N': ['16:40', '04:40']}},
             {'id': 'camp_early', 'kind': 'days', 'days': week, 'hours': ['04:30', '13:00']},
             {'id': 'camp_late', 'kind': 'days', 'days': week, 'hours': ['12:00', '20:30']}]
 
@@ -205,8 +205,8 @@ def slot(at, task, **kw):
 # who rides which bus in and out (§21.6): the routine's commute slots, by the routine's kind
 SHIFT_ROUTINES = ('sup_shift', 'ccr_shift', 'field_gt', 'field_st', 'field_cw', 'elec_shift', 'guard_plant')
 WTP_ROUTINES = ('wtp_shift', 'chem_shift')
-DAY_TO_CR = ('tech_days', 'ms_mech', 'ms_elec', 'ms_ic', 'hse_days1', 'hse_days2', 'con_sup_days', 'con_days',
-             'chem_days', 'chem_days2')
+DAY_TO_CR = ('tech_days', 'ms_mech', 'ms_elec', 'ms_ic', 'hse_days1', 'hse_days2', 'con_sup_days', 'con_days')
+DAY_WTP = ('chem_days', 'chem_days2')   # (the day chemists: in by the bus, home on foot from the WTP's lab)
 DAY_TO_GATE = ('mgr_days', 'eng_days', 'store_days')
 
 
@@ -221,6 +221,8 @@ def commute(rid, routine):
         return [slot('start-1:40', 'bus_in_wtp'), slot('end+0:05', 'walk_out')]
     if rid in DAY_TO_CR:
         return [slot('start-0:50', 'bus_in'), slot('end+0:05', 'bus_out')]
+    if rid in DAY_WTP:
+        return [slot('start-0:50', 'bus_in'), slot('end+0:05', 'walk_out')]
     if rid in DAY_TO_GATE:
         return [slot('start-0:35', 'bus_in_gate'), slot('end+0:05', 'bus_out_gate')]
     return []
@@ -245,7 +247,7 @@ def routines():
         # off duty (§21.2): a meal after the duty, free time, sleep before the next, breakfast; a day off's meals
         {'id': 'off_shift', 'idle': 'at_home', 'slots': [
             slot('prev+0:30', 'meal'), slot('prev+1:30', 'free_time'), slot('next-9:30', 'sleep'),
-            slot('next-1:15', 'breakfast')]},
+            slot('next-1:50', 'breakfast')]},
         {'id': 'off_days', 'idle': 'at_home', 'slots': [
             slot('prev+1:30', 'meal'), slot('prev+2:30', 'free_time'), slot('next-9:00', 'sleep'),
             slot('next-1:30', 'breakfast'), slot('12:30', 'meal', days=['sun'])]},
@@ -271,16 +273,16 @@ def tasks():
     task('bus_in', 'The bus to the plant', [{'ride': {'from': 'camp_stop', 'to': 'cr_stop'}}], priority=1,
          interruptible=False)
     task('bus_out', 'The bus to the camp', [{'ride': {'from': 'cr_stop', 'to': 'camp_stop'}}, {'go': 'home'},
-                                            {'work': 5}], priority=2)
+                                            {'work': 5}], priority=3)
     task('bus_in_wtp', 'The bus to the plant, PPE on at the control building', [
         {'ride': {'from': 'camp_stop', 'to': 'cr_stop'}}, {'go': {'kind': 'locker', 'room': 'lockers'}},
         {'ppe': 'role'}], priority=1, interruptible=False)
     task('walk_out', 'Home to the camp on foot (the WTP is far from the bus)', [{'go': 'home'}, {'work': 5}],
-         priority=2)
+         priority=3)
     task('bus_in_gate', 'The bus to the plant gate', [{'ride': {'from': 'camp_stop', 'to': 'gate_stop'}}],
          priority=1, interruptible=False)
     task('bus_out_gate', 'The bus to the camp', [{'ride': {'from': 'gate_stop', 'to': 'camp_stop'}}, {'go': 'home'},
-                                                 {'work': 5}], priority=2)
+                                                 {'work': 5}], priority=3)
     task('meal', 'A meal at the mess', [mess, {'work': [20, 35], 'anim': 'eat'}])
     task('breakfast', 'Breakfast at the mess', [mess, {'work': [10, 20], 'anim': 'eat'}])
     task('free_time', 'Free time', [{'choose': [[3, 'gym_time'], [2, 'rec_time'], [2, 'laundry_time'],
@@ -294,7 +296,7 @@ def tasks():
     task('prayer_time', 'The prayer room', [{'go': {'kind': 'seat', 'room': 'prayer'}, 'else': 2}, {'work': 15},
                                             {'go': 'home'}], priority=4)
     task('room_time', 'In the room', [{'go': 'home'}, {'work': [30, 60]}], priority=4)
-    task('sleep', 'Sleep', [{'sleep': {'until': 'next-1:30'}}], priority=4, interruptible=False)
+    task('sleep', 'Sleep', [{'sleep': {'until': 'next-2:00'}}], priority=4, interruptible=False)
     task('at_home', 'At home', [{'go': 'home'}, {'work': 60, 'anim': 'sleep'}])
     task('guard_at_gate', 'At the plant gate', [{'go': 'gate_post'}, {'work': 30}])
     task('guard_at_camp', 'At the camp gate', [{'go': 'camp_post'}, {'work': 30}])
@@ -309,7 +311,7 @@ def tasks():
                                        {'work': 45, 'anim': 'type'}, {'work': 1}])
     task('morning_meeting', 'The morning meeting',
          [{'meet': {'room': 'meeting', 'with': ['plant_mgr', 'ops_mgr', 'maint_mgr'], 'minutes': 30}}], priority=2)
-    task('walk_round', 'The plant manager\'s walk-round', [
+    task('walk_round', 'The managers\' walk-round', [
         {'go': {'kind': 'locker', 'room': 'lockers'}}, {'ppe': 'role'}, {'go': 'p_st_20'}, {'work': 5, 'anim': 'inspect'}, {'go': 'p_gt_in'},
         {'work': 5, 'anim': 'inspect'}, {'go': 'p_cw_o'}, {'work': 5, 'anim': 'inspect'}, {'go': 'p_adm_lobby'}],
          priority=3)

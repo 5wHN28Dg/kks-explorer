@@ -404,12 +404,15 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 				break
 		if me != -1 and e.sp_aboard[me] != -1:
 			row.add_child(W.label("On the bus.", 18, W.OK_COLOUR))
+		elif bus != -1 and e.t_at(ui.inputs.slot) == fr and e.st_veh[bus]["riders"].size() >= int(sm.vehicles[bus]["seats"]):
+			row.add_child(W.label("The bus is full: wait for the next, or walk.", 18, W.DIM))
 		elif bus != -1 and e.t_at(ui.inputs.slot) == fr:
 			var vid: String = sm.vehicles[bus]["id"]
 			row.add_child(W.button("Get on the bus", func(): ui.inputs.get_on(vid)))
 		elif e.t_at(ui.inputs.slot) != fr:
 			row.add_child(W.button("Take me to the stop", func(): ui.go_to_place(fr)))
-		row.add_child(W.button("Walk instead", func(): ui.go_to_place(to)))
+		if me == -1 or e.sp_aboard[me] == -1:      # (aboard: the engine puts them off at the stop)
+			row.add_child(W.button("Walk instead", func(): ui.go_to_place(to)))
 	if s.has("sleep") and ui.my_person() != -1 and sm.home[ui.my_person()] != -1:
 		var h: int = sm.home[ui.my_person()]
 		if e.t_at(ui.inputs.slot) != h:
