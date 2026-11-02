@@ -73,7 +73,7 @@ func _looks() -> Array:
 		p.append("a sandstorm's fog is not sand-coloured: %s" % str(s.fog_colour))
 	for k in ["rain@12", "thunderstorm@12"]:
 		var r: Dictionary = by[k]
-		if r.mode != "rain" or r.ratio <= 0.3 or r.wet != 1.0 or r.velocity.y > -5.0:
+		if r.mode != "rain" or r.ratio <= 0.3 or r.wet != 1.0 or r.velocity.y > -5.0 or r.sky_affect < 0.75:
 			p.append("%s is not drawn as rain: %s" % [k, str(r)])
 	if by["thunderstorm@12"].lightning != 1.0 or by["rain@12"].lightning != 0.0:
 		p.append("lightning only in a thunderstorm")

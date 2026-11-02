@@ -161,7 +161,9 @@ static func look_of(v: Dictionary, clear_solar: float) -> Dictionary:
 		vel = Vector3(0.0, -8.0, 0.0) + WIND_TO * wind * 0.5
 	else:
 		vel = WIND_TO * maxf(wind, 2.0) + Vector3(0.0, -0.3, 0.0)
-	return {"fog_density": density, "fog_colour": colour, "sky_affect": clampf((8000.0 - vis) / 7000.0, 0.0, 1.0) * 0.9,
+	# the photographed sky washed toward the fog's colour: by the short view, and overcast in rain whatever the view
+	var sky := maxf(clampf((8000.0 - vis) / 7000.0, 0.0, 1.0) * 0.9, rain_w * 0.8)
+	return {"fog_density": density, "fog_colour": colour, "sky_affect": sky,
 		"sun": sun_f, "wet": clampf(float(v.get("wet", 0.0)), 0.0, 1.0), "dust_laid": clampf((dust - 0.5) / 5.0, 0.0, 1.0),
 		"rain": rain, "sand": sand, "mode": mode, "ratio": maxf(rain, sand), "wind": wind, "velocity": vel,
 		"lightning": clampf(float(v.get("lightning", 0.0)), 0.0, 1.0)}
