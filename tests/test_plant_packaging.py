@@ -125,7 +125,11 @@ class Exports(unittest.TestCase):
             self.assertIn(f'export_path="{path}WalkdownPlant.exe"', win[name])
         # the packaging's own files never go into an export
         for p in presets:
-            self.assertIn('msix/*', re.search(r'^exclude_filter="(.*)"', p, re.M).group(1))
+            ex = re.search(r'^exclude_filter="(.*)"', p, re.M).group(1).split(',')
+            self.assertIn('msix/*', ex)
+            # the gallery scripts make pictures on the desktop only (WORKSHOP.md §10)
+            self.assertIn('kit/gallery.gd', ex)
+            self.assertIn('kit/gallery_workshop.gd', ex)
 
 
 class FlatpakMetainfo(unittest.TestCase):

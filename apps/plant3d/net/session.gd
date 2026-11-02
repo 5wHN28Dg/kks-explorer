@@ -2405,14 +2405,14 @@ func _on_pos(from: int, f: PackedByteArray) -> void:
 	positions[from] = l
 
 
-## Where another player is drawn: 200 ms behind, interpolated (§6.3). [at, yaw, pitch, gait] or [].
-## (Whether they are in the Workshop: in_workshop.)
 ## Whether another player's latest `pos` says they are in the Workshop (WORKSHOP.md §2).
 func in_workshop(s: int) -> bool:
 	var l: Array = positions.get(s, [])
 	return not l.is_empty() and l[-1].size() > 6 and l[-1][6] != 0
 
 
+## Where another player is drawn: 200 ms behind, interpolated (§6.3). [at, yaw, pitch, gait] or [].
+## (Whether they are in the Workshop: in_workshop.)
 func position_of(s: int, delay := 0.2) -> Array:
 	var l: Array = positions.get(s, [])
 	if l.is_empty():

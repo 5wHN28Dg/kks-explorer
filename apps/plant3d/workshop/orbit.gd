@@ -31,13 +31,19 @@ func place() -> void:
 	global_position = target + dir * dist
 	look_at(target, Vector3.UP)
 
-## Frames a box (the whole machine or a part): target at its centre, far enough to see all of it.
-func frame(box: AABB, keep_angles := true) -> void:
+## Frames a box (the whole machine or a part): target at its centre, far enough to see all of it. The zoom's limits
+## come from the machine's box (`limits`, when it is shown): framing a small part doesn't stop zooming out to the
+## whole machine again, and closer than the machine's limit is allowed for it.
+func frame(box: AABB, keep_angles := true, limits := false) -> void:
 	target = box.get_center()
 	var r := maxf(box.size.length() * 0.5, 0.02)
 	dist = r / tan(deg_to_rad(fov * 0.5)) * 1.15
-	dist_min = r * 0.15
-	dist_max = maxf(r * 30.0, 2.0)
+	if limits:
+		dist_min = r * 0.15
+		dist_max = maxf(r * 30.0, 2.0)
+	else:
+		dist_min = minf(dist_min, r * 0.15)
+		dist_max = maxf(dist_max, dist)
 	if not keep_angles:
 		yaw = 0.6
 		pitch = -0.35

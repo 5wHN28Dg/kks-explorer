@@ -223,11 +223,16 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
   "Selected subassembly only", the tools, Back to the plant, the session's strip). The handle and the floor are
   pre-built too (`built/workshop_ui/space.scn`, the plant's vertex format and materials: no new pipeline), and the
   selection is the lit material's own emission.
-- Ways in: the card's **Workshop** button (a kind with a built scene) and a row of kinds in the settings panel. Esc
-  or B (or Back to the plant) leaves.
+- Ways in: the card's **Workshop** button (a kind with a built scene) and a row of kinds in the settings panel. Esc,
+  the gamepad's B (or Back to the plant) leaves; leaving a Workshop opened from the settings shows the settings again.
+  On a gamepad the first press puts the focus on the tools (the D-pad moves between them, A presses). It doesn't
+  open during a scripted flight ("Go there"), the tier probe or the map. The touch sticks hide while it shows (let
+  go, as over the screens).
+- A component turns about its pivot and a fastener group about its items' centre; the handle stands there.
 - What is free to move (§4.5) reads the assembly's `needs` when the data has them (K2); until then everything is free
   but a sealed component's children, which say `sealed_why`.
-- The session's strip counts new alarms since the Workshop opened. Radio calls for the player's role are not in the
+- The session's strip counts new alarms since the Workshop opened (unacknowledged, not shelved or suppressed, as the
+  horn counts them), and says so when the session ends while the Workshop shows. Radio calls for the player's role are not in the
   strip yet (left for K3, which builds the session's Workshop rules again).
 - `pos` carries the Workshop flag (MULTIPLAYER.md §6.3) and the others mark the player.
 - The Workshop walk (`walk=workshop`, `app/workshop_walk.gd`) enters, leaves and enters again, then runs the 3-minute

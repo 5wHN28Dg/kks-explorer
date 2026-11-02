@@ -246,6 +246,12 @@ func tick() -> void:
 	if not ws._session:
 		strip.visible = false
 		return
+	if not ws.session_on():   # the session ended while the Workshop showed (its notice waits in the plant)
+		if _strip_n != -2:
+			_strip_n = -2
+			strip.visible = true
+			strip.text = "The session has ended: Back to the plant."
+		return
 	var n: int = ws.new_alarms()
 	if n == _strip_n:
 		return

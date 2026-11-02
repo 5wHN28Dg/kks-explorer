@@ -13,6 +13,7 @@ extends Node3D
 const Plant = preload("res://app/plant.gd")
 
 const NAME_RANGE := 15.0
+const AWAY_PIXEL := 0.0008      # an "in the Workshop" mark, fixed size on screen: about 2.5 % of its height a line
 const SAME_PLACE := 2.5         # m: a player this close to their person's place is drawn there by the staff's view
 
 var ui                          # ui/plant_ui.gd
@@ -73,6 +74,10 @@ func _process(_delta: float) -> void:
 		var lab := _label(sl, (r["name"] + "\nin the Workshop") if away else r["name"])
 		lab.global_position = at + Vector3(0, 2.05, 0)
 		lab.modulate = Color(1.0, 0.8, 0.35) if away else Color.WHITE
+		# seen from any distance and through walls while away: a fixed size on screen, not depth-tested
+		lab.no_depth_test = away
+		lab.fixed_size = away
+		lab.pixel_size = AWAY_PIXEL if away else 0.004
 		lab.visible = away or at.distance_to(cam) <= NAME_RANGE
 	for sl in _labels.keys():
 		if not seen.has(sl):

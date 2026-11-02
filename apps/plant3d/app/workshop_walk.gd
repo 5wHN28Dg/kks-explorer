@@ -29,7 +29,8 @@ func start(m, k := "") -> void:
 		done = true
 		main._finish()
 		return
-	await ws.shown
+	if not await _shown():
+		return
 	main._say("WORKSHOP kind=%s entry=%.0fms load=%.0fms tris=%d (the first entry)" % [kind, ws.entry_ms, ws.load_ms, int(ws.machine.get_meta("tris", 0))])
 	# out and in again: the exit, and an entry with everything it needs already compiled and loaded once
 	for i in 30:
@@ -40,7 +41,8 @@ func start(m, k := "") -> void:
 	for i in 60:
 		await get_tree().process_frame
 	ws.open(kind)
-	await ws.shown
+	if not await _shown():
+		return
 	main._say("WORKSHOP entry=%.0fms load=%.0fms (the second entry)" % [ws.entry_ms, ws.load_ms])
 	running = true
 
@@ -102,6 +104,20 @@ func _process(delta: float) -> void:
 		await ws.left
 		main._say("WORKSHOP exit=%.0fms" % ws.exit_ms)
 		main._finish()
+
+## Waits for the machine's first frame; false (the walk ends, logged) when it didn't come within 60 s.
+func _shown() -> bool:
+	var end := Time.get_ticks_msec() + 60000
+	var gen: int = ws._gen
+	while Time.get_ticks_msec() < end:
+		if ws.is_open and ws._gen == gen and ws.machine != null and ws._loading == "" and ws.entry_ms > 0.0 and ws.part == kind:
+			return true
+		await get_tree().process_frame
+	main._say("WORKSHOP the machine did not show (%s)" % ws.panels.note.text)
+	done = true
+	ws.close()
+	main._finish()
+	return false
 
 ## True the first frame of a phase (it is logged).
 func _at(phase: String) -> bool:

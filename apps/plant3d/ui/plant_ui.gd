@@ -383,9 +383,13 @@ func workshop_has(kind: String) -> bool:
 func open_workshop(kind: String, code := "") -> bool:
 	if main == null or main.workshop == null:
 		return false
-	if main.hud != null and main.hud.panel.visible:
+	var from_settings: bool = main.hud != null and main.hud.panel.visible
+	if not main.workshop.open(kind, code):
+		return false
+	if from_settings:
 		main.hud.show_settings(false)
-	return main.workshop.open(kind, code)
+		main.workshop.reopen_settings = true   # leaving shows the settings again (§2: the same panels)
+	return true
 
 
 ## The settings' Workshop row: a button per part kind the Workshop has.

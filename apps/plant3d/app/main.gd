@@ -679,7 +679,7 @@ func _process(delta: float) -> void:
 				if sim_n % 60 == 0:
 					_say("SIM at %.0f s: %.0f steps/s, %.0f ms of model per s, %.2f ms a step, speed %d, cap %.1fx" % [
 						t_walk, c.steps_per_s, c.model_ms_per_s, c.step_ms, c.speed, c.ff_cap()])
-	if t_walk > walk_seconds + 5.0:
+	if t_walk > walk_seconds + 5.0 and workshop_walk == null:   # (the Workshop walk ends itself: its 3 minutes)
 		_finish()
 
 ## The frame log (as the bench's, decision 0041): wall-clock frame intervals and how many refreshes of a 60 Hz

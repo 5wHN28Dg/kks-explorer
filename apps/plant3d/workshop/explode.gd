@@ -51,8 +51,8 @@ static func levels(spec: Dictionary, root := "") -> Array:
 	for g in spec.groups:
 		var host: String = spec.groups[g].host
 		var d: int = 0 if host == root else (lv[host] + 1 if lv.has(host) else -1)
-		if d < 0 or _in_sealed(spec, host):
-			continue
+		if d < 0 or (host != "" and (spec.comps[host].sealed or _in_sealed(spec, host))):
+			continue   # a sealed component's fasteners are its own insides: they stay with it
 		glv[g] = d
 		deepest = maxi(deepest, d)
 	return [lv, glv, deepest + 1]
@@ -68,8 +68,8 @@ static func _level(spec: Dictionary, id: String, root: String) -> int:
 			return -1
 		at = spec.comps[at].parent
 		d += 1
-	if root != "" and spec.comps[root].sealed:
-		return -1
+	if root != "" and (spec.comps[root].sealed or _in_sealed(spec, root)):
+		return -1   # the chosen root is sealed or inside a sealed component: nothing in it comes apart
 	return d
 
 static func _in_sealed(spec: Dictionary, id: String) -> bool:

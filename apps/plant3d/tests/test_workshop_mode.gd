@@ -19,6 +19,16 @@ const Explode = preload("res://workshop/explode.gd")
 const Session = preload("res://net/session.gd")
 const Kit = preload("res://kit/kit.gd")
 const WB = preload("res://builder/workshop_build.gd")
+const Workshop = preload("res://workshop/workshop.gd")
+const Orbit = preload("res://workshop/orbit.gd")
+const AlarmPanel = preload("res://ui/alarm_panel.gd")
+
+## Stands in for a hoist's pendant: records the plant's speed when its held motions are let go.
+class FakePendant:
+	var clock
+	var speeds: Array = []
+	func release_all() -> void:
+		speeds.append(clock.speed)
 
 var p: Array = []
 
@@ -29,6 +39,8 @@ func check(ok: bool, what: String) -> void:
 func run(tree: SceneTree) -> Array:
 	_fixture_explode()
 	_pos_flag()
+	_sealed_edges()
+	_orbit_limits(tree)
 	var main := App.start(tree)
 	var ui = main.ui
 	if ui == null or ui.clock == null or main.workshop == null:
@@ -39,8 +51,51 @@ func run(tree: SceneTree) -> Array:
 	check(ws.kinds().has("pressure_transmitter"), "the Workshop has the pressure transmitter: %s" % str(ws.kinds()))
 	# the settings list the kinds
 	main.hud.show_settings(true)
-	check(App.find_button(main.hud.extra, "Pressure transmitter") != null, "the settings list the Workshop's kinds")
+	var sbtn: Button = App.find_button(main.hud.extra, "Pressure transmitter")
+	check(sbtn != null, "the settings list the Workshop's kinds")
+	if sbtn != null:
+		sbtn.pressed.emit()
+		check(ws.is_open and not main.hud.panel.visible, "the settings' button opens the Workshop, the settings closed behind it")
+		ws.close()
+		await ws.left
+		check(main.hud.panel.visible, "leaving a Workshop opened from the settings shows the settings again")
 	main.hud.show_settings(false)
+	# not while a flight to equipment ("Go there") is under way: it would land while the trainee is away
+	main.player.scripted = true
+	check(not ws.open("pressure_transmitter") and not ws.is_open, "the Workshop doesn't open during a scripted flight")
+	main.player.scripted = false
+	# leaving while it loads: the worker's load is still collected (no request left holding the scene)
+	var wpath := "res://built/workshop/pressure_transmitter.scn"
+	ws.open("pressure_transmitter")
+	ws.close()
+	for i in 600:
+		await tree.process_frame
+		if ResourceLoader.load_threaded_get_status(wpath) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+			break
+	check(ResourceLoader.load_threaded_get_status(wpath) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE,
+		"a close during loading leaves no threaded load behind (status %d)" % ResourceLoader.load_threaded_get_status(wpath))
+	# out and in again within a frame: the first exit's and entry's coroutines say nothing for the new entry
+	var stray := []
+	var on_left := func():
+		if ws.is_open:
+			stray.append("left while open")
+	var on_shown := func(_k):
+		if ws.machine == null:
+			stray.append("shown without a machine")
+	ws.left.connect(on_left)
+	ws.shown.connect(on_shown)
+	ws.open("pressure_transmitter")
+	await tree.process_frame
+	ws.close()
+	ws.open("pressure_transmitter")
+	await _wait_shown(tree, ws)
+	for i in 3:
+		await tree.process_frame
+	check(stray.is_empty(), "a quick close and open: no stray signal (%s)" % str(stray))
+	ws.close()
+	await ws.left
+	ws.left.disconnect(on_left)
+	ws.shown.disconnect(on_shown)
 	# a transmitter's card offers the Workshop
 	var code := ""
 	for c in ui.index.nodes:
@@ -60,10 +115,22 @@ func run(tree: SceneTree) -> Array:
 	var at: Vector3 = main.player.global_position
 	var look: Vector3 = main.player.rotation
 	var panels_before := [ui.alarms.visible, ui.card.visible]
+	var walking_before: bool = main.player.input_enabled
 	if wbtn == null:
 		main.free()
 		return p
+	# touch controls on: the sticks hide (and let go) while the Workshop shows
+	var touch0 = main.cf.get_value("controls", "touch", "auto")
+	main.cf.set_value("controls", "touch", "on")
+	main.hud.refresh()
+	check(main.hud.sticks.all(func(st): return st.visible), "touch controls on: the sticks show in the plant")
+	var pend := FakePendant.new()
+	pend.clock = ui.clock
+	ui.card._pendant = pend
 	wbtn.pressed.emit()
+	ui.card._pendant = null
+	check(pend.speeds == [SimClock.Speed.NORMAL], "a held hoist motion is let go before the plant pauses (%s)" % str(pend.speeds))
+	check(main.hud.sticks.all(func(st): return not st.visible), "the touch sticks hide (and let go) in the Workshop")
 	check(ws.is_open and ws.from_code == code, "the Workshop opened from the card")
 	check(main.get_viewport().disable_3d, "the plant's 3D is not drawn behind the Workshop")
 	check(ui.clock.speed == SimClock.Speed.PAUSED, "single play: the plant pauses in the Workshop")
@@ -97,7 +164,37 @@ func run(tree: SceneTree) -> Array:
 	# a pick in the middle of the view finds a part
 	await tree.process_frame
 	var mid: Vector2 = ws.cam.unproject_position(ws.world_box("housing").get_center())
-	check(ws.pick(mid) != "", "a pick on the housing finds a part")
+	for id in ws.comps:
+		if id != "housing":
+			ws.hidden[id] = true
+	for g in ws.groups:
+		ws.hidden[g] = true
+	ws.apply()
+	check(ws.pick(mid) == "housing", "a pick on the housing finds the housing (%s)" % ws.pick(mid))
+	check(ws.pick(Vector2(2, 2)) == "", "a pick off the machine finds nothing")
+	ws.show_all()
+	# a touch pinch, then the emulated mouse's click of its first finger: nothing is selected
+	ws.select("")
+	var tp := InputEventScreenTouch.new()
+	tp.index = 0; tp.position = mid; tp.pressed = true
+	ws._on_view_input(tp)
+	var tp1 := InputEventScreenTouch.new()
+	tp1.index = 1; tp1.position = mid + Vector2(120, 0); tp1.pressed = true
+	ws._on_view_input(tp1)
+	var dr := InputEventScreenDrag.new()
+	dr.index = 1; dr.position = mid + Vector2(160, 0); dr.relative = Vector2(40, 0)
+	ws._on_view_input(dr)
+	tp1.pressed = false
+	ws._on_view_input(tp1)
+	tp.pressed = false
+	ws._on_view_input(tp)
+	for pressed in [true, false]:
+		var mb := InputEventMouseButton.new()
+		mb.button_index = MOUSE_BUTTON_LEFT; mb.position = mid; mb.pressed = pressed
+		mb.device = InputEvent.DEVICE_ID_EMULATION
+		ws._on_view_input(mb)
+	check(ws.selected == "", "a pinch's end selects nothing (%s)" % ws.selected)
+	ws.cam.reset_view()
 	# the explode function
 	var at0 := _transforms(ws)
 	ws.set_slider(0.37)
@@ -138,6 +235,20 @@ func run(tree: SceneTree) -> Array:
 	ws.select("cover_front")
 	await tree.process_frame
 	check(ws.handle != null and ws.handle.visible, "the handle shows on a free part")
+	if ws.handle != null:
+		check(ws.handle.global_position.is_equal_approx(ws.comps["cover_front"].global_position), "the handle stands at the part's pivot, which it turns about")
+	# a fastener group turns about its own centre, not its host's origin
+	var fb: Node3D = ws.groups["flange_bolts"]
+	var fsum := Vector3.ZERO
+	for t in fb.get_meta("items"):
+		fsum += (t as Transform3D).origin
+	var fc: Vector3 = fsum / (fb.get_meta("items") as Array).size()
+	var fw0: Vector3 = fb.global_transform * fc
+	ws.handled["flange_bolts"] = Transform3D(Basis(Vector3.UP, 0.9), Vector3.ZERO)
+	ws.apply()
+	check((fb.global_transform * fc).distance_to(fw0) < 1e-5, "a turned fastener group keeps its centre (moved %.4f m)" % (fb.global_transform * fc).distance_to(fw0))
+	ws.handled.erase("flange_bolts")
+	ws.apply()
 	ws.handled["cover_front"] = Transform3D(Basis(Vector3.UP, 0.7), Vector3(0.05, 0.02, 0))
 	ws.apply()
 	check(_transforms(ws)["cover_front"] != at0["cover_front"], "a handled part moves")
@@ -146,10 +257,21 @@ func run(tree: SceneTree) -> Array:
 	ws.select("terminal_block")
 	ws.isolate()
 	check(ws.comps["terminal_block"].visible and not ws.comps["manifold"].visible, "Isolate keeps the part and hides the rest")
-	ws.show_all()
-	check(ws.comps["manifold"].visible and ws.hidden.size() <= 1, "Show all shows them again")
+	check(not _meshes_shown(ws, "housing"), "Isolate hides the ancestors' own meshes")
 	ws.reset()
-	check(_transforms(ws) == at0 and ws.hidden.is_empty(), "Reset: every part where it was built, everything shown")
+	check(_transforms(ws) == at0 and ws.hidden.is_empty() and _all_meshes_shown(ws), "Reset: every part where it was built, everything shown")
+	ws.select("terminal_block")
+	ws.isolate()
+	ws.select("process_flange")
+	ws.isolate()
+	ws.hidden.erase("housing")
+	ws.apply()
+	check(_meshes_shown(ws, "housing"), "after a second Isolate elsewhere, the housing's own meshes are not left hidden")
+	ws.select("cover_front")
+	ws.hide_selected()
+	ws.show_all()
+	check(ws.hidden.is_empty() and _all_meshes_shown(ws), "Show all shows them again")
+	ws.reset()
 	# Reassemble all animates home
 	ws.set_slider(1.0)
 	ws.reassemble()
@@ -168,7 +290,65 @@ func run(tree: SceneTree) -> Array:
 	check(ui.root.visible and main.hud.visible and [ui.alarms.visible, ui.card.visible] == panels_before, "the plant's panels are as they were")
 	check(ws.exit_ms >= 0.0, "the exit is measured (%.0f ms)" % ws.exit_ms)
 	await tree.process_frame
-	check(main.player.input_enabled or ui.screens_open(), "the walker walks again")
+	check(main.player.input_enabled == walking_before, "the walker walks again as before (%s, was %s)" % [main.player.input_enabled, walking_before])
+	check(main.hud.sticks.all(func(st): return st.visible), "the touch sticks are back")
+	main.cf.set_value("controls", "touch", touch0)
+	main.hud.refresh()
+	# the gamepad: a press puts the focus on the Workshop's tools, A presses the focused one, B leaves
+	ws.open("pressure_transmitter")
+	await _wait_shown(tree, ws)
+	ws.set_slider(1.0)
+	main.get_viewport().push_input(_pad(JOY_BUTTON_DPAD_DOWN, true))
+	main.get_viewport().push_input(_pad(JOY_BUTTON_DPAD_DOWN, false))
+	var gfo: Control = main.get_viewport().gui_get_focus_owner()
+	check(gfo != null and ws.panels.is_ancestor_of(gfo), "a gamepad press puts the focus on the Workshop's tools (%s)" % str(gfo))
+	var rbtn: Button = ws.panels.find_child("reset", true, false)
+	rbtn.grab_focus()
+	main.get_viewport().push_input(_pad(JOY_BUTTON_A, true))
+	main.get_viewport().push_input(_pad(JOY_BUTTON_A, false))
+	await tree.process_frame
+	check(ws.s == 0.0, "gamepad A presses the focused tool (Reset; the slider at %.2f)" % ws.s)
+	main.get_viewport().push_input(_pad(JOY_BUTTON_B, true))
+	check(not ws.is_open, "gamepad B leaves the Workshop")
+	main.get_viewport().push_input(_pad(JOY_BUTTON_B, false))
+	if ws.is_open:
+		ws.close()
+	await ws.left
+	# the horn: paused with an alarm unacknowledged, it sounds again on leaving
+	var ek := _free_alarm(ui.clock.engine)
+	var horns: Array = []
+	var on_horn := func(pr): horns.append(pr)
+	ui.horn_changed.connect(on_horn)
+	if ek >= 0:
+		ui.clock.set_speed(SimClock.Speed.PAUSED)
+		ui.clock.engine.astate[ek] = "active_unack"
+		ui._alarms_step = -1
+		await tree.process_frame
+		await tree.process_frame
+		var horn_on: int = ui._horn
+		check(horn_on > 0, "an unacknowledged alarm sounds the horn (%d)" % horn_on)
+		ws.open("pressure_transmitter")
+		await _wait_shown(tree, ws)
+		check(horns.size() > 0 and horns[-1] == 0, "the horn is silent in the Workshop")
+		ws.close()
+		await ws.left
+		await tree.process_frame
+		await tree.process_frame
+		check(horns[-1] == horn_on, "back in the paused plant, the horn sounds again (%s)" % str(horns))
+		ui.clock.engine.astate[ek] = "normal"
+		ui._alarms_step = -1
+		ui.clock.set_speed(SimClock.Speed.NORMAL)
+	else:
+		check(false, "an alarm to raise for the horn's check")
+	ui.horn_changed.disconnect(on_horn)
+	# the tier as it is now on every entry (the phone cuts soft shadows first)
+	var tier0 = main.tier
+	main.tier = "full" if tier0 == "lean+vis" else "lean+vis"
+	ws.open("pressure_transmitter")
+	check(ws.sun.shadow_enabled == (main.tier != "lean+vis"), "a tier changed between two entries reaches the Workshop")
+	ws.close()
+	await ws.left
+	main.tier = tier0
 	# a session: the plant runs on
 	ui.close_card()
 	ws.force_session = true
@@ -178,6 +358,15 @@ func run(tree: SceneTree) -> Array:
 	await _wait_shown(tree, ws)
 	await tree.process_frame
 	check(ws.panels.strip.visible and ws.panels.strip.text.contains("runs on"), "in a session the strip says the plant runs on")
+	var sk := _free_alarm(ui.clock.engine)
+	if sk >= 0:
+		ui.clock.engine.astate[sk] = "active_unack"
+		await tree.process_frame
+		check(ws.panels.strip.text.contains("1 new alarm"), "the strip counts a new alarm: %s" % ws.panels.strip.text)
+		ui.clock.engine.astate[sk] = "normal"
+	ws.force_session = false   # the session ends while the Workshop shows
+	await tree.process_frame
+	check(ws.panels.strip.text.contains("ended"), "the strip says the session ended: %s" % ws.panels.strip.text)
 	ws.close()
 	await ws.left
 	ws.force_session = false
@@ -185,6 +374,32 @@ func run(tree: SceneTree) -> Array:
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
 	main.free()
 	return p
+
+## An alarm in its normal state that the horn would count once raised (not shelved, not suppressed); -1 when none.
+func _free_alarm(e) -> int:
+	for k in e._al.size():
+		if e.astate[k] == "normal" and e.shelved[k] == -1 and not AlarmPanel.suppressed(e, k):
+			return k
+	return -1
+
+func _pad(button: JoyButton, pressed: bool) -> InputEventJoypadButton:
+	var e := InputEventJoypadButton.new()
+	e.button_index = button
+	e.pressed = pressed
+	return e
+
+## Whether a component's own meshes are shown (Isolate hides an ancestor's).
+func _meshes_shown(ws, id: String) -> bool:
+	for c in ws.comps[id].get_children():
+		if c is MeshInstance3D and not c.visible:
+			return false
+	return true
+
+func _all_meshes_shown(ws) -> bool:
+	for id in ws.comps:
+		if not _meshes_shown(ws, id):
+			return false
+	return true
 
 func _wait_shown(tree: SceneTree, ws) -> bool:
 	var end := Time.get_ticks_msec() + 30000
@@ -234,4 +449,43 @@ func _fixture_explode() -> void:
 	check((full["core"] as Vector3).length() > 0.0, "fully exploded, the core leaves the base")
 	var fo := Explode.fastener_offsets(spec, 1.0)
 	check(fo.has("lid_screws") and fo.lid_screws.size() == 2 and (fo.lid_screws[0] as Vector3).length() > 0.0, "the screws back out")
+	# §4.5: a part held by a fastener group is free once the group has backed out
+	var ws := Workshop.new()
+	ws.spec = spec
+	ws.words = data
+	for id in spec.comps:
+		ws.comps[id] = root
+	for g in spec.groups:
+		ws.groups[g] = root
+	ws.s = 0.0
+	check(ws.why_not_free("lid") == "Take the screws out before the lid.", "assembled, the lid is held by its screws: %s" % ws.why_not_free("lid"))
+	ws.s = 1.0
+	check(ws.why_not_free("lid") == "", "fully exploded, the screws out, the lid is free: %s" % ws.why_not_free("lid"))
+	ws.free()
 	root.free()
+
+## A sealed component's insides never come apart: not when a part inside it is the chosen subassembly, and not its
+## own fastener groups.
+func _sealed_edges() -> void:
+	var spec := {"comps": {
+			"shell": {"parent": "", "dir": Vector3.UP, "dist": 0.1, "sealed": true},
+			"inner": {"parent": "shell", "dir": Vector3.RIGHT, "dist": 0.1, "sealed": false},
+			"core": {"parent": "inner", "dir": Vector3.UP, "dist": 0.1, "sealed": false},
+			"lid": {"parent": "", "dir": Vector3.BACK, "dist": 0.1, "sealed": false}},
+		"groups": {"shell_pins": {"host": "shell", "items": [Transform3D.IDENTITY], "back_out": 0.02, "axis": Vector3.BACK},
+			"lid_bolts": {"host": "lid", "items": [Transform3D.IDENTITY], "back_out": 0.02, "axis": Vector3.BACK}},
+		"order": ["shell", "inner", "core", "lid"]}
+	var sub := Explode.offsets(spec, 1.0, "inner")
+	check(not sub.has("core") or (sub.core as Vector3) == Vector3.ZERO, "a part inside a sealed one, taken apart alone, stays whole: %s" % str(sub))
+	var fo := Explode.fastener_offsets(spec, 1.0)
+	check(not fo.has("shell_pins") and fo.has("lid_bolts"), "a sealed component's own fasteners stay; another's back out: %s" % str(fo.keys()))
+
+## Framing a small part keeps the zoom's reach out to the whole machine.
+func _orbit_limits(tree: SceneTree) -> void:
+	var o = Orbit.new()   # (untyped: called as the camera is)
+	tree.root.add_child(o)
+	o.call("frame", AABB(Vector3(-5, 0, -5), Vector3(10, 10, 10)), false, true)   # (by name: compiles against any camera)
+	var far0: float = o.dist_max
+	o.frame(AABB(Vector3.ZERO, Vector3.ONE * 0.02))
+	check(o.dist_max >= far0, "framing a small part keeps the zoom-out limit (%.1f, was %.1f)" % [o.dist_max, far0])
+	o.free()
