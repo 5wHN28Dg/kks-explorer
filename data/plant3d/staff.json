@@ -708,7 +708,7 @@
   ["ms_desk_2", "p_cr_n", 16.35, "walk"],
   ["ms_desk_3", "p_cr_n", 18.9, "walk"],
   ["con_muster", "p_gate", 5.5, "walk"],
-  ["ic_toolbox", "p_cr_s", 8.1, "walk"],
+  ["ic_toolbox", "p_cr_s", 6.25, "walk"],
   ["wtp_ctl_door", "p_wtp_ctl", 1.05, "walk"],
   ["wtp_desk", "p_wtp_ctl", 3.9, "walk"],
   ["wtp_desk_2", "p_wtp_ctl", 2.3, "walk"],
