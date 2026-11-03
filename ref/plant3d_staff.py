@@ -40,6 +40,12 @@ STEP_KINDS = ('go', 'work', 'read', 'op', 'permit', 'lock', 'unlock', 'say', 'wa
 LATER = {}
 VEHICLE_KINDS = ('bus', 'pickup', 'suv')
 DRIVE_KINDS = ('stop', 'depot')     # the places drive ways join (§21.4)
+DRIVE_ACTIONS = ('wheel', 'stop', 'go', 'auto')     # a driver's drive input (§21.16)
+
+
+def drive_place(item):
+    """A drive input's place for its event: a stop's place as given when it is text, else None."""
+    return item[3] if len(item) > 3 and item[2] == 'stop' and isinstance(item[3], str) else None
 RIDE_WAIT_MIN = 30      # clock minutes a person waits at a stop before they walk instead (§16.8, §21.4)
 ACT_KINDS = ('ppe', 'permit', 'unsafe')     # an unsafe act's kinds, in the order checked (§16.7, §17.11)
 ZONE_EDGE = 0.01        # a place this near a zone's edge or height limits is bad_zone (§16.2)
@@ -300,6 +306,7 @@ class Staff:
         self.point_no = {}          # place index -> point number
         self.rooms = {}             # room -> [place indices]
         self.work_at = {}           # code -> its work place (the first)
+        self.work_places = {}       # code -> every work place of it (a hand action's place, REALISM.md §2.15)
         for i, p in enumerate(pl):
             wp = f'{w}[{i}]'
             keys(p, ('id', 'at', 'kind'), ('room', 'yaw', 'pose', 'kks', 'zones', 'off_site', 'hidden'), wp)
@@ -320,6 +327,7 @@ class Staff:
                 need('kks' in p, 'missing_key', f'{wp}.kks: a work place names its equipment')
                 self.m.kks_ref(p['kks'], f'{wp}.kks')
                 self.work_at.setdefault(p['kks'], i)
+                self.work_places.setdefault(p['kks'], set()).add(i)
             else:
                 need('kks' not in p, 'unknown_key', f'{wp}.kks: only on a work place')
             if p['kind'] == 'point':
@@ -670,6 +678,12 @@ class Staff:
             return None
         return self.drive_places[self.drive_next[self.drive_no[a]][self.drive_no[b]]]
 
+    def drive_reaches(self, a, b):
+        """Place b is a stop or depot a vehicle at a reaches over drive ways."""
+        if self.drive_no.get(b) is None:
+            return False
+        return a == b or self.drive_next[self.drive_no[a]][self.drive_no[b]] >= 0
+
     def drive_steps(self, a, b):
         """The steps of a vehicle's route from a to b."""
         t = 0
@@ -829,6 +843,8 @@ class Staff:
                 keys(s, ('hand', 'kks'), ('tool', 'value', 'else', 'slip'), ws)
                 h = self.m.hand_keys.get((s['kks'], x)) if isinstance(s['kks'], str) and isinstance(x, str) else None
                 need(h is not None, 'bad_ref', f'{ws}: no hand action {x!r} on {s["kks"]!r}')
+                need(s['kks'] in self.work_at, 'bad_ref', f'{ws}: {s["kks"]!r} has no work place (a hand action is '
+                                                          f'done there)')
                 need(('tool' in s) == ('tools' in h), 'missing_key' if 'tools' in h else 'unknown_key',
                      f'{ws}.tool: the tool it is done with (none for a bare-hand action)')
                 need('tool' not in s or s['tool'] in h['tools'], 'bad_value', f'{ws}.tool: one of {h.get("tools")}')
@@ -1735,6 +1751,96 @@ class StaffRun:
             return
         self.get_on(tp, vi, st.pix[s['ride']['to']])
 
+    def t_drive(self, tp, slot, item):
+        """A player's drive (§21.16): ('drive', vehicle, action) or ('drive', vehicle, 'stop', place). The first reason
+        refusing it, else done and its effect."""
+        st = self.st
+        e = self.e
+        vid, action = item[1], item[2]
+        pl = item[3] if len(item) > 3 else None
+        vi = st.vehicle_ix.get(vid) if isinstance(vid, str) else None
+        pi = st.pix.get(pl) if isinstance(pl, str) else None
+        V = self.veh[vi] if vi is not None else None
+        why = None
+        if vi is None or not isinstance(action, str) or action not in DRIVE_ACTIONS \
+                or action == 'stop' and (pi is None or not st.drive_reaches(st.vehicles[vi]['home'], pi)):
+            why = 'unknown'
+        elif V['run'] is None or V['driver'] != tp.i:
+            why = 'not_driver'
+        elif action == 'wheel' and 'wheel' in V:
+            why = 'steering'
+        elif action != 'wheel' and 'wheel' not in V:
+            why = 'no_wheel'
+        elif action == 'stop' and V['at'] is not None:
+            why = 'standing'
+        elif action == 'go' and V['at'] is None:
+            why = 'moving'
+        e.ev('drive', tp.id, vid, action, drive_place(item), 'refused' if why else 'done', [why] if why else [],
+             *self.tail(tp))
+        if why is not None:
+            return
+        if action == 'wheel':
+            V['wheel'] = slot
+            if V['leg'] is not None:            # off its way where it is: on the road, from the way's start
+                V['from'] = V['leg'][0]
+                V['leg'] = None
+            else:
+                V['from'] = V['at']
+        elif action == 'stop':
+            self.steer_stop(vi, pi)
+        elif action == 'go':
+            self.steer_go(vi)
+        else:
+            self.steer_auto(vi)
+
+    def steer_stop(self, vi, at):
+        """The steered vehicle stands at place at: it arrives at its next target, passes the run's stops before a later
+        one it stops at, or stands anywhere else (§21.16)."""
+        st = self.st
+        e = self.e
+        V = self.veh[vi]
+        v = st.vehicles[vi]
+        stops = v['runs'][V['run']]['stops']
+        V['at'] = at
+        V['from'] = at
+        if at == V['to']:
+            self.arrived(vi)
+            return
+        ahead = [j for j in range(V['k'], len(stops)) if stops[j] == at]
+        if not ahead:
+            e.ev('vehicle', v['id'], st.places[at]['id'], 'stand')
+            return
+        for j in range(V['k'], ahead[0]):
+            e.ev('vehicle', v['id'], st.places[stops[j]]['id'], 'passed')
+        V['k'] = ahead[0]
+        V['to'] = at
+        self.arrived(vi)
+
+    def steer_go(self, vi):
+        """The steered vehicle sets off from where it stands: on to its run's next stop from one it arrived at (§21.16)."""
+        st = self.st
+        V = self.veh[vi]
+        v = st.vehicles[vi]
+        self.e.ev('vehicle', v['id'], st.places[V['at']]['id'], 'depart')
+        if V['at'] == V['to']:
+            stops = v['runs'][V['run']]['stops']
+            V['k'] += 1
+            V['to'] = stops[V['k']] if V['k'] < len(stops) else v['home']
+        V['from'] = V['at']
+        V['at'] = None
+
+    def steer_auto(self, vi):
+        """The engine drives the vehicle again (§21.16): on the road from the place it came from, now; standing at a
+        stop it arrived at, by §21.4's departure rule; standing elsewhere, on to its target now."""
+        V = self.veh[vi]
+        del V['wheel']
+        fr = V.pop('from')
+        if V['at'] is None:
+            V['at'] = fr
+            self.drive_on(vi)
+        elif V['at'] != V['to']:
+            self.drive_on(vi)
+
     def claim(self, slot, pi):
         """A person becomes slot's (§17.13): an NPC's current task (not the idle task) paused as a pre-emption pauses
         it, to be taken up again at their turn; one on a way is between places from now on (the place they left kept
@@ -1771,6 +1877,9 @@ class StaffRun:
         at their next turn; one between places put back at the place they last left."""
         pi = self.players.pop(slot)
         p = self.people[pi]
+        for vi, V in enumerate(self.veh):   # a driver's wheel back to the engine (§21.16)
+            if V['driver'] == pi and 'wheel' in V:
+                self.steer_auto(vi)
         for x in self.e.m.lifts:         # a person aboard leaves the ride: their alight for the next step (§20.3)
             if p.id in self.e.riders[x['id']]:
                 self.queue_alight(x['id'], p.id)
@@ -1831,12 +1940,17 @@ class StaffRun:
                     e.ev('stop', None, item[1], None, None, 'refused', ['authority'])
                 elif item[0] == 'get_on':   # (nobody to get on, §21.4)
                     e.ev('aboard', None, item[1], None, 'refused', ['authority'], *((slot,) if self.session else ()))
+                elif item[0] == 'drive':    # (nobody to drive, §21.16)
+                    e.ev('drive', None, item[1], item[2], drive_place(item), 'refused', ['authority'],
+                         *((slot,) if self.session else ()))
                 continue
             tp = self.people[ti]
             if item[0] in ('arrive', 'leave') and tp.aboard is not None:
                 continue                    # (ignored aboard a vehicle, §21.4)
             if item[0] == 'get_on':
                 self.t_get_on(tp, item[1])
+            elif item[0] == 'drive':
+                self.t_drive(tp, slot, item)
             elif item[0] == 'arrive' and isinstance(item[1], str) and item[1] in st.pix:
                 tp.pos = st.pix[item[1]]
                 if tp.occ != tp.pos:
@@ -2713,6 +2827,11 @@ class StaffRun:
                 x['hw'] = False
             else:
                 if not x.get('busy'):
+                    # at the code's work place, as a lock step at its point's (REALISM.md §2.15)
+                    r = self.go(p, cur, st.work_at[s['kks']])
+                    if r != 'next':
+                        return r
+                    x.pop('dest', None)
                     e.npc_queue.append(('hand', s['kks'], s['hand'], s.get('tool'), s.get('value'), p.id))
                     x['busy'] = True
                     p.result = None
@@ -2794,6 +2913,8 @@ class StaffRun:
             V = self.veh[p.aboard]
             if V['leg'] is not None:
                 return st.off_site[V['leg'][0]] and st.off_site[V['leg'][1]]
+            if V['at'] is None:             # steered, on the road (§21.16): as on a way from where it came to its target
+                return st.off_site[V['from']] and st.off_site[V['to']]
             return st.off_site[V['at']]
         if p.leg is not None:
             return st.off_site[p.leg[0]] and st.off_site[p.leg[1]]
@@ -2876,10 +2997,12 @@ class StaffRun:
         v = st.vehicles[vi]
         stops = v['runs'][V['run']]['stops']
         e.ev('vehicle', v['id'], st.places[V['at']]['id'], 'arrive')
-        if V['k'] >= len(stops):            # home: the driver gets off at the depot
+        if V['k'] >= len(stops):            # home: the driver gets off at the depot (the wheel the engine's, §21.16)
             q = self.people[V['driver']]
             self.get_off(q, vi, V['at'])
             V.update(run=None, driver=None, dep=0, k=0, until=0, riders=[])
+            V.pop('wheel', None)
+            V.pop('from', None)
             return
         last = V['k'] == len(stops) - 1
         stay = []
@@ -2908,7 +3031,7 @@ class StaffRun:
             V['at'] = V['leg'][1]
             V['leg'] = None
             self.drive_on(vi)
-        if V['run'] is not None and V['leg'] is None and V['at'] == V['to'] and n >= V['until'] \
+        if 'wheel' not in V and V['run'] is not None and V['leg'] is None and V['at'] == V['to'] and n >= V['until'] \
                 and (V['k'] != 0 or c >= V['dep']) and V['k'] < len(v['runs'][V['run']]['stops']):
             e.ev('vehicle', v['id'], st.places[V['at']]['id'], 'depart')
             stops = v['runs'][V['run']]['stops']
@@ -3573,7 +3696,9 @@ class StaffRun:
                 V['run'] if V['run'] is not None else -1, V['dep'], V['k'], V['until'],
                 V['driver'] if V['driver'] is not None else -1,
                 Packed(PACKED_INT32, [x[0] for x in V['riders']]), Packed(PACKED_INT32, [x[1] for x in V['riders']]),
-                V['floor'], list(V['done']) if V['done'] is not None else []] for V in self.veh],
+                V['floor'], list(V['done']) if V['done'] is not None else []] +
+               ([[V['wheel'], V['from'] if V['from'] is not None else -1]] if 'wheel' in V else [])
+               for V in self.veh],
               Packed(PACKED_INT32, [p.aboard if p.aboard is not None else -1 for p in people]),
               Packed(PACKED_INT64, [p.offday if p.offday is not None else -1 for p in people])]
              if st.homes else [])
@@ -3583,8 +3708,12 @@ class StaffRun:
         st = self.st
         out = {}
         for vi, V in enumerate(self.veh):
-            where = st.places[V['at']]['id'] if V['leg'] is None else \
-                [st.places[V['leg'][0]]['id'], st.places[V['leg'][1]]['id'], V['leg'][2], V['leg'][3]]
+            if V['leg'] is not None:
+                where = [st.places[V['leg'][0]]['id'], st.places[V['leg'][1]]['id'], V['leg'][2], V['leg'][3]]
+            elif V['at'] is None:           # steered, on the road (§21.16)
+                where = ['road', st.places[V['from']]['id']]
+            else:
+                where = st.places[V['at']]['id']
             ab = ([self.people[V['driver']].id] if V['driver'] is not None else []) + \
                 [self.people[pi].id for pi, _ in V['riders']]
             out[st.vehicles[vi]['id']] = [where, ab]

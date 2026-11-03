@@ -1,7 +1,8 @@
 # Walkdown for Android (v2) (M6 phase 6)
 
 Native Compose screens on the Nim core (`core/`, through JNI: `android/nim/`), decisions 0014, 0027, 0032. Installed
-as `io.github.walkdown` (Walkdown; the code namespace stays `kks.explorer.v2`), next to the v1 app until the cutover.
+as `io.github.walkdown` (Walkdown; the code namespace stays `kks.explorer.v2`). The v1 app it replaced was retired at the cutover
+(2026-10-03).
 
 ## Build
 

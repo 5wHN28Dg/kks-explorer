@@ -20,7 +20,10 @@ def files_of(st, r=None):
     if r is not None:
         F['scenarios/s1.json'] = json.dumps(r['scenario']).encode()
         for rel, v in r.get('files', {}).items():
-            F[rel] = json.dumps(v).encode()
+            if v is None:
+                F.pop(rel, None)        # (a file the run leaves out)
+            else:
+                F[rel] = json.dumps(v).encode()
     return F
 
 
@@ -585,11 +588,12 @@ class HandsVectors(PartVectors, unittest.TestCase):
         self.assertEqual(e.tool_n[e.tools['ix']['loopcal']], [0])
 
     def test_hand_reasons_in_order(self):
-        """authority, busy, tool, wrong_tool, the needs, value; a hand action on the locked code is made."""
-        ev = self.evs(1, ('hand',), steps=(5, 12, 21))
+        """authority, where, busy, tool, wrong_tool, the needs, value; a hand action on the locked code is made."""
+        ev = self.evs(1, ('hand',), steps=(3, 5, 12, 21))
         self.assertEqual([(x[3], x[4], x[6], x[7]) for x in ev], [
+            ('connect_hart', 'hart', 'refused', ['where']),       # at the toolbox, away from the gauge (§2.15)
             ('open_cover', 'sd_flat', 'refused', ['authority']), ('connect_hart', 'hart', 'done', []),
-            ('no_such', 'sd_flat', 'unknown', []), ('pull_test', None, 'refused', ['authority']),
+            ('no_such', 'sd_flat', 'unknown', []), ('pull_test', None, 'refused', ['authority', 'where']),
             ('open_cover', 'spanner_13', 'refused', ['wrong_tool']), ('open_cover', None, 'refused', ['tool']),
             ('open_cover', 'dmm', 'refused', ['tool']), ('lift_wire', 'sd_flat', 'refused', ['g1_body_open']),
             ('torque_gland', 'spanner_17', 'refused', ['value']), ('torque_gland', 'spanner_17', 'refused', ['value']),
@@ -614,8 +618,68 @@ class HandsVectors(PartVectors, unittest.TestCase):
         self.assertEqual(seen[45][1], 7.5)
         ev = self.evs(1, ('hand',))
         self.assertIn([15, 'hand', '10LAB10CP501', 'open_cover', 'sd_flat', 'ic1', 'abandoned', []], ev)
-        self.assertIn([50, 'op', '10LAB10CP501', 'set', 'refused', ['iso_gauge_locked'], 'hart', 'ic1'],
-                      self.st['runs'][1]['events'])
+        # (§2.15) the HART op on the locked code is made under the trainee's own accepted permit
+        self.assertIn([50, 'op', '10LAB10CP501', 'set', 'done', [], 'hart', 'ic1'], self.st['runs'][1]['events'])
+
+    def test_hart_under_own_permit(self):
+        """REALISM.md §2.15: a HART op on a locked code is made only under the work's own accepted permit (and
+        written); refused with no permit, an issued one not yet accepted, another work's accepted permit, by another
+        person, and after the work's done."""
+        r = next(x for x in self.st['runs'] if x['why'].startswith('a HART op on the locked gauge'))
+        ops = [(x[0], x[4], x[6]) for x in r['events'] if x[1] == 'op' and x[2] == '10LAB10CP501']
+        L = ['iso_gauge_locked']
+        self.assertEqual(ops, [(7, 'done', 'hart'), (12, 'refused', 'hart'), (15, 'refused', 'hart'),
+                               (21, 'refused', 'hart'), (24, 'done', 'hart'), (24, 'refused', 'hart'),
+                               (24, 'refused', 'local'), (28, 'refused', 'hart')])
+        why = [x[5] for x in r['events'] if x[1] == 'op' and x[2] == '10LAB10CP501' and x[4] == 'refused']
+        self.assertEqual(why, [L, L, L, ['authority', 'hart'] + L, ['where'] + L, L])
+        seen = {}
+        run_on(self.st, r, 30, lambda e: seen.__setitem__(e.step_no, e.v('g1_cfg_urv')))
+        self.assertEqual((seen[7], seen[23], seen[24], seen[30]), (20.0, 20.0, 24.0, 24.0))
+
+    def test_hart_permit_acceptor_rule(self):
+        """REALISM.md §2.15: under the work's permit means by its acceptor, or another with accept and its discipline
+        while the acceptor is off duty: the HART run at step 23 with ic2 (on duty) named the acceptor refuses ic1's
+        HART op on the locked code; with ic2 absent it is made."""
+        r = next(x for x in self.st['runs'] if x['why'].startswith('a HART op on the locked gauge'))
+        e = run_on(self.st, r, 23)
+        self.assertEqual(e.acceptor['wo_gauge'], 'ic1')
+        e.acceptor['wo_gauge'] = 'ic2'
+        G.apply_staff(e, [24, 'op', '10LAB10CP501', 'set', 24, None, 'hart', 'ic1'])
+        e.step()
+        self.assertIn([24, 'op', '10LAB10CP501', 'set', 'refused', ['iso_gauge_locked'], 'hart', 'ic1'], e.events)
+        self.assertEqual(e.v('g1_cfg_urv'), 20.0)
+        e.staff.absent.add('ic2')
+        G.apply_staff(e, [25, 'op', '10LAB10CP501', 'set', 25, None, 'hart', 'ic1'])
+        e.step()
+        self.assertEqual(e.v('g1_cfg_urv'), 25.0)
+
+    def test_hart_permit_without_hw1_keys(self):
+        """REALISM.md §2.15: the permit is found in a run with none of HW1's keys too (the app's engine once built
+        its works per code only with them): under the accepted permit the locks are not named."""
+        r = next(x for x in self.st['runs'] if x['why'].startswith('a HART op without HW1'))
+        e = run_on(self.st, r, 1)
+        self.assertFalse(e.hw)
+        ops = [x[5] for x in r['events'] if x[1] == 'op' and x[2] == '10LAB10CP501']
+        self.assertEqual(ops, [['hart', 'iso_gauge_locked'], ['hart']])
+
+    def test_npc_hand_step_walks_there(self):
+        """REALISM.md §2.15: an NPC whose job left the gauge walks back to its work place for its hand step."""
+        r = next(x for x in self.st['runs'] if x['why'].startswith('an NPC\'s hand step away'))
+        ev = [x for x in r['events'] if 'ic2' in x and x[1] in ('move', 'hand')]
+        k = next(i for i, x in enumerate(ev) if x[1] == 'hand')
+        self.assertEqual(ev[k - 1][1:5:3], ['move', 'w_gauge'])        # (arrived there last)
+        self.assertIn(['move', 'ic2', 'p5', 'tb1'], [x[1:5] for x in ev[:k]])      # (and had gone back first)
+        self.assertEqual(ev[k][3:8], ['open_cover', 'sd_flat', 'ic2', 'start', []])
+
+    def test_hand_away_from_the_equipment(self):
+        """REALISM.md §2.15: a hand action is made only at its code's work place (where); an NPC's hand step walks
+        there first; a hand step on a code without a work place is refused by the validator."""
+        ev = self.st['runs'][1]['events']
+        self.assertIn([3, 'hand', '10LAB10CP501', 'connect_hart', 'hart', 'ic1', 'refused', ['where']], ev)
+        self.assertIn([5, 'hand', '10LAB10CP501', 'pull_test', None, 'ic2', 'refused', ['authority', 'where']], ev)
+        self.assertTrue(any(x['why'].startswith('a hand step on a code without a work place')
+                            for x in self.st['reject']))
 
     def test_meters_and_hart(self):
         """A read through a meter: tool without it (the step waits), misread against its else, 0 round both wires,

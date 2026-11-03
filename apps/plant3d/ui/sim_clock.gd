@@ -183,6 +183,8 @@ func _one() -> void:
 		engine.step_us.clear()
 		Cost.cur[Cost.MODEL] += t1 - t0 - st
 		Cost.cur[Cost.STAFF] += st
+		Cost.step_staff.append(st)
+		Cost.step_model.append(t1 - t0 - st)
 		Cost.cur[Cost.STEPPED] += us - (t1 - t0)
 	_win_steps += 1
 	_win_us += us

@@ -132,6 +132,13 @@ var step_no := 0
 var timing := false                 # when set, every step's time in microseconds goes to step_us (tests/bench_step.gd)
 var step_us := PackedInt64Array()
 var staff_us := PackedInt64Array()    # with timing: step 9's own time in each step
+## (caches and timers of the staff step, sim/staff.gd: never the run's state, so "_": not saved, ui/run_save.gd; a clone
+## starts without them)
+var _staff_due_memo: Array = []        # per vehicle: runs_due's last answer, [day, floor, done, answer]
+var _staff_wait_sleep := true          # the waits for a place or a meeting asleep (false: awake every step, as before; tests/check_staff_waits.gd)
+var _staff_prof_on := false            # step 9's per-phase timers and work counts (tests/bench_staff.gd)
+var _staff_prof := PackedInt64Array([0, 0, 0, 0, 0, 0, 0])
+var _staff_prof_n := {"runs": 0, "due": 0, "acts": 0, "wakes": 0}
 
 # format 2's clock and staff (§16–§17): built from the content and the scenario (shared by clones, not saved)
 var _sm = null                      # sim/staff.gd: the plant's staff.json when the scenario has `staff`, else null
@@ -175,6 +182,7 @@ var sp_occ := PackedInt32Array()    # a place occupied, -1
 var sp_result: Array = []           # an NPC's input's outcome, read in step 9
 var sp_rng := PackedInt64Array()
 var sp_wake := PackedInt64Array()   # the step a person's next turn can change anything (staff.gd turn)
+var sp_wait_on := PackedInt32Array()  # what a person asleep waiting for a place or a meeting waits on (staff.gd wait_key), -1
 var sp_held: Array = []             # a job held overnight (§17.10), or null
 var sp_worn := PackedInt32Array()   # the PPE items worn: a bit per item of staff.gd PPE (§17.11)
 var sp_acts: Array = []             # per person: an Array per act kind (staff.gd ACT_KINDS), null or [zone or work, start, stopped]
@@ -708,6 +716,12 @@ func get_on(vehicle, slot = null) -> void:
 	_q(["get_on", vehicle], slot)
 
 
+## The player's person, a vehicle's driver, drives it (§21.16): "wheel", "stop" at a place, "go" or "auto".
+func drive(vehicle, action, place = null, slot = null) -> void:
+	_q(["drive", vehicle, action, place] if typeof(action) == TYPE_STRING and action == "stop"
+			else ["drive", vehicle, action], slot)
+
+
 func arrive(place, slot = null) -> void:
 	_q(["arrive", place], slot)
 
@@ -915,6 +929,8 @@ func apply_input(item: Array) -> void:
 				remove_lock(item[2], item[3], item[4], item[5], null, false, slot)
 		"role", "arrive", "leave", "pick", "jump", "get_on":
 			_q([item[1], item[2]], slot)
+		"drive":
+			drive(item[2], item[3], item[4] if item.size() > 4 else null, slot)
 		"release", "task_ack":
 			_q([item[1]], slot)
 		"read", "say", "ppe", "zone":
@@ -1857,7 +1873,7 @@ func _step() -> void:
 			continue        # (a session run's input: a single-player run has no slots)
 		if kind == "role" or kind == "task_ack" or kind == "arrive" or kind == "leave" or kind == "read" \
 				or kind == "say" or kind == "pick" or kind == "call" or kind == "jump" or kind == "ppe" \
-				or kind == "zone" or kind == "stop" or kind == "release" or kind == "get_on":
+				or kind == "zone" or kind == "stop" or kind == "release" or kind == "get_on" or kind == "drive":
 			if _sm != null:
 				_sm.t_input(self, item, slot)
 			elif kind == "role":
@@ -2184,19 +2200,26 @@ func _op(item: Array, moved: Dictionary, npc := false) -> String:
 			t = TYPE_INT
 		if not (t == TYPE_INT or t == TYPE_FLOAT) or not (o["range"][0] <= value and value <= o["range"][1]):
 			failed.append(o["input"])
-	failed.append_array(_locking(kks))         # a locked code refuses every op (§15.1)
+	var locks := _locking(kks)
+	var under := -1         # REALISM.md §2.15: a HART op under the work's own accepted permit (its index)
+	if not locks.is_empty() and v2 and typeof(item[5]) == TYPE_STRING and item[5] == "hart" and o.has("hart") \
+			and do != "reset":          # (a reset waits for the unlock)
+		under = Hands.hart_permit(self, kks, item[6], npc)
+		if under != -1:
+			locks = []
+	failed.append_array(locks)         # a locked code refuses every op (§15.1)
 	if not failed.is_empty():
 		_ev(["op", kks, do, "refused", failed] + tail)
 		return "refused"
 	_ev(["op", kks, do, "done", []] + tail)
 	if mi == -1 and do == "set":
-		_write(c["input"], float(value))
+		_write(c["input"], float(value), under)
 	if mi == -1 and do == "reset":
 		var ti: int = c["ti"]
 		latched[ti] = 0
 		trip_count[ti] = 0
 		cur[_tr[ti][5]] = 0.0
-	_apply_set(c["set"])
+	_apply_set(c["set"], under)
 	if mi != -1:
 		var to: int = _mc[mi][2].find(_mc[mi][4][do]["to"])
 		_enter(mi, to, "command")
@@ -2475,8 +2498,11 @@ func _digest_staff():
 			for rd in vh["riders"]:
 				rp.append(rd[0])
 				rt.append(rd[1])
-			vs.append([vh["at"], vh["leg"], vh["run"], vh["dep"], vh["k"], vh["until"], vh["driver"], rp, rt,
-					vh["floor"], vh["done"]])
+			var one := [vh["at"], vh["leg"], vh["run"], vh["dep"], vh["k"], vh["until"], vh["driver"], rp, rt,
+					vh["floor"], vh["done"]]
+			if vh.has("wheel"):         # steered (§21.16)
+				one.append([vh["wheel"], vh["from"]])
+			vs.append(one)
 		tree.append(vs)
 		tree.append(sp_aboard)
 		tree.append(sp_offday)
@@ -2525,7 +2551,7 @@ func clone():
 			"_hw", "_hands", "_meters", "_works_on", "_fdef"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
-			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_worn",
+			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_wait_on", "sp_worn",
 			"sp_zin", "lift_quiet", "sp_lin", "lift_calls", "lift_dir", "lift_dwell", "sp_aboard", "sp_offday"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",

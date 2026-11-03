@@ -2070,7 +2070,7 @@ def build_rejects_staff():
 
 INPUTS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
           'remove_lock', 'role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump', 'ppe', 'zone',
-          'stop', 'board', 'alight', 'get_on', 'weather')
+          'stop', 'board', 'alight', 'get_on', 'drive', 'weather')
 
 
 class Slotted:
@@ -2108,6 +2108,84 @@ class Session:
             pl(e)
 
 
+class Drive:
+    """The trainee as a driver who steers (§21.16), as the app's driver would: takes the wheel once aboard on a run,
+    drives each way in `pace` times the engine's steps (plus `late` steps on the run's first), stops at the run's next
+    target, sets off from the first stop at D (`early`: at once) and from the others after their dwell. `skip`: the
+    run's stop numbers driven past (it stops at the next instead); `wrong`: (stop number, place) where it stands on the
+    way to that stop first; `auto`: [(run number driven, 'road', 'stand' or 'wrong')]: gives the wheel back on the road
+    on the way to the second stop, standing at the first, or standing at the wrong place; `wheel_at`: the wheel taken
+    only once the engine's bus stands at that stop number; `runs`: how many runs it steers (then it leaves the wheel alone)."""
+
+    def __init__(self, pace=1, late=0, early=False, skip=(), wrong=None, auto=(), runs=9, wheel_at=0):
+        self.pace, self.late, self.early, self.skip, self.wrong, self.auto, self.runs = \
+            pace, late, early, set(skip), wrong, set(auto), runs
+        self.wheel_at = wheel_at    # the wheel taken only once the bus stands at this stop number of the run
+        self.run_no = -1            # the runs driven, counted from 0
+        self.run_key = None
+        self.since = None           # the step it set off or stood still
+        self.wrong_done = False
+        self.gave_back = False
+
+    def __call__(self, e, sr, ti, n):
+        vi = next((vi for vi, V in enumerate(sr.veh) if V['driver'] == ti and V['run'] is not None), None)
+        if vi is None:
+            return False
+        V = sr.veh[vi]
+        st = sr.st
+        vid = st.vehicles[vi]['id']
+        stops = st.vehicles[vi]['runs'][V['run']]['stops']
+        key = (V['run'], V['dep'])
+        if key != self.run_key:
+            self.run_key, self.run_no, self.since, self.wrong_done, self.gave_back = key, self.run_no + 1, None, \
+                False, False
+        if self.run_no >= self.runs or self.gave_back:
+            return True
+        if 'wheel' not in V:
+            if self.wheel_at and not (V['at'] is not None and V['k'] >= self.wheel_at):
+                return True
+            e.drive(vid, 'wheel')
+            return True
+        if self.since is None:
+            self.since = n
+        if V['at'] is None:             # on the road
+            if (self.run_no, 'road') in self.auto and V['k'] == 1:
+                self.gave_back = True
+                e.drive(vid, 'auto')
+                return True
+            to = V['to']
+            if V['k'] in self.skip and V['k'] < len(stops) - 1:
+                to = stops[V['k'] + 1]
+            if self.wrong is not None and not self.wrong_done and self.wrong[0] == V['k']:
+                to = st.pix[self.wrong[1]]
+            t = st.drive_steps(V['from'], to) * self.pace + (self.late if self.run_no == 0 and V['k'] == 0 else 0)
+            if n - self.since >= max(1, t):
+                if self.wrong is not None and to == st.pix[self.wrong[1]]:
+                    self.wrong_done = True
+                e.drive(vid, 'stop', st.places[to]['id'])
+                self.since = None
+            return True
+        if (self.run_no, 'wrong') in self.auto and V['at'] != V['to']:
+            self.gave_back = True
+            e.drive(vid, 'auto')
+            return True
+        if (self.run_no, 'stand') in self.auto and V['at'] == V['to'] and V['k'] == 0:
+            self.gave_back = True
+            e.drive(vid, 'auto')
+            return True
+        if V['at'] == V['to'] and V['k'] == 0 and not self.early:
+            if e.clock() >= V['dep']:
+                e.drive(vid, 'go')
+                self.since = None
+            return True
+        dwell = st.vehicles[vi]['runs'][V['run']]['dwell'] * st.tpm \
+            if V['at'] == V['to'] and not (V['k'] == 0 and self.early) else 1
+        if n - self.since >= max(1, dwell):
+            e.drive(vid, 'go')
+            self.since = None
+        return True
+
+
 class Trainee:
     """Plays the trainee's person in the generator as the app would, from what the person's current step asks:
     walks to its place (an arrive after `walk` steps, a leave first), types readings (`wrong` of them off by 1),
@@ -2115,8 +2193,9 @@ class Trainee:
     `extra`: more inputs at given steps ([step, kind, …]). The inputs it makes are the vector's (Recorder.inputs)."""
 
     def __init__(self, walk=40, wrong=(), ack_after=5, extra=(), quiet=False, wake=0, ahead=None, undo=False,
-                 back=False, pick=0, slot=None, ride='bus'):
+                 back=False, pick=0, slot=None, ride='bus', drive=None):
         self.walk, self.wrong, self.ack_after, self.extra = walk, set(wrong), ack_after, list(extra)
+        self.drive = drive          # a Drive: the trainee as a driver who steers (§21.16)
         self.ride = ride            # a ride step (§21.4): 'bus' (to its stop, on the first vehicle there) or 'walk'
         self.slot = slot            # a session run's player (§17.13): its inputs carry the slot; None: single-player
         self.pick = pick            # which of a choose's tasks they take
@@ -2152,6 +2231,8 @@ class Trainee:
             self.unacked_since = None
         p = sr.people[ti]
         e = io                      # (every input below is this player's)
+        if self.drive is not None and self.drive(e, sr, ti, n):
+            return                  # (at the wheel: nothing else of theirs)
         cur = p.cur
         if cur is None:
             return
@@ -2295,6 +2376,8 @@ def apply_staff(e, item):
         e.op(*item[2:8], slot=slot)
     elif kind in ('role', 'arrive', 'leave', 'pick', 'jump', 'stop', 'get_on'):
         getattr(e, kind)(item[2], slot=slot)
+    elif kind == 'drive':
+        e.drive(item[2], item[3], item[4] if len(item) > 4 else None, slot=slot)
     elif kind == 'task_ack':
         e.task_ack(slot=slot)
     elif kind == 'release':
@@ -3823,6 +3906,56 @@ def camp_runs():
                                                   when=[(lambda e: _aboard_v(e, 'a_fo1'), ('release', 0)),
                                                         (lambda e: _aboard_v(e, 'drv1') and e.step_no > 420,
                                                          ('role', 'drv1', 1))]), 1200, 30),
+    ] + steered_runs(camp, at5)
+
+
+def steered_runs(camp, at5):
+    """The driver who steers (§21.16), from 05:30: the 05:40 run is made at 05:39."""
+    at530 = {'start': {'day': 1, 'time': '05:30'}}
+    later = copy.deepcopy(camp)         # the bus's first run to the control room's stop, then the gate's
+    later['vehicles'][0]['runs'][0]['stops'] = ['camp_stop', 'cr_stop', 'gate_stop']
+    return [
+        ('the trainee as the driver who steers (§21.16): drive inputs refused before the run (not the driver, an '
+         'unknown vehicle); the wheel taken on the way to the camp\'s stop, a go refused without it first; field '
+         'operator 1 gets on there, the bus leaves at the run\'s departure, arrives at the gate\'s stop and the '
+         'control room\'s (everyone off), drives home and the run ends there (the wheel the engine\'s again); '
+         'refused: the wheel twice, a stop while standing, a go while moving, a stop at a place that is no stop',
+         dict(at530, trainee='drv1'), camp, Trainee(drive=Drive(runs=1), extra=[
+             [2, 'drive', 'bus', 'wheel'], [3, 'drive', 'tram', 'wheel'], [91, 'drive', 'bus', 'go'],
+             [92, 'drive', 'bus', 'wheel'], [92, 'drive', 'bus', 'go'], [93, 'drive', 'bus', 'stop', 'p0'],
+             [93, 'drive', 'bus', 'fly'], [94, 'drive', 'bus', 'stop', 7], [155, 'drive', 'bus', 'stop', 'cr_stop'],
+             [300, 'drive', 'bus', 'auto']]), 1500, 30),
+        ('a steered run that keeps no timetable (§21.16): the bus leaves the camp\'s stop at once (early), stands at '
+         'the depot on the way to the control room\'s stop (the wrong place: nobody on or off), passes the control '
+         'room\'s stop for the gate\'s (field operator 1, for the control room, stays aboard and gets off at the last '
+         'stop with everyone)',
+         dict(at530, trainee='drv1'), later, Trainee(drive=Drive(runs=1, pace=0.5, early=True, wrong=(1, 'depot'), skip=[1])),
+         1500, 30),
+        ('a late steered bus (§21.16, §21.4): the driver takes 40 minutes to the camp\'s stop; field operator 1 waits '
+         '30 minutes there and walks; the bus comes to an empty stop',
+         dict(at530, trainee='drv1'), camp, Trainee(drive=Drive(runs=1, late=400)), 1500, 30),
+        ('the wheel given back (§21.16): on the road to the gate\'s stop (the engine drives on from the camp\'s stop), '
+         'and on the next run standing at its first stop (the engine leaves by §21.4\'s rule)',
+         dict(at530, trainee='drv1'), camp, Trainee(drive=Drive(runs=2, auto=[(0, 'road'), (1, 'stand')])), 1500, 30),
+        ('a jump while steering (§21.16, §21.4): the bus on the road with the wheel taken; the jump puts it home, '
+         'nobody aboard, the wheel the engine\'s',
+         dict(at530, trainee='drv1'), camp, Trainee(drive=Drive(runs=1), extra=[[120, 'jump', '17:35']]), 400, 20),
+        ('a session with the driver steering (§21.16, §17.13): slot 1 plays nobody (its drive refused, authority); '
+         'slot 0 takes the driver, steers from the depot\'s way, and is released on the road to the gate\'s stop: the '
+         'engine drives on from the camp\'s stop, an NPC driver now',
+         at530, camp, Session([Trainee(slot=0, drive=Drive()), Trainee(slot=1, quiet=True)],
+                              extra=[[1, 'role', 'drv1', 0], [5, 'drive', 'bus', 'wheel', 1]],
+                              when=[(lambda e: e.step_no > 110 and e.staff.veh[0]['at'] is None
+                                     and 'wheel' in e.staff.veh[0], ('release', 0))]), 400, 20),
+        ('the wheel taken standing and given back at the wrong place (§21.16): the engine drives to the gate\'s stop, '
+         'the driver takes the wheel standing there, sets off, stands at the depot on the way to the control room\'s '
+         'stop and gives the wheel back there: the engine drives on from the depot',
+         dict(at530, trainee='drv1'), camp, Trainee(drive=Drive(runs=1, wheel_at=1, wrong=(2, 'depot'),
+                                                                 auto=[(0, 'wrong')])), 600, 20),
+        ('riders on a steered bus where locks are held (§21.16, §21.1): on the road the bus is off site as a way from where '
+         'it came to its target is (the left locks\' check asks for its riders each step)',
+         dict(at530, trainee='drv1'), with_camp(handover_staff()), Trainee(drive=Drive(runs=1),
+                                                                           extra=[[2, 'fault', 'f1']]), 1200, 40),
     ]
 
 
@@ -4145,7 +4278,8 @@ def build_runs(runs, base):
             if e.step_no % DIGEST_EVERY == 0:
                 digests.append(e.digest())
         out.append({'why': why, 'scenario': sc, 'staff': None,
-                    'files': {k: F[k] for k in sorted(F) if k != 'scenarios/s1.json' and F[k] != base.get(k)},
+                    'files': {k: F.get(k) for k in sorted(set(F) | set(base))         # (null: a file left out)
+                              if k != 'scenarios/s1.json' and F.get(k) != base.get(k)},
                     'inputs': e.inputs, 'until': until, 'every': every, 'states': states, 'events': e.events,
                     'digests': digests, 'world': world})
     return out
@@ -4567,6 +4701,7 @@ def hands_runs():
     hands = Trainee(quiet=True, extra=_x(
         (2, 'arrive', 'tb1'), (3, 'tool', 'sd_flat', 1, 'ic1'), (3, 'tool', 'spanner_13', 1, 'ic1'),
         (3, 'tool', 'hart', 1, 'ic1'), (3, 'tool', 'spanner_17', 1, 'ic1'),
+        (3, 'hand', G, 'connect_hart', 'hart', None, 'ic1'), (4, 'leave', 'tb1'), (4, 'arrive', 'w_gauge'),
         (5, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'), (5, 'hand', G, 'connect_hart', 'hart', None, 'ic1'),
         (5, 'hand', G, 'no_such', 'sd_flat', None, 'ic1'), (5, 'hand', G, 'pull_test', None, None, 'ic2'),
         (6, 'permit', 'wo_gauge', 'request', 'ic1'), (7, 'permit', 'wo_gauge', 'approve', 'ic1'),
@@ -4577,7 +4712,7 @@ def hands_runs():
         (12, 'hand', G, 'torque_gland', 'spanner_17', 12, 'ic1'),
         (12, 'hand', G, 'torque_gland', 'spanner_17', None, 'ic1'),
         (12, 'hand', G, 'pull_test', 'sd_flat', None, 'ic1'),
-        (13, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'), (14, 'leave', 'tb1'), (15, 'arrive', 'w_gauge'),
+        (13, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'), (14, 'leave', 'w_gauge'), (15, 'arrive', 'w_gauge'),
         (20, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'), (21, 'hand', G, 'pull_test', None, None, 'ic1'),
         (21, 'hand', G, 'tighten', 'spanner_13', None, 'ic1'), (21, 'tool', 'sd_flat', 0, 'ic1'),
         (45, 'hand', G, 'lift_wire', 'sd_flat', None, 'ic1'), (45, 'hand', G, 'pull_test', None, None, 'ic1'),
@@ -4597,8 +4732,61 @@ def hands_runs():
         (22, 'read', G, -1, 'g1_cal'),
         (23, 'permit', 'wo_gauge', 'request', 'ic1'), (24, 'permit', 'wo_gauge', 'approve', 'ic1'),
         (25, 'lock', 'wo_gauge', 0, 'ic1'), (27, 'op', G, 'set', 30, None, 'hart', 'ic1')))
+    # REALISM.md §2.15: a HART op on the locked gauge, made only under the work's own accepted permit; wo_tag is
+    # another work on the gauge (no isolation) whose permit the trainee accepts while wo_gauge's isolation locks it
+    hp = hands_files()
+    hp['model/a1.json']['works'].append({'id': 'wo_tag', 'kks': G, 'title': 'Gauge: tag plate', 'discipline': 'inst',
+                                         'permit': 'general', 'task': 'cal_gauge'})
+    hart_permit = Trainee(quiet=True, extra=_x(
+        (2, 'arrive', 'tb1'), (3, 'tool', 'hart', 1, 'ic1'), (4, 'leave', 'tb1'), (4, 'arrive', 'w_gauge'),
+        (5, 'hand', G, 'connect_hart', 'hart', None, 'ic1'),
+        (7, 'op', G, 'set', 20, None, 'hart', 'ic1'),
+        (8, 'permit', 'wo_gauge', 'request', 'ic1'), (9, 'permit', 'wo_gauge', 'approve', 'ic1'),
+        (10, 'lock', 'wo_gauge', 0, 'ic1'),
+        (12, 'op', G, 'set', 21, None, 'hart', 'ic1'),
+        (13, 'permit', 'wo_gauge', 'issue', 'ic1'),
+        (15, 'op', G, 'set', 22, None, 'hart', 'ic1'),
+        (16, 'permit', 'wo_tag', 'request', 'ic1'), (17, 'permit', 'wo_tag', 'approve', 'ic1'),
+        (18, 'permit', 'wo_tag', 'issue', 'ic1'), (19, 'permit', 'wo_tag', 'accept', 'ic1'),
+        (21, 'op', G, 'set', 23, None, 'hart', 'ic1'),
+        (22, 'permit', 'wo_gauge', 'accept', 'ic1'),
+        (24, 'op', G, 'set', 24, None, 'hart', 'ic1'), (24, 'op', G, 'set', 25, None, 'hart', 'ic2'),
+        (24, 'op', G, 'set', 26, None, 'local', 'ic1'),
+        (26, 'permit', 'wo_gauge', 'done', 'ic1'), (28, 'op', G, 'set', 27, None, 'hart', 'ic1')))
+    # REALISM.md §2.15: the job walks back to the toolbox after the permit (the lock took ic2 to the gauge) in place
+    # of its walk to the gauge: its first hand step walks to the gauge itself
+    hg = hands_files()
+    job = next(t for t in hg['staff.json']['tasks'] if t['id'] == 'ic_job')['steps']
+    assert job[7] == {'go': {'kks': G}}
+    job[7] = {'go': 'tb1'}
+    # REALISM.md §2.15: a HART op in a run with none of HW1's keys (no tools: no communicator can be carried), under
+    # the trainee's accepted permit: refused hart alone, the locks not named, in both engines
+    hn = hands_files()
+    del hn['tools.json']
+    mn = hn['model/a1.json']
+    del mn['hands'], mn['meters']
+    for w in mn['works']:
+        w.pop('cures', None)
+    mn['works'] = [w for w in mn['works'] if w['id'] != 'wo_gauge2']
+    scn = hn['scenarios/s1.json']
+    scn['faults'] = [f for f in scn['faults'] if f['id'] != 'f_low']
+    scn['init'] = dict(scn['init'], g1_body_hart=1)
+    stn = hn['staff.json']
+    stn['tasks'] = [t for t in stn['tasks'] if t['id'] not in ('ic_job', 'ic_check')]
+    stn['routines'] = [r for r in stn['routines'] if r['id'] != 'ic_jobs']
+    for r in stn['routines']:
+        if r['id'] == 'ic_days':
+            r['slots'] = [{'at': '07:31', 'task': 'ic_urgent'}]
+    for q in stn['people']:
+        q.pop('routine', None) if q['id'] == 'ic2' else None
+    no_keys = Trainee(quiet=True, extra=_x(
+        (2, 'permit', 'wo_gauge', 'request', 'ic1'), (3, 'permit', 'wo_gauge', 'approve', 'ic1'),
+        (4, 'lock', 'wo_gauge', 0, 'ic1'), (6, 'permit', 'wo_gauge', 'issue', 'ic1'),
+        (7, 'op', G, 'set', 20, None, 'hart', 'ic1'),
+        (8, 'permit', 'wo_gauge', 'accept', 'ic1'), (10, 'op', G, 'set', 21, None, 'hart', 'ic1')))
     jump = Trainee(quiet=True, extra=_x(
-        (2, 'hand', G, 'clean_glass', None, None, 'ic1'), (3, 'task_ack'), (8, 'jump', '06:30'),
+        (1, 'arrive', 'w_gauge'), (2, 'hand', G, 'clean_glass', None, None, 'ic1'), (3, 'task_ack'),
+        (8, 'jump', '06:30'), (11, 'arrive', 'w_gauge'),
         (12, 'hand', G, 'clean_glass', None, None, 'ic1')))
     return [
         ('tools carried (§2.3, §2.13): taken only where kept (where), by the input\'s own person (authority), an '
@@ -4607,8 +4795,9 @@ def hands_runs():
          '(full), the store\'s only loop calibrator taken (none_left for the next), a 17 mm spanner put back where '
          'that tool is kept too; the NPC ic2\'s job at 07:40 finds the toolbox without its HART communicator (its '
          'tool step refused, the task abandoned)', me, hf, tools, 400, 50),
-        ('hand actions (§2.4, §2.13): before the permit only work: false (connect_hart) is made, the rest refused '
-         'authority (and another person\'s, and an unknown action); with the permit accepted, each reason in its '
+        ('hand actions (§2.4, §2.13, §2.15): at the toolbox, away from the gauge, connect_hart is refused (where); '
+         'at the gauge, before the permit only work: false (connect_hart) is made, the rest refused '
+         'authority (and another person\'s, away: where, and an unknown action); with the permit accepted, each reason in its '
          'order (a tool not carried, the wrong tool, no tool, a failed need, a value out of range or missing); on '
          'the locked code; a timed action abandoned when the trainee leaves the place, busy for the next, done at '
          'its end (written in step 3); a need met, bare hands, an input written; then a HART op refused on the '
@@ -4654,6 +4843,18 @@ def hands_runs():
          'trainer\'s fault pressed and repaired ten times, each draw from the stream', dict(free, init={
              'g1_body_loose': 1}), hf, Script([(k, 'fault' if k % 4 == 1 else 'repair', 'f_low')
                                                for k in range(1, 81) if k % 4 in (1, 3)]), 90, 2),
+        ('a HART op on the locked gauge (§2.15, the user\'s decision of 2026-11-03): made with the code unlocked; '
+         'with wo_gauge\'s isolation locked and its permit approved (no permit yet), issued (not yet accepted), and '
+         'with the trainee\'s accepted permit of another work on the gauge (wo_tag, holding no isolation), refused '
+         'iso_gauge_locked; under wo_gauge\'s own permit, accepted by the trainee, made and written (24); by '
+         'another person (authority, still locked) and made locally (where, still locked) refused; after the work\'s '
+         'done (the permit no longer accepted) refused again', me, hp, hart_permit, 40, 2),
+        ('an NPC\'s hand step away from the equipment (§2.15): ic2\'s job goes back to the toolbox after the permit '
+         'in place of its go to the gauge; the first hand step walks ic2 to the gauge\'s work place before the hand '
+         'action is made', {}, hg, None, 1100, 100),
+        ('a HART op without HW1\'s keys (§2.15): no tools.json, so no communicator is carried; before the accept '
+         'refused hart and iso_gauge_locked, under the trainee\'s accepted permit refused hart alone', me, hn,
+         no_keys, 20, 2),
     ]
 
 
@@ -4679,6 +4880,13 @@ def _job_step(i, fn):
     def f(F):
         fn(next(t for t in F['staff.json']['tasks'] if t['id'] == 'ic_job')['steps'][i])
     return f
+
+
+def _hand_off_site(F):
+    """The job's first hand step on a code that has a hand action but no work place."""
+    m = F['model/a1.json']
+    m['hands'].append(dict(copy.deepcopy(m['hands'][0]), kks='10LAB10BR001'))
+    next(t for t in F['staff.json']['tasks'] if t['id'] == 'ic_job')['steps'][8]['kks'] = '10LAB10BR001'
 
 
 def _cause(i, fn):
@@ -4824,6 +5032,7 @@ REJECTS_HANDS = [
                                                               'value': 20}}))),
         _st(lambda st: next(r for r in st['roles'] if r['id'] == 'ic_tech')['authority'].remove('operate_hart'))),
      'lacks operate_hart'),
+    ('a hand step on a code without a work place (REALISM.md §2.15)', 'bad_ref', _hand_off_site, 'no work place'),
 ]
 
 

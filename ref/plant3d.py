@@ -2357,6 +2357,10 @@ class Engine:
         """The player's person gets on a vehicle standing at their stop (§21.4)."""
         self._q(('get_on', vehicle), slot)
 
+    def drive(self, vehicle, action, place=None, slot=None):
+        """The player's person, a vehicle's driver, drives it (§21.16): `wheel`, `stop` at a place, `go` or `auto`."""
+        self._q(('drive', vehicle, action, place) if action == 'stop' else ('drive', vehicle, action), slot)
+
     def clock(self):
         """The plant clock in tenths of a clock second (§16.1): C(n) = S + n × day_scale + J."""
         return self.S + self.step_no * self.ds + self.J
@@ -2726,7 +2730,7 @@ class Engine:
             elif kind == 'release' and not self.session:
                 continue        # (a session run's input: a single-player run has no slots)
             elif kind in ('role', 'release', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump',
-                          'ppe', 'zone', 'stop', 'get_on'):
+                          'ppe', 'zone', 'stop', 'get_on', 'drive'):
                 tail = (slot,) if self.session else ()
                 if sr is not None:
                     sr.t_input(item, slot)
@@ -3014,18 +3018,25 @@ class Engine:
         if do == 'set' and 'machine' not in o:
             if value is None or not (o['range'][0] <= value <= o['range'][1]):
                 failed.append(o['input'])
-        failed += [x + '_locked' for x in self.locking(kks)]       # a locked code refuses every op (§15.1)
+        locks = self.locking(kks)
+        under = None            # REALISM.md §2.15: a HART op under the work's own accepted permit
+        if locks and v2 and item[4] == 'hart' and 'hart' in o and do != 'reset':     # (a reset waits for the unlock)
+            from ref import plant3d_hands as H
+            under = H.hart_permit(self, kks, locks, item[5], npc)
+            if under is not None:
+                locks = []
+        failed += [x + '_locked' for x in locks]       # a locked code refuses every op (§15.1)
         if failed:
             self.ev('op', kks, do, 'refused', failed, *tail)
             return 'refused'
         self.ev('op', kks, do, 'done', [], *tail)
         if do == 'set' and 'machine' not in o:
-            self._write(self.ix[o['input']], float(value))
+            self._write(self.ix[o['input']], float(value), under)
         if do == 'reset' and 'machine' not in o:
             self.latched[trip] = False
             self.trip_count[trip] = 0
             self.cur[self.ix[trip + '_latched']] = 0.0
-        self._set(o.get('set', {}))
+        self._set(o.get('set', {}), under)
         if 'machine' in o:
             mc = next(x for x in self.machines if x['id'] == o['machine'])
             self._enter(mc, mc['commands'][do]['to'], 'command')

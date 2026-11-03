@@ -458,7 +458,10 @@ func _staff_run(k: int, r: Dictionary, base: Dictionary, prefix := "v2/staff") -
 	if r["staff"] != null:
 		files["staff.json"] = r["staff"]
 	for rel in r.get("files", {}):
-		files[rel] = r["files"][rel]
+		if r["files"][rel] == null:
+			files.erase(rel)            # (a file the run leaves out)
+		else:
+			files[rel] = r["files"][rel]
 	var name := "%s/%d (%s)" % [prefix, k, r["why"].left(80)]
 	var m = PlantModel.from_files(files)
 	if m.error != "":

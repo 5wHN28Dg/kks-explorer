@@ -966,7 +966,10 @@ room, and an isolated transmitter shows as such on the operator's screen.
   - every op (§7.2) on that code is refused: the failed values are format 1's (the permissives that failed, then a
     machine's state, a trip's latch or cause, a `set` op's input), then `<isolation id>_locked` of each isolation
     locking it, in model order. A trip's `reset` on a locked code is refused too: a locked pump's trip is reset after
-    the isolation is removed;
+    the isolation is removed. One exception (REALISM.md §2.15, the user's decision of 2026-11-03): an op made through a HART
+    communicator (`where` `hart`, not a trip's `reset`) under the accepted permit of a work on that code that holds every isolation locking
+    it, by its acceptor (or another with `accept` and its discipline while the acceptor is off duty), is made, and its
+    writes are made as that work's own;
   - every write to a `state` whose `kks` is that code is skipped, whatever makes it: an op on another code (its `set`,
     a `set` op's number), an interlock, a machine, a trip, a fault or a repair, in steps 1 and 3–6 (the standby pump's
     auto-start can't start a pump that is locked out; nothing else changes). A work's own `repairs` and `set` (§15.2), and a repair under its permit (§15.5),
@@ -3006,7 +3009,8 @@ task instance (§17.14) ends with the kind of slot that made it (1 an off-duty s
 - **A trainee who plays a driver rides in the cab while the engine drives** the run's route and timetable (runs must
   be the same everywhere: lockstep, MULTIPLAYER.md §3); between runs they do the driver's other tasks. Steering a bus
   would need driving controls and the vehicle's position as the trainee's inputs: a question for the user (MILESTONES
-  "Questions").
+  "Questions"). **Answered (the user, 2026-11-02): the trainee steers**; §21.16 plans it (the engine still drives a
+  run whose driver has not taken the wheel: NPC drivers, and a player until their app takes it).
 - **People with homes never vanish:** the camp is in the world (§21.1), so off-duty people are drawn there and on the
   road; the gate is where the fence is crossed.
 
@@ -3025,7 +3029,9 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
 ### 21.10 Budgets
 
 - The staff step (§18.4) stays ≤ 0.3 ms on the Note 9 at the busiest step (the shift change with the buses): about
-  95 µs on the laptop by S2's ratio; measured with `bench_step.gd`.
+  95 µs on the laptop by S2's ratio; measured with `bench_step.gd`. **Measured** (2026-11-03, §21.15): 0.27 ms a step
+  on the Note 9 over the gate walk's hour (mean of each step's own time, two judged cool walks: 268.6 and 267.2 µs),
+  within the budget; 39 to 46 µs on the laptop (`bench_staff.gd`).
 - The Note 9's frame rules hold on a new `gate` walk: the shift change at the plant gate (05:40–06:20, the buses in and
   out, the crews through the gate), 10 minutes at 1×, the phone's 12 skinned people, two judged cool runs.
 - The buses add at most 2 draw calls each in view and their triangles fit §18.4's people share.
@@ -3190,3 +3196,188 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   (MILESTONES "Questions").
 - Evidence: the maintainer's laptop, `~/kks-work/build/s4d-runs/` (result, sf_summary, rule, samp and frames for
   each walk).
+
+### 21.15 The staff step made faster (2026-11-02: the user's answer to S4d's question)
+
+S4d measured the staff step at about 1.07 ms on the Note 9 at the gate, over §21.10's 0.3 ms. The user chose to
+profile it and speed it up, with no change of behaviour: both engines stay bit for bit, every vector file is byte for
+byte as it was (only the GDScript engine changed; the reference and the vectors did not).
+
+- **Where the time went** (`sim/tests/bench_staff.gd`: `shift_cold` in free mode run to 05:40, then the gate walk's
+  hour timed, 6,000 steps; per phase with `staff.gd`'s `prof_on`): on the laptop 170 to 250 µs a step (the laptop
+  shared with other jobs), of which the people's turns about half, phase 5 (the unsafe acts) about a third, the bus about
+  an eighth. Within them: the riders waiting at a stop for the bus, each looked at again every step (43,000 of the hour's
+  52,637 task steps run); the bus's next run worked out afresh every step over three days' runs; phase 5 looking at
+  every rider's acts (they had a turn) and then at all 91 people for the safety walk's reaction, with nobody acting.
+- **What changed** (`sim/staff.gd`): a rider waiting at the stop sleeps until their 30 minutes are over (§21.4); a
+  vehicle arriving at a stop wakes those waiting there for a ride (`_wake_riders`), and a task, a duty or a stop wakes
+  them as any sleeper; the bus's next run is kept while the day, the placement's floor and the last run made stay the
+  same (the engine's `_staff_due_memo`, a cache of a function of those three, so no run state, and on the engine, not on
+  the staff object its clones share: the permit panel's lock check steps clones on a worker thread); phase 5 finds the people to look at
+  natively (`PackedByteArray.find`) and counts "nobody acting" natively (`Array.count`) before looking person by
+  person; the people's loop reads the wake steps once and again after each turn; a few fields of the untyped engine
+  are read into typed locals. Per-phase timers and counters of the work done, on the engine too (`_staff_prof_on`, `_staff_prof`,
+  `_staff_prof_n`); a measured walk with `probe=1` prints them for the gate walk's steps at 1x (`STAFF_PHASES`).
+- **The waits asleep too** (2026-11-03, the user's decision after the first speed-up left the step at about 0.41 ms on
+  the Note 9): of the 1.7 task steps a step still ran, about 1.5 were people waiting for a place taken (`go`'s 15
+  minutes at the place before it) or for a meeting's others (`meet`'s 15 minutes). Both now sleep until their 15
+  minutes are over, and the engine keeps what each waits on (`sp_wait_on`: the room's first place, or the place itself
+  outside a room; saved with the run and cloned, as `sp_wake`). They are woken (`_wake_at`) wherever a place in that
+  room is taken or let go (`reserve`, `unreserve`, `leave_place`), someone comes to a place there (the end of a way, a
+  stop, a lift's landing, the gate, a released player put back, the trainee's `arrive`) or someone there comes on duty;
+  and, as any sleeper, by a task, a duty, a stop or a placement (a jump). A wake that doesn't end the wait is harmless
+  (the turn runs as every turn would); every change these waits read wakes them. A person off duty in the off-duty
+  routine's idle task is woken when their next span begins, too. Tests: `GdscriptWaits` (reference runs replayed bit
+  for bit: meetings met early and given up, seats freed and given up, a session slot taking a person who waits and
+  giving them back, a jump while people wait) and `check_staff_waits.gd` (a save and restore and a clone while people
+  wait, then 3,000 steps in step).
+- **The work, counted** (the same on every machine; `tests/test_plant3d_sim.py` `test_staff_work_at_the_gate`): task
+  steps run 52,637 → 10,072 → 1,752 (with the waits asleep), the bus's next run worked out 6,002 → 2, people's acts
+  looked at 53,495 → 10,930 → 2,610.
+- **On the laptop** (`bench_staff.gd`, before and after side by side, three times): 170 to 174 µs → 59 to 60 µs a
+  step (2.9×). With the waits asleep too (2026-11-03, the three side by side, three times, the laptop shared with
+  other jobs): 165 to 190 µs (before) → 66 to 70 µs (the first speed-up) → 39 to 46 µs.
+- **On the Note 9** (2026-11-03): the `gate` walk (`walk=gate`, `probe=1`, `SAMPLE=1`, 600 s) with a release build of
+  main before any of this (before), of this branch (after), and of S4e's branch on it with the `drive` walk (drive),
+  interleaved, each from a cool start (battery at most 30.0 °C; the phone cooled on the laptop's cable between walks, 10
+  to 15 minutes), until each had two walks the frame rule judges (the kernel's reclaim in at most 1 % of the samples): after and
+  drive got their two (5 and 2 walks), before only one in 6 walks (reclaim 0.83 %; the other five 1.19 to 2.02 %, their
+  staff step 1.29 to 1.32 ms, the same as the judged one) before the phone runs stopped for the laptop's memory. The staff step is each engine step's own time from the
+  STEPS line (the before build has no STEPS line: its figure is the walk's staff script time with the gate clock's
+  longest frame left out, over the hour's 6,050 steps, as §21.14 worked it out; the same sum gives 320 µs for after).
+
+  | build | walk | reclaim | staff step (mean / median / p99) | mean frame | at 60 fps |
+  |---|---|---|---|---|---|
+  | before | gate | 0.83 % | 1.32 ms (worked out, no STEPS line) | 25.23 ms | 52.77 % |
+  | after | gate | 0.18 % | 268.6 / 217 / 845 µs | 25.13 ms | 52.89 % |
+  | after | gate | 0.14 % | 267.2 / 214 / 897 µs | 25.12 ms | 53.02 % |
+  | drive | drive | 0.32 % | 372.0 / 320 / 1,049 µs | 25.35 ms | 51.68 % |
+  | drive | drive | 0.14 % | 371.9 / 319 / 1,057 µs | 25.35 ms | 51.77 % |
+
+  The staff step at the gate is within §21.10's 0.3 ms. The frames hardly move (the staff step is under 2 % of a
+  frame's time at 1x; the GPU sets the pace): no frame over 100 ms in any walk. The drive walk is another walk (the
+  trainee at the wheel: the player's acts are looked at every step, 8,852 against 2,624 at the gate), not the budget's.
+  Evidence: the maintainer's laptop, `~/kks-work/build/staff-runs2/`.
+- **The measured walk's STEPS line** (`app/script_cost.gd`, `ui/sim_clock.gd`): each engine step's own staff and model
+  time from the end of the gate walk's clock run, its mean, median, 99th percentile and largest, so the staff step on
+  the phone is read directly rather than worked out from the frames' means.
+
+### 21.16 The driver steers (the user, 2026-11-02): the plan
+
+When the trainee plays a driver, they drive the bus: steering, speed, braking and stopping at the stops, while the run's
+route and timetable still apply. NPC drivers, and a player who has not taken the wheel, are driven by the engine as
+§21.4 says. Everything that changes the run goes through lockstep inputs; nothing of the bus's driving is in the model.
+
+**The engine keeps a driven bus deterministic by the driver's inputs, not by positions in the model.** The model has
+no continuous positions for anyone: people are at places or on ways, and a player's walker is their own, which says
+only `arrive` and `leave` (§17.4, §18.7; MULTIPLAYER.md §6.3). A steered bus is the same: where it is on the road is
+the driver's app's (its physics, at the frame rate, view only), and the engine hears only what changes the run: the
+driver took the wheel, the bus stands at a place, it set off, the driver gave the wheel back. Positions as model values
+would need the bus's dynamics stepped bit for bit in both engines (floating point at 10 Hz, the driver's analogue
+controls as an input every step, so 10 inputs a second through the session's commits) and the people and the roads as
+geometry in the model; none of it changes what the staff do, which depends only on where the bus stands and when.
+
+- **The input** (§17.6; in a session with its slot, §17.13), applied at the start of step 9 with `get_on` (§21.4), in
+  the order made: `[n, "drive", vehicle, action]` and `[n, "drive", vehicle, "stop", place]`; the event
+  `[n, "drive", person, vehicle, action, place or null, "done" | "refused", [reasons]]` (the slot last in a session
+  run). The first reason that holds refuses it: `unknown` (no such vehicle, an action not one of the four; for `stop`, a place
+  that is not a `stop` or `depot` the vehicle's home reaches over drive ways), `not_driver` (their person is not the vehicle's driver on a run), then per action:
+  - `wheel`: the driver takes the wheel (`steering` if they have it). On a drive way the bus leaves its way where it
+    is: it is **on the road**, coming from the way's start; standing at a place it stays there.
+  - `stop place`: the bus stands at `place` (`no_wheel` without the wheel, `standing` if it stands already). At the
+    run's next target (its next stop, or home after the last) it **arrives** as §21.4 says (`[n, "vehicle", id, stop,
+    "arrive"]`, those aboard for it off, at home the run ends and the driver gets off). At a later stop of the run, the
+    stops between are **passed** (`[n, "vehicle", id, stop, "passed"]` each, in order; their riders stay aboard to the
+    last stop, where everyone gets off) and it arrives there. Anywhere else (a stop not ahead on the run, the depot
+    before the run's end) it **stands** there: `[n, "vehicle", id, place, "stand"]`, nobody gets on or off.
+  - `go`: it sets off from where it stands (`no_wheel`, `moving` if it is on the road): `[n, "vehicle", id, place,
+    "depart"]`, then on the road. From a stop it arrived at, its run goes on to the next stop (or home), as an engine
+    departure does; from a place it only stood at, its target stays as it was. It may leave the first stop before the
+    run's departure D and any later stop before its dwell is over: the driver decides (a rider who comes later misses
+    it and waits, then walks after 30 minutes, §21.4).
+  - `auto`: the engine drives again (`no_wheel` without it). Standing, the run goes on by §21.4's departure rule (in
+    this step's phase 3 already, the input being applied before it); on the road, the bus drives from the place it came from (`from`) to its target from this step (in
+    the app it is put back on its lane there).
+- **Phase 3** leaves a steered vehicle where its driver has it: no arrival or departure by time; its runs due are made
+  as before (a run due while the steered bus is out is `skipped`: not at home). **A jump** puts every vehicle home
+  with nobody aboard and the wheel back with the engine. **A release** (§17.13) gives the wheel back as `auto` does
+  (an NPC drives on). The run's end at home gives it back too: the driver's app takes it again at the next run.
+- **Riders** get on and off as §21.4 says: a steered bus stands for a rider (`stands_for`) only where it arrived at a
+  stop of its run, not where it stands elsewhere. A rider's `to` that the bus passed is kept: they get off at the last
+  stop with everyone. A bus never brought home keeps its riders aboard.
+- **Late, off route, the wrong place.** The timetable is the run's: D at the first stop, the engine's own times after
+  it (each drive way's steps at `speeds.drive`, then the dwell). A late bus changes nothing in the engine but what
+  late does to everyone: riders wait at most 30 minutes, then walk; the next run is skipped while the bus is out. Off
+  route is the app's (the bus more than 15 m from its run's roads, the roads of the drive ways of its route): a banner
+  while it lasts, the time counted for the debrief. The wrong place is the engine's `stand`. The debrief's role tab
+  (§21.13) lists each run driven: each stop arrived at with its lateness against the timetable (from the events),
+  passed or stood at, the time off route, and the near misses (below).
+- **Collisions, simple and safe, all in the app.** The bus moves kinematically (no rigid-body physics): each physics
+  frame its motion is tested against the world's solids and the other vehicles (`test_move`); on contact it stops
+  dead, no bounce, no push. The gate barriers count as raised for it (the guards'; drawn down, as the engine's bus
+  passes them). People never come under it: an automatic brake stops it when a person (an NPC drawn by
+  the people view, another player's avatar) is within its width and its stopping distance plus 2 m ahead
+  (or behind, reversing); it moves on that way only once they are clear. A brake that came above 2 m/s is a **near
+  miss** for the debrief. Nothing of this is an input: it changes nothing in the model.
+- **The driving model** (app, `app/bus_drive.gd`): a bicycle model (wheelbase from the kit's bus), speed up to 40 km/h
+  forward and 8 km/h reversing, 1.5 m/s² throttle, 4 m/s² brake, 6 m/s² for the automatic one, steering up to 35° at
+  low speed narrowing with speed; on the ground (the asphalt's height under it). Doors: the stop input is offered
+  ("Open the doors") only standing still with a stop or the depot within 10 m of the bus's sides and ends of the drive network (the nearest, by its
+  place), the go input by "Close the doors", and the bus does not move with them open.
+- **Controls** (the walker's own actions, app/controls.gd, so every way of playing has them): keyboard W/S or the
+  arrows (throttle; brake, and reverse once stopped), A/D or the arrows (steer), Space (brake), E (doors), F (give the
+  wheel to the engine and take it back); gamepad: right trigger or the left stick up (throttle), left trigger or the
+  stick down (brake, reverse), RB (brake, the flight's up action), the left stick sideways (steer), A doors, Y wheel
+  (given to the engine it stays so for the next runs, until taken again); touch: the left touch stick as the
+  gamepad's left stick, and the driving bar's buttons ("Open the doors", "Close the doors", "Let the engine drive",
+  "Take the wheel") at the bottom of the screen, with the speed, the next stop, its time and lateness, "OFF ROUTE" and
+  "BRAKING". The look stick and the mouse still look round from the seat.
+- **Seen by others** (MULTIPLAYER.md §6.3): the driver's `pos` is the seat's; flag bit 1 of `pos`'s flags byte says
+  "driving", and byte 22 the vehicle's index: the others draw that bus from the driver's position and heading (the
+  seat's offset taken off) instead of the engine's way, 200 ms behind as any `pos`. A build that doesn't know the bit
+  draws it where the engine has it.
+- **Vectors** (§21.9): `staff.runs` gains steered runs on the camp's synthetic plant: the wheel taken on a drive way (a
+  run's driver is taken and the bus sets off in one phase 3, so the app's wheel comes on its first way); arriving at the next stop, a stop passed, standing at the wrong place, leaving the first stop early,
+  every refusal; a rider who gets off at the last stop after their stop was passed; a late bus a rider walks away
+  from; `auto` on the road, standing at a stop and at the wrong place; the wheel taken standing; a release while
+  steering in a session; a jump while steering; riders on a steered bus where locks are held (off site on the
+  road). Every earlier
+  item stays as it is (a run nobody steers runs as before; the digest's vehicle part gains `[wheel slot, from]` only
+  for a vehicle steered in the run).
+- **The Note 9:** a `drive` walk (`app/main.gd`, `walk=drive`): the trainee as the day's driver at the 05:40 run, the app's own
+  driver (an autopilot on the controls, as the walks' walker) along the run's roads, stopping at each stop, 10
+  minutes at 1×; the frame rules, two judged cool runs, and the staff step's STEPS line.
+
+### 21.17 As built for milestone S4e (2026-11-02: the driver steers)
+
+- **Both engines** (`ref/plant3d_staff.py`, `sim/staff.gd`, `sim/engine.gd`) carry §21.16's `drive` input bit for bit:
+  `wheel`, `stop` (arrive, pass, stand), `go`, `auto`, their refusals in §21.16's order, phase 3 leaving a steered
+  vehicle alone, the run's end, a release and a jump giving the wheel back, the snapshot's `["road", from]` and the
+  digest's `[wheel slot, from]` for a steered vehicle. The validator is unchanged (no new keys).
+- **Vectors** (`plant3d-v2.json`): `staff.runs` gains six steered runs on the camp's synthetic plant, from 05:30 (the
+  generator's driver, `Drive` in `ref/make_plant3d_vectors.py`, steers as the app's would): every input and refusal;
+  leaving the first stop early, standing at the depot on the way (the wrong place) and passing a stop (its rider off at
+  the last stop); a bus 40 minutes late (its rider walks after 30, the next run skipped); the wheel given back on the
+  road and standing; a jump while steering; a session with a slot playing nobody and a release while steering. Every
+  earlier item is unchanged (a JSON comparison of the old and new file: only the six runs appended).
+  `tests/test_plant3d_staff.py` `SteeredRuns` checks their story by name.
+- **A fix found on the way** (S4a's, not steering's): a session's player who plays a driver, released aboard, went on
+  with the task the run took them from by counting every step since the player's last count at once (the GDScript
+  engine; ended on arrival), where the reference counts an NPC's work a step a turn: `let_go` now marks such tasks as
+  resumed (`tests/test_plant3d_sim.py` `GdscriptReleasedDriver`, which failed without it).
+- **The app** (`app/bus_drive.gd`): takes the wheel when the trainee's person drives a run, drives the bus as §21.16
+  says (a kinematic bicycle model, `test_move` against the solids and other vehicles, the automatic brake), the
+  driving bar, the doors and wheel buttons and keys, the drive log for the debrief (saved with the run), `pos`'s
+  driving flag (`net/session.gd`), the steered bus drawn where its driver has it (`app/vehicles.gd`). Where §21.16
+  left it open: the stop or depot the doors open at is the run's next one when it is in reach (10 m of the bus's sides
+  and ends), else the nearest; the gate barriers count as raised for the bus.
+- **The drive walk** (`walk=drive`): the day's driver, the clock run to 05:30 with the engine driving, then the app's
+  own driver (`pilot`) keeps the bus exactly on the lane of the run's roads (a measurement's driver, not a player's: a
+  pursuit of the lane with the bicycle model got stuck turning round at the camp's stop among its palms and barrier),
+  braking for people, stopping at each stop and leaving by the timetable. On the laptop, 10 minutes: the 05:40 run and
+  the 06:25 run home driven, each stop within 0 to 2 minutes of the timetable, off route 0 s, 3 near misses (people on
+  the road).
+- **Tests:** `tests/test_bus_drive.gd` (the wheel taken, the driver's seat, the pilot to the first stop and the
+  second, the doors' arrival, the automatic brake and its near miss, a wall stopping the bus dead, the wheel given
+  back, the debrief's rows and summary, the saved log's check, `pos`'s driving flag).
+- **On the Note 9:** NOTE9_DRIVE

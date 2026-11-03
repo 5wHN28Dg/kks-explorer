@@ -538,6 +538,31 @@ Faults: **over-range** (the output saturates at 20.5 mA and the display says so:
   and the phone, the same in K2's own build (measured on the laptop from main), over §8's 300: found here, not changed
   by K3. The APK (test-signed, with voice) is 121.1 MB; K3's own files (scripts, shaders, the bench file) are about 40 KB before compression.
 
+**As built (K3 follow-ups, 2026-11-03).**
+- **Draw calls:** the pile's ~510 were the 2D step sentence, not the 3D: an outlined, wrapped Label in the panels'
+  canvas layer cost about two draw calls a letter (a long assembly step ~440; the 3D view drew 30 objects). It now
+  draws on a canvas layer of its own just above the Workshop's (the same words, place and look), which follows the
+  panels' visibility: the walk's most in any view is 58 on the laptop (from 515) and 59 on the Note 9 (from ~510).
+- **The bench's logs:** the bench clock drops the engine's `inputs` log (nothing in the Workshop reads it) and the
+  events both its readers have read, and past 512 the oldest; the engine itself is unchanged (it reads events only
+  within a step, and the digest leaves the logs out). A test runs the transmitter's bench for 20 minutes of bench time
+  beside an engine that keeps everything: the logs stay within 64 entries and every value and the digest agree bit for
+  bit. The vectors are untouched.
+- **First entry:** the plant's warm-up (§7.1) also loads each kind's machine on a worker thread, one at a time, and
+  holds it hidden in the plant's world for 30 frames in the Workshop's own materials (ws_lit with the cap as its next
+  pass, the glass) with its parts' ghosts, so their surface pipelines are made then rather than in the machine's first
+  frame; not while the tier probe runs or a Workshop shows, nor on the Compatibility renderer (`kinds_warmed`; `warmed`
+  stays the ghost's). The Workshop walk's first entry waits for it (`cold=1`: at once, as K3 measured). Laptop (Mobile
+  renderer, an empty cache): first entry 1,641 ms at once, 696 ms after the warm-up. **The Note 9** (`lean+vis`, a
+  test-signed release build of this branch without the lightmap's bake, fresh installs so the pipeline cache was
+  empty, cool starts at 23.8 / 25.5 °C, SAMPLE=1; with the warm-up / `cold=1`): first entry 407 ms after the walk
+  waited 7.9 s for the warm-up / 4,285 ms at once (≤ 5.0 s; K3's was 4.77 s); the warmed machine's first frame still
+  compiled 1 surface and 10 specialization pipelines (the cold one 14 and 10); again 63 / 57 ms; back to the plant
+  13–16 / 12–44 ms; no pipeline compiled after the machine's first frame; no frame over 100 ms (the longest 58 / 41
+  ms; the frame rule passes, 0 caused by the app); 99.84 / 99.90 % of frames at ≥ 30 fps, mean frame 19.40 / 19.41
+  ms, 89.9 / 91.2 % shown at 60 fps; peak PSS 851 / 834 MB; the bench step 0.119 ms mean in both (the longest 1.0 /
+  0.5 ms).
+
 ### 6.5 Plant values to bench inputs (K6, the mirror)
 
 Opening the Workshop from the live plant can mirror that equipment's current state, read only. Each bench file's

@@ -3,6 +3,20 @@
 The walkable 3D plant (decision `docs/decisions/0054-walkdown-plant-app.md`; engine: `0041`; content format:
 `docs/PLANT3D.md`). A Godot 4.7.2 project, pinned by `tools/plant3d/bench/fetch_godot.sh` (SHA-512).
 
+What it has today, and where each is specified:
+- the first train, walkable and operable, with its screens, alarms, procedures and faults (`docs/plant3d/FIRST-TRAIN.md`);
+- the water treatment plant, the site and the camp (`WATER-TREATMENT.md`, `SITE.md`);
+- staff with roles through the full day, permits to work and isolations (`STAFF.md`, PLANT3D.md format 2);
+- multiplayer sessions on a LAN (`MULTIPLAYER.md`); the online relay's Worker (`relay-plant/`, built, not deployed)
+  and the voice codec (`voice/`) exist, and using them in the app is the later milestones MP4 and MP5;
+- lifts and hoists (decision 0071);
+- the Workshop: one kind taken apart, run on its bench and seen inside (`WORKSHOP.md`, decision 0072);
+- the realism programme (`REALISM.md`, decision 0073): so far its engine base, wear, weather (drawn and heard), the
+  generated P&IDs and the hands-on engine.
+
+The milestones and their state are in `docs/plant3d/MILESTONES.md`; the user's guides and pictures are on the wiki
+(Walkdown Plant, Workshop, Weather).
+
 Equipment and pipes are made by the parts kit (`kit/`, its README: frames, node names, moving parts, budgets,
 materials). Platforms, floors, stairs, ladders, doors, buildings, pits, slabs, fences and the pipe rack are solid
 geometry at their described positions, made by the builder.
@@ -21,6 +35,8 @@ geometry at their described positions, made by the builder.
 | `net/` | multiplayer (docs/plant3d/MULTIPLAYER.md, decisions 0067–0068; milestone MP2, LAN sessions): the session layer (`session.gd`: the lobby, commits, the jitter buffer, digests and resync, late join and rejoin), its keys and AEAD (`crypto.gd`, `code.gd`), packets and reliable streams (`wire.gd`, `stream.gd`), the inputs it takes (`input_check.gd`), snapshots and saved sessions (`snapshot.gd`), the invite's QR code (`qr.gd`), the other players in the plant (`others_view.gd`), Android's multicast lock (`android_net.gd`); `net/tests/` the multi-instance harness (below) |
 | `sim/` | the behaviour engine (the model's evaluator). It has its own owner; the project hosts it (`walkdown_plant/sim/path` in `project.godot`) |
 | `tests/` | the app's tests: `run_tests.gd` runs every `test_*.gd` |
+| `workshop/` | the Workshop mode (docs/plant3d/WORKSHOP.md, decision 0072): the space and its orbit camera (`workshop.gd`, `orbit.gd`), the explode slider (`explode.gd`), guided assembly and disassembly (`assembly.gd`), the tree and properties panels (`panels.gd`), the bench model run and drawn (`bench_clock.gd`, `bench_view.gd`, `run_panel.gd`), the X-ray, cutaway and section views and their shaders (`views.gd`, `ws_*.gdshader*`) |
+| `voice/` | `wdp_voice`, the voice codec's GDExtension (Opus; decision 0069), built from pinned sources (its README) |
 | `phone/frames.sh` | one frame-time run on a phone |
 | `flatpak/` | the Flatpak (`io.github._5wHN28Dg.WalkdownPlant`, on `org.godotengine.godot.BaseApp//4.7`); `build.sh` makes its AppStream release entry from the version |
 
@@ -76,9 +92,12 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--walk=climb` | the test's route |
 | `--walk=hoist` | up HRSG 1's stair to the roof hoist's pendant and back, looped (LIFTS L4: the hoist in view) |
 | `--walk=gate --seconds=600` | the shift change at the plant gate (milestone S4d): the crews, the clock run to 05:40 first, then the gate road's walkway looped past the bus stop and the gate house at 1x |
+| `--walk=drive --seconds=600` | the driver who steers (milestone S4e, PLANT3D §21.16): the day's bus driver among the crews, the clock run to 05:30 first (the engine driving), then the app drives the runs from the cab (app/bus_drive.gd pilot): on its lane, stopping at each stop, leaving by the timetable; the result's DRIVE lines |
 | `--walk=screens` | the control room's screens, each in turn for 10 s: their frame cost (`MIMIC` line) |
 | `--walk=drawings` | the generated P&IDs, each in turn for 10 s, panned and zoomed from the whole sheet to 9 px/mm and back: their frame cost and how long each sheet and level took to make (`DRAWINGS` line) |
 | `--shot=NAME@x,y,z,yaw,pitch;…` | saves PNG views and quits |
+| `--walk=workshop --kind=KIND` | the Workshop's scripted 3 minutes on one kind (default the first the build has): taken apart, a part moved, put back step by step, run on its bench with the X-ray, cutaway, section and faults, on an orbiting camera, then back to the plant; its `WORKSHOP` lines (entry, exit, triangles, bench steps) |
+| `--weather=KIND` | the scenario's weather fixed at that kind (`data/plant3d/weather.json`: clear, sandstorm, rain, …) from the start; walks, shots and the step bench without it run in clear weather (a walk with `--mp` takes the host's), free play keeps its seasonal weather |
 | `--map=1` | starts on the overview map |
 | `--scenario=ID` | the scenario the plant starts in (default `cold_iron`) |
 | `--procedure=ID` | follows that procedure or tour from the start |
