@@ -138,6 +138,15 @@ func _outside(part: String, plant: Dictionary, ws: Dictionary) -> void:
 				box = bb if not any else box.merge(bb)
 				any = true
 				tris[L.mat] = tris.get(L.mat, 0) + L.tris[0]
+		for f in ws.fasteners:   # a fastener group that replaces it: every item, where it stands
+			if f.get("role", "outside") == "split" and f.id in si.replaced_by and si.moving == "":
+				for k in f.layers:
+					var L: Dictionary = f.layers[k]
+					for t in f.items:
+						var bb: AABB = (t as Transform3D) * (L.mesh.get_aabb() as AABB)
+						box = bb if not any else box.merge(bb)
+						any = true
+					tris[L.mat] = tris.get(L.mat, 0) + L.tris[0] * f.items.size()
 		check(any, "%s: the stand-in for %s has its split pieces" % [part, str(si.replaced_by)])
 		var sb: AABB = si.box
 		check(box.position.distance_to(sb.position) <= 0.001 and box.end.distance_to(sb.end) <= 0.001,
@@ -197,7 +206,15 @@ func _pieces(part: String, ws: Dictionary) -> void:
 			var size: float = maxf(pc.box.size.x, maxf(pc.box.size.y, pc.box.size.z))
 			check(size <= 0.030 + 1e-6, "%s: an outside piece of %s is %.1f mm, at most 30" % [part, pc.comp, size * 1000.0])
 			listed.append("%s %.1f mm" % [pc.comp, size * 1000.0])
+	var stands := {}   # fastener groups that replace a stand-in (held to the plant's outside by _outside instead)
+	for si in ws.standins:
+		for c in si.replaced_by:
+			stands[c] = true
 	for f in ws.fasteners:
+		if f.get("role", "outside") == "split":
+			check(stands.has(f.id), "%s: the fastener group %s is drawn as a stand-in's replacement but replaces none" % [part, f.id])
+			listed.append("%s %d (replacing a stand-in)" % [f.id, f.items.size()])
+			continue
 		var size: float = maxf(f.box.size.x, maxf(f.box.size.y, f.box.size.z))
 		check(size <= 0.030 + 1e-6, "%s: a fastener of %s is %.1f mm, at most 30" % [part, f.id, size * 1000.0])
 		listed.append("%s %d x %.1f mm" % [f.id, f.items.size(), size * 1000.0])
