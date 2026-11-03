@@ -444,7 +444,8 @@ at 29–35 °C over the runs.
   that no op writes (a command, `locked_write`) and that carry no code of the isolation of a work on its code
   (`locked_write`). The engine writes them directly: no lock skips them. A hand action on a locked code is made (the
   job is done under its permit on isolated equipment).
-- **Who:** a hand action names a person (null or no staff: `authority`). With `work: true` the person must be, for
+- **Who:** a hand action names a person (null or no staff: `authority`), standing at the code's work place (`where`,
+  §2.15). With `work: true` the person must be, for
   some work on that code whose permit is accepted (state 5), its acceptor, or another with `accept` and its
   discipline while the acceptor is off duty (§15.5); with `work: false`, `operate_local`.
 - **The tool check:** the input's tool null when the action has `tools`, or a tool not carried: `tool`; a carried tool
@@ -481,7 +482,7 @@ at 29–35 °C over the runs.
   state that says a communicator is connected (made by a `connect_hart` hand action). Made with `where` `hart`, its
   authority is `operate_hart` (a new authority), and after `authority` comes the reason `hart`: the person carries no
   `communicator`, or the state reads false as the step before left it. Everything else is an op's, a locked code's
-  refusal included (§15.1: a locked code refuses every op).
+  refusal included (§15.1: a locked code refuses every op), except under the work's own accepted permit (§2.15).
 - **Causes** as §2.6, with: 1–16 causes, ids unique in the fault, `weight` required (a whole number 0–65536 or a value
   name; the constants' total ≤ 65536), `set` required, `repair` optional, `text` 1–200 characters. A value weight is
   read as step 2 left it, rounded down, NaN or below 0 as 0, above 65536 as 65536. The draw: T the total, r the
@@ -527,7 +528,29 @@ at 29–35 °C over the runs.
   step's own progress (a waiting `hw`, as an op step's `busy`), as §17.14 says.
 - **Left open on purpose (a question for the user):** §15.1's "a locked code refuses every op" holds for HART ops,
   so a transmitter isolated by a lock on its own code can't be ranged or trimmed through the communicator until it
-  is unlocked; hand actions are made on a locked code (the job's own work).
+  is unlocked; hand actions are made on a locked code (the job's own work). Settled by the user on 2026-11-03: §2.15.
+
+### 2.15 After HW1 (2026-11-03): HART under the work's own permit, hand actions at the equipment
+
+- **A HART op on a locked code** (the user's decision, 2026-11-03) is made when it is made under the work's own
+  accepted permit for that equipment: a work on that code whose permit is accepted (state 5), which holds every
+  isolation with a locked point on the code, and under which the person acts (its acceptor, or another with `accept`
+  and the work's discipline while the acceptor is off duty: the rule of a hand action's `work: true`, §2.13). Its
+  writes are then made as that work's own `done` writes are (§15.1: not skipped by the locks its work holds). Any
+  other op on a locked code, and a HART op otherwise (no permit, a permit issued but not yet accepted, another work's
+  accepted permit, another person's, after the work's `done`), is refused `<isolation>_locked` as before. Both
+  engines: `ref/plant3d_hands.py` `hart_permit`, `apps/plant3d/sim/hands.gd` `hart_permit`, called from the op.
+- **A hand action is made at the equipment** (found by HW1's blind review): the person must stand at the code's work
+  place (its first `work` place in staff.json), else the reason `where`, right after `authority`. As for a lock, the
+  engine knows places, not distances: a `local` op's reach stays the app's (§17.1), the work place is what the engine
+  can check. An NPC's `hand` step first walks to that place, as a `lock` step walks to its point's; the validator
+  refuses a `hand` step on a code without a work place (`bad_ref`).
+- **Vectors:** `hands` gains a run (the HART op made with the code unlocked, refused with no permit, before the
+  accept and under another work's accepted permit, made under the work's own, refused by another person, made
+  locally and after the `done`) and a reject (a hand step on a code without a work place). Two runs changed with
+  the place rule: the hand actions' run (the trainee walks from the toolbox to the gauge before acting, so a first
+  action at the toolbox is refused `where`; its last HART op, under the trainee's accepted permit, is now made) and
+  the jump's (the trainee stands at the gauge). Every other item of the file is what it was (a JSON comparison).
 
 ## 3. Hands-on work and tools
 

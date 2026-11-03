@@ -829,6 +829,8 @@ class Staff:
                 keys(s, ('hand', 'kks'), ('tool', 'value', 'else', 'slip'), ws)
                 h = self.m.hand_keys.get((s['kks'], x)) if isinstance(s['kks'], str) and isinstance(x, str) else None
                 need(h is not None, 'bad_ref', f'{ws}: no hand action {x!r} on {s["kks"]!r}')
+                need(s['kks'] in self.work_at, 'bad_ref', f'{ws}: {s["kks"]!r} has no work place (a hand action is '
+                                                          f'done there)')
                 need(('tool' in s) == ('tools' in h), 'missing_key' if 'tools' in h else 'unknown_key',
                      f'{ws}.tool: the tool it is done with (none for a bare-hand action)')
                 need('tool' not in s or s['tool'] in h['tools'], 'bad_value', f'{ws}.tool: one of {h.get("tools")}')
@@ -2713,6 +2715,11 @@ class StaffRun:
                 x['hw'] = False
             else:
                 if not x.get('busy'):
+                    # at the code's work place, as a lock step at its point's (REALISM.md §2.15)
+                    r = self.go(p, cur, st.work_at[s['kks']])
+                    if r != 'next':
+                        return r
+                    x.pop('dest', None)
                     e.npc_queue.append(('hand', s['kks'], s['hand'], s.get('tool'), s.get('value'), p.id))
                     x['busy'] = True
                     p.result = None

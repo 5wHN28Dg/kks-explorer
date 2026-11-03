@@ -2113,6 +2113,11 @@ func run(e, pi: int, cur: Dictionary):
 			x["hw"] = false
 		else:
 			if not x.get("busy", false):
+				# at the code's work place, as a lock step at its point's (REALISM.md §2.15)
+				var r0 := go(e, pi, cur, work_at[s["kks"]])
+				if r0 != "next":
+					return r0
+				x.erase("dest")
 				e.npc_queue.append(["hand", s["kks"], s["hand"], s.get("tool"), s.get("value"), pid])
 				x["busy"] = true
 				e.sp_result[pi] = null

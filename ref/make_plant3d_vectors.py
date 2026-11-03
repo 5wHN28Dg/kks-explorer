@@ -4567,6 +4567,7 @@ def hands_runs():
     hands = Trainee(quiet=True, extra=_x(
         (2, 'arrive', 'tb1'), (3, 'tool', 'sd_flat', 1, 'ic1'), (3, 'tool', 'spanner_13', 1, 'ic1'),
         (3, 'tool', 'hart', 1, 'ic1'), (3, 'tool', 'spanner_17', 1, 'ic1'),
+        (3, 'hand', G, 'connect_hart', 'hart', None, 'ic1'), (4, 'leave', 'tb1'), (4, 'arrive', 'w_gauge'),
         (5, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'), (5, 'hand', G, 'connect_hart', 'hart', None, 'ic1'),
         (5, 'hand', G, 'no_such', 'sd_flat', None, 'ic1'), (5, 'hand', G, 'pull_test', None, None, 'ic2'),
         (6, 'permit', 'wo_gauge', 'request', 'ic1'), (7, 'permit', 'wo_gauge', 'approve', 'ic1'),
@@ -4577,7 +4578,7 @@ def hands_runs():
         (12, 'hand', G, 'torque_gland', 'spanner_17', 12, 'ic1'),
         (12, 'hand', G, 'torque_gland', 'spanner_17', None, 'ic1'),
         (12, 'hand', G, 'pull_test', 'sd_flat', None, 'ic1'),
-        (13, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'), (14, 'leave', 'tb1'), (15, 'arrive', 'w_gauge'),
+        (13, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'), (14, 'leave', 'w_gauge'), (15, 'arrive', 'w_gauge'),
         (20, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'), (21, 'hand', G, 'pull_test', None, None, 'ic1'),
         (21, 'hand', G, 'tighten', 'spanner_13', None, 'ic1'), (21, 'tool', 'sd_flat', 0, 'ic1'),
         (45, 'hand', G, 'lift_wire', 'sd_flat', None, 'ic1'), (45, 'hand', G, 'pull_test', None, None, 'ic1'),
@@ -4597,8 +4598,30 @@ def hands_runs():
         (22, 'read', G, -1, 'g1_cal'),
         (23, 'permit', 'wo_gauge', 'request', 'ic1'), (24, 'permit', 'wo_gauge', 'approve', 'ic1'),
         (25, 'lock', 'wo_gauge', 0, 'ic1'), (27, 'op', G, 'set', 30, None, 'hart', 'ic1')))
+    # REALISM.md §2.15: a HART op on the locked gauge, made only under the work's own accepted permit; wo_tag is
+    # another work on the gauge (no isolation) whose permit the trainee accepts while wo_gauge's isolation locks it
+    hp = hands_files()
+    hp['model/a1.json']['works'].append({'id': 'wo_tag', 'kks': G, 'title': 'Gauge: tag plate', 'discipline': 'inst',
+                                         'permit': 'general', 'task': 'cal_gauge'})
+    hart_permit = Trainee(quiet=True, extra=_x(
+        (2, 'arrive', 'tb1'), (3, 'tool', 'hart', 1, 'ic1'), (4, 'leave', 'tb1'), (4, 'arrive', 'w_gauge'),
+        (5, 'hand', G, 'connect_hart', 'hart', None, 'ic1'),
+        (7, 'op', G, 'set', 20, None, 'hart', 'ic1'),
+        (8, 'permit', 'wo_gauge', 'request', 'ic1'), (9, 'permit', 'wo_gauge', 'approve', 'ic1'),
+        (10, 'lock', 'wo_gauge', 0, 'ic1'),
+        (12, 'op', G, 'set', 21, None, 'hart', 'ic1'),
+        (13, 'permit', 'wo_gauge', 'issue', 'ic1'),
+        (15, 'op', G, 'set', 22, None, 'hart', 'ic1'),
+        (16, 'permit', 'wo_tag', 'request', 'ic1'), (17, 'permit', 'wo_tag', 'approve', 'ic1'),
+        (18, 'permit', 'wo_tag', 'issue', 'ic1'), (19, 'permit', 'wo_tag', 'accept', 'ic1'),
+        (21, 'op', G, 'set', 23, None, 'hart', 'ic1'),
+        (22, 'permit', 'wo_gauge', 'accept', 'ic1'),
+        (24, 'op', G, 'set', 24, None, 'hart', 'ic1'), (24, 'op', G, 'set', 25, None, 'hart', 'ic2'),
+        (24, 'op', G, 'set', 26, None, 'local', 'ic1'),
+        (26, 'permit', 'wo_gauge', 'done', 'ic1'), (28, 'op', G, 'set', 27, None, 'hart', 'ic1')))
     jump = Trainee(quiet=True, extra=_x(
-        (2, 'hand', G, 'clean_glass', None, None, 'ic1'), (3, 'task_ack'), (8, 'jump', '06:30'),
+        (1, 'arrive', 'w_gauge'), (2, 'hand', G, 'clean_glass', None, None, 'ic1'), (3, 'task_ack'),
+        (8, 'jump', '06:30'), (11, 'arrive', 'w_gauge'),
         (12, 'hand', G, 'clean_glass', None, None, 'ic1')))
     return [
         ('tools carried (§2.3, §2.13): taken only where kept (where), by the input\'s own person (authority), an '
@@ -4607,8 +4630,9 @@ def hands_runs():
          '(full), the store\'s only loop calibrator taken (none_left for the next), a 17 mm spanner put back where '
          'that tool is kept too; the NPC ic2\'s job at 07:40 finds the toolbox without its HART communicator (its '
          'tool step refused, the task abandoned)', me, hf, tools, 400, 50),
-        ('hand actions (§2.4, §2.13): before the permit only work: false (connect_hart) is made, the rest refused '
-         'authority (and another person\'s, and an unknown action); with the permit accepted, each reason in its '
+        ('hand actions (§2.4, §2.13, §2.15): at the toolbox, away from the gauge, connect_hart is refused (where); '
+         'at the gauge, before the permit only work: false (connect_hart) is made, the rest refused '
+         'authority (and another person\'s, away: where, and an unknown action); with the permit accepted, each reason in its '
          'order (a tool not carried, the wrong tool, no tool, a failed need, a value out of range or missing); on '
          'the locked code; a timed action abandoned when the trainee leaves the place, busy for the next, done at '
          'its end (written in step 3); a need met, bare hands, an input written; then a HART op refused on the '
@@ -4654,6 +4678,12 @@ def hands_runs():
          'trainer\'s fault pressed and repaired ten times, each draw from the stream', dict(free, init={
              'g1_body_loose': 1}), hf, Script([(k, 'fault' if k % 4 == 1 else 'repair', 'f_low')
                                                for k in range(1, 81) if k % 4 in (1, 3)]), 90, 2),
+        ('a HART op on the locked gauge (§2.15, the user\'s decision of 2026-11-03): made with the code unlocked; '
+         'with wo_gauge\'s isolation locked and its permit approved (no permit yet), issued (not yet accepted), and '
+         'with the trainee\'s accepted permit of another work on the gauge (wo_tag, holding no isolation), refused '
+         'iso_gauge_locked; under wo_gauge\'s own permit, accepted by the trainee, made and written (24); by '
+         'another person (authority, still locked) and made locally (where, still locked) refused; after the work\'s '
+         'done (the permit no longer accepted) refused again', me, hp, hart_permit, 40, 2),
     ]
 
 
@@ -4679,6 +4709,13 @@ def _job_step(i, fn):
     def f(F):
         fn(next(t for t in F['staff.json']['tasks'] if t['id'] == 'ic_job')['steps'][i])
     return f
+
+
+def _hand_off_site(F):
+    """The job's first hand step on a code that has a hand action but no work place."""
+    m = F['model/a1.json']
+    m['hands'].append(dict(copy.deepcopy(m['hands'][0]), kks='10LAB10BR001'))
+    next(t for t in F['staff.json']['tasks'] if t['id'] == 'ic_job')['steps'][8]['kks'] = '10LAB10BR001'
 
 
 def _cause(i, fn):
@@ -4824,6 +4861,7 @@ REJECTS_HANDS = [
                                                               'value': 20}}))),
         _st(lambda st: next(r for r in st['roles'] if r['id'] == 'ic_tech')['authority'].remove('operate_hart'))),
      'lacks operate_hart'),
+    ('a hand step on a code without a work place (REALISM.md §2.15)', 'bad_ref', _hand_off_site, 'no work place'),
 ]
 
 

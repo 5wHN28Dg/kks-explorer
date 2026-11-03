@@ -148,6 +148,31 @@ static func _hand_authority(e, x: Dictionary, person, npc: bool) -> bool:
 	return e._authority(person, npc, "operate_local")
 
 
+## A HART op on a locked code (REALISM.md §2.15): the work on that code whose permit is accepted, which holds every
+## isolation locking it, and under which the person acts (its acceptor, or another with accept and its discipline
+## while the acceptor is off duty): its index, or -1 (ref/plant3d_hands.py hart_permit).
+static func hart_permit(e, kks, person, npc: bool) -> int:
+	for wi in e._works_on.get(kks, []):
+		if e.pstate[wi] != 5:
+			continue
+		var held := true
+		for k in e._iso.size():
+			if e.holder[k] == wi:
+				continue
+			var pts: Array = e._iso[k][1]
+			var off: int = e._iso[k][4]
+			for p in pts.size():
+				if e.lockbits[off + p] and pts[p][0] == kks:
+					held = false
+					break
+			if not held:
+				break
+		var w: Dictionary = e.m.works[wi]
+		if held and not e._authority(person, npc, "accept", w["discipline"], true, w["id"]):
+			return wi
+	return -1
+
+
 static func _is_num(x) -> bool:
 	var t := typeof(x)
 	return (t == TYPE_INT or t == TYPE_FLOAT) and is_finite(float(x)) and absf(float(x)) < 1e9
@@ -170,6 +195,8 @@ static func hand(e, item: Array, npc: bool) -> String:
 	var pi := _pi(e, person)
 	if pi == -1 or _hand_authority(e, x, person, npc):
 		why.append("authority")
+	if pi != -1 and e.sp_pos[pi] != e._sm.work_at.get(kks, -2):
+		why.append("where")         # done at the code's work place (REALISM.md §2.15)
 	if pi != -1 and e.busy.has(person):
 		why.append("busy")
 	var have: Array = e.carried.get(person, []) if pi != -1 else []
