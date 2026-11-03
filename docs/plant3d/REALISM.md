@@ -415,6 +415,86 @@ train's `day_scale`) takes 15.6 µs on the fast core and 23 µs on the slow one,
 table lookup in place (the same comparisons and arithmetic; the vectors unchanged) gave these. The phone's battery was
 at 29–35 °C over the runs.
 
+### 2.13 HW1's details (settled 2026-11-03, before the code: the hands-on engine)
+
+§2.3–§2.7 leave these open; settled here so both engines and the vectors follow one text.
+
+- **The keys that gate it,** each alone: `tools.json`, a model's `hands` and `meters`, an op's `hart`, a scenario
+  fault's `causes`, a work's `cures`, the task steps `tool` and `hand`, a `read` step's `via` and a `hand` step's
+  `slip`. A plant without any of them steps, saves and digests as before.
+- **`tools.json`** (format `walkdown-plant-tools`, version 1, only in a version 2 plant with staff.json: its places are
+  the staff's): `tools`, 1–200 of `{"id", "title", "kind", "size", "modes", "at"}`; `kind` one of `spanner`, `socket`,
+  `screwdriver`, `hex_key`, `pliers`, `stripper`, `crimper`, `torque`, `meter`, `communicator`, `calibrator`,
+  `test_set`, `lifting`, `gas_detector` (the loop calibrator is a `calibrator`: a meter of its own kind); `size` text
+  of 1–16 characters; `modes` (1–16 identifiers of at most 16 characters) only on a `meter`, a `communicator` or a
+  `calibrator`; `at` 1–16 `[place, count]`, each place a `store` or the new place kind `toolbox`, once, the count a
+  whole number 1–99. The counts per place (file order) and each person's `carried` (tool ids in the order taken, no
+  tool twice, at most 12) are engine state, in saves and the digest.
+- **Input** `[n, "tool", item, 0 | 1, person]` in step 1, at the person's place as the step before left it. Event
+  `[n, "tool", item, 0 | 1, person, "done" | "refused" | "unknown", [reasons]]` (unknown: no such tool, or not 0 or
+  1); reasons in order `authority` (no person, not a person, or not the input's player: §17.1), `where` (their place
+  doesn't keep it), then taking `none_left`, `carried` (they have one), `full` (12 carried), putting back
+  `not_carried`. The NPC step `{"tool": [ids] | "off"}` acts in step 9, as `ppe` does, with the same events: each tool
+  not yet carried taken in order, the first refusal fails the step to its `else`; `off` puts every carried tool back
+  in order, and fails likewise. The trainee's step is done once they carry them all (`off`: none).
+- **Hand actions** as §2.4, and: `tools` may be left out for a bare-hand action (the input's tool is then null);
+  `wrong` names tools of tools.json that aren't in `tools`; `minutes` > 0 and ≤ 1440; `work` defaults to true;
+  (kks, action) is unique; `component` must be in the part kind's tree (its Workshop data file's components, or
+  `body` for a kind without one: WORKSHOP.md §4.1), refused `bad_ref`; a hand action's `set` and `input` are states
+  that no op writes (a command, `locked_write`) and that carry no code of the isolation of a work on its code
+  (`locked_write`). The engine writes them directly: no lock skips them. A hand action on a locked code is made (the
+  job is done under its permit on isolated equipment).
+- **Who:** a hand action names a person (null or no staff: `authority`). With `work: true` the person must be, for
+  some work on that code whose permit is accepted (state 5), its acceptor, or another with `accept` and its
+  discipline while the acceptor is off duty (§15.5); with `work: false`, `operate_local`.
+- **The tool check:** the input's tool null when the action has `tools`, or a tool not carried: `tool`; a carried tool
+  not in `tools` (or any tool for a bare-hand action): `wrong_tool` (the app shows `wrong`'s sentence for it, else a
+  general one).
+- **Minutes:** the action ends at the clock C + ⌈minutes × 600⌉ (clock tenths); the busy state is (code, action,
+  tool, value, end, the person's place at the start). In step 3, after the renewals, each busy person in staff order:
+  a step with a jump (§17.6) abandons it, so does the person no longer standing at that place (`leave`, `arrive`
+  elsewhere, an NPC walking off); else, at C ≥ end, `set` and `input` are written and the event `done` made.
+  Abandoning makes `[n, "hand", kks, action, tool, person, "abandoned", []]` and writes nothing. An NPC whose task is
+  pre-empted (§17.3's pause) abandons it then, in step 9, with the same event.
+- **NPCs:** the `hand` step queues the input for the next step's step 1, as an op step does; `done` goes on, `start`
+  waits for the end (the step is then not busy, so a higher priority task may pre-empt it), `abandoned`, `refused` or
+  `unknown` fail to `else`. The trainee's `hand` step takes their `done` event; a `done` made before the step was
+  current counts when the step comes if every state its `set` writes still has that value and its input the step's
+  `value` (§17.8, the rule of 2026-10-23).
+- **NPC slips:** only on a `hand` step: `"slip": {"per_mille": 1–1000, "set": {...}, "text"}`, the `set`'s states
+  written by some hand action (component states). When an NPC's hand step is done, one draw r from the person's slip
+  stream: a slip when (r × 1000) >> 24 < per_mille. The slip goes to the next step's step 1 as the NPC's input
+  `("slip", person, task, step)`: its `set` written directly, event `[n, "slip", person, task, step]` (the app keeps it
+  for the debrief). Players never slip.
+- **Meters** as §2.5, with `needs` a list of 0–16 value names (a meter refuses nothing: it shows `else`), `value` a
+  value name, `else` a value name or a number, `id` unique, `tool_kind` one of `meter`, `communicator`, `calibrator`,
+  `mode` an identifier of at most 16 characters that some tool of that kind lists. Shown: `value` when every need
+  reads true as the step before left it, else `else`. A `read` step with `via` (a meter of its code; no show binding
+  needed) takes the input `[n, "read", code, value, meter]`; a player without a carried tool of the meter's kind
+  listing its mode makes `[n, "read", person, code, value, "tool"]` and the step waits; an NPC without one makes
+  `[n, "read", person, code, null, "tool"]` and fails to `else`. Otherwise as S1's read against the meter's shown
+  value. Like S1's, the read is matched in step 9.
+- **HART:** `hart` joins `local` and `screen` in an op's `where` (version 2); such an op names `"hart": state`, the
+  state that says a communicator is connected (made by a `connect_hart` hand action). Made with `where` `hart`, its
+  authority is `operate_hart` (a new authority), and after `authority` comes the reason `hart`: the person carries no
+  `communicator`, or the state reads false as the step before left it. Everything else is an op's, a locked code's
+  refusal included (§15.1: a locked code refuses every op).
+- **Causes** as §2.6, with: 1–16 causes, ids unique in the fault, `weight` required (a whole number 0–65536 or a value
+  name; the constants' total ≤ 65536), `set` required, `repair` optional, `text` 1–200 characters. A value weight is
+  read as step 2 left it, rounded down, NaN or below 0 as 0, above 65536 as 65536. The draw: T the total, r the
+  stream's next draw, y = (r × T) >> 24, the first cause whose running total exceeds y (T = 0: the first). The
+  instructor's `[n, "fault", id, cause]` with a cause the fault lacks does nothing and makes no event. A repair writes
+  the fault's `repair` and the cause's, and is not made if any of them would be skipped (§15.1).
+- **Cures:** a work's `cures` (1–16 cause ids, unique) needs `repairs`; every scenario with that fault must give it
+  those causes (`bad_ref`). Two works may repair one fault only when both have `cures` and no cause is in both
+  (else `dup_id`). A work without `cures` cures every cause. A repair under its permit, or its `done`, whose work
+  doesn't cure the applied cause writes neither repair and makes no `repair` event; everything else happens as for
+  one that cures.
+- **The digest** gains one part after the weather's, only in a run with any of the keys: the tools' counts (file
+  order), each person's carried tools (as indexes in tools.json), each person's busy action or null, each cause
+  stream's state and applied cause (faults with causes, in scenario order), and each person's slip stream state.
+- **Snapshots** gain, with the same keys, `carried` (people with tools), `busy` and `causes` (applied faults' causes).
+
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does
