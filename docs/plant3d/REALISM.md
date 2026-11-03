@@ -639,6 +639,44 @@ at 29–35 °C over the runs.
 - **Equipment with jobs built unmerged** (§3.3): every code a service file names is built as its own node's meshes
   (one per material), not into its 12 m cell, so the work view can hide it.
 
+### 2.17 As built for milestone HW2 (2026-11-04: the transmitter in the field)
+
+- **Where:** the service file `tools/plant3d/service/pressure_transmitter.py` (made into
+  `data/plant3d/service/pressure_transmitter.json`, checked by `ref/plant3d_service.py`), the content tool
+  `tools/plant3d/train_hands.py` (tools.json, the transmitters' states, 14 hand actions, 5 meters and the HART trim,
+  the fault with its two causes, the work, the technician's task, the values the cures and the task read); the app's
+  `ui/work_view.gd` (the work view and the tools panel), `builder/work_build.gd` (each work scene, and equipment with
+  jobs built unmerged), the Crew panel's hands-on steps, the card's "Work on it", `walk=job` (`app/main.gd`).
+- **A cause's fix** (§2.6 `fixed`, the coordinator's decision): in both engines (`cures` in `ref/plant3d_hands.py` and
+  `sim/hands.gd`), read as step 2 left it at the done or a repair under the permit. Both causes' fix is `cpt2_sound`
+  (§2.16). The technician's task tightens only when the loop reads low and trims (+1.5 kPa) only when the PV reads
+  low, so an NPC makes the right fix for the drawn cause and nothing else (the forks' events checked by
+  `tests/test_plant3d_hands_content.py` `JobForks`).
+- **Vectors:** `plant3d-v1.json` and `plant3d-v2.json` made again with the train's new values; compared run by run,
+  keyed by id: every input, event and earlier value unchanged, only values, the snapshots' `carried`, `busy` and
+  `causes`, and the forks `npc_hands` (the loose terminal: tightened, no trim) and `npc_hands_drift` (the drift:
+  trimmed, not tightened) added; the digests change with the values. `plant3d-realism.json`'s `hands` gains a run (a
+  cause's fix: the wrong fix and a repair under the permit leave the fault, the right one under the permit taken
+  again cures it) and two rejects; every other item is what it was.
+- **Tests:** `tests/test_plant3d_hands_content.py` (the service file, the generated parts, the loop, the causes told
+  apart, the fixes and the task's choices, the forks), `HandsVectors.test_cure_follows_the_fix`,
+  `apps/plant3d/tests/test_ui_hands.gd` (app shard 2: a full job as the technician through the work view, the tools
+  panel and the Crew panel, every reading taken as one, the fault repaired and no trim left).
+- **On the laptop** (`walk=job`, headless): the work scene loaded in 7.5 ms, 0.9 MB more memory, 20 draw calls and
+  1,460 triangles (budget: 30 draws, 30,000 triangles, 40 MB, 300 ms).
+- **From the reviews:** a HART trim needs the wires landed (the op's `needs`; the work view refuses a trim while the
+  communicator finds no device); the PV threshold 0.5 kPa, so a partner's own drift doesn't hide the drift; either
+  cause cured only with the transmitter left sound (a wrong trim made with the right tightening, or a loop left dead,
+  cleared the fault); the task's readings a tolerance of 0.01 (every reading reported from the work view was a
+  misread); the work view's items in a MultiMesh of its own ("Cannot set a buffer on a Multimesh" from a duplicate);
+  the trainee at the I&C toolbox was taken to be in the control room, whose footprint (its places' box) reaches over
+  the workshop's toolbox (`ui/plant_ui.gd`: a nearest place of another room wins). Not changed: an NPC's job does not
+  check its own fix (a slip is left for the hold point), and the service check accepts fasteners where the bundle's
+  check accepts components only (no action names a fastener yet).
+- **Left for HW3:** the other three causes, replacing the transmitter from the stores, the loop check with the
+  control room, the debrief's diagnosis tab.
+- **The Note 9:** NOTE9_PENDING
+
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does
