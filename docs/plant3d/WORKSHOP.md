@@ -466,7 +466,7 @@ Faults: **over-range** (the output saturates at 20.5 mA and the display says so:
 - **Engines:** no change to either. `sim/bench_model.gd` reads the text into plant_model.gd's shape (version 2: the
   `hold` node and the trainer's events); `ref/vectors/plant3d-bench-v1.json` (`ref/make_plant3d_bench_vectors.py`)
   holds 2 valid files (the transmitter, and a synthetic kind with every node kind, a machine with a sequence, a trip,
-  an interlock, alarms, faults and every binding kind), 50 rejects and both runs; `run_vectors.gd --only=bench` steps
+  an interlock, alarms, faults and every binding kind), 53 rejects and both runs; `run_vectors.gd --only=bench` steps
   them through the app's engine and `tests/test_plant3d_sim.py GdscriptBench` compares every value's bits at every
   step and the state digests, with the straight-line program and the interpreter. `plant3d-v1.json`, `plant3d-v2.json`
   and `plant3d-realism.json` are byte for byte what they were.
@@ -493,6 +493,14 @@ Faults: **over-range** (the output saturates at 20.5 mA and the display says so:
   no travel turns at its value in revolutions a second, added up over bench time; a flow path is at most 8 points
   (the builder refuses more). `lamp` and `sound` bindings are checked but not yet drawn in the Workshop (the
   transmitter has none; K4b's turbine brings them).
+- **From the adversarial review:** a fault with no `repair` stays shown as made (the engine ignores its repair);
+  sliders follow the model when not dragged; the Run panel offers the bench's other ops (open, close, a trip's reset)
+  and **Restart the bench**; the "stands apart" refusal covers every machine command that leaves the machine's first
+  state; the validator reserves the clock values' names (as the app's loader does), refuses two `anim`s on one
+  component and two `lit` values on one face; heat and pressure colours go to the shader in linear colour; a kept
+  component's fastener groups ride with it through the cutaway; X-ray off leaves what Isolate hid hidden; the
+  Workshop's material copies are made afresh at each entry. Left: a `rotate` anim turns about the component's pivot
+  (a generator puts a moving piece's pivot there); the engine's input and event lists grow while a machine is open.
 - **Shaders:** `ws_lit` is `weathered.gdshaderinc` with `#define WS_LIT` (the plant's shader compiles exactly as
   before: the hooks are preprocessor blocks): a discard by the cut planes (`ws_cut.gdshaderinc`, shared with
   `ws_cap`), no weather, the heat and pressure colour and the selection's glow as instance uniforms (`ws_ramp`,

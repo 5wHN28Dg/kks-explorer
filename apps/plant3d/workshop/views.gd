@@ -49,6 +49,9 @@ var _warm := false              # the machine's first frame: the cap pass drawn 
 func machine_shown(machine: Node3D, comps: Dictionary) -> void:
 	_meshes.clear()
 	_flows.clear()
+	_lit.clear()                # (fresh copies of the plant's materials each entry: a tier change since reaches them)
+	_capped.clear()
+	_caps.clear()
 	_ramped.clear()
 	_xrayed.clear()
 	_keep.clear()
@@ -70,6 +73,7 @@ func machine_shown(machine: Node3D, comps: Dictionary) -> void:
 				for mm in c.get_children():
 					if mm is MultiMeshInstance3D and mm.has_meta("mat"):
 						mm.material_override = mat_for(mm.get_meta("mat"), false)
+						mm.set_instance_shader_parameter("ws_keep", 1.0 if _keep.has(id) else 0.0)   # rides with its host
 		for c in own:
 			c.material_override = glass_mat() if glass else mat_for(c.get_meta("mat"), thin)
 			c.set_instance_shader_parameter("ws_keep", 1.0 if _keep.has(id) else 0.0)
@@ -153,7 +157,7 @@ func _apply_xray() -> void:
 		var glass: bool = ws.comps[id].get_meta("glass", false)
 		for c in _meshes[id]:
 			c.material_override = _xray_mat if on else (glass_mat() if glass else mat_for(c.get_meta("mat"), thin))
-			c.visible = true
+			c.visible = not ws._hollow.has(id)   # (what Isolate hid stays hidden)
 		if on:
 			_xrayed[id] = true
 		else:
@@ -304,8 +308,9 @@ func set_ramp(id: String, c: Color, a: float) -> void:
 		return
 	if a <= 0.0 and not _ramped.has(id):
 		return
+	var lc := c.srgb_to_linear()   # (a legend's #rrggbb is sRGB; the shader's ALBEDO is linear)
 	for g in _meshes[id]:
-		g.set_instance_shader_parameter("ws_ramp", Color(c.r, c.g, c.b, a * RAMP_MIX))
+		g.set_instance_shader_parameter("ws_ramp", Color(lc.r, lc.g, lc.b, a * RAMP_MIX))
 	if a > 0.0:
 		_ramped[id] = true
 	else:

@@ -27,6 +27,7 @@ LIMIT = {'values': 600, 'ops': 48, 'machines': 8, 'trips': 48, 'alarms': 64, 'fa
 BIND_KINDS = ('anim', 'show', 'sound', 'lamp', 'flow', 'heat', 'pressure')
 LAMPS = ('running', 'stopped', 'open', 'closed', 'fault', 'beacon')
 NOT_ON_THE_BENCH = ('draw', 'wear', 'count')     # the realism programme's nodes: a version 2 of this format (§6.1)
+WORLD = ('world_hour', 'world_day', 'world_wx')      # the clock values' names: reserved as in a version 2 plant
 SID = re.compile(r'[a-z_][a-z0-9_]{0,31}')
 HEX = re.compile(r'#[0-9a-f]{6}')
 
@@ -123,6 +124,8 @@ def check(d, comps, where='bench', sounds=None, part=None):
         bad = [k for k in NOT_ON_THE_BENCH if k in pair[1]]
         need(not bad, 'bad_kind', f'{where}.values[{i}]: {bad and bad[0]} is not a bench node (version 1: format 1\'s '
                                   f'nodes and hold)')
+        need(pair[0] not in WORLD, 'dup_id', f'{where}.values[{i}]: {pair[0]} is a clock value\'s name (the app '
+                                             f'reserves it, REALISM.md §2.1)')
         if 'unit' in pair[1] and isinstance(pair[0], str):
             units[pair[0]] = pair[1]['unit']
     b = _Bundle()
@@ -197,6 +200,7 @@ def check(d, comps, where='bench', sounds=None, part=None):
         legends[name] = lg
     need(len(legends) <= LIMIT['legends'], 'limit', f'{where}.legends')
     shows, flows, binds = [], set(), []
+    lit_at, anim_at = {}, set()
     for i, x in enumerate(d.get('bind', [])):
         bw = f'{where}.bind[{i}]'
         need(isinstance(x, dict), 'bad_type', bw)
@@ -221,6 +225,8 @@ def check(d, comps, where='bench', sounds=None, part=None):
             need(x['at'] != AT_BENCH or k == 'sound', 'bad_ref', f'{bw}.at: only a sound may be at the bench')
             if k == 'anim':
                 keys(x, ('at', 'anim', 'of'), ('scale',), bw)
+                need(x['at'] not in anim_at, 'dup_id', f'{bw}: {x["at"]} is already moved by another anim binding')
+                anim_at.add(x['at'])
                 ident(x['anim'], f'{bw}.anim')
                 m.cond(x['of'], f'{bw}.of')
                 num(x.get('scale', 1), f'{bw}.scale')
@@ -229,6 +235,10 @@ def check(d, comps, where='bench', sounds=None, part=None):
                 m.cond(x['show'], f'{bw}.show')
                 if 'lit' in x:
                     m.cond(x['lit'], f'{bw}.lit')
+                if 'lit' in x:      # (a show with `lit` is on the component's face, one without a tag over it)
+                    need(lit_at.get(x['at'], x['lit']) == x['lit'], 'bad_value',
+                         f'{bw}.lit: {x["at"]}\'s face shows its values under one `lit` value')
+                    lit_at[x['at']] = x['lit']
                 shows.append({'kks': x['at'], 'show': x['show']})
             elif k == 'sound':
                 keys(x, ('at', 'sound'), ('gain', 'pitch'), bw)

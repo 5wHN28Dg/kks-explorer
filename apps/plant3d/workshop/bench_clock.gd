@@ -145,7 +145,9 @@ func fault(id: String) -> void:
 func repair(id: String) -> void:
 	if e != null:
 		e.repair(id)
-		faulted.erase(id)
+		for f in m.faults:          # (the engine ignores a repair of a fault that has none: it stays made)
+			if f.id == id and f.repair:
+				faulted.erase(id)
 
 
 func ack(alarm: String) -> void:

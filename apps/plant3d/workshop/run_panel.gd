@@ -48,6 +48,14 @@ func machine_shown() -> void:
 	box.add_child(W.label("Run", 22, Color.WHITE, false))
 	var row := HBoxContainer.new()
 	box.add_child(row)
+	var rb := W.button("Restart the bench", func(): ws.restart_bench(); machine_shown())
+	rb.name = "run_restart"
+	for o in c.m.ops_ui:
+		if not o.has("machine") and o.get("do") != "set":   # an open, a close, a trip's reset
+			var ob := W.button(String(o.get("title", "%s %s" % [String(o.do).capitalize(), _title(o.at)])),
+				ws.run_op.bind(o.at, o.do, o.get("trip")))
+			ob.name = "run_op_%s_%s" % [o.at, o.do]
+			row.add_child(ob)
 	for o in c.m.ops_ui:
 		if o.has("machine"):
 			var bt := W.button(String(o.get("title", o.do.capitalize())), ws.run_command.bind(o.at, o.do))
@@ -55,6 +63,7 @@ func machine_shown() -> void:
 			row.add_child(bt)
 	var row2 := HBoxContainer.new()
 	box.add_child(row2)
+	row2.add_child(rb)
 	pause_btn = W.button("Pause", func(): ws.bench.paused = not ws.bench.paused)
 	pause_btn.name = "run_pause"
 	row2.add_child(pause_btn)
@@ -84,6 +93,8 @@ func machine_shown() -> void:
 			s.custom_minimum_size = Vector2(160 * W.scale, 40 * W.scale)
 			s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			s.value_changed.connect(func(v): ws.bench.op_set(o.at, v))
+			s.drag_started.connect(func(): s.set_meta("dragging", true))
+			s.drag_ended.connect(func(_c): s.set_meta("dragging", false))
 			r.add_child(s)
 			var vl := W.label("", 18, Color.WHITE, false)
 			r.add_child(vl)
@@ -124,6 +135,9 @@ func tick() -> void:
 	pause_btn.text = "Resume" if c.paused else "Pause"
 	for s in sliders:
 		s[2].text = c.shown(s[1].input)
+		# the thumb follows the model (a refused set, a fault or a machine writing the input), except while dragged
+		if not s[0].get_meta("dragging", false) and absf(s[0].value - c.now(s[1].input)) > s[0].step:
+			s[0].set_value_no_signal(c.now(s[1].input))
 	for r in readouts:
 		var t: String = "%s  %s" % [_title(r[1]), c.shown(r[1])]
 		if r[0].text != t:

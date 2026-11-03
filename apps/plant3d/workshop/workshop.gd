@@ -1067,14 +1067,35 @@ func why_no_run() -> String:
 ## A machine command from the Run panel (Start, Stop): Start is refused while the machine stands apart beyond what its
 ## data allows.
 func run_command(at: String, do: String) -> void:
-	if do == "start" and why_no_run() != "":
+	if _starts(at, do) and why_no_run() != "":
 		run_note = why_no_run()
 		return
 	run_note = ""
 	bench.command(at, do)
 
+## Whether a machine command takes its machine out of its first (resting) state: refused while it stands apart.
+func _starts(at: String, do: String) -> bool:
+	for o in bench.m.ops_ui:
+		if o.at == at and o.do == do and o.has("machine"):
+			var mc = bench.m.machine_by_id(o.machine)
+			return mc != null and mc.commands.get(do, {}).get("to", "") != mc.init
+	return false
+
+## Any other op of the bench (an open, a close, a trip's reset) from the Run panel.
+func run_op(at: String, do: String, trip = null) -> void:
+	run_note = ""
+	bench.e.op(at, do, null, trip)
+
+func restart_bench() -> void:
+	bench.restart()
+	run_note = ""
+
 func toggle_fault(id: String) -> void:
 	if bench.faulted.has(id):
+		for f in bench.m.faults:
+			if f.id == id and not f.repair:
+				run_note = "This fault has no repair on the bench: Restart the bench."
+				return
 		bench.repair(id)
 	else:
 		bench.fault(id)

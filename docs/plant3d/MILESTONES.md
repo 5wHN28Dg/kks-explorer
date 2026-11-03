@@ -301,7 +301,7 @@ the Note 9 (K1, K3, K4a, K4b, K5a, K5b at least), with the APK's size before and
 hands-on work builds on K1a–K3 (REALISM.md).
 
 **K3 as built (2026-11-03):** the bench format `walkdown-plant-bench` (`ref/plant3d_bench.py`, `sim/bench_model.gd`,
-`ref/vectors/plant3d-bench-v1.json`: 2 valid files, 50 rejects, 2 runs, both engines bit for bit, no engine change);
+`ref/vectors/plant3d-bench-v1.json`: 2 valid files, 53 rejects, 2 runs, both engines bit for bit, no engine change);
 the transmitter's bench (supply, applied pressure to past its range, damping, 4–20 mA with NAMUR saturation, faults
 over-range, blocked impulse line, open loop: the 3051 manual and Lipták); `ws_lit`, `ws_cap`, `ws_flow` (and
 `ws_xray` for the X-ray), pre-warmed in the plant and in the machine's first frame; X-ray, cutaway with capped cut

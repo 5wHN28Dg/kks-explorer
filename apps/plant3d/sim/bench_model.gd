@@ -94,7 +94,7 @@ func _load_bench(d: Dictionary, comps: Array) -> void:
 	for f in d.get("faults", []):
 		var y := _at(f, "fault " + str(f.get("id")), codes)
 		fl.append(y)
-		faults.append({"id": f["id"], "text": f["text"], "at": f.get("at", "")})
+		faults.append({"id": f["id"], "text": f["text"], "at": f.get("at", ""), "repair": f.has("repair")})
 		_check_set(y.get("set", {}), "fault " + str(f["id"]))
 		_check_set(y.get("repair", {}), "fault " + str(f["id"]))
 	for k in d.get("readouts", []):

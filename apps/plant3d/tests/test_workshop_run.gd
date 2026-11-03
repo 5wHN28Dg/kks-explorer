@@ -45,6 +45,7 @@ func run(tree: SceneTree) -> Array:
 	_planes_math()
 	_loader_refuses()
 	_free_rotor()
+	_fault_without_repair()
 	var main := App.start(tree)
 	if main.ui == null or main.workshop == null:
 		main.free()
@@ -267,7 +268,7 @@ func _channels(ws, when: String) -> void:
 		for s in e.shows:
 			check(e.label.text.contains(c.shown(s)) == lit, "%s: %s shows %s (%s)" % [when, e.at, c.shown(s), e.label.text])
 	for r in ws.bench_view.ramps:
-		var want: Color = Views.legend_colour(c.m.legends[r.legend], c.val(r.of))
+		var want: Color = Views.legend_colour(c.m.legends[r.legend], c.val(r.of)).srgb_to_linear()
 		for g in ws.views._meshes[r.at]:
 			var got = g.get_instance_shader_parameter("ws_ramp")
 			check(got is Color and Color(got.r, got.g, got.b).is_equal_approx(Color(want.r, want.g, want.b)),
@@ -283,6 +284,14 @@ func _panel(ws) -> void:
 	check(rp.fault_btns.size() == 3, "and the three faults")
 	var lm: Label = rp.find_child("read_loop_ma", true, false)
 	check(lm != null and lm.text.contains(ws.bench.shown("loop_ma")), "the readouts show the model's values")
+	# the slider's thumb follows the model: dragged somewhere the model didn't take, it goes back
+	var sl: HSlider = rp.find_child("set_p_applied", true, false)
+	sl.set_value_no_signal(11.0)
+	rp.tick()
+	check(absf(sl.value - ws.bench.now("p_applied")) <= sl.step, "the slider shows the model's value: %f" % sl.value)
+	check(rp.find_child("run_restart", true, false) != null, "the panel can restart the bench")
+	ws.restart_bench()
+	check(ws.bench.steps == 0 and ws.bench.machine_state("supply") == "off", "Restart puts the bench back to its start")
 	ws.panels.show_info(true)
 
 ## The builder's join refuses bench bindings the generator can't draw.
@@ -329,6 +338,19 @@ func _loader_refuses() -> void:
 	bad.values[1][1] = {"cmp": ["world_hour", ">", 1]}
 	m = BenchModel.from_text(JSON.stringify(bad), ["body"])
 	check(m.error != "", "a clock value is refused on the bench")
+
+## A fault with no repair stays made: the panel doesn't show it repaired.
+func _fault_without_repair() -> void:
+	var BenchClock = load("res://workshop/bench_clock.gd")
+	var t := {"format": "walkdown-plant-bench", "version": 1, "part": "x", "sources": [],
+		"values": [["u", {"state": 0}]], "start": {}, "faults": [{"id": "stuck", "text": "Stuck", "set": {"u": 1}}]}
+	var c = BenchClock.new()
+	check(c.load_text(JSON.stringify(t), ["body"]), "a bench with a fault and no repair loads: %s" % c.error)
+	c.fault("stuck")
+	c.tick(0.1)
+	c.repair("stuck")
+	c.tick(0.1)
+	check(c.faulted.has("stuck") and c.now("u") == 1.0, "a fault with no repair stays made, and shown made")
 
 ## A rotor that turns freely (travel 0) turns at the value × scale revolutions a second, added up over bench time.
 func _free_rotor() -> void:
