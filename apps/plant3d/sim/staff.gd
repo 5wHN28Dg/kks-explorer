@@ -1558,6 +1558,7 @@ func pause(e, pi: int) -> void:
 		st["resumed"] = true
 	for k in ["dest", "waiting", "wait_since", "target", "meet_since", "seat", "seen", "pt", "since"]:
 		st.erase(k)          # (seen: a resumed step is current again, §17.8)
+	e.sp_wait_on[pi] = -1   # (no longer waiting: a claim, a driver taken, a pre-emption)
 	unreserve(e, pi)
 	_enqueue(e, pi, cur)
 	e.sp_cur[pi] = null
@@ -1989,7 +1990,7 @@ func go(e, pi: int, cur: Dictionary, x) -> String:
 		elif e.step_no - s["wait_since"] >= WAIT_PLACE * tpm:
 			return "fail"
 		else:
-			if not e.st_players.has(pi):
+			if e._staff_wait_sleep and not e.st_players.has(pi):
 				# nothing changes for them until their 15 minutes are over or a place in the room is let go or taken
 				# (_wake_at), or a task, a duty or a stop wakes them, as any sleeper
 				e.sp_wake[pi] = int(s["wait_since"]) + WAIT_PLACE * tpm
@@ -3064,7 +3065,7 @@ func meet(e, pi: int, cur: Dictionary, mt: Dictionary, trainee: bool) -> String:
 			x["left"] = int(mt["minutes"]) * tpm
 			x["last"] = e.step_no
 		else:
-			if not trainee and not rm.is_empty() and int(x["place"]) != -1:
+			if not trainee and e._staff_wait_sleep and not rm.is_empty() and int(x["place"]) != -1:
 				# nothing changes for them until their 15 minutes are over, or someone comes into the room or comes on
 				# duty there, or a place there is let go or taken (_wake_at); a task, a duty or a stop wakes them, as
 				# any sleeper

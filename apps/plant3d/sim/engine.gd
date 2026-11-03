@@ -134,6 +134,7 @@ var staff_us := PackedInt64Array()    # with timing: step 9's own time in each s
 ## (caches and timers of the staff step, sim/staff.gd: never the run's state, so "_": not saved, ui/run_save.gd; a clone
 ## starts without them)
 var _staff_due_memo: Array = []        # per vehicle: runs_due's last answer, [day, floor, done, answer]
+var _staff_wait_sleep := true          # the waits for a place or a meeting asleep (false: awake every step, as before; tests/check_staff_waits.gd)
 var _staff_prof_on := false            # step 9's per-phase timers and work counts (tests/bench_staff.gd)
 var _staff_prof := PackedInt64Array([0, 0, 0, 0, 0, 0, 0])
 var _staff_prof_n := {"runs": 0, "due": 0, "acts": 0, "wakes": 0}
