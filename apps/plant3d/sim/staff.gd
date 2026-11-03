@@ -118,6 +118,9 @@ var audio_ex := 0                    # the Ex zones, where carrying the phone is
 var notice_lo := 0                   # `notice`: the clock minutes an observer takes, [lo, hi]
 var notice_hi := 0
 var audio_mask := 0                  # the volume from which calls are missed
+var audio_rooms: Array = []          # `rooms` (the user, 2026-11-03): the rooms beyond the zones where music is banned
+var place_aroom := PackedInt32Array()   # per place: its room's index in audio_rooms, or -1
+const HELD_EVER := 1 << 62           # a device held off duty by someone with no next duty: never given back (§8.5)
 
 
 static func load_from(m, doc: Dictionary):
@@ -220,6 +223,10 @@ func _build(m, doc: Dictionary) -> void:
 		notice_lo = int(au["notice"][0])
 		notice_hi = int(au["notice"][1])
 		audio_mask = int(au["mask"])
+		audio_rooms = au.get("rooms", [])
+	place_aroom.resize(places.size())
+	for i in places.size():
+		place_aroom[i] = audio_rooms.find(places[i].get("room", "")) if places[i].has("room") else -1
 	var np := places.size()
 	var landing := {}
 	for x in doc.get("lifts", []):
@@ -603,6 +610,17 @@ func duty_on_day(pi: int, day: int) -> Array:
 	if en <= s:
 		en += DAY
 	return [s, en]
+
+
+## The end of person pi's first duty starting after clock c (REALISM.md §8.5: a device taken off duty is held until
+## it ends), from their roster alone; HELD_EVER when their roster has none in a cycle.
+func next_duty_end(pi: int, c: int) -> int:
+	var d0: int = floori(float(c) / DAY)
+	for d in range(d0, d0 + 66):        # (a rotation's cycle is at most 64 days, a week 7)
+		var du := duty_on_day(pi, d)
+		if not du.is_empty() and du[0] > c:
+			return du[1]
+	return HELD_EVER
 
 
 func _resolve(at_kind: int, at_min: int, duty: Array) -> int:
@@ -2189,6 +2207,7 @@ func run(e, pi: int, cur: Dictionary):
 		var w = c.get("work", "$")
 		w = cur["work"] if w == "$" else w
 		e._ev(["call", pid, c["role"], c["task"], w, "done"])
+		miss_call(e, pi, c["task"], c["role"])
 		offer(e, [c["role"]], c["task"], prio_of(c["task"]), null, w, cur["code"], cur["alarm"], w, null, vkey(cur))
 		return "next"
 	if s.has("choose"):
@@ -2626,6 +2645,11 @@ func take_driver(e, pi: int, vi: int) -> void:
 	var ev := ["aboard", people[pi]["id"], vehicles[vi]["id"], places[at]["id"] if at != -1 else null, "on", []]
 	ev.append_array(_tail(e, pi))
 	e._ev(ev)
+	if has_audio and e.sp_music[pi] > 0:    # a player's music off at the wheel (REALISM.md §8.5: no headsets driving)
+		e.sp_music[pi] = 0
+		var ea := ["audio", people[pi]["id"], 0, "done", ["driving"]]
+		ea.append_array(_tail(e, pi))
+		e._ev(ea)
 	e.sp_leg[pi] = []
 	if has_lifts:
 		e.sp_stairs[pi] = PackedInt32Array()
@@ -2845,6 +2869,26 @@ func zones_of(e, pi: int) -> int:
 	return place_zm[p] if p != -1 else 0
 
 
+## The room of `audio.rooms` person pi is in (REALISM.md §8.5: music banned there beyond the zones), as its index, or
+## -1: at a place of it; on a way, when both its ends are in it; a player at the place they arrived at; aboard in none.
+func audio_room(e, pi: int) -> int:
+	if audio_rooms.is_empty() or e.sp_aboard[pi] != -1:
+		return -1
+	if not e.st_players.has(pi):
+		var leg: Array = e.sp_leg[pi]
+		if not leg.is_empty():
+			var r: int = place_aroom[leg[0]]
+			return r if r == place_aroom[leg[1]] else -1
+	var p: int = e.sp_pos[pi]
+	return place_aroom[p] if p != -1 else -1
+
+
+## Whether person qi is where a person's music or phone can be seen (§8.5): a zone of zs (theirs), or their banned
+## room (room, -1 for none).
+func shares(e, zs: int, room: int, qi: int) -> bool:
+	return (zs & zones_of(e, qi)) != 0 or (room != -1 and audio_room(e, qi) == room)
+
+
 ## [zone or work] while the act's condition holds, else [].
 func _act_now(e, pi: int, k: int) -> Array:
 	if k == 0:
@@ -2863,6 +2907,10 @@ func _act_now(e, pi: int, k: int) -> Array:
 				for z in zone_ids.size():
 					if zm & (1 << z):
 						return [zone_ids[z]]
+			if k == 3:      # beyond the zones: a banned room (the control room), the room its detail
+				var r := audio_room(e, pi)
+				if r != -1:
+					return [audio_rooms[r]]
 		return []
 	var cur = e.sp_cur[pi]
 	if cur == null or cur["idle"]:
@@ -3027,13 +3075,14 @@ func notice(e, ri: int, role_list: Array, ai: int, k: int, n: int) -> int:
 					return qi
 		return -1
 	var zs := zones_of(e, ai)
+	var room := audio_room(e, ai)
 	var wd: Dictionary = e.sp_watch[ai]
 	var wk := Vector2i(ri, k)
 	var w: Dictionary = wd.get(wk, {})
 	var near := PackedInt32Array()
 	for r in role_list:
 		for qi in role_people.get(r, PackedInt32Array()):
-			if on[qi] and qi != ai and not absent.has(qi) and (zs & zones_of(e, qi)) != 0:
+			if on[qi] and qi != ai and not absent.has(qi) and shares(e, zs, room, qi):
 				near.append(qi)
 	for qi in w.keys():
 		if not near.has(qi):
@@ -3060,6 +3109,7 @@ func notice(e, ri: int, role_list: Array, ai: int, k: int, n: int) -> int:
 ## with person pi, on duty; for an act going on, notice() keeps the list.
 func prune_watch(e, pi: int) -> void:
 	var zs := zones_of(e, pi)
+	var room := audio_room(e, pi)
 	var wd: Dictionary = e.sp_watch[pi]
 	var acts: Array = e.sp_acts[pi]
 	var on: PackedByteArray = e.sp_on
@@ -3069,7 +3119,7 @@ func prune_watch(e, pi: int) -> void:
 			continue
 		var w: Dictionary = wd[wk]
 		for qi in w.keys():
-			if not (on[qi] and not absent.has(qi) and (zs & zones_of(e, qi)) != 0):
+			if not (on[qi] and not absent.has(qi) and shares(e, zs, room, qi)):
 				w.erase(qi)
 		if w.is_empty():
 			wd.erase(wk)
@@ -3102,8 +3152,10 @@ func stop_act(e, pi: int, act: Array) -> void:
 	if act[1] >= 3 and e.sp_phone[qi] == 1:
 		e.sp_music[qi] = 0
 		e.sp_phone[qi] = 2
-		# held until the clock its duty ends (now, when off duty): phase 1 gives it back then
-		e.sp_held_to[qi] = e.sp_duty[qi][1] if e.sp_on[qi] and not e.sp_duty[qi].is_empty() else e.clock()
+		# held until the clock its duty ends (taken off duty: their next duty's end, the user 2026-11-03): phase 1
+		# gives it back then
+		e.sp_held_to[qi] = e.sp_duty[qi][1] if e.sp_on[qi] and not e.sp_duty[qi].is_empty() \
+				else next_duty_end(qi, e.clock())
 		e.st_next1 = mini(e.st_next1, e.sp_held_to[qi])
 		e._ev(["held", people[qi]["id"], people[pi]["id"]])
 	if put_right.has(kname):
@@ -3133,7 +3185,8 @@ func t_stop(e, ti: int, who) -> void:
 
 
 ## The player's music (REALISM.md §8.5): a whole volume from 0 (off) to 100; refused without `audio` (no_audio), while
-## the phone is held (held) or left at a locker (left).
+## the phone is held (held) or left at a locker (left), and any but 0 while they drive a vehicle's run (driving:
+## headsets never worn driving, [GEH-C25], [IOGP459]).
 func t_audio(e, ti: int, level, slot: int) -> void:
 	if typeof(level) != TYPE_INT or level < 0 or level > 100:
 		return
@@ -3144,6 +3197,8 @@ func t_audio(e, ti: int, level, slot: int) -> void:
 		why.append("held")
 	elif e.sp_phone[ti] == 0:
 		why.append("left")
+	elif level > 0 and _drives(e, ti):
+		why.append("driving")
 	if why.is_empty():
 		e.sp_music[ti] = level
 	var ev := ["audio", people[ti]["id"], level, "refused" if not why.is_empty() else "done", why]
@@ -3152,8 +3207,16 @@ func t_audio(e, ti: int, level, slot: int) -> void:
 	e._ev(ev)
 
 
+## Whether person pi drives a vehicle's run (§21.4).
+func _drives(e, pi: int) -> bool:
+	for vh in e.st_veh:
+		if vh["driver"] == pi:
+			return true
+	return false
+
+
 ## The player leaves the phone at a locker or takes it again (§8.5); leaving it turns the music off. Refused without
-## `audio`, or while held.
+## `audio`, while held, or away from a locker (locker: the place they arrived at is not one).
 func t_phone(e, ti: int, what, slot: int) -> void:
 	if typeof(what) != TYPE_STRING or (what != "leave" and what != "take"):
 		return
@@ -3162,6 +3225,8 @@ func t_phone(e, ti: int, what, slot: int) -> void:
 		why.append("no_audio")
 	elif e.sp_phone[ti] == 2:
 		why.append("held")
+	elif e.sp_pos[ti] == -1 or kind[e.sp_pos[ti]] != "locker":
+		why.append("locker")
 	if why.is_empty():
 		e.sp_phone[ti] = 0 if what == "leave" else 1
 		if what == "leave":
@@ -3400,6 +3465,19 @@ func say(e, pi: int, msg: String, to: String) -> void:
 					e.sp_told[t] |= 1
 
 
+## A radio call (a task called to a role) is missed as a message is (say, REALISM.md §8.5): by each player of the role
+## but the caller, in slot order, whose music is at the mask or louder; event missed with the task.
+func miss_call(e, pi: int, task: String, role: String) -> void:
+	if not has_audio:
+		return
+	for k in e.st_players.size():
+		var t: int = e.st_players[k]
+		if t != -1 and t != pi and people[t]["role"] == role and e.sp_music[t] >= audio_mask:
+			e._ev(["missed", people[t]["id"], task, people[pi]["id"], "call"])
+			if e.sp_acts[t][3] != null:
+				e.sp_told[t] |= 1
+
+
 func wait(e, cur: Dictionary, w: Dictionary) -> String:
 	var x: Dictionary = cur["st"]
 	if not x.has("from"):
@@ -3514,6 +3592,7 @@ func trainee_turn(e, pi: int, tin: Array, slot: int) -> void:
 					and item[3] == null         # a request names no work: the called task's own, if any
 			e._ev(["call", people[pi]["id"], item[1], item[2], item[3], "done" if ok else "refused"])
 			if ok:
+				miss_call(e, pi, item[2], item[1])
 				assign(e, [item[1]], item[2], prio_of(item[2]), null, null, null, null)
 
 
@@ -3624,6 +3703,7 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 					var w = c.get("work", "$")
 					w = cur["work"] if w == "$" else w
 					e._ev(["call", pid, c["role"], c["task"], w, "done"])
+					miss_call(e, pi, c["task"], c["role"])
 					offer(e, [c["role"]], c["task"], prio_of(c["task"]), null, w, cur["code"], cur["alarm"], w, null,
 							vkey(cur))
 					r = "next"
