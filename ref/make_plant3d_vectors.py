@@ -4944,28 +4944,29 @@ def _au(f):
 
 
 REJECTS_AUDIO = [
-    ('an audio that is not an object', 'bad_type', _st(lambda st: st.__setitem__('audio', [1]))),
-    ('an audio key not known', 'unknown_key', _au(lambda a: a.__setitem__('volume', 3))),
-    ('an audio without its notice', 'missing_key', _au(lambda a: a.pop('notice'))),
-    ('an audio banning no zone', 'bad_length', _au(lambda a: a.__setitem__('banned', []))),
-    ('a banned zone that does not exist', 'bad_ref', _au(lambda a: a['banned'].append('roof'))),
-    ('a banned zone twice', 'dup_id', _au(lambda a: a['banned'].append('hall'))),
-    ('an Ex zone that does not exist', 'bad_ref', _au(lambda a: a.__setitem__('ex', ['roof']))),
-    ('a notice of one number', 'bad_length', _au(lambda a: a.__setitem__('notice', [2]))),
-    ('a notice upside down', 'bad_number', _au(lambda a: a.__setitem__('notice', [6, 2]))),
-    ('a notice over 600 minutes', 'bad_number', _au(lambda a: a.__setitem__('notice', [2, 601]))),
-    ('a notice below 0', 'bad_number', _au(lambda a: a.__setitem__('notice', [-1, 2]))),
-    ('a notice written as 2.0', 'bad_number', _au(lambda a: a.__setitem__('notice', [2.0, 6]))),
-    ('a mask of 0', 'bad_number', _au(lambda a: a.__setitem__('mask', 0))),
-    ('a mask over 100', 'bad_number', _au(lambda a: a.__setitem__('mask', 101))),
-    ('a mask that is a boolean', 'bad_number', _au(lambda a: a.__setitem__('mask', True))),
+    ('an audio that is not an object', 'bad_type', _st(lambda st: st.__setitem__('audio', [1])), 'staff.json.audio'),
+    ('an audio key not known', 'unknown_key', _au(lambda a: a.__setitem__('volume', 3)), 'volume'),
+    ('an audio without its notice', 'missing_key', _au(lambda a: a.pop('notice')), 'notice'),
+    ('an audio banning no zone', 'bad_length', _au(lambda a: a.__setitem__('banned', [])), 'audio.banned'),
+    ('a banned zone that does not exist', 'bad_ref', _au(lambda a: a['banned'].append('roof')), 'audio.banned: no zone'),
+    ('a banned zone twice', 'dup_id', _au(lambda a: a['banned'].append('hall')), 'audio.banned'),
+    ('an Ex zone that does not exist', 'bad_ref', _au(lambda a: a.__setitem__('ex', ['roof'])), 'audio.ex: no zone'),
+    ('a notice of one number', 'bad_length', _au(lambda a: a.__setitem__('notice', [2])), 'audio.notice'),
+    ('a notice upside down', 'bad_number', _au(lambda a: a.__setitem__('notice', [6, 2])), 'min not above max'),
+    ('a notice over 600 minutes', 'bad_number', _au(lambda a: a.__setitem__('notice', [2, 601])), 'from 0 to 600'),
+    ('a notice below 0', 'bad_number', _au(lambda a: a.__setitem__('notice', [-1, 2])), 'from 0 to 600'),
+    ('a notice written as 2.0', 'bad_number', _au(lambda a: a.__setitem__('notice', [2.0, 6])), 'whole clock minutes'),
+    ('a mask of 0', 'bad_number', _au(lambda a: a.__setitem__('mask', 0)), 'audio.mask'),
+    ('a mask over 100', 'bad_number', _au(lambda a: a.__setitem__('mask', 101)), 'audio.mask'),
+    ('a mask that is a boolean', 'bad_number', _au(lambda a: a.__setitem__('mask', True)), 'audio.mask'),
     ('a reaction to music acts without audio', 'bad_value', _all(
         _st(lambda st: st.pop('audio')), _st(lambda st: st['put_right'].pop('audio')),
-        _st(lambda st: st['put_right'].pop('phone')),
+        _st(lambda st: st['put_right'].pop('phone')), _st(lambda st: st['reactions'].pop()),
         _st(lambda st: st['reactions'].append({'on': {'unsafe': 'audio'}, 'roles': ['hse_officer'],
-                                               'task': 'stop_unsafe', 'seen': True})))),
+                                               'task': 'stop_unsafe', 'seen': True}))), 'on.unsafe'),
     ('a put-right for the phone without audio', 'unknown_key', _all(
-        _st(lambda st: st.pop('audio')), _st(lambda st: st['put_right'].pop('audio')))),
+        _st(lambda st: st.pop('audio')), _st(lambda st: st['put_right'].pop('audio')),
+        _st(lambda st: st['reactions'].pop())), 'put_right'),
 ]
 
 
@@ -5010,7 +5011,7 @@ def audio_part():
     af = audio_files()
     return {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in af.items()},
             'counts': check(af).counts,
-            'reject': reject_changes(af, REJECTS_AUDIO, af),
+            'reject': reject_changes(af, [r[:3] for r in REJECTS_AUDIO], af),
             'runs': build_runs(audio_runs(), af)}
 
 

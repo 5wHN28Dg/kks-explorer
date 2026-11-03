@@ -826,6 +826,59 @@ class HandsVectors(PartVectors, unittest.TestCase):
         H.check_components(b)
 
 
+class AudioVectors(PartVectors, unittest.TestCase):
+    """Milestone HS7 (REALISM.md §8.5): personal audio and the phone: banned and Ex zones, the audio and phone inputs
+    and acts, noticing after a drawn delay or at once after a missed call, the device held until the duty ends."""
+    part, rejects = 'audio', 'REJECTS_AUDIO'
+
+    def evs(self, k, kinds):
+        return [x for x in self.st['runs'][k]['events'] if x[1] in kinds]
+
+    def test_noticed_not_at_once(self):
+        """An observer sharing the zone takes at least `notice`'s minimum (2 clock minutes, 20 steps at day_scale
+        60) to notice music: the stop's task never starts in the step the act does (a hard hat is seen at once)."""
+        for k in (0, 3):
+            ev = self.st['runs'][k]['events']
+            start = next(x[0] for x in ev if x[1:4] == ['unsafe', 'a_fo1', 'audio'])
+            stop = next(x for x in ev if x[1] == 'stop' and x[3] == 'a_fo1')
+            given = next(x[0] for x in ev if x[1:5] == ['task', stop[2], 'stop_unsafe', 'start'] and x[0] >= start)
+            self.assertGreaterEqual(given - start, 20, f'run {k}')
+
+    def test_missed_call_reports_the_act(self):
+        """A message missed over the music while the act goes on: the shift supervisor (the only one of the roles on
+        duty at 17:00, in the control room, nowhere near the hall) is given the stop at once: it starts when their
+        idle step ends, and they are the one who holds the device."""
+        ev = self.st['runs'][1]['events']
+        missed = next(x for x in ev if x[1] == 'missed')
+        self.assertEqual(missed[2], 'a_fo1')
+        started = next(x for x in ev if x[1:4] == ['task', 'a_sup', 'stop_unsafe'])
+        self.assertLessEqual(missed[0], started[0])
+        self.assertIn([started[0], 'task', 'a_sup', 'idle_sup', 'done'], ev)
+        self.assertIn(['held', 'a_fo1', 'a_sup'], [x[1:] for x in ev])
+
+    def test_device_held_until_the_duty_ends(self):
+        ev = self.st['runs'][1]['events']
+        off = next(x[0] for x in ev if x[1:] == ['duty', 'a_fo1', 'off'])
+        self.assertEqual([x[0] for x in ev if x[1] == 'returned'], [off])
+        held = next(x[0] for x in ev if x[1] == 'held')
+        self.assertTrue(all(x[4] == 'refused' and x[5] == ['held'] for x in ev
+                            if x[1] in ('audio', 'phone') and held < x[0] < off))
+        self.assertEqual(self.evs(1, ('audio',))[-1][4:], ['done', []])
+
+    def test_refusals(self):
+        self.assertIn([2301, 'phone', 'a_fo1', 'leave', 'refused', ['held']], self.evs(0, ('phone',)))
+        self.assertIn([620, 'audio', 'a_fo1', 20, 'refused', ['left']], self.evs(2, ('audio',)))
+        self.assertEqual([x[4:] for x in self.evs(4, ('audio', 'phone'))], [['refused', ['no_audio']]] * 2)
+        self.assertEqual(self.evs(5, ('audio', 'phone', 'held')), [])     # free mode: nothing
+
+    def test_no_acts_of_the_new_kinds_without_the_key(self):
+        self.assertFalse([x for x in self.evs(4, ('unsafe',)) if x[3] in ('audio', 'phone')])
+
+    def test_out_of_range_inputs_ignored(self):
+        """A volume of 101 or not a number, a phone input not leave or take: no event."""
+        self.assertEqual([x[3] for x in self.evs(1, ('audio',))], [60, 20])
+        self.assertNotIn('drop', [x[3] for x in self.evs(2, ('phone',))])
+
 class SyntheticLoad(unittest.TestCase):
     """tools/plant3d/realism_synth.py (§11's measurement before any realism content): its loads of 600 and 1,000
     values pass the validator on the first train, are made the same every time, keep §11's split, and step."""
