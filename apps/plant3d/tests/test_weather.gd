@@ -222,8 +222,20 @@ func _app(tree: SceneTree) -> Array:
 	await tree.process_frame
 	var wv = main.weather
 	var e = ui.clock.engine
+	if not wv.on or not e.ix.has("world_wx"):
+		p.append("cold_iron has weather (a summer day, since 2026-11-03), yet the view is off")
+	# every shipped scenario has weather now: a version 2 scenario without `world`, as content may still have one,
+	# made from cold_iron for the checks of a plant without weather
+	var no_wx: Dictionary = ui.model.scenarios["cold_iron"].duplicate(true)
+	no_wx.erase("world")
+	no_wx["id"] = "no_weather"
+	ui.model.scenarios["no_weather"] = no_wx
+	ui.restart("no_weather", true)
+	await tree.process_frame
+	wv._process(0.1)
+	e = ui.clock.engine
 	if wv.on or e.ix.has("world_wx"):
-		p.append("cold_iron has no weather, yet the view is on")
+		p.append("a scenario without weather, yet the view is on")
 	if WeatherView.globals.get("wx_wet") != 0.0 or not is_equal_approx(main.env.fog_density, WeatherView.CLEAR_FOG):
 		p.append("without weather the plant is not at its own look: wet %s, fog %f" % [str(WeatherView.globals.get("wx_wet")), main.env.fog_density])
 	var rect: Vector4 = WeatherView.globals.get("wx_roof_rect")
@@ -340,7 +352,7 @@ func _app(tree: SceneTree) -> Array:
 	if float(WeatherView.globals.get("wx_wet")) < 0.9:
 		p.append("out of the Workshop the plant is not wet again")
 	# back to a scenario without weather: the plant's own look again
-	ui.restart("cold_iron", true)
+	ui.restart("no_weather", true)
 	await tree.process_frame
 	wv._process(0.1)
 	if wv.on or not is_equal_approx(main.env.fog_density, WeatherView.CLEAR_FOG) or wv.particles.amount_ratio != 0.0 \

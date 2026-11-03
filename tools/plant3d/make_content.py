@@ -91,12 +91,13 @@ def add_air_permissives(areas, models):
 
 
 def _with_world(sc, world):
-    """A version 2 scenario with its `world` after its `start` (REALISM.md §2.1)."""
+    """A version 2 scenario with its `world` after its `start` (REALISM.md §2.1), or last without one."""
     out = {}
     for k, v in sc.items():
         out[k] = v
         if k == 'start':
             out['world'] = world
+    out.setdefault('world', world)
     return out
 
 

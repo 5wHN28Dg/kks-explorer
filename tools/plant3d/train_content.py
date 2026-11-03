@@ -269,21 +269,21 @@ def scenarios(state_kks):
     import train_lift
     faults = [fault(f, s, t, state_kks) for f, s, t in FAULTS] + wtp_model.faults(state_kks) + train_hoists.faults() + train_lift.faults()
     latched = ['gt1_trip_lube', 'st_trip_lube', 'st_trip_cond_p']
-    return [{'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'cold_iron',
+    return [{'format': 'walkdown-plant-scenario', 'version': 2, 'id': 'cold_iron',
              'title': 'Cold start after a long outage', 'init': dict(COLD_INIT), 'latched': latched,
              'faults': faults},
-            {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'hot_restart',
+            {'format': 'walkdown-plant-scenario', 'version': 2, 'id': 'hot_restart',
              'title': 'Hot restart three hours after a trip', 'init': dict(COLD_INIT, **HOT_INIT),
              'latched': latched, 'faults': faults},
             # WATER-TREATMENT §7: the water treatment plant stopped, its tanks at 60 %; the train at cold iron
-            {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'wtp_cold',
+            {'format': 'walkdown-plant-scenario', 'version': 2, 'id': 'wtp_cold',
              'title': 'Water treatment plant stopped, tanks at 60 %', 'init': dict(COLD_INIT, **wtp_model.COLD_WTP),
              'latched': latched, 'faults': faults},
             # W3: the water treatment plant's day work, and the river in flood
-            {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'wtp_normal',
+            {'format': 'walkdown-plant-scenario', 'version': 2, 'id': 'wtp_normal',
              'title': 'Water treatment plant: a normal day\'s work',
              'init': dict(COLD_INIT, **wtp_model.NORMAL_WTP), 'latched': latched, 'faults': faults},
-            {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'wtp_flood',
+            {'format': 'walkdown-plant-scenario', 'version': 2, 'id': 'wtp_flood',
              'title': 'Water treatment plant: the river in flood (500 NTU)',
              'init': dict(COLD_INIT, **wtp_model.FLOOD_WTP), 'latched': latched, 'faults': faults}]
 
