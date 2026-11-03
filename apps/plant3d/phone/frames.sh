@@ -10,6 +10,8 @@
 #   WALK_EXTRA="crews=1\n"   the frames walk among the crews at work (S2's and S3's staff in free mode, at normal speed):
 #             one of the frame rules' walks (with frames, wtp and camp; docs/plant3d/MILESTONES.md); with probe=1 the
 #             result's SCRIPTS lines say where the scripts' time went (app/script_cost.gd)
+#   WALK_EXTRA="weather=sandstorm\n"   the walk in that weather (weather.json's kinds); without weather= every walk runs
+#             in clear weather, whatever the scenario's season (app/main.gd measured_weather)
 #   WALK_EXTRA="probe=1\n"   and frames.csv, where each frame's time went (app/frame_probe.gd), pulled beside result.txt
 #   The frame rules judge normal play only (the user, 2026-10-27): the frames played in fast-forward are counted
 #             apart (the result's FASTFORWARD line, SPIKE_FF lines; RESULT, CADENCE and SPIKE are the frames at 1×), and
@@ -147,7 +149,11 @@ sh_ am force-stop "$PKG"
 [ -n "$KEEP" ] || sh_ pm clear "$PKG" >/dev/null   # a first start: no shader cache, no saved settings (as after an install)
 sh_ mkdir -p "$FILES"
 sh_ rm -f "$FILES/result.txt" "$FILES/frames.csv"   # (a kept app's last walk)
-printf 'walk=frames\nseconds=%s\n%b' "$SECONDS_" "${WALK_EXTRA:-}" > "$OUT/walk.txt"
+# clear weather unless WALK_EXTRA names another (weather=KIND) or joins a session (mp=: the host's weather rules it);
+# the app does the same for any walk (app/main.gd measured_weather), written here so walk.txt records it
+WX=""
+case "${WALK_EXTRA:-}" in *weather=*|*mp=*) ;; *) WX='weather=clear\n' ;; esac
+printf 'walk=frames\nseconds=%s\n%b%b' "$SECONDS_" "$WX" "${WALK_EXTRA:-}" > "$OUT/walk.txt"
 a push "$OUT/walk.txt" "$FILES/walk.txt" >/dev/null
 # in front and unlocked, or nothing is drawn (0041)
 # (wake it and dismiss the keyguard, as on the Note 9, which has no screen lock; a phone with one must be unlocked
