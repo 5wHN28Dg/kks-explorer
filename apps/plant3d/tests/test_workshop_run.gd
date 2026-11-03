@@ -34,6 +34,14 @@ class OneValue:
 class Comps:
 	var comps := {}
 
+## Counts the engine's errors that name a MultiMesh's buffer (the warm-up's duplicated MultiMeshes logged them).
+class BufferErrors extends Logger:
+	var count := 0
+	func _log_error(_function: String, _file: String, _line: int, code: String, rationale: String,
+			_editor_notify: bool, _error_type: int, _script_backtraces: Array[ScriptBacktrace]) -> void:
+		if (code + rationale).contains("set a buffer on a Multimesh"):
+			count += 1
+
 var p: Array = []
 
 func check(ok: bool, what: String) -> void:
@@ -47,12 +55,16 @@ func run(tree: SceneTree) -> Array:
 	_free_rotor()
 	_fault_without_repair()
 	_logs_bounded()
+	var buf_errors := BufferErrors.new()
+	OS.add_logger(buf_errors)
 	var main := App.start(tree)
 	if main.ui == null or main.workshop == null:
+		OS.remove_logger(buf_errors)
 		main.free()
 		return p + ["the app did not start with its Workshop"]
 	await tree.process_frame
 	var ws = main.workshop
+	ws.warm_slice_us = 300   # (small: the material pass is cut into many slices, each checked below)
 	# the Workshop opened before the plant's warm-up comes due: the warm-up waits until it closes (its meshes' pipelines
 	# are made on the main thread as they enter the plant's world: a hitch in the Workshop's frames, K4a)
 	for i in 600:
@@ -86,8 +98,20 @@ func run(tree: SceneTree) -> Array:
 			await tree.process_frame
 		for k in ws.kinds():
 			check(ws._warm_kinds_done.has(k), "the plant's early warm-up held %s's machine (%s)" % [k, str(ws._warm_kinds_done)])
+		# spread over frames (the steam turbine's done in one frame made a 0.7 s plant frame on the Note 9): its script
+		# work in slices of about WARM_SLICE_US, its pieces into the plant's world WARM_PER_FRAME at most a frame
+		check(ws.warm_pieces > 12 and ws.warm_most_added > 0 and ws.warm_most_added <= 12 and
+			ws.warm_batches >= ceili(float(ws.warm_pieces) / 12.0),
+			"the warm-up adds at most 12 pieces a frame (%d of a kind's %d, in %d frames)" % [ws.warm_most_added,
+				ws.warm_pieces, ws.warm_batches])
+		check(ws.warm_on_thread, "each kind's scene is instanced on a worker thread")
+		check(ws.warm_slices > 1 and ws.warm_slice_us_max > 0 and ws.warm_slice_us_max < 5000,
+			"the warm-up's material pass cut into slices of about %d us: %d cuts, the longest %d us" % [ws.warm_slice_us,
+				ws.warm_slices, ws.warm_slice_us_max])
+		check(buf_errors.count == 0, "the warm-up's MultiMeshes are made without a buffer error (%d)" % buf_errors.count)
 	else:
 		check(false, "the plant's early warm-up ran")
+	OS.remove_logger(buf_errors)
 	ws.open("pressure_transmitter")
 	if not await _wait_shown(tree, ws):
 		main.free()

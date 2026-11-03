@@ -29,6 +29,7 @@ const FORMS := {
 	"say": [["s", "s"]], "pick": [["i"]], "call": [["s", "s", "zs"]], "jump": [["s"]], "ppe": [["s", "i"]],
 	"zone": [["s", "s"]], "stop": [["s"]], "board": [["s", "zs"]], "alight": [["s", "zs"]],
 	"get_on": [["s"]], "drive": [["s", "s"], ["s", "s", "s"]], "weather": [["s"]],
+	"audio": [["i"]], "phone": [["s"]],    # (REALISM.md §8.5)
 	"tool": [["s", "i", "zs"]], "hand": [["s", "s", "zs", "zn", "zs"]],    # (REALISM.md §2.3, §2.4)
 }
 

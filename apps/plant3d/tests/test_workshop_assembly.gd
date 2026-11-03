@@ -113,10 +113,15 @@ func _pure() -> void:
 	check(h.why_not_remove("p", {"c": true}) == "Take x off first.", "a parent holding a needed part stays: '%s'" % h.why_not_remove("p", {"c": true}))
 	# the Compatibility renderer's warm draw waits until it would be drawn
 	var WS = load("res://workshop/workshop.gd")   # (untyped)
-	check(not WS.can_draw_warm(null, false, false), "no camera, no warm draw")
+	check(not WS.can_draw_warm(null, false, false, 100, -100), "no camera, no warm draw")
 	var c3 := Camera3D.new()
-	check(not WS.can_draw_warm(c3, true, false) and not WS.can_draw_warm(c3, false, true) and WS.can_draw_warm(c3, false, false),
-		"not with the 3D off or the Workshop open")
+	check(not WS.can_draw_warm(c3, true, false, 100, -100) and not WS.can_draw_warm(c3, false, true, 100, -100) and
+		WS.can_draw_warm(c3, false, false, 100, -100), "not with the 3D off or the Workshop open")
+	# nor in the frames after a close, as the Mobile renderer's warm-up keeps out of them (the way back's frame)
+	check(not WS.can_draw_warm(c3, false, false, 100, 100) and not WS.can_draw_warm(c3, false, false, 102, 100) and
+		WS.can_draw_warm(c3, false, false, 103, 100), "not in the close's frame nor the two after it")
+	check(not WS.may_warm(false, 101, 100) and WS.may_warm(false, 103, 100) and not WS.may_warm(true, 500, 100),
+		"the same rule as the Mobile renderer's warm-up")
 	c3.free()
 	check(FileAccess.get_file_as_string("res://workshop/ws_xray.gdshader").contains("depth_test_disabled"), "the ghost shows through the parts in front of it")
 	var box := AABB(Vector3.ZERO, Vector3(0.3, 0.4, 0.0))   # diagonal 0.5 m: 2 % is 10 mm
@@ -359,6 +364,25 @@ func _turbine(tree: SceneTree, ws) -> void:
 			break
 	check(ws.guide.done() and ws.guide.loose.is_empty(), "the turbine is put back together in the guided order (%d loose)" % ws.guide.loose.size())
 	check(_near(_transforms(ws), at0), "every part of the turbine where it was built")
+	ws.reset()
+	# the Workshop walk's guided phases walk every step of the turbine (K4a's fixed pace left 14 parts loose), at the
+	# phone's worst pace of 30 frames a second: taken apart by the end of its phase, then every part put back
+	var W = load("res://app/workshop_walk.gd")
+	var walk = W.new()
+	walk.main = ws.main
+	walk.ws = ws
+	walk.running = true
+	walk.t = W.APART[0]
+	var apart_done := false
+	while walk.t < W.PILE[1] - 0.05:
+		if walk.t + 1.0 / 30.0 >= W.APART[1] and not apart_done:
+			apart_done = true
+			check(ws.guide.mode == "disassemble" and ws.guide.done(),
+				"the walk takes the turbine apart within its phase (%s, next step %d)" % [ws.guide.mode, ws.guide.next_step()])
+		walk._process(1.0 / 30.0)
+	check(ws.guide.mode == "assemble" and ws.guide.done() and ws.guide.loose.is_empty(),
+		"the walk puts every part of the turbine back within its phase (%d loose)" % ws.guide.loose.size())
+	walk.free()
 	ws.reset()
 
 ## The fixture kind (no Workshop code for it): from exploded, its lid's symmetry, its screws after the lid.

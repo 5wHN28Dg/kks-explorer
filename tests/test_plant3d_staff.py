@@ -1236,7 +1236,16 @@ class FirstTrainStaff(unittest.TestCase):
         # S2's people keep their places in the file too; S3's come after them
         self.assertEqual([p['id'] for p in st.people[56:66]], ['a_wtp', 'a_chem', 'b_wtp', 'b_chem', 'c_wtp',
                                                                'c_chem', 'd_wtp', 'd_chem', 'chem1', 'chem2'])
-        self.assertEqual(set(st.put_right), {'ppe', 'permit', 'unsafe'})
+        self.assertEqual(set(st.put_right), {'ppe', 'permit', 'unsafe', 'audio', 'phone'})
+        # HS7 (REALISM.md §8.5): music banned in every zone (the process areas; the camp, offices and control room
+        # are in none), no Ex zone yet; the supervisors notice music as the HSE officer does, with stop-work authority
+        self.assertEqual(st.audio['banned'], set(range(len(st.zones))))
+        self.assertEqual(st.audio['ex'], set())
+        self.assertEqual(st.audio['rooms'], {'control_room'})     # (the user, 2026-11-03: the CCR answers alarms)
+        self.assertEqual(st.kinds, ('ppe', 'permit', 'unsafe', 'audio', 'phone'))
+        music = [r for r in st.reactions if r['on'] == {'unsafe': 'audio'}]
+        self.assertEqual([r['roles'] for r in music], [['shift_sup', 'maint_sup']])
+        self.assertTrue(all('stop_work' in st.roles[x]['authority'] for x in ('shift_sup', 'maint_sup')))
         # S1's people keep their places in the file (so their random streams), S2's come after them
         self.assertEqual([p['id'] for p in st.people[:32]][-4:], ['mech1', 'mech2', 'elec1', 'ic1'])
         self.assertEqual(self.b.plant['clock']['day_scale'], 6)

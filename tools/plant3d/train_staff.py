@@ -225,6 +225,9 @@ MESSAGES = {
     'need_permit': 'Reporting for a permit before I start',
     'shortcut_left': 'Shortcut left: working safely again',
     'walk_done': 'Safety walk done: findings in the log',
+    # milestone HS7 (REALISM.md §8.5)
+    'music_off': 'Music off, earbuds out: my phone is with the supervisor until the end of my shift',
+    'phone_out': 'Phone out of the Ex zone: left with the supervisor',
     **wtp_staff.MESSAGES,
 }
 
@@ -345,7 +348,7 @@ def roles():
                 'ppe': field_ppe if ppe is None else ppe, 'routine': routine, 'play': play}
     return [
         role('shift_sup', 'Shift supervisor', 'ops', ['operate_screen', 'request', 'approve', 'issue', 'lock_process',
-                                                       'remove_lock'],
+                                                       'remove_lock', 'stop_work'],
              'sup_shift', True, 'coverall_ops_white'),
         dict(role('ccr_op', 'Control room operator', 'ops', ['operate_screen', 'request', 'lock_process'],
                   'ccr_shift', True, 'coverall_ops', ['helmet', 'boots']),
@@ -360,7 +363,8 @@ def roles():
              'coverall_elec'),
         role('ic_tech', 'I&C technician', 'inst', ['operate_local', 'accept', 'lock_instrument', 'operate_hart'], 'tech_days', True,
              'coverall_inst'),
-        role('maint_sup', 'Maintenance supervisor', 'mech', ['request', 'accept'], 'ms_mech', True, 'supervisor'),
+        role('maint_sup', 'Maintenance supervisor', 'mech', ['request', 'accept', 'stop_work'], 'ms_mech', True,
+             'supervisor'),
         role('hse_officer', 'HSE officer', 'hse', ['stop_work'], 'hse_days1', True, 'hse',
              ['helmet', 'boots', 'glasses', 'ear', 'vest']),
         role('contractor_sup', 'Contractors\' supervisor', 'civil', ['request', 'accept'], 'con_sup_days', True,
@@ -702,10 +706,33 @@ def staff(models, layout):
             'lifts': [{'lift': train_lift.LIFT, 'landings': list(LIFT_POINTS)}],
             'places': places, 'ways': ways, 'next': nxt, 'zones': zones, 'roles': rl,
             'rosters': rosters() + camp_staff.rosters(),
-            'people': everyone, 'routines': rts, 'tasks': T + camp_staff.tasks(), 'reactions': reactions(model_reacts),
+            'people': everyone, 'routines': rts, 'tasks': T + camp_staff.tasks() + AUDIO_TASKS,
+            'reactions': reactions(model_reacts) + AUDIO_REACTIONS,
             'vehicles': camp_staff.vehicles(),
             'messages': MESSAGES, 'put_right': {'ppe': 'put_on_ppe', 'permit': 'ask_permit',
-                                                'unsafe': 'leave_shortcut'}}
+                                                'unsafe': 'leave_shortcut', 'audio': 'music_off',
+                                                'phone': 'phone_out'},
+            'audio': audio()}
+
+
+# milestone HS7 (REALISM.md §8.5): personal audio is banned in every zone (they are the process and operating areas:
+# the camp, offices, canteen, roads and the control room are in none); no Ex zone yet (the fuel gas station comes
+# with OP4, the hydrogen areas with HS6); a supervisor in the same zone takes 2–10 clock minutes to notice earbuds; a
+# call is missed from volume 50. The supervisors notice as the HSE officer does (their stop-work authority); a
+# colleague gives it away by reporting a call not answered. Appended after everything else, so no index moves.
+AUDIO_TASKS = [
+    {'id': 'music_off', 'title': 'Music off: hand the phone to the supervisor', 'priority': 1,
+     'steps': [{'say': 'music_off', 'to': 'channel'}, {'work': 2}]},
+    {'id': 'phone_out', 'title': 'Take the phone out of the Ex zone', 'priority': 1,
+     'steps': [{'say': 'phone_out', 'to': 'channel'}, {'work': 2}]}]
+AUDIO_REACTIONS = [{'on': {'unsafe': 'audio'}, 'roles': ['shift_sup', 'maint_sup'], 'task': 'stop_unsafe',
+                    'seen': True}]
+
+
+def audio():
+    """Personal audio (REALISM.md §8.5): banned in every zone, and in the central control room (the user, 2026-11-03:
+    its operators answer alarms)."""
+    return {'banned': [z[0] for z in ZONES], 'ex': [], 'notice': [2, 10], 'mask': 50, 'rooms': ['control_room']}
 
 
 def scenario(cold):

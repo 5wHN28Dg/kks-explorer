@@ -403,6 +403,130 @@ class Synthesis(unittest.TestCase):
             M.render_loop(bad, M.VOICES['fan_large'])
 
 
+MUSIC = {s['id']: s for s in LIBRARY['sounds'] if s['kind'] == 'music'}
+MUSIC_BUDGET_BYTES = 1_500_000    # REALISM.md §8.5: the package grows by about 1.2 MB for the three tracks
+
+
+class Music(unittest.TestCase):
+    """The phone's music (REALISM.md §8.5): three tracks of our own, synthesised from fixed rules and a seed each
+    (no samples, nothing recorded), each a seamless loop of 30-45 s in the track's key and tempo, at one level for
+    all; and the staff bus's engine (a synth loop as the others: its level, loop and tones are checked with them)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.made = {mid: M.render_music(s) for mid, s in MUSIC.items()}
+
+    def test_three_tracks_of_our_own(self):
+        self.assertEqual(len(MUSIC), 3)
+        self.assertEqual(set(MUSIC), set(M.MUSIC), 'a track without rules, or rules without a track')
+        for mid, s in MUSIC.items():
+            self.assertEqual(set(s), {'id', 'kind', 'title', 'seed', 'made'}, mid)     # no licence: nobody else's
+            self.assertIn('our own', s['made'], mid)
+            self.assertIn('no samples', s['made'], mid)
+        self.assertEqual(len({s['seed'] for s in MUSIC.values()}), 3, 'each track its own seed')
+        # the bus's engine: a loop, its firing frequency (6 cylinders, four-stroke, 750 rpm) its strongest tone
+        self.assertIn('bus_engine', SYNTH)
+        self.assertEqual(max(SYNTH['bus_engine']['tones'], key=lambda z: z['gain'])['hz'], 750 / 60 * 6 / 2)
+
+    def test_deterministic(self):
+        for mid, s in MUSIC.items():
+            self.assertTrue(np.array_equal(M.pcm16(M.render_music(s)), M.pcm16(self.made[mid])), mid)
+        # and the seed is what makes it: another seed, another track
+        other = dict(MUSIC['music_gate_road'], seed=MUSIC['music_gate_road']['seed'] + 1)
+        self.assertFalse(np.array_equal(M.pcm16(M.render_music(other)), M.pcm16(self.made['music_gate_road'])))
+
+    def test_length_level_and_loop(self):
+        for mid, x in self.made.items():
+            r = M.MUSIC[mid]
+            with self.subTest(track=mid):
+                self.assertEqual(len(x), r['bars'] * 4 * 60 * FS // r['bpm'])
+                self.assertTrue(30 <= len(x) / FS <= 45, len(x) / FS)
+                self.assertAlmostEqual(M.level(M.pcm16(x) / 32767), M.MUSIC_LEVEL, delta=0.1)
+                self.assertLessEqual(np.max(np.abs(x)), M.PEAK_MAX)
+                # seamless: no step or bend across the loop point beyond the largest inside it
+                d = np.diff(np.concatenate([x, x[:1]]))
+                self.assertLessEqual(abs(d[-1]), np.max(np.abs(d[:-1])))
+                c = np.roll(x, -1) - 2 * x + np.roll(x, 1)
+                self.assertLessEqual(max(abs(c[0]), abs(c[-1])), np.max(np.abs(c[1:-1])))
+
+    def test_key_and_tempo(self):
+        """Music, not noise: most of the tonal power (90 Hz to 2 kHz) on the seven notes of the track's scale, and
+        the loudness swelling at the beat or a multiple of it (the drums)."""
+        for mid, x in self.made.items():
+            r = M.MUSIC[mid]
+            with self.subTest(track=mid):
+                p = np.abs(np.fft.rfft(x)) ** 2
+                f = np.fft.rfftfreq(len(x), 1 / FS)
+                sel = (f > 90) & (f < 2000)
+                pc = np.bincount((np.round(69 + 12 * np.log2(f[sel] / 440)).astype(int) - r['root']) % 12,
+                                 weights=p[sel], minlength=12)
+                self.assertGreater(pc[list(M.MODES[r['mode']])].sum() / pc.sum(), 0.85)
+                env = np.sqrt(np.convolve(x * x, np.ones(441) / 441, 'same'))[::441]       # 100 a second
+                spec = np.abs(np.fft.rfft(env - env.mean()))
+                ff = np.fft.rfftfreq(len(env), 1 / 100)
+                band = (ff > 0.5) & (ff < 10)
+                peak = ff[band][np.argmax(spec[band])]
+                beat = r['bpm'] / 60
+                self.assertTrue(any(abs(peak - beat * k) < 0.05 for k in (1, 2, 4)), (peak, beat))
+
+    def test_the_rules_refuse_what_is_not_a_loop(self):
+        s = MUSIC['music_night_shift']
+        for bad in (dict(bpm=97), dict(bars=13)):           # a beat not on a sample; bars not whole progressions
+            with self.subTest(bad=bad):
+                saved = M.MUSIC[s['id']]
+                M.MUSIC[s['id']] = dict(saved, **bad)
+                try:
+                    with self.assertRaises(ValueError):
+                        M.render_music(s)
+                finally:
+                    M.MUSIC[s['id']] = saved
+
+    def test_the_validator(self):
+        """ref/plant3d.py takes a track of kind `music` (an id, a title, a seed, how it was made) and refuses one that
+        isn't ours to make: a licence (a recording's), a seed that isn't a whole number in range, no title."""
+        sys.path.insert(0, ROOT)
+        from ref import plant3d as P
+        from ref.courses import FormatError
+        from ref.make_plant3d_vectors import enc, mini
+        good = dict(MUSIC['music_night_shift'])
+
+        def check(track):
+            files = mini()
+            files['sounds.json']['sounds'].append(track)
+            P.check_files(enc(files))
+        check(good)
+        for bad in (dict(good, licence='CC0-1.0'), dict(good, seed=1.5), dict(good, seed=-1), dict(good, seed=2 ** 31),
+                    {k: v for k, v in good.items() if k != 'title'}, dict(good, made='')):
+            with self.subTest(bad=bad):
+                with self.assertRaises(FormatError):
+                    check(bad)
+
+    def test_files(self):
+        need_ffmpeg(self)
+        tmp = tempfile.mkdtemp(prefix='plant3d-music-')
+        try:
+            index = {}
+            M.build_music(tmp, index)
+            self.assertEqual(set(index['music']), set(MUSIC))
+            for mid, e in index['music'].items():
+                with self.subTest(track=mid):
+                    self.assertEqual(e['title'], MUSIC[mid]['title'])
+                    with open(os.path.join(tmp, e['file']), 'rb') as f:
+                        data = f.read()
+                    self.assertEqual(data[:4], b'OggS')
+                    self.assertEqual(len(data), e['bytes'])
+                    x = M.decode(data)
+                    self.assertEqual(len(x), e['samples'])
+                    self.assertLess(np.max(np.abs(x)), 0.99, 'clips after Vorbis')
+                    self.assertAlmostEqual(M.level(x), M.MUSIC_LEVEL, delta=0.5)
+                    self.assertLessEqual(e['click_db'], M.CLICK_MAX_DB, 'the loop point ticks after Vorbis')
+            self.assertLessEqual(index['music_bytes'], MUSIC_BUDGET_BYTES)
+            print(f'\nWalkdown Plant music: {len(index["music"])} tracks, {index["music_bytes"] / 1e6:.2f} MB',
+                  file=sys.stderr)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class HearingProtection(unittest.TestCase):
     """FIRST-TRAIN §6: a hearing-protection sign at the doors of loud areas, as on site. A building is loud where a
     machine bound inside it sounds at 85 dB(A) or more at 1 m (its voice's `spl`; the upper exposure action value of

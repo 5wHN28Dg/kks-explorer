@@ -6,11 +6,17 @@
 ##         ("Seen" is the task_ack input that lets fast-forward run again, §17.6), and the round's readings sheet.
 ##   Radio: the messages and calls between the roles (the events `say` and `call`), the trainee's own messages and
 ##         requests (the calls the content makes to other roles), and "Sleep to the next shift" (a jump) when allowed.
+##         A message or a radio call of their role the trainee missed over their music (the event `missed`,
+##         REALISM.md §8.5) shows as "Missed call from …", without its text.
+##   Phone: the trainee's music and phone (ui/phone.gd), in free mode too.
 ## Everything goes to the engine as an input; nothing here changes the plant itself. Touch, keyboard and gamepad:
 ## every control is a button or a line edit that takes the focus (Esc or B closes, as the other panels).
 extends PanelContainer
 
 const RADIO_LINES := 10         # the radio's last lines shown
+## The unsafe acts' kinds in the engine's order (PLANT3D §16.7; with staff.json's `audio` the last two, REALISM.md
+## §8.5): an act's index in sp_acts.
+const KINDS := ["ppe", "permit", "unsafe", "audio", "phone"]
 
 const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
 
@@ -33,6 +39,8 @@ var _radio_shown := -1          # how many of _radio's lines there were when the
 var _head: Label = null         # the trainee's header line (role, duty, clock) and its text before the clock
 var _head_text := ""
 var _reads: Dictionary = {}     # person -> their read events
+var _exchanges: Dictionary = {}  # "step|caller" -> true: a call or message to the trainee missed then (its others too)
+var _said: Dictionary = {}      # "from|message" -> the radio line of its last say (a missed call replaces it)
 
 
 func setup(u) -> void:
@@ -88,16 +96,16 @@ func _each_frame(delta: float) -> void:
 func _signature(e) -> String:
 	var sm = e._sm
 	if sm == null:
-		return "none"
+		return "none|" + ui.phone.sig()
 	var tr: int = ui.my_person()
 	var cur = e.sp_cur[tr] if tr != -1 else null
 	# (free mode shows the roles or a line, and the radio's last lines; the sleep button's state, fast-forward's,
 	# only with a role. The radio's new lines alone are written into the lines shown, without a rebuild: refresh)
-	return "%d|%d|%s|%s|%d|%d|%d|%s|%d|%s" % [tr, e.step_no if tr == -1 and e.step_no < 2 else 0,
+	return "%d|%d|%s|%s|%d|%d|%d|%s|%d|%s|%s" % [tr, e.step_no if tr == -1 and e.step_no < 2 else 0,
 			str(cur["task"]) + str(cur["step"]) + str(cur["st"].get("dest", "")) if cur != null else "",
 			(str(e.sp_queue[tr].size()) + "/" + str(e.sp_slots[tr].size())) if tr != -1 else "", e.unacked(ui.inputs.slot),
 			_reads_count(e), e.t_at(ui.inputs.slot), str(e.fast_forward()) if tr != -1 else "", e.J,
-			_safety_sig(e) + _me_sig(e) if tr != -1 else ""]
+			_safety_sig(e) + _me_sig(e) if tr != -1 else "", ui.phone.sig()]
 
 
 ## What else the trainee's part shows (its header's duty, the waiting tasks' priorities, whether a permit is open:
@@ -122,10 +130,18 @@ func _safety_sig(e) -> String:
 		return ""
 	var near := ""
 	for qi in sm.people.size():
-		if e.sp_acts[qi] != [null, null, null] and ui.near_person(qi):
+		if _acting(e.sp_acts[qi]) and ui.near_person(qi):
 			near += str(qi) + ","
 	return "%d/%d/%s/%s/%s" % [e.sp_worn[ui.my_person()], e.sp_zin[ui.my_person()], str(e.sp_acts.hash()),
 			str(ui.at_locker()), near]
+
+
+## Whether a person's acts (one a kind, null when none) hold any.
+static func _acting(acts: Array) -> bool:
+	for a in acts:
+		if a != null:
+			return true
+	return false
 
 
 ## The trainee's readings so far (their sheet); the events read first.
@@ -142,14 +158,35 @@ func _follow(e) -> void:
 		_j = 0
 		_radio.clear()
 		_reads.clear()
+		_said.clear()
+		_exchanges.clear()
 	var sm = e._sm
+	var me_id = sm.people[ui.my_person()]["id"] if sm != null and ui.my_person() != -1 else null
+	var me_role = sm.people[ui.my_person()]["role"] if me_id != null else null
 	for k in range(_seen, e.events.size()):
 		var ev: Array = e.events[k]
 		if ev[1] == "jump" and ev[4] == "done":
 			_j += ev[3] - ev[2]
+		elif ev[1] in ["say", "call"] and _exchanges.has("%d|%s" % [ev[0], ev[2]]) \
+				and ((ev[1] == "say" and (ev[4] == me_id or ev[4] == me_role)) or (ev[1] == "call" and ev[3] == me_role)):
+			pass        # the rest of an exchange missed over the music (REALISM.md §8.5): its one line says so
 		elif ev[1] == "say":
+			_said["%s|%s" % [ev[2], ev[3]]] = _radio.size()
 			_radio.append("%s  %s → %s: %s" % [_at(e, ev[0], _j), _call(sm, ev[2]), _to(sm, ev[4]), sm.messages.get(ev[3], ev[3])])
+		elif ev[1] == "missed" and ui.my_person() != -1 and ev[2] == sm.people[ui.my_person()]["id"]:
+			# not heard over the music (REALISM.md §8.5): who called, not what (and no sound for it)
+			var line := "%s  Missed call from %s" % [_at(e, ev[0], _j), _call(sm, ev[4])]
+			# (a radio call of the player's role missed carries "call" last: its call line is replaced)
+			var key := ("call|%s|%s" if ev.size() > 5 and ev[5] == "call" else "%s|%s") % [ev[4], ev[3]]
+			var at_line: int = _said.get(key, -1)
+			if at_line >= 0:
+				_radio[at_line] = line
+			else:
+				_radio.append(line)
+			_exchanges["%d|%s" % [ev[0], ev[4]]] = true
+			_radio_shown = -1           # (a line already shown changed: written again)
 		elif ev[1] == "call" and ev[6] == "done":
+			_said["call|%s|%s" % [ev[2], ev[4]]] = _radio.size()
 			_radio.append("%s  %s → %s: %s" % [_at(e, ev[0], _j), _call(sm, ev[2]), _to(sm, ev[3]),
 					sm.tasks[ev[4]]["title"] if sm.tasks.has(ev[4]) else ev[4]])
 		elif ev[1] == "read":
@@ -165,6 +202,7 @@ func refresh() -> void:
 		_follow(e)
 	var sig := _signature(e)
 	if sig == _sig:
+		ui.phone.show()
 		if _radio.size() != _radio_shown:
 			_radio_lines()
 		if e._sm != null and ui.my_person() != -1 and is_instance_valid(_head) and _head.is_inside_tree():
@@ -186,11 +224,13 @@ func refresh() -> void:
 			if ui.model.scenarios[sid].has("staff"):
 				var s := sid as String
 				body.add_child(W.button("Start: " + ui.model.scenarios[s].get("title", s), func(): ui.start_shift(s)))
+		ui.phone.build(body)
 		return
 	if ui.my_person() == -1:
 		_roles(e, sm)
 	else:
 		_me(e, sm)
+	ui.phone.build(body)
 	_radio_log(e, sm)
 	if entry != null and typed != "" and typed_for == _entry_code:
 		entry.text = typed                  # a reading being typed survives the panel's rebuild (the same reading's)
@@ -546,8 +586,18 @@ static func act_text(sm, kind: int, a) -> String:
 			return "in the %s without all its PPE" % (String(sm.d["zones"][z].get("title", det)).to_lower() if z >= 0 else str(det))
 		1:
 			return "working before the permit of %s is accepted" % str(det)
+		3:
+			return "listening to music in the %s" % _zone_title(sm, det)
+		4:
+			return "carrying a phone in the Ex zone %s" % _zone_title(sm, det)
 		_:
 			return "a shortcut" + (" on %s" % str(det) if det != null else "")
+
+
+static func _zone_title(sm, det) -> String:
+	var z: int = sm.zone_ix.get(det, -1) if sm != null else -1
+	# (not a zone: a room where music is banned, REALISM.md §8.5: "control_room" is "control room")
+	return String(sm.d["zones"][z].get("title", det)).to_lower() if z >= 0 else str(det).replace("_", " ")
 
 
 ## What the trainee wears, what their zones need, their own unsafe acts, and (with stop_work) the acts they can see.
@@ -583,7 +633,7 @@ func _safety(e, sm) -> void:
 				var b := W.button("Take off " + PPE_WORDS.get(item, item), func(): ui.inputs.ppe(item, 0))
 				b.name = "off_" + item
 				row.add_child(b)
-	for k in 3:
+	for k in e.sp_acts[pi].size():
 		var a = e.sp_acts[pi][k]
 		if a != null:
 			body.add_child(W.label("Unsafe act: you are " + act_text(sm, k, a), 18, W.BAD_COLOUR))
@@ -593,7 +643,7 @@ func _safety(e, sm) -> void:
 	for qi in sm.people.size():
 		if qi == pi or (sm.zones_of(e, qi) & zm) == 0:
 			continue
-		for k in 3:
+		for k in e.sp_acts[qi].size():
 			var a = e.sp_acts[qi][k]
 			if a == null or a[2]:
 				continue

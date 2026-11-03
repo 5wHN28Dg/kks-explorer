@@ -13,7 +13,7 @@ from ref.plant3d_staff import mix32, mul32, draw  # noqa: F401  (draw: the one g
 
 # the purpose tags (§2.1): each purpose's streams are its own, so adding one purpose's items moves no other's draws
 TAGS = {'draw': 0x44524157, 'causes': 0x43415553, 'weather': 0x57454154, 'stores': 0x53544f52, 'lab': 0x4c414253,
-        'slips': 0x534c4950}
+        'slips': 0x534c4950, 'audio': 0x41554449}
 # the clock values (§2.1): engine-kept values after every other slot, only in a scenario with `world`
 NAMES = ('world_hour', 'world_day')
 DAY = 864000            # tenths of a clock second in a day

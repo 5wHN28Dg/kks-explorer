@@ -31,7 +31,7 @@ def replay(st, r, scenario=None, digests=None):
     """A run of the file on the reference: (engine, snapshots at the run's `every`)."""
     if scenario is not None:
         r = dict(r, scenario=scenario)
-    e = P.Engine(P.check_files(files_of(st, r)), 's1')
+    e = P.Engine(P.check_files(files_of(st, r)), 's1', r.get('session', False))    # (a session run: HS7's)
     states = [e.snapshot()]
     if digests is not None:
         digests.append(e.digest())
@@ -841,6 +841,130 @@ class HandsVectors(PartVectors, unittest.TestCase):
         b.workshop, b.workshop_tree = {}, {}
         H.check_components(b)
 
+
+class AudioVectors(PartVectors, unittest.TestCase):
+    """Milestone HS7 (REALISM.md §8.5): personal audio and the phone: banned and Ex zones, the audio and phone inputs
+    and acts, noticing after a drawn delay or at once after a missed call, the device held until the duty ends."""
+    part, rejects = 'audio', 'REJECTS_AUDIO'
+
+    def evs(self, k, kinds):
+        return [x for x in self.st['runs'][k]['events'] if x[1] in kinds]
+
+    def test_noticed_not_at_once(self):
+        """An observer sharing the zone takes at least `notice`'s minimum (2 clock minutes, 20 steps at day_scale
+        60) to notice music: the stop's task never starts in the step the act does (a hard hat is seen at once)."""
+        for k in (0, 3):
+            ev = self.st['runs'][k]['events']
+            start = next(x[0] for x in ev if x[1:4] == ['unsafe', 'a_fo1', 'audio'])
+            stop = next(x for x in ev if x[1] == 'stop' and x[3] == 'a_fo1')
+            given = next(x[0] for x in ev if x[1:5] == ['task', stop[2], 'stop_unsafe', 'start'] and x[0] >= start)
+            self.assertGreaterEqual(given - start, 20, f'run {k}')
+
+    def test_control_room(self):
+        """The follow-ups (the user, 2026-11-03): music in the control room (`audio.rooms`) is an act whose detail is
+        the room; leaving its places ends it; the shift supervisor at the room's table notices and stops it."""
+        run = self.st['runs'][9]
+        self.assertEqual(run['files']['staff.json']['audio']['rooms'], ['cr'])
+        acts = [x[1:] for x in run['events'] if x[1] in ('unsafe', 'safe') and x[2] == 'a_fo1']
+        self.assertEqual(acts[:3], [['unsafe', 'a_fo1', 'audio', 'cr'], ['safe', 'a_fo1', 'audio', 'cr'],
+                                    ['unsafe', 'a_fo1', 'audio', 'cr']])
+        self.assertIn(['stop', 'a_sup', 'a_fo1', 'audio', 'cr', 'done', []], [x[1:] for x in run['events']])
+        self.assertIn(['held', 'a_fo1', 'a_sup'], [x[1:] for x in run['events']])
+
+    def test_held_off_duty_to_the_next_duty(self):
+        """Taken off duty (18:30, day 1), the device stays held through a jump to 17:30 of day 2 (inside the next
+        duty: an audio input refused, held) and comes back with the jump past its end (18:00)."""
+        ev = self.st['runs'][10]['events']
+        held = next(x for x in ev if x[1:] == ['held', 'a_fo1', 'b_sup'])
+        refused = next(x for x in ev if x[1:] == ['audio', 'a_fo1', 20, 'refused', ['held']])
+        returned = next(x for x in ev if x[1:] == ['returned', 'a_fo1'])
+        jumps = [x for x in ev if x[1] == 'jump' and x[4] == 'done']
+        # (before the follow-ups it came back in the stop's step)
+        self.assertLess(held[0], jumps[0][0])
+        self.assertLess(refused[0], returned[0])
+        self.assertEqual(returned[0], jumps[1][0])
+        self.assertEqual([x[1:] for x in ev if x[1] == 'audio'][-1], ['audio', 'a_fo1', 20, 'done', []])
+
+    def test_music_at_the_wheel(self):
+        ev = [x[1:] for x in self.st['runs'][11]['events'] if x[1] == 'audio']
+        self.assertEqual(ev, [['audio', 'drv1', 30, 'done', []], ['audio', 'drv1', 0, 'done', ['driving']],
+                              ['audio', 'drv1', 20, 'refused', ['driving']], ['audio', 'drv1', 0, 'done', []],
+                              ['audio', 'drv1', 20, 'done', []]])
+
+    def test_locker_and_radio_call_missed(self):
+        ev = [x[1:] for x in self.st['runs'][12]['events']]
+        phone = [x for x in ev if x[0] == 'phone']
+        self.assertEqual(phone, [['phone', 'a_fo1', 'leave', 'refused', ['locker']],
+                                 ['phone', 'a_fo1', 'leave', 'done', []], ['phone', 'a_fo1', 'take', 'done', []]])
+        missed = [x for x in self.st['runs'][12]['events'] if x[1] == 'missed']
+        self.assertIn(['missed', 'a_fo1', 'check_alarm', 'c_ccr', 'call'], [x[1:] for x in missed])
+        # a call and its message in one step are one exchange: missed once
+        self.assertEqual(len({(x[0], x[4]) for x in missed}), len(missed))
+        self.assertIn(['held', 'a_fo1', 'a_sup'], ev)
+
+    def test_missed_call_reports_the_act(self):
+        """A message missed over the music while the act goes on: the shift supervisor (the only one of the roles on
+        duty at 17:00, in the control room, nowhere near the hall) is given the stop at once: it starts when their
+        idle step ends, and they are the one who holds the device."""
+        ev = self.st['runs'][1]['events']
+        missed = next(x for x in ev if x[1] == 'missed')
+        self.assertEqual(missed[2], 'a_fo1')
+        started = next(x for x in ev if x[1:4] == ['task', 'a_sup', 'stop_unsafe'])
+        self.assertLessEqual(missed[0], started[0])
+        self.assertIn([started[0], 'task', 'a_sup', 'idle_sup', 'done'], ev)
+        self.assertIn(['held', 'a_fo1', 'a_sup'], [x[1:] for x in ev])
+
+    def test_device_held_until_the_duty_ends(self):
+        ev = self.st['runs'][1]['events']
+        off = next(x[0] for x in ev if x[1:] == ['duty', 'a_fo1', 'off'])
+        self.assertEqual([x[0] for x in ev if x[1] == 'returned'], [off])
+        held = next(x[0] for x in ev if x[1] == 'held')
+        self.assertTrue(all(x[4] == 'refused' and x[5] == ['held'] for x in ev
+                            if x[1] in ('audio', 'phone') and held < x[0] < off))
+        self.assertEqual(self.evs(1, ('audio',))[-1][4:], ['done', []])
+
+    def test_device_back_after_a_jump_into_the_next_duty(self):
+        """The device held in one duty comes back when that duty ends, by the clock: a jump landing inside the next
+        duty (on duty again in the same step) gives it back in the jump's step, and the music plays again."""
+        ev = self.st['runs'][7]['events']
+        jump = next(x for x in ev if x[1] == 'jump')
+        self.assertEqual(jump[4], 'done')
+        self.assertIn([jump[0], 'returned', 'a_fo1'], ev)
+        self.assertIn([420, 'audio', 'a_fo1', 20, 'done', []], ev)
+
+    def test_session_slots(self):
+        """In a session each player's audio and phone events carry their slot; a message to their role is missed by
+        each player over the mask, in slot order."""
+        r = self.st['runs'][6]
+        self.assertTrue(r['session'])
+        ev = r['events']
+        self.assertIn([20, 'audio', 'a_fo2', 70, 'done', [], 1], ev)
+        self.assertIn([301, 'audio', 'a_fo2', 10, 'refused', ['left'], 1], ev)
+        missed = [x for x in ev if x[1] == 'missed']
+        self.assertEqual([x[2] for x in missed[:2]], ['a_fo1', 'a_fo2'])
+        self.assertEqual(missed[0][0], missed[1][0])
+
+    def test_music_toggled_is_still_noticed(self):
+        """Music off and on again every clock minute (under the 2-minute least time to notice) in an observer's
+        sight: their time keeps running while it is off, so the act is still noticed, stopped and the device held."""
+        ev = self.st['runs'][8]['events']
+        starts = [x for x in ev if x[1:4] == ['unsafe', 'a_fo1', 'audio']]
+        self.assertGreater(len(starts), 5)
+        self.assertEqual([x[1:] for x in ev if x[1] == 'held'], [['held', 'a_fo1', 'hse1']])
+
+    def test_refusals(self):
+        self.assertIn([2301, 'phone', 'a_fo1', 'leave', 'refused', ['held']], self.evs(0, ('phone',)))
+        self.assertIn([620, 'audio', 'a_fo1', 20, 'refused', ['left']], self.evs(2, ('audio',)))
+        self.assertEqual([x[4:] for x in self.evs(4, ('audio', 'phone'))], [['refused', ['no_audio']]] * 2)
+        self.assertEqual(self.evs(5, ('audio', 'phone', 'held')), [])     # free mode: nothing
+
+    def test_no_acts_of_the_new_kinds_without_the_key(self):
+        self.assertFalse([x for x in self.evs(4, ('unsafe',)) if x[3] in ('audio', 'phone')])
+
+    def test_out_of_range_inputs_ignored(self):
+        """A volume of 101 or not a number, a phone input not leave or take: no event."""
+        self.assertEqual([x[3] for x in self.evs(1, ('audio',))], [60, 20])
+        self.assertNotIn('drop', [x[3] for x in self.evs(2, ('phone',))])
 
 class SyntheticLoad(unittest.TestCase):
     """tools/plant3d/realism_synth.py (§11's measurement before any realism content): its loads of 600 and 1,000
