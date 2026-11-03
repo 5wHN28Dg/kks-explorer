@@ -1038,6 +1038,12 @@ func refusal(at: String, do: String, reasons: Array) -> String:
 					return "%s: not from %s." % [String(o.get("title", do)), bench.machine_state(o.machine)]
 	return "Refused."
 
+## Whether every part stands at home (nothing taken apart, handled, hidden or in the steps).
+func assembled() -> bool:
+	if guide.on() or not handled.is_empty() or not hidden.is_empty():
+		return false
+	return Explode.offsets(spec, s, root_id).values().all(func(o): return (o as Vector3).length() < 1e-5)
+
 ## Why the machine can't run as it stands now ("" when it can): taken apart beyond what the kind's `run_exploded`
 ## allows (§4.7).
 func why_no_run() -> String:

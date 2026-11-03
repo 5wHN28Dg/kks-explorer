@@ -153,10 +153,12 @@ func _apply_xray() -> void:
 		var glass: bool = ws.comps[id].get_meta("glass", false)
 		for c in _meshes[id]:
 			c.material_override = _xray_mat if on else (glass_mat() if glass else mat_for(c.get_meta("mat"), thin))
+			c.visible = true
 		if on:
 			_xrayed[id] = true
 		else:
 			_xrayed.erase(id)
+	_glass_cut()
 
 
 
@@ -192,6 +194,35 @@ func set_section_turn(deg: float) -> void:
 func set_section_at(x: float) -> void:
 	section_at = clampf(x, 0.0, 1.0)
 	_planes()
+
+
+## Whether a point (the Workshop's world) is cut away by the cutaway or the section as they stand now.
+func cuts(p: Vector3) -> bool:
+	if ws == null or ws.machine == null:
+		return false
+	var pl: Array = ws.words.get("views", {}).get("cutaway", {}).get("planes", [])
+	if cut and not pl.is_empty():
+		var box: AABB = ws.machine.get_meta("box", AABB())
+		var away := true
+		for q in pl:
+			var a := plane_of(_v3(q.normal), float(q.offset), box)
+			away = away and (a[0] as Vector3).dot(p) > float(a[1])
+		if away:
+			return true
+	if section:
+		var sp := section_plane()
+		if (sp[0] as Vector3).dot(p) > float(sp[1]):
+			return true
+	return false
+
+
+## The see-through glass hidden where the cut takes it (ws_xray knows no planes); after every change of the planes.
+func _glass_cut() -> void:
+	for id in _meshes:
+		if ws.comps[id].get_meta("glass", false) and not _xrayed.has(id):
+			var box: AABB = ws.comps[id].get_meta("box", AABB())
+			for g in _meshes[id]:
+				g.visible = not cuts(box.get_center())
 
 
 ## The machine's first frame: the cap pass drawn with nothing cut (hidden behind the front faces), so its pipelines
@@ -252,6 +283,7 @@ func _planes() -> void:
 		m.set_shader_parameter("ws_plane2", p2)
 		m.set_shader_parameter("ws_cut_on", cut_on)
 		m.set_shader_parameter("ws_sec_on", sec_on)
+	_glass_cut()
 	var capping := cut_on > 0.5 or sec_on > 0.5 or _warm
 	for name in _capped:
 		var m: ShaderMaterial = _capped[name]

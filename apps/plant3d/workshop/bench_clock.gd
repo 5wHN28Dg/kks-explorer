@@ -139,11 +139,13 @@ func command(at: String, do: String) -> void:
 func fault(id: String) -> void:
 	if e != null:
 		e.fault(id)
+		faulted[id] = true      # (the panel shows it pressed at once, paused too; the next step makes it)
 
 
 func repair(id: String) -> void:
 	if e != null:
 		e.repair(id)
+		faulted.erase(id)
 
 
 func ack(alarm: String) -> void:
@@ -169,6 +171,18 @@ func alarms() -> Array:
 	for k in m.alarms.size():
 		if e.astate[k] != "normal":
 			out.append([m.alarms[k]["id"], m.alarms[k]["text"], e.astate[k]])
+	return out
+
+
+## The texts of the active alarms (not normal, not cleared) whose `where` is the component `at`.
+func alarms_at(at: String) -> Array:
+	var out := []
+	if e == null:
+		return out
+	for k in m.alarms.size():
+		var a: Dictionary = m.alarms[k]
+		if a.get("where") == at and (e.astate[k] == "active_unack" or e.astate[k] == "active_ack"):
+			out.append(a["text"])
 	return out
 
 

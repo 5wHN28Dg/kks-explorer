@@ -487,6 +487,12 @@ Faults: **over-range** (the output saturates at 20.5 mA and the display says so:
   the data's `why` when the machine stands apart beyond `run_exploded`. The display cover's face is a ring round
   its window (the plant's drum end unchanged), and glass the generator marks `glass` is drawn see-through, so the
   LCD reads through it.
+- **Reviews' fixes:** the flow's particles rest while the machine stands apart (its path is in the machine's frame);
+  a display shows the words of an active alarm whose `where` it is ("Over range"); the face labels and the
+  see-through glass go with what the cutaway or section removes (`ws_xray` knows no planes); a rotor whose `anim` has
+  no travel turns at its value in revolutions a second, added up over bench time; a flow path is at most 8 points
+  (the builder refuses more). `lamp` and `sound` bindings are checked but not yet drawn in the Workshop (the
+  transmitter has none; K4b's turbine brings them).
 - **Shaders:** `ws_lit` is `weathered.gdshaderinc` with `#define WS_LIT` (the plant's shader compiles exactly as
   before: the hooks are preprocessor blocks): a discard by the cut planes (`ws_cut.gdshaderinc`, shared with
   `ws_cap`), no weather, the heat and pressure colour and the selection's glow as instance uniforms (`ws_ramp`,

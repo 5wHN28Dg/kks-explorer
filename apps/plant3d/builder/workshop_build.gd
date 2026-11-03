@@ -21,6 +21,7 @@ extends RefCounted
 const Kit = preload("res://kit/kit.gd")
 const CID := "^[a-z_][a-z0-9_]{0,15}$"
 const MAX_DEPTH := 6
+const FLOW_POINTS := 8          # a flow path's points at most (workshop/ws_flow.gdshader's arrays)
 const TRIS_MAX := 120000   # one kind's scene, all components and insides (WORKSHOP.md §8)
 const FASTENER_KINDS := ["bolt", "stud_nut", "screw", "cap_screw", "threaded_cover", "clamp", "gland", "pin", "circlip", "key"]
 
@@ -250,6 +251,8 @@ static func join(res: Dictionary, data: Dictionary) -> Array:
 				errs.append("bench: %s's anim %s is not the generator's (%s)" % [x.at, x.anim, gen[x.at].anim])
 			if x.has("flow") and not res.flows.has(x.flow):
 				errs.append("bench: a flow on %s, a path the generator doesn't make" % x.flow)
+			elif x.has("flow") and res.flows[x.flow].size() > FLOW_POINTS:
+				errs.append("bench: the flow path %s has over %d points (ws_flow's)" % [x.flow, FLOW_POINTS])
 	return errs
 
 ## A component's depth (0 at the top), or -1 on a cycle.

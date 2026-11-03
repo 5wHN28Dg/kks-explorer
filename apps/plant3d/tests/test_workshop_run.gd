@@ -18,6 +18,21 @@ const App = preload("res://tests/ui_app.gd")
 const WB = preload("res://builder/workshop_build.gd")
 const Views = preload("res://workshop/views.gd")
 const Explode = preload("res://workshop/explode.gd")
+const BenchModel = preload("res://sim/bench_model.gd")
+const BenchView = preload("res://workshop/bench_view.gd")
+
+## A clock that gives one value (bench_view's free rotor).
+class OneValue:
+	var x := 0.0
+	func loaded() -> bool:
+		return true
+	func val(_n: String) -> float:
+		return x
+	func now(_n: String) -> float:
+		return x
+
+class Comps:
+	var comps := {}
 
 var p: Array = []
 
@@ -28,6 +43,8 @@ func check(ok: bool, what: String) -> void:
 func run(tree: SceneTree) -> Array:
 	_join()
 	_planes_math()
+	_loader_refuses()
+	_free_rotor()
 	var main := App.start(tree)
 	if main.ui == null or main.workshop == null:
 		main.free()
@@ -203,8 +220,29 @@ func _running(ws) -> void:
 	_channels(ws, "open loop")
 	ws.toggle_fault("loop_open")
 	_go(ws, 0.5)
-	# taken apart, it still runs (its data allows it)
+	# the display says over range (its alarm is where the display is), the face text and the glass cut away with it
+	ws.toggle_fault("over_range")
+	_go(ws, 6.0)
+	check(disp.size() == 1 and disp[0].label.text.contains("Over range"), "the display says over range: %s" %
+		(disp[0].label.text if disp.size() == 1 else "none"))
+	ws.views.set_section_axis(0)          # across: the display's half of the box cut away
+	ws.views.set_section_at(0.5)
+	ws.views.set_section(true)
+	_go(ws, 0.1)
+	var win: Array = ws.views._meshes.get("window", [])
+	check(disp.size() == 1 and not disp[0].label.visible, "the display's text goes with the half cut away")
+	check(not win.is_empty() and not win[0].visible, "and so does the see-through window")
+	ws.views.set_section(false)
+	_go(ws, 0.1)
+	check(disp.size() == 1 and disp[0].label.visible and win[0].visible, "and come back with it")
+	ws.toggle_fault("over_range")
+	_go(ws, 6.0)
+	# taken apart, it still runs (its data allows it); the impulse path's particles rest while the line is apart
 	ws.set_slider(1.0)
+	c.op_set("process_flange", 7.0)
+	_go(ws, 0.3)
+	check((fl.mat as ShaderMaterial).get_shader_parameter("density") == 0.0 and absf(c.now("flow_frac")) > 0.05,
+		"no particles float where the parts were while it is taken apart")
 	check(ws.why_no_run() == "", "the transmitter runs taken apart: %s" % ws.why_no_run())
 	_go(ws, 0.3)
 	_channels(ws, "exploded")
@@ -269,6 +307,47 @@ func _join() -> void:
 	var errs: Array = WB.join(r.res, data)
 	check(errs.any(func(e): return "anim spin" in e), "an anim the generator doesn't give is refused: %s" % str(errs))
 	check(errs.any(func(e): return "nowhere" in e), "a flow path the generator doesn't make is refused")
+
+## The app's loader refuses what it can't run (sim/bench_model.gd), and names it.
+func _loader_refuses() -> void:
+	var good := {"format": "walkdown-plant-bench", "version": 1, "part": "x", "sources": [],
+		"values": [["u", {"state": 0}], ["y", {"lag": "u", "tau": 0.5}]], "start": {},
+		"ops": [{"at": "body", "do": "set", "input": "u", "range": [0, 1]}]}
+	var m = BenchModel.from_text(JSON.stringify(good), ["body"])
+	check(m.error == "", "a small bench loads: %s" % m.error)
+	var bad := good.duplicate(true)
+	bad.ops[0].at = "lid"
+	m = BenchModel.from_text(JSON.stringify(bad), ["body"])
+	check(m.error.contains("lid"), "an op at no component is refused: %s" % m.error)
+	bad = good.duplicate(true)
+	bad.values[1][1].lag = "nothing"
+	m = BenchModel.from_text(JSON.stringify(bad), ["body"])
+	check(m.error.contains("nothing"), "a read of no value is refused: %s" % m.error)
+	m = BenchModel.from_text('{"format": "walkdown-plant-bench", "format": 1}', ["body"])
+	check(m.error.contains("strict JSON"), "a duplicate key is refused: %s" % m.error)
+	bad = good.duplicate(true)
+	bad.values[1][1] = {"cmp": ["world_hour", ">", 1]}
+	m = BenchModel.from_text(JSON.stringify(bad), ["body"])
+	check(m.error != "", "a clock value is refused on the bench")
+
+## A rotor that turns freely (travel 0) turns at the value × scale revolutions a second, added up over bench time.
+func _free_rotor() -> void:
+	var bv := BenchView.new()
+	var clock := OneValue.new()
+	clock.x = 0.25
+	var w := Comps.new()
+	var n := Node3D.new()
+	w.comps["rotor"] = n
+	bv.ws = w
+	bv.clock = clock
+	bv.anims = [{"at": "rotor", "of": "speed", "scale": 1.0, "axis": Vector3.UP, "kind": "rotate", "travel": 0.0}]
+	bv.draw(1.0)
+	var b1 := n.basis
+	n.transform = Transform3D.IDENTITY   # (the explode resets it every frame)
+	bv.draw(1.0)
+	check(b1.is_equal_approx(Basis(Vector3.UP, PI / 2.0)) and n.basis.is_equal_approx(Basis(Vector3.UP, PI)),
+		"a free rotor turns a quarter turn a second at 0.25 rev/s, added up: %s, %s" % [b1, n.basis])
+	n.free()
 
 ## A cutaway plane from the data: the part frame's normal to Godot's axes, the offset across the box.
 func _planes_math() -> void:

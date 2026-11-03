@@ -110,7 +110,11 @@ func draw(dt: float) -> void:
 		if a.kind == "translate":
 			t.origin += t.basis * (a.axis * a.travel * v)
 		elif a.kind == "rotate":
-			t.basis = t.basis * Basis(a.axis, (a.travel if a.travel != 0.0 else TAU) * v)
+			if a.travel != 0.0:     # turned through travel radians for 0 -> 1 (a stem, a damper)
+				t.basis = t.basis * Basis(a.axis, a.travel * v)
+			else:                   # turns freely: the value × scale is its speed in revolutions a second
+				a["angle"] = fmod(float(a.get("angle", 0.0)) + TAU * v * dt, TAU)
+				t.basis = t.basis * Basis(a.axis, a.angle)
 		n.transform = t
 	for e in labels:
 		var lit_ok: bool = e.lit == "" or clock.now(e.lit) >= 0.5
@@ -119,9 +123,12 @@ func draw(dt: float) -> void:
 			var lines := PackedStringArray()
 			for s in e.shows:
 				lines.append(clock.shown(s))
+			for al in clock.alarms_at(e.at):   # an active alarm shown where it is (`where`): its words to the colon
+				lines.append(String(al).get_slice(":", 0))
 			txt = "\n".join(lines)
 		if e.label.text != txt and not (txt == "" and e.label.text == " "):
 			e.label.text = txt if txt != "" else " "
+		e.label.visible = not views.cuts(e.label.global_position)   # cut away with its component
 	for at in lits:
 		var on: bool = clock.now(lits[at]) >= 0.5
 		views.set_ramp(at, LCD_ON if on else LCD_OFF, 1.0)
@@ -129,7 +136,9 @@ func draw(dt: float) -> void:
 		var c := FLOW_COLOUR
 		if f.legend != "" and clock.m.legends.has(f.legend):
 			c = Views.legend_colour(clock.m.legends[f.legend], clock.val(f.by))
-		views.set_flow(f.flow, clock.val(f.of), f.speed, dt, c)
+		# drawn only while the machine stands assembled: the path is in the machine's frame, through parts that move
+		# when it is taken apart
+		views.set_flow(f.flow, clock.val(f.of) if ws.assembled() else 0.0, f.speed, dt, c)
 	for r in ramps:
 		if views.is_xrayed(r.at):
 			continue
