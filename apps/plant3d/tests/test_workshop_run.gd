@@ -65,6 +65,10 @@ func run(tree: SceneTree) -> Array:
 		for want in ["ws_xray.gdshader", "ws_lit.gdshader", "ws_cap.gdshader", "ws_flow.gdshader"]:
 			check(shaders.has(want), "the plant's early warm-up holds %s (%s)" % [want, str(shaders.keys())])
 		# every kind's own machine in the Workshop's materials (K3's first entry compiled them in its first frame)
+		for i in 900:
+			if ws.kinds_warmed:
+				break
+			await tree.process_frame
 		for k in ws.kinds():
 			check(ws._warm_kinds_done.has(k), "the plant's early warm-up held %s's machine (%s)" % [k, str(ws._warm_kinds_done)])
 	else:

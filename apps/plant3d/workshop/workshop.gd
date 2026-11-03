@@ -1162,7 +1162,7 @@ func warm_up(parent: Node) -> void:
 	_warm.position = Vector3(0, -1000, 0)
 	_warm.visible = false
 	parent.add_child(_warm)
-	await _warm_kinds()
+	_warm_kinds()   # (on its own: `warmed` is the ghost's warm-up, `kinds_warmed` this one's)
 	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
 		# drawn only when the plant's world is drawn: not while the Workshop (or the screens) has its 3D off, nor
 		# without a camera; until then it waits, and `warmed` says so
@@ -1187,6 +1187,7 @@ func warm_up(parent: Node) -> void:
 ## starts); a kind the trainee is opening meanwhile is left to its entry.
 func _warm_kinds() -> void:
 	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
+		kinds_warmed = true
 		return   # (it compiles only what it draws: a hidden machine would be pure cost there)
 	for k in kinds():
 		var path := DIR.path_join(k + ".scn")
@@ -1201,6 +1202,7 @@ func _warm_kinds() -> void:
 		if ps == null or _warm == null or not is_instance_valid(_warm) or is_open:
 			continue   # (opened meanwhile: the entry has it)
 		var mc: Node3D = ps.instantiate()
+		ps = null   # (not held while the next kind waits for a Workshop to close)
 		mc.name = "warm_" + k
 		var xr := ShaderMaterial.new()
 		xr.shader = XRAY
@@ -1227,8 +1229,10 @@ func _warm_kinds() -> void:
 			await get_tree().process_frame
 		if is_instance_valid(mc):
 			mc.queue_free()
+	kinds_warmed = true
 
 var _warm_kinds_done: Array = []   # the kinds whose machines the warm-up held (tests)
+var kinds_warmed := false          # every kind's machine held (or nothing to hold on this renderer)
 
 ## The warm-up's copy of the materials an entry gives a machine (views.gd machine_shown, mat_for, glass_mat).
 func _warm_mats(n: Node, thin: bool, glass: bool) -> void:

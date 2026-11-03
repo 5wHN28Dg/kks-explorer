@@ -46,9 +46,9 @@ func start(m, k := "") -> void:
 			await get_tree().process_frame
 			var c := Vector2i(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE),
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION))
-			still = still + 1 if ws.warmed and c == c0 else 0
+			still = still + 1 if ws.warmed and ws.kinds_warmed and c == c0 else 0
 			c0 = c
-		main._say("WORKSHOP waited %d ms for the plant's warm-up (warmed=%s)" % [Time.get_ticks_msec() - t0, str(ws.warmed)])
+		main._say("WORKSHOP waited %d ms for the plant's warm-up (warmed=%s)" % [Time.get_ticks_msec() - t0, str(ws.warmed and ws.kinds_warmed)])
 	if kind == "" or not ws.open(kind):
 		main._say("WORKSHOP no kind to open (%s)" % str(kinds))
 		done = true
