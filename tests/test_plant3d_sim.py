@@ -617,7 +617,11 @@ class GdscriptRealism(unittest.TestCase):
                            check=True, cwd=REPO)
             subprocess.run([sys.executable, os.path.join(REPO, 'tools', 'plant3d', 'realism_synth.py'), '600', epath,
                             '--engine'], check=True, cwd=REPO)
-            r = godot('bench_realism.gd', f'--synth=r600:{path},e600:{epath}', '--base-steps=200', timeout=900)
+            hpath = os.path.join(d, 'h600.json')        # (HW1: the hands step alone with 12 actions under way)
+            subprocess.run([sys.executable, os.path.join(REPO, 'tools', 'plant3d', 'realism_synth.py'), '600', hpath,
+                            '--engine', '--hands'], check=True, cwd=REPO)
+            r = godot('bench_realism.gd', f'--synth=r600:{path},e600:{epath},h600:{hpath}', '--base-steps=200',
+                      timeout=900)
         no_errors(self, r)
         self.assertEqual(r.returncode, 0, r.stdout[-4000:])
         self.assertIn('WEATHER load=e600 values=10 ', r.stdout)
@@ -626,6 +630,7 @@ class GdscriptRealism(unittest.TestCase):
         for load in ('built', 'r600', 'e600'):
             self.assertIn(f'BATCH load={load} values=', r.stdout)
         self.assertIn('STEP load=r600 values=', r.stdout)
+        self.assertIn('HANDS load=h600 hands=150 meters=50 busy=12 ', r.stdout)
         self.assertIn('world=true phase=cold_start', r.stdout)
 
 

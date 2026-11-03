@@ -775,6 +775,28 @@ class SyntheticLoad(unittest.TestCase):
         e.step(20)
         self.assertTrue(all(map(lambda x: x == x, e.cur)))
 
+    def test_hands_load(self):
+        """--hands (HW1): the component states written by hand actions, the meter values read through meters,
+        tools.json at the store; it passes the validator and steps with the staff's scenario."""
+        import glob
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), 'tools', 'plant3d'))
+        import realism_synth as RS
+        root = os.path.join(os.path.dirname(HERE), 'data', 'plant3d')
+        b = P.check_dir(root)
+        vals = RS.make(600, b, engine=True)
+        hands = RS.hands_doc(b, vals)
+        self.assertEqual((len(hands[0]), len(hands[1])), (150, 50))
+        files = {}
+        for f in glob.glob(os.path.join(root, '**', '*.json'), recursive=True):
+            with open(f, encoding='utf-8') as fh:
+                files[os.path.relpath(f, root)] = json.load(fh)
+        RS.apply(files, vals, RS.weather_doc(), RS.WX_EXT, hands)
+        b2 = P.check_files({k: json.dumps(v).encode() for k, v in files.items()})
+        e = P.Engine(b2, 'shift_cold')
+        self.assertTrue(e.hw)
+        e.step(20)
+        self.assertTrue(all(map(lambda x: x == x, e.cur)))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -10,6 +10,7 @@ const PlantModel = preload("../sim/plant_model.gd")
 const PlantEngine = preload("../sim/engine.gd")
 const Procedure = preload("../sim/procedure.gd")
 const JsonStrict = preload("../sim/json_strict.gd")
+const Hands = preload("../sim/hands.gd")
 
 
 ## The content folder's files, read and parsed (as PlantModel.from_dir reads them).
@@ -47,6 +48,14 @@ static func with_load(files: Dictionary, synth_text: String) -> Dictionary:
 	m["values"] = m["values"] + r.value["values"]
 	m["version"] = 2
 	out[rel] = m
+	# realism_synth.py --hands (milestone HW1): hand actions, meters and tools.json
+	if r.value.has("hands"):
+		if typeof(r.value["hands"]) != TYPE_ARRAY or typeof(r.value.get("meters")) != TYPE_ARRAY \
+				or typeof(r.value.get("tools")) != TYPE_DICTIONARY:
+			return {}
+		m["hands"] = r.value["hands"]
+		m["meters"] = r.value["meters"]
+		out["tools.json"] = r.value["tools"]
 	# realism_synth.py --engine: the weather (REALISM.md §5.1, milestone WX1), its ext values set in every scenario
 	var wx = r.value.get("weather")
 	var ext = r.value.get("ext", {})
@@ -118,7 +127,34 @@ static func run(files: Dictionary, loads: Dictionary, base_steps: int = 6000) ->
 			var hour := _weather_us(e, 36000)
 			out.append("WEATHER load=%s values=%d calls=%d lags_mean_us=%.2f hour_mean_us=%.2f" % [name,
 					e._wx["slots"].size(), WX_CALLS, lags, hour])
+		if not m.hands.is_empty() and m.scenarios.has(HANDS_SCENARIO):
+			out.append(_hands_line(name, m))
 	return out
+
+
+const HANDS_SCENARIO := "shift_cold"      # a scenario with the staff: hand actions are made by people
+const HANDS_BUSY := 12                    # the hand actions under way (§11's phone tier of animated people)
+
+
+## The hands step alone (REALISM.md §2.13, milestone HW1): step 3's look at every person's hand action under way, with
+## HANDS_BUSY of them (each standing at its place, its end far off), over WX_CALLS calls, in the staff's scenario.
+static func _hands_line(name: String, m) -> String:
+	var e = PlantEngine.new(m, HANDS_SCENARIO)
+	e.step(50)
+	var k := 0
+	for pi in e._sm.people.size():
+		if k >= HANDS_BUSY:
+			break
+		if e.sp_pos[pi] != -1:
+			var h: Dictionary = m.hands[k % m.hands.size()]
+			e.busy[e._sm.people[pi]["id"]] = [h["kks"], h["action"], null, null, 1 << 60, e.sp_pos[pi]]
+			k += 1
+	var t0 := Time.get_ticks_usec()
+	for i in WX_CALLS:
+		Hands.end_hands(e, false)
+	var per := float(Time.get_ticks_usec() - t0) / WX_CALLS
+	return "HANDS load=%s hands=%d meters=%d busy=%d people=%d calls=%d mean_us=%.2f" % [name, m.hands.size(),
+			m.meters.size(), e.busy.size(), e._sm.people.size(), WX_CALLS, per]
 
 
 const WX_CALLS := 20000
