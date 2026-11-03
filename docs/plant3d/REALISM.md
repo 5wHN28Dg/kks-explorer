@@ -1130,6 +1130,125 @@ public standards. No new dependency (decision 0073 already chose our own format 
   breaks and the buddy system are task steps.
 - Heat illness in NPCs is not modelled as a random event; the rule prevents it, and a trainee's breach is debriefed.
 
+### 8.5 Personal audio and the phone (the user, 2026-11-03; milestone HS7)
+
+**The user's request (2026-11-03):** the player's character can listen to music and songs on their own phone; it
+affects what they hear of the people around them and of the alarms; if they are caught, they get what a real
+combined-cycle plant gives for it.
+
+**What real sites do** (public sources, §14 "For personal audio and the phone"):
+- **Why it's banned.** A music player is not hearing protection. Music masks the sounds a worker needs to hear:
+  moving equipment, traffic and warning signals ([OSHA-Music]). An alarm must be heard over the noise around it by
+  everyone it is for ([OSHA165]). Noise makes warnings harder to hear and people less aware of their surroundings
+  ([INDG362]).
+- **Where it's banned.** Personal use of devices, listening to music included, is banned in production areas and
+  allowed in break rooms and canteens. Headsets are never worn while driving or operating a vehicle or crane
+  ([GEH-C25]). Headphones are banned in industrial areas, wherever PPE is required, and near roads; they are allowed
+  in dining rooms, break rooms and gyms ([ANAD]). Some sites ban personal headsets anywhere on site
+  ([PowerCon]).
+- **The phone in hazardous areas.** Anyone entering a hazardous area is told about "contraband items": smoking
+  materials, mobile phones, radios and MP3 players ([JSP375]). Equipment in a classified location must be approved
+  for it ([OSHA307]). IOGP's life-saving rules forbid phones while driving and ask for full alertness and staying
+  out of the line of fire ([IOGP459]).
+- **Being caught.** Whoever has stop-work authority stops it, and the violation is documented and disciplined
+  ([OR-OSHA], [NFTA]). Discipline is progressive ([Acas]): an informal or verbal warning, then a written warning,
+  then a final written warning, then dismissal. A first offence serious enough may go straight to a final written
+  warning, and gross negligence can mean dismissal for a first offence. Contractors' site rules add removal from
+  the project, temporary or permanent, and re-training of the person, crew or foreman ([PowerCon]).
+- **No published rule was found that confiscates the device.** "The supervisor holds it until the end of the shift"
+  is this design's way of ending the act at once.
+
+**The rules as modelled.**
+
+| Where | Music (earbuds, headphones) | The phone |
+|---|---|---|
+| Process and operating areas (staff zones with PPE: halls, yards, the pipe rack, the WTP) | an unsafe act of kind `audio` | allowed (calls, the radio's back-up) |
+| Ex zones (classified: the fuel gas station with OP4, the hydrogen areas with HS6; none in the first train yet) | `audio` | an unsafe act of kind `phone`: left at a locker before entering |
+| Camp, offices, canteen, rest places, the roads (no zone) | allowed | allowed |
+| Aboard a vehicle as a passenger (in no zone, §21.4) | allowed | allowed |
+| Driving (the bus, #313) | banned ([GEH-C25], [IOGP459]): to be added with bus driving (#313): music refused while the player drives | banned while driving |
+
+The control room is not a zone (zones need PPE), so HS7 leaves music there allowed. Real sites ban it there too (the
+operators answer alarms): a question for the user (WAITING).
+
+**The engine** (both engines bit for bit, behind staff.json's key `audio`; without the key nothing changes, and
+`plant3d-v1.json`/`-v2.json` stay byte for byte):
+- **`"audio": {"banned": [zones], "ex": [zones], "notice": [min, max], "mask": m}`.** `banned` (≥ 1) lists the
+  zones where music is an act; `ex` lists the zones where carrying the phone is. `notice` is how many whole clock
+  minutes (0–600) an observer takes to notice. `mask` is the volume (1–100) from which radio calls are missed. With
+  the key, the act kinds are `ppe, permit, unsafe, audio, phone`, in that order, for reactions (`on.unsafe`),
+  `put_right` and stops.
+- **A player's person** has `music` (a volume 0–100, 0 off) and `phone` (1 carried, the default; 0 left at a
+  locker; 2 held).
+  - Inputs: `[n, "audio", volume]` and `[n, "phone", "leave" | "take"]` (the app sends it at a locker, as PPE).
+    Leaving the phone turns the music off.
+  - Events: `["audio", person, volume, "done" | "refused", reasons]` and `["phone", person, what, …]`, with the
+    slot last in a session. The reasons are `no_audio` (no key), `held` and `left`.
+  - In free mode the inputs do nothing. An NPC plays no music (a person released becomes an NPC with the music
+    off).
+- **The acts.**
+  - `audio`: a player's person with the music on in a `banned` zone.
+  - `phone`: a player's person carrying the phone in an `ex` zone.
+  - Both start and end as every act does (§16.7), and the detail is the zone.
+- **Noticing** (seen reactions, §16.7). For music and phone acts, `seen` adds a delay:
+  - **By sight.** Each person of the reaction's roles on duty and sharing a zone with the act draws, when they
+    first share it, the whole clock minutes they will take to notice. The draw is uniform in `notice` (min +
+    ⌊r·(max − min + 1)/2²⁴⌋), from their own stream (§2.1: purpose `audio` 0x41554449, their id). Leaving the
+    zone forgets the draw; meeting the act again draws anew. The first (role order, then index) whose time has
+    come notices, and is given the reaction's task. Earbuds are small: a hard hat is seen at once, a bud is not.
+  - **By a missed call.** A message to the player's person or role (§16.6 `say`) while the music is at `mask` or
+    louder is not heard: event `["missed", person, message, from]`. If an `audio` act is going on, the caller
+    reports them not answering: the act's seen reactions go at once to the first person of their roles on duty,
+    wherever they are. The `stop` step walks them to the player (§16.6). This is how colleagues give it away.
+  - Everything is from the world's seed and the inputs, so every player of a session sees the same.
+- **Stopping.** A stop of an `audio` or `phone` act turns the music off and holds the device (`phone` = 2, event
+  `["held", person, by]`): the supervisor removes it, so the other kind's act ends too.
+  - The kind's `put_right` task follows (music off, phone out of the Ex zone).
+  - While the phone is held, `audio` and `phone` inputs are refused (`held`).
+  - It comes back when the person's duty ends (event `["returned", person]`), a jump's included.
+- **The digest** gains a part with the key: music, phone and the missed-call flags per person, the observers'
+  times per act, and the streams. The acts' list per person grows to the five kinds. The snapshot gains `audio`:
+  {person: [music, phone]} for anyone not at the default.
+
+**What it does to hearing (the app; not in the vectors).** The masking is a level the app computes from the volume:
+- At volume v (0–100), every plant sound is lowered on its bus by up to 30 dB × (v/100)^0.7: the bound machines,
+  ambience, footsteps, doors, the alarm horn and sounders, the announcements and the vehicles (the bus gains an
+  engine sound bound to its speed).
+- The players' push-to-talk voice (MULTIPLAYER.md §8) goes through the same bus when it is played.
+- The radio log shows a missed message as "Missed call from …" without its text, and no chime sounds.
+- A late alarm response and a bus heard too late follow from that. The debrief counts the alarms that went
+  active while the music was on, and how long the player took to acknowledge them.
+- Earbuds are drawn on the player's avatar for the others in a session.
+
+**The music.** Our own, made by the sound generator ([§11 of PLANT3D.md], decision 0055) as three short procedural
+tracks (a chord progression, a bass line, a drum pattern and a melody from a seeded scale, by fixed rules: no
+samples, nothing copyrighted). They are Ogg Vorbis built at build time (about 0.4 MB each), so the APK grows by
+about 1.2 MB. CC0 tracks were considered and not used: a CC0 track is only as safe as its uploader's claim
+([CC0], [CC-FAQ], [FMA]), and our own synthesis has nobody else's rights in it.
+
+**The consequence ladder** (the debrief and the run's record; nothing more in the engine):
+- Counted over the run, from the `held` events of the player's person.
+- **First:** work stopped, the device held to the end of the shift, a verbal warning. It is logged as an unsafe-act
+  observation, and a toolbox talk on personal audio follows at the next shift start.
+- **Second:** a written warning.
+- **Third or later:** a final written warning. Referred to the plant manager for removal from site, with the
+  player's permit-to-work authorisations (issue, accept) suspended pending review.
+- A `phone` act in an Ex zone (an ignition source in a classified area: [JSP375], [Acas]'s "serious enough") starts
+  the ladder at the written warning.
+- The run's record (the saved run's summary) keeps the highest rung.
+
+**Vectors** (`plant3d-realism.json`, part `audio`): the safety staff (S2's) with `audio`. Its rejects cover every key
+and limit, and a reaction or put-right of the new kinds without the key. Its runs cover:
+- noticing by sight, with two seeds;
+- a missed call reporting the act;
+- the device held and returned at the end of the duty;
+- the phone left and taken, and acts in an Ex zone;
+- the inputs refused without the key, and ignored in free mode.
+
+**Budgets.** The engine's cost is per player and per act (a few comparisons a step; draws only when an observer
+meets an act). Music playback is one streamed Vorbis player (no new pipelines, ≤ 2 MB PSS). The package grows by
+≈ 1.2 MB, within §11's 15 MB.
+
 ## 9. Electrical and mechanical crafts, condition monitoring
 
 ### 9.1 Electrical
@@ -1616,6 +1735,29 @@ Textbooks:
   to read. MC4 needs a public source in its place (or the user's choice to cite EPRI's) before its content is written
   · [BW-Steam] Babcock & Wilcox, Steam: its generation and use (chemical cleaning) · [Palmer] R. D. Palmer,
   Maintenance planning and scheduling handbook (McGraw-Hill).
+
+For personal audio and the phone (§8.5; checked 2026-11-03):
+- [OSHA-Music] US OSHA, Use of music headphones on construction sites (letter of interpretation, 2019-09-06),
+  https://www.osha.gov/laws-regs/standardinterpretations/2019-09-06-0 · [OSHA165] US OSHA 29 CFR 1910.165(b)(2),
+  employee alarms perceivable above ambient noise, https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.165
+  · [OSHA307] US OSHA 29 CFR 1910.307, hazardous (classified) locations,
+  https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.307 · [INDG362] UK HSE, Noise at work: a brief
+  guide, https://www.hse.gov.uk/pubns/indg362.pdf · [JSP375] UK MOD, JSP 375 Vol 1 Ch 9 (DSEAR), para 15(d),
+  contraband items in hazardous areas, https://assets.publishing.service.gov.uk/media/5f89b951d3bf7f49a9a4f184/20201007_JSP375_Vol1_Chapter_09_V1.3_Dangerous_Substances_and_Explosive_Atmospheres_Regulations_FINAL_1_.pdf
+  · [IOGP459] IOGP Life-Saving Rules (Report 459), https://www.iogp.org/life-savingrules/ ·
+  [Acas] Acas Code of Practice on disciplinary and grievance procedures,
+  https://www.acas.org.uk/acas-code-of-practice-on-disciplinary-and-grievance-procedures/html · [OR-OSHA] Oregon
+  OSHA's advice on earbuds, Safety+Health (2025-10-21), https://www.safetyandhealthmagazine.com/27462-earbuds-in-the-workplace-theyre-a-risk/
+  · [NFTA] NFTA, Ear buds and head phones policy 07-01-09 (2022), https://cms.nfta.com/media/l42jhez4/07-01-09-ear-bud-and-head-phone-policy-jhl.pdf
+  · [PowerCon] Power Construction, Subcontractor site safety requirements (2023),
+  https://www.powerconstruction.net/sites/default/files/docs/Subcontractor%20Site%20Safety%20Requirements%20and%20Procedures%202023_0.pdf
+  · [GEH-C25] GE Vernova Hitachi Nuclear Energy, C-25 Personal and portable electronics (rev. 6, 2025),
+  https://www.gevernova.com/content/dam/gevernova-nuclear/global/en_us/documents/about/geh-supplier-information/geh-supplier-doc-library/C-25-Personal-and-Portable-Electronics.pdf
+  · [ANAD] US Army, Headphones prohibited in industrial shop environments, https://www.army.mil/article/214428/headphones_prohibited_in_industrial_shop_environments
+  · [CC0] Creative Commons CC0 1.0, https://creativecommons.org/publicdomain/zero/1.0/ · [CC-FAQ]
+  https://creativecommons.org/faq/ · [FMA] Free Music Archive licence guide, https://freemusicarchive.org/License_Guide.
+  The Energy Institute and EEMUA guide on portable self-energised devices in potentially explosive atmospheres (2019) is
+  the industry's own on phones in Ex areas; its page refused to load (403) and it is not cited for anything here.
 
 ## 15. Not in this programme (deliberately)
 

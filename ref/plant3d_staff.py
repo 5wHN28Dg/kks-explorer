@@ -42,6 +42,9 @@ VEHICLE_KINDS = ('bus', 'pickup', 'suv')
 DRIVE_KINDS = ('stop', 'depot')     # the places drive ways join (§21.4)
 RIDE_WAIT_MIN = 30      # clock minutes a person waits at a stop before they walk instead (§16.8, §21.4)
 ACT_KINDS = ('ppe', 'permit', 'unsafe')     # an unsafe act's kinds, in the order checked (§16.7, §17.11)
+AUDIO_KINDS = ('audio', 'phone')   # and with staff.json's `audio` (REALISM.md §8.5): music on in a banned zone, the
+                                   # phone carried in an Ex zone, checked after those
+NOTICE_MAX = 600       # clock minutes: the longest `audio.notice` delay (§8.5)
 ZONE_EDGE = 0.01        # a place this near a zone's edge or height limits is bad_zone (§16.2)
 HHMM = re.compile(r'([01][0-9]|2[0-3]):([0-5][0-9])')
 OFFSET = re.compile(r'(start|end|prev|next)([+-])([0-9]|1[0-2]):([0-5][0-9])')
@@ -209,7 +212,8 @@ class Staff:
         self.d, self.b, self.m = d, b, m
         w = 'staff.json'
         keys(d, ('format', 'version', 'origin', 'gate', 'speeds', 'places', 'ways', 'next', 'roles', 'rosters',
-                 'people', 'routines', 'tasks', 'messages'), ('reactions', 'zones', 'put_right', 'lifts', 'vehicles'),
+                 'people', 'routines', 'tasks', 'messages'), ('reactions', 'zones', 'put_right', 'lifts', 'vehicles',
+                                                             'audio'),
              w)
         need(d['format'] == STAFF_FORMAT, 'bad_format', f'{w}: format must be "{STAFF_FORMAT}"')
         need(d['version'] == 1 and not isinstance(d['version'], bool), 'bad_version', f'{w}: version must be 1')
@@ -227,6 +231,7 @@ class Staff:
             from ref.plant3d_hands import check_tool_refs
             check_tool_refs(b, m)
         self.check_zones(d.get('zones', []))
+        self.check_audio(d.get('audio'))
         self.check_lifts(d.get('lifts', []))
         self.check_ways(d['ways'])
         self.check_next(d['next'])
@@ -336,6 +341,33 @@ class Staff:
         # the drive network's places (stops and depots, §21.4), numbered in place order
         self.drive_no = {i: k for k, i in enumerate(i for i, p in enumerate(self.places) if p['kind'] in DRIVE_KINDS)}
         self.drive_places = sorted(self.drive_no, key=self.drive_no.get)
+
+    def check_audio(self, a):
+        """`audio` (REALISM.md §8.5): the zones where personal audio is banned, the Ex zones where the phone itself is,
+        the clock minutes [min, max] an observer sharing a zone takes to notice, and the volume from which calls are
+        missed. Without it nobody's music or phone is an act (the kinds are ACT_KINDS alone)."""
+        self.audio = None
+        self.kinds = ACT_KINDS
+        if a is None:
+            return
+        w = 'staff.json.audio'
+        need(isinstance(a, dict), 'bad_type', w)
+        keys(a, ('banned', 'notice', 'mask'), ('ex',), w)
+        sets = {}
+        for k in ('banned', 'ex'):
+            zl = lst(a.get(k, []), f'{w}.{k}', 1 if k == 'banned' else 0, MAX['zones'])
+            for z in zl:
+                need(isinstance(z, str) and z in self.zone_ix, 'bad_ref', f'{w}.{k}: no zone {z!r}')
+            need(len(set(zl)) == len(zl), 'dup_id', f'{w}.{k}')
+            sets[k] = {self.zone_ix[z] for z in zl}
+        nt = lst(a['notice'], f'{w}.notice', 2, 2)
+        for x in nt:
+            need(type(x) is int and 0 <= x <= NOTICE_MAX, 'bad_number',
+                 f'{w}.notice: whole clock minutes from 0 to {NOTICE_MAX}')
+        need(nt[0] <= nt[1], 'bad_number', f'{w}.notice: [min, max], min not above max')
+        need(type(a['mask']) is int and 1 <= a['mask'] <= 100, 'bad_number', f'{w}.mask: a whole volume from 1 to 100')
+        self.audio = {'banned': sets['banned'], 'ex': sets['ex'], 'notice': list(nt), 'mask': a['mask']}
+        self.kinds = ACT_KINDS + AUDIO_KINDS
 
     def check_zones(self, zones):
         """Zones (§16.2): plan outlines with a height range and the PPE needed there; each place's `zones` must list,
@@ -1050,7 +1082,7 @@ class Staff:
             if 'seen' in r:
                 need(r['seen'] is True and k == 'unsafe', 'bad_value', f'{wr}.seen: true, on an unsafe act')
             if k == 'unsafe':
-                need(v == '*' or v in ACT_KINDS, 'bad_value', f'{wr}.on.unsafe: "*" or one of {ACT_KINDS}')
+                need(v == '*' or v in self.kinds, 'bad_value', f'{wr}.on.unsafe: "*" or one of {self.kinds}')
                 need('work' not in r, 'unknown_key', f'{wr}.work: not on an unsafe act')
             elif k == 'alarm':
                 need(v in (1, 2, 3) and not isinstance(v, bool), 'bad_value', f'{wr}.on.alarm: 1, 2 or 3')
@@ -1082,7 +1114,7 @@ class Staff:
     def check_put_right(self, pr):
         """`put_right` (§16.7): the task an HSE stop gives the acting person, per kind of act."""
         w = 'staff.json.put_right'
-        keys(pr, (), ACT_KINDS, w)
+        keys(pr, (), self.kinds, w)
         for k, t in pr.items():
             need(t in self.tasks, 'bad_ref', f'{w}.{k}: no task {t!r}')
         self.put_right = pr
@@ -1281,7 +1313,7 @@ def check_scenario_staff(s, b, rel):
 class Person:
     __slots__ = ('i', 'id', 'role', 'auth', 'rng', 'on', 'duty', 'duties', 'planned', 'slots', 'pos', 'leg',
                  'cur', 'queue', 'res', 'occ', 'pending', 'result', 'post', 'held', 'worn', 'acts', 'zin',
-                 'ride', 'stairs', 'lin', 'home', 'aboard', 'spans', 'offday')
+                 'ride', 'stairs', 'lin', 'home', 'aboard', 'spans', 'offday', 'music', 'phone', 'told', 'watch')
 
 
 
@@ -1314,6 +1346,10 @@ class StaffRun:
             q.worn = set()             # the PPE items worn (§16.3, §17.11)
             q.acts = {}                # unsafe acts going on: kind -> [zone or work, start step, stopped] (§16.7)
             q.zin = set()              # the trainee's zones, from their zone inputs (zone indexes)
+            # personal audio (REALISM.md §8.5): the music's volume (0 off), the phone (1 carried, 0 left at a locker,
+            # 2 held by whoever stopped its act until their duty ends), the act kinds reported by a missed call, and
+            # per (reaction, kind) the observers sharing a zone with the act: person index -> the step they notice
+            q.music, q.phone, q.told, q.watch = 0, 1, set(), {}
             # a ride (§20.4): [staff lift index, a, b, 0 waiting / 1 aboard, the step the wait began, the destination
             # of the walk]; the stairs walked instead: [destination, place, …, b]; the step of the last lift input
             q.ride, q.stairs, q.lin = None, None, -3
@@ -1324,6 +1360,11 @@ class StaffRun:
             q.post = (p['role'], p.get('routine', st.roles[p['role']]['routine']))     # role, routine (§17.9)
             self.people.append(q)
         self.order = 0                  # instances made, for the queue's order
+        self.aud_s = None               # with `audio`: each person's noticing stream (REALISM.md §2.1, §8.5)
+        if st.audio is not None:
+            from ref.plant3d_world import TAGS, stream, world_seed
+            seed = world_seed(scen)
+            self.aud_s = [stream(seed, TAGS['audio'], p['id']) for p in st.people]
         self.acks = {}                  # slot -> tasks given to its person since their last task_ack (§17.6)
         self.t_from = {}                # slot -> the place its person last left (arrive/leave; §17.13's release)
         self.t_in = []                  # the players' inputs for step 9: (slot, (kind, …)), in the order made
@@ -1498,6 +1539,7 @@ class StaffRun:
             p.pos = None
             p.on, p.duty = False, None
             p.worn, p.acts, p.zin = set(), {}, set()
+            p.told, p.watch = set(), {}
             p.ride, p.stairs, p.lin = None, None, -3
             if p.id in self.absent:
                 continue
@@ -1775,6 +1817,7 @@ class StaffRun:
         at their next turn; one between places put back at the place they last left."""
         pi = self.players.pop(slot)
         p = self.people[pi]
+        p.music = 0                      # (an NPC plays no music, REALISM.md §8.5)
         for x in self.e.m.lifts:         # a person aboard leaves the ride: their alight for the next step (§20.3)
             if p.id in self.e.riders[x['id']]:
                 self.queue_alight(x['id'], p.id)
@@ -1866,6 +1909,10 @@ class StaffRun:
                     tp.zin.discard(st.zone_ix[item[1]])
             elif item[0] == 'stop':
                 self.t_stop(tp, item[1])
+            elif item[0] == 'audio':
+                self.t_audio(tp, item[1], slot)
+            elif item[0] == 'phone':
+                self.t_phone(tp, item[1], slot)
 
         # 1. duties, then slots
         day = c // DAY
@@ -1890,6 +1937,9 @@ class StaffRun:
                         p.queue.append(h)
                         p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
                         e.ev('task', p.id, h['task'], 'resumed')
+            if p.phone == 2 and not p.on:       # a device held is given back when its owner's duty ends (§8.5)
+                p.phone = 1
+                e.ev('returned', p.id)
         for p in self.people:
             if p.id in self.absent:
                 continue
@@ -1953,6 +2003,14 @@ class StaffRun:
                 if any(x not in p.worn for x in st.zones[k]['ppe']):
                     return True, st.zones[k]['id']
             return False, None
+        if kind in AUDIO_KINDS:         # a player's music in a banned zone, their phone in an Ex zone (§8.5)
+            a = st.audio
+            on = p.music > 0 if kind == 'audio' else p.phone == 1
+            if on and self.slot_of(p.i) is not None:
+                for k in self.zones_of(p):
+                    if k in a['banned' if kind == 'audio' else 'ex']:
+                        return True, st.zones[k]['id']
+            return False, None
         cur = p.cur
         if cur is None or cur['idle']:
             return False, None
@@ -1975,12 +2033,16 @@ class StaffRun:
                 continue
             if not p.acts and (p.cur is None or p.cur['idle']) and not self.zones_of(p):
                 continue        # (no act going on, and none can start: no task step, no zone)
-            for kind in ACT_KINDS:
+            for kind in st.kinds:
                 ok, det = self.act_now(p, kind)
                 a = p.acts.get(kind)
                 if a is not None and not ok:
                     del p.acts[kind]
                     e.ev('safe', p.id, kind, a[0])
+                    if kind in AUDIO_KINDS:     # nobody is about to notice an act that has ended
+                        p.told.discard(kind)
+                        for wk in [wk for wk in p.watch if wk[1] == kind]:
+                            del p.watch[wk]
                 elif a is None and ok:
                     p.acts[kind] = [det, n, False]
                     e.ev('unsafe', p.id, kind, det)
@@ -1992,17 +2054,21 @@ class StaffRun:
                 # the safety walk finds it: the first of its roles (role order, then index) in a zone of the act,
                 # in the step it starts or any later one while it lasts; once per act
                 for p in self.people:
-                    for kind in ACT_KINDS:
+                    for kind in st.kinds:
                         a = p.acts.get(kind)
                         if a is None or v not in ('*', kind):
                             continue
                         key = (ri, 'unsafe', p.id, kind, a[1])
                         if key in self.made:
                             continue
-                        obs = self.observer(r['roles'], p)
+                        if kind in AUDIO_KINDS:
+                            obs = self.notice(ri, r['roles'], p, kind, n)
+                        else:
+                            obs = self.observer(r['roles'], p)
                         if obs is None:
                             continue
                         self.made.add(key)
+                        p.watch.pop((ri, kind), None)
                         if key not in self.given:
                             self.give(obs, r['task'], prio, key, None, None, None, act=(p.i, kind, a[1]))
             else:
@@ -2034,6 +2100,43 @@ class StaffRun:
                     return q
         return None
 
+    def notice(self, ri, roles, actor, kind, n):
+        """Who of the roles notices a player's music or phone (REALISM.md §8.5). After a missed call while the act goes
+        on (the caller reports them not answering): the first of the roles on duty (role order, then index), wherever
+        they are. Otherwise each of the roles on duty sharing a zone with the actor draws, when they first do, the clock
+        minutes they take to notice (a whole number in `notice`, from their own stream), forgotten when they part; the
+        first (role order, then index) whose time has come notices."""
+        st = self.st
+        if kind in actor.told:
+            for r in roles:
+                for q in self.people:
+                    if q.role == r and q.on and q.id not in self.absent and q.i != actor.i:
+                        return q
+            return None
+        zs = set(self.zones_of(actor))
+        w = actor.watch.get((ri, kind))
+        if w is None:
+            w = actor.watch[(ri, kind)] = {}
+        near = []
+        for r in roles:
+            for q in self.people:
+                if q.role == r and q.on and q.id not in self.absent and q.i != actor.i \
+                        and zs.intersection(self.zones_of(q)):
+                    near.append(q)
+        for qi in [qi for qi in w if all(q.i != qi for q in near)]:
+            del w[qi]
+        found = None
+        lo, hi = st.audio['notice']
+        for q in near:
+            if q.i not in w:
+                self.aud_s[q.i], r24 = draw(self.aud_s[q.i])
+                w[q.i] = n + (lo + ((r24 * (hi - lo + 1)) >> 24)) * st.tpm
+            if found is None and w[q.i] <= n:
+                found = q
+        if not w:
+            del actor.watch[(ri, kind)]
+        return found
+
     def ongoing(self, act):
         """Whether the act (person index, kind, start step) still goes on and nobody has stopped it."""
         a = self.people[act[0]].acts.get(act[1])
@@ -2053,9 +2156,44 @@ class StaffRun:
             else:
                 q.cur['st'].pop('busy', None)
                 self.advance(q, 'fail')
+        if act[1] in AUDIO_KINDS and q.phone != 2:     # the device taken until their duty ends (§8.5)
+            q.music, q.phone = 0, 2
+            e.ev('held', q.id, p.id)
         t = self.st.put_right.get(act[1])
         if t is not None:
             self.give(q, t, 1, None, None, None, None)
+
+    def t_audio(self, tp, level, slot):
+        """The player's music (REALISM.md §8.5): a whole volume from 0 (off) to 100; refused without `audio`
+        (`no_audio`), while the phone is held (`held`) or left at a locker (`left`)."""
+        if type(level) is not int or not 0 <= level <= 100:
+            return
+        why = []
+        if self.st.audio is None:
+            why.append('no_audio')
+        elif tp.phone == 2:
+            why.append('held')
+        elif tp.phone == 0:
+            why.append('left')
+        if not why:
+            tp.music = level
+        self.e.ev('audio', tp.id, level, 'refused' if why else 'done', why, *((slot,) if self.session else ()))
+
+    def t_phone(self, tp, what, slot):
+        """The player leaves the phone at a locker or takes it again (§8.5; the app sends it at a locker). Leaving it
+        turns the music off. Refused without `audio`, or while held."""
+        if what not in ('leave', 'take'):
+            return
+        why = []
+        if self.st.audio is None:
+            why.append('no_audio')
+        elif tp.phone == 2:
+            why.append('held')
+        if not why:
+            tp.phone = 0 if what == 'leave' else 1
+            if what == 'leave':
+                tp.music = 0
+        self.e.ev('phone', tp.id, what, 'refused' if why else 'done', why, *((slot,) if self.session else ()))
 
     def t_stop(self, tp, who):
         """The trainee's stop input (§17.11): an act of that person's, the first kind not yet stopped."""
@@ -2066,7 +2204,7 @@ class StaffRun:
         act = None
         if isinstance(who, str) and who in st.person_ix and who not in self.absent and st.person_ix[who] != tp.i:
             q = self.people[st.person_ix[who]]
-            for kind in ACT_KINDS:
+            for kind in st.kinds:
                 a = q.acts.get(kind)
                 if a is not None and not a[2]:
                     act = (q.i, kind, a[1])
@@ -3158,6 +3296,12 @@ class StaffRun:
             t = self.players[k]
             if t != p.i and (to == self.people[t].id or to == self.people[t].role):
                 self.acks[k] = self.acks.get(k, 0) + 1
+                q = self.people[t]
+                if self.st.audio is not None and q.music >= self.st.audio['mask']:
+                    # a call not heard over the music (REALISM.md §8.5): the caller reports it unanswered
+                    e.ev('missed', q.id, msg, p.id)
+                    if 'audio' in q.acts:
+                        q.told.add('audio')
 
     def wait(self, p, cur, w):
         e = self.e
@@ -3532,7 +3676,7 @@ class StaffRun:
         def inst(pi, where, x):
             act = x['act']
             if act is not None:
-                act = [act[0], ACT_KINDS.index(act[1]), act[2]]
+                act = [act[0], self.st.kinds.index(act[1]), act[2]]
             return [pi, where, x['task'], x['prio'], x['made'], x['order'], x['step'], x['work'], x['code'], x['alarm'],
                     key(x['src']), 2 if x.get('off') else x['idle'], x['started'], x['int'], x['owner'], act,
                     key(x.get('orig'))] + ([1 if x.get('offr') else 2 if x.get('dslot') is not None else 0] if self.st.homes else [])
@@ -3546,7 +3690,7 @@ class StaffRun:
             return key(x)
         st = self.st
         pending = [[ident(x[0]), key(x[1]), list(x[2]), x[3], x[4], x[5], x[6], x[7], x[8]] for x in self.pending]
-        made = sorted((k[0], self.st.person_ix[k[2]], ACT_KINDS.index(k[3]), k[4]) for k in self.made)
+        made = sorted((k[0], self.st.person_ix[k[2]], self.st.kinds.index(k[3]), k[4]) for k in self.made)
         people = self.people
         return [self.e.J, self.order, self.session,
                 Packed(PACKED_INT32, [self.players.get(k, -1) for k in range(SLOTS)]),
@@ -3574,7 +3718,7 @@ class StaffRun:
                 [p.result for p in people],
                 Packed(PACKED_INT64, [i64(p.rng) for p in people]),
                 Packed(PACKED_INT32, [sum(1 << k for k, x in enumerate(PPE) if x in p.worn) for p in people]),
-                [[list(p.acts[k]) if k in p.acts else None for k in ACT_KINDS] for p in people],
+                [[list(p.acts[k]) if k in p.acts else None for k in st.kinds] for p in people],
                 Packed(PACKED_INT64, [i64(sum(1 << k for k in p.zin)) for p in people])] + \
             ([[Packed(PACKED_INT32, p.stairs or []) for p in people],
               Packed(PACKED_INT64, [p.lin for p in people])] if st.lifts else []) + \
@@ -3585,7 +3729,13 @@ class StaffRun:
                 V['floor'], list(V['done']) if V['done'] is not None else []] for V in self.veh],
               Packed(PACKED_INT32, [p.aboard if p.aboard is not None else -1 for p in people]),
               Packed(PACKED_INT64, [p.offday if p.offday is not None else -1 for p in people])]
-             if st.homes else [])
+             if st.homes else []) + \
+            ([[Packed(PACKED_INT32, [p.music for p in people]), Packed(PACKED_INT32, [p.phone for p in people]),
+               Packed(PACKED_INT32, [sum(1 << k for k, x in enumerate(AUDIO_KINDS) if x in p.told) for p in people]),
+               [[[wk[0], AUDIO_KINDS.index(wk[1]), Packed(PACKED_INT32, sorted(p.watch[wk])),
+                  Packed(PACKED_INT64, [p.watch[wk][qi] for qi in sorted(p.watch[wk])])]
+                 for wk in sorted(p.watch, key=lambda x: (x[0], AUDIO_KINDS.index(x[1])))] for p in people],
+               Packed(PACKED_INT64, list(self.aud_s))]] if st.audio is not None else [])
 
     def snap_vehicles(self):
         """`vehicles` (§21.4): {id: [place or [from, to, depart, arrive], [the driver, then the riders]]}."""
@@ -3600,11 +3750,16 @@ class StaffRun:
         return out
 
     # --- the snapshot's part (§17.7)
+    def snap_audio(self):
+        """`audio` (REALISM.md §8.5): {person: [music, phone]} for those whose music is on or whose phone is not
+        carried."""
+        return {p.id: [p.music, p.phone] for p in self.people if p.music or p.phone != 1}
+
     def snap_acts(self):
         """`worn`: {person: their PPE items, in the list's order} for those wearing any; `acts`: [[person, kind, zone or
         work, start step, stopped], …] in person order, then kind (§17.11)."""
         worn = {p.id: [x for x in PPE if x in p.worn] for p in self.people if p.worn}
-        acts = [[p.id, k, p.acts[k][0], p.acts[k][1], p.acts[k][2]] for p in self.people for k in ACT_KINDS
+        acts = [[p.id, k, p.acts[k][0], p.acts[k][1], p.acts[k][2]] for p in self.people for k in self.st.kinds
                 if k in p.acts]
         return worn, acts
 

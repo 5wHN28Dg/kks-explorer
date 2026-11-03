@@ -438,6 +438,7 @@ programme's own budgets are REALISM.md §11.
 | HS4 | **Induction, first aid, ERT** (J5): inductions, the first response and CPR steps, the emergency response team | M | HS3, PA1 | site inductions and first response |
 | HS5 | **Audits and simultaneous operations** (J0, J5): permit and lockout audits, permit conflicts (`conflicts`, vectors) | M | HS2 | audited permits; conflicting work refused |
 | HS6 | **Hydrogen, chlorine, radiation** (J0, J5): zone barriers (`barrier_when`, vectors), hydrogen purging, chlorine drills, gauges' shutters, radiography barriers | M | HS2 | the special hazards |
+| HS7 | **Personal audio and the phone** (REALISM.md §8.5; the user, 2026-11-03): staff.json's `audio` (banned zones, Ex zones, noticing delays, the missed-call mask; vectors), the `audio` and `phone` inputs and acts, the device held to the end of the duty; the phone's music player with our own procedural tracks, the plant's sounds masked by the volume, missed calls in the radio log, the consequence ladder in the debrief | M | S2, RE1 | music on the character's phone, and what it costs |
 | EV1 | **Waste and spills** (J5): segregation, records, a spill contained and reported | S | HS3 | spill response |
 | EV2 | **Wastewater and noise** (J5): discharge monitoring against the IFC limits, a noise survey, hearing protection zones | M | EN4, WX4 | environmental monitoring |
 | CH1 | **Cooling tower treatment** (J6): cycles, blowdown, inhibitor and biocide, Legionella risk and samples | M | AG2, EN4 | the cooling tower's chemistry |
@@ -461,7 +462,7 @@ new tracks' rows that don't need K3, such as OP1, OP7, PA1 and PA2, wait by choi
 because they need it), each
 adding one kind of load measured alone on the Note 9 before the next: HW2 (the work view), WX3 (weather drawn).
 Then, as dependencies allow and memory and the one Note 9 permit, in parallel: hands-on HW3–HW6, ageing AG2–AG4,
-weather WX2 and WX4, documents DC2–DC3, work management WM1–WM3 and WM5–WM7, HSE HS1–HS6 and EV1–EV2, crafts EC1–EC7
+weather WX2 and WX4, documents DC2–DC3, work management WM1–WM3 and WM5–WM7, HSE HS1–HS7 and EV1–EV2, crafts EC1–EC7
 and MC1–MC9, engineering EN1–EN4, operations OP1–OP8, I&C IC1–IC9, chemistry CH1–CH3, people PA1–PA4. The engine
 pieces among them (OP1, IC1, HS5, HS6, WM5, PA1, PA2, PA4: J0) come first among their track's new rows, and AG1
 gains the `count` node. WM4, the outage, comes last.

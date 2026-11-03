@@ -2347,6 +2347,12 @@ class Engine:
     def ppe(self, item, on, slot=None):
         self._q(('ppe', item, on), slot)
 
+    def audio(self, level, slot=None):
+        self._q(('audio', level), slot)     # the player's music volume, 0 off (REALISM.md §8.5)
+
+    def phone(self, what, slot=None):
+        self._q(('phone', what), slot)      # "leave" at a locker or "take" (§8.5)
+
     def zone(self, zone, how, slot=None):
         self._q(('zone', zone, how), slot)
 
@@ -2726,7 +2732,7 @@ class Engine:
             elif kind == 'release' and not self.session:
                 continue        # (a session run's input: a single-player run has no slots)
             elif kind in ('role', 'release', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump',
-                          'ppe', 'zone', 'stop', 'get_on'):
+                          'ppe', 'zone', 'stop', 'get_on', 'audio', 'phone'):
                 tail = (slot,) if self.session else ()
                 if sr is not None:
                     sr.t_input(item, slot)
@@ -3169,6 +3175,8 @@ class Engine:
             s['people'] = self.staff.snap()
             s['worn'], s['acts'] = self.staff.snap_acts()
             s['vehicles'] = self.staff.snap_vehicles()
+            if self.staff.st.audio is not None:     # REALISM.md §8.5
+                s['audio'] = self.staff.snap_audio()
             s['unacked'] = self.staff.unacked
             if self.session:
                 sr = self.staff

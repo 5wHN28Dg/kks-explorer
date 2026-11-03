@@ -2293,7 +2293,7 @@ def apply_staff(e, item):
     kind = item[1]
     if kind == 'op' and len(item) == 8:
         e.op(*item[2:8], slot=slot)
-    elif kind in ('role', 'arrive', 'leave', 'pick', 'jump', 'stop', 'get_on'):
+    elif kind in ('role', 'arrive', 'leave', 'pick', 'jump', 'stop', 'get_on', 'audio', 'phone'):
         getattr(e, kind)(item[2], slot=slot)
     elif kind == 'task_ack':
         e.task_ack(slot=slot)
@@ -4911,6 +4911,109 @@ def hands_part():
             'runs': build_runs(hands_runs(), hf)}
 
 
+# ---------------------------------------------------------------- milestone HS7: personal audio (REALISM.md §8.5)
+
+AUDIO = {'banned': ['hall', 'yard'], 'ex': ['yard'], 'notice': [2, 6], 'mask': 50}
+
+
+def audio_files():
+    """The synthetic plant with the safety staff (safety_files) and a world, with `audio`: personal audio banned in
+    the pump hall and the tank yard, the yard an Ex zone (the phone banned too), 2–6 clock minutes to notice, calls
+    missed from volume 50; the put-right tasks for the two kinds; the shift supervisor's own reaction to music."""
+    F = safety_files()
+    F['scenarios/s1.json']['world'] = {'seed': 7}
+    st = F['staff.json']
+    st['audio'] = copy.deepcopy(AUDIO)
+    st['messages'].update({'music_off': 'Music off, earbuds out: the device goes to the supervisor',
+                           'phone_out': 'Phone out of the Ex zone: handed to the supervisor'})
+    st['tasks'] += [
+        {'id': 'music_off', 'title': 'Music off: hand the phone over', 'steps': [
+            {'say': 'music_off', 'to': 'channel'}, {'work': 2}]},
+        {'id': 'phone_out', 'title': 'Take the phone out of the Ex zone', 'steps': [
+            {'go': {'kind': 'locker', 'room': 'office'}}, {'say': 'phone_out', 'to': 'channel'}]}]
+    st['put_right'].update({'audio': 'music_off', 'phone': 'phone_out'})
+    # the shift supervisor too notices music (a reaction of its own: its own observers and draws), and may stop it
+    next(r for r in st['roles'] if r['id'] == 'shift_sup')['authority'].append('stop_work')
+    st['reactions'].append({'on': {'unsafe': 'audio'}, 'roles': ['shift_sup'], 'task': 'stop_unsafe', 'seen': True})
+    return F
+
+
+def _au(f):
+    """A change to the audio part's staff.json."""
+    return _st(lambda st: f(st['audio']))
+
+
+REJECTS_AUDIO = [
+    ('an audio that is not an object', 'bad_type', _st(lambda st: st.__setitem__('audio', [1]))),
+    ('an audio key not known', 'unknown_key', _au(lambda a: a.__setitem__('volume', 3))),
+    ('an audio without its notice', 'missing_key', _au(lambda a: a.pop('notice'))),
+    ('an audio banning no zone', 'bad_length', _au(lambda a: a.__setitem__('banned', []))),
+    ('a banned zone that does not exist', 'bad_ref', _au(lambda a: a['banned'].append('roof'))),
+    ('a banned zone twice', 'dup_id', _au(lambda a: a['banned'].append('hall'))),
+    ('an Ex zone that does not exist', 'bad_ref', _au(lambda a: a.__setitem__('ex', ['roof']))),
+    ('a notice of one number', 'bad_length', _au(lambda a: a.__setitem__('notice', [2]))),
+    ('a notice upside down', 'bad_number', _au(lambda a: a.__setitem__('notice', [6, 2]))),
+    ('a notice over 600 minutes', 'bad_number', _au(lambda a: a.__setitem__('notice', [2, 601]))),
+    ('a notice below 0', 'bad_number', _au(lambda a: a.__setitem__('notice', [-1, 2]))),
+    ('a notice written as 2.0', 'bad_number', _au(lambda a: a.__setitem__('notice', [2.0, 6]))),
+    ('a mask of 0', 'bad_number', _au(lambda a: a.__setitem__('mask', 0))),
+    ('a mask over 100', 'bad_number', _au(lambda a: a.__setitem__('mask', 101))),
+    ('a mask that is a boolean', 'bad_number', _au(lambda a: a.__setitem__('mask', True))),
+    ('a reaction to music acts without audio', 'bad_value', _all(
+        _st(lambda st: st.pop('audio')), _st(lambda st: st['put_right'].pop('audio')),
+        _st(lambda st: st['put_right'].pop('phone')),
+        _st(lambda st: st['reactions'].append({'on': {'unsafe': 'audio'}, 'roles': ['hse_officer'],
+                                               'task': 'stop_unsafe', 'seen': True})))),
+    ('a put-right for the phone without audio', 'unknown_key', _all(
+        _st(lambda st: st.pop('audio')), _st(lambda st: st['put_right'].pop('audio')))),
+]
+
+
+def audio_runs():
+    """(why, scenario changes, files, player, steps, snapshot every): HS7's runs (REALISM.md §8.5)."""
+    af = audio_files()
+    plain = safety_files()
+    plain['scenarios/s1.json']['world'] = {'seed': 7}
+    return [
+        ('field operator 1 of crew A plays music at volume 30 from step 1500 (under the mask): in the pump hall an '
+         'act of kind audio; each observer of the stop reaction sharing the hall draws the minutes they take to '
+         'notice from their own stream (forgotten when they leave); the first whose time comes is given the stop; '
+         'the stop holds the device (event held), turns the music off and gives the put-right task; their audio and '
+         'phone inputs refused (held) until their duty ends (a jump past 18:00: event returned), then played again',
+         {'trainee': 'a_fo1'}, af,
+         Trainee(extra=[[1500, 'audio', 30], [2300, 'audio', 40], [2301, 'phone', 'leave'], [2400, 'jump', '18:30'],
+                        [2420, 'audio', 20], [2440, 'audio', 0]]), 2500, 20),
+        ('the same at volume 60 (at or over the mask): every message to the operator or their role is missed (event '
+         'missed); one missed while the act goes on reports it, and the stop goes at once to the first of the '
+         'roles on duty wherever they are; from 17:00, so the device held comes back when the operator\'s duty ends '
+         '(18:00: event returned) and their music plays again; inputs of no volume ignored',
+         {'trainee': 'a_fo1', 'start': {'day': 1, 'time': '17:00'}}, af,
+         Trainee(extra=[[20, 'audio', 60], [21, 'audio', 101], [22, 'audio', 'loud'], [700, 'audio', 20]]), 800, 20),
+        ('the phone left at a locker (music off with it, and an audio input refused: left), taken again and music on '
+         'before the morning round: an act of kind audio from the hall, then in the tank yard (an Ex zone) one of '
+         'kind phone, unnoticed (nobody of the roles near), both ended on leaving; the next round\'s act in the hall '
+         'noticed and '
+         'stopped; a phone input not leave or take ignored',
+         {'trainee': 'a_fo1'}, af,
+         Trainee(extra=[[600, 'audio', 20], [610, 'phone', 'leave'], [620, 'audio', 20], [700, 'phone', 'take'],
+                        [701, 'phone', 'drop'], [710, 'audio', 25]]), 2300, 20),
+        ('with seed 3 in the world: other noticing draws, the same rules', {'trainee': 'a_fo1', 'world': {'seed': 3}},
+         af, Trainee(extra=[[1500, 'audio', 30]]), 2300, 20),
+        ('without audio: the audio and phone inputs refused (no_audio), no act; in free mode (no trainee) they do '
+         'nothing', {'trainee': 'a_fo1'}, plain,
+         Trainee(extra=[[1500, 'audio', 30], [1501, 'phone', 'leave']]), 1600, 20),
+        ('free mode with audio: the inputs do nothing', {}, af, Trainee(extra=[[200, 'audio', 30]]), 400, 20),
+    ]
+
+
+def audio_part():
+    af = audio_files()
+    return {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in af.items()},
+            'counts': check(af).counts,
+            'reject': reject_changes(af, REJECTS_AUDIO, af),
+            'runs': build_runs(audio_runs(), af)}
+
+
 def parts3():
     """The realism vectors part by part (REALISM.md §13), in the file's order."""
     return {
@@ -4926,7 +5029,9 @@ def parts3():
                           'milestone WX1 (§5.1): `weather`, the same plant with weather.json and the weather step '
                           '(seeded by season, fixed, scripted, the instructor\'s input, a jump); milestone HW1 '
                           '(§2.3–§2.7, §2.13): `hands`, the same plant with tools.json, hand actions, meters, a '
-                          'HART op, hidden causes and cures, and an NPC\'s job with tools and slips. A run\'s `files` are '
+                          'HART op, hidden causes and cures, and an NPC\'s job with tools and slips; milestone HS7 (§8.5): `audio`, the '
+                          'safety staff with personal audio banned in zones, an Ex zone, music and phone inputs, '
+                          'noticing by drawn delays and by missed calls, the device held until the duty ends. A run\'s `files` are '
                           'those that differ from its part\'s. Numbers compare to 1e-6; the digests (§17.14) of every '
                           '50th step are exact.'),
         'streams': build_streams,
@@ -4936,7 +5041,8 @@ def parts3():
                           'runs': build_realism_runs()},
         'wear': wear_part,
         'weather': weather_part,
-        'hands': hands_part}
+        'hands': hands_part,
+        'audio': audio_part}
 
 
 def build3():
