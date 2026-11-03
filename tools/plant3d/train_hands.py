@@ -152,21 +152,43 @@ def parts(m, code):
 FAULT = {'id': 'cond_p2_low', 'text': 'Condenser pressure transmitter 2 reads low against its partners',
          'kks': '30MAG10CP002', 'set': {'cond_p2_low': 1}, 'repair': {'cond_p2_low': 0},
          'causes': [{'id': 'drift', 'weight': 1, 'set': {'cond_p2_drift': -1.5},
-                     'repair': {'cond_p2_drift': 0, 'cond_p2_trim': 0},
+                     'repair': {'cond_p2_drift': 0, 'cond_p2_trim': 0}, 'fixed': 'cond_p2_trim_ok',
                      'text': 'The sensor has drifted 1.5 kPa low'},
                     {'id': 'loose', 'weight': 1, 'set': {'cpt2_terminal_block_loose': 1},
-                     'repair': {'cpt2_terminal_block_loose': 0},
+                     'repair': {'cpt2_terminal_block_loose': 0}, 'fixed': 'cpt2_tight',
                      'text': 'A loose signal terminal: its contact resistance takes the loop current 0.3 mA down'}]}
 WORK = ('wo_cond_p2_fix', '30MAG10CP002', 'Condenser pressure transmitter 2 reads low: find the cause and put it right',
         'inst', 'general', 'iso_cond_p2', 'cond_p2_low')
 CP2 = '30MAG10CP002'
+# The trim a two-point check gives under the drift (REALISM.md §2.16): the drift undone (the tap offsets are real
+# pressure differences, not sensor error)
+TRIM = -FAULT['causes'][0]['set']['cond_p2_drift']
+ERR_TOL, MA_TOL, PV_TOL = 0.3, 0.15, 0.75   # kPa (0.25 % of span), mA, kPa against the partners' mean
+
+
+def fault_values(m):
+    """The values the job's cures and its technician read (REALISM.md §2.16): whether each cause's fix is made (the
+    sensor's error within tolerance; the terminals tight), and what the technician sees at the transmitter (the loop
+    current below the AO the transmitter says it sets; the PV below its partners' mean on the screens)."""
+    m.sum('cond_p2_err', ['cond_p2_drift', 'cond_p2_trim'], 'kPa')
+    m.cmp('cond_p2_err_lo', 'cond_p2_err', '>', -ERR_TOL)
+    m.cmp('cond_p2_err_hi', 'cond_p2_err', '<', ERR_TOL)
+    m.AND('cond_p2_trim_ok', ['cond_p2_err_lo', 'cond_p2_err_hi'])
+    m.NOT('cpt2_tight', 'cpt2_terminal_block_loose')
+    m.diff('cpt2_ma_short', 'cpt2_ma_tx', 'cpt2_ma', 'mA')
+    m.cmp('cpt2_loop_low', 'cpt2_ma_short', '>', MA_TOL)
+    m.sum('cpt2_partners', ['cond_p1', 'cond_p3'])
+    m.prod('cpt2_ref', ['cpt2_partners', 0.5], 'kPa(a)')
+    m.diff('cpt2_pv_dev', 'cond_p2_tx', 'cpt2_ref', 'kPa')
+    m.cmp('cpt2_pv_low', 'cpt2_pv_dev', '<', -PV_TOL)
 
 
 def job_steps():
     """The technician's own job (a task an NPC does, or a player playing the technician follows): the tools from the
     toolbox, the permit accepted at the transmitter, the cover off, the communicator and the multimeter on, both read,
-    the terminals tightened and the trim set to no offset (the NPC's check of it), everything off, the display read
-    and the cover on, the permit done and handed back, the tools put back.
+    the fix the readings call for (the terminals tightened when the loop current is low against the AO, the trim set
+    when the PV is low against the partners: each `wait` skips its fix to its `else`), everything off, the display
+    read and the cover on, the permit done and handed back, the tools put back.
     A need reads the values as the step before left them and a meter shows them so (REALISM.md §2.13), and a node
     made from a state follows that state's write a step later: so a minute's work (the readings settling) stands
     between the connections and their readings, and the cover waits until the terminals are clear."""
@@ -181,9 +203,11 @@ def job_steps():
         {'go': {'kks': CP2}}, {'permit': {'work': '$', 'action': 'accept'}},
         hand('open_cover'), hand('connect_hart', 'hart'), hand('connect_dmm', 'dmm'), {'work': 1},
         {'read': CP2, 'via': 'cpt2_pv'}, {'read': CP2, 'via': 'cpt2_ao'}, {'read': CP2, 'via': 'cpt2_dmm'},
+        {'wait': {'until': 'cpt2_loop_low', 'minutes': 1, 'else': 13}},
         hand('tighten_terms', 'sd_term', slip={'per_mille': 30, 'set': {'cpt2_terminal_block_loose': 1},
                                                 'text': 'Left a signal terminal\'s screw short of tight'}),
-        {'op': {'kks': CP2, 'do': 'set', 'where': 'hart', 'value': 0}}, {'work': 1},
+        {'wait': {'until': 'cpt2_pv_low', 'minutes': 1, 'else': 15}},
+        {'op': {'kks': CP2, 'do': 'set', 'where': 'hart', 'value': TRIM}}, {'work': 1},
         {'read': CP2, 'via': 'cpt2_dmm'}, hand('disconnect_dmm', 'dmm'), hand('disconnect_hart', 'hart'),
         {'wait': {'until': 'cpt2_clear', 'minutes': 1}}, {'read': CP2}, hand('close_cover'), {'permit': {'work': '$', 'action': 'done'}},
         {'permit': {'work': '$', 'action': 'return'}}, {'say': 'cal_done', 'to': 'shift_sup'},

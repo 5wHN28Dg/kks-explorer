@@ -787,6 +787,21 @@ class HandsVectors(PartVectors, unittest.TestCase):
         e.step()
         self.assertEqual((e.v('g1_fault'), e.v('g1_term')), (1.0, 1.0))     # (the term cause has no repair)
 
+    def test_cure_follows_the_fix(self):
+        """REALISM.md §2.16: a cause's `fixed`: under the drift, the gland torqued (the loose terminal's fix) leaves the
+        fault at the work's done and at a repair under its permit, though the work cures the drift; the re-range (the
+        drift's fix) under the work's permit taken again lets its done repair fault and cause."""
+        k = next(i for i, x in enumerate(self.st['runs']) if x['why'].startswith('a cause\'s fix'))
+        r = self.st['runs'][k]
+        self.assertEqual([x[3] for x in r['events'] if x[1] == 'cause'], ['drift'])
+        dones = [x[0] for x in r['events'] if x[1] == 'permit' and x[3] == 'done' and x[5] == 'done']
+        self.assertEqual(dones, [44, 62])
+        self.assertEqual([x[0] for x in r['events'] if x[1] == 'repair'], [62])
+        e = run_on(self.st, r, 61)
+        self.assertEqual((e.v('g1_fault'), e.v('g1_drift'), e.v('g1_urv_ok')), (1.0, 1.0, 1.0))
+        e.step()
+        self.assertEqual((e.v('g1_fault'), e.v('g1_drift')), (0.0, 0.0))
+
     def test_value_weight(self):
         r = self.st['runs'][8]
         names = ['blocked', 'drift', 'term']

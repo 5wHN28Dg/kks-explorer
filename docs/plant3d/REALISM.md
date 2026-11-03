@@ -494,6 +494,10 @@ at 29–35 °C over the runs.
   (else `dup_id`). A work without `cures` cures every cause. A repair under its permit, or its `done`, whose work
   doesn't cure the applied cause writes neither repair and makes no `repair` event; everything else happens as for
   one that cures.
+- **A cause's fix** (HW2, §2.16): a cause may carry `fixed`, a value name. A work cures that cause only when, besides
+  `cures`, the value reads true (≥ 0.5; NaN false) as step 2 left it, at its `done` or its repair under its permit;
+  the instructor's own repair (no permit) ignores it. So a work curing every cause still leaves the fault when the fix
+  made was not the cause's.
 - **The digest** gains one part after the weather's, only in a run with any of the keys: the tools' counts (file
   order), each person's carried tools (as indexes in tools.json), each person's busy action or null, each cause
   stream's state and applied cause (faults with causes, in scenario order), and each person's slip stream state.
@@ -592,15 +596,26 @@ at 29–35 °C over the runs.
   otherwise. A HART `set` op writes the sensor trim (`cond_p<k>_trim`, ±5 kPa), added to the transmitter's value.
 - **The job with a hidden cause:** a fault "transmitter 2 reads low against its partners" whose cause is a drifted
   sensor (−1.5 kPa) or a loose signal terminal (−0.3 mA), equally likely; one work (`wo_cond_p2_fix`) under the
-  transmitter's isolation, curing both, its repair putting back the cause's states (the drift and the trim; the
-  terminal). The two are told apart at the transmitter (the HART PV against the partners; the multimeter's or the
-  clamp's current against the one the transmitter says it sets) and put right by hand (a trim, or the terminals
-  tightened); HW3 adds the other three causes, cures per cause and the diagnosis tab. Replacing the transmitter waits
-  for the stores (§7.2) in HW3.
+  transmitter's isolation, its repair putting back the cause's states (the drift and the trim; the terminal). The two
+  are told apart at the transmitter (the HART PV against the partners; the multimeter's or the clamp's current against
+  the one the transmitter says it sets) and put right by hand (a trim, or the terminals tightened); HW3 adds the other
+  three causes and the diagnosis tab. Replacing the transmitter waits for the stores (§7.2) in HW3.
+- **A cure follows the fix made** (the coordinator's decision, 2026-11-03, on real-world grounds; §2.6 `fixed`): the
+  work's `done` clears the fault only when the trainee's own fix matched the drawn cause. `drift` is fixed when the
+  sensor's error, drift plus trim (`cond_p2_err`), is within ±0.3 kPa (0.25 % of the 120 kPa span, a usual field
+  calibration tolerance: `cond_p2_trim_ok`); `loose` when the terminals are tight (`cpt2_tight`). A wrong fix (the
+  terminals tightened under a drift, a trim under a loose terminal) or a fix left short (the slip) leaves the fault:
+  the permit is handed back, the work closed and requested again. The tap offsets of the three transmitters (0, +0.1,
+  −0.1 kPa) are real pressure differences at their tapping points, not sensor error: a two-point check isolated from
+  the process sees the drift alone.
 - **The technician's job:** the work's task does it by hand (tools from the toolbox, the cover, the communicator and
-  the multimeter on and read, the terminals tightened with a 3 % slip that leaves one short of tight, a trim to no
-  offset, everything off, the cover on, done, the tools back), so a player who orders it (the maintenance supervisor's
-  `assign`) watches the same steps an NPC makes.
+  the multimeter on and read, the fix the readings call for, everything off, the cover on, done, the tools back), so a
+  player who orders it (the maintenance supervisor's `assign`) watches the same steps an NPC makes. It chooses the
+  fix from what it read, deterministically, with `wait` steps whose `else` skips a fix (one minute each): the
+  terminals are tightened (a 3 % slip leaves one short of tight) only when the multimeter's current is more than
+  0.15 mA below the AO the transmitter says it sets (`cpt2_loop_low`); the trim is set only when the PV is more than
+  0.75 kPa below the partners' mean on the screens (`cpt2_pv_low`), to the value a two-point check gives (+1.5 kPa,
+  the drift undone; the content tool takes it from the cause's own `set`).
 - **The work view** (§3.3) opens from the card's "Work on it" when the trainee stands at the code's work place; it
   hides the plant's piece (built unmerged, below) and shows the Workshop's component scene of that kind at the same
   transform, lit by the plant's materials; a component's state shows as the Workshop's handling does (a cover off

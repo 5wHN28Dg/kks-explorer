@@ -1276,6 +1276,7 @@ def st():
     m.sum('cond_hh_v', ['cond_p1_hh', 'cond_p2_vote', 'cond_p3_vote'])
     m.cmp('cond_hh', 'cond_hh_v', '>=', 2)
     m.NOT('cond_p_ok', 'cond_hh')
+    train_hands.fault_values(m)     # the job's cures and what its technician reads (REALISM.md §2.16)
     m.cmp('st_vac_ok', 'cond_p', '<', 12)
     m.NOT('st_cond_trip_clear', 'st_trip_cond_p_latched')
     # lube oil, jacking oil, turning gear, eccentricity, gland steam (FIRST-TRAIN §4 #7, #10)

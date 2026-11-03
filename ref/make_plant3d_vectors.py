@@ -2998,6 +2998,12 @@ def day_forks():
         ('npc_hands', Trainee(extra=[[13000, 'fault', 'cond_p2_low', 'loose']]), 43000,
          {'permits': {'wo_cond_p2_fix': 9}, 'repaired': ['cond_p2_low'],
           'end': {'cond_p2_low': 0, 'cpt2_terminal_block_loose': 0, 'cpt2_cover_back_off': 0}}),
+        # REALISM.md §2.16: the drift instead: the technician's readings call for the trim (+1.5 kPa) and not the
+        # terminals; the work's done cures it only because the trim was the fix the cause needs
+        ('npc_hands_drift', Trainee(extra=[[13000, 'fault', 'cond_p2_low', 'drift']]), 43000,
+         {'permits': {'wo_cond_p2_fix': 9}, 'repaired': ['cond_p2_low'],
+          'end': {'cond_p2_low': 0, 'cond_p2_drift': 0, 'cond_p2_trim': 0, 'cpt2_terminal_block_loose': 0,
+                  'cpt2_cover_back_off': 0}}),
         ('npc_ls', Trainee(extra=[[13000, 'fault', 'cw_b_ls']]), 43000,
          {'permits': {'wo_cw_b_ls': 9}, 'repaired': ['cw_b_ls'], 'end': {'cw_b_ls_fault': 0}}),
         ('trainee_ic', Trainee(extra=[[1, 'role', 'ic1'], [6000, 'fault', 'cond_p2_drift']]), 33000,
@@ -4790,6 +4796,30 @@ def hands_runs():
         (4, 'lock', 'wo_gauge', 0, 'ic1'), (6, 'permit', 'wo_gauge', 'issue', 'ic1'),
         (7, 'op', G, 'set', 20, None, 'hart', 'ic1'),
         (8, 'permit', 'wo_gauge', 'accept', 'ic1'), (10, 'op', G, 'set', 21, None, 'hart', 'ic1')))
+    # REALISM.md §2.16: a cause's fix: the drift is fixed by the HART re-range (g1_cfg_urv above 15), the loose
+    # terminal by the gland torqued above 5; the trainee's wrong fix (the torque under the drift) leaves the fault
+    hx = hands_files()
+    hx['model/a1.json']['values'] += [['g1_urv_ok', {'cmp': ['g1_cfg_urv', '>', 15]}],
+                                      ['g1_torqued', {'cmp': ['g1_body_torque', '>', 5]}]]
+    for c in next(f for f in hx['scenarios/s1.json']['faults'] if f['id'] == 'f_low')['causes']:
+        if c['id'] in ('drift', 'term'):
+            c['fixed'] = 'g1_urv_ok' if c['id'] == 'drift' else 'g1_torqued'
+    fix = Trainee(quiet=True, extra=_x(
+        (2, 'fault', 'f_low', 'drift'), (3, 'arrive', 'tb1'), (4, 'tool', 'sd_flat', 1, 'ic1'),
+        (4, 'tool', 'hart', 1, 'ic1'), (4, 'tool', 'spanner_17', 1, 'ic1'), (5, 'leave', 'tb1'),
+        (5, 'arrive', 'w_gauge'),
+        (6, 'permit', 'wo_gauge', 'request', 'ic1'), (7, 'permit', 'wo_gauge', 'approve', 'ic1'),
+        (8, 'lock', 'wo_gauge', 0, 'ic1'), (10, 'permit', 'wo_gauge', 'issue', 'ic1'),
+        (11, 'permit', 'wo_gauge', 'accept', 'ic1'), (12, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'),
+        (34, 'hand', G, 'torque_gland', 'spanner_17', 7.5, 'ic1'), (40, 'repair', 'f_low', 'wo_gauge', 'ic1'),
+        (42, 'hand', G, 'close_cover', 'sd_flat', None, 'ic1'), (44, 'permit', 'wo_gauge', 'done', 'ic1'),
+        (46, 'permit', 'wo_gauge', 'return', 'ic1'), (47, 'unlock', 'wo_gauge', 0, 'ic1'),
+        (49, 'permit', 'wo_gauge', 'close', 'ic1'),
+        (51, 'permit', 'wo_gauge', 'request', 'ic1'), (52, 'permit', 'wo_gauge', 'approve', 'ic1'),
+        (53, 'lock', 'wo_gauge', 0, 'ic1'), (55, 'permit', 'wo_gauge', 'issue', 'ic1'),
+        (56, 'permit', 'wo_gauge', 'accept', 'ic1'), (57, 'hand', G, 'connect_hart', 'hart', None, 'ic1'),
+        (58, 'op', G, 'set', 20, None, 'hart', 'ic1'), (60, 'hand', G, 'disconnect_hart', 'hart', None, 'ic1'),
+        (62, 'permit', 'wo_gauge', 'done', 'ic1'), (64, 'permit', 'wo_gauge', 'return', 'ic1')))
     jump = Trainee(quiet=True, extra=_x(
         (1, 'arrive', 'w_gauge'), (2, 'hand', G, 'clean_glass', None, None, 'ic1'), (3, 'task_ack'),
         (8, 'jump', '06:30'), (11, 'arrive', 'w_gauge'),
@@ -4858,6 +4888,11 @@ def hands_runs():
         ('an NPC\'s hand step away from the equipment (§2.15): ic2\'s job goes back to the toolbox after the permit '
          'in place of its go to the gauge; the first hand step walks ic2 to the gauge\'s work place before the hand '
          'action is made', {}, hg, None, 1100, 100),
+        ('a cause\'s fix (§2.16, the coordinator\'s decision of 2026-11-03): the instructor names the drift; the '
+         'trainee takes the permit of wo_gauge (which cures it), opens the cover and torques the gland (the loose '
+         'terminal\'s fix, the wrong one): a repair under the permit and the work\'s done leave the fault (no repair '
+         'event); the work closed and requested again, the HART re-range (the drift\'s fix) made under its accepted '
+         'permit, and its done repairs fault and cause', me, hx, fix, 80, 2),
         ('a HART op without HW1\'s keys (§2.15): no tools.json, so no communicator is carried; before the accept '
          'refused hart and iso_gauge_locked, under the trainee\'s accepted permit refused hart alone', me, hn,
          no_keys, 20, 2),
@@ -4994,6 +5029,8 @@ REJECTS_HANDS = [
     ('weights over 65536 in all', 'bad_number', _all(_cause(0, lambda c: SET(c, 'weight', 65536)),
                                                      _cause(1, lambda c: SET(c, 'weight', 1))), 'total at most'),
     ('a weight naming no value', 'bad_ref', _cause(2, lambda c: SET(c, 'weight', 'nope')), 'nope'),
+    ('a fix naming no value', 'bad_ref', _cause(1, lambda c: SET(c, 'fixed', 'nope')), 'nope'),
+    ('a fix that is not a name', 'bad_ref', _cause(1, lambda c: SET(c, 'fixed', 1)), '.fixed'),
     ('a cause without its set', 'missing_key', _cause(0, lambda c: POP(c, 'set')), '.set'),
     ('a cause setting no state', 'bad_ref', _cause(0, lambda c: SET(c, 'set', {'loop_ma': 1})), 'not a state'),
     ('a cause\'s repair writing a command its work\'s isolation locks', 'locked_write',

@@ -2881,7 +2881,7 @@ class Engine:
                 if 'causes' in f:
                     # REALISM.md §2.6: the cause's repair too; under a permit only when the work cures that cause
                     from ref import plant3d_hands as H
-                    if fid not in asked and not H.cures(self, wid, fid) or H.blocked(self, fid, f, wid):
+                    if fid not in asked and not H.cures(self, wid, fid, vals) or H.blocked(self, fid, f, wid):
                         continue
                     self.faults_fixed.add(fid)
                     H.do_repair(self, fid, f, wid)
@@ -2901,7 +2901,7 @@ class Engine:
                     and whole and not self._blocked(f['repair'], wid):
                 if 'causes' in f:
                     from ref import plant3d_hands as H      # REALISM.md §2.6: cured only when it cures the cause
-                    if H.cures(self, wid, fid) and not H.blocked(self, fid, f, wid):
+                    if H.cures(self, wid, fid, vals) and not H.blocked(self, fid, f, wid):
                         self.faults_fixed.add(fid)
                         H.do_repair(self, fid, f, wid)
                         self.ev('repair', fid)
