@@ -199,10 +199,12 @@ class Gen:
 	## half of that component's stage, and the component moves in the second half: workshop/explode.gd).
 	## `role` "split": the group replaces a stand-in the plant draws (`only("plant", [..., id])`), as a component's
 	## split pieces do, for fasteners larger than a small outside piece that the plant shows (a casing's joint bolts):
-	## the tests hold the items, all together, to the stand-in's box and triangles.
+	## the tests hold the items, all together, to the stand-in's box and triangles. `role` "hidden": a group inside the
+	## machine's outside (an inner casing's bolts), held to the hidden pieces' rule.
 	func fasteners(id: String, kind: String, items: Array, draw: Callable, role := "outside") -> void:
 		if not workshop:
 			return
+		assert(role in ["outside", "split", "hidden"])
 		var mb = _mb_script.new()
 		mb.seg_scale = seg_scale
 		mb.workshop = true
@@ -369,7 +371,7 @@ static func make(part: String, params: Dictionary, ctx := {}, seg_scale := 1.0, 
 ##   components  [{id, parent, pivot, box, explode, sym, anchors, anim, thin}] in declaration order (`body` alone when
 ##               the generator declares none); box: the component's static and moving pieces; explode [] = default
 ##   fasteners   [{id, kind, parent, items: [Transform3D], layers, box, role}] (items in the part's Godot frame, layers
-##               in an item's own; role "outside", or "split" for a group that replaces a stand-in)
+##               in an item's own; role "outside", "split" for a group that replaces a stand-in, or "hidden")
 ##   flows       {id: [points]}
 ##   standins    [{replaced_by, layers: {comp|shared|mat|class|bucket key: {mat, cls, size, mesh, tris}}, box, moving}]
 ##               (`moving`: the moving piece's name, "" for the static builder's; its layers are relative to that pivot)
@@ -451,7 +453,7 @@ static func _ws_pieces(res: Dictionary, moving: String, mb, pivot: Vector3) -> v
 	var at := {}                # the builder's stand-in index -> res.standins'
 	for i in mb.standins.size():
 		var si: Dictionary = mb.standins[i]
-		if moving != "" and si.layers.is_empty():
+		if si.layers.is_empty():   # a stand-in another builder drew (a moving piece's, or the static one's)
 			continue
 		at[i] = res.standins.size()
 		var layers := _ws_meshes(mb.finish_layers(si.layers), pivot)

@@ -98,14 +98,20 @@ func set_only(kind: String, role := "hidden", replaced_by: Array = []) -> void:
 	_standin = {}
 	if workshop and kind != "":
 		if kind == "plant":
-			_standin = {"replaced_by": replaced_by.duplicate(), "layers": {}}
-			standins.append(_standin)
+			# the same components named again: the stand-in goes on (the plant draws it in several blocks, its pieces
+			# between other pieces, and its replacements are held to all of it together)
+			for si in standins:
+				if not replaced_by.is_empty() and si.replaced_by == replaced_by:
+					_standin = si
+			if _standin.is_empty():
+				_standin = {"replaced_by": replaced_by.duplicate(), "layers": {}}
+				standins.append(_standin)
 		_open_piece()
 	_reselect()
 
 func _open_piece() -> void:
 	_piece = {"comp": comp_id, "kind": only_kind, "role": only_role,
-		"standin": standins.size() - 1 if only_kind == "plant" else -1, "box": AABB(), "verts": 0, "tris": 0}
+		"standin": standins.find(_standin) if only_kind == "plant" else -1, "box": AABB(), "verts": 0, "tris": 0}
 	pieces.append(_piece)
 
 func _reselect() -> void:
@@ -319,6 +325,67 @@ func lathe(c: Vector3, d: Vector3, profile: Array, n := 0, caps := true) -> void
 			disk(c + d * p0[1], -d if p1[1] >= p0[1] else d, p0[0], n)
 		if p1[0] > 1e-5:
 			disk(c + d * p1[1], d if p1[1] >= p0[1] else -d, p1[0], n)
+
+## Part of a surface of revolution (as lathe(), no caps): the segments i0 to i1 of n round the axis, the same vertices
+## as lathe()'s with the same n, so a half drawn this way meets its other half and lathe()'s caps exactly. `inward`
+## turns it inside out (the inner wall of a shell). Angle 0 is across(d)[0]; with d along y that is +x, and the
+## segments 0 to n/2 are the lower half (z below the axis), n/2 to n the upper.
+func lathe_arc(c: Vector3, d: Vector3, profile: Array, n: int, i0: int, i1: int, inward := false) -> void:
+	d = d.normalized()
+	var ax: Array = across(d)
+	var sg := -1.0 if inward else 1.0
+	for k in range(profile.size() - 1):
+		var r0: float = profile[k][0]
+		var r1: float = profile[k + 1][0]
+		var t0: float = profile[k][1]
+		var t1: float = profile[k + 1][1]
+		if absf(t1 - t0) < 1e-6 and absf(r1 - r0) < 1e-6:
+			continue
+		var sn := Vector2(t1 - t0, -(r1 - r0)).normalized()
+		var first: int = cur.v.size()
+		var circ := TAU * maxf(r0, r1)
+		for i in range(i0, i1 + 1):
+			var t := TAU * i / n
+			var radial: Vector3 = ax[0] * cos(t) + ax[1] * sin(t)
+			var nrm := (radial * sn.x + d * sn.y).normalized() * sg
+			_vert(c + d * t0 + radial * r0, nrm, Vector2(circ * i / n, t0 + r0))
+			_vert(c + d * t1 + radial * r1, nrm, Vector2(circ * i / n, t1 + r1))
+		for i in i1 - i0:
+			var q: int = first + i * 2
+			if inward:
+				_quad(q, q + 1, q + 3, q + 2)
+			else:
+				_quad(q, q + 2, q + 3, q + 1)
+
+## Part of a flat ring (r0 0: of a disk) at c facing nrm, its angles counted as lathe_arc()'s round the axis d (d is
+## nrm or -nrm): segments i0 to i1 of n, meeting a lathe_arc() of the same n at its rim.
+func sector(c: Vector3, d: Vector3, nrm: Vector3, r0: float, r1: float, n: int, i0: int, i1: int) -> void:
+	var ax: Array = across(d.normalized())
+	var flip := nrm.dot(d) < 0.0   # across(d) turns counter-clockwise about d: seen from -d it is the other way
+	var first: int = cur.v.size()
+	for i in range(i0, i1 + 1):
+		var t := TAU * i / n
+		var radial: Vector3 = ax[0] * cos(t) + ax[1] * sin(t)
+		_vert(c + radial * r0, nrm, Vector2(cos(t), sin(t)) * r0)
+		_vert(c + radial * r1, nrm, Vector2(cos(t), sin(t)) * r1)
+	for i in i1 - i0:
+		var k: int = first + i * 2
+		if r0 <= 1e-6:   # a disk's sector: one triangle per segment (the centre's duplicates add no area)
+			if flip:
+				_tri(k, k + 3, k + 1)
+			else:
+				_tri(k, k + 1, k + 3)
+		elif flip:
+			_quad(k, k + 2, k + 3, k + 1)
+		else:
+			_quad(k, k + 1, k + 3, k + 2)
+
+## A flat quad facing nrm (its corners in either order round it).
+func quad_n(a: Vector3, b: Vector3, c2: Vector3, d2: Vector3, nrm: Vector3) -> void:
+	var pts := [a, b, c2, d2]
+	if (c2 - a).cross(d2 - b).dot(nrm) < 0.0:
+		pts.reverse()
+	poly(pts, nrm)
 
 ## A dish (a shallow spherical cap) closing a cylinder end: at c, bulging along d by h, radius r.
 func dish(c: Vector3, d: Vector3, r: float, h: float, n := 0, rings_ := 4) -> void:

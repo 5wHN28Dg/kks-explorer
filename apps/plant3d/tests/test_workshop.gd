@@ -38,12 +38,14 @@ func run(_tree: SceneTree) -> Array:
 		kinds += 1
 		# the parameters the build made its scene with (the plant's first instance of the kind), else the defaults
 		var params := WB.params_for(part, data, {})
+		var ctx := {}   # and the context it named from that instance (a shaft line), else none
 		var built := "res://built/workshop/%s.scn" % part
 		if ResourceLoader.exists(built):
 			var bs: Node = (load(built) as PackedScene).instantiate()
 			params = bs.get_meta("params", params)
+			ctx = bs.get_meta("ctx", ctx)
 			bs.free()
-		_kind(part, data, params)
+		_kind(part, data, params, ctx)
 		_built(part, data)
 	check(kinds >= 1, "a kind with Workshop data (the pressure transmitter)")
 	_fixture()
@@ -55,8 +57,8 @@ func run(_tree: SceneTree) -> Array:
 	return problems
 
 ## One kind: the join, the outside against the plant's, hidden and outside pieces, closed shells, the budget.
-func _kind(part: String, data: Dictionary, params: Dictionary) -> void:
-	var r := WB.scene(part, data, params)
+func _kind(part: String, data: Dictionary, params: Dictionary, ctx := {}) -> void:
+	var r := WB.scene(part, data, params, ctx)
 	for e in r.errors:
 		problems.append("%s: %s" % [part, e])
 	var ws: Dictionary = r.res
@@ -75,7 +77,7 @@ func _kind(part: String, data: Dictionary, params: Dictionary) -> void:
 		ids[c.id] = true
 		check(whole.grow(0.001).has_point(c.pivot), "%s: %s's pivot %s inside the part's box" % [part, c.id, str(c.pivot)])
 	# the same parameters in plant mode, for the outside: as the builder makes the plant's part
-	var plant := Kit.make(part, params, {})
+	var plant := Kit.make(part, params, ctx)
 	_outside(part, plant, ws)
 	_pieces(part, ws)
 	_closed(part, ws)
@@ -128,9 +130,11 @@ func _outside(part: String, plant: Dictionary, ws: Dictionary) -> void:
 		for k in si.layers:
 			stand_tris[si.layers[k].mat] = stand_tris.get(si.layers[k].mat, 0) + si.layers[k].tris[0]
 		var from: Dictionary = ws.layers
+		var piv := Vector3.ZERO   # a moving piece's stand-in is relative to its pivot, as its layers are
 		for mv in ws.moving:
 			if mv.name == si.moving:
 				from = mv.layers
+				piv = mv.pivot
 		for k in from:
 			var L: Dictionary = from[k]
 			if L.tag == "split" and L.comp in si.replaced_by:
@@ -139,11 +143,12 @@ func _outside(part: String, plant: Dictionary, ws: Dictionary) -> void:
 				any = true
 				tris[L.mat] = tris.get(L.mat, 0) + L.tris[0]
 		for f in ws.fasteners:   # a fastener group that replaces it: every item, where it stands
-			if f.get("role", "outside") == "split" and f.id in si.replaced_by and si.moving == "":
+			if f.get("role", "outside") == "split" and f.id in si.replaced_by:
 				for k in f.layers:
 					var L: Dictionary = f.layers[k]
 					for t in f.items:
 						var bb: AABB = (t as Transform3D) * (L.mesh.get_aabb() as AABB)
+						bb.position -= piv
 						box = bb if not any else box.merge(bb)
 						any = true
 					tris[L.mat] = tris.get(L.mat, 0) + L.tris[0] * f.items.size()
@@ -215,6 +220,9 @@ func _pieces(part: String, ws: Dictionary) -> void:
 			check(stands.has(f.id), "%s: the fastener group %s is drawn as a stand-in's replacement but replaces none" % [part, f.id])
 			listed.append("%s %d (replacing a stand-in)" % [f.id, f.items.size()])
 			continue
+		if f.get("role", "outside") == "hidden":   # held to the hidden pieces' rule below, every item where it stands
+			listed.append("%s %d (hidden)" % [f.id, f.items.size()])
+			continue
 		var size: float = maxf(f.box.size.x, maxf(f.box.size.y, f.box.size.z))
 		check(size <= 0.030 + 1e-6, "%s: a fastener of %s is %.1f mm, at most 30" % [part, f.id, size * 1000.0])
 		listed.append("%s %d x %.1f mm" % [f.id, f.items.size(), size * 1000.0])
@@ -228,15 +236,25 @@ func _pieces(part: String, ws: Dictionary) -> void:
 			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 			for i in (arr[Mesh.ARRAY_INDEX] as PackedInt32Array):
 				occ.append(v[i] + pr[1])
+	var hidden: Array = []   # [layer, offset, key, item transform]
 	for pr in _all_layers(ws):
+		if pr[0].tag == "hidden":
+			hidden.append([pr[0], pr[1], pr[2], Transform3D.IDENTITY])
+	for f in ws.fasteners:
+		if f.get("role", "outside") == "hidden":
+			for k in f.layers:
+				for i in f.items.size():
+					hidden.append([f.layers[k], Vector3.ZERO, "%s/%d/%s" % [f.id, i, k], f.items[i]])
+	for pr in hidden:
 		var L: Dictionary = pr[0]
 		var k: String = pr[2]
 		var off: Vector3 = pr[1]
-		if L.tag != "hidden":
-			continue
 		var arr := (L.mesh as ArrayMesh).surface_get_arrays(0)
-		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var it: Transform3D = pr[3]
+		var v: PackedVector3Array = it * (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array)
 		var nm: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+		for i in nm.size():
+			nm[i] = it.basis * nm[i]
 		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
 		# each triangle's centre (a corner can lie on the outside it closes against: a ring's outer edge), moved a
 		# little inwards and off any axis; rays turned a little off the axes, never exactly along an outside edge

@@ -15,6 +15,9 @@ FORMAT = 'walkdown-plant-workshop'
 VERSION = 1
 CID = re.compile(r'[a-z_][a-z0-9_]{0,15}')      # component and fastener group ids (§4.1: at most 16 characters)
 SID = re.compile(r'[a-z_][a-z0-9_]{0,31}')      # source ids
+# the plant builder's context keys a data file's `context` may take from the instance its parameters come from
+# (apps/plant3d/builder/kit_place.gd: the shaft line, what a part stands under or over)
+CONTEXT = ('axis_z', 'shaft_lo', 'shaft_hi', 'exhaust_to', 'intake_top', 'inlet', 'stack_d', 'decks')
 MAX = {'components': 200, 'fasteners': 64, 'sources': 64, 'steps': 400, 'needs': 16, 'planes': 2}
 # (fastener kinds come from the generator: the content build's join checks them, builder/workshop_build.gd)
 
@@ -42,7 +45,8 @@ def check(w, kit=None, where='workshop', parts=None):
     {part, components, fasteners, steps, sources}."""
     from ref import plant3d as P
     from ref.plant3d import PlantText
-    keys(w, ('format', 'version', 'part', 'sources', 'components'), ('params', 'fasteners', 'assembly', 'views'), where)
+    keys(w, ('format', 'version', 'part', 'sources', 'components'), ('params', 'context', 'fasteners', 'assembly', 'views'),
+         where)
     need(w['format'] == FORMAT, 'bad_format', f'{where}.format: {FORMAT}')
     need(w['version'] == VERSION and type(w['version']) is int, 'bad_version', f'{where}.version: {VERSION}')
     part = w['part']
@@ -54,6 +58,13 @@ def check(w, kit=None, where='workshop', parts=None):
     else:
         need(parts is not None and part in parts, 'bad_ref', f'{where}.part: no kit part {part!r}')
         need(isinstance(w.get('params', {}), dict), 'bad_type', f'{where}.params')
+    if 'context' in w:     # the instance's context (WORKSHOP.md §5): only with the instance's own parameters
+        need('params' not in w, 'unknown_key', f'{where}.context: the builder takes it from the instance whose '
+             'parameters it uses, and a data file with its own params has none')
+        ctx = lst(w['context'], f'{where}.context', 1, len(CONTEXT))
+        for i, k in enumerate(ctx):
+            need(k in CONTEXT, 'bad_ref', f'{where}.context[{i}]: one of {", ".join(CONTEXT)}')
+        need(len(set(ctx)) == len(ctx), 'dup_id', f'{where}.context')
     # sources: {id, cite, url}, each referred to at least once
     srcs = {}
     for i, s in enumerate(lst(w['sources'], f'{where}.sources', 1, MAX['sources'])):

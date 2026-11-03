@@ -26,9 +26,12 @@ const TRIS_MAX := 120000   # one kind's scene, all components and insides (WORKS
 const FASTENER_KINDS := ["bolt", "stud_nut", "screw", "cap_screw", "threaded_cover", "clamp", "gland", "pin", "circlip", "key"]
 
 ## Builds every kind with a data file in `data_dir` into `out_dir`. `equipment` (the plant builder's, kks -> {part,
-## params}) gives a kind's parameters where its data file has none: the first instance of that kind in the plant.
+## params}) gives a kind's parameters where its data file has none: the first instance of that kind in the plant;
+## `ctx_of` (kks -> the context the plant builder works out for it, builder/kit_place.gd) gives the keys its data
+## file's `context` names, from that same instance (a turbine's shaft line: its height and the shaft reaching its
+## neighbours, so the coupling stands where it does in the plant).
 ## Returns {built: [part], tris: {part: n}, errors: [text]}.
-static func build_all(out_dir: String, data_dir: String, equipment: Dictionary) -> Dictionary:
+static func build_all(out_dir: String, data_dir: String, equipment: Dictionary, ctx_of := {}) -> Dictionary:
 	var out := {"built": [], "tris": {}, "errors": []}
 	var dir := ProjectSettings.globalize_path(data_dir) if data_dir.begins_with("res://") else data_dir
 	if not DirAccess.dir_exists_absolute(dir):
@@ -48,7 +51,7 @@ static func build_all(out_dir: String, data_dir: String, equipment: Dictionary) 
 		var bench_path := dir.path_join("bench").path_join(f)   # its bench model (WORKSHOP.md §6), when it has one
 		if FileAccess.file_exists(bench_path):
 			data["bench_text"] = FileAccess.get_file_as_string(bench_path)
-		var r := scene(part, data, params_for(part, data, equipment))
+		var r := scene(part, data, params_for(part, data, equipment), context_for(part, data, equipment, ctx_of))
 		if not r.errors.is_empty():
 			for e in r.errors:
 				out.errors.append("workshop/%s: %s" % [f, e])
@@ -138,6 +141,21 @@ static func params_for(part: String, data: Dictionary, equipment: Dictionary) ->
 			return Kit.params_of(part, e.get("params", {}))
 	return Kit.params_of(part, {})
 
+## The context a kind's Workshop scene is built with: the keys its data file's `context` names, from the context of
+## the instance its parameters come from (none when the data file gives its own parameters or the plant has none).
+static func context_for(part: String, data: Dictionary, equipment: Dictionary, ctx_of: Dictionary) -> Dictionary:
+	var out := {}
+	if data.has("params"):
+		return out
+	for kks in equipment:
+		if equipment[kks].get("part", "") == part:
+			var c: Dictionary = ctx_of.get(kks, {})
+			for k in data.get("context", []):
+				if c.has(k):
+					out[k] = c[k]
+			return out
+	return out
+
 ## One kind's Workshop scene: {scene: PackedScene, tris, res (Kit.make's Workshop result), errors}. `ctx` as Kit.make's
 ## (default: the part standing free, upright).
 static func scene(part: String, data: Dictionary, params: Dictionary, ctx := {}) -> Dictionary:
@@ -155,6 +173,7 @@ static func scene(part: String, data: Dictionary, params: Dictionary, ctx := {})
 		return out
 	var root := _nodes(part, res, data)
 	root.set_meta("params", params)   # what it was built with (the tests check that very shape)
+	root.set_meta("ctx", ctx)
 	for c in root.get_children():
 		_own(root, c)
 	var ps := PackedScene.new()
