@@ -1218,7 +1218,8 @@ operators answer alarms): a question for the user (WAITING).
 - The radio log shows a missed message as "Missed call from …" without its text, and no chime sounds.
 - A late alarm response and a bus heard too late follow from that. The debrief counts the alarms that went
   active while the music was on, and how long the player took to acknowledge them.
-- Earbuds are drawn on the player's avatar for the others in a session.
+- Not yet: earbuds drawn on the player's avatar for the others in a session (a kit part for A1's avatars; a later
+  step of HS7).
 
 **The music.** Our own, made by the sound generator ([§11 of PLANT3D.md], decision 0055) as three short procedural
 tracks (a chord progression, a bass line, a drum pattern and a melody from a seeded scale, by fixed rules: no
