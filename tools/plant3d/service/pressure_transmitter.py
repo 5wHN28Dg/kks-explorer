@@ -219,5 +219,7 @@ DATA = {'format': 'walkdown-plant-service',
            'input': '@_trim',
            'range': [-5, 5],
            'hart': '$_terminal_block_hart',
+           # a dead loop gives no HART reply (the communicator's "No device found")
+           'needs': [['$_wired', 'No device found: a lifted wire leaves the transmitter without loop power']],
            'unit': 'kPa',
            'sources': ['r3051']}]}

@@ -114,7 +114,7 @@
   ["cpt2_partners", {"sum": ["cond_p1", "cond_p3"]}],
   ["cpt2_ref", {"product": ["cpt2_partners", 0.5], "unit": "kPa(a)"}],
   ["cpt2_pv_dev", {"diff": ["cond_p2_tx", "cpt2_ref"], "unit": "kPa"}],
-  ["cpt2_pv_low", {"cmp": ["cpt2_pv_dev", "<", -0.75]}],
+  ["cpt2_pv_low", {"cmp": ["cpt2_pv_dev", "<", -0.5]}],
   ["st_vac_ok", {"cmp": ["cond_p", "<", 12]}],
   ["st_cond_trip_clear", {"not": "st_trip_cond_p_latched"}],
   ["st_still", {"cmp": ["st_speed", "<", 0.01]}],
@@ -452,8 +452,8 @@
   ["crane_hook_clear", {"cmp": ["crane_hook_height", ">=", 20]}]
  ],
  "ops": [
-  {"kks": "30MAG10CP002", "do": "set", "input": "cond_p2_trim", "range": [-5, 5], "hart": "cpt2_terminal_block_hart", "where": ["hart"]},
-  {"kks": "30MAG10CP003", "do": "set", "input": "cond_p3_trim", "range": [-5, 5], "hart": "cpt3_terminal_block_hart", "where": ["hart"]},
+  {"kks": "30MAG10CP002", "do": "set", "input": "cond_p2_trim", "range": [-5, 5], "hart": "cpt2_terminal_block_hart", "needs": [["cpt2_wired", "No device found: a lifted wire leaves the transmitter without loop power"]], "where": ["hart"]},
+  {"kks": "30MAG10CP003", "do": "set", "input": "cond_p3_trim", "range": [-5, 5], "hart": "cpt3_terminal_block_hart", "needs": [["cpt3_wired", "No device found: a lifted wire leaves the transmitter without loop power"]], "where": ["hart"]},
   {"kks": "30MAV10AP001", "do": "start", "set": {"st_lac_cmd": 1}, "needs": [["st_lac_ok", "The motor has a fault: it needs repair before a start"]], "where": ["local", "screen"]},
   {"kks": "30MAV10AP001", "do": "stop", "set": {"st_lac_cmd": 0}, "where": ["local", "screen"]},
   {"kks": "30MAV10AP002", "do": "start", "set": {"st_ldc_cmd": 1}, "needs": [["st_ldc_ok", "The motor has a fault: it needs repair before a start"]], "where": ["local", "screen"]},

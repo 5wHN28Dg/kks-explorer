@@ -593,7 +593,9 @@ at 29–35 °C over the runs.
 - **The loop in the model:** 4–20 mA over 0–120 kPa(a), held within 3.8–20.5 mA (NAMUR NE 43); a lifted wire stops
   the current, a loose terminal takes 0.3 mA off it; what the control system receives is the transmitter's own value
   while the loop is sound (that very value: every earlier run keeps its values) and the value the current stands for
-  otherwise. A HART `set` op writes the sensor trim (`cond_p<k>_trim`, ±5 kPa), added to the transmitter's value.
+  otherwise. A HART `set` op writes the sensor trim (`cond_p<k>_trim`, ±5 kPa), added to the transmitter's value; it
+  needs the wires landed (a dead loop gives no HART reply: the op's `needs`, and the work view refuses a trim while
+  the communicator finds no device).
 - **The job with a hidden cause:** a fault "transmitter 2 reads low against its partners" whose cause is a drifted
   sensor (−1.5 kPa) or a loose signal terminal (−0.3 mA), equally likely; one work (`wo_cond_p2_fix`) under the
   transmitter's isolation, its repair putting back the cause's states (the drift and the trim; the terminal). The two
@@ -605,7 +607,9 @@ at 29–35 °C over the runs.
   sensor's error, drift plus trim (`cond_p2_err`), is within ±0.3 kPa (0.25 % of the 120 kPa span, a usual field
   calibration tolerance: `cond_p2_trim_ok`); `loose` when the terminals are tight (`cpt2_tight`). A wrong fix (the
   terminals tightened under a drift, a trim under a loose terminal) or a fix left short (the slip) leaves the fault:
-  the permit is handed back, the work closed and requested again. The tap offsets of the three transmitters (0, +0.1,
+  the permit is handed back, and the work must be closed and requested again (by a player: no reaction requests it
+  again, and an NPC's job does not check its own fix, so a slip is left for the hold point or the next shift to
+  find). The tap offsets of the three transmitters (0, +0.1,
   −0.1 kPa) are real pressure differences at their tapping points, not sensor error: a two-point check isolated from
   the process sees the drift alone.
 - **The technician's job:** the work's task does it by hand (tools from the toolbox, the cover, the communicator and
@@ -614,7 +618,8 @@ at 29–35 °C over the runs.
   fix from what it read, deterministically, with `wait` steps whose `else` skips a fix (one minute each): the
   terminals are tightened (a 3 % slip leaves one short of tight) only when the multimeter's current is more than
   0.15 mA below the AO the transmitter says it sets (`cpt2_loop_low`); the trim is set only when the PV is more than
-  0.75 kPa below the partners' mean on the screens (`cpt2_pv_low`), to the value a two-point check gives (+1.5 kPa,
+  0.5 kPa below the partners' mean on the screens (`cpt2_pv_low`; the drift's 1.35 kPa still shows with transmitter
+  3's own calibration drift applied too), to the value a two-point check gives (+1.5 kPa,
   the drift undone; the content tool takes it from the cause's own `set`).
 - **The work view** (§3.3) opens from the card's "Work on it" when the trainee stands at the code's work place; it
   hides the plant's piece (built unmerged, below) and shows the Workshop's component scene of that kind at the same
@@ -624,7 +629,8 @@ at 29–35 °C over the runs.
   actions, and the chosen action is sent with the tray's selected tool (none for bare hands). A refusal shows the
   engine's reasons as sentences (`wrong`'s, the need's, else general ones). While an action is under way its
   component moves from its old place to its new over the action's minutes. A meter's screen shows the shown value
-  of the meter at the point the person's connected tool sits, "OL"/"No device found" when its needs fail; the
+  of the meter at the point the person's connected tool sits (its `else` when its needs fail; the communicator's
+  "No device found"); the
   communicator's screen lists PV and AO and offers the trim (the reference pressure typed in, the op's value the
   trim that brings the PV to it). Everything is an input, so two players at one transmitter see the same.
 - **Equipment with jobs built unmerged** (§3.3): every code a service file names is built as its own node's meshes

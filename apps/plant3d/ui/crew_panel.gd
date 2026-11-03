@@ -488,6 +488,7 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 		row.add_child(W.button("Tools", func(): ui.work.toggle_tools() if not ui.work.tools_panel.visible else null))
 	var at_code = s.get("kks") if s.has("hand") else (s["read"] if s.has("read") and s.has("via") else
 			(s["op"]["kks"] if s.has("op") and s["op"].get("where") == "hart" else null))
+	var at_job := false
 	if at_code != null:
 		# hands-on at the equipment (the work view, REALISM.md §3.3): taken there first, when the trainee isn't
 		var ac: String = at_code
@@ -495,11 +496,13 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 		if not wp.is_empty() and not wp.has(e.t_at(ui.inputs.slot)):
 			var to: int = wp[0]
 			row.add_child(W.button("Take me there", func(): ui.go_to_place(to)))
+			at_job = true
 		elif ui.work.has_job(ac):
 			var wb := W.button("Work on it", func(): ui.work.open(ac))
 			wb.name = "crew_work"
 			row.add_child(wb)
-	elif s.has("read"):
+			at_job = true
+	if not at_job and s.has("read"):   # (a reading through a meter at a code without a work view: written down)
 		entry = LineEdit.new()
 		_entry_code = "%s/%s/%s" % [s["read"], str(cur["order"]), str(cur["step"])]
 		entry.placeholder_text = "the value shown"

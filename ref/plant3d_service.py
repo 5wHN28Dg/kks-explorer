@@ -100,9 +100,12 @@ def check(s, workshop, tools, rel):
         for n in [mt['value']] + mt['needs'] + ([mt['else']] if isinstance(mt['else'], str) else []):
             need(n in made or n in loop, 'bad_ref', f'{w}: {n}, which nothing makes')
     for h in s['hart']:
-        keys(h, ('do', 'title', 'input', 'range', 'hart'), ('unit', 'sources'), f'{rel}: HART op')
+        keys(h, ('do', 'title', 'input', 'range', 'hart'), ('unit', 'sources', 'needs'), f'{rel}: HART op')
         _text(h['title'], f'{rel}: HART op', 80)
         need(h['input'] in loop | made and h['hart'] in made, 'bad_ref', f'{rel}: HART op {h["do"]}')
+        for n, sentence in h.get('needs', []):
+            need(n in made or n in loop, 'bad_ref', f'{rel}: HART op {h["do"]}: needs {n}, which nothing makes')
+            _text(sentence, f'{rel}: HART op {h["do"]}: a need\'s sentence', 200)
     for a in s['actions']:     # (the anchors are the generator's: the content build checks them, WORKSHOP.md §4.1)
         for n in a.get('anchors', []):
             ident(n, f'{rel}: action {a["action"]}: anchor')

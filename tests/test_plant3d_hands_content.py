@@ -239,6 +239,65 @@ class Loop(unittest.TestCase):
         e.step()
         self.assertAlmostEqual(self.val(e, 'cond_p2_tx'), self.val(e, 'cond_p1'), places=9)
 
+    def test_what_the_job_reads_and_the_causes_fixes(self):
+        """REALISM.md §2.16: the technician's readings call for the terminals under the loose terminal only and for
+        the trim under the drift only; each cause's `fixed` reads false under its cause, true once its own fix is made
+        (the job's trim, or a trim to the tapping's true pressure, within 0.3 kPa) and not after the other cause's."""
+        def at(**states):
+            e = self.engine()
+            e.step(2)
+            self.put(e, **states)
+            e.step(2)
+            return {k: self.val(e, k) for k in ('cpt2_loop_low', 'cpt2_pv_low', 'cond_p2_trim_ok', 'cpt2_tight')}
+        self.assertEqual(at(), {'cpt2_loop_low': 0, 'cpt2_pv_low': 0, 'cond_p2_trim_ok': 1, 'cpt2_tight': 1})
+        drift = at(cond_p2_drift=-1.5)
+        self.assertEqual((drift['cpt2_loop_low'], drift['cpt2_pv_low'], drift['cond_p2_trim_ok']), (0, 1, 0))
+        self.assertEqual(drift['cpt2_tight'], 1)        # (the terminals tightened would not fix it)
+        loose = at(cpt2_terminal_block_loose=1)
+        self.assertEqual((loose['cpt2_loop_low'], loose['cpt2_pv_low'], loose['cpt2_tight']), (1, 0, 0))
+        self.assertEqual(loose['cond_p2_trim_ok'], 1)    # (a trim would not fix it)
+        for trim in (train_hands.TRIM, 1.4, 1.75):
+            self.assertEqual(at(cond_p2_drift=-1.5, cond_p2_trim=trim)['cond_p2_trim_ok'], 1, trim)
+        for trim in (0.5, 1.15, 1.85):
+            self.assertEqual(at(cond_p2_drift=-1.5, cond_p2_trim=trim)['cond_p2_trim_ok'], 0, trim)
+
+    def test_the_jobs_choices_skip_to_after_their_fix(self):
+        """Each `wait` that decides on a fix skips, on its `else`, to the step right after that fix."""
+        steps = train_hands.job_steps()
+        waits = [(i, s['wait']) for i, s in enumerate(steps) if 'wait' in s and 'else' in s['wait']]
+        self.assertEqual([w['until'] for _, w in waits], ['cpt2_loop_low', 'cpt2_pv_low'])
+        for (i, w), fix in zip(waits, ('hand', 'op')):
+            self.assertIn(fix, steps[i + 1])
+            self.assertEqual(w['else'], i + 2)
+        self.assertEqual(steps[waits[0][0] + 1]['hand'], 'tighten_terms')
+        self.assertEqual(steps[waits[1][0] + 1]['op']['value'], 1.5)
+        self.assertEqual({c['id']: c['fixed'] for c in train_hands.FAULT['causes']},
+                         {'drift': 'cond_p2_trim_ok', 'loose': 'cpt2_tight'})
+
+
+class JobForks(unittest.TestCase):
+    """REALISM.md §2.16 in the day's vectors (plant3d-v2.json, the forks npc_hands and npc_hands_drift): the NPC's
+    job makes only the fix its readings call for, and its done repairs the fault."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(ROOT, 'ref', 'vectors', 'plant3d-v2.json'), encoding='utf-8') as f:
+            cls.forks = {x['id']: x for x in json.load(f)['day']['forks']}
+
+    def fixes(self, fork):
+        ev = self.forks[fork]['events']
+        hands = [x[3] for x in ev if x[1] == 'hand' and x[2] == CP2 and x[6] == 'done']
+        trims = [x for x in ev if x[1] == 'op' and x[2] == CP2 and x[3] == 'set' and x[4] == 'done']
+        return 'tighten_terms' in hands, len(trims), [x[0] for x in ev if x[1] == 'repair' and x[2] == 'cond_p2_low']
+
+    def test_loose_terminal_tightened_not_trimmed(self):
+        tightened, trims, repairs = self.fixes('npc_hands')
+        self.assertEqual((tightened, trims, len(repairs)), (True, 0, 1))
+
+    def test_drift_trimmed_not_tightened(self):
+        tightened, trims, repairs = self.fixes('npc_hands_drift')
+        self.assertEqual((tightened, trims, len(repairs)), (False, 1, 1))
+
 
 class HiddenCauseJob(unittest.TestCase):
     """The fault with its two causes in every scenario of the first train, the work that repairs it."""

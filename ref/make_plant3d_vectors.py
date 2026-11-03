@@ -2997,7 +2997,7 @@ def day_forks():
         # terminals tightened, the trim, the cover back, the tools back) puts it right
         ('npc_hands', Trainee(extra=[[13000, 'fault', 'cond_p2_low', 'loose']]), 43000,
          {'permits': {'wo_cond_p2_fix': 9}, 'repaired': ['cond_p2_low'],
-          'end': {'cond_p2_low': 0, 'cpt2_terminal_block_loose': 0, 'cpt2_cover_back_off': 0}}),
+          'end': {'cond_p2_low': 0, 'cpt2_terminal_block_loose': 0, 'cpt2_cover_back_off': 0, 'cond_p2_trim': 0}}),
         # REALISM.md §2.16: the drift instead: the technician's readings call for the trim (+1.5 kPa) and not the
         # terminals; the work's done cures it only because the trim was the fix the cause needs
         ('npc_hands_drift', Trainee(extra=[[13000, 'fault', 'cond_p2_low', 'drift']]), 43000,

@@ -196,16 +196,16 @@ func open(c: String) -> bool:
 	_path = SCENES + c + ".scn"
 	_mem0 = _mem()
 	_t_req = Time.get_ticks_usec()
+	var n = ui.index.nodes.get(c)
+	if n != null:
+		_target = (n as Node3D).global_position   # (until the scene is placed: _place aims at its box's centre)
 	if ResourceLoader.load_threaded_request(_path, "PackedScene") != OK:
 		_path = ""
 		_place(load(SCENES + c + ".scn"))
-	var n = ui.index.nodes.get(c)
 	title.text = "%s  %s" % [c, ui.info.name_of(c)]
 	panel.visible = true
 	ui.close_card()
 	ui.close_crew()
-	if n != null:
-		_target = (n as Node3D).global_position
 	_cam = Camera3D.new()
 	_cam.name = "work_camera"
 	_cam.near = 0.02
@@ -547,6 +547,9 @@ func trim(o: Dictionary, text: String) -> int:
 		if mt["tool_kind"] == "communicator" and String(mt["value"]) == "@_tx":
 			pv_id = _name(String(mt["id"]))
 	if pv_id == "" or not e.m.meters_ix.has(pv_id):
+		return -1
+	if meter_text(e, pv_id, e.m.meters_ix[pv_id]) == "No device found":
+		_show("No device found: the communicator reads no PV to trim against")   # (a dead loop: no HART reply)
 		return -1
 	var have: float = e.cur[e.ix[o["input"]]]
 	var v: float = have + t.to_float() - Hands.shown(e, pv_id, e.cur)

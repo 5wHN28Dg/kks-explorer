@@ -83,6 +83,10 @@ def check(kind, s):
             need(n in made, f'meter {mt["id"]}: {n}, which nothing makes')
     for h in s['hart']:
         need(h['input'] in made and h['hart'] in made, f'HART op {h["do"]}: its input and its connection state')
+        for n, _ in h.get('needs', []):
+            need(n in made, f'HART op {h["do"]}: needs {n}, which nothing makes')
+    loops = [e['loop'] for e in s['equipment']]
+    need(len(set(loops)) == len(loops), 'a loop twice (two pieces would share its @_ names)')
 
 
 def _sub(x, alias, loop):
@@ -140,8 +144,8 @@ def parts(m, code):
                 mt[k] = _sub(x[k], a, loop)
         m.meters.append(mt)
     for x in s['hart']:
-        m.op(code, x['do'], where=('hart',), input=_sub(x['input'], a, loop), range=x['range'],
-             hart=_sub(x['hart'], a, loop))
+        m.op(code, x['do'], needs=_sub(x.get('needs', []), a, loop), where=('hart',), input=_sub(x['input'], a, loop),
+             range=x['range'], hart=_sub(x['hart'], a, loop))
 
 
 # The job with a hidden cause (§2.6, §3.1–§3.2): transmitter 2 reads low against its partners, from a sensor that has
@@ -163,7 +167,9 @@ CP2 = '30MAG10CP002'
 # The trim a two-point check gives under the drift (REALISM.md §2.16): the drift undone (the tap offsets are real
 # pressure differences, not sensor error)
 TRIM = -FAULT['causes'][0]['set']['cond_p2_drift']
-ERR_TOL, MA_TOL, PV_TOL = 0.3, 0.15, 0.75   # kPa (0.25 % of span), mA, kPa against the partners' mean
+# kPa (0.25 % of span), mA, kPa against the partners' mean (0.5: the drift's 1.35 still shows with a partner's own
+# calibration drift of -1.2 kPa, the S2 fault, applied at the same time)
+ERR_TOL, MA_TOL, PV_TOL = 0.3, 0.15, 0.5
 
 
 def fault_values(m):

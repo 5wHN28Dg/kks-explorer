@@ -52,6 +52,6 @@
   {"id": "$_ao", "title": "HART: the loop current the transmitter sets", "point": "terminals_sig", "tool_kind": "communicator", "mode": "hart", "value": "$_ma_tx", "needs": ["$_hart_ok"], "else": 0, "unit": "mA"}
  ],
  "hart": [
-  {"do": "set", "title": "Sensor trim: the offset that brings the PV to the reference", "input": "@_trim", "range": [-5, 5], "hart": "$_terminal_block_hart", "unit": "kPa", "sources": ["r3051"]}
+  {"do": "set", "title": "Sensor trim: the offset that brings the PV to the reference", "input": "@_trim", "range": [-5, 5], "hart": "$_terminal_block_hart", "needs": [["$_wired", "No device found: a lifted wire leaves the transmitter without loop power"]], "unit": "kPa", "sources": ["r3051"]}
  ]
 }
