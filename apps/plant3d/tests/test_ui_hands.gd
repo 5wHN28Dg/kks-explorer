@@ -7,7 +7,8 @@
 ##   trainee; the tools taken at the toolbox, the permit accepted at the transmitter; a wrong order and a wrong tool
 ##   refused with the content's sentences, the multimeter across the signal terminals refused; the cover off, the
 ##   communicator and the multimeter on (their screens against the model's meters), the cause found (the multimeter's
-##   current 0.3 mA under the one the transmitter says it sets) and put right (the terminals tightened), the trim checked,
+##   current 0.3 mA under the one the transmitter says it sets) and put right (the terminals tightened; the job's step
+##   that decides on the trim skips it, REALISM.md §2.16, and the communicator's trim is tried and taken back there),
 ##   everything off, the cover on, the work done and handed back, the tools put back: the fault repaired, the loop sound.
 extends RefCounted
 
@@ -169,6 +170,10 @@ func _job(tree: SceneTree) -> Array:
 				"cpt2_terminal_block_dmm", "cond_p2_low"]:
 			if e.v(st) != 0.0:
 				p.append("%s is %s after the job" % [st, e.v(st)])
+		# REALISM.md §2.16: the job chose the terminals, not the trim (its wait skipped the trim under the loose
+		# terminal): no HART op of the task's own, and the trim the trainee tried taken back
+		if absf(e.v("cond_p2_trim")) > 0.002:
+			p.append("the trim is %.3f after the job (the loose terminal needs none)" % e.v("cond_p2_trim"))
 		var now: float = e.v("cond_p2_rx") - e.v("cond_p1")
 		if low > -1.0 or absf(now - 0.1) > 0.05:
 			p.append("transmitter 2 against 1: %.2f with the loose terminal, %.2f after the job (expected under -1, 0.1)" % [
@@ -235,8 +240,11 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 			return true
 		ui.write_reading(s["read"], "%.3f" % e.shown(s["read"], e.cur))
 		return true
+	# the step that decides on the trim (REALISM.md §2.16: the PV against the partners; under the loose terminal it
+	# skips the trim to its else): the communicator's trim checked there, and taken back
+	var trim_wait: bool = s.has("wait") and String(s["wait"].get("until", "")) == "cpt2_pv_low" and not seen.has("trim")
 	var code = s.get("kks") if s.has("hand") else (s["read"] if s.has("read") and s.has("via") else
-			(s["op"]["kks"] if s.has("op") and s["op"].get("where") == "hart" else null))
+			(s["op"]["kks"] if s.has("op") and s["op"].get("where") == "hart" else (PT2 if trim_wait else null)))
 	if code == null:
 		return false
 	if not ui.work.is_open or ui.work.code != code:
@@ -290,6 +298,8 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 		return true
 	# the HART trim: a reference 0.5 kPa over the PV shown makes a trim of 0.5 more; then the PV shown before as the
 	# reference takes it back (the sensor is sound, the cause was the terminal)
+	if not s.has("op") and not trim_wait:
+		return false
 	if not _once(e, cur, "op"):
 		return true
 	if w.trim_entry == null:
