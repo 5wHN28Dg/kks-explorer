@@ -13,6 +13,10 @@
 ## cutaway, a section swept across the machine (flow on), each fault made and repaired, then Stop. It logs the bench's
 ## steps (`WORKSHOP bench steps=… max=…us mean=…us`, §8's 0.3 ms). The walk keeps its 3 minutes (§8), the K1 and K2
 ## phases shortened again.
+## The first entry waits until the plant's warm-up has queued the Workshop's pipelines and they are made (WORKSHOP.md
+## §7.1: each kind's machine in the Workshop's materials, in the background after the plant's first walkable frame), as
+## for a trainee who walks a little first; `cold=1` enters at once instead (K3's measurement: the machine's first frame
+## then compiles them). It logs `WORKSHOP waited … ms`.
 extends Node
 
 const SECONDS := 180.0
@@ -32,6 +36,19 @@ func start(m, k := "") -> void:
 	ws = m.workshop
 	var kinds: Array = ws.kinds()
 	kind = k if k != "" else (kinds[0] if not kinds.is_empty() else "")
+	# the first entry comes after the plant's warm-up has queued the Workshop's pipelines and they are made (as a trainee
+	# who walks a little first finds them; §7.1), unless `cold=1` asks for the entry at once, as K3 measured it
+	if String(main.opts.get("cold", "0")) in ["0", "false", ""]:
+		var t0 := Time.get_ticks_msec()
+		var c0 := Vector2i(-1, -1)
+		var still := 0
+		while Time.get_ticks_msec() - t0 < 60000 and still < 60:
+			await get_tree().process_frame
+			var c := Vector2i(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE),
+				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION))
+			still = still + 1 if ws.warmed and ws.kinds_warmed and c == c0 else 0
+			c0 = c
+		main._say("WORKSHOP waited %d ms for the plant's warm-up (warmed=%s)" % [Time.get_ticks_msec() - t0, str(ws.warmed and ws.kinds_warmed)])
 	if kind == "" or not ws.open(kind):
 		main._say("WORKSHOP no kind to open (%s)" % str(kinds))
 		done = true

@@ -309,6 +309,13 @@ draw calls per kind, ≤ 20 MB for the whole Workshop); the plant's walk is run 
 the Note 9 (K1, K3, K4a, K4b, K5a, K5b at least), with the APK's size before and after (limit 250 MB). The realism programme's
 hands-on work builds on K1a–K3 (REALISM.md).
 
+**K3 follow-ups as built (2026-11-03):** the step sentence on a canvas layer of its own (the pile's ~510 draw calls
+were its letters: now at most 58 on the laptop and 59 on the Note 9), the bench's engine logs bounded (bit for bit
+with an engine that keeps everything), and every kind's machine warmed in the plant after its first walkable frame
+(WORKSHOP.md "As built (K3 follow-ups)"). The Note 9, fresh installs, cool starts, with the warm-up / `cold=1`: first
+entry 407 ms / 4,285 ms (≤ 5.0 s); no pipeline compiled after the machine's first frame; no frame over 100 ms; 99.84 /
+99.90 % at ≥ 30 fps, mean frame 19.40 / 19.41 ms, 89.9 / 91.2 % at 60 fps; peak PSS 851 / 834 MB.
+
 **K3 as built (2026-11-03):** the bench format `walkdown-plant-bench` (`ref/plant3d_bench.py`, `sim/bench_model.gd`,
 `ref/vectors/plant3d-bench-v1.json`: 2 valid files, 53 rejects, 2 runs, both engines bit for bit, no engine change);
 the transmitter's bench (supply, applied pressure to past its range, damping, 4–20 mA with NAMUR saturation, faults
