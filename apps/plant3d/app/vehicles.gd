@@ -257,8 +257,22 @@ func _physics_process(delta: float) -> void:
 	var f := _frac(e)
 	for V in vehicles:
 		_put(V, pose(V, f), false)
+		_engine(V, delta)
 	_ride(e)
 	Cost.add(Cost.BINDINGS, _c0)
+
+
+## Its engine heard (REALISM.md §8.5; ui/sound_player.gd vehicle): while it is out of its parked place (driving or
+## standing at a stop), its gain and pitch from its speed (smoothed over a few frames); silent when parked.
+func _engine(V: Dictionary, delta: float) -> void:
+	var s = ui.sounds if ui != null and "sounds" in ui else null
+	if s == null:
+		return
+	var at: Vector3 = (V["xf"] as Transform3D).origin
+	var v := at.distance_to(V.get("heard_at", at)) / delta if delta > 0.0 else 0.0
+	V["heard_at"] = at
+	V["speed"] = lerpf(float(V.get("speed", 0.0)), minf(v, 30.0), 0.2)
+	s.vehicle(V["body"], V["speed"], not (V["xf"] as Transform3D).is_equal_approx(V["parked"]))
 
 
 func _put(V: Dictionary, xf: Transform3D, force: bool) -> void:

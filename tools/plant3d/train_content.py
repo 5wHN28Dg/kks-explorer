@@ -175,7 +175,21 @@ def sounds():
         synth('sand_hiss', None, {'colour': 'white', 'band': [1500, 9000]}, 'blown sand in a sandstorm, in gusts (outdoors)'),
         synth('thunder', t((40, 0.4)), {'colour': 'brown', 'band': [20, 400], 'gain': 1.0},
               'thunder after a lightning flash (played once)'),
+        # the staff bus's engine (REALISM.md §8.5: the vehicles heard; the app sets its gain and pitch from the speed)
+        synth('bus_engine', t((37.5, 0.7), (75, 0.45), (112.5, 0.25), (150, 0.15), (12.5, 0.35)),
+              {'colour': 'brown', 'band': [40, 1500], 'gain': 0.5},
+              'the staff bus\'s diesel engine (loops while it is out of its parked place)'),
+        # the phone's music (REALISM.md §8.5): our own, made from fixed rules and these seeds, nothing recorded
+        music('music_night_shift', 'Night shift', 7301),
+        music('music_gate_road', 'Gate road', 1905),
+        music('music_cooling_tower', 'Cooling tower', 4242),
     ]}
+
+
+def music(sid, title, seed):
+    return {'id': sid, 'kind': 'music', 'title': title, 'seed': seed,
+            'made': 'our own: synthesised by tools/plant3d/sounds from fixed rules (chords, a bass line, drums from '
+                    'filtered noise, a melody from a seeded scale) and this seed; no samples, no recording'}
 
 
 FAULTS = [  # trainer faults (no `when`: pressed by the trainer, PLANT3D §7.8)

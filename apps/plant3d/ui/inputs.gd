@@ -130,6 +130,16 @@ func ppe(item: String, on: int) -> int:
 	return send(["ppe", item, on])
 
 
+## The player's music (REALISM.md §8.5): a whole volume 0–100, 0 off.
+func audio(volume: int) -> int:
+	return send(["audio", clampi(volume, 0, 100)])
+
+
+## The player's phone left at a locker ("leave") or taken again ("take"): sent at a locker only, as the PPE is.
+func phone(what: String) -> int:
+	return send(["phone", what])
+
+
 func zone(zone_id: String, how: String) -> int:
 	return send(["zone", zone_id, how])
 

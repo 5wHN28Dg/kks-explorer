@@ -16,6 +16,11 @@
 ## plant gets as loud as a real one where a real one is (the content puts hearing-protection signs at those doors).
 ## None of it costs more than a few sums a frame: the footsteps count metres, the outdoors test is one or two rays
 ## every 0.1 s.
+##
+## Personal audio (docs/plant3d/REALISM.md §8.5, milestone HS7): every plant sound plays on the bus "Plant" (the bound
+## machines, the ambience, footsteps, doors, the horn and the one-shots, the vehicles' engines), the phone's music on
+## "Music"; both send to the master bus, so its limiter caps them all. While the music plays the Plant bus is lowered
+## by mask_db(volume): up to 30 dB at full volume. The players' voice, when the app plays it, goes on voice_bus().
 extends Node3D
 
 const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
@@ -31,10 +36,21 @@ const THUD := 0.05              # a shake binding's value × scale jumping by th
 const THUD_REARM := 0.5         # and it can slam again once fallen below this share of its peak (a pump restarted
 								# while the last surge dies away slams again)
 const STEP_SOUNDS := {"concrete": "step_concrete", "grating": "step_grating", "stair": "step_stair"}
+const PLANT_BUS := &"Plant"     # every sound of the plant: masked while the phone's music plays (REALISM.md §8.5)
+const MUSIC_BUS := &"Music"     # the phone's music, through earbuds (not placed in the plant)
+const MASK_DB := 30.0           # the plant lowered by up to this at full volume…
+const MASK_EXP := 0.7           # …by (volume / 100) to this power
+const ENGINE_SOUND := "bus_engine"
+const ENGINE_IDLE := 0.55       # the bus's engine standing (gain); full at ENGINE_FULL_SPEED
+const ENGINE_FULL_SPEED := 11.0 # m/s: the gain and pitch the engine has at the bus's speed on the site's roads
+const ENGINE_PITCH := 0.6       # the pitch rises by this from standing to that speed (the engine turning faster)
 
 var index := {}                 # the generator's index: sounds: {id: {loop, layers: [{layer, file, …}]}}
 var engine
-var muted := false
+var muted := false:             # the settings' Mute: the plant and the music
+	set(v):
+		muted = v
+		_mask()
 var _bound: Array = []          # [node, sound id, gain spec, pitch spec, players (or null), layers]
 var _streams := {}              # file -> AudioStream
 var _horn: AudioStreamPlayer
@@ -63,13 +79,103 @@ var _ambience := {}             # wind / plant_distant / rain / sand_hiss -> [pl
 var weather := {}
 const ROOF_RAIN := 0.35
 var _doors := {}                # roller door -> its players while it moves
+var music := {}                 # the generator's music (REALISM.md §8.5): id -> {title, file, seconds, …}
+var music_id := ""              # the track playing ("" none)
+var music_volume := 0           # its volume now, 0–100 (0: off)
+var _music: AudioStreamPlayer = null
+var vehicles_heard := {}        # a vehicle's body -> its engine's players, while it runs within earshot (tests read it)
 
 
 func _ready() -> void:
 	set_meta("ui", true)
 	add_to_group("plant_sounds")
 	cap_output()
+	make_buses()
 	load_index(dir)
+
+
+func _exit_tree() -> void:
+	stop_music()                    # (the buses outlive this node: the next plant starts unmasked)
+
+
+## The buses "Plant" and "Music", both sending to the master bus (made once; the master's limiter caps them).
+static func make_buses() -> void:
+	for bn in [PLANT_BUS, MUSIC_BUS]:
+		if AudioServer.get_bus_index(bn) == -1:
+			AudioServer.add_bus()
+			var i := AudioServer.bus_count - 1
+			AudioServer.set_bus_name(i, bn)
+			AudioServer.set_bus_send(i, &"Master")
+
+
+## How far the plant is lowered under the phone's music at `volume` (0–100), in dB: 0 when off, −30 at full volume
+## (−30 × (volume / 100)^0.7: the first steps of the volume mask the most, as music in earbuds does).
+static func mask_db(volume) -> float:
+	var v := clampf(float(volume) / 100.0, 0.0, 1.0)
+	return -MASK_DB * pow(v, MASK_EXP)
+
+
+## The bus the players' push-to-talk voice plays on (docs/plant3d/MULTIPLAYER.md §8): the plant's, so that the music
+## masks a colleague's voice as it masks the plant (REALISM.md §8.5). The app doesn't play voice yet; whatever plays
+## it sets its player's `bus` to this.
+static func voice_bus() -> StringName:
+	return PLANT_BUS
+
+
+## The phone's tracks: [[id, title]] in the generator's order.
+func music_tracks() -> Array:
+	var out := []
+	for id in music:
+		out.append([id, String(music[id].get("title", id))])
+	return out
+
+
+## Plays a track at a volume (0–100; 0 stops it), or changes the volume of the one playing. The plant is masked
+## while it plays. Without the track's file nothing plays and nothing is masked.
+func play_music(id: String, volume: int) -> void:
+	volume = clampi(volume, 0, 100)
+	if volume == 0 or not music.has(id):
+		stop_music()
+		return
+	if _music == null or music_id != id:
+		var st := _stream(String(music[id]["file"]), true)
+		if st == null:
+			stop_music()
+			return
+		if _music != null:
+			_music.queue_free()
+		_music = AudioStreamPlayer.new()
+		_music.name = "music"
+		_music.bus = MUSIC_BUS
+		_music.stream = st
+		add_child(_music)
+		_music.play()
+		music_id = id
+	music_volume = volume
+	_mask()
+
+
+func stop_music() -> void:
+	if _music != null:
+		_music.queue_free()
+		_music = null
+	music_id = ""
+	music_volume = 0
+	_mask()
+
+
+func music_playing() -> bool:
+	return _music != null and music_volume > 0
+
+
+## The buses' levels from the music: the plant at mask_db, the music at its volume (silent off or muted).
+func _mask() -> void:
+	make_buses()
+	var on := music_playing()
+	AudioServer.set_bus_volume_db(AudioServer.get_bus_index(PLANT_BUS), mask_db(music_volume) if on else 0.0)
+	var mb := AudioServer.get_bus_index(MUSIC_BUS)
+	AudioServer.set_bus_volume_db(mb, linear_to_db(music_volume / 100.0) if on else -80.0)
+	AudioServer.set_bus_mute(mb, muted or not on)
 
 
 ## The output level's cap: a hard limiter last on the master bus, its ceiling OUTPUT_CAP_DB (made once).
@@ -99,6 +205,10 @@ func load_index(d: String) -> void:
 	_steps.clear()
 	for dn in _doors.keys():
 		door_moving(dn, false)
+	for vb in vehicles_heard.keys():
+		_engine_off(vb)
+	music = {}
+	stop_music()
 	var f := FileAccess.open(d + "/index.json", FileAccess.READ)
 	if f == null:
 		f = FileAccess.open(d + "/sounds.json", FileAccess.READ)     # the generator's first name for it
@@ -107,6 +217,8 @@ func load_index(d: String) -> void:
 	var j = JSON.parse_string(f.get_as_text())     # the generator's own output: no strictness needed
 	if j is Dictionary and j.get("format", "") == "walkdown-plant-sound-files" and j.get("sounds") is Dictionary:
 		index = j["sounds"]
+		if j.get("music") is Dictionary:
+			music = j["music"]
 		var ls: Array = index.values()[0].get("layers", []) if not index.is_empty() else []
 		var first: Dictionary = ls[0] if not ls.is_empty() else {}
 		print("plant: sounds: %d in %s, the first file %s" % [index.size(), d,
@@ -281,14 +393,18 @@ func _each_frame(delta: float) -> void:
 				elif layer.get("pitch", true):
 					pl.pitch_scale = clampf(lv.y, 0.05, 4.0)
 	running = sum / maxf(1.0, _bound.size())
+	for vb in vehicles_heard.keys():
+		if not is_instance_valid(vb):             # a vehicle drawn no more (another plant, a restart)
+			vehicles_heard.erase(vb)
 	_ambience_tick()
 	if muted and not _doors.is_empty():          # muted while a roller door runs: its loop stops now
 		for d in _doors.keys():
 			door_moving(d, false)
 
 
-func _start(n: Node3D, id: String) -> Array:
-	loops_started += 1
+func _start(n: Node3D, id: String, bound := true) -> Array:
+	if bound:
+		loops_started += 1
 	var out := []
 	var s: Dictionary = index.get(id, {})
 	for layer in s.get("layers", []):
@@ -297,6 +413,7 @@ func _start(n: Node3D, id: String) -> Array:
 			continue
 		var p := AudioStreamPlayer3D.new()
 		p.set_meta("ui", true)
+		p.bus = PLANT_BUS
 		p.stream = st
 		p.max_distance = EARSHOT
 		p.unit_size = 6.0
@@ -322,6 +439,7 @@ func horn(priority: int) -> void:
 	if s.is_empty():
 		return
 	_horn = AudioStreamPlayer.new()
+	_horn.bus = PLANT_BUS
 	_horn.stream = _stream(s["layers"][0]["file"], true)
 	add_child(_horn)
 	_horn.play()
@@ -342,6 +460,7 @@ func once(id: String, at: Node3D = null, gain_db := 0.0) -> void:
 		var p
 		if at != null:
 			var p3 := AudioStreamPlayer3D.new()
+			p3.bus = PLANT_BUS
 			p3.stream = st
 			p3.unit_size = 6.0
 			at.add_child(p3)
@@ -349,6 +468,7 @@ func once(id: String, at: Node3D = null, gain_db := 0.0) -> void:
 			p = p3
 		else:
 			var p2 := AudioStreamPlayer.new()
+			p2.bus = PLANT_BUS
 			p2.stream = st
 			p2.volume_db = gain_db
 			add_child(p2)
@@ -443,6 +563,7 @@ func footstep(surface: String, gain_db := 0.0) -> void:
 		if st == null:
 			return
 		pl = AudioStreamPlayer.new()
+		pl.bus = PLANT_BUS
 		pl.stream = st
 		pl.max_polyphony = 3
 		add_child(pl)
@@ -527,6 +648,7 @@ func _ambience_tick() -> void:
 				if st == null:
 					continue
 				var pl := AudioStreamPlayer.new()
+				pl.bus = PLANT_BUS
 				pl.stream = st
 				add_child(pl)
 				pl.play()
@@ -539,3 +661,40 @@ func _ambience_tick() -> void:
 			ps = []
 		for pl in ps:
 			(pl as AudioStreamPlayer).volume_db = linear_to_db(maxf(g, 1e-5))
+
+
+# ------------------------------------------------------------------ the vehicles (REALISM.md §8.5)
+
+## A vehicle's engine (app/vehicles.gd, every physics frame): heard while it `runs` (out of its parked place) within
+## earshot, its gain and pitch from its speed (m/s); stopped when parked, out of earshot or muted.
+func vehicle(body: Node3D, speed: float, runs: bool) -> void:
+	var near := runs and not muted and index.has(ENGINE_SOUND) and body.is_inside_tree() \
+			and body.global_position.distance_to(listener_at) < EARSHOT
+	var ps: Array = vehicles_heard.get(body, [])
+	if near and ps.is_empty():
+		ps = _start(body, ENGINE_SOUND, false)
+		if ps.is_empty():
+			return
+		vehicles_heard[body] = ps
+	elif not near:
+		if not ps.is_empty():
+			_engine_off(body)
+		return
+	var lv := engine_level(speed)
+	for p in ps:
+		var pl: AudioStreamPlayer3D = p[0]
+		pl.volume_db = linear_to_db(lv.x)
+		pl.pitch_scale = lv.y if p[1].get("pitch", true) else 1.0
+
+
+## The gain and pitch a vehicle's engine has at a speed (tests).
+static func engine_level(speed: float) -> Vector2:
+	var k := clampf(speed / ENGINE_FULL_SPEED, 0.0, 1.0)
+	return Vector2(lerpf(ENGINE_IDLE, 1.0, k), 1.0 + ENGINE_PITCH * k)
+
+
+func _engine_off(body) -> void:
+	for p in vehicles_heard.get(body, []):
+		if is_instance_valid(p[0]):
+			(p[0] as Node).queue_free()
+	vehicles_heard.erase(body)

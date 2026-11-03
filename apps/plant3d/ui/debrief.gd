@@ -10,6 +10,16 @@ extends RefCounted
 const W = preload("res://ui/widgets.gd")
 const Permits = preload("res://ui/permits.gd")
 
+## The consequence ladder of personal audio (REALISM.md §8.5), by how many times the player's device was taken in
+## the run (a stop of a phone act in an Ex zone starts at the written warning): its name and what it brings.
+const LADDER := [
+	["verbal warning", "work stopped, the device held to the end of the shift and a verbal warning, logged as an "
+			+ "unsafe-act observation; a toolbox talk on personal audio at the next shift start"],
+	["written warning", "work stopped, the device held to the end of the shift and a written warning"],
+	["final written warning", "a final written warning; referred to the plant manager for removal from site, your "
+			+ "permit-to-work authorisations (issue, accept) suspended pending review"],
+]
+
 ## Why the trainee's repair under a permit was refused (PLANT3D §15.5).
 const REPAIR_WHY := {"state": "its permit to work was not accepted", "authority": "not this person's to do",
 		"isolation": "its isolation was not in place"}
@@ -55,6 +65,11 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 			"locks": 0, "unlocks": 0, "permit_refused": 0, "by_authority": 0, "early": 0, "instructor": 0,
 			"instructor_run": instructor_count(engine), "unsafe": 0, "stops_made": 0, "stops_of_me": 0, "late": 0,
 			"covered": 0}
+	var my_id = engine._sm.people[me_pi]["id"] if engine._sm != null and me_pi != -1 else null
+	# personal audio over the whole run (REALISM.md §8.5): the ladder counts every stop, before a procedure began too
+	var pa := personal_audio(my_id, engine.events, to)
+	sm["audio"] = pa
+	sm["audio_ds"] = maxi(1, int(engine._ds)) if engine._sm != null else 1
 	var begun := {}                     # the trainee's task id -> instances begun and not yet ended (the role tab)
 	var by_instructor := {}             # "fault|id" or "repair|id" -> the step of the instructor's input
 	var state := {}                     # alarm id -> its state (from step 0: the run may begin later)
@@ -187,6 +202,14 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 							skipped.append(c)
 				if not skipped.is_empty():
 					e.text += " (not carried out on %s: locked out)" % ", ".join(skipped)
+			"audio", "phone", "held", "returned", "missed":
+				# personal audio (REALISM.md §8.5): the player's music and phone, the device taken until the end of the
+				# shift with the ladder's rung, a call not heard over the music
+				e.text = audio_text(engine._sm, ev, my_id, pa["at"].get(i, -1))
+				if ev[1] == "held" and ev[2] == my_id:
+					e.dev = "personal audio: %s" % LADDER[pa["at"][i]][0]
+				elif ev[1] == "missed" and ev[2] == my_id:
+					e.dev = "a call missed over your music"
 			"unsafe", "safe", "stop":
 				# milestone S2: unsafe acts (PLANT3D §16.7) and work stopped (§17.11), everyone's: whose they were,
 				# and the trainee's own counted
@@ -458,6 +481,7 @@ static func summary_lines(d: Dictionary) -> PackedStringArray:
 	if sm.get("unsafe", 0) > 0 or sm.get("stops_made", 0) > 0 or sm.get("stops_of_me", 0) > 0:
 		out.append("Safety: your unsafe acts %d%s; work you stopped %d" % [sm.unsafe,
 				(" (%d stopped by HSE)" % sm.stops_of_me) if sm.stops_of_me > 0 else "", sm.stops_made])
+	out.append_array(audio_lines(sm.get("audio", {}), sm.get("audio_ds", 1)))
 	if sm.early > 0:
 		out.append("Done out of order: %d (made before their task step, counted when it came)" % sm.early)
 	if sm.get("late", 0) > 0 or sm.get("covered", 0) > 0:
@@ -474,6 +498,8 @@ static func safety_text(sm, ev: Array) -> String:
 		match kind:
 			"ppe": return "without all the PPE of %s" % str(det)
 			"permit": return "working before the permit of %s was accepted" % str(det)
+			"audio": return "listening to music in %s" % str(det)
+			"phone": return "carrying a phone in the Ex zone %s" % str(det)
 			_: return "a shortcut" + (" on %s" % str(det) if det != null else "")
 	match ev[1]:
 		"unsafe":
@@ -484,3 +510,103 @@ static func safety_text(sm, ev: Array) -> String:
 		return "Work stopped by %s: %s, %s" % [who.call(ev[2]), who.call(ev[3]), what.call(ev[4], ev[5])]
 	return "Stop refused (%s): %s by %s" % [", ".join(ev[7].map(func(x): return {"authority": "no authority to stop "
 			+ "work", "no_act": "no unsafe act going on"}.get(x, str(x)))), who.call(ev[3]), who.call(ev[2])]
+
+
+# ------------------------------------------------------------------ personal audio (REALISM.md §8.5)
+
+## The player's personal audio over the run's events before `to`: each time their device was taken (`held`) with
+## the ladder's rung it reached (`rungs`, and `at`: event index -> rung), the highest (`top`, -1 none), the calls
+## they missed over their music, and the alarms raised while it played with [step raised, step acknowledged (-1 not
+## yet)] each (`acks`). The rung goes up by one a time, to the final written warning; a stop of a `phone` act (an
+## ignition source in an Ex zone) is at least the written warning.
+static func personal_audio(me_id, evs: Array, to: int) -> Dictionary:
+	var out := {"held": 0, "rungs": [], "at": {}, "top": -1, "missed": 0, "alarms": 0, "acks": []}
+	if me_id == null:
+		return out
+	var music_on := false
+	var stop_kind := ""
+	var state := {}
+	var raised := {}                    # alarm id -> its index in acks while unacknowledged
+	for i in mini(to, evs.size()):
+		var ev: Array = evs[i]
+		match ev[1]:
+			"audio":
+				if ev[2] == me_id and ev[4] == "done":
+					music_on = int(ev[3]) > 0
+			"phone":
+				if ev[2] == me_id and ev[4] == "done" and ev[3] == "leave":
+					music_on = false
+			"stop":
+				if ev[3] == me_id and ev[6] == "done":
+					stop_kind = str(ev[4])
+			"held":
+				if ev[2] == me_id:
+					music_on = false
+					var r: int = mini((out.rungs[-1] if not out.rungs.is_empty() else -1) + 1, LADDER.size() - 1)
+					if stop_kind == "phone":
+						r = maxi(r, 1)
+					out.rungs.append(r)
+					out.at[i] = r
+					out.held += 1
+					out.top = maxi(out.top, r)
+			"missed":
+				if ev[2] == me_id:
+					out.missed += 1
+			"alarm":
+				var was: String = state.get(ev[2], "normal")
+				state[ev[2]] = ev[3]
+				if ev[3] == "active_unack" and was in ["normal", "cleared_unack"] and music_on:
+					raised[ev[2]] = out.acks.size()
+					out.acks.append([int(ev[0]), -1])
+					out.alarms += 1
+				elif raised.has(ev[2]) and ev[3] in ["active_ack", "normal"]:
+					out.acks[raised[ev[2]]][1] = int(ev[0])
+					raised.erase(ev[2])
+	return out
+
+
+## The summary's personal audio part (none when nothing happened): the stops and the highest rung, the calls missed,
+## the alarms raised while the music played and how long each took to be acknowledged (`ds`: clock tenths a step).
+static func audio_lines(pa: Dictionary, ds: int) -> PackedStringArray:
+	var out := PackedStringArray()
+	if pa.is_empty() or (pa.held == 0 and pa.missed == 0 and pa.alarms == 0):
+		return out
+	if pa.held > 0:
+		out.append("Personal audio: stopped %d time%s, your device held to the end of the shift; the highest: %s (%s)"
+				% [pa.held, "" if pa.held == 1 else "s", LADDER[pa.top][0].to_upper(), LADDER[pa.top][1]])
+	if pa.missed > 0:
+		out.append("Calls missed over your music: %d" % pa.missed)
+	if pa.alarms > 0:
+		var waits := PackedStringArray()
+		for a in pa.acks:
+			waits.append(W.model_time((a[1] - a[0]) * ds) if a[1] != -1 else "not yet")
+		out.append("Alarms raised while your music played: %d (acknowledged after %s)" % [pa.alarms, ", ".join(waits)])
+	return out
+
+
+## A personal audio event in words (`rung`: a held event's of the player's, else -1).
+static func audio_text(sm, ev: Array, me_id, rung: int) -> String:
+	var who := func(pid) -> String:
+		if pid == me_id:
+			return "you"
+		return sm.people[sm.person_ix[pid]]["call"] if sm != null and sm.person_ix.has(pid) else str(pid)
+	var whom: String = who.call(ev[2])
+	match ev[1]:
+		"audio":
+			if ev[4] != "done":
+				return "Music refused (%s): %s" % [", ".join(ev[5].map(func(x): return {"held": "the phone is held",
+						"left": "the phone is in the locker", "no_audio": "no personal audio in this run"}.get(x, str(x)))), whom]
+			return ("Music on at volume %d: %s" % [int(ev[3]), whom]) if int(ev[3]) > 0 else "Music off: %s" % whom
+		"phone":
+			var what: String = "left at a locker" if ev[3] == "leave" else "taken from the locker"
+			return ("Phone %s: %s" % [what, whom]) if ev[4] == "done" else "Phone not %s (refused): %s" % [what, whom]
+		"held":
+			var t := "Phone taken by %s until the end of the shift: %s" % [who.call(ev[3]), whom]
+			if rung >= 0:
+				t += ". " + LADDER[rung][0].capitalize() + ": " + LADDER[rung][1]
+			return t
+		"returned":
+			return "Phone given back at the end of the shift: %s" % whom
+		"missed":
+			return "Missed call from %s (not heard over the music): %s" % [who.call(ev[4]), whom]
+	return " ".join(ev.slice(1).map(func(x): return str(x)))

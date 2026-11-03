@@ -73,7 +73,7 @@ static func in_tab(e: Dictionary, t: String) -> bool:
 		"deviations": return e.dev != ""
 		"alarms": return e.kind in ["alarm", "shelve", "unshelve", "trip"]
 		"permits": return e.kind in ["permit", "lock", "unlock", "remove_lock"]
-		"safety": return e.kind in ["unsafe", "safe", "stop"]
+		"safety": return e.kind in ["unsafe", "safe", "stop", "audio", "phone", "held", "returned", "missed"]
 		"role": return e.kind == "task"
 	return true
 
