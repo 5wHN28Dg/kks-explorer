@@ -256,8 +256,10 @@ inputs to the engine), before S4. Its parts, one pull request each:
 **Answered (S4, the user, 2026-11-02):** the staff step on the Note 9 at the gate was about 1.07 ms, over §21.10's
 0.3 ms: profile it and speed it up, with no change of behaviour. **Made faster** (PLANT3D.md §21.15): riders asleep at
 the stop, the bus's next run cached, phase 5's people found natively; the work in the gate's hour 52,637 → 10,072 task
-steps; on the laptop 170 → 60 µs a step; the Note 9's gate walk again, two judged cool runs before and after (the
-phone off the laptop's USB to cool, as the user asks for each).
+steps; on the laptop 170 → 60 µs a step. **Then the waits asleep too** (the user, 2026-11-03: people waiting for a
+place or for a meeting's others): 1,752 task steps in the hour, 39 to 46 µs a step on the laptop, and **0.27 ms a step
+on the Note 9** at the gate (two judged cool walks: 268.6 and 267.2 µs; about 1.32 ms before, one judged walk of the two asked), within §21.10's 0.3 ms;
+mean frame 25.1 ms and 53 % at 60 fps, as before (PLANT3D.md §21.15).
 
 **Questions for the user (S4):** should a trainee who plays a driver steer the bus (driving controls; the bus's
 position then the trainee's inputs), or ride in the cab while the engine drives (built: PLANT3D.md §21.8)?
