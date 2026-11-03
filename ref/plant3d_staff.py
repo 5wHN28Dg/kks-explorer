@@ -700,6 +700,9 @@ class Staff:
             ident(r['id'], f'{wr}.id')
             need(r['id'] not in self.routines, 'dup_id', f'{wr}: routine {r["id"]} twice')
             need(r['idle'] in self.tasks, 'bad_ref', f'{wr}.idle: no task {r["idle"]!r}')
+            # (an idle task isn't paused when a player takes the person: a hand action can't wait in one, §2.13)
+            need(not any('hand' in s for s in self.tasks[r['idle']]['steps']), 'bad_ref',
+                 f'{wr}.idle: an idle task has no hand step (REALISM.md §2.13)')
             slots = []
             for k, s in enumerate(lst(r['slots'], f'{wr}.slots', 0, 64)):
                 ws = f'{wr}.slots[{k}]'

@@ -4579,7 +4579,7 @@ def hands_runs():
         (12, 'hand', G, 'pull_test', 'sd_flat', None, 'ic1'),
         (13, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'), (14, 'leave', 'tb1'), (15, 'arrive', 'w_gauge'),
         (20, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'), (21, 'hand', G, 'pull_test', None, None, 'ic1'),
-        (21, 'hand', G, 'tighten', 'spanner_13', None, 'ic1'),
+        (21, 'hand', G, 'tighten', 'spanner_13', None, 'ic1'), (21, 'tool', 'sd_flat', 0, 'ic1'),
         (45, 'hand', G, 'lift_wire', 'sd_flat', None, 'ic1'), (45, 'hand', G, 'pull_test', None, None, 'ic1'),
         (45, 'hand', G, 'torque_gland', 'spanner_17', 7.5, 'ic1'), (46, 'hand', G, 'close_cover', 'sd_flat', None, 'ic1'),
         (47, 'hand', G, 'land_wire', 'sd_flat', None, 'ic1'), (48, 'hand', G, 'close_cover', 'sd_flat', None, 'ic1'),
@@ -4786,6 +4786,10 @@ REJECTS_HANDS = [
      _all(_value('g1_blocked', {'state': 0, 'kks': GAUGE}),
           _hwop(lambda o: o.__setitem__('input', 'g1_blocked')),
           _cause(0, lambda c: SET(c, 'repair', {'g1_blocked': 0}))), 'cause blocked.repair'),
+    ('a cause\'s repair on a fault without one', 'missing_key', lambda F: (
+        next(x for x in F['scenarios/s1.json']['faults'] if x['id'] == 'f_low').pop('repair')), 'with its own repair'),
+    ('a hand step in an idle task', 'bad_ref', _st(lambda st: next(t for t in st['tasks'] if t['id'] == 'idle_mech')[
+        'steps'].append({'hand': 'pull_test', 'kks': GAUGE})), 'an idle task has no hand step'),
     ('cures without repairs', 'missing_key', _work('wo_valve', lambda w: SET(w, 'cures', ['blocked'])),
      'repairs their fault'),
     ('a cure the fault lacks', 'bad_ref', _work('wo_gauge', lambda w: SET(w, 'cures', ['blocked', 'nope'])),

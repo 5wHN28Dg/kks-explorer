@@ -114,6 +114,8 @@ static func tool(e, item, person, take, npc: bool, tail: Array = []) -> String:
 			why.append("full")
 	elif not have.has(item):
 		why.append("not_carried")
+	elif e.busy.has(person) and typeof(e.busy[person][2]) == TYPE_STRING and e.busy[person][2] == item:
+		why.append("busy")          # (the tool of their hand action under way stays with it)
 	if not why.is_empty():
 		e._ev(["tool", item, take, person, "refused", why] + tail)
 		return "refused"

@@ -568,6 +568,8 @@ class HandsVectors(PartVectors, unittest.TestCase):
             ('torque_gland', 'spanner_17', 'refused', ['value']), ('torque_gland', 'spanner_17', 'refused', ['value']),
             ('pull_test', 'sd_flat', 'refused', ['wrong_tool']), ('pull_test', None, 'refused', ['busy']),
             ('tighten', 'spanner_13', 'refused', ['busy', 'wrong_tool'])])
+        # (the adversarial review) the tool of an action under way can't be put back: one tool, one job at a time
+        self.assertIn([21, 'tool', 'sd_flat', 0, 'ic1', 'refused', ['where', 'busy']], self.st['runs'][1]['events'])
         self.assertIn([8, 'lock', 'wo_gauge', 0, 'ic1', 'done', []], self.st['runs'][1]['events'])
 
     def test_timed_hand(self):

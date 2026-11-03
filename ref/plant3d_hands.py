@@ -200,6 +200,8 @@ def check_causes(f, m, w):
         m.sets(c['set'], f'{wc}.set')
         if 'repair' in c:
             m.sets(c['repair'], f'{wc}.repair')
+            need('repair' in f, 'missing_key', f'{wc}.repair: only for a fault with its own repair (it is made with '
+                                               f'it)')
         text(c['text'], f'{wc}.text')
     need(tot <= LIMITS['weight'], 'bad_number', f'{w}.causes: the weights total at most 65536')
     # as the fault's own repair (§15.2): a cause's repair made as a work's own write writes no command of a code that
@@ -321,6 +323,8 @@ def tool(e, item, person, take, npc, tail=()):
             why.append('full')
     elif item not in have:
         why.append('not_carried')
+    elif p is not None and person in e.busy and e.busy[person][2] == item:
+        why.append('busy')          # (the tool of their hand action under way stays with it)
     if why:
         e.ev('tool', item, take, person, 'refused', why, *tail)
         return 'refused'

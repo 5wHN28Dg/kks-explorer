@@ -194,7 +194,11 @@ func _round_trip_weather(p: Array) -> void:
 			var damaged := [{"busy": {"ic2": ["10LAB10CP501", "open_lid", "sd_flat", null, 1, 0]}},
 					{"busy": {"nobody": cap0["busy"].get("ic2")}}, {"carried": {"ic2": ["hammer"]}},
 					{"carried": {"ic2": ["dmm", "dmm"]}}, {"tool_n": [[-1]]}, {"cause_s": {"f_low": 0}},
-					{"cause_of": {"f_low": "gremlins"}}, {"slip_s": {}}]
+					{"cause_of": {"f_low": "gremlins"}}, {"slip_s": {}}, {"npc_queue": [["slip", "ic2", "ic_job"]]},
+					{"npc_queue": [["hand", "x", "y", null, null, "nobody"]]}]
+			var more: Dictionary = cap0.duplicate(true)       # a tool made: a count raised
+			more["tool_n"][0][0] += 1
+			damaged.append({"tool_n": more["tool_n"]})
 			for c in damaged:
 				var t := cap0.duplicate(true)
 				t.merge(c, true)

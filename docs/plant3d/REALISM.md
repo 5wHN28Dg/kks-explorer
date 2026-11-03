@@ -434,7 +434,7 @@ at 29–35 °C over the runs.
   `[n, "tool", item, 0 | 1, person, "done" | "refused" | "unknown", [reasons]]` (unknown: no such tool, or not 0 or
   1); reasons in order `authority` (no person, not a person, or not the input's player: §17.1), `where` (their place
   doesn't keep it), then taking `none_left`, `carried` (they have one), `full` (12 carried), putting back
-  `not_carried`. The NPC step `{"tool": [ids] | "off"}` acts in step 9, as `ppe` does, with the same events: each tool
+  `not_carried`, then `busy` (the tool of their hand action under way: one tool does one job at a time). The NPC step `{"tool": [ids] | "off"}` acts in step 9, as `ppe` does, with the same events: each tool
   not yet carried taken in order, the first refusal fails the step to its `else`; `off` puts every carried tool back
   in order, and fails likewise. The trainee's step is done once they carry them all (`off`: none).
 - **Hand actions** as §2.4, and: `tools` may be left out for a bare-hand action (the input's tool is then null);
@@ -521,6 +521,10 @@ at 29–35 °C over the runs.
   (headless) the model step at base load 0.245 ms as built, 0.272 ms with `--engine`, 0.273 ms with `--hands` too:
   the hand actions and meters add nothing to a step with no action under way (they are entries, not nodes); the
   hands part with 12 actions under way NOTE9.
+- **From the reviews:** an idle task has no hand step (it isn't paused when a player takes the person); a cause's
+  `repair` needs the fault's own and writes no command its work's isolation locks; a save is refused when its tools
+  don't add up to tools.json's or its NPC inputs name no person or slip. Not changed: the digest keeps no task
+  step's own progress (a waiting `hw`, as an op step's `busy`), as §17.14 says.
 - **Left open on purpose (a question for the user):** §15.1's "a locked code refuses every op" holds for HART ops,
   so a transmitter isolated by a lock on its own code can't be ranged or trimmed through the communicator until it
   is unlocked; hand actions are made on a locked code (the job's own work).

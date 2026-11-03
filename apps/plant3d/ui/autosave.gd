@@ -211,6 +211,46 @@ static func _hands_contents(fresh, d: Dictionary) -> String:
 				if typeof(have[j]) != TYPE_STRING or tools == null or not tools["ix"].has(have[j]) \
 						or have.slice(0, j).has(have[j]):
 					return "a tool carried that doesn't exist"
+	if d.has("tool_n") and d.has("carried") and tools != null and fresh._hw:
+		# no tool made or lost: each tool's counts and those carried add up to tools.json's
+		for k in tools["at"].size():
+			var n := 0
+			for a in tools["at"][k]:
+				n += int(a[1])
+			var got := 0
+			for x in d["tool_n"][k]:
+				got += int(x)
+			for pid in d["carried"]:
+				if d["carried"][pid].has(tools["list"][k]["id"]):
+					got += 1
+			if got != n:
+				return "tools made or lost"
+	if d.has("npc_queue"):
+		# the NPCs' inputs the engine indexes with (REALISM.md §2.13): a person of the staff, a slip of a hand step
+		for q in d["npc_queue"]:
+			if typeof(q) != TYPE_ARRAY or q.is_empty() or typeof(q[0]) != TYPE_STRING:
+				return "a damaged NPC input"
+			var who = null
+			match q[0]:
+				"slip":
+					if q.size() != 4 or typeof(q[2]) != TYPE_STRING or typeof(q[3]) != TYPE_INT \
+							or fresh._sm == null or not fresh._sm.tasks.has(q[2]) or q[3] < 0 \
+							or q[3] >= fresh._sm.tasks[q[2]]["steps"].size() \
+							or not fresh._sm.tasks[q[2]]["steps"][q[3]].has("slip"):
+						return "a damaged NPC input"
+					who = q[1]
+				"hand":
+					if q.size() != 6:
+						return "a damaged NPC input"
+					who = q[5]
+				"tool":
+					if q.size() != 4:
+						return "a damaged NPC input"
+					who = q[3]
+				_:
+					continue
+			if typeof(who) != TYPE_STRING or not people.has(who):
+				return "a damaged NPC input"
 	if d.has("busy"):
 		var nplaces: int = fresh._sm.places.size() if fresh._sm != null else 0
 		for pid in d["busy"]:
