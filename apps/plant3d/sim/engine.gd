@@ -2186,7 +2186,8 @@ func _op(item: Array, moved: Dictionary, npc := false) -> String:
 			failed.append(o["input"])
 	var locks := _locking(kks)
 	var under := -1         # REALISM.md §2.15: a HART op under the work's own accepted permit (its index)
-	if not locks.is_empty() and v2 and typeof(item[5]) == TYPE_STRING and item[5] == "hart" and o.has("hart"):
+	if not locks.is_empty() and v2 and typeof(item[5]) == TYPE_STRING and item[5] == "hart" and o.has("hart") \
+			and do != "reset":          # (a reset waits for the unlock)
 		under = Hands.hart_permit(self, kks, item[6], npc)
 		if under != -1:
 			locks = []

@@ -30,16 +30,16 @@ static func keyed(m, sc: Dictionary) -> bool:
 static func init(e, World) -> void:
 	var m = e.m
 	e._hw = keyed(m, e.sc)
-	if not e._hw:
-		return
-	e._hands = m.hands_ix
-	e._meters = m.meters_ix
-	e._works_on = {}
+	e._works_on = {}            # (also without HW1's keys: a HART op's permit, REALISM.md §2.15)
 	for wi in m.works.size():
 		var code: String = m.works[wi]["kks"]
 		if not e._works_on.has(code):
 			e._works_on[code] = []
 		e._works_on[code].append(wi)
+	if not e._hw:
+		return
+	e._hands = m.hands_ix
+	e._meters = m.meters_ix
 	e.tool_n = []
 	if m.tools != null:
 		for at in m.tools["at"]:
@@ -152,6 +152,8 @@ static func _hand_authority(e, x: Dictionary, person, npc: bool) -> bool:
 ## isolation locking it, and under which the person acts (its acceptor, or another with accept and its discipline
 ## while the acceptor is off duty): its index, or -1 (ref/plant3d_hands.py hart_permit).
 static func hart_permit(e, kks, person, npc: bool) -> int:
+	if typeof(person) != TYPE_STRING:
+		return -1
 	for wi in e._works_on.get(kks, []):
 		if e.pstate[wi] != 5:
 			continue

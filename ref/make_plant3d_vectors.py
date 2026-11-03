@@ -4145,7 +4145,8 @@ def build_runs(runs, base):
             if e.step_no % DIGEST_EVERY == 0:
                 digests.append(e.digest())
         out.append({'why': why, 'scenario': sc, 'staff': None,
-                    'files': {k: F[k] for k in sorted(F) if k != 'scenarios/s1.json' and F[k] != base.get(k)},
+                    'files': {k: F.get(k) for k in sorted(set(F) | set(base))         # (null: a file left out)
+                              if k != 'scenarios/s1.json' and F.get(k) != base.get(k)},
                     'inputs': e.inputs, 'until': until, 'every': every, 'states': states, 'events': e.events,
                     'digests': digests, 'world': world})
     return out
@@ -4625,6 +4626,31 @@ def hands_runs():
     job = next(t for t in hg['staff.json']['tasks'] if t['id'] == 'ic_job')['steps']
     assert job[7] == {'go': {'kks': G}}
     job[7] = {'go': 'tb1'}
+    # REALISM.md §2.15: a HART op in a run with none of HW1's keys (no tools: no communicator can be carried), under
+    # the trainee's accepted permit: refused hart alone, the locks not named, in both engines
+    hn = hands_files()
+    del hn['tools.json']
+    mn = hn['model/a1.json']
+    del mn['hands'], mn['meters']
+    for w in mn['works']:
+        w.pop('cures', None)
+    mn['works'] = [w for w in mn['works'] if w['id'] != 'wo_gauge2']
+    scn = hn['scenarios/s1.json']
+    scn['faults'] = [f for f in scn['faults'] if f['id'] != 'f_low']
+    scn['init'] = dict(scn['init'], g1_body_hart=1)
+    stn = hn['staff.json']
+    stn['tasks'] = [t for t in stn['tasks'] if t['id'] not in ('ic_job', 'ic_check')]
+    stn['routines'] = [r for r in stn['routines'] if r['id'] != 'ic_jobs']
+    for r in stn['routines']:
+        if r['id'] == 'ic_days':
+            r['slots'] = [{'at': '07:31', 'task': 'ic_urgent'}]
+    for q in stn['people']:
+        q.pop('routine', None) if q['id'] == 'ic2' else None
+    no_keys = Trainee(quiet=True, extra=_x(
+        (2, 'permit', 'wo_gauge', 'request', 'ic1'), (3, 'permit', 'wo_gauge', 'approve', 'ic1'),
+        (4, 'lock', 'wo_gauge', 0, 'ic1'), (6, 'permit', 'wo_gauge', 'issue', 'ic1'),
+        (7, 'op', G, 'set', 20, None, 'hart', 'ic1'),
+        (8, 'permit', 'wo_gauge', 'accept', 'ic1'), (10, 'op', G, 'set', 21, None, 'hart', 'ic1')))
     jump = Trainee(quiet=True, extra=_x(
         (1, 'arrive', 'w_gauge'), (2, 'hand', G, 'clean_glass', None, None, 'ic1'), (3, 'task_ack'),
         (8, 'jump', '06:30'), (11, 'arrive', 'w_gauge'),
@@ -4693,6 +4719,9 @@ def hands_runs():
         ('an NPC\'s hand step away from the equipment (§2.15): ic2\'s job goes back to the toolbox after the permit '
          'in place of its go to the gauge; the first hand step walks ic2 to the gauge\'s work place before the hand '
          'action is made', {}, hg, None, 1100, 100),
+        ('a HART op without HW1\'s keys (§2.15): no tools.json, so no communicator is carried; before the accept '
+         'refused hart and iso_gauge_locked, under the trainee\'s accepted permit refused hart alone', me, hn,
+         no_keys, 20, 2),
     ]
 
 

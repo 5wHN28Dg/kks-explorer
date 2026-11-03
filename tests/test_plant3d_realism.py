@@ -20,7 +20,10 @@ def files_of(st, r=None):
     if r is not None:
         F['scenarios/s1.json'] = json.dumps(r['scenario']).encode()
         for rel, v in r.get('files', {}).items():
-            F[rel] = json.dumps(v).encode()
+            if v is None:
+                F.pop(rel, None)        # (a file the run leaves out)
+            else:
+                F[rel] = json.dumps(v).encode()
     return F
 
 
@@ -650,6 +653,15 @@ class HandsVectors(PartVectors, unittest.TestCase):
         G.apply_staff(e, [25, 'op', '10LAB10CP501', 'set', 25, None, 'hart', 'ic1'])
         e.step()
         self.assertEqual(e.v('g1_cfg_urv'), 25.0)
+
+    def test_hart_permit_without_hw1_keys(self):
+        """REALISM.md §2.15: the permit is found in a run with none of HW1's keys too (the app's engine once built
+        its works per code only with them): under the accepted permit the locks are not named."""
+        r = next(x for x in self.st['runs'] if x['why'].startswith('a HART op without HW1'))
+        e = run_on(self.st, r, 1)
+        self.assertFalse(e.hw)
+        ops = [x[5] for x in r['events'] if x[1] == 'op' and x[2] == '10LAB10CP501']
+        self.assertEqual(ops, [['hart', 'iso_gauge_locked'], ['hart']])
 
     def test_npc_hand_step_walks_there(self):
         """REALISM.md §2.15: an NPC whose job left the gauge walks back to its work place for its hand step."""

@@ -234,7 +234,10 @@ def staff_run(files, r, kk):
     if r['staff'] is not None:
         F['staff.json'] = json.dumps(r['staff']).encode()
     for rel, v in r.get('files', {}).items():
-        F[rel] = json.dumps(v).encode()
+        if v is None:
+            F.pop(rel, None)            # (a file the run leaves out)
+        else:
+            F[rel] = json.dumps(v).encode()
     e = P.Engine(P.check_files(F), 's1', r.get('session', False))
     h = Hasher(0)
     h.add(e, kk)

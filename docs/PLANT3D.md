@@ -967,7 +967,7 @@ room, and an isolated transmitter shows as such on the operator's screen.
     machine's state, a trip's latch or cause, a `set` op's input), then `<isolation id>_locked` of each isolation
     locking it, in model order. A trip's `reset` on a locked code is refused too: a locked pump's trip is reset after
     the isolation is removed. One exception (REALISM.md §2.15, the user's decision of 2026-11-03): an op made through a HART
-    communicator (`where` `hart`) under the accepted permit of a work on that code that holds every isolation locking
+    communicator (`where` `hart`, not a trip's `reset`) under the accepted permit of a work on that code that holds every isolation locking
     it, by its acceptor (or another with `accept` and its discipline while the acceptor is off duty), is made, and its
     writes are made as that work's own;
   - every write to a `state` whose `kks` is that code is skipped, whatever makes it: an op on another code (its `set`,

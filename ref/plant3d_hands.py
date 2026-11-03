@@ -356,7 +356,9 @@ def hand_authority(e, x, person, npc):
 def hart_permit(e, kks, isos, person, npc):
     """A HART op on a locked code (REALISM.md §2.15): the work on that code whose permit is accepted, which holds
     every isolation locking it (isos), and under which the person acts (its acceptor, or another with accept and its
-    discipline while the acceptor is off duty), or None."""
+    discipline while the acceptor is off duty), or None. A person is named: no permit is accepted by nobody."""
+    if not isinstance(person, str):
+        return None
     for w in e.works_on.get(kks, ()):
         if e.pstate[w['id']] == 5 and all(e.holder[i] == w['id'] for i in isos) \
                 and not e._authority(person, npc, 'accept', w['discipline'], True, w['id']):

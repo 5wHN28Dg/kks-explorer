@@ -3016,7 +3016,7 @@ class Engine:
                 failed.append(o['input'])
         locks = self.locking(kks)
         under = None            # REALISM.md §2.15: a HART op under the work's own accepted permit
-        if locks and v2 and item[4] == 'hart' and 'hart' in o:
+        if locks and v2 and item[4] == 'hart' and 'hart' in o and do != 'reset':     # (a reset waits for the unlock)
             from ref import plant3d_hands as H
             under = H.hart_permit(self, kks, locks, item[5], npc)
             if under is not None:

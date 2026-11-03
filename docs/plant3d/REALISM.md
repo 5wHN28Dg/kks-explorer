@@ -539,7 +539,8 @@ at 29–35 °C over the runs.
   writes are then made as that work's own `done` writes are (§15.1: not skipped by the locks its work holds). Any
   other op on a locked code, and a HART op otherwise (no permit, a permit issued but not yet accepted, another work's
   accepted permit, another person's, after the work's `done`), is refused `<isolation>_locked` as before. Under
-  the permit the locks are not named, whatever else refuses it (`hart`, `authority`, a need). A machine command made
+  the permit the locks are not named, whatever else refuses it (`hart`, `authority`, a need). A trip's `reset` is not
+  made this way (§15.1: it waits for the isolation's removal), and an op naming no person is never under a permit. A machine command made
   this way enters its new state as a command (the machine's own writes stay skipped on the locked code). Both
   engines: `ref/plant3d_hands.py` `hart_permit`, `apps/plant3d/sim/hands.gd` `hart_permit`, called from the op.
 - **A hand action is made at the equipment** (found by HW1's blind review): the person must stand at a work place
@@ -551,7 +552,9 @@ at 29–35 °C over the runs.
 - **Vectors:** `hands` gains a run (the HART op made with the code unlocked, refused with no permit, before the
   accept and under another work's accepted permit, made under the work's own, refused by another person, made
   locally and after the `done`), a run of the NPC's job that goes back to the toolbox after the permit (its first
-  hand step walks to the gauge) and a reject (a hand step on a code without a work place); a reference test checks
+  hand step walks to the gauge), a run with none of HW1's keys (no tools.json: a run's `files` entry null leaves
+  a file of its part out; the HART op under the permit refused `hart` alone, as the app's engine now builds its
+  works per code in every run) and a reject (a hand step on a code without a work place); a reference test checks
   the acceptor rule (another acceptor on duty: refused; off duty: made). Two runs changed with
   the place rule: the hand actions' run (the trainee walks from the toolbox to the gauge before acting, so a first
   action at the toolbox is refused `where`; its last HART op, under the trainee's accepted permit, is now made) and
