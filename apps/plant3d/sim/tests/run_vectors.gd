@@ -8,6 +8,8 @@ extends SceneTree
 ##   --vectors2=PATH   the format 2 vector file (default ref/vectors/plant3d-v2.json); its runs are named v2/…
 ##   --vectors3=PATH   the realism vector file (default ref/vectors/plant3d-realism.json, docs/plant3d/REALISM.md §13);
 ##                     its runs are named realism/…; read only with --only=realism (never by default)
+##   --vectors4=PATH   the Workshop bench vector file (default ref/vectors/plant3d-bench-v1.json, docs/plant3d/
+##                     WORKSHOP.md §6.2); its runs are named bench/…; read only with --only=bench (never by default)
 ##   --data=PATH       the first train's content (default data/plant3d)
 ##   --digests=PATH    also write the SHA-256 of every value at every step of every run, in chunks of 1000 steps, and
 ##                     the state digest (docs/PLANT3D.md §17.14) of every 50th step (`state`)
@@ -17,7 +19,8 @@ extends SceneTree
 ##                     last lines say how many of the engines made here ran each ("PROGRAM straight-line=N interpreter=M")
 ##   --only=PARTS      some of: valid,steps,links,procedure,train,v2 (default all; procedure and train run both the
 ##                     cold start, `train`, and the hot restart, `hot`; v2 runs the format 2 file's valid plant,
-##                     steps and train forks; realism, the realism file's streams and runs: not in the default)
+##                     steps and train forks; realism, the realism file's streams and runs, and bench, the bench
+##                     file's valid files and runs: not in the default)
 ##
 ## What is compared with the file: every event exactly (kinds, names, numbers and their int/float type, booleans);
 ## every snapshot's machines, trips, first-out records, alarms (in the model's order), shelved alarms and fast-forward
@@ -27,6 +30,7 @@ extends SceneTree
 ## Exit code 0 when every vector passed; each failure prints the first divergence of its vector.
 
 const PlantModel = preload("../plant_model.gd")
+const BenchModel = preload("../bench_model.gd")
 const PlantEngine = preload("../engine.gd")
 const World = preload("../world.gd")
 const Procedure = preload("../procedure.gd")
@@ -104,6 +108,16 @@ func _init() -> void:
 		for part in REALISM_PARTS:          # AG1's wear and WX1's weather (REALISM.md §13): counts and runs
 			if V3.has(part):
 				expected += 1 + V3[part]["runs"].size()
+	var V4 := {}
+	if parts.has("bench"):
+		var path4: String = opts.get("vectors4", repo.path_join("ref/vectors/plant3d-bench-v1.json"))
+		var r4 := JsonStrict.parse(FileAccess.get_file_as_bytes(path4), 1000)
+		if not r4.ok:
+			_result("read", "%s: %s" % [path4, r4.error])
+			_finish(t0)
+			return
+		V4 = r4.value
+		expected += V4["valid"].size() + V4["steps"].size()
 	var valid_files: Dictionary = V["valid"][0]["files"]
 	# the starts run by their procedures: the cold start (`train`) and the hot restart (`hot`, where the file has it)
 	var starts := ["train", "hot"].filter(func(k): return V.has(k))
@@ -131,6 +145,12 @@ func _init() -> void:
 		for part in REALISM_PARTS:
 			if V3.has(part):
 				_staff(V3[part], "realism/" + part)
+	if parts.has("bench"):
+		for v in V4["valid"]:
+			var bm = BenchModel.from_text(v["bench"], v["components"])
+			_result("bench/valid (%s)" % v["why"], bm.error)
+		for k in V4["steps"].size():
+			_bench_steps(k, V4["steps"][k])
 	if parts.has("procedure") or parts.has("train") or V2.has("train") or WTP_RUNS.any(func(k): return V2.has(k)):
 		train_model = PlantModel.from_dir(opts.get("data", repo.path_join("data/plant3d")))
 		if train_model.error != "":
@@ -361,6 +381,35 @@ func _steps(k: int, s: Dictionary, valid_files: Dictionary, prefix: String = "")
 		d = diff(e.events, s["events"], "events")
 	if d == "":
 		d = diff(asked, s.get("effects", []), "what a lock would do")
+	_result(name, d)
+
+
+## A Workshop bench's run (WORKSHOP.md §6.2): the bench file read by sim/bench_model.gd, stepped by the engine from
+## `start` with the inputs; every step's snapshot and every event against the file, every value's bits to the digests.
+func _bench_steps(k: int, s: Dictionary) -> void:
+	var name := "bench/steps/%d (%s)" % [k, s["why"]]
+	var m = BenchModel.from_text(s["bench"], s["components"])
+	if m.error != "":
+		_result(name, m.error)
+		return
+	var e = PlantEngine.new(m, "bench")
+	_programs[0 if e._fast != null else 1] += 1
+	_hash_begin("bench/steps/%d" % k, 0)
+	_hash(e)
+	var states: Array = s["states"]
+	var d := diff(e.snapshot(), states[0], "step 0")
+	var i := 0
+	var inputs := by_step(s["inputs"])
+	while d == "" and e.step_no < states.size() - 1:
+		i = _apply_due(e, inputs, i)
+		e.step()
+		_hash(e)
+		d = diff(e.snapshot(), states[e.step_no], "step %d" % e.step_no)
+	_hash_end()
+	if d == "" and i != inputs.size():
+		d = "inputs after the last step"
+	if d == "":
+		d = diff(e.events, s["events"], "events")
 	_result(name, d)
 
 
