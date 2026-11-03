@@ -468,7 +468,8 @@ at 29–35 °C over the runs.
   for the debrief). Players never slip.
 - **Meters** as §2.5, with `needs` a list of 0–16 value names (a meter refuses nothing: it shows `else`), `value` a
   value name, `else` a value name or a number, `id` unique, `tool_kind` one of `meter`, `communicator`, `calibrator`,
-  `mode` an identifier of at most 16 characters that some tool of that kind lists. Shown: `value` when every need
+  `mode` an identifier of at most 16 characters that some tool of that kind lists (lower case, as every identifier:
+  `ma_dc`, `ma_clamp`, `hart` for §2.5's `mA_dc`, `A_ac_clamp`, `hart`). Shown: `value` when every need
   reads true as the step before left it, else `else`. A `read` step with `via` (a meter of its code; no show binding
   needed) takes the input `[n, "read", code, value, meter]`; a player without a carried tool of the meter's kind
   listing its mode makes `[n, "read", person, code, value, "tool"]` and the step waits; an NPC without one makes
@@ -494,6 +495,27 @@ at 29–35 °C over the runs.
   order), each person's carried tools (as indexes in tools.json), each person's busy action or null, each cause
   stream's state and applied cause (faults with causes, in scenario order), and each person's slip stream state.
 - **Snapshots** gain, with the same keys, `carried` (people with tools), `busy` and `causes` (applied faults' causes).
+
+### 2.14 As built for milestone HW1 (2026-11-03: the hands-on engine)
+
+- **Where:** `ref/plant3d_hands.py` (the reference: tools.json's check, the model's hands and meters, causes and
+  cures, the step's pieces, the digest's part) with hooks in `ref/plant3d.py` and `ref/plant3d_staff.py`; the app's
+  engine `apps/plant3d/sim/hands.gd` with hooks in `engine.gd`, `staff.gd` and the loader (`plant_model.gd`). Saves
+  keep its state and check it (`ui/autosave.gd`), a session carries its inputs (`net/input_check.gd`).
+- **Vectors:** `plant3d-realism.json`'s `hands`: the realism base's plant with tools.json (a toolbox and a store),
+  the gauge's ten hand actions, five meters and a HART op, a fault with three hidden causes, two works curing
+  different causes, an instrument technician's role and two people; 71 rejects and eight runs (tools carried, hand
+  actions with every reason, meters and HART, a jump, an NPC's whole job with tools, permits, slips and readings, an
+  NPC pre-empted, hidden causes with cures, a value weight). Tests: `tests/test_plant3d_realism.py` `HandsVectors`
+  (each reason in order, the timed action's write in step 3, the draws against their streams, cures),
+  `GdscriptRealism` (every value's bits and the digests in the GDScript engine, straight-line and interpreter),
+  `apps/plant3d/tests/test_run_save.gd` (a save in the middle of an NPC's hand action goes on bit for bit; damaged
+  hands-on state refused).
+- **The byte check:** `plant3d-v1.json`, `plant3d-v2.json` and `plant3d-bench-v1.json` are what they were, and the
+  realism file's `streams`, `staff`, `wear` and `weather` parts too.
+- **Left open on purpose (a question for the user):** §15.1's "a locked code refuses every op" holds for HART ops,
+  so a transmitter isolated by a lock on its own code can't be ranged or trimmed through the communicator until it
+  is unlocked; hand actions are made on a locked code (the job's own work).
 
 ## 3. Hands-on work and tools
 
