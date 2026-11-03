@@ -1233,6 +1233,7 @@ func _warm_kinds() -> void:
 			continue
 		var mc: Node3D = made[0]
 		made.clear()
+		_warm_mc = mc   # (freed by _exit_tree if the app goes while it is outside the tree)
 		if not is_inside_tree() or _warm == null or not is_instance_valid(_warm) or is_open:
 			mc.free()
 			continue
@@ -1266,6 +1267,9 @@ func _warm_kinds() -> void:
 			for c in n.get_children():
 				todo.append([c, thin, glass])
 			t0 = await _warm_slice(t0)
+			if is_inside_tree() and (is_open or ("probing" in main and main.probing)):
+				await _warm_wait()   # (no script work of its own in the Workshop's or the probe's frames)
+				t0 = Time.get_ticks_usec()
 			if not is_instance_valid(mc):
 				break
 		if not is_instance_valid(mc) or not is_inside_tree() or _warm == null or not is_instance_valid(_warm):
@@ -1279,6 +1283,7 @@ func _warm_kinds() -> void:
 		held.name = mc.name
 		_warm.add_child(held)
 		_warm_kinds_done.append(k)
+		warm_pieces = maxi(warm_pieces, pieces.size())
 		var i := 0
 		while i < pieces.size():
 			await _warm_wait()
@@ -1293,9 +1298,11 @@ func _warm_kinds() -> void:
 				i += 1
 				added += 1
 			warm_most_added = maxi(warm_most_added, added)
+			warm_batches += 1
 			warm_slice_us_max = maxi(warm_slice_us_max, Time.get_ticks_usec() - t1)
 			await get_tree().process_frame
 		mc.free()   # (what is left of it: the pieces' empty parents)
+		_warm_mc = null
 		# the pipelines are queued as the instances enter the scene; a few frames later the pieces are let go
 		for f in 30:
 			await get_tree().process_frame
@@ -1307,6 +1314,9 @@ const WARM_SLICE_US := 4000        # the warm-up's most script time in one frame
 const WARM_PER_FRAME := 12         # the most pieces that enter the plant's world in one frame
 var warm_slice_us_max := 0         # the longest slice the warm-up took in one frame, µs (tests)
 var warm_most_added := 0           # the most pieces it added in one frame (tests)
+var warm_pieces := 0               # the most pieces one kind had (tests)
+var warm_batches := 0              # the frames it added pieces in, all kinds (tests)
+var _warm_mc: Node = null          # the kind being made, while outside the tree
 var _warm_task := -1               # the worker thread's task instancing a kind (-1: none)
 var _warm_made: Array = []         # what that task made, until the warm-up takes it
 
@@ -1358,6 +1368,9 @@ func _exit_tree() -> void:
 			if is_instance_valid(n):
 				n.free()
 		_warm_made.clear()
+	if _warm_mc != null and is_instance_valid(_warm_mc) and not _warm_mc.is_inside_tree():
+		_warm_mc.free()   # (made, not yet in the plant's world: nothing else holds it)
+	_warm_mc = null
 	for path in [_warm_loading, _loading] + _orphans:
 		if path != "" and ResourceLoader.load_threaded_get_status(path) != ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
 			ResourceLoader.load_threaded_get(path)   # (waits for the thread when it is still loading)
