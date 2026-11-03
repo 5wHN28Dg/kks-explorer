@@ -300,6 +300,7 @@ class Staff:
         self.point_no = {}          # place index -> point number
         self.rooms = {}             # room -> [place indices]
         self.work_at = {}           # code -> its work place (the first)
+        self.work_places = {}       # code -> every work place of it (a hand action's place, REALISM.md §2.15)
         for i, p in enumerate(pl):
             wp = f'{w}[{i}]'
             keys(p, ('id', 'at', 'kind'), ('room', 'yaw', 'pose', 'kks', 'zones', 'off_site', 'hidden'), wp)
@@ -320,6 +321,7 @@ class Staff:
                 need('kks' in p, 'missing_key', f'{wp}.kks: a work place names its equipment')
                 self.m.kks_ref(p['kks'], f'{wp}.kks')
                 self.work_at.setdefault(p['kks'], i)
+                self.work_places.setdefault(p['kks'], set()).add(i)
             else:
                 need('kks' not in p, 'unknown_key', f'{wp}.kks: only on a work place')
             if p['kind'] == 'point':

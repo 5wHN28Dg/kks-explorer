@@ -375,8 +375,8 @@ def hand(e, item, npc, prev):
     p = person_of(e, person)
     if p is None or hand_authority(e, x, person, npc):
         why.append('authority')
-    if p is not None and (p.pos is None or p.pos != e.staff.st.work_at.get(kks)):
-        why.append('where')         # done at the code's work place (REALISM.md §2.15)
+    if p is not None and p.pos not in e.staff.st.work_places.get(kks, ()):
+        why.append('where')         # done at a work place of the code (REALISM.md §2.15)
     if p is not None and person in e.busy:
         why.append('busy')
     have = e.carried.get(person, ()) if p is not None else ()

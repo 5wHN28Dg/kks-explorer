@@ -195,8 +195,8 @@ static func hand(e, item: Array, npc: bool) -> String:
 	var pi := _pi(e, person)
 	if pi == -1 or _hand_authority(e, x, person, npc):
 		why.append("authority")
-	if pi != -1 and e.sp_pos[pi] != e._sm.work_at.get(kks, -2):
-		why.append("where")         # done at the code's work place (REALISM.md §2.15)
+	if pi != -1 and not e._sm.work_places.get(kks, []).has(e.sp_pos[pi]):
+		why.append("where")         # done at a work place of the code (REALISM.md §2.15)
 	if pi != -1 and e.busy.has(person):
 		why.append("busy")
 	var have: Array = e.carried.get(person, []) if pi != -1 else []

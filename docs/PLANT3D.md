@@ -966,7 +966,10 @@ room, and an isolated transmitter shows as such on the operator's screen.
   - every op (§7.2) on that code is refused: the failed values are format 1's (the permissives that failed, then a
     machine's state, a trip's latch or cause, a `set` op's input), then `<isolation id>_locked` of each isolation
     locking it, in model order. A trip's `reset` on a locked code is refused too: a locked pump's trip is reset after
-    the isolation is removed;
+    the isolation is removed. One exception (REALISM.md §2.15, the user's decision of 2026-11-03): an op made through a HART
+    communicator (`where` `hart`) under the accepted permit of a work on that code that holds every isolation locking
+    it, by its acceptor (or another with `accept` and its discipline while the acceptor is off duty), is made, and its
+    writes are made as that work's own;
   - every write to a `state` whose `kks` is that code is skipped, whatever makes it: an op on another code (its `set`,
     a `set` op's number), an interlock, a machine, a trip, a fault or a repair, in steps 1 and 3–6 (the standby pump's
     auto-start can't start a pump that is locked out; nothing else changes). A work's own `repairs` and `set` (§15.2), and a repair under its permit (§15.5),

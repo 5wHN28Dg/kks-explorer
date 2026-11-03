@@ -585,7 +585,7 @@ class HandsVectors(PartVectors, unittest.TestCase):
         self.assertEqual(e.tool_n[e.tools['ix']['loopcal']], [0])
 
     def test_hand_reasons_in_order(self):
-        """authority, busy, tool, wrong_tool, the needs, value; a hand action on the locked code is made."""
+        """authority, where, busy, tool, wrong_tool, the needs, value; a hand action on the locked code is made."""
         ev = self.evs(1, ('hand',), steps=(3, 5, 12, 21))
         self.assertEqual([(x[3], x[4], x[6], x[7]) for x in ev], [
             ('connect_hart', 'hart', 'refused', ['where']),       # at the toolbox, away from the gauge (§2.15)
@@ -633,6 +633,32 @@ class HandsVectors(PartVectors, unittest.TestCase):
         seen = {}
         run_on(self.st, r, 30, lambda e: seen.__setitem__(e.step_no, e.v('g1_cfg_urv')))
         self.assertEqual((seen[7], seen[23], seen[24], seen[30]), (20.0, 20.0, 24.0, 24.0))
+
+    def test_hart_permit_acceptor_rule(self):
+        """REALISM.md §2.15: under the work's permit means by its acceptor, or another with accept and its discipline
+        while the acceptor is off duty: the HART run at step 23 with ic2 (on duty) named the acceptor refuses ic1's
+        HART op on the locked code; with ic2 absent it is made."""
+        r = next(x for x in self.st['runs'] if x['why'].startswith('a HART op on the locked gauge'))
+        e = run_on(self.st, r, 23)
+        self.assertEqual(e.acceptor['wo_gauge'], 'ic1')
+        e.acceptor['wo_gauge'] = 'ic2'
+        G.apply_staff(e, [24, 'op', '10LAB10CP501', 'set', 24, None, 'hart', 'ic1'])
+        e.step()
+        self.assertIn([24, 'op', '10LAB10CP501', 'set', 'refused', ['iso_gauge_locked'], 'hart', 'ic1'], e.events)
+        self.assertEqual(e.v('g1_cfg_urv'), 20.0)
+        e.staff.absent.add('ic2')
+        G.apply_staff(e, [25, 'op', '10LAB10CP501', 'set', 25, None, 'hart', 'ic1'])
+        e.step()
+        self.assertEqual(e.v('g1_cfg_urv'), 25.0)
+
+    def test_npc_hand_step_walks_there(self):
+        """REALISM.md §2.15: an NPC whose job left the gauge walks back to its work place for its hand step."""
+        r = next(x for x in self.st['runs'] if x['why'].startswith('an NPC\'s hand step away'))
+        ev = [x for x in r['events'] if 'ic2' in x and x[1] in ('move', 'hand')]
+        k = next(i for i, x in enumerate(ev) if x[1] == 'hand')
+        self.assertEqual(ev[k - 1][1:5:3], ['move', 'w_gauge'])        # (arrived there last)
+        self.assertIn(['move', 'ic2', 'p5', 'tb1'], [x[1:5] for x in ev[:k]])      # (and had gone back first)
+        self.assertEqual(ev[k][3:8], ['open_cover', 'sd_flat', 'ic2', 'start', []])
 
     def test_hand_away_from_the_equipment(self):
         """REALISM.md §2.15: a hand action is made only at its code's work place (where); an NPC's hand step walks

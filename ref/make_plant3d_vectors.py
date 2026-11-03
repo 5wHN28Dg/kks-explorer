@@ -4619,6 +4619,12 @@ def hands_runs():
         (24, 'op', G, 'set', 24, None, 'hart', 'ic1'), (24, 'op', G, 'set', 25, None, 'hart', 'ic2'),
         (24, 'op', G, 'set', 26, None, 'local', 'ic1'),
         (26, 'permit', 'wo_gauge', 'done', 'ic1'), (28, 'op', G, 'set', 27, None, 'hart', 'ic1')))
+    # REALISM.md §2.15: the job walks back to the toolbox after the permit (the lock took ic2 to the gauge) in place
+    # of its walk to the gauge: its first hand step walks to the gauge itself
+    hg = hands_files()
+    job = next(t for t in hg['staff.json']['tasks'] if t['id'] == 'ic_job')['steps']
+    assert job[7] == {'go': {'kks': G}}
+    job[7] = {'go': 'tb1'}
     jump = Trainee(quiet=True, extra=_x(
         (1, 'arrive', 'w_gauge'), (2, 'hand', G, 'clean_glass', None, None, 'ic1'), (3, 'task_ack'),
         (8, 'jump', '06:30'), (11, 'arrive', 'w_gauge'),
@@ -4684,6 +4690,9 @@ def hands_runs():
          'iso_gauge_locked; under wo_gauge\'s own permit, accepted by the trainee, made and written (24); by '
          'another person (authority, still locked) and made locally (where, still locked) refused; after the work\'s '
          'done (the permit no longer accepted) refused again', me, hp, hart_permit, 40, 2),
+        ('an NPC\'s hand step away from the equipment (§2.15): ic2\'s job goes back to the toolbox after the permit '
+         'in place of its go to the gauge; the first hand step walks ic2 to the gauge\'s work place before the hand '
+         'action is made', {}, hg, None, 1100, 100),
     ]
 
 

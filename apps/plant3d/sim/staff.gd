@@ -52,6 +52,7 @@ var next: Array = []                 # per point: PackedInt32Array of the next p
 var rooms := {}                      # room -> PackedInt32Array of its places
 var door := {}                       # room -> its door (the first door place), or -1
 var work_at := {}                    # code -> its work place
+var work_places := {}                # code -> every work place of it (a hand action's place, REALISM.md §2.15)
 var origin := -1
 var gate := -1
 var roles := {}                      # id -> role
@@ -154,6 +155,10 @@ func _build(m, doc: Dictionary) -> void:
 			rooms[p["room"]] = r
 		if p["kind"] == "work" and not work_at.has(p["kks"]):
 			work_at[p["kks"]] = places.size() - 1
+		if p["kind"] == "work":
+			if not work_places.has(p["kks"]):
+				work_places[p["kks"]] = []
+			work_places[p["kks"]].append(places.size() - 1)
 		off_site.append(1 if p.get("off_site", false) == true else 0)
 		drive_no.append(-1)
 		if p["kind"] == "stop" or p["kind"] == "depot":

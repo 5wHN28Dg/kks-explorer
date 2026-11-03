@@ -538,16 +538,21 @@ at 29–35 °C over the runs.
   and the work's discipline while the acceptor is off duty: the rule of a hand action's `work: true`, §2.13). Its
   writes are then made as that work's own `done` writes are (§15.1: not skipped by the locks its work holds). Any
   other op on a locked code, and a HART op otherwise (no permit, a permit issued but not yet accepted, another work's
-  accepted permit, another person's, after the work's `done`), is refused `<isolation>_locked` as before. Both
+  accepted permit, another person's, after the work's `done`), is refused `<isolation>_locked` as before. Under
+  the permit the locks are not named, whatever else refuses it (`hart`, `authority`, a need). A machine command made
+  this way enters its new state as a command (the machine's own writes stay skipped on the locked code). Both
   engines: `ref/plant3d_hands.py` `hart_permit`, `apps/plant3d/sim/hands.gd` `hart_permit`, called from the op.
-- **A hand action is made at the equipment** (found by HW1's blind review): the person must stand at the code's work
-  place (its first `work` place in staff.json), else the reason `where`, right after `authority`. As for a lock, the
-  engine knows places, not distances: a `local` op's reach stays the app's (§17.1), the work place is what the engine
-  can check. An NPC's `hand` step first walks to that place, as a `lock` step walks to its point's; the validator
-  refuses a `hand` step on a code without a work place (`bad_ref`).
+- **A hand action is made at the equipment** (found by HW1's blind review): the person must stand at a work place
+  of the code (any `work` place in staff.json naming it), else the reason `where`, right after `authority`. This is
+  stricter than an op or a lock, whose reach the app checks for the trainee (§17.1): the engine knows places, not
+  distances, and a hand action's work place is what it can check. An NPC's `hand` step first walks to the code's
+  work place (the first, as `go {"kks"}`), as a `lock` step walks to its point's; the validator refuses a `hand`
+  step on a code without a work place (`bad_ref`).
 - **Vectors:** `hands` gains a run (the HART op made with the code unlocked, refused with no permit, before the
   accept and under another work's accepted permit, made under the work's own, refused by another person, made
-  locally and after the `done`) and a reject (a hand step on a code without a work place). Two runs changed with
+  locally and after the `done`), a run of the NPC's job that goes back to the toolbox after the permit (its first
+  hand step walks to the gauge) and a reject (a hand step on a code without a work place); a reference test checks
+  the acceptor rule (another acceptor on duty: refused; off duty: made). Two runs changed with
   the place rule: the hand actions' run (the trainee walks from the toolbox to the gauge before acting, so a first
   action at the toolbox is refused `where`; its last HART op, under the trainee's accepted permit, is now made) and
   the jump's (the trainee stands at the gauge). Every other item of the file is what it was (a JSON comparison).
