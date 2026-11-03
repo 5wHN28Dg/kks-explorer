@@ -69,6 +69,10 @@ frame on the phone.
   (unshaded), and `ws_xray` for the X-ray too.
   Their pipelines are queued in a hidden frame after the plant's first walkable frame, and the Workshop's load draws
   hidden once before the machine's first frame.
+  Counted in K3 (2026-11-03, the Note 9, an empty pipeline cache): the machine's first frame compiles 14 surface and
+  10 specialization pipelines (the K3 variants with the machine's own; K2's first entry took 2.2 s, K3's 4.77 s alone
+  and 4.47 s in a session, within the 5.0 s rule), and none after it; the plant-world warm-up holds ws_lit and ws_cap
+  plain and instanced and ws_flow, as K2's ghost.
 - **The plant meanwhile:** the Workshop draws in a full-screen `SubViewport` with its own world, and the main
   viewport's 3D drawing is turned off; the plant stays in its world, not moved or freed. Single play pauses the clock (held inputs
   released, speed restored on return; autosave unaffected), so a mirror freezes at the moment the trainee left (the

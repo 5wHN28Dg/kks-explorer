@@ -517,6 +517,55 @@ def build_edge_vectors(V):
     return {'valid': V['valid'], 'steps': steps, 'links': [], 'train': {'forks': []}}
 
 
+def bench_runs(V4):
+    """The Workshop bench vectors' runs (WORKSHOP.md §6.2) on the reference, as reference_runs: every value's bits at
+    every step and the state digests."""
+    from ref import plant3d_bench as BM
+    out = {}
+    for k, s in enumerate(V4['steps']):
+        e = BM.check(BM.loads(s['bench']), s['components'], 'bench').engine()
+        h = Hasher(0)
+        h.add(e)
+        inputs = sorted(s['inputs'], key=lambda x: x[0])
+        j = 0
+        while e.step_no < len(s['states']) - 1:
+            while j < len(inputs) and inputs[j][0] == e.step_no + 1:
+                apply(e, inputs[j])
+                j += 1
+            e.step()
+            h.add(e)
+        h.end()
+        out[f'bench/steps/{k}'] = (0, h.chunks, e.names, h.vals, h.states)
+    return out
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptBench(unittest.TestCase):
+    """ref/vectors/plant3d-bench-v1.json (docs/plant3d/WORKSHOP.md §6.2, milestone K3) through the app's loader
+    (sim/bench_model.gd) and engine: every valid bench loads, every run's snapshots and events match, and every value's
+    bits at every step and the state digests are the reference's, with the straight-line program and with the
+    interpreter alone."""
+
+    def test_bench_vectors(self):
+        with open(os.path.join(REPO, 'ref', 'vectors', 'plant3d-bench-v1.json'), encoding='utf-8') as f:
+            V4 = json.load(f)
+        want = bench_runs(V4)
+        n = len(V4['valid']) + len(V4['steps'])
+        for extra in ([], ['--interpreter=1']):
+            with tempfile.TemporaryDirectory() as d:
+                dig = os.path.join(d, 'digests.json')
+                r = godot('run_vectors.gd', '--only=bench', f'--digests={dig}', *extra, timeout=300)
+                no_errors(self, r)
+                self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+                self.assertIn(f'VECTORS passed={n} failed=0', r.stdout)
+                with open(dig, encoding='utf-8') as f:
+                    got = json.load(f)
+            self.assertEqual(sorted(got), sorted(want), extra)
+            for run, (start, chunks, names, _, states) in want.items():
+                self.assertEqual((got[run]['from'], got[run]['chunks']), (start, chunks), f'{run} {extra}')
+                self.assertEqual(got[run]['state'], states, f'{run} {extra}: the state digests')
+
+
 @unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
 class GdscriptRealism(unittest.TestCase):
     """ref/vectors/plant3d-realism.json (docs/plant3d/REALISM.md §13, milestone RE1) through the app's engine: the

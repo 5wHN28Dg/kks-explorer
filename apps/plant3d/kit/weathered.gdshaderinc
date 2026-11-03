@@ -114,6 +114,11 @@ float ruts(float d, float along, float fw) {
 }
 
 void fragment() {
+#ifdef WS_LIT
+	if (ws_cut(wpos)) {   // the Workshop's cutaway and section (workshop/ws_lit.gdshader)
+		discard;
+	}
+#endif
 	vec2 uv = UV * uv_scale;
 	vec3 base = tint.rgb;
 	if (use_albedo) base *= texture(albedo_tex, uv).rgb;
@@ -321,7 +326,8 @@ void fragment() {
 	}
 
 	// the weather (uniform control flow: global parameters): under the sky only, by the roof map; a surface at or
-	// above its roof (the roof itself) is outdoors
+	// above its roof (the roof itself) is outdoors (the Workshop stands indoors: none)
+#ifndef WS_LIT
 	if (wx_wet + wx_dust > 0.001) {
 		// sampled 0.3 m along the normal: a wall's outer face (on the roof map's edge) reads outdoors, its inner indoors
 		vec2 ru = (wpos.xz + wnrm.xz * 0.3 - wx_roof_rect.xy) / max(wx_roof_rect.zw, vec2(1e-3));
@@ -346,6 +352,7 @@ void fragment() {
 		base = mix(base, vec3(0.62, 0.55, 0.44), d2);
 		rough = mix(rough, 1.0, d2);
 	}
+#endif
 
 	if (grating > 0.5) {
 		// bar grating drawn, not cut out (a discarding shader was 7 more pipelines on a phone's first start:
@@ -370,6 +377,11 @@ void fragment() {
 	METALLIC = metal;
 	// a material with its colours in the vertices glows in them (a sign's white board and its blue symbol)
 	EMISSION = emission.rgb * emission_energy * (use_vertex_colour ? srgb_to_linear(COLOR.rgb) : vec3(1.0));
+#ifdef WS_LIT
+	// the Workshop's heat or pressure colour from its legend, and the selection's glow (workshop/ws_lit.gdshader)
+	ALBEDO = mix(ALBEDO, ws_ramp.rgb, ws_ramp.a);
+	EMISSION += ws_ramp.rgb * ws_ramp.a * 0.25 + ws_sel * vec3(1.0, 0.62, 0.15) * 0.45;
+#endif
 
 	if (use_normal) NORMAL_MAP = texture(normal_tex, uv).rgb;
 }

@@ -314,6 +314,7 @@ class Bundle:
         self.surfaces = []                         # (kind, z, polygon) walkable outlines; pits: ('pit', z, poly)
         self.counts = {}
         self.workshop = {}                         # part -> the Workshop data file's summary (WORKSHOP.md §4)
+        self.bench = {}                            # part -> its checked bench model (WORKSHOP.md §6)
 
 
 def load_dir(path):
@@ -345,7 +346,8 @@ def check_files(files):
     b = Bundle()
     for rel in files:
         need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json', 'weather.json') or re.fullmatch(
-            r'(areas|model|procedures|scenarios|workshop)/[a-z_][a-z0-9_]{0,31}\.json|sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg',
+            r'(areas|model|procedures|scenarios|workshop|workshop/bench)/[a-z_][a-z0-9_]{0,31}\.json|'
+            r'sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg',
             rel), 'unknown_key', f'{rel}: not a file of the format')
     for rel in ('plant.json', 'kit.json', 'sounds.json'):
         need(rel in files, 'missing_key', f'{rel} is missing')
@@ -355,10 +357,18 @@ def check_files(files):
     # plant's model, checked here so that the content build reads only checked files
     from ref import plant3d_workshop as W
     for rel in sorted(files):
-        if rel.startswith('workshop/'):
+        if rel.startswith('workshop/') and not rel.startswith('workshop/bench/'):
             w = W.check(parse(files, rel), b.kit, rel)
             need(rel == f'workshop/{w["part"]}.json', 'bad_ref', f'{rel}: named by its part ({w["part"]})')
             b.workshop[w['part']] = w
+    # each kind's bench model (WORKSHOP.md §6, ref/plant3d_bench.py), against its Workshop data file's components
+    from ref import plant3d_bench as BM
+    for rel in sorted(files):
+        if rel.startswith('workshop/bench/'):
+            part = rel[len('workshop/bench/'):-len('.json')]
+            need(part in b.workshop, 'bad_ref', f'{rel}: no Workshop data file workshop/{part}.json')
+            comps = list(parse(files, f'workshop/{part}.json')['components'])
+            b.bench[part] = BM.check(parse(files, rel), comps, rel, b.sounds['sounds'], part)
     return b
 
 

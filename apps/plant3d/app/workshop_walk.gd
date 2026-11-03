@@ -6,8 +6,13 @@
 ## together from a pile in the guided order (each part drawn to its place under its ghost and snapped); then back to
 ## the plant. The camera turns round the machine all the while. It logs
 ## `WORKSHOP` lines: the entry (button to the machine's first frame), the exit (back to the plant's first frame) and
-## the scene's triangles (it enters, leaves and enters again first: the first entry and a second one); main.gd's frame log judges the frames from 5 s after the walk began until it leaves. K3 adds
-## the X-ray, cutaway, section and running to the walk.
+## the scene's triangles (it enters, leaves and enters again first: the first entry and a second one); main.gd's frame log judges the frames from 5 s after the walk began until it leaves.
+## K3: the machine runs the whole walk where its bench model allows (the transmitter: the loop supply on at 2×, the
+## applied pressure swept up past its range and down to vacuum and back, so the diaphragm, the display, the terminals,
+## the flow and the colours move all the while, taken apart and in the steps too); after the steps the X-ray, the
+## cutaway, a section swept across the machine (flow on), each fault made and repaired, then Stop. It logs the bench's
+## steps (`WORKSHOP bench steps=… max=…us mean=…us`, §8's 0.3 ms). The walk keeps its 3 minutes (§8), the K1 and K2
+## phases shortened again.
 extends Node
 
 const SECONDS := 180.0
@@ -47,12 +52,37 @@ func start(m, k := "") -> void:
 	if not await _shown():
 		return
 	main._say("WORKSHOP entry=%.0fms load=%.0fms (the second entry)" % [ws.entry_ms, ws.load_ms])
+	_bench_start()
 	running = true
+
+var _ops := []                  # the bench's ops as written (machine commands, set ops)
+var _made := {}                 # the faults made in the walk's fault phase
+
+## The bench running from the walk's start: each machine started, at 2×.
+func _bench_start() -> void:
+	if not ws.bench.loaded():
+		main._say("WORKSHOP the kind has no bench model")
+		return
+	ws.bench.set_speed(2.0)
+	_ops = ws.bench.m.ops_ui
+	for o in _ops:
+		if o.has("machine") and o.do == "start":
+			ws.run_command(o.at, o.do)
+
+## Each set op's slider swept over its range (a slow sine, a period of 40 s), from its low end.
+func _bench_sweep() -> void:
+	for o in _ops:
+		if o.get("do") == "set" and o.has("range"):
+			var lo: float = float(o.range[0])
+			var hi: float = float(o.range[1])
+			ws.bench.op_set(o.at, lo + (hi - lo) * (0.5 - 0.5 * cos(t * TAU / 40.0)))
 
 func _process(delta: float) -> void:
 	if not running or done:
 		return
 	t += delta
+	if ws.bench.loaded() and fmod(t, 0.5) < delta:
+		_bench_sweep()
 	ws.cam.yaw += ORBIT_RATE * delta
 	ws.cam.place()
 	var order: Array = ws.spec.order
@@ -65,59 +95,97 @@ func _process(delta: float) -> void:
 		if first_sub != "":
 			break
 	var leaf: String = order[-1] if not order.is_empty() else ""
-	if t < 10.0:
+	if t < 6.0:
 		_at("assembled")
-	elif t < 30.0:
+	elif t < 18.0:
 		_at("explode")
-		ws.set_slider((t - 10.0) / 20.0)
-	elif t < 45.0:
+		ws.set_slider((t - 6.0) / 12.0)
+	elif t < 26.0:
 		_at("back")
-		ws.set_slider(1.0 - (t - 30.0) / 15.0)
-	elif t < 55.0:
+		ws.set_slider(1.0 - (t - 18.0) / 8.0)
+	elif t < 31.0:
 		if _at("isolate"):
 			ws.select(leaf)
 			ws.isolate()
-	elif t < 60.0:
+	elif t < 33.0:
 		if _at("show all"):
 			ws.show_all()
-	elif t < 75.0:
+	elif t < 41.0:
 		if _at("subassembly"):
 			ws.select(first_sub)
 			ws.set_only_selected(true)
-		ws.set_slider(clampf((t - 60.0) / 8.0, 0.0, 1.0))
-	elif t < 90.0:
+		ws.set_slider(clampf((t - 33.0) / 5.0, 0.0, 1.0))
+	elif t < 49.0:
 		if _at("handle"):
 			ws.set_slider(0.0)
 			ws.set_only_selected(false)
 			ws.select(leaf)
-		var k := (t - 75.0) / 15.0
+		var k := (t - 41.0) / 8.0
 		ws.handled[leaf] = Transform3D(Basis(Vector3.UP, k * TAU * 0.5), Vector3(0, 0.05 * sin(k * TAU), 0))
 		ws.apply()
-	elif t < 100.0:
+	elif t < 55.0:
 		if _at("reset"):
 			ws.reset()
-		ws.set_slider(clampf((t - 90.0) / 6.0, 0.0, 1.0))
-	elif t < 108.0:
+		ws.set_slider(clampf((t - 49.0) / 4.0, 0.0, 1.0))
+	elif t < 60.0:
 		if _at("reassemble"):
 			ws.reassemble()
-	elif t < 140.0:
+	elif t < 88.0:
 		if _at("take apart step by step"):
 			ws.select("")
 			if not ws.start_guide("disassemble"):
 				main._say("WORKSHOP the kind has no assembly steps")
 		_walk_steps(1.4)
-	elif t < 178.0:
+	elif t < 118.0:
 		if _at("assemble from a pile"):
 			_move = {}
 			ws.start_guide("assemble", "pile")
 		_walk_steps(1.6)
-	elif t < SECONDS:
+	elif t < 120.0:
 		if _at("assembled again"):
 			main._say("WORKSHOP steps done: %s (%d loose)" % [str(ws.guide.done()), ws.guide.loose.size()])
 			ws.reset()
+	elif t < 130.0:
+		if _at("x-ray"):
+			ws.views.set_xray(true)
+	elif t < 140.0:
+		if _at("cutaway"):
+			ws.views.set_xray(false)
+			ws.views.set_cut(true)
+	elif t < 155.0:
+		if _at("section sweep"):
+			ws.views.set_cut(false)
+			ws.views.set_section(true)
+		ws.views.set_section_at(1.0 - (t - 140.0) / 15.0)
+	elif t < 173.0:
+		if _at("faults"):
+			ws.views.set_section(false)
+			ws.views.set_cut(true)
+		var faults: Array = ws.bench.m.faults if ws.bench.loaded() else []
+		if not faults.is_empty():
+			# each fault for its share of the 18 s: made at its start, repaired at two thirds of it
+			var share := 18.0 / faults.size()
+			var fk := int((t - 155.0) / share)
+			var into := fmod(t - 155.0, share)
+			if fk < faults.size():
+				var id := String(faults[fk].id)
+				if into < share * 0.66 and not ws.bench.faulted.has(id) and not _made.has(id):
+					_made[id] = true
+					ws.toggle_fault(id)
+				elif into >= share * 0.66 and ws.bench.faulted.has(id):
+					ws.toggle_fault(id)
+	elif t < SECONDS:
+		if _at("stop"):
+			ws.views.set_cut(false)
+			for o in _ops:
+				if o.has("machine") and o.do == "stop":
+					ws.run_command(o.at, o.do)
 	else:
 		done = true
 		running = false
+		if ws.bench.loaded():
+			main._say("WORKSHOP bench steps=%d max=%dus mean=%.1fus" % [ws.bench.steps, ws.bench.step_us_max,
+				float(ws.bench.step_us_sum) / maxf(ws.bench.steps, 1)])
 		ws.close()
 		await ws.left
 		main._say("WORKSHOP exit=%.0fms" % ws.exit_ms)

@@ -1,0 +1,72 @@
+{
+ "format": "walkdown-plant-bench",
+ "version": 1,
+ "part": "pressure_transmitter",
+ "sources": [
+  {"id": "r3051", "cite": "Emerson, Rosemount 3051 Pressure Transmitter with HART Protocol, reference manual 00809-0100-4007 rev. BA (2017): §3.5 integral manifolds, §4.3 LCD display, §6.4 disassembly and §6.5 reassembly procedures, appendix A spare parts (the LCD display cover comes with its window); §2.7.4 and §A.3.9 damping (a first-order time constant, 0–60 s, added to the sensor module's response), §2.9.1 alarm and saturation levels (table 2-5: the NAMUR-compliant 3.8 and 20.5 mA saturation, ≤ 3.6 and ≥ 22.5 mA alarm, after NAMUR NE 43), the 2-wire loop-powered 4–20 mA output and its LCD display", "url": "https://core.instrumart.com/assets/rosemount_3051-420ma_manual.pdf"},
+  {"id": "liptak", "cite": "B. G. Lipták (ed.), Instrument Engineers' Handbook, vol. 1: Process Measurement and Analysis, 4th ed., CRC Press (2003), ch. 5 pressure measurement: diaphragm seals and fill fluids, impulse (sensing) lines, their plugging and the reading it freezes", "url": "https://www.routledge.com/Instrument-Engineers-Handbook-Volume-One-Process-Measurement-and-Analysis/Liptak/p/book/9780849310836"}
+ ],
+ "values": [
+  ["p_applied", {"state": 0, "unit": "bar"}],
+  ["powered", {"state": 0}],
+  ["blocked", {"state": 0}],
+  ["loop_open", {"state": 0}],
+  ["surge", {"state": 0}],
+  ["p_proc", {"select": "surge", "cases": ["p_applied", 15.0], "unit": "bar"}],
+  ["p_line", {"hold": "p_proc", "when": "blocked", "unit": "bar"}],
+  ["p_dia", {"lag": "p_line", "tau": 0.3, "unit": "bar"}],
+  ["dp_fill", {"diff": ["p_line", "p_dia"]}],
+  ["flow_frac", {"of": "dp_fill", "table": [[-1, -1], [1, 1]]}],
+  ["x_dia", {"of": "p_dia", "table": [[-1, -0.1], [0, 0], [10.0, 1], [12.0, 1.2]]}],
+  ["p_sensed", {"lag": "p_dia", "tau": 0.1, "unit": "bar"}],
+  ["pv", {"lag": "p_sensed", "tau": 0.4, "unit": "bar"}],
+  ["pct", {"product": ["pv", 10.0], "unit": "%"}],
+  ["ma_line", {"of": "pv", "table": [[-10.0, -12], [0, 4], [10.0, 20], [20.0, 36]], "unit": "mA"}],
+  ["ma_lo", {"max": ["ma_line", 3.8]}],
+  ["ma_out", {"min": ["ma_lo", 20.5], "unit": "mA"}],
+  ["over", {"cmp": ["ma_line", ">", 20.5]}],
+  ["under", {"cmp": ["ma_line", "<", 3.8]}],
+  ["closed", {"not": "loop_open"}],
+  ["lit", {"and": ["powered", "closed"]}],
+  ["loop_ma", {"select": "lit", "cases": [0, "ma_out"], "unit": "mA"}],
+  ["sat_hi", {"and": ["lit", "over"]}],
+  ["sat_lo", {"and": ["lit", "under"]}],
+  ["no_current", {"and": ["powered", "loop_open"]}]
+ ],
+ "ops": [
+  {"at": "process_flange", "do": "set", "input": "p_applied", "range": [-1, 12], "title": "Applied pressure"},
+  {"at": "terminal_block", "do": "start", "machine": "supply", "title": "Loop supply on"},
+  {"at": "terminal_block", "do": "stop", "machine": "supply", "title": "Loop supply off"}
+ ],
+ "machines": [
+  {"id": "supply", "at": "terminal_block", "init": "off", "commands": {"start": {"from": ["off"], "to": "on"}, "stop": {"from": "*", "to": "off"}}, "states": [{"id": "off", "set": {"powered": 0}, "say": "The loop supply is off."}, {"id": "on", "set": {"powered": 1}, "say": "The loop supply is on: 24 V DC across the loop."}]}
+ ],
+ "alarms": [
+  {"id": "sat_high", "at": "electronics", "where": "display", "when": "sat_hi", "priority": 2, "text": "Over range: the output is held at 20.5 mA"},
+  {"id": "sat_low", "at": "electronics", "where": "display", "when": "sat_lo", "priority": 2, "text": "Under range: the output is held at 3.8 mA"},
+  {"id": "loop_dead", "at": "terminal_block", "where": "terminal_block", "when": "no_current", "priority": 1, "text": "No loop current: the loop is open"}
+ ],
+ "faults": [
+  {"id": "over_range", "at": "process_flange", "text": "Process pressure surges past the upper range", "set": {"surge": 1}, "repair": {"surge": 0}},
+  {"id": "impulse_blocked", "at": "process_flange", "text": "Impulse line blocked", "set": {"blocked": 1}, "repair": {"blocked": 0}},
+  {"id": "loop_open", "at": "terminal_block", "text": "Loop open: a wire off the signal terminals", "set": {"loop_open": 1}, "repair": {"loop_open": 0}}
+ ],
+ "start": {"p_applied": 0},
+ "bind": [
+  {"at": "isolator", "anim": "deflect", "of": "x_dia", "scale": 1},
+  {"at": "display", "show": "pv", "lit": "lit"},
+  {"at": "display", "show": "loop_ma", "lit": "lit"},
+  {"at": "terminal_block", "show": "loop_ma"},
+  {"flow": "impulse", "of": "flow_frac", "speed": 0.06, "colour": "pressure", "by": "p_line"},
+  {"at": "sensor_cell", "pressure": "p_dia"},
+  {"at": "isolator", "pressure": "p_dia"}
+ ],
+ "legends": {"pressure": {"unit": "bar", "table": [[-1, "#5e3c99"], [0, "#2c7bb6"], [5, "#ffffbf"], [10, "#d7191c"]]}},
+ "readouts": [
+  "p_applied",
+  "p_sensed",
+  "pv",
+  "pct",
+  "loop_ma"
+ ]
+}

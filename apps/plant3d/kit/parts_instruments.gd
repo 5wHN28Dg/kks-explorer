@@ -153,10 +153,17 @@ static func _transmitter(g, level: bool) -> void:
 	g.comp("sensor_module", {"explode": [Vector3(0, 0, 1), 0.0]})
 	m.use("steel", "identify")
 	m.cyl(Vector3(0, 0, 0.145), Vector3(0, 0, 0.19), 0.025, -1.0, 12)   # its neck (the module's housing)
-	g.comp("isolator", {"parent": "sensor_module", "explode": [Vector3(0, 0, -1), 0.02]})
+	g.comp("isolator", {"parent": "sensor_module", "explode": [Vector3(0, 0, -1), 0.02], "anim": "deflect"})
 	g.only("workshop")
-	m.use("chrome", "identify")
-	m.cyl(Vector3(0, 0, 0.1465), Vector3(0, 0, 0.1485), 0.018, -1.0, 16)   # the isolating diaphragm
+	if g.workshop:   # the isolating diaphragm: pressure from the flange pushes it up into the module (the bench's
+		#   `deflect`, WORKSHOP.md §6.4: 6 mm at the upper range, exaggerated from its real few micrometres)
+		var dia = g.move("deflect", t * Vector3(0, 0, 0.1475), t.basis * Vector3(0, 0, 1), "translate", 0.006)
+		dia.xf = t
+		dia.use("chrome", "identify")
+		dia.cyl(Vector3(0, 0, 0.1465), Vector3(0, 0, 0.1485), 0.018, -1.0, 16)
+		# the impulse path (the bench's `impulse` flow): up the impulse line into the manifold, through the
+		# flange's port to the diaphragm
+		g.flow("impulse", [Vector3(0, 0, -0.02), Vector3(0, 0, 0.055), Vector3(0, 0, 0.105), Vector3(0, 0, 0.1455)])
 	g.comp("sensor_cell", {"parent": "sensor_module", "explode": [Vector3(0, 0, 1), 0.02]})
 	m.use("steel", "identify")
 	m.cyl(Vector3(0, 0, 0.155), Vector3(0, 0, 0.18), 0.015, -1.0, 12)   # the sensing cell (fill fluid, sensing diaphragm)
@@ -180,16 +187,28 @@ static func _transmitter(g, level: bool) -> void:
 		g.comp(side, {"parent": "housing", "explode": [Vector3(k, 0, 0), 0.08], "sym": [Vector3(1, 0, 0), 0]})
 		g.only("workshop", "split")
 		m.use("paint_motor", "identify")
-		m.disk(Vector3(0.06 * k, 0, hz), Vector3(k, 0, 0), 0.05, 16)  # its face: the drum's end, as drawn
+		if k > 0.0:   # the display cover: its face a ring round the window's opening (the LCD seen through it)
+			m.ring(Vector3(0.06 * k, 0, hz), Vector3(k, 0, 0), 0.035, 0.05, 16)
+		else:
+			m.disk(Vector3(0.06 * k, 0, hz), Vector3(k, 0, 0), 0.05, 16)  # its face: the drum's end, as drawn
 		g.only("workshop")
 		m.cyl(Vector3(0.058 * k, 0, hz), Vector3(0.06 * k, 0, hz), 0.05, -1.0, 16, false)   # its rim, in the housing's wall
-		m.disk(Vector3(0.058 * k, 0, hz), Vector3(-k, 0, 0), 0.05, 16)
+		if k > 0.0:
+			m.ring(Vector3(0.058 * k, 0, hz), Vector3(-k, 0, 0), 0.035, 0.05, 16)
+			m._inner(Vector3(0.058 * k, 0, hz), Vector3(0.06 * k, 0, hz), 0.035, 16)   # the opening's wall (the window
+			#   closes it)
+		else:
+			m.disk(Vector3(0.058 * k, 0, hz), Vector3(-k, 0, 0), 0.05, 16)
 		m.use("steel", "identify")
 		m.tube(Vector3(0.052 * k, 0, hz), Vector3(0.058 * k, 0, hz), 0.0435, 0.040, 16)   # its thread, in the housing
-	g.comp("window", {"parent": "cover_front", "thin": true})
-	g.only()
+	g.comp("window", {"parent": "cover_front", "thin": true, "glass": true})
+	g.only("plant", ["window"])
 	m.use("glass", "identify")
-	m.disk(Vector3(0.0605, 0, hz), Vector3(1, 0, 0), 0.035, 16)  # the display's window
+	m.disk(Vector3(0.0605, 0, hz), Vector3(1, 0, 0), 0.035, 16)  # the display's window, as the plant draws it
+	g.only("workshop", "split")
+	m.use("glass", "identify")
+	m.disk(Vector3(0.06, 0, hz), Vector3(1, 0, 0), 0.035, 16)    # in the Workshop it closes the cover's opening
+	g.only()
 	g.comp("electronics", {"parent": "housing", "explode": [Vector3(1, 0, 0), 0.05]})
 	g.only("workshop")
 	m.use("paint_green", "identify")

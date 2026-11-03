@@ -6,6 +6,7 @@
 extends Control
 
 const W = preload("res://ui/widgets.gd")
+const RunPanel = preload("res://workshop/run_panel.gd")
 
 var ws                          # workshop/workshop.gd
 var title: Label
@@ -21,6 +22,8 @@ var back_btn: Button
 var step_label: Label           # the guided steps: the next step's words (WORKSHOP.md §3, §4.6)
 var guide_btns: Array = []      # the buttons that start the steps (when the kind's data has an assembly)
 var tools: Array = []           # the buttons that need a machine
+var run_panel: PanelContainer   # the bench (workshop/run_panel.gd), in the properties' place while shown
+var see: Dictionary = {}        # "See inside": name -> its CheckButton, the section's controls
 var _items := {}                # id -> TreeItem
 var _syncing := false
 var _strip_n := -1
@@ -48,9 +51,12 @@ func setup(w) -> void:
 	var parts_btn := W.button("Parts", func(): tree_panel.visible = not tree_panel.visible)
 	parts_btn.name = "parts"
 	top.add_child(parts_btn)
-	var info_btn := W.button("Info", func(): props_panel.visible = not props_panel.visible)
+	var info_btn := W.button("Info", func(): show_info(not props_panel.visible))
 	info_btn.name = "info"
 	top.add_child(info_btn)
+	var run_btn := W.button("Run", func(): show_run(not run_panel.visible))
+	run_btn.name = "run"
+	top.add_child(run_btn)
 	strip = W.label("", 18, Color(1.0, 0.8, 0.4), false)
 	strip.name = "strip"
 	strip.set_anchors_preset(Control.PRESET_TOP_WIDE)
@@ -67,7 +73,7 @@ func setup(w) -> void:
 	tree_panel.set_anchors_preset(Control.PRESET_LEFT_WIDE)
 	tree_panel.offset_left = 12 * W.scale
 	tree_panel.offset_top = 104 * W.scale
-	tree_panel.offset_bottom = -260 * W.scale
+	tree_panel.offset_bottom = -318 * W.scale
 	tree_panel.offset_right = 380 * W.scale
 	add_child(tree_panel)
 	tree = Tree.new()
@@ -84,7 +90,7 @@ func setup(w) -> void:
 	props_panel.offset_left = -420 * W.scale
 	props_panel.offset_right = -12 * W.scale
 	props_panel.offset_top = 104 * W.scale
-	props_panel.offset_bottom = -260 * W.scale
+	props_panel.offset_bottom = -318 * W.scale
 	add_child(props_panel)
 	var pv := VBoxContainer.new()
 	props_panel.add_child(pv)
@@ -99,7 +105,7 @@ func setup(w) -> void:
 	bottom.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	bottom.offset_left = 12 * W.scale
 	bottom.offset_right = -12 * W.scale
-	bottom.offset_top = -192 * W.scale
+	bottom.offset_top = -250 * W.scale
 	bottom.offset_bottom = -10 * W.scale
 	add_child(bottom)
 	var bv := VBoxContainer.new()
@@ -141,14 +147,53 @@ func setup(w) -> void:
 		row3.add_child(bt)
 		tools.append(bt)
 		guide_btns.append(bt)
+	# what lets the trainee see inside (§3): X-ray, the cutaway, the section plane (its axis, turn and position), flow
+	var row4 := HBoxContainer.new()
+	bv.add_child(row4)
+	row4.add_child(W.label("See inside", 18, W.DIM, false))
+	for b in [["X-ray", "xray", func(on): ws.views.set_xray(on)], ["Cutaway", "cutaway", func(on): ws.views.set_cut(on)],
+			["Section", "section", func(on): ws.views.set_section(on)], ["Flow", "flow", func(on): ws.views.flow_on = on]]:
+		var cb := CheckButton.new()
+		cb.name = "see_" + b[1]
+		cb.text = b[0]
+		cb.toggled.connect(b[2])
+		row4.add_child(cb)
+		see[b[1]] = cb
+	var axis_btn := W.button("Across", func(): _next_axis())
+	axis_btn.name = "section_axis"
+	row4.add_child(axis_btn)
+	see["axis"] = axis_btn
+	for k in [["section_turn", 0.0, 180.0, 0.0, func(v): ws.views.set_section_turn(v)],
+			["section_at", 0.0, 1.0, 0.5, func(v): ws.views.set_section_at(v)]]:
+		var sl := HSlider.new()
+		sl.name = k[0]
+		sl.min_value = k[1]
+		sl.max_value = k[2]
+		sl.step = (k[2] - k[1]) / 360.0
+		sl.value = k[3]
+		sl.custom_minimum_size = Vector2(150 * W.scale, 40 * W.scale)
+		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sl.value_changed.connect(k[4])
+		row4.add_child(sl)
+		see[k[0]] = sl
+	# the bench, in the properties' place
+	run_panel = RunPanel.new()
+	run_panel.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+	run_panel.offset_left = -420 * W.scale
+	run_panel.offset_right = -12 * W.scale
+	run_panel.offset_top = 104 * W.scale
+	run_panel.offset_bottom = -318 * W.scale
+	run_panel.visible = false
+	add_child(run_panel)
+	run_panel.setup(ws)
 	# the next step's words, above the tools
 	step_label = W.label("", 20, Color.WHITE)
 	step_label.name = "step"
 	step_label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	step_label.offset_left = 24 * W.scale
 	step_label.offset_right = -24 * W.scale
-	step_label.offset_top = -254 * W.scale
-	step_label.offset_bottom = -198 * W.scale
+	step_label.offset_top = -312 * W.scale
+	step_label.offset_bottom = -256 * W.scale
 	step_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	step_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	step_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
@@ -185,6 +230,31 @@ func machine_shown() -> void:
 	_fill_tree(top_name, w)
 	selected_changed()
 	refresh()
+	run_panel.machine_shown()
+	_sync_see()
+	see["cutaway"].disabled = not ws.views.has_cutaway()
+
+## The See inside controls as the views have them (a new machine starts with everything off, flow on).
+func _sync_see() -> void:
+	see["xray"].set_pressed_no_signal(ws.views.xray)
+	see["cutaway"].set_pressed_no_signal(ws.views.cut)
+	see["section"].set_pressed_no_signal(ws.views.section)
+	see["flow"].set_pressed_no_signal(ws.views.flow_on)
+	see["axis"].text = ["Across", "Along", "Up"][ws.views.section_axis]
+
+func _next_axis() -> void:
+	ws.views.set_section_axis(ws.views.section_axis + 1)
+	_sync_see()
+
+func show_run(on: bool) -> void:
+	run_panel.visible = on
+	if on:
+		props_panel.visible = false
+
+func show_info(on: bool) -> void:
+	props_panel.visible = on
+	if on:
+		run_panel.visible = false
 
 func _fill_tree(top_name: String, w: Dictionary) -> void:
 	tree.clear()
@@ -276,8 +346,9 @@ func refresh() -> void:
 		step_label.text = ws.step_words()
 	slider.editable = ws.machine != null and not ws.guide.on()   # (the slider waits while the steps are on)
 
-## Each frame: the session's strip.
+## Each frame: the bench's panel, the session's strip.
 func tick() -> void:
+	run_panel.tick()
 	if not ws._session:
 		strip.visible = false
 		return
