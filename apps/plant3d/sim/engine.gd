@@ -187,6 +187,12 @@ var sp_held: Array = []             # a job held overnight (§17.10), or null
 var sp_worn := PackedInt32Array()   # the PPE items worn: a bit per item of staff.gd PPE (§17.11)
 var sp_acts: Array = []             # per person: an Array per act kind (staff.gd ACT_KINDS), null or [zone or work, start, stopped]
 var sp_zin := PackedInt64Array()    # the trainee's zones from their zone inputs: a bit per zone (file order)
+# personal audio and the phone (REALISM.md §8.5; read only with staff.json's `audio`, staff.gd has_audio)
+var sp_music := PackedInt32Array()  # the music's volume, 0 off (a player's; an NPC plays none)
+var sp_phone := PackedInt32Array()  # the phone: 1 carried, 0 left at a locker, 2 held until the duty ends
+var sp_told := PackedInt32Array()   # the act kinds a missed call reported: bit 0 audio, bit 1 phone
+var sp_watch: Array = []            # per person: {Vector2i(reaction, kind index): {observer: the step they notice}}
+var sp_aud := PackedInt64Array()    # each person's noticing stream (§2.1: purpose `audio`, their id)
 var sp_ride: Array = []             # a ride (§20.4): [staff lift, a, b, 0 waiting / 1 aboard, wait start, destination] or []
 var sp_stairs: Array = []           # the stairs walked instead of a ride: [destination, place, …, b], or empty
 var sp_lin := PackedInt64Array()    # the step of a person's last lift input
@@ -300,6 +306,10 @@ func _init(model = null, scenario = null, session := false) -> void:
 	if m.staff != null and sc.has("staff"):
 		_sm = m.staff
 		_sm.init_run(self, sc)
+		if _sm.has_audio:           # (REALISM.md §8.5)
+			var aseed := World.seed_of(sc)
+			for p in _sm.people:
+				sp_aud.append(World.stream(aseed, World.TAGS["audio"], p["id"]))
 	for f in sc.get("faults", []):
 		_fdef[f["id"]] = f
 	Hands.init(self, World)
@@ -752,6 +762,16 @@ func ppe(item, on, slot = null) -> void:
 	_q(["ppe", item, on], slot)
 
 
+## The player's music volume, a whole number from 0 (off) to 100 (REALISM.md §8.5).
+func audio(level, slot = null) -> void:
+	_q(["audio", level], slot)
+
+
+## The player leaves the phone at a locker ("leave") or takes it ("take") (REALISM.md §8.5).
+func phone(what, slot = null) -> void:
+	_q(["phone", what], slot)
+
+
 ## The trainee entered ("in") or left ("out") a zone (§16.2).
 func zone(zone_id, how, slot = null) -> void:
 	_q(["zone", zone_id, how], slot)
@@ -921,7 +941,7 @@ func apply_input(item: Array) -> void:
 				remove_lock(item[2], item[3], item[4], item[5], item[6], true, slot)
 			else:
 				remove_lock(item[2], item[3], item[4], item[5], null, false, slot)
-		"role", "arrive", "leave", "pick", "jump", "get_on":
+		"role", "arrive", "leave", "pick", "jump", "get_on", "audio", "phone":
 			_q([item[1], item[2]], slot)
 		"release", "task_ack":
 			_q([item[1]], slot)
@@ -1865,7 +1885,8 @@ func _step() -> void:
 			continue        # (a session run's input: a single-player run has no slots)
 		if kind == "role" or kind == "task_ack" or kind == "arrive" or kind == "leave" or kind == "read" \
 				or kind == "say" or kind == "pick" or kind == "call" or kind == "jump" or kind == "ppe" \
-				or kind == "zone" or kind == "stop" or kind == "release" or kind == "get_on":
+				or kind == "zone" or kind == "stop" or kind == "release" or kind == "get_on" or kind == "audio" \
+				or kind == "phone":
 			if _sm != null:
 				_sm.t_input(self, item, slot)
 			elif kind == "role":
@@ -2379,6 +2400,8 @@ func snapshot(with_values: bool = true) -> Dictionary:
 		s["worn"] = wa[0]
 		s["acts"] = wa[1]
 		s["vehicles"] = _sm.snap_vehicles(self)
+		if _sm.has_audio:               # (REALISM.md §8.5)
+			s["audio"] = _sm.snap_audio(self)
 		s["unacked"] = unacked(-1)
 		if st_session:
 			var pl := []
@@ -2495,6 +2518,24 @@ func _digest_staff():
 		tree.append(vs)
 		tree.append(sp_aboard)
 		tree.append(sp_offday)
+	if _sm.has_audio:                   # music, phone, missed calls, the observers' times, the streams (REALISM.md §8.5)
+		var watch := []
+		for pi in np:
+			var wd: Dictionary = sp_watch[pi]
+			var rows := []
+			if not wd.is_empty():
+				var wks: Array = wd.keys()
+				wks.sort()
+				for wk in wks:
+					var w: Dictionary = wd[wk]
+					var obs := PackedInt32Array(w.keys())
+					obs.sort()
+					var due := PackedInt64Array()
+					for qi in obs:
+						due.append(w[qi])
+					rows.append([wk.x, wk.y - 3, obs, due])
+			watch.append(rows)
+		tree.append([sp_music, sp_phone, sp_told, watch, sp_aud])
 	return tree
 
 
@@ -2541,13 +2582,13 @@ func clone():
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_wait_on", "sp_worn",
-			"sp_zin", "lift_quiet", "sp_lin", "lift_calls", "lift_dir", "lift_dwell", "sp_aboard", "sp_offday"]:
+			"sp_zin", "sp_music", "sp_phone", "sp_told", "sp_aud", "lift_quiet", "sp_lin", "lift_calls", "lift_dir", "lift_dwell", "sp_aboard", "sp_offday"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",
 			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_kept",
 			"st_left", "st_pending", "st_made",
 			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result", "sp_held", "sp_acts",
-			"riders", "sp_ride", "sp_stairs", "st_veh", "sp_spans", "tool_n", "carried", "busy", "cause_of", "cause_s",
+			"riders", "sp_ride", "sp_stairs", "sp_watch", "st_veh", "sp_spans", "tool_n", "carried", "busy", "cause_of", "cause_s",
 			"slip_s"]:
 		c.set(k, get(k).duplicate(true))
 	return c
