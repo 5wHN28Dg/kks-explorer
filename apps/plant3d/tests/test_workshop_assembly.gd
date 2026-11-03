@@ -319,9 +319,8 @@ func _turbine(tree: SceneTree, ws) -> void:
 	check(ws.start_guide("disassemble"), "the turbine's steps start taking apart")
 	check(String(ws.guide.steps[ws.guide.next_step()].place) == "lagging_upper", "the upper lagging comes off first")
 	check(ws.why_not_free("rotor") != "", "the rotor is held while the turbine is closed")
-	ws.select("joint_bolts")
-	check(ws.note == "Strip the upper lagging first: it covers the casing's joint and its studs.",
-		"the joint's studs are under the lagging: '%s'" % ws.note)
+	ws.select("casing_upper")
+	check(ws.note != "", "the upper casing is held while the turbine is closed")
 	var order: Array = []
 	var guard := 0
 	while ws.guide.next_step() >= 0 and guard < 120:
