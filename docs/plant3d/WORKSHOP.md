@@ -527,6 +527,24 @@ Faults: **over-range** (the output saturates at 20.5 mA and the display says so:
   and the phone, the same in K2's own build (measured on the laptop from main), over §8's 300: found here, not changed
   by K3. The APK (test-signed, with voice) is 121.1 MB; K3's own files (scripts, shaders, the bench file) are about 40 KB before compression.
 
+**As built (K3 follow-ups, 2026-11-03).**
+- **Draw calls:** the pile's ~510 were the 2D step sentence, not the 3D: an outlined, wrapped Label in the panels'
+  canvas layer cost about two draw calls a letter (a long assembly step ~440; the 3D view drew 30 objects). It now
+  draws on a canvas layer of its own just above the Workshop's (the same words, place and look), which follows the
+  panels' visibility: the walk's most in any view is 58 on the laptop (from 515) (the Note 9's run is still to come).
+- **The bench's logs:** the bench clock drops the engine's `inputs` log (nothing in the Workshop reads it) and the
+  events both its readers have read, and past 512 the oldest; the engine itself is unchanged (it reads events only
+  within a step, and the digest leaves the logs out). A test runs the transmitter's bench for 20 minutes of bench time
+  beside an engine that keeps everything: the logs stay within 64 entries and every value and the digest agree bit for
+  bit. The vectors are untouched.
+- **First entry:** the plant's warm-up (§7.1) also loads each kind's machine on a worker thread, one at a time, and
+  holds it hidden in the plant's world for 30 frames in the Workshop's own materials (ws_lit with the cap as its next
+  pass, the glass) with its parts' ghosts, so their surface pipelines are made then rather than in the machine's first
+  frame; not while the tier probe runs or a Workshop shows, nor on the Compatibility renderer (`kinds_warmed`; `warmed`
+  stays the ghost's). The Workshop walk's first entry waits for it (`cold=1`: at once, as K3 measured). Laptop (Mobile
+  renderer, an empty cache): first entry 1,641 ms at once, 696 ms after the warm-up. The Note 9 (a test-signed copy of this branch's
+  export, fresh installs, cool starts, the warm and the `cold=1` entry) is still to be measured.
+
 ### 6.5 Plant values to bench inputs (K6, the mirror)
 
 Opening the Workshop from the live plant can mirror that equipment's current state, read only. Each bench file's
