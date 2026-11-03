@@ -23,6 +23,10 @@
 ## by mask_db(volume): up to 30 dB at full volume. The players' voice, when the app plays it, goes on voice_bus().
 extends Node3D
 
+## The music stopped while it played (by stop_music: the phone's own stop, its index loaded again, this node gone),
+## for the phone (ui/phone.gd) to follow.
+signal music_ended
+
 const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
 
 const PlayerScript = preload("res://app/player.gd")
@@ -156,12 +160,15 @@ func play_music(id: String, volume: int) -> void:
 
 
 func stop_music() -> void:
+	var was := _music != null
 	if _music != null:
 		_music.queue_free()
 		_music = null
 	music_id = ""
 	music_volume = 0
 	_mask()
+	if was:
+		music_ended.emit()
 
 
 func music_playing() -> bool:

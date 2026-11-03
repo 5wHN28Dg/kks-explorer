@@ -5,7 +5,10 @@
 ## - Playing a person, it sends the inputs (`audio` with the volume, `phone` at a locker) and follows the engine's
 ##   events: a refusal or the device held by whoever stopped the act stops the music; the phone given back at the
 ##   end of the duty is said. The music plays at once (the engine's word on it comes a step later, or with the
-##   session's commit) unless the phone is known to be held or left.
+##   session's commit) unless the phone is known to be held or left. Once no input of the phone's is on its way
+##   (its event came, or WAIT steps went by: a host may drop an input), the phone follows the engine's own state
+##   (sp_music, sp_phone): its volume, the music off, the phone left or held.
+## - The sound player stopping the music by itself (its files loaded again, the plant gone) stops the phone too.
 ## - In free mode (no person, or no crews) the music just plays: no inputs, no rules.
 ## - The volume goes in steps of 10; 0 is off.
 extends RefCounted
@@ -16,6 +19,7 @@ const STEP := 10
 const CARRIED := 1              # the engine's phone states (sp_phone): 1 carried, 0 left at a locker, 2 held
 const LEFT := 0
 const HELD := 2
+const WAIT := 30                # model steps an input of the phone's is waited for before the engine's state rules
 
 var ui                          # ui/plant_ui.gd
 var track := ""                 # the track picked (an id of the generator's music)
@@ -29,11 +33,31 @@ var _person := -1               # reads the phone's state again
 var _status: Label = null       # the controls built into the Crew panel (build), updated in place (show)
 var _play: Button = null
 var _track: Button = null
+var _wait_to := -1              # the step until which an input of the phone's is waited for (-1: none on its way)
 
 
 func setup(u) -> void:
 	ui = u
 	_pick()
+	if ui.sounds != null:
+		ui.sounds.music_ended.connect(_ended)
+
+
+## The sound player stopped the music itself (ui/sound_player.gd music_ended: its index loaded again, the plant gone):
+## the phone is stopped too, and a person's engine told (it plays nothing any more).
+func _ended() -> void:
+	if not playing:
+		return
+	playing = false
+	if person() != -1 and ui.is_inside_tree() and ui.clock != null and ui.clock.engine != null:
+		_send(0)
+	show()
+
+
+## An `audio` input, waited for (WAIT) before the engine's own state is followed again.
+func _send(v: int) -> void:
+	ui.inputs.audio(v)
+	_wait_to = ui.clock.engine.step_no + WAIT
 
 
 ## A track of the build's music picked (the first) when none is, or the one picked is not there.
@@ -78,7 +102,7 @@ func stop() -> void:
 	playing = false
 	ui.sounds.stop_music()
 	if was and person() != -1:
-		ui.inputs.audio(0)
+		_send(0)
 	show()
 
 
@@ -145,39 +169,60 @@ func _apply(send: bool) -> void:
 			_say(_state_words(st))
 			return
 		if send:
-			ui.inputs.audio(volume)
+			_send(volume)
 	ui.sounds.play_music(track, volume)
 	show()
 
 
-## Every quarter second (ui/plant_ui.gd): another engine or person reads the phone again; a person taken while the
-## music plays tells the engine.
+## Every quarter second (ui/plant_ui.gd): another engine or person reads the phone again (a person taken while the
+## music plays tells the engine); then, playing a person, the phone follows the engine's state (follow_engine).
 func tick() -> void:
 	var e = ui.clock.engine
 	var pi := person()
-	if e == _engine and pi == _person:
-		return
-	var new_engine: bool = e != _engine
-	_engine = e
-	_person = pi
-	state = CARRIED
-	held_by = ""
-	if pi == -1:
-		return                          # free mode: the music goes on as it is
-	var sm = e.get("sp_music")
-	if new_engine and sm != null and sm.size() > pi:
-		# a loaded run or a session's engine: its music is the person's
-		state = engine_state()
-		if int(sm[pi]) > 0:
-			volume = int(sm[pi])
-			playing = true
-			ui.sounds.play_music(track, volume)
-		elif playing:
+	if e != _engine or pi != _person:
+		_engine = e
+		_person = pi
+		state = CARRIED
+		held_by = ""
+		_wait_to = -1
+		if pi != -1 and playing and _engine_volume(e, pi) == 0 and engine_state() == CARRIED:
 			_apply(true)
-		show()
+	if pi != -1:
+		follow_engine()
+
+
+## The engine's music volume for person pi (-1 when the engine keeps none).
+static func _engine_volume(e, pi: int) -> int:
+	var sm = e.get("sp_music") if e != null else null
+	return int(sm[pi]) if sm != null and sm.size() > pi else -1
+
+
+## The phone in agreement with the engine (REALISM.md §8.5; the engine rules: a session's host may have dropped an
+## input, a loaded run or a session's engine has its own): once no input of the phone's is on its way, the music
+## plays at the engine's volume or not at all, and a phone left or held plays nothing.
+func follow_engine() -> void:
+	var e = ui.clock.engine
+	var pi := person()
+	var v := _engine_volume(e, pi)
+	if pi == -1 or v == -1 or (_wait_to != -1 and e.step_no < _wait_to):
 		return
-	if playing:
-		_apply(true)
+	_wait_to = -1
+	var st := engine_state()
+	if st != CARRIED or v == 0:
+		if playing:
+			playing = false
+			ui.sounds.stop_music()
+			if st != CARRIED:
+				_say(_state_words(st))
+			else:
+				show()
+		return
+	if not playing or v != volume or ui.sounds.music_volume != v:
+		_pick()
+		playing = true
+		volume = v
+		ui.sounds.play_music(track, volume)
+		show()
 
 
 ## An event of the run (ui/plant_ui.gd _follow_events): the person played's own audio, phone, held and returned.
@@ -188,7 +233,10 @@ func on_event(ev: Array) -> void:
 	var sm = ui.clock.engine._sm
 	match ev[1]:
 		"audio":
+			if ev[4] == "done" and int(ev[3]) == (volume if playing else 0):
+				_wait_to = -1                   # the last input asked for came: the engine's state rules again
 			if ev[4] == "refused":
+				_wait_to = -1
 				playing = false
 				ui.sounds.stop_music()
 				_say(refusal(ev[5]))

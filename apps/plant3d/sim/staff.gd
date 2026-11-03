@@ -2890,6 +2890,12 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 	# (the engine's fields read once: neither changes in this loop, and a field of an untyped object is looked up by
 	# name each time it is read)
 	var absent: Dictionary = e._absent
+	if has_audio:               # the observers' times kept for acts not going on (REALISM.md §8.5): before any acts
+		var ws: Array = e.sp_watch  # change (a person's pruning reads only their acts and everyone's duty and zones)
+		if ws.count({}) != ws.size():
+			for qi in ws.size():
+				if not ws[qi].is_empty() and not absent.has(qi):
+					prune_watch(e, qi)
 	var look: PackedByteArray = e._touched     # the people to look at: found natively (a copy: the players added)
 	var players: PackedInt32Array = e.st_players
 	if not players.is_empty():
@@ -2919,12 +2925,8 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 			if a != null and now.is_empty():
 				acts[k] = null
 				e._ev(["safe", people[pi]["id"], kinds[k], a[0]])
-				if k >= 3:          # nobody is about to notice an act that has ended (REALISM.md §8.5)
-					e.sp_told[pi] &= ~(1 << (k - 3))
-					var wd: Dictionary = e.sp_watch[pi]
-					for wk in wd.keys():
-						if wk.y == k:
-							wd.erase(wk)
+				if k >= 3:          # a missed call reported this act only; the observers' times stand (music off
+					e.sp_told[pi] &= ~(1 << (k - 3))    # and on again in their sight is no escape, §8.5)
 			elif a == null and not now.is_empty():
 				acts[k] = [now[0], n, false]
 				e._ev(["unsafe", people[pi]["id"], kinds[k], now[0]])
@@ -3054,6 +3056,25 @@ func notice(e, ri: int, role_list: Array, ai: int, k: int, n: int) -> int:
 	return found
 
 
+## An observer's time to notice stands while the act is off (REALISM.md §8.5), but only while they still share a zone
+## with person pi, on duty; for an act going on, notice() keeps the list.
+func prune_watch(e, pi: int) -> void:
+	var zs := zones_of(e, pi)
+	var wd: Dictionary = e.sp_watch[pi]
+	var acts: Array = e.sp_acts[pi]
+	var on: PackedByteArray = e.sp_on
+	var absent: Dictionary = e._absent
+	for wk in wd.keys():
+		if acts[wk.y] != null:
+			continue
+		var w: Dictionary = wd[wk]
+		for qi in w.keys():
+			if not (on[qi] and not absent.has(qi) and (zs & zones_of(e, qi)) != 0):
+				w.erase(qi)
+		if w.is_empty():
+			wd.erase(wk)
+
+
 ## Whether the act [person index, kind index, start step] still goes on and nobody has stopped it.
 func ongoing(e, act: Array) -> bool:
 	var a = e.sp_acts[act[0]][act[1]]
@@ -3077,7 +3098,8 @@ func stop_act(e, pi: int, act: Array) -> void:
 		else:
 			c["st"].erase("busy")
 			advance(e, qi, "fail")
-	if act[1] >= 3 and e.sp_phone[qi] != 2:     # the device taken until their duty ends (REALISM.md §8.5)
+	# the device taken until their duty ends (REALISM.md §8.5; one left at a locker in this very step stays there)
+	if act[1] >= 3 and e.sp_phone[qi] == 1:
 		e.sp_music[qi] = 0
 		e.sp_phone[qi] = 2
 		# held until the clock its duty ends (now, when off duty): phase 1 gives it back then

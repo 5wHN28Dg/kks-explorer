@@ -20,6 +20,9 @@ const Debrief = preload("res://ui/debrief.gd")
 const PlantUI = preload("res://ui/plant_ui.gd")
 const UiParts = preload("res://tests/test_ui_parts.gd")
 const Phone = preload("res://ui/phone.gd")
+const PlantEngine = preload("res://sim/engine.gd")
+const RunSave = preload("res://ui/run_save.gd")
+const Autosave = preload("res://ui/autosave.gd")
 
 
 func run(tree: SceneTree) -> Array:
@@ -158,6 +161,20 @@ func _ladder() -> Array:
 	var ph2: Dictionary = Debrief.personal_audio("me", stop.call("phone") + on + stop.call("audio"), 5)
 	if ph2.rungs != [1, 2]:
 		p.append("a phone act then music: rungs %s, not [1, 2]" % str(ph2.rungs))
+	# a stop of the music while the player's phone act goes on (in an Ex zone): the device taken then is at least the
+	# written warning, whatever the stop named; once that act has ended, the music's stop is the verbal one
+	var ex_on := [[5, "unsafe", "me", "phone", "gas"], [5, "unsafe", "me", "audio", "gas"]]
+	var during: Dictionary = Debrief.personal_audio("me", ex_on + stop.call("audio"), 4)
+	if during.top != 1:
+		p.append("a device taken while the phone act goes on is rung %d, not the written warning" % during.top)
+	var after: Dictionary = Debrief.personal_audio("me", ex_on + [[8, "safe", "me", "phone", "gas"]] + stop.call("audio"), 5)
+	if after.top != 0:
+		p.append("a device taken after the phone act ended is rung %d, not the verbal warning" % after.top)
+	# the person released (the engine turns their music off without an event): no alarm counted after it
+	var rel: Dictionary = Debrief.personal_audio("me", [[1, "audio", "me", 60, "done", []], [2, "release", "me", "done", 0],
+			[3, "alarm", "a1", "active_unack"]], 3)
+	if rel.alarms != 0:
+		p.append("an alarm raised after the person was released counts as raised while their music played")
 	# someone else's device held counts nothing of the player's
 	if Debrief.personal_audio("me", [[10, "held", "other", "sup"]], 1).held != 0:
 		p.append("another person's device held counts as the player's")
@@ -213,6 +230,12 @@ func _free_mode(tree: SceneTree, ui) -> Array:
 	App.find_button(ui.crew, "Stop").pressed.emit()
 	if ui.sounds.music_playing():
 		p.append("Stop leaves the music playing")
+	# the sound player stopping the music by itself (its files loaded again): the phone says stopped
+	App.find_button(ui.crew, "Play").pressed.emit()
+	ui.sounds.load_index(ui.sounds.dir)
+	ui.crew.refresh()
+	if ui.phone.playing or not App.texts(ui.crew).contains("Music off") or App.find_button(ui.crew, "Play") == null:
+		p.append("the sounds loaded again leave the phone playing: %s" % App.texts(ui.crew).left(300))
 	if not sent.is_empty():
 		p.append("free mode sent inputs: %s" % str(sent))
 	ui.inputs.sink = Callable()
@@ -328,7 +351,80 @@ func _person(tree: SceneTree, ui) -> Array:
 	var shown := App.texts(ui.crew)
 	if not shown.contains("Missed call from %s" % sup_call):
 		p.append("the radio on the panel does not show the missed call")
+	p += _follows_engine(ui, e, me)
+	p += _saved_audio(ui, e)
 	ui.close_crew()
+	return p
+
+
+## The phone follows the engine once its own input is no longer on its way: an input the host dropped (the engine's
+## music off), the engine's volume, the device held; the sound player stopping the music tells the engine.
+func _follows_engine(ui, e, me: int) -> Array:
+	var p: Array = []
+	var sent: Array = []
+	ui.inputs.sink = func(item): sent.append(item)         # (dropped: never reaches the engine)
+	ui.phone.state = Phone.CARRIED
+	ui.phone.play()
+	ui.phone.follow_engine()
+	if not ui.phone.playing:
+		p.append("the phone stopped before its input could have reached the engine")
+	ui.clock.run_steps(Phone.WAIT + 1)
+	ui.phone.follow_engine()
+	if ui.phone.playing or ui.sounds.music_playing():
+		p.append("the phone plays on although the engine never took its input (music %d)" % e.sp_music[me])
+	e.sp_music[me] = 70                 # the engine's own state (a loaded run, a session's engine)
+	ui.phone.follow_engine()
+	if not ui.phone.playing or ui.sounds.music_volume != 70 or ui.phone.volume != 70:
+		p.append("the engine's music at 70 is not followed: %s at %d" % [ui.phone.playing, ui.sounds.music_volume])
+	e.sp_phone[me] = Phone.HELD
+	ui.phone.follow_engine()
+	if ui.phone.playing or ui.sounds.music_playing() or not ui._toast.text.contains("Your phone is with"):
+		p.append("the engine's phone held is not followed: %s, %s" % [ui.phone.playing, ui._toast.text])
+	e.sp_phone[me] = Phone.CARRIED
+	ui.phone.follow_engine()
+	if not ui.phone.playing:
+		p.append("the phone given back by the engine with its music on is not followed")
+	# the sound player stops the music itself: the phone stops and tells the engine
+	sent.clear()
+	ui.sounds.load_index(ui.sounds.dir)
+	if ui.phone.playing or str(sent) != str([["audio", 0]]):
+		p.append("the sounds loaded again: the phone %s, sent %s" % ["plays on" if ui.phone.playing else "stopped", str(sent)])
+	e.sp_music[me] = 0
+	ui.inputs.sink = Callable()
+	return p
+
+
+## A saved run's personal audio is checked as the rest of the engine's state (ui/autosave.gd): its own taken, each
+## field damaged refused.
+func _saved_audio(ui, e) -> Array:
+	var p: Array = []
+	var fresh = PlantEngine.new(ui.model, "shift_cold")
+	var cap := RunSave.capture(e, RunSave.engine_fields(e))
+	var why: String = Autosave._engine_contents(fresh, cap)
+	if why != "":
+		return ["a run's own save is refused: %s" % why]
+	if cap.get("sp_aud", []).is_empty() or cap.get("sp_watch", []).is_empty():
+		return ["the first train's run has no noticing streams or observers to save"]
+	var bad := []
+	for k in [["sp_music", 101], ["sp_music", -1], ["sp_phone", 3], ["sp_told", 4], ["sp_held_to", -2], ["sp_aud", 0]]:
+		var a = cap[k[0]].duplicate()
+		a[0] = k[1]
+		bad.append({k[0]: a})
+	var short = cap["sp_music"].duplicate()
+	short.resize(short.size() - 1)
+	bad.append({"sp_music": short})
+	for wk in [Vector2i(0, 7), Vector2i(-1, 3), "x"]:
+		var w: Array = cap["sp_watch"].duplicate(true)
+		w[0] = {wk: {}}
+		bad.append({"sp_watch": w})
+	var w2: Array = cap["sp_watch"].duplicate(true)
+	w2[0] = {Vector2i(0, 3): {"q": 5}}
+	bad.append({"sp_watch": w2})
+	for c in bad:
+		var t := cap.duplicate()
+		t.merge(c, true)
+		if Autosave._engine_contents(fresh, t) == "":
+			p.append("a save with %s was taken" % str(c).left(120))
 	return p
 
 
@@ -347,7 +443,7 @@ func _vehicle(tree: SceneTree, ui) -> Array:
 		p.append("the parked bus's engine is heard")
 	# driven 1 m in a tenth of a second (10 m/s), a few times: the engine on, on the Plant bus, louder and higher
 	for k in 6:
-		vv._put(V, Transform3D(parked.basis, parked.origin + Vector3(1.0 + k, 0, 0)), true)
+		vv._put(V, Transform3D(parked.basis, parked.origin + Vector3(1.0 + k, 0, 0)), false)
 		ui.sounds.listener_at = body.global_position
 		vv._engine(V, 0.1)
 	var ps: Array = ui.sounds.vehicles_heard.get(body, [])
@@ -363,6 +459,16 @@ func _vehicle(tree: SceneTree, ui) -> Array:
 					pl.pitch_scale, linear_to_db(want.x), want.y])
 		if V["speed"] < 5.0 or want.x <= SoundPlayer.engine_level(0.0).x or want.y <= 1.0:
 			p.append("the engine does not follow the speed (%.1f m/s: %s)" % [V["speed"], str(want)])
+	# placed, not driven: a jump far away (a session's resync), or placed by the run (a load, a jump): no speed heard
+	var sp0: float = V["speed"]
+	vv._put(V, Transform3D(parked.basis, parked.origin + Vector3(600.0, 0, 0)), false)
+	vv._engine(V, 0.1)
+	if absf(V["speed"] - sp0) > 1e-6:
+		p.append("a jump of 600 m in a frame was heard as speed (%.1f m/s, from %.1f)" % [V["speed"], sp0])
+	vv._put(V, Transform3D(parked.basis, parked.origin + Vector3(6.0, 0, 0)), true)
+	vv._engine(V, 0.1)
+	if V["speed"] != 0.0:
+		p.append("the bus placed by the run is heard at %.1f m/s" % V["speed"])
 	# out of earshot: stopped
 	ui.sounds.listener_at = body.global_position + Vector3(0, 0, SoundPlayer.EARSHOT + 10.0)
 	vv._engine(V, 0.1)

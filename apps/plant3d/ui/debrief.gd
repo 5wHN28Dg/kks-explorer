@@ -569,13 +569,16 @@ static func safety_text(sm, ev: Array) -> String:
 ## the ladder's rung it reached (`rungs`, and `at`: event index -> rung), the highest (`top`, -1 none), the calls
 ## they missed over their music, and the alarms raised while it played with [step raised, step acknowledged (-1 not
 ## yet)] each (`acks`). The rung goes up by one a time, to the final written warning; a stop of a `phone` act (an
-## ignition source in an Ex zone) is at least the written warning.
+## ignition source in an Ex zone), or any stop that takes the device while the person's `phone` act goes on (its
+## `unsafe` without its `safe` yet), is at least the written warning. The music is off after the person's own `audio`
+## 0, the phone left, the device held, or the person released (the engine turns it off then without an event).
 static func personal_audio(me_id, evs: Array, to: int) -> Dictionary:
 	var out := {"held": 0, "rungs": [], "at": {}, "top": -1, "missed": 0, "alarms": 0, "acks": []}
 	if me_id == null:
 		return out
 	var music_on := false
 	var stop_kind := ""
+	var phone_act := false              # the person's `phone` act going on (an Ex zone with the phone carried)
 	var state := {}
 	var raised := {}                    # alarm id -> its index in acks while unacknowledged
 	for i in mini(to, evs.size()):
@@ -590,11 +593,17 @@ static func personal_audio(me_id, evs: Array, to: int) -> Dictionary:
 			"stop":
 				if ev[3] == me_id and ev[6] == "done":
 					stop_kind = str(ev[4])
+			"unsafe", "safe":
+				if ev[2] == me_id and ev[3] == "phone":
+					phone_act = ev[1] == "unsafe"
+			"release":
+				if ev[2] == me_id and ev[3] == "done":
+					music_on = false
 			"held":
 				if ev[2] == me_id:
 					music_on = false
 					var r: int = mini((out.rungs[-1] if not out.rungs.is_empty() else -1) + 1, LADDER.size() - 1)
-					if stop_kind == "phone":
+					if stop_kind == "phone" or phone_act:
 						r = maxi(r, 1)
 					out.rungs.append(r)
 					out.at[i] = r

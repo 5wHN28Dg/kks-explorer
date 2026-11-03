@@ -18,6 +18,7 @@ const SEAT := Vector3(0.7, 0.4, -4.0)    # the walker's feet at a front seat (th
 								  # eye (1.65 m over them) at the windows' height
 const DRIVER_SEAT := Vector3(-0.7, 0.4, -4.6)   # the driver's (app/bus_drive.gd works it out from the bus's size)
 const MAP_COLOUR := Color(0.95, 0.78, 0.2)
+const TELEPORT_SPEED := 40.0      # m/s: a move faster than this between two frames was a placing, not a drive
 
 var ui                            # ui/plant_ui.gd
 var vehicles: Array = []          # per drawn vehicle: {id, vi (engine's), body, home (place index), parked (Transform3D),
@@ -375,7 +376,9 @@ func _physics_process(delta: float) -> void:
 
 
 ## Its engine heard (REALISM.md §8.5; ui/sound_player.gd vehicle): while it is out of its parked place (driving or
-## standing at a stop), its gain and pitch from its speed (smoothed over a few frames); silent when parked.
+## standing at a stop), its gain and pitch from its speed (smoothed over a few frames); silent when parked. A vehicle
+## placed rather than driven (a load, a jump, a restart: _put's `force`; or a jump faster than any bus drives, a
+## session's resync) keeps the speed it had: no spike of pitch for a move it never drove.
 func _engine(V: Dictionary, delta: float) -> void:
 	var s = ui.sounds if ui != null and "sounds" in ui else null
 	if s == null:
@@ -383,7 +386,8 @@ func _engine(V: Dictionary, delta: float) -> void:
 	var at: Vector3 = (V["xf"] as Transform3D).origin
 	var v := at.distance_to(V.get("heard_at", at)) / delta if delta > 0.0 else 0.0
 	V["heard_at"] = at
-	V["speed"] = lerpf(float(V.get("speed", 0.0)), minf(v, 30.0), 0.2)
+	if v <= TELEPORT_SPEED:
+		V["speed"] = lerpf(float(V.get("speed", 0.0)), v, 0.2)
 	s.vehicle(V["body"], V["speed"], not (V["xf"] as Transform3D).is_equal_approx(V["parked"]))
 
 
@@ -395,6 +399,8 @@ func _put(V: Dictionary, xf: Transform3D, force: bool) -> void:
 	V["xf"] = xf
 	draws += 1
 	if force:
+		V["heard_at"] = xf.origin       # (placed, not driven: _engine hears no speed in it)
+		V["speed"] = 0.0
 		body.sync_to_physics = false
 		body.transform = xf
 		if body.is_inside_tree():
