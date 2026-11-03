@@ -1184,8 +1184,9 @@ keep every input, event and earlier value, and their digests and snapshots gain 
   (≥ 1) lists the zones where music is an act; `ex` lists the zones where carrying the phone is (each also in
   `banned`). `rooms` (optional, the user, 2026-11-03) lists the rooms (staff.json places' `room`) beyond the zones
   where music is an act too: the first train's control room. A person is in such a room at a place of it, on a way
-  whose two ends are in it, or (a player) at the place they last arrived at (the app sends `arrive` within 1.5 m of a
-  place: standing in the middle of a large room counts at its nearest place only). `notice` is how many whole clock
+  whose two ends are in it, or (a player) at the place they last arrived at. The app sends `arrive` within 1.5 m of a
+  place, and anywhere inside a banned room's footprint (the plan box round its places, 1 m out) at the room's
+  nearest place, so its middle counts too (the adversarial review found the middle of the control room held none). `notice` is how many whole clock
   minutes (0–600) an observer takes to notice. `mask` is the volume (1–100) from which radio calls are missed. With
   the key, the act kinds are `ppe, permit, unsafe, audio, phone`, in that order, for reactions (`on.unsafe`),
   `put_right` and stops.
@@ -1196,7 +1197,8 @@ keep every input, event and earlier value, and their digests and snapshots gain 
   - Events: `["audio", person, volume, "done" | "refused", reasons]` and `["phone", person, what, …]`, with the
     slot last in a session. The reasons are `no_audio` (no key), `held` and `left`; then for `audio` above 0,
     `driving` (the person drives a vehicle's run, §21.16); for `phone`, `locker` (the place the player last arrived
-    at is not a locker: the engine checks it since the follow-ups, one place's kind compared). Taking the driver's
+    at is not a locker: the engine checks it since the follow-ups, one place's kind compared; any locker, the engine
+    keeps no record of which one holds the phone). Taking the driver's
     seat for a run turns a player's music off: `["audio", person, 0, "done", ["driving"]]`, the slot last in a
     session.
   - In free mode the inputs do nothing. An NPC plays no music (a person released becomes an NPC with the music

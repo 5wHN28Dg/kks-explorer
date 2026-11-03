@@ -376,17 +376,22 @@ func _followups(ui, e, me: int, sup_id: String, sup_call: String) -> Array:
 		if String(sm.tasks[t].get("title", "")) != "":
 			task = t
 			break
-	e.events.append([e.step_no, "call", sup_id, role, task, null, "done"])
+	var n2: int = e.step_no + 1         # (a step of its own: the earlier message's exchange is another)
+	e.events.append([n2, "call", sup_id, role, task, null, "done"])
 	ui.crew._sig = ""
 	ui.crew.refresh()
 	var n: int = ui.crew._radio.size()
 	if not String(ui.crew._radio[n - 1]).contains(sm.tasks[task]["title"]):
 		p.append("a radio call heard is not in the radio log with its task")
-	e.events.append([e.step_no, "missed", me_id, task, sup_id, "call"])
+	e.events.append([n2, "missed", me_id, task, sup_id, "call"])
+	# the alarm's exchange: the call missed, then its message to the role in the same step (the engine's missed once)
+	var msg: String = sm.messages.keys()[0]
+	e.events.append([n2, "say", sup_id, msg, role])
 	ui.crew.refresh()
 	var log: Array = ui.crew._radio
 	if log.size() != n or not String(log[n - 1]).ends_with("Missed call from %s" % sup_call):
 		p.append("a radio call missed: the radio's last line is %s (%d lines, not %d)" % [log[log.size() - 1], log.size(), n])
+	# (the size above: the message after the missed call added no line of its own, so its text is not shown)
 	var dt := Debrief.audio_text(sm, [0, "missed", me_id, task, sup_id, "call"], me_id, -1)
 	if not dt.begins_with("Missed radio call from %s" % sup_call):
 		p.append("the debrief's line for a radio call missed: %s" % dt)
@@ -441,6 +446,19 @@ func _followups(ui, e, me: int, sup_id: String, sup_call: String) -> Array:
 		p.append("the crew panel's words for music in the control room: %s" % CrewPanelScript.act_text(sm, 3, ["control_room"]))
 	if sm.audio_rooms != ["control_room"]:
 		p.append("the first train bans music in the control room: %s" % str(sm.audio_rooms))
+	# anywhere in the control room, 7 m from its places, the trainee is at its nearest place (the adversarial review:
+	# the middle of the room held no place, so music there was no act)
+	if ui.room_at(sm, Vector3(-19, 0, 0)) != 0 or ui.room_at(sm, Vector3(0, 0, 0)) != -1:
+		p.append("the control room's footprint: %d in its middle, %d outside" % [ui.room_at(sm, Vector3(-19, 0, 0)),
+				ui.room_at(sm, Vector3(0, 0, 0))])
+	var moves: Array = []
+	ui.inputs.sink = func(item): moves.append(item)
+	ui.player.global_position = Vector3(-19, 0, 0)     # (Godot's frame: x, height, -y)
+	ui._place_tick()
+	ui.inputs.sink = Callable()
+	var arrived := moves.filter(func(x): return x[0] == "arrive")
+	if arrived.is_empty() or sm.place_aroom[sm.pix[arrived[-1][1]]] != 0:
+		p.append("in the control room's middle the trainee arrives at none of its places: %s" % str(moves))
 	return p
 
 

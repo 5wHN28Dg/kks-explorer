@@ -39,6 +39,7 @@ var _radio_shown := -1          # how many of _radio's lines there were when the
 var _head: Label = null         # the trainee's header line (role, duty, clock) and its text before the clock
 var _head_text := ""
 var _reads: Dictionary = {}     # person -> their read events
+var _exchanges: Dictionary = {}  # "step|caller" -> true: a call or message to the trainee missed then (its others too)
 var _said: Dictionary = {}      # "from|message" -> the radio line of its last say (a missed call replaces it)
 
 
@@ -158,11 +159,17 @@ func _follow(e) -> void:
 		_radio.clear()
 		_reads.clear()
 		_said.clear()
+		_exchanges.clear()
 	var sm = e._sm
+	var me_id = sm.people[ui.my_person()]["id"] if sm != null and ui.my_person() != -1 else null
+	var me_role = sm.people[ui.my_person()]["role"] if me_id != null else null
 	for k in range(_seen, e.events.size()):
 		var ev: Array = e.events[k]
 		if ev[1] == "jump" and ev[4] == "done":
 			_j += ev[3] - ev[2]
+		elif ev[1] in ["say", "call"] and _exchanges.has("%d|%s" % [ev[0], ev[2]]) \
+				and ((ev[1] == "say" and (ev[4] == me_id or ev[4] == me_role)) or (ev[1] == "call" and ev[3] == me_role)):
+			pass        # the rest of an exchange missed over the music (REALISM.md §8.5): its one line says so
 		elif ev[1] == "say":
 			_said["%s|%s" % [ev[2], ev[3]]] = _radio.size()
 			_radio.append("%s  %s → %s: %s" % [_at(e, ev[0], _j), _call(sm, ev[2]), _to(sm, ev[4]), sm.messages.get(ev[3], ev[3])])
@@ -176,6 +183,7 @@ func _follow(e) -> void:
 				_radio[at_line] = line
 			else:
 				_radio.append(line)
+			_exchanges["%d|%s" % [ev[0], ev[4]]] = true
 			_radio_shown = -1           # (a line already shown changed: written again)
 		elif ev[1] == "call" and ev[6] == "done":
 			_said["call|%s|%s" % [ev[2], ev[4]]] = _radio.size()
