@@ -362,6 +362,33 @@ class WearVectors(PartVectors, unittest.TestCase):
         self.assertEqual(whys['a count node in a version 1 model file'], 'bad_kind')
 
 
+class FreePlaySeeds(unittest.TestCase):
+    """Every shipped scenario with seeded weather draws a weather sequence of its own (the user, 2026-11-03: a world
+    seed per scenario, REALISM.md §5.6): the world seeds (world.seed, else the staff's, else 1, §2.1) all differ, and
+    so do the weather streams' first day of draws."""
+
+    def test_distinct_seeds(self):
+        d = os.path.join(os.path.dirname(HERE), 'data', 'plant3d', 'scenarios')
+        seeds = {}
+        for f in sorted(os.listdir(d)):
+            sc = json.load(open(os.path.join(d, f)))
+            world = sc.get('world', {})
+            if 'season' not in world.get('weather', {}):
+                continue
+            seeds[sc['id']] = world.get('seed', sc.get('staff', {}).get('seed', 1))
+        self.assertGreaterEqual(set(seeds), {'cold_iron', 'hot_restart', 'wtp_cold', 'wtp_normal', 'wtp_flood',
+                                             'shift_cold', 'shift_wtp'})
+        self.assertEqual(len(set(seeds.values())), len(seeds), seeds)
+        draws = {}
+        for sid, seed in seeds.items():
+            s, out = W.stream(seed, W.TAGS['weather'], 'weather'), []
+            for _ in range(24):
+                s, r = W.draw(s)
+                out.append(r)
+            draws[sid] = tuple(out)
+        self.assertEqual(len(set(draws.values())), len(draws))
+
+
 class WeatherVectors(PartVectors, unittest.TestCase):
     """Milestone WX1 (REALISM.md §5.1): weather.json and the weather step, seeded, fixed and scripted, the
     instructor's input and a jump."""

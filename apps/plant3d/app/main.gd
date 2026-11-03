@@ -25,8 +25,8 @@
 ##   panels=alarms,procedure,crew,card:CODE   open these panels (the frame measurement with the UI open)
 ##   weather=KIND            the scenario's weather fixed at that kind (weather.json's: clear, sandstorm, rain, …), its
 ##                           values at their targets from the start (a measured walk in that weather, REALISM.md
-##                           §5.4; the scenario must have weather: every shipped scenario has). A walk (walk=…) and
-##                           the step bench without it run weather=clear (measured_weather); free play keeps the
+##                           §5.4; the scenario must have weather: every shipped scenario has). A walk (walk=…), a shot
+##                           (shot=…) and the step bench without it run weather=clear (measured_weather); free play keeps the
 ##                           scenario's seasonal weather
 ##   speed=fast              start the plant in fast-forward (the model's share of a core, measured in a walk)
 ##   crews=1                 the crews at work round the walker (S2's and S3's staff): the scenario `shift_cold` (or
@@ -363,12 +363,12 @@ func _options() -> void:
 	Lighting.on = String(opts.get("fx_on", "")).split(",", false)
 	measured_weather(opts)
 
-## A measured walk runs in clear weather unless it asks for another (`weather=KIND`; the user, 2026-11-03: free play's
+## A measured walk (or a shot's view, phone/shots.sh's GPU times) runs in clear weather unless it asks for another (`weather=KIND`; the user, 2026-11-03: free play's
 ## seasonal weather would otherwise change what walks measure from one scenario or season to the next, and the
 ## measurements before 2026-11-03 were made without weather). Not with mp= (the host's weather rules a session) and
 ## not for free play (no walk): those keep the scenario's own weather.
 static func measured_weather(o: Dictionary) -> void:
-	if o.has("walk") and not o.has("weather") and not o.has("mp"):
+	if (o.has("walk") or o.has("shot")) and not o.has("weather") and not o.has("mp"):
 		o["weather"] = "clear"
 
 ## The options after `--`. A start for a walkdown-plant:// link takes no options at all: the shell hands the link over

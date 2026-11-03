@@ -59,7 +59,9 @@ func measured_walk(tree: SceneTree) -> Array:
 	elif main.player.pace != Player.WALK_SPEED:
 		p.append("walk=frames walks at the settings' pace (%.2f m/s), not at a walk" % main.player.pace)
 	# a walk without weather= runs in clear weather (cold_iron's own is summer's), fixed (the user, 2026-11-03)
-	if main.ui != null and main.ui.clock != null:
+	if main.ui == null or main.ui.clock == null:
+		p.append("walk=frames started no plant to check its weather")
+	else:
 		var e = main.ui.clock.engine
 		var sc: Dictionary = main.ui.model.scenarios.get("cold_iron", {})
 		if main.opts.get("weather", "") != "clear" or sc.get("world", {}).get("weather", {}) != {"fixed": "clear"} \
@@ -69,7 +71,7 @@ func measured_walk(tree: SceneTree) -> Array:
 	main.free()
 	# the rule itself: a walk's own weather= kept, none with mp= (the host's) or without a walk (free play's season)
 	var cases := [[{"walk": "frames"}, "clear"], [{"walk": "wtp", "weather": "sandstorm"}, "sandstorm"],
-			[{"walk": "frames", "mp": "1234@host"}, null], [{}, null], [{"scenario": "wtp_cold"}, null]]
+			[{"walk": "frames", "mp": "1234@host"}, null], [{"shot": "a@0,0,0,0,0"}, "clear"], [{}, null], [{"scenario": "wtp_cold"}, null]]
 	var Main = load("res://app/main.gd")
 	for c in cases:
 		var o: Dictionary = c[0].duplicate()

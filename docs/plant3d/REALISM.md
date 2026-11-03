@@ -732,8 +732,8 @@ weather on, seeded by season.
   run), the summer chain changing to `dust_haze` at step 72,000 in nine of `train`'s forks that run past it (a
   `weather` event each; a fork's `end` holds no driven value); `wtp_cip` and `wtp_regen` (wtp_normal, 104) change to `dust_haze` at step
   12,000 (one `weather` event, `world_wx`, `wind`, `solar`, `visibility` and `dust` after it), as does
-  `plant3d-v2.json`'s `train` fork that runs past it. `plant3d-v2.json`'s `train` (forks from cold_iron without values), `staff`, `day` and every synthetic item,
-  and `plant3d-realism.json`, are byte for byte main's.
+  `plant3d-v2.json`'s `train` fork that runs past it (fork 9; its forks carry no snapshot values). Since #315 too,
+  `plant3d-v2.json`'s `staff`, `day` and every synthetic item, and `plant3d-realism.json`, are byte for byte main's.
 - **What depends on it:** the app lists the same scenarios (by id; none gained `staff`, so none is offered as a crews'
   shift); a save or session snapshot of a run made before is refused as "content has changed" (the content's hash,
   `ui/run_save.gd`), as after any content change, and a session's players must share the content's hash; procedures,
@@ -742,11 +742,14 @@ weather on, seeded by season.
   scenario, so a plain launch, the step bench's loads (`app/step_bench.gd`: the train as built and RE1's shapes
   without `--engine` now both carry the built weather's seven values, and print its `WEATHER` line) and a phone walk
   started in it would run summer's `hot` weather (a little dust and haze, a 12 km view) where earlier ones ran none.
-  **So measured runs pin clear weather** (the user, 2026-11-03; MILESTONES' measurement rules): a walk (`walk=…`,
+  **So measured runs pin clear weather** (the user, 2026-11-03; MILESTONES' measurement rules): a walk or shot (`walk=…`, `shot=…`,
   `phone/frames.sh`, which writes `weather=clear` into walk.txt) and the step bench (`step=bench`,
   `sim/tests/bench_realism.gd`; its `STEP … weather=` field) run `weather=clear` unless they name another kind
   (`app/main.gd` `measured_weather`; not with `mp=`, where the host's weather rules); the step bench's `--engine`
-  loads keep their own seeded weather (their hourly draws are what they measure). Free play keeps the season's weather.
+  loads keep their own seeded weather (their hourly draws are what they measure: the built and plain loads' `WEATHER`
+  lines time the fixed kind's step, so §11's 0.02 ms for a draw an hour is judged on the `--engine` load). The phone's
+  view shots (`shot=`, `phone/shots.sh`, a GPU time per view) are measurements too and pin clear the same way.
+  Free play keeps the season's weather.
   Figures measured before compare with these clear-weather runs (§5.5 measured the weather's own cost).
 
 ## 6. Documents and discussions
