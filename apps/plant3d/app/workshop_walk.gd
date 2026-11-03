@@ -218,6 +218,11 @@ func _process(delta: float) -> void:
 		if _at("faults"):
 			ws.views.set_section(false)
 			ws.views.set_cut(true)
+			if ws.bench.loaded():   # (where the run got to before the faults: each machine's state)
+				var st := PackedStringArray()
+				for mc in ws.bench.m.machines:
+					st.append("%s=%s" % [mc.id, ws.bench.machine_state(mc.id)])
+				main._say("WORKSHOP bench before the faults: %s" % " ".join(st))
 		var faults: Array = ws.bench.m.faults if ws.bench.loaded() else []
 		if not faults.is_empty():
 			# each fault for its share of the 18 s: made at its start, repaired at two thirds of it
