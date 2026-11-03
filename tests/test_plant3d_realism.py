@@ -364,7 +364,7 @@ class WearVectors(PartVectors, unittest.TestCase):
 
 class FreePlaySeeds(unittest.TestCase):
     """Every shipped scenario with seeded weather draws a weather sequence of its own (the user, 2026-11-03: a world
-    seed per scenario, REALISM.md §5.6): the world seeds (world.seed, else the staff's, else 1, §2.1) all differ, and
+    seed per scenario, REALISM.md §5.6): the world seeds (W.world_seed: its own, else the staff's, else 1, §2.1) all differ, and
     so do the weather streams' first day of draws."""
 
     def test_distinct_seeds(self):
@@ -375,7 +375,7 @@ class FreePlaySeeds(unittest.TestCase):
             world = sc.get('world', {})
             if 'season' not in world.get('weather', {}):
                 continue
-            seeds[sc['id']] = world.get('seed', sc.get('staff', {}).get('seed', 1))
+            seeds[sc['id']] = W.world_seed(sc)
         self.assertGreaterEqual(set(seeds), {'cold_iron', 'hot_restart', 'wtp_cold', 'wtp_normal', 'wtp_flood',
                                              'shift_cold', 'shift_wtp'})
         self.assertEqual(len(set(seeds.values())), len(seeds), seeds)

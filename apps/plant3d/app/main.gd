@@ -26,8 +26,8 @@
 ##   weather=KIND            the scenario's weather fixed at that kind (weather.json's: clear, sandstorm, rain, …), its
 ##                           values at their targets from the start (a measured walk in that weather, REALISM.md
 ##                           §5.4; the scenario must have weather: every shipped scenario has). A walk (walk=…), a shot
-##                           (shot=…) and the step bench without it run weather=clear (measured_weather); free play keeps the
-##                           scenario's seasonal weather
+##                           (shot=…) without it run weather=clear (measured_weather), and so does the step bench
+##                           (_step_bench); free play keeps the scenario's seasonal weather
 ##   speed=fast              start the plant in fast-forward (the model's share of a core, measured in a walk)
 ##   crews=1                 the crews at work round the walker (S2's and S3's staff): the scenario `shift_cold` (or
 ##                           scenario=ID, one with staff), no role taken (free mode), at normal speed unless speed=fast;
