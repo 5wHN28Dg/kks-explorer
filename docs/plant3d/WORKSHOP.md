@@ -307,6 +307,13 @@ Handling (§4.5) is applied on top and cleared by Reset; the slider never reads 
   its index, so a later milestone can treat one bolt alone. `kind`: `bolt`, `stud_nut`, `screw`, `cap_screw`,
   `threaded_cover`, `clamp`, `gland`, `pin`, `circlip`, `key`.
 - **Data side:** `name` ("8 casing bolts"), `joins` (the components it holds together, at least two), `sources`.
+  `beyond` (K4a, at most 80 characters): what the group joins outside this kind's machine (a coupling's bolts: the
+  next rotor on the shaft line, its own machine); with it `joins` may name one component.
+- **Roles** (K4a): a group is a small outside piece (`outside`, each item at most 30 mm, the default), the
+  replacement of a stand-in the plant draws (`split`: a casing's joint studs, a coupling's bolt ring; its items
+  together held to the stand-in's box and triangles, in a moving piece too), or hidden inside the machine's outside
+  (`hidden`: an inner casing's studs, every item held to the hidden pieces' rule). A stand-in the plant draws in
+  several blocks is one stand-in: `only("plant", [...])` with the same components goes on with it.
 - **Not here:** fasteners' sizes, the tools that fit them, torque values and tightening patterns, and components'
   damaged states belong to the realism programme's service file per kind (`data/plant3d/service/<part>.json`,
   REALISM.md §2.4), keyed by these group and component ids; the Workshop's properties panel shows a size once that
@@ -359,7 +366,10 @@ The data file's `assembly` is the guided order, one step per component or fasten
   file (the export already packs `built/*`), from `Kit.make(..., workshop = true)` with the data file's `params`
   (validated against kit.json's parameters; default: the plant's first instance of that kind, in the content's order,
   where it has one, so the Workshop shows the turbine the trainee walks past; the scene keeps them in its `params`
-  meta, and the tests check that very shape).
+  meta, and the tests check that very shape). The data file's `context` (K4a) names keys of the context the plant
+  builder works out for that same instance (`builder/kit_place.gd`: the shaft line's `axis_z`, `shaft_lo`,
+  `shaft_hi`, and what a part stands under or over), which the scene is built with and keeps in its `ctx` meta: the
+  steam turbine's coupling stands where it does in the plant. Only without `params`.
 - **Nodes:** one `Node3D` per component at its pivot, named by its id, nested as the tree; under it one
   `MeshInstance3D` per material (the component's pieces merged per material: no 12 m cells, no instancing, no LODs: one
   machine seen close); fastener groups as `MultiMeshInstance3D` with their items' transforms in a meta (as the plant's

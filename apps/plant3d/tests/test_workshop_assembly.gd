@@ -7,6 +7,8 @@
 ##   drag of the handle; then taken apart in reverse, a part still needed refused with the second sentence;
 ## - Reassemble all and Reset end the steps with everything home;
 ## - the data-only fixture kind assembled from exploded (its lid's four-fold symmetry honoured);
+## - the steam turbine (K4a) taken apart in the overhaul's order (the upper lagging first; the rotor held until the upper
+##   casings, the bearing covers, the thrust bearing and the coupling's bolts are out) and put back from a pile;
 ## - ws_xray's pipelines queued early: a hidden mesh with it in the plant after the first walkable frame.
 extends RefCounted
 
@@ -83,6 +85,7 @@ func run(tree: SceneTree) -> Array:
 		check(not gw.visible, "drawn unseen in the machine's first frame, hidden after it")
 	await _transmitter(tree, ws)
 	await _fixture(tree, ws)
+	await _turbine(tree, ws)
 	ws.close()
 	await ws.left
 	main.free()
@@ -300,6 +303,61 @@ func _transmitter(tree: SceneTree, ws) -> void:
 	check(ws.try_place("housing"), "so the housing goes onto it: '%s'" % ws.note)
 	ws.reset()
 	check(not ws.guide.on() and _transforms(ws) == at0 and _groups_home(ws), "Reset ends the steps, every part home")
+
+## The steam turbine: taken apart in the overhaul's order, then put back together from a pile in the guided order.
+func _turbine(tree: SceneTree, ws) -> void:
+	ws.close()
+	await ws.left
+	ws.open("steam_turbine")
+	if not await _wait_shown(tree, ws):
+		p.append("the steam turbine's Workshop did not show")
+		return
+	var at0 := _transforms(ws)
+	check(ws.start_guide("disassemble"), "the turbine's steps start taking apart")
+	check(String(ws.guide.steps[ws.guide.next_step()].place) == "lagging_upper", "the upper lagging comes off first")
+	check(ws.why_not_free("rotor") != "", "the rotor is held while the turbine is closed")
+	ws.select("casing_upper")
+	check(ws.note == "Strip the upper lagging first: it covers the casing's joint and its studs.",
+		"the upper casing is held by its lagging: '%s'" % ws.note)
+	var order: Array = []
+	var guard := 0
+	while ws.guide.next_step() >= 0 and guard < 120:
+		guard += 1
+		var id := String(ws.guide.steps[ws.guide.next_step()].place)
+		check(ws.why_not_free(id) == "", "the next part to take out is free (%s: %s)" % [id, ws.why_not_free(id)])
+		order.append(id)
+		ws.guide.loose[id] = (ws._cur_m[id] as Transform3D).translated(Vector3(0, 6.0, 0))
+		ws.select(id)
+		ws._released()
+		if not ws.guide.loose.has(id):
+			check(false, "%s, taken far from its place, went back" % id)
+			break
+	check(ws.guide.done(), "the turbine is taken apart step by step: %s" % ws.panels.step_label.text)
+	for before in ["casing_upper", "joint_bolts", "inner_upper", "inner_bolts", "carrier_upper", "cap_f", "cap_r",
+			"thrust", "coupling_bolts", "brg_f_upper", "brg_r_upper", "glands_upper"]:
+		check(order.find(before) >= 0 and order.find(before) < order.find("rotor"), "%s comes out before the rotor: %s" % [before, str(order)])
+	ws.reset()
+	check(ws.start_guide("assemble", "pile"), "the turbine's steps start from a pile")
+	ws.guide.loose["rotor"] = ws.target_m("rotor")
+	ws.select("rotor")
+	ws._released()
+	check(ws.guide.loose.has("rotor") and ws.note.begins_with("The rotor rests on the journal bearings"),
+		"the rotor before its bearings is refused: '%s'" % ws.note)
+	var tol: float = Assembly.snap_tol(ws.machine.get_meta("box"))
+	guard = 0
+	while ws.guide.next_step() >= 0 and guard < 120:
+		guard += 1
+		var id := String(ws.guide.steps[ws.guide.next_step()].place)
+		var tg: Transform3D = ws.target_m(id)
+		var c: Vector3 = ws._gcentre.get(id, Vector3.ZERO) if ws.groups.has(id) else Vector3.ZERO
+		var b := Basis(Vector3(0, 1, 0), deg_to_rad(6.0)) * tg.basis
+		ws.guide.loose[id] = Transform3D(b, tg.origin + tg.basis * c - b * c + Vector3(tol * 0.6, 0, 0))
+		if not ws.try_place(id):
+			check(false, "turbine step %s: refused or not snapped (%s)" % [id, ws.note])
+			break
+	check(ws.guide.done() and ws.guide.loose.is_empty(), "the turbine is put back together in the guided order (%d loose)" % ws.guide.loose.size())
+	check(_near(_transforms(ws), at0), "every part of the turbine where it was built")
+	ws.reset()
 
 ## The fixture kind (no Workshop code for it): from exploded, its lid's symmetry, its screws after the lid.
 func _fixture(tree: SceneTree, ws) -> void:
