@@ -287,7 +287,8 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   `tools/plant3d/workshop/pressure_transmitter.py`): the isolating diaphragm is the moving piece `deflect` (6 mm of
   travel at the upper range: a real one moves a few micrometres), and the impulse path `impulse` runs up the axis
   from the impulse line through the manifold and the flange's port to the diaphragm (one line: the low side of a
-  differential transmitter is not drawn).
+  differential transmitter is not drawn). In the Workshop the display cover's face is a ring round the window's
+  opening and the window closes it (the plant's drum end and window as drawn before), so the LCD reads through it.
 
 ## Tables and their sources
 

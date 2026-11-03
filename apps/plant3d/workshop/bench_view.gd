@@ -11,7 +11,7 @@ extends RefCounted
 
 const Views = preload("res://workshop/views.gd")
 const LCD_ON := Color(0.70, 0.82, 0.66)         # a lit display's face (the backlight's colour on the grey LCD)
-const LCD_OFF := Color(0.20, 0.22, 0.20)        # a dark one (no loop current: a loop-powered display goes out)
+const LCD_OFF := Color(0.10, 0.11, 0.10)        # a dark one (no loop current: a loop-powered display goes out)
 const FLOW_COLOUR := Color(0.45, 0.75, 1.0)     # a flow without a colour legend
 
 var ws                          # workshop/workshop.gd

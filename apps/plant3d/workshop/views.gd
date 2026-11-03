@@ -114,8 +114,8 @@ func glass_mat() -> Material:
 		_glass = ShaderMaterial.new()
 		_glass.shader = XRAY
 		_glass.set_shader_parameter("colour", GLASS_COLOUR)
-		_glass.set_shader_parameter("alpha", 0.08)
-		_glass.set_shader_parameter("edge", 0.3)
+		_glass.set_shader_parameter("alpha", 0.05)
+		_glass.set_shader_parameter("edge", 0.12)
 	return _glass
 
 ## Every ws_lit and ws_cap material, for the planes' uniforms.

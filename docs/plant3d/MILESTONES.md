@@ -300,6 +300,17 @@ draw calls per kind, ≤ 20 MB for the whole Workshop); the plant's walk is run 
 the Note 9 (K1, K3, K4a, K4b, K5a, K5b at least), with the APK's size before and after (limit 250 MB). The realism programme's
 hands-on work builds on K1a–K3 (REALISM.md).
 
+**K3 as built (2026-11-03):** the bench format `walkdown-plant-bench` (`ref/plant3d_bench.py`, `sim/bench_model.gd`,
+`ref/vectors/plant3d-bench-v1.json`: 2 valid files, 50 rejects, 2 runs, both engines bit for bit, no engine change);
+the transmitter's bench (supply, applied pressure to past its range, damping, 4–20 mA with NAMUR saturation, faults
+over-range, blocked impulse line, open loop: the 3051 manual and Lipták); `ws_lit`, `ws_cap`, `ws_flow` (and
+`ws_xray` for the X-ray), pre-warmed in the plant and in the machine's first frame; X-ray, cutaway with capped cut
+faces, section plane, the Run panel (WORKSHOP.md "As built (K3)"). The Note 9, alone / in a LAN session: first entry
+4.77 / 4.47 s with an empty pipeline cache (≤ 5.0 s), again 48 / 47 ms; no pipeline compiled after the machine's
+first frame; no frame over 100 ms; 99.93 % at ≥ 30 fps, mean frame 19.41 / 18.96 ms, 91.3 / 93.8 % at 60 fps; peak
+PSS 859 / 876 MB; the bench step 0.12 / 0.11 ms mean. K2's pile assembly draws ~510 calls (over §8's 300; the same
+before K3). Pictures: the wiki's Workshop page.
+
 **K2 as built (2026-11-02):** guided assembly and disassembly for the transmitter (WORKSHOP.md "As built (K2)"):
 Assemble from exploded, Assemble from a pile, Take apart step by step; the next step's ghost in `ws_xray`; snapping
 within 2 % of the machine's box diagonal and 10° modulo `sym`; the two sentences; the pile; 16 steps from the 3051

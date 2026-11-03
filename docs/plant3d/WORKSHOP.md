@@ -501,7 +501,17 @@ Faults: **over-range** (the output saturates at 20.5 mA and the display says so:
 - **The walk** keeps its 3 minutes: the K1 and K2 phases shortened, the bench running all the while at 2× (the supply
   on, the pressure swept from −1 to 12 bar and back every 40 s), then the X-ray, the cutaway, a section swept across
   the machine, each fault made and repaired, Stop.
-- **Measured** ⟨TBD⟩
+- **Measured** on the Note 9 (`lean+vis`, a test-signed release build of this branch, a cool start at 25.8 / 27.3 °C,
+  installed fresh so the pipeline cache was empty; alone / in a LAN session with the laptop hosting): first entry
+  4.77 / 4.47 s (≤ 5.0 s: K2's was 2.2 s; the machine's first frame compiles 14 surface and 10 specialization
+  pipelines, the K3 variants with the machine's own), again 48 / 47 ms (≤ 2.0 s); back to the plant 16–44 / 12–44 ms;
+  **no pipeline compiled after the machine's first frame**; no frame over 100 ms (the longest 42 ms); 99.93 % of
+  frames at ≥ 30 fps, mean frame 19.41 / 18.96 ms, 91.3 / 93.8 % of frames shown at 60 fps (one refresh each); peak PSS
+  859 / 876 MB; the bench step 0.123 / 0.105 ms mean (≤ 0.3 ms; the longest single step 0.5 / 2.0 ms). The laptop
+  (Mobile renderer, an empty cache) likewise compiled nothing after the machine's first frame. Draw calls: 36–63 in
+  the views K3 adds (the cut faces' pass included); the **pile assembly of K2 reaches about 510** on both the laptop
+  and the phone, the same in K2's own build (measured on the laptop from main), over §8's 300: found here, not changed
+  by K3. The APK (test-signed, with voice) is 121.1 MB; K3's own files (scripts, shaders, the bench file) are about 40 KB before compression.
 
 ### 6.5 Plant values to bench inputs (K6, the mirror)
 
