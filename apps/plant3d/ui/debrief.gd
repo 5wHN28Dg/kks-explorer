@@ -549,7 +549,8 @@ static func safety_text(sm, ev: Array) -> String:
 		match kind:
 			"ppe": return "without all the PPE of %s" % str(det)
 			"permit": return "working before the permit of %s was accepted" % str(det)
-			"audio": return "listening to music in %s" % str(det)
+			"audio": return "listening to music in %s" % (str(det) if sm == null or sm.zone_ix.has(det)
+					else "the " + str(det).replace("_", " "))        # (a banned room: the control room)
 			"phone": return "carrying a phone in the Ex zone %s" % str(det)
 			_: return "a shortcut" + (" on %s" % str(det) if det != null else "")
 	match ev[1]:
@@ -632,7 +633,7 @@ static func audio_lines(pa: Dictionary, ds: int) -> PackedStringArray:
 	if pa.is_empty() or (pa.held == 0 and pa.missed == 0 and pa.alarms == 0):
 		return out
 	if pa.held > 0:
-		out.append("Personal audio: stopped %d time%s, your device held to the end of the shift; the highest: %s (%s)"
+		out.append("Personal audio: stopped %d time%s, your device held to the end of the shift (the next one if taken off duty); the highest: %s (%s)"
 				% [pa.held, "" if pa.held == 1 else "s", LADDER[pa.top][0].to_upper(), LADDER[pa.top][1]])
 	if pa.missed > 0:
 		out.append("Calls missed over your music: %d" % pa.missed)
@@ -655,18 +656,24 @@ static func audio_text(sm, ev: Array, me_id, rung: int) -> String:
 		"audio":
 			if ev[4] != "done":
 				return "Music refused (%s): %s" % [", ".join(ev[5].map(func(x): return {"held": "the phone is held",
-						"left": "the phone is in the locker", "no_audio": "no personal audio in this run"}.get(x, str(x)))), whom]
+						"left": "the phone is in the locker", "no_audio": "no personal audio in this run",
+						"driving": "at the wheel"}.get(x, str(x)))), whom]
+			if ev[5] is Array and "driving" in ev[5]:
+				return "Music off at the wheel (no earbuds driving): %s" % whom
 			return ("Music on at volume %d: %s" % [int(ev[3]), whom]) if int(ev[3]) > 0 else "Music off: %s" % whom
 		"phone":
 			var what: String = "left at a locker" if ev[3] == "leave" else "taken from the locker"
-			return ("Phone %s: %s" % [what, whom]) if ev[4] == "done" else "Phone not %s (refused): %s" % [what, whom]
+			return ("Phone %s: %s" % [what, whom]) if ev[4] == "done" else "Phone not %s (refused%s): %s" % [what,
+					", not at a locker" if ev[5] is Array and "locker" in ev[5] else "", whom]
 		"held":
-			var t := "Phone taken by %s until the end of the shift: %s" % [who.call(ev[3]), whom]
+			var t := "Phone taken by %s until the end of the shift (of the next one, if taken off duty): %s" % [
+					who.call(ev[3]), whom]
 			if rung >= 0:
 				t += ". " + LADDER[rung][0].capitalize() + ": " + LADDER[rung][1]
 			return t
 		"returned":
 			return "Phone given back at the end of the shift: %s" % whom
 		"missed":
-			return "Missed call from %s (not heard over the music): %s" % [who.call(ev[4]), whom]
+			return "Missed %s from %s (not heard over the music): %s" % ["radio call" if ev.size() > 5 and ev[5] == "call"
+					else "call", who.call(ev[4]), whom]
 	return " ".join(ev.slice(1).map(func(x): return str(x)))

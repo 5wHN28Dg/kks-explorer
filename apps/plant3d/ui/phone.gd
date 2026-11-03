@@ -19,6 +19,7 @@ const STEP := 10
 const CARRIED := 1              # the engine's phone states (sp_phone): 1 carried, 0 left at a locker, 2 held
 const LEFT := 0
 const HELD := 2
+const DRIVING_WORDS := "No earbuds at the wheel: music off while you drive."
 const WAIT := 30                # model steps an input of the phone's is waited for before the engine's state rules
 
 var ui                          # ui/plant_ui.gd
@@ -168,6 +169,11 @@ func _apply(send: bool) -> void:
 			ui.sounds.stop_music()
 			_say(_state_words(st))
 			return
+		if volume > 0 and driving():
+			playing = false             # (the engine refuses it at the wheel: not sent, not played)
+			ui.sounds.stop_music()
+			_say(DRIVING_WORDS)
+			return
 		if send:
 			_send(volume)
 	ui.sounds.play_music(track, volume)
@@ -225,6 +231,35 @@ func follow_engine() -> void:
 		show()
 
 
+## Whether the person played drives a vehicle's run (REALISM.md §8.5: no music at the wheel).
+func driving() -> bool:
+	var e = ui.clock.engine
+	var pi := person()
+	if pi == -1 or e == null or not "st_veh" in e:
+		return false
+	for vh in e.st_veh:
+		if vh.get("driver", -1) == pi:
+			return true
+	return false
+
+
+## Until when the device is held (REALISM.md §8.5): the end of the duty it was taken in, or of the next one when taken
+## off duty (the user, 2026-11-03), as the engine keeps it.
+func held_until() -> String:
+	var e = ui.clock.engine
+	var pi := person()
+	if pi == -1 or e == null or not "sp_held_to" in e or e.sp_held_to.size() <= pi:
+		return "until the end of your shift"
+	var to: int = e.sp_held_to[pi]
+	if to >= 1 << 62:                   # (staff.gd HELD_EVER: no next duty)
+		return "for the rest of the run"
+	if to < 0:
+		return "until the end of your shift"
+	if e.sp_on[pi] and not e.sp_duty[pi].is_empty() and int(e.sp_duty[pi][1]) == to:
+		return "until the end of your shift"
+	return "until the end of your next shift"
+
+
 ## An event of the run (ui/plant_ui.gd _follow_events): the person played's own audio, phone, held and returned.
 func on_event(ev: Array) -> void:
 	var me = _me_id()
@@ -233,7 +268,11 @@ func on_event(ev: Array) -> void:
 	var sm = ui.clock.engine._sm
 	match ev[1]:
 		"audio":
-			if ev[4] == "done" and int(ev[3]) == (volume if playing else 0):
+			if ev[4] == "done" and ev[5] is Array and "driving" in ev[5]:
+				playing = false                 # taken the driver's seat: the engine turned the music off
+				ui.sounds.stop_music()
+				_say(DRIVING_WORDS)
+			elif ev[4] == "done" and int(ev[3]) == (volume if playing else 0):
 				_wait_to = -1                   # the last input asked for came: the engine's state rules again
 			if ev[4] == "refused":
 				_wait_to = -1
@@ -254,7 +293,7 @@ func on_event(ev: Array) -> void:
 			held_by = sm.people[sm.person_ix[ev[3]]]["call"] if sm.person_ix.has(ev[3]) else str(ev[3])
 			playing = false
 			ui.sounds.stop_music()
-			_say("Your phone is with %s until the end of your shift." % held_by)
+			_say(_state_words(HELD))
 		"returned":
 			state = CARRIED
 			held_by = ""
@@ -267,6 +306,10 @@ func refusal(reasons) -> String:
 		return _state_words(HELD)
 	if "left" in r:
 		return _state_words(LEFT)
+	if "driving" in r:
+		return DRIVING_WORDS
+	if "locker" in r:
+		return "At a locker only: walk to one first."
 	if "no_audio" in r:
 		return "No personal audio in this run."
 	return "Refused."
@@ -274,7 +317,7 @@ func refusal(reasons) -> String:
 
 func _state_words(st: int) -> String:
 	if st == HELD:
-		return "Your phone is with %s until the end of your shift." % (held_by if held_by != "" else "your supervisor")
+		return "Your phone is with %s %s." % [held_by if held_by != "" else "your supervisor", held_until()]
 	if st == LEFT:
 		return "Your phone is in the locker: take it first."
 	return ""

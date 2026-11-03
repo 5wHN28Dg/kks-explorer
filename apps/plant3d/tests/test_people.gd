@@ -31,6 +31,39 @@ func run(tree: SceneTree) -> Array:
 	return p
 
 
+## Earbuds (REALISM.md §8.5): a person with `buds` wears them on the head bone, in the plant's one shader and vertex
+## format, beside each ear; none made for one who never wears them; taken out again when `buds` goes.
+func _buds(ppl, a: Dictionary, other: Dictionary) -> Array:
+	var p: Array = []
+	ppl.people[0].buds = true
+	ppl._skinned(1.0 / 60.0)
+	var b = a.get("buds")
+	if b == null or not (b as Node3D).visible:
+		return ["a person with buds wears no earbuds"]
+	if other.get("buds") != null:
+		p.append("earbuds made for one who never wore them")
+	var att := b as BoneAttachment3D
+	if att == null or att.bone_name != "head" or att.get_parent() != a.node.get_node("Skeleton3D"):
+		p.append("the earbuds are not on the skeleton's head bone")
+	var mi: MeshInstance3D = b.get_node("Mesh")
+	p += _surface(mi.mesh, false, "the earbuds")
+	var mat = mi.mesh.surface_get_material(0)
+	if not mat is ShaderMaterial or (mat as ShaderMaterial).shader.resource_path != SHADER:
+		p.append("the earbuds are not in the plant's one shader")
+	# where they are drawn, in the avatar's own frame (its node: the person's place and heading, its pose as played):
+	# beside each ear, at the head's height
+	att.on_skeleton_update()
+	var box: AABB = (a.node.global_transform.affine_inverse() * mi.global_transform) * mi.mesh.get_aabb()
+	if box.position.x > -0.07 or box.end.x < 0.07 or box.position.y < 1.45 or box.end.y > 1.75 or box.size.x > 0.22:
+		p.append("the earbuds are not drawn at the ears: %s" % str(box))
+	ppl.people[0].buds = false
+	ppl._skinned(1.0 / 60.0)
+	if (b as Node3D).visible:
+		p.append("the earbuds stay in when buds goes")
+	ppl.people[0].erase("buds")
+	return p
+
+
 ## The measurement's crowd (app/crowd.gd) keeps round the walker when the walk goes round its loop: nobody jumps, not
 ## even at the route's corners and its loop's end in a lane beside it (the lanes' side turns through each corner, and
 ## the heading with it: until 2026-10-27 someone 0.6 m right of the route jumped 0.85 m and turned 90° in a frame at
@@ -253,6 +286,7 @@ func _bands(tree: SceneTree, info: Dictionary) -> Array:
 			p.append(e)
 		if absf(who[1].rate - 1.0) > 1e-6:
 			p.append("a work clip is played at its own speed (%.3f)" % who[1].rate)
+		p += _buds(ppl, who[0], who[1])
 	# the posed band: the runner (no slot left), the seated two; nobody beyond 80 m
 	if ppl.stats.posed != 3:
 		p.append("three people in the posed band (%d)" % ppl.stats.posed)

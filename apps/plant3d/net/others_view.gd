@@ -60,8 +60,10 @@ func _process(_delta: float) -> void:
 			if avatars != null:
 				var look = _look(e, pi)
 				if look != null:
+					# earbuds in while their music plays (REALISM.md §8.5): the engine's, the same on every peer
 					var d := {"at": at, "yaw": p[1], "speed": p[3] / 10.0, "anim": "", "look": look, "scale": 1.0,
-							"on": "", "near": true, "hat": true}
+							"on": "", "near": true, "hat": true,
+							"buds": pi >= 0 and e.get("sp_music") != null and e.sp_music.size() > pi and e.sp_music[pi] > 0}
 					out.append(d)
 					_mine.append(d)
 			else:

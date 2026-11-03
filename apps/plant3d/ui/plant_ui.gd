@@ -96,6 +96,9 @@ var drawings                    # ui/drawings.gd: the generated P&IDs (REALISM.m
 var drawing_view                # ui/drawing_view.gd: their viewer (null without drawings)
 var run_tracker                 # the last procedure followed in this run (kept for its debrief after it is closed)
 var crew                        # ui/crew_panel.gd: the trainee's role, tasks and radio (PLANT3D §18.7)
+const ROOM_MARGIN := 1.0        # m: a banned room's footprint round its places (room_at)
+var _room_boxes: Array = []     # [[room index, plan Rect2, z low, z high]] of the staff model _room_boxes_of
+var _room_boxes_of = null
 var phone                       # ui/phone.gd: the player's music and phone (REALISM.md §8.5), in the Crew panel
 var people                      # ui/people_view.gd: the crews as markers in the plant and dots on the map
 var session                     # net/session.gd while a multiplayer session is open (MULTIPLAYER.md), else null
@@ -867,6 +870,35 @@ func _zone_tick(e, here: Vector3) -> void:
 	_zones = zm
 
 
+## The room of `audio.rooms` (its index) whose footprint holds a point (plant frame), or -1: the plan box round the
+## room's places, ROOM_MARGIN out, from 0.5 m under the lowest to 3 m over the highest (REALISM.md §8.5).
+func room_at(sm, here: Vector3) -> int:
+	if sm.audio_rooms.is_empty():
+		return -1
+	if _room_boxes_of != sm:
+		_room_boxes_of = sm
+		_room_boxes.clear()
+		for r in sm.audio_rooms.size():
+			var box := Rect2()
+			var zl := INF
+			var zh := -INF
+			var first := true
+			for i in sm.places.size():
+				if sm.place_aroom[i] == r:
+					var at: Array = sm.places[i]["at"]
+					var p := Vector2(at[0], at[1])
+					box = Rect2(p, Vector2.ZERO) if first else box.expand(p)
+					first = false
+					zl = minf(zl, at[2])
+					zh = maxf(zh, at[2])
+			if not first:
+				_room_boxes.append([r, box.grow(ROOM_MARGIN), zl - 0.5, zh + 3.0])
+	for b in _room_boxes:
+		if (b[1] as Rect2).has_point(Vector2(here.x, here.y)) and here.z >= b[2] and here.z <= b[3]:
+			return b[0]
+	return -1
+
+
 static func _inside(x: float, y: float, poly: Array) -> bool:
 	var inside := false
 	var n := poly.size()
@@ -918,11 +950,27 @@ func _place_tick() -> void:
 		if d < bd:
 			bd = d
 			best = i
+	# inside a room where music is banned (REALISM.md §8.5: the control room), the trainee is at its nearest place
+	# wherever they stand in it: the engine's room is the place's, and a large room's middle is in it too
+	var inroom := room_at(sm, here)
+	if inroom != -1 and (best == -1 or sm.place_aroom[best] != inroom):
+		bd = INF
+		for i in sm.places.size():
+			if sm.place_aroom[i] == inroom:
+				var at: Array = sm.places[i]["at"]
+				var d := Vector3(at[0] - here.x, at[1] - here.y, at[2] - here.z).length()
+				if d < bd:
+					bd = d
+					best = i
 	var now: int = e.sp_pos[pi] if _arrived == -2 else _arrived
 	if best != -1 and best != now:
 		if now >= 0:
 			inputs.leave(sm.places[now]["id"])
 		inputs.arrive(sm.places[best]["id"])
+		var room: int = sm.place_aroom[best] if sm.place_aroom.size() > best else -1
+		if room != -1 and (now < 0 or sm.place_aroom[now] != room) and phone != null and phone.playing:
+			# music banned beyond the zones too (REALISM.md §8.5: the control room's operators answer alarms)
+			toast("No personal audio in the %s: your music is an unsafe act here" % String(sm.audio_rooms[room]).replace("_", " "))
 		_arrived = best
 	elif best == -1 and now >= 0:
 		var at: Array = sm.places[now]["at"]
