@@ -81,7 +81,7 @@ class Turbine(unittest.TestCase):
             want = json.loads(json.dumps({k: v for k, v in pv[n].items() if k != 'kks'}).replace('"st_', '"'))
             self.assertEqual(mv[n[3:]], want, n)
         trips = {t['id'] for t in self.file['trips']}
-        self.assertEqual(trips, {'trip_lube', 'trip_os', 'trip_axial', 'trip_vib', 'trip_steam_t'})
+        self.assertEqual(trips, {'trip_lube', 'trip_os', 'trip_axial', 'trip_vib', 'trip_steam_t', 'trip_breaker'})
 
     def test_a_change_to_the_plant_is_a_change_to_the_bench(self):
         sys.path.insert(0, os.path.join(REPO, 'tools', 'plant3d'))
@@ -134,14 +134,59 @@ class Turbine(unittest.TestCase):
             self.assertGreater(a, b)
         for a, b in zip(ts, ts[1:]):
             self.assertGreater(a, b)
-        # at full flow: 90 bar after the control valves, 25 bar at the exhaust (the cold reheat)
-        e2 = self.bench.engine()
-        e2.op('valve_l', 'set', 100)
-        st = e2.m.index['flow']
-        for _ in range(20):
-            e2.cur[st] = 70.0
-            e2.step()
-        self.assertAlmostEqual(e2.v('p8') / e2.v('p_first'), 25 / 90, 2)
+        # every stage's pressure in proportion to the flow: 90 bar after the control valves and 25 bar at the exhaust
+        # (the cold reheat) at the full 70 kg/s
+        f = e.v('flow') / 70
+        self.assertAlmostEqual(e.v('p_first'), 90 * f, 6)
+        self.assertAlmostEqual(e.v('p8'), 25 * f, 6)
+
+    def test_tripped_on_load_opens_the_breaker(self):
+        """A trip while on the grid: the plant's protection opens the breaker too, and the rotor coasts down."""
+        e = self.bench.engine()
+        e.op('rotor', 'roll')
+        st = e.m.index
+        for _ in range(9000):
+            e.step()
+            if e.v('spd95') >= 0.5 and e.v('exc_cmd') < 0.5:
+                e.op('bench', 'start')
+                e.op('pedestal_f', 'set', 0.002)
+            if e.v('turbine_state') == 4 and e.step_no % 5 == 0:
+                e.op('bench', 'close_breaker')
+            if e.v('brk_cmd') >= 0.5:
+                break
+        self.assertEqual(e.v('brk_cmd'), 1, 'synchronised')
+        e.op('pedestal_f', 'set', 0)
+        self.go(e, 20)
+        e.fault('rub')
+        self.go(e, 4)
+        self.assertEqual(e.v('trip_vib_latched'), 1)
+        self.assertEqual(e.v('brk_cmd'), 0)
+        self.go(e, 30)
+        self.assertLess(e.v('rpm'), 2950)
+
+    def test_overspeed_by_the_governor(self):
+        e = self.bench.engine()
+        e.op('rotor', 'roll')
+        for _ in range(9000):
+            e.step()
+            if e.v('turbine_state') == 4:
+                break
+        e.fault('governor')
+        self.go(e, 60)
+        self.assertEqual(e.v('trip_os_latched'), 1)
+
+    def test_thrust_wear_trips_and_is_renewed(self):
+        e = self.bench.engine()
+        e.op('rotor', 'roll')
+        self.go(e, 10)
+        e.fault('thrust_wear')
+        self.go(e, 60)
+        self.assertEqual(e.v('trip_axial_latched'), 1)
+        e.repair('thrust_wear')
+        self.go(e, 30)
+        e.op('thrust_upper', 'reset', None, 'trip_axial')
+        self.go(e, 1)
+        self.assertEqual(e.v('trip_axial_latched'), 0)
 
     def test_tripped_by_a_rub(self):
         e = self.bench.engine()

@@ -183,6 +183,12 @@ func _turbine(tree: SceneTree, ws) -> void:
 	bv.draw(0.002)   # (a step short enough not to alias: at 800 rpm 13 revolutions a second)
 	var da := wrapf(float(anims.rotor.get("angle", 0.0)) - a1, -PI, PI)
 	check(da > 0.0 and da < 1.0, "the rotor turns right-handed about that axis, as the blades are made for (%.4f rad)" % da)
+	# at speed it is drawn no faster than MAX_DRAWN_RPS (a frame at 30 fps turns it less than half a blade's pitch)
+	var a2: float = float(anims.rotor.get("angle", 0.0))
+	bv.draw(1.0 / 30.0)
+	var db := wrapf(float(anims.rotor.get("angle", 0.0)) - a2, -PI, PI)
+	check(db > 0.0 and db <= TAU * bv.MAX_DRAWN_RPS / 30.0 + 1e-6 and db < PI / 34.0,
+		"at %.0f rpm the rotor is drawn turning forwards, slower than its blades alias (%.4f rad a frame)" % [c.now("rpm"), db])
 	check(not (ws.comps["rotor"] as Node3D).transform.basis.is_equal_approx(r0), "the rotor's node turned")
 	# the steam's pressure and temperature fall along the path
 	var ok: bool = c.now("p_first") < c.now("p_supply")

@@ -615,8 +615,9 @@ addition (both engines, vectors) made in K6.
 **As built (K4b, 2026-11-03).**
 - **Made, not written.** `tools/plant3d/workshop/make_bench.py` takes from the generated `model/st.json` (in memory, as
   `make_content.py` makes it) the start-up machine `st_start` (as `turbine`), five trips (lube oil pressure low-low two
-  out of three, overspeed, axial displacement, bearing vibration, wet steam), four alarms, the excitation's and the
-  breaker's ops with their synchronising permissives, the speed bias, each trip's reset, and 130 named values (the
+  out of three, overspeed, axial displacement, bearing vibration, wet steam) and the generator breaker's opening by
+  the turbine's protection (else the grid would hold a tripped rotor at full speed), four alarms, the excitation's and the
+  breaker's ops with their synchronising permissives, the speed bias, each trip's reset, and 134 named values (the
   governor and the rotor's speed, the soak timer, the critical-speed band's vibration, the casing's warmth and the
   steam-to-casing match, the superheat, the synchronising check, the load), renamed by stripping `st_` (a machine's
   and a trip's own values follow their renamed ids) and with each code mapped onto a component or `bench` (`at`).
@@ -639,7 +640,9 @@ addition (both engines, vectors) made in K6.
   full speed no load, excitation at 95 %, the breaker inside ±10° and 0.1 Hz (the bias slips the phase), loaded.
   At the Run panel's 2× that is about 4½ minutes to full speed.
 - **Drawn:** the rotor's `shaft` at 50 rev/s per unit speed (the plant's binding), turning right-handed about the
-  axis against the steam's way, as the generator's blades are made for (`ST_TURN`); the stop discs and control plugs
+  axis against the steam's way, as the generator's blades are made for (`ST_TURN`), drawn at most 0.4 rev/s
+  (`MAX_DRAWN_RPS`: faster, at 30 frames a second its rows of 34 blades seem to stand or turn back; the speed is on
+  its tag, in the readouts and in the tone); the stop discs and control plugs
   are moving pieces of their own (`translate`, Workshop only: plant mode unchanged); seven flow paths (each chest's
   inlet past both seats, four lines along the blade path, the exhaust), coloured by pressure; every blade row, carrier
   and inner casing half and both chests coloured by temperature (**Heat**) or pressure (**Pressure**), two new
@@ -649,17 +652,18 @@ addition (both engines, vectors) made in K6.
   pink noise), its gain and pitch from the speed, and `steam_rush` at the chest by the flow; played by `bench_view.gd`
   from the plant's sound files while the Workshop shows (not paused, not when the plant's sounds were muted).
 - **Faults:** the governor (its set point 15 % high: an overspeed trip at no load), thrust bearing wear (axial
-  displacement), a rub (vibration), the lube oil pump lost, the steam's temperature falling 200 K (wet steam); each
+  displacement; the bench's own wear, which goes back once the bearing is renewed: the plant's only grows), a rub (vibration), the lube oil pump lost, the steam's temperature falling 200 K (wet steam); each
   trips by the plant's own trip and is reset from the Run panel once its cause is gone.
 - **Running taken apart:** as K4a's data says, only with the lagging off; Start is refused otherwise with its sentence.
 - **Vectors:** `plant3d-bench-v1.json` gains two runs of the committed file's model: the committed one (rolled to its
   soak, the refusals on the way, a rub's trip, its reset, the lube oil lost; 900 steps) and the same with the soak cut
-  to 10 s, the vector's only change (run up, synchronised, loaded, unloaded and overspeed-tripped; 2,793 steps); both
-  engines bit for bit (`GdscriptBench`). The file is 14.7 MB (the transmitter's and the synthetic kind's 0.66 MB).
+  to 10 s, the vector's only change (run up, synchronised, loaded, tripped on load by a rub and the breaker opened by protection; 2,599 steps); both
+  engines bit for bit (`GdscriptBench`). The file is 14.2 MB (the transmitter's and the synthetic kind's 0.66 MB).
 - **The walk:** each machine started with the first command its resting state takes (the turbine's Roll); every 0.2 s
   it switches on what it may (an op that sets something from 0 once its permissives hold: the excitation, the
-  breaker); the sliders swept as before. The turbine's walk runs its bench at `bench_speed=6` (the walk's own, past
-  the trainee's 2×, logged), so that the plant's 300 s soak still lets it reach full speed within the 3 minutes.
+  breaker); the sliders swept as before. The turbine's walk is measured with `bench_speed=6` (an option of the walk, past
+  the trainee's 2×, logged; the default stays 2×), so that the plant's 300 s soak still lets it reach full speed
+  within the 3 minutes.
 
 ## 7. Shaders and cut faces
 

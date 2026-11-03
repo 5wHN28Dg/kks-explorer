@@ -17,6 +17,10 @@ const Views = preload("res://workshop/views.gd")
 const LCD_ON := Color(0.70, 0.82, 0.66)         # a lit display's face (the backlight's colour on the grey LCD)
 const LCD_OFF := Color(0.10, 0.11, 0.10)        # a dark one (no loop current: a loop-powered display goes out)
 const FLOW_COLOUR := Color(0.45, 0.75, 1.0)     # a flow without a colour legend
+## A freely turning part is drawn at most this fast (revolutions a second): faster, at 30 frames a second, a row of 34
+## blades seems to stand or turn back (the wagon wheel), and a turbine at 3,000 rpm would turn 1.7 times a frame. Its
+## real speed is on its tag, in the readouts and in its blade-pass tone.
+const MAX_DRAWN_RPS := 0.4
 
 var ws                          # workshop/workshop.gd
 var clock                       # workshop/bench_clock.gd
@@ -79,6 +83,7 @@ func setup(machine: Node3D) -> void:
 					if st == null or not s.get("loop", true):
 						continue
 					var pl := AudioStreamPlayer.new()
+					pl.bus = sp.PLANT_BUS   # (masked under the phone's music as the plant's sounds are)
 					pl.name = "bench_sound_%s_%s" % [x.sound, layer["layer"]]
 					pl.stream = st
 					pl.volume_db = -80.0
@@ -137,8 +142,10 @@ func draw(dt: float) -> void:
 		elif a.kind == "rotate":
 			if a.travel != 0.0:     # turned through travel radians for 0 -> 1 (a stem, a damper)
 				t.basis = t.basis * Basis(a.axis, a.travel * v)
-			else:                   # turns freely: the value × scale is its speed in revolutions a second
-				a["angle"] = fmod(float(a.get("angle", 0.0)) + TAU * v * dt, TAU)
+			else:                   # turns freely: the value × scale is its speed in revolutions a second, drawn at
+									# most MAX_DRAWN_RPS
+				var rps := signf(v) * minf(absf(v), MAX_DRAWN_RPS)
+				a["angle"] = fmod(float(a.get("angle", 0.0)) + TAU * rps * dt, TAU)
 				t.basis = t.basis * Basis(a.axis, a.angle)
 		n.transform = t
 	for e in labels:

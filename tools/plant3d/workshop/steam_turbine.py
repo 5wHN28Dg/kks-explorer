@@ -384,14 +384,16 @@ TAKE_VALUES = (
      # vibration through the critical speeds, axial displacement, the steam's superheat, the casing's warmth
      'st_band_lo', 'st_band_hi', 'st_inband', 'st_band_t', 'st_vib_base', 'st_vib_hold', 'st_vib_f', 'st_vib'] +
     [f'st_vib{k}{s}' for k in range(1, 9) for s in ('', '_h', '_hh')] +
-    ['st_vib_hh', 'st_ax_w', 'st_axial', 'st_axial_hh', 'st_inlet_t', 'st_superheat', 'st_sh_ok', 'st_sh_low',
+    ['st_vib_hh', 'st_axial', 'st_axial_hh', 'st_inlet_t', 'st_superheat', 'st_sh_ok', 'st_sh_low',
      'st_sh_wet', 'st_wet_c', 'st_cas_hot', 'st_cas_idle', 'st_cas_tgt', 'st_cas_steam', 'st_cas_k', 'st_casing_t',
      'st_cas_gap', 'st_cas_rate', 'st_mismatch', 'st_mm_hi', 'st_mm_lo', 'st_match', 'st_p_ok',
      'st_run_ge2', 'st_run_le2', 'st_rolling', 'st_sh_alarm_c',
      # the generator's excitation and the synchronising check, the load
      'st_v_sp', 'st_v', 'st_f', 'st_slip', 'st_slip_deg', 'st_phase', 'st_ph', 'st_ph_abs', 'st_ph_ok',
-     'st_slip_abs', 'st_slip_ok', 'st_v_dev', 'st_v_ok', 'st_spd95', 'st_brk_open', 'st_mw_sp', 'st_mw_t', 'st_mw'])
+     'st_slip_abs', 'st_slip_ok', 'st_v_dev', 'st_v_ok', 'st_spd95', 'st_brk_open', 'st_mw_sp', 'st_mw_t', 'st_mw',
+     'gen3_prot_c'])
 TRIPS = ['st_trip_lube', 'st_trip_os', 'st_trip_axial', 'st_trip_vib', 'st_trip_steam_t']
+BREAKER_TRIP = 'gen3_trip_prot'     # the breaker opened by the turbine's protection (else the grid holds a tripped rotor)
 ALARMS = ['st_lp1_low', 'st_vib1_h', 'st_os1', 'st_sh_low']
 
 
@@ -410,7 +412,8 @@ def _stage_values():
         ['inlet_k', {'sum': ['inlet_t', 273.15], 'unit': 'K'}],
         # the stop valves open at once and shut in a fraction of a second; the control valves follow the flow
         ['stop_pos', {'ramp': 'adm', 'rate': 2, 'rate_down': 10, 'unit': 'pu'}],
-        ['ctrl_pos', {'lag': 'flow_frac', 'tau': 0.5, 'unit': 'pu'}],
+        ['ctrl_tgt', {'min': ['flow_frac', 1]}],                # (past full flow the valves are wide open)
+        ['ctrl_pos', {'lag': 'ctrl_tgt', 'tau': 0.5, 'unit': 'pu'}],
         ['p_first_f', {'product': ['flow_frac', P_FIRST]}],
         ['p_first0', {'max': ['p_first_f', 'p_floor']}],
         ['p_first', {'min': ['p_first0', 'p_supply'], 'unit': 'bar'}],
@@ -446,6 +449,10 @@ def bench_source():
         ['lube_sp', {'select': 'lube_fail', 'cases': [2.5, 0.4]}],
         ['lube_p', {'lag': 'lube_sp', 'tau': 3, 'unit': 'bar'}],
         ['lube_sup', {'state': 0}],                              # (the oil system is in service from the start)
+        # the thrust bearing's wear: the rotor creeps axially while the fault stands, and is back in place once the
+        # bearing is renewed (the repair; the plant's wear only grows, which on the bench would latch its trip for good)
+        ['ax_rate', {'select': 'thrust_fault', 'cases': [-0.1, 0.02]}],
+        ['ax_w', {'integrate': 'ax_rate', 'gain': 1, 'min': 0, 'max': 2, 'init': 0, 'unit': 'mm'}],
         # the turning gear is engaged whenever the rotor is slow with oil on the bearings; the rotor is straight
         ['tg_run', {'and': ['lube_ok', 'slow']}],
         ['ecc_ok', {'state': 1}],
@@ -482,7 +489,7 @@ def bench_source():
     bind += [
         {'at': 'pedestal_f', 'show': 'rpm'},
         {'at': 'rotor', 'sound': 'blade_pass', 'gain': {'of': 'speed', 'table': [[0, 0], [0.05, 0.15], [1, 1]]},
-         'pitch': {'of': 'speed', 'table': [[0, 0.05], [1, 1]]}},
+         'pitch': {'of': 'speed', 'table': [[0, 0.05], [1.3, 1.3]]}},
         {'at': 'valve_l', 'sound': 'steam_rush', 'gain': {'of': 'flow', 'table': [[0, 0], [RATED_FLOW, 1]]}},
     ]
     bench = {
@@ -506,7 +513,7 @@ def bench_source():
              'set': {'t_dip': 1}, 'repair': {'t_dip': 0}},
         ],
         # a hot start: the casing at 420 °C, the steam at 500 °C at the valves (matched), oil on the bearings
-        'start': {'casing_t': 420, 'inlet_t': 500, 'lube_p': 2.5},
+        'start': dict({'casing_t': 420, 'inlet_t': 500, 'lube_p': 2.5}, **{f't{k}': 420 for k in range(1, STAGES + 1)}),
         'bind': bind,
         'legends': {
             'heat': {'unit': '°C', 'table': [[30, '#2c7bb6'], [200, '#abd9e9'], [350, '#ffffbf'], [450, '#fdae61'],
@@ -519,14 +526,15 @@ def bench_source():
     }
     return {
         'area': 'st', 'prefix': 'st_',
-        'rename': {'st_start': 'turbine', 'hp_p': 'p_supply', 'hp_steam_t': 'steam_t', 'hp_tsat': 'tsat',
+        'rename': {'st_start': 'turbine', 'gen3_trip_prot': 'trip_breaker', 'gen3_prot_c': 'prot_c',
+                   'st_any_trip': 'any_trip', 'hp_p': 'p_supply', 'hp_steam_t': 'steam_t', 'hp_tsat': 'tsat',
                    'hp_steam_net': 'steam_avail', 'gt1_grid_pu': 'grid_pu', 'st_lube_p': 'lube_p',
                    'st_tg_run': 'tg_run', 'st_ecc_ok': 'ecc_ok', 'st_vac_ok': 'vac_ok', 'st_warm_on': 'warm_on',
                    'st_warm_shut': 'warm_shut', 'st_trips_clear': 'trips_clear'},
         'at': {'30MAA10': 'rotor', '30MKC10': 'bench', '30BAC10': 'bench', '30MAY10CS001': 'pedestal_f',
                '30MAY10CS002': 'pedestal_f', '30MAV10CP001': 'pedestal_f', '30MAD10CG001': 'thrust_upper',
                '30MAD10CY001': 'brg_f_upper', '30MAA10CT001': 'valve_l'},
-        'machines': ['st_start'], 'trips': TRIPS, 'alarms': ALARMS,
+        'machines': ['st_start'], 'trips': TRIPS + [BREAKER_TRIP], 'alarms': ALARMS,
         'ops': [['30MKC10', 'start'], ['30MKC10', 'stop'], ['30BAC10', 'close_breaker'], ['30BAC10', 'open_breaker'],
                 ['30MAY10CS001', 'set']],
         'titles': {('30MAA10', 'roll'): 'Roll', ('30MAA10', 'hold'): 'Hold speed',
@@ -536,7 +544,7 @@ def bench_source():
                    ('30MAY10CS001', 'set'): 'Speed bias',
                    'st_trip_lube': 'Reset: lube oil', 'st_trip_os': 'Reset: overspeed',
                    'st_trip_axial': 'Reset: axial', 'st_trip_vib': 'Reset: vibration',
-                   'st_trip_steam_t': 'Reset: wet steam'},
+                   'st_trip_steam_t': 'Reset: wet steam', BREAKER_TRIP: 'Reset: breaker'},
         'values': TAKE_VALUES,
         'before': before,
         'bench': bench,

@@ -528,7 +528,7 @@ static func _st_blades(mb, za: float, pa: Dictionary, y: float, moving: bool, a0
 	for j in count:
 		var phi := lerpf(a0, a1, (j + 0.5) / count)
 		var er := Vector3(cos(phi), 0, -sin(phi))   # across(+y): cos·x + sin·(-z), as the shells' angles
-		var tang := Vector3(0, 1, 0).cross(er)
+		var tang := ST_TURN.cross(er)   # (the way a blade moves as the rotor turns)
 		var chord := (Vector3(0, -1, 0) * cos(beta) + tang * sin(beta)).normalized()
 		var bs := Basis(chord.cross(er), chord, er)
 		_st_box(mb, Vector3(0, y, za) + er * (r_in + r_out) * 0.5, Vector3(0.014, pa.chord, r_out - r_in), bs)

@@ -47,13 +47,18 @@ class _Names:
                     sfx = '_state' if kind == 'machines' else '_latched'
                     self.rename.setdefault(x['id'] + sfx, self.rename[x['id']] + sfx)
         self.read = set()                       # every bench name a taken piece reads
+        self.made = {}                          # bench name -> the plant name it came from
 
     def __call__(self, name):
         if name in self.rename:
-            return self.rename[name]
-        if self.prefix and name.startswith(self.prefix):
-            return name[len(self.prefix):]
-        return name
+            out = self.rename[name]
+        elif self.prefix and name.startswith(self.prefix):
+            out = name[len(self.prefix):]
+        else:
+            out = name
+        if self.made.setdefault(out, name) != name:
+            _err(f'{self.made[out]} and {name} would both be {out} on the bench (rename one)')
+        return out
 
     def ref(self, x):
         """A value reference (a name or a number) renamed, and noted as read."""
@@ -103,7 +108,8 @@ def _ordered(values):
     done, out = set(), []
     while left:
         for i, (n, node) in enumerate(left):
-            stateful = any(k in node for k in STATEFUL) or 'state' in node
+            # (a hold reads its input in the same step, as a stateless node does: it follows it too)
+            stateful = any(k in node for k in STATEFUL if k != 'hold') or 'state' in node
             if stateful or all(r in done or r not in names for r in _reads(node)):
                 out.append(left.pop(i))
                 done.add(n)
@@ -240,6 +246,11 @@ def make(src, models):
             _err(f'{n} is taken from the plant and defined by the bench too')
         seen.add(n)
     derived = {m['id'] + '_state' for m in machines} | {t['id'] + '_latched' for t in trips}
+    have = {m['id'] for m in machines} | {m['id'] for m in bench.get('machines', [])}
+    for x in trips + interlocks:
+        for a in x['do']:
+            if 'machine' in a and a['machine'] not in have:
+                _err(f'{x["id"]} acts on the machine {a["machine"]}, which the bench neither takes nor has')
     defined = seen | own | derived | {m['id'] + '_state' for m in bench.get('machines', [])} | \
         {t['id'] + '_latched' for t in bench.get('trips', [])}
     missing = sorted(n for n in names.read if n not in defined)

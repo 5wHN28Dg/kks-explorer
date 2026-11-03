@@ -267,8 +267,8 @@ def turbine_sync_inputs(bench_text, comps, sounds):
             k += 5
             assert k < 4000, 'the breaker never closed'
     inputs.append([k + 1, 'op', pf, 'set', 0, None])
-    inputs += [[k + 150, 'op', b, 'open_breaker', None, None], [k + 160, 'fault', 'governor']]
-    return inputs, until(lambda e: e.v('turbine_state') == 8, k + 2000) + 40
+    inputs += [[k + 150, 'fault', 'rub']]      # tripped on load: the protection opens the breaker too
+    return inputs, until(lambda e: e.v('turbine_state') == 8, k + 2000) + 60
 
 
 def run(bench_text, comps, sounds, inputs, until):
@@ -400,7 +400,7 @@ def build():
             ins, end = turbine_sync_inputs(t2, comps, sounds)
             states, events = run(t2, comps, sounds, ins, end)
             steps.append({'why': 'the steam turbine with a 10 s soak: run up through its critical speeds, '
-                                 'synchronised, loaded, unloaded and overspeed-tripped by its governor\'s fault',
+                                 'synchronised, loaded, tripped on load by a rub (the breaker opened by protection)',
                           'components': comps, 'bench': t2, 'inputs': ins, 'states': states, 'events': events})
     g = text(gadget_ok())
     valid.append({'why': 'the synthetic kind', 'components': GADGET_COMPS, 'bench': g})
