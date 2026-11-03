@@ -76,6 +76,12 @@ func _kind(part: String, data: Dictionary, params: Dictionary, ctx := {}) -> voi
 		check(not ids.has(c.id), "%s: component %s is unique" % [part, c.id])
 		ids[c.id] = true
 		check(whole.grow(0.001).has_point(c.pivot), "%s: %s's pivot %s inside the part's box" % [part, c.id, str(c.pivot)])
+	# a fastener group's name that counts its items ("44 joint studs") counts what the generator draws
+	var re := RegEx.create_from_string("^(\\d+) ")
+	for f in ws.fasteners:
+		var m := re.search(String(data.get("fasteners", {}).get(f.id, {}).get("name", "")))
+		check(m == null or int(m.get_string(1)) == f.items.size(), "%s: %s's name counts %s, the generator draws %d" % [
+			part, f.id, m.get_string(1) if m != null else "", f.items.size()])
 	# the same parameters in plant mode, for the outside: as the builder makes the plant's part
 	var plant := Kit.make(part, params, ctx)
 	_outside(part, plant, ws)

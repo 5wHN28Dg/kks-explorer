@@ -244,7 +244,7 @@ static func join(res: Dictionary, data: Dictionary) -> Array:
 			errs.append("assembly: %s is placed before %s, its parent in the tree" % [pl, gen[pl].parent])
 		placed[pl] = true
 		for n in s.get("needs", []):
-			if not gen.has(n[0]):
+			if not gen.has(n[0]) and not res.fasteners.any(func(f): return f.id == n[0]):
 				errs.append("assembly: a step needs %s, which the generator doesn't make" % n[0])
 	var views: Dictionary = data.get("views", {})
 	var named: Array = views.get("xray_all", []) + views.get("cutaway", {}).get("keep", [])

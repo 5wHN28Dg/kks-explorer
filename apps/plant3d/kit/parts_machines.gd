@@ -37,6 +37,7 @@ static func _shaft(g, za: float, y_back: float, y_front: float, r: float, bolts_
 	var sh = g.move("shaft", Vector3(0, 0, za), Vector3(0, 1, 0), "rotate", 0.0)
 	var lo: float = g.ctx.get("shaft_lo", 0.0)
 	var hi: float = g.ctx.get("shaft_hi", 0.0)
+	var coupled := 0
 	for e in [[y_back, -1.0, lo], [y_front, 1.0, hi]]:
 		var y0: float = e[0]
 		var s: float = e[1]
@@ -48,11 +49,12 @@ static func _shaft(g, za: float, y_back: float, y_front: float, r: float, bolts_
 			sh.use("paint_darkgrey", "identify")
 			sh.cyl(Vector3(0, y0 + s * (len - 0.12), za), Vector3(0, y0 + s * len, za), r * 2.2, -1.0, 20)
 			if bolts_id != "":
-				g.only("plant", [bolts_id])
+				g.only("plant", [bolts_id if coupled == 0 else bolts_id + "_2"])
 			C.bolt_ring(sh, Vector3(0, y0 + s * (len - 0.06), za), Vector3(0, 1, 0), r * 1.8, 12, 0.012, 0.16)
 			if bolts_id != "":
 				g.only()
-				_coupling_bolts(g, bolts_id, Vector3(0, y0 + s * (len - 0.06), za), s, r * 1.8, 12, 0.012, 0.16)
+				coupled += 1   # (a machine coupled at both ends: the second group's own id, which its data must name)
+				_coupling_bolts(g, bolts_id if coupled == 1 else bolts_id + "_2", Vector3(0, y0 + s * (len - 0.06), za), s, r * 1.8, 12, 0.012, 0.16)
 		sh.use("paint_yellow", "identify")
 		sh.box(Vector3(0, y0 + s * len * 0.5, za + r * 0.98), Vector3(r * 0.4, len * 0.3, 0.012))
 
@@ -376,6 +378,7 @@ static func steam_turbine(_part: String, g) -> void:
 		m.use("paint_machine", "identify")
 	if tree:
 		_st_pedestals(g, ends, za)
+		g.comp("casing_lower")   # (the steam pipes below, when the context names the nozzles in use: the casing's)
 	# the steam pipes from the casings down through the deck to the nozzles in use (kit.json: on the deck)
 	var used: Dictionary = g.ctx.get("used", {})
 	for n in used:
@@ -573,13 +576,13 @@ static func _st_comps(g, c: Dictionary, za: float) -> void:
 		g.comp("mrow_%d" % (k + 1), {"parent": "rotor", "explode": [up, 0.0]})
 	g.comp("collar", {"parent": "rotor", "explode": [up, 0.0]})
 	g.comp("pedestal_f", {"explode": [up, 0.0]})
-	g.comp("cap_f", {"parent": "pedestal_f", "explode": [up, 1.0]})
-	g.comp("brg_f_upper", {"parent": "pedestal_f", "explode": [up, 0.55]})
+	g.comp("cap_f", {"parent": "pedestal_f", "explode": [up, 1.6]})
+	g.comp("brg_f_upper", {"parent": "pedestal_f", "explode": [up, 0.5]})
 	g.comp("brg_f_lower", {"parent": "pedestal_f", "explode": [up, 0.0]})
 	g.comp("thrust", {"parent": "pedestal_f", "explode": [Vector3(0, 0.6, 0.8), 2.0]})
 	g.comp("pedestal_r", {"explode": [up, 0.0]})
-	g.comp("cap_r", {"parent": "pedestal_r", "explode": [up, 1.0]})
-	g.comp("brg_r_upper", {"parent": "pedestal_r", "explode": [up, 0.55]})
+	g.comp("cap_r", {"parent": "pedestal_r", "explode": [up, 1.6]})
+	g.comp("brg_r_upper", {"parent": "pedestal_r", "explode": [up, 0.5]})
 	g.comp("brg_r_lower", {"parent": "pedestal_r", "explode": [up, 0.0]})
 	for s in ["l", "r"]:
 		var x := -1.0 if s == "l" else 1.0
@@ -656,7 +659,7 @@ static func _st_casing(g, c: Dictionary, za: float) -> void:
 			_st_faces(m, lo, hi, ["x-", "x+", "y-", "y+", "z-", "z+"])
 	g.comp("inner_upper")
 	var bolts: Array = []
-	var k := maxi(3, int(len * 0.35 / 0.4))
+	var k := maxi(3, roundi(len * 0.35 / 0.45))   # 6 a side for the plant's 8 m casing
 	for s: float in [-1.0, 1.0]:
 		for i in k:
 			var y := lerpf(c.y0 + len * 0.37, c.y0 + len * 0.68, float(i) / (k - 1))

@@ -147,8 +147,10 @@ def _assembly(a, comps, fast, cite, tx, where):
         for k, n in enumerate(lst(s.get('needs', []), f'{sw}.needs', 0, MAX['needs'])):
             nw = f'{sw}.needs[{k}]'
             lst(n, nw, 3, 3)
-            need(isinstance(n[0], str) and n[0] in comps, 'bad_ref', f'{nw}: no component {n[0]!r}')
-            need(n[0] != p, 'bad_ref', f'{nw}: a step needs another component')
+            # a component, or a fastener group (K4a: a casing closes over its inner casing's studs)
+            need(isinstance(n[0], str) and (n[0] in comps or n[0] in fast), 'bad_ref',
+                 f'{nw}: no component or fastener group {n[0]!r}')
+            need(n[0] != p, 'bad_ref', f'{nw}: a step needs another part')
             need(n[0] in placed, 'bad_order', f'{nw}: {n[0]} is placed after the step that needs it')
             words(n[1], f'{nw}: the sentence for placing too early', 300)
             words(n[2], f'{nw}: the sentence for removing too early', 300)

@@ -255,6 +255,8 @@ def assembly():
         step('casing_upper', 'Lower the outer casing\'s upper half onto the joint on its guide pins.',
              [('inner_upper', 'Close the inner casing before the outer casing: set the upper inner casing first.',
                'Lift the upper outer casing off before the upper inner casing.'),
+              ('inner_bolts', 'Tighten the inner casing\'s studs before the outer casing closes over them.',
+               'Lift the upper outer casing off before the inner casing\'s studs come out.'),
               ('glands_upper', 'Fit the upper glands before the outer casing closes over them.',
                'Lift the upper outer casing off before the upper glands.'),
               ('casing_lower', 'The upper half sits on the lower half\'s flanges: set the lower half first.',
@@ -286,7 +288,9 @@ def assembly():
                'Strip the lower lagging before the lower casing is moved.')]),
         step('lagging_upper', 'Put the upper half\'s insulation and cladding back, the last thing on.',
              [('casing_upper', 'The lagging covers the upper casing: close the casing first.',
-               'Strip the upper lagging first: it covers the casing\'s joint and its studs.')]),
+               'Strip the upper lagging first: it covers the casing\'s joint and its studs.'),
+              ('joint_bolts', 'Tighten the joint\'s studs before they are lagged over.',
+               'Strip the upper lagging before the joint\'s studs are loosened.')]),
     ]
     return a
 
