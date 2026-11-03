@@ -391,7 +391,7 @@ their own validator and vectors. Format 1 is not changed and format 2 is not ben
  "start": {"p_applied": 0},
  "bind": [{"at": "diaphragm", "anim": "deflect", "of": "x_dia", "scale": 1},
           {"at": "display", "show": "out_ma"},
-          {"flow": "impulse", "of": "flow_frac", "speed": 0.3, "colour": "pressure"},
+          {"flow": "impulse", "of": "flow_frac", "speed": 0.3, "colour": "pressure", "by": "p_line"},
           {"at": "sensor_body", "pressure": "p_sensed"},
           {"at": "bench", "sound": "steam_vent", "gain": {"of": "vent_flow", "table": [[0, 0], [1, 1]]}}],
  "legends": {"pressure": {"unit": "bar", "table": [[0, "#2c7bb6"], [10, "#d7191c"]]}},
@@ -411,8 +411,8 @@ their own validator and vectors. Format 1 is not changed and format 2 is not ben
 - **Bindings** (by component, never by code): §7.7's `anim` (on a component the generator gave an `anim` kind: a
   rotor's `rotate` with `scale` in revolutions per second, a diaphragm's `translate` exaggerated by its travel, a stem),
   `show` (a gauge or display), `sound` (a sound of sounds.json, gain and pitch tables), `lamp`; and the Workshop's own:
-  `flow` (a flow path: `of` the flow from 0 to 1 sets particle speed × `speed` m/s and density; `colour` a legend's
-  name and the value it reads, default the path's temperature value), `heat` and `pressure` (a component's surface
+  `flow` (a flow path: `of` the flow from −1 to 1 sets particle speed × `speed` m/s and density, its sign the
+  direction; `colour` a legend's name and `by` the value it reads), `heat` and `pressure` (a component's surface
   colour from a legend), each reading a value.
 - **Readouts:** the values in the small panel (at most 12), with their units.
 - **Limits** (`limit`): 600 values, 48 ops, 8 machines, 48 trips, 64 alarms, 24 faults, 128 bindings, 16 flow paths,
@@ -450,6 +450,58 @@ Applied pressure (slider within its range and beyond it) → the isolating diaph
 Faults: **over-range** (the output saturates at 20.5 mA and the display says so: NAMUR NE 43's signal levels),
 **blocked impulse line** (the sensed pressure holds what was trapped while the applied pressure moves), **open loop**
 (no current, the loop-powered display goes dark). Sources in §11.
+
+**As built (K3, 2026-11-03).**
+- **The format** as §6.1, with what writing the first file settled: `sources` (`{id, cite, url}`, at least one) is
+  required at the top; an op may carry a `title` (the Run panel's words, ≤ 40 characters); a `show` binding may name
+  a `lit` value (the value is shown on the component's face while `lit` is true: a loop-powered display); a `flow`
+  binding's colour reads the value `by` names, and its `of` runs from −1 to 1, the sign the direction (into the
+  transmitter while the pressure rises, out while it falls: §1's "which way things flow"); a value carries no `kks`
+  and no node of the realism programme (`draw`, `wear`, `count`: `bad_kind`, kept for version 2). `ref/plant3d_bench.py`
+  checks a file against its kind's component ids by joining it into `ref.plant3d.Model` with components for codes,
+  so the plant's own checks and error codes apply; the content check (`ref/plant3d.py check_files`) reads
+  `workshop/bench/<part>.json` beside its Workshop data file; the builder refuses an `anim` the generator didn't give
+  that component and a `flow` on a path it doesn't make, and saves the bench file's text in the scene's `workshop`
+  meta (`bench`).
+- **Engines:** no change to either. `sim/bench_model.gd` reads the text into plant_model.gd's shape (version 2: the
+  `hold` node and the trainer's events); `ref/vectors/plant3d-bench-v1.json` (`ref/make_plant3d_bench_vectors.py`)
+  holds 2 valid files (the transmitter, and a synthetic kind with every node kind, a machine with a sequence, a trip,
+  an interlock, alarms, faults and every binding kind), 50 rejects and both runs; `run_vectors.gd --only=bench` steps
+  them through the app's engine and `tests/test_plant3d_sim.py GdscriptBench` compares every value's bits at every
+  step and the state digests, with the straight-line program and the interpreter. `plant3d-v1.json`, `plant3d-v2.json`
+  and `plant3d-realism.json` are byte for byte what they were.
+- **The transmitter's model** (`tools/plant3d/workshop/pressure_transmitter.py bench()`, sources: the 3051 manual's
+  §2.7.4 and §A.3.9 damping, §2.9.1 table 2-5 NAMUR levels; Lipták vol. 1 ch. 5): a 0–10 bar calibration; the slider
+  from −1 to 12 bar; the loop supply a machine (Start, Stop); the impulse line a `hold` of the process pressure while
+  blocked; the diaphragm and fill a 0.3 s lag, the sensing cell 0.1 s, the damping 0.4 s; 4–20 mA linear, held at
+  3.8 and 20.5 mA (NAMUR NE 43 via the manual), alarms at both and for an open loop; no current and a dark display
+  without the supply or with the loop open. Faults: over-range (the process pressure to 15 bar), a blocked impulse
+  line, an open loop. Bindings: the diaphragm's `deflect` (6 mm of travel at 10 bar, its real few micrometres
+  exaggerated), the display (reading and current, `lit`), the terminals' current, the impulse path's flow coloured
+  by its pressure, the isolator's and sensing cell's colour by the pressure at the diaphragm.
+- **The app:** `workshop/bench_clock.gd` (the engine stepped every 0.1 s of bench time, 0.1×–2×, Pause; values drawn
+  between the last two steps), `bench_view.gd` (the bindings: anim, the display's face text and backlight, a tag
+  over the terminals, flow, heat and pressure), `run_panel.gd` (Run, in the properties' place: machine commands, a
+  slider per `set` op, Pause and speed, readouts, machine states, alarms with Acknowledge, the faults as toggles, the
+  last refusal's sentence), `views.gd` (materials, X-ray, cutaway, section, flow particles). Start is refused with
+  the data's `why` when the machine stands apart beyond `run_exploded`. The display cover's face is a ring round
+  its window (the plant's drum end unchanged), and glass the generator marks `glass` is drawn see-through, so the
+  LCD reads through it.
+- **Shaders:** `ws_lit` is `weathered.gdshaderinc` with `#define WS_LIT` (the plant's shader compiles exactly as
+  before: the hooks are preprocessor blocks): a discard by the cut planes (`ws_cut.gdshaderinc`, shared with
+  `ws_cap`), no weather, the heat and pressure colour and the selection's glow as instance uniforms (`ws_ramp`,
+  `ws_sel`; three with `ws_keep`). The selection no longer swaps materials. `ws_cap` (unshaded, `cull_front`, the
+  same planes; flat, darker, hatched; its colour the material's tint, its texture's mean, its vertex colour) is the
+  next pass of solid components' materials only while a cut or the section is on. The X-ray is `ws_xray` in yellow,
+  on the kind's `xray_all` or on the selected part's subassembly. `ws_flow` draws 48 quads per path (a third on
+  `lean+vis`), placed along the path in the vertex shader from uniforms (the path's points and lengths, the phase
+  the app advances by bench time). Pre-warmed twice as K2's ghost: in the plant's world after its first walkable
+  frame (ws_lit and ws_cap plain and instanced, discarding every fragment; ws_flow collapsed), and in the machine's
+  first frame (the cap pass on with nothing cut, every flow at full density and no strength, the labels with text).
+- **The walk** keeps its 3 minutes: the K1 and K2 phases shortened, the bench running all the while at 2× (the supply
+  on, the pressure swept from −1 to 12 bar and back every 40 s), then the X-ray, the cutaway, a section swept across
+  the machine, each fault made and repaired, Stop.
+- **Measured** ⟨TBD⟩
 
 ### 6.5 Plant values to bench inputs (K6, the mirror)
 
