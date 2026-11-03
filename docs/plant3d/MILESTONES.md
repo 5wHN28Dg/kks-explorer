@@ -18,7 +18,10 @@ apart (`app/walk_frames.gd`: the frame that starts or stops it counts as fast-fo
 `SPIKE_FF` lines), and `phone/frames.sh` counts what the screen showed without them (`sf_frames.py --speeds`, from
 the walk's `SPEED` lines on the phone's monotonic clock); both tools say in their output that they judged the frames
 at 1×. Walks measured before this change judged every frame, fast-forward's included (the stress walks' fast-forward
-parts below among them). A milestone that misses the frame rules is not done; cutting scope to meet them is the user's call ("When to stop and ask the user", below).
+parts below among them). **Clear weather** (the user, 2026-11-03): every measured walk (`walk=…`, `phone/frames.sh`), the view shots (`shot=…`, `phone/shots.sh`)
+and the step bench (`step=bench`, `sim/tests/bench_realism.gd`) run in clear weather unless they name another
+(`weather=KIND`, `--weather=KIND`), so that a scenario's season (free play's weather, REALISM.md §5.6) changes no
+measurement; free play keeps its seasonal weather. A walk with `mp=` takes the host's weather. A milestone that misses the frame rules is not done; cutting scope to meet them is the user's call ("When to stop and ask the user", below).
 
 Sizes: **S** one pull request; **M** two to four; **L** five to eight.
 

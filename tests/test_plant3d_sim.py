@@ -632,6 +632,12 @@ class GdscriptRealism(unittest.TestCase):
         self.assertIn('STEP load=r600 values=', r.stdout)
         self.assertIn('HANDS load=h600 hands=150 meters=50 busy=12 ', r.stdout)
         self.assertIn('world=true phase=cold_start', r.stdout)
+        # cold_iron's weather fixed clear unless --weather= says otherwise (a measured run's: app/main.gd
+        # measured_weather); the --engine load keeps its own seeded chain
+        for load in ('built', 'r600'):
+            self.assertIn(f'STEP load={load} values=', r.stdout)
+            self.assertRegex(r.stdout, rf'STEP load={load} values=\d+ weather=clear world=true phase=cold_start')
+        self.assertRegex(r.stdout, r'STEP load=e600 values=\d+ weather=seeded world=true phase=cold_start')
 
 
 @unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
