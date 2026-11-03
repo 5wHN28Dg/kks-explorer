@@ -817,12 +817,13 @@ class HandsVectors(PartVectors, unittest.TestCase):
         b.model = B()
         b.model.hands = [{'kks': 'X', 'action': 'a', 'component': 'terminal_block'}]
         b.equipment = {'X': {'part': 'pressure_transmitter'}}
-        b.workshop = {'pressure_transmitter': {'components': {'housing': {}, 'terminal_block': {}}}}
+        b.workshop = {'pressure_transmitter': {'components': 2}}       # (the Workshop check's summary: a count)
+        b.workshop_tree = {'pressure_transmitter': {'housing', 'terminal_block'}}
         H.check_components(b)
         b.model.hands[0]['component'] = 'body'
         with self.assertRaises(P.FormatError):
             H.check_components(b)
-        b.workshop = {}
+        b.workshop, b.workshop_tree = {}, {}
         H.check_components(b)
 
 
