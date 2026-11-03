@@ -34,6 +34,9 @@
   {"id": "door_slide", "kind": "synth", "tones": [{"hz": 180, "gain": 0.4}, {"hz": 520, "gain": 0.25}], "noise": {"colour": "pink", "band": [60, 2500], "gain": 0.7}, "made": "a sliding door running on its rollers to its stop (played once)"},
   {"id": "door_roller", "kind": "synth", "tones": [{"hz": 15, "gain": 0.5}, {"hz": 100, "gain": 0.3}, {"hz": 350, "gain": 0.3}], "noise": {"colour": "pink", "band": [150, 5000], "gain": 0.6}, "made": "a roller door: its motor and the slats rattling in their guides (loops while it moves)"},
   {"id": "wind", "kind": "synth", "noise": {"colour": "pink", "band": [30, 1500]}, "made": "wind at the ear, in gusts"},
-  {"id": "plant_distant", "kind": "synth", "tones": [{"hz": 100, "gain": 0.5}, {"hz": 200, "gain": 0.2}], "noise": {"colour": "brown", "band": [30, 700], "gain": 0.8}, "made": "the running plant heard from afar"}
+  {"id": "plant_distant", "kind": "synth", "tones": [{"hz": 100, "gain": 0.5}, {"hz": 200, "gain": 0.2}], "noise": {"colour": "brown", "band": [30, 700], "gain": 0.8}, "made": "the running plant heard from afar"},
+  {"id": "rain", "kind": "synth", "noise": {"colour": "white", "band": [500, 10000]}, "made": "rain on the ground and the plant all round (outdoors)"},
+  {"id": "sand_hiss", "kind": "synth", "noise": {"colour": "white", "band": [1500, 9000]}, "made": "blown sand in a sandstorm, in gusts (outdoors)"},
+  {"id": "thunder", "kind": "synth", "tones": [{"hz": 40, "gain": 0.4}], "noise": {"colour": "brown", "band": [20, 400], "gain": 1.0}, "made": "thunder after a lightning flash (played once)"}
  ]
 }

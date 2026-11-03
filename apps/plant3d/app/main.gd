@@ -25,6 +25,9 @@
 ##   scenario=ID             the scenario the plant starts in (default cold_iron)
 ##   procedure=ID            follow that procedure or tour from the start
 ##   panels=alarms,procedure,crew,card:CODE   open these panels (the frame measurement with the UI open)
+##   weather=KIND            the scenario's weather fixed at that kind (weather.json's: clear, sandstorm, rain, …), its
+##                           values at their targets from the start (a measured walk in that weather, REALISM.md
+##                           §5.4; the scenario must have weather: every shipped scenario has)
 ##   speed=fast              start the plant in fast-forward (the model's share of a core, measured in a walk)
 ##   crews=1                 the crews at work round the walker (S2's and S3's staff): the scenario `shift_cold` (or
 ##                           scenario=ID, one with staff), no role taken (free mode), at normal speed unless speed=fast;
@@ -81,6 +84,7 @@ const ScriptCost = preload("res://app/script_cost.gd")
 const WalkFrames = preload("res://app/walk_frames.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const Workshop = preload("res://workshop/workshop.gd")
+const WeatherView = preload("res://app/weather_view.gd")
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
 
 var cf: ConfigFile
@@ -96,6 +100,7 @@ var hud
 var map
 var ui      # ui/plant_ui.gd: the engine, the cards, alarms, procedures, links
 var workshop  # workshop/workshop.gd: the Workshop mode (docs/plant3d/WORKSHOP.md)
+var weather   # app/weather_view.gd: the weather seen and heard (REALISM.md §5.4)
 var sun: DirectionalLight3D
 var env: Environment
 var auto
@@ -214,6 +219,12 @@ func _ready() -> void:
 			people = null
 		else:
 			people.treads = StairTreads.of(plant.manifest)   # their feet on the stairs' treads and the ladders' rungs
+	# the weather's emitter (app/weather_view.gd): in the plant, hidden with it below, so that its pipelines are
+	# queued with the plant's in the hidden frame (decision 0060; counted on the phone, REALISM.md §11)
+	weather = WeatherView.new()
+	weather.name = "weather_view"
+	add_child(weather)
+	weather.setup(plant, env, sun, tier)
 	if early:
 		plant.visible = false
 		Quality.apply_ranges(get_viewport())   # the tier's visibility ranges, on the plant's pieces now loaded
@@ -227,6 +238,7 @@ func _ready() -> void:
 	player.set_heading(st[1])
 	if people != null:
 		people.camera = player.camera
+	weather.camera = player.camera
 	if early:
 		sky_cam.queue_free()
 		player.camera.make_current()
@@ -256,6 +268,7 @@ func _ready() -> void:
 		opts["crews"] = "1"       # the gate walk is the crews' shift change (PLANT3D §21.10); the drive walk drives them
 	ui.setup(self, opts.get("scenario", "shift_cold" if opts.has("crews") else "cold_iron"))
 	ui.add_settings(hud.extra)
+	weather.attach(ui)
 	workshop = Workshop.new()
 	workshop.name = "workshop"
 	add_child(workshop)
@@ -275,7 +288,7 @@ func _ready() -> void:
 	# a procedure, a speed) is saved to a file of its own, never over a trainee's run, and offers nothing
 	if ui.autosave != null:
 		var own := false
-		for k in ["walk", "shot", "scenario", "procedure", "speed", "crews", "mp"]:
+		for k in ["walk", "shot", "scenario", "procedure", "speed", "crews", "mp", "weather"]:
 			own = own or opts.has(k)
 		if own:
 			ui.autosave.path = "user://run-options.save"
@@ -341,7 +354,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe", "weather"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
@@ -395,6 +408,8 @@ func choose_tier(to_plant := true) -> void:
 	Quality.apply(tier, get_viewport(), sun, env, to_plant)
 	if people != null and people.cfg != Quality.people_share(tier, opts):
 		people.apply_share(Quality.people_share(tier, opts))
+	if weather != null:
+		weather.set_tier(tier)   # the emitter's size by tier (the tier may be chosen after the plant loads)
 	if hud:
 		hud.refresh()
 	_say("tier %s (%s), renderer %s, %s" % [tier, tier_why, Quality.renderer(), RenderingServer.get_video_adapter_name()])
@@ -511,6 +526,8 @@ func _first_frame() -> void:
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_DRAW),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION)])
+	if workshop != null and plant != null:
+		workshop.warm_up(plant)   # the Workshop's ghost pipelines, queued in the background (WORKSHOP.md §7.1)
 	_early_frames()
 
 ## The first 5 s after the first walkable frame (outside the frame rules' measurement, inside the start): each frame

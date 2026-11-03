@@ -44,6 +44,13 @@ uniform float rust = 0.0;
 uniform float wear = 0.0;
 uniform vec4 wet_zone = vec4(0.0);    // a box round water: centre x, z (Godot's axes), half sizes along x and z
 uniform float wet = 0.0;              // how wet at the box's edge and inside (0: no zone)
+// the weather drawn (app/weather_view.gd, REALISM.md §5.4): global parameters, so every material follows them with no
+// new shader variant (counted on the phone: the same pipelines before and after)
+global uniform float wx_wet;          // 0-1: how wet everything under the sky is (the model's `wet`)
+global uniform float wx_dust;         // 0-1: dust laid on what faces up under the sky (after a storm; rain washes it)
+global uniform float wx_rain;         // 0-1: how hard it rains now (drops' rings on wet ground, full tier)
+global uniform vec4 wx_roof_rect;     // the roof map's corner x, z and size along x, z (Godot's axes); zero: none
+global uniform sampler2D wx_roof : filter_nearest, repeat_disable;   // R: the roof's height over each texel / 63.75 m
 const float WET_FALLOFF = 9.0;        // metres beyond the box over which the ground dries
 const float TILE_SHEEN = 0.7;         // a tiled floor's sheen at a grazing view, as a share of its colour
 uniform vec4 emission : source_color = vec4(0.0, 0.0, 0.0, 1.0);   // lamps' light (as Godot's standard material's)
@@ -311,6 +318,33 @@ void fragment() {
 		wz *= 1.0 - smoothstep(0.0, 2.5, wpos.y);
 		base *= mix(1.0, 0.5, wz);
 		rough = mix(rough, 0.1, wz);
+	}
+
+	// the weather (uniform control flow: global parameters): under the sky only, by the roof map; a surface at or
+	// above its roof (the roof itself) is outdoors
+	if (wx_wet + wx_dust > 0.001) {
+		// sampled 0.3 m along the normal: a wall's outer face (on the roof map's edge) reads outdoors, its inner indoors
+		vec2 ru = (wpos.xz + wnrm.xz * 0.3 - wx_roof_rect.xy) / max(wx_roof_rect.zw, vec2(1e-3));
+		float roof = textureLod(wx_roof, ru, 0.0).r * 63.75;
+		bool in_map = wx_roof_rect.z > 0.0 && all(greaterThanEqual(ru, vec2(0.0))) && all(lessThan(ru, vec2(1.0)));
+		float sky = (in_map && roof > 0.0 && wpos.y < roof - 0.3) ? 0.0 : 1.0;
+		float top = smoothstep(0.55, 0.9, up);
+		// wet: darker and glossy on what faces up, a little on walls (run-off); puddles in the low spots of the ground
+		float w = wx_wet * sky * mix(0.3, 1.0, top);
+		float puddle = wx_wet * sky * smoothstep(0.95, 0.99, up) * (1.0 - smoothstep(0.1, 0.4, wpos.y))
+			* smoothstep(0.55, 0.7, n_lo.g);
+		base *= mix(1.0, 0.55, w) * mix(1.0, 0.7, puddle);
+		rough = mix(rough, 0.12, w * top);
+		rough = mix(rough, 0.03, puddle);
+		if (detail > 0.5 && wx_rain > 0.01) {
+			// drops' rings on the puddles and wet tops: the speckle noise scrolled, roughened where a drop lands
+			float ring = smoothstep(0.82, 0.9, texture(noise_tex, wpos.xz * 1.7 + vec2(TIME * 0.37, TIME * -0.29)).a);
+			rough = mix(rough, 0.5, ring * wx_rain * max(puddle, w * top));
+		}
+		// laid dust: pale sand on flat tops, gone where it is wet
+		float d2 = wx_dust * sky * smoothstep(0.75, 0.95, up) * (0.5 + 0.5 * n_hi.b) * (1.0 - wx_wet);
+		base = mix(base, vec3(0.62, 0.55, 0.44), d2);
+		rough = mix(rough, 1.0, d2);
 	}
 
 	if (grating > 0.5) {

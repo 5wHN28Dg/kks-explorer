@@ -133,7 +133,7 @@ def weather_doc():
 
 def apply(files, vals, weather=None, ext=None):
     """files ({rel: parsed JSON}) with the synthetic values appended to the last area's model file and a `world` in
-    every scenario (a version 1 scenario made version 2: its keys are all version 2's too); with --engine's weather,
+    every scenario (one without a `world` given an empty one, its own kept); with --engine's weather,
     weather.json, its ext values in plant.json and every scenario, and every scenario's world seeded by it."""
     m = files[f'model/{AREA}.json']
     m['values'] = m['values'] + vals

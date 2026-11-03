@@ -63,8 +63,10 @@ frame on the phone.
   bindings by component (§7.7's plus `flow`, `heat`, `pressure`); `ref/plant3d_bench.py`, `sim/bench_model.gd`,
   `ref/vectors/plant3d-bench-v1.json`; plant sequences taken by `tools/plant3d/workshop/make_bench.py` and checked.
   `mirror` (K6) maps plant bindings of the equipment onto bench values.
-- **Shaders:** K1–K2 use the plant's materials (no new pipeline). From K3: `ws_lit` (the weathered include with
-  discard by up to three planes and an instance-uniform heat/pressure ramp), `ws_cap`, `ws_xray`, `ws_flow` (unshaded).
+- **Shaders:** K1 uses the plant's materials (no new pipeline). K2 adds `ws_xray` (unshaded) for the guided
+  assembly's ghost, as WORKSHOP.md §7.1 says (this record said K3 until 2026-11-02). From K3: `ws_lit` (the weathered
+  include with discard by up to three planes and an instance-uniform heat/pressure ramp), `ws_cap`, `ws_flow`
+  (unshaded), and `ws_xray` for the X-ray too.
   Their pipelines are queued in a hidden frame after the plant's first walkable frame, and the Workshop's load draws
   hidden once before the machine's first frame.
 - **The plant meanwhile:** the Workshop draws in a full-screen `SubViewport` with its own world, and the main

@@ -628,6 +628,112 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
 - **Heat:** heat shimmer is left out (screen-space; 0057 left those out), the trainee's heat stress shows in the
   Crew panel.
 
+### 5.5 As built for milestone WX3 (2026-11-02: the weather seen and heard)
+
+- **The first train's weather** (`data/plant3d/weather.json`): the eight kinds of §5.1 and four seasons (winter days
+  335–59, spring 60–151, summer 152–273, autumn 274–334) with hourly rows that keep a kind for hours (a sandstorm
+  ends with odds of about one in five an hour; summer has no rain, winter its rain, fog and cold nights, spring and
+  autumn the thunderstorms). It drives only what is drawn: `wind` (m/s), `rain` (mm/h), `dust` (mg/m³),
+  `visibility` (m: under 1 km in a sandstorm, as [WMO]), `solar` (W/m²), `lightning` (0–1) and **`wet`** (0–1, added
+  here: how wet surfaces under the sky are, a 25-minute lag, so they dry after the rain). They are new `ext` values of
+  plant.json that every scenario sets (clear-weather values); `ambient_t`, `ambient_wb` and the plant's reactions stay
+  WX2's, so the weather changes nothing the model computes. **Free play's weather:** the two version 2 scenarios
+  (`shift_cold`, a summer day, year day 196; `shift_wtp`, a spring day, year day 100) carry `{"season": id}`; the
+  version 1 scenarios can't carry `world` and stay clear (until 2026-11-03: §5.6). `plant3d-v1.json` and `-v2.json`
+  were regenerated: the new values added, every earlier value the same.
+- **Drawn** (`app/weather_view.gd`), every frame from the model's values eased over 2 s (the model's lags already take
+  minutes), so every peer stepping the same run sees the same weather:
+  - the depth fog's density 3 / `visibility` (5 % of the light through at the model's visibility), never thinner
+    than the clear haze; its colour toward sand with `dust`, grey with `rain`, a pale mist when the view is short
+    without either; its sky affect washes the photographed sky toward it below 8 km (no sky shader, nothing
+    reprocessed);
+  - the sun's energy by `solar` against the clear kind's at the hour (taken `solar`'s lag earlier, as the model's
+    lagged value runs behind its table), blended toward a value from the view while the clear sky's sun is low (the
+    app's sun stays where the photographed sky's is): no jump at dawn or dusk; its shadows softer under cloud; a
+    lightning flash adds light for 0.15 s;
+  - one GPUParticles3D round the camera (the phone 2,000 within 25 m, the full tier 8,000 within 40 m: §11), its
+    share of them (`amount_ratio`) by how hard it rains (10 mm/h is all) or how much sand blows (dust 1–6 mg/m³),
+    rain streaks falling with the wind's push or sand specks along the north-westerly wind; a particle that leaves
+    the box re-enters at its other side, and one under a roof is not drawn;
+  - **the roof map:** the build rasterises every building's and canopy's plan at half a metre into an R8 texture of
+    the roof's height (quarter metres), `built/roof_map.res`, named in the build's manifest; the particles and the
+    weathered shader read it as a global parameter;
+  - **wet and dusty surfaces:** global parameters of the one weathered shader (`wx_wet`, `wx_dust`, `wx_rain`,
+    `wx_roof`, `wx_roof_rect`): under the sky, wet darkens and glosses what faces up (a little the walls), with
+    puddles in the ground's low patches and drops' rings on them (full tier only); laid dust (from `dust`, after a
+    storm's dust while it settles, gone where wet) pales flat tops; the roof map is read 0.3 m along the surface's
+    normal, so a wall's outer face is outdoors and its inner face indoors. The Workshop's bench (its own world, the
+    same materials) gets none of it. Uniforms only: no new variant.
+  - **Heat shimmer** is left out (screen-space, as 0057 left those).
+- **Heard** (ui/sound_player.gd, three new sounds of the synth library, decision 0055): `rain` (loop, also heard on
+  the roofs indoors at 0.35), `sand_hiss` (loop, in gusts), `thunder` (a one-shot rumble played after the flash,
+  delayed by the strike's distance at 343 m/s and quieter with it, at most three on their way); the wind's existing
+  loop follows `wind` (as loud as before at the clear kind's 2 m/s, about +5 dB in a sandstorm).
+- **Lightning flashes** fall in 2-second slots of the model's steps: at a slot's first step (the clock's `stepped`,
+  with the engine bound as soon as the clock takes it, so a session's catch-up steps count) the slot flashes when a
+  32-bit mix of the world seed and the slot's number is under the model's `lightning` there × 0.08, at a step and a
+  distance (0.4–6 km) taken from the same number: the same on every device, never this device's random numbers or
+  eased values.
+- **The instructor's panel** has a button per kind in a scenario with weather (the WX1 input `[n, "weather", kind]`).
+- **Measured on the Note 9** (2026-11-02; test-signed release builds without the lightmap's bake, as S4's and DC1's
+  walks; the frames walk among the crews, `crews=1`, 600 s, first starts, `SAMPLE=1`; evidence in
+  `~/kks-work/build/wx3/` and the worktree's `results/` on the maintainer's laptop):
+
+  | Run (battery at start) | Mean frame | At 60 fps | At ≥ 30 fps | GPU median / p95 | Over 100 ms (the app's) |
+  |---|---|---|---|---|---|
+  | main, 240 s, warm (31.5 °C; pipelines only, not judged) | 26.61 ms | 48.45 % | 99.11 % | 19.9 / 26.4 ms | 0 |
+  | clear 2 (28.3 °C) | 25.70 ms | 49.25 % | 99.10 % | 19.7 / 26.0 ms | 0 |
+  | clear 3 (29.3 °C) | 26.63 ms | 44.60 % | 98.36 % | 20.9 / 28.1 ms | 0 |
+  | sandstorm 1 (25.1 °C) | 25.94 ms | 48.10 % | 98.87 % | 20.0 / 26.4 ms | 0 |
+  | sandstorm 2 (29.6 °C) | 28.45 ms | 37.20 % | 95.14 % | 22.6 / 30.2 ms | 0 |
+
+  The frame rule (no frame over 100 ms the app causes after the first 5 s) passes in every run. The sandstorm's GPU
+  median against clear weather: +1.0 ms on the means of the two runs each (20.3 and 21.3 ms), +1.7 ms between the
+  two warmest runs (29.3 and 29.6 °C), within §11's +2 ms; the phone's own spread between two runs of the same
+  weather is as large (1.2 ms clear, 2.6 ms sandstorm). The first clear run did not start (the phone left adb as it
+  began) and was walked again. The first frame's pipelines: main 12
+  surface + 7 specialization, WX3 13 + 8 (the particles' draw pipeline; the process shader's compute pipeline is not
+  in Godot's counts), compiled in the hidden frame; one pipeline compiled later in every walk, at the WTP (500 s in,
+  a 15 ms frame), in clear weather too. First frame 10.2–11.5 s from launch, peak PSS 848–868 MB. Package: the APK
+  121.0 MB of 250, +0.30 MB against main (the three sounds, the roof map, the scripts and shaders).
+- **Measuring:** `weather=KIND` (app/main.gd, with `crews=1`) fixes the scenario's weather at that kind and its driven
+  values at the kind's targets for the start hour, for the rest of that process (a restart into it too); ignored with
+  `mp=`. Free play's seeded scenarios start from clear-weather values while their season's chain starts at its
+  `start` kind (summer's `hot`): the values lag toward it from step 0.
+
+### 5.6 Every scenario with its season's weather (2026-11-03)
+
+The user (2026-11-03): the five scenarios that were format 1 (`cold_iron`, `hot_restart`, `wtp_cold`, `wtp_normal`,
+`wtp_flood`) are made version 2 so that the weather, and the realism pieces after it, work in them; free play's
+weather on, seeded by season.
+- **The content** (`tools/plant3d/train_content.py`, `train_weather.FREE_PLAY`): each is `"version": 2` with
+  `"world": {"year_day", "weather": {"season"}}` as its last key and nothing else new: no `start` (the clock starts at
+  plant.json's, day 1 06:00, as before), no `staff` (no people, as before), no world `seed` (1, §2.1). Each takes the
+  season of its crews' twin: `cold_iron` and `hot_restart` as `shift_cold` (summer, year day 196); the WTP's three as
+  `shift_wtp` (spring, year day 100). With the default seed, the twins of one season draw the same weather. Format 1
+  itself, its validator rules and `plant3d-v1.json`'s synthetic parts are unchanged (its `about` still says "format 1
+  vectors": its `train` and `hot` have run version 2 content since P1).
+- **The vectors** (made again, then compared by JSON with main's): nothing moved between files. `plant3d-v1.json`'s
+  `train` (cold_iron) and `hot` (hot_restart) stay where they are, as P1 left them following the first train's
+  content (PLANT3D.md §19); `plant3d-v2.json`'s `wtp` (wtp_cold), `wtp_cip` and `wtp_regen` (wtp_normal) likewise.
+  In those five runs every input, event and fork is the same and every value the same but the weather's: each
+  snapshot gains `world_hour`, `world_day` and `world_wx`, and the driven values follow the season's kind instead of
+  holding the clear values: in the summer runs `wind`, `solar`, `visibility` and `dust` (toward `hot`), in the spring
+  runs `wind` and `solar` (spring starts at `clear`, whose other targets are the clear values); `rain`, `lightning` and
+  `wet` stay 0. No run crosses a change
+  of kind, so no `weather` event is added. Nothing the model computes reads the weather (§5.5), so no model value
+  moved. `plant3d-v2.json`'s `train` (forks from cold_iron without values), `staff`, `day` and every synthetic item,
+  and `plant3d-realism.json`, are byte for byte main's.
+- **What depends on it:** the app lists the same scenarios (by id; none gained `staff`, so none is offered as a crews'
+  shift); a save or session snapshot of a run made before is refused as "content has changed" (the content's hash,
+  `ui/run_save.gd`), as after any content change, and a session's players must share the content's hash; procedures,
+  tours and links name the scenarios by id, unchanged. The app's test of a plant without weather (`test_weather.gd`)
+  now makes such a scenario (cold_iron without `world`) instead of starting cold_iron. cold_iron is the app's default
+  scenario, so a plain launch, the step bench's loads (`app/step_bench.gd`: the train as built and RE1's shapes
+  without `--engine` now both carry the built weather's seven values, and print its `WEATHER` line) and a phone walk
+  started in it now run summer's `hot` weather (a little dust and haze, a 12 km view) where earlier ones ran none: figures measured
+  before compare with clear weather (§5.5 measured the weather's own cost).
+
 ## 6. Documents and discussions
 
 ### 6.1 Generic P&IDs

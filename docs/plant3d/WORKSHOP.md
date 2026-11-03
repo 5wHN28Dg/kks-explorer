@@ -247,6 +247,36 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
   model time, 14 ms of model a second) and the session layer took 0.30 ms a frame on average, 3.8 ms at most (its own
   2 ms budget's known excess, MILESTONES.md MP2). The scene is 23 KB and the space 28 KB of the package.
 
+**As built (K2, 2026-11-02).**
+- `apps/plant3d/workshop/assembly.gd` (pure: the steps, placed and loose parts, the two sentences, snapping, the
+  pile) and the steps in `workshop.gd`: **Assemble from exploded**, **Assemble from a pile**, **Take apart step by
+  step**. A part is placed (at home relative to its parent, riding with it wherever that stands) or loose, with a
+  transform in the machine's own frame, so a loose part stays where it lies when its parent is moved, and a part may
+  be put into a parent that is still loose (the terminal block into a housing on the pile). The insides of a sealed
+  component are never loose: their steps are done with it. The slider waits while the steps are on; Reset ends them
+  with every part home, Reassemble all animates the loose parts home.
+- The next step's words (its `text` and `why`) show above the tools; assembling, its ghost stands where the part goes
+  (its own meshes, `ws_xray`, beside a loose parent too). A part let go within 2 % of the machine's box diagonal (at
+  least 5 mm) and 10° of its place, modulo its `sym` (a group judged at its items' centre), snaps there unless a need
+  is unmet: then the need's first sentence shows and the part stays loose. A placed part that a placed part needs
+  can't be picked up (the need's second sentence). One step per fastener group, the group moved as one.
+- The pile: every part (not a sealed one's insides) on the floor in front of the machine, in its home orientation, in
+  rows by size, largest first (`Assembly.pile`, a fixed layout).
+- `ws_xray` (`workshop/ws_xray.gdshader`: unshaded, `blend_mix`, `depth_draw_never`, a little more opaque at the
+  outline). Queued twice: a hidden mesh of the space's (the plant's vertex format) with it in the plant 4 s after the
+  first walkable frame (`warm_up`, as the chevron), drawn plain and instanced (a fastener group's ghost is a
+  MultiMesh); and every part's own ghost, built as its step builds it and standing at home, drawn unseen (alpha 0) in
+  the machine's first frame, hidden after it. One ghost per vertex format was not enough: the Note 9 still compiled a
+  pipeline at the set screw's first ghost, and the laptop's Mobile renderer did too, at the same step.
+- The transmitter's 16 steps (13 the trainee does: the sealed parts' insides come with them) follow the 3051 manual's reassembly (§6.5–§6.5.4; its take-apart, §6.4, is the
+  reverse): the sensor module, the housing (needs the module), its set screw, the electronics board, the display, the
+  electronics cover (needs the board and the display), the terminal block, the cable gland, the terminal cover (needs
+  the terminal block), the process flange (needs the module), its bolts, the drain/vent valves, the manifold. The
+  electronics cover is now sealed (the manual's spare parts list its window with it).
+- The fixture kind is assembled from exploded in the tests (its lid's four-fold symmetry).
+- The Workshop walk keeps its 3 minutes with the K1 phases shortened, then takes the machine apart step by step (each
+  part drawn out and let go) and puts it back from a pile (each part drawn to its place and snapped).
+
 **Retrofitting.** Each generator's `use()` calls stay; a generator gains `g.comp()` and `g.only()` calls around groups
 of primitives. Moving pieces' mesh builders (`g.move`) carry `comp` too. Proved on the transmitter alone first (K1a),
 then one kind per milestone.
@@ -307,8 +337,8 @@ The data file's `assembly` is the guided order, one step per component or fasten
 - `needs`: `[component, sentence when placing too early, sentence when removing too early]`, in order: placing is
   refused with the first unmet need's first sentence; removing a component is refused while a placed component needs
   it, with that need's second sentence. Every named component exists.
-- **Snapping:** within 2 % of the part's box diagonal (at least 5 mm) of home and within 10° of its home orientation,
-  modulo the component's `sym`.
+- **Snapping:** within 2 % of the part kind's (the whole machine's) box diagonal (at least 5 mm) of home and within 10° of its home orientation,
+  modulo the component's `sym` (its axis passes through the component's pivot).
 - **Why not the procedure format (§8):** a procedure's `at` names KKS codes and its `do` names ops of the model; an
   assembly step names components of a part kind with no code, and the trainee's handling is UI state, not model state
   (§6). Bending format 1 (frozen) or format 2 to fit would be worse than a small section of the Workshop's own file
@@ -450,7 +480,7 @@ structures' own vertex format, since removed) and a discarding one at 7.
 | plant materials | opaque, lit | K1–K2: the space, the tree, explode, handling (no new pipeline) | today's |
 | `ws_lit` | opaque, lit, `discard` by up to three planes | K3 on: every component; heat and pressure ramps from an `instance uniform` (at most 16 per shader: Godot's limit) and the selection's emission | `weathered.gdshaderinc` |
 | `ws_cap` | unshaded, `cull_front`, the same planes | the cut faces (below): `ws_lit`'s next pass on solid components | new, small |
-| `ws_xray` | unshaded, `blend_mix`, `depth_draw_never` | from K2: the assembly's ghost; from K3 the X-ray too (an edge-weighted see-through, in another colour) | new, small |
+| `ws_xray` | unshaded, `blend_mix`, `depth_draw_never`, `depth_test_disabled` (K2: the ghost shows through what stands in front of it) | from K2: the assembly's ghost; from K3 the X-ray too (an edge-weighted see-through, in another colour) | new, small |
 | `ws_flow` | unshaded, `blend_add` | flow particles: one MultiMesh of quads per path, moved along the path in the vertex shader (the path in a small texture; speed and density as uniforms) | new, small |
 
 One new lit shader and three unshaded ones: `ws_xray` arrives with K2 (counted and pre-warmed there), the other three

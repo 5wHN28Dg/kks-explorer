@@ -53,6 +53,12 @@ func unshelve(alarm: String) -> int:
 	return send(["unshelve", alarm])
 
 
+## The instructor's weather (REALISM.md §5.1): the kind from the next step; the seeded chain goes on from it at the
+## next hour, a script at its next entry.
+func weather(kind: String) -> int:
+	return send(["weather", kind])
+
+
 ## The instructor's fault and repair (§7.8, §15.5).
 func fault(fid: String) -> int:
 	return send(["fault", fid])

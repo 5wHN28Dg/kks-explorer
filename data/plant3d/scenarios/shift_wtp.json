@@ -6,6 +6,13 @@
  "init": {
   "ambient_t": 35,
   "ambient_wb": 25,
+  "wind": 2,
+  "rain": 0,
+  "dust": 0.08,
+  "visibility": 20000,
+  "solar": 0,
+  "lightning": 0,
+  "wet": 0,
   "grid_frequency": 50,
   "hp_mass": -100,
   "lp_lvl": -50,
@@ -111,5 +118,6 @@
   {"id": "hrsg1_lift_gate_switch", "set": {"hrsg1_lift_gate0_switch": 1}, "repair": {"hrsg1_lift_gate0_switch": 0}, "text": "A landing gate switch reads not shut", "kks": "10SNB10AB001"}
  ],
  "start": {"day": 1, "time": "05:00"},
+ "world": {"year_day": 100, "weather": {"season": "spring"}},
  "staff": {"seed": 3}
 }

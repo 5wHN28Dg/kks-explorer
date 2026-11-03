@@ -779,7 +779,9 @@ func build_all(out_dir: String) -> int:
 	# an operable crane runs on a hall's crane runway (_crane checks it fits there): one anywhere else is refused
 	err += orphan_cranes()
 	err += _bake_scene(out_dir, [out_dir.path_join("ground.scn")] + manifest_areas.map(func(a): return a.scene))
+	var roofs := roof_map(out_dir)
 	var manifest := {
+		"roof_map": roofs,
 		"format": "walkdown-plant-built", "version": 1, "title": plant.get("title", ""),
 		"start": {"at": _arr(Geom.g(plant.start.at)), "yaw": float(plant.start.get("yaw", 0))},
 		"ground": out_dir.path_join("ground.scn"), "areas": manifest_areas, "interiors": interiors, "extent": _extent(),
@@ -873,6 +875,48 @@ func _save(root: Node, path: String) -> int:
 	if e != OK:
 		errors.append("save %s: error %d" % [path, e])
 	return e
+
+## The roof map (REALISM.md §5.4, WX3): the height of the roof over each half metre of the plant, for the weather drawn
+## outdoors only (rain and sand under no roof, wet and dusty surfaces under the sky). An R8 image over the plant's
+## extent in Godot's axes (u along x, v along z = −north), each texel the highest roof or canopy over it in quarter
+## metres (0: open sky, at most 63.75 m), saved as a texture resource. Returns the manifest's entry {path, rect:
+## [x, z of the corner, size along x, z]}, or {} for a plant without buildings.
+const ROOF_RES := 0.5
+const ROOF_STEP := 0.25
+
+func roof_map(out_dir: String) -> Dictionary:
+	var pieces: Array = []   # [plan polygon, height]
+	for bl in buildings:
+		pieces.append([bl.outline, float(bl.height)])
+	for a in areas:
+		for sh in _far_items(a).sheets:
+			pieces.append([sh[0], float(sh[1])])
+	if pieces.is_empty():
+		return {}
+	var ex := _extent()
+	var x0 := float(ex[0][0])
+	var z0 := -float(ex[1][1])
+	var w := int(ceil((float(ex[1][0]) - x0) / ROOF_RES))
+	var h := int(ceil((float(ex[1][1]) - float(ex[0][1])) / ROOF_RES))
+	var img := Image.create(w, h, false, Image.FORMAT_R8)
+	for pc in pieces:
+		var poly: PackedVector2Array = pc[0]
+		var lvl := clampi(int(round(pc[1] / ROOF_STEP)), 1, 255)
+		var lo := Vector2(INF, INF)
+		var hi := Vector2(-INF, -INF)
+		for q in poly:
+			lo = Vector2(minf(lo.x, q.x), minf(lo.y, q.y))
+			hi = Vector2(maxf(hi.x, q.x), maxf(hi.y, q.y))
+		for j in range(maxi(0, int((-hi.y - z0) / ROOF_RES)), mini(h, int((-lo.y - z0) / ROOF_RES) + 1)):
+			for i in range(maxi(0, int((lo.x - x0) / ROOF_RES)), mini(w, int((hi.x - x0) / ROOF_RES) + 1)):
+				var at := Vector2(x0 + (i + 0.5) * ROOF_RES, -(z0 + (j + 0.5) * ROOF_RES))   # the texel's centre, plan axes
+				if Geometry2D.is_point_in_polygon(at, poly) and int(img.get_pixel(i, j).r8) < lvl:
+					img.set_pixel(i, j, Color8(lvl, 0, 0))
+	var path := out_dir.path_join("roof_map.res")
+	if ResourceSaver.save(ImageTexture.create_from_image(img), path) != OK:
+		_err("io", path, "could not save the roof map")
+		return {}
+	return {"path": path, "rect": [x0, z0, w * ROOF_RES, h * ROOF_RES]}
 
 func _extent() -> Array:
 	var lo := Vector2(INF, INF)

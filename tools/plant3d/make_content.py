@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
-import kit, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
+import kit, train_weather, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
 from workshop import pressure_transmitter as ws_pressure_transmitter  # noqa: E402
 
 # the part kinds with Workshop data (docs/plant3d/WORKSHOP.md §4): each a module of tools/plant3d/workshop/
@@ -90,6 +90,17 @@ def add_air_permissives(areas, models):
                 o['needs'] = list(o.get('needs', [])) + [list(AIR)]
 
 
+def _with_world(sc, world):
+    """A version 2 scenario with its `world` after its `start` (REALISM.md §2.1), or last without one."""
+    out = {}
+    for k, v in sc.items():
+        out[k] = v
+        if k == 'start':
+            out['world'] = world
+    out.setdefault('world', world)
+    return out
+
+
 def build():
     """{relative path: text} for everything under data/plant3d."""
     areas = site_areas.add_to_train(train_areas.areas()) + wtp_areas.areas() + site_areas.areas()
@@ -122,6 +133,9 @@ def build():
         files[f'scenarios/{s["id"]}.json'] = s
     files['scenarios/shift_cold.json'] = train_staff.scenario(files['scenarios/cold_iron.json'])
     files['scenarios/shift_wtp.json'] = train_staff.scenario_wtp(files['scenarios/cold_iron.json'])
+    for sid, world in train_weather.FREE_PLAY.items():     # free play's weather (REALISM.md §5.1, §5.5)
+        files[f'scenarios/{sid}.json'] = _with_world(files[f'scenarios/{sid}.json'], world)
+    files['weather.json'] = train_weather.weather()
     files['staff.json'] = train_staff.staff(models, train_staff.load_layout())
     for p in [train_content.cold_start(), train_content.hot_restart()] + train_content.tours() + \
             wtp_content.procedures() + site_areas.tours() + train_hoists.procedures():
