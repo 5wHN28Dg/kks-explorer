@@ -954,9 +954,12 @@ func _update_ghost() -> void:
 
 ## A part's ghost (its own meshes, plain or instanced as the part draws them) in `mat`, not yet placed.
 func _ghost_node(id: String, mat: Material) -> Node3D:
+	return _ghost_node_of(comps.get(id, groups.get(id)), mat)
+
+## A component's or fastener group's node's ghost (its own meshes, plain or instanced, its items from its meta).
+func _ghost_node_of(src: Node3D, mat: Material) -> Node3D:
 	var g := Node3D.new()
 	g.name = "ghost"
-	var src: Node3D = comps.get(id, groups.get(id))
 	for c in src.get_children():
 		if c is MeshInstance3D and c.mesh != null:
 			var mi := MeshInstance3D.new()
@@ -1183,41 +1186,39 @@ func warm_up(parent: Node) -> void:
 ## time on a worker thread and freed again once their pipelines are made (the pipeline cache keeps them for later
 ## starts); a kind the trainee is opening meanwhile is left to its entry.
 func _warm_kinds() -> void:
+	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
+		return   # (it compiles only what it draws: a hidden machine would be pure cost there)
 	for k in kinds():
 		var path := DIR.path_join(k + ".scn")
-		if is_open or ResourceLoader.load_threaded_request(path, "PackedScene") != OK:
+		# not while the tier probe measures, nor while the Workshop shows (its entry compiles what it needs)
+		while is_inside_tree() and (is_open or ("probing" in main and main.probing)):
+			await get_tree().create_timer(1.0).timeout
+		if not is_inside_tree() or ResourceLoader.load_threaded_request(path, "PackedScene") != OK:
 			continue
 		while ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			await get_tree().process_frame
 		var ps := ResourceLoader.load_threaded_get(path) as PackedScene
-		if ps == null or _warm == null or not is_instance_valid(_warm):
-			continue
+		if ps == null or _warm == null or not is_instance_valid(_warm) or is_open:
+			continue   # (opened meanwhile: the entry has it)
 		var mc: Node3D = ps.instantiate()
 		mc.name = "warm_" + k
-		_warm_mats(mc, false, false)
 		var xr := ShaderMaterial.new()
 		xr.shader = XRAY
 		var gh := Node3D.new()
 		gh.name = "ghosts"
 		for n in mc.find_children("*", "Node3D", true, false):
+			if n.has_meta("items"):   # its own MultiMeshes with the items (the scene's resource left as loaded)
+				var items: Array = n.get_meta("items")
+				for mmi in n.get_children():
+					if mmi is MultiMeshInstance3D:
+						var mm := ((mmi as MultiMeshInstance3D).multimesh.duplicate()) as MultiMesh
+						mm.instance_count = items.size()
+						for i in items.size():
+							mm.set_instance_transform(i, items[i])
+						(mmi as MultiMeshInstance3D).multimesh = mm
 			if n.has_meta("explode") or n.has_meta("items"):
-				var src := n as Node3D
-				if src.has_meta("items"):
-					var items: Array = src.get_meta("items")
-					for mmi in src.get_children():
-						if mmi is MultiMeshInstance3D and (mmi as MultiMeshInstance3D).multimesh.instance_count != items.size():
-							(mmi as MultiMeshInstance3D).multimesh.instance_count = items.size()
-				for c in src.get_children():
-					if c is MeshInstance3D and (c as MeshInstance3D).mesh != null:
-						var mi := MeshInstance3D.new()
-						mi.mesh = c.mesh
-						mi.material_override = xr
-						gh.add_child(mi)
-					elif c is MultiMeshInstance3D:
-						var mmi := MultiMeshInstance3D.new()
-						mmi.multimesh = (c as MultiMeshInstance3D).multimesh
-						mmi.material_override = xr
-						gh.add_child(mmi)
+				gh.add_child(_ghost_node_of(n as Node3D, xr))   # the ghost as a step builds it
+		_warm_mats(mc, false, false)
 		mc.add_child(gh)
 		_warm.add_child(mc)
 		_warm_kinds_done.append(k)

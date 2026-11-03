@@ -201,11 +201,11 @@ func setup(w) -> void:
 	step_label.add_theme_constant_override("outline_size", 6)
 	step_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	step_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# on a canvas layer of its own, at the Workshop's: in the panels' layer this outlined, wrapped sentence cost about
+	# on a canvas layer of its own, just above the Workshop's: in the panels' layer this outlined, wrapped sentence cost about
 	# two draw calls a letter (a long assembly step ~440, the pile's view ~510 in all against §8's 300), alone ~4
 	step_layer = CanvasLayer.new()
 	step_layer.name = "step_layer"
-	step_layer.layer = ws.layer
+	step_layer.layer = ws.layer + 1   # (above the panels, as the label was drawn last among them)
 	add_child(step_layer)
 	step_layer.add_child(step_label)
 
