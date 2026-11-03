@@ -20,6 +20,7 @@ var slider: HSlider
 var only_cb: CheckBox
 var back_btn: Button
 var step_label: Label           # the guided steps: the next step's words (WORKSHOP.md §3, §4.6)
+var step_layer: CanvasLayer     # step_label's own canvas layer, shown with the panels
 var guide_btns: Array = []      # the buttons that start the steps (when the kind's data has an assembly)
 var tools: Array = []           # the buttons that need a machine
 var run_panel: PanelContainer   # the bench (workshop/run_panel.gd), in the properties' place while shown
@@ -200,7 +201,13 @@ func setup(w) -> void:
 	step_label.add_theme_constant_override("outline_size", 6)
 	step_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	step_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(step_label)
+	# on a canvas layer of its own, at the Workshop's: in the panels' layer this outlined, wrapped sentence cost about
+	# two draw calls a letter (a long assembly step ~440, the pile's view ~510 in all against §8's 300), alone ~4
+	step_layer = CanvasLayer.new()
+	step_layer.name = "step_layer"
+	step_layer.layer = ws.layer
+	add_child(step_layer)
+	step_layer.add_child(step_label)
 
 ## While the scene loads (or when it could not).
 func loading(what: String) -> void:
@@ -345,6 +352,13 @@ func refresh() -> void:
 	if step_label != null:
 		step_label.text = ws.step_words()
 	slider.editable = ws.machine != null and not ws.guide.on()   # (the slider waits while the steps are on)
+
+## A canvas layer under a Control doesn't follow its visibility: the step words' layer follows the panels'.
+func _process(_d: float) -> void:
+	if step_layer != null:
+		var on: bool = is_visible_in_tree() and ws.visible
+		if step_layer.visible != on:
+			step_layer.visible = on
 
 ## Each frame: the bench's panel, the session's strip.
 func tick() -> void:

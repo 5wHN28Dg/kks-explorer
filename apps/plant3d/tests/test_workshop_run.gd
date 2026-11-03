@@ -46,6 +46,7 @@ func run(tree: SceneTree) -> Array:
 	_loader_refuses()
 	_free_rotor()
 	_fault_without_repair()
+	_logs_bounded()
 	var main := App.start(tree)
 	if main.ui == null or main.workshop == null:
 		main.free()
@@ -63,6 +64,9 @@ func run(tree: SceneTree) -> Array:
 				shaders[(c.material_override as ShaderMaterial).shader.resource_path.get_file()] = true
 		for want in ["ws_xray.gdshader", "ws_lit.gdshader", "ws_cap.gdshader", "ws_flow.gdshader"]:
 			check(shaders.has(want), "the plant's early warm-up holds %s (%s)" % [want, str(shaders.keys())])
+		# every kind's own machine in the Workshop's materials (K3's first entry compiled them in its first frame)
+		for k in ws.kinds():
+			check(ws._warm_kinds_done.has(k), "the plant's early warm-up held %s's machine (%s)" % [k, str(ws._warm_kinds_done)])
 	else:
 		check(false, "the plant's early warm-up ran")
 	ws.open("pressure_transmitter")
@@ -77,8 +81,16 @@ func run(tree: SceneTree) -> Array:
 	_views(ws)
 	await _running(ws)
 	_panel(ws)
+	# the step words on a canvas layer of their own (in the panels' layer they cost ~2 draw calls a letter: the pile's
+	# view drew ~510 against §8's 300), shown with the Workshop and hidden when it closes
+	var sl = ws.panels.step_label
+	check(sl.get_parent() is CanvasLayer and sl.get_parent() != ws, "the step words are on a canvas layer of their own")
+	await tree.process_frame
+	check(ws.panels.step_layer.visible, "the step words' layer shows with the Workshop")
 	ws.close()
 	await ws.left
+	await tree.process_frame
+	check(not ws.panels.step_layer.visible, "the step words' layer hides when the Workshop closes")
 	main.free()
 	return p
 
@@ -351,6 +363,65 @@ func _fault_without_repair() -> void:
 	c.repair("stuck")
 	c.tick(0.1)
 	check(c.faulted.has("stuck") and c.now("u") == 1.0, "a fault with no repair stays made, and shown made")
+
+## The engine's input and event logs stay small for as long as a machine runs on the bench (the clock drops what it
+## has read), and the values and the digest are bit for bit those of an engine that keeps everything, given the same
+## inputs: the transmitter's bench run for 20 minutes of bench time, a slider moved every step, its faults made and
+## repaired, the supply started and stopped.
+func _logs_bounded() -> void:
+	var BenchClock = load("res://workshop/bench_clock.gd")
+	var Eng = load("res://sim/engine.gd")
+	var data_dir := ProjectSettings.globalize_path("res://").path_join("../../data/plant3d/workshop").simplify_path()
+	var text := FileAccess.get_file_as_string(data_dir.path_join("bench/pressure_transmitter.json"))
+	var comps: Array = []
+	var wd = JSON.parse_string(FileAccess.get_file_as_string(data_dir.path_join("pressure_transmitter.json")))
+	if wd is Dictionary:
+		comps = (wd.get("components", {}) as Dictionary).keys()
+	var c = BenchClock.new()
+	if not c.load_text(text, comps):
+		check(false, "the transmitter's bench loads for the logs' check: %s" % c.error)
+		return
+	var ref = Eng.new(c.m, BenchModel.SCENARIO)
+	var faults: Array = []
+	for f in c.m.faults:
+		faults.append(f.id)
+	var cmds: Array = []
+	for o in c.m.ops_ui:
+		if o.do != "set" and o.do != "reset":
+			cmds.append([o.at, o.do])
+	var setter := ""
+	for o in c.m.ops_ui:
+		if o.do == "set":
+			setter = o.at
+			break
+	var most := 0
+	var same := true
+	for i in 12000:
+		var x := -1.0 + 13.0 * absf(sin(i * 0.01))
+		c.op_set(setter, x)
+		ref.op(setter, "set", x)
+		if i % 300 == 0 and not cmds.is_empty():
+			var cm: Array = cmds[(i / 300) % cmds.size()]
+			c.command(cm[0], cm[1])
+			ref.op(cm[0], cm[1])
+		if i % 500 == 100 and not faults.is_empty():
+			var fid: String = faults[(i / 500) % faults.size()]
+			c.fault(fid)
+			ref.fault(fid)
+		if i % 500 == 350 and not faults.is_empty():
+			var fid: String = faults[(i / 500) % faults.size()]
+			c.repair(fid)
+			ref.repair(fid)
+		c.tick(BenchClock.STEP)
+		c.new_events()
+		while ref.step_no < c.e.step_no:
+			ref.step()
+		most = maxi(most, c.e.events.size() + c.e.inputs.size())
+		if c.e.cur != ref.cur:
+			same = false
+	check(c.steps >= 11990 and ref.events.size() > 200, "the logs' check ran (%d steps, %d events kept by the reference)" % [c.steps, ref.events.size()])
+	check(most <= 64, "the bench's engine keeps its logs small while it runs: at most %d entries (inputs and events)" % most)
+	check(same and c.e.digest() == ref.digest(), "dropping the read logs changes no value and not the digest")
 
 ## A rotor that turns freely (travel 0) turns at the value × scale revolutions a second, added up over bench time.
 func _free_rotor() -> void:
