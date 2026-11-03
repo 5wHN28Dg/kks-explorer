@@ -2319,6 +2319,13 @@ applied (done as the NPC's, no step of the player's). `day` gains a session fork
 field operator released while walking to the alarm and taken back by another slot). Every staff run, the day and every
 fork carry `digests`: the state digest (§17.14) of step 0 and of every 50th step.
 
+**Changed 2026-11-03 (every scenario with weather, REALISM.md §5.6):** the five scenarios that were version 1
+(`cold_iron`, `hot_restart`, `wtp_cold`, `wtp_normal`, `wtp_flood`) are version 2 with their season's weather. No run
+moved between the files: format 1's `train` and `hot` and this file's `wtp`, `wtp_cip` and `wtp_regen` keep every
+input, event and fork, their snapshots gain `world_hour`, `world_day` and `world_wx`, and the weather's driven values
+follow the season (no model value changes). Every synthetic item, this file's `train`, `staff` and `day`, and
+`plant3d-realism.json` are unchanged.
+
 **Added for milestone S3** (2026-10-26, §17.12): `staff.runs` gains two runs on the synthetic plant with reactions by
 area (an alarm reaction of area a1's given, one of area a2's never, the trip's call limited to a2 not made) and
 findings (each reading of the stopped pump's gauge out of its range given to the supervisor, the code read their

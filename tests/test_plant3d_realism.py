@@ -554,7 +554,8 @@ class SyntheticLoad(unittest.TestCase):
             self.assertEqual(b2.counts['values'], b.counts['values'] + n)
             e = P.Engine(b2, 'cold_iron')
             e.step(20)
-            self.assertEqual(e.names[-2:], ['world_hour', 'world_day'])
+            # cold_iron has its season's weather (the user, 2026-11-03): the clock values, then the weather's kind
+            self.assertEqual(e.names[-3:], ['world_hour', 'world_day', 'world_wx'])
             self.assertTrue(all(map(lambda x: x == x, e.cur)))
 
     def test_engine_load(self):
