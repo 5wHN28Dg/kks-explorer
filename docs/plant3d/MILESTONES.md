@@ -309,6 +309,14 @@ draw calls per kind, ≤ 20 MB for the whole Workshop); the plant's walk is run 
 the Note 9 (K1, K3, K4a, K4b, K5a, K5b at least), with the APK's size before and after (limit 250 MB). The realism programme's
 hands-on work builds on K1a–K3 (REALISM.md).
 
+**K4a as built (2026-11-03):** the steam turbine kind for the HP turbine: 54 components, 3 fastener groups (the joint's
+studs and the coupling's bolts replacing the plant's stand-ins; the coupling's keep `beyond`), 15,296 triangles; the
+plant's warm-up now waits while the Workshop shows (WORKSHOP.md "As built (K4a)"). The Note 9, fresh installs, cool
+starts, with the warm-up / `cold=1`: first entry 163 ms / 4,023 ms (≤ 5.0 s); no pipeline compiled after the machine's
+first frame; no frame over 100 ms; 99.79 / 99.89 % at ≥ 30 fps, mean frame 19.64 / 19.68 ms, 88.5 / 89.5 % at 60 fps;
+peak PSS 868 / 886 MB; at most 95 draw calls in any view. The walk's guided phases leave 14 of its parts loose.
+Pictures: the wiki's Workshop page.
+
 **K3 follow-ups as built (2026-11-03):** the step sentence on a canvas layer of its own (the pile's ~510 draw calls
 were its letters: now at most 58 on the laptop and 59 on the Note 9), the bench's engine logs bounded (bit for bit
 with an engine that keeps everything), and every kind's machine warmed in the plant after its first walkable frame

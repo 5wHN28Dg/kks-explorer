@@ -76,6 +76,10 @@ frame on the phone.
   kind's machine hidden in the plant for 30 frames in the Workshop's materials with its parts' ghosts: on the Note 9
   (an empty cache) the first entry after it took 407 ms (its first frame still compiled 1 surface and 10
   specialization pipelines), against 4,285 ms when entered at once; none compiled after the machine's first frame.
+  K4a (2026-11-03): the warm-up waits while the Workshop shows (its meshes' pipelines are made on the main thread as
+  they enter the plant's world: a trainee in the Workshop when it came due got a 167 ms frame on the Note 9). The
+  steam turbine on the Note 9: first entry 163 ms after the warm-up, 4,023 ms at once; none compiled after the
+  machine's first frame; at most 95 draw calls; 15,296 triangles.
 - **The plant meanwhile:** the Workshop draws in a full-screen `SubViewport` with its own world, and the main
   viewport's 3D drawing is turned off; the plant stays in its world, not moved or freed. Single play pauses the clock (held inputs
   released, speed restored on return; autosave unaffected), so a mirror freezes at the moment the trainee left (the
