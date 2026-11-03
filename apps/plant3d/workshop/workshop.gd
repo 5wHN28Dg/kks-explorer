@@ -165,6 +165,7 @@ func can_open() -> bool:
 func close() -> void:
 	if not is_open:
 		return
+	_closed_frame = Engine.get_process_frames()
 	var t0 := Time.get_ticks_usec()
 	_gen += 1
 	var gen := _gen
@@ -1123,12 +1124,11 @@ func warm_up(parent: Node) -> void:
 	await get_tree().create_timer(WARM_UP_S).timeout
 	# not while the Workshop shows: its hidden meshes' pipelines are made on the main thread as they enter the plant's
 	# world, a hitch in the Workshop's frames (K4a: 167 ms on the Note 9, a trainee in the Workshop 4 s after the start)
-	var waited := false
-	while is_inside_tree() and is_open:
-		waited = true
-		await get_tree().create_timer(0.5).timeout
-	if waited and is_inside_tree():
-		for i in 2:   # (out of the frame that measures the way back to the plant)
+	# (nor in the frame that measures the way back to the plant, nor the one after)
+	while is_inside_tree() and (is_open or Engine.get_process_frames() < _closed_frame + 3):
+		if is_open:
+			await get_tree().create_timer(0.5).timeout
+		else:
 			await get_tree().process_frame
 	if _warm != null or not is_inside_tree() or not ResourceLoader.exists(SPACE):
 		return
@@ -1243,6 +1243,7 @@ func _warm_kinds() -> void:
 			mc.queue_free()
 	kinds_warmed = true
 
+var _closed_frame := -100          # the process frame of the last close (the warm-up keeps out of the next ones)
 var _warm_loading := ""          # the kind the warm-up's threaded load is fetching ("" when none)
 
 ## Leaving the tree (the app freed or quitting) collects every threaded load the Workshop still has a request on: the
