@@ -17,6 +17,8 @@ var state_label: Label
 var alarm_label: Label
 var note: Label
 var _shown_for := ""
+var legend_box: VBoxContainer
+var _legend_for := ""           # the legend drawn now ("" none)
 
 
 func setup(w) -> void:
@@ -46,7 +48,7 @@ func machine_shown() -> void:
 		note = null
 		return
 	box.add_child(W.label("Run", 22, Color.WHITE, false))
-	var row := HBoxContainer.new()
+	var row := HFlowContainer.new()   # (the machine's commands and the bench's other ops: as many as the file has)
 	box.add_child(row)
 	var rb := W.button("Restart the bench", func(): ws.restart_bench(); machine_shown())
 	rb.name = "run_restart"
@@ -105,6 +107,11 @@ func machine_shown() -> void:
 		l.name = "read_" + String(k)
 		box.add_child(l)
 		readouts.append([l, k])
+	# the colour legend of the heat or pressure colours shown (§3 "See inside")
+	legend_box = VBoxContainer.new()
+	legend_box.name = "run_legend"
+	box.add_child(legend_box)
+	_legend_for = ""
 	state_label = W.label("", 18, Color.WHITE)
 	box.add_child(state_label)
 	alarm_label = W.label("", 18, W.PRIO_COLOURS[2])
@@ -153,6 +160,50 @@ func tick() -> void:
 	for id in fault_btns:
 		fault_btns[id].set_pressed_no_signal(c.faulted.has(id))
 	note.text = ws.run_note
+	var lg: String = ws.bench_view.legend_shown()
+	if lg != _legend_for:
+		_legend_for = lg
+		_legend(c.m.legends.get(lg, {}), lg)
+
+
+## The legend's bar (its colours left to right over its range) and its ends' numbers with the unit.
+func _legend(lg: Dictionary, kind: String) -> void:
+	W.clear(legend_box)
+	var rows: Array = lg.table if lg.has("unit") else []   # (a legend: unit and table, ref/plant3d_bench.py)
+	if rows.size() < 2:
+		return
+	legend_box.add_child(W.label("%s, %s" % [kind.capitalize(), lg.unit], 18, W.DIM, false))
+	var g := Gradient.new()
+	var lo := float(rows[0][0])
+	var hi := float(rows[-1][0])
+	var offs := PackedFloat32Array()
+	var cols := PackedColorArray()
+	for r in rows:
+		offs.append((float(r[0]) - lo) / maxf(hi - lo, 1e-9))
+		cols.append(Color.html(String(r[1])))
+	g.offsets = offs
+	g.colors = cols
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.width = 256
+	tex.height = 8
+	var bar := TextureRect.new()
+	bar.name = "legend_bar"
+	bar.texture = tex
+	bar.stretch_mode = TextureRect.STRETCH_SCALE
+	bar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bar.custom_minimum_size = Vector2(0, 14 * W.scale)
+	legend_box.add_child(bar)
+	var ends := HBoxContainer.new()
+	legend_box.add_child(ends)
+	var a := W.label("%s" % _num(lo), 16, W.DIM, false)
+	a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ends.add_child(a)
+	ends.add_child(W.label("%s" % _num(hi), 16, W.DIM, false))
+
+
+static func _num(x: float) -> String:
+	return str(int(x)) if x == floorf(x) else "%.1f" % x
 
 
 static func _title(name: String) -> String:

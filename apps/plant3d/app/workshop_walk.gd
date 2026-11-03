@@ -83,16 +83,41 @@ func start(m, k := "") -> void:
 var _ops := []                  # the bench's ops as written (machine commands, set ops)
 var _made := {}                 # the faults made in the walk's fault phase
 
-## The bench running from the walk's start: each machine started, at 2×.
+## The bench running from the walk's start: each machine started (the first of its commands its resting state takes:
+## Start, a turbine's Roll), at 2× (`bench_speed=`: a measurement may run it faster than the trainee's 2×, so that a
+## turbine's plant-length soak still lets it reach full speed within the 3 minutes; logged).
 func _bench_start() -> void:
 	if not ws.bench.loaded():
 		main._say("WORKSHOP the kind has no bench model")
 		return
 	ws.bench.set_speed(2.0)
+	var fast := float(main.opts.get("bench_speed", "2"))
+	if fast > 2.0:
+		ws.bench.speed = fast   # (past the Run panel's 2×: the walk's own)
+		main._say("WORKSHOP bench at %.1fx (the walk's bench_speed)" % fast)
 	_ops = ws.bench.m.ops_ui
+	for mc in ws.bench.m.machines:
+		for o in _ops:
+			if o.get("machine") == mc.id and mc.commands.has(o.do) and \
+					String(mc.init) in Array(mc.commands[o.do].get("from", [])):
+				ws.run_command(o.at, o.do)
+				break
+
+## What the walk switches on as it may (every 0.2 s of the walk): each op of the bench that is no machine's command,
+## no slider and no trip's reset, and sets something from 0 to on, once its permissives are met (a generator's
+## excitation at 95 % speed, its breaker inside the synchronising window).
+func _switch_on() -> void:
 	for o in _ops:
-		if o.has("machine") and o.do == "start":
-			ws.run_command(o.at, o.do)
+		if o.has("machine") or o.has("input") or o.has("trip") or not o.has("set"):
+			continue
+		var on := false
+		for k in o.set:
+			if float(o.set[k]) != 0.0 and ws.bench.now(k) == 0.0:
+				on = true
+		for nd in o.get("needs", []):   # (as the engine judges them: each at least 0.5)
+			on = on and ws.bench.now(String(nd[0])) >= 0.5
+		if on:
+			ws.run_op(o.at, o.do)
 
 ## Each set op's slider swept over its range (a slow sine, a period of 40 s), from its low end.
 func _bench_sweep() -> void:
@@ -108,6 +133,8 @@ func _process(delta: float) -> void:
 	t += delta
 	if ws.bench.loaded() and fmod(t, 0.5) < delta:
 		_bench_sweep()
+	if ws.bench.loaded() and fmod(t, 0.2) < delta:
+		_switch_on()
 	ws.cam.yaw += ORBIT_RATE * delta
 	ws.cam.place()
 	var order: Array = ws.spec.order

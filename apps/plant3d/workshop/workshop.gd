@@ -221,6 +221,7 @@ func _leave_plant() -> void:
 		ui.clock.set_speed(SimClock.Speed.PAUSED)
 	if ui != null and ui.sounds != null:
 		_prev_muted = ui.sounds.muted
+		bench_view.muted = _prev_muted   # (the bench's own sounds are heard unless the plant's were muted)
 		ui.sounds.muted = true
 		ui.horn_changed.emit(0)
 	if _session and ui.clock != null and ui.clock.engine != null:

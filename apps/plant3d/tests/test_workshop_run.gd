@@ -129,8 +129,97 @@ func run(tree: SceneTree) -> Array:
 	await ws.left
 	await tree.process_frame
 	check(not ws.panels.step_layer.visible, "the step words' layer hides when the Workshop closes")
+	await _turbine(tree, ws)
 	main.free()
 	return p
+
+## The steam turbine on its bench (K4b, WORKSHOP.md §6.3): rolled by the plant's sequence, its rotor turning the way
+## the blades are made for, its valves open, its steam's pressure and temperature falling stage by stage in the heat
+## and pressure colours, the flow along its paths, the blade-pass tone rising with speed; tripped.
+func _turbine(tree: SceneTree, ws) -> void:
+	ws.open("steam_turbine")
+	if not await _wait_shown(tree, ws):
+		check(false, "the steam turbine's Workshop did not show")
+		return
+	var c = ws.bench
+	check(c.loaded(), "the turbine's bench model loads: %s" % c.error)
+	if not c.loaded():
+		return
+	var bv = ws.bench_view
+	var anims := {}
+	for a in bv.anims:
+		anims[a.at] = a
+	check(anims.has("rotor") and anims.rotor.kind == "rotate" and anims.rotor.travel == 0.0, "the rotor turns freely")
+	for v in ["stop_l", "stop_r", "ctrl_l", "ctrl_r"]:
+		check(anims.has(v) and anims[v].kind == "translate" and anims[v].travel > 0.0, "%s moves on its stem" % v)
+	for f in ["inlet_l", "inlet_r", "blades_0", "blades_3", "exhaust"]:
+		check(ws.views.flow_ids().has(f), "the flow path %s is drawn" % f)
+	# the turbine's own words in the panel: its commands and the bench's other ops, its two steam sliders
+	var rp = ws.panels.run_panel
+	ws.panels.show_run(true)
+	rp.tick()
+	for n in ["run_turbine_roll", "run_turbine_stop", "set_p_supply", "set_t_set", "set_bias"]:
+		check(rp.find_child(n, true, false) != null, "the turbine's Run panel has %s" % n)
+	check(rp.legend_box.find_child("legend_bar", true, false) != null, "and the colours' legend")
+	# rolled: the rotor turns the way the blades are made for (right-handed about the steam's way back, +y)
+	c.speed = 1.0
+	var r0: Basis = (ws.comps["rotor"] as Node3D).transform.basis
+	ws.run_command("rotor", "roll")
+	_go(ws, 30.0)
+	check(c.machine_state("turbine") == "roll" and c.now("rpm") > 100.0, "Roll runs it up: %s at %.0f rpm" % [c.machine_state("turbine"), c.now("rpm")])
+	check(c.now("stop_pos") > 0.99, "the stop valves open")
+	# the generator makes the blades for a rotor turning right-handed about ST_TURN, the way back against the steam
+	# (kit/parts_machines.gd): the anim's axis points against the blade path's flow, and the speed turns it forwards
+	var bp: PackedVector3Array = (ws.views._flows["blades_0"].mat as ShaderMaterial).get_shader_parameter("pts")
+	var steam_way: Vector3 = (bp[bp.size() - 1] - bp[0]).normalized()
+	check(anims.rotor.axis.dot(-steam_way) > 0.99 and anims.rotor.scale > 0.0,
+		"the rotor's anim turns it about the axis against the steam's way, forwards (%s, %s)" % [anims.rotor.axis, steam_way])
+	var a1: float = float(anims.rotor.get("angle", 0.0))
+	bv.draw(0.002)   # (a step short enough not to alias: at 800 rpm 13 revolutions a second)
+	var da := wrapf(float(anims.rotor.get("angle", 0.0)) - a1, -PI, PI)
+	check(da > 0.0 and da < 1.0, "the rotor turns right-handed about that axis, as the blades are made for (%.4f rad)" % da)
+	check(not (ws.comps["rotor"] as Node3D).transform.basis.is_equal_approx(r0), "the rotor's node turned")
+	# the steam's pressure and temperature fall along the path
+	var ok: bool = c.now("p_first") < c.now("p_supply")
+	for k in range(1, 9):
+		ok = ok and c.now("p%d" % k) < (c.now("p_first") if k == 1 else c.now("p%d" % (k - 1)))
+		ok = ok and c.now("t%d" % k) < (c.now("inlet_t") if k == 1 else c.now("t%d" % (k - 1)))
+	check(ok, "the pressure and the temperature fall stage by stage")
+	# heat on: the rows' colours from their stages' temperatures; pressure alone: from their pressures
+	ws.views.heat_on = true
+	ws.views.pressure_on = false
+	_go(ws, 0.1)
+	check(bv.shown_ramps.has("mrow_1") and bv.shown_ramps.mrow_1.legend == "heat" and bv.legend_shown() == "heat", "Heat colours the rows")
+	_channels(ws, "heat")
+	ws.views.heat_on = false
+	ws.views.pressure_on = true
+	_go(ws, 0.1)
+	check(bv.shown_ramps.mrow_1.legend == "pressure" and bv.legend_shown() == "pressure", "Pressure colours them by pressure")
+	_channels(ws, "pressure")
+	ws.views.heat_on = false
+	ws.views.pressure_on = false
+	_go(ws, 0.1)
+	check(bv.shown_ramps.is_empty() and not ws.views._ramped.has("mrow_1"), "with both off the rows are their own colour")
+	ws.views.heat_on = true
+	ws.views.pressure_on = true
+	# the flow's particles run along the blade path
+	var fl: Dictionary = ws.views._flows["blades_0"]
+	var ph1: float = fl.phase
+	_go(ws, 0.3)
+	check(fl.phase != ph1 and (fl.mat as ShaderMaterial).get_shader_parameter("density") > 0.0, "the steam's particles move along the blades")
+	# the blade-pass tone rises with the speed
+	var snd: Array = bv.sounds.filter(func(x): return x.id == "blade_pass")
+	check(snd.size() == 1, "the rotor's blade-pass sound is bound")
+	if snd.size() == 1:
+		var p1: float = bv.level(snd[0].pitch)
+		_go(ws, 10.0)
+		check(bv.level(snd[0].pitch) > p1 and bv.level(snd[0].gain) > 0.0, "its pitch rises with the speed (%.3f -> %.3f)" % [p1, bv.level(snd[0].pitch)])
+	# tripped by a rub: the stop valves shut
+	ws.toggle_fault("rub")
+	_go(ws, 4.0)
+	check(c.machine_state("turbine") == "trip" and c.now("stop_pos") < 0.01, "a rub trips it and the stop valves shut: %s" % c.machine_state("turbine"))
+	ws.close()
+	await ws.left
 
 func _wait_shown(tree: SceneTree, ws) -> bool:
 	var end := Time.get_ticks_msec() + 30000
@@ -318,6 +407,8 @@ func _channels(ws, when: String) -> void:
 		for s in e.shows:
 			check(e.label.text.contains(c.shown(s)) == lit, "%s: %s shows %s (%s)" % [when, e.at, c.shown(s), e.label.text])
 	for r in ws.bench_view.ramps:
+		if ws.bench_view.shown_ramps.get(r.at) != r:
+			continue   # (heat or pressure off, or the component shows the other)
 		var want: Color = Views.legend_colour(c.m.legends[r.legend], c.val(r.of)).srgb_to_linear()
 		for g in ws.views._meshes[r.at]:
 			var got = g.get_instance_shader_parameter("ws_ramp")

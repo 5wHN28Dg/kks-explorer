@@ -816,9 +816,9 @@ static func _st_rotor(g, c: Dictionary, za: float, L: float) -> void:
 		var r1: float = (pa.hub + pa.bore_out) * 0.5
 		g.flow("blades_%d" % q, [Vector3(0, pa.y_in + 0.05, za) + er * r0, Vector3(0, pa.y_out - 0.05, za) + er * r1])
 	var rc: float = c.d * 0.5
-	var ye: float = c.y0 + (c.y1 - c.y0) * 0.1
-	g.flow("exhaust", [Vector3(0, pa.y_out - 0.05, za - pa.bore_out * 0.6), Vector3(0, ye, za - rc * 0.45),
-		Vector3(0, ye, za - rc * 0.95)])
+	var yx: float = c.y0 + (c.y1 - c.y0) * 0.1
+	g.flow("exhaust", [Vector3(0, pa.y_out - 0.05, za - pa.bore_out * 0.6), Vector3(0, yx, za - rc * 0.45),
+		Vector3(0, yx, za - rc * 0.95)])
 
 ## The static frequency converter: a row of cabinets on a plinth (doors, handles, louvres, the controller's display).
 static func sfc(_part: String, g) -> void:

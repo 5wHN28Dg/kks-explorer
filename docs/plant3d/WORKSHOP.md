@@ -453,6 +453,9 @@ trips, the gas turbine's `gt1_start` and its trips), the bench file is **made** 
   bench's own values for everything the taken pieces read (the tool refuses a reference left undefined);
 - `tests/` checks that each committed bench file is exactly what the tool makes, as the plant's content is checked: a
   change to the plant's sequence that isn't made into the bench fails CI.
+- As built (K4b): the source also names the plant **values** to take (their definitions are the plant's), the codes'
+  places on the bench (`at`), the Run panel's words for taken ops (`titles`), and which of the bench's own values come
+  before the taken ones (`before`); §6.6.
 
 ### 6.4 The transmitter's bench (K3)
 
@@ -606,6 +609,57 @@ faults are not offered, and the panel says "Mirror of `<code>`, read only". In s
 moment the trainee left** (the user, 2026-11-02): the plant is paused, and the plant does not run while a mirror is
 open; in a session it follows the plant live. The overwrite is an engine
 addition (both engines, vectors) made in K6.
+
+### 6.6 The steam turbine's bench (K4b)
+
+**As built (K4b, 2026-11-03).**
+- **Made, not written.** `tools/plant3d/workshop/make_bench.py` takes from the generated `model/st.json` (in memory, as
+  `make_content.py` makes it) the start-up machine `st_start` (as `turbine`), five trips (lube oil pressure low-low two
+  out of three, overspeed, axial displacement, bearing vibration, wet steam), four alarms, the excitation's and the
+  breaker's ops with their synchronising permissives, the speed bias, each trip's reset, and 130 named values (the
+  governor and the rotor's speed, the soak timer, the critical-speed band's vibration, the casing's warmth and the
+  steam-to-casing match, the superheat, the synchronising check, the load), renamed by stripping `st_` (a machine's
+  and a trip's own values follow their renamed ids) and with each code mapped onto a component or `bench` (`at`).
+  The bench source (`steam_turbine.py bench_source()`) adds only what the plant's other areas give the turbine: the
+  steam at the stop valves (two sliders, 40–130 bar and 400–565 °C), its saturation temperature (NISTIR 5078's table),
+  the lube oil's pressure, the turning gear, the condenser's vacuum, the grid; and the steam path the plant's model
+  doesn't have (its stages). The tool refuses a read value neither taken nor defined, a code with no place, a name
+  taken twice or defined twice, an unknown piece, and orders the values so that every stateless node follows what it
+  reads (the plant's order kept wherever it can be). `tests/test_plant3d_workshop_bench.py Turbine` checks the
+  sequence, its sentences and five values are the plant's own, that a change to the plant's soak is a change to the
+  bench, and the tool's refusals.
+- **The steam path:** every stage's pressure proportional to the flow (the downstream is a turbine too; the first
+  stage's pressure is the load's measure, NRC 7.3.2): 90 bar after the control valves and 25 bar at the exhaust at
+  full flow (70 kg/s), an equal ratio across each of the eight stages, never below the condenser's; the temperature
+  falling with the pressure, T2/T1 = (p2/p1)^0.2, from the inlet's (the plant's lag of the steam's); with no steam
+  each stage is at the casing's temperature. The stop valves open in half a second and shut in a tenth (a trip); the
+  control valves follow the flow.
+- **The start:** a hot start (the casing at 420 °C, the steam at 500 °C: matched within the plant's 150 K), so Roll
+  is taken at once; then the plant's sequence: 800 rpm, the 300 s soak, through the critical speeds (1,600–1,900 rpm),
+  full speed no load, excitation at 95 %, the breaker inside ±10° and 0.1 Hz (the bias slips the phase), loaded.
+  At the Run panel's 2× that is about 4½ minutes to full speed.
+- **Drawn:** the rotor's `shaft` at 50 rev/s per unit speed (the plant's binding), turning right-handed about the
+  axis against the steam's way, as the generator's blades are made for (`ST_TURN`); the stop discs and control plugs
+  are moving pieces of their own (`translate`, Workshop only: plant mode unchanged); seven flow paths (each chest's
+  inlet past both seats, four lines along the blade path, the exhaust), coloured by pressure; every blade row, carrier
+  and inner casing half and both chests coloured by temperature (**Heat**) or pressure (**Pressure**), two new
+  toggles beside Flow, with the legend of the one shown in the Run panel (a component bound to both shows heat while
+  both are on); the speed on a tag at the front pedestal.
+- **Sound:** `blade_pass` (new, synthesised: 34 moving blades at 50 rev/s, 1,700 Hz and its harmonic, the steam's
+  pink noise), its gain and pitch from the speed, and `steam_rush` at the chest by the flow; played by `bench_view.gd`
+  from the plant's sound files while the Workshop shows (not paused, not when the plant's sounds were muted).
+- **Faults:** the governor (its set point 15 % high: an overspeed trip at no load), thrust bearing wear (axial
+  displacement), a rub (vibration), the lube oil pump lost, the steam's temperature falling 200 K (wet steam); each
+  trips by the plant's own trip and is reset from the Run panel once its cause is gone.
+- **Running taken apart:** as K4a's data says, only with the lagging off; Start is refused otherwise with its sentence.
+- **Vectors:** `plant3d-bench-v1.json` gains two runs of the committed file's model: the committed one (rolled to its
+  soak, the refusals on the way, a rub's trip, its reset, the lube oil lost; 900 steps) and the same with the soak cut
+  to 10 s, the vector's only change (run up, synchronised, loaded, unloaded and overspeed-tripped; 2,793 steps); both
+  engines bit for bit (`GdscriptBench`). The file is 14.7 MB (the transmitter's and the synthetic kind's 0.66 MB).
+- **The walk:** each machine started with the first command its resting state takes (the turbine's Roll); every 0.2 s
+  it switches on what it may (an op that sets something from 0 once its permissives hold: the excitation, the
+  breaker); the sliders swept as before. The turbine's walk runs its bench at `bench_speed=6` (the walk's own, past
+  the trainee's 2×, logged), so that the plant's 300 s soak still lets it reach full speed within the 3 minutes.
 
 ## 7. Shaders and cut faces
 
