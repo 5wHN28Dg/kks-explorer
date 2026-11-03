@@ -32,6 +32,8 @@ HEX = re.compile(r'#[0-9a-f]{6}')
 
 
 def loads(data, where='bench'):
+    if isinstance(data, str):
+        data = data.encode('utf-8')
     try:
         return sjson.loads(data)
     except sjson.StrictError as e:
@@ -110,10 +112,9 @@ def check(d, comps, where='bench', sounds=None, part=None):
         words(s['cite'], f'{sw}.cite', 600)
         need(isinstance(s['url'], str) and s['url'].startswith('https://') and len(s['url']) <= 300, 'bad_value',
              f'{sw}.url: an https URL')
-    for k in ('ops', 'machines', 'trips', 'alarms', 'faults', 'interlocks', 'readouts', 'mirror'):
-        lst(d.get(k, []), f'{where}.{k}', 0, LIMIT[k])
-    lst(d['values'], f'{where}.values', 1, LIMIT['values'])
-    lst(d.get('bind', []), f'{where}.bind', 0, LIMIT['bind'])
+    for k in ('values', 'ops', 'machines', 'trips', 'alarms', 'faults', 'interlocks', 'readouts', 'mirror', 'bind'):
+        lst(d.get(k, []), f'{where}.{k}', 1 if k == 'values' else 0)
+        need(len(d.get(k, [])) <= LIMIT[k], 'limit', f'{where}.{k}: at most {LIMIT[k]} (WORKSHOP.md §6.1)')
     units = {}
     for i, pair in enumerate(d['values']):
         lst(pair, f'{where}.values[{i}]', 2, 2)

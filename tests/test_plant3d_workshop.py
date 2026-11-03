@@ -182,7 +182,12 @@ class WorkshopData(unittest.TestCase):
             P.check_files(files)
         self.assertEqual(cm.exception.code, 'unknown_key')
         files = dict(self.files)
-        files['workshop/bench/x.json'] = b'{}'      # bench models come with K3
+        files['workshop/bench/x.json'] = b'{}'      # a bench model (K3) for a kind with no Workshop data file
+        with self.assertRaises(FormatError) as cm:
+            P.check_files(files)
+        self.assertEqual(cm.exception.code, 'bad_ref')
+        files = dict(self.files)
+        files['workshop/benches/x.json'] = b'{}'    # no other folder
         with self.assertRaises(FormatError) as cm:
             P.check_files(files)
         self.assertEqual(cm.exception.code, 'unknown_key')
