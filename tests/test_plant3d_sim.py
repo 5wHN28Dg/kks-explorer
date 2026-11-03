@@ -559,7 +559,9 @@ class GdscriptRealism(unittest.TestCase):
     def test_step_bench(self):
         """The step bench with a synthetic realism load (app/step_bench.gd, as the phone's `step=bench` runs it):
         the train as built, with 600 values, and with 600 values of AG1's nodes and WX1's weather (--engine) load,
-        run the cold start and step at base load; the weather step is timed alone."""
+        run the cold start and step at base load; the weather step is timed alone: the built weather's seven values
+        in the train as built and with 600 values (cold_iron has its season's weather since 2026-11-03), the load's
+        ten with --engine."""
         with tempfile.TemporaryDirectory() as d:
             path, epath = os.path.join(d, 'r600.json'), os.path.join(d, 'e600.json')
             subprocess.run([sys.executable, os.path.join(REPO, 'tools', 'plant3d', 'realism_synth.py'), '600', path],
@@ -570,7 +572,8 @@ class GdscriptRealism(unittest.TestCase):
         no_errors(self, r)
         self.assertEqual(r.returncode, 0, r.stdout[-4000:])
         self.assertIn('WEATHER load=e600 values=10 ', r.stdout)
-        self.assertNotIn('WEATHER load=r600', r.stdout)
+        self.assertIn('WEATHER load=built values=7 ', r.stdout)
+        self.assertIn('WEATHER load=r600 values=7 ', r.stdout)
         for load in ('built', 'r600', 'e600'):
             self.assertIn(f'BATCH load={load} values=', r.stdout)
         self.assertIn('STEP load=r600 values=', r.stdout)

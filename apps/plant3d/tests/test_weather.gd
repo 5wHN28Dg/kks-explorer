@@ -360,6 +360,9 @@ func _app(tree: SceneTree) -> Array:
 			or WeatherView.globals.get("wx_wet") != 0.0 or not ui.sounds.weather.is_empty():
 		p.append("after a restart without weather the weather is still drawn: on %s, fog %f, ratio %f, wet %s, sounds %s" % [
 			wv.on, main.env.fog_density, wv.particles.amount_ratio, str(WeatherView.globals.get("wx_wet")), str(ui.sounds.weather)])
+	# the made scenario leaves with the test: back in cold_iron, so no save names a scenario the content lacks
+	ui.restart("cold_iron", true)
+	ui.model.scenarios.erase("no_weather")
 	main.free()
 	return p
 

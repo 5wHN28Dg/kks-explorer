@@ -65,13 +65,15 @@ WET = {'rain': 1, 'thunderstorm': 1, 'fog': 0.3}
 for k in K: K[k]['wet'] = flat(WET.get(k, 0))
 
 
-# the driven values as plant.json's ext values and every scenario's step 0 values: clear weather before sunrise
+# the driven values as plant.json's ext values and every scenario's step 0 values: clear weather before sunrise (the
+# values then lag toward the season's kind at the start's hour: at 06:00, the scenarios without `start`, solar rises)
 EXT = [v for v, _ in VALUES]
 CLEAR_INIT = {'wind': 2, 'rain': 0, 'dust': 0.08, 'visibility': 20000, 'solar': 0, 'lightning': 0, 'wet': 0}
 # free play's weather (the user, 2026-11-01): every scenario, seeded by the season of its start day. The crews'
 # shifts first; then (the user, 2026-11-03) the five that were format 1, made version 2 for it: each in the season of
-# its crews' twin (cold_iron and hot_restart as shift_cold, a summer day; the WTP's three as shift_wtp, a spring day,
-# spring being the river's flood season, WATER-TREATMENT.md §2). Their clock starts at plant.json's (day 1, 06:00).
+# its crews' twin (cold_iron and hot_restart as shift_cold, a summer day; the WTP's three as shift_wtp, a spring
+# day). Their clock starts at plant.json's (day 1, 06:00); their world seed is the default, 1, so the twins of one
+# season draw the same weather.
 SUMMER = {'year_day': 196, 'weather': {'season': 'summer'}}
 SPRING = {'year_day': 100, 'weather': {'season': 'spring'}}
 FREE_PLAY = {'shift_cold': SUMMER, 'shift_wtp': SPRING,

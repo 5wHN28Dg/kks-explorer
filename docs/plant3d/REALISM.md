@@ -710,14 +710,17 @@ weather on, seeded by season.
   `"world": {"year_day", "weather": {"season"}}` as its last key and nothing else new: no `start` (the clock starts at
   plant.json's, day 1 06:00, as before), no `staff` (no people, as before), no world `seed` (1, §2.1). Each takes the
   season of its crews' twin: `cold_iron` and `hot_restart` as `shift_cold` (summer, year day 196); the WTP's three as
-  `shift_wtp` (spring, year day 100; spring is the river's flood season, WATER-TREATMENT.md §2). Format 1 itself, its
-  validator rules and `plant3d-v1.json`'s synthetic parts are unchanged.
+  `shift_wtp` (spring, year day 100). With the default seed, the twins of one season draw the same weather. Format 1
+  itself, its validator rules and `plant3d-v1.json`'s synthetic parts are unchanged (its `about` still says "format 1
+  vectors": its `train` and `hot` have run version 2 content since P1).
 - **The vectors** (made again, then compared by JSON with main's): nothing moved between files. `plant3d-v1.json`'s
   `train` (cold_iron) and `hot` (hot_restart) stay where they are, as P1 left them following the first train's
   content (PLANT3D.md §19); `plant3d-v2.json`'s `wtp` (wtp_cold), `wtp_cip` and `wtp_regen` (wtp_normal) likewise.
   In those five runs every input, event and fork is the same and every value the same but the weather's: each
-  snapshot gains `world_hour`, `world_day` and `world_wx`, and `wind`, `solar`, `visibility` and `dust` (the clear
-  values they held still) now follow the season's kind (`rain`, `lightning` and `wet` stay 0). No run crosses a change
+  snapshot gains `world_hour`, `world_day` and `world_wx`, and the driven values follow the season's kind instead of
+  holding the clear values: in the summer runs `wind`, `solar`, `visibility` and `dust` (toward `hot`), in the spring
+  runs `wind` and `solar` (spring starts at `clear`, whose other targets are the clear values); `rain`, `lightning` and
+  `wet` stay 0. No run crosses a change
   of kind, so no `weather` event is added. Nothing the model computes reads the weather (§5.5), so no model value
   moved. `plant3d-v2.json`'s `train` (forks from cold_iron without values), `staff`, `day` and every synthetic item,
   and `plant3d-realism.json`, are byte for byte main's.
@@ -725,7 +728,11 @@ weather on, seeded by season.
   shift); a save or session snapshot of a run made before is refused as "content has changed" (the content's hash,
   `ui/run_save.gd`), as after any content change, and a session's players must share the content's hash; procedures,
   tours and links name the scenarios by id, unchanged. The app's test of a plant without weather (`test_weather.gd`)
-  now makes such a scenario (cold_iron without `world`) instead of starting cold_iron.
+  now makes such a scenario (cold_iron without `world`) instead of starting cold_iron. cold_iron is the app's default
+  scenario, so a plain launch, the step bench's loads (`app/step_bench.gd`: the train as built and RE1's shapes
+  without `--engine` now both carry the built weather's seven values, and print its `WEATHER` line) and a phone walk
+  started in it now run summer's `hot` weather (a little dust and haze, a 12 km view) where earlier ones ran none: figures measured
+  before compare with clear weather (§5.5 measured the weather's own cost).
 
 ## 6. Documents and discussions
 
