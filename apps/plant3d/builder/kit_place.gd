@@ -587,7 +587,20 @@ func _plate(node: Node3D, _xf: Transform3D, pl: Dictionary, kks: String) -> void
 	var pxf := Transform3D(Basis(x, y, n), at)
 	var world: Transform3D = node.transform * pxf
 	var pm: Dictionary = _plate_mesh(kind)
-	_cell(pm, pm.mesh.resource_name, world)
+	var piece: Node3D = node.get_node_or_null("piece")
+	if piece != null:
+		# equipment with jobs: its plate with its piece (the work view hides them together, REALISM.md §3.3)
+		var mi := MeshInstance3D.new()
+		mi.name = "plate_mesh"
+		mi.mesh = pm.mesh
+		mi.transform = pxf
+		mi.material_override = b._mat(pm.mat)
+		mi.set_meta("mat", pm.mat)
+		Lightmap.mark(mi, false)
+		piece.add_child(mi)
+		unmerged_of[kks]["draws"] = int(unmerged_of[kks]["draws"]) + 1
+	else:
+		_cell(pm, pm.mesh.resource_name, world)
 	var lab := Label3D.new()
 	lab.name = "plate"
 	lab.text = kks

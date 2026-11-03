@@ -55,6 +55,8 @@ var tool_sel := ""              # the tray's tool: "" bare hands
 var comp := ""                  # the component picked
 var last_text := ""             # the last refusal or result shown (tests read it)
 var _piece: Node3D = null       # the plant's piece hidden while open
+var _labels: Array = []         # the labels near it hidden while open (codes, values, plates: huge seen this close)
+var meters_panel: PanelContainer
 var _cam: Camera3D = null
 var _yaw := 0.6
 var _pitch := -0.25
@@ -114,9 +116,15 @@ func setup(u) -> void:
 	note.name = "note"
 	busy_l = W.label("", 18, W.OK_COLOUR)
 	busy_l.name = "busy"
-	for x in [W.label("In your hand", 20), tray, W.label("Parts (or tap one)", 20), parts, actions, busy_l, note,
-			meters]:
+	for x in [W.label("In your hand", 20), tray, W.label("Parts (or tap one)", 20), parts, busy_l, note, actions]:
 		body.add_child(x)
+	# the meters' and the communicator's screens: a panel of their own, low in the middle, always in view
+	meters_panel = PanelContainer.new()
+	meters_panel.name = "meters_panel"
+	meters_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	meters_panel.add_child(meters)
+	add_child(meters_panel)
+	meters_panel.visible = false
 	var tp := W.panel("Tools", close_tools)
 	tools_panel = tp[0]
 	tools_body = tp[1]
@@ -132,6 +140,10 @@ func _layout() -> void:
 	var w := minf(480.0 * W.scale, vs.x * 0.45)
 	panel.position = Vector2(vs.x - w - 12, 12)
 	panel.size = Vector2(w, vs.y - 24)
+	var mw := minf(560.0 * W.scale, vs.x - w - 36)
+	meters_panel.position = Vector2(maxf(12.0, (vs.x - w - 12) * 0.5 - mw * 0.5), vs.y - 12)
+	meters_panel.custom_minimum_size.x = mw
+	meters_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	tools_panel.position = Vector2(12, 150 * W.scale)
 	tools_panel.size = Vector2(minf(440.0 * W.scale, vs.x * 0.45), minf(560.0 * W.scale, vs.y - 170 * W.scale))
 
@@ -182,7 +194,7 @@ func open(c: String) -> bool:
 	comp = ""
 	last_text = ""
 	_path = SCENES + c + ".scn"
-	_mem0 = int(Performance.get_monitor(Performance.MEMORY_STATIC))
+	_mem0 = _mem()
 	_t_req = Time.get_ticks_usec()
 	if ResourceLoader.load_threaded_request(_path, "PackedScene") != OK:
 		_path = ""
@@ -191,6 +203,7 @@ func open(c: String) -> bool:
 	title.text = "%s  %s" % [c, ui.info.name_of(c)]
 	panel.visible = true
 	ui.close_card()
+	ui.close_crew()
 	if n != null:
 		_target = (n as Node3D).global_position
 	_cam = Camera3D.new()
@@ -228,6 +241,14 @@ func _place(ps: PackedScene) -> void:
 		_piece = (n as Node3D).get_node_or_null("piece")
 		if _piece != null:
 			_piece.visible = false
+		_labels.clear()
+		for c in ui.index.nodes:
+			var o: Node3D = ui.index.nodes[c]
+			if o.global_position.distance_to(n.global_position) < 3.0:
+				for l in o.find_children("*", "Label3D", true, false):
+					if (l as Label3D).visible:
+						_labels.append(l)
+						(l as Label3D).visible = false
 	_comp_nodes.clear()
 	_home.clear()
 	_offs.clear()
@@ -253,7 +274,7 @@ func _place(ps: PackedScene) -> void:
 	var box: AABB = scene.get_meta("box", AABB())
 	if box.size != Vector3.ZERO:
 		_target = scene.global_transform * box.get_center()
-		_dist = clampf(box.size.length() * 2.2, ORBIT_MIN, ORBIT_MAX)
+		_dist = clampf(box.size.length() * 1.5, ORBIT_MIN, ORBIT_MAX)
 	_make_marks()
 	_say = Label3D.new()
 	_say.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -266,9 +287,10 @@ func _place(ps: PackedScene) -> void:
 	_say.no_depth_test = true
 	_say.visible = false
 	scene.add_child(_say)
-	mem_added = int(Performance.get_monitor(Performance.MEMORY_STATIC)) - _mem0
+	mem_added = _mem() - _mem0
 	_orbit_cam()
 	_apply_states(true)
+	_sig = ""                   # (the parts' names: the scene's words)
 
 
 func close() -> void:
@@ -284,6 +306,11 @@ func close() -> void:
 	if _piece != null and is_instance_valid(_piece):
 		_piece.visible = true
 	_piece = null
+	for l in _labels:
+		if is_instance_valid(l):
+			(l as Label3D).visible = true
+	_labels.clear()
+	meters_panel.visible = false
 	if _cam != null:
 		_cam.queue_free()
 		_cam = null
@@ -416,6 +443,7 @@ func _build_meters(e, pid) -> void:
 	W.clear(meters)
 	trim_entry = null
 	var mine := _my_meters(e, pid)
+	meters_panel.visible = not mine.is_empty() and is_open
 	if mine.is_empty():
 		return
 	meters.add_child(W.label("Readings", 20))
@@ -822,6 +850,11 @@ func take(t: String, on: int) -> int:
 
 
 # ------------------------------------------------------------------ helpers
+
+## The memory the view can add to: the engine's own and the GPU's (textures and buffers), bytes.
+static func _mem() -> int:
+	return int(Performance.get_monitor(Performance.MEMORY_STATIC)) + int(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED))
+
 
 func _service() -> Dictionary:
 	return jobs[code]["service"] if jobs.has(code) else {"actions": [], "meters": [], "states": []}

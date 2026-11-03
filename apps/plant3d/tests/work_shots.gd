@@ -6,7 +6,8 @@
 ## the engine for the pictures (the job itself is tests/test_ui_hands.gd's); the view's draw calls and triangles too.
 extends SceneTree
 
-const App = preload("res://tests/ui_app.gd")
+const Autosave = preload("res://ui/autosave.gd")
+const RunSave = preload("res://ui/run_save.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 
 const PT2 := "30MAG10CP002"
@@ -41,7 +42,17 @@ func _put(e, name: String, v: float) -> void:
 
 func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(out)
-	main = App.start(self)
+	Autosave.default_path = "user://shots-run.save"      # never the trainee's run, and no offer in the shots
+	RunSave.remove(Autosave.default_path)
+	main = (load("res://app/main.tscn") as PackedScene).instantiate()
+	main.opts["quality"] = "full"
+	root.add_child(main)
+	while main.first_frame_ms < 0 and main.start_error == "":     # (with a display the UI comes after the sky)
+		await process_frame
+	if main.start_error != "":
+		printerr("the app did not start: " + main.start_error)
+		quit(1)
+		return
 	ui = main.ui
 	ui.player.set_physics_process(false)
 	ui.start_shift("shift_cold")
