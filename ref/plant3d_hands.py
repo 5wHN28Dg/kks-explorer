@@ -241,8 +241,8 @@ def check_scenario_cures(s, m, rel):
 def keyed(b, sc):
     """Whether a run has any of HW1's keys (its state, saves and digest part only then)."""
     m = b.model
-    st = b.staff
-    return b.tools is not None or bool(m.hands) or bool(m.meters) or any('cures' in w for w in m.works) or \
+    st = getattr(b, 'staff', None)        # (a bench model's bundle has neither: ref/plant3d_bench.py)
+    return getattr(b, 'tools', None) is not None or bool(m.hands) or bool(m.meters) or any('cures' in w for w in m.works) or \
         any('causes' in f for f in sc.get('faults', [])) or \
         (st is not None and any('slip' in s for t in st.task_list for s in t['steps']))
 
@@ -250,20 +250,20 @@ def keyed(b, sc):
 def init(e, b, sc):
     from ref.plant3d_world import TAGS, stream, world_seed
     e.hw = keyed(b, sc)
-    e.tools = b.tools
+    e.tools = getattr(b, 'tools', None)
     e.hands = b.model.hand_keys
     e.meters = b.model.meter_ix
     e.works_on = {}
     for w in b.model.works:
         e.works_on.setdefault(w['kks'], []).append(w)
-    e.tool_n = [[c for _, c in at] for at in b.tools['at']] if b.tools is not None else []
+    e.tool_n = [[c for _, c in at] for at in e.tools['at']] if e.tools is not None else []
     e.carried = {}
     e.busy = {}
     e.cause_of = {}
     seed = world_seed(sc)
     e.cause_s = {f['id']: stream(seed, TAGS['causes'], f['id']) for f in sc.get('faults', []) if 'causes' in f}
     e.slip_s = {}
-    st = b.staff
+    st = getattr(b, 'staff', None)
     if st is not None and any('slip' in s for t in st.task_list for s in t['steps']):
         e.slip_s = {p['id']: stream(seed, TAGS['slips'], p['id']) for p in st.people}
 
