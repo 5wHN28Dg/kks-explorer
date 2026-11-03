@@ -3205,8 +3205,22 @@ byte as it was (only the GDScript engine changed; the reference and the vectors 
   person; the people's loop reads the wake steps once and again after each turn; a few fields of the untyped engine
   are read into typed locals. Per-phase timers and counters of the work done, on the engine too (`_staff_prof_on`, `_staff_prof`,
   `_staff_prof_n`); a measured walk with `probe=1` prints them for the gate walk's steps at 1x (`STAFF_PHASES`).
+- **The waits asleep too** (2026-11-03, the user's decision after the first speed-up left the step at about 0.41 ms on
+  the Note 9): of the 1.7 task steps a step still ran, about 1.5 were people waiting for a place taken (`go`'s 15
+  minutes at the place before it) or for a meeting's others (`meet`'s 15 minutes). Both now sleep until their 15
+  minutes are over, and the engine keeps what each waits on (`sp_wait_on`: the room's first place, or the place itself
+  outside a room; saved with the run and cloned, as `sp_wake`). They are woken (`_wake_at`) wherever a place in that
+  room is taken or let go (`reserve`, `unreserve`, `leave_place`), someone comes to a place there (the end of a way, a
+  stop, a lift's landing, the gate, a released player put back, the trainee's `arrive`) or someone there comes on duty;
+  and, as any sleeper, by a task, a duty, a stop or a placement (a jump). A wake that doesn't end the wait is harmless
+  (the turn runs as every turn would); every change these waits read wakes them. A person off duty in the off-duty
+  routine's idle task is woken when their next span begins, too. Tests: `GdscriptWaits` (reference runs replayed bit
+  for bit: meetings met early and given up, seats freed and given up, a session slot taking a person who waits and
+  giving them back, a jump while people wait) and `check_staff_waits.gd` (a save and restore and a clone while people
+  wait, then 3,000 steps in step).
 - **The work, counted** (the same on every machine; `tests/test_plant3d_sim.py` `test_staff_work_at_the_gate`): task
-  steps run 52,637 → 10,072, the bus's next run worked out 6,002 → 2, people's acts looked at 53,495 → 10,930.
+  steps run 52,637 → 10,072 → 1,752 (with the waits asleep), the bus's next run worked out 6,002 → 2, people's acts
+  looked at 53,495 → 10,930 → 2,610.
 - **On the laptop** (`bench_staff.gd`, before and after side by side, three times): 170 to 174 µs → 59 to 60 µs a
   step (2.9×).
 - **On the Note 9**: NOTE9_RESULTS
