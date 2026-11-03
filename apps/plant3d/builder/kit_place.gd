@@ -33,6 +33,8 @@ var b                       # the plant builder
 var seg_scale := 1.0
 var used := {}              # kks -> {nozzle: outside diameter (m)}
 var ctx_extra := {}         # kks -> the context the builder works out (trains, what stands above or below)
+var jobs := {}              # kks -> its service file's entry (builder/work_build.gd jobs): built unmerged (REALISM §3.3)
+var unmerged_of := {}       # kks -> {params, ctx, xf, draws} of each piece built unmerged
 var cells := {}             # key -> {mesh, mat, cls, size, xf: Array}
 var res_of := {}            # kks -> the kit's result (children read their parent's axis)
 var tris_total := 0
@@ -248,7 +250,11 @@ func equipment(parent: Node3D, kks: String, top: bool) -> Node3D:
 		var bb: AABB = res.layers[k].mesh.get_aabb()
 		box = bb if first else box.merge(bb)
 		first = false
-	if box.size.length() > 2.0 * CELL:
+	if jobs.has(kks):
+		# equipment with jobs (REALISM.md §3.3, milestone HW2): its own meshes, not merged into its cell, so that the
+		# work view can hide it (builder/work_build.gd makes its work scene)
+		unmerged_of[kks] = {"params": e.params, "ctx": ctx_for(kks, e), "xf": xf, "draws": _unmerged(node, res)}
+	elif box.size.length() > 2.0 * CELL:
 		# a large part (an HRSG, a cooling tower) stands in many cells: its pieces go to the cell they lie in
 		var arrays := {}
 		for k in res.layers:
@@ -323,6 +329,31 @@ func equipment(parent: Node3D, kks: String, top: bool) -> Node3D:
 	lab.position = Vector3(box.get_center().x, box.end.y + (0.6 if top else 0.15), box.get_center().z) if not first else Vector3(0, 1, 0)
 	node.add_child(lab)
 	return node
+
+## A piece of equipment with jobs: under `node`, a node "piece" with one MeshInstance3D per layer (material, class and
+## size bucket, as its cell would hold it), lit by the sky like the instanced cells' pieces, a detail layer with no
+## shadow and its range by its size (app/quality.gd), as in the cells. Returns its draw calls.
+func _unmerged(node: Node3D, res: Dictionary) -> int:
+	var piece := Node3D.new()
+	piece.name = "piece"
+	node.add_child(piece)
+	var n := 0
+	for k in res.layers:
+		var L: Dictionary = res.layers[k]
+		var mi := MeshInstance3D.new()
+		mi.name = "mesh_%d" % n
+		mi.mesh = L.mesh
+		mi.material_override = b._mat(L.mat)
+		mi.set_meta("mat", L.mat)
+		Lightmap.mark(mi, false)
+		if L.cls == "detail":
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.add_to_group("detail", true)
+			mi.set_meta("detail_size", L.size)
+			mi.set_meta("box_half", L.mesh.get_aabb().size.length() * 0.5)
+		piece.add_child(mi)
+		n += 1
+	return n
 
 ## The kit's solids (part frame) as collision shapes under `node`, placed by `xf` (the part's frame in the node's).
 func add_solids(node: Node3D, solids: Array, xf: Transform3D) -> void:

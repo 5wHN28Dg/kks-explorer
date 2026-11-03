@@ -12,6 +12,7 @@ const PlantScene = preload("res://app/plant.gd")
 const Routes = preload("res://app/routes.gd")
 const Crowd = preload("res://app/crowd.gd")
 const WorkshopBuild = preload("res://builder/workshop_build.gd")
+const WorkBuild = preload("res://builder/work_build.gd")
 
 func _init() -> void:
 	var args := {}
@@ -27,6 +28,7 @@ func _init() -> void:
 			printerr("build: ", e)
 		quit(1)
 		return
+	b.kp.jobs = WorkBuild.jobs(data)     # equipment with jobs, built unmerged (REALISM.md §3.3, milestone HW2)
 	# a stale build must not pass for this one
 	_clear(ProjectSettings.globalize_path(out))
 	var err := b.build_all(out)
@@ -50,6 +52,16 @@ func _init() -> void:
 		quit(1)
 		return
 	print("build: workshop: %d kinds %s" % [ws.built.size(), str(ws.tris)])
+	# each piece of equipment with jobs: its work scene (builder/work_build.gd, REALISM.md §3.3)
+	var wk: Dictionary = WorkBuild.build_all(out.path_join("work"), data, b.kp)
+	for e in wk.errors:
+		printerr("build: ", e)
+	if not wk.errors.is_empty():
+		quit(1)
+		return
+	if not wk.made.is_empty():
+		print("build: work scenes: %d (draw calls %s, triangles %s); in the plant %d pieces unmerged in %d cells, %d draw calls" % [
+			wk.made.size(), str(wk.draws), str(wk.tris), b.kp.unmerged_of.size(), wk.cells, wk.plant_draws])
 	# the people's avatars, clips and posed meshes (builder/people/build_people.gd)
 	var pb := People.new()
 	var ps: Dictionary = pb.build(out.path_join("people"))
