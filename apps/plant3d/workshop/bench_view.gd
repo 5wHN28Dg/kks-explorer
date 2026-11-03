@@ -145,7 +145,8 @@ func draw(dt: float) -> void:
 			else:                   # turns freely: the value × scale is its speed in revolutions a second, drawn at
 									# most MAX_DRAWN_RPS
 				# (dt is bench time: the cap is per second of the screen's, whatever the bench's speed)
-				var rps := signf(v) * minf(absf(v), MAX_DRAWN_RPS / maxf(clock.speed, 0.01))
+				var spd: float = clock.speed if "speed" in clock else 1.0
+				var rps := signf(v) * minf(absf(v), MAX_DRAWN_RPS / maxf(spd, 0.01))
 				a["angle"] = fmod(float(a.get("angle", 0.0)) + TAU * rps * dt, TAU)
 				t.basis = t.basis * Basis(a.axis, a.angle)
 		n.transform = t
