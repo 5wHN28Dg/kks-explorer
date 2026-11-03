@@ -425,9 +425,9 @@ at 29–35 °C over the runs.
 - **`tools.json`** (format `walkdown-plant-tools`, version 1, only in a version 2 plant with staff.json: its places are
   the staff's): `tools`, 1–200 of `{"id", "title", "kind", "size", "modes", "at"}`; `kind` one of `spanner`, `socket`,
   `screwdriver`, `hex_key`, `pliers`, `stripper`, `crimper`, `torque`, `meter`, `communicator`, `calibrator`,
-  `test_set`, `lifting`, `gas_detector` (the loop calibrator is a `calibrator`: a meter of its own kind); `size` text
-  of 1–16 characters; `modes` (1–16 identifiers of at most 16 characters) only on a `meter`, a `communicator` or a
-  `calibrator`; `at` 1–16 `[place, count]`, each place a `store` or the new place kind `toolbox`, once, the count a
+  `test_set`, `lifting`, `gas_detector` (the loop calibrator is a `calibrator`: a meter of its own kind); `title` 1–80 characters; `size` text
+  of 1–16 characters; `modes` (1–16 identifiers of at most 16 characters) required on a `meter`, a `communicator` and
+  a `calibrator`, and on no other kind; `at` 1–16 `[place, count]`, each place a `store` or the new place kind `toolbox`, once, the count a
   whole number 1–99. The counts per place (file order) and each person's `carried` (tool ids in the order taken, no
   tool twice, at most 12) are engine state, in saves and the digest.
 - **Input** `[n, "tool", item, 0 | 1, person]` in step 1, at the person's place as the step before left it. Event
@@ -455,7 +455,9 @@ at 29–35 °C over the runs.
   a step with a jump (§17.6) abandons it, so does the person no longer standing at that place (`leave`, `arrive`
   elsewhere, an NPC walking off); else, at C ≥ end, `set` and `input` are written and the event `done` made.
   Abandoning makes `[n, "hand", kks, action, tool, person, "abandoned", []]` and writes nothing. An NPC whose task is
-  pre-empted (§17.3's pause) abandons it then, in step 9, with the same event.
+  pre-empted (§17.3's pause), or whose task step is left any other way while the action is under way (a stop, a
+  failure, the task ended), abandons it then, in step 9, with the same event; the action's end is handed only to the
+  NPC step that waits on it. Who may is checked when the action starts (a permit suspended meanwhile doesn't stop it).
 - **NPCs:** the `hand` step queues the input for the next step's step 1, as an op step does; `done` goes on, `start`
   waits for the end (the step is then not busy, so a higher priority task may pre-empt it), `abandoned`, `refused` or
   `unknown` fail to `else`. The trainee's `hand` step takes their `done` event; a `done` made before the step was
@@ -513,6 +515,12 @@ at 29–35 °C over the runs.
   hands-on state refused).
 - **The byte check:** `plant3d-v1.json`, `plant3d-v2.json` and `plant3d-bench-v1.json` are what they were, and the
   realism file's `streams`, `staff`, `wear` and `weather` parts too.
+- **The step's cost** (`realism_synth.py 600 --engine --hands`: RE1's 600 values, AG1's and WX1's engine nodes and
+  weather, 150 hand actions writing the component states, 50 meters, tools.json at the store; `step_bench.gd`'s
+  HANDS line times step 3's hands part alone with 12 actions under way in `shift_cold`, 20,000 calls): on the laptop
+  (headless) the model step at base load 0.245 ms as built, 0.272 ms with `--engine`, 0.273 ms with `--hands` too:
+  the hand actions and meters add nothing to a step with no action under way (they are entries, not nodes); the
+  hands part with 12 actions under way NOTE9.
 - **Left open on purpose (a question for the user):** §15.1's "a locked code refuses every op" holds for HART ops,
   so a transmitter isolated by a lock on its own code can't be ranged or trimmed through the communicator until it
   is unlocked; hand actions are made on a locked code (the job's own work).

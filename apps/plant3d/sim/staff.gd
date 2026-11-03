@@ -1521,6 +1521,7 @@ func pause(e, pi: int) -> void:
 
 func finish(e, pi: int, how: String) -> void:
 	var cur: Dictionary = e.sp_cur[pi]
+	_drop_hand(e, pi)
 	e._ev(["task", people[pi]["id"], cur["task"], how])
 	release(e, cur)
 	unreserve(e, pi)
@@ -1588,8 +1589,18 @@ func turn(e, pi: int) -> void:
 		advance(e, pi, r)
 
 
+## A task step left while its hand action is under way (a stop, a failure, a task ended): the action is abandoned
+## (REALISM.md §2.13).
+func _drop_hand(e, pi: int) -> void:
+	var c = e.sp_cur[pi]
+	if c != null and c["st"].get("hw", false):
+		c["st"].erase("hw")
+		Hands.abandon(e, pi)
+
+
 func advance(e, pi: int, r) -> void:
 	var cur: Dictionary = e.sp_cur[pi]
+	_drop_hand(e, pi)
 	var steps: Array = tasks[cur["task"]]["steps"]
 	var nxt: int
 	if typeof(r) == TYPE_ARRAY:         # ["task", id]: choose

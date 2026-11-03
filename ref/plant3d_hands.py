@@ -202,6 +202,19 @@ def check_causes(f, m, w):
             m.sets(c['repair'], f'{wc}.repair')
         text(c['text'], f'{wc}.text')
     need(tot <= LIMITS['weight'], 'bad_number', f'{w}.causes: the weights total at most 65536')
+    # as the fault's own repair (§15.2): a cause's repair made as a work's own write writes no command of a code that
+    # work's isolation locks (it would never be made: H.blocked)
+    commands = {k for o in m.ops for k in o.get('set', {})} | {o['input'] for o in m.ops if 'input' in o}
+    state_kks = {name: n.get('kks') for name, n, kind in m.values if kind == 'state'}
+    for wk in m.works:
+        if wk.get('repairs') != f['id'] or 'isolation' not in wk:
+            continue
+        own = {pt['kks'] for x in m.isolations if x['id'] == wk['isolation'] for pt in x['points']}
+        for c in f['causes']:
+            for k in c.get('repair', {}):
+                need(k not in commands or state_kks.get(k) not in own, 'locked_write',
+                     f'{w}: cause {c["id"]}.repair: {k} is a command of {state_kks.get(k)}, which work {wk["id"]}\'s '
+                     f'own isolation locks')
 
 
 def check_cures(m, x, w):
@@ -411,8 +424,8 @@ def place(p):
 def result(e, p, r):
     """A timed hand action's end, for the NPC whose step waits on it (not a player's person)."""
     sr = e.staff
-    if sr.slot_of(p.i) is None:
-        p.result = r
+    if sr.slot_of(p.i) is None and p.cur is not None and p.cur['st'].get('hw'):
+        p.result = r        # (only for the step that waits on it)
 
 
 def abandon(e, p):

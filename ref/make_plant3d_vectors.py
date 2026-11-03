@@ -4632,6 +4632,10 @@ def hands_runs():
          'task (priority 1) while ic2 opens the cover: the hand action is abandoned in step 9, and started again '
          'when the job resumes; the gauge\'s fault pressed while its code is locked out is not made and draws '
          'nothing', {'absent': ['ic1']}, hf, Script([(520, 'fault', 'f1'), (521, 'fault', 'f_low')]), 800, 100),
+        ('a permit suspended under a timed hand action (§2.13: who may is checked when it starts): the lock removed '
+         'by authority while ic2 opens the cover; the cover comes off at its end, the next actions needing the '
+         'permit are refused authority, and the job is abandoned', {'absent': ['ic1']}, hf,
+         Script([(520, 'remove_lock', 'wo_gauge', 0, None, 'Called away')]), 600, 50),
         ('hidden causes (§2.6, §2.13), free mode: the trainer\'s fault draws its cause from its stream (seed 7); '
          'the permit\'s done of the work that cures it repairs fault and cause; pressed again (the trainer\'s '
          'repair first) it draws again; named by the instructor (term: no draw) the first work\'s done doesn\'t cure '
@@ -4778,6 +4782,10 @@ REJECTS_HANDS = [
     ('a weight naming no value', 'bad_ref', _cause(2, lambda c: SET(c, 'weight', 'nope')), 'nope'),
     ('a cause without its set', 'missing_key', _cause(0, lambda c: POP(c, 'set')), '.set'),
     ('a cause setting no state', 'bad_ref', _cause(0, lambda c: SET(c, 'set', {'loop_ma': 1})), 'not a state'),
+    ('a cause\'s repair writing a command its work\'s isolation locks', 'locked_write',
+     _all(_value('g1_blocked', {'state': 0, 'kks': GAUGE}),
+          _hwop(lambda o: o.__setitem__('input', 'g1_blocked')),
+          _cause(0, lambda c: SET(c, 'repair', {'g1_blocked': 0}))), 'cause blocked.repair'),
     ('cures without repairs', 'missing_key', _work('wo_valve', lambda w: SET(w, 'cures', ['blocked'])),
      'repairs their fault'),
     ('a cure the fault lacks', 'bad_ref', _work('wo_gauge', lambda w: SET(w, 'cures', ['blocked', 'nope'])),

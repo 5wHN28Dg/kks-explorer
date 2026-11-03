@@ -642,6 +642,20 @@ class HandsVectors(PartVectors, unittest.TestCase):
         self.assertEqual(ev[-1], ['hand', '10LAB10CP501', 'open_cover', 'sd_flat', 'ic2', 'start', []])
         self.assertNotIn(['fault', 'f_low'], ev)        # (pressed with the gauge locked out: not made)
 
+    def test_task_ended_under_a_hand_action(self):
+        """(The blind review of HW1) an NPC's task that ends while its hand action is under way (a stop, a failure, a
+        suspended permit's job) abandons the action: nothing written at its end, no result handed to a later step."""
+        e = run_on(self.st, self.st['runs'][4], 525)
+        sr = e.staff
+        p = sr.people[sr.st.person_ix['ic2']]
+        self.assertIn('ic2', e.busy)
+        self.assertTrue(p.cur['st'].get('hw'))
+        sr.finish(p, 'abandoned')
+        self.assertNotIn('ic2', e.busy)
+        self.assertEqual(e.events[-2][1:], ['hand', '10LAB10CP501', 'open_cover', 'sd_flat', 'ic2', 'abandoned', []])
+        e.step(20)
+        self.assertEqual(e.v('g1_body_open'), 0.0)
+
     def pick(self, s, weights):
         s, r = W.draw(s)
         y = (r * sum(weights)) >> 24
@@ -654,7 +668,7 @@ class HandsVectors(PartVectors, unittest.TestCase):
     def test_causes_from_the_stream(self):
         """Each draw from the fault's stream (seed 7, purpose causes, its id) with the weights 3, 2 and loose_w (1):
         at steps 2, 32 and 102 only (not when named, not when the fault isn't made)."""
-        r = self.st['runs'][6]
+        r = self.st['runs'][7]
         names = ['blocked', 'drift', 'term']
         s = W.stream(7, W.TAGS['causes'], 'f_low')
         want = []
@@ -670,7 +684,7 @@ class HandsVectors(PartVectors, unittest.TestCase):
     def test_cures(self):
         """wo_gauge cures blocked and drift, wo_gauge2 term: the done of a work that doesn't cure, and a repair under
         its permit, repair nothing and make no event; the trainer's repair repairs whatever the cause."""
-        r = self.st['runs'][6]
+        r = self.st['runs'][7]
         reps = [x[0] for x in r['events'] if x[1] == 'repair']
         cause0 = next(x[3] for x in r['events'] if x[1] == 'cause')
         self.assertEqual(reps, ([12] if cause0 in ('blocked', 'drift') else []) + [34, 67])
@@ -681,7 +695,7 @@ class HandsVectors(PartVectors, unittest.TestCase):
         self.assertEqual((e.v('g1_fault'), e.v('g1_term')), (1.0, 1.0))     # (the term cause has no repair)
 
     def test_value_weight(self):
-        r = self.st['runs'][7]
+        r = self.st['runs'][8]
         names = ['blocked', 'drift', 'term']
         s = W.stream(7, W.TAGS['causes'], 'f_low')
         want = []

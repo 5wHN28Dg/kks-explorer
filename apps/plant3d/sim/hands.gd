@@ -213,11 +213,13 @@ static func end_hands(e, jumped: bool) -> void:
 		return
 	var c: int = e.clock()
 	var people: Array = e._sm.people
-	for pi in people.size():
+	var order := PackedInt32Array()       # the busy people in staff order (as the reference's walk over everyone)
+	for pid in e.busy:
+		order.append(e._sm.person_ix[pid])
+	order.sort()
+	for pi in order:
 		var pid: String = people[pi]["id"]
-		var b = e.busy.get(pid)
-		if b == null:
-			continue
+		var b = e.busy[pid]
 		if jumped or e.sp_pos[pi] != b[5]:
 			e.busy.erase(pid)
 			e._ev(["hand", b[0], b[1], b[2], pid, "abandoned", []])
@@ -230,8 +232,9 @@ static func end_hands(e, jumped: bool) -> void:
 
 
 static func _result(e, pi: int, r: String) -> void:
-	if e.slot_of(pi) == -1:
-		e.sp_result[pi] = r
+	var c = e.sp_cur[pi]
+	if e.slot_of(pi) == -1 and c != null and c["st"].get("hw", false):
+		e.sp_result[pi] = r        # (only for the step that waits on it)
 
 
 ## An NPC pre-empted (§17.3's pause) leaves their hand action, in step 9.
@@ -285,7 +288,7 @@ static func shown(e, meter: String, vals: PackedFloat64Array) -> float:
 	var x: Dictionary = e._meters[meter]
 	var ok := true
 	for nd in x.get("needs", []):
-		if vals[e.ix[nd]] < 0.5:
+		if not (vals[e.ix[nd]] >= 0.5):     # (NaN reads false, as the reference's)
 			ok = false
 			break
 	if ok:

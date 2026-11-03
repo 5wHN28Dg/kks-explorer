@@ -2233,6 +2233,7 @@ class StaffRun:
 
     def finish(self, p, how):
         cur = p.cur
+        self.drop_hand(p)
         self.e.ev('task', p.id, cur['task'], how)
         self.release(cur)
         self.unreserve(p)
@@ -2276,8 +2277,16 @@ class StaffRun:
                 return
             self.advance(p, r)
 
+    def drop_hand(self, p):
+        """A task step left while its hand action is under way (a stop, a failure, a task ended): the action is
+        abandoned (REALISM.md §2.13)."""
+        if p.cur is not None and p.cur['st'].pop('hw', False):
+            from ref import plant3d_hands as H
+            H.abandon(self.e, p)
+
     def advance(self, p, r):
         cur = p.cur
+        self.drop_hand(p)
         steps = self.st.tasks[cur['task']]['steps']
         if r == 'next':
             nxt = cur['step'] + 1
