@@ -1123,8 +1123,13 @@ func warm_up(parent: Node) -> void:
 	await get_tree().create_timer(WARM_UP_S).timeout
 	# not while the Workshop shows: its hidden meshes' pipelines are made on the main thread as they enter the plant's
 	# world, a hitch in the Workshop's frames (K4a: 167 ms on the Note 9, a trainee in the Workshop 4 s after the start)
+	var waited := false
 	while is_inside_tree() and is_open:
+		waited = true
 		await get_tree().create_timer(0.5).timeout
+	if waited and is_inside_tree():
+		for i in 2:   # (out of the frame that measures the way back to the plant)
+			await get_tree().process_frame
 	if _warm != null or not is_inside_tree() or not ResourceLoader.exists(SPACE):
 		return
 	var mesh: Mesh = null
@@ -1201,8 +1206,10 @@ func _warm_kinds() -> void:
 			await get_tree().create_timer(1.0).timeout
 		if not is_inside_tree() or ResourceLoader.load_threaded_request(path, "PackedScene") != OK:
 			continue
+		_warm_loading = path
 		while ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			await get_tree().process_frame
+		_warm_loading = ""
 		var ps := ResourceLoader.load_threaded_get(path) as PackedScene
 		if ps == null or _warm == null or not is_instance_valid(_warm) or is_open:
 			continue   # (opened meanwhile: the entry has it)
@@ -1235,6 +1242,19 @@ func _warm_kinds() -> void:
 		if is_instance_valid(mc):
 			mc.queue_free()
 	kinds_warmed = true
+
+var _warm_loading := ""          # the kind the warm-up's threaded load is fetching ("" when none)
+
+## Leaving the tree (the app freed or quitting) collects every threaded load the Workshop still has a request on: the
+## warm-up's, an entry's and those a close during loading left. A request never collected keeps its task (and the
+## scene) for the rest of the process: the test runner, which frees one app after another in one process, saw a
+## later Workshop test find the transmitter's load still there, and an abort at an app's free.
+func _exit_tree() -> void:
+	for path in [_warm_loading, _loading] + _orphans:
+		if path != "" and ResourceLoader.load_threaded_get_status(path) != ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+			ResourceLoader.load_threaded_get(path)   # (waits for the thread when it is still loading)
+	_warm_loading = ""
+	_orphans.clear()
 
 var _warm_kinds_done: Array = []   # the kinds whose machines the warm-up held (tests)
 var kinds_warmed := false          # every kind's machine held (or nothing to hold on this renderer)

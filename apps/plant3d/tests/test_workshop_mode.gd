@@ -9,7 +9,7 @@
 ## - handling, hide, isolate, show all, Reset (every part back where it was built, everything shown);
 ## - Back to the plant: same place, view, panels and speed; the 3D on again, the sounds back;
 ## - in a session the plant runs on and `pos` carries the "in the Workshop" flag (MULTIPLAYER.md §6.3), which the
-##   others read; the settings list the Workshop's kinds;
+##   others read; the settings list the Workshop's kinds; freeing the app collects its threaded loads;
 ## - the explode function on the data-only fixture kind (no Workshop code for it).
 extends RefCounted
 
@@ -425,7 +425,15 @@ func run(tree: SceneTree) -> Array:
 	check(ui.clock.speed == SimClock.Speed.NORMAL, "leaving a session's Workshop leaves the plant's speed alone")
 	await _review_plant_checks(tree, main, ws, ui)
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
+	# the app freed while a threaded load of the Workshop's is under way (the warm-up's, here made by hand): its request
+	# is collected, not left holding the scene for the rest of the process (the next app's Workshop found it there)
+	var lpath := "res://built/workshop/pressure_transmitter.scn"
+	check(ResourceLoader.load_threaded_get_status(lpath) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE, "no load of the transmitter before")
+	ResourceLoader.load_threaded_request(lpath, "PackedScene")
+	ws._warm_loading = lpath
 	main.free()
+	check(ResourceLoader.load_threaded_get_status(lpath) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE,
+		"freeing the app collects the Workshop's threaded loads (status %d)" % ResourceLoader.load_threaded_get_status(lpath))
 	return p
 
 ## An alarm in its normal state that the horn would count once raised (not shelved, not suppressed); -1 when none.
