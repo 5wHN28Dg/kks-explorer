@@ -3026,7 +3026,9 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
 ### 21.10 Budgets
 
 - The staff step (§18.4) stays ≤ 0.3 ms on the Note 9 at the busiest step (the shift change with the buses): about
-  95 µs on the laptop by S2's ratio; measured with `bench_step.gd`.
+  95 µs on the laptop by S2's ratio; measured with `bench_step.gd`. **Measured** (2026-11-03, §21.15): 0.27 ms a step
+  on the Note 9 over the gate walk's hour (mean of each step's own time, two judged cool walks: 268.6 and 267.2 µs),
+  within the budget; 39 to 46 µs on the laptop (`bench_staff.gd`).
 - The Note 9's frame rules hold on a new `gate` walk: the shift change at the plant gate (05:40–06:20, the buses in and
   out, the crews through the gate), 10 minutes at 1×, the phone's 12 skinned people, two judged cool runs.
 - The buses add at most 2 draw calls each in view and their triangles fit §18.4's people share.
@@ -3230,8 +3232,29 @@ byte as it was (only the GDScript engine changed; the reference and the vectors 
   steps run 52,637 → 10,072 → 1,752 (with the waits asleep), the bus's next run worked out 6,002 → 2, people's acts
   looked at 53,495 → 10,930 → 2,610.
 - **On the laptop** (`bench_staff.gd`, before and after side by side, three times): 170 to 174 µs → 59 to 60 µs a
-  step (2.9×).
-- **On the Note 9**: NOTE9_RESULTS
+  step (2.9×). With the waits asleep too (2026-11-03, the three side by side, three times, the laptop shared with
+  other jobs): 165 to 190 µs (before) → 66 to 70 µs (the first speed-up) → 39 to 46 µs.
+- **On the Note 9** (2026-11-03): the `gate` walk (`walk=gate`, `probe=1`, `SAMPLE=1`, 600 s) with a release build of
+  main before any of this (before), of this branch (after), and of S4e's branch on it with the `drive` walk (drive),
+  interleaved, each from a cool start (battery at most 30.0 °C; the phone cooled on the laptop's cable between walks, 10
+  to 15 minutes), until each had two walks the frame rule judges (the kernel's reclaim in at most 1 % of the samples): after and
+  drive got their two (5 and 2 walks), before only one in 6 walks (reclaim 0.83 %; the other five 1.19 to 2.02 %, their
+  staff step 1.29 to 1.32 ms, the same as the judged one) before the phone runs stopped for the laptop's memory. The staff step is each engine step's own time from the
+  STEPS line (the before build has no STEPS line: its figure is the walk's staff script time with the gate clock's
+  longest frame left out, over the hour's 6,050 steps, as §21.14 worked it out; the same sum gives 320 µs for after).
+
+  | build | walk | reclaim | staff step (mean / median / p99) | mean frame | at 60 fps |
+  |---|---|---|---|---|---|
+  | before | gate | 0.83 % | 1.32 ms (worked out, no STEPS line) | 25.23 ms | 52.77 % |
+  | after | gate | 0.18 % | 268.6 / 217 / 845 µs | 25.13 ms | 52.89 % |
+  | after | gate | 0.14 % | 267.2 / 214 / 897 µs | 25.12 ms | 53.02 % |
+  | drive | drive | 0.32 % | 372.0 / 320 / 1,049 µs | 25.35 ms | 51.68 % |
+  | drive | drive | 0.14 % | 371.9 / 319 / 1,057 µs | 25.35 ms | 51.77 % |
+
+  The staff step at the gate is within §21.10's 0.3 ms. The frames hardly move (the staff step is under 2 % of a
+  frame's time at 1x; the GPU sets the pace): no frame over 100 ms in any walk. The drive walk is another walk (the
+  trainee at the wheel: the player's acts are looked at every step, 8,852 against 2,624 at the gate), not the budget's.
+  Evidence: the maintainer's laptop, `~/kks-work/build/staff-runs2/`.
 - **The measured walk's STEPS line** (`app/script_cost.gd`, `ui/sim_clock.gd`): each engine step's own staff and model
   time from the end of the gate walk's clock run, its mean, median, 99th percentile and largest, so the staff step on
   the phone is read directly rather than worked out from the frames' means.

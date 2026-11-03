@@ -415,6 +415,120 @@ train's `day_scale`) takes 15.6 µs on the fast core and 23 µs on the slow one,
 table lookup in place (the same comparisons and arithmetic; the vectors unchanged) gave these. The phone's battery was
 at 29–35 °C over the runs.
 
+### 2.13 HW1's details (settled 2026-11-03, before the code: the hands-on engine)
+
+§2.3–§2.7 leave these open; settled here so both engines and the vectors follow one text.
+
+- **The keys that gate it,** each alone: `tools.json`, a model's `hands` and `meters`, an op's `hart`, a scenario
+  fault's `causes`, a work's `cures`, the task steps `tool` and `hand`, a `read` step's `via` and a `hand` step's
+  `slip`. A plant without any of them steps, saves and digests as before.
+- **`tools.json`** (format `walkdown-plant-tools`, version 1, only in a version 2 plant with staff.json: its places are
+  the staff's): `tools`, 1–200 of `{"id", "title", "kind", "size", "modes", "at"}`; `kind` one of `spanner`, `socket`,
+  `screwdriver`, `hex_key`, `pliers`, `stripper`, `crimper`, `torque`, `meter`, `communicator`, `calibrator`,
+  `test_set`, `lifting`, `gas_detector` (the loop calibrator is a `calibrator`: a meter of its own kind); `title` 1–80 characters; `size` text
+  of 1–16 characters; `modes` (1–16 identifiers of at most 16 characters) required on a `meter`, a `communicator` and
+  a `calibrator`, and on no other kind; `at` 1–16 `[place, count]`, each place a `store` or the new place kind `toolbox`, once, the count a
+  whole number 1–99. The counts per place (file order) and each person's `carried` (tool ids in the order taken, no
+  tool twice, at most 12) are engine state, in saves and the digest.
+- **Input** `[n, "tool", item, 0 | 1, person]` in step 1, at the person's place as the step before left it. Event
+  `[n, "tool", item, 0 | 1, person, "done" | "refused" | "unknown", [reasons]]` (unknown: no such tool, or not 0 or
+  1); reasons in order `authority` (no person, not a person, or not the input's player: §17.1), `where` (their place
+  doesn't keep it), then taking `none_left`, `carried` (they have one), `full` (12 carried), putting back
+  `not_carried`, then `busy` (the tool of their hand action under way: one tool does one job at a time). The NPC step `{"tool": [ids] | "off"}` acts in step 9, as `ppe` does, with the same events: each tool
+  not yet carried taken in order, the first refusal fails the step to its `else`; `off` puts every carried tool back
+  in order, and fails likewise. The trainee's step is done once they carry them all (`off`: none).
+- **Hand actions** as §2.4, and: `tools` may be left out for a bare-hand action (the input's tool is then null);
+  `wrong` names tools of tools.json that aren't in `tools`; `minutes` > 0 and ≤ 1440; `work` defaults to true;
+  (kks, action) is unique; `component` must be in the part kind's tree (its Workshop data file's components, or
+  `body` for a kind without one: WORKSHOP.md §4.1), refused `bad_ref`; a hand action's `set` and `input` are states
+  that no op writes (a command, `locked_write`) and that carry no code of the isolation of a work on its code
+  (`locked_write`). The engine writes them directly: no lock skips them. A hand action on a locked code is made (the
+  job is done under its permit on isolated equipment).
+- **Who:** a hand action names a person (null or no staff: `authority`). With `work: true` the person must be, for
+  some work on that code whose permit is accepted (state 5), its acceptor, or another with `accept` and its
+  discipline while the acceptor is off duty (§15.5); with `work: false`, `operate_local`.
+- **The tool check:** the input's tool null when the action has `tools`, or a tool not carried: `tool`; a carried tool
+  not in `tools` (or any tool for a bare-hand action): `wrong_tool` (the app shows `wrong`'s sentence for it, else a
+  general one).
+- **Minutes:** the action ends at the clock C + ⌈minutes × 600⌉ (clock tenths); the busy state is (code, action,
+  tool, value, end, the person's place at the start). In step 3, after the renewals, each busy person in staff order:
+  a step with a jump (§17.6) abandons it, so does the person no longer standing at that place (`leave`, `arrive`
+  elsewhere, an NPC walking off); else, at C ≥ end, `set` and `input` are written and the event `done` made.
+  Abandoning makes `[n, "hand", kks, action, tool, person, "abandoned", []]` and writes nothing. An NPC whose task is
+  pre-empted (§17.3's pause), or whose task step is left any other way while the action is under way (a stop, a
+  failure, the task ended), abandons it then, in step 9, with the same event; the action's end is handed only to the
+  NPC step that waits on it. Who may is checked when the action starts (a permit suspended meanwhile doesn't stop it).
+- **NPCs:** the `hand` step queues the input for the next step's step 1, as an op step does; `done` goes on, `start`
+  waits for the end (the step is then not busy, so a higher priority task may pre-empt it), `abandoned`, `refused` or
+  `unknown` fail to `else`. The trainee's `hand` step takes their `done` event; a `done` made before the step was
+  current counts when the step comes if every state its `set` writes still has that value and its input the step's
+  `value` (§17.8, the rule of 2026-10-23).
+- **NPC slips:** only on a `hand` step: `"slip": {"per_mille": 1–1000, "set": {...}, "text"}`, the `set`'s states
+  written by some hand action (component states). When an NPC's hand step is done, one draw r from the person's slip
+  stream: a slip when (r × 1000) >> 24 < per_mille. The slip goes to the next step's step 1 as the NPC's input
+  `("slip", person, task, step)`: its `set` written directly, event `[n, "slip", person, task, step]` (the app keeps it
+  for the debrief). Players never slip.
+- **Meters** as §2.5, with `needs` a list of 0–16 value names (a meter refuses nothing: it shows `else`), `value` a
+  value name, `else` a value name or a number, `id` unique, `tool_kind` one of `meter`, `communicator`, `calibrator`,
+  `mode` an identifier of at most 16 characters that some tool of that kind lists (lower case, as every identifier:
+  `ma_dc`, `ma_clamp`, `hart` for §2.5's `mA_dc`, `A_ac_clamp`, `hart`). Shown: `value` when every need
+  reads true as the step before left it, else `else`. A `read` step with `via` (a meter of its code; no show binding
+  needed) takes the input `[n, "read", code, value, meter]`; a player without a carried tool of the meter's kind
+  listing its mode makes `[n, "read", person, code, value, "tool"]` and the step waits; an NPC without one makes
+  `[n, "read", person, code, null, "tool"]` and fails to `else`. Otherwise as S1's read against the meter's shown
+  value. Like S1's, the read is matched in step 9.
+- **HART:** `hart` joins `local` and `screen` in an op's `where` (version 2); such an op names `"hart": state`, the
+  state that says a communicator is connected (made by a `connect_hart` hand action). Made with `where` `hart`, its
+  authority is `operate_hart` (a new authority), and after `authority` comes the reason `hart`: the person carries no
+  `communicator`, or the state reads false as the step before left it. Everything else is an op's, a locked code's
+  refusal included (§15.1: a locked code refuses every op).
+- **Causes** as §2.6, with: 1–16 causes, ids unique in the fault, `weight` required (a whole number 0–65536 or a value
+  name; the constants' total ≤ 65536), `set` required, `repair` optional, `text` 1–200 characters. A value weight is
+  read as step 2 left it, rounded down, NaN or below 0 as 0, above 65536 as 65536. The draw: T the total, r the
+  stream's next draw, y = (r × T) >> 24, the first cause whose running total exceeds y (T = 0: the first). The
+  instructor's `[n, "fault", id, cause]` with a cause the fault lacks does nothing and makes no event. A repair writes
+  the fault's `repair` and the cause's, and is not made if any of them would be skipped (§15.1).
+- **Cures:** a work's `cures` (1–16 cause ids, unique) needs `repairs`; every scenario with that fault must give it
+  those causes (`bad_ref`). Two works may repair one fault only when both have `cures` and no cause is in both
+  (else `dup_id`). A work without `cures` cures every cause. A repair under its permit, or its `done`, whose work
+  doesn't cure the applied cause writes neither repair and makes no `repair` event; everything else happens as for
+  one that cures.
+- **The digest** gains one part after the weather's, only in a run with any of the keys: the tools' counts (file
+  order), each person's carried tools (as indexes in tools.json), each person's busy action or null, each cause
+  stream's state and applied cause (faults with causes, in scenario order), and each person's slip stream state.
+- **Snapshots** gain, with the same keys, `carried` (people with tools), `busy` and `causes` (applied faults' causes).
+
+### 2.14 As built for milestone HW1 (2026-11-03: the hands-on engine)
+
+- **Where:** `ref/plant3d_hands.py` (the reference: tools.json's check, the model's hands and meters, causes and
+  cures, the step's pieces, the digest's part) with hooks in `ref/plant3d.py` and `ref/plant3d_staff.py`; the app's
+  engine `apps/plant3d/sim/hands.gd` with hooks in `engine.gd`, `staff.gd` and the loader (`plant_model.gd`). Saves
+  keep its state and check it (`ui/autosave.gd`), a session carries its inputs (`net/input_check.gd`).
+- **Vectors:** `plant3d-realism.json`'s `hands`: the realism base's plant with tools.json (a toolbox and a store),
+  the gauge's ten hand actions, five meters and a HART op, a fault with three hidden causes, two works curing
+  different causes, an instrument technician's role and two people; 71 rejects and eight runs (tools carried, hand
+  actions with every reason, meters and HART, a jump, an NPC's whole job with tools, permits, slips and readings, an
+  NPC pre-empted, hidden causes with cures, a value weight). Tests: `tests/test_plant3d_realism.py` `HandsVectors`
+  (each reason in order, the timed action's write in step 3, the draws against their streams, cures),
+  `GdscriptRealism` (every value's bits and the digests in the GDScript engine, straight-line and interpreter),
+  `apps/plant3d/tests/test_run_save.gd` (a save in the middle of an NPC's hand action goes on bit for bit; damaged
+  hands-on state refused).
+- **The byte check:** `plant3d-v1.json`, `plant3d-v2.json` and `plant3d-bench-v1.json` are what they were, and the
+  realism file's `streams`, `staff`, `wear` and `weather` parts too.
+- **The step's cost** (`realism_synth.py 600 --engine --hands`: RE1's 600 values, AG1's and WX1's engine nodes and
+  weather, 150 hand actions writing the component states, 50 meters, tools.json at the store; `step_bench.gd`'s
+  HANDS line times step 3's hands part alone with 12 actions under way in `shift_cold`, 20,000 calls): on the laptop
+  (headless) the model step at base load 0.245 ms as built, 0.272 ms with `--engine`, 0.273 ms with `--hands` too:
+  the hand actions and meters add nothing to a step with no action under way (they are entries, not nodes); the
+  hands part with 12 actions under way is timed by the HANDS line (figures follow with the Note 9 run).
+- **From the reviews:** an idle task has no hand step (it isn't paused when a player takes the person); a cause's
+  `repair` needs the fault's own and writes no command its work's isolation locks; a save is refused when its tools
+  don't add up to tools.json's or its NPC inputs name no person or slip. Not changed: the digest keeps no task
+  step's own progress (a waiting `hw`, as an op step's `busy`), as §17.14 says.
+- **Left open on purpose (a question for the user):** §15.1's "a locked code refuses every op" holds for HART ops,
+  so a transmitter isolated by a lock on its own code can't be ranged or trimmed through the communicator until it
+  is unlocked; hand actions are made on a locked code (the job's own work).
+
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does
@@ -708,9 +822,13 @@ The user (2026-11-03): the five scenarios that were format 1 (`cold_iron`, `hot_
 weather on, seeded by season.
 - **The content** (`tools/plant3d/train_content.py`, `train_weather.FREE_PLAY`): each is `"version": 2` with
   `"world": {"year_day", "weather": {"season"}}` as its last key and nothing else new: no `start` (the clock starts at
-  plant.json's, day 1 06:00, as before), no `staff` (no people, as before), no world `seed` (1, §2.1). Each takes the
+  plant.json's, day 1 06:00, as before), no `staff` (no people, as before). Each takes the
   season of its crews' twin: `cold_iron` and `hot_restart` as `shift_cold` (summer, year day 196); the WTP's three as
-  `shift_wtp` (spring, year day 100). With the default seed, the twins of one season draw the same weather. Format 1
+  `shift_wtp` (spring, year day 100). **A world seed each** (the user, 2026-11-03, after #315 had left them all at the
+  default 1, so the twins of one season drew the same weather): `"seed"` first in `world`, `cold_iron` 101,
+  `hot_restart` 102, `wtp_cold` 103, `wtp_normal` 104, `wtp_flood` 105 (`train_weather.SEEDS`); `shift_cold` and
+  `shift_wtp` keep their staff seeds (2 and 3) as the world's. Nothing in the first train's content draws from the
+  world seed but the weather (no `draw` node, no seeded fault), so only the weather moved. Format 1
   itself, its validator rules and `plant3d-v1.json`'s synthetic parts are unchanged (its `about` still says "format 1
   vectors": its `train` and `hot` have run version 2 content since P1).
 - **The vectors** (made again, then compared by JSON with main's): nothing moved between files. `plant3d-v1.json`'s
@@ -722,8 +840,14 @@ weather on, seeded by season.
   runs `wind` and `solar` (spring starts at `clear`, whose other targets are the clear values); `rain`, `lightning` and
   `wet` stay 0. No run crosses a change
   of kind, so no `weather` event is added. Nothing the model computes reads the weather (§5.5), so no model value
-  moved. `plant3d-v2.json`'s `train` (forks from cold_iron without values), `staff`, `day` and every synthetic item,
-  and `plant3d-realism.json`, are byte for byte main's.
+  moved. **With the seeds of their own** (made again and compared by JSON with main's after #315, `weather` events
+  set aside): every input, event, fork and model value the same; `train` (cold_iron, seed 101) and `hot`
+  (hot_restart, 102) and `wtp` (wtp_cold, 103) the same values too (their seasons' first kind holds through each
+  run), the summer chain changing to `dust_haze` at step 72,000 in nine of `train`'s forks that run past it (a
+  `weather` event each; a fork's `end` holds no driven value); `wtp_cip` and `wtp_regen` (wtp_normal, 104) change to `dust_haze` at step
+  12,000 (one `weather` event, `world_wx`, `wind`, `solar`, `visibility` and `dust` after it), as does
+  `plant3d-v2.json`'s `train` fork that runs past it (fork 9; its forks carry no snapshot values). Since #315 too,
+  `plant3d-v2.json`'s `staff`, `day` and every synthetic item, and `plant3d-realism.json`, are byte for byte main's.
 - **What depends on it:** the app lists the same scenarios (by id; none gained `staff`, so none is offered as a crews'
   shift); a save or session snapshot of a run made before is refused as "content has changed" (the content's hash,
   `ui/run_save.gd`), as after any content change, and a session's players must share the content's hash; procedures,
@@ -731,8 +855,16 @@ weather on, seeded by season.
   now makes such a scenario (cold_iron without `world`) instead of starting cold_iron. cold_iron is the app's default
   scenario, so a plain launch, the step bench's loads (`app/step_bench.gd`: the train as built and RE1's shapes
   without `--engine` now both carry the built weather's seven values, and print its `WEATHER` line) and a phone walk
-  started in it now run summer's `hot` weather (a little dust and haze, a 12 km view) where earlier ones ran none: figures measured
-  before compare with clear weather (§5.5 measured the weather's own cost).
+  started in it would run summer's `hot` weather (a little dust and haze, a 12 km view) where earlier ones ran none.
+  **So measured runs pin clear weather** (the user, 2026-11-03; MILESTONES' measurement rules): a walk or shot (`walk=…`, `shot=…`,
+  `phone/frames.sh`, which writes `weather=clear` into walk.txt) and the step bench (`step=bench`,
+  `sim/tests/bench_realism.gd`; its `STEP … weather=` field) run `weather=clear` unless they name another kind
+  (`app/main.gd` `measured_weather`; not with `mp=`, where the host's weather rules); the step bench's `--engine`
+  loads keep their own seeded weather (their hourly draws are what they measure: the built and plain loads' `WEATHER`
+  lines time the fixed kind's step, so §11's 0.02 ms for a draw an hour is judged on the `--engine` load). The phone's
+  view shots (`shot=`, `phone/shots.sh`, a GPU time per view) are measurements too and pin clear the same way.
+  Free play keeps the season's weather.
+  Figures measured before compare with these clear-weather runs (§5.5 measured the weather's own cost).
 
 ## 6. Documents and discussions
 

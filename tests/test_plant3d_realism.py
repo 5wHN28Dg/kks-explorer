@@ -362,6 +362,33 @@ class WearVectors(PartVectors, unittest.TestCase):
         self.assertEqual(whys['a count node in a version 1 model file'], 'bad_kind')
 
 
+class FreePlaySeeds(unittest.TestCase):
+    """Every shipped scenario with seeded weather draws a weather sequence of its own (the user, 2026-11-03: a world
+    seed per scenario, REALISM.md §5.6): the world seeds (W.world_seed: its own, else the staff's, else 1, §2.1) all differ, and
+    so do the weather streams' first day of draws."""
+
+    def test_distinct_seeds(self):
+        d = os.path.join(os.path.dirname(HERE), 'data', 'plant3d', 'scenarios')
+        seeds = {}
+        for f in sorted(os.listdir(d)):
+            sc = json.load(open(os.path.join(d, f)))
+            world = sc.get('world', {})
+            if 'season' not in world.get('weather', {}):
+                continue
+            seeds[sc['id']] = W.world_seed(sc)
+        self.assertGreaterEqual(set(seeds), {'cold_iron', 'hot_restart', 'wtp_cold', 'wtp_normal', 'wtp_flood',
+                                             'shift_cold', 'shift_wtp'})
+        self.assertEqual(len(set(seeds.values())), len(seeds), seeds)
+        draws = {}
+        for sid, seed in seeds.items():
+            s, out = W.stream(seed, W.TAGS['weather'], 'weather'), []
+            for _ in range(24):
+                s, r = W.draw(s)
+                out.append(r)
+            draws[sid] = tuple(out)
+        self.assertEqual(len(set(draws.values())), len(draws))
+
+
 class WeatherVectors(PartVectors, unittest.TestCase):
     """Milestone WX1 (REALISM.md §5.1): weather.json and the weather step, seeded, fixed and scripted, the
     instructor's input and a jump."""
@@ -529,6 +556,212 @@ class WeatherVectors(PartVectors, unittest.TestCase):
         self.assertEqual(plain(e.snapshot())['people'], r['states'][-1]['people'])
 
 
+class HandsVectors(PartVectors, unittest.TestCase):
+    """Milestone HW1 (REALISM.md §2.3–§2.7, settled in §2.13): tools carried, hand actions, meters and HART ops,
+    hidden causes and cures, the NPCs' slips; each with its reasons in order."""
+    part, rejects = 'hands', 'REJECTS_HANDS'
+
+    def evs(self, k, kinds=('tool', 'hand', 'read', 'cause', 'slip', 'repair', 'early'), steps=None):
+        return [x for x in self.st['runs'][k]['events'] if x[1] in kinds and (steps is None or x[0] in steps)]
+
+    def test_tool_reasons(self):
+        """Taken only at a place that keeps it, by the input's own person; refused carried, full, none_left,
+        not_carried, where (put back where it isn't kept); the counts per place in the snapshot's digest."""
+        ev = self.evs(0, ('tool',))
+        self.assertEqual(ev[:5], [[1, 'tool', 'sd_flat', 1, 'ic1', 'refused', ['where']],
+                                  [1, 'tool', 'sd_flat', 1, 'ic2', 'refused', ['authority', 'where']],
+                                  [1, 'tool', 'nope', 1, 'ic1', 'unknown', []],
+                                  [1, 'tool', 'sd_flat', 2, 'ic1', 'unknown', []],
+                                  [1, 'tool', 'sd_flat', 1, None, 'refused', ['authority', 'where']]])
+        why = {(x[0], x[2], x[3]): x[6] for x in ev if x[5] == 'refused'}
+        self.assertEqual(why[(3, 'spanner_17', 0)], ['not_carried'])
+        self.assertEqual(why[(3, 'loopcal', 1)], ['where'])
+        self.assertEqual(why[(7, 'loopcal', 1)], ['full'])
+        self.assertEqual(why[(7, 'spanner_13', 0)], ['where'])
+        self.assertIn([308, 'tool', 'hart', 1, 'ic2', 'refused', ['none_left']], ev)
+        e = run_on(self.st, self.st['runs'][0], 10)
+        self.assertEqual(len(e.carried['ic1']), 12)
+        self.assertEqual(e.tool_n[e.tools['ix']['spanner_17']], [0, 2])     # one taken at tb1, one back at store1
+        self.assertEqual(e.tool_n[e.tools['ix']['loopcal']], [0])
+
+    def test_hand_reasons_in_order(self):
+        """authority, busy, tool, wrong_tool, the needs, value; a hand action on the locked code is made."""
+        ev = self.evs(1, ('hand',), steps=(5, 12, 21))
+        self.assertEqual([(x[3], x[4], x[6], x[7]) for x in ev], [
+            ('open_cover', 'sd_flat', 'refused', ['authority']), ('connect_hart', 'hart', 'done', []),
+            ('no_such', 'sd_flat', 'unknown', []), ('pull_test', None, 'refused', ['authority']),
+            ('open_cover', 'spanner_13', 'refused', ['wrong_tool']), ('open_cover', None, 'refused', ['tool']),
+            ('open_cover', 'dmm', 'refused', ['tool']), ('lift_wire', 'sd_flat', 'refused', ['g1_body_open']),
+            ('torque_gland', 'spanner_17', 'refused', ['value']), ('torque_gland', 'spanner_17', 'refused', ['value']),
+            ('pull_test', 'sd_flat', 'refused', ['wrong_tool']), ('pull_test', None, 'refused', ['busy']),
+            ('tighten', 'spanner_13', 'refused', ['busy', 'wrong_tool'])])
+        # (the adversarial review) the tool of an action under way can't be put back: one tool, one job at a time
+        self.assertIn([21, 'tool', 'sd_flat', 0, 'ic1', 'refused', ['where', 'busy']], self.st['runs'][1]['events'])
+        self.assertIn([8, 'lock', 'wo_gauge', 0, 'ic1', 'done', []], self.st['runs'][1]['events'])
+
+    def test_timed_hand(self):
+        """Started at 20, two clock minutes (20 steps at day_scale 60), its set written in step 40's step 3; one
+        abandoned when the trainee left the place; an input written at once."""
+        seen = {}
+
+        def each(e):
+            seen[e.step_no] = (e.v('g1_body_open'), e.v('g1_body_torque'), list(e.busy))
+        run_on(self.st, self.st['runs'][1], 50, each)
+        self.assertEqual(seen[39][0], 0.0)
+        self.assertEqual(seen[40][0], 1.0)
+        self.assertEqual(seen[39][2], ['ic1'])
+        self.assertEqual(seen[40][2], [])
+        self.assertEqual(seen[45][1], 7.5)
+        ev = self.evs(1, ('hand',))
+        self.assertIn([15, 'hand', '10LAB10CP501', 'open_cover', 'sd_flat', 'ic1', 'abandoned', []], ev)
+        self.assertIn([50, 'op', '10LAB10CP501', 'set', 'refused', ['iso_gauge_locked'], 'hart', 'ic1'],
+                      self.st['runs'][1]['events'])
+
+    def test_meters_and_hart(self):
+        """A read through a meter: tool without it (the step waits), misread against its else, 0 round both wires,
+        the communicator's PV; a HART op refused hart, where, its range, authority; done with it connected."""
+        ev = [x for x in self.st['runs'][2]['events'] if x[1] in ('read', 'op') and x[0] >= 10 and x[2] in
+              ('ic1', '10LAB10CP501')]
+        self.assertEqual([x[1:] for x in ev], [
+            ['read', 'ic1', '10LAB10CP501', 8.8, 'tool'], ['read', 'ic1', '10LAB10CP501', 8.8, 'misread'],
+            ['read', 'ic1', '10LAB10CP501', 0, 'ok'],
+            ['op', '10LAB10CP501', 'set', 'refused', ['hart'], 'hart', 'ic1'],
+            ['op', '10LAB10CP501', 'set', 'refused', ['where'], 'local', 'ic1'],
+            ['op', '10LAB10CP501', 'set', 'refused', ['g1_cfg_urv'], 'hart', 'ic1'],
+            ['op', '10LAB10CP501', 'set', 'done', [], 'hart', 'ic1'],
+            ['op', '10LAB10CP501', 'set', 'refused', ['authority', 'hart'], 'hart', 'ic2'],
+            ['read', 'ic1', '10LAB10CP501', 3, 'ok'], ['read', 'ic1', '10LAB10CP501', -1, 'tool'],
+            ['op', '10LAB10CP501', 'set', 'refused', ['iso_gauge_locked'], 'hart', 'ic1']])
+        self.assertEqual(run_on(self.st, self.st['runs'][2]).v('g1_cfg_urv'), 25.0)
+
+    def test_jump_abandons(self):
+        ev = self.evs(3, ('hand', 'jump'))
+        self.assertEqual([x[1:] for x in ev[:3]], [
+            ['hand', '10LAB10CP501', 'clean_glass', None, 'ic1', 'start', []],
+            ['jump', 1134480, 1962000, 'done'],
+            ['hand', '10LAB10CP501', 'clean_glass', None, 'ic1', 'abandoned', []]])
+
+    def test_npc_job_and_slips(self):
+        """ic2's job: its slips drawn from its own stream (seed 7, purpose slips, its id): per mille 1000 always,
+        per mille 1 at the second draw only if (r × 1000) >> 24 is 0; the read without a clamp meter and the hand
+        action without a 17 mm spanner go to their else; every tool back in the box at the end."""
+        r = self.st['runs'][4]
+        e = run_on(self.st, r)
+        s0 = W.stream(7, W.TAGS['slips'], 'ic2')
+        s1, r1 = W.draw(s0)
+        s2, r2 = W.draw(s1)
+        self.assertEqual(e.slip_s['ic2'], s2)
+        slips = [x for x in r['events'] if x[1] == 'slip']
+        self.assertEqual(len(slips), 1 + ((r2 * 1000) >> 24 < 1))
+        self.assertEqual(slips[0][2:], ['ic2', 'ic_job', 8])
+        self.assertEqual(e.v('g1_body_loose'), 1.0)
+        self.assertIn(['read', 'ic2', '10LAB10CP501', None, 'tool'], [x[1:] for x in r['events']])
+        self.assertIn(['hand', '10LAB10CP501', 'tighten', 'spanner_17', 'ic2', 'refused', ['tool']],
+                      [x[1:] for x in r['events']])
+        self.assertEqual(e.carried, {})
+        self.assertEqual(e.tool_n, [list(c for _, c in at) for at in e.tools['at']])
+        self.assertEqual(e.slip_s['ic1'], W.stream(7, W.TAGS['slips'], 'ic1'))     # nobody else drew
+
+    def test_pre_empted(self):
+        ev = [x[1:] for x in self.st['runs'][5]['events'] if x[0] in (515, 520, 521, 551)
+              and x[1] in ('hand', 'task', 'fault')]
+        self.assertIn(['hand', '10LAB10CP501', 'open_cover', 'sd_flat', 'ic2', 'abandoned', []], ev)
+        self.assertLess(ev.index(['hand', '10LAB10CP501', 'open_cover', 'sd_flat', 'ic2', 'abandoned', []]),
+                        ev.index(['task', 'ic2', 'ic_urgent', 'start']))
+        self.assertEqual(ev[-1], ['hand', '10LAB10CP501', 'open_cover', 'sd_flat', 'ic2', 'start', []])
+        self.assertNotIn(['fault', 'f_low'], ev)        # (pressed with the gauge locked out: not made)
+
+    def test_task_ended_under_a_hand_action(self):
+        """(The blind review of HW1) an NPC's task that ends while its hand action is under way (a stop, a failure, a
+        suspended permit's job) abandons the action: nothing written at its end, no result handed to a later step."""
+        e = run_on(self.st, self.st['runs'][4], 525)
+        sr = e.staff
+        p = sr.people[sr.st.person_ix['ic2']]
+        self.assertIn('ic2', e.busy)
+        self.assertTrue(p.cur['st'].get('hw'))
+        sr.finish(p, 'abandoned')
+        self.assertNotIn('ic2', e.busy)
+        self.assertEqual(e.events[-2][1:], ['hand', '10LAB10CP501', 'open_cover', 'sd_flat', 'ic2', 'abandoned', []])
+        e.step(20)
+        self.assertEqual(e.v('g1_body_open'), 0.0)
+
+    def pick(self, s, weights):
+        s, r = W.draw(s)
+        y = (r * sum(weights)) >> 24
+        acc = 0
+        for k, w in enumerate(weights):
+            acc += w
+            if acc > y:
+                return s, k
+
+    def test_causes_from_the_stream(self):
+        """Each draw from the fault's stream (seed 7, purpose causes, its id) with the weights 3, 2 and loose_w (1):
+        at steps 2, 32 and 102 only (not when named, not when the fault isn't made)."""
+        r = self.st['runs'][7]
+        names = ['blocked', 'drift', 'term']
+        s = W.stream(7, W.TAGS['causes'], 'f_low')
+        want = []
+        for _ in range(3):
+            s, k = self.pick(s, [3, 2, 1])
+            want.append(names[k])
+        got = [(x[0], x[3]) for x in r['events'] if x[1] == 'cause']
+        self.assertEqual(got, [(2, want[0]), (32, want[1]), (36, 'term'), (102, want[2])])
+        e = run_on(self.st, r)
+        self.assertEqual(e.cause_s['f_low'], s)
+        self.assertNotIn(36, [x[0] for x in r['events'] if x[1] == 'instructor' and len(x) == 4])
+
+    def test_cures(self):
+        """wo_gauge cures blocked and drift, wo_gauge2 term: the done of a work that doesn't cure, and a repair under
+        its permit, repair nothing and make no event; the trainer's repair repairs whatever the cause."""
+        r = self.st['runs'][7]
+        reps = [x[0] for x in r['events'] if x[1] == 'repair']
+        cause0 = next(x[3] for x in r['events'] if x[1] == 'cause')
+        self.assertEqual(reps, ([12] if cause0 in ('blocked', 'drift') else []) + [34, 67])
+        self.assertNotIn(47, [x[0] for x in r['events']])       # the repair under the permit: no event at all
+        e = run_on(self.st, r, 66)
+        self.assertEqual((e.v('g1_fault'), e.v('g1_term')), (1.0, 1.0))
+        e.step()
+        self.assertEqual((e.v('g1_fault'), e.v('g1_term')), (1.0, 1.0))     # (the term cause has no repair)
+
+    def test_value_weight(self):
+        r = self.st['runs'][8]
+        names = ['blocked', 'drift', 'term']
+        s = W.stream(7, W.TAGS['causes'], 'f_low')
+        want = []
+        for _ in range(20):
+            s, k = self.pick(s, [3, 2, 7])
+            want.append(names[k])
+        self.assertEqual([x[3] for x in r['events'] if x[1] == 'cause'], want)
+
+    def test_no_keys_no_state(self):
+        """A run without HW1's keys keeps its snapshot's keys and digest (its own vectors stay byte for byte)."""
+        with open(G.OUT3, encoding='utf-8') as f:
+            V = json.load(f)
+        for part in ('staff', 'wear', 'weather'):
+            for r in V[part]['runs']:
+                for s in r['states']:
+                    self.assertFalse({'carried', 'busy', 'causes'} & set(s), part)
+
+    def test_component_from_the_workshop_tree(self):
+        """A hand action's component is checked against the Workshop data file's components when the kind has one,
+        else `body` (WORKSHOP.md §4.1)."""
+        from ref import plant3d_hands as H
+
+        class B:
+            pass
+        b = B()
+        b.model = B()
+        b.model.hands = [{'kks': 'X', 'action': 'a', 'component': 'terminal_block'}]
+        b.equipment = {'X': {'part': 'pressure_transmitter'}}
+        b.workshop = {'pressure_transmitter': {'components': {'housing': {}, 'terminal_block': {}}}}
+        H.check_components(b)
+        b.model.hands[0]['component'] = 'body'
+        with self.assertRaises(P.FormatError):
+            H.check_components(b)
+        b.workshop = {}
+        H.check_components(b)
+
+
 class SyntheticLoad(unittest.TestCase):
     """tools/plant3d/realism_synth.py (§11's measurement before any realism content): its loads of 600 and 1,000
     values pass the validator on the first train, are made the same every time, keep §11's split, and step."""
@@ -582,6 +815,28 @@ class SyntheticLoad(unittest.TestCase):
         e = P.Engine(b2, 'cold_iron')
         self.assertEqual(len(e.wx['values']), 10)
         self.assertEqual(e.names[-3:], ['world_hour', 'world_day', 'world_wx'])
+        e.step(20)
+        self.assertTrue(all(map(lambda x: x == x, e.cur)))
+
+    def test_hands_load(self):
+        """--hands (HW1): the component states written by hand actions, the meter values read through meters,
+        tools.json at the store; it passes the validator and steps with the staff's scenario."""
+        import glob
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), 'tools', 'plant3d'))
+        import realism_synth as RS
+        root = os.path.join(os.path.dirname(HERE), 'data', 'plant3d')
+        b = P.check_dir(root)
+        vals = RS.make(600, b, engine=True)
+        hands = RS.hands_doc(b, vals)
+        self.assertEqual((len(hands[0]), len(hands[1])), (150, 50))
+        files = {}
+        for f in glob.glob(os.path.join(root, '**', '*.json'), recursive=True):
+            with open(f, encoding='utf-8') as fh:
+                files[os.path.relpath(f, root)] = json.load(fh)
+        RS.apply(files, vals, RS.weather_doc(), RS.WX_EXT, hands)
+        b2 = P.check_files({k: json.dumps(v).encode() for k, v in files.items()})
+        e = P.Engine(b2, 'shift_cold')
+        self.assertTrue(e.hw)
         e.step(20)
         self.assertTrue(all(map(lambda x: x == x, e.cur)))
 

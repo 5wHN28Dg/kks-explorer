@@ -27,7 +27,9 @@
 ##   panels=alarms,procedure,crew,card:CODE   open these panels (the frame measurement with the UI open)
 ##   weather=KIND            the scenario's weather fixed at that kind (weather.json's: clear, sandstorm, rain, …), its
 ##                           values at their targets from the start (a measured walk in that weather, REALISM.md
-##                           §5.4; the scenario must have weather: every shipped scenario has)
+##                           §5.4; the scenario must have weather: every shipped scenario has). A walk (walk=…), a shot
+##                           (shot=…) without it run weather=clear (measured_weather), and so does the step bench
+##                           (_step_bench); free play keeps the scenario's seasonal weather
 ##   speed=fast              start the plant in fast-forward (the model's share of a core, measured in a walk)
 ##   crews=1                 the crews at work round the walker (S2's and S3's staff): the scenario `shift_cold` (or
 ##                           scenario=ID, one with staff), no role taken (free mode), at normal speed unless speed=fast;
@@ -334,7 +336,7 @@ func _step_bench() -> void:
 		for f in names:
 			if f.begins_with("realism-") and f.ends_with(".json"):
 				loads[f.trim_suffix(".json")] = FileAccess.get_file_as_string(out_dir.path_join(f))
-	var lines := SB.run(SB.read_dir("res://built/content"), loads)
+	var lines := SB.run(SB.read_dir("res://built/content"), loads, 6000, String(opts.get("weather", "clear")))
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	var fo := FileAccess.open(out_dir.path_join("step.txt"), FileAccess.WRITE)
 	fo.store_string("\n".join(lines) + "\n")
@@ -365,6 +367,15 @@ func _options() -> void:
 	out_dir = ANDROID_FILES if OS.get_name() == "Android" else opts.get("out", OS.get_user_data_dir())
 	Lighting.off = String(opts.get("fx_off", "")).split(",", false)
 	Lighting.on = String(opts.get("fx_on", "")).split(",", false)
+	measured_weather(opts)
+
+## A measured walk (or a shot's view, phone/shots.sh's GPU times) runs in clear weather unless it asks for another (`weather=KIND`; the user, 2026-11-03: free play's
+## seasonal weather would otherwise change what walks measure from one scenario or season to the next, and the
+## measurements before 2026-11-03 were made without weather). Not with mp= (the host's weather rules a session) and
+## not for free play (no walk): those keep the scenario's own weather.
+static func measured_weather(o: Dictionary) -> void:
+	if (o.has("walk") or o.has("shot")) and not o.has("weather") and not o.has("mp"):
+		o["weather"] = "clear"
 
 ## The options after `--`. A start for a walkdown-plant:// link takes no options at all: the shell hands the link over
 ## as typed, and Windows doesn't escape a quote in it, so a crafted link could otherwise add its own (`--out=…`).

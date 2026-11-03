@@ -1,0 +1,180 @@
+"""Walkdown Plant's Workshop bench models (docs/plant3d/WORKSHOP.md §6, milestone K3; ref/plant3d_bench.py): the
+vector file is what ref/make_plant3d_bench_vectors.py makes, each valid file passes and each reject is refused with
+its code, the committed transmitter's bench behaves as the 3051's manual says (4–20 mA over the range, NAMUR
+saturation, a blocked impulse line holding, an open loop dead), and bench files are checked with the plant's content.
+(The committed bench file being what tools/plant3d/make_content.py makes is test_plant3d's content check.)
+  .venv/bin/python -m unittest tests.test_plant3d_workshop_bench"""
+import json, os, subprocess, sys, unittest
+from ref import plant3d as P
+from ref import plant3d_bench as B
+from ref import make_plant3d_bench_vectors as G
+from ref.courses import FormatError
+
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+DATA = os.path.join(REPO, 'data', 'plant3d')
+VECTORS = os.path.join(REPO, 'ref', 'vectors', 'plant3d-bench-v1.json')
+
+
+class BenchVectors(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        with open(VECTORS, encoding='utf-8') as f:
+            cls.V = json.load(f)
+
+    def test_the_file_is_what_the_generator_makes(self):
+        r = subprocess.run([sys.executable, os.path.join(REPO, 'ref', 'make_plant3d_bench_vectors.py')],
+                           capture_output=True, text=True, cwd=REPO)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_valid_and_reject(self):
+        self.assertGreaterEqual(len(self.V['valid']), 2)
+        for v in self.V['valid']:
+            B.check(B.loads(v['bench']), v['components'], 'bench', None)
+        self.assertGreaterEqual(len(self.V['reject']), 40)
+        for r in self.V['reject']:
+            with self.assertRaises(FormatError, msg=r['why']) as cm:
+                B.check(B.loads(r['bench']), r['components'], 'bench', self.V['sounds'])
+            self.assertEqual(cm.exception.code, r['code'], r['why'])
+
+    def test_steps_replay(self):
+        """The reference's run of each `steps` item, step by step, against the file (to its rounding)."""
+        for s in self.V['steps']:
+            states, events = G.run(s['bench'], s['components'], None, s['inputs'], len(s['states']) - 1)
+            self.assertEqual(json.loads(G.dump(events)), s['events'], s['why'])
+            self.assertEqual(json.loads(G.dump(states)), s['states'], s['why'])
+
+    def test_every_committed_bench_has_a_run(self):
+        parts = {json.loads(v['bench'])['part'] for v in self.V['steps']}
+        for name in os.listdir(os.path.join(DATA, 'workshop', 'bench')):
+            self.assertIn(name[:-5], parts)
+
+
+class Transmitter(unittest.TestCase):
+    """The transmitter's bench (WORKSHOP.md §6.4) as the sources say it behaves."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.b = P.check_dir(DATA)
+        cls.bench = cls.b.bench['pressure_transmitter']
+
+    def go(self, e, seconds):
+        for _ in range(round(seconds * 10)):
+            e.step()
+
+    def powered(self):
+        e = self.bench.engine()
+        e.op('terminal_block', 'start')
+        self.go(e, 0.2)
+        return e
+
+    def test_four_to_twenty_milliamps_over_the_range(self):
+        e = self.powered()
+        for p, ma in ((0, 4.0), (2.5, 8.0), (5, 12.0), (10, 20.0)):
+            e.op('process_flange', 'set', p)
+            self.go(e, 8)
+            self.assertAlmostEqual(e.v('loop_ma'), ma, 6, p)
+            self.assertAlmostEqual(e.v('pv'), p, 6)
+            self.assertAlmostEqual(e.v('x_dia'), p / 10, 6)     # the diaphragm's travel follows the pressure
+
+    def test_damping_lags_the_output(self):
+        """The output follows a step with the damping's time constant (0.4 s) after the line and the cell."""
+        e = self.powered()
+        e.op('process_flange', 'set', 10)
+        self.go(e, 0.5)
+        self.assertLess(e.v('loop_ma'), 16)
+        self.go(e, 8)
+        self.assertAlmostEqual(e.v('loop_ma'), 20, 4)
+
+    def test_namur_saturation(self):
+        e = self.powered()
+        e.op('process_flange', 'set', 12)
+        self.go(e, 8)
+        self.assertEqual(e.v('loop_ma'), 20.5)
+        self.assertEqual(e.astate['sat_high'], 'active_unack')
+        self.assertGreater(e.v('x_dia'), 1.0)
+        e.op('process_flange', 'set', -1)
+        self.go(e, 8)
+        self.assertEqual(e.v('loop_ma'), 3.8)
+        self.assertEqual(e.astate['sat_low'], 'active_unack')
+
+    def test_over_range_fault(self):
+        e = self.powered()
+        e.op('process_flange', 'set', 3)
+        self.go(e, 5)
+        e.fault('over_range')
+        self.go(e, 5)
+        self.assertEqual(e.v('loop_ma'), 20.5)
+        e.repair('over_range')
+        self.go(e, 8)
+        self.assertAlmostEqual(e.v('loop_ma'), 4 + 16 * 0.3, 5)
+
+    def test_blocked_impulse_line_holds(self):
+        e = self.powered()
+        e.op('process_flange', 'set', 6)
+        self.go(e, 6)
+        e.fault('impulse_blocked')
+        self.go(e, 0.2)
+        e.op('process_flange', 'set', 1)
+        self.go(e, 6)
+        self.assertAlmostEqual(e.v('pv'), 6, 4)                  # what was trapped
+        self.assertAlmostEqual(e.v('flow_frac'), 0.0, 9)
+        self.assertAlmostEqual(e.v('loop_ma'), 4 + 16 * 0.6, 4)
+        e.repair('impulse_blocked')
+        self.go(e, 6)
+        self.assertAlmostEqual(e.v('pv'), 1, 4)
+
+    def test_open_loop_dark(self):
+        e = self.powered()
+        e.op('process_flange', 'set', 5)
+        self.go(e, 3)
+        e.fault('loop_open')
+        self.go(e, 0.3)
+        self.assertEqual(e.v('loop_ma'), 0.0)
+        self.assertEqual(e.v('lit'), 0.0)
+        self.assertEqual(e.astate['loop_dead'], 'active_unack')
+
+    def test_unpowered_is_dark_but_the_diaphragm_moves(self):
+        e = self.bench.engine()
+        e.op('process_flange', 'set', 5)
+        self.go(e, 3)
+        self.assertEqual(e.v('loop_ma'), 0.0)
+        self.assertEqual(e.v('lit'), 0.0)
+        self.assertAlmostEqual(e.v('x_dia'), 0.5, 4)
+
+    def test_flow_runs_both_ways(self):
+        e = self.powered()
+        e.op('process_flange', 'set', 8)
+        self.go(e, 0.2)
+        self.assertGreater(e.v('flow_frac'), 0.1)               # into the transmitter while the pressure rises
+        self.go(e, 6)
+        e.op('process_flange', 'set', 0)
+        self.go(e, 0.2)
+        self.assertLess(e.v('flow_frac'), -0.1)                 # out while it falls
+
+    def test_every_binding_reads_a_value_and_names_a_component(self):
+        comps = set(json.loads(P.load_dir(DATA)['workshop/pressure_transmitter.json'])['components'])
+        names = {v[0] for v in self.bench.b.model.values}
+        for x in self.bench.bind:
+            if 'flow' not in x:
+                self.assertIn(x['at'], comps)
+            for k in ('of', 'show', 'lit', 'pressure', 'heat', 'by'):
+                if k in x:
+                    self.assertIn(x[k], names, x)
+
+    def test_bench_files_are_checked_with_the_plant(self):
+        files = P.load_dir(DATA)
+        d = json.loads(files['workshop/bench/pressure_transmitter.json'])
+        d['bind'][0]['at'] = 'impeller'
+        files['workshop/bench/pressure_transmitter.json'] = json.dumps(d).encode()
+        with self.assertRaises(FormatError) as cm:
+            P.check_files(files)
+        self.assertEqual(cm.exception.code, 'bad_ref')
+        files = P.load_dir(DATA)
+        files['workshop/bench/gadget.json'] = files['workshop/bench/pressure_transmitter.json']
+        with self.assertRaises(FormatError) as cm:
+            P.check_files(files)
+        self.assertEqual(cm.exception.code, 'bad_ref')
+
+
+if __name__ == '__main__':
+    unittest.main()

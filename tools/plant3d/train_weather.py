@@ -72,13 +72,16 @@ CLEAR_INIT = {'wind': 2, 'rain': 0, 'dust': 0.08, 'visibility': 20000, 'solar': 
 # free play's weather (the user, 2026-11-01): every scenario, seeded by the season of its start day. The crews'
 # shifts first; then (the user, 2026-11-03) the five that were format 1, made version 2 for it: each in the season of
 # its crews' twin (cold_iron and hot_restart as shift_cold, a summer day; the WTP's three as shift_wtp, a spring
-# day). Their clock starts at plant.json's (day 1, 06:00); their world seed is the default, 1, so the twins of one
-# season draw the same weather.
+# day). Their clock starts at plant.json's (day 1, 06:00). Each of the five has a world seed of its own (the user,
+# 2026-11-03), so no two scenarios of one season draw the same weather; the crews' shifts keep their staff seeds
+# (2 and 3) as the world's.
 SUMMER = {'year_day': 196, 'weather': {'season': 'summer'}}
 SPRING = {'year_day': 100, 'weather': {'season': 'spring'}}
+SEEDS = {'cold_iron': 101, 'hot_restart': 102, 'wtp_cold': 103, 'wtp_normal': 104, 'wtp_flood': 105}
 FREE_PLAY = {'shift_cold': SUMMER, 'shift_wtp': SPRING,
-             'cold_iron': SUMMER, 'hot_restart': SUMMER, 'wtp_cold': SPRING, 'wtp_normal': SPRING,
-             'wtp_flood': SPRING}
+             **{sid: {'seed': SEEDS[sid], **season} for sid, season in
+                [('cold_iron', SUMMER), ('hot_restart', SUMMER), ('wtp_cold', SPRING), ('wtp_normal', SPRING),
+                 ('wtp_flood', SPRING)]}}
 
 
 def weather():

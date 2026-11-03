@@ -119,5 +119,5 @@
   {"id": "hrsg1_lift_drive", "set": {"hrsg1_lift_drive_fault": 1}, "repair": {"hrsg1_lift_drive_fault": 0}, "text": "Lift drive fault", "kks": "10SNB10AE001"},
   {"id": "hrsg1_lift_gate_switch", "set": {"hrsg1_lift_gate0_switch": 1}, "repair": {"hrsg1_lift_gate0_switch": 0}, "text": "A landing gate switch reads not shut", "kks": "10SNB10AB001"}
  ],
- "world": {"year_day": 196, "weather": {"season": "summer"}}
+ "world": {"seed": 102, "year_day": 196, "weather": {"season": "summer"}}
 }

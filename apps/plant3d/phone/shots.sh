@@ -37,7 +37,7 @@ act=$(sh_ cmd package resolve-activity --brief "$PKG" | tail -1)
 for fx in "${VARIANTS[@]}"; do
   sh_ mkdir -p "$FILES"
   sh_ rm -f "$FILES/result.txt"
-  { printf 'shot=%s\nquality=%s\n' "$SPEC" "${QUALITY:-lean+vis}"; [ "$fx" != - ] && printf 'fx_off=%s\n' "$fx"; } > "$OUT/walk.txt"
+  { printf 'shot=%s\nquality=%s\nweather=clear\n' "$SPEC" "${QUALITY:-lean+vis}"; [ "$fx" != - ] && printf 'fx_off=%s\n' "$fx"; } > "$OUT/walk.txt"
   adb -s "$SERIAL" push "$OUT/walk.txt" "$FILES/walk.txt" >/dev/null
   sh_ input keyevent KEYCODE_WAKEUP; sleep 1; sh_ wm dismiss-keyguard; sleep 1
   if [ "$(sh_ dumpsys window policy | grep -cE '^ +showing=true' || true)" != 0 ]; then

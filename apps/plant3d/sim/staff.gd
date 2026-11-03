@@ -11,6 +11,8 @@ extends RefCounted
 ## (priority, step made, order made), routes by the `next` table only (no search at run time, §16.2), random numbers
 ## by §17.5's 32-bit arithmetic on 64-bit ints (the halves' product, which never passes 2^63).
 
+const Hands = preload("hands.gd")    # the hands-on engine's steps (REALISM.md §2.13)
+
 const DAY := 864000
 const MINUTE := 600
 const WAIT_PLACE := 15
@@ -71,6 +73,7 @@ var has_left := false                # a reaction on lock_left (§17.9)
 var rosters := {}
 var routines := {}                   # id -> {"slots": [[at kind, at minutes, every or -1, until kind, until minutes, task]], "idle": task}
 var tasks := {}                      # id -> task
+var has_slips := false               # a hand step has a slip (REALISM.md §2.13): the people's slip streams are kept
 var reactions: Array = []
 var messages := {}
 var callable := {}                   # "caller role\nrole\ntask" -> true: the radio panel's requests (§17.8)
@@ -268,6 +271,8 @@ func _build(m, doc: Dictionary) -> void:
 		for x in t["steps"]:
 			if x.has("handover"):
 				handovers[t["id"]] = true
+			if x.has("slip"):
+				has_slips = true
 	for i in people.size():
 		var p: Dictionary = people[i]
 		post.append(str(p["role"]) + "\n" + str(p.get("routine", roles[p["role"]]["routine"])))
@@ -1572,6 +1577,9 @@ func pause(e, pi: int) -> void:
 	for k in ["dest", "waiting", "wait_since", "target", "meet_since", "seat", "seen", "pt", "since"]:
 		st.erase(k)          # (seen: a resumed step is current again, §17.8)
 	e.sp_wait_on[pi] = -1   # (no longer waiting: a claim, a driver taken, a pre-emption)
+	if st.get("hw", false):
+		st.erase("hw")
+		Hands.abandon(e, pi)    # pre-empted: their hand action abandoned (REALISM.md §2.13)
 	unreserve(e, pi)
 	_enqueue(e, pi, cur)
 	e.sp_cur[pi] = null
@@ -1579,6 +1587,7 @@ func pause(e, pi: int) -> void:
 
 func finish(e, pi: int, how: String) -> void:
 	var cur: Dictionary = e.sp_cur[pi]
+	_drop_hand(e, pi)
 	e._ev(["task", people[pi]["id"], cur["task"], how])
 	release(e, cur)
 	unreserve(e, pi)
@@ -1657,8 +1666,18 @@ func turn(e, pi: int) -> void:
 		advance(e, pi, r)
 
 
+## A task step left while its hand action is under way (a stop, a failure, a task ended): the action is abandoned
+## (REALISM.md §2.13).
+func _drop_hand(e, pi: int) -> void:
+	var c = e.sp_cur[pi]
+	if c != null and c["st"].get("hw", false):
+		c["st"].erase("hw")
+		Hands.abandon(e, pi)
+
+
 func advance(e, pi: int, r) -> void:
 	var cur: Dictionary = e.sp_cur[pi]
+	_drop_hand(e, pi)
 	var steps: Array = tasks[cur["task"]]["steps"]
 	var nxt: int
 	if typeof(r) == TYPE_ARRAY:         # ["task", id]: choose
@@ -2088,6 +2107,16 @@ func run(e, pi: int, cur: Dictionary):
 			return "next"
 		e.sp_wake[pi] = n + x["left"]
 		return "wait"
+	if s.has("read") and s.has("via"):     # through a meter (REALISM.md §2.5, §2.13): without the tool, to `else`
+		var code: String = s["read"]
+		if not Hands.can_read(e, pid, s["via"]):
+			e._ev(["read", pid, code, null, "tool"])
+			return "fail"
+		var val: float = Hands.shown(e, s["via"], e.prev)
+		var ex = s.get("expect")
+		var ok: bool = ex == null or (ex[0] <= val and val <= ex[1])
+		e._ev(["read", pid, code, val, "ok" if ok else "out_of_range"])
+		return "next"
 	if s.has("read"):
 		var code: String = s["read"]
 		var val: float = e.shown(code, e.prev)
@@ -2189,6 +2218,47 @@ func run(e, pi: int, cur: Dictionary):
 		return "next"
 	if s.has("stop"):
 		return stop_step(e, pi, cur)
+	if s.has("hand"):                   # REALISM.md §2.13: the input for step 1, then its end
+		var r = null
+		if x.get("hw", false):
+			if e.sp_result[pi] == null:
+				return "wait"
+			r = e.sp_result[pi]
+			e.sp_result[pi] = null
+			x["hw"] = false
+		else:
+			if not x.get("busy", false):
+				e.npc_queue.append(["hand", s["kks"], s["hand"], s.get("tool"), s.get("value"), pid])
+				x["busy"] = true
+				e.sp_result[pi] = null
+				return "wait"
+			if e.sp_result[pi] == null:
+				return "wait"
+			r = e.sp_result[pi]
+			e.sp_result[pi] = null
+			x["busy"] = false
+			if r == "start":
+				x["hw"] = true
+				return "wait"
+		if r != "done":
+			return "fail"
+		if s.has("slip"):
+			Hands.slip_draw(e, pid, cur, s)
+		return "next"
+	if s.has("tool"):                   # REALISM.md §2.13: in step 9, as ppe; the first refusal to `else`
+		var off: bool = typeof(s["tool"]) == TYPE_STRING
+		var have: Array = e.carried.get(pid, [])
+		var items := []
+		if off:
+			items = have.duplicate()
+		else:
+			for t in s["tool"]:
+				if not have.has(t):
+					items.append(t)
+		for t in items:
+			if Hands.tool(e, t, pid, 0 if off else 1, true) != "done":
+				return "fail"
+		return "next"
 	push_error("staff: no step kind in " + str(s))
 	return "next"
 
@@ -3300,10 +3370,30 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 					x["left"] -= 1
 				x["last"] = n
 			r = "next" if x["left"] <= 0 else "wait"
+		elif s.has("read") and s.has("via"):
+			# through a meter (REALISM.md §2.5, §2.13): the input names it; without the tool the step waits
+			for k in tin.size():
+				var it: Array = tin[k]
+				if not used[k] and it[0] == "read" and _same(it[1], s["read"]) and _is_num(it[2]) \
+						and it.size() > 3 and _same(it[3], s["via"]):
+					used[k] = true
+					if not Hands.can_read(e, pid, s["via"]):
+						e._ev(["read", pid, s["read"], it[2], "tool"])
+						continue
+					var val: float = Hands.shown(e, s["via"], e.prev)
+					var ex = s.get("expect")
+					var how: String
+					if absf(it[2] - val) > float(s.get("tol", 0)):
+						how = "misread"
+					else:
+						how = "ok" if ex == null or (ex[0] <= val and val <= ex[1]) else "out_of_range"
+					e._ev(["read", pid, s["read"], it[2], how])
+					r = "next"
+					break
 		elif s.has("read"):
 			for k in tin.size():
 				var it: Array = tin[k]
-				if not used[k] and it[0] == "read" and _same(it[1], s["read"]) and _is_num(it[2]):
+				if not used[k] and it[0] == "read" and _same(it[1], s["read"]) and _is_num(it[2]) and it.size() == 3:
 					used[k] = true
 					var val: float = e.shown(s["read"], e.prev)
 					var ex = s.get("expect")
@@ -3420,6 +3510,30 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 		elif s.has("stop"):
 			if cur["act"] == null or not ongoing(e, cur["act"]):
 				r = "next"
+		elif s.has("tool") and not s.has("hand"):   # REALISM.md §2.13: done once they carry them (off: none)
+			var have: Array = e.carried.get(pid, [])
+			if typeof(s["tool"]) == TYPE_STRING:
+				if have.is_empty():
+					r = "next"
+			else:
+				var all := true
+				for t in s["tool"]:
+					if not have.has(t):
+						all = false
+						break
+				if all:
+					r = "next"
+		elif s.has("hand"):     # their done hand action (REALISM.md §2.13), or one done earlier that holds
+			for j in mine.size():
+				var y: Array = mine[j]
+				if not took.has(j) and y[1] == "hand" and y[6] == "done" and _same(y[2], s["kks"]) \
+						and _same(y[3], s["hand"]) and _same(y[5], pid):
+					took[j] = true
+					r = "next"
+					break
+			if typeof(r) == TYPE_STRING and r == "wait" and _first_look(x) \
+					and early_done(e, pi, cur, "hand", [s["kks"], s["hand"]], s.get("value"), slot):
+				r = "next"
 		elif s.has("lock") or s.has("unlock"):
 			var k := "lock" if s.has("lock") else "unlock"
 			var w = cur["work"] if s[k]["work"] == "$" else s[k]["work"]
@@ -3501,6 +3615,9 @@ func keep(e, pi: int, mine: Array, took: Dictionary, slot: int) -> void:
 				var oc = e.op_entry(y[2], y[3], null)
 				var mc = oc["o"].get("machine") if oc != null else null
 				early.append(["op", y[0], y[2], y[3], y[6], mc])
+		elif kind == "hand":            # (REALISM.md §2.13)
+			if y[6] == "done" and _same(y[5], pid):
+				early.append(["hand", y[0], y[2], y[3]])
 		elif kind == "permit" or kind == "lock" or kind == "unlock":
 			if y[5] == "done" and _same(y[4], pid):
 				if kind == "permit":
@@ -3524,6 +3641,8 @@ func early_done(e, pi: int, cur: Dictionary, kind: String, want: Array, o, slot:
 			ok = q[2] == want[0] and q[3] == want[1] and q[4] == want[2] and _op_holds(e, o)
 		elif kind == "permit":
 			ok = _same(q[2], want[0]) and q[3] == want[1] and _permit_holds(e, want[0], want[1], q[4])
+		elif kind == "hand":
+			ok = _same(q[2], want[0]) and _same(q[3], want[1]) and Hands.hand_holds(e, want[0], want[1], o)
 		else:
 			ok = _same(q[2], want[0]) and q[3] == want[1] and _lock_holds(e, kind, want[0], want[1], pi)
 		if ok:
