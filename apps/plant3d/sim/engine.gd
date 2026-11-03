@@ -136,7 +136,7 @@ var staff_us := PackedInt64Array()    # with timing: step 9's own time in each s
 var _staff_due_memo: Array = []        # per vehicle: runs_due's last answer, [day, floor, done, answer]
 var _staff_prof_on := false            # step 9's per-phase timers and work counts (tests/bench_staff.gd)
 var _staff_prof := PackedInt64Array([0, 0, 0, 0, 0, 0, 0])
-var _staff_prof_n := {"runs": 0, "due": 0, "acts": 0}
+var _staff_prof_n := {"runs": 0, "due": 0, "acts": 0, "wakes": 0}
 
 # format 2's clock and staff (§16–§17): built from the content and the scenario (shared by clones, not saved)
 var _sm = null                      # sim/staff.gd: the plant's staff.json when the scenario has `staff`, else null
@@ -180,6 +180,7 @@ var sp_occ := PackedInt32Array()    # a place occupied, -1
 var sp_result: Array = []           # an NPC's input's outcome, read in step 9
 var sp_rng := PackedInt64Array()
 var sp_wake := PackedInt64Array()   # the step a person's next turn can change anything (staff.gd turn)
+var sp_wait_on := PackedInt32Array()  # what a person asleep waiting for a place or a meeting waits on (staff.gd wait_key), -1
 var sp_held: Array = []             # a job held overnight (§17.10), or null
 var sp_worn := PackedInt32Array()   # the PPE items worn: a bit per item of staff.gd PPE (§17.11)
 var sp_acts: Array = []             # per person: an Array per act kind (staff.gd ACT_KINDS), null or [zone or work, start, stopped]
@@ -2425,7 +2426,7 @@ func clone():
 			"_world_year_day", "_w_S", "_gap", "_wear_ps", "_draws", "_wx", "wx_kind", "wx_s", "_wx_mode", "_wx_slots", "_wx_f", "_wx_t"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
-			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_worn",
+			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_wait_on", "sp_worn",
 			"sp_zin", "lift_quiet", "sp_lin", "lift_calls", "lift_dir", "lift_dwell", "sp_aboard", "sp_offday"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",

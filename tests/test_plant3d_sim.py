@@ -654,6 +654,139 @@ class GdscriptIdleRiders(unittest.TestCase):
         self.assertIn(' failed=0', r.stdout, r.stdout[-3000:])
 
 
+def _waits(e):
+    """The NPCs of reference run e waiting for a place taken (at the place where they wait) or for a meeting's others:
+    person id -> (kind, the step the wait began)."""
+    sr = e.staff
+    out = {}
+    for i, p in enumerate(sr.people):
+        if p.cur is None or sr.slot_of(i) is not None:
+            continue
+        s = sr.st.tasks[p.cur['task']]['steps'][p.cur['step']]
+        x = p.cur['st']
+        if 'meet' in s and 'meet_since' in x and not x.get('met'):
+            out[p.id] = ('meet', x['meet_since'])
+        elif x.get('waiting') and 'wait_since' in x and p.pos == x.get('dest'):
+            out[p.id] = ('place', x['wait_since'])
+    return out
+
+
+class _ClaimWaiting:
+    """A session's player (§17.13) for GdscriptWaits: slot `slot` takes the first NPC found waiting (kind 'meet' or
+    'place') and gives them back `hold` steps later, played meanwhile as the generator's Trainee plays."""
+
+    def __init__(self, kind, slot, hold):
+        self.kind, self.slot, self.hold = kind, slot, hold
+        self.who, self.at = None, None
+        self.pl = G.Trainee(slot=slot, quiet=True)
+
+    def __call__(self, e):
+        n = e.step_no + 1
+        if self.who is None:
+            w = [k for k, v in sorted(_waits(e).items()) if v[0] == self.kind]
+            if w:
+                self.who, self.at = w[0], n
+                G.apply_staff(e, [n, 'role', self.who, self.slot])
+        elif n == self.at + self.hold:
+            G.apply_staff(e, [n, 'release', self.slot])
+        self.pl(e)
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptWaits(unittest.TestCase):
+    """The people waiting for a place taken, or for a meeting's others, asleep in the app's engine (PLANT3D.md
+    §21.15) until their 15 minutes are over or something that can end the wait happens (staff.gd _wake_at): a place in
+    the room let go or taken, someone coming into the room or coming on duty there; and as any sleeper, a task, a
+    duty, a stop, a placement. Runs of the reference on the synthetic plant (not in the vectors), busier than its
+    usual day (a third field operator, the field operators' idle task leaving its seat every few minutes), replayed by
+    the app's engine bit for bit: the shift change's meetings (some met early, some given up) and seats (some freed,
+    some given up), a person claimed by a session slot while they wait and given back, the same for a place, and a
+    jump while people wait. A save and restore while people wait: check_staff_waits.gd."""
+
+    @staticmethod
+    def busy():
+        st = copy.deepcopy(G.mini_staff()['staff.json'])
+        st['people'].append({'id': 'a_fo3', 'role': 'field_op', 'roster': 'shift', 'crew': 'a', 'call': 'Field 3 A'})
+        for t in st['tasks']:
+            if t['id'] == 'idle_field':
+                t['steps'] = [{'go': {'kind': 'seat', 'room': 'office'}}, {'work': 4}, {'go': 'ws_door'}, {'work': 2}]
+        return st
+
+    def run_ref(self, why, start, until, player=None, session=False, trainee=None):
+        sc = copy.deepcopy(G.mini_staff()['scenarios/s1.json'])
+        sc['start'] = {'day': 1, 'time': start}
+        if trainee is not None:
+            sc['staff']['trainee'] = trainee
+        staff = self.busy()
+        e = P.Recorder(G.check(G.staff_files(sc, staff)), 's1', session)
+        states, digests = [e.snapshot()], [e.digest()]
+        tpm = e.staff.st.tpm
+        prev, ends = {}, set()
+        while e.step_no < until:
+            if player is not None:
+                player(e)
+            e.step()
+            if e.step_no % 20 == 0 or e.step_no == until:
+                states.append(e.snapshot())
+            if e.step_no % G.DIGEST_EVERY == 0:
+                digests.append(e.digest())
+            w = _waits(e)
+            for pid, v in prev.items():
+                if w.get(pid) != v:
+                    ends.add((v[0], 'given up' if e.step_no - v[1] >= 15 * tpm else 'ended early'))
+            prev = w
+        run = dict({'why': why, 'scenario': sc, 'staff': staff, 'inputs': e.inputs, 'until': until, 'every': 20,
+                    'states': states, 'events': e.events, 'digests': digests}, **({'session': True} if session else {}))
+        return run, ends, e
+
+    def test_waits_replay(self):
+        runs = []
+        run, ends, _ = self.run_ref('the shift change\'s meetings and seats', '05:30', 3000)
+        self.assertEqual(ends, {('meet', 'ended early'), ('meet', 'given up'), ('place', 'ended early'),
+                                ('place', 'given up')})
+        runs.append(run)
+        run, ends, _ = self.run_ref('the morning\'s seats', '07:00', 3000)
+        self.assertIn(('place', 'ended early'), ends)
+        runs.append(run)
+        for kind, slot in (('meet', 0), ('place', 1)):
+            pl = _ClaimWaiting(kind, slot, 40)
+            run, _, e = self.run_ref('a session slot takes a person waiting (%s) and gives them back' % kind,
+                                     '05:30', 1500, pl, session=True)
+            self.assertIsNotNone(pl.who, 'nobody waiting (%s) to claim' % kind)
+            self.assertTrue(any(x[1] == 'role' and x[-1] == slot for x in e.inputs), e.inputs[:20])
+            self.assertTrue(any(x[1] == 'release' for x in e.inputs))
+            runs.append(run)
+        jumped = []
+
+        def jump(e):
+            if not jumped and _waits(e):
+                jumped.append(e.step_no + 1)
+                G.apply_staff(e, [e.step_no + 1, 'jump', '07:30'])
+        run, _, e = self.run_ref('a jump while people wait', '05:30', 1500, jump, trainee='a_sup')
+        self.assertTrue(jumped)
+        self.assertTrue(any(x[1] == 'jump' and x[-1] == 'done' for x in e.events), 'the jump was refused')
+        runs.append(run)
+        with open(VECTORS2, encoding='utf-8') as f:
+            V2 = json.load(f)
+        V2 = {'about': V2['about'], 'valid': V2['valid'], 'reject': [], 'steps': [],
+              'staff': dict(V2['staff'], runs=runs, reject=[])}
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'waits.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(V2, f)
+            r = godot('run_vectors.gd', '--only=v2', f'--vectors2={path}', timeout=900)
+        no_errors(self, r)
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+        self.assertIn('VECTORS passed=', r.stdout)
+        self.assertIn(' failed=0', r.stdout, r.stdout[-3000:])
+
+    def test_save_and_restore_while_waiting(self):
+        r = godot('check_staff_waits.gd', timeout=900)
+        no_errors(self, r)
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+        self.assertIn('WAITS ok', r.stdout)
+
+
 @unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
 class GdscriptEngineInterpreter(unittest.TestCase):
     """The engine steps with a straight-line GDScript program generated from the model (engine.gd _gen_fast), which
@@ -769,7 +902,8 @@ class GdscriptEngineStepCost(unittest.TestCase):
         """The staff step over the gate walk's hour (bench_staff.gd: 05:40-06:40, the buses and the shift change,
         PLANT3D.md §21.15): the work it does, counted (the same on every machine). Before the speed-up (2026-11-02)
         it ran 52,637 task steps in the hour (riders waiting at a stop looked again every step), worked out the bus's
-        next run 6,002 times (every step) and looked at 53,495 people's acts; after it, 10,072, 2 and 10,930."""
+        next run 6,002 times (every step) and looked at 53,495 people's acts; after it, 10,072, 2 and 10,930; with the
+        people waiting for a place or for a meeting's others asleep too (2026-11-03), 1,752, 2 and 2,610."""
         r = godot('bench_staff.gd', timeout=600)
         print('\n' + '\n'.join(x for x in r.stdout.splitlines() if x.split(' ')[0] in ('STAFF', 'PHASE', 'COUNT')))
         no_errors(self, r)
@@ -777,9 +911,9 @@ class GdscriptEngineStepCost(unittest.TestCase):
         m = re.search(r'^COUNT runs=(\d+) due=(\d+) acts=(\d+)$', r.stdout, re.M)
         self.assertIsNotNone(m, r.stdout[-3000:])
         runs, due, acts = (int(x) for x in m.groups())
-        self.assertLess(runs, 15000)
+        self.assertLess(runs, 3000)
         self.assertLess(due, 100)
-        self.assertLess(acts, 15000)
+        self.assertLess(acts, 4000)
 
 
 def no_errors(case, r):
