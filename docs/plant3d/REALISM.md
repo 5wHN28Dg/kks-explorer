@@ -603,10 +603,12 @@ at 29–35 °C over the runs.
   the one the transmitter says it sets) and put right by hand (a trim, or the terminals tightened); HW3 adds the other
   three causes and the diagnosis tab. Replacing the transmitter waits for the stores (§7.2) in HW3.
 - **A cure follows the fix made** (the coordinator's decision, 2026-11-03, on real-world grounds; §2.6 `fixed`): the
-  work's `done` clears the fault only when the trainee's own fix matched the drawn cause. `drift` is fixed when the
-  sensor's error, drift plus trim (`cond_p2_err`), is within ±0.3 kPa (0.25 % of the 120 kPa span, a usual field
-  calibration tolerance: `cond_p2_trim_ok`); `loose` when the terminals are tight (`cpt2_tight`). A wrong fix (the
-  terminals tightened under a drift, a trim under a loose terminal) or a fix left short (the slip) leaves the fault:
+  work's `done` clears the fault only when the trainee's own fix matched the drawn cause and left the transmitter
+  sound: both causes' `fixed` is `cpt2_sound`, the sensor's error, drift plus trim (`cond_p2_err`), within ±0.3 kPa
+  (0.25 % of the 120 kPa span, a usual field calibration tolerance: `cond_p2_trim_ok`), the terminals tight, the
+  wires landed and the cover on (found by the adversarial review: a fix per cause alone let a wrong trim made with
+  the right tightening, or a loop left dead, clear the fault). A wrong fix (the terminals tightened under a drift, a
+  trim under a loose terminal) or a fix left short (the slip) leaves the fault:
   the permit is handed back, and the work must be closed and requested again (by a player: no reaction requests it
   again, and an NPC's job does not check its own fix, so a slip is left for the hold point or the next shift to
   find). The tap offsets of the three transmitters (0, +0.1,
@@ -620,7 +622,8 @@ at 29–35 °C over the runs.
   0.15 mA below the AO the transmitter says it sets (`cpt2_loop_low`); the trim is set only when the PV is more than
   0.5 kPa below the partners' mean on the screens (`cpt2_pv_low`; the drift's 1.35 kPa still shows with transmitter
   3's own calibration drift applied too), to the value a two-point check gives (+1.5 kPa,
-  the drift undone; the content tool takes it from the cause's own `set`).
+  the drift undone; the content tool takes it from the cause's own `set`). Its readings carry a tolerance of 0.01 (the
+  screens show two decimals), so a value reported as shown is a reading, not a misread.
 - **The work view** (§3.3) opens from the card's "Work on it" when the trainee stands at the code's work place; it
   hides the plant's piece (built unmerged, below) and shows the Workshop's component scene of that kind at the same
   transform, lit by the plant's materials; a component's state shows as the Workshop's handling does (a cover off

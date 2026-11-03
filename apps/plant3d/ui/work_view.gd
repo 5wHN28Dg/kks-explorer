@@ -353,6 +353,8 @@ func _process(delta: float) -> void:
 func refresh() -> void:
 	var e = ui.clock.engine
 	var pid = ui.me()
+	if tool_sel != "" and not e.carried.get(pid, []).has(tool_sel):
+		tool_sel = ""   # (put back, or another person played: the tray's choice goes with the tool)
 	var sig := "%s|%s|%s|%s|%s" % [str(e.carried.get(pid, [])), tool_sel, comp, _step_sig(e), e.busy.get(pid, [])]
 	if sig != _sig:
 		_sig = sig

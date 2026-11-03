@@ -109,6 +109,8 @@
   ["cond_p2_err_hi", {"cmp": ["cond_p2_err", "<", 0.3]}],
   ["cond_p2_trim_ok", {"and": ["cond_p2_err_lo", "cond_p2_err_hi"]}],
   ["cpt2_tight", {"not": "cpt2_terminal_block_loose"}],
+  ["cpt2_cover_on", {"not": "cpt2_cover_back_off"}],
+  ["cpt2_sound", {"and": ["cond_p2_trim_ok", "cpt2_tight", "cpt2_wired", "cpt2_cover_on"]}],
   ["cpt2_ma_short", {"diff": ["cpt2_ma_tx", "cpt2_ma"], "unit": "mA"}],
   ["cpt2_loop_low", {"cmp": ["cpt2_ma_short", ">", 0.15]}],
   ["cpt2_partners", {"sum": ["cond_p1", "cond_p3"]}],

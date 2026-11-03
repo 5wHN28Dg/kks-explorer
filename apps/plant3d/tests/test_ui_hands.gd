@@ -165,6 +165,13 @@ func _job(tree: SceneTree) -> Array:
 				["permit", WORK, "done", "ic1", "done"], ["repair", FAULT], ["tool", "hart", 0, "ic1", "done"]]:
 			if not Maint._has_ev(e, want):
 				p.append("no event like %s" % str(want))
+		# the readings reported from the work view and the Crew panel are readings, not misreads (their tolerance)
+		var reads: Array = e.events.filter(func(x): return x[1] == "read" and x[2] == "ic1")
+		if reads.size() < 5:
+			p.append("only %d readings reported: %s" % [reads.size(), str(reads)])
+		for x in reads:
+			if x[5] != "ok":
+				p.append("a reading not taken as one: %s" % str(x))
 		ui.clock.run_steps(5)
 		for st in ["cpt2_terminal_block_loose", "cpt2_cover_back_off", "cpt2_terminal_block_hart",
 				"cpt2_terminal_block_dmm", "cond_p2_low"]:

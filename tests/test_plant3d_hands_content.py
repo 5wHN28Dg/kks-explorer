@@ -241,25 +241,27 @@ class Loop(unittest.TestCase):
 
     def test_what_the_job_reads_and_the_causes_fixes(self):
         """REALISM.md §2.16: the technician's readings call for the terminals under the loose terminal only and for
-        the trim under the drift only; each cause's `fixed` reads false under its cause, true once its own fix is made
-        (the job's trim, or a trim to the tapping's true pressure, within 0.3 kPa) and not after the other cause's."""
+        the trim under the drift only; either cause is fixed (`cpt2_sound`) only with the transmitter left sound: no
+        sensor error beyond 0.3 kPa (the job's trim, or a trim to the tapping's true pressure), the terminals tight,
+        the wires landed, the cover on. The other cause's fix alone, or the right fix with a wrong trim, is not."""
         def at(**states):
             e = self.engine()
             e.step(2)
             self.put(e, **states)
             e.step(2)
-            return {k: self.val(e, k) for k in ('cpt2_loop_low', 'cpt2_pv_low', 'cond_p2_trim_ok', 'cpt2_tight')}
-        self.assertEqual(at(), {'cpt2_loop_low': 0, 'cpt2_pv_low': 0, 'cond_p2_trim_ok': 1, 'cpt2_tight': 1})
-        drift = at(cond_p2_drift=-1.5)
-        self.assertEqual((drift['cpt2_loop_low'], drift['cpt2_pv_low'], drift['cond_p2_trim_ok']), (0, 1, 0))
-        self.assertEqual(drift['cpt2_tight'], 1)        # (the terminals tightened would not fix it)
-        loose = at(cpt2_terminal_block_loose=1)
-        self.assertEqual((loose['cpt2_loop_low'], loose['cpt2_pv_low'], loose['cpt2_tight']), (1, 0, 0))
-        self.assertEqual(loose['cond_p2_trim_ok'], 1)    # (a trim would not fix it)
+            return {k: self.val(e, k) for k in ('cpt2_loop_low', 'cpt2_pv_low', 'cpt2_sound')}
+        self.assertEqual(at(), {'cpt2_loop_low': 0, 'cpt2_pv_low': 0, 'cpt2_sound': 1})
+        self.assertEqual(at(cond_p2_drift=-1.5), {'cpt2_loop_low': 0, 'cpt2_pv_low': 1, 'cpt2_sound': 0})
+        self.assertEqual(at(cpt2_terminal_block_loose=1), {'cpt2_loop_low': 1, 'cpt2_pv_low': 0, 'cpt2_sound': 0})
         for trim in (train_hands.TRIM, 1.4, 1.75):
-            self.assertEqual(at(cond_p2_drift=-1.5, cond_p2_trim=trim)['cond_p2_trim_ok'], 1, trim)
+            self.assertEqual(at(cond_p2_drift=-1.5, cond_p2_trim=trim)['cpt2_sound'], 1, trim)
         for trim in (0.5, 1.15, 1.85):
-            self.assertEqual(at(cond_p2_drift=-1.5, cond_p2_trim=trim)['cond_p2_trim_ok'], 0, trim)
+            self.assertEqual(at(cond_p2_drift=-1.5, cond_p2_trim=trim)['cpt2_sound'], 0, trim)
+        # the loose terminal's fix with a wrong trim (the review's case), or either fix with the loop or cover left open
+        for bad in ({'cond_p2_trim': -5}, {'cond_p2_trim': 1.5}, {'cpt2_terminal_block_lift': 1},
+                    {'cpt2_cover_back_off': 1}):
+            self.assertEqual(at(**bad)['cpt2_sound'], 0, bad)
+        self.assertEqual(at(cond_p2_drift=-1.5, cond_p2_trim=1.5, cpt2_terminal_block_lift=1)['cpt2_sound'], 0)
 
     def test_the_jobs_choices_skip_to_after_their_fix(self):
         """Each `wait` that decides on a fix skips, on its `else`, to the step right after that fix."""
@@ -272,7 +274,9 @@ class Loop(unittest.TestCase):
         self.assertEqual(steps[waits[0][0] + 1]['hand'], 'tighten_terms')
         self.assertEqual(steps[waits[1][0] + 1]['op']['value'], 1.5)
         self.assertEqual({c['id']: c['fixed'] for c in train_hands.FAULT['causes']},
-                         {'drift': 'cond_p2_trim_ok', 'loose': 'cpt2_tight'})
+                         {'drift': 'cpt2_sound', 'loose': 'cpt2_sound'})
+        reads = [x for x in steps if 'read' in x]
+        self.assertTrue(reads and all(x.get('tol') == train_hands.TOL for x in reads), reads)
 
 
 class JobForks(unittest.TestCase):
