@@ -10,7 +10,7 @@
 ## - every component is drawn with ws_lit (glass see-through with ws_xray, so the display reads through its window); X-ray swaps the outer parts to ws_xray and back; the cutaway and the
 ##   section set the planes and give the solid components' materials ws_cap as their next pass (the cut faces), not
 ##   the thin window's; the machine's first frame drew the cap pass, the flow and the labels (pipelines, §7.1), and
-##   the plant's early warm-up holds ws_lit, ws_cap and ws_flow;
+##   the plant's early warm-up holds ws_lit, ws_cap and ws_flow, and waits while the Workshop shows;
 ## - the builder refuses a bench binding to an anim or a flow path the generator doesn't make.
 extends RefCounted
 
@@ -53,6 +53,21 @@ func run(tree: SceneTree) -> Array:
 		return p + ["the app did not start with its Workshop"]
 	await tree.process_frame
 	var ws = main.workshop
+	# the Workshop opened before the plant's warm-up comes due: the warm-up waits until it closes (its meshes' pipelines
+	# are made on the main thread as they enter the plant's world: a hitch in the Workshop's frames, K4a)
+	for i in 600:
+		if ws._warming:
+			break
+		await tree.process_frame
+	check(ws._warming and ws._warm == null, "the plant's warm-up started and is not yet due")
+	ws.open("pressure_transmitter")
+	if await _wait_shown(tree, ws):
+		for i in int((ws.WARM_UP_S + 1.0) * 60):
+			await tree.process_frame
+		check(ws._warm == null, "the plant's warm-up waits while the Workshop shows")
+	else:
+		check(false, "the transmitter's Workshop showed before the warm-up")
+	ws.close()
 	for i in 900:
 		if ws.warmed:
 			break

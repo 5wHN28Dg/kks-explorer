@@ -321,6 +321,8 @@ func properties(id: String) -> String:
 		var names := PackedStringArray()
 		for j in f.get("joins", []):
 			names.append(String(cw.get(j, {}).get("name", j)))
+		if f.has("beyond"):   # what it joins outside this machine
+			names.append(String(f.beyond))
 		return "[b]%s[/b]\nJoins: %s." % [f.get("name", id), ", ".join(names)]
 	var c: Dictionary = cw.get(id, {})
 	var out := "[b]%s[/b]\n%s\n[color=#bbbbbb]Material:[/color] %s" % [c.get("name", id), c.get("does", ""), c.get("material", "")]
@@ -332,6 +334,8 @@ func properties(id: String) -> String:
 			for j in joins:
 				if j != id:
 					others.append(String(cw.get(j, {}).get("name", j)))
+			if fw[g].has("beyond"):
+				others.append(String(fw[g].beyond))
 			held.append("%s (to %s)" % [fw[g].get("name", g), ", ".join(others)])
 	if not held.is_empty():
 		out += "\n[color=#bbbbbb]Fastened by:[/color] " + "; ".join(held)

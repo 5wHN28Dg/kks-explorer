@@ -36,6 +36,44 @@ class WorkshopData(unittest.TestCase):
             self.assertLessEqual(len(c), 16, c)
             self.assertTrue(d['sources'], c)
 
+    def test_the_steam_turbine_passes(self):
+        w = self.b.workshop['steam_turbine']
+        self.assertEqual(w['components'], 54)
+        self.assertEqual(w['fasteners'], 3)
+        d = json.loads(self.files['workshop/steam_turbine.json'])
+        self.assertEqual(d['context'], ['axis_z', 'shaft_lo', 'shaft_hi'])
+        order = [s['place'] for s in d['assembly']]
+        # the overhaul's order (K4a): taken apart, the upper lagging comes off first, the rotor after the upper
+        # casings, the bearing caps and the coupling's bolts
+        undo = order[::-1]
+        self.assertEqual(undo[0], 'lagging_upper')
+        for before in ('casing_upper', 'joint_bolts', 'inner_upper', 'inner_bolts', 'carrier_upper', 'cap_f',
+                       'cap_r', 'thrust_upper', 'thrust_lower', 'coupling_bolts', 'brg_f_upper', 'brg_r_upper', 'glands_upper'):
+            self.assertLess(undo.index(before), undo.index('rotor'), before)
+
+    def test_context(self):
+        w = copy.deepcopy(self.fixture)
+        w.pop('params', None)
+        w['context'] = ['shaft_lo']
+        W.check(w, None, 'w', parts={'test_gadget'})
+        for bad, code in ((['nowhere'], 'bad_ref'), (['shaft_lo', 'shaft_lo'], 'dup_id'), ([], 'bad_length'),
+                          ('shaft_lo', 'bad_type')):
+            w['context'] = bad
+            self.refused(w, code, kit=False)
+        w['context'] = ['shaft_lo']
+        w['params'] = {}
+        self.refused(w, 'unknown_key', kit=False)
+
+    def test_beyond(self):
+        w = copy.deepcopy(self.fixture)
+        g = next(iter(w['fasteners'].values()))
+        g['joins'] = g['joins'][:1]
+        self.refused(w, 'bad_length', kit=False)
+        g['beyond'] = 'the next machine'
+        W.check(w, None, 'w', parts={'test_gadget'})
+        g['beyond'] = ''
+        self.refused(w, 'bad_type', kit=False)
+
     def test_the_fixture_kind_passes(self):
         s = W.check(self.fixture, None, 'fixture', parts={'test_gadget'})
         self.assertEqual((s['components'], s['fasteners'], s['steps']), (3, 1, 4))

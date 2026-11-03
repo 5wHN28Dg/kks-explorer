@@ -307,6 +307,13 @@ Handling (§4.5) is applied on top and cleared by Reset; the slider never reads 
   its index, so a later milestone can treat one bolt alone. `kind`: `bolt`, `stud_nut`, `screw`, `cap_screw`,
   `threaded_cover`, `clamp`, `gland`, `pin`, `circlip`, `key`.
 - **Data side:** `name` ("8 casing bolts"), `joins` (the components it holds together, at least two), `sources`.
+  `beyond` (K4a, at most 80 characters): what the group joins outside this kind's machine (a coupling's bolts: the
+  next rotor on the shaft line, its own machine); with it `joins` may name one component.
+- **Roles** (K4a): a group is a small outside piece (`outside`, each item at most 30 mm, the default), the
+  replacement of a stand-in the plant draws (`split`: a casing's joint studs, a coupling's bolt ring; its items
+  together held to the stand-in's box and triangles, in a moving piece too), or hidden inside the machine's outside
+  (`hidden`: an inner casing's studs, every item held to the hidden pieces' rule). A stand-in the plant draws in
+  several blocks is one stand-in: `only("plant", [...])` with the same components goes on with it.
 - **Not here:** fasteners' sizes, the tools that fit them, torque values and tightening patterns, and components'
   damaged states belong to the realism programme's service file per kind (`data/plant3d/service/<part>.json`,
   REALISM.md §2.4), keyed by these group and component ids; the Workshop's properties panel shows a size once that
@@ -336,7 +343,8 @@ The data file's `assembly` is the guided order, one step per component or fasten
 - `text`, `why`: runs as procedures' (COURSES.md §3–§4, no figures or questions).
 - `needs`: `[component, sentence when placing too early, sentence when removing too early]`, in order: placing is
   refused with the first unmet need's first sentence; removing a component is refused while a placed component needs
-  it, with that need's second sentence. Every named component exists.
+  it, with that need's second sentence. Every named component exists. A need may name a fastener group too (K4a: the
+  outer casing closes over the inner casing's studs, the lagging over the joint's).
 - **Snapping:** within 2 % of the part kind's (the whole machine's) box diagonal (at least 5 mm) of home and within 10° of its home orientation,
   modulo the component's `sym` (its axis passes through the component's pivot).
 - **Why not the procedure format (§8):** a procedure's `at` names KKS codes and its `do` names ops of the model; an
@@ -359,7 +367,10 @@ The data file's `assembly` is the guided order, one step per component or fasten
   file (the export already packs `built/*`), from `Kit.make(..., workshop = true)` with the data file's `params`
   (validated against kit.json's parameters; default: the plant's first instance of that kind, in the content's order,
   where it has one, so the Workshop shows the turbine the trainee walks past; the scene keeps them in its `params`
-  meta, and the tests check that very shape).
+  meta, and the tests check that very shape). The data file's `context` (K4a) names keys of the context the plant
+  builder works out for that same instance (`builder/kit_place.gd`: the shaft line's `axis_z`, `shaft_lo`,
+  `shaft_hi`, and what a part stands under or over), which the scene is built with and keeps in its `ctx` meta: the
+  steam turbine's coupling stands where it does in the plant. Only without `params`.
 - **Nodes:** one `Node3D` per component at its pivot, named by its id, nested as the tree; under it one
   `MeshInstance3D` per material (the component's pieces merged per material: no 12 m cells, no instancing, no LODs: one
   machine seen close); fastener groups as `MultiMeshInstance3D` with their items' transforms in a meta (as the plant's
@@ -551,6 +562,34 @@ Faults: **over-range** (the output saturates at 20.5 mA and the display says so:
   ms; the frame rule passes, 0 caused by the app); 99.84 / 99.90 % of frames at ≥ 30 fps, mean frame 19.40 / 19.41
   ms, 89.9 / 91.2 % shown at 60 fps; peak PSS 851 / 834 MB; the bench step 0.119 ms mean in both (the longest 1.0 /
   0.5 ms).
+
+**As built (K4a, 2026-11-03).**
+- **The steam turbine** for the plant's first instance (the HP turbine): 54 components and 3 fastener groups (57 guided steps), 15,296
+  triangles (§8's 120,000), its insides and simplifications in the kit README. The joint's 44 studs and the coupling's
+  12 bolts replace the plant's stand-ins (`split`); the inner casing's studs are `hidden`.
+- **Two calls (2026-11-03):** the coupling's bolts keep `beyond` (what they join is the next rotor, another machine),
+  as §4.4 says. The joint flanges' stand-in is checked against its split pieces together (1.33 times its triangles,
+  inside the 1 to 1.5 band), which is looser than a check per piece: one piece could be thin while another is thick
+  and the set still pass.
+- **The plant's warm-up waits while the Workshop shows** (§7.1): its hidden meshes' pipelines are made on the main
+  thread as they enter the plant's world, so a trainee in the Workshop when it came due (4 s after the first walkable
+  frame) got a hitch. The turbine's walk with `cold=1` found it: 1 surface pipeline after the machine's first frame and
+  a 167 ms frame on the Note 9 (47 to 74 ms on the laptop). `tests/test_workshop_run.gd` opens the Workshop before the
+  warm-up is due and checks it waits.
+- **Draw calls:** at most 95 in any view of the walk, on the laptop and the Note 9 (the cut faces' pass included);
+  before main's step words moved to their own layer (the K3 follow-ups) the pile's view reached 421.
+- **The Note 9** (`lean+vis`, a test-signed release build of this branch with main merged, without the lightmap's
+  bake, fresh installs so the pipeline cache was empty, cool starts at 26.4 / 28.3 °C, SAMPLE=1; with the warm-up /
+  `cold=1`): first entry 163 ms after the walk waited 8.9 s for the warm-up / 4,023 ms at once (≤ 5.0 s); the warmed
+  machine's first frame compiled 7 specialization pipelines and no surface one (at once: 12 and 7); again 67 / 81 ms;
+  back to the plant 17–19 / 18–62 ms; no pipeline compiled after the machine's first frame; no frame over 100 ms (the
+  longest 57 / 47 ms; the frame rule passes, 0 caused by the app); 99.79 / 99.89 % of frames at ≥ 30 fps, mean frame
+  19.64 / 19.68 ms, 88.5 / 89.5 % shown at 60 fps; peak PSS 868 / 886 MB. The warm-up itself (every kind's machine
+  held in the plant) made one frame of 0.71 s in the plant in the start's first seconds, as the transmitter's alone
+  did (0.70 s, the K3 follow-ups).
+- **Not covered by the walk:** its guided phases give each step 1.4 s (taking apart) and 1.6 s (from the pile), which
+  leaves 14 of the turbine's parts loose when the 30 s are up, so the last steps' views are not walked.
+- **Package:** the APK (test-signed, with voice) 121.4 MB, 0.3 MB over main's at f1f24bf7. Pictures: the wiki's Workshop page.
 
 ### 6.5 Plant values to bench inputs (K6, the mirror)
 

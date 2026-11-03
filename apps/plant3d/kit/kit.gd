@@ -197,19 +197,24 @@ class Gen:
 	## is given, in the item's own frame. A small outside piece of the Workshop: plant mode draws nothing. Its
 	## component in the tree is the current one (bolts back out first, then the part: the group backs out in the first
 	## half of that component's stage, and the component moves in the second half: workshop/explode.gd).
-	func fasteners(id: String, kind: String, items: Array, draw: Callable) -> void:
+	## `role` "split": the group replaces a stand-in the plant draws (`only("plant", [..., id])`), as a component's
+	## split pieces do, for fasteners larger than a small outside piece that the plant shows (a casing's joint bolts):
+	## the tests hold the items, all together, to the stand-in's box and triangles. `role` "hidden": a group inside the
+	## machine's outside (an inner casing's bolts), held to the hidden pieces' rule.
+	func fasteners(id: String, kind: String, items: Array, draw: Callable, role := "outside") -> void:
 		if not workshop:
 			return
+		assert(role in ["outside", "split", "hidden"])
 		var mb = _mb_script.new()
 		mb.seg_scale = seg_scale
 		mb.workshop = true
 		mb.comp_id = id
-		mb.set_only("workshop", "outside")
+		mb.set_only("workshop", role)
 		draw.call(mb)
 		var xs: Array = []
 		for it in items:
 			xs.append(m.xf * (it as Transform3D))
-		fastener_groups.append({"id": id, "kind": kind, "parent": cur_comp, "items": xs, "mb": mb})
+		fastener_groups.append({"id": id, "kind": kind, "parent": cur_comp, "items": xs, "mb": mb, "role": role})
 
 	## A flow path (WORKSHOP.md §4.1): a polyline in the frame the static builder draws in now. Workshop mode only.
 	func flow(id: String, pts: Array) -> void:
@@ -365,8 +370,8 @@ static func make(part: String, params: Dictionary, ctx := {}, seg_scale := 1.0, 
 ##   moving      as plant mode's, each layer with its comp and tag
 ##   components  [{id, parent, pivot, box, explode, sym, anchors, anim, thin}] in declaration order (`body` alone when
 ##               the generator declares none); box: the component's static and moving pieces; explode [] = default
-##   fasteners   [{id, kind, parent, items: [Transform3D], layers, box}] (items in the part's Godot frame, layers in an
-##               item's own)
+##   fasteners   [{id, kind, parent, items: [Transform3D], layers, box, role}] (items in the part's Godot frame, layers
+##               in an item's own; role "outside", "split" for a group that replaces a stand-in, or "hidden")
 ##   flows       {id: [points]}
 ##   standins    [{replaced_by, layers: {comp|shared|mat|class|bucket key: {mat, cls, size, mesh, tris}}, box, moving}]
 ##               (`moving`: the moving piece's name, "" for the static builder's; its layers are relative to that pivot)
@@ -420,7 +425,7 @@ static func _workshop_result(part: String, g) -> Dictionary:
 		for k in layers:
 			one = _merge_box(one, layers[k].mesh.get_aabb())
 		res.fasteners.append({"id": fg.id, "kind": fg.kind, "parent": fg.parent, "items": items, "layers": layers,
-			"box": one if one != null else AABB()})
+			"box": one if one != null else AABB(), "role": fg.role})
 	for id in g.flows:
 		res.flows[id] = g.flows[id].map(func(q): return _gv(q))
 	var builders: Array = [["", g.m, Vector3.ZERO]]
@@ -448,7 +453,7 @@ static func _ws_pieces(res: Dictionary, moving: String, mb, pivot: Vector3) -> v
 	var at := {}                # the builder's stand-in index -> res.standins'
 	for i in mb.standins.size():
 		var si: Dictionary = mb.standins[i]
-		if moving != "" and si.layers.is_empty():
+		if si.layers.is_empty():   # a stand-in another builder drew (a moving piece's, or the static one's)
 			continue
 		at[i] = res.standins.size()
 		var layers := _ws_meshes(mb.finish_layers(si.layers), pivot)

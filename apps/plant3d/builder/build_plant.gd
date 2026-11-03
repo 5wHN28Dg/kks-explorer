@@ -42,7 +42,8 @@ func _init() -> void:
 	for u in b.kp.unsupported:
 		print("build: warning: nothing to stand a pipe support on under ", u)
 	# the Workshop's scenes (builder/workshop_build.gd, docs/plant3d/WORKSHOP.md §5), after the plant's: its own folder
-	var ws: Dictionary = WorkshopBuild.build_all(out.path_join("workshop"), data.path_join("workshop"), b.equipment)
+	var ws: Dictionary = WorkshopBuild.build_all(out.path_join("workshop"), data.path_join("workshop"), b.equipment,
+		b.kp.ctx_extra)
 	for e in ws.errors:
 		printerr("build: ", e)
 	if not ws.errors.is_empty():

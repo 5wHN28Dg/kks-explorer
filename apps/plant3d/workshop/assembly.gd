@@ -30,8 +30,9 @@ func start(m: String, data_steps: Array, comps: Dictionary, loose_at: Dictionary
 		if not rides.has(id):
 			loose[id] = loose_at[id]
 
-## The parts inside a sealed component (`comps` {id: {parent, sealed}}, `groups` {id: {host}}): components below a
-## sealed one, and fastener groups on or below one. {id: true}
+## The parts inside a sealed component (`comps` {id: {parent, sealed}}, `groups` {id: {host, beyond}}): components
+## below a sealed one, and fastener groups on or below one, but for a group that joins it to another machine (`beyond`:
+## a rotor's coupling bolts, taken out to uncouple it). {id: true}
 static func rides_of(comps: Dictionary, groups := {}) -> Dictionary:
 	var out := {}
 	for id in comps:
@@ -42,6 +43,8 @@ static func rides_of(comps: Dictionary, groups := {}) -> Dictionary:
 				break
 			at = comps[at].parent
 	for g in groups:
+		if groups[g].get("beyond", false):
+			continue
 		var at := String(groups[g].host)
 		while at != "":
 			if comps[at].sealed:

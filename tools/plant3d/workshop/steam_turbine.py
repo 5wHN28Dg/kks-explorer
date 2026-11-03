@@ -1,0 +1,333 @@
+"""The steam turbine's Workshop data (docs/plant3d/WORKSHOP.md §4, milestone K4a): the words, materials, order and
+sources of its component tree, for the plant's first instance of the kind, the HP turbine (one casing, its combined
+stop and control valves on the sides). Its geometry is the kit's generator, apps/plant3d/kit/parts_machines.gd
+`steam_turbine` and its `_st_*` helpers; the content build joins the two and refuses a kind whose halves disagree.
+The scene is built with the instance's shaft line (`context`), so its coupling stands where it does in the plant.
+
+Generic: a single-flow HP turbine as the public papers and manuals describe one; no plant data. The guided order
+(`assembly`) is the reverse of the overhaul's take-apart in the Siemens/KWU procedure (insulation first; the bearing
+caps, the thrust bearing and the coupling; the outer casing's joint and upper half; the upper inner casing and blade
+carrier; the glands and upper journal bearings; the rotor lifted out; then the lower halves), with the blade carrier
+inside the inner casing as GE's papers have the diaphragms inside the inner shell; its trial fits are left out. What
+is simplified is listed in apps/plant3d/kit/README.md ("Workshop: the steam turbine"). No sizes, tools or torques
+here: they belong to the realism programme's service file (WORKSHOP.md §4.4).
+"""
+
+GE_LARGE = 'ger3646'
+GE_STAG = 'ger3582'
+IMIA = 'imia_wgp42'
+NAVY = 'navedtra14104'
+NRC = 'nrc_w73'
+KWU = 'kwu_overhaul'
+PAT_COUPLING = 'us5257905'
+PAT_SHELL = 'us5511941'
+STAGES = 8
+
+SOURCES = [
+    {'id': GE_LARGE, 'cite': 'J. K. Reinker and P. B. Mason, Steam Turbines for Large Power Applications, GE Power '
+                             'Systems GER-3646D: pp. 9-11 stages, balance piston, inner shells and their joint '
+                             'flanges; p. 13 diaphragms in the inner shell, shells on the bearing '
+                             'standards; p. 15 coupling bolts and joint studs',
+     'url': 'https://www.docenti.unina.it/webdocenti-be/allegati/materiale-didattico/64409'},
+    {'id': GE_STAG, 'cite': 'M. Boss, Steam Turbines for STAG Combined-Cycle Power Systems, GE Power Systems '
+                            'GER-3582E (1996): p. 12 the thrust bearing in the front standard, near the HP stages; '
+                            'pp. 16-17 combined stop and control valves piped to the lower casing; pp. 20-21 joint '
+                            'flanges and packings',
+     'url': 'https://www.slideshare.net/slideshow/steam-turbinesforcombinedcycle/6369564'},
+    {'id': IMIA, 'cite': 'IMIA working group paper WGP 42 (05), Maintenance and Overhaul of Steam Turbines (2005): '
+                         '2.A.2 rotors and their flange couplings; tables 8-9 overhaul tasks (the upper casings '
+                         'removed, bearings opened, coupling bolts checked)',
+     'url': 'https://www.imia.com/wp-content/uploads/2023/08/wgp4205-5.pdf'},
+    {'id': NAVY, 'cite': 'US Navy, Fireman, NAVEDTRA 14104 (1992), chapter 5 Steam Turbines: casings, rotors, '
+                         'radial and thrust bearings, labyrinth shaft packing glands',
+     'url': 'https://tpub.com/fireman/43.htm'},
+    {'id': NRC, 'cite': 'US NRC, Westinghouse Technology Systems Manual, section 7.3 Main Turbine, MSR and EHC '
+                        '(a course copy): 7.3.2.1 steam chests with stop and governor valves each side, 7.3.2.2 '
+                        'rotors forged, flanged rigid couplings',
+     'url': 'https://assets.excelsior.edu/private/sbt/secure/NUC350/WManual/W07.3%20Turbine.htm'},
+    {'id': KWU, 'cite': 'S. Rameshkumar, Turbine overhauling procedure (after the Siemens/KWU service manual, '
+                        '2006): pp. 2-11 the take-apart order (insulation, bearing pedestal tops and thrust bearing, '
+                        'uncoupling, outer casing, blade carrier and inner casing, glands, rotor, lower halves); '
+                        'pp. 52-60 reassembly',
+     'url': 'https://www.slideshare.net/slideshow/turbineoverhaulingprocedure-siemens-recommends-birkosit/9779663'},
+    {'id': PAT_COUPLING, 'cite': 'US patent 5,257,905 (Westinghouse, 1993): flanges formed at the end of each rotor, '
+                                 'joined by coupling bolts and nuts',
+     'url': 'https://patents.google.com/patent/US5257905'},
+    {'id': PAT_SHELL, 'cite': 'US patent 5,511,941 (1996), background: the shell bolts loosened before the upper '
+                              'half shell is lifted',
+     'url': 'https://patents.google.com/patent/US5511941'},
+]
+
+ORD = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth']
+
+
+def comp(name, does, material, sources, sealed_why=None):
+    c = {'name': name, 'does': does, 'material': material, 'sources': sources}
+    if sealed_why:
+        c['sealed'] = True
+        c['sealed_why'] = sealed_why
+    return c
+
+
+def components():
+    c = {
+        'lagging_upper': comp('Lagging, upper half', 'Insulation and its sheet-metal cladding over the upper casing: '
+                              'keeps the heat in and the outside safe to touch. The first thing off in an overhaul.',
+                              'Mineral wool under aluminium sheet', [KWU]),
+        'lagging_lower': comp('Lagging, lower half', 'Insulation and cladding round the lower casing.',
+                              'Mineral wool under aluminium sheet', [KWU]),
+        'casing_lower': comp('Outer casing, lower half', 'Holds the steam; rests on the bearing pedestals and carries '
+                             'the inner casing. Its flanges meet the upper half at the horizontal joint.',
+                             'Cast alloy steel', [GE_LARGE]),
+        'casing_upper': comp('Outer casing, upper half', 'Bolted to the lower half at the horizontal joint; lifted '
+                             'off to open the turbine.', 'Cast alloy steel', [GE_LARGE, KWU]),
+        'inner_lower': comp('Inner casing, lower half', 'A second shell inside the outer one: takes the inlet '
+                            'steam\'s full pressure and carries the blade carriers.', 'Cast alloy steel',
+                            [GE_LARGE]),
+        'inner_upper': comp('Inner casing, upper half', 'Bolted to the lower half through its own joint flanges.',
+                            'Cast alloy steel', [GE_LARGE, KWU]),
+        'carrier_lower': comp('Blade carrier, lower half', 'Holds the lower halves of the stationary blade rows in '
+                              'the inner casing.', 'Alloy steel', [GE_LARGE, KWU],
+                              'The stationary blades are fixed in the carrier\'s grooves: in an overhaul the carrier '
+                              'comes out with them, and they are renewed only in a shop.'),
+        'carrier_upper': comp('Blade carrier, upper half', 'Holds the upper halves of the stationary blade rows.',
+                              'Alloy steel', [GE_LARGE, KWU],
+                              'The stationary blades are fixed in the carrier\'s grooves: in an overhaul the carrier '
+                              'comes out with them, and they are renewed only in a shop.'),
+        'glands_lower': comp('Shaft glands, lower halves', 'Labyrinth seals where the shaft leaves the casing at '
+                             'each end: they keep steam in and air out.', 'Alloy steel, labyrinth strips',
+                             [NAVY, KWU]),
+        'glands_upper': comp('Shaft glands, upper halves', 'The upper halves of the labyrinth seals at both ends.',
+                             'Alloy steel, labyrinth strips', [NAVY, KWU]),
+        'rotor': comp('Rotor', 'Forged in one piece with its blade rows, balance piston, thrust collar and coupling '
+                      'flange; turns in the journal bearings and drives the next rotor along the shaft line.',
+                      'Forged alloy steel', [NAVY, NRC, GE_LARGE],
+                      'The rotor is lifted out and set back as one piece: its blades are renewed only in a shop, '
+                      'and the rotor balanced again.'),
+        'collar': comp('Thrust collar', 'A disc on the rotor between the thrust bearing\'s pads: it holds the rotor '
+                       'in place along its axis against the steam\'s push (simplified).', 'Forged alloy steel',
+                       [NAVY, GE_STAG]),
+        'pedestal_f': comp('Front bearing pedestal', 'Stands on the foundation and carries the front journal '
+                           'bearing and the thrust bearing; the casing rests on it.', 'Cast iron, painted',
+                           [GE_LARGE, GE_STAG]),
+        'cap_f': comp('Front pedestal cover', 'Closes the front pedestal over its bearings; lifted off first to '
+                      'reach them.', 'Steel plate, painted', [KWU]),
+        'brg_f_lower': comp('Front journal bearing, lower half', 'Carries the rotor\'s weight on an oil film.',
+                            'Steel shell, white metal lining', [NAVY, KWU]),
+        'brg_f_upper': comp('Front journal bearing, upper half', 'Closes the bearing over the journal.',
+                            'Steel shell, white metal lining', [NAVY, KWU]),
+        'thrust_lower': comp('Thrust bearing, lower half', 'Pads on both faces of the thrust collar keep the rotor '
+                             'in its place along the axis; this half rolls in under the collar (simplified).',
+                             'Steel pads, white metal faces', [NAVY, GE_STAG, KWU]),
+        'thrust_upper': comp('Thrust bearing, upper half', 'The upper pads on both faces of the thrust collar '
+                             '(simplified).', 'Steel pads, white metal faces', [NAVY, GE_STAG, KWU]),
+        'pedestal_r': comp('Rear bearing pedestal', 'Carries the rear journal bearing; the casing\'s rear end '
+                           'rests on it.', 'Cast iron, painted', [GE_LARGE]),
+        'cap_r': comp('Rear pedestal cover', 'Closes the rear pedestal over its bearing.', 'Steel plate, painted',
+                      [KWU]),
+        'brg_r_lower': comp('Rear journal bearing, lower half', 'Carries the rotor\'s weight on an oil film.',
+                            'Steel shell, white metal lining', [NAVY, KWU]),
+        'brg_r_upper': comp('Rear journal bearing, upper half', 'Closes the bearing over the journal.',
+                            'Steel shell, white metal lining', [NAVY, KWU]),
+    }
+    for side, word in (('l', 'left'), ('r', 'right')):
+        c['valve_' + side] = comp(f'Stop and control valve, {word}', 'The combined valve chest on this side of the '
+                                  'casing: live steam passes its stop valve, then its control valve, into the '
+                                  'casing.', 'Cast alloy steel body under lagging', [GE_STAG, NRC])
+        c['stop_' + side] = comp(f'Stop valve disc, {word}', 'Shuts off the steam at once when the turbine trips.',
+                                 'Alloy steel', [GE_STAG, NRC])
+        c['ctrl_' + side] = comp(f'Control valve plug, {word}', 'Opens as far as the governor asks: it sets how '
+                                 'much steam goes to the blades.', 'Alloy steel', [GE_STAG, NRC])
+        c['servo_' + side] = comp(f'Valve actuator, {word}', 'The hydraulic servomotor that moves the valve: oil '
+                                  'pressure opens it, a spring closes it.', 'Steel, painted', [GE_STAG])
+    for k in range(STAGES):
+        n = ORD[k]
+
+        c[f'srow_u{k + 1}'] = comp(f'Stage {k + 1} stationary blades, upper', f'The {n} stage\'s fixed blades: they '
+                                   'speed the steam up and turn it onto the moving blades.', 'Stainless steel',
+                                   [GE_LARGE, NAVY])
+        c[f'srow_l{k + 1}'] = comp(f'Stage {k + 1} stationary blades, lower', f'The lower half of the {n} stage\'s '
+                                   'fixed blades.', 'Stainless steel', [GE_LARGE, NAVY])
+        c[f'mrow_{k + 1}'] = comp(f'Stage {k + 1} moving blades', f'The {n} stage\'s blades on the rotor: the steam '
+                                  'pushes them round. They lengthen stage by stage as the steam expands.',
+                                  'Stainless steel', [GE_LARGE, NAVY])
+
+    return c
+
+
+def step(place, text, needs=(), why=None, sources=(KWU,)):
+    s = {'place': place, 'text': [text], 'sources': list(sources)}
+    if why:
+        s['why'] = [why]
+    if needs:
+        s['needs'] = [list(n) for n in needs]
+    return s
+
+
+def assembly():
+    a = [
+        step('pedestal_f', 'Set the front bearing pedestal on the foundation.', sources=(GE_LARGE,)),
+        step('pedestal_r', 'Set the rear bearing pedestal on the foundation.', sources=(GE_LARGE,)),
+        step('casing_lower', 'Lower the outer casing\'s lower half onto the pedestals and line it up with the shaft '
+             'line.', [('pedestal_f', 'The casing rests on the front pedestal: set it first.',
+                        'Lift the lower casing off before the front pedestal is moved.'),
+                       ('pedestal_r', 'The casing rests on the rear pedestal: set it first.',
+                        'Lift the lower casing off before the rear pedestal is moved.')], sources=(GE_LARGE,)),
+    ]
+    for side, word in (('l', 'left'), ('r', 'right')):
+        v = 'valve_' + side
+        a += [
+            step(v, f'Set the {word} stop and control valve beside the casing and connect it to the lower half.',
+                 [('casing_lower', 'The valve\'s steam lead goes into the lower casing: set the casing first.',
+                   'Disconnect the valve before the lower casing is lifted.')], sources=(GE_STAG,)),
+            step('stop_' + side, f'Fit the {word} stop valve disc and its stem in the chest.',
+                 [(v, 'The disc goes inside the valve chest: set the chest first.',
+                   'Take the stop valve disc out before the chest is moved.')], sources=(GE_STAG,)),
+            step('ctrl_' + side, f'Fit the {word} control valve plug and its stem in the chest, above the stop valve.',
+                 [(v, 'The plug goes inside the valve chest: set the chest first.',
+                   'Take the control valve plug out before the chest is moved.'),
+                  ('stop_' + side, 'The stop valve sits below the control valve: fit its disc first.',
+                   'Take the control valve plug out before the stop valve disc, which lies below it.')],
+                 sources=(GE_STAG,)),
+            step('servo_' + side, f'Mount the {word} valve actuator on the chest and couple it to the stems.',
+                 [('stop_' + side, 'Fit the stop valve disc before the actuator closes the chest.',
+                   'Take the actuator off before the stop valve disc.'),
+                  ('ctrl_' + side, 'Fit the control valve plug before the actuator closes the chest.',
+                   'Take the actuator off before the control valve plug.')], sources=(GE_STAG,)),
+        ]
+    a += [
+        step('inner_lower', 'Lower the inner casing\'s lower half into the outer casing.',
+             [('casing_lower', 'The inner casing sits in the outer casing\'s lower half: set that first.',
+               'Lift the lower inner casing out before the outer casing\'s lower half is moved.')]),
+        step('carrier_lower', 'Lower the blade carrier\'s lower half into the inner casing.',
+             [('inner_lower', 'The blade carrier sits in the inner casing: set the lower inner casing first.',
+               'Lift the lower blade carrier out before the lower inner casing.')]),
+    ]
+    for k in range(STAGES):
+        a.append(step(f'srow_l{k + 1}', f'Stage {k + 1}\'s lower stationary blades come with the blade carrier.',
+                      sources=(GE_LARGE,)))
+    a += [
+        step('glands_lower', 'Fit the lower halves of the shaft glands at both ends of the casing.',
+             [('casing_lower', 'The glands sit in the lower casing\'s ends: set the casing first.',
+               'Take the lower glands out before the lower casing is lifted.')]),
+        step('brg_f_lower', 'Roll the front journal bearing\'s lower half into the front pedestal.',
+             [('pedestal_f', 'The bearing sits in the front pedestal: set the pedestal first.',
+               'Roll the lower front bearing out before the pedestal is moved.')]),
+        step('brg_r_lower', 'Roll the rear journal bearing\'s lower half into the rear pedestal.',
+             [('pedestal_r', 'The bearing sits in the rear pedestal: set the pedestal first.',
+               'Roll the lower rear bearing out before the pedestal is moved.')]),
+        step('rotor', 'Lower the rotor level onto the lower journal bearings, clear of the blades and glands.',
+             [('brg_f_lower', 'The rotor rests on the journal bearings: roll the lower front bearing in first.',
+               'Lift the rotor out before the lower front bearing comes out.'),
+              ('brg_r_lower', 'The rotor rests on the journal bearings: roll the lower rear bearing in first.',
+               'Lift the rotor out before the lower rear bearing comes out.'),
+              ('carrier_lower', 'Set the lower blade carrier before the rotor: it cannot go in under the blades.',
+               'Lift the rotor out before the lower blade carrier.'),
+              ('glands_lower', 'Fit the lower glands before the rotor: they go in under the shaft.',
+               'Lift the rotor out before the lower glands.')],
+             why='A rotor set down off level or touched against the blades bends blades and scores seals.'),
+    ]
+    for k in range(STAGES):
+        a.append(step(f'mrow_{k + 1}', f'Stage {k + 1}\'s moving blades come with the rotor.', sources=(GE_LARGE,)))
+    a += [
+        step('collar', 'The thrust collar is part of the rotor.', sources=(GE_STAG,)),
+        step('brg_f_upper', 'Close the front journal bearing with its upper half.',
+             [('rotor', 'The upper half closes over the rotor\'s journal: set the rotor first.',
+               'Take the upper front bearing off before the rotor is lifted.')]),
+        step('brg_r_upper', 'Close the rear journal bearing with its upper half.',
+             [('rotor', 'The upper half closes over the rotor\'s journal: set the rotor first.',
+               'Take the upper rear bearing off before the rotor is lifted.')]),
+        step('glands_upper', 'Fit the upper halves of the shaft glands over the shaft.',
+             [('rotor', 'The upper glands close over the shaft: set the rotor first.',
+               'Take the upper glands off before the rotor is lifted.')]),
+        step('carrier_upper', 'Lower the blade carrier\'s upper half over the rotor onto the lower half.',
+             [('rotor', 'The upper carrier\'s blades fit between the rotor\'s: set the rotor first.',
+               'Lift the upper blade carrier off before the rotor.'),
+              ('carrier_lower', 'The upper carrier sits on the lower one: set that first.',
+               'Lift the upper blade carrier off before the lower one.')]),
+    ]
+    for k in range(STAGES):
+        a.append(step(f'srow_u{k + 1}', f'Stage {k + 1}\'s upper stationary blades come with the blade carrier.',
+                      sources=(GE_LARGE,)))
+    a += [
+        step('inner_upper', 'Lower the inner casing\'s upper half onto the lower half.',
+             [('carrier_upper', 'The upper inner casing closes over the blade carrier: set the upper carrier first.',
+               'Lift the upper inner casing off before the upper blade carrier.'),
+              ('inner_lower', 'The upper inner casing sits on the lower one: set that first.',
+               'Lift the upper inner casing off before the lower one.')]),
+        step('inner_bolts', 'Fit the inner casing\'s joint studs and tighten their nuts.',
+             [('inner_upper', 'The studs go through both halves\' flanges: set the upper inner casing first.',
+               'Take the inner casing\'s studs out before its upper half is lifted.')], sources=(KWU, GE_LARGE)),
+        step('casing_upper', 'Lower the outer casing\'s upper half onto the joint on its guide pins.',
+             [('inner_upper', 'Close the inner casing before the outer casing: set the upper inner casing first.',
+               'Lift the upper outer casing off before the upper inner casing.'),
+              ('inner_bolts', 'Tighten the inner casing\'s studs before the outer casing closes over them.',
+               'Lift the upper outer casing off before the inner casing\'s studs come out.'),
+              ('glands_upper', 'Fit the upper glands before the outer casing closes over them.',
+               'Lift the upper outer casing off before the upper glands.'),
+              ('casing_lower', 'The upper half sits on the lower half\'s flanges: set the lower half first.',
+               'Lift the upper outer casing off before the lower half.')],
+             why='Jacking screws take the upper half the first few millimetres off the joint, square, so it does not '
+                 'bind on its guide pins.'),
+        step('joint_bolts', 'Fit the horizontal joint\'s studs and tighten their nuts in the casing maker\'s order.',
+             [('casing_upper', 'The studs hold the two halves of the joint: set the upper casing first.',
+               'Loosen and take out all the joint\'s studs before the upper casing is lifted.')],
+             sources=(KWU, PAT_SHELL, GE_LARGE)),
+        step('coupling_bolts', 'Couple the rotor to the next one: line the flanges up and fit the coupling bolts.',
+             [('rotor', 'The bolts join the rotor\'s coupling flange to the next rotor\'s: set the rotor first.',
+               'Take the coupling bolts out, uncoupling the rotors, before the rotor is lifted.')],
+             why='The rotors are lined up before coupling; coupled out of line they shake the bearings.',
+             sources=(KWU, PAT_COUPLING, IMIA)),
+        step('thrust_lower', 'Roll the thrust bearing\'s lower half in under the thrust collar, its pads on both '
+             'faces.', [('rotor', 'The pads go on the faces of the rotor\'s thrust collar: set the rotor first.',
+                         'Roll the lower thrust bearing out before the rotor is lifted.')], sources=(KWU, GE_STAG)),
+        step('thrust_upper', 'Close the thrust bearing with its upper half.',
+             [('thrust_lower', 'The upper half closes on the lower one: roll the lower half in first.',
+               'Take the upper thrust bearing off before the lower half is rolled out.')], sources=(KWU, GE_STAG)),
+        step('cap_f', 'Close the front pedestal with its cover.',
+             [('brg_f_upper', 'Close the front journal bearing before the cover goes on.',
+               'Take the front pedestal\'s cover off before the upper front bearing.'),
+              ('thrust_upper', 'Fit the thrust bearing before the cover goes on.',
+               'Take the front pedestal\'s cover off before the thrust bearing.')]),
+        step('cap_r', 'Close the rear pedestal with its cover.',
+             [('brg_r_upper', 'Close the rear journal bearing before the cover goes on.',
+               'Take the rear pedestal\'s cover off before the upper rear bearing.')]),
+        step('lagging_lower', 'Put the lower half\'s insulation and cladding back.',
+             [('casing_lower', 'The lagging covers the lower casing: set it first.',
+               'Strip the lower lagging before the lower casing is moved.')]),
+        step('lagging_upper', 'Put the upper half\'s insulation and cladding back, the last thing on.',
+             [('casing_upper', 'The lagging covers the upper casing: close the casing first.',
+               'Strip the upper lagging first: it covers the casing\'s joint and its studs.'),
+              ('joint_bolts', 'Tighten the joint\'s studs before they are lagged over.',
+               'Strip the upper lagging before the joint\'s studs are loosened.')]),
+    ]
+    return a
+
+
+def data():
+    return {
+        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'steam_turbine',
+        'context': ['axis_z', 'shaft_lo', 'shaft_hi'],
+        'sources': SOURCES,
+        'components': components(),
+        'fasteners': {
+            'joint_bolts': {'name': '44 horizontal joint studs and nuts', 'joins': ['casing_upper', 'casing_lower'],
+                            'sources': [GE_LARGE, KWU, PAT_SHELL]},
+            'inner_bolts': {'name': '12 inner casing joint studs and nuts', 'joins': ['inner_upper', 'inner_lower'],
+                            'sources': [GE_LARGE, KWU]},
+            'coupling_bolts': {'name': '12 coupling bolts', 'joins': ['rotor'],
+                               'beyond': 'the next turbine\'s rotor (its own machine)',
+                               'sources': [PAT_COUPLING, IMIA, KWU]},
+        },
+        'assembly': assembly(),
+        # the views (WORKSHOP.md §4.7): the X-ray takes the shells round the blade path; the cutaway opens the upper
+        # quarter on the right (+x), the rotor and its blades shown whole; the turbine runs only closed
+        'views': {'xray_all': ['lagging_upper', 'lagging_lower', 'casing_upper', 'casing_lower', 'inner_upper',
+                               'inner_lower', 'carrier_upper', 'carrier_lower', 'cap_f', 'cap_r'],
+                  'cutaway': {'planes': [{'normal': [1, 0, 0], 'offset': 0}, {'normal': [0, 0, 1], 'offset': 0}],
+                              'keep': ['rotor'] + [f'mrow_{k + 1}' for k in range(STAGES)] + ['collar']},
+                  'run_exploded': {'allowed': ['lagging_upper', 'lagging_lower'],
+                                   'why': 'A steam turbine runs only closed: the casing holds the steam and the '
+                                          'bearings the rotor. Put it back together first (the lagging may stay '
+                                          'off).'}},
+    }
