@@ -30,7 +30,8 @@ static func _walk(n: Node, parent: String, words: Dictionary, comps: Dictionary,
 			_walk(c, id, words, comps, groups, order)
 		elif c.has_meta("items"):
 			groups[c.get_meta("id")] = {"host": parent, "items": c.get_meta("items"), "back_out": float(c.get_meta("back_out")),
-				"axis": c.get_meta("back_axis", Vector3.UP)}
+				"axis": c.get_meta("back_axis", Vector3.UP),
+				"beyond": words.get("fasteners", {}).get(c.get_meta("id"), {}).has("beyond")}
 
 ## Smoothstep of t clamped to [0, 1].
 static func ease01(t: float) -> float:
@@ -55,8 +56,10 @@ static func levels(spec: Dictionary, root := "") -> Array:
 		if root != "" and host == root:
 			continue   # the chosen subassembly's own fasteners hold it to the rest, which stays home: so do they
 		var d: int = 0 if host == root else (lv[host] if lv.has(host) else -1)
-		if d < 0 or (host != "" and (spec.comps[host].sealed or _in_sealed(spec, host))):
-			continue   # a sealed component's fasteners are its own insides: they stay with it
+		var own_seal: bool = spec.comps[host].sealed and not spec.groups[g].get("beyond", false) if host != "" else false
+		if d < 0 or (host != "" and (own_seal or _in_sealed(spec, host))):
+			continue   # a sealed component's fasteners are its own insides: they stay with it (but its bolts to another
+			#            machine, which back out before it moves)
 		glv[g] = d
 		deepest = maxi(deepest, d)
 	var bolted := {}

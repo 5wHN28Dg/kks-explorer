@@ -667,7 +667,8 @@ func _ancestor_of(a: String, id: String) -> bool:
 func why_not_free(id: String) -> String:
 	if id == "" or not (comps.has(id) or groups.has(id)):
 		return ""
-	if comps.has(id) or groups.has(id):
+	if comps.has(id) or (groups.has(id) and not spec.groups[id].get("beyond", false)):   # (a sealed part's
+		#   bolts to another machine are outside its seal: Assembly.rides_of)
 		var at: String = spec.comps[id].parent if comps.has(id) else String(spec.groups[id].host)
 		while at != "":
 			if spec.comps[at].sealed:

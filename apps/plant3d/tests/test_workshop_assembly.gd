@@ -99,6 +99,9 @@ func _pure() -> void:
 	var groups := {"pins": {"host": "shell"}, "deep": {"host": "inner"}, "bolts": {"host": "lid"}}
 	check(Assembly.rides_of(comps, groups).keys().size() == 3 and not Assembly.rides_of(comps, groups).has("bolts"),
 		"a sealed part's own and inner fasteners ride with it: %s" % str(Assembly.rides_of(comps, groups).keys()))
+	groups["couple"] = {"host": "shell", "beyond": true}
+	check(not Assembly.rides_of(comps, groups).has("couple"), "a sealed part's bolts to another machine don't ride with it")
+	groups.erase("couple")
 	var g := Assembly.new()
 	g.start("assemble", [{"place": "shell"}, {"place": "inner"}, {"place": "pins"}, {"place": "lid"}, {"place": "bolts"}],
 		comps, {"shell": Transform3D(), "inner": Transform3D(), "pins": Transform3D(), "lid": Transform3D(), "bolts": Transform3D()}, groups)
@@ -316,9 +319,9 @@ func _turbine(tree: SceneTree, ws) -> void:
 	check(ws.start_guide("disassemble"), "the turbine's steps start taking apart")
 	check(String(ws.guide.steps[ws.guide.next_step()].place) == "lagging_upper", "the upper lagging comes off first")
 	check(ws.why_not_free("rotor") != "", "the rotor is held while the turbine is closed")
-	ws.select("casing_upper")
+	ws.select("joint_bolts")
 	check(ws.note == "Strip the upper lagging first: it covers the casing's joint and its studs.",
-		"the upper casing is held by its lagging: '%s'" % ws.note)
+		"the joint's studs are under the lagging: '%s'" % ws.note)
 	var order: Array = []
 	var guard := 0
 	while ws.guide.next_step() >= 0 and guard < 120:
