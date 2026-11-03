@@ -2144,6 +2144,8 @@ class StaffRun:
         for p in self.people:
             if p.id in self.absent:
                 continue
+            if p.watch:
+                self.prune_watch(p)
             if not p.acts and (p.cur is None or p.cur['idle']) and not self.zones_of(p):
                 continue        # (no act going on, and none can start: no task step, no zone)
             for kind in st.kinds:
@@ -2152,10 +2154,8 @@ class StaffRun:
                 if a is not None and not ok:
                     del p.acts[kind]
                     e.ev('safe', p.id, kind, a[0])
-                    if kind in AUDIO_KINDS:     # nobody is about to notice an act that has ended
-                        p.told.discard(kind)
-                        for wk in [wk for wk in p.watch if wk[1] == kind]:
-                            del p.watch[wk]
+                    if kind in AUDIO_KINDS:     # a missed call reported this act only; the observers' times
+                        p.told.discard(kind)    # stand (music off and on again in their sight is no escape)
                 elif a is None and ok:
                     p.acts[kind] = [det, n, False]
                     e.ev('unsafe', p.id, kind, det)
@@ -2213,6 +2213,22 @@ class StaffRun:
                     return q
         return None
 
+    def prune_watch(self, p):
+        """An observer's time to notice stands while the act is off (music off and on again in their sight is no
+        escape, REALISM.md §8.5) but only while they still share a zone with the person, on duty; for an act going on,
+        notice() keeps the list. Before the person's acts are updated, in phase 5."""
+        zs = set(self.zones_of(p))
+        for wk in list(p.watch):
+            if wk[1] in p.acts:
+                continue
+            w = p.watch[wk]
+            for qi in list(w):
+                q = self.people[qi]
+                if not (q.on and q.id not in self.absent and zs.intersection(self.zones_of(q))):
+                    del w[qi]
+            if not w:
+                del p.watch[wk]
+
     def notice(self, ri, roles, actor, kind, n):
         """Who of the roles notices a player's music or phone (REALISM.md §8.5). After a missed call while the act goes
         on (the caller reports them not answering): the first of the roles on duty (role order, then index), wherever
@@ -2269,7 +2285,8 @@ class StaffRun:
             else:
                 q.cur['st'].pop('busy', None)
                 self.advance(q, 'fail')
-        if act[1] in AUDIO_KINDS and q.phone != 2:     # the device taken until their duty ends (§8.5)
+        if act[1] in AUDIO_KINDS and q.phone == 1:     # the device taken until their duty ends (§8.5; one left
+                                                       # at a locker in this very step stays there)
             q.music, q.phone = 0, 2
             q.held_to = q.duty[1] if q.on and q.duty is not None else e.clock()
             e.ev('held', q.id, p.id)

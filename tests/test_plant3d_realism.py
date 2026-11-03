@@ -886,6 +886,14 @@ class AudioVectors(PartVectors, unittest.TestCase):
         self.assertEqual([x[2] for x in missed[:2]], ['a_fo1', 'a_fo2'])
         self.assertEqual(missed[0][0], missed[1][0])
 
+    def test_music_toggled_is_still_noticed(self):
+        """Music off and on again every clock minute (under the 2-minute least time to notice) in an observer's
+        sight: their time keeps running while it is off, so the act is still noticed, stopped and the device held."""
+        ev = self.st['runs'][8]['events']
+        starts = [x for x in ev if x[1:4] == ['unsafe', 'a_fo1', 'audio']]
+        self.assertGreater(len(starts), 5)
+        self.assertEqual([x[1:] for x in ev if x[1] == 'held'], [['held', 'a_fo1', 'hse1']])
+
     def test_refusals(self):
         self.assertIn([2301, 'phone', 'a_fo1', 'leave', 'refused', ['held']], self.evs(0, ('phone',)))
         self.assertIn([620, 'audio', 'a_fo1', 20, 'refused', ['left']], self.evs(2, ('audio',)))

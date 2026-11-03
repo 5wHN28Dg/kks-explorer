@@ -5158,6 +5158,12 @@ def audio_runs():
          '1\'s next duty: the device comes back in the jump\'s step, its duty having ended on the way',
          {'trainee': 'a_fo1', 'start': {'day': 1, 'time': '17:00'}}, nohost,
          Trainee(extra=[[20, 'audio', 60], [400, 'jump', '06:30'], [420, 'audio', 20]]), 500, 20),
+        ('music turned off and on again every clock minute in the hall (never off for the 2 minutes noticing takes '
+         'at the least): each observer\'s time keeps running while the music is off and they stay in the zone, so '
+         'the act is noticed and stopped all the same (before the fix nobody ever noticed it)',
+         {'trainee': 'a_fo1'}, af,
+         Trainee(extra=[[1500, 'audio', 30]] + [[t, 'audio', 0 if (t // 10) % 2 else 30] for t in range(1850, 2400, 10)]),
+         2450, 50),
     ]
 
 
