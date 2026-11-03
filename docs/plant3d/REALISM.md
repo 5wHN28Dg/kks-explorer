@@ -639,8 +639,8 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
   plant.json that every scenario sets (clear-weather values); `ambient_t`, `ambient_wb` and the plant's reactions stay
   WX2's, so the weather changes nothing the model computes. **Free play's weather:** the two version 2 scenarios
   (`shift_cold`, a summer day, year day 196; `shift_wtp`, a spring day, year day 100) carry `{"season": id}`; the
-  version 1 scenarios can't carry `world` and stay clear. `plant3d-v1.json` and `-v2.json` were regenerated: the new
-  values added, every earlier value the same.
+  version 1 scenarios can't carry `world` and stay clear (until 2026-11-03: §5.6). `plant3d-v1.json` and `-v2.json`
+  were regenerated: the new values added, every earlier value the same.
 - **Drawn** (`app/weather_view.gd`), every frame from the model's values eased over 2 s (the model's lags already take
   minutes), so every peer stepping the same run sees the same weather:
   - the depth fog's density 3 / `visibility` (5 % of the light through at the model's visibility), never thinner
