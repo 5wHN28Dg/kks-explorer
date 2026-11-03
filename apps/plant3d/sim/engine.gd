@@ -2200,19 +2200,26 @@ func _op(item: Array, moved: Dictionary, npc := false) -> String:
 			t = TYPE_INT
 		if not (t == TYPE_INT or t == TYPE_FLOAT) or not (o["range"][0] <= value and value <= o["range"][1]):
 			failed.append(o["input"])
-	failed.append_array(_locking(kks))         # a locked code refuses every op (§15.1)
+	var locks := _locking(kks)
+	var under := -1         # REALISM.md §2.15: a HART op under the work's own accepted permit (its index)
+	if not locks.is_empty() and v2 and typeof(item[5]) == TYPE_STRING and item[5] == "hart" and o.has("hart") \
+			and do != "reset":          # (a reset waits for the unlock)
+		under = Hands.hart_permit(self, kks, item[6], npc)
+		if under != -1:
+			locks = []
+	failed.append_array(locks)         # a locked code refuses every op (§15.1)
 	if not failed.is_empty():
 		_ev(["op", kks, do, "refused", failed] + tail)
 		return "refused"
 	_ev(["op", kks, do, "done", []] + tail)
 	if mi == -1 and do == "set":
-		_write(c["input"], float(value))
+		_write(c["input"], float(value), under)
 	if mi == -1 and do == "reset":
 		var ti: int = c["ti"]
 		latched[ti] = 0
 		trip_count[ti] = 0
 		cur[_tr[ti][5]] = 0.0
-	_apply_set(c["set"])
+	_apply_set(c["set"], under)
 	if mi != -1:
 		var to: int = _mc[mi][2].find(_mc[mi][4][do]["to"])
 		_enter(mi, to, "command")

@@ -353,6 +353,19 @@ def hand_authority(e, x, person, npc):
     return e._authority(person, npc, 'operate_local')
 
 
+def hart_permit(e, kks, isos, person, npc):
+    """A HART op on a locked code (REALISM.md §2.15): the work on that code whose permit is accepted, which holds
+    every isolation locking it (isos), and under which the person acts (its acceptor, or another with accept and its
+    discipline while the acceptor is off duty), or None. A person is named: no permit is accepted by nobody."""
+    if not isinstance(person, str):
+        return None
+    for w in e.works_on.get(kks, ()):
+        if e.pstate[w['id']] == 5 and all(e.holder[i] == w['id'] for i in isos) \
+                and not e._authority(person, npc, 'accept', w['discipline'], True, w['id']):
+            return w['id']
+    return None
+
+
 def hand(e, item, npc, prev):
     """A hand action in step 1: 'start', 'done', 'refused' or 'unknown', its event made."""
     kks, action, tl, value, person = item
@@ -364,6 +377,8 @@ def hand(e, item, npc, prev):
     p = person_of(e, person)
     if p is None or hand_authority(e, x, person, npc):
         why.append('authority')
+    if p is not None and p.pos not in e.staff.st.work_places.get(kks, ()):
+        why.append('where')         # done at a work place of the code (REALISM.md §2.15)
     if p is not None and person in e.busy:
         why.append('busy')
     have = e.carried.get(person, ()) if p is not None else ()

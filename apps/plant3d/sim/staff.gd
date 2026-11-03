@@ -61,6 +61,7 @@ var rooms := {}                      # room -> PackedInt32Array of its places
 var door := {}                       # room -> its door (the first door place), or -1
 var wait_key := PackedInt32Array()   # per place: its room's first place, or itself outside a room (_wake_at)
 var work_at := {}                    # code -> its work place
+var work_places := {}                # code -> every work place of it (a hand action's place, REALISM.md §2.15)
 var origin := -1
 var gate := -1
 var roles := {}                      # id -> role
@@ -163,6 +164,10 @@ func _build(m, doc: Dictionary) -> void:
 			rooms[p["room"]] = r
 		if p["kind"] == "work" and not work_at.has(p["kks"]):
 			work_at[p["kks"]] = places.size() - 1
+		if p["kind"] == "work":
+			if not work_places.has(p["kks"]):
+				work_places[p["kks"]] = []
+			work_places[p["kks"]].append(places.size() - 1)
 		off_site.append(1 if p.get("off_site", false) == true else 0)
 		drive_no.append(-1)
 		if p["kind"] == "stop" or p["kind"] == "depot":
@@ -2228,6 +2233,11 @@ func run(e, pi: int, cur: Dictionary):
 			x["hw"] = false
 		else:
 			if not x.get("busy", false):
+				# at the code's work place, as a lock step at its point's (REALISM.md §2.15)
+				var r0 := go(e, pi, cur, work_at[s["kks"]])
+				if r0 != "next":
+					return r0
+				x.erase("dest")
 				e.npc_queue.append(["hand", s["kks"], s["hand"], s.get("tool"), s.get("value"), pid])
 				x["busy"] = true
 				e.sp_result[pi] = null
