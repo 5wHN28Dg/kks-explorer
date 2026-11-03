@@ -701,6 +701,32 @@ Values, faults and works; findings (§17.12: a reading out of range given to the
   `mp=`. Free play's seeded scenarios start from clear-weather values while their season's chain starts at its
   `start` kind (summer's `hot`): the values lag toward it from step 0.
 
+### 5.6 Every scenario with its season's weather (2026-11-03)
+
+The user (2026-11-03): the five scenarios that were format 1 (`cold_iron`, `hot_restart`, `wtp_cold`, `wtp_normal`,
+`wtp_flood`) are made version 2 so that the weather, and the realism pieces after it, work in them; free play's
+weather on, seeded by season.
+- **The content** (`tools/plant3d/train_content.py`, `train_weather.FREE_PLAY`): each is `"version": 2` with
+  `"world": {"year_day", "weather": {"season"}}` as its last key and nothing else new: no `start` (the clock starts at
+  plant.json's, day 1 06:00, as before), no `staff` (no people, as before), no world `seed` (1, §2.1). Each takes the
+  season of its crews' twin: `cold_iron` and `hot_restart` as `shift_cold` (summer, year day 196); the WTP's three as
+  `shift_wtp` (spring, year day 100; spring is the river's flood season, WATER-TREATMENT.md §2). Format 1 itself, its
+  validator rules and `plant3d-v1.json`'s synthetic parts are unchanged.
+- **The vectors** (made again, then compared by JSON with main's): nothing moved between files. `plant3d-v1.json`'s
+  `train` (cold_iron) and `hot` (hot_restart) stay where they are, as P1 left them following the first train's
+  content (PLANT3D.md §19); `plant3d-v2.json`'s `wtp` (wtp_cold), `wtp_cip` and `wtp_regen` (wtp_normal) likewise.
+  In those five runs every input, event and fork is the same and every value the same but the weather's: each
+  snapshot gains `world_hour`, `world_day` and `world_wx`, and `wind`, `solar`, `visibility` and `dust` (the clear
+  values they held still) now follow the season's kind (`rain`, `lightning` and `wet` stay 0). No run crosses a change
+  of kind, so no `weather` event is added. Nothing the model computes reads the weather (§5.5), so no model value
+  moved. `plant3d-v2.json`'s `train` (forks from cold_iron without values), `staff`, `day` and every synthetic item,
+  and `plant3d-realism.json`, are byte for byte main's.
+- **What depends on it:** the app lists the same scenarios (by id; none gained `staff`, so none is offered as a crews'
+  shift); a save or session snapshot of a run made before is refused as "content has changed" (the content's hash,
+  `ui/run_save.gd`), as after any content change, and a session's players must share the content's hash; procedures,
+  tours and links name the scenarios by id, unchanged. The app's test of a plant without weather (`test_weather.gd`)
+  now makes such a scenario (cold_iron without `world`) instead of starting cold_iron.
+
 ## 6. Documents and discussions
 
 ### 6.1 Generic P&IDs
