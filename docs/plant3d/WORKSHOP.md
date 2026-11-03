@@ -653,7 +653,10 @@ addition (both engines, vectors) made in K6.
   from the plant's sound files while the Workshop shows (not paused, not when the plant's sounds were muted).
 - **Faults:** the governor (its set point 15 % high: an overspeed trip at no load), thrust bearing wear (axial
   displacement; the bench's own wear, which goes back once the bearing is renewed: the plant's only grows), a rub (vibration), the lube oil pump lost, the steam's temperature falling 200 K (wet steam); each
-  trips by the plant's own trip and is reset from the Run panel once its cause is gone.
+  trips by the plant's own trip and is reset from the Run panel once its cause is gone; the breaker's trip too (Roll
+  is refused while any is latched: left latched, it would not open the breaker at the next trip on load). The
+  readouts carry the phase angle and the slip that synchronising reads (the steam's pressure and temperature are on
+  their sliders).
 - **Running taken apart:** as K4a's data says, only with the lagging off; Start is refused otherwise with its sentence.
 - **Vectors:** `plant3d-bench-v1.json` gains two runs of the committed file's model: the committed one (rolled to its
   soak, the refusals on the way, a rub's trip, its reset, the lube oil lost; 900 steps) and the same with the soak cut

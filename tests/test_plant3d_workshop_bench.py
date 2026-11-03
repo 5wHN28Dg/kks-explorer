@@ -139,6 +139,11 @@ class Turbine(unittest.TestCase):
         f = e.v('flow') / 70
         self.assertAlmostEqual(e.v('p_first'), 90 * f, 6)
         self.assertAlmostEqual(e.v('p8'), 25 * f, 6)
+        # the steam pressure dropped under a running turbine: no stage above the first while the flow follows
+        e.op('valve_l', 'set', 40)
+        for _ in range(40):
+            e.step()
+            self.assertLessEqual(max(e.v(f'p{k}') for k in range(1, 9)), e.v('p_first') + 1e-9)
 
     def test_tripped_on_load_opens_the_breaker(self):
         """A trip while on the grid: the plant's protection opens the breaker too, and the rotor coasts down."""
@@ -163,6 +168,21 @@ class Turbine(unittest.TestCase):
         self.assertEqual(e.v('brk_cmd'), 0)
         self.go(e, 30)
         self.assertLess(e.v('rpm'), 2950)
+        # rolled again without the breaker's trip reset: refused (a breaker trip left latched would not open the
+        # breaker at the next trip on load)
+        e.repair('rub')
+        self.go(e, 400)
+        e.op('brg_f_upper', 'reset', None, 'trip_vib')
+        self.go(e, 1)
+        self.assertEqual(e.v('turbine_state'), 0)
+        e.op('rotor', 'roll')
+        self.go(e, 1)
+        self.assertEqual(e.v('turbine_state'), 0, 'Roll refused while the breaker trip is latched')
+        e.op('bench', 'reset', None, 'trip_breaker')
+        self.go(e, 1)
+        e.op('rotor', 'roll')
+        self.go(e, 1)
+        self.assertEqual(e.v('turbine_state'), 1)
 
     def test_overspeed_by_the_governor(self):
         e = self.bench.engine()

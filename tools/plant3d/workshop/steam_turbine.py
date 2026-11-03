@@ -423,7 +423,8 @@ def _stage_values():
         ck = round(r ** (k * EXPONENT), 9)
         v += [
             [f'p{k}_f', {'product': ['flow_frac', pk]}],
-            [f'p{k}', {'max': [f'p{k}_f', 'p_floor'], 'unit': 'bar'}],
+            [f'p{k}_c', {'min': [f'p{k}_f', 'p_first']}],          # (never above the first stage: the flow lags)
+            [f'p{k}', {'max': [f'p{k}_c', 'p_floor'], 'unit': 'bar'}],
             [f't{k}_k', {'product': ['inlet_k', ck]}],
             [f't{k}_s', {'sum': [f't{k}_k', -273.15]}],
             [f't{k}_tgt', {'select': 'steaming', 'cases': ['casing_t', f't{k}_s']}],
@@ -467,7 +468,8 @@ def bench_source():
     ]
     after = [
         # the trips the bench takes (the plant's st_any_trip reads two more: the condenser's and the oil cooler's)
-        ['any_trip', {'or': [n.replace('st_', '', 1) + '_latched' for n in TRIPS]}],
+        # (with the breaker's: left latched it would not open the breaker at the next trip on load)
+        ['any_trip', {'or': [n.replace('st_', '', 1) + '_latched' for n in TRIPS] + ['trip_breaker_latched']}],
         ['trips_clear', {'not': 'any_trip'}],
     ] + _stage_values()
     sid = {f'srow_{h}{k}': k for k in range(1, STAGES + 1) for h in 'ul'}
@@ -521,8 +523,8 @@ def bench_source():
             'pressure': {'unit': 'bar', 'table': [[0, '#5e3c99'], [1, '#2c7bb6'], [25, '#abd9e9'], [50, '#ffffbf'],
                                                   [75, '#fdae61'], [100, '#d7191c']]},
         },
-        'readouts': ['rpm', 'flow', 'p_supply', 'steam_t', 'p_first', 'p8', 't8', 'casing_t', 'superheat', 'vib1',
-                     'axial', 'mw'],
+        # (the steam's pressure and temperature are on their sliders; the phase and the slip are what synchronising reads)
+        'readouts': ['rpm', 'flow', 'p_first', 'p8', 't8', 'casing_t', 'superheat', 'vib1', 'axial', 'ph', 'slip', 'mw'],
     }
     return {
         'area': 'st', 'prefix': 'st_',

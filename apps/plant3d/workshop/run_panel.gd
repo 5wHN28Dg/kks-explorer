@@ -56,7 +56,7 @@ func machine_shown() -> void:
 		if not o.has("machine") and o.get("do") != "set":   # an open, a close, a trip's reset
 			var ob := W.button(String(o.get("title", "%s %s" % [String(o.do).capitalize(), _title(o.at)])),
 				ws.run_op.bind(o.at, o.do, o.get("trip")))
-			ob.name = "run_op_%s_%s" % [o.at, o.do]
+			ob.name = "run_op_%s_%s" % [o.at, o.do] + ("_" + String(o.trip) if o.has("trip") else "")
 			row.add_child(ob)
 	for o in c.m.ops_ui:
 		if o.has("machine"):

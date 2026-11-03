@@ -184,8 +184,10 @@ func _turbine(tree: SceneTree, ws) -> void:
 	var da := wrapf(float(anims.rotor.get("angle", 0.0)) - a1, -PI, PI)
 	check(da > 0.0 and da < 1.0, "the rotor turns right-handed about that axis, as the blades are made for (%.4f rad)" % da)
 	# at speed it is drawn no faster than MAX_DRAWN_RPS (a frame at 30 fps turns it less than half a blade's pitch)
+	c.speed = 2.0   # (at the Run panel's fastest: drawn per second of the screen, the bench's 2 s in it)
 	var a2: float = float(anims.rotor.get("angle", 0.0))
-	bv.draw(1.0 / 30.0)
+	bv.draw(2.0 / 30.0)
+	c.speed = 1.0
 	var db := wrapf(float(anims.rotor.get("angle", 0.0)) - a2, -PI, PI)
 	check(db > 0.0 and db <= TAU * bv.MAX_DRAWN_RPS / 30.0 + 1e-6 and db < PI / 34.0,
 		"at %.0f rpm the rotor is drawn turning forwards, slower than its blades alias (%.4f rad a frame)" % [c.now("rpm"), db])
