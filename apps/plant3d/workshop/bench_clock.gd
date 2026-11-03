@@ -46,7 +46,7 @@ func load_text(text: String, comps: Array) -> bool:
 
 ## The bench from its start state again (the model as loaded; the clock's speed and pause stay).
 func restart() -> void:
-	e = PlantEngine.new(m, "bench")
+	e = PlantEngine.new(m, BenchModel.SCENARIO)
 	prev = e.cur.duplicate()
 	acc = 0.0
 	steps = 0

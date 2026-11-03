@@ -443,8 +443,14 @@ static func _workshop_result(part: String, g) -> Dictionary:
 ## A builder's stand-ins and only() blocks into the result (`moving`: its moving piece's name, "" the static builder;
 ## `pivot`: that piece's pivot in Godot's axes, its layers and boxes made relative to it as its meshes are).
 static func _ws_pieces(res: Dictionary, moving: String, mb, pivot: Vector3) -> void:
-	var first: int = res.standins.size()
-	for si in mb.standins:
+	# a moving piece's builder hears every only() after it was made, so it records the static builder's stand-ins
+	# and blocks too, empty: only what it drew counts
+	var at := {}                # the builder's stand-in index -> res.standins'
+	for i in mb.standins.size():
+		var si: Dictionary = mb.standins[i]
+		if moving != "" and si.layers.is_empty():
+			continue
+		at[i] = res.standins.size()
 		var layers := _ws_meshes(mb.finish_layers(si.layers), pivot)
 		var bb = null
 		for k in layers:
@@ -452,10 +458,12 @@ static func _ws_pieces(res: Dictionary, moving: String, mb, pivot: Vector3) -> v
 		res.standins.append({"replaced_by": si.replaced_by, "layers": layers, "box": bb if bb != null else AABB(),
 			"moving": moving})
 	for pc in mb.pieces:
+		if moving != "" and pc.tris == 0:
+			continue
 		var box: AABB = pc.box
 		box.position -= pivot
 		res.pieces.append({"comp": pc.comp, "kind": pc.kind, "role": pc.role,
-			"standin": first + pc.standin if pc.standin >= 0 else -1, "box": box, "tris": pc.tris, "moving": moving})
+			"standin": at.get(pc.standin, -1) if pc.standin >= 0 else -1, "box": box, "tris": pc.tris, "moving": moving})
 
 static func _merge_box(a, b: AABB) -> AABB:
 	return b if a == null else (a as AABB).merge(b)

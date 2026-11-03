@@ -17,6 +17,7 @@ extends "plant_model.gd"
 
 const FORMAT := "walkdown-plant-bench"
 const AT_BENCH := "bench"
+const SCENARIO := "bench"       # the one scenario: the file's start and its faults
 
 var part := ""
 var units := {}
@@ -107,4 +108,18 @@ func _load_bench(d: Dictionary, comps: Array) -> void:
 	_finish()
 	if _reads_world or _reads_wx:
 		_fail("bench: a bench has no clock values")
-	scenarios["bench"] = {"id": "bench", "title": "The bench", "init": start, "faults": fl}
+	scenarios[SCENARIO] = {"id": SCENARIO, "title": "The bench", "init": start, "faults": fl}
+
+
+## A legend's colour at x ({unit, table: [[x, "#rrggbb"], …]}, piecewise linear, held at the ends).
+static func legend_colour(lg: Dictionary, x: float) -> Color:
+	var t: Array = lg.get("table", [])
+	if t.is_empty():
+		return Color.WHITE
+	if x <= float(t[0][0]):
+		return Color(String(t[0][1]))
+	for i in range(1, t.size()):
+		if x <= float(t[i][0]):
+			var f := (x - float(t[i - 1][0])) / maxf(float(t[i][0]) - float(t[i - 1][0]), 1e-9)
+			return Color(String(t[i - 1][1])).lerp(Color(String(t[i][1])), f)
+	return Color(String(t[t.size() - 1][1]))

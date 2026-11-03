@@ -240,9 +240,13 @@ func _pieces(part: String, ws: Dictionary) -> void:
 					break
 		check(seen == 0, "%s: %s: %d triangles of a hidden piece are seen from outside" % [part, k, seen])
 
+## Whether the ray hits any of the triangles. In millimetres: Godot's test takes a ray as parallel to a triangle when
+## the triangle's edges and the ray's slant give less than 1e-5 (CMP_EPSILON) in metres, and a ray turned a few degrees
+## off a narrow ring's plane (a cover's face round its window, 15 mm wide) went through it as if it were not there.
 func _hits(tris: PackedVector3Array, from: Vector3, dir: Vector3) -> bool:
+	var f := from * 1000.0
 	for t in range(0, tris.size(), 3):
-		if Geometry3D.ray_intersects_triangle(from, dir, tris[t], tris[t + 1], tris[t + 2]) != null:
+		if Geometry3D.ray_intersects_triangle(f, dir, tris[t] * 1000.0, tris[t + 1] * 1000.0, tris[t + 2] * 1000.0) != null:
 			return true
 	return false
 

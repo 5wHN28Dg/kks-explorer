@@ -432,8 +432,8 @@ func _show_machine(ps: PackedScene) -> void:
 	views.density = 1.0 / 3.0 if main.tier == "lean+vis" else 1.0   # R9a: the phone's flow at a third (§8)
 	views.machine_shown(machine, comps)
 	run_note = ""
-	if String(words.get("bench", "")) != "":
-		if not bench.load_text(words.bench, comps.keys()):
+	if String(words.get("bench_text", "")) != "":
+		if not bench.load_text(words.bench_text, comps.keys()):
 			push_warning("Workshop: the bench model of %s can't run: %s" % [part, bench.error])
 	else:
 		bench.e = null

@@ -366,7 +366,7 @@ static func _nodes(part: String, res: Dictionary, data: Dictionary) -> Node3D:
 	var words := {"format": data.get("format", ""), "version": data.get("version", 0), "part": part,
 		"components": data.get("components", {}), "fasteners": data.get("fasteners", {}),
 		"assembly": data.get("assembly", []), "views": data.get("views", {}), "sources": data.get("sources", []),
-		"bench": data.get("bench_text", "")}
+		"bench_text": data.get("bench_text", "")}
 	root.set_meta("workshop", words)
 	root.set_meta("tris", res.tris)
 	root.set_meta("box", whole)

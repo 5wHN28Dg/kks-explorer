@@ -110,8 +110,8 @@ func _k3(m: Node3D, homes: Dictionary, box: AABB, cam: Camera3D, out: String, pa
 	bv.ws = ws
 	bv.clock = clock
 	bv.views = v
-	if String(ws.words.get("bench", "")) != "":
-		if not clock.load_text(ws.words.bench, ws.comps.keys()):
+	if String(ws.words.get("bench_text", "")) != "":
+		if not clock.load_text(ws.words.bench_text, ws.comps.keys()):
 			print("gallery_workshop: the bench can't run: ", clock.error)
 	bv.setup(m)
 	var dir := Vector3(0.8, 0.55, 1.0).normalized()

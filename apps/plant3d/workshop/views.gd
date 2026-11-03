@@ -9,6 +9,7 @@
 ## the section's from the trainee (an axis, a turn about it and a position across the box).
 extends RefCounted
 
+const BenchModel = preload("res://sim/bench_model.gd")
 const LIT := preload("res://workshop/ws_lit.gdshader")
 const CAP := preload("res://workshop/ws_cap.gdshader")
 const XRAY := preload("res://workshop/ws_xray.gdshader")
@@ -286,18 +287,9 @@ func set_sel(n: Node, on: bool) -> void:
 			c.set_instance_shader_parameter("ws_sel", 1.0 if on else 0.0)
 
 
-## A legend's colour at x ({unit, table: [[x, "#rrggbb"], …]}, piecewise linear, held at the ends).
+## A legend's colour at x (sim/bench_model.gd's).
 static func legend_colour(lg: Dictionary, x: float) -> Color:
-	var t: Array = lg.get("table", [])
-	if t.is_empty():
-		return Color.WHITE
-	if x <= float(t[0][0]):
-		return Color(String(t[0][1]))
-	for i in range(1, t.size()):
-		if x <= float(t[i][0]):
-			var f := (x - float(t[i - 1][0])) / maxf(float(t[i][0]) - float(t[i - 1][0]), 1e-9)
-			return Color(String(t[i - 1][1])).lerp(Color(String(t[i][1])), f)
-	return Color(String(t[t.size() - 1][1]))
+	return BenchModel.legend_colour(lg, x)
 
 
 # ------------------------------------------------------------------ flow paths (ws_flow)
