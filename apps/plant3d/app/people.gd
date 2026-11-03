@@ -5,7 +5,9 @@
 ##   a flight it says up or down), anim: String (docs/PLANT3D.md §18.3's `anim`, or "" to follow the speed), look:
 ##   String (built/people/people.json's looks), scale: float (the person's height over 1.75 m), on: "" | "stairs" |
 ##   "ladder", near: bool (someone the trainee works with: a skinned slot first), hat: bool (false on roads and outside
-##   the process areas: the hat carried in the hand and a phone in the other, PLANT3D.md §18.2 as built; default true)
+##   the process areas: the hat carried in the hand and a phone in the other, PLANT3D.md §18.2 as built; default true),
+##   buds: bool (earbuds in: a player's music on, REALISM.md §8.5; default false; drawn on skinned avatars only, a
+##   kit part on the head bone made for an avatar the first time it wears them)
 ## and this node draws them in three bands by distance from the camera:
 ##   skinned   the nearest, at most the tier's `skinned` within `skinned_range`: a pool of skinned avatars made at
 ##             the start (never one per person), LOD0 within `lod0_range`, LOD1 beyond, their clips advanced by this
@@ -45,6 +47,12 @@ const RUN_FROM := 2.2           # m/s: faster than this is a run
 const STILL := 0.15             # m/s: slower than this is standing
 const BLEND := 0.25             # s: the crossfade between clips
 const ASSIGN_HZ := 4.0          # who gets the skinned slots, re-decided this often (the posed band follows at once)
+## The earbuds (REALISM.md §8.5): in the avatar's model frame (the head's middle at (0, 1.635, 0.012), +z ahead), a bud
+## in each ear with its stem down, white plastic; one mesh, the plant's shader with the colour in its vertices.
+const BUD_AT := Vector3(0.083, 1.622, 0.010)
+const BUD_R := 0.013
+const BUD_STEM := 0.034         # m: the stem's length, down from the bud
+const BUD_COLOUR := Color(0.93, 0.93, 0.91)
 const KEEP := 2.0               # m: a person gets an avatar, or LOD0, only this far inside its edge (keeps it to the edge)
 
 var info: Dictionary = {}
@@ -61,6 +69,7 @@ var doors = PeopleDoors.new(0.5 / PeopleDoors.HZ)   # the doors open for them (a
 var _clock := 0.0
 var _scene: PackedScene
 var _meshes := {}               # path -> Mesh
+var _bud_mesh: ArrayMesh        # the earbuds' mesh (made once, the first time someone wears them)
 var _gait := {}                 # GAIT's clips -> [their curve (metres covered at GAIT_SAMPLES + 1 moments), metres a cycle]
 var stats := {"skinned": 0, "posed": 0, "advanced": 0, "lod0": 0, "lod1": 0, "us": 0, "us_max": 0, "frames": 0,
 	"us_sum": 0, "draws_posed": 0}
@@ -277,6 +286,7 @@ func _skinned(delta: float) -> void:
 				phase = fposmod((at.y - float(treads.ladders[lk][1])) / (2.0 * rung), 1.0)
 				size = 1.0      # (the clip's hands and feet on rungs 0.3 m apart: not scaled with the person)
 		a.node.transform = Transform3D(Basis(Vector3.UP, yaw + PI).scaled(Vector3.ONE * size), at)
+		_wear_buds(a, p.get("buds", false))
 		var d := at.distance_to(cam)
 		# LOD0 within its range; taken again only KEEP inside it (no flicker at the edge)
 		var edge := float(cfg.lod0_range) - (KEEP if a.lod == 1 else 0.0)
@@ -338,6 +348,91 @@ func _skinned(delta: float) -> void:
 	stats.advanced = adv
 	stats.lod0 = l0
 	stats.lod1 = l1
+
+
+## Avatar a's earbuds shown or hidden (REALISM.md §8.5): made on its head bone the first time they are worn.
+func _wear_buds(a: Dictionary, on: bool) -> void:
+	var b = a.get("buds")
+	if b == null:
+		if not on:
+			return
+		b = _make_buds(a)
+		a.buds = b
+	if b.visible != on:
+		b.visible = on
+
+
+func _make_buds(a: Dictionary) -> Node3D:
+	var sk: Skeleton3D = a.node.get_node("Skeleton3D")
+	var head := sk.find_bone("head")
+	var att := BoneAttachment3D.new()
+	att.name = "Buds"
+	if head == -1:
+		att.visible = false
+		a.node.add_child(att)       # (no head bone: nothing drawn)
+		return att
+	att.bone_name = "head"
+	sk.add_child(att)
+	var mi := MeshInstance3D.new()
+	mi.name = "Mesh"
+	mi.mesh = bud_mesh(a.body.get_active_material(0))
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	# the mesh is in the model's frame: at the head bone's rest it stands where it was made
+	mi.transform = sk.get_bone_global_rest(head).affine_inverse()
+	att.add_child(mi)
+	return att
+
+
+## The earbuds' mesh: two buds and their stems, in the avatar's model frame, in the plant's vertex format (the colour
+## in the vertices).
+func bud_mesh(mat: Material) -> ArrayMesh:
+	if _bud_mesh != null:
+		return _bud_mesh
+	var sph := SphereMesh.new()
+	sph.radius = BUD_R
+	sph.height = 2.0 * BUD_R
+	sph.radial_segments = 8
+	sph.rings = 4
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = BUD_R * 0.35
+	cyl.bottom_radius = BUD_R * 0.35
+	cyl.height = BUD_STEM
+	cyl.radial_segments = 6
+	cyl.rings = 1
+	var out := [PackedVector3Array(), PackedVector3Array(), PackedFloat32Array(), PackedVector2Array(),
+		PackedColorArray(), PackedInt32Array()]
+	for side in [-1.0, 1.0]:
+		var at := Vector3(BUD_AT.x * side, BUD_AT.y, BUD_AT.z)
+		_append(out, sph.get_mesh_arrays(), Transform3D(Basis(), at))
+		_append(out, cyl.get_mesh_arrays(), Transform3D(Basis(), at + Vector3(0.002 * side, -BUD_STEM * 0.5, 0.004)))
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = out[0]
+	arr[Mesh.ARRAY_NORMAL] = out[1]
+	arr[Mesh.ARRAY_TANGENT] = out[2]
+	arr[Mesh.ARRAY_TEX_UV] = out[3]
+	arr[Mesh.ARRAY_COLOR] = out[4]
+	arr[Mesh.ARRAY_INDEX] = out[5]
+	_bud_mesh = ArrayMesh.new()
+	_bud_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	if mat != null:
+		_bud_mesh.surface_set_material(0, mat)
+	return _bud_mesh
+
+
+## A primitive's arrays moved by xf, in BUD_COLOUR, added to out ([vertices, normals, tangents, uvs, colours, indices]).
+static func _append(out: Array, src: Array, xf: Transform3D) -> void:
+	var base: int = out[0].size()
+	var vs: PackedVector3Array = src[Mesh.ARRAY_VERTEX]
+	for v in vs:
+		out[0].append(xf * v)
+		out[4].append(BUD_COLOUR)
+	out[1].append_array(src[Mesh.ARRAY_NORMAL])
+	out[2].append_array(src[Mesh.ARRAY_TANGENT])
+	out[3].append_array(src[Mesh.ARRAY_TEX_UV])
+	for i in src[Mesh.ARRAY_INDEX]:
+		out[5].append(base + i)
 
 
 ## Moves avatar `a`'s clip on by `t` seconds of it (back when negative), the blend from the last clip with it: one

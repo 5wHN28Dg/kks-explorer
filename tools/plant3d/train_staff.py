@@ -723,7 +723,9 @@ AUDIO_REACTIONS = [{'on': {'unsafe': 'audio'}, 'roles': ['shift_sup', 'maint_sup
 
 
 def audio():
-    return {'banned': [z[0] for z in ZONES], 'ex': [], 'notice': [2, 10], 'mask': 50}
+    """Personal audio (REALISM.md §8.5): banned in every zone, and in the central control room (the user, 2026-11-03:
+    its operators answer alarms)."""
+    return {'banned': [z[0] for z in ZONES], 'ex': [], 'notice': [2, 10], 'mask': 50, 'rooms': ['control_room']}
 
 
 def scenario(cold):

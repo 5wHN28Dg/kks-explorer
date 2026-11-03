@@ -923,6 +923,10 @@ func _place_tick() -> void:
 		if now >= 0:
 			inputs.leave(sm.places[now]["id"])
 		inputs.arrive(sm.places[best]["id"])
+		var room: int = sm.place_aroom[best] if sm.place_aroom.size() > best else -1
+		if room != -1 and (now < 0 or sm.place_aroom[now] != room) and phone != null and phone.playing:
+			# music banned beyond the zones too (REALISM.md §8.5: the control room's operators answer alarms)
+			toast("No personal audio in the %s: your music is an unsafe act here" % String(sm.audio_rooms[room]).replace("_", " "))
 		_arrived = best
 	elif best == -1 and now >= 0:
 		var at: Array = sm.places[now]["at"]
