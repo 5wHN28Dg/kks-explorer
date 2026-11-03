@@ -72,6 +72,7 @@ EDGES += wtp_staff.EDGES
 # person stands: room round them clear of the gate's leaf, which the app makes solid while shut), joined to the tower's foot and its top on
 # foot, the landing between by the tower's stair; a lift way between every two landings (PLANT3D §20.4)
 import train_lift  # noqa: E402
+import train_hands  # noqa: E402  (the hand actions, milestone HW2)
 LIFT_POINTS = [f'p_lift{i}' for i in range(len(train_lift.ZS))]
 for _i, _z in enumerate(train_lift.ZS):
     POINTS[LIFT_POINTS[_i]] = (round(train_lift.GATE_X - 1.0, 6), train_lift.AT[1], _z)
@@ -109,6 +110,8 @@ ANCHORS = {
     'ms_desk_2': dict(at=(-36, 9.5, 0), kind='table', room='maint_office', yaw=180, pose='sit'),
     'ms_desk_3': dict(at=(-38.5, 9.5, 0), kind='table', room='maint_office', yaw=180, pose='sit'),
     'con_muster': dict(at=(-3, -17, 0), kind='muster'),
+    # milestone HW2 (REALISM.md §2.3): the I&C toolbox in the workshop, where the tools of tools.json are kept
+    'ic_toolbox': dict(at=(-26, -8, 0), kind='toolbox', room='workshop', yaw=180),
     **wtp_staff.ANCHORS,
     **camp_staff.ANCHORS,           # (milestone S4: the camp, the site's offices, the bus; `gate` at the plant gate)
 }
@@ -354,7 +357,7 @@ def roles():
         role('mech_tech', 'Mechanical technician', 'mech', ['accept'], 'tech_days', True, 'coverall_mech'),
         role('elec_tech', 'Electrical technician', 'elec', ['accept', 'lock_electrical'], 'tech_days', True,
              'coverall_elec'),
-        role('ic_tech', 'I&C technician', 'inst', ['operate_local', 'accept', 'lock_instrument'], 'tech_days', True,
+        role('ic_tech', 'I&C technician', 'inst', ['operate_local', 'accept', 'lock_instrument', 'operate_hart'], 'tech_days', True,
              'coverall_inst'),
         role('maint_sup', 'Maintenance supervisor', 'mech', ['request', 'accept'], 'ms_mech', True, 'supervisor'),
         role('hse_officer', 'HSE officer', 'hse', ['stop_work'], 'hse_days1', True, 'hse',
@@ -578,11 +581,14 @@ def tasks(models):
         job = f'job_{wid[3:]}'
         cal = wid.endswith('_cal')
         gas = wtp_staff.gas_test(wid) + [{'go': {'kks': w['kks']}}] if w['permit'] in ('hot', 'confined') else []
-        task(job, w['title'], [
+        steps = [
             {'go': {'kks': w['kks']}}, {'permit': {'work': '$', 'action': 'accept'}}] + gas + [
             {'work': [20, 40], 'anim': 'calibrate', 'tool': 'calibrator'} if cal else
             {'work': [30, 60], 'anim': 'wrench', 'tool': 'spanner'}, {'permit': {'work': '$', 'action': 'done'}},
-            {'permit': {'work': '$', 'action': 'return'}}, {'say': 'cal_done' if cal else 'job_done', 'to': 'shift_sup'}],
+            {'permit': {'work': '$', 'action': 'return'}}, {'say': 'cal_done' if cal else 'job_done', 'to': 'shift_sup'}]
+        if wid == train_hands.WORK[0]:      # the job done by hand (REALISM.md §3.1, milestone HW2)
+            steps = train_hands.job_steps()
+        task(job, w['title'], steps,
              work=wid, resume='next_duty')        # left unfinished at the duty's end: held overnight, lock on (§17.10)
         # the maintenance supervisor gives the issued permit's job to a technician of its discipline (S2)
         task(f'assign_{wid[3:]}', f'Give "{w["title"]}" to a technician', [

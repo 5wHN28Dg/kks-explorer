@@ -176,7 +176,7 @@ def check_components(b):
         part = part_of(b, x['kks'])
         w = f'hand action {x["kks"]} {x["action"]}'
         need(part is not None, 'bad_ref', f'{w}: {x["kks"]} is no piece of equipment with a part kind')
-        tree = set(b.workshop[part]['components']) if part in b.workshop else {'body'}
+        tree = b.workshop_tree[part] if part in b.workshop else {'body'}
         need(x['component'] in tree, 'bad_ref', f'{w}: {part} has no component {x["component"]!r}')
 
 

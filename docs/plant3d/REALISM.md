@@ -564,6 +564,57 @@ at 29–35 °C over the runs.
   action at the toolbox is refused `where`; its last HART op, under the trainee's accepted permit, is now made) and
   the jump's (the trainee stands at the gauge). Every other item of the file is what it was (a JSON comparison).
 
+### 2.16 HW2's details (settled 2026-11-03, before the code: the transmitter in the field)
+
+§2.4, §3.1 and §3.3 leave these open; settled here.
+
+- **The service file** (`data/plant3d/service/<kind>.json`, format `walkdown-plant-service` version 1, made by the
+  content tool from `tools/plant3d/service/<kind>.py` as the Workshop's data is; checked by `ref/plant3d_service.py`
+  against the kind's Workshop data and tools.json): `equipment` (each code with its `alias`, at most 8 characters,
+  and `loop`, the model's prefix of its loop values), `states` (`[component, state, words]`, a state of at most 6
+  characters), `values` (the nodes the actions' needs read, `$_` standing for the alias), `consts`, `actions` (a hand
+  action as §2.4 with its `title`, the `anchors` where the tool goes and its `sources`), `meters` (as §2.5 with a
+  `title` and `unit`) and `hart` (the HART ops, with `$_`/`@_` names). The content tool (`tools/plant3d/train_hands.py`)
+  writes every piece of equipment's states, nodes, hand actions, meters and HART ops into its area's model; the engine
+  never reads the service file, the app reads it for words and anchors only.
+- **The first train's tools** (`tools.json`): an I&C toolbox (place `ic_toolbox`, kind `toolbox`, in the maintenance
+  workshop) with a 3 mm insulated terminal screwdriver (two), an 8 mm flat blade, a 17 mm spanner, two multimeters
+  (`ma_dc`, `v_dc`, `ohm`), a mA clamp meter and one HART communicator. The I&C technician gains `operate_hart`.
+- **The condenser pressure transmitters 2 and 3** (aliases `cpt2`, `cpt3`; transmitter 1 carries the trip's reset
+  and is not worked on): the terminal cover (`cover_back`) unscrews by hand; the wires lift and land and the terminals
+  tighten with the terminal screwdriver; the communicator clips on the signal terminals, the multimeter (mA) on the
+  test terminals, the clamp round the positive wire or round the whole cable (reads 0); the multimeter across the
+  signal terminals is refused with the reason (on mA it is a short circuit). The cover goes back only with the wires
+  landed and everything off the terminals. Each takes its minutes (a quarter to two).
+- **The loop in the model:** 4–20 mA over 0–120 kPa(a), held within 3.8–20.5 mA (NAMUR NE 43); a lifted wire stops
+  the current, a loose terminal takes 0.3 mA off it; what the control system receives is the transmitter's own value
+  while the loop is sound (that very value: every earlier run keeps its values) and the value the current stands for
+  otherwise. A HART `set` op writes the sensor trim (`cond_p<k>_trim`, ±5 kPa), added to the transmitter's value.
+- **The job with a hidden cause:** a fault "transmitter 2 reads low against its partners" whose cause is a drifted
+  sensor (−1.5 kPa) or a loose signal terminal (−0.3 mA), equally likely; one work (`wo_cond_p2_fix`) under the
+  transmitter's isolation, curing both, its repair putting back the cause's states (the drift and the trim; the
+  terminal). The two are told apart at the transmitter (the HART PV against the partners; the multimeter's or the
+  clamp's current against the one the transmitter says it sets) and put right by hand (a trim, or the terminals
+  tightened); HW3 adds the other three causes, cures per cause and the diagnosis tab. Replacing the transmitter waits
+  for the stores (§7.2) in HW3.
+- **The technician's job:** the work's task does it by hand (tools from the toolbox, the cover, the communicator and
+  the multimeter on and read, the terminals tightened with a 3 % slip that leaves one short of tight, a trim to no
+  offset, everything off, the cover on, done, the tools back), so a player who orders it (the maintenance supervisor's
+  `assign`) watches the same steps an NPC makes.
+- **The work view** (§3.3) opens from the card's "Work on it" when the trainee stands at the code's work place; it
+  hides the plant's piece (built unmerged, below) and shows the Workshop's component scene of that kind at the same
+  transform, lit by the plant's materials; a component's state shows as the Workshop's handling does (a cover off
+  stands beside its home, along its explode direction), a lead, probe or clamp as a small mark at its anchor. The tool
+  tray lists the carried tools (taking and putting back is on the card at a toolbox); tapping a component lists its
+  actions, and the chosen action is sent with the tray's selected tool (none for bare hands). A refusal shows the
+  engine's reasons as sentences (`wrong`'s, the need's, else general ones). While an action is under way its
+  component moves from its old place to its new over the action's minutes. A meter's screen shows the shown value
+  of the meter at the point the person's connected tool sits, "OL"/"No device found" when its needs fail; the
+  communicator's screen lists PV and AO and offers the trim (the reference pressure typed in, the op's value the
+  trim that brings the PV to it). Everything is an input, so two players at one transmitter see the same.
+- **Equipment with jobs built unmerged** (§3.3): every code a service file names is built as its own node's meshes
+  (one per material), not into its 12 m cell, so the work view can hide it.
+
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does

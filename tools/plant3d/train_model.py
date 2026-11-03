@@ -11,6 +11,9 @@ STEAM = [[100, 1.01], [120, 1.99], [140, 3.61], [160, 6.18], [180, 10.0], [200, 
          [335, 137.1], [340, 146.0], [345, 155.4]]  # °C → bar (IAPWS-IF97, rounded)
 
 
+import train_hands  # noqa: E402  (milestone HW2: the hand actions from the service files)
+
+
 def inv(points):
     return [[y, x] for x, y in points]
 
@@ -24,6 +27,7 @@ class M:
         self.alarms, self.trips, self.bind = [], [], []
         self.isolations, self.works = [], []      # format 2 (PLANT3D §15)
         self.lifts = []                           # format 2 (PLANT3D §20.1)
+        self.hands, self.meters = [], []          # format 2 (REALISM.md §2.4, §2.5; milestone HW2)
 
     def v(self, name, node, unit=None, kks=None):
         node = dict(node)
@@ -190,7 +194,8 @@ class M:
     def file(self):
         v2 = bool(self.isolations or self.works or self.lifts or any('hold' in n for _, n in self.values))
         d = {'format': 'walkdown-plant-model', 'version': 2 if v2 else 1, 'area': self.area}
-        for k in ('values', 'ops', 'interlocks', 'machines', 'alarms', 'trips', 'bind', 'isolations', 'works', 'lifts'):
+        for k in ('values', 'ops', 'interlocks', 'machines', 'alarms', 'trips', 'bind', 'isolations', 'works', 'lifts',
+                  'hands', 'meters'):
             if getattr(self, k):
                 d[k] = getattr(self, k)
         return d
@@ -1233,13 +1238,35 @@ def st():
     # an isolated one shows its last reading (the hold) and votes tripped, so the trip runs 1 out of 2 on the other two
     # (§15.4); its alarms, which follow the process here, are suppressed by the lock. Transmitter 1 carries the trip's
     # reset (its kks), which a lock would refuse: it is not isolated for work here
+    # Transmitters 2 and 3 are worked on by hand (REALISM.md §3, milestone HW2: train_hands.py): their component
+    # states, a sensor trim the HART communicator writes, the 4-20 mA loop each drives (0-120 kPa(a), held within
+    # 3.8-20.5 mA as NAMUR NE 43 says) and what the control system receives: the transmitter's own value while the
+    # loop is sound (that very value, so every run before HW2 keeps its values), else the value the current stands for
+    # (a lifted wire: no current, far below range; a loose terminal: 0.3 mA lower, the reading low)
+    m.state('cond_p2_low', 0, '30MAG10CP002')         # the fault "reads low" made (its causes: train_hands.FAULT)
     for k, off in zip((1, 2, 3), (0, 0.1, -0.1)):
         tx = f'cond_p{k}'
         if k == 1:
             m.sum(tx, ['cond_p', off], 'kPa(a)', f'30MAG10CP00{k}')
         else:
-            tx = m.sum(f'cond_p{k}_tx', ['cond_p', off, f'cond_p{k}_drift'], 'kPa(a)')
-            m.hold(f'cond_p{k}', tx, f'iso_cond_p{k}_complete', 'kPa(a)', f'30MAG10CP00{k}')
+            code = f'30MAG10CP00{k}'
+            a = train_hands.of(code)[2]['alias']
+            train_hands.values(m, code)
+            m.state(f'cond_p{k}_trim', 0, unit='kPa')
+            tx = m.sum(f'cond_p{k}_tx', ['cond_p', off, f'cond_p{k}_drift', f'cond_p{k}_trim'], 'kPa(a)')
+            m.prod(f'{a}_ma_s', [tx, round(16 / 120, 12)])
+            m.sum(f'{a}_ma_r', [f'{a}_ma_s', 4])
+            m.min(f'{a}_ma_h', [f'{a}_ma_r', 20.5])
+            m.max(f'{a}_ma_tx', [f'{a}_ma_h', 3.8], 'mA')
+            m.prod(f'{a}_drop', [f'{a}_terminal_block_loose', 0.3])
+            m.diff(f'{a}_ma_l', f'{a}_ma_tx', f'{a}_drop')
+            m.prod(f'{a}_ma', [f'{a}_ma_l', f'{a}_wired'], 'mA')
+            m.OR(f'{a}_bad', [f'{a}_terminal_block_lift', f'{a}_terminal_block_loose'])
+            m.diff(f'{a}_rx_m', f'{a}_ma', 4)
+            m.prod(f'{a}_rx_k', [f'{a}_rx_m', 7.5])
+            tx = m.sel(f'cond_p{k}_rx', f'{a}_bad', [tx, f'{a}_rx_k'], 'kPa(a)')
+            m.hold(f'cond_p{k}', tx, f'iso_cond_p{k}_complete', 'kPa(a)', code)
+            train_hands.parts(m, code)
         m.cmp(f'cond_p{k}_h', tx, '>', 15)
         m.cmp(f'cond_p{k}_hc', tx, '<', 13)
         m.cmp(f'cond_p{k}_hh', tx, '>', 25)
@@ -1507,6 +1534,7 @@ def st():
                     [(f'30MAG10CP00{k}', 'instrument', None, 'Root valve shut and tagged; the transmitter vented')])
         m.work(f'wo_cond_p{k}_cal', f'30MAG10CP00{k}', f'Condenser pressure transmitter {k}: calibration check',
                'inst', 'general', f'iso_cond_p{k}', f'cond_p{k}_drift')
+    m.work(*train_hands.WORK)       # the job with a hidden cause (REALISM.md §2.6, milestone HW2)
     m.trip('st_trip_os', '30MAY10CS001', 'Steam turbine overspeed', 'st_os', to_trip, 'SAHH', None, 'st')
     m.trip('st_trip_axial', '30MAD10CG001', 'Steam turbine axial displacement high-high', 'st_axial_hh', to_trip,
            'ZAHH', 0.5, 'st')

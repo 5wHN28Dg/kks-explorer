@@ -267,7 +267,8 @@ def scenarios(state_kks):
     import wtp_model
     import train_hoists
     import train_lift
-    faults = [fault(f, s, t, state_kks) for f, s, t in FAULTS] + wtp_model.faults(state_kks) + train_hoists.faults() + train_lift.faults()
+    import train_hands
+    faults = [fault(f, s, t, state_kks) for f, s, t in FAULTS] + wtp_model.faults(state_kks) + train_hoists.faults() + train_lift.faults() + train_hands.faults()
     latched = ['gt1_trip_lube', 'st_trip_lube', 'st_trip_cond_p']
     return [{'format': 'walkdown-plant-scenario', 'version': 2, 'id': 'cold_iron',
              'title': 'Cold start after a long outage', 'init': dict(COLD_INIT), 'latched': latched,

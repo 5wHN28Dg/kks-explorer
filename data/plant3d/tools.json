@@ -1,0 +1,12 @@
+{
+ "format": "walkdown-plant-tools",
+ "version": 1,
+ "tools": [
+  {"id": "sd_term", "title": "Terminal screwdriver, 3 mm, insulated", "kind": "screwdriver", "size": "3 mm", "at": [["ic_toolbox", 2]]},
+  {"id": "sd_flat8", "title": "Screwdriver, 8 mm flat blade", "kind": "screwdriver", "size": "8 mm", "at": [["ic_toolbox", 1]]},
+  {"id": "spanner_17", "title": "Spanner, 17 mm", "kind": "spanner", "size": "17 mm", "at": [["ic_toolbox", 1]]},
+  {"id": "dmm", "title": "Multimeter", "kind": "meter", "modes": ["ma_dc", "v_dc", "ohm"], "at": [["ic_toolbox", 2]]},
+  {"id": "clamp", "title": "mA clamp meter", "kind": "meter", "modes": ["ma_clamp"], "at": [["ic_toolbox", 1]]},
+  {"id": "hart", "title": "HART communicator", "kind": "communicator", "modes": ["hart"], "at": [["ic_toolbox", 1]]}
+ ]
+}
