@@ -43,9 +43,9 @@ static func init(e, World) -> void:
 	e.tool_n = []
 	if m.tools != null:
 		for at in m.tools["at"]:
-			var c := PackedInt64Array()
+			var c := []
 			for a in at:
-				c.append(a[1])
+				c.append(int(a[1]))
 			e.tool_n.append(c)
 	var seed: int = World.seed_of(e.sc)
 	for f in e.sc.get("faults", []):
@@ -339,7 +339,7 @@ static func draw_cause(e, f: Dictionary, vals: PackedFloat64Array, named) -> voi
 	e._ev(["cause", fid, c["id"]])
 
 
-static func cause(e, f: Dictionary):
+static func cause(e, f: Dictionary) -> Variant:
 	if not f.has("causes"):
 		return null
 	var cid = e.cause_of.get(f["id"])
@@ -377,7 +377,8 @@ static func digest_part(e) -> Array:
 	var people: Array = e._sm.people if e._sm != null else []
 	var counts := PackedInt64Array()
 	for x in e.tool_n:
-		counts.append_array(x)
+		for c in x:
+			counts.append(c)
 	var carried := []
 	var busy := []
 	var slips := PackedInt64Array()

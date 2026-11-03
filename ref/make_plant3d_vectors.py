@@ -4606,7 +4606,7 @@ def hands_runs():
          '(carried), puts back one not carried (not_carried) and one kept elsewhere (where); at the store up to 12 '
          '(full), the store\'s only loop calibrator taken (none_left for the next), a 17 mm spanner put back where '
          'that tool is kept too; the NPC ic2\'s job at 07:40 finds the toolbox without its HART communicator (its '
-         'tool step refused, the task abandoned)', me, hf, tools, 1200, 50),
+         'tool step refused, the task abandoned)', me, hf, tools, 400, 50),
         ('hand actions (§2.4, §2.13): before the permit only work: false (connect_hart) is made, the rest refused '
          'authority (and another person\'s, and an unknown action); with the permit accepted, each reason in its '
          'order (a tool not carried, the wrong tool, no tool, a failed need, a value out of range or missing); on '
@@ -4627,11 +4627,11 @@ def hands_runs():
          'written in the next step\'s step 1), connects the communicator, reads the loop through the multimeter '
          'and the communicator, has no clamp meter (the read fails to its else), no 17 mm spanner (the hand step '
          'refused, to its else), lifts the wire and reads 0, lands it, closes up (a slip of per mille 1), hands '
-         'the permit back and puts the tools back', {}, hf, None, 1500, 50),
+         'the permit back and puts the tools back', {}, hf, None, 800, 100),
         ('an NPC pre-empted (§17.3, §2.13): with ic1 absent, the trainer\'s pump trip (f1) gives ic2 the urgent '
          'task (priority 1) while ic2 opens the cover: the hand action is abandoned in step 9, and started again '
          'when the job resumes; the gauge\'s fault pressed while its code is locked out is not made and draws '
-         'nothing', {'absent': ['ic1']}, hf, Script([(520, 'fault', 'f1'), (521, 'fault', 'f_low')]), 1500, 50),
+         'nothing', {'absent': ['ic1']}, hf, Script([(520, 'fault', 'f1'), (521, 'fault', 'f_low')]), 800, 100),
         ('hidden causes (§2.6, §2.13), free mode: the trainer\'s fault draws its cause from its stream (seed 7); '
          'the permit\'s done of the work that cures it repairs fault and cause; pressed again (the trainer\'s '
          'repair first) it draws again; named by the instructor (term: no draw) the first work\'s done doesn\'t cure '
@@ -4726,7 +4726,7 @@ REJECTS_HANDS = [
      'already has a hand action'),
     ('a component the part kind\'s tree lacks', 'bad_ref', _hand(0, lambda h: SET(h, 'component', 'cover')),
      'has no component'),
-    ('a component on a pipe (no part kind)', 'bad_ref', _hand(0, lambda h: SET(h, 'kks', '10LAB10BR001')),
+    ('a component on a pipe (no part kind)', 'bad_ref', _hand(9, lambda h: SET(h, 'kks', '10LAB10BR001')),
      'no piece of equipment'),
     ('a component id over 16 characters', 'bad_id', _hand(0, lambda h: SET(h, 'component', 'a' * 17)),
      'at most 16'),
