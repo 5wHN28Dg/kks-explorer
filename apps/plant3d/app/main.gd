@@ -520,6 +520,8 @@ func _first_frame() -> void:
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_DRAW),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION)])
+	if workshop != null and plant != null:
+		workshop.warm_up(plant)   # the Workshop's ghost pipelines, queued in the background (WORKSHOP.md §7.1)
 	_early_frames()
 
 ## The first 5 s after the first walkable frame (outside the frame rules' measurement, inside the start): each frame

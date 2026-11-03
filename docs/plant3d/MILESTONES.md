@@ -300,6 +300,19 @@ draw calls per kind, ≤ 20 MB for the whole Workshop); the plant's walk is run 
 the Note 9 (K1, K3, K4a, K4b, K5a, K5b at least), with the APK's size before and after (limit 250 MB). The realism programme's
 hands-on work builds on K1a–K3 (REALISM.md).
 
+**K2 as built (2026-11-02):** guided assembly and disassembly for the transmitter (WORKSHOP.md "As built (K2)"):
+Assemble from exploded, Assemble from a pile, Take apart step by step; the next step's ghost in `ws_xray`; snapping
+within 2 % of the machine's box diagonal and 10° modulo `sym`; the two sentences; the pile; 16 steps from the 3051
+manual (13 by hand). The Note 9 (lean+vis, a test-signed copy of the unsigned, unbaked export CI makes, from faf6d008,
+the Workshop walk with the steps; SAMPLE=1), a cool start (29.4 °C at the start, 30.8 °C at the end), installed fresh
+so the pipeline cache was empty: first entry 2.2 s (≤ 5.0 s), again 17 ms; back to the plant 21–65 ms; **no pipeline
+compiled after the machine's first frame**; no frame over 100 ms (the frame rule passes, 0 caused by the app; the
+longest 59 ms); 99.92 % of the frames shown at ≥ 30 fps, mean frame 19.1 ms, 68.7 % within 17.5 ms (the share at
+60 fps); peak PSS 832 MB. Getting there: one warm ghost per vertex format, hidden, left two pipelines to the first
+ghosts (a plain and an instanced one); drawn unseen (alpha 0) in the machine's first frame, one still came at the set
+screw's first ghost (the cool run before this one; the laptop's Mobile renderer compiled it at the same step), so the
+load now draws every part's own ghost, built as its step builds it and standing at home (§7.1). The APK (unsigned export, without voice) is 117.5 MB; K2's own files in it are under 10 KB.
+
 **K1 as built (2026-11-02):** the Workshop's space, tree, take-apart slider, handling, hide/isolate, Reset, Reassemble
 all; entry from the card and the settings; the plant paused in single play and running in a session, with the `pos`
 flag and the others' mark (WORKSHOP.md "As built (K1)"). The Note 9, the transmitter, alone and in a LAN session with
