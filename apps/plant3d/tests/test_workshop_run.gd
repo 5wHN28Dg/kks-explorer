@@ -7,7 +7,7 @@
 ## - the faults: over-range holds 20.5 mA and alarms, a blocked impulse line holds what was trapped, an open loop
 ##   takes the current to 0 and the display dark; each repaired from the same button;
 ## - a command the machine's state doesn't take is refused with a sentence; the transmitter runs taken apart;
-## - every component is drawn with ws_lit; X-ray swaps the outer parts to ws_xray and back; the cutaway and the
+## - every component is drawn with ws_lit (glass see-through with ws_xray, so the display reads through its window); X-ray swaps the outer parts to ws_xray and back; the cutaway and the
 ##   section set the planes and give the solid components' materials ws_cap as their next pass (the cut faces), not
 ##   the thin window's; the machine's first frame drew the cap pass, the flow and the labels (pipelines, §7.1), and
 ##   the plant's early warm-up holds ws_lit, ws_cap and ws_flow;
@@ -75,13 +75,17 @@ func _wait_shown(tree: SceneTree, ws) -> bool:
 ## Every component drawn with ws_lit; the caps off once the first frame was drawn; flows at rest.
 func _materials(ws) -> void:
 	var bad := []
+	var glass := 0
 	for id in ws.comps:
 		for c in ws.comps[id].get_children():
 			if c is MeshInstance3D and c.has_meta("mat"):
 				var m = c.material_override
-				if not (m is ShaderMaterial and m.shader.resource_path.ends_with("ws_lit.gdshader")):
+				var want := "ws_xray.gdshader" if ws.comps[id].get_meta("glass", false) else "ws_lit.gdshader"
+				glass += 1 if want == "ws_xray.gdshader" else 0
+				if not (m is ShaderMaterial and m.shader.resource_path.ends_with(want)):
 					bad.append(id)
-	check(bad.is_empty(), "every component is drawn with ws_lit: not %s" % str(bad))
+	check(bad.is_empty(), "every component is drawn with ws_lit, its glass see-through: not %s" % str(bad))
+	check(glass >= 1, "the display's window is see-through")
 	for name in ws.views._capped:
 		check(ws.views._capped[name].next_pass == null, "no cap pass after the first frame with nothing cut (%s)" % name)
 	check(not ws.views.flow_ids().is_empty(), "the impulse line's flow path has its particles")

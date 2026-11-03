@@ -187,13 +187,20 @@ static func _transmitter(g, level: bool) -> void:
 		g.comp(side, {"parent": "housing", "explode": [Vector3(k, 0, 0), 0.08], "sym": [Vector3(1, 0, 0), 0]})
 		g.only("workshop", "split")
 		m.use("paint_motor", "identify")
-		m.disk(Vector3(0.06 * k, 0, hz), Vector3(k, 0, 0), 0.05, 16)  # its face: the drum's end, as drawn
+		if k > 0.0:   # the display cover: its face a ring round the window's opening (the LCD seen through it)
+			m.ring(Vector3(0.06 * k, 0, hz), Vector3(k, 0, 0), 0.035, 0.05, 16)
+		else:
+			m.disk(Vector3(0.06 * k, 0, hz), Vector3(k, 0, 0), 0.05, 16)  # its face: the drum's end, as drawn
 		g.only("workshop")
 		m.cyl(Vector3(0.058 * k, 0, hz), Vector3(0.06 * k, 0, hz), 0.05, -1.0, 16, false)   # its rim, in the housing's wall
-		m.disk(Vector3(0.058 * k, 0, hz), Vector3(-k, 0, 0), 0.05, 16)
+		if k > 0.0:
+			m.ring(Vector3(0.058 * k, 0, hz), Vector3(-k, 0, 0), 0.035, 0.05, 16)
+			m._inner(Vector3(0.058 * k, 0, hz), Vector3(0.06 * k, 0, hz), 0.035, 16)   # the opening's wall
+		else:
+			m.disk(Vector3(0.058 * k, 0, hz), Vector3(-k, 0, 0), 0.05, 16)
 		m.use("steel", "identify")
 		m.tube(Vector3(0.052 * k, 0, hz), Vector3(0.058 * k, 0, hz), 0.0435, 0.040, 16)   # its thread, in the housing
-	g.comp("window", {"parent": "cover_front", "thin": true})
+	g.comp("window", {"parent": "cover_front", "thin": true, "glass": true})
 	g.only()
 	m.use("glass", "identify")
 	m.disk(Vector3(0.0605, 0, hz), Vector3(1, 0, 0), 0.035, 16)  # the display's window

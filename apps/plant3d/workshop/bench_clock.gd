@@ -7,7 +7,7 @@
 extends RefCounted
 
 const BenchModel = preload("res://sim/bench_model.gd")
-const Engine = preload("res://sim/engine.gd")
+const PlantEngine = preload("res://sim/engine.gd")
 
 const STEP := 0.1
 const MAX_STEPS_FRAME := 4      # a long frame steps at most this many (the bench falls behind rather than stalls)
@@ -46,7 +46,7 @@ func load_text(text: String, comps: Array) -> bool:
 
 ## The bench from its start state again (the model as loaded; the clock's speed and pause stay).
 func restart() -> void:
-	e = Engine.new(m, "bench")
+	e = PlantEngine.new(m, "bench")
 	prev = e.cur.duplicate()
 	acc = 0.0
 	steps = 0

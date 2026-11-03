@@ -156,12 +156,14 @@ class Gen:
 	##   anchors   {name: point} terminals, test points, lifting eyes
 	##   anim      the moving piece (g.move's name) this component is
 	##   thin      true for a sheet or a glass, not a closed solid (§7.2)
+	##   glass     true for a glass the trainee looks through (a display's window): the Workshop draws it see-through
 	## In plant mode it only selects the layer again (nothing changes).
 	func comp(id: String, spec := {}) -> void:
 		cur_comp = id
 		if workshop and not components.has(id):
 			var t: Transform3D = m.xf
-			var c := {"parent": spec.get("parent", ""), "thin": spec.get("thin", false), "anim": spec.get("anim", "")}
+			var c := {"parent": spec.get("parent", ""), "thin": spec.get("thin", false), "anim": spec.get("anim", ""),
+				"glass": spec.get("glass", false)}
 			if spec.has("pivot"):
 				c["pivot"] = t * (spec.pivot as Vector3)
 			if spec.has("explode"):
@@ -385,7 +387,7 @@ static func _workshop_result(part: String, g) -> Dictionary:
 		res.plates[n] = {"at": _gv(pl.at), "normal": _gv(pl.normal), "kind": pl.kind}
 	var comps: Dictionary = g.components.duplicate(true)
 	if comps.is_empty():
-		comps["body"] = {"parent": "", "thin": false, "anim": "", "anchors": {}}
+		comps["body"] = {"parent": "", "thin": false, "anim": "", "anchors": {}, "glass": false}
 	# each component's box from its pieces (the moving ones where they stand at value 0)
 	var boxes := {}
 	for k in res.layers:
@@ -407,7 +409,8 @@ static func _workshop_result(part: String, g) -> Dictionary:
 		res.components.append({"id": id, "parent": c.parent, "pivot": piv, "box": box,
 			"explode": [_gv(c.explode[0]), c.explode[1]] if c.has("explode") else [],
 			"sym": [_gv(c.sym[0]), c.sym[1]] if c.has("sym") else [],
-			"anchors": _gv_dict(c.anchors), "anim": c.anim, "thin": c.thin})
+			"anchors": _gv_dict(c.anchors), "anim": c.anim, "thin": c.thin,
+				"glass": c.glass})
 	for fg in g.fastener_groups:
 		var items: Array = []
 		for t in fg.items:

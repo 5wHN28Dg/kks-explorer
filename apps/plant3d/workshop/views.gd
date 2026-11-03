@@ -18,6 +18,9 @@ const FLOW_QUADS := 48                           # particles per path at full de
 const FLOW_PTS := 8
 const SECTION_AXES := [Vector3(1, 0, 0), Vector3(0, 0, 1), Vector3(0, 1, 0)]   # across, along, up (Godot's axes)
 const RAMP_MIX := 0.65                           # how much of a component's colour the heat or pressure colour takes
+## Glass the trainee looks through (a component the generator marks `glass`: a display's window): drawn with ws_xray
+## in a glass colour, faint, so what is behind it reads (the plant draws it opaque; no new pipeline: the X-ray's shader)
+const GLASS_COLOUR := Color(0.55, 0.68, 0.74)
 
 var ws                          # workshop/workshop.gd
 var xray := false
@@ -32,6 +35,7 @@ var _lit := {}                  # plant material name -> ws_lit material (no cap
 var _capped := {}               # plant material name -> ws_lit material whose next pass is the cap while a cut is on
 var _caps := {}                 # plant material name -> its ws_cap material
 var _xray_mat: ShaderMaterial
+var _glass: ShaderMaterial      # the see-through glass (GLASS_COLOUR)
 var _keep := {}                 # component id -> true: the cutaway passes it by
 var _meshes := {}               # component id -> [GeometryInstance3D] (its own, not its children's)
 var _flows := {}                # path id -> {mmi, mat, pts, total, phase}
@@ -56,6 +60,7 @@ func machine_shown(machine: Node3D, comps: Dictionary) -> void:
 	for id in comps:
 		var n: Node3D = comps[id]
 		var thin: bool = n.get_meta("thin", false)
+		var glass: bool = n.get_meta("glass", false)
 		var own := []
 		for c in n.get_children():
 			if (c is MeshInstance3D or c is MultiMeshInstance3D) and c.has_meta("mat"):
@@ -65,7 +70,7 @@ func machine_shown(machine: Node3D, comps: Dictionary) -> void:
 					if mm is MultiMeshInstance3D and mm.has_meta("mat"):
 						mm.material_override = mat_for(mm.get_meta("mat"), false)
 		for c in own:
-			c.material_override = mat_for(c.get_meta("mat"), thin)
+			c.material_override = glass_mat() if glass else mat_for(c.get_meta("mat"), thin)
 			c.set_instance_shader_parameter("ws_keep", 1.0 if _keep.has(id) else 0.0)
 		_meshes[id] = own
 	var flows: Dictionary = machine.get_meta("flows", {})
@@ -93,12 +98,24 @@ func mat_for(name: String, thin: bool) -> Material:
 		var cap := ShaderMaterial.new()
 		cap.shader = CAP
 		if src is ShaderMaterial:
-			cap.set_shader_parameter("tint", (src as ShaderMaterial).get_shader_parameter("tint"))
-			cap.set_shader_parameter("use_vertex_colour", (src as ShaderMaterial).get_shader_parameter("use_vertex_colour"))
+			for k in ["tint", "use_vertex_colour", "use_albedo", "albedo_tex"]:
+				var v = (src as ShaderMaterial).get_shader_parameter(k)
+				if v != null:
+					cap.set_shader_parameter(k, v)
 		_caps[name] = cap
 	_planes()
 	return m
 
+
+## The see-through glass.
+func glass_mat() -> Material:
+	if _glass == null:
+		_glass = ShaderMaterial.new()
+		_glass.shader = XRAY
+		_glass.set_shader_parameter("colour", GLASS_COLOUR)
+		_glass.set_shader_parameter("alpha", 0.08)
+		_glass.set_shader_parameter("edge", 0.3)
+	return _glass
 
 ## Every ws_lit and ws_cap material, for the planes' uniforms.
 func _all_mats() -> Array:
@@ -132,8 +149,9 @@ func _apply_xray() -> void:
 		if on == _xrayed.has(id):
 			continue
 		var thin: bool = ws.comps[id].get_meta("thin", false)
+		var glass: bool = ws.comps[id].get_meta("glass", false)
 		for c in _meshes[id]:
-			c.material_override = _xray_mat if on else mat_for(c.get_meta("mat"), thin)
+			c.material_override = _xray_mat if on else (glass_mat() if glass else mat_for(c.get_meta("mat"), thin))
 		if on:
 			_xrayed[id] = true
 		else:

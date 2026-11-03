@@ -283,6 +283,11 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   screw. The two alignment screws and the O-rings are not drawn; the two isolating diaphragms are one disk; the
   plant's one block is the process flange and the module's coplanar base together, so the flange bolts' shanks end
   in it.
+  Running (K3, its bench model `data/plant3d/workshop/bench/pressure_transmitter.json`, made by
+  `tools/plant3d/workshop/pressure_transmitter.py`): the isolating diaphragm is the moving piece `deflect` (6 mm of
+  travel at the upper range: a real one moves a few micrometres), and the impulse path `impulse` runs up the axis
+  from the impulse line through the manifold and the flange's port to the diaphragm (one line: the low side of a
+  differential transmitter is not drawn).
 
 ## Tables and their sources
 

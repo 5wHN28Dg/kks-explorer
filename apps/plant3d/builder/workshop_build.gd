@@ -316,6 +316,7 @@ static func _nodes(part: String, res: Dictionary, data: Dictionary) -> Node3D:
 		n.set_meta("anchors", anchors)
 		n.set_meta("anim", c.anim)
 		n.set_meta("thin", c.thin)
+		n.set_meta("glass", c.glass)
 	# each component's pieces merged per material, relative to its pivot (the moving pieces where they stand at 0)
 	var per := {}   # comp -> mat -> [arrays, origin shift]
 	for k in res.layers:

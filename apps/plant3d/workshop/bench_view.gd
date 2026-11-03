@@ -11,6 +11,7 @@ extends RefCounted
 
 const Views = preload("res://workshop/views.gd")
 const LCD_ON := Color(0.70, 0.82, 0.66)         # a lit display's face (the backlight's colour on the grey LCD)
+const LCD_OFF := Color(0.20, 0.22, 0.20)        # a dark one (no loop current: a loop-powered display goes out)
 const FLOW_COLOUR := Color(0.45, 0.75, 1.0)     # a flow without a colour legend
 
 var ws                          # workshop/workshop.gd
@@ -122,7 +123,8 @@ func draw(dt: float) -> void:
 		if e.label.text != txt and not (txt == "" and e.label.text == " "):
 			e.label.text = txt if txt != "" else " "
 	for at in lits:
-		views.set_ramp(at, LCD_ON, 1.0 if clock.now(lits[at]) >= 0.5 else 0.0)
+		var on: bool = clock.now(lits[at]) >= 0.5
+		views.set_ramp(at, LCD_ON if on else LCD_OFF, 1.0)
 	for f in flows:
 		var c := FLOW_COLOUR
 		if f.legend != "" and clock.m.legends.has(f.legend):
