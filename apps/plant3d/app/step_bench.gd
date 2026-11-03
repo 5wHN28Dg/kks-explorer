@@ -10,7 +10,7 @@ const PlantModel = preload("../sim/plant_model.gd")
 const PlantEngine = preload("../sim/engine.gd")
 const Procedure = preload("../sim/procedure.gd")
 const JsonStrict = preload("../sim/json_strict.gd")
-const WeatherView = preload("weather_view.gd")
+const WeatherFix = preload("weather_fix.gd")
 
 
 ## The content folder's files, read and parsed (as PlantModel.from_dir reads them).
@@ -96,7 +96,7 @@ static func run(files: Dictionary, loads: Dictionary, base_steps: int = 6000, we
 			continue
 		var wx := "seeded"
 		if typeof(f.get("weather.json")) != TYPE_DICTIONARY and weather != "":
-			if m.weather == null or not WeatherView.fix(m.scenarios.get("cold_iron", {}), m.weather, weather):
+			if m.weather == null or not WeatherFix.fix(m.scenarios.get("cold_iron", {}), m.weather, weather):
 				out.append("ERROR %s: weather=%s: cold_iron has no weather, or the kind is unknown" % [name, weather])
 				continue
 			wx = weather
