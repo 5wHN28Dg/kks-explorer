@@ -21,6 +21,15 @@ extends Node
 
 const SECONDS := 180.0
 const ORBIT_RATE := 0.25        # radians a second
+# the guided phases: taken apart step by step, then put together from a pile ([start, end] in seconds of the walk);
+# each step's part is drawn over the phase's time shared by its steps, at most STEP_APART_S / STEP_PILE_S (a kind with
+# few steps keeps K2's pace; the turbine's 30-odd steps are all walked: K4a's fixed pace left 14 of them loose)
+const APART := [60.0, 88.0]
+const PILE := [88.0, 118.0]
+const STEP_APART_S := 1.4
+const STEP_PILE_S := 1.6
+const STEP_SLACK_S := 1.0        # kept free in each phase (each step starts where the last one's time ended, so frames
+								# are not lost between steps: the slack is for the phase's own first and last frames)
 
 var main
 var ws
@@ -144,20 +153,24 @@ func _process(delta: float) -> void:
 		if _at("reset"):
 			ws.reset()
 		ws.set_slider(clampf((t - 49.0) / 4.0, 0.0, 1.0))
-	elif t < 60.0:
+	elif t < APART[0]:
 		if _at("reassemble"):
 			ws.reassemble()
-	elif t < 88.0:
+	elif t < APART[1]:
 		if _at("take apart step by step"):
 			ws.select("")
 			if not ws.start_guide("disassemble"):
 				main._say("WORKSHOP the kind has no assembly steps")
-		_walk_steps(1.4)
-	elif t < 118.0:
+			_step_s = step_secs(APART[1] - APART[0], ws.guide.real_steps(), STEP_APART_S)
+			_next_t0 = -1.0
+		_walk_steps(_step_s)
+	elif t < PILE[1]:
 		if _at("assemble from a pile"):
 			_move = {}
 			ws.start_guide("assemble", "pile")
-		_walk_steps(1.6)
+			_step_s = step_secs(PILE[1] - PILE[0], ws.guide.real_steps(), STEP_PILE_S)
+			_next_t0 = -1.0
+		_walk_steps(_step_s)
 	elif t < 120.0:
 		if _at("assembled again"):
 			main._say("WORKSHOP steps done: %s (%d loose)" % [str(ws.guide.done()), ws.guide.loose.size()])
@@ -208,6 +221,14 @@ func _process(delta: float) -> void:
 		main._say("WORKSHOP exit=%.0fms" % ws.exit_ms)
 		main._finish()
 
+var _step_s := STEP_APART_S     # the guided phase's time per step
+var _next_t0 := -1.0            # where the last step's time ended (the next one starts there)
+
+## Each step's time in a guided phase of `phase_s` seconds with `steps` steps: their share of it (less the slack), at
+## most `longest`.
+static func step_secs(phase_s: float, steps: int, longest: float) -> float:
+	return minf(longest, (phase_s - STEP_SLACK_S) / maxi(steps, 1))
+
 ## The guided steps walked: the next step's part drawn from where it stands to where it goes (assembling: its place,
 ## then snapped; taking apart: out and away from the machine, then let go) over `secs` seconds, then the next.
 func _walk_steps(secs: float) -> void:
@@ -230,7 +251,9 @@ func _walk_steps(secs: float) -> void:
 		ws.select(id)
 		if ws.guide.placed(id):
 			ws.guide.loose[id] = from
-		_move = {"id": id, "from": from, "to": to, "t0": t}
+		# from where the last step's time ended (not this frame: a frame lost between steps adds up over 30 of them)
+		var t0: float = _next_t0 if _next_t0 >= 0.0 else t   # (after a hitch the steps catch up, one a frame)
+		_move = {"id": id, "from": from, "to": to, "t0": t0}
 	var k: float = clampf((t - float(_move.t0)) / secs, 0.0, 1.0)
 	var e := k * k * (3.0 - 2.0 * k)
 	ws.guide.loose[_move.id] = (_move.from as Transform3D).interpolate_with(_move.to, e)
@@ -240,6 +263,7 @@ func _walk_steps(secs: float) -> void:
 			ws.try_place(String(_move.id))
 		else:
 			ws._released()
+		_next_t0 = float(_move.t0) + secs
 		_move = {}
 
 ## Waits for the machine's first frame; false (the walk ends, logged) when it didn't come within 60 s.

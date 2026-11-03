@@ -1125,7 +1125,7 @@ func warm_up(parent: Node) -> void:
 	# not while the Workshop shows: its hidden meshes' pipelines are made on the main thread as they enter the plant's
 	# world, a hitch in the Workshop's frames (K4a: 167 ms on the Note 9, a trainee in the Workshop 4 s after the start)
 	# (nor in the frame that measures the way back to the plant, nor the one after)
-	while is_inside_tree() and (is_open or Engine.get_process_frames() < _closed_frame + 3):
+	while is_inside_tree() and not may_warm(is_open, Engine.get_process_frames(), _closed_frame):
 		if is_open:
 			await get_tree().create_timer(0.5).timeout
 		else:
@@ -1176,8 +1176,12 @@ func warm_up(parent: Node) -> void:
 	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
 		# drawn only when the plant's world is drawn: not while the Workshop (or the screens) has its 3D off, nor
 		# without a camera; until then it waits, and `warmed` says so
-		while not can_draw_warm(get_viewport().get_camera_3d(), get_viewport().disable_3d, is_open):
-			await get_tree().create_timer(1.0).timeout
+		while not can_draw_warm(get_viewport().get_camera_3d(), get_viewport().disable_3d, is_open,
+				Engine.get_process_frames(), _closed_frame):
+			if is_open or Engine.get_process_frames() >= _closed_frame + CLOSE_CUSHION:
+				await get_tree().create_timer(1.0).timeout
+			else:
+				await get_tree().process_frame
 			if not is_inside_tree():
 				return
 		var cam3 := get_viewport().get_camera_3d()
@@ -1195,15 +1199,18 @@ func warm_up(parent: Node) -> void:
 ## an install compiled 14 of them there on the Note 9: 4.77 s of the 5.0 s rule, K3). The scenes are loaded one at a
 ## time on a worker thread and freed again once their pipelines are made (the pipeline cache keeps them for later
 ## starts); a kind the trainee is opening meanwhile is left to its entry.
+## None of it in one plant frame (the steam turbine's done at once made a 0.7 s frame on the Note 9, #318): the scene
+## is instanced on a worker thread, its materials and ghosts made a slice of WARM_SLICE_US at a time, and its pieces
+## enter the plant's world WARM_PER_FRAME a frame.
 func _warm_kinds() -> void:
 	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
 		kinds_warmed = true
 		return   # (it compiles only what it draws: a hidden machine would be pure cost there)
 	for k in kinds():
 		var path := DIR.path_join(k + ".scn")
-		# not while the tier probe measures, nor while the Workshop shows (its entry compiles what it needs)
-		while is_inside_tree() and (is_open or ("probing" in main and main.probing)):
-			await get_tree().create_timer(1.0).timeout
+		# not while the tier probe measures, nor while the Workshop shows or has just closed (its entry compiles what
+		# it needs)
+		await _warm_wait()
 		if not is_inside_tree() or ResourceLoader.load_threaded_request(path, "PackedScene") != OK:
 			continue
 		_warm_loading = path
@@ -1211,39 +1218,164 @@ func _warm_kinds() -> void:
 			await get_tree().process_frame
 		_warm_loading = ""
 		var ps := ResourceLoader.load_threaded_get(path) as PackedScene
-		if ps == null or _warm == null or not is_instance_valid(_warm) or is_open:
-			continue   # (opened meanwhile: the entry has it)
-		var mc: Node3D = ps.instantiate()
+		if ps == null or _warm == null or not is_instance_valid(_warm):
+			continue
+		await _warm_wait()   # (a Workshop opened meanwhile: this kind is warmed after it closes, whichever it was)
+		if not is_inside_tree():
+			return
+		# instanced on a worker thread (a scene outside the tree may be made there)
+		var made := _warm_made
+		made.clear()
+		_warm_task = WorkerThreadPool.add_task(_warm_instance.bind(ps, made), false, "workshop warm-up")
+		while _warm_task >= 0 and not WorkerThreadPool.is_task_completed(_warm_task):
+			await get_tree().process_frame
+		if _warm_task < 0:
+			return   # (_exit_tree took it)
+		WorkerThreadPool.wait_for_task_completion(_warm_task)
+		_warm_task = -1
 		ps = null   # (not held while the next kind waits for a Workshop to close)
+		if made.is_empty() or made[0] == null:
+			continue
+		var mc: Node3D = made[0]
+		made.clear()
+		_warm_mc = mc   # (freed by _exit_tree if the app goes while it is outside the tree)
+		await _warm_wait()
+		if not is_inside_tree() or _warm == null or not is_instance_valid(_warm):
+			mc.free()
+			continue
 		mc.name = "warm_" + k
 		var xr := ShaderMaterial.new()
 		xr.shader = XRAY
 		var gh := Node3D.new()
 		gh.name = "ghosts"
-		for n in mc.find_children("*", "Node3D", true, false):
+		mc.add_child(gh)
+		# the materials and ghosts, a slice at a time (outside the tree: nothing of it is drawn or queued yet)
+		var t0 := Time.get_ticks_usec()
+		var todo: Array = [[mc, false, false]]
+		while not todo.is_empty():
+			var it: Array = todo.pop_back()
+			var n: Node = it[0]
+			if n == gh:
+				continue
 			if n.has_meta("items"):   # its own MultiMeshes with the items (the scene's resource left as loaded)
 				var items: Array = n.get_meta("items")
 				for mmi in n.get_children():
 					if mmi is MultiMeshInstance3D:
-						var mm := ((mmi as MultiMeshInstance3D).multimesh.duplicate()) as MultiMesh
-						mm.instance_count = items.size()
-						for i in items.size():
-							mm.set_instance_transform(i, items[i])
-						(mmi as MultiMeshInstance3D).multimesh = mm
+						(mmi as MultiMeshInstance3D).multimesh = _items_multimesh((mmi as MultiMeshInstance3D).multimesh, items)
 			if n.has_meta("explode") or n.has_meta("items"):
 				gh.add_child(_ghost_node_of(n as Node3D, xr))   # the ghost as a step builds it
-		_warm_mats(mc, false, false)
-		mc.add_child(gh)
-		_warm.add_child(mc)
-		_warm_kinds_done.append(k)
-		# the pipelines are queued as the instances enter the scene; a few frames later the scene is let go
-		for i in 30:
+			var thin: bool = it[1]
+			var glass: bool = it[2]
+			if n.has_meta("explode"):
+				thin = n.get_meta("thin", false)
+				glass = n.get_meta("glass", false)
+			_warm_mat_of(n, thin, glass)
+			for c in n.get_children():
+				todo.append([c, thin, glass])
+			t0 = await _warm_slice(t0)
+			if is_inside_tree() and _warm_blocked():
+				await _warm_wait()   # (no script work of its own in the Workshop's, a close's or the probe's frames)
+				t0 = Time.get_ticks_usec()
+			if not is_instance_valid(mc):
+				break
+		if not is_instance_valid(mc) or not is_inside_tree() or _warm == null or not is_instance_valid(_warm):
+			if is_instance_valid(mc):
+				mc.free()
+			continue
+		# into the plant's world a few pieces a frame (each queues its surfaces' pipelines as it enters), held
+		# flat under one hidden node: where each stands doesn't matter, it is never drawn
+		await get_tree().process_frame   # (the last slice's frame is not the first batch's too)
+		if not is_instance_valid(mc) or not is_inside_tree() or _warm == null or not is_instance_valid(_warm):
+			continue
+		var pieces: Array = mc.find_children("*", "GeometryInstance3D", true, false)
+		var held := Node3D.new()
+		held.name = mc.name
+		_warm.add_child(held)
+		warm_pieces = maxi(warm_pieces, pieces.size())
+		var i := 0
+		while i < pieces.size():
+			await _warm_wait()
+			if not is_instance_valid(held) or not held.is_inside_tree():
+				break
+			var t1 := Time.get_ticks_usec()
+			var added := 0
+			while i < pieces.size() and added < WARM_PER_FRAME and (added == 0 or Time.get_ticks_usec() - t1 < warm_slice_us):
+				var gi: Node = pieces[i]
+				gi.get_parent().remove_child(gi)
+				held.add_child(gi)
+				i += 1
+				added += 1
+			warm_most_added = maxi(warm_most_added, added)
+			warm_batches += 1
+			warm_slice_us_max = maxi(warm_slice_us_max, Time.get_ticks_usec() - t1)
 			await get_tree().process_frame
-		if is_instance_valid(mc):
-			mc.queue_free()
+		mc.free()   # (what is left of it: the pieces' empty parents)
+		_warm_mc = null
+		if i >= pieces.size():
+			_warm_kinds_done.append(k)
+		# the pipelines are queued as the instances enter the scene; a few frames later the pieces are let go
+		for f in 30:
+			await get_tree().process_frame
+		if is_instance_valid(held):
+			held.queue_free()
 	kinds_warmed = true
 
+const WARM_SLICE_US := 4000        # the warm-up's most script time in one frame (the Note 9 runs ~8x slower)
+var warm_slice_us := WARM_SLICE_US # (the tests make it small, to see the slicing)
+var warm_slices := 0               # the frames the material pass was cut at (tests)
+var warm_on_thread := false        # the last kind was instanced on a worker thread (tests)
+const WARM_PER_FRAME := 12         # the most pieces that enter the plant's world in one frame
+var warm_slice_us_max := 0         # the longest slice the warm-up took in one frame, µs (tests)
+var warm_most_added := 0           # the most pieces it added in one frame (tests)
+var warm_pieces := 0               # the most pieces one kind had (tests)
+var warm_batches := 0              # the frames it added pieces in, all kinds (tests)
+var _warm_mc: Node = null          # the kind being made, while outside the tree
+var _warm_task := -1               # the worker thread's task instancing a kind (-1: none)
+var _warm_made: Array = []         # what that task made, until the warm-up takes it
+
+## The worker thread's part of the warm-up: one kind's scene instanced (outside the tree).
+func _warm_instance(ps: PackedScene, made: Array) -> void:
+	made.append(ps.instantiate())
+	warm_on_thread = OS.get_thread_caller_id() != OS.get_main_thread_id()
+
+## Whether the warm-up must keep out of the plant now: the Workshop shown or just closed, the tier probe measuring.
+func _warm_blocked() -> bool:
+	return not may_warm(is_open, Engine.get_process_frames(), _closed_frame) or ("probing" in main and main.probing)
+
+## Waits while the warm-up must keep out of the plant (_warm_blocked).
+func _warm_wait() -> void:
+	while is_inside_tree() and _warm_blocked():
+		if is_open or ("probing" in main and main.probing):
+			await get_tree().create_timer(1.0).timeout
+		else:
+			await get_tree().process_frame
+
+## Ends a slice of the warm-up's script work once it has run WARM_SLICE_US: waits for the next frame and returns the
+## new slice's start (else the same start).
+func _warm_slice(t0: int) -> int:
+	var spent := Time.get_ticks_usec() - t0
+	warm_slice_us_max = maxi(warm_slice_us_max, spent)
+	if spent < warm_slice_us:
+		return t0
+	warm_slices += 1
+	await get_tree().process_frame
+	return Time.get_ticks_usec()
+
+## A MultiMesh of the scene's own (`src`, its instances left as loaded) holding the component's items: a new one, not a
+## duplicate (a duplicate sets the loaded buffer on its new instance count: "Cannot set a buffer on a Multimesh").
+static func _items_multimesh(src: MultiMesh, items: Array) -> MultiMesh:
+	var mm := MultiMesh.new()
+	mm.transform_format = src.transform_format
+	mm.use_colors = src.use_colors
+	mm.use_custom_data = src.use_custom_data
+	mm.mesh = src.mesh
+	mm.instance_count = items.size()
+	for i in items.size():
+		mm.set_instance_transform(i, items[i])
+	return mm
+
 var _closed_frame := -100          # the process frame of the last close (the warm-up keeps out of the next ones)
+const CLOSE_CUSHION := 3           # the process frames after a close the warm-up keeps out of
 var _warm_loading := ""          # the kind the warm-up's threaded load is fetching ("" when none)
 
 ## Leaving the tree (the app freed or quitting) collects every threaded load the Workshop still has a request on: the
@@ -1251,6 +1383,16 @@ var _warm_loading := ""          # the kind the warm-up's threaded load is fetch
 ## scene) for the rest of the process: the test runner, which frees one app after another in one process, saw a
 ## later Workshop test find the transmitter's load still there, and an abort at an app's free.
 func _exit_tree() -> void:
+	if _warm_task >= 0:   # (the warm-up's instancing on a worker thread: waited for, what it made freed)
+		WorkerThreadPool.wait_for_task_completion(_warm_task)
+		_warm_task = -1
+		for n in _warm_made:
+			if is_instance_valid(n):
+				n.free()
+		_warm_made.clear()
+	if _warm_mc != null and is_instance_valid(_warm_mc) and not _warm_mc.is_inside_tree():
+		_warm_mc.free()   # (made, not yet in the plant's world: nothing else holds it)
+	_warm_mc = null
 	for path in [_warm_loading, _loading] + _orphans:
 		if path != "" and ResourceLoader.load_threaded_get_status(path) != ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
 			ResourceLoader.load_threaded_get(path)   # (waits for the thread when it is still loading)
@@ -1260,11 +1402,9 @@ func _exit_tree() -> void:
 var _warm_kinds_done: Array = []   # the kinds whose machines the warm-up held (tests)
 var kinds_warmed := false          # every kind's machine held (or nothing to hold on this renderer)
 
-## The warm-up's copy of the materials an entry gives a machine (views.gd machine_shown, mat_for, glass_mat).
-func _warm_mats(n: Node, thin: bool, glass: bool) -> void:
-	if n.has_meta("explode"):
-		thin = n.get_meta("thin", false)
-		glass = n.get_meta("glass", false)
+## The warm-up's copy of the materials an entry gives a machine (views.gd machine_shown, mat_for, glass_mat), on one
+## node: `thin` and `glass` are its component's.
+func _warm_mat_of(n: Node, thin: bool, glass: bool) -> void:
 	if (n is MeshInstance3D or n is MultiMeshInstance3D) and n.has_meta("mat"):
 		var gi := n as GeometryInstance3D
 		if glass and not n.get_parent().has_meta("items"):
@@ -1283,12 +1423,16 @@ func _warm_mats(n: Node, thin: bool, glass: bool) -> void:
 				cap.shader = Views.CAP
 				m.next_pass = cap
 			gi.material_override = m
-	for c in n.get_children():
-		_warm_mats(c, thin, glass)
 
-## Whether the Compatibility renderer's warm draw would really be drawn: a camera, the plant's 3D on, the Workshop shut.
-static func can_draw_warm(cam3: Camera3D, disabled_3d: bool, workshop_open: bool) -> bool:
-	return cam3 != null and not disabled_3d and not workshop_open
+## Whether the warm-up may add to the plant's world now: not while the Workshop shows, nor in the frame that measures
+## the way back to the plant or the next ones (CLOSE_CUSHION process frames from the close), on every renderer.
+static func may_warm(workshop_open: bool, frame: int, closed_frame: int) -> bool:
+	return not workshop_open and frame >= closed_frame + CLOSE_CUSHION
+
+## Whether the Compatibility renderer's warm draw would really be drawn, and may be: a camera, the plant's 3D on, the
+## Workshop shut and its close's cushion over (may_warm, as the Mobile renderer's warm-up keeps).
+static func can_draw_warm(cam3: Camera3D, disabled_3d: bool, workshop_open: bool, frame: int, closed_frame: int) -> bool:
+	return cam3 != null and not disabled_3d and may_warm(workshop_open, frame, closed_frame)
 
 
 ## The Workshop's own load (§7.1): every part's ghost drawn unseen in the machine's first frame, so the ghosts'
