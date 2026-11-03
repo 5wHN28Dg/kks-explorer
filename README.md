@@ -50,7 +50,8 @@ It has:
 - multiplayer sessions on a LAN;
 - the start of the realism programme (`docs/plant3d/REALISM.md`): wear, weather and hands-on work in its engine.
 
-Lifts, the Workshop, weather, the generated P&IDs and the realism work came after the newest release
+The full day's buses, meals and off-duty life in the camp, lifts, the Workshop, weather, the generated P&IDs and
+the realism work came after the newest release
 (`plant-v0.3.0`): they are on `main` until the next one.
 
 Its guides and pictures are on the wiki: [Walkdown Plant](https://github.com/5wHN28Dg/kks-explorer/wiki/Walkdown-Plant).
