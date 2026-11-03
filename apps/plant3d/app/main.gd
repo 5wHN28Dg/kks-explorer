@@ -13,7 +13,7 @@
 ##                           there before the measurement starts; `drawings` opens each generated P&ID in turn for 10 s,
 ##                           panning and zooming it (ui/drawing_view.gd: the DRAWINGS lines); drawing_shots=1 saves a
 ##                           picture of each half way
-##   walk=workshop           the Workshop walk (app/workshop_walk.gd, docs/plant3d/WORKSHOP.md §8): 3 minutes in the
+##   walk=workshop           the Workshop walk (app/workshop_walk.gd, docs/plant3d/WORKSHOP.md §8): 252 s in the
 ##                           Workshop on `kind=PART` (default the first kind built), then back to the plant
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
 ##   out=DIR                 where result.txt (and shots) go (default: the external files folder on Android, the user
@@ -774,7 +774,7 @@ func _process(delta: float) -> void:
 				if sim_n % 60 == 0:
 					_say("SIM at %.0f s: %.0f steps/s, %.0f ms of model per s, %.2f ms a step, speed %d, cap %.1fx" % [
 						t_walk, c.steps_per_s, c.model_ms_per_s, c.step_ms, c.speed, c.ff_cap()])
-	if t_walk > walk_seconds + 5.0 and workshop_walk == null:   # (the Workshop walk ends itself: its 3 minutes)
+	if t_walk > walk_seconds + 5.0 and workshop_walk == null:   # (the Workshop walk ends itself: its 252 s)
 		_finish()
 
 ## The frame log (as the bench's, decision 0041): wall-clock frame intervals and how many refreshes of a 60 Hz

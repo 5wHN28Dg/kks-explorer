@@ -15,6 +15,9 @@ const Orbit = preload("res://workshop/orbit.gd")
 const Panels = preload("res://workshop/panels.gd")
 const Assembly = preload("res://workshop/assembly.gd")
 const XRAY := preload("res://workshop/ws_xray.gdshader")
+const Views = preload("res://workshop/views.gd")
+const BenchClock = preload("res://workshop/bench_clock.gd")
+const BenchView = preload("res://workshop/bench_view.gd")
 const WARM_UP_S := 4.0          # after the plant's first walkable frame: the ghost's pipelines queued (§7.1)
 const SimClock = preload("res://ui/sim_clock.gd")
 const AlarmPanel = preload("res://ui/alarm_panel.gd")
@@ -67,7 +70,6 @@ var _prev_ui := true
 var _prev_3d := false             # the main viewport's 3D off before (the control room's screens keep it off)
 var _session := false
 var _mats := {}                 # name -> Material
-var _lit := {}                  # name -> Material with the selection's emission
 var _tris := {}                 # Mesh -> [PackedVector3Array of its triangles' corners]
 var _reassemble_t := -1.0
 var _reassemble_from := 0.0
@@ -90,9 +92,17 @@ var _xray_mat: ShaderMaterial
 var _warm: Node3D               # one hidden mesh with ws_xray in the plant's world: its pipelines queued early
 var warmed := false
 var _warm_draw_mat: ShaderMaterial   # ws_xray at alpha 0: the Workshop load's unseen draw of every part's ghost
+var views := Views.new()        # X-ray, cutaway, section, flow; the Workshop's materials (§7)
+var bench := BenchClock.new()   # the kind's bench model and its clock (§6)
+var bench_view := BenchView.new()   # the bench's values drawn on the machine
+var run_note := ""              # the bench's last refusal, as a sentence
 var _cur_m := {}                # id -> Transform3D: each part where it stands now, in the machine's frame (apply)
 
 func setup(m) -> void:
+	views.ws = self
+	bench_view.ws = self
+	bench_view.clock = bench
+	bench_view.views = views
 	main = m
 	ui = m.ui if "ui" in m else null
 	layer = 60
@@ -358,19 +368,6 @@ func _mat(name: String) -> Material:
 		_mats[name] = load(path) if ResourceLoader.exists(path) else null
 	return _mats[name]
 
-## The same material with the selection's emission (the lit material's own uniform: no new shader, §3).
-func _lit_mat(name: String) -> Material:
-	if not _lit.has(name):
-		var m := _mat(name)
-		if m is ShaderMaterial:
-			var d: ShaderMaterial = m.duplicate()
-			d.set_shader_parameter("emission", Color(1.0, 0.62, 0.15))
-			d.set_shader_parameter("emission_energy", 0.45)
-			_lit[name] = d
-		else:
-			_lit[name] = m
-	return _lit[name]
-
 func _process(delta: float) -> void:
 	_collect_orphans()
 	if not is_open:
@@ -393,6 +390,7 @@ func _process(delta: float) -> void:
 		if panels != null:
 			panels.sync_slider()
 	apply()
+	_run(delta)
 	_place_handle()
 	if panels != null:
 		panels.tick()
@@ -431,6 +429,20 @@ func _show_machine(ps: PackedScene) -> void:
 	_hollow.clear()
 	_gcentre.clear()
 	_collect(machine)
+	views.density = 1.0 / 3.0 if main.tier == "lean+vis" else 1.0   # R9a: the phone's flow at a third (§8)
+	views.machine_shown(machine, comps)
+	run_note = ""
+	if String(words.get("bench", "")) != "":
+		if not bench.load_text(words.bench, comps.keys()):
+			push_warning("Workshop: the bench model of %s can't run: %s" % [part, bench.error])
+	else:
+		bench.e = null
+	bench_view.setup(machine)
+	# the machine's first frame draws the cut faces, the flow particles and the labels unseen, so their pipelines are
+	# compiled with the machine's (§7.1)
+	views.warm(true)
+	views.warm_flows(true)
+	bench_view.warm_labels()
 	s = 0.0
 	only_selected = false
 	root_id = ""
@@ -453,6 +465,8 @@ func _show_machine(ps: PackedScene) -> void:
 	var gw := machine.get_node_or_null("ghost_warm") if machine != null else null
 	if gw != null:
 		gw.visible = false   # (drawn, unseen, in the first frame: its pipelines are ready for the first ghost)
+	views.warm(false)
+	views.warm_flows(false)
 	if not is_open or gen != _gen:
 		return   # left (and maybe entered again) meanwhile
 	entry_ms = (Time.get_ticks_usec() - _t0) / 1000.0
@@ -573,6 +587,7 @@ func select(id: String) -> void:
 	if only_selected and not (root_id != "" and comps.has(selected) and (selected == root_id or _under(selected, root_id))):
 		root_id = selected if comps.has(selected) else ""
 	note = why_not_free(selected)   # (the tree's pick says why a part can't be picked up, as the view's does)
+	views.selection_changed()
 	if panels != null:
 		panels.selected_changed()
 	apply()
@@ -581,9 +596,7 @@ func _highlight(id: String, on: bool) -> void:
 	var n: Node = comps.get(id, groups.get(id))
 	if n == null:
 		return
-	for c in n.get_children():
-		if (c is MeshInstance3D or c is MultiMeshInstance3D) and c.has_meta("mat"):
-			c.material_override = _lit_mat(c.get_meta("mat")) if on else _mat(c.get_meta("mat"))
+	views.set_sel(n, on)   # ws_lit's own glow (an instance uniform: no material swapped, no new pipeline)
 
 func hide_selected() -> void:
 	if selected != "":
@@ -998,6 +1011,73 @@ func _name_of(id: String) -> String:
 	var w: Dictionary = words.get("components", {}).get(id, words.get("fasteners", {}).get(id, {}))
 	return String(w.get("name", id))
 
+# ------------------------------------------------------------------ running: the bench (§3 "Run it", §6)
+
+## The bench clock advanced by this frame, its values drawn on the machine, its refusals as sentences.
+func _run(delta: float) -> void:
+	if not bench.loaded():
+		return
+	bench.tick(delta)
+	bench_view.draw(0.0 if bench.paused else delta * bench.speed)
+	for ev in bench.new_events():
+		if ev.size() >= 6 and ev[1] == "op" and ev[4] == "refused":
+			run_note = refusal(ev[2], ev[3], ev[5])
+
+## A refused op's sentence: its permissive's (from the bench file's `needs`), a slider outside its range, a machine
+## command its machine's state doesn't take.
+func refusal(at: String, do: String, reasons: Array) -> String:
+	for o in bench.m.ops_ui:
+		if o.at == at and o.do == do:
+			for r in reasons:
+				for nd in o.get("needs", []):
+					if nd[0] == r:
+						return String(nd[1])
+				if o.get("input", "") == r:
+					return "Outside the %s's range." % String(o.get("title", r)).to_lower()
+				if o.has("machine") and r == o.machine + "_state":
+					return "%s: not from %s." % [String(o.get("title", do)), bench.machine_state(o.machine)]
+	return "Refused."
+
+## Why the machine can't run as it stands now ("" when it can): taken apart beyond what the kind's `run_exploded`
+## allows (§4.7).
+func why_no_run() -> String:
+	var r = words.get("views", {}).get("run_exploded", null)
+	if r is bool and r:
+		return ""
+	var out := []
+	var off := Explode.offsets(spec, s, root_id)
+	for id in comps:
+		if not _at_home(id, off) or hidden.has(id):
+			out.append(id)
+	if out.is_empty():
+		return ""
+	if r is Dictionary:
+		for id in out:
+			if not id in r.get("allowed", []):
+				return String(r.get("why", ""))
+		return ""
+	return "Put it together first: it runs assembled."
+
+## A machine command from the Run panel (Start, Stop): Start is refused while the machine stands apart beyond what its
+## data allows.
+func run_command(at: String, do: String) -> void:
+	if do == "start" and why_no_run() != "":
+		run_note = why_no_run()
+		return
+	run_note = ""
+	bench.command(at, do)
+
+func toggle_fault(id: String) -> void:
+	if bench.faulted.has(id):
+		bench.repair(id)
+	else:
+		bench.fault(id)
+
+func ack_bench_alarms() -> void:
+	for a in bench.alarms():
+		if a[2] == "active_unack" or a[2] == "cleared_unack":
+			bench.ack(a[0])
+
 ## The ghost's pipelines (§7.1): a hidden mesh in the plant's vertex format with ws_xray, in the plant's world, some
 ## seconds after the plant's first walkable frame (app/main.gd calls this then): Godot queues the pipelines of every
 ## surface in the scene, drawn or not, and compiles them on its worker threads (decision 0060), as the walking
@@ -1027,6 +1107,28 @@ func warm_up(parent: Node) -> void:
 	wmat.shader = XRAY
 	_warm.add_child(_xray_pair(mesh, wmat)[0])
 	_warm.add_child(_xray_pair(mesh, wmat)[1])
+	# K3's variants (§7.1): ws_lit and ws_cap, plain and instanced, discarding every fragment (a plane that cuts
+	# everything: their pipelines, never a pixel), and ws_flow's particles collapsed (density 0)
+	for sh in [Views.LIT, Views.CAP]:
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("ws_plane0", Vector4(0, 0, 0, -1))
+		m.set_shader_parameter("ws_cut_on", 1.0)
+		for n in _xray_pair(mesh, m):
+			_warm.add_child(n)
+	var fm := ShaderMaterial.new()
+	fm.shader = Views.FLOW
+	fm.set_shader_parameter("density", 0.0)
+	var q := QuadMesh.new()
+	var fmm := MultiMesh.new()
+	fmm.transform_format = MultiMesh.TRANSFORM_3D
+	fmm.mesh = q
+	fmm.instance_count = 1
+	var fmi := MultiMeshInstance3D.new()
+	fmi.multimesh = fmm
+	fmi.material_override = fm
+	fmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_warm.add_child(fmi)
 	_warm.position = Vector3(0, -1000, 0)
 	_warm.visible = false
 	parent.add_child(_warm)

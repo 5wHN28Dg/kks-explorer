@@ -44,6 +44,9 @@ static func build_all(out_dir: String, data_dir: String, equipment: Dictionary) 
 			out.errors.append("workshop/%s: not a Workshop data file" % f)
 			continue
 		var part: String = data.part
+		var bench_path := dir.path_join("bench").path_join(f)   # its bench model (WORKSHOP.md §6), when it has one
+		if FileAccess.file_exists(bench_path):
+			data["bench_text"] = FileAccess.get_file_as_string(bench_path)
 		var r := scene(part, data, params_for(part, data, equipment))
 		if not r.errors.is_empty():
 			for e in r.errors:
@@ -233,6 +236,20 @@ static func join(res: Dictionary, data: Dictionary) -> Array:
 	for c in res.components:
 		if c.anim != "" and not res.moving.any(func(mv): return mv.name == c.anim):
 			errs.append("component %s: its anim %s is no moving piece" % [c.id, c.anim])
+	# the bench model's bindings (WORKSHOP.md §6.1; the file itself is checked by ref/plant3d_bench.py): an anim at a
+	# component the generator gave that anim, a flow on a path it makes
+	if data.has("bench_text"):
+		var bench = JSON.parse_string(data.bench_text)
+		if not bench is Dictionary:
+			errs.append("bench: not a bench file")
+			return errs
+		for x in bench.get("bind", []):
+			if x.has("at") and x.at != "bench" and not gen.has(x.at):
+				errs.append("bench: a binding at %s, which the generator doesn't make" % x.at)
+			elif x.has("anim") and gen[x.at].anim != x.anim:
+				errs.append("bench: %s's anim %s is not the generator's (%s)" % [x.at, x.anim, gen[x.at].anim])
+			if x.has("flow") and not res.flows.has(x.flow):
+				errs.append("bench: a flow on %s, a path the generator doesn't make" % x.flow)
 	return errs
 
 ## A component's depth (0 at the top), or -1 on a cycle.
@@ -347,7 +364,8 @@ static func _nodes(part: String, res: Dictionary, data: Dictionary) -> Node3D:
 			g.add_child(mmi)
 	var words := {"format": data.get("format", ""), "version": data.get("version", 0), "part": part,
 		"components": data.get("components", {}), "fasteners": data.get("fasteners", {}),
-		"assembly": data.get("assembly", []), "views": data.get("views", {}), "sources": data.get("sources", [])}
+		"assembly": data.get("assembly", []), "views": data.get("views", {}), "sources": data.get("sources", []),
+		"bench": data.get("bench_text", "")}
 	root.set_meta("workshop", words)
 	root.set_meta("tris", res.tris)
 	root.set_meta("box", whole)

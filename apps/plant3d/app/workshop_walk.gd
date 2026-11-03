@@ -6,11 +6,16 @@
 ## together from a pile in the guided order (each part drawn to its place under its ghost and snapped); then back to
 ## the plant. The camera turns round the machine all the while. It logs
 ## `WORKSHOP` lines: the entry (button to the machine's first frame), the exit (back to the plant's first frame) and
-## the scene's triangles (it enters, leaves and enters again first: the first entry and a second one); main.gd's frame log judges the frames from 5 s after the walk began until it leaves. K3 adds
-## the X-ray, cutaway, section and running to the walk.
+## the scene's triangles (it enters, leaves and enters again first: the first entry and a second one); main.gd's frame log judges the frames from 5 s after the walk began until it leaves.
+## K3: the machine runs the whole walk where its bench model allows (the transmitter: the loop supply on at 2×, the
+## applied pressure swept up past its range and down to vacuum and back, so the diaphragm, the display, the terminals,
+## the flow and the colours move all the while, taken apart and in the steps too); after the steps the X-ray, the
+## cutaway, a section swept across the machine (flow on), each fault made and repaired, then Stop. It logs the bench's
+## steps (`WORKSHOP bench steps=… max=…us mean=…us`, §8's 0.3 ms). The walk is 252 s since K3 (K1's 180 s kept as
+## they were, then K3's views).
 extends Node
 
-const SECONDS := 180.0
+const SECONDS := 252.0
 const ORBIT_RATE := 0.25        # radians a second
 
 var main
@@ -47,12 +52,37 @@ func start(m, k := "") -> void:
 	if not await _shown():
 		return
 	main._say("WORKSHOP entry=%.0fms load=%.0fms (the second entry)" % [ws.entry_ms, ws.load_ms])
+	_bench_start()
 	running = true
+
+var _ops := []                  # the bench's ops as written (machine commands, set ops)
+var _made := {}                 # the faults made in the walk's fault phase
+
+## The bench running from the walk's start: each machine started, at 2×.
+func _bench_start() -> void:
+	if not ws.bench.loaded():
+		main._say("WORKSHOP the kind has no bench model")
+		return
+	ws.bench.set_speed(2.0)
+	_ops = ws.bench.m.ops_ui
+	for o in _ops:
+		if o.has("machine") and o.do == "start":
+			ws.run_command(o.at, o.do)
+
+## Each set op's slider swept over its range (a slow sine, a period of 40 s), from its low end.
+func _bench_sweep() -> void:
+	for o in _ops:
+		if o.get("do") == "set" and o.has("range"):
+			var lo: float = float(o.range[0])
+			var hi: float = float(o.range[1])
+			ws.bench.op_set(o.at, lo + (hi - lo) * (0.5 - 0.5 * cos(t * TAU / 40.0)))
 
 func _process(delta: float) -> void:
 	if not running or done:
 		return
 	t += delta
+	if ws.bench.loaded() and fmod(t, 0.5) < delta:
+		_bench_sweep()
 	ws.cam.yaw += ORBIT_RATE * delta
 	ws.cam.place()
 	var order: Array = ws.spec.order
@@ -111,13 +141,51 @@ func _process(delta: float) -> void:
 			_move = {}
 			ws.start_guide("assemble", "pile")
 		_walk_steps(1.6)
-	elif t < SECONDS:
+	elif t < 180.0:
 		if _at("assembled again"):
 			main._say("WORKSHOP steps done: %s (%d loose)" % [str(ws.guide.done()), ws.guide.loose.size()])
 			ws.reset()
+	elif t < 192.0:
+		if _at("x-ray"):
+			ws.views.set_xray(true)
+	elif t < 204.0:
+		if _at("cutaway"):
+			ws.views.set_xray(false)
+			ws.views.set_cut(true)
+	elif t < 224.0:
+		if _at("section sweep"):
+			ws.views.set_cut(false)
+			ws.views.set_section(true)
+		ws.views.set_section_at(1.0 - (t - 204.0) / 20.0)
+	elif t < 246.0:
+		if _at("faults"):
+			ws.views.set_section(false)
+			ws.views.set_cut(true)
+		var faults: Array = ws.bench.m.faults if ws.bench.loaded() else []
+		if not faults.is_empty():
+			# each fault for its share of the 22 s: made at its start, repaired at two thirds of it
+			var share := 22.0 / faults.size()
+			var k := int((t - 224.0) / share)
+			var into := fmod(t - 224.0, share)
+			if k < faults.size():
+				var id := String(faults[k].id)
+				if into < share * 0.66 and not ws.bench.faulted.has(id) and not _made.has(id):
+					_made[id] = true
+					ws.toggle_fault(id)
+				elif into >= share * 0.66 and ws.bench.faulted.has(id):
+					ws.toggle_fault(id)
+	elif t < SECONDS:
+		if _at("stop"):
+			ws.views.set_cut(false)
+			for o in _ops:
+				if o.has("machine") and o.do == "stop":
+					ws.run_command(o.at, o.do)
 	else:
 		done = true
 		running = false
+		if ws.bench.loaded():
+			main._say("WORKSHOP bench steps=%d max=%dus mean=%.1fus" % [ws.bench.steps, ws.bench.step_us_max,
+				float(ws.bench.step_us_sum) / maxf(ws.bench.steps, 1)])
 		ws.close()
 		await ws.left
 		main._say("WORKSHOP exit=%.0fms" % ws.exit_ms)
