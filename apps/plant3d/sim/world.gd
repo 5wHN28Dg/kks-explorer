@@ -7,7 +7,7 @@ const Staff = preload("staff.gd")
 
 ## The purpose tags (§2.1).
 const TAGS := {"draw": 0x44524157, "causes": 0x43415553, "weather": 0x57454154, "stores": 0x53544f52,
-		"lab": 0x4c414253, "slips": 0x534c4950}
+		"lab": 0x4c414253, "slips": 0x534c4950, "audio": 0x41554449}
 ## The clock values: engine-kept slots after every other value, only in a scenario with `world`.
 const NAMES := ["world_hour", "world_day"]
 const DAY := 864000

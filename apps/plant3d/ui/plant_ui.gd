@@ -45,6 +45,7 @@ const CrewPanel = preload("res://ui/crew_panel.gd")
 const PeopleView = preload("res://ui/people_view.gd")
 const Plant = preload("res://app/plant.gd")
 const Inputs = preload("res://ui/inputs.gd")
+const Phone = preload("res://ui/phone.gd")
 const Session = preload("res://net/session.gd")
 const SessionPanel = preload("res://ui/session_panel.gd")
 const OthersView = preload("res://net/others_view.gd")
@@ -95,6 +96,7 @@ var drawings                    # ui/drawings.gd: the generated P&IDs (REALISM.m
 var drawing_view                # ui/drawing_view.gd: their viewer (null without drawings)
 var run_tracker                 # the last procedure followed in this run (kept for its debrief after it is closed)
 var crew                        # ui/crew_panel.gd: the trainee's role, tasks and radio (PLANT3D §18.7)
+var phone                       # ui/phone.gd: the player's music and phone (REALISM.md §8.5), in the Crew panel
 var people                      # ui/people_view.gd: the crews as markers in the plant and dots on the map
 var session                     # net/session.gd while a multiplayer session is open (MULTIPLAYER.md), else null
 var session_panel               # ui/session_panel.gd: Together
@@ -209,6 +211,8 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	bus_drive.name = "bus_drive"
 	add_child(bus_drive)
 	bus_drive.setup(self)
+	phone = Phone.new()
+	phone.setup(self)
 	_build()
 	people = PeopleView.new()
 	people.name = "people"
@@ -856,7 +860,8 @@ func _zone_tick(e, here: Vector3) -> void:
 				if sm.zone_ppe[z] & (1 << k) and not (worn & (1 << k)):
 					miss.append(CrewPanel.PPE_WORDS.get(sm.PPE[k], sm.PPE[k]))
 			var zt: String = sm.d["zones"][z].get("title", sm.zone_ids[z])
-			toast("Entering the %s%s" % [zt.to_lower(), (": you need " + ", ".join(miss)) if not miss.is_empty() else ""])
+			toast("Entering the %s%s%s" % [zt.to_lower(), (": you need " + ", ".join(miss)) if not miss.is_empty() else "",
+					zone_audio_words(sm, sm.zone_ids[z])])
 		elif (_zones & bit) and not (zm & bit):
 			inputs.zone(sm.zone_ids[z], "out")
 	_zones = zm
@@ -1818,6 +1823,7 @@ func _each_frame(delta: float) -> void:
 	if _place_t >= 0.25:
 		_place_t = 0.0
 		_place_tick()
+		phone.tick()
 	if session != null:
 		_session_tick(delta)
 	_toast_tick(delta)
@@ -1890,6 +1896,8 @@ func _follow_events(evs: Array, from: int) -> void:
 							task_given["%d|%s" % [ev[0], ev[3]]] = given
 			"unsafe", "stop":
 				_safety_toast(e, ev)
+			"audio", "phone", "held", "returned":
+				phone.on_event(ev)          # the player's music and phone (REALISM.md §8.5)
 			"op":
 				for k in _pending.size():         # the events come in the order the inputs were made
 					var p: Array = _pending[k]
@@ -2071,6 +2079,20 @@ func _draw_arrows() -> void:
 	arrows.draw_string(font, tip - dir * s * 2.2 + Vector2(-30, 8), "%.0f %s" % [d, unit], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 0.7, 0.2))
 
 
+## What a zone says of personal audio as the trainee enters it (staff.json's `audio`, REALISM.md §8.5): music banned
+## there, and an Ex zone, where the phone itself is not carried.
+static func zone_audio_words(sm, zone_id: String) -> String:
+	var a = sm.d.get("audio") if sm != null and sm.d is Dictionary else null
+	if not a is Dictionary:
+		return ""
+	var out := ""
+	if zone_id in a.get("banned", []):
+		out += ". No personal audio here"
+	if zone_id in a.get("ex", []):
+		out += ". Ex zone: no phone"
+	return out
+
+
 ## Unsafe acts and stopped work concerning the trainee (PLANT3D §16.7, §17.11), as a line on the screen.
 func _safety_toast(e, ev: Array) -> void:
 	var sm = e._sm
@@ -2079,11 +2101,11 @@ func _safety_toast(e, ev: Array) -> void:
 		return
 	var me_id: String = sm.people[pi]["id"]
 	if ev[1] == "unsafe" and ev[2] == me_id:
-		var k: int = sm.ACT_KINDS.find(ev[3])
+		var k: int = CrewPanel.KINDS.find(ev[3])
 		toast("Unsafe act: you are " + CrewPanel.act_text(sm, k, [ev[4], ev[0], false]))
 	elif ev[1] == "stop" and ev[3] == me_id and ev[6] == "done":
 		toast("%s stopped your work: %s. Put it right (your tasks)." % [sm.people[sm.person_ix[ev[2]]]["call"]
-				if sm.person_ix.has(ev[2]) else str(ev[2]), CrewPanel.act_text(sm, sm.ACT_KINDS.find(ev[4]), [ev[5]])])
+				if sm.person_ix.has(ev[2]) else str(ev[2]), CrewPanel.act_text(sm, CrewPanel.KINDS.find(ev[4]), [ev[5]])])
 	elif ev[1] == "stop" and ev[2] == me_id:
 		if ev[6] == "done":
 			toast("You stopped the work of %s." % sm.people[sm.person_ix[ev[3]]]["call"])

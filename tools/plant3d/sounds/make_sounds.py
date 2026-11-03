@@ -217,6 +217,15 @@ VOICES = {
         'The plant heard from a few hundred metres: the air and the buildings take the high frequencies away, '
         'leaving a low roar (brown 30-700 Hz: fans, flows, combustion) and the electrical hum of the transformers '
         'and generators at twice the 50 Hz grid frequency and its harmonic')),
+    # the vehicles heard (REALISM.md §8.5): the app plays it on the staff bus while it is out of its parked place,
+    # its gain and pitch from the bus's speed (apps/plant3d/ui/sound_player.gd vehicle)
+    'bus_engine': dict(spl=84, rates='clicks', click_hz=1400, noise_am=[(0.25, 0.05)], why=(
+        'A bus\'s six-cylinder four-stroke diesel at a fast idle (750 rpm, 12.5 rev/s): each cylinder fires every '
+        'second revolution, so the engine fires 3 x 12.5 = 37.5 times a second, its strongest tone, with harmonics '
+        'at 75, 112.5 and 150 Hz; the combustion knock rings the block (about 1.4 kHz), heard as a clatter once a '
+        'revolution (12.5 Hz, a rate); brown noise 40-1,500 Hz is the intake, the exhaust and the fan. About '
+        '84 dB(A) at 1 m outside the engine bay between idling and pulling away; the app raises the pitch with the '
+        'speed (the engine turning faster in gear)')),
 }
 
 
@@ -687,6 +696,154 @@ def library(path=LIBRARY):
     return synth
 
 
+# --------------------------------------------------------------------------------------------------- the music
+# The phone's music (REALISM.md §8.5): our own, made here from fixed rules and each track's seed in the library
+# (kind `music`), so nobody else has rights in it: a chord progression (a soft pad), a bass line on the chords' roots,
+# a drum pattern (a kick from a falling sine, a snare and hats from filtered noise) and a melody walked over the
+# track's scale from its seed, its two phrases played A A B A as songs do. It is played through earbuds, not in the
+# plant: one level for every track (MUSIC_LEVEL), the app's volume does the rest. Each track loops seamlessly: a
+# whole number of bars, every note's tail wrapped round to the start (as the loops' clicks are).
+MUSIC_LEVEL = -25.0     # dBFS(A) of a track over its loop: a little above the loudest plant sound (-26) at full
+                        # volume, as earbuds turned up are
+MUSIC_QUALITY = 3       # libvorbis -q 3, mono: a track of 32-40 s is about a quarter of a megabyte
+MODES = {'minor': (0, 2, 3, 5, 7, 8, 10), 'major': (0, 2, 4, 5, 7, 9, 11), 'dorian': (0, 2, 3, 5, 7, 9, 10)}
+MUSIC = {
+    # bpm: a beat is a whole number of samples (60 x FS / bpm); bars: whole progressions; root: the key's MIDI note in
+    # the bass's octave; prog: the chords as degrees of the scale, one a bar; kick, snare, hats: the drums' eighths
+    'music_night_shift': dict(bpm=90, bars=12, root=45, mode='minor', prog=(0, 5, 2, 6),
+                              kick=(0, 3, 4), snare=(2, 6), hats=(0, 1, 2, 3, 4, 5, 6, 7)),
+    'music_gate_road': dict(bpm=105, bars=16, root=48, mode='major', prog=(0, 4, 5, 3),
+                            kick=(0, 2, 4, 6), snare=(2, 6), hats=(1, 3, 5, 7)),
+    'music_cooling_tower': dict(bpm=120, bars=20, root=52, mode='dorian', prog=(0, 3, 0, 6),
+                                kick=(0, 5), snare=(2, 6), hats=(0, 1, 2, 3, 4, 5, 6, 7)),
+}
+
+
+def midi_hz(m):
+    return 440.0 * 2 ** ((m - 69) / 12)
+
+
+def music_library(path=LIBRARY):
+    with open(path, encoding='utf-8') as f:
+        lib = json.load(f)
+    tracks = [s for s in lib['sounds'] if s['kind'] == 'music']
+    missing = [s['id'] for s in tracks if s['id'] not in MUSIC]
+    if missing:
+        raise ValueError(f'no music rules for {", ".join(missing)}: add them to MUSIC')
+    return tracks
+
+
+def render_music(s):
+    """A track's samples: a seamless loop at MUSIC_LEVEL, from its rules (MUSIC) and its seed alone."""
+    r = MUSIC[s['id']]
+    rng = np.random.default_rng(s['seed'])
+    beat = 60 * FS // r['bpm']
+    if beat * r['bpm'] != 60 * FS or beat % 2:
+        raise ValueError(f'{s["id"]}: at {r["bpm"]} bpm a beat or its half is not a whole number of samples')
+    if r['bars'] % len(r['prog']) or r['bars'] % 2:
+        raise ValueError(f'{s["id"]}: {r["bars"]} bars are not whole progressions and phrases')
+    bar, eighth = 4 * beat, beat // 2
+    n = r['bars'] * bar
+    scale = MODES[r['mode']]
+
+    def note(degree, octave):          # a degree of the scale (any whole number) to a MIDI note `octave`s over the root
+        return r['root'] + 12 * (octave + degree // 7) + scale[degree % 7]
+
+    def voice(hz, seconds, harmonics, attack, decay, sustain, release):
+        """A note: its harmonics [(k, amplitude)] under an attack, a decay to `sustain`, held `seconds`, released."""
+        t = times(int((seconds + release) * FS))
+        x = sum(a * np.sin(2 * np.pi * hz * k * t + rng.uniform(0, 2 * np.pi)) for k, a in harmonics if hz * k < 16000)
+        env = np.minimum(1, t / attack) * (sustain + (1 - sustain) * np.exp(-t / decay))
+        return x * env * np.clip((seconds + release - t) / release, 0, 1)
+
+    pad, bass, drums, mel = (np.zeros(n) for _ in range(4))
+    chords = []
+    for b in range(r['bars']):
+        d = r['prog'][b % len(r['prog'])]
+        chords.append([d, d + 2, d + 4])
+        for k, deg in enumerate(chords[-1]):         # the pad: the chord held through the bar, two voices 8 cents apart
+            for cents in (-4, 4):
+                hz = midi_hz(note(deg, 1)) * 2 ** (cents / 1200)
+                wrap_add(pad, b * bar, voice(hz, bar / FS * 0.95, [(1, 1), (2, 0.35), (3, 0.15), (4, 0.07)],
+                                             0.25, 1.0, 0.7, 0.6) * (0.5 if k else 0.6))
+        root = note(d, 0)                            # the bass: the root on the eighths (an octave down on the
+        for e in range(8):                           # beats 1 and 3), the fifth on the last two
+            m = root + (7 if e >= 6 else 0) - (12 if e in (0, 4) else 0)
+            wrap_add(bass, b * bar + e * eighth, voice(midi_hz(m), eighth / FS * 0.8, [(1, 1), (2, 0.4), (3, 0.15)],
+                                                      0.005, 0.15, 0.4, 0.05))
+        for e in range(8):                           # the drums
+            at = b * bar + e * eighth
+            if e in r['kick']:                       # a sine falling from 125 to 45 Hz
+                t = times(int(0.35 * FS))
+                f = 45 + 80 * np.exp(-t / 0.03)
+                wrap_add(drums, at, 0.9 * np.sin(2 * np.pi * np.cumsum(f) / FS) * np.exp(-t / 0.12)
+                         * np.minimum(1, t / 0.002))
+            if e in r['snare']:                      # white noise 400-8,000 Hz over a 185 Hz body
+                t = times(int(0.25 * FS))
+                y = 0.5 * band_noise(rng, len(t), 'white', [400, 8000]) * np.exp(-t / 0.06) \
+                    + 0.3 * np.sin(2 * np.pi * 185 * t) * np.exp(-t / 0.04)
+                wrap_add(drums, at, 0.5 * y * np.minimum(1, t / 0.001))
+            if e in r['hats']:                       # white noise 6-14 kHz, the off-beats softer and shorter
+                t = times(int(0.08 * FS))
+                y = band_noise(rng, len(t), 'white', [6000, 14000]) * np.exp(-t / (0.015 if e % 2 else 0.025))
+                wrap_add(drums, at, (0.10 if e % 2 else 0.16) * rng.uniform(0.8, 1.0) * y * np.minimum(1, t / 0.001))
+    # the melody: two phrases of two bars walked over the scale in eighths (a rest now and then), played A A B A; a
+    # note on a beat moves to the nearest tone of its bar's chord, so that it fits the harmony
+    phrases = []
+    for _ in range(2):
+        deg, notes = int(rng.integers(0, 5)), []
+        for step in range(16):
+            if rng.random() < (0.15 if step % 2 == 0 else 0.45):
+                notes.append(None)
+                continue
+            deg = int(np.clip(deg + rng.choice([-2, -1, -1, 0, 1, 1, 2]), -2, 9))
+            notes.append(deg)
+        phrases.append(notes)
+    for p in range(r['bars'] // 2):
+        notes = phrases[(0, 0, 1, 0)[p % 4]]
+        for step, deg in enumerate(notes):
+            if deg is None:
+                continue
+            if step % 2 == 0:
+                deg = min((c + 7 * o for c in chords[2 * p + step // 8] for o in (-1, 0, 1)),
+                          key=lambda c: (abs(c - deg), c))
+            held = 1
+            while step + held < 16 and notes[step + held] is None and held < 3:
+                held += 1
+            wrap_add(mel, 2 * p * bar + step * eighth, voice(midi_hz(note(deg, 2)), held * eighth / FS * 0.9,
+                                                             [(1, 1), (2, 0.08), (3, 0.12), (5, 0.04)],
+                                                             0.01, 0.12, 0.6, 0.08))
+    x = sum(g * y / np.sqrt(np.mean(y * y)) for g, y in ((0.20, pad), (0.28, bass), (0.30, drums), (0.25, mel)))
+    x = x * 10 ** ((MUSIC_LEVEL - level(x, True)) / 20)
+    peak = float(np.max(np.abs(x)))
+    if peak > PEAK_MAX:
+        raise ValueError(f'{s["id"]}: peak {20 * math.log10(peak):.1f} dBFS at {MUSIC_LEVEL} dBFS(A): lower MUSIC_LEVEL')
+    return x
+
+
+def build_music(out, index, wav=False, lib=LIBRARY):
+    """Each track into its own file and the index's `music`: {id: {title, file, samples, seconds, bytes, level,
+    bpm, bars, quality, click_db}} (the app's phone lists them; they loop)."""
+    index['music'] = {}
+    for s in music_library(lib):
+        samples = pcm16(render_music(s))
+        fname = f'{s["id"]}.{"wav" if wav else "ogg"}'
+        entry = {'title': s['title'], 'file': fname, 'samples': len(samples), 'seconds': round(len(samples) / FS, 3),
+                 'level': MUSIC_LEVEL, 'bpm': MUSIC[s['id']]['bpm'], 'bars': MUSIC[s['id']]['bars']}
+        if wav:
+            data = wav_bytes(samples)
+        else:
+            data = vorbis(samples, MUSIC_QUALITY)
+            # the seam measured as the loops' are: the codec's error jumping where the stream's end meets its start
+            entry.update({'quality': MUSIC_QUALITY,
+                          'click_db': round(seam_click_db(decode(data), 8000, ref=samples / 32767), 1)})
+        with open(os.path.join(out, fname), 'wb') as f:
+            f.write(data)
+        entry['bytes'] = len(data)
+        index['music'][s['id']] = entry
+    index['music_bytes'] = sum(e['bytes'] for e in index['music'].values())
+
+
 def build(out, wav=False, lib=LIBRARY):
     """Writes every layer and the index; returns the index."""
     os.makedirs(out, exist_ok=True)
@@ -716,6 +873,7 @@ def build(out, wav=False, lib=LIBRARY):
             entry['layers'].append(layer)
         index['sounds'][s['id']] = entry
     index['bytes'] = sum(la['bytes'] for e in index['sounds'].values() for la in e['layers'])
+    build_music(out, index, wav, lib)
     with open(os.path.join(out, 'index.json'), 'w', encoding='utf-8') as f:
         json.dump(index, f, indent=1, sort_keys=True)
         f.write('\n')
@@ -731,7 +889,10 @@ def main(argv=None):
     for sid, e in index['sounds'].items():
         print(f'{sid:16} {"loop" if e["loop"] else "once"} {e["level"]:6.1f} dBFS(A)  '
               + '  '.join(f'{la["layer"]} {la["seconds"]:g} s {la["bytes"] / 1024:.0f} KiB' for la in e['layers']))
-    print(f'{len(index["sounds"])} sounds, {index["bytes"] / 1e6:.2f} MB in {a.out}')
+    for mid, e in index['music'].items():
+        print(f'{mid:20} music {e["seconds"]:g} s {e["bytes"] / 1024:.0f} KiB')
+    print(f'{len(index["sounds"])} sounds, {index["bytes"] / 1e6:.2f} MB, and {len(index["music"])} music tracks, '
+          f'{index["music_bytes"] / 1e6:.2f} MB, in {a.out}')
     return 0
 
 
