@@ -517,6 +517,55 @@ def build_edge_vectors(V):
     return {'valid': V['valid'], 'steps': steps, 'links': [], 'train': {'forks': []}}
 
 
+def bench_runs(V4):
+    """The Workshop bench vectors' runs (WORKSHOP.md §6.2) on the reference, as reference_runs: every value's bits at
+    every step and the state digests."""
+    from ref import plant3d_bench as BM
+    out = {}
+    for k, s in enumerate(V4['steps']):
+        e = BM.check(BM.loads(s['bench']), s['components'], 'bench').engine()
+        h = Hasher(0)
+        h.add(e)
+        inputs = sorted(s['inputs'], key=lambda x: x[0])
+        j = 0
+        while e.step_no < len(s['states']) - 1:
+            while j < len(inputs) and inputs[j][0] == e.step_no + 1:
+                apply(e, inputs[j])
+                j += 1
+            e.step()
+            h.add(e)
+        h.end()
+        out[f'bench/steps/{k}'] = (0, h.chunks, e.names, h.vals, h.states)
+    return out
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptBench(unittest.TestCase):
+    """ref/vectors/plant3d-bench-v1.json (docs/plant3d/WORKSHOP.md §6.2, milestone K3) through the app's loader
+    (sim/bench_model.gd) and engine: every valid bench loads, every run's snapshots and events match, and every value's
+    bits at every step and the state digests are the reference's, with the straight-line program and with the
+    interpreter alone."""
+
+    def test_bench_vectors(self):
+        with open(os.path.join(REPO, 'ref', 'vectors', 'plant3d-bench-v1.json'), encoding='utf-8') as f:
+            V4 = json.load(f)
+        want = bench_runs(V4)
+        n = len(V4['valid']) + len(V4['steps'])
+        for extra in ([], ['--interpreter=1']):
+            with tempfile.TemporaryDirectory() as d:
+                dig = os.path.join(d, 'digests.json')
+                r = godot('run_vectors.gd', '--only=bench', f'--digests={dig}', *extra, timeout=300)
+                no_errors(self, r)
+                self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+                self.assertIn(f'VECTORS passed={n} failed=0', r.stdout)
+                with open(dig, encoding='utf-8') as f:
+                    got = json.load(f)
+            self.assertEqual(sorted(got), sorted(want), extra)
+            for run, (start, chunks, names, _, states) in want.items():
+                self.assertEqual((got[run]['from'], got[run]['chunks']), (start, chunks), f'{run} {extra}')
+                self.assertEqual(got[run]['state'], states, f'{run} {extra}: the state digests')
+
+
 @unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
 class GdscriptRealism(unittest.TestCase):
     """ref/vectors/plant3d-realism.json (docs/plant3d/REALISM.md §13, milestone RE1) through the app's engine: the
@@ -527,7 +576,7 @@ class GdscriptRealism(unittest.TestCase):
         with open(os.path.join(REPO, 'ref', 'vectors', 'plant3d-realism.json'), encoding='utf-8') as f:
             V3 = json.load(f)
         want, n = {}, 1
-        for part in ('staff', 'wear', 'weather'):       # RE1, AG1 (REALISM.md §2.2), WX1 (§5.1)
+        for part in ('staff', 'wear', 'weather', 'hands'):   # RE1, AG1 (REALISM.md §2.2), WX1 (§5.1), HW1 (§2.13)
             st = V3[part]
             want.update({f'realism/{part}/{i}': staff_run(st['files'], r, None) for i, r in enumerate(st['runs'])})
             n += 1 + len(st['runs'])
@@ -559,22 +608,36 @@ class GdscriptRealism(unittest.TestCase):
     def test_step_bench(self):
         """The step bench with a synthetic realism load (app/step_bench.gd, as the phone's `step=bench` runs it):
         the train as built, with 600 values, and with 600 values of AG1's nodes and WX1's weather (--engine) load,
-        run the cold start and step at base load; the weather step is timed alone."""
+        run the cold start and step at base load; the weather step is timed alone: the built weather's seven values
+        in the train as built and with 600 values (cold_iron has its season's weather since 2026-11-03), the load's
+        ten with --engine."""
         with tempfile.TemporaryDirectory() as d:
             path, epath = os.path.join(d, 'r600.json'), os.path.join(d, 'e600.json')
             subprocess.run([sys.executable, os.path.join(REPO, 'tools', 'plant3d', 'realism_synth.py'), '600', path],
                            check=True, cwd=REPO)
             subprocess.run([sys.executable, os.path.join(REPO, 'tools', 'plant3d', 'realism_synth.py'), '600', epath,
                             '--engine'], check=True, cwd=REPO)
-            r = godot('bench_realism.gd', f'--synth=r600:{path},e600:{epath}', '--base-steps=200', timeout=900)
+            hpath = os.path.join(d, 'h600.json')        # (HW1: the hands step alone with 12 actions under way)
+            subprocess.run([sys.executable, os.path.join(REPO, 'tools', 'plant3d', 'realism_synth.py'), '600', hpath,
+                            '--engine', '--hands'], check=True, cwd=REPO)
+            r = godot('bench_realism.gd', f'--synth=r600:{path},e600:{epath},h600:{hpath}', '--base-steps=200',
+                      timeout=900)
         no_errors(self, r)
         self.assertEqual(r.returncode, 0, r.stdout[-4000:])
         self.assertIn('WEATHER load=e600 values=10 ', r.stdout)
-        self.assertNotIn('WEATHER load=r600', r.stdout)
+        self.assertIn('WEATHER load=built values=7 ', r.stdout)
+        self.assertIn('WEATHER load=r600 values=7 ', r.stdout)
         for load in ('built', 'r600', 'e600'):
             self.assertIn(f'BATCH load={load} values=', r.stdout)
         self.assertIn('STEP load=r600 values=', r.stdout)
+        self.assertIn('HANDS load=h600 hands=150 meters=50 busy=12 ', r.stdout)
         self.assertIn('world=true phase=cold_start', r.stdout)
+        # cold_iron's weather fixed clear unless --weather= says otherwise (a measured run's: app/main.gd
+        # measured_weather); the --engine load keeps its own seeded chain
+        for load in ('built', 'r600'):
+            self.assertIn(f'STEP load={load} values=', r.stdout)
+            self.assertRegex(r.stdout, rf'STEP load={load} values=\d+ weather=clear world=true phase=cold_start')
+        self.assertRegex(r.stdout, r'STEP load=e600 values=\d+ weather=seeded world=true phase=cold_start')
 
 
 @unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')

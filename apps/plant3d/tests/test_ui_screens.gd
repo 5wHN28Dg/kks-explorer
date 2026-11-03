@@ -377,7 +377,7 @@ func _generation(ui) -> Array:
 func _flows_through(ui) -> Array:
 	var files := {}
 	var top := "res://built/content"
-	for rel in ["plant.json"]:
+	for rel in ["plant.json", "weather.json"]:   # (weather.json: every scenario has weather)
 		files[rel] = FileAccess.get_file_as_bytes(top + "/" + rel)
 	for sub in ["areas", "model", "scenarios"]:
 		for f in DirAccess.get_files_at(top + "/" + sub):

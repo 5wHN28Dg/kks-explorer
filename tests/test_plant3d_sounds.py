@@ -361,6 +361,28 @@ class Synthesis(unittest.TestCase):
         f = np.fft.rfftfreq(len(layers['noise']), 1 / FS)
         self.assertGreater(p[f < 700].sum() / p.sum(), 0.95, 'far away, little is left above 700 Hz')
 
+    def test_weather_sounds(self):
+        """The weather heard (REALISM.md §5.4, WX3): rain and blown sand loop (the sand in gusts over 16 s, high:
+        most of its power above 1.5 kHz); thunder is a one-shot low rumble (most of its power below 400 Hz) that dies
+        away (its last second far quieter than its loudest)."""
+        for sid in ('rain', 'sand_hiss'):
+            self.assertTrue(self.made[sid][2], f'{sid} loops')
+        x = self.made['sand_hiss'][0]['noise']
+        self.assertEqual(len(x), 16 * FS)
+        env = np.array([np.sqrt(np.mean(x[i:i + FS // 4] ** 2)) for i in range(0, len(x), FS // 4)])
+        self.assertGreater(env.max() / env.min(), 2.5, 'gusts: the sand rises and falls')
+        p = np.abs(np.fft.rfft(x)) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / FS)
+        self.assertGreater(p[f > 1400].sum() / p.sum(), 0.9, 'blown sand hisses')
+        layers, _, loop = self.made['thunder']
+        self.assertFalse(loop, 'thunder is a one-shot')
+        y = layers['once']
+        p = np.abs(np.fft.rfft(y)) ** 2
+        f = np.fft.rfftfreq(len(y), 1 / FS)
+        self.assertGreater(p[f < 400].sum() / p.sum(), 0.9, 'thunder from afar is low')
+        rms = np.array([np.sqrt(np.mean(y[i:i + FS // 4] ** 2)) for i in range(0, len(y) - FS // 4, FS // 4)])
+        self.assertLess(rms[-4:].max(), rms.max() * 0.2, 'the rumble dies away')
+
     def test_a_tone_that_follows_a_value(self):
         """A tone whose hz follows a value gets its own layer at the table's highest frequency (the app pitches it)."""
         s = {'id': 'probe', 'kind': 'synth', 'tones': [{'hz': {'of': 'speed', 'table': [[0, 0], [1, 1234.5]]}}]}

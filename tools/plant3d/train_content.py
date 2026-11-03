@@ -1,5 +1,6 @@
 """The first train's plant file, sound library, scenario, procedure and tours (docs/plant3d/FIRST-TRAIN.md)."""
 import re
+import train_weather
 
 # Meanings in our own words of the KKS key letters this plant uses (FIRST-TRAIN §1 names the public sources).
 UNITS = {'0': 'Common to the whole plant', '1': 'Gas turbine train 1 (GT 1, generator 1, HRSG 1)',
@@ -85,7 +86,7 @@ def plant(codes, area_ids=None):
             'frequency_hz': 50, 'kks': kks,
             'media': {k: {'group': g, 'band': b, 'name': n} for k, (g, b, n) in MEDIA.items()},
             'areas': area_ids or ['control', 'bop', 'ct', 'cw', 'gt1', 'trafo1', 'hrsg1', 'st', 'rack', 'wtp', 'intake'],
-            'ext': ['ambient_t', 'ambient_wb', 'grid_frequency', 'river_ntu', 'river_tds'],
+            'ext': ['ambient_t', 'ambient_wb', 'grid_frequency', 'river_ntu', 'river_tds'] + train_weather.EXT,
             'start': {'at': [-20, 0, 0], 'yaw': 90}}
 
 
@@ -169,6 +170,11 @@ def sounds():
         synth('wind', None, {'colour': 'pink', 'band': [30, 1500]}, 'wind at the ear, in gusts'),
         synth('plant_distant', t((100, 0.5), (200, 0.2)), {'colour': 'brown', 'band': [30, 700], 'gain': 0.8},
               'the running plant heard from afar'),
+        # the weather heard (REALISM.md §5.4, WX3)
+        synth('rain', None, {'colour': 'white', 'band': [500, 10000]}, 'rain on the ground and the plant all round (outdoors)'),
+        synth('sand_hiss', None, {'colour': 'white', 'band': [1500, 9000]}, 'blown sand in a sandstorm, in gusts (outdoors)'),
+        synth('thunder', t((40, 0.4)), {'colour': 'brown', 'band': [20, 400], 'gain': 1.0},
+              'thunder after a lightning flash (played once)'),
     ]}
 
 
@@ -247,7 +253,7 @@ def fault(fid, sets, text, state_kks):
     return f
 
 
-COLD_INIT = {'ambient_t': 35, 'ambient_wb': 25, 'grid_frequency': 50, 'hp_mass': -100, 'lp_lvl': -50,
+COLD_INIT = {'ambient_t': 35, 'ambient_wb': 25, **train_weather.CLEAR_INIT, 'grid_frequency': 50, 'hp_mass': -100, 'lp_lvl': -50,
              'river_ntu': 20, 'river_tds': 1000}     # the river in the dry months (WATER-TREATMENT §2)
 # The hot restart (FIRST-TRAIN §4 "As built"): the train tripped from load about three hours ago and everything
 # stopped. The HP casing has cooled only to 480 °C (τ 30 h), the boxed-up HP drum to 280 °C (64 bar, 10 K an hour), the
@@ -263,21 +269,21 @@ def scenarios(state_kks):
     import train_lift
     faults = [fault(f, s, t, state_kks) for f, s, t in FAULTS] + wtp_model.faults(state_kks) + train_hoists.faults() + train_lift.faults()
     latched = ['gt1_trip_lube', 'st_trip_lube', 'st_trip_cond_p']
-    return [{'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'cold_iron',
+    return [{'format': 'walkdown-plant-scenario', 'version': 2, 'id': 'cold_iron',
              'title': 'Cold start after a long outage', 'init': dict(COLD_INIT), 'latched': latched,
              'faults': faults},
-            {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'hot_restart',
+            {'format': 'walkdown-plant-scenario', 'version': 2, 'id': 'hot_restart',
              'title': 'Hot restart three hours after a trip', 'init': dict(COLD_INIT, **HOT_INIT),
              'latched': latched, 'faults': faults},
             # WATER-TREATMENT §7: the water treatment plant stopped, its tanks at 60 %; the train at cold iron
-            {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'wtp_cold',
+            {'format': 'walkdown-plant-scenario', 'version': 2, 'id': 'wtp_cold',
              'title': 'Water treatment plant stopped, tanks at 60 %', 'init': dict(COLD_INIT, **wtp_model.COLD_WTP),
              'latched': latched, 'faults': faults},
             # W3: the water treatment plant's day work, and the river in flood
-            {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'wtp_normal',
+            {'format': 'walkdown-plant-scenario', 'version': 2, 'id': 'wtp_normal',
              'title': 'Water treatment plant: a normal day\'s work',
              'init': dict(COLD_INIT, **wtp_model.NORMAL_WTP), 'latched': latched, 'faults': faults},
-            {'format': 'walkdown-plant-scenario', 'version': 1, 'id': 'wtp_flood',
+            {'format': 'walkdown-plant-scenario', 'version': 2, 'id': 'wtp_flood',
              'title': 'Water treatment plant: the river in flood (500 NTU)',
              'init': dict(COLD_INIT, **wtp_model.FLOOD_WTP), 'latched': latched, 'faults': faults}]
 

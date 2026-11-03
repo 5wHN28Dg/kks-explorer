@@ -247,6 +247,36 @@ vent valves and housing rotation set screw are small outside pieces (the 3051's 
   model time, 14 ms of model a second) and the session layer took 0.30 ms a frame on average, 3.8 ms at most (its own
   2 ms budget's known excess, MILESTONES.md MP2). The scene is 23 KB and the space 28 KB of the package.
 
+**As built (K2, 2026-11-02).**
+- `apps/plant3d/workshop/assembly.gd` (pure: the steps, placed and loose parts, the two sentences, snapping, the
+  pile) and the steps in `workshop.gd`: **Assemble from exploded**, **Assemble from a pile**, **Take apart step by
+  step**. A part is placed (at home relative to its parent, riding with it wherever that stands) or loose, with a
+  transform in the machine's own frame, so a loose part stays where it lies when its parent is moved, and a part may
+  be put into a parent that is still loose (the terminal block into a housing on the pile). The insides of a sealed
+  component are never loose: their steps are done with it. The slider waits while the steps are on; Reset ends them
+  with every part home, Reassemble all animates the loose parts home.
+- The next step's words (its `text` and `why`) show above the tools; assembling, its ghost stands where the part goes
+  (its own meshes, `ws_xray`, beside a loose parent too). A part let go within 2 % of the machine's box diagonal (at
+  least 5 mm) and 10° of its place, modulo its `sym` (a group judged at its items' centre), snaps there unless a need
+  is unmet: then the need's first sentence shows and the part stays loose. A placed part that a placed part needs
+  can't be picked up (the need's second sentence). One step per fastener group, the group moved as one.
+- The pile: every part (not a sealed one's insides) on the floor in front of the machine, in its home orientation, in
+  rows by size, largest first (`Assembly.pile`, a fixed layout).
+- `ws_xray` (`workshop/ws_xray.gdshader`: unshaded, `blend_mix`, `depth_draw_never`, a little more opaque at the
+  outline). Queued twice: a hidden mesh of the space's (the plant's vertex format) with it in the plant 4 s after the
+  first walkable frame (`warm_up`, as the chevron), drawn plain and instanced (a fastener group's ghost is a
+  MultiMesh); and every part's own ghost, built as its step builds it and standing at home, drawn unseen (alpha 0) in
+  the machine's first frame, hidden after it. One ghost per vertex format was not enough: the Note 9 still compiled a
+  pipeline at the set screw's first ghost, and the laptop's Mobile renderer did too, at the same step.
+- The transmitter's 16 steps (13 the trainee does: the sealed parts' insides come with them) follow the 3051 manual's reassembly (§6.5–§6.5.4; its take-apart, §6.4, is the
+  reverse): the sensor module, the housing (needs the module), its set screw, the electronics board, the display, the
+  electronics cover (needs the board and the display), the terminal block, the cable gland, the terminal cover (needs
+  the terminal block), the process flange (needs the module), its bolts, the drain/vent valves, the manifold. The
+  electronics cover is now sealed (the manual's spare parts list its window with it).
+- The fixture kind is assembled from exploded in the tests (its lid's four-fold symmetry).
+- The Workshop walk keeps its 3 minutes with the K1 phases shortened, then takes the machine apart step by step (each
+  part drawn out and let go) and puts it back from a pile (each part drawn to its place and snapped).
+
 **Retrofitting.** Each generator's `use()` calls stay; a generator gains `g.comp()` and `g.only()` calls around groups
 of primitives. Moving pieces' mesh builders (`g.move`) carry `comp` too. Proved on the transmitter alone first (K1a),
 then one kind per milestone.
@@ -307,8 +337,8 @@ The data file's `assembly` is the guided order, one step per component or fasten
 - `needs`: `[component, sentence when placing too early, sentence when removing too early]`, in order: placing is
   refused with the first unmet need's first sentence; removing a component is refused while a placed component needs
   it, with that need's second sentence. Every named component exists.
-- **Snapping:** within 2 % of the part's box diagonal (at least 5 mm) of home and within 10° of its home orientation,
-  modulo the component's `sym`.
+- **Snapping:** within 2 % of the part kind's (the whole machine's) box diagonal (at least 5 mm) of home and within 10° of its home orientation,
+  modulo the component's `sym` (its axis passes through the component's pivot).
 - **Why not the procedure format (§8):** a procedure's `at` names KKS codes and its `do` names ops of the model; an
   assembly step names components of a part kind with no code, and the trainee's handling is UI state, not model state
   (§6). Bending format 1 (frozen) or format 2 to fit would be worse than a small section of the Workshop's own file
@@ -361,7 +391,7 @@ their own validator and vectors. Format 1 is not changed and format 2 is not ben
  "start": {"p_applied": 0},
  "bind": [{"at": "diaphragm", "anim": "deflect", "of": "x_dia", "scale": 1},
           {"at": "display", "show": "out_ma"},
-          {"flow": "impulse", "of": "flow_frac", "speed": 0.3, "colour": "pressure"},
+          {"flow": "impulse", "of": "flow_frac", "speed": 0.3, "colour": "pressure", "by": "p_line"},
           {"at": "sensor_body", "pressure": "p_sensed"},
           {"at": "bench", "sound": "steam_vent", "gain": {"of": "vent_flow", "table": [[0, 0], [1, 1]]}}],
  "legends": {"pressure": {"unit": "bar", "table": [[0, "#2c7bb6"], [10, "#d7191c"]]}},
@@ -381,8 +411,8 @@ their own validator and vectors. Format 1 is not changed and format 2 is not ben
 - **Bindings** (by component, never by code): §7.7's `anim` (on a component the generator gave an `anim` kind: a
   rotor's `rotate` with `scale` in revolutions per second, a diaphragm's `translate` exaggerated by its travel, a stem),
   `show` (a gauge or display), `sound` (a sound of sounds.json, gain and pitch tables), `lamp`; and the Workshop's own:
-  `flow` (a flow path: `of` the flow from 0 to 1 sets particle speed × `speed` m/s and density; `colour` a legend's
-  name and the value it reads, default the path's temperature value), `heat` and `pressure` (a component's surface
+  `flow` (a flow path: `of` the flow from −1 to 1 sets particle speed × `speed` m/s and density, its sign the
+  direction; `colour` a legend's name and `by` the value it reads), `heat` and `pressure` (a component's surface
   colour from a legend), each reading a value.
 - **Readouts:** the values in the small panel (at most 12), with their units.
 - **Limits** (`limit`): 600 values, 48 ops, 8 machines, 48 trips, 64 alarms, 24 faults, 128 bindings, 16 flow paths,
@@ -421,6 +451,82 @@ Faults: **over-range** (the output saturates at 20.5 mA and the display says so:
 **blocked impulse line** (the sensed pressure holds what was trapped while the applied pressure moves), **open loop**
 (no current, the loop-powered display goes dark). Sources in §11.
 
+**As built (K3, 2026-11-03).**
+- **The format** as §6.1, with what writing the first file settled: `sources` (`{id, cite, url}`, at least one) is
+  required at the top; an op may carry a `title` (the Run panel's words, ≤ 40 characters); a `show` binding may name
+  a `lit` value (the value is shown on the component's face while `lit` is true: a loop-powered display); a `flow`
+  binding's colour reads the value `by` names, and its `of` runs from −1 to 1, the sign the direction (into the
+  transmitter while the pressure rises, out while it falls: §1's "which way things flow"); a value carries no `kks`
+  and no node of the realism programme (`draw`, `wear`, `count`: `bad_kind`, kept for version 2). `ref/plant3d_bench.py`
+  checks a file against its kind's component ids by joining it into `ref.plant3d.Model` with components for codes,
+  so the plant's own checks and error codes apply; the content check (`ref/plant3d.py check_files`) reads
+  `workshop/bench/<part>.json` beside its Workshop data file; the builder refuses an `anim` the generator didn't give
+  that component and a `flow` on a path it doesn't make, and saves the bench file's text in the scene's `workshop`
+  meta (`bench`).
+- **Engines:** no change to either. `sim/bench_model.gd` reads the text into plant_model.gd's shape (version 2: the
+  `hold` node and the trainer's events); `ref/vectors/plant3d-bench-v1.json` (`ref/make_plant3d_bench_vectors.py`)
+  holds 2 valid files (the transmitter, and a synthetic kind with every node kind, a machine with a sequence, a trip,
+  an interlock, alarms, faults and every binding kind), 53 rejects and both runs; `run_vectors.gd --only=bench` steps
+  them through the app's engine and `tests/test_plant3d_sim.py GdscriptBench` compares every value's bits at every
+  step and the state digests, with the straight-line program and the interpreter. `plant3d-v1.json`, `plant3d-v2.json`
+  and `plant3d-realism.json` are byte for byte what they were.
+- **The transmitter's model** (`tools/plant3d/workshop/pressure_transmitter.py bench()`, sources: the 3051 manual's
+  §2.7.4 and §A.3.9 damping, §2.9.1 table 2-5 NAMUR levels; Lipták vol. 1 ch. 5): a 0–10 bar calibration; the slider
+  from −1 to 12 bar; the loop supply a machine (Start, Stop); the impulse line a `hold` of the process pressure while
+  blocked; the diaphragm and fill a 0.3 s lag, the sensing cell 0.1 s, the damping 0.4 s; 4–20 mA linear, held at
+  3.8 and 20.5 mA (NAMUR NE 43 via the manual), alarms at both and for an open loop; no current and a dark display
+  without the supply or with the loop open. Faults: over-range (the process pressure to 15 bar), a blocked impulse
+  line, an open loop. Bindings: the diaphragm's `deflect` (6 mm of travel at 10 bar, its real few micrometres
+  exaggerated), the display (reading and current, `lit`), the terminals' current, the impulse path's flow coloured
+  by its pressure, the isolator's and sensing cell's colour by the pressure at the diaphragm.
+- **The app:** `workshop/bench_clock.gd` (the engine stepped every 0.1 s of bench time, 0.1×–2×, Pause; values drawn
+  between the last two steps), `bench_view.gd` (the bindings: anim, the display's face text and backlight, a tag
+  over the terminals, flow, heat and pressure), `run_panel.gd` (Run, in the properties' place: machine commands, a
+  slider per `set` op, Pause and speed, readouts, machine states, alarms with Acknowledge, the faults as toggles, the
+  last refusal's sentence), `views.gd` (materials, X-ray, cutaway, section, flow particles). Start is refused with
+  the data's `why` when the machine stands apart beyond `run_exploded`. The display cover's face is a ring round
+  its window (the plant's drum end unchanged), and glass the generator marks `glass` is drawn see-through, so the
+  LCD reads through it.
+- **Reviews' fixes:** the flow's particles rest while the machine stands apart (its path is in the machine's frame);
+  a display shows the words of an active alarm whose `where` it is ("Over range"); the face labels and the
+  see-through glass go with what the cutaway or section removes (`ws_xray` knows no planes); a rotor whose `anim` has
+  no travel turns at its value in revolutions a second, added up over bench time; a flow path is at most 8 points
+  (the builder refuses more). `lamp` and `sound` bindings are checked but not yet drawn in the Workshop (the
+  transmitter has none; K4b's turbine brings them).
+- **From the adversarial review:** a fault with no `repair` stays shown as made (the engine ignores its repair);
+  sliders follow the model when not dragged; the Run panel offers the bench's other ops (open, close, a trip's reset)
+  and **Restart the bench**; the "stands apart" refusal covers every machine command that leaves the machine's first
+  state; the validator reserves the clock values' names (as the app's loader does), refuses two `anim`s on one
+  component and two `lit` values on one face; heat and pressure colours go to the shader in linear colour; a kept
+  component's fastener groups ride with it through the cutaway; X-ray off leaves what Isolate hid hidden; the
+  Workshop's material copies are made afresh at each entry. Left: a `rotate` anim turns about the component's pivot
+  (a generator puts a moving piece's pivot there); the engine's input and event lists grow while a machine is open.
+- **Shaders:** `ws_lit` is `weathered.gdshaderinc` with `#define WS_LIT` (the plant's shader compiles exactly as
+  before: the hooks are preprocessor blocks): a discard by the cut planes (`ws_cut.gdshaderinc`, shared with
+  `ws_cap`), no weather, the heat and pressure colour and the selection's glow as instance uniforms (`ws_ramp`,
+  `ws_sel`; three with `ws_keep`). The selection no longer swaps materials. `ws_cap` (unshaded, `cull_front`, the
+  same planes; flat, darker, hatched; its colour the material's tint, its texture's mean, its vertex colour) is the
+  next pass of solid components' materials only while a cut or the section is on. The X-ray is `ws_xray` in yellow,
+  on the kind's `xray_all` or on the selected part's subassembly. `ws_flow` draws 48 quads per path (a third on
+  `lean+vis`), placed along the path in the vertex shader from uniforms (the path's points and lengths, the phase
+  the app advances by bench time). Pre-warmed twice as K2's ghost: in the plant's world after its first walkable
+  frame (ws_lit and ws_cap plain and instanced, discarding every fragment; ws_flow collapsed), and in the machine's
+  first frame (the cap pass on with nothing cut, every flow at full density and no strength, the labels with text).
+- **The walk** keeps its 3 minutes: the K1 and K2 phases shortened, the bench running all the while at 2× (the supply
+  on, the pressure swept from −1 to 12 bar and back every 40 s), then the X-ray, the cutaway, a section swept across
+  the machine, each fault made and repaired, Stop.
+- **Measured** on the Note 9 (`lean+vis`, a test-signed release build of this branch, a cool start at 25.8 / 27.3 °C,
+  installed fresh so the pipeline cache was empty; alone / in a LAN session with the laptop hosting): first entry
+  4.77 / 4.47 s (≤ 5.0 s: K2's was 2.2 s; the machine's first frame compiles 14 surface and 10 specialization
+  pipelines, the K3 variants with the machine's own), again 48 / 47 ms (≤ 2.0 s); back to the plant 16–44 / 12–44 ms;
+  **no pipeline compiled after the machine's first frame**; no frame over 100 ms (the longest 42 ms); 99.93 % of
+  frames at ≥ 30 fps, mean frame 19.41 / 18.96 ms, 91.3 / 93.8 % of frames shown at 60 fps (one refresh each); peak PSS
+  859 / 876 MB; the bench step 0.123 / 0.105 ms mean (≤ 0.3 ms; the longest single step 0.5 / 2.0 ms). The laptop
+  (Mobile renderer, an empty cache) likewise compiled nothing after the machine's first frame. Draw calls: 36–63 in
+  the views K3 adds (the cut faces' pass included); the **pile assembly of K2 reaches about 510** on both the laptop
+  and the phone, the same in K2's own build (measured on the laptop from main), over §8's 300: found here, not changed
+  by K3. The APK (test-signed, with voice) is 121.1 MB; K3's own files (scripts, shaders, the bench file) are about 40 KB before compression.
+
 ### 6.5 Plant values to bench inputs (K6, the mirror)
 
 Opening the Workshop from the live plant can mirror that equipment's current state, read only. Each bench file's
@@ -450,7 +556,7 @@ structures' own vertex format, since removed) and a discarding one at 7.
 | plant materials | opaque, lit | K1–K2: the space, the tree, explode, handling (no new pipeline) | today's |
 | `ws_lit` | opaque, lit, `discard` by up to three planes | K3 on: every component; heat and pressure ramps from an `instance uniform` (at most 16 per shader: Godot's limit) and the selection's emission | `weathered.gdshaderinc` |
 | `ws_cap` | unshaded, `cull_front`, the same planes | the cut faces (below): `ws_lit`'s next pass on solid components | new, small |
-| `ws_xray` | unshaded, `blend_mix`, `depth_draw_never` | from K2: the assembly's ghost; from K3 the X-ray too (an edge-weighted see-through, in another colour) | new, small |
+| `ws_xray` | unshaded, `blend_mix`, `depth_draw_never`, `depth_test_disabled` (K2: the ghost shows through what stands in front of it) | from K2: the assembly's ghost; from K3 the X-ray too (an edge-weighted see-through, in another colour) | new, small |
 | `ws_flow` | unshaded, `blend_add` | flow particles: one MultiMesh of quads per path, moved along the path in the vertex shader (the path in a small texture; speed and density as uniforms) | new, small |
 
 One new lit shader and three unshaded ones: `ws_xray` arrives with K2 (counted and pre-warmed there), the other three

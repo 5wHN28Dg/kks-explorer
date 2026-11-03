@@ -63,10 +63,16 @@ frame on the phone.
   bindings by component (§7.7's plus `flow`, `heat`, `pressure`); `ref/plant3d_bench.py`, `sim/bench_model.gd`,
   `ref/vectors/plant3d-bench-v1.json`; plant sequences taken by `tools/plant3d/workshop/make_bench.py` and checked.
   `mirror` (K6) maps plant bindings of the equipment onto bench values.
-- **Shaders:** K1–K2 use the plant's materials (no new pipeline). From K3: `ws_lit` (the weathered include with
-  discard by up to three planes and an instance-uniform heat/pressure ramp), `ws_cap`, `ws_xray`, `ws_flow` (unshaded).
+- **Shaders:** K1 uses the plant's materials (no new pipeline). K2 adds `ws_xray` (unshaded) for the guided
+  assembly's ghost, as WORKSHOP.md §7.1 says (this record said K3 until 2026-11-02). From K3: `ws_lit` (the weathered
+  include with discard by up to three planes and an instance-uniform heat/pressure ramp), `ws_cap`, `ws_flow`
+  (unshaded), and `ws_xray` for the X-ray too.
   Their pipelines are queued in a hidden frame after the plant's first walkable frame, and the Workshop's load draws
   hidden once before the machine's first frame.
+  Counted in K3 (2026-11-03, the Note 9, an empty pipeline cache): the machine's first frame compiles 14 surface and
+  10 specialization pipelines (the K3 variants with the machine's own; K2's first entry took 2.2 s, K3's 4.77 s alone
+  and 4.47 s in a session, within the 5.0 s rule), and none after it; the plant-world warm-up holds ws_lit and ws_cap
+  plain and instanced and ws_flow, as K2's ghost.
 - **The plant meanwhile:** the Workshop draws in a full-screen `SubViewport` with its own world, and the main
   viewport's 3D drawing is turned off; the plant stays in its world, not moved or freed. Single play pauses the clock (held inputs
   released, speed restored on return; autosave unaffected), so a mirror freezes at the moment the trainee left (the

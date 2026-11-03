@@ -18,7 +18,10 @@ apart (`app/walk_frames.gd`: the frame that starts or stops it counts as fast-fo
 `SPIKE_FF` lines), and `phone/frames.sh` counts what the screen showed without them (`sf_frames.py --speeds`, from
 the walk's `SPEED` lines on the phone's monotonic clock); both tools say in their output that they judged the frames
 at 1×. Walks measured before this change judged every frame, fast-forward's included (the stress walks' fast-forward
-parts below among them). A milestone that misses the frame rules is not done; cutting scope to meet them is the user's call ("When to stop and ask the user", below).
+parts below among them). **Clear weather** (the user, 2026-11-03): every measured walk (`walk=…`, `phone/frames.sh`), the view shots (`shot=…`, `phone/shots.sh`)
+and the step bench (`step=bench`, `sim/tests/bench_realism.gd`) run in clear weather unless they name another
+(`weather=KIND`, `--weather=KIND`), so that a scenario's season (free play's weather, REALISM.md §5.6) changes no
+measurement; free play keeps its seasonal weather. A walk with `mp=` takes the host's weather. A milestone that misses the frame rules is not done; cutting scope to meet them is the user's call ("When to stop and ask the user", below).
 
 Sizes: **S** one pull request; **M** two to four; **L** five to eight.
 
@@ -303,6 +306,30 @@ draw calls per kind, ≤ 20 MB for the whole Workshop); the plant's walk is run 
 the Note 9 (K1, K3, K4a, K4b, K5a, K5b at least), with the APK's size before and after (limit 250 MB). The realism programme's
 hands-on work builds on K1a–K3 (REALISM.md).
 
+**K3 as built (2026-11-03):** the bench format `walkdown-plant-bench` (`ref/plant3d_bench.py`, `sim/bench_model.gd`,
+`ref/vectors/plant3d-bench-v1.json`: 2 valid files, 53 rejects, 2 runs, both engines bit for bit, no engine change);
+the transmitter's bench (supply, applied pressure to past its range, damping, 4–20 mA with NAMUR saturation, faults
+over-range, blocked impulse line, open loop: the 3051 manual and Lipták); `ws_lit`, `ws_cap`, `ws_flow` (and
+`ws_xray` for the X-ray), pre-warmed in the plant and in the machine's first frame; X-ray, cutaway with capped cut
+faces, section plane, the Run panel (WORKSHOP.md "As built (K3)"). The Note 9, alone / in a LAN session: first entry
+4.77 / 4.47 s with an empty pipeline cache (≤ 5.0 s), again 48 / 47 ms; no pipeline compiled after the machine's
+first frame; no frame over 100 ms; 99.93 % at ≥ 30 fps, mean frame 19.41 / 18.96 ms, 91.3 / 93.8 % at 60 fps; peak
+PSS 859 / 876 MB; the bench step 0.12 / 0.11 ms mean. K2's pile assembly draws ~510 calls (over §8's 300; the same
+before K3). Pictures: the wiki's Workshop page.
+
+**K2 as built (2026-11-02):** guided assembly and disassembly for the transmitter (WORKSHOP.md "As built (K2)"):
+Assemble from exploded, Assemble from a pile, Take apart step by step; the next step's ghost in `ws_xray`; snapping
+within 2 % of the machine's box diagonal and 10° modulo `sym`; the two sentences; the pile; 16 steps from the 3051
+manual (13 by hand). The Note 9 (lean+vis, a test-signed copy of the unsigned, unbaked export CI makes, from faf6d008,
+the Workshop walk with the steps; SAMPLE=1), a cool start (29.4 °C at the start, 30.8 °C at the end), installed fresh
+so the pipeline cache was empty: first entry 2.2 s (≤ 5.0 s), again 17 ms; back to the plant 21–65 ms; **no pipeline
+compiled after the machine's first frame**; no frame over 100 ms (the frame rule passes, 0 caused by the app; the
+longest 59 ms); 99.92 % of the frames shown at ≥ 30 fps, mean frame 19.1 ms, 68.7 % within 17.5 ms (the share at
+60 fps); peak PSS 832 MB. Getting there: one warm ghost per vertex format, hidden, left two pipelines to the first
+ghosts (a plain and an instanced one); drawn unseen (alpha 0) in the machine's first frame, one still came at the set
+screw's first ghost (the cool run before this one; the laptop's Mobile renderer compiled it at the same step), so the
+load now draws every part's own ghost, built as its step builds it and standing at home (§7.1). The APK (unsigned export, without voice) is 117.5 MB; K2's own files in it are under 10 KB.
+
 **K1 as built (2026-11-02):** the Workshop's space, tree, take-apart slider, handling, hide/isolate, Reset, Reassemble
 all; entry from the card and the settings; the plant paused in single play and running in a session, with the `pos`
 flag and the others' mark (WORKSHOP.md "As built (K1)"). The Note 9, the transmitter, alone and in a LAN session with
@@ -358,7 +385,7 @@ programme's own budgets are REALISM.md §11.
 | AG3 | **Condition monitoring** (§9.3): the vibration data collector and spectrum, the thermal camera (the Workshop's heat view), oil samples and lab results | M | AG2, HW2, K4b | vibration, thermography and oil analysis rounds |
 | WX1 | **Weather engine** (§5.1): `weather.json`, step 1w, the driven `ext` values, seasons by `year_day`, scripted and fixed weather, the instructor's input, vectors (**built 2026-11-02**, REALISM.md §2.12) | S | RE1 | weather that the model and every player share |
 | WX2 | **Weather in the model** (§5.2): the GT's ambient tables, inlet filters and compressor fouling, the cooling tower, water ingress causes, frozen impulse lines, lightning; filter change and compressor wash procedures | M | WX1, AG2 | weather that changes output, alarms and faults |
-| WX3 | **Weather seen and heard** (§5.4): sky, fog, particles, wet and dusty surfaces, sounds; pipelines counted; the Note 9 walk with `weather=sandstorm` and `weather=rain` | M | WX1 | weather to see and hear |
+| WX3 | **Weather seen and heard** (§5.4): sky, fog, particles, wet and dusty surfaces, sounds; pipelines counted; the Note 9 walk with `weather=sandstorm` and `weather=rain` (**built 2026-11-02**, REALISM.md §5.5) | M | WX1 | weather to see and hear |
 | WX4 | **Weather and people** (§5.3): stopped outdoor work, slippery stairs and `pace`, `ppe_when`, visibility and driving; the heat rule comes with HS3 | M | WX1, HS1 | the staff work in the weather |
 | DC1 | **Generic P&IDs** (§6.1): the generator, `walkdown-plant-drawing`, the viewer with hot spots, revisions (**built 2026-11-02**, REALISM.md §6.1.2) | M | — | the first train's P&IDs in the app |
 | DC2 | **Equipment manuals** (§6.2): the format, the transmitter's, the control valve's and a pump's manuals with figures from the Workshop | M | K3, DC1 | manuals read from the card and the job |

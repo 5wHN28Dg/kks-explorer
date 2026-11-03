@@ -156,12 +156,14 @@ class Gen:
 	##   anchors   {name: point} terminals, test points, lifting eyes
 	##   anim      the moving piece (g.move's name) this component is
 	##   thin      true for a sheet or a glass, not a closed solid (§7.2)
+	##   glass     true for a glass the trainee looks through (a display's window): the Workshop draws it see-through
 	## In plant mode it only selects the layer again (nothing changes).
 	func comp(id: String, spec := {}) -> void:
 		cur_comp = id
 		if workshop and not components.has(id):
 			var t: Transform3D = m.xf
-			var c := {"parent": spec.get("parent", ""), "thin": spec.get("thin", false), "anim": spec.get("anim", "")}
+			var c := {"parent": spec.get("parent", ""), "thin": spec.get("thin", false), "anim": spec.get("anim", ""),
+				"glass": spec.get("glass", false)}
 			if spec.has("pivot"):
 				c["pivot"] = t * (spec.pivot as Vector3)
 			if spec.has("explode"):
@@ -385,7 +387,7 @@ static func _workshop_result(part: String, g) -> Dictionary:
 		res.plates[n] = {"at": _gv(pl.at), "normal": _gv(pl.normal), "kind": pl.kind}
 	var comps: Dictionary = g.components.duplicate(true)
 	if comps.is_empty():
-		comps["body"] = {"parent": "", "thin": false, "anim": "", "anchors": {}}
+		comps["body"] = {"parent": "", "thin": false, "anim": "", "anchors": {}, "glass": false}
 	# each component's box from its pieces (the moving ones where they stand at value 0)
 	var boxes := {}
 	for k in res.layers:
@@ -407,7 +409,8 @@ static func _workshop_result(part: String, g) -> Dictionary:
 		res.components.append({"id": id, "parent": c.parent, "pivot": piv, "box": box,
 			"explode": [_gv(c.explode[0]), c.explode[1]] if c.has("explode") else [],
 			"sym": [_gv(c.sym[0]), c.sym[1]] if c.has("sym") else [],
-			"anchors": _gv_dict(c.anchors), "anim": c.anim, "thin": c.thin})
+			"anchors": _gv_dict(c.anchors), "anim": c.anim, "thin": c.thin,
+				"glass": c.glass})
 	for fg in g.fastener_groups:
 		var items: Array = []
 		for t in fg.items:
@@ -440,8 +443,14 @@ static func _workshop_result(part: String, g) -> Dictionary:
 ## A builder's stand-ins and only() blocks into the result (`moving`: its moving piece's name, "" the static builder;
 ## `pivot`: that piece's pivot in Godot's axes, its layers and boxes made relative to it as its meshes are).
 static func _ws_pieces(res: Dictionary, moving: String, mb, pivot: Vector3) -> void:
-	var first: int = res.standins.size()
-	for si in mb.standins:
+	# a moving piece's builder hears every only() after it was made, so it records the static builder's stand-ins
+	# and blocks too, empty: only what it drew counts
+	var at := {}                # the builder's stand-in index -> res.standins'
+	for i in mb.standins.size():
+		var si: Dictionary = mb.standins[i]
+		if moving != "" and si.layers.is_empty():
+			continue
+		at[i] = res.standins.size()
 		var layers := _ws_meshes(mb.finish_layers(si.layers), pivot)
 		var bb = null
 		for k in layers:
@@ -449,10 +458,12 @@ static func _ws_pieces(res: Dictionary, moving: String, mb, pivot: Vector3) -> v
 		res.standins.append({"replaced_by": si.replaced_by, "layers": layers, "box": bb if bb != null else AABB(),
 			"moving": moving})
 	for pc in mb.pieces:
+		if moving != "" and pc.tris == 0:
+			continue
 		var box: AABB = pc.box
 		box.position -= pivot
 		res.pieces.append({"comp": pc.comp, "kind": pc.kind, "role": pc.role,
-			"standin": first + pc.standin if pc.standin >= 0 else -1, "box": box, "tris": pc.tris, "moving": moving})
+			"standin": at.get(pc.standin, -1) if pc.standin >= 0 else -1, "box": box, "tris": pc.tris, "moving": moving})
 
 static func _merge_box(a, b: AABB) -> AABB:
 	return b if a == null else (a as AABB).merge(b)

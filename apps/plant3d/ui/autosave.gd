@@ -185,6 +185,104 @@ func check(p: Dictionary) -> String:
 	return ""
 
 
+## The hands-on engine's state (REALISM.md §2.13): the counts per place, the tools carried, the hand actions under way,
+## the causes and the streams name what the content has. "" when it fits.
+static func _hands_contents(fresh, d: Dictionary) -> String:
+	var tools = fresh.m.tools
+	if d.has("tool_n"):
+		var at: Array = tools["at"] if tools != null and fresh._hw else []
+		if typeof(d["tool_n"]) != TYPE_ARRAY or d["tool_n"].size() != at.size():
+			return "a damaged count of tools"
+		for k in at.size():
+			var c = d["tool_n"][k]
+			if typeof(c) != TYPE_ARRAY or c.size() != at[k].size():
+				return "a damaged count of tools"
+			for x in c:
+				if typeof(x) != TYPE_INT or x < 0:
+					return "a damaged count of tools"
+	var people: Dictionary = fresh._sm.person_ix if fresh._sm != null else {}
+	if d.has("carried"):
+		for pid in d["carried"]:
+			var have = d["carried"][pid]
+			if typeof(pid) != TYPE_STRING or not people.has(pid) or typeof(have) != TYPE_ARRAY or have.is_empty() \
+					or have.size() > 12:
+				return "tools carried by nobody"
+			for j in have.size():
+				if typeof(have[j]) != TYPE_STRING or tools == null or not tools["ix"].has(have[j]) \
+						or have.slice(0, j).has(have[j]):
+					return "a tool carried that doesn't exist"
+	if d.has("tool_n") and d.has("carried") and tools != null and fresh._hw:
+		# no tool made or lost: each tool's counts and those carried add up to tools.json's
+		for k in tools["at"].size():
+			var n := 0
+			for a in tools["at"][k]:
+				n += int(a[1])
+			var got := 0
+			for x in d["tool_n"][k]:
+				got += int(x)
+			for pid in d["carried"]:
+				if d["carried"][pid].has(tools["list"][k]["id"]):
+					got += 1
+			if got != n:
+				return "tools made or lost"
+	if d.has("npc_queue"):
+		# the NPCs' inputs the engine indexes with (REALISM.md §2.13): a person of the staff, a slip of a hand step
+		for q in d["npc_queue"]:
+			if typeof(q) != TYPE_ARRAY or q.is_empty() or typeof(q[0]) != TYPE_STRING:
+				return "a damaged NPC input"
+			var who = null
+			match q[0]:
+				"slip":
+					if q.size() != 4 or typeof(q[2]) != TYPE_STRING or typeof(q[3]) != TYPE_INT \
+							or fresh._sm == null or not fresh._sm.tasks.has(q[2]) or q[3] < 0 \
+							or q[3] >= fresh._sm.tasks[q[2]]["steps"].size() \
+							or not fresh._sm.tasks[q[2]]["steps"][q[3]].has("slip"):
+						return "a damaged NPC input"
+					who = q[1]
+				"hand":
+					if q.size() != 6:
+						return "a damaged NPC input"
+					who = q[5]
+				"tool":
+					if q.size() != 4:
+						return "a damaged NPC input"
+					who = q[3]
+				_:
+					continue
+			if typeof(who) != TYPE_STRING or not people.has(who):
+				return "a damaged NPC input"
+	if d.has("busy"):
+		var nplaces: int = fresh._sm.places.size() if fresh._sm != null else 0
+		for pid in d["busy"]:
+			var b = d["busy"][pid]
+			if typeof(pid) != TYPE_STRING or not people.has(pid) or typeof(b) != TYPE_ARRAY or b.size() != 6 \
+					or typeof(b[0]) != TYPE_STRING or typeof(b[1]) != TYPE_STRING \
+					or not fresh._hands.has(b[0] + "|" + b[1]) or not typeof(b[2]) in [TYPE_STRING, TYPE_NIL] \
+					or not typeof(b[3]) in [TYPE_FLOAT, TYPE_NIL] or typeof(b[4]) != TYPE_INT \
+					or typeof(b[5]) != TYPE_INT or b[5] < -1 or b[5] >= nplaces \
+					or (b[3] == null) == fresh._hands[b[0] + "|" + b[1]].has("input"):
+				return "a hand action under way that doesn't exist"
+	if d.has("cause_of"):
+		for fid in d["cause_of"]:
+			var ok := false
+			if typeof(fid) == TYPE_STRING and fresh._fdef.has(fid):
+				for c in fresh._fdef[fid].get("causes", []):
+					if typeof(d["cause_of"][fid]) == TYPE_STRING and c["id"] == d["cause_of"][fid]:
+						ok = true
+			if not ok:
+				return "a hidden cause the content doesn't have"
+	for k in ["cause_s", "slip_s"]:
+		if d.has(k):
+			var want: Dictionary = fresh.get(k)
+			if typeof(d[k]) != TYPE_DICTIONARY or d[k].size() != want.size():
+				return "a damaged %s" % k
+			for key in want:
+				var v = d[k].get(key)
+				if typeof(v) != TYPE_INT or v <= 0 or v > 0xFFFFFFFF:
+					return "a damaged %s" % k
+	return ""
+
+
 ## What the app indexes with inside the engine's state (the generic check sees only fields, types and lengths): a
 ## file whose hash matches but whose contents were changed must not break the session. "" when it fits.
 static func _engine_contents(fresh, d: Dictionary) -> String:
@@ -214,11 +312,11 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 	if d.has("queue"):
 		# every input kind's lengths (PLANT3D.md §12, §17.6, §17.13): a version 2 op names where and who, a repair
 		# under a permit its work and person, a removal by authority may name whose lock; the staff's inputs too
-		var sizes := {"op": [5, 7], "ack": [2], "shelve": [3], "unshelve": [2], "fault": [2], "repair": [2, 4],
+		var sizes := {"op": [5, 7], "ack": [2], "shelve": [3], "unshelve": [2], "fault": [2, 3], "repair": [2, 4],
 				"permit": [4], "lock": [4], "unlock": [4], "remove_lock": [5, 6], "role": [2], "release": [1],
-				"task_ack": [1], "arrive": [2], "leave": [2], "read": [3], "say": [3], "pick": [2], "call": [4],
+				"task_ack": [1], "arrive": [2], "leave": [2], "read": [3, 4], "say": [3], "pick": [2], "call": [4],
 				"jump": [2], "ppe": [3], "zone": [3], "stop": [2], "board": [3], "alight": [3],
-				"get_on": [2], "weather": [2]}
+				"get_on": [2], "weather": [2], "tool": [4], "hand": [6]}
 		for q0 in d["queue"]:
 			var q = q0
 			# a session run's inputs end with their slot (§17.13): looked at without it
@@ -255,13 +353,18 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 			if typeof(kept) != TYPE_ARRAY:
 				return "a damaged record of the trainee's actions"
 			for r in kept:
-				if typeof(r) != TYPE_ARRAY or r.size() < 4 or not r[0] in ["op", "permit", "lock", "unlock"] \
+				if typeof(r) != TYPE_ARRAY or r.size() < 4 or not r[0] in ["op", "permit", "lock", "unlock", "hand"] \
 						or (r[0] == "op" and (r.size() != 6 or typeof(r[2]) != TYPE_STRING \
 						or typeof(r[3]) != TYPE_STRING or typeof(r[4]) != TYPE_STRING)) \
 						or (r[0] == "permit" and (r.size() != 5 or typeof(r[2]) != TYPE_STRING \
 						or typeof(r[3]) != TYPE_STRING)) \
-						or (r[0] in ["lock", "unlock"] and (r.size() != 4 or typeof(r[3]) != TYPE_INT)):
+						or (r[0] in ["lock", "unlock"] and (r.size() != 4 or typeof(r[3]) != TYPE_INT)) \
+						or (r[0] == "hand" and (r.size() != 4 or typeof(r[2]) != TYPE_STRING \
+						or typeof(r[3]) != TYPE_STRING)):
 					return "a damaged record of the trainee's actions"
+	var hw := _hands_contents(fresh, d)
+	if hw != "":
+		return hw
 	# permits and isolations (PLANT3D §15): states, holders and locks the engine indexes with, and that agree
 	if d.has("pstate"):
 		for s in d["pstate"]:

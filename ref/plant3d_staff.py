@@ -18,13 +18,14 @@ MAX = {'people': 200, 'roles': 48, 'places': 2000, 'points': 500, 'ways': 6000, 
        'reactions': 128, 'rosters': 16, 'routines': 64, 'queue': 32, 'zones': 64, 'vehicles': 16, 'runs': 32,
        'drive_places': 64}
 PLACE_KINDS = ('desk', 'seat', 'bed', 'table', 'work', 'door', 'stop', 'locker', 'store', 'counter', 'point', 'muster',
-               'depot')
+               'depot', 'toolbox')     # (toolbox: where tools are kept, REALISM.md §2.3)
 OPEN_KINDS = ('point', 'door', 'stop', 'muster', 'counter', 'depot', 'work')    # hold anyone (§16.2)
 POSES = ('stand', 'sit', 'lie', 'kneel')
 WALK_MODES = ('walk', 'stair', 'ladder')
 ROLE_DISCIPLINES = ('ops', 'inst', 'mech', 'elec', 'chem', 'civil', 'hse', 'mgmt', 'security', 'transport', 'camp')
 AUTHORITIES = ('operate_screen', 'operate_local', 'request', 'approve', 'issue', 'accept', 'lock_electrical',
-               'lock_mechanical', 'lock_process', 'lock_instrument', 'remove_lock', 'stop_work', 'sample', 'drive')
+               'lock_mechanical', 'lock_process', 'lock_instrument', 'remove_lock', 'stop_work', 'sample', 'drive',
+               'operate_hart')      # (operate_hart: an op through a HART communicator, REALISM.md §2.13)
 PPE = ('helmet', 'boots', 'glasses', 'gloves', 'ear', 'harness', 'face_shield', 'apron', 'vest')
 WEEK = ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun')
 # who may make each permit action (§15.3): done and return are the acceptor's (or another with accept and the
@@ -35,7 +36,7 @@ PERMIT_TO = {'request': 1, 'approve': 2, 'issue': 4, 'accept': 5, 'done': 6, 're
 STATE_NAMES = ('none', 'requested', 'approved', 'isolated', 'issued', 'accepted', 'done', 'returned', 'deisolated',
                'closed', 'cancelled')
 STEP_KINDS = ('go', 'work', 'read', 'op', 'permit', 'lock', 'unlock', 'say', 'wait', 'call', 'meet', 'choose', 'ack',
-              'handover', 'remove_locks', 'ppe', 'stop', 'ride', 'sleep')
+              'handover', 'remove_locks', 'ppe', 'stop', 'ride', 'sleep', 'tool', 'hand')   # (tool, hand: §2.13)
 LATER = {}
 VEHICLE_KINDS = ('bus', 'pickup', 'suv')
 DRIVE_KINDS = ('stop', 'depot')     # the places drive ways join (§21.4)
@@ -219,6 +220,12 @@ class Staff:
         self.week = clock['week']
         self.check_speeds(d['speeds'])
         self.check_places(d['places'])
+        if b.tools_doc is not None:     # the tools carried (REALISM.md §2.3): kept at the places just checked
+            from ref.plant3d_hands import check_tools
+            b.tools = check_tools(b.tools_doc, self)
+        if m.hands or m.meters:         # their tools and modes name tools.json's, before the tasks name them
+            from ref.plant3d_hands import check_tool_refs
+            check_tool_refs(b, m)
         self.check_zones(d.get('zones', []))
         self.check_lifts(d.get('lifts', []))
         self.check_ways(d['ways'])
@@ -693,6 +700,9 @@ class Staff:
             ident(r['id'], f'{wr}.id')
             need(r['id'] not in self.routines, 'dup_id', f'{wr}: routine {r["id"]} twice')
             need(r['idle'] in self.tasks, 'bad_ref', f'{wr}.idle: no task {r["idle"]!r}')
+            # (an idle task isn't paused when a player takes the person: a hand action can't wait in one, §2.13)
+            need(not any('hand' in s for s in self.tasks[r['idle']]['steps']), 'bad_ref',
+                 f'{wr}.idle: an idle task has no hand step (REALISM.md §2.13)')
             slots = []
             for k, s in enumerate(lst(r['slots'], f'{wr}.slots', 0, 64)):
                 ws = f'{wr}.slots[{k}]'
@@ -785,7 +795,7 @@ class Staff:
             if 'unsafe' in s:           # a shortcut: an unsafe act while the step is current (§16.7)
                 need(s['unsafe'] is True, 'bad_value', f'{ws}.unsafe: true')
                 s = {k2: v for k2, v in s.items() if k2 != 'unsafe'}
-            kinds = [k for k in STEP_KINDS if k in s]
+            kinds = [k for k in STEP_KINDS if k in s and not (k == 'tool' and ('work' in s or 'hand' in s))]
             need(len(kinds) == 1, 'bad_kind', f'{ws}: exactly one of {STEP_KINDS}')
             k = kinds[0]
             x = s[k]
@@ -807,6 +817,38 @@ class Staff:
                             need(a in PPE, 'bad_value', f'{ws}.ppe: "role", "off" or items of {PPE}')
                         need(len(set(x)) == len(x), 'dup_id', f'{ws}.ppe')
                     need(locker, 'bad_ref', f'{ws}.ppe: PPE is put on at a locker (a go to one first)')
+            elif k == 'tool':           # REALISM.md §2.3, §2.13
+                keys(s, ('tool',), ('else',), ws)
+                tools = self.b.tools
+                need(tools is not None, 'bad_ref', f'{ws}.tool: the plant has no tools.json')
+                if x != 'off':
+                    for a in lst(x, f'{ws}.tool', 1, 12):
+                        need(a in tools['ix'], 'bad_ref', f'{ws}.tool: no tool {a!r} (or "off")')
+                    need(len(set(x)) == len(x), 'dup_id', f'{ws}.tool')
+            elif k == 'hand':           # REALISM.md §2.4, §2.13
+                keys(s, ('hand', 'kks'), ('tool', 'value', 'else', 'slip'), ws)
+                h = self.m.hand_keys.get((s['kks'], x)) if isinstance(s['kks'], str) and isinstance(x, str) else None
+                need(h is not None, 'bad_ref', f'{ws}: no hand action {x!r} on {s["kks"]!r}')
+                need(('tool' in s) == ('tools' in h), 'missing_key' if 'tools' in h else 'unknown_key',
+                     f'{ws}.tool: the tool it is done with (none for a bare-hand action)')
+                need('tool' not in s or s['tool'] in h['tools'], 'bad_value', f'{ws}.tool: one of {h.get("tools")}')
+                need(('value' in s) == ('input' in h), 'missing_key' if 'input' in h else 'unknown_key',
+                     f'{ws}.value: the quantity given, for an action with an input')
+                if 'value' in s:
+                    num(s['value'], f'{ws}.value', h['range'][0], h['range'][1])
+                if 'slip' in s:
+                    sl = s['slip']
+                    keys(sl, ('per_mille', 'set', 'text'), (), f'{ws}.slip')
+                    need(type(sl['per_mille']) is int and 1 <= sl['per_mille'] <= 1000, 'bad_number',
+                         f'{ws}.slip.per_mille: 1–1000')
+                    need(isinstance(sl['set'], dict) and sl['set'], 'bad_type', f'{ws}.slip.set')
+                    comp = {k2 for y in self.m.hands for k2 in list(y.get('set', {})) +
+                            ([y['input']] if 'input' in y else [])}
+                    for k2, v2 in sl['set'].items():
+                        need(k2 in comp, 'bad_ref', f'{ws}.slip.set.{k2}: not a component state (one a hand action '
+                                                    f'writes)')
+                        num(v2, f'{ws}.slip.set.{k2}')
+                    need(isinstance(sl['text'], str) and 1 <= len(sl['text']) <= 200, 'bad_type', f'{ws}.slip.text')
             elif k == 'stop':
                 keys(s, ('stop',), (), ws)
                 need(x == 'act', 'bad_value', f'{ws}.stop: "act" (the act the task was given for)')
@@ -817,8 +859,14 @@ class Staff:
                     if a in s:
                         ident(s[a], f'{ws}.{a}')
             elif k == 'read':
-                keys(s, ('read',), ('expect', 'tol', 'test'), ws)
-                need(isinstance(x, str) and x in self.m_show(), 'bad_ref', f'{ws}.read: {x!r} has no show binding')
+                keys(s, ('read',), ('expect', 'tol', 'test', 'via', 'else'), ws)
+                need('else' not in s or 'via' in s, 'unknown_key', f'{ws}.else: only a read through a meter fails '
+                                                                   f'(REALISM.md §2.13)')
+                if 'via' in s:          # through a meter (REALISM.md §2.5): a meter of its code
+                    mt = self.m.meter_ix.get(s['via']) if isinstance(s['via'], str) else None
+                    need(mt is not None and mt['kks'] == x, 'bad_ref', f'{ws}.via: no meter {s["via"]!r} of {x!r}')
+                else:
+                    need(isinstance(x, str) and x in self.m_show(), 'bad_ref', f'{ws}.read: {x!r} has no show binding')
                 if 'expect' in s:
                     lst(s['expect'], f'{ws}.expect', 2, 2)
                     num(s['expect'][0], f'{ws}.expect')
@@ -1143,7 +1191,11 @@ class Staff:
                 for rid in sorted(runs[tid]):
                     auth = self.roles[rid]['authority']
                     if 'op' in s:
-                        a = 'operate_screen' if s['op']['where'] == 'screen' else 'operate_local'
+                        a = {'screen': 'operate_screen', 'hart': 'operate_hart'}.get(s['op']['where'], 'operate_local')
+                        need(a in auth, 'authority', f'{ws}: role {rid} lacks {a}')
+                    if 'hand' in s:     # REALISM.md §2.13: a job's under its permit (accept), else operate_local
+                        h = self.m.hand_keys[(s['kks'], s['hand'])]
+                        a = 'accept' if h.get('work', True) else 'operate_local'
                         need(a in auth, 'authority', f'{ws}: role {rid} lacks {a}')
                     if 'permit' in s:
                         a = PERMIT_AUTH[s['permit']['action']]
@@ -2174,6 +2226,9 @@ class StaffRun:
         st = cur['st']
         for k in ('dest', 'waiting', 'wait_since', 'target', 'meet_since', 'seat', 'seen', 'pt', 'since'):
             st.pop(k, None)     # (seen: a resumed step is current again, §17.8)
+        if st.pop('hw', False):
+            from ref import plant3d_hands as H      # pre-empted: their hand action abandoned (REALISM.md §2.13)
+            H.abandon(self.e, p)
         self.unreserve(p)
         p.queue.append(cur)
         p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
@@ -2181,6 +2236,7 @@ class StaffRun:
 
     def finish(self, p, how):
         cur = p.cur
+        self.drop_hand(p)
         self.e.ev('task', p.id, cur['task'], how)
         self.release(cur)
         self.unreserve(p)
@@ -2224,8 +2280,16 @@ class StaffRun:
                 return
             self.advance(p, r)
 
+    def drop_hand(self, p):
+        """A task step left while its hand action is under way (a stop, a failure, a task ended): the action is
+        abandoned (REALISM.md §2.13)."""
+        if p.cur is not None and p.cur['st'].pop('hw', False):
+            from ref import plant3d_hands as H
+            H.abandon(self.e, p)
+
     def advance(self, p, r):
         cur = p.cur
+        self.drop_hand(p)
         steps = self.st.tasks[cur['task']]['steps']
         if r == 'next':
             nxt = cur['step'] + 1
@@ -2542,6 +2606,17 @@ class StaffRun:
                 x['left'] -= 1
                 x['last'] = n
             return 'next' if x['left'] <= 0 else 'wait'
+        if 'read' in s and 'via' in s:
+            from ref import plant3d_hands as H      # REALISM.md §2.5, §2.13: without the tool, to `else`
+            code = s['read']
+            if not H.can_read(e, p.id, s['via']):
+                e.ev('read', p.id, code, None, 'tool')
+                return 'fail'
+            v = H.shown(e, s['via'], e.prev)
+            ex = s.get('expect')
+            ok = ex is None or ex[0] <= v <= ex[1]
+            e.ev('read', p.id, code, v, 'ok' if ok else 'out_of_range')
+            return 'next'
         if 'read' in s:
             code = s['read']
             v = e.shown(code, e.prev)
@@ -2630,6 +2705,39 @@ class StaffRun:
             return 'next'
         if 'stop' in s:
             return self.stop_step(p, cur)
+        if 'hand' in s:                 # REALISM.md §2.13: the input for step 1, then its end
+            if x.get('hw'):
+                if p.result is None:
+                    return 'wait'
+                r, p.result = p.result, None
+                x['hw'] = False
+            else:
+                if not x.get('busy'):
+                    e.npc_queue.append(('hand', s['kks'], s['hand'], s.get('tool'), s.get('value'), p.id))
+                    x['busy'] = True
+                    p.result = None
+                    return 'wait'
+                if p.result is None:
+                    return 'wait'
+                r, p.result = p.result, None
+                x['busy'] = False
+                if r == 'start':
+                    x['hw'] = True
+                    return 'wait'
+            if r != 'done':
+                return 'fail'
+            if 'slip' in s:
+                from ref import plant3d_hands as H
+                H.slip_draw(e, p, cur, s)
+            return 'next'
+        if 'tool' in s:                 # REALISM.md §2.13: in step 9, as ppe; the first refusal to `else`
+            from ref import plant3d_hands as H
+            items = list(e.carried.get(p.id, [])) if s['tool'] == 'off' else \
+                [t for t in s['tool'] if t not in e.carried.get(p.id, [])]
+            for t in items:
+                if H.tool(e, t, p.id, 0 if s['tool'] == 'off' else 1, True) != 'done':
+                    return 'fail'
+            return 'next'
         raise AssertionError(s)
 
     def sleep_until(self, p, u):
@@ -3165,9 +3273,29 @@ class StaffRun:
                         x['left'] -= 1
                     x['last'] = n
                 r = 'next' if x['left'] <= 0 else 'wait'
+            elif 'read' in s and 'via' in s:
+                # through a meter (REALISM.md §2.5, §2.13): the input names it; without the tool the step waits
+                from ref import plant3d_hands as H
+                for k, item in enumerate(tin):
+                    if not used[k] and item[0] == 'read' and item[1] == s['read'] and is_num(item[2]) \
+                            and len(item) > 3 and item[3] == s['via']:
+                        used[k] = True
+                        if not H.can_read(e, p.id, s['via']):
+                            e.ev('read', p.id, s['read'], item[2], 'tool')
+                            continue
+                        v = H.shown(e, s['via'], e.prev)
+                        ex = s.get('expect')
+                        if abs(item[2] - v) > s.get('tol', 0):
+                            how = 'misread'
+                        else:
+                            how = 'ok' if ex is None or ex[0] <= v <= ex[1] else 'out_of_range'
+                        e.ev('read', p.id, s['read'], item[2], how)
+                        r = 'next'
+                        break
             elif 'read' in s:
                 for k, item in enumerate(tin):
-                    if not used[k] and item[0] == 'read' and item[1] == s['read'] and is_num(item[2]):
+                    if not used[k] and item[0] == 'read' and item[1] == s['read'] and is_num(item[2]) \
+                            and len(item) == 3:
                         used[k] = True
                         v = e.shown(s['read'], e.prev)
                         ex = s.get('expect')
@@ -3259,6 +3387,20 @@ class StaffRun:
             elif 'ppe' in s:
                 if (not p.worn) if s['ppe'] == 'off' else set(self.ppe_items(p, s['ppe'])) <= p.worn:
                     r = 'next'
+            elif 'tool' in s and 'hand' not in s:      # REALISM.md §2.13: done once they carry them (off: none)
+                have = e.carried.get(p.id, [])
+                if (not have) if s['tool'] == 'off' else all(t in have for t in s['tool']):
+                    r = 'next'
+            elif 'hand' in s:           # their done hand action (REALISM.md §2.13), or one done earlier that holds
+                from ref import plant3d_hands as H
+                j = next((j for j, y in enumerate(mine) if j not in took and y[1] == 'hand' and y[2] == s['kks']
+                          and y[3] == s['hand'] and y[5] == p.id and y[6] == 'done'), None)
+                if j is not None:
+                    took.add(j)
+                    r = 'next'
+                elif self.early_done(p, cur, x, slot, lambda q: q[0] == 'hand' and q[2] == s['kks']
+                                     and q[3] == s['hand'] and H.hand_holds(e, s['kks'], s['hand'], s.get('value'))):
+                    r = 'next'
             elif 'stop' in s:
                 if cur['act'] is None or not self.ongoing(cur['act']):
                     r = 'next'
@@ -3306,9 +3448,12 @@ class StaffRun:
         e = self.e
         early = self.early_of(slot)
         for j, y in enumerate(mine):
-            if j in took or y[1] not in ('op', 'permit', 'lock', 'unlock'):
+            if j in took or y[1] not in ('op', 'permit', 'lock', 'unlock', 'hand'):
                 continue
-            if y[1] == 'op':
+            if y[1] == 'hand':          # (REALISM.md §2.13)
+                if y[6] == 'done' and y[5] == p.id:
+                    early.append(['hand', y[0], y[2], y[3]])
+            elif y[1] == 'op':
                 if len(y) > 7 and y[4] == 'done' and y[7] == p.id:
                     o = e.m.op_keys.get((y[2], y[3], None))
                     early.append(['op', y[0], y[2], y[3], y[6], o.get('machine') if o else None])
