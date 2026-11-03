@@ -64,6 +64,7 @@ var _bob_phase := 0.0
 var _move := Vector2.ZERO
 ## The lowest the feet have been (tests: nobody falls through)
 var lowest_y := INF
+var driving := false                    # at a bus's wheel (app/bus_drive.gd): no fly, no doors pressed
 ## Off while the map or the settings have the controls (they read the same actions)
 var input_enabled := true              # the lowest the feet have been (tests: nobody falls through)
 
@@ -319,6 +320,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		look(event.relative.x * mouse_sensitivity, event.relative.y * mouse_sensitivity)
+	elif driving:
+		return                          # (at a bus's wheel: its keys are app/bus_drive.gd's, the look stays)
 	elif event.is_action_pressed("run") and run_toggle:
 		_run_latched = not _run_latched
 		_latched_moved = false

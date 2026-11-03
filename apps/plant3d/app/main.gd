@@ -10,7 +10,9 @@
 ##                           `screens` stays in the control room with its screens open, showing each in turn for 10 s
 ##                           (the screens' cost, ui/mimic.gd); `gate` (the shift change at the plant gate, milestone
 ##                           S4d) loops the gate road's walkway with the crews (as crews=1) from 05:40, the clock run
-##                           there before the measurement starts; `drawings` opens each generated P&ID in turn for 10 s,
+##                           there before the measurement starts; `drive` (the driver who steers, PLANT3D §21.16)
+##                           plays the day's bus driver among the crews, the clock run to 05:30, and the app drives the
+##                           runs itself (app/bus_drive.gd pilot) from the cab; `drawings` opens each generated P&ID in turn for 10 s,
 ##                           panning and zooming it (ui/drawing_view.gd: the DRAWINGS lines); drawing_shots=1 saves a
 ##                           picture of each half way
 ##   walk=workshop           the Workshop walk (app/workshop_walk.gd, docs/plant3d/WORKSHOP.md §8): 3 minutes in the
@@ -112,6 +114,7 @@ var last_us := 0
 var t_walk := 0.0
 var walk_pipelines := -1   # pipelines compiled when the walk's measured part began (PIPELINE lines)
 var walk_seconds := 600.0
+var drive_walk := false             # walk=drive: the app drives the bus runs (app/bus_drive.gd pilot)
 var _phases_from := 0                # the step from which step 9's phases are timed (the gate walk with probe=1)
 var first_frame_ms := -1
 ## The first walkable frame was drawn: the plant, the player, the map, the HUD and the UI are all there (a script that
@@ -263,8 +266,8 @@ func _ready() -> void:
 	ui = PlantUi.new()
 	ui.name = "ui"
 	add_child(ui)
-	if opts.get("walk", "") == "gate":
-		opts["crews"] = "1"       # the gate walk is the crews' shift change (PLANT3D §21.10)
+	if opts.get("walk", "") in ["gate", "drive"]:
+		opts["crews"] = "1"       # the gate walk is the crews' shift change (PLANT3D §21.10); the drive walk drives them
 	ui.setup(self, opts.get("scenario", "shift_cold" if opts.has("crews") else "cold_iron"))
 	ui.add_settings(hud.extra)
 	weather.attach(ui)
@@ -275,7 +278,9 @@ func _ready() -> void:
 	_launch("ui")
 	if opts.has("procedure") and ui.clock != null and ui.model.procedures.has(opts.procedure):
 		ui.start_procedure(opts.procedure, null, false)
-	if opts.has("crews") and ui.clock != null and ui.clock.engine._sm != null:
+	if opts.get("walk", "") == "drive" and ui.clock != null and ui.clock.engine._sm != null:
+		ui.take_role(_day_driver())     # the bus's driver on duty (PLANT3D §21.16)
+	elif opts.has("crews") and ui.clock != null and ui.clock.engine._sm != null:
 		ui.take_role("")   # free mode: the crews work round the walker, nobody's role taken
 	for p in String(opts.get("panels", "")).split(",", false):
 		ui.open_panel(p)
@@ -601,6 +606,14 @@ func _start_walk() -> void:
 	var route: Array = Routes.frames(plant) if opts.walk == "frames" else (Routes.camp(plant) if opts.walk == "camp" else (Routes.wtp_loop() if opts.walk == "wtp" else (Routes.hoist(plant) if opts.walk == "hoist" else (Routes.lift(plant) if opts.walk == "lift" else (Routes.gate(plant) if opts.walk == "gate" else Routes.climb(plant))))))
 	if opts.walk == "gate":
 		await _gate_clock()
+	if opts.walk == "drive":
+		ui.bus_drive.want_wheel = false     # (the engine drives while the clock runs to the walk's start)
+		await _gate_clock(DRIVE_AT)
+		ui.bus_drive.want_wheel = true
+		ui.bus_drive.pilot = true
+		drive_walk = true
+		last_us = Time.get_ticks_usec()
+		return
 	auto = Autopilot.new()
 	auto.ui = ui                    # a lift's controls (walk=lift)
 	auto.skip_stuck = true
@@ -656,13 +669,14 @@ func _drawings_tick(delta: float) -> void:
 ## 100 steps a frame, before the measured frames begin; the clock then runs at 1x. A scenario that starts after
 ## GATE_AT is measured from its start (the log's GATE line says the clock).
 const GATE_AT := 5 * 3600 + 40 * 60
-func _gate_clock() -> void:
+const DRIVE_AT := 5 * 3600 + 30 * 60    # the drive walk's: before the 05:40 run's driver is taken
+func _gate_clock(at := GATE_AT) -> void:
 	var e = ui.clock.engine if ui.clock != null else null
 	if e == null or e._sm == null:
 		_say("GATE no crews in this scenario")
 		return
 	var t0 := Time.get_ticks_msec()
-	while posmod(e.clock(), 864000) < GATE_AT * 10 and e.step_no < 20000:   # (tenths of a second; the day left out)
+	while posmod(e.clock(), 864000) < at * 10 and e.step_no < 20000:   # (tenths of a second; the day left out)
 		ui.clock.run_steps(100)
 		await get_tree().process_frame      # (a frame between: never seconds of a held main thread on a phone)
 	ui.clock.set_speed(1)        # (normal: 1x)
@@ -674,6 +688,17 @@ func _gate_clock() -> void:
 		e._staff_prof_on = true
 		_phases_from = e.step_no
 	_say("GATE clock %s after %d steps in %d ms" % [ui.clock_text(), e.step_no, Time.get_ticks_msec() - t0])
+
+## The person the drive walk plays: the first of the first vehicle's driver role on duty at the start.
+func _day_driver() -> String:
+	var e = ui.clock.engine
+	var sm = e._sm
+	if sm.vehicles.is_empty():
+		return ""
+	for pi in sm.people.size():
+		if sm.people[pi]["role"] == sm.vehicles[0]["driver"] and e.sp_on[pi]:
+			return String(sm.people[pi]["id"])
+	return ""
 
 ## mp=CODE@HOST[:PORT]: the walk in a LAN session (MP2's measurement on a phone; the host is the laptop's).
 func _mp_join() -> void:
@@ -747,7 +772,7 @@ func _process(delta: float) -> void:
 	if ff != _walk_ff and opts.has("walk"):
 		_walk_ff = ff
 		_say("SPEED %s at %.1f s, uptime %d ms" % ["fast-forward" if ff else "normal", t_walk, WalkFrames.uptime_ms()])
-	if not screens_walk and not drawings_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
+	if not screens_walk and not drawings_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
 		return
 	t_walk += delta
 	if drawings_walk:
@@ -817,6 +842,13 @@ func _finish() -> void:
 				parts.append("%s=%.1f" % [e._sm.PROF_NAMES[k], float(e._staff_prof[k]) / n])
 			_say("STAFF_PHASES steps=%d %s (µs a step) runs=%d due=%d acts=%d" % [n, " ".join(parts),
 					e._staff_prof_n["runs"], e._staff_prof_n["due"], e._staff_prof_n["acts"]])
+	if drive_walk:                      # the runs the walk drove (PLANT3D §21.16)
+		for r in ui.bus_drive.log:
+			_say("DRIVE %s stops=%s off_route_s=%.0f near_misses=%d" % [r["vehicle"], str(r["stops"]), r["off_route_s"],
+					r["near_misses"]])
+		var bd = ui.bus_drive
+		_say("DRIVE_END at %s speed %.1f blocked %d (last by %s) clock %s" % [str(bd.xf.origin), bd.speed, bd.blocked,
+				bd.blocked_by, ui.clock_text()])
 	if drawings_walk:
 		var dv = ui.drawing_view
 		var opens: Array = dv.open_ms.values()

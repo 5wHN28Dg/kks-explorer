@@ -122,7 +122,8 @@ func payload() -> Dictionary:
 		"clock": {"speed": _speed(), "ff_want": ui.clock.ff_want, "pause_on_hold": ui.clock.pause_on_hold},
 		"procedure": pid, "tracker": td, "run": run,
 		"ui": {"results": ui.results.duplicate(true), "pending": ui._pending.duplicate(true),
-				"task_given": ui.task_given.duplicate()},
+				"task_given": ui.task_given.duplicate(),
+				"drive_log": ui.bus_drive.log.duplicate(true) if ui.bus_drive != null else []},
 		"player": {"pos": pl.global_position, "yaw": pl.rotation.y, "pitch": pl.pivot.rotation.x,
 				"fly": pl.mode == pl.Mode.FLY},
 	}
@@ -174,7 +175,9 @@ func check(p: Dictionary) -> String:
 					or run["tracker"]["index"] >= ui.model.procedures[run["procedure"]].get("steps", []).size():
 				return "its debrief's procedure is damaged"
 	var u: Dictionary = p["ui"]
-	if u.size() != 3 or typeof(u.get("results")) != TYPE_DICTIONARY or typeof(u.get("pending")) != TYPE_ARRAY \
+	# (a save before the driver steered, §21.16, has no drive_log)
+	if not (u.size() == 3 or u.size() == 4 and typeof(u.get("drive_log")) == TYPE_ARRAY) \
+			or typeof(u.get("results")) != TYPE_DICTIONARY or typeof(u.get("pending")) != TYPE_ARRAY \
 			or typeof(u.get("task_given")) != TYPE_DICTIONARY or not _ui_contents(u):
 		return "its panels' state is damaged"
 	var pl: Dictionary = p["player"]
@@ -316,7 +319,7 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 				"permit": [4], "lock": [4], "unlock": [4], "remove_lock": [5, 6], "role": [2], "release": [1],
 				"task_ack": [1], "arrive": [2], "leave": [2], "read": [3, 4], "say": [3], "pick": [2], "call": [4],
 				"jump": [2], "ppe": [3], "zone": [3], "stop": [2], "board": [3], "alight": [3],
-				"get_on": [2], "weather": [2], "tool": [4], "hand": [6]}
+				"get_on": [2], "drive": [3, 4], "weather": [2], "tool": [4], "hand": [6]}
 		for q0 in d["queue"]:
 			var q = q0
 			# a session run's inputs end with their slot (§17.13): looked at without it
@@ -525,6 +528,16 @@ static func _ui_contents(u: Dictionary) -> bool:
 	for key in u["task_given"]:         # "step|task" -> the step it was given (the debrief's role tab)
 		if typeof(key) != TYPE_STRING or typeof(u["task_given"][key]) != TYPE_INT:
 			return false
+	for r in u.get("drive_log", []):    # each bus run the trainee drove (app/bus_drive.gd log)
+		if typeof(r) != TYPE_DICTIONARY or r.size() != 5 or typeof(r.get("vehicle")) != TYPE_STRING \
+				or typeof(r.get("dep")) != TYPE_INT or typeof(r.get("stops")) != TYPE_ARRAY \
+				or typeof(r.get("off_route_s")) != TYPE_FLOAT or not is_finite(r["off_route_s"]) \
+				or typeof(r.get("near_misses")) != TYPE_INT:
+			return false
+		for x in r["stops"]:
+			if typeof(x) != TYPE_ARRAY or x.size() != 3 or typeof(x[0]) != TYPE_STRING \
+					or not x[1] in ["arrive", "passed", "stand"] or not typeof(x[2]) in [TYPE_NIL, TYPE_INT]:
+				return false
 	return true
 
 
@@ -541,6 +554,8 @@ func restore(p: Dictionary) -> void:
 	ui.results = p["ui"]["results"]
 	ui._pending = p["ui"]["pending"]
 	ui.task_given = p["ui"]["task_given"]
+	if ui.bus_drive != null:
+		ui.bus_drive.log = p["ui"].get("drive_log", [])
 	ui.permits.waiting_from(e)
 	if p["procedure"] != "":
 		ui.start_procedure(p["procedure"], null, false)

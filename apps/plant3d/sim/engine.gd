@@ -716,6 +716,12 @@ func get_on(vehicle, slot = null) -> void:
 	_q(["get_on", vehicle], slot)
 
 
+## The player's person, a vehicle's driver, drives it (§21.16): "wheel", "stop" at a place, "go" or "auto".
+func drive(vehicle, action, place = null, slot = null) -> void:
+	_q(["drive", vehicle, action, place] if typeof(action) == TYPE_STRING and action == "stop"
+			else ["drive", vehicle, action], slot)
+
+
 func arrive(place, slot = null) -> void:
 	_q(["arrive", place], slot)
 
@@ -923,6 +929,8 @@ func apply_input(item: Array) -> void:
 				remove_lock(item[2], item[3], item[4], item[5], null, false, slot)
 		"role", "arrive", "leave", "pick", "jump", "get_on":
 			_q([item[1], item[2]], slot)
+		"drive":
+			drive(item[2], item[3], item[4] if item.size() > 4 else null, slot)
 		"release", "task_ack":
 			_q([item[1]], slot)
 		"read", "say", "ppe", "zone":
@@ -1865,7 +1873,7 @@ func _step() -> void:
 			continue        # (a session run's input: a single-player run has no slots)
 		if kind == "role" or kind == "task_ack" or kind == "arrive" or kind == "leave" or kind == "read" \
 				or kind == "say" or kind == "pick" or kind == "call" or kind == "jump" or kind == "ppe" \
-				or kind == "zone" or kind == "stop" or kind == "release" or kind == "get_on":
+				or kind == "zone" or kind == "stop" or kind == "release" or kind == "get_on" or kind == "drive":
 			if _sm != null:
 				_sm.t_input(self, item, slot)
 			elif kind == "role":
@@ -2490,8 +2498,11 @@ func _digest_staff():
 			for rd in vh["riders"]:
 				rp.append(rd[0])
 				rt.append(rd[1])
-			vs.append([vh["at"], vh["leg"], vh["run"], vh["dep"], vh["k"], vh["until"], vh["driver"], rp, rt,
-					vh["floor"], vh["done"]])
+			var one := [vh["at"], vh["leg"], vh["run"], vh["dep"], vh["k"], vh["until"], vh["driver"], rp, rt,
+					vh["floor"], vh["done"]]
+			if vh.has("wheel"):         # steered (§21.16)
+				one.append([vh["wheel"], vh["from"]])
+			vs.append(one)
 		tree.append(vs)
 		tree.append(sp_aboard)
 		tree.append(sp_offday)

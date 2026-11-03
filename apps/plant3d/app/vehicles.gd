@@ -9,12 +9,14 @@
 extends Node3D
 
 const Cost = preload("res://app/script_cost.gd")
+const Plant = preload("res://app/plant.gd")
 
 const LANE := 1.8                 # m right of the road's middle line: the right-hand lane
 const LANE_IN := 10.0             # m over which the lane is taken leaving the parked place (and left coming back)
 const MAP_LAYER := 2
 const SEAT := Vector3(0.7, 0.4, -4.0)    # the walker's feet at a front seat (the piece's frame: Godot's, facing -Z): the
 								  # eye (1.65 m over them) at the windows' height
+const DRIVER_SEAT := Vector3(-0.7, 0.4, -4.6)   # the driver's (app/bus_drive.gd works it out from the bus's size)
 const MAP_COLOUR := Color(0.95, 0.78, 0.2)
 
 var ui                            # ui/plant_ui.gd
@@ -78,8 +80,30 @@ func setup(u, manifest: Dictionary, plant: Node) -> void:
 		sq.ignore_occlusion_culling = true
 		add_child(sq)
 		vehicles.append({"id": String(mv["id"]), "vi": -1, "body": body, "home": -1, "parked": parked, "roads": roads,
-				"square": sq, "xf": Transform3D(), "last": [], "stand_key": "", "stand_xf": parked})
+				"square": sq, "xf": Transform3D(), "last": [], "stand_key": "", "stand_xf": parked, "size": measure(body)})
 	snap()
+
+
+## A vehicle's size from its meshes in its body's frame (-Z forward): half its width, its front and back, a wheelbase
+## and the driver's seat (the walker's feet; left of the middle, right-hand traffic). {} for none.
+static func measure(body: Node3D) -> Dictionary:
+	var box := AABB()
+	var first := true
+	for m in body.find_children("*", "MeshInstance3D", true, false):
+		if (m as MeshInstance3D).mesh == null:
+			continue
+		var t := (m as Node3D).transform
+		var q := (m as Node).get_parent()
+		while q != null and q != body and q is Node3D:
+			t = (q as Node3D).transform * t
+			q = q.get_parent()
+		var b: AABB = t * (m as MeshInstance3D).get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+	if first or box.size.z < 2.0:
+		return {}
+	return {"half_w": box.size.x / 2.0, "front": box.position.z, "back": box.end.z, "wheelbase": box.size.z * 0.55,
+			"seat": Vector3(box.position.x + box.size.x * 0.25, box.position.y + 0.4, box.position.z + 1.3)}
 
 
 ## n's transform in the plant's frame (its parents' up to the plant node put together).
@@ -127,7 +151,10 @@ func snap() -> void:
 	release()               # (the run puts the walker where it belongs: a ride seen again from the engine next frame)
 	var e = ui.clock.engine if ui != null and ui.clock != null else null
 	_bind(e._sm if e != null else null)
+	if "bus_drive" in ui and ui.bus_drive != null:
+		ui.bus_drive.reset()            # (a steered bus: its driver takes it again from where the run has it)
 	for V in vehicles:
+		V["xf"] = Transform3D()         # (not where it was drawn before: pose() falls back to the run's place)
 		var xf := pose(V, 0.0)
 		_put(V, xf, true)
 
@@ -138,6 +165,19 @@ func pose(V: Dictionary, f: float) -> Transform3D:
 	if e == null or V["vi"] == -1 or e.st_veh.size() <= V["vi"]:
 		return V["parked"]
 	var vh: Dictionary = e.st_veh[V["vi"]]
+	if vh.has("wheel"):                 # steered (§21.16): where its driver has it
+		var d = ui.bus_drive.pose_of(V["vi"]) if "bus_drive" in ui and ui.bus_drive != null else null
+		if d != null:
+			return d
+		var o = _driven_by_other(V, vh)
+		if o != null:
+			return o
+		if V["xf"] != Transform3D():
+			return V["xf"]              # (where it was last drawn)
+		# (nothing drawn yet: a load or a join while it is steered) standing where it stands, or at the place it came
+		# from on the road
+		var at: int = vh["at"] if vh["at"] != -1 else int(vh.get("from", V["home"]))
+		return V["parked"] if at == V["home"] else _standing(V, at)
 	var leg: Array = vh["leg"]
 	if leg.is_empty():
 		var at: int = vh["at"]
@@ -157,6 +197,78 @@ func pose(V: Dictionary, f: float) -> Transform3D:
 	if line.is_empty():
 		return V["xf"]
 	return along(line, k, leg[0] == V["home"], leg[1] == V["home"], V["parked"])
+
+
+## A bus another player of the session steers (§21.16, MULTIPLAYER.md §6.3): from their `pos` (the driver's seat,
+## flagged as driving this vehicle), the seat's offset taken off; null without one.
+func _driven_by_other(V: Dictionary, vh: Dictionary):
+	var s = ui.session if "session" in ui else null
+	if s == null or not s.has_method("driving_of"):
+		return null
+	var at: Array = s.driving_of(int(vh["wheel"]), int(V["vi"]))
+	if at.is_empty():
+		return null
+	var basis := Basis(Vector3.UP, float(at[1]))
+	var seat: Vector3 = V["size"].get("seat", DRIVER_SEAT)
+	return Transform3D(basis, global_transform.affine_inverse() * (at[0] as Vector3) - basis * seat)
+
+
+## A place's position in this node's frame (the plant's: x east, -z north).
+func place_xz(i: int) -> Vector3:
+	var at: Array = ui.clock.engine._sm.places[i]["at"]
+	return Plant.g(float(at[0]), float(at[1]), float(at[2]))
+
+
+## The roads the steered vehicle k's run goes on: from the place it came from to its target, then the run's later
+## stops, then home (§21.16: off route is more than 15 m from them).
+func route_lines(V: Dictionary, k: int) -> Array:
+	var e = ui.clock.engine
+	var sm = e._sm
+	var vh: Dictionary = e.st_veh[k]
+	if vh["run"] == -1:
+		return []
+	var stops: PackedInt32Array = sm.vehicles[k]["runs"][vh["run"]]["stops"]
+	var seq := PackedInt32Array()
+	seq.append(int(vh.get("from", vh["at"])) if vh.get("from", vh["at"]) != -1 else int(vh["to"]))
+	seq.append(int(vh["to"]))
+	for j in range(int(vh["k"]) + 1, stops.size()):
+		seq.append(stops[j])
+	seq.append(int(sm.vehicles[k]["home"]))
+	var out := []
+	for j in range(1, seq.size()):
+		var a := seq[j - 1]
+		while a != seq[j] and a != -1:
+			var b: int = sm.drive_hop(a, seq[j])
+			if b == -1:
+				break
+			var line := _line(V, a, b)
+			if not line.is_empty():
+				out.append(line)
+			a = b
+	return out
+
+
+## The right-hand lane (LANE right of the roads' middle) from place a to place b over the drive ways, one line.
+func lane_path(V: Dictionary, a: int, b: int) -> PackedVector3Array:
+	var sm = ui.clock.engine._sm
+	var mid := PackedVector3Array()
+	while a != b and a != -1:
+		var c: int = sm.drive_hop(a, b)
+		var line := _line(V, a, c)
+		for i in line.size():
+			if mid.is_empty() or mid[mid.size() - 1].distance_to(line[i]) > 0.05:
+				mid.append(line[i])
+		a = c
+	var out := PackedVector3Array()
+	for i in mid.size():
+		var d := (mid[mini(i + 1, mid.size() - 1)] - mid[maxi(i - 1, 0)])
+		d.y = 0.0
+		if d.length() < 1e-6:
+			out.append(mid[i])
+			continue
+		d = d.normalized()
+		out.append(mid[i] + Vector3(-d.z, 0.0, d.x) * LANE)
+	return out
 
 
 ## The road from place a to place b (reversed when only b to a is there), empty for none.
@@ -328,7 +440,10 @@ func _ride(e) -> void:
 		var lv := Input.get_vector("look_left", "look_right", "look_up", "look_down")
 		if lv.length() > 0.0:
 			p.look(lv.x * p.LOOK_RATE * get_physics_process_delta_time(), lv.y * p.LOOK_RATE * get_physics_process_delta_time())
-	p.global_position = global_transform * (xf * SEAT)
+	var seat := SEAT
+	if "bus_drive" in ui and ui.bus_drive != null and e.st_veh[vi]["driver"] == me:
+		seat = ui.bus_drive.seat        # the driver at the wheel (§21.16)
+	p.global_position = global_transform * (xf * seat)
 
 
 ## The walker let go from a ride without moving it (`moved`: already put down): its collisions and physics back, the

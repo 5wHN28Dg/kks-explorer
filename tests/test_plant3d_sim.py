@@ -886,6 +886,45 @@ class GdscriptWaits(unittest.TestCase):
 
 
 @unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptReleasedDriver(unittest.TestCase):
+    """A session's player who plays a bus's driver, released aboard (PLANT3D.md §17.13, §21.4; found by S4e's steered
+    vectors): the task taken from them when the run began, counted by the player's rule until then, goes on as an
+    NPC's at the depot, a step a turn, as the reference counts it (the app's engine counted every step since the
+    player's last at once and ended it on arrival). A run of its own, not in the vectors."""
+
+    def test_released_driver_works_on(self):
+        camp = G.with_camp(G.mini_staff()['staff.json'])
+        sc = copy.deepcopy(G.mini_staff()['scenarios/s1.json'])
+        sc['start'] = {'day': 1, 'time': '05:30'}
+        pl = G.Session([G.Trainee(slot=0), G.Trainee(slot=1, quiet=True)], extra=[[1, 'role', 'drv1', 0]],
+                       when=[(lambda e: e.step_no > 110 and e.staff.veh[0]['leg'] is not None, ('release', 0))])
+        e = P.Recorder(G.check(G.staff_files(sc, camp)), 's1', True)
+        states, digests = [e.snapshot()], [e.digest()]
+        while e.step_no < 400:
+            pl(e)
+            e.step()
+            if e.step_no % 20 == 0:
+                states.append(e.snapshot())
+            if e.step_no % G.DIGEST_EVERY == 0:
+                digests.append(e.digest())
+        self.assertTrue([x for x in e.events if x[1] == 'release' and x[2] == 'drv1'])
+        with open(VECTORS2, encoding='utf-8') as f:
+            V2 = json.load(f)
+        run = {'why': 'released driver', 'scenario': sc, 'staff': camp, 'inputs': e.inputs, 'until': 400,
+               'every': 20, 'states': states, 'events': e.events, 'digests': digests, 'session': True}
+        V2 = {'about': V2['about'], 'valid': V2['valid'], 'reject': [], 'steps': [],
+              'staff': dict(V2['staff'], runs=[run], reject=[])}
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'released.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(V2, f)
+            r = godot('run_vectors.gd', '--only=v2', f'--vectors2={path}', timeout=600)
+        no_errors(self, r)
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+        self.assertIn(' failed=0', r.stdout, r.stdout[-3000:])
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
 class GdscriptEngineInterpreter(unittest.TestCase):
     """The engine steps with a straight-line GDScript program generated from the model (engine.gd _gen_fast), which
     every other test here runs. Its interpreter (engine.gd _run: step 0, faults' `when` nodes, and every step when the
