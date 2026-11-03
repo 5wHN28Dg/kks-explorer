@@ -152,7 +152,8 @@ FIELD = {'round_gt': 'field_gt', 'round_st': 'field_st', 'round_cw': 'field_cw'}
 # Faults of the scenario that make a corrective work (P1's works): the supervisor asks for its permit.
 FAULT_WORK = {'cw_a_motor': 'wo_cw_a_motor', 'cw_b_motor': 'wo_cw_b_motor', 'cw_c_motor': 'wo_cw_c_motor',
               'ccw_a_motor': 'wo_ccw_a_motor', 'ccw_b_motor': 'wo_ccw_b_motor', 'ct_fan3_vib': 'wo_ct_fan3',
-              'cw_a_ls': 'wo_cw_a_ls', 'cw_b_ls': 'wo_cw_b_ls', 'cw_c_ls': 'wo_cw_c_ls'}
+              'cw_a_ls': 'wo_cw_a_ls', 'cw_b_ls': 'wo_cw_b_ls', 'cw_c_ls': 'wo_cw_c_ls',
+              train_hands.FAULT['id']: train_hands.WORK[0]}      # (milestone HW2: the job with a hidden cause)
 # The maintenance supervisors' week (milestone S2): the preventive and calibration works each asks a permit for in
 # the morning (07:40), by weekday (day 1 of the clock is a Monday). A work whose isolation another work holds that day
 # is left for its next day.

@@ -165,8 +165,11 @@ CP2 = '30MAG10CP002'
 def job_steps():
     """The technician's own job (a task an NPC does, or a player playing the technician follows): the tools from the
     toolbox, the permit accepted at the transmitter, the cover off, the communicator and the multimeter on, both read,
-    the terminals tightened and the sensor trimmed (the NPC knows the reference: a trim to no offset), everything off
-    and the cover on, the permit done and handed back, the tools put back."""
+    the terminals tightened and the trim set to no offset (the NPC's check of it), everything off, the display read
+    and the cover on, the permit done and handed back, the tools put back.
+    A need reads the values as the step before left them and a meter shows them so (REALISM.md §2.13), and a node
+    made from a state follows that state's write a step later: so a minute's work (the readings settling) stands
+    between the connections and their readings, and the cover waits until the terminals are clear."""
     def hand(action, tool=None, **kw):
         s = {'hand': action, 'kks': CP2}
         if tool:
@@ -176,13 +179,13 @@ def job_steps():
     return [
         {'go': TOOLBOX}, {'tool': ['sd_term', 'dmm', 'hart']},
         {'go': {'kks': CP2}}, {'permit': {'work': '$', 'action': 'accept'}},
-        hand('open_cover'), hand('connect_hart', 'hart'), {'read': CP2, 'via': 'cpt2_pv'},
-        {'read': CP2, 'via': 'cpt2_ao'}, hand('connect_dmm', 'dmm'), {'read': CP2, 'via': 'cpt2_dmm'},
+        hand('open_cover'), hand('connect_hart', 'hart'), hand('connect_dmm', 'dmm'), {'work': 1},
+        {'read': CP2, 'via': 'cpt2_pv'}, {'read': CP2, 'via': 'cpt2_ao'}, {'read': CP2, 'via': 'cpt2_dmm'},
         hand('tighten_terms', 'sd_term', slip={'per_mille': 30, 'set': {'cpt2_terminal_block_loose': 1},
                                                 'text': 'Left a signal terminal\'s screw short of tight'}),
-        {'op': {'kks': CP2, 'do': 'set', 'where': 'hart', 'value': 0}},
+        {'op': {'kks': CP2, 'do': 'set', 'where': 'hart', 'value': 0}}, {'work': 1},
         {'read': CP2, 'via': 'cpt2_dmm'}, hand('disconnect_dmm', 'dmm'), hand('disconnect_hart', 'hart'),
-        hand('close_cover'), {'permit': {'work': '$', 'action': 'done'}},
+        {'wait': {'until': 'cpt2_clear', 'minutes': 1}}, {'read': CP2}, hand('close_cover'), {'permit': {'work': '$', 'action': 'done'}},
         {'permit': {'work': '$', 'action': 'return'}}, {'say': 'cal_done', 'to': 'shift_sup'},
         {'go': TOOLBOX}, {'tool': 'off'}]
 

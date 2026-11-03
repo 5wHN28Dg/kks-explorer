@@ -2992,6 +2992,12 @@ def day_forks():
         # the trainee as an I&C technician, an HSE officer, a contractor who takes the shortcut
         ('npc_cal', Trainee(extra=[[6000, 'fault', 'cond_p2_drift']]), 33000,
          {'permits': {'wo_cond_p2_cal': 9}, 'repaired': ['cond_p2_drift'], 'end': {'cond_p2_drift': 0}}),
+        # milestone HW2 (REALISM.md §2.16): transmitter 2 reads low, its cause named by the instructor; the I&C
+        # technician's job by hand (tools from the toolbox, the cover, the communicator and the multimeter read, the
+        # terminals tightened, the trim, the cover back, the tools back) puts it right
+        ('npc_hands', Trainee(extra=[[13000, 'fault', 'cond_p2_low', 'loose']]), 43000,
+         {'permits': {'wo_cond_p2_fix': 9}, 'repaired': ['cond_p2_low'],
+          'end': {'cond_p2_low': 0, 'cpt2_terminal_block_loose': 0, 'cpt2_cover_back_off': 0}}),
         ('npc_ls', Trainee(extra=[[13000, 'fault', 'cw_b_ls']]), 43000,
          {'permits': {'wo_cw_b_ls': 9}, 'repaired': ['cw_b_ls'], 'end': {'cw_b_ls_fault': 0}}),
         ('trainee_ic', Trainee(extra=[[1, 'role', 'ic1'], [6000, 'fault', 'cond_p2_drift']]), 33000,
