@@ -81,6 +81,14 @@ def data():
                           'sources': [R3051]},
         },
         'assembly': ASSEMBLY,
+        # the views (WORKSHOP.md §4.7): the X-ray takes the shells round the insides; the cutaway opens a quarter on
+        # the display side and the front, through the housing's axis and the sensor module's (the manual's cutaway
+        # figures show the module and the electronics this way); the transmitter runs taken apart (on the bench the
+        # loop is wired to the terminal block wherever it lies)
+        'views': {'xray_all': ['manifold', 'process_flange', 'sensor_module', 'housing', 'cover_front',
+                               'cover_back'],
+                  'cutaway': {'planes': [{'normal': [0, -1, 0], 'offset': 0}, {'normal': [1, 0, 0], 'offset': 0}]},
+                  'run_exploded': True},
     }
 
 
@@ -147,3 +155,113 @@ ASSEMBLY = [
          [('process_flange', 'The manifold bolts under the process flange: fit the flange first.',
            'Take the manifold off before the process flange.')]),
 ]
+
+
+# ------------------------------------------------------------------ the bench model (WORKSHOP.md §6.4, milestone K3)
+
+NE43 = 'r3051_alarm'
+SOURCES_BENCH = [
+    {'id': R3051, 'cite': SOURCES[0]['cite'] + '; §2.7.4 and §A.3.9 damping (a first-order time constant, 0–60 s, '
+                  'added to the sensor module\'s response), §2.9.1 alarm and saturation levels (table 2-5: the '
+                  'NAMUR-compliant 3.8 and 20.5 mA saturation, ≤ 3.6 and ≥ 22.5 mA alarm, after NAMUR NE 43), '
+                  'the 2-wire loop-powered 4–20 mA output and its LCD display',
+     'url': SOURCES[0]['url']},
+    {'id': 'liptak', 'cite': 'B. G. Lipták (ed.), Instrument Engineers\' Handbook, vol. 1: Process Measurement and '
+                             'Analysis, 4th ed., CRC Press (2003), ch. 5 pressure measurement: diaphragm seals and '
+                             'fill fluids, impulse (sensing) lines, their plugging and the reading it freezes',
+     'url': 'https://www.routledge.com/Instrument-Engineers-Handbook-Volume-One-Process-Measurement-and-Analysis/'
+            'Liptak/p/book/9780849310836'},
+]
+
+URV = 10.0          # the calibrated range 0–10 bar gauge (a range the 3051's gauge sensor modules cover)
+DAMPING = 0.4       # seconds (one time constant: §A.3.9)
+LINE_TAU = 0.3      # the impulse line and the isolating diaphragm's fill: how fast the sensor sees a change
+SURGE = 15.0        # bar: the over-range fault's process pressure (past the upper range, within overpressure limits)
+
+
+def bench():
+    """The transmitter on the bench: a hand pump's pressure on the process flange (the slider, from vacuum to past the
+    upper range), the 24 V loop supply (Start, Stop) and a meter in the loop. Every channel reads one value of this
+    model: the isolating diaphragm's travel (`x_dia`), the display (`pv`, lit by `lit`), the terminals' current
+    (`loop_ma`), the impulse line's flow (`flow_frac`), the sensor's colour (`p_dia`)."""
+    v = [
+        ['p_applied', {'state': 0, 'unit': 'bar'}],             # the hand pump's pressure (the slider)
+        ['powered', {'state': 0}],                               # the loop supply (the machine writes it)
+        ['blocked', {'state': 0}],                               # faults' states
+        ['loop_open', {'state': 0}],
+        ['surge', {'state': 0}],
+        # the pressure at the process flange: the pump's, or the surge's while the over-range fault stands
+        ['p_proc', {'select': 'surge', 'cases': ['p_applied', SURGE], 'unit': 'bar'}],
+        # the impulse line: blocked, it keeps the pressure trapped between the blockage and the diaphragm (Liptak)
+        ['p_line', {'hold': 'p_proc', 'when': 'blocked', 'unit': 'bar'}],
+        # the isolating diaphragm and its fill fluid follow the line with the line's lag; what flows in the line is the
+        # difference still to fill (signed: into the transmitter while the pressure rises, out while it falls)
+        ['p_dia', {'lag': 'p_line', 'tau': LINE_TAU, 'unit': 'bar'}],
+        ['dp_fill', {'diff': ['p_line', 'p_dia']}],
+        ['flow_frac', {'of': 'dp_fill', 'table': [[-1, -1], [1, 1]]}],
+        # the diaphragm's travel, 0 at no pressure and 1 at the upper range; it stops on its bed past 1.2 (the
+        # module's overpressure protection) and bows out a little under vacuum (drawn exaggerated: the anim's travel)
+        ['x_dia', {'of': 'p_dia', 'table': [[-1, -0.1], [0, 0], [URV, 1], [URV * 1.2, 1.2]]}],
+        ['p_sensed', {'lag': 'p_dia', 'tau': 0.1, 'unit': 'bar'}],   # the sensing cell's own response
+        # the electronics: damping (one time constant), the 4–20 mA line, NAMUR saturation (3.8, 20.5 mA)
+        ['pv', {'lag': 'p_sensed', 'tau': DAMPING, 'unit': 'bar'}],
+        ['pct', {'product': ['pv', 100 / URV], 'unit': '%'}],
+        ['ma_line', {'of': 'pv', 'table': [[-URV, -12], [0, 4], [URV, 20], [2 * URV, 36]], 'unit': 'mA'}],
+        ['ma_lo', {'max': ['ma_line', 3.8]}],
+        ['ma_out', {'min': ['ma_lo', 20.5], 'unit': 'mA'}],
+        ['over', {'cmp': ['ma_line', '>', 20.5]}],
+        ['under', {'cmp': ['ma_line', '<', 3.8]}],
+        # a 2-wire transmitter takes its power from the loop: no supply or an open loop, no current, a dark display
+        ['closed', {'not': 'loop_open'}],
+        ['lit', {'and': ['powered', 'closed']}],
+        ['loop_ma', {'select': 'lit', 'cases': [0, 'ma_out'], 'unit': 'mA'}],
+        ['sat_hi', {'and': ['lit', 'over']}],
+        ['sat_lo', {'and': ['lit', 'under']}],
+        ['no_current', {'and': ['powered', 'loop_open']}],
+    ]
+    return {
+        'format': 'walkdown-plant-bench', 'version': 1, 'part': 'pressure_transmitter',
+        'sources': SOURCES_BENCH,
+        'values': v,
+        'ops': [
+            {'at': 'process_flange', 'do': 'set', 'input': 'p_applied', 'range': [-1, 12],
+             'title': 'Applied pressure'},
+            {'at': 'terminal_block', 'do': 'start', 'machine': 'supply', 'title': 'Loop supply on'},
+            {'at': 'terminal_block', 'do': 'stop', 'machine': 'supply', 'title': 'Loop supply off'},
+        ],
+        'machines': [
+            {'id': 'supply', 'at': 'terminal_block', 'init': 'off',
+             'commands': {'start': {'from': ['off'], 'to': 'on'}, 'stop': {'from': '*', 'to': 'off'}},
+             'states': [{'id': 'off', 'set': {'powered': 0}, 'say': 'The loop supply is off.'},
+                        {'id': 'on', 'set': {'powered': 1}, 'say': 'The loop supply is on: 24 V DC across the loop.'}]},
+        ],
+        'alarms': [
+            {'id': 'sat_high', 'at': 'electronics', 'where': 'display', 'when': 'sat_hi', 'priority': 2,
+             'text': 'Over range: the output is held at 20.5 mA'},
+            {'id': 'sat_low', 'at': 'electronics', 'where': 'display', 'when': 'sat_lo', 'priority': 2,
+             'text': 'Under range: the output is held at 3.8 mA'},
+            {'id': 'loop_dead', 'at': 'terminal_block', 'where': 'terminal_block', 'when': 'no_current',
+             'priority': 1, 'text': 'No loop current: the loop is open'},
+        ],
+        'faults': [
+            {'id': 'over_range', 'at': 'process_flange', 'text': 'Process pressure surges past the upper range',
+             'set': {'surge': 1}, 'repair': {'surge': 0}},
+            {'id': 'impulse_blocked', 'at': 'process_flange', 'text': 'Impulse line blocked',
+             'set': {'blocked': 1}, 'repair': {'blocked': 0}},
+            {'id': 'loop_open', 'at': 'terminal_block', 'text': 'Loop open: a wire off the signal terminals',
+             'set': {'loop_open': 1}, 'repair': {'loop_open': 0}},
+        ],
+        'start': {'p_applied': 0},
+        'bind': [
+            {'at': 'isolator', 'anim': 'deflect', 'of': 'x_dia', 'scale': 1},
+            {'at': 'display', 'show': 'pv', 'lit': 'lit'},
+            {'at': 'display', 'show': 'loop_ma', 'lit': 'lit'},
+            {'at': 'terminal_block', 'show': 'loop_ma'},
+            {'flow': 'impulse', 'of': 'flow_frac', 'speed': 0.06, 'colour': 'pressure', 'by': 'p_line'},
+            {'at': 'sensor_cell', 'pressure': 'p_dia'},
+            {'at': 'isolator', 'pressure': 'p_dia'},
+        ],
+        'legends': {'pressure': {'unit': 'bar', 'table': [[-1, '#5e3c99'], [0, '#2c7bb6'], [5, '#ffffbf'],
+                                                          [10, '#d7191c']]}},
+        'readouts': ['p_applied', 'p_sensed', 'pv', 'pct', 'loop_ma'],
+    }
