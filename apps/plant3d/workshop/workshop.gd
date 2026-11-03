@@ -1121,6 +1121,10 @@ func warm_up(parent: Node) -> void:
 		return
 	_warming = true
 	await get_tree().create_timer(WARM_UP_S).timeout
+	# not while the Workshop shows: its hidden meshes' pipelines are made on the main thread as they enter the plant's
+	# world, a hitch in the Workshop's frames (K4a: 167 ms on the Note 9, a trainee in the Workshop 4 s after the start)
+	while is_inside_tree() and is_open:
+		await get_tree().create_timer(0.5).timeout
 	if _warm != null or not is_inside_tree() or not ResourceLoader.exists(SPACE):
 		return
 	var mesh: Mesh = null
