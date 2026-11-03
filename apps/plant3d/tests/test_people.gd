@@ -50,12 +50,12 @@ func _buds(ppl, a: Dictionary, other: Dictionary) -> Array:
 	var mat = mi.mesh.surface_get_material(0)
 	if not mat is ShaderMaterial or (mat as ShaderMaterial).shader.resource_path != SHADER:
 		p.append("the earbuds are not in the plant's one shader")
-	# at the ears: each side of the head, at its height (the model's frame: the avatar at the origin, unturned)
-	var sk: Skeleton3D = a.node.get_node("Skeleton3D")
-	var rest := sk.get_bone_global_rest(sk.find_bone("head")) * mi.transform
-	var box: AABB = rest * mi.mesh.get_aabb()
-	if box.position.x > -0.07 or box.end.x < 0.07 or box.position.y < 1.5 or box.end.y > 1.7 or box.size.x > 0.22:
-		p.append("the earbuds are not at the ears: %s" % str(box))
+	# where they are drawn, in the avatar's own frame (its node: the person's place and heading, its pose as played):
+	# beside each ear, at the head's height
+	att.on_skeleton_update()
+	var box: AABB = (a.node.global_transform.affine_inverse() * mi.global_transform) * mi.mesh.get_aabb()
+	if box.position.x > -0.07 or box.end.x < 0.07 or box.position.y < 1.45 or box.end.y > 1.75 or box.size.x > 0.22:
+		p.append("the earbuds are not drawn at the ears: %s" % str(box))
 	ppl.people[0].buds = false
 	ppl._skinned(1.0 / 60.0)
 	if (b as Node3D).visible:

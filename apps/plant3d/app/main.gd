@@ -37,7 +37,8 @@
 ##                           the people on screen are the staff's (what the crews cost: the frame rules' `crews` walk)
 ##   music=V                 (walk) the phone's music playing at volume V (1–100) from the start, the plant's sounds
 ##                           masked under it (REALISM.md §8.5): what the music costs a walk; in free mode (crews=1, no
-##                           role) no input is sent
+##                           role) no input is sent; the drive walk plays the driver, whose music the engine turns
+##                           off at the wheel
 ##   probe=1                 (walk) frames.csv beside result.txt: where each frame's time goes (app/frame_probe.gd)
 ##   max_fps=N               at most N frames a second (0: no cap): what a cap does to a phone's heat and long frames
 ##   pipeline_save_mb=N      save the pipeline cache every N MB of new pipelines instead of the project's 0.25

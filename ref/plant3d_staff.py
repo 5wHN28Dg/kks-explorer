@@ -3486,7 +3486,8 @@ class StaffRun:
                 q = self.people[t]
                 if self.st.audio is not None and q.music >= self.st.audio['mask']:
                     # a call not heard over the music (REALISM.md §8.5): the caller reports it unanswered
-                    e.ev('missed', q.id, msg, p.id)
+                    if not self.missed_now(q.id, p.id):
+                        e.ev('missed', q.id, msg, p.id)
                     if 'audio' in q.acts:
                         q.told.add('audio')
 
@@ -3499,9 +3500,21 @@ class StaffRun:
             t = self.players[k]
             q = self.people[t]
             if t != p.i and q.role == role and q.music >= self.st.audio['mask']:
-                self.e.ev('missed', q.id, task, p.id, 'call')
+                if not self.missed_now(q.id, p.id):
+                    self.e.ev('missed', q.id, task, p.id, 'call')
                 if 'audio' in q.acts:
                     q.told.add('audio')
+
+    def missed_now(self, qid, pid):
+        """Whether person qid has missed a call from pid in this step already (§8.5): a call and its message together
+        (an alarm's call of a role and its say) are one exchange on the radio, missed once."""
+        e = self.e
+        for x in reversed(e.events):
+            if x[0] != e.step_no:
+                return False
+            if x[1] == 'missed' and x[2] == qid and x[4] == pid:
+                return True
+        return False
 
     def wait(self, p, cur, w):
         e = self.e

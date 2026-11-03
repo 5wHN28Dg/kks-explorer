@@ -844,6 +844,48 @@ class AudioVectors(PartVectors, unittest.TestCase):
             given = next(x[0] for x in ev if x[1:5] == ['task', stop[2], 'stop_unsafe', 'start'] and x[0] >= start)
             self.assertGreaterEqual(given - start, 20, f'run {k}')
 
+    def test_control_room(self):
+        """The follow-ups (the user, 2026-11-03): music in the control room (`audio.rooms`) is an act whose detail is
+        the room; leaving its places ends it; the shift supervisor at the room's table notices and stops it."""
+        run = self.st['runs'][9]
+        self.assertEqual(run['files']['staff.json']['audio']['rooms'], ['cr'])
+        acts = [x[1:] for x in run['events'] if x[1] in ('unsafe', 'safe') and x[2] == 'a_fo1']
+        self.assertEqual(acts[:3], [['unsafe', 'a_fo1', 'audio', 'cr'], ['safe', 'a_fo1', 'audio', 'cr'],
+                                    ['unsafe', 'a_fo1', 'audio', 'cr']])
+        self.assertIn(['stop', 'a_sup', 'a_fo1', 'audio', 'cr', 'done', []], [x[1:] for x in run['events']])
+        self.assertIn(['held', 'a_fo1', 'a_sup'], [x[1:] for x in run['events']])
+
+    def test_held_off_duty_to_the_next_duty(self):
+        """Taken off duty (18:30, day 1), the device stays held through a jump to 17:30 of day 2 (inside the next
+        duty: an audio input refused, held) and comes back with the jump past its end (18:00)."""
+        ev = self.st['runs'][10]['events']
+        held = next(x for x in ev if x[1:] == ['held', 'a_fo1', 'b_sup'])
+        refused = next(x for x in ev if x[1:] == ['audio', 'a_fo1', 20, 'refused', ['held']])
+        returned = next(x for x in ev if x[1:] == ['returned', 'a_fo1'])
+        jumps = [x for x in ev if x[1] == 'jump' and x[4] == 'done']
+        # (before the follow-ups it came back in the stop's step)
+        self.assertLess(held[0], jumps[0][0])
+        self.assertLess(refused[0], returned[0])
+        self.assertEqual(returned[0], jumps[1][0])
+        self.assertEqual([x[1:] for x in ev if x[1] == 'audio'][-1], ['audio', 'a_fo1', 20, 'done', []])
+
+    def test_music_at_the_wheel(self):
+        ev = [x[1:] for x in self.st['runs'][11]['events'] if x[1] == 'audio']
+        self.assertEqual(ev, [['audio', 'drv1', 30, 'done', []], ['audio', 'drv1', 0, 'done', ['driving']],
+                              ['audio', 'drv1', 20, 'refused', ['driving']], ['audio', 'drv1', 0, 'done', []],
+                              ['audio', 'drv1', 20, 'done', []]])
+
+    def test_locker_and_radio_call_missed(self):
+        ev = [x[1:] for x in self.st['runs'][12]['events']]
+        phone = [x for x in ev if x[0] == 'phone']
+        self.assertEqual(phone, [['phone', 'a_fo1', 'leave', 'refused', ['locker']],
+                                 ['phone', 'a_fo1', 'leave', 'done', []], ['phone', 'a_fo1', 'take', 'done', []]])
+        missed = [x for x in self.st['runs'][12]['events'] if x[1] == 'missed']
+        self.assertIn(['missed', 'a_fo1', 'check_alarm', 'c_ccr', 'call'], [x[1:] for x in missed])
+        # a call and its message in one step are one exchange: missed once
+        self.assertEqual(len({(x[0], x[4]) for x in missed}), len(missed))
+        self.assertIn(['held', 'a_fo1', 'a_sup'], ev)
+
     def test_missed_call_reports_the_act(self):
         """A message missed over the music while the act goes on: the shift supervisor (the only one of the roles on
         duty at 17:00, in the control room, nowhere near the hall) is given the stop at once: it starts when their

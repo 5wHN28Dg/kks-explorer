@@ -3460,7 +3460,8 @@ func say(e, pi: int, msg: String, to: String) -> void:
 			e.st_acks[k] += 1
 			if has_audio and e.sp_music[t] >= audio_mask:
 				# a call not heard over the music (REALISM.md §8.5): the caller reports it unanswered
-				e._ev(["missed", people[t]["id"], msg, people[pi]["id"]])
+				if not missed_now(e, people[t]["id"], people[pi]["id"]):
+					e._ev(["missed", people[t]["id"], msg, people[pi]["id"]])
 				if e.sp_acts[t][3] != null:
 					e.sp_told[t] |= 1
 
@@ -3473,9 +3474,25 @@ func miss_call(e, pi: int, task: String, role: String) -> void:
 	for k in e.st_players.size():
 		var t: int = e.st_players[k]
 		if t != -1 and t != pi and people[t]["role"] == role and e.sp_music[t] >= audio_mask:
-			e._ev(["missed", people[t]["id"], task, people[pi]["id"], "call"])
+			if not missed_now(e, people[t]["id"], people[pi]["id"]):
+				e._ev(["missed", people[t]["id"], task, people[pi]["id"], "call"])
 			if e.sp_acts[t][3] != null:
 				e.sp_told[t] |= 1
+
+
+## Whether person qid has missed a call from pid in this step already (§8.5): a call and its message together (an
+## alarm's call of a role and its say) are one exchange on the radio, missed once.
+func missed_now(e, qid: String, pid: String) -> bool:
+	var evs: Array = e.events
+	var i := evs.size() - 1
+	while i >= 0:
+		var x: Array = evs[i]
+		if x[0] != e.step_no:
+			return false
+		if x[1] == "missed" and x[2] == qid and x[4] == pid:
+			return true
+		i -= 1
+	return false
 
 
 func wait(e, cur: Dictionary, w: Dictionary) -> String:

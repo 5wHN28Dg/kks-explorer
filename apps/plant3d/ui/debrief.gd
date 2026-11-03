@@ -633,7 +633,7 @@ static func audio_lines(pa: Dictionary, ds: int) -> PackedStringArray:
 	if pa.is_empty() or (pa.held == 0 and pa.missed == 0 and pa.alarms == 0):
 		return out
 	if pa.held > 0:
-		out.append("Personal audio: stopped %d time%s, your device held to the end of the shift; the highest: %s (%s)"
+		out.append("Personal audio: stopped %d time%s, your device held to the end of the shift (the next one if taken off duty); the highest: %s (%s)"
 				% [pa.held, "" if pa.held == 1 else "s", LADDER[pa.top][0].to_upper(), LADDER[pa.top][1]])
 	if pa.missed > 0:
 		out.append("Calls missed over your music: %d" % pa.missed)
@@ -666,8 +666,8 @@ static func audio_text(sm, ev: Array, me_id, rung: int) -> String:
 			return ("Phone %s: %s" % [what, whom]) if ev[4] == "done" else "Phone not %s (refused%s): %s" % [what,
 					", not at a locker" if ev[5] is Array and "locker" in ev[5] else "", whom]
 		"held":
-			var t := "Phone taken by %s until the end of the shift (the next one, taken off duty): %s" % [who.call(ev[3]),
-					whom]
+			var t := "Phone taken by %s until the end of the shift (of the next one, if taken off duty): %s" % [
+					who.call(ev[3]), whom]
 			if rung >= 0:
 				t += ". " + LADDER[rung][0].capitalize() + ": " + LADDER[rung][1]
 			return t

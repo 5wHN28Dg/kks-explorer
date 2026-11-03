@@ -1213,7 +1213,9 @@ keep every input, event and earlier value, and their digests and snapshots gain 
     come notices, and is given the reaction's task. Earbuds are small: a hard hat is seen at once, a bud is not.
   - **By a missed call.** A message to the player's person or role (§16.6 `say`) while the music is at `mask` or
     louder is not heard: event `["missed", person, message, from]`. So is a radio call of the player's role (a task
-    called, §16.6 `call`, an NPC's or a player's): `["missed", person, task, from, "call"]`, after the call's event. If an `audio` act is going on, the caller
+    called, §16.6 `call`, an NPC's or a player's): `["missed", person, task, from, "call"]`, after the call's event. A call
+    and a message from the same caller in one step (an alarm's call of the field operators and its word to them) are
+    one exchange on the radio: missed once, by the first of them. If an `audio` act is going on, the caller
     reports them not answering: the act's seen reactions go at once to the first person of their roles on duty,
     wherever they are. The `stop` step walks them to the player (§16.6). This is how colleagues give it away.
   - Everything is from the world's seed and the inputs, so every player of a session sees the same.

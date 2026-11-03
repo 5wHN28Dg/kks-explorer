@@ -310,7 +310,6 @@ func refusal(reasons) -> String:
 		return DRIVING_WORDS
 	if "locker" in r:
 		return "At a locker only: walk to one first."
-
 	if "no_audio" in r:
 		return "No personal audio in this run."
 	return "Refused."
