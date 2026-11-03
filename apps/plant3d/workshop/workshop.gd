@@ -1218,14 +1218,19 @@ func _warm_kinds() -> void:
 			await get_tree().process_frame
 		_warm_loading = ""
 		var ps := ResourceLoader.load_threaded_get(path) as PackedScene
-		if ps == null or _warm == null or not is_instance_valid(_warm) or is_open:
-			continue   # (opened meanwhile: the entry has it)
+		if ps == null or _warm == null or not is_instance_valid(_warm):
+			continue
+		await _warm_wait()   # (a Workshop opened meanwhile: this kind is warmed after it closes, whichever it was)
+		if not is_inside_tree():
+			return
 		# instanced on a worker thread (a scene outside the tree may be made there)
 		var made := _warm_made
 		made.clear()
-		_warm_task = WorkerThreadPool.add_task(func(): made.append(ps.instantiate()), false, "workshop warm-up")
-		while not WorkerThreadPool.is_task_completed(_warm_task):
+		_warm_task = WorkerThreadPool.add_task(_warm_instance.bind(ps, made), false, "workshop warm-up")
+		while _warm_task >= 0 and not WorkerThreadPool.is_task_completed(_warm_task):
 			await get_tree().process_frame
+		if _warm_task < 0:
+			return   # (_exit_tree took it)
 		WorkerThreadPool.wait_for_task_completion(_warm_task)
 		_warm_task = -1
 		ps = null   # (not held while the next kind waits for a Workshop to close)
@@ -1234,7 +1239,8 @@ func _warm_kinds() -> void:
 		var mc: Node3D = made[0]
 		made.clear()
 		_warm_mc = mc   # (freed by _exit_tree if the app goes while it is outside the tree)
-		if not is_inside_tree() or _warm == null or not is_instance_valid(_warm) or is_open:
+		await _warm_wait()
+		if not is_inside_tree() or _warm == null or not is_instance_valid(_warm):
 			mc.free()
 			continue
 		mc.name = "warm_" + k
@@ -1267,8 +1273,8 @@ func _warm_kinds() -> void:
 			for c in n.get_children():
 				todo.append([c, thin, glass])
 			t0 = await _warm_slice(t0)
-			if is_inside_tree() and (is_open or ("probing" in main and main.probing)):
-				await _warm_wait()   # (no script work of its own in the Workshop's or the probe's frames)
+			if is_inside_tree() and _warm_blocked():
+				await _warm_wait()   # (no script work of its own in the Workshop's, a close's or the probe's frames)
 				t0 = Time.get_ticks_usec()
 			if not is_instance_valid(mc):
 				break
@@ -1278,11 +1284,13 @@ func _warm_kinds() -> void:
 			continue
 		# into the plant's world a few pieces a frame (each queues its surfaces' pipelines as it enters), held
 		# flat under one hidden node: where each stands doesn't matter, it is never drawn
+		await get_tree().process_frame   # (the last slice's frame is not the first batch's too)
+		if not is_instance_valid(mc) or not is_inside_tree() or _warm == null or not is_instance_valid(_warm):
+			continue
 		var pieces: Array = mc.find_children("*", "GeometryInstance3D", true, false)
 		var held := Node3D.new()
 		held.name = mc.name
 		_warm.add_child(held)
-		_warm_kinds_done.append(k)
 		warm_pieces = maxi(warm_pieces, pieces.size())
 		var i := 0
 		while i < pieces.size():
@@ -1291,7 +1299,7 @@ func _warm_kinds() -> void:
 				break
 			var t1 := Time.get_ticks_usec()
 			var added := 0
-			while i < pieces.size() and added < WARM_PER_FRAME and (added == 0 or Time.get_ticks_usec() - t1 < WARM_SLICE_US):
+			while i < pieces.size() and added < WARM_PER_FRAME and (added == 0 or Time.get_ticks_usec() - t1 < warm_slice_us):
 				var gi: Node = pieces[i]
 				gi.get_parent().remove_child(gi)
 				held.add_child(gi)
@@ -1303,6 +1311,8 @@ func _warm_kinds() -> void:
 			await get_tree().process_frame
 		mc.free()   # (what is left of it: the pieces' empty parents)
 		_warm_mc = null
+		if i >= pieces.size():
+			_warm_kinds_done.append(k)
 		# the pipelines are queued as the instances enter the scene; a few frames later the pieces are let go
 		for f in 30:
 			await get_tree().process_frame
@@ -1311,6 +1321,9 @@ func _warm_kinds() -> void:
 	kinds_warmed = true
 
 const WARM_SLICE_US := 4000        # the warm-up's most script time in one frame (the Note 9 runs ~8x slower)
+var warm_slice_us := WARM_SLICE_US # (the tests make it small, to see the slicing)
+var warm_slices := 0               # the frames the material pass was cut at (tests)
+var warm_on_thread := false        # the last kind was instanced on a worker thread (tests)
 const WARM_PER_FRAME := 12         # the most pieces that enter the plant's world in one frame
 var warm_slice_us_max := 0         # the longest slice the warm-up took in one frame, µs (tests)
 var warm_most_added := 0           # the most pieces it added in one frame (tests)
@@ -1320,10 +1333,18 @@ var _warm_mc: Node = null          # the kind being made, while outside the tree
 var _warm_task := -1               # the worker thread's task instancing a kind (-1: none)
 var _warm_made: Array = []         # what that task made, until the warm-up takes it
 
-## Waits while the warm-up must keep out of the plant: the Workshop shown or just closed, the tier probe measuring.
+## The worker thread's part of the warm-up: one kind's scene instanced (outside the tree).
+func _warm_instance(ps: PackedScene, made: Array) -> void:
+	made.append(ps.instantiate())
+	warm_on_thread = OS.get_thread_caller_id() != OS.get_main_thread_id()
+
+## Whether the warm-up must keep out of the plant now: the Workshop shown or just closed, the tier probe measuring.
+func _warm_blocked() -> bool:
+	return not may_warm(is_open, Engine.get_process_frames(), _closed_frame) or ("probing" in main and main.probing)
+
+## Waits while the warm-up must keep out of the plant (_warm_blocked).
 func _warm_wait() -> void:
-	while is_inside_tree() and (not may_warm(is_open, Engine.get_process_frames(), _closed_frame) or
-			("probing" in main and main.probing)):
+	while is_inside_tree() and _warm_blocked():
 		if is_open or ("probing" in main and main.probing):
 			await get_tree().create_timer(1.0).timeout
 		else:
@@ -1333,9 +1354,10 @@ func _warm_wait() -> void:
 ## new slice's start (else the same start).
 func _warm_slice(t0: int) -> int:
 	var spent := Time.get_ticks_usec() - t0
-	if spent < WARM_SLICE_US:
-		return t0
 	warm_slice_us_max = maxi(warm_slice_us_max, spent)
+	if spent < warm_slice_us:
+		return t0
+	warm_slices += 1
 	await get_tree().process_frame
 	return Time.get_ticks_usec()
 

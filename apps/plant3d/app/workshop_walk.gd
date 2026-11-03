@@ -252,7 +252,7 @@ func _walk_steps(secs: float) -> void:
 		if ws.guide.placed(id):
 			ws.guide.loose[id] = from
 		# from where the last step's time ended (not this frame: a frame lost between steps adds up over 30 of them)
-		var t0: float = _next_t0 if _next_t0 >= 0.0 and t - _next_t0 < secs else t
+		var t0: float = _next_t0 if _next_t0 >= 0.0 else t   # (after a hitch the steps catch up, one a frame)
 		_move = {"id": id, "from": from, "to": to, "t0": t0}
 	var k: float = clampf((t - float(_move.t0)) / secs, 0.0, 1.0)
 	var e := k * k * (3.0 - 2.0 * k)
