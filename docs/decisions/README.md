@@ -1,13 +1,14 @@
 # Decision records
 
-One page per dependency or platform decision, as required by the development policy (CLAUDE.md;
-the platform engineering guideline (CLAUDE.md, "Engineering guidelines"), the web engineering guideline (CLAUDE.md, "Engineering guidelines")). Each record names its sources.
+One page per platform, stack or dependency decision, written before the code, as the evidence-first development
+policy asks (CLAUDE.md, "Engineering decisions in this project"; older records cite it as the platform and web
+engineering guidelines). Each record names its sources.
 "Verified" means it ran on the target; everything else is from vendor documentation or registries.
 
 "Well-maintained" test (native policy): recent releases, a security response history, more than one active
 maintainer, a compatible license (the project is AGPL-3.0), and survival of a major version change.
 
-## M6 decisions
+## Decisions from M6 on
 
 | No. | Subject | Status |
 |---|---|---|
@@ -66,7 +67,8 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0069](0069-plant-voice-opus.md) | Walkdown Plant voice: Opus through our own GDExtension `wdp_voice` (libopus, SpeexDSP resampler, pinned sources), push-to-talk, half duplex, no echo canceller | accepted; native part built (MP5, 2026-10-26) |
 | [0070](0070-plant-android-build-pins.md) | Walkdown Plant's Android build: build tools with advisories raised to fixed versions in the same line (pins applied to Godot's template from settings.gradle, lint's detached configuration included), every configuration locked, the lockfiles scanned by the required check | accepted; 12 build tools out of the license check by the user's decision (licenses only, none in the APK) |
 | [0071](0071-plant-lifts-and-hoists.md) | Walkdown Plant's lifts and hoists: the cab, gates and hooks as model content of §7's nodes, riders as `board`/`alight` inputs with the load a value the engine keeps, the lift a kind of way the staff ride by a protocol (the stairs beside it when it doesn't come); no new dependency | proposed (LIFTS, 2026-10-30) |
-| [0073](0073-plant-realism-programme.md) | Walkdown Plant's realism programme: everything that changes the plant in the deterministic engine (format 2 additions, their own vectors), hands-on jobs generated from the Workshop's component trees, seeded wear and weather, generated P&IDs and manuals; no new dependency | proposed (the user's decision of 2026-11-01 to add every area) |
+| [0072](0072-plant-workshop.md) | Walkdown Plant's Workshop mode: component trees from the kit's generators, pre-built scenes, a bench format of its own, one new lit shader | proposed (K0, 2026-11-01); built through K3 (the pressure transmitter) |
+| [0073](0073-plant-realism-programme.md) | Walkdown Plant's realism programme: everything that changes the plant in the deterministic engine (format 2 additions, their own vectors), hands-on jobs generated from the Workshop's component trees, seeded wear and weather, generated P&IDs and manuals; no new dependency | accepted (the user's answers of 2026-11-01: add every area) |
 
 ## Audit of existing dependencies (2026-09-30)
 
