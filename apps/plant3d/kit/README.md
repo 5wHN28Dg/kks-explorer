@@ -304,7 +304,7 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   collar in the front pedestal (GER-3582E), the coupling flange at the end the shaft line gives it; its coupling bolts
   are the plant's bolt ring, and what they join beyond this machine is the next rotor (`beyond`). The pedestals are
   the plant's boxes: a body with a pit and a 10 mm cover plate on top, the journal bearings' halves in them and the
-  thrust bearing's two pad rings round the collar. The glands are two plain rings each end (no labyrinth teeth). In
+  thrust bearing's pad rings round the collar, in halves. The glands are two plain rings each end (no labyrinth teeth). In
   each valve chest a stop valve disc and a control valve plug on their stems, the plant's servomotor on top (a real
   combined valve has an actuator for each). **Simplified from text-only descriptions** (the user, 2026-11-03): the
   lagging (insulation under sheet cladding, as one shell) and the thrust collar and bearing (pads as two rings). The
@@ -312,6 +312,11 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   The order (the data file's `assembly`, reversed for taking apart) is the Siemens/KWU procedure's without its trial
   fits, the blade carrier inside the inner casing as GE's diaphragms are; the explode stages follow the tree (the
   rotor under the lower inner casing, so it lifts after the upper halves).
+  Known shortcuts: the plant draws each valve's steam lead into the casing at the horizontal joint, so in the
+  Workshop it is the lower half's (GER-3582E: the valves are piped to the lower half) and the upper halves lift past
+  it; the joint flanges, pedestals and covers are one stand-in (the plant's paint pieces of the casing and the
+  pedestals), held together to the plant's box and triangles, since each flange cut at the joint alone is 1.67 times
+  its box's triangles.
 
 ## Tables and their sources
 

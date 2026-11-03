@@ -40,6 +40,7 @@ var _use_skipped := false        # the last use() came inside a "workshop" block
 var _stale := false              # the last use() came inside a "workshop" block (either mode): a use() is due after it
 var _piece: Dictionary = {}
 var _standin: Dictionary = {}
+var _standin_at := -1            # its index in standins
 
 ## Selects the layer the next primitives go to. A named material (kit/materials.gd) is drawn with the material it
 ## resolves to, its colour in the vertices; a `detail` piece's layer is its size bucket's. `identify` pieces get no
@@ -96,22 +97,25 @@ func set_only(kind: String, role := "hidden", replaced_by: Array = []) -> void:
 	only_role = role if kind == "workshop" else ""
 	_piece = {}
 	_standin = {}
+	_standin_at = -1
 	if workshop and kind != "":
 		if kind == "plant":
 			# the same components named again: the stand-in goes on (the plant draws it in several blocks, its pieces
 			# between other pieces, and its replacements are held to all of it together)
-			for si in standins:
-				if not replaced_by.is_empty() and si.replaced_by == replaced_by:
-					_standin = si
-			if _standin.is_empty():
+			for i in standins.size():
+				if not replaced_by.is_empty() and standins[i].replaced_by == replaced_by:
+					_standin = standins[i]
+					_standin_at = i
+			if _standin_at < 0:
 				_standin = {"replaced_by": replaced_by.duplicate(), "layers": {}}
 				standins.append(_standin)
+				_standin_at = standins.size() - 1
 		_open_piece()
 	_reselect()
 
 func _open_piece() -> void:
 	_piece = {"comp": comp_id, "kind": only_kind, "role": only_role,
-		"standin": standins.find(_standin) if only_kind == "plant" else -1, "box": AABB(), "verts": 0, "tris": 0}
+		"standin": _standin_at if only_kind == "plant" else -1, "box": AABB(), "verts": 0, "tris": 0}
 	pieces.append(_piece)
 
 func _reselect() -> void:

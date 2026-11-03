@@ -38,7 +38,7 @@ class WorkshopData(unittest.TestCase):
 
     def test_the_steam_turbine_passes(self):
         w = self.b.workshop['steam_turbine']
-        self.assertEqual(w['components'], 53)
+        self.assertEqual(w['components'], 54)
         self.assertEqual(w['fasteners'], 3)
         d = json.loads(self.files['workshop/steam_turbine.json'])
         self.assertEqual(d['context'], ['axis_z', 'shaft_lo', 'shaft_hi'])
@@ -48,7 +48,7 @@ class WorkshopData(unittest.TestCase):
         undo = order[::-1]
         self.assertEqual(undo[0], 'lagging_upper')
         for before in ('casing_upper', 'joint_bolts', 'inner_upper', 'inner_bolts', 'carrier_upper', 'cap_f',
-                       'cap_r', 'thrust', 'coupling_bolts', 'brg_f_upper', 'brg_r_upper', 'glands_upper'):
+                       'cap_r', 'thrust_upper', 'thrust_lower', 'coupling_bolts', 'brg_f_upper', 'brg_r_upper', 'glands_upper'):
             self.assertLess(undo.index(before), undo.index('rotor'), before)
 
     def test_context(self):

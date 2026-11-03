@@ -56,8 +56,8 @@ static func levels(spec: Dictionary, root := "") -> Array:
 		if root != "" and host == root:
 			continue   # the chosen subassembly's own fasteners hold it to the rest, which stays home: so do they
 		var d: int = 0 if host == root else (lv[host] if lv.has(host) else -1)
-		var own_seal: bool = spec.comps[host].sealed and not spec.groups[g].get("beyond", false) if host != "" else false
-		if d < 0 or (host != "" and (own_seal or _in_sealed(spec, host))):
+		var beyond: bool = spec.groups[g].get("beyond", false)   # (bolts to another machine: Assembly.rides_of)
+		if d < 0 or (host != "" and not beyond and (spec.comps[host].sealed or _in_sealed(spec, host))):
 			continue   # a sealed component's fasteners are its own insides: they stay with it (but its bolts to another
 			#            machine, which back out before it moves)
 		glv[g] = d

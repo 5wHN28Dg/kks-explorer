@@ -336,7 +336,7 @@ func _turbine(tree: SceneTree, ws) -> void:
 			break
 	check(ws.guide.done(), "the turbine is taken apart step by step: %s" % ws.panels.step_label.text)
 	for before in ["casing_upper", "joint_bolts", "inner_upper", "inner_bolts", "carrier_upper", "cap_f", "cap_r",
-			"thrust", "coupling_bolts", "brg_f_upper", "brg_r_upper", "glands_upper"]:
+			"thrust_upper", "thrust_lower", "coupling_bolts", "brg_f_upper", "brg_r_upper", "glands_upper"]:
 		check(order.find(before) >= 0 and order.find(before) < order.find("rotor"), "%s comes out before the rotor: %s" % [before, str(order)])
 	ws.reset()
 	check(ws.start_guide("assemble", "pile"), "the turbine's steps start from a pile")

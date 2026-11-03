@@ -576,10 +576,11 @@ static func _st_comps(g, c: Dictionary, za: float) -> void:
 		g.comp("mrow_%d" % (k + 1), {"parent": "rotor", "explode": [up, 0.0]})
 	g.comp("collar", {"parent": "rotor", "explode": [up, 0.0]})
 	g.comp("pedestal_f", {"explode": [up, 0.0]})
-	g.comp("cap_f", {"parent": "pedestal_f", "explode": [up, 1.6]})
+	g.comp("cap_f", {"parent": "pedestal_f", "explode": [up, 2.4]})
 	g.comp("brg_f_upper", {"parent": "pedestal_f", "explode": [up, 0.5]})
 	g.comp("brg_f_lower", {"parent": "pedestal_f", "explode": [up, 0.0]})
-	g.comp("thrust", {"parent": "pedestal_f", "explode": [Vector3(0, 0.6, 0.8), 2.0]})
+	g.comp("thrust_upper", {"parent": "pedestal_f", "explode": [up, 1.9]})
+	g.comp("thrust_lower", {"parent": "pedestal_f", "explode": [-up, 0.12]})
 	g.comp("pedestal_r", {"explode": [up, 0.0]})
 	g.comp("cap_r", {"parent": "pedestal_r", "explode": [up, 1.6]})
 	g.comp("brg_r_upper", {"parent": "pedestal_r", "explode": [up, 0.5]})
@@ -587,9 +588,9 @@ static func _st_comps(g, c: Dictionary, za: float) -> void:
 	for s in ["l", "r"]:
 		var x := -1.0 if s == "l" else 1.0
 		g.comp("valve_" + s, {"explode": [Vector3(x, 0, 0), 1.6]})
-		g.comp("stop_" + s, {"parent": "valve_" + s, "explode": [-up, 0.9]})
-		g.comp("ctrl_" + s, {"parent": "valve_" + s, "explode": [up, 1.0]})
-		g.comp("servo_" + s, {"parent": "valve_" + s, "explode": [up, 2.0]})
+		g.comp("stop_" + s, {"parent": "valve_" + s, "explode": [up, 0.9]})
+		g.comp("ctrl_" + s, {"parent": "valve_" + s, "explode": [up, 1.6]})
+		g.comp("servo_" + s, {"parent": "valve_" + s, "explode": [up, 2.4]})
 
 ## The lagging: the plant's one drum (the stand-in) as two halves split at the joint, each a shell ST_LAG thick.
 static func _st_lagging(g, c: Dictionary, za: float, prof: Array) -> void:
@@ -760,11 +761,12 @@ static func _st_pedestals(g, ends: Array, za: float) -> void:
 			var t0 := yc - 0.125
 			var t1 := yc + 0.125
 			_st_shell(g, Vector3(0, 0, za), [[0.34, t0], [0.34, t1]], [[0.222, t0], [0.222, t1]], up, false, 24)
-		if i == 0:   # the thrust bearing's pad rings on both faces of the collar
-			g.comp("thrust")
-			m.use("steel", "identify")
-			for t in [y + 0.10, y + 0.22]:
-				m.tube(Vector3(0, t, za), Vector3(0, t + 0.04, za), 0.33, 0.24, 24)
+		if i == 0:   # the thrust bearing's pads on both faces of the collar, in halves at the joint as the bearing's
+			for up in [false, true]:
+				g.comp("thrust_upper" if up else "thrust_lower")
+				m.use("steel", "identify")
+				for t in [y + 0.10, y + 0.22]:
+					_st_shell(g, Vector3(0, 0, za), [[0.33, t], [0.33, t + 0.04]], [[0.24, t], [0.24, t + 0.04]], up, false, 24)
 	g.only()
 
 ## The rotor's insides, in the shaft's moving piece: the drum through the casing (its balance piston ahead of the
