@@ -288,6 +288,41 @@ static func _hands_contents(fresh, d: Dictionary) -> String:
 
 ## What the app indexes with inside the engine's state (the generic check sees only fields, types and lengths): a
 ## file whose hash matches but whose contents were changed must not break the session. "" when it fits.
+## Personal audio's state (REALISM.md §8.5): one entry a person as the fresh engine has (none without staff.json's
+## `audio`: its streams), the music's volume 0–100, the phone carried, left or held, the clock a held one comes back
+## (-1 none), the noticing streams never 0 (they would never move again), and each person's observers by
+## Vector2i(reaction, act kind 3 or 4) with the step each notices.
+static func _audio_contents(fresh, d: Dictionary) -> String:
+	for k in ["sp_music", "sp_phone", "sp_told", "sp_held_to", "sp_aud", "sp_watch"]:
+		if d.has(k) and d[k].size() != fresh.get(k).size():
+			return "a damaged %s" % k
+	for v in d.get("sp_music", []):
+		if v < 0 or v > 100:
+			return "music at a volume that doesn't exist"
+	for v in d.get("sp_phone", []):
+		if v < 0 or v > 2:
+			return "a phone in a state that doesn't exist"
+	for v in d.get("sp_told", []):
+		if v < 0 or v > 3:
+			return "a damaged sp_told"
+	for v in d.get("sp_held_to", []):
+		if typeof(v) != TYPE_INT or v < -1:
+			return "a phone held to a clock before the run"
+	for v in d.get("sp_aud", []):
+		if v == 0:
+			return "a noticing stream at 0 (it would never move again)"
+	for w in d.get("sp_watch", []):
+		if typeof(w) != TYPE_DICTIONARY:
+			return "a damaged sp_watch"
+		for key in w:
+			if typeof(key) != TYPE_VECTOR2I or key.x < 0 or key.y < 3 or key.y > 4 or typeof(w[key]) != TYPE_DICTIONARY:
+				return "a damaged sp_watch"
+			for qi in w[key]:
+				if typeof(qi) != TYPE_INT or qi < 0 or qi >= d["sp_watch"].size() or typeof(w[key][qi]) != TYPE_INT:
+					return "a damaged sp_watch"
+	return ""
+
+
 static func _engine_contents(fresh, d: Dictionary) -> String:
 	if d.get("step_no", 0) < 0:
 		return "a negative step"
@@ -319,7 +354,7 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 				"permit": [4], "lock": [4], "unlock": [4], "remove_lock": [5, 6], "role": [2], "release": [1],
 				"task_ack": [1], "arrive": [2], "leave": [2], "read": [3, 4], "say": [3], "pick": [2], "call": [4],
 				"jump": [2], "ppe": [3], "zone": [3], "stop": [2], "board": [3], "alight": [3],
-				"get_on": [2], "drive": [3, 4], "weather": [2], "tool": [4], "hand": [6]}
+				"get_on": [2], "drive": [3, 4], "weather": [2], "tool": [4], "hand": [6], "audio": [2], "phone": [2]}
 		for q0 in d["queue"]:
 			var q = q0
 			# a session run's inputs end with their slot (§17.13): looked at without it
@@ -365,6 +400,9 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 						or (r[0] == "hand" and (r.size() != 4 or typeof(r[2]) != TYPE_STRING \
 						or typeof(r[3]) != TYPE_STRING)):
 					return "a damaged record of the trainee's actions"
+	var aw := _audio_contents(fresh, d)
+	if aw != "":
+		return aw
 	var hw := _hands_contents(fresh, d)
 	if hw != "":
 		return hw

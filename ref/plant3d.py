@@ -570,8 +570,16 @@ class Plant:
         seen = set()
         for i, x in enumerate(lst(s['sounds'], f'{w}.sounds', 0, 256)):
             wi = f'{w}: sound {x.get("id", i) if isinstance(x, dict) else i}'
-            need(isinstance(x, dict) and x.get('kind') in ('loop', 'once', 'synth'), 'bad_kind', f'{wi}: kind')
-            if x['kind'] == 'synth':
+            need(isinstance(x, dict) and x.get('kind') in ('loop', 'once', 'synth', 'music'), 'bad_kind', f'{wi}: kind')
+            if x['kind'] == 'music':
+                # the phone's music (REALISM.md §8.5): our own, synthesised at build time from fixed rules and its
+                # seed (tools/plant3d/sounds), never a recording: no licence of anyone else's
+                keys(x, ('id', 'kind', 'title', 'seed', 'made'), (), wi)
+                name_text(x['title'], f'{wi}.title')
+                need(type(x['seed']) is int and 0 <= x['seed'] < 2 ** 31, 'bad_number', f'{wi}.seed: a whole number '
+                     'from 0 to 2^31 - 1')
+                name_text(x['made'], f'{wi}.made', 300)
+            elif x['kind'] == 'synth':
                 keys(x, ('id', 'kind'), ('tones', 'noise', 'made'), wi)
                 need('tones' in x or 'noise' in x, 'missing_key', f'{wi}: tones or noise')
                 for t in lst(x.get('tones', []), wi, 0, 8):
@@ -2347,6 +2355,12 @@ class Engine:
     def ppe(self, item, on, slot=None):
         self._q(('ppe', item, on), slot)
 
+    def audio(self, level, slot=None):
+        self._q(('audio', level), slot)     # the player's music volume, 0 off (REALISM.md §8.5)
+
+    def phone(self, what, slot=None):
+        self._q(('phone', what), slot)      # "leave" at a locker or "take" (§8.5)
+
     def zone(self, zone, how, slot=None):
         self._q(('zone', zone, how), slot)
 
@@ -2730,7 +2744,7 @@ class Engine:
             elif kind == 'release' and not self.session:
                 continue        # (a session run's input: a single-player run has no slots)
             elif kind in ('role', 'release', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump',
-                          'ppe', 'zone', 'stop', 'get_on', 'drive'):
+                          'ppe', 'zone', 'stop', 'get_on', 'drive', 'audio', 'phone'):
                 tail = (slot,) if self.session else ()
                 if sr is not None:
                     sr.t_input(item, slot)
@@ -3173,6 +3187,8 @@ class Engine:
             s['people'] = self.staff.snap()
             s['worn'], s['acts'] = self.staff.snap_acts()
             s['vehicles'] = self.staff.snap_vehicles()
+            if self.staff.st.audio is not None:     # REALISM.md §8.5
+                s['audio'] = self.staff.snap_audio()
             s['unacked'] = self.staff.unacked
             if self.session:
                 sr = self.staff

@@ -10,6 +10,8 @@ python3 tools/plant3d/sounds/make_sounds.py --out DIR --wav # 16-bit WAV, for li
 python3 -m unittest tests.test_plant3d_sounds               # the tests
 ```
 
+It also makes the phone's music (below).
+
 A run takes about 15 s.
 
 ## What the app gets
@@ -79,6 +81,7 @@ things for each sound:
 | `step_concrete`, `step_grating`, `step_stair` | A heel strike and a toe 80–90 ms later, each an impact ringing the floor's modes: concrete barely rings (a 90 Hz thump and grit); grating's bearing bars ring at 420–3,700 Hz and the panel rattles; a stair tread rings lower and longer (260–3,050 Hz). |
 | `door_slide`, `door_roller` | A sliding door's rollers along the track (uneven at its joints), then the leaf at its stop (180, 520 Hz); a roller door's slats rattling in their guides (about 15 a second), its motor's 100 Hz and its chain's 350 Hz. |
 | `plant_distant` | The grid's hum (100, 200 Hz) under a low roar: from afar the air takes the high frequencies away. |
+| `bus_engine` | The staff bus's six-cylinder four-stroke diesel at 750 rpm fires 37.5 times a second (its strongest tone, with harmonics to 150 Hz); the combustion knock ringing the block (1.4 kHz) clatters once a revolution (12.5 Hz, a rate) over brown noise 40–1,500 Hz. The app plays it on the bus while it is out of its parked place, its gain and pitch from its speed (REALISM.md §8.5). |
 
 The other sounds are band noise: combustion, exhaust, steam flow, vent, rain, burner, and the wind, in gusts over a
 16 s loop (its own `seconds` in VOICES; the other noise layers are 8 s).
@@ -109,11 +112,37 @@ level = −26 − 0.5 × (105 − spl) dBFS(A). That runs from the vent (105 dB(
 rumbles carry most of their energy in the bass that A weighting discounts, and they must not clip. A one-shot is
 measured by its loudest 400 ms. A recorded clip added later must follow the same rule, not a fixed loudness.
 
+## The music
+
+The phone's music (docs/plant3d/REALISM.md §8.5) is ours: three tracks the library lists as kind `music` (an id, a
+title and a seed, no licence: nobody else has rights in them), made here from fixed rules (`MUSIC` in the script) and
+the seed, with no samples and nothing recorded:
+
+- a chord progression held as a soft pad (one chord a bar, two voices a few cents apart);
+- a bass line on the chords' roots in eighths, an octave down on the first and third beats, the fifth at the end;
+- drums: a kick from a sine falling from 125 to 45 Hz, a snare and hats from filtered white noise;
+- a melody of two two-bar phrases walked over the track's scale from the seed and played A A B A; a note on a beat
+  moves to the nearest tone of its bar's chord.
+
+| Track | Key | Tempo | Length |
+|---|---|---|---|
+| `music_night_shift` | A minor | 90 bpm | 12 bars, 32 s |
+| `music_gate_road` | C major | 105 bpm | 16 bars, 36.6 s |
+| `music_cooling_tower` | E dorian | 120 bpm | 20 bars, 40 s |
+
+Each track loops seamlessly (a whole number of bars, every note's tail wrapped round to the start), mono at
+44.1 kHz, at one level for all, −25 dBFS(A): the app plays it through earbuds on its own bus at the phone's volume,
+not in the plant. It is Vorbis at quality 3, and listed in the index under `music` (`title`, `file`, `samples`,
+`seconds`, `bytes`, `level`, `bpm`, `bars`, `quality`, `click_db`), its bytes in `music_bytes`.
+
 ## Measured (2026-10-19)
 
 31 sounds in 51 files, 1.92 MB of Ogg Vorbis in total (24 sounds, 1.57 MB before the footsteps, doors and ambience).
 Decision 0054's budget is 250 MB for the APK (150 MB before 2026-11-01; 10 MB for clips; the desktop packages may grow to about 300 MB). A loop's tone layers are 2 s (8–22 KiB)
 and its noise layer 8 s (34–74 KiB; the wind's 16 s, 133 KiB); a footstep is 5–7 KiB. The worst loop-point tick
 after Vorbis is −54.2 dB under its sound; 26 of the 43 loop layers have nothing beyond the rest of the loop.
+
+The music (2026-11-03): 3 tracks, 0.73 MB (196, 243 and 292 KB); the bus's engine 81 KB. Nothing at any track's
+loop point beyond the rest of it after Vorbis (`click_db` −300).
 
 Not checked: Godot's own decoder. The seams and lengths are measured with FFmpeg's.

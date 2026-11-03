@@ -1,7 +1,7 @@
 {
  "format": "walkdown-plant-about",
  "version": 1,
- "note": "The third-party assets and code Walkdown Plant carries, besides the Godot Engine (its own notices come from Engine.get_license_info() and Engine.get_copyright_info() at run time, decision 0054 §7) and the sounds (synthesised by tools/plant3d/sounds; any recorded clip has its licence in data/plant3d/sounds.json). Geometry and the weathering's noise are made by the build itself.",
+ "note": "The third-party assets and code Walkdown Plant carries, besides the Godot Engine (its own notices come from Engine.get_license_info() and Engine.get_copyright_info() at run time, decision 0054 §7) and the sounds and the phone's music (synthesised by tools/plant3d/sounds: our own, no samples; any recorded clip has its licence in data/plant3d/sounds.json). Geometry and the weathering's noise are made by the build itself.",
  "assets": [
   {
    "id": "ambientcg-paintedmetal004",

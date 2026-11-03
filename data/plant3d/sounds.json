@@ -38,6 +38,10 @@
   {"id": "plant_distant", "kind": "synth", "tones": [{"hz": 100, "gain": 0.5}, {"hz": 200, "gain": 0.2}], "noise": {"colour": "brown", "band": [30, 700], "gain": 0.8}, "made": "the running plant heard from afar"},
   {"id": "rain", "kind": "synth", "noise": {"colour": "white", "band": [500, 10000]}, "made": "rain on the ground and the plant all round (outdoors)"},
   {"id": "sand_hiss", "kind": "synth", "noise": {"colour": "white", "band": [1500, 9000]}, "made": "blown sand in a sandstorm, in gusts (outdoors)"},
-  {"id": "thunder", "kind": "synth", "tones": [{"hz": 40, "gain": 0.4}], "noise": {"colour": "brown", "band": [20, 400], "gain": 1.0}, "made": "thunder after a lightning flash (played once)"}
+  {"id": "thunder", "kind": "synth", "tones": [{"hz": 40, "gain": 0.4}], "noise": {"colour": "brown", "band": [20, 400], "gain": 1.0}, "made": "thunder after a lightning flash (played once)"},
+  {"id": "bus_engine", "kind": "synth", "tones": [{"hz": 37.5, "gain": 0.7}, {"hz": 75, "gain": 0.45}, {"hz": 112.5, "gain": 0.25}, {"hz": 150, "gain": 0.15}, {"hz": 12.5, "gain": 0.35}], "noise": {"colour": "brown", "band": [40, 1500], "gain": 0.5}, "made": "the staff bus's diesel engine (loops while it is out of its parked place)"},
+  {"id": "music_night_shift", "kind": "music", "title": "Night shift", "seed": 7301, "made": "our own: synthesised by tools/plant3d/sounds from fixed rules (chords, a bass line, drums from filtered noise, a melody from a seeded scale) and this seed; no samples, no recording"},
+  {"id": "music_gate_road", "kind": "music", "title": "Gate road", "seed": 1905, "made": "our own: synthesised by tools/plant3d/sounds from fixed rules (chords, a bass line, drums from filtered noise, a melody from a seeded scale) and this seed; no samples, no recording"},
+  {"id": "music_cooling_tower", "kind": "music", "title": "Cooling tower", "seed": 4242, "made": "our own: synthesised by tools/plant3d/sounds from fixed rules (chords, a bass line, drums from filtered noise, a melody from a seeded scale) and this seed; no samples, no recording"}
  ]
 }

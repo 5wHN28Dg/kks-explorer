@@ -64,6 +64,7 @@ func run(tree: SceneTree) -> Array:
 		return p + ["the app did not start with its Workshop"]
 	await tree.process_frame
 	var ws = main.workshop
+	ws.warm_slice_us = 300   # (small: the material pass is cut into many slices, each checked below)
 	# the Workshop opened before the plant's warm-up comes due: the warm-up waits until it closes (its meshes' pipelines
 	# are made on the main thread as they enter the plant's world: a hitch in the Workshop's frames, K4a)
 	for i in 600:
@@ -99,10 +100,14 @@ func run(tree: SceneTree) -> Array:
 			check(ws._warm_kinds_done.has(k), "the plant's early warm-up held %s's machine (%s)" % [k, str(ws._warm_kinds_done)])
 		# spread over frames (the steam turbine's done in one frame made a 0.7 s plant frame on the Note 9): its script
 		# work in slices of about WARM_SLICE_US, its pieces into the plant's world WARM_PER_FRAME at most a frame
-		check(ws.warm_most_added > 0 and ws.warm_most_added <= ws.WARM_PER_FRAME,
-			"the warm-up adds at most %d pieces a frame (%d)" % [ws.WARM_PER_FRAME, ws.warm_most_added])
-		check(ws.warm_slice_us_max > 0 and ws.warm_slice_us_max < 5 * ws.WARM_SLICE_US,
-			"the warm-up's longest slice of script work in one frame: %d us" % ws.warm_slice_us_max)
+		check(ws.warm_pieces > 12 and ws.warm_most_added > 0 and ws.warm_most_added <= 12 and
+			ws.warm_batches >= ceili(float(ws.warm_pieces) / 12.0),
+			"the warm-up adds at most 12 pieces a frame (%d of a kind's %d, in %d frames)" % [ws.warm_most_added,
+				ws.warm_pieces, ws.warm_batches])
+		check(ws.warm_on_thread, "each kind's scene is instanced on a worker thread")
+		check(ws.warm_slices > 1 and ws.warm_slice_us_max > 0 and ws.warm_slice_us_max < 5000,
+			"the warm-up's material pass cut into slices of about %d us: %d cuts, the longest %d us" % [ws.warm_slice_us,
+				ws.warm_slices, ws.warm_slice_us_max])
 		check(buf_errors.count == 0, "the warm-up's MultiMeshes are made without a buffer error (%d)" % buf_errors.count)
 	else:
 		check(false, "the plant's early warm-up ran")

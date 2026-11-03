@@ -802,6 +802,10 @@ walls (a wall between halves its loudness: a simple rule, not acoustics).
   turbine's blade-pass tone rises with its speed, which no recording of one speed can do. Making the samples at run
   time (Godot's AudioStreamGenerator) is meant for C# or native code, not script (0054), and costs the phone CPU for
   nothing a pitched loop can't do.
+- **`music`** is the phone's music (docs/plant3d/REALISM.md §8.5): `{"id", "kind": "music", "title", "seed",
+  "made"}`, made by the content tools at build time from fixed rules and the seed (chords, a bass line, drums from
+  filtered noise, a melody walked over a scale), our own: no samples, nothing recorded, no licence of anyone else's.
+  The app plays it on a bus of its own and lowers every plant sound while it plays (`tools/plant3d/sounds/README.md`).
 - **Levels:** every sound, recorded or synthesised, is levelled by how loud its source is on site, not to one fixed
   loudness: its A-weighted level = −26 − 0.5 × (105 − its dB(A) at 1 m) dBFS (`tools/plant3d/sounds/README.md`).
   The −23 LUFS in the example above is a placeholder.
