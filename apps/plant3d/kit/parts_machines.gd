@@ -419,6 +419,10 @@ const ST_STAGES := 8          # the blade path's stages drawn (a stationary row,
 const ST_LAG := 0.2           # the lagging's thickness (radial), its ends 0.1
 const ST_WALL := 0.15         # the outer casing's wall
 const ST_N := 48              # segments round the shells (even: the halves meet at the horizontal joint)
+const ST_STOP_TRAVEL := 0.1   # the stop valve's disc off its seat, fully open (m; drawn, not a real valve's lift)
+const ST_CTRL_TRAVEL := 0.12  # the control valve's plug, fully open
+## The way the rotor turns: right-handed about +y, as the blades are made for (_st_blades); the steam flows to -y.
+const ST_TURN := Vector3(0, 1, 0)
 
 ## The plant's casing profile's radius at t along the casing (t from its rear end).
 static func _st_r(prof: Array, t: float) -> float:
@@ -588,8 +592,8 @@ static func _st_comps(g, c: Dictionary, za: float) -> void:
 	for s in ["l", "r"]:
 		var x := -1.0 if s == "l" else 1.0
 		g.comp("valve_" + s, {"explode": [Vector3(x, 0, 0), 1.6]})
-		g.comp("stop_" + s, {"parent": "valve_" + s, "explode": [up, 0.9]})
-		g.comp("ctrl_" + s, {"parent": "valve_" + s, "explode": [up, 1.6]})
+		g.comp("stop_" + s, {"parent": "valve_" + s, "explode": [up, 0.9], "anim": "stop_" + s})
+		g.comp("ctrl_" + s, {"parent": "valve_" + s, "explode": [up, 1.6], "anim": "ctrl_" + s})
 		g.comp("servo_" + s, {"parent": "valve_" + s, "explode": [up, 2.4]})
 
 ## The lagging: the plant's one drum (the stand-in) as two halves split at the joint, each a shell ST_LAG thick.
@@ -714,13 +718,24 @@ static func _st_valves(g, c: Dictionary, za: float) -> void:
 		g.comp("servo_" + s)
 		m.use("paint_machine", "identify")
 		_st_close_cyl(m, Vector3(x, y, za + r * 0.9), Vector3(x, y, za + r * 0.9 + 0.8), 0.2)
+		# the stop valve's disc and stem, the control valve's plug and stem: each a moving piece (K4b), the stop disc
+		# drawn down off its seat as it opens, the control plug lifted (ST_STOP_TRAVEL, ST_CTRL_TRAVEL at fully open)
 		g.comp("stop_" + s)
-		m.use("steel", "identify")
-		m.cyl(Vector3(x, y, za - 0.25), Vector3(x, y, za - 0.05), 0.3, -1.0, 24)
-		m.cyl(Vector3(x, y, za - r * 0.4 + 0.06), Vector3(x, y, za - 0.25), 0.04, -1.0, 8)
+		var ms = g.move("stop_" + s, Vector3(x, y, za - 0.15), Vector3(0, 0, -1), "translate", ST_STOP_TRAVEL) if g.workshop else m
+		ms.use("steel", "identify")
+		ms.cyl(Vector3(x, y, za - 0.25), Vector3(x, y, za - 0.05), 0.3, -1.0, 24)
+		ms.cyl(Vector3(x, y, za - r * 0.4 + 0.06), Vector3(x, y, za - 0.25), 0.04, -1.0, 8)
 		g.comp("ctrl_" + s)
-		m.cyl(Vector3(x, y, za + 0.35), Vector3(x, y, za + 0.55), 0.26, -1.0, 24)
-		m.cyl(Vector3(x, y, za + 0.55), Vector3(x, y, za + r * 0.9 - 0.02), 0.05, -1.0, 8)
+		var mc = g.move("ctrl_" + s, Vector3(x, y, za + 0.45), Vector3(0, 0, 1), "translate", ST_CTRL_TRAVEL) if g.workshop else m
+		mc.use("steel", "identify")
+		mc.cyl(Vector3(x, y, za + 0.35), Vector3(x, y, za + 0.55), 0.26, -1.0, 24)
+		mc.cyl(Vector3(x, y, za + 0.55), Vector3(x, y, za + r * 0.9 - 0.02), 0.05, -1.0, 8)
+		# the steam's way through the chest (K4b's flow): up from the main steam pipe below, past the stop valve's seat
+		# and the control valve's, down to the outlet and along it into the inner casing's inlet at the first stage
+		var pa := _st_path(c)
+		var xo: float = x * r * 0.8 / (r + 0.6)
+		g.flow("inlet_" + s, [Vector3(x, y, za - r * 0.4 + 0.05), Vector3(x, y, za - 0.15), Vector3(x, y, za + 0.3),
+			Vector3(x * 0.995, y, za + 0.05), Vector3(xo, y, za), Vector3(signf(x) * pa.bore_in * 0.9, pa.y_in + 0.05, za)])
 	g.only()
 
 ## The pedestals (the plant's boxes): each a body open at the top, its pit inside, and a cap plate over it; the
@@ -792,6 +807,18 @@ static func _st_rotor(g, c: Dictionary, za: float, L: float) -> void:
 	sh.use("steel", "identify")
 	sh.cyl(Vector3(0, L * 0.5 + 0.2 + 0.15, za), Vector3(0, L * 0.5 + 0.2 + 0.21, za), 0.33, -1.0, 24)
 	g.only()
+	# the steam's way along the blade path (K4b's flow): four lines round the annulus between the hub and the bore,
+	# from the first stage to the last (to -y, ST_TURN's way round the blades), then out of the exhaust below
+	for q in 4:
+		var phi := q * TAU / 4.0 + TAU / 8.0
+		var er := Vector3(cos(phi), 0, -sin(phi))
+		var r0: float = (pa.hub + pa.bore_in) * 0.5
+		var r1: float = (pa.hub + pa.bore_out) * 0.5
+		g.flow("blades_%d" % q, [Vector3(0, pa.y_in + 0.05, za) + er * r0, Vector3(0, pa.y_out - 0.05, za) + er * r1])
+	var rc: float = c.d * 0.5
+	var ye: float = c.y0 + (c.y1 - c.y0) * 0.1
+	g.flow("exhaust", [Vector3(0, pa.y_out - 0.05, za - pa.bore_out * 0.6), Vector3(0, ye, za - rc * 0.45),
+		Vector3(0, ye, za - rc * 0.95)])
 
 ## The static frequency converter: a row of cabinets on a plinth (doors, handles, louvres, the controller's display).
 static func sfc(_part: String, g) -> void:

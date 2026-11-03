@@ -200,6 +200,77 @@ def transmitter_inputs():
     ]
 
 
+def turbine_inputs():
+    """The steam turbine's run from its committed file (WORKSHOP.md §6.3, K4b): rolled to 800 rpm (the commands its
+    state refuses on the way), a rub's vibration tripping it in its soak, the alarms acknowledged, the trip's reset
+    refused while it stands and taken once repaired, the coast down."""
+    r, b, pf = 'rotor', 'bench', 'pedestal_f'
+    return [
+        [1, 'op', r, 'roll', None, None],
+        [2, 'op', r, 'roll', None, None],                  # already rolling: refused
+        [50, 'op', r, 'hold', None, None],                 # hold is taken while accelerating only: refused
+        [60, 'op', b, 'start', None, None],                # excitation below 95 % speed: refused
+        [70, 'op', pf, 'set', 0.05, None],                 # the speed bias past its range: refused
+        [80, 'op', 'valve_l', 'set', 120, None],           # the steam pressure up: the stage pressures follow
+        [700, 'fault', 'rub'],
+        [760, 'ack', 'vib1_h'],
+        [770, 'op', 'brg_f_upper', 'reset', None, 'trip_vib'],   # the vibration still high: refused
+        [780, 'repair', 'rub'],
+        [820, 'op', 'brg_f_upper', 'reset', None, 'trip_vib'],
+        [830, 'op', r, 'roll', None, None],                # still coasting down: refused
+        [840, 'fault', 'lube_pump'],
+    ]
+
+
+def short_soak(bench_text):
+    """The committed turbine with its soak at 800 rpm cut from the plant's 300 s to 10 s (the vector's only change):
+    the run up, the critical speeds, synchronising and load within a vector's length."""
+    d = json.loads(bench_text)
+    for v in d['values']:
+        if v[0] == 'soak_done':
+            assert v[1]['cmp'][0] == 'soak_t' and v[1]['cmp'][2] == 300, v
+            v[1]['cmp'][2] = 10
+    return text(d)
+
+
+def turbine_sync_inputs(bench_text, comps, sounds):
+    """Rolled with a short soak (short_soak) to full speed; the excitation on at 95 %; a small speed bias slips the
+    phase into the synchronising window and the breaker is tried every 5 steps until it closes (the refusals are
+    inputs too); loaded; then the governor's fault at no load overspeeds it to its trip. The steps are found by
+    running the reference with the inputs so far (deterministic)."""
+    r, b, pf = 'rotor', 'bench', 'pedestal_f'
+    inputs = [[1, 'op', r, 'roll', None, None]]
+
+    def until(cond, limit):
+        bm = B.check(B.loads(bench_text), comps, 'bench', sounds)
+        e = bm.engine()
+        ins = sorted(inputs, key=lambda x: x[0])
+        i = 0
+        while e.step_no < limit:
+            while i < len(ins) and ins[i][0] == e.step_no + 1:
+                apply(e, ins[i])
+                i += 1
+            e.step()
+            if e.step_no > ins[-1][0] and cond(e):
+                return e.step_no
+        raise AssertionError('the turbine vector\'s run did not get there')
+
+    n = until(lambda e: e.v('spd95') >= 0.5, 4000)
+    inputs += [[n + 1, 'op', b, 'start', None, None], [n + 2, 'op', pf, 'set', 0.002, None]]
+    k = until(lambda e: e.v('turbine_state') == 4, 4000) + 1
+    while True:
+        inputs.append([k, 'op', b, 'close_breaker', None, None])
+        try:
+            until(lambda e: e.v('brk_cmd') >= 0.5, k + 1)
+            break
+        except AssertionError:
+            k += 5
+            assert k < 4000, 'the breaker never closed'
+    inputs.append([k + 1, 'op', pf, 'set', 0, None])
+    inputs += [[k + 150, 'op', b, 'open_breaker', None, None], [k + 160, 'fault', 'governor']]
+    return inputs, until(lambda e: e.v('turbine_state') == 8, k + 2000) + 40
+
+
 def run(bench_text, comps, sounds, inputs, until):
     bm = B.check(B.loads(bench_text), comps, 'bench', sounds)
     e = bm.engine()
@@ -320,6 +391,17 @@ def build():
             steps.append({'why': 'the pressure transmitter: the supply, the range and past it, each fault and its '
                                  'repair', 'components': comps, 'bench': t, 'inputs': transmitter_inputs(),
                           'states': states, 'events': events})
+        if part == 'steam_turbine':
+            states, events = run(t, comps, sounds, turbine_inputs(), 900)
+            steps.append({'why': 'the steam turbine: rolled to its soak, refusals, a rub\'s vibration trip, its reset, '
+                                 'the lube oil lost', 'components': comps, 'bench': t, 'inputs': turbine_inputs(),
+                          'states': states, 'events': events})
+            t2 = short_soak(t)
+            ins, end = turbine_sync_inputs(t2, comps, sounds)
+            states, events = run(t2, comps, sounds, ins, end)
+            steps.append({'why': 'the steam turbine with a 10 s soak: run up through its critical speeds, '
+                                 'synchronised, loaded, unloaded and overspeed-tripped by its governor\'s fault',
+                          'components': comps, 'bench': t2, 'inputs': ins, 'states': states, 'events': events})
     g = text(gadget_ok())
     valid.append({'why': 'the synthetic kind', 'components': GADGET_COMPS, 'bench': g})
     states, events = run(g, GADGET_COMPS, GADGET_SOUNDS, gadget_inputs(), 170)

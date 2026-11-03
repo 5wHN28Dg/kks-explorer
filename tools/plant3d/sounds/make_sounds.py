@@ -96,6 +96,10 @@ VOICES = {
         'Steam turbine rotor at 3,000 rpm: once per revolution 50 Hz with its harmonics 100 and 150 Hz; a last-stage '
         'blade row of 72 blades passes at 3,600 Hz; pink noise 100-2,000 Hz is windage and steam. Pitch follows '
         'speed')),
+    'blade_pass': dict(spl=88, noise_am=[(0.5, 0.05)], why=(
+        'The HP turbine\'s blade-pass tone on the Workshop\'s bench: each moving row\'s 34 blades pass a point 50 '
+        'times a second at 3,000 rpm, 1,700 Hz, with its second harmonic 3,400 Hz; 50 Hz once per revolution; pink '
+        'noise 400-4,000 Hz is the steam in the blade path. Pitch follows speed')),
     'steam_rush': dict(spl=92, noise_am=[(0.5, 0.1), (1.25, 0.06)], why=(
         'Steam flow through the control valves and inlet: aerodynamic valve noise is broadband with its peak at a '
         'few kHz (IEC 60534-8-3), white 500-8,000 Hz, gently unsteady')),

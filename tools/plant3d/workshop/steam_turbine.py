@@ -331,3 +331,219 @@ def data():
                                           'bearings the rotor. Put it back together first (the lagging may stay '
                                           'off).'}},
     }
+
+
+# ------------------------------------------------------------------ the bench (WORKSHOP.md §6, milestone K4b)
+# The HP turbine run on its bench: steam at the stop valves (pressure and temperature, the sliders) through the stop and
+# control valves into the first stage and on through the eight, the pressure and the temperature falling stage by stage
+# to the exhaust; the rotor rolled, soaked, run up through its critical speeds, synchronised and loaded, and tripped, by
+# the plant's own start-up sequence, trips, alarms and the values they read (make_bench.py takes them from the
+# generated st model: never copied here). The bench gives what the plant's other areas would: the steam (the HRSG's), the
+# lube oil, the condenser's vacuum, the cooling water, the grid. Generic: no plant data.
+NRC_EHC = 'nrc_w73_ehc'
+NIST = 'nistir5078'
+SOURCES_BENCH = [
+    {'id': NRC_EHC, 'cite': 'US NRC, Westinghouse Technology Systems Manual, section 7.3 Main Turbine, MSR and EHC '
+                            '(a course copy): 7.3.2 the steam from the inlet chambers through the impulse stage and '
+                            'the reaction blading, the impulse stage pressure as the measure of the load; 7.3.3.1 speed '
+                            'control from turning gear to synchronous speed, then load once the breaker closes; '
+                            '7.3.3.2 the trips (overspeed, thrust bearing, low bearing oil pressure)',
+     'url': 'https://assets.excelsior.edu/private/sbt/secure/NUC350/WManual/W07.3%20Turbine.htm'},
+    {'id': NAVY, 'cite': 'US Navy, Fireman, NAVEDTRA 14104 (1992), chapter 5 Steam Turbines, the impulse principle: '
+                         'the nozzles turn the steam\'s energy into velocity, the blades take it, row after row',
+     'url': 'https://tpub.com/fireman/42.htm'},
+    {'id': NIST, 'cite': 'A. H. Harvey, Thermodynamic Properties of Water: Tabulation from the IAPWS Formulation 1995 '
+                         'for the Thermodynamic Properties of Ordinary Water Substance for General and Scientific Use, '
+                         'NISTIR 5078, table 2 (saturation by pressure): the saturation temperatures',
+     'url': 'https://www.nist.gov/document/nistir5078-tab2pdf'},
+    {'id': GE_STAG, 'cite': 'M. Boss, Steam Turbines for STAG Combined-Cycle Power Systems, GE Power Systems '
+                            'GER-3582E (1996): the combined stop and control valves ahead of the HP section',
+     'url': 'https://www.slideshare.net/slideshow/steam-turbinesforcombinedcycle/6369564'},
+]
+RATED_FLOW = 70.0       # kg/s through the HP turbine at full load (the plant's: st_mw_sp's table)
+P_FIRST = 90.0          # bar after the control valves at full flow (the first stage's inlet)
+P_EXHAUST = 25.0        # bar at the exhaust at full flow (cold reheat)
+EXPONENT = 0.2          # T2/T1 = (p2/p1)^n: steam's (k - 1)/k with the stages' efficiency
+BLADES = 34             # each moving row's blades (kit/parts_machines.gd _st_rotor): the blade-pass tone at 50 rev/s
+# the saturation temperature by pressure (bar, °C), NISTIR 5078 table 2
+TSAT = [[1, 99.6], [5, 151.8], [10, 179.9], [20, 212.4], [40, 250.4], [60, 275.6], [80, 295.0], [100, 311.0],
+        [120, 324.7], [140, 336.7]]
+
+# what the bench takes from the plant's st model (WORKSHOP.md §6.3)
+TAKE_VALUES = (
+    # the start-up sequence's states and conditions, the governor and the rotor's speed
+    ['st_speed_sp', 'st_adm', 'st_bias', 'st_exc_cmd', 'st_brk_cmd', 'st_gov_fault', 'st_thrust_fault',
+     'st_vib_fault', 'st_speed', 'st_still', 'st_slow', 'st_in_soak_ge', 'st_in_soak_le', 'st_in_soak',
+     'st_in_fsnl_ge', 'st_in_fsnl_le', 'st_in_fsnl', 'st_in_loaded_ge', 'st_in_loaded_le', 'st_in_loaded',
+     'st_in_hold_ge', 'st_in_hold_le', 'st_in_hold', 'st_nhold', 'st_roll_flow', 'st_flow_a', 'st_flow_l',
+     'st_flow_t', 'st_flow_t2', 'st_flow', 'st_gov', 'st_sp_eff', 'st_tg_spd', 'st_free', 'st_tgt', 'st_err',
+     'st_acc0', 'st_acc', 'st_rpm', 'st_os', 'st_at_800', 'st_at_3000', 'st_soak_t', 'st_soak_done',
+     # the lube oil's three pressure switches, two out of three trip
+     'st_lp_1', 'st_lp_1_l', 'st_lp_1_ll', 'st_lp_2', 'st_lp_2_l', 'st_lp_2_ll', 'st_lp_3', 'st_lp_3_l', 'st_lp_3_ll',
+     'st_lp_llv', 'st_lp_ll', 'st_lube_ok', 'st_lp_low',
+     # vibration through the critical speeds, axial displacement, the steam's superheat, the casing's warmth
+     'st_band_lo', 'st_band_hi', 'st_inband', 'st_band_t', 'st_vib_base', 'st_vib_hold', 'st_vib_f', 'st_vib'] +
+    [f'st_vib{k}{s}' for k in range(1, 9) for s in ('', '_h', '_hh')] +
+    ['st_vib_hh', 'st_ax_w', 'st_axial', 'st_axial_hh', 'st_inlet_t', 'st_superheat', 'st_sh_ok', 'st_sh_low',
+     'st_sh_wet', 'st_wet_c', 'st_cas_hot', 'st_cas_idle', 'st_cas_tgt', 'st_cas_steam', 'st_cas_k', 'st_casing_t',
+     'st_cas_gap', 'st_cas_rate', 'st_mismatch', 'st_mm_hi', 'st_mm_lo', 'st_match', 'st_p_ok',
+     'st_run_ge2', 'st_run_le2', 'st_rolling', 'st_sh_alarm_c',
+     # the generator's excitation and the synchronising check, the load
+     'st_v_sp', 'st_v', 'st_f', 'st_slip', 'st_slip_deg', 'st_phase', 'st_ph', 'st_ph_abs', 'st_ph_ok',
+     'st_slip_abs', 'st_slip_ok', 'st_v_dev', 'st_v_ok', 'st_spd95', 'st_brk_open', 'st_mw_sp', 'st_mw_t', 'st_mw'])
+TRIPS = ['st_trip_lube', 'st_trip_os', 'st_trip_axial', 'st_trip_vib', 'st_trip_steam_t']
+ALARMS = ['st_lp1_low', 'st_vib1_h', 'st_os1', 'st_sh_low']
+
+
+def _stage_values():
+    """The steam path (the bench's own: the plant's st model has one flow, not its stages). With the downstream a
+    turbine too (the reheater and the IP), every stage's pressure is proportional to the flow (the impulse stage's
+    pressure is the load's measure, NRC 7.3.2): the first stage's inlet P_FIRST and the exhaust P_EXHAUST at full flow,
+    an equal pressure ratio across each of the eight stages, never below the condenser's (the casing drained to it at
+    standstill). The steam's temperature falls with its pressure, T2/T1 = (p2/p1)^n (absolute temperatures); with no
+    steam flowing each stage's temperature is the casing's."""
+    r = (P_EXHAUST / P_FIRST) ** (1.0 / STAGES)
+    v = [
+        ['flow_frac', {'product': ['flow', round(1.0 / RATED_FLOW, 9)]}],
+        ['p_floor', {'product': ['cond_p', 0.01], 'unit': 'bar'}],
+        ['steaming', {'cmp': ['flow', '>', 0.5]}],
+        ['inlet_k', {'sum': ['inlet_t', 273.15], 'unit': 'K'}],
+        # the stop valves open at once and shut in a fraction of a second; the control valves follow the flow
+        ['stop_pos', {'ramp': 'adm', 'rate': 2, 'rate_down': 10, 'unit': 'pu'}],
+        ['ctrl_pos', {'lag': 'flow_frac', 'tau': 0.5, 'unit': 'pu'}],
+        ['p_first_f', {'product': ['flow_frac', P_FIRST]}],
+        ['p_first0', {'max': ['p_first_f', 'p_floor']}],
+        ['p_first', {'min': ['p_first0', 'p_supply'], 'unit': 'bar'}],
+    ]
+    for k in range(1, STAGES + 1):
+        pk = round(P_FIRST * r ** k, 6)
+        ck = round(r ** (k * EXPONENT), 9)
+        v += [
+            [f'p{k}_f', {'product': ['flow_frac', pk]}],
+            [f'p{k}', {'max': [f'p{k}_f', 'p_floor'], 'unit': 'bar'}],
+            [f't{k}_k', {'product': ['inlet_k', ck]}],
+            [f't{k}_s', {'sum': [f't{k}_k', -273.15]}],
+            [f't{k}_tgt', {'select': 'steaming', 'cases': ['casing_t', f't{k}_s']}],
+            [f't{k}', {'lag': f't{k}_tgt', 'tau': 10, 'init': 35, 'unit': '°C'}],
+        ]
+    return v
+
+
+def bench_source():
+    """The turbine's bench source for make_bench.py (WORKSHOP.md §6.3)."""
+    before = [
+        # the steam at the stop valves (the sliders) and what the HRSG would give through them
+        ['p_supply', {'state': 100, 'unit': 'bar'}],
+        ['t_set', {'state': 500, 'unit': '°C'}],
+        ['t_dip', {'state': 0}],                                 # the fault: the steam's temperature falls 200 K
+        ['dip_k', {'product': ['t_dip', 200]}],
+        ['steam_t', {'diff': ['t_set', 'dip_k'], 'unit': '°C'}],
+        ['tsat', {'of': 'p_supply', 'table': TSAT, 'unit': '°C'}],
+        ['steam_avail', {'of': 'p_supply', 'table': [[0, 0], [100, RATED_FLOW], [130, RATED_FLOW * 1.3]],
+                         'unit': 'kg/s'}],
+        # the bench's lube oil: its pump's pressure, lost with the fault
+        ['lube_fail', {'state': 0}],
+        ['lube_sp', {'select': 'lube_fail', 'cases': [2.5, 0.4]}],
+        ['lube_p', {'lag': 'lube_sp', 'tau': 3, 'unit': 'bar'}],
+        ['lube_sup', {'state': 0}],                              # (the oil system is in service from the start)
+        # the turning gear is engaged whenever the rotor is slow with oil on the bearings; the rotor is straight
+        ['tg_run', {'and': ['lube_ok', 'slow']}],
+        ['ecc_ok', {'state': 1}],
+        # the condenser under the exhaust, the grid, the cooling water, the air; no casing warm-up valve on the bench
+        ['cond_p', {'state': 6, 'unit': 'kPa(a)'}],
+        ['vac_ok', {'cmp': ['cond_p', '<', 12]}],
+        ['grid_frequency', {'state': 50, 'unit': 'Hz'}],
+        ['grid_pu', {'product': ['grid_frequency', 0.02]}],
+        ['ambient_t', {'state': 30, 'unit': '°C'}],
+        ['warm_on', {'state': 0}],
+        ['warm_shut', {'state': 1}],
+    ]
+    after = [
+        # the trips the bench takes (the plant's st_any_trip reads two more: the condenser's and the oil cooler's)
+        ['any_trip', {'or': [n.replace('st_', '', 1) + '_latched' for n in TRIPS]}],
+        ['trips_clear', {'not': 'any_trip'}],
+    ] + _stage_values()
+    sid = {f'srow_{h}{k}': k for k in range(1, STAGES + 1) for h in 'ul'}
+    bind = [{'at': 'rotor', 'anim': 'shaft', 'of': 'speed', 'scale': 50}]
+    for s in ('l', 'r'):
+        bind += [{'at': f'stop_{s}', 'anim': f'stop_{s}', 'of': 'stop_pos'},
+                 {'at': f'ctrl_{s}', 'anim': f'ctrl_{s}', 'of': 'ctrl_pos'}]
+    for c, k in list(sid.items()) + [(f'mrow_{k}', k) for k in range(1, STAGES + 1)]:
+        bind += [{'at': c, 'heat': f't{k}'}, {'at': c, 'pressure': f'p{k}'}]
+    for c in ('inner_upper', 'inner_lower', 'carrier_upper', 'carrier_lower'):
+        bind += [{'at': c, 'heat': 'casing_t'}, {'at': c, 'pressure': 'p_first'}]
+    for s in ('l', 'r'):
+        bind += [{'at': f'valve_{s}', 'heat': 'steam_t'}, {'at': f'valve_{s}', 'pressure': 'p_supply'}]
+    for s in ('l', 'r'):
+        bind.append({'flow': f'inlet_{s}', 'of': 'flow_frac', 'speed': 1.2, 'colour': 'pressure', 'by': 'p_supply'})
+    for q in range(4):
+        bind.append({'flow': f'blades_{q}', 'of': 'flow_frac', 'speed': 1.2, 'colour': 'pressure', 'by': 'p4'})
+    bind.append({'flow': 'exhaust', 'of': 'flow_frac', 'speed': 1.2, 'colour': 'pressure', 'by': 'p8'})
+    bind += [
+        {'at': 'pedestal_f', 'show': 'rpm'},
+        {'at': 'rotor', 'sound': 'blade_pass', 'gain': {'of': 'speed', 'table': [[0, 0], [0.05, 0.15], [1, 1]]},
+         'pitch': {'of': 'speed', 'table': [[0, 0.05], [1, 1]]}},
+        {'at': 'valve_l', 'sound': 'steam_rush', 'gain': {'of': 'flow', 'table': [[0, 0], [RATED_FLOW, 1]]}},
+    ]
+    bench = {
+        'format': 'walkdown-plant-bench', 'version': 1, 'part': 'steam_turbine',
+        'sources': SOURCES_BENCH,
+        'values': after,
+        'ops': [
+            {'at': 'valve_l', 'do': 'set', 'input': 'p_supply', 'range': [40, 130], 'title': 'Steam pressure'},
+            {'at': 'valve_r', 'do': 'set', 'input': 't_set', 'range': [400, 565], 'title': 'Steam temperature'},
+        ],
+        'faults': [
+            {'id': 'governor', 'at': 'servo_l', 'text': 'Speed governor fault: the speed set 15 % high',
+             'set': {'gov_fault': 1}, 'repair': {'gov_fault': 0}},
+            {'id': 'thrust_wear', 'at': 'thrust_upper', 'text': 'Thrust bearing wearing: the rotor creeps axially',
+             'set': {'thrust_fault': 1}, 'repair': {'thrust_fault': 0}},
+            {'id': 'rub', 'at': 'brg_r_upper', 'text': 'Rotor rubbing: bearing vibration high',
+             'set': {'vib_fault': 1}, 'repair': {'vib_fault': 0}},
+            {'id': 'lube_pump', 'at': 'pedestal_f', 'text': 'Lube oil pump lost: the bearings\' oil pressure falls',
+             'set': {'lube_fail': 1}, 'repair': {'lube_fail': 0}},
+            {'id': 'wet_steam', 'at': 'valve_l', 'text': 'Steam temperature falls 200 K (water carried over)',
+             'set': {'t_dip': 1}, 'repair': {'t_dip': 0}},
+        ],
+        # a hot start: the casing at 420 °C, the steam at 500 °C at the valves (matched), oil on the bearings
+        'start': {'casing_t': 420, 'inlet_t': 500, 'lube_p': 2.5},
+        'bind': bind,
+        'legends': {
+            'heat': {'unit': '°C', 'table': [[30, '#2c7bb6'], [200, '#abd9e9'], [350, '#ffffbf'], [450, '#fdae61'],
+                                             [565, '#d7191c']]},
+            'pressure': {'unit': 'bar', 'table': [[0, '#5e3c99'], [1, '#2c7bb6'], [25, '#abd9e9'], [50, '#ffffbf'],
+                                                  [75, '#fdae61'], [100, '#d7191c']]},
+        },
+        'readouts': ['rpm', 'flow', 'p_supply', 'steam_t', 'p_first', 'p8', 't8', 'casing_t', 'superheat', 'vib1',
+                     'axial', 'mw'],
+    }
+    return {
+        'area': 'st', 'prefix': 'st_',
+        'rename': {'st_start': 'turbine', 'hp_p': 'p_supply', 'hp_steam_t': 'steam_t', 'hp_tsat': 'tsat',
+                   'hp_steam_net': 'steam_avail', 'gt1_grid_pu': 'grid_pu', 'st_lube_p': 'lube_p',
+                   'st_tg_run': 'tg_run', 'st_ecc_ok': 'ecc_ok', 'st_vac_ok': 'vac_ok', 'st_warm_on': 'warm_on',
+                   'st_warm_shut': 'warm_shut', 'st_trips_clear': 'trips_clear'},
+        'at': {'30MAA10': 'rotor', '30MKC10': 'bench', '30BAC10': 'bench', '30MAY10CS001': 'pedestal_f',
+               '30MAY10CS002': 'pedestal_f', '30MAV10CP001': 'pedestal_f', '30MAD10CG001': 'thrust_upper',
+               '30MAD10CY001': 'brg_f_upper', '30MAA10CT001': 'valve_l'},
+        'machines': ['st_start'], 'trips': TRIPS, 'alarms': ALARMS,
+        'ops': [['30MKC10', 'start'], ['30MKC10', 'stop'], ['30BAC10', 'close_breaker'], ['30BAC10', 'open_breaker'],
+                ['30MAY10CS001', 'set']],
+        'titles': {('30MAA10', 'roll'): 'Roll', ('30MAA10', 'hold'): 'Hold speed',
+                   ('30MAA10', 'continue'): 'Continue', ('30MAA10', 'stop'): 'Stop',
+                   ('30MKC10', 'start'): 'Excitation on', ('30MKC10', 'stop'): 'Excitation off',
+                   ('30BAC10', 'close_breaker'): 'Close the breaker', ('30BAC10', 'open_breaker'): 'Open the breaker',
+                   ('30MAY10CS001', 'set'): 'Speed bias',
+                   'st_trip_lube': 'Reset: lube oil', 'st_trip_os': 'Reset: overspeed',
+                   'st_trip_axial': 'Reset: axial', 'st_trip_vib': 'Reset: vibration',
+                   'st_trip_steam_t': 'Reset: wet steam'},
+        'values': TAKE_VALUES,
+        'before': before,
+        'bench': bench,
+    }
+
+
+def bench(models):
+    """The turbine's bench file, made from the plant's st model (WORKSHOP.md §6.3)."""
+    from workshop import make_bench
+    return make_bench.make(bench_source(), models)
