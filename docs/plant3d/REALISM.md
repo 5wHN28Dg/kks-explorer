@@ -521,7 +521,11 @@ at 29–35 °C over the runs.
   HANDS line times step 3's hands part alone with 12 actions under way in `shift_cold`, 20,000 calls): on the laptop
   (headless) the model step at base load 0.245 ms as built, 0.272 ms with `--engine`, 0.273 ms with `--hands` too:
   the hand actions and meters add nothing to a step with no action under way (they are entries, not nodes); the
-  hands part with 12 actions under way is timed by the HANDS line (figures follow with the Note 9 run).
+  hands part with 12 actions under way is timed by the HANDS line. **The Note 9** (a test-signed release build of main
+  at f1f24bf7, `step=bench`, two runs back to back from a cool start at 29.3 °C): the model step at base load 0.531 ms
+  with `--engine` and 0.530 ms with `--hands` too (run 1; run 2 0.531 and 0.784 ms, the battery at 30.1 to 31.3 °C by
+  then), so the hand actions and meters again add nothing to a step with none under way; the HANDS line, step 3's
+  hands part with 12 actions under way, 24.7 µs a call (run 1) and 34.2 µs (run 2), about 5 % of the step that run.
 - **From the reviews:** an idle task has no hand step (it isn't paused when a player takes the person); a cause's
   `repair` needs the fault's own and writes no command its work's isolation locks; a save is refused when its tools
   don't add up to tools.json's or its NPC inputs name no person or slip. Not changed: the digest keeps no task
