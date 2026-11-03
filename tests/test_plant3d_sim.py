@@ -761,6 +761,7 @@ class GdscriptWaits(unittest.TestCase):
         def jump(e):
             if not jumped and _waits(e):
                 jumped.append(e.step_no + 1)
+                G.apply_staff(e, [e.step_no + 1, 'task_ack'])      # (the supervisor's tasks seen: else refused)
                 G.apply_staff(e, [e.step_no + 1, 'jump', '07:30'])
         run, _, e = self.run_ref('a jump while people wait', '05:30', 1500, jump, trainee='a_sup')
         self.assertTrue(jumped)
