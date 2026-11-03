@@ -212,6 +212,7 @@ func drive(delta: float) -> void:
 	var check_hat := _hat_t >= 0.5
 	if check_hat:
 		_hat_t = 0.0
+	var has_music: bool = sm.has_audio and e.sp_music.size() == sm.people.size()
 	var fresh: bool = e != _step_e or e.step_no != _step_n
 	if fresh:
 		_step_e = e
@@ -402,6 +403,8 @@ func drive(delta: float) -> void:
 				# seen)
 				_hat[pi] = hat_on(e, sm, pi)
 		p.hat = _hat[pi]
+		# earbuds in while a player's music plays (REALISM.md §8.5): another player's person standing at their place
+		p.buds = has_music and e.sp_music[pi] > 0
 		drawn[n] = pi
 		drawn_kind[n] = apart.kind[i]
 		drawn_fresh[n] = apart.fresh[i]

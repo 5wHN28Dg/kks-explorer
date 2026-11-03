@@ -35,6 +35,10 @@
 ##   crews=1                 the crews at work round the walker (S2's and S3's staff): the scenario `shift_cold` (or
 ##                           scenario=ID, one with staff), no role taken (free mode), at normal speed unless speed=fast;
 ##                           the people on screen are the staff's (what the crews cost: the frame rules' `crews` walk)
+##   music=V                 (walk) the phone's music playing at volume V (1–100) from the start, the plant's sounds
+##                           masked under it (REALISM.md §8.5): what the music costs a walk; in free mode (crews=1, no
+##                           role) no input is sent; the drive walk plays the driver, whose music the engine turns
+##                           off at the wheel
 ##   probe=1                 (walk) frames.csv beside result.txt: where each frame's time goes (app/frame_probe.gd)
 ##   max_fps=N               at most N frames a second (0: no cap): what a cap does to a phone's heat and long frames
 ##   pipeline_save_mb=N      save the pipeline cache every N MB of new pipelines instead of the project's 0.25
@@ -64,7 +68,7 @@
 ##   voice=bench             wdp_voice's test scene instead of the plant (voice/demo/voice_wav.gd: the codec's round
 ##                           trip and its time per 20 ms frame, `VOICE` lines in the log; milestone MP5's measurement)
 ##   On a phone walk.txt takes voice, probe, fx_off, fx_on, max_fps, crowd, people_skinned, people_shadows, crews,
-##   shot, digest and step too
+##   shot, digest, step and music too
 ##   (phone/frames.sh's WALK_EXTRA, phone/shots.sh); a shot's line in result.txt gives the view's draw calls, triangles
 ##   and GPU time (median of 30 frames)
 extends Node3D
@@ -285,6 +289,11 @@ func _ready() -> void:
 		ui.take_role("")   # free mode: the crews work round the walker, nobody's role taken
 	for p in String(opts.get("panels", "")).split(",", false):
 		ui.open_panel(p)
+	if opts.has("music") and ui.phone != null:      # (a walk's music: REALISM.md §8.5, what it costs)
+		ui.phone.set_volume(clampi(int(opts.music), 1, 100))
+		ui.phone.play()
+		_say("music: %s at volume %d (playing: %s)" % [ui.sounds.music_id, ui.sounds.music_volume,
+				str(ui.sounds.music_playing())])
 	if opts.get("speed", "") == "fast" and ui.clock != null:
 		ui.fast_forward()
 	# the saved run (ui/autosave.gd): offered at start; a start the command line asks for (a measurement, a scenario,
@@ -357,7 +366,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe", "weather", "cold"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe", "weather", "cold", "music"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))

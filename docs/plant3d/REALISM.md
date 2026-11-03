@@ -1168,27 +1168,39 @@ combined-cycle plant gives for it.
 |---|---|---|
 | Process and operating areas (staff zones with PPE: halls, yards, the pipe rack, the WTP) | an unsafe act of kind `audio` | allowed (calls, the radio's back-up) |
 | Ex zones (classified: the fuel gas station with OP4, the hydrogen areas with HS6; none in the first train yet) | `audio` | an unsafe act of kind `phone`: left at a locker before entering |
+| The central control room (`audio.rooms`: not a zone, zones need PPE) | `audio` (the user, 2026-11-03: its operators answer alarms) | allowed |
 | Camp, offices, canteen, rest places, the roads (no zone) | allowed | allowed |
 | Aboard a vehicle as a passenger (in no zone, §21.4) | allowed | allowed |
-| Driving (the bus, #313) | banned ([GEH-C25], [IOGP459]): to be added with bus driving (#313): music refused while the player drives | banned while driving |
+| Driving a run (the bus, §21.16) | refused ([GEH-C25], [IOGP459]): the `audio` input refused (`driving`), and taking the driver's seat turns it off | not modelled |
 
-The control room is not a zone (zones need PPE), so HS7 leaves music there allowed. Real sites ban it there too (the
-operators answer alarms): a question for the user (WAITING).
+**Answered (the user, 2026-11-03):** personal audio is banned in the central control room too, because its operators
+answer alarms; staff.json's `audio.rooms` lists the places beyond the process zones where it is banned, starting with
+the control room. And a device taken while the player is off duty is held until the end of their next duty.
 
 **The engine** (both engines bit for bit, behind staff.json's key `audio`; without the key nothing changes. The
 synthetic items of `plant3d-v1.json` and `-v2.json` stay byte for byte. The first train's runs carry the key, so they
 keep every input, event and earlier value, and their digests and snapshots gain the new parts):
-- **`"audio": {"banned": [zones], "ex": [zones], "notice": [min, max], "mask": m}`.** `banned` (≥ 1) lists the
-  zones where music is an act; `ex` lists the zones where carrying the phone is (each also in `banned`). `notice` is how many whole clock
+- **`"audio": {"banned": [zones], "ex": [zones], "notice": [min, max], "mask": m, "rooms": [rooms]}`.** `banned`
+  (≥ 1) lists the zones where music is an act; `ex` lists the zones where carrying the phone is (each also in
+  `banned`). `rooms` (optional, the user, 2026-11-03) lists the rooms (staff.json places' `room`) beyond the zones
+  where music is an act too: the first train's control room. A person is in such a room at a place of it, on a way
+  whose two ends are in it, or (a player) at the place they last arrived at. The app sends `arrive` within 1.5 m of a
+  place, and anywhere inside a banned room's footprint (the plan box round its places, 1 m out) at the room's
+  nearest place, so its middle counts too (the adversarial review found the middle of the control room held none). `notice` is how many whole clock
   minutes (0–600) an observer takes to notice. `mask` is the volume (1–100) from which radio calls are missed. With
   the key, the act kinds are `ppe, permit, unsafe, audio, phone`, in that order, for reactions (`on.unsafe`),
   `put_right` and stops.
 - **A player's person** has `music` (a volume 0–100, 0 off) and `phone` (1 carried, the default; 0 left at a
   locker; 2 held).
-  - Inputs: `[n, "audio", volume]` and `[n, "phone", "leave" | "take"]` (the app sends it at a locker, as PPE).
+  - Inputs: `[n, "audio", volume]` and `[n, "phone", "leave" | "take"]` (the app sends it at a locker).
     Leaving the phone turns the music off.
   - Events: `["audio", person, volume, "done" | "refused", reasons]` and `["phone", person, what, …]`, with the
-    slot last in a session. The reasons are `no_audio` (no key), `held` and `left`.
+    slot last in a session. The reasons are `no_audio` (no key), `held` and `left`; then for `audio` above 0,
+    `driving` (the person drives a vehicle's run, §21.16); for `phone`, `locker` (the place the player last arrived
+    at is not a locker: the engine checks it since the follow-ups, one place's kind compared; any locker, the engine
+    keeps no record of which one holds the phone). Taking the driver's
+    seat for a run turns a player's music off: `["audio", person, 0, "done", ["driving"]]`, the slot last in a
+    session.
   - In free mode the inputs do nothing. An NPC plays no music (a person released becomes an NPC with the music
     off).
 - **The acts.**
@@ -1202,7 +1214,10 @@ keep every input, event and earlier value, and their digests and snapshots gain 
     zone forgets the draw; meeting the act again draws anew. The first (role order, then index) whose time has
     come notices, and is given the reaction's task. Earbuds are small: a hard hat is seen at once, a bud is not.
   - **By a missed call.** A message to the player's person or role (§16.6 `say`) while the music is at `mask` or
-    louder is not heard: event `["missed", person, message, from]`. If an `audio` act is going on, the caller
+    louder is not heard: event `["missed", person, message, from]`. So is a radio call of the player's role (a task
+    called, §16.6 `call`, an NPC's or a player's): `["missed", person, task, from, "call"]`, after the call's event. A call
+    and a message from the same caller in one step (an alarm's call of the field operators and its word to them) are
+    one exchange on the radio: missed once, by the first of them. If an `audio` act is going on, the caller
     reports them not answering: the act's seen reactions go at once to the first person of their roles on duty,
     wherever they are. The `stop` step walks them to the player (§16.6). This is how colleagues give it away.
   - Everything is from the world's seed and the inputs, so every player of a session sees the same.
@@ -1213,7 +1228,9 @@ keep every input, event and earlier value, and their digests and snapshots gain 
   - The kind's `put_right` task follows (music off, phone out of the Ex zone).
   - While the phone is held, `audio` and `phone` inputs are refused (`held`).
   - It comes back when the duty it was taken in ends (event `["returned", person]`). This is judged by the clock, so
-    a jump into the next duty also gives it back (taken off duty, it comes back at once).
+    a jump into the next duty also gives it back. Taken off duty, it is held until the end of their next duty (the
+    user, 2026-11-03; before, it came back at once): the first duty of their roster starting after the stop, and
+    never when the roster has none.
 - **The digest** gains a part with the key: music, phone and the missed-call flags per person, the observers'
   times per act, and the streams. The acts' list per person grows to the five kinds. The snapshot gains `audio`:
   {person: [music, phone]} for anyone not at the default.
@@ -1227,8 +1244,9 @@ keep every input, event and earlier value, and their digests and snapshots gain 
 - A late alarm response and a bus heard too late follow from that. The debrief counts the alarms that went
   active while the music was on, and how long it took before they were acknowledged (by anyone: the events don't
   say who).
-- Not yet: earbuds drawn on the player's avatar for the others in a session (a kit part for A1's avatars; a later
-  step of HS7).
+- Earbuds are drawn on the avatar of anyone whose music is on (the follow-ups): a kit part on the head bone of A1's
+  skinned avatars (white buds with their stems, one mesh in the plant's shader), so the others of a session see them
+  near; the posed band far away draws none. The radio log shows a radio call missed as "Missed call from …" too.
 
 **The music.** Our own, made by the sound generator ([§11 of PLANT3D.md], decision 0055) as three short procedural
 tracks (a chord progression, a bass line, a drum pattern and a melody from a seeded scale, by fixed rules: no
@@ -1254,6 +1272,10 @@ and limit, and a reaction or put-right of the new kinds without the key. Its run
 - the device held and returned at the end of the duty;
 - the phone left and taken, and acts in an Ex zone;
 - the inputs refused without the key, and ignored in free mode.
+- after the follow-ups (appended): music in the control room (`rooms`), noticed and stopped there; a device taken off
+  duty held to the end of the next duty; music turned off at the wheel and refused while driving; a radio call
+  missed, and the phone refused away from a locker. The earlier runs that leave the phone now arrive at a locker
+  first, and those with music at the mask gain the missed radio calls.
 
 **Budgets.** The engine's cost is per player and per act (a few comparisons a step; draws only when an observer
 meets an act). Music playback is one streamed Vorbis player (no new pipelines, ≤ 2 MB PSS). The package grows by

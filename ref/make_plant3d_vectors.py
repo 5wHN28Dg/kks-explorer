@@ -3714,7 +3714,7 @@ def with_camp(st):
     for k in range(4):
         pl(f'mess_{k}', [-54 + k, 9, 0], 'seat', stub='c0', room='mess', pose='sit')
     pl('gym_1', [-64, 14, 0], 'seat', stub='c1', room='gym')
-    for k in range(14):
+    for k in range(max(14, len(st['people']) + 1)):     # (a room for everyone and the driver; at least fourteen)
         pl(f'bed_{k + 1}', [-72 - k, 14, 0], 'bed', stub='c1', room=f'room{k + 1}', pose='lie',
            **({'hidden': True} if k in (3, 4) else {}))
     st['speeds']['drive'] = 8
@@ -5105,6 +5105,11 @@ REJECTS_AUDIO = [
     ('a put-right for the phone without audio', 'unknown_key', _all(
         _st(lambda st: st.pop('audio')), _st(lambda st: st['put_right'].pop('audio')),
         _st(lambda st: st['reactions'].pop())), 'put_right'),
+    # the phone-music follow-ups (the user, 2026-11-03): the rooms beyond the zones where music is banned
+    ('a banned room that does not exist', 'bad_ref', _au(lambda a: a.__setitem__('rooms', ['cr', 'roof'])),
+     'audio.rooms: no room'),
+    ('a banned room twice', 'dup_id', _au(lambda a: a.__setitem__('rooms', ['cr', 'cr'])), 'audio.rooms'),
+    ('banned rooms that are not a list', 'bad_type', _au(lambda a: a.__setitem__('rooms', 'cr')), 'audio.rooms'),
 ]
 
 
@@ -5135,10 +5140,12 @@ def audio_runs():
          'before the morning round: an act of kind audio from the hall, then in the tank yard (an Ex zone) one of '
          'kind phone, unnoticed (nobody of the roles near), both ended on leaving; the next round\'s act in the hall '
          'noticed and '
-         'stopped; a phone input not leave or take ignored',
+         'stopped; a phone input not leave or take ignored (the trainee arrives at a locker for each: the engine '
+         'checks it since the phone-music follow-ups)',
          {'trainee': 'a_fo1'}, af,
-         Trainee(extra=[[600, 'audio', 20], [610, 'phone', 'leave'], [620, 'audio', 20], [700, 'phone', 'take'],
-                        [701, 'phone', 'drop'], [710, 'audio', 25]]), 2300, 20),
+         Trainee(extra=[[600, 'audio', 20], [609, 'arrive', 'locker1'], [610, 'phone', 'leave'], [620, 'audio', 20],
+                        [699, 'arrive', 'locker1'], [700, 'phone', 'take'], [701, 'phone', 'drop'],
+                        [710, 'audio', 25]]), 2300, 20),
         ('with seed 3 in the world: other noticing draws, the same rules', {'trainee': 'a_fo1', 'world': {'seed': 3}},
          af, Trainee(extra=[[1500, 'audio', 30]]), 2300, 20),
         ('without audio: the audio and phone inputs refused (no_audio), no act; in free mode (no trainee) they do '
@@ -5152,7 +5159,8 @@ def audio_runs():
          {'start': {'day': 1, 'time': '17:00'}}, af,
          Session([Trainee(slot=0), Trainee(slot=1)],
                  extra=[[1, 'role', 'a_fo1', 0], [1, 'role', 'a_fo2', 1], [20, 'audio', 60, 0], [20, 'audio', 70, 1],
-                        [300, 'phone', 'leave', 1], [301, 'audio', 10, 1], [700, 'audio', 20, 0]]), 800, 20),
+                        [299, 'arrive', 'locker2', 1], [300, 'phone', 'leave', 1], [301, 'audio', 10, 1],
+                        [700, 'audio', 20, 0]]), 800, 20),
         ('a jump into the next duty (§17.6): the painting not hosted (no permit open, so the jump is allowed), from '
          '17:00 the act reported by a missed call and stopped, then a jump to 06:30 of day 2, inside field operator '
          '1\'s next duty: the device comes back in the jump\'s step, its duty having ended on the way',
@@ -5164,6 +5172,49 @@ def audio_runs():
          {'trainee': 'a_fo1'}, af,
          Trainee(extra=[[1500, 'audio', 30]] + [[t, 'audio', 0 if (t // 10) % 2 else 30] for t in range(1850, 2400, 10)]),
          2450, 50),
+    ] + audio_more_runs(af, nohost)
+
+
+def audio_more_runs(af, nohost):
+    """The phone-music follow-ups (the user, 2026-11-03; REALISM.md §8.5): music banned in the control room too
+    (`audio.rooms`), a device taken off duty held to the end of the next duty, music refused at the wheel, a radio call
+    missed, the phone left and taken only at a locker."""
+    ccr = copy.deepcopy(af)
+    ccr['staff.json']['audio'].update(rooms=['cr'], notice=[1, 3])
+    ccr_nohost = copy.deepcopy(nohost)
+    ccr_nohost['staff.json']['audio']['rooms'] = ['cr']
+    camp = copy.deepcopy(af)
+    camp['staff.json'] = with_camp(camp['staff.json'])
+    return [
+        ('music in the control room (audio.rooms): field operator 1, played without walking, at a control room desk '
+         'with music on: an act of kind audio whose detail is the room; leaving the desk (no place of the room) ends '
+         'it; back at the desk it starts again, and the shift supervisor coming to the room\'s table notices it (a '
+         'draw of 1–3 minutes, as in a zone) and stops it: the device held',
+         {'trainee': 'a_fo1'}, ccr,
+         Trainee(quiet=True, extra=[[5, 'arrive', 'desk_b'], [6, 'audio', 30], [200, 'leave', 'desk_b'],
+                                    [380, 'arrive', 'desk_b']]), 600, 50),
+        ('a device taken off duty is held to the end of the next duty: field operator 1 (days) at a control room desk '
+         'at 18:30 with music on, after their duty; the night\'s shift supervisor stops it; a jump to 17:30 of day 2 '
+         '(inside their next duty): still held, an audio input refused (held); a jump to 18:30: returned, music again',
+         {'trainee': 'a_fo1', 'start': {'day': 1, 'time': '18:30'}}, ccr_nohost,
+         Trainee(quiet=True, extra=[[2, 'arrive', 'desk_b'], [3, 'audio', 30], [299, 'task_ack'], [300, 'jump', '17:30'],
+                                    [320, 'audio', 20], [339, 'task_ack'], [340, 'jump', '18:30'],
+                                    [360, 'audio', 20]]), 400, 20),
+        ('music refused at the wheel (REALISM.md §8.5; [GEH-C25], [IOGP459]): the driver plays music before the run; '
+         'taking the driver\'s seat for the run turns it off (event audio 0 done, reason driving); music asked for '
+         'while driving the run is refused (driving), off is done; after the run, music again',
+         {'trainee': 'drv1', 'start': {'day': 1, 'time': '05:30'}}, camp,
+         Trainee(drive=Drive(runs=1), extra=[[2, 'audio', 30], [100, 'audio', 20], [101, 'audio', 0],
+                                             [800, 'audio', 20]]), 900, 50),
+        ('the phone left away from a locker refused (locker), then left at a locker and taken there again; a radio '
+         'call missed (REALISM.md §8.5): with music at the mask in the hall, field operator 1 misses the control room '
+         'operator\'s call of their role (event missed with the task and "call"), which reports the act going on: '
+         'the stop goes to the first of the roles on duty (nobody before the day shift at 06:00, then the shift '
+         'supervisor at once)',
+         {'trainee': 'a_fo1'}, af,
+         Trainee(quiet=True, extra=[[1, 'phone', 'leave'], [2, 'arrive', 'locker3'], [3, 'phone', 'leave'],
+                                    [4, 'phone', 'take'], [5, 'arrive', 'p1'], [6, 'zone', 'hall', 'in'],
+                                    [7, 'audio', 60]]), 500, 20),
     ]
 
 

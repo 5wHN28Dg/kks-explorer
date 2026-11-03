@@ -4,7 +4,11 @@
 ## - the phone's part of the Crew panel: in free mode the music just plays and no input is sent; playing a person it
 ##   sends `audio` with the volume (in steps of 10, 0 when stopped) and, at a locker, `phone` leave; a `held` event
 ##   stops the music and says who holds the phone, `returned` that it is back;
-## - the radio log: a message missed over the music is "Missed call from …" without its text;
+## - the radio log: a message missed over the music is "Missed call from …" without its text, and so is a radio call
+##   of the player's role (the follow-ups, 2026-11-03: the event missed with "call" last replaces the call's line);
+## - the follow-ups: music off at the wheel (the engine's audio 0 with reason driving) and not played while driving;
+##   the phone's words for a refusal away from a locker; held to the end of the next shift when taken off duty; the
+##   debrief's words for music in the control room and a radio call missed;
 ## - zones say "No personal audio here" and "Ex zone: no phone" as they are entered;
 ## - the debrief's consequence ladder for 1, 2 and 3 stops and for a phone act stopped first, the calls missed and
 ##   the alarms raised while the music played;
@@ -23,6 +27,7 @@ const Phone = preload("res://ui/phone.gd")
 const PlantEngine = preload("res://sim/engine.gd")
 const RunSave = preload("res://ui/run_save.gd")
 const Autosave = preload("res://ui/autosave.gd")
+const CrewPanelScript = preload("res://ui/crew_panel.gd")
 
 
 func run(tree: SceneTree) -> Array:
@@ -351,9 +356,109 @@ func _person(tree: SceneTree, ui) -> Array:
 	var shown := App.texts(ui.crew)
 	if not shown.contains("Missed call from %s" % sup_call):
 		p.append("the radio on the panel does not show the missed call")
+	p += _followups(ui, e, me, sup_id, sup_call)
 	p += _follows_engine(ui, e, me)
 	p += _saved_audio(ui, e)
 	ui.close_crew()
+	return p
+
+
+## The phone-music follow-ups (the user, 2026-11-03): a radio call missed, music at the wheel, the locker, the hold's
+## end, the control room.
+func _followups(ui, e, me: int, sup_id: String, sup_call: String) -> Array:
+	var p: Array = []
+	var sm = e._sm
+	var me_id: String = sm.people[me]["id"]
+	var role: String = sm.people[me]["role"]
+	# a radio call of the player's role missed: its line becomes "Missed call from …", without the task
+	var task: String = ""
+	for t in sm.tasks:
+		if String(sm.tasks[t].get("title", "")) != "":
+			task = t
+			break
+	var n2: int = e.step_no + 1         # (a step of its own: the earlier message's exchange is another)
+	e.events.append([n2, "call", sup_id, role, task, null, "done"])
+	ui.crew._sig = ""
+	ui.crew.refresh()
+	var n: int = ui.crew._radio.size()
+	if not String(ui.crew._radio[n - 1]).contains(sm.tasks[task]["title"]):
+		p.append("a radio call heard is not in the radio log with its task")
+	e.events.append([n2, "missed", me_id, task, sup_id, "call"])
+	# the alarm's exchange: the call missed, then its message to the role in the same step (the engine's missed once)
+	var msg: String = sm.messages.keys()[0]
+	e.events.append([n2, "say", sup_id, msg, role])
+	ui.crew.refresh()
+	var log: Array = ui.crew._radio
+	if log.size() != n or not String(log[n - 1]).ends_with("Missed call from %s" % sup_call):
+		p.append("a radio call missed: the radio's last line is %s (%d lines, not %d)" % [log[log.size() - 1], log.size(), n])
+	# (the size above: the message after the missed call added no line of its own, so its text is not shown)
+	var dt := Debrief.audio_text(sm, [0, "missed", me_id, task, sup_id, "call"], me_id, -1)
+	if not dt.begins_with("Missed radio call from %s" % sup_call):
+		p.append("the debrief's line for a radio call missed: %s" % dt)
+	# at the wheel: the engine turned the music off (taking the driver's seat), and the phone says why
+	ui.inputs.sink = func(_item): pass
+	ui.phone.state = Phone.CARRIED
+	ui.phone.play()
+	e.events.append([e.step_no, "audio", me_id, 0, "done", ["driving"]])
+	ui._sync_events()
+	if ui.sounds.music_playing() or ui.phone.playing:
+		p.append("the music plays on at the wheel")
+	if not ui._toast.text.contains("No earbuds at the wheel"):
+		p.append("the music off at the wheel says %s" % ui._toast.text)
+	if not Debrief.audio_text(sm, [0, "audio", me_id, 0, "done", ["driving"]], me_id, -1).contains("at the wheel"):
+		p.append("the debrief does not say the music went off at the wheel")
+	# driving the bus's run: the phone neither sends the music nor plays it
+	var sent: Array = []
+	ui.inputs.sink = func(item): sent.append(item)
+	e.st_veh.append({"driver": me})
+	ui.phone.play()
+	e.st_veh.pop_back()
+	if not sent.is_empty() or ui.sounds.music_playing():
+		p.append("driving, the phone sent %s or played the music" % str(sent))
+	ui.inputs.sink = Callable()
+	# refusals' words: away from a locker, at the wheel
+	if not ui.phone.refusal(["locker"]).contains("locker") or not ui.phone.refusal(["driving"]).contains("wheel"):
+		p.append("the phone's words for locker and driving refusals: %s / %s" % [ui.phone.refusal(["locker"]),
+				ui.phone.refusal(["driving"])])
+	# held: to the end of this shift on duty, of the next one taken off duty, for good with no next duty
+	var held_was: int = e.sp_held_to[me]
+	var on_was: int = e.sp_on[me]
+	var duty_was: Array = e.sp_duty[me]
+	e.sp_on[me] = 1
+	e.sp_duty[me] = [0, 5000]
+	e.sp_held_to[me] = 5000
+	var w1: String = ui.phone.held_until()
+	e.sp_on[me] = 0
+	e.sp_held_to[me] = 9000
+	var w2: String = ui.phone.held_until()
+	e.sp_held_to[me] = 1 << 62
+	var w3: String = ui.phone.held_until()
+	e.sp_held_to[me] = held_was
+	e.sp_on[me] = on_was
+	e.sp_duty[me] = duty_was
+	if w1 != "until the end of your shift" or w2 != "until the end of your next shift" or w3 != "for the rest of the run":
+		p.append("held until: %s / %s / %s" % [w1, w2, w3])
+	# the control room (audio.rooms): the act's words name the room
+	var ct := Debrief.safety_text(sm, [0, "unsafe", me_id, "audio", "control_room"])
+	if not ct.contains("listening to music in the control room"):
+		p.append("the debrief's words for music in the control room: %s" % ct)
+	if not CrewPanelScript.act_text(sm, 3, ["control_room"]).contains("music in the control room"):
+		p.append("the crew panel's words for music in the control room: %s" % CrewPanelScript.act_text(sm, 3, ["control_room"]))
+	if sm.audio_rooms != ["control_room"]:
+		p.append("the first train bans music in the control room: %s" % str(sm.audio_rooms))
+	# anywhere in the control room, 7 m from its places, the trainee is at its nearest place (the adversarial review:
+	# the middle of the room held no place, so music there was no act)
+	if ui.room_at(sm, Vector3(-19, 0, 0)) != 0 or ui.room_at(sm, Vector3(0, 0, 0)) != -1:
+		p.append("the control room's footprint: %d in its middle, %d outside" % [ui.room_at(sm, Vector3(-19, 0, 0)),
+				ui.room_at(sm, Vector3(0, 0, 0))])
+	var moves: Array = []
+	ui.inputs.sink = func(item): moves.append(item)
+	ui.player.global_position = Vector3(-19, 0, 0)     # (Godot's frame: x, height, -y)
+	ui._place_tick()
+	ui.inputs.sink = Callable()
+	var arrived := moves.filter(func(x): return x[0] == "arrive")
+	if arrived.is_empty() or sm.place_aroom[sm.pix[arrived[-1][1]]] != 0:
+		p.append("in the control room's middle the trainee arrives at none of its places: %s" % str(moves))
 	return p
 
 

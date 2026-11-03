@@ -6,8 +6,8 @@
 ##         ("Seen" is the task_ack input that lets fast-forward run again, §17.6), and the round's readings sheet.
 ##   Radio: the messages and calls between the roles (the events `say` and `call`), the trainee's own messages and
 ##         requests (the calls the content makes to other roles), and "Sleep to the next shift" (a jump) when allowed.
-##         A message the trainee missed over their music (the event `missed`, REALISM.md §8.5) shows as "Missed call
-##         from …", without its text.
+##         A message or a radio call of their role the trainee missed over their music (the event `missed`,
+##         REALISM.md §8.5) shows as "Missed call from …", without its text.
 ##   Phone: the trainee's music and phone (ui/phone.gd), in free mode too.
 ## Everything goes to the engine as an input; nothing here changes the plant itself. Touch, keyboard and gamepad:
 ## every control is a button or a line edit that takes the focus (Esc or B closes, as the other panels).
@@ -39,6 +39,7 @@ var _radio_shown := -1          # how many of _radio's lines there were when the
 var _head: Label = null         # the trainee's header line (role, duty, clock) and its text before the clock
 var _head_text := ""
 var _reads: Dictionary = {}     # person -> their read events
+var _exchanges: Dictionary = {}  # "step|caller" -> true: a call or message to the trainee missed then (its others too)
 var _said: Dictionary = {}      # "from|message" -> the radio line of its last say (a missed call replaces it)
 
 
@@ -158,24 +159,34 @@ func _follow(e) -> void:
 		_radio.clear()
 		_reads.clear()
 		_said.clear()
+		_exchanges.clear()
 	var sm = e._sm
+	var me_id = sm.people[ui.my_person()]["id"] if sm != null and ui.my_person() != -1 else null
+	var me_role = sm.people[ui.my_person()]["role"] if me_id != null else null
 	for k in range(_seen, e.events.size()):
 		var ev: Array = e.events[k]
 		if ev[1] == "jump" and ev[4] == "done":
 			_j += ev[3] - ev[2]
+		elif ev[1] in ["say", "call"] and _exchanges.has("%d|%s" % [ev[0], ev[2]]) \
+				and ((ev[1] == "say" and (ev[4] == me_id or ev[4] == me_role)) or (ev[1] == "call" and ev[3] == me_role)):
+			pass        # the rest of an exchange missed over the music (REALISM.md §8.5): its one line says so
 		elif ev[1] == "say":
 			_said["%s|%s" % [ev[2], ev[3]]] = _radio.size()
 			_radio.append("%s  %s → %s: %s" % [_at(e, ev[0], _j), _call(sm, ev[2]), _to(sm, ev[4]), sm.messages.get(ev[3], ev[3])])
 		elif ev[1] == "missed" and ui.my_person() != -1 and ev[2] == sm.people[ui.my_person()]["id"]:
 			# not heard over the music (REALISM.md §8.5): who called, not what (and no sound for it)
 			var line := "%s  Missed call from %s" % [_at(e, ev[0], _j), _call(sm, ev[4])]
-			var at_line: int = _said.get("%s|%s" % [ev[4], ev[3]], -1)
+			# (a radio call of the player's role missed carries "call" last: its call line is replaced)
+			var key := ("call|%s|%s" if ev.size() > 5 and ev[5] == "call" else "%s|%s") % [ev[4], ev[3]]
+			var at_line: int = _said.get(key, -1)
 			if at_line >= 0:
 				_radio[at_line] = line
 			else:
 				_radio.append(line)
+			_exchanges["%d|%s" % [ev[0], ev[4]]] = true
 			_radio_shown = -1           # (a line already shown changed: written again)
 		elif ev[1] == "call" and ev[6] == "done":
+			_said["call|%s|%s" % [ev[2], ev[4]]] = _radio.size()
 			_radio.append("%s  %s → %s: %s" % [_at(e, ev[0], _j), _call(sm, ev[2]), _to(sm, ev[3]),
 					sm.tasks[ev[4]]["title"] if sm.tasks.has(ev[4]) else ev[4]])
 		elif ev[1] == "read":
@@ -543,7 +554,8 @@ static func act_text(sm, kind: int, a) -> String:
 
 static func _zone_title(sm, det) -> String:
 	var z: int = sm.zone_ix.get(det, -1) if sm != null else -1
-	return String(sm.d["zones"][z].get("title", det)).to_lower() if z >= 0 else str(det)
+	# (not a zone: a room where music is banned, REALISM.md §8.5: "control_room" is "control room")
+	return String(sm.d["zones"][z].get("title", det)).to_lower() if z >= 0 else str(det).replace("_", " ")
 
 
 ## What the trainee wears, what their zones need, their own unsafe acts, and (with stop_work) the acts they can see.
