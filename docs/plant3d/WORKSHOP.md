@@ -343,7 +343,8 @@ The data file's `assembly` is the guided order, one step per component or fasten
 - `text`, `why`: runs as procedures' (COURSES.md §3–§4, no figures or questions).
 - `needs`: `[component, sentence when placing too early, sentence when removing too early]`, in order: placing is
   refused with the first unmet need's first sentence; removing a component is refused while a placed component needs
-  it, with that need's second sentence. Every named component exists.
+  it, with that need's second sentence. Every named component exists. A need may name a fastener group too (K4a: the
+  outer casing closes over the inner casing's studs, the lagging over the joint's).
 - **Snapping:** within 2 % of the part kind's (the whole machine's) box diagonal (at least 5 mm) of home and within 10° of its home orientation,
   modulo the component's `sym` (its axis passes through the component's pivot).
 - **Why not the procedure format (§8):** a procedure's `at` names KKS codes and its `do` names ops of the model; an
