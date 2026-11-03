@@ -305,6 +305,8 @@ class Bundle:
         self.version = 1                           # plant.json's (§14)
         self.staff = None                          # staff.json, checked (ref/plant3d_staff.py), or None
         self.weather = None                        # weather.json, checked (ref/plant3d_world.py), or None
+        self.tools = None                          # tools.json, checked (ref/plant3d_hands.py, REALISM.md §2.3)
+        self.tools_doc = None                      # (its text, read before staff.json's tasks are checked)
         self.screen_of = {}                        # code shown on the screens -> (screen id, group id) (§7.11)
         self.areas, self.models = [], []          # in plant.json order
         self.scenarios, self.procedures = {}, {}
@@ -345,7 +347,8 @@ def check_files(files):
     """Check a plant given as {relative path: bytes} (the layout of PLANT3D's file table)."""
     b = Bundle()
     for rel in files:
-        need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json', 'weather.json') or re.fullmatch(
+        need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json', 'weather.json',
+                     'tools.json') or re.fullmatch(
             r'(areas|model|procedures|scenarios|workshop|workshop/bench)/[a-z_][a-z0-9_]{0,31}\.json|'
             r'sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg',
             rel), 'unknown_key', f'{rel}: not a file of the format')
@@ -369,6 +372,9 @@ def check_files(files):
             need(part in b.workshop, 'bad_ref', f'{rel}: no Workshop data file workshop/{part}.json')
             comps = list(parse(files, f'workshop/{part}.json')['components'])
             b.bench[part] = BM.check(parse(files, rel), comps, rel, b.sounds['sounds'], part)
+    if b.model.hands:
+        from ref import plant3d_hands as H      # a hand action's component is in its part kind's tree (REALISM.md §2.4)
+        H.check_components(b)
     return b
 
 
@@ -424,6 +430,12 @@ class Plant:
                 need(rel[6:-5] in p['areas'], 'bad_ref', f'{rel}: area not listed in plant.json')
         m.finish()
         b.staff = None
+        if 'tools.json' in files:
+            # the tools carried (REALISM.md §2.3, milestone HW1): checked with staff.json's places, before its tasks
+            need(b.version == 2, 'unknown_key', 'tools.json: only in a version 2 plant (REALISM.md §2.3)')
+            need('staff.json' in files, 'bad_ref', 'tools.json: only in a plant with staff.json (its places keep the '
+                                                   'tools, REALISM.md §2.3)')
+            b.tools_doc = parse(files, 'tools.json')
         if 'staff.json' in files:
             from ref.plant3d_staff import Staff
             need(b.version == 2, 'unknown_key', 'staff.json: only in a version 2 plant (§14)')
@@ -432,6 +444,9 @@ class Plant:
             for x in m.works:
                 if 'task' in x:
                     ident(x['task'], f'work {x["id"]}.task')
+        if (m.hands or m.meters) and b.staff is None:
+            from ref import plant3d_hands as H      # (with staff.json, checked before its tasks)
+            H.check_tool_refs(b, m)
         if 'weather.json' in files:
             # the weather's kinds, driven values and seasons (REALISM.md §5.1, milestone WX1)
             from ref.plant3d_world import check_weather
@@ -978,6 +993,8 @@ class Model:
         self.area_of = {}                        # ('alarm' or 'trip', id) -> its model file's area (§17.12)
         self.iso_codes, self.work_isos = [], []  # (code, where), (isolation id, where): resolved in finish()
         self.renews = []                         # (wear value, where) of works' `renews`: resolved in finish()
+        self.hands, self.meters = [], []         # REALISM.md §2.4, §2.5 (milestone HW1)
+        self.hand_keys, self.meter_ix = {}, {}   # (code, action) -> hand action; meter id -> meter
         self.version = 1                         # of the model file being added
 
     def kept(self):
@@ -1001,7 +1018,7 @@ class Model:
         return NAMES + (WX_NAME,)
 
     def add(self, d, aid, rel):
-        v2 = ('isolations', 'works', 'lifts')
+        v2 = ('isolations', 'works', 'lifts', 'hands', 'meters')
         keys(d, ('format', 'version', 'area'), ('values', 'ops', 'interlocks', 'machines', 'alarms', 'trips', 'bind')
              + v2, rel)                  # first, so a format 1 file keeps format 1's error codes
         self.version = fmt(d, 'model', rel, self.b.version)
@@ -1059,6 +1076,14 @@ class Model:
              f'{rel}: the joined model has over {MAX["lifts"]} lifts')
         for i, x in enumerate(d.get('lifts', [])):
             self.check_lift(x, f'{rel}: lift {x.get("id", i) if isinstance(x, dict) else i}')
+        if 'hands' in d or 'meters' in d:
+            from ref import plant3d_hands as H      # REALISM.md §2.4, §2.5 (milestone HW1)
+            for i, x in enumerate(lst(d.get('hands', []), f'{rel}.hands')):
+                H.check_hand(self, x, f'{rel}: hand action {i}')
+            need(len(self.hands) <= H.LIMITS['hands'], 'limit', f'{rel}: over {H.LIMITS["hands"]} hand actions')
+            for i, x in enumerate(lst(d.get('meters', []), f'{rel}.meters')):
+                H.check_meter(self, x, f'{rel}: meter {i}')
+            need(len(self.meters) <= H.LIMITS['meters'], 'limit', f'{rel}: over {H.LIMITS["meters"]} meters')
 
     def check_lift(self, x, w):
         """§20.1: the handles of a lift that is model content (its values and ops are checked in finish())."""
@@ -1117,7 +1142,8 @@ class Model:
 
     def check_work(self, x, w):
         """§15.2: a job on equipment that needs a permit."""
-        keys(x, ('id', 'kks', 'title', 'discipline', 'permit'), ('isolation', 'repairs', 'set', 'task', 'renews'), w)
+        keys(x, ('id', 'kks', 'title', 'discipline', 'permit'), ('isolation', 'repairs', 'set', 'task', 'renews', 'cures'),
+             w)
         need(isinstance(x['id'], str) and ID_RE.fullmatch(x['id']) and len(x['id']) <= 22, 'bad_id',
              f'{w}: id of at most 22 characters')
         need(x['id'] not in {y['id'] for y in self.works}, 'dup_id', w)
@@ -1131,8 +1157,15 @@ class Model:
             ident(x['repairs'], f'{w}.repairs')
             need('isolation' in x, 'missing_key', f'{w}.isolation: a work that repairs equipment isolates it '
                                                   f'(PLANT3D §15.2)')
-            need(x['repairs'] not in {y.get('repairs') for y in self.works}, 'dup_id',
-                 f'{w}.repairs: another work already repairs {x["repairs"]} (one work per fault)')
+            # one work per fault, or with hidden causes one per fault and cause (REALISM.md §2.6)
+            for y in self.works:
+                need(y.get('repairs') != x['repairs'] or 'cures' in x and 'cures' in y and
+                     isinstance(x['cures'], list) and not set(map(str, x['cures'])) & set(y['cures']), 'dup_id',
+                     f'{w}.repairs: another work already repairs {x["repairs"]} (one work per fault, or per fault '
+                     f'and cause)')
+        if 'cures' in x:
+            from ref import plant3d_hands as H
+            H.check_cures(self, x, w)
         if 'set' in x:
             need(isinstance(x['set'], dict), 'bad_type', f'{w}.set: an object of state names and numbers')
             for k, v in x['set'].items():
@@ -1315,7 +1348,7 @@ class Model:
         self.trips.append(t)
 
     def check_op(self, o, w):
-        keys(o, ('kks', 'do', 'where'), ('set', 'needs', 'machine', 'input', 'range', 'trip'), w)
+        keys(o, ('kks', 'do', 'where'), ('set', 'needs', 'machine', 'input', 'range', 'trip', 'hart'), w)
         self.kks_ref(o['kks'], w)
         do = o['do']
         if 'machine' in o:
@@ -1342,9 +1375,14 @@ class Model:
             lst(nd, f'{w}.needs[{i}]', 2, 2)
             self.cond(nd[0], f'{w}.needs[{i}]')
             name_text(nd[1], f'{w}.needs[{i}]', 200)
-        for x in lst(o['where'], f'{w}.where', 1, 2):
-            need(x in ('local', 'screen'), 'bad_value', f'{w}.where: local or screen')
+        hart = self.version == 2 and isinstance(o['where'], list) and 'hart' in o['where']   # REALISM.md §2.5
+        for x in lst(o['where'], f'{w}.where', 1, 3 if hart else 2):
+            need(x in ('local', 'screen') or hart and x == 'hart', 'bad_value', f'{w}.where: local or screen')
         need(len(set(o['where'])) == len(o['where']), 'dup_id', f'{w}.where')
+        need(hart == ('hart' in o), 'missing_key' if hart else 'unknown_key',
+             f'{w}.hart: an op made through a HART communicator names the state that says one is connected')
+        if hart:
+            ident(o['hart'], f'{w}.hart')
         key = (o['kks'], do, o.get('trip'))
         need(key not in self.op_keys, 'dup_id', f'{w}: {o["kks"]} already has a {do!r} op')
         self.op_keys[key] = o
@@ -1433,6 +1471,9 @@ class Model:
         for name, where in self.renews:
             need(name in self.index and self.values[self.index[name]][2] == 'wear', 'bad_ref',
                  f'{where}: {name} is not a wear value (REALISM.md §2.2)')
+        if self.hands or any('hart' in o for o in self.ops):
+            from ref import plant3d_hands as H
+            H.finish_model(self)
         isos = {x['id'] for x in self.isolations}
         for i, where in self.work_isos:
             need(i in isos, 'bad_ref', f'{where}: no isolation {i!r}')
@@ -1673,7 +1714,7 @@ def check_scenario(s, m, rel):
     seen = set()
     for i, f in enumerate(lst(s.get('faults', []), f'{rel}.faults', 0, 256)):
         w = f'{rel}: fault {f.get("id", i) if isinstance(f, dict) else i}'
-        keys(f, ('id', 'set', 'text'), ('when', 'repair', 'kks'), w)
+        keys(f, ('id', 'set', 'text'), ('when', 'repair', 'kks', 'causes'), w)
         ident(f['id'], w)
         need(f['id'] not in seen, 'dup_id', w)
         seen.add(f['id'])
@@ -1694,6 +1735,10 @@ def check_scenario(s, m, rel):
                     need(k not in commands or state_kks.get(k) not in own, 'locked_write',
                          f'{w}.repair: {k} is a command of {state_kks.get(k)}, which work {wk["id"]}\'s own isolation '
                          f'locks (a repair writes the fault\'s states, never a command)')
+        if 'causes' in f:
+            from ref import plant3d_hands as H      # hidden causes (REALISM.md §2.6, milestone HW1)
+            need(s['version'] == 2, 'unknown_key', f'{w}.causes: only in a version 2 scenario')
+            H.check_causes(f, m, w)
         if 'kks' in f:
             m.kks_ref(f['kks'], f'{w}.kks')
         if 'when' in f:
@@ -1709,6 +1754,9 @@ def check_scenario(s, m, rel):
                 m.check_node(f['when'], f'{w}.when')
                 m.pending = [(r, wh, False) for r, wh, _ in m.pending]
         m.finish()
+    if any('cures' in wk for wk in m.works):
+        from ref import plant3d_hands as H
+        H.check_scenario_cures(s, m, rel)
 
 
 class PlantText(Course):
@@ -1925,6 +1973,9 @@ class Engine:
             from ref.plant3d_staff import StaffRun
             self.staff = StaffRun(self, b.staff, sc, session)
             self.staff.place_all(self.clock())
+        # the hands-on engine (REALISM.md §2.3–§2.7, §2.13): tools carried, hand actions, causes, slips
+        from ref import plant3d_hands as H
+        H.init(self, b, sc)
 
     def clone(self):
         """An independent copy at the same step (forks of a run: one cold start, many trip tests)."""
@@ -1949,6 +2000,8 @@ class Engine:
         c.locks = {k: list(v) for k, v in self.locks.items()}
         c.faults_done = set(self.faults_done)
         c.faults_fixed = set(self.faults_fixed)
+        from ref import plant3d_hands as H
+        H.copy_state(c, self)
         return c
 
     # --- compile nodes to closures over (cur, prev)
@@ -2216,6 +2269,18 @@ class Engine:
     def fault(self, fid, slot=None):
         self._q(('fault', fid), slot)
 
+    def fault_cause(self, fid, cause, slot=None):
+        """The instructor's fault with its hidden cause named (REALISM.md §2.6): no draw."""
+        self._q(('fault', fid, cause), slot)
+
+    def tool(self, item, take, person=None, slot=None):
+        """A tool taken (1) or put back (0) at the person's place (REALISM.md §2.3)."""
+        self._q(('tool', item, take, person), slot)
+
+    def hand(self, kks, action, tool=None, value=None, person=None, slot=None):
+        """A hand action (REALISM.md §2.4)."""
+        self._q(('hand', kks, action, tool, value, person), slot)
+
     def repair(self, fid, slot=None):
         self._q(('repair', fid), slot)
 
@@ -2263,8 +2328,9 @@ class Engine:
     def leave(self, place, slot=None):
         self._q(('leave', place), slot)
 
-    def read(self, code, value, slot=None):
-        self._q(('read', code, value), slot)
+    def read(self, code, value, slot=None, meter=None):
+        """A reading; with a meter, read through it (REALISM.md §2.5)."""
+        self._q(('read', code, value) if meter is None else ('read', code, value, meter), slot)
 
     def say(self, message, to, slot=None):
         self._q(('say', message, to), slot)
@@ -2620,6 +2686,7 @@ class Engine:
         under = {}          # fault -> the work under whose permit the trainee repairs it (§15.5)
         noted = []          # locks and unlocks, made in step 3 (§17.1)
         dones = []          # works whose permit went to done: their repairs and set in step 3
+        named = {}          # fault -> the cause the instructor named for it (REALISM.md §2.6)
         j0 = self.J         # the jumps before this step's inputs (a jump's gap: wear, REALISM.md §2.2; the weather)
         wx0 = self.wx_kind if self.wx is not None else None     # the weather's kind before them (its event, §5.1)
         # 1. the trainee's inputs, in the order made, then the NPCs' made in the previous step's step 9 (§17.1)
@@ -2687,10 +2754,33 @@ class Engine:
             elif kind == 'unshelve':
                 if self.shelved.pop(item[1], None) is not None:
                     self.ev('unshelve', item[1])
+            elif kind == 'fault' and len(item) > 2:
+                # the instructor's fault with its hidden cause (REALISM.md §2.6): a cause the fault lacks does nothing
+                f = self.faults.get(item[1]) if isinstance(item[1], str) else None
+                if f is not None and any(c['id'] == item[2] for c in f.get('causes', ())):
+                    self.ev('instructor', 'fault', item[1], item[2])
+                    pressed.append(item[1])
+                    named[item[1]] = item[2]
             elif kind == 'fault':
                 if self.v2:
                     self.ev('instructor', 'fault', item[1])
                 pressed.append(item[1])
+            elif kind == 'tool':
+                # REALISM.md §2.3: a tool taken or put back at the person's place
+                from ref import plant3d_hands as H
+                k0 = len(self.events)
+                r = H.tool(self, item[1], item[3], item[2], npc)
+                if npc:
+                    self._npc_result(item[3], r, k0)
+            elif kind == 'hand':
+                from ref import plant3d_hands as H      # REALISM.md §2.4
+                k0 = len(self.events)
+                r = H.hand(self, item[1:6], npc, prev)
+                if npc:
+                    self._npc_result(item[5], r, k0)
+            elif kind == 'slip':
+                from ref import plant3d_hands as H      # an NPC's slip (REALISM.md §3.1, §2.13)
+                H.slip(self, item)
             elif kind == 'repair' and len(item) > 2:
                 if self._repair_under(item[1], item[2], item[3]):
                     under[item[1]] = item[2]
@@ -2759,6 +2849,9 @@ class Engine:
                 self.faults_fixed.discard(fid)
                 self._set(f['set'])
                 self.ev('fault', fid)
+                if 'causes' in f:
+                    from ref import plant3d_hands as H      # its hidden cause (REALISM.md §2.6)
+                    H.draw_cause(self, fid, f, vals, named.get(fid) if 'when' not in f else None)
         # then the repairs asked, in the scenario's order: a fault applied and not repaired since, with a `repair`; one
         # under a permit (§15.5) writes as its work
         for fid, f in self.faults.items():
@@ -2769,6 +2862,15 @@ class Engine:
                     continue
             if (fid in asked or wid is not None) and 'repair' in f and fid in self.faults_done \
                     and fid not in self.faults_fixed and not self._blocked(f['repair'], wid):
+                if 'causes' in f:
+                    # REALISM.md §2.6: the cause's repair too; under a permit only when the work cures that cause
+                    from ref import plant3d_hands as H
+                    if fid not in asked and not H.cures(self, wid, fid) or H.blocked(self, fid, f, wid):
+                        continue
+                    self.faults_fixed.add(fid)
+                    H.do_repair(self, fid, f, wid)
+                    self.ev('repair', fid)
+                    continue
                 self.faults_fixed.add(fid)
                 self._set(f['repair'], wid)
                 self.ev('repair', fid)
@@ -2781,9 +2883,16 @@ class Engine:
             whole = iso is None or self.n_locked(iso) == len(self.isos[iso]['points'])
             if f is not None and 'repair' in f and fid in self.faults_done and fid not in self.faults_fixed \
                     and whole and not self._blocked(f['repair'], wid):
-                self.faults_fixed.add(fid)
-                self._set(f['repair'], wid)
-                self.ev('repair', fid)
+                if 'causes' in f:
+                    from ref import plant3d_hands as H      # REALISM.md §2.6: cured only when it cures the cause
+                    if H.cures(self, wid, fid) and not H.blocked(self, fid, f, wid):
+                        self.faults_fixed.add(fid)
+                        H.do_repair(self, fid, f, wid)
+                        self.ev('repair', fid)
+                else:
+                    self.faults_fixed.add(fid)
+                    self._set(f['repair'], wid)
+                    self.ev('repair', fid)
             self._set(w.get('set', {}), wid)
         # then the renewals (REALISM.md §2.2, §2.7) of the works whose permit went to done, in the order of their
         # `done`: each wear value set to 0, under the rule of their repairs (the isolation complete after this step's
@@ -2793,6 +2902,10 @@ class Engine:
             if 'renews' in w and self.n_locked(w['isolation']) == len(self.isos[w['isolation']]['points']):
                 for name in w['renews']:
                     cur[self.ix[name]] = 0.0
+        # then the hand actions whose minutes end (REALISM.md §2.4, §2.13)
+        if self.busy:
+            from ref import plant3d_hands as H
+            H.end_hands(self, self.gap > 0)
         # 4. interlocks on a rising edge
         for x, wi in self.il_prog:
             now = vals[wi] >= 0.5
@@ -2877,6 +2990,12 @@ class Engine:
             elif self._authority(person, npc, None if (kks, do) in self.lift_ops else 'operate_' + where):
                 # (a lift's controls need no role authority: anyone on site may ride, §20.3)
                 failed.append('authority')
+            if where == 'hart' and 'hart' in o:
+                # REALISM.md §2.5: a communicator carried and connected (its state as the step before left it)
+                from ref import plant3d_hands as H
+                if not (isinstance(person, str) and H.carries_kind(self, person, 'communicator')) \
+                        or prev[self.ix[o['hart']]] < 0.5:
+                    failed.append('hart')
         elif self.staff is not None and self.staff.players.get(self.in_slot) is not None and not npc:
             failed.append('authority')      # a trainee playing a person names where and who (§17.1)
         failed += [nd[0] for nd in o.get('needs', []) if prev[self.ix[nd[0]]] < 0.5]
@@ -2992,6 +3111,7 @@ class Engine:
 
     def digest_tree(self):
         from ref.godot_variant import Packed, PACKED_BYTE, PACKED_INT32, PACKED_INT64
+        from ref import plant3d_hands as H
         m = self.m
         work_ix = {w['id']: k for k, w in enumerate(m.works)}
         locks = [[k, p, list(self.locks[(x['id'], p)])] for k, x in enumerate(m.isolations)
@@ -3017,7 +3137,8 @@ class Engine:
               Packed(PACKED_INT64, [self.quiet[x['id']] for x in m.lifts]),
               Packed(PACKED_INT64, self.lift_calls), Packed(PACKED_INT32, self.lift_dir),
               Packed(PACKED_INT64, self.lift_dwell)] if m.lifts else []) + \
-            ([Packed(PACKED_INT64, [self.wx_kind, self.wx_s])] if self.wx is not None else [])
+            ([Packed(PACKED_INT64, [self.wx_kind, self.wx_s])] if self.wx is not None else []) + \
+            ([H.digest_part(self)] if self.hw else [])
 
     def snapshot(self, values=True):
         s = {'step': self.step_no,
@@ -3045,6 +3166,9 @@ class Engine:
             if self.session:
                 sr = self.staff
                 s['players'] = [[k, sr.people[sr.players[k]].id, sr.acks.get(k, 0)] for k in sorted(sr.players)]
+        if self.hw:
+            from ref import plant3d_hands as H      # REALISM.md §2.13
+            H.snapshot_part(self, s)
         if values:
             s['values'] = {n: self.cur[i] for i, n in enumerate(self.names)}
         return s

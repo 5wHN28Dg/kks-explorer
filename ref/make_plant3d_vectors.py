@@ -555,8 +555,14 @@ def apply(e, item, slot=None):
         e.shelve(item[2], item[3], slot=slot)
     elif kind == 'unshelve':
         e.unshelve(item[2], slot=slot)
+    elif kind == 'fault' and len(item) > 3:
+        e.fault_cause(item[2], item[3], slot=slot)      # (its hidden cause named, REALISM.md §2.6)
     elif kind == 'fault':
         e.fault(item[2], slot=slot)
+    elif kind == 'tool':
+        e.tool(item[2], item[3], item[4], slot=slot)    # (REALISM.md §2.3)
+    elif kind == 'hand':
+        e.hand(*item[2:7], slot=slot)                   # (REALISM.md §2.4)
     elif kind == 'repair' and len(item) > 3:
         e.repair_under(item[2], item[3], item[4], slot=slot)
     elif kind == 'repair':
@@ -2293,6 +2299,8 @@ def apply_staff(e, item):
         e.task_ack(slot=slot)
     elif kind == 'release':
         e.release(slot)
+    elif kind == 'read' and len(item) > 4:
+        e.read(item[2], item[3], slot=slot, meter=item[4])      # (through a meter, REALISM.md §2.5)
     elif kind in ('read', 'say', 'ppe', 'zone'):
         getattr(e, kind)(item[2], item[3], slot=slot)
     elif kind == 'call':
@@ -4382,6 +4390,439 @@ def weather_part():
             'runs': build_runs(weather_runs(), wf)}
 
 
+# ---------------------------------------------------------------- milestone HW1: the hands-on engine (REALISM.md §2.3–§2.7)
+
+GAUGE = '10LAB10CP501'
+HW_TOOLS = {'format': 'walkdown-plant-tools', 'version': 1, 'tools': [
+    {'id': 'sd_flat', 'title': 'Screwdriver, 4 mm flat blade', 'kind': 'screwdriver', 'size': '4 mm', 'at': [['tb1', 2]]},
+    {'id': 'spanner_13', 'title': 'Spanner, 13 mm', 'kind': 'spanner', 'size': '13 mm', 'at': [['tb1', 1]]},
+    {'id': 'spanner_17', 'title': 'Spanner, 17 mm', 'kind': 'spanner', 'size': '17 mm',
+     'at': [['tb1', 1], ['store1', 2]]},
+    {'id': 'dmm', 'title': 'Multimeter', 'kind': 'meter', 'modes': ['ma_dc', 'v_dc', 'ohm'], 'at': [['tb1', 1]]},
+    {'id': 'clamp', 'title': 'mA clamp meter', 'kind': 'meter', 'modes': ['ma_clamp'], 'at': [['tb1', 1]]},
+    {'id': 'hart', 'title': 'HART communicator', 'kind': 'communicator', 'modes': ['hart'], 'at': [['tb1', 1]]},
+    {'id': 'loopcal', 'title': 'Loop calibrator', 'kind': 'calibrator', 'modes': ['ma_measure', 'ma_source'],
+     'at': [['store1', 1]]}] +
+    [{'id': f'socket_{k}', 'title': f'Socket, {k} mm', 'kind': 'socket', 'size': f'{k} mm', 'at': [['store1', 1]]}
+     for k in (8, 10, 12, 14, 16, 19)]}
+# the gauge's component states (REALISM.md §2.4: <alias>_<component>_<state>, alias g1, the kind's one component
+# body), its configuration, the fault's and causes' states, and the loop as content will make it (§3.1)
+HW_VALUES = [['g1_body_open', {'state': 0}], ['g1_body_lifted', {'state': 0}], ['g1_body_hart', {'state': 0}],
+             ['g1_body_torque', {'state': 0}], ['g1_body_loose', {'state': 0}], ['g1_body_pulled', {'state': 0}],
+             ['g1_body_clean', {'state': 0}], ['g1_cfg_urv', {'state': 10}], ['g1_wp', {'state': 0}],
+             ['g1_fault', {'state': 0, 'kks': GAUGE}], ['g1_blocked', {'state': 0}], ['g1_drift', {'state': 0}],
+             ['g1_term', {'state': 0}],
+             ['wired', {'not': 'g1_body_lifted'}], ['ma_span', {'product': ['p', 1.6]}],
+             ['ma_raw', {'sum': ['ma_span', 4]}], ['loop_ma', {'product': ['ma_raw', 'wired']}],
+             ['c_zero', {'const': 0}], ['hart_ok', {'and': ['g1_body_hart', 'wired']}],
+             ['g1_wp_off', {'not': 'g1_wp'}], ['loose_x', {'product': ['g1_body_loose', 6]}],
+             ['loose_w', {'sum': ['loose_x', 1]}]]
+SD = ['sd_flat']
+HW_HANDS = [
+    {'kks': GAUGE, 'action': 'open_cover', 'component': 'body', 'tools': SD, 'minutes': 2,
+     'wrong': {'spanner_13': 'A spanner doesn\'t turn a slotted cover screw'}, 'set': {'g1_body_open': 1}},
+    {'kks': GAUGE, 'action': 'close_cover', 'component': 'body', 'tools': SD,
+     'needs': [['wired', 'Land the wire before closing the cover']], 'set': {'g1_body_open': 0}},
+    {'kks': GAUGE, 'action': 'lift_wire', 'component': 'body', 'tools': SD,
+     'needs': [['g1_body_open', 'The terminal cover is off first']], 'set': {'g1_body_lifted': 1}},
+    {'kks': GAUGE, 'action': 'land_wire', 'component': 'body', 'tools': SD,
+     'needs': [['g1_body_open', 'The terminal cover is off first']], 'set': {'g1_body_lifted': 0}},
+    {'kks': GAUGE, 'action': 'connect_hart', 'component': 'body', 'tools': ['hart'], 'work': False,
+     'set': {'g1_body_hart': 1}},
+    {'kks': GAUGE, 'action': 'disconnect_hart', 'component': 'body', 'tools': ['hart'], 'work': False,
+     'set': {'g1_body_hart': 0}},
+    {'kks': GAUGE, 'action': 'torque_gland', 'component': 'body', 'tools': ['spanner_17'],
+     'input': 'g1_body_torque', 'range': [2, 10]},
+    {'kks': GAUGE, 'action': 'tighten', 'component': 'body', 'tools': ['spanner_17'], 'minutes': 5,
+     'set': {'g1_body_loose': 0}},
+    {'kks': GAUGE, 'action': 'pull_test', 'component': 'body', 'set': {'g1_body_pulled': 1}},
+    {'kks': GAUGE, 'action': 'clean_glass', 'component': 'body', 'work': False, 'minutes': 30,
+     'set': {'g1_body_clean': 1}}]
+HW_METERS = [
+    {'id': 'g1_dmm', 'kks': GAUGE, 'point': 'test_terminals', 'tool_kind': 'meter', 'mode': 'ma_dc',
+     'value': 'loop_ma', 'needs': ['g1_body_open'], 'else': 0},
+    {'id': 'g1_clamp1', 'kks': GAUGE, 'point': 'cable_l1', 'tool_kind': 'meter', 'mode': 'ma_clamp',
+     'value': 'loop_ma'},
+    {'id': 'g1_clamp2', 'kks': GAUGE, 'point': 'cable_both', 'tool_kind': 'meter', 'mode': 'ma_clamp',
+     'value': 'c_zero'},
+    {'id': 'g1_pv', 'kks': GAUGE, 'point': 'terminals_sig', 'tool_kind': 'communicator', 'mode': 'hart',
+     'value': 'p', 'needs': ['hart_ok'], 'else': 'c_zero'},
+    {'id': 'g1_cal', 'kks': GAUGE, 'point': 'test_terminals', 'tool_kind': 'calibrator', 'mode': 'ma_measure',
+     'value': 'loop_ma', 'needs': ['g1_body_open'], 'else': -1}]
+HW_OP = {'kks': GAUGE, 'do': 'set', 'input': 'g1_cfg_urv', 'range': [1, 40], 'where': ['hart'], 'hart': 'g1_body_hart',
+         'needs': [['g1_wp_off', 'Write protect is on']]}
+HW_FAULT = {'id': 'f_low', 'set': {'g1_fault': 1}, 'text': 'The gauge reads low', 'kks': GAUGE,
+            'repair': {'g1_fault': 0},
+            'causes': [{'id': 'blocked', 'weight': 3, 'set': {'g1_blocked': 1}, 'repair': {'g1_blocked': 0},
+                        'text': 'A blocked impulse line'},
+                       {'id': 'drift', 'weight': 2, 'set': {'g1_drift': 1}, 'repair': {'g1_drift': 0},
+                        'text': 'The sensor has drifted'},
+                       {'id': 'term', 'weight': 'loose_w', 'set': {'g1_term': 1}, 'text': 'A loose terminal'}]}
+IC_JOB = [
+    {'go': 'tb1'}, {'tool': ['sd_flat', 'hart', 'dmm']},
+    {'permit': {'work': 'wo_gauge', 'action': 'request'}}, {'permit': {'work': 'wo_gauge', 'action': 'approve'}},
+    {'lock': {'work': 'wo_gauge', 'point': 0}}, {'permit': {'work': 'wo_gauge', 'action': 'issue'}},
+    {'permit': {'work': 'wo_gauge', 'action': 'accept'}}, {'go': {'kks': GAUGE}},
+    {'hand': 'open_cover', 'kks': GAUGE, 'tool': 'sd_flat',
+     'slip': {'per_mille': 1000, 'set': {'g1_body_loose': 1}, 'text': 'Left the cover screw finger-tight'}},
+    {'hand': 'connect_hart', 'kks': GAUGE, 'tool': 'hart'},
+    {'read': GAUGE, 'via': 'g1_dmm', 'expect': [4, 20]}, {'read': GAUGE, 'via': 'g1_pv', 'expect': [0, 10]},
+    {'read': GAUGE, 'via': 'g1_clamp1', 'else': 13},
+    {'say': 'all_well', 'to': 'channel'},
+    {'hand': 'tighten', 'kks': GAUGE, 'tool': 'spanner_17', 'else': 15},
+    {'hand': 'lift_wire', 'kks': GAUGE, 'tool': 'sd_flat'},
+    {'read': GAUGE, 'via': 'g1_dmm', 'expect': [0, 0]},
+    {'hand': 'land_wire', 'kks': GAUGE, 'tool': 'sd_flat'},
+    {'hand': 'disconnect_hart', 'kks': GAUGE, 'tool': 'hart'},
+    {'hand': 'close_cover', 'kks': GAUGE, 'tool': 'sd_flat',
+     'slip': {'per_mille': 1, 'set': {'g1_body_loose': 1}, 'text': 'Left the cover screw finger-tight'}},
+    {'permit': {'work': 'wo_gauge', 'action': 'done'}}, {'permit': {'work': 'wo_gauge', 'action': 'return'}},
+    {'unlock': {'work': 'wo_gauge', 'point': 0}}, {'permit': {'work': 'wo_gauge', 'action': 'close'}},
+    {'go': 'tb1'}, {'tool': 'off'}]
+IC_CHECK = [{'read': GAUGE, 'via': 'g1_dmm', 'tol': 0.1}, {'read': GAUGE, 'via': 'g1_clamp2'},
+            {'read': GAUGE, 'via': 'g1_pv', 'tol': 0.1, 'expect': [0, 10]}, {'read': GAUGE, 'via': 'g1_cal'},
+            {'hand': 'pull_test', 'kks': GAUGE}, {'tool': ['dmm', 'clamp']}, {'tool': 'off'}]
+
+
+def hands_files():
+    """The realism base's plant (realism_files) with HW1's keys: tools.json kept at a toolbox and a store, the gauge's
+    hand actions, meters and HART op, the gauge's fault with hidden causes, the gauge's two works curing different
+    causes, and an instrument technician's role, two people and their tasks (one an NPC's whole job with tools,
+    permits, hand actions with slips, readings through meters and a HART op). The pump runs at the start (its
+    pressure scaled as AG1's, so it doesn't trip) so the loop has a current."""
+    F = realism_files()
+    F['tools.json'] = copy.deepcopy(HW_TOOLS)
+    m = F['model/a1.json']
+    m['values'] = [['p', dict(n, product=['flow', 3])] if k == 'p' else [k, n] for k, n in m['values']]
+    m['values'] += copy.deepcopy(HW_VALUES)
+    m['hands'] = copy.deepcopy(HW_HANDS)
+    m['meters'] = copy.deepcopy(HW_METERS)
+    m['ops'].append(copy.deepcopy(HW_OP))
+    for w in m['works']:
+        if w['id'] == 'wo_gauge':
+            w['repairs'] = 'f_low'
+            w['cures'] = ['blocked', 'drift']
+    m['works'].append({'id': 'wo_gauge2', 'kks': GAUGE, 'title': 'Gauge: terminals', 'discipline': 'inst',
+                       'permit': 'general', 'isolation': 'iso_gauge', 'repairs': 'f_low', 'cures': ['term'],
+                       'task': 'cal_gauge'})
+    sc = F['scenarios/s1.json']
+    sc['start'] = {'day': 1, 'time': '07:30'}
+    sc['init'] = dict(sc['init'], pump_cmd=1, valve_cmd=1, flow=1)
+    sc['faults'] = sc['faults'] + [copy.deepcopy(HW_FAULT)]
+    st = F['staff.json']
+    st['places'] += [{'id': 'tb1', 'at': [23, 12, 0], 'kind': 'toolbox'}, {'id': 'store1', 'at': [20, 11.5, 0],
+                                                                            'kind': 'store'}]
+    st['ways'] += [['tb1', 'p5', 3.7, 'walk'], ['store1', 'p5', 1.5, 'walk']]
+    st['roles'].append({'id': 'ic_tech', 'title': 'Instrument technician', 'discipline': 'inst',
+                        'authority': ['request', 'approve', 'issue', 'accept', 'lock_instrument', 'operate_local',
+                                      'operate_hart'], 'routine': 'ic_days', 'play': True})
+    st['routines'] += [{'id': 'ic_days', 'idle': 'idle_mech', 'slots': [{'at': '07:31', 'task': 'ic_check'}]},
+                       {'id': 'ic_jobs', 'idle': 'idle_mech', 'slots': [{'at': '07:40', 'task': 'ic_job'}]}]
+    st['people'] += [{'id': 'ic1', 'role': 'ic_tech', 'roster': 'day', 'call': 'Instruments 1'},
+                     {'id': 'ic2', 'role': 'ic_tech', 'roster': 'day', 'call': 'Instruments 2', 'routine': 'ic_jobs'}]
+    st['tasks'] += [{'id': 'ic_job', 'title': 'Check the gauge', 'steps': copy.deepcopy(IC_JOB)},
+                    {'id': 'ic_check', 'title': 'Read the gauge\'s loop', 'steps': copy.deepcopy(IC_CHECK)},
+                    {'id': 'ic_urgent', 'title': 'The gauge reads low', 'priority': 1,
+                     'steps': [{'say': 'check_alarm', 'to': 'channel'}, {'work': 3}]}]
+    st['reactions'].append({'on': {'fault': 'f1'}, 'roles': ['ic_tech'], 'task': 'ic_urgent'})
+    return F
+
+
+def _x(*items):
+    """Extra inputs for a quiet trainee: (step, kind, …)."""
+    return [list(x) for x in items]
+
+
+def hw_free_permit(at, work='wo_gauge'):
+    """A work's permit through to accepted in free mode (no person), its isolation locked: (step, method, …)."""
+    return [(at, 'permit', work, 'request', None), (at + 1, 'permit', work, 'approve', None),
+            (at + 2, 'lock', work, 0, None), (at + 4, 'permit', work, 'issue', None),
+            (at + 5, 'permit', work, 'accept', None)]
+
+
+def hw_free_close(at, work='wo_gauge'):
+    return [(at, 'permit', work, 'done', None), (at + 2, 'permit', work, 'return', None),
+            (at + 3, 'unlock', work, 0, None), (at + 5, 'permit', work, 'close', None)]
+
+
+def hands_runs():
+    """(why, scenario changes, files, player, steps, snapshot every): HW1's runs (REALISM.md §2.3–§2.7, §2.13)."""
+    hf = hands_files()
+    me = {'trainee': 'ic1'}
+    free = {'staff': None}
+    G = GAUGE
+    tools = Trainee(quiet=True, extra=_x(
+        (1, 'tool', 'sd_flat', 1, 'ic1'), (1, 'tool', 'sd_flat', 1, 'ic2'), (1, 'tool', 'nope', 1, 'ic1'),
+        (1, 'tool', 'sd_flat', 2, 'ic1'), (1, 'tool', 'sd_flat', 1, None),
+        (2, 'arrive', 'tb1'),
+        (3, 'tool', 'sd_flat', 1, 'ic1'), (3, 'tool', 'sd_flat', 1, 'ic1'), (3, 'tool', 'spanner_13', 1, 'ic1'),
+        (3, 'tool', 'hart', 1, 'ic1'), (3, 'tool', 'spanner_17', 0, 'ic1'), (3, 'tool', 'dmm', 1, 'ic1'),
+        (3, 'tool', 'clamp', 1, 'ic1'), (3, 'tool', 'spanner_17', 1, 'ic1'), (3, 'tool', 'loopcal', 1, 'ic1'),
+        (4, 'tool', 'spanner_13', 0, 'ic1'), (4, 'tool', 'spanner_13', 1, 'ic1'),
+        (5, 'leave', 'tb1'), (6, 'arrive', 'store1'),
+        (7, 'tool', 'socket_8', 1, 'ic1'), (7, 'tool', 'socket_10', 1, 'ic1'), (7, 'tool', 'socket_12', 1, 'ic1'),
+        (7, 'tool', 'socket_14', 1, 'ic1'), (7, 'tool', 'socket_16', 1, 'ic1'), (7, 'tool', 'socket_19', 1, 'ic1'),
+        (7, 'tool', 'loopcal', 1, 'ic1'), (7, 'tool', 'spanner_13', 0, 'ic1'), (7, 'tool', 'socket_8', 0, 'ic1'),
+        (7, 'tool', 'loopcal', 1, 'ic1'), (7, 'tool', 'spanner_17', 0, 'ic1'), (7, 'tool', 'spanner_17', 1, 'ic1')))
+    hands = Trainee(quiet=True, extra=_x(
+        (2, 'arrive', 'tb1'), (3, 'tool', 'sd_flat', 1, 'ic1'), (3, 'tool', 'spanner_13', 1, 'ic1'),
+        (3, 'tool', 'hart', 1, 'ic1'), (3, 'tool', 'spanner_17', 1, 'ic1'),
+        (5, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'), (5, 'hand', G, 'connect_hart', 'hart', None, 'ic1'),
+        (5, 'hand', G, 'no_such', 'sd_flat', None, 'ic1'), (5, 'hand', G, 'pull_test', None, None, 'ic2'),
+        (6, 'permit', 'wo_gauge', 'request', 'ic1'), (7, 'permit', 'wo_gauge', 'approve', 'ic1'),
+        (8, 'lock', 'wo_gauge', 0, 'ic1'), (10, 'permit', 'wo_gauge', 'issue', 'ic1'),
+        (11, 'permit', 'wo_gauge', 'accept', 'ic1'),
+        (12, 'hand', G, 'open_cover', 'spanner_13', None, 'ic1'), (12, 'hand', G, 'open_cover', None, None, 'ic1'),
+        (12, 'hand', G, 'open_cover', 'dmm', None, 'ic1'), (12, 'hand', G, 'lift_wire', 'sd_flat', None, 'ic1'),
+        (12, 'hand', G, 'torque_gland', 'spanner_17', 12, 'ic1'),
+        (12, 'hand', G, 'torque_gland', 'spanner_17', None, 'ic1'),
+        (12, 'hand', G, 'pull_test', 'sd_flat', None, 'ic1'),
+        (13, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'), (14, 'leave', 'tb1'), (15, 'arrive', 'w_gauge'),
+        (20, 'hand', G, 'open_cover', 'sd_flat', None, 'ic1'), (21, 'hand', G, 'pull_test', None, None, 'ic1'),
+        (21, 'hand', G, 'tighten', 'spanner_13', None, 'ic1'),
+        (45, 'hand', G, 'lift_wire', 'sd_flat', None, 'ic1'), (45, 'hand', G, 'pull_test', None, None, 'ic1'),
+        (45, 'hand', G, 'torque_gland', 'spanner_17', 7.5, 'ic1'), (46, 'hand', G, 'close_cover', 'sd_flat', None, 'ic1'),
+        (47, 'hand', G, 'land_wire', 'sd_flat', None, 'ic1'), (48, 'hand', G, 'close_cover', 'sd_flat', None, 'ic1'),
+        (50, 'op', G, 'set', 20, None, 'hart', 'ic1')))
+    meters = Trainee(quiet=True, extra=_x(
+        (11, 'read', G, 8.8, 'g1_dmm'), (12, 'arrive', 'tb1'), (13, 'tool', 'dmm', 1, 'ic1'),
+        (13, 'tool', 'clamp', 1, 'ic1'), (13, 'tool', 'hart', 1, 'ic1'), (14, 'leave', 'tb1'),
+        (15, 'arrive', 'w_gauge'),
+        (16, 'read', G, 8.8, None), (16, 'read', G, 8.8, 'g1_clamp1'), (16, 'read', G, 8.8, 'g1_dmm'),
+        (17, 'read', G, 0, 'g1_clamp2'),
+        (18, 'op', G, 'set', 20, None, 'hart', 'ic1'), (18, 'op', G, 'set', 20, None, 'local', 'ic1'),
+        (19, 'hand', G, 'connect_hart', 'hart', None, 'ic1'),
+        (20, 'op', G, 'set', 50, None, 'hart', 'ic1'), (20, 'op', G, 'set', 25, None, 'hart', 'ic1'),
+        (20, 'op', G, 'set', 25, None, 'hart', 'ic2'), (21, 'read', G, 3, 'g1_pv'),
+        (22, 'read', G, -1, 'g1_cal'),
+        (23, 'permit', 'wo_gauge', 'request', 'ic1'), (24, 'permit', 'wo_gauge', 'approve', 'ic1'),
+        (25, 'lock', 'wo_gauge', 0, 'ic1'), (27, 'op', G, 'set', 30, None, 'hart', 'ic1')))
+    jump = Trainee(quiet=True, extra=_x(
+        (2, 'hand', G, 'clean_glass', None, None, 'ic1'), (3, 'task_ack'), (8, 'jump', '06:30'),
+        (12, 'hand', G, 'clean_glass', None, None, 'ic1')))
+    return [
+        ('tools carried (§2.3, §2.13): taken only where kept (where), by the input\'s own person (authority), an '
+         'unknown tool or a take of 2 (unknown); at the toolbox the trainee takes one of each, a second of one '
+         '(carried), puts back one not carried (not_carried) and one kept elsewhere (where); at the store up to 12 '
+         '(full), the store\'s only loop calibrator taken (none_left for the next), a 17 mm spanner put back where '
+         'that tool is kept too; the NPC ic2\'s job at 07:40 finds the toolbox without its HART communicator (its '
+         'tool step refused, the task abandoned)', me, hf, tools, 1200, 50),
+        ('hand actions (§2.4, §2.13): before the permit only work: false (connect_hart) is made, the rest refused '
+         'authority (and another person\'s, and an unknown action); with the permit accepted, each reason in its '
+         'order (a tool not carried, the wrong tool, no tool, a failed need, a value out of range or missing); on '
+         'the locked code; a timed action abandoned when the trainee leaves the place, busy for the next, done at '
+         'its end (written in step 3); a need met, bare hands, an input written; then a HART op refused on the '
+         'locked code', me, hf, hands, 300, 10),
+        ('meters and HART (§2.5, §2.13): a read through a meter without its tool (tool, the step waits), a read '
+         'without the meter or through another meter (not taken), a misread with the cover on (else 0), the clamp '
+         'round both wires (0), the communicator\'s PV with it connected; a HART op without the communicator '
+         'connected (hart), made locally (where), out of range, done (write protect off), by another person '
+         '(authority); the calibrator not carried (tool); then a hart op on the locked code', me, hf, meters, 300,
+         10),
+        ('a timed bare-hand action abandoned by a jump (§2.13): the trainee cleans the glass (work: false, 30 '
+         'minutes), jumps to 06:30 (the plant fast-forwards: no permit open) and the action is abandoned in the '
+         'jump\'s step; started again after it', me, hf, jump, 200, 10),
+        ('an NPC\'s job (§2.13, REALISM.md §3.1): ic2 takes three tools at the toolbox, takes the permit and the '
+         'lock, opens the cover (2 minutes: start, then done) with a slip drawn from their stream (per mille 1000: '
+         'written in the next step\'s step 1), connects the communicator, reads the loop through the multimeter '
+         'and the communicator, has no clamp meter (the read fails to its else), no 17 mm spanner (the hand step '
+         'refused, to its else), lifts the wire and reads 0, lands it, closes up (a slip of per mille 1), hands '
+         'the permit back and puts the tools back', {}, hf, None, 1500, 50),
+        ('an NPC pre-empted (§17.3, §2.13): with ic1 absent, the trainer\'s pump trip (f1) gives ic2 the urgent '
+         'task (priority 1) while ic2 opens the cover: the hand action is abandoned in step 9, and started again '
+         'when the job resumes; the gauge\'s fault pressed while its code is locked out is not made and draws '
+         'nothing', {'absent': ['ic1']}, hf, Script([(520, 'fault', 'f1'), (521, 'fault', 'f_low')]), 1500, 50),
+        ('hidden causes (§2.6, §2.13), free mode: the trainer\'s fault draws its cause from its stream (seed 7); '
+         'the permit\'s done of the work that cures it repairs fault and cause; pressed again (the trainer\'s '
+         'repair first) it draws again; named by the instructor (term: no draw) the first work\'s done doesn\'t cure '
+         'it (no repair, the work\'s own set made) and a repair under its permit is answered as one that cures, '
+         'the fault stays; the second work (cures term) repairs it; an instructor\'s cause the fault lacks does '
+         'nothing; pressed with the gauge locked out the fault is not made and draws nothing',
+         free, hf, Script(
+             [(2, 'fault', 'f_low')] + hw_free_permit(5) + hw_free_close(12) +
+             [(30, 'repair', 'f_low'), (32, 'fault', 'f_low'), (34, 'repair', 'f_low'),
+              (36, 'fault_cause', 'f_low', 'term'), (36, 'fault_cause', 'f_low', 'nope')] + hw_free_permit(40) +
+             [(47, 'repair_under', 'f_low', 'wo_gauge', None)] + hw_free_close(50) + hw_free_permit(60, 'wo_gauge2') +
+             hw_free_close(67, 'wo_gauge2') +
+             [(80, 'repair', 'f_low')] + hw_free_permit(85) + [(92, 'fault', 'f_low')] + hw_free_close(95) +
+             [(102, 'fault', 'f_low')]), 120, 2),
+        ('a value weight (§2.6): with the terminal left loose (g1_body_loose 1) its cause weighs 7 of 12; the '
+         'trainer\'s fault pressed and repaired ten times, each draw from the stream', dict(free, init={
+             'g1_body_loose': 1}), hf, Script([(k, 'fault' if k % 4 == 1 else 'repair', 'f_low')
+                                               for k in range(1, 81) if k % 4 in (1, 3)]), 90, 2),
+    ]
+
+
+def _hand(i, fn):
+    def f(F):
+        fn(F['model/a1.json']['hands'][i])
+    return f
+
+
+def _meter(i, fn):
+    def f(F):
+        fn(F['model/a1.json']['meters'][i])
+    return f
+
+
+def _tool(i, fn):
+    def f(F):
+        fn(F['tools.json']['tools'][i])
+    return f
+
+
+def _job_step(i, fn):
+    def f(F):
+        fn(next(t for t in F['staff.json']['tasks'] if t['id'] == 'ic_job')['steps'][i])
+    return f
+
+
+def _cause(i, fn):
+    def f(F):
+        fn(next(x for x in F['scenarios/s1.json']['faults'] if x['id'] == 'f_low')['causes'][i])
+    return f
+
+
+def _hwop(fn):
+    def f(F):
+        fn(F['model/a1.json']['ops'][-1])
+    return f
+
+
+def _no_staff_hw(F):
+    """The hands plant without staff.json (its tools.json then has no places)."""
+    F.pop('staff.json')
+    del F['scenarios/s1.json']['staff']
+    F['model/a1.json']['works'] = [{k: v for k, v in w.items() if k != 'task'} for w in F['model/a1.json']['works']]
+
+
+SET = lambda d, k, v: d.__setitem__(k, v)      # noqa: E731
+POP = lambda d, k: d.pop(k)                    # noqa: E731
+
+# (why, code, change, a fragment of the message: the rule that caught it)
+REJECTS_HANDS = [
+    ('tools.json in a plant without staff.json', 'bad_ref', _no_staff_hw, 'only in a plant with staff.json'),
+    ('tools.json with the wrong format name', 'bad_format', _set(['tools.json', 'format'], 'walkdown-plant-tool'),
+     'format must be'),
+    ('tools.json version 2', 'bad_version', _set(['tools.json', 'version'], 2), 'version must be 1'),
+    ('tools.json with no tools', 'bad_length', _set(['tools.json', 'tools'], []), 'tools.json.tools'),
+    ('a tool twice', 'dup_id', _tool(1, lambda t: SET(t, 'id', 'sd_flat')), 'twice'),
+    ('a tool of an unknown kind', 'bad_value', _tool(0, lambda t: SET(t, 'kind', 'hammer')), '.kind'),
+    ('a meter without modes', 'missing_key', _tool(3, lambda t: POP(t, 'modes')), 'lists its modes'),
+    ('a spanner with modes', 'unknown_key', _tool(1, lambda t: SET(t, 'modes', ['x'])), 'only on a meter'),
+    ('a mode named over 16 characters', 'bad_id', _tool(3, lambda t: SET(t, 'modes', ['a_very_long_mode_x'])),
+     'at most 16'),
+    ('a tool kept at a desk', 'bad_value', _tool(0, lambda t: SET(t, 'at', [['desk_a', 1]])), 'store or toolbox'),
+    ('a tool kept at no place', 'bad_ref', _tool(0, lambda t: SET(t, 'at', [['tb9', 1]])), 'tb9'),
+    ('a tool kept twice at one place', 'dup_id', _tool(0, lambda t: SET(t, 'at', [['tb1', 1], ['tb1', 2]])),
+     'twice'),
+    ('a count of 0', 'bad_number', _tool(0, lambda t: SET(t, 'at', [['tb1', 0]])), 'count of 1 to 99'),
+    ('a count of 100', 'bad_number', _tool(0, lambda t: SET(t, 'at', [['tb1', 100]])), 'count of 1 to 99'),
+    ('a size over 16 characters', 'bad_type', _tool(0, lambda t: SET(t, 'size', 'x' * 17)), '1–16'),
+    ('a hand action in a version 1 model file', 'unknown_key', lambda F: F.__setitem__(A2M, {
+        'format': 'walkdown-plant-model', 'version': 1, 'area': 'a2', 'hands': []}), 'only in a version 2'),
+    ('a hand action on no equipment', 'bad_ref', _hand(0, lambda h: SET(h, 'kks', '10LAB99CP501')), 'no equipment'),
+    ('a hand action twice on one code', 'dup_id', _hand(1, lambda h: SET(h, 'action', 'open_cover')),
+     'already has a hand action'),
+    ('a component the part kind\'s tree lacks', 'bad_ref', _hand(0, lambda h: SET(h, 'component', 'cover')),
+     'has no component'),
+    ('a component on a pipe (no part kind)', 'bad_ref', _hand(0, lambda h: SET(h, 'kks', '10LAB10BR001')),
+     'no piece of equipment'),
+    ('a component id over 16 characters', 'bad_id', _hand(0, lambda h: SET(h, 'component', 'a' * 17)),
+     'at most 16'),
+    ('a hand action\'s tool not in tools.json', 'bad_ref', _hand(0, lambda h: SET(h, 'tools', ['sd_cross'])),
+     'no tool'),
+    ('a wrong tool that does the action', 'bad_value', _hand(0, lambda h: SET(h, 'wrong', {'sd_flat': 'x'})),
+     'is not wrong'),
+    ('a wrong tool not in tools.json', 'bad_ref', _hand(0, lambda h: SET(h, 'wrong', {'hammer': 'Not a hammer'})),
+     'no tool'),
+    ('a hand action writing nothing', 'missing_key', _hand(0, lambda h: POP(h, 'set')), 'writes a component state'),
+    ('a hand action writing no state', 'bad_ref', _hand(0, lambda h: SET(h, 'set', {'loop_ma': 1})),
+     'not a state value'),
+    ('a hand action writing a command (an op\'s state)', 'locked_write',
+     _hand(0, lambda h: SET(h, 'set', {'pump_cmd': 0})), 'is a command'),
+    ('a hand action writing an op\'s input', 'locked_write', _hand(6, lambda h: SET(h, 'input', 'g1_cfg_urv')),
+     'is a command'),
+    ('a hand action writing a state its work\'s isolation locks', 'locked_write',
+     _hand(0, lambda h: SET(h, 'set', {'g1_fault': 1})), 'which the isolation of a work'),
+    ('an input without its range', 'missing_key', _hand(6, lambda h: POP(h, 'range')), 'comes with its range'),
+    ('a range whose top is below its bottom', 'bad_number', _hand(6, lambda h: SET(h, 'range', [10, 2])), '.range'),
+    ('minutes of 0', 'bad_number', _hand(0, lambda h: SET(h, 'minutes', 0)), 'above 0'),
+    ('minutes over a day', 'bad_number', _hand(0, lambda h: SET(h, 'minutes', 1441)), '.minutes'),
+    ('work that is not a boolean', 'bad_type', _hand(4, lambda h: SET(h, 'work', 0)), 'true or false'),
+    ('a need that is no value', 'bad_ref', _hand(2, lambda h: SET(h, 'needs', [['nope', 'x']])), 'nope'),
+    ('a meter twice', 'dup_id', _meter(1, lambda x: SET(x, 'id', 'g1_dmm')), 'twice'),
+    ('a meter of a tool kind that reads nothing', 'bad_value', _meter(0, lambda x: SET(x, 'tool_kind', 'spanner')),
+     '.tool_kind'),
+    ('a meter\'s mode no tool of its kind has', 'bad_ref', _meter(0, lambda x: SET(x, 'mode', 'a_ac')),
+     'has the mode'),
+    ('a meter\'s value that is a number', 'bad_ref', _meter(0, lambda x: SET(x, 'value', 4)), 'a value name'),
+    ('a meter\'s else that is no value', 'bad_ref', _meter(0, lambda x: SET(x, 'else', 'nope')), 'nope'),
+    ('a meter on no equipment', 'bad_ref', _meter(0, lambda x: SET(x, 'kks', '10LAB99CP501')), 'no equipment'),
+    ('a HART op without its connected state', 'missing_key', _hwop(lambda o: POP(o, 'hart')), 'names the state'),
+    ('a hart key on an op not made through HART', 'unknown_key', _hwop(lambda o: SET(o, 'where', ['local'])),
+     'names the state'),
+    ('a HART op whose connected state is no state', 'bad_ref', _hwop(lambda o: SET(o, 'hart', 'hart_ok')),
+     'is not a state'),
+    ('a HART op where of four', 'bad_length', _hwop(lambda o: SET(o, 'where', ['hart', 'local', 'screen', 'local'])),
+     '.where'),
+    ('causes in a version 1 scenario', 'unknown_key', _all(_set(SC + ['version'], 1), _del(SC + ['staff']),
+                                                           _del(SC + ['world']), _del(SC + ['start'])),
+     'only in a version 2'),
+    ('no causes', 'bad_length', lambda F: SET(F['scenarios/s1.json']['faults'][-1], 'causes', []), '.causes'),
+    ('a cause twice', 'dup_id', _cause(1, lambda c: SET(c, 'id', 'blocked')), 'twice'),
+    ('a weight below 0', 'bad_number', _cause(0, lambda c: SET(c, 'weight', -1)), '0–65536'),
+    ('a weight that is not whole', 'bad_number', _cause(0, lambda c: SET(c, 'weight', 1.5)), '0–65536'),
+    ('weights over 65536 in all', 'bad_number', _all(_cause(0, lambda c: SET(c, 'weight', 65536)),
+                                                     _cause(1, lambda c: SET(c, 'weight', 1))), 'total at most'),
+    ('a weight naming no value', 'bad_ref', _cause(2, lambda c: SET(c, 'weight', 'nope')), 'nope'),
+    ('a cause without its set', 'missing_key', _cause(0, lambda c: POP(c, 'set')), '.set'),
+    ('a cause setting no state', 'bad_ref', _cause(0, lambda c: SET(c, 'set', {'loop_ma': 1})), 'not a state'),
+    ('cures without repairs', 'missing_key', _work('wo_valve', lambda w: SET(w, 'cures', ['blocked'])),
+     'repairs their fault'),
+    ('a cure the fault lacks', 'bad_ref', _work('wo_gauge', lambda w: SET(w, 'cures', ['blocked', 'nope'])),
+     'has no cause'),
+    ('a cure twice', 'dup_id', _work('wo_gauge', lambda w: SET(w, 'cures', ['blocked', 'blocked'])), 'twice'),
+    ('two works curing one cause', 'dup_id', _work('wo_gauge2', lambda w: SET(w, 'cures', ['term', 'drift'])),
+     'per fault and cause'),
+    ('a second work on the fault without cures', 'dup_id', _work('wo_gauge2', lambda w: POP(w, 'cures')),
+     'per fault and cause'),
+    ('a tool step naming no tool', 'bad_ref', _job_step(1, lambda s: SET(s, 'tool', ['sd_cross'])), 'no tool'),
+    ('a tool step naming a tool twice', 'dup_id', _job_step(1, lambda s: SET(s, 'tool', ['dmm', 'dmm'])),
+     '.tool'),
+    ('a hand step on no hand action', 'bad_ref', _job_step(8, lambda s: SET(s, 'hand', 'open_lid')),
+     'no hand action'),
+    ('a hand step without the tool its action needs', 'missing_key', _job_step(8, lambda s: POP(s, 'tool')),
+     'it is done with'),
+    ('a hand step with a tool that doesn\'t do it', 'bad_value', _job_step(8, lambda s: SET(s, 'tool', 'dmm')),
+     'one of'),
+    ('a slip of 0 per mille', 'bad_number', _job_step(8, lambda s: s['slip'].__setitem__('per_mille', 0)),
+     'per_mille'),
+    ('a slip writing no component state', 'bad_ref',
+     _job_step(8, lambda s: s['slip'].__setitem__('set', {'g1_fault': 1})), 'not a component state'),
+    ('a slip on a step that is not a hand step', 'unknown_key',
+     _job_step(1, lambda s: SET(s, 'slip', {'per_mille': 1, 'set': {'g1_body_loose': 1}, 'text': 'x'})), '.slip'),
+    ('a read through no meter', 'bad_ref', _job_step(10, lambda s: SET(s, 'via', 'g1_dvm')), 'no meter'),
+    ('a read through another code\'s meter', 'bad_ref', _job_step(10, lambda s: SET(s, 'read', '10LAC10AP001')),
+     'no meter'),
+    ('a hand step by a role without accept', 'authority', _st(lambda st: next(
+        r for r in st['roles'] if r['id'] == 'ic_tech')['authority'].remove('accept')), 'lacks accept'),
+    ('a HART op step by a role without operate_hart', 'authority', _all(
+        _job_step(13, lambda s: (s.clear(), s.update({'op': {'kks': GAUGE, 'do': 'set', 'where': 'hart',
+                                                              'value': 20}}))),
+        _st(lambda st: next(r for r in st['roles'] if r['id'] == 'ic_tech')['authority'].remove('operate_hart'))),
+     'lacks operate_hart'),
+]
+
+
+def hands_part():
+    hf = hands_files()
+    return {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in hf.items()},
+            'counts': check(hf).counts,
+            'reject': reject_changes(hf, [r[:3] for r in REJECTS_HANDS], hf),
+            'runs': build_runs(hands_runs(), hf)}
+
+
 def parts3():
     """The realism vectors part by part (REALISM.md §13), in the file's order."""
     return {
@@ -4395,7 +4836,9 @@ def parts3():
                           'them). Milestone AG1 (§2.2, §4.2–§4.3, J0): `wear`, the same plant with a pump that wears '
                           '(draw, wear and count nodes, a work\'s renews, age_rate, wear across a jump), as `staff`; '
                           'milestone WX1 (§5.1): `weather`, the same plant with weather.json and the weather step '
-                          '(seeded by season, fixed, scripted, the instructor\'s input, a jump). A run\'s `files` are '
+                          '(seeded by season, fixed, scripted, the instructor\'s input, a jump); milestone HW1 '
+                          '(§2.3–§2.7, §2.13): `hands`, the same plant with tools.json, hand actions, meters, a '
+                          'HART op, hidden causes and cures, and an NPC\'s job with tools and slips. A run\'s `files` are '
                           'those that differ from its part\'s. Numbers compare to 1e-6; the digests (§17.14) of every '
                           '50th step are exact.'),
         'streams': build_streams,
@@ -4404,7 +4847,8 @@ def parts3():
                           'reject': reject_changes(realism_files(), REJECTS_WORLD, realism_files()),
                           'runs': build_realism_runs()},
         'wear': wear_part,
-        'weather': weather_part}
+        'weather': weather_part,
+        'hands': hands_part}
 
 
 def build3():
