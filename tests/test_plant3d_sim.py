@@ -576,7 +576,7 @@ class GdscriptRealism(unittest.TestCase):
         with open(os.path.join(REPO, 'ref', 'vectors', 'plant3d-realism.json'), encoding='utf-8') as f:
             V3 = json.load(f)
         want, n = {}, 1
-        for part in ('staff', 'wear', 'weather'):       # RE1, AG1 (REALISM.md §2.2), WX1 (§5.1)
+        for part in ('staff', 'wear', 'weather', 'hands'):   # RE1, AG1 (REALISM.md §2.2), WX1 (§5.1), HW1 (§2.13)
             st = V3[part]
             want.update({f'realism/{part}/{i}': staff_run(st['files'], r, None) for i, r in enumerate(st['runs'])})
             n += 1 + len(st['runs'])
@@ -617,7 +617,11 @@ class GdscriptRealism(unittest.TestCase):
                            check=True, cwd=REPO)
             subprocess.run([sys.executable, os.path.join(REPO, 'tools', 'plant3d', 'realism_synth.py'), '600', epath,
                             '--engine'], check=True, cwd=REPO)
-            r = godot('bench_realism.gd', f'--synth=r600:{path},e600:{epath}', '--base-steps=200', timeout=900)
+            hpath = os.path.join(d, 'h600.json')        # (HW1: the hands step alone with 12 actions under way)
+            subprocess.run([sys.executable, os.path.join(REPO, 'tools', 'plant3d', 'realism_synth.py'), '600', hpath,
+                            '--engine', '--hands'], check=True, cwd=REPO)
+            r = godot('bench_realism.gd', f'--synth=r600:{path},e600:{epath},h600:{hpath}', '--base-steps=200',
+                      timeout=900)
         no_errors(self, r)
         self.assertEqual(r.returncode, 0, r.stdout[-4000:])
         self.assertIn('WEATHER load=e600 values=10 ', r.stdout)
@@ -626,6 +630,7 @@ class GdscriptRealism(unittest.TestCase):
         for load in ('built', 'r600', 'e600'):
             self.assertIn(f'BATCH load={load} values=', r.stdout)
         self.assertIn('STEP load=r600 values=', r.stdout)
+        self.assertIn('HANDS load=h600 hands=150 meters=50 busy=12 ', r.stdout)
         self.assertIn('world=true phase=cold_start', r.stdout)
         # cold_iron's weather fixed clear unless --weather= says otherwise (a measured run's: app/main.gd
         # measured_weather); the --engine load keeps its own seeded chain

@@ -28,6 +28,7 @@ extends RefCounted
 const PlantModel = preload("plant_model.gd")
 const Staff = preload("staff.gd")
 const World = preload("world.gd")
+const Hands = preload("hands.gd")
 
 const STEP := 0.1
 const SLOTS := 8                    # a session run's slots, 0 to 7 (§17.13)
@@ -195,6 +196,18 @@ var _world_seed := 0                # its seed (its own, else the staff's, else 
 var _world_year_day := 1            # the day of the year of the clock's day 1
 var _w_S := 0                       # the clock at step 0, for step 0's clock values (_S is set after _step0)
 var _wx = null                      # the weather (REALISM.md §5.1, sim/world.gd build_weather), or null
+# the hands-on engine (REALISM.md §2.3–§2.7, §2.13; sim/hands.gd), only in a run with one of its keys (_hw)
+var _hw := false
+var _hands := {}                    # "code|action" -> hand action
+var _meters := {}                   # id -> meter
+var _works_on := {}                 # code -> the works on it (indexes)
+var _fdef := {}                     # scenario fault id -> the fault (its causes)
+var tool_n: Array = []              # per tool: its counts per place, in tools.json's order (PackedInt64Array)
+var carried := {}                   # person id -> the tools they carry, in the order taken
+var busy := {}                      # person id -> [code, action, tool, value, end clock, place]: a hand action under way
+var cause_of := {}                  # fault -> its applied hidden cause
+var cause_s := {}                   # fault -> its cause stream's state
+var slip_s := {}                    # person id -> their slip stream's state
 var _wx_mode := 0                   # its mode (0 seeded, 1 fixed, 2 scripted), slots, lag factors and targets per
 var _wx_slots := PackedInt32Array() # kind (one table per driven value), out of _wx for the step's cost
 var _wx_f := PackedFloat64Array()
@@ -279,6 +292,9 @@ func _init(model = null, scenario = null, session := false) -> void:
 	if m.staff != null and sc.has("staff"):
 		_sm = m.staff
 		_sm.init_run(self, sc)
+	for f in sc.get("faults", []):
+		_fdef[f["id"]] = f
+	Hands.init(self, World)
 
 
 # ---------------------------------------------------------------- compiling
@@ -607,6 +623,21 @@ func fault(fid, slot = null) -> void:
 	_q(["fault", fid], slot)
 
 
+## The instructor's fault with its hidden cause named (REALISM.md §2.6): no draw.
+func fault_cause(fid, cause, slot = null) -> void:
+	_q(["fault", fid, cause], slot)
+
+
+## A tool taken (1) or put back (0) at the person's place (REALISM.md §2.3).
+func tool(item, take, person = null, slot = null) -> void:
+	_q(["tool", item, take, person], slot)
+
+
+## A hand action (REALISM.md §2.4).
+func hand(kks, action, tl = null, value = null, person = null, slot = null) -> void:
+	_q(["hand", kks, action, tl, value, person], slot)
+
+
 ## The instructor's weather (REALISM.md §5.1).
 func weather(kind, slot = null) -> void:
 	_q(["weather", kind], slot)
@@ -685,7 +716,10 @@ func leave(place, slot = null) -> void:
 	_q(["leave", place], slot)
 
 
-func read(code, value, slot = null) -> void:
+func read(code, value, slot = null, meter = null) -> void:
+	if meter != null:           # through a meter (REALISM.md §2.5)
+		_q(["read", code, value, meter], slot)
+		return
 	_q(["read", code, value], slot)
 
 
@@ -853,7 +887,14 @@ func apply_input(item: Array) -> void:
 		"unshelve":
 			unshelve(item[2], slot)
 		"fault":
-			fault(item[2], slot)
+			if item.size() > 3:
+				fault_cause(item[2], item[3], slot)
+			else:
+				fault(item[2], slot)
+		"tool":
+			tool(item[2], item[3], item[4], slot)
+		"hand":
+			hand(item[2], item[3], item[4], item[5], item[6], slot)
 		"weather":
 			weather(item[2], slot)
 		"repair":
@@ -877,7 +918,10 @@ func apply_input(item: Array) -> void:
 		"release", "task_ack":
 			_q([item[1]], slot)
 		"read", "say", "ppe", "zone":
-			_q([item[1], item[2], item[3]], slot)
+			if item[1] == "read" and item.size() > 4:
+				read(item[2], item[3], slot, item[4])
+			else:
+				_q([item[1], item[2], item[3]], slot)
 		"stop":
 			_q(["stop", item[2]], slot)
 		"board", "alight":
@@ -1177,6 +1221,11 @@ func lock_effects(work, point, horizon: int = 100, person = null, slot: int = 0)
 
 
 ## The same person (or both null): what an input names is compared with a person id so, whatever its type.
+## Equal, and of one type (Python's == between an input's text and a number is false, never an error).
+static func _same_val(a, b) -> bool:
+	return typeof(a) == typeof(b) and a == b
+
+
 static func _same_person(a, b) -> bool:
 	return typeof(a) == typeof(b) and a == b
 
@@ -1743,6 +1792,7 @@ func _step() -> void:
 	var under := {}         # fault -> the work (its index) under whose permit the trainee repairs it (§15.5)
 	var noted := []         # locks and unlocks, made in step 3 (§17.1)
 	var dones := []         # works whose permit went to done: their repairs and set in step 3
+	var named := {}         # fault -> the cause the instructor named for it (REALISM.md §2.6)
 	var j0 := J             # the jumps before this step's inputs (a jump's gap: wear, REALISM.md §2.2; the weather)
 	var wx0 := wx_kind      # the weather's kind before them (its event, REALISM.md §5.1)
 	# 1. the trainee's inputs, in the order made, then the NPCs' made in the previous step's step 9 (§17.1)
@@ -1779,6 +1829,21 @@ func _step() -> void:
 			if npc:
 				_npc_result(item[3], r, k0)
 			continue
+		if kind == "tool":              # REALISM.md §2.3: a tool taken or put back at the person's place
+			var k0 := events.size()
+			var r := Hands.tool(self, item[1], item[3], item[2], npc)
+			if npc:
+				_npc_result(item[3], r, k0)
+			continue
+		if kind == "hand":              # REALISM.md §2.4
+			var k0 := events.size()
+			var r := Hands.hand(self, item, npc)
+			if npc:
+				_npc_result(item[5], r, k0)
+			continue
+		if kind == "slip":              # an NPC's slip (REALISM.md §3.1, §2.13)
+			Hands.slip(self, item)
+			continue
 		if kind == "lock" or kind == "unlock" or kind == "remove_lock":
 			noted.append([item, npc, slot])
 			continue
@@ -1803,7 +1868,20 @@ func _step() -> void:
 				_ev(["jump", clock(), null, "refused"])
 			continue
 		var ai = _al_ix.get(item[1], -1) if typeof(item[1]) == TYPE_STRING else -1
-		if kind == "fault":
+		if kind == "fault" and item.size() > 2:
+			# the instructor's fault with its hidden cause (REALISM.md §2.6): a cause the fault lacks does nothing
+			var fd = _fdef.get(item[1]) if typeof(item[1]) == TYPE_STRING else null
+			var ok := false
+			if fd != null:
+				for c in fd.get("causes", []):
+					if _same_val(c["id"], item[2]):
+						ok = true
+						break
+			if ok:
+				_ev(["instructor", "fault", item[1], item[2]])
+				pressed.append(item[1])
+				named[item[1]] = item[2]
+		elif kind == "fault":
 			if _v2:
 				_ev(["instructor", "fault", item[1]])
 			pressed.append(item[1])
@@ -1916,6 +1994,8 @@ func _step() -> void:
 			faults_fixed.erase(fid)
 			_apply_set(fl[3])
 			_ev(["fault", fid])
+			if _hw and _fdef[fid].has("causes"):     # its hidden cause (REALISM.md §2.6)
+				Hands.draw_cause(self, _fdef[fid], vals, named.get(fid) if fl[1] == 2 else null)
 	# then the repairs asked, in the scenario's order: a fault applied and not repaired since, with a `repair`; one
 	# under a permit (§15.5) writes as its work
 	for fl in (_faults if not (asked.is_empty() and under.is_empty()) else []):
@@ -1927,6 +2007,14 @@ func _step() -> void:
 				continue
 		if fl[4] != null and (wu != -1 or asked.has(fid)) and faults_done.has(fid) and not faults_fixed.has(fid) \
 				and not _blocked(fl[4], wu):
+			if _hw and _fdef[fid].has("causes"):
+				# REALISM.md §2.6: the cause's repair too; under a permit only when the work cures that cause
+				if not asked.has(fid) and not Hands.cures(self, wu, fid) or Hands.blocked(self, _fdef[fid], wu):
+					continue
+				faults_fixed[fid] = true
+				Hands.do_repair(self, _fdef[fid], wu)
+				_ev(["repair", fid])
+				continue
 			faults_fixed[fid] = true
 			_apply_set(fl[4], wu)
 			_ev(["repair", fid])
@@ -1938,9 +2026,15 @@ func _step() -> void:
 		var whole: bool = wk == -1 or _n_locked(wk) == _iso[wk][1].size()
 		if fk != -1 and _faults[fk][4] != null and faults_done.has(fid) and not faults_fixed.has(fid) \
 				and whole and not _blocked(_faults[fk][4], wi):
-			faults_fixed[fid] = true
-			_apply_set(_faults[fk][4], wi)
-			_ev(["repair", fid])
+			if _hw and _fdef[fid].has("causes"):     # REALISM.md §2.6: cured only when it cures the cause
+				if Hands.cures(self, wi, fid) and not Hands.blocked(self, _fdef[fid], wi):
+					faults_fixed[fid] = true
+					Hands.do_repair(self, _fdef[fid], wi)
+					_ev(["repair", fid])
+			else:
+				faults_fixed[fid] = true
+				_apply_set(_faults[fk][4], wi)
+				_ev(["repair", fid])
 		_apply_set(_wk[wi][4], wi)
 	# then the renewals (REALISM.md §2.2, §2.7) of those works, in the order of their done: each wear value set to 0,
 	# under the rule of their repairs (the isolation complete after this step's locks); no state is written
@@ -1949,6 +2043,9 @@ func _step() -> void:
 		if not rn.is_empty() and _n_locked(_wk[wi][1]) == _iso[_wk[wi][1]][1].size():
 			for sl in rn:
 				cur[sl] = 0.0
+	# then the hand actions whose minutes end (REALISM.md §2.4, §2.13)
+	if not busy.is_empty():
+		Hands.end_hands(self, gap > 0)
 	# 4. interlocks on a rising edge
 	for k in _il.size():
 		var x = _il[k]
@@ -2057,6 +2154,10 @@ func _op(item: Array, moved: Dictionary, npc := false) -> String:
 		elif _authority(item[6], npc, "" if typeof(kks) == TYPE_STRING and typeof(do) == TYPE_STRING
 				and _lift_ops.has(kks + "|" + do) else "operate_" + where):
 			failed.append("authority")      # (a lift's controls need no role authority: anyone may ride, §20.3)
+		if typeof(where) == TYPE_STRING and where == "hart" and o.has("hart"):
+			# REALISM.md §2.5: a communicator carried and connected (its state as the step before left it)
+			if not Hands.carries_kind(self, item[6], "communicator") or prev[ix[o["hart"]]] < 0.5:
+				failed.append("hart")
 	elif _sm != null and st_players[_in_slot] != -1 and not npc:
 		failed.append("authority")      # a trainee playing a person names where and who (§17.1)
 	var needs: PackedInt32Array = c["needs"]
@@ -2270,6 +2371,8 @@ func snapshot(with_values: bool = true) -> Dictionary:
 				if st_players[k] != -1:
 					pl.append([k, _sm.people[st_players[k]]["id"], st_acks[k]])
 			s["players"] = pl
+	if _hw:
+		Hands.snapshot_part(self, s)    # (REALISM.md §2.13)
 	if with_values:
 		var vals := {}
 		for i in n:
@@ -2323,6 +2426,8 @@ func digest_tree() -> Array:
 		tree.append(lift_dwell)
 	if _wx != null:                     # the weather's kind and stream (REALISM.md §2.8), with weather only
 		tree.append(PackedInt64Array([wx_kind, wx_s]))
+	if _hw:                             # the hands-on engine's part (REALISM.md §2.13), with its keys only
+		tree.append(Hands.digest_part(self))
 	return tree
 
 
@@ -2416,7 +2521,8 @@ func clone():
 			"_al_sup", "_al_need", "_ops", "_iso", "_wk", "_state_kks", "_v2", "step_no", "ptw_count",
 			"_sm", "_S", "_ds", "_absent", "_fixed_trainee", "_show", "_fault_kks", "J", "ev_mark", "st_order",
 			"st_session", "st_next1", "_lift_ix", "_load_slot", "_lift_ctl", "_lift_ops", "_world", "_world_seed",
-			"_world_year_day", "_w_S", "_gap", "_wear_ps", "_draws", "_wx", "wx_kind", "wx_s", "_wx_mode", "_wx_slots", "_wx_f", "_wx_t"]:
+			"_world_year_day", "_w_S", "_gap", "_wear_ps", "_draws", "_wx", "wx_kind", "wx_s", "_wx_mode", "_wx_slots", "_wx_f", "_wx_t",
+			"_hw", "_hands", "_meters", "_works_on", "_fdef"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_worn",
@@ -2426,6 +2532,7 @@ func clone():
 			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_kept",
 			"st_left", "st_pending", "st_made",
 			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result", "sp_held", "sp_acts",
-			"riders", "sp_ride", "sp_stairs", "st_veh", "sp_spans"]:
+			"riders", "sp_ride", "sp_stairs", "st_veh", "sp_spans", "tool_n", "carried", "busy", "cause_of", "cause_s",
+			"slip_s"]:
 		c.set(k, get(k).duplicate(true))
 	return c

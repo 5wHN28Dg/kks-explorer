@@ -3,7 +3,7 @@ like the realism content to come, appended to the last area's model file, to mea
 that content is written. Never shipped: the bench reads it from a file (apps/plant3d/sim/tests/bench_realism.gd
 --synth=LABEL:PATH; on a phone the app's `step=bench`, apps/plant3d/app/step_bench.gd, from its files folder).
 
-    python3 tools/plant3d/realism_synth.py N [OUT] [--engine]
+    python3 tools/plant3d/realism_synth.py N [OUT] [--engine] [--hands]
                                 (N: 600 is §11's plan; 1,000 with the new plant systems, J0)
 
 The shares follow §11's split of the 600 and scale with N:
@@ -22,7 +22,12 @@ deterministic (no randomness: the same N gives the same file).
 --engine (milestones AG1 and WX1): the wear items use the engine's own nodes (a `wear` node, a life `draw`n at step 0,
 the failure against it, a `count` of failures: duty, wear, life, vibration, failure, count), and the load brings the
 weather (§5.1): 8 more `ext` values and weather.json driving them with the train's ambient_t and ambient_wb (ten
-lags, eight kinds, one season over the year), every scenario's world seeded by it."""
+lags, eight kinds, one season over the year), every scenario's world seeded by it.
+
+--hands (milestone HW1): the component states are written by hand actions of the train's equipment (one each, of
+kinds without a Workshop tree: component `body`; two clock minutes, work: false), each meter value is read through a
+multimeter by a model meter, and tools.json keeps the tools at the store; the bench also times the hands step alone
+with 12 actions under way in a scenario with the staff (app/step_bench.gd's HANDS line)."""
 import json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -131,13 +136,35 @@ def weather_doc():
             'seasons': [{'id': 'year', 'days': [1, 365], 'start': 'clear', 'hourly': rows}]}
 
 
-def apply(files, vals, weather=None, ext=None):
+def hands_doc(b, vals):
+    """--hands: (hands, meters, tools.json) for the load's component states (rc…) and meter values (rm…)."""
+    states = [v[0] for v in vals if v[0].startswith('rc')]
+    reads = [v[0] for v in vals if v[0].startswith('rm')]
+    codes = [c for c, e in sorted(b.equipment.items()) if e['part'] not in b.workshop]
+    hands = [{'kks': codes[i % len(codes)], 'action': f'hw{i}', 'component': 'body', 'tools': ['sd_flat'],
+              'set': {st: 1}, 'minutes': 2, 'work': False} for i, st in enumerate(states)]
+    meters = [{'id': f'hm{j}', 'kks': codes[j % len(codes)], 'point': 'terminals', 'tool_kind': 'meter',
+               'mode': 'ma_dc', 'value': v, 'needs': [states[j % len(states)]], 'else': 0}
+              for j, v in enumerate(reads)]
+    tools = {'format': 'walkdown-plant-tools', 'version': 1, 'tools': [
+        {'id': 'sd_flat', 'title': 'Screwdriver, flat', 'kind': 'screwdriver', 'size': '4 mm',
+         'at': [['store_counter', 4]]},
+        {'id': 'dmm', 'title': 'Multimeter', 'kind': 'meter', 'modes': ['ma_dc', 'v_dc', 'ohm'],
+         'at': [['store_counter', 2]]},
+        {'id': 'hart', 'title': 'HART communicator', 'kind': 'communicator', 'modes': ['hart'],
+         'at': [['store_counter', 1]]}]}
+    return hands, meters, tools
+
+
+def apply(files, vals, weather=None, ext=None, hands=None):
     """files ({rel: parsed JSON}) with the synthetic values appended to the last area's model file and a `world` in
     every scenario (one without a `world` given an empty one, its own kept); with --engine's weather,
     weather.json, its ext values in plant.json and every scenario, and every scenario's world seeded by it."""
     m = files[f'model/{AREA}.json']
     m['values'] = m['values'] + vals
     m['version'] = 2            # (the hold nodes: a version 1 model file's keys are all version 2's too)
+    if hands is not None:       # --hands (HW1)
+        m['hands'], m['meters'], files['tools.json'] = hands
     if weather is not None:
         files['weather.json'] = weather
         files['plant.json']['ext'] = files['plant.json']['ext'] + list(ext)
@@ -153,7 +180,7 @@ def apply(files, vals, weather=None, ext=None):
 
 def main():
     from ref import plant3d as P
-    args = [a for a in sys.argv[1:] if a != '--engine']
+    args = [a for a in sys.argv[1:] if a not in ('--engine', '--hands')]
     engine = '--engine' in sys.argv
     n = int(args[0])
     b = P.check_dir(os.path.join(ROOT, 'data', 'plant3d'))
@@ -161,6 +188,8 @@ def main():
     load = {'area': AREA, 'values': vals}
     if engine:
         load.update(ext=WX_EXT, weather=weather_doc())
+    if '--hands' in sys.argv:
+        load['hands'], load['meters'], load['tools'] = hands_doc(b, vals)
     text = json.dumps(load, separators=(',', ':')) + '\n'
     if len(args) > 1:
         with open(args[1], 'w', encoding='utf-8') as f:

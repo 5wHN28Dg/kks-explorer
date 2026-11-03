@@ -43,6 +43,11 @@ var scenarios := {}                   # id -> scenario, in file-name order
 var procedures := {}                  # id -> procedure, in file-name order
 var staff = null                      # sim/staff.gd: staff.json (§16), or null
 var weather = null                    # weather.json (REALISM.md §5.1), or null
+var tools = null                      # tools.json (REALISM.md §2.3): {list, ix: id -> index, at: per tool [[place, count]]}
+var hands: Array = []                 # hand actions (REALISM.md §2.4), joined in area order
+var hands_ix := {}                    # "code|action" -> hand action
+var meters: Array = []                # meters (REALISM.md §2.5)
+var meters_ix := {}                   # id -> meter
 var _reads_wx := false                # a name read was the weather's kind (world_wx; known())
 var _reads_world := false             # a name read was a clock value's (REALISM.md §2.1; known())
 var _content_reads_world := false     # the model's or the staff's reads were: every scenario needs `world`
@@ -116,7 +121,7 @@ static func is_num(x) -> bool:
 static func from_dir(path: String):
 	var files := {}
 	var top := path.trim_suffix("/")
-	for rel in ["plant.json", "kit.json", "sounds.json", "staff.json", "weather.json"]:
+	for rel in ["plant.json", "kit.json", "sounds.json", "staff.json", "weather.json", "tools.json"]:
 		if FileAccess.file_exists(top + "/" + rel):
 			files[rel] = FileAccess.get_file_as_bytes(top + "/" + rel)
 	for sub in ["areas", "model", "scenarios", "procedures"]:
@@ -226,6 +231,13 @@ func _load(files: Dictionary) -> void:
 				_reads_world = true
 			if typeof(on) == TYPE_DICTIONARY and on.get("value") == "world_wx":
 				_reads_wx = true
+	if files.has("tools.json") and files["tools.json"] != null:
+		_load_tools(_read(files, "tools.json"))
+		if error != "":
+			return
+	_check_hands()
+	if error != "":
+		return
 	for nm in ["world_hour", "world_day", "world_wx"]:
 		if version == 2 and ext.has(nm):
 			_fail("plant.json: the ext value %s has the name of a clock value or the weather's kind" % nm)
@@ -292,6 +304,61 @@ func _add_model(d: Dictionary, rel: String) -> void:
 		work_ix[w["id"]] = works.size()
 		works.append(w)
 	lifts.append_array(d.get("lifts", []))
+	for x in d.get("hands", []):        # REALISM.md §2.4, §2.5 (milestone HW1)
+		hands_ix[str(x["kks"]) + "|" + str(x["action"])] = x
+		hands.append(x)
+	for x in d.get("meters", []):
+		meters_ix[x["id"]] = x
+		meters.append(x)
+
+
+## tools.json as far as the engine reads it (REALISM.md §2.3; the validator checks the rest): each tool kept at places
+## of staff.json, with whole counts.
+func _load_tools(d) -> void:
+	if d == null:
+		return
+	if version != 2 or staff == null:
+		_fail("tools.json: only in a version 2 plant with staff.json")
+		return
+	var out := {"list": [], "ix": {}, "at": []}
+	for t in d.get("tools", []):
+		if typeof(t) != TYPE_DICTIONARY or typeof(t.get("id")) != TYPE_STRING or typeof(t.get("kind")) != TYPE_STRING:
+			_fail("tools.json: a tool the engine can't read: %s" % str(t))
+			return
+		var at := []
+		for a in t.get("at", []):
+			if typeof(a) != TYPE_ARRAY or a.size() != 2 or not staff.pix.has(a[0]) or typeof(a[1]) != TYPE_INT:
+				_fail("tools.json: tool %s: a place the engine can't read: %s" % [t["id"], str(a)])
+				return
+			at.append([int(staff.pix[a[0]]), int(a[1])])
+		out["ix"][t["id"]] = out["list"].size()
+		out["list"].append(t)
+		out["at"].append(at)
+	tools = out
+
+
+## What the engine reads of the hand actions, meters, HART ops, causes and cures names what exists (the validator
+## checks the rest, REALISM.md §2.13).
+func _check_hands() -> void:
+	for x in hands:
+		var w := "hand action %s %s" % [str(x.get("kks")), str(x.get("action"))]
+		_check_set(x.get("set", {}), w)
+		if x.has("input"):
+			_check_set({x["input"]: 0}, w)
+		for nd in x.get("needs", []):
+			_need(nd[0], w)
+		for t in x.get("tools", []):
+			if tools == null or not tools["ix"].has(t):
+				_fail("%s: no tool %s" % [w, str(t)])
+	for x in meters:
+		var w := "meter " + str(x.get("id"))
+		_need(x["value"], w)
+		for nd in x.get("needs", []):
+			_need(nd, w)
+		_need_ref(x.get("else", 0), w)
+	for o in ops:
+		if o.has("hart"):
+			_check_set({o["hart"]: 0}, "op %s %s" % [o["kks"], o["do"]])
 
 
 ## The values the engine keeps for permits and isolations (§15.1, §15.3) and each lift's load (§20.1), in slot order.
@@ -421,6 +488,12 @@ func _check_scenario(s: Dictionary) -> void:
 		_check_set(f["set"], "%s fault %s" % [w, f["id"]])
 		if f.has("repair"):
 			_check_set(f["repair"], "%s fault %s repair" % [w, f["id"]])
+		for c in f.get("causes", []):       # hidden causes (REALISM.md §2.6)
+			_check_set(c["set"], "%s fault %s cause %s" % [w, f["id"], str(c.get("id"))])
+			if c.has("repair"):
+				_check_set(c["repair"], "%s fault %s cause %s" % [w, f["id"], str(c.get("id"))])
+			if typeof(c.get("weight")) == TYPE_STRING:
+				_need(c["weight"], "%s fault %s cause %s" % [w, f["id"], str(c.get("id"))])
 		if f.has("kks") and not codes.has(f["kks"]):
 			_fail("%s fault %s: no equipment %s in the plant" % [w, f["id"], f["kks"]])
 		if f.has("when"):
