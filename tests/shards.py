@@ -43,7 +43,7 @@ HEAVY = {
 # test_plant_packaging is here for its MSIX tests, which need the pinned Godot (the logos): the `python` jobs have none
 # and skip them (~1 s here)
 CONTENT_MODULES = ('test_plant3d', 'test_plant3d_staff', 'test_plant3d_bench', 'test_plant3d_realism', 'test_plant3d_workshop',
-                   'test_plant3d_workshop_bench',
+                   'test_plant3d_workshop_bench', 'test_plant3d_hands_content',
                    'test_plant3d_pid', 'test_plant_packaging')
 CONTENT_SHARDS = 6
 # a test's id or its class; times measured on the laptop, 2026-10-24 (CI's runners took about 1.45 times as long):
