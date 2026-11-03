@@ -84,4 +84,14 @@ static func _script_cost() -> Array:
 		p.append("the scripts' cost lines (%s)" % str(lines))
 	elif not lines[1].begins_with("SCRIPTS_AT normal") or not lines[1].contains("avatars="):
 		p.append("the scripts' cost lines say when each part's largest frame came (%s)" % str(lines))
+	# the engine's steps one by one (the staff step's own time, PLANT3D.md §21.15): those from the mark only
+	Cost.start()
+	for k in 4:
+		Cost.step_staff.append(1000 if k == 0 else 100 * k)
+		Cost.step_model.append(50)
+	Cost.steps_from = 1
+	lines = Cost.lines()
+	Cost.on = was
+	if lines.is_empty() or lines[-1] != "STEPS from=1 steps=3 staff_mean_us=200.0 staff_p50_us=200 staff_p99_us=300 staff_max_us=300 model_mean_us=50.0":
+		p.append("the STEPS line: each step's staff and model time from the mark (%s)" % str(lines))
 	return p

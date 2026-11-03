@@ -11,7 +11,7 @@ Needs the Godot editor (KKS_GODOT, else the path tools/plant3d/bench/fetch_godot
 unless KKS_REQUIRE_GODOT=1 (CI), where a missing Godot fails. The reference's runs are made while Godot runs, side by
 side in up to 4 processes (KKS_REF_JOBS=N for N; 1: one after the other).
   .venv/bin/python -m unittest tests.test_plant3d_sim"""
-import copy, hashlib, json, os, random, struct, subprocess, sys, tempfile, time, unittest
+import copy, hashlib, json, os, random, re, struct, subprocess, sys, tempfile, time, unittest
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, REPO)
@@ -676,6 +676,213 @@ class GdscriptStaffEdges(unittest.TestCase):
 
 
 @unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptIdleRiders(unittest.TestCase):
+    """A ride in an idle task (the adversarial review of the staff step's speed-up, PLANT3D.md §21.15): the camp's
+    synthetic plant with its off-duty idle task a ride to the control room's stop; people off duty go to the camp's
+    stop, wait there (asleep in the app's engine) and get on when the 05:40 bus comes. The app's engine replays it as the
+    reference made it (a run of its own, not in the vectors)."""
+
+    def test_idle_riders_get_on(self):
+        camp = G.with_camp(G.mini_staff()['staff.json'])
+        for t in camp['tasks']:
+            if t['id'] == 'rest_home':
+                t['steps'] = [{'ride': {'from': 'camp_stop', 'to': 'cr_stop'}}, {'work': 30}]
+        base = G.mini_staff()
+        sc = copy.deepcopy(base['scenarios/s1.json'])
+        sc['start'] = {'day': 1, 'time': '05:00'}
+        e = P.Recorder(G.check(G.staff_files(sc, camp)), 's1', False)
+        states, digests = [e.snapshot()], [e.digest()]
+        while e.step_no < 500:
+            e.step()
+            if e.step_no % 20 == 0:
+                states.append(e.snapshot())
+            if e.step_no % G.DIGEST_EVERY == 0:
+                digests.append(e.digest())
+        on = [x for x in e.events if x[1] == 'aboard' and x[3] == 'bus' and x[4] == 'camp_stop' and x[5] == 'on']
+        self.assertTrue(on, 'someone off duty on the bus')    # (crew A's control room operator, waiting from step 244)
+        with open(VECTORS2, encoding='utf-8') as f:
+            V2 = json.load(f)
+        run = {'why': 'idle riders', 'scenario': sc, 'staff': camp, 'inputs': e.inputs, 'until': 500, 'every': 20,
+               'states': states, 'events': e.events, 'digests': digests}
+        V2 = {'about': V2['about'], 'valid': V2['valid'], 'reject': [], 'steps': [],
+              'staff': dict(V2['staff'], runs=[run], reject=[])}
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'idle.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(V2, f)
+            r = godot('run_vectors.gd', '--only=v2', f'--vectors2={path}', timeout=600)
+        no_errors(self, r)
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+        self.assertIn('VECTORS passed=', r.stdout)
+        self.assertIn(' failed=0', r.stdout, r.stdout[-3000:])
+
+
+def _waits(e):
+    """The NPCs of reference run e waiting for a place taken (at the place where they wait) or for a meeting's others:
+    person id -> (kind, the step the wait began)."""
+    sr = e.staff
+    out = {}
+    for i, p in enumerate(sr.people):
+        if p.cur is None or sr.slot_of(i) is not None:
+            continue
+        s = sr.st.tasks[p.cur['task']]['steps'][p.cur['step']]
+        x = p.cur['st']
+        if 'meet' in s and 'meet_since' in x and not x.get('met'):
+            out[p.id] = ('meet', x['meet_since'])
+        elif x.get('waiting') and 'wait_since' in x and p.pos == x.get('dest'):
+            out[p.id] = ('place', x['wait_since'])
+    return out
+
+
+class _ClaimWaiting:
+    """A session's player (§17.13) for GdscriptWaits: slot `slot` takes the first NPC found waiting (kind 'meet' or
+    'place') and gives them back `hold` steps later, played meanwhile as the generator's Trainee plays."""
+
+    def __init__(self, kind, slot, hold):
+        self.kind, self.slot, self.hold = kind, slot, hold
+        self.who, self.at = None, None
+        self.pl = G.Trainee(slot=slot, quiet=True)
+
+    def __call__(self, e):
+        n = e.step_no + 1
+        if self.who is None:
+            w = [k for k, v in sorted(_waits(e).items()) if v[0] == self.kind]
+            if w:
+                self.who, self.at = w[0], n
+                G.apply_staff(e, [n, 'role', self.who, self.slot])
+        elif n == self.at + self.hold:
+            G.apply_staff(e, [n, 'release', self.slot])
+        self.pl(e)
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class GdscriptWaits(unittest.TestCase):
+    """The people waiting for a place taken, or for a meeting's others, asleep in the app's engine (PLANT3D.md
+    §21.15) until their 15 minutes are over or something that can end the wait happens (staff.gd _wake_at): a place in
+    the room let go or taken, someone coming into the room or coming on duty there; and as any sleeper, a task, a
+    duty, a stop, a placement. Runs of the reference on the synthetic plant (not in the vectors), busier than its
+    usual day (a third field operator, the field operators' idle task leaving its seat every few minutes), replayed by
+    the app's engine bit for bit: the shift change's meetings (some met early, some given up) and seats (some freed,
+    some given up), a person claimed by a session slot while they wait and given back, the same for a place, and a
+    jump while people wait. A save and restore while people wait: check_staff_waits.gd."""
+
+    @staticmethod
+    def busy():
+        st = copy.deepcopy(G.mini_staff()['staff.json'])
+        st['people'].append({'id': 'a_fo3', 'role': 'field_op', 'roster': 'shift', 'crew': 'a', 'call': 'Field 3 A'})
+        for t in st['tasks']:
+            if t['id'] == 'idle_field':
+                t['steps'] = [{'go': {'kind': 'seat', 'room': 'office'}}, {'work': 4}, {'go': 'ws_door'}, {'work': 2}]
+        return st
+
+    def run_ref(self, why, start, until, player=None, session=False, trainee=None):
+        sc = copy.deepcopy(G.mini_staff()['scenarios/s1.json'])
+        sc['start'] = {'day': 1, 'time': start}
+        if trainee is not None:
+            sc['staff']['trainee'] = trainee
+        staff = self.busy()
+        e = P.Recorder(G.check(G.staff_files(sc, staff)), 's1', session)
+        states, digests = [e.snapshot()], [e.digest()]
+        tpm = e.staff.st.tpm
+        prev, ends = {}, set()
+        while e.step_no < until:
+            if player is not None:
+                player(e)
+            e.step()
+            if e.step_no % 20 == 0 or e.step_no == until:
+                states.append(e.snapshot())
+            if e.step_no % G.DIGEST_EVERY == 0:
+                digests.append(e.digest())
+            w = _waits(e)
+            for pid, v in prev.items():
+                if w.get(pid) != v:
+                    ends.add((v[0], 'given up' if e.step_no - v[1] >= 15 * tpm else 'ended early'))
+            prev = w
+        run = dict({'why': why, 'scenario': sc, 'staff': staff, 'inputs': e.inputs, 'until': until, 'every': 20,
+                    'states': states, 'events': e.events, 'digests': digests}, **({'session': True} if session else {}))
+        return run, ends, e
+
+    def test_waits_replay(self):
+        runs = []
+        run, ends, _ = self.run_ref('the shift change\'s meetings and seats', '05:30', 3000)
+        self.assertEqual(ends, {('meet', 'ended early'), ('meet', 'given up'), ('place', 'ended early'),
+                                ('place', 'given up')})
+        runs.append(run)
+        run, ends, _ = self.run_ref('the morning\'s seats', '07:00', 3000)
+        self.assertIn(('place', 'ended early'), ends)
+        runs.append(run)
+        for kind, slot in (('meet', 0), ('place', 1)):
+            pl = _ClaimWaiting(kind, slot, 40)
+            run, _, e = self.run_ref('a session slot takes a person waiting (%s) and gives them back' % kind,
+                                     '05:30', 1500, pl, session=True)
+            self.assertIsNotNone(pl.who, 'nobody waiting (%s) to claim' % kind)
+            self.assertTrue(any(x[1] == 'role' and x[-1] == slot for x in e.inputs), e.inputs[:20])
+            self.assertTrue(any(x[1] == 'release' for x in e.inputs))
+            runs.append(run)
+        jumped = []
+
+        def jump(e):
+            if not jumped and _waits(e):
+                jumped.append(e.step_no + 1)
+                G.apply_staff(e, [e.step_no + 1, 'task_ack'])      # (the supervisor's tasks seen: else refused)
+                G.apply_staff(e, [e.step_no + 1, 'jump', '07:30'])
+        run, _, e = self.run_ref('a jump while people wait', '05:30', 1500, jump, trainee='a_sup')
+        self.assertTrue(jumped)
+        self.assertTrue(any(x[1] == 'jump' and x[-1] == 'done' for x in e.events), 'the jump was refused')
+        runs.append(run)
+        with open(VECTORS2, encoding='utf-8') as f:
+            V2 = json.load(f)
+        V2 = {'about': V2['about'], 'valid': V2['valid'], 'reject': [], 'steps': [],
+              'staff': dict(V2['staff'], runs=runs, reject=[])}
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'waits.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(V2, f)
+            r = godot('run_vectors.gd', '--only=v2', f'--vectors2={path}', timeout=900)
+        no_errors(self, r)
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+        self.assertIn('VECTORS passed=', r.stdout)
+        self.assertIn(' failed=0', r.stdout, r.stdout[-3000:])
+
+    def test_every_change_a_wait_reads_wakes(self):
+        """What the waits read (who holds a place, where people are, who is on duty) is written only where the
+        sleepers in that room are woken: a place given to sp_pos only through _put (place_all, which wakes everyone,
+        aside), st_holder changed only in reserve, unreserve and leave_place, each calling _wake_at (and place_all),
+        sp_on set only in phase 1, which wakes the room, and place_all; nothing outside staff.gd writes them."""
+        with open(os.path.join(SIM, 'staff.gd'), encoding='utf-8') as f:
+            src = f.read()
+        funcs = {}
+        name = None
+        for line in src.splitlines():
+            m = re.match(r'(?:static )?func (\w+)', line)
+            if m:
+                name = m.group(1)
+            funcs.setdefault(name, []).append(line)
+        where = lambda pat: sorted({k for k, ls in funcs.items() for x in ls if re.search(pat, x)})  # noqa: E731
+        self.assertEqual(where(r'sp_pos\[[^]]*\] = (?!-1)'), ['_put', 'place_all'])
+        self.assertEqual(where(r'st_holder(\[[^]]*\] = |\.erase\(| = \{)'),
+                         ['leave_place', 'place_all', 'reserve', 'unreserve'])
+        for k in ('leave_place', 'reserve', 'unreserve', '_put'):
+            self.assertTrue(any('_wake_at(e, ' in x for x in funcs[k]), k)
+        self.assertEqual(where(r'sp_on\[[^]]*\] = 1'), ['_phase1', 'place_all'])
+        on = '\n'.join(funcs['_phase1'])
+        self.assertRegex(on, r'e\.sp_on\[pi\] = 1\n(.*\n){0,3}.*_wake_at\(e, e\.sp_pos\[pi\]\)')
+        self.assertRegex('\n'.join(funcs['place_all']), r'sp_wait_on\.fill\(-1\)')
+        for root, _, files in os.walk(os.path.join(REPO, 'apps', 'plant3d')):
+            for fn in files:
+                if fn.endswith('.gd') and fn != 'staff.gd' and 'tests' not in root.split(os.sep):
+                    with open(os.path.join(root, fn), encoding='utf-8') as f:
+                        t = f.read()
+                    self.assertIsNone(re.search(r'(sp_pos|sp_on)\[[^]]*\] = |st_holder(\[[^]]*\] = |\.erase\()', t), fn)
+
+    def test_save_and_restore_while_waiting(self):
+        r = godot('check_staff_waits.gd', timeout=900)
+        no_errors(self, r)
+        self.assertEqual(r.returncode, 0, r.stdout[-4000:])
+        self.assertIn('WAITS ok', r.stdout)
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
 class GdscriptEngineInterpreter(unittest.TestCase):
     """The engine steps with a straight-line GDScript program generated from the model (engine.gd _gen_fast), which
     every other test here runs. Its interpreter (engine.gd _run: step 0, faults' `when` nodes, and every step when the
@@ -785,6 +992,23 @@ class GdscriptEngineStepCost(unittest.TestCase):
         self.assertIn('PROGRAM straight-line', r.stdout)
         self.assertEqual(r.returncode, 0, r.stdout[-3000:])
         self.assertIn('GATE ok', r.stdout)
+
+    def test_staff_work_at_the_gate(self):
+        """The staff step over the gate walk's hour (bench_staff.gd: 05:40-06:40, the buses and the shift change,
+        PLANT3D.md §21.15): the work it does, counted (the same on every machine). Before the speed-up (2026-11-02)
+        it ran 52,637 task steps in the hour (riders waiting at a stop looked again every step), worked out the bus's
+        next run 6,002 times (every step) and looked at 53,495 people's acts; after it, 10,072, 2 and 10,930; with the
+        people waiting for a place or for a meeting's others asleep too (2026-11-03), 1,752, 2 and 2,610."""
+        r = godot('bench_staff.gd', timeout=600)
+        print('\n' + '\n'.join(x for x in r.stdout.splitlines() if x.split(' ')[0] in ('STAFF', 'PHASE', 'COUNT')))
+        no_errors(self, r)
+        self.assertEqual(r.returncode, 0, r.stdout[-3000:])
+        m = re.search(r'^COUNT runs=(\d+) due=(\d+) acts=(\d+)$', r.stdout, re.M)
+        self.assertIsNotNone(m, r.stdout[-3000:])
+        runs, due, acts = (int(x) for x in m.groups())
+        self.assertLess(runs, 3000)
+        self.assertLess(due, 100)
+        self.assertLess(acts, 4000)
 
 
 def no_errors(case, r):

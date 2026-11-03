@@ -26,6 +26,7 @@ const EARLY_KEPT := 32           # the trainee's actions kept for a later step (
 const OPEN_KINDS := ["point", "door", "stop", "muster", "counter", "depot", "work"]
 const PPE := ["helmet", "boots", "glasses", "gloves", "ear", "harness", "face_shield", "apron", "vest"]
 const ACT_KINDS := ["ppe", "permit", "unsafe"]   # an unsafe act's kinds, in the order checked (§16.7, §17.11)
+const NO_ACTS := [null, null, null]   # a person's sp_acts with no act going on (phase 5's count)
 const STATE_NAMES := ["none", "requested", "approved", "isolated", "issued", "accepted", "done", "returned",
 		"deisolated", "closed", "cancelled"]
 const PERMIT_TO := {"request": 1, "approve": 2, "issue": 4, "accept": 5, "done": 6, "return": 7, "close": 9,
@@ -34,6 +35,12 @@ const PERMIT_AUTH := {"request": "request", "approve": "approve", "issue": "issu
 		"done": "accept", "return": "accept", "close": "issue", "cancel": "approve"}
 
 var error := ""
+## Per-phase timers of step() (tests/bench_staff.gd, the gate walk's STAFF_PHASES): the engine's _staff_prof_on,
+## _staff_prof (microseconds per PROF_NAMES[k]) and _staff_prof_n (the work done, machine-independent: task steps run in
+## people's turns, the vehicles' runs due worked out, people whose acts were looked at in phase 5). On the engine, not
+## here: this object is shared by an engine's clones, which a worker thread steps (the permit panel's lock check).
+const PROF_NAMES := ["inputs", "duties", "react", "vehicles", "people", "acts", "after"]
+
 var d := {}                          # staff.json as read
 var ds := 6                          # plant.json's clock.day_scale
 var tpm := 100                       # steps in a clock minute
@@ -51,6 +58,7 @@ var ways := {}                       # a * places + b (a < b) -> steps
 var next: Array = []                 # per point: PackedInt32Array of the next point to each point
 var rooms := {}                      # room -> PackedInt32Array of its places
 var door := {}                       # room -> its door (the first door place), or -1
+var wait_key := PackedInt32Array()   # per place: its room's first place, or itself outside a room (_wake_at)
 var work_at := {}                    # code -> its work place
 var origin := -1
 var gate := -1
@@ -159,6 +167,9 @@ func _build(m, doc: Dictionary) -> void:
 		if p["kind"] == "stop" or p["kind"] == "depot":
 			drive_no[-1] = drive_places.size()
 			drive_places.append(places.size() - 1)
+	wait_key.resize(places.size())
+	for i in places.size():
+		wait_key[i] = rooms[room_of[i]][0] if room_of[i] != null else i
 	for r in rooms:
 		door[r] = -1
 		for i in rooms[r]:
@@ -500,6 +511,8 @@ func init_run(e, scen: Dictionary) -> void:
 	e.sp_occ.resize(n)
 	e.sp_rng.resize(n)
 	e.sp_wake.resize(n)
+	e.sp_wait_on.resize(n)
+	e.sp_wait_on.fill(-1)
 	e.sp_worn.resize(n)
 	e.sp_zin.resize(n)
 	e.sp_lin.resize(n)
@@ -653,6 +666,7 @@ func place_all(e, c: int, old: int) -> void:
 			if typeof(r) == TYPE_STRING and e.slot_of(person_ix[r]) == -1:
 				queue_alight(e, e.m.lifts[k]["id"], r)
 	e.st_holder = {}
+	e.sp_wait_on.fill(-1)           # (everyone awake: sp_wake 0 below)
 	e.st_given = {}
 	e.st_pending = []
 	e.st_made = {}
@@ -1052,7 +1066,7 @@ func let_go(e, slot: int) -> void:
 		if not c["idle"]:
 			pause(e, pi)
 	if e.sp_pos[pi] == -1 and e.sp_aboard[pi] == -1 and e.st_t_from[slot] != -1:
-		e.sp_pos[pi] = e.st_t_from[slot]
+		_put(e, pi, e.st_t_from[slot])
 	e.st_t_from[slot] = -1
 	e.st_acks[slot] = 0
 	e.st_kept[slot] = []
@@ -1095,6 +1109,8 @@ func jump(e, to) -> void:
 # ---------------------------------------------------------------- step 9 (§17.2)
 
 func step(e) -> void:
+	var pr: bool = e._staff_prof_on
+	var pt := Time.get_ticks_usec() if pr else 0
 	var n: int = e.step_no
 	var c: int = e.clock()
 	var tin: Array = e.st_t_in
@@ -1138,7 +1154,7 @@ func step(e) -> void:
 		if item[0] == "get_on":
 			t_get_on(e, tr, item[1])
 		elif item[0] == "arrive" and typeof(item[1]) == TYPE_STRING and pix.has(item[1]):
-			e.sp_pos[tr] = pix[item[1]]
+			_put(e, tr, pix[item[1]])
 			if e.sp_occ[tr] != e.sp_pos[tr]:
 				leave_place(e, tr)          # a place held is let go when the trainee is elsewhere
 			if e.sp_res[tr] == e.sp_pos[tr]:
@@ -1163,17 +1179,25 @@ func step(e) -> void:
 				e.sp_zin[tr] &= ~(1 << int(zone_ix[item[1]]))
 		elif item[0] == "stop":
 			t_stop(e, tr, item[1])
+	if pr:
+		pt = _prof(e, 0, pt)
 	# 1. duties, then slots
 	var day: int = c / DAY
 	var np := people.size()
 	if c >= e.st_next1:
 		_phase1(e, c, day)
+	if pr:
+		pt = _prof(e, 1, pt)
 	# 2. reactions
 	react(e, n)
+	if pr:
+		pt = _prof(e, 2, pt)
 	# 3. vehicles (§21.4), not in a jump's step (as phase 4)
 	if not jump_step:
 		for vi in vehicles.size():
 			vehicle_turn(e, vi)
+	if pr:
+		pt = _prof(e, 3, pt)
 	# 4. people
 	if jump_step:
 		for slot in e.st_players.size():                # their actions of this step are kept all the same (§17.8)
@@ -1185,8 +1209,14 @@ func step(e) -> void:
 	else:
 		var absent: Dictionary = e._absent     # (made when the run starts, never changed in a step)
 		var players: PackedInt32Array = e.st_players
+		var playing := false
+		for p in players:
+			playing = playing or p != -1
+		# (read once, and again after each turn: a turn wakes others; a field of an untyped object is looked up by
+		# name each time it is read)
+		var wake: PackedInt64Array = e.sp_wake
 		for pi in np:
-			var slot: int = players.find(pi)
+			var slot: int = players.find(pi) if playing else -1
 			if slot != -1:
 				if not absent.has(pi):
 					var mine_in := []
@@ -1194,8 +1224,12 @@ func step(e) -> void:
 						if si[0] == slot:
 							mine_in.append(si[1])
 					trainee_turn(e, pi, mine_in, slot)
-			elif n >= e.sp_wake[pi] and not absent.has(pi):
+					wake = e.sp_wake
+			elif n >= wake[pi] and not absent.has(pi):
 				turn(e, pi)
+				wake = e.sp_wake
+	if pr:
+		pt = _prof(e, 4, pt)
 	# 5. unsafe acts, then the reactions to them
 	var moved := false
 	for k in range(e.ev_mark, e.events.size()):
@@ -1205,9 +1239,21 @@ func step(e) -> void:
 			break
 	act_phase(e, n, moved)
 	findings(e, n)
+	if pr:
+		pt = _prof(e, 5, pt)
 	_slots(e)
+	var vprev: Array = e.st_vprev
+	var vals: PackedFloat64Array = e.cur
 	for j in value_reactions.size():
-		e.st_vprev[value_reactions[j]] = e.cur[value_slot[j]] >= 0.5
+		vprev[value_reactions[j]] = vals[value_slot[j]] >= 0.5
+	if pr:
+		_prof(e, 6, pt)
+
+
+func _prof(e, k: int, t0: int) -> int:
+	var t := Time.get_ticks_usec()
+	e._staff_prof[k] += t - t0
+	return t
 
 
 ## The engine slots of the values reactions are on (every engine of one model has the same).
@@ -1239,6 +1285,7 @@ func _phase1(e, c: int, day: int) -> void:
 				e.sp_on[pi] = 1
 				e.sp_duty[pi] = dl.pop_front()
 				e.sp_wake[pi] = 0
+				_wake_at(e, e.sp_pos[pi])       # (one waiting for them at a meeting there)
 				e._ev(["duty", people[pi]["id"], "on"])
 				if home[pi] != -1:      # the off-duty slots' tasks end: the duty comes first (§21.2)
 					end_off(e, pi)
@@ -1475,7 +1522,7 @@ func select(e, pi: int):
 			cur["started"] = true
 			e._ev(["task", pid, cur["task"], "start"])
 		if e.sp_pos[pi] == -1 and npc and home[pi] == -1:
-			e.sp_pos[pi] = gate
+			_put(e, pi, gate)
 			e._ev(["move", pid, null, places[gate]["id"], e.step_no])
 	if cur == null and (e.sp_on[pi] or home[pi] != -1):
 		# the idle task: the duty's on duty, the off-duty routine's off duty with a home (§21.2)
@@ -1489,7 +1536,7 @@ func select(e, pi: int):
 		e.st_order += 1
 		e._ev(["task", pid, idle, "start"])
 		if e.sp_pos[pi] == -1 and npc and home[pi] == -1:
-			e.sp_pos[pi] = gate
+			_put(e, pi, gate)
 			e._ev(["move", pid, null, places[gate]["id"], e.step_no])
 	if cur == null and not e.sp_on[pi] and e.sp_pos[pi] != -1 and npc and home[pi] == -1:
 		leave_place(e, pi)
@@ -1511,6 +1558,7 @@ func pause(e, pi: int) -> void:
 		st["resumed"] = true
 	for k in ["dest", "waiting", "wait_since", "target", "meet_since", "seat", "seen", "pt", "since"]:
 		st.erase(k)          # (seen: a resumed step is current again, §17.8)
+	e.sp_wait_on[pi] = -1   # (no longer waiting: a claim, a driver taken, a pre-emption)
 	if st.get("hw", false):
 		st.erase("hw")
 		Hands.abandon(e, pi)    # pre-empted: their hand action abandoned (REALISM.md §2.13)
@@ -1535,6 +1583,7 @@ func unreserve(e, pi: int) -> void:
 	if r != -1:
 		if e.st_holder.get(r, -1) == pi:
 			e.st_holder.erase(r)
+			_wake_at(e, r)
 		e.sp_res[pi] = -1
 
 
@@ -1543,6 +1592,7 @@ func leave_place(e, pi: int) -> void:
 	if o != -1:
 		if e.st_holder.get(o, -1) == pi:
 			e.st_holder.erase(o)
+			_wake_at(e, o)
 		e.sp_occ[pi] = -1
 
 
@@ -1555,6 +1605,8 @@ func turn(e, pi: int) -> void:
 	var n: int = e.step_no
 	if n < e.sp_wake[pi]:
 		return
+	if e.sp_wait_on[pi] != -1:
+		e.sp_wait_on[pi] = -1       # (awake: no longer waiting on anything, _wake_at)
 	if e.sp_aboard[pi] != -1:       # aboard a vehicle: no turn (§21.4); getting off wakes them
 		e.sp_wake[pi] = 1 << 62
 		return
@@ -1564,7 +1616,7 @@ func turn(e, pi: int) -> void:
 		if leg[3] > n:
 			e.sp_wake[pi] = leg[3]
 			return
-		e.sp_pos[pi] = leg[1]
+		_put(e, pi, leg[1])
 		e.sp_leg[pi] = []
 		if e.sp_pos[pi] == e.sp_res[pi]:
 			e.sp_occ[pi] = e.sp_pos[pi]
@@ -1578,6 +1630,8 @@ func turn(e, pi: int) -> void:
 			e.sp_wake[pi] = 1 << 62     # nothing to do and off duty: until a task or a duty wakes them
 			return
 		var r = run(e, pi, cur)
+		if e._staff_prof_on:
+			e._staff_prof_n["runs"] += 1
 		if typeof(r) == TYPE_STRING and r == "wait":
 			if cur["idle"] and not cur.get("off", false) and not e.sp_on[pi] and home[pi] != -1:
 				# a duty's idle task off duty within its span: awake when the span ends (the reference's select
@@ -1585,6 +1639,11 @@ func turn(e, pi: int) -> void:
 				var se := _span_end(e, pi)
 				if se >= 0:
 					e.sp_wake[pi] = mini(e.sp_wake[pi], _step_at(e, se + 1))
+			elif cur["idle"] and cur.get("off", false) and home[pi] != -1 and e.sp_wake[pi] > n + 1:
+				# the off-duty routine's idle task: awake when a span begins (select ends it then, §21.2)
+				var ss := _span_next(e, pi)
+				if ss >= 0:
+					e.sp_wake[pi] = mini(e.sp_wake[pi], _step_at(e, ss))
 			return
 		advance(e, pi, r)
 
@@ -1664,13 +1723,42 @@ func hop(a: int, b: int) -> int:
 	return points[next[point_no[a]][point_no[pb]]]
 
 
+## Those asleep waiting for a place or for the others of a meeting in p's room (or at p outside a room) look again
+## at their next turn (run(): go's wait for a place taken, meet's wait for the others): a place there was taken or let
+## go, someone came there, or someone there came on duty. Waking one whose wait it doesn't end is harmless (their turn
+## runs as every turn would, §0062); missing one is not, so every change those waits read calls this.
+## A person comes to place p (every write of a place to sp_pos but place_all's, which wakes everyone: tests check it):
+## those waiting in its room look again.
+func _put(e, pi: int, p: int) -> void:
+	if e.sp_pos[pi] != p:
+		e.sp_pos[pi] = p
+		_wake_at(e, p)
+
+
+func _wake_at(e, p: int) -> void:
+	if p < 0:
+		return
+	var key: int = wait_key[p]
+	var on: PackedInt32Array = e.sp_wait_on
+	var k := on.find(key)
+	if k == -1:
+		return
+	while k != -1:
+		on[k] = -1
+		e.sp_wake[k] = 0
+		if e._staff_prof_on:
+			e._staff_prof_n["wakes"] += 1
+		k = on.find(key, k + 1)
+	e.sp_wait_on = on
+
+
 func walk(e, pi: int, dest: int) -> bool:
 	var pos: int = e.sp_pos[pi]
 	if pos == dest:
 		if e.sp_res[pi] == dest:        # already standing there: the place reserved is now held
 			e.sp_occ[pi] = dest
 			e.sp_res[pi] = -1
-		if has_lifts:
+		if has_lifts and not e.sp_stairs[pi].is_empty():
 			e.sp_stairs[pi] = PackedInt32Array()
 		return true
 	var nx := -1
@@ -1724,6 +1812,7 @@ func reserve(e, pi: int, i: int) -> void:
 	unreserve(e, pi)
 	e.sp_res[pi] = i
 	e.st_holder[i] = pi
+	_wake_at(e, i)
 
 
 ## An alight for the next step, unless one is queued already (a release and a jump in one step).
@@ -1771,7 +1860,7 @@ func ride_turn(e, pi: int) -> bool:
 	var ready := _t(e, x["ready"])
 	var q: Array = e.npc_queue
 	if not aboard:
-		e.sp_pos[pi] = a
+		_put(e, pi, a)
 		if not ready or n - since >= RIDE_WAIT:
 			e._ev(["ride", pid, lid, places[a]["id"], places[b]["id"], "stairs"])
 			e.sp_ride[pi] = []
@@ -1817,7 +1906,7 @@ func ride_turn(e, pi: int) -> bool:
 				_lift_op(e, pi, ld["gate"], "close")    # the last one out shuts the gate behind them
 			e._ev(["ride", pid, lid, places[a]["id"], places[b]["id"], "off"])
 			e.sp_ride[pi] = []
-			e.sp_pos[pi] = pts[c]
+			_put(e, pi, pts[c])
 			if c != ib and ready and not bumped and pts[c] != dest:
 				var nx := hop(pts[c], dest)
 				var key: int = pts[c] * places.size() + nx
@@ -1919,6 +2008,11 @@ func go(e, pi: int, cur: Dictionary, x) -> String:
 		elif e.step_no - s["wait_since"] >= WAIT_PLACE * tpm:
 			return "fail"
 		else:
+			if e._staff_wait_sleep and not e.st_players.has(pi):
+				# nothing changes for them until their 15 minutes are over or a place in the room is let go or taken
+				# (_wake_at), or a task, a duty or a stop wakes them, as any sleeper
+				e.sp_wake[pi] = int(s["wait_since"]) + WAIT_PLACE * tpm
+				e.sp_wait_on[pi] = wait_key[i]
 			return "wait"
 	if walk(e, pi, s["dest"]):
 		return "wait" if s.get("waiting", false) else "next"
@@ -1970,6 +2064,9 @@ func run(e, pi: int, cur: Dictionary):
 		if n - int(x["since"]) >= RIDE_WAIT_MIN * tpm:
 			x["walk"] = true
 			return go(e, pi, cur, to)
+		# nothing changes for them until the wait is over, a vehicle comes to stand at the stop (arrived() wakes
+		# them) or a task, a duty or a stop wakes them, as for any sleeper
+		e.sp_wake[pi] = int(x["since"]) + RIDE_WAIT_MIN * tpm
 		return "wait"
 	if s.has("work"):
 		if not x.has("left"):
@@ -2177,6 +2274,16 @@ func _span_end(e, pi: int) -> int:
 	return -1
 
 
+## The start of the person's next span after the clock, -1 for none.
+func _span_next(e, pi: int) -> int:
+	var c: int = e.clock()
+	var best := -1
+	for x in e.sp_spans[pi]:
+		if x[0] > c and (best == -1 or x[0] < best):
+			best = x[0]
+	return best
+
+
 ## The clock lies within one of the person's duties' spans (§21.2).
 func in_span(e, pi: int) -> bool:
 	var c: int = e.clock()
@@ -2279,7 +2386,7 @@ func get_off(e, pi: int, vi: int, at: int) -> void:
 	ev.append_array(_tail(e, pi))
 	e._ev(ev)
 	e.sp_aboard[pi] = -1
-	e.sp_pos[pi] = at
+	_put(e, pi, at)
 	e.sp_wake[pi] = 0
 	e._touched[pi] = 1
 	came(e, pi)
@@ -2290,9 +2397,25 @@ func get_off(e, pi: int, vi: int, at: int) -> void:
 func runs_due(e, vi: int, c: int) -> Array:
 	var v: Dictionary = vehicles[vi]
 	var vh: Dictionary = e.st_veh[vi]
-	var best := []
 	var day: int = c / DAY
 	var done: Array = vh["done"]
+	# the answer depends only on the day, the floor and the last run made: kept for the next step with the same
+	# (the engine's _staff_due_memo, a cache, not the run's state: a clone starts without it)
+	var dm: Array = e._staff_due_memo
+	if dm.size() != vehicles.size():
+		dm.resize(vehicles.size())
+	var memo = dm[vi]
+	if memo != null and memo[0] == day and memo[1] == vh["floor"] and memo[2] == done:
+		return memo[3]
+	var best := _runs_due(v, vh, day, done)
+	if e._staff_prof_on:
+		e._staff_prof_n["due"] += 1
+	dm[vi] = [day, vh["floor"], done.duplicate(), best]
+	return best
+
+
+func _runs_due(v: Dictionary, vh: Dictionary, day: int, done: Array) -> Array:
+	var best := []
 	for d in [day - 1, day, day + 1]:
 		var wd: String = week[posmod(d - 1, 7)]
 		for k in v["runs"].size():
@@ -2329,6 +2452,7 @@ func arrived(e, vi: int) -> void:
 	var v: Dictionary = vehicles[vi]
 	var n: int = e.step_no
 	var at: int = vh["at"]
+	_wake_riders(e, at)
 	var r: Dictionary = v["runs"][vh["run"]]
 	var stops: PackedInt32Array = r["stops"]
 	e._ev(["vehicle", v["id"], places[at]["id"], "arrive"])
@@ -2353,6 +2477,17 @@ func arrived(e, vi: int) -> void:
 		vh["until"] = n + 1
 	else:
 		vh["until"] = n + maxi(1, int(r["dwell"]) * tpm)
+
+
+## The people waiting at the stop at for a ride (asleep until their wait is over, run()) look again: a vehicle stands
+## there now.
+func _wake_riders(e, at: int) -> void:
+	var pos: PackedInt32Array = e.sp_pos
+	for pi in pos.size():
+		if pos[pi] == at and e.sp_cur[pi] != null:
+			var cur: Dictionary = e.sp_cur[pi]
+			if tasks[cur["task"]]["steps"][cur["step"]].has("ride"):     # (an idle task's ride too)
+				e.sp_wake[pi] = 0
 
 
 ## Phase 3 for one vehicle: an arrival, a departure, then the runs due (§21.4).
@@ -2557,13 +2692,28 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 	# (the engine's fields read once: neither changes in this loop, and a field of an untyped object is looked up by
 	# name each time it is read)
 	var absent: Dictionary = e._absent
-	var touched: PackedByteArray = e._touched
+	var look: PackedByteArray = e._touched     # the people to look at: found natively (a copy: the players added)
 	var players: PackedInt32Array = e.st_players
-	for pi in people.size():
-		if not permit_moved and not touched[pi] and not players.has(pi):
-			continue
+	if not players.is_empty():
+		look = look.duplicate()
+		for p in players:
+			if p >= 0:
+				look[p] = 1
+	var np := people.size()
+	var pi := -1
+	while true:
+		if permit_moved:
+			pi += 1
+			if pi >= np:
+				break
+		else:
+			pi = look.find(1, pi + 1)
+			if pi == -1:
+				break
 		if absent.has(pi):
 			continue
+		if e._staff_prof_on:
+			e._staff_prof_n["acts"] += 1
 		var acts: Array = e.sp_acts[pi]
 		for k in 3:
 			var now := _act_now(e, pi, k)
@@ -2580,41 +2730,44 @@ func act_phase(e, n: int, permit_moved: bool) -> void:
 	for ri in act_reactions:
 		var r: Dictionary = reactions[ri]
 		var v: String = r["on"]["unsafe"]
-		var prio: int = int(r.get("priority", prio_of(r["task"])))
 		if r.get("seen", false):
 			# the safety walk finds it: the first of its roles (role order, then index) in a zone of the act, in the
 			# step it starts or any later one while it lasts; once per act
 			if acting.is_empty() and not looked:
 				looked = true
 				var acts_now: Array = e.sp_acts
-				for pi in people.size():
-					var aa: Array = acts_now[pi]
+				if acts_now.count(NO_ACTS) == acts_now.size():
+					continue        # nobody acting (most steps: counted natively, not person by person)
+				for ai in people.size():
+					var aa: Array = acts_now[ai]
 					if aa[0] != null or aa[1] != null or aa[2] != null:
-						acting.append(pi)
+						acting.append(ai)
 			var all_acts: Array = e.sp_acts
 			var made_all: Dictionary = e.st_made
-			for pi in acting:
-				var aa: Array = all_acts[pi]
+			for ai in acting:
+				var aa: Array = all_acts[ai]
 				for k in 3:
 					var a = aa[k]
 					if a == null or (v != "*" and v != ACT_KINDS[k]):
 						continue
-					var made := Vector4i(ri, pi, k, a[1])      # (not the source key: made every step, it cost)
+					var made := Vector4i(ri, ai, k, a[1])      # (not the source key: made every step, it cost)
 					if made_all.has(made):
 						continue
-					var obs := observer(e, r["roles"], pi)
+					var obs := observer(e, r["roles"], ai)
 					if obs == -1:
 						continue
 					e.st_made[made] = true
-					var key := "%d|unsafe|%s|%s|%d" % [ri, people[pi]["id"], ACT_KINDS[k], a[1]]
+					var key := "%d|unsafe|%s|%s|%d" % [ri, people[ai]["id"], ACT_KINDS[k], a[1]]
 					if not e.st_given.has(key):
-						give(e, obs, r["task"], prio, key, null, null, null, true, null, [pi, k, a[1]])
+						give(e, obs, r["task"], int(r.get("priority", prio_of(r["task"]))), key, null, null, null, true,
+								null, [ai, k, a[1]])
 		else:
 			for sk in started:
 				var k: int = sk[1]
 				var key := "%d|unsafe|%s|%s|%d" % [ri, people[sk[0]]["id"], ACT_KINDS[k], n]
 				if (v == "*" or v == ACT_KINDS[k]) and not e.st_given.has(key):
-					assign(e, r["roles"], r["task"], prio, key, null, null, null, null, [sk[0], k, n])
+					assign(e, r["roles"], r["task"], int(r.get("priority", prio_of(r["task"]))), key, null, null,
+							null, null, [sk[0], k, n])
 
 
 ## Phase 5's end (§17.12): the readings of this step out of their range given by the reactions on a finding, in
@@ -2980,6 +3133,12 @@ func meet(e, pi: int, cur: Dictionary, mt: Dictionary, trainee: bool) -> String:
 			x["left"] = int(mt["minutes"]) * tpm
 			x["last"] = e.step_no
 		else:
+			if not trainee and e._staff_wait_sleep and not rm.is_empty() and int(x["place"]) != -1:
+				# nothing changes for them until their 15 minutes are over, or someone comes into the room or comes on
+				# duty there, or a place there is let go or taken (_wake_at); a task, a duty or a stop wakes them, as
+				# any sleeper
+				e.sp_wake[pi] = int(x["meet_since"]) + WAIT_PLACE * tpm
+				e.sp_wait_on[pi] = wait_key[rm[0]]
 			return "wait"
 	elif x["last"] < e.step_no:
 		if trainee:

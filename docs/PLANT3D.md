@@ -3025,7 +3025,9 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
 ### 21.10 Budgets
 
 - The staff step (§18.4) stays ≤ 0.3 ms on the Note 9 at the busiest step (the shift change with the buses): about
-  95 µs on the laptop by S2's ratio; measured with `bench_step.gd`.
+  95 µs on the laptop by S2's ratio; measured with `bench_step.gd`. **Measured** (2026-11-03, §21.15): 0.27 ms a step
+  on the Note 9 over the gate walk's hour (mean of each step's own time, two judged cool walks: 268.6 and 267.2 µs),
+  within the budget; 39 to 46 µs on the laptop (`bench_staff.gd`).
 - The Note 9's frame rules hold on a new `gate` walk: the shift change at the plant gate (05:40–06:20, the buses in and
   out, the crews through the gate), 10 minutes at 1×, the phone's 12 skinned people, two judged cool runs.
 - The buses add at most 2 draw calls each in view and their triangles fit §18.4's people share.
@@ -3190,3 +3192,68 @@ new ones: the trainee as a driver, as the plant manager, the operations and main
   (MILESTONES "Questions").
 - Evidence: the maintainer's laptop, `~/kks-work/build/s4d-runs/` (result, sf_summary, rule, samp and frames for
   each walk).
+
+### 21.15 The staff step made faster (2026-11-02: the user's answer to S4d's question)
+
+S4d measured the staff step at about 1.07 ms on the Note 9 at the gate, over §21.10's 0.3 ms. The user chose to
+profile it and speed it up, with no change of behaviour: both engines stay bit for bit, every vector file is byte for
+byte as it was (only the GDScript engine changed; the reference and the vectors did not).
+
+- **Where the time went** (`sim/tests/bench_staff.gd`: `shift_cold` in free mode run to 05:40, then the gate walk's
+  hour timed, 6,000 steps; per phase with `staff.gd`'s `prof_on`): on the laptop 170 to 250 µs a step (the laptop
+  shared with other jobs), of which the people's turns about half, phase 5 (the unsafe acts) about a third, the bus about
+  an eighth. Within them: the riders waiting at a stop for the bus, each looked at again every step (43,000 of the hour's
+  52,637 task steps run); the bus's next run worked out afresh every step over three days' runs; phase 5 looking at
+  every rider's acts (they had a turn) and then at all 91 people for the safety walk's reaction, with nobody acting.
+- **What changed** (`sim/staff.gd`): a rider waiting at the stop sleeps until their 30 minutes are over (§21.4); a
+  vehicle arriving at a stop wakes those waiting there for a ride (`_wake_riders`), and a task, a duty or a stop wakes
+  them as any sleeper; the bus's next run is kept while the day, the placement's floor and the last run made stay the
+  same (the engine's `_staff_due_memo`, a cache of a function of those three, so no run state, and on the engine, not on
+  the staff object its clones share: the permit panel's lock check steps clones on a worker thread); phase 5 finds the people to look at
+  natively (`PackedByteArray.find`) and counts "nobody acting" natively (`Array.count`) before looking person by
+  person; the people's loop reads the wake steps once and again after each turn; a few fields of the untyped engine
+  are read into typed locals. Per-phase timers and counters of the work done, on the engine too (`_staff_prof_on`, `_staff_prof`,
+  `_staff_prof_n`); a measured walk with `probe=1` prints them for the gate walk's steps at 1x (`STAFF_PHASES`).
+- **The waits asleep too** (2026-11-03, the user's decision after the first speed-up left the step at about 0.41 ms on
+  the Note 9): of the 1.7 task steps a step still ran, about 1.5 were people waiting for a place taken (`go`'s 15
+  minutes at the place before it) or for a meeting's others (`meet`'s 15 minutes). Both now sleep until their 15
+  minutes are over, and the engine keeps what each waits on (`sp_wait_on`: the room's first place, or the place itself
+  outside a room; saved with the run and cloned, as `sp_wake`). They are woken (`_wake_at`) wherever a place in that
+  room is taken or let go (`reserve`, `unreserve`, `leave_place`), someone comes to a place there (the end of a way, a
+  stop, a lift's landing, the gate, a released player put back, the trainee's `arrive`) or someone there comes on duty;
+  and, as any sleeper, by a task, a duty, a stop or a placement (a jump). A wake that doesn't end the wait is harmless
+  (the turn runs as every turn would); every change these waits read wakes them. A person off duty in the off-duty
+  routine's idle task is woken when their next span begins, too. Tests: `GdscriptWaits` (reference runs replayed bit
+  for bit: meetings met early and given up, seats freed and given up, a session slot taking a person who waits and
+  giving them back, a jump while people wait) and `check_staff_waits.gd` (a save and restore and a clone while people
+  wait, then 3,000 steps in step).
+- **The work, counted** (the same on every machine; `tests/test_plant3d_sim.py` `test_staff_work_at_the_gate`): task
+  steps run 52,637 → 10,072 → 1,752 (with the waits asleep), the bus's next run worked out 6,002 → 2, people's acts
+  looked at 53,495 → 10,930 → 2,610.
+- **On the laptop** (`bench_staff.gd`, before and after side by side, three times): 170 to 174 µs → 59 to 60 µs a
+  step (2.9×). With the waits asleep too (2026-11-03, the three side by side, three times, the laptop shared with
+  other jobs): 165 to 190 µs (before) → 66 to 70 µs (the first speed-up) → 39 to 46 µs.
+- **On the Note 9** (2026-11-03): the `gate` walk (`walk=gate`, `probe=1`, `SAMPLE=1`, 600 s) with a release build of
+  main before any of this (before), of this branch (after), and of S4e's branch on it with the `drive` walk (drive),
+  interleaved, each from a cool start (battery at most 30.0 °C; the phone cooled on the laptop's cable between walks, 10
+  to 15 minutes), until each had two walks the frame rule judges (the kernel's reclaim in at most 1 % of the samples): after and
+  drive got their two (5 and 2 walks), before only one in 6 walks (reclaim 0.83 %; the other five 1.19 to 2.02 %, their
+  staff step 1.29 to 1.32 ms, the same as the judged one) before the phone runs stopped for the laptop's memory. The staff step is each engine step's own time from the
+  STEPS line (the before build has no STEPS line: its figure is the walk's staff script time with the gate clock's
+  longest frame left out, over the hour's 6,050 steps, as §21.14 worked it out; the same sum gives 320 µs for after).
+
+  | build | walk | reclaim | staff step (mean / median / p99) | mean frame | at 60 fps |
+  |---|---|---|---|---|---|
+  | before | gate | 0.83 % | 1.32 ms (worked out, no STEPS line) | 25.23 ms | 52.77 % |
+  | after | gate | 0.18 % | 268.6 / 217 / 845 µs | 25.13 ms | 52.89 % |
+  | after | gate | 0.14 % | 267.2 / 214 / 897 µs | 25.12 ms | 53.02 % |
+  | drive | drive | 0.32 % | 372.0 / 320 / 1,049 µs | 25.35 ms | 51.68 % |
+  | drive | drive | 0.14 % | 371.9 / 319 / 1,057 µs | 25.35 ms | 51.77 % |
+
+  The staff step at the gate is within §21.10's 0.3 ms. The frames hardly move (the staff step is under 2 % of a
+  frame's time at 1x; the GPU sets the pace): no frame over 100 ms in any walk. The drive walk is another walk (the
+  trainee at the wheel: the player's acts are looked at every step, 8,852 against 2,624 at the gate), not the budget's.
+  Evidence: the maintainer's laptop, `~/kks-work/build/staff-runs2/`.
+- **The measured walk's STEPS line** (`app/script_cost.gd`, `ui/sim_clock.gd`): each engine step's own staff and model
+  time from the end of the gate walk's clock run, its mean, median, 99th percentile and largest, so the staff step on
+  the phone is read directly rather than worked out from the frames' means.

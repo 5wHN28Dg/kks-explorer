@@ -112,6 +112,7 @@ var last_us := 0
 var t_walk := 0.0
 var walk_pipelines := -1   # pipelines compiled when the walk's measured part began (PIPELINE lines)
 var walk_seconds := 600.0
+var _phases_from := 0                # the step from which step 9's phases are timed (the gate walk with probe=1)
 var first_frame_ms := -1
 ## The first walkable frame was drawn: the plant, the player, the map, the HUD and the UI are all there (a script that
 ## drives the app waits for it: with a display the start is spread over several frames).
@@ -665,6 +666,13 @@ func _gate_clock() -> void:
 		ui.clock.run_steps(100)
 		await get_tree().process_frame      # (a frame between: never seconds of a held main thread on a phone)
 	ui.clock.set_speed(1)        # (normal: 1x)
+	ScriptCost.steps_from = ScriptCost.step_staff.size()     # (the result's STEPS line: the steps at 1x from here)
+	if frame_probe != null:             # and step 9's phases (engine.gd _staff_prof: the STAFF_PHASES line)
+		e._staff_prof.fill(0)
+		for k in e._staff_prof_n:
+			e._staff_prof_n[k] = 0
+		e._staff_prof_on = true
+		_phases_from = e.step_no
 	_say("GATE clock %s after %d steps in %d ms" % [ui.clock_text(), e.step_no, Time.get_ticks_msec() - t0])
 
 ## mp=CODE@HOST[:PORT]: the walk in a LAN session (MP2's measurement on a phone; the host is the laptop's).
@@ -801,6 +809,14 @@ func _finish() -> void:
 	if frame_probe != null:
 		for l in ScriptCost.lines():
 			_say(l)
+		var e = ui.clock.engine if ui != null and ui.clock != null else null
+		if e != null and e._sm != null and e._staff_prof_on and e.step_no > _phases_from:
+			var n: int = e.step_no - _phases_from
+			var parts := PackedStringArray()
+			for k in e._sm.PROF_NAMES.size():
+				parts.append("%s=%.1f" % [e._sm.PROF_NAMES[k], float(e._staff_prof[k]) / n])
+			_say("STAFF_PHASES steps=%d %s (µs a step) runs=%d due=%d acts=%d" % [n, " ".join(parts),
+					e._staff_prof_n["runs"], e._staff_prof_n["due"], e._staff_prof_n["acts"]])
 	if drawings_walk:
 		var dv = ui.drawing_view
 		var opens: Array = dv.open_ms.values()
