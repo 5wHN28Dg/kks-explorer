@@ -40,7 +40,7 @@ const ALARM_WORDS := {
 ## more than LATE_S clock seconds after it was given is late (the role tab, PLANT3D §21.7).
 const LATE_S := 900
 
-static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}) -> Dictionary:
+static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}, drive_log: Array = []) -> Dictionary:
 	var me_pi: int = engine.trainee(slot) if engine._sm != null else -1        # whose debrief: the slot's person
 	var m = info.m
 	var proc: Dictionary = tracker.proc if tracker != null else {}
@@ -248,6 +248,14 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 					else:
 						e.text = "While you slept (the clock jumped): %s, covered by the crew on duty" % tt
 						sm.covered += 1
+			"drive":
+				# the trainee at a bus's wheel (PLANT3D §21.16): each drive input of theirs, done or refused
+				var sm_ = engine._sm
+				if sm_ == null or me_pi == -1 or ev[2] != sm_.people[me_pi]["id"]:
+					continue
+				e.text = drive_text(sm_, ev)
+				if ev[6] == "refused":
+					e.dev = "a drive refused"
 			"early":
 				# §17.8: an action of the trainee's made before its task step, counted when the step came
 				var sm_ = engine._sm
@@ -306,6 +314,7 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 	var end: int = engine.step_no
 	if not proc.is_empty() and tracker.end_step != -1:
 		end = tracker.end_step
+	sm["drive_log"] = drive_log
 	sm["time"] = maxi(0, end - from_step)
 	sm["steps_done"] = tracker.log.size() if not proc.is_empty() else 0
 	sm["steps"] = steps.size()
@@ -484,10 +493,52 @@ static func summary_lines(d: Dictionary) -> PackedStringArray:
 	out.append_array(audio_lines(sm.get("audio", {}), sm.get("audio_ds", 1)))
 	if sm.early > 0:
 		out.append("Done out of order: %d (made before their task step, counted when it came)" % sm.early)
+	var dl: Array = sm.get("drive_log", [])
+	if not dl.is_empty():
+		var arrived := 0
+		var late := 0
+		var passed := 0
+		var wrong := 0
+		var off := 0.0
+		var near := 0
+		for r in dl:
+			for x in r["stops"]:
+				if x[1] == "arrive":
+					arrived += 1
+					if x[2] != null and int(x[2]) > 2:
+						late += 1
+				elif x[1] == "passed":
+					passed += 1
+				else:
+					wrong += 1
+			off += float(r["off_route_s"])
+			near += int(r["near_misses"])
+		out.append("Bus runs you drove: %d; stops %d (%d more than 2 minutes late), %d passed, %d stands at a place not on the run; off route %d min; near misses %d"
+				% [dl.size(), arrived, late, passed, wrong, int(round(off / 60.0)), near])
 	if sm.get("late", 0) > 0 or sm.get("covered", 0) > 0:
 		out.append("Your tasks: %d begun late (more than 15 minutes after given); %d of your duty's covered by the crew on duty while you slept"
 				% [sm.get("late", 0), sm.get("covered", 0)])
 	return out
+
+
+const DRIVE_WHY := {"unknown": "no such bus or stop", "not_driver": "not this bus's driver on a run",
+		"steering": "already at the wheel", "no_wheel": "the engine has the wheel", "standing": "it stands already",
+		"moving": "it is on the road", "authority": "nobody played"}
+
+
+## A drive input of the trainee's (PLANT3D §21.16), in words.
+static func drive_text(sm, ev: Array) -> String:
+	var what: String = {"wheel": "took the wheel", "go": "closed the doors and set off",
+			"auto": "let the engine drive"}.get(str(ev[4]), "")
+	if str(ev[4]) == "stop":
+		var at: int = sm.pix.get(ev[5], -1) if typeof(ev[5]) == TYPE_STRING else -1
+		what = "stopped and opened the doors at %s" % (String(sm.places[at].get("name", sm.places[at]["id"])) if at != -1
+				else str(ev[5]))
+	if what == "":
+		what = str(ev[4])
+	if ev[6] == "refused":
+		return "Bus %s: not done (%s): %s" % [str(ev[3]), "; ".join((ev[7] as Array).map(func(x): return DRIVE_WHY.get(x, str(x)))), what]
+	return "Bus %s: you %s" % [str(ev[3]), what]
 
 
 ## An unsafe act's start or end, or work stopped (PLANT3D §16.7, §17.11), in words.

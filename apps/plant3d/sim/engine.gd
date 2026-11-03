@@ -193,6 +193,7 @@ var sp_phone := PackedInt32Array()  # the phone: 1 carried, 0 left at a locker, 
 var sp_told := PackedInt32Array()   # the act kinds a missed call reported: bit 0 audio, bit 1 phone
 var sp_watch: Array = []            # per person: {Vector2i(reaction, kind index): {observer: the step they notice}}
 var sp_aud := PackedInt64Array()    # each person's noticing stream (§2.1: purpose `audio`, their id)
+var sp_held_to := PackedInt64Array() # while the phone is held: the clock it is given back (its duty's end), else -1
 var sp_ride: Array = []             # a ride (§20.4): [staff lift, a, b, 0 waiting / 1 aboard, wait start, destination] or []
 var sp_stairs: Array = []           # the stairs walked instead of a ride: [destination, place, …, b], or empty
 var sp_lin := PackedInt64Array()    # the step of a person's last lift input
@@ -726,6 +727,12 @@ func get_on(vehicle, slot = null) -> void:
 	_q(["get_on", vehicle], slot)
 
 
+## The player's person, a vehicle's driver, drives it (§21.16): "wheel", "stop" at a place, "go" or "auto".
+func drive(vehicle, action, place = null, slot = null) -> void:
+	_q(["drive", vehicle, action, place] if typeof(action) == TYPE_STRING and action == "stop"
+			else ["drive", vehicle, action], slot)
+
+
 func arrive(place, slot = null) -> void:
 	_q(["arrive", place], slot)
 
@@ -943,6 +950,8 @@ func apply_input(item: Array) -> void:
 				remove_lock(item[2], item[3], item[4], item[5], null, false, slot)
 		"role", "arrive", "leave", "pick", "jump", "get_on", "audio", "phone":
 			_q([item[1], item[2]], slot)
+		"drive":
+			drive(item[2], item[3], item[4] if item.size() > 4 else null, slot)
 		"release", "task_ack":
 			_q([item[1]], slot)
 		"read", "say", "ppe", "zone":
@@ -1885,8 +1894,8 @@ func _step() -> void:
 			continue        # (a session run's input: a single-player run has no slots)
 		if kind == "role" or kind == "task_ack" or kind == "arrive" or kind == "leave" or kind == "read" \
 				or kind == "say" or kind == "pick" or kind == "call" or kind == "jump" or kind == "ppe" \
-				or kind == "zone" or kind == "stop" or kind == "release" or kind == "get_on" or kind == "audio" \
-				or kind == "phone":
+				or kind == "zone" or kind == "stop" or kind == "release" or kind == "get_on" or kind == "drive" \
+				or kind == "audio" or kind == "phone":
 			if _sm != null:
 				_sm.t_input(self, item, slot)
 			elif kind == "role":
@@ -2513,8 +2522,11 @@ func _digest_staff():
 			for rd in vh["riders"]:
 				rp.append(rd[0])
 				rt.append(rd[1])
-			vs.append([vh["at"], vh["leg"], vh["run"], vh["dep"], vh["k"], vh["until"], vh["driver"], rp, rt,
-					vh["floor"], vh["done"]])
+			var one := [vh["at"], vh["leg"], vh["run"], vh["dep"], vh["k"], vh["until"], vh["driver"], rp, rt,
+					vh["floor"], vh["done"]]
+			if vh.has("wheel"):         # steered (§21.16)
+				one.append([vh["wheel"], vh["from"]])
+			vs.append(one)
 		tree.append(vs)
 		tree.append(sp_aboard)
 		tree.append(sp_offday)
@@ -2535,7 +2547,7 @@ func _digest_staff():
 						due.append(w[qi])
 					rows.append([wk.x, wk.y - 3, obs, due])
 			watch.append(rows)
-		tree.append([sp_music, sp_phone, sp_told, watch, sp_aud])
+		tree.append([sp_music, sp_phone, sp_told, watch, sp_aud, sp_held_to])
 	return tree
 
 
@@ -2582,7 +2594,7 @@ func clone():
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_wait_on", "sp_worn",
-			"sp_zin", "sp_music", "sp_phone", "sp_told", "sp_aud", "lift_quiet", "sp_lin", "lift_calls", "lift_dir", "lift_dwell", "sp_aboard", "sp_offday"]:
+			"sp_zin", "sp_music", "sp_phone", "sp_told", "sp_aud", "sp_held_to", "lift_quiet", "sp_lin", "lift_calls", "lift_dir", "lift_dwell", "sp_aboard", "sp_offday"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",
 			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_kept",

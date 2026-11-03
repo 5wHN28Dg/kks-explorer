@@ -74,7 +74,7 @@ static func in_tab(e: Dictionary, t: String) -> bool:
 		"alarms": return e.kind in ["alarm", "shelve", "unshelve", "trip"]
 		"permits": return e.kind in ["permit", "lock", "unlock", "remove_lock"]
 		"safety": return e.kind in ["unsafe", "safe", "stop", "audio", "phone", "held", "returned", "missed"]
-		"role": return e.kind == "task"
+		"role": return e.kind == "task" or e.kind == "drive"
 	return true
 
 
@@ -113,7 +113,7 @@ func refresh(full := false) -> void:
 		return
 	_events = -2 if tr != null and tr.ev_to != -1 else n
 	var old: Array = entries() if not full else []
-	data = Debrief.collect(e, ui.info, tr, ui.inputs.slot, ui.task_given)
+	data = Debrief.collect(e, ui.info, tr, ui.inputs.slot, ui.task_given, ui.bus_drive.log if ui.bus_drive != null else [])
 	title.text = data.title
 	_summary.text = "\n".join(Debrief.summary_lines(data))
 	var list := entries()

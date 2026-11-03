@@ -30,6 +30,7 @@ const NO_ACTS := [null, null, null]   # a person's sp_acts with no act going on 
 ## and with staff.json's `audio` (REALISM.md §8.5) these two after them: music on in a banned zone, the phone carried
 ## in an Ex zone (kind indexes 3 and 4)
 const AUDIO_KINDS := ["audio", "phone"]
+const DRIVE_ACTIONS := ["wheel", "stop", "go", "auto"]     # a driver's drive input (§21.16)
 const STATE_NAMES := ["none", "requested", "approved", "isolated", "issued", "accepted", "done", "returned",
 		"deisolated", "closed", "cancelled"]
 const PERMIT_TO := {"request": 1, "approve": 2, "issue": 4, "accept": 5, "done": 6, "return": 7, "close": 9,
@@ -553,6 +554,8 @@ func init_run(e, scen: Dictionary) -> void:
 	e.sp_music.resize(n)            # (REALISM.md §8.5: the music off, the phone carried; its streams: engine.gd)
 	e.sp_phone.resize(n)
 	e.sp_phone.fill(1)
+	e.sp_held_to.resize(n)
+	e.sp_held_to.fill(-1)
 	e.sp_told.resize(n)
 	for i in n:
 		e.sp_rng[i] = seed_of(seed, i)
@@ -1097,10 +1100,20 @@ func let_go(e, slot: int) -> void:
 	e.st_players[slot] = -1
 	e.sp_music[pi] = 0                  # (an NPC plays no music, REALISM.md §8.5)
 	var pid: String = people[pi]["id"]
+	for vi in vehicles.size():          # a driver's wheel back to the engine (§21.16)
+		if e.st_veh[vi]["driver"] == pi and e.st_veh[vi].has("wheel"):
+			steer_auto(e, vi)
 	for k in e.riders.size():           # a person aboard leaves the ride: their alight for the next step (§20.3)
 		for r in e.riders[k]:
 			if _same(r, pid):
 				queue_alight(e, e.m.lifts[k]["id"], pid)
+	# their work counted by the player's rule (§17.4: a step at a time) is an NPC's from now: its next count is one
+	# step, not the steps since the player's last (a task paused while they were played, e.g. a driver taken into a
+	# cab, §21.4; the reference counts an NPC's work turn by turn)
+	for inst in e.sp_queue[pi] + e.sp_held[pi]:
+		var st: Dictionary = inst["st"]
+		if st.has("left") and st.has("last"):
+			st["resumed"] = true
 	var c = e.sp_cur[pi]
 	if c != null:
 		if not c["idle"]:
@@ -1188,11 +1201,18 @@ func step(e) -> void:
 				if e.st_session:
 					ev.append(slot)
 				e._ev(ev)
+			elif item[0] == "drive":    # (nobody to drive, §21.16)
+				var ev := ["drive", null, item[1], item[2], drive_place(item), "refused", ["authority"]]
+				if e.st_session:
+					ev.append(slot)
+				e._ev(ev)
 			continue
 		if (item[0] == "arrive" or item[0] == "leave") and e.sp_aboard[tr] != -1:
 			continue                    # (ignored aboard a vehicle, §21.4)
 		if item[0] == "get_on":
 			t_get_on(e, tr, item[1])
+		elif item[0] == "drive":
+			t_drive(e, tr, slot, item)
 		elif item[0] == "arrive" and typeof(item[1]) == TYPE_STRING and pix.has(item[1]):
 			_put(e, tr, pix[item[1]])
 			if e.sp_occ[tr] != e.sp_pos[tr]:
@@ -1230,8 +1250,6 @@ func step(e) -> void:
 	var np := people.size()
 	if c >= e.st_next1:
 		_phase1(e, c, day)
-	elif has_audio and e.sp_phone.has(2):
-		_returned(e)                # (no duty ends between phase 1's times: only a device given back, §8.5)
 	if pr:
 		pt = _prof(e, 1, pt)
 	# 2. reactions
@@ -1340,8 +1358,10 @@ func _phase1(e, c: int, day: int) -> void:
 				for h in held:
 					_enqueue(e, pi, h)
 					e._ev(["task", people[pi]["id"], h["task"], "resumed"])
-		if has_audio and e.sp_phone[pi] == 2 and not e.sp_on[pi]:
-			e.sp_phone[pi] = 1      # a device held is given back when its owner's duty ends (REALISM.md §8.5)
+		if has_audio and e.sp_phone[pi] == 2 and c >= e.sp_held_to[pi]:
+			# a device held is given back when the duty it was taken in ends (REALISM.md §8.5): by the clock
+			e.sp_phone[pi] = 1
+			e.sp_held_to[pi] = -1
 			e._ev(["returned", people[pi]["id"]])
 	for pi in np:
 		if e._absent.has(pi):
@@ -1363,15 +1383,9 @@ func _phase1(e, c: int, day: int) -> void:
 			nx = mini(nx, e.sp_duties[pi][0][0])
 		if not e.sp_slots[pi].is_empty():
 			nx = mini(nx, e.sp_slots[pi][0][0])
+		if has_audio and e.sp_phone[pi] == 2:
+			nx = mini(nx, e.sp_held_to[pi])     # (a device given back, §8.5)
 	e.st_next1 = nx
-
-
-## Phase 1's devices given back (REALISM.md §8.5) in a step whose phase 1 has nothing else to do: in person order.
-func _returned(e) -> void:
-	for pi in people.size():
-		if e.sp_phone[pi] == 2 and not e.sp_on[pi] and not e._absent.has(pi):
-			e.sp_phone[pi] = 1
-			e._ev(["returned", people[pi]["id"]])
 
 
 func react(e, n: int) -> void:
@@ -2399,6 +2413,8 @@ func off_site_now(e, pi: int) -> bool:
 		var vh: Dictionary = e.st_veh[vi]
 		if not vh["leg"].is_empty():
 			return off_site[vh["leg"][0]] == 1 and off_site[vh["leg"][1]] == 1
+		if vh["at"] == -1:              # steered, on the road (§21.16): as on a way from where it came to its target
+			return off_site[vh["from"]] == 1 and off_site[vh["to"]] == 1
 		return off_site[vh["at"]] == 1
 	var leg: Array = e.sp_leg[pi]
 	if not leg.is_empty():
@@ -2526,6 +2542,8 @@ func arrived(e, vi: int) -> void:
 		vh["k"] = 0
 		vh["until"] = 0
 		vh["riders"] = []
+		vh.erase("wheel")               # (the wheel the engine's again, §21.16)
+		vh.erase("from")
 		return
 	var last: bool = vh["k"] == stops.size() - 1
 	var stay := []
@@ -2562,7 +2580,7 @@ func vehicle_turn(e, vi: int) -> void:
 		vh["at"] = vh["leg"][1]
 		vh["leg"] = []
 		drive_on(e, vi)
-	if vh["run"] != -1 and vh["leg"].is_empty() and vh["at"] == vh["to"] and n >= vh["until"] \
+	if not vh.has("wheel") and vh["run"] != -1 and vh["leg"].is_empty() and vh["at"] == vh["to"] and n >= vh["until"] \
 			and (vh["k"] != 0 or c >= vh["dep"]) and vh["k"] < v["runs"][vh["run"]]["stops"].size():
 		e._ev(["vehicle", v["id"], places[vh["at"]]["id"], "depart"])
 		var stops: PackedInt32Array = v["runs"][vh["run"]]["stops"]
@@ -2660,6 +2678,116 @@ func t_get_on(e, ti: int, vid) -> void:
 		e._ev(ev)
 		return
 	get_on(e, ti, vi, pix[s["ride"]["to"]])
+
+
+## A drive input's place for its event: a stop's place as given when it is text, else null (§21.16).
+static func drive_place(item: Array):
+	return item[3] if item.size() > 3 and typeof(item[2]) == TYPE_STRING and item[2] == "stop" \
+			and typeof(item[3]) == TYPE_STRING else null
+
+
+## Place b is a stop or depot a vehicle at a reaches over drive ways.
+func drive_reaches(a: int, b: int) -> bool:
+	if drive_no[b] == -1:
+		return false
+	return a == b or drive_next[drive_no[a]][drive_no[b]] >= 0
+
+
+## A player's drive (§21.16): ["drive", vehicle, action] or ["drive", vehicle, "stop", place]. The first reason
+## refusing it, else done and its effect.
+func t_drive(e, ti: int, slot: int, item: Array) -> void:
+	var vid = item[1]
+	var action = item[2]
+	var pl = item[3] if item.size() > 3 else null
+	var vi: int = vehicle_ix.get(vid, -1) if typeof(vid) == TYPE_STRING else -1
+	var at: int = pix.get(pl, -1) if typeof(pl) == TYPE_STRING else -1
+	var vh: Dictionary = e.st_veh[vi] if vi != -1 else {}
+	var why := ""
+	if vi == -1 or typeof(action) != TYPE_STRING or not DRIVE_ACTIONS.has(action) \
+			or action == "stop" and (at == -1 or not drive_reaches(vehicles[vi]["home"], at)):
+		why = "unknown"
+	elif vh["run"] == -1 or vh["driver"] != ti:
+		why = "not_driver"
+	elif action == "wheel" and vh.has("wheel"):
+		why = "steering"
+	elif action != "wheel" and not vh.has("wheel"):
+		why = "no_wheel"
+	elif action == "stop" and vh["at"] != -1:
+		why = "standing"
+	elif action == "go" and vh["at"] == -1:
+		why = "moving"
+	var ev := ["drive", people[ti]["id"], vid, action, drive_place(item), "refused" if why != "" else "done",
+			[why] if why != "" else []]
+	ev.append_array(_tail(e, ti))
+	e._ev(ev)
+	if why != "":
+		return
+	if action == "wheel":
+		vh["wheel"] = slot
+		if not vh["leg"].is_empty():        # off its way where it is: on the road, from the way's start
+			vh["from"] = vh["leg"][0]
+			vh["leg"] = []
+		else:
+			vh["from"] = vh["at"]
+	elif action == "stop":
+		steer_stop(e, vi, at)
+	elif action == "go":
+		steer_go(e, vi)
+	else:
+		steer_auto(e, vi)
+
+
+## The steered vehicle stands at place at: it arrives at its next target, passes the run's stops before a later one it
+## stops at, or stands anywhere else (§21.16).
+func steer_stop(e, vi: int, at: int) -> void:
+	var vh: Dictionary = e.st_veh[vi]
+	var v: Dictionary = vehicles[vi]
+	var stops: PackedInt32Array = v["runs"][vh["run"]]["stops"]
+	vh["at"] = at
+	vh["from"] = at
+	if at == vh["to"]:
+		arrived(e, vi)
+		return
+	var j := -1
+	for k in range(vh["k"], stops.size()):
+		if stops[k] == at:
+			j = k
+			break
+	if j == -1:
+		e._ev(["vehicle", v["id"], places[at]["id"], "stand"])
+		return
+	for k in range(vh["k"], j):
+		e._ev(["vehicle", v["id"], places[stops[k]]["id"], "passed"])
+	vh["k"] = j
+	vh["to"] = at
+	arrived(e, vi)
+
+
+## The steered vehicle sets off from where it stands: on to its run's next stop from one it arrived at (§21.16).
+func steer_go(e, vi: int) -> void:
+	var vh: Dictionary = e.st_veh[vi]
+	var v: Dictionary = vehicles[vi]
+	e._ev(["vehicle", v["id"], places[vh["at"]]["id"], "depart"])
+	if vh["at"] == vh["to"]:
+		var stops: PackedInt32Array = v["runs"][vh["run"]]["stops"]
+		vh["k"] += 1
+		vh["to"] = stops[vh["k"]] if vh["k"] < stops.size() else v["home"]
+	vh["from"] = vh["at"]
+	vh["at"] = -1
+
+
+## The engine drives the vehicle again (§21.16): on the road from the place it came from, now; standing at a stop it
+## arrived at, by §21.4's departure rule; standing elsewhere, on to its target now.
+func steer_auto(e, vi: int) -> void:
+	var vh: Dictionary = e.st_veh[vi]
+	vh.erase("wheel")
+	var fr: int = vh["from"]
+	vh.erase("from")
+	if vh["at"] == -1:
+		vh["at"] = fr
+		drive_on(e, vi)
+	elif vh["at"] != vh["to"]:
+		drive_on(e, vi)
 
 
 ## A ppe step's items ("role" or a list) as a bit mask.
@@ -2952,6 +3080,9 @@ func stop_act(e, pi: int, act: Array) -> void:
 	if act[1] >= 3 and e.sp_phone[qi] != 2:     # the device taken until their duty ends (REALISM.md §8.5)
 		e.sp_music[qi] = 0
 		e.sp_phone[qi] = 2
+		# held until the clock its duty ends (now, when off duty): phase 1 gives it back then
+		e.sp_held_to[qi] = e.sp_duty[qi][1] if e.sp_on[qi] and not e.sp_duty[qi].is_empty() else e.clock()
+		e.st_next1 = mini(e.st_next1, e.sp_held_to[qi])
 		e._ev(["held", people[qi]["id"], people[pi]["id"]])
 	if put_right.has(kname):
 		give(e, qi, put_right[kname], 1, null, null, null, null)
@@ -3783,10 +3914,12 @@ func snap_vehicles(e) -> Dictionary:
 	for vi in vehicles.size():
 		var vh: Dictionary = e.st_veh[vi]
 		var where
-		if vh["leg"].is_empty():
-			where = places[vh["at"]]["id"]
-		else:
+		if not vh["leg"].is_empty():
 			where = [places[vh["leg"][0]]["id"], places[vh["leg"][1]]["id"], vh["leg"][2], vh["leg"][3]]
+		elif vh["at"] == -1:            # steered, on the road (§21.16)
+			where = ["road", places[vh["from"]]["id"]]
+		else:
+			where = places[vh["at"]]["id"]
 		var ab := []
 		if vh["driver"] != -1:
 			ab.append(people[vh["driver"]]["id"])

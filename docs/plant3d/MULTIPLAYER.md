@@ -477,6 +477,13 @@ person stands where it was left, the session's clock runs on). The others draw t
 Workshop" under it, in amber, seen from any distance while the flag is set (`net/others_view.gd`). The message keeps
 its 24 bytes; the other bits are 0, and a build before K1 sends 0 there and doesn't read it.
 
+**The driving flag** (PLANT3D.md §21.16, milestone S4e): bit 1 of the flags byte (`Session.POS_DRIVING`) says "at a
+bus's wheel", and byte 22 the vehicle's index in staff.json (0 otherwise). The driver's `pos` is then the driver's
+seat, with the bus's heading (not where they look); the others draw that bus from it, the seat's offset taken off, while
+the engine says that player's slot has its wheel (`net/session.gd` `driving_of`, `app/vehicles.gd`). A build before S4e
+cannot join a session with one that has it (the app version is checked in `hello`, §2.2): it would not know the
+`drive` input.
+
 ## 7. Time, pause, fast-forward, instructor mode and saved runs
 
 ### 7.1 Pause

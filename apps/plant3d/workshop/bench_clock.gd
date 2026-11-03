@@ -13,6 +13,7 @@ const STEP := 0.1
 const MAX_STEPS_FRAME := 4      # a long frame steps at most this many (the bench falls behind rather than stalls)
 const SPEED_MIN := 0.1
 const SPEED_MAX := 2.0
+const MAX_EVENTS := 512         # the engine's events kept at most, read or not (a reader that never reads loses the oldest)
 
 var m                           # sim/bench_model.gd
 var e                           # sim/engine.gd
@@ -84,6 +85,7 @@ func tick(delta: float) -> int:
 	if n == MAX_STEPS_FRAME and acc >= STEP:
 		acc = fmod(acc, STEP)
 	_read_events()
+	_drop_read()
 	return n
 
 
@@ -194,7 +196,25 @@ func new_events() -> Array:
 		return []
 	var out: Array = e.events.slice(_ev_mark)
 	_ev_mark = e.events.size()
+	_drop_read()
 	return out
+
+
+## What the bench no longer needs of the engine's logs, dropped, so they stay small for as long as a machine is open:
+## the inputs (the vectors' input form: a log nothing here reads) and the events both of this clock's readers have
+## read (`_read_events`, `new_events`), and past MAX_EVENTS the oldest. The engine reads its events only within a
+## step, from its own `ev_mark`, and the digest leaves the logs out, so between steps nothing it steps from is lost:
+## the values and the digest are what an engine that kept everything gives (tests/test_workshop_run.gd).
+func _drop_read() -> void:
+	e.inputs.clear()
+	var k := mini(_ev_seen, _ev_mark)
+	k = maxi(k, e.events.size() - MAX_EVENTS)
+	if k <= 0:
+		return
+	e.events = e.events.slice(k)
+	e.ev_mark = maxi(0, e.ev_mark - k)
+	_ev_seen = maxi(0, _ev_seen - k)
+	_ev_mark = maxi(0, _ev_mark - k)
 
 
 func _read_events() -> void:

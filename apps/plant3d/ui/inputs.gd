@@ -158,5 +158,10 @@ func get_on(vehicle: String) -> int:
 	return send(["get_on", vehicle])
 
 
+## The trainee as a vehicle's driver (PLANT3D §21.16): "wheel", "go", "auto", or "stop" at a stop or depot place.
+func drive(vehicle: String, action: String, place := "") -> int:
+	return send(["drive", vehicle, action, place] if action == "stop" else ["drive", vehicle, action])
+
+
 func stop_act(person_id: String) -> int:
 	return send(["stop", person_id])

@@ -31,7 +31,7 @@ def replay(st, r, scenario=None, digests=None):
     """A run of the file on the reference: (engine, snapshots at the run's `every`)."""
     if scenario is not None:
         r = dict(r, scenario=scenario)
-    e = P.Engine(P.check_files(files_of(st, r)), 's1')
+    e = P.Engine(P.check_files(files_of(st, r)), 's1', r.get('session', False))    # (a session run: HS7's)
     states = [e.snapshot()]
     if digests is not None:
         digests.append(e.digest())
@@ -864,6 +864,27 @@ class AudioVectors(PartVectors, unittest.TestCase):
         self.assertTrue(all(x[4] == 'refused' and x[5] == ['held'] for x in ev
                             if x[1] in ('audio', 'phone') and held < x[0] < off))
         self.assertEqual(self.evs(1, ('audio',))[-1][4:], ['done', []])
+
+    def test_device_back_after_a_jump_into_the_next_duty(self):
+        """The device held in one duty comes back when that duty ends, by the clock: a jump landing inside the next
+        duty (on duty again in the same step) gives it back in the jump's step, and the music plays again."""
+        ev = self.st['runs'][7]['events']
+        jump = next(x for x in ev if x[1] == 'jump')
+        self.assertEqual(jump[4], 'done')
+        self.assertIn([jump[0], 'returned', 'a_fo1'], ev)
+        self.assertIn([420, 'audio', 'a_fo1', 20, 'done', []], ev)
+
+    def test_session_slots(self):
+        """In a session each player's audio and phone events carry their slot; a message to their role is missed by
+        each player over the mask, in slot order."""
+        r = self.st['runs'][6]
+        self.assertTrue(r['session'])
+        ev = r['events']
+        self.assertIn([20, 'audio', 'a_fo2', 70, 'done', [], 1], ev)
+        self.assertIn([301, 'audio', 'a_fo2', 10, 'refused', ['left'], 1], ev)
+        missed = [x for x in ev if x[1] == 'missed']
+        self.assertEqual([x[2] for x in missed[:2]], ['a_fo1', 'a_fo2'])
+        self.assertEqual(missed[0][0], missed[1][0])
 
     def test_refusals(self):
         self.assertIn([2301, 'phone', 'a_fo1', 'leave', 'refused', ['held']], self.evs(0, ('phone',)))

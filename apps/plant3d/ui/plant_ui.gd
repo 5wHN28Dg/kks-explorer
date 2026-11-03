@@ -49,6 +49,7 @@ const Phone = preload("res://ui/phone.gd")
 const Session = preload("res://net/session.gd")
 const SessionPanel = preload("res://ui/session_panel.gd")
 const OthersView = preload("res://net/others_view.gd")
+const BusDrive = preload("res://app/bus_drive.gd")
 const Snapshot = preload("res://net/snapshot.gd")
 const RunSave = preload("res://ui/run_save.gd")
 const AndroidNet = preload("res://net/android_net.gd")
@@ -73,6 +74,7 @@ var tracker
 var bindings
 var lifts                         # app/lift.gd: the service lifts' cabs, gates and riding (PLANT3D §20.7)
 var vehicles                      # app/vehicles.gd: the staff's buses on their roads, and the trainee's ride (§21.7)
+var bus_drive                     # app/bus_drive.gd: the trainee at a bus's wheel (§21.16)
 var task_given := {}              # "step|task" of each of the trainee's tasks begun -> the step it was given at (made):
                                   # the debrief's role tab marks one begun late (PLANT3D §21.7); saved with the run
 var sounds
@@ -205,6 +207,10 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	vehicles.name = "vehicles"
 	m.add_child(vehicles)
 	vehicles.setup(self, m.plant.manifest, m.plant)
+	bus_drive = BusDrive.new()
+	bus_drive.name = "bus_drive"
+	add_child(bus_drive)
+	bus_drive.setup(self)
 	phone = Phone.new()
 	phone.setup(self)
 	_build()
@@ -982,6 +988,8 @@ func restart(scenario: String, quiet := false) -> void:
 		return
 	task_given = {}                  # (a new run: none of its tasks begun yet)
 	_aboard_was = false              # (a new run: the walker is aboard nothing)
+	if bus_drive != null:
+		bus_drive.log = []           # (a new run: no bus driven yet; a load puts its own back, ui/autosave.gd)
 	inputs.slot = 0
 	stop_procedure()
 	run_tracker = null
@@ -1448,13 +1456,23 @@ func _walker_state() -> Array:
 	var v: Vector3 = player.velocity if "velocity" in player else Vector3.ZERO
 	# flags (MULTIPLAYER.md §6.3): bit 0, in the Workshop (docs/plant3d/WORKSHOP.md §2)
 	var flags := Session.POS_IN_WORKSHOP if main.workshop_open() else 0
-	return [player.global_position, player.rotation.y, player.pivot.rotation.x, clampi(int(round(v.length() * 10.0)), 0, 255), flags]
+	# bit 1, at a bus's wheel, with the vehicle (PLANT3D.md §21.16): the others draw the bus from this pos
+	var vk: int = bus_drive.vi if bus_drive != null else -1
+	var yaw: float = player.rotation.y
+	if vk != -1:                        # (the bus's heading, not where its driver looks)
+		flags |= Session.POS_DRIVING
+		v = Vector3.ZERO                # (seated: its avatar is not walking)
+		yaw = (vehicles.global_transform.basis * bus_drive.xf.basis).get_euler().y
+	return [player.global_position, yaw, player.pivot.rotation.x, clampi(int(round(v.length() * 10.0)), 0, 255), flags,
+			maxi(vk, 0)]
 
 
 ## The session's engine is the run's from now on (a join, a rejoin, a resync: net/session.gd made it on a worker
 ## thread). As restart() does, with the panels following the engine's whole log at once (as a loaded save does).
 func adopt_engine(e) -> void:
 	task_given = {}     # (another engine: its tasks' given steps are not this record's; a resync loses only late marks)
+	if bus_drive != null:
+		bus_drive.log = []  # (likewise the bus runs driven: another engine's record starts afresh)
 	clock.install(e)
 	bindings.use_engine(e)
 	if lifts != null:

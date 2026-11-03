@@ -264,8 +264,11 @@ place or for a meeting's others): 1,752 task steps in the hour, 39 to 46 µs a s
 on the Note 9** at the gate (two judged cool walks: 268.6 and 267.2 µs; about 1.32 ms before, one judged walk of the two asked), within §21.10's 0.3 ms;
 mean frame 25.1 ms and 53 % at 60 fps, as before (PLANT3D.md §21.15).
 
-**Questions for the user (S4):** should a trainee who plays a driver steer the bus (driving controls; the bus's
-position then the trainee's inputs), or ride in the cab while the engine drives (built: PLANT3D.md §21.8)?
+**Answered (S4, the user, 2026-11-02):** a trainee who plays a driver steers the bus. **S4e, the driver steers**
+(PLANT3D.md §21.16): the `drive` input (wheel, stop, go, auto) in both engines with vectors (every earlier item as it
+was), the app's driving (a kinematic bus, the automatic brake for people, the controls on keyboard, gamepad and touch,
+off route and lateness for the debrief), the driven bus seen by the session's other players, and a `drive` walk on the
+Note 9 (two judged cool runs).
 
 **Multiplayer** (the user, 2026-10-26): its own milestones MP1–MP6 in docs/plant3d/MULTIPLAYER.md §13 (decisions
 0067–0069). MP1 needs S3 (the engine's staff as built); it changes the engine (several trainees), so it goes before
@@ -305,6 +308,13 @@ draw calls per kind, ≤ 20 MB for the whole Workshop); the plant's walk is run 
 **Order:** K0 → K1a → K1 → K2 → K3 → K4a → K4b → K5a → K5b → K6. Each draws or runs something new and is measured on
 the Note 9 (K1, K3, K4a, K4b, K5a, K5b at least), with the APK's size before and after (limit 250 MB). The realism programme's
 hands-on work builds on K1a–K3 (REALISM.md).
+
+**K3 follow-ups as built (2026-11-03):** the step sentence on a canvas layer of its own (the pile's ~510 draw calls
+were its letters: now at most 58 on the laptop and 59 on the Note 9), the bench's engine logs bounded (bit for bit
+with an engine that keeps everything), and every kind's machine warmed in the plant after its first walkable frame
+(WORKSHOP.md "As built (K3 follow-ups)"). The Note 9, fresh installs, cool starts, with the warm-up / `cold=1`: first
+entry 407 ms / 4,285 ms (≤ 5.0 s); no pipeline compiled after the machine's first frame; no frame over 100 ms; 99.84 /
+99.90 % at ≥ 30 fps, mean frame 19.40 / 19.41 ms, 89.9 / 91.2 % at 60 fps; peak PSS 851 / 834 MB.
 
 **K3 as built (2026-11-03):** the bench format `walkdown-plant-bench` (`ref/plant3d_bench.py`, `sim/bench_model.gd`,
 `ref/vectors/plant3d-bench-v1.json`: 2 valid files, 53 rejects, 2 runs, both engines bit for bit, no engine change);

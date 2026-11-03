@@ -521,7 +521,11 @@ at 29–35 °C over the runs.
   HANDS line times step 3's hands part alone with 12 actions under way in `shift_cold`, 20,000 calls): on the laptop
   (headless) the model step at base load 0.245 ms as built, 0.272 ms with `--engine`, 0.273 ms with `--hands` too:
   the hand actions and meters add nothing to a step with no action under way (they are entries, not nodes); the
-  hands part with 12 actions under way is timed by the HANDS line (figures follow with the Note 9 run).
+  hands part with 12 actions under way is timed by the HANDS line. **The Note 9** (a test-signed release build of main
+  at f1f24bf7, `step=bench`, two runs back to back from a cool start at 29.3 °C): the model step at base load 0.531 ms
+  with `--engine` and 0.530 ms with `--hands` too (run 1; run 2 0.531 and 0.784 ms, the battery at 30.1 to 31.3 °C by
+  then), so the hand actions and meters again add nothing to a step with none under way; the HANDS line, step 3's
+  hands part with 12 actions under way, 24.7 µs a call (run 1) and 34.2 µs (run 2), about 5 % of the step that run.
 - **From the reviews:** an idle task has no hand step (it isn't paused when a player takes the person); a cause's
   `repair` needs the fault's own and writes no command its work's isolation locks; a save is refused when its tools
   don't add up to tools.json's or its NPC inputs name no person or slip. Not changed: the digest keeps no task
@@ -1171,10 +1175,11 @@ combined-cycle plant gives for it.
 The control room is not a zone (zones need PPE), so HS7 leaves music there allowed. Real sites ban it there too (the
 operators answer alarms): a question for the user (WAITING).
 
-**The engine** (both engines bit for bit, behind staff.json's key `audio`; without the key nothing changes, and
-`plant3d-v1.json`/`-v2.json` stay byte for byte):
+**The engine** (both engines bit for bit, behind staff.json's key `audio`; without the key nothing changes. The
+synthetic items of `plant3d-v1.json` and `-v2.json` stay byte for byte. The first train's runs carry the key, so they
+keep every input, event and earlier value, and their digests and snapshots gain the new parts):
 - **`"audio": {"banned": [zones], "ex": [zones], "notice": [min, max], "mask": m}`.** `banned` (≥ 1) lists the
-  zones where music is an act; `ex` lists the zones where carrying the phone is. `notice` is how many whole clock
+  zones where music is an act; `ex` lists the zones where carrying the phone is (each also in `banned`). `notice` is how many whole clock
   minutes (0–600) an observer takes to notice. `mask` is the volume (1–100) from which radio calls are missed. With
   the key, the act kinds are `ppe, permit, unsafe, audio, phone`, in that order, for reactions (`on.unsafe`),
   `put_right` and stops.
@@ -1201,30 +1206,34 @@ operators answer alarms): a question for the user (WAITING).
     reports them not answering: the act's seen reactions go at once to the first person of their roles on duty,
     wherever they are. The `stop` step walks them to the player (§16.6). This is how colleagues give it away.
   - Everything is from the world's seed and the inputs, so every player of a session sees the same.
+  - In the first train, the shift and maintenance supervisors notice music as the HSE officer does. They gain the
+    stop-work authority they hold on real sites, so a player in their roles can now stop any unsafe act.
 - **Stopping.** A stop of an `audio` or `phone` act turns the music off and holds the device (`phone` = 2, event
   `["held", person, by]`): the supervisor removes it, so the other kind's act ends too.
   - The kind's `put_right` task follows (music off, phone out of the Ex zone).
   - While the phone is held, `audio` and `phone` inputs are refused (`held`).
-  - It comes back when the person's duty ends (event `["returned", person]`), a jump's included.
+  - It comes back when the duty it was taken in ends (event `["returned", person]`). This is judged by the clock, so
+    a jump into the next duty also gives it back (taken off duty, it comes back at once).
 - **The digest** gains a part with the key: music, phone and the missed-call flags per person, the observers'
   times per act, and the streams. The acts' list per person grows to the five kinds. The snapshot gains `audio`:
   {person: [music, phone]} for anyone not at the default.
 
 **What it does to hearing (the app; not in the vectors).** The masking is a level the app computes from the volume:
 - At volume v (0–100), every plant sound is lowered on its bus by up to 30 dB × (v/100)^0.7: the bound machines,
-  ambience, footsteps, doors, the alarm horn and sounders, the announcements and the vehicles (the bus gains an
-  engine sound bound to its speed).
+  ambience, footsteps, doors, the alarm horn and the vehicles (the bus gains an engine sound bound to its speed).
+  The app has no announcements yet; they will go through the same bus.
 - The players' push-to-talk voice (MULTIPLAYER.md §8) goes through the same bus when it is played.
-- The radio log shows a missed message as "Missed call from …" without its text, and no chime sounds.
+- The radio log shows a missed message as "Missed call from …" without its text.
 - A late alarm response and a bus heard too late follow from that. The debrief counts the alarms that went
-  active while the music was on, and how long the player took to acknowledge them.
+  active while the music was on, and how long it took before they were acknowledged (by anyone: the events don't
+  say who).
 - Not yet: earbuds drawn on the player's avatar for the others in a session (a kit part for A1's avatars; a later
   step of HS7).
 
 **The music.** Our own, made by the sound generator ([§11 of PLANT3D.md], decision 0055) as three short procedural
 tracks (a chord progression, a bass line, a drum pattern and a melody from a seeded scale, by fixed rules: no
-samples, nothing copyrighted). They are Ogg Vorbis built at build time (about 0.4 MB each), so the APK grows by
-about 1.2 MB. CC0 tracks were considered and not used: a CC0 track is only as safe as its uploader's claim
+samples, nothing copyrighted). They are Ogg Vorbis built at build time (32–40 s, 0.73 MB for the three), so with the bus's
+engine loop (0.08 MB) the APK grows by about 0.8 MB. CC0 tracks were considered and not used: a CC0 track is only as safe as its uploader's claim
 ([CC0], [CC-FAQ], [FMA]), and our own synthesis has nobody else's rights in it.
 
 **The consequence ladder** (the debrief and the run's record; nothing more in the engine):
@@ -1236,7 +1245,7 @@ about 1.2 MB. CC0 tracks were considered and not used: a CC0 track is only as sa
   player's permit-to-work authorisations (issue, accept) suspended pending review.
 - A `phone` act in an Ex zone (an ignition source in a classified area: [JSP375], [Acas]'s "serious enough") starts
   the ladder at the written warning.
-- The run's record (the saved run's summary) keeps the highest rung.
+- The saved run keeps its events, and the debrief works out the ladder from them again when the run is opened.
 
 **Vectors** (`plant3d-realism.json`, part `audio`): the safety staff (S2's) with `audio`. Its rejects cover every key
 and limit, and a reaction or put-right of the new kinds without the key. Its runs cover:
@@ -1248,7 +1257,7 @@ and limit, and a reaction or put-right of the new kinds without the key. Its run
 
 **Budgets.** The engine's cost is per player and per act (a few comparisons a step; draws only when an observer
 meets an act). Music playback is one streamed Vorbis player (no new pipelines, ≤ 2 MB PSS). The package grows by
-≈ 1.2 MB, within §11's 15 MB.
+≈ 0.8 MB, within §11's 15 MB.
 
 ## 9. Electrical and mechanical crafts, condition monitoring
 

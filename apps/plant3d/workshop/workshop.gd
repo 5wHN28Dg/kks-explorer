@@ -954,9 +954,12 @@ func _update_ghost() -> void:
 
 ## A part's ghost (its own meshes, plain or instanced as the part draws them) in `mat`, not yet placed.
 func _ghost_node(id: String, mat: Material) -> Node3D:
+	return _ghost_node_of(comps.get(id, groups.get(id)), mat)
+
+## A component's or fastener group's node's ghost (its own meshes, plain or instanced, its items from its meta).
+func _ghost_node_of(src: Node3D, mat: Material) -> Node3D:
 	var g := Node3D.new()
 	g.name = "ghost"
-	var src: Node3D = comps.get(id, groups.get(id))
 	for c in src.get_children():
 		if c is MeshInstance3D and c.mesh != null:
 			var mi := MeshInstance3D.new()
@@ -1159,6 +1162,7 @@ func warm_up(parent: Node) -> void:
 	_warm.position = Vector3(0, -1000, 0)
 	_warm.visible = false
 	parent.add_child(_warm)
+	_warm_kinds()   # (on its own: `warmed` is the ghost's warm-up, `kinds_warmed` this one's)
 	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
 		# drawn only when the plant's world is drawn: not while the Workshop (or the screens) has its 3D off, nor
 		# without a camera; until then it waits, and `warmed` says so
@@ -1174,6 +1178,87 @@ func warm_up(parent: Node) -> void:
 			await RenderingServer.frame_post_draw
 		_warm.visible = false
 	warmed = true
+
+## Every kind's own machine, hidden under the warm-up, in the Workshop's materials as an entry gives them (ws_lit with
+## the cap as its next pass on solid components, the glass in ws_xray) and its parts' ghosts: their surfaces' pipelines
+## are queued on the worker threads now, in the plant, rather than in the machine's first frame (the first entry after
+## an install compiled 14 of them there on the Note 9: 4.77 s of the 5.0 s rule, K3). The scenes are loaded one at a
+## time on a worker thread and freed again once their pipelines are made (the pipeline cache keeps them for later
+## starts); a kind the trainee is opening meanwhile is left to its entry.
+func _warm_kinds() -> void:
+	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
+		kinds_warmed = true
+		return   # (it compiles only what it draws: a hidden machine would be pure cost there)
+	for k in kinds():
+		var path := DIR.path_join(k + ".scn")
+		# not while the tier probe measures, nor while the Workshop shows (its entry compiles what it needs)
+		while is_inside_tree() and (is_open or ("probing" in main and main.probing)):
+			await get_tree().create_timer(1.0).timeout
+		if not is_inside_tree() or ResourceLoader.load_threaded_request(path, "PackedScene") != OK:
+			continue
+		while ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			await get_tree().process_frame
+		var ps := ResourceLoader.load_threaded_get(path) as PackedScene
+		if ps == null or _warm == null or not is_instance_valid(_warm) or is_open:
+			continue   # (opened meanwhile: the entry has it)
+		var mc: Node3D = ps.instantiate()
+		ps = null   # (not held while the next kind waits for a Workshop to close)
+		mc.name = "warm_" + k
+		var xr := ShaderMaterial.new()
+		xr.shader = XRAY
+		var gh := Node3D.new()
+		gh.name = "ghosts"
+		for n in mc.find_children("*", "Node3D", true, false):
+			if n.has_meta("items"):   # its own MultiMeshes with the items (the scene's resource left as loaded)
+				var items: Array = n.get_meta("items")
+				for mmi in n.get_children():
+					if mmi is MultiMeshInstance3D:
+						var mm := ((mmi as MultiMeshInstance3D).multimesh.duplicate()) as MultiMesh
+						mm.instance_count = items.size()
+						for i in items.size():
+							mm.set_instance_transform(i, items[i])
+						(mmi as MultiMeshInstance3D).multimesh = mm
+			if n.has_meta("explode") or n.has_meta("items"):
+				gh.add_child(_ghost_node_of(n as Node3D, xr))   # the ghost as a step builds it
+		_warm_mats(mc, false, false)
+		mc.add_child(gh)
+		_warm.add_child(mc)
+		_warm_kinds_done.append(k)
+		# the pipelines are queued as the instances enter the scene; a few frames later the scene is let go
+		for i in 30:
+			await get_tree().process_frame
+		if is_instance_valid(mc):
+			mc.queue_free()
+	kinds_warmed = true
+
+var _warm_kinds_done: Array = []   # the kinds whose machines the warm-up held (tests)
+var kinds_warmed := false          # every kind's machine held (or nothing to hold on this renderer)
+
+## The warm-up's copy of the materials an entry gives a machine (views.gd machine_shown, mat_for, glass_mat).
+func _warm_mats(n: Node, thin: bool, glass: bool) -> void:
+	if n.has_meta("explode"):
+		thin = n.get_meta("thin", false)
+		glass = n.get_meta("glass", false)
+	if (n is MeshInstance3D or n is MultiMeshInstance3D) and n.has_meta("mat"):
+		var gi := n as GeometryInstance3D
+		if glass and not n.get_parent().has_meta("items"):
+			gi.material_override = views.glass_mat()
+		else:
+			var src: Material = _mat(n.get_meta("mat"))
+			var m := ShaderMaterial.new()
+			m.shader = Views.LIT
+			if src is ShaderMaterial:
+				for u in (src as ShaderMaterial).shader.get_shader_uniform_list():
+					var v = (src as ShaderMaterial).get_shader_parameter(u.name)
+					if v != null:
+						m.set_shader_parameter(u.name, v)
+			if not thin or n.get_parent().has_meta("items"):
+				var cap := ShaderMaterial.new()
+				cap.shader = Views.CAP
+				m.next_pass = cap
+			gi.material_override = m
+	for c in n.get_children():
+		_warm_mats(c, thin, glass)
 
 ## Whether the Compatibility renderer's warm draw would really be drawn: a camera, the plant's 3D on, the Workshop shut.
 static func can_draw_warm(cam3: Camera3D, disabled_3d: bool, workshop_open: bool) -> bool:

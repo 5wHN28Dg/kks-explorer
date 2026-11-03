@@ -40,6 +40,12 @@ STEP_KINDS = ('go', 'work', 'read', 'op', 'permit', 'lock', 'unlock', 'say', 'wa
 LATER = {}
 VEHICLE_KINDS = ('bus', 'pickup', 'suv')
 DRIVE_KINDS = ('stop', 'depot')     # the places drive ways join (§21.4)
+DRIVE_ACTIONS = ('wheel', 'stop', 'go', 'auto')     # a driver's drive input (§21.16)
+
+
+def drive_place(item):
+    """A drive input's place for its event: a stop's place as given when it is text, else None."""
+    return item[3] if len(item) > 3 and item[2] == 'stop' and isinstance(item[3], str) else None
 RIDE_WAIT_MIN = 30      # clock minutes a person waits at a stop before they walk instead (§16.8, §21.4)
 ACT_KINDS = ('ppe', 'permit', 'unsafe')     # an unsafe act's kinds, in the order checked (§16.7, §17.11)
 AUDIO_KINDS = ('audio', 'phone')   # and with staff.json's `audio` (REALISM.md §8.5): music on in a banned zone, the
@@ -366,6 +372,7 @@ class Staff:
                  f'{w}.notice: whole clock minutes from 0 to {NOTICE_MAX}')
         need(nt[0] <= nt[1], 'bad_number', f'{w}.notice: [min, max], min not above max')
         need(type(a['mask']) is int and 1 <= a['mask'] <= 100, 'bad_number', f'{w}.mask: a whole volume from 1 to 100')
+        need(sets['ex'] <= sets['banned'], 'bad_ref', f'{w}.ex: an Ex zone bans music too: list it in banned')
         self.audio = {'banned': sets['banned'], 'ex': sets['ex'], 'notice': list(nt), 'mask': a['mask']}
         self.kinds = ACT_KINDS + AUDIO_KINDS
 
@@ -703,6 +710,12 @@ class Staff:
         if a == b:
             return None
         return self.drive_places[self.drive_next[self.drive_no[a]][self.drive_no[b]]]
+
+    def drive_reaches(self, a, b):
+        """Place b is a stop or depot a vehicle at a reaches over drive ways."""
+        if self.drive_no.get(b) is None:
+            return False
+        return a == b or self.drive_next[self.drive_no[a]][self.drive_no[b]] >= 0
 
     def drive_steps(self, a, b):
         """The steps of a vehicle's route from a to b."""
@@ -1313,7 +1326,8 @@ def check_scenario_staff(s, b, rel):
 class Person:
     __slots__ = ('i', 'id', 'role', 'auth', 'rng', 'on', 'duty', 'duties', 'planned', 'slots', 'pos', 'leg',
                  'cur', 'queue', 'res', 'occ', 'pending', 'result', 'post', 'held', 'worn', 'acts', 'zin',
-                 'ride', 'stairs', 'lin', 'home', 'aboard', 'spans', 'offday', 'music', 'phone', 'told', 'watch')
+                 'ride', 'stairs', 'lin', 'home', 'aboard', 'spans', 'offday', 'music', 'phone', 'told', 'watch',
+                 'held_to')
 
 
 
@@ -1350,6 +1364,7 @@ class StaffRun:
             # 2 held by whoever stopped its act until their duty ends), the act kinds reported by a missed call, and
             # per (reaction, kind) the observers sharing a zone with the act: person index -> the step they notice
             q.music, q.phone, q.told, q.watch = 0, 1, set(), {}
+            q.held_to = -1             # while held: the clock its duty at the stop ends (now, if off duty then)
             # a ride (§20.4): [staff lift index, a, b, 0 waiting / 1 aboard, the step the wait began, the destination
             # of the walk]; the stairs walked instead: [destination, place, …, b]; the step of the last lift input
             q.ride, q.stairs, q.lin = None, None, -3
@@ -1781,6 +1796,96 @@ class StaffRun:
             return
         self.get_on(tp, vi, st.pix[s['ride']['to']])
 
+    def t_drive(self, tp, slot, item):
+        """A player's drive (§21.16): ('drive', vehicle, action) or ('drive', vehicle, 'stop', place). The first reason
+        refusing it, else done and its effect."""
+        st = self.st
+        e = self.e
+        vid, action = item[1], item[2]
+        pl = item[3] if len(item) > 3 else None
+        vi = st.vehicle_ix.get(vid) if isinstance(vid, str) else None
+        pi = st.pix.get(pl) if isinstance(pl, str) else None
+        V = self.veh[vi] if vi is not None else None
+        why = None
+        if vi is None or not isinstance(action, str) or action not in DRIVE_ACTIONS \
+                or action == 'stop' and (pi is None or not st.drive_reaches(st.vehicles[vi]['home'], pi)):
+            why = 'unknown'
+        elif V['run'] is None or V['driver'] != tp.i:
+            why = 'not_driver'
+        elif action == 'wheel' and 'wheel' in V:
+            why = 'steering'
+        elif action != 'wheel' and 'wheel' not in V:
+            why = 'no_wheel'
+        elif action == 'stop' and V['at'] is not None:
+            why = 'standing'
+        elif action == 'go' and V['at'] is None:
+            why = 'moving'
+        e.ev('drive', tp.id, vid, action, drive_place(item), 'refused' if why else 'done', [why] if why else [],
+             *self.tail(tp))
+        if why is not None:
+            return
+        if action == 'wheel':
+            V['wheel'] = slot
+            if V['leg'] is not None:            # off its way where it is: on the road, from the way's start
+                V['from'] = V['leg'][0]
+                V['leg'] = None
+            else:
+                V['from'] = V['at']
+        elif action == 'stop':
+            self.steer_stop(vi, pi)
+        elif action == 'go':
+            self.steer_go(vi)
+        else:
+            self.steer_auto(vi)
+
+    def steer_stop(self, vi, at):
+        """The steered vehicle stands at place at: it arrives at its next target, passes the run's stops before a later
+        one it stops at, or stands anywhere else (§21.16)."""
+        st = self.st
+        e = self.e
+        V = self.veh[vi]
+        v = st.vehicles[vi]
+        stops = v['runs'][V['run']]['stops']
+        V['at'] = at
+        V['from'] = at
+        if at == V['to']:
+            self.arrived(vi)
+            return
+        ahead = [j for j in range(V['k'], len(stops)) if stops[j] == at]
+        if not ahead:
+            e.ev('vehicle', v['id'], st.places[at]['id'], 'stand')
+            return
+        for j in range(V['k'], ahead[0]):
+            e.ev('vehicle', v['id'], st.places[stops[j]]['id'], 'passed')
+        V['k'] = ahead[0]
+        V['to'] = at
+        self.arrived(vi)
+
+    def steer_go(self, vi):
+        """The steered vehicle sets off from where it stands: on to its run's next stop from one it arrived at (§21.16)."""
+        st = self.st
+        V = self.veh[vi]
+        v = st.vehicles[vi]
+        self.e.ev('vehicle', v['id'], st.places[V['at']]['id'], 'depart')
+        if V['at'] == V['to']:
+            stops = v['runs'][V['run']]['stops']
+            V['k'] += 1
+            V['to'] = stops[V['k']] if V['k'] < len(stops) else v['home']
+        V['from'] = V['at']
+        V['at'] = None
+
+    def steer_auto(self, vi):
+        """The engine drives the vehicle again (§21.16): on the road from the place it came from, now; standing at a
+        stop it arrived at, by §21.4's departure rule; standing elsewhere, on to its target now."""
+        V = self.veh[vi]
+        del V['wheel']
+        fr = V.pop('from')
+        if V['at'] is None:
+            V['at'] = fr
+            self.drive_on(vi)
+        elif V['at'] != V['to']:
+            self.drive_on(vi)
+
     def claim(self, slot, pi):
         """A person becomes slot's (§17.13): an NPC's current task (not the idle task) paused as a pre-emption pauses
         it, to be taken up again at their turn; one on a way is between places from now on (the place they left kept
@@ -1818,6 +1923,9 @@ class StaffRun:
         pi = self.players.pop(slot)
         p = self.people[pi]
         p.music = 0                      # (an NPC plays no music, REALISM.md §8.5)
+        for vi, V in enumerate(self.veh):   # a driver's wheel back to the engine (§21.16)
+            if V['driver'] == pi and 'wheel' in V:
+                self.steer_auto(vi)
         for x in self.e.m.lifts:         # a person aboard leaves the ride: their alight for the next step (§20.3)
             if p.id in self.e.riders[x['id']]:
                 self.queue_alight(x['id'], p.id)
@@ -1878,12 +1986,17 @@ class StaffRun:
                     e.ev('stop', None, item[1], None, None, 'refused', ['authority'])
                 elif item[0] == 'get_on':   # (nobody to get on, §21.4)
                     e.ev('aboard', None, item[1], None, 'refused', ['authority'], *((slot,) if self.session else ()))
+                elif item[0] == 'drive':    # (nobody to drive, §21.16)
+                    e.ev('drive', None, item[1], item[2], drive_place(item), 'refused', ['authority'],
+                         *((slot,) if self.session else ()))
                 continue
             tp = self.people[ti]
             if item[0] in ('arrive', 'leave') and tp.aboard is not None:
                 continue                    # (ignored aboard a vehicle, §21.4)
             if item[0] == 'get_on':
                 self.t_get_on(tp, item[1])
+            elif item[0] == 'drive':
+                self.t_drive(tp, slot, item)
             elif item[0] == 'arrive' and isinstance(item[1], str) and item[1] in st.pix:
                 tp.pos = st.pix[item[1]]
                 if tp.occ != tp.pos:
@@ -1937,8 +2050,8 @@ class StaffRun:
                         p.queue.append(h)
                         p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
                         e.ev('task', p.id, h['task'], 'resumed')
-            if p.phone == 2 and not p.on:       # a device held is given back when its owner's duty ends (§8.5)
-                p.phone = 1
+            if p.phone == 2 and c >= p.held_to:     # a device held is given back when the duty it was taken in
+                p.phone, p.held_to = 1, -1          # ends (§8.5): by the clock, so a jump or the next duty can't keep it
                 e.ev('returned', p.id)
         for p in self.people:
             if p.id in self.absent:
@@ -2158,6 +2271,7 @@ class StaffRun:
                 self.advance(q, 'fail')
         if act[1] in AUDIO_KINDS and q.phone != 2:     # the device taken until their duty ends (§8.5)
             q.music, q.phone = 0, 2
+            q.held_to = q.duty[1] if q.on and q.duty is not None else e.clock()
             e.ev('held', q.id, p.id)
         t = self.st.put_right.get(act[1])
         if t is not None:
@@ -2941,6 +3055,8 @@ class StaffRun:
             V = self.veh[p.aboard]
             if V['leg'] is not None:
                 return st.off_site[V['leg'][0]] and st.off_site[V['leg'][1]]
+            if V['at'] is None:             # steered, on the road (§21.16): as on a way from where it came to its target
+                return st.off_site[V['from']] and st.off_site[V['to']]
             return st.off_site[V['at']]
         if p.leg is not None:
             return st.off_site[p.leg[0]] and st.off_site[p.leg[1]]
@@ -3023,10 +3139,12 @@ class StaffRun:
         v = st.vehicles[vi]
         stops = v['runs'][V['run']]['stops']
         e.ev('vehicle', v['id'], st.places[V['at']]['id'], 'arrive')
-        if V['k'] >= len(stops):            # home: the driver gets off at the depot
+        if V['k'] >= len(stops):            # home: the driver gets off at the depot (the wheel the engine's, §21.16)
             q = self.people[V['driver']]
             self.get_off(q, vi, V['at'])
             V.update(run=None, driver=None, dep=0, k=0, until=0, riders=[])
+            V.pop('wheel', None)
+            V.pop('from', None)
             return
         last = V['k'] == len(stops) - 1
         stay = []
@@ -3055,7 +3173,7 @@ class StaffRun:
             V['at'] = V['leg'][1]
             V['leg'] = None
             self.drive_on(vi)
-        if V['run'] is not None and V['leg'] is None and V['at'] == V['to'] and n >= V['until'] \
+        if 'wheel' not in V and V['run'] is not None and V['leg'] is None and V['at'] == V['to'] and n >= V['until'] \
                 and (V['k'] != 0 or c >= V['dep']) and V['k'] < len(v['runs'][V['run']]['stops']):
             e.ev('vehicle', v['id'], st.places[V['at']]['id'], 'depart')
             stops = v['runs'][V['run']]['stops']
@@ -3726,7 +3844,9 @@ class StaffRun:
                 V['run'] if V['run'] is not None else -1, V['dep'], V['k'], V['until'],
                 V['driver'] if V['driver'] is not None else -1,
                 Packed(PACKED_INT32, [x[0] for x in V['riders']]), Packed(PACKED_INT32, [x[1] for x in V['riders']]),
-                V['floor'], list(V['done']) if V['done'] is not None else []] for V in self.veh],
+                V['floor'], list(V['done']) if V['done'] is not None else []] +
+               ([[V['wheel'], V['from'] if V['from'] is not None else -1]] if 'wheel' in V else [])
+               for V in self.veh],
               Packed(PACKED_INT32, [p.aboard if p.aboard is not None else -1 for p in people]),
               Packed(PACKED_INT64, [p.offday if p.offday is not None else -1 for p in people])]
              if st.homes else []) + \
@@ -3735,15 +3855,20 @@ class StaffRun:
                [[[wk[0], AUDIO_KINDS.index(wk[1]), Packed(PACKED_INT32, sorted(p.watch[wk])),
                   Packed(PACKED_INT64, [p.watch[wk][qi] for qi in sorted(p.watch[wk])])]
                  for wk in sorted(p.watch, key=lambda x: (x[0], AUDIO_KINDS.index(x[1])))] for p in people],
-               Packed(PACKED_INT64, list(self.aud_s))]] if st.audio is not None else [])
+               Packed(PACKED_INT64, list(self.aud_s)), Packed(PACKED_INT64, [p.held_to for p in people])]]
+             if st.audio is not None else [])
 
     def snap_vehicles(self):
         """`vehicles` (§21.4): {id: [place or [from, to, depart, arrive], [the driver, then the riders]]}."""
         st = self.st
         out = {}
         for vi, V in enumerate(self.veh):
-            where = st.places[V['at']]['id'] if V['leg'] is None else \
-                [st.places[V['leg'][0]]['id'], st.places[V['leg'][1]]['id'], V['leg'][2], V['leg'][3]]
+            if V['leg'] is not None:
+                where = [st.places[V['leg'][0]]['id'], st.places[V['leg'][1]]['id'], V['leg'][2], V['leg'][3]]
+            elif V['at'] is None:           # steered, on the road (§21.16)
+                where = ['road', st.places[V['from']]['id']]
+            else:
+                where = st.places[V['at']]['id']
             ab = ([self.people[V['driver']].id] if V['driver'] is not None else []) + \
                 [self.people[pi].id for pi, _ in V['riders']]
             out[st.vehicles[vi]['id']] = [where, ab]

@@ -767,16 +767,120 @@ class StaffVectors(unittest.TestCase):
         self.assertEqual(j[-1][4], 'refused')
 
 
+STEERED = 8         # the steered runs at the end of the staff runs (§21.16)
+
+
+class SteeredRuns(unittest.TestCase):
+    """The driver who steers (PLANT3D.md §21.16), by name in the vectors' last six staff runs."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(G.OUT2, encoding='utf-8') as f:
+            cls.V = json.load(f)
+        cls.steer, cls.wrong, cls.late, cls.auto, cls.jump, cls.session, cls.standing, cls.locks = \
+            cls.V['staff']['runs'][-STEERED:]
+
+    def ev(self, run, kind, *head):
+        return [x for x in run['events'] if x[1] == kind and list(x[2:2 + len(head)]) == list(head)]
+
+    def drives(self, run):
+        return [(x[4], x[5], x[6], x[7]) for x in run['events'] if x[1] == 'drive']
+
+    def test_the_inputs_and_their_refusals(self):
+        refused = [(a, r[0]) for a, _, o, r in self.drives(self.steer) if o == 'refused']
+        self.assertEqual(refused, [('wheel', 'not_driver'), ('wheel', 'unknown'), ('go', 'no_wheel'),
+                                   ('wheel', 'steering'), ('go', 'moving'), ('stop', 'unknown'), ('fly', 'unknown'),
+                                   ('stop', 'unknown'), ('stop', 'standing'), ('auto', 'not_driver')])
+        done = [(a, p) for a, p, o, _ in self.drives(self.steer) if o == 'done']
+        self.assertEqual(done, [('wheel', None), ('stop', 'camp_stop'), ('go', None), ('stop', 'gate_stop'),
+                                ('go', None), ('stop', 'cr_stop'), ('go', None), ('stop', 'depot')])
+
+    def test_a_steered_run_keeps_the_runs_rules(self):
+        r = self.steer
+        arrive = [x[3] for x in self.ev(r, 'vehicle', 'bus') if x[4] == 'arrive'][:4]
+        self.assertEqual(arrive, ['camp_stop', 'gate_stop', 'cr_stop', 'depot'])
+        on = self.ev(r, 'aboard', 'a_fo1', 'bus', 'camp_stop', 'on')
+        off = self.ev(r, 'aboard', 'a_fo1', 'bus', 'cr_stop', 'off')
+        self.assertTrue(on and off, 'a rider on and off as with the engine driving')
+        dep = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'camp_stop', 'depart')][0]
+        self.assertEqual(dep, 102, 'left the first stop at the run\'s departure (05:40)')
+        home = self.ev(r, 'aboard', 'drv1', 'bus', 'depot', 'off')
+        self.assertTrue(home, 'the run ends at the depot')
+        # the next run is driven by the engine: no wheel taken (the generator's driver steers one run)
+        later = [x for x in self.ev(r, 'vehicle', 'bus') if x[0] > home[0][0] and x[4] == 'arrive']
+        self.assertTrue(later)
+        snap = next(s for s in r['states'] if s['step'] > 102 and s['step'] < 153)
+        self.assertEqual(snap['vehicles']['bus'][0], ['road', 'camp_stop'], 'on the road, from the camp\'s stop')
+
+    def test_early_wrong_place_and_a_stop_passed(self):
+        r = self.wrong
+        dep = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'camp_stop', 'depart')][0]
+        self.assertLess(dep, 100, 'left the first stop before 05:40')
+        self.assertTrue(self.ev(r, 'vehicle', 'bus', 'depot', 'stand'))
+        self.assertTrue(self.ev(r, 'vehicle', 'bus', 'cr_stop', 'passed'))
+        self.assertFalse(self.ev(r, 'aboard', 'a_fo1', 'bus', 'depot'), 'nobody on or off where it stands')
+        self.assertTrue(self.ev(r, 'aboard', 'a_fo1', 'bus', 'gate_stop', 'off'), 'off at the last stop with everyone')
+
+    def test_a_late_bus(self):
+        r = self.late
+        self.assertFalse(self.ev(r, 'aboard', 'a_fo1', 'bus'), 'nobody waited 40 minutes')
+        self.assertTrue([x for x in r['events'] if x[1] == 'move' and x[2] == 'a_fo1' and x[3] == 'camp_stop'])
+        self.assertTrue(self.ev(r, 'vehicle', 'bus', 'cr_stop', 'skipped'), 'the next run skipped: the bus out')
+
+    def test_the_wheel_given_back(self):
+        r = self.auto
+        autos = [x[0] for x in r['events'] if x[1] == 'drive' and x[4] == 'auto' and x[6] == 'done']
+        self.assertEqual(len(autos), 2)
+        gate = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'gate_stop', 'arrive')]
+        self.assertTrue(gate and gate[0] > autos[0], 'the engine drove on to the gate\'s stop')
+        dep = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'cr_stop', 'depart') if x[0] > autos[1]]
+        self.assertTrue(dep, 'and left the next run\'s first stop by its own rule')
+
+    def test_the_wheel_taken_standing_and_given_back_at_the_wrong_place(self):
+        r = self.standing
+        wheel = [x[0] for x in r['events'] if x[1] == 'drive' and x[4] == 'wheel' and x[6] == 'done'][0]
+        gate = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'gate_stop', 'arrive')][0]
+        dep = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'gate_stop', 'depart')][0]
+        self.assertTrue(gate < wheel < dep, 'taken while it stood at the gate\'s stop')
+        auto = [x[0] for x in r['events'] if x[1] == 'drive' and x[4] == 'auto' and x[6] == 'done'][0]
+        stand = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'depot', 'stand')][0]
+        cr = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'cr_stop', 'arrive')][0]
+        self.assertTrue(stand <= auto < cr, 'given back at the depot, the engine drove on to the control room\'s stop')
+
+    def test_riders_off_site_on_the_road(self):
+        # (the blind review of S4e: the reference failed on a steered bus on the road with neither place nor way)
+        r = self.locks
+        self.assertTrue(self.ev(r, 'aboard', 'a_fo1', 'bus', 'camp_stop', 'on'))
+        snaps = [s for s in r['states'] if s['vehicles']['bus'][0][0] == 'road']
+        self.assertTrue(snaps, 'the run was steered on the road')
+
+    def test_a_jump_while_steering(self):
+        r = self.jump
+        j = [x for x in r['events'] if x[1] == 'jump'][0]
+        self.assertEqual(j[4], 'done')
+        snap = next(s for s in r['states'] if s['step'] >= j[0])
+        self.assertEqual(snap['vehicles']['bus'], ['depot', []])
+
+    def test_a_session_release_while_steering(self):
+        r = self.session
+        self.assertEqual(self.ev(r, 'drive', None, 'bus', 'wheel'), [[5, 'drive', None, 'bus', 'wheel', None, 'refused',
+                                                                       ['authority'], 1]])
+        rel = self.ev(r, 'release', 'drv1', 'done')
+        self.assertTrue(rel)
+        gate = [x[0] for x in self.ev(r, 'vehicle', 'bus', 'gate_stop', 'arrive')]
+        self.assertTrue(gate and gate[0] > rel[0][0], 'the engine drove on after the release')
+
+
 class CampRuns(unittest.TestCase):
     """Milestone S4's engine (PLANT3D.md §21): homes, off-duty routines, sleep, vehicles and rides, by name in the
-    vectors' camp runs (the last eight staff runs)."""
+    vectors' camp runs (the eight staff runs before the steered ones, SteeredRuns)."""
 
     @classmethod
     def setUpClass(cls):
         with open(G.OUT2, encoding='utf-8') as f:
             cls.V = json.load(f)
         cls.morning, cls.rider, cls.walker, cls.driver, cls.left, cls.jump, cls.dutyend, cls.session = \
-            cls.V['staff']['runs'][-8:]
+            cls.V['staff']['runs'][-8 - STEERED:-STEERED]
 
     def ev(self, run, kind, *head):
         return [x for x in run['events'] if x[1] == kind and list(x[2:2 + len(head)]) == list(head)]
@@ -901,7 +1005,7 @@ class CampRuns(unittest.TestCase):
 
     def test_files_without_homes_are_unchanged(self):
         # every staff run before the camp's keeps no vehicles in its snapshots
-        for run in self.V['staff']['runs'][:-8]:
+        for run in self.V['staff']['runs'][:-8 - STEERED]:
             self.assertEqual(run['states'][-1].get('vehicles', {}), {})
 
 
