@@ -1061,8 +1061,7 @@ func let_go(e, slot: int) -> void:
 		if not c["idle"]:
 			pause(e, pi)
 	if e.sp_pos[pi] == -1 and e.sp_aboard[pi] == -1 and e.st_t_from[slot] != -1:
-		e.sp_pos[pi] = e.st_t_from[slot]
-		_wake_at(e, e.sp_pos[pi])
+		_put(e, pi, e.st_t_from[slot])
 	e.st_t_from[slot] = -1
 	e.st_acks[slot] = 0
 	e.st_kept[slot] = []
@@ -1150,9 +1149,7 @@ func step(e) -> void:
 		if item[0] == "get_on":
 			t_get_on(e, tr, item[1])
 		elif item[0] == "arrive" and typeof(item[1]) == TYPE_STRING and pix.has(item[1]):
-			if e.sp_pos[tr] != pix[item[1]]:
-				_wake_at(e, pix[item[1]])
-			e.sp_pos[tr] = pix[item[1]]
+			_put(e, tr, pix[item[1]])
 			if e.sp_occ[tr] != e.sp_pos[tr]:
 				leave_place(e, tr)          # a place held is let go when the trainee is elsewhere
 			if e.sp_res[tr] == e.sp_pos[tr]:
@@ -1520,8 +1517,7 @@ func select(e, pi: int):
 			cur["started"] = true
 			e._ev(["task", pid, cur["task"], "start"])
 		if e.sp_pos[pi] == -1 and npc and home[pi] == -1:
-			e.sp_pos[pi] = gate
-			_wake_at(e, gate)
+			_put(e, pi, gate)
 			e._ev(["move", pid, null, places[gate]["id"], e.step_no])
 	if cur == null and (e.sp_on[pi] or home[pi] != -1):
 		# the idle task: the duty's on duty, the off-duty routine's off duty with a home (§21.2)
@@ -1535,8 +1531,7 @@ func select(e, pi: int):
 		e.st_order += 1
 		e._ev(["task", pid, idle, "start"])
 		if e.sp_pos[pi] == -1 and npc and home[pi] == -1:
-			e.sp_pos[pi] = gate
-			_wake_at(e, gate)
+			_put(e, pi, gate)
 			e._ev(["move", pid, null, places[gate]["id"], e.step_no])
 	if cur == null and not e.sp_on[pi] and e.sp_pos[pi] != -1 and npc and home[pi] == -1:
 		leave_place(e, pi)
@@ -1612,8 +1607,7 @@ func turn(e, pi: int) -> void:
 		if leg[3] > n:
 			e.sp_wake[pi] = leg[3]
 			return
-		e.sp_pos[pi] = leg[1]
-		_wake_at(e, leg[1])
+		_put(e, pi, leg[1])
 		e.sp_leg[pi] = []
 		if e.sp_pos[pi] == e.sp_res[pi]:
 			e.sp_occ[pi] = e.sp_pos[pi]
@@ -1714,6 +1708,14 @@ func hop(a: int, b: int) -> int:
 ## at their next turn (run(): go's wait for a place taken, meet's wait for the others): a place there was taken or let
 ## go, someone came there, or someone there came on duty. Waking one whose wait it doesn't end is harmless (their turn
 ## runs as every turn would, §0062); missing one is not, so every change those waits read calls this.
+## A person comes to place p (every write of a place to sp_pos but place_all's, which wakes everyone: tests check it):
+## those waiting in its room look again.
+func _put(e, pi: int, p: int) -> void:
+	if e.sp_pos[pi] != p:
+		e.sp_pos[pi] = p
+		_wake_at(e, p)
+
+
 func _wake_at(e, p: int) -> void:
 	if p < 0:
 		return
@@ -1839,9 +1841,7 @@ func ride_turn(e, pi: int) -> bool:
 	var ready := _t(e, x["ready"])
 	var q: Array = e.npc_queue
 	if not aboard:
-		if e.sp_pos[pi] != a:
-			_wake_at(e, a)
-		e.sp_pos[pi] = a
+		_put(e, pi, a)
 		if not ready or n - since >= RIDE_WAIT:
 			e._ev(["ride", pid, lid, places[a]["id"], places[b]["id"], "stairs"])
 			e.sp_ride[pi] = []
@@ -1887,8 +1887,7 @@ func ride_turn(e, pi: int) -> bool:
 				_lift_op(e, pi, ld["gate"], "close")    # the last one out shuts the gate behind them
 			e._ev(["ride", pid, lid, places[a]["id"], places[b]["id"], "off"])
 			e.sp_ride[pi] = []
-			e.sp_pos[pi] = pts[c]
-			_wake_at(e, pts[c])
+			_put(e, pi, pts[c])
 			if c != ib and ready and not bumped and pts[c] != dest:
 				var nx := hop(pts[c], dest)
 				var key: int = pts[c] * places.size() + nx
@@ -2317,8 +2316,7 @@ func get_off(e, pi: int, vi: int, at: int) -> void:
 	ev.append_array(_tail(e, pi))
 	e._ev(ev)
 	e.sp_aboard[pi] = -1
-	e.sp_pos[pi] = at
-	_wake_at(e, at)
+	_put(e, pi, at)
 	e.sp_wake[pi] = 0
 	e._touched[pi] = 1
 	came(e, pi)

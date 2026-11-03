@@ -781,6 +781,37 @@ class GdscriptWaits(unittest.TestCase):
         self.assertIn('VECTORS passed=', r.stdout)
         self.assertIn(' failed=0', r.stdout, r.stdout[-3000:])
 
+    def test_every_change_a_wait_reads_wakes(self):
+        """What the waits read (who holds a place, where people are, who is on duty) is written only where the
+        sleepers in that room are woken: a place given to sp_pos only through _put (place_all, which wakes everyone,
+        aside), st_holder changed only in reserve, unreserve and leave_place, each calling _wake_at (and place_all),
+        sp_on set only in phase 1, which wakes the room, and place_all; nothing outside staff.gd writes them."""
+        with open(os.path.join(SIM, 'staff.gd'), encoding='utf-8') as f:
+            src = f.read()
+        funcs = {}
+        name = None
+        for line in src.splitlines():
+            m = re.match(r'(?:static )?func (\w+)', line)
+            if m:
+                name = m.group(1)
+            funcs.setdefault(name, []).append(line)
+        where = lambda pat: sorted({k for k, ls in funcs.items() for x in ls if re.search(pat, x)})  # noqa: E731
+        self.assertEqual(where(r'sp_pos\[[^]]*\] = (?!-1)'), ['_put', 'place_all'])
+        self.assertEqual(where(r'st_holder(\[[^]]*\] = |\.erase\(| = \{)'),
+                         ['leave_place', 'place_all', 'reserve', 'unreserve'])
+        for k in ('leave_place', 'reserve', 'unreserve', '_put'):
+            self.assertTrue(any('_wake_at(e, ' in x for x in funcs[k]), k)
+        self.assertEqual(where(r'sp_on\[[^]]*\] = 1'), ['_phase1', 'place_all'])
+        on = '\n'.join(funcs['_phase1'])
+        self.assertRegex(on, r'e\.sp_on\[pi\] = 1\n(.*\n){0,3}.*_wake_at\(e, e\.sp_pos\[pi\]\)')
+        self.assertRegex('\n'.join(funcs['place_all']), r'sp_wait_on\.fill\(-1\)')
+        for root, _, files in os.walk(os.path.join(REPO, 'apps', 'plant3d')):
+            for fn in files:
+                if fn.endswith('.gd') and fn != 'staff.gd' and 'tests' not in root.split(os.sep):
+                    with open(os.path.join(root, fn), encoding='utf-8') as f:
+                        t = f.read()
+                    self.assertIsNone(re.search(r'(sp_pos|sp_on)\[[^]]*\] = |st_holder(\[[^]]*\] = |\.erase\()', t), fn)
+
     def test_save_and_restore_while_waiting(self):
         r = godot('check_staff_waits.gd', timeout=900)
         no_errors(self, r)
