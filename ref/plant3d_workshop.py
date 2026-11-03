@@ -107,9 +107,13 @@ def check(w, kit=None, where='workshop', parts=None):
         gw = f'{where}.fasteners.{g}'
         cid(g, gw)
         need(g not in comps, 'dup_id', f'{gw}: a component has that id')
-        keys(d, ('name', 'joins', 'sources'), (), gw)
+        keys(d, ('name', 'joins', 'sources'), ('beyond',), gw)
         words(d['name'], f'{gw}.name', 60)
-        joins = lst(d['joins'], f'{gw}.joins', 2, 16)
+        # `beyond`: what the group joins outside this machine (a coupling's bolts: the next machine's rotor, which is
+        # its own kind); then it may name one component of this one
+        if 'beyond' in d:
+            words(d['beyond'], f'{gw}.beyond', 80)
+        joins = lst(d['joins'], f'{gw}.joins', 1 if 'beyond' in d else 2, 16)
         for j in joins:
             need(isinstance(j, str) and j in comps, 'bad_ref', f'{gw}.joins: no component {j!r}')
         need(len(set(joins)) == len(joins), 'dup_id', f'{gw}.joins')

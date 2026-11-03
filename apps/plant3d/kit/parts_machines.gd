@@ -560,14 +560,14 @@ static func _st_comps(g, c: Dictionary, za: float) -> void:
 	g.comp("inner_lower", {"parent": "casing_lower", "explode": [up, 0.0]})
 	g.comp("inner_upper", {"parent": "inner_lower", "explode": [up, r * 2.2]})
 	g.comp("carrier_lower", {"parent": "inner_lower", "explode": [up, 0.0]})
-	g.comp("carrier_upper", {"parent": "carrier_lower", "explode": [up, r * 1.4]})
+	g.comp("carrier_upper", {"parent": "inner_lower", "explode": [up, r * 1.4]})
 	for k in ST_STAGES:
 		g.comp("srow_u%d" % (k + 1), {"parent": "carrier_upper", "explode": [up, 0.0]})
 	for k in ST_STAGES:
 		g.comp("srow_l%d" % (k + 1), {"parent": "carrier_lower", "explode": [up, 0.0]})
 	g.comp("glands_lower", {"parent": "casing_lower", "explode": [up, 0.0]})
 	g.comp("glands_upper", {"parent": "casing_lower", "explode": [up, r * 1.15]})
-	g.comp("rotor", {"parent": "carrier_lower", "explode": [up, r * 0.63], "anim": "shaft",
+	g.comp("rotor", {"parent": "inner_lower", "explode": [up, r * 0.63], "anim": "shaft",
 		"pivot": Vector3(0, 0, za), "sym": [Vector3(0, 1, 0), 0]})
 	for k in ST_STAGES:
 		g.comp("mrow_%d" % (k + 1), {"parent": "rotor", "explode": [up, 0.0]})

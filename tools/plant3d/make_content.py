@@ -15,9 +15,10 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
 import kit, train_weather, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
 from workshop import pressure_transmitter as ws_pressure_transmitter  # noqa: E402
+from workshop import steam_turbine as ws_steam_turbine  # noqa: E402
 
 # the part kinds with Workshop data (docs/plant3d/WORKSHOP.md §4): each a module of tools/plant3d/workshop/
-WORKSHOP = [ws_pressure_transmitter]
+WORKSHOP = [ws_pressure_transmitter, ws_steam_turbine]
 
 OUT = os.path.join(ROOT, 'data', 'plant3d')
 
