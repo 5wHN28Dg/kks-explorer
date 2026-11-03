@@ -425,7 +425,10 @@ def abandon(e, p):
 def slip(e, item):
     """An NPC's slip (§2.13), in step 1: its set written directly."""
     _, pid, task, step = item
-    s = e.staff.st.tasks[task]['steps'][step]['slip']
+    t = e.staff.st.tasks.get(task) if e.staff is not None and isinstance(task, str) else None
+    if t is None or type(step) is not int or not 0 <= step < len(t['steps']) or 'slip' not in t['steps'][step]:
+        return          # (the engine makes no other: nothing, no event)
+    s = t['steps'][step]['slip']
     for k, v in s['set'].items():
         e.cur[e.ix[k]] = float(v)
     e.ev('slip', pid, task, step)

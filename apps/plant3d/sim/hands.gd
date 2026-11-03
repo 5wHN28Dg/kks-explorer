@@ -245,7 +245,11 @@ static func abandon(e, pi: int) -> void:
 
 ## An NPC's slip (§2.13), in step 1 (item: [slip, person, task, step]): its set written directly.
 static func slip(e, item: Array) -> void:
-	var s: Dictionary = e._sm.tasks[item[2]]["steps"][item[3]]["slip"]["set"]
+	var t = e._sm.tasks.get(item[2]) if e._sm != null and typeof(item[2]) == TYPE_STRING else null
+	if t == null or typeof(item[3]) != TYPE_INT or item[3] < 0 or item[3] >= t["steps"].size() \
+			or not t["steps"][item[3]].has("slip"):
+		return          # (the engine makes no other: nothing, no event)
+	var s: Dictionary = t["steps"][item[3]]["slip"]["set"]
 	for k in s:
 		e.cur[e.ix[k]] = float(s[k])
 	e._ev(["slip", item[1], item[2], item[3]])

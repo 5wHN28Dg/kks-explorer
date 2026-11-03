@@ -150,20 +150,23 @@ func _round_trip_weather(p: Array) -> void:
 	const JsonStrict = preload("res://sim/json_strict.gd")
 	var path := ProjectSettings.globalize_path("res://").path_join("../../ref/vectors/plant3d-realism.json").simplify_path()
 	var V: Dictionary = JsonStrict.parse(FileAccess.get_file_as_bytes(path), 1000).value
-	for part in ["weather", "wear"]:
+	for part in ["weather", "wear", "hands"]:
 		var m = PlantModel.from_files(V[part]["files"])
 		if m.error != "":
 			p.append("the realism %s plant did not load: %s" % [part, m.error])
 			continue
 		var e = PlantEngine.new(m, "s1")
-		e.step(295)
+		e.step(525 if part == "hands" else 295)     # (hands: the NPC opening the gauge's cover, REALISM.md §2.13)
 		if part == "weather":
 			e.weather("dust")
+		elif part == "hands":
+			e.fault("f_low")
 		else:
 			e.op("10LAB10AA001", "open")
 			e.op("10LAC10AP001", "start")
 		var f2 = PlantEngine.new(m, "s1")
 		var cap := RunSave.capture(e, RunSave.engine_fields(e))
+		var cap0 := cap.duplicate(true)     # (apply hands cap's own arrays to f2, which steps on in them)
 		var bad := RunSave.check(f2, RunSave.engine_fields(f2), cap)
 		if bad == "":
 			bad = Autosave._engine_contents(f2, cap)
@@ -185,6 +188,18 @@ func _round_trip_weather(p: Array) -> void:
 				t.merge(c, true)
 				if Autosave._engine_contents(f2, t) == "":
 					p.append("realism weather: a save with %s was taken" % str(c))
+		if part == "hands":
+			if not cap0["busy"].has("ic2") or cap0["carried"].is_empty():
+				p.append("realism hands: the save has no hand action under way or no tools carried")
+			var damaged := [{"busy": {"ic2": ["10LAB10CP501", "open_lid", "sd_flat", null, 1, 0]}},
+					{"busy": {"nobody": cap0["busy"].get("ic2")}}, {"carried": {"ic2": ["hammer"]}},
+					{"carried": {"ic2": ["dmm", "dmm"]}}, {"tool_n": [[-1]]}, {"cause_s": {"f_low": 0}},
+					{"cause_of": {"f_low": "gremlins"}}, {"slip_s": {}}]
+			for c in damaged:
+				var t := cap0.duplicate(true)
+				t.merge(c, true)
+				if Autosave._engine_contents(f2, t) == "":
+					p.append("realism hands: a save with %s was taken" % str(c))
 
 
 ## The water treatment plant's day work (W3) saved in the middle of its sequences: an RO train being cleaned in place

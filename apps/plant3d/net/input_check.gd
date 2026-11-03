@@ -22,13 +22,14 @@ const PER_TURN_BYTES := 1024
 const FORMS := {
 	"op": [["s", "s", "zbn", "zs"], ["s", "s", "zbn", "zs", "zs", "zs"]],
 	"ack": [["s"]], "shelve": [["s", "n"]], "unshelve": [["s"]],
-	"fault": [["s"]], "repair": [["s"], ["s", "s", "zs"]],
+	"fault": [["s"], ["s", "s"]], "repair": [["s"], ["s", "s", "zs"]],
 	"permit": [["s", "s", "zs"]], "lock": [["s", "i", "zs"]], "unlock": [["s", "i", "zs"]],
 	"remove_lock": [["s", "i", "zs", "s", "zs"]],
-	"role": [["s"]], "release": [[]], "task_ack": [[]], "arrive": [["s"]], "leave": [["s"]], "read": [["s", "n"]],
+	"role": [["s"]], "release": [[]], "task_ack": [[]], "arrive": [["s"]], "leave": [["s"]], "read": [["s", "n"], ["s", "n", "s"]],
 	"say": [["s", "s"]], "pick": [["i"]], "call": [["s", "s", "zs"]], "jump": [["s"]], "ppe": [["s", "i"]],
 	"zone": [["s", "s"]], "stop": [["s"]], "board": [["s", "zs"]], "alight": [["s", "zs"]],
 	"get_on": [["s"]], "weather": [["s"]],
+	"tool": [["s", "i", "zs"]], "hand": [["s", "s", "zs", "zn", "zs"]],    # (REALISM.md §2.3, §2.4)
 }
 
 
