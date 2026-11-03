@@ -263,11 +263,9 @@ func _place(ps: PackedScene) -> void:
 				(x as GeometryInstance3D).material_override = m
 		if x is MultiMeshInstance3D:
 			var items: Array = x.get_parent().get_meta("items", [])
-			var mm := ((x as MultiMeshInstance3D).multimesh.duplicate()) as MultiMesh   # (not the cached scene's own)
-			(x as MultiMeshInstance3D).multimesh = mm
-			mm.instance_count = items.size()
-			for i in items.size():
-				mm.set_instance_transform(i, items[i])
+			# its own MultiMesh made new, not the cached scene's (a duplicate's buffer is set before its count: Godot
+			# refused it, "Cannot set a buffer on a Multimesh that is a different size"), as the Workshop's warm-up does
+			(x as MultiMeshInstance3D).multimesh = _items_multimesh((x as MultiMeshInstance3D).multimesh, items)
 		if x is Node3D and x.has_meta("id") and x.has_meta("explode"):
 			_comp_nodes[String(x.get_meta("id"))] = x
 			_home[String(x.get_meta("id"))] = (x as Node3D).position
@@ -522,6 +520,19 @@ func pick_tool(t: String) -> void:
 func pick_comp(c: String) -> void:
 	comp = c
 	_sig = ""
+
+
+## A MultiMesh of its own holding a scene's items (workshop.gd's _items_multimesh).
+static func _items_multimesh(src: MultiMesh, items: Array) -> MultiMesh:
+	var mm := MultiMesh.new()
+	mm.transform_format = src.transform_format
+	mm.use_colors = src.use_colors
+	mm.use_custom_data = src.use_custom_data
+	mm.mesh = src.mesh
+	mm.instance_count = items.size()
+	for i in items.size():
+		mm.set_instance_transform(i, items[i])
+	return mm
 
 
 ## A hand action sent with the tray's tool (bare hands: none).

@@ -959,8 +959,10 @@ func _place_tick() -> void:
 			best = i
 	# inside a room where music is banned (REALISM.md §8.5: the control room), the trainee is at its nearest place
 	# wherever they stand in it: the engine's room is the place's, and a large room's middle is in it too
+	# (not when the nearest place is of another room: a room's footprint is its places' box, which can reach over a
+	# neighbour's, as the control room's over the maintenance workshop's I&C toolbox)
 	var inroom := room_at(sm, here)
-	if inroom != -1 and (best == -1 or sm.place_aroom[best] != inroom):
+	if inroom != -1 and (best == -1 or sm.place_aroom[best] != inroom and not sm.places[best].has("room")):
 		bd = INF
 		for i in sm.places.size():
 			if sm.place_aroom[i] == inroom:
