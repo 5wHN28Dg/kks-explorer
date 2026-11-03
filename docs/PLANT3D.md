@@ -3222,7 +3222,8 @@ byte as it was (only the GDScript engine changed; the reference and the vectors 
   steps run 52,637 → 10,072 → 1,752 (with the waits asleep), the bus's next run worked out 6,002 → 2, people's acts
   looked at 53,495 → 10,930 → 2,610.
 - **On the laptop** (`bench_staff.gd`, before and after side by side, three times): 170 to 174 µs → 59 to 60 µs a
-  step (2.9×).
+  step (2.9×). With the waits asleep too (2026-11-03, the three side by side, three times, the laptop shared with
+  other jobs): 165 to 190 µs (before) → 66 to 70 µs (the first speed-up) → 39 to 46 µs.
 - **On the Note 9**: NOTE9_RESULTS
 - **The measured walk's STEPS line** (`app/script_cost.gd`, `ui/sim_clock.gd`): each engine step's own staff and model
   time from the end of the gate walk's clock run, its mean, median, 99th percentile and largest, so the staff step on
