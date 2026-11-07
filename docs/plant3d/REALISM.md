@@ -697,7 +697,7 @@ at 29–35 °C over the runs.
 
 | Kind (items) | Characteristic life η, slope β | P-F interval | Floor | Signs | Failure (its work) |
 |---|---|---|---|---|---|
-| Motor bearings (CW pumps A–C, closed cooling water A–B, condensate A–B) | 50,000 h, 1.5 ([ISO281]'s spread) | 3,000 h | 7,500 h | vibration on the motor's probe from ISO 20816-3 zone A/B to beyond C/D, the advisory alarm at the C/D boundary (7.1 mm/s group 1, 4.5 group 2), the noise (`bearing_noise`, its gain from the vibration), the shake, the bearing temperature on the screens (its rise over the air, 25 K, up to 75 K at the end in the last quarter of the interval; advisory at 90 °C) | the motor trips (`<pump>_fault`): `wo_<pump>_brg`, replace the motor bearings (mechanical) |
+| Motor bearings (CW pumps A–C, closed cooling water A–B, condensate A–B) | 50,000 h, 1.5 ([ISO281]'s spread) | 3,000 h | 7,500 h | vibration on the motor's probe from ISO 20816-3 zone A/B to beyond C/D, the advisory alarm at the C/D boundary (7.1 mm/s group 1, 4.5 group 2), the noise (`bearing_noise`, its gain from the vibration), the shake, the bearing temperature on the screens (its rise over the air, 25 K, up to 110 K at the end over the last 30 % of the interval; the housing lags it by 600 model seconds, so the advisory at 90 °C comes before the failure with the air above about 10 °C at the rate 300, and earlier at slower rates) | the motor trips (`<pump>_fault`): `wo_<pump>_brg`, replace the motor bearings (mechanical) |
 | Gear reducers (cooling tower fans 1–10) | 60,000 h, 1.8 ([CTI]) | 4,000 h | 10,000 h | the gear mesh's vibration added to the fan's own probe (0 until P, at most 7 mm/s, so the fan's own 10 mm/s trip comes only with the failure), the advisory alarm at 6.3 mm/s, the gear whine | the fan's vibration fault, which trips it: `wo_ct_fan<i>_gbx` |
 | Valve actuators (CW discharge valves A–C) | 35,000 h by the calendar, 2.5 ([NRC-GL89-10]) | 4,000 h | 10,000 h | the running torque on the screens while it strokes, 55 % of the torque switch's setting rising to 100 % | stuck for good (`cw_<x>_v_stuck`): `wo_cw_<x>_act` under the actuator's own supply isolation (the valve stays where it stands) |
 | Motor protection (CW pumps A–C) | 200,000 h, 1.0 (a constant hazard, [IEEE493]'s order) | none | 5,000 h | none (§4.2's seeded hazard) | a trip by itself: `wo_<pump>_rly` (electrical) |
@@ -720,7 +720,8 @@ at 29–35 °C over the runs.
   05:00, fails at about 08:25, the standby starts; the supervisor asks for the permit of the work that repairs it, the
   pump is isolated and a mechanical technician replaces the bearings (the day's fork `aged_ccw`); transmitter 3 reads
   1.5 kPa off its partners, and CW valve B's actuator strokes with a rising torque from about 14:30 and sticks at
-  about 03:50 the next morning (signs of their own to find).
+  about 03:50 the next morning (signs of their own to find); condensate pump B's bearing and fan 2's gear reducer,
+  stopped at the start, are near enough their ends that, once started, they show their signs within the day.
 - **Once a run:** a failure is a fault with `when`, made once in a run (PLANT3D §7.8). A renewed item wears again and
   shows its signs again, but does not fail a second time in the same run; at the training rates that takes a whole
   life (from about 40 clock hours at 100 for the shortest, far more for the rest). A second failure needs a fault that
@@ -729,10 +730,19 @@ at 29–35 °C over the runs.
   against the staff file's 128): a work names its `isolate`, `deisolate` and `assign` tasks as it names its job; one
   reaction per permit state gives them for every work, one reaction on a list of faults asks for the permit of the
   work that repairs each (one for the train, one for the water treatment plant). The content's 128 reactions are 38
-  now; read, they are made into the same reactions one by one. Tasks: 460 against a limit raised from 400 to 800.
+  now; read, they are made into the same reactions, grouped by permit state where the file before wrote them work by
+  work (two works' permits reaching different states in the same step would have their offers in another order; no
+  run of the vectors has such a step, and the day's events are unchanged). Tasks: 460 against a limit raised from 400
+  to 800.
   **Later, not built:** the engine could make each work's lock and unlock tasks from its isolation's points (the
   lockers by point kind, the make-safe op), so that a work costs no tasks of its own; worth it when the jobs of
   HW3–HW6 and the crafts near the 800.
+- **From the reviews:** a fan's gear reducer at its end stays under the fan's 10 mm/s trip (it had tripped the fan,
+  and stopped its wear, before the failure could come); the work tasks are checked before the generic reactions are
+  made from them; the heat alarm reachable (above); a CW pump's new works' lock tasks close its discharge valve by
+  the handwheel when its actuator has failed (the motor's close moves nothing, and the lock was refused for good;
+  the works from before AG2 keep their tasks: a trainer's stuck valve with them stays as it was); transmitter 3's
+  calibration sets the field trim back to 0 (a trim made with the renewal corrected the drift twice).
 - **The Note 9:** the walk with the new content waits for the next phone window (2026-11-08 from 17:30).
 - **Vectors:** `plant3d-v1.json` and `plant3d-v2.json` made again with the train's new values; compared item by
   item with the files before, keyed by id: every input of every run and fork unchanged, every event too except in the

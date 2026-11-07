@@ -190,6 +190,41 @@ class FailsOnItsOwn(unittest.TestCase):
         self.assertTrue(any(x[1] == 'interlock' and x[2] == 'ccw_b_auto' for x in e.events))
 
 
+class LateSigns(unittest.TestCase):
+    def test_heat_alarm_before_the_failure(self):
+        """The last of the bearing's signs, its heat, raises the 90 °C advisory alarm before the failure at the
+        training rate 300 with the scenario's own air (the review's finding: the housing's lag kept it under 90)."""
+        files = P.load_dir(DATA)
+        sc = json.loads(files['scenarios/shift_aged.json'])
+        sc['init']['ccw_a_brg_wear'] = A.life_of(world_seed(sc), 'ccw_a_brg_life') - 950
+        files['scenarios/shift_aged.json'] = json.dumps(sc).encode()
+        e = P.Engine(P.check_files(files), 'shift_aged')
+        while e.step_no < 20000 and not any(x[1] == 'fault' and x[2] == 'ccw_a_brg' for x in e.events):
+            e.step()
+        heat = [x[0] for x in e.events if x[1] == 'alarm' and x[2] == 'ccw_a_brg_t_high' and x[3] == 'active_unack']
+        made = next(x[0] for x in e.events if x[1] == 'fault' and x[2] == 'ccw_a_brg')
+        self.assertTrue(heat and heat[0] < made, (heat, made))
+
+    def test_staff_isolate_a_pump_whose_valve_actuator_failed(self):
+        """A CW pump's protection trips by itself while its discharge valve's actuator has failed with the valve open:
+        the field operator's lock task closes the valve by its handwheel (the motor's close does nothing) before the
+        lock, so the permit is issued (the review's finding: the lock was refused and the job left for good)."""
+        files = P.load_dir(DATA)
+        sc = json.loads(files['scenarios/shift_aged.json'])
+        sc['init'].update({'cw_a_v_cmd': 1, 'cw_a_v_pos': 1, 'cw_a_v_stuck': 1,
+                           'cw_a_rly_wear': A.life_of(world_seed(sc), 'cw_a_rly_life') + 1})
+        files['scenarios/shift_aged.json'] = json.dumps(sc).encode()
+        e = P.Engine(P.check_files(files), 'shift_aged')
+        while e.step_no < 30000 and e.pstate.get('wo_cw_a_rly', 0) < 4:
+            e.step()
+        ev = e.events
+        self.assertTrue(any(x[1] == 'fault' and x[2] == 'cw_a_rly' for x in ev))
+        self.assertTrue(any(x[1] == 'op' and x[2] == '30PAC10AA101' and x[3] == 'hand_close' and x[4] == 'done'
+                            for x in ev), [x for x in ev if x[1] == 'op'][:10])
+        self.assertGreaterEqual(e.pstate['wo_cw_a_rly'], 4, 'the permit was never issued')
+        self.assertLessEqual(e.v('cw_a_v_pos'), 0.005)
+
+
 class FanGearbox(unittest.TestCase):
     def test_gear_reducer_fails_before_the_trip(self):
         """A fan whose gear reducer is 50 h of wear from its end (10 clock minutes at 300): its vibration crosses the

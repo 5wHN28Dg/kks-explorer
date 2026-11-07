@@ -552,6 +552,8 @@ def tasks(models):
                 ms_desk, {'permit': {'work': w, 'action': 'request'}, 'else': 2}, {'work': 1}])
     # each work names its isolate, deisolate and assign tasks (works_tasks): one reaction per permit state gives them
     # for every work (PLANT3D §16.7, milestone AG2)
+    ageing_works = set(train_ageing.fault_work().values())
+    handwheels = {o['kks'] for m in models for o in m.ops if o['do'] == 'hand_close'}
     reacts = [{'on': {'permit': 'approved'}, 'roles': ['shift_sup'], 'task': '$isolate'},
               {'on': {'permit': 'issued'}, 'roles': ['maint_sup'], 'task': '$assign'},
               {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': '$deisolate'}]
@@ -574,6 +576,12 @@ def tasks(models):
                 steps.append({'go': {'kks': pt['kks']}})
                 if pt['kind'] in MAKE_SAFE and not wtp:
                     steps.append({'op': {'kks': pt['kks'], 'do': MAKE_SAFE[pt['kind']], 'where': 'local'}})
+                    if wid in ageing_works and pt['kks'] in handwheels and 'safe' in pt:
+                        # (AG2: a valve whose actuator has failed on its own is closed by its handwheel, refused
+                        # while the actuator works; then the valve waited for, half an hour of the clock at most)
+                        steps.append({'op': {'kks': pt['kks'], 'do': 'hand_close', 'where': 'local'},
+                                      'else': len(steps) + 1})
+                        steps.append({'wait': {'until': pt['safe'], 'minutes': 40}})
                 if wtp and 'safe' in pt:    # (another's steps make it safe: wait for them)
                     steps.append({'wait': {'until': pt['safe'], 'minutes': 60}})
                 steps.append({'lock': {'work': '$', 'point': i}})

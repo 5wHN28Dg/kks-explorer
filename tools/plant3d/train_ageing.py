@@ -85,8 +85,8 @@ VALVES = [('a', 1), ('b', 2), ('c', 3)]
 RELAYS = ['cw_a', 'cw_b', 'cw_c']
 # ISO 20816-3, rigid foundations, mm/s r.m.s.: a machine in service (zone A/B), the zone C/D boundary (damage)
 ZONES = {1: {'base': 1.8, 'cd': 7.1, 'end': 11}, 2: {'base': 1.2, 'cd': 4.5, 'end': 7.1}}
-BRG_RISE, BRG_RISE_END, BRG_T_H = 25, 75, 90     # K over the air running; K at the failure; the alarm's °C (so it
-# comes before the failure with the air at 15 °C and above)
+BRG_RISE, BRG_RISE_END, BRG_T_H = 25, 110, 90    # K over the air running; K at the failure; the alarm's °C (the
+# housing's heat lags the bearing's: at 300 the alarm comes before the failure with the air above about 10 °C)
 BRG_TAU = 600                   # s (model time): a bearing housing's heat
 GBX_END = 7                     # mm/s added on the fan's probe by a gearbox at its end: with the blades' 2.5 under
 # the fan's 10 mm/s trip, so the failure (which trips it) comes from the wear, not the trip before it
@@ -123,7 +123,7 @@ def pump(m, item):
     m.tab(f'{p}_vib_k', f'{b}_mgn', [[-pf, z['base']], [-0.6 * pf, z['base'] * 1.6], [-0.3 * pf, z['cd'] * 0.75],
                                      [0, z['end']]], 'mm/s')
     m.prod(f'{p}_vib', [spd, f'{p}_vib_k'], 'mm/s', cy)
-    m.tab(f'{b}_tk', f'{b}_mgn', [[-0.25 * pf, BRG_RISE], [0, BRG_RISE_END]], 'K')
+    m.tab(f'{b}_tk', f'{b}_mgn', [[-0.3 * pf, BRG_RISE], [0, BRG_RISE_END]], 'K')
     m.prod(f'{b}_rise', [spd, f'{b}_tk'], 'K')
     m.lag(f'{b}_rise_l', f'{b}_rise', BRG_TAU, unit='K')
     m.sum(f'{b}_t', ['ambient_t', f'{b}_rise_l'], '°C', code)
@@ -243,6 +243,8 @@ def works(m):
     for w in m.works:
         if w['id'] in renew:
             w['renews'] = renew[w['id']]
+        if w['id'] == 'wo_cond_p3_cal':     # the calibration puts the sensor right: a field trim made before it goes
+            w['set'] = {'cond_p3_trim': 0}  # too (else the trim and the renewal would correct the drift twice)
 
 
 def fault_work():
