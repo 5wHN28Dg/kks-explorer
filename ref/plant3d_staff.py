@@ -51,7 +51,7 @@ ACT_KINDS = ('ppe', 'permit', 'unsafe')     # an unsafe act's kinds, in the orde
 AUDIO_KINDS = ('audio', 'phone')   # and with staff.json's `audio` (REALISM.md §8.5): music on in a banned zone, the
                                    # phone carried in an Ex zone, checked after those
 NOTICE_MAX = 600       # clock minutes: the longest `audio.notice` delay (§8.5)
-HELD_EVER = 1 << 62     # a device held while off duty by someone with no next duty: never given back (§8.5)
+HELD_NEXT = 1 << 62     # a device taken off duty: held until the end of the next duty its person works (§8.5)
 ZONE_EDGE = 0.01        # a place this near a zone's edge or height limits is bad_zone (§16.2)
 HHMM = re.compile(r'([01][0-9]|2[0-3]):([0-5][0-9])')
 OFFSET = re.compile(r'(start|end|prev|next)([+-])([0-9]|1[0-2]):([0-5][0-9])')
@@ -1334,7 +1334,7 @@ class Person:
     __slots__ = ('i', 'id', 'role', 'auth', 'rng', 'on', 'duty', 'duties', 'planned', 'slots', 'pos', 'leg',
                  'cur', 'queue', 'res', 'occ', 'pending', 'result', 'post', 'held', 'worn', 'acts', 'zin',
                  'ride', 'stairs', 'lin', 'home', 'aboard', 'spans', 'offday', 'music', 'phone', 'told', 'watch',
-                 'held_to')
+                 'held_to', 'locker')
 
 
 
@@ -1371,7 +1371,9 @@ class StaffRun:
             # 2 held by whoever stopped its act until their duty ends), the act kinds reported by a missed call, and
             # per (reaction, kind) the observers sharing a zone with the act: person index -> the step they notice
             q.music, q.phone, q.told, q.watch = 0, 1, set(), {}
-            q.held_to = -1             # while held: the clock its duty at the stop ends (now, if off duty then)
+            q.held_to = -1             # while held: the clock its duty ends (HELD_NEXT: taken off duty, until the
+                                       # next duty they work begins)
+            q.locker = -1              # the locker (place index) holding the phone left, else -1
             # a ride (§20.4): [staff lift index, a, b, 0 waiting / 1 aboard, the step the wait began, the destination
             # of the walk]; the stairs walked instead: [destination, place, …, b]; the step of the last lift input
             q.ride, q.stairs, q.lin = None, None, -3
@@ -1459,14 +1461,12 @@ class StaffRun:
             e += DAY
         return (s, e)
 
-    def next_duty_end(self, p, c):
-        """The end of the person's first duty starting after clock c (REALISM.md §8.5: a device taken off duty is held
-        until it ends), from their roster alone; HELD_EVER when their roster has none in a cycle."""
-        for d in range(c // DAY, c // DAY + 66):        # (a rotation's cycle is at most 64 days, a week 7)
-            du = self.duty_on_day(p, d)
-            if du is not None and du[0] > c:
-                return du[1]
-        return HELD_EVER
+    def duty_worked(self, p):
+        """A duty begun (in step 1, or a jump landing inside it): a device taken off duty is held until it ends
+        (REALISM.md §8.5; the user, 2026-11-07: the next duty the person actually works, so not one of their roster that
+        passed while they were absent or inside a jump's gap)."""
+        if p.phone == 2 and p.held_to == HELD_NEXT:
+            p.held_to = p.duty[1]
 
     def slot_times(self, p, duty):
         """The slots of a duty: [(time, slot index, repetition, task)] in time order, then slot order."""
@@ -1579,6 +1579,7 @@ class StaffRun:
                 if du[0] <= c < du[1]:
                     p.on, p.duty = True, du
                     p.worn = set(st.roles[p.role].get('ppe', []))     # at work already: in their PPE (§17.11)
+                    self.duty_worked(p)
             p.duties = [du for du in p.duties if du[1] > c and du is not p.duty]
             pick = None
             for s in p.slots:
@@ -2059,6 +2060,7 @@ class StaffRun:
                 if p.duties and p.duties[0][0] <= c:
                     p.on, p.duty = True, p.duties.pop(0)
                     e.ev('duty', p.id, 'on')
+                    self.duty_worked(p)
                     if p.home is not None:      # the off-duty slots' tasks end: the duty comes first (§21.2)
                         self.end_off(p)
                     held, p.held = p.held, []   # the jobs held overnight come back (§17.10)
@@ -2067,7 +2069,8 @@ class StaffRun:
                         p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
                         e.ev('task', p.id, h['task'], 'resumed')
             if p.phone == 2 and c >= p.held_to:     # a device held is given back when the duty it was taken in
-                p.phone, p.held_to = 1, -1          # ends (§8.5): by the clock, so a jump or the next duty can't keep it
+                p.phone, p.held_to = 1, -1          # (or, taken off duty, the next one worked) ends (§8.5): by the
+                                                    # clock, so a jump or the next duty can't keep it
                 e.ev('returned', p.id)
         for p in self.people:
             if p.id in self.absent:
@@ -2330,8 +2333,9 @@ class StaffRun:
         if act[1] in AUDIO_KINDS and q.phone == 1:     # the device taken until their duty ends (§8.5; one left
                                                        # at a locker in this very step stays there)
             q.music, q.phone = 0, 2
-            # taken off duty: until their next duty ends (the user, 2026-11-03)
-            q.held_to = q.duty[1] if q.on and q.duty is not None else self.next_duty_end(q, e.clock())
+            # taken off duty: until the end of the next duty they work (the user, 2026-11-03 and 2026-11-07), set
+            # when it begins (duty_worked)
+            q.held_to = q.duty[1] if q.on and q.duty is not None else HELD_NEXT
             e.ev('held', q.id, p.id)
         t = self.st.put_right.get(act[1])
         if t is not None:
@@ -2358,7 +2362,9 @@ class StaffRun:
 
     def t_phone(self, tp, what, slot):
         """The player leaves the phone at a locker or takes it again (§8.5). Leaving it turns the music off. Refused
-        without `audio`, while held, or away from a locker (`locker`: the place they arrived at is not one)."""
+        without `audio`, while held, leaving it while it is in a locker already (`left`), or away from a locker
+        (`locker`: the place they arrived at is not one, or for `take` not the locker holding it: the user,
+        2026-11-07)."""
         if what not in ('leave', 'take'):
             return
         why = []
@@ -2366,10 +2372,14 @@ class StaffRun:
             why.append('no_audio')
         elif tp.phone == 2:
             why.append('held')
-        elif tp.pos is None or self.st.places[tp.pos]['kind'] != 'locker':
+        elif what == 'leave' and tp.phone == 0:
+            why.append('left')
+        elif tp.pos is None or self.st.places[tp.pos]['kind'] != 'locker' or \
+                what == 'take' and tp.phone == 0 and tp.pos != tp.locker:
             why.append('locker')
         if not why:
             tp.phone = 0 if what == 'leave' else 1
+            tp.locker = tp.pos if what == 'leave' else -1
             if what == 'leave':
                 tp.music = 0
         self.e.ev('phone', tp.id, what, 'refused' if why else 'done', why, *((slot,) if self.session else ()))
@@ -3947,7 +3957,9 @@ class StaffRun:
               Packed(PACKED_INT32, [p.aboard if p.aboard is not None else -1 for p in people]),
               Packed(PACKED_INT64, [p.offday if p.offday is not None else -1 for p in people])]
              if st.homes else []) + \
-            ([[Packed(PACKED_INT32, [p.music for p in people]), Packed(PACKED_INT32, [p.phone for p in people]),
+            ([[Packed(PACKED_INT32, [p.music for p in people]),
+               # (the phone's state; one left at a locker: 3 + the locker's place index, the user 2026-11-07)
+               Packed(PACKED_INT32, [p.phone if p.phone != 0 else 3 + p.locker for p in people]),
                Packed(PACKED_INT32, [sum(1 << k for k, x in enumerate(AUDIO_KINDS) if x in p.told) for p in people]),
                [[[wk[0], AUDIO_KINDS.index(wk[1]), Packed(PACKED_INT32, sorted(p.watch[wk])),
                   Packed(PACKED_INT64, [p.watch[wk][qi] for qi in sorted(p.watch[wk])])]

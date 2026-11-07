@@ -902,6 +902,41 @@ class AudioVectors(PartVectors, unittest.TestCase):
         self.assertEqual(len({(x[0], x[4]) for x in missed}), len(missed))
         self.assertIn(['held', 'a_fo1', 'a_sup'], ev)
 
+    def test_phone_taken_only_at_its_locker(self):
+        """The second follow-ups (the user, 2026-11-07): the engine knows which locker holds the phone; taking it at
+        another is refused (locker), leaving it while it is in a locker is refused (left), and the digest between the
+        leave and the take carries the locker (the phone's entry 3 + its place index, run 2's and the session's
+        digests changed with it)."""
+        r = self.st['runs'][13]
+        phone = [x[3:] for x in r['events'] if x[1] == 'phone']
+        self.assertEqual(phone, [['leave', 'done', []], ['leave', 'refused', ['left']], ['take', 'refused', ['locker']],
+                                 ['leave', 'refused', ['left']], ['take', 'done', []], ['take', 'done', []]])
+        self.assertEqual([x[0] for x in r['events'] if x[1] == 'phone' and x[4] == 'done'], [3, 60, 62])
+        e = run_on(self.st, r, 50)
+        sm = e.staff
+        me = sm.people[sm.st.person_ix['a_fo1']]
+        self.assertEqual((me.phone, me.locker), (0, sm.st.pix['locker3']))
+        self.assertEqual(e.snapshot()['audio'], {'a_fo1': [0, 0]})
+
+    def test_held_off_duty_to_the_next_duty_worked(self):
+        """Taken off duty, the device comes back at the end of the next duty actually worked (the user, 2026-11-07):
+        a jump past the whole next duty (never begun) keeps it held; a jump landing inside the duty after begins it,
+        and the device comes back once that one ends."""
+        ev = self.st['runs'][14]['events']
+        jumps = [x[0] for x in ev if x[1] == 'jump' and x[4] == 'done']
+        self.assertEqual(len(jumps), 3)
+        self.assertEqual([x[0] for x in ev if x[1:] == ['audio', 'a_fo1', 20, 'refused', ['held']]], [320, 360])
+        self.assertEqual([x[0] for x in ev if x[1:] == ['returned', 'a_fo1']], [jumps[2]])
+        self.assertIn([400, 'audio', 'a_fo1', 20, 'done', []], ev)
+        from ref import plant3d_staff as S
+        e = run_on(self.st, self.st['runs'][14], 330)
+        me = e.staff.people[e.staff.st.person_ix['a_fo1']]
+        self.assertEqual((me.phone, me.held_to), (2, S.HELD_NEXT))      # (its next duty passed in the gap)
+        e = run_on(self.st, self.st['runs'][14], 370)
+        me = e.staff.people[e.staff.st.person_ix['a_fo1']]
+        self.assertTrue(me.on)
+        self.assertEqual(me.held_to, me.duty[1])
+
     def test_missed_call_reports_the_act(self):
         """A message missed over the music while the act goes on: the shift supervisor (the only one of the roles on
         duty at 17:00, in the control room, nowhere near the hall) is given the stop at once: it starts when their

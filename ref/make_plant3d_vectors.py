@@ -5215,7 +5215,7 @@ def audio_runs():
          {'trainee': 'a_fo1'}, af,
          Trainee(extra=[[1500, 'audio', 30]] + [[t, 'audio', 0 if (t // 10) % 2 else 30] for t in range(1850, 2400, 10)]),
          2450, 50),
-    ] + audio_more_runs(af, nohost)
+    ] + audio_more_runs(af, nohost) + audio_locker_runs(af, nohost)
 
 
 def audio_more_runs(af, nohost):
@@ -5258,6 +5258,35 @@ def audio_more_runs(af, nohost):
          Trainee(quiet=True, extra=[[1, 'phone', 'leave'], [2, 'arrive', 'locker3'], [3, 'phone', 'leave'],
                                     [4, 'phone', 'take'], [5, 'arrive', 'p1'], [6, 'zone', 'hall', 'in'],
                                     [7, 'audio', 60]]), 500, 20),
+    ]
+
+
+def audio_locker_runs(af, nohost):
+    """The second follow-ups (the user, 2026-11-07; REALISM.md §8.5): the engine knows which locker holds the phone,
+    and a device taken off duty is held to the end of the next duty actually worked."""
+    ccr_nohost = copy.deepcopy(nohost)
+    ccr_nohost['staff.json']['audio']['rooms'] = ['cr']
+    return [
+        ('the phone taken only at the locker holding it: left at locker3; leaving it again refused (left); at locker4 '
+         'taking it refused (locker) and leaving it refused (left); taken at locker3 (a digest while it is there: '
+         'the phone\'s entry 3 + the locker\'s place index); a take with the phone carried, at another locker, '
+         'changes nothing',
+         {'trainee': 'a_fo1'}, af,
+         Trainee(quiet=True, extra=[[2, 'arrive', 'locker3'], [3, 'phone', 'leave'], [4, 'phone', 'leave'],
+                                    [5, 'arrive', 'locker4'], [6, 'phone', 'take'], [7, 'phone', 'leave'],
+                                    [8, 'audio', 20], [59, 'arrive', 'locker3'], [60, 'phone', 'take'],
+                                    [61, 'arrive', 'locker4'], [62, 'phone', 'take'], [63, 'audio', 20]]), 100, 20),
+        ('a device taken off duty is held to the end of the next duty actually worked: field operator 1 (crew a: days '
+         '1 and 2 by day, 3 and 4 by night) at a control room desk at 18:30 of day 1 with music on, after their duty; '
+         'the night\'s shift supervisor stops it; a jump to 18:30 of day 2 passes their whole day duty (never begun: '
+         'not worked), so it is still held (an audio input refused; before, it came back in this jump); a jump to '
+         '18:30 of day 3 lands inside their night duty (begun: the device held to its end at 06:00), still held; a '
+         'jump to 06:30 of day 4: returned, music again',
+         {'trainee': 'a_fo1', 'start': {'day': 1, 'time': '18:30'}}, ccr_nohost,
+         Trainee(quiet=True, extra=[[2, 'arrive', 'desk_b'], [3, 'audio', 30], [299, 'task_ack'], [300, 'jump', '18:30'],
+                                    [320, 'audio', 20], [339, 'task_ack'], [340, 'jump', '18:30'],
+                                    [360, 'audio', 20], [379, 'task_ack'], [380, 'jump', '06:30'],
+                                    [400, 'audio', 20]]), 440, 20),
     ]
 
 

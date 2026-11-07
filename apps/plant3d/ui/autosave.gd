@@ -290,10 +290,11 @@ static func _hands_contents(fresh, d: Dictionary) -> String:
 ## file whose hash matches but whose contents were changed must not break the session. "" when it fits.
 ## Personal audio's state (REALISM.md §8.5): one entry a person as the fresh engine has (none without staff.json's
 ## `audio`: its streams), the music's volume 0–100, the phone carried, left or held, the clock a held one comes back
-## (-1 none), the noticing streams never 0 (they would never move again), and each person's observers by
-## Vector2i(reaction, act kind 3 or 4) with the step each notices.
+## (-1 none), the locker holding a phone left (a locker place while it is left, else -1), the noticing streams never
+## 0 (they would never move again), and each person's observers by Vector2i(reaction, act kind 3 or 4) with the step
+## each notices.
 static func _audio_contents(fresh, d: Dictionary) -> String:
-	for k in ["sp_music", "sp_phone", "sp_told", "sp_held_to", "sp_aud", "sp_watch"]:
+	for k in ["sp_music", "sp_phone", "sp_told", "sp_held_to", "sp_locker", "sp_aud", "sp_watch"]:
 		if d.has(k) and d[k].size() != fresh.get(k).size():
 			return "a damaged %s" % k
 	for v in d.get("sp_music", []):
@@ -305,6 +306,18 @@ static func _audio_contents(fresh, d: Dictionary) -> String:
 	for v in d.get("sp_told", []):
 		if v < 0 or v > 3:
 			return "a damaged sp_told"
+	# (a phone left has its locker, any other none: staff.gd t_phone)
+	var lk: Array = Array(d.get("sp_locker", []))
+	var ph: Array = Array(d.get("sp_phone", []))
+	for i in lk.size():
+		var v = lk[i]
+		if typeof(v) != TYPE_INT:
+			return "a phone in a locker that doesn't exist"
+		if i < ph.size() and ph[i] == 0:
+			if fresh._sm == null or v < 0 or v >= fresh._sm.places.size() or fresh._sm.kind[v] != "locker":
+				return "a phone in a locker that doesn't exist"
+		elif v != -1:
+			return "a phone in a locker that doesn't exist"
 	for v in d.get("sp_held_to", []):
 		if typeof(v) != TYPE_INT or v < -1:
 			return "a phone held to a clock before the run"

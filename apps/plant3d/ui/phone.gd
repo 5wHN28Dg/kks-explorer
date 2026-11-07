@@ -14,6 +14,7 @@
 extends RefCounted
 
 const W = preload("res://ui/widgets.gd")
+const Debrief = preload("res://ui/debrief.gd")
 
 const STEP := 10
 const CARRIED := 1              # the engine's phone states (sp_phone): 1 carried, 0 left at a locker, 2 held
@@ -89,6 +90,32 @@ func engine_state() -> int:
 	return state
 
 
+## The locker (place index) holding the phone left by the person played, as the engine keeps it (sp_locker), or -1.
+func locker() -> int:
+	var e = ui.clock.engine
+	var pi := person()
+	var lk = e.get("sp_locker") if e != null else null
+	return int(lk[pi]) if pi != -1 and lk != null and lk.size() > pi else -1
+
+
+## Where the phone left is (REALISM.md §8.5: the engine knows which locker holds it, the user 2026-11-07): "locker 3
+## in the locker room"; "" when unknown.
+func locker_words() -> String:
+	var k := locker()
+	var sm = ui.clock.engine._sm if ui.clock.engine != null else null
+	if k < 0 or sm == null or k >= sm.places.size():
+		return ""
+	var p: Dictionary = sm.places[k]
+	var room := Debrief.room_words(String(p.get("room", "")))
+	return String(p["id"]).replace("_", " ") + (" in the " + room if room != "" else "")
+
+
+## Whether the player stands at the locker holding their phone (the only place it is taken again).
+func at_its_locker() -> bool:
+	var k := locker()
+	return k != -1 and ui.clock.engine.t_at(ui.inputs.slot) == k
+
+
 func play() -> void:
 	_pick()
 	if track == "":
@@ -154,7 +181,7 @@ func leave() -> void:
 
 
 func take() -> void:
-	if person() != -1 and ui.at_locker():
+	if person() != -1 and ui.at_locker():       # (the engine refuses it at another locker: locker)
 		ui.inputs.phone("take")
 
 
@@ -243,15 +270,20 @@ func driving() -> bool:
 	return false
 
 
-## Until when the device is held (REALISM.md §8.5): the end of the duty it was taken in, or of the next one when taken
-## off duty (the user, 2026-11-03), as the engine keeps it.
+## Until when the device is held (REALISM.md §8.5): the end of the duty it was taken in, or of the next one they work
+## when taken off duty (the user, 2026-11-03 and 2026-11-07), as the engine keeps it.
 func held_until() -> String:
 	var e = ui.clock.engine
 	var pi := person()
 	if pi == -1 or e == null or not "sp_held_to" in e or e.sp_held_to.size() <= pi:
 		return "until the end of your shift"
 	var to: int = e.sp_held_to[pi]
-	if to >= 1 << 62:                   # (staff.gd HELD_EVER: no next duty)
+	if to >= 1 << 62:                   # (staff.gd HELD_NEXT: taken off duty, their next duty not begun)
+		var sm = e._sm
+		var d0: int = floori(float(e.clock()) / sm.DAY) if sm != null else 0
+		for d in range(d0, d0 + 66):    # (a roster with no duty in a cycle: never given back, REALISM.md §8.5)
+			if sm == null or not sm.duty_on_day(pi, d).is_empty():
+				return "until the end of your next shift"
 		return "for the rest of the run"
 	if to < 0:
 		return "until the end of your shift"
@@ -309,6 +341,8 @@ func refusal(reasons) -> String:
 	if "driving" in r:
 		return DRIVING_WORDS
 	if "locker" in r:
+		if engine_state() == LEFT and ui.at_locker() and locker_words() != "":
+			return "Your phone is in %s: take it there." % locker_words()
 		return "At a locker only: walk to one first."
 	if "no_audio" in r:
 		return "No personal audio in this run."
@@ -319,7 +353,8 @@ func _state_words(st: int) -> String:
 	if st == HELD:
 		return "Your phone is with %s %s." % [held_by if held_by != "" else "your supervisor", held_until()]
 	if st == LEFT:
-		return "Your phone is in the locker: take it first."
+		var where := locker_words()
+		return ("Your phone is in %s: take it first." % where) if where != "" else "Your phone is in the locker: take it first."
 	return ""
 
 
@@ -335,7 +370,8 @@ func _say(t: String) -> void:
 ## What the part's layout depends on (the Crew panel rebuilds when it changes): the phone's state and whether the
 ## player stands at a locker. The music's state and volume are written into it in place (show).
 func sig() -> String:
-	return "%d|%d|%s|%d" % [person(), engine_state(), str(person() != -1 and ui.at_locker()), track.length()]
+	return "%d|%d|%s|%s|%d" % [person(), engine_state(), str(person() != -1 and ui.at_locker()), str(at_its_locker()),
+			track.length()]
 
 
 func build(box: Container) -> void:
@@ -362,7 +398,7 @@ func build(box: Container) -> void:
 			var b := W.button("Leave the phone here", func(): leave())
 			b.name = "phone_leave"
 			row.add_child(b)
-		elif st == LEFT:
+		elif st == LEFT and at_its_locker():     # (only at the locker holding it)
 			var b := W.button("Take the phone", func(): take())
 			b.name = "phone_take"
 			row.add_child(b)
