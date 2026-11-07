@@ -172,6 +172,24 @@ func _turbine(tree: SceneTree, ws) -> void:
 	for n in ["run_turbine_roll", "run_turbine_stop", "set_p_supply", "set_t_set", "set_bias"]:
 		check(rp.find_child(n, true, false) != null, "the turbine's Run panel has %s" % n)
 	check(rp.legend_box.find_child("legend_bar", true, false) != null, "and the colours' legend")
+	# a Roll given while the bench is paused (not yet stepped) already counts as running: nothing is opened meanwhile
+	c.paused = true
+	ws.run_command("rotor", "roll")
+	check(c.machine_state("turbine") == "standstill" and ws.bench_running(), "a Roll given while paused counts as running")
+	ws.note = ""
+	ws.set_slider(0.5)
+	check(ws.s == 0.0 and ws.note == ws.running_why(), "and the slider is refused meanwhile: %s" % ws.note)
+	check(not ws.start_guide("disassemble"), "and the steps")
+	c.paused = false
+	ws.restart_bench()
+	check(not ws.bench_running(), "Restart the bench: at rest again")
+	# laid out to be assembled, it doesn't roll: its loose parts are apart (only the lagging may be off)
+	check(ws.start_guide("assemble", "pile"), "the turbine laid out in a pile")
+	ws.run_command("rotor", "roll")
+	_go(ws, 0.3)
+	check(ws.run_note != "" and c.machine_state("turbine") == "standstill", "Roll refused with its parts loose: %s" % ws.run_note)
+	ws.reset()
+	ws.run_note = ""
 	# rolled: the rotor turns the way the blades are made for (right-handed about the steam's way back, +y)
 	c.speed = 1.0
 	var r0: Basis = (ws.comps["rotor"] as Node3D).transform.basis
@@ -237,6 +255,22 @@ func _turbine(tree: SceneTree, ws) -> void:
 	ws.toggle_fault("rub")
 	_go(ws, 4.0)
 	check(c.machine_state("turbine") == "trip" and c.now("stop_pos") < 0.01, "a rub trips it and the stop valves shut: %s" % c.machine_state("turbine"))
+	# tripped but still coasting down: not opened up until the rotor has come to rest
+	check(c.now("rpm") > 100.0, "the tripped rotor still turns: %.0f rpm" % c.now("rpm"))
+	_refused_running(ws, "the coasting turbine", "lagging_upper")
+	check(ws.running_why().contains("turning gear") and not ws.open_running("lagging_upper"),
+		"a turning machine: nothing is opened, until standstill on its turning gear: %s" % ws.running_why())
+	for i in 600:
+		if c.machine_state("turbine") == "standstill":
+			break
+		_go(ws, 1.0)
+	check(c.machine_state("turbine") == "standstill" and not ws.bench_running(), "the rotor comes to rest on its turning gear: %s at %.1f rpm" % [c.machine_state("turbine"), c.now("rpm")])
+	ws.note = ""
+	ws.set_slider(0.5)
+	check(ws.s == 0.5 and ws.note == "", "at rest, it is taken apart again: %s" % ws.note)
+	ws.set_slider(0.0)
+	check(ws.start_guide("disassemble"), "and taken apart step by step")
+	ws.reset()
 	ws.close()
 	await ws.left
 
@@ -396,8 +430,46 @@ func _running(ws) -> void:
 	check(disp.size() == 1 and disp[0].label.visible and win[0].visible, "and come back with it")
 	ws.toggle_fault("over_range")
 	_go(ws, 6.0)
-	# taken apart, it still runs (its data allows it); the impulse path's particles rest while the line is apart
+	# a running machine is not opened up: taking apart, handling and the guided steps are refused with a technician's
+	# reason, and allowed again once it is stopped and at rest
+	_refused_running(ws, "the powered transmitter", "process_flange")
+	# powered, the terminal cover may come off to measure or connect HART (the kind's data, views.open_running); the
+	# electronics, the sensor module and the flange wait for the loop supply off, with the technician's reason
+	check(ws.running_why() != ws.RUNNING_WHY and ws.running_why().contains("loop supply off"),
+		"the transmitter's own reason: %s" % ws.running_why())
+	check(ws.open_running("cover_back") and not ws.open_running("cover_front") and not ws.open_running("electronics")
+		and not ws.open_running("sensor_module") and not ws.open_running("process_flange") and not ws.open_running("flange_bolts"),
+		"only the terminal cover is opened live")
+	ws.note = ""
+	ws.select("cover_back")
+	check(ws.why_not_free("cover_back") == "" and ws.note == "", "powered, the terminal cover is picked up: %s" % ws.note)
+	ws._drag = {"kind": "move", "axis": Vector3.RIGHT, "a": Vector2.ZERO, "b": Vector2(100, 0), "len": 0.05,
+		"from": Vector2.ZERO, "start": Transform3D.IDENTITY}
+	ws._drag_handle(Vector2(50, 0))
+	check(ws.handled.has("cover_back") and (ws.handled["cover_back"] as Transform3D).origin.length() > 0.01,
+		"and taken off: %s" % str(ws.handled.keys()))
+	ws._drag = {}
+	for id in ["electronics", "cover_front", "process_flange"]:
+		ws.note = ""
+		ws.select(id)
+		ws._drag = {"kind": "move", "axis": Vector3.RIGHT, "a": Vector2.ZERO, "b": Vector2(100, 0), "len": 0.05,
+			"from": Vector2.ZERO, "start": Transform3D.IDENTITY}
+		ws._drag_handle(Vector2(50, 0))
+		check(ws.note == ws.running_why() and not ws.handled.has(id), "powered, %s is refused: %s" % [id, ws.note])
+	ws._drag = {}
+	ws.select("")
+	ws.reset()
+	check(ws.handled.is_empty() and ws.bench_running(), "Reset puts the terminal cover back, still powered")
+	ws.run_command("terminal_block", "stop")
+	_go(ws, 0.3)
+	check(not ws.bench_running(), "stopped, the transmitter is at rest")
+	ws.note = ""
 	ws.set_slider(1.0)
+	check(ws.s == 1.0 and ws.note == "", "stopped, it is taken apart: %s" % ws.note)
+	# taken apart, it still runs (its data allows it); the impulse path's particles rest while the line is apart
+	ws.run_command("terminal_block", "start")
+	_go(ws, 0.3)
+	check(c.machine_state("supply") == "on", "Start powers it taken apart")
 	c.op_set("process_flange", 7.0)
 	_go(ws, 0.3)
 	check((fl.mat as ShaderMaterial).get_shader_parameter("density") == 0.0 and absf(c.now("flow_frac")) > 0.05,
@@ -406,9 +478,67 @@ func _running(ws) -> void:
 	_go(ws, 0.3)
 	_channels(ws, "exploded")
 	ws.set_slider(0.0)
+	check(ws.s == 0.0, "running, it is put back together (that opens nothing)")
 	ws.run_command("terminal_block", "stop")
 	_go(ws, 0.3)
 	check(c.machine_state("supply") == "off", "Stop turns the supply off")
+	# its subassembly taken apart alone, then started (its data allows it): neither a pick elsewhere nor turning
+	# "Selected subassembly only" off takes the rest apart while it runs
+	var sub := ""
+	for id in ws.spec.order:
+		for ch in ws.spec.order:
+			if ws.spec.comps[ch].parent == id:
+				sub = id
+				break
+		if sub != "":
+			break
+	var other := ""
+	for id in ws.spec.order:
+		if ws.spec.comps[id].parent == "" and id != sub:
+			other = id
+			break
+	ws.select(sub)
+	ws.set_only_selected(true)
+	ws.set_slider(1.0)
+	ws.run_command("terminal_block", "start")
+	_go(ws, 0.3)
+	check(sub != "" and other != "" and ws.root_id == sub and ws.bench_running(), "%s taken apart alone, running" % sub)
+	# its bolts backed out a little before Start: they are not backed out farther while it runs
+	ws.set_slider(0.0)
+	ws.run_command("terminal_block", "stop")
+	_go(ws, 0.3)
+	ws.set_only_selected(false)
+	ws.set_slider(0.01)
+	ws.run_command("terminal_block", "start")
+	_go(ws, 0.3)
+	ws.set_slider(0.1)
+	check(ws.s == 0.01, "running, a part already a little out is not taken farther: %s" % ws.s)
+	ws.set_slider(0.0)
+	ws.run_command("terminal_block", "stop")
+	_go(ws, 0.3)
+	ws.select(sub)
+	ws.set_only_selected(true)
+	ws.set_slider(1.0)
+	ws.run_command("terminal_block", "start")
+	_go(ws, 0.3)
+	var home0 := _home_set(ws)
+	ws.select(other)
+	check(_home_set(ws).size() >= home0.size() and home0.keys().all(func(k): return _home_set(ws).has(k)),
+		"running, picking %s takes nothing else apart (root %s)" % [other, ws.root_id])
+	home0 = _home_set(ws)
+	ws.select("")
+	check(home0.keys().all(func(k): return _home_set(ws).has(k)) and ws.root_id != "",
+		"nor does picking nothing take the whole machine apart (root %s)" % ws.root_id)
+	ws.note = ""
+	ws.set_only_selected(false)
+	check(ws.only_selected and ws.root_id != "" and ws.note == ws.running_why(),
+		"nor does turning \"Selected subassembly only\" off: %s" % ws.note)
+	ws.set_slider(0.0)
+	check(ws.s == 0.0, "and it is put back together running")
+	ws.run_command("terminal_block", "stop")
+	_go(ws, 0.3)
+	ws.set_only_selected(false)
+	ws.select("")
 	check(c.step_us_max > 0 and c.steps > 100, "the bench steps and times its steps")
 
 ## Every channel against the model's value (WORKSHOP.md §1: a channel that moves on its own is a bug).
@@ -589,6 +719,39 @@ func _free_rotor() -> void:
 	check(b1.is_equal_approx(Basis(Vector3.UP, PI / 2.0)) and n.basis.is_equal_approx(Basis(Vector3.UP, PI)),
 		"a free rotor turns a quarter turn a second at 0.25 rev/s, added up: %s, %s" % [b1, n.basis])
 	n.free()
+
+## The components at home (not moved by the explode) as the slider and its root stand now.
+func _home_set(ws) -> Dictionary:
+	var off: Dictionary = Explode.offsets(ws.spec, ws.s, ws.root_id)
+	var out := {}
+	for id in ws.comps:
+		if (off.get(id, Vector3.ZERO) as Vector3).length() < 1e-5:
+			out[id] = true
+	return out
+
+## While the bench runs: the slider, the selected subassembly taken apart, handling, and both guided modes are refused
+## with the technician's sentence; Reassemble all and Reset are not.
+func _refused_running(ws, what: String, part: String) -> void:
+	check(ws.bench_running(), "%s counts as running" % what)
+	var s0: float = ws.s
+	ws.note = ""
+	ws.set_slider(minf(s0 + 0.5, 1.0))
+	check(ws.s == s0 and ws.note == ws.running_why(), "%s is not taken apart: %s, %s" % [what, ws.s, ws.note])
+	check(ws.panels == null or is_equal_approx(ws.panels.slider.value, s0), "the slider stays where it was")
+	ws.note = ""
+	ws.select(part)
+	check(ws.why_not_free(part) == ws.running_why() and ws.note == ws.running_why(),
+		"%s: %s is not picked up: %s" % [what, part, ws.why_not_free(part)])
+	ws.set_only_selected(true)
+	check(not ws.only_selected and ws.note == ws.running_why() or s0 == 0.0 and ws.only_selected,
+		"%s: its subassembly alone is not taken apart either" % what)
+	ws.set_only_selected(false)
+	ws.select("")
+	ws.note = ""
+	check(not ws.start_guide("disassemble") and not ws.guide.on() and ws.note == ws.running_why(),
+		"%s is not taken apart step by step" % what)
+	check(not ws.start_guide("assemble", "exploded") and not ws.start_guide("assemble", "pile") and not ws.guide.on(),
+		"nor laid out to be assembled")
 
 ## A cutaway plane from the data: the part frame's normal to Godot's axes, the offset across the box.
 func _planes_math() -> void:

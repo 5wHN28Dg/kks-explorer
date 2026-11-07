@@ -7,10 +7,11 @@
 ## the plant. The camera turns round the machine all the while. It logs
 ## `WORKSHOP` lines: the entry (button to the machine's first frame), the exit (back to the plant's first frame) and
 ## the scene's triangles (it enters, leaves and enters again first: the first entry and a second one); main.gd's frame log judges the frames from 5 s after the walk began until it leaves.
-## K3: the machine runs the whole walk where its bench model allows (the transmitter: the loop supply on at 2×, the
-## applied pressure swept up past its range and down to vacuum and back, so the diaphragm, the display, the terminals,
-## the flow and the colours move all the while, taken apart and in the steps too); after the steps the X-ray, the
-## cutaway, a section swept across the machine (flow on), each fault made and repaired, then Stop. It logs the bench's
+## K3: the machine runs where its bench model allows (the transmitter: the loop supply on at 2×, the applied pressure
+## swept up past its range and down to vacuum and back, so the diaphragm, the display, the terminals, the flow and the
+## colours move); since a running machine is not taken apart (the polish after K4b), it is started once it stands
+## assembled again after the steps, and runs through the X-ray, the cutaway, a section swept across the machine (flow
+## on), each fault made and repaired, then Stop. It logs the bench's
 ## steps (`WORKSHOP bench steps=… max=…us mean=…us`, §8's 0.3 ms). The walk keeps its 3 minutes (§8), the K1 and K2
 ## phases shortened again.
 ## The first entry waits until the plant's warm-up has queued the Workshop's pipelines and they are made (WORKSHOP.md
@@ -78,16 +79,16 @@ func start(m, k := "") -> void:
 	if not await _shown():
 		return
 	main._say("WORKSHOP entry=%.0fms load=%.0fms (the second entry)" % [ws.entry_ms, ws.load_ms])
-	_bench_start()
+	_bench_ready()
 	running = true
 
 var _ops := []                  # the bench's ops as written (machine commands, set ops)
 var _made := {}                 # the faults made in the walk's fault phase
 
-## The bench running from the walk's start: each machine started (the first of its commands its resting state takes:
-## Start, a turbine's Roll), at 2× (`bench_speed=`: a measurement may run it faster than the trainee's 2×, so that a
-## turbine's plant-length soak still lets it reach full speed within the 3 minutes; logged).
-func _bench_start() -> void:
+## The bench at 2× (`bench_speed=`: a measurement may run it faster than the trainee's 2×, so that a turbine's
+## plant-length soak still lets it reach full speed in the walk's running part; logged), not yet started: a running
+## machine is not taken apart (the walk's taking apart comes first, the machine at rest).
+func _bench_ready() -> void:
 	if not ws.bench.loaded():
 		main._say("WORKSHOP the kind has no bench model")
 		return
@@ -97,6 +98,13 @@ func _bench_start() -> void:
 		ws.bench.speed = fast   # (past the Run panel's 2×: the walk's own)
 		main._say("WORKSHOP bench at %.1fx (the walk's bench_speed)" % fast)
 	_ops = ws.bench.m.ops_ui
+
+## Each machine started (the first of its commands its resting state takes: Start, a turbine's Roll), once the
+## machine stands assembled again after the taking apart.
+func _bench_start() -> void:
+	if not ws.bench.loaded():
+		return
+	main._say("WORKSHOP bench started at %.1f s" % t)
 	for mc in ws.bench.m.machines:
 		for o in _ops:
 			if o.get("machine") == mc.id and mc.commands.has(o.do) and \
@@ -202,6 +210,7 @@ func _process(delta: float) -> void:
 		if _at("assembled again"):
 			main._say("WORKSHOP steps done: %s (%d loose)" % [str(ws.guide.done()), ws.guide.loose.size()])
 			ws.reset()
+			_bench_start()
 	elif t < 130.0:
 		if _at("x-ray"):
 			ws.views.set_xray(true)

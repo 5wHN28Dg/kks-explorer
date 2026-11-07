@@ -329,7 +329,10 @@ def data():
                   'run_exploded': {'allowed': ['lagging_upper', 'lagging_lower'],
                                    'why': 'A steam turbine runs only closed: the casing holds the steam and the '
                                           'bearings the rotor. Put it back together first (the lagging may stay '
-                                          'off).'}},
+                                          'off).'},
+                  'open_running': {'allowed': [],
+                                   'why': 'A turning machine is never opened. Stop it and let the rotor come to '
+                                          'standstill on its turning gear first.'}},
     }
 
 
