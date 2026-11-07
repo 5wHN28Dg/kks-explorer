@@ -19,7 +19,10 @@ class WsStub:
 	var machine: Node3D
 	var comps := {}
 	var selected := ""
+	var _hollow := {}           # (nothing isolated here)
 	var _mats := {}
+	func assembled() -> bool:
+		return true             # (the running shots are of the machine as built)
 	func _mat(name: String) -> Material:
 		if not _mats.has(name):
 			var p := "res://built/materials/%s.tres" % name
@@ -125,10 +128,13 @@ func _k3(m: Node3D, homes: Dictionary, box: AABB, cam: Camera3D, out: String, pa
 	v.set_section(false)
 	if not clock.loaded():
 		return
-	# running: the supply on, the pressure rising to 6 bar (the line still filling: the flow shows), cut away
-	for o in clock.m.ops_ui:
-		if o.has("machine") and o.do == "start":
-			clock.command(o.at, o.do)
+	# running: each machine started (the first command its resting state takes: the transmitter's supply, the
+	# turbine's Roll); the transmitter's pressure rising to 6 bar (the line still filling: the flow shows), cut away
+	for mc in clock.m.machines:
+		for o in clock.m.ops_ui:
+			if o.get("machine") == mc.id and mc.commands.has(o.do) and String(mc.init) in Array(mc.commands[o.do].get("from", [])):
+				clock.command(o.at, o.do)
+				break
 	var setop: Dictionary = {}
 	for o in clock.m.ops_ui:
 		if o.get("do") == "set":
@@ -144,6 +150,35 @@ func _k3(m: Node3D, homes: Dictionary, box: AABB, cam: Camera3D, out: String, pa
 	run.call(6.0, 0.2)
 	await _shot(cam, far, box.get_center(), out.path_join("%s_running.png" % part))
 	run.call(6.0, 6.0)
+	# K4b: a machine with a start-up sequence, run on (the turbine at its soak speed, its steam flowing), cut away in
+	# the heat colours and then the pressure colours
+	if clock.m.legends.has("heat"):
+		run.call(6.0, 90.0)
+		v.set_cut(false)
+		v.set_xray(false)
+		# the upper halves off (the kind's X-ray parts), from closer: the rows, the flow and the colours inside
+		var off: Array = []
+		for id in ws.words.get("views", {}).get("xray_all", []):
+			if ws.comps.has(id) and (String(id).contains("upper") or String(id).begins_with("cap_")):
+				off.append(id)
+				(ws.comps[id] as Node3D).visible = false
+		var close := box.get_center() + dir * r * 1.1
+		v.heat_on = true
+		v.pressure_on = false
+		run.call(6.0, 0.2)
+		await _shot(cam, close, box.get_center(), out.path_join("%s_running_heat.png" % part))
+		v.heat_on = false
+		v.pressure_on = true
+		run.call(6.0, 0.2)
+		await _shot(cam, close, box.get_center(), out.path_join("%s_running_pressure.png" % part))
+		v.pressure_on = false
+		run.call(6.0, 0.2)
+		await _shot(cam, close, box.get_center(), out.path_join("%s_running_flow.png" % part))
+		for id in off:
+			(ws.comps[id] as Node3D).visible = true
+		v.set_cut(true)
+		v.heat_on = true
+		v.pressure_on = true
 	# close to the face that shows a reading (the display), running and with each fault
 	var face := box.get_center()
 	for e in bv.labels:

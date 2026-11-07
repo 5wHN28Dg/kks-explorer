@@ -317,6 +317,20 @@ first frame; no frame over 100 ms; 99.79 / 99.89 % at ≥ 30 fps, mean frame 19.
 peak PSS 868 / 886 MB; at most 95 draw calls in any view. The walk's guided phases leave 14 of its parts loose.
 Pictures: the wiki's Workshop page.
 
+**K4b as built (2026-11-07):** the steam turbine runs on its bench, made from the plant's st model by
+`tools/plant3d/workshop/make_bench.py` (the start-up machine, five trips and the breaker's opening by protection,
+four alarms, the excitation's, breaker's, bias and reset ops, 134 values; WORKSHOP.md §6.6): the steam path's eight
+stages (pressure in proportion to the flow, temperature falling with it), the stop and control valves on their stems,
+seven flow paths, Heat and Pressure toggles with the legend, the blade-pass tone; two turbine runs in
+`plant3d-bench-v1.json`, bit for bit in both engines. The Workshop follow-ups (#325): the kinds' warm-up spread over
+frames, its MultiMeshes made new, the Compatibility warm draw's cushion, the walk's steps scaled (every turbine step
+walked). The Note 9 (fresh install, cool start, `bench_speed=6`), with the warm-up / `cold=1`: first entry 406 ms /
+4.17 s, back to the plant 14–21 ms / 1.52 s the first time (the plant's own pipelines, entered 80 ms after its first
+frame), 14 ms after; no pipeline compiled in the walk; no frame over 100 ms in it; 99.88 % at ≥ 30 fps, mean frame 19.85 ms,
+88.5 % at 60 fps; peak PSS 1,116 MB; at most 103 draw calls; the bench step 0.171 ms mean. Not fixed: the plant's
+705 ms frame 4.8 s after the start (the Workshop's shaders' first compilation; a question for the user). APK 145.2 MB
+(K4b's own files about 120 KB). Pictures: the wiki's Workshop page.
+
 **K3 follow-ups as built (2026-11-03):** the step sentence on a canvas layer of its own (the pile's ~510 draw calls
 were its letters: now at most 58 on the laptop and 59 on the Note 9), the bench's engine logs bounded (bit for bit
 with an engine that keeps everything), and every kind's machine warmed in the plant after its first walkable frame
@@ -456,7 +470,7 @@ programme's own budgets are REALISM.md §11.
 | HS4 | **Induction, first aid, ERT** (J5): inductions, the first response and CPR steps, the emergency response team | M | HS3, PA1 | site inductions and first response |
 | HS5 | **Audits and simultaneous operations** (J0, J5): permit and lockout audits, permit conflicts (`conflicts`, vectors) | M | HS2 | audited permits; conflicting work refused |
 | HS6 | **Hydrogen, chlorine, radiation** (J0, J5): zone barriers (`barrier_when`, vectors), hydrogen purging, chlorine drills, gauges' shutters, radiography barriers | M | HS2 | the special hazards |
-| HS7 | **Personal audio and the phone** (REALISM.md §8.5; the user, 2026-11-03): staff.json's `audio` (banned zones, Ex zones, noticing delays, the missed-call mask; vectors), the `audio` and `phone` inputs and acts, the device held to the end of the duty; the phone's music player with our own procedural tracks, the plant's sounds masked by the volume, missed calls in the radio log, the consequence ladder in the debrief; follow-ups (the user, 2026-11-03): music banned in the control room (`audio.rooms`), a device taken off duty held to the end of the next duty, music refused at the wheel, radio calls missed, the phone at a locker only (the engine), earbuds drawn on avatars | M | S2, RE1 | music on the character's phone, and what it costs |
+| HS7 | **Personal audio and the phone** (REALISM.md §8.5; the user, 2026-11-03): staff.json's `audio` (banned zones, Ex zones, noticing delays, the missed-call mask; vectors), the `audio` and `phone` inputs and acts, the device held to the end of the duty; the phone's music player with our own procedural tracks, the plant's sounds masked by the volume, missed calls in the radio log, the consequence ladder in the debrief; follow-ups (the user, 2026-11-03): music banned in the control room (`audio.rooms`), a device taken off duty held to the end of the next duty, music refused at the wheel, radio calls missed, the phone at a locker only (the engine), earbuds drawn on avatars; second follow-ups (the user, 2026-11-07): the phone taken only at the locker holding it, a device taken off duty held to the end of the next duty actually worked, music banned in the WTP control room too | M | S2, RE1 | music on the character's phone, and what it costs |
 | EV1 | **Waste and spills** (J5): segregation, records, a spill contained and reported | S | HS3 | spill response |
 | EV2 | **Wastewater and noise** (J5): discharge monitoring against the IFC limits, a noise survey, hearing protection zones | M | EN4, WX4 | environmental monitoring |
 | CH1 | **Cooling tower treatment** (J6): cycles, blowdown, inhibitor and biocide, Legionella risk and samples | M | AG2, EN4 | the cooling tower's chemistry |

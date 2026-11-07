@@ -1367,7 +1367,7 @@ combined-cycle plant gives for it.
 |---|---|---|
 | Process and operating areas (staff zones with PPE: halls, yards, the pipe rack, the WTP) | an unsafe act of kind `audio` | allowed (calls, the radio's back-up) |
 | Ex zones (classified: the fuel gas station with OP4, the hydrogen areas with HS6; none in the first train yet) | `audio` | an unsafe act of kind `phone`: left at a locker before entering |
-| The central control room (`audio.rooms`: not a zone, zones need PPE) | `audio` (the user, 2026-11-03: its operators answer alarms) | allowed |
+| The central control room and the WTP control room (`audio.rooms`: not zones, zones need PPE) | `audio` (the user, 2026-11-03 and 2026-11-07: their operators answer alarms) | allowed |
 | Camp, offices, canteen, rest places, the roads (no zone) | allowed | allowed |
 | Aboard a vehicle as a passenger (in no zone, §21.4) | allowed | allowed |
 | Driving a run (the bus, §21.16) | refused ([GEH-C25], [IOGP459]): the `audio` input refused (`driving`), and taking the driver's seat turns it off | not modelled |
@@ -1376,28 +1376,34 @@ combined-cycle plant gives for it.
 answer alarms; staff.json's `audio.rooms` lists the places beyond the process zones where it is banned, starting with
 the control room. And a device taken while the player is off duty is held until the end of their next duty.
 
+**Answered (the user, 2026-11-07):** the engine remembers which locker holds the phone, and it is taken again only
+there. A device taken off duty is held until the end of the next duty the player actually works: a duty of their
+roster they don't work doesn't give it back. The WTP control room joins `audio.rooms`, beside the central control
+room.
+
 **The engine** (both engines bit for bit, behind staff.json's key `audio`; without the key nothing changes. The
 synthetic items of `plant3d-v1.json` and `-v2.json` stay byte for byte. The first train's runs carry the key, so they
 keep every input, event and earlier value, and their digests and snapshots gain the new parts):
 - **`"audio": {"banned": [zones], "ex": [zones], "notice": [min, max], "mask": m, "rooms": [rooms]}`.** `banned`
   (≥ 1) lists the zones where music is an act; `ex` lists the zones where carrying the phone is (each also in
   `banned`). `rooms` (optional, the user, 2026-11-03) lists the rooms (staff.json places' `room`) beyond the zones
-  where music is an act too: the first train's control room. A person is in such a room at a place of it, on a way
+  where music is an act too: the first train's control room and the WTP control room (the user, 2026-11-07). A person is in such a room at a place of it, on a way
   whose two ends are in it, or (a player) at the place they last arrived at. The app sends `arrive` within 1.5 m of a
   place, and anywhere inside a banned room's footprint (the plan box round its places, 1 m out) at the room's
   nearest place, so its middle counts too (the adversarial review found the middle of the control room held none). `notice` is how many whole clock
   minutes (0–600) an observer takes to notice. `mask` is the volume (1–100) from which radio calls are missed. With
   the key, the act kinds are `ppe, permit, unsafe, audio, phone`, in that order, for reactions (`on.unsafe`),
   `put_right` and stops.
-- **A player's person** has `music` (a volume 0–100, 0 off) and `phone` (1 carried, the default; 0 left at a
-  locker; 2 held).
+- **A player's person** has `music` (a volume 0–100, 0 off), `phone` (1 carried, the default; 0 left at a
+  locker; 2 held) and, while the phone is left, the locker that holds it (the user, 2026-11-07).
   - Inputs: `[n, "audio", volume]` and `[n, "phone", "leave" | "take"]` (the app sends it at a locker).
     Leaving the phone turns the music off.
   - Events: `["audio", person, volume, "done" | "refused", reasons]` and `["phone", person, what, …]`, with the
     slot last in a session. The reasons are `no_audio` (no key), `held` and `left`; then for `audio` above 0,
-    `driving` (the person drives a vehicle's run, §21.16); for `phone`, `locker` (the place the player last arrived
-    at is not a locker: the engine checks it since the follow-ups, one place's kind compared; any locker, the engine
-    keeps no record of which one holds the phone). Taking the driver's
+    `driving` (the person drives a vehicle's run, §21.16); for `phone`, `left` (`leave` while the phone is in a
+    locker already) and `locker` (the place the player last arrived at is not a locker, or, for `take` while the
+    phone is left, not the locker that holds it: the user, 2026-11-07; before, any locker would do). A `take` with
+    the phone carried changes nothing at any locker. Taking the driver's
     seat for a run turns a player's music off: `["audio", person, 0, "done", ["driving"]]`, the slot last in a
     session.
   - In free mode the inputs do nothing. An NPC plays no music (a person released becomes an NPC with the music
@@ -1427,11 +1433,15 @@ keep every input, event and earlier value, and their digests and snapshots gain 
   - The kind's `put_right` task follows (music off, phone out of the Ex zone).
   - While the phone is held, `audio` and `phone` inputs are refused (`held`).
   - It comes back when the duty it was taken in ends (event `["returned", person]`). This is judged by the clock, so
-    a jump into the next duty also gives it back. Taken off duty, it is held until the end of their next duty (the
-    user, 2026-11-03; before, it came back at once): the first duty of their roster starting after the stop, and
-    never when the roster has none.
+    a jump into the next duty also gives it back. Taken off duty, it is held until the end of the next duty they
+    actually work (the user, 2026-11-03 and 2026-11-07; at first it came back at once, then at the end of the first
+    duty of their roster after the stop). A duty is worked when it begins for them: the `duty on` of step 1, or a
+    jump landing inside it. A duty of their roster that passes inside a jump's gap (no `duty` events, §17.6) or while
+    they are `absent` was not worked and doesn't return it; with no duty in their roster it is never returned. Until
+    the duty begins, the clock it comes back at is 2⁶² (`HELD_NEXT`); then it is the duty's end.
 - **The digest** gains a part with the key: music, phone and the missed-call flags per person, the observers'
-  times per act, and the streams. The acts' list per person grows to the five kinds. The snapshot gains `audio`:
+  times per act, and the streams. A phone left at a locker is 3 + the locker's place index in the phone's list
+  (the user, 2026-11-07), so the locker is in the digest without a list of its own. The acts' list per person grows to the five kinds. The snapshot gains `audio`:
   {person: [music, phone]} for anyone not at the default.
 
 **What it does to hearing (the app; not in the vectors).** The masking is a level the app computes from the volume:
@@ -1475,6 +1485,12 @@ and limit, and a reaction or put-right of the new kinds without the key. Its run
   duty held to the end of the next duty; music turned off at the wheel and refused while driving; a radio call
   missed, and the phone refused away from a locker. The earlier runs that leave the phone now arrive at a locker
   first, and those with music at the mask gain the missed radio calls.
+- after the second follow-ups (the user, 2026-11-07; appended): the phone taken only at the locker holding it
+  (refused at another, and left a second time refused); a device taken off duty held through a jump past the
+  whole next duty, then to the end of the duty after, which a jump lands inside. Three earlier runs keep their
+  events and change only their digests: the phone left at a locker (run 2) and the session (run 6) carry the
+  locker while the phone is in it, and the device taken off duty (run 10) is held at 2⁶² until its next duty
+  begins.
 
 **Budgets.** The engine's cost is per player and per act (a few comparisons a step; draws only when an observer
 meets an act). Music playback is one streamed Vorbis player (no new pipelines, ≤ 2 MB PSS). The package grows by

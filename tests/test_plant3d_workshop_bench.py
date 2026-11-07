@@ -49,6 +49,177 @@ class BenchVectors(unittest.TestCase):
             self.assertIn(name[:-5], parts)
 
 
+class Turbine(unittest.TestCase):
+    """The steam turbine's bench (WORKSHOP.md §6.3, K4b): made from the plant's own st model, its steam path's pressure
+    and temperature falling stage by stage, the plant's start-up sequence and trips."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.b = P.check_dir(DATA)
+        cls.bench = cls.b.bench['steam_turbine']
+        with open(os.path.join(DATA, 'model', 'st.json'), encoding='utf-8') as f:
+            cls.st = json.load(f)
+        with open(os.path.join(DATA, 'workshop', 'bench', 'steam_turbine.json'), encoding='utf-8') as f:
+            cls.file = json.load(f)
+
+    def go(self, e, seconds):
+        for _ in range(round(seconds * 10)):
+            e.step()
+
+    def test_the_sequence_is_the_plants(self):
+        """The machine, its trips and the taken values are the plant's own, renamed: none written by hand."""
+        plant = {m['id']: m for m in self.st['machines']}['st_start']
+        mine = {m['id']: m for m in self.file['machines']}['turbine']
+        self.assertEqual([s['id'] for s in mine['states']], [s['id'] for s in plant['states']])
+        self.assertEqual(mine['commands'], plant['commands'])
+        for a, b in zip(mine['states'], plant['states']):
+            self.assertEqual(a.get('say'), b.get('say'))
+            self.assertEqual([c for c, _ in a.get('next', [])], [c.replace('st_', '', 1) for c, _ in b.get('next', [])])
+        pv = {n: d for n, d in self.st['values']}
+        mv = {n: d for n, d in self.file['values']}
+        for n in ('st_speed', 'st_acc0', 'st_soak_done', 'st_vib_base', 'st_os'):
+            want = json.loads(json.dumps({k: v for k, v in pv[n].items() if k != 'kks'}).replace('"st_', '"'))
+            self.assertEqual(mv[n[3:]], want, n)
+        trips = {t['id'] for t in self.file['trips']}
+        self.assertEqual(trips, {'trip_lube', 'trip_os', 'trip_axial', 'trip_vib', 'trip_steam_t', 'trip_breaker'})
+
+    def test_a_change_to_the_plant_is_a_change_to_the_bench(self):
+        sys.path.insert(0, os.path.join(REPO, 'tools', 'plant3d'))
+        from workshop import steam_turbine as W
+        st = json.loads(json.dumps(self.st))
+        for v in st['values']:
+            if v[0] == 'st_soak_done':
+                v[1]['cmp'][2] = 240
+        made = W.bench([st])
+        self.assertEqual({n: d for n, d in made['values']}['soak_done']['cmp'][2], 240)
+        self.assertEqual(made['bind'], self.file['bind'])
+
+    def test_the_tool_refuses(self):
+        sys.path.insert(0, os.path.join(REPO, 'tools', 'plant3d'))
+        from workshop import steam_turbine as W, make_bench as M
+        src = W.bench_source()
+        src['before'] = [v for v in src['before'] if v[0] != 'lube_p']
+        with self.assertRaisesRegex(ValueError, 'neither taken nor defined by the bench: lube_p'):
+            M.make(src, [self.st])
+        src = W.bench_source()
+        del src['at']['30MAD10CG001']
+        with self.assertRaisesRegex(ValueError, '30MAD10CG001 has no place on the bench'):
+            M.make(src, [self.st])
+        src = W.bench_source()
+        src['before'].append(['speed', {'state': 0}])
+        with self.assertRaisesRegex(ValueError, 'speed is taken from the plant and defined by the bench too'):
+            M.make(src, [self.st])
+        src = W.bench_source()
+        src['trips'] = src['trips'] + ['st_trip_none']
+        with self.assertRaisesRegex(ValueError, 'no trip'):
+            M.make(src, [self.st])
+
+    def test_rolled_by_the_plants_sequence(self):
+        e = self.bench.engine()
+        e.op('rotor', 'roll')
+        self.go(e, 90)
+        self.assertEqual(e.v('turbine_state'), 2)                 # soaking at 800 rpm
+        self.assertAlmostEqual(e.v('rpm'), 800, delta=5)
+        self.assertGreater(e.v('stop_pos'), 0.99)                 # the stop valves wide open, the control valves throttling
+        self.assertLess(e.v('ctrl_pos'), 0.1)
+
+    def test_pressure_and_temperature_fall_along_the_path(self):
+        e = self.bench.engine()
+        e.op('rotor', 'roll')
+        self.go(e, 120)
+        ps = [e.v('p_first')] + [e.v(f'p{k}') for k in range(1, 9)]
+        ts = [e.v('inlet_t')] + [e.v(f't{k}') for k in range(1, 9)]
+        self.assertLess(e.v('p_first'), e.v('p_supply'))         # the control valves throttle
+        for a, b in zip(ps, ps[1:]):
+            self.assertGreater(a, b)
+        for a, b in zip(ts, ts[1:]):
+            self.assertGreater(a, b)
+        # every stage's pressure in proportion to the flow: 90 bar after the control valves and 25 bar at the exhaust
+        # (the cold reheat) at the full 70 kg/s
+        f = e.v('flow') / 70
+        self.assertAlmostEqual(e.v('p_first'), 90 * f, 6)
+        self.assertAlmostEqual(e.v('p8'), 25 * f, 6)
+        # the steam pressure dropped under a running turbine: no stage above the first while the flow follows
+        e.op('valve_l', 'set', 40)
+        for _ in range(40):
+            e.step()
+            self.assertLessEqual(max(e.v(f'p{k}') for k in range(1, 9)), e.v('p_first') + 1e-9)
+
+    def test_tripped_on_load_opens_the_breaker(self):
+        """A trip while on the grid: the plant's protection opens the breaker too, and the rotor coasts down."""
+        e = self.bench.engine()
+        e.op('rotor', 'roll')
+        st = e.m.index
+        for _ in range(9000):
+            e.step()
+            if e.v('spd95') >= 0.5 and e.v('exc_cmd') < 0.5:
+                e.op('bench', 'start')
+                e.op('pedestal_f', 'set', 0.002)
+            if e.v('turbine_state') == 4 and e.step_no % 5 == 0:
+                e.op('bench', 'close_breaker')
+            if e.v('brk_cmd') >= 0.5:
+                break
+        self.assertEqual(e.v('brk_cmd'), 1, 'synchronised')
+        e.op('pedestal_f', 'set', 0)
+        self.go(e, 20)
+        e.fault('rub')
+        self.go(e, 4)
+        self.assertEqual(e.v('trip_vib_latched'), 1)
+        self.assertEqual(e.v('brk_cmd'), 0)
+        self.go(e, 30)
+        self.assertLess(e.v('rpm'), 2950)
+        # rolled again without the breaker's trip reset: refused (a breaker trip left latched would not open the
+        # breaker at the next trip on load)
+        e.repair('rub')
+        self.go(e, 400)
+        e.op('brg_f_upper', 'reset', None, 'trip_vib')
+        self.go(e, 1)
+        self.assertEqual(e.v('turbine_state'), 0)
+        e.op('rotor', 'roll')
+        self.go(e, 1)
+        self.assertEqual(e.v('turbine_state'), 0, 'Roll refused while the breaker trip is latched')
+        e.op('bench', 'reset', None, 'trip_breaker')
+        self.go(e, 1)
+        e.op('rotor', 'roll')
+        self.go(e, 1)
+        self.assertEqual(e.v('turbine_state'), 1)
+
+    def test_overspeed_by_the_governor(self):
+        e = self.bench.engine()
+        e.op('rotor', 'roll')
+        for _ in range(9000):
+            e.step()
+            if e.v('turbine_state') == 4:
+                break
+        e.fault('governor')
+        self.go(e, 60)
+        self.assertEqual(e.v('trip_os_latched'), 1)
+
+    def test_thrust_wear_trips_and_is_renewed(self):
+        e = self.bench.engine()
+        e.op('rotor', 'roll')
+        self.go(e, 10)
+        e.fault('thrust_wear')
+        self.go(e, 60)
+        self.assertEqual(e.v('trip_axial_latched'), 1)
+        e.repair('thrust_wear')
+        self.go(e, 30)
+        e.op('thrust_upper', 'reset', None, 'trip_axial')
+        self.go(e, 1)
+        self.assertEqual(e.v('trip_axial_latched'), 0)
+
+    def test_tripped_by_a_rub(self):
+        e = self.bench.engine()
+        e.op('rotor', 'roll')
+        self.go(e, 60)
+        e.fault('rub')
+        self.go(e, 4)
+        self.assertEqual(e.v('trip_vib_latched'), 1)
+        self.assertEqual(e.v('turbine_state'), 8)                 # TRIPPED: stop valves closed
+        self.go(e, 1)
+        self.assertLess(e.v('stop_pos'), 0.01)
+
+
 class Transmitter(unittest.TestCase):
     """The transmitter's bench (WORKSHOP.md §6.4) as the sources say it behaves."""
 

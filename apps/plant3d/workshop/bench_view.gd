@@ -6,13 +6,21 @@
 ##             false, its face lit while true), else a tag over it (the terminals' current)
 ##   flow      a flow path's particles: speed and density from the value (its sign the direction), colour from a legend
 ##   heat, pressure   the component's colour from the legend of that name
-## Lamps and sounds are read by the plant's own bindings; the transmitter has none (K4b brings the turbine's sound).
+##   sound     a sound of sounds.json (ui/sound_player.gd's files), its gain and pitch from tables of a value: heard
+##             while the Workshop shows, not while the bench is paused or the plant's sounds were muted (K4b: the
+##             turbine's blade-pass tone rising with its speed)
+## Heat and pressure are shown while their toggle is on (views.heat_on, pressure_on); a component bound to both shows
+## heat while both are. Lamps are not drawn on the bench yet (no kind has one).
 extends RefCounted
 
 const Views = preload("res://workshop/views.gd")
 const LCD_ON := Color(0.70, 0.82, 0.66)         # a lit display's face (the backlight's colour on the grey LCD)
 const LCD_OFF := Color(0.10, 0.11, 0.10)        # a dark one (no loop current: a loop-powered display goes out)
 const FLOW_COLOUR := Color(0.45, 0.75, 1.0)     # a flow without a colour legend
+## A freely turning part is drawn at most this fast (revolutions a second): faster, at 30 frames a second, a row of 34
+## blades seems to stand or turn back (the wagon wheel), and a turbine at 3,000 rpm would turn 1.7 times a frame. Its
+## real speed is on its tag, in the readouts and in its blade-pass tone.
+const MAX_DRAWN_RPS := 0.4
 
 var ws                          # workshop/workshop.gd
 var clock                       # workshop/bench_clock.gd
@@ -22,6 +30,9 @@ var anims: Array = []           # [{at, of, scale, axis, kind, travel}]
 var flows: Array = []           # [{flow, of, speed, legend, by}]
 var ramps: Array = []           # [{at, of, legend}]
 var lits := {}                  # component -> its `lit` value (a display's face)
+var sounds: Array = []          # [{gain, pitch, players: [[AudioStreamPlayer, layer]]}]
+var muted := false              # the plant's sounds were muted when the Workshop opened
+var shown_ramps := {}           # component -> the ramp entry it shows now (tests)
 
 
 ## The machine and its bench model are loaded: the bindings found, the labels made where they show.
@@ -31,6 +42,7 @@ func setup(machine: Node3D) -> void:
 	flows.clear()
 	ramps.clear()
 	lits.clear()
+	sounds.clear()
 	if clock == null or not clock.loaded():
 		return
 	var moving := {}
@@ -60,6 +72,24 @@ func setup(machine: Node3D) -> void:
 			var k := "pressure" if x.has("pressure") else "heat"
 			if ws.comps.has(x.at):
 				ramps.append({"at": x.at, "of": x[k], "legend": k})
+		elif x.has("sound"):
+			var u = ws.get("ui")   # (null in the gallery's stand-in)
+			var sp = u.sounds if u != null else null
+			var players: Array = []
+			if sp != null and sp.available():
+				var s: Dictionary = sp.index.get(x.sound, {})
+				for layer in s.get("layers", []):
+					var st: AudioStream = sp._stream(layer["file"], s.get("loop", true))
+					if st == null or not s.get("loop", true):
+						continue
+					var pl := AudioStreamPlayer.new()
+					pl.bus = sp.PLANT_BUS   # (masked under the phone's music as the plant's sounds are)
+					pl.name = "bench_sound_%s_%s" % [x.sound, layer["layer"]]
+					pl.stream = st
+					pl.volume_db = -80.0
+					machine.add_child(pl)
+					players.append([pl, layer])
+			sounds.append({"id": x.sound, "gain": x.get("gain", 1.0), "pitch": x.get("pitch", 1.0), "players": players})
 
 
 ## A label for a component's shows: on the face of its box that looks away from the machine's centre (its thinnest
@@ -112,8 +142,12 @@ func draw(dt: float) -> void:
 		elif a.kind == "rotate":
 			if a.travel != 0.0:     # turned through travel radians for 0 -> 1 (a stem, a damper)
 				t.basis = t.basis * Basis(a.axis, a.travel * v)
-			else:                   # turns freely: the value × scale is its speed in revolutions a second
-				a["angle"] = fmod(float(a.get("angle", 0.0)) + TAU * v * dt, TAU)
+			else:                   # turns freely: the value × scale is its speed in revolutions a second, drawn at
+									# most MAX_DRAWN_RPS
+				# (dt is bench time: the cap is per second of the screen's, whatever the bench's speed)
+				var spd: float = clock.speed if "speed" in clock else 1.0
+				var rps := signf(v) * minf(absf(v), MAX_DRAWN_RPS / maxf(spd, 0.01))
+				a["angle"] = fmod(float(a.get("angle", 0.0)) + TAU * rps * dt, TAU)
 				t.basis = t.basis * Basis(a.axis, a.angle)
 		n.transform = t
 	for e in labels:
@@ -139,10 +173,60 @@ func draw(dt: float) -> void:
 		# drawn only while the machine stands assembled: the path is in the machine's frame, through parts that move
 		# when it is taken apart
 		views.set_flow(f.flow, clock.val(f.of) if ws.assembled() else 0.0, f.speed, dt, c)
+	var shown := shown_ramps    # component -> the ramp it shows now
+	shown.clear()
+	for r in ramps:
+		if (r.legend == "heat" and views.heat_on) or (r.legend == "pressure" and views.pressure_on):
+			if not shown.has(r.at) or r.legend == "heat":
+				shown[r.at] = r
 	for r in ramps:
 		if views.is_xrayed(r.at):
 			continue
-		views.set_ramp(r.at, Views.legend_colour(clock.m.legends.get(r.legend, {}), clock.val(r.of)), 1.0)
+		if shown.get(r.at) == r:
+			views.set_ramp(r.at, Views.legend_colour(clock.m.legends.get(r.legend, {}), clock.val(r.of)), 1.0)
+		elif not shown.has(r.at) and not lits.has(r.at):
+			views.set_ramp(r.at, Color.BLACK, 0.0)
+	for s in sounds:
+		var g := level(s.gain)
+		var p := level(s.pitch)
+		var on: bool = g > 0.001 and not muted and not clock.paused
+		for pp in s.players:
+			var pl: AudioStreamPlayer = pp[0]
+			if on and not pl.playing:
+				pl.play()
+			elif not on and pl.playing:
+				pl.stop()
+			pl.volume_db = linear_to_db(maxf(g, 1e-5))
+			if pp[1].get("pitch", true):
+				pl.pitch_scale = clampf(p, 0.05, 4.0)
+
+
+## A sound binding's gain or pitch now: a table of a value, or a number.
+func level(spec) -> float:
+	if typeof(spec) == TYPE_DICTIONARY:
+		var t: Array = spec.table   # (the key as a property: table is also a part of the kit, not named here)
+		var x: float = clock.val(spec["of"])
+		if x <= float(t[0][0]):
+			return float(t[0][1])
+		for i in range(1, t.size()):
+			if x <= float(t[i][0]):
+				var a: Array = t[i - 1]
+				var b: Array = t[i]
+				return lerpf(float(a[1]), float(b[1]), (x - float(a[0])) / maxf(float(b[0]) - float(a[0]), 1e-12))
+		return float(t[-1][1])
+	return float(spec)
+
+
+## The legend the Run panel shows: of the colours drawn now (heat first), "" when none.
+func legend_shown() -> String:
+	var kinds := {}
+	for r in ramps:
+		kinds[r.legend] = true
+	if views.heat_on and kinds.has("heat"):
+		return "heat"
+	if views.pressure_on and kinds.has("pressure"):
+		return "pressure"
+	return ""
 
 
 ## The labels' text in the machine's first frame (so their pipelines compile with it, §7.1).

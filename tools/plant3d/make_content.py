@@ -150,7 +150,9 @@ def build():
     for w in WORKSHOP:
         d = w.data()
         files[f'workshop/{d["part"]}.json'] = d
-        if hasattr(w, 'bench'):         # its bench model (WORKSHOP.md §6)
+        if hasattr(w, 'bench_source'):  # its bench made from the plant's own content (WORKSHOP.md §6.3)
+            files[f'workshop/bench/{d["part"]}.json'] = w.bench([m.file() for m in models])
+        elif hasattr(w, 'bench'):       # its bench model (WORKSHOP.md §6)
             files[f'workshop/bench/{d["part"]}.json'] = w.bench()
     return {k: dump(v) for k, v in sorted(files.items())}
 
