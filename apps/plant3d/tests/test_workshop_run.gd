@@ -172,6 +172,24 @@ func _turbine(tree: SceneTree, ws) -> void:
 	for n in ["run_turbine_roll", "run_turbine_stop", "set_p_supply", "set_t_set", "set_bias"]:
 		check(rp.find_child(n, true, false) != null, "the turbine's Run panel has %s" % n)
 	check(rp.legend_box.find_child("legend_bar", true, false) != null, "and the colours' legend")
+	# a Roll given while the bench is paused (not yet stepped) already counts as running: nothing is opened meanwhile
+	c.paused = true
+	ws.run_command("rotor", "roll")
+	check(c.machine_state("turbine") == "standstill" and ws.bench_running(), "a Roll given while paused counts as running")
+	ws.note = ""
+	ws.set_slider(0.5)
+	check(ws.s == 0.0 and ws.note == ws.RUNNING_WHY, "and the slider is refused meanwhile: %s" % ws.note)
+	check(not ws.start_guide("disassemble"), "and the steps")
+	c.paused = false
+	ws.restart_bench()
+	check(not ws.bench_running(), "Restart the bench: at rest again")
+	# laid out to be assembled, it doesn't roll: its loose parts are apart (only the lagging may be off)
+	check(ws.start_guide("assemble", "pile"), "the turbine laid out in a pile")
+	ws.run_command("rotor", "roll")
+	_go(ws, 0.3)
+	check(ws.run_note != "" and c.machine_state("turbine") == "standstill", "Roll refused with its parts loose: %s" % ws.run_note)
+	ws.reset()
+	ws.run_note = ""
 	# rolled: the rotor turns the way the blades are made for (right-handed about the steam's way back, +y)
 	c.speed = 1.0
 	var r0: Basis = (ws.comps["rotor"] as Node3D).transform.basis
@@ -456,6 +474,24 @@ func _running(ws) -> void:
 	ws.run_command("terminal_block", "start")
 	_go(ws, 0.3)
 	check(sub != "" and other != "" and ws.root_id == sub and ws.bench_running(), "%s taken apart alone, running" % sub)
+	# its bolts backed out a little before Start: they are not backed out farther while it runs
+	ws.set_slider(0.0)
+	ws.run_command("terminal_block", "stop")
+	_go(ws, 0.3)
+	ws.set_only_selected(false)
+	ws.set_slider(0.01)
+	ws.run_command("terminal_block", "start")
+	_go(ws, 0.3)
+	ws.set_slider(0.1)
+	check(ws.s == 0.01, "running, a part already a little out is not taken farther: %s" % ws.s)
+	ws.set_slider(0.0)
+	ws.run_command("terminal_block", "stop")
+	_go(ws, 0.3)
+	ws.select(sub)
+	ws.set_only_selected(true)
+	ws.set_slider(1.0)
+	ws.run_command("terminal_block", "start")
+	_go(ws, 0.3)
 	var home0 := _home_set(ws)
 	ws.select(other)
 	check(_home_set(ws).size() >= home0.size() and home0.keys().all(func(k): return _home_set(ws).has(k)),

@@ -705,7 +705,7 @@ addition (both engines, vectors) made in K6.
   it come to rest before opening it up"; once it is stopped and at rest (the turbine's standstill, below 1 % speed on
   its turning gear; the transmitter's loop supply off) they are allowed again. Putting it back together, Reset, hiding
   and the views stay allowed. Starting a machine taken apart is still decided by `run_exploded` (§4.7). The walk
-  (§8) therefore takes the machine apart first and starts it once it stands assembled again, at 120 s.
+  (§8) therefore takes the machine apart first and starts it once it stands assembled again, at 118 s.
 
 ## 7. Shaders and cut faces
 
@@ -770,7 +770,7 @@ the Workshop. The Workshop's own, on the Note 9 (`lean+vis`, release build, cool
 | Workshop button to the first frame of the machine | ≤ 2.0 s with its pipelines compiled; ≤ 5.0 s with an empty pipeline cache (the first entry after an install) |
 | Back to the plant's first frame | ≤ 1.0 s |
 | After the first frame of the machine | no frame over 100 ms while orbiting, exploding, X-raying, cutting, sectioning and running; ≥ 95 % of frames at ≥ 30 fps over the Workshop walk |
-| The Workshop walk (scripted, `app/workshop_walk.gd`) | 3 minutes on a fixed camera orbit: assembled, exploded 0 → 1 → 0, handled, the guided steps, then (the machine assembled again, at 120 s) Start, X-ray, cutaway, a section sweep, the faults, Stop (a running machine is not taken apart: the polish after K4b; the turbine's walk is measured with `bench_speed=20`, so that its 300 s soak still lets it reach full speed in the 35 s before the faults) |
+| The Workshop walk (scripted, `app/workshop_walk.gd`) | 3 minutes on a fixed camera orbit: assembled, exploded 0 → 1 → 0, handled, the guided steps, then (the machine assembled again, at 118 s) Start, X-ray, cutaway, a section sweep, the faults, Stop (a running machine is not taken apart: the polish after K4b; the turbine's walk is measured with `bench_speed=20`, so that its 300 s soak still lets it reach full speed in the 37 s before the faults) |
 | Peak PSS | ≤ 1.5 GB with the plant held behind it |
 | One kind's scene | ≤ 120,000 triangles (all components, insides included); ≤ 300 draw calls in any view of the walk, `ws_cap`'s second pass included (it is drawn only while a cut or section is on, on the components the cut reaches) (the plant's busiest measured 479 at p95 within the frame rules, 0041) |
 | The bench step | ≤ 0.3 ms on the Note 9 (a bench model is a fraction of the plant's 1.4 ms) |

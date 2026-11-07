@@ -1079,6 +1079,10 @@ func bench_running() -> bool:
 	for mc in bench.m.machines:
 		if bench.machine_state(String(mc.id)) != String(mc.init):
 			return true
+	if bench.e != null:   # a Start given but not yet stepped (the bench paused, or between two steps) counts too
+		for it in bench.e.queue:
+			if it.size() >= 3 and it[0] == "op" and _starts(String(it[1]), String(it[2])):
+				return true
 	if not bench.m.machines.is_empty():
 		return false
 	for a in bench_view.anims:
@@ -1086,15 +1090,22 @@ func bench_running() -> bool:
 			return true
 	return false
 
-## Whether the slider at `new_s` with `new_root` as its root takes apart a part that stands at home now.
+## Whether the slider at `new_s` with `new_root` as its root moves any part or fastener farther from home than it
+## stands now (towards assembled is not taking apart).
 func _takes_apart(new_s: float, new_root: String) -> bool:
 	var off0 := Explode.offsets(spec, s, root_id)
 	var f0 := Explode.fastener_offsets(spec, s, root_id)
 	var off1 := Explode.offsets(spec, new_s, new_root)
 	var f1 := Explode.fastener_offsets(spec, new_s, new_root)
-	for id in comps.keys() + groups.keys():
-		if _at_home(id, off0, f0) and not _at_home(id, off1, f1):
+	for id in comps:
+		if (off1.get(id, Vector3.ZERO) as Vector3).length() > (off0.get(id, Vector3.ZERO) as Vector3).length() + 1e-6:
 			return true
+	for g in groups:
+		var a: Array = f0.get(g, [])
+		var b: Array = f1.get(g, [])
+		for i in b.size():
+			if (b[i] as Vector3).length() > (a[i] as Vector3 if i < a.size() else Vector3.ZERO).length() + 1e-6:
+				return true
 	return false
 
 ## Whether every part stands at home (nothing taken apart, handled, hidden or in the steps).
@@ -1107,6 +1118,10 @@ func assembled() -> bool:
 ## allows (§4.7).
 func why_no_run() -> String:
 	var r = words.get("views", {}).get("run_exploded", null)
+	if guide.on() and not guide.loose.is_empty() and not (r is bool and r):   # (the steps' loose parts are apart too)
+		for id in guide.loose:
+			if not (r is Dictionary and id in r.get("allowed", [])):
+				return String(r.get("why", "")) if r is Dictionary else "Put it together first: it runs assembled."
 	if r is bool and r:
 		return ""
 	var out := []
