@@ -1144,10 +1144,11 @@ func warm_up(parent: Node) -> void:
 		return
 	_warm = Node3D.new()
 	_warm.name = "workshop_warm"
+	var pieces: Array = []      # entering the plant's world one a frame (below)
 	var wmat := ShaderMaterial.new()   # its own: the Compatibility path below sets its alpha, never the ghost's
 	wmat.shader = XRAY
-	_warm.add_child(_xray_pair(mesh, wmat)[0])
-	_warm.add_child(_xray_pair(mesh, wmat)[1])
+	pieces.append(_xray_pair(mesh, wmat)[0])
+	pieces.append(_xray_pair(mesh, wmat)[1])
 	# K3's variants (§7.1): ws_lit and ws_cap, plain and instanced, discarding every fragment (a plane that cuts
 	# everything: their pipelines, never a pixel), and ws_flow's particles collapsed (density 0)
 	for sh in [Views.LIT, Views.CAP]:
@@ -1156,7 +1157,7 @@ func warm_up(parent: Node) -> void:
 		m.set_shader_parameter("ws_plane0", Vector4(0, 0, 0, -1))
 		m.set_shader_parameter("ws_cut_on", 1.0)
 		for n in _xray_pair(mesh, m):
-			_warm.add_child(n)
+			pieces.append(n)
 	var fm := ShaderMaterial.new()
 	fm.shader = Views.FLOW
 	fm.set_shader_parameter("density", 0.0)
@@ -1169,10 +1170,22 @@ func warm_up(parent: Node) -> void:
 	fmi.multimesh = fmm
 	fmi.material_override = fm
 	fmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_warm.add_child(fmi)
+	pieces.append(fmi)
 	_warm.position = Vector3(0, -1000, 0)
 	_warm.visible = false
 	parent.add_child(_warm)
+	# one piece a frame: each new shader's surfaces compile in the frame its piece enters the world (on the Note 9 all
+	# eight in one frame made a 715 ms plant frame, 4.6 s after the start; K4b's measurement)
+	for n in pieces:
+		await _warm_wait()
+		if not is_inside_tree() or _warm == null or not is_instance_valid(_warm):
+			for x in pieces:
+				if is_instance_valid(x) and not (x as Node).is_inside_tree():
+					(x as Node).free()
+			return
+		_warm.add_child(n)
+		warm_up_frames += 1
+		await get_tree().process_frame
 	_warm_kinds()   # (on its own: `warmed` is the ghost's warm-up, `kinds_warmed` this one's)
 	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
 		# drawn only when the plant's world is drawn: not while the Workshop (or the screens) has its 3D off, nor
@@ -1328,6 +1341,7 @@ var warm_on_thread := false        # the last kind was instanced on a worker thr
 const WARM_PER_FRAME := 12         # the most pieces that enter the plant's world in one frame
 var warm_slice_us_max := 0         # the longest slice the warm-up took in one frame, µs (tests)
 var warm_most_added := 0           # the most pieces it added in one frame (tests)
+var warm_up_frames := 0            # the frames the ghost's and K3's warm pieces entered in, one each (tests)
 var warm_pieces := 0               # the most pieces one kind had (tests)
 var warm_batches := 0              # the frames it added pieces in, all kinds (tests)
 var _warm_mc: Node = null          # the kind being made, while outside the tree
