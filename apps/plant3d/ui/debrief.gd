@@ -542,6 +542,15 @@ static func drive_text(sm, ev: Array) -> String:
 
 
 ## An unsafe act's start or end, or work stopped (PLANT3D §16.7, §17.11), in words.
+## A room's words (staff.json places' `room`): "control room", "WTP control room", "locker room" (REALISM.md §8.5:
+## the rooms where music is banned, the lockers holding a phone).
+const ROOM_WORDS := {"lockers": "locker room", "wtp_lockers": "WTP locker room", "wtp_control": "WTP control room"}
+
+
+static func room_words(room: String) -> String:
+	return ROOM_WORDS.get(room, room.replace("_", " "))
+
+
 static func safety_text(sm, ev: Array) -> String:
 	var who := func(pid) -> String:
 		return sm.people[sm.person_ix[pid]]["call"] if sm != null and sm.person_ix.has(pid) else str(pid)
@@ -550,7 +559,7 @@ static func safety_text(sm, ev: Array) -> String:
 			"ppe": return "without all the PPE of %s" % str(det)
 			"permit": return "working before the permit of %s was accepted" % str(det)
 			"audio": return "listening to music in %s" % (str(det) if sm == null or sm.zone_ix.has(det)
-					else "the " + str(det).replace("_", " "))        # (a banned room: the control room)
+					else "the " + room_words(str(det)))        # (a banned room: the control room)
 			"phone": return "carrying a phone in the Ex zone %s" % str(det)
 			_: return "a shortcut" + (" on %s" % str(det) if det != null else "")
 	match ev[1]:

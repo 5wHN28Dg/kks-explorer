@@ -1241,7 +1241,8 @@ class FirstTrainStaff(unittest.TestCase):
         # are in none), no Ex zone yet; the supervisors notice music as the HSE officer does, with stop-work authority
         self.assertEqual(st.audio['banned'], set(range(len(st.zones))))
         self.assertEqual(st.audio['ex'], set())
-        self.assertEqual(st.audio['rooms'], {'control_room'})     # (the user, 2026-11-03: the CCR answers alarms)
+        # (the user, 2026-11-03: the CCR answers alarms; 2026-11-07: the WTP control room too)
+        self.assertEqual(st.audio['rooms'], {'control_room', 'wtp_control'})
         self.assertEqual(st.kinds, ('ppe', 'permit', 'unsafe', 'audio', 'phone'))
         music = [r for r in st.reactions if r['on'] == {'unsafe': 'audio'}]
         self.assertEqual([r['roles'] for r in music], [['shift_sup', 'maint_sup']])

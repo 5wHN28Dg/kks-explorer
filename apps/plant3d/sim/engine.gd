@@ -194,6 +194,8 @@ var sp_told := PackedInt32Array()   # the act kinds a missed call reported: bit 
 var sp_watch: Array = []            # per person: {Vector2i(reaction, kind index): {observer: the step they notice}}
 var sp_aud := PackedInt64Array()    # each person's noticing stream (§2.1: purpose `audio`, their id)
 var sp_held_to := PackedInt64Array() # while the phone is held: the clock it is given back (its duty's end), else -1
+                                    # (staff.gd HELD_NEXT: taken off duty, until the next duty worked begins)
+var sp_locker := PackedInt32Array() # the locker (place index) holding the phone left, else -1
 var sp_ride: Array = []             # a ride (§20.4): [staff lift, a, b, 0 waiting / 1 aboard, wait start, destination] or []
 var sp_stairs: Array = []           # the stairs walked instead of a ride: [destination, place, …, b], or empty
 var sp_lin := PackedInt64Array()    # the step of a person's last lift input
@@ -2547,7 +2549,12 @@ func _digest_staff():
 						due.append(w[qi])
 					rows.append([wk.x, wk.y - 3, obs, due])
 			watch.append(rows)
-		tree.append([sp_music, sp_phone, sp_told, watch, sp_aud, sp_held_to])
+		# (the phone's state; one left at a locker: 3 + the locker's place index, the user 2026-11-07)
+		var phone := PackedInt32Array(sp_phone)
+		for pi in phone.size():
+			if phone[pi] == 0:
+				phone[pi] = 3 + sp_locker[pi]
+		tree.append([sp_music, phone, sp_told, watch, sp_aud, sp_held_to])
 	return tree
 
 
@@ -2594,7 +2601,7 @@ func clone():
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_wait_on", "sp_worn",
-			"sp_zin", "sp_music", "sp_phone", "sp_told", "sp_aud", "sp_held_to", "lift_quiet", "sp_lin", "lift_calls", "lift_dir", "lift_dwell", "sp_aboard", "sp_offday"]:
+			"sp_zin", "sp_music", "sp_phone", "sp_told", "sp_aud", "sp_held_to", "sp_locker", "lift_quiet", "sp_lin", "lift_calls", "lift_dir", "lift_dwell", "sp_aboard", "sp_offday"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",
 			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_kept",

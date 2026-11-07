@@ -420,7 +420,28 @@ func _followups(ui, e, me: int, sup_id: String, sup_call: String) -> Array:
 	if not ui.phone.refusal(["locker"]).contains("locker") or not ui.phone.refusal(["driving"]).contains("wheel"):
 		p.append("the phone's words for locker and driving refusals: %s / %s" % [ui.phone.refusal(["locker"]),
 				ui.phone.refusal(["driving"])])
-	# held: to the end of this shift on duty, of the next one taken off duty, for good with no next duty
+	# the phone left: the engine's locker named (the user, 2026-11-07: taken only there), the take button only there
+	var lk: int = sm.pix["locker_3"]
+	var phone_was: int = e.sp_phone[me]
+	e.sp_phone[me] = Phone.LEFT
+	e.sp_locker[me] = lk
+	if ui.phone.locker_words() != "locker 3 in the locker room" \
+			or not ui.phone._state_words(Phone.LEFT).contains("locker 3 in the locker room"):
+		p.append("the phone's locker in words: %s / %s" % [ui.phone.locker_words(), ui.phone._state_words(Phone.LEFT)])
+	var pos_was: int = e.sp_pos[me]
+	for at in [lk, sm.pix["locker_4"]]:
+		e.sp_pos[me] = at
+		var box := VBoxContainer.new()
+		ui.phone.build(box)
+		var take_shown := box.find_child("phone_take", true, false) != null
+		if take_shown != (at == lk) or ui.phone.at_its_locker() != (at == lk):
+			p.append("at %s the take button is %s" % [sm.places[at]["id"], "shown" if take_shown else "not shown"])
+		box.free()
+	e.sp_pos[me] = pos_was
+	e.sp_phone[me] = phone_was
+	e.sp_locker[me] = -1
+	# held: to the end of this shift on duty, of the next one taken off duty (HELD_NEXT before it begins: the next
+	# one worked, the user 2026-11-07)
 	var held_was: int = e.sp_held_to[me]
 	var on_was: int = e.sp_on[me]
 	var duty_was: Array = e.sp_duty[me]
@@ -436,7 +457,8 @@ func _followups(ui, e, me: int, sup_id: String, sup_call: String) -> Array:
 	e.sp_held_to[me] = held_was
 	e.sp_on[me] = on_was
 	e.sp_duty[me] = duty_was
-	if w1 != "until the end of your shift" or w2 != "until the end of your next shift" or w3 != "for the rest of the run":
+	if w1 != "until the end of your shift" or w2 != "until the end of your next shift" \
+			or w3 != "until the end of your next shift":
 		p.append("held until: %s / %s / %s" % [w1, w2, w3])
 	# the control room (audio.rooms): the act's words name the room
 	var ct := Debrief.safety_text(sm, [0, "unsafe", me_id, "audio", "control_room"])
@@ -444,8 +466,14 @@ func _followups(ui, e, me: int, sup_id: String, sup_call: String) -> Array:
 		p.append("the debrief's words for music in the control room: %s" % ct)
 	if not CrewPanelScript.act_text(sm, 3, ["control_room"]).contains("music in the control room"):
 		p.append("the crew panel's words for music in the control room: %s" % CrewPanelScript.act_text(sm, 3, ["control_room"]))
-	if sm.audio_rooms != ["control_room"]:
-		p.append("the first train bans music in the control room: %s" % str(sm.audio_rooms))
+	if sm.audio_rooms != ["control_room", "wtp_control"]:
+		p.append("the first train bans music in the control room and the WTP's: %s" % str(sm.audio_rooms))
+	# the WTP control room (the user, 2026-11-07): its words, and its footprint (its places at x 331-338, y 67-72)
+	var wt := Debrief.safety_text(sm, [0, "unsafe", me_id, "audio", "wtp_control"])
+	if not wt.contains("listening to music in the WTP control room"):
+		p.append("the debrief's words for music in the WTP control room: %s" % wt)
+	if ui.room_at(sm, Vector3(334.5, 69.5, 0)) != 1:
+		p.append("the WTP control room's footprint: %d in its middle" % ui.room_at(sm, Vector3(334.5, 69.5, 0)))
 	# anywhere in the control room, 7 m from its places, the trainee is at its nearest place (the adversarial review:
 	# the middle of the room held no place, so music there was no act)
 	if ui.room_at(sm, Vector3(-19, 0, 0)) != 0 or ui.room_at(sm, Vector3(0, 0, 0)) != -1:
@@ -511,7 +539,8 @@ func _saved_audio(ui, e) -> Array:
 	if cap.get("sp_aud", []).is_empty() or cap.get("sp_watch", []).is_empty():
 		return ["the first train's run has no noticing streams or observers to save"]
 	var bad := []
-	for k in [["sp_music", 101], ["sp_music", -1], ["sp_phone", 3], ["sp_told", 4], ["sp_held_to", -2], ["sp_aud", 0]]:
+	for k in [["sp_music", 101], ["sp_music", -1], ["sp_phone", 3], ["sp_told", 4], ["sp_held_to", -2], ["sp_aud", 0],
+			["sp_locker", 0]]:      # (a locker with the phone carried)
 		var a = cap[k[0]].duplicate()
 		a[0] = k[1]
 		bad.append({k[0]: a})
