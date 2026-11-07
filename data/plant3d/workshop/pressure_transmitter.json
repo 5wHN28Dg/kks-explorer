@@ -25,5 +25,5 @@
   {"place": "drain_vents", "text": ["Wrap the drain/vent valves' threads with sealing tape and screw them into the flange, their openings pointing down."], "sources": ["r3051"]},
   {"place": "manifold", "text": ["Bolt the manifold under the process flange, as its maker's instructions say."], "sources": ["r3051"], "needs": [["process_flange", "The manifold bolts under the process flange: fit the flange first.", "Take the manifold off before the process flange."]]}
  ],
- "views": {"xray_all": ["manifold", "process_flange", "sensor_module", "housing", "cover_front", "cover_back"], "cutaway": {"planes": [{"normal": [0, -1, 0], "offset": 0}, {"normal": [1, 0, 0], "offset": 0}]}, "run_exploded": true}
+ "views": {"xray_all": ["manifold", "process_flange", "sensor_module", "housing", "cover_front", "cover_back"], "cutaway": {"planes": [{"normal": [0, -1, 0], "offset": 0}, {"normal": [1, 0, 0], "offset": 0}]}, "run_exploded": true, "open_running": {"allowed": ["cover_back"], "why": "Switch the loop supply off first. With the loop live only the terminal cover comes off, to measure the loop current or connect a HART communicator (outside a hazardous area); the electronics, the sensor module and the flange come out with the loop dead."}}
 }

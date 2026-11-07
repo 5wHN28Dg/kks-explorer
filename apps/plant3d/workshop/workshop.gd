@@ -544,7 +544,7 @@ func set_slider(v: float) -> void:
 	if guide.on():
 		return   # (the slider waits while the steps are on: Reset or Reassemble all ends them)
 	if bench_running() and _takes_apart(clampf(v, 0.0, 1.0), root_id):
-		note = RUNNING_WHY   # (back towards assembled is allowed: it opens nothing)
+		note = running_why()   # (back towards assembled is allowed: it opens nothing)
 		if panels != null:
 			panels.sync_slider()
 			panels.selected_changed()
@@ -555,7 +555,7 @@ func set_slider(v: float) -> void:
 
 func set_only_selected(on: bool) -> void:
 	if bench_running() and _takes_apart(s, selected if on and comps.has(selected) else ""):
-		note = RUNNING_WHY
+		note = running_why()
 		if panels != null:
 			panels.only_cb.set_pressed_no_signal(only_selected)
 			panels.selected_changed()
@@ -683,8 +683,8 @@ func _ancestor_of(a: String, id: String) -> bool:
 func why_not_free(id: String) -> String:
 	if id == "" or not (comps.has(id) or groups.has(id)):
 		return ""
-	if bench_running():
-		return RUNNING_WHY
+	if bench_running() and not open_running(id):
+		return running_why()
 	if comps.has(id) or (groups.has(id) and not spec.groups[id].get("beyond", false)):   # (a sealed part's
 		#   bolts to another machine are outside its seal: Assembly.rides_of)
 		var at: String = spec.comps[id].parent if comps.has(id) else String(spec.groups[id].host)
@@ -724,7 +724,7 @@ func start_guide(mode: String, from := "exploded") -> bool:
 	if machine == null or words.get("assembly", []).is_empty() or not mode in ["assemble", "disassemble"]:
 		return false
 	if bench_running():   # (assembling starts from the machine taken apart: that opens it up too)
-		note = RUNNING_WHY
+		note = running_why()
 		if panels != null:
 			panels.selected_changed()
 		return false
@@ -1069,9 +1069,21 @@ func refusal(at: String, do: String, reasons: Array) -> String:
 ## at rest, which is its bench machine back in its resting state (the turbine's standstill comes once the rotor is
 ## below 1 % speed, on its turning gear; the transmitter's once the loop supply is off). A kind whose bench has no
 ## machine is at rest when no freely turning piece turns faster than AT_REST of its unit. Hiding and isolating are ways
-## of looking and stay allowed; so do Reassemble all and Reset, which put parts home.
+## of looking and stay allowed; so do Reassemble all and Reset, which put parts home. The kind's data may name
+## components that can be opened while it runs (`views.open_running`, §4.7: the transmitter's terminal cover, with the
+## loop live) and the technician's sentence for the rest; without it nothing is, with RUNNING_WHY.
 const RUNNING_WHY := "Stop the machine and let it come to rest before opening it up."
 const AT_REST := 0.01
+
+## The sentence a refusal while it runs gives: the kind's own, else RUNNING_WHY.
+func running_why() -> String:
+	var o = words.get("views", {}).get("open_running", null)
+	return String(o.get("why", RUNNING_WHY)) if o is Dictionary else RUNNING_WHY
+
+## Whether the kind's data lets component `id` be opened or taken off while the machine runs.
+func open_running(id: String) -> bool:
+	var o = words.get("views", {}).get("open_running", null)
+	return o is Dictionary and comps.has(id) and id in o.get("allowed", [])
 
 func bench_running() -> bool:
 	if bench == null or not bench.loaded():
@@ -1091,14 +1103,15 @@ func bench_running() -> bool:
 	return false
 
 ## Whether the slider at `new_s` with `new_root` as its root moves any part or fastener farther from home than it
-## stands now (towards assembled is not taking apart).
+## stands now (towards assembled is not taking apart), other than the parts the kind's data lets be opened running.
 func _takes_apart(new_s: float, new_root: String) -> bool:
 	var off0 := Explode.offsets(spec, s, root_id)
 	var f0 := Explode.fastener_offsets(spec, s, root_id)
 	var off1 := Explode.offsets(spec, new_s, new_root)
 	var f1 := Explode.fastener_offsets(spec, new_s, new_root)
 	for id in comps:
-		if (off1.get(id, Vector3.ZERO) as Vector3).length() > (off0.get(id, Vector3.ZERO) as Vector3).length() + 1e-6:
+		if not open_running(id) and \
+				(off1.get(id, Vector3.ZERO) as Vector3).length() > (off0.get(id, Vector3.ZERO) as Vector3).length() + 1e-6:
 			return true
 	for g in groups:
 		var a: Array = f0.get(g, [])
@@ -1795,9 +1808,9 @@ static func _seg_dist(p: Vector2, a: Vector2, b: Vector2) -> float:
 func _drag_handle(p: Vector2) -> void:
 	if selected == "" or _drag.is_empty():
 		return
-	if bench_running():   # (started while a part was held: let go of it where it is)
+	if bench_running() and not open_running(selected):   # (started while a part was held: let go of it where it is)
 		_drag = {}
-		note = RUNNING_WHY
+		note = running_why()
 		return
 	if guide.on():
 		_drag_guided(p)

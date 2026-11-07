@@ -178,7 +178,7 @@ func _turbine(tree: SceneTree, ws) -> void:
 	check(c.machine_state("turbine") == "standstill" and ws.bench_running(), "a Roll given while paused counts as running")
 	ws.note = ""
 	ws.set_slider(0.5)
-	check(ws.s == 0.0 and ws.note == ws.RUNNING_WHY, "and the slider is refused meanwhile: %s" % ws.note)
+	check(ws.s == 0.0 and ws.note == ws.running_why(), "and the slider is refused meanwhile: %s" % ws.note)
 	check(not ws.start_guide("disassemble"), "and the steps")
 	c.paused = false
 	ws.restart_bench()
@@ -258,6 +258,8 @@ func _turbine(tree: SceneTree, ws) -> void:
 	# tripped but still coasting down: not opened up until the rotor has come to rest
 	check(c.now("rpm") > 100.0, "the tripped rotor still turns: %.0f rpm" % c.now("rpm"))
 	_refused_running(ws, "the coasting turbine", "lagging_upper")
+	check(ws.running_why().contains("turning gear") and not ws.open_running("lagging_upper"),
+		"a turning machine: nothing is opened, until standstill on its turning gear: %s" % ws.running_why())
 	for i in 600:
 		if c.machine_state("turbine") == "standstill":
 			break
@@ -431,6 +433,33 @@ func _running(ws) -> void:
 	# a running machine is not opened up: taking apart, handling and the guided steps are refused with a technician's
 	# reason, and allowed again once it is stopped and at rest
 	_refused_running(ws, "the powered transmitter", "process_flange")
+	# powered, the terminal cover may come off to measure or connect HART (the kind's data, views.open_running); the
+	# electronics, the sensor module and the flange wait for the loop supply off, with the technician's reason
+	check(ws.running_why() != ws.RUNNING_WHY and ws.running_why().contains("loop supply off"),
+		"the transmitter's own reason: %s" % ws.running_why())
+	check(ws.open_running("cover_back") and not ws.open_running("cover_front") and not ws.open_running("electronics")
+		and not ws.open_running("sensor_module") and not ws.open_running("process_flange") and not ws.open_running("flange_bolts"),
+		"only the terminal cover is opened live")
+	ws.note = ""
+	ws.select("cover_back")
+	check(ws.why_not_free("cover_back") == "" and ws.note == "", "powered, the terminal cover is picked up: %s" % ws.note)
+	ws._drag = {"kind": "move", "axis": Vector3.RIGHT, "a": Vector2.ZERO, "b": Vector2(100, 0), "len": 0.05,
+		"from": Vector2.ZERO, "start": Transform3D.IDENTITY}
+	ws._drag_handle(Vector2(50, 0))
+	check(ws.handled.has("cover_back") and (ws.handled["cover_back"] as Transform3D).origin.length() > 0.01,
+		"and taken off: %s" % str(ws.handled.keys()))
+	ws._drag = {}
+	for id in ["electronics", "cover_front", "process_flange"]:
+		ws.note = ""
+		ws.select(id)
+		ws._drag = {"kind": "move", "axis": Vector3.RIGHT, "a": Vector2.ZERO, "b": Vector2(100, 0), "len": 0.05,
+			"from": Vector2.ZERO, "start": Transform3D.IDENTITY}
+		ws._drag_handle(Vector2(50, 0))
+		check(ws.note == ws.running_why() and not ws.handled.has(id), "powered, %s is refused: %s" % [id, ws.note])
+	ws._drag = {}
+	ws.select("")
+	ws.reset()
+	check(ws.handled.is_empty() and ws.bench_running(), "Reset puts the terminal cover back, still powered")
 	ws.run_command("terminal_block", "stop")
 	_go(ws, 0.3)
 	check(not ws.bench_running(), "stopped, the transmitter is at rest")
@@ -502,7 +531,7 @@ func _running(ws) -> void:
 		"nor does picking nothing take the whole machine apart (root %s)" % ws.root_id)
 	ws.note = ""
 	ws.set_only_selected(false)
-	check(ws.only_selected and ws.root_id != "" and ws.note == ws.RUNNING_WHY,
+	check(ws.only_selected and ws.root_id != "" and ws.note == ws.running_why(),
 		"nor does turning \"Selected subassembly only\" off: %s" % ws.note)
 	ws.set_slider(0.0)
 	check(ws.s == 0.0, "and it is put back together running")
@@ -707,19 +736,19 @@ func _refused_running(ws, what: String, part: String) -> void:
 	var s0: float = ws.s
 	ws.note = ""
 	ws.set_slider(minf(s0 + 0.5, 1.0))
-	check(ws.s == s0 and ws.note == ws.RUNNING_WHY, "%s is not taken apart: %s, %s" % [what, ws.s, ws.note])
+	check(ws.s == s0 and ws.note == ws.running_why(), "%s is not taken apart: %s, %s" % [what, ws.s, ws.note])
 	check(ws.panels == null or is_equal_approx(ws.panels.slider.value, s0), "the slider stays where it was")
 	ws.note = ""
 	ws.select(part)
-	check(ws.why_not_free(part) == ws.RUNNING_WHY and ws.note == ws.RUNNING_WHY,
+	check(ws.why_not_free(part) == ws.running_why() and ws.note == ws.running_why(),
 		"%s: %s is not picked up: %s" % [what, part, ws.why_not_free(part)])
 	ws.set_only_selected(true)
-	check(not ws.only_selected and ws.note == ws.RUNNING_WHY or s0 == 0.0 and ws.only_selected,
+	check(not ws.only_selected and ws.note == ws.running_why() or s0 == 0.0 and ws.only_selected,
 		"%s: its subassembly alone is not taken apart either" % what)
 	ws.set_only_selected(false)
 	ws.select("")
 	ws.note = ""
-	check(not ws.start_guide("disassemble") and not ws.guide.on() and ws.note == ws.RUNNING_WHY,
+	check(not ws.start_guide("disassemble") and not ws.guide.on() and ws.note == ws.running_why(),
 		"%s is not taken apart step by step" % what)
 	check(not ws.start_guide("assemble", "exploded") and not ws.start_guide("assemble", "pile") and not ws.guide.on(),
 		"nor laid out to be assembled")
