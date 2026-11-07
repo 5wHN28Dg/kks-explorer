@@ -80,7 +80,7 @@ func _run() -> void:
 			for id in homes:
 				var n: Node3D = homes[id][0]
 				n.transform = Transform3D(homes[id][1].basis, homes[id][1].origin + off.get(id, Vector3.ZERO))
-			var grown := box.grow(box.size.length() * 0.6 * s)
+			var grown := _drawn_box(m, box) if s > 0.0 else box   # (taken apart: what is drawn, wherever it went)
 			var r := grown.size.length() * 0.5
 			var dir := Vector3(0.8, 0.55, 1.0).normalized()
 			cam.global_position = grown.get_center() + dir * (r / tan(deg_to_rad(20.0)) * 1.1)
@@ -226,3 +226,16 @@ func _homes(n: Node, out: Dictionary) -> void:
 		if c.has_meta("explode"):
 			out[c.get_meta("id")] = [c, c.transform]
 		_homes(c, out)
+
+## The box of every mesh drawn under `m`, where it stands now (`fallback` when there is none).
+func _drawn_box(m: Node3D, fallback: AABB) -> AABB:
+	var out := AABB()
+	var any := false
+	for n in m.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null or not mi.is_visible_in_tree():
+			continue
+		var b: AABB = mi.global_transform * mi.get_aabb()
+		out = b if not any else out.merge(b)
+		any = true
+	return out if any else fallback
