@@ -96,11 +96,12 @@ def shared(m):
     m.prod('age_h', ['age_rate', round(1 / 3600, 15)], 'h/s')
 
 
-def _item(m, p, kind, rate, kks):
-    """The wear, its drawn life and the margin to the end (h: below 0 while it lasts), for one item."""
+def _item(m, p, kind, rate):
+    """The wear, its drawn life and the margin to the end (h: below 0 while it lasts), for one item: the model's
+    workings, without a code, so no screen shows them (a trainee is never told a failure is coming, §4.3)."""
     k = KINDS[kind]
-    w = m.v(f'{p}_wear', {'wear': rate, 'max': 1000000}, 'h', kks)
-    life = m.v(f'{p}_life', {'draw': life_table(kind)}, 'h', kks)
+    w = m.v(f'{p}_wear', {'wear': rate, 'max': 1000000}, 'h')
+    life = m.v(f'{p}_life', {'draw': life_table(kind)}, 'h')
     if k['pf']:
         m.diff(f'{p}_mgn', w, life, 'h')
     return w, life
@@ -115,7 +116,7 @@ def pump(m, item):
     z = ZONES[group]
     b = f'{p}_brg'
     rate = m.prod(f'{b}_rate', [run, 'age_h'], 'h/s')
-    _item(m, b, 'bearing', rate, code)
+    _item(m, b, 'bearing', rate)
     m.tab(f'{p}_vib_k', f'{b}_mgn', [[-pf, z['base']], [-0.6 * pf, z['base'] * 1.6], [-0.3 * pf, z['cd'] * 0.75],
                                      [0, z['end']]], 'mm/s')
     m.prod(f'{p}_vib', [spd, f'{p}_vib_k'], 'mm/s', cy)
@@ -137,7 +138,7 @@ def pump(m, item):
 def relay(m, p):
     """A CW pump's motor protection tripping by itself (§4.2's seeded hazard): its running hours against a drawn
     life; no sign before it."""
-    _item(m, f'{p}_rly', 'relay', f'{p}_brg_rate', next(i[1] for i in PUMPS if i[0] == p))
+    _item(m, f'{p}_rly', 'relay', f'{p}_brg_rate')
 
 
 def fan(m, i):
@@ -146,9 +147,8 @@ def fan(m, i):
     multiplies by its speed."""
     p = f'ct_fan{i}_gbx'
     pf = KINDS['gearbox']['pf']
-    code = f'30PAD10AN{i:03d}'
     rate = m.prod(f'{p}_rate', [f'ct_fan{i}_cmd', 'age_h'], 'h/s')
-    _item(m, p, 'gearbox', rate, code)
+    _item(m, p, 'gearbox', rate)
     m.tab(f'{p}_x', f'{p}_mgn', [[-pf, 0], [-0.5 * pf, 2.5], [0, GBX_END]], 'mm/s')
     return m.sum(f'ct_fan{i}_vfs', [f'ct_fan{i}_vft', f'{p}_x'], 'mm/s')
 
@@ -169,7 +169,7 @@ def valve(m, x, n):
     p = f'cw_{x}_act'
     pf = KINDS['actuator']['pf']
     aa = f'30PAC10AA10{n}'
-    _item(m, p, 'actuator', 'age_h', aa)
+    _item(m, p, 'actuator', 'age_h')
     m.tab(f'{p}_mv', f'cw_{x}_v_m_mv', [[-1, 1], [0, 0], [1, 1]])
     m.tab(f'{p}_tk', f'{p}_mgn', [[-pf, TQ_BASE], [-0.5 * pf, 70], [0, TQ_END]], '%')
     m.prod(f'{p}_tq', [f'{p}_mv', f'{p}_tk'], '%', aa)
@@ -180,9 +180,8 @@ def drift_values(m):
     drawn: nothing within its spec for a year, then up to 2 kPa at three ([R3051]'s stability, far exceeded:
     a training figure). Added to the transmitter's own value (0 until a year: every earlier value stays)."""
     p = 'cond_p3_age'
-    code = '30MAG10CP003'
-    m.v(f'{p}_w', {'wear': 'age_h', 'max': 1000000}, 'h', code)
-    m.v(f'{p}_dir', {'draw': [[0, -1], [0.5, -1], [0.5, 1], [1, 1]]}, None, code)
+    m.v(f'{p}_w', {'wear': 'age_h', 'max': 1000000}, 'h')
+    m.v(f'{p}_dir', {'draw': [[0, -1], [0.5, -1], [0.5, 1], [1, 1]]})
     m.tab(f'{p}_mag', f'{p}_w', [[DRIFT_FROM, 0], [DRIFT_SPAN, DRIFT_KPA]], 'kPa')
     return m.prod(p, [f'{p}_dir', f'{p}_mag'], 'kPa')
 
