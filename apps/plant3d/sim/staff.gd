@@ -134,6 +134,37 @@ func _fail(msg: String) -> void:
 		error = "staff.json: " + msg
 
 
+## The reactions as the step reads them (PLANT3D §16.7, milestone AG2; ref/plant3d_staff.py expand_reactions): a
+## permit reaction giving a work's task ("$isolate", "$deisolate", "$assign") stands for one reaction per work naming
+## that task, in the works' order, with that work and its task; a reaction on a list of faults with "work": "$" for one
+## per fault, in the list's order, with the work that repairs it. Every other reaction stands for itself, in order.
+static func expand_reactions(rs: Array, works: Array) -> Array:
+	var out := []
+	for r: Dictionary in rs:
+		var k: String = r["on"].keys()[0]
+		var t = r["task"]
+		if k == "permit" and typeof(t) == TYPE_STRING and String(t).begins_with("$"):
+			var key := String(t).substr(1)
+			for w: Dictionary in works:
+				if w.has(key):
+					var x := r.duplicate()
+					x["task"] = w[key]
+					x["work"] = w["id"]
+					out.append(x)
+		elif k == "fault" and r.get("work", null) is String and r["work"] == "$":
+			for f in r["on"]["fault"]:
+				for w: Dictionary in works:
+					if w.get("repairs", null) == f:
+						var x := r.duplicate()
+						x["on"] = {"fault": f}
+						x["work"] = w["id"]
+						out.append(x)
+						break
+		else:
+			out.append(r)
+	return out
+
+
 static func hhmm(x) -> int:
 	var t: String = x
 	return t.substr(0, 2).to_int() * 60 + t.substr(3, 2).to_int()
@@ -346,7 +377,7 @@ func _build(m, doc: Dictionary) -> void:
 				until = at_ref(s["until"])
 			slots.append([at[0], at[1], every, until[0], until[1], s["task"], s.get("days")])
 		routines[r["id"]] = {"slots": slots, "idle": r["idle"]}
-	reactions = doc.get("reactions", [])
+	reactions = expand_reactions(doc.get("reactions", []), m.works)
 	for i in reactions.size():
 		react_kind.append(reactions[i]["on"].keys()[0])
 		if react_kind[i] == "value":

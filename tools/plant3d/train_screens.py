@@ -153,13 +153,13 @@ def train():
                  g('cep', 'Condensate extraction pumps', [1, 0], ['30LCB10']),
                  g('minflow', 'Minimum flow recirculation', [2, 0], ['30LCA10'])],
              'lines': [ln('hotwell', 'cep', 'condensate'), ln('cep', 'minflow', 'condensate')],
-             'trend': ['hw_lvl']},
+             'trend': ['hw_lvl', 'cep_a_vib', 'cep_b_vib']},      # (AG2: the pumps' vibration, REALISM.md §4.2)
             {'id': 'cw', 'short': 'CW', 'title': 'Circulating water',
              'groups': [
                  g('pumps', 'Circulating water pumps and discharge valves', [0, 0], ['30PAC10']),
                  g('flow', 'Supply and return', [1, 0], ['30PAB'])],
              'lines': [ln('pumps', 'flow', 'cooling_water')],
-             'trend': ['cw_flow', 'cw_ret_t']},
+             'trend': ['cw_flow', 'cw_ret_t', 'cw_a_vib', 'cw_b_vib', 'cw_c_vib']},
             {'id': 'ct', 'short': 'Cooling tower', 'title': 'Cooling tower',
              'groups': [
                  g('fans', 'Cooling tower fans', [0, 0], ['30PAD10AN', '30PAD10CY']),
@@ -175,7 +175,7 @@ def train():
                  g('aux', 'Auxiliary boiler', [1, 1], ['00QHA10']),
                  g('demin', 'Demineralised water tank (from the water treatment plant)', [2, 0], ['00GHC10BB'])],
              'lines': [ln('ccw', 'cooler', 'cooling_water')],
-             'trend': ['ccw_t', 'ia_p', 'aux_p', 'dm_lvl']},
+             'trend': ['ccw_t', 'ia_p', 'aux_p', 'dm_lvl', 'ccw_a_vib', 'ccw_b_vib']},
             {'id': 'el', 'short': 'Electrical', 'title': 'Electrical: generators, excitation and breakers',
              'groups': [
                  g('gen1', 'Generator 1 and excitation', [0, 0], ['10MKA10', '10MKC10'],

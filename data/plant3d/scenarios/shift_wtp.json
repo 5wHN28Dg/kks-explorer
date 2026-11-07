@@ -21,7 +21,8 @@
   "fl1_hl": 2.1435145,
   "mb_a_ex": 0.8686111115,
   "mb_a_cond_lag": 0.0792716,
-  "mb_a_si": 9.018248589
+  "mb_a_si": 9.018248589,
+  "age_rate": 100
  },
  "latched": [
   "gt1_trip_lube",
@@ -79,6 +80,8 @@
   {"id": "cond_p2_drift", "set": {"cond_p2_drift": 1.5}, "text": "Condenser pressure transmitter 2 drifts: reads 1.5 kPa high", "kks": "30MAG10CP002", "repair": {"cond_p2_drift": 0}},
   {"id": "cond_p3_drift", "set": {"cond_p3_drift": -1.2}, "text": "Condenser pressure transmitter 3 drifts: reads 1.2 kPa low", "kks": "30MAG10CP003", "repair": {"cond_p3_drift": 0}},
   {"id": "st_trip_no_bypass", "set": {"st_vib_fault": 1, "byp_hyd_fault": 1}, "text": "Steam turbine bearing 3 damage with the bypass hydraulics failed: no steam sink", "repair": {"st_vib_fault": 0, "byp_hyd_fault": 0}},
+  {"id": "cep_a_motor", "set": {"cep_a_fault": 1}, "text": "Condensate extraction pump A motor fails", "kks": "30LCB10AP001", "repair": {"cep_a_fault": 0}},
+  {"id": "cep_b_motor", "set": {"cep_b_fault": 1}, "text": "Condensate extraction pump B motor fails", "kks": "30LCB10AP002", "repair": {"cep_b_fault": 0}},
   {"id": "rw_a_motor", "set": {"rw_a_fault": 1}, "text": "Raw water pump A motor overload", "kks": "00GAF10AP001", "repair": {"rw_a_fault": 0}},
   {"id": "rw_b_motor", "set": {"rw_b_fault": 1}, "text": "Raw water pump B motor overload", "kks": "00GAF10AP002", "repair": {"rw_b_fault": 0}},
   {"id": "rw_c_motor", "set": {"rw_c_fault": 1}, "text": "Raw water pump C motor overload", "kks": "00GAF10AP003", "repair": {"rw_c_fault": 0}},
@@ -116,9 +119,32 @@
   {"id": "roof_hoist_heavy", "set": {"roof_hoist_mass": 2400}, "text": "The spare valve's crate weighs 2,400 kg, not the 600 kg on its paper (the roof hoist is rated 2,000 kg)", "repair": {"roof_hoist_mass": 600}},
   {"id": "hrsg1_lift_drive", "set": {"hrsg1_lift_drive_fault": 1}, "repair": {"hrsg1_lift_drive_fault": 0}, "text": "Lift drive fault", "kks": "10SNB10AE001"},
   {"id": "hrsg1_lift_gate_switch", "set": {"hrsg1_lift_gate0_switch": 1}, "repair": {"hrsg1_lift_gate0_switch": 0}, "text": "A landing gate switch reads not shut", "kks": "10SNB10AB001"},
-  {"id": "cond_p2_low", "text": "Condenser pressure transmitter 2 reads low against its partners", "kks": "30MAG10CP002", "set": {"cond_p2_low": 1}, "repair": {"cond_p2_low": 0}, "causes": [{"id": "drift", "weight": 1, "set": {"cond_p2_drift": -1.5}, "repair": {"cond_p2_drift": 0, "cond_p2_trim": 0}, "fixed": "cpt2_sound", "text": "The sensor has drifted 1.5 kPa low"}, {"id": "loose", "weight": 1, "set": {"cpt2_terminal_block_loose": 1}, "repair": {"cpt2_terminal_block_loose": 0}, "fixed": "cpt2_sound", "text": "A loose signal terminal: its contact resistance takes the loop current 0.3 mA down"}]}
+  {"id": "cond_p2_low", "text": "Condenser pressure transmitter 2 reads low against its partners", "kks": "30MAG10CP002", "set": {"cond_p2_low": 1}, "repair": {"cond_p2_low": 0}, "causes": [{"id": "drift", "weight": 1, "set": {"cond_p2_drift": -1.5}, "repair": {"cond_p2_drift": 0, "cond_p2_trim": 0}, "fixed": "cpt2_sound", "text": "The sensor has drifted 1.5 kPa low"}, {"id": "loose", "weight": 1, "set": {"cpt2_terminal_block_loose": 1}, "repair": {"cpt2_terminal_block_loose": 0}, "fixed": "cpt2_sound", "text": "A loose signal terminal: its contact resistance takes the loop current 0.3 mA down"}]},
+  {"id": "cw_a_brg", "when": {"cmp": ["cw_a_brg_mgn", ">=", 0]}, "set": {"cw_a_fault": 1}, "text": "CW pump A: a motor bearing fails (it seizes): the motor trips", "kks": "30PAC10AP001", "repair": {"cw_a_fault": 0}},
+  {"id": "cw_b_brg", "when": {"cmp": ["cw_b_brg_mgn", ">=", 0]}, "set": {"cw_b_fault": 1}, "text": "CW pump B: a motor bearing fails (it seizes): the motor trips", "kks": "30PAC10AP002", "repair": {"cw_b_fault": 0}},
+  {"id": "cw_c_brg", "when": {"cmp": ["cw_c_brg_mgn", ">=", 0]}, "set": {"cw_c_fault": 1}, "text": "CW pump C: a motor bearing fails (it seizes): the motor trips", "kks": "30PAC10AP003", "repair": {"cw_c_fault": 0}},
+  {"id": "ccw_a_brg", "when": {"cmp": ["ccw_a_brg_mgn", ">=", 0]}, "set": {"ccw_a_fault": 1}, "text": "Closed cooling water pump A: a motor bearing fails (it seizes): the motor trips", "kks": "00PGC10AP001", "repair": {"ccw_a_fault": 0}},
+  {"id": "ccw_b_brg", "when": {"cmp": ["ccw_b_brg_mgn", ">=", 0]}, "set": {"ccw_b_fault": 1}, "text": "Closed cooling water pump B: a motor bearing fails (it seizes): the motor trips", "kks": "00PGC10AP002", "repair": {"ccw_b_fault": 0}},
+  {"id": "cep_a_brg", "when": {"cmp": ["cep_a_brg_mgn", ">=", 0]}, "set": {"cep_a_fault": 1}, "text": "Condensate extraction pump A: a motor bearing fails (it seizes): the motor trips", "kks": "30LCB10AP001", "repair": {"cep_a_fault": 0}},
+  {"id": "cep_b_brg", "when": {"cmp": ["cep_b_brg_mgn", ">=", 0]}, "set": {"cep_b_fault": 1}, "text": "Condensate extraction pump B: a motor bearing fails (it seizes): the motor trips", "kks": "30LCB10AP002", "repair": {"cep_b_fault": 0}},
+  {"id": "cw_a_rly", "when": {"cmp": ["cw_a_rly_wear", ">=", "cw_a_rly_life"]}, "set": {"cw_a_fault": 1}, "text": "CW pump A: the motor protection trips by itself", "kks": "30PAC10AP001", "repair": {"cw_a_fault": 0}},
+  {"id": "cw_b_rly", "when": {"cmp": ["cw_b_rly_wear", ">=", "cw_b_rly_life"]}, "set": {"cw_b_fault": 1}, "text": "CW pump B: the motor protection trips by itself", "kks": "30PAC10AP002", "repair": {"cw_b_fault": 0}},
+  {"id": "cw_c_rly", "when": {"cmp": ["cw_c_rly_wear", ">=", "cw_c_rly_life"]}, "set": {"cw_c_fault": 1}, "text": "CW pump C: the motor protection trips by itself", "kks": "30PAC10AP003", "repair": {"cw_c_fault": 0}},
+  {"id": "ct_fan1_gbx", "when": {"cmp": ["ct_fan1_gbx_mgn", ">=", 0]}, "set": {"ct_fan1_vfault": 1}, "text": "Cooling tower fan 1: the gear reducer fails", "kks": "30PAD10AN001", "repair": {"ct_fan1_vfault": 0}},
+  {"id": "ct_fan2_gbx", "when": {"cmp": ["ct_fan2_gbx_mgn", ">=", 0]}, "set": {"ct_fan2_vfault": 1}, "text": "Cooling tower fan 2: the gear reducer fails", "kks": "30PAD10AN002", "repair": {"ct_fan2_vfault": 0}},
+  {"id": "ct_fan3_gbx", "when": {"cmp": ["ct_fan3_gbx_mgn", ">=", 0]}, "set": {"ct_fan3_vfault": 1}, "text": "Cooling tower fan 3: the gear reducer fails", "kks": "30PAD10AN003", "repair": {"ct_fan3_vfault": 0}},
+  {"id": "ct_fan4_gbx", "when": {"cmp": ["ct_fan4_gbx_mgn", ">=", 0]}, "set": {"ct_fan4_vfault": 1}, "text": "Cooling tower fan 4: the gear reducer fails", "kks": "30PAD10AN004", "repair": {"ct_fan4_vfault": 0}},
+  {"id": "ct_fan5_gbx", "when": {"cmp": ["ct_fan5_gbx_mgn", ">=", 0]}, "set": {"ct_fan5_vfault": 1}, "text": "Cooling tower fan 5: the gear reducer fails", "kks": "30PAD10AN005", "repair": {"ct_fan5_vfault": 0}},
+  {"id": "ct_fan6_gbx", "when": {"cmp": ["ct_fan6_gbx_mgn", ">=", 0]}, "set": {"ct_fan6_vfault": 1}, "text": "Cooling tower fan 6: the gear reducer fails", "kks": "30PAD10AN006", "repair": {"ct_fan6_vfault": 0}},
+  {"id": "ct_fan7_gbx", "when": {"cmp": ["ct_fan7_gbx_mgn", ">=", 0]}, "set": {"ct_fan7_vfault": 1}, "text": "Cooling tower fan 7: the gear reducer fails", "kks": "30PAD10AN007", "repair": {"ct_fan7_vfault": 0}},
+  {"id": "ct_fan8_gbx", "when": {"cmp": ["ct_fan8_gbx_mgn", ">=", 0]}, "set": {"ct_fan8_vfault": 1}, "text": "Cooling tower fan 8: the gear reducer fails", "kks": "30PAD10AN008", "repair": {"ct_fan8_vfault": 0}},
+  {"id": "ct_fan9_gbx", "when": {"cmp": ["ct_fan9_gbx_mgn", ">=", 0]}, "set": {"ct_fan9_vfault": 1}, "text": "Cooling tower fan 9: the gear reducer fails", "kks": "30PAD10AN009", "repair": {"ct_fan9_vfault": 0}},
+  {"id": "ct_fan10_gbx", "when": {"cmp": ["ct_fan10_gbx_mgn", ">=", 0]}, "set": {"ct_fan10_vfault": 1}, "text": "Cooling tower fan 10: the gear reducer fails", "kks": "30PAD10AN010", "repair": {"ct_fan10_vfault": 0}},
+  {"id": "cw_a_act", "when": {"cmp": ["cw_a_act_mgn", ">=", 0]}, "set": {"cw_a_v_stuck": 1}, "text": "CW pump A discharge valve: the actuator's torque switch stops it for good", "kks": "30PAC10AA101", "repair": {"cw_a_v_stuck": 0}},
+  {"id": "cw_b_act", "when": {"cmp": ["cw_b_act_mgn", ">=", 0]}, "set": {"cw_b_v_stuck": 1}, "text": "CW pump B discharge valve: the actuator's torque switch stops it for good", "kks": "30PAC10AA102", "repair": {"cw_b_v_stuck": 0}},
+  {"id": "cw_c_act", "when": {"cmp": ["cw_c_act_mgn", ">=", 0]}, "set": {"cw_c_v_stuck": 1}, "text": "CW pump C discharge valve: the actuator's torque switch stops it for good", "kks": "30PAC10AA103", "repair": {"cw_c_v_stuck": 0}}
  ],
  "start": {"day": 1, "time": "05:00"},
- "world": {"year_day": 100, "weather": {"season": "spring"}},
+ "world": {"year_day": 100, "weather": {"season": "spring"}, "age": {"months": 0}},
  "staff": {"seed": 3}
 }

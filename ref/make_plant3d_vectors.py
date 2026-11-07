@@ -813,6 +813,10 @@ FORKS = [
      ([] if i <= 5 else [('op', f'30PAD10AN{i:03d}', 'start', None, None), ('run', 60)]) +
      [('fault', f'ct_fan{i}_vib'), ('run', 60)],
      {'first_out': {'ct_fans': f'ct_fan{i}_trip_vib'}, 'alarms': [f'ct_fan{i}_vib_hh']}) for i in range(1, 11)
+] + [  # milestone AG2: the condensate pumps' motor protection stops a pump whose motor has failed (pump B started)
+    ('cep_protection', 'end', [('fault', 'cep_a_motor'), ('run', 30), ('op', '30LCB10AP002', 'start', None, None),
+                               ('run', 30), ('fault', 'cep_b_motor'), ('run', 30)],
+     {'interlocks': ['cep_a_prot', 'cep_b_prot'], 'end': {'cep_a_cmd': [0, 0], 'cep_b_cmd': [0, 0]}}),
 ]
 
 
@@ -2035,6 +2039,38 @@ REJECTS_SAFETY = [
         r for r in st['routines'] if r['id'] == 'hse_days')['slots'][1].__setitem__('days', ['mon', 'mon']))),
 ]
 
+# milestone AG2 (PLANT3D §16.7): the generic permit and fault reactions, and the tasks a work names for them (after
+# every earlier staff reject)
+REJECTS_GENERIC = [
+    ('a reaction giving a work\'s task the works don\'t have', 'bad_ref',
+     _app(STF + ['reactions'], {'on': {'permit': 'approved'}, 'roles': ['shift_sup'], 'task': '$job'})),
+    ('a reaction giving a work\'s task on a fault', 'bad_ref',
+     _app(STF + ['reactions'], {'on': {'fault': 'f1'}, 'roles': ['shift_sup'], 'task': '$deisolate'})),
+    ('a reaction giving a work\'s task for one work', 'unknown_key',
+     _app(STF + ['reactions'], {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': '$deisolate',
+                                'work': 'wo_pump'})),
+    ('the work that repairs it on a permit\'s state', 'bad_ref',
+     _app(STF + ['reactions'], {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': 'deisolate',
+                                'work': '$'})),
+    ('a list of faults one of which no work repairs', 'bad_ref',
+     _app(STF + ['reactions'], {'on': {'fault': ['f1', 'f2']}, 'roles': ['shift_sup'], 'task': 'raise_work',
+                                'work': '$'})),
+    ('a list of faults with one twice', 'dup_id',
+     _app(STF + ['reactions'], {'on': {'fault': ['f1', 'f1']}, 'roles': ['shift_sup'], 'task': 'raise_work',
+                                'work': '$'})),
+    ('an empty list of faults', 'bad_length',
+     _app(STF + ['reactions'], {'on': {'fault': []}, 'roles': ['shift_sup'], 'task': 'raise_work', 'work': '$'})),
+    ('a list of faults without the work that repairs each', 'bad_type',
+     _app(STF + ['reactions'], {'on': {'fault': ['f1']}, 'roles': ['shift_sup'], 'task': 'raise_work'})),
+    ('a work naming a deisolate task staff.json lacks', 'bad_ref', _set(['model/a1.json', 'works', 0, 'deisolate'],
+                                                                      'nothing')),
+    ('a work naming an isolate task that is not an identifier', 'bad_id',
+     _set(['model/a1.json', 'works', 0, 'isolate'], 'Not one')),
+    ('a work naming a deisolate task staff.json lacks, given by a generic reaction', 'bad_ref', _all(
+        _set(['model/a1.json', 'works', 0, 'deisolate'], 'nothing'),
+        _app(STF + ['reactions'], {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': '$deisolate'}))),
+]
+
 
 def safety_base():
     """The rejects' base for S2: the synthetic plant (as mini_staff) with the safety staff and its model."""
@@ -2065,7 +2101,8 @@ def build_rejects_staff():
         out.append({'why': why, 'code': code, 'change': change})
     return out + reject_changes(lift_staff_files(), REJECTS_LIFT_STAFF, staff_files()) + \
         reject_changes(staff_files(None, with_camp(mini_staff()['staff.json'])), camp_rejects(), staff_files()) + \
-        reject_changes(staff_files(), plain_camp_rejects(), staff_files())   # (the vectors' files)
+        reject_changes(staff_files(), plain_camp_rejects(), staff_files()) + \
+        reject_changes(staff_files(), REJECTS_GENERIC, staff_files())   # (the vectors' files)
 
 
 INPUTS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
@@ -2962,7 +2999,55 @@ def build_staff():
         out.append(dict({'why': why, 'scenario': sc, 'staff': staff, 'inputs': e.inputs, 'until': until,
                          'every': every, 'states': states, 'events': e.events, 'digests': digests},
                         **({'files': more} if more else {}), **({'session': True} if session else {})))
-    return out + build_lift_runs() + build_camp_runs()
+    return out + build_lift_runs() + build_camp_runs() + build_generic_runs()
+
+
+def generic_files():
+    """The first staff run's plant with its reactions written generically (PLANT3D §16.7, milestone AG2): the
+    fault's reaction on a list of faults with the work that repairs each, the permit's returned state giving each
+    work's deisolate task, which the works name. They stand for the very reactions the first run's file writes, in
+    the same order."""
+    F = staff_files()
+    st = F['staff.json']
+    out = []
+    for r in st['reactions']:
+        if r['on'] == {'fault': 'f1'}:
+            out.append({'on': {'fault': ['f1']}, 'roles': r['roles'], 'task': r['task'], 'work': '$'})
+        elif r['on'] == {'permit': 'returned'}:
+            if r['work'] == 'wo_pump':
+                out.append({'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': '$deisolate'})
+        else:
+            out.append(r)
+    st['reactions'] = out
+    for w in F['model/a1.json']['works']:
+        w['deisolate'] = {'wo_pump': 'deisolate', 'wo_valve': 'deiso_valve'}.get(w['id'])
+        if w['deisolate'] is None:
+            del w['deisolate']
+    return F
+
+
+def build_generic_runs():
+    """The first staff run again on generic_files (AG2): every input, event, state and digest the same."""
+    F = generic_files()
+    base = mini_staff()['scenarios/s1.json']
+    b = check(F)
+    player = Trainee(extra=[[901, 'fault', 'f1']])
+    e = P.Recorder(b, 's1')
+    states, digests = [e.snapshot()], [e.digest()]
+    until, every = 2400, 20
+    while e.step_no < until:
+        player(e)
+        e.step()
+        if e.step_no % every == 0 or e.step_no == until:
+            states.append(e.snapshot())
+        if e.step_no % DIGEST_EVERY == 0:
+            digests.append(e.digest())
+    return [{'why': 'the first run with its reactions written generically (PLANT3D §16.7, milestone AG2): the fault '
+                    'on a list with the work that repairs it, the permit\'s returned state giving each work\'s '
+                    'deisolate task; every input, event, state and digest as the first run\'s',
+             'scenario': base, 'staff': F['staff.json'], 'inputs': e.inputs, 'until': until, 'every': every,
+             'states': states, 'events': e.events, 'digests': digests,
+             'files': {'model/a1.json': F['model/a1.json']}}]
 
 
 # The first train's day (§19 `day`): the scenario with staff from its start (05:00) through the day shift, seed 1 and
@@ -3108,6 +3193,14 @@ def day_forks():
                                            ['aboard', 'a_fo_cw', 'bus_1', 'camp_stop', 'off']]}),
         ('evening_jump', Trainee(extra=[[1, 'role', 'a_ccr1'], [88000, 'jump', '05:00']]), 90000,
          {'trainee': 'a_ccr1', 'events': [['task', 'a_ccr1', 'meal', 'done'], ['jump', None, None, 'done']]}),
+        # milestone AG2 (REALISM.md §4): 30 months after the overhaul, closed cooling water pump A's bearing shows its
+        # signs from the start (vibration, noise, then heat), fails on its own at about 08:25 (the seed's drawn
+        # life), the standby starts; the supervisor asks for the permit of the work that repairs it (the generic
+        # fault reaction), the pump is isolated, the bearings replaced by a mechanical technician: the wear renewed
+        ('aged_ccw', Trainee(), 36000,
+         {'permits': {'wo_ccw_a_brg': 9}, 'repaired': ['ccw_a_brg'], 'end': {'ccw_a_brg_wear': 0, 'ccw_a_fault': 0},
+          'events': [['fault', 'ccw_a_brg'], ['alarm', 'ccw_a_vib_high', 'active_unack'],
+                     ['task', 'mech2', 'job_ccw_a_brg', 'done']]}, 'shift_aged'),
     ]
 
 
@@ -4070,8 +4163,8 @@ def _sc2(sc):
 
 REJECTS_WORLD = [
     ('a world that is not an object', 'bad_type', _set(SC + ['world'], [7])),
-    ('a world with a key not known yet (age comes with AG2)', 'unknown_key',
-     _set(SC + ['world', 'age'], {'months': 6})),
+    ('a world with a key not known yet (changes comes with EN2)', 'unknown_key',
+     _set(SC + ['world', 'changes'], ['moc_1'])),
     ('a world seed below 0', 'bad_number', _set(SC + ['world', 'seed'], -1)),
     ('a world seed of 2^32', 'bad_number', _set(SC + ['world', 'seed'], 2 ** 32)),
     ('a world seed that is not whole', 'bad_number', _set(SC + ['world', 'seed'], 1.5)),
@@ -4098,6 +4191,13 @@ REJECTS_WORLD = [
         _del(SC + ['staff']), lambda F: F.pop('staff.json'),
         _set(RMOD + ['works'], [{k: v for k, v in w.items() if k != 'task'}
                                for w in staff_files()['model/a1.json']['works']]))),
+    # milestone AG2 (§4.3): the plant's age, read by the content tools only
+    ('a world age that is not an object', 'bad_type', _set(SC + ['world', 'age'], 6)),
+    ('a world age without its months', 'missing_key', _set(SC + ['world', 'age'], {})),
+    ('a world age with a key it doesn\'t know', 'unknown_key', _set(SC + ['world', 'age'], {'months': 6, 'days': 3})),
+    ('a world age of -1 months', 'bad_number', _set(SC + ['world', 'age'], {'months': -1})),
+    ('a world age over 600 months', 'bad_number', _set(SC + ['world', 'age'], {'months': 601})),
+    ('a world age in months that is a boolean', 'bad_number', _set(SC + ['world', 'age'], {'months': True})),
 ]
 
 

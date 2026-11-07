@@ -144,6 +144,19 @@ VOICES = {
         'Motor-operated valve actuator: a small motor (100 Hz magnetic hum) and the spur stage in front of its worm '
         'gear, whose mesh whines at 400 Hz with its harmonic at 800 Hz; the load ripples a few times a second (4 Hz) '
         'as the stem nut turns (the hum, in its own layer, doesn\'t ripple); pink noise is the gearbox')),
+    # the signs of wear (REALISM.md §4.2, milestone AG2): bound to the probes with a gain that is 0 while the machine
+    # is sound, rising as its vibration does
+    'bearing_noise': dict(spl=84, rates='clicks', click_hz=2900, mains=(100,), why=(
+        'A rolling bearing near its end: each roller striking a spall on the outer race excites the bearing housing\'s '
+        'resonance (2.9 kHz here) in a burst, at the outer race\'s defect frequency, about 3.2 x the shaft speed '
+        '(26.5 Hz on a 12-pole CW pump motor: a rasp, not a pitch, so rendered as clicks); pink noise 800-6,000 Hz is '
+        'the rough rolling; the motor\'s hum 100 Hz under it. Heard close to the motor once the vibration is past '
+        'ISO 20816-3 zone B (ISO 17359: the noise comes after the vibration, the heat last)')),
+    'gear_whine': dict(spl=86, tone_am=[(2, 0.25)], mains=(100,), why=(
+        'A cooling tower fan\'s worn right-angle gear reducer: its high-speed mesh (17 teeth x 24.7 rev/s = 420 Hz, '
+        'which the sound gear barely lets through) grows loud with its harmonics 840 and 1,260 Hz and sidebands at the '
+        'input shaft\'s speed (+/- 25 Hz); the load swells twice a second with the fan\'s own turn (2 rev/s); pink '
+        'noise 300-3,000 Hz is the worn teeth')),
     'breaker': dict(spl=94, once=dict(kind='close'), why=(
         'Circuit breaker closing: the closing latch releases with a small click, then the spring drives the '
         'contacts shut with a heavy bang: the mechanism and cubicle ring at their modes (160, 410, 1,150, '

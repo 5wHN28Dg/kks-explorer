@@ -12,6 +12,7 @@ STEAM = [[100, 1.01], [120, 1.99], [140, 3.61], [160, 6.18], [180, 10.0], [200, 
 
 
 import train_hands  # noqa: E402  (milestone HW2: the hand actions from the service files)
+import train_ageing  # noqa: E402  (milestone AG2: the wear items, their signs and failures)
 
 
 def inv(points):
@@ -371,6 +372,7 @@ class M:
 
 def bop():
     m = M('bop')
+    train_ageing.shared(m)         # AG2: the hours of wear a clock second of duty adds (read by every area)
     m.drive('ia_a', '00QFA10AN001')
     m.drive('ia_b', '00QFA10AN002')
     m.drive('ccw_a', '00PGC10AP001')
@@ -466,6 +468,7 @@ def bop():
     m.b(kks='00QHA10CP001', show='aux_p')
     m.b(kks='00QHA10', sound='burner', gain={'of': 'aux_run', 'table': [[0, 0], [1, 1]]})
     m.b(kks='00QHA10', lamp='running', of='aux_run')
+    _ageing(m)
     return m
 
 
@@ -481,7 +484,7 @@ def ct():
     for i in range(1, 11):
         m.lag(f'ct_fan{i}_spd', f'ct_fan{i}_cmd', 8, unit='pu')
         m.tab(f'ct_fan{i}_vft', f'ct_fan{i}_vfault', [[0, 2.5], [1, 15]])
-        m.prod(f'ct_fan{i}_vt', [f'ct_fan{i}_spd', f'ct_fan{i}_vft'])
+        m.prod(f'ct_fan{i}_vt', [f'ct_fan{i}_spd', train_ageing.fan(m, i)])     # AG2: + the gear reducer's share
         m.lag(f'ct_fan{i}_vib', f'ct_fan{i}_vt', 2, unit='mm/s', kks=f'30PAD10CY{i:03d}')
         m.cmp(f'ct_fan{i}_hh', f'ct_fan{i}_vib', '>', 10)
     m.sum('ct_fans_n', [f'ct_fan{i}_cmd' for i in range(1, 11)])
@@ -543,6 +546,9 @@ def ct():
                 [('30PAD10AN004', 'electrical', 'ct_fan4_safe', 'Fan stopped; its breaker racked out, locked and tagged')])
     m.work('wo_ct_fan4_pm', '30PAD10AN004', 'Cooling tower fan 4: grease the motor bearings', 'mech', 'general',
            'iso_ct_fan4')
+    for i in train_ageing.FANS:
+        train_ageing.fan_parts(m, i)
+    _ageing(m)
     m.alarm('ct_basin_low', '30PAD10CL001', 'Cooling tower basin level low', 'ct_l', 2, isa='LAL')
     m.alarm('ct_basin_ll', '30PAD10CL001', 'Cooling tower basin level low-low', 'ct_ll', 1, isa='LALL')
     m.b(kks='30PAD10CL001', show='ct_basin_level')
@@ -703,6 +709,11 @@ def cw():
     m.work('wo_paint_cw', '30PAC10AP003', 'CW pump house: paint the pipework by pump C', 'civil', 'general')
     m.alarm('cw_flow_low', '30PAB10CF001', 'CW flow low', 'cw_flow_low', 1, isa='FAL')
     m.b(kks='30PAB10CF001', show='cw_flow')
+    for x, n in train_ageing.VALVES:
+        train_ageing.valve(m, x, n)
+    for p in train_ageing.RELAYS:
+        train_ageing.relay(m, p)
+    _ageing(m)
     return m
 
 
@@ -1244,6 +1255,7 @@ def st():
     # loop is sound (that very value, so every run before HW2 keeps its values), else the value the current stands for
     # (a lifted wire: no current, far below range; a loose terminal: 0.3 mA lower, the reading low)
     m.state('cond_p2_low', 0, '30MAG10CP002')         # the fault "reads low" made (its causes: train_hands.FAULT)
+    age3 = train_ageing.drift_values(m)                 # AG2: transmitter 3's sensor drifts with the years
     for k, off in zip((1, 2, 3), (0, 0.1, -0.1)):
         tx = f'cond_p{k}'
         if k == 1:
@@ -1253,7 +1265,8 @@ def st():
             a = train_hands.of(code)[2]['alias']
             train_hands.values(m, code)
             m.state(f'cond_p{k}_trim', 0, unit='kPa')
-            tx = m.sum(f'cond_p{k}_tx', ['cond_p', off, f'cond_p{k}_drift', f'cond_p{k}_trim'], 'kPa(a)')
+            tx = m.sum(f'cond_p{k}_tx', ['cond_p', off, f'cond_p{k}_drift', f'cond_p{k}_trim'] + ([age3] if k == 3 else []),
+                       'kPa(a)')
             m.prod(f'{a}_ma_s', [tx, round(16 / 120, 12)])
             m.sum(f'{a}_ma_r', [f'{a}_ma_s', 4])
             m.min(f'{a}_ma_h', [f'{a}_ma_r', 20.5])
@@ -1619,7 +1632,16 @@ def st():
         m.b(kks=c, anim='shaft', of=f'st_{x}_run', scale=49)
         m.b(kks=c, lamp='running', of=f'st_{x}_run')
     m.b(kks='30MAV20AP001', lamp='running', of='st_jack_run')
+    _ageing(m)
     return m
+
+
+def _ageing(m):
+    """AG2 (train_ageing.py): the area's pumps' bearings, then its items' isolations and works."""
+    for item in train_ageing.PUMPS:
+        if item[3] == m.area:
+            train_ageing.pump(m, item)
+    train_ageing.works(m)
 
 
 def models():
