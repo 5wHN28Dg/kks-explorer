@@ -5398,6 +5398,161 @@ def audio_part():
             'runs': build_runs(audio_runs(), af)}
 
 
+
+# ---------------------------------------------------------------- milestone AG3: the lab (REALISM.md §2.19)
+
+LAB_TOOLS = [
+    {'id': 'oil_kit', 'title': 'Oil sampling kit', 'kind': 'sampler', 'at': [['tb1', 1], ['store1', 1]]},
+    {'id': 'vibcol', 'title': 'Vibration data collector', 'kind': 'collector', 'modes': ['vel'], 'at': [['tb1', 1]]},
+    {'id': 'ircam', 'title': 'Thermal camera', 'kind': 'camera', 'modes': ['ir'], 'at': [['tb1', 1]]}]
+# the oil's iron (ppm) follows the pump's pressure (so a sample taken later reads more), its viscosity is the grade's
+# (a constant ref, 68 cSt); each result after 0.1 and 0.2 clock hours (60 and 120 steps at day_scale 60)
+LAB_VALUES = [['oil_fe', {'sum': ['p', 10], 'unit': 'ppm'}],
+              ['lab_fe', {'sample': 'oil_fe', 'spread': [[0, -2], [0.5, 0], [1, 2]], 'hours': 0.1, 'unit': 'ppm'}],
+              ['lab_vis', {'sample': 68, 'spread': [[0, -1.5], [1, 1.5]], 'hours': 0.2, 'init': 68}]]
+LAB_HANDS = [
+    {'kks': GAUGE, 'action': 'take_oil', 'component': 'body', 'tools': ['oil_kit'], 'work': False,
+     'samples': ['lab_fe', 'lab_vis']},
+    {'kks': GAUGE, 'action': 'take_oil_slow', 'component': 'body', 'tools': ['oil_kit'], 'work': False,
+     'minutes': 2, 'samples': ['lab_fe']}]
+LAB_METERS = [
+    {'id': 'g1_vel', 'kks': GAUGE, 'point': 'brg', 'tool_kind': 'collector', 'mode': 'vel', 'value': 'p'},
+    {'id': 'g1_ir', 'kks': GAUGE, 'point': 'brg', 'tool_kind': 'camera', 'mode': 'ir', 'value': 'oil_fe'}]
+CM_ROUND = [{'go': 'tb1'}, {'tool': ['oil_kit', 'vibcol', 'ircam']}, {'go': {'kks': GAUGE}},
+            {'read': GAUGE, 'via': 'g1_vel', 'expect': [0, 2]}, {'read': GAUGE, 'via': 'g1_ir'},
+            {'hand': 'take_oil', 'kks': GAUGE, 'tool': 'oil_kit'},
+            {'hand': 'take_oil_slow', 'kks': GAUGE, 'tool': 'oil_kit'}, {'go': 'tb1'}, {'tool': 'off'}]
+
+
+def lab_files():
+    """The hands part's plant (hands_files) with AG3's keys: an oil sampling kit (kept at the toolbox and the store),
+    a vibration data collector and a thermal camera at the toolbox; two sample nodes (the oil's iron from the pump's
+    pressure, its viscosity a constant), a sampling hand action at once and a timed one, a collector's and a
+    camera's meter; the instrument technicians may take samples (sample), and ic1's day adds a round at 07:45."""
+    F = hands_files()
+    F['tools.json']['tools'] += copy.deepcopy(LAB_TOOLS)
+    m = F['model/a1.json']
+    m['values'] += copy.deepcopy(LAB_VALUES)
+    m['hands'] += copy.deepcopy(LAB_HANDS)
+    m['meters'] += copy.deepcopy(LAB_METERS)
+    st = F['staff.json']
+    next(r for r in st['roles'] if r['id'] == 'ic_tech')['authority'].append('sample')
+    st['tasks'].append({'id': 'cm_round', 'title': 'Condition monitoring round', 'steps': copy.deepcopy(CM_ROUND)})
+    next(r for r in st['routines'] if r['id'] == 'ic_days')['slots'].append({'at': '07:45', 'task': 'cm_round'})
+    return F
+
+
+def _lab_value(name, fn):
+    def f(F):
+        fn(next(n for k, n in F['model/a1.json']['values'] if k == name))
+    return f
+
+
+def _no_clock_lab(F):
+    """The realism base without a clock (as REJECTS_WORLD's), the model with a sample node and no hand action."""
+    G = staff_files()
+    G['model/a1.json']['values'].append(['lab_x', {'sample': 'p', 'spread': [[0, 0], [1, 1]], 'hours': 1}])
+    del G['plant.json']['clock']
+    del G['scenarios/s1.json']['staff']
+    G.pop('staff.json')
+    G['model/a1.json']['works'] = [{k: v for k, v in w.items() if k != 'task'} for w in G['model/a1.json']['works']]
+    F.clear()
+    F.update(G)
+
+
+REJECTS_LAB = [
+    ('a sample node in a version 1 model file', 'bad_kind', lambda F: F.__setitem__(A2M, {
+        'format': 'walkdown-plant-model', 'version': 1, 'area': 'a2',
+        'values': [['lab_y', {'sample': 'p', 'spread': [[0, 0], [1, 1]], 'hours': 1}]]}), 'the sample node is format 2'),
+    ('a sample key beside another node kind in a version 1 model file', 'unknown_key', lambda F: F.__setitem__(A2M, {
+        'format': 'walkdown-plant-model', 'version': 1, 'area': 'a2',
+        'values': [['lab_y', {'const': 1, 'sample': 'p'}]]}), 'the sample node is format 2'),
+    ('a sample node without its spread', 'missing_key', _lab_value('lab_fe', lambda n: n.pop('spread')), 'lab_fe.spread'),
+    ('a sample node without its hours', 'missing_key', _lab_value('lab_fe', lambda n: n.pop('hours')), 'lab_fe.hours'),
+    ('a sample node with a key it doesn\'t know', 'unknown_key', _lab_value('lab_fe', lambda n: SET(n, 'days', 2)), 'lab_fe.days'),
+    ('a sample node of 0 hours', 'bad_number', _lab_value('lab_fe', lambda n: SET(n, 'hours', 0)), 'hours: above 0'),
+    ('a sample node of over 8,760 hours', 'bad_number', _lab_value('lab_fe', lambda n: SET(n, 'hours', 8761)), 'lab_fe.hours'),
+    ('a sample node whose hours are text', 'bad_number', _lab_value('lab_fe', lambda n: SET(n, 'hours', '2')), 'lab_fe.hours'),
+    ('a sample node whose spread\'s x decreases', 'bad_table',
+     _lab_value('lab_fe', lambda n: SET(n, 'spread', [[1, 0], [0, 1]])), 'spread: x decreases'),
+    ('a sample node reading no value', 'bad_ref', _lab_value('lab_fe', lambda n: SET(n, 'sample', 'oil_cu')), "no value 'oil_cu'"),
+    ('a sample node whose init is text', 'bad_number', _lab_value('lab_vis', lambda n: SET(n, 'init', 'x')), 'lab_vis.init'),
+    ('a sample node in a plant without a clock', 'bad_ref', _no_clock_lab, 'the plant has no clock'),
+    ('a hand action taking a sample for no value', 'bad_ref', _hand(10, lambda h: h['samples'].append('lab_cu')), 'lab_cu is not a sample node'),
+    ('a hand action taking a sample for a value that is no sample node', 'bad_ref',
+     _hand(10, lambda h: h['samples'].append('oil_fe')), 'oil_fe is not a sample node'),
+    ('a hand action taking a sample for one node twice', 'dup_id', _hand(10, lambda h: h['samples'].append('lab_fe')), 'lab_fe twice'),
+    ('a hand action taking samples for no node', 'bad_length', _hand(10, lambda h: SET(h, 'samples', [])), '.samples'),
+    ('a hand action taking samples for 17 nodes', 'bad_length',
+     _hand(10, lambda h: SET(h, 'samples', [f'lab_{k}' for k in range(17)])), '.samples'),
+    ('a hand action whose samples are not a list', 'bad_type', _hand(10, lambda h: SET(h, 'samples', 'lab_fe')), '.samples'),
+    ('a hand action writing nothing and taking no sample', 'missing_key', _hand(10, lambda h: h.pop('samples')), 'or takes samples'),
+    ('a collector without its modes', 'missing_key', _tool(-2, lambda t: t.pop('modes')), 'a collector lists its modes'),
+    ('a sampler with modes', 'unknown_key', _tool(-3, lambda t: SET(t, 'modes', ['oil'])), 'only on a meter'),
+    ('a tool of a kind not known', 'bad_value', _tool(-1, lambda t: SET(t, 'kind', 'thermometer')), '.kind: one of'),
+    ('a collector\'s meter whose mode no collector has', 'bad_ref', _meter(-2, lambda x: SET(x, 'mode', 'acc')), "no collector in tools.json has the mode 'acc'"),
+    ('a camera\'s meter of a kind not read through', 'bad_value', _meter(-1, lambda x: SET(x, 'tool_kind', 'sampler')), 'tool_kind: one of'),
+    ('a sampling hand step by a role without sample', 'authority', _st(lambda st: next(
+        r for r in st['roles'] if r['id'] == 'ic_tech')['authority'].remove('sample')), 'lacks sample'),
+]
+
+
+def lab_runs():
+    """(why, scenario changes, files, player, steps, snapshot every): AG3's runs (REALISM.md §2.19)."""
+    lf = lab_files()
+    me = {'trainee': 'ic1'}
+    G = GAUGE
+    take = (lambda k: (k, 'hand', G, 'take_oil', 'oil_kit', None, 'ic1'))
+    lab = Trainee(quiet=True, extra=_x(
+        (2, 'arrive', 'tb1'), (3, 'hand', G, 'take_oil', 'oil_kit', None, 'ic1'),
+        (3, 'tool', 'oil_kit', 1, 'ic1'), (3, 'tool', 'vibcol', 1, 'ic1'), (3, 'tool', 'ircam', 1, 'ic1'),
+        (3, 'hand', G, 'take_oil', 'oil_kit', None, 'ic1'),
+        (4, 'leave', 'tb1'), (5, 'arrive', 'w_gauge'),
+        (6, 'hand', G, 'take_oil', None, None, 'ic1'), (6, 'hand', G, 'take_oil', 'oil_kit', None, 'ic2'),
+        take(6), (6, 'read', G, 3, 'g1_vel'), (6, 'read', G, 13, 'g1_ir'),
+        take(20), (30, 'hand', G, 'take_oil_slow', 'oil_kit', None, 'ic1'),
+        take(60), take(61), take(62), take(63), take(64), take(65), take(66),
+        (70, 'hand', G, 'take_oil_slow', 'oil_kit', None, 'ic1'), take(100)))
+    no_sample = lab_files()
+    ic = next(r for r in no_sample['staff.json']['roles'] if r['id'] == 'ic_tech')
+    ic['authority'].remove('sample')
+    no_sample['staff.json']['routines'] = [dict(r, slots=[x for x in r['slots'] if x['task'] != 'cm_round'])
+                                           for r in no_sample['staff.json']['routines']]
+    auth = Trainee(quiet=True, extra=_x(
+        (2, 'arrive', 'tb1'), (3, 'tool', 'oil_kit', 1, 'ic1'), (4, 'leave', 'tb1'), (5, 'arrive', 'w_gauge'),
+        take(6), (6, 'hand', G, 'clean_glass', None, None, 'ic1')))
+    jump = Trainee(quiet=True, extra=_x(
+        (1, 'arrive', 'tb1'), (2, 'tool', 'oil_kit', 1, 'ic1'), (3, 'leave', 'tb1'), (4, 'arrive', 'w_gauge'),
+        take(5), (6, 'task_ack'), (10, 'jump', '06:30'), (12, 'arrive', 'w_gauge'), take(14)))
+    return [
+        ('samples taken (§2.19): at the toolbox, without the kit (tool) and away from the gauge (where); at the '
+         'gauge without the kit (tool), by another person (authority), then taken at once (both nodes, each drawing '
+         'its own lab stream; the iron the pump\'s pressure as the previous step left it), again (two queued with '
+         'their dues), a timed one (2 minutes: its sample in step 3 at its end, the iron as that step left it); the '
+         'collector and the camera read through their meters; the results come in step 3 at their dues, each with '
+         'its lab event (lab_vis given 70 by the scenario until its first result); eight queued: the next sample '
+         'refused lab, the timed one too, taken again once the queue has room', dict(me, init={'lab_vis': 70}), lf,
+         lab, 260, 10),
+        ('the sample authority (§2.19): a role with operate_local but not sample is refused authority for a sampling '
+         'hand action, and still makes a bare-hand one (clean_glass, operate_local)', me, no_sample, auth, 40, 2),
+        ('results across a jump (§2.19): a sample taken at 07:30, then a jump to 06:30 of day 2: both results come '
+         'in the jump\'s own step (their dues long passed), one lab event each; a sample after the jump queued from '
+         'the new clock', me, lf, jump, 200, 10),
+        ('an NPC\'s condition monitoring round (§2.19): ic1 (no trainee) takes the kit, the collector and the camera '
+         'at 07:45, reads the gauge\'s vibration (out of its expected range: a finding) and temperature, takes a '
+         'sample at once and a timed one, puts the tools back; the results come 6 and 12 clock minutes later',
+         {}, lf, None, 1200, 100),
+    ]
+
+
+def lab_part():
+    lf = lab_files()
+    return {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in lf.items()},
+            'counts': check(lf).counts,
+            'reject': reject_changes(lf, [r[:3] for r in REJECTS_LAB], lf),
+            'runs': build_runs(lab_runs(), lf)}
+
+
 def parts3():
     """The realism vectors part by part (REALISM.md §13), in the file's order."""
     return {
@@ -5415,7 +5570,10 @@ def parts3():
                           '(§2.3–§2.7, §2.13): `hands`, the same plant with tools.json, hand actions, meters, a '
                           'HART op, hidden causes and cures, and an NPC\'s job with tools and slips; milestone HS7 (§8.5): `audio`, the '
                           'safety staff with personal audio banned in zones, an Ex zone, music and phone inputs, '
-                          'noticing by drawn delays and by missed calls, the device held until the duty ends. A run\'s `files` are '
+                          'noticing by drawn delays and by missed calls, the device held until the duty ends; milestone AG3 (§2.19): `lab`, '
+                          'the hands part\'s plant with an oil sampling kit, a vibration data collector and a '
+                          'thermal camera, sample nodes taken by hand actions, the lab\'s results after clock hours '
+                          'from the lab streams, and an NPC\'s round. A run\'s `files` are '
                           'those that differ from its part\'s. Numbers compare to 1e-6; the digests (§17.14) of every '
                           '50th step are exact.'),
         'streams': build_streams,
@@ -5426,7 +5584,8 @@ def parts3():
         'wear': wear_part,
         'weather': weather_part,
         'hands': hands_part,
-        'audio': audio_part}
+        'audio': audio_part,
+        'lab': lab_part}
 
 
 def build3():

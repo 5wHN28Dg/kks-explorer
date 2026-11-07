@@ -795,11 +795,17 @@ does is in both engines bit for bit, with vectors.
   value]` for each. A jump's step delivers every sample due by the clock after it. At most 8 samples queued per node:
   a hand action whose node's queue is full is refused with the reason `lab` (after the failed permissives, before
   `value`). A sample node needs the plant clock (`bad_ref`, as `wear`); it has no entry in step 2's program.
+- **Settled in the code (phase 1, the reference):** a timed sampling action checks the queues when it starts; a node
+  whose queue filled while it was under way takes no sample at its end (no draw), the action's other nodes still do.
+  A `sample` ref may be a number (the oil grade's viscosity). The digest's lab part holds, per sample node in model
+  order, its stream's state (every node's, drawn from or not) and its queue's dues and values; the snapshot's `lab`
+  lists only nodes with samples queued. The `lab` part of `plant3d-realism.json` is appended after `audio`, and
+  `about` gains its sentence (the only earlier item that changes).
 - **Who takes a sample:** a hand action with `samples` and `work: false` needs the `sample` authority (S3's, the
   chemists') instead of `operate_local`; the mechanical technician gains it in the first train's staff file.
 - **Snapshots, saves, the digest:** the node's value is a value; each sample node's queue (due clock in whole tenths,
   value) is engine state, in saves and snapshots (`lab`: node → queue) and in the digest after the hands part, with
-  the lab streams' states (only streams drawn from), in model order.
+  each node's lab stream state, in model order.
 - **The first train's content** (`tools/plant3d/train_monitoring.py`): the collector, the thermal camera and two oil
   sampling kits at the store counter; collector meters at the seven pumps' and ten fans' vibration probes, camera
   meters at the seven pump motors; the pump bearings' defect tone (BPFO, the outer race: the commonest defect, and
