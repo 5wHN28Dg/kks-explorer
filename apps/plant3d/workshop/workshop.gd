@@ -1315,6 +1315,7 @@ func _warm_kinds() -> void:
 			var added := 0
 			while i < pieces.size() and added < WARM_PER_FRAME and (added == 0 or Time.get_ticks_usec() - t1 < warm_slice_us):
 				var gi: Node = pieces[i]
+				gi.owner = null   # (the scene's root owns it: moved out from under it, it must not stay its owner)
 				gi.get_parent().remove_child(gi)
 				held.add_child(gi)
 				i += 1
