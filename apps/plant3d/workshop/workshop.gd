@@ -599,7 +599,9 @@ func select(id: String) -> void:
 	# with "Selected subassembly only" on, a pick inside the subassembly taken apart looks at it; a pick outside it
 	# takes that one apart instead
 	if only_selected and not (root_id != "" and comps.has(selected) and (selected == root_id or _under(selected, root_id))):
-		root_id = selected if comps.has(selected) else ""
+		var nr := selected if comps.has(selected) else ""
+		if not (bench_running() and _takes_apart(s, nr)):   # (running, a pick doesn't take another part apart)
+			root_id = nr
 	note = why_not_free(selected)   # (the tree's pick says why a part can't be picked up, as the view's does)
 	views.selection_changed()
 	if panels != null:

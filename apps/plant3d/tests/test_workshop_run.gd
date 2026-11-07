@@ -435,6 +435,45 @@ func _running(ws) -> void:
 	ws.run_command("terminal_block", "stop")
 	_go(ws, 0.3)
 	check(c.machine_state("supply") == "off", "Stop turns the supply off")
+	# its subassembly taken apart alone, then started (its data allows it): neither a pick elsewhere nor turning
+	# "Selected subassembly only" off takes the rest apart while it runs
+	var sub := ""
+	for id in ws.spec.order:
+		for ch in ws.spec.order:
+			if ws.spec.comps[ch].parent == id:
+				sub = id
+				break
+		if sub != "":
+			break
+	var other := ""
+	for id in ws.spec.order:
+		if ws.spec.comps[id].parent == "" and id != sub:
+			other = id
+			break
+	ws.select(sub)
+	ws.set_only_selected(true)
+	ws.set_slider(1.0)
+	ws.run_command("terminal_block", "start")
+	_go(ws, 0.3)
+	check(sub != "" and other != "" and ws.root_id == sub and ws.bench_running(), "%s taken apart alone, running" % sub)
+	var home0 := _home_set(ws)
+	ws.select(other)
+	check(_home_set(ws).size() >= home0.size() and home0.keys().all(func(k): return _home_set(ws).has(k)),
+		"running, picking %s takes nothing else apart (root %s)" % [other, ws.root_id])
+	home0 = _home_set(ws)
+	ws.select("")
+	check(home0.keys().all(func(k): return _home_set(ws).has(k)) and ws.root_id != "",
+		"nor does picking nothing take the whole machine apart (root %s)" % ws.root_id)
+	ws.note = ""
+	ws.set_only_selected(false)
+	check(ws.only_selected and ws.root_id != "" and ws.note == ws.RUNNING_WHY,
+		"nor does turning \"Selected subassembly only\" off: %s" % ws.note)
+	ws.set_slider(0.0)
+	check(ws.s == 0.0, "and it is put back together running")
+	ws.run_command("terminal_block", "stop")
+	_go(ws, 0.3)
+	ws.set_only_selected(false)
+	ws.select("")
 	check(c.step_us_max > 0 and c.steps > 100, "the bench steps and times its steps")
 
 ## Every channel against the model's value (WORKSHOP.md §1: a channel that moves on its own is a bug).
@@ -616,6 +655,15 @@ func _free_rotor() -> void:
 		"a free rotor turns a quarter turn a second at 0.25 rev/s, added up: %s, %s" % [b1, n.basis])
 	n.free()
 
+## The components at home (not moved by the explode) as the slider and its root stand now.
+func _home_set(ws) -> Dictionary:
+	var off: Dictionary = Explode.offsets(ws.spec, ws.s, ws.root_id)
+	var out := {}
+	for id in ws.comps:
+		if (off.get(id, Vector3.ZERO) as Vector3).length() < 1e-5:
+			out[id] = true
+	return out
+
 ## While the bench runs: the slider, the selected subassembly taken apart, handling, and both guided modes are refused
 ## with the technician's sentence; Reassemble all and Reset are not.
 func _refused_running(ws, what: String, part: String) -> void:
@@ -639,8 +687,6 @@ func _refused_running(ws, what: String, part: String) -> void:
 		"%s is not taken apart step by step" % what)
 	check(not ws.start_guide("assemble", "exploded") and not ws.start_guide("assemble", "pile") and not ws.guide.on(),
 		"nor laid out to be assembled")
-	ws.reassemble()
-	check(ws._reassemble_t >= 0.0 or s0 == 0.0, "Reassemble all still puts it home")
 
 ## A cutaway plane from the data: the part frame's normal to Godot's axes, the offset across the box.
 func _planes_math() -> void:

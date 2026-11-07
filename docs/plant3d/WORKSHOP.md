@@ -697,7 +697,9 @@ addition (both engines, vectors) made in K6.
   not baked), and every Workshop material is made by script, so the four `ws_*` shaders were compiled on the phone,
   the first time in the plant's warm-up. The content build now saves one material per shader file the app ships
   (`builder/shader_mats.gd`, `built/shaders/`), the walking directions' and the weather's too, which were made by
-  script as well; `tests/test_launch.gd` checks every shader file has one. Measured on the Note 9: see MILESTONES.md.
+  script as well; `tests/test_launch.gd` checks every shader file has one. The release APK carries 32 baked
+  versions of the mobile scene shader instead of 20. Whether the frame goes (the driver's pipeline builds are not
+  baked) is measured on the Note 9 below.
 - **A running machine is not taken apart** (§3): while the bench's machine is out of its resting state the slider
   (towards apart), the selected subassembly, handling and both guided modes are refused with "Stop the machine and let
   it come to rest before opening it up"; once it is stopped and at rest (the turbine's standstill, below 1 % speed on
@@ -768,7 +770,7 @@ the Workshop. The Workshop's own, on the Note 9 (`lean+vis`, release build, cool
 | Workshop button to the first frame of the machine | ≤ 2.0 s with its pipelines compiled; ≤ 5.0 s with an empty pipeline cache (the first entry after an install) |
 | Back to the plant's first frame | ≤ 1.0 s |
 | After the first frame of the machine | no frame over 100 ms while orbiting, exploding, X-raying, cutting, sectioning and running; ≥ 95 % of frames at ≥ 30 fps over the Workshop walk |
-| The Workshop walk (scripted, `app/workshop_walk.gd`) | 3 minutes on a fixed camera orbit: assembled, exploded 0 → 1 → 0, handled, the guided steps, then (the machine assembled again, at 120 s) Start, X-ray, cutaway, a section sweep, the faults, Stop (a running machine is not taken apart: the polish after K4b; `bench_speed=` lets a turbine reach full speed in that time) |
+| The Workshop walk (scripted, `app/workshop_walk.gd`) | 3 minutes on a fixed camera orbit: assembled, exploded 0 → 1 → 0, handled, the guided steps, then (the machine assembled again, at 120 s) Start, X-ray, cutaway, a section sweep, the faults, Stop (a running machine is not taken apart: the polish after K4b; the turbine's walk is measured with `bench_speed=20`, so that its 300 s soak still lets it reach full speed in the 35 s before the faults) |
 | Peak PSS | ≤ 1.5 GB with the plant held behind it |
 | One kind's scene | ≤ 120,000 triangles (all components, insides included); ≤ 300 draw calls in any view of the walk, `ws_cap`'s second pass included (it is drawn only while a cut or section is on, on the components the cut reaches) (the plant's busiest measured 479 at p95 within the frame rules, 0041) |
 | The bench step | ≤ 0.3 ms on the Note 9 (a bench model is a fraction of the plant's 1.4 ms) |
