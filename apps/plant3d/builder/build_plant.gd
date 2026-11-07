@@ -13,6 +13,7 @@ const Routes = preload("res://app/routes.gd")
 const Crowd = preload("res://app/crowd.gd")
 const WorkshopBuild = preload("res://builder/workshop_build.gd")
 const WorkBuild = preload("res://builder/work_build.gd")
+const ShaderMats = preload("res://builder/shader_mats.gd")
 
 func _init() -> void:
 	var args := {}
@@ -52,6 +53,14 @@ func _init() -> void:
 		quit(1)
 		return
 	print("build: workshop: %d kinds %s" % [ws.built.size(), str(ws.tris)])
+	# a material per shader file, for the export's shader baker (builder/shader_mats.gd)
+	var se: Array = ShaderMats.build(out)
+	for e in se:
+		printerr("build: ", e)
+	if not se.is_empty():
+		quit(1)
+		return
+	print("build: shaders for the baker: %d" % ShaderMats.shader_files().size())
 	# each piece of equipment with jobs: its work scene (builder/work_build.gd, REALISM.md §3.3)
 	var wk: Dictionary = WorkBuild.build_all(out.path_join("work"), data, b.kp)
 	for e in wk.errors:

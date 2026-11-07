@@ -543,11 +543,23 @@ func apply() -> void:
 func set_slider(v: float) -> void:
 	if guide.on():
 		return   # (the slider waits while the steps are on: Reset or Reassemble all ends them)
+	if bench_running() and _takes_apart(clampf(v, 0.0, 1.0), root_id):
+		note = RUNNING_WHY   # (back towards assembled is allowed: it opens nothing)
+		if panels != null:
+			panels.sync_slider()
+			panels.selected_changed()
+		return
 	_reassemble_t = -1.0
 	s = clampf(v, 0.0, 1.0)
 	apply()
 
 func set_only_selected(on: bool) -> void:
+	if bench_running() and _takes_apart(s, selected if on and comps.has(selected) else ""):
+		note = RUNNING_WHY
+		if panels != null:
+			panels.only_cb.set_pressed_no_signal(only_selected)
+			panels.selected_changed()
+		return
 	only_selected = on
 	root_id = selected if on and comps.has(selected) else ""
 	apply()
@@ -669,6 +681,8 @@ func _ancestor_of(a: String, id: String) -> bool:
 func why_not_free(id: String) -> String:
 	if id == "" or not (comps.has(id) or groups.has(id)):
 		return ""
+	if bench_running():
+		return RUNNING_WHY
 	if comps.has(id) or (groups.has(id) and not spec.groups[id].get("beyond", false)):   # (a sealed part's
 		#   bolts to another machine are outside its seal: Assembly.rides_of)
 		var at: String = spec.comps[id].parent if comps.has(id) else String(spec.groups[id].host)
@@ -706,6 +720,11 @@ func _at_home(id: String, off: Dictionary, foff := {}) -> bool:
 ## are cleared first; the slider waits until Reset or Reassemble all ends the steps.
 func start_guide(mode: String, from := "exploded") -> bool:
 	if machine == null or words.get("assembly", []).is_empty() or not mode in ["assemble", "disassemble"]:
+		return false
+	if bench_running():   # (assembling starts from the machine taken apart: that opens it up too)
+		note = RUNNING_WHY
+		if panels != null:
+			panels.selected_changed()
 		return false
 	_end_guide()
 	_reassemble_t = -1.0
@@ -1043,6 +1062,38 @@ func refusal(at: String, do: String, reasons: Array) -> String:
 				if o.has("machine") and r == o.machine + "_state":
 					return "%s: not from %s." % [String(o.get("title", do)), bench.machine_state(o.machine)]
 	return "Refused."
+
+## Taking a running machine apart is refused: taking apart, handling and the guided steps wait until it is stopped and
+## at rest, which is its bench machine back in its resting state (the turbine's standstill comes once the rotor is
+## below 1 % speed, on its turning gear; the transmitter's once the loop supply is off). A kind whose bench has no
+## machine is at rest when no freely turning piece turns faster than AT_REST of its unit. Hiding and isolating are ways
+## of looking and stay allowed; so do Reassemble all and Reset, which put parts home.
+const RUNNING_WHY := "Stop the machine and let it come to rest before opening it up."
+const AT_REST := 0.01
+
+func bench_running() -> bool:
+	if bench == null or not bench.loaded():
+		return false
+	for mc in bench.m.machines:
+		if bench.machine_state(String(mc.id)) != String(mc.init):
+			return true
+	if not bench.m.machines.is_empty():
+		return false
+	for a in bench_view.anims:
+		if a.kind == "rotate" and float(a.travel) == 0.0 and absf(bench.now(a.of)) > AT_REST:
+			return true
+	return false
+
+## Whether the slider at `new_s` with `new_root` as its root takes apart a part that stands at home now.
+func _takes_apart(new_s: float, new_root: String) -> bool:
+	var off0 := Explode.offsets(spec, s, root_id)
+	var f0 := Explode.fastener_offsets(spec, s, root_id)
+	var off1 := Explode.offsets(spec, new_s, new_root)
+	var f1 := Explode.fastener_offsets(spec, new_s, new_root)
+	for id in comps.keys() + groups.keys():
+		if _at_home(id, off0, f0) and not _at_home(id, off1, f1):
+			return true
+	return false
 
 ## Whether every part stands at home (nothing taken apart, handled, hidden or in the steps).
 func assembled() -> bool:
@@ -1726,6 +1777,10 @@ static func _seg_dist(p: Vector2, a: Vector2, b: Vector2) -> float:
 
 func _drag_handle(p: Vector2) -> void:
 	if selected == "" or _drag.is_empty():
+		return
+	if bench_running():   # (started while a part was held: let go of it where it is)
+		_drag = {}
+		note = RUNNING_WHY
 		return
 	if guide.on():
 		_drag_guided(p)

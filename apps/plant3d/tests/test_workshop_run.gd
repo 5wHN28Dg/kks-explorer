@@ -237,6 +237,20 @@ func _turbine(tree: SceneTree, ws) -> void:
 	ws.toggle_fault("rub")
 	_go(ws, 4.0)
 	check(c.machine_state("turbine") == "trip" and c.now("stop_pos") < 0.01, "a rub trips it and the stop valves shut: %s" % c.machine_state("turbine"))
+	# tripped but still coasting down: not opened up until the rotor has come to rest
+	check(c.now("rpm") > 100.0, "the tripped rotor still turns: %.0f rpm" % c.now("rpm"))
+	_refused_running(ws, "the coasting turbine", "lagging_upper")
+	for i in 600:
+		if c.machine_state("turbine") == "standstill":
+			break
+		_go(ws, 1.0)
+	check(c.machine_state("turbine") == "standstill" and not ws.bench_running(), "the rotor comes to rest on its turning gear: %s at %.1f rpm" % [c.machine_state("turbine"), c.now("rpm")])
+	ws.note = ""
+	ws.set_slider(0.5)
+	check(ws.s == 0.5 and ws.note == "", "at rest, it is taken apart again: %s" % ws.note)
+	ws.set_slider(0.0)
+	check(ws.start_guide("disassemble"), "and taken apart step by step")
+	ws.reset()
 	ws.close()
 	await ws.left
 
@@ -396,8 +410,19 @@ func _running(ws) -> void:
 	check(disp.size() == 1 and disp[0].label.visible and win[0].visible, "and come back with it")
 	ws.toggle_fault("over_range")
 	_go(ws, 6.0)
-	# taken apart, it still runs (its data allows it); the impulse path's particles rest while the line is apart
+	# a running machine is not opened up: taking apart, handling and the guided steps are refused with a technician's
+	# reason, and allowed again once it is stopped and at rest
+	_refused_running(ws, "the powered transmitter", "process_flange")
+	ws.run_command("terminal_block", "stop")
+	_go(ws, 0.3)
+	check(not ws.bench_running(), "stopped, the transmitter is at rest")
+	ws.note = ""
 	ws.set_slider(1.0)
+	check(ws.s == 1.0 and ws.note == "", "stopped, it is taken apart: %s" % ws.note)
+	# taken apart, it still runs (its data allows it); the impulse path's particles rest while the line is apart
+	ws.run_command("terminal_block", "start")
+	_go(ws, 0.3)
+	check(c.machine_state("supply") == "on", "Start powers it taken apart")
 	c.op_set("process_flange", 7.0)
 	_go(ws, 0.3)
 	check((fl.mat as ShaderMaterial).get_shader_parameter("density") == 0.0 and absf(c.now("flow_frac")) > 0.05,
@@ -406,6 +431,7 @@ func _running(ws) -> void:
 	_go(ws, 0.3)
 	_channels(ws, "exploded")
 	ws.set_slider(0.0)
+	check(ws.s == 0.0, "running, it is put back together (that opens nothing)")
 	ws.run_command("terminal_block", "stop")
 	_go(ws, 0.3)
 	check(c.machine_state("supply") == "off", "Stop turns the supply off")
@@ -589,6 +615,32 @@ func _free_rotor() -> void:
 	check(b1.is_equal_approx(Basis(Vector3.UP, PI / 2.0)) and n.basis.is_equal_approx(Basis(Vector3.UP, PI)),
 		"a free rotor turns a quarter turn a second at 0.25 rev/s, added up: %s, %s" % [b1, n.basis])
 	n.free()
+
+## While the bench runs: the slider, the selected subassembly taken apart, handling, and both guided modes are refused
+## with the technician's sentence; Reassemble all and Reset are not.
+func _refused_running(ws, what: String, part: String) -> void:
+	check(ws.bench_running(), "%s counts as running" % what)
+	var s0: float = ws.s
+	ws.note = ""
+	ws.set_slider(minf(s0 + 0.5, 1.0))
+	check(ws.s == s0 and ws.note == ws.RUNNING_WHY, "%s is not taken apart: %s, %s" % [what, ws.s, ws.note])
+	check(ws.panels == null or is_equal_approx(ws.panels.slider.value, s0), "the slider stays where it was")
+	ws.note = ""
+	ws.select(part)
+	check(ws.why_not_free(part) == ws.RUNNING_WHY and ws.note == ws.RUNNING_WHY,
+		"%s: %s is not picked up: %s" % [what, part, ws.why_not_free(part)])
+	ws.set_only_selected(true)
+	check(not ws.only_selected and ws.note == ws.RUNNING_WHY or s0 == 0.0 and ws.only_selected,
+		"%s: its subassembly alone is not taken apart either" % what)
+	ws.set_only_selected(false)
+	ws.select("")
+	ws.note = ""
+	check(not ws.start_guide("disassemble") and not ws.guide.on() and ws.note == ws.RUNNING_WHY,
+		"%s is not taken apart step by step" % what)
+	check(not ws.start_guide("assemble", "exploded") and not ws.start_guide("assemble", "pile") and not ws.guide.on(),
+		"nor laid out to be assembled")
+	ws.reassemble()
+	check(ws._reassemble_t >= 0.0 or s0 == 0.0, "Reassemble all still puts it home")
 
 ## A cutaway plane from the data: the part frame's normal to Godot's axes, the offset across the box.
 func _planes_math() -> void:
