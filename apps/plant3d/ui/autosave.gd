@@ -274,7 +274,20 @@ static func _hands_contents(fresh, d: Dictionary) -> String:
 						ok = true
 			if not ok:
 				return "a hidden cause the content doesn't have"
-	for k in ["cause_s", "slip_s"]:
+	if d.has("lab_q"):
+		# the lab's queues (REALISM.md §2.19): one per sample node of the content, at most 8 samples of [due, value]
+		var want: Dictionary = fresh.lab_q
+		if typeof(d["lab_q"]) != TYPE_DICTIONARY or d["lab_q"].size() != want.size():
+			return "a damaged lab queue"
+		for key in want:
+			var q = d["lab_q"].get(key)
+			if typeof(q) != TYPE_ARRAY or q.size() > 8:
+				return "a damaged lab queue"
+			for it in q:
+				if typeof(it) != TYPE_ARRAY or it.size() != 2 or typeof(it[0]) != TYPE_INT \
+						or typeof(it[1]) != TYPE_FLOAT or not is_finite(it[1]):
+					return "a damaged lab queue"
+	for k in ["cause_s", "slip_s", "lab_s"]:
 		if d.has(k):
 			var want: Dictionary = fresh.get(k)
 			if typeof(d[k]) != TYPE_DICTIONARY or d[k].size() != want.size():
