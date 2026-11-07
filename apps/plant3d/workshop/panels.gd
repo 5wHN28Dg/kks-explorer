@@ -153,7 +153,8 @@ func setup(w) -> void:
 	bv.add_child(row4)
 	row4.add_child(W.label("See inside", 18, W.DIM, false))
 	for b in [["X-ray", "xray", func(on): ws.views.set_xray(on)], ["Cutaway", "cutaway", func(on): ws.views.set_cut(on)],
-			["Section", "section", func(on): ws.views.set_section(on)], ["Flow", "flow", func(on): ws.views.flow_on = on]]:
+			["Section", "section", func(on): ws.views.set_section(on)], ["Flow", "flow", func(on): ws.views.flow_on = on],
+			["Heat", "heat", func(on): ws.views.heat_on = on], ["Pressure", "pressure", func(on): ws.views.pressure_on = on]]:
 		var cb := CheckButton.new()
 		cb.name = "see_" + b[1]
 		cb.text = b[0]
@@ -247,6 +248,8 @@ func _sync_see() -> void:
 	see["cutaway"].set_pressed_no_signal(ws.views.cut)
 	see["section"].set_pressed_no_signal(ws.views.section)
 	see["flow"].set_pressed_no_signal(ws.views.flow_on)
+	see["heat"].set_pressed_no_signal(ws.views.heat_on)
+	see["pressure"].set_pressed_no_signal(ws.views.pressure_on)
 	see["axis"].text = ["Across", "Along", "Up"][ws.views.section_axis]
 
 func _next_axis() -> void:
