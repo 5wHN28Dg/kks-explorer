@@ -275,7 +275,31 @@
   ["cw_c_brg_rise_l", {"lag": "cw_c_brg_rise", "tau": 600, "unit": "K"}],
   ["cw_c_brg_t", {"sum": ["ambient_t", "cw_c_brg_rise_l"], "unit": "°C", "kks": "30PAC10AP003"}],
   ["cw_c_vib_h", {"cmp": ["cw_c_vib", ">", 7.1]}],
-  ["cw_c_brg_t_h", {"cmp": ["cw_c_brg_t", ">", 90]}]
+  ["cw_c_brg_t_h", {"cmp": ["cw_c_brg_t", ">", 90]}],
+  ["cw_a_bt_k", {"of": "cw_a_brg_mgn", "table": [[-3000, 0.0], [-2700.0, 0.6], [-1800.0, 1.2], [-900.0, 2.52], [0, 3.96]], "unit": "mm/s"}],
+  ["cw_a_bt", {"product": ["cw_a_spd", "cw_a_bt_k"], "unit": "mm/s"}],
+  ["cw_b_bt_k", {"of": "cw_b_brg_mgn", "table": [[-3000, 0.0], [-2700.0, 0.6], [-1800.0, 1.2], [-900.0, 2.52], [0, 3.96]], "unit": "mm/s"}],
+  ["cw_b_bt", {"product": ["cw_b_spd", "cw_b_bt_k"], "unit": "mm/s"}],
+  ["cw_c_bt_k", {"of": "cw_c_brg_mgn", "table": [[-3000, 0.0], [-2700.0, 0.6], [-1800.0, 1.2], [-900.0, 2.52], [0, 3.96]], "unit": "mm/s"}],
+  ["cw_c_bt", {"product": ["cw_c_spd", "cw_c_bt_k"], "unit": "mm/s"}],
+  ["cw_a_oil_fe", {"of": "cw_a_brg_mgn", "table": [[-3000, 4], [-1800.0, 12], [-900.0, 35], [0, 90]], "unit": "ppm"}],
+  ["cw_a_oil_pc", {"of": "cw_a_brg_mgn", "table": [[-3000, 15], [-1800.0, 16], [-900.0, 18], [0, 21]]}],
+  ["cw_a_lab_fe", {"sample": "cw_a_oil_fe", "spread": [[0, -2], [0.1, -1.0], [0.5, 0], [0.9, 1.0], [1, 2]], "hours": 48, "unit": "ppm"}],
+  ["cw_a_lab_pc", {"sample": "cw_a_oil_pc", "spread": [[0, -0.6], [0.1, -0.3], [0.5, 0], [0.9, 0.3], [1, 0.6]], "hours": 48}],
+  ["cw_a_lab_visc", {"sample": 68, "spread": [[0, -1.5], [0.1, -0.75], [0.5, 0], [0.9, 0.75], [1, 1.5]], "hours": 48, "unit": "cSt"}],
+  ["cw_a_lab_h2o", {"sample": 60, "spread": [[0, -20], [0.1, -10.0], [0.5, 0], [0.9, 10.0], [1, 20]], "hours": 48, "unit": "ppm"}],
+  ["cw_b_oil_fe", {"of": "cw_b_brg_mgn", "table": [[-3000, 4], [-1800.0, 12], [-900.0, 35], [0, 90]], "unit": "ppm"}],
+  ["cw_b_oil_pc", {"of": "cw_b_brg_mgn", "table": [[-3000, 15], [-1800.0, 16], [-900.0, 18], [0, 21]]}],
+  ["cw_b_lab_fe", {"sample": "cw_b_oil_fe", "spread": [[0, -2], [0.1, -1.0], [0.5, 0], [0.9, 1.0], [1, 2]], "hours": 48, "unit": "ppm"}],
+  ["cw_b_lab_pc", {"sample": "cw_b_oil_pc", "spread": [[0, -0.6], [0.1, -0.3], [0.5, 0], [0.9, 0.3], [1, 0.6]], "hours": 48}],
+  ["cw_b_lab_visc", {"sample": 68, "spread": [[0, -1.5], [0.1, -0.75], [0.5, 0], [0.9, 0.75], [1, 1.5]], "hours": 48, "unit": "cSt"}],
+  ["cw_b_lab_h2o", {"sample": 60, "spread": [[0, -20], [0.1, -10.0], [0.5, 0], [0.9, 10.0], [1, 20]], "hours": 48, "unit": "ppm"}],
+  ["cw_c_oil_fe", {"of": "cw_c_brg_mgn", "table": [[-3000, 4], [-1800.0, 12], [-900.0, 35], [0, 90]], "unit": "ppm"}],
+  ["cw_c_oil_pc", {"of": "cw_c_brg_mgn", "table": [[-3000, 15], [-1800.0, 16], [-900.0, 18], [0, 21]]}],
+  ["cw_c_lab_fe", {"sample": "cw_c_oil_fe", "spread": [[0, -2], [0.1, -1.0], [0.5, 0], [0.9, 1.0], [1, 2]], "hours": 48, "unit": "ppm"}],
+  ["cw_c_lab_pc", {"sample": "cw_c_oil_pc", "spread": [[0, -0.6], [0.1, -0.3], [0.5, 0], [0.9, 0.3], [1, 0.6]], "hours": 48}],
+  ["cw_c_lab_visc", {"sample": 68, "spread": [[0, -1.5], [0.1, -0.75], [0.5, 0], [0.9, 0.75], [1, 1.5]], "hours": 48, "unit": "cSt"}],
+  ["cw_c_lab_h2o", {"sample": 60, "spread": [[0, -20], [0.1, -10.0], [0.5, 0], [0.9, 10.0], [1, 20]], "hours": 48, "unit": "ppm"}]
  ],
  "ops": [
   {"kks": "30PAC10AP001", "do": "start", "set": {"cw_a_cmd": 1}, "needs": [["cw_basin_ok", "Cooling tower basin level low-low"], ["cw_a_vstart", "Discharge valve 30PAC10AA101 not at its start position (10–20 %)"], ["cw_a_trips_clear", "A pump trip is latched: reset it first"], ["cw_a_ok", "The motor has a fault: it needs repair before a start"]], "where": ["local", "screen"]},
@@ -433,5 +457,18 @@
   {"id": "wo_cw_a_act", "kks": "30PAC10AA101", "title": "CW pump A discharge valve: overhaul the actuator, regrease and repack the stem", "discipline": "mech", "permit": "general", "isolation": "iso_cw_a_act", "repairs": "cw_a_act", "renews": ["cw_a_act_wear"], "task": "job_cw_a_act", "isolate": "isolate_cw_a_act", "assign": "assign_cw_a_act", "deisolate": "deisolate_cw_a_act"},
   {"id": "wo_cw_b_act", "kks": "30PAC10AA102", "title": "CW pump B discharge valve: overhaul the actuator, regrease and repack the stem", "discipline": "mech", "permit": "general", "isolation": "iso_cw_b_act", "repairs": "cw_b_act", "renews": ["cw_b_act_wear"], "task": "job_cw_b_act", "isolate": "isolate_cw_b_act", "assign": "assign_cw_b_act", "deisolate": "deisolate_cw_b_act"},
   {"id": "wo_cw_c_act", "kks": "30PAC10AA103", "title": "CW pump C discharge valve: overhaul the actuator, regrease and repack the stem", "discipline": "mech", "permit": "general", "isolation": "iso_cw_c_act", "repairs": "cw_c_act", "renews": ["cw_c_act_wear"], "task": "job_cw_c_act", "isolate": "isolate_cw_c_act", "assign": "assign_cw_c_act", "deisolate": "deisolate_cw_c_act"}
+ ],
+ "hands": [
+  {"kks": "30PAC10AP001", "action": "take_oil", "component": "body", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["cw_a_lab_fe", "cw_a_lab_pc", "cw_a_lab_visc", "cw_a_lab_h2o"]},
+  {"kks": "30PAC10AP002", "action": "take_oil", "component": "body", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["cw_b_lab_fe", "cw_b_lab_pc", "cw_b_lab_visc", "cw_b_lab_h2o"]},
+  {"kks": "30PAC10AP003", "action": "take_oil", "component": "body", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["cw_c_lab_fe", "cw_c_lab_pc", "cw_c_lab_visc", "cw_c_lab_h2o"]}
+ ],
+ "meters": [
+  {"id": "cw_a_vel", "kks": "30PAC10CY001", "point": "brg", "tool_kind": "collector", "mode": "vel", "value": "cw_a_vib"},
+  {"id": "cw_a_ir", "kks": "30PAC10AP001", "point": "brg", "tool_kind": "camera", "mode": "ir", "value": "cw_a_brg_t"},
+  {"id": "cw_b_vel", "kks": "30PAC10CY002", "point": "brg", "tool_kind": "collector", "mode": "vel", "value": "cw_b_vib"},
+  {"id": "cw_b_ir", "kks": "30PAC10AP002", "point": "brg", "tool_kind": "camera", "mode": "ir", "value": "cw_b_brg_t"},
+  {"id": "cw_c_vel", "kks": "30PAC10CY003", "point": "brg", "tool_kind": "collector", "mode": "vel", "value": "cw_c_vib"},
+  {"id": "cw_c_ir", "kks": "30PAC10AP003", "point": "brg", "tool_kind": "camera", "mode": "ir", "value": "cw_c_brg_t"}
  ]
 }

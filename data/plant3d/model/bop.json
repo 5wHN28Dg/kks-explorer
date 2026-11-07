@@ -97,7 +97,11 @@
   ["ccw_b_brg_rise_l", {"lag": "ccw_b_brg_rise", "tau": 600, "unit": "K"}],
   ["ccw_b_brg_t", {"sum": ["ambient_t", "ccw_b_brg_rise_l"], "unit": "°C", "kks": "00PGC10AP002"}],
   ["ccw_b_vib_h", {"cmp": ["ccw_b_vib", ">", 4.5]}],
-  ["ccw_b_brg_t_h", {"cmp": ["ccw_b_brg_t", ">", 90]}]
+  ["ccw_b_brg_t_h", {"cmp": ["ccw_b_brg_t", ">", 90]}],
+  ["ccw_a_bt_k", {"of": "ccw_a_brg_mgn", "table": [[-3000, 0.0], [-2700.0, 0.4], [-1800.0, 0.8], [-900.0, 1.68], [0, 2.64]], "unit": "mm/s"}],
+  ["ccw_a_bt", {"product": ["ccw_a_run", "ccw_a_bt_k"], "unit": "mm/s"}],
+  ["ccw_b_bt_k", {"of": "ccw_b_brg_mgn", "table": [[-3000, 0.0], [-2700.0, 0.4], [-1800.0, 0.8], [-900.0, 1.68], [0, 2.64]], "unit": "mm/s"}],
+  ["ccw_b_bt", {"product": ["ccw_b_run", "ccw_b_bt_k"], "unit": "mm/s"}]
  ],
  "ops": [
   {"kks": "00QFA10AN001", "do": "start", "set": {"ia_a_cmd": 1}, "needs": [["ia_a_ok", "The motor has a fault: it needs repair before a start"]], "where": ["local", "screen"]},
@@ -172,5 +176,11 @@
   {"id": "wo_ccw_b_ir", "kks": "00PGC10AP002", "title": "Closed cooling water pump B motor: insulation resistance test", "discipline": "elec", "permit": "electrical", "isolation": "iso_ccw_b", "task": "job_ccw_b_ir", "isolate": "isolate_ccw_b_ir", "assign": "assign_ccw_b_ir", "deisolate": "deisolate_ccw_b_ir"},
   {"id": "wo_ccw_a_brg", "kks": "00PGC10AP001", "title": "Closed cooling water pump A: replace the motor bearings", "discipline": "mech", "permit": "general", "isolation": "iso_ccw_a", "repairs": "ccw_a_brg", "renews": ["ccw_a_brg_wear"], "task": "job_ccw_a_brg", "isolate": "isolate_ccw_a_brg", "assign": "assign_ccw_a_brg", "deisolate": "deisolate_ccw_a_brg"},
   {"id": "wo_ccw_b_brg", "kks": "00PGC10AP002", "title": "Closed cooling water pump B: replace the motor bearings", "discipline": "mech", "permit": "general", "isolation": "iso_ccw_b", "repairs": "ccw_b_brg", "renews": ["ccw_b_brg_wear"], "task": "job_ccw_b_brg", "isolate": "isolate_ccw_b_brg", "assign": "assign_ccw_b_brg", "deisolate": "deisolate_ccw_b_brg"}
+ ],
+ "meters": [
+  {"id": "ccw_a_vel", "kks": "00PGC10CY001", "point": "brg", "tool_kind": "collector", "mode": "vel", "value": "ccw_a_vib"},
+  {"id": "ccw_a_ir", "kks": "00PGC10AP001", "point": "brg", "tool_kind": "camera", "mode": "ir", "value": "ccw_a_brg_t"},
+  {"id": "ccw_b_vel", "kks": "00PGC10CY002", "point": "brg", "tool_kind": "collector", "mode": "vel", "value": "ccw_b_vib"},
+  {"id": "ccw_b_ir", "kks": "00PGC10AP002", "point": "brg", "tool_kind": "camera", "mode": "ir", "value": "ccw_b_brg_t"}
  ]
 }

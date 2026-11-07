@@ -350,7 +350,7 @@ def check_files(files):
     b = Bundle()
     for rel in files:
         need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json', 'weather.json',
-                     'tools.json') or re.fullmatch(
+                     'tools.json', 'monitoring.json') or re.fullmatch(
             r'(areas|model|procedures|scenarios|workshop|workshop/bench|service)/[a-z_][a-z0-9_]{0,31}\.json|'
             r'sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg',
             rel), 'unknown_key', f'{rel}: not a file of the format')
@@ -388,6 +388,9 @@ def check_files(files):
     if b.model.hands:
         from ref import plant3d_hands as H      # a hand action's component is in its part kind's tree (REALISM.md §2.4)
         H.check_components(b)
+    if 'monitoring.json' in files:          # condition monitoring's points (REALISM.md §2.19, milestone AG3)
+        from ref import plant3d_monitoring as MO
+        MO.check(parse(files, 'monitoring.json'), b)
     return b
 
 
