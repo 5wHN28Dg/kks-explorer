@@ -541,7 +541,6 @@ static func drive_text(sm, ev: Array) -> String:
 	return "Bus %s: you %s" % [str(ev[3]), what]
 
 
-## An unsafe act's start or end, or work stopped (PLANT3D §16.7, §17.11), in words.
 ## A room's words (staff.json places' `room`): "control room", "WTP control room", "locker room" (REALISM.md §8.5:
 ## the rooms where music is banned, the lockers holding a phone).
 const ROOM_WORDS := {"lockers": "locker room", "wtp_lockers": "WTP locker room", "wtp_control": "WTP control room"}
@@ -551,6 +550,7 @@ static func room_words(room: String) -> String:
 	return ROOM_WORDS.get(room, room.replace("_", " "))
 
 
+## An unsafe act's start or end, or work stopped (PLANT3D §16.7, §17.11), in words.
 static func safety_text(sm, ev: Array) -> String:
 	var who := func(pid) -> String:
 		return sm.people[sm.person_ix[pid]]["call"] if sm != null and sm.person_ix.has(pid) else str(pid)
@@ -672,10 +672,15 @@ static func audio_text(sm, ev: Array, me_id, rung: int) -> String:
 			return ("Music on at volume %d: %s" % [int(ev[3]), whom]) if int(ev[3]) > 0 else "Music off: %s" % whom
 		"phone":
 			var what: String = "left at a locker" if ev[3] == "leave" else "taken from the locker"
+			var why := ""
+			if ev[5] is Array and "left" in ev[5]:
+				why = ", it is in a locker already"
+			elif ev[5] is Array and "locker" in ev[5]:  # (a take: not the locker holding it, REALISM.md §8.5)
+				why = ", not at a locker" if ev[3] == "leave" else ", not at the locker holding it"
 			return ("Phone %s: %s" % [what, whom]) if ev[4] == "done" else "Phone not %s (refused%s): %s" % [what,
-					", not at a locker" if ev[5] is Array and "locker" in ev[5] else "", whom]
+					why, whom]
 		"held":
-			var t := "Phone taken by %s until the end of the shift (of the next one, if taken off duty): %s" % [
+			var t := "Phone taken by %s until the end of the shift (of the next one worked, if taken off duty): %s" % [
 					who.call(ev[3]), whom]
 			if rung >= 0:
 				t += ". " + LADDER[rung][0].capitalize() + ": " + LADDER[rung][1]

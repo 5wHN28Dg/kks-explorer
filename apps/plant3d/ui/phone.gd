@@ -279,7 +279,12 @@ func held_until() -> String:
 		return "until the end of your shift"
 	var to: int = e.sp_held_to[pi]
 	if to >= 1 << 62:                   # (staff.gd HELD_NEXT: taken off duty, their next duty not begun)
-		return "until the end of your next shift"
+		var sm = e._sm
+		var d0: int = floori(float(e.clock()) / sm.DAY) if sm != null else 0
+		for d in range(d0, d0 + 66):    # (a roster with no duty in a cycle: never given back, REALISM.md §8.5)
+			if sm == null or not sm.duty_on_day(pi, d).is_empty():
+				return "until the end of your next shift"
+		return "for the rest of the run"
 	if to < 0:
 		return "until the end of your shift"
 	if e.sp_on[pi] and not e.sp_duty[pi].is_empty() and int(e.sp_duty[pi][1]) == to:

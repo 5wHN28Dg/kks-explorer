@@ -405,6 +405,11 @@ func _followups(ui, e, me: int, sup_id: String, sup_call: String) -> Array:
 		p.append("the music plays on at the wheel")
 	if not ui._toast.text.contains("No earbuds at the wheel"):
 		p.append("the music off at the wheel says %s" % ui._toast.text)
+	# the debrief's words for a take at another locker and a second leave (the user, 2026-11-07)
+	var tk := Debrief.audio_text(sm, [0, "phone", me_id, "take", "refused", ["locker"]], me_id, -1)
+	var lv := Debrief.audio_text(sm, [0, "phone", me_id, "leave", "refused", ["left"]], me_id, -1)
+	if not tk.contains("not at the locker holding it") or not lv.contains("in a locker already"):
+		p.append("the debrief's words for the phone refused: %s / %s" % [tk, lv])
 	if not Debrief.audio_text(sm, [0, "audio", me_id, 0, "done", ["driving"]], me_id, -1).contains("at the wheel"):
 		p.append("the debrief does not say the music went off at the wheel")
 	# driving the bus's run: the phone neither sends the music nor plays it
