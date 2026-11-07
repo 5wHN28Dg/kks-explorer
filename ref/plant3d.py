@@ -23,6 +23,7 @@ MAX = {'bytes': 16 << 20, 'equipment': 4000, 'pipes': 2000, 'structures': 2000, 
        'isolations': 64, 'iso_points': 16, 'works': 128,     # these three: format 2 (§14)
        'lifts': 16}                                          # format 2's lifts (§20.1)
 ISO_KINDS = ('electrical', 'mechanical', 'process', 'instrument')                 # §15.1
+from ref.plant3d_staff import WORK_TASKS  # noqa: E402  (the tasks a work names for the generic permit reactions)
 DISCIPLINES = ('mech', 'elec', 'inst', 'chem', 'civil')                          # §15.2
 PERMIT_KINDS = ('general', 'electrical', 'hot', 'confined')
 # a permit's states (§15.3) and the actions that move it: the states each is taken in, and where it goes
@@ -454,8 +455,9 @@ class Plant:
             b.staff = Staff(parse(files, 'staff.json'), b, m)
         elif b.version == 2:
             for x in m.works:
-                if 'task' in x:
-                    ident(x['task'], f'work {x["id"]}.task')
+                for k in ('task',) + WORK_TASKS:
+                    if k in x:
+                        ident(x[k], f'work {x["id"]}.{k}')
         if (m.hands or m.meters) and b.staff is None:
             from ref import plant3d_hands as H      # (with staff.json, checked before its tasks)
             H.check_tool_refs(b, m)
@@ -1162,8 +1164,8 @@ class Model:
 
     def check_work(self, x, w):
         """§15.2: a job on equipment that needs a permit."""
-        keys(x, ('id', 'kks', 'title', 'discipline', 'permit'), ('isolation', 'repairs', 'set', 'task', 'renews', 'cures'),
-             w)
+        keys(x, ('id', 'kks', 'title', 'discipline', 'permit'), ('isolation', 'repairs', 'set', 'task', 'renews', 'cures')
+             + WORK_TASKS, w)
         need(isinstance(x['id'], str) and ID_RE.fullmatch(x['id']) and len(x['id']) <= 22, 'bad_id',
              f'{w}: id of at most 22 characters')
         need(x['id'] not in {y['id'] for y in self.works}, 'dup_id', w)
@@ -1199,8 +1201,9 @@ class Model:
                 self.renews.append((name, f'{w}.renews[{i}]'))
             need('isolation' in x, 'missing_key', f'{w}.isolation: a work that renews equipment isolates it '
                                                   f'(PLANT3D §15.2, REALISM.md §2.2)')
-        if 'task' in x:
-            ident(x['task'], f'{w}.task')       # a task of staff.json once the plant has one (§16, milestone S1)
+        for k in ('task',) + WORK_TASKS:    # tasks of staff.json once the plant has one (§16, S1; §16.7, AG2)
+            if k in x:
+                ident(x[k], f'{w}.{k}')
         self.works.append(x)
 
     def kks_ref(self, c, where):

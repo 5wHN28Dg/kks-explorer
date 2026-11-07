@@ -550,7 +550,11 @@ def tasks(models):
             title = next(x['title'] for x in works if x['id'] == w)
             task(f'plan_{w[3:]}', f'The week\'s list: ask for the permit of "{title}"', [
                 ms_desk, {'permit': {'work': w, 'action': 'request'}, 'else': 2}, {'work': 1}])
-    reacts = []
+    # each work names its isolate, deisolate and assign tasks (works_tasks): one reaction per permit state gives them
+    # for every work (PLANT3D §16.7, milestone AG2)
+    reacts = [{'on': {'permit': 'approved'}, 'roles': ['shift_sup'], 'task': '$isolate'},
+              {'on': {'permit': 'issued'}, 'roles': ['maint_sup'], 'task': '$assign'},
+              {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': '$deisolate'}]
     for w in works:
         wid = w['id']
         x = iso.get(w.get('isolation'))
@@ -601,10 +605,6 @@ def tasks(models):
         task(f'assign_{wid[3:]}', f'Give "{w["title"]}" to a technician', [
             ms_desk, {'call': {'role': TECH[w['discipline']], 'task': job}},
             {'say': 'job_assigned', 'to': TECH[w['discipline']]}], priority=2)
-        reacts += [{'on': {'permit': 'approved'}, 'roles': ['shift_sup'], 'task': f'isolate_{wid[3:]}', 'work': wid},
-                   {'on': {'permit': 'issued'}, 'roles': ['maint_sup'], 'task': f'assign_{wid[3:]}', 'work': wid},
-                   {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': f'deisolate_{wid[3:]}',
-                    'work': wid}]
     # the contractors (S2, STAFF.md §1, §4): their permits hosted by the mechanical maintenance supervisor, accepted
     # by their own supervisor, who sets a team of four on; each contractor may take the work's shortcut, 1 in 12, an
     # unsafe act until the safety walk finds it; handed back at 15:00
@@ -660,8 +660,9 @@ def reactions(model_reacts):
            {'on': {'permit': 'deisolated'}, 'roles': ['shift_sup'], 'task': 'close_permit'},
            {'on': {'lock_left': '*'}, 'roles': ['shift_sup'], 'task': 'remove_left_locks'},
            {'on': {'unsafe': '*'}, 'roles': ['hse_officer'], 'task': 'stop_unsafe', 'seen': True}]
-    out += [{'on': {'fault': f}, 'roles': ['shift_sup'], 'task': 'request_permit', 'work': w}
-            for f, w in FAULT_WORK.items()]
+    # a fault that makes a corrective work: the supervisor asks for the permit of the work that repairs it (one
+    # reaction for every such fault, PLANT3D §16.7, milestone AG2)
+    out.append({'on': {'fault': list(FAULT_WORK)}, 'roles': ['shift_sup'], 'task': 'request_permit', 'work': '$'})
     return out + model_reacts
 
 
@@ -766,8 +767,15 @@ def load_layout():
 
 
 def works_tasks(models):
-    """{work id: its job task} for the model's works (§15.2: a plant with staff names each work's task)."""
-    return {w['id']: f'job_{w["id"][3:]}' for w in model_parts(models)[2]}
+    """{work id: {key: task}} for the model's works: its job task (§15.2: a plant with staff names each work's task)
+    and, but for the contractors', the tasks the generic permit reactions give for it (§16.7, milestone AG2)."""
+    out = {}
+    for w in model_parts(models)[2]:
+        x = w['id'][3:]
+        out[w['id']] = {'task': f'job_{x}'}
+        if w['discipline'] != 'civil':
+            out[w['id']].update(isolate=f'isolate_{x}', assign=f'assign_{x}', deisolate=f'deisolate_{x}')
+    return out
 
 
 if __name__ == '__main__':

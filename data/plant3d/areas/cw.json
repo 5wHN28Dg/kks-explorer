@@ -9,9 +9,9 @@
  ],
  "pack": "base",
  "equipment": [
-  {"kks": "30PAC10AP001", "name": "Circulating water pump A", "part": "pump_vertical", "at": [145, -6, 0], "yaw": 180, "params": {"flow_m3h": 15000, "head_m": 22, "motor_kw": 1250, "pit_depth": 9}, "plate": "motor_side"},
-  {"kks": "30PAC10AP002", "name": "Circulating water pump B", "part": "pump_vertical", "at": [150, -6, 0], "yaw": 180, "params": {"flow_m3h": 15000, "head_m": 22, "motor_kw": 1250, "pit_depth": 9}, "plate": "motor_side"},
-  {"kks": "30PAC10AP003", "name": "Circulating water pump C", "part": "pump_vertical", "at": [155, -6, 0], "yaw": 180, "params": {"flow_m3h": 15000, "head_m": 22, "motor_kw": 1250, "pit_depth": 9}, "plate": "motor_side"}
+  {"kks": "30PAC10AP001", "name": "Circulating water pump A", "part": "pump_vertical", "at": [145, -6, 0], "yaw": 180, "params": {"flow_m3h": 15000, "head_m": 22, "motor_kw": 1250, "pit_depth": 9}, "plate": "motor_side", "parts": [{"kks": "30PAC10CY001", "name": "Circulating water pump A motor vibration", "part": "vibration_probe", "at": [0.95, 0, 3.2], "params": {"kind": "velocity", "range": [0, 25], "unit": "mm/s"}}]},
+  {"kks": "30PAC10AP002", "name": "Circulating water pump B", "part": "pump_vertical", "at": [150, -6, 0], "yaw": 180, "params": {"flow_m3h": 15000, "head_m": 22, "motor_kw": 1250, "pit_depth": 9}, "plate": "motor_side", "parts": [{"kks": "30PAC10CY002", "name": "Circulating water pump B motor vibration", "part": "vibration_probe", "at": [0.95, 0, 3.2], "params": {"kind": "velocity", "range": [0, 25], "unit": "mm/s"}}]},
+  {"kks": "30PAC10AP003", "name": "Circulating water pump C", "part": "pump_vertical", "at": [155, -6, 0], "yaw": 180, "params": {"flow_m3h": 15000, "head_m": 22, "motor_kw": 1250, "pit_depth": 9}, "plate": "motor_side", "parts": [{"kks": "30PAC10CY003", "name": "Circulating water pump C motor vibration", "part": "vibration_probe", "at": [0.95, 0, 3.2], "params": {"kind": "velocity", "range": [0, 25], "unit": "mm/s"}}]}
  ],
  "pipes": [
   {"kks": "30PAB10BR010", "name": "Circulating water supply", "medium": "cooling_water", "dn": 2200, "from": {"at": [142, -14, -4.5]}, "points": [[160, -14, -4.5], [160, -30, -4.5], [41, -30, -4.5]], "to": {"kks": "30MAG10AC001", "nozzle": "cw_inlet_a"}, "od_mm": 2235, "buried": [[0, 2]], "arrows": 25, "parts": [{"kks": "30PAB10CF001", "part": "flow_element", "at": 0.9, "side": "top", "name": "Circulating water flow", "params": {"kind": "magnetic", "range": [0, 40000], "unit": "m³/h"}}]},

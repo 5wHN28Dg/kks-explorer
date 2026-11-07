@@ -322,8 +322,8 @@ def apply(sc):
 # AGED months after its overhaul; its seed (the lives drawn) and the months are chosen so that closed cooling water
 # pump A shows its bearing's signs from the start and fails in the day shift's first hours, and nothing else has
 # failed or fails in the day (tests/test_plant3d_ageing.py checks it)
-AGED_SEED = 0
-AGED_MONTHS = 0
+AGED_SEED = 663
+AGED_MONTHS = 30
 
 
 def aged_scenario(cold):

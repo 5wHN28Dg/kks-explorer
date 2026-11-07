@@ -126,7 +126,7 @@ def build():
     jobs = train_staff.works_tasks(models)      # with staff.json every work names its task (§15.2)
     for m in models:
         for w in getattr(m, 'works', []):
-            w['task'] = jobs[w['id']]
+            w.update(jobs[w['id']])
     for m in models:
         files[f'model/{m.area}.json'] = m.file()
     state_kks = {v[0]: v[1]['kks'] for m in models for v in m.values if 'state' in v[1] and 'kks' in v[1]}
