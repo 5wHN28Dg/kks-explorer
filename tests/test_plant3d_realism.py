@@ -799,7 +799,7 @@ class HandsVectors(PartVectors, unittest.TestCase):
         self.assertEqual([x[0] for x in r['events'] if x[1] == 'repair'], [62])
         e = run_on(self.st, r, 61)
         self.assertEqual((e.v('g1_fault'), e.v('g1_drift'), e.v('g1_urv_ok')), (1.0, 1.0, 1.0))
-        e.step()
+        e = run_on(self.st, r, 62)      # (the done's input applied in its own step)
         self.assertEqual((e.v('g1_fault'), e.v('g1_drift')), (0.0, 0.0))
 
     def test_value_weight(self):
