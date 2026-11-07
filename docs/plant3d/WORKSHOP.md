@@ -364,8 +364,8 @@ The data file's `assembly` is the guided order, one step per component or fasten
 - `run_exploded`: `true`, or `{"allowed": [components that may be out], "why": "…"}`: the Run button refuses with
   `why` when another component is out.
 - `open_running`: `{"allowed": [components that may be opened or taken off while it runs], "why": "…"}`: while the
-  bench's machine is out of its resting state, taking apart, handling and the guided steps are refused with `why`
-  for every other component (without it: none, with "Stop the machine and let it come to rest before opening it
+  bench's machine is out of its resting state, taking apart and handling are refused with `why` for every other
+  component, and the guided steps altogether (without it: none, with "Stop the machine and let it come to rest before opening it
   up"). The transmitter allows its terminal cover with the loop live (to measure the loop current or connect HART,
   outside a hazardous area); the electronics, the sensor module and the flange wait for the loop supply off. A
   rotating machine allows nothing: it is opened only at standstill on its turning gear (the user's decision,

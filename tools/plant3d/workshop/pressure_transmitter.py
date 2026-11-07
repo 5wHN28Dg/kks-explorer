@@ -94,8 +94,9 @@ def data():
                   'open_running': {'allowed': ['cover_back'],
                                    'why': 'Switch the loop supply off first. With the loop live only the terminal '
                                           'cover comes off, to measure the loop current or connect a HART '
-                                          'communicator (outside a hazardous area); the electronics, the sensor '
-                                          'module and the flange come out with the loop dead.'}},
+                                          'communicator (outside a hazardous area); everything else (the '
+                                          'electronics, the sensor module, the flange) comes out with the loop '
+                                          'dead.'}},
     }
 
 
