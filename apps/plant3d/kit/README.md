@@ -344,7 +344,18 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   `assembly`, reversed for taking apart) is a major inspection's: the combustion parts first, without lifting a casing,
   then the upper casings one at a time with their stator rows and nozzles, the bearings and the coupling, the rotor
   lifted out, then the lower halves; the inlet plenum comes off first, where a real inspection opens only the
-  bellmouth's upper half.
+  bellmouth's upper half. Also **simplified**: the upper inlet guide vanes and stator rows are parts of their own, put
+  in over the rotor before the upper casing (a real unit's sit in the casing's upper half and lift with it), and the
+  exhaust frame is one part that stays while the rotor is lifted (a real unit has its upper half off first). The
+  nozzles lean with the rotor's turn and the buckets against it, as the compressor's stators and moving rows do, so
+  the turbine drives the rotor the way the compressor is made to be driven (`tests/test_workshop.gd` checks every
+  row's lean from its faces). **The explode:** each can comes out along its own axis, the only way out of the wrapper;
+  below the joint only as far as its end cover stays above the foundation block, so the cans at the bottom stay in
+  place (a real unit's lower cans come out into the pit under the machine, which is not drawn). The bellmouth slides
+  forward off the compressor's flange, short of the front bearing's pedestal; the front bearing's cover, upper half
+  and thrust pads (whole rings round the shaft) lift with the rotor, a little farther than it, so nothing passes
+  through the shaft (`tests/test_workshop.gd` checks every kind's explode stays above the floor and that no two
+  parts pass through each other, box by box).
 
 ## Tables and their sources
 

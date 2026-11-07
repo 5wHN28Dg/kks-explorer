@@ -85,7 +85,13 @@ func run(tree: SceneTree) -> Array:
 		check(not gw.visible, "drawn unseen in the machine's first frame, hidden after it")
 	await _transmitter(tree, ws)
 	await _fixture(tree, ws)
-	await _turbine(tree, ws)
+	await _turbine(tree, ws, "steam_turbine", "lagging_upper", "casing_upper", ["casing_upper", "joint_bolts",
+		"inner_upper", "inner_bolts", "carrier_upper", "cap_f", "cap_r", "thrust_upper", "thrust_lower", "coupling_bolts",
+		"brg_f_upper", "brg_r_upper", "glands_upper"], "The rotor rests on the journal bearings")
+	# the gas turbine (K5a): a major inspection's order, the combustion parts out before any casing is lifted
+	await _turbine(tree, ws, "gas_turbine", "intake", "comp_upper", ["can_03", "tp_03", "cdc_upper", "comp_upper",
+		"comp_bolts", "bell_upper", "tshell_upper", "cvanes_upper", "igv_upper", "tnoz1_u", "brg1_cover", "brg1_upper",
+		"thrust", "brg2_upper", "coupling_bolts"], "The rotor rests on the front bearing")
 	ws.close()
 	await ws.left
 	main.free()
@@ -313,19 +319,22 @@ func _transmitter(tree: SceneTree, ws) -> void:
 	check(not ws.guide.on() and _transforms(ws) == at0 and _groups_home(ws), "Reset ends the steps, every part home")
 
 ## The steam turbine: taken apart in the overhaul's order, then put back together from a pile in the guided order.
-func _turbine(tree: SceneTree, ws) -> void:
+## A turbine kind's guided steps: taken apart in its order (`first` off first, `held` held while it is closed, every
+## part of `befores` out before the rotor), put back from a pile (the rotor refused before its bearings with a note
+## beginning `rotor_note`), every part where it was built; and the Workshop walk's guided phases walk every step.
+func _turbine(tree: SceneTree, ws, kind: String, first: String, held: String, befores: Array, rotor_note: String) -> void:
 	ws.close()
 	await ws.left
-	ws.open("steam_turbine")
+	ws.open(kind)
 	if not await _wait_shown(tree, ws):
-		p.append("the steam turbine's Workshop did not show")
+		p.append("the %s's Workshop did not show" % kind)
 		return
 	var at0 := _transforms(ws)
-	check(ws.start_guide("disassemble"), "the turbine's steps start taking apart")
-	check(String(ws.guide.steps[ws.guide.next_step()].place) == "lagging_upper", "the upper lagging comes off first")
-	check(ws.why_not_free("rotor") != "", "the rotor is held while the turbine is closed")
-	ws.select("casing_upper")
-	check(ws.note != "", "the upper casing is held while the turbine is closed")
+	check(ws.start_guide("disassemble"), "%s: the steps start taking apart" % kind)
+	check(String(ws.guide.steps[ws.guide.next_step()].place) == first, "%s: %s comes off first" % [kind, first])
+	check(ws.why_not_free("rotor") != "", "%s: the rotor is held while it is closed" % kind)
+	ws.select(held)
+	check(ws.note != "", "%s: %s is held while it is closed" % [kind, held])
 	var order: Array = []
 	var guard := 0
 	while ws.guide.next_step() >= 0 and guard < 120:
@@ -339,17 +348,16 @@ func _turbine(tree: SceneTree, ws) -> void:
 		if not ws.guide.loose.has(id):
 			check(false, "%s, taken far from its place, went back" % id)
 			break
-	check(ws.guide.done(), "the turbine is taken apart step by step: %s" % ws.panels.step_label.text)
-	for before in ["casing_upper", "joint_bolts", "inner_upper", "inner_bolts", "carrier_upper", "cap_f", "cap_r",
-			"thrust_upper", "thrust_lower", "coupling_bolts", "brg_f_upper", "brg_r_upper", "glands_upper"]:
-		check(order.find(before) >= 0 and order.find(before) < order.find("rotor"), "%s comes out before the rotor: %s" % [before, str(order)])
+	check(ws.guide.done(), "%s: taken apart step by step: %s" % [kind, ws.panels.step_label.text])
+	for before in befores:
+		check(order.find(before) >= 0 and order.find(before) < order.find("rotor"), "%s: %s comes out before the rotor: %s" % [kind, before, str(order)])
 	ws.reset()
-	check(ws.start_guide("assemble", "pile"), "the turbine's steps start from a pile")
+	check(ws.start_guide("assemble", "pile"), "%s: the steps start from a pile" % kind)
 	ws.guide.loose["rotor"] = ws.target_m("rotor")
 	ws.select("rotor")
 	ws._released()
-	check(ws.guide.loose.has("rotor") and ws.note.begins_with("The rotor rests on the journal bearings"),
-		"the rotor before its bearings is refused: '%s'" % ws.note)
+	check(ws.guide.loose.has("rotor") and ws.note.begins_with(rotor_note),
+		"%s: the rotor before its bearings is refused: '%s'" % [kind, ws.note])
 	var tol: float = Assembly.snap_tol(ws.machine.get_meta("box"))
 	guard = 0
 	while ws.guide.next_step() >= 0 and guard < 120:
@@ -360,10 +368,10 @@ func _turbine(tree: SceneTree, ws) -> void:
 		var b := Basis(Vector3(0, 1, 0), deg_to_rad(6.0)) * tg.basis
 		ws.guide.loose[id] = Transform3D(b, tg.origin + tg.basis * c - b * c + Vector3(tol * 0.6, 0, 0))
 		if not ws.try_place(id):
-			check(false, "turbine step %s: refused or not snapped (%s)" % [id, ws.note])
+			check(false, "%s step %s: refused or not snapped (%s)" % [kind, id, ws.note])
 			break
-	check(ws.guide.done() and ws.guide.loose.is_empty(), "the turbine is put back together in the guided order (%d loose)" % ws.guide.loose.size())
-	check(_near(_transforms(ws), at0), "every part of the turbine where it was built")
+	check(ws.guide.done() and ws.guide.loose.is_empty(), "%s: put back together in the guided order (%d loose)" % [kind, ws.guide.loose.size()])
+	check(_near(_transforms(ws), at0), "%s: every part where it was built" % kind)
 	ws.reset()
 	# the Workshop walk's guided phases walk every step of the turbine (K4a's fixed pace left 14 parts loose), at the
 	# phone's worst pace of 30 frames a second: taken apart by the end of its phase, then every part put back
@@ -378,10 +386,10 @@ func _turbine(tree: SceneTree, ws) -> void:
 		if walk.t + 1.0 / 30.0 >= W.APART[1] and not apart_done:
 			apart_done = true
 			check(ws.guide.mode == "disassemble" and ws.guide.done(),
-				"the walk takes the turbine apart within its phase (%s, next step %d)" % [ws.guide.mode, ws.guide.next_step()])
+				"%s: the walk takes it apart within its phase (%s, next step %d)" % [kind, ws.guide.mode, ws.guide.next_step()])
 		walk._process(1.0 / 30.0)
 	check(ws.guide.mode == "assemble" and ws.guide.done() and ws.guide.loose.is_empty(),
-		"the walk puts every part of the turbine back within its phase (%d loose)" % ws.guide.loose.size())
+		"%s: the walk puts every part back within its phase (%d loose)" % [kind, ws.guide.loose.size()])
 	walk.free()
 	ws.reset()
 

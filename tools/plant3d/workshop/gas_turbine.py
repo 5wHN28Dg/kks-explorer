@@ -111,8 +111,11 @@ def components():
                      'Reinforced concrete, painted steel', [GER3620]),
         'intake': comp('Air inlet plenum and duct', 'The box round the compressor\'s inlet, fed from the filter house '
                        'above: it turns the filtered air into the bellmouth.', 'Painted steel plate', [INLET, GER3620]),
-        'bellmouth': comp('Inlet bellmouth', 'The flared ring that leads the air smoothly into the compressor\'s first '
-                          'row.' + SIMPLE, 'Cast iron, painted', [INLET, BELL]),
+        'bell_upper': comp('Inlet bellmouth, upper half', 'The upper half of the flared ring that leads the air smoothly '
+                           'into the compressor\'s first row; split at the joint round the shaft, it lifts off for a '
+                           'major inspection.' + SIMPLE, 'Cast iron, painted', [INLET, BELL]),
+        'bell_lower': comp('Inlet bellmouth, lower half', 'The lower half of the flared ring, under the shaft: the rotor '
+                           'lifts off over it.' + SIMPLE, 'Cast iron, painted', [INLET, BELL]),
         'brg1_housing': comp('Front bearing housing', 'The pedestal at the cold end that carries the front journal '
                              'bearing and the thrust bearing; the shaft leaves it to the generator.', 'Cast iron',
                              [BELL, THRUST, GER3620]),
@@ -214,6 +217,9 @@ def assembly():
         step('cdc_lower', 'Bolt the compressor discharge casing\'s lower half to the compressor casing\'s rear flange.',
              [('comp_lower', 'It bolts to the compressor casing\'s lower half: set that first.', 'Unbolt the lower '
                'discharge casing before the lower compressor casing is moved.')]),
+        step('bell_lower', 'Bolt the bellmouth\'s lower half to the compressor casing\'s inlet flange.',
+             [('comp_lower', 'It bolts to the compressor casing\'s lower half: set that first.', 'Take the bellmouth\'s '
+               'lower half off before the lower compressor casing is moved.')], sources=(BELL, INLET)),
         step('tshell_lower', 'Bolt the turbine shell\'s lower half to the discharge casing and set it on its '
              'supports.', [('cdc_lower', 'It bolts to the discharge casing\'s lower half: set that first.',
                             'Unbolt the lower turbine shell before the lower discharge casing is moved.')]),
@@ -240,7 +246,8 @@ def assembly():
              [('tshell_lower', 'The rear bearing is carried at the turbine end: set the lower turbine shell first.',
                'Take the lower rear bearing out before the lower turbine shell is moved.')], sources=(REAR, GER3620)),
         step('rotor', 'Lower the rotor level by crane onto the lower journal bearings, clear of the stator rows and '
-             'nozzles.', [('brg1_lower', 'The rotor rests on the front bearing\'s lower half: fit it first.',
+             'nozzles (simplified: a real unit has the exhaust\'s upper half off too before the rotor is lifted; here '
+             'the exhaust frame is one part and stays, clear of the rotor\'s end).', [('brg1_lower', 'The rotor rests on the front bearing\'s lower half: fit it first.',
                            'Lift the rotor out before the lower front bearing is taken out.'),
                           ('brg2_lower', 'The rotor rests on the rear bearing\'s lower half: fit it first.',
                            'Lift the rotor out before the lower rear bearing is taken out.'),
@@ -273,10 +280,13 @@ def assembly():
         step('coupling_bolts', 'Couple the rotor to the generator: line the flanges up and fit the coupling bolts.',
              [('rotor', 'The coupling joins the rotor to the generator: set the rotor first.', 'Take the coupling '
                'bolts out before the rotor is lifted.')], sources=(GEA, THRUST)),
-        step('igv_upper', 'Fit the upper inlet guide vanes in the upper casing half.',
+        step('igv_upper', 'Set the upper inlet guide vanes over the rotor (simplified: in a real unit they sit in the '
+             'upper casing half and come off with it; here they are a part of their own, put in before the casing).',
              [('rotor', 'The upper vanes close over the rotor: set it first.', 'Take the upper guide vanes out before '
                'the rotor is lifted.')], sources=(GER3434, GER3620)),
-        step('cvanes_upper', 'Slide the upper halves of the stator rows into the upper casing half\'s grooves.',
+        step('cvanes_upper', 'Set the upper halves of the stator rows over the rotor (simplified: in a real unit they '
+             'are slid into the upper casing half\'s grooves and come off with it; here they are a part of their own, '
+             'put in before the casing).',
              [('rotor', 'The upper stator rows close over the rotor: set it first.', 'Take the upper stator rows out '
                'before the rotor is lifted.')]),
         step('comp_upper', 'Lower the compressor casing\'s upper half onto the joint on its guide pins.',
@@ -334,12 +344,15 @@ def assembly():
         step('bleed_pipes', 'Connect the bleed pipes to the compressor casing.',
              [('comp_upper', 'The bleed pipes connect to the upper casing: lower it first.', 'Take the bleed pipes off '
                'before the upper compressor casing is lifted.')], sources=(GER3434,)),
-        step('bellmouth', 'Bolt the bellmouth to the compressor casing\'s inlet.',
-             [('comp_upper', 'The bellmouth bolts to both casing halves: close the casing first.', 'Take the '
-               'bellmouth off before the upper compressor casing is lifted.')], sources=(BELL, INLET)),
+        step('bell_upper', 'Close the bellmouth with its upper half, bolted to the upper casing\'s inlet flange and '
+             'to the lower half at the joint.',
+             [('comp_upper', 'The upper half bolts to the upper casing: close the casing first.', 'Take the '
+               'bellmouth\'s upper half off before the upper compressor casing is lifted.'),
+              ('bell_lower', 'It closes on the lower half: set that first.', 'Take the upper half off before the '
+               'lower half.')], sources=(BELL, INLET)),
         step('intake', 'Close the inlet plenum round the bellmouth and connect it to the duct from the filter house.',
-             [('bellmouth', 'The plenum closes round the bellmouth: fit it first.', 'Open the plenum before the '
-               'bellmouth is taken off.')], sources=(INLET, GER3620)),
+             [('bell_upper', 'The plenum closes round the bellmouth: close it first.', 'Open the plenum before the '
+               'bellmouth\'s upper half is taken off.')], sources=(INLET, GER3620)),
     ]
     return a
 
