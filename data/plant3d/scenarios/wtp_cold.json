@@ -120,6 +120,8 @@
   {"id": "cond_p2_drift", "set": {"cond_p2_drift": 1.5}, "text": "Condenser pressure transmitter 2 drifts: reads 1.5 kPa high", "kks": "30MAG10CP002", "repair": {"cond_p2_drift": 0}},
   {"id": "cond_p3_drift", "set": {"cond_p3_drift": -1.2}, "text": "Condenser pressure transmitter 3 drifts: reads 1.2 kPa low", "kks": "30MAG10CP003", "repair": {"cond_p3_drift": 0}},
   {"id": "st_trip_no_bypass", "set": {"st_vib_fault": 1, "byp_hyd_fault": 1}, "text": "Steam turbine bearing 3 damage with the bypass hydraulics failed: no steam sink", "repair": {"st_vib_fault": 0, "byp_hyd_fault": 0}},
+  {"id": "cep_a_motor", "set": {"cep_a_fault": 1}, "text": "Condensate extraction pump A motor fails", "kks": "30LCB10AP001", "repair": {"cep_a_fault": 0}},
+  {"id": "cep_b_motor", "set": {"cep_b_fault": 1}, "text": "Condensate extraction pump B motor fails", "kks": "30LCB10AP002", "repair": {"cep_b_fault": 0}},
   {"id": "rw_a_motor", "set": {"rw_a_fault": 1}, "text": "Raw water pump A motor overload", "kks": "00GAF10AP001", "repair": {"rw_a_fault": 0}},
   {"id": "rw_b_motor", "set": {"rw_b_fault": 1}, "text": "Raw water pump B motor overload", "kks": "00GAF10AP002", "repair": {"rw_b_fault": 0}},
   {"id": "rw_c_motor", "set": {"rw_c_fault": 1}, "text": "Raw water pump C motor overload", "kks": "00GAF10AP003", "repair": {"rw_c_fault": 0}},

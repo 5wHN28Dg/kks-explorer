@@ -813,6 +813,10 @@ FORKS = [
      ([] if i <= 5 else [('op', f'30PAD10AN{i:03d}', 'start', None, None), ('run', 60)]) +
      [('fault', f'ct_fan{i}_vib'), ('run', 60)],
      {'first_out': {'ct_fans': f'ct_fan{i}_trip_vib'}, 'alarms': [f'ct_fan{i}_vib_hh']}) for i in range(1, 11)
+] + [  # milestone AG2: the condensate pumps' motor protection stops a pump whose motor has failed (pump B started)
+    ('cep_protection', 'end', [('fault', 'cep_a_motor'), ('run', 30), ('op', '30LCB10AP002', 'start', None, None),
+                               ('run', 30), ('fault', 'cep_b_motor'), ('run', 30)],
+     {'interlocks': ['cep_a_prot', 'cep_b_prot'], 'end': {'cep_a_cmd': [0, 0], 'cep_b_cmd': [0, 0]}}),
 ]
 
 

@@ -767,7 +767,8 @@ class StaffVectors(unittest.TestCase):
         self.assertEqual(j[-1][4], 'refused')
 
 
-STEERED = 8         # the steered runs at the end of the staff runs (§21.16)
+STEERED = 8         # the steered runs at the end of the camp runs (§21.16)
+AFTER_CAMP = 1      # the staff run written generically (AG2), after the camp runs
 
 
 class SteeredRuns(unittest.TestCase):
@@ -778,7 +779,7 @@ class SteeredRuns(unittest.TestCase):
         with open(G.OUT2, encoding='utf-8') as f:
             cls.V = json.load(f)
         cls.steer, cls.wrong, cls.late, cls.auto, cls.jump, cls.session, cls.standing, cls.locks = \
-            cls.V['staff']['runs'][-STEERED:]
+            cls.V['staff']['runs'][-STEERED - AFTER_CAMP:-AFTER_CAMP]
 
     def ev(self, run, kind, *head):
         return [x for x in run['events'] if x[1] == kind and list(x[2:2 + len(head)]) == list(head)]
@@ -880,7 +881,7 @@ class CampRuns(unittest.TestCase):
         with open(G.OUT2, encoding='utf-8') as f:
             cls.V = json.load(f)
         cls.morning, cls.rider, cls.walker, cls.driver, cls.left, cls.jump, cls.dutyend, cls.session = \
-            cls.V['staff']['runs'][-8 - STEERED:-STEERED]
+            cls.V['staff']['runs'][-8 - STEERED - AFTER_CAMP:-STEERED - AFTER_CAMP]
 
     def ev(self, run, kind, *head):
         return [x for x in run['events'] if x[1] == kind and list(x[2:2 + len(head)]) == list(head)]
@@ -1005,7 +1006,7 @@ class CampRuns(unittest.TestCase):
 
     def test_files_without_homes_are_unchanged(self):
         # every staff run before the camp's keeps no vehicles in its snapshots
-        for run in self.V['staff']['runs'][:-8 - STEERED]:
+        for run in self.V['staff']['runs'][:-8 - STEERED - AFTER_CAMP]:
             self.assertEqual(run['states'][-1].get('vehicles', {}), {})
 
 
@@ -1672,7 +1673,7 @@ class LiftVectors(unittest.TestCase):
                 self.assertTrue(all('riders' not in st for st in r['states']), r['why'][:60])
 
     def test_rejects(self):
-        codes = {r['code'] for r in self.V['staff']['reject'][-12:]} | {r['code'] for r in self.V['reject'][-40:]}
+        codes = {r['code'] for r in self.V['staff']['reject'][-12 - len(G.REJECTS_GENERIC):-len(G.REJECTS_GENERIC)]} | {r['code'] for r in self.V['reject'][-40:]}
         for c in ('unknown_key', 'bad_id', 'dup_id', 'limit', 'bad_kks', 'missing_key', 'bad_length', 'bad_number',
                   'bad_ref', 'bad_value', 'bad_way', 'unreachable'):
             self.assertIn(c, codes)

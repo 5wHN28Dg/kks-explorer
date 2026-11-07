@@ -751,7 +751,8 @@ at 29–35 °C over the runs.
   its order (a meaning the content gained); every earlier value at every snapshot unchanged, the new values added, the
   digests changed with them. The day and every fork of it keep every input, event, state snapshot and end state on
   the content's generic reactions (only the digests moved, with the values and the reactions' indices in the staff's
-  sources). Added: the day's fork `aged_ccw`, ten staff rejects of the generic forms (after every earlier reject) and
+  sources). Added: the cold start's fork `cep_protection` (the trainer's new faults of the condensate pumps' motors,
+  each stopped by its new protection interlock), the day's fork `aged_ccw`, ten staff rejects of the generic forms (after every earlier reject) and
   the staff run written generically (the last; every input, event, state and digest as the first run's:
   `test_generic_run_is_the_first_run`). `plant3d-realism.json`: RE1's reject "a key not known yet" now names `changes`
   (EN2's) where it named `age`, which AG2 defines; six rejects of `age` appended; every other item as it was.

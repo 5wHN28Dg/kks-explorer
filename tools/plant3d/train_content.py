@@ -244,6 +244,9 @@ FAULTS = [  # trainer faults (no `when`: pressed by the trainer, PLANT3D §7.8)
     ('cond_p3_drift', {'cond_p3_drift': -1.2}, 'Condenser pressure transmitter 3 drifts: reads 1.2 kPa low'),
     ('st_trip_no_bypass', {'st_vib_fault': 1, 'byp_hyd_fault': 1},
      'Steam turbine bearing 3 damage with the bypass hydraulics failed: no steam sink'),
+    # the condensate pumps' motors (milestone AG2: their protection stops them, as their bearings' failures do)
+    ('cep_a_motor', {'cep_a_fault': 1}, 'Condensate extraction pump A motor fails'),
+    ('cep_b_motor', {'cep_b_fault': 1}, 'Condensate extraction pump B motor fails'),
 ]
 
 
