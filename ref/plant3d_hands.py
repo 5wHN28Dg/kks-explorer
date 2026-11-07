@@ -176,7 +176,7 @@ def check_components(b):
         part = part_of(b, x['kks'])
         w = f'hand action {x["kks"]} {x["action"]}'
         need(part is not None, 'bad_ref', f'{w}: {x["kks"]} is no piece of equipment with a part kind')
-        tree = set(b.workshop[part]['components']) if part in b.workshop else {'body'}
+        tree = b.workshop_tree[part] if part in b.workshop else {'body'}
         need(x['component'] in tree, 'bad_ref', f'{w}: {part} has no component {x["component"]!r}')
 
 
@@ -187,7 +187,7 @@ def check_causes(f, m, w):
     tot = 0
     for i, c in enumerate(lst(f['causes'], f'{w}.causes', 1, LIMITS['causes'])):
         wc = f'{w}.causes[{i}]'
-        keys(c, ('id', 'weight', 'set', 'text'), ('repair',), wc)
+        keys(c, ('id', 'weight', 'set', 'text'), ('repair', 'fixed'), wc)
         ident(c['id'], f'{wc}.id')
         need(c['id'] not in seen, 'dup_id', f'{wc}: cause {c["id"]} twice')
         seen.append(c['id'])
@@ -203,6 +203,8 @@ def check_causes(f, m, w):
             need('repair' in f, 'missing_key', f'{wc}.repair: only for a fault with its own repair (it is made with '
                                                f'it)')
         text(c['text'], f'{wc}.text')
+        if 'fixed' in c:            # the fix the cause needs (§2.16): a value name
+            m.cond(c['fixed'], f'{wc}.fixed')
     need(tot <= LIMITS['weight'], 'bad_number', f'{w}.causes: the weights total at most 65536')
     # as the fault's own repair (§15.2): a cause's repair made as a work's own write writes no command of a code that
     # work's isolation locks (it would never be made: H.blocked)
@@ -563,12 +565,16 @@ def do_repair(e, fid, f, wid):
         e._set(c['repair'], wid)
 
 
-def cures(e, wid, fid):
-    """Whether a work puts right its fault's applied cause (a work without cures cures every cause)."""
+def cures(e, wid, fid, vals):
+    """Whether a work puts right its fault's applied cause (a work without cures cures every cause), and the cause's
+    fix is made (its `fixed` true as step 2 left it, §2.16)."""
     w = e.works[wid]
-    if 'cures' not in w or fid not in e.cause_of:
+    if fid not in e.cause_of:
         return True
-    return e.cause_of[fid] in w['cures']
+    if 'cures' in w and e.cause_of[fid] not in w['cures']:
+        return False
+    c = cause(e, fid)
+    return 'fixed' not in c or vals[e.ix[c['fixed']]] >= 0.5
 
 
 # ---------------------------------------------------------------- the digest's part and the snapshot's (§2.8)

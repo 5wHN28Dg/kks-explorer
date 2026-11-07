@@ -494,6 +494,10 @@ at 29–35 °C over the runs.
   (else `dup_id`). A work without `cures` cures every cause. A repair under its permit, or its `done`, whose work
   doesn't cure the applied cause writes neither repair and makes no `repair` event; everything else happens as for
   one that cures.
+- **A cause's fix** (HW2, §2.16): a cause may carry `fixed`, a value name. A work cures that cause only when, besides
+  `cures`, the value reads true (≥ 0.5; NaN false) as step 2 left it, at its `done` or its repair under its permit;
+  the instructor's own repair (no permit) ignores it. So a work curing every cause still leaves the fault when the fix
+  made was not the cause's.
 - **The digest** gains one part after the weather's, only in a run with any of the keys: the tools' counts (file
   order), each person's carried tools (as indexes in tools.json), each person's busy action or null, each cause
   stream's state and applied cause (faults with causes, in scenario order), and each person's slip stream state.
@@ -563,6 +567,120 @@ at 29–35 °C over the runs.
   the place rule: the hand actions' run (the trainee walks from the toolbox to the gauge before acting, so a first
   action at the toolbox is refused `where`; its last HART op, under the trainee's accepted permit, is now made) and
   the jump's (the trainee stands at the gauge). Every other item of the file is what it was (a JSON comparison).
+
+### 2.16 HW2's details (settled 2026-11-03, before the code: the transmitter in the field)
+
+§2.4, §3.1 and §3.3 leave these open; settled here.
+
+- **The service file** (`data/plant3d/service/<kind>.json`, format `walkdown-plant-service` version 1, made by the
+  content tool from `tools/plant3d/service/<kind>.py` as the Workshop's data is; checked by `ref/plant3d_service.py`
+  against the kind's Workshop data and tools.json): `equipment` (each code with its `alias`, at most 8 characters,
+  and `loop`, the model's prefix of its loop values), `states` (`[component, state, words]`, a state of at most 6
+  characters), `values` (the nodes the actions' needs read, `$_` standing for the alias), `consts`, `actions` (a hand
+  action as §2.4 with its `title`, the `anchors` where the tool goes and its `sources`), `meters` (as §2.5 with a
+  `title` and `unit`) and `hart` (the HART ops, with `$_`/`@_` names). The content tool (`tools/plant3d/train_hands.py`)
+  writes every piece of equipment's states, nodes, hand actions, meters and HART ops into its area's model; the engine
+  never reads the service file, the app reads it for words and anchors only.
+- **The first train's tools** (`tools.json`): an I&C toolbox (place `ic_toolbox`, kind `toolbox`, in the maintenance
+  workshop) with a 3 mm insulated terminal screwdriver (two), an 8 mm flat blade, a 17 mm spanner, two multimeters
+  (`ma_dc`, `v_dc`, `ohm`), a mA clamp meter and one HART communicator. The I&C technician gains `operate_hart`.
+- **The condenser pressure transmitters 2 and 3** (aliases `cpt2`, `cpt3`; transmitter 1 carries the trip's reset
+  and is not worked on): the terminal cover (`cover_back`) unscrews by hand; the wires lift and land and the terminals
+  tighten with the terminal screwdriver; the communicator clips on the signal terminals, the multimeter (mA) on the
+  test terminals, the clamp round the positive wire or round the whole cable (reads 0); the multimeter across the
+  signal terminals is refused with the reason (on mA it is a short circuit). The cover goes back only with the wires
+  landed and everything off the terminals. Each takes its minutes (a quarter to two).
+- **The loop in the model:** 4–20 mA over 0–120 kPa(a), held within 3.8–20.5 mA (NAMUR NE 43); a lifted wire stops
+  the current, a loose terminal takes 0.3 mA off it; what the control system receives is the transmitter's own value
+  while the loop is sound (that very value: every earlier run keeps its values) and the value the current stands for
+  otherwise. A HART `set` op writes the sensor trim (`cond_p<k>_trim`, ±5 kPa), added to the transmitter's value; it
+  needs the wires landed (a dead loop gives no HART reply: the op's `needs`, and the work view refuses a trim while
+  the communicator finds no device).
+- **The job with a hidden cause:** a fault "transmitter 2 reads low against its partners" whose cause is a drifted
+  sensor (−1.5 kPa) or a loose signal terminal (−0.3 mA), equally likely; one work (`wo_cond_p2_fix`) under the
+  transmitter's isolation, its repair putting back the cause's states (the drift and the trim; the terminal). The two
+  are told apart at the transmitter (the HART PV against the partners; the multimeter's or the clamp's current against
+  the one the transmitter says it sets) and put right by hand (a trim, or the terminals tightened); HW3 adds the other
+  three causes and the diagnosis tab. Replacing the transmitter waits for the stores (§7.2) in HW3.
+- **A cure follows the fix made** (the coordinator's decision, 2026-11-03, on real-world grounds; §2.6 `fixed`): the
+  work's `done` clears the fault only when the trainee's own fix matched the drawn cause and left the transmitter
+  sound: both causes' `fixed` is `cpt2_sound`, the sensor's error, drift plus trim (`cond_p2_err`), within ±0.3 kPa
+  (0.25 % of the 120 kPa span, a usual field calibration tolerance: `cond_p2_trim_ok`), the terminals tight, the
+  wires landed and the cover on (found by the adversarial review: a fix per cause alone let a wrong trim made with
+  the right tightening, or a loop left dead, clear the fault). A wrong fix (the terminals tightened under a drift, a
+  trim under a loose terminal) or a fix left short (the slip) leaves the fault:
+  the permit is handed back, and the work must be closed and requested again (by a player: no reaction requests it
+  again, and an NPC's job does not check its own fix, so a slip is left for the hold point or the next shift to
+  find). The tap offsets of the three transmitters (0, +0.1,
+  −0.1 kPa) are real pressure differences at their tapping points, not sensor error: a two-point check isolated from
+  the process sees the drift alone.
+- **The technician's job:** the work's task does it by hand (tools from the toolbox, the cover, the communicator and
+  the multimeter on and read, the fix the readings call for, everything off, the cover on, done, the tools back), so a
+  player who orders it (the maintenance supervisor's `assign`) watches the same steps an NPC makes. It chooses the
+  fix from what it read, deterministically, with `wait` steps whose `else` skips a fix (one minute each): the
+  terminals are tightened (a 3 % slip leaves one short of tight) only when the multimeter's current is more than
+  0.15 mA below the AO the transmitter says it sets (`cpt2_loop_low`); the trim is set only when the PV is more than
+  0.5 kPa below the partners' mean on the screens (`cpt2_pv_low`; the drift's 1.35 kPa still shows with transmitter
+  3's own calibration drift applied too), to the value a two-point check gives (+1.5 kPa,
+  the drift undone; the content tool takes it from the cause's own `set`). Its readings carry a tolerance of 0.01 (the
+  screens show two decimals), so a value reported as shown is a reading, not a misread.
+- **The work view** (§3.3) opens from the card's "Work on it" when the trainee stands at the code's work place; it
+  hides the plant's piece (built unmerged, below) and shows the Workshop's component scene of that kind at the same
+  transform, lit by the plant's materials; a component's state shows as the Workshop's handling does (a cover off
+  stands beside its home, along its explode direction), a lead, probe or clamp as a small mark at its anchor. The tool
+  tray lists the carried tools (taking and putting back is on the card at a toolbox); tapping a component lists its
+  actions, and the chosen action is sent with the tray's selected tool (none for bare hands). A refusal shows the
+  engine's reasons as sentences (`wrong`'s, the need's, else general ones). While an action is under way its
+  component moves from its old place to its new over the action's minutes. A meter's screen shows the shown value
+  of the meter at the point the person's connected tool sits (its `else` when its needs fail; the communicator's
+  "No device found"); the
+  communicator's screen lists PV and AO and offers the trim (the reference pressure typed in, the op's value the
+  trim that brings the PV to it). Everything is an input, so two players at one transmitter see the same.
+- **Equipment with jobs built unmerged** (§3.3): every code a service file names is built as its own node's meshes
+  (one per material), not into its 12 m cell, so the work view can hide it.
+
+### 2.17 As built for milestone HW2 (2026-11-04: the transmitter in the field)
+
+- **Where:** the service file `tools/plant3d/service/pressure_transmitter.py` (made into
+  `data/plant3d/service/pressure_transmitter.json`, checked by `ref/plant3d_service.py`), the content tool
+  `tools/plant3d/train_hands.py` (tools.json, the transmitters' states, 14 hand actions, 5 meters and the HART trim,
+  the fault with its two causes, the work, the technician's task, the values the cures and the task read); the app's
+  `ui/work_view.gd` (the work view and the tools panel), `builder/work_build.gd` (each work scene, and equipment with
+  jobs built unmerged), the Crew panel's hands-on steps, the card's "Work on it", `walk=job` (`app/main.gd`).
+- **A cause's fix** (§2.6 `fixed`, the coordinator's decision): in both engines (`cures` in `ref/plant3d_hands.py` and
+  `sim/hands.gd`), read as step 2 left it at the done or a repair under the permit. Both causes' fix is `cpt2_sound`
+  (§2.16). The technician's task tightens only when the loop reads low and trims (+1.5 kPa) only when the PV reads
+  low, so an NPC makes the right fix for the drawn cause and nothing else (the forks' events checked by
+  `tests/test_plant3d_hands_content.py` `JobForks`).
+- **Vectors:** `plant3d-v1.json` and `plant3d-v2.json` made again with the train's new values; compared run by run,
+  keyed by id: every input, event and earlier value unchanged, only values, the snapshots' `carried`, `busy` and
+  `causes`, and the forks `npc_hands` (the loose terminal: tightened, no trim) and `npc_hands_drift` (the drift:
+  trimmed, not tightened) added; the digests change with the values. `plant3d-realism.json`'s `hands` gains a run (a
+  cause's fix: the wrong fix and a repair under the permit leave the fault, the right one under the permit taken
+  again cures it) and two rejects; every other item is what it was.
+- **Tests:** `tests/test_plant3d_hands_content.py` (the service file, the generated parts, the loop, the causes told
+  apart, the fixes and the task's choices, the forks), `HandsVectors.test_cure_follows_the_fix`,
+  `apps/plant3d/tests/test_ui_hands.gd` (app shard 2: a full job as the technician through the work view, the tools
+  panel and the Crew panel, every reading taken as one, the fault repaired and no trim left).
+- **On the laptop** (`walk=job`, headless): the work scene loaded in 7.5 ms, 0.9 MB more memory, 20 draw calls and
+  1,460 triangles (budget: 30 draws, 30,000 triangles, 40 MB, 300 ms).
+- **From the reviews:** a HART trim needs the wires landed (the op's `needs`; the work view refuses a trim while the
+  communicator finds no device); the PV threshold 0.5 kPa, so a partner's own drift doesn't hide the drift; either
+  cause cured only with the transmitter left sound (a wrong trim made with the right tightening, or a loop left dead,
+  cleared the fault); the task's readings a tolerance of 0.01 (every reading reported from the work view was a
+  misread); the work view's items in a MultiMesh of its own ("Cannot set a buffer on a Multimesh" from a duplicate);
+  the trainee at the I&C toolbox was taken to be in the control room, whose footprint (its places' box) reaches over
+  the workshop's toolbox (`ui/plant_ui.gd`: a nearest place of another room wins). Not changed: an NPC's job does not
+  check its own fix (a slip is left for the hold point), and the service check accepts fasteners where the bundle's
+  check accepts components only (no action names a fastener yet).
+- **Left for HW3:** the other three causes, replacing the transmitter from the stores, the loop check with the
+  control room, the debrief's diagnosis tab.
+- **The Note 9** (a test-signed release build at 73a79cc0, `walk=job job=30MAG10CP002 probe=1`, 280 s from a cool
+  start at 29.4 °C, 2026-11-07): the work scene loaded in 14.8 ms with 0.1 MB more memory, 20 draw calls and 1,460
+  triangles (within the work view's budget); with the view open the frame drew 273 draw calls and 233,122 triangles
+  (811 and 331,472 before, the walker's view). Tier lean+vis, 11,076 frames: median 25.9 ms, p95 36.3 ms, max
+  56.1 ms, none over 100 ms (the frame rule passes without excluding any frame; the kernel reclaimed in 2.42 % of
+  the samples, so no frame could have been excused).
 
 ## 3. Hands-on work and tools
 

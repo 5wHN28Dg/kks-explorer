@@ -18,6 +18,11 @@
 ##   walk=workshop           the Workshop walk (app/workshop_walk.gd, docs/plant3d/WORKSHOP.md §8): 3 minutes in the
 ##                           Workshop on `kind=PART` (default the first kind built), then back to the plant; its
 ##                           first entry waits for the plant's warm-up of the Workshop's pipelines unless `cold=1`
+##   walk=job job=CODE       the work view's walk (REALISM.md §3.3, §11, milestone HW2): the scenario shift_cold, the
+##                           role of the first I&C technician, put at CODE's work place (default 30MAG10CP002) with its
+##                           work view open, the camera going slowly round it; JOB lines give the work scene's load
+##                           time, the memory it added and the view's draw calls and triangles with it and, before it
+##                           opened, without it
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
 ##   out=DIR                 where result.txt (and shots) go (default: the external files folder on Android, the user
 ##                           data folder elsewhere)
@@ -133,6 +138,7 @@ var sim_sum_ms := 0.0
 var sim_n := 0
 var sim_t := 0.0
 var screens_walk := false   # walk=screens: the control room's screens in turn, nobody walking
+var job_walk := false       # walk=job: the work view open at a code, its camera going round (milestone HW2)
 var drawings_walk := false  # walk=drawings: each P&ID in turn, panned and zoomed (REALISM.md §6.1.1, DC1)
 var _sheet_i := 0
 var _tours := {}             # walk=drawings: sheet id -> the codes' centres it passes
@@ -271,6 +277,8 @@ func _ready() -> void:
 	ui = PlantUi.new()
 	ui.name = "ui"
 	add_child(ui)
+	if opts.get("walk", "") == "job" and not opts.has("scenario"):
+		opts["scenario"] = "shift_cold"   # (the work view needs a person played: the crews' scenario)
 	if opts.get("walk", "") in ["gate", "drive"]:
 		opts["crews"] = "1"       # the gate walk is the crews' shift change (PLANT3D §21.10); the drive walk drives them
 	ui.setup(self, opts.get("scenario", "shift_cold" if opts.has("crews") else "cold_iron"))
@@ -366,7 +374,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe", "weather", "cold", "music"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe", "weather", "cold", "music", "job"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
@@ -606,6 +614,9 @@ func _start_walk() -> void:
 		last_us = Time.get_ticks_usec()
 		workshop_walk.start(self, String(opts.get("kind", "")))
 		return
+	if opts.walk == "job":
+		await _job_walk()
+		return
 	if opts.walk == "screens":
 		ui.open_panel("screens")
 		screens_walk = true
@@ -638,6 +649,55 @@ func _start_walk() -> void:
 		player.global_position = st[0]
 	auto.start(player, route, looped)
 	last_us = Time.get_ticks_usec()
+
+## walk=job: the first I&C technician played, at the code's work place, the work view opened there (its JOB lines);
+## the frames are then measured as any walk's.
+func _job_walk() -> void:
+	var code := String(opts.get("job", "30MAG10CP002"))
+	var e = ui.clock.engine
+	if e._sm == null or not ui.work.has_job(code):
+		_say("JOB none: no crews in this scenario, or %s has no work view in this build" % code)
+		_finish()
+		return
+	var ic := ""
+	for p in e._sm.people:
+		if e._sm.roles[p["role"]].get("discipline", "") == "inst" and ic == "":
+			ic = p["id"]
+	ui.take_role(ic)
+	ui.go_to_place(e._sm.work_at[code])
+	ui._place_tick()
+	ui.clock.run_steps(1)
+	for i in 30:
+		await get_tree().process_frame
+	var before: Vector2i = await _view_counts()
+	if not ui.work.open(code):
+		_say("JOB not opened at %s: %s" % [code, ui.work.cannot(code)])
+		_finish()
+		return
+	while not ui.work.loaded():
+		await get_tree().process_frame
+	for i in 30:
+		await get_tree().process_frame
+	var inview: Vector2i = await _view_counts()
+	_say("JOB %s load_ms=%.1f mem_added_mb=%.1f scene_draws=%d scene_tris=%d view_draws=%d view_tris=%d before_draws=%d before_tris=%d" % [
+		code, ui.work.load_ms, ui.work.mem_added / 1048576.0, int(ui.work.scene.get_meta("draws", -1)),
+		int(ui.work.scene.get_meta("tris", -1)), inview.x, inview.y, before.x, before.y])
+	job_walk = true
+	last_us = Time.get_ticks_usec()
+
+
+## The draw calls and triangles of the last frame drawn (the median of 10 frames' counts).
+func _view_counts() -> Vector2i:
+	var d: Array = []
+	var t: Array = []
+	for i in 10:
+		await _drawn()
+		d.append(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME))
+		t.append(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME))
+	d.sort()
+	t.sort()
+	return Vector2i(d[5], t[5])
+
 
 ## walk=drawings: each sheet in turn for 10 s, from the whole sheet into a slow tour at reading zooms and out again,
 ## so that every level of detail is drawn and the paper is panned and zoomed every frame (the frame rules' measure).
@@ -782,7 +842,9 @@ func _process(delta: float) -> void:
 	if ff != _walk_ff and opts.has("walk"):
 		_walk_ff = ff
 		_say("SPEED %s at %.1f s, uptime %d ms" % ["fast-forward" if ff else "normal", t_walk, WalkFrames.uptime_ms()])
-	if not screens_walk and not drawings_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
+	if job_walk and ui.work.is_open:
+		ui.work._turn(Vector2(delta * 25.0, 0.0))      # slowly round the transmitter (the whole scene in turn)
+	if not screens_walk and not job_walk and not drawings_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
 		return
 	t_walk += delta
 	if drawings_walk:

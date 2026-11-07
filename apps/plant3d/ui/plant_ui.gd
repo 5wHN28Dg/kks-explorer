@@ -52,6 +52,7 @@ const OthersView = preload("res://net/others_view.gd")
 const BusDrive = preload("res://app/bus_drive.gd")
 const Snapshot = preload("res://net/snapshot.gd")
 const RunSave = preload("res://ui/run_save.gd")
+const WorkView = preload("res://ui/work_view.gd")
 const AndroidNet = preload("res://net/android_net.gd")
 
 const CONTENT := "res://built/content"
@@ -96,6 +97,7 @@ var drawings                    # ui/drawings.gd: the generated P&IDs (REALISM.m
 var drawing_view                # ui/drawing_view.gd: their viewer (null without drawings)
 var run_tracker                 # the last procedure followed in this run (kept for its debrief after it is closed)
 var crew                        # ui/crew_panel.gd: the trainee's role, tasks and radio (PLANT3D §18.7)
+var work                        # ui/work_view.gd: hands-on work at the equipment and the tools (REALISM.md §3.3)
 const ROOM_MARGIN := 1.0        # m: a banned room's footprint round its places (room_at)
 var _room_boxes: Array = []     # [[room index, plan Rect2, z low, z high]] of the staff model _room_boxes_of
 var _room_boxes_of = null
@@ -244,6 +246,7 @@ func _build() -> void:
 	_bar_button(bar, "Procedures", func(): toggle_procedure())
 	_bar_button(bar, "Permits", func(): toggle_permits())
 	_bar_button(bar, "Crew", func(): toggle_crew())
+	_bar_button(bar, "Tools", func(): work.toggle_tools())
 	_bar_button(bar, "Control room", func(): control_room())
 	drawings = Drawings.new()
 	if drawings.error != "":
@@ -304,6 +307,10 @@ func _build() -> void:
 	debrief.name = "debrief"
 	root.add_child(debrief)
 	debrief.setup(self)
+	work = WorkView.new()
+	work.name = "work"
+	root.add_child(work)
+	work.setup(self)
 	session_panel = SessionPanel.new()
 	session_panel.name = "session_panel"
 	root.add_child(session_panel)
@@ -952,8 +959,10 @@ func _place_tick() -> void:
 			best = i
 	# inside a room where music is banned (REALISM.md §8.5: the control room), the trainee is at its nearest place
 	# wherever they stand in it: the engine's room is the place's, and a large room's middle is in it too
+	# (not when the nearest place is of another room: a room's footprint is its places' box, which can reach over a
+	# neighbour's, as the control room's over the maintenance workshop's I&C toolbox)
 	var inroom := room_at(sm, here)
-	if inroom != -1 and (best == -1 or sm.place_aroom[best] != inroom):
+	if inroom != -1 and (best == -1 or sm.place_aroom[best] != inroom and not sm.places[best].has("room")):
 		bd = INF
 		for i in sm.places.size():
 			if sm.place_aroom[i] == inroom:
@@ -1143,7 +1152,12 @@ func drawings_open() -> bool:
 
 ## The screens or the drawings cover the view (the plant is not drawn behind them).
 func views_open() -> bool:
-	return screens_open() or drawings_open()
+	return screens_open() or drawings_open() or work_open()
+
+
+## The work view shows (REALISM.md §3.3): its own camera and keys.
+func work_open() -> bool:
+	return work != null and work.is_open
 
 
 ## The sheet a code is drawn on (its home), "" when no P&ID shows it (electrical equipment, lifting gear, desks).
@@ -1692,7 +1706,11 @@ func set_instructor(on: bool) -> void:
 
 ## Closes the topmost panel; false when none was open.
 func close_top() -> bool:
-	if session_panel.visible:
+	if work != null and work.is_open:
+		work.close()
+	elif work != null and work.tools_panel.visible:
+		work.close_tools()
+	elif session_panel.visible:
 		close_session()
 	elif trainer.visible:
 		close_trainer()
@@ -1827,6 +1845,8 @@ func _sync_events() -> void:
 		alarms.on_events(evs, from)
 		permits.on_events(evs, from)
 		_follow_events(evs, from)
+		if work != null:
+			work.on_events(evs, from)
 
 
 func _on_speed(_s: int, why: String) -> void:

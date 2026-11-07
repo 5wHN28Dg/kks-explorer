@@ -28,6 +28,7 @@ lags, eight kinds, one season over the year), every scenario's world seeded by i
 kinds without a Workshop tree: component `body`; two clock minutes, work: false), each meter value is read through a
 multimeter by a model meter, and tools.json keeps the tools at the store; the bench also times the hands step alone
 with 12 actions under way in a scenario with the staff (app/step_bench.gd's HANDS line)."""
+import copy
 import json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -153,6 +154,11 @@ def hands_doc(b, vals):
          'at': [['store_counter', 2]]},
         {'id': 'hart', 'title': 'HART communicator', 'kind': 'communicator', 'modes': ['hart'],
          'at': [['store_counter', 1]]}]}
+    # the content's own tools first (its hand actions name them, milestone HW2), then the load's not already there
+    own = getattr(b, 'tools_doc', None)
+    if own:
+        ids = {t['id'] for t in own['tools']}
+        tools['tools'] = [copy.deepcopy(t) for t in own['tools']] + [t for t in tools['tools'] if t['id'] not in ids]
     return hands, meters, tools
 
 

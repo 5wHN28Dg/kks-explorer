@@ -1,0 +1,57 @@
+{
+ "format": "walkdown-plant-service",
+ "version": 1,
+ "part": "pressure_transmitter",
+ "sources": [
+  {"id": "r3051", "cite": "Emerson, Rosemount 3051 Pressure Transmitter with HART Protocol, reference manual 00809-0100-4007 rev. BA (2017): §2.4 wiring (the field terminals' side, the signal and test terminals, an ammeter across the test terminals), §2.5 HART (the communicator across the loop, at least 250 Ω), §4.4 sensor trim", "url": "https://core.instrumart.com/assets/rosemount_3051-420ma_manual.pdf"},
+  {"id": "fluke771", "cite": "Fluke 771 Milliamp Process Clamp Meter, users manual (2006): the clamp round one conductor of the loop; round both the currents cancel", "url": "https://dam-assets.fluke.com/s3fs-public/771_____umeng0100.pdf"}
+ ],
+ "equipment": [
+  {"kks": "30MAG10CP002", "alias": "cpt2", "loop": "cond_p2"},
+  {"kks": "30MAG10CP003", "alias": "cpt3", "loop": "cond_p3"}
+ ],
+ "states": [
+  ["cover_back", "off", "The terminal cover is off"],
+  ["terminal_block", "lift", "The loop's wires are lifted off the signal terminals"],
+  ["terminal_block", "hart", "The HART communicator's leads are on the signal terminals"],
+  ["terminal_block", "dmm", "The multimeter's leads are on the test terminals"],
+  ["terminal_block", "clamp", "The mA clamp is round the positive wire"],
+  ["terminal_block", "loose", "A signal terminal's screw is loose: the wire's contact adds resistance"],
+  ["cable_gland", "clamp", "The mA clamp is round the whole cable"]
+ ],
+ "values": [
+  ["$_wired", {"not": "$_terminal_block_lift"}],
+  ["$_on_tb", {"or": ["$_terminal_block_hart", "$_terminal_block_dmm", "$_terminal_block_clamp", "$_terminal_block_lift"]}],
+  ["$_clear", {"not": "$_on_tb"}],
+  ["$_hart_ok", {"and": ["$_terminal_block_hart", "$_wired"]}]
+ ],
+ "consts": [
+  ["hand_no", 0]
+ ],
+ "actions": [
+  {"action": "open_cover", "title": "Unscrew the terminal cover", "component": "cover_back", "minutes": 1, "wrong": {"spanner_17": "The cover unscrews by hand: a spanner on its rim would dent it and spoil the seal"}, "set": {"$_cover_back_off": 1}, "sources": ["r3051"]},
+  {"action": "close_cover", "title": "Screw the terminal cover back on", "component": "cover_back", "minutes": 1, "wrong": {"spanner_17": "The cover goes on by hand, fully engaged: a spanner would dent its rim"}, "needs": [["$_clear", "Land the wires and take the communicator, the meter's leads and the clamp off before the cover goes back on"]], "set": {"$_cover_back_off": 0}, "sources": ["r3051"]},
+  {"action": "lift_wires", "title": "Back out the signal terminals' screws and lift the wires", "component": "terminal_block", "tools": ["sd_term"], "minutes": 2, "anchors": ["sig_plus", "sig_minus"], "wrong": {"sd_flat8": "An 8 mm blade is too wide for the terminal screws: it slips and can short the terminals"}, "needs": [["$_cover_back_off", "Take the terminal cover off first: the terminals are under it"]], "set": {"$_terminal_block_lift": 1}, "sources": ["r3051"]},
+  {"action": "land_wires", "title": "Land the wires and tighten the signal terminals' screws", "component": "terminal_block", "tools": ["sd_term"], "minutes": 2, "anchors": ["sig_plus", "sig_minus"], "wrong": {"sd_flat8": "An 8 mm blade is too wide for the terminal screws: it slips and can short the terminals"}, "needs": [["$_cover_back_off", "Take the terminal cover off first: the terminals are under it"]], "set": {"$_terminal_block_lift": 0, "$_terminal_block_loose": 0}, "sources": ["r3051"]},
+  {"action": "tighten_terms", "title": "Tighten the signal terminals' screws", "component": "terminal_block", "tools": ["sd_term"], "minutes": 1, "anchors": ["sig_plus", "sig_minus"], "wrong": {"sd_flat8": "An 8 mm blade is too wide for the terminal screws: it slips and can short the terminals"}, "needs": [["$_cover_back_off", "Take the terminal cover off first: the terminals are under it"], ["$_wired", "Land the wires first: there is nothing under the screws to tighten"]], "set": {"$_terminal_block_loose": 0}, "sources": ["r3051"]},
+  {"action": "connect_hart", "title": "Clip the HART communicator's leads on the signal terminals", "component": "terminal_block", "tools": ["hart"], "minutes": 0.5, "anchors": ["sig_plus", "sig_minus"], "needs": [["$_cover_back_off", "Take the terminal cover off first: the terminals are under it"]], "set": {"$_terminal_block_hart": 1}, "sources": ["r3051"]},
+  {"action": "disconnect_hart", "title": "Unclip the HART communicator", "component": "terminal_block", "tools": ["hart"], "minutes": 0.25, "anchors": ["sig_plus", "sig_minus"], "set": {"$_terminal_block_hart": 0}, "sources": ["r3051"]},
+  {"action": "connect_dmm", "title": "Put the multimeter (mA) across the test terminals", "component": "terminal_block", "tools": ["dmm"], "minutes": 0.5, "anchors": ["test_plus", "test_minus"], "needs": [["$_cover_back_off", "Take the terminal cover off first: the terminals are under it"]], "set": {"$_terminal_block_dmm": 1}, "sources": ["r3051"]},
+  {"action": "disconnect_dmm", "title": "Take the multimeter's leads off", "component": "terminal_block", "tools": ["dmm"], "minutes": 0.25, "anchors": ["test_plus", "test_minus"], "set": {"$_terminal_block_dmm": 0}, "sources": ["r3051"]},
+  {"action": "dmm_on_sig", "title": "Put the multimeter (mA) across the signal terminals", "component": "terminal_block", "tools": ["dmm"], "minutes": 0.5, "anchors": ["sig_plus", "sig_minus"], "needs": [["hand_no", "On mA the meter is a short circuit: across the signal terminals it would take the transmitter out of the loop. Measure at the test terminals"]], "set": {"$_terminal_block_dmm": 1}, "sources": ["r3051"]},
+  {"action": "clamp_wire", "title": "Clamp the mA clamp round the positive wire", "component": "terminal_block", "tools": ["clamp"], "minutes": 0.25, "anchors": ["sig_plus"], "needs": [["$_cover_back_off", "Take the terminal cover off first: the single wires are under it"]], "set": {"$_terminal_block_clamp": 1}, "sources": ["fluke771"]},
+  {"action": "unclamp_wire", "title": "Take the clamp off the wire", "component": "terminal_block", "tools": ["clamp"], "minutes": 0.25, "anchors": ["sig_plus"], "set": {"$_terminal_block_clamp": 0}, "sources": ["fluke771"]},
+  {"action": "clamp_cable", "title": "Clamp the mA clamp round the cable", "component": "cable_gland", "tools": ["clamp"], "minutes": 0.25, "set": {"$_cable_gland_clamp": 1}, "sources": ["fluke771"]},
+  {"action": "unclamp_cable", "title": "Take the clamp off the cable", "component": "cable_gland", "tools": ["clamp"], "minutes": 0.25, "set": {"$_cable_gland_clamp": 0}, "sources": ["fluke771"]}
+ ],
+ "meters": [
+  {"id": "$_dmm", "title": "Multimeter, mA DC, at the test terminals", "point": "test_terminals", "tool_kind": "meter", "mode": "ma_dc", "value": "$_ma", "needs": ["$_terminal_block_dmm"], "else": 0, "unit": "mA"},
+  {"id": "$_clamp1", "title": "mA clamp round the positive wire", "point": "cable_l1", "tool_kind": "meter", "mode": "ma_clamp", "value": "$_ma", "needs": ["$_terminal_block_clamp"], "else": 0, "unit": "mA"},
+  {"id": "$_clamp2", "title": "mA clamp round the whole cable", "point": "cable_both", "tool_kind": "meter", "mode": "ma_clamp", "value": "hand_no", "needs": ["$_cable_gland_clamp"], "else": 0, "unit": "mA"},
+  {"id": "$_pv", "title": "HART: primary variable", "point": "terminals_sig", "tool_kind": "communicator", "mode": "hart", "value": "@_tx", "needs": ["$_hart_ok"], "else": 0, "unit": "kPa(a)"},
+  {"id": "$_ao", "title": "HART: the loop current the transmitter sets", "point": "terminals_sig", "tool_kind": "communicator", "mode": "hart", "value": "$_ma_tx", "needs": ["$_hart_ok"], "else": 0, "unit": "mA"}
+ ],
+ "hart": [
+  {"do": "set", "title": "Sensor trim: the offset that brings the PV to the reference", "input": "@_trim", "range": [-5, 5], "hart": "$_terminal_block_hart", "needs": [["$_wired", "No device found: a lifted wire leaves the transmitter without loop power"]], "unit": "kPa", "sources": ["r3051"]}
+ ]
+}

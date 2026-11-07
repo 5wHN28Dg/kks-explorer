@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
-import kit, train_weather, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
+import kit, train_hands, train_weather, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
 from workshop import pressure_transmitter as ws_pressure_transmitter  # noqa: E402
 from workshop import steam_turbine as ws_steam_turbine  # noqa: E402
 
@@ -141,6 +141,8 @@ def build():
     for p in [train_content.cold_start(), train_content.hot_restart()] + train_content.tours() + \
             wtp_content.procedures() + site_areas.tours() + train_hoists.procedures():
         files[f'procedures/{p["id"]}.json'] = p
+    files['tools.json'] = train_hands.TOOLS      # the tools carried (REALISM.md §2.3, milestone HW2)
+    files.update(train_hands.files())           # the service files (§2.4) the hand actions are made from
     for w in WORKSHOP:
         d = w.data()
         files[f'workshop/{d["part"]}.json'] = d
