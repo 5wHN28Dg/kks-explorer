@@ -41,7 +41,8 @@ const CHUNK := 1000
 const DIGEST_EVERY := 50        # a state digest every 50 steps (§17.14), step 0's first
 ## the water treatment plant's runs in plant3d-v2.json, each a start by its procedure with forks (W2, W3)
 const WTP_RUNS := ["wtp", "wtp_cip", "wtp_regen"]
-const REALISM_PARTS := ["wear", "weather", "hands", "audio"]     # the realism file's parts after `staff`, each as `staff` (AG1, WX1, HW1, HS7)
+## the realism file's parts after `staff`, each as `staff` (AG1, WX1, HW1, HS7, AG3)
+const REALISM_PARTS := ["wear", "weather", "hands", "audio", "lab"]
 
 var repo := ""
 var opts := {}
@@ -228,7 +229,8 @@ static func diff(got, want, path: String, approx: bool = false) -> String:
 		if gk.size() != wk.size():
 			return "%s: keys %s, the reference's %s" % [path, str(gk), str(wk)]
 		for k in gk:
-			var d := diff(got[k], want[k], "%s.%s" % [path, k], approx or k == "values")
+			var d := diff(got[k], want[k], "%s.%s" % [path, k], approx or k == "values" or k == "lab")
+			# (the lab's queued results are rounded in the file as values are, REALISM.md §2.19)
 			if d != "":
 				return d
 		return ""
@@ -537,8 +539,9 @@ func _day(d: Dictionary, m) -> void:
 		_result("v2/day/" + f["id"], fd)
 
 
-## The events with each read's value replaced by the reference's when it is within the file's precision (the file
-## rounds numbers to 9 decimals; the value itself is a model value, which the digests compare bit for bit).
+## The events with each read's value and each lab result (REALISM.md §2.19) replaced by the reference's when it is
+## within the file's precision (the file rounds numbers to 9 decimals; the value itself is a model value, which the
+## digests compare bit for bit).
 static func _reads_as(got: Array, want: Array) -> Array:
 	var out := []
 	for k in got.size():
@@ -547,6 +550,10 @@ static func _reads_as(got: Array, want: Array) -> Array:
 				and diff(g[4], want[k][4], "", true) == "":
 			g = g.duplicate()
 			g[4] = want[k][4]
+		elif k < want.size() and g.size() == 4 and g[1] == "lab" and want[k].size() == 4 and want[k][1] == "lab" \
+				and diff(g[3], want[k][3], "", true) == "":
+			g = g.duplicate()           # a lab's result (REALISM.md §2.19), rounded in the file as values are
+			g[3] = want[k][3]
 		out.append(g)
 	return out
 

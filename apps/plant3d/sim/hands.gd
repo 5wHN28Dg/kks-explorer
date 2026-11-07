@@ -11,6 +11,8 @@ extends RefCounted
 const CARRIED := 12
 const WEIGHT := 65536
 const MINUTE := 600
+const HOUR := 36000         # clock tenths in a clock hour
+const LAB_QUEUE := 8        # samples queued per sample node (REALISM.md §2.19)
 
 
 ## Whether a run has any of HW1's keys: its state, saves and digest part only then.
@@ -36,6 +38,31 @@ static func init(e, World) -> void:
 		if not e._works_on.has(code):
 			e._works_on[code] = []
 		e._works_on[code].append(wi)
+	# the lab (REALISM.md §2.19), with or without HW1's keys: each sample node in model order, its queue and its own
+	# lab stream (purpose lab, the node's name)
+	e._lab = []
+	e._lab_of = {}
+	e.lab_q = {}
+	e.lab_s = {}
+	var lseed := -1
+	for i in m.values.size():
+		if m.values[i][2] != "sample":
+			continue
+		var nd: Dictionary = m.values[i][1]
+		var name: String = m.values[i][0]
+		var t := PackedFloat64Array()
+		for row in nd["spread"]:
+			t.append(float(row[0]))
+			t.append(float(row[1]))
+		var r = nd["sample"]
+		var x := [i, name, e.ix[r] if typeof(r) == TYPE_STRING else -1, 0.0 if typeof(r) == TYPE_STRING else float(r),
+				t, ceili(float(nd["hours"]) * HOUR)]
+		e._lab_of[name] = x
+		e._lab.append(x)
+		e.lab_q[name] = []
+		if lseed == -1:
+			lseed = World.seed_of(e.sc)
+		e.lab_s[name] = World.stream(lseed, World.TAGS["lab"], name)
 	if not e._hw:
 		return
 	e._hands = m.hands_ix
@@ -145,7 +172,8 @@ static func _hand_authority(e, x: Dictionary, person, npc: bool) -> bool:
 			if e.pstate[wi] == 5 and not e._authority(person, npc, "accept", w["discipline"], true, w["id"]):
 				return false
 		return true
-	return e._authority(person, npc, "operate_local")
+	# REALISM.md §2.19: taking samples needs the sample authority (S3's, the chemists'), any other operate_local
+	return e._authority(person, npc, "sample" if x.has("samples") else "operate_local")
 
 
 ## A HART op on a locked code (REALISM.md §2.15): the work on that code whose permit is accepted, which holds every
@@ -212,6 +240,10 @@ static func hand(e, item: Array, npc: bool) -> String:
 	for nd in x.get("needs", []):
 		if e.prev[e.ix[nd[0]]] < 0.5:
 			why.append(nd[0])
+	for nd in x.get("samples", []):
+		if e.lab_q[nd].size() >= LAB_QUEUE:
+			why.append("lab")       # a sample node's queue is full (REALISM.md §2.19)
+			break
 	if x.has("input") and not (_is_num(value) and float(x["range"][0]) <= float(value)
 			and float(value) <= float(x["range"][1])):
 		why.append("value")
@@ -223,18 +255,21 @@ static func hand(e, item: Array, npc: bool) -> String:
 		e.busy[person] = [kks, action, tl, float(value) if x.has("input") else null, end, e.sp_pos[pi]]
 		e._ev(["hand", kks, action, tl, person, "start", []])
 		return "start"
-	write(e, x, value)
+	write(e, x, value, e.prev)
 	e._ev(["hand", kks, action, tl, person, "done", []])
 	return "done"
 
 
-## A hand action's writes: its set, then its input; never skipped by a lock (§2.4).
-static func write(e, x: Dictionary, value) -> void:
+## A hand action's writes: its set, then its input; never skipped by a lock (§2.4); then its samples (§2.19), each
+## node's ref read from vals (the previous step's values in step 1, the values as they stand in step 3).
+static func write(e, x: Dictionary, value, vals: PackedFloat64Array) -> void:
 	var s: Dictionary = x.get("set", {})
 	for k in s:
 		e.cur[e.ix[k]] = float(s[k])
 	if x.has("input"):
 		e.cur[e.ix[x["input"]]] = float(value)
+	if x.has("samples"):
+		take_samples(e, x["samples"], vals)
 
 
 ## Step 3, after the renewals: each busy person in staff order; a jump's step or a person no longer at the place
@@ -257,7 +292,7 @@ static func end_hands(e, jumped: bool) -> void:
 			_result(e, pi, "abandoned")
 		elif c >= b[4]:
 			e.busy.erase(pid)
-			write(e, e._hands[b[0] + "|" + b[1]], b[3])
+			write(e, e._hands[b[0] + "|" + b[1]], b[3], e.cur)
 			e._ev(["hand", b[0], b[1], b[2], pid, "done", []])
 			_result(e, pi, "done")
 
@@ -414,6 +449,76 @@ static func cures(e, wi: int, fid: String, vals: PackedFloat64Array) -> bool:
 
 
 # ---------------------------------------------------------------- the digest's part and the snapshot's (§2.8)
+
+# ---------------------------------------------------------------- the lab (REALISM.md §2.19)
+
+## A sampling hand action done: each of its sample nodes in the list's order takes a sample, ref's value plus
+## spread(r / 2^24) from the next draw of its lab stream, queued with its due clock; a node whose queue filled while a
+## timed action was under way takes none (no draw). (ref/plant3d_hands.py take_samples)
+static func take_samples(e, names: Array, vals: PackedFloat64Array) -> void:
+	var c: int = e.clock()
+	for nd in names:
+		var x: Array = e._lab_of[nd]
+		var q: Array = e.lab_q[nd]
+		if q.size() >= LAB_QUEUE:
+			continue
+		var dr := _draw(e.lab_s[nd])
+		e.lab_s[nd] = dr[0]
+		var v: float = vals[x[2]] if x[2] != -1 else x[3]
+		q.append([c + x[5], v + _table_at(x[4], float(dr[1]) / 16777216.0)])
+
+
+## Step 3, after the hand actions whose minutes end: each sample node in model order takes its queued results that
+## are due (due <= the clock), in their order, each with its event.
+static func lab_results(e) -> void:
+	var c: int = e.clock()
+	for x in e._lab:
+		var q: Array = e.lab_q[x[1]]
+		while not q.is_empty() and q[0][0] <= c:
+			var it: Array = q.pop_front()
+			e.cur[x[0]] = it[1]
+			e._ev(["lab", x[1], it[1]])
+
+
+static func lab_digest(e) -> Array:
+	var out := []
+	for x in e._lab:
+		var dues := PackedInt64Array()
+		var vs := PackedFloat64Array()
+		for it in e.lab_q[x[1]]:
+			dues.append(it[0])
+			vs.append(it[1])
+		out.append([e.lab_s[x[1]], dues, vs])
+	return out
+
+
+static func lab_snapshot(e, s: Dictionary) -> void:
+	var out := {}
+	for x in e._lab:
+		var q: Array = e.lab_q[x[1]]
+		if not q.is_empty():
+			var c := []
+			for it in q:
+				c.append([it[0], it[1]])
+			out[x[1]] = c
+	s["lab"] = out
+
+
+## A table's value at u (sim/world.gd's table_at, linear between rows; this script preloads nothing).
+static func _table_at(t: PackedFloat64Array, u: float) -> float:
+	var cnt := t.size() / 2
+	if u < t[0]:
+		return t[1]
+	if u >= t[2 * (cnt - 1)]:
+		return t[2 * (cnt - 1) + 1]
+	var i := 0
+	for j in cnt:
+		if t[2 * j] <= u:
+			i = j
+		else:
+			break
+	return t[2 * i + 1] + (t[2 * i + 3] - t[2 * i + 1]) * (u - t[2 * i]) / (t[2 * i + 2] - t[2 * i])
+
 
 static func digest_part(e) -> Array:
 	var people: Array = e._sm.people if e._sm != null else []

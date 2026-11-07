@@ -225,6 +225,12 @@ var busy := {}                      # person id -> [code, action, tool, value, e
 var cause_of := {}                  # fault -> its applied hidden cause
 var cause_s := {}                   # fault -> its cause stream's state
 var slip_s := {}                    # person id -> their slip stream's state
+# the lab (REALISM.md §2.19; sim/hands.gd): each sample node in model order [slot, name, ref (a slot, or -1 with the
+# number), the number, its spread (a flat table), its due offset in clock tenths], with or without HW1's keys
+var _lab: Array = []
+var _lab_of := {}                   # sample node name -> its entry in _lab
+var lab_q := {}                     # sample node name -> its queue of [due clock, value]
+var lab_s := {}                     # sample node name -> its lab stream's state
 var _wx_mode := 0                   # its mode (0 seeded, 1 fixed, 2 scripted), slots, lag factors and targets per
 var _wx_slots := PackedInt32Array() # kind (one table per driven value), out of _wx for the step's cost
 var _wx_f := PackedFloat64Array()
@@ -415,6 +421,8 @@ func _node(i: int, nd: Dictionary, kind: String) -> int:
 					t.append(float(row[1]))
 				_draws.append([i, t])
 			return -1
+		"sample":
+			return -1       # REALISM.md §2.19: a lab's result, written in step 3 only (sim/hands.gd lab_results)
 		"wear":
 			# REALISM.md §2.2: the rate's factor k = 0.1 × day_scale, the max; the gap slot set in _compile
 			var p := _emit(K_WEAR, i, [_ref(nd["wear"]), _ref(nd.get("reset", 0)), -1],
@@ -2086,6 +2094,9 @@ func _step() -> void:
 	# then the hand actions whose minutes end (REALISM.md §2.4, §2.13)
 	if not busy.is_empty():
 		Hands.end_hands(self, gap > 0)
+	# then the lab's results whose clock time is reached (REALISM.md §2.19)
+	if not _lab.is_empty():
+		Hands.lab_results(self)
 	# 4. interlocks on a rising edge
 	for k in _il.size():
 		var x = _il[k]
@@ -2422,6 +2433,8 @@ func snapshot(with_values: bool = true) -> Dictionary:
 			s["players"] = pl
 	if _hw:
 		Hands.snapshot_part(self, s)    # (REALISM.md §2.13)
+	if not _lab.is_empty():
+		Hands.lab_snapshot(self, s)     # (REALISM.md §2.19)
 	if with_values:
 		var vals := {}
 		for i in n:
@@ -2477,6 +2490,8 @@ func digest_tree() -> Array:
 		tree.append(PackedInt64Array([wx_kind, wx_s]))
 	if _hw:                             # the hands-on engine's part (REALISM.md §2.13), with its keys only
 		tree.append(Hands.digest_part(self))
+	if not _lab.is_empty():             # the lab's queues and streams (REALISM.md §2.19), with sample nodes only
+		tree.append(Hands.lab_digest(self))
 	return tree
 
 
@@ -2597,7 +2612,7 @@ func clone():
 			"_sm", "_S", "_ds", "_absent", "_fixed_trainee", "_show", "_fault_kks", "J", "ev_mark", "st_order",
 			"st_session", "st_next1", "_lift_ix", "_load_slot", "_lift_ctl", "_lift_ops", "_world", "_world_seed",
 			"_world_year_day", "_w_S", "_gap", "_wear_ps", "_draws", "_wx", "wx_kind", "wx_s", "_wx_mode", "_wx_slots", "_wx_f", "_wx_t",
-			"_hw", "_hands", "_meters", "_works_on", "_fdef"]:
+			"_hw", "_hands", "_meters", "_works_on", "_fdef", "_lab", "_lab_of"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_wait_on", "sp_worn",
@@ -2608,6 +2623,6 @@ func clone():
 			"st_left", "st_pending", "st_made",
 			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result", "sp_held", "sp_acts",
 			"riders", "sp_ride", "sp_stairs", "sp_watch", "st_veh", "sp_spans", "tool_n", "carried", "busy", "cause_of", "cause_s",
-			"slip_s"]:
+			"slip_s", "lab_q", "lab_s"]:
 		c.set(k, get(k).duplicate(true))
 	return c

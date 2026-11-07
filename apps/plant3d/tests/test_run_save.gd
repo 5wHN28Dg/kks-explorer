@@ -33,6 +33,7 @@ func run(tree: SceneTree) -> Array:
 	_round_trip(m, load("res://tests/fixtures/engine_plus.gd"), p)
 	_round_trip_wtp(m, p)
 	_round_trip_weather(p)
+	_round_trip_lab(p)
 	if ran != null:
 		_compiled_fixed(m, ran, p)
 	_file(m, p)
@@ -204,6 +205,61 @@ func _round_trip_weather(p: Array) -> void:
 				t.merge(c, true)
 				if Autosave._engine_contents(f2, t) == "":
 					p.append("realism hands: a save with %s was taken" % str(c))
+
+
+## The realism vectors' lab plant (REALISM.md §2.19) saved with samples queued (its first run's inputs to step 12):
+## put back into a fresh engine, the run goes on bit for bit through their results (the queues and the lab streams); a
+## save whose queue is damaged, names no node of the content or holds more than 8 samples, or whose stream is 0, is
+## refused.
+func _round_trip_lab(p: Array) -> void:
+	const JsonStrict = preload("res://sim/json_strict.gd")
+	var path := ProjectSettings.globalize_path("res://").path_join("../../ref/vectors/plant3d-realism.json").simplify_path()
+	var L: Dictionary = JsonStrict.parse(FileAccess.get_file_as_bytes(path), 1000).value["lab"]
+	var files: Dictionary = L["files"].duplicate()
+	files["scenarios/s1.json"] = L["runs"][0]["scenario"]
+	var m = PlantModel.from_files(files)
+	if m.error != "":
+		p.append("the realism lab plant did not load: %s" % m.error)
+		return
+	var e = PlantEngine.new(m, "s1")
+	var inputs: Array = L["runs"][0]["inputs"]
+	var i := 0
+	while e.step_no < 12:
+		while i < inputs.size() and inputs[i][0] == e.step_no + 1:
+			e.apply_input(inputs[i])
+			i += 1
+		e.step()
+	var cap := RunSave.capture(e, RunSave.engine_fields(e))
+	var cap0 := cap.duplicate(true)
+	if cap0["lab_q"].get("lab_fe", []).is_empty():
+		p.append("realism lab: the save has no sample queued")
+	var f2 = PlantEngine.new(m, "s1")
+	var bad := RunSave.check(f2, RunSave.engine_fields(f2), cap)
+	if bad == "":
+		bad = Autosave._engine_contents(f2, cap)
+	if bad != "":
+		p.append("realism lab: a fresh engine refuses its own save: %s" % bad)
+		return
+	RunSave.apply(f2, cap)
+	for k in 700:
+		e.step()
+		f2.step()
+		if f2.cur != e.cur or f2.digest() != e.digest():
+			p.append("realism lab: the restored run differs at step %d" % e.step_no)
+			break
+	if not e.events.any(func(x): return x[1] == "lab"):
+		p.append("realism lab: no result came after the save")
+	var nine := []
+	for k in 9:
+		nine.append([1, 1.0])
+	for c in [{"lab_q": {"lab_fe": [[1, "x"]], "lab_vis": []}}, {"lab_q": {"lab_fe": []}},
+			{"lab_q": {"lab_fe": [], "nothing": []}}, {"lab_q": {"lab_fe": nine, "lab_vis": []}},
+			{"lab_q": {"lab_fe": [[1.5, 1.0]], "lab_vis": []}}, {"lab_s": {"lab_fe": 0, "lab_vis": 1}},
+			{"lab_s": {"lab_fe": 1}}]:
+		var t := cap0.duplicate(true)
+		t.merge(c, true)
+		if Autosave._engine_contents(f2, t) == "":
+			p.append("realism lab: a save with %s was taken" % str(c))
 
 
 ## The water treatment plant's day work (W3) saved in the middle of its sequences: an RO train being cleaned in place
