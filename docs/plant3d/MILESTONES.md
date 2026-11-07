@@ -317,6 +317,20 @@ first frame; no frame over 100 ms; 99.79 / 99.89 % at ≥ 30 fps, mean frame 19.
 peak PSS 868 / 886 MB; at most 95 draw calls in any view. The walk's guided phases leave 14 of its parts loose.
 Pictures: the wiki's Workshop page.
 
+**K4b as built (2026-11-07):** the steam turbine runs on its bench, made from the plant's st model by
+`tools/plant3d/workshop/make_bench.py` (the start-up machine, five trips and the breaker's opening by protection,
+four alarms, the excitation's, breaker's, bias and reset ops, 134 values; WORKSHOP.md §6.6): the steam path's eight
+stages (pressure in proportion to the flow, temperature falling with it), the stop and control valves on their stems,
+seven flow paths, Heat and Pressure toggles with the legend, the blade-pass tone; two turbine runs in
+`plant3d-bench-v1.json`, bit for bit in both engines. The Workshop follow-ups (#325): the kinds' warm-up spread over
+frames, its MultiMeshes made new, the Compatibility warm draw's cushion, the walk's steps scaled (every turbine step
+walked). The Note 9 (fresh install, cool start, `bench_speed=6`), with the warm-up / `cold=1`: first entry 406 ms /
+4.17 s, back to the plant 14–21 ms / 1.52 s the first time (the plant's own pipelines, entered 80 ms after its first
+frame), 14 ms after; no pipeline compiled in the walk; no frame over 100 ms in it; 99.88 % at ≥ 30 fps, mean frame 19.85 ms,
+88.5 % at 60 fps; peak PSS 1,116 MB; at most 103 draw calls; the bench step 0.171 ms mean. Not fixed: the plant's
+705 ms frame 4.8 s after the start (the Workshop's shaders' first compilation; a question for the user). APK 145.2 MB
+(K4b's own files about 120 KB). Pictures: the wiki's Workshop page.
+
 **K3 follow-ups as built (2026-11-03):** the step sentence on a canvas layer of its own (the pile's ~510 draw calls
 were its letters: now at most 58 on the laptop and 59 on the Note 9), the bench's engine logs bounded (bit for bit
 with an engine that keeps everything), and every kind's machine warmed in the plant after its first walkable frame

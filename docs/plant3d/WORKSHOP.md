@@ -668,6 +668,27 @@ addition (both engines, vectors) made in K6.
   the trainee's 2×, logged; the default stays 2×), so that the plant's 300 s soak still lets it reach full speed
   within the 3 minutes.
 
+- **The warm-up (K4b):** the ghost's and K3's warm pieces enter the plant's world one a frame, and a piece moved out of
+  a kind's scene is no longer owned by its root (freeing the app mid warm-up crashed a full test run).
+- **Measured** on the Note 9 (`lean+vis`, a test-signed release build, cool starts at 29.3 °C, installed fresh,
+  `bench_speed=6`), with the warm-up: first entry 406 ms (≤ 5.0 s), again 169 ms (≤ 2.0 s), back to the plant
+  14–21 ms; no pipeline compiled in the walk; no frame over 100 ms in it (the longest 40 ms); 99.88 % of frames at
+  ≥ 30 fps, mean frame 19.85 ms, 88.5 % at 60 fps; peak PSS 1,116 MB (≤ 1.5 GB); at most 103 draw calls (≤ 300);
+  the bench step 0.171 ms mean (≤ 0.3 ms; the longest 1.24 ms); every guided step walked (0 loose); loaded before
+  the faults. The kernel reclaimed in 1.34 % of the samples (over the 1 % at which the reclaim rule judges no walk).
+  With `cold=1` (the Workshop at once, 80 ms after the plant's first frame): first entry 4.17 s (≤ 5.0 s), again
+  305 ms; 99.90 % at ≥ 30 fps, mean frame 19.94 ms, 89.1 % at 60 fps; peak PSS 1,123 MB; no reclaim. Its first way
+  back to the plant took 1.52 s (§8: ≤ 1.0 s): the plant's own pipelines (one surface, seven specialization) compiled
+  in its first frame back, the plant having drawn barely a frame before the Workshop opened; the second way back
+  took 14 ms. The APK (test-signed) is 145.2 MB, of which K4b's own files are about 120 KB (the blade-pass sound 93 KB,
+  the bench file 24 KB); K4a's was 121.4 MB, before main's other milestones.
+- **Not fixed: the plant's 0.7 s frame at the start.** 4.8 s after the first frame (the warm-up's time) one plant
+  frame takes 705 ms (715 ms in the first run) and 8 surface pipelines finish in it. It is not the kinds' warm-up
+  (#325 spread it; it stayed) nor the ghost's and K3's pieces entering together (one a frame now; it stayed): the
+  Workshop's own shaders' first compilation holds the frame. The frame rules don't judge the first seconds; §8's
+  Workshop rules hold. Left as a question for the user (moving that warm-up behind the start's loading, or baking
+  those shaders).
+
 ## 7. Shaders and cut faces
 
 Decision 0060: one lit shader and one vertex format; each lit ubershader is 0.6–0.9 s of serial compile on the Note
