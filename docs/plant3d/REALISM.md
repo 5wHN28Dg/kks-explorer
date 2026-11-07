@@ -763,6 +763,62 @@ at 29–35 °C over the runs.
   and brings their cleaning procedures). Valve stiction that makes a loop hunt waits for IC3, transmitter 2's drift for
   HW3 (its job's cure reads the sensor's error).
 
+### 2.19 AG3's details (settled 2026-11-08, before the code: condition monitoring)
+
+§9.3 leaves these open; settled here. What is drawn for the trainee is the app's, pinned by app tests; what the engine
+does is in both engines bit for bit, with vectors.
+
+- **Two tool kinds** join the kinds read through (§2.5, with `meter`, `communicator`, `calibrator`): `collector` (a
+  vibration data collector, mode `vel`: overall velocity in mm/s r.m.s., 10 Hz to 1 kHz as [ISO20816-1] asks) and
+  `camera` (a thermal camera, mode `ir`: the spot temperature in °C), and a plain kind `sampler` (an oil sampling kit:
+  a vacuum pump, tube and clean bottles). Their meters are ordinary meters (§2.5): a reading is S1's `read` with the
+  meter named, its event as every reading's (the code and the value), so **a point's readings are the run's `read`
+  events of its code** (routes and trends need no new state: the app lists them from the events, which saves keep).
+  One measurement point per code and kind: the collector reads at the motor's or fan's vibration probe code (the
+  probe's own bearing, [ISO13373-1]'s measurement point), the camera at the motor's code (its bearing housing).
+- **The spectrum is drawn, not read:** the collector's screen draws the point's spectrum from model values named in
+  the monitoring file (below): the 1× (residual unbalance) and 2× (alignment) lines, the bearing's defect tones at
+  their orders of the running speed (BPFO, BPFI, BSF, FTF from the bearing's geometry, [SKF]'s formulas) with their
+  first harmonics, or a gear's mesh tone, and a noise floor; the lines' energy adds up to the overall the meter shows
+  (the 1× takes what the tones and the floor leave). Only the overall is recorded: the tones are seen, as a route's
+  analyst sees them, before the overall leaves zone A/B (§4.2's order: the spectrum's bearing tones first).
+- **A `sample` node** (format 2, stateful, written by no op, fault or work): `{"sample": ref, "spread": table, "hours":
+  h, "init": n}`, `hours` above 0 and at most 8,760 (clock hours, the lab's turnaround), `init` default 0. A hand
+  action gains **`samples`**: 1 to 16 sample nodes, no repeat (`bad_ref`, `dup_id`), and a hand action may then write
+  nothing else (`set` and `input` become optional with `samples`). When such an action is done (in step 1 when it has
+  no `minutes`, else in step 3 at its end), each of its sample nodes, in the list's order, takes a sample: ref's value
+  as it stands then (the previous step's in step 1, this step's step 2 in step 3) plus `spread`(r / 2²⁴), r the next
+  draw of the node's own lab stream (§2.1: purpose `lab`, the id the node's name, the world's seed), queued with its
+  due clock (the clock in tenths at the action's end plus `hours` × 36,000). **Results:** in step 3, after the hand
+  actions whose minutes end (§2.7, before deliveries), each sample node in model order whose first queued sample is
+  due (due ≤ the clock) takes its value and drops it from the queue, then the next while due; event `[n, "lab", node,
+  value]` for each. A jump's step delivers every sample due by the clock after it. At most 8 samples queued per node:
+  a hand action whose node's queue is full is refused with the reason `lab` (after the failed permissives, before
+  `value`). A sample node needs the plant clock (`bad_ref`, as `wear`); it has no entry in step 2's program.
+- **Who takes a sample:** a hand action with `samples` and `work: false` needs the `sample` authority (S3's, the
+  chemists') instead of `operate_local`; the mechanical technician gains it in the first train's staff file.
+- **Snapshots, saves, the digest:** the node's value is a value; each sample node's queue (due clock in whole tenths,
+  value) is engine state, in saves and snapshots (`lab`: node → queue) and in the digest after the hands part, with
+  the lab streams' states (only streams drawn from), in model order.
+- **The first train's content** (`tools/plant3d/train_monitoring.py`): the collector, the thermal camera and two oil
+  sampling kits at the store counter; collector meters at the seven pumps' and ten fans' vibration probes, camera
+  meters at the seven pump motors; the pump bearings' defect tone (BPFO, the outer race: the commonest defect, and
+  what [ISO13373-2] shows first) a table of the bearing's margin from its P point, so it is seen before the overall
+  leaves zone A/B; the fans' gear mesh tone is AG2's gear share of the fan's vibration. Oil samples (a hand action at
+  the equipment's work place, ten minutes, with the kit) from the CW pump motors' oil-bath bearings and the fan gear
+  reducers: iron (ppm, from the item's margin), the ISO 4406 code at 6 µm (from the margin), viscosity at 40 °C (cSt,
+  the oil's grade) and water (ppm), each a sample node with a small lab spread, results after 48 clock hours (a
+  commercial lab's usual turnaround, [ASTM-D6224]'s routine tests). The values count against §11's wear signs (the
+  tones) and its chemistry share (the oil results).
+- **The monitoring file** (`data/plant3d/monitoring.json`, format `walkdown-plant-monitoring` version 1, made by the
+  content tool, checked by `ref/plant3d_monitoring.py` against the model): each point's code, kind (`vib`, `ir`,
+  `oil`), title, its meter or hand action, the running speed (rpm), the ISO 20816-3 group and zone limits, the
+  spectrum's lines (order, value or share), the oil results' nodes with their units and alert and alarm limits, the
+  sources. The app reads it for drawing and words only; the engine never reads it.
+- **Left open (the user's call):** the thermal camera's false-colour picture (§9.3 draws it in the work view with the
+  Workshop's heat view, and the work view exists for equipment with a Workshop kind: today the transmitters, whose
+  temperatures teach nothing; the pumps' and motors' trees are K6's). AG3 gives the camera's spot readings.
+
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does
