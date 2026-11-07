@@ -190,7 +190,7 @@ static func gas_turbine(_part: String, g) -> void:
 	m.box_lh(Vector3(-D * 0.4, ya.call(0.86) - 0.4, 0.4), Vector3(D * 0.4, ya.call(0.86) + 0.4, za - D * 0.55))
 	# the bearing housing at the cold end, the shaft to the generator
 	g.comp("brg1_cover")
-	g.only("plant", ["brg1_cover"])
+	g.only("plant", ["brg1_cover", "brg1_housing"])
 	m.use("paint_machine", "identify")
 	m.cyl(Vector3(0, y0 - 0.6, za), Vector3(0, y0, za), D * 0.15)
 	g.only()
@@ -613,7 +613,7 @@ static func _st_comps(g, c: Dictionary, za: float) -> void:
 	var up := Vector3(0, 0, 1)
 	var r: float = c.d * 0.5
 	g.comp("lagging_upper", {"explode": [up, r * 4.3]})
-	g.comp("lagging_lower", {"explode": [-up, 1.0]})
+	g.comp("lagging_lower", {"explode": [-up, 0.0]})   # (under the casing, between the pedestals: it stays)
 	g.comp("casing_lower", {"explode": [up, 0.0]})
 	g.comp("casing_upper", {"parent": "casing_lower", "explode": [up, r * 3.15]})
 	g.comp("inner_lower", {"parent": "casing_lower", "explode": [up, 0.0]})
@@ -632,7 +632,7 @@ static func _st_comps(g, c: Dictionary, za: float) -> void:
 		g.comp("mrow_%d" % (k + 1), {"parent": "rotor", "explode": [up, 0.0]})
 	g.comp("collar", {"parent": "rotor", "explode": [up, 0.0]})
 	g.comp("pedestal_f", {"explode": [up, 0.0]})
-	g.comp("cap_f", {"parent": "pedestal_f", "explode": [up, 2.4]})
+	g.comp("cap_f", {"parent": "pedestal_f", "explode": [up, maxf(2.4, r * 0.63 + 1.0)]})
 	# (the bearings' upper halves lift farther than the rotor does in the next stage, so it never meets them)
 	g.comp("brg_f_upper", {"parent": "pedestal_f", "explode": [up, r * 0.63 + 0.2]})
 	g.comp("brg_f_lower", {"parent": "pedestal_f", "explode": [up, 0.0]})
@@ -1012,9 +1012,10 @@ static func _gt_comps(g, L: float, D: float, za: float) -> void:
 	# the front bearing's parts lift in the same stage as the rotor, which they close round (the cover a drum round
 	# the shaft's end, the thrust pads whole rings round it): each as far as the rotor or a little farther, so none
 	# passes through the shaft, the collar or another on the way (GT_LIFT)
-	g.comp("brg1_cover", {"parent": "brg1_housing", "explode": [up, GT_LIFT + 0.25]})
-	g.comp("brg1_upper", {"parent": "brg1_housing", "explode": [up, GT_LIFT + 0.2]})
-	g.comp("thrust", {"parent": "brg1_housing", "explode": [up, GT_LIFT]})
+	g.comp("brg1_cover", {"parent": "brg1_housing", "explode": [up, GT_LIFT + 0.3]})
+	g.comp("brg1_upper", {"parent": "brg1_housing", "explode": [up, GT_LIFT + 0.3]})
+	g.comp("thrust", {"parent": "brg1_housing", "explode": [up, GT_LIFT + 0.3]})
+	g.comp("thrust_lower", {"parent": "brg1_housing", "explode": [up, 0.0]})
 	g.comp("brg1_lower", {"parent": "brg1_housing", "explode": [up, 0.0]})
 	g.comp("comp_lower", {"explode": [up, 0.0]})
 	g.comp("comp_upper", {"parent": "comp_lower", "explode": [up, GT_RISE]})
@@ -1026,7 +1027,7 @@ static func _gt_comps(g, L: float, D: float, za: float) -> void:
 	g.comp("cvanes_upper", {"parent": "comp_lower", "explode": [up, GT_RISE - 1.2]})
 	g.comp("igv_lower", {"parent": "comp_lower", "explode": [up, 0.0]})
 	g.comp("cvanes_lower", {"parent": "comp_lower", "explode": [up, 0.0]})
-	g.comp("bleed_pipes", {"explode": [up, 3.0], "thin": true})
+	g.comp("bleed_pipes", {"parent": "comp_upper", "explode": [up, 3.0], "thin": true})   # (ride up with it)
 	g.comp("cdc_lower", {"explode": [up, 0.0]})
 	g.comp("cdc_upper", {"parent": "cdc_lower", "explode": [up, GT_RISE]})
 	for i in GT_CANS:
@@ -1036,11 +1037,8 @@ static func _gt_comps(g, L: float, D: float, za: float) -> void:
 		var c1 := c0 + rad * D * 0.16 + Vector3(0, -L * 0.03, 0)
 		var out := (c1 - c0).normalized()
 		var k := "%02d" % (i + 1)
-		# each can comes out along its own axis (the only way out of the wrapper); one below the joint only as far as
-		# its end cover stays above the foundation block (the pit a real unit's lower cans come out into is not
-		# drawn): the cans at the bottom stay in place (kit/README.md "Workshop: the gas turbine")
-		# A can and its transition piece hang in the wrapper's half they pass through: one above the joint rides up
-		# with the upper half and then comes out of it along its axis, far from everything; one below comes out of
+		# A can hangs in the wrapper's half it passes through: one above the joint rides up with the upper half and
+		# then comes out of it along its axis, far from everything; one below comes out of
 		# the lower half (which stays) along its axis only as far as its end cover stays above the foundation block
 		# (the pit a real unit's lower cans come out into is not drawn): the cans at the bottom stay in place
 		var f := 1.0
@@ -1050,9 +1048,14 @@ static func _gt_comps(g, L: float, D: float, za: float) -> void:
 		var half := "cdc_upper" if out.z > 0.0 else "cdc_lower"
 		g.comp("can_" + k, {"parent": half, "explode": [out, GT_CAN_OUT * f]})
 		g.comp("cover_" + k, {"parent": "can_" + k, "explode": [out, 2.4 * f]})
-		g.comp("liner_" + k, {"parent": "can_" + k, "explode": [out, 1.1 * f]})
-		g.comp("tp_" + k, {"parent": half, "explode": [out, GT_CAN_OUT * f]})
-	g.comp("fuel_ring", {"explode": [Vector3(0, 1, 0), 2.0], "thin": true})   # (back, away from the cans' covers)
+		# (the liner stays in its can: the plant draws the can closed at both ends; the steps take it out by hand)
+		g.comp("liner_" + k, {"parent": "can_" + k, "explode": [out, 0.0]})
+		# its transition piece stays in the lower half: one above the joint lifts once the upper half is off,
+		# farther than the rotor, which passes under it; one below stays
+		g.comp("tp_" + k, {"parent": "cdc_lower", "explode": [up, GT_LIFT + 1.0 if out.z > 0.0 else 0.0]})
+	# the fuel gas ring stays: the plant draws it closed round the wrapper, among the end covers and into the
+	# foundation block, so it can go no way (a real one comes off in segments; tests/test_workshop.gd PASSES)
+	g.comp("fuel_ring", {"explode": [Vector3(0, 1, 0), 0.0], "thin": true})
 	g.comp("tshell_lower", {"explode": [up, 0.0]})
 	g.comp("tshell_upper", {"parent": "tshell_lower", "explode": [up, GT_RISE]})
 	for k in GT_TSTAGES:
@@ -1061,7 +1064,7 @@ static func _gt_comps(g, L: float, D: float, za: float) -> void:
 		g.comp("tnoz%d_l" % (k + 1), {"parent": "tshell_lower", "explode": [up, 0.0]})
 	g.comp("brg2_upper", {"parent": "tshell_lower", "explode": [up, GT_LIFT + 0.2]})
 	g.comp("brg2_lower", {"parent": "tshell_lower", "explode": [up, 0.0]})
-	g.comp("exhaust", {"explode": [Vector3(0, 1, 0), 3.0], "thin": true})
+	g.comp("exhaust", {"explode": [up, GT_RISE], "thin": true})   # (it stands in the foundation block: up, not back)
 	g.comp("rotor", {"parent": "comp_lower", "explode": [up, GT_LIFT], "anim": "shaft", "pivot": Vector3(0, 0, za),
 		"sym": [Vector3(0, 1, 0), 0]})
 	g.comp("cblades", {"parent": "rotor", "explode": [up, 0.0]})
@@ -1222,17 +1225,29 @@ static func _gt_turbine(g, L: float, D: float, za: float) -> void:
 static func _gt_bearings(g, L: float, D: float, za: float) -> void:
 	var m = g.m
 	var y0 := -L * 0.5
-	g.comp("brg1_cover")
-	_gt_whole_cyl(g, Vector3(0, y0 - 0.6, za), Vector3(0, y0, za), D * 0.15, "paint_machine", "identify")
+	# the plant's drum split at the joint: its upper half the housing's cover, its lower half the housing's (the
+	# shaft passes through its ends: whole, the cover could not come off over it)
+	# (its front disk is the plant's own, which turns the other way round from its side, and stays with the housing)
+	var dn: int = m.segs(D * 0.15)
+	var a := Vector3(0, y0 - 0.6, za)
+	for up in [false, true]:
+		g.comp("brg1_cover" if up else "brg1_housing")
+		_gt_half(g, a, [[D * 0.15, 0.0], [D * 0.15, 0.6]], [[0.0, 0.0], [0.0, 0.6]], up, 2, dn, "paint_machine")
+	g.comp("brg1_housing")
+	g.only("workshop", "split")
+	m.use("paint_machine", "identify")
+	m.disk(a, Vector3(0, -1, 0), D * 0.15, dn)
+	m.sector(a, Vector3(0, -1, 0), Vector3(0, 1, 0), 0.0, D * 0.15, dn, 0, dn)   # (its back)
 	g.only("workshop")
 	for up in [false, true]:
 		g.comp("brg1_upper" if up else "brg1_lower")
 		m.use("steel", "identify")
 		_st_shell(g, Vector3(0, y0 - 0.55, za), [[0.45, 0.0], [0.45, 0.16]], [[0.235, 0.0], [0.235, 0.16]], up, false, 24)
-	g.comp("thrust")
-	m.use("steel", "identify")
-	for y: float in [y0 - 0.36, y0 - 0.23]:
-		_gt_ring(g, Vector3(0, y, za), [[0.42, 0.0], [0.42, 0.05]], [[0.235, 0.0], [0.235, 0.05]], 24)
+	for up in [false, true]:   # the pad rings' halves, split at the joint as the journal bearing's
+		g.comp("thrust" if up else "thrust_lower")
+		m.use("steel", "identify")
+		for y: float in [y0 - 0.36, y0 - 0.23]:
+			_st_shell(g, Vector3(0, y, za), [[0.42, 0.0], [0.42, 0.05]], [[0.235, 0.0], [0.235, 0.05]], up, false, 24)
 	g.only()
 
 ## The rotor's insides: the compressor's drum of disks, the distance piece through the combustion section, the

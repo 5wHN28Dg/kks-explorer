@@ -53,7 +53,7 @@ class WorkshopData(unittest.TestCase):
 
     def test_the_gas_turbine_passes(self):
         w = self.b.workshop['gas_turbine']
-        self.assertEqual(w['components'], 83)
+        self.assertEqual(w['components'], 84)
         self.assertEqual(w['fasteners'], 2)
         d = json.loads(self.files['workshop/gas_turbine.json'])
         self.assertEqual(d['context'], ['axis_z', 'shaft_lo', 'shaft_hi'])

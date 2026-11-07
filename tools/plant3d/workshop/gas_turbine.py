@@ -125,9 +125,12 @@ def components():
                            'Steel shell, white metal lining', [THRUST, GER3620]),
         'brg1_lower': comp('Front journal bearing, lower half', 'Carries the rotor\'s front end on an oil film.',
                            'Steel shell, white metal lining', [THRUST, GER3620]),
-        'thrust': comp('Thrust bearing', 'Pads on both faces of the rotor\'s thrust collar hold the rotor in its place '
-                       'along the axis against the compressor\'s and the turbine\'s pull.' + SIMPLE,
-                       'Steel pads, white metal faces', [THRUST, BELL]),
+        'thrust': comp('Thrust bearing, upper half', 'Pads on both faces of the rotor\'s thrust collar hold the rotor in '
+                       'its place along the axis against the compressor\'s and the turbine\'s pull; the upper half '
+                       'comes off before the rotor is lifted.' + SIMPLE, 'Steel pads, white metal faces', [THRUST, BELL]),
+        'thrust_lower': comp('Thrust bearing, lower half', 'The lower halves of the pad rings either side of the thrust '
+                             'collar: the rotor lifts off over them.' + SIMPLE, 'Steel pads, white metal faces',
+                             [THRUST, BELL]),
         'comp_lower': comp('Compressor casing, lower half', 'Holds the lower halves of the stator rows; its flanges '
                            'meet the upper half at the horizontal joint.', 'Cast iron', [GER3620, BH9E]),
         'comp_upper': comp('Compressor casing, upper half', 'Bolted to the lower half at the horizontal joint; lifted '
@@ -242,6 +245,9 @@ def assembly():
         step('brg1_lower', 'Roll the front journal bearing\'s lower half into its housing.',
              [('brg1_housing', 'The bearing sits in the front housing: set it first.', 'Roll the lower front bearing '
                'out before its housing is moved.')], sources=(THRUST, GER3620)),
+        step('thrust_lower', 'Set the thrust bearing\'s lower pads in the housing, either side of where the collar '
+             'will run.', [('brg1_housing', 'The pads sit in the front housing: set it first.', 'Take the lower '
+                            'thrust pads out before their housing is moved.')], sources=(THRUST,)),
         step('brg2_lower', 'Fit the rear journal bearing\'s lower half.',
              [('tshell_lower', 'The rear bearing is carried at the turbine end: set the lower turbine shell first.',
                'Take the lower rear bearing out before the lower turbine shell is moved.')], sources=(REAR, GER3620)),
@@ -251,6 +257,8 @@ def assembly():
                            'Lift the rotor out before the lower front bearing is taken out.'),
                           ('brg2_lower', 'The rotor rests on the rear bearing\'s lower half: fit it first.',
                            'Lift the rotor out before the lower rear bearing is taken out.'),
+                          ('thrust_lower', 'Set the lower thrust pads before the rotor goes in over them.',
+                           'Lift the rotor out before the lower thrust pads come out.'),
                           ('igv_lower', 'Fit the lower guide vanes before the rotor goes in over them.',
                            'Lift the rotor out before the lower guide vanes come out.'),
                           ('cvanes_lower', 'Fit the lower stator rows before the rotor goes in over them.',
@@ -263,7 +271,7 @@ def assembly():
     for n in range(1, TSTAGES + 1):
         a.append(step(f'tbucket{n}', f'The stage {n} buckets come with the rotor.', sources=(GER3434,)))
     a += [
-        step('thrust', 'Fit the thrust bearing\'s pads on both faces of the thrust collar.',
+        step('thrust', 'Close the thrust bearing with its upper pads on both faces of the thrust collar.',
              [('rotor', 'The pads close on the rotor\'s thrust collar: set the rotor first.', 'Take the thrust bearing '
                'out before the rotor is lifted.')], sources=(THRUST,)),
         step('brg1_upper', 'Close the front journal bearing with its upper half.',

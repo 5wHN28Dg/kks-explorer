@@ -324,7 +324,7 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   plant's cone over the compressor is its casing, split at the joint into two halves 0.12 m thick, its joint flanges
   the plant's boxes each cut at the joint and its 40 studs the plant's (a fastener group replacing the stand-in); the
   combustion wrapper is the compressor discharge casing in two halves; the cladding drum over the turbine is the turbine
-  shell with its insulation, 0.15 m thick, in halves with its two seams. Inside: a bellmouth in the inlet plenum, the
+  shell with its insulation, 0.15 m thick, in halves with its two seams. Inside: a bellmouth in the inlet plenum (in halves), the
   variable inlet guide vanes and **8 compressor stages** (a moving row on the rotor, then a stator row in the casing's
   halves; GE's F class has 18, its E class 17: the count drawn is a picture, not a design), the rotor's drum of disks
   (one lathe: the tie bolts are not drawn), the distance piece through the combustion section, **3 turbine stages** (a
@@ -349,13 +349,21 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   exhaust frame is one part that stays while the rotor is lifted (a real unit has its upper half off first). The
   nozzles lean with the rotor's turn and the buckets against it, as the compressor's stators and moving rows do, so
   the turbine drives the rotor the way the compressor is made to be driven (`tests/test_workshop.gd` checks every
-  row's lean from its faces). **The explode:** each can comes out along its own axis, the only way out of the wrapper;
-  below the joint only as far as its end cover stays above the foundation block, so the cans at the bottom stay in
-  place (a real unit's lower cans come out into the pit under the machine, which is not drawn). The bellmouth slides
-  forward off the compressor's flange, short of the front bearing's pedestal; the front bearing's cover, upper half
-  and thrust pads (whole rings round the shaft) lift with the rotor, a little farther than it, so nothing passes
-  through the shaft (`tests/test_workshop.gd` checks every kind's explode stays above the floor and that no two
-  parts pass through each other, box by box).
+  row's lean from its faces). **The explode:** a can above the joint rides up with the discharge casing's upper half
+  and then comes out of it along its own axis, the only way out of the wrapper; one below comes out of the lower half
+  along its axis only as far as its end cover stays above the foundation block, so the cans at the bottom stay in place
+  (a real unit's lower cans come out into the pit under the machine, which is not drawn). The transition pieces above
+  the joint lift once the upper half is off, farther than the rotor; those below stay. The liners stay in their cans
+  (the plant draws each can closed at both ends; the steps take a liner out by hand). The bellmouth, the front
+  bearing's drum (the plant's: its upper half is the housing's cover) and the thrust bearing's pad rings are split at
+  the joint like the casings: the upper halves lift a little farther than the rotor, the lower halves stay. The bleed
+  pipes ride up with the upper compressor casing; the exhaust frame lifts (it stands in the foundation block, so it
+  can't slide back); the fuel gas ring stays (the plant draws it closed round the wrapper, among the end covers and
+  into the block: it can go no way). `tests/test_workshop.gd` checks every kind's explode stays above the floor and that no two parts pass
+  through each other (their triangles' boxes, cell by cell, in every stage), apart from the pairs listed there with their
+  reasons: the plant's closed inlet plenum lifted over the shaft and the bellmouth, the plant's fuel gas ring, and the
+  steam turbine's front pedestal round its rotor; two parts drawn into each other (a can through its wrapper's wall)
+  are not judged.
 
 ## Tables and their sources
 
