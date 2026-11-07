@@ -87,8 +87,9 @@ what it is fastened to (from the fastener groups, §4.4). Panels collapse so the
 **Take apart.** One slider from assembled (0) to fully exploded (1), smooth, the same picture for the same value
 (§4.3). Subassemblies come out first, their parts after. The slider works on the whole machine or on the selected
 subassembly. **Reassemble all** animates everything home. Not while it runs: taking apart, handling and the
-guided steps wait until the machine is stopped and at rest ("Stop the machine and let it come to rest before opening
-it up"; the polish after K4b).
+guided steps wait until the machine is stopped and at rest, apart from what the kind's data lets be opened live
+(§4.7 `open_running`: a powered transmitter's terminal cover), with a technician's reason for the rest (the polish
+after K4b).
 
 **Free handling.** Pick up any part that is free to move (§4.5) and drag it along an axis or turn it about one
 (a three-axis handle; on touch, the handle's arrows and rings take one finger). Hide, show, isolate (the part and its
@@ -362,6 +363,13 @@ The data file's `assembly` is the guided order, one step per component or fasten
   passes by (a rotor shown whole inside a cut casing).
 - `run_exploded`: `true`, or `{"allowed": [components that may be out], "why": "…"}`: the Run button refuses with
   `why` when another component is out.
+- `open_running`: `{"allowed": [components that may be opened or taken off while it runs], "why": "…"}`: while the
+  bench's machine is out of its resting state, taking apart, handling and the guided steps are refused with `why`
+  for every other component (without it: none, with "Stop the machine and let it come to rest before opening it
+  up"). The transmitter allows its terminal cover with the loop live (to measure the loop current or connect HART,
+  outside a hazardous area); the electronics, the sensor module and the flange wait for the loop supply off. A
+  rotating machine allows nothing: it is opened only at standstill on its turning gear (the user's decision,
+  2026-11-07). The Workshop's code names no kind: the data says.
 
 ## 5. The pre-built Workshop scenes
 
@@ -701,9 +709,11 @@ addition (both engines, vectors) made in K6.
   versions of the mobile scene shader instead of 20. Whether the frame goes (the driver's pipeline builds are not
   baked) is measured on the Note 9 below.
 - **A running machine is not taken apart** (§3): while the bench's machine is out of its resting state the slider
-  (towards apart), the selected subassembly, handling and both guided modes are refused with "Stop the machine and let
-  it come to rest before opening it up"; once it is stopped and at rest (the turbine's standstill, below 1 % speed on
-  its turning gear; the transmitter's loop supply off) they are allowed again. Putting it back together, Reset, hiding
+  (towards apart), the selected subassembly, handling and both guided modes are refused with the kind's reason
+  (§4.7 `open_running`); once it is stopped and at rest (the turbine's standstill, below 1 % speed on its turning
+  gear; the transmitter's loop supply off) they are allowed again. The user's decision (2026-11-07): a powered
+  transmitter's terminal cover may come off (to measure the loop current or connect HART, in a non-Ex area); its
+  electronics, sensor module and flange need the loop supply off; a turning machine is never opened. Putting it back together, Reset, hiding
   and the views stay allowed. Starting a machine taken apart is still decided by `run_exploded` (§4.7). The walk
   (§8) therefore takes the machine apart first and starts it once it stands assembled again, at 118 s.
 
