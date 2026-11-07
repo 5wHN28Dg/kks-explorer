@@ -675,7 +675,12 @@ at 29–35 °C over the runs.
   check accepts components only (no action names a fastener yet).
 - **Left for HW3:** the other three causes, replacing the transmitter from the stores, the loop check with the
   control room, the debrief's diagnosis tab.
-- **The Note 9:** NOTE9_PENDING
+- **The Note 9** (a test-signed release build at 73a79cc0, `walk=job job=30MAG10CP002 probe=1`, 280 s from a cool
+  start at 29.4 °C, 2026-11-07): the work scene loaded in 14.8 ms with 0.1 MB more memory, 20 draw calls and 1,460
+  triangles (within the work view's budget); with the view open the frame drew 273 draw calls and 233,122 triangles
+  (811 and 331,472 before, the walker's view). Tier lean+vis, 11,076 frames: median 25.9 ms, p95 36.3 ms, max
+  56.1 ms, none over 100 ms (the frame rule passes without excluding any frame; the kernel reclaimed in 2.42 % of
+  the samples, so no frame could have been excused).
 
 ## 3. Hands-on work and tools
 
