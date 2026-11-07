@@ -743,6 +743,9 @@ at 29–35 °C over the runs.
   the handwheel when its actuator has failed (the motor's close moves nothing, and the lock was refused for good;
   the works from before AG2 keep their tasks: a trainer's stuck valve with them stays as it was); transmitter 3's
   calibration sets the field trim back to 0 (a trim made with the renewal corrected the drift twice).
+- **The step's cost:** 213 values added (183 of them the items and their signs, within §11's 250; the rest the new
+  isolations' safe conditions). On the laptop (`bench_step.gd`, headless, base load, two runs each alternating with
+  main's): 166 and 168 µs on main, 200 and 212 µs here, about +0.04 ms of §11's 0.15 for all realism content.
 - **The Note 9:** the walk with the new content waits for the next phone window (2026-11-08 from 17:30).
 - **Vectors:** `plant3d-v1.json` and `plant3d-v2.json` made again with the train's new values; compared item by
   item with the files before, keyed by id: every input of every run and fork unchanged, every event too except in the
