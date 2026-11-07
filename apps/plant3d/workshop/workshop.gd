@@ -1176,15 +1176,15 @@ func warm_up(parent: Node) -> void:
 	parent.add_child(_warm)
 	# one piece a frame: each new shader's surfaces compile in the frame its piece enters the world (on the Note 9 all
 	# eight in one frame made a 715 ms plant frame, 4.6 s after the start; K4b's measurement)
+	_warm_pending = pieces.duplicate()   # (freed by _exit_tree if the app goes before they are in)
 	for n in pieces:
 		await _warm_wait()
 		if not is_inside_tree() or _warm == null or not is_instance_valid(_warm):
-			for x in pieces:
-				if is_instance_valid(x) and not (x as Node).is_inside_tree():
-					(x as Node).free()
+			_free_pending()
 			return
 		_warm.add_child(n)
-		warm_up_frames += 1
+		_warm_pending.erase(n)
+		warm_up_at.append(Engine.get_process_frames())
 		await get_tree().process_frame
 	_warm_kinds()   # (on its own: `warmed` is the ghost's warm-up, `kinds_warmed` this one's)
 	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
@@ -1314,7 +1314,9 @@ func _warm_kinds() -> void:
 			var t1 := Time.get_ticks_usec()
 			var added := 0
 			while i < pieces.size() and added < WARM_PER_FRAME and (added == 0 or Time.get_ticks_usec() - t1 < warm_slice_us):
-				var gi: Node = pieces[i]
+				var gi = pieces[i]
+				if not is_instance_valid(gi):
+					break   # (the scene was freed under it: the app went)
 				gi.owner = null   # (the scene's root owns it: moved out from under it, it must not stay its owner)
 				gi.get_parent().remove_child(gi)
 				held.add_child(gi)
@@ -1324,7 +1326,8 @@ func _warm_kinds() -> void:
 			warm_batches += 1
 			warm_slice_us_max = maxi(warm_slice_us_max, Time.get_ticks_usec() - t1)
 			await get_tree().process_frame
-		mc.free()   # (what is left of it: the pieces' empty parents)
+		if is_instance_valid(mc):
+			mc.free()   # (what is left of it: the pieces' empty parents)
 		_warm_mc = null
 		if i >= pieces.size():
 			_warm_kinds_done.append(k)
@@ -1342,7 +1345,14 @@ var warm_on_thread := false        # the last kind was instanced on a worker thr
 const WARM_PER_FRAME := 12         # the most pieces that enter the plant's world in one frame
 var warm_slice_us_max := 0         # the longest slice the warm-up took in one frame, µs (tests)
 var warm_most_added := 0           # the most pieces it added in one frame (tests)
-var warm_up_frames := 0            # the frames the ghost's and K3's warm pieces entered in, one each (tests)
+var warm_up_at: Array = []         # the process frame each of the ghost's and K3's warm pieces entered in (tests)
+var _warm_pending: Array = []      # those not yet in (an app freed meanwhile frees them)
+
+func _free_pending() -> void:
+	for x in _warm_pending:
+		if is_instance_valid(x) and (x as Node).get_parent() == null:
+			(x as Node).free()
+	_warm_pending.clear()
 var warm_pieces := 0               # the most pieces one kind had (tests)
 var warm_batches := 0              # the frames it added pieces in, all kinds (tests)
 var _warm_mc: Node = null          # the kind being made, while outside the tree
@@ -1406,6 +1416,7 @@ func _exit_tree() -> void:
 			if is_instance_valid(n):
 				n.free()
 		_warm_made.clear()
+	_free_pending()
 	if _warm_mc != null and is_instance_valid(_warm_mc) and not _warm_mc.is_inside_tree():
 		_warm_mc.free()   # (made, not yet in the plant's world: nothing else holds it)
 	_warm_mc = null

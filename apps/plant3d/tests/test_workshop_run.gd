@@ -105,8 +105,12 @@ func run(tree: SceneTree) -> Array:
 			"the warm-up adds at most 12 pieces a frame (%d of a kind's %d, in %d frames)" % [ws.warm_most_added,
 				ws.warm_pieces, ws.warm_batches])
 		check(ws.warm_on_thread, "each kind's scene is instanced on a worker thread")
-		check(ws.warm_up_frames == ws._warm.get_child_count() - ws._warm.get_children().filter(func(x): return not x is GeometryInstance3D).size() and ws.warm_up_frames >= 7,
-			"the ghost's and K3's warm pieces entered one a frame (%d frames)" % ws.warm_up_frames)
+		var at: Array = ws.warm_up_at
+		var distinct := {}
+		for f in at:
+			distinct[f] = true
+		check(at.size() >= 7 and distinct.size() == at.size(),
+			"the ghost's and K3's warm pieces entered one a frame (frames %s)" % str(at))
 		check(ws.warm_slices > 1 and ws.warm_slice_us_max > 0 and ws.warm_slice_us_max < 5000,
 			"the warm-up's material pass cut into slices of about %d us: %d cuts, the longest %d us" % [ws.warm_slice_us,
 				ws.warm_slices, ws.warm_slice_us_max])
