@@ -652,6 +652,88 @@ at 29–35 °C over the runs.
   (§2.16). The technician's task tightens only when the loop reads low and trims (+1.5 kPa) only when the PV reads
   low, so an NPC makes the right fix for the drawn cause and nothing else (the forks' events checked by
   `tests/test_plant3d_hands_content.py` `JobForks`).
+- **Vectors:** `plant3d-v1.json` and `plant3d-v2.json` made again with the train's new values; compared run by run,
+  keyed by id: every input, event and earlier value unchanged, only values, the snapshots' `carried`, `busy` and
+  `causes`, and the forks `npc_hands` (the loose terminal: tightened, no trim) and `npc_hands_drift` (the drift:
+  trimmed, not tightened) added; the digests change with the values. `plant3d-realism.json`'s `hands` gains a run (a
+  cause's fix: the wrong fix and a repair under the permit leave the fault, the right one under the permit taken
+  again cures it) and two rejects; every other item is what it was.
+- **Tests:** `tests/test_plant3d_hands_content.py` (the service file, the generated parts, the loop, the causes told
+  apart, the fixes and the task's choices, the forks), `HandsVectors.test_cure_follows_the_fix`,
+  `apps/plant3d/tests/test_ui_hands.gd` (app shard 2: a full job as the technician through the work view, the tools
+  panel and the Crew panel, every reading taken as one, the fault repaired and no trim left).
+- **On the laptop** (`walk=job`, headless): the work scene loaded in 7.5 ms, 0.9 MB more memory, 20 draw calls and
+  1,460 triangles (budget: 30 draws, 30,000 triangles, 40 MB, 300 ms).
+- **From the reviews:** a HART trim needs the wires landed (the op's `needs`; the work view refuses a trim while the
+  communicator finds no device); the PV threshold 0.5 kPa, so a partner's own drift doesn't hide the drift; either
+  cause cured only with the transmitter left sound (a wrong trim made with the right tightening, or a loop left dead,
+  cleared the fault); the task's readings a tolerance of 0.01 (every reading reported from the work view was a
+  misread); the work view's items in a MultiMesh of its own ("Cannot set a buffer on a Multimesh" from a duplicate);
+  the trainee at the I&C toolbox was taken to be in the control room, whose footprint (its places' box) reaches over
+  the workshop's toolbox (`ui/plant_ui.gd`: a nearest place of another room wins). Not changed: an NPC's job does not
+  check its own fix (a slip is left for the hold point), and the service check accepts fasteners where the bundle's
+  check accepts components only (no action names a fastener yet).
+- **Left for HW3:** the other three causes, replacing the transmitter from the stores, the loop check with the
+  control room, the debrief's diagnosis tab.
+- **The Note 9** (a test-signed release build at 73a79cc0, `walk=job job=30MAG10CP002 probe=1`, 280 s from a cool
+  start at 29.4 °C, 2026-11-07): the work scene loaded in 14.8 ms with 0.1 MB more memory, 20 draw calls and 1,460
+  triangles (within the work view's budget); with the view open the frame drew 273 draw calls and 233,122 triangles
+  (811 and 331,472 before, the walker's view). Tier lean+vis, 11,076 frames: median 25.9 ms, p95 36.3 ms, max
+  56.1 ms, none over 100 ms (the frame rule passes without excluding any frame; the kernel reclaimed in 2.42 % of
+  the samples, so no frame could have been excused).
+
+### 2.18 As built for milestone AG2 (2026-11-07: the first train ages)
+
+- **Where:** the content tool `tools/plant3d/train_ageing.py` (the items, their life tables, signs, failures, works,
+  the scenarios' training rates and ages, `shift_aged`), hooked into `train_model.py`, `train_content.py`,
+  `train_staff.py`, `train_areas.py` (seven vibration probes) and the sound library (`bearing_noise`, `gear_whine`,
+  `tools/plant3d/sounds/make_sounds.py`). Tests: `tests/test_plant3d_ageing.py`; the day's fork `aged_ccw`
+  (`tests/test_plant3d_staff.py` `test_forks`, and the GDScript replay of every fork).
+- **Wear in equivalent hours:** a wear's rate is its duty (running 0 or 1; the valve actuators' grease and packing and
+  transmitter 3's sensor age by the calendar) times `age_h` = `age_rate` / 3600 (one value, in `bop`, the first
+  area), so it grows by an hour for each clock hour of duty at `age_rate` 1 and by `age_rate` hours at a training
+  rate. Lives are `draw` nodes over inverse Weibull tables (`life_table`: 13 rows, the 99.5 % life the last), never
+  below a floor (an earlier failure is an installation fault, a hidden cause's business, §2.6).
+
+| Kind (items) | Characteristic life η, slope β | P-F interval | Floor | Signs | Failure (its work) |
+|---|---|---|---|---|---|
+| Motor bearings (CW pumps A–C, closed cooling water A–B, condensate A–B) | 50,000 h, 1.5 ([ISO281]'s spread) | 3,000 h | 7,500 h | vibration on the motor's probe from ISO 20816-3 zone A/B to beyond C/D, the advisory alarm at the C/D boundary (7.1 mm/s group 1, 4.5 group 2), the noise (`bearing_noise`, its gain from the vibration), the shake, the bearing temperature on the screens (its rise over the air, 25 K, up to 75 K at the end in the last quarter of the interval; advisory at 90 °C) | the motor trips (`<pump>_fault`): `wo_<pump>_brg`, replace the motor bearings (mechanical) |
+| Gear reducers (cooling tower fans 1–10) | 60,000 h, 1.8 ([CTI]) | 4,000 h | 10,000 h | the gear mesh's vibration added to the fan's own probe (0 until P, at most 7 mm/s, so the fan's own 10 mm/s trip comes only with the failure), the advisory alarm at 6.3 mm/s, the gear whine | the fan's vibration fault, which trips it: `wo_ct_fan<i>_gbx` |
+| Valve actuators (CW discharge valves A–C) | 35,000 h by the calendar, 2.5 ([NRC-GL89-10]) | 4,000 h | 10,000 h | the running torque on the screens while it strokes, 55 % of the torque switch's setting rising to 100 % | stuck for good (`cw_<x>_v_stuck`): `wo_cw_<x>_act` under the actuator's own supply isolation (the valve stays where it stands) |
+| Motor protection (CW pumps A–C) | 200,000 h, 1.0 (a constant hazard, [IEEE493]'s order) | none | 5,000 h | none (§4.2's seeded hazard) | a trip by itself: `wo_<pump>_rly` (electrical) |
+| Transmitter 3's sensor | by the calendar since its calibration | | | its drift (direction drawn), 0 for a year, 2 kPa at three ([R3051] far exceeded: a training figure) | none: the week's calibration renews it |
+
+- **Every earlier value kept:** a sign that feeds a value the train had (the fans' vibration, transmitter 3's
+  reading) is 0 until the item's P point, and every other sign is a new value. The scenarios that teach operating age
+  at `age_rate` 100 from the overhaul (the hot restart two months on), and their items stay below their P points over
+  30 clock hours of full duty for their own seeds' lives (`test_earlier_scenarios_reach_no_P_point_in_their_runs`).
+  That rate is gentler than §4.3's "signs within a shift" on purpose: a cold start teaches operating, not
+  breakdowns, and its runs keep every earlier value; the ageing scenario runs at 300, which meets §4.3. So the vectors'
+  content runs keep every input, event and earlier value (below); the digests change with the values.
+- **Nothing told:** wear, lives and margins carry no code, so no screen or card shows them; the signs do (the probes'
+  readouts, the screens' groups by code, the CW, condensate and auxiliaries screens' trends of the pumps' vibration).
+- **The scenarios' ages** (`world.age`, §2.1): each item starts at the months by its duty share (CW pumps 2/3,
+  closed cooling water and condensate pumps 1/2, fans 0.8, the calendar's 1), less every whole life the months passed
+  (`math.fmod` by its own drawn life, which the content tool draws as the engine will: renewal theory's simplest
+  form), so no item starts past its life. **`shift_aged`** (from `shift_cold`): 30 months, seed 663, `age_rate` 300 (a
+  bearing's P-F interval in 10 clock hours), closed cooling water pump A running: its bearing shows its signs from
+  05:00, fails at about 08:25, the standby starts; the supervisor asks for the permit of the work that repairs it, the
+  pump is isolated and a mechanical technician replaces the bearings (the day's fork `aged_ccw`); transmitter 3 reads
+  1.5 kPa off its partners, and CW valve B's actuator strokes with a rising torque from about 14:30 and sticks at
+  about 03:50 the next morning (signs of their own to find).
+- **Once a run:** a failure is a fault with `when`, made once in a run (PLANT3D §7.8). A renewed item wears again and
+  shows its signs again, but does not fail a second time in the same run; at the training rates that takes a whole
+  life (from about 40 clock hours at 100 for the shortest, far more for the rest). A second failure needs a fault that
+  can be made again (left for AG4's intervals or WM1's work orders).
+- **Generic reactions** (PLANT3D §16.7, decided by the coordinator 2026-11-07: AG2's 23 works needed 220 reactions
+  against the staff file's 128): a work names its `isolate`, `deisolate` and `assign` tasks as it names its job; one
+  reaction per permit state gives them for every work, one reaction on a list of faults asks for the permit of the
+  work that repairs each (one for the train, one for the water treatment plant). The content's 128 reactions are 38
+  now; read, they are made into the same reactions one by one. Tasks: 460 against a limit raised from 400 to 800.
+  **Later, not built:** the engine could make each work's lock and unlock tasks from its isolation's points (the
+  lockers by point kind, the make-safe op), so that a work costs no tasks of its own; worth it when the jobs of
+  HW3–HW6 and the crafts near the 800.
+- **The Note 9:** the walk with the new content waits for the next phone window (2026-11-08 from 17:30).
 - **Vectors:** `plant3d-v1.json` and `plant3d-v2.json` made again with the train's new values; compared item by
   item with the files before, keyed by id: every input of every run and fork unchanged, every event too except in the
   ten cold-start forks that damage a cooling tower fan's blades (`ct_fan<i>_vibration`, and v2's `ct_fan3_service`),

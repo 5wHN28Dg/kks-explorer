@@ -1331,12 +1331,12 @@ Steps, each done by an NPC as said and by the trainee through the input named (�
   it gave for the same source (the same alarm, trip, fault, value, permit or act) is still queued or current, so a
   chattering alarm doesn't flood anyone.
 - **Generic reactions** (milestone AG2, REALISM.md §2.18): a permit reaction whose `task` is `"$isolate"`,
-  `"$deisolate"` or `"$assign"` (no `work`: `unknown_key`; on anything but a permit's state: `bad_ref`) stands for one
+  `"$deisolate"` or `"$assign"` (with a `work`, any: `unknown_key`; on anything but a permit's state: `bad_ref`) stands for one
   reaction per work that names that task (§15.2), in the works' order (the model files' as plant.json lists the areas,
   each file's in order), with that work and the task it names; a work naming none is skipped. A fault reaction whose
   `fault` is a list (1 to 256 ids, each once: `dup_id`) with `"work": "$"` stands for one reaction per fault, in the
-  list's order, with the work whose `repairs` names it (exactly one: `bad_ref` otherwise); `"work": "$"` on anything
-  else is `bad_ref`, a list without it `bad_type`. Every other reaction stands for itself. They are made in the file's
+  list's order, with the work whose `repairs` names it (exactly one: `bad_ref` otherwise); `"work": "$"` with one
+  fault that is not a list is `bad_type`, on anything but a fault `bad_ref`, and a list without it `bad_type`. Every other reaction stands for itself. They are made in the file's
   order, each at its place, when the file is read: the step, its sources (the reaction's index in that made list),
   saves and digests see only the made reactions, so a file written generically steps exactly as one that writes the
   same reactions out one by one in that order (`plant3d-v2.json`'s last staff run against its first). The first

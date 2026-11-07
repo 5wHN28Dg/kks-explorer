@@ -2062,6 +2062,9 @@ REJECTS_GENERIC = [
                                                                       'nothing')),
     ('a work naming an isolate task that is not an identifier', 'bad_id',
      _set(['model/a1.json', 'works', 0, 'isolate'], 'Not one')),
+    ('a work naming a deisolate task staff.json lacks, given by a generic reaction', 'bad_ref', _all(
+        _set(['model/a1.json', 'works', 0, 'deisolate'], 'nothing'),
+        _app(STF + ['reactions'], {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': '$deisolate'}))),
 ]
 
 

@@ -303,14 +303,15 @@ class Staff:
         self.check_routines(d['routines'])
         for t in tl:
             self.check_task(t)
+        for x in m.works:
+            for k in WORK_TASKS:        # the tasks the generic permit reactions give for it (§16.7, AG2): before
+                if k in x:              # the reactions are made from them
+                    need(x[k] in self.tasks, 'bad_ref', f'work {x["id"]}.{k}: no task {x[k]!r} in staff.json')
         self.check_reactions(d.get('reactions', []))
         self.check_put_right(d.get('put_right', {}))
         self.check_task_refs()
         self.check_authority()
         for x in m.works:
-            for k in WORK_TASKS:        # the tasks the generic permit reactions give for it (§16.7, AG2)
-                if k in x:
-                    need(x[k] in self.tasks, 'bad_ref', f'work {x["id"]}.{k}: no task {x[k]!r} in staff.json')
             if 'task' in x:
                 need(x['task'] in self.tasks, 'bad_ref', f'work {x["id"]}.task: no task {x["task"]!r} in staff.json')
             else:

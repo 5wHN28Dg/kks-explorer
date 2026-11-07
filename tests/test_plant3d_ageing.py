@@ -116,7 +116,8 @@ class Content(unittest.TestCase):
 
     def test_ageing_scenario(self):
         """shift_aged: 30 months, its seed's lives; closed cooling water pump A (running) within its P-F interval
-        and failing within the day shift's first hours at the training rate; nothing else near its P point."""
+        and failing within the day shift's first hours at the training rate; nothing else shows a sign at the start or
+        fails in the day's first 20 clock hours."""
         sc = load('scenarios/shift_aged.json')
         self.assertEqual(sc['world']['age'], {'months': A.AGED_MONTHS})
         self.assertEqual(sc['init']['age_rate'], A.RATES['shift_aged'])
@@ -132,7 +133,13 @@ class Content(unittest.TestCase):
         self.assertTrue(2 < hours < 5, hours)
         for wear, x in left.items():
             if wear != 'ccw_a_brg_wear':
-                self.assertGreater(x, 3000, wear)
+                kind = next(k for k, pre in (('bearing', '_brg_'), ('relay', '_rly_'), ('gearbox', '_gbx_'),
+                                             ('actuator', '_act_')) if pre in wear)
+                # no sign at the start; an item that wears by the calendar (the others stand still) fails no sooner
+                # than 20 clock hours on (CW valve B's actuator shows its torque from about 14:30, a sign of its own)
+                self.assertGreater(x, A.KINDS[kind]['pf'], wear)
+                if kind == 'actuator':
+                    self.assertGreater(x, sc['init']['age_rate'] * 20, wear)
 
     def test_age_renews_what_failed(self):
         """apply(): months by duty, less every whole life the months passed (renewed meanwhile)."""
@@ -181,6 +188,36 @@ class FailsOnItsOwn(unittest.TestCase):
         self.assertEqual(e.v('ccw_a_fault'), 1)
         self.assertTrue(any(x[1] == 'trip' and x[2] == 'ccw_a_trip' for x in e.events))
         self.assertTrue(any(x[1] == 'interlock' and x[2] == 'ccw_b_auto' for x in e.events))
+
+
+class FanGearbox(unittest.TestCase):
+    def test_gear_reducer_fails_before_the_trip(self):
+        """A fan whose gear reducer is 50 h of wear from its end (10 clock minutes at 300): its vibration crosses the
+        advisory 6.3 mm/s but stays under the fan's 10 mm/s trip until the gear reducer fails by itself, which trips
+        the fan (the review's finding: a gear's vibration that reached the trip first stopped the fan, and its wear,
+        before the failure could come)."""
+        files = P.load_dir(DATA)
+        sc = json.loads(files['scenarios/shift_aged.json'])
+        sc['init']['ct_fan1_cmd'] = 1
+        sc['init']['ct_fan1_gbx_wear'] = A.life_of(world_seed(sc), 'ct_fan1_gbx_life') - 50
+        files['scenarios/shift_aged.json'] = json.dumps(sc).encode()
+        e = P.Engine(P.check_files(files), 'shift_aged')
+        made = None
+        top = 0
+        while e.step_no < 2000 and made is None:
+            e.step()
+            if any(x[1] == 'fault' and x[2] == 'ct_fan1_gbx' for x in e.events):
+                made = e.step_no
+            else:
+                top = max(top, e.v('ct_fan1_vib'))
+        self.assertIsNotNone(made, 'the gear reducer never failed')
+        self.assertAlmostEqual(made, 1000, delta=3)
+        self.assertTrue(6.3 < top < 10, top)
+        self.assertFalse(any(x[1] == 'trip' and x[0] < made for x in e.events))
+        self.assertTrue(any(x[1] == 'alarm' and x[2] == 'ct_fan1_vib_high' for x in e.events))
+        for _ in range(100):
+            e.step()
+        self.assertTrue(any(x[1] == 'trip' and x[2] == 'ct_fan1_trip_vib' for x in e.events))
 
 
 class GenericReactions(unittest.TestCase):

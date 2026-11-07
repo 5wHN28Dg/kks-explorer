@@ -54,7 +54,8 @@ def life_table(kind):
 
 # The training rates (§4.3, the user 2026-11-01: a training rate per scenario, real rates available, the trainee
 # doesn't pick it): the scenarios that teach operating age gently (a bearing's P-F interval lasts 30 clock hours, two
-# and a half shifts); the ageing scenario at a rate where an item near its end shows its signs within a shift (10)
+# and a half shifts: a cold start teaches operating, and its runs keep their values); the ageing scenario at a rate
+# where an item near its end shows its signs within a shift, as REALISM.md §4.3 asks (a bearing's in 10 clock hours)
 RATE = 100
 RATES = {'shift_aged': 300}
 # The months since the overhaul (world.age, read by this tool only): the cold start after the long outage and the
@@ -84,9 +85,11 @@ VALVES = [('a', 1), ('b', 2), ('c', 3)]
 RELAYS = ['cw_a', 'cw_b', 'cw_c']
 # ISO 20816-3, rigid foundations, mm/s r.m.s.: a machine in service (zone A/B), the zone C/D boundary (damage)
 ZONES = {1: {'base': 1.8, 'cd': 7.1, 'end': 11}, 2: {'base': 1.2, 'cd': 4.5, 'end': 7.1}}
-BRG_RISE, BRG_RISE_END, BRG_T_H = 25, 60, 90     # K over the air running; K at the failure; the alarm's °C
+BRG_RISE, BRG_RISE_END, BRG_T_H = 25, 75, 90     # K over the air running; K at the failure; the alarm's °C (so it
+# comes before the failure with the air at 15 °C and above)
 BRG_TAU = 600                   # s (model time): a bearing housing's heat
-GBX_END = 9                     # mm/s added on the fan's probe by a gearbox at its end
+GBX_END = 7                     # mm/s added on the fan's probe by a gearbox at its end: with the blades' 2.5 under
+# the fan's 10 mm/s trip, so the failure (which trips it) comes from the wear, not the trip before it
 TQ_BASE, TQ_END = 55, 100       # % of the torque switch's setting: a sound actuator's running torque; at the trip
 DRIFT_FROM, DRIFT_SPAN, DRIFT_KPA = 8760, 26280, 2.0   # h: a transmitter within its spec for a year; 2 kPa at three
 
@@ -319,8 +322,8 @@ def apply(sc):
 
 # The ageing scenario (§4.1): the day shift with the plant cold but its closed cooling water in service, the plant
 # AGED months after its overhaul; its seed (the lives drawn) and the months are chosen so that closed cooling water
-# pump A shows its bearing's signs from the start and fails in the day shift's first hours, and nothing else has
-# failed or fails in the day (tests/test_plant3d_ageing.py checks it)
+# pump A shows its bearing's signs from the start and fails in the day shift's first hours, nothing else shows a sign
+# at the start or fails in the first 20 clock hours (tests/test_plant3d_ageing.py checks it)
 AGED_SEED = 663
 AGED_MONTHS = 30
 
