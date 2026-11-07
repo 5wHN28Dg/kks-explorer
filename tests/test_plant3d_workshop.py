@@ -51,6 +51,33 @@ class WorkshopData(unittest.TestCase):
                        'cap_r', 'thrust_upper', 'thrust_lower', 'coupling_bolts', 'brg_f_upper', 'brg_r_upper', 'glands_upper'):
             self.assertLess(undo.index(before), undo.index('rotor'), before)
 
+    def test_the_gas_turbine_passes(self):
+        w = self.b.workshop['gas_turbine']
+        self.assertEqual(w['components'], 82)
+        self.assertEqual(w['fasteners'], 2)
+        d = json.loads(self.files['workshop/gas_turbine.json'])
+        self.assertEqual(d['context'], ['axis_z', 'shaft_lo', 'shaft_hi'])
+        for c, x in d['components'].items():
+            self.assertLessEqual(len(c), 16, c)
+            self.assertTrue(x['sources'], c)
+        undo = [s['place'] for s in d['assembly']][::-1]
+        # a major inspection's take-apart (K5a, GER-3620P): the combustion parts out before any casing is lifted
+        # (each can's end cover, then its liner, its casing and its transition piece), the upper casings and their
+        # stator rows and nozzles, the bearings and the coupling before the rotor is lifted
+        first_casing = min(undo.index(c) for c in ('comp_upper', 'cdc_upper', 'tshell_upper'))
+        for k in ['%02d' % (i + 1) for i in range(12)]:
+            self.assertLess(undo.index('cover_' + k), undo.index('liner_' + k))
+            self.assertLess(undo.index('liner_' + k), undo.index('can_' + k))
+            self.assertLess(undo.index('can_' + k), undo.index('tp_' + k))
+            self.assertLess(undo.index('tp_' + k), first_casing)
+        for before in ('comp_upper', 'comp_bolts', 'cdc_upper', 'tshell_upper', 'cvanes_upper', 'igv_upper',
+                       'tnoz1_u', 'tnoz2_u', 'tnoz3_u', 'brg1_cover', 'brg1_upper', 'brg2_upper', 'thrust',
+                       'coupling_bolts'):
+            self.assertLess(undo.index(before), undo.index('rotor'), before)
+        self.assertLess(undo.index('comp_bolts'), undo.index('comp_upper'))
+        for after in ('brg1_lower', 'brg2_lower', 'cvanes_lower', 'igv_lower', 'tnoz1_l', 'comp_lower'):
+            self.assertGreater(undo.index(after), undo.index('rotor'), after)
+
     def test_context(self):
         w = copy.deepcopy(self.fixture)
         w.pop('params', None)
