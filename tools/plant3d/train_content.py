@@ -86,7 +86,8 @@ def plant(codes, area_ids=None):
             'frequency_hz': 50, 'kks': kks,
             'media': {k: {'group': g, 'band': b, 'name': n} for k, (g, b, n) in MEDIA.items()},
             'areas': area_ids or ['control', 'bop', 'ct', 'cw', 'gt1', 'trafo1', 'hrsg1', 'st', 'rack', 'wtp', 'intake'],
-            'ext': ['ambient_t', 'ambient_wb', 'grid_frequency', 'river_ntu', 'river_tds'] + train_weather.EXT,
+            'ext': ['ambient_t', 'ambient_wb', 'grid_frequency', 'river_ntu', 'river_tds'] + train_weather.EXT
+            + ['age_rate'],     # the scenario's training rate of the wear (REALISM.md §4.3, milestone AG2)
             'start': {'at': [-20, 0, 0], 'yaw': 90}}
 
 
@@ -138,6 +139,11 @@ def sounds():
         synth('burner', None, {'colour': 'brown', 'band': [40, 800]}),
         synth('valve_motor', t((400, 0.5), (800, 0.2), (100, 0.3)),
               {'colour': 'pink', 'band': [500, 3000], 'gain': 0.2}),
+        # the signs of wear (REALISM.md §4.2, milestone AG2)
+        synth('bearing_noise', t((26.5, 0.6), (2900, 0.15), (100, 0.15)),
+              {'colour': 'pink', 'band': [800, 6000], 'gain': 0.5}, 'a motor bearing near its end (its probe)'),
+        synth('gear_whine', t((420, 0.6), (840, 0.35), (1260, 0.15), (395, 0.2), (445, 0.2), (100, 0.1)),
+              {'colour': 'pink', 'band': [300, 3000], 'gain': 0.2}, 'a cooling tower fan\'s worn gear reducer'),
         synth('breaker', t((160, 0.6), (410, 0.5), (1150, 0.35), (2650, 0.2)),
               {'colour': 'white', 'band': [100, 6000], 'gain': 0.8},
               'a breaker closing, then its spring-charging motor (played once)'),
@@ -282,7 +288,8 @@ def scenarios(state_kks):
     import train_hoists
     import train_lift
     import train_hands
-    faults = [fault(f, s, t, state_kks) for f, s, t in FAULTS] + wtp_model.faults(state_kks) + train_hoists.faults() + train_lift.faults() + train_hands.faults()
+    import train_ageing
+    faults = [fault(f, s, t, state_kks) for f, s, t in FAULTS] + wtp_model.faults(state_kks) + train_hoists.faults() + train_lift.faults() + train_hands.faults() + train_ageing.faults()
     latched = ['gt1_trip_lube', 'st_trip_lube', 'st_trip_cond_p']
     return [{'format': 'walkdown-plant-scenario', 'version': 2, 'id': 'cold_iron',
              'title': 'Cold start after a long outage', 'init': dict(COLD_INIT), 'latched': latched,

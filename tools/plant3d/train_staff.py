@@ -73,6 +73,7 @@ EDGES += wtp_staff.EDGES
 # foot, the landing between by the tower's stair; a lift way between every two landings (PLANT3D §20.4)
 import train_lift  # noqa: E402
 import train_hands  # noqa: E402  (the hand actions, milestone HW2)
+import train_ageing  # noqa: E402  (the wear items' failures, milestone AG2)
 LIFT_POINTS = [f'p_lift{i}' for i in range(len(train_lift.ZS))]
 for _i, _z in enumerate(train_lift.ZS):
     POINTS[LIFT_POINTS[_i]] = (round(train_lift.GATE_X - 1.0, 6), train_lift.AT[1], _z)
@@ -153,7 +154,8 @@ FIELD = {'round_gt': 'field_gt', 'round_st': 'field_st', 'round_cw': 'field_cw'}
 FAULT_WORK = {'cw_a_motor': 'wo_cw_a_motor', 'cw_b_motor': 'wo_cw_b_motor', 'cw_c_motor': 'wo_cw_c_motor',
               'ccw_a_motor': 'wo_ccw_a_motor', 'ccw_b_motor': 'wo_ccw_b_motor', 'ct_fan3_vib': 'wo_ct_fan3',
               'cw_a_ls': 'wo_cw_a_ls', 'cw_b_ls': 'wo_cw_b_ls', 'cw_c_ls': 'wo_cw_c_ls',
-              train_hands.FAULT['id']: train_hands.WORK[0]}      # (milestone HW2: the job with a hidden cause)
+              train_hands.FAULT['id']: train_hands.WORK[0],      # (milestone HW2: the job with a hidden cause)
+              **train_ageing.fault_work()}       # (milestone AG2: the failures of the wear items)
 # The maintenance supervisors' week (milestone S2): the preventive and calibration works each asks a permit for in
 # the morning (07:40), by weekday (day 1 of the clock is a Monday). A work whose isolation another work holds that day
 # is left for its next day.
