@@ -27,6 +27,8 @@ var _repairs: Array = []        # [fault, box, button, note label, work or {}]: 
 var _pendant = null             # ui/pendant.gd: a hoist's pendant (PLANT3D §20.5)
 var _also := {}                 # an op's button -> the other buttons of its row (a lift panel's landings, §20.1)
 var _t := 0.0
+var _work: Button = null        # "Work on it" (REALISM.md §3.3): equipment with jobs, at its work place
+var _work_why: Label = null
 
 
 func setup(u) -> void:
@@ -82,6 +84,15 @@ func open(c: String, note := "") -> void:
 		var db := W.button("Drawing", func(): ui.open_drawing(code))
 		db.name = "to_drawing"
 		row.add_child(db)
+	_work = null
+	_work_why = null
+	if ui.work != null and ui.work.has_job(c):
+		# hands-on work at it (the work view, REALISM.md §3.3): with a role, standing at its work place
+		_work = W.button("Work on it", func(): ui.work.open(code))
+		_work.name = "work_on_it"
+		body.add_child(_work)
+		_work_why = W.label("", 16, W.DIM)
+		body.add_child(_work_why)
 	_state = W.label("", 20, Color.WHITE)
 	body.add_child(_state)
 	var vals: Array = info.values_of.get(c, [])
@@ -107,7 +118,8 @@ func open(c: String, note := "") -> void:
 		wb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		body.add_child(wb)
 		_works.append([wd, wb])
-	var ops: Array = info.ops_of.get(c, [])
+	# (an op made through the HART communicator is the work view's: REALISM.md §2.16)
+	var ops: Array = info.ops_of.get(c, []).filter(func(o): return o.get("where", []) != ["hart"])
 	# a hoist's motions and latch are worked from its pendant, in the hoist's card (PLANT3D §20.5)
 	var hoist: String = Pendant.hoist_of(info, c)
 	if hoist != "":
@@ -341,6 +353,10 @@ func refresh() -> void:
 	else:
 		_where.text = "Not drawn in the plant: worked from the screens of an operator desk." + ((" " + here) if here != "" else "")
 	_state.text = " · ".join(info.state_words(code, e))
+	if _work != null:
+		var why: String = ui.work.cannot(code)
+		_work.disabled = why != ""
+		_work_why.text = why
 	for vn in _values:
 		(_values[vn] as Label).text = info.fmt(vn, e.v(vn))
 	var al := PackedStringArray()

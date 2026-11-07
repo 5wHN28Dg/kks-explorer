@@ -316,6 +316,7 @@ class Bundle:
         self.surfaces = []                         # (kind, z, polygon) walkable outlines; pits: ('pit', z, poly)
         self.counts = {}
         self.workshop = {}                         # part -> the Workshop data file's summary (WORKSHOP.md §4)
+        self.workshop_tree = {}                    # part -> its component ids (REALISM.md §2.4: a hand action's)
         self.bench = {}                            # part -> its checked bench model (WORKSHOP.md §6)
 
 
@@ -349,7 +350,7 @@ def check_files(files):
     for rel in files:
         need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json', 'weather.json',
                      'tools.json') or re.fullmatch(
-            r'(areas|model|procedures|scenarios|workshop|workshop/bench)/[a-z_][a-z0-9_]{0,31}\.json|'
+            r'(areas|model|procedures|scenarios|workshop|workshop/bench|service)/[a-z_][a-z0-9_]{0,31}\.json|'
             r'sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg',
             rel), 'unknown_key', f'{rel}: not a file of the format')
     for rel in ('plant.json', 'kit.json', 'sounds.json'):
@@ -364,6 +365,7 @@ def check_files(files):
             w = W.check(parse(files, rel), b.kit, rel)
             need(rel == f'workshop/{w["part"]}.json', 'bad_ref', f'{rel}: named by its part ({w["part"]})')
             b.workshop[w['part']] = w
+            b.workshop_tree[w['part']] = set(parse(files, rel)['components'])   # (its component ids, REALISM §2.4)
     # each kind's bench model (WORKSHOP.md §6, ref/plant3d_bench.py), against its Workshop data file's components
     from ref import plant3d_bench as BM
     for rel in sorted(files):
@@ -372,6 +374,16 @@ def check_files(files):
             need(part in b.workshop, 'bad_ref', f'{rel}: no Workshop data file workshop/{part}.json')
             comps = list(parse(files, f'workshop/{part}.json')['components'])
             b.bench[part] = BM.check(parse(files, rel), comps, rel, b.sounds['sounds'], part)
+    # each kind's service file (REALISM.md §2.4, milestone HW2: ref/plant3d_service.py), against its Workshop data
+    from ref import plant3d_service as SV
+    tool_ids = None
+    if 'tools.json' in files:
+        tool_ids = {t['id'] for t in parse(files, 'tools.json').get('tools', [])}
+    for rel in sorted(files):
+        if rel.startswith('service/'):
+            part = rel[len('service/'):-len('.json')]
+            need(part in b.workshop, 'bad_ref', f'{rel}: no Workshop data file workshop/{part}.json')
+            SV.check(parse(files, rel), parse(files, f'workshop/{part}.json'), tool_ids, rel)
     if b.model.hands:
         from ref import plant3d_hands as H      # a hand action's component is in its part kind's tree (REALISM.md §2.4)
         H.check_components(b)
@@ -2883,7 +2895,7 @@ class Engine:
                 if 'causes' in f:
                     # REALISM.md §2.6: the cause's repair too; under a permit only when the work cures that cause
                     from ref import plant3d_hands as H
-                    if fid not in asked and not H.cures(self, wid, fid) or H.blocked(self, fid, f, wid):
+                    if fid not in asked and not H.cures(self, wid, fid, vals) or H.blocked(self, fid, f, wid):
                         continue
                     self.faults_fixed.add(fid)
                     H.do_repair(self, fid, f, wid)
@@ -2903,7 +2915,7 @@ class Engine:
                     and whole and not self._blocked(f['repair'], wid):
                 if 'causes' in f:
                     from ref import plant3d_hands as H      # REALISM.md §2.6: cured only when it cures the cause
-                    if H.cures(self, wid, fid) and not H.blocked(self, fid, f, wid):
+                    if H.cures(self, wid, fid, vals) and not H.blocked(self, fid, f, wid):
                         self.faults_fixed.add(fid)
                         H.do_repair(self, fid, f, wid)
                         self.ev('repair', fid)

@@ -60,8 +60,9 @@ func weather(kind: String) -> int:
 
 
 ## The instructor's fault and repair (§7.8, §15.5).
-func fault(fid: String) -> int:
-	return send(["fault", fid])
+## A trainer's fault; with `cause`, that hidden cause of it (REALISM.md §2.6: the instructor names it, no draw).
+func fault(fid: String, cause := "") -> int:
+	return send(["fault", fid, cause] if cause != "" else ["fault", fid])
 
 
 func repair(fid: String) -> int:
@@ -106,8 +107,18 @@ func leave(place: String) -> int:
 	return send(["leave", place])
 
 
-func read(code: String, value: float) -> int:
-	return send(["read", code, value])
+func read(code: String, value: float, meter := "") -> int:
+	return send(["read", code, value, meter] if meter != "" else ["read", code, value])
+
+
+## A tool taken (1) or put back (0) at the person's place (REALISM.md §2.3).
+func tool(item: String, take: int, person_id) -> int:
+	return send(["tool", item, take, person_id])
+
+
+## A hand action at a piece of equipment (REALISM.md §2.4): the tool in hand (null: bare hands), a value or null.
+func hand(kks: String, action: String, tool_id, value, person_id) -> int:
+	return send(["hand", kks, action, tool_id, value, person_id])
 
 
 func say(message: String, to: String) -> int:

@@ -2047,7 +2047,7 @@ func _step() -> void:
 				and not _blocked(fl[4], wu):
 			if _hw and _fdef[fid].has("causes"):
 				# REALISM.md §2.6: the cause's repair too; under a permit only when the work cures that cause
-				if not asked.has(fid) and not Hands.cures(self, wu, fid) or Hands.blocked(self, _fdef[fid], wu):
+				if not asked.has(fid) and not Hands.cures(self, wu, fid, vals) or Hands.blocked(self, _fdef[fid], wu):
 					continue
 				faults_fixed[fid] = true
 				Hands.do_repair(self, _fdef[fid], wu)
@@ -2065,7 +2065,7 @@ func _step() -> void:
 		if fk != -1 and _faults[fk][4] != null and faults_done.has(fid) and not faults_fixed.has(fid) \
 				and whole and not _blocked(_faults[fk][4], wi):
 			if _hw and _fdef[fid].has("causes"):     # REALISM.md §2.6: cured only when it cures the cause
-				if Hands.cures(self, wi, fid) and not Hands.blocked(self, _fdef[fid], wi):
+				if Hands.cures(self, wi, fid, vals) and not Hands.blocked(self, _fdef[fid], wi):
 					faults_fixed[fid] = true
 					Hands.do_repair(self, _fdef[fid], wi)
 					_ev(["repair", fid])

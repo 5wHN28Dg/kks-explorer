@@ -320,6 +320,23 @@ func _day(e, sm, pi: int) -> void:
 		body.add_child(W.label("%s%02d:%02d  %s" % [day, t / 3600, (t / 60) % 60, sm.tasks[s[4]]["title"]], 18))
 
 
+## A meter's words (its service file's title), else its id.
+func _meter_title(code: String, meter: String) -> String:
+	var j: Dictionary = ui.work.jobs.get(code, {})
+	for mt in j.get("service", {}).get("meters", []):
+		if String(mt["id"]).replace("$_", j["alias"] + "_") == meter:
+			return String(mt["title"])
+	return meter
+
+
+## A hand action's words (its service file's title), else its id.
+func _hand_title(code: String, action: String) -> String:
+	for a in ui.work.jobs.get(code, {}).get("service", {}).get("actions", []):
+		if a["action"] == action:
+			return String(a["title"])
+	return action.replace("_", " ")
+
+
 static func _num(x) -> String:
 	return ("%.2f" % x) if typeof(x) == TYPE_FLOAT else str(x)
 
@@ -344,13 +361,23 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 		return "Go to %s" % _place_name(sm, where)
 	if s.has("work"):
 		return "Work there %s clock min" % (str(s["work"]) if typeof(s["work"]) != TYPE_ARRAY else "%d–%d" % s["work"])
+	if s.has("read") and s.has("via"):
+		return "Read %s: %s" % [s["read"], _meter_title(s["read"], s["via"])]
 	if s.has("read"):
 		var ex = s.get("expect")
 		return "Read %s %s" % [s["read"], ("(expected %s to %s)" % [_num(ex[0]), _num(ex[1])]) if ex != null else ""]
+	if s.has("tool") and not s.has("hand"):            # (REALISM.md §2.3; a hand step names its tool too)
+		if typeof(s["tool"]) == TYPE_STRING:
+			return "Put the tools back"
+		return "Take: %s" % ", ".join(s["tool"].map(func(t): return ui.work._tool_title(e, t)))
+	if s.has("hand"):            # (REALISM.md §2.4)
+		return "At %s: %s" % [s["kks"], _hand_title(s["kks"], s["hand"])]
 	if s.has("say"):
 		return "Radio to %s: \"%s\"" % [s["to"], sm.messages[s["say"]]]
 	if s.has("call"):
 		return "Call %s: %s" % [s["call"]["role"], sm.tasks[s["call"]["task"]]["title"]]
+	if s.has("op") and s["op"].get("where") == "hart":
+		return "Through the HART communicator at %s: %s" % [s["op"]["kks"], s["op"]["do"].replace("_", " ")]
 	if s.has("op"):
 		return "%s %s (%s)" % [s["op"]["do"].replace("_", " "), s["op"]["kks"], s["op"]["where"]]
 	if s.has("permit"):
@@ -457,7 +484,25 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 		var h: int = sm.home[ui.my_person()]
 		if e.t_at(ui.inputs.slot) != h:
 			row.add_child(W.button("Take me home", func(): ui.go_to_place(h)))
-	if s.has("read"):
+	if s.has("tool") and not s.has("hand"):
+		row.add_child(W.button("Tools", func(): ui.work.toggle_tools() if not ui.work.tools_panel.visible else null))
+	var at_code = s.get("kks") if s.has("hand") else (s["read"] if s.has("read") and s.has("via") else
+			(s["op"]["kks"] if s.has("op") and s["op"].get("where") == "hart" else null))
+	var at_job := false
+	if at_code != null:
+		# hands-on at the equipment (the work view, REALISM.md §3.3): taken there first, when the trainee isn't
+		var ac: String = at_code
+		var wp: Array = sm.work_places.get(ac, [])
+		if not wp.is_empty() and not wp.has(e.t_at(ui.inputs.slot)):
+			var to: int = wp[0]
+			row.add_child(W.button("Take me there", func(): ui.go_to_place(to)))
+			at_job = true
+		elif ui.work.has_job(ac):
+			var wb := W.button("Work on it", func(): ui.work.open(ac))
+			wb.name = "crew_work"
+			row.add_child(wb)
+			at_job = true
+	if not at_job and s.has("read"):   # (a reading through a meter at a code without a work view: written down)
 		entry = LineEdit.new()
 		_entry_code = "%s/%s/%s" % [s["read"], str(cur["order"]), str(cur["step"])]
 		entry.placeholder_text = "the value shown"
@@ -485,7 +530,7 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 		if w != null:
 			var ws: String = w
 			row.add_child(W.button("Permit form", func(): ui.open_permits(ws)))
-	if s.has("op"):
+	if s.has("op") and s["op"].get("where") != "hart":
 		var code: String = s["op"]["kks"]
 		row.add_child(W.button("Take me there", func(): ui.fly_to(code)))
 	if s.has("ppe"):

@@ -401,12 +401,16 @@ static func do_repair(e, f: Dictionary, wi: int) -> void:
 		e._apply_set(e._sets(c["repair"]), wi)
 
 
-## Whether a work puts right its fault's applied cause (a work without cures cures every cause).
-static func cures(e, wi: int, fid: String) -> bool:
+## Whether a work puts right its fault's applied cause (a work without cures cures every cause), and the cause's fix
+## is made (its `fixed` true as step 2 left it, REALISM.md §2.16).
+static func cures(e, wi: int, fid: String, vals: PackedFloat64Array) -> bool:
 	var w: Dictionary = e.m.works[wi]
-	if not w.has("cures") or not e.cause_of.has(fid):
+	if not e.cause_of.has(fid):
 		return true
-	return w["cures"].has(e.cause_of[fid])
+	if w.has("cures") and not w["cures"].has(e.cause_of[fid]):
+		return false
+	var c = cause(e, e._fdef[fid])
+	return c == null or not c.has("fixed") or vals[e.ix[c["fixed"]]] >= 0.5
 
 
 # ---------------------------------------------------------------- the digest's part and the snapshot's (§2.8)

@@ -634,7 +634,10 @@ class GdscriptRealism(unittest.TestCase):
         for load in ('built', 'r600', 'e600'):
             self.assertIn(f'BATCH load={load} values=', r.stdout)
         self.assertIn('STEP load=r600 values=', r.stdout)
-        self.assertIn('HANDS load=h600 hands=150 meters=50 busy=12 ', r.stdout)
+        # the --hands load's 150 hand actions and 50 meters on top of the content's own (HW2's transmitters)
+        own = re.search(r'HANDS load=built hands=(\d+) meters=(\d+) busy=12 ', r.stdout)
+        self.assertIsNotNone(own, r.stdout[-4000:])
+        self.assertIn(f'HANDS load=h600 hands={int(own[1]) + 150} meters={int(own[2]) + 50} busy=12 ', r.stdout)
         self.assertIn('world=true phase=cold_start', r.stdout)
         # cold_iron's weather fixed clear unless --weather= says otherwise (a measured run's: app/main.gd
         # measured_weather); the --engine load keeps its own seeded chain

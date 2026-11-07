@@ -494,6 +494,8 @@ func _check_scenario(s: Dictionary) -> void:
 				_check_set(c["repair"], "%s fault %s cause %s" % [w, f["id"], str(c.get("id"))])
 			if typeof(c.get("weight")) == TYPE_STRING:
 				_need(c["weight"], "%s fault %s cause %s" % [w, f["id"], str(c.get("id"))])
+			if c.has("fixed"):
+				_need(c["fixed"], "%s fault %s cause %s fixed" % [w, f["id"], str(c.get("id"))])
 		if f.has("kks") and not codes.has(f["kks"]):
 			_fail("%s fault %s: no equipment %s in the plant" % [w, f["id"], f["kks"]])
 		if f.has("when"):
