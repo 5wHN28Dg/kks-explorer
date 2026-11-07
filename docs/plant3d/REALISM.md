@@ -89,7 +89,7 @@ digests.
 
 - A version 2 scenario gains `"world": {"seed": n, "year_day": d, "weather": W, "age": A, "changes": [ids]}` (all
   optional; `seed` a whole number 0 to 2³² − 1, default the staff seed, else 1; `year_day` 1–365, the day of the year
-  of the clock's day 1, default 1, for the seasons of §5.1; `age` is read by the content tools only, §4.3;
+  of the clock's day 1, default 1, for the seasons of §5.1; `age` is `{"months": m}`, 0–600, read by the content tools only, §4.3 and §2.18;
   `changes`, §10.2).
 - Draws use §17.5's generator (mix32, xorshift32, 24-bit `r`) on streams of their own, so a person's draws never
   change. A stream belongs to a purpose tag P and an item named by its id (a value name, a fault id, a person id): s =
@@ -652,35 +652,20 @@ at 29–35 °C over the runs.
   (§2.16). The technician's task tightens only when the loop reads low and trims (+1.5 kPa) only when the PV reads
   low, so an NPC makes the right fix for the drawn cause and nothing else (the forks' events checked by
   `tests/test_plant3d_hands_content.py` `JobForks`).
-- **Vectors:** `plant3d-v1.json` and `plant3d-v2.json` made again with the train's new values; compared run by run,
-  keyed by id: every input, event and earlier value unchanged, only values, the snapshots' `carried`, `busy` and
-  `causes`, and the forks `npc_hands` (the loose terminal: tightened, no trim) and `npc_hands_drift` (the drift:
-  trimmed, not tightened) added; the digests change with the values. `plant3d-realism.json`'s `hands` gains a run (a
-  cause's fix: the wrong fix and a repair under the permit leave the fault, the right one under the permit taken
-  again cures it) and two rejects; every other item is what it was.
-- **Tests:** `tests/test_plant3d_hands_content.py` (the service file, the generated parts, the loop, the causes told
-  apart, the fixes and the task's choices, the forks), `HandsVectors.test_cure_follows_the_fix`,
-  `apps/plant3d/tests/test_ui_hands.gd` (app shard 2: a full job as the technician through the work view, the tools
-  panel and the Crew panel, every reading taken as one, the fault repaired and no trim left).
-- **On the laptop** (`walk=job`, headless): the work scene loaded in 7.5 ms, 0.9 MB more memory, 20 draw calls and
-  1,460 triangles (budget: 30 draws, 30,000 triangles, 40 MB, 300 ms).
-- **From the reviews:** a HART trim needs the wires landed (the op's `needs`; the work view refuses a trim while the
-  communicator finds no device); the PV threshold 0.5 kPa, so a partner's own drift doesn't hide the drift; either
-  cause cured only with the transmitter left sound (a wrong trim made with the right tightening, or a loop left dead,
-  cleared the fault); the task's readings a tolerance of 0.01 (every reading reported from the work view was a
-  misread); the work view's items in a MultiMesh of its own ("Cannot set a buffer on a Multimesh" from a duplicate);
-  the trainee at the I&C toolbox was taken to be in the control room, whose footprint (its places' box) reaches over
-  the workshop's toolbox (`ui/plant_ui.gd`: a nearest place of another room wins). Not changed: an NPC's job does not
-  check its own fix (a slip is left for the hold point), and the service check accepts fasteners where the bundle's
-  check accepts components only (no action names a fastener yet).
-- **Left for HW3:** the other three causes, replacing the transmitter from the stores, the loop check with the
-  control room, the debrief's diagnosis tab.
-- **The Note 9** (a test-signed release build at 73a79cc0, `walk=job job=30MAG10CP002 probe=1`, 280 s from a cool
-  start at 29.4 °C, 2026-11-07): the work scene loaded in 14.8 ms with 0.1 MB more memory, 20 draw calls and 1,460
-  triangles (within the work view's budget); with the view open the frame drew 273 draw calls and 233,122 triangles
-  (811 and 331,472 before, the walker's view). Tier lean+vis, 11,076 frames: median 25.9 ms, p95 36.3 ms, max
-  56.1 ms, none over 100 ms (the frame rule passes without excluding any frame; the kernel reclaimed in 2.42 % of
-  the samples, so no frame could have been excused).
+- **Vectors:** `plant3d-v1.json` and `plant3d-v2.json` made again with the train's new values; compared item by
+  item with the files before, keyed by id: every input of every run and fork unchanged, every event too except in the
+  ten cold-start forks that damage a cooling tower fan's blades (`ct_fan<i>_vibration`, and v2's `ct_fan3_service`),
+  where the fan's new advisory alarm at 6.3 mm/s adds its two events (on, cleared) and every earlier event is there in
+  its order (a meaning the content gained); every earlier value at every snapshot unchanged, the new values added, the
+  digests changed with them. The day and every fork of it keep every input, event, state snapshot and end state on
+  the content's generic reactions (only the digests moved, with the values and the reactions' indices in the staff's
+  sources). Added: the day's fork `aged_ccw`, ten staff rejects of the generic forms (after every earlier reject) and
+  the staff run written generically (the last; every input, event, state and digest as the first run's:
+  `test_generic_run_is_the_first_run`). `plant3d-realism.json`: RE1's reject "a key not known yet" now names `changes`
+  (EN2's) where it named `age`, which AG2 defines; six rejects of `age` appended; every other item as it was.
+- **Left for WX2:** the GT compressor's and the condenser's fouling and the filters (WX2 drives their rates with dust
+  and brings their cleaning procedures). Valve stiction that makes a loop hunt waits for IC3, transmitter 2's drift for
+  HW3 (its job's cure reads the sensor's error).
 
 ## 3. Hands-on work and tools
 
@@ -1792,6 +1777,7 @@ Manufacturers' published manuals and handbooks:
   [Fluke] Fluke application notes on clamp meters and 4–20 mA loop calibrators.
 
 Textbooks:
+- [ISO281] ISO 281, Rolling bearings: dynamic load ratings and rating life (the Weibull spread of bearing lives). · [IEEE493] IEEE 493 (Gold Book), Design of reliable industrial and commercial power systems (failure rates of motors and protection). · [OREDA] OREDA Offshore and Onshore Reliability Data handbook, its public summaries (pumps' and fans' failure modes and rates). · [CTI] Cooling Technology Institute, guidance on cooling tower gear reducers and their maintenance. · [NRC-GL89-10] US NRC Generic Letter 89-10 and 96-05, motor-operated valve testing (running torque, periodic verification), https://www.nrc.gov/reading-rm/doc-collections/gen-comm/gen-letters/1989/gl89010.html
 - [Moubray] J. Moubray, Reliability-centred Maintenance (the P-F curve). · [Liptak] B. Lipták, Instrument Engineers'
   Handbook. · [Piotrowski] J. Piotrowski, Shaft Alignment Handbook. · [Perry] Perry's Chemical Engineers' Handbook
   (cooling towers). · [CTI] Cooling Technology Institute, publications on cooling tower performance.

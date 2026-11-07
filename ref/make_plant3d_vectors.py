@@ -1956,31 +1956,6 @@ REJECTS_STAFF = [
     ('a scenario start in a version 1 scenario', 'unknown_key', _all(_set(SC + ['version'], 1), _del(SC + ['staff']),
                                                                      _set(SC + ['start'], {'day': 1,
                                                                                            'time': '06:00'}))),
-    # milestone AG2 (PLANT3D §16.7): the generic permit and fault reactions, and the tasks a work names for them
-    ('a reaction giving a work\'s task the works don\'t have', 'bad_ref',
-     _app(STF + ['reactions'], {'on': {'permit': 'approved'}, 'roles': ['shift_sup'], 'task': '$job'})),
-    ('a reaction giving a work\'s task on a fault', 'bad_ref',
-     _app(STF + ['reactions'], {'on': {'fault': 'f1'}, 'roles': ['shift_sup'], 'task': '$deisolate'})),
-    ('a reaction giving a work\'s task for one work', 'unknown_key',
-     _app(STF + ['reactions'], {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': '$deisolate',
-                                'work': 'wo_pump'})),
-    ('the work that repairs it on a permit\'s state', 'bad_ref',
-     _app(STF + ['reactions'], {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': 'deisolate',
-                                'work': '$'})),
-    ('a list of faults one of which no work repairs', 'bad_ref',
-     _app(STF + ['reactions'], {'on': {'fault': ['f1', 'f2']}, 'roles': ['shift_sup'], 'task': 'raise_work',
-                                'work': '$'})),
-    ('a list of faults with one twice', 'dup_id',
-     _app(STF + ['reactions'], {'on': {'fault': ['f1', 'f1']}, 'roles': ['shift_sup'], 'task': 'raise_work',
-                                'work': '$'})),
-    ('an empty list of faults', 'bad_type',
-     _app(STF + ['reactions'], {'on': {'fault': []}, 'roles': ['shift_sup'], 'task': 'raise_work', 'work': '$'})),
-    ('a list of faults without the work that repairs each', 'bad_type',
-     _app(STF + ['reactions'], {'on': {'fault': ['f1']}, 'roles': ['shift_sup'], 'task': 'raise_work'})),
-    ('a work naming a deisolate task staff.json lacks', 'bad_ref', _set(['model/a1.json', 'works', 0, 'deisolate'],
-                                                                      'nothing')),
-    ('a work naming an isolate task that is not an identifier', 'bad_id',
-     _set(['model/a1.json', 'works', 0, 'isolate'], 'Not one')),
 ]
 
 
@@ -2060,6 +2035,35 @@ REJECTS_SAFETY = [
         r for r in st['routines'] if r['id'] == 'hse_days')['slots'][1].__setitem__('days', ['mon', 'mon']))),
 ]
 
+# milestone AG2 (PLANT3D §16.7): the generic permit and fault reactions, and the tasks a work names for them (after
+# every earlier staff reject)
+REJECTS_GENERIC = [
+    ('a reaction giving a work\'s task the works don\'t have', 'bad_ref',
+     _app(STF + ['reactions'], {'on': {'permit': 'approved'}, 'roles': ['shift_sup'], 'task': '$job'})),
+    ('a reaction giving a work\'s task on a fault', 'bad_ref',
+     _app(STF + ['reactions'], {'on': {'fault': 'f1'}, 'roles': ['shift_sup'], 'task': '$deisolate'})),
+    ('a reaction giving a work\'s task for one work', 'unknown_key',
+     _app(STF + ['reactions'], {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': '$deisolate',
+                                'work': 'wo_pump'})),
+    ('the work that repairs it on a permit\'s state', 'bad_ref',
+     _app(STF + ['reactions'], {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': 'deisolate',
+                                'work': '$'})),
+    ('a list of faults one of which no work repairs', 'bad_ref',
+     _app(STF + ['reactions'], {'on': {'fault': ['f1', 'f2']}, 'roles': ['shift_sup'], 'task': 'raise_work',
+                                'work': '$'})),
+    ('a list of faults with one twice', 'dup_id',
+     _app(STF + ['reactions'], {'on': {'fault': ['f1', 'f1']}, 'roles': ['shift_sup'], 'task': 'raise_work',
+                                'work': '$'})),
+    ('an empty list of faults', 'bad_length',
+     _app(STF + ['reactions'], {'on': {'fault': []}, 'roles': ['shift_sup'], 'task': 'raise_work', 'work': '$'})),
+    ('a list of faults without the work that repairs each', 'bad_type',
+     _app(STF + ['reactions'], {'on': {'fault': ['f1']}, 'roles': ['shift_sup'], 'task': 'raise_work'})),
+    ('a work naming a deisolate task staff.json lacks', 'bad_ref', _set(['model/a1.json', 'works', 0, 'deisolate'],
+                                                                      'nothing')),
+    ('a work naming an isolate task that is not an identifier', 'bad_id',
+     _set(['model/a1.json', 'works', 0, 'isolate'], 'Not one')),
+]
+
 
 def safety_base():
     """The rejects' base for S2: the synthetic plant (as mini_staff) with the safety staff and its model."""
@@ -2090,7 +2094,8 @@ def build_rejects_staff():
         out.append({'why': why, 'code': code, 'change': change})
     return out + reject_changes(lift_staff_files(), REJECTS_LIFT_STAFF, staff_files()) + \
         reject_changes(staff_files(None, with_camp(mini_staff()['staff.json'])), camp_rejects(), staff_files()) + \
-        reject_changes(staff_files(), plain_camp_rejects(), staff_files())   # (the vectors' files)
+        reject_changes(staff_files(), plain_camp_rejects(), staff_files()) + \
+        reject_changes(staff_files(), REJECTS_GENERIC, staff_files())   # (the vectors' files)
 
 
 INPUTS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',

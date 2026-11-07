@@ -1145,6 +1145,7 @@ class Staff:
                     need(sum(1 for x in self.m.works if x.get('repairs') == f) == 1, 'bad_ref',
                          f'{wr}.on.fault[{j}]: {f} is repaired by no work, or by more than one')
             elif k == 'fault':
+                need(not isinstance(v, list), 'bad_type', f'{wr}.on.fault: a list of faults goes with "work": "$"')
                 ident(v, f'{wr}.on.fault')
             elif k == 'value':
                 need(v in values, 'bad_ref', f'{wr}.on.value: no value {v!r}')
