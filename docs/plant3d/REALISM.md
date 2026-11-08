@@ -854,7 +854,18 @@ does is in both engines bit for bit, with vectors.
     earlier value unchanged, the new values added, every snapshot's empty `lab: {}`, the digests changed with them.
     The GDScript engine runs every vector bit for bit (the lab results compared as values to 9 decimals, the digests
     bit for bit).
-  - **The Note 9:** NOTE9_PENDING
+  - **The Note 9** (a test-signed release build at c9781e56, `walk=monitor probe=1`, 300 s from a cool start at
+    26.6 °C, 2026-11-08): the mechanical technician at closed cooling water pump A with the collector, the camera and
+    a sampling kit, the panel open (its collector's screen at 3.18 mm/s, redrawn as the plant ran at 1×): it opened in
+    14.7 ms; the frame drew 699 draw calls and 239,602 triangles (649 and 237,718 before it opened). Tier lean+vis,
+    11,844 frames: median 23.4 ms, p95 36.8 ms, max 75.0 ms, none over 100 ms (the frame rule passes without
+    excluding any frame; the kernel reclaimed in 6.78 % of the samples, so no frame could have been excused). The
+    screen's only long gaps were in the first 16 s, while the app loaded (its first frame at 14.5 s).
+  - **Left from the reviews (not changed):** the lab's step looks at every sample node each step (52 in the train;
+    keeping the earliest due would skip them while nothing is queued); a save's queued dues are checked as whole
+    numbers, not for their order (a tampered queue can only delay its node's results); the due's
+    `ceil(hours × 36,000)` adds a tenth for hours that are not exact in binary (both engines alike; the content's
+    48 is exact).
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does
