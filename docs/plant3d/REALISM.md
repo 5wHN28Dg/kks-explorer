@@ -1793,7 +1793,9 @@ the realism file's `discuss` part. What §6.3.1 left open, settled the smallest 
   `manual` and `section` (identifiers here); a position's `evidence` may be empty; an agreement's `lines` are 1–4 of
   the discussion's roles (no `"$"`), its terms at most 16; a second discussion of an id is `dup_id`; a task running a
   `discuss` step for a role not of the discussion is `authority`; an outcome task is an edge of the "reaches itself"
-  check, as `choose`'s tasks are, and runs for the lead's roles and works.
+  check, as `choose`'s tasks are, and runs for the lead's role alone (the discussion's first role, when it may run the
+  task) with the task's works: a joiner's step has no outcome, so the joiners' roles need none of its authorities (the
+  first reference gave it every role of the task, and refused content whose outcome asks for a permit).
 - **The participants** are listed in the discussion's role order; a joining role with nobody in the room after the
   meeting's 15 minutes is `null` in the event (-1 in the digest), and the discussion starts without it.
 - **A pick** in mode `open` takes the point in step 1 (event `["point", id, point, option, taker]` right after the
@@ -1818,6 +1820,20 @@ the realism file's `discuss` part. What §6.3.1 left open, settled the smallest 
   none), takers (PackedInt32, -1 none or a default), the agreement reached (-1 while unended)]`. **The snapshot:**
   `discussions`, with discussions.json only: `{id: {count, lead, participants, mode, start, point, since, taken:
   [[option, taker or null] or null per point], agreed (null while unended)}}` for each discussion started once.
+
+**In the app** (milestone DC3, after the reference): `sim/discuss.gd` is the GDScript engine's side, bit for bit on
+the realism vectors' `discuss` part and the first train's vectors; it reads discussions.json with the staff (only
+what the engine leans on: the reference checks every rule), keeps the instances in the engine's `dsc` (one entry per
+discussion, `{}` before its first start; saved with the run and checked against the content when one is continued),
+and adds the staff digest's part and the snapshot's `discussions`. A session carries the input as three texts. The
+app (`ui/discussions.gd`, text only): the crew panel shows the discussion while the trainee's person takes part in a
+live one or is in its room (the positions, the opening lines and each option's and agreement's lines as they come;
+for a participant in mode `open` the current point's options, each a button, with their evidence: a manual's section
+opens in the DC2 reader, a standard by its key, a reading with its value now, a site rule; the clock time the point
+ends at and the option that stands then, so the panel is not rebuilt every minute); an ended one stays, with the
+agreement and its outcome, while they are in its room, until closed. Every line also goes to the radio log, and the
+debrief lists each discussion with who took which option (or the default) and the outcome. The trainee's task line
+names a `discuss` step's room and title, with "Take me there".
 
 ## 7. Work management
 
