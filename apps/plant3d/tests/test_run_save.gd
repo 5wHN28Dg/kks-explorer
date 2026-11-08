@@ -314,6 +314,8 @@ func _round_trip_wo(p: Array) -> void:
 	var short := rec.slice(0, 9)
 	var other := rec.duplicate(true)
 	other[9] = "wo_gauge"
+	var renumbered := rec.duplicate(true)
+	renumbered[0] = "WO-0007"
 	var badclock := rec.duplicate(true)
 	badclock[1] = [1, 2, 3]
 	for c in [{"wo": {"wo_pump": 9, "wo_gauge": 3, "wo_valve": 0}}, {"wo": {"wo_pump": 4}},
@@ -321,7 +323,7 @@ func _round_trip_wo(p: Array) -> void:
 			{"wo_rec": {"wo_pump": short}}, {"wo_rec": {"wo_pump": other}}, {"wo_rec": {"wo_fan": rec}},
 			{"wo_rec": {"wo_pump": badclock}}, {"wo_no": {"wo_pump": 3}}, {"wo_no": {"wo_fan": "WO-0009"}},
 			{"wo_history": [short]}, {"wo_count": -1}, {"wo_npc_done": [["wo_fan", "mech1"]]},
-			{"wo_npc_done": [["wo_pump"]]}, {"wo_count": 0},
+			{"wo_npc_done": [["wo_pump"]]}, {"wo_count": 0}, {"wo_rec": {"wo_pump": renumbered}},
 			{"npc_queue": [["wo"]]}, {"npc_queue": [["wo", "wo_fan", "plan", "a_sup", null]]},
 			{"npc_queue": [["wo", "wo_pump", "approve", "a_sup", []]]},
 			{"npc_queue": [["wo", "wo_pump", "plan", "nobody", [3]]]},

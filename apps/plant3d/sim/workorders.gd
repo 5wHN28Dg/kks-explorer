@@ -92,7 +92,8 @@ static func _data_ok(e, action: String, data: Array) -> bool:
 
 
 ## The data an NPC's wo step sends without its own (§2.20).
-static func npc_data(e, w: Dictionary, action: String) -> Array:
+## (null for a completion on a work without codes, which the validator refuses: unknown, never a crash)
+static func npc_data(e, w: Dictionary, action: String):
 	match action:
 		"notify":
 			return [w["finds"][0] if w.has("finds") and not w["finds"].is_empty() else null]
@@ -101,6 +102,8 @@ static func npc_data(e, w: Dictionary, action: String) -> Array:
 		"schedule":
 			return [e.clock() / DAY]
 		"complete":
+			if not w.has("codes"):
+				return null
 			return [w["codes"][0], w["codes"][1], w["codes"][2], ""]
 	return []
 

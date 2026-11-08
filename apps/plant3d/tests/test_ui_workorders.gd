@@ -2,6 +2,7 @@
 ## - a finding matched to its work by the code and the kind found (the first work written for it without an open
 ##   order);
 ## - the form's actions only those the person played may make (the engine's authority), named by the roles that may;
+##   a completion too long for a session's input refused on the form;
 ## - the card's "Work orders" at closed cooling water pump A's motor (works and past orders) and none at a code with
 ##   neither; its view lists the content's history and reports a finding: the bearings' vibration notified (WO-0001);
 ## - the list: the open order with the backlog's planned hours; its form plans it (urgent) and schedules it (today),
@@ -23,6 +24,7 @@ const CAL := "wo_cond_p2_cal"         # condenser pressure transmitter 2's calib
 func run(tree: SceneTree) -> Array:
 	var p: Array = _matching()
 	p += _who_may()
+	p += _session_size()
 	p += await _panel(tree)
 	return p
 
@@ -62,6 +64,30 @@ class Staffed extends RefCounted:
 		var auth := {"maint_sup": {"plan_work": true, "close_work": true}, "ic_tech": {"accept": true}}
 		var roles := {"maint_sup": {"title": "Maintenance supervisor", "discipline": "mechanical"},
 			"ic_tech": {"title": "I&C technician", "discipline": "instrument"}}
+
+
+## A completion too long for a session's input is refused on the form, not sent to be dropped unseen: 120 characters
+## of 4-byte UTF-8 go over the 512 bytes; 120 plain ones fit; outside a session anything goes.
+class Sess extends RefCounted:
+	var st_session := true
+
+
+func _session_size() -> Array:
+	var p: Array = []
+	var e := Sess.new()
+	var emoji := ""
+	for i in 120:
+		emoji += String.chr(0x1F527)
+	var plain := "x".repeat(120)
+	var item := func(c: String) -> Array: return ["wo", CAL, "complete", "a_ic1", ["reading", "drift", "adjust", c]]
+	if Wo.fits_session(e, item.call(emoji)):
+		p.append("a completion of 120 four-byte characters fits a session's input")
+	if not Wo.fits_session(e, item.call(plain)):
+		p.append("a completion of 120 plain characters does not fit a session's input")
+	e.st_session = false
+	if not Wo.fits_session(e, item.call(emoji)):
+		p.append("outside a session a long completion was refused")
+	return p
 
 
 func _who_may() -> Array:
@@ -191,6 +217,10 @@ func _panel(tree: SceneTree) -> Array:
 		ui.clock.run_steps(1)
 	ui.inputs.lock(CAL, 0, null)
 	ui.clock.run_steps(1)
+	var own: Array = Wo.Permits.own_list(e, CAL)     # its JSA (HS1, REALISM.md §8.6: an issue without one is refused)
+	if not own.is_empty():
+		ui.inputs.jsa(CAL, own[0], own[1], null)
+		ui.clock.run_steps(1)
 	for a in ["issue", "accept"]:
 		ui.inputs.permit(CAL, a, null)
 		ui.clock.run_steps(1)

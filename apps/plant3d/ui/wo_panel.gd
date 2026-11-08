@@ -16,6 +16,7 @@ const W = preload("res://ui/widgets.gd")
 const Permits = preload("res://ui/permits.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const Wo = preload("res://sim/workorders.gd")
+const InputCheck = preload("res://net/input_check.gd")
 
 const STATE_WORDS := ["No work order", "Notified", "Planned", "Scheduled", "In progress", "Complete", "Closed",
 	"Cancelled"]
@@ -486,6 +487,12 @@ func _form(e, w: Dictionary) -> void:
 				body.add_child(b)
 
 
+## Whether an input fits a session's (MULTIPLAYER.md §3.3: at most 512 bytes; a longer one would be dropped unseen, as
+## a comment of 120 characters of 4-byte UTF-8 would be); always outside a session.
+static func fits_session(e, item: Array) -> bool:
+	return not e.st_session or InputCheck.text(item).size() <= InputCheck.MAX_BYTES
+
+
 ## The completion: ISO 14224's failure mode, cause and maintenance action, from the file's lists, and a comment.
 func _completion(e, w: Dictionary, who: String) -> void:
 	var wid: String = w["id"]
@@ -525,7 +532,11 @@ func _completion(e, w: Dictionary, who: String) -> void:
 		if pick[2] == null:
 			_show("Choose the maintenance action first")
 			return
-		send(wid, "complete", [pick[0], pick[1], pick[2], String(pick[3])]))
+		var data := [pick[0], pick[1], pick[2], String(pick[3])]
+		if not fits_session(ui.clock.engine, ["wo", wid, "complete", ui.me(), data]):
+			_show("Too long for one input of a session (%d bytes at most): shorten the comment" % InputCheck.MAX_BYTES)
+			return
+		send(wid, "complete", data))
 	b.name = "complete"
 	body.add_child(b)
 

@@ -337,6 +337,8 @@ static func _wo_contents(fresh, d: Dictionary) -> String:
 					return "a damaged %s" % k
 				if k == "wo_rec" and not _wo_record_ok(d[k][key], works, key):
 					return "a damaged work order record"
+				if k == "wo_rec" and d[k][key][0] != d.get("wo_no", {}).get(key, ""):
+					return "a work order record whose number isn't its work's"
 	if d.has("wo_history"):
 		for r in d["wo_history"]:
 			if not _wo_record_ok(r, works, null):

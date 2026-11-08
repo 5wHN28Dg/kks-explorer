@@ -972,11 +972,20 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
 - **The app, as settled by the reviews:** the form offers only the actions the person played may make (the engine's
   authority check; free mode all) and names the roles of the staff's content that may; the open orders are listed by
   state, priority, day and number; a work's form is rebuilt only when its own order or permit moves (a completion
-  being filled in survives other works' moves), and a completion's choices are forgotten once it is done.
+  being filled in survives other works' moves), and a completion's choices are forgotten once it is done; a completion too long for one input of a session
+  (512 bytes: 120 characters of 4-byte UTF-8 go over) is refused on the form in words, not sent to be dropped. The
+  app's engine answers an NPC's completion without data on a work without codes `unknown` (content the validator
+  refuses; never a crash).
+- **Left from the reviews (not changed):** the run's history has no limit (a player holding `close_work` can notify
+  and cancel the same work 10 times a turn, each a record the digest carries); a reaction on `notified` is offered
+  only to those on duty then, so an order notified while no maintenance or shift supervisor is on duty stays notified
+  (a permit's offer is made again; a work order's is not); a session slot playing nobody may make every action, as
+  with permits (§17.13's free-mode rule).
 - **Tests:** `tests/test_plant3d_realism.py` `WoVectors`, `tests/test_plant3d_workorders.py` (every work coded, the
   history against the ageing scenario, the day's staff planning a notified order and asking for its permit),
-  `apps/plant3d/tests/test_run_save.gd` (a save in the middle of a work order goes on bit for bit; 21 damaged saves
-  refused: the 14 of the state and records, a number counter below a number given, and an NPC's queued work order
+  `apps/plant3d/tests/test_run_save.gd` (a save in the middle of a work order goes on bit for bit; 22 damaged saves
+  refused: the 14 of the state and records, a number counter below a number given, a record whose number isn't its
+  work's, and an NPC's queued work order
   input that is short, names no work, an unknown action or person, data not a list, or a completion without data on
   a work without codes), `apps/plant3d/tests/test_ui_workorders.gd` (app shard 2: who may make each action and their
   roles' words; a finding reported from the card, planned,
