@@ -99,5 +99,45 @@ class Shards(unittest.TestCase):
                                                  'PLANT_TEST_SHARD=${{ matrix.app_shard }} apps/plant3d/build.sh tests']))
 
 
+class SimShards(unittest.TestCase):
+    """plant3d.yml's engine-vectors shards (tests/test_plant3d_sim.py sim_shards): every unit of run_vectors.gd in
+    exactly one shard, every reference task too, their results adding up to the whole run's, no shard empty, the
+    matrix every shard, and shard SIM_REST (alone) running the module's other classes."""
+
+    def test_every_vector_in_one_shard(self):
+        import json
+        import test_plant3d_sim as S
+        with open(S.VECTORS, encoding='utf-8') as f:
+            V = json.load(f)
+        with open(S.VECTORS2, encoding='utf-8') as f:
+            V2 = json.load(f)
+        units = S.sim_units(V, V2)
+        per = S.sim_shards(V, V2)
+        self.assertEqual(len(per), S.SIM_SHARDS)
+        self.assertTrue(all(per), [len(p) for p in per])
+        got = [u for p in per for u in p]
+        self.assertEqual(sorted(got, key=repr), sorted(units, key=repr))
+        self.assertEqual(len({u[0] for u in got}), len(got))
+        self.assertEqual(sorted((u[1] for u in got), key=repr), sorted(S.ref_tasks(V, V2), key=repr))
+        # the units' results: the whole run's count, as test_every_vector_replays counts it
+        n = 1 + len(V['steps']) + len(V['links']) + 2 * (1 + 1) + len(V['train']['forks']) + \
+            len(V['hot']['forks']) + 1 + len(V2['steps']) + len(V2.get('train', {}).get('forks', [])) + \
+            (1 + len(V2['staff']['runs']) if 'staff' in V2 else 0) + \
+            (1 + len(V2['day']['forks']) if 'day' in V2 else 0) + \
+            sum(2 + len(V2[r]['forks']) for r in S.WTP_RUNS if r in V2)
+        self.assertEqual(sum(u[2] for u in got), n)
+        # run_vectors.gd's units: every day fork by its id, every start and run (a unit not of the files fails there)
+        names = {u[0] for u in got}
+        self.assertTrue({'v1', 'train', 'hot', 'v2', 'v2/staff', 'v2/day'} <= names, names)
+        self.assertTrue({'v2/day/' + f['id'] for f in V2['day']['forks']} <= names)
+        text, m = matrix('plant3d.yml', 'shard')
+        self.assertEqual(m, [[str(k) for k in range(S.SIM_SHARDS)]])
+        self.assertEqual(S.SIM_REST, 0)
+        self.assertIn("KKS_SIM_SHARD: ${{ matrix.shard }}", text)
+        self.assertIn("python3 -m unittest -v ${{ matrix.shard == 0 && 'tests.test_plant3d_sim' || "
+                      "'tests.test_plant3d_sim.GdscriptEngine' }}", text)
+        self.assertEqual(text.count('-m unittest'), 1)
+
+
 if __name__ == '__main__':
     unittest.main()
