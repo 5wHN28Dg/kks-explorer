@@ -577,6 +577,10 @@ def apply(e, item, slot=None):
         getattr(e, kind)(item[2], item[3], slot=slot)
     elif kind == 'weather':
         e.weather(item[2], slot=slot)
+    elif kind == 'jsa':             # REALISM.md §8.6 (the free-mode forks' JSAs)
+        e.jsa(item[2], item[3], item[4], item[5], slot=slot)
+    elif kind == 'talk':
+        e.talk(item[2], item[3], item[4], slot=slot)
     else:
         raise ValueError(kind)
 

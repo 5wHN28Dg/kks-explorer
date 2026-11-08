@@ -377,6 +377,10 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 		return "Radio to %s: \"%s\"" % [s["to"], sm.messages[s["say"]]]
 	if s.has("call"):
 		return "Call %s: %s" % [s["call"]["role"], sm.tasks[s["call"]["task"]]["title"]]
+	if s.has("jsa") or s.has("talk"):           # (REALISM.md §8.6)
+		var w = cur["work"] if s.get("jsa", s.get("talk")) == "$" else s.get("jsa", s.get("talk"))
+		var title: String = e.m.works[e.m.work_ix[w]]["title"] if w != null and e.m.work_ix.has(w) else str(w)
+		return ("Make the JSA of %s (the permit form)" if s.has("jsa") else "Give the toolbox talk of %s (the permit form)") % title
 	if s.has("op") and s["op"].get("where") == "hart":
 		return "Through the HART communicator at %s: %s" % [s["op"]["kks"], s["op"]["do"].replace("_", " ")]
 	if s.has("op"):
@@ -525,6 +529,11 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 	if s.has("ack") and cur["alarm"] != null:
 		var a: String = cur["alarm"]
 		row.add_child(W.button("Acknowledge", func(): ui.ack(a)))
+	if s.has("jsa") or s.has("talk"):           # (REALISM.md §8.6: picked on the permit form)
+		var hw = cur["work"] if s.get("jsa", s.get("talk")) == "$" else s.get("jsa", s.get("talk"))
+		if hw != null:
+			var hws: String = hw
+			row.add_child(W.button("Permit form", func(): ui.open_permits(hws)))
 	if s.has("permit") or s.has("lock") or s.has("unlock"):
 		var k := "permit" if s.has("permit") else ("lock" if s.has("lock") else "unlock")
 		var w = cur["work"] if s[k]["work"] == "$" else s[k]["work"]

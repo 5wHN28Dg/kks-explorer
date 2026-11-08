@@ -51,6 +51,12 @@ static func _play(tree: SceneTree, main, call: String) -> String:
 static func _issued_by_night(ui) -> Array:
 	var p := []
 	var e = ui.clock.engine
+	# its JSA first, by a maintenance supervisor (HS1, REALISM.md §8.6: no issue without one)
+	var own: Array = e.m.hse["own"][e.m.works[e.m.work_ix[WORK]]["jsa"]]
+	e.npc_queue.append(["jsa", WORK, own[0], own[1], "ms_mech"])
+	ui.clock.run_steps(1)
+	if not e.jsa_of.has(WORK):
+		p.append("the fan's JSA was not made: %s" % str(e.events.slice(-4)))
 	for x in [["permit", WORK, "request", "c_sup"], ["permit", WORK, "approve", "c_sup"], ["lock", WORK, 0, "c_eap"],
 			["permit", WORK, "issue", "c_sup"]]:
 		e.npc_queue.append(x)
