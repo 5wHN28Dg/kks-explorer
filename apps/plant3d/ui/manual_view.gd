@@ -93,6 +93,7 @@ func setup(u, m) -> void:
 	var cs := ScrollContainer.new()
 	cs.name = "contents"
 	cs.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	cs.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS
 	cs.custom_minimum_size.x = 300 * W.scale
 	h.add_child(cs)
 	contents = VBoxContainer.new()
@@ -101,6 +102,9 @@ func setup(u, m) -> void:
 	scroll = ScrollContainer.new()
 	scroll.name = "page"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# the scroll bar always there: one that appears as the page grows narrows it, and every label of the page is laid
+	# out again in that frame (over 100 ms on the Note 9)
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(scroll)
 	page = VBoxContainer.new()
