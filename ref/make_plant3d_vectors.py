@@ -6073,6 +6073,9 @@ REJECTS_WO = [
 ]
 
 
+LIMIT_RUN_HISTORY = 4096      # the run's work order history's limit (ref/plant3d_wo.py LIMITS['run_history'])
+
+
 def wo_runs():
     """(why, scenario changes, files, player, steps, snapshot every): WM1's runs (REALISM.md §2.20)."""
     wf = wo_files()
@@ -6145,6 +6148,19 @@ def wo_runs():
          'its permit requested, approved, locked, issued and accepted without the order being planned or scheduled: '
          'in progress by itself from notified (its planned and scheduled clocks stay -1); cancelled and completed '
          'with data null (unknown); completed after the permit\'s done', {}, bare, emergency, 14, 1),
+        ('the run\'s history at its limit (§2.21): the gauge\'s order notified and cancelled (WO-0001), then the '
+         'valve\'s notified and cancelled 4,096 times in one step (WO-0002 to WO-4097): the history keeps the newest '
+         '4,096 records, the oldest (WO-0001) dropped; the pump\'s order notified after it (WO-4098)', {}, bare,
+         Scripted(_x(*([(2, 'wo', G, 'notify', None, ['reading']), (2, 'wo', G, 'cancel', None, [])]
+                       + [x for _ in range(LIMIT_RUN_HISTORY) for x in ((2, 'wo', V, 'notify', None, ['leak']),
+                                                                          (2, 'wo', V, 'cancel', None, []))]
+                       + [(3, 'wo', 'wo_pump', 'notify', None, ['noise'])]))), 50, 50),
+        ('offered again (§2.21): the pump\'s order notified in free mode at step 10 and the valve\'s at step 20, '
+         'before any shift supervisor is on duty (the reaction on notified finds nobody: its offers kept); the '
+         'valve\'s cancelled at step 30 (moved on: its offer dropped); the supervisor comes on at step 300 and is '
+         'offered the pump\'s, which they plan and schedule', {}, wf,
+         Scripted(_x((10, 'wo', 'wo_pump', 'notify', None, ['vibration']), (20, 'wo', V, 'notify', None, ['leak']),
+                     (30, 'wo', V, 'cancel', None, []))), 700, 100),
     ]
 
 

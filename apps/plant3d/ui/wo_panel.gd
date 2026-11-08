@@ -308,7 +308,7 @@ func refresh() -> void:
 	var e = ui.clock.engine
 	if e == null or e.m.wo_doc == null:
 		return
-	var sig := [work, code, today(e), e.wo_history.size(), ui.me()]
+	var sig := [work, code, today(e), e.wo_count, e.wo_history.size(), ui.me()]
 	# (a work's form follows only its own work: other works' moves never rebuild a completion being filled in)
 	for wd in ([e.m.works[e.m.work_ix[work]]] if work != "" and e.m.work_ix.has(work) else e.m.works):
 		sig.append(state_of(e, wd["id"]))
@@ -614,7 +614,9 @@ static func debrief_lines(e, me_id) -> PackedStringArray:
 	for r in recs:
 		if int(r[1][5]) >= 0 and int(r[1][4]) >= 0:
 			closed += 1
-	out.append("Work orders: %d raised, %d closed" % [recs.size(), closed])
+	# (raised: the counter, as the run's history keeps only its newest 4,096 records, REALISM.md §2.21; closed: of
+	# those kept)
+	out.append("Work orders: %d raised, %d closed" % [maxi(int(e.wo_count), recs.size()), closed])
 	for r in recs:
 		if r[7][2] == null or r[6] != me_id:
 			continue

@@ -22,6 +22,7 @@ const AUTH := {"notify": "", "plan": "plan_work", "schedule": "plan_work", "comp
 const DAY := 864000         # a clock day in tenths of a clock second (§16.1)
 const DAYS_AHEAD := 365
 const COMMENT := 120
+const RUN_HISTORY := 4096   # the run's history keeps its newest records (REALISM.md §2.21)
 const LIVE := [0, 9, 10]    # permit states that are not live: none, closed, cancelled
 const DONE := [6, 7, 8, 9]  # permit states past the work: done, returned, deisolated, closed
 const T_NOTIFY := 0
@@ -173,6 +174,8 @@ static func _move(e, wi: int, action: String, person, data: Array, to: int) -> v
 			_:              # close, cancel
 				r[1][T_END] = c
 				e.wo_history.append(copy_record(r))
+				if e.wo_history.size() > RUN_HISTORY:
+					e.wo_history.pop_front()
 	e.wo[work] = to
 	e.cur[e._wo_slot[wi]] = float(to)
 

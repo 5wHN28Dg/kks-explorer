@@ -1805,10 +1805,19 @@ class StaffRun:
         again when one comes on (§17.10)."""
         nobody = not any(p.role in roles and p.on and p.id not in self.absent for p in self.people)
         if not self.assign(roles, tid, prio, src, w, code, alarm, owner, orig=orig) and nobody \
-                and isinstance(pw, str) and pw in self.e.pstate and 1 <= self.e.pstate[pw] <= 8:
+                and isinstance(pw, str) and pw in self.e.pstate and self.kept_state(src, pw) is not None:
             ident = src if src is not None else ('call', tuple(roles), tid, w)
             if all(x[0] != ident for x in self.pending):
-                self.pending.append([ident, src, list(roles), tid, prio, w, code, pw, self.e.pstate[pw]])
+                self.pending.append([ident, src, list(roles), tid, prio, w, code, pw, self.kept_state(src, pw)])
+
+    def kept_state(self, src, pw):
+        """The state an offer nobody could take is kept at (§17.10): the permit's (1 to 8), or for a reaction on a work
+        order (REALISM.md §2.21) the work order's (notified to complete); None when it isn't kept."""
+        if isinstance(src, tuple) and len(src) == 3 and src[1] == 'wo':
+            s = self.e.wo.get(pw, 0)
+            return s if 1 <= s <= 5 else None
+        s = self.e.pstate[pw]
+        return s if 1 <= s <= 8 else None
 
     @staticmethod
     def vkey(inst):
@@ -2529,7 +2538,8 @@ class StaffRun:
         if has_left:
             self.left = now
         # permit offers that found nobody on duty: offered again when someone of their roles comes on, at each later
-        # shift until taken, while the permit is still at its state then (§17.10)
+        # shift until taken, while the permit is still at its state then (§17.10); a work order's the same, while the
+        # work order is (REALISM.md §2.21)
         if self.pending:
             came = {self.people[st.person_ix[x[2]]].role for x in evs if x[1] == 'duty' and x[3] == 'on'}
             keep = []
@@ -2543,7 +2553,8 @@ class StaffRun:
                             or not self.assign(roles, tid, prio, src, w, code, None):
                         keep.append([ident, src, roles, tid, prio, w, code, pw, state])
                     continue
-                if e.pstate.get(pw) != state or (src is not None and src in self.given) or (src is None and any(
+                if (e.wo.get(pw) if isinstance(src, tuple) and len(src) == 3 and src[1] == 'wo'
+                        else e.pstate.get(pw)) != state or (src is not None and src in self.given) or (src is None and any(
                         q['task'] == tid and q['work'] == w for p in self.people
                         for q in ([p.cur] if p.cur is not None else []) + p.queue)):
                     continue            # moved on, or given meanwhile (a call: the same task and work given again)
@@ -2587,7 +2598,7 @@ class StaffRun:
                 w = r.get('work', work)
                 if code is None and w is not None:
                     code = e.works[w]['kks']
-                self.offer(r['roles'], r['task'], prio, key, w, code, alarm, src[1] if k == 'permit' else None,
+                self.offer(r['roles'], r['task'], prio, key, w, code, alarm, src[1] if k in ('permit', 'wo') else None,
                            src[1] if k == 'lock_left' else None)
 
     # --- a person's turn (phase 4)

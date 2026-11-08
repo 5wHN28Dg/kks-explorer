@@ -15,7 +15,7 @@ AUTH = {'notify': None, 'plan': 'plan_work', 'schedule': 'plan_work', 'complete'
         'cancel': 'close_work'}
 KINDS = ('corrective', 'preventive', 'condition')     # the content history's kinds of maintenance (EN 13306)
 LIMITS = {'list': 64, 'history': 4096, 'finds': 8, 'works': 512, 'title': 120, 'comment': 120, 'ago': 18250,
-          'hours': 10000, 'days_ahead': 365}
+          'hours': 10000, 'days_ahead': 365, 'run_history': 4096}
 DAY = 864000            # a clock day in tenths of a clock second (§16.1)
 LIVE = (0, 9, 10)       # permit states that are not live: none, closed, cancelled
 DONE = (6, 7, 8, 9)     # permit states past the work: done, returned, deisolated, closed
@@ -212,6 +212,8 @@ def _move(e, work, action, person, data, to):
         else:       # close, cancel
             r[1][T_END] = c
             e.wo_history.append(_copy_rec(r))
+            if len(e.wo_history) > LIMITS['run_history']:
+                del e.wo_history[0]     # the run's history keeps its newest 4,096 records (§2.21)
     e.wo[work] = to
     e.cur[e.ix[work + '_wo']] = float(to)
 

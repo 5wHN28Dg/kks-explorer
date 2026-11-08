@@ -340,6 +340,8 @@ static func _wo_contents(fresh, d: Dictionary) -> String:
 				if k == "wo_rec" and d[k][key][0] != d.get("wo_no", {}).get(key, ""):
 					return "a work order record whose number isn't its work's"
 	if d.has("wo_history"):
+		if d["wo_history"].size() > WoSim.RUN_HISTORY:
+			return "a work order history over its limit"
 		for r in d["wo_history"]:
 			if not _wo_record_ok(r, works, null):
 				return "a damaged work order history"
