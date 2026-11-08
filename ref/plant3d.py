@@ -308,6 +308,7 @@ class Bundle:
         self.weather = None                        # weather.json, checked (ref/plant3d_world.py), or None
         self.tools = None                          # tools.json, checked (ref/plant3d_hands.py, REALISM.md §2.3)
         self.tools_doc = None                      # (its text, read before staff.json's tasks are checked)
+        self.hse = None                            # hse.json, checked (ref/plant3d_hse.py, REALISM.md §8.6)
         self.wo_ids = None                         # workorders.json's code lists (REALISM.md §2.20), or None
         self.wo_doc = None                         # workorders.json, checked (ref/plant3d_wo.py), or None
         self.screen_of = {}                        # code shown on the screens -> (screen id, group id) (§7.11)
@@ -352,7 +353,7 @@ def check_files(files):
     b = Bundle()
     for rel in files:
         need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json', 'weather.json',
-                     'tools.json', 'monitoring.json', 'workorders.json') or re.fullmatch(
+                     'tools.json', 'monitoring.json', 'hse.json', 'workorders.json') or re.fullmatch(
             r'(areas|model|procedures|scenarios|workshop|workshop/bench|service)/[a-z_][a-z0-9_]{0,31}\.json|'
             r'sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg',
             rel), 'unknown_key', f'{rel}: not a file of the format')
@@ -460,6 +461,13 @@ class Plant:
             need('staff.json' in files, 'bad_ref', 'tools.json: only in a plant with staff.json (its places keep the '
                                                    'tools, REALISM.md §2.3)')
             b.tools_doc = parse(files, 'tools.json')
+        from ref import plant3d_hse as HS
+        if 'hse.json' in files:
+            # the hazard library of JSAs and toolbox talks (REALISM.md §8.6, milestone HS1)
+            need(b.version == 2, 'unknown_key', 'hse.json: only in a version 2 plant (REALISM.md §8.6)')
+            need('staff.json' in files, 'bad_ref', 'hse.json: only in a plant with staff.json (REALISM.md §8.6)')
+            b.hse = HS.check(parse(files, 'hse.json'))
+        HS.check_works(b, m, 'hse.json' in files)
         if 'staff.json' in files:
             from ref.plant3d_staff import Staff
             need(b.version == 2, 'unknown_key', 'staff.json: only in a version 2 plant (§14)')
@@ -1183,7 +1191,7 @@ class Model:
     def check_work(self, x, w):
         """§15.2: a job on equipment that needs a permit."""
         keys(x, ('id', 'kks', 'title', 'discipline', 'permit'), ('isolation', 'repairs', 'set', 'task', 'renews', 'cures',
-                                                                 'finds', 'codes', 'hours') + WORK_TASKS, w)
+                                                              'jsa', 'finds', 'codes', 'hours') + WORK_TASKS, w)
         need(isinstance(x['id'], str) and ID_RE.fullmatch(x['id']) and len(x['id']) <= 22, 'bad_id',
              f'{w}: id of at most 22 characters')
         need(x['id'] not in {y['id'] for y in self.works}, 'dup_id', w)
@@ -2029,6 +2037,8 @@ class Engine:
         # the hands-on engine (REALISM.md §2.3–§2.7, §2.13): tools carried, hand actions, causes, slips
         from ref import plant3d_hands as H
         H.init(self, b, sc)
+        from ref import plant3d_hse as HS
+        HS.init(self, b)
 
     def clone(self):
         """An independent copy at the same step (forks of a run: one cold start, many trip tests)."""
@@ -2055,6 +2065,8 @@ class Engine:
         c.faults_fixed = set(self.faults_fixed)
         from ref import plant3d_hands as H
         H.copy_state(c, self)
+        from ref import plant3d_hse as HS
+        HS.copy_state(c, self)
         from ref import plant3d_wo as WO
         WO.copy_state(c, self)
         return c
@@ -2340,6 +2352,12 @@ class Engine:
     def repair(self, fid, slot=None):
         self._q(('repair', fid), slot)
 
+    def jsa(self, work, hazards, controls, person=None, slot=None):
+        self._q(('jsa', work, hazards, controls, person), slot)
+
+    def talk(self, work, points, person=None, slot=None):
+        self._q(('talk', work, points, person), slot)
+
     def weather(self, kind, slot=None):
         """The instructor's weather (REALISM.md §5.1)."""
         self._q(('weather', kind), slot)
@@ -2584,6 +2602,10 @@ class Engine:
             why.append('state')
         if action == 'request' and iso is not None and self.holder[iso] is not None:
             why.append('iso_busy')
+        if action == 'issue':
+            from ref import plant3d_hse as HS      # REALISM.md §8.6: no issue without the work's JSA
+            if HS.issue_refused(self, work):
+                why.append('jsa')
         if why:
             self.ev('permit', work, action, person, 'refused', why)
             return 'refused'
@@ -2603,6 +2625,9 @@ class Engine:
             WO.note_done(self, work, person, npc)
         elif action in ('cancel', 'close') and iso is not None and self.n_locked(iso) == 0:
             self.holder[iso] = None
+        if action in ('cancel', 'close'):
+            from ref import plant3d_hse as HS      # the JSA and the talk's attendance end with the permit (§8.6)
+            HS.cleared(self, work)
         self.ev('permit', work, action, person, 'done', [])
         return 'done'
 
@@ -2858,6 +2883,12 @@ class Engine:
             elif kind == 'slip':
                 from ref import plant3d_hands as H      # an NPC's slip (REALISM.md §3.1, §2.13)
                 H.slip(self, item)
+            elif kind in ('jsa', 'talk'):
+                from ref import plant3d_hse as HS       # REALISM.md §8.6
+                k0 = len(self.events)
+                r = (HS.jsa if kind == 'jsa' else HS.talk)(self, item, npc)
+                if npc:
+                    self._npc_result(item[-1], r, k0)
             elif kind == 'repair' and len(item) > 2:
                 if self._repair_under(item[1], item[2], item[3]):
                     under[item[1]] = item[2]
@@ -3203,6 +3234,7 @@ class Engine:
     def digest_tree(self):
         from ref.godot_variant import Packed, PACKED_BYTE, PACKED_INT32, PACKED_INT64
         from ref import plant3d_hands as H
+        from ref import plant3d_hse as HS
         from ref import plant3d_wo as WO
         m = self.m
         work_ix = {w['id']: k for k, w in enumerate(m.works)}
@@ -3232,6 +3264,7 @@ class Engine:
             ([Packed(PACKED_INT64, [self.wx_kind, self.wx_s])] if self.wx is not None else []) + \
             ([H.digest_part(self)] if self.hw else []) + \
             ([H.lab_digest(self)] if self.lab_nodes else []) + \
+            ([HS.digest_part(self)] if self.hse is not None else []) + \
             ([WO.digest_part(self)] if self.wo_ids is not None else [])
 
     def snapshot(self, values=True):
@@ -3268,6 +3301,9 @@ class Engine:
         if self.lab_nodes:
             from ref import plant3d_hands as H      # REALISM.md §2.19
             H.lab_snapshot(self, s)
+        if self.hse is not None:
+            from ref import plant3d_hse as HS       # REALISM.md §8.6
+            HS.snapshot_part(self, s)
         if self.wo_ids is not None:
             from ref import plant3d_wo as WO        # REALISM.md §2.20
             WO.snapshot_part(self, s)

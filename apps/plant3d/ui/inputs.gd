@@ -78,6 +78,14 @@ func permit(work: String, action: String, person_id) -> int:
 	return send(["permit", work, action, person_id])
 
 
+## A job safety analysis (REALISM.md §8.6): the hazards and controls picked from the plant's hse.json.
+func jsa(work: String, hazards: Array, controls: Array, person_id) -> int:
+	return send(["jsa", work, hazards, controls, person_id])
+
+
+## A toolbox talk (REALISM.md §8.6): its points, hazards of the library, given by the player.
+func talk(work: String, points: Array, person_id) -> int:
+	return send(["talk", work, points, person_id])
 ## A work order's action (REALISM.md §2.20): notify, plan, schedule, complete, close or cancel, with its data.
 func work_order(work: String, action: String, person_id, data: Array) -> int:
 	return send(["wo", work, action, person_id, data])

@@ -29,6 +29,7 @@ const PlantModel = preload("plant_model.gd")
 const Staff = preload("staff.gd")
 const World = preload("world.gd")
 const Hands = preload("hands.gd")
+const Hse = preload("hse.gd")
 const WorkOrders = preload("workorders.gd")
 
 const STEP := 0.1
@@ -232,6 +233,9 @@ var _lab: Array = []
 var _lab_of := {}                   # sample node name -> its entry in _lab
 var lab_q := {}                     # sample node name -> its queue of [due clock, value]
 var lab_s := {}                     # sample node name -> its lab stream's state
+# JSAs and toolbox talks (REALISM.md §8.6; sim/hse.gd), with the plant's hse.json only
+var jsa_of := {}                    # work id -> [hazard ids, control ids, person]: its JSA
+var talked := {}                    # work id -> the attendees of its toolbox talks (person indices, in order)
 # work orders (REALISM.md §2.20; sim/workorders.gd), in a plant with workorders.json: the model's code lists (or null),
 # each work's `_wo` slot, and the state saved with a run
 var _wo_ids = null
@@ -697,6 +701,14 @@ func permit(work, action, person = null, slot = null) -> void:
 	_q(["permit", work, action, person], slot)
 
 
+## A JSA (REALISM.md §8.6): the work's hazards and controls picked from hse.json, by person.
+func jsa(work, hazards, controls, person = null, slot = null) -> void:
+	_q(["jsa", work, hazards, controls, person], slot)
+
+
+## A toolbox talk (REALISM.md §8.6): its points (hazard ids), given by person.
+func talk(work, points, person = null, slot = null) -> void:
+	_q(["talk", work, points, person], slot)
 ## A work order's action (REALISM.md §2.20).
 func work_order(work, action, person = null, data = [], slot = null) -> void:
 	_q(["wo", work, action, person, data], slot)
@@ -966,6 +978,10 @@ func apply_input(item: Array) -> void:
 				repair(item[2], slot)
 		"permit":
 			permit(item[2], item[3], item[4], slot)
+		"jsa":
+			jsa(item[2], item[3], item[4], item[5], slot)
+		"talk":
+			talk(item[2], item[3], item[4], slot)
 		"wo":
 			work_order(item[2], item[3], item[4], item[5] if item.size() > 5 else null, slot)
 		"lock":
@@ -1204,6 +1220,8 @@ func _permit(work, action, person, dones: Array, npc := false) -> String:
 		why.append("state")
 	if action == "request" and iso != -1 and holder[iso] != -1:
 		why.append("iso_busy")
+	if action == "issue" and Hse.issue_refused(self, wi):     # REALISM.md §8.6: no issue without the work's JSA
+		why.append("jsa")
 	if not why.is_empty():
 		_ev(["permit", work, action, person, "refused", why])
 		return "refused"
@@ -1222,6 +1240,8 @@ func _permit(work, action, person, dones: Array, npc := false) -> String:
 		WorkOrders.note_done(self, work, person, npc)     # an NPC's write-up in step 3 (REALISM.md §2.20)
 	elif (action == "cancel" or action == "close") and iso != -1 and _n_locked(iso) == 0:
 		holder[iso] = -1
+	if action == "cancel" or action == "close":     # the JSA and the talk's attendance end with the permit (§8.6)
+		Hse.cleared(self, work)
 	_ev(["permit", work, action, person, "done", []])
 	return "done"
 
@@ -1917,6 +1937,12 @@ func _step() -> void:
 		if kind == "slip":              # an NPC's slip (REALISM.md §3.1, §2.13)
 			Hands.slip(self, item)
 			continue
+		if kind == "jsa" or kind == "talk":     # REALISM.md §8.6
+			var k0 := events.size()
+			var r := Hse.jsa(self, item, npc) if kind == "jsa" else Hse.talk(self, item, npc)
+			if npc:
+				_npc_result(item[item.size() - 1], r, k0)
+			continue
 		if kind == "lock" or kind == "unlock" or kind == "remove_lock":
 			noted.append([item, npc, slot])
 			continue
@@ -2463,6 +2489,8 @@ func snapshot(with_values: bool = true) -> Dictionary:
 		Hands.snapshot_part(self, s)    # (REALISM.md §2.13)
 	if not _lab.is_empty():
 		Hands.lab_snapshot(self, s)     # (REALISM.md §2.19)
+	if m.hse != null:
+		Hse.snapshot_part(self, s)      # (REALISM.md §8.6)
 	if _wo_ids != null:
 		WorkOrders.snapshot_part(self, s)   # (REALISM.md §2.20)
 	if with_values:
@@ -2522,6 +2550,8 @@ func digest_tree() -> Array:
 		tree.append(Hands.digest_part(self))
 	if not _lab.is_empty():             # the lab's queues and streams (REALISM.md §2.19), with sample nodes only
 		tree.append(Hands.lab_digest(self))
+	if m.hse != null:                   # JSAs and the talks' attendance (REALISM.md §8.6), with hse.json only
+		tree.append(Hse.digest_part(self))
 	if _wo_ids != null:                 # the work orders (REALISM.md §2.20), with workorders.json only
 		tree.append(WorkOrders.digest_part(self))
 	return tree
@@ -2655,6 +2685,6 @@ func clone():
 			"st_left", "st_pending", "st_made",
 			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result", "sp_held", "sp_acts",
 			"riders", "sp_ride", "sp_stairs", "sp_watch", "st_veh", "sp_spans", "tool_n", "carried", "busy", "cause_of", "cause_s",
-			"slip_s", "lab_q", "lab_s", "wo", "wo_no", "wo_rec", "wo_history", "wo_npc_done"]:
+			"slip_s", "lab_q", "lab_s", "jsa_of", "talked", "wo", "wo_no", "wo_rec", "wo_history", "wo_npc_done"]:
 		c.set(k, get(k).duplicate(true))
 	return c

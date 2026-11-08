@@ -12,6 +12,7 @@ extends RefCounted
 ## by §17.5's 32-bit arithmetic on 64-bit ints (the halves' product, which never passes 2^63).
 
 const Hands = preload("hands.gd")    # the hands-on engine's steps (REALISM.md §2.13)
+const Hse = preload("hse.gd")        # JSAs and toolbox talks (REALISM.md §8.6)
 const WorkOrders = preload("workorders.gd")    # work orders' steps and reactions (REALISM.md §2.20)
 
 const DAY := 864000
@@ -2272,11 +2273,20 @@ func run(e, pi: int, cur: Dictionary):
 			if st == "active_unack" or st == "cleared_unack":
 				e.npc_queue.append(["ack", a])
 		return "next"
-	if s.has("op") or s.has("permit") or s.has("wo"):
+	if s.has("op") or s.has("permit") or s.has("jsa") or s.has("talk") or s.has("wo"):
 		if not x.get("busy", false):
 			if s.has("op"):
 				var o: Dictionary = s["op"]
 				e.npc_queue.append(["op", o["kks"], o["do"], o.get("value"), o.get("trip"), o["where"], pid])
+			elif s.has("jsa") or s.has("talk"):
+				# REALISM.md §8.6: an NPC's JSA is the work's own list, its talk's points the job's hazards
+				var k := "jsa" if s.has("jsa") else "talk"
+				var w = cur["work"] if s[k] == "$" else s[k]
+				var own: Array = Hse.own(e, w)
+				if k == "jsa":
+					e.npc_queue.append(["jsa", w, own[0], own[1], pid])
+				else:
+					e.npc_queue.append(["talk", w, own[0], pid])
 			elif s.has("wo"):           # a work order's action (REALISM.md §2.20): without data, the defaults in step 1
 				var w = cur["work"] if s["wo"]["work"] == "$" else s["wo"]["work"]
 				var dd = s["wo"].get("data")
@@ -3819,6 +3829,21 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 			if typeof(r) == TYPE_STRING and r == "wait" and _first_look(x) \
 					and early_done(e, pi, cur, "permit", [w, a], null, slot):
 				r = "next"
+		elif s.has("jsa") or s.has("talk"):
+			# REALISM.md §8.6: their own JSA of the work (made now or before: the work's JSA is theirs), or their own
+			# talk for it done in this step
+			var k := "jsa" if s.has("jsa") else "talk"
+			var w = cur["work"] if s[k] == "$" else s[k]
+			if k == "jsa":
+				if e.jsa_of.has(w) and _same(e.jsa_of[w][2], pid):
+					r = "next"
+			else:
+				for j in mine.size():
+					var y: Array = mine[j]
+					if not took.has(j) and y[1] == "talk" and _same(y[2], w) and _same(y[4], pid) and y[5] == "done":
+						took[j] = true
+						r = "next"
+						break
 		elif s.has("wo"):               # REALISM.md §2.20: that action on that work, from the panel (any data)
 			var w = cur["work"] if s["wo"]["work"] == "$" else s["wo"]["work"]
 			var a: String = s["wo"]["action"]

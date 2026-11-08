@@ -147,6 +147,8 @@ static func reason_text(e, work: Dictionary, why: String, point := -1, state := 
 			return "it is not locked"
 		"owner":
 			return "it is another person's lock: only whoever placed it removes it (a supervisor may, by authority)"
+		"jsa":
+			return "it has no job safety analysis yet: a supervisor makes it first (Job safety analysis, on the form)"
 	var x := isolation_of(e, work)
 	if point >= 0 and point < x.get("points", []).size():
 		return "not safe to lock yet: %s" % String(x["points"][point]["how"]).to_lower()
@@ -163,7 +165,7 @@ static func replay(e) -> Dictionary:
 	var count := 0
 	for i in e.events.size():
 		var ev: Array = e.events[i]
-		if not is_permit_event(ev):
+		if not is_permit_event(ev) and not is_hse_event(ev):
 			continue
 		var wid := str(ev[2])
 		var before: int = st.get(wid, 0)
@@ -242,12 +244,68 @@ static func event_text(e, ev: Array, ctx := []) -> String:
 	return "%s %s: not a point of this plant" % [ev[1].capitalize(), where]
 
 
-## Every event of one work (its permit, its locks), in order: [[step, text, refused]].
+## Every event of one work (its permit, its locks, its JSAs and toolbox talks), in order: [[step, text, refused]].
 static func history(e, wid: String) -> Array:
 	var out := []
 	var ctx := replay(e)
 	for i in e.events.size():
 		var ev: Array = e.events[i]
-		if is_permit_event(ev) and typeof(ev[2]) == TYPE_STRING and ev[2] == wid:
+		if ev.size() < 6 or typeof(ev[2]) != TYPE_STRING or ev[2] != wid:
+			continue
+		if is_permit_event(ev):
 			out.append([int(ev[0]), event_text(e, ev, ctx[i]), ev[5] != "done"])
+		elif is_hse_event(ev):
+			out.append([int(ev[0]), hse_text(e, ev, ctx.get(i, [])), hse_result(ev) != "done"])
 	return out
+
+
+# ------------------------------------------------------------------ JSAs and toolbox talks (REALISM.md §8.6)
+
+## A JSA or toolbox talk event (§8.6): [n, "jsa", work, hazards, controls, person, result, reasons] or [n, "talk",
+## work, points, person, result, reasons, attendees].
+static func is_hse_event(ev: Array) -> bool:
+	return ev[1] == "jsa" or ev[1] == "talk"
+
+
+static func hse_result(ev: Array) -> String:
+	return str(ev[6] if ev[1] == "jsa" else ev[5])
+
+
+## A hazard's, control's or job's title in hse.json (kind "h", "c" or "j"), else the id.
+static func hse_title(e, kind: String, id) -> String:
+	if e.m.hse == null:
+		return str(id)
+	return e.m.hse["titles"].get("%s:%s" % [kind, str(id)], str(id))
+
+
+## The work's own list (§8.6): [hazard ids, control ids], or [] for a work without `jsa`.
+static func own_list(e, wid: String) -> Array:
+	if e.m.hse == null or not e.m.work_ix.has(wid) or not e.m.works[e.m.work_ix[wid]].has("jsa"):
+		return []
+	return e.m.hse["own"][e.m.works[e.m.work_ix[wid]]["jsa"]]
+
+
+## A JSA or talk event in words, for the form's history and the debrief.
+static func hse_text(e, ev: Array, ctx := []) -> String:
+	var wid = ev[2]
+	var w: Dictionary = e.m.works[e.m.work_ix[wid]] if typeof(wid) == TYPE_STRING and e.m.work_ix.has(wid) else {}
+	var title: String = w.get("title", str(wid))
+	var then: int = ctx[1] if not ctx.is_empty() else -1
+	var jsa: bool = ev[1] == "jsa"
+	var who: String = person_words(e, ev[5] if jsa else ev[4])
+	var res := hse_result(ev)
+	if res == "unknown":
+		return "%s %s: not one this plant can take (a work without a JSA, or hazards and controls it doesn't have)" % [
+				"JSA" if jsa else "Toolbox talk", title]
+	if res == "refused":
+		var why := PackedStringArray()
+		for r in (ev[7] if jsa else ev[6]):
+			why.append(reason_text(e, w, String(r), -1, then) if not w.is_empty() else String(r))
+		return "%s for %s by %s refused (%s)" % ["JSA" if jsa else "Toolbox talk", title, who, "; ".join(why)]
+	if jsa:
+		return "JSA for %s by %s: %d hazards, %d controls" % [title, who, (ev[3] as Array).size(), (ev[4] as Array).size()]
+	var names := PackedStringArray()
+	for pid in ev[7]:
+		names.append(person_words(e, pid))
+	return "Toolbox talk for %s by %s: %d points; attended by %s" % [title, who, (ev[3] as Array).size(),
+			", ".join(names) if not names.is_empty() else "nobody"]

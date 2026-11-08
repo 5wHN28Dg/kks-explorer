@@ -13,6 +13,7 @@ extends RefCounted
 const JsonStrict = preload("json_strict.gd")
 const Staff = preload("staff.gd")
 const World = preload("world.gd")
+const Hse = preload("hse.gd")
 
 const STATELESS := ["const", "state", "of", "sum", "product", "min", "max", "diff", "select", "cmp", "and", "or", "not"]
 const STATEFUL := ["lag", "ramp", "integrate", "latch", "delay", "timer", "wrap", "hold", "draw", "wear", "count",
@@ -45,6 +46,7 @@ var procedures := {}                  # id -> procedure, in file-name order
 var staff = null                      # sim/staff.gd: staff.json (§16), or null
 var weather = null                    # weather.json (REALISM.md §5.1), or null
 var tools = null                      # tools.json (REALISM.md §2.3): {list, ix: id -> index, at: per tool [[place, count]]}
+var hse = null                        # hse.json (REALISM.md §8.6): {hazard_ix, control_ix, own: job -> [hazards, controls]}
 var hands: Array = []                 # hand actions (REALISM.md §2.4), joined in area order
 var hands_ix := {}                    # "code|action" -> hand action
 var meters: Array = []                # meters (REALISM.md §2.5)
@@ -125,7 +127,8 @@ static func is_num(x) -> bool:
 static func from_dir(path: String):
 	var files := {}
 	var top := path.trim_suffix("/")
-	for rel in ["plant.json", "kit.json", "sounds.json", "staff.json", "weather.json", "tools.json", "workorders.json"]:
+	for rel in ["plant.json", "kit.json", "sounds.json", "staff.json", "weather.json", "tools.json", "hse.json",
+			"workorders.json"]:
 		if FileAccess.file_exists(top + "/" + rel):
 			files[rel] = FileAccess.get_file_as_bytes(top + "/" + rel)
 	for sub in ["areas", "model", "scenarios", "procedures"]:
@@ -245,6 +248,24 @@ func _load(files: Dictionary) -> void:
 		_load_tools(_read(files, "tools.json"))
 		if error != "":
 			return
+	if hse == null and (not files.has("hse.json") or files["hse.json"] == null):
+		for w in works:
+			if w.has("jsa"):
+				_fail("work %s: a job kind, and the plant has no hse.json" % str(w.get("id")))
+				return
+	if files.has("hse.json") and files["hse.json"] != null:
+		# the JSAs' hazard library (REALISM.md §8.6, milestone HS1): only in a version 2 plant with staff.json
+		if version != 2 or staff == null:
+			_fail("hse.json: only in a version 2 plant with staff.json")
+			return
+		hse = Hse.read_library(_read(files, "hse.json"))
+		if hse == null:
+			_fail("hse.json: a library the engine can't read")
+			return
+		for w in works:
+			if w.has("jsa") and (typeof(w["jsa"]) != TYPE_STRING or not hse["own"].has(w["jsa"])):
+				_fail("work %s: a job kind hse.json doesn't have" % str(w.get("id")))
+				return
 	_check_hands()
 	if error != "":
 		return

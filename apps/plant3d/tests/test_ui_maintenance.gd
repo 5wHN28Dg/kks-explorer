@@ -145,6 +145,44 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 		b.pressed.emit()
 		ui._place_tick()
 		return true
+	elif s.has("call"):
+		# a call on the radio (HS1: the technician calls a maintenance supervisor for the job's toolbox talk)
+		var key := "%d/%d/call" % [cur["order"], cur["step"]]
+		if _pressed.get(key, -1000) > e.step_no - 50:
+			return false
+		_pressed[key] = e.step_no
+		_fresh(ui)
+		var b := App.find_button(ui.crew, "Call")
+		if b == null:
+			log.append("a call step offers no Call: %s" % App.texts(ui.crew).left(300))
+			return false
+		b.pressed.emit()
+		return true
+	elif s.has("jsa") or s.has("talk"):
+		# the JSA or the toolbox talk on the permit form (REALISM.md §8.6): the job's own list picked
+		var k := "jsa" if s.has("jsa") else "talk"
+		var key := "%d/%d/%s" % [cur["order"], cur["step"], k]
+		if _pressed.get(key, -1000) > e.step_no - 50:
+			return false
+		_pressed[key] = e.step_no
+		var w = cur["work"] if s[k] == "$" else s[k]
+		ui.open_permits(w)
+		var pm = ui.permits
+		pm._sig = ""
+		pm.refresh()
+		var err := _press(pm, "make_jsa" if k == "jsa" else "give_talk")
+		var own: Array = e.m.hse["own"][e.m.works[e.m.work_ix[w]]["jsa"]]
+		if err == "":
+			for h in own[0]:
+				(pm.body.find_child("hz_" + h, true, false) as CheckBox).button_pressed = true
+			if k == "jsa":
+				for c in own[1]:
+					(pm.body.find_child("cs_" + c, true, false) as CheckBox).button_pressed = true
+			err = _press(pm, "send_pick")
+		if err != "":
+			log.append(err)
+		ui.close_permits()
+		return err == ""
 	elif s.has("choose"):
 		e.pick(0)
 		return true

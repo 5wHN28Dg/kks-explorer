@@ -18,6 +18,7 @@ const SimClock = preload("res://ui/sim_clock.gd")
 const Tracker = preload("res://ui/procedure_tracker.gd")
 const W = preload("res://ui/widgets.gd")
 const Pendant = preload("res://ui/pendant.gd")
+const Hse = preload("res://sim/hse.gd")
 
 const INTERVAL := 5.0           # seconds of real time between saves while the run changes
 
@@ -379,6 +380,34 @@ static func _wo_record_ok(r, works: Dictionary, work) -> bool:
 ## (-1 none), the locker holding a phone left (a locker place while it is left, else -1), the noticing streams never
 ## 0 (they would never move again), and each person's observers by Vector2i(reaction, act kind 3 or 4) with the step
 ## each notices.
+## JSAs and the talks' attendance (REALISM.md §8.6): works with a job kind, hazards and controls of hse.json without
+## repeats, attendees who are people of the staff, in order. "" when it fits.
+static func _hse_contents(fresh, d: Dictionary) -> String:
+	var lib = fresh.m.hse
+	if d.has("jsa_of"):
+		for wid in d["jsa_of"]:
+			var j = d["jsa_of"][wid]
+			if lib == null or typeof(wid) != TYPE_STRING or not fresh.m.work_ix.has(wid) \
+					or not fresh.m.works[fresh.m.work_ix[wid]].has("jsa") or typeof(j) != TYPE_ARRAY or j.size() != 3 \
+					or not Hse._ids(j[0], lib["hazard_ix"], 1, Hse.JSA_HAZARDS) \
+					or not Hse._ids(j[1], lib["control_ix"], 0, Hse.JSA_CONTROLS) \
+					or not (typeof(j[2]) == TYPE_NIL or typeof(j[2]) == TYPE_STRING and fresh._sm != null and fresh._sm.person_ix.has(j[2])):
+				return "a JSA the content doesn't have"
+	if d.has("talked"):
+		var n: int = fresh._sm.people.size() if fresh._sm != null else 0
+		for wid in d["talked"]:
+			var a = d["talked"][wid]
+			if lib == null or typeof(wid) != TYPE_STRING or not fresh.m.work_ix.has(wid) \
+					or not fresh.m.works[fresh.m.work_ix[wid]].has("jsa") or typeof(a) != TYPE_ARRAY or a.is_empty():
+				return "a toolbox talk's attendance the content doesn't have"
+			var last := -1
+			for i in a:
+				if typeof(i) != TYPE_INT or i <= last or i >= n:
+					return "a toolbox talk's attendance the content doesn't have"
+				last = i
+	return ""
+
+
 static func _audio_contents(fresh, d: Dictionary) -> String:
 	for k in ["sp_music", "sp_phone", "sp_told", "sp_held_to", "sp_locker", "sp_aud", "sp_watch"]:
 		if d.has(k) and d[k].size() != fresh.get(k).size():
@@ -453,7 +482,8 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 				"permit": [4], "lock": [4], "unlock": [4], "remove_lock": [5, 6], "role": [2], "release": [1],
 				"task_ack": [1], "arrive": [2], "leave": [2], "read": [3, 4], "say": [3], "pick": [2], "call": [4],
 				"jump": [2], "ppe": [3], "zone": [3], "stop": [2], "board": [3], "alight": [3],
-				"get_on": [2], "drive": [3, 4], "weather": [2], "tool": [4], "hand": [6], "audio": [2], "phone": [2], "wo": [5]}
+				"get_on": [2], "drive": [3, 4], "weather": [2], "tool": [4], "hand": [6], "audio": [2], "phone": [2],
+				"jsa": [5], "talk": [4], "wo": [5]}
 		for q0 in d["queue"]:
 			var q = q0
 			# a session run's inputs end with their slot (§17.13): looked at without it
@@ -507,6 +537,9 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 	var hw := _hands_contents(fresh, d)
 	if hw != "":
 		return hw
+	var sw := _hse_contents(fresh, d)
+	if sw != "":
+		return sw
 	var wow := _wo_contents(fresh, d)
 	if wow != "":
 		return wow
