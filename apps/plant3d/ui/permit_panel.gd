@@ -570,7 +570,7 @@ func _hse(e, w: Dictionary, st: int) -> void:
 		body.add_child(l)
 	if st in Hse.JSA_STATES:
 		var b := W.button("Make the JSA" if j == null else "Make the JSA again", open_pick.bind("jsa"))
-		b.name = "do_jsa"
+		b.name = "make_jsa"
 		b.disabled = results.get(str([wid, "jsa"]), {}).get("state", "") == "sent"
 		body.add_child(b)
 	body.add_child(W.label("Toolbox talk", 20))
@@ -586,7 +586,7 @@ func _hse(e, w: Dictionary, st: int) -> void:
 		body.add_child(l)
 	if st in Hse.TALK_STATES:
 		var b := W.button("Give the toolbox talk here", open_pick.bind("talk"))
-		b.name = "do_talk"
+		b.name = "give_talk"
 		b.disabled = j == null or results.get(str([wid, "talk"]), {}).get("state", "") == "sent"
 		body.add_child(b)
 		if j == null:

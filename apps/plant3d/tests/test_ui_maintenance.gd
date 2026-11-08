@@ -170,7 +170,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 		var pm = ui.permits
 		pm._sig = ""
 		pm.refresh()
-		var err := _press(pm, "do_" + k)
+		var err := _press(pm, "make_jsa" if k == "jsa" else "give_talk")
 		var own: Array = e.m.hse["own"][e.m.works[e.m.work_ix[w]]["jsa"]]
 		if err == "":
 			for h in own[0]:

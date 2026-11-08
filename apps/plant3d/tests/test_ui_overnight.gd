@@ -103,7 +103,7 @@ func _overnight(tree: SceneTree) -> Array:
 		return [why]
 	var ui = main.ui
 	var e = ui.clock.engine
-	_until(ui, 15, 40)
+	_until(ui, 15, 10)     # (HS1: the JSA and the toolbox talk come first)
 	var p := _form(ui, CAL, ["request", "approve"])
 	# the I&C technician locks the transmitter's root valve (an NPC's input, as its step 9 makes it)
 	e.npc_queue.append(["lock", CAL, 0, "ic1"])
@@ -161,7 +161,7 @@ func _colleague(tree: SceneTree) -> Array:
 		return [why]
 	var ui = main.ui
 	var e = ui.clock.engine
-	_until(ui, 15, 40)
+	_until(ui, 15, 10)     # (HS1: the JSA and the toolbox talk come first)
 	var p := _form(ui, CAL, ["request", "approve"])
 	e.npc_queue.append(["lock", CAL, 0, "ic2"])      # the isolating technician's lock, as their step 9 makes it
 	ui.clock.run_steps(2)

@@ -250,7 +250,7 @@ static func history(e, wid: String) -> Array:
 	var ctx := replay(e)
 	for i in e.events.size():
 		var ev: Array = e.events[i]
-		if typeof(ev[2]) != TYPE_STRING or ev[2] != wid:
+		if ev.size() < 6 or typeof(ev[2]) != TYPE_STRING or ev[2] != wid:
 			continue
 		if is_permit_event(ev):
 			out.append([int(ev[0]), event_text(e, ev, ctx[i]), ev[5] != "done"])

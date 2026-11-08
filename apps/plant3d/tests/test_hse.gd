@@ -81,7 +81,7 @@ func _form(tree: SceneTree, ui) -> Array:
 			p.append("the form lacks %s: %s" % [want, txt.left(400)])
 	var sent: Array = []
 	ui.inputs.sink = func(item): sent.append(item)
-	var b = pm.body.find_child("do_jsa", true, false)
+	var b = pm.body.find_child("make_jsa", true, false)
 	if not b is Button or b.disabled:
 		ui.inputs.sink = Callable()
 		return p + ["no Make the JSA on the form: %s" % txt.left(300)]
@@ -105,7 +105,7 @@ func _form(tree: SceneTree, ui) -> Array:
 	if str(sent) != str([["jsa", WORK, ["rotating", "pinch"], ["loto", "guards"], null]]):
 		p.append("the JSA sent %s" % str(sent))
 	ui.inputs.sink = Callable()
-	if not pm.pick.is_empty() or pm.body.find_child("do_jsa", true, false) == null:
+	if not pm.pick.is_empty() or pm.body.find_child("make_jsa", true, false) == null:
 		p.append("after sending, the form is not back")
 	# for real: the JSA made (no permit yet: state 0 takes one), the permit requested, the talk's picker marks it
 	ui.inputs.jsa(WORK, ["rotating", "pinch"], ["loto", "guards"], null)
@@ -113,7 +113,7 @@ func _form(tree: SceneTree, ui) -> Array:
 	ui.clock.run_steps(1)
 	ui._sync_events()
 	pm.refresh()
-	var t = pm.body.find_child("do_talk", true, false)
+	var t = pm.body.find_child("give_talk", true, false)
 	if not t is Button or t.disabled:
 		return p + ["no Give the toolbox talk once the JSA is made and the permit requested: %s" % App.texts(pm.body).left(300)]
 	t.pressed.emit()

@@ -166,9 +166,9 @@ func run(tree: SceneTree) -> Array:
 	if e.pstate[e.m.work_ix[WORK]] != 3 or not pm.feedback.text.contains("no job safety analysis"):
 		p.append("an issue without a JSA was not refused in words: %d, %s" % [e.pstate[e.m.work_ix[WORK]],
 				pm.feedback.text])
-	if _button(pm, "do_talk") == null or not _button(pm, "do_talk").disabled:
+	if _button(pm, "give_talk") == null or not _button(pm, "give_talk").disabled:
 		p.append("the toolbox talk is offered before the JSA")
-	err = _press(pm, "do_jsa")
+	err = _press(pm, "make_jsa")
 	if err == "":
 		for n in ["hz_rotating", "hz_noise", "cs_loto"]:
 			var c = pm.body.find_child(n, true, false)
