@@ -142,6 +142,7 @@ func run(tree: SceneTree) -> Array:
 	check(not ws.panels.step_layer.visible, "the step words' layer hides when the Workshop closes")
 	await _turbine(tree, ws)
 	await _gas_turbine(tree, ws)
+	await _gas_turbine_walk(tree, ws)
 	main.free()
 	return p
 
@@ -382,6 +383,45 @@ func _gas_turbine(tree: SceneTree, ws) -> void:
 	ws.set_slider(0.5)
 	check(ws.s == 0.5 and ws.note == "", "at rest, the gas turbine is taken apart again: %s" % ws.note)
 	ws.reset()
+	ws.close()
+	await ws.left
+
+## The Workshop walk's running part on the gas turbine (app/workshop_walk.gd, as measured on the Note 9 with
+## `bench_speed=20`, at 60 frames a second): started once assembled again at 118 s, run up by the plant's sequence
+## (the clock's 4 steps a frame at most), each fault made and repaired, Stop.
+func _gas_turbine_walk(tree: SceneTree, ws) -> void:
+	ws.open("gas_turbine")
+	if not await _wait_shown(tree, ws):
+		check(false, "the gas turbine's Workshop did not show for the walk")
+		return
+	var c = ws.bench
+	var had: Dictionary = ws.main.opts.duplicate()
+	ws.main.opts["bench_speed"] = "20"
+	var W = load("res://app/workshop_walk.gd")
+	var walk = W.new()
+	walk.main = ws.main
+	walk.ws = ws
+	walk.kind = "gas_turbine"
+	walk._bench_ready()
+	walk.running = true
+	walk.t = W.PILE[1] - 0.01
+	var dt := 1.0 / 60.0
+	var at_faults := ""
+	var started := false
+	while walk.t < 178.0:
+		walk._process(dt)
+		ws.apply()
+		ws._run(dt)
+		started = started or c.machine_state("turbine") == "crank"
+		if at_faults == "" and walk.t >= 155.0:
+			at_faults = c.machine_state("turbine")
+	check(started, "the walk starts the gas turbine once it stands assembled again")
+	check(at_faults in ["accel_sfc_off", "fsnl", "loaded"], "the walk runs it up by the plant's sequence before the faults: %s" % at_faults)
+	check(walk._made.size() == c.m.faults.size(), "the walk makes each of its %d faults (%d)" % [c.m.faults.size(), walk._made.size()])
+	check(c.machine_state("turbine") in ["trip", "coastdown", "standstill"] and c.now("fuel_flow") == 0.0,
+		"and stops it: %s" % c.machine_state("turbine"))
+	walk.free()
+	ws.main.opts = had
 	ws.close()
 	await ws.left
 

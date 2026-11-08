@@ -128,13 +128,40 @@ func _switch_on() -> void:
 		if on:
 			ws.run_op(o.at, o.do)
 
-## Each set op's slider swept over its range (a slow sine, a period of 40 s), from its low end.
+## Each set op's slider swept over its range (a slow sine, a period of 40 s), from its low end; a slider whose value
+## a machine's states set (the sequence owns it: a turbine's speed bias, zeroed at standstill) only while each machine
+## that sets it waits for the trainee (a state whose next steps read only values ops set: full speed no load, where
+## the bias slips the phase into the synchronising window). Swept from the start, the bias kept the gas turbine's
+## cranking short of the speed its sequence waits for (K5b).
 func _bench_sweep() -> void:
 	for o in _ops:
-		if o.get("do") == "set" and o.has("range"):
+		if o.get("do") == "set" and o.has("range") and _sweep_now(String(o.input)):
 			var lo: float = float(o.range[0])
 			var hi: float = float(o.range[1])
 			ws.bench.op_set(o.at, lo + (hi - lo) * (0.5 - 0.5 * cos(t * TAU / 40.0)))
+
+## Whether the slider of `input` may be swept now (_bench_sweep).
+func _sweep_now(input: String) -> bool:
+	var by_op := {}
+	for o in _ops:
+		for k in o.get("set", {}):
+			by_op[k] = true
+	for mc in ws.bench.m.machines:
+		var owns := false
+		for sd in mc.states:
+			owns = owns or sd.get("set", {}).has(input)
+		if not owns:
+			continue
+		var st: String = ws.bench.machine_state(String(mc.id))
+		for sd in mc.states:
+			if String(sd.id) != st:
+				continue
+			if st == String(mc.init) or sd.get("next", []).is_empty():
+				return false
+			for nx in sd.get("next", []):
+				if not by_op.has(String(nx[0])):
+					return false
+	return true
 
 func _process(delta: float) -> void:
 	if not running or done:
