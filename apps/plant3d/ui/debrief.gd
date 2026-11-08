@@ -69,6 +69,9 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 	# personal audio over the whole run (REALISM.md §8.5): the ladder counts every stop, before a procedure began too
 	var pa := personal_audio(my_id, engine.events, to)
 	sm["audio"] = pa
+	# JSAs and toolbox talks over the whole run (REALISM.md §8.6): each against the job's own list
+	var hs := hse_review(engine, my_id, engine.events, to)
+	sm["hse"] = hs
 	sm["audio_ds"] = maxi(1, int(engine._ds)) if engine._sm != null else 1
 	var begun := {}                     # the trainee's task id -> instances begun and not yet ended (the role tab)
 	var by_instructor := {}             # "fault|id" or "repair|id" -> the step of the instructor's input
@@ -264,6 +267,17 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 						W.model_time(int(ev[6]))]
 				e.dev = "done out of order: before its step was current"
 				sm.early += 1
+			"jsa", "talk":
+				# a JSA made or a toolbox talk given (REALISM.md §8.6): against the job's own list, the player's own
+				# marked when it falls short
+				var wid = ev[2]
+				var wd: Dictionary = m.works[m.work_ix[wid]] if typeof(wid) == TYPE_STRING and m.work_ix.has(wid) else {}
+				e.code = String(wd.get("kks", ""))
+				e.text = Permits.hse_text(engine, ev, then.get(i, []))
+				if hs["at"].has(i):
+					e.text += ". " + String(hs["at"][i][0])
+					if hs["at"][i][1]:
+						e.dev = String(hs["at"][i][0])
 			"permit", "lock", "unlock", "remove_lock":
 				var wid = ev[2]
 				var wd: Dictionary = m.works[m.work_ix[wid]] if typeof(wid) == TYPE_STRING and m.work_ix.has(wid) else {}
@@ -280,6 +294,10 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 					sm.by_authority += 1
 				if ev[1] == "permit" and ev[5] == "done" and not wd.is_empty():
 					sm.permits[wid] = int(ev[6][0]) if ev[3] == "auto" else Permits.ACTIONS_TO.get(ev[3], 0)
+				if hs["at"].has(i):     # a job started without a toolbox talk (REALISM.md §8.6)
+					e.text += " (%s)" % String(hs["at"][i][0])
+					if hs["at"][i][1]:
+						e.dev = String(hs["at"][i][0])
 			"machine":
 				var mi: int = info.machine_index(ev[2])
 				var say := ""
@@ -491,6 +509,7 @@ static func summary_lines(d: Dictionary) -> PackedStringArray:
 		out.append("Safety: your unsafe acts %d%s; work you stopped %d" % [sm.unsafe,
 				(" (%d stopped by HSE)" % sm.stops_of_me) if sm.stops_of_me > 0 else "", sm.stops_made])
 	out.append_array(audio_lines(sm.get("audio", {}), sm.get("audio_ds", 1)))
+	out.append_array(hse_lines(sm.get("hse", {})))
 	if sm.early > 0:
 		out.append("Done out of order: %d (made before their task step, counted when it came)" % sm.early)
 	var dl: Array = sm.get("drive_log", [])
@@ -571,6 +590,107 @@ static func safety_text(sm, ev: Array) -> String:
 		return "Work stopped by %s: %s, %s" % [who.call(ev[2]), who.call(ev[3]), what.call(ev[4], ev[5])]
 	return "Stop refused (%s): %s by %s" % [", ".join(ev[7].map(func(x): return {"authority": "no authority to stop "
 			+ "work", "no_act": "no unsafe act going on"}.get(x, str(x)))), who.call(ev[3]), who.call(ev[2])]
+
+
+# ------------------------------------------------------------------ JSAs and toolbox talks (REALISM.md §8.6)
+
+## The run's JSAs and toolbox talks before `to`, each against the work's own list (the job's hazards and the
+## controls that answer them): {jsas, mine, missed (the job's hazards the player's JSAs left out), lacking (its
+## controls they left out), talks, no_talk (jobs accepted by someone not at a talk of that permit), no_talk_me, at:
+## event index -> [words, the player's own and falling short]}. A permit's close or cancel ends its JSA and its
+## talks' attendance (as the engine does). The player's own: their person's, or in free mode (no person) those made
+## with none.
+static func hse_review(engine, me_id, evs: Array, to: int) -> Dictionary:
+	var out := {"jsas": 0, "mine": 0, "missed": 0, "lacking": 0, "talks": 0, "no_talk": 0, "no_talk_me": 0, "at": {}}
+	if engine.m.hse == null:
+		return out
+	var att := {}           # work -> {person id: true}: who attended its permit's talks
+	var made := {}          # work -> the hazards of its permit's JSA
+	for i in mini(to, evs.size()):
+		var ev: Array = evs[i]
+		if ev[1] == "jsa" and ev[6] == "done":
+			var own: Array = Permits.own_list(engine, str(ev[2]))
+			if own.is_empty():
+				continue
+			out.jsas += 1
+			made[ev[2]] = ev[3]
+			var missed := PackedStringArray()
+			for h in own[0]:
+				if not (ev[3] as Array).has(h):
+					missed.append(Permits.hse_title(engine, "h", h))
+			var extra := 0
+			for h in ev[3]:
+				if not (own[0] as Array).has(h):
+					extra += 1
+			var lack := PackedStringArray()
+			for c in own[1]:
+				if not (ev[4] as Array).has(c):
+					lack.append(Permits.hse_title(engine, "c", c))
+			var mine: bool = typeof(ev[5]) == typeof(me_id) and ev[5] == me_id
+			if mine:
+				out.mine += 1
+				out.missed += missed.size()
+				out.lacking += lack.size()
+			var words := "every hazard of the job and its controls" if missed.is_empty() and lack.is_empty() else ""
+			if not missed.is_empty():
+				words = "hazards of the job missed: %s" % "; ".join(missed)
+			if not lack.is_empty():
+				words += ("; " if words != "" else "") + "controls missing: %s" % "; ".join(lack)
+			if extra > 0:
+				words += "; %d named that the job doesn't have" % extra
+			out.at[i] = [words, mine and (not missed.is_empty() or not lack.is_empty())]
+		elif ev[1] == "talk" and ev[5] == "done":
+			var own: Array = Permits.own_list(engine, str(ev[2]))
+			if own.is_empty():
+				continue
+			out.talks += 1
+			if not att.has(ev[2]):
+				att[ev[2]] = {}
+			for pid in ev[7]:
+				att[ev[2]][pid] = true
+			var j: Array = made.get(ev[2], [])
+			var of_jsa := 0
+			for h in j:
+				if (ev[3] as Array).has(h):
+					of_jsa += 1
+			var missed := PackedStringArray()
+			for h in own[0]:
+				if not (ev[3] as Array).has(h):
+					missed.append(Permits.hse_title(engine, "h", h))
+			var mine: bool = typeof(ev[4]) == typeof(me_id) and ev[4] == me_id
+			var words := "points: %d of the JSA's %d hazards, %d of the job's %d" % [of_jsa, j.size(),
+					own[0].size() - missed.size(), own[0].size()]
+			if not missed.is_empty():
+				words += " (left out: %s)" % "; ".join(missed)
+			out.at[i] = [words, mine and not missed.is_empty()]
+		elif ev[1] == "permit" and ev[5] == "done" and typeof(ev[2]) == TYPE_STRING:
+			if ev[3] == "close" or ev[3] == "cancel":
+				att.erase(ev[2])
+				made.erase(ev[2])
+			elif ev[3] == "accept" and not Permits.own_list(engine, ev[2]).is_empty() \
+					and not att.get(ev[2], {}).has(ev[4]):
+				out.no_talk += 1
+				var mine: bool = typeof(ev[4]) == typeof(me_id) and ev[4] == me_id
+				if mine:
+					out.no_talk_me += 1
+				out.at[i] = ["started without a toolbox talk: an unsafe-act observation" if mine else
+						"started without a toolbox talk", mine]
+	return out
+
+
+## The JSAs and talks in a line or two ("" when the run had none).
+static func hse_lines(h: Dictionary) -> PackedStringArray:
+	var out := PackedStringArray()
+	if h.is_empty() or h.get("jsas", 0) == 0 and h.get("talks", 0) == 0 and h.get("no_talk", 0) == 0:
+		return out
+	var yours := ""
+	if h.mine > 0:
+		yours = " (yours %d: %d hazards of the job missed, %d controls missing)" % [h.mine, h.missed, h.lacking]
+	out.append("JSAs: %d made%s; toolbox talks: %d" % [h.jsas, yours, h.talks])
+	if h.no_talk > 0:
+		out.append("Jobs started without a toolbox talk: %d%s" % [h.no_talk,
+				(" (%d of them yours: unsafe-act observations, as HS7's are logged)" % h.no_talk_me) if h.no_talk_me > 0 else ""])
+	return out
 
 
 # ------------------------------------------------------------------ personal audio (REALISM.md §8.5)

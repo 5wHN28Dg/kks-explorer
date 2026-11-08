@@ -1865,7 +1865,7 @@ talk is where the crew hears it, just before the work, and signs that they did.
 - **The digest** gains, with hse.json, per work with `jsa` in model order: whether it has a JSA, its hazards' and
   controls' indices in hse.json, its person's index (−1 for none or free mode), and the attendance's person indices
   in order. The snapshot gains `hse`: `{work: {"jsa": [hazards, controls, person], "talk": [persons]}}` for the works
-  with a JSA or attendance.
+  with a JSA or attendance, once there is one (so the first train's free-play snapshots stay as they were).
 - **The first train** (content, `tools/plant3d/train_hse.py`): a library of the hazards and controls its jobs meet
   (rotating parts, stored electrical energy, pressure and heat left in the line, hot surfaces, work at height,
   lifting, manual handling, chemicals of the water treatment plant, a process trip from an instrument job, noise,

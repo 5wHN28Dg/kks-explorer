@@ -128,8 +128,8 @@ def attendees(e, person):
     """The people at the giver's talk (§8.6), in people order: the giver and everyone else on duty at a place of the
     room of the giver's place; at a place of no room, at that same place; the giver at no place, the giver alone."""
     sr = e.staff
-    if not isinstance(person, str) or person not in sr.st.person_ix:
-        return []
+    if sr is None or not isinstance(person, str) or person not in sr.st.person_ix:
+        return []           # (a scenario without staff, or free mode: nobody)
     g = sr.people[sr.st.person_ix[person]]
     if g.pos is None:
         return [g.i]
@@ -191,7 +191,7 @@ def digest_part(e):
             continue
         j = e.jsa_of.get(w['id'])
         pi = -1
-        if j is not None and isinstance(j[2], str) and j[2] in sr.st.person_ix:
+        if j is not None and sr is not None and isinstance(j[2], str) and j[2] in sr.st.person_ix:
             pi = sr.st.person_ix[j[2]]
         out.append([1 if j is not None else 0,
                     Packed(PACKED_INT32, [e.hse['hazard_ix'][h] for h in j[0]] if j else []),
@@ -213,4 +213,5 @@ def snapshot_part(e, s):
         if wid in e.talked:
             x['talk'] = [sr.people[i].id for i in e.talked[wid]]
         out[wid] = x
-    s['hse'] = out
+    if out:                 # (only once a work has a JSA or attendance: earlier snapshots stay as they were)
+        s['hse'] = out
