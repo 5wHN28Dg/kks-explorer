@@ -19,6 +19,7 @@ const W = preload("res://ui/widgets.gd")
 const Permits = preload("res://ui/permits.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const Hse = preload("res://sim/hse.gd")
+const InputCheck = preload("res://net/input_check.gd")
 
 var ui                          # ui/plant_ui.gd
 var body: VBoxContainer
@@ -142,6 +143,11 @@ func send_pick() -> void:
 		if pick["cs"].has(c):
 			cs.append(c)
 	var kind: String = pick["kind"]
+	# a session carries an input of at most 512 bytes (MULTIPLAYER.md §3.3): a longer one would be dropped unseen
+	var item := ["jsa", pick["work"], hz, cs, ui.me()] if kind == "jsa" else ["talk", pick["work"], hz, ui.me()]
+	if e.st_session and InputCheck.text(item).size() > InputCheck.MAX_BYTES:
+		ui.toast("Too many items for one input of a session (%d bytes at most): pick fewer" % InputCheck.MAX_BYTES)
+		return
 	if kind == "jsa":
 		ui.inputs.jsa(pick["work"], hz, cs, ui.me())
 	else:
@@ -321,6 +327,10 @@ func waiting_from(e) -> void:
 			var key := str([q[1], q[2]]) if q[0] == "permit" else str([q[1], q[0], q[2]])
 			_pending.append([key, q[0], q[1], q[2], e.step_no + 1])
 			results[key] = {"state": "sent", "text": "Sent: it takes effect when the plant runs"}
+		elif (q[0] == "jsa" or q[0] == "talk") and typeof(q[1]) == TYPE_STRING:     # (REALISM.md §8.6)
+			var hk := str([q[1], q[0]])
+			_pending.append([hk, q[0], q[1], q[0], e.step_no + 1])
+			results[hk] = {"state": "sent", "text": "Sent: it takes effect when the plant runs"}
 	_sig = ""
 
 

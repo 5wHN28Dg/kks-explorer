@@ -149,7 +149,10 @@ class Generated(unittest.TestCase):
         kinds = {k for s in job['steps'] for k in s}
         self.assertIn('hand', kinds)
         self.assertIn('tool', kinds)
-        self.assertEqual(job['steps'][0], {'go': 'ic_toolbox'})
+        # (its toolbox talk first, REALISM.md §8.6: a maintenance supervisor called to the workshop and met there)
+        self.assertEqual(job['steps'][:3], [{'call': {'role': 'maint_sup', 'task': 'talk_inst'}},
+                                            {'meet': {'room': 'workshop', 'with': ['maint_sup'], 'minutes': 5}},
+                                            {'go': 'ic_toolbox'}])
         works = {w['id']: w for w in self.st['works']}
         self.assertEqual(works['wo_cond_p2_fix']['repairs'], 'cond_p2_low')
         self.assertEqual(works['wo_cond_p2_fix']['task'], 'job_cond_p2_fix')

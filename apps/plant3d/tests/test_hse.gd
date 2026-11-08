@@ -14,6 +14,7 @@ const App = preload("res://tests/ui_app.gd")
 const Debrief = preload("res://ui/debrief.gd")
 const Permits = preload("res://ui/permits.gd")
 const RunSave = preload("res://ui/run_save.gd")
+const InputCheck = preload("res://net/input_check.gd")
 
 const WORK := "wo_cw_b_motor"      # a mechanical motor's bearings: motor_bearings
 
@@ -31,7 +32,23 @@ func run(tree: SceneTree) -> Array:
 	p += await _form(tree, ui)
 	p += _review(ui)
 	p += _saves(ui)
+	p += _forms()
 	main.free()
+	return p
+
+
+## A session carries the JSA and the talk (MULTIPLAYER.md §3.3): their lists of ids, nothing else in them.
+func _forms() -> Array:
+	var p: Array = []
+	var long := []
+	for k in 65:
+		long.append("h")
+	for x in [[["jsa", WORK, ["rotating"], [], null], true], [["jsa", WORK, ["rotating"], ["loto"], "ms_mech"], true],
+			[["talk", WORK, ["rotating"], null], true], [["jsa", WORK, [1], [], null], false],
+			[["jsa", WORK, "rotating", [], null], false], [["talk", WORK, long, null], false],
+			[["talk", WORK, [["x"]], null], false], [["jsa", WORK, ["rotating"], null], false]]:
+		if InputCheck.form_ok(x[0]) != x[1]:
+			p.append("the session's check of %s: %s" % [str(x[0]), not x[1]])
 	return p
 
 

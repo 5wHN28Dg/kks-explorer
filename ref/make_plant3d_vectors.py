@@ -916,6 +916,9 @@ def run_fork(base, actions, probes=()):
             asked_at.append(len(e.inputs))
         elif a[0] == 'permit':
             e.permit(a[1], a[2])
+        elif a[0] == 'jsa':           # the work's JSA in free mode, its own list (REALISM.md §8.6, milestone HS1)
+            from ref import plant3d_hse as HS
+            e.jsa(a[1], *HS.own(e, a[1]))
         elif a[0] in ('lock', 'unlock'):
             getattr(e, a[0])(a[1], a[2])
         elif a[0] == 'weather':       # the instructor's weather (REALISM.md §5.1; milestone WX2's forks)
@@ -1394,7 +1397,7 @@ def permit_run(work, isolate, work_s=60):
     the work, done, return, the points unlocked, close."""
     a = [('permit', work, 'request'), ('run', 1), ('permit', work, 'approve'), ('run', 1)]
     a += [('lock', work, i) for i in isolate] + [('run', 1)]
-    a += [('permit', work, 'issue'), ('permit', work, 'accept'), ('run', work_s), ('permit', work, 'done'),
+    a += [('jsa', work), ('permit', work, 'issue'), ('permit', work, 'accept'), ('run', work_s), ('permit', work, 'done'),
           ('run', 1), ('permit', work, 'return'), ('run', 1)]
     a += [('unlock', work, i) for i in isolate] + [('run', 1), ('permit', work, 'close'), ('run', 1)]
     return a
@@ -1411,7 +1414,7 @@ FORKS2 = [
       ('run', 1),
       ('op', CW_B, 'start', None, None), ('op', CW_B, 'reset', None, 'cw_b_trip_ol'),
       ('op', CW_B_V, 'set', 0.15, None), ('run', 1),
-      ('permit', 'wo_cw_b_motor', 'issue'), ('permit', 'wo_cw_b_motor', 'accept'), ('run', 60),
+      ('jsa', 'wo_cw_b_motor'), ('permit', 'wo_cw_b_motor', 'issue'), ('permit', 'wo_cw_b_motor', 'accept'), ('run', 60),
       ('permit', 'wo_cw_b_motor', 'done'), ('run', 1), ('permit', 'wo_cw_b_motor', 'return'), ('run', 1),
       ('unlock', 'wo_cw_b_motor', 0), ('unlock', 'wo_cw_b_motor', 1), ('run', 1),
       ('permit', 'wo_cw_b_motor', 'close'), ('run', 1),
@@ -1457,7 +1460,7 @@ FORKS2 = [
      [('fault', 'cw_b_motor'), ('run', 20), ('repair_under', 'cw_b_motor', 'wo_cw_b_motor'), ('run', 1),
       ('permit', 'wo_cw_b_motor', 'request'), ('run', 1), ('permit', 'wo_cw_b_motor', 'approve'), ('run', 1),
       ('lock', 'wo_cw_b_motor', 0), ('run', 90), ('lock', 'wo_cw_b_motor', 1), ('run', 1),
-      ('permit', 'wo_cw_b_motor', 'issue'), ('repair_under', 'cw_b_motor', 'wo_cw_b_motor'), ('run', 1),
+      ('jsa', 'wo_cw_b_motor'), ('permit', 'wo_cw_b_motor', 'issue'), ('repair_under', 'cw_b_motor', 'wo_cw_b_motor'), ('run', 1),
       ('permit', 'wo_cw_b_motor', 'accept'), ('repair_under', 'cw_b_motor', 'wo_cw_b_motor'), ('run', 60),
       ('permit', 'wo_cw_b_motor', 'done'), ('run', 1), ('permit', 'wo_cw_b_motor', 'return'), ('run', 1),
       ('unlock', 'wo_cw_b_motor', 0), ('unlock', 'wo_cw_b_motor', 1), ('run', 1),
