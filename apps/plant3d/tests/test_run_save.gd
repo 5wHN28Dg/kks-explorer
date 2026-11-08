@@ -16,6 +16,7 @@ const PlantModel = preload("res://sim/plant_model.gd")
 const PlantEngine = preload("res://sim/engine.gd")
 const Procedure = preload("res://sim/procedure.gd")
 const WoSim = preload("res://sim/workorders.gd")
+const WoPanel = preload("res://ui/wo_panel.gd")
 const RunSave = preload("res://ui/run_save.gd")
 const Autosave = preload("res://ui/autosave.gd")
 const App = preload("res://tests/ui_app.gd")
@@ -311,6 +312,13 @@ func _round_trip_wo(p: Array) -> void:
 			break
 	if e.wo_history.size() != 1 or f2.wo_history != e.wo_history:
 		p.append("realism wo: the pump's order was not closed after the save (%s)" % str(e.wo_history))
+	# the debrief counts the orders raised by the counter: the history keeps only its newest records (§2.21)
+	var raised: int = e.wo_count
+	e.wo_count = raised + 4096
+	var dl := "\n".join(WoPanel.debrief_lines(e, null))
+	if not dl.contains("Work orders: %d raised" % (raised + 4096)):
+		p.append("realism wo: the debrief does not count orders whose records dropped: %s" % dl)
+	e.wo_count = raised
 	var rec: Array = cap0["wo_rec"]["wo_pump"]
 	var short := rec.slice(0, 9)
 	var other := rec.duplicate(true)
@@ -320,7 +328,7 @@ func _round_trip_wo(p: Array) -> void:
 	var badclock := rec.duplicate(true)
 	badclock[1] = [1, 2, 3]
 	var full := []          # the run's history at its limit (REALISM.md §2.21) is taken; one more is refused
-	for i in WoSim.RUN_HISTORY:
+	for _j in WoSim.RUN_HISTORY:
 		full.append(rec.duplicate(true))
 	var t_full := cap0.duplicate(true)
 	t_full["wo_history"] = full

@@ -614,7 +614,9 @@ static func debrief_lines(e, me_id) -> PackedStringArray:
 	for r in recs:
 		if int(r[1][5]) >= 0 and int(r[1][4]) >= 0:
 			closed += 1
-	out.append("Work orders: %d raised, %d closed" % [recs.size(), closed])
+	# (raised: the counter, as the run's history keeps only its newest 4,096 records, REALISM.md §2.21; closed: of
+	# those kept)
+	out.append("Work orders: %d raised, %d closed" % [maxi(int(e.wo_count), recs.size()), closed])
 	for r in recs:
 		if r[7][2] == null or r[6] != me_id:
 			continue

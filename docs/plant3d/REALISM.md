@@ -997,13 +997,15 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   - **The run's history is capped at 4,096 records**, as the content's: when a close or cancel would make it 4,097,
     the oldest record drops (the newest 4,096 kept, in order). New records are never refused: a close or cancel
     always moves the work order, the counter goes on (`WO-` and at least four digits), and only the oldest closed
-    order is forgotten. Both engines (`LIMITS['run_history']`, `RUN_HISTORY`); a save whose history is over the
+    order is forgotten (the debrief's count of orders raised is the counter's; its closed count is of the records
+    kept). Both engines (`LIMITS['run_history']`, `RUN_HISTORY`); a save whose history is over the
     limit is refused. Before, a player holding `close_work` could notify and cancel the same work 10 times a turn,
     each a record the digest carried, with no end.
   - **Offered again:** a reaction on a work order's state whose offer finds nobody of its roles on duty is kept, as a
     permit's (§17.10): offered again when someone of its roles comes on duty, at each later shift until taken, while
-    the work order is still at that state (notified to complete; one that has moved on, or a closed or cancelled
-    one, is dropped). So an order notified while no maintenance or shift supervisor is on duty is planned when one
+    the work order is still at that state (notified to complete; one that has moved on is dropped, as a permit's:
+    the state is compared, not the order's number, so an order cancelled and notified again in the same step keeps
+    the offer for the new order). Only reactions' offers are kept: a task's `call` stays on the permit's rule. So an order notified while no maintenance or shift supervisor is on duty is planned when one
     comes on. The kept offer is the permit's record (the work and the work order's state then); its source names a
     reaction on a work order.
   - **Free mode:** a session slot playing nobody keeps free-mode rights over work orders: it may make every action,
