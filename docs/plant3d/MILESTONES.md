@@ -317,9 +317,9 @@ first frame; no frame over 100 ms; 99.79 / 99.89 % at ≥ 30 fps, mean frame 19.
 peak PSS 868 / 886 MB; at most 95 draw calls in any view. The walk's guided phases leave 14 of its parts loose.
 Pictures: the wiki's Workshop page.
 
-**K5a as built (2026-11-08):** the gas turbine's insides for the plant's first instance: 82 components, 2 fastener
-groups (the compressor casing's 40 studs replacing the plant's stand-ins, the coupling's 12 bolts `beyond`), 84 guided
-steps in a major inspection's order, 27,674 triangles, a public source per subassembly; the plant byte for byte
+**K5a as built (2026-11-08):** the gas turbine's insides for the plant's first instance: 84 components, 2 fastener
+groups (the compressor casing's 40 studs replacing the plant's stand-ins, the coupling's 12 bolts `beyond`), 86 guided
+steps in a major inspection's order, 27,868 triangles, a public source per subassembly; the plant byte for byte
 unchanged (WORKSHOP.md "As built (K5a)"). The Note 9 (fresh installs, cool starts), with the warm-up / `cold=1`: first
 entry 212 ms / 4,249 ms (≤ 5.0 s), again 101 / 436 ms, back to the plant 17–27 ms / 1.68 s the first time (the plant's
 own pipelines, as K4b's); no pipeline compiled after the machine's first frame; no frame over 100 ms; 99.85 / 99.81 %

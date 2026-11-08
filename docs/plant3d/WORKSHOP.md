@@ -718,8 +718,8 @@ addition (both engines, vectors) made in K6.
   (§8) therefore takes the machine apart first and starts it once it stands assembled again, at 118 s.
 
 **As built (K5a, 2026-11-08).**
-- **The gas turbine** for the plant's first instance, with its shaft line: 82 components and 2 fastener groups (84
-  guided steps), 27,674 triangles (§8's 120,000). The inlet plenum and bellmouth, the front bearing (journal halves,
+- **The gas turbine** for the plant's first instance, with its shaft line: 84 components and 2 fastener groups (86
+  guided steps), 27,868 triangles in the built scene (§8's 120,000). The inlet plenum and bellmouth, the front bearing (journal halves,
   thrust bearing), the compressor casing halves with the plant's 40 studs (`split`), the inlet guide vanes and 8
   compressor stages, the discharge casing halves, 12 cans (end cover, six fuel nozzles, liner, transition piece each),
   the fuel gas manifold, the turbine shell halves with 3 stages of nozzles and buckets, the rear bearing, the exhaust
