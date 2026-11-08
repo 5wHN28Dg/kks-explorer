@@ -359,9 +359,16 @@ static func contents(st, d) -> String:
 				or x["parts"].size() != dd["roles"].size() or x["parts"][0] != x["lead"] \
 				or x["opt"].size() != npts or x["by"].size() != npts:
 			return "a discussion in a state that doesn't exist"
-		for i in x["parts"]:
+		# (the lead of the first role, each participant of their slot's role and once: else two people could each
+		# wait on the other for ever)
+		if st.people[x["lead"]]["role"] != dd["roles"][0]:
+			return "a discussion led by someone not of its lead's role"
+		for k in x["parts"].size():
+			var i: int = x["parts"][k]
 			if i < -1 or i >= np:
 				return "a discussion with a person who isn't there"
+			if i != -1 and (st.people[i]["role"] != dd["roles"][k] or x["parts"].count(i) > 1):
+				return "a discussion with a participant out of place"
 		for k in npts:
 			var o: int = x["opt"][k]
 			if o < -1 or o >= dd["points"][k]["options"].size() or x["by"][k] < -1 or x["by"][k] >= np \

@@ -136,6 +136,8 @@ func run(tree: SceneTree) -> Array:
 		p.append("the debrief's summary should carry the discussions")
 	p += _saves(ui)
 	p += _forms()
+	p += _shown_prefers_own()
+	p += _bad_events(ui)
 	main.free()
 	return p
 
@@ -160,6 +162,15 @@ func _saves(ui) -> Array:
 		var g: Array = good.duplicate(true)
 		g[di].merge(change, true)
 		bads.append(g)
+	# a lead (and first participant) not of the lead's role, a participant twice: each would wait on the other
+	var op: int = ui.my_person()
+	var g1: Array = good.duplicate(true)
+	g1[di]["lead"] = op
+	g1[di]["parts"][0] = op
+	bads.append(g1)
+	var g2: Array = good.duplicate(true)
+	g2[di]["parts"][1] = g2[di]["parts"][2]
+	bads.append(g2)
 	for bad in bads:
 		var d: Dictionary = pl.duplicate(true)
 		d["engine"]["dsc"] = bad
@@ -176,3 +187,36 @@ func _forms() -> Array:
 		if InputCheck.form_ok(x[0]) != x[1]:
 			p.append("the session's check of %s: %s" % [str(x[0]), not x[1]])
 	return p
+
+
+## Two live discussions in one room: the panel shows the one the trainee takes part in, not the first in file order
+## they are only in the room of (the blind review's finding).
+func _shown_prefers_own() -> Array:
+	var tasks := {"a_lead": {"steps": [{"discuss": "a"}]}, "b_lead": {"steps": [{"discuss": "b"}]}}
+	var inst := func(t): return {"task": t, "step": 0}
+	var mk := func(lead: int, parts: Array):
+		return {"count": 1, "lead": lead, "parts": PackedInt32Array(parts), "mode": 1, "start": 1, "point": 0,
+				"since": 1, "opt": PackedInt32Array([-1]), "by": PackedInt32Array([-1]), "agreed": -1}
+	var sm := {"discuss": {"list": [{"id": "a", "room": "r"}, {"id": "b", "room": "r"}], "ix": {"a": 0, "b": 1}},
+			"rooms": {"r": PackedInt32Array([5])}, "tasks": tasks}
+	var e := {"_sm": sm, "dsc": [mk.call(0, [0, 1]), mk.call(2, [2, 3])], "sp_pos": PackedInt32Array([5, 5, 5, 5]),
+			"sp_cur": [inst.call("a_lead"), null, inst.call("b_lead"), null], "sp_queue": [[], [], [], []],
+			"sp_held": [[], [], [], []]}
+	var got: int = Discussions.shown(e, 3, {})
+	return [] if got == 1 else ["a participant of the second live discussion is shown discussion %d" % got]
+
+
+## A saved run's events are checked only loosely (ui/autosave.gd): malformed discussion events are passed over by the
+## panel's lines and the debrief's list, not a crash.
+func _bad_events(ui) -> Array:
+	var e = ui.clock.engine
+	var sm = e._sm
+	var keep: int = e.events.size()
+	for ev in [[1, "discussion", DID], [1, "discussion", DID, "agreed", 99, null], [1, "point", DID, "limit"],
+			[1, "point", "nope", "limit", "now", null], [1, "discussion", DID, "start", "x", "y", "open"],
+			[1, "point", DID, 3, "now", null]]:
+		e.events.append(ev)
+	var got := Discussions.review(e)
+	var lines := Discussions.event_lines(sm, [1, "discussion", DID, "agreed", 99, null], {})
+	e.events.resize(keep)
+	return [] if got.size() == Discussions.review(e).size() and lines.is_empty() else ["malformed events were read: %s" % str(got)]

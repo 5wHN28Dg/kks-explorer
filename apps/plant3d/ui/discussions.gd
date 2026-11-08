@@ -23,11 +23,9 @@ static func speaker(sm, d: Dictionary, parts: Array, role: String) -> String:
 ## The lines one event adds, [[speaker, text]] (none for an event that isn't a discussion's). `parts` holds each
 ## discussion id's participants at its last start, kept by the caller across events.
 static func event_lines(sm, ev: Array, parts: Dictionary) -> Array:
-	if sm == null or sm.discuss == null or ev.size() < 3 or not (ev[1] in ["discussion", "point"]):
+	if sm == null or sm.discuss == null or not _well_formed(sm, ev):
 		return []
-	var di: int = sm.discuss["ix"].get(ev[2], -1)
-	if di < 0:
-		return []
+	var di: int = sm.discuss["ix"][ev[2]]
 	var d: Dictionary = sm.discuss["list"][di]
 	var out := []
 	if ev[1] == "discussion" and ev[3] == "start":
@@ -56,6 +54,23 @@ static func event_lines(sm, ev: Array, parts: Dictionary) -> Array:
 	return out
 
 
+## Whether a `discussion` or `point` event has the engine's shape (a saved run's events are checked only loosely).
+static func _well_formed(sm, ev) -> bool:
+	if typeof(ev) != TYPE_ARRAY or ev.size() < 4 or not (ev[1] in ["discussion", "point"]) \
+			or typeof(ev[2]) != TYPE_STRING or not sm.discuss["ix"].has(ev[2]):
+		return false
+	var d: Dictionary = sm.discuss["list"][sm.discuss["ix"][ev[2]]]
+	if ev[1] == "point":
+		var k: int = d["_pix"].get(ev[3], -1) if typeof(ev[3]) == TYPE_STRING else -1
+		return ev.size() == 6 and k >= 0 and typeof(ev[4]) == TYPE_STRING and d["_opt"][k].has(ev[4]) \
+				and (ev[5] == null or typeof(ev[5]) == TYPE_STRING)
+	if ev[3] == "start":
+		return ev.size() == 7 and typeof(ev[5]) == TYPE_ARRAY
+	if ev[3] == "agreed":
+		return ev.size() == 6 and typeof(ev[4]) == TYPE_INT and ev[4] >= 0 and ev[4] < d["agreements"].size()
+	return false
+
+
 ## Every discussion of the run in its first `to` events (-1 all), in the order they started: [{id, title, start, parts (ids),
 ## taken: [[point id, option id, taker id or null]], outcome (text or null while unended), lines: [[step, who,
 ## text]]}].
@@ -68,8 +83,8 @@ static func review(engine, to: int = -1) -> Array:
 	var open := {}          # id -> its instance's index in out
 	var evs: Array = engine.events
 	for i in (evs.size() if to < 0 else mini(to, evs.size())):
-		var ev: Array = evs[i]
-		if not (ev[1] in ["discussion", "point"]):
+		var ev = evs[i]
+		if not _well_formed(sm, ev):
 			continue
 		var lines := event_lines(sm, ev, parts)
 		if ev[1] == "discussion" and ev[3] == "start":
@@ -117,6 +132,7 @@ static func shown(e, pi: int, closed: Dictionary) -> int:
 	if sm == null or sm.discuss == null or pi < 0:
 		return -1
 	var best := -1
+	var room := -1          # a live one they are only in the room of (one they take part in comes first)
 	for di in e.dsc.size():
 		var x: Dictionary = e.dsc[di]
 		if x.is_empty():
@@ -124,12 +140,14 @@ static func shown(e, pi: int, closed: Dictionary) -> int:
 		var d: Dictionary = sm.discuss["list"][di]
 		var here: bool = e.sp_pos[pi] != -1 and sm.rooms[d["room"]].has(e.sp_pos[pi])
 		if Disc._live(e, d, x):
-			if x["parts"].has(pi) or here:
+			if x["parts"].has(pi):
 				return di
+			if here and room == -1:
+				room = di
 		elif here and x["agreed"] >= 0 and not closed.has("%s|%d" % [d["id"], x["count"]]) \
 				and (best == -1 or x["start"] > e.dsc[best]["start"]):
 			best = di
-	return best
+	return room if room != -1 else best
 
 
 ## What the panel shows depends on: the discussions' state and where the trainee is.
@@ -141,7 +159,7 @@ static func sig(e, pi: int, closed: Dictionary) -> String:
 
 ## The clock time (HH:MM) at step `at`.
 static func _hhmm(e, at: int) -> String:
-	var t: int = e.clock() + (at - e.step_no) * int(e._ds)
+	var t: int = e.clock() + (at - e.step_no) * maxi(1, int(e._ds))
 	var s: int = (t % 864000) / 10
 	return "%02d:%02d" % [s / 3600, (s / 60) % 60]
 
@@ -155,7 +173,7 @@ static func _evidence(ui, e, box: Control, v: Dictionary) -> void:
 		text = "%s [%s]: %s" % [KIND_WORDS["standard"], v["cite"], v["text"]]
 	elif v["kind"] == "reading":
 		var now := ""
-		if e.ix.has(v["value"]):
+		if e.ix.has(v["value"]) and e._show.has(v["code"]):
 			now = " Now: %s (%s)." % ["yes" if e.truth(v["value"]) else "no", _shown_text(e, v["code"])]
 		text = "%s at %s: %s%s" % [KIND_WORDS["reading"], v["code"], v["text"], now]
 	var l := W.label("  • " + text, 16, W.DIM)
@@ -193,8 +211,10 @@ static func build(ui, e, box: Control, di: int, pi: int, close: Callable) -> voi
 	var parts := {}
 	var lines := []
 	for ev in e.events:
-		if ev[0] < x["start"] or not (ev[1] in ["discussion", "point"]) or ev[2] != d["id"]:
+		if ev[0] < x["start"] or not _well_formed(sm, ev) or ev[2] != d["id"]:
 			continue
+		if ev[1] == "discussion" and ev[3] == "start":
+			lines.clear()       # (an instance ended in the step this one started: its lines are not this one's)
 		lines.append_array(event_lines(sm, ev, parts))
 	for ln in lines:
 		panel.add_child(W.label("%s: %s" % [ln[0], ln[1]], 16, Color(0.9, 0.9, 0.75)))

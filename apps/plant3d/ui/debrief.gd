@@ -74,7 +74,7 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 	# JSAs and toolbox talks over the whole run (REALISM.md §8.6): each against the job's own list
 	var hs := hse_review(engine, my_id, engine.events, to)
 	sm["hse"] = hs
-	# the discussions over the whole run (REALISM.md §6.3.1): who took which option, and the outcome
+	# the discussions up to the debrief's end (REALISM.md §6.3.1): who took which option, and the outcome
 	sm["discussions"] = Discussions.debrief_lines(engine._sm, Discussions.review(engine, to)) \
 			if engine._sm != null else PackedStringArray()
 	sm["audio_ds"] = maxi(1, int(engine._ds)) if engine._sm != null else 1
