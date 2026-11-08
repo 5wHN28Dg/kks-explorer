@@ -711,6 +711,10 @@ func _monitor_walk() -> void:
 	for p in e._sm.people:
 		if p["role"] == "mech_tech" and mt == "":
 			mt = p["id"]
+	if mt == "" or not e._sm.pix.has("store_counter"):
+		_say("MON none: no mechanical technician or store counter in this scenario")
+		_finish()
+		return
 	ui.take_role(mt)
 	ui.go_to_place(e._sm.pix["store_counter"])
 	ui._place_tick()

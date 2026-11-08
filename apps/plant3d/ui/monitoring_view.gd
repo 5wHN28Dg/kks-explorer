@@ -115,6 +115,7 @@ class ZoneBar extends Control:
 var ui                          # ui/plant_ui.gd
 var points: Array = []          # the monitoring file's points
 var by_machine := {}            # machine key (machine_of) -> [point index]
+var by_code := {}               # a point's code -> true (only those codes' cards offer the view)
 var by_node := {}               # an oil result's node -> point index
 var code := ""                  # open from this code ("" closed)
 var machine := ""
@@ -126,6 +127,7 @@ var note: Label
 var _sig := ""
 var _rows := {}                 # point index -> {widgets}
 var _t := 0.0
+var _js: Array = []             # the run's jumps, at the last rebuild
 
 
 func setup(u) -> void:
@@ -157,6 +159,7 @@ func _layout() -> void:
 func read_points(path: String) -> void:
 	points.clear()
 	by_machine.clear()
+	by_code.clear()
 	by_node.clear()
 	if not FileAccess.file_exists(path):
 		return
@@ -170,18 +173,20 @@ func read_points(path: String) -> void:
 		if not by_machine.has(k):
 			by_machine[k] = []
 		by_machine[k].append(i)
+		by_code[String(points[i]["code"])] = true
 		for res in points[i].get("results", []):
 			by_node[String(res["node"])] = i
 
 
 ## A machine's points share their system and number: a pump's vibration probe 30PAC10CY001 and its motor
-## 30PAC10AP001, a fan's probe 30PAD10CY001 and its gear reducer 30PAD10AN001.
+## 30PAC10AP001, a fan's probe 30PAD10CY001 and its gear reducer 30PAD10AN001. Only the points' own codes offer the
+## view (30PAC10CP001, a pressure transmitter of the same number, does not).
 static func machine_of(c: String) -> String:
 	return c.substr(0, 7) + "|" + c.right(3)
 
 
 func has_points(c: String) -> bool:
-	return by_machine.has(machine_of(c))
+	return by_code.has(c)
 
 
 func is_open() -> bool:
@@ -279,14 +284,21 @@ static func level(res: Dictionary, v: float) -> int:
 	return lv
 
 
-## The plant clock at step n (the jumps made before it counted), in tenths.
-static func clock_at(e, n: int) -> int:
-	var c: int = e._S + n * e._ds
+## The run's jumps done: [[step, tenths added] …] (one look at the log per rebuild, not per line shown).
+static func jumps(e) -> Array:
+	var out: Array = []
 	for ev in e.events:
-		if int(ev[0]) > n:
-			break
 		if ev[1] == "jump" and ev.size() > 4 and ev[4] == "done":
-			c += int(ev[3]) - int(ev[2])
+			out.append([int(ev[0]), int(ev[3]) - int(ev[2])])
+	return out
+
+
+## The plant clock at step n (the jumps made by then counted), in tenths.
+static func clock_at(e, n: int, js: Array) -> int:
+	var c: int = e._S + n * e._ds
+	for j in js:
+		if j[0] <= n:
+			c += j[1]
 	return c
 
 
@@ -325,7 +337,8 @@ func _carries(kind: String, mode = null) -> bool:
 	return Hands.carries_kind(ui.clock.engine, ui.me(), kind, mode)
 
 
-## Whether the trainee stands within reach of a point (its own code where it is drawn, else the machine's card code).
+## Whether the trainee stands within reach of a point (its own code where it is drawn, else the code the view was
+## opened from: another point of the same machine).
 func _near(p: Dictionary) -> bool:
 	var c: String = p["code"]
 	return ui.near(c) if ui.index.has(c) else ui.near(code)
@@ -361,6 +374,7 @@ func refresh() -> void:
 
 
 func _build(e, pid) -> void:
+	_js = jumps(e)
 	if note.get_parent() != null:
 		note.get_parent().remove_child(note)    # (kept: W.clear frees what it removes)
 	W.clear(body)
@@ -470,7 +484,7 @@ func _history(e, p: Dictionary, box: VBoxContainer, row: Dictionary) -> void:
 	var unit := "mm/s" if p["kind"] == "vib" else "°C"
 	var lines := PackedStringArray()
 	for k in mini(rs.size(), HISTORY):
-		lines.append("%s   %.2f %s" % [clock_words(e, clock_at(e, rs[k][0])), rs[k][1], unit])
+		lines.append("%s   %.2f %s" % [clock_words(e, clock_at(e, rs[k][0], _js)), rs[k][1], unit])
 	var l := W.label(("Recorded:\n" + "\n".join(lines)) if not lines.is_empty() else "Nothing recorded yet.", 16, W.DIM)
 	l.name = "history"
 	box.add_child(l)
@@ -505,7 +519,7 @@ func _build_oil(e, i: int, p: Dictionary, box: VBoxContainer, row: Dictionary) -
 	g.name = "results"
 	g.columns = 3
 	g.add_theme_constant_override("h_separation", int(14 * W.scale))
-	box.add_child(W.label("Lab report of %s" % clock_words(e, clock_at(e, reps[0][0])), 17))
+	box.add_child(W.label("Lab report of %s" % clock_words(e, clock_at(e, reps[0][0], _js)), 17))
 	box.add_child(g)
 	for res in p["results"]:
 		var nd: String = res["node"]

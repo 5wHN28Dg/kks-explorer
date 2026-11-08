@@ -194,7 +194,7 @@ class RealismVectors(unittest.TestCase):
 def run_on(st, r, upto=None, each=None):
     """Replays run r of a part on the reference up to step `upto` (its end by default), calling each(e) after every
     step (step 0 too); returns the engine."""
-    e = P.Engine(P.check_files(files_of(st, r)), 's1')
+    e = P.Engine(P.check_files(files_of(st, r)), 's1', r.get('session', False))
     inputs = sorted(r['inputs'], key=lambda x: x[0])
     j = 0
     if each:
@@ -1099,7 +1099,7 @@ class LabVectors(PartVectors, unittest.TestCase):
         return out
 
     def test_reasons_in_order(self):
-        """where, tool, authority as a hand action's; the queue full: lab, after the needs; a timed one refused too."""
+        """where, tool, authority as a hand action's; the queue full: lab, after the needs."""
         ev = self.evs(0, ('hand',))
         why = [(x[0], x[3], x[5], x[6], x[7]) for x in ev if x[6] == 'refused']
         self.assertEqual(why, [
@@ -1109,6 +1109,26 @@ class LabVectors(PartVectors, unittest.TestCase):
         self.assertEqual(self.evs(1, ('hand',)), [
             [6, 'hand', '10LAB10CP501', 'take_oil', 'oil_kit', 'ic1', 'refused', ['authority']],
             [6, 'hand', '10LAB10CP501', 'clean_glass', None, 'ic1', 'start', []]])
+
+    def test_queue_filled_under_a_timed_action(self):
+        """A timed action whose node's queue filled while it was under way (another person's sample) is done at its
+        end but takes no sample and draws nothing: the eight results are the first eight draws' (seven of ic1's, its
+        eighth), and the later timed sample's spread is the ninth draw; the next instant one meanwhile refused lab."""
+        r = self.st['runs'][4]
+        ev = self.evs(4, ('hand',))
+        self.assertIn([36, 'hand', '10LAB10CP501', 'take_oil_slow', 'oil_kit', 'ic2', 'done', []], ev)
+        self.assertIn([37, 'hand', '10LAB10CP501', 'take_oil', 'oil_kit', 'ic2', 'refused', ['lab']], ev)
+        seen = {}
+
+        def each(e):
+            seen[e.step_no] = (e.v('oil_fe'), len(e.lab_q['lab_fe']))
+        e = run_on(self.st, r, each=each)
+        self.assertEqual(seen[35][1], 8)            # full before the timed action's end
+        self.assertEqual(seen[36][1], 8)            # and after it: no sample taken
+        fe = [x[3] for x in e.events if x[1] == 'lab' and x[2] == 'lab_fe']
+        self.assertEqual(len(fe), 9)
+        u = self.draws(r, 'lab_fe', 9)
+        self.assertAlmostEqual(fe[8], seen[100][0] + (-2 + 4 * u[8]), places=9)
 
     def test_samples_and_results(self):
         """Each sample: ref's value (the previous step's in step 1, this step's in step 3 for a timed action) plus

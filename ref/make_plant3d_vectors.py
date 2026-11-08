@@ -5531,7 +5531,7 @@ def lab_runs():
          'their dues), a timed one (2 minutes: its sample in step 3 at its end, the iron as that step left it); the '
          'collector and the camera read through their meters; the results come in step 3 at their dues, each with '
          'its lab event (lab_vis given 70 by the scenario until its first result); eight queued: the next sample '
-         'refused lab, the timed one too, taken again once the queue has room', dict(me, init={'lab_vis': 70}), lf,
+         'refused lab, taken again once the queue has room', dict(me, init={'lab_vis': 70}), lf,
          lab, 260, 10),
         ('the sample authority (§2.19): a role with operate_local but not sample is refused authority for a sampling '
          'hand action, and still makes a bare-hand one (clean_glass, operate_local)', me, no_sample, auth, 40, 2),
@@ -5542,7 +5542,27 @@ def lab_runs():
          'at 07:45, reads the gauge\'s vibration (out of its expected range: a finding) and temperature, takes a '
          'sample at once and a timed one, puts the tools back; the results come 6 and 12 clock minutes later',
          {}, lf, None, 1200, 100),
+        ('a queue filled under a timed action (§2.19, settled in the code): a session, slot 0 ic1 and slot 1 ic2, '
+         'each with a kit at the gauge; ic1 takes seven samples, ic2 starts the timed one with the queue at 7, ic1 '
+         'takes the eighth while it is under way: at its end ic2\'s action is done but takes no sample and draws '
+         'nothing (the next sample\'s spread is the stream\'s ninth draw), ic2\'s next refused lab; a timed one '
+         'once the queue has room takes its sample', {}, lf,
+         Session([Trainee(slot=0, quiet=True), Trainee(slot=1, quiet=True)], extra=_lab_session()), 220, 10),
     ]
+
+
+def _lab_session():
+    """The inputs of lab_runs' session run: ic1 (slot 0) and ic2 (slot 1) with a kit each at the gauge."""
+    G = GAUGE
+
+    def take(n, who, slot, act='take_oil'):
+        return [n, 'hand', G, act, 'oil_kit', None, who, slot]
+    return ([[1, 'role', 'ic1', 0], [1, 'role', 'ic2', 1], [3, 'arrive', 'tb1', 0], [3, 'arrive', 'store1', 1],
+             [4, 'tool', 'oil_kit', 1, 'ic1', 0], [4, 'tool', 'oil_kit', 1, 'ic2', 1], [5, 'leave', 'tb1', 0],
+             [5, 'leave', 'store1', 1], [6, 'arrive', 'w_gauge', 0], [6, 'arrive', 'w_gauge', 1]]
+            + [take(8 + i, 'ic1', 0) for i in range(7)]
+            + [take(16, 'ic2', 1, 'take_oil_slow'), take(20, 'ic1', 0), take(37, 'ic2', 1),
+               take(80, 'ic2', 1, 'take_oil_slow')])
 
 
 def lab_part():

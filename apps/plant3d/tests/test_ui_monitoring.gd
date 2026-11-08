@@ -26,6 +26,8 @@ const OIL_AT := "30PAC10AP001"        # CW pump A's motor (its oil bath)
 ## An engine's values for the pure functions (e.v(name)).
 class Vals extends RefCounted:
 	var d := {}
+	var _S := 3600
+	var _ds := 60
 	func v(n: String) -> float:
 		return float(d.get(n, 0.0))
 
@@ -65,6 +67,8 @@ func _drawn() -> Array:
 	var s1: Dictionary = Mon.spectrum(e, vib, 0.3)     # the lines alone above the overall: scaled, no 1×
 	if float(s1["lines"][0][2]) != 0.0:
 		p.append("the 1× should be nothing when the lines alone exceed the overall: %s" % str(s1["lines"][0]))
+	if Mon.clock_at(e, 100, [[50, 600], [150, 900]]) != 3600 + 6000 + 600 or Mon.clock_at(e, 150, [[150, 900]]) != 3600 + 9000 + 900:
+		p.append("the clock at a step should count the jumps made by then")
 	var fe := {"alert": 15, "alarm": 30}
 	var visc := {"alert": [61.2, 74.8], "alarm": [54.4, 81.6]}
 	for c in [[fe, 15.0, 0], [fe, 15.5, 1], [fe, 31.0, 2], [visc, 68.0, 0], [visc, 60.0, 1], [visc, 76.0, 1],
@@ -123,7 +127,13 @@ func _round(tree: SceneTree) -> Array:
 	var mv = ui.monitoring
 	var e = ui.clock.engine
 	var pid: String = ui.me()
-	# the card offers it at the motor and at its probe; the panel holds the machine's three points
+	# the card offers it at the machine's points' codes only (not at a transmitter sharing CW pump A's number)
+	for c in [["30PAC10CP001", false], [PROBE, true], [OIL_AT, true]]:
+		ui.open_card(c[0])
+		await tree.process_frame
+		if (ui.card.body.find_child("monitoring", true, false) != null) != c[1]:
+			p.append("%s's card %s Condition monitoring" % [c[0], "lacks" if c[1] else "offers"])
+	# the panel holds the machine's points
 	ui.open_card(MOTOR)
 	await tree.process_frame
 	var cb = ui.card.body.find_child("monitoring", true, false)
@@ -151,6 +161,20 @@ func _round(tree: SceneTree) -> Array:
 	if mv.body.find_child("collector", true, false) != null or not t0.contains("Carry the vibration data collector") \
 			or not t0.contains("Carry the thermal camera"):
 		p.append("without the tools the screens should say what to carry: %s" % t0.left(500))
+	# an oil sample without the kit: refused, said once (the panel's note, no toast besides)
+	_go(ui, "w_" + OIL_AT.to_lower())
+	mv.open(OIL_AT)
+	_fresh(mv)
+	ui._sync_events()
+	ui._toast.text = ""
+	(mv.body.find_child("sample", true, false) as Button).pressed.emit()
+	ui.clock.run_steps(2)
+	ui._sync_events()
+	if not mv.last_text.contains(Mon.WHY["tool"]) or mv.note.text != mv.last_text:
+		p.append("a sample without the kit should be refused in words: %s" % mv.last_text)
+	if ui._toast.text != "":
+		p.append("the refusal was said twice (a toast too): %s" % ui._toast.text)
+	mv.open(MOTOR)
 	# the tools at the store counter
 	_go(ui, "store_counter")
 	if not ui.work.tools_panel.visible:

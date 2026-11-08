@@ -237,10 +237,6 @@ class OilSample(unittest.TestCase):
         self.assertEqual(ev[-1][6:], ['refused', ['authority']])
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class App(unittest.TestCase):
     """The app draws the monitoring file (ui/monitoring_view.gd): build.sh copies it with the content the app reads,
     and the view reads it from there; its UI test is in an app shard (apps/plant3d/tests/test_ui_monitoring.gd)."""
@@ -252,3 +248,8 @@ class App(unittest.TestCase):
         with open(os.path.join(ROOT, 'apps', 'plant3d', 'ui', 'monitoring_view.gd'), encoding='utf-8') as f:
             self.assertIn('const FILE := "res://built/content/monitoring.json"', f.read())
         self.assertTrue(os.path.exists(os.path.join(ROOT, 'apps', 'plant3d', 'tests', 'test_ui_monitoring.gd')))
+
+
+if __name__ == '__main__':
+    unittest.main()
+
