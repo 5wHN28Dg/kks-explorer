@@ -1215,44 +1215,13 @@ func warm_up(parent: Node) -> void:
 			await get_tree().process_frame
 	if _warm != null or not is_inside_tree() or not ResourceLoader.exists(SPACE):
 		return
-	var mesh: Mesh = null
-	var sp: Node = (load(SPACE) as PackedScene).instantiate()
-	for c in sp.find_children("*", "MeshInstance3D", true, false):
-		if (c as MeshInstance3D).mesh != null:
-			mesh = (c as MeshInstance3D).mesh
-			break
-	sp.free()
+	var mesh := _space_mesh()
 	if mesh == null:
 		return
 	_warm = Node3D.new()
 	_warm.name = "workshop_warm"
-	var pieces: Array = []      # entering the plant's world one a frame (below)
-	var wmat := ShaderMaterial.new()   # its own: the Compatibility path below sets its alpha, never the ghost's
-	wmat.shader = XRAY
-	pieces.append(_xray_pair(mesh, wmat)[0])
-	pieces.append(_xray_pair(mesh, wmat)[1])
-	# K3's variants (§7.1): ws_lit and ws_cap, plain and instanced, discarding every fragment (a plane that cuts
-	# everything: their pipelines, never a pixel), and ws_flow's particles collapsed (density 0)
-	for sh in [Views.LIT, Views.CAP]:
-		var m := ShaderMaterial.new()
-		m.shader = sh
-		m.set_shader_parameter("ws_plane0", Vector4(0, 0, 0, -1))
-		m.set_shader_parameter("ws_cut_on", 1.0)
-		for n in _xray_pair(mesh, m):
-			pieces.append(n)
-	var fm := ShaderMaterial.new()
-	fm.shader = Views.FLOW
-	fm.set_shader_parameter("density", 0.0)
-	var q := QuadMesh.new()
-	var fmm := MultiMesh.new()
-	fmm.transform_format = MultiMesh.TRANSFORM_3D
-	fmm.mesh = q
-	fmm.instance_count = 1
-	var fmi := MultiMeshInstance3D.new()
-	fmi.multimesh = fmm
-	fmi.material_override = fm
-	fmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	pieces.append(fmi)
+	var pieces: Array = _ghost_pieces(mesh)   # entering the plant's world one a frame (below)
+	var wmat: ShaderMaterial = (pieces[0] as GeometryInstance3D).material_override
 	_warm.position = Vector3(0, -1000, 0)
 	_warm.visible = false
 	parent.add_child(_warm)
@@ -1288,6 +1257,131 @@ func warm_up(parent: Node) -> void:
 			await RenderingServer.frame_post_draw
 		_warm.visible = false
 	warmed = true
+
+## A mesh in the plant's vertex format: the Workshop space's first (the machines' meshes share that format).
+static func _space_mesh() -> Mesh:
+	var mesh: Mesh = null
+	var sp: Node = (load(SPACE) as PackedScene).instantiate()
+	for c in sp.find_children("*", "MeshInstance3D", true, false):
+		if (c as MeshInstance3D).mesh != null:
+			mesh = (c as MeshInstance3D).mesh
+			break
+	sp.free()
+	return mesh
+
+## The ghost's and K3's warm pieces on `mesh`: ws_xray (its material first, its own: the Compatibility path sets its
+## alpha, never the ghost's), ws_lit and ws_cap, plain and instanced, discarding every fragment (a plane that cuts
+## everything: their pipelines, never a pixel), and ws_flow's particles collapsed (density 0).
+func _ghost_pieces(mesh: Mesh) -> Array:
+	var pieces: Array = []
+	var wmat := ShaderMaterial.new()
+	wmat.shader = XRAY
+	pieces.append_array(_xray_pair(mesh, wmat))
+	for sh in [Views.LIT, Views.CAP]:
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("ws_plane0", Vector4(0, 0, 0, -1))
+		m.set_shader_parameter("ws_cut_on", 1.0)
+		pieces.append_array(_xray_pair(mesh, m))
+	var fm := ShaderMaterial.new()
+	fm.shader = Views.FLOW
+	fm.set_shader_parameter("density", 0.0)
+	var fmm := MultiMesh.new()
+	fmm.transform_format = MultiMesh.TRANSFORM_3D
+	fmm.mesh = QuadMesh.new()
+	fmm.instance_count = 1
+	var fmi := MultiMeshInstance3D.new()
+	fmi.multimesh = fmm
+	fmi.material_override = fm
+	fmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	pieces.append(fmi)
+	return pieces
+
+## The start's warm-up (the user's decision, 2026-11-08: the Workshop's pipelines prepared behind the loading screen).
+## warm_up after the first walkable frame held the same pieces, and on the Note 9 one plant frame of about 0.7 s came
+## 4.8 s after the start, with 8 surface pipelines in it (baking the shaders at export did not take it away). Here
+## everything warm_up and _warm_kinds hold is made at once, hidden, while the start shows the sky: app/main.gd calls
+## this after its sky frame and draws once more, so the pipelines are queued then and compile on the worker threads
+## while the plant loads (the compiler is idle there: it starts on the plant's at the plant's hidden frame, decision
+## 0060). Nothing is drawn or freed here, and nothing waits for a pipeline. The machines' pieces get the Workshop's
+## materials without the plant's textures and colours (one ws_lit, one ws_lit with ws_cap as its next pass, the
+## glass): a material's values are not part of its pipelines, and the plant's materials are loaded only with the
+## plant, at the tier's sizes. The pieces stay (hidden) for the app's life: freeing them in a frame of the plant's is
+## what this keeps out of the walkable frames. Only where pipelines are queued for hidden surfaces (not on the
+## Compatibility renderer: warms_at_start).
+var warmed_at_start := false
+
+static func warms_at_start() -> bool:
+	return RenderingServer.get_current_rendering_method() != "gl_compatibility"
+
+func warm_at_start(parent: Node) -> void:
+	if warmed or _warming or _warm != null or not ResourceLoader.exists(SPACE):
+		return
+	var mesh := _space_mesh()
+	if mesh == null:
+		return
+	_warm = Node3D.new()
+	_warm.name = "workshop_warm"
+	_warm.position = Vector3(0, -1000, 0)
+	_warm.visible = false
+	for n in _ghost_pieces(mesh):
+		_warm.add_child(n)
+	var lit := ShaderMaterial.new()
+	lit.shader = Views.LIT
+	var capped := ShaderMaterial.new()
+	capped.shader = Views.LIT
+	capped.next_pass = ShaderMaterial.new()
+	(capped.next_pass as ShaderMaterial).shader = Views.CAP
+	var xr := ShaderMaterial.new()
+	xr.shader = XRAY
+	for k in kinds():
+		var ps := load(DIR.path_join(k + ".scn")) as PackedScene
+		if ps == null:
+			continue
+		var mc: Node3D = ps.instantiate()
+		var gh := Node3D.new()
+		gh.name = "ghosts"
+		mc.add_child(gh)
+		var todo: Array = [[mc, false, false]]
+		while not todo.is_empty():
+			var it: Array = todo.pop_back()
+			var n: Node = it[0]
+			if n == gh:
+				continue
+			if n.has_meta("items"):   # its own MultiMeshes with the items, as an entry makes them
+				var items: Array = n.get_meta("items")
+				for mmi in n.get_children():
+					if mmi is MultiMeshInstance3D:
+						(mmi as MultiMeshInstance3D).multimesh = _items_multimesh((mmi as MultiMeshInstance3D).multimesh, items)
+			if n.has_meta("explode") or n.has_meta("items"):
+				gh.add_child(_ghost_node_of(n as Node3D, xr))   # the ghost as a step builds it
+			var thin: bool = it[1]
+			var glass: bool = it[2]
+			if n.has_meta("explode"):
+				thin = n.get_meta("thin", false)
+				glass = n.get_meta("glass", false)
+			if (n is MeshInstance3D or n is MultiMeshInstance3D) and n.has_meta("mat"):
+				var items_child: bool = n.get_parent().has_meta("items")
+				if glass and not items_child:
+					(n as GeometryInstance3D).material_override = views.glass_mat()
+				else:
+					(n as GeometryInstance3D).material_override = capped if not thin or items_child else lit
+			for c in n.get_children():
+				todo.append([c, thin, glass])
+		var held := Node3D.new()
+		held.name = "warm_" + k
+		for gi in mc.find_children("*", "GeometryInstance3D", true, false):
+			gi.owner = null   # (moved out from under the scene's root: it must not stay its owner)
+			gi.get_parent().remove_child(gi)
+			held.add_child(gi)
+		mc.free()   # (what is left of it: the pieces' empty parents)
+		warm_pieces = maxi(warm_pieces, held.get_child_count())
+		_warm.add_child(held)
+		_warm_kinds_done.append(k)
+	parent.add_child(_warm)
+	warmed = true
+	kinds_warmed = true
+	warmed_at_start = true
 
 ## Every kind's own machine, hidden under the warm-up, in the Workshop's materials as an entry gives them (ws_lit with
 ## the cap as its next pass on solid components, the glass in ws_xray) and its parts' ghosts: their surfaces' pipelines

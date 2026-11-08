@@ -102,6 +102,9 @@ func run(tree: SceneTree) -> Array:
 		seen.started += 1
 		seen.ui_at_start = main.ui != null and main.hud != null and main.plant.visible)
 	var watch := func():
+		if main.plant != null and not seen.has("ws_before_plant"):
+			var w = main.workshop._warm if main.workshop != null else null
+			seen["ws_before_plant"] = w != null and w.is_inside_tree() and main.workshop.kinds_warmed
 		if main.plant != null and main.first_frame_ms < 0:
 			seen.frames += 1
 			if not main.plant.visible and main.plant.get_child_count() > 1:
@@ -118,7 +121,7 @@ func run(tree: SceneTree) -> Array:
 	if main.first_frame_ms < 0:
 		main.free()
 		return p + ["the app drew its first frame"]
-	var order := ["LAUNCH tier", "LAUNCH sky frame", "LAUNCH plant at", "LAUNCH plant's pipelines queued", "LAUNCH player, map, hud", "LAUNCH ui", "first frame drawn"]
+	var order := ["LAUNCH tier", "LAUNCH sky frame", "LAUNCH workshop's pieces", "LAUNCH workshop's pipelines queued", "LAUNCH plant at", "LAUNCH plant's pipelines queued", "LAUNCH player, map, hud", "LAUNCH ui", "first frame drawn"]
 	var at := -1
 	for o in order:
 		var i := -1
@@ -137,6 +140,7 @@ func run(tree: SceneTree) -> Array:
 	if seen.started != 1 or not seen.ui_at_start:
 		p.append("`started` is sent once, with the plant shown, the HUD and the UI made (%d times)" % seen.started)
 	p += tier_materials(main.plant, "lean+vis")
+	p += workshop_warm_at_start(main, seen)
 	# the people's avatars and posed meshes are made in the plant before its hidden frame: their pipelines are queued
 	# with the plant's (and are the plant's: the one shader, app/people.gd)
 	const Quality = preload("res://app/quality.gd")
@@ -182,6 +186,18 @@ func run(tree: SceneTree) -> Array:
 		var j := src.find("ui = main.ui")
 		if i < 0 or j < 0 or i > j:
 			p.append("%s waits for the app's first walkable frame (or its failure) before it takes `main.ui`" % f)
+	# ws_warm=late: the Workshop's warm-up after the first walkable frame, as before (what the start's costs it)
+	var late: Node = (load("res://app/main.tscn") as PackedScene).instantiate()
+	late.opts = {"staged_start": "1", "quality": "lean+vis", "ws_warm": "late"}
+	tree.root.add_child(late)
+	for i in 30:
+		await tree.process_frame
+		if late.first_frame_ms >= 0:
+			break
+	if late.first_frame_ms < 0 or late.workshop == null or late.workshop.warmed_at_start or late.workshop._warm != null \
+			or Array(late.lines).any(func(l): return l.begins_with("LAUNCH workshop's")):
+		p.append("ws_warm=late leaves the Workshop's warm-up to after the first walkable frame")
+	late.free()
 	# the full tier's staged start (a desktop with its tier known): the full tier's textures and wear
 	var full: Node = (load("res://app/main.tscn") as PackedScene).instantiate()
 	full.opts = {"staged_start": "1", "quality": "full"}
@@ -195,6 +211,49 @@ func run(tree: SceneTree) -> Array:
 	else:
 		p += tier_materials(full.plant, "full")
 	full.free()
+	return p
+
+## The Workshop's pipelines prepared behind the loading screen (the user's decision, 2026-11-08; WORKSHOP.md §7.1):
+## everything the plant's warm-up held after the first walkable frame (the ghost's and K3's pieces, every kind's own
+## machine in the Workshop's materials with its ghosts) is in the world, hidden, before the plant is loaded, and the
+## warm-up after the first frame has nothing left to add.
+func workshop_warm_at_start(main: Node, seen: Dictionary) -> Array:
+	var p: Array = []
+	var ws = main.workshop
+	if ws == null or not ws.warmed_at_start or ws._warm == null:
+		return ["the Workshop's warm-up runs in the start's loading"]
+	if not seen.get("ws_before_plant", false):
+		p.append("the Workshop's warm pieces are in the world before the plant is loaded")
+	if ws._warm.visible or ws._warm.get_parent() != main:
+		p.append("the start's warm pieces are hidden, under the app")
+	var shaders := {}
+	for c in ws._warm.find_children("*", "GeometryInstance3D", true, false):
+		var m: Material = (c as GeometryInstance3D).material_override
+		while m is ShaderMaterial:
+			shaders[(m as ShaderMaterial).shader.resource_path.get_file()] = true
+			m = m.next_pass
+	for want in ["ws_xray.gdshader", "ws_lit.gdshader", "ws_cap.gdshader", "ws_flow.gdshader"]:
+		if not shaders.has(want):
+			p.append("the start's warm-up holds %s (%s)" % [want, str(shaders.keys())])
+	var kinds: Array = ws.kinds()
+	if kinds.is_empty() or ws._warm_kinds_done != kinds:
+		p.append("the start's warm-up holds every kind's machine (%s of %s)" % [str(ws._warm_kinds_done), str(kinds)])
+	for k in kinds:
+		var held: Node = ws._warm.get_node_or_null("warm_" + k)
+		var ghosts := 0
+		var machine := 0
+		if held != null:
+			for c in held.get_children():
+				var m: Material = (c as GeometryInstance3D).material_override
+				if m is ShaderMaterial and (m as ShaderMaterial).shader == ws.XRAY:
+					ghosts += 1
+				elif m is ShaderMaterial:
+					machine += 1
+		if ghosts == 0 or machine == 0:
+			p.append("%s's machine is held in the Workshop's materials with its ghosts (%d pieces, %d ghosts)" % [k, machine, ghosts])
+	if not ws.warmed or not ws.kinds_warmed or ws._warming or not ws.warm_up_at.is_empty():
+		p.append("the warm-up after the first walkable frame has nothing left to add (warmed %s, kinds %s, added %s)" % [
+			ws.warmed, ws.kinds_warmed, str(ws.warm_up_at)])
 	return p
 
 ## Problems with the tier's settings on the materials `root` holds (kit/materials.gd `apply_tier`): the wear's detail

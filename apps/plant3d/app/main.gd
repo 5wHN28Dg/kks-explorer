@@ -83,8 +83,10 @@
 ##                           and wait in the SESSION slow lines)
 ##   voice=bench             wdp_voice's test scene instead of the plant (voice/demo/voice_wav.gd: the codec's round
 ##                           trip and its time per 20 ms frame, `VOICE` lines in the log; milestone MP5's measurement)
+##   ws_warm=late            the Workshop's pipelines queued after the first walkable frame (as before 2026-11-08),
+##                           not behind the start's loading screen (measuring what the start's warm-up costs it)
 ##   On a phone walk.txt takes voice, probe, fx_off, fx_on, max_fps, crowd, people_skinned, people_shadows, crews,
-##   shot, digest, step and music too
+##   shot, digest, step, music and ws_warm too
 ##   (phone/frames.sh's WALK_EXTRA, phone/shots.sh); a shot's line in result.txt gives the view's draw calls, triangles
 ##   and GPU time (median of 30 frames)
 extends Node3D
@@ -200,6 +202,17 @@ func _ready() -> void:
 		sky_cam.make_current()
 		await _drawn()
 		_launch("sky frame")
+		# the Workshop's pipelines behind the loading screen (the user's decision, 2026-11-08; WORKSHOP.md §7.1):
+		# its pieces made hidden now and drawn once more, so their pipelines compile on the worker threads while the
+		# plant loads, before the plant's are queued (ws_warm=late: after the first walkable frame, as before)
+		if opts.get("ws_warm", "") != "late" and Workshop.warms_at_start():
+			workshop = Workshop.new()
+			workshop.name = "workshop"
+			add_child(workshop)
+			workshop.warm_at_start(self)
+			_launch("workshop's pieces")
+			await _drawn()
+			_launch("workshop's pipelines queued")
 	plant = Plant.new()
 	plant.name = "plant"
 	add_child(plant)
@@ -305,9 +318,12 @@ func _ready() -> void:
 	ui.setup(self, opts.get("scenario", "shift_cold" if opts.has("crews") else "cold_iron"))
 	ui.add_settings(hud.extra)
 	weather.attach(ui)
-	workshop = Workshop.new()
-	workshop.name = "workshop"
-	add_child(workshop)
+	if workshop == null:
+		workshop = Workshop.new()
+		workshop.name = "workshop"
+		add_child(workshop)
+	else:
+		move_child(workshop, -1)   # (made at the start's warm-up: in the place it always had among main's children)
 	workshop.setup(self)
 	_launch("ui")
 	if opts.has("procedure") and ui.clock != null and ui.model.procedures.has(opts.procedure):
@@ -395,7 +411,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe", "weather", "cold", "music", "job", "monitor", "bench_speed"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe", "weather", "cold", "music", "job", "monitor", "bench_speed", "ws_warm"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
