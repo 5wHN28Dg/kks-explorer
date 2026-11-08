@@ -32,6 +32,17 @@ def child(kks, name, part, at, params=None, yaw=0):
     return eq(kks, name, part, at, yaw, params, first_plate(part))
 
 
+# A pump motor's vibration probe (REALISM.md §4.2, milestone AG2): on the drive-end bearing housing, where the motor
+# sits on its stool (vertical pumps: at the stool's top, outside the housing) or on the motor's top behind the coupling
+# (horizontal pumps); the local readout of its vibration velocity
+PUMP_VIB = {'cw': [0.95, 0, 3.2], 'cep': [0.35, 0, 2.3], 'h': [0, -0.9, 0.95]}
+
+
+def pump_vib(kks, pump, at):
+    return child(kks, f'{pump} motor vibration', 'vibration_probe', at,
+                 {'kind': 'velocity', 'range': [0, 25], 'unit': 'mm/s'})
+
+
 def pipe(kks, name, medium, dn, frm, points, to, **kw):
     p = {'kks': kks, 'name': name, 'medium': medium, 'dn': dn, 'from': frm, 'points': points, 'to': to}
     p.update(kw)
@@ -207,9 +218,11 @@ def bop():
             eq('00QFA10AN002', 'Instrument air compressor B', 'compressor_skid', [116, -15, 0], 0,
                {'kw': 250, 'length': 4, 'width': 2}, 'side'),
             eq('00PGC10AP001', 'Closed cooling water pump A', 'pump_horizontal', [110, 5, 0], 0,
-               {'flow_m3h': 900, 'head_m': 45, 'motor_kw': 160, 'length': 3}, 'motor_side'),
+               {'flow_m3h': 900, 'head_m': 45, 'motor_kw': 160, 'length': 3}, 'motor_side',
+               [pump_vib('00PGC10CY001', 'Closed cooling water pump A', PUMP_VIB['h'])]),
             eq('00PGC10AP002', 'Closed cooling water pump B', 'pump_horizontal', [116, 5, 0], 0,
-               {'flow_m3h': 900, 'head_m': 45, 'motor_kw': 160, 'length': 3}, 'motor_side'),
+               {'flow_m3h': 900, 'head_m': 45, 'motor_kw': 160, 'length': 3}, 'motor_side',
+               [pump_vib('00PGC10CY002', 'Closed cooling water pump B', PUMP_VIB['h'])]),
             eq('00PGB10AC001', 'Closed cooling water cooler', 'plate_hx', [124, -8, 0], 0,
                {'plates': 300, 'height': 2.5}, 'frame',
                [child('00PGB10CT001', 'Closed cooling water supply temperature', 'temperature_element',
@@ -292,7 +305,8 @@ def cw():
     for n, x in enumerate(CW_X.values(), 1):
         letter = 'ABC'[n - 1]
         equipment.append(eq(f'30PAC10AP00{n}', f'Circulating water pump {letter}', 'pump_vertical', [x, -6, 0], 180,
-                            {'flow_m3h': 15000, 'head_m': 22, 'motor_kw': 1250, 'pit_depth': 9}, 'motor_side'))
+                            {'flow_m3h': 15000, 'head_m': 22, 'motor_kw': 1250, 'pit_depth': 9}, 'motor_side',
+                            [pump_vib(f'30PAC10CY00{n}', f'Circulating water pump {letter}', PUMP_VIB['cw'])]))
         pipes.append(pipe(f'30PAC10BR00{n}', f'Circulating water pump {letter} discharge', 'cooling_water', 1400,
                           nz(f'30PAC10AP00{n}', 'discharge'), [[x, -14, 1.5]], jn('30PAB10BR010', [x, -14, -4.5]),
                           valves=[valve(f'30PAC10AA10{n}', 'valve_butterfly', 0.35,
@@ -366,9 +380,11 @@ def st_area():
            {'length': 14, 'width': 12, 'height': 16, 'waterboxes': 4, 'passes': 1, 'hotwell': True}, 'shell',
            cond_parts),
         eq('30LCB10AP001', 'Condensate extraction pump A', 'pump_vertical', [52, -8, -6], 0,
-           {'flow_m3h': 400, 'head_m': 160, 'motor_kw': 280, 'pit_depth': 3}, 'motor_side'),
+           {'flow_m3h': 400, 'head_m': 160, 'motor_kw': 280, 'pit_depth': 3}, 'motor_side',
+           [pump_vib('30LCB10CY001', 'Condensate extraction pump A', PUMP_VIB['cep'])]),
         eq('30LCB10AP002', 'Condensate extraction pump B', 'pump_vertical', [56, -8, -6], 0,
-           {'flow_m3h': 400, 'head_m': 160, 'motor_kw': 280, 'pit_depth': 3}, 'motor_side'),
+           {'flow_m3h': 400, 'head_m': 160, 'motor_kw': 280, 'pit_depth': 3}, 'motor_side',
+           [pump_vib('30LCB10CY002', 'Condensate extraction pump B', PUMP_VIB['cep'])]),
         eq('30MAJ10AP001', 'Vacuum pump A', 'vacuum_pump_skid', [27, -16, 0], 0, {'kw': 160, 'length': 4}, 'side'),
         eq('30MAJ10AP002', 'Vacuum pump B', 'vacuum_pump_skid', [21, -16, 0], 0, {'kw': 160, 'length': 4}, 'side'),
         eq('30MAV10AP001', 'Steam turbine lube oil pump (AC)', 'pump_horizontal', [60, 20, 0], 0,

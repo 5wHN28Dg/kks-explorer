@@ -897,8 +897,9 @@ docs/plant3d/STAFF.md, docs/plant3d/WATER-TREATMENT.md, docs/plant3d/SITE.md. Mi
 - **staff.json** (new, optional): the people (§16).
 - **One step** gains step 9, the staff (§17), and new trainee inputs (§17.6).
 - **Limits** (`limit` above them): per model 64 isolations of at most 16 points, 128 works; per staff file 200
-  people, 48 roles, 2,000 places of which 500 points, 6,000 ways, 16 vehicles, 400 tasks of at most 64 steps, 128
-  reactions, 64 zones, 16 rosters, 64 routines.
+  people, 48 roles, 2,000 places of which 500 points, 6,000 ways, 16 vehicles, 800 tasks of at most 64 steps (400
+  until milestone AG2, REALISM.md §2.18), 128 reactions as written and 1,024 once made for each work and fault
+  (§16.7), 256 faults in a reaction's list, 64 zones, 16 rosters, 64 routines.
 - **New error codes:** `bad_clock` (a time that isn't `HH:MM`, a `day_scale` that doesn't divide 60),
   `unreachable` (a place no way reaches from the control room), `bad_way` (a way shorter than the straight line
   between its places; the build's check against the navigation mesh, §18.1), `authority` (a task step whose role
@@ -1022,6 +1023,10 @@ calibration.
 - **`task`** (optional until the plant has a `staff.json`, then required and a task of it, `bad_ref`): the staff task
   (§16.6) that does the work; the trainee does the same steps when they play its role. Without staff (milestone P1)
   the trainee runs a permit through its states from the permit form, in free mode (§17.1).
+- **`isolate`, `deisolate`, `assign`** (optional; milestone AG2): staff tasks (`bad_ref` without one of that id, an
+  identifier without staff.json) that the generic permit reactions give for this work (§16.7: `"$isolate"` and the
+  others): having it isolated when its permit is approved, its isolation removed when it is returned, its job given
+  to a technician when it is issued.
 
 ### 15.3 A permit's states
 
@@ -1325,6 +1330,18 @@ Steps, each done by an NPC as said and by the trainee through the input named (�
   "requested"}`), or an unsafe act starting. The task goes to one person (§17.3). A reaction is skipped while a task
   it gave for the same source (the same alarm, trip, fault, value, permit or act) is still queued or current, so a
   chattering alarm doesn't flood anyone.
+- **Generic reactions** (milestone AG2, REALISM.md §2.18): a permit reaction whose `task` is `"$isolate"`,
+  `"$deisolate"` or `"$assign"` (with a `work`, any: `unknown_key`; on anything but a permit's state: `bad_ref`) stands for one
+  reaction per work that names that task (§15.2), in the works' order (the model files' as plant.json lists the areas,
+  each file's in order), with that work and the task it names; a work naming none is skipped. A fault reaction whose
+  `fault` is a list (1 to 256 ids, each once: `dup_id`) with `"work": "$"` stands for one reaction per fault, in the
+  list's order, with the work whose `repairs` names it (exactly one: `bad_ref` otherwise); `"work": "$"` with one
+  fault that is not a list is `bad_type`, on anything but a fault `bad_ref`, and a list without it `bad_type`. Every other reaction stands for itself. They are made in the file's
+  order, each at its place, when the file is read: the step, its sources (the reaction's index in that made list),
+  saves and digests see only the made reactions, so a file written generically steps exactly as one that writes the
+  same reactions out one by one in that order (`plant3d-v2.json`'s last staff run against its first). The first
+  train's content writes three permit reactions and one fault reaction for the train, one for the water treatment
+  plant, where it wrote one for each work and fault.
 - **`{"lock_left": "*"}`** (2026-10-24): a person (not the trainee) who has left the site (off duty, no place, §17.8)
   while holding a lock not kept for a job of theirs held for their next duty (§17.10). The reaction is made once per departure, in phase 2 of the next step 9 (§17.2), with the
   person as its source; its task's `remove_locks` step removes their locks. A person who comes back on site with

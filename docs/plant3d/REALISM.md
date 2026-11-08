@@ -89,7 +89,7 @@ digests.
 
 - A version 2 scenario gains `"world": {"seed": n, "year_day": d, "weather": W, "age": A, "changes": [ids]}` (all
   optional; `seed` a whole number 0 to 2³² − 1, default the staff seed, else 1; `year_day` 1–365, the day of the year
-  of the clock's day 1, default 1, for the seasons of §5.1; `age` is read by the content tools only, §4.3;
+  of the clock's day 1, default 1, for the seasons of §5.1; `age` is `{"months": m}`, 0–600, read by the content tools only, §4.3 and §2.18;
   `changes`, §10.2).
 - Draws use §17.5's generator (mix32, xorshift32, 24-bit `r`) on streams of their own, so a person's draws never
   change. A stream belongs to a purpose tag P and an item named by its id (a value name, a fault id, a person id): s =
@@ -682,6 +682,190 @@ at 29–35 °C over the runs.
   56.1 ms, none over 100 ms (the frame rule passes without excluding any frame; the kernel reclaimed in 2.42 % of
   the samples, so no frame could have been excused).
 
+### 2.18 As built for milestone AG2 (2026-11-07: the first train ages)
+
+- **Where:** the content tool `tools/plant3d/train_ageing.py` (the items, their life tables, signs, failures, works,
+  the scenarios' training rates and ages, `shift_aged`), hooked into `train_model.py`, `train_content.py`,
+  `train_staff.py`, `train_areas.py` (seven vibration probes) and the sound library (`bearing_noise`, `gear_whine`,
+  `tools/plant3d/sounds/make_sounds.py`). Tests: `tests/test_plant3d_ageing.py`; the day's fork `aged_ccw`
+  (`tests/test_plant3d_staff.py` `test_forks`, and the GDScript replay of every fork).
+- **Wear in equivalent hours:** a wear's rate is its duty (running 0 or 1; the valve actuators' grease and packing and
+  transmitter 3's sensor age by the calendar) times `age_h` = `age_rate` / 3600 (one value, in `bop`, the first
+  area), so it grows by an hour for each clock hour of duty at `age_rate` 1 and by `age_rate` hours at a training
+  rate. Lives are `draw` nodes over inverse Weibull tables (`life_table`: 13 rows, the 99.5 % life the last), never
+  below a floor (an earlier failure is an installation fault, a hidden cause's business, §2.6).
+
+| Kind (items) | Characteristic life η, slope β | P-F interval | Floor | Signs | Failure (its work) |
+|---|---|---|---|---|---|
+| Motor bearings (CW pumps A–C, closed cooling water A–B, condensate A–B) | 50,000 h, 1.5 ([ISO281]'s spread) | 3,000 h | 7,500 h | vibration on the motor's probe from ISO 20816-3 zone A/B to beyond C/D, the advisory alarm at the C/D boundary (7.1 mm/s group 1, 4.5 group 2), the noise (`bearing_noise`, its gain from the vibration), the shake, the bearing temperature on the screens (its rise over the air, 25 K, up to 110 K at the end over the last 30 % of the interval; the housing lags it by 600 model seconds, so the advisory at 90 °C comes before the failure with the air above about 10 °C at the rate 300, and earlier at slower rates) | the motor trips (`<pump>_fault`): `wo_<pump>_brg`, replace the motor bearings (mechanical) |
+| Gear reducers (cooling tower fans 1–10) | 60,000 h, 1.8 ([CTI]) | 4,000 h | 10,000 h | the gear mesh's vibration added to the fan's own probe (0 until P, at most 7 mm/s, so the fan's own 10 mm/s trip comes only with the failure), the advisory alarm at 6.3 mm/s, the gear whine | the fan's vibration fault, which trips it: `wo_ct_fan<i>_gbx` |
+| Valve actuators (CW discharge valves A–C) | 35,000 h by the calendar, 2.5 ([NRC-GL89-10]) | 4,000 h | 10,000 h | the running torque on the screens while it strokes, 55 % of the torque switch's setting rising to 100 % | stuck for good (`cw_<x>_v_stuck`): `wo_cw_<x>_act` under the actuator's own supply isolation (the valve stays where it stands) |
+| Motor protection (CW pumps A–C) | 200,000 h, 1.0 (a constant hazard, [IEEE493]'s order) | none | 5,000 h | none (§4.2's seeded hazard) | a trip by itself: `wo_<pump>_rly` (electrical) |
+| Transmitter 3's sensor | by the calendar since its calibration | | | its drift (direction drawn), 0 for a year, 2 kPa at three ([R3051] far exceeded: a training figure) | none: the week's calibration renews it |
+
+- **Every earlier value kept:** a sign that feeds a value the train had (the fans' vibration, transmitter 3's
+  reading) is 0 until the item's P point, and every other sign is a new value. The scenarios that teach operating age
+  at `age_rate` 100 from the overhaul (the hot restart two months on), and their items stay below their P points over
+  30 clock hours of full duty for their own seeds' lives (`test_earlier_scenarios_reach_no_P_point_in_their_runs`).
+  That rate is gentler than §4.3's "signs within a shift" on purpose: a cold start teaches operating, not
+  breakdowns, and its runs keep every earlier value; the ageing scenario runs at 300, which meets §4.3. So the vectors'
+  content runs keep every input, event and earlier value (below); the digests change with the values.
+- **Nothing told:** wear, lives and margins carry no code, so no screen or card shows them; the signs do (the probes'
+  readouts, the screens' groups by code, the CW, condensate and auxiliaries screens' trends of the pumps' vibration).
+- **The scenarios' ages** (`world.age`, §2.1): each item starts at the months by its duty share (CW pumps 2/3,
+  closed cooling water and condensate pumps 1/2, fans 0.8, the calendar's 1), less every whole life the months passed
+  (`math.fmod` by its own drawn life, which the content tool draws as the engine will: renewal theory's simplest
+  form), so no item starts past its life. **`shift_aged`** (from `shift_cold`): 30 months, seed 663, `age_rate` 300 (a
+  bearing's P-F interval in 10 clock hours), closed cooling water pump A running: its bearing shows its signs from
+  05:00, fails at about 08:25, the standby starts; the supervisor asks for the permit of the work that repairs it, the
+  pump is isolated and a mechanical technician replaces the bearings (the day's fork `aged_ccw`); transmitter 3 reads
+  1.5 kPa off its partners, and CW valve B's actuator strokes with a rising torque from about 14:30 and sticks at
+  about 03:50 the next morning (signs of their own to find); condensate pump B's bearing and fan 2's gear reducer,
+  stopped at the start, are near enough their ends that, once started, they show their signs within the day.
+- **Once a run:** a failure is a fault with `when`, made once in a run (PLANT3D §7.8). A renewed item wears again and
+  shows its signs again, but does not fail a second time in the same run; at the training rates that takes a whole
+  life (from about 40 clock hours at 100 for the shortest, far more for the rest). A second failure needs a fault that
+  can be made again (left for AG4's intervals or WM1's work orders).
+- **Generic reactions** (PLANT3D §16.7, decided by the coordinator 2026-11-07: AG2's 23 works needed 220 reactions
+  against the staff file's 128): a work names its `isolate`, `deisolate` and `assign` tasks as it names its job; one
+  reaction per permit state gives them for every work, one reaction on a list of faults asks for the permit of the
+  work that repairs each (one for the train, one for the water treatment plant). The content's 128 reactions are 38
+  now; read, they are made into the same reactions, grouped by permit state where the file before wrote them work by
+  work (two works' permits reaching different states in the same step would have their offers in another order; no
+  run of the vectors has such a step, and the day's events are unchanged). Tasks: 460 against a limit raised from 400
+  to 800.
+  **Later, not built:** the engine could make each work's lock and unlock tasks from its isolation's points (the
+  lockers by point kind, the make-safe op), so that a work costs no tasks of its own; worth it when the jobs of
+  HW3–HW6 and the crafts near the 800.
+- **From the reviews:** a fan's gear reducer at its end stays under the fan's 10 mm/s trip (it had tripped the fan,
+  and stopped its wear, before the failure could come); the work tasks are checked before the generic reactions are
+  made from them; the heat alarm reachable (above); a CW pump's new works' lock tasks close its discharge valve by
+  the handwheel when its actuator has failed (the motor's close moves nothing, and the lock was refused for good;
+  the works from before AG2 keep their tasks: a trainer's stuck valve with them stays as it was); transmitter 3's
+  calibration sets the field trim back to 0 (a trim made with the renewal corrected the drift twice).
+- **The step's cost:** 213 values added (183 of them the items and their signs, within §11's 250; the rest the new
+  isolations' safe conditions). On the laptop (`bench_step.gd`, headless, base load, two runs each alternating with
+  main's): 166 and 168 µs on main, 200 and 212 µs here, about +0.04 ms of §11's 0.15 for all realism content.
+- **The Note 9:** the walk with the new content waits for the next phone window (2026-11-08 from 17:30).
+- **Vectors:** `plant3d-v1.json` and `plant3d-v2.json` made again with the train's new values; compared item by
+  item with the files before, keyed by id: every input of every run and fork unchanged, every event too except in the
+  ten cold-start forks that damage a cooling tower fan's blades (`ct_fan<i>_vibration`, and v2's `ct_fan3_service`),
+  where the fan's new advisory alarm at 6.3 mm/s adds its two events (on, cleared) and every earlier event is there in
+  its order (a meaning the content gained); every earlier value at every snapshot unchanged, the new values added, the
+  digests changed with them. The day and every fork of it keep every input, event, state snapshot and end state on
+  the content's generic reactions (only the digests moved, with the values and the reactions' indices in the staff's
+  sources). Added: the cold start's fork `cep_protection` (the trainer's new faults of the condensate pumps' motors,
+  each stopped by its new protection interlock), the day's fork `aged_ccw`, ten staff rejects of the generic forms (after every earlier reject) and
+  the staff run written generically (the last; every input, event, state and digest as the first run's:
+  `test_generic_run_is_the_first_run`). `plant3d-realism.json`: RE1's reject "a key not known yet" now names `changes`
+  (EN2's) where it named `age`, which AG2 defines; six rejects of `age` appended; every other item as it was.
+- **Left for WX2:** the GT compressor's and the condenser's fouling and the filters (WX2 drives their rates with dust
+  and brings their cleaning procedures). Valve stiction that makes a loop hunt waits for IC3, transmitter 2's drift for
+  HW3 (its job's cure reads the sensor's error).
+
+### 2.19 AG3's details (settled 2026-11-08, before the code: condition monitoring)
+
+§9.3 leaves these open; settled here. What is drawn for the trainee is the app's, pinned by app tests; what the engine
+does is in both engines bit for bit, with vectors.
+
+- **Two tool kinds** join the kinds read through (§2.5, with `meter`, `communicator`, `calibrator`): `collector` (a
+  vibration data collector, mode `vel`: overall velocity in mm/s r.m.s., 10 Hz to 1 kHz as [ISO20816-1] asks) and
+  `camera` (a thermal camera, mode `ir`: the spot temperature in °C), and a plain kind `sampler` (an oil sampling kit:
+  a vacuum pump, tube and clean bottles). Their meters are ordinary meters (§2.5): a reading is S1's `read` with the
+  meter named, its event as every reading's (the code and the value), so **a point's readings are the run's `read`
+  events of its code** (routes and trends need no new state: the app lists them from the events, which saves keep).
+  One measurement point per code and kind: the collector reads at the motor's or fan's vibration probe code (the
+  probe's own bearing, [ISO13373-1]'s measurement point), the camera at the motor's code (its bearing housing).
+- **The spectrum is drawn, not read:** the collector's screen draws the point's spectrum from model values named in
+  the monitoring file (below): the 1× (residual unbalance) and 2× (alignment) lines, the bearing's defect tones at
+  their orders of the running speed (BPFO, BPFI, BSF, FTF from the bearing's geometry, [SKF]'s formulas) with their
+  first harmonics, or a gear's mesh tone, and a noise floor; the lines' energy adds up to the overall the meter shows
+  (the 1× takes what the tones and the floor leave). Only the overall is recorded: the tones are seen, as a route's
+  analyst sees them, before the overall leaves zone A/B (§4.2's order: the spectrum's bearing tones first).
+- **A `sample` node** (format 2, stateful, written by no op, fault or work): `{"sample": ref, "spread": table, "hours":
+  h, "init": n}`, `hours` above 0 and at most 8,760 (clock hours, the lab's turnaround), `init` default 0. A hand
+  action gains **`samples`**: 1 to 16 sample nodes, no repeat (`bad_ref`, `dup_id`), and a hand action may then write
+  nothing else (`set` and `input` become optional with `samples`). When such an action is done (in step 1 when it has
+  no `minutes`, else in step 3 at its end), each of its sample nodes, in the list's order, takes a sample: ref's value
+  as it stands then (the previous step's in step 1, this step's step 2 in step 3) plus `spread`(r / 2²⁴), r the next
+  draw of the node's own lab stream (§2.1: purpose `lab`, the id the node's name, the world's seed), queued with its
+  due clock (the clock in tenths at the action's end plus `hours` × 36,000). **Results:** in step 3, after the hand
+  actions whose minutes end (§2.7, before deliveries), each sample node in model order whose first queued sample is
+  due (due ≤ the clock) takes its value and drops it from the queue, then the next while due; event `[n, "lab", node,
+  value]` for each. A jump's step delivers every sample due by the clock after it. At most 8 samples queued per node:
+  a hand action whose node's queue is full is refused with the reason `lab` (after the failed permissives, before
+  `value`). A sample node needs the plant clock (`bad_ref`, as `wear`); it has no entry in step 2's program.
+- **Settled in the code (phase 1, the reference):** a timed sampling action checks the queues when it starts; a node
+  whose queue filled while it was under way takes no sample at its end (no draw), the action's other nodes still do.
+  A `sample` ref may be a number (the oil grade's viscosity). The digest's lab part holds, per sample node in model
+  order, its stream's state (every node's, drawn from or not) and its queue's dues and values; the snapshot's `lab`
+  lists only nodes with samples queued. The `lab` part of `plant3d-realism.json` is appended after `audio`, and
+  `about` gains its sentence (the only earlier item that changes).
+- **Who takes a sample:** a hand action with `samples` and `work: false` needs the `sample` authority (S3's, the
+  chemists') instead of `operate_local`; the mechanical technician gains it in the first train's staff file.
+- **Snapshots, saves, the digest:** the node's value is a value; each sample node's queue (due clock in whole tenths,
+  value) is engine state, in saves and snapshots (`lab`: node → queue) and in the digest after the hands part, with
+  each node's lab stream state, in model order.
+- **The first train's content** (`tools/plant3d/train_monitoring.py`): the collector, the thermal camera and two oil
+  sampling kits at the store counter; collector meters at the seven pumps' and ten fans' vibration probes, camera
+  meters at the seven pump motors; the pump bearings' defect tone (BPFO, the outer race: the commonest defect, and
+  what [ISO13373-2] shows first) a table of the bearing's margin from its P point, so it is seen before the overall
+  leaves zone A/B; the fans' gear mesh tone is AG2's gear share of the fan's vibration. Oil samples (a hand action at
+  the equipment's work place, ten minutes, with the kit) from the CW pump motors' oil-bath bearings and the fan gear
+  reducers: iron (ppm, from the item's margin), the ISO 4406 code at 6 µm (from the margin), viscosity at 40 °C (cSt,
+  the oil's grade) and water (ppm), each a sample node with a small lab spread, results after 48 clock hours (a
+  commercial lab's usual turnaround, [ASTM-D6224]'s routine tests). The values count against §11's wear signs (the
+  tones) and its chemistry share (the oil results).
+- **The monitoring file** (`data/plant3d/monitoring.json`, format `walkdown-plant-monitoring` version 1, made by the
+  content tool, checked by `ref/plant3d_monitoring.py` against the model): each point's code, kind (`vib`, `ir`,
+  `oil`), title, its meter or hand action, the running speed (rpm), the ISO 20816-3 group and zone limits, the
+  spectrum's lines (order, value or share), the oil results' nodes with their units and alert and alarm limits, the
+  sources. The app reads it for drawing and words only; the engine never reads it.
+- **The thermal camera's false-colour picture (the user's call, 2026-11-08: option A):** spot readings now; the
+  picture (§9.3: the work view with the Workshop's heat view) comes with K6's pump and motor kinds, the first
+  equipment with a work view whose temperatures teach something (today's work views are the transmitters').
+- **As built (2026-11-08):**
+  - **Where:** the reference (`ref/plant3d_hands.py`, `ref/plant3d_monitoring.py`), the GDScript engine
+    (`sim/hands.gd`, `sim/plant_model.gd`, `sim/engine.gd`, saves in `ui/autosave.gd`), the content
+    (`tools/plant3d/train_monitoring.py`, hooked into the train's model, tools and staff), the monitoring file, the
+    app's view (`ui/monitoring_view.gd`, from the card). Tests: `tests/test_plant3d_monitoring.py`, the realism
+    file's lab part in `tests/test_plant3d_realism.py` and `tests/test_plant3d_sim.py`, the app's
+    `tests/test_ui_monitoring.gd` and `test_run_save.gd`'s lab case.
+  - **Content:** 92 values: 14 for the pump bearings' outer race tones (each pump's tone and its margin's table) and
+    78 for the oil (13 points, four sample nodes each, and their refs: the CW pump motors' oil baths VG 68, the fan
+    gear reducers VG 220). The collector, the camera and two sampling kits at the store counter; 17 collector meters
+    (7 pumps, 10 fans), 7 camera meters (the pump motors); 13 oil sampling actions; the mechanical technician gains
+    `sample`.
+  - **The app's view:** the card of any code of a machine with points (a pump's probe and its motor share their
+    system and number) offers "Condition monitoring": one panel with the machine's points. The collector's screen
+    (with the collector carried, within reach of the probe) shows the overall the meter shows, its ISO 20816-3 zone
+    in words and as a bar with the group's limits, and the spectrum in orders of the running speed: each line from the
+    file (a model value, times `by`, times `share`; or a share of the overall), the floor, and the 1× taking what they
+    leave; when the lines alone exceed the overall (a machine slowing down) they are scaled to fit and the 1× is
+    nothing, so the energy always adds up to the overall. The camera's spot reading shows against the point's alert
+    and alarm. Both record S1's `read` with the meter. The oil point's button sends the hand action with the kit
+    carried; the ten minutes show under way, the queue at the lab with its next due time, and the lab's report (the
+    newest results against their limits, the one before beside them) with a toast when results arrive.
+  - **Readings listed from the inputs, not the events:** a reading no task step waits on makes no event in either
+    engine (S1 matches reads against the trainee's steps), so the view lists a point's readings from the run's `read`
+    inputs with its meter; saves keep the inputs, so routes and trends still need no new state.
+  - **Vectors:** `plant3d-realism.json`'s lab part (25 rejects, 4 runs) after `audio`, every earlier part unchanged
+    but `about`'s sentence; `plant3d-v1.json` and `plant3d-v2.json` made again with the content: every input, event and
+    earlier value unchanged, the new values added, every snapshot's empty `lab: {}`, the digests changed with them.
+    The GDScript engine runs every vector bit for bit (the lab results compared as values to 9 decimals, the digests
+    bit for bit).
+  - **The Note 9** (a test-signed release build at c9781e56, `walk=monitor probe=1`, 300 s from a cool start at
+    26.6 °C, 2026-11-08): the mechanical technician at closed cooling water pump A with the collector, the camera and
+    a sampling kit, the panel open (its collector's screen at 3.18 mm/s, redrawn as the plant ran at 1×): it opened in
+    14.7 ms; the frame drew 699 draw calls and 239,602 triangles (649 and 237,718 before it opened). Tier lean+vis,
+    11,844 frames: median 23.4 ms, p95 36.8 ms, max 75.0 ms, none over 100 ms (the frame rule passes without
+    excluding any frame; the kernel reclaimed in 6.78 % of the samples, so no frame could have been excused). The
+    screen's only long gaps were in the first 16 s, while the app loaded (its first frame at 14.5 s).
+  - **Left from the reviews (not changed):** the lab's step looks at every sample node each step (52 in the train;
+    keeping the earliest due would skip them while nothing is queued); a save's queued dues are checked as whole
+    numbers, not for their order (a tampered queue can only delay its node's results); the due's
+    `ceil(hours × 36,000)` adds a tenth for hours that are not exact in binary (both engines alike; the content's
+    48 is exact).
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does
@@ -1286,7 +1470,7 @@ combined-cycle plant gives for it.
 |---|---|---|
 | Process and operating areas (staff zones with PPE: halls, yards, the pipe rack, the WTP) | an unsafe act of kind `audio` | allowed (calls, the radio's back-up) |
 | Ex zones (classified: the fuel gas station with OP4, the hydrogen areas with HS6; none in the first train yet) | `audio` | an unsafe act of kind `phone`: left at a locker before entering |
-| The central control room (`audio.rooms`: not a zone, zones need PPE) | `audio` (the user, 2026-11-03: its operators answer alarms) | allowed |
+| The central control room and the WTP control room (`audio.rooms`: not zones, zones need PPE) | `audio` (the user, 2026-11-03 and 2026-11-07: their operators answer alarms) | allowed |
 | Camp, offices, canteen, rest places, the roads (no zone) | allowed | allowed |
 | Aboard a vehicle as a passenger (in no zone, §21.4) | allowed | allowed |
 | Driving a run (the bus, §21.16) | refused ([GEH-C25], [IOGP459]): the `audio` input refused (`driving`), and taking the driver's seat turns it off | not modelled |
@@ -1295,28 +1479,34 @@ combined-cycle plant gives for it.
 answer alarms; staff.json's `audio.rooms` lists the places beyond the process zones where it is banned, starting with
 the control room. And a device taken while the player is off duty is held until the end of their next duty.
 
+**Answered (the user, 2026-11-07):** the engine remembers which locker holds the phone, and it is taken again only
+there. A device taken off duty is held until the end of the next duty the player actually works: a duty of their
+roster they don't work doesn't give it back. The WTP control room joins `audio.rooms`, beside the central control
+room.
+
 **The engine** (both engines bit for bit, behind staff.json's key `audio`; without the key nothing changes. The
 synthetic items of `plant3d-v1.json` and `-v2.json` stay byte for byte. The first train's runs carry the key, so they
 keep every input, event and earlier value, and their digests and snapshots gain the new parts):
 - **`"audio": {"banned": [zones], "ex": [zones], "notice": [min, max], "mask": m, "rooms": [rooms]}`.** `banned`
   (≥ 1) lists the zones where music is an act; `ex` lists the zones where carrying the phone is (each also in
   `banned`). `rooms` (optional, the user, 2026-11-03) lists the rooms (staff.json places' `room`) beyond the zones
-  where music is an act too: the first train's control room. A person is in such a room at a place of it, on a way
+  where music is an act too: the first train's control room and the WTP control room (the user, 2026-11-07). A person is in such a room at a place of it, on a way
   whose two ends are in it, or (a player) at the place they last arrived at. The app sends `arrive` within 1.5 m of a
   place, and anywhere inside a banned room's footprint (the plan box round its places, 1 m out) at the room's
   nearest place, so its middle counts too (the adversarial review found the middle of the control room held none). `notice` is how many whole clock
   minutes (0–600) an observer takes to notice. `mask` is the volume (1–100) from which radio calls are missed. With
   the key, the act kinds are `ppe, permit, unsafe, audio, phone`, in that order, for reactions (`on.unsafe`),
   `put_right` and stops.
-- **A player's person** has `music` (a volume 0–100, 0 off) and `phone` (1 carried, the default; 0 left at a
-  locker; 2 held).
+- **A player's person** has `music` (a volume 0–100, 0 off), `phone` (1 carried, the default; 0 left at a
+  locker; 2 held) and, while the phone is left, the locker that holds it (the user, 2026-11-07).
   - Inputs: `[n, "audio", volume]` and `[n, "phone", "leave" | "take"]` (the app sends it at a locker).
     Leaving the phone turns the music off.
   - Events: `["audio", person, volume, "done" | "refused", reasons]` and `["phone", person, what, …]`, with the
     slot last in a session. The reasons are `no_audio` (no key), `held` and `left`; then for `audio` above 0,
-    `driving` (the person drives a vehicle's run, §21.16); for `phone`, `locker` (the place the player last arrived
-    at is not a locker: the engine checks it since the follow-ups, one place's kind compared; any locker, the engine
-    keeps no record of which one holds the phone). Taking the driver's
+    `driving` (the person drives a vehicle's run, §21.16); for `phone`, `left` (`leave` while the phone is in a
+    locker already) and `locker` (the place the player last arrived at is not a locker, or, for `take` while the
+    phone is left, not the locker that holds it: the user, 2026-11-07; before, any locker would do). A `take` with
+    the phone carried changes nothing at any locker. Taking the driver's
     seat for a run turns a player's music off: `["audio", person, 0, "done", ["driving"]]`, the slot last in a
     session.
   - In free mode the inputs do nothing. An NPC plays no music (a person released becomes an NPC with the music
@@ -1346,11 +1536,15 @@ keep every input, event and earlier value, and their digests and snapshots gain 
   - The kind's `put_right` task follows (music off, phone out of the Ex zone).
   - While the phone is held, `audio` and `phone` inputs are refused (`held`).
   - It comes back when the duty it was taken in ends (event `["returned", person]`). This is judged by the clock, so
-    a jump into the next duty also gives it back. Taken off duty, it is held until the end of their next duty (the
-    user, 2026-11-03; before, it came back at once): the first duty of their roster starting after the stop, and
-    never when the roster has none.
+    a jump into the next duty also gives it back. Taken off duty, it is held until the end of the next duty they
+    actually work (the user, 2026-11-03 and 2026-11-07; at first it came back at once, then at the end of the first
+    duty of their roster after the stop). A duty is worked when it begins for them: the `duty on` of step 1, or a
+    jump landing inside it. A duty of their roster that passes inside a jump's gap (no `duty` events, §17.6) or while
+    they are `absent` was not worked and doesn't return it; with no duty in their roster it is never returned. Until
+    the duty begins, the clock it comes back at is 2⁶² (`HELD_NEXT`); then it is the duty's end.
 - **The digest** gains a part with the key: music, phone and the missed-call flags per person, the observers'
-  times per act, and the streams. The acts' list per person grows to the five kinds. The snapshot gains `audio`:
+  times per act, and the streams. A phone left at a locker is 3 + the locker's place index in the phone's list
+  (the user, 2026-11-07), so the locker is in the digest without a list of its own. The acts' list per person grows to the five kinds. The snapshot gains `audio`:
   {person: [music, phone]} for anyone not at the default.
 
 **What it does to hearing (the app; not in the vectors).** The masking is a level the app computes from the volume:
@@ -1394,6 +1588,12 @@ and limit, and a reaction or put-right of the new kinds without the key. Its run
   duty held to the end of the next duty; music turned off at the wheel and refused while driving; a radio call
   missed, and the phone refused away from a locker. The earlier runs that leave the phone now arrive at a locker
   first, and those with music at the mask gain the missed radio calls.
+- after the second follow-ups (the user, 2026-11-07; appended): the phone taken only at the locker holding it
+  (refused at another, and left a second time refused); a device taken off duty held through a jump past the
+  whole next duty, then to the end of the duty after, which a jump lands inside. Three earlier runs keep their
+  events and change only their digests: the phone left at a locker (run 2) and the session (run 6) carry the
+  locker while the phone is in it, and the device taken off duty (run 10) is held at 2⁶² until its next duty
+  begins.
 
 **Budgets.** The engine's cost is per player and per act (a few comparisons a step; draws only when an observer
 meets an act). Music playback is one streamed Vorbis player (no new pipelines, ≤ 2 MB PSS). The package grows by
@@ -1792,6 +1992,7 @@ Manufacturers' published manuals and handbooks:
   [Fluke] Fluke application notes on clamp meters and 4–20 mA loop calibrators.
 
 Textbooks:
+- [ISO281] ISO 281, Rolling bearings: dynamic load ratings and rating life (the Weibull spread of bearing lives). · [IEEE493] IEEE 493 (Gold Book), Design of reliable industrial and commercial power systems (failure rates of motors and protection). · [OREDA] OREDA Offshore and Onshore Reliability Data handbook, its public summaries (pumps' and fans' failure modes and rates). · [CTI] Cooling Technology Institute, guidance on cooling tower gear reducers and their maintenance. · [NRC-GL89-10] US NRC Generic Letter 89-10 and 96-05, motor-operated valve testing (running torque, periodic verification), https://www.nrc.gov/reading-rm/doc-collections/gen-comm/gen-letters/1989/gl89010.html
 - [Moubray] J. Moubray, Reliability-centred Maintenance (the P-F curve). · [Liptak] B. Lipták, Instrument Engineers'
   Handbook. · [Piotrowski] J. Piotrowski, Shaft Alignment Handbook. · [Perry] Perry's Chemical Engineers' Handbook
   (cooling towers). · [CTI] Cooling Technology Institute, publications on cooling tower performance.

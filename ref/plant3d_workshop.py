@@ -162,7 +162,7 @@ def _assembly(a, comps, fast, cite, tx, where):
 
 
 def _views(v, comps, where):
-    keys(v, (), ('xray_all', 'cutaway', 'run_exploded'), where)
+    keys(v, (), ('xray_all', 'cutaway', 'run_exploded', 'open_running'), where)
     for c in lst(v.get('xray_all', []), f'{where}.xray_all', 0, MAX['components']):
         need(isinstance(c, str) and c in comps, 'bad_ref', f'{where}.xray_all: no component {c!r}')
     if 'cutaway' in v:
@@ -186,3 +186,10 @@ def _views(v, comps, where):
             for c in lst(r['allowed'], f'{rw}.allowed', 0, MAX['components']):
                 need(isinstance(c, str) and c in comps, 'bad_ref', f'{rw}.allowed: no component {c!r}')
             words(r['why'], f'{rw}.why', 300)
+    if 'open_running' in v:
+        o = v['open_running']
+        ow = f'{where}.open_running'
+        keys(o, ('allowed', 'why'), (), ow)
+        for c in lst(o['allowed'], f'{ow}.allowed', 0, MAX['components']):
+            need(isinstance(c, str) and c in comps, 'bad_ref', f'{ow}.allowed: no component {c!r}')
+        words(o['why'], f'{ow}.why', 300)

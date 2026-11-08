@@ -22,6 +22,7 @@ const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goe
 
 const W = preload("res://ui/widgets.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
+const Debrief = preload("res://ui/debrief.gd")
 
 var ui                          # ui/plant_ui.gd
 var body: VBoxContainer
@@ -600,7 +601,7 @@ static func act_text(sm, kind: int, a) -> String:
 static func _zone_title(sm, det) -> String:
 	var z: int = sm.zone_ix.get(det, -1) if sm != null else -1
 	# (not a zone: a room where music is banned, REALISM.md §8.5: "control_room" is "control room")
-	return String(sm.d["zones"][z].get("title", det)).to_lower() if z >= 0 else str(det).replace("_", " ")
+	return String(sm.d["zones"][z].get("title", det)).to_lower() if z >= 0 else Debrief.room_words(str(det))
 
 
 ## What the trainee wears, what their zones need, their own unsafe acts, and (with stop_work) the acts they can see.

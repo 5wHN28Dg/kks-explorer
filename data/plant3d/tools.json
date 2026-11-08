@@ -7,6 +7,9 @@
   {"id": "spanner_17", "title": "Spanner, 17 mm", "kind": "spanner", "size": "17 mm", "at": [["ic_toolbox", 1]]},
   {"id": "dmm", "title": "Multimeter", "kind": "meter", "modes": ["ma_dc", "v_dc", "ohm"], "at": [["ic_toolbox", 2]]},
   {"id": "clamp", "title": "mA clamp meter", "kind": "meter", "modes": ["ma_clamp"], "at": [["ic_toolbox", 1]]},
-  {"id": "hart", "title": "HART communicator", "kind": "communicator", "modes": ["hart"], "at": [["ic_toolbox", 1]]}
+  {"id": "hart", "title": "HART communicator", "kind": "communicator", "modes": ["hart"], "at": [["ic_toolbox", 1]]},
+  {"id": "vib_dc", "title": "Vibration data collector", "kind": "collector", "modes": ["vel"], "at": [["store_counter", 1]]},
+  {"id": "ir_cam", "title": "Thermal camera", "kind": "camera", "modes": ["ir"], "at": [["store_counter", 1]]},
+  {"id": "oil_kit", "title": "Oil sampling kit (vacuum pump, tube, clean bottles)", "kind": "sampler", "at": [["store_counter", 2]]}
  ]
 }

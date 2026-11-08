@@ -13,9 +13,12 @@ come with S2; vehicles, `ride`, `sleep`, homes and off-duty routines with S4 (PL
 import copy, heapq, json, math, re
 from ref.courses import need, keys, is_num, num, ident, lst
 
+# the tasks a work names for the generic permit reactions (§16.7, milestone AG2: "$isolate" and the others)
+WORK_TASKS = ('isolate', 'deisolate', 'assign')
+
 STAFF_FORMAT = 'walkdown-plant-staff'
-MAX = {'people': 200, 'roles': 48, 'places': 2000, 'points': 500, 'ways': 6000, 'tasks': 400, 'task_steps': 64,
-       'reactions': 128, 'rosters': 16, 'routines': 64, 'queue': 32, 'zones': 64, 'vehicles': 16, 'runs': 32,
+MAX = {'people': 200, 'roles': 48, 'places': 2000, 'points': 500, 'ways': 6000, 'tasks': 800, 'task_steps': 64,
+       'reactions': 128, 'reactions_made': 1024, 'faults_listed': 256, 'rosters': 16, 'routines': 64, 'queue': 32, 'zones': 64, 'vehicles': 16, 'runs': 32,
        'drive_places': 64}
 PLACE_KINDS = ('desk', 'seat', 'bed', 'table', 'work', 'door', 'stop', 'locker', 'store', 'counter', 'point', 'muster',
                'depot', 'toolbox')     # (toolbox: where tools are kept, REALISM.md §2.3)
@@ -51,7 +54,7 @@ ACT_KINDS = ('ppe', 'permit', 'unsafe')     # an unsafe act's kinds, in the orde
 AUDIO_KINDS = ('audio', 'phone')   # and with staff.json's `audio` (REALISM.md §8.5): music on in a banned zone, the
                                    # phone carried in an Ex zone, checked after those
 NOTICE_MAX = 600       # clock minutes: the longest `audio.notice` delay (§8.5)
-HELD_EVER = 1 << 62     # a device held while off duty by someone with no next duty: never given back (§8.5)
+HELD_NEXT = 1 << 62     # a device taken off duty: held until the end of the next duty its person works (§8.5)
 ZONE_EDGE = 0.01        # a place this near a zone's edge or height limits is bad_zone (§16.2)
 HHMM = re.compile(r'([01][0-9]|2[0-3]):([0-5][0-9])')
 OFFSET = re.compile(r'(start|end|prev|next)([+-])([0-9]|1[0-2]):([0-5][0-9])')
@@ -212,6 +215,28 @@ def in_outline(x, y, poly):
 
 # ---------------------------------------------------------------- the validator
 
+
+def expand_reactions(rs, works):
+    """The reactions as the step reads them (§16.7, milestone AG2): a permit reaction giving a work's task
+    ("$isolate", "$deisolate", "$assign") stands for one reaction per work that names that task, in the works' order
+    (the model files', each file's in order), with that work and its task; a reaction on a list of faults with
+    `"work": "$"` stands for one reaction per fault, in the list's order, with the work that repairs it. Every other
+    reaction stands for itself. Each in the file's order, at its place."""
+    out = []
+    for r in rs:
+        k, v = next(iter(r['on'].items()))
+        t = r['task']
+        if k == 'permit' and isinstance(t, str) and t.startswith('$'):
+            for w in works:
+                if t[1:] in w:
+                    out.append(dict(r, task=w[t[1:]], work=w['id']))
+        elif k == 'fault' and r.get('work') == '$':
+            for f in v:
+                out.append(dict(r, on={'fault': f}, work=next(w['id'] for w in works if w.get('repairs') == f)))
+        else:
+            out.append(r)
+    return out
+
 class Staff:
     """A checked staff.json with everything the step needs, built once (the engine's state is in StaffRun)."""
 
@@ -278,6 +303,10 @@ class Staff:
         self.check_routines(d['routines'])
         for t in tl:
             self.check_task(t)
+        for x in m.works:
+            for k in WORK_TASKS:        # the tasks the generic permit reactions give for it (§16.7, AG2): before
+                if k in x:              # the reactions are made from them
+                    need(x[k] in self.tasks, 'bad_ref', f'work {x["id"]}.{k}: no task {x[k]!r} in staff.json')
         self.check_reactions(d.get('reactions', []))
         self.check_put_right(d.get('put_right', {}))
         self.check_task_refs()
@@ -1108,7 +1137,16 @@ class Staff:
                 need(v in (1, 2, 3) and not isinstance(v, bool), 'bad_value', f'{wr}.on.alarm: 1, 2 or 3')
             elif k == 'trip':
                 need(v == '*' or v in trips, 'bad_ref', f'{wr}.on.trip: "*" or a trip')
+            elif k == 'fault' and r.get('work') == '$':
+                # §16.7 (AG2): a list of faults, each given with the work that repairs it
+                fl = lst(v, f'{wr}.on.fault', 1, MAX['faults_listed'])
+                for j, f in enumerate(fl):
+                    ident(f, f'{wr}.on.fault[{j}]')
+                    need(f not in fl[:j], 'dup_id', f'{wr}.on.fault: {f} twice')
+                    need(sum(1 for x in self.m.works if x.get('repairs') == f) == 1, 'bad_ref',
+                         f'{wr}.on.fault[{j}]: {f} is repaired by no work, or by more than one')
             elif k == 'fault':
+                need(not isinstance(v, list), 'bad_type', f'{wr}.on.fault: a list of faults goes with "work": "$"')
                 ident(v, f'{wr}.on.fault')
             elif k == 'value':
                 need(v in values, 'bad_ref', f'{wr}.on.value: no value {v!r}')
@@ -1124,12 +1162,24 @@ class Staff:
                                         f'finding')
             for ro in lst(r['roles'], f'{wr}.roles', 1, 16):
                 need(ro in self.roles, 'bad_ref', f'{wr}.roles: no role {ro!r}')
-            need(r['task'] in self.tasks, 'bad_ref', f'{wr}.task: no task {r["task"]!r}')
+            if isinstance(r['task'], str) and r['task'].startswith('$'):
+                # §16.7 (AG2): the task the permit's work names for it
+                need(r['task'][1:] in WORK_TASKS, 'bad_ref', f'{wr}.task: one of "$isolate", "$deisolate", "$assign" '
+                                                           f'or a task')
+                need(k == 'permit', 'bad_ref', f'{wr}.task: a work\'s task on a permit\'s state only')
+                need('work' not in r, 'unknown_key', f'{wr}.work: not with a work\'s task (every work naming it)')
+            else:
+                need(r['task'] in self.tasks, 'bad_ref', f'{wr}.task: no task {r["task"]!r}')
             if 'priority' in r:
                 need(r['priority'] in (1, 2, 3, 4, 5) and not isinstance(r['priority'], bool), 'bad_number',
                      f'{wr}.priority: 1–5')
-            if 'work' in r:
+            if r.get('work') == '$':
+                need(k == 'fault', 'bad_ref', f'{wr}.work: "$" (the work that repairs it) on a fault only')
+            elif 'work' in r:
                 self.work_ref(r['work'], f'{wr}.work', False)
+        self.reactions = made = expand_reactions(rs, self.m.works)
+        need(len(made) <= MAX['reactions_made'], 'limit', f'{w}: over {MAX["reactions_made"]} once made for each work '
+                                                          f'and fault')
 
     def check_put_right(self, pr):
         """`put_right` (§16.7): the task an HSE stop gives the acting person, per kind of act."""
@@ -1250,8 +1300,8 @@ class Staff:
                         a = {'screen': 'operate_screen', 'hart': 'operate_hart'}.get(s['op']['where'], 'operate_local')
                         need(a in auth, 'authority', f'{ws}: role {rid} lacks {a}')
                     if 'hand' in s:     # REALISM.md §2.13: a job's under its permit (accept), else operate_local
-                        h = self.m.hand_keys[(s['kks'], s['hand'])]
-                        a = 'accept' if h.get('work', True) else 'operate_local'
+                        h = self.m.hand_keys[(s['kks'], s['hand'])]     # (§2.19: a sample's taking, sample)
+                        a = 'accept' if h.get('work', True) else 'sample' if 'samples' in h else 'operate_local'
                         need(a in auth, 'authority', f'{ws}: role {rid} lacks {a}')
                     if 'permit' in s:
                         a = PERMIT_AUTH[s['permit']['action']]
@@ -1334,7 +1384,7 @@ class Person:
     __slots__ = ('i', 'id', 'role', 'auth', 'rng', 'on', 'duty', 'duties', 'planned', 'slots', 'pos', 'leg',
                  'cur', 'queue', 'res', 'occ', 'pending', 'result', 'post', 'held', 'worn', 'acts', 'zin',
                  'ride', 'stairs', 'lin', 'home', 'aboard', 'spans', 'offday', 'music', 'phone', 'told', 'watch',
-                 'held_to')
+                 'held_to', 'locker')
 
 
 
@@ -1371,7 +1421,9 @@ class StaffRun:
             # 2 held by whoever stopped its act until their duty ends), the act kinds reported by a missed call, and
             # per (reaction, kind) the observers sharing a zone with the act: person index -> the step they notice
             q.music, q.phone, q.told, q.watch = 0, 1, set(), {}
-            q.held_to = -1             # while held: the clock its duty at the stop ends (now, if off duty then)
+            q.held_to = -1             # while held: the clock its duty ends (HELD_NEXT: taken off duty, until the
+                                       # next duty they work begins)
+            q.locker = -1              # the locker (place index) holding the phone left, else -1
             # a ride (§20.4): [staff lift index, a, b, 0 waiting / 1 aboard, the step the wait began, the destination
             # of the walk]; the stairs walked instead: [destination, place, …, b]; the step of the last lift input
             q.ride, q.stairs, q.lin = None, None, -3
@@ -1459,14 +1511,12 @@ class StaffRun:
             e += DAY
         return (s, e)
 
-    def next_duty_end(self, p, c):
-        """The end of the person's first duty starting after clock c (REALISM.md §8.5: a device taken off duty is held
-        until it ends), from their roster alone; HELD_EVER when their roster has none in a cycle."""
-        for d in range(c // DAY, c // DAY + 66):        # (a rotation's cycle is at most 64 days, a week 7)
-            du = self.duty_on_day(p, d)
-            if du is not None and du[0] > c:
-                return du[1]
-        return HELD_EVER
+    def duty_worked(self, p):
+        """A duty begun (in step 1, or a jump landing inside it): a device taken off duty is held until it ends
+        (REALISM.md §8.5; the user, 2026-11-07: the next duty the person actually works, so not one of their roster that
+        passed while they were absent or inside a jump's gap)."""
+        if p.phone == 2 and p.held_to == HELD_NEXT:
+            p.held_to = p.duty[1]
 
     def slot_times(self, p, duty):
         """The slots of a duty: [(time, slot index, repetition, task)] in time order, then slot order."""
@@ -1579,6 +1629,7 @@ class StaffRun:
                 if du[0] <= c < du[1]:
                     p.on, p.duty = True, du
                     p.worn = set(st.roles[p.role].get('ppe', []))     # at work already: in their PPE (§17.11)
+                    self.duty_worked(p)
             p.duties = [du for du in p.duties if du[1] > c and du is not p.duty]
             pick = None
             for s in p.slots:
@@ -2059,6 +2110,7 @@ class StaffRun:
                 if p.duties and p.duties[0][0] <= c:
                     p.on, p.duty = True, p.duties.pop(0)
                     e.ev('duty', p.id, 'on')
+                    self.duty_worked(p)
                     if p.home is not None:      # the off-duty slots' tasks end: the duty comes first (§21.2)
                         self.end_off(p)
                     held, p.held = p.held, []   # the jobs held overnight come back (§17.10)
@@ -2067,7 +2119,8 @@ class StaffRun:
                         p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
                         e.ev('task', p.id, h['task'], 'resumed')
             if p.phone == 2 and c >= p.held_to:     # a device held is given back when the duty it was taken in
-                p.phone, p.held_to = 1, -1          # ends (§8.5): by the clock, so a jump or the next duty can't keep it
+                p.phone, p.held_to = 1, -1          # (or, taken off duty, the next one worked) ends (§8.5): by the
+                                                    # clock, so a jump or the next duty can't keep it
                 e.ev('returned', p.id)
         for p in self.people:
             if p.id in self.absent:
@@ -2330,8 +2383,9 @@ class StaffRun:
         if act[1] in AUDIO_KINDS and q.phone == 1:     # the device taken until their duty ends (§8.5; one left
                                                        # at a locker in this very step stays there)
             q.music, q.phone = 0, 2
-            # taken off duty: until their next duty ends (the user, 2026-11-03)
-            q.held_to = q.duty[1] if q.on and q.duty is not None else self.next_duty_end(q, e.clock())
+            # taken off duty: until the end of the next duty they work (the user, 2026-11-03 and 2026-11-07), set
+            # when it begins (duty_worked)
+            q.held_to = q.duty[1] if q.on and q.duty is not None else HELD_NEXT
             e.ev('held', q.id, p.id)
         t = self.st.put_right.get(act[1])
         if t is not None:
@@ -2358,7 +2412,9 @@ class StaffRun:
 
     def t_phone(self, tp, what, slot):
         """The player leaves the phone at a locker or takes it again (§8.5). Leaving it turns the music off. Refused
-        without `audio`, while held, or away from a locker (`locker`: the place they arrived at is not one)."""
+        without `audio`, while held, leaving it while it is in a locker already (`left`), or away from a locker
+        (`locker`: the place they arrived at is not one, or for `take` not the locker holding it: the user,
+        2026-11-07)."""
         if what not in ('leave', 'take'):
             return
         why = []
@@ -2366,10 +2422,14 @@ class StaffRun:
             why.append('no_audio')
         elif tp.phone == 2:
             why.append('held')
-        elif tp.pos is None or self.st.places[tp.pos]['kind'] != 'locker':
+        elif what == 'leave' and tp.phone == 0:
+            why.append('left')
+        elif tp.pos is None or self.st.places[tp.pos]['kind'] != 'locker' or \
+                what == 'take' and tp.phone == 0 and tp.pos != tp.locker:
             why.append('locker')
         if not why:
             tp.phone = 0 if what == 'leave' else 1
+            tp.locker = tp.pos if what == 'leave' else -1
             if what == 'leave':
                 tp.music = 0
         self.e.ev('phone', tp.id, what, 'refused' if why else 'done', why, *((slot,) if self.session else ()))
@@ -3947,7 +4007,9 @@ class StaffRun:
               Packed(PACKED_INT32, [p.aboard if p.aboard is not None else -1 for p in people]),
               Packed(PACKED_INT64, [p.offday if p.offday is not None else -1 for p in people])]
              if st.homes else []) + \
-            ([[Packed(PACKED_INT32, [p.music for p in people]), Packed(PACKED_INT32, [p.phone for p in people]),
+            ([[Packed(PACKED_INT32, [p.music for p in people]),
+               # (the phone's state; one left at a locker: 3 + the locker's place index, the user 2026-11-07)
+               Packed(PACKED_INT32, [p.phone if p.phone != 0 else 3 + p.locker for p in people]),
                Packed(PACKED_INT32, [sum(1 << k for k, x in enumerate(AUDIO_KINDS) if x in p.told) for p in people]),
                [[[wk[0], AUDIO_KINDS.index(wk[1]), Packed(PACKED_INT32, sorted(p.watch[wk])),
                   Packed(PACKED_INT64, [p.watch[wk][qi] for qi in sorted(p.watch[wk])])]

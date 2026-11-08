@@ -23,6 +23,7 @@ MAX = {'bytes': 16 << 20, 'equipment': 4000, 'pipes': 2000, 'structures': 2000, 
        'isolations': 64, 'iso_points': 16, 'works': 128,     # these three: format 2 (§14)
        'lifts': 16}                                          # format 2's lifts (§20.1)
 ISO_KINDS = ('electrical', 'mechanical', 'process', 'instrument')                 # §15.1
+from ref.plant3d_staff import WORK_TASKS  # noqa: E402  (the tasks a work names for the generic permit reactions)
 DISCIPLINES = ('mech', 'elec', 'inst', 'chem', 'civil')                          # §15.2
 PERMIT_KINDS = ('general', 'electrical', 'hot', 'confined')
 # a permit's states (§15.3) and the actions that move it: the states each is taken in, and where it goes
@@ -349,7 +350,7 @@ def check_files(files):
     b = Bundle()
     for rel in files:
         need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json', 'weather.json',
-                     'tools.json') or re.fullmatch(
+                     'tools.json', 'monitoring.json') or re.fullmatch(
             r'(areas|model|procedures|scenarios|workshop|workshop/bench|service)/[a-z_][a-z0-9_]{0,31}\.json|'
             r'sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg',
             rel), 'unknown_key', f'{rel}: not a file of the format')
@@ -387,6 +388,9 @@ def check_files(files):
     if b.model.hands:
         from ref import plant3d_hands as H      # a hand action's component is in its part kind's tree (REALISM.md §2.4)
         H.check_components(b)
+    if 'monitoring.json' in files:          # condition monitoring's points (REALISM.md §2.19, milestone AG3)
+        from ref import plant3d_monitoring as MO
+        MO.check(parse(files, 'monitoring.json'), b)
     return b
 
 
@@ -454,8 +458,9 @@ class Plant:
             b.staff = Staff(parse(files, 'staff.json'), b, m)
         elif b.version == 2:
             for x in m.works:
-                if 'task' in x:
-                    ident(x['task'], f'work {x["id"]}.task')
+                for k in ('task',) + WORK_TASKS:
+                    if k in x:
+                        ident(x[k], f'work {x["id"]}.{k}')
         if (m.hands or m.meters) and b.staff is None:
             from ref import plant3d_hands as H      # (with staff.json, checked before its tasks)
             H.check_tool_refs(b, m)
@@ -934,8 +939,9 @@ class Plant:
 # ---------------------------------------------------------------- the behaviour model (§7)
 
 STATELESS = ('const', 'state', 'of', 'sum', 'product', 'min', 'max', 'diff', 'select', 'cmp', 'and', 'or', 'not')
-STATEFUL = ('lag', 'ramp', 'integrate', 'latch', 'delay', 'timer', 'wrap', 'hold', 'draw', 'wear', 'count')
-FORMAT2_NODES = ('hold', 'draw', 'wear', 'count')     # §15.4; REALISM.md §2.2 and J0 (milestone AG1)
+STATEFUL = ('lag', 'ramp', 'integrate', 'latch', 'delay', 'timer', 'wrap', 'hold', 'draw', 'wear', 'count', 'sample')
+FORMAT2_NODES = ('hold', 'draw', 'wear', 'count', 'sample')     # §15.4; REALISM.md §2.2 and J0 (milestone AG1),
+# §2.19's sample (milestone AG3)
 NODE = {
     'const': (('const',), ()), 'state': (('state',), ()), 'of': (('of', 'table'), ('step',)),
     'sum': (('sum',), ()), 'product': (('product',), ()), 'min': (('min',), ()), 'max': (('max',), ()),
@@ -948,6 +954,8 @@ NODE = {
     # format 2, the realism programme's wear engine (REALISM.md §2.2, J0; milestone AG1)
     'draw': (('draw',), ('init',)), 'wear': (('wear', 'max'), ('reset', 'init')),
     'count': (('count',), ('by', 'reset', 'init')),
+    # format 2, condition monitoring's lab (REALISM.md §2.19; milestone AG3)
+    'sample': (('sample', 'spread', 'hours'), ('init',)),
 }
 CMP = ('>=', '>', '<=', '<')
 
@@ -959,6 +967,7 @@ def v1_hold(n, where):
     if isinstance(n, dict) and any(k in n for k in FORMAT2_NODES):
         other = any(k in n for k in STATEFUL + STATELESS if k not in FORMAT2_NODES)
         what = 'the hold node is format 2 (a version 2 model file, §15.4)' if 'hold' in n else \
+            'the sample node is format 2 (a version 2 model file, REALISM.md §2.19)' if 'sample' in n else \
             'the draw, wear and count nodes are format 2 (a version 2 model file, REALISM.md §2.2)'
         need(False, 'unknown_key' if other else 'bad_kind', f'{where}: {what}')
 
@@ -1162,8 +1171,8 @@ class Model:
 
     def check_work(self, x, w):
         """§15.2: a job on equipment that needs a permit."""
-        keys(x, ('id', 'kks', 'title', 'discipline', 'permit'), ('isolation', 'repairs', 'set', 'task', 'renews', 'cures'),
-             w)
+        keys(x, ('id', 'kks', 'title', 'discipline', 'permit'), ('isolation', 'repairs', 'set', 'task', 'renews', 'cures')
+             + WORK_TASKS, w)
         need(isinstance(x['id'], str) and ID_RE.fullmatch(x['id']) and len(x['id']) <= 22, 'bad_id',
              f'{w}: id of at most 22 characters')
         need(x['id'] not in {y['id'] for y in self.works}, 'dup_id', w)
@@ -1199,8 +1208,9 @@ class Model:
                 self.renews.append((name, f'{w}.renews[{i}]'))
             need('isolation' in x, 'missing_key', f'{w}.isolation: a work that renews equipment isolates it '
                                                   f'(PLANT3D §15.2, REALISM.md §2.2)')
-        if 'task' in x:
-            ident(x['task'], f'{w}.task')       # a task of staff.json once the plant has one (§16, milestone S1)
+        for k in ('task',) + WORK_TASKS:    # tasks of staff.json once the plant has one (§16, S1; §16.7, AG2)
+            if k in x:
+                ident(x[k], f'{w}.{k}')
         self.works.append(x)
 
     def kks_ref(self, c, where):
@@ -1276,6 +1286,14 @@ class Model:
             num(n['max'], f'{w}.max', 0)
             need(self.b.plant.get('clock') is not None, 'bad_ref', f'{w}: a wear node counts clock time; the plant '
                                                                    f'has no clock (REALISM.md §2.2)')
+        elif kind == 'sample':
+            # REALISM.md §2.19: a lab's result of a sample a hand action takes, after `hours` clock hours, with the
+            # spread an inverse distribution over u in [0, 1) drawn from the node's own lab stream
+            check_table(n['spread'], f'{w}.spread')
+            num(n['hours'], f'{w}.hours', 0, 8760)
+            need(n['hours'] > 0, 'bad_number', f'{w}.hours: above 0')
+            need(self.b.plant.get('clock') is not None, 'bad_ref', f'{w}: a sample node waits for clock hours; the '
+                                                                   f'plant has no clock (REALISM.md §2.19)')
         if 'init' in n:
             num(n['init'], f'{w}.init')
             if kind in ('latch', 'delay'):
@@ -2181,8 +2199,9 @@ class Engine:
             # §15.4: the input as this step computed it while `when` (as the previous step left it) is false
             u, wh = R(n['hold']), R(n['when'])
             return lambda cur, prev: prev[i] if wh(prev) >= 0.5 else u(cur)
-        if kind == 'draw':
-            return None         # REALISM.md §2.2: a stateful constant, drawn at step 0, never computed again
+        if kind in ('draw', 'sample'):
+            return None         # REALISM.md §2.2: a stateful constant, drawn at step 0, never computed again; §2.19:
+            # a sample's result written in step 3 only (plant3d_hands.lab_results)
         if kind == 'wear':
             # REALISM.md §2.2: y <- 0 when `reset` reads true, else min(max, y + max(0, rate) x k), k = 0.1 x day_scale
             # (computed once), the rate and reset as the previous step left them; in a jump's step (§17.6) the gap's
@@ -2936,6 +2955,10 @@ class Engine:
         if self.busy:
             from ref import plant3d_hands as H
             H.end_hands(self, self.gap > 0)
+        # then the lab's results whose clock time is reached (REALISM.md §2.19)
+        if self.lab_nodes:
+            from ref import plant3d_hands as H
+            H.lab_results(self)
         # 4. interlocks on a rising edge
         for x, wi in self.il_prog:
             now = vals[wi] >= 0.5
@@ -3175,7 +3198,8 @@ class Engine:
               Packed(PACKED_INT64, self.lift_calls), Packed(PACKED_INT32, self.lift_dir),
               Packed(PACKED_INT64, self.lift_dwell)] if m.lifts else []) + \
             ([Packed(PACKED_INT64, [self.wx_kind, self.wx_s])] if self.wx is not None else []) + \
-            ([H.digest_part(self)] if self.hw else [])
+            ([H.digest_part(self)] if self.hw else []) + \
+            ([H.lab_digest(self)] if self.lab_nodes else [])
 
     def snapshot(self, values=True):
         s = {'step': self.step_no,
@@ -3208,6 +3232,9 @@ class Engine:
         if self.hw:
             from ref import plant3d_hands as H      # REALISM.md §2.13
             H.snapshot_part(self, s)
+        if self.lab_nodes:
+            from ref import plant3d_hands as H      # REALISM.md §2.19
+            H.lab_snapshot(self, s)
         if values:
             s['values'] = {n: self.cur[i] for i, n in enumerate(self.names)}
         return s

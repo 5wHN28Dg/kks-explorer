@@ -813,6 +813,10 @@ FORKS = [
      ([] if i <= 5 else [('op', f'30PAD10AN{i:03d}', 'start', None, None), ('run', 60)]) +
      [('fault', f'ct_fan{i}_vib'), ('run', 60)],
      {'first_out': {'ct_fans': f'ct_fan{i}_trip_vib'}, 'alarms': [f'ct_fan{i}_vib_hh']}) for i in range(1, 11)
+] + [  # milestone AG2: the condensate pumps' motor protection stops a pump whose motor has failed (pump B started)
+    ('cep_protection', 'end', [('fault', 'cep_a_motor'), ('run', 30), ('op', '30LCB10AP002', 'start', None, None),
+                               ('run', 30), ('fault', 'cep_b_motor'), ('run', 30)],
+     {'interlocks': ['cep_a_prot', 'cep_b_prot'], 'end': {'cep_a_cmd': [0, 0], 'cep_b_cmd': [0, 0]}}),
 ]
 
 
@@ -2035,6 +2039,38 @@ REJECTS_SAFETY = [
         r for r in st['routines'] if r['id'] == 'hse_days')['slots'][1].__setitem__('days', ['mon', 'mon']))),
 ]
 
+# milestone AG2 (PLANT3D §16.7): the generic permit and fault reactions, and the tasks a work names for them (after
+# every earlier staff reject)
+REJECTS_GENERIC = [
+    ('a reaction giving a work\'s task the works don\'t have', 'bad_ref',
+     _app(STF + ['reactions'], {'on': {'permit': 'approved'}, 'roles': ['shift_sup'], 'task': '$job'})),
+    ('a reaction giving a work\'s task on a fault', 'bad_ref',
+     _app(STF + ['reactions'], {'on': {'fault': 'f1'}, 'roles': ['shift_sup'], 'task': '$deisolate'})),
+    ('a reaction giving a work\'s task for one work', 'unknown_key',
+     _app(STF + ['reactions'], {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': '$deisolate',
+                                'work': 'wo_pump'})),
+    ('the work that repairs it on a permit\'s state', 'bad_ref',
+     _app(STF + ['reactions'], {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': 'deisolate',
+                                'work': '$'})),
+    ('a list of faults one of which no work repairs', 'bad_ref',
+     _app(STF + ['reactions'], {'on': {'fault': ['f1', 'f2']}, 'roles': ['shift_sup'], 'task': 'raise_work',
+                                'work': '$'})),
+    ('a list of faults with one twice', 'dup_id',
+     _app(STF + ['reactions'], {'on': {'fault': ['f1', 'f1']}, 'roles': ['shift_sup'], 'task': 'raise_work',
+                                'work': '$'})),
+    ('an empty list of faults', 'bad_length',
+     _app(STF + ['reactions'], {'on': {'fault': []}, 'roles': ['shift_sup'], 'task': 'raise_work', 'work': '$'})),
+    ('a list of faults without the work that repairs each', 'bad_type',
+     _app(STF + ['reactions'], {'on': {'fault': ['f1']}, 'roles': ['shift_sup'], 'task': 'raise_work'})),
+    ('a work naming a deisolate task staff.json lacks', 'bad_ref', _set(['model/a1.json', 'works', 0, 'deisolate'],
+                                                                      'nothing')),
+    ('a work naming an isolate task that is not an identifier', 'bad_id',
+     _set(['model/a1.json', 'works', 0, 'isolate'], 'Not one')),
+    ('a work naming a deisolate task staff.json lacks, given by a generic reaction', 'bad_ref', _all(
+        _set(['model/a1.json', 'works', 0, 'deisolate'], 'nothing'),
+        _app(STF + ['reactions'], {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': '$deisolate'}))),
+]
+
 
 def safety_base():
     """The rejects' base for S2: the synthetic plant (as mini_staff) with the safety staff and its model."""
@@ -2065,7 +2101,8 @@ def build_rejects_staff():
         out.append({'why': why, 'code': code, 'change': change})
     return out + reject_changes(lift_staff_files(), REJECTS_LIFT_STAFF, staff_files()) + \
         reject_changes(staff_files(None, with_camp(mini_staff()['staff.json'])), camp_rejects(), staff_files()) + \
-        reject_changes(staff_files(), plain_camp_rejects(), staff_files())   # (the vectors' files)
+        reject_changes(staff_files(), plain_camp_rejects(), staff_files()) + \
+        reject_changes(staff_files(), REJECTS_GENERIC, staff_files())   # (the vectors' files)
 
 
 INPUTS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
@@ -2962,7 +2999,55 @@ def build_staff():
         out.append(dict({'why': why, 'scenario': sc, 'staff': staff, 'inputs': e.inputs, 'until': until,
                          'every': every, 'states': states, 'events': e.events, 'digests': digests},
                         **({'files': more} if more else {}), **({'session': True} if session else {})))
-    return out + build_lift_runs() + build_camp_runs()
+    return out + build_lift_runs() + build_camp_runs() + build_generic_runs()
+
+
+def generic_files():
+    """The first staff run's plant with its reactions written generically (PLANT3D §16.7, milestone AG2): the
+    fault's reaction on a list of faults with the work that repairs each, the permit's returned state giving each
+    work's deisolate task, which the works name. They stand for the very reactions the first run's file writes, in
+    the same order."""
+    F = staff_files()
+    st = F['staff.json']
+    out = []
+    for r in st['reactions']:
+        if r['on'] == {'fault': 'f1'}:
+            out.append({'on': {'fault': ['f1']}, 'roles': r['roles'], 'task': r['task'], 'work': '$'})
+        elif r['on'] == {'permit': 'returned'}:
+            if r['work'] == 'wo_pump':
+                out.append({'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': '$deisolate'})
+        else:
+            out.append(r)
+    st['reactions'] = out
+    for w in F['model/a1.json']['works']:
+        w['deisolate'] = {'wo_pump': 'deisolate', 'wo_valve': 'deiso_valve'}.get(w['id'])
+        if w['deisolate'] is None:
+            del w['deisolate']
+    return F
+
+
+def build_generic_runs():
+    """The first staff run again on generic_files (AG2): every input, event, state and digest the same."""
+    F = generic_files()
+    base = mini_staff()['scenarios/s1.json']
+    b = check(F)
+    player = Trainee(extra=[[901, 'fault', 'f1']])
+    e = P.Recorder(b, 's1')
+    states, digests = [e.snapshot()], [e.digest()]
+    until, every = 2400, 20
+    while e.step_no < until:
+        player(e)
+        e.step()
+        if e.step_no % every == 0 or e.step_no == until:
+            states.append(e.snapshot())
+        if e.step_no % DIGEST_EVERY == 0:
+            digests.append(e.digest())
+    return [{'why': 'the first run with its reactions written generically (PLANT3D §16.7, milestone AG2): the fault '
+                    'on a list with the work that repairs it, the permit\'s returned state giving each work\'s '
+                    'deisolate task; every input, event, state and digest as the first run\'s',
+             'scenario': base, 'staff': F['staff.json'], 'inputs': e.inputs, 'until': until, 'every': every,
+             'states': states, 'events': e.events, 'digests': digests,
+             'files': {'model/a1.json': F['model/a1.json']}}]
 
 
 # The first train's day (§19 `day`): the scenario with staff from its start (05:00) through the day shift, seed 1 and
@@ -3108,6 +3193,14 @@ def day_forks():
                                            ['aboard', 'a_fo_cw', 'bus_1', 'camp_stop', 'off']]}),
         ('evening_jump', Trainee(extra=[[1, 'role', 'a_ccr1'], [88000, 'jump', '05:00']]), 90000,
          {'trainee': 'a_ccr1', 'events': [['task', 'a_ccr1', 'meal', 'done'], ['jump', None, None, 'done']]}),
+        # milestone AG2 (REALISM.md §4): 30 months after the overhaul, closed cooling water pump A's bearing shows its
+        # signs from the start (vibration, noise, then heat), fails on its own at about 08:25 (the seed's drawn
+        # life), the standby starts; the supervisor asks for the permit of the work that repairs it (the generic
+        # fault reaction), the pump is isolated, the bearings replaced by a mechanical technician: the wear renewed
+        ('aged_ccw', Trainee(), 36000,
+         {'permits': {'wo_ccw_a_brg': 9}, 'repaired': ['ccw_a_brg'], 'end': {'ccw_a_brg_wear': 0, 'ccw_a_fault': 0},
+          'events': [['fault', 'ccw_a_brg'], ['alarm', 'ccw_a_vib_high', 'active_unack'],
+                     ['task', 'mech2', 'job_ccw_a_brg', 'done']]}, 'shift_aged'),
     ]
 
 
@@ -4070,8 +4163,8 @@ def _sc2(sc):
 
 REJECTS_WORLD = [
     ('a world that is not an object', 'bad_type', _set(SC + ['world'], [7])),
-    ('a world with a key not known yet (age comes with AG2)', 'unknown_key',
-     _set(SC + ['world', 'age'], {'months': 6})),
+    ('a world with a key not known yet (changes comes with EN2)', 'unknown_key',
+     _set(SC + ['world', 'changes'], ['moc_1'])),
     ('a world seed below 0', 'bad_number', _set(SC + ['world', 'seed'], -1)),
     ('a world seed of 2^32', 'bad_number', _set(SC + ['world', 'seed'], 2 ** 32)),
     ('a world seed that is not whole', 'bad_number', _set(SC + ['world', 'seed'], 1.5)),
@@ -4098,6 +4191,13 @@ REJECTS_WORLD = [
         _del(SC + ['staff']), lambda F: F.pop('staff.json'),
         _set(RMOD + ['works'], [{k: v for k, v in w.items() if k != 'task'}
                                for w in staff_files()['model/a1.json']['works']]))),
+    # milestone AG2 (§4.3): the plant's age, read by the content tools only
+    ('a world age that is not an object', 'bad_type', _set(SC + ['world', 'age'], 6)),
+    ('a world age without its months', 'missing_key', _set(SC + ['world', 'age'], {})),
+    ('a world age with a key it doesn\'t know', 'unknown_key', _set(SC + ['world', 'age'], {'months': 6, 'days': 3})),
+    ('a world age of -1 months', 'bad_number', _set(SC + ['world', 'age'], {'months': -1})),
+    ('a world age over 600 months', 'bad_number', _set(SC + ['world', 'age'], {'months': 601})),
+    ('a world age in months that is a boolean', 'bad_number', _set(SC + ['world', 'age'], {'months': True})),
 ]
 
 
@@ -5215,7 +5315,7 @@ def audio_runs():
          {'trainee': 'a_fo1'}, af,
          Trainee(extra=[[1500, 'audio', 30]] + [[t, 'audio', 0 if (t // 10) % 2 else 30] for t in range(1850, 2400, 10)]),
          2450, 50),
-    ] + audio_more_runs(af, nohost)
+    ] + audio_more_runs(af, nohost) + audio_locker_runs(af, nohost)
 
 
 def audio_more_runs(af, nohost):
@@ -5261,12 +5361,216 @@ def audio_more_runs(af, nohost):
     ]
 
 
+def audio_locker_runs(af, nohost):
+    """The second follow-ups (the user, 2026-11-07; REALISM.md §8.5): the engine knows which locker holds the phone,
+    and a device taken off duty is held to the end of the next duty actually worked."""
+    ccr_nohost = copy.deepcopy(nohost)
+    ccr_nohost['staff.json']['audio']['rooms'] = ['cr']
+    return [
+        ('the phone taken only at the locker holding it: left at locker3; leaving it again refused (left); at locker4 '
+         'taking it refused (locker) and leaving it refused (left); taken at locker3 (a digest while it is there: '
+         'the phone\'s entry 3 + the locker\'s place index); a take with the phone carried, at another locker, '
+         'changes nothing',
+         {'trainee': 'a_fo1'}, af,
+         Trainee(quiet=True, extra=[[2, 'arrive', 'locker3'], [3, 'phone', 'leave'], [4, 'phone', 'leave'],
+                                    [5, 'arrive', 'locker4'], [6, 'phone', 'take'], [7, 'phone', 'leave'],
+                                    [8, 'audio', 20], [59, 'arrive', 'locker3'], [60, 'phone', 'take'],
+                                    [61, 'arrive', 'locker4'], [62, 'phone', 'take'], [63, 'audio', 20]]), 100, 20),
+        ('a device taken off duty is held to the end of the next duty actually worked: field operator 1 (crew a: days '
+         '1 and 2 by day, 3 and 4 by night) at a control room desk at 18:30 of day 1 with music on, after their duty; '
+         'the night\'s shift supervisor stops it; a jump to 18:30 of day 2 passes their whole day duty (never begun: '
+         'not worked), so it is still held (an audio input refused; before, it came back in this jump); a jump to '
+         '18:30 of day 3 lands inside their night duty (begun: the device held to its end at 06:00), still held; a '
+         'jump to 06:30 of day 4: returned, music again',
+         {'trainee': 'a_fo1', 'start': {'day': 1, 'time': '18:30'}}, ccr_nohost,
+         Trainee(quiet=True, extra=[[2, 'arrive', 'desk_b'], [3, 'audio', 30], [299, 'task_ack'], [300, 'jump', '18:30'],
+                                    [320, 'audio', 20], [339, 'task_ack'], [340, 'jump', '18:30'],
+                                    [360, 'audio', 20], [379, 'task_ack'], [380, 'jump', '06:30'],
+                                    [400, 'audio', 20]]), 440, 20),
+    ]
+
+
 def audio_part():
     af = audio_files()
     return {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in af.items()},
             'counts': check(af).counts,
             'reject': reject_changes(af, [r[:3] for r in REJECTS_AUDIO], af),
             'runs': build_runs(audio_runs(), af)}
+
+
+
+# ---------------------------------------------------------------- milestone AG3: the lab (REALISM.md §2.19)
+
+LAB_TOOLS = [
+    {'id': 'oil_kit', 'title': 'Oil sampling kit', 'kind': 'sampler', 'at': [['tb1', 1], ['store1', 1]]},
+    {'id': 'vibcol', 'title': 'Vibration data collector', 'kind': 'collector', 'modes': ['vel'], 'at': [['tb1', 1]]},
+    {'id': 'ircam', 'title': 'Thermal camera', 'kind': 'camera', 'modes': ['ir'], 'at': [['tb1', 1]]}]
+# the oil's iron (ppm) follows the pump's pressure (so a sample taken later reads more), its viscosity is the grade's
+# (a constant ref, 68 cSt); each result after 0.1 and 0.2 clock hours (60 and 120 steps at day_scale 60)
+LAB_VALUES = [['oil_fe', {'sum': ['p', 10], 'unit': 'ppm'}],
+              ['lab_fe', {'sample': 'oil_fe', 'spread': [[0, -2], [0.5, 0], [1, 2]], 'hours': 0.1, 'unit': 'ppm'}],
+              ['lab_vis', {'sample': 68, 'spread': [[0, -1.5], [1, 1.5]], 'hours': 0.2, 'init': 68}]]
+LAB_HANDS = [
+    {'kks': GAUGE, 'action': 'take_oil', 'component': 'body', 'tools': ['oil_kit'], 'work': False,
+     'samples': ['lab_fe', 'lab_vis']},
+    {'kks': GAUGE, 'action': 'take_oil_slow', 'component': 'body', 'tools': ['oil_kit'], 'work': False,
+     'minutes': 2, 'samples': ['lab_fe']}]
+LAB_METERS = [
+    {'id': 'g1_vel', 'kks': GAUGE, 'point': 'brg', 'tool_kind': 'collector', 'mode': 'vel', 'value': 'p'},
+    {'id': 'g1_ir', 'kks': GAUGE, 'point': 'brg', 'tool_kind': 'camera', 'mode': 'ir', 'value': 'oil_fe'}]
+CM_ROUND = [{'go': 'tb1'}, {'tool': ['oil_kit', 'vibcol', 'ircam']}, {'go': {'kks': GAUGE}},
+            {'read': GAUGE, 'via': 'g1_vel', 'expect': [0, 2]}, {'read': GAUGE, 'via': 'g1_ir'},
+            {'hand': 'take_oil', 'kks': GAUGE, 'tool': 'oil_kit'},
+            {'hand': 'take_oil_slow', 'kks': GAUGE, 'tool': 'oil_kit'}, {'go': 'tb1'}, {'tool': 'off'}]
+
+
+def lab_files():
+    """The hands part's plant (hands_files) with AG3's keys: an oil sampling kit (kept at the toolbox and the store),
+    a vibration data collector and a thermal camera at the toolbox; two sample nodes (the oil's iron from the pump's
+    pressure, its viscosity a constant), a sampling hand action at once and a timed one, a collector's and a
+    camera's meter; the instrument technicians may take samples (sample), and ic1's day adds a round at 07:45."""
+    F = hands_files()
+    F['tools.json']['tools'] += copy.deepcopy(LAB_TOOLS)
+    m = F['model/a1.json']
+    m['values'] += copy.deepcopy(LAB_VALUES)
+    m['hands'] += copy.deepcopy(LAB_HANDS)
+    m['meters'] += copy.deepcopy(LAB_METERS)
+    st = F['staff.json']
+    next(r for r in st['roles'] if r['id'] == 'ic_tech')['authority'].append('sample')
+    st['tasks'].append({'id': 'cm_round', 'title': 'Condition monitoring round', 'steps': copy.deepcopy(CM_ROUND)})
+    next(r for r in st['routines'] if r['id'] == 'ic_days')['slots'].append({'at': '07:45', 'task': 'cm_round'})
+    return F
+
+
+def _lab_value(name, fn):
+    def f(F):
+        fn(next(n for k, n in F['model/a1.json']['values'] if k == name))
+    return f
+
+
+def _no_clock_lab(F):
+    """The realism base without a clock (as REJECTS_WORLD's), the model with a sample node and no hand action."""
+    G = staff_files()
+    G['model/a1.json']['values'].append(['lab_x', {'sample': 'p', 'spread': [[0, 0], [1, 1]], 'hours': 1}])
+    del G['plant.json']['clock']
+    del G['scenarios/s1.json']['staff']
+    G.pop('staff.json')
+    G['model/a1.json']['works'] = [{k: v for k, v in w.items() if k != 'task'} for w in G['model/a1.json']['works']]
+    F.clear()
+    F.update(G)
+
+
+REJECTS_LAB = [
+    ('a sample node in a version 1 model file', 'bad_kind', lambda F: F.__setitem__(A2M, {
+        'format': 'walkdown-plant-model', 'version': 1, 'area': 'a2',
+        'values': [['lab_y', {'sample': 'p', 'spread': [[0, 0], [1, 1]], 'hours': 1}]]}), 'the sample node is format 2'),
+    ('a sample key beside another node kind in a version 1 model file', 'unknown_key', lambda F: F.__setitem__(A2M, {
+        'format': 'walkdown-plant-model', 'version': 1, 'area': 'a2',
+        'values': [['lab_y', {'const': 1, 'sample': 'p'}]]}), 'the sample node is format 2'),
+    ('a sample node without its spread', 'missing_key', _lab_value('lab_fe', lambda n: n.pop('spread')), 'lab_fe.spread'),
+    ('a sample node without its hours', 'missing_key', _lab_value('lab_fe', lambda n: n.pop('hours')), 'lab_fe.hours'),
+    ('a sample node with a key it doesn\'t know', 'unknown_key', _lab_value('lab_fe', lambda n: SET(n, 'days', 2)), 'lab_fe.days'),
+    ('a sample node of 0 hours', 'bad_number', _lab_value('lab_fe', lambda n: SET(n, 'hours', 0)), 'hours: above 0'),
+    ('a sample node of over 8,760 hours', 'bad_number', _lab_value('lab_fe', lambda n: SET(n, 'hours', 8761)), 'lab_fe.hours'),
+    ('a sample node whose hours are text', 'bad_number', _lab_value('lab_fe', lambda n: SET(n, 'hours', '2')), 'lab_fe.hours'),
+    ('a sample node whose spread\'s x decreases', 'bad_table',
+     _lab_value('lab_fe', lambda n: SET(n, 'spread', [[1, 0], [0, 1]])), 'spread: x decreases'),
+    ('a sample node reading no value', 'bad_ref', _lab_value('lab_fe', lambda n: SET(n, 'sample', 'oil_cu')), "no value 'oil_cu'"),
+    ('a sample node whose init is text', 'bad_number', _lab_value('lab_vis', lambda n: SET(n, 'init', 'x')), 'lab_vis.init'),
+    ('a sample node in a plant without a clock', 'bad_ref', _no_clock_lab, 'the plant has no clock'),
+    ('a hand action taking a sample for no value', 'bad_ref', _hand(10, lambda h: h['samples'].append('lab_cu')), 'lab_cu is not a sample node'),
+    ('a hand action taking a sample for a value that is no sample node', 'bad_ref',
+     _hand(10, lambda h: h['samples'].append('oil_fe')), 'oil_fe is not a sample node'),
+    ('a hand action taking a sample for one node twice', 'dup_id', _hand(10, lambda h: h['samples'].append('lab_fe')), 'lab_fe twice'),
+    ('a hand action taking samples for no node', 'bad_length', _hand(10, lambda h: SET(h, 'samples', [])), '.samples'),
+    ('a hand action taking samples for 17 nodes', 'bad_length',
+     _hand(10, lambda h: SET(h, 'samples', [f'lab_{k}' for k in range(17)])), '.samples'),
+    ('a hand action whose samples are not a list', 'bad_type', _hand(10, lambda h: SET(h, 'samples', 'lab_fe')), '.samples'),
+    ('a hand action writing nothing and taking no sample', 'missing_key', _hand(10, lambda h: h.pop('samples')), 'or takes samples'),
+    ('a collector without its modes', 'missing_key', _tool(-2, lambda t: t.pop('modes')), 'a collector lists its modes'),
+    ('a sampler with modes', 'unknown_key', _tool(-3, lambda t: SET(t, 'modes', ['oil'])), 'only on a meter'),
+    ('a tool of a kind not known', 'bad_value', _tool(-1, lambda t: SET(t, 'kind', 'thermometer')), '.kind: one of'),
+    ('a collector\'s meter whose mode no collector has', 'bad_ref', _meter(-2, lambda x: SET(x, 'mode', 'acc')), "no collector in tools.json has the mode 'acc'"),
+    ('a camera\'s meter of a kind not read through', 'bad_value', _meter(-1, lambda x: SET(x, 'tool_kind', 'sampler')), 'tool_kind: one of'),
+    ('a sampling hand step by a role without sample', 'authority', _st(lambda st: next(
+        r for r in st['roles'] if r['id'] == 'ic_tech')['authority'].remove('sample')), 'lacks sample'),
+]
+
+
+def lab_runs():
+    """(why, scenario changes, files, player, steps, snapshot every): AG3's runs (REALISM.md §2.19)."""
+    lf = lab_files()
+    me = {'trainee': 'ic1'}
+    G = GAUGE
+    take = (lambda k: (k, 'hand', G, 'take_oil', 'oil_kit', None, 'ic1'))
+    lab = Trainee(quiet=True, extra=_x(
+        (2, 'arrive', 'tb1'), (3, 'hand', G, 'take_oil', 'oil_kit', None, 'ic1'),
+        (3, 'tool', 'oil_kit', 1, 'ic1'), (3, 'tool', 'vibcol', 1, 'ic1'), (3, 'tool', 'ircam', 1, 'ic1'),
+        (3, 'hand', G, 'take_oil', 'oil_kit', None, 'ic1'),
+        (4, 'leave', 'tb1'), (5, 'arrive', 'w_gauge'),
+        (6, 'hand', G, 'take_oil', None, None, 'ic1'), (6, 'hand', G, 'take_oil', 'oil_kit', None, 'ic2'),
+        take(6), (6, 'read', G, 3, 'g1_vel'), (6, 'read', G, 13, 'g1_ir'),
+        take(20), (30, 'hand', G, 'take_oil_slow', 'oil_kit', None, 'ic1'),
+        take(60), take(61), take(62), take(63), take(64), take(65), take(66),
+        (70, 'hand', G, 'take_oil_slow', 'oil_kit', None, 'ic1'), take(100)))
+    no_sample = lab_files()
+    ic = next(r for r in no_sample['staff.json']['roles'] if r['id'] == 'ic_tech')
+    ic['authority'].remove('sample')
+    no_sample['staff.json']['routines'] = [dict(r, slots=[x for x in r['slots'] if x['task'] != 'cm_round'])
+                                           for r in no_sample['staff.json']['routines']]
+    auth = Trainee(quiet=True, extra=_x(
+        (2, 'arrive', 'tb1'), (3, 'tool', 'oil_kit', 1, 'ic1'), (4, 'leave', 'tb1'), (5, 'arrive', 'w_gauge'),
+        take(6), (6, 'hand', G, 'clean_glass', None, None, 'ic1')))
+    jump = Trainee(quiet=True, extra=_x(
+        (1, 'arrive', 'tb1'), (2, 'tool', 'oil_kit', 1, 'ic1'), (3, 'leave', 'tb1'), (4, 'arrive', 'w_gauge'),
+        take(5), (6, 'task_ack'), (10, 'jump', '06:30'), (12, 'arrive', 'w_gauge'), take(14)))
+    return [
+        ('samples taken (§2.19): at the toolbox, without the kit (tool) and away from the gauge (where); at the '
+         'gauge without the kit (tool), by another person (authority), then taken at once (both nodes, each drawing '
+         'its own lab stream; the iron the pump\'s pressure as the previous step left it), again (two queued with '
+         'their dues), a timed one (2 minutes: its sample in step 3 at its end, the iron as that step left it); the '
+         'collector and the camera read through their meters; the results come in step 3 at their dues, each with '
+         'its lab event (lab_vis given 70 by the scenario until its first result); eight queued: the next sample '
+         'refused lab, taken again once the queue has room', dict(me, init={'lab_vis': 70}), lf,
+         lab, 260, 10),
+        ('the sample authority (§2.19): a role with operate_local but not sample is refused authority for a sampling '
+         'hand action, and still makes a bare-hand one (clean_glass, operate_local)', me, no_sample, auth, 40, 2),
+        ('results across a jump (§2.19): a sample taken at 07:30, then a jump to 06:30 of day 2: both results come '
+         'in the jump\'s own step (their dues long passed), one lab event each; a sample after the jump queued from '
+         'the new clock', me, lf, jump, 200, 10),
+        ('an NPC\'s condition monitoring round (§2.19): ic1 (no trainee) takes the kit, the collector and the camera '
+         'at 07:45, reads the gauge\'s vibration (out of its expected range: a finding) and temperature, takes a '
+         'sample at once and a timed one, puts the tools back; the results come 6 and 12 clock minutes later',
+         {}, lf, None, 1200, 100),
+        ('a queue filled under a timed action (§2.19, settled in the code): a session, slot 0 ic1 and slot 1 ic2, '
+         'each with a kit at the gauge; ic1 takes seven samples, ic2 starts the timed one with the queue at 7, ic1 '
+         'takes the eighth while it is under way: at its end ic2\'s action is done but takes no sample and draws '
+         'nothing (the next sample\'s spread is the stream\'s ninth draw), ic2\'s next refused lab; a timed one '
+         'once the queue has room takes its sample', {}, lf,
+         Session([Trainee(slot=0, quiet=True), Trainee(slot=1, quiet=True)], extra=_lab_session()), 220, 10),
+    ]
+
+
+def _lab_session():
+    """The inputs of lab_runs' session run: ic1 (slot 0) and ic2 (slot 1) with a kit each at the gauge."""
+    G = GAUGE
+
+    def take(n, who, slot, act='take_oil'):
+        return [n, 'hand', G, act, 'oil_kit', None, who, slot]
+    return ([[1, 'role', 'ic1', 0], [1, 'role', 'ic2', 1], [3, 'arrive', 'tb1', 0], [3, 'arrive', 'store1', 1],
+             [4, 'tool', 'oil_kit', 1, 'ic1', 0], [4, 'tool', 'oil_kit', 1, 'ic2', 1], [5, 'leave', 'tb1', 0],
+             [5, 'leave', 'store1', 1], [6, 'arrive', 'w_gauge', 0], [6, 'arrive', 'w_gauge', 1]]
+            + [take(8 + i, 'ic1', 0) for i in range(7)]
+            + [take(16, 'ic2', 1, 'take_oil_slow'), take(20, 'ic1', 0), take(37, 'ic2', 1),
+               take(80, 'ic2', 1, 'take_oil_slow')])
+
+
+def lab_part():
+    lf = lab_files()
+    return {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in lf.items()},
+            'counts': check(lf).counts,
+            'reject': reject_changes(lf, [r[:3] for r in REJECTS_LAB], lf),
+            'runs': build_runs(lab_runs(), lf)}
 
 
 def parts3():
@@ -5286,7 +5590,10 @@ def parts3():
                           '(§2.3–§2.7, §2.13): `hands`, the same plant with tools.json, hand actions, meters, a '
                           'HART op, hidden causes and cures, and an NPC\'s job with tools and slips; milestone HS7 (§8.5): `audio`, the '
                           'safety staff with personal audio banned in zones, an Ex zone, music and phone inputs, '
-                          'noticing by drawn delays and by missed calls, the device held until the duty ends. A run\'s `files` are '
+                          'noticing by drawn delays and by missed calls, the device held until the duty ends; milestone AG3 (§2.19): `lab`, '
+                          'the hands part\'s plant with an oil sampling kit, a vibration data collector and a '
+                          'thermal camera, sample nodes taken by hand actions, the lab\'s results after clock hours '
+                          'from the lab streams, and an NPC\'s round. A run\'s `files` are '
                           'those that differ from its part\'s. Numbers compare to 1e-6; the digests (§17.14) of every '
                           '50th step are exact.'),
         'streams': build_streams,
@@ -5297,7 +5604,8 @@ def parts3():
         'wear': wear_part,
         'weather': weather_part,
         'hands': hands_part,
-        'audio': audio_part}
+        'audio': audio_part,
+        'lab': lab_part}
 
 
 def build3():

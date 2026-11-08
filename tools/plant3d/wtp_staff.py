@@ -348,8 +348,8 @@ def tasks(models):
     # maintenance supervisor (train_staff's plan_ tasks); the equipment taken out of service for its isolation
     task('request_permit_wtp', 'Ask for a permit for the fault\'s work', [
         DESK, {'permit': {'work': '$', 'action': 'request'}}, say('request', 'shift_sup')], priority=2)
-    for f, w in FAULT_WORK.items():
-        reacts.append({'on': {'fault': f}, 'roles': ['wtp_op'], 'task': 'request_permit_wtp', 'work': w})
+    # (one reaction for all of them, the work that repairs each: PLANT3D §16.7, milestone AG2)
+    reacts.append({'on': {'fault': list(FAULT_WORK)}, 'roles': ['wtp_op'], 'task': 'request_permit_wtp', 'work': '$'})
     return T, reacts
 
 

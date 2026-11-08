@@ -120,7 +120,7 @@ var notice_hi := 0
 var audio_mask := 0                  # the volume from which calls are missed
 var audio_rooms: Array = []          # `rooms` (the user, 2026-11-03): the rooms beyond the zones where music is banned
 var place_aroom := PackedInt32Array()   # per place: its room's index in audio_rooms, or -1
-const HELD_EVER := 1 << 62           # a device held off duty by someone with no next duty: never given back (§8.5)
+const HELD_NEXT := 1 << 62           # a device taken off duty: held until the end of the next duty worked (§8.5)
 
 
 static func load_from(m, doc: Dictionary):
@@ -132,6 +132,37 @@ static func load_from(m, doc: Dictionary):
 func _fail(msg: String) -> void:
 	if error == "":
 		error = "staff.json: " + msg
+
+
+## The reactions as the step reads them (PLANT3D §16.7, milestone AG2; ref/plant3d_staff.py expand_reactions): a
+## permit reaction giving a work's task ("$isolate", "$deisolate", "$assign") stands for one reaction per work naming
+## that task, in the works' order, with that work and its task; a reaction on a list of faults with "work": "$" for one
+## per fault, in the list's order, with the work that repairs it. Every other reaction stands for itself, in order.
+static func expand_reactions(rs: Array, works: Array) -> Array:
+	var out := []
+	for r: Dictionary in rs:
+		var k: String = r["on"].keys()[0]
+		var t = r["task"]
+		if k == "permit" and typeof(t) == TYPE_STRING and String(t).begins_with("$"):
+			var key := String(t).substr(1)
+			for w: Dictionary in works:
+				if w.has(key):
+					var x := r.duplicate()
+					x["task"] = w[key]
+					x["work"] = w["id"]
+					out.append(x)
+		elif k == "fault" and r.get("work", null) is String and r["work"] == "$":
+			for f in r["on"]["fault"]:
+				for w: Dictionary in works:
+					if w.get("repairs", null) == f:
+						var x := r.duplicate()
+						x["on"] = {"fault": f}
+						x["work"] = w["id"]
+						out.append(x)
+						break
+		else:
+			out.append(r)
+	return out
 
 
 static func hhmm(x) -> int:
@@ -346,7 +377,7 @@ func _build(m, doc: Dictionary) -> void:
 				until = at_ref(s["until"])
 			slots.append([at[0], at[1], every, until[0], until[1], s["task"], s.get("days")])
 		routines[r["id"]] = {"slots": slots, "idle": r["idle"]}
-	reactions = doc.get("reactions", [])
+	reactions = expand_reactions(doc.get("reactions", []), m.works)
 	for i in reactions.size():
 		react_kind.append(reactions[i]["on"].keys()[0])
 		if react_kind[i] == "value":
@@ -563,6 +594,8 @@ func init_run(e, scen: Dictionary) -> void:
 	e.sp_phone.fill(1)
 	e.sp_held_to.resize(n)
 	e.sp_held_to.fill(-1)
+	e.sp_locker.resize(n)
+	e.sp_locker.fill(-1)
 	e.sp_told.resize(n)
 	for i in n:
 		e.sp_rng[i] = seed_of(seed, i)
@@ -612,15 +645,12 @@ func duty_on_day(pi: int, day: int) -> Array:
 	return [s, en]
 
 
-## The end of person pi's first duty starting after clock c (REALISM.md §8.5: a device taken off duty is held until
-## it ends), from their roster alone; HELD_EVER when their roster has none in a cycle.
-func next_duty_end(pi: int, c: int) -> int:
-	var d0: int = floori(float(c) / DAY)
-	for d in range(d0, d0 + 66):        # (a rotation's cycle is at most 64 days, a week 7)
-		var du := duty_on_day(pi, d)
-		if not du.is_empty() and du[0] > c:
-			return du[1]
-	return HELD_EVER
+## A duty begun (in phase 1, or a jump landing inside it): a device taken off duty is held until it ends (REALISM.md
+## §8.5; the user, 2026-11-07: the next duty the person actually works, so not one of their roster that passed while
+## they were absent or inside a jump's gap).
+func duty_worked(e, pi: int) -> void:
+	if has_audio and e.sp_phone[pi] == 2 and e.sp_held_to[pi] == HELD_NEXT:
+		e.sp_held_to[pi] = e.sp_duty[pi][1]
 
 
 func _resolve(at_kind: int, at_min: int, duty: Array) -> int:
@@ -771,6 +801,7 @@ func place_all(e, c: int, old: int) -> void:
 				e.sp_on[pi] = 1
 				e.sp_duty[pi] = du
 				e.sp_worn[pi] = role_ppe[people[pi]["role"]]     # at work already: in their PPE (§17.11)
+				duty_worked(e, pi)
 		var keep := []
 		for du in e.sp_duties[pi]:
 			if du[1] > c and du != e.sp_duty[pi]:
@@ -1369,6 +1400,7 @@ func _phase1(e, c: int, day: int) -> void:
 				e.sp_wake[pi] = 0
 				_wake_at(e, e.sp_pos[pi])       # (one waiting for them at a meeting there)
 				e._ev(["duty", people[pi]["id"], "on"])
+				duty_worked(e, pi)
 				if home[pi] != -1:      # the off-duty slots' tasks end: the duty comes first (§21.2)
 					end_off(e, pi)
 				var held: Array = e.sp_held[pi]  # the jobs held overnight come back (§17.10)
@@ -1377,7 +1409,8 @@ func _phase1(e, c: int, day: int) -> void:
 					_enqueue(e, pi, h)
 					e._ev(["task", people[pi]["id"], h["task"], "resumed"])
 		if has_audio and e.sp_phone[pi] == 2 and c >= e.sp_held_to[pi]:
-			# a device held is given back when the duty it was taken in ends (REALISM.md §8.5): by the clock
+			# a device held is given back when the duty it was taken in (or, taken off duty, the next one worked)
+			# ends (REALISM.md §8.5): by the clock
 			e.sp_phone[pi] = 1
 			e.sp_held_to[pi] = -1
 			e._ev(["returned", people[pi]["id"]])
@@ -3152,10 +3185,9 @@ func stop_act(e, pi: int, act: Array) -> void:
 	if act[1] >= 3 and e.sp_phone[qi] == 1:
 		e.sp_music[qi] = 0
 		e.sp_phone[qi] = 2
-		# held until the clock its duty ends (taken off duty: their next duty's end, the user 2026-11-03): phase 1
-		# gives it back then
-		e.sp_held_to[qi] = e.sp_duty[qi][1] if e.sp_on[qi] and not e.sp_duty[qi].is_empty() \
-				else next_duty_end(qi, e.clock())
+		# held until the clock its duty ends (taken off duty: the end of the next duty they work, the user 2026-11-03
+		# and 2026-11-07, set when it begins: duty_worked): phase 1 gives it back then
+		e.sp_held_to[qi] = e.sp_duty[qi][1] if e.sp_on[qi] and not e.sp_duty[qi].is_empty() else HELD_NEXT
 		e.st_next1 = mini(e.st_next1, e.sp_held_to[qi])
 		e._ev(["held", people[qi]["id"], people[pi]["id"]])
 	if put_right.has(kname):
@@ -3216,7 +3248,8 @@ func _drives(e, pi: int) -> bool:
 
 
 ## The player leaves the phone at a locker or takes it again (§8.5); leaving it turns the music off. Refused without
-## `audio`, while held, or away from a locker (locker: the place they arrived at is not one).
+## `audio`, while held, leaving it while it is in a locker already (left), or away from a locker (locker: the place
+## they arrived at is not one, or for take not the locker holding it: the user, 2026-11-07).
 func t_phone(e, ti: int, what, slot: int) -> void:
 	if typeof(what) != TYPE_STRING or (what != "leave" and what != "take"):
 		return
@@ -3225,10 +3258,14 @@ func t_phone(e, ti: int, what, slot: int) -> void:
 		why.append("no_audio")
 	elif e.sp_phone[ti] == 2:
 		why.append("held")
-	elif e.sp_pos[ti] == -1 or kind[e.sp_pos[ti]] != "locker":
+	elif what == "leave" and e.sp_phone[ti] == 0:
+		why.append("left")
+	elif e.sp_pos[ti] == -1 or kind[e.sp_pos[ti]] != "locker" \
+			or what == "take" and e.sp_phone[ti] == 0 and e.sp_pos[ti] != e.sp_locker[ti]:
 		why.append("locker")
 	if why.is_empty():
 		e.sp_phone[ti] = 0 if what == "leave" else 1
+		e.sp_locker[ti] = e.sp_pos[ti] if what == "leave" else -1
 		if what == "leave":
 			e.sp_music[ti] = 0
 	var ev := ["phone", people[ti]["id"], what, "refused" if not why.is_empty() else "done", why]

@@ -73,6 +73,7 @@ EDGES += wtp_staff.EDGES
 # foot, the landing between by the tower's stair; a lift way between every two landings (PLANT3D §20.4)
 import train_lift  # noqa: E402
 import train_hands  # noqa: E402  (the hand actions, milestone HW2)
+import train_ageing  # noqa: E402  (the wear items' failures, milestone AG2)
 LIFT_POINTS = [f'p_lift{i}' for i in range(len(train_lift.ZS))]
 for _i, _z in enumerate(train_lift.ZS):
     POINTS[LIFT_POINTS[_i]] = (round(train_lift.GATE_X - 1.0, 6), train_lift.AT[1], _z)
@@ -153,7 +154,8 @@ FIELD = {'round_gt': 'field_gt', 'round_st': 'field_st', 'round_cw': 'field_cw'}
 FAULT_WORK = {'cw_a_motor': 'wo_cw_a_motor', 'cw_b_motor': 'wo_cw_b_motor', 'cw_c_motor': 'wo_cw_c_motor',
               'ccw_a_motor': 'wo_ccw_a_motor', 'ccw_b_motor': 'wo_ccw_b_motor', 'ct_fan3_vib': 'wo_ct_fan3',
               'cw_a_ls': 'wo_cw_a_ls', 'cw_b_ls': 'wo_cw_b_ls', 'cw_c_ls': 'wo_cw_c_ls',
-              train_hands.FAULT['id']: train_hands.WORK[0]}      # (milestone HW2: the job with a hidden cause)
+              train_hands.FAULT['id']: train_hands.WORK[0],      # (milestone HW2: the job with a hidden cause)
+              **train_ageing.fault_work()}       # (milestone AG2: the failures of the wear items)
 # The maintenance supervisors' week (milestone S2): the preventive and calibration works each asks a permit for in
 # the morning (07:40), by weekday (day 1 of the clock is a Monday). A work whose isolation another work holds that day
 # is left for its next day.
@@ -358,7 +360,7 @@ def roles():
         role('elec_ap', 'Electrical authorised person', 'ops', ['operate_local', 'request', 'lock_electrical'],
              'elec_shift', True, 'coverall_ops'),
         # the maintenance disciplines (milestone S2): their own jobs from the faults and the week's list
-        role('mech_tech', 'Mechanical technician', 'mech', ['accept'], 'tech_days', True, 'coverall_mech'),
+        role('mech_tech', 'Mechanical technician', 'mech', ['accept', 'sample'], 'tech_days', True, 'coverall_mech'),
         role('elec_tech', 'Electrical technician', 'elec', ['accept', 'lock_electrical'], 'tech_days', True,
              'coverall_elec'),
         role('ic_tech', 'I&C technician', 'inst', ['operate_local', 'accept', 'lock_instrument', 'operate_hart'], 'tech_days', True,
@@ -548,7 +550,13 @@ def tasks(models):
             title = next(x['title'] for x in works if x['id'] == w)
             task(f'plan_{w[3:]}', f'The week\'s list: ask for the permit of "{title}"', [
                 ms_desk, {'permit': {'work': w, 'action': 'request'}, 'else': 2}, {'work': 1}])
-    reacts = []
+    # each work names its isolate, deisolate and assign tasks (works_tasks): one reaction per permit state gives them
+    # for every work (PLANT3D §16.7, milestone AG2)
+    ageing_works = set(train_ageing.fault_work().values())
+    handwheels = {o['kks'] for m in models for o in m.ops if o['do'] == 'hand_close'}
+    reacts = [{'on': {'permit': 'approved'}, 'roles': ['shift_sup'], 'task': '$isolate'},
+              {'on': {'permit': 'issued'}, 'roles': ['maint_sup'], 'task': '$assign'},
+              {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': '$deisolate'}]
     for w in works:
         wid = w['id']
         x = iso.get(w.get('isolation'))
@@ -568,6 +576,12 @@ def tasks(models):
                 steps.append({'go': {'kks': pt['kks']}})
                 if pt['kind'] in MAKE_SAFE and not wtp:
                     steps.append({'op': {'kks': pt['kks'], 'do': MAKE_SAFE[pt['kind']], 'where': 'local'}})
+                    if wid in ageing_works and pt['kks'] in handwheels and 'safe' in pt:
+                        # (AG2: a valve whose actuator has failed on its own is closed by its handwheel, refused
+                        # while the actuator works; then the valve waited for, half an hour of the clock at most)
+                        steps.append({'op': {'kks': pt['kks'], 'do': 'hand_close', 'where': 'local'},
+                                      'else': len(steps) + 1})
+                        steps.append({'wait': {'until': pt['safe'], 'minutes': 40}})
                 if wtp and 'safe' in pt:    # (another's steps make it safe: wait for them)
                     steps.append({'wait': {'until': pt['safe'], 'minutes': 60}})
                 steps.append({'lock': {'work': '$', 'point': i}})
@@ -599,10 +613,6 @@ def tasks(models):
         task(f'assign_{wid[3:]}', f'Give "{w["title"]}" to a technician', [
             ms_desk, {'call': {'role': TECH[w['discipline']], 'task': job}},
             {'say': 'job_assigned', 'to': TECH[w['discipline']]}], priority=2)
-        reacts += [{'on': {'permit': 'approved'}, 'roles': ['shift_sup'], 'task': f'isolate_{wid[3:]}', 'work': wid},
-                   {'on': {'permit': 'issued'}, 'roles': ['maint_sup'], 'task': f'assign_{wid[3:]}', 'work': wid},
-                   {'on': {'permit': 'returned'}, 'roles': ['shift_sup'], 'task': f'deisolate_{wid[3:]}',
-                    'work': wid}]
     # the contractors (S2, STAFF.md §1, §4): their permits hosted by the mechanical maintenance supervisor, accepted
     # by their own supervisor, who sets a team of four on; each contractor may take the work's shortcut, 1 in 12, an
     # unsafe act until the safety walk finds it; handed back at 15:00
@@ -658,8 +668,9 @@ def reactions(model_reacts):
            {'on': {'permit': 'deisolated'}, 'roles': ['shift_sup'], 'task': 'close_permit'},
            {'on': {'lock_left': '*'}, 'roles': ['shift_sup'], 'task': 'remove_left_locks'},
            {'on': {'unsafe': '*'}, 'roles': ['hse_officer'], 'task': 'stop_unsafe', 'seen': True}]
-    out += [{'on': {'fault': f}, 'roles': ['shift_sup'], 'task': 'request_permit', 'work': w}
-            for f, w in FAULT_WORK.items()]
+    # a fault that makes a corrective work: the supervisor asks for the permit of the work that repairs it (one
+    # reaction for every such fault, PLANT3D §16.7, milestone AG2)
+    out.append({'on': {'fault': list(FAULT_WORK)}, 'roles': ['shift_sup'], 'task': 'request_permit', 'work': '$'})
     return out + model_reacts
 
 
@@ -730,9 +741,11 @@ AUDIO_REACTIONS = [{'on': {'unsafe': 'audio'}, 'roles': ['shift_sup', 'maint_sup
 
 
 def audio():
-    """Personal audio (REALISM.md §8.5): banned in every zone, and in the central control room (the user, 2026-11-03:
-    its operators answer alarms)."""
-    return {'banned': [z[0] for z in ZONES], 'ex': [], 'notice': [2, 10], 'mask': 50, 'rooms': ['control_room']}
+    """Personal audio (REALISM.md §8.5): banned in every zone, in the central control room (the user, 2026-11-03: its
+    operators answer alarms) and in the WTP control room beside it (the user, 2026-11-07: its operators answer the
+    WTP's alarms)."""
+    return {'banned': [z[0] for z in ZONES], 'ex': [], 'notice': [2, 10], 'mask': 50,
+            'rooms': ['control_room', 'wtp_control']}
 
 
 def scenario(cold):
@@ -764,8 +777,15 @@ def load_layout():
 
 
 def works_tasks(models):
-    """{work id: its job task} for the model's works (§15.2: a plant with staff names each work's task)."""
-    return {w['id']: f'job_{w["id"][3:]}' for w in model_parts(models)[2]}
+    """{work id: {key: task}} for the model's works: its job task (§15.2: a plant with staff names each work's task)
+    and, but for the contractors', the tasks the generic permit reactions give for it (§16.7, milestone AG2)."""
+    out = {}
+    for w in model_parts(models)[2]:
+        x = w['id'][3:]
+        out[w['id']] = {'task': f'job_{x}'}
+        if w['discipline'] != 'civil':
+            out[w['id']].update(isolate=f'isolate_{x}', assign=f'assign_{x}', deisolate=f'deisolate_{x}')
+    return out
 
 
 if __name__ == '__main__':

@@ -15,7 +15,8 @@ const Staff = preload("staff.gd")
 const World = preload("world.gd")
 
 const STATELESS := ["const", "state", "of", "sum", "product", "min", "max", "diff", "select", "cmp", "and", "or", "not"]
-const STATEFUL := ["lag", "ramp", "integrate", "latch", "delay", "timer", "wrap", "hold", "draw", "wear", "count"]
+const STATEFUL := ["lag", "ramp", "integrate", "latch", "delay", "timer", "wrap", "hold", "draw", "wear", "count",
+		"sample"]
 
 var error := ""
 var plant := {}
@@ -345,6 +346,9 @@ func _check_hands() -> void:
 		_check_set(x.get("set", {}), w)
 		if x.has("input"):
 			_check_set({x["input"]: 0}, w)
+		for nd in x.get("samples", []):     # REALISM.md §2.19: sample nodes only
+			if typeof(nd) != TYPE_STRING or not index.has(nd) or values[index[nd]][2] != "sample":
+				_fail("%s: %s is not a sample node" % [w, str(nd)])
 		for nd in x.get("needs", []):
 			_need(nd[0], w)
 		for t in x.get("tools", []):
@@ -410,6 +414,15 @@ func _finish() -> void:
 	for v in values:
 		for r in node_refs(v[1], v[2]):
 			_need_ref(r, "value " + v[0])
+		if v[2] == "sample":            # REALISM.md §2.19: its spread a table, its hours on the plant's clock
+			var sp = v[1].get("spread")
+			var h = v[1].get("hours")
+			var ok: bool = typeof(sp) == TYPE_ARRAY and not sp.is_empty() and is_num(h) and float(h) > 0 \
+					and plant.get("clock") != null
+			for row in (sp if typeof(sp) == TYPE_ARRAY else []):
+				ok = ok and typeof(row) == TYPE_ARRAY and row.size() == 2 and is_num(row[0]) and is_num(row[1])
+			if not ok:
+				_fail("value %s: a sample node the engine can't run (its spread, its hours or the plant's clock)" % v[0])
 	for x in interlocks:
 		_need(x["when"], "interlock " + x["id"])
 		_check_actions(x["do"], "interlock " + x["id"])

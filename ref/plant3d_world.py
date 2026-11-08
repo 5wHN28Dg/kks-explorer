@@ -16,6 +16,7 @@ TAGS = {'draw': 0x44524157, 'causes': 0x43415553, 'weather': 0x57454154, 'stores
         'slips': 0x534c4950, 'audio': 0x41554449}
 # the clock values (§2.1): engine-kept values after every other slot, only in a scenario with `world`
 NAMES = ('world_hour', 'world_day')
+AGE_MONTHS_MAX = 600      # world.age.months (§4.3): fifty years
 DAY = 864000            # tenths of a clock second in a day
 HOUR = 36000
 
@@ -43,12 +44,13 @@ def whole(x):
 
 
 def check_world(s, b, rel):
-    """A version 2 scenario's `world` (§2.1). RE1 knows `seed` and `year_day`, WX1 `weather` (§5.1); `age` and
-    `changes` come with the milestones that define them (AG2, EN2) and are unknown keys until then."""
+    """A version 2 scenario's `world` (§2.1). RE1 knows `seed` and `year_day`, WX1 `weather` (§5.1), AG2 `age`
+    (§4.3: `{"months": m}`, the months since the overhaul, read by the content tools only: no engine reads it);
+    `changes` comes with EN2 and is an unknown key until then."""
     w = s['world']
     where = f'{rel}.world'
     need(isinstance(w, dict), 'bad_type', f'{where}: an object')
-    keys(w, (), ('seed', 'year_day', 'weather'), where)
+    keys(w, (), ('seed', 'year_day', 'weather', 'age'), where)
     need(b.plant.get('clock') is not None, 'bad_ref', f'{where}: the plant has no clock (the clock values read it)')
     if 'seed' in w:
         need(whole(w['seed']) and 0 <= w['seed'] < 2 ** 32, 'bad_number',
@@ -58,6 +60,13 @@ def check_world(s, b, rel):
              f'{where}.year_day: a whole number from 1 to 365')
     if 'weather' in w:
         check_world_weather(w['weather'], s, b, rel)
+    if 'age' in w:
+        a = w['age']
+        need(isinstance(a, dict), 'bad_type', f'{where}.age: an object')
+        keys(a, ('months',), (), f'{where}.age')
+        m = a['months']
+        need(isinstance(m, (int, float)) and not isinstance(m, bool) and 0 <= m <= AGE_MONTHS_MAX, 'bad_number',
+             f'{where}.age.months: a number from 0 to {AGE_MONTHS_MAX}')
 
 
 def world_seed(sc):

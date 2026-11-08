@@ -9,12 +9,15 @@ from ref.courses import need, keys, is_num, num, ident, lst
 
 TOOLS_FORMAT = 'walkdown-plant-tools'
 TOOL_KINDS = ('spanner', 'socket', 'screwdriver', 'hex_key', 'pliers', 'stripper', 'crimper', 'torque', 'meter',
-              'communicator', 'calibrator', 'test_set', 'lifting', 'gas_detector')
-METER_KINDS = ('meter', 'communicator', 'calibrator')      # the kinds with modes, read through (§2.5)
+              'communicator', 'calibrator', 'test_set', 'lifting', 'gas_detector', 'collector', 'camera', 'sampler')
+# the kinds with modes, read through (§2.5); the vibration data collector and the thermal camera (§2.19, AG3)
+METER_KINDS = ('meter', 'communicator', 'calibrator', 'collector', 'camera')
 TOOL_PLACES = ('store', 'toolbox')
 LIMITS = {'tools': 200, 'at': 16, 'modes': 16, 'carried': 12, 'hands': 2000, 'meters': 2000, 'causes': 16,
           'cures': 16, 'weight': 65536, 'minutes': 1440}
 MINUTE = 600            # clock tenths in a clock minute
+HOUR = 36000            # clock tenths in a clock hour
+LAB_QUEUE = 8           # samples queued per sample node (REALISM.md §2.19)
 
 
 def short_id(x, where, hi=16):
@@ -56,7 +59,7 @@ def check_tools(d, staff):
                 short_id(md, f'{wt}.modes[{j}]')
                 need(md not in t['modes'][:j], 'dup_id', f'{wt}.modes: {md} twice')
         else:
-            need('modes' not in t, 'unknown_key', f'{wt}.modes: only on a meter, communicator or calibrator')
+            need('modes' not in t, 'unknown_key', f'{wt}.modes: only on a meter, communicator, calibrator, collector or camera')
         at = []
         for j, a in enumerate(lst(t['at'], f'{wt}.at', 1, LIMITS['at'])):
             wa = f'{wt}.at[{j}]'
@@ -75,7 +78,8 @@ def check_tools(d, staff):
 # ---------------------------------------------------------------- the model's hands and meters (§2.4, §2.5)
 
 def check_hand(m, x, w):
-    keys(x, ('kks', 'action', 'component'), ('tools', 'wrong', 'needs', 'set', 'input', 'range', 'minutes', 'work'), w)
+    keys(x, ('kks', 'action', 'component'), ('tools', 'wrong', 'needs', 'set', 'input', 'range', 'minutes', 'work',
+                                              'samples'), w)
     m.kks_ref(x['kks'], w)
     ident(x['action'], f'{w}.action')
     short_id(x['component'], f'{w}.component')
@@ -103,7 +107,12 @@ def check_hand(m, x, w):
         lst(x['range'], f'{w}.range', 2, 2)
         num(x['range'][0], f'{w}.range')
         num(x['range'][1], f'{w}.range', x['range'][0])
-    need('set' in x or 'input' in x, 'missing_key', f'{w}: a hand action writes a component state (set or input)')
+    if 'samples' in x:      # REALISM.md §2.19: the sample nodes it takes a sample for (resolved in finish_model)
+        for i, nd in enumerate(lst(x['samples'], f'{w}.samples', 1, 16)):
+            ident(nd, f'{w}.samples[{i}]')
+            need(nd not in x['samples'][:i], 'dup_id', f'{w}.samples: {nd} twice')
+    need('set' in x or 'input' in x or 'samples' in x, 'missing_key',
+         f'{w}: a hand action writes a component state (set or input) or takes samples')
     if 'minutes' in x:
         num(x['minutes'], f'{w}.minutes', 0, LIMITS['minutes'])
         need(x['minutes'] > 0, 'bad_number', f'{w}.minutes: above 0')
@@ -136,8 +145,11 @@ def finish_model(m):
     work's isolation locks: REALISM.md §2.4)."""
     commands = {k for o in m.ops for k in o.get('set', {})} | {o['input'] for o in m.ops if 'input' in o}
     state_kks = {name: n.get('kks') for name, n, kind in m.values if kind == 'state'}
+    kinds = {name: kind for name, n, kind in m.values}
     for x in m.hands:
         w = f'hand action {x["kks"]} {x["action"]}'
+        for nd in x.get('samples', []):
+            need(kinds.get(nd) == 'sample', 'bad_ref', f'{w}.samples: {nd} is not a sample node (REALISM.md §2.19)')
         writes = list(x.get('set', {})) + ([x['input']] if 'input' in x else [])
         own = {pt['kks'] for wk in m.works if wk['kks'] == x['kks'] and 'isolation' in wk
                for iso in m.isolations if iso['id'] == wk['isolation'] for pt in iso['points']}
@@ -268,6 +280,14 @@ def init(e, b, sc):
     st = getattr(b, 'staff', None)
     if st is not None and any('slip' in s for t in st.task_list for s in t['steps']):
         e.slip_s = {p['id']: stream(seed, TAGS['slips'], p['id']) for p in st.people}
+    # the lab (REALISM.md §2.19): each sample node in model order (index, name, ref, spread, due offset in tenths),
+    # its queue of [due clock, value] and its own lab stream (purpose lab, the node's name)
+    e.lab_nodes = [(i, name, n['sample'], [[float(a), float(y)] for a, y in n['spread']],
+                    math.ceil(n['hours'] * HOUR))
+                   for i, (name, n, kind) in enumerate(b.model.values) if kind == 'sample']
+    e.lab_of = {x[1]: x for x in e.lab_nodes}
+    e.lab_q = {x[1]: [] for x in e.lab_nodes}
+    e.lab_s = {x[1]: stream(seed, TAGS['lab'], x[1]) for x in e.lab_nodes}
 
 
 def copy_state(c, e):
@@ -277,6 +297,8 @@ def copy_state(c, e):
     c.cause_of = dict(e.cause_of)
     c.cause_s = dict(e.cause_s)
     c.slip_s = dict(e.slip_s)
+    c.lab_q = {k: [list(q) for q in v] for k, v in e.lab_q.items()}
+    c.lab_s = dict(e.lab_s)
 
 
 def person_of(e, person):
@@ -352,7 +374,8 @@ def hand_authority(e, x, person, npc):
             if e.pstate[w['id']] == 5 and not e._authority(person, npc, 'accept', w['discipline'], True, w['id']):
                 return False
         return True
-    return e._authority(person, npc, 'operate_local')
+    # REALISM.md §2.19: taking samples needs the sample authority (S3's, the chemists'), any other operate_local
+    return e._authority(person, npc, 'sample' if 'samples' in x else 'operate_local')
 
 
 def hart_permit(e, kks, isos, person, npc):
@@ -392,6 +415,8 @@ def hand(e, item, npc, prev):
     elif tl not in x.get('tools', ()):
         why.append('wrong_tool')
     why += [nd[0] for nd in x.get('needs', []) if prev[e.ix[nd[0]]] < 0.5]
+    if any(len(e.lab_q[nd]) >= LAB_QUEUE for nd in x.get('samples', ())):
+        why.append('lab')           # a sample node's queue is full (REALISM.md §2.19)
     if 'input' in x and not (is_num(value) and x['range'][0] <= value <= x['range'][1]):
         why.append('value')
     if why:
@@ -402,17 +427,20 @@ def hand(e, item, npc, prev):
         e.busy[person] = [kks, action, tl, float(value) if 'input' in x else None, end, place(p)]
         e.ev('hand', kks, action, tl, person, 'start', [])
         return 'start'
-    write(e, x, value)
+    write(e, x, value, prev)
     e.ev('hand', kks, action, tl, person, 'done', [])
     return 'done'
 
 
-def write(e, x, value):
-    """A hand action's writes: its set, then its input; never skipped by a lock (§2.4)."""
+def write(e, x, value, vals):
+    """A hand action's writes: its set, then its input; never skipped by a lock (§2.4); then its samples (§2.19),
+    each node's ref read from vals (the previous step's values in step 1, the values as they stand in step 3)."""
     for k, v in x.get('set', {}).items():
         e.cur[e.ix[k]] = float(v)
     if 'input' in x:
         e.cur[e.ix[x['input']]] = float(value)
+    if 'samples' in x:
+        take_samples(e, x['samples'], vals)
 
 
 def end_hands(e, jumped):
@@ -432,7 +460,7 @@ def end_hands(e, jumped):
             result(e, p, 'abandoned')
         elif c >= end:
             del e.busy[p.id]
-            write(e, e.hands[(kks, action)], value)
+            write(e, e.hands[(kks, action)], value, e.cur)
             e.ev('hand', kks, action, tl, p.id, 'done', [])
             result(e, p, 'done')
 
@@ -486,6 +514,47 @@ def hand_holds(e, kks, action, value):
     if 'input' in x and value is not None and e.cur[e.ix[x['input']]] != float(value):
         return False
     return True
+
+
+# ---------------------------------------------------------------- the lab (§2.19)
+
+def take_samples(e, names, vals):
+    """A sampling hand action done: each of its sample nodes in the list's order takes a sample, ref's value plus
+    spread(r / 2^24) from the next draw of its lab stream, queued with its due clock; a node whose queue filled while
+    a timed action was under way takes none (no draw)."""
+    from ref.plant3d_world import draw
+    from ref.courses import table_at
+    c = e.clock()
+    for nd in names:
+        _, _, ref, spread, after = e.lab_of[nd]
+        q = e.lab_q[nd]
+        if len(q) >= LAB_QUEUE:
+            continue
+        e.lab_s[nd], r = draw(e.lab_s[nd])
+        v = float(ref) if is_num(ref) else vals[e.ix[ref]]
+        q.append([c + after, v + float(table_at(spread, r / 16777216.0))])
+
+
+def lab_results(e):
+    """Step 3, after the hand actions whose minutes end: each sample node in model order takes its queued results
+    that are due (due <= the clock), in their order, each with its event."""
+    c = e.clock()
+    for i, name, _, _, _ in e.lab_nodes:
+        q = e.lab_q[name]
+        while q and q[0][0] <= c:
+            _, v = q.pop(0)
+            e.cur[i] = v
+            e.ev('lab', name, v)
+
+
+def lab_digest(e):
+    from ref.godot_variant import Packed, PACKED_INT64, PACKED_FLOAT64
+    return [[e.lab_s[name], Packed(PACKED_INT64, [q[0] for q in e.lab_q[name]]),
+             Packed(PACKED_FLOAT64, [q[1] for q in e.lab_q[name]])] for _, name, _, _, _ in e.lab_nodes]
+
+
+def lab_snapshot(e, s):
+    s['lab'] = {name: [list(q) for q in e.lab_q[name]] for _, name, _, _, _ in e.lab_nodes if e.lab_q[name]}
 
 
 # ---------------------------------------------------------------- meters (§2.5)

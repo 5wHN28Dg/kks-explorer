@@ -3,6 +3,7 @@
  "version": 2,
  "area": "bop",
  "values": [
+  ["age_h", {"product": ["age_rate", 0.000277777777778], "unit": "h/s"}],
   ["ia_a_cmd", {"state": 0, "kks": "00QFA10AN001"}],
   ["ia_a_fault", {"state": 0, "kks": "00QFA10AN001"}],
   ["ia_b_cmd", {"state": 0, "kks": "00QFA10AN002"}],
@@ -72,7 +73,35 @@
   ["dm_lc", {"cmp": ["dm_lvl", ">", 35]}],
   ["aux_ok", {"cmp": ["aux_p", ">=", 10]}],
   ["ccw_a_safe", {"not": "ccw_a_cmd"}],
-  ["ccw_b_safe", {"not": "ccw_b_cmd"}]
+  ["ccw_b_safe", {"not": "ccw_b_cmd"}],
+  ["ccw_a_brg_rate", {"product": ["ccw_a_run", "age_h"], "unit": "h/s"}],
+  ["ccw_a_brg_wear", {"wear": "ccw_a_brg_rate", "max": 1000000, "unit": "h"}],
+  ["ccw_a_brg_life", {"draw": [[0, 7500], [0.02, 7500], [0.05, 7500], [0.1, 11154], [0.2, 18395], [0.35, 28520], [0.5, 39161], [0.65, 51647], [0.8, 68668], [0.9, 87186], [0.95, 103906], [0.99, 138399], [1.0, 151960]], "unit": "h"}],
+  ["ccw_a_brg_mgn", {"diff": ["ccw_a_brg_wear", "ccw_a_brg_life"], "unit": "h"}],
+  ["ccw_a_vib_k", {"of": "ccw_a_brg_mgn", "table": [[-3000, 1.2], [-1800.0, 1.92], [-900.0, 3.375], [0, 7.1]], "unit": "mm/s"}],
+  ["ccw_a_vib", {"product": ["ccw_a_run", "ccw_a_vib_k"], "unit": "mm/s", "kks": "00PGC10CY001"}],
+  ["ccw_a_brg_tk", {"of": "ccw_a_brg_mgn", "table": [[-900.0, 25], [0, 110]], "unit": "K"}],
+  ["ccw_a_brg_rise", {"product": ["ccw_a_run", "ccw_a_brg_tk"], "unit": "K"}],
+  ["ccw_a_brg_rise_l", {"lag": "ccw_a_brg_rise", "tau": 600, "unit": "K"}],
+  ["ccw_a_brg_t", {"sum": ["ambient_t", "ccw_a_brg_rise_l"], "unit": "°C", "kks": "00PGC10AP001"}],
+  ["ccw_a_vib_h", {"cmp": ["ccw_a_vib", ">", 4.5]}],
+  ["ccw_a_brg_t_h", {"cmp": ["ccw_a_brg_t", ">", 90]}],
+  ["ccw_b_brg_rate", {"product": ["ccw_b_run", "age_h"], "unit": "h/s"}],
+  ["ccw_b_brg_wear", {"wear": "ccw_b_brg_rate", "max": 1000000, "unit": "h"}],
+  ["ccw_b_brg_life", {"draw": [[0, 7500], [0.02, 7500], [0.05, 7500], [0.1, 11154], [0.2, 18395], [0.35, 28520], [0.5, 39161], [0.65, 51647], [0.8, 68668], [0.9, 87186], [0.95, 103906], [0.99, 138399], [1.0, 151960]], "unit": "h"}],
+  ["ccw_b_brg_mgn", {"diff": ["ccw_b_brg_wear", "ccw_b_brg_life"], "unit": "h"}],
+  ["ccw_b_vib_k", {"of": "ccw_b_brg_mgn", "table": [[-3000, 1.2], [-1800.0, 1.92], [-900.0, 3.375], [0, 7.1]], "unit": "mm/s"}],
+  ["ccw_b_vib", {"product": ["ccw_b_run", "ccw_b_vib_k"], "unit": "mm/s", "kks": "00PGC10CY002"}],
+  ["ccw_b_brg_tk", {"of": "ccw_b_brg_mgn", "table": [[-900.0, 25], [0, 110]], "unit": "K"}],
+  ["ccw_b_brg_rise", {"product": ["ccw_b_run", "ccw_b_brg_tk"], "unit": "K"}],
+  ["ccw_b_brg_rise_l", {"lag": "ccw_b_brg_rise", "tau": 600, "unit": "K"}],
+  ["ccw_b_brg_t", {"sum": ["ambient_t", "ccw_b_brg_rise_l"], "unit": "°C", "kks": "00PGC10AP002"}],
+  ["ccw_b_vib_h", {"cmp": ["ccw_b_vib", ">", 4.5]}],
+  ["ccw_b_brg_t_h", {"cmp": ["ccw_b_brg_t", ">", 90]}],
+  ["ccw_a_bt_k", {"of": "ccw_a_brg_mgn", "table": [[-3000, 0.0], [-2700.0, 0.4], [-1800.0, 0.8], [-900.0, 1.68], [0, 2.64]], "unit": "mm/s"}],
+  ["ccw_a_bt", {"product": ["ccw_a_run", "ccw_a_bt_k"], "unit": "mm/s"}],
+  ["ccw_b_bt_k", {"of": "ccw_b_brg_mgn", "table": [[-3000, 0.0], [-2700.0, 0.4], [-1800.0, 0.8], [-900.0, 1.68], [0, 2.64]], "unit": "mm/s"}],
+  ["ccw_b_bt", {"product": ["ccw_b_run", "ccw_b_bt_k"], "unit": "mm/s"}]
  ],
  "ops": [
   {"kks": "00QFA10AN001", "do": "start", "set": {"ia_a_cmd": 1}, "needs": [["ia_a_ok", "The motor has a fault: it needs repair before a start"]], "where": ["local", "screen"]},
@@ -101,7 +130,11 @@
   {"id": "ia_p_low", "kks": "00QFB10CP001", "text": "Instrument air header pressure low", "when": "ia_low", "priority": 1, "where": "00QFB10CP001", "isa": "PAL", "suppress": "ia_sup"},
   {"id": "ia_a_tripped", "kks": "00QFA10AN001", "text": "Instrument air compressor A tripped", "when": "ia_a_trip_c", "priority": 2, "where": "00QFA10AN001"},
   {"id": "ia_b_tripped", "kks": "00QFA10AN002", "text": "Instrument air compressor B tripped", "when": "ia_b_trip_c", "priority": 2, "where": "00QFA10AN002"},
-  {"id": "ccw_t_high", "kks": "00PGB10CT001", "text": "Closed cooling water supply temperature high", "when": "ccw_t_h", "priority": 2, "where": "00PGB10AC001", "isa": "TAH", "clear": "ccw_t_hc"}
+  {"id": "ccw_t_high", "kks": "00PGB10CT001", "text": "Closed cooling water supply temperature high", "when": "ccw_t_h", "priority": 2, "where": "00PGB10AC001", "isa": "TAH", "clear": "ccw_t_hc"},
+  {"id": "ccw_a_vib_high", "kks": "00PGC10CY001", "text": "Closed cooling water pump A motor vibration high", "when": "ccw_a_vib_h", "priority": 3, "where": "00PGC10AP001", "isa": "VAH"},
+  {"id": "ccw_a_brg_t_high", "kks": "00PGC10AP001", "text": "Closed cooling water pump A motor bearing temperature high", "when": "ccw_a_brg_t_h", "priority": 3, "where": "00PGC10AP001", "isa": "TAH"},
+  {"id": "ccw_b_vib_high", "kks": "00PGC10CY002", "text": "Closed cooling water pump B motor vibration high", "when": "ccw_b_vib_h", "priority": 3, "where": "00PGC10AP002", "isa": "VAH"},
+  {"id": "ccw_b_brg_t_high", "kks": "00PGC10AP002", "text": "Closed cooling water pump B motor bearing temperature high", "when": "ccw_b_brg_t_h", "priority": 3, "where": "00PGC10AP002", "isa": "TAH"}
  ],
  "trips": [
   {"id": "ccw_a_trip", "kks": "00PGC10AP001", "text": "Closed cooling water pump A motor trip", "when": "ccw_a_trip_c", "do": [{"set": {"ccw_a_cmd": 0}}], "delay": 0.5, "first_out": "ccw"},
@@ -125,15 +158,29 @@
   {"kks": "00PGB10CT001", "show": "ccw_t"},
   {"kks": "00QHA10CP001", "show": "aux_p"},
   {"kks": "00QHA10", "sound": "burner", "gain": {"of": "aux_run", "table": [[0, 0], [1, 1]]}},
-  {"kks": "00QHA10", "lamp": "running", "of": "aux_run"}
+  {"kks": "00QHA10", "lamp": "running", "of": "aux_run"},
+  {"kks": "00PGC10CY001", "show": "ccw_a_vib"},
+  {"kks": "00PGC10CY001", "shake": "ccw_a_vib", "scale": 0.02},
+  {"kks": "00PGC10CY001", "sound": "bearing_noise", "gain": {"of": "ccw_a_vib", "table": [[1.92, 0], [4.5, 0.6], [7.1, 1]]}},
+  {"kks": "00PGC10CY002", "show": "ccw_b_vib"},
+  {"kks": "00PGC10CY002", "shake": "ccw_b_vib", "scale": 0.02},
+  {"kks": "00PGC10CY002", "sound": "bearing_noise", "gain": {"of": "ccw_b_vib", "table": [[1.92, 0], [4.5, 0.6], [7.1, 1]]}}
  ],
  "isolations": [
   {"id": "iso_ccw_a", "text": "Closed cooling water pump A: motor supply", "points": [{"kks": "00PGC10AP001", "kind": "electrical", "how": "Pump stopped; its breaker racked out, locked and tagged", "safe": "ccw_a_safe"}]},
   {"id": "iso_ccw_b", "text": "Closed cooling water pump B: motor supply", "points": [{"kks": "00PGC10AP002", "kind": "electrical", "how": "Pump stopped; its breaker racked out, locked and tagged", "safe": "ccw_b_safe"}]}
  ],
  "works": [
-  {"id": "wo_ccw_a_motor", "kks": "00PGC10AP001", "title": "Closed cooling water pump A motor: winding and terminal check", "discipline": "elec", "permit": "electrical", "isolation": "iso_ccw_a", "repairs": "ccw_a_motor", "task": "job_ccw_a_motor"},
-  {"id": "wo_ccw_b_motor", "kks": "00PGC10AP002", "title": "Closed cooling water pump B motor: winding and terminal check", "discipline": "elec", "permit": "electrical", "isolation": "iso_ccw_b", "repairs": "ccw_b_motor", "task": "job_ccw_b_motor"},
-  {"id": "wo_ccw_b_ir", "kks": "00PGC10AP002", "title": "Closed cooling water pump B motor: insulation resistance test", "discipline": "elec", "permit": "electrical", "isolation": "iso_ccw_b", "task": "job_ccw_b_ir"}
+  {"id": "wo_ccw_a_motor", "kks": "00PGC10AP001", "title": "Closed cooling water pump A motor: winding and terminal check", "discipline": "elec", "permit": "electrical", "isolation": "iso_ccw_a", "repairs": "ccw_a_motor", "task": "job_ccw_a_motor", "isolate": "isolate_ccw_a_motor", "assign": "assign_ccw_a_motor", "deisolate": "deisolate_ccw_a_motor"},
+  {"id": "wo_ccw_b_motor", "kks": "00PGC10AP002", "title": "Closed cooling water pump B motor: winding and terminal check", "discipline": "elec", "permit": "electrical", "isolation": "iso_ccw_b", "repairs": "ccw_b_motor", "task": "job_ccw_b_motor", "isolate": "isolate_ccw_b_motor", "assign": "assign_ccw_b_motor", "deisolate": "deisolate_ccw_b_motor"},
+  {"id": "wo_ccw_b_ir", "kks": "00PGC10AP002", "title": "Closed cooling water pump B motor: insulation resistance test", "discipline": "elec", "permit": "electrical", "isolation": "iso_ccw_b", "task": "job_ccw_b_ir", "isolate": "isolate_ccw_b_ir", "assign": "assign_ccw_b_ir", "deisolate": "deisolate_ccw_b_ir"},
+  {"id": "wo_ccw_a_brg", "kks": "00PGC10AP001", "title": "Closed cooling water pump A: replace the motor bearings", "discipline": "mech", "permit": "general", "isolation": "iso_ccw_a", "repairs": "ccw_a_brg", "renews": ["ccw_a_brg_wear"], "task": "job_ccw_a_brg", "isolate": "isolate_ccw_a_brg", "assign": "assign_ccw_a_brg", "deisolate": "deisolate_ccw_a_brg"},
+  {"id": "wo_ccw_b_brg", "kks": "00PGC10AP002", "title": "Closed cooling water pump B: replace the motor bearings", "discipline": "mech", "permit": "general", "isolation": "iso_ccw_b", "repairs": "ccw_b_brg", "renews": ["ccw_b_brg_wear"], "task": "job_ccw_b_brg", "isolate": "isolate_ccw_b_brg", "assign": "assign_ccw_b_brg", "deisolate": "deisolate_ccw_b_brg"}
+ ],
+ "meters": [
+  {"id": "ccw_a_vel", "kks": "00PGC10CY001", "point": "brg", "tool_kind": "collector", "mode": "vel", "value": "ccw_a_vib"},
+  {"id": "ccw_a_ir", "kks": "00PGC10AP001", "point": "brg", "tool_kind": "camera", "mode": "ir", "value": "ccw_a_brg_t"},
+  {"id": "ccw_b_vel", "kks": "00PGC10CY002", "point": "brg", "tool_kind": "collector", "mode": "vel", "value": "ccw_b_vib"},
+  {"id": "ccw_b_ir", "kks": "00PGC10AP002", "point": "brg", "tool_kind": "camera", "mode": "ir", "value": "ccw_b_brg_t"}
  ]
 }
