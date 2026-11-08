@@ -25,11 +25,14 @@ var open_ms := 0.0              # the last page's build, ms
 var page_ms := {}               # "manual#section" -> its longest build, to its first frame complete, ms (walk=manuals)
 var building := false           # the page's blocks still being added (a few each frame: the frame rule)
 var frame_ms_max := 0.0         # the longest the reader's own work took in one frame, ms (walk=manuals)
-const FRAME_BUDGET_MS := 6.0    # the page's blocks and table rows added each frame, at most this long
+const FRAME_BUDGET_MS := 4.0    # the page's blocks and table rows added (and the last page's freed) each frame, at most
+								# this long
 var _jobs: Array = []           # the page's work left: Callables that each add one block or one table row
 var _page_t0 := 0               # the page's start (µs)
 var _page_key := ""
 var _waiting: Array = []        # [TextureRect, file]: figures decoded on a worker thread, shown when ready
+var _trash: Array = []          # the last page's blocks, freed a few a frame (a whole page freed at once took a
+								# Note 9 frame over 100 ms)
 var last_note := ""             # the last sentence shown (a link that could not be followed), for the tests
 var root: Control
 var title: Label
@@ -145,6 +148,11 @@ func close() -> void:
 	man_id = ""
 	section = ""
 	history.clear()
+	for c in page.get_children():       # (freed over the next frames, as a page left)
+		page.remove_child(c)
+		_trash.append(c)
+	_jobs.clear()
+	building = false
 	manuals.forget_figures()            # (decoded again when next shown: the memory goes with the reader)
 	if ui != null and ui.main != null and ui.main.hud != null:
 		ui.main.hud.refresh()
@@ -292,12 +300,36 @@ func _page_built(key: String, t0: int) -> void:
 		page_ms[key] = maxf(shown, float(page_ms.get(key, 0.0)))
 
 
+## The app leaving: what is left of the last pages goes now (nodes out of the tree are not freed with it).
+func _exit_tree() -> void:
+	for n in _trash:
+		if is_instance_valid(n):
+			n.free()
+	_trash.clear()
+
+
+## Frees the last pages' nodes for at most a frame's budget: leaves first (a table freed whole is one long free).
+func _free_some(t0: int) -> void:
+	while not _trash.is_empty() and (Time.get_ticks_usec() - t0) / 1000.0 < FRAME_BUDGET_MS:
+		var n = _trash.pop_back()
+		if not is_instance_valid(n):
+			continue
+		if n.get_child_count() > 0:
+			_trash.append(n)            # (freed after its children)
+			for c in n.get_children():
+				n.remove_child(c)
+				_trash.append(c)
+		else:
+			n.free()
+
+
 ## The whole page at once (the tests, and anything that looks for a block straight after opening).
 func finish_page() -> void:
 	_pump(INF)
 
 
 func _process(delta: float) -> void:
+	_free_some(Time.get_ticks_usec())
 	if not visible:
 		return
 	var y := Input.get_joy_axis(0, JOY_AXIS_LEFT_Y) if not Input.get_connected_joypads().is_empty() else 0.0
@@ -319,7 +351,9 @@ func _process(delta: float) -> void:
 
 
 func _build_page(m: Dictionary, sec: String) -> void:
-	W.clear(page)
+	for c in page.get_children():
+		page.remove_child(c)
+		_trash.append(c)
 	_links.clear()
 	_jobs.clear()
 	_waiting.clear()
