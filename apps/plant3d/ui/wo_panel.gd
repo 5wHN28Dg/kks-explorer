@@ -305,7 +305,13 @@ func refresh() -> void:
 	if had_name != "":
 		var b := body.find_child(had_name, true, false)
 		if b is Control:
-			(b as Control).call_deferred("grab_focus")
+			# (deferred, by its id: another refresh may free it first)
+			var id: int = b.get_instance_id()
+			var again := func() -> void:
+				var c = instance_from_id(id)
+				if c is Control and (c as Control).is_inside_tree():
+					(c as Control).grab_focus()
+			again.call_deferred()
 
 
 func _list(e) -> void:
