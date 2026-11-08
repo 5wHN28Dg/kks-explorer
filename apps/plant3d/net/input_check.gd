@@ -18,7 +18,7 @@ const MAX_BYTES := 512
 const PER_TURN := 20            # inputs taken from one player for one turn (§10)
 const PER_TURN_BYTES := 1024
 
-# types: s a text, n a number, i an integer, z null, b a boolean
+# types: s a text, n a number, i an integer, z null, b a boolean, a a list of at most 4 texts, numbers or nulls
 const FORMS := {
 	"op": [["s", "s", "zbn", "zs"], ["s", "s", "zbn", "zs", "zs", "zs"]],
 	"ack": [["s"]], "shelve": [["s", "n"]], "unshelve": [["s"]],
@@ -31,6 +31,7 @@ const FORMS := {
 	"get_on": [["s"]], "drive": [["s", "s"], ["s", "s", "s"]], "weather": [["s"]],
 	"audio": [["i"]], "phone": [["s"]],    # (REALISM.md §8.5)
 	"tool": [["s", "i", "zs"]], "hand": [["s", "s", "zs", "zn", "zs"]],    # (REALISM.md §2.3, §2.4)
+	"wo": [["s", "s", "zs", "a"]],          # a work order's action and its data (REALISM.md §2.20)
 }
 
 
@@ -41,6 +42,13 @@ static func _fits(x, t: String) -> bool:
 		TYPE_FLOAT: return t.contains("n") and is_finite(x)
 		TYPE_NIL: return t.contains("z")
 		TYPE_BOOL: return t.contains("b")
+		TYPE_ARRAY:
+			if not t.contains("a") or x.size() > 4:
+				return false
+			for y in x:
+				if not _fits(y, "szn"):
+					return false
+			return true
 	return false
 
 

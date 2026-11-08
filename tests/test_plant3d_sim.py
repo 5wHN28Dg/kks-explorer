@@ -581,8 +581,8 @@ class GdscriptRealism(unittest.TestCase):
         with open(os.path.join(REPO, 'ref', 'vectors', 'plant3d-realism.json'), encoding='utf-8') as f:
             V3 = json.load(f)
         want, n = {}, 1
-        for part in ('staff', 'wear', 'weather', 'hands', 'audio', 'lab'):   # RE1, AG1 (REALISM.md §2.2), WX1
-            # (§5.1), HW1 (§2.13), HS7 (§8.5), AG3 (§2.19)
+        for part in ('staff', 'wear', 'weather', 'hands', 'audio', 'lab', 'wo'):   # RE1, AG1 (REALISM.md §2.2),
+            # WX1 (§5.1), HW1 (§2.13), HS7 (§8.5), AG3 (§2.19), WM1 (§2.20)
             st = V3[part]
             want.update({f'realism/{part}/{i}': staff_run(st['files'], r, None) for i, r in enumerate(st['runs'])})
             n += 1 + len(st['runs'])

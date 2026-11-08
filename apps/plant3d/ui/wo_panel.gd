@@ -290,7 +290,7 @@ func refresh() -> void:
 	if s == _sig:
 		return
 	var had := get_viewport().gui_get_focus_owner()
-	var had_name := had.name if had != null and is_ancestor_of(had) else ""
+	var had_name: String = String(had.name) if had != null and is_ancestor_of(had) else ""
 	_sig = s
 	W.clear(body)
 	feedback = W.label(last_text, 17, W.DIM)
