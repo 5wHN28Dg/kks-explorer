@@ -1875,7 +1875,7 @@ talk is where the crew hears it, just before the work, and signs that they did.
   the JSA and the talk: when a permit is isolated, a maintenance supervisor makes the JSA at the maintenance office and
   asks the shift supervisor to issue it (`jsa_permit`, in place of the reaction that had the shift supervisor issue at
   once: an issue before the JSA would be refused); the technician given the job first calls a maintenance supervisor
-  to the maintenance office for its toolbox talk (`talk_mech`, `talk_elec`, `talk_inst`: a `meet` with the trade,
+  to the workshop for its toolbox talk (`talk_mech`, `talk_elec`, `talk_inst`: a `meet` with the trade,
   then the `talk`) and meets them there, then goes to the job. A permit isolated at night waits for the day's
   supervisors, as its job already did (§17.10's offers made again). **What changes:** the first train's runs that
   follow its staff (v2's `day` and its forks) gain the JSA and talk events, and the NPCs' days move with them (the
@@ -1893,7 +1893,8 @@ talk is where the crew hears it, just before the work, and signs that they did.
   authority or on a work without `jsa`. Its runs: the NPCs' JSA, issue and talk with attendance in a room; the
   trainee's JSA refused (authority, state) and unknown (bad lists), the issue refused `jsa` then made; the talk
   refused (state, jsa), given at a place of no room and walking; the JSA and attendance cleared by a cancel and a new
-  request; a session.
+  request; a session; and (the adversarial review) an NPC's JSA step on a task with no work, unknown as a permit
+  step's is.
 
 ## 9. Electrical and mechanical crafts, condition monitoring
 

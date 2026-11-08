@@ -146,6 +146,12 @@ func send_pick() -> void:
 	if hz.is_empty():
 		ui.toast("Pick at least one hazard first")
 		return
+	# the engine's limits (REALISM.md §8.6): more would come back unknown, as if the work had no JSA
+	var most: int = Hse.JSA_HAZARDS if kind == "jsa" else Hse.POINTS
+	if hz.size() > most or (kind == "jsa" and cs.size() > Hse.JSA_CONTROLS):
+		ui.toast("Too many items: at most %d hazards%s" % [most,
+				" and %d controls" % Hse.JSA_CONTROLS if kind == "jsa" else ""])
+		return
 	# a session carries an input of at most 512 bytes (MULTIPLAYER.md §3.3): a longer one would be dropped unseen
 	var item := ["jsa", pick["work"], hz, cs, ui.me()] if kind == "jsa" else ["talk", pick["work"], hz, ui.me()]
 	if e.st_session and InputCheck.text(item).size() > InputCheck.MAX_BYTES:
@@ -355,7 +361,8 @@ func on_events(evs: Array, from: int) -> void:
 		if Permits.is_hse_event(ev):    # a JSA or a toolbox talk sent from the form (REALISM.md §8.6)
 			for k in _pending.size():
 				var p: Array = _pending[k]
-				if p[1] == ev[1] and p[2] == ev[2] and int(ev[0]) >= p[4]:
+				# (the player's own: an NPC's JSA for the same work, the supervisor's after the isolation, is not theirs)
+				if p[1] == ev[1] and p[2] == ev[2] and int(ev[0]) >= p[4] and ev[5 if ev[1] == "jsa" else 4] == ui.me():
 					var txt := Permits.hse_text(e, ev)
 					results[p[0]] = {"state": Permits.hse_result(ev), "text": txt}
 					if feedback != null and is_instance_valid(feedback):

@@ -30,6 +30,8 @@ func run(tree: SceneTree) -> Array:
 	var e = ui.clock.engine
 	p += _library(e)
 	p += await _form(tree, ui)
+	p += _others(ui)
+	p += _limits(ui)
 	p += _review(ui)
 	p += _saves(ui)
 	p += _forms()
@@ -134,6 +136,62 @@ func _form(tree: SceneTree, ui) -> Array:
 	var words := Permits.hse_text(e, ev)
 	if not words.contains("refused") or not words.contains("no job safety analysis"):
 		p.append("a talk refused for want of a JSA reads: %s" % words)
+	ui.close_permits()
+	return p
+
+
+## The adversarial review: an NPC's JSA for the same work (the supervisor's, after the isolation) is not the result of
+## the player's own JSA; theirs, arriving later, is.
+func _others(ui) -> Array:
+	var p: Array = []
+	var e = ui.clock.engine
+	var pm = ui.permits
+	ui.open_permits(WORK)
+	pm.refresh()
+	var key := str([WORK, "jsa"])
+	pm._sent(key, "jsa", WORK, "jsa", 0)
+	var evs := [[50, "jsa", WORK, ["rotating"], ["loto"], "ms_mech", "done", []]]
+	pm.on_events(evs, 0)
+	if pm.results.get(key, {}).get("state", "") != "sent":
+		p.append("an NPC's JSA was taken for the player's: %s" % str(pm.results.get(key)))
+	evs.append([51, "jsa", WORK, ["rotating"], ["bees"], ui.me(), "unknown", []])
+	pm.on_events(evs, 1)
+	if pm.results.get(key, {}).get("state", "") != "unknown":
+		p.append("the player's own JSA result after an NPC's was not shown: %s" % str(pm.results.get(key)))
+	pm._pending.clear()
+	pm.results.erase(key)
+	ui.close_permits()
+	return p
+
+
+## The adversarial review: a pick over the engine's limits (more than 32 hazards) is refused on the form in words, not
+## sent to come back unknown (a library of 33 hazards, made here: the first train's has fewer).
+func _limits(ui) -> Array:
+	var p: Array = []
+	var e = ui.clock.engine
+	var pm = ui.permits
+	ui.open_permits(WORK)
+	var keep: Array = e.m.hse["hazards"]
+	var many := []
+	var hz := {}
+	for k in 33:
+		many.append("x%d" % k)
+		hz["x%d" % k] = true
+	e.m.hse["hazards"] = many
+	var sent: Array = []
+	ui.inputs.sink = func(item): sent.append(item)
+	ui._toast.text = ""
+	pm.pick = {"kind": "jsa", "work": WORK, "hz": hz, "cs": {}}
+	pm.send_pick()
+	var said: String = ui._toast.text
+	pm.pick = {"kind": "talk", "work": WORK, "hz": hz, "cs": {}}
+	ui._toast.text = ""
+	pm.send_pick()
+	ui.inputs.sink = Callable()
+	e.m.hse["hazards"] = keep
+	if not sent.is_empty() or not said.contains("at most 32 hazards") or not ui._toast.text.contains("at most 32"):
+		p.append("a pick of 33 hazards: sent %s, said %s / %s" % [str(sent), said, ui._toast.text])
+	pm.pick = {}
 	ui.close_permits()
 	return p
 

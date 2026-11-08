@@ -130,8 +130,13 @@ static func cleared(e, work: String) -> void:
 
 
 ## The work's own list: [hazard ids, control ids].
-static func own(e, work: String) -> Array:
-	return e.m.hse["own"][e.m.works[e.m.work_ix[work]]["jsa"]]
+## The work's own list (§8.6): [hazard ids, control ids]; empty lists for anything but a work with `jsa` (an NPC
+## step's task without a work: its input is then `unknown`, as a permit step's is).
+static func own(e, work) -> Array:
+	var wi := _work(e, work)
+	if wi == -1:
+		return [[], []]
+	return e.m.hse["own"][e.m.works[wi]["jsa"]]
 
 
 ## Per work with `jsa`, in model order: [has a JSA, hazard indices, control indices, person index or -1, attendees].

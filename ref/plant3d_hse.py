@@ -176,7 +176,10 @@ def cleared(e, work):
 
 
 def own(e, work):
-    """The work's own list (§8.6): (hazard ids, control ids)."""
+    """The work's own list (§8.6): (hazard ids, control ids); empty lists for anything but a work with `jsa` (an NPC
+    step's task without a work: its input is then `unknown`, as a permit step's is)."""
+    if _work(e, work) is None:
+        return ([], [])
     return e.hse['own'][e.works[work]['jsa']]
 
 

@@ -1228,6 +1228,17 @@ class HseVectors(PartVectors, unittest.TestCase):
         self.assertEqual({x[1]: x[2] for x in talks}, {'wo_pump': ['rotating', 'pinch', 'pressure'],
                                                         'wo_paint': ['height', 'fumes', 'dropped']})
 
+    def test_npc_step_without_a_work(self):
+        """The adversarial review: an NPC's JSA step on a task with no work (a routine's slot starting the pump's JSA
+        task, which only a call gives a work) is unknown, as a permit step's is, and the task abandoned: not a crash;
+        the supervisor goes on to the painting's JSA."""
+        ev = [x[1:] for x in self.st['runs'][8]['events']]
+        self.assertIn(['jsa', None, [], [], 'ms1', 'unknown', []], ev)
+        i = ev.index(['jsa', None, [], [], 'ms1', 'unknown', []])
+        self.assertEqual(ev[i + 1], ['task', 'ms1', 'jsa_pump', 'abandoned'])
+        self.assertIn(['jsa', 'wo_paint', ['height', 'fumes', 'dropped'], ['harness', 'barrier', 'mask', 'ventilate'],
+                       'ms1', 'done', []], ev[i:])
+
     def test_npc_flow_order(self):
         """Every JSA before its permit's issue, every talk after it and before its accept; the talk in the workshop
         attended by the technician who then accepts; the one at the muster point by the contractors standing there."""

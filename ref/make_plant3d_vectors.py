@@ -5879,7 +5879,18 @@ def hse_runs():
          'their hosting task, the pump\'s JSA when the shift supervisor calls them (after its fault at step 1500), '
          'and its toolbox talk in the workshop when the technician calls them; each step done by their own input',
          {'trainee': 'ms1'}, hf, Trainee(extra=[[1500, 'fault', 'f1']]), 2600, 50),
+        ('the adversarial review: the maintenance supervisor\'s routine also starts the pump\'s JSA task at 07:20, a '
+         'task with no work then (only a call gives it one; here its JSA step first): its JSA step is unknown (no work: as a permit step\'s), '
+         'the task abandoned, not a crash', {}, _ms_jsa_slot(hf), Trainee(), 1500, 50),
     ]
+
+
+def _ms_jsa_slot(hf):
+    F = copy.deepcopy(hf)
+    next(r for r in F['staff.json']['routines'] if r['id'] == 'ms_days')['slots'].append(
+        {'at': '07:20', 'task': 'jsa_pump'})
+    next(t for t in F['staff.json']['tasks'] if t['id'] == 'jsa_pump')['steps'] = [{'jsa': '$'}, {'go': 'seat2'}]
+    return F
 
 
 def hse_part():
