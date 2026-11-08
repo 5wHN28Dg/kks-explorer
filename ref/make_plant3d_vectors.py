@@ -834,8 +834,8 @@ FORKS = [
                               ('op', '10MBA10', 'wash_online', None, None), ('run', 30)],
      {'done': [['10MBA10', 'wash_online'], ['10MBA10', 'wash_online']], 'machines': {'gt1_wash': 'online'}}),
     # the offline wash and a start pressed in the same step: the wash stops as the rotor is driven up
-    ('wx_wash_offline_start', 'gt_tg', [('op', '10MBA10', 'wash_offline', None, None),
-                                        ('op', '10MBA10', 'start', None, None), ('run', 120)],
+    ('wx_wash_offline_start', 'bypass', [('op', '10MBA10', 'wash_offline', None, None),
+                                         ('op', '10MBA10', 'start', None, None), ('run', 120)],
      {'done': [['10MBA10', 'wash_offline'], ['10MBA10', 'start']], 'machines': {'gt1_wash': 'idle'}}),
     ('wx_wash_offline', 'gt_tg', [('op', '10MBA10', 'wash_offline', None, None), ('run', 60),
                                   ('op', '10MBA10', 'start', None, None), ('run', 1800)],
