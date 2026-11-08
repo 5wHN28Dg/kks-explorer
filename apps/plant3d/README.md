@@ -170,6 +170,13 @@ generated straight-line code (0.8 ms a step, the same results bit for bit: apps/
   pinch, the wheel, + and − or the triggers zoom; Page Up and Down (LB and RB) change sheet; a tap (Enter, or A at
   the cross) on a code opens its card, on an off-sheet connector the other sheet at that code. Electrical
   equipment, control desks and lifting gear are on no P&ID and have no Drawing button.
+- **Manuals** (`ui/manuals.gd`, `ui/manual_view.gd`; docs/plant3d/REALISM.md §6.2.1): generic equipment manuals for
+  the kit's parts (the transmitter, the control valve, manual and check valves, pumps, the steam and gas turbines),
+  written in `tools/plant3d/manual_texts/`, completed from the content at every build by `tools/plant3d/manuals.py`
+  into `built/manuals`, their figures drawn from the Workshop scenes by `builder/manual_figures.gd` (a software
+  renderer: the build has no rendering device). Opened from a card's Manual (with that unit's own data), the work
+  view's Manual and the Workshop's; links open another section, a code's card, the work view's action or the
+  Workshop's step. `tests/manual_shots.gd` takes pictures of the reader (under `offscreen.sh`).
 - **Control room screens** (`ui/mimic.gd`, `ui/screens_model.gd`, `ui/trends.gd`; docs/PLANT3D.md §7.11): the
   Control room button (H, gamepad X) and the operator desks open them, at a desk only: the main control room's (the
   train's screens and the water treatment plant's overview) or the water treatment plant's own (its screens), each

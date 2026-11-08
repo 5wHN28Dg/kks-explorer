@@ -86,7 +86,10 @@ what it is fastened to (from the fastener groups, §4.4). Panels collapse so the
 
 **Take apart.** One slider from assembled (0) to fully exploded (1), smooth, the same picture for the same value
 (§4.3). Subassemblies come out first, their parts after. The slider works on the whole machine or on the selected
-subassembly. **Reassemble all** animates everything home.
+subassembly. **Reassemble all** animates everything home. Not while it runs: taking apart, handling and the
+guided steps wait until the machine is stopped and at rest, apart from what the kind's data lets be opened live
+(§4.7 `open_running`: a powered transmitter's terminal cover), with a technician's reason for the rest (the polish
+after K4b).
 
 **Free handling.** Pick up any part that is free to move (§4.5) and drag it along an axis or turn it about one
 (a three-axis handle; on touch, the handle's arrows and rings take one finger). Hide, show, isolate (the part and its
@@ -360,6 +363,13 @@ The data file's `assembly` is the guided order, one step per component or fasten
   passes by (a rotor shown whole inside a cut casing).
 - `run_exploded`: `true`, or `{"allowed": [components that may be out], "why": "…"}`: the Run button refuses with
   `why` when another component is out.
+- `open_running`: `{"allowed": [components that may be opened or taken off while it runs], "why": "…"}`: while the
+  bench's machine is out of its resting state, taking apart and handling are refused with `why` for every other
+  component, and the guided steps altogether (without it: none, with "Stop the machine and let it come to rest before opening it
+  up"). The transmitter allows its terminal cover with the loop live (to measure the loop current or connect HART,
+  outside a hazardous area); the electronics, the sensor module and the flange wait for the loop supply off. A
+  rotating machine allows nothing: it is opened only at standstill on its turning gear (the user's decision,
+  2026-11-07). The Workshop's code names no kind: the data says.
 
 ## 5. The pre-built Workshop scenes
 
@@ -682,12 +692,30 @@ addition (both engines, vectors) made in K6.
   in its first frame back, the plant having drawn barely a frame before the Workshop opened; the second way back
   took 14 ms. The APK (test-signed) is 145.2 MB, of which K4b's own files are about 120 KB (the blade-pass sound 93 KB,
   the bench file 24 KB); K4a's was 121.4 MB, before main's other milestones.
-- **Not fixed: the plant's 0.7 s frame at the start.** 4.8 s after the first frame (the warm-up's time) one plant
+- **Was not fixed in K4b (fixed after it, below): the plant's 0.7 s frame at the start.** 4.8 s after the first frame (the warm-up's time) one plant
   frame takes 705 ms (715 ms in the first run) and 8 surface pipelines finish in it. It is not the kinds' warm-up
   (#325 spread it; it stayed) nor the ghost's and K3's pieces entering together (one a frame now; it stayed): the
   Workshop's own shaders' first compilation holds the frame. The frame rules don't judge the first seconds; §8's
   Workshop rules hold. Left as a question for the user (moving that warm-up behind the start's loading, or baking
   those shaders).
+
+**After K4b (the Workshop's polish, 2026-11-07).**
+- **The 0.7 s frame: the Workshop's shaders baked at export.** The export's shader baker compiles only the shaders of
+  the materials it finds in the exported resources (Godot's `shader_baker_export_plugin.cpp`: a shader file alone is
+  not baked), and every Workshop material is made by script, so the four `ws_*` shaders were compiled on the phone,
+  the first time in the plant's warm-up. The content build now saves one material per shader file the app ships
+  (`builder/shader_mats.gd`, `built/shaders/`), the walking directions' and the weather's too, which were made by
+  script as well; `tests/test_launch.gd` checks every shader file has one. The release APK carries 32 baked
+  versions of the mobile scene shader instead of 20. Whether the frame goes (the driver's pipeline builds are not
+  baked) is measured on the Note 9 below.
+- **A running machine is not taken apart** (§3): while the bench's machine is out of its resting state the slider
+  (towards apart), the selected subassembly, handling and both guided modes are refused with the kind's reason
+  (§4.7 `open_running`); once it is stopped and at rest (the turbine's standstill, below 1 % speed on its turning
+  gear; the transmitter's loop supply off) they are allowed again. The user's decision (2026-11-07): a powered
+  transmitter's terminal cover may come off (to measure the loop current or connect HART, in a non-Ex area); its
+  electronics, sensor module and flange need the loop supply off; a turning machine is never opened. Putting it back together, Reset, hiding
+  and the views stay allowed. Starting a machine taken apart is still decided by `run_exploded` (§4.7). The walk
+  (§8) therefore takes the machine apart first and starts it once it stands assembled again, at 118 s.
 
 ## 7. Shaders and cut faces
 
@@ -715,7 +743,9 @@ rule), a hidden node with one small mesh per Workshop variant queues their pipel
 walking directions' chevron does (0060); the pipeline cache (saved every 0.25 MB) keeps them for later starts. The
 Workshop's own load draws its scene hidden for one frame first, so anything not yet compiled is compiled before the
 first frame of the machine, never on the first X-ray click. K3 measures whether the background compile costs the
-plant's frames on the Note 9; if it does, it moves into the Workshop's load alone (its entry rule, §8, allows it).
+plant's frames on the Note 9; if it does, it moves into the Workshop's load alone (its entry rule, §8, allows it). The
+shaders themselves are baked at export (decision 0060's shader baker), through a material of each saved by the
+content build (`built/shaders/`): the baker bakes materials, not shader files (the polish after K4b).
 
 ### 7.2 Cut faces: the back-face cap
 
@@ -750,7 +780,7 @@ the Workshop. The Workshop's own, on the Note 9 (`lean+vis`, release build, cool
 | Workshop button to the first frame of the machine | ≤ 2.0 s with its pipelines compiled; ≤ 5.0 s with an empty pipeline cache (the first entry after an install) |
 | Back to the plant's first frame | ≤ 1.0 s |
 | After the first frame of the machine | no frame over 100 ms while orbiting, exploding, X-raying, cutting, sectioning and running; ≥ 95 % of frames at ≥ 30 fps over the Workshop walk |
-| The Workshop walk (scripted, `app/workshop_walk.gd`) | 3 minutes on a fixed camera orbit: assembled, exploded 0 → 1 → 0, X-ray, cutaway, a section sweep, Start to full speed at 2×, a fault, Stop, exploded and running where allowed |
+| The Workshop walk (scripted, `app/workshop_walk.gd`) | 3 minutes on a fixed camera orbit: assembled, exploded 0 → 1 → 0, handled, the guided steps, then (the machine assembled again, at 118 s) Start, X-ray, cutaway, a section sweep, the faults, Stop (a running machine is not taken apart: the polish after K4b; the turbine's walk is measured with `bench_speed=20`, so that its 300 s soak still lets it reach full speed in the 37 s before the faults) |
 | Peak PSS | ≤ 1.5 GB with the plant held behind it |
 | One kind's scene | ≤ 120,000 triangles (all components, insides included); ≤ 300 draw calls in any view of the walk, `ws_cap`'s second pass included (it is drawn only while a cut or section is on, on the components the cut reaches) (the plant's busiest measured 479 at p95 within the frame rules, 0041) |
 | The bench step | ≤ 0.3 ms on the Note 9 (a bench model is a fraction of the plant's 1.4 ms) |

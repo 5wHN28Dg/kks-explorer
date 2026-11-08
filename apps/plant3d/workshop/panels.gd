@@ -19,6 +19,7 @@ var note: Label
 var slider: HSlider
 var only_cb: CheckBox
 var back_btn: Button
+var manual_btn: Button
 var step_label: Label           # the guided steps: the next step's words (WORKSHOP.md §3, §4.6)
 var step_layer: CanvasLayer     # step_label's own canvas layer, shown with the panels
 var guide_btns: Array = []      # the buttons that start the steps (when the kind's data has an assembly)
@@ -58,6 +59,10 @@ func setup(w) -> void:
 	var run_btn := W.button("Run", func(): show_run(not run_panel.visible))
 	run_btn.name = "run"
 	top.add_child(run_btn)
+	# the kind's manual (REALISM.md §6.2.1), at the section the next guided step (or the picked part) links to
+	manual_btn = W.button("Manual", open_manual)
+	manual_btn.name = "manual"
+	top.add_child(manual_btn)
 	strip = W.label("", 18, Color(1.0, 0.8, 0.4), false)
 	strip.name = "strip"
 	strip.set_anchors_preset(Control.PRESET_TOP_WIDE)
@@ -210,6 +215,26 @@ func setup(w) -> void:
 	add_child(step_layer)
 	step_layer.add_child(step_label)
 
+## The kind's manual: at the section the next guided step's component links to, else the picked part's, else its
+## start (REALISM.md §6.2.1). False when there is none.
+func open_manual() -> bool:
+	if ws.ui == null or not ws.ui.has_method("manual_of_kind"):
+		return false
+	var man: String = ws.ui.manual_of_kind(ws.part)
+	if man == "":
+		return false
+	var sec := ""
+	var place := ""
+	if ws.guide.on() and ws.guide.next_step() >= 0:
+		place = String(ws.guide.steps[ws.guide.next_step()].place)
+	elif ws.selected != "":
+		place = ws.selected
+	if place != "":
+		var at: Array = ws.ui.manuals.for_step(ws.part, place)
+		if not at.is_empty() and at[0] == man:
+			sec = String(at[1])
+	return ws.ui.open_manual(man, sec, ws.from_code)
+
 ## While the scene loads (or when it could not).
 func loading(what: String) -> void:
 	title.text = what
@@ -232,6 +257,7 @@ func machine_shown() -> void:
 	for b in guide_btns:
 		b.disabled = not has_steps
 	slider.editable = true
+	manual_btn.visible = ws.ui != null and ws.ui.has_method("manual_of_kind") and ws.ui.manual_of_kind(ws.part) != ""
 	_strip_n = -1
 	only_cb.set_pressed_no_signal(false)
 	sync_slider()

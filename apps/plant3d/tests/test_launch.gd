@@ -14,6 +14,44 @@ const SHADER := "res://kit/weathered.gdshader"
 const FORMAT := Mesh.ARRAY_FORMAT_VERTEX | Mesh.ARRAY_FORMAT_NORMAL | Mesh.ARRAY_FORMAT_TANGENT | Mesh.ARRAY_FORMAT_COLOR | Mesh.ARRAY_FORMAT_TEX_UV
 const ATTRS := FORMAT | Mesh.ARRAY_FORMAT_TEX_UV2 | Mesh.ARRAY_FORMAT_BONES | Mesh.ARRAY_FORMAT_WEIGHTS | Mesh.ARRAY_FORMAT_CUSTOM0 | Mesh.ARRAY_FORMAT_CUSTOM1 | Mesh.ARRAY_FORMAT_CUSTOM2 | Mesh.ARRAY_FORMAT_CUSTOM3
 
+const ShaderMats = preload("res://builder/shader_mats.gd")
+const SKIP_DIRS := ["tests", "addons", "built", "android", "export", "flatpak", "msix", "phone"]
+
+func _baked_shaders() -> Array:
+	var p: Array = []
+	var files: Array = []
+	_shader_files("res://", files)
+	if files.size() < 5:
+		p.append("found the app's shader files (%s)" % str(files))
+	var out := "user://tests-shader-mats"
+	var errs: Array = ShaderMats.build(out)
+	if not errs.is_empty():
+		p.append("the shaders' materials are saved: %s" % str(errs))
+	var dirs := [out.path_join(ShaderMats.DIR)]
+	if DirAccess.dir_exists_absolute("res://built/" + ShaderMats.DIR) or DirAccess.dir_exists_absolute("res://built/materials"):
+		dirs.append("res://built/" + ShaderMats.DIR)   # (the built plant's own, when there is one)
+	for d in dirs:
+		var have := {}
+		for f in DirAccess.get_files_at(d):
+			var m = load(d.path_join(f)) if f.ends_with(".tres") else null
+			if m is ShaderMaterial and (m as ShaderMaterial).shader != null:
+				have[(m as ShaderMaterial).shader.resource_path] = true
+		for f in files:
+			if not have.has(f):
+				p.append("%s: a material of %s, for the export's shader baker" % [d, f])
+	for f in ["res://workshop/ws_lit.gdshader", "res://workshop/ws_cap.gdshader", "res://workshop/ws_xray.gdshader", "res://workshop/ws_flow.gdshader"]:
+		if not files.has(f):
+			p.append("the scan finds %s" % f)
+	return p
+
+static func _shader_files(dir: String, out: Array) -> void:
+	for f in DirAccess.get_files_at(dir):
+		if f.ends_with(".gdshader"):
+			out.append(dir.path_join(f))
+	for d in DirAccess.get_directories_at(dir):
+		if not d.begins_with(".") and not (dir == "res://" and d in SKIP_DIRS):
+			_shader_files(dir.path_join(d), out)
+
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
 	# the pipeline cache is saved soon after a start compiles (Godot's default waits for 3 MB of new pipelines, more
@@ -26,6 +64,10 @@ func run(tree: SceneTree) -> Array:
 	var staging := int(ProjectSettings.get_setting("rendering/rendering_device/staging_buffer/max_size_mb", 128))
 	if staging > 16:
 		p.append("the staging buffers may grow to %d MB, at most 16" % staging)
+	# every shader file the app ships is the shader of a material saved by the build, so that the export's shader baker
+	# compiles it (it bakes materials, never a shader file alone): the Workshop's, made by script, were compiled on the
+	# Note 9 in the plant's warm-up, a 0.7 s frame 4.8 s after the start
+	p.append_array(_baked_shaders())
 	# the built materials: all the weathered shader, the lamps lit
 	var lamps := 0
 	for f in DirAccess.get_files_at("res://built/materials"):

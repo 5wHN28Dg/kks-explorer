@@ -14,7 +14,8 @@
 ##                           plays the day's bus driver among the crews, the clock run to 05:30, and the app drives the
 ##                           runs itself (app/bus_drive.gd pilot) from the cab; `drawings` opens each generated P&ID in turn for 10 s,
 ##                           panning and zooming it (ui/drawing_view.gd: the DRAWINGS lines); drawing_shots=1 saves a
-##                           picture of each half way
+##                           picture of each half way; `manuals` opens every page of every manual in turn for 3 s,
+##                           scrolling it (ui/manual_view.gd: the MANUALS line)
 ##   walk=workshop           the Workshop walk (app/workshop_walk.gd, docs/plant3d/WORKSHOP.md §8): 3 minutes in the
 ##                           Workshop on `kind=PART` (default the first kind built), then back to the plant; its
 ##                           first entry waits for the plant's warm-up of the Workshop's pipelines unless `cold=1`
@@ -147,6 +148,9 @@ var screens_walk := false   # walk=screens: the control room's screens in turn, 
 var job_walk := false       # walk=job: the work view open at a code, its camera going round (milestone HW2)
 var monitor_walk := false   # walk=monitor: the monitoring panel open at a machine, the plant at 1× (milestone AG3)
 var drawings_walk := false  # walk=drawings: each P&ID in turn, panned and zoomed (REALISM.md §6.1.1, DC1)
+var manuals_walk := false   # walk=manuals: every manual's every page in turn, scrolled (REALISM.md §6.2.1, DC2)
+var _man_pages: Array = []  # walk=manuals: [manual, section] in order
+var _man_i := 0
 var _sheet_i := 0
 var _tours := {}             # walk=drawings: sheet id -> the codes' centres it passes
 var workshop_walk: Node     # walk=workshop: app/workshop_walk.gd
@@ -521,6 +525,8 @@ func _unhandled_input(e: InputEvent) -> void:
 		return
 	if workshop_open():
 		return   # the Workshop's own keys (workshop/workshop.gd)
+	if ui != null and ui.manual_open():
+		return   # the manual reader's (ui/manual_view.gd): the map, the panels and the clock wait under it
 	if e.is_action_pressed("map"):
 		toggle_map()
 	elif e.is_action_pressed("menu"):
@@ -614,6 +620,19 @@ func _start_walk() -> void:
 			_finish()
 			return
 		ui.drawing_view.open_sheet(String(ui.drawings.sheets[0]["id"]))
+		last_us = Time.get_ticks_usec()
+		return
+	if opts.walk == "manuals":
+		manuals_walk = ui.manual_view != null
+		if not manuals_walk:
+			_say("MANUALS none in this build")
+			_finish()
+			return
+		for e in ui.manuals.list:
+			for s in ui.manuals.manual(String(e["id"]))["sections"]:
+				_man_pages.append([String(e["id"]), String(s["id"])])
+		_man_i = 0
+		ui.open_manual(_man_pages[0][0], _man_pages[0][1], "30MAG10CP002")
 		last_us = Time.get_ticks_usec()
 		return
 	if opts.walk == "workshop":
@@ -762,6 +781,25 @@ func _view_counts() -> Vector2i:
 	return Vector2i(d[5], t[5])
 
 
+## walk=manuals: each page of every manual in turn for 3 s, scrolled from its top to its end (the reader's frames),
+## round again after the last.
+func _manuals_tick(delta: float) -> void:
+	var mv = ui.manual_view
+	_screen_t += delta
+	if _screen_t >= 3.0:
+		_screen_t = 0.0
+		_man_i = (_man_i + 1) % _man_pages.size()
+		if not mv.visible:
+			ui.open_manual(_man_pages[_man_i][0], _man_pages[_man_i][1], "30MAG10CP002")
+		elif _man_pages[_man_i][0] != mv.man_id:
+			mv.open(_man_pages[_man_i][0], _man_pages[_man_i][1])
+		else:
+			mv.go(_man_pages[_man_i][1])
+		return
+	var bar: VScrollBar = mv.scroll.get_v_scroll_bar()
+	mv.scroll.scroll_vertical = int(maxf(0.0, bar.max_value - mv.scroll.size.y) * clampf(_screen_t / 2.5, 0.0, 1.0))
+
+
 ## walk=drawings: each sheet in turn for 10 s, from the whole sheet into a slow tour at reading zooms and out again,
 ## so that every level of detail is drawn and the paper is panned and zoomed every frame (the frame rules' measure).
 func _drawings_tick(delta: float) -> void:
@@ -907,11 +945,13 @@ func _process(delta: float) -> void:
 		_say("SPEED %s at %.1f s, uptime %d ms" % ["fast-forward" if ff else "normal", t_walk, WalkFrames.uptime_ms()])
 	if job_walk and ui.work.is_open:
 		ui.work._turn(Vector2(delta * 25.0, 0.0))      # slowly round the transmitter (the whole scene in turn)
-	if not screens_walk and not job_walk and not monitor_walk and not drawings_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
+	if not screens_walk and not job_walk and not monitor_walk and not drawings_walk and not manuals_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
 		return
 	t_walk += delta
 	if drawings_walk:
 		_drawings_tick(delta)
+	if manuals_walk:
+		_manuals_tick(delta)
 	if screens_walk:
 		if t_walk - delta <= 5.0 and t_walk > 5.0:
 			ui.mimic.reset_cost()       # measured as the frames are: after the first 5 s
@@ -993,6 +1033,13 @@ func _finish() -> void:
 		_say("DRAWINGS open=%s sheets=%d open_max_ms=%.1f level_max_ms=%.1f levels=%d (per sheet: %s)" % [str(ui.drawings_open()),
 			opens.size(), opens.back() if not opens.is_empty() else -1.0, builds.back() if not builds.is_empty() else -1.0,
 			builds.size(), JSON.stringify(dv.build_ms)])
+	if manuals_walk:
+		var mv = ui.manual_view
+		var ms: Array = mv.page_ms.values()
+		ms.sort()
+		_say("MANUALS open=%s pages=%d of %d open_max_ms=%.1f open_median_ms=%.1f figures=%d" % [str(ui.manual_open()),
+			ms.size(), _man_pages.size(), ms.back() if not ms.is_empty() else -1.0, ms[ms.size() / 2] if not ms.is_empty() else -1.0,
+			ui.manuals._figures.size()])
 	if screens_walk:
 		var m = ui.mimic
 		_say("MIMIC screens_open=%s frames=%d draw_max_us=%d draw_mean_us=%d frames_over_2ms=%d longest_piece_us=%d (the pieces' drawing only)" % [

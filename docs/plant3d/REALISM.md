@@ -1427,6 +1427,99 @@ public standards. No new dependency (decision 0073 already chose our own format 
   No text is copied.
 - Read in the app from the card, the work order and the job's steps (a link to a section).
 
+#### 6.2.1 DC2's details (settled 2026-11-08, before the code)
+
+The manuals are generic: written for the generic plant's kit parts, in our own words, from public knowledge, each
+naming the manufacturers' public manuals and standards it follows for its structure and facts. No manufacturer's
+text, no real plant's documents and no photographs are used. They are read in Walkdown Plant only (the user,
+2026-11-08), as the P&IDs are. No new dependency (decision 0073: no PDF renderer in Godot, our own formats drawn by
+the app).
+
+- **The set** (the parts the trainee works on first): WDP-MAN-001 the pressure transmitter (`pressure_transmitter`:
+  calibration, HART, troubleshooting tables), 002 the control valve and its positioner (`valve_control`), 003 manual
+  and check valves (`valve_gate`, `valve_globe`, `valve_ball`, `valve_butterfly`, `valve_check`), 004 centrifugal
+  pumps (`pump_horizontal`, `pump_vertical`), 005 the steam turbine (`steam_turbine`, an overview) and 006 the gas
+  turbine (`gas_turbine`, an overview). A manual covers one or more part kinds; a kind has at most one manual.
+- **Where:** each manual's text is a source file `tools/plant3d/manual_texts/<id>.py` (blocks written with a small inline
+  markup that the generator turns into COURSES.md runs); the generator `tools/plant3d/manuals.py` adds what comes
+  from the content and writes `apps/plant3d/built/manuals/` at every build (`build.sh`, after the P&IDs): a view of
+  the content, never committed, as the drawings are.
+- **What the generator adds from the content:** the specifications' kit parameters (each parameter of the manual's
+  kinds with its range and default, from `kit.json`); every code of those kinds in the plant with its own
+  parameters (the "this unit" table the reader shows when the manual is opened from that code's card); the spare
+  parts list from the Workshop tree where the kind has one (every component and fastener group, with its material),
+  after the manual's own consumables; the figures (below); and the reverse links (which section a work view action
+  or a Workshop step opens).
+- **Part numbers** (the generic catalogue WM2 takes over, §7.2): `WDP-` + the manual's short code (PT, CV, MV, CP,
+  ST, GT) + `-` + the component or consumable id in capitals, `_` as `-` (`WDP-PT-SENSOR-MODULE`). In a manual of
+  several kinds a Workshop tree's parts carry the kind's tag first (pumps H and V; valves GA, GL, BA, BF, CH:
+  `WDP-CP-H-IMPELLER`), since the kinds' trees share component ids; a consumable whose id a tree also has gives way
+  to the tree's row.
+- **Format** `walkdown-plant-manual` version 1, a file per manual: `id`, `number`, `title`, `short`, `kinds`,
+  `sources` (`[{id, cite, url?}]`), `figures` (`[{id, kind, view, caption, file, w, h}]`) and `sections`
+  (`[{id, title, blocks, src}]`). Blocks are COURSES.md §4's `h` (level 3), `p`, `ul`, `ol`, `table`, `callout`
+  (kinds `warning`, `caution`, `note`) and `figure`, plus two of the manual's own: `{"trouble": [{"symptom", "cause",
+  "remedy", "id"?}]}` (the troubleshooting table; `id` is a §2.6 cause id of a fault on equipment of the manual's
+  kinds, and must exist in the content when given) and `{"unit": true}` (the opened code's own parameters). Runs are
+  COURSES.md §3's (`b`, `i`, `small`, `num`, `link`); a link's target is `{"section"}`, `{"manual", "section"?}`,
+  `{"kks"}`, `{"work": action}` (an action of the kind's service file, §2.16) or `{"workshop": kind, "place":
+  component}` (the guided step that places that component, WORKSHOP.md §4.6). `src` lists the ids of the sources a
+  section follows. The index `index.json` (`walkdown-plant-manuals` version 1): the manuals in order, each kind's
+  manual, each code's unit table, and the reverse links `work` (`"<part>:<action>"` → `[manual, section]`) and
+  `workshop` (`"<kind>:<component>"` → `[manual, section]`).
+- **The generator's checks** (the build fails): every required section is there (description, specifications,
+  installation, commissioning, operation, maintenance, troubleshooting, parts, safety); every link resolves; every
+  troubleshooting `id` exists; every cited source is listed and every listed source cited; no text is empty; the
+  output is the same on every run (tested).
+- **Figures** (§6.2: the Workshop's exploded and cut views rendered at build time): for every kind of a manual with a
+  Workshop scene, an exploded view (the take-apart slider at 1) and a cut view (the kind's cutaway planes). The
+  build runs headless (CI, and every build but a release), where Godot has no rendering device, so the figures are
+  drawn by our own small software renderer at build time (`builder/manual_figures.gd`: the built Workshop scene's
+  triangles, a depth buffer, flat shading by the plant's material colours, the cut faces in one colour, outlines
+  where the depth or the component changes), the same picture on every build, written as lossless WebP. A kind
+  whose Workshop scene comes later (the gas turbine) gets its figures with it, without a change here.
+- **The reader** (`ui/manual_view.gd`, `ui/manuals.gd`): full screen on a canvas layer above the Workshop's, with the
+  3D view under it off while it shows (as the drawings); a contents list beside the page, Back after following a
+  link, Close. Opened from the card ("Manual", with the opened code's unit table), from the work view ("Manual", at
+  the section the picked component's actions link to, else the troubleshooting section) and from the Workshop's top
+  bar ("Manual", at the section the next guided step's component links to, else the start). A `work` link opens the
+  work view at that code when the trainee can work on it there (otherwise it says why: the work view's own
+  sentence); a `workshop` link opens the Workshop on that kind with the guided disassembly at that step; a `kks`
+  link the code's card.
+- **Budgets** (§11): a manual opens in ≤ 300 ms on the Note 9 (its JSON read when first opened, a figure decoded when
+  first shown); ≤ 40 MB more with a manual open; the package growth measured and reported against the 250 MB APK.
+
+#### 6.2.2 As built for milestone DC2 (2026-11-08)
+
+- **The set:** the six manuals of §6.2.1, 97 KB of JSON (the index 20 KB: 120 codes' own data, the reverse links of
+  10 work view actions and 22 Workshop steps), made in under a second at every build; four figures (the transmitter's
+  and the steam turbine's exploded and cut views, 960 × 600, 164 KB of lossless WebP) drawn in 15–23 s on the laptop,
+  the same bytes on every run (checked). The gas turbine's figures and Workshop links wait for its Workshop scene;
+  the pumps' and valves' for K6's kinds. The transmitter's troubleshooting table carries both of the content's
+  causes for it (`drift`, `loose`); HW3's three further causes get their ids when they exist.
+- **As built beyond §6.2.1:** the parts list puts the Workshop tree first, then the manual's consumables; a manual
+  names the components that come with a sealed one (`comes_with`), and the app's test checks that list against the
+  built tree (the steam turbine's thrust collar comes with its rotor). A reverse link opens the section that links
+  the most others of its kind (the field procedure for the work view's actions). A Workshop link picks the step's
+  component and shows the step's words in the Workshop (it does not take the machine apart up to that step). The
+  section's sources are listed at its end ("this section follows, in our own words"). A `num` keeps its spaces
+  unbroken. Escape and gamepad B go Back, then close; Start closes; the left stick and Page Up/Down scroll, A presses
+  the focused button. While the reader shows, the plant's keys (the map, the panels, the clock), the Workshop's keys
+  and camera and the work view's camera wait; the button that opened it keeps no focus; the decoded figures are
+  dropped when it closes. Every manual lists figures for all its kinds: those of a kind without a Workshop scene (or
+  a cut view of a kind without cutaway planes) are left out, with their blocks, until it has one (a test gives every
+  kind a tree and checks the set still makes). The figures carry their camera's `yaw` and `pitch`; the index lists
+  them (`figures`) for the renderer. A page's time is measured to its first frame (its text laid out then).
+- **Tests:** `tests/test_plant3d_manuals.py` (the set, the same output twice and in another process, links and
+  reverse links, causes, units and part numbers, figures, generic words; the checks refuse a broken link of each kind,
+  an unknown cause or one of another kind, a missing section, an unlisted or uncited source, bad markup) and
+  `apps/plant3d/tests/test_ui_manuals.gd` (the set and its figures, the card's Manual with the unit's data, Next,
+  links and Back, the troubleshooting table, the 3D view off and given back, the Workshop's Manual with its view
+  paused, Escape, a Workshop link from the Workshop and from the plant, a work link without a role, the work view's
+  Manual and a work link picking its part, the parts lists against the built trees).
+- **On the laptop** (Iris Xe, `tests/manual_shots.gd`): a page built in 21–65 ms (the transmitter's description with
+  its two figures decoded the longest).
+
 ### 6.3 Discussions
 
 - **Format** `walkdown-plant-discussion`: a topic tied to a work or a decision, two or three participants by role
