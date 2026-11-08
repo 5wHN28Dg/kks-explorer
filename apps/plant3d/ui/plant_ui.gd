@@ -39,6 +39,8 @@ const WalkRoute = preload("res://app/walk_route.gd")
 const Mimic = preload("res://ui/mimic.gd")
 const Drawings = preload("res://ui/drawings.gd")
 const DrawingView = preload("res://ui/drawing_view.gd")
+const Manuals = preload("res://ui/manuals.gd")
+const ManualView = preload("res://ui/manual_view.gd")
 const ScreensModel = preload("res://ui/screens_model.gd")
 const Trends = preload("res://ui/trends.gd")
 const CrewPanel = preload("res://ui/crew_panel.gd")
@@ -96,6 +98,8 @@ var trends                      # ui/trends.gd: the values the screens trend, sa
 var mimic                       # ui/mimic.gd: the screens themselves
 var drawings                    # ui/drawings.gd: the generated P&IDs (REALISM.md §6.1.1)
 var drawing_view                # ui/drawing_view.gd: their viewer (null without drawings)
+var manuals                     # ui/manuals.gd: the equipment manuals (REALISM.md §6.2.1)
+var manual_view                 # ui/manual_view.gd: their reader (null without manuals)
 var run_tracker                 # the last procedure followed in this run (kept for its debrief after it is closed)
 var crew                        # ui/crew_panel.gd: the trainee's role, tasks and radio (PLANT3D §18.7)
 var work                        # ui/work_view.gd: hands-on work at the equipment and the tools (REALISM.md §3.3)
@@ -281,6 +285,14 @@ func _build() -> void:
 		drawing_view.name = "drawings"
 		root.add_child(drawing_view)
 		drawing_view.setup(self, drawings)
+	manuals = Manuals.new()
+	if manuals.error != "":
+		push_warning("manuals: " + manuals.error)         # no Manual buttons
+	else:
+		manual_view = ManualView.new()
+		manual_view.name = "manual_view"
+		add_child(manual_view)
+		manual_view.setup(self, manuals)
 	card = Card.new()
 	card.name = "card"
 	root.add_child(card)
@@ -1158,7 +1170,32 @@ func drawings_open() -> bool:
 
 ## The screens or the drawings cover the view (the plant is not drawn behind them).
 func views_open() -> bool:
-	return screens_open() or drawings_open() or work_open()
+	return screens_open() or drawings_open() or work_open() or manual_open()
+
+
+# ------------------------------------------------------------------ the equipment manuals (REALISM.md §6.2.1)
+
+func manual_open() -> bool:
+	return manual_view != null and manual_view.visible
+
+
+## The manual of a code's part kind ("" none).
+func manual_of(code: String) -> String:
+	return String(manuals.units.get(code, {}).get("manual", "")) if manual_view != null else ""
+
+
+## The manual of a part kind ("" none).
+func manual_of_kind(kind: String) -> String:
+	return manuals.of_kind(kind) if manual_view != null else ""
+
+
+## Opens a manual at a section ("" its first), from a code ("" none: its own data stays out).
+func open_manual(id: String, section := "", code := "") -> bool:
+	if manual_view == null or id == "":
+		toast("No manuals in this build.")
+		return false
+	_release_mouse()
+	return manual_view.open(id, section, code)
 
 
 ## The work view shows (REALISM.md §3.3): its own camera and keys.
@@ -1712,7 +1749,9 @@ func set_instructor(on: bool) -> void:
 
 ## Closes the topmost panel; false when none was open.
 func close_top() -> bool:
-	if work != null and work.is_open:
+	if manual_open():
+		manual_view.close()
+	elif work != null and work.is_open:
 		work.close()
 	elif work != null and work.tools_panel.visible:
 		work.close_tools()

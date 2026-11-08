@@ -1756,7 +1756,13 @@ func _drag_handle(p: Vector2) -> void:
 ## The gamepad (Godot's ui_accept and ui_cancel have no gamepad button; app/hud.gd does the same for the settings):
 ## the first button or D-pad press puts the focus on the slider when no Workshop control has it, so the D-pad moves
 ## between the tools; A presses (or toggles) the focused one; B leaves, as Esc does.
+## The manual reader over the Workshop (ui/manual_view.gd) takes the keys and buttons while it shows.
+func _reader_on() -> bool:
+	return ui != null and ui.has_method("manual_open") and ui.manual_open()
+
 func _input(e: InputEvent) -> void:
+	if _reader_on():
+		return
 	if is_open and machine != null and e is InputEventJoypadMotion and e.axis in [JOY_AXIS_LEFT_X, JOY_AXIS_LEFT_Y]:
 		get_viewport().set_input_as_handled()   # the left stick zooms and pans; only the D-pad walks between the tools
 		return
@@ -1799,7 +1805,7 @@ func _panel_focused() -> bool:
 	return fo != null and panels.is_ancestor_of(fo) and fo.is_visible_in_tree()
 
 func _unhandled_input(e: InputEvent) -> void:
-	if not is_open:
+	if not is_open or _reader_on():
 		return
 	if e.is_action_pressed("menu") or e.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
