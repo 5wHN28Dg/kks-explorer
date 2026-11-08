@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
-import kit, train_ageing, train_hands, train_monitoring, train_weather, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
+import kit, train_ageing, train_hands, train_monitoring, train_weather, train_wx, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
 from workshop import pressure_transmitter as ws_pressure_transmitter  # noqa: E402
 from workshop import steam_turbine as ws_steam_turbine  # noqa: E402
 
@@ -136,13 +136,14 @@ def build():
     files['scenarios/shift_wtp.json'] = train_staff.scenario_wtp(files['scenarios/cold_iron.json'])
     for sid, world in train_weather.FREE_PLAY.items():     # free play's weather (REALISM.md §5.1, §5.5)
         files[f'scenarios/{sid}.json'] = _with_world(files[f'scenarios/{sid}.json'], world)
+        files[f'scenarios/{sid}.json'] = train_weather.start_air(files[f'scenarios/{sid}.json'])   # (WX2)
     files['weather.json'] = train_weather.weather()
     # the ageing scenario, and every scenario's training rate and age (REALISM.md §4.3, milestone AG2)
     files['scenarios/shift_aged.json'] = train_ageing.aged_scenario(files['scenarios/shift_cold.json'])
     for k in [k for k in files if k.startswith('scenarios/')]:
         files[k] = train_ageing.apply(files[k])
     files['staff.json'] = train_staff.staff(models, train_staff.load_layout())
-    for p in [train_content.cold_start(), train_content.hot_restart()] + train_content.tours() + \
+    for p in [train_content.cold_start(), train_content.hot_restart(), train_wx.wash_offline()] + train_content.tours() + \
             wtp_content.procedures() + site_areas.tours() + train_hoists.procedures():
         files[f'procedures/{p["id"]}.json'] = p
     # the tools carried (REALISM.md §2.3, milestone HW2), with condition monitoring's (§2.19, milestone AG3)

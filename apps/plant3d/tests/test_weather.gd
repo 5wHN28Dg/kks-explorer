@@ -107,14 +107,17 @@ func _fix() -> Array:
 	var p: Array = []
 	var wx := _weather_json()
 	var sc := {"start": {"day": 1, "time": "13:00"}, "world": {"weather": {"season": "summer"}},
-		"init": {"dust": 0.08, "visibility": 20000, "wind": 2, "ambient_t": 35}}
+		"init": {"dust": 0.08, "visibility": 20000, "wind": 2, "ambient_t": 35, "grid_frequency": 50}}
 	if not WeatherView.fix(sc, wx, "sandstorm"):
 		return ["fix refused a scenario with weather"]
 	if sc.world.weather != {"fixed": "sandstorm"}:
 		p.append("fix did not fix the weather: %s" % str(sc.world))
 	if absf(float(sc.init.dust) - (6.0 + 4.0 / 14.0 * 13.0)) > 1e-9 or float(sc.init.visibility) > 400.0:
 		p.append("fix did not set the values at 13:00's targets: %s" % str(sc.init))
-	if sc.init.ambient_t != 35 or sc.init.has("rain"):
+	# (WX2: the air is driven too: the sandstorm's 35 °C at midnight to 41 °C at 15:00, at 13:00 40.2 °C)
+	if absf(float(sc.init.ambient_t) - (35.0 + 6.0 / 15.0 * 13.0)) > 1e-9:
+		p.append("fix did not set the air at 13:00's target: %s" % str(sc.init))
+	if sc.init.grid_frequency != 50 or sc.init.has("rain"):
 		p.append("fix changed values the weather does not drive, or added some: %s" % str(sc.init))
 	if WeatherView.fix({"init": {}}, wx, "sandstorm") or WeatherView.fix(sc, wx, "snow"):
 		p.append("fix took a scenario without weather or an unknown kind")

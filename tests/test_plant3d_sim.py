@@ -57,6 +57,8 @@ def apply(e, item):
         e.fault(item[2])
     elif kind in ('board', 'alight'):
         getattr(e, kind)(item[2], item[3])              # a lift's riders (PLANT3D §20.3)
+    elif kind == 'weather':
+        e.weather(item[2])                              # the instructor's weather (REALISM.md §5.1: WX2's forks)
     else:
         raise ValueError(f'an input this harness does not replay: {item}')
 
@@ -629,8 +631,8 @@ class GdscriptRealism(unittest.TestCase):
         no_errors(self, r)
         self.assertEqual(r.returncode, 0, r.stdout[-4000:])
         self.assertIn('WEATHER load=e600 values=10 ', r.stdout)
-        self.assertIn('WEATHER load=built values=7 ', r.stdout)
-        self.assertIn('WEATHER load=r600 values=7 ', r.stdout)
+        self.assertIn('WEATHER load=built values=9 ', r.stdout)      # (WX2: the air's two after WX3's seven)
+        self.assertIn('WEATHER load=r600 values=9 ', r.stdout)
         for load in ('built', 'r600', 'e600'):
             self.assertIn(f'BATCH load={load} values=', r.stdout)
         self.assertIn('STEP load=r600 values=', r.stdout)

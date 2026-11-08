@@ -1,0 +1,21 @@
+{
+ "format": "walkdown-plant-procedure",
+ "version": 1,
+ "id": "gt_wash_offline",
+ "title": "GT 1 offline compressor wash",
+ "kind": "procedure",
+ "scenario": "cold_iron",
+ "intro": [
+  {"p": ["Fouling on the compressor blades costs output and heat rate, more in dust and damp air. The online wash at load removes only part of it; the offline wash, with the rotor cranked cold, the rest."]}
+ ],
+ "steps": [
+  {"id": "ia", "text": ["Start instrument air compressor A (", {"link": ["00QFA10AN001"], "to": {"kks": "00QFA10AN001"}}, ")."], "at": ["00QFA10AN001"], "go": "walk", "do": [{"kks": "00QFA10AN001", "do": "start"}], "done": "ia_p_norm", "why": [{"p": ["Air-operated valves (the auxiliary boiler's burner, the control valves) need 4 bar to move."]}]},
+  {"id": "ccw", "text": ["Start closed cooling water pump A (", {"link": ["00PGC10AP001"], "to": {"kks": "00PGC10AP001"}}, ")."], "at": ["00PGC10AP001"], "go": "walk", "do": [{"kks": "00PGC10AP001", "do": "start"}], "done": "ccw_flow_ok"},
+  {"id": "ccw_cooler", "text": ["Put the closed cooling water cooler (", {"link": ["00PGB10AC001"], "to": {"kks": "00PGB10AC001"}}, ") in service."], "at": ["00PGB10AC001"], "go": "walk", "do": [{"kks": "00PGB10AC001", "do": "open"}], "done": "ccw_ok", "why": [{"p": ["Lube oil coolers, the vacuum pumps' seal water and the generator coolers all need it."]}]},
+  {"id": "gt_lube", "text": ["Start the GT 1 AC lube oil pump (", {"link": ["10MBV10AP001"], "to": {"kks": "10MBV10AP001"}}, ") and reset its low-low trip."], "at": ["10MBV10AP001"], "go": "walk", "do": [{"kks": "10MBV10AP001", "do": "start"}], "done": "gt1_lube_ok"},
+  {"id": "gt_lube_reset", "text": ["Reset the GT 1 lube oil low-low trip."], "at": ["10MBV10CP001"], "go": "none", "do": [{"kks": "10MBV10CP001", "do": "reset", "trip": "gt1_trip_lube"}], "done": "gt1_lube_trip_clear"},
+  {"id": "gt_tg", "text": ["Start the GT 1 turning gear (", {"link": ["10MBK10AE001"], "to": {"kks": "10MBK10AE001"}}, ")."], "at": ["10MBK10AE001"], "go": "walk", "do": [{"kks": "10MBK10AE001", "do": "start"}], "done": "gt1_tg_run"},
+  {"id": "wash", "text": ["Check the wheel space temperatures are below 95 °C, then start the offline compressor wash on the GT 1 screen (", {"link": ["10MBA10"], "to": {"kks": "10MBA10"}}, ")."], "at": ["10MBA10"], "go": "none", "do": [{"kks": "10MBA10", "do": "wash_offline"}], "done": "gt1_wash_offline", "why": [{"p": ["Water on hot discs and casings would crack them: the wash waits until the wheel spaces have cooled. A start is blocked while it runs."]}]},
+  {"id": "wash_done", "text": ["Wait for the wash to finish: soak, rinse and the drying crank (half an hour)."], "at": ["10MBA10"], "go": "none", "done": "gt1_wash_idle"}
+ ]
+}

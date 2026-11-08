@@ -817,6 +817,40 @@ FORKS = [
     ('cep_protection', 'end', [('fault', 'cep_a_motor'), ('run', 30), ('op', '30LCB10AP002', 'start', None, None),
                                ('run', 30), ('fault', 'cep_b_motor'), ('run', 30)],
      {'interlocks': ['cep_a_prot', 'cep_b_prot'], 'end': {'cep_a_cmd': [0, 0], 'cep_b_cmd': [0, 0]}}),
+] + [  # milestone WX2 (REALISM.md §5.7): the weather in the model, an instructor's kind held from base load (a clock
+    # hour is 600 model seconds)
+    ('wx_sandstorm_pulsed', 'end', [('weather_hold', 'sandstorm', None, 2400)],
+     {'no_alarms': ['gt1_filt_dp_high', 'gt1_filt_runback'], 'max': {'gt1_filt_dp': [6, 6.7]},
+      'end': {'gt1_filt_res': [0.05, 2]}}),
+    ('wx_sandstorm_no_pulse', 'end', [('fault', 'gt1_pulse'), ('weather_hold', 'sandstorm', 'gt1_dp_rb', 3600),
+                                      ('weather_hold', 'sandstorm', None, 120)],
+     {'alarms': ['gt1_filt_dp_high', 'gt1_filt_runback'], 'end': {'gt1_mw': [140, 150.5], 'gt1_dp_rb': [1, 1]}}),
+    ('wx_wash_online', 'end', [('op', '10MBA10', 'wash_online', None, None), ('run', 630)],
+     {'done': [['10MBA10', 'wash_online']], 'machines': {'gt1_wash': 'idle'}, 'end': {'gt1_foul_on': [0, 10]}}),
+    ('wx_wash_offline_refused', 'end', [('op', '10MBA10', 'wash_offline', None, None), ('run', 1)],
+     {'refused': [['10MBA10', 'wash_offline', ['gt1_at_stand', 'gt1_still', 'gt1_tg_run', 'gt1_ws_cool']]]}),
+    # a wash pressed again the step after one ended runs its whole time again
+    ('wx_wash_twice', 'end', [('op', '10MBA10', 'wash_online', None, None), ('run', 1), ('until', 'gt1_wash_idle', 700),
+                              ('op', '10MBA10', 'wash_online', None, None), ('run', 30)],
+     {'done': [['10MBA10', 'wash_online'], ['10MBA10', 'wash_online']], 'machines': {'gt1_wash': 'online'}}),
+    # the offline wash and a start pressed in the same step: the wash stops as the rotor is driven up
+    ('wx_wash_offline_start', 'bypass', [('op', '10MBA10', 'wash_offline', None, None),
+                                         ('op', '10MBA10', 'start', None, None), ('run', 120)],
+     {'done': [['10MBA10', 'wash_offline'], ['10MBA10', 'start']], 'machines': {'gt1_wash': 'idle'}}),
+    ('wx_wash_offline', 'gt_tg', [('op', '10MBA10', 'wash_offline', None, None), ('run', 60),
+                                  ('op', '10MBA10', 'start', None, None), ('run', 1800)],
+     {'done': [['10MBA10', 'wash_offline']], 'refused': [['10MBA10', 'start', ['fw_avail', 'gt1_wash_idle']]],
+      'machines': {'gt1_wash': 'idle'}}),
+    ('wx_cold_night', 'end', [('weather_hold', 'cold_clear', 'ct_lvl_held', 9000),
+                              ('weather_hold', 'cold_clear', None, 1800)],
+     {'faults': ['ct_lvl_frozen'], 'alarms': ['ct_fan1_vib_high'], 'end': {'ct_lvl_held': [1, 1]}}),
+    ('wx_thunderstorm', 'end', [('op', '30PAD10AN007', 'start', None, None), ('run', 60),
+                                ('weather_hold', 'thunderstorm', 'ct_fan9_cy_fail', 9000),
+                                ('weather_hold', 'thunderstorm', 'ct_fan7_cy_err', 9000),
+                                ('weather_hold', 'thunderstorm', None, 1200)],
+     {'faults': ['ct_fan7_ingress', 'ct_fan9_surge'], 'alarms': ['ct_fan7_vib_high', 'ct_fan9_vib_hh'],
+      'first_out': {'ct_fans': 'ct_fan7_trip_vib'},
+      'end': {'ct_fan7_vm': [6.3, 9.5]}}),
 ]
 
 
@@ -884,6 +918,22 @@ def run_fork(base, actions, probes=()):
             e.permit(a[1], a[2])
         elif a[0] in ('lock', 'unlock'):
             getattr(e, a[0])(a[1], a[2])
+        elif a[0] == 'weather':       # the instructor's weather (REALISM.md §5.1; milestone WX2's forks)
+            e.weather(a[1])
+        elif a[0] == 'weather_hold':
+            # the instructor holds a kind for `seconds` (or until a value is true within them): the seeded chain
+            # goes on from the instructor's kind at each clock hour (§2.12), so whenever an hour's draw has moved it
+            # the instructor sets it again in the next step
+            kind, until, secs = a[1], a[2], a[3]
+            e.weather(kind)
+            step()
+            k = e.v('world_wx')
+            t0 = e.step_no
+            while e.step_no - t0 < secs * 10 and not (until and e.truth(until)):
+                if e.v('world_wx') != k:
+                    e.weather(kind)
+                step()
+            assert not until or e.truth(until), f'{until} not true within {secs} s'
         elif a[0] == 'run':
             step(round(a[1] * 10))
         elif a[0] == 'until':
