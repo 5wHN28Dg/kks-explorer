@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
-import kit, train_ageing, train_hse, train_hands, train_monitoring, train_weather, train_wx, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
+import kit, train_workorders, train_ageing, train_hse, train_hands, train_monitoring, train_weather, train_wx, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
 from workshop import pressure_transmitter as ws_pressure_transmitter  # noqa: E402
 from workshop import steam_turbine as ws_steam_turbine  # noqa: E402
 from workshop import gas_turbine as ws_gas_turbine  # noqa: E402
@@ -128,8 +128,10 @@ def build():
     for m in models:
         for w in getattr(m, 'works', []):
             w.update(jobs[w['id']])
+    train_workorders.apply(models)      # each work's finds, codes and hours (REALISM.md §2.20, milestone WM1)
     for m in models:
         files[f'model/{m.area}.json'] = m.file()
+    files['workorders.json'] = train_workorders.workorders(models)
     state_kks = {v[0]: v[1]['kks'] for m in models for v in m.values if 'state' in v[1] and 'kks' in v[1]}
     for s in train_content.scenarios(state_kks):
         files[f'scenarios/{s["id"]}.json'] = s

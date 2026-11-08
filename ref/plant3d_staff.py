@@ -28,8 +28,9 @@ WALK_MODES = ('walk', 'stair', 'ladder')
 ROLE_DISCIPLINES = ('ops', 'inst', 'mech', 'elec', 'chem', 'civil', 'hse', 'mgmt', 'security', 'transport', 'camp')
 AUTHORITIES = ('operate_screen', 'operate_local', 'request', 'approve', 'issue', 'accept', 'lock_electrical',
                'lock_mechanical', 'lock_process', 'lock_instrument', 'remove_lock', 'stop_work', 'sample', 'drive',
-               'operate_hart', 'jsa')   # (operate_hart: an op through a HART communicator, REALISM.md §2.13; jsa:
-                                        # JSAs and toolbox talks, §8.6)
+               'operate_hart', 'jsa', 'plan_work', 'close_work')
+# (operate_hart: an op through a HART communicator, REALISM.md §2.13; jsa: JSAs and toolbox talks, §8.6; plan_work,
+# close_work: work orders, §2.20)
 PPE = ('helmet', 'boots', 'glasses', 'gloves', 'ear', 'harness', 'face_shield', 'apron', 'vest')
 WEEK = ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun')
 # who may make each permit action (§15.3): done and return are the acceptor's (or another with accept and the
@@ -41,7 +42,8 @@ STATE_NAMES = ('none', 'requested', 'approved', 'isolated', 'issued', 'accepted'
                'closed', 'cancelled')
 STEP_KINDS = ('go', 'work', 'read', 'op', 'permit', 'lock', 'unlock', 'say', 'wait', 'call', 'meet', 'choose', 'ack',
               'handover', 'remove_locks', 'ppe', 'stop', 'ride', 'sleep', 'tool', 'hand',   # (tool, hand: §2.13)
-              'jsa', 'talk')    # (REALISM.md §8.6)
+              'jsa', 'talk',    # (REALISM.md §8.6)
+              'wo')     # (a work order's action, REALISM.md §2.20)
 LATER = {}
 VEHICLE_KINDS = ('bus', 'pickup', 'suv')
 DRIVE_KINDS = ('stop', 'depot')     # the places drive ways join (§21.4)
@@ -979,6 +981,15 @@ class Staff:
             elif k in ('jsa', 'talk'):     # REALISM.md §8.6: a JSA made, a toolbox talk given
                 keys(s, (k,), ('else',), ws)
                 self.work_ref(x, f'{ws}.{k}')
+            elif k == 'wo':
+                from ref import plant3d_wo as WO      # REALISM.md §2.20
+                need(self.b.wo_ids is not None, 'bad_ref', f'{ws}.wo: the plant has no workorders.json')
+                keys(s, ('wo',), ('else',), ws)
+                keys(x, ('work', 'action'), ('data',), f'{ws}.wo')
+                self.work_ref(x['work'], f'{ws}.wo.work')
+                need(x['action'] in WO.ACTIONS, 'bad_value', f'{ws}.wo.action: one of {list(WO.ACTIONS)}')
+                if 'data' in x:
+                    lst(x['data'], f'{ws}.wo.data', 0, 4)
             elif k in ('lock', 'unlock'):
                 keys(s, (k,), ('else',), ws)
                 keys(x, ('work', 'point'), (), f'{ws}.{k}')
@@ -1157,6 +1168,10 @@ class Staff:
                 need(v in values, 'bad_ref', f'{wr}.on.value: no value {v!r}')
             elif k == 'permit':
                 need(v in STATE_NAMES[1:], 'bad_value', f'{wr}.on.permit: a permit state from requested')
+            elif k == 'wo':         # a work order reaching a state (REALISM.md §2.20)
+                from ref import plant3d_wo as WO
+                need(self.b.wo_ids is not None, 'bad_ref', f'{wr}.on.wo: the plant has no workorders.json')
+                need(v in WO.STATES[1:], 'bad_value', f'{wr}.on.wo: a work order state from notified')
             elif k == 'lock_left':
                 need(v == '*', 'bad_value', f'{wr}.on.lock_left: "*"')
             elif k == 'finding':    # §17.12: a reading out of its range
@@ -1164,7 +1179,7 @@ class Staff:
                      f'{wr}.on.finding: "*" or a code with a show binding')
             elif k != 'unsafe':
                 need(False, 'bad_kind', f'{wr}.on: one of alarm, trip, fault, value, permit, lock_left, unsafe, '
-                                        f'finding')
+                                        f'finding, wo')
             for ro in lst(r['roles'], f'{wr}.roles', 1, 16):
                 need(ro in self.roles, 'bad_ref', f'{wr}.roles: no role {ro!r}')
             if isinstance(r['task'], str) and r['task'].startswith('$'):
@@ -1242,7 +1257,7 @@ class Staff:
                 runs[r['task']].add(ro)
             if 'work' in r:
                 works[r['task']].add(r['work'])
-            elif 'permit' in r['on']:
+            elif 'permit' in r['on'] or 'wo' in r['on']:
                 works[r['task']].update(w['id'] for w in self.m.works)
         for rid, r in self.roles.items():
             for x in r.get('requests', []):
@@ -1320,6 +1335,15 @@ class Staff:
                             need('jsa' in auth, 'authority', f'{ws}: role {rid} lacks jsa')
                             for wid in self.step_works(s[k], works[tid]):
                                 need('jsa' in wmap[wid], 'bad_ref', f'{ws}: work {wid} has no jsa')
+                    if 'wo' in s:       # REALISM.md §2.20
+                        from ref import plant3d_wo as WO
+                        a = WO.AUTH[s['wo']['action']]
+                        need(a is None or a in auth, 'authority', f'{ws}: role {rid} lacks {a}')
+                        for wid in self.step_works(s['wo']['work'], works[tid]):
+                            need(a != 'accept' or wmap[wid]['discipline'] == self.roles[rid]['discipline'],
+                                 'authority', f'{ws}: role {rid} is not of work {wid}\'s discipline')
+                            need(s['wo']['action'] != 'complete' or 'data' in s['wo'] or 'codes' in wmap[wid],
+                                 'bad_ref', f'{ws}: a complete without data on work {wid}, which has no codes')
                     for k in ('lock', 'unlock'):
                         if k in s:
                             for wid in self.step_works(s[k]['work'], works[tid]):
@@ -1341,7 +1365,7 @@ class Staff:
                     for rid in sorted(runs[tid]):
                         need('remove_lock' in self.roles[rid]['authority'], 'authority',
                              f'{ws}: role {rid} lacks remove_lock')
-                for k in ('permit', 'lock', 'unlock'):
+                for k in ('permit', 'lock', 'unlock', 'wo'):
                     if k in s and s[k]['work'] == '$':
                         need(works[tid], 'bad_ref', f'{ws}: "$" but no work is ever given to task {tid}')
                 for k in ('jsa', 'talk'):
@@ -2549,6 +2573,11 @@ class StaffRun:
                         new = x[6][0] if x[3] == 'auto' else PERMIT_TO[x[3]]
                         if STATE_NAMES[new] == v and ('work' not in r or r['work'] == x[2]):
                             hits.append((('permit', x[2]), x[2], e.works[x[2]]['kks'], None))
+                    elif k == 'wo' and x[1] == 'wo' and x[5] == 'done':      # REALISM.md §2.20
+                        from ref.plant3d_wo import ACTIONS, STATES
+                        new = x[6][0] if x[3] == 'auto' else ACTIONS[x[3]][1]
+                        if STATES[new] == v and ('work' not in r or r['work'] == x[2]):
+                            hits.append((('wo', x[2]), x[2], e.works[x[2]]['kks'], None))
             if k == 'lock_left':
                 hits = [(('lock_left', p.id), None, None, None) for p in gone]
             for src, work, code, alarm in hits:
@@ -3048,7 +3077,7 @@ class StaffRun:
             if a is not None and e.astate.get(a) in ('active_unack', 'cleared_unack'):
                 e.npc_queue.append(('ack', a))
             return 'next'
-        if 'op' in s or 'permit' in s or 'jsa' in s or 'talk' in s:
+        if 'op' in s or 'permit' in s or 'jsa' in s or 'talk' in s or 'wo' in s:
             if not x.get('busy'):
                 if 'op' in s:
                     o = s['op']
@@ -3060,6 +3089,10 @@ class StaffRun:
                     w = cur['work'] if s[k] == '$' else s[k]
                     hz, cs = HS.own(e, w)
                     e.npc_queue.append(('jsa', w, hz, cs, p.id) if k == 'jsa' else ('talk', w, hz, p.id))
+                elif 'wo' in s:     # a work order's action (REALISM.md §2.20): without data, the defaults in step 1
+                    w = cur['work'] if s['wo']['work'] == '$' else s['wo']['work']
+                    d = s['wo'].get('data')
+                    e.npc_queue.append(('wo', w, s['wo']['action'], p.id, list(d) if d is not None else None))
                 else:
                     w = cur['work'] if s['permit']['work'] == '$' else s['permit']['work']
                     e.npc_queue.append(('permit', w, s['permit']['action'], p.id))
@@ -3833,6 +3866,17 @@ class StaffRun:
                     if j is not None:
                         took.add(j)
                         r = 'next'
+            elif 'wo' in s:     # REALISM.md §2.20: that action on that work, from the panel (any data)
+                w = cur['work'] if s['wo']['work'] == '$' else s['wo']['work']
+                a = s['wo']['action']
+                j = next((j for j, y in enumerate(mine) if j not in took and y[1] == 'wo' and y[2] == w
+                          and y[3] == a and y[4] == p.id and y[5] == 'done'), None)
+                if j is not None:
+                    took.add(j)
+                    r = 'next'
+                elif self.early_done(p, cur, x, slot, lambda q: q[0] == 'wo' and q[2] == w and q[3] == a
+                                     and self.wo_holds(w, a, q[4])):
+                    r = 'next'
             elif 'handover' in s and s['handover'] == 'take':
                 if self.lock_target(p, cur, s, None) is None:
                     r = 'next'
@@ -3910,7 +3954,7 @@ class StaffRun:
         e = self.e
         early = self.early_of(slot)
         for j, y in enumerate(mine):
-            if j in took or y[1] not in ('op', 'permit', 'lock', 'unlock', 'hand'):
+            if j in took or y[1] not in ('op', 'permit', 'lock', 'unlock', 'hand', 'wo'):
                 continue
             if y[1] == 'hand':          # (REALISM.md §2.13)
                 if y[6] == 'done' and y[5] == p.id:
@@ -3922,6 +3966,8 @@ class StaffRun:
             elif y[5] == 'done' and y[4] == p.id:
                 if y[1] == 'permit':
                     early.append(['permit', y[0], y[2], y[3], e.ptw.get(y[2])])
+                elif y[1] == 'wo':      # (its work order's number, REALISM.md §2.20)
+                    early.append(['wo', y[0], y[2], y[3], e.wo_no.get(y[2])])
                 else:
                     early.append([y[1], y[0], y[2], y[3]])
         del early[:-EARLY_KEPT]
@@ -3965,6 +4011,17 @@ class StaffRun:
             return False
         to = PERMIT_TO[action]
         return st == 10 if to == 10 else to <= st <= 9
+
+    def wo_holds(self, w, action, no):
+        """A work order's action still holds (REALISM.md §2.20): the same work order (its number) at the action's state
+        or past it (1 to 6), or still cancelled."""
+        from ref.plant3d_wo import ACTIONS
+        e = self.e
+        st = e.wo.get(w)
+        if st is None or e.wo_no.get(w) != no:
+            return False
+        to = ACTIONS[action][1]
+        return st == 7 if to == 7 else to <= st <= 6
 
     def lock_holds(self, kind, w, point, p):
         """A lock still in place by them under that work; an unlocked point still unlocked."""

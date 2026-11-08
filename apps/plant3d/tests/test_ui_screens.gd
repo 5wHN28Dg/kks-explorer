@@ -378,7 +378,7 @@ func _flows_through(ui) -> Array:
 	var files := {}
 	var top := "res://built/content"
 	# (weather.json: every scenario has weather; staff.json and tools.json: the hand actions' tools, REALISM.md §2.3)
-	for rel in ["plant.json", "weather.json", "staff.json", "tools.json", "hse.json"]:
+	for rel in ["plant.json", "weather.json", "staff.json", "tools.json", "hse.json", "workorders.json"]:   # (workorders.json: the works' codes, WM1)
 		files[rel] = FileAccess.get_file_as_bytes(top + "/" + rel)
 	for sub in ["areas", "model", "scenarios"]:
 		for f in DirAccess.get_files_at(top + "/" + sub):

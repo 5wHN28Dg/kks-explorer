@@ -51,6 +51,9 @@ var hands: Array = []                 # hand actions (REALISM.md §2.4), joined 
 var hands_ix := {}                    # "code|action" -> hand action
 var meters: Array = []                # meters (REALISM.md §2.5)
 var meters_ix := {}                   # id -> meter
+var has_wo := false                   # work orders (REALISM.md §2.20): the plant has workorders.json
+var wo_doc = null                     # workorders.json as read (the app's panel reads its titles and history), or null
+var wo_ids = null                     # its code lists {modes, causes, actions: [ids]} for the engine, or null
 var _reads_wx := false                # a name read was the weather's kind (world_wx; known())
 var _reads_world := false             # a name read was a clock value's (REALISM.md §2.1; known())
 var _content_reads_world := false     # the model's or the staff's reads were: every scenario needs `world`
@@ -124,7 +127,8 @@ static func is_num(x) -> bool:
 static func from_dir(path: String):
 	var files := {}
 	var top := path.trim_suffix("/")
-	for rel in ["plant.json", "kit.json", "sounds.json", "staff.json", "weather.json", "tools.json", "hse.json"]:
+	for rel in ["plant.json", "kit.json", "sounds.json", "staff.json", "weather.json", "tools.json", "hse.json",
+			"workorders.json"]:
 		if FileAccess.file_exists(top + "/" + rel):
 			files[rel] = FileAccess.get_file_as_bytes(top + "/" + rel)
 	for sub in ["areas", "model", "scenarios", "procedures"]:
@@ -178,6 +182,7 @@ func _load(files: Dictionary) -> void:
 	plant = p
 	ext = p.get("ext", [])
 	version = int(p.get("version", 1))
+	has_wo = files.has("workorders.json") and files["workorders.json"] != null
 	for aid in p.get("areas", []):
 		var a = _read(files, "areas/%s.json" % aid)
 		if a == null:
@@ -205,6 +210,11 @@ func _load(files: Dictionary) -> void:
 	if error != "":
 		return
 	_finish()
+	if error != "":
+		return
+	_load_workorders(files)     # (before staff.json: its wo steps and reactions need it, REALISM.md §2.20)
+	if error != "":
+		return
 	var rels := files.keys()
 	rels.sort()
 	for rel in rels:
@@ -333,6 +343,56 @@ func _add_model(d: Dictionary, rel: String) -> void:
 		meters.append(x)
 
 
+## workorders.json as far as the engine reads it (REALISM.md §2.20; the validator checks the rest): its three code
+## lists, and the works' finds and codes naming their ids. Without it no work names finds, codes or hours.
+func _load_workorders(files: Dictionary) -> void:
+	if works.size() > (512 if has_wo else 128):
+		_fail("the joined model has over %d works" % (512 if has_wo else 128))
+		return
+	if not has_wo:
+		for w in works:
+			for k in ["finds", "codes", "hours"]:
+				if w.has(k):
+					_fail("work %s.%s: the plant has no workorders.json" % [w["id"], k])
+					return
+		return
+	var d = _read(files, "workorders.json")
+	if d == null:
+		return
+	if version != 2:
+		_fail("workorders.json: only in a version 2 plant")
+		return
+	var ids := {}
+	for k in ["modes", "causes", "actions"]:
+		var l = d.get(k)
+		if typeof(l) != TYPE_ARRAY or l.is_empty():
+			_fail("workorders.json.%s: a list the engine can't read" % k)
+			return
+		ids[k] = []
+		for x in l:
+			if typeof(x) != TYPE_DICTIONARY or typeof(x.get("id")) != TYPE_STRING or ids[k].has(x["id"]):
+				_fail("workorders.json.%s: an entry the engine can't read: %s" % [k, str(x)])
+				return
+			ids[k].append(x["id"])
+	for w in works:
+		var f = w.get("finds", [])
+		if typeof(f) != TYPE_ARRAY:
+			_fail("work %s.finds: not a list" % w["id"])
+			return
+		for x in f:
+			if not ids["modes"].has(x):
+				_fail("work %s.finds: %s is not one of modes" % [w["id"], str(x)])
+				return
+		if w.has("codes"):
+			var c = w["codes"]
+			if typeof(c) != TYPE_ARRAY or c.size() != 3 or not (c[0] == null or ids["modes"].has(c[0])) \
+					or not (c[1] == null or ids["causes"].has(c[1])) or not ids["actions"].has(c[2]):
+				_fail("work %s.codes: codes the engine can't read" % w["id"])
+				return
+	wo_doc = d
+	wo_ids = ids
+
+
 ## tools.json as far as the engine reads it (REALISM.md §2.3; the validator checks the rest): each tool kept at places
 ## of staff.json, with whole counts.
 func _load_tools(d) -> void:
@@ -395,6 +455,9 @@ func kept() -> Array:
 		out.append(w["id"] + "_permit")
 	for x in lifts:
 		out.append(x["id"] + "_load")
+	if has_wo:                  # (work orders, REALISM.md §2.20)
+		for w in works:
+			out.append(w["id"] + "_wo")
 	return out
 
 

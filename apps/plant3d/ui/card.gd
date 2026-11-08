@@ -98,6 +98,11 @@ func open(c: String, note := "") -> void:
 		body.add_child(_work)
 		_work_why = W.label("", 16, W.DIM)
 		body.add_child(_work_why)
+	if ui.work_orders != null and ui.work_orders.has_orders(c):
+		# its work orders (REALISM.md §2.20): report a finding, the open orders and its history
+		var ob := W.button("Work orders", func(): ui.open_work_orders("", code))
+		ob.name = "work_orders"
+		body.add_child(ob)
 	if ui.monitoring != null and ui.monitoring.has_points(c):
 		# its vibration, thermography and oil points (REALISM.md §2.19): the collector, the camera, the oil sample
 		var mb := W.button("Condition monitoring", func(): ui.monitoring.open(code))

@@ -1315,3 +1315,65 @@ class HseVectors(PartVectors, unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class WoVectors(PartVectors, unittest.TestCase):
+    """Milestone WM1 (REALISM.md §2.20): workorders.json, the wo input's actions and reasons, in progress by itself,
+    an NPC's write-up, the record and the run's history, wo steps and reactions."""
+    part, rejects = 'wo', 'REJECTS_WO'
+
+    def evs(self, k, kinds=('wo',)):
+        return [x for x in self.st['runs'][k]['events'] if x[1] in kinds]
+
+    def test_reasons_in_order(self):
+        """authority, state, permit, data: every one that applies, in that order; unknown changes nothing."""
+        why = [(x[0], x[2], x[3], x[5], x[6]) for x in self.evs(0)]
+        self.assertIn((5, 'wo_valve', 'complete', 'refused', ['authority', 'state', 'permit']), why)
+        self.assertIn((3, 'wo_fan', 'notify', 'unknown', []), why)
+        self.assertIn((3, 'wo_valve', 'plan', 'unknown', []), why)       # (data not a list)
+        self.assertIn((4, 'wo_valve', 'plan', 'refused', ['data']), why)
+        self.assertIn((10, 'wo_valve', 'cancel', 'refused', ['permit']), why)
+        self.assertIn((23, 'wo_gauge', 'notify', 'refused', ['authority', 'state']),
+                      [(x[0], x[2], x[3], x[5], x[6]) for x in self.evs(1)])
+
+    def test_numbers_and_history(self):
+        """A work notified again after it was cancelled gets a new number; the cancelled order is in the history."""
+        end = self.st['runs'][0]['states'][-1]
+        self.assertEqual([h['no'] for h in end['wo_history']], ['WO-0001'])
+        self.assertEqual(end['wo_history'][0]['work'], 'wo_valve')
+        self.assertEqual(end['wo']['wo_valve']['no'], 'WO-0002')
+        self.assertEqual(end['wo']['wo_pump']['no'], 'WO-0003')
+        self.assertEqual(end['wo_history'][0]['priority'], 2)       # (2.0 given: kept as a whole number)
+
+    def test_in_progress_by_itself_at_accept(self):
+        ev = self.st['runs'][1]['events']
+        acc = next(x[0] for x in ev if x[1] == 'permit' and x[3] == 'accept' and x[5] == 'done')
+        self.assertIn([acc, 'wo', 'wo_gauge', 'auto', None, 'done', [4]], ev)
+
+    def test_npc_write_up_and_close(self):
+        """An NPC's done writes the order up with the work's codes in the same step; the supervisor closes it once
+        the permit is closed; the round's notification uses the work's first finds."""
+        ev = self.evs(2)
+        done = next(x[0] for x in self.st['runs'][2]['events'] if x[1] == 'permit' and x[3] == 'done')
+        self.assertIn([done, 'wo', 'wo_pump', 'complete', 'mech1', 'done', []], ev)
+        closed = next(x[0] for x in self.st['runs'][2]['events'] if x[1] == 'permit' and x[3] == 'close')
+        wo_close = next(x for x in ev if x[3] == 'close')
+        self.assertGreaterEqual(wo_close[0], closed)
+        end = self.st['runs'][2]['states'][-1]
+        self.assertEqual(end['wo_history'][0]['codes'], ['vibration', 'wear', 'replace'])
+        self.assertEqual(end['wo']['wo_gauge']['mode'], 'reading')
+        self.assertEqual(end['wo']['wo_gauge']['state'], 3)
+
+    def test_trainee_step_early_and_taken(self):
+        ev = self.st['runs'][3]['events']
+        self.assertTrue(any(x[1] == 'early' and x[5] == 'wo' for x in ev))
+        self.assertTrue(any(x[1] == 'task' and x[3] == 'plan_wo' and x[4] == 'done' for x in ev))
+
+    def test_no_file_no_values(self):
+        """A plant without workorders.json keeps no work order values and refuses nothing new."""
+        F = G.staff_files()
+        e = P.Engine(G.check(F), 's1')
+        self.assertFalse(any(n.endswith('_wo') for n in e.names))
+        e.work_order('wo_pump', 'notify', None, [None])
+        e.step()
+        self.assertIn([1, 'wo', 'wo_pump', 'notify', None, 'unknown', []], e.events)

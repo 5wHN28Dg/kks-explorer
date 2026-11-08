@@ -876,6 +876,139 @@ does is in both engines bit for bit, with vectors.
     numbers, not for their order (a tampered queue can only delay its node's results); the due's
     `ceil(hours × 36,000)` adds a tenth for hours that are not exact in binary (both engines alike; the content's
     48 is exact).
+### 2.20 WM1's details (settled 2026-11-08, before the code: work orders and job history)
+
+§7.1 leaves these open; settled here. What is drawn is the app's, pinned by app tests; what the engine does is in
+both engines bit for bit, with vectors. The words follow [EN13306] (notification, corrective, preventive and
+condition-based maintenance, the work order) and [ISO55000] (the work's record as the asset's history), the codes
+[ISO14224]'s, the planning steps [Palmer]'s (a work order planned before it is scheduled; priority; the backlog).
+
+- **The gate: `workorders.json`** (format `walkdown-plant-workorders`, version 1, optional, with or without staff).
+  A model has work orders when the plant has it. It gives `modes` (failure modes and the kinds of finding a
+  notification names, [ISO14224]'s Table B.6 across the train's equipment classes), `causes` (failure causes and
+  mechanisms, its Tables B.2 and B.3) and `actions` (maintenance activities, its Table B.5): each a list of 1 to 64
+  `{"id", "title"}`, ids of at most 22 characters, each once in its list (`dup_id`); and `history` (below). Without
+  the file a `wo` input is `unknown`, the works' new keys are `bad_ref`, and the plant steps exactly as before.
+- **The works' limit** rises from 128 to 512 in a plant with the file. A work gains three optional keys, read by the
+  app, the NPCs and the debrief (the engine checks them, nothing more): `finds` (1 to 8 mode ids, each once: the
+  findings on its code that a notification goes to this work for, so the app's notification form matches the code and
+  the kind found to a work, §7.1), `codes` (`[mode | null, cause | null, action]`: what the job finds and does, the
+  coding an NPC writes and the debrief compares with the trainee's; null for no failure, as a preventive job) and
+  `hours` (the planned crew hours, above 0 and at most 10,000: costs are hours, J7).
+- **The value `<work>_wo`** for each work, kept by the engine after the lifts' loads, read by any node as the
+  permits' are: 0 none, 1 notified, 2 planned, 3 scheduled, 4 in progress, 5 complete, 6 closed, 7 cancelled.
+- **The input `[n, "wo", work, action, person, data]`**, in step 1 as it comes, its event at once `[n, "wo", work,
+  action, person, "done" | "refused" | "unknown", [reasons]]` (as a permit's). `unknown`, changing nothing: no work
+  orders, a work not of the model, an action not below, or data that is not a list. Reasons in this order, every one
+  that applies: `authority`, `state`, `permit`, `data`.
+
+| Action | From → to | Who (§16.3 authority, as §17.1 checks it) | Data |
+|---|---|---|---|
+| `notify` | none, closed, cancelled → notified | any person (with staff: the person named, as every input) | `[mode]`: a mode, or null (nothing named) |
+| `plan` | notified → planned | `plan_work` | `[priority]`: 1 emergency, 2 urgent, 3 normal, 4 when convenient ([Palmer]) |
+| `schedule` | planned → scheduled | `plan_work` | `[day]`: a clock day (C div 864,000), from the clock's day now to 365 days on |
+| `complete` | in progress → complete | `accept` and the work's discipline | `[mode, cause, action, comment]`: mode and cause ids or null, an action id, a comment of at most 120 characters |
+| `close` | complete → closed | `close_work` | `[]` |
+| `cancel` | notified, planned, scheduled, in progress → cancelled | `close_work` | `[]` |
+
+  - `permit`: `complete` needs the work's permit done, returned, deisolated or closed (6 to 9: the work done);
+    `close` and `cancel` need it not live (none, closed or cancelled: 0, 9, 10; the equipment back in service, or no
+    job under way). `data`: the data's length or any item not as the table says.
+  - Two new authorities, `plan_work` and `close_work` (the maintenance supervisor's in the train's content).
+  - A work order notified again after it was closed or cancelled gets a new number: `WO-` and four digits, counted
+    from 1 in the run (as permits').
+- **In progress by itself** (step 3, after the permits' automatic moves, in model order, each an event `[n, "wo",
+  work, "auto", null, "done", [4]]`): a work order notified, planned or scheduled whose permit is accepted or done
+  (5, 6) goes to in progress: the job has started (an emergency job worked before it was planned skips the steps
+  between, and its record shows it).
+- **An NPC writes up their job:** an NPC's `done` (its event in step 1) of a work with `codes` whose work order is in
+  progress after the automatic moves completes it in step 3, right after them, with the work's codes and no comment,
+  by that person (the event `[n, "wo", work, "complete", person, "done", []]`). The trainee's `done` leaves it in
+  progress, for the trainee to code from the panel.
+- **The record** of each work's current work order: its number, the clock (tenths) of each move (notified, planned,
+  scheduled, started, completed, closed or cancelled; −1 before), the notifier, the mode named, the priority, the day,
+  the completer, the codes, the comment and the work. When it is closed or cancelled the record is copied to the run's
+  **history** (in that order), so a work notified again keeps its earlier orders. Snapshots carry both; saves keep and
+  check them; the digest gains, after the lab's part and the JSAs' (§8.6), the number counter, each work order's
+  state and record in model order and the history (the clocks as whole numbers, text as its UTF-8 bytes).
+- **NPCs:** a task step `{"wo": action, "work": "$" | work, "data": [...]}` makes the input; without `data` an NPC
+  sends `notify` `[the work's first finds, or null]`, `plan` `[3]`, `schedule` `[the clock's day then]`, `complete`
+  the work's `codes` and `""` (`bad_ref` for a `complete` step without data on a work without codes), `close` and
+  `cancel` `[]`. The trainee does the step by making that action on that work from the panel (any data). The
+  validator checks each step's roles hold its authority (§16.6). A reaction `{"on": {"wo": state}}` (a state from
+  notified) is made when a work order reaches that state (by an input or by itself), for any work or the reaction's
+  `work`, with that work as `$` and as its source (§16.7's rule against flooding). The first train's content: on
+  notified, the maintenance supervisor plans it (normal), schedules it for the day and asks for its permit (the
+  generic reactions do the rest); on complete, the supervisor waits for the permit's close and closes the order.
+  None of it acts unless someone notifies, so every earlier run keeps its inputs and events.
+- **The content's history** (`history` in workorders.json, made by the content tool from the wear items and the
+  plant's age, §7.1): at most 4,096 past work orders `{"kks", "work" (optional), "ago", "kind", "mode", "cause",
+  "action", "hours", "title"}`: a code of the plant (a work's own if `work` is given), `ago` the whole days before the
+  clock's day 1 that it was closed (1 to 18,250), `kind` `corrective`, `preventive` or `condition` ([EN13306]),
+  mode and cause ids or null (null for a preventive order), an action id, hours as a work's, a title of at most 120
+  characters. Read by the app only (each piece of equipment's history is its entries and the run's own closed
+  orders); a new run starts from it, and a save's history is its own orders over it.
+- **The app:** the work order panel (the open orders by state, priority and day, the backlog's planned hours; the
+  closed ones; each order's form with the actions its person may make), the card's "Work orders" (the code's
+  history, newest first, and "Report a finding": the kinds the code's works find, matched to the work), and the
+  debrief's line per order (its codes against the work's).
+
+### 2.21 As built for milestone WM1 (2026-11-08: work orders and job history)
+
+- **Where:** the reference `ref/plant3d_wo.py` (workorders.json's check, the works' keys, the input, the moves, the
+  records, the snapshot's and digest's parts) with hooks in `ref/plant3d.py` and `ref/plant3d_staff.py`; the app's
+  engine `apps/plant3d/sim/workorders.gd` with hooks in `engine.gd`, `plant_model.gd` and `staff.gd`; saves keep and
+  check the state (`ui/autosave.gd`), a session carries the input (`net/input_check.gd`). The content tool
+  `tools/plant3d/train_workorders.py` (the codes, each work's finds, codes and hours, the history) makes
+  `data/plant3d/workorders.json`; `train_staff.py` gives the maintenance and shift supervisors `plan_work` and
+  `close_work` and appends the two reactions and their tasks after everything before them. The app's
+  `ui/wo_panel.gd` (the list, an order's form, a code's history and findings), the card's "Work orders", the permit
+  list's "Work orders", the debrief's lines, `walk=workorders`.
+- **The content:** 55 works coded (15 modes, 21 causes, 12 actions after ISO 14224's tables); 153 past orders over the
+  30 months since the overhaul (the overhaul's renewals, motor regreasing every 3 months, gear reducer oil every year,
+  calibrations every year, relay tests every 2 years, cartridge filters every 3 months, and 5 failures), each wear
+  item's failures at the lives the engine draws for the ageing scenario's seed, so its last renewal in the history is
+  as long ago as that day's wear says (`tests/test_plant3d_workorders.py`).
+- **Vectors:** `plant3d-realism.json` gains the part `wo` (49 rejects, 5 runs: the actions and their reasons, the whole
+  cycle with no trainee, NPCs carrying a notified order from notification to closure, the trainee as the supervisor
+  with an early action, an emergency job in progress straight from notified and actions whose data are null); every earlier part unchanged but `about`'s sentence. `plant3d-v1.json` and `plant3d-v2.json`
+  made again with the train's 55 `_wo` values (0 in every run: nobody notifies) and the empty work order parts of the
+  snapshots; compared item by item with the files before: every input, event and earlier value unchanged, only the
+  digests moved. `plant3d-bench-v1.json` unchanged. Both engines run every item bit for bit.
+- **Settled in the code:** a record carries its work's id (its last field), so the run's history names its works; an
+  NPC's `schedule` without data schedules for the clock's day when the input is made (step 1), not when it was queued; an input's data
+  null is `unknown` in both engines (the reference's queue once turned it into `[]`; a run's vector pins it); the
+  bench's plant has no work orders.
+- **The app, as settled by the reviews:** the form offers only the actions the person played may make (the engine's
+  authority check; free mode all) and names the roles of the staff's content that may; the open orders are listed by
+  state, priority, day and number; a work's form is rebuilt only when its own order or permit moves (a completion
+  being filled in survives other works' moves), and a completion's choices are forgotten once it is done; a completion too long for one input of a session
+  (512 bytes: 120 characters of 4-byte UTF-8 go over) is refused on the form in words, not sent to be dropped. The
+  app's engine answers an NPC's completion without data on a work without codes `unknown` (content the validator
+  refuses; never a crash).
+- **The Note 9** (a test-signed release build of this branch at 2b45e8d8, `walk=workorders probe=1`, 300 s from a
+  cool start at 29.9 °C, 2026-11-08): closed cooling water pump A's vibration reported from its motor's card in free
+  mode (WO-0001 notified), the panel open on the motor's history, then on the list: it opened in 26.5 ms; the frame
+  drew 413 draw calls and 222,289 triangles (404 and 221,289 before it opened). Tier lean+vis, 12,016 frames: median
+  21.7 ms, p95 36.2 ms, max 62.3 ms, none over 100 ms (the frame rule passes without excluding any frame; the kernel
+  reclaimed in 1.72 % of the samples). The screen's only long gaps were while the app loaded (its first frame at
+  13.6 s).
+- **Left from the reviews (not changed):** the run's history has no limit (a player holding `close_work` can notify
+  and cancel the same work 10 times a turn, each a record the digest carries); a reaction on `notified` is offered
+  only to those on duty then, so an order notified while no maintenance or shift supervisor is on duty stays notified
+  (a permit's offer is made again; a work order's is not); a session slot playing nobody may make every action, as
+  with permits (§17.13's free-mode rule).
+- **Tests:** `tests/test_plant3d_realism.py` `WoVectors`, `tests/test_plant3d_workorders.py` (every work coded, the
+  history against the ageing scenario, the day's staff planning a notified order and asking for its permit),
+  `apps/plant3d/tests/test_run_save.gd` (a save in the middle of a work order goes on bit for bit; 22 damaged saves
+  refused: the 14 of the state and records, a number counter below a number given, a record whose number isn't its
+  work's, and an NPC's queued work order
+  input that is short, names no work, an unknown action or person, data not a list, or a completion without data on
+  a work without codes), `apps/plant3d/tests/test_ui_workorders.gd` (app shard 2: who may make each action and their
+  roles' words; a finding reported from the card, planned,
+  scheduled and cancelled from the form; a calibration completed after its permit's done, refused before it in words;
+  the debrief's line).
+
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does
@@ -2247,7 +2380,9 @@ Standards (bought, not copied: cited for what they require, in our words):
 - [ISA51] ANSI/ISA-5.1, Instrumentation symbols and identification. · [ISO10628] ISO 10628-1/-2, Diagrams for the
   chemical and petrochemical industry. · [ISA182] ANSI/ISA-18.2, Management of alarm systems for the process
   industries. · [EEMUA191] EEMUA 191, Alarm systems: a guide to design, management and procurement. · [ISO14224]
-  ISO 14224, Collection and exchange of reliability and maintenance data for equipment. · [ISO17359] ISO 17359,
+  ISO 14224, Collection and exchange of reliability and maintenance data for equipment. · [EN13306] EN 13306,
+  Maintenance: maintenance terminology. · [ISO55000] ISO 55000, Asset management: overview, principles and
+  terminology. · [ISO17359] ISO 17359,
   Condition monitoring and diagnostics of machines: general guidelines. · [ISO20816-3] ISO 20816-3, Mechanical
   vibration: evaluation of machine vibration, industrial machines. · [ISO21940-11] ISO 21940-11, Rotor balancing:
   rigid rotors. · [ISO4406] ISO 4406, Hydraulic fluid power: solid contamination code. · [IEC60076-7] IEC 60076-7, Power transformers: loading guide for mineral-oil-immersed

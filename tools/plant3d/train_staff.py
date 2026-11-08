@@ -353,7 +353,7 @@ def roles():
                 'ppe': field_ppe if ppe is None else ppe, 'routine': routine, 'play': play}
     return [
         role('shift_sup', 'Shift supervisor', 'ops', ['operate_screen', 'request', 'approve', 'issue', 'lock_process',
-                                                       'remove_lock', 'stop_work'],
+                                                       'remove_lock', 'stop_work', 'plan_work', 'close_work'],
              'sup_shift', True, 'coverall_ops_white'),
         dict(role('ccr_op', 'Control room operator', 'ops', ['operate_screen', 'request', 'lock_process'],
                   'ccr_shift', True, 'coverall_ops', ['helmet', 'boots']),
@@ -368,7 +368,8 @@ def roles():
              'coverall_elec'),
         role('ic_tech', 'I&C technician', 'inst', ['operate_local', 'accept', 'lock_instrument', 'operate_hart'], 'tech_days', True,
              'coverall_inst'),
-        role('maint_sup', 'Maintenance supervisor', 'mech', ['request', 'accept', 'stop_work', 'jsa'], 'ms_mech', True,
+        role('maint_sup', 'Maintenance supervisor', 'mech', ['request', 'accept', 'stop_work', 'jsa', 'plan_work',
+                                                           'close_work'], 'ms_mech', True,
              'supervisor'),
         role('hse_officer', 'HSE officer', 'hse', ['stop_work', 'jsa'], 'hse_days1', True, 'hse',
              ['helmet', 'boots', 'glasses', 'ear', 'vest']),
@@ -685,6 +686,20 @@ def talk_first(steps, discipline):
             s['wait'] = dict(s['wait'], **{'else': s['wait']['else'] + len(first)})
         out.append(s)
     return first + out
+# Work orders (REALISM.md §7.1, §2.20, milestone WM1), after everything before them (no earlier task's or reaction's
+# index moves): a notified order is planned (normal), scheduled for the day and its permit asked for by the
+# maintenance supervisor (the shift supervisor when they are off), the generic permit reactions doing the rest; a
+# completed order is closed once its permit is closed. None of it acts unless someone notifies an order.
+WO_TASKS = [
+    {'id': 'plan_wo', 'title': 'Plan the notified work order', 'priority': 3,
+     'steps': [{'work': 5, 'anim': 'write'}, {'wo': {'work': '$', 'action': 'plan'}},
+               {'wo': {'work': '$', 'action': 'schedule'}},
+               {'permit': {'work': '$', 'action': 'request'}, 'else': 4}, {'work': 1, 'anim': 'write'}]},
+    {'id': 'close_wo', 'title': 'Close the work order', 'priority': 4,
+     'steps': [{'wait': {'permit': ['$', 'closed'], 'minutes': 720}}, {'work': 2, 'anim': 'write'},
+               {'wo': {'work': '$', 'action': 'close'}}]}]
+WO_REACTIONS = [{'on': {'wo': 'notified'}, 'roles': ['maint_sup', 'shift_sup'], 'task': 'plan_wo'},
+                {'on': {'wo': 'complete'}, 'roles': ['maint_sup', 'shift_sup'], 'task': 'close_wo'}]
 
 
 def reactions(model_reacts):
@@ -747,8 +762,8 @@ def staff(models, layout):
             'lifts': [{'lift': train_lift.LIFT, 'landings': list(LIFT_POINTS)}],
             'places': places, 'ways': ways, 'next': nxt, 'zones': zones, 'roles': rl,
             'rosters': rosters() + camp_staff.rosters(),
-            'people': everyone, 'routines': rts, 'tasks': T + camp_staff.tasks() + AUDIO_TASKS,
-            'reactions': reactions(model_reacts) + AUDIO_REACTIONS,
+            'people': everyone, 'routines': rts, 'tasks': T + camp_staff.tasks() + AUDIO_TASKS + WO_TASKS,
+            'reactions': reactions(model_reacts) + AUDIO_REACTIONS + WO_REACTIONS,
             'vehicles': camp_staff.vehicles(),
             'messages': MESSAGES, 'put_right': {'ppe': 'put_on_ppe', 'permit': 'ask_permit',
                                                 'unsafe': 'leave_shortcut', 'audio': 'music_off',

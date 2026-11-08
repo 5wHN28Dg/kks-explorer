@@ -34,6 +34,7 @@ func run(tree: SceneTree) -> Array:
 	_round_trip_wtp(m, p)
 	_round_trip_weather(p)
 	_round_trip_lab(p)
+	_round_trip_wo(p)
 	if ran != null:
 		_compiled_fixed(m, ran, p)
 	_file(m, p)
@@ -260,6 +261,90 @@ func _round_trip_lab(p: Array) -> void:
 		t.merge(c, true)
 		if Autosave._engine_contents(f2, t) == "":
 			p.append("realism lab: a save with %s was taken" % str(c))
+
+
+## The realism vectors' work order plant (REALISM.md §2.20) saved in the middle of a work order's cycle (its NPC run
+## to step 1200: the pump's order in progress under the accepted permit, the gauge's scheduled): put back into a fresh
+## engine, the run goes on bit for bit through the NPC's write-up and the order's closing (into the history); a save
+## whose state, record, history, number or write-up is damaged or names no work of the content is refused.
+func _round_trip_wo(p: Array) -> void:
+	const JsonStrict = preload("res://sim/json_strict.gd")
+	var path := ProjectSettings.globalize_path("res://").path_join("../../ref/vectors/plant3d-realism.json").simplify_path()
+	var W: Dictionary = JsonStrict.parse(FileAccess.get_file_as_bytes(path), 1000).value["wo"]
+	var run: Dictionary = W["runs"][2]
+	var files: Dictionary = W["files"].duplicate()
+	files["scenarios/s1.json"] = run["scenario"]
+	var m = PlantModel.from_files(files)
+	if m.error != "":
+		p.append("the realism work order plant did not load: %s" % m.error)
+		return
+	var e = PlantEngine.new(m, "s1")
+	var inputs: Array = run["inputs"]
+	var i := 0
+	while e.step_no < 1200:
+		while i < inputs.size() and inputs[i][0] == e.step_no + 1:
+			e.apply_input(inputs[i])
+			i += 1
+		e.step()
+	var cap := RunSave.capture(e, RunSave.engine_fields(e))
+	var cap0 := cap.duplicate(true)
+	if cap0["wo"].get("wo_pump") != 4 or not cap0["wo_history"].is_empty():
+		p.append("realism wo: the save is not in the middle of the pump's order (%s)" % str(cap0["wo"]))
+	var f2 = PlantEngine.new(m, "s1")
+	var bad := RunSave.check(f2, RunSave.engine_fields(f2), cap)
+	if bad == "":
+		bad = Autosave._engine_contents(f2, cap)
+	if bad != "":
+		p.append("realism wo: a fresh engine refuses its own save: %s" % bad)
+		return
+	RunSave.apply(f2, cap)
+	for k in 500:
+		while i < inputs.size() and inputs[i][0] == e.step_no + 1:
+			e.apply_input(inputs[i])
+			f2.apply_input(inputs[i])
+			i += 1
+		e.step()
+		f2.step()
+		if f2.cur != e.cur or f2.digest() != e.digest():
+			p.append("realism wo: the restored run differs at step %d" % e.step_no)
+			break
+	if e.wo_history.size() != 1 or f2.wo_history != e.wo_history:
+		p.append("realism wo: the pump's order was not closed after the save (%s)" % str(e.wo_history))
+	var rec: Array = cap0["wo_rec"]["wo_pump"]
+	var short := rec.slice(0, 9)
+	var other := rec.duplicate(true)
+	other[9] = "wo_gauge"
+	var renumbered := rec.duplicate(true)
+	renumbered[0] = "WO-0007"
+	var badclock := rec.duplicate(true)
+	badclock[1] = [1, 2, 3]
+	for c in [{"wo": {"wo_pump": 9, "wo_gauge": 3, "wo_valve": 0}}, {"wo": {"wo_pump": 4}},
+			{"wo": {"wo_pump": 4, "wo_gauge": 3, "wo_valve": 1}}, {"wo": {"wo_pump": 3, "wo_gauge": 3, "wo_valve": 0}},
+			{"wo_rec": {"wo_pump": short}}, {"wo_rec": {"wo_pump": other}}, {"wo_rec": {"wo_fan": rec}},
+			{"wo_rec": {"wo_pump": badclock}}, {"wo_no": {"wo_pump": 3}}, {"wo_no": {"wo_fan": "WO-0009"}},
+			{"wo_history": [short]}, {"wo_count": -1}, {"wo_npc_done": [["wo_fan", "mech1"]]},
+			{"wo_npc_done": [["wo_pump"]]}, {"wo_count": 0}, {"wo_rec": {"wo_pump": renumbered}},
+			{"npc_queue": [["wo"]]}, {"npc_queue": [["wo", "wo_fan", "plan", "a_sup", null]]},
+			{"npc_queue": [["wo", "wo_pump", "approve", "a_sup", []]]},
+			{"npc_queue": [["wo", "wo_pump", "plan", "nobody", [3]]]},
+			{"npc_queue": [["wo", "wo_pump", "plan", "a_sup", 3]]}]:
+		var t := cap0.duplicate(true)
+		for k in c:             # (a record or number changed among the others; the states replaced whole)
+			if k == "wo_rec" or k == "wo_no":
+				t[k].merge(c[k], true)
+			else:
+				t[k] = c[k]
+		if Autosave._engine_contents(f2, t) == "":
+			p.append("realism wo: a save with %s was taken" % str(c))
+	# an NPC's completion without data on a work without codes (its defaults would read the codes)
+	var pump: Dictionary = f2.m.works[f2.m.work_ix["wo_pump"]]
+	var codes = pump["codes"]
+	pump.erase("codes")
+	var t2 := cap0.duplicate(true)
+	t2["npc_queue"] = [["wo", "wo_pump", "complete", "mech1", null]]
+	if Autosave._engine_contents(f2, t2) == "":
+		p.append("realism wo: a save with an NPC's completion of a work without codes was taken")
+	pump["codes"] = codes
 
 
 ## The water treatment plant's day work (W3) saved in the middle of its sequences: an RO train being cleaned in place

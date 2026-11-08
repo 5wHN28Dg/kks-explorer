@@ -13,6 +13,7 @@ extends RefCounted
 
 const Hands = preload("hands.gd")    # the hands-on engine's steps (REALISM.md §2.13)
 const Hse = preload("hse.gd")        # JSAs and toolbox talks (REALISM.md §8.6)
+const WorkOrders = preload("workorders.gd")    # work orders' steps and reactions (REALISM.md §2.20)
 
 const DAY := 864000
 const MINUTE := 600
@@ -399,10 +400,16 @@ func _build(m, doc: Dictionary) -> void:
 		for s in t["steps"]:
 			if s.has("go") and typeof(s["go"]) == TYPE_STRING and s["go"] != "home" and not pix.has(s["go"]):
 				_fail("task %s: no place %s" % [t["id"], s["go"]])
+			if s.has("wo") and (m.wo_ids == null or typeof(s["wo"]) != TYPE_DICTIONARY \
+					or not WorkOrders.ACTIONS.has(s["wo"].get("action"))):
+				_fail("task %s: a wo step the engine can't run (REALISM.md §2.20)" % t["id"])
 			if s.has("unlock"):
 				if not unlocks.has(t["id"]):
 					unlocks[t["id"]] = {}
 				unlocks[t["id"]][s["unlock"]["work"]] = true
+	for r in reactions:
+		if r["on"].has("wo") and (m.wo_ids == null or not WorkOrders.STATES.has(r["on"]["wo"])):
+			_fail("a reaction on a work order the engine can't run (REALISM.md §2.20)")
 
 
 ## The points of the quickest route from src to dst by §16.2's rule (the `next` table's: by steps, then the lowest
@@ -1538,7 +1545,7 @@ func react(e, n: int) -> void:
 	# only these events start reactions here (the unsafe acts' are phase 5's): most steps have none of them
 	var rel := []
 	for x in evs:
-		if x[1] == "alarm" or x[1] == "trip" or x[1] == "fault" or x[1] == "permit":
+		if x[1] == "alarm" or x[1] == "trip" or x[1] == "fault" or x[1] == "permit" or x[1] == "wo":
 			rel.append(x)
 	evs = rel
 	if evs.is_empty() and value_reactions.is_empty() and gone.is_empty():
@@ -1585,6 +1592,10 @@ func react(e, n: int) -> void:
 					var nw: int = x[6][0] if x[3] == "auto" else PERMIT_TO[x[3]]
 					if STATE_NAMES[nw] == v and (not r.has("work") or r["work"] == x[2]):
 						hits.append(["permit|" + x[2], x[2], e.m.works[e.m.work_ix[x[2]]]["kks"], null])
+				elif k == "wo" and x[1] == "wo" and x[5] == "done":     # REALISM.md §2.20
+					var nw: int = x[6][0] if x[3] == "auto" else WorkOrders.ACTIONS[x[3]][1]
+					if WorkOrders.STATES[nw] == v and (not r.has("work") or r["work"] == x[2]):
+						hits.append(["wo|" + x[2], x[2], e.m.works[e.m.work_ix[x[2]]]["kks"], null])
 		if hits.is_empty():
 			continue
 		var prio: int = int(r["priority"]) if r.has("priority") else prio_of(r["task"])
@@ -2262,7 +2273,7 @@ func run(e, pi: int, cur: Dictionary):
 			if st == "active_unack" or st == "cleared_unack":
 				e.npc_queue.append(["ack", a])
 		return "next"
-	if s.has("op") or s.has("permit") or s.has("jsa") or s.has("talk"):
+	if s.has("op") or s.has("permit") or s.has("jsa") or s.has("talk") or s.has("wo"):
 		if not x.get("busy", false):
 			if s.has("op"):
 				var o: Dictionary = s["op"]
@@ -2276,6 +2287,10 @@ func run(e, pi: int, cur: Dictionary):
 					e.npc_queue.append(["jsa", w, own[0], own[1], pid])
 				else:
 					e.npc_queue.append(["talk", w, own[0], pid])
+			elif s.has("wo"):           # a work order's action (REALISM.md §2.20): without data, the defaults in step 1
+				var w = cur["work"] if s["wo"]["work"] == "$" else s["wo"]["work"]
+				var dd = s["wo"].get("data")
+				e.npc_queue.append(["wo", w, s["wo"]["action"], pid, dd.duplicate() if dd != null else null])
 			else:
 				var w = cur["work"] if s["permit"]["work"] == "$" else s["permit"]["work"]
 				e.npc_queue.append(["permit", w, s["permit"]["action"], pid])
@@ -3829,6 +3844,19 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 						took[j] = true
 						r = "next"
 						break
+		elif s.has("wo"):               # REALISM.md §2.20: that action on that work, from the panel (any data)
+			var w = cur["work"] if s["wo"]["work"] == "$" else s["wo"]["work"]
+			var a: String = s["wo"]["action"]
+			for j in mine.size():
+				var y: Array = mine[j]
+				if not took.has(j) and y[1] == "wo" and y[5] == "done" and _same(y[2], w) and y[3] == a \
+						and _same(y[4], pid):
+					took[j] = true
+					r = "next"
+					break
+			if typeof(r) == TYPE_STRING and r == "wait" and _first_look(x) \
+					and early_done(e, pi, cur, "wo", [w, a], null, slot):
+				r = "next"
 		elif s.has("handover") and s["handover"] == "take":
 			if lock_target(e, pi, cur, s, null).x == -1:
 				r = "next"
@@ -3967,10 +3995,12 @@ func keep(e, pi: int, mine: Array, took: Dictionary, slot: int) -> void:
 		elif kind == "hand":            # (REALISM.md §2.13)
 			if y[6] == "done" and _same(y[5], pid):
 				early.append(["hand", y[0], y[2], y[3]])
-		elif kind == "permit" or kind == "lock" or kind == "unlock":
+		elif kind == "permit" or kind == "lock" or kind == "unlock" or kind == "wo":
 			if y[5] == "done" and _same(y[4], pid):
 				if kind == "permit":
 					early.append(["permit", y[0], y[2], y[3], e.ptw.get(y[2])])
+				elif kind == "wo":      # (its work order's number, REALISM.md §2.20)
+					early.append(["wo", y[0], y[2], y[3], e.wo_no.get(y[2])])
 				else:
 					early.append([kind, y[0], y[2], y[3]])
 	if early.size() > EARLY_KEPT:
@@ -3990,6 +4020,8 @@ func early_done(e, pi: int, cur: Dictionary, kind: String, want: Array, o, slot:
 			ok = q[2] == want[0] and q[3] == want[1] and q[4] == want[2] and _op_holds(e, o)
 		elif kind == "permit":
 			ok = _same(q[2], want[0]) and q[3] == want[1] and _permit_holds(e, want[0], want[1], q[4])
+		elif kind == "wo":
+			ok = _same(q[2], want[0]) and q[3] == want[1] and WorkOrders.holds(e, want[0], want[1], q[4])
 		elif kind == "hand":
 			ok = _same(q[2], want[0]) and _same(q[3], want[1]) and Hands.hand_holds(e, want[0], want[1], o)
 		else:

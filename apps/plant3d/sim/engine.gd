@@ -30,6 +30,7 @@ const Staff = preload("staff.gd")
 const World = preload("world.gd")
 const Hands = preload("hands.gd")
 const Hse = preload("hse.gd")
+const WorkOrders = preload("workorders.gd")
 
 const STEP := 0.1
 const SLOTS := 8                    # a session run's slots, 0 to 7 (§17.13)
@@ -235,6 +236,16 @@ var lab_s := {}                     # sample node name -> its lab stream's state
 # JSAs and toolbox talks (REALISM.md §8.6; sim/hse.gd), with the plant's hse.json only
 var jsa_of := {}                    # work id -> [hazard ids, control ids, person]: its JSA
 var talked := {}                    # work id -> the attendees of its toolbox talks (person indices, in order)
+# work orders (REALISM.md §2.20; sim/workorders.gd), in a plant with workorders.json: the model's code lists (or null),
+# each work's `_wo` slot, and the state saved with a run
+var _wo_ids = null
+var _wo_slot := PackedInt32Array()
+var wo := {}                        # work id -> its work order's state (0 none … 7 cancelled)
+var wo_no := {}                     # work id -> its current work order's number
+var wo_rec := {}                    # work id -> its current work order's record
+var wo_count := 0
+var wo_history: Array = []          # the run's closed and cancelled work orders' records, in that order
+var wo_npc_done: Array = []         # [work, person]: this step's NPC dones, written up in step 3
 var _wx_mode := 0                   # its mode (0 seeded, 1 fixed, 2 scripted), slots, lag factors and targets per
 var _wx_slots := PackedInt32Array() # kind (one table per driven value), out of _wx for the step's cost
 var _wx_f := PackedFloat64Array()
@@ -326,6 +337,7 @@ func _init(model = null, scenario = null, session := false) -> void:
 	for f in sc.get("faults", []):
 		_fdef[f["id"]] = f
 	Hands.init(self, World)
+	WorkOrders.init(self)
 
 
 # ---------------------------------------------------------------- compiling
@@ -697,6 +709,9 @@ func jsa(work, hazards, controls, person = null, slot = null) -> void:
 ## A toolbox talk (REALISM.md §8.6): its points (hazard ids), given by person.
 func talk(work, points, person = null, slot = null) -> void:
 	_q(["talk", work, points, person], slot)
+## A work order's action (REALISM.md §2.20).
+func work_order(work, action, person = null, data = [], slot = null) -> void:
+	_q(["wo", work, action, person, data], slot)
 
 
 func lock(work, point, person = null, slot = null) -> void:
@@ -967,6 +982,8 @@ func apply_input(item: Array) -> void:
 			jsa(item[2], item[3], item[4], item[5], slot)
 		"talk":
 			talk(item[2], item[3], item[4], slot)
+		"wo":
+			work_order(item[2], item[3], item[4], item[5] if item.size() > 5 else null, slot)
 		"lock":
 			lock(item[2], item[3], item[4], slot)
 		"unlock":
@@ -1220,6 +1237,7 @@ func _permit(work, action, person, dones: Array, npc := false) -> String:
 		acceptor[work] = person
 	elif action == "done":
 		dones.append(wi)
+		WorkOrders.note_done(self, work, person, npc)     # an NPC's write-up in step 3 (REALISM.md §2.20)
 	elif (action == "cancel" or action == "close") and iso != -1 and _n_locked(iso) == 0:
 		holder[iso] = -1
 	if action == "cancel" or action == "close":     # the JSA and the talk's attendance end with the permit (§8.6)
@@ -1898,6 +1916,12 @@ func _step() -> void:
 			if npc:
 				_npc_result(item[3], r, k0)
 			continue
+		if kind == "wo":                # a work order's action (REALISM.md §2.20)
+			var k0 := events.size()
+			var r := WorkOrders.wo_input(self, item, npc)
+			if npc:
+				_npc_result(item[3], r, k0)
+			continue
 		if kind == "tool":              # REALISM.md §2.3: a tool taken or put back at the person's place
 			var k0 := events.size()
 			var r := Hands.tool(self, item[1], item[3], item[2], npc)
@@ -2049,6 +2073,8 @@ func _step() -> void:
 			pstate[wi] = nw
 			cur[_wk[wi][2]] = float(nw)
 			_ev(["permit", _wk[wi][0], "auto", null, "done", [nw]])
+	if _wo_ids != null:             # work orders in progress by themselves, NPCs' write-ups (REALISM.md §2.20)
+		WorkOrders.step3(self)
 	# then the faults (a trainer's fault is hit only when pressed: with none pressed, only the others are looked at)
 	for fk in (_all_faults if not pressed.is_empty() else _auto_faults):
 		var fl: Array = _faults[fk]
@@ -2465,6 +2491,8 @@ func snapshot(with_values: bool = true) -> Dictionary:
 		Hands.lab_snapshot(self, s)     # (REALISM.md §2.19)
 	if m.hse != null:
 		Hse.snapshot_part(self, s)      # (REALISM.md §8.6)
+	if _wo_ids != null:
+		WorkOrders.snapshot_part(self, s)   # (REALISM.md §2.20)
 	if with_values:
 		var vals := {}
 		for i in n:
@@ -2524,6 +2552,8 @@ func digest_tree() -> Array:
 		tree.append(Hands.lab_digest(self))
 	if m.hse != null:                   # JSAs and the talks' attendance (REALISM.md §8.6), with hse.json only
 		tree.append(Hse.digest_part(self))
+	if _wo_ids != null:                 # the work orders (REALISM.md §2.20), with workorders.json only
+		tree.append(WorkOrders.digest_part(self))
 	return tree
 
 
@@ -2644,7 +2674,7 @@ func clone():
 			"_sm", "_S", "_ds", "_absent", "_fixed_trainee", "_show", "_fault_kks", "J", "ev_mark", "st_order",
 			"st_session", "st_next1", "_lift_ix", "_load_slot", "_lift_ctl", "_lift_ops", "_world", "_world_seed",
 			"_world_year_day", "_w_S", "_gap", "_wear_ps", "_draws", "_wx", "wx_kind", "wx_s", "_wx_mode", "_wx_slots", "_wx_f", "_wx_t",
-			"_hw", "_hands", "_meters", "_works_on", "_fdef", "_lab", "_lab_of"]:
+			"_hw", "_hands", "_meters", "_works_on", "_fdef", "_lab", "_lab_of", "_wo_ids", "_wo_slot", "wo_count"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_wait_on", "sp_worn",
@@ -2655,6 +2685,6 @@ func clone():
 			"st_left", "st_pending", "st_made",
 			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result", "sp_held", "sp_acts",
 			"riders", "sp_ride", "sp_stairs", "sp_watch", "st_veh", "sp_spans", "tool_n", "carried", "busy", "cause_of", "cause_s",
-			"slip_s", "lab_q", "lab_s", "jsa_of", "talked"]:
+			"slip_s", "lab_q", "lab_s", "jsa_of", "talked", "wo", "wo_no", "wo_rec", "wo_history", "wo_npc_done"]:
 		c.set(k, get(k).duplicate(true))
 	return c

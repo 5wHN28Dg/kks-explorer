@@ -13,6 +13,7 @@ const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goe
 
 const RunSave = preload("res://ui/run_save.gd")
 const PlantEngine = preload("res://sim/engine.gd")
+const WoSim = preload("res://sim/workorders.gd")   # the work order actions (REALISM.md §2.20)
 const SimClock = preload("res://ui/sim_clock.gd")
 const Tracker = preload("res://ui/procedure_tracker.gd")
 const W = preload("res://ui/widgets.gd")
@@ -251,6 +252,16 @@ static func _hands_contents(fresh, d: Dictionary) -> String:
 					if q.size() != 4:
 						return "a damaged NPC input"
 					who = q[3]
+				"wo":
+					# a work order's action (REALISM.md §2.20): a work of the model, an action, data a list or null
+					# (null: the NPC's defaults, a completion's from the work's codes)
+					if q.size() != 5 or typeof(q[1]) != TYPE_STRING or not fresh.m.work_ix.has(q[1]) \
+							or typeof(q[2]) != TYPE_STRING or not WoSim.AUTH.has(q[2]) \
+							or (q[4] != null and typeof(q[4]) != TYPE_ARRAY) \
+							or (q[4] == null and q[2] == "complete" \
+								and not fresh.m.works[fresh.m.work_ix[q[1]]].has("codes")):
+						return "a damaged NPC input"
+					who = q[3]
 				_:
 					continue
 			if typeof(who) != TYPE_STRING or not people.has(who):
@@ -298,6 +309,70 @@ static func _hands_contents(fresh, d: Dictionary) -> String:
 				if typeof(v) != TYPE_INT or v <= 0 or v > 0xFFFFFFFF:
 					return "a damaged %s" % k
 	return ""
+
+
+## Work orders' state (REALISM.md §2.20): a state 0–7 per work of the content (none without workorders.json) that
+## agrees with its value, a number and a record for each work order the engine has notified, records of the
+## reference's layout naming their own work, the history's records, and this step's NPC dones naming works. "" when
+## it fits.
+static func _wo_contents(fresh, d: Dictionary) -> String:
+	var works: Dictionary = fresh.wo
+	if d.has("wo"):
+		if typeof(d["wo"]) != TYPE_DICTIONARY or d["wo"].size() != works.size():
+			return "a damaged work order"
+		for wid in works:
+			var st = d["wo"].get(wid)
+			if typeof(st) != TYPE_INT or st < 0 or st > 7:
+				return "a work order in a state that doesn't exist"
+			if d.has("cur") and d["cur"][fresh._wo_slot[fresh.m.work_ix[wid]]] != float(st):
+				return "a work order whose value doesn't agree"
+			if st != 0 and (not d.get("wo_rec", {}).has(wid) or not d.get("wo_no", {}).has(wid)):
+				return "a work order without its record"
+	for k in ["wo_no", "wo_rec"]:
+		if d.has(k):
+			for key in d[k]:
+				if typeof(key) != TYPE_STRING or not works.has(key):
+					return "a damaged %s" % k
+				if k == "wo_no" and typeof(d[k][key]) != TYPE_STRING:
+					return "a damaged %s" % k
+				if k == "wo_rec" and not _wo_record_ok(d[k][key], works, key):
+					return "a damaged work order record"
+				if k == "wo_rec" and d[k][key][0] != d.get("wo_no", {}).get(key, ""):
+					return "a work order record whose number isn't its work's"
+	if d.has("wo_history"):
+		for r in d["wo_history"]:
+			if not _wo_record_ok(r, works, null):
+				return "a damaged work order history"
+	# the number counter: never below a number already given (a later order would take it again)
+	var top := 0
+	for r in d.get("wo_no", {}).values() + d.get("wo_history", []).map(func(x): return x[0]):
+		if typeof(r) == TYPE_STRING and r.begins_with("WO-") and r.substr(3).is_valid_int():
+			top = maxi(top, r.substr(3).to_int())
+	if d.get("wo_count", 0) < top:
+		return "a damaged work order count"
+	if d.has("wo_npc_done"):
+		for x in d["wo_npc_done"]:
+			if typeof(x) != TYPE_ARRAY or x.size() != 2 or typeof(x[0]) != TYPE_STRING or not works.has(x[0]) \
+					or (x[1] != null and typeof(x[1]) != TYPE_STRING):
+				return "a damaged work order write-up"
+	return ""
+
+
+## A work order's record: [number, 6 clocks, notifier, mode, priority 0–4, day, completer, [mode, cause, action],
+## comment, its work] (sim/workorders.gd), its work `work` when given.
+static func _wo_record_ok(r, works: Dictionary, work) -> bool:
+	if typeof(r) != TYPE_ARRAY or r.size() != 10 or typeof(r[0]) != TYPE_STRING or typeof(r[1]) != TYPE_ARRAY \
+			or r[1].size() != 6 or typeof(r[4]) != TYPE_INT or r[4] < 0 or r[4] > 4 or typeof(r[5]) != TYPE_INT \
+			or typeof(r[7]) != TYPE_ARRAY or r[7].size() != 3 or typeof(r[8]) != TYPE_STRING \
+			or typeof(r[9]) != TYPE_STRING or not works.has(r[9]) or (work != null and r[9] != work):
+		return false
+	for c in r[1]:
+		if typeof(c) != TYPE_INT:
+			return false
+	for x in [r[2], r[3], r[6]] + r[7]:
+		if x != null and typeof(x) != TYPE_STRING:
+			return false
+	return true
 
 
 ## What the app indexes with inside the engine's state (the generic check sees only fields, types and lengths): a
@@ -410,7 +485,7 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 				"task_ack": [1], "arrive": [2], "leave": [2], "read": [3, 4], "say": [3], "pick": [2], "call": [4],
 				"jump": [2], "ppe": [3], "zone": [3], "stop": [2], "board": [3], "alight": [3],
 				"get_on": [2], "drive": [3, 4], "weather": [2], "tool": [4], "hand": [6], "audio": [2], "phone": [2],
-				"jsa": [5], "talk": [4]}
+				"jsa": [5], "talk": [4], "wo": [5]}
 		for q0 in d["queue"]:
 			var q = q0
 			# a session run's inputs end with their slot (§17.13): looked at without it
@@ -447,7 +522,9 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 			if typeof(kept) != TYPE_ARRAY:
 				return "a damaged record of the trainee's actions"
 			for r in kept:
-				if typeof(r) != TYPE_ARRAY or r.size() < 4 or not r[0] in ["op", "permit", "lock", "unlock", "hand"] \
+				if typeof(r) != TYPE_ARRAY or r.size() < 4 or not r[0] in ["op", "permit", "lock", "unlock", "hand", "wo"] \
+						or (r[0] == "wo" and (r.size() != 5 or typeof(r[2]) != TYPE_STRING \
+						or typeof(r[3]) != TYPE_STRING or (r[4] != null and typeof(r[4]) != TYPE_STRING))) \
 						or (r[0] == "op" and (r.size() != 6 or typeof(r[2]) != TYPE_STRING \
 						or typeof(r[3]) != TYPE_STRING or typeof(r[4]) != TYPE_STRING)) \
 						or (r[0] == "permit" and (r.size() != 5 or typeof(r[2]) != TYPE_STRING \
@@ -465,6 +542,9 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 	var sw := _hse_contents(fresh, d)
 	if sw != "":
 		return sw
+	var wow := _wo_contents(fresh, d)
+	if wow != "":
+		return wow
 	# permits and isolations (PLANT3D §15): states, holders and locks the engine indexes with, and that agree
 	if d.has("pstate"):
 		for s in d["pstate"]:

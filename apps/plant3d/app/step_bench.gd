@@ -18,7 +18,7 @@ const WeatherFix = preload("weather_fix.gd")
 static func read_dir(path: String) -> Dictionary:
 	var files := {}
 	var top := path.trim_suffix("/")
-	for rel in ["plant.json", "kit.json", "sounds.json", "staff.json", "weather.json", "tools.json", "hse.json"]:   # (tools.json: the hand actions' tools, HW2)
+	for rel in ["plant.json", "kit.json", "sounds.json", "staff.json", "weather.json", "tools.json", "hse.json", "workorders.json"]:   # (tools.json: the hand actions' tools, HW2; workorders.json: WM1)
 		if FileAccess.file_exists(top + "/" + rel):
 			files[rel] = FileAccess.get_file_as_bytes(top + "/" + rel)
 	for sub in ["areas", "model", "scenarios", "procedures"]:

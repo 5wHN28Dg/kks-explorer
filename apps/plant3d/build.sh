@@ -74,6 +74,8 @@ done
 cp "$ROOT/data/plant3d/monitoring.json" "$HERE/built/content/"
 # the JSAs' hazard library (docs/plant3d/REALISM.md §8.6): the engine's (sim/hse.gd) and the JSA form's
 cp "$ROOT/data/plant3d/hse.json" "$HERE/built/content/"
+# the failure codes and every piece of equipment's past work orders (docs/plant3d/REALISM.md §2.20: the work orders)
+cp "$ROOT/data/plant3d/workorders.json" "$HERE/built/content/"
 # the generated P&IDs (docs/plant3d/REALISM.md §6.1.1, tools/plant3d/pid.py): a view of the content, made at every
 # build, never committed; the app reads them from built/drawings (ui/drawings.gd)
 python3 "$ROOT/tools/plant3d/pid.py" "$HERE/built/drawings" >"$HERE/.drawings.log" 2>&1 ||
