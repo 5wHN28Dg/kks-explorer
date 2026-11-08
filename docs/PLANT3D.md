@@ -1292,6 +1292,7 @@ Steps, each done by an NPC as said and by the trainee through the input named (�
 | `op`: `{"kks", "do", "value", "trip", "where"}` (`where` `local` or `screen`, one of the op's own; a `screen` op comes after a `go` to a desk in the same task) | makes the op input | the same op, made as anywhere (§7.2) |
 | `permit`: `{"work", "action"}` (`"work": "$"` = the task's work) | makes the permit input | the same, from the permit form |
 | `lock` / `unlock`: `{"work", "point"}` or `{"work", "point": "all"}` (each point in order, walking to each) | goes to the point's work place, makes the input | the same, at the point |
+| `wo`: `{"work", "action", "data"}` (`data` optional; a plant with work orders, REALISM.md §2.20) | makes the work order input (without `data`, the action's defaults) | the same action on that work, from the work order panel (any data) |
 | `ppe`: `"role"`, a list, or `"off"` | puts it on or off (at a locker for on) | `ppe` inputs at a locker |
 | `say`: a message id, `to` a role, a person or `"channel"` | sends it (event; the radio log) | `say` from the radio panel |
 | `wait`: `{"until": value, "minutes": timeout, "else": step}` or `{"permit": [work, state], …}` (done when the permit is at that state or past it in the order 1 → 9; cancelled ends it as a timeout) | waits | waits |
@@ -1327,7 +1328,7 @@ Steps, each done by an NPC as said and by the trainee through the input named (�
 
 - **`on`:** an alarm becoming `active_unack` whose priority number is at most n (`alarm`), a trip latching, a fault
   applied, a value turning true (a rising edge, as an interlock), a permit reaching a state (`{"permit":
-  "requested"}`), or an unsafe act starting. The task goes to one person (§17.3). A reaction is skipped while a task
+  "requested"}`), a work order reaching a state (`{"wo": "notified"}`, REALISM.md §2.20), or an unsafe act starting. The task goes to one person (§17.3). A reaction is skipped while a task
   it gave for the same source (the same alarm, trip, fault, value, permit or act) is still queued or current, so a
   chattering alarm doesn't flood anyone.
 - **Generic reactions** (milestone AG2, REALISM.md §2.18): a permit reaction whose `task` is `"$isolate"`,

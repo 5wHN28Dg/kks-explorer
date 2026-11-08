@@ -30,6 +30,10 @@
 ##                           closed cooling water pump A, running with its bearing wearing) with the monitoring panel
 ##                           open (the collector's screen and spectrum redrawn as the plant runs at 1×); the MON line
 ##                           gives the panel's open time and the view's draw calls and triangles with it and before it
+##   walk=workorders         the work orders' walk (REALISM.md §2.20, milestone WM1): the scenario shift_aged in free
+##                           mode, closed cooling water pump A's vibration reported from its card, the work order
+##                           panel open on the motor's history and then on the list (the plant at 1×); the WO line
+##                           gives the panel's open time and the view's draw calls and triangles with it and before it
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
 ##   out=DIR                 where result.txt (and shots) go (default: the external files folder on Android, the user
 ##                           data folder elsewhere)
@@ -147,6 +151,7 @@ var sim_t := 0.0
 var screens_walk := false   # walk=screens: the control room's screens in turn, nobody walking
 var job_walk := false       # walk=job: the work view open at a code, its camera going round (milestone HW2)
 var monitor_walk := false   # walk=monitor: the monitoring panel open at a machine, the plant at 1× (milestone AG3)
+var wo_walk := false        # walk=workorders: the work order panel open, the plant at 1× (milestone WM1)
 var drawings_walk := false  # walk=drawings: each P&ID in turn, panned and zoomed (REALISM.md §6.1.1, DC1)
 var manuals_walk := false   # walk=manuals: every manual's every page in turn, scrolled (REALISM.md §6.2.1, DC2)
 var _man_pages: Array = []  # walk=manuals: [manual, section] in order
@@ -290,7 +295,7 @@ func _ready() -> void:
 	add_child(ui)
 	if opts.get("walk", "") == "job" and not opts.has("scenario"):
 		opts["scenario"] = "shift_cold"   # (the work view needs a person played: the crews' scenario)
-	if opts.get("walk", "") == "monitor" and not opts.has("scenario"):
+	if opts.get("walk", "") in ["monitor", "workorders"] and not opts.has("scenario"):
 		opts["scenario"] = "shift_aged"   # (the aged plant: a pump running with its bearing's signs)
 	if opts.get("walk", "") in ["gate", "drive"]:
 		opts["crews"] = "1"       # the gate walk is the crews' shift change (PLANT3D §21.10); the drive walk drives them
@@ -648,6 +653,9 @@ func _start_walk() -> void:
 	if opts.walk == "monitor":
 		await _monitor_walk()
 		return
+	if opts.walk == "workorders":
+		await _wo_walk()
+		return
 	if opts.walk == "screens":
 		ui.open_panel("screens")
 		screens_walk = true
@@ -765,6 +773,34 @@ func _monitor_walk() -> void:
 		code, str(e.carried.get(ui.me(), [])), "yes" if ui.monitoring.body.find_child("collector", true, false) != null else "no",
 		vib, open_ms, inview.x, inview.y, before.x, before.y])
 	monitor_walk = true
+	last_us = Time.get_ticks_usec()
+
+
+## walk=workorders: free mode, the pump's vibration reported from its card's Work orders, the panel left open on the
+## list (its WO line); the frames are then measured as any walk's.
+func _wo_walk() -> void:
+	var code := "00PGC10AP001"
+	if ui.work_orders == null or not ui.work_orders.has_orders(code):
+		_say("WO none: no work orders at %s in this build" % code)
+		_finish()
+		return
+	for i in 30:
+		await get_tree().process_frame
+	var before: Vector2i = await _view_counts()
+	var t0 := Time.get_ticks_usec()
+	ui.open_work_orders("", code)
+	var open_ms := (Time.get_ticks_usec() - t0) / 1000.0
+	ui.work_orders.report(code, "vibration")
+	ui.clock.run_steps(2)
+	for i in 30:
+		await get_tree().process_frame
+	ui.open_work_orders()
+	for i in 30:
+		await get_tree().process_frame
+	var inview: Vector2i = await _view_counts()
+	_say("WO %s state=%d open_ms=%.1f view_draws=%d view_tris=%d before_draws=%d before_tris=%d" % [code,
+		int(ui.clock.engine.wo.get("wo_ccw_a_brg", 0)), open_ms, inview.x, inview.y, before.x, before.y])
+	wo_walk = true
 	last_us = Time.get_ticks_usec()
 
 
@@ -945,7 +981,7 @@ func _process(delta: float) -> void:
 		_say("SPEED %s at %.1f s, uptime %d ms" % ["fast-forward" if ff else "normal", t_walk, WalkFrames.uptime_ms()])
 	if job_walk and ui.work.is_open:
 		ui.work._turn(Vector2(delta * 25.0, 0.0))      # slowly round the transmitter (the whole scene in turn)
-	if not screens_walk and not job_walk and not monitor_walk and not drawings_walk and not manuals_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
+	if not screens_walk and not job_walk and not monitor_walk and not wo_walk and not drawings_walk and not manuals_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
 		return
 	t_walk += delta
 	if drawings_walk:
