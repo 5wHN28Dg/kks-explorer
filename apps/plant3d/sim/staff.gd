@@ -1004,13 +1004,28 @@ func offer(e, role_list: Array, tid: String, prio: int, src, w, code, alarm, pw,
 			nobody = false
 			break
 	if not assign(e, role_list, tid, prio, src, w, code, alarm, owner, null, orig) and nobody \
-			and typeof(pw) == TYPE_STRING and e.m.work_ix.has(pw) and e.pstate[e.m.work_ix[pw]] >= 1 \
-			and e.pstate[e.m.work_ix[pw]] <= 8:
+			and typeof(pw) == TYPE_STRING and e.m.work_ix.has(pw) and kept_state(e, src, pw) != -1:
 		var ident: String = src if src != null else "call|%s|%s|%s" % ["/".join(role_list), tid, str(w)]
 		for pd in e.st_pending:
 			if pd[0] == ident:
 				return
-		e.st_pending.append([ident, src, role_list.duplicate(), tid, prio, w, code, pw, e.pstate[e.m.work_ix[pw]]])
+		e.st_pending.append([ident, src, role_list.duplicate(), tid, prio, w, code, pw, kept_state(e, src, pw)])
+
+
+## Whether an offer's source is a reaction on a work order ("ri|wo|work", REALISM.md §2.21).
+static func wo_src(src) -> bool:
+	return typeof(src) == TYPE_STRING and src.get_slice_count("|") == 3 and src.get_slice("|", 1) == "wo"
+
+
+## The state an offer nobody could take is kept at (§17.10): the permit's (1 to 8), or for a reaction on a work order
+## (REALISM.md §2.21) the work order's (notified to complete); -1 when it isn't kept.
+static func kept_state(e, src, pw: String) -> int:
+	var s: int
+	if wo_src(src):
+		s = e.wo.get(pw, 0)
+		return s if s >= 1 and s <= 5 else -1
+	s = e.pstate[e.m.work_ix[pw]]
+	return s if s >= 1 and s <= 8 else -1
 
 
 ## The reaction on a value a job comes from (§17.12): its own source ("ri|value|name"), or the one whose task called
@@ -1511,7 +1526,8 @@ func react(e, n: int) -> void:
 					gone.append(pi)
 		e.st_left = now
 	# permit offers that found nobody on duty: offered again when someone of their roles comes on, at each later
-	# shift until taken, while the permit is still at its state then (§17.10)
+	# shift until taken, while the permit is still at its state then (§17.10); a work order's the same, while the work
+	# order is (REALISM.md §2.21)
 	if not e.st_pending.is_empty():
 		var came := {}
 		for x in evs:
@@ -1532,7 +1548,8 @@ func react(e, n: int) -> void:
 				if value_busy(e, pd[0]) or not came_v or not assign(e, pd[2], pd[3], pd[4], pd[1], pd[5], pd[6], null):
 					keep.append(pd)
 				continue
-			if e.pstate[e.m.work_ix[pd[7]]] != pd[8] or (pd[1] != null and e.st_given.has(pd[1])) \
+			var now_st: int = e.wo.get(pd[7], 0) if wo_src(pd[1]) else e.pstate[e.m.work_ix[pd[7]]]
+			if now_st != pd[8] or (pd[1] != null and e.st_given.has(pd[1])) \
 					or (pd[1] == null and _given_again(e, pd[3], pd[5])):
 				continue            # moved on, or given meanwhile (a call: the same task and work given again)
 			var any_role := false
@@ -1607,7 +1624,7 @@ func react(e, n: int) -> void:
 			var code = h[2]
 			if code == null and w != null:
 				code = e.m.works[e.m.work_ix[w]]["kks"]
-			offer(e, r["roles"], r["task"], prio, key, w, code, h[3], h[1] if k == "permit" else null,
+			offer(e, r["roles"], r["task"], prio, key, w, code, h[3], h[1] if k == "permit" or k == "wo" else null,
 					h[4] if h.size() > 4 else null)
 
 

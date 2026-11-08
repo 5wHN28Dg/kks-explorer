@@ -308,7 +308,7 @@ func refresh() -> void:
 	var e = ui.clock.engine
 	if e == null or e.m.wo_doc == null:
 		return
-	var sig := [work, code, today(e), e.wo_history.size(), ui.me()]
+	var sig := [work, code, today(e), e.wo_count, e.wo_history.size(), ui.me()]
 	# (a work's form follows only its own work: other works' moves never rebuild a completion being filled in)
 	for wd in ([e.m.works[e.m.work_ix[work]]] if work != "" and e.m.work_ix.has(work) else e.m.works):
 		sig.append(state_of(e, wd["id"]))

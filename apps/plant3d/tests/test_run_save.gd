@@ -15,6 +15,7 @@ extends RefCounted
 const PlantModel = preload("res://sim/plant_model.gd")
 const PlantEngine = preload("res://sim/engine.gd")
 const Procedure = preload("res://sim/procedure.gd")
+const WoSim = preload("res://sim/workorders.gd")
 const RunSave = preload("res://ui/run_save.gd")
 const Autosave = preload("res://ui/autosave.gd")
 const App = preload("res://tests/ui_app.gd")
@@ -318,11 +319,20 @@ func _round_trip_wo(p: Array) -> void:
 	renumbered[0] = "WO-0007"
 	var badclock := rec.duplicate(true)
 	badclock[1] = [1, 2, 3]
+	var full := []          # the run's history at its limit (REALISM.md §2.21) is taken; one more is refused
+	for i in WoSim.RUN_HISTORY:
+		full.append(rec.duplicate(true))
+	var t_full := cap0.duplicate(true)
+	t_full["wo_history"] = full
+	if Autosave._engine_contents(f2, t_full) != "":
+		p.append("realism wo: a save with a full history was refused: %s" % Autosave._engine_contents(f2, t_full))
+	var over := full.duplicate(true)
+	over.append(rec.duplicate(true))
 	for c in [{"wo": {"wo_pump": 9, "wo_gauge": 3, "wo_valve": 0}}, {"wo": {"wo_pump": 4}},
 			{"wo": {"wo_pump": 4, "wo_gauge": 3, "wo_valve": 1}}, {"wo": {"wo_pump": 3, "wo_gauge": 3, "wo_valve": 0}},
 			{"wo_rec": {"wo_pump": short}}, {"wo_rec": {"wo_pump": other}}, {"wo_rec": {"wo_fan": rec}},
 			{"wo_rec": {"wo_pump": badclock}}, {"wo_no": {"wo_pump": 3}}, {"wo_no": {"wo_fan": "WO-0009"}},
-			{"wo_history": [short]}, {"wo_count": -1}, {"wo_npc_done": [["wo_fan", "mech1"]]},
+			{"wo_history": [short]}, {"wo_history": over}, {"wo_count": -1}, {"wo_npc_done": [["wo_fan", "mech1"]]},
 			{"wo_npc_done": [["wo_pump"]]}, {"wo_count": 0}, {"wo_rec": {"wo_pump": renumbered}},
 			{"npc_queue": [["wo"]]}, {"npc_queue": [["wo", "wo_fan", "plan", "a_sup", null]]},
 			{"npc_queue": [["wo", "wo_pump", "approve", "a_sup", []]]},
