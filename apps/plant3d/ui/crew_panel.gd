@@ -23,6 +23,7 @@ const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goe
 const W = preload("res://ui/widgets.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const Debrief = preload("res://ui/debrief.gd")
+const Discussions = preload("res://ui/discussions.gd")     # the discussion panel and its radio lines (REALISM.md §6.3.1)
 
 var ui                          # ui/plant_ui.gd
 var body: VBoxContainer
@@ -40,6 +41,8 @@ var _radio_shown := -1          # how many of _radio's lines there were when the
 var _head: Label = null         # the trainee's header line (role, duty, clock) and its text before the clock
 var _head_text := ""
 var _reads: Dictionary = {}     # person -> their read events
+var _disc_parts: Dictionary = {}    # discussion id -> its participants at its last start (the radio's speakers)
+var _disc_closed: Dictionary = {}   # "id|count" -> true: an ended discussion's panel the trainee closed
 var _exchanges: Dictionary = {}  # "step|caller" -> true: a call or message to the trainee missed then (its others too)
 var _said: Dictionary = {}      # "from|message" -> the radio line of its last say (a missed call replaces it)
 
@@ -106,7 +109,7 @@ func _signature(e) -> String:
 			str(cur["task"]) + str(cur["step"]) + str(cur["st"].get("dest", "")) if cur != null else "",
 			(str(e.sp_queue[tr].size()) + "/" + str(e.sp_slots[tr].size())) if tr != -1 else "", e.unacked(ui.inputs.slot),
 			_reads_count(e), e.t_at(ui.inputs.slot), str(e.fast_forward()) if tr != -1 else "", e.J,
-			_safety_sig(e) + _me_sig(e) if tr != -1 else "", ui.phone.sig()]
+			_safety_sig(e) + _me_sig(e) + Discussions.sig(e, tr, _disc_closed) if tr != -1 else "", ui.phone.sig()]
 
 
 ## What else the trainee's part shows (its header's duty, the waiting tasks' priorities, whether a permit is open:
@@ -161,6 +164,8 @@ func _follow(e) -> void:
 		_reads.clear()
 		_said.clear()
 		_exchanges.clear()
+		_disc_parts.clear()
+		_disc_closed.clear()
 	var sm = e._sm
 	var me_id = sm.people[ui.my_person()]["id"] if sm != null and ui.my_person() != -1 else null
 	var me_role = sm.people[ui.my_person()]["role"] if me_id != null else null
@@ -190,6 +195,9 @@ func _follow(e) -> void:
 			_said["call|%s|%s" % [ev[2], ev[4]]] = _radio.size()
 			_radio.append("%s  %s → %s: %s" % [_at(e, ev[0], _j), _call(sm, ev[2]), _to(sm, ev[3]),
 					sm.tasks[ev[4]]["title"] if sm.tasks.has(ev[4]) else ev[4]])
+		elif ev[1] == "discussion" or ev[1] == "point":     # a discussion's lines (REALISM.md §6.3.1)
+			for ln in Discussions.event_lines(sm, ev, _disc_parts):
+				_radio.append("%s  %s: %s" % [_at(e, ev[0], _j), ln[0], ln[1]])
 		elif ev[1] == "read":
 			if not _reads.has(ev[2]):
 				_reads[ev[2]] = []
@@ -286,6 +294,13 @@ func _me(e, sm) -> void:
 		row.add_child(W.label("%d new for you" % e.unacked(ui.inputs.slot), 20, Color(1.0, 0.75, 0.2)))
 		row.add_child(W.button("Seen", func(): ui.inputs.task_ack()))
 		body.add_child(row)
+	var di: int = Discussions.shown(e, pi, _disc_closed)
+	if di != -1:                        # (REALISM.md §6.3.1)
+		var key := "%s|%d" % [sm.discuss["list"][di]["id"], e.dsc[di]["count"]]
+		Discussions.build(ui, e, body, di, pi, func():
+			_disc_closed[key] = true
+			_sig = ""
+			refresh())
 	var cur = e.sp_cur[pi]
 	if cur == null:
 		body.add_child(W.label("No task now.", 18, W.DIM))
@@ -395,6 +410,9 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 		return "Wait: " + (str(s["wait"].get("until")) if s["wait"].has("until") else "permit %s" % str(s["wait"]["permit"]))
 	if s.has("meet"):
 		return "Meet in the %s" % String(s["meet"]["room"]).replace("_", " ")
+	if s.has("discuss") and sm.discuss != null:     # (REALISM.md §6.3.1)
+		var dd: Dictionary = sm.discuss["list"][sm.discuss["ix"][s["discuss"]]]
+		return "Discuss in the %s: %s" % [String(dd["room"]).replace("_", " "), dd["title"]]
 	if s.has("ride"):
 		return "The bus from %s to %s (or walk)" % [_place_name(sm, s["ride"]["from"]), _place_name(sm, s["ride"]["to"])]
 	if s.has("sleep"):
@@ -454,7 +472,7 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 	body.add_child(row)
 	# a work step counts down only where it started (§17.3): a trainee called away in the middle (a lock elsewhere,
 	# a task of a higher priority) is taken back there
-	if s.has("go") or s.has("meet") or s.has("lock") or s.has("unlock") or s.has("work"):
+	if s.has("go") or s.has("meet") or s.has("discuss") or s.has("lock") or s.has("unlock") or s.has("work"):
 		var dest = cur["st"].get("dest", cur["st"].get("place"))
 		if s.has("lock") or s.has("unlock") or (dest != null and dest < 0):
 			dest = null         # (a work step begun between places: no place to go back to)

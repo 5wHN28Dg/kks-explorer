@@ -6326,6 +6326,8 @@ REJECTS_DISCUSS = [
     ('an outcome task that is not there', 'bad_ref', _dc(lambda d: SET(d['agreements'][0]['outcome'], 'task', 'flee')), "no task 'flee'"),
     ('an outcome task that reaches the lead\'s own task', 'bad_ref', _dc_task('stop_pump', lambda t: t['steps'].append(
         {'choose': [[1, 'debate_pump']]})), 'reaches itself'),
+    ('an outcome task with a step the lead\'s role may not take', 'authority', _dc_task('stop_pump', lambda t: t['steps'].insert(
+        1, {'permit': {'work': 'wo_pump', 'action': 'accept'}, 'else': 2})), 'role shift_sup lacks accept'),
     ('nine agreements', 'bad_length', _dc(lambda d: SET(d, 'agreements', [d['agreements'][0]] * 8 + [d['agreements'][2]])), '[0].agreements'),
     ('a discuss step naming no discussion', 'bad_ref', _dc_task('debate_pump', lambda t: SET(t['steps'][0], 'discuss', 'pay')), "no discussion 'pay'"),
     ('a discuss step without discussions.json', 'unknown_key', lambda F: F.pop('discussions.json'), 'the plant has no discussions.json'),

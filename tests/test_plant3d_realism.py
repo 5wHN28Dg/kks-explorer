@@ -1393,6 +1393,15 @@ class DiscussVectors(PartVectors, unittest.TestCase):
         vals = self.st['runs'][2]['states'][-1]['values']
         self.assertEqual(vals['valve_shut'], 0.0)
 
+    def test_outcome_runs_for_the_lead_alone(self):
+        """An outcome task runs in the lead's task only (REALISM.md §6.3.1): a step only the lead's role may take
+        (the shift supervisor's permit request, which the technician and the electrical authorised person, the
+        joiners, lack) is valid in it."""
+        F = G.discuss_files()
+        next(t for t in F['staff.json']['tasks'] if t['id'] == 'stop_pump')['steps'].insert(
+            1, {'permit': {'work': 'wo_pump', 'action': 'request'}, 'else': 2})
+        P.check_files({k: v if isinstance(v, bytes) else json.dumps(v).encode() for k, v in F.items()})
+
     def test_session_first_pick_counts(self):
         """A session: a slot whose person is not a participant (authority), a slot playing nobody (authority); the
         supervisor's and the technician's picks of one point in one step: the first in the commit's order counts."""

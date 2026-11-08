@@ -19,6 +19,7 @@ const Tracker = preload("res://ui/procedure_tracker.gd")
 const W = preload("res://ui/widgets.gd")
 const Pendant = preload("res://ui/pendant.gd")
 const Hse = preload("res://sim/hse.gd")
+const Disc = preload("res://sim/discuss.gd")    # the discussions' state (REALISM.md §6.3.1)
 
 const INTERVAL := 5.0           # seconds of real time between saves while the run changes
 
@@ -487,7 +488,7 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 				"task_ack": [1], "arrive": [2], "leave": [2], "read": [3, 4], "say": [3], "pick": [2], "call": [4],
 				"jump": [2], "ppe": [3], "zone": [3], "stop": [2], "board": [3], "alight": [3],
 				"get_on": [2], "drive": [3, 4], "weather": [2], "tool": [4], "hand": [6], "audio": [2], "phone": [2],
-				"jsa": [5], "talk": [4], "wo": [5]}
+				"jsa": [5], "talk": [4], "wo": [5], "discuss": [4]}
 		for q0 in d["queue"]:
 			var q = q0
 			# a session run's inputs end with their slot (§17.13): looked at without it
@@ -547,6 +548,10 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 	var wow := _wo_contents(fresh, d)
 	if wow != "":
 		return wow
+	if d.has("dsc"):                    # the discussions (REALISM.md §6.3.1): one per discussion of the content
+		var dw: String = Disc.contents(fresh._sm, d["dsc"])
+		if dw != "":
+			return dw
 	# permits and isolations (PLANT3D §15): states, holders and locks the engine indexes with, and that agree
 	if d.has("pstate"):
 		for s in d["pstate"]:

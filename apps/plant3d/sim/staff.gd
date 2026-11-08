@@ -14,6 +14,7 @@ extends RefCounted
 const Hands = preload("hands.gd")    # the hands-on engine's steps (REALISM.md §2.13)
 const Hse = preload("hse.gd")        # JSAs and toolbox talks (REALISM.md §8.6)
 const WorkOrders = preload("workorders.gd")    # work orders' steps and reactions (REALISM.md §2.20)
+const Disc = preload("discuss.gd")   # discussions (REALISM.md §6.3.1)
 
 const DAY := 864000
 const MINUTE := 600
@@ -111,6 +112,7 @@ var drive_no := PackedInt32Array()   # per place: its number among the stops and
 var drive_places := PackedInt32Array()   # the stops and depots, in place order
 var drive_next: Array = []           # per drive number: PackedInt32Array of the next drive number to each, -1
 # personal audio and the phone (REALISM.md §8.5), only with staff.json's `audio`
+var discuss = null                   # discussions.json read (REALISM.md §6.3.1; discuss.gd read), or null
 var has_audio := false
 var kinds: Array = ACT_KINDS         # the act kinds: ACT_KINDS, with `audio` + AUDIO_KINDS
 var nk := 3                          # their count
@@ -396,6 +398,12 @@ func _build(m, doc: Dictionary) -> void:
 			for s in tasks[x]["steps"]:
 				if s.has("call"):
 					callable[r["id"] + "\n" + s["call"]["role"] + "\n" + s["call"]["task"]] = true
+	if m.discuss_doc != null:           # REALISM.md §6.3.1: read with the rooms, roles and tasks, before the steps
+		var dr = Disc.read(m.discuss_doc, self, m)
+		if typeof(dr) == TYPE_STRING:
+			_fail("discussions.json: " + dr)
+			return
+		discuss = dr
 	for t in tasks.values():
 		for s in t["steps"]:
 			if s.has("go") and typeof(s["go"]) == TYPE_STRING and s["go"] != "home" and not pix.has(s["go"]):
@@ -403,6 +411,8 @@ func _build(m, doc: Dictionary) -> void:
 			if s.has("wo") and (m.wo_ids == null or typeof(s["wo"]) != TYPE_DICTIONARY \
 					or not WorkOrders.ACTIONS.has(s["wo"].get("action"))):
 				_fail("task %s: a wo step the engine can't run (REALISM.md §2.20)" % t["id"])
+			if s.has("discuss") and (discuss == null or not discuss["ix"].has(s["discuss"])):
+				_fail("task %s: a discuss step the engine can't run (REALISM.md §6.3.1)" % t["id"])
 			if s.has("unlock"):
 				if not unlocks.has(t["id"]):
 					unlocks[t["id"]] = {}
@@ -1278,6 +1288,8 @@ func step(e) -> void:
 				if e.st_session:
 					ev.append(slot)
 				e._ev(ev)
+			elif item[0] == "discuss":  # (nobody to take part, REALISM.md §6.3.1)
+				Disc.t_discuss(self, e, -1, item)
 			continue
 		if (item[0] == "arrive" or item[0] == "leave") and e.sp_aboard[tr] != -1:
 			continue                    # (ignored aboard a vehicle, §21.4)
@@ -1315,6 +1327,8 @@ func step(e) -> void:
 			t_audio(e, tr, item[1], slot)
 		elif item[0] == "phone":
 			t_phone(e, tr, item[1], slot)
+		elif item[0] == "discuss":      # a pick at a discussion's point (REALISM.md §6.3.1)
+			Disc.t_discuss(self, e, tr, item)
 	if pr:
 		pt = _prof(e, 0, pt)
 	# 1. duties, then slots
@@ -2259,6 +2273,8 @@ func run(e, pi: int, cur: Dictionary):
 		return "next"
 	if s.has("meet"):
 		return meet(e, pi, cur, s["meet"], false)
+	if s.has("discuss"):                # REALISM.md §6.3.1
+		return Disc.step(self, e, pi, cur, s["discuss"], false)
 	if s.has("say"):
 		say(e, pi, s["say"], s["to"])
 		return "next"
@@ -3772,6 +3788,8 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 					break
 		elif s.has("meet"):
 			r = meet(e, pi, cur, s["meet"], true)
+		elif s.has("discuss"):          # REALISM.md §6.3.1: as an NPC's; their picks are inputs (step 1)
+			r = Disc.step(self, e, pi, cur, s["discuss"], true)
 		elif s.has("sleep"):            # §21.3: done once the clock reaches T, wherever they are
 			if not x.has("T"):
 				x["T"] = sleep_until(e, pi, s["sleep"]["until"])

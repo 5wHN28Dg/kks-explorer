@@ -502,13 +502,8 @@ def tasks():
         return [{'permit': {'work': work, 'action': 'request'}, 'else': last}]
 
     def outcome(tid, title, steps):
-        """An agreement's outcome: the lead (their task goes on as it) has a person of their own role do it. The
-        reference validator gives an outcome every role whose task carries the discussion's step, the joiners' too
-        (as `choose`'s targets), so the outcome itself holds only steps any role may take, and its call gives the
-        lead's role alone the steps that need an authority (the permit request)."""
-        lead = next(d['roles'][0] for d in DISCUSSIONS for a in d['agreements'] if a['outcome'].get('task') == tid)
-        task(tid, title, [{'call': {'role': lead, 'task': f'{tid}_do'}}, {'work': 1}])
-        task(f'{tid}_do', title, steps)
+        """An agreement's outcome: it runs in place of the rest of the lead's task, for the lead's role alone."""
+        task(tid, title, steps)
     # cw_a_vib
     outcome('dsc_cw_a_stop', 'CW pump A out today: change to C and ask for the bearings\' permit', [
         {'call': {'role': 'ccr_op', 'task': 'dsc_cw_swap'}}] + ask('wo_cw_a_brg', 2) + [

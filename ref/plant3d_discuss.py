@@ -171,6 +171,11 @@ def outcomes(st, s):
     return [a['outcome']['task'] for a in d['agreements'] if 'task' in a['outcome']]
 
 
+def lead_role(st, s):
+    """The role whose `discuss` step leads the discussion (its first role): the one its outcome tasks run for."""
+    return st.discuss['list'][st.discuss['ix'][s['discuss']]]['roles'][0]
+
+
 # ---------------------------------------------------------------- the engine (§6.3.1)
 
 def _inst(sr, di):

@@ -1293,8 +1293,9 @@ class Staff:
                     if 'choose' in s:
                         targets = [(x, runs[t['id']], works[t['id']]) for _, x in s['choose']]
                     if 'discuss' in s:      # (an outcome: the lead's task goes on as it, REALISM.md §6.3.1)
-                        from ref import plant3d_discuss as DC
-                        targets = [(x, runs[t['id']], works[t['id']]) for x in DC.outcomes(self, s)]
+                        from ref import plant3d_discuss as DC     # (the lead's role alone: a joiner's step has none)
+                        lead = {DC.lead_role(self, s)} & runs[t['id']]
+                        targets = [(x, lead, works[t['id']]) for x in DC.outcomes(self, s)]
                     if 'call' in s:
                         c = s['call']
                         wk = works[t['id']] if c.get('work', '$') == '$' else {c['work']}
