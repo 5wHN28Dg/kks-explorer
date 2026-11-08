@@ -22,7 +22,14 @@ var section := ""
 var code := ""                  # the equipment it was opened from ("" none): its own data in the `unit` block
 var history: Array = []         # [[manual, section]] for Back
 var open_ms := 0.0              # the last page's build, ms
-var page_ms := {}               # "manual#section" -> its longest build, ms (walk=manuals)
+var page_ms := {}               # "manual#section" -> its longest build, to its first frame complete, ms (walk=manuals)
+var building := false           # the page's blocks still being added (a few each frame: the frame rule)
+var frame_ms_max := 0.0         # the longest the reader's own work took in one frame, ms (walk=manuals)
+const FRAME_BUDGET_MS := 6.0    # the page's blocks and table rows added each frame, at most this long
+var _jobs: Array = []           # the page's work left: Callables that each add one block or one table row
+var _page_t0 := 0               # the page's start (µs)
+var _page_key := ""
+var _waiting: Array = []        # [TextureRect, file]: figures decoded on a worker thread, shown when ready
 var last_note := ""             # the last sentence shown (a link that could not be followed), for the tests
 var root: Control
 var title: Label
@@ -205,12 +212,6 @@ func _input(ev: InputEvent) -> void:
 		root.get_viewport().set_input_as_handled()   # (scrolled in _process: the stick's position, not its events)
 
 
-func _process(delta: float) -> void:
-	if not visible:
-		return
-	var y := Input.get_joy_axis(0, JOY_AXIS_LEFT_Y) if not Input.get_connected_joypads().is_empty() else 0.0
-	if absf(y) > 0.2:
-		scroll.scroll_vertical += int(y * 1600.0 * W.scale * delta)
 
 
 ## A gamepad's focus: the current section's button in the contents.
@@ -244,18 +245,15 @@ func _show(id: String, sec: String) -> void:
 			b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			contents.add_child(b)
 	_mark_contents()
+	_page_t0 = t0
+	_page_key = id + "#" + sec
 	_build_page(m, sec)
 	scroll.scroll_vertical = 0
+	_pump(FRAME_BUDGET_MS)              # the title and the first blocks at once; the rest over the next frames
 	open_ms = (Time.get_ticks_usec() - t0) / 1000.0
 	opened.emit(id, sec)
 	if ui != null and ui.has_method("wants_focus") and ui.wants_focus():
 		take_focus()
-	# to the page's first frame (its text laid out and shaped then): what the reader waits for
-	var key := id + "#" + sec
-	await root.get_tree().process_frame
-	if man_id == id and section == sec:
-		var shown := (Time.get_ticks_usec() - t0) / 1000.0
-		page_ms[key] = maxf(shown, float(page_ms.get(key, 0.0)))
 
 
 func _mark_contents() -> void:
@@ -272,9 +270,59 @@ func go(sec: String) -> void:
 	_show(man_id, sec)
 
 
+## Adds the page's next blocks and table rows for at most `budget_ms` (at least one).
+func _pump(budget_ms: float) -> void:
+	var t0 := Time.get_ticks_usec()
+	while not _jobs.is_empty():
+		var j: Callable = _jobs.pop_front()
+		j.call()
+		if (Time.get_ticks_usec() - t0) / 1000.0 >= budget_ms:
+			break
+	building = not _jobs.is_empty()
+	if not building and _page_key != "":
+		_page_built(_page_key, _page_t0)
+		_page_key = ""
+
+
+## The page complete: its time to the end of the next frame (its text laid out and shaped then).
+func _page_built(key: String, t0: int) -> void:
+	await root.get_tree().process_frame
+	if man_id + "#" + section == key:
+		var shown := (Time.get_ticks_usec() - t0) / 1000.0
+		page_ms[key] = maxf(shown, float(page_ms.get(key, 0.0)))
+
+
+## The whole page at once (the tests, and anything that looks for a block straight after opening).
+func finish_page() -> void:
+	_pump(INF)
+
+
+func _process(delta: float) -> void:
+	if not visible:
+		return
+	var y := Input.get_joy_axis(0, JOY_AXIS_LEFT_Y) if not Input.get_connected_joypads().is_empty() else 0.0
+	if absf(y) > 0.2:
+		scroll.scroll_vertical += int(y * 1600.0 * W.scale * delta)
+	var t0 := Time.get_ticks_usec()
+	if building:
+		_pump(FRAME_BUDGET_MS)
+	for i in range(_waiting.size() - 1, -1, -1):
+		var w: Array = _waiting[i]
+		if not is_instance_valid(w[0]):
+			_waiting.remove_at(i)
+			continue
+		var tex: Texture2D = manuals.poll_figure(String(w[1]))
+		if tex != null or not manuals.figure_pending(String(w[1])):
+			(w[0] as TextureRect).texture = tex
+			_waiting.remove_at(i)
+	frame_ms_max = maxf(frame_ms_max, (Time.get_ticks_usec() - t0) / 1000.0)
+
+
 func _build_page(m: Dictionary, sec: String) -> void:
 	W.clear(page)
 	_links.clear()
+	_jobs.clear()
+	_waiting.clear()
 	var s: Dictionary = {}
 	var at := 0
 	for i in m["sections"].size():
@@ -283,9 +331,14 @@ func _build_page(m: Dictionary, sec: String) -> void:
 			at = i
 	page.add_child(_rich("[font_size=%d][b]%s[/b][/font_size]" % [int(30 * W.scale), _bb(s["title"])]))
 	for b in s["blocks"]:
-		var c := _block(b, m)
-		if c != null:
-			page.add_child(c)
+		_jobs.append(func():
+			var c := _block(b, m)
+			if c != null:
+				page.add_child(c))
+	_jobs.append(func(): _footer(m, s, at))
+
+
+func _footer(m: Dictionary, s: Dictionary, at: int) -> void:
 	if not s.get("src", []).is_empty():
 		var cites: Array = []
 		for sid in s["src"]:
@@ -370,10 +423,15 @@ func _block(b: Dictionary, m: Dictionary) -> Control:
 func _figure(f: Dictionary) -> Control:
 	var v := VBoxContainer.new()
 	v.name = "figure_" + String(f["id"])
-	var tex: Texture2D = manuals.figure(String(f["file"]))
-	if tex != null:
+	var file := String(f["file"])
+	if manuals.has_figure(file):
+		# decoded on a worker thread (a 960 × 600 WebP takes tens of ms on a phone): shown when ready
 		var tr := TextureRect.new()
-		tr.texture = tex
+		tr.name = "picture"
+		tr.texture = manuals.poll_figure(file)
+		if tr.texture == null:
+			manuals.request_figure(file)
+			_waiting.append([tr, file])
 		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		# the page's width (before its first layout, from the screen less the contents)
@@ -414,12 +472,18 @@ func _table(head: Array, rows: Array) -> Control:
 		c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		c.custom_minimum_size.x = 80 * W.scale
 		g.add_child(c)
+	# the rows a few at a time, before the page's next block (a long parts list would hold one frame up)
+	var row_jobs: Array = []
 	for r in rows:
-		for cell in r:
-			var c := _rich(_bb(cell))
-			c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			c.custom_minimum_size.x = 80 * W.scale
-			g.add_child(c)
+		row_jobs.append(func():
+			if not is_instance_valid(g):
+				return
+			for cell in r:
+				var c: Control = _cell(cell)
+				c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				c.custom_minimum_size.x = 80 * W.scale
+				g.add_child(c))
+	_jobs = row_jobs + _jobs
 	var p := PanelContainer.new()
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = PAPER.darkened(0.03)
@@ -429,6 +493,19 @@ func _table(head: Array, rows: Array) -> Control:
 	p.add_theme_stylebox_override("panel", sb)
 	p.add_child(g)
 	return p
+
+
+## A table cell: a Label for plain words (cheaper than rich text, which a long table has many of), else rich text.
+func _cell(run) -> Control:
+	var plain: bool = run is String or (run as Array).all(func(x): return x is String)
+	if plain:
+		var l := Label.new()
+		l.text = run if run is String else "".join(run)
+		l.add_theme_color_override("font_color", INK)
+		l.add_theme_font_size_override("font_size", int(20 * W.scale))
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		return l
+	return _rich(_bb(run))
 
 
 func _rule() -> Control:

@@ -16,6 +16,7 @@ var work := {}                  # "<part>:<action>" -> [manual, section]
 var workshop := {}              # "<kind>:<component>" -> [manual, section]
 var _loaded := {}               # manual id -> its data
 var _figures := {}              # file -> ImageTexture
+var _tasks := {}                # file -> [worker task id, {img}]: being decoded
 
 
 func _init(from := DIR) -> void:
@@ -64,22 +65,66 @@ func manual(id: String) -> Dictionary:
 	return out
 
 
-## A figure's picture (decoded on first use), null when missing.
+## A figure's picture (decoded now if it isn't yet), null when missing.
 func figure(file: String) -> Texture2D:
+	request_figure(file)
+	if _tasks.has(file):
+		_finish(file)
+	return poll_figure(file)
+
+
+## Waits for a figure's task (once: the pool forgets a task's id when it has been waited for).
+func _finish(file: String) -> void:
+	var t: Array = _tasks[file]
+	if not t[1].get("waited", false):
+		WorkerThreadPool.wait_for_task_completion(t[0])
+		t[1]["waited"] = true
+
+
+func has_figure(file: String) -> bool:
+	return FileAccess.file_exists(dir.path_join(file))
+
+
+## Starts decoding a figure on a worker thread (once).
+func request_figure(file: String) -> void:
+	if _figures.has(file) or _tasks.has(file):
+		return
+	var holder := {"img": null}
+	var p := dir.path_join(file)
+	var id := WorkerThreadPool.add_task(func():
+		if FileAccess.file_exists(p):
+			var img := Image.new()
+			if img.load_webp_from_buffer(FileAccess.get_file_as_bytes(p)) == OK:
+				holder["img"] = img)
+	_tasks[file] = [id, holder]
+
+
+func figure_pending(file: String) -> bool:
+	return _tasks.has(file)
+
+
+## The figure's picture when decoded (the texture made here, on the main thread), else null.
+func poll_figure(file: String) -> Texture2D:
 	if _figures.has(file):
 		return _figures[file]
-	var tex: Texture2D = null
-	var p := dir.path_join(file)
-	if FileAccess.file_exists(p):
-		var img := Image.new()
-		if img.load_webp_from_buffer(FileAccess.get_file_as_bytes(p)) == OK:
-			tex = ImageTexture.create_from_image(img)
+	if not _tasks.has(file):
+		return null
+	if not _tasks[file][1].get("waited", false):
+		if not WorkerThreadPool.is_task_completed(_tasks[file][0]):
+			return null
+		_finish(file)
+	var img: Image = _tasks[file][1]["img"]
+	_tasks.erase(file)
+	var tex: Texture2D = ImageTexture.create_from_image(img) if img != null else null
 	_figures[file] = tex
 	return tex
 
 
 ## Drops the decoded figures (the reader closed).
 func forget_figures() -> void:
+	for f in _tasks:
+		_finish(f)
+	_tasks.clear()
 	_figures.clear()
 
 
