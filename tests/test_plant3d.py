@@ -73,17 +73,19 @@ class Content(unittest.TestCase):
         self.assertGreaterEqual(c['equipment'], 150)
         self.assertGreaterEqual(c['pipes'], 25)
         self.assertGreaterEqual(c['tours'], 1)
-        self.assertEqual(c['procedures'], 9)          # the cold start, the hot restart, the WTP's three (W2) and two (W3),
-        #                                               the roof hoist's and the crane's lifts (§20.5)
+        self.assertEqual(c['procedures'], 10)         # the cold start, the hot restart, the WTP's three (W2) and two (W3),
+        #                                               the roof hoist's and the crane's lifts (§20.5), the GT's offline
+        #                                               compressor wash (WX2)
         self.assertLessEqual(c['values'], P.MAX['values'])
 
     def test_screens_show_every_code_of_the_model(self):
         """§7.11: every code the model has something for is on exactly one control room screen or left out, each
-        screen the user asked for (2026-10-19) has its systems, and the first train leaves out only hand valves."""
+        screen the user asked for (2026-10-19) has its systems, and the first train leaves out only hand valves and the
+        step-up transformer's surge arrester counter (read at the transformer, WX2)."""
         items = P.screen_items(self.m)
         placed = self.b.screen_of
         left = set(items) - set(placed)
-        self.assertEqual(left, {'30PAB10AA401', '30PAB10AA402', '30PAB10AA403', '30PAB10AA404'})
+        self.assertEqual(left, {'30PAB10AA401', '30PAB10AA402', '30PAB10AA403', '30PAB10AA404', '10BAT10'})
         by_screen = {}
         for code, (sid, _) in placed.items():
             by_screen.setdefault(sid, set()).add(code)
@@ -1671,7 +1673,8 @@ class HotRestart(unittest.TestCase):
         end = t['snapshots'][-1]
         self.assertEqual((end['alarms'], end['tripped']), ({}, []))
         self.assertEqual(end['machines']['st_start'], 'loaded')
-        self.assertGreaterEqual(end['values']['gt1_mw'], 249)
+        # base load: 249 MW, or what the day's air, filters and fouling give (REALISM.md §5.7, WX2)
+        self.assertGreaterEqual(end['values']['gt1_mw'], end['values']['gt1_base_mw'])
 
     def test_the_casing_starts_hot_and_the_steam_cold(self):
         sc = self.b.scenarios['hot_restart']
@@ -1718,7 +1721,7 @@ class ColdStart(unittest.TestCase):
         self.assertEqual(end['machines']['gt1_start'], 'loaded')
         self.assertEqual(end['machines']['st_start'], 'loaded')
         v = end['values']
-        self.assertGreaterEqual(v['gt1_mw'], 249)
+        self.assertGreaterEqual(v['gt1_mw'], v['gt1_base_mw'])     # (WX2: the day's base load, REALISM.md §5.7)
         self.assertGreaterEqual(v['st_mw'], 120)
         self.assertLess(v['cond_p'], 11)                    # ~10 kPa(a) at full load on a hot day, two CW pumps less
         self.assertLess(v['hp_byp_pos'], 0.05)

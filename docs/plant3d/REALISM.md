@@ -1203,6 +1203,95 @@ weather on, seeded by season.
   Free play keeps the season's weather.
   Figures measured before compare with these clear-weather runs (§5.5 measured the weather's own cost).
 
+### 5.7 As built for milestone WX2 (2026-11-08: the weather in the model)
+
+- **Where:** `tools/plant3d/train_wx.py` (every table, value, fault, work and the procedure), hooked into
+  `train_model.py` (gt1, ct), `train_weather.py` (the air's tables), `train_ageing.py` (the fans' ice and readings, the
+  ages), `train_content.py`, `train_staff.py` and `train_screens.py`; `tools/plant3d/staff_layout.json` gained the
+  work places of the filter house and the excitation cabinet (measured on the built plant's mesh, nothing else moved).
+  Tests: `tests/test_plant3d_wx.py`, the forks `wx_*` of `plant3d-v1.json` (checked as every fork by
+  `tests/test_plant3d.py`, replayed by the GDScript engine). No engine change: every piece is a node kind, fault,
+  work or machine that both engines had.
+- **The air:** weather.json drives `ambient_t` and `ambient_wb` (lag 60 clock minutes each), appended after WX3's
+  seven values so that each keeps its place; a table per kind (summer's `hot` day 34 °C at 06:00 to 47 °C at 15:00
+  with a wet bulb of 24–25 °C, matching the cold start's 35/25 at its start; `cold_clear` −3 °C at dawn, the only kind
+  below 0). The wet bulb is at or below the dry bulb at every hour of every kind, and both lag alike.
+- **The gas turbine** ([GER3567], [GER3620]): what the day gives, `gt1_cap` = 250 MW × the ambient factor (1 at 35 °C,
+  FIRST-TRAIN's rating; 0.55 % of the ISO output a kelvin) × the inlet pressure drop's (1.42 % a 10 mbar) × the
+  compressor fouling's; the load is the least of the setpoint, the HRSG runback, the capability and the filters'
+  runback. The setpoint's top stays 250 MW (the generator's and the transformer's rating), so a cool day shows as a
+  lower heat rate and margin, a hot one as less output. **Base load** (`gt1_at_base`, which the cold start's and the
+  hot restart's `gt_load` steps wait for) is 249 MW or, when the day gives less, its capability less 1 MW. The **load
+  fraction** that drives the exhaust, the HRSG's sliding pressure and the fuel demand is of that base load (at base
+  load the machine fires at its limit whatever the air; its lost output is mostly the compressor's lighter air, the
+  exhaust's heat changes little), so the HRSG and the steam turbine see base load as before. The **heat rate**
+  (`gt1_hr`, on the GT screen): 9,750 kJ/kWh at base and 35 °C × ambient, part load, fouling and pressure drop
+  factors.
+- **The inlet filters:** a cake (kg, the dust caught: `dust` × the air's flow) that pulse cleaning removes on demand
+  at 6.5 mbar, and a residue (2 % of what is caught) that only new cartridges remove; the pressure drop goes with the
+  flow's square (2.5 mbar clean at full flow). Alarm at 9 mbar, runback to 150 MW at 11 mbar, cleared below 7. Both
+  follow the dust hour for hour, not the training rate (it compresses the calendar between storms, not a storm); the
+  scenario's age gives the residue of the months before. A trainer's fault stops the pulse cleaning
+  (`gt1_pulse`, its work `wo_gt1_pulse`); `wo_gt1_filters` changes the cartridges with the GT stopped and renews both.
+- **Compressor fouling:** two wears in equivalent hours of firing (× the training rate), faster in dust (the fine dust
+  the filters pass: ×2 at 1.5 mg/m³) and damp air (×1.6 with the wet bulb at the dry bulb): what online washes remove
+  levels off near 2.7 % of output; the rest grows to 4 % in 6,000 hours until an offline wash. The washes are the
+  machine `gt1_wash` on the GT screen: `wash_online` at load above 150 MW (ten minutes of model time, resets the first
+  wear), `wash_offline` with the GT at rest on its turning gear and the wheel spaces below 95 °C (half an hour, resets
+  both; a start is refused meanwhile). The offline wash is the procedure `gt_wash_offline` from cold iron. **The online
+  wash is no procedure:** a procedure starts from its scenario's start, and no scenario starts with the GT loaded; it
+  is an op with its permissives and the fork `wx_wash_online`.
+- **The cooling tower:** the approach × a factor of the wet bulb (1 at the design 25 °C, 1.6 at 5 °C, 0.85 at 32 °C:
+  colder air takes less heat a kelvin, [Perry], [CTI]); ice on the running fans below 2 °C (up to 5 mm/s on their
+  probes at −3 °C, building and melting over a clock hour), so a frosty night brings the fans' vibration alarms.
+- **Instruments in the weather:** the basin level transmitter's impulse line (no heat tracing) cools with the air
+  over a clock hour; below 0 °C the fault `ct_lvl_frozen` (made once) holds the reading (`hold`, §15.4) while the line
+  stays below 3 °C, and the makeup's automatic, the screens and the basin alarms read the held value (the basin
+  level's code moved from the process value to the reading); `wo_ct_lvl_thaw` thaws it and fits tracing. Fan 7's probe
+  has a junction box with a poor gland: the rain it takes against a drawn amount (3–30 mm) makes `ct_fan7_ingress`,
+  its reading climbing 9 mm/s over 20 minutes, with two hidden causes (water, weight 4; the electronics, weight 1);
+  `wo_ct_fan7_cy` finds and puts it right and renews the gland's count. **Lightning:** storm seconds between strikes
+  near the plant (drawn: 2 minutes to an hour, median 17) counted by the step-up transformer's surge arrester counter
+  (`ln_count`, read at the transformer, not on a screen); the drawn strike (the 1st to the 12th) whose surge reaches
+  fan 9's vibration loop sends it to full scale (`ct_fan9_surge`): the fan's protection trips it, a nuisance trip;
+  `wo_ct_fan9_cy` replaces the transmitter and its surge protector. The fans' protection and alarms read fans 7 and
+  9's readings (their codes moved to them); the vibration collector still measures the true vibration, which tells a
+  false reading from a real one.
+- **Dust in a panel:** the excitation cabinet's air filters (equivalent hours while it excites, × the dust: ×2 at
+  1.5 mg/m³) raise its temperature over the air from 4 K to 22 K; the alarm at 55 °C; `wo_gen1_cab` replaces them
+  with the excitation off. Outdoor displays fading in the sun is drawn (the app's), left for later.
+- **Not in WX2:** the heat on electrical plant (§5.2's derating tables and an electronic room's air conditioning)
+  is not in MILESTONES' WX2 row and is left for a later milestone; slippery stairs, stopped outdoor work and the
+  sandstorm's PPE are WX4's.
+- **Ages:** `world.age` starts the residue (5.1 kg a month, new cartridges at 200 kg), the offline fouling (quarterly
+  washes), the online fouling (daily washes) and the cabinet's filters (every six months) at their months less their
+  renewals: the hot restart two months on, `shift_aged` 30.
+- **Staff:** the four faults are on the supervisor's generic fault reaction (each asks for its work's permit); the six
+  works add 36 tasks (496 of 800).
+- **The forks** (base load at the cold start's end, about 17:00 on the summer day, the instructor holding a kind:
+  the seeded chain goes on from the instructor's kind at each clock hour, so when an hour's draw moves it the
+  instructor sets it again in the next step, `weather_hold` in `ref/make_plant3d_vectors.py`): `wx_sandstorm_pulsed`
+  (four clock hours: pulsing holds the drop at 6.5 mbar, no alarm), `wx_sandstorm_no_pulse` (the pulse fault: the
+  alarm after 2.2 clock hours, the runback to 150 MW after 2.7), `wx_wash_online`, `wx_wash_offline_refused` (at
+  load), `wx_wash_offline` (from the cold start's turning gear step; a start refused during it), `wx_cold_night`
+  (`cold_clear` held: the line freezes before dawn, ice brings the fans' alarms), `wx_thunderstorm` (water in fan 7's
+  box after 0.6 clock hours, its cause drawn `water`; the strike reaches fan 9's loop after 4 hours and trips it).
+- **Every earlier run, made again and compared with main's:** every earlier value that the air moves changes (the air
+  is no longer a constant 35/25 in any scenario with weather, as §5.1 says; §2's "every earlier value the same"
+  cannot hold for what reads `ambient_t` or `ambient_wb`), and with them the step numbers. What stays: in
+  `plant3d-v1.json`'s `train` and `hot` and `plant3d-v2.json`'s `train`, every input and every event, in the same
+  order, only their step numbers moved from the HRSG warm-up on (the drum warms a little faster; the GT reaches its
+  day's base load, 225 MW at 45.7 °C in the cold start and 229 MW at 42.3 °C in the hot restart instead of 250,
+  sooner); the steam turbine still ends at 120 MW. In every earlier fork every event is there in its order except one
+  `weather` event of `st_trip_no_bypass` that its moved steps no longer reach. The WTP's runs (`wtp`, `wtp_cip`,
+  `wtp_regen`): every input and event the same, step for step; the snapshots' air and what reads it changed. The
+  day and its forks: every input and event the same step for step but the field operators' readings (`read`
+  events' numbers: the bearings and stators follow the air), and in `aged_ccw` the bearing's heat alarm 16 steps
+  earlier and its clearing 197 steps later (hotter air); the machines gained `gt1_wash`. The digests moved with the
+  values. `plant3d-v2.json`'s `staff` and synthetic items, and `plant3d-realism.json`, are byte for byte main's.
+- **The step's cost:** 93 values added (gt1 66, ct 27), within §11's 150 for the weather and the wear budget's 67
+  left by AG2 for the filters and fouling.
+
 ## 6. Documents and discussions
 
 ### 6.1 Generic P&IDs

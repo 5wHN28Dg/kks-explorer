@@ -26,7 +26,7 @@
   ["ct_mk_cmd", {"state": 0, "kks": "30PAR10AA001"}],
   ["ct_drain_open", {"state": 0, "kks": "30PAD10BB001"}],
   ["ct_appr_f", {"of": "ambient_wb", "table": [[-5, 2.0], [5, 1.6], [15, 1.3], [25, 1.0], [32, 0.85]]}],
-  ["ct_ice_k", {"of": "ambient_t", "table": [[-3, 5], [0, 2], [2, 0]], "unit": "mm/s"}],
+  ["ct_ice_k", {"of": "ambient_t", "table": [[-3, 6], [0, 2.5], [2, 0]], "unit": "mm/s"}],
   ["ct_ice", {"lag": "ct_ice_k", "tau": 600, "unit": "mm/s"}],
   ["ct_jb7_rate", {"product": ["rain", 0.000277777777778], "unit": "mm/s"}],
   ["ct_jb7_rain", {"wear": "ct_jb7_rate", "max": 100000, "unit": "mm"}],

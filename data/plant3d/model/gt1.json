@@ -115,7 +115,7 @@
   ["gt1_air_q", {"lag": "gt1_exh_flow", "tau": 1, "unit": "kg/s"}],
   ["gt1_cake_rate", {"product": ["dust", "gt1_air_q", 8.69565e-07], "unit": "kg/s"}],
   ["gt1_filt_cake", {"wear": "gt1_cake_rate", "max": 100, "reset": "gt1_pulse", "unit": "kg"}],
-  ["gt1_res_rate", {"product": ["gt1_cake_rate", "age_rate", 0.02], "unit": "kg/s"}],
+  ["gt1_res_rate", {"product": ["gt1_cake_rate", 0.02], "unit": "kg/s"}],
   ["gt1_filt_res", {"wear": "gt1_res_rate", "max": 1000, "unit": "kg"}],
   ["gt1_flow_sq", {"of": "gt1_air_q", "table": [[0, 0.0], [100, 0.026015], [200, 0.104058], [300, 0.234131], [400, 0.416233], [500, 0.650364], [620, 1.0], [700, 1.274714]]}],
   ["gt1_dp_cake", {"of": "gt1_filt_cake", "table": [[0, 0], [20, 4], [60, 14], [100, 26]], "unit": "mbar"}],

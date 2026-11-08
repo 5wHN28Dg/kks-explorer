@@ -34,7 +34,9 @@ RATING = 250
 INV_CAP = [[c, round(1 / c, 9)] for c in range(100, RATING + 1, 5)]     # 1/MW, by 5 MW (0.06 % at most off)
 AIR_DENSITY = 1.15      # kg/m³ (the exhaust's mass flow stands for the air's: its fuel is about 2 %)
 # the filter house (pulse cartridges, at full flow): the clean media, the cake that pulsing removes, the residue
-# that only new cartridges remove (a share of what is caught, grown at the scenario's training rate like any wear)
+# that only new cartridges remove (a share of what is caught). Both follow the dust the weather brings, hour for hour:
+# not the training rate, which compresses the calendar between storms, not a storm (the scenario's age gives the
+# residue of the months before)
 DP_CLEAN = 2.5          # mbar
 CAKE = [[0, 0], [20, 4], [60, 14], [100, 26]]       # kg of cake → mbar
 RESIDUE = [[0, 0], [100, 2], [200, 5], [400, 12]]   # kg of residue → mbar
@@ -63,7 +65,7 @@ CAB_H = 55                                              # °C: the electronics' 
 
 # ------------------------------------------------------------------------------------------------ the cooling tower
 APPROACH_WB = [[-5, 2.0], [5, 1.6], [15, 1.3], [25, 1.0], [32, 0.85]]  # × the approach at the design 25 °C
-ICE = [[-3, 5], [0, 2], [2, 0]]                         # mm/s on a running fan's probe by the air's °C
+ICE = [[-3, 6], [0, 2.5], [2, 0]]                       # mm/s on a running fan's probe by the air's °C
 ICE_TAU = 600                                           # s (an hour of the clock): the ice builds and melts
 LINE_TAU = 600                                          # s (an hour of the clock): the basin level transmitter's impulse line cools
 JB_RAIN = [[0, 3], [0.5, 10], [1, 30]]                  # mm of rain before the water reaches the terminals
@@ -82,7 +84,7 @@ def gt_values(m):
     m.lag('gt1_air_q', 'gt1_exh_flow', 1, unit='kg/s')
     m.prod('gt1_cake_rate', ['dust', 'gt1_air_q', round(1e-6 / AIR_DENSITY, 12)], 'kg/s')
     m.v('gt1_filt_cake', {'wear': 'gt1_cake_rate', 'max': 100, 'reset': 'gt1_pulse'}, 'kg')
-    m.prod('gt1_res_rate', ['gt1_cake_rate', 'age_rate', RESIDUE_SHARE], 'kg/s')
+    m.prod('gt1_res_rate', ['gt1_cake_rate', RESIDUE_SHARE], 'kg/s')
     m.v('gt1_filt_res', {'wear': 'gt1_res_rate', 'max': 1000}, 'kg')
     m.tab('gt1_flow_sq', 'gt1_air_q', FLOW_SQ)
     m.tab('gt1_dp_cake', 'gt1_filt_cake', CAKE, 'mbar')
