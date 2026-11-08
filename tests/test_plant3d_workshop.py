@@ -195,8 +195,14 @@ class WorkshopData(unittest.TestCase):
     def test_views(self):
         w = copy.deepcopy(self.fixture)
         w['views'] = {'xray_all': ['lid'], 'cutaway': {'planes': [{'normal': [1, 0, 0], 'offset': 0}], 'keep': ['core']},
-                      'run_exploded': {'allowed': ['lid'], 'why': 'Only the lid may be off while it runs.'}}
+                      'run_exploded': {'allowed': ['lid'], 'why': 'Only the lid may be off while it runs.'},
+                      'open_running': {'allowed': ['lid'], 'why': 'Switch it off first: only the lid opens live.'}}
         W.check(w, None, 'w', parts={'test_gadget'})
+        w['views']['open_running']['allowed'] = ['ghost']
+        self.refused(w, 'bad_ref')
+        w['views']['open_running'] = {'allowed': ['lid']}
+        self.refused(w, 'missing_key')
+        del w['views']['open_running']
         w['views']['cutaway']['planes'][0]['normal'] = [1, 1, 0]
         self.refused(w, 'bad_number')
         w = copy.deepcopy(self.fixture)

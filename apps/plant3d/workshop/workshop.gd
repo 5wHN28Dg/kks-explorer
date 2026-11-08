@@ -543,11 +543,23 @@ func apply() -> void:
 func set_slider(v: float) -> void:
 	if guide.on():
 		return   # (the slider waits while the steps are on: Reset or Reassemble all ends them)
+	if bench_running() and _takes_apart(clampf(v, 0.0, 1.0), root_id):
+		note = running_why()   # (back towards assembled is allowed: it opens nothing)
+		if panels != null:
+			panels.sync_slider()
+			panels.selected_changed()
+		return
 	_reassemble_t = -1.0
 	s = clampf(v, 0.0, 1.0)
 	apply()
 
 func set_only_selected(on: bool) -> void:
+	if bench_running() and _takes_apart(s, selected if on and comps.has(selected) else ""):
+		note = running_why()
+		if panels != null:
+			panels.only_cb.set_pressed_no_signal(only_selected)
+			panels.selected_changed()
+		return
 	only_selected = on
 	root_id = selected if on and comps.has(selected) else ""
 	apply()
@@ -587,7 +599,9 @@ func select(id: String) -> void:
 	# with "Selected subassembly only" on, a pick inside the subassembly taken apart looks at it; a pick outside it
 	# takes that one apart instead
 	if only_selected and not (root_id != "" and comps.has(selected) and (selected == root_id or _under(selected, root_id))):
-		root_id = selected if comps.has(selected) else ""
+		var nr := selected if comps.has(selected) else ""
+		if not (bench_running() and _takes_apart(s, nr)):   # (running, a pick doesn't take another part apart)
+			root_id = nr
 	note = why_not_free(selected)   # (the tree's pick says why a part can't be picked up, as the view's does)
 	views.selection_changed()
 	if panels != null:
@@ -669,6 +683,8 @@ func _ancestor_of(a: String, id: String) -> bool:
 func why_not_free(id: String) -> String:
 	if id == "" or not (comps.has(id) or groups.has(id)):
 		return ""
+	if bench_running() and not open_running(id):
+		return running_why()
 	if comps.has(id) or (groups.has(id) and not spec.groups[id].get("beyond", false)):   # (a sealed part's
 		#   bolts to another machine are outside its seal: Assembly.rides_of)
 		var at: String = spec.comps[id].parent if comps.has(id) else String(spec.groups[id].host)
@@ -706,6 +722,11 @@ func _at_home(id: String, off: Dictionary, foff := {}) -> bool:
 ## are cleared first; the slider waits until Reset or Reassemble all ends the steps.
 func start_guide(mode: String, from := "exploded") -> bool:
 	if machine == null or words.get("assembly", []).is_empty() or not mode in ["assemble", "disassemble"]:
+		return false
+	if bench_running():   # (assembling starts from the machine taken apart: that opens it up too)
+		note = running_why()
+		if panels != null:
+			panels.selected_changed()
 		return false
 	_end_guide()
 	_reassemble_t = -1.0
@@ -1044,6 +1065,62 @@ func refusal(at: String, do: String, reasons: Array) -> String:
 					return "%s: not from %s." % [String(o.get("title", do)), bench.machine_state(o.machine)]
 	return "Refused."
 
+## Taking a running machine apart is refused: taking apart, handling and the guided steps wait until it is stopped and
+## at rest, which is its bench machine back in its resting state (the turbine's standstill comes once the rotor is
+## below 1 % speed, on its turning gear; the transmitter's once the loop supply is off). A kind whose bench has no
+## machine is at rest when no freely turning piece turns faster than AT_REST of its unit. Hiding and isolating are ways
+## of looking and stay allowed; so do Reassemble all and Reset, which put parts home. The kind's data may name
+## components that can be opened while it runs (`views.open_running`, §4.7: the transmitter's terminal cover, with the
+## loop live) and the technician's sentence for the rest; without it nothing is, with RUNNING_WHY.
+const RUNNING_WHY := "Stop the machine and let it come to rest before opening it up."
+const AT_REST := 0.01
+
+## The sentence a refusal while it runs gives: the kind's own, else RUNNING_WHY.
+func running_why() -> String:
+	var o = words.get("views", {}).get("open_running", null)
+	return String(o.get("why", RUNNING_WHY)) if o is Dictionary else RUNNING_WHY
+
+## Whether the kind's data lets component `id` be opened or taken off while the machine runs.
+func open_running(id: String) -> bool:
+	var o = words.get("views", {}).get("open_running", null)
+	return o is Dictionary and comps.has(id) and id in o.get("allowed", [])
+
+func bench_running() -> bool:
+	if bench == null or not bench.loaded():
+		return false
+	for mc in bench.m.machines:
+		if bench.machine_state(String(mc.id)) != String(mc.init):
+			return true
+	if bench.e != null:   # a Start given but not yet stepped (the bench paused, or between two steps) counts too
+		for it in bench.e.queue:
+			if it.size() >= 3 and it[0] == "op" and _starts(String(it[1]), String(it[2])):
+				return true
+	if not bench.m.machines.is_empty():
+		return false
+	for a in bench_view.anims:
+		if a.kind == "rotate" and float(a.travel) == 0.0 and absf(bench.now(a.of)) > AT_REST:
+			return true
+	return false
+
+## Whether the slider at `new_s` with `new_root` as its root moves any part or fastener farther from home than it
+## stands now (towards assembled is not taking apart), other than the parts the kind's data lets be opened running.
+func _takes_apart(new_s: float, new_root: String) -> bool:
+	var off0 := Explode.offsets(spec, s, root_id)
+	var f0 := Explode.fastener_offsets(spec, s, root_id)
+	var off1 := Explode.offsets(spec, new_s, new_root)
+	var f1 := Explode.fastener_offsets(spec, new_s, new_root)
+	for id in comps:
+		if not open_running(id) and \
+				(off1.get(id, Vector3.ZERO) as Vector3).length() > (off0.get(id, Vector3.ZERO) as Vector3).length() + 1e-6:
+			return true
+	for g in groups:
+		var a: Array = f0.get(g, [])
+		var b: Array = f1.get(g, [])
+		for i in b.size():
+			if (b[i] as Vector3).length() > (a[i] as Vector3 if i < a.size() else Vector3.ZERO).length() + 1e-6:
+				return true
+	return false
+
 ## Whether every part stands at home (nothing taken apart, handled, hidden or in the steps).
 func assembled() -> bool:
 	if guide.on() or not handled.is_empty() or not hidden.is_empty():
@@ -1054,6 +1131,10 @@ func assembled() -> bool:
 ## allows (§4.7).
 func why_no_run() -> String:
 	var r = words.get("views", {}).get("run_exploded", null)
+	if guide.on() and not guide.loose.is_empty() and not (r is bool and r):   # (the steps' loose parts are apart too)
+		for id in guide.loose:
+			if not (r is Dictionary and id in r.get("allowed", [])):
+				return String(r.get("why", "")) if r is Dictionary else "Put it together first: it runs assembled."
 	if r is bool and r:
 		return ""
 	var out := []
@@ -1726,6 +1807,10 @@ static func _seg_dist(p: Vector2, a: Vector2, b: Vector2) -> float:
 
 func _drag_handle(p: Vector2) -> void:
 	if selected == "" or _drag.is_empty():
+		return
+	if bench_running() and not open_running(selected):   # (started while a part was held: let go of it where it is)
+		_drag = {}
+		note = running_why()
 		return
 	if guide.on():
 		_drag_guided(p)
