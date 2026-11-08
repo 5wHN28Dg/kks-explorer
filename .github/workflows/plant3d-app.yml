@@ -13,7 +13,7 @@ on:
             'ref/make_plant3d_vectors.py', 'ref/vectors/plant3d-v1.json', 'ref/vectors/plant3d-v2.json',
             'ref/vectors/plant3d-realism.json', 'ref/make_plant3d_bench_vectors.py', 'ref/vectors/plant3d-bench-v1.json',
             'tests/test_plant3d_workshop_bench.py', 'tests/test_plant3d.py', 'tests/test_plant3d_staff.py',
-            'tests/test_plant3d_realism.py', 'tests/test_plant3d_workshop.py', 'tests/test_plant3d_pid.py', 'tests/test_plant3d_hands_content.py', 'tests/shards.py',
+            'tests/test_plant3d_realism.py', 'tests/test_plant3d_workshop.py', 'tests/test_plant3d_pid.py', 'tests/test_plant3d_manuals.py', 'tests/test_plant3d_hands_content.py', 'tests/shards.py',
             'tests/test_plant3d_bench.py', 'tests/test_plant_packaging.py', 'tools/plant_release.py', 'tools/release.py', 'docs/plant3d/FIRST-TRAIN.md', 'tools/plant3d/**',
             'platform/windows/fetch-llvm-mingw.sh', '.github/workflows/plant3d-app.yml', '.github/scripts/apt-install.sh',
             '.github/scripts/apt-cache-key.sh', '.github/actions/apt-cache/**', 'tools/download.sh']
@@ -23,7 +23,7 @@ on:
             'ref/make_plant3d_vectors.py', 'ref/vectors/plant3d-v1.json', 'ref/vectors/plant3d-v2.json',
             'ref/vectors/plant3d-realism.json', 'ref/make_plant3d_bench_vectors.py', 'ref/vectors/plant3d-bench-v1.json',
             'tests/test_plant3d_workshop_bench.py', 'tests/test_plant3d.py', 'tests/test_plant3d_staff.py',
-            'tests/test_plant3d_realism.py', 'tests/test_plant3d_workshop.py', 'tests/test_plant3d_pid.py', 'tests/test_plant3d_hands_content.py', 'tests/shards.py',
+            'tests/test_plant3d_realism.py', 'tests/test_plant3d_workshop.py', 'tests/test_plant3d_pid.py', 'tests/test_plant3d_manuals.py', 'tests/test_plant3d_hands_content.py', 'tests/shards.py',
             'tests/test_plant3d_bench.py', 'tests/test_plant_packaging.py', 'tools/plant_release.py', 'tools/release.py', 'docs/plant3d/FIRST-TRAIN.md', 'tools/plant3d/**',
             'platform/windows/fetch-llvm-mingw.sh', '.github/workflows/plant3d-app.yml', '.github/scripts/apt-install.sh',
             '.github/scripts/apt-cache-key.sh', '.github/actions/apt-cache/**', 'tools/download.sh']

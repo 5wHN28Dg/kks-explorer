@@ -74,6 +74,8 @@ EDGES += wtp_staff.EDGES
 import train_lift  # noqa: E402
 import train_hands  # noqa: E402  (the hand actions, milestone HW2)
 import train_ageing  # noqa: E402  (the wear items' failures, milestone AG2)
+import train_wx  # noqa: E402  (the weather's faults, milestone WX2)
+import train_hse  # noqa: E402  (the hazard library and each work's job kind, milestone HS1)
 LIFT_POINTS = [f'p_lift{i}' for i in range(len(train_lift.ZS))]
 for _i, _z in enumerate(train_lift.ZS):
     POINTS[LIFT_POINTS[_i]] = (round(train_lift.GATE_X - 1.0, 6), train_lift.AT[1], _z)
@@ -155,7 +157,8 @@ FAULT_WORK = {'cw_a_motor': 'wo_cw_a_motor', 'cw_b_motor': 'wo_cw_b_motor', 'cw_
               'ccw_a_motor': 'wo_ccw_a_motor', 'ccw_b_motor': 'wo_ccw_b_motor', 'ct_fan3_vib': 'wo_ct_fan3',
               'cw_a_ls': 'wo_cw_a_ls', 'cw_b_ls': 'wo_cw_b_ls', 'cw_c_ls': 'wo_cw_c_ls',
               train_hands.FAULT['id']: train_hands.WORK[0],      # (milestone HW2: the job with a hidden cause)
-              **train_ageing.fault_work()}       # (milestone AG2: the failures of the wear items)
+              **train_ageing.fault_work(),       # (milestone AG2: the failures of the wear items)
+              **train_wx.fault_work()}           # (milestone WX2: the weather's faults)
 # The maintenance supervisors' week (milestone S2): the preventive and calibration works each asks a permit for in
 # the morning (07:40), by weekday (day 1 of the clock is a Monday). A work whose isolation another work holds that day
 # is left for its next day.
@@ -365,11 +368,11 @@ def roles():
              'coverall_elec'),
         role('ic_tech', 'I&C technician', 'inst', ['operate_local', 'accept', 'lock_instrument', 'operate_hart'], 'tech_days', True,
              'coverall_inst'),
-        role('maint_sup', 'Maintenance supervisor', 'mech', ['request', 'accept', 'stop_work'], 'ms_mech', True,
+        role('maint_sup', 'Maintenance supervisor', 'mech', ['request', 'accept', 'stop_work', 'jsa'], 'ms_mech', True,
              'supervisor'),
-        role('hse_officer', 'HSE officer', 'hse', ['stop_work'], 'hse_days1', True, 'hse',
+        role('hse_officer', 'HSE officer', 'hse', ['stop_work', 'jsa'], 'hse_days1', True, 'hse',
              ['helmet', 'boots', 'glasses', 'ear', 'vest']),
-        role('contractor_sup', 'Contractors\' supervisor', 'civil', ['request', 'accept'], 'con_sup_days', True,
+        role('contractor_sup', 'Contractors\' supervisor', 'civil', ['request', 'accept', 'jsa'], 'con_sup_days', True,
              'contractor', field_ppe + ['harness']),
         role('contractor', 'Contractor', 'civil', [], 'con_days', True, 'contractor', field_ppe + ['harness']),
     ] + wtp_staff.roles()
@@ -545,6 +548,13 @@ def tasks(models):
     task('close_permit', 'Close the permit', [{'go': 'cr_sup'}, {'permit': {'work': '$', 'action': 'close'}},
                                               {'say': 'permit_closed', 'to': 'channel'}], priority=2)
     ms_desk = {'go': {'kind': 'table', 'room': 'maint_office'}}
+    # HS1 (REALISM.md §8.6): the JSA, made at the maintenance office when the permit is isolated, then the issue asked
+    # for; the toolbox talk in the workshop, called by the technician given the job (a meet with their trade)
+    task('jsa_permit', 'Make the JSA and ask for the permit to be issued', [
+        ms_desk, {'work': [10, 20], 'anim': 'write'}, {'jsa': '$'},
+        {'call': {'role': 'shift_sup', 'task': 'issue_permit'}}], priority=2)
+    for disc, tech in TECH.items():
+        task(f'talk_{disc}', 'Give the job\'s toolbox talk', [meet('workshop', tech, 1), {'talk': '$'}], priority=2)
     for k, items in WEEK_LIST.items():
         for w, _ in items:
             title = next(x['title'] for x in works if x['id'] == w)
@@ -607,6 +617,7 @@ def tasks(models):
             {'permit': {'work': '$', 'action': 'return'}}, {'say': 'cal_done' if cal else 'job_done', 'to': 'shift_sup'}]
         if wid == train_hands.WORK[0]:      # the job done by hand (REALISM.md §3.1, milestone HW2)
             steps = train_hands.job_steps()
+        steps = talk_first(steps, w['discipline'])
         task(job, w['title'], steps,
              work=wid, resume='next_duty')        # left unfinished at the duty's end: held overnight, lock on (§17.10)
         # the maintenance supervisor gives the issued permit's job to a technician of its discipline (S2)
@@ -624,7 +635,8 @@ def tasks(models):
                                       {'work': 5, 'anim': 'inspect'})])
     for w, (title, anim, short) in CONTRACT.items():
         kks = next(x['kks'] for x in works if x['id'] == w)
-        steps = [{'go': {'kks': kks}}, {'permit': {'work': '$', 'action': 'accept'}}]
+        # HS1: the team's toolbox talk at their muster point (a place of no room: those standing there attend)
+        steps = [{'go': 'con_muster'}, {'talk': '$'}, {'go': {'kks': kks}}, {'permit': {'work': '$', 'action': 'accept'}}]
         for k in range(TEAM):
             steps += [{'call': {'role': 'contractor', 'task': f'con_{w[3:]}'}}, {'work': 1}]
         steps.append({'say': 'team_on', 'to': 'shift_sup'})
@@ -659,12 +671,30 @@ def tasks(models):
     return T, reacts
 
 
+def talk_first(steps, discipline):
+    """A job's steps with its toolbox talk first (REALISM.md §8.6): a maintenance supervisor called to the workshop,
+    met there for the talk; every `else` moved with the steps."""
+    first = [{'call': {'role': 'maint_sup', 'task': f'talk_{discipline}'}},
+             {'meet': {'room': 'workshop', 'with': ['maint_sup'], 'minutes': 5}}]
+    out = []
+    for s in steps:
+        s = dict(s)
+        if 'else' in s:
+            s['else'] += len(first)
+        if 'wait' in s and 'else' in s['wait']:
+            s['wait'] = dict(s['wait'], **{'else': s['wait']['else'] + len(first)})
+        out.append(s)
+    return first + out
+
+
 def reactions(model_reacts):
     # the train's alarms and trips are the main control room's; the WTP's are its own operator's (S3, §17.12)
     out = [{'on': {'alarm': 2}, 'areas': wtp_staff.TRAIN_AREAS, 'roles': ['ccr_op'], 'task': 'answer_alarm'},
            {'on': {'trip': '*'}, 'areas': wtp_staff.TRAIN_AREAS, 'roles': ['shift_sup'], 'task': 'trip_call'},
            {'on': {'permit': 'requested'}, 'roles': ['shift_sup'], 'task': 'approve_permit'},
-           {'on': {'permit': 'isolated'}, 'roles': ['shift_sup'], 'task': 'issue_permit'},
+           # HS1 (REALISM.md §8.6): an isolated permit's JSA made by a maintenance supervisor, who then asks the shift
+           # supervisor to issue it (an issue before the JSA is refused)
+           {'on': {'permit': 'isolated'}, 'roles': ['maint_sup'], 'task': 'jsa_permit'},
            {'on': {'permit': 'deisolated'}, 'roles': ['shift_sup'], 'task': 'close_permit'},
            {'on': {'lock_left': '*'}, 'roles': ['shift_sup'], 'task': 'remove_left_locks'},
            {'on': {'unsafe': '*'}, 'roles': ['hse_officer'], 'task': 'stop_unsafe', 'seen': True}]
@@ -782,7 +812,7 @@ def works_tasks(models):
     out = {}
     for w in model_parts(models)[2]:
         x = w['id'][3:]
-        out[w['id']] = {'task': f'job_{x}'}
+        out[w['id']] = {'task': f'job_{x}', 'jsa': train_hse.job_of(w)}    # (its job kind, REALISM.md §8.6)
         if w['discipline'] != 'civil':
             out[w['id']].update(isolate=f'isolate_{x}', assign=f'assign_{x}', deisolate=f'deisolate_{x}')
     return out

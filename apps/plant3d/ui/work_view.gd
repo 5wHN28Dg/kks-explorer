@@ -116,6 +116,10 @@ func setup(u) -> void:
 	note.name = "note"
 	busy_l = W.label("", 18, W.OK_COLOUR)
 	busy_l.name = "busy"
+	# the kind's manual (REALISM.md §6.2.1), at the section the picked part's actions link to
+	var mb := W.button("Manual", open_manual)
+	mb.name = "manual"
+	body.add_child(mb)
 	for x in [W.label("In your hand", 20), tray, W.label("Parts (or tap one)", 20), parts, busy_l, note, actions]:
 		body.add_child(x)
 	# the meters' and the communicator's screens: a panel of their own, low in the middle, always in view
@@ -165,6 +169,27 @@ func _read_jobs() -> void:
 		for e in s.get("equipment", []):
 			jobs[String(e["kks"])] = {"kind": String(s["part"]), "alias": String(e["alias"]), "loop": String(e["loop"]),
 				"service": s}
+
+
+## The manual of the job's kind, at the section the picked component's first linked action opens (else the
+## troubleshooting section). False when there is no manual.
+func open_manual() -> bool:
+	if code == "" or not jobs.has(code):
+		return false
+	var kind: String = jobs[code]["kind"]
+	var man: String = ui.manual_of_kind(kind)
+	if man == "":
+		ui.toast("No manual for this equipment in this build.")
+		return false
+	var sec := "troubleshooting"
+	if comp != "":
+		for a in _service()["actions"]:
+			if a["component"] == comp:
+				var at: Array = ui.manuals.for_work(kind, String(a["action"]))
+				if not at.is_empty() and at[0] == man:
+					sec = String(at[1])
+					break
+	return ui.open_manual(man, sec, code)
 
 
 func has_job(c: String) -> bool:
@@ -730,7 +755,7 @@ func _orbit_cam() -> void:
 
 ## Mouse and touch on the view (not on a panel): a drag orbits, the wheel or a pinch zooms, a tap picks a component.
 func _unhandled_input(ev: InputEvent) -> void:
-	if not is_open:
+	if not is_open or ui.manual_open():
 		return
 	if ev is InputEventMouseButton:
 		var mb := ev as InputEventMouseButton

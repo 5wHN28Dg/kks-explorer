@@ -119,7 +119,8 @@ def train():
              'groups': [
                  g('fuel', 'Fuel gas', [0, 0], ['10MBP10']),
                  g('lube', 'Lube oil', [0, 1], ['10MBV10']),
-                 g('gt', 'Gas turbine and turning gear', [1, 0], ['10MBA10', '10MBK10', '10MBY10']),
+                 g('gt', 'Gas turbine, air intake and turning gear', [1, 0],
+                   ['10MBA10', '10MBK10', '10MBY10', '10MBL10']),
                  g('flame', 'Combustion: flame detectors', [1, 1], ['10MBM10']),
                  g('exhaust', 'Exhaust temperatures', [2, 0], ['10MBR10']),
                  g('bearings', 'Bearing vibration', [2, 1], ['10MBD10'])],
@@ -166,7 +167,7 @@ def train():
                  g('basin', 'Basin and cold water', [1, 0], ['30PAD10']),
                  g('makeup', 'Makeup water', [1, 1], ['30PAR10'])],
              'lines': [ln('makeup', 'basin', 'raw_water')],
-             'trend': ['cw_cold_t', 'ct_basin_level']},
+             'trend': ['cw_cold_t', 'ct_lvl_m']},     # (WX2: the transmitter's reading)
             {'id': 'aux', 'short': 'Auxiliaries', 'title': 'Closed cooling water, instrument air, auxiliary steam',
              'groups': [
                  g('ccw', 'Closed cooling water pumps', [0, 0], ['00PGC10']),
@@ -189,5 +190,7 @@ def train():
         'left_out': [
             {'codes': ['30PAB10AA40'], 'why': 'Water box vents are hand valves without position feedback: they are '
                                               'worked and seen at the condenser'},
+            {'codes': ['10BAT10'], 'why': 'The step-up transformer\'s surge arrester counter is read at the '
+                                          'transformer (WX2)'},
         ],
     }

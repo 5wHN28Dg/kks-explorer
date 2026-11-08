@@ -1203,6 +1203,124 @@ weather on, seeded by season.
   Free play keeps the season's weather.
   Figures measured before compare with these clear-weather runs (§5.5 measured the weather's own cost).
 
+### 5.7 As built for milestone WX2 (2026-11-08: the weather in the model)
+
+- **Where:** `tools/plant3d/train_wx.py` (every table, value, fault, work and the procedure), hooked into
+  `train_model.py` (gt1, ct), `train_weather.py` (the air's tables), `train_ageing.py` (the fans' ice and readings, the
+  ages), `train_content.py`, `train_staff.py` and `train_screens.py`; `tools/plant3d/staff_layout.json` gained the
+  excitation cabinet's work place (measured on the built plant's mesh, nothing else moved). The filter house stands
+  20 m up with no way onto it in the plant yet (its nearest walkable point is 18 m off, beyond the 8 m reach): its
+  works are done from the GT's work place until a stair or platform is built.
+  Tests: `tests/test_plant3d_wx.py`, the forks `wx_*` of `plant3d-v1.json` (checked as every fork by
+  `tests/test_plant3d.py`, replayed by the GDScript engine). No engine change: every piece is a node kind, fault,
+  work or machine that both engines had.
+- **The air:** weather.json drives `ambient_t` and `ambient_wb` (lag 60 clock minutes each), appended after WX3's
+  seven values so that each keeps its place; a table per kind (summer's `hot` day 34 °C at 06:00 to 47 °C at 15:00
+  with a wet bulb of 24–25 °C, matching the cold start's 35/25 at its start; `cold_clear` −3 °C at dawn, the only kind
+  below 0). The wet bulb is at or below the dry bulb at every hour of every kind, and both lag alike.
+- **The gas turbine** ([GER3567], [GER3620]): what the day gives, `gt1_cap` = 250 MW × the ambient factor (1 at 35 °C,
+  FIRST-TRAIN's rating; 0.55 % of the ISO output a kelvin) × the inlet pressure drop's (1.42 % a 10 mbar) × the
+  compressor fouling's; the load is the least of the setpoint, the HRSG runback, the capability and the filters'
+  runback. The setpoint's top stays 250 MW (the generator's and the transformer's rating), so a cool day shows as a
+  lower heat rate and margin, a hot one as less output. **Base load** (`gt1_at_base`, which the cold start's and the
+  hot restart's `gt_load` steps wait for) is 249 MW or, when the day gives less, its capability less 1 MW. The **load
+  fraction** that drives the exhaust's flow and temperature and the HRSG's sliding pressure is of that base load (at base
+  load the machine fires at its limit whatever the air; its lost output is mostly the compressor's lighter air, the
+  exhaust's heat changes little), so the HRSG and the steam turbine see base load as before; the fuel demand still
+  follows the megawatts (about 0.92 of full at 225 MW, as the output and heat rate give). The **heat rate**
+  (`gt1_hr`, on the GT screen): 9,750 kJ/kWh at base and 35 °C × ambient, part load, fouling and pressure drop
+  factors.
+- **The inlet filters:** a cake (kg, the dust caught: `dust` × the air's flow) that pulse cleaning removes on demand
+  at 6.5 mbar, and a residue (2 % of what is caught) that only new cartridges remove; the pressure drop goes with the
+  flow's square (2.5 mbar clean at full flow). Alarm at 9 mbar, runback to 150 MW at 11 mbar (each after 30 s, as a
+  filter house's switches wait: a clock jump's night of dust lands in one step, and the next step's pulse cleans it
+  before either comes; a jump also counts a night's strikes as one), cleared below 7. Both
+  follow the dust hour for hour, not the training rate (it compresses the calendar between storms, not a storm); the
+  scenario's age gives the residue of the months before. A trainer's fault stops the pulse cleaning (`gt1_pulse`,
+  repaired by the trainer: a work would isolate the pulse air at the filter house, which has no work place yet, and
+  an isolation on the GT's own code would lock the running GT, its stop and its alarms); `wo_gt1_filters` changes
+  the cartridges with the GT stopped (its isolation on the GT's code refuses a start meanwhile) and renews both.
+- **Compressor fouling:** two wears in equivalent hours of firing (× the training rate), faster in dust (the fine dust
+  the filters pass: ×2 at 1.5 mg/m³) and damp air (×1.6 with the wet bulb at the dry bulb): what online washes remove
+  levels off near 2.7 % of output; the rest grows to 4 % in 6,000 hours until an offline wash. The washes are the
+  machine `gt1_wash` on the GT screen: `wash_online` at load above 150 MW (ten minutes of model time, resets the first
+  wear; it stops if the GT leaves the grid or the load falls below 150 MW), `wash_offline` with the start sequence at
+  standstill, the rotor at rest on its turning gear and the wheel spaces below 95 °C (half an hour, resets both; a
+  start is refused meanwhile, and a start pressed in the same step stops the wash as the rotor is driven up; each
+  wash's time starts from 0, also when pressed the step after one ended; `tests/test_plant3d_wx.py` runs it on a fouled compressor). The offline wash is the procedure `gt_wash_offline` from cold iron. **The online
+  wash is no procedure:** a procedure starts from its scenario's start, and no scenario starts with the GT loaded; it
+  is an op with its permissives and the fork `wx_wash_online`.
+- **The cooling tower:** the approach × a factor of the wet bulb (1 at the design 25 °C, 1.6 at 5 °C, 0.85 at 32 °C:
+  colder air takes less heat a kelvin, [Perry], [CTI]); ice on the running fans below 2 °C (up to 6 mm/s on their
+  probes at −3 °C, building and melting over a clock hour), so a frosty night brings the fans' vibration alarms.
+- **Instruments in the weather:** the basin level transmitter's impulse line (no heat tracing) cools with the air
+  over a clock hour; below 0 °C the fault `ct_lvl_frozen` (made once) holds the reading (`hold`, §15.4) while the line
+  stays below 3 °C, and the makeup's automatic, the screens, the basin alarms and the CW pumps' low-low protection
+  read the held value (a frozen transmitter blinds them all; the basin
+  level's code moved from the process value to the reading); `wo_ct_lvl_thaw` thaws it and fits tracing. Fan 7's probe
+  has a junction box with a poor gland: the rain it takes against a drawn amount (3–30 mm) makes `ct_fan7_ingress`,
+  its reading climbing 9 mm/s over two clock hours (20 model minutes), with two hidden causes (water, weight 4; the electronics, weight 1):
+  the alarm, and on a running fan (2.5 mm/s of its own) the fan's protection trips it on the false reading;
+  `wo_ct_fan7_cy` finds and puts it right and renews the gland's count. **Lightning:** storm seconds between strikes
+  near the plant (drawn: 2 minutes to an hour, median 17) counted by the step-up transformer's surge arrester counter
+  (`ln_count`, read at the transformer, not on a screen); the drawn strike (the 1st to the 12th) whose surge reaches
+  fan 9's vibration loop sends it to full scale (`ct_fan9_surge`): the fan's protection trips it, a nuisance trip;
+  `wo_ct_fan9_cy` replaces the transmitter and its surge protector. The fans' protection and alarms read fans 7 and
+  9's readings (their codes moved to them); the vibration collector still measures the true vibration, which tells a
+  false reading from a real one. The gear whine follows the true vibration, so iced fans whine as a worn gearbox does
+  (left as it is: the ice does shake them).
+- **Dust in a panel:** the excitation cabinet's air filters (equivalent hours while it excites, × the dust: ×2 at
+  1.5 mg/m³) raise its temperature over the air from 4 K to 22 K; the alarm at 55 °C; `wo_gen1_cab` replaces them
+  with the excitation off. Outdoor displays fading in the sun is drawn (the app's), left for later.
+- **Not in WX2:** the heat on electrical plant (§5.2's derating tables and an electronic room's air conditioning)
+  is not in MILESTONES' WX2 row and is left for a later milestone; slippery stairs, stopped outdoor work and the
+  sandstorm's PPE are WX4's. **The condenser's fouling,** which AG2 left for WX2 (§2.18), is not built: it follows
+  the circulating water's chemistry rather than the weather, so it goes with CH1 (the cooling tower's treatment,
+  whose row has "fouling as wear") and OP8 (which finds the loss).
+- **The scenarios' first air:** the spring scenarios (`shift_wtp` and the WTP's three) start with their season's
+  first kind's air at 06:00 (`clear`: 17/12 °C), not the cold start's summer 35/25 (`train_weather.start_air`).
+- **Ages:** `world.age` starts the residue (5.1 kg a month, new cartridges at 150 kg, before the residue alone would
+  keep the pulsing on at full flow), the offline fouling (quarterly
+  washes), the online fouling (daily washes) and the cabinet's filters (every six months) at their months less their
+  renewals: the hot restart two months on, `shift_aged` 30.
+- **Staff:** the three faults with works are on the supervisor's generic fault reaction (each asks for its work's
+  permit); the five works add 30 tasks (490 of 800).
+- **The forks** (base load at the cold start's end, about 17:00 on the summer day, the instructor holding a kind:
+  the seeded chain goes on from the instructor's kind at each clock hour, so when an hour's draw moves it the
+  instructor sets it again in the next step, `weather_hold` in `ref/make_plant3d_vectors.py`): `wx_sandstorm_pulsed`
+  (four clock hours: pulsing holds the drop at 6.5 mbar, no alarm), `wx_sandstorm_no_pulse` (the pulse fault: the
+  alarm after 2.2 clock hours, the runback to 150 MW after 2.7), `wx_wash_online`, `wx_wash_offline_refused` (at
+  load), `wx_wash_twice` (pressed again the step after: its whole time again), `wx_wash_offline` (from the cold
+  start's turning gear step; a start refused during it), `wx_wash_offline_start` (a start in the same step stops it), `wx_cold_night`
+  (`cold_clear` held: the line freezes before dawn, ice brings the fans' alarms), `wx_thunderstorm` (fan 7 started
+  first; water in its box after 0.7 clock hours, its cause drawn `water`, the false reading trips the running fan
+  after 2.4; the strike reaches fan 9's loop after 4.1 hours and trips it).
+- **Every earlier run, made again and compared with main's:** every earlier value that the air moves changes (the air
+  is no longer a constant 35/25 in any scenario with weather, as §5.1 says; §2's "every earlier value the same"
+  cannot hold for what reads `ambient_t` or `ambient_wb`), and with them the step numbers. What stays: in
+  `plant3d-v1.json`'s `train` and `hot` and `plant3d-v2.json`'s `train`, every input and every event, in the same
+  order, only their step numbers moved from the HRSG warm-up on (the drum warms a little faster; the GT reaches its
+  day's base load, 225 MW at 45.7 °C in the cold start and 229 MW at 42.3 °C in the hot restart instead of 250,
+  sooner); the steam turbine still ends at 120 MW. Every earlier fork has the same events (the same ones, counted
+  alike), except one `weather` event of `st_trip_no_bypass` that its moved steps no longer reach; in eight of the cold
+  start's forks that run long after a trip (and `plant3d-v2.json`'s `cond_p2_isolated`) two neighbouring events
+  change places, the air having moved one of them by a few steps (a weather change, an alarm's clearing). The WTP's runs (`wtp`, `wtp_cip`,
+  `wtp_regen`): every input and event the same, step for step; the snapshots' air and what reads it changed. The
+  day and its forks: every input and event the same step for step but the field operators' readings (`read`
+  events' numbers: the bearings and stators follow the air), and in `aged_ccw` the bearing's heat alarm 16 steps
+  earlier and its clearing 197 steps later (hotter air); the machines gained `gt1_wash`. The digests moved with the
+  values. `plant3d-v2.json`'s `staff` and synthetic items, and `plant3d-realism.json`, are byte for byte main's.
+- **The step's cost:** 102 values added (gt1 75, ct 27), within §11's 150 for the weather and the wear budget's 67
+  left by AG2 for the filters and fouling. On the laptop (`bench_step.gd`, headless, two runs each alternating with
+  main's at d62aeb11): the cold start's mean step 231 and 231 µs on main, 247 and 243 µs here, about +0.014 ms;
+  model and staff 283 and 285 µs against 297 and 293.
+- **The Note 9** (a test-signed release build of this branch at 53afb6e1, `walk=screens probe=1`, 300 s
+  from a cool start at 28.1 °C, SAMPLE=1, 2026-11-08; what the milestone draws is the screens' new readouts, so the
+  control room's screens in turn): tier lean+vis, 17,942 frames, median 16.7 ms, p95 18.7 ms, max 39.2 ms, none over
+  100 ms (the frame rule passes); GPU median 6.7 ms; the model's step 1.80 ms in the app, fast-forward up to 13.9×;
+  first frame at 11.3 s. Evidence in `~/kks-work/build/wx2-note9/` on the maintainer's laptop. The app's 87 test
+  files passed in the build.
+
 ## 6. Documents and discussions
 
 ### 6.1 Generic P&IDs
@@ -1308,6 +1426,99 @@ public standards. No new dependency (decision 0073 already chose our own format 
   and positioners, [API610] and a pump maker's IOM for pumps, [SKF] for bearings, [IEEE43] for motors' insulation).
   No text is copied.
 - Read in the app from the card, the work order and the job's steps (a link to a section).
+
+#### 6.2.1 DC2's details (settled 2026-11-08, before the code)
+
+The manuals are generic: written for the generic plant's kit parts, in our own words, from public knowledge, each
+naming the manufacturers' public manuals and standards it follows for its structure and facts. No manufacturer's
+text, no real plant's documents and no photographs are used. They are read in Walkdown Plant only (the user,
+2026-11-08), as the P&IDs are. No new dependency (decision 0073: no PDF renderer in Godot, our own formats drawn by
+the app).
+
+- **The set** (the parts the trainee works on first): WDP-MAN-001 the pressure transmitter (`pressure_transmitter`:
+  calibration, HART, troubleshooting tables), 002 the control valve and its positioner (`valve_control`), 003 manual
+  and check valves (`valve_gate`, `valve_globe`, `valve_ball`, `valve_butterfly`, `valve_check`), 004 centrifugal
+  pumps (`pump_horizontal`, `pump_vertical`), 005 the steam turbine (`steam_turbine`, an overview) and 006 the gas
+  turbine (`gas_turbine`, an overview). A manual covers one or more part kinds; a kind has at most one manual.
+- **Where:** each manual's text is a source file `tools/plant3d/manual_texts/<id>.py` (blocks written with a small inline
+  markup that the generator turns into COURSES.md runs); the generator `tools/plant3d/manuals.py` adds what comes
+  from the content and writes `apps/plant3d/built/manuals/` at every build (`build.sh`, after the P&IDs): a view of
+  the content, never committed, as the drawings are.
+- **What the generator adds from the content:** the specifications' kit parameters (each parameter of the manual's
+  kinds with its range and default, from `kit.json`); every code of those kinds in the plant with its own
+  parameters (the "this unit" table the reader shows when the manual is opened from that code's card); the spare
+  parts list from the Workshop tree where the kind has one (every component and fastener group, with its material),
+  after the manual's own consumables; the figures (below); and the reverse links (which section a work view action
+  or a Workshop step opens).
+- **Part numbers** (the generic catalogue WM2 takes over, §7.2): `WDP-` + the manual's short code (PT, CV, MV, CP,
+  ST, GT) + `-` + the component or consumable id in capitals, `_` as `-` (`WDP-PT-SENSOR-MODULE`). In a manual of
+  several kinds a Workshop tree's parts carry the kind's tag first (pumps H and V; valves GA, GL, BA, BF, CH:
+  `WDP-CP-H-IMPELLER`), since the kinds' trees share component ids; a consumable whose id a tree also has gives way
+  to the tree's row.
+- **Format** `walkdown-plant-manual` version 1, a file per manual: `id`, `number`, `title`, `short`, `kinds`,
+  `sources` (`[{id, cite, url?}]`), `figures` (`[{id, kind, view, caption, file, w, h}]`) and `sections`
+  (`[{id, title, blocks, src}]`). Blocks are COURSES.md §4's `h` (level 3), `p`, `ul`, `ol`, `table`, `callout`
+  (kinds `warning`, `caution`, `note`) and `figure`, plus two of the manual's own: `{"trouble": [{"symptom", "cause",
+  "remedy", "id"?}]}` (the troubleshooting table; `id` is a §2.6 cause id of a fault on equipment of the manual's
+  kinds, and must exist in the content when given) and `{"unit": true}` (the opened code's own parameters). Runs are
+  COURSES.md §3's (`b`, `i`, `small`, `num`, `link`); a link's target is `{"section"}`, `{"manual", "section"?}`,
+  `{"kks"}`, `{"work": action}` (an action of the kind's service file, §2.16) or `{"workshop": kind, "place":
+  component}` (the guided step that places that component, WORKSHOP.md §4.6). `src` lists the ids of the sources a
+  section follows. The index `index.json` (`walkdown-plant-manuals` version 1): the manuals in order, each kind's
+  manual, each code's unit table, and the reverse links `work` (`"<part>:<action>"` → `[manual, section]`) and
+  `workshop` (`"<kind>:<component>"` → `[manual, section]`).
+- **The generator's checks** (the build fails): every required section is there (description, specifications,
+  installation, commissioning, operation, maintenance, troubleshooting, parts, safety); every link resolves; every
+  troubleshooting `id` exists; every cited source is listed and every listed source cited; no text is empty; the
+  output is the same on every run (tested).
+- **Figures** (§6.2: the Workshop's exploded and cut views rendered at build time): for every kind of a manual with a
+  Workshop scene, an exploded view (the take-apart slider at 1) and a cut view (the kind's cutaway planes). The
+  build runs headless (CI, and every build but a release), where Godot has no rendering device, so the figures are
+  drawn by our own small software renderer at build time (`builder/manual_figures.gd`: the built Workshop scene's
+  triangles, a depth buffer, flat shading by the plant's material colours, the cut faces in one colour, outlines
+  where the depth or the component changes), the same picture on every build, written as lossless WebP. A kind
+  whose Workshop scene comes later (the gas turbine) gets its figures with it, without a change here.
+- **The reader** (`ui/manual_view.gd`, `ui/manuals.gd`): full screen on a canvas layer above the Workshop's, with the
+  3D view under it off while it shows (as the drawings); a contents list beside the page, Back after following a
+  link, Close. Opened from the card ("Manual", with the opened code's unit table), from the work view ("Manual", at
+  the section the picked component's actions link to, else the troubleshooting section) and from the Workshop's top
+  bar ("Manual", at the section the next guided step's component links to, else the start). A `work` link opens the
+  work view at that code when the trainee can work on it there (otherwise it says why: the work view's own
+  sentence); a `workshop` link opens the Workshop on that kind with the guided disassembly at that step; a `kks`
+  link the code's card.
+- **Budgets** (§11): a manual opens in ≤ 300 ms on the Note 9 (its JSON read when first opened, a figure decoded when
+  first shown); ≤ 40 MB more with a manual open; the package growth measured and reported against the 250 MB APK.
+
+#### 6.2.2 As built for milestone DC2 (2026-11-08)
+
+- **The set:** the six manuals of §6.2.1, 97 KB of JSON (the index 20 KB: 120 codes' own data, the reverse links of
+  10 work view actions and 22 Workshop steps), made in under a second at every build; four figures (the transmitter's
+  and the steam turbine's exploded and cut views, 960 × 600, 164 KB of lossless WebP) drawn in 15–23 s on the laptop,
+  the same bytes on every run (checked). The gas turbine's figures and Workshop links wait for its Workshop scene;
+  the pumps' and valves' for K6's kinds. The transmitter's troubleshooting table carries both of the content's
+  causes for it (`drift`, `loose`); HW3's three further causes get their ids when they exist.
+- **As built beyond §6.2.1:** the parts list puts the Workshop tree first, then the manual's consumables; a manual
+  names the components that come with a sealed one (`comes_with`), and the app's test checks that list against the
+  built tree (the steam turbine's thrust collar comes with its rotor). A reverse link opens the section that links
+  the most others of its kind (the field procedure for the work view's actions). A Workshop link picks the step's
+  component and shows the step's words in the Workshop (it does not take the machine apart up to that step). The
+  section's sources are listed at its end ("this section follows, in our own words"). A `num` keeps its spaces
+  unbroken. Escape and gamepad B go Back, then close; Start closes; the left stick and Page Up/Down scroll, A presses
+  the focused button. While the reader shows, the plant's keys (the map, the panels, the clock), the Workshop's keys
+  and camera and the work view's camera wait; the button that opened it keeps no focus; the decoded figures are
+  dropped when it closes. Every manual lists figures for all its kinds: those of a kind without a Workshop scene (or
+  a cut view of a kind without cutaway planes) are left out, with their blocks, until it has one (a test gives every
+  kind a tree and checks the set still makes). The figures carry their camera's `yaw` and `pitch`; the index lists
+  them (`figures`) for the renderer. A page's time is measured to its first frame (its text laid out then).
+- **Tests:** `tests/test_plant3d_manuals.py` (the set, the same output twice and in another process, links and
+  reverse links, causes, units and part numbers, figures, generic words; the checks refuse a broken link of each kind,
+  an unknown cause or one of another kind, a missing section, an unlisted or uncited source, bad markup) and
+  `apps/plant3d/tests/test_ui_manuals.gd` (the set and its figures, the card's Manual with the unit's data, Next,
+  links and Back, the troubleshooting table, the 3D view off and given back, the Workshop's Manual with its view
+  paused, Escape, a Workshop link from the Workshop and from the plant, a work link without a role, the work view's
+  Manual and a work link picking its part, the parts lists against the built trees).
+- **On the laptop** (Iris Xe, `tests/manual_shots.gd`): a page built in 21–65 ms (the transmitter's description with
+  its two figures decoded the longest).
 
 ### 6.3 Discussions
 
@@ -1598,6 +1809,92 @@ and limit, and a reaction or put-right of the new kinds without the key. Its run
 **Budgets.** The engine's cost is per player and per act (a few comparisons a step; draws only when an observer
 meets an act). Music playback is one streamed Vorbis player (no new pipelines, ≤ 2 MB PSS). The package grows by
 ≈ 0.8 MB, within §11's 15 MB.
+
+### 8.6 HS1's details (settled 2026-11-08, before the code: JSA and toolbox talks)
+
+§8.1 leaves these open; settled here. What the engine does is in both engines bit for bit, behind the plant's
+`hse.json` (without it nothing changes: every earlier synthetic item stays byte for byte); what is drawn is the app's,
+pinned by app tests.
+
+**What real sites do** (public sources, §14 "For JSAs and toolbox talks"): a job hazard analysis breaks the job into
+its steps, names each step's hazards and the controls that answer them, best before the work and with the people who
+will do it ([OSHA3071]); a permit to work names the hazards and the precautions, and the issuer makes sure they are
+in place before it is issued ([HSG250]); the hazards are identified with the workers, and what is found is
+communicated to them ([ISO45001] 5.4, 6.1.2, 7.4; [INDG163]'s five steps). IOGP's life-saving rules ask for a valid
+permit, isolations verified before work, staying out of the line of fire and safe lifting ([IOGP459]). The toolbox
+talk is where the crew hears it, just before the work, and signs that they did.
+
+- **The library, `hse.json`** (format `walkdown-plant-hse`, version 1; a plant file beside `tools.json`, only in a
+  version 2 plant with `staff.json`, `unknown_key` and `bad_ref` otherwise): `controls` (1–200 `{"id", "title"}`),
+  `hazards` (1–200 `{"id", "title", "controls"}`: the 1–16 controls that answer it, no repeat) and `jobs` (1–100
+  `{"id", "title", "hazards"}`: a job kind and its 1–32 hazards, no repeat). Ids are identifiers of at most 24
+  characters, titles 1–120 characters; each item may carry `source` (1–200 characters: the §14 key it comes from).
+- **A work's `jsa`** names its job kind (an identifier, `bad_id` otherwise; a job id of hse.json, `bad_ref`
+  otherwise, and `bad_ref` without hse.json).
+  This replaces §8.1's `"jsa": true`: the job kind is the work's own list, which the debrief compares with, and the
+  library keeps it once for every work of that kind. **The work's own list:** the job's hazards in their order, and
+  each of them's controls in order, each control once.
+- **A new authority `jsa`** (§16.3): makes JSAs and gives toolbox talks. §8.1 says the acceptor picks; on site the
+  JSA is the performing side's, made by its supervisor with the crew ([OSHA3071], [HSG250]), so the authority goes
+  to the supervisors (maintenance, contractors), the engineers and the HSE officers; the first train's technicians
+  accept without it. No discipline check: the first train's maintenance supervisors run every trade's jobs (they
+  already give them out).
+- **The input `[n, "jsa", work, hazards, controls, person]`** (step 1, §2.7): `unknown` (event `["jsa", work,
+  hazards, controls, person, "unknown", []]`, nothing else) when the plant has no hse.json, the work is not a work of
+  the model or has no `jsa`, `hazards` is not a list of 1–32 hazard ids without repeats, or `controls` not a list of
+  0–64 control ids without repeats (a JSA naming no control is valid, and wrong: the debrief says so). Refused with
+  the reasons, in this order: `authority` (§17.1's rule, with `jsa`), `state` (the permit is issued or past it, 4–8:
+  a JSA is made before its permit is issued, at none, requested, approved, isolated, closed or cancelled). Otherwise
+  the work's JSA is these lists and this person, replacing an earlier one; event `[..., "done", []]`.
+- **Its life:** the JSA belongs to the work's next or open permit. A `close` or `cancel` of the permit clears it and
+  the talk's attendance (the next permit needs its own); a re-issue after a suspension (§15.3) keeps them.
+- **The issue refusal:** `issue` of a work with `jsa` and no JSA is refused `jsa`, after `authority`, `state`,
+  `iso_busy` (§2.7).
+- **The toolbox talk is an input** `[n, "talk", work, points, person]` (step 1): `unknown` (event `["talk", work,
+  points, person, "unknown", [], []]`) as the JSA's, `points` being 1–32 hazard ids without repeats. Refused, in this
+  order: `authority` (`jsa`), `state` (the permit is not requested to accepted, 1–5: the talk is before the work is
+  done), `jsa` (the work has no JSA: the talk's topic is the JSA). Otherwise **attendance**: the giver, and every other
+  person on duty at a place of the room of the giver's place (a room as `meet` finds it, §16.6); at a place of no
+  room, at that same place; the giver at no place (walking), the giver alone. They join the work's attendance (a later
+  talk adds to it); event `["talk", work, points, person, "done", [], [attendees]]`, the attendees' ids in people
+  order. The points are what the giver picked; whether they cover the JSA's hazards and the work's own list is the
+  debrief's (§8.1: "checked against the job's hazards"), not a refusal.
+- **NPC steps** `{"jsa": work}` and `{"talk": work}` (`"$"` the task's work; optional `else`): the validator checks
+  the role has `jsa` (`authority`) and the work has `jsa` (`bad_ref`). An NPC's JSA is the work's own list (it knows
+  the job); its talk's points are the job's hazards. Done goes on, anything else fails (to `else`). A player's `jsa` step is
+  done while the work's JSA is theirs (made in that step or before it, any lists: theirs to get right); a `talk` step
+  by their own talk for that work, done in that step.
+- **The digest** gains, with hse.json, per work with `jsa` in model order: whether it has a JSA, its hazards' and
+  controls' indices in hse.json, its person's index (−1 for none or free mode), and the attendance's person indices
+  in order. The snapshot gains `hse`: `{work: {"jsa": [hazards, controls, person], "talk": [persons]}}` for the works
+  with a JSA or attendance, once there is one (so the first train's free-play snapshots stay as they were).
+- **The first train** (content, `tools/plant3d/train_hse.py`): a library of the hazards and controls its jobs meet
+  (rotating parts, stored electrical energy, pressure and heat left in the line, hot surfaces, work at height,
+  lifting, manual handling, chemicals of the water treatment plant, a process trip from an instrument job, noise,
+  dust), each from [OSHA3071], [HSG250], [IOGP459] or [INDG163], and a job kind for every work. The permit flow gains
+  the JSA and the talk: when a permit is isolated, a maintenance supervisor makes the JSA at the maintenance office and
+  asks the shift supervisor to issue it (`jsa_permit`, in place of the reaction that had the shift supervisor issue at
+  once: an issue before the JSA would be refused); the technician given the job first calls a maintenance supervisor
+  to the workshop for its toolbox talk (`talk_mech`, `talk_elec`, `talk_inst`: a `meet` with the trade,
+  then the `talk`) and meets them there, then goes to the job. A permit isolated at night waits for the day's
+  supervisors, as its job already did (§17.10's offers made again). **What changes:** the first train's runs that
+  follow its staff (v2's `day` and its forks) gain the JSA and talk events, and the NPCs' days move with them (the
+  supervisors' walks, the jobs a little later): their events and digests are made again, documented in the PR; no
+  synthetic item changes.
+- **The debrief** (the app; from the events, so saved runs keep it): per work whose JSA or talk the run holds, the JSA's
+  author; the hazards of the work's own list it missed, those it named that the list doesn't, and the controls of the
+  list it lacks; each talk's points against the JSA's hazards and the job's, and who attended; and **a job started
+  without a toolbox talk** (its `accept` by a person not among the attendees; an accept by nobody, free mode's, is
+  not counted) listed with the unsafe acts as an observation, as HS7's are. A session's input is at most 512 bytes
+  (MULTIPLAYER.md §3.3): the form refuses a pick longer than that in a session and says so (the whole first-train
+  library ticked is about 680 bytes; its jobs' own lists 143–220). A player's own JSA, talk or acceptance is marked as theirs.
+- **Vectors** (`plant3d-realism.json`, part `hse`): the safety staff with hse.json and works with `jsa`. Its rejects
+  cover every key and limit of hse.json, a work's `jsa` without hse.json or naming no job, and an NPC step without the
+  authority or on a work without `jsa`. Its runs: the NPCs' JSA, issue and talk with attendance in a room; the
+  trainee's JSA refused (authority, state) and unknown (bad lists), the issue refused `jsa` then made; the talk
+  refused (state, jsa), given at a place of no room and walking; the JSA and attendance cleared by a cancel and a new
+  request; a session; and (the adversarial review) an NPC's JSA step on a task with no work, unknown as a permit
+  step's is.
 
 ## 9. Electrical and mechanical crafts, condition monitoring
 
@@ -2086,6 +2383,12 @@ Textbooks:
   to read. MC4 needs a public source in its place (or the user's choice to cite EPRI's) before its content is written
   · [BW-Steam] Babcock & Wilcox, Steam: its generation and use (chemical cleaning) · [Palmer] R. D. Palmer,
   Maintenance planning and scheduling handbook (McGraw-Hill).
+
+For JSAs and toolbox talks (§8.6; checked 2026-11-08): [OSHA3071] (above: a job's steps, their hazards and the
+controls, made with the workers), [HSG250] (above: the hazards and precautions on the permit, in place before it is
+issued), [ISO45001] (above: 5.4 workers' participation, 6.1.2 hazard identification, 7.4 communication), [IOGP459]
+(below: a valid permit, isolations verified, the line of fire, safe lifting, work at height) and [INDG163] UK HSE,
+Risk assessment: a brief guide to controlling risks in the workplace, https://www.hse.gov.uk/pubns/indg163.pdf.
 
 For personal audio and the phone (§8.5; checked 2026-11-03):
 - [OSHA-Music] US OSHA, Use of music headphones on construction sites (letter of interpretation, 2019-09-06),

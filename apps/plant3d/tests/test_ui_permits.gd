@@ -155,6 +155,37 @@ func run(tree: SceneTree) -> Array:
 	ui.close_screens()
 	# the work: issued, accepted, the motor's fault (pressed before) repaired by the work's done, handed back
 	ui.open_permits(WORK)
+	# HS1 (REALISM.md §8.6): the issue is refused without a JSA; the JSA picked on the form (a hazard and a control:
+	# whatever is picked, the debrief compares), then the issue goes through
+	err = _press(pm, "do_issue")
+	if err != "":
+		p.append(err)
+	ui.clock.run_steps(1)
+	ui._sync_events()
+	pm.refresh()
+	if e.pstate[e.m.work_ix[WORK]] != 3 or not pm.feedback.text.contains("no job safety analysis"):
+		p.append("an issue without a JSA was not refused in words: %d, %s" % [e.pstate[e.m.work_ix[WORK]],
+				pm.feedback.text])
+	if _button(pm, "give_talk") == null or not _button(pm, "give_talk").disabled:
+		p.append("the toolbox talk is offered before the JSA")
+	err = _press(pm, "make_jsa")
+	if err == "":
+		for n in ["hz_rotating", "hz_noise", "cs_loto"]:
+			var c = pm.body.find_child(n, true, false)
+			if c is CheckBox:
+				(c as CheckBox).button_pressed = true
+			else:
+				p.append("the JSA's picker has no %s: %s" % [n, App.texts(pm.body).left(300)])
+		err = _press(pm, "send_pick")
+	if err != "":
+		p.append(err)
+	ui.clock.run_steps(1)
+	ui._sync_events()
+	pm.refresh()
+	if str(e.jsa_of.get(WORK, [])) != str([["rotating", "noise"], ["loto"], null]):
+		p.append("the JSA picked on the form is %s" % str(e.jsa_of.get(WORK)))
+	if pm.body.find_child("jsa_text", true, false) == null:
+		p.append("the form does not show the JSA made: %s" % App.texts(pm.body).left(300))
 	for a in ["issue", "accept", "done", "return"]:
 		err = _press(pm, "do_" + a)
 		if err != "":
@@ -255,7 +286,11 @@ func run(tree: SceneTree) -> Array:
 	if not String(ui.mimic.locks_drawn.get("30MAG10CP002", "")).begins_with("ISOLATED PTW-"):
 		p.append("the screen drew the isolated transmitter as %s" % ui.mimic.locks_drawn.get("30MAG10CP002", "nothing"))
 	ui.close_screens()
-	# a run saved with a permit open (CCW pump B isolated, its issue waiting) is accepted and put back as it was
+	# a run saved with a permit open (CCW pump B isolated, its issue waiting) is accepted and put back as it was (its
+	# JSA made first: HS1, REALISM.md §8.6)
+	var own: Array = Permits.own_list(e, "wo_ccw_b_motor")
+	ui.inputs.jsa("wo_ccw_b_motor", own[0], own[1], null)
+	ui.clock.run_steps(1)
 	ui.open_permits("wo_ccw_b_motor")
 	err = _press(pm, "do_issue")
 	if err != "":

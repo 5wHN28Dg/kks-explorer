@@ -18,6 +18,8 @@ const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goe
 const W = preload("res://ui/widgets.gd")
 const Permits = preload("res://ui/permits.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
+const Hse = preload("res://sim/hse.gd")
+const InputCheck = preload("res://net/input_check.gd")
 
 var ui                          # ui/plant_ui.gd
 var body: VBoxContainer
@@ -34,6 +36,8 @@ var _reasons := {}              # [work, point] as a string -> the removal reaso
 var check := {}
 var _focus_to := ""             # a button the next rebuild gives the focus to
 var _orphans: Array = []        # checks dropped while their worker still runs: waited for once done
+## The JSA or toolbox talk being picked (REALISM.md §8.6): {kind "jsa" | "talk", work, hz: {id: true}, cs: {id: true}}
+var pick := {}
 
 
 func setup(u) -> void:
@@ -123,6 +127,58 @@ func send(action: String) -> void:
 	var e = ui.clock.engine
 	ui.inputs.permit(work, action, ui.me())
 	_sent(str([work, action]), "permit", work, action, e.step_no + 1)
+
+
+## The JSA or talk picked (REALISM.md §8.6), sent as the player's: the hazards and controls in the library's order.
+func send_pick() -> void:
+	var e = ui.clock.engine
+	if pick.is_empty() or e.m.hse == null:
+		return
+	var hz := []
+	for h in e.m.hse["hazards"]:
+		if pick["hz"].has(h):
+			hz.append(h)
+	var cs := []
+	for c in e.m.hse["controls"]:
+		if pick["cs"].has(c):
+			cs.append(c)
+	var kind: String = pick["kind"]
+	if hz.is_empty():
+		ui.toast("Pick at least one hazard first")
+		return
+	# the engine's limits (REALISM.md §8.6): more would come back unknown, as if the work had no JSA
+	var most: int = Hse.JSA_HAZARDS if kind == "jsa" else Hse.POINTS
+	if hz.size() > most or (kind == "jsa" and cs.size() > Hse.JSA_CONTROLS):
+		ui.toast("Too many items: at most %d hazards%s" % [most,
+				" and %d controls" % Hse.JSA_CONTROLS if kind == "jsa" else ""])
+		return
+	# a session carries an input of at most 512 bytes (MULTIPLAYER.md §3.3): a longer one would be dropped unseen
+	var item := ["jsa", pick["work"], hz, cs, ui.me()] if kind == "jsa" else ["talk", pick["work"], hz, ui.me()]
+	if e.st_session and InputCheck.text(item).size() > InputCheck.MAX_BYTES:
+		ui.toast("Too many items for one input of a session (%d bytes at most): pick fewer" % InputCheck.MAX_BYTES)
+		return
+	if kind == "jsa":
+		ui.inputs.jsa(pick["work"], hz, cs, ui.me())
+	else:
+		ui.inputs.talk(pick["work"], hz, ui.me())
+	_sent(str([pick["work"], kind]), kind, pick["work"], kind, e.step_no + 1)
+	pick = {}
+	_sig = ""
+	refresh()
+
+
+## Opens the JSA's or the talk's picker for the shown work (nothing picked: the player picks every item).
+func open_pick(kind: String) -> void:
+	pick = {"kind": kind, "work": work, "hz": {}, "cs": {}}
+	_focus_to = "pick_back"
+	_sig = ""
+	refresh()
+
+
+func close_pick() -> void:
+	pick = {}
+	_sig = ""
+	refresh()
 
 
 ## A lock removal by authority (§15.1): another person's lock (`owner`'s), with the reason written down.
@@ -280,6 +336,10 @@ func waiting_from(e) -> void:
 			var key := str([q[1], q[2]]) if q[0] == "permit" else str([q[1], q[0], q[2]])
 			_pending.append([key, q[0], q[1], q[2], e.step_no + 1])
 			results[key] = {"state": "sent", "text": "Sent: it takes effect when the plant runs"}
+		elif (q[0] == "jsa" or q[0] == "talk") and typeof(q[1]) == TYPE_STRING:     # (REALISM.md §8.6)
+			var hk := str([q[1], q[0]])
+			_pending.append([hk, q[0], q[1], q[0], e.step_no + 1])
+			results[hk] = {"state": "sent", "text": "Sent: it takes effect when the plant runs"}
 	_sig = ""
 
 
@@ -298,6 +358,21 @@ func on_events(evs: Array, from: int) -> void:
 	var ctx := {}                     # Permits.replay, once a result is found
 	for i in range(from, evs.size()):
 		var ev: Array = evs[i]
+		if Permits.is_hse_event(ev):    # a JSA or a toolbox talk sent from the form (REALISM.md §8.6)
+			for k in _pending.size():
+				var p: Array = _pending[k]
+				# (the player's own: an NPC's JSA for the same work, the supervisor's after the isolation, is not theirs)
+				if p[1] == ev[1] and p[2] == ev[2] and int(ev[0]) >= p[4] and ev[5 if ev[1] == "jsa" else 4] == ui.me():
+					var txt := Permits.hse_text(e, ev)
+					results[p[0]] = {"state": Permits.hse_result(ev), "text": txt}
+					if feedback != null and is_instance_valid(feedback):
+						feedback.text = txt
+					if Permits.hse_result(ev) != "done":
+						ui.toast(txt)
+					_pending.remove_at(k)
+					break
+			_sig = ""
+			continue
 		if not Permits.is_permit_event(ev):
 			continue
 		if ev[1] == "permit" and ev[3] == "auto":
@@ -333,8 +408,9 @@ func refresh() -> void:
 		for pt in x.get("points", []):
 			near.append("1" if _reachable(pt["kks"]) else "0")
 	var hist: Array = Permits.history(e, work) if w != null else []
-	var sig := "%s|%s|%s|%s|%s|%d|%s|%s|%s%s" % [work, str(e.pstate), str(e.lockbits), str(e.ptw), ",".join(near),
-			hist.size(), str(results), _safe_sig(e, w), check.get("state", ""), check.get("point", "")]
+	var sig := "%s|%s|%s|%s|%s|%d|%s|%s|%s%s|%s%s" % [work, str(e.pstate), str(e.lockbits), str(e.ptw), ",".join(near),
+			hist.size(), str(results), _safe_sig(e, w), check.get("state", ""), check.get("point", ""),
+			pick.get("kind", ""), pick.get("work", "")]
 	if sig == _sig:
 		return
 	var had_focus := get_viewport().gui_get_focus_owner()
@@ -343,8 +419,12 @@ func refresh() -> void:
 	W.clear(body)
 	if w == null:
 		work = ""
+		pick = {}
 		_list(e)
+	elif not pick.is_empty() and pick["work"] == work:
+		_picker(e, w)
 	else:
+		pick = {}
 		_form(e, w, hist)
 	# after an action the pressed button is disabled, then gone: the focus goes on to the next step's button (a
 	# gamepad would otherwise land on "All permits" and walk the whole form again), once one is offered; a trainee
@@ -458,6 +538,7 @@ func _form(e, w: Dictionary, hist: Array) -> void:
 	elif st == 7:
 		body.add_child(W.label("Remove every lock below, at the equipment: the permit is de-isolated when the last "
 				+ "one is off.", 16, W.DIM))
+	_hse(e, w, st)
 	feedback = W.label("", 17, Color.WHITE)
 	feedback.name = "feedback"
 	body.add_child(feedback)
@@ -469,6 +550,97 @@ func _form(e, w: Dictionary, hist: Array) -> void:
 		body.add_child(W.label("%s  %s" % [W.model_time(h[0]), h[1]], 16, W.BAD_COLOUR if h[2] else W.DIM))
 	if not hist.is_empty():
 		feedback.text = hist[-1][1] if hist[-1][2] else ""
+
+
+## The work's JSA and toolbox talk (REALISM.md §8.6), for a work with a job kind in a plant with hse.json: who made
+## the JSA and what it names, who attended the talks, and the buttons to make the JSA (before the permit is issued) and
+## give the talk (an open permit with its JSA, before the work is done).
+func _hse(e, w: Dictionary, st: int) -> void:
+	if e.m.hse == null or not w.has("jsa"):
+		return
+	var wid: String = w["id"]
+	body.add_child(W.label("Job safety analysis", 20))
+	var j = e.jsa_of.get(wid)
+	if j == null:
+		body.add_child(W.label("None yet: the permit is issued only with one. A supervisor, an engineer or an HSE "
+				+ "officer picks the job's hazards and the controls that answer them.", 16, W.DIM))
+	else:
+		var hz := PackedStringArray()
+		for h in j[0]:
+			hz.append(Permits.hse_title(e, "h", h))
+		var cs := PackedStringArray()
+		for c in j[1]:
+			cs.append(Permits.hse_title(e, "c", c))
+		var l := W.label("By %s. Hazards: %s. Controls: %s." % [Permits.person_words(e, j[2]), "; ".join(hz),
+				"; ".join(cs) if not cs.is_empty() else "none"], 16, Color.WHITE)
+		l.name = "jsa_text"
+		body.add_child(l)
+	if st in Hse.JSA_STATES:
+		var b := W.button("Make the JSA" if j == null else "Make the JSA again", open_pick.bind("jsa"))
+		b.name = "make_jsa"
+		b.disabled = results.get(str([wid, "jsa"]), {}).get("state", "") == "sent"
+		body.add_child(b)
+	body.add_child(W.label("Toolbox talk", 20))
+	var att: Array = e.talked.get(wid, [])
+	if att.is_empty():
+		body.add_child(W.label("Not given yet: the crew hears the JSA's points before the work starts.", 16, W.DIM))
+	else:
+		var names := PackedStringArray()
+		for i in att:
+			names.append(Permits.person_words(e, e._sm.people[i]["id"]) if e._sm != null else str(i))
+		var l := W.label("Attended by %s." % ", ".join(names), 16, Color.WHITE)
+		l.name = "talk_text"
+		body.add_child(l)
+	if st in Hse.TALK_STATES:
+		var b := W.button("Give the toolbox talk here", open_pick.bind("talk"))
+		b.name = "give_talk"
+		b.disabled = j == null or results.get(str([wid, "talk"]), {}).get("state", "") == "sent"
+		body.add_child(b)
+		if j == null:
+			body.add_child(W.label("Make the JSA first: the talk goes through its points.", 16, W.DIM))
+
+
+## The JSA's or the talk's picker (REALISM.md §8.6): every hazard of the library, and for a JSA every control, as
+## check boxes; nothing is picked to begin with, and the job's own list is not shown (the debrief compares).
+func _picker(e, w: Dictionary) -> void:
+	var jsa: bool = pick["kind"] == "jsa"
+	title.text = ("JSA: " if jsa else "Toolbox talk: ") + w["title"]
+	var back := W.button("Back to the permit", close_pick)
+	back.name = "pick_back"
+	body.add_child(back)
+	body.add_child(W.label("Pick each hazard of this job's steps and the controls that answer them. The permit is "
+			+ "issued only with a JSA; the debrief compares it with the job's own." if jsa else
+			"Pick the points to go through with the crew around you (those in this room, or at this place, attend). "
+			+ "The JSA's hazards are marked.", 16, W.DIM))
+	var j = e.jsa_of.get(w["id"])
+	body.add_child(W.label("Hazards", 20))
+	for h in e.m.hse["hazards"]:
+		var marked: bool = not jsa and j != null and (j[0] as Array).has(h)
+		body.add_child(_check("hz_" + h, Permits.hse_title(e, "h", h) + ("  (in the JSA)" if marked else ""),
+				"hz", h))
+	if jsa:
+		body.add_child(W.label("Controls", 20))
+		for c in e.m.hse["controls"]:
+			body.add_child(_check("cs_" + c, Permits.hse_title(e, "c", c), "cs", c))
+	var send_b := W.button("Send the JSA" if jsa else "Give the talk", send_pick)
+	send_b.name = "send_pick"
+	body.add_child(send_b)
+
+
+func _check(node_name: String, text: String, group: String, id: String) -> CheckBox:
+	var c := CheckBox.new()
+	c.name = node_name
+	c.text = text
+	c.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	c.custom_minimum_size = Vector2(0, 44)      # (a finger's height on the Note 9)
+	c.add_theme_font_size_override("font_size", 17)
+	c.button_pressed = pick[group].has(id)
+	c.toggled.connect(func(on: bool):
+		if on:
+			pick[group][id] = true
+		else:
+			pick[group].erase(id))
+	return c
 
 
 static func _steps_line(st: int) -> String:

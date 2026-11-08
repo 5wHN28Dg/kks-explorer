@@ -153,13 +153,14 @@ def fan(m, i):
     rate = m.prod(f'{p}_rate', [f'ct_fan{i}_cmd', 'age_h'], 'h/s')
     _item(m, p, 'gearbox', rate)
     m.tab(f'{p}_x', f'{p}_mgn', [[-pf, 0], [-0.5 * pf, 2.5], [0, GBX_END]], 'mm/s')
-    return m.sum(f'ct_fan{i}_vfs', [f'ct_fan{i}_vft', f'{p}_x'], 'mm/s')
+    return m.sum(f'ct_fan{i}_vfs', [f'ct_fan{i}_vft', f'{p}_x', 'ct_ice'], 'mm/s')   # (WX2: + ice on the blades)
 
 
 def fan_parts(m, i):
     """The fan's advisory alarm (ISO 20816-3 zone C, the trip stays at 10 mm/s) and the gear whine at its probe."""
     cy = f'30PAD10CY{i:03d}'
-    m.cmp(f'ct_fan{i}_vib_h', f'ct_fan{i}_vib', '>', 6.3)
+    import train_wx
+    m.cmp(f'ct_fan{i}_vib_h', train_wx.reading(i), '>', 6.3)     # (WX2: the transmitter's reading)
     m.alarm(f'ct_fan{i}_vib_high', cy, f'Cooling tower fan {i} vibration high', f'ct_fan{i}_vib_h', 3,
             f'30PAD10AN{i:03d}', 'VAH')
     m.b(kks=cy, sound='gear_whine', gain={'of': f'ct_fan{i}_vib', 'table': [[3.5, 0], [6.3, 0.6], [10, 1]]})
@@ -319,6 +320,8 @@ def apply(sc):
             h = math.fmod(h, life_of(seed, life))
         if h > 0:
             sc['init'][wear] = round(h, 3)
+    import train_wx
+    train_wx.age(sc, months)        # (WX2: the filters' residue, the fouling, the cabinet's filters)
     return sc
 
 

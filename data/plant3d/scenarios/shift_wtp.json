@@ -4,8 +4,8 @@
  "id": "shift_wtp",
  "title": "Day shift at the WTP: a filter due, a mixed bed near exhaustion (choose a role)",
  "init": {
-  "ambient_t": 35,
-  "ambient_wb": 25,
+  "ambient_t": 17.0,
+  "ambient_wb": 12.0,
   "wind": 2,
   "rain": 0,
   "dust": 0.08,
@@ -142,7 +142,11 @@
   {"id": "ct_fan10_gbx", "when": {"cmp": ["ct_fan10_gbx_mgn", ">=", 0]}, "set": {"ct_fan10_vfault": 1}, "text": "Cooling tower fan 10: the gear reducer fails", "kks": "30PAD10AN010", "repair": {"ct_fan10_vfault": 0}},
   {"id": "cw_a_act", "when": {"cmp": ["cw_a_act_mgn", ">=", 0]}, "set": {"cw_a_v_stuck": 1}, "text": "CW pump A discharge valve: the actuator's torque switch stops it for good", "kks": "30PAC10AA101", "repair": {"cw_a_v_stuck": 0}},
   {"id": "cw_b_act", "when": {"cmp": ["cw_b_act_mgn", ">=", 0]}, "set": {"cw_b_v_stuck": 1}, "text": "CW pump B discharge valve: the actuator's torque switch stops it for good", "kks": "30PAC10AA102", "repair": {"cw_b_v_stuck": 0}},
-  {"id": "cw_c_act", "when": {"cmp": ["cw_c_act_mgn", ">=", 0]}, "set": {"cw_c_v_stuck": 1}, "text": "CW pump C discharge valve: the actuator's torque switch stops it for good", "kks": "30PAC10AA103", "repair": {"cw_c_v_stuck": 0}}
+  {"id": "cw_c_act", "when": {"cmp": ["cw_c_act_mgn", ">=", 0]}, "set": {"cw_c_v_stuck": 1}, "text": "CW pump C discharge valve: the actuator's torque switch stops it for good", "kks": "30PAC10AA103", "repair": {"cw_c_v_stuck": 0}},
+  {"id": "ct_lvl_frozen", "when": "ct_line_ice", "set": {"ct_lvl_frozen": 1}, "text": "The cooling tower basin level transmitter's impulse line freezes: the reading holds", "kks": "30PAD10CL001", "repair": {"ct_lvl_frozen": 0}},
+  {"id": "ct_fan7_ingress", "when": {"cmp": ["ct_jb7_rain", ">=", "ct_jb7_mm"]}, "set": {"ct_fan7_cy_err": 1}, "text": "Cooling tower fan 7 vibration reads high and climbing", "kks": "30PAD10CY007", "repair": {"ct_fan7_cy_err": 0}, "causes": [{"id": "water", "weight": 4, "set": {"ct_jb7_wet": 1}, "repair": {"ct_jb7_wet": 0}, "text": "Rain in the junction box through a poor cable gland: the wet terminals leak current into the loop"}, {"id": "electronics", "weight": 1, "set": {"ct_cy7_bad": 1}, "repair": {"ct_cy7_bad": 0}, "text": "The transmitter's electronics have failed"}]},
+  {"id": "ct_fan9_surge", "when": {"cmp": ["ln_count", ">=", "ln_n"]}, "set": {"ct_fan9_cy_fail": 1}, "text": "A lightning surge damages cooling tower fan 9's vibration transmitter: it reads full scale", "kks": "30PAD10CY009", "repair": {"ct_fan9_cy_fail": 0}},
+  {"id": "gt1_pulse", "set": {"gt1_pulse_fail": 1}, "text": "GT 1 air intake: the pulse cleaning stops (its controller fails)", "kks": "10MBL10AT001", "repair": {"gt1_pulse_fail": 0}}
  ],
  "start": {"day": 1, "time": "05:00"},
  "world": {"year_day": 100, "weather": {"season": "spring"}, "age": {"months": 0}},

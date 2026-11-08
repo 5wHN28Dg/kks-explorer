@@ -84,6 +84,17 @@ func run(tree: SceneTree) -> Array:
 	return p
 
 
+## HS1 (REALISM.md §8.6): once the permit is isolated a maintenance supervisor makes its JSA at the maintenance office;
+## the issue waits for it.
+static func _jsa_by_npc(ui, wid: String) -> Array:
+	var e = ui.clock.engine
+	for i in 300:
+		if e.jsa_of.has(wid):
+			return []
+		ui.clock.run_steps(20)
+	return ["no maintenance supervisor made the JSA of %s" % wid]
+
+
 func _overnight(tree: SceneTree) -> Array:
 	var main := App.start(tree)
 	var why: String = await _start(tree, main)
@@ -92,11 +103,12 @@ func _overnight(tree: SceneTree) -> Array:
 		return [why]
 	var ui = main.ui
 	var e = ui.clock.engine
-	_until(ui, 15, 40)
+	_until(ui, 15, 10)     # (HS1: the JSA and the toolbox talk come first)
 	var p := _form(ui, CAL, ["request", "approve"])
 	# the I&C technician locks the transmitter's root valve (an NPC's input, as its step 9 makes it)
 	e.npc_queue.append(["lock", CAL, 0, "ic1"])
 	ui.clock.run_steps(2)
+	p += _jsa_by_npc(ui, CAL)     # (HS1: the issue waits for a supervisor's JSA)
 	p += _form(ui, CAL, ["issue"])
 	var wi: int = e.m.work_ix[CAL]
 	if e.pstate[wi] != 4:
@@ -149,10 +161,11 @@ func _colleague(tree: SceneTree) -> Array:
 		return [why]
 	var ui = main.ui
 	var e = ui.clock.engine
-	_until(ui, 15, 40)
+	_until(ui, 15, 10)     # (HS1: the JSA and the toolbox talk come first)
 	var p := _form(ui, CAL, ["request", "approve"])
 	e.npc_queue.append(["lock", CAL, 0, "ic2"])      # the isolating technician's lock, as their step 9 makes it
 	ui.clock.run_steps(2)
+	p += _jsa_by_npc(ui, CAL)     # (HS1: the issue waits for a supervisor's JSA)
 	p += _form(ui, CAL, ["issue"])
 	var wi: int = e.m.work_ix[CAL]
 	if e.pstate[wi] != 4:
@@ -200,6 +213,7 @@ func _reoffered(tree: SceneTree) -> Array:
 	var p := _form(ui, FAN_WORK, ["request", "approve"])
 	e.npc_queue.append(["lock", FAN_WORK, 0, "a_eap"])
 	ui.clock.run_steps(2)
+	p += _jsa_by_npc(ui, FAN_WORK)     # (HS1: the issue waits for a supervisor's JSA)
 	p += _form(ui, FAN_WORK, ["issue"])
 	var wi: int = e.m.work_ix[FAN_WORK]
 	var accepted := false

@@ -10,6 +10,7 @@ extends RefCounted
 
 const App = preload("res://tests/ui_app.gd")
 const RunSave = preload("res://ui/run_save.gd")
+const Permits = preload("res://ui/permits.gd")
 
 const PUMP_A := "30PAC10AP001"
 const VALVE_A := "30PAC10AA101"
@@ -109,6 +110,13 @@ func run(tree: SceneTree) -> Array:
 			p.append("beside %s the lock was not sent after its check" % code)
 		ui.clock.run_steps(1)
 		pm.refresh()
+	# its JSA first (the job's own list; HS1, REALISM.md §8.6: an issue without one is refused)
+	var own: Array = Permits.own_list(e, WORK_A)
+	if own.is_empty():
+		p.append("%s has no job kind" % WORK_A)
+	else:
+		ui.inputs.jsa(WORK_A, own[0], own[1], null)
+		ui.clock.run_steps(1)
 	p.append_array(_do(ui, pm, "issue"))
 	ui.player.global_position = ui.index.center(PUMP_A) + Vector3(0, 0, 3)
 	ui.open_card(PUMP_A)            # (the permit form took the card's place)

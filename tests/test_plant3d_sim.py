@@ -57,6 +57,12 @@ def apply(e, item):
         e.fault(item[2])
     elif kind in ('board', 'alight'):
         getattr(e, kind)(item[2], item[3])              # a lift's riders (PLANT3D §20.3)
+    elif kind == 'weather':
+        e.weather(item[2])                              # the instructor's weather (REALISM.md §5.1: WX2's forks)
+    elif kind == 'jsa':
+        e.jsa(item[2], item[3], item[4], item[5])       # a JSA (REALISM.md §8.6: the free-mode forks' and the day's)
+    elif kind == 'talk':
+        e.talk(item[2], item[3], item[4])
     else:
         raise ValueError(f'an input this harness does not replay: {item}')
 
@@ -579,8 +585,8 @@ class GdscriptRealism(unittest.TestCase):
         with open(os.path.join(REPO, 'ref', 'vectors', 'plant3d-realism.json'), encoding='utf-8') as f:
             V3 = json.load(f)
         want, n = {}, 1
-        for part in ('staff', 'wear', 'weather', 'hands', 'audio', 'lab'):   # RE1, AG1 (REALISM.md §2.2), WX1
-            # (§5.1), HW1 (§2.13), HS7 (§8.5), AG3 (§2.19)
+        for part in ('staff', 'wear', 'weather', 'hands', 'audio', 'lab', 'hse'):   # RE1, AG1 (REALISM.md §2.2), WX1
+            # (§5.1), HW1 (§2.13), HS7 (§8.5), AG3 (§2.19), HS1 (§8.6)
             st = V3[part]
             want.update({f'realism/{part}/{i}': staff_run(st['files'], r, None) for i, r in enumerate(st['runs'])})
             n += 1 + len(st['runs'])
@@ -629,8 +635,8 @@ class GdscriptRealism(unittest.TestCase):
         no_errors(self, r)
         self.assertEqual(r.returncode, 0, r.stdout[-4000:])
         self.assertIn('WEATHER load=e600 values=10 ', r.stdout)
-        self.assertIn('WEATHER load=built values=7 ', r.stdout)
-        self.assertIn('WEATHER load=r600 values=7 ', r.stdout)
+        self.assertIn('WEATHER load=built values=9 ', r.stdout)      # (WX2: the air's two after WX3's seven)
+        self.assertIn('WEATHER load=r600 values=9 ', r.stdout)
         for load in ('built', 'r600', 'e600'):
             self.assertIn(f'BATCH load={load} values=', r.stdout)
         self.assertIn('STEP load=r600 values=', r.stdout)

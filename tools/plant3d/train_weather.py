@@ -1,8 +1,12 @@
 """The first train's weather (docs/plant3d/REALISM.md §5.1, §5.5; milestone WX3): weather.json's kinds, the values
 they drive and the seasons of the hot dry climate (SITE.md: long hot dry summers with dust and sandstorms on the
 north-westerly wind, short mild winters with a few rain days, thunderstorms in spring and autumn, rare cold nights
-and fog). It drives only what the app draws and plays (REALISM.md §5.4); `ambient_t`, `ambient_wb` and the plant's
-reactions are WX2's. Diurnal tables over `world_hour`; a sandstorm's visibility under 1 km as WMO defines one."""
+and fog). WX3 drove only what the app draws and plays (REALISM.md §5.4); WX2 adds the air's temperature and wet bulb
+(`ambient_t`, `ambient_wb`, appended to the driven values so that every earlier one keeps its place), which the plant
+reads (train_wx.py). Diurnal tables over `world_hour`; a sandstorm's visibility under 1 km as WMO defines one. The
+temperatures are round figures for a hot desert plain from public climatologies ([WBCCKP]: summer days of 45-48 °C
+with dry air, mild winters with rare frost at dawn); the wet bulb is always at or below the dry bulb, and both lag
+with the same tau, so a change of kind keeps it so."""
 
 # solar (W/m2) on a horizontal surface over the clock hour for a clear desert day, scaled per kind
 def solar(peak):
@@ -27,7 +31,22 @@ K = {
  'fog':          dict(wind=flat(1), rain=flat(0), dust=flat(0.02), visibility=[[0, 400], [6, 200], [10, 1500], [12, 4000], [24, 1000]],
                       solar=solar(300), lightning=flat(0)),
 }
-VALUES = [('wind', 20), ('rain', 8), ('dust', 30), ('visibility', 20), ('solar', 10), ('lightning', 3), ('wet', 25)]
+# WX2: the air's dry bulb and wet bulb (°C) per kind. The summer day's 06:00 matches the cold start's 35/25
+# (FIRST-TRAIN.md "Starting state")
+AIR = {
+ 'clear':        ([[0, 19], [6, 17], [15, 30], [20, 25], [24, 19]], [[0, 13], [6, 12], [15, 17], [24, 13]]),
+ 'hot':          ([[0, 37], [6, 34], [15, 47], [19, 43], [24, 37]], [[0, 24], [6, 24], [15, 25], [24, 24]]),
+ 'dust_haze':    ([[0, 35], [6, 33], [15, 43], [24, 35]], [[0, 22], [15, 24], [24, 22]]),
+ 'sandstorm':    ([[0, 35], [15, 41], [24, 35]], [[0, 19], [15, 21], [24, 19]]),
+ 'rain':         ([[0, 12], [14, 16], [24, 12]], [[0, 11], [14, 14], [24, 11]]),
+ 'thunderstorm': ([[0, 20], [14, 24], [24, 20]], [[0, 18], [14, 20], [24, 18]]),
+ 'cold_clear':   ([[0, 2], [6, -3], [14, 15], [19, 8], [24, 2]], [[0, 0], [6, -4], [14, 8], [24, 0]]),
+ 'fog':          ([[0, 6], [7, 5], [14, 14], [24, 6]], [[0, 6], [7, 5], [14, 12], [24, 6]]),
+}
+for k, (t, wb) in AIR.items():
+    K[k]['ambient_t'], K[k]['ambient_wb'] = t, wb
+VALUES = [('wind', 20), ('rain', 8), ('dust', 30), ('visibility', 20), ('solar', 10), ('lightning', 3), ('wet', 25),
+          ('ambient_t', 60), ('ambient_wb', 60)]
 def rows(spec):   # {from: {to: w}}
     return [[a, b, w] for a, d in spec.items() for b, w in d.items()]
 S = [
@@ -67,7 +86,7 @@ for k in K: K[k]['wet'] = flat(WET.get(k, 0))
 
 # the driven values as plant.json's ext values and every scenario's step 0 values: clear weather before sunrise (the
 # values then lag toward the season's kind at the start's hour: at 06:00, the scenarios without `start`, solar rises)
-EXT = [v for v, _ in VALUES]
+EXT = [v for v, _ in VALUES if v not in ('ambient_t', 'ambient_wb')]   # (those two were ext values before)
 CLEAR_INIT = {'wind': 2, 'rain': 0, 'dust': 0.08, 'visibility': 20000, 'solar': 0, 'lightning': 0, 'wet': 0}
 # free play's weather (the user, 2026-11-01): every scenario, seeded by the season of its start day. The crews'
 # shifts first; then (the user, 2026-11-03) the five that were format 1, made version 2 for it: each in the season of
@@ -89,3 +108,16 @@ def weather():
             'values': [{'id': v, 'tau': t} for v, t in VALUES],
             'kinds': [{'id': k, 'targets': {v: K[k][v] for v, _ in VALUES}} for k in K],
             'seasons': S}
+
+
+def start_air(sc):
+    """WX2: a scenario whose season starts in another kind than summer's `hot` starts with that kind's air at 06:00
+    (the clock's start), so it doesn't begin with a summer afternoon's 35/25 (FIRST-TRAIN's cold start keeps them)."""
+    from ref.courses import table_at
+    season = next(x for x in S if x['id'] == sc['world']['weather']['season'])
+    k = season['start']
+    if k != 'hot':
+        t, wb = AIR[k]
+        sc['init'] = dict(sc['init'], ambient_t=round(float(table_at(t, 6.0)), 3),
+                          ambient_wb=round(float(table_at(wb, 6.0)), 3))
+    return sc
