@@ -22,7 +22,22 @@ var section := ""
 var code := ""                  # the equipment it was opened from ("" none): its own data in the `unit` block
 var history: Array = []         # [[manual, section]] for Back
 var open_ms := 0.0              # the last page's build, ms
-var page_ms := {}               # "manual#section" -> its longest build, ms (walk=manuals)
+var page_ms := {}               # "manual#section" -> its longest build, to its first frame complete, ms (walk=manuals)
+var building := false           # the page's blocks still being added (a few each frame: the frame rule)
+var frame_ms_max := 0.0         # the longest the reader's own work took in one frame, ms (walk=manuals)
+const FRAME_BUDGET_MS := 4.0    # the page's blocks and table rows added (and the last page's freed) each frame, at most
+								# this long
+const FRAME_TEXT := 600         # ... and about this many characters of new text: laying text out (after the scripts,
+								# before the frame is drawn) costs by its length, about 0.05 ms a character on the
+								# Note 9, and a whole page at once took a frame over 100 ms
+var _frame_chars := 0           # the new text this frame
+var _jobs: Array = []           # the page's work left: Callables that each add one block or one table row
+var _page_t0 := 0               # the page's start (µs)
+var _page_key := ""
+var _pumped_frame := -1         # the frame whose share of the page _show already added (not added again in _process)
+var _waiting: Array = []        # [TextureRect, file]: figures decoded on a worker thread, shown when ready
+var _trash: Array = []          # the last page's blocks, freed a few a frame (a whole page freed at once took a
+								# Note 9 frame over 100 ms)
 var last_note := ""             # the last sentence shown (a link that could not be followed), for the tests
 var root: Control
 var title: Label
@@ -83,6 +98,7 @@ func setup(u, m) -> void:
 	var cs := ScrollContainer.new()
 	cs.name = "contents"
 	cs.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	cs.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS
 	cs.custom_minimum_size.x = 300 * W.scale
 	h.add_child(cs)
 	contents = VBoxContainer.new()
@@ -91,6 +107,9 @@ func setup(u, m) -> void:
 	scroll = ScrollContainer.new()
 	scroll.name = "page"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# the scroll bar always there: one that appears as the page grows narrows it, and every label of the page is laid
+	# out again in that frame (over 100 ms on the Note 9)
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(scroll)
 	page = VBoxContainer.new()
@@ -138,6 +157,11 @@ func close() -> void:
 	man_id = ""
 	section = ""
 	history.clear()
+	for c in page.get_children():       # (freed over the next frames, as a page left)
+		page.remove_child(c)
+		_trash.append(c)
+	_jobs.clear()
+	building = false
 	manuals.forget_figures()            # (decoded again when next shown: the memory goes with the reader)
 	if ui != null and ui.main != null and ui.main.hud != null:
 		ui.main.hud.refresh()
@@ -205,12 +229,6 @@ func _input(ev: InputEvent) -> void:
 		root.get_viewport().set_input_as_handled()   # (scrolled in _process: the stick's position, not its events)
 
 
-func _process(delta: float) -> void:
-	if not visible:
-		return
-	var y := Input.get_joy_axis(0, JOY_AXIS_LEFT_Y) if not Input.get_connected_joypads().is_empty() else 0.0
-	if absf(y) > 0.2:
-		scroll.scroll_vertical += int(y * 1600.0 * W.scale * delta)
 
 
 ## A gamepad's focus: the current section's button in the contents.
@@ -244,18 +262,17 @@ func _show(id: String, sec: String) -> void:
 			b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			contents.add_child(b)
 	_mark_contents()
+	_page_t0 = t0
+	_page_key = id + "#" + sec
 	_build_page(m, sec)
 	scroll.scroll_vertical = 0
+	_pump(FRAME_BUDGET_MS)              # the title and the first blocks at once; the rest over the next frames
+	_pumped_frame = Engine.get_process_frames()
 	open_ms = (Time.get_ticks_usec() - t0) / 1000.0
+	frame_ms_max = maxf(frame_ms_max, open_ms)
 	opened.emit(id, sec)
 	if ui != null and ui.has_method("wants_focus") and ui.wants_focus():
 		take_focus()
-	# to the page's first frame (its text laid out and shaped then): what the reader waits for
-	var key := id + "#" + sec
-	await root.get_tree().process_frame
-	if man_id == id and section == sec:
-		var shown := (Time.get_ticks_usec() - t0) / 1000.0
-		page_ms[key] = maxf(shown, float(page_ms.get(key, 0.0)))
 
 
 func _mark_contents() -> void:
@@ -272,9 +289,91 @@ func go(sec: String) -> void:
 	_show(man_id, sec)
 
 
+## Adds the page's next blocks and table rows for at most `budget_ms` (at least one).
+func _pump(budget_ms: float) -> void:
+	var t0 := Time.get_ticks_usec()
+	_frame_chars = 0
+	while not _jobs.is_empty():
+		var j: Callable = _jobs.pop_front()
+		j.call()
+		if (Time.get_ticks_usec() - t0) / 1000.0 >= budget_ms or (budget_ms < INF and _frame_chars >= FRAME_TEXT):
+			break
+	building = not _jobs.is_empty()
+	if not building and _page_key != "":
+		_page_built(_page_key, _page_t0)
+		_page_key = ""
+
+
+## The page complete: its time to the end of the next frame (its text laid out and shaped then).
+func _page_built(key: String, t0: int) -> void:
+	await root.get_tree().process_frame
+	if man_id + "#" + section == key:
+		var shown := (Time.get_ticks_usec() - t0) / 1000.0
+		page_ms[key] = maxf(shown, float(page_ms.get(key, 0.0)))
+
+
+## The app leaving: what is left of the last pages goes now (nodes out of the tree are not freed with it).
+func _exit_tree() -> void:
+	if manuals != null:
+		manuals.forget_figures()
+		manuals.reap(true)
+	for n in _trash:
+		if is_instance_valid(n):
+			n.free()
+	_trash.clear()
+
+
+## Frees the last pages' nodes for at most a frame's budget: leaves first (a table freed whole is one long free).
+func _free_some(t0: int) -> void:
+	while not _trash.is_empty() and (Time.get_ticks_usec() - t0) / 1000.0 < FRAME_BUDGET_MS:
+		var n = _trash.pop_back()
+		if not is_instance_valid(n):
+			continue
+		if n.get_child_count() > 0:
+			_trash.append(n)            # (freed after its children)
+			for c in n.get_children():
+				n.remove_child(c)
+				_trash.append(c)
+		else:
+			n.free()
+
+
+## The whole page at once (the tests, and anything that looks for a block straight after opening).
+func finish_page() -> void:
+	_pump(INF)
+
+
+func _process(delta: float) -> void:
+	var t0 := Time.get_ticks_usec()
+	_free_some(t0)
+	if manuals != null:
+		manuals.reap()
+	if not visible:
+		return
+	var y := Input.get_joy_axis(0, JOY_AXIS_LEFT_Y) if not Input.get_connected_joypads().is_empty() else 0.0
+	if absf(y) > 0.2:
+		scroll.scroll_vertical += int(y * 1600.0 * W.scale * delta)
+	if building and Engine.get_process_frames() != _pumped_frame:
+		_pump(FRAME_BUDGET_MS)
+	for i in range(_waiting.size() - 1, -1, -1):
+		var w: Array = _waiting[i]
+		if not is_instance_valid(w[0]):
+			_waiting.remove_at(i)
+			continue
+		var tex: Texture2D = manuals.poll_figure(String(w[1]))
+		if tex != null or not manuals.figure_pending(String(w[1])):
+			(w[0] as TextureRect).texture = tex
+			_waiting.remove_at(i)
+	frame_ms_max = maxf(frame_ms_max, (Time.get_ticks_usec() - t0) / 1000.0)
+
+
 func _build_page(m: Dictionary, sec: String) -> void:
-	W.clear(page)
+	for c in page.get_children():
+		page.remove_child(c)
+		_trash.append(c)
 	_links.clear()
+	_jobs.clear()
+	_waiting.clear()
 	var s: Dictionary = {}
 	var at := 0
 	for i in m["sections"].size():
@@ -283,9 +382,14 @@ func _build_page(m: Dictionary, sec: String) -> void:
 			at = i
 	page.add_child(_rich("[font_size=%d][b]%s[/b][/font_size]" % [int(30 * W.scale), _bb(s["title"])]))
 	for b in s["blocks"]:
-		var c := _block(b, m)
-		if c != null:
-			page.add_child(c)
+		_jobs.append(func():
+			var c := _block(b, m)
+			if c != null:
+				page.add_child(c))
+	_jobs.append(func(): _footer(m, s, at))
+
+
+func _footer(m: Dictionary, s: Dictionary, at: int) -> void:
 	if not s.get("src", []).is_empty():
 		var cites: Array = []
 		for sid in s["src"]:
@@ -370,10 +474,15 @@ func _block(b: Dictionary, m: Dictionary) -> Control:
 func _figure(f: Dictionary) -> Control:
 	var v := VBoxContainer.new()
 	v.name = "figure_" + String(f["id"])
-	var tex: Texture2D = manuals.figure(String(f["file"]))
-	if tex != null:
+	var file := String(f["file"])
+	if manuals.has_figure(file):
+		# decoded on a worker thread (a 960 × 600 WebP takes tens of ms on a phone): shown when ready
 		var tr := TextureRect.new()
-		tr.texture = tex
+		tr.name = "picture"
+		tr.texture = manuals.poll_figure(file)
+		if tr.texture == null:
+			manuals.request_figure(file)
+			_waiting.append([tr, file])
 		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		# the page's width (before its first layout, from the screen less the contents)
@@ -414,12 +523,18 @@ func _table(head: Array, rows: Array) -> Control:
 		c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		c.custom_minimum_size.x = 80 * W.scale
 		g.add_child(c)
+	# the rows a few at a time, before the page's next block (a long parts list would hold one frame up)
+	var row_jobs: Array = []
 	for r in rows:
-		for cell in r:
-			var c := _rich(_bb(cell))
-			c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			c.custom_minimum_size.x = 80 * W.scale
-			g.add_child(c)
+		row_jobs.append(func():
+			if not is_instance_valid(g):
+				return
+			for cell in r:
+				var c: Control = _cell(cell)
+				c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				c.custom_minimum_size.x = 80 * W.scale
+				g.add_child(c))
+	_jobs = row_jobs + _jobs
 	var p := PanelContainer.new()
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = PAPER.darkened(0.03)
@@ -429,6 +544,20 @@ func _table(head: Array, rows: Array) -> Control:
 	p.add_theme_stylebox_override("panel", sb)
 	p.add_child(g)
 	return p
+
+
+## A table cell: a Label for plain words (cheaper than rich text, which a long table has many of), else rich text.
+func _cell(run) -> Control:
+	var plain: bool = run is String or (run as Array).all(func(x): return x is String)
+	if plain:
+		var l := Label.new()
+		l.text = run if run is String else "".join(run)
+		_frame_chars += l.text.length()
+		l.add_theme_color_override("font_color", INK)
+		l.add_theme_font_size_override("font_size", int(20 * W.scale))
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		return l
+	return _rich(_bb(run))
 
 
 func _rule() -> Control:
@@ -447,7 +576,11 @@ func _rich(bb: String) -> RichTextLabel:
 	r.add_theme_font_size_override("mono_font_size", int(19 * W.scale))
 	r.meta_clicked.connect(_on_meta)
 	r.mouse_filter = Control.MOUSE_FILTER_PASS
+	# its lines broken and shaped on a worker thread (shown when done): on the Note 9 the page's text laid out on the
+	# main thread, after the scripts and before the draw, took frames over 100 ms however few blocks a frame added
+	r.threaded = true
 	r.text = bb
+	_frame_chars += bb.length()
 	return r
 
 

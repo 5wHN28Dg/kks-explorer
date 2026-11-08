@@ -71,6 +71,7 @@ func _card(tree: SceneTree, ui) -> Array:
 		return p + ["transmitter 2's card has no Manual button"]
 	b.pressed.emit()
 	await tree.process_frame
+	mv.finish_page()
 	if not ui.manual_open() or mv.man_id != "pressure_transmitter" or mv.section != "description":
 		p.append("Manual opened %s at %s (open %s)" % [mv.man_id, mv.section, str(ui.manual_open())])
 	if not ui.get_viewport().disable_3d or not ui.views_open():
@@ -80,6 +81,7 @@ func _card(tree: SceneTree, ui) -> Array:
 	if mv.page.find_child("figure_pressure_transmitter-exploded", true, false) == null:
 		p.append("the description has no exploded figure")
 	mv.go("specifications")
+	mv.finish_page()
 	var unit: Node = mv.page.find_child("unit", true, false)
 	if unit == null or not App.texts(unit).contains(PT2) or not App.texts(unit).contains("0 to 120 kPa(a)"):
 		p.append("the specifications show no data of %s: %s" % [PT2, App.texts(mv.page).left(300)])
@@ -88,14 +90,49 @@ func _card(tree: SceneTree, ui) -> Array:
 		p.append("no Next button to the installation")
 	else:
 		nb.pressed.emit()
+		mv.finish_page()
 		if mv.section != "installation":
 			p.append("Next went to %s" % mv.section)
 	mv.go("troubleshooting")
+	mv.finish_page()
 	var tr: Node = mv.page.find_child("trouble", true, false)
 	if tr == null or not App.texts(tr).contains("A loose or corroded signal terminal"):
 		p.append("the troubleshooting table: %s" % (App.texts(tr).left(200) if tr != null else "missing"))
+	p += await _laid_out_off_the_main_thread(tree, mv)
+	p += await _one_share_a_frame(tree, mv)
 	if mv.open_ms <= 0.0 or mv.open_ms > 300.0:
 		p.append("the troubleshooting page took %.1f ms (budget 300)" % mv.open_ms)
+	# a long page is built over several frames (the frame rule), its figures decoded on a worker thread
+	ui.open_manual("steam_turbine", "parts", "30MAA10")
+	var n := 0
+	while mv.building and n < 600:
+		await tree.process_frame
+		n += 1
+	var want := 0
+	for s in ui.manuals.manual("steam_turbine")["sections"]:
+		if s["id"] == "parts":
+			want = (s["blocks"][1]["table"]["rows"].size() + 1) * 4
+	var grid: Node = mv.page.find_children("*", "GridContainer", true, false)[0]
+	if mv.building or grid.get_child_count() != want:
+		p.append("the parts page: building %s, %d of %d cells" % [str(mv.building), grid.get_child_count(), want])
+	await tree.process_frame
+	if not mv.page_ms.has("steam_turbine#parts"):
+		p.append("the parts page's time was not measured")
+	mv.go("description")
+	var pic: TextureRect = null
+	n = 0
+	while n < 600:
+		mv.finish_page()
+		var f: Node = mv.page.find_child("figure_steam_turbine-cut", true, false)
+		pic = f.find_child("picture", true, false) if f != null else null
+		if pic != null and pic.texture != null:
+			break
+		await tree.process_frame
+		n += 1
+	if pic == null or pic.texture == null or pic.texture.get_width() != 960:
+		p.append("the steam turbine's cut figure was not shown")
+	mv.open("pressure_transmitter", "troubleshooting", PT2)
+	mv.finish_page()
 	# a section link, then Back
 	mv.follow({"section": "hart"})
 	if mv.section != "hart":
@@ -112,6 +149,7 @@ func _card(tree: SceneTree, ui) -> Array:
 		p.append("Back from another manual went to %s" % mv.man_id)
 	# the real Escape key (bound to ui_cancel and to menu) goes Back first, then closes; gamepad B too
 	mv.go("calibration")
+	mv.finish_page()
 	var key := InputEventKey.new()
 	key.keycode = KEY_ESCAPE
 	key.physical_keycode = KEY_ESCAPE
@@ -120,6 +158,7 @@ func _card(tree: SceneTree, ui) -> Array:
 	if not ui.manual_open() or mv.section != "troubleshooting":
 		p.append("Escape with a page to go back to: open %s at %s" % [str(ui.manual_open()), mv.section])
 	mv.go("hart")
+	mv.finish_page()
 	var pad := InputEventJoypadButton.new()
 	pad.button_index = JOY_BUTTON_B
 	pad.pressed = true
@@ -150,12 +189,14 @@ func _card(tree: SceneTree, ui) -> Array:
 	else:
 		vb.pressed.emit()
 		mv.go("specifications")
+		mv.finish_page()
 		if mv.man_id != "valves" or not App.texts(mv.page).contains("PN 160"):
 			p.append("the valve's manual: %s %s" % [mv.man_id, App.texts(mv.page).left(200)])
 		mv.close()
 	# the gas turbine's manual opens without its figures (they come with its Workshop scene)
 	if ui.open_manual("gas_turbine", "", "10MBA10"):
 		mv.go("specifications")
+		mv.finish_page()
 		if not App.texts(mv.page).contains("250 MW"):
 			p.append("the gas turbine's own data: %s" % App.texts(mv.page).left(200))
 		mv.close()
@@ -274,4 +315,57 @@ func _work_view(tree: SceneTree) -> Array:
 	ui.work.close()
 	main.free()
 	await tree.process_frame
+	return p
+
+
+## The page's rich text is laid out on a worker thread (the Note 9's frames over 100 ms were the text laid out on the
+## main thread at page changes), and it still ends up laid out: every label finished, as tall as its lines.
+func _laid_out_off_the_main_thread(tree: SceneTree, mv) -> Array:
+	var p: Array = []
+	var labels: Array = mv.page.find_children("*", "RichTextLabel", true, false)
+	if labels.size() < 3:
+		return ["the page has %d rich text labels" % labels.size()]
+	for r in labels:
+		if not (r as RichTextLabel).threaded:
+			p.append("a page label laid out on the main thread: %s" % (r as RichTextLabel).get_parsed_text().left(60))
+			break
+	for i in 120:
+		if labels.all(func(r): return (r as RichTextLabel).is_finished()):
+			break
+		await tree.process_frame
+	await tree.process_frame
+	for r in labels:
+		var l := r as RichTextLabel
+		if not l.is_finished() or (l.get_parsed_text().strip_edges() != "" and l.size.y < l.get_line_count() * 10.0):
+			p.append("a page label not laid out: finished %s, %d lines, %.0f px tall: %s" % [str(l.is_finished()),
+				l.get_line_count(), l.size.y, l.get_parsed_text().left(60)])
+			break
+	return p
+
+
+## A page opened adds its first share in that frame only: the reader's own _process in the same frame adds none (it
+## added a second share, twice the frame's budget, in the frame that opens a page); and a figure's decode left running
+## when the reader closes is waited for later, once done, not in the frame that closes it.
+func _one_share_a_frame(tree: SceneTree, mv) -> Array:
+	var p: Array = []
+	mv.go("installation")
+	var left: int = mv._jobs.size()
+	if left == 0:
+		return ["the installation page was built in one share: the check needs a longer page"]
+	mv._process(0.016)
+	if mv._jobs.size() != left:
+		p.append("the frame that opened a page added a second share: %d jobs left, then %d" % [left, mv._jobs.size()])
+	await tree.process_frame
+	await tree.process_frame
+	if mv._jobs.size() >= left and mv.building:
+		p.append("the next frame added nothing to the page")
+	mv.finish_page()
+	mv.manuals.request_figure("pressure_transmitter-exploded.wfig")
+	mv.manuals.forget_figures()
+	for i in 120:
+		if mv.manuals._orphans.is_empty():
+			break
+		await tree.process_frame
+	if not mv.manuals._orphans.is_empty():
+		p.append("a forgotten decode was never waited for")
 	return p
