@@ -360,7 +360,7 @@ def roles():
         role('elec_ap', 'Electrical authorised person', 'ops', ['operate_local', 'request', 'lock_electrical'],
              'elec_shift', True, 'coverall_ops'),
         # the maintenance disciplines (milestone S2): their own jobs from the faults and the week's list
-        role('mech_tech', 'Mechanical technician', 'mech', ['accept'], 'tech_days', True, 'coverall_mech'),
+        role('mech_tech', 'Mechanical technician', 'mech', ['accept', 'sample'], 'tech_days', True, 'coverall_mech'),
         role('elec_tech', 'Electrical technician', 'elec', ['accept', 'lock_electrical'], 'tech_days', True,
              'coverall_elec'),
         role('ic_tech', 'I&C technician', 'inst', ['operate_local', 'accept', 'lock_instrument', 'operate_hart'], 'tech_days', True,

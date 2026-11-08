@@ -194,7 +194,7 @@ class RealismVectors(unittest.TestCase):
 def run_on(st, r, upto=None, each=None):
     """Replays run r of a part on the reference up to step `upto` (its end by default), calling each(e) after every
     step (step 0 too); returns the engine."""
-    e = P.Engine(P.check_files(files_of(st, r)), 's1')
+    e = P.Engine(P.check_files(files_of(st, r)), 's1', r.get('session', False))
     inputs = sorted(r['inputs'], key=lambda x: x[0])
     j = 0
     if each:
@@ -1078,6 +1078,133 @@ class SyntheticLoad(unittest.TestCase):
         self.assertTrue(e.hw)
         e.step(20)
         self.assertTrue(all(map(lambda x: x == x, e.cur)))
+
+
+class LabVectors(PartVectors, unittest.TestCase):
+    """Milestone AG3 (REALISM.md §2.19): the collector and camera read through, sample nodes taken by hand actions,
+    the lab's results after clock hours from each node's lab stream, the queue, the sample authority, a jump."""
+    part, rejects = 'lab', 'REJECTS_LAB'
+    U = 2 ** 24
+
+    def evs(self, k, kinds):
+        return [x for x in self.st['runs'][k]['events'] if x[1] in kinds]
+
+    def draws(self, r, name, n):
+        """The first n draws (u in [0, 1)) of a sample node's own lab stream (§2.1: purpose lab, the node's name)."""
+        s = W.stream(W.world_seed(r['scenario']), W.TAGS['lab'], name)
+        out = []
+        for _ in range(n):
+            s, x = W.draw(s)
+            out.append(x / self.U)
+        return out
+
+    def test_reasons_in_order(self):
+        """where, tool, authority as a hand action's; the queue full: lab, after the needs."""
+        ev = self.evs(0, ('hand',))
+        why = [(x[0], x[3], x[5], x[6], x[7]) for x in ev if x[6] == 'refused']
+        self.assertEqual(why, [
+            (3, 'take_oil', 'ic1', 'refused', ['where', 'tool']), (3, 'take_oil', 'ic1', 'refused', ['where']),
+            (6, 'take_oil', 'ic1', 'refused', ['tool']), (6, 'take_oil', 'ic2', 'refused', ['authority', 'where', 'tool']),
+            (65, 'take_oil', 'ic1', 'refused', ['lab']), (66, 'take_oil', 'ic1', 'refused', ['lab'])])
+        self.assertEqual(self.evs(1, ('hand',)), [
+            [6, 'hand', '10LAB10CP501', 'take_oil', 'oil_kit', 'ic1', 'refused', ['authority']],
+            [6, 'hand', '10LAB10CP501', 'clean_glass', None, 'ic1', 'start', []]])
+
+    def test_queue_filled_under_a_timed_action(self):
+        """A timed action whose node's queue filled while it was under way (another person's sample) is done at its
+        end but takes no sample and draws nothing: the eight results are the first eight draws' (seven of ic1's, its
+        eighth), and the later timed sample's spread is the ninth draw; the next instant one meanwhile refused lab."""
+        r = self.st['runs'][4]
+        ev = self.evs(4, ('hand',))
+        self.assertIn([36, 'hand', '10LAB10CP501', 'take_oil_slow', 'oil_kit', 'ic2', 'done', []], ev)
+        self.assertIn([37, 'hand', '10LAB10CP501', 'take_oil', 'oil_kit', 'ic2', 'refused', ['lab']], ev)
+        seen = {}
+
+        def each(e):
+            seen[e.step_no] = (e.v('oil_fe'), len(e.lab_q['lab_fe']))
+        e = run_on(self.st, r, each=each)
+        self.assertEqual(seen[35][1], 8)            # full before the timed action's end
+        self.assertEqual(seen[36][1], 8)            # and after it: no sample taken
+        fe = [x[3] for x in e.events if x[1] == 'lab' and x[2] == 'lab_fe']
+        self.assertEqual(len(fe), 9)
+        u = self.draws(r, 'lab_fe', 9)
+        self.assertAlmostEqual(fe[8], seen[100][0] + (-2 + 4 * u[8]), places=9)
+
+    def test_samples_and_results(self):
+        """Each sample: ref's value (the previous step's in step 1, this step's in step 3 for a timed action) plus
+        spread(u), u the next draw of the node's lab stream; due the clock at the action's end plus hours × 36,000
+        tenths; the results in step 3 at their dues, in order, each with its lab event and the node's value."""
+        r = self.st['runs'][0]
+        seen = {}
+
+        def each(e):
+            seen[e.step_no] = (e.v('oil_fe'), e.clock(), e.v('lab_fe'), e.v('lab_vis'),
+                               [list(q) for q in e.lab_q['lab_fe']])
+        e = run_on(self.st, r, each=each)
+        lab = [x for x in e.events if x[1] == 'lab']           # (exact: the file's numbers are rounded)
+        done = [x for x in self.evs(0, ('hand',)) if x[6] == 'done']
+        taken = []          # (step, the oil's iron read, the clock at the end) of each lab_fe sample
+        for x in done:
+            n = x[0]
+            if x[3] == 'take_oil':
+                taken.append((n, seen[n - 1][0], seen[n][1], True))
+            else:
+                taken.append((n, seen[n][0], seen[n][1], False))
+        u = self.draws(r, 'lab_fe', len(taken))
+        want = [(c + 3600, fe + (-2 + 4 * x)) for (n, fe, c, _), x in zip(taken, u)]
+        got = [[x[0], x[3]] for x in lab if x[2] == 'lab_fe']
+        self.assertEqual(len(got), len(want))
+        for (due, v), (n, name, value) in zip(want, [(x[0], 'lab_fe', x[1]) for x in got]):
+            self.assertEqual(value, v)
+            self.assertEqual(seen[n][1] >= due > seen[n - 1][1], True, (n, due))
+            self.assertEqual(seen[n][2], value)
+        # lab_vis: the constant 68 plus its own stream's spread, only from take_oil (two nodes each)
+        nv = sum(1 for t in taken if t[3])
+        uv = self.draws(r, 'lab_vis', nv)
+        got = [x[3] for x in lab if x[2] == 'lab_vis']
+        self.assertEqual(got, [68 + (-1.5 + 3 * x) for x in uv])
+        self.assertEqual(seen[0][3], 70.0)           # the scenario's init until its first result
+        # eight queued at most
+        self.assertEqual(max(len(v[4]) for v in seen.values()), 8)
+        self.assertEqual(len(seen[64][4]), 8)
+
+    def test_snapshot_and_digest_carry_the_queue(self):
+        r = self.st['runs'][0]
+        s = [x for x in r['states'] if x['step'] == 10][0]
+        self.assertEqual(sorted(s['lab']), ['lab_fe', 'lab_vis'])
+        self.assertEqual(s['lab']['lab_fe'][0][0] + 3600, s['lab']['lab_vis'][0][0])
+        e = run_on(self.st, r, 10)
+        tree = e.digest_tree()[-1]
+        self.assertEqual(len(tree), 2)
+        self.assertEqual(list(tree[0][1].items), [q[0] for q in e.lab_q['lab_fe']])
+        d = e.digest()
+        e.lab_q['lab_fe'][0][1] += 1e-9
+        self.assertNotEqual(e.digest(), d)
+
+    def test_results_across_a_jump(self):
+        ev = [x for x in self.st['runs'][2]['events'] if x[1] in ('jump', 'lab')]
+        self.assertEqual([x[:3] for x in ev[:3]], [[10, 'jump', 1134600], [10, 'lab', 'lab_fe'], [10, 'lab', 'lab_vis']])
+        self.assertEqual(ev[3][:3], [74, 'lab', 'lab_fe'])         # taken at 14 after the jump: 60 steps on
+
+    def test_npc_round(self):
+        ev = self.evs(3, ('hand', 'read', 'lab'))
+        mine = [x for x in ev if 'ic1' in x or x[1] == 'lab']
+        self.assertIn([541, 'read', 'ic1', '10LAB10CP501', 3.0, 'out_of_range'], mine)
+        self.assertIn([541, 'read', 'ic1', '10LAB10CP501', 13.0, 'ok'], mine)
+        self.assertEqual([x[:3] for x in mine if x[1] == 'lab'], [[602, 'lab', 'lab_fe'], [623, 'lab', 'lab_fe'],
+                                                                 [662, 'lab', 'lab_vis']])
+
+    def test_no_samples_no_part(self):
+        """A run without sample nodes keeps its digest tree and snapshot as before (the hands part's runs)."""
+        with open(G.OUT3, encoding='utf-8') as f:
+            hands = json.load(f)['hands']
+        e = run_on(hands, hands['runs'][0], 5)
+        self.assertEqual(e.lab_nodes, [])
+        self.assertNotIn('lab', e.snapshot())
+
+    def test_not_on_the_bench(self):
+        from ref import plant3d_bench as B
+        self.assertIn('sample', B.NOT_ON_THE_BENCH)
 
 
 if __name__ == '__main__':

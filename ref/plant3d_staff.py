@@ -1300,8 +1300,8 @@ class Staff:
                         a = {'screen': 'operate_screen', 'hart': 'operate_hart'}.get(s['op']['where'], 'operate_local')
                         need(a in auth, 'authority', f'{ws}: role {rid} lacks {a}')
                     if 'hand' in s:     # REALISM.md §2.13: a job's under its permit (accept), else operate_local
-                        h = self.m.hand_keys[(s['kks'], s['hand'])]
-                        a = 'accept' if h.get('work', True) else 'operate_local'
+                        h = self.m.hand_keys[(s['kks'], s['hand'])]     # (§2.19: a sample's taking, sample)
+                        a = 'accept' if h.get('work', True) else 'sample' if 'samples' in h else 'operate_local'
                         need(a in auth, 'authority', f'{ws}: role {rid} lacks {a}')
                     if 'permit' in s:
                         a = PERMIT_AUTH[s['permit']['action']]

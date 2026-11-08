@@ -763,6 +763,109 @@ at 29–35 °C over the runs.
   and brings their cleaning procedures). Valve stiction that makes a loop hunt waits for IC3, transmitter 2's drift for
   HW3 (its job's cure reads the sensor's error).
 
+### 2.19 AG3's details (settled 2026-11-08, before the code: condition monitoring)
+
+§9.3 leaves these open; settled here. What is drawn for the trainee is the app's, pinned by app tests; what the engine
+does is in both engines bit for bit, with vectors.
+
+- **Two tool kinds** join the kinds read through (§2.5, with `meter`, `communicator`, `calibrator`): `collector` (a
+  vibration data collector, mode `vel`: overall velocity in mm/s r.m.s., 10 Hz to 1 kHz as [ISO20816-1] asks) and
+  `camera` (a thermal camera, mode `ir`: the spot temperature in °C), and a plain kind `sampler` (an oil sampling kit:
+  a vacuum pump, tube and clean bottles). Their meters are ordinary meters (§2.5): a reading is S1's `read` with the
+  meter named, its event as every reading's (the code and the value), so **a point's readings are the run's `read`
+  events of its code** (routes and trends need no new state: the app lists them from the events, which saves keep).
+  One measurement point per code and kind: the collector reads at the motor's or fan's vibration probe code (the
+  probe's own bearing, [ISO13373-1]'s measurement point), the camera at the motor's code (its bearing housing).
+- **The spectrum is drawn, not read:** the collector's screen draws the point's spectrum from model values named in
+  the monitoring file (below): the 1× (residual unbalance) and 2× (alignment) lines, the bearing's defect tones at
+  their orders of the running speed (BPFO, BPFI, BSF, FTF from the bearing's geometry, [SKF]'s formulas) with their
+  first harmonics, or a gear's mesh tone, and a noise floor; the lines' energy adds up to the overall the meter shows
+  (the 1× takes what the tones and the floor leave). Only the overall is recorded: the tones are seen, as a route's
+  analyst sees them, before the overall leaves zone A/B (§4.2's order: the spectrum's bearing tones first).
+- **A `sample` node** (format 2, stateful, written by no op, fault or work): `{"sample": ref, "spread": table, "hours":
+  h, "init": n}`, `hours` above 0 and at most 8,760 (clock hours, the lab's turnaround), `init` default 0. A hand
+  action gains **`samples`**: 1 to 16 sample nodes, no repeat (`bad_ref`, `dup_id`), and a hand action may then write
+  nothing else (`set` and `input` become optional with `samples`). When such an action is done (in step 1 when it has
+  no `minutes`, else in step 3 at its end), each of its sample nodes, in the list's order, takes a sample: ref's value
+  as it stands then (the previous step's in step 1, this step's step 2 in step 3) plus `spread`(r / 2²⁴), r the next
+  draw of the node's own lab stream (§2.1: purpose `lab`, the id the node's name, the world's seed), queued with its
+  due clock (the clock in tenths at the action's end plus `hours` × 36,000). **Results:** in step 3, after the hand
+  actions whose minutes end (§2.7, before deliveries), each sample node in model order whose first queued sample is
+  due (due ≤ the clock) takes its value and drops it from the queue, then the next while due; event `[n, "lab", node,
+  value]` for each. A jump's step delivers every sample due by the clock after it. At most 8 samples queued per node:
+  a hand action whose node's queue is full is refused with the reason `lab` (after the failed permissives, before
+  `value`). A sample node needs the plant clock (`bad_ref`, as `wear`); it has no entry in step 2's program.
+- **Settled in the code (phase 1, the reference):** a timed sampling action checks the queues when it starts; a node
+  whose queue filled while it was under way takes no sample at its end (no draw), the action's other nodes still do.
+  A `sample` ref may be a number (the oil grade's viscosity). The digest's lab part holds, per sample node in model
+  order, its stream's state (every node's, drawn from or not) and its queue's dues and values; the snapshot's `lab`
+  lists only nodes with samples queued. The `lab` part of `plant3d-realism.json` is appended after `audio`, and
+  `about` gains its sentence (the only earlier item that changes).
+- **Who takes a sample:** a hand action with `samples` and `work: false` needs the `sample` authority (S3's, the
+  chemists') instead of `operate_local`; the mechanical technician gains it in the first train's staff file.
+- **Snapshots, saves, the digest:** the node's value is a value; each sample node's queue (due clock in whole tenths,
+  value) is engine state, in saves and snapshots (`lab`: node → queue) and in the digest after the hands part, with
+  each node's lab stream state, in model order.
+- **The first train's content** (`tools/plant3d/train_monitoring.py`): the collector, the thermal camera and two oil
+  sampling kits at the store counter; collector meters at the seven pumps' and ten fans' vibration probes, camera
+  meters at the seven pump motors; the pump bearings' defect tone (BPFO, the outer race: the commonest defect, and
+  what [ISO13373-2] shows first) a table of the bearing's margin from its P point, so it is seen before the overall
+  leaves zone A/B; the fans' gear mesh tone is AG2's gear share of the fan's vibration. Oil samples (a hand action at
+  the equipment's work place, ten minutes, with the kit) from the CW pump motors' oil-bath bearings and the fan gear
+  reducers: iron (ppm, from the item's margin), the ISO 4406 code at 6 µm (from the margin), viscosity at 40 °C (cSt,
+  the oil's grade) and water (ppm), each a sample node with a small lab spread, results after 48 clock hours (a
+  commercial lab's usual turnaround, [ASTM-D6224]'s routine tests). The values count against §11's wear signs (the
+  tones) and its chemistry share (the oil results).
+- **The monitoring file** (`data/plant3d/monitoring.json`, format `walkdown-plant-monitoring` version 1, made by the
+  content tool, checked by `ref/plant3d_monitoring.py` against the model): each point's code, kind (`vib`, `ir`,
+  `oil`), title, its meter or hand action, the running speed (rpm), the ISO 20816-3 group and zone limits, the
+  spectrum's lines (order, value or share), the oil results' nodes with their units and alert and alarm limits, the
+  sources. The app reads it for drawing and words only; the engine never reads it.
+- **The thermal camera's false-colour picture (the user's call, 2026-11-08: option A):** spot readings now; the
+  picture (§9.3: the work view with the Workshop's heat view) comes with K6's pump and motor kinds, the first
+  equipment with a work view whose temperatures teach something (today's work views are the transmitters').
+- **As built (2026-11-08):**
+  - **Where:** the reference (`ref/plant3d_hands.py`, `ref/plant3d_monitoring.py`), the GDScript engine
+    (`sim/hands.gd`, `sim/plant_model.gd`, `sim/engine.gd`, saves in `ui/autosave.gd`), the content
+    (`tools/plant3d/train_monitoring.py`, hooked into the train's model, tools and staff), the monitoring file, the
+    app's view (`ui/monitoring_view.gd`, from the card). Tests: `tests/test_plant3d_monitoring.py`, the realism
+    file's lab part in `tests/test_plant3d_realism.py` and `tests/test_plant3d_sim.py`, the app's
+    `tests/test_ui_monitoring.gd` and `test_run_save.gd`'s lab case.
+  - **Content:** 92 values: 14 for the pump bearings' outer race tones (each pump's tone and its margin's table) and
+    78 for the oil (13 points, four sample nodes each, and their refs: the CW pump motors' oil baths VG 68, the fan
+    gear reducers VG 220). The collector, the camera and two sampling kits at the store counter; 17 collector meters
+    (7 pumps, 10 fans), 7 camera meters (the pump motors); 13 oil sampling actions; the mechanical technician gains
+    `sample`.
+  - **The app's view:** the card of any code of a machine with points (a pump's probe and its motor share their
+    system and number) offers "Condition monitoring": one panel with the machine's points. The collector's screen
+    (with the collector carried, within reach of the probe) shows the overall the meter shows, its ISO 20816-3 zone
+    in words and as a bar with the group's limits, and the spectrum in orders of the running speed: each line from the
+    file (a model value, times `by`, times `share`; or a share of the overall), the floor, and the 1× taking what they
+    leave; when the lines alone exceed the overall (a machine slowing down) they are scaled to fit and the 1× is
+    nothing, so the energy always adds up to the overall. The camera's spot reading shows against the point's alert
+    and alarm. Both record S1's `read` with the meter. The oil point's button sends the hand action with the kit
+    carried; the ten minutes show under way, the queue at the lab with its next due time, and the lab's report (the
+    newest results against their limits, the one before beside them) with a toast when results arrive.
+  - **Readings listed from the inputs, not the events:** a reading no task step waits on makes no event in either
+    engine (S1 matches reads against the trainee's steps), so the view lists a point's readings from the run's `read`
+    inputs with its meter; saves keep the inputs, so routes and trends still need no new state.
+  - **Vectors:** `plant3d-realism.json`'s lab part (25 rejects, 4 runs) after `audio`, every earlier part unchanged
+    but `about`'s sentence; `plant3d-v1.json` and `plant3d-v2.json` made again with the content: every input, event and
+    earlier value unchanged, the new values added, every snapshot's empty `lab: {}`, the digests changed with them.
+    The GDScript engine runs every vector bit for bit (the lab results compared as values to 9 decimals, the digests
+    bit for bit).
+  - **The Note 9** (a test-signed release build at c9781e56, `walk=monitor probe=1`, 300 s from a cool start at
+    26.6 °C, 2026-11-08): the mechanical technician at closed cooling water pump A with the collector, the camera and
+    a sampling kit, the panel open (its collector's screen at 3.18 mm/s, redrawn as the plant ran at 1×): it opened in
+    14.7 ms; the frame drew 699 draw calls and 239,602 triangles (649 and 237,718 before it opened). Tier lean+vis,
+    11,844 frames: median 23.4 ms, p95 36.8 ms, max 75.0 ms, none over 100 ms (the frame rule passes without
+    excluding any frame; the kernel reclaimed in 6.78 % of the samples, so no frame could have been excused). The
+    screen's only long gaps were in the first 16 s, while the app loaded (its first frame at 14.5 s).
+  - **Left from the reviews (not changed):** the lab's step looks at every sample node each step (52 in the train;
+    keeping the earliest due would skip them while nothing is queued); a save's queued dues are checked as whole
+    numbers, not for their order (a tampered queue can only delay its node's results); the due's
+    `ceil(hours × 36,000)` adds a tenth for hours that are not exact in binary (both engines alike; the content's
+    48 is exact).
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does

@@ -93,6 +93,11 @@ func open(c: String, note := "") -> void:
 		body.add_child(_work)
 		_work_why = W.label("", 16, W.DIM)
 		body.add_child(_work_why)
+	if ui.monitoring != null and ui.monitoring.has_points(c):
+		# its vibration, thermography and oil points (REALISM.md §2.19): the collector, the camera, the oil sample
+		var mb := W.button("Condition monitoring", func(): ui.monitoring.open(code))
+		mb.name = "monitoring"
+		body.add_child(mb)
 	_state = W.label("", 20, Color.WHITE)
 	body.add_child(_state)
 	var vals: Array = info.values_of.get(c, [])

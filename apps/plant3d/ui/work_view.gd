@@ -584,6 +584,8 @@ func on_events(evs: Array, from: int) -> void:
 					continue
 				if ev[6] == "refused":
 					var x = ui.clock.engine.m.hands_ix.get(str(ev[2]) + "|" + str(ev[3]))
+					if ui.monitoring != null and ui.monitoring.handles(str(ev[2]), str(ev[3])):
+						continue        # (an oil sample's: the monitoring view says why, once)
 					var why := PackedStringArray()
 					for r in ev[7]:
 						why.append(hand_reason(x, String(r), ev[4]))

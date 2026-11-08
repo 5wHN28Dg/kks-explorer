@@ -404,6 +404,10 @@
   ["cep_b_nocmd", {"not": "cep_b_cmd"}],
   ["cep_b_still", {"cmp": ["cep_b_spd", "<", 0.01]}],
   ["cep_b_safe", {"and": ["cep_b_nocmd", "cep_b_still"]}],
+  ["cep_a_bt_k", {"of": "cep_a_brg_mgn", "table": [[-3000, 0.0], [-2700.0, 0.4], [-1800.0, 0.8], [-900.0, 1.68], [0, 2.64]], "unit": "mm/s"}],
+  ["cep_a_bt", {"product": ["cep_a_spd", "cep_a_bt_k"], "unit": "mm/s"}],
+  ["cep_b_bt_k", {"of": "cep_b_brg_mgn", "table": [[-3000, 0.0], [-2700.0, 0.4], [-1800.0, 0.8], [-900.0, 1.68], [0, 2.64]], "unit": "mm/s"}],
+  ["cep_b_bt", {"product": ["cep_b_spd", "cep_b_bt_k"], "unit": "mm/s"}],
   ["crane_hoist_cmd", {"state": 0, "kks": "30SMT10AE001"}],
   ["crane_trolley_cmd", {"state": 0, "kks": "30SMT10AE002"}],
   ["crane_bridge_cmd", {"state": 0, "kks": "30SMT10AE003"}],
@@ -739,6 +743,10 @@
   {"id": "cpt3_clamp1", "kks": "30MAG10CP003", "point": "cable_l1", "tool_kind": "meter", "mode": "ma_clamp", "value": "cpt3_ma", "needs": ["cpt3_terminal_block_clamp"], "else": 0},
   {"id": "cpt3_clamp2", "kks": "30MAG10CP003", "point": "cable_both", "tool_kind": "meter", "mode": "ma_clamp", "value": "hand_no", "needs": ["cpt3_cable_gland_clamp"], "else": 0},
   {"id": "cpt3_pv", "kks": "30MAG10CP003", "point": "terminals_sig", "tool_kind": "communicator", "mode": "hart", "value": "cond_p3_tx", "needs": ["cpt3_hart_ok"], "else": 0},
-  {"id": "cpt3_ao", "kks": "30MAG10CP003", "point": "terminals_sig", "tool_kind": "communicator", "mode": "hart", "value": "cpt3_ma_tx", "needs": ["cpt3_hart_ok"], "else": 0}
+  {"id": "cpt3_ao", "kks": "30MAG10CP003", "point": "terminals_sig", "tool_kind": "communicator", "mode": "hart", "value": "cpt3_ma_tx", "needs": ["cpt3_hart_ok"], "else": 0},
+  {"id": "cep_a_vel", "kks": "30LCB10CY001", "point": "brg", "tool_kind": "collector", "mode": "vel", "value": "cep_a_vib"},
+  {"id": "cep_a_ir", "kks": "30LCB10AP001", "point": "brg", "tool_kind": "camera", "mode": "ir", "value": "cep_a_brg_t"},
+  {"id": "cep_b_vel", "kks": "30LCB10CY002", "point": "brg", "tool_kind": "collector", "mode": "vel", "value": "cep_b_vib"},
+  {"id": "cep_b_ir", "kks": "30LCB10AP002", "point": "brg", "tool_kind": "camera", "mode": "ir", "value": "cep_b_brg_t"}
  ]
 }

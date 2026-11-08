@@ -13,6 +13,7 @@ STEAM = [[100, 1.01], [120, 1.99], [140, 3.61], [160, 6.18], [180, 10.0], [200, 
 
 import train_hands  # noqa: E402  (milestone HW2: the hand actions from the service files)
 import train_ageing  # noqa: E402  (milestone AG2: the wear items, their signs and failures)
+import train_monitoring  # noqa: E402  (milestone AG3: condition monitoring)
 
 
 def inv(points):
@@ -1637,11 +1638,13 @@ def st():
 
 
 def _ageing(m):
-    """AG2 (train_ageing.py): the area's pumps' bearings, then its items' isolations and works."""
+    """AG2 (train_ageing.py): the area's pumps' bearings, then its items' isolations and works; AG3
+    (train_monitoring.py): its condition monitoring."""
     for item in train_ageing.PUMPS:
         if item[3] == m.area:
             train_ageing.pump(m, item)
     train_ageing.works(m)
+    train_monitoring.model(m)      # AG3: the tones, the collector's and camera's meters, the oil points
 
 
 def models():

@@ -26,7 +26,7 @@ LIMIT = {'values': 600, 'ops': 48, 'machines': 8, 'trips': 48, 'alarms': 64, 'fa
          'flows': 16, 'readouts': 12, 'interlocks': 64, 'sources': 16, 'legends': 8, 'mirror': 64}
 BIND_KINDS = ('anim', 'show', 'sound', 'lamp', 'flow', 'heat', 'pressure')
 LAMPS = ('running', 'stopped', 'open', 'closed', 'fault', 'beacon')
-NOT_ON_THE_BENCH = ('draw', 'wear', 'count')     # the realism programme's nodes: a version 2 of this format (§6.1)
+NOT_ON_THE_BENCH = ('draw', 'wear', 'count', 'sample')     # the realism programme's nodes: a version 2 of this format (§6.1)
 WORLD = ('world_hour', 'world_day', 'world_wx')      # the clock values' names: reserved as in a version 2 plant
 SID = re.compile(r'[a-z_][a-z0-9_]{0,31}')
 HEX = re.compile(r'#[0-9a-f]{6}')
