@@ -525,6 +525,8 @@ func _unhandled_input(e: InputEvent) -> void:
 		return
 	if workshop_open():
 		return   # the Workshop's own keys (workshop/workshop.gd)
+	if ui != null and ui.manual_open():
+		return   # the manual reader's (ui/manual_view.gd): the map, the panels and the clock wait under it
 	if e.is_action_pressed("map"):
 		toggle_map()
 	elif e.is_action_pressed("menu"):

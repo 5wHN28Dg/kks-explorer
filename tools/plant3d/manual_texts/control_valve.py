@@ -1,6 +1,6 @@
 """WDP-MAN-002, the control valve and its positioner (kit part `valve_control`). Generic, in our own words: the
 structure and the facts follow the public manuals and standards listed in `sources`; no text is copied from them."""
-from manual_blocks import S, H, P, UL, OL, TABLE, WARNING, CAUTION, NOTE, TROUBLE, UNIT, SERIES, PARTS
+from manual_blocks import FIG, S, H, P, UL, OL, TABLE, WARNING, CAUTION, NOTE, TROUBLE, UNIT, SERIES, PARTS
 
 MANUAL = {
     'id': 'control_valve',
@@ -21,6 +21,10 @@ MANUAL = {
         ('positioner', 'Digital positioner with feedback linkage', '1', 'Calibrated on the valve after fitting'),
         ('air_filter', 'Air filter regulator element', '1', 'Every year, or when the drain shows oil or water'),
     ],
+    'figures': [
+        ('valve_control', 'exploded', 'The control valve taken apart (from the Workshop).'),
+        ('valve_control', 'cut', 'The control valve cut open (from the Workshop).'),
+    ],
     'sources': [
         {'id': 'fcvh', 'cite': 'Emerson, Control Valve Handbook (fifth edition): valve and actuator types, packing, '
          'flow characteristics, cavitation and flashing, stiction and dead band, installation and maintenance'},
@@ -32,6 +36,7 @@ MANUAL = {
     ],
     'sections': [
         S('description', 'Description', [
+            FIG('valve_control', 'exploded'),
             P('A **control valve** throttles a flow to the opening the control system asks for. The plant\'s control '
               'valves are globe valves with a pneumatic spring-and-diaphragm actuator and a digital **positioner**; a '
               'few large ones are worked by an electric or hydraulic actuator.'),
@@ -88,6 +93,7 @@ MANUAL = {
                'the pipe and eats the trim; **flashing** (liquid that stays boiled) erodes the body downstream.'),
         ], src=['fcvh']),
         S('maintenance', 'Maintenance', [
+            FIG('valve_control', 'cut'),
             TABLE(['Interval', 'Task'], [
                 ['Every round', 'Look and listen: packing leaks, air leaks, noise, the stem moving smoothly'],
                 ['3 months', 'Read the positioner\'s diagnostics: travel deviation, friction, supply pressure'],

@@ -5,7 +5,8 @@ blocks as COURSES.md's, and an inline markup the generator (manuals.py) turns in
     [words](#section)  [words](manual:pumps#section)  [words](kks:30MAG10CP002)
     [words](work:open_cover)  [words](workshop:pressure_transmitter/sensor_module)
 
-A run's text is plain (no entities); `\\` before one of `*`~[]\\` writes it as it is."""
+A run's text is plain (no entities); `\\` before one of `*`~[]\\` writes it as it is, outside markers (inside a
+marker's span, or in a link's words, `]` and the marker itself can't be escaped). Strong inside emphasis is refused."""
 
 
 def S(id, title, blocks, src=()):

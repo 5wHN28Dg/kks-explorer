@@ -68,7 +68,7 @@ def _inline(text, where):
             if j < 0:
                 fail(where, 'an unclosed ** in %r' % text)
             flush()
-            out.append({'b': _inline(text[i + 2:j], where)})
+            out.append({'b': _nonempty(_inline(text[i + 2:j], where), text, where)})
             i = j + 2
             continue
         if ch in '*~`':
@@ -77,10 +77,14 @@ def _inline(text, where):
                 fail(where, 'an unclosed %s in %r' % (ch, text))
             flush()
             inner = text[i + 1:j]
+            if ch == '*' and (inner.startswith('*') or text[j + 1:j + 2] == '*'):
+                fail(where, 'emphasis holding strong (not in a run) in %r' % text)
             if ch == '`':
+                if not inner.strip():
+                    fail(where, 'an empty number in %r' % text)
                 out.append({'num': inner})
             else:
-                out.append({'i' if ch == '*' else 'small': _inline(inner, where)})
+                out.append({'i' if ch == '*' else 'small': _nonempty(_inline(inner, where), text, where)})
             i = j + 1
             continue
         if ch == '[':
@@ -88,13 +92,19 @@ def _inline(text, where):
             if not m:
                 fail(where, 'a [ that is no link in %r' % text)
             flush()
-            out.append({'link': _inline(m.group(1), where), 'to': target(m.group(2), where)})
+            out.append({'link': _nonempty(_inline(m.group(1), where), text, where), 'to': target(m.group(2), where)})
             i = m.end()
             continue
         buf.append(ch)
         i += 1
     flush()
     return out
+
+
+def _nonempty(r, text, where):
+    if not ''.join(x if isinstance(x, str) else 'x' for x in r).strip():
+        fail(where, 'an empty text inside markup in %r' % text)
+    return r
 
 
 def target(t, where):
@@ -218,12 +228,18 @@ def make_manual(src, content, all_ids):
     figures = []
     fig_ids = {}
     for f in m.get('figures', []):
+        if len(f) not in (3, 5):
+            fail(where, 'a figure is (kind, view, caption[, yaw, pitch]): %r' % (f,))
         kind, view, caption = f[0], f[1], f[2]
-        yaw, pitch = (f[3], f[4]) if len(f) > 4 else (35, 25)
+        yaw, pitch = (f[3], f[4]) if len(f) == 5 else (35, 25)
         if kind not in kinds or view not in VIEWS:
             fail(where, 'a figure of %s %s' % (kind, view))
-        if kind not in content['workshop']:
-            continue                                   # (its figures come with its Workshop scene)
+        if (kind, view) in fig_ids:
+            fail(where, 'figure %s %s listed twice' % (kind, view))
+        w = content['workshop'].get(kind)
+        if w is None or (view == 'cut' and not w.get('views', {}).get('cutaway', {}).get('planes')):
+            fig_ids[(kind, view)] = None               # (its figures come with its Workshop scene and cutaway)
+            continue
         fid = '%s-%s' % (kind, view)
         fig_ids[(kind, view)] = fid
         figures.append({'id': fid, 'kind': kind, 'view': view, 'caption': run(caption, where + ' figure ' + fid),
@@ -298,16 +314,19 @@ def block(b, where, m, content, fig_ids):
         kind, view = b['figure']
         if kind not in m['kinds']:
             fail(where, 'a figure of %s, not a kind of this manual' % kind)
-        if kind not in content['workshop']:
-            return None
         if (kind, view) not in fig_ids:
             fail(where, 'a figure %s %s the manual does not list' % (kind, view))
+        if fig_ids[(kind, view)] is None:
+            return None                                # (no Workshop scene, or no cutaway, yet)
         return {'figure': fig_ids[(kind, view)]}
     if 'trouble' in b:
         rows = []
         known = set()
         for k in m['kinds']:
             known |= content['causes'].get(k, set())
+        ids = [r['id'] for r in b['trouble'] if 'id' in r]
+        if len(set(ids)) != len(ids):
+            fail(where, 'a troubleshooting cause id twice')
         for r in b['trouble']:
             row = {'symptom': run(r['symptom'], where), 'cause': run(r['cause'], where),
                    'remedy': run(r['remedy'], where)}
@@ -373,10 +392,13 @@ def parts_table(m, content, where):
     part: the manual's `comes_with`), then the manual's consumables."""
     rows = []
     comes = m.get('comes_with', {})
+    tree_ids = set()
     for k in m['kinds']:
         w = content['workshop'].get(k)
         if w is None:
             continue
+        # a manual of several kinds numbers each kind's tree apart (`kind_tags`): their components share ids
+        tag = m['kind_tags'][k] + '-' if len(m['kinds']) > 1 else ''
         for c, parent in comes.items():
             if c not in w['components'] or parent not in w['components']:
                 fail(where, 'comes_with %s -> %s: not components of %s' % (c, parent, k))
@@ -389,11 +411,15 @@ def parts_table(m, content, where):
                 names = [w['components'][x]['name'][0].lower() + w['components'][x]['name'][1:] for x in inside]
                 names = ', '.join(names[:-1]) + ' and ' + names[-1] if len(names) > 1 else names[0]
                 note = (note + '; ' if note else '') + 'comes with its ' + names
-            rows.append([part_number(m, cid), c['name'], '1', note or '—'])
+            rows.append([part_number(m, tag + cid), c['name'], '1', note or '—'])
+            tree_ids.add(tag + cid)
         for gid, g in w.get('fasteners', {}).items():
-            rows.append([part_number(m, gid), g['name'], '1 set' if g['name'][:1].isdigit() else '1',
+            rows.append([part_number(m, tag + gid), g['name'], '1 set' if g['name'][:1].isdigit() else '1',
                          'Replace when damaged or stretched'])
+            tree_ids.add(tag + gid)
     for cid, name, qty, note in m.get('consumables', []):
+        if cid in tree_ids:
+            continue                                   # (the Workshop tree's own row for that part stands)
         rows.append([part_number(m, cid), name, qty, note])
     if not rows:
         fail(where, 'no spare parts')
@@ -428,6 +454,8 @@ def check_links(man, content, all_ids):
             if t['work'] not in acts:
                 fail(where, 'a link to work action %r, which no service file of its kinds has' % t['work'])
         elif 'workshop' in t:
+            if t['workshop'] not in man['kinds']:
+                fail(where, 'a link to the Workshop of %r, not a kind of this manual' % t['workshop'])
             w = content['workshop'].get(t['workshop'])
             if w is None:
                 fail(where, 'a link to the Workshop of %r, which has no Workshop data' % t['workshop'])
@@ -436,14 +464,22 @@ def check_links(man, content, all_ids):
         else:
             fail(where, 'a link target %r' % t)
     walk_runs(man['sections'], one)
+    walk_runs([f['caption'] for f in man['figures']], one)
 
 
 # ================================================================ the set
 
 def sources():
+    have = sorted(n[:-3] for n in os.listdir(os.path.join(HERE, 'manual_texts'))
+                  if n.endswith('.py') and not n.startswith('_'))
+    if have != sorted(ORDER):
+        fail('manual_texts', 'the text files %s are not the ORDER %s' % (have, ORDER))
     out = []
     for mid in ORDER:
-        out.append(importlib.import_module('manual_texts.' + mid))
+        s = importlib.import_module('manual_texts.' + mid)
+        if s.MANUAL.get('id') != mid:
+            fail('manual_texts/%s.py' % mid, 'holds manual %r' % s.MANUAL.get('id'))
+        out.append(s)
     return out
 
 
@@ -454,7 +490,10 @@ def make(data=DATA):
     all_ids = {s.MANUAL['id']: {x['id'] for x in s.MANUAL['sections']} for s in srcs}
     manuals, kinds, units, work, wshop, figs = {}, {}, {}, {}, {}, []
     for i, s in enumerate(srcs):
-        man = make_manual(s, content, all_ids)
+        try:
+            man = make_manual(s, content, all_ids)
+        except (KeyError, IndexError, TypeError, ValueError) as e:
+            raise ManualError('manual %s: malformed (%s: %s)' % (s.MANUAL.get('id'), type(e).__name__, e))
         if man['number'] != 'WDP-MAN-%03d' % (i + 1):
             fail('manual %s' % man['id'], 'numbered %s, not in order' % man['number'])
         manuals[man['id']] = man

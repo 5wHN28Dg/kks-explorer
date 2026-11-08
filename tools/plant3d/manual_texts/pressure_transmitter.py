@@ -159,8 +159,9 @@ MANUAL = {
                'Tell the control room; it puts the loop back in automatic once the reading is steady and right.'),
             CAUTION('A passing (leaking) equalising valve joins the two sides a little in service, so a differential '
                     'transmitter reads low. Check it is tight when a differential reading is low. (A gauge or absolute '
-                    'transmitter has a two-valve block-and-bleed manifold instead: a passing bleed valve lets its '
-                    'reading fall toward the vented side.)'),
+                    'transmitter has a two-valve block-and-bleed manifold instead: a passing bleed valve lets the '
+                    'air outside in, so a gauge transmitter reads low, while an absolute one under vacuum, as the '
+                    'condenser\'s, reads high.)'),
         ], src=['r3051', 'liptak']),
         S('hart', 'Connecting a HART communicator', [
             P('A communicator talks to the transmitter across the loop. It can be clipped on anywhere along the pair: '
@@ -193,8 +194,9 @@ MANUAL = {
                'reads it without a wire being lifted and without the loop opening. [Take the leads '
                'off](work:disconnect_dmm) afterwards.',
                '**Across the signal terminals:** [a meter on mA across the signal '
-               'terminals](work:dmm_on_sig) shorts the transmitter\'s supply: it reads a current, but not the loop\'s. '
-               'Never do it on a live loop.',
+               'terminals](work:dmm_on_sig) shorts the transmitter out: the current it reads is set by the supply '
+               'and the loop\'s resistance, often far over range, not by the transmitter. Never do it on a live '
+               'loop: the control system sees a full-scale or failed signal.',
                '**With a mA clamp:** [clamp round the positive wire](work:clamp_wire) alone. [Clamped round the whole '
                'cable](work:clamp_cable) the out and return currents cancel and it reads `0 mA`.'),
             P('If the measured current agrees with the output the transmitter reports, and the control room reads the '

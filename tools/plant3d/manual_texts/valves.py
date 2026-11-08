@@ -1,7 +1,7 @@
 """WDP-MAN-003, manual and check valves (kit parts `valve_gate`, `valve_globe`, `valve_ball`, `valve_butterfly`,
 `valve_check`). Generic, in our own words: the structure and the facts follow the public documents listed in
 `sources`; no text is copied from them."""
-from manual_blocks import S, H, P, UL, OL, TABLE, WARNING, CAUTION, NOTE, TROUBLE, UNIT, SERIES, PARTS
+from manual_blocks import FIG, S, H, P, UL, OL, TABLE, WARNING, CAUTION, NOTE, TROUBLE, UNIT, SERIES, PARTS
 
 MANUAL = {
     'id': 'valves',
@@ -11,6 +11,8 @@ MANUAL = {
     'kinds': ['valve_gate', 'valve_globe', 'valve_ball', 'valve_butterfly', 'valve_check'],
     'kind_names': {'valve_gate': 'Gate valve', 'valve_globe': 'Globe valve', 'valve_ball': 'Ball valve',
                    'valve_butterfly': 'Butterfly valve', 'valve_check': 'Check valve'},
+    'kind_tags': {'valve_gate': 'GA', 'valve_globe': 'GL', 'valve_ball': 'BA', 'valve_butterfly': 'BF',
+                  'valve_check': 'CH'},
     'params': {'dn': ('Nominal size', 'DN {}'), 'rating': ('Pressure rating', '{}'), 'actuator': ('Operator', '{}')},
     'consumables': [
         ('packing_set', 'Stem packing rings (graphite or PTFE), by size', '1 set', 'New at every repacking'),
@@ -19,6 +21,18 @@ MANUAL = {
         ('liner', 'Butterfly valve liner (resilient seat), by size', '1', 'New when it is cut or has taken a set'),
         ('disc_hinge_pin', 'Swing check valve hinge pin and bushes', '1 set', 'New when the disc is loose on its pin'),
         ('stem_nut', 'Stem nut (yoke bush)', '1', 'New when the handwheel turns with backlash or the thread is worn'),
+    ],
+    'figures': [
+        ('valve_gate', 'exploded', 'The gate valve taken apart (from the Workshop).'),
+        ('valve_gate', 'cut', 'The gate valve cut open (from the Workshop).'),
+        ('valve_globe', 'exploded', 'The globe valve taken apart (from the Workshop).'),
+        ('valve_globe', 'cut', 'The globe valve cut open (from the Workshop).'),
+        ('valve_ball', 'exploded', 'The ball valve taken apart (from the Workshop).'),
+        ('valve_ball', 'cut', 'The ball valve cut open (from the Workshop).'),
+        ('valve_butterfly', 'exploded', 'The butterfly valve taken apart (from the Workshop).'),
+        ('valve_butterfly', 'cut', 'The butterfly valve cut open (from the Workshop).'),
+        ('valve_check', 'exploded', 'The check valve taken apart (from the Workshop).'),
+        ('valve_check', 'cut', 'The check valve cut open (from the Workshop).'),
     ],
     'sources': [
         {'id': 'api598', 'cite': 'API Standard 598, Valve inspection and testing: shell, backseat and seat tests'},
@@ -31,6 +45,11 @@ MANUAL = {
     ],
     'sections': [
         S('description', 'Description', [
+            FIG('valve_gate', 'exploded'),
+            FIG('valve_globe', 'exploded'),
+            FIG('valve_ball', 'exploded'),
+            FIG('valve_butterfly', 'exploded'),
+            FIG('valve_check', 'exploded'),
             P('Manual valves isolate (open or shut) or, for a globe valve, throttle by hand. A check valve lets flow '
               'one way only and needs no operator at all.'),
             TABLE(['Kind', 'How it shuts', 'Use it for', 'Do not'], [
@@ -90,6 +109,11 @@ MANUAL = {
                     'too tight, or a line pressure difference. Find out before using more force.'),
         ], src=['api600', 'fcvh']),
         S('maintenance', 'Maintenance', [
+            FIG('valve_gate', 'cut'),
+            FIG('valve_globe', 'cut'),
+            FIG('valve_ball', 'cut'),
+            FIG('valve_butterfly', 'cut'),
+            FIG('valve_check', 'cut'),
             TABLE(['Interval', 'Task'], [
                 ['Every round', 'Leaks at the packing, bonnet and flanges; the stem clean'],
                 ['6 months', 'Grease the stem thread and the stem nut; stroke valves that are never moved'],

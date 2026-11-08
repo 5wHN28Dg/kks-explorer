@@ -110,6 +110,7 @@ MANUAL = {
                'fouling.',
                '**Offline wash:** detergent and water while the compressor is cranked cold, which restores most of '
                'what fouling took.'),
+            FIG('gas_turbine', 'exploded'),
             P('Inlet filters are changed by their pressure drop: in a dusty climate they may need more frequent '
               'changes, and a sandstorm can block them within hours.'),
         ], src=['ger3620']),

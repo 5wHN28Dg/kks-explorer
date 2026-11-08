@@ -2118,7 +2118,7 @@ func _look_hint() -> void:
 
 
 func _unhandled_input(ev: InputEvent) -> void:
-	if clock == null or player.scripted or main.workshop_open():
+	if clock == null or player.scripted or main.workshop_open() or manual_open():
 		return
 	if ev.is_action_pressed("menu") or ev.is_action_pressed("ui_cancel"):
 		if close_top():

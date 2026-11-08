@@ -164,6 +164,43 @@ class Manuals(unittest.TestCase):
     NOT_GENERIC = {'8d71046f44eafb6d', '191a42bb95c1e8cf', 'b6a3df8ad16ab20e', '90208d0aea7ca76e', '40d78ccce9816c8c',
                    'c2f2d91c2a31954e', '545e4ba6a171ddfc', 'f429d420086f70a3'}
 
+    def test_workshop_trees_still_to_come(self):
+        """Every kind of every manual given a Workshop tree (as K6 and the gas turbine will bring, the pump kinds and the
+        valve kinds sharing component ids, some of them the manuals' consumables' ids): the set still makes, each kind
+        gets its figures, and the part numbers stay unique."""
+        content = M.load_content()
+        tree = {'casing': 'Casing', 'impeller': 'Impeller', 'shaft': 'Shaft', 'body': 'Body', 'stem': 'Stem',
+                'mech_seal': 'Mechanical seal', 'packing_set': 'Packing', 'inlet_filters': 'Inlet filters'}
+        for m in self.manuals.values():
+            for k in m['kinds']:
+                if k not in content['workshop']:
+                    content['workshop'][k] = {
+                        'part': k, 'components': {c: {'name': n, 'material': 'Steel'} for c, n in tree.items()},
+                        'fasteners': {'bolts': {'name': '8 bolts', 'joins': ['casing', 'body']}},
+                        'assembly': [{'place': c, 'text': ['Fit it.']} for c in tree],
+                        'views': {'cutaway': {'planes': [{'normal': [1, 0, 0], 'offset': 0}]}}}
+        orig = M.load_content
+        M.load_content = lambda data=M.DATA: content
+        try:
+            index, manuals = M.make()
+        finally:
+            M.load_content = orig
+        got = {(f['kind'], f['view']) for f in index['figures']}
+        for m in manuals.values():
+            for k in m['kinds']:
+                self.assertIn((k, 'exploded'), got)
+                self.assertIn((k, 'cut'), got)
+        pumps = [s for s in manuals['pumps']['sections'] if s['id'] == 'parts'][0]
+        nums = [runs_text(r[0]) for r in pumps['blocks'][1]['table']['rows']]
+        self.assertIn('WDP-CP-H-IMPELLER', nums)
+        self.assertIn('WDP-CP-V-IMPELLER', nums)
+        self.assertEqual(len(nums), len(set(nums)))
+        # a consumable whose id the kind's tree also has gives way to the tree's row (a manual of one kind)
+        cv = [s for s in manuals['control_valve']['sections'] if s['id'] == 'parts'][0]
+        rows = [(runs_text(r[0]), runs_text(r[1])) for r in cv['blocks'][1]['table']['rows']]
+        self.assertIn(('WDP-CV-PACKING-SET', 'Packing'), rows)
+        self.assertEqual([n for n, _ in rows].count('WDP-CV-PACKING-SET'), 1)
+
     def test_generic_words(self):
         for mid, m in self.manuals.items():
             for w in set(re.findall(r'[a-z]+', json.dumps(m, ensure_ascii=False).lower())):
@@ -224,6 +261,31 @@ class Refusals(unittest.TestCase):
     def test_markup(self):
         self.assertIn('unclosed', self._make_with('valves', lambda m: self._add_p(m, 'a **bold start')))
         self.assertIn('empty', self._make_with('valves', lambda m: self._add_p(m, '  ')))
+        for t in ('****', '``', '[ ](#safety)', '~ ~'):
+            self.assertIn('empty', self._make_with('valves', lambda m, t=t: self._add_p(m, 'x ' + t)), t)
+        self.assertIn('strong', self._make_with('valves', lambda m: self._add_p(m, '*a **b** c*')))
+
+    def test_more_refusals(self):
+        # a caption's link is checked as a section's
+        def cap(m):
+            m['figures'][0] = (m['figures'][0][0], m['figures'][0][1], 'See [x](kks:99XXX99AA999).')
+        self.assertIn('code', self._make_with('pressure_transmitter', cap))
+        # a troubleshooting cause twice
+        def twice(m):
+            rows = [s for s in m['sections'] if s['id'] == 'troubleshooting'][0]['blocks'][1]['trouble']
+            rows[1]['id'] = rows[0]['id']
+        self.assertIn('twice', self._make_with('pressure_transmitter', twice))
+        # a Workshop link to another manual's kind
+        self.assertIn('not a kind of this manual', self._make_with(
+            'pressure_transmitter', lambda m: self._add_p(m, '[x](workshop:steam_turbine/rotor)')))
+        # a malformed row is a ManualError, not a crash
+        def nokey(m):
+            del [s for s in m['sections'] if s['id'] == 'troubleshooting'][0]['blocks'][1]['trouble'][0]['remedy']
+        self.assertIn('malformed', self._make_with('pressure_transmitter', nokey))
+        # a figure listed twice, or of the wrong shape
+        self.assertIn('twice', self._make_with('pressure_transmitter', lambda m: m['figures'].append(m['figures'][0])))
+        self.assertIn('figure is', self._make_with(
+            'pressure_transmitter', lambda m: m['figures'].append(('pressure_transmitter', 'cut', 'x', 10))))
 
 
 if __name__ == '__main__':

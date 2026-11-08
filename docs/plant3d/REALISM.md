@@ -1333,7 +1333,10 @@ the app).
   after the manual's own consumables; the figures (below); and the reverse links (which section a work view action
   or a Workshop step opens).
 - **Part numbers** (the generic catalogue WM2 takes over, §7.2): `WDP-` + the manual's short code (PT, CV, MV, CP,
-  ST, GT) + `-` + the component or consumable id in capitals, `_` as `-` (`WDP-PT-SENSOR-MODULE`).
+  ST, GT) + `-` + the component or consumable id in capitals, `_` as `-` (`WDP-PT-SENSOR-MODULE`). In a manual of
+  several kinds a Workshop tree's parts carry the kind's tag first (pumps H and V; valves GA, GL, BA, BF, CH:
+  `WDP-CP-H-IMPELLER`), since the kinds' trees share component ids; a consumable whose id a tree also has gives way
+  to the tree's row.
 - **Format** `walkdown-plant-manual` version 1, a file per manual: `id`, `number`, `title`, `short`, `kinds`,
   `sources` (`[{id, cite, url?}]`), `figures` (`[{id, kind, view, caption, file, w, h}]`) and `sections`
   (`[{id, title, blocks, src}]`). Blocks are COURSES.md §4's `h` (level 3), `p`, `ul`, `ol`, `table`, `callout`
@@ -1382,7 +1385,13 @@ the app).
   the most others of its kind (the field procedure for the work view's actions). A Workshop link picks the step's
   component and shows the step's words in the Workshop (it does not take the machine apart up to that step). The
   section's sources are listed at its end ("this section follows, in our own words"). A `num` keeps its spaces
-  unbroken. Escape (B) goes Back, then closes; the Workshop's own keys wait while the reader shows over it.
+  unbroken. Escape and gamepad B go Back, then close; Start closes; the left stick and Page Up/Down scroll, A presses
+  the focused button. While the reader shows, the plant's keys (the map, the panels, the clock), the Workshop's keys
+  and camera and the work view's camera wait; the button that opened it keeps no focus; the decoded figures are
+  dropped when it closes. Every manual lists figures for all its kinds: those of a kind without a Workshop scene (or
+  a cut view of a kind without cutaway planes) are left out, with their blocks, until it has one (a test gives every
+  kind a tree and checks the set still makes). The figures carry their camera's `yaw` and `pitch`; the index lists
+  them (`figures`) for the renderer. A page's time is measured to its first frame (its text laid out then).
 - **Tests:** `tests/test_plant3d_manuals.py` (the set, the same output twice and in another process, links and
   reverse links, causes, units and part numbers, figures, generic words; the checks refuse a broken link of each kind,
   an unknown cause or one of another kind, a missing section, an unlisted or uncited source, bad markup) and

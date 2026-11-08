@@ -119,6 +119,8 @@ func open(id: String, sec := "", from_code := "") -> bool:
 		history.clear()
 		code = from_code
 		_cover(true)
+		# the control that opened it (a card's button) keeps no focus under the reader: Space would press it again
+		root.get_viewport().gui_release_focus()
 	else:
 		if man_id != "":
 			history.append([man_id, section])
@@ -136,8 +138,11 @@ func close() -> void:
 	man_id = ""
 	section = ""
 	history.clear()
+	manuals.forget_figures()            # (decoded again when next shown: the memory goes with the reader)
 	if ui != null and ui.main != null and ui.main.hud != null:
 		ui.main.hud.refresh()
+	if ui != null and ui.has_method("drawings_open") and ui.drawings_open():
+		ui.drawing_view.take_focus()    # the drawings' keys again, where the reader was opened from a card on them
 
 
 func back() -> void:
@@ -177,8 +182,10 @@ func _input(ev: InputEvent) -> void:
 	if not visible:
 		return
 	var b_btn: bool = ev is InputEventJoypadButton and ev.button_index == JOY_BUTTON_B and ev.pressed
-	if ev.is_action_pressed("ui_cancel") or b_btn or ev.is_action_pressed("menu"):
-		if not history.is_empty() and not ev.is_action_pressed("menu"):
+	# (Escape is bound to `menu` too, app/controls.gd: ui_cancel is asked first, so it goes Back; Start alone closes)
+	var go_back: bool = ev.is_action_pressed("ui_cancel") or b_btn
+	if go_back or ev.is_action_pressed("menu"):
+		if go_back and not history.is_empty():
 			back()
 		else:
 			close()
@@ -236,8 +243,7 @@ func _show(id: String, sec: String) -> void:
 			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			contents.add_child(b)
-	for b in contents.get_children():
-		(b as Button).set_pressed_no_signal(b.name == "sec_" + sec)
+	_mark_contents()
 	_build_page(m, sec)
 	scroll.scroll_vertical = 0
 	open_ms = (Time.get_ticks_usec() - t0) / 1000.0
@@ -252,9 +258,15 @@ func _show(id: String, sec: String) -> void:
 		page_ms[key] = maxf(shown, float(page_ms.get(key, 0.0)))
 
 
+func _mark_contents() -> void:
+	for b in contents.get_children():
+		(b as Button).set_pressed_no_signal(b.name == "sec_" + section)
+
+
 ## To a section of this manual (Back returns).
 func go(sec: String) -> void:
 	if sec == section:
+		_mark_contents()                # (a press on the current section's button toggled it off)
 		return
 	history.append([man_id, section])
 	_show(man_id, sec)
@@ -551,7 +563,9 @@ func _follow_workshop(kind: String, place: String) -> void:
 		_say("The Workshop has no %s in this build." % kind.replace("_", " "))
 		return
 	var ws = main.workshop
-	var c := code
+	# the code opened from goes with the link only when it is of the link's kind's manual (a valve's code does not
+	# name the turbine's Workshop)
+	var c := code if manuals.units.get(code, {}).get("manual", "") == manuals.of_kind(kind) else ""
 	close()
 	if ws.is_open and ws.part == kind:
 		_pick_step(ws, place)
@@ -564,6 +578,7 @@ func _follow_workshop(kind: String, place: String) -> void:
 	if work_open_now():
 		ui.work.close()
 	if not ui.open_workshop(kind, c):
+		ui.toast("The Workshop can't open now (a flight under way, or the map open).")
 		return
 	var gen: int = ws._gen
 	await ws.shown

@@ -78,6 +78,11 @@ func figure(file: String) -> Texture2D:
 	return tex
 
 
+## Drops the decoded figures (the reader closed).
+func forget_figures() -> void:
+	_figures.clear()
+
+
 ## The section a work view action opens ([manual, section]; [] none).
 func for_work(kind: String, action: String) -> Array:
 	return work.get(kind + ":" + action, [])

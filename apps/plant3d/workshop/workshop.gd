@@ -379,7 +379,8 @@ func _process(delta: float) -> void:
 		return
 	if machine == null:
 		return
-	cam.sticks(delta, _pad_move() if _panel_focused() else Vector2.INF)
+	if not _reader_on():                # (the reader over it takes the sticks and keys)
+		cam.sticks(delta, _pad_move() if _panel_focused() else Vector2.INF)
 	if _reassemble_t >= 0.0:
 		_reassemble_t += delta
 		var k := clampf(_reassemble_t / REASSEMBLE_S, 0.0, 1.0)
@@ -1838,8 +1839,6 @@ func _drag_handle(p: Vector2) -> void:
 
 # ------------------------------------------------------------------ keys
 
-## The gamepad (Godot's ui_accept and ui_cancel have no gamepad button; app/hud.gd does the same for the settings):
-## the first button or D-pad press puts the focus on the slider when no Workshop control has it, so the D-pad moves
 ## The manual reader over the Workshop (ui/manual_view.gd) takes the keys and buttons while it shows.
 func _reader_on() -> bool:
 	return ui != null and ui.has_method("manual_open") and ui.manual_open()

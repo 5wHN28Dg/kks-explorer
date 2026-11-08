@@ -1,6 +1,6 @@
 """WDP-MAN-004, centrifugal pumps (kit parts `pump_horizontal`, `pump_vertical`). Generic, in our own words: the
 structure and the facts follow the public standards and handbooks listed in `sources`; no text is copied from them."""
-from manual_blocks import S, H, P, UL, OL, TABLE, WARNING, CAUTION, NOTE, TROUBLE, UNIT, SERIES, PARTS
+from manual_blocks import FIG, S, H, P, UL, OL, TABLE, WARNING, CAUTION, NOTE, TROUBLE, UNIT, SERIES, PARTS
 
 MANUAL = {
     'id': 'pumps',
@@ -9,6 +9,7 @@ MANUAL = {
     'short': 'CP',
     'kinds': ['pump_horizontal', 'pump_vertical'],
     'kind_names': {'pump_horizontal': 'Horizontal pump', 'pump_vertical': 'Vertical pump'},
+    'kind_tags': {'pump_horizontal': 'H', 'pump_vertical': 'V'},
     'params': {'flow_m3h': ('Rated flow', '{} m³/h'), 'head_m': ('Rated head', '{} m'),
                'motor_kw': ('Motor rating', '{} kW'), 'pit_depth': ('Pit depth', '{} m')},
     'consumables': [
@@ -21,6 +22,12 @@ MANUAL = {
         ('oil', 'Bearing oil, ISO VG 46 or 68 (as the plate says)', 'as needed', 'Changed every 4,000 h or by the '
          'oil analysis'),
         ('line_bearing', 'Vertical pump line shaft bearings (bushes)', '1 set', 'Vertical pumps: at every overhaul'),
+    ],
+    'figures': [
+        ('pump_horizontal', 'exploded', 'The horizontal pump taken apart (from the Workshop).'),
+        ('pump_horizontal', 'cut', 'The horizontal pump cut open (from the Workshop).'),
+        ('pump_vertical', 'exploded', 'The vertical pump taken apart (from the Workshop).'),
+        ('pump_vertical', 'cut', 'The vertical pump cut open (from the Workshop).'),
     ],
     'sources': [
         {'id': 'api610', 'cite': 'API Standard 610, Centrifugal pumps for petroleum, petrochemical and natural gas '
@@ -40,6 +47,8 @@ MANUAL = {
     ],
     'sections': [
         S('description', 'Description', [
+            FIG('pump_horizontal', 'exploded'),
+            FIG('pump_vertical', 'exploded'),
             P('A centrifugal pump gives a liquid speed with a spinning **impeller**, and its **casing** turns that '
               'speed into pressure. The plant has two arrangements:'),
             UL('**Horizontal pumps** (cooling water, condensate extraction boosters, feedwater, chemical transfer): '
@@ -102,6 +111,8 @@ MANUAL = {
                'A standby pump is kept full, vented and with its valves set to start at once.'),
         ], src=['api610', 'hi961']),
         S('maintenance', 'Maintenance', [
+            FIG('pump_horizontal', 'cut'),
+            FIG('pump_vertical', 'cut'),
             TABLE(['Interval', 'Task'], [
                 ['Every round', 'Oil level, seal leak, noise, vibration felt, bearing temperature'],
                 ['Monthly', 'Vibration readings at both bearings (velocity, mm/s), the trend compared'],

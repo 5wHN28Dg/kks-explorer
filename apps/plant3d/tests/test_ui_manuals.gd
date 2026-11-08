@@ -110,6 +110,31 @@ func _card(tree: SceneTree, ui) -> Array:
 	mv.back()
 	if mv.man_id != "pressure_transmitter":
 		p.append("Back from another manual went to %s" % mv.man_id)
+	# the real Escape key (bound to ui_cancel and to menu) goes Back first, then closes; gamepad B too
+	mv.go("calibration")
+	var key := InputEventKey.new()
+	key.keycode = KEY_ESCAPE
+	key.physical_keycode = KEY_ESCAPE
+	key.pressed = true
+	mv._input(key)
+	if not ui.manual_open() or mv.section != "troubleshooting":
+		p.append("Escape with a page to go back to: open %s at %s" % [str(ui.manual_open()), mv.section])
+	mv.go("hart")
+	var pad := InputEventJoypadButton.new()
+	pad.button_index = JOY_BUTTON_B
+	pad.pressed = true
+	mv._input(pad)
+	if not ui.manual_open() or mv.section != "troubleshooting":
+		p.append("gamepad B with a page to go back to: open %s at %s" % [str(ui.manual_open()), mv.section])
+	# the plant's keys wait under the reader (the map stays shut)
+	var m_key := InputEventAction.new()
+	m_key.action = "map"
+	m_key.pressed = true
+	ui.main._unhandled_input(m_key)
+	ui._unhandled_input(m_key)
+	if ui.main.map.active:
+		p.append("the map opened under the reader")
+		ui.main.toggle_map()
 	# a work link with no role: the work view's own sentence
 	mv.follow({"work": "open_cover"})
 	if not ui.manual_open() or not mv.last_note.begins_with(ui.work.cannot(PT2)):

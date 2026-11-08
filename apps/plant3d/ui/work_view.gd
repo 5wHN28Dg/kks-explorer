@@ -755,7 +755,7 @@ func _orbit_cam() -> void:
 
 ## Mouse and touch on the view (not on a panel): a drag orbits, the wheel or a pinch zooms, a tap picks a component.
 func _unhandled_input(ev: InputEvent) -> void:
-	if not is_open:
+	if not is_open or ui.manual_open():
 		return
 	if ev is InputEventMouseButton:
 		var mb := ev as InputEventMouseButton
