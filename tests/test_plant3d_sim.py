@@ -136,11 +136,12 @@ def steps_runs(valid_files, steps, keep=None, prefix=''):
 WTP_RUNS = ('wtp', 'wtp_cip', 'wtp_regen')
 
 
-def reference_runs(V, keep=None, V2=None, jobs=1):
+def reference_runs(V, keep=None, V2=None, jobs=1, tasks=None):
     """Every run of run_vectors.gd on the reference: {run: (first step hashed, chunk digests, names, kept values)}.
     keep = (run, from, to) keeps that run's values at those steps. jobs > 1 makes the runs side by side in that many
-    processes (ref_tasks: each task's runs are made as they would be one after the other); the result is the same."""
-    tasks = ref_tasks(V, V2)
+    processes (ref_tasks: each task's runs are made as they would be one after the other); the result is the same.
+    tasks: only those of ref_tasks (a shard's, sim_units)."""
+    tasks = ref_tasks(V, V2) if tasks is None else tasks
     parts = G.side_by_side(lambda i: run_task(V, V2, keep, tasks[i][:2]), len(tasks), cost=lambda i: tasks[i][2],
                            procs=jobs)
     out = {}
@@ -166,6 +167,62 @@ def ref_tasks(V, V2):
             t.append(('day', None, V2['day']['until']))
             t += [('day', i, f['until']) for i, f in enumerate(V2['day']['forks'])]
     return t
+
+
+# CI's engine-vectors job runs in SIM_SHARDS jobs side by side (.github/workflows/plant3d.yml's matrix, KKS_SIM_SHARD=k):
+# each replays its shard's units through Godot (run_vectors.gd --units) and makes the same units on the reference.
+# Every unit is in exactly one shard, and the shards' results add up to the whole run's (tests/test_shards.py checks).
+# Shard SIM_REST also runs this module's other classes and the step bench. Before the split one job replayed every
+# vector: 18 to 30+ minutes on GitHub's runners, past the 1800 s limit on main's own runs (2026-11-08).
+SIM_SHARDS = 4
+SIM_REST = 0
+# Godot's seconds per unit on the laptop (run_vectors.gd's UNIT lines, 2026-11-08); a unit not listed costs its
+# reference steps / 1000 s. REST_COST: the module's other classes (CI's log, 2026-11-08, ~270 s there; ~190 s here).
+REST_COST = 190
+SIM_COST = {}
+
+
+def sim_units(V, V2):
+    """run_vectors.gd's units, one per ref_tasks task: [(unit, task, results it gives, cost)]."""
+    out = []
+    for kind, which, steps in ref_tasks(V, V2):
+        if kind == 'steps':
+            unit = which
+            n = 1 + len(V['steps']) + len(V['links']) if which == 'v1' else 1 + len(V2['steps'])
+        elif kind == 'train':
+            unit = which
+            t = V2[which[3:]] if which.startswith('v2/') else V[which]
+            n = len(t['forks']) + (0 if which == 'v2/train' else 2)     # (a start's procedure and run; format 2's
+            #                                                              train holds forks only)
+        elif kind == 'staff':
+            unit, n = 'v2/staff', 1 + len(V2['staff']['runs'])
+        else:
+            unit, n = ('v2/day' if which is None else 'v2/day/' + V2['day']['forks'][which]['id']), 1
+        out.append((unit, (kind, which, steps), n, SIM_COST.get(unit, steps / 1000)))
+    return out
+
+
+def sim_shards(V, V2):
+    """Each shard's units (by cost, the largest first, each to the shard with the least so far; SIM_REST starts with
+    REST_COST), in the vectors' order."""
+    units = sim_units(V, V2)
+    load = [REST_COST if k == SIM_REST else 0 for k in range(SIM_SHARDS)]
+    of = {}
+    for u in sorted(units, key=lambda u: (-u[3], u[0])):
+        k = min(range(SIM_SHARDS), key=lambda k: (load[k], k))
+        of[u[0]] = k
+        load[k] += u[3]
+    return [[u for u in units if of[u[0]] == k] for k in range(SIM_SHARDS)]
+
+
+def sim_shard():
+    """KKS_SIM_SHARD (0 to SIM_SHARDS - 1), or None for every unit."""
+    k = os.environ.get('KKS_SIM_SHARD')
+    if k is None or k == '':
+        return None
+    if not k.isdigit() or int(k) >= SIM_SHARDS:
+        raise AssertionError(f'KKS_SIM_SHARD={k}: not a shard from 0 to {SIM_SHARDS - 1}')
+    return int(k)
 
 
 def train_cost(t):
@@ -349,19 +406,23 @@ class GdscriptEngine(unittest.TestCase):
             cls.V = json.load(f)
         with open(VECTORS2, encoding='utf-8') as f:
             cls.V2 = json.load(f)
+        k = sim_shard()
+        cls.units = None if k is None else sim_shards(cls.V, cls.V2)[k]
+        tasks = None if cls.units is None else [u[1] for u in cls.units]
         cls.tmp = tempfile.TemporaryDirectory()
         cls.digest_path = os.path.join(cls.tmp.name, 'digests.json')
         # Godot's run and the reference's side by side: the reference's runs (test_every_value_bit_for_bit's) are
         # made while Godot runs, its output going to files (a pipe nobody reads would fill and stop it)
         args = [GODOT, '--headless', '--script', os.path.join(SIM, 'tests', 'run_vectors.gd'), '--',
-                f'--digests={cls.digest_path}']
+                f'--digests={cls.digest_path}'] + ([] if cls.units is None else
+                                                    ['--units=' + ','.join(u[0] for u in cls.units)])
         out, err = (os.path.join(cls.tmp.name, x) for x in ('godot.out', 'godot.err'))
         deadline = time.monotonic() + 1800         # (as godot()'s timeout)
         with open(out, 'w', encoding='utf-8') as fo, open(err, 'w', encoding='utf-8') as fe:
             proc = subprocess.Popen(args, stdout=fo, stderr=fe, cwd=REPO)
             try:
                 try:
-                    cls.ref, cls.ref_error = reference_runs(cls.V, V2=cls.V2, jobs=G.jobs()), None
+                    cls.ref, cls.ref_error = reference_runs(cls.V, V2=cls.V2, jobs=G.jobs(), tasks=tasks), None
                 except Exception as x:          # (test_every_value_bit_for_bit's failure, not every test's)
                     cls.ref, cls.ref_error = None, x
                 code = proc.wait(timeout=max(0.0, deadline - time.monotonic()))
@@ -387,6 +448,11 @@ class GdscriptEngine(unittest.TestCase):
             (1 + len(self.V2['staff']['runs']) if 'staff' in self.V2 else 0) + \
             (1 + len(self.V2['day']['forks']) if 'day' in self.V2 else 0) + \
             sum(2 + len(self.V2[r]['forks']) for r in WTP_RUNS if r in self.V2)
+        self.assertEqual(n, sum(u[2] for u in sim_units(self.V, self.V2)), 'sim_units: the units\' results are not '
+                         'the whole run\'s')
+        if self.units is not None:      # a shard: its units, each run, and their results
+            n = sum(u[2] for u in self.units)
+            self.assertEqual(sorted(re.findall(r'^UNIT (\S+) ', out, re.M)), sorted(u[0] for u in self.units))
         self.assertIn(f'VECTORS passed={n} failed=0', out)
 
     def test_every_value_bit_for_bit(self):
