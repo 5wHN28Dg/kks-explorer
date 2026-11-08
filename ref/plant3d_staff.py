@@ -28,7 +28,8 @@ WALK_MODES = ('walk', 'stair', 'ladder')
 ROLE_DISCIPLINES = ('ops', 'inst', 'mech', 'elec', 'chem', 'civil', 'hse', 'mgmt', 'security', 'transport', 'camp')
 AUTHORITIES = ('operate_screen', 'operate_local', 'request', 'approve', 'issue', 'accept', 'lock_electrical',
                'lock_mechanical', 'lock_process', 'lock_instrument', 'remove_lock', 'stop_work', 'sample', 'drive',
-               'operate_hart')      # (operate_hart: an op through a HART communicator, REALISM.md §2.13)
+               'operate_hart', 'jsa')   # (operate_hart: an op through a HART communicator, REALISM.md §2.13; jsa:
+                                        # JSAs and toolbox talks, §8.6)
 PPE = ('helmet', 'boots', 'glasses', 'gloves', 'ear', 'harness', 'face_shield', 'apron', 'vest')
 WEEK = ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun')
 # who may make each permit action (§15.3): done and return are the acceptor's (or another with accept and the
@@ -39,7 +40,8 @@ PERMIT_TO = {'request': 1, 'approve': 2, 'issue': 4, 'accept': 5, 'done': 6, 're
 STATE_NAMES = ('none', 'requested', 'approved', 'isolated', 'issued', 'accepted', 'done', 'returned', 'deisolated',
                'closed', 'cancelled')
 STEP_KINDS = ('go', 'work', 'read', 'op', 'permit', 'lock', 'unlock', 'say', 'wait', 'call', 'meet', 'choose', 'ack',
-              'handover', 'remove_locks', 'ppe', 'stop', 'ride', 'sleep', 'tool', 'hand')   # (tool, hand: §2.13)
+              'handover', 'remove_locks', 'ppe', 'stop', 'ride', 'sleep', 'tool', 'hand',   # (tool, hand: §2.13)
+              'jsa', 'talk')    # (REALISM.md §8.6)
 LATER = {}
 VEHICLE_KINDS = ('bus', 'pickup', 'suv')
 DRIVE_KINDS = ('stop', 'depot')     # the places drive ways join (§21.4)
@@ -974,6 +976,9 @@ class Staff:
                 keys(x, ('work', 'action'), (), f'{ws}.permit')
                 self.work_ref(x['work'], f'{ws}.permit.work')
                 need(x['action'] in PERMIT_AUTH, 'bad_value', f'{ws}.permit.action: one of {list(PERMIT_AUTH)}')
+            elif k in ('jsa', 'talk'):     # REALISM.md §8.6: a JSA made, a toolbox talk given
+                keys(s, (k,), ('else',), ws)
+                self.work_ref(x, f'{ws}.{k}')
             elif k in ('lock', 'unlock'):
                 keys(s, (k,), ('else',), ws)
                 keys(x, ('work', 'point'), (), f'{ws}.{k}')
@@ -1310,6 +1315,11 @@ class Staff:
                             for wid in self.step_works(s['permit']['work'], works[tid]):
                                 need(wmap[wid]['discipline'] == self.roles[rid]['discipline'], 'authority',
                                      f'{ws}: role {rid} is not of work {wid}\'s discipline')
+                    for k in ('jsa', 'talk'):     # REALISM.md §8.6
+                        if k in s:
+                            need('jsa' in auth, 'authority', f'{ws}: role {rid} lacks jsa')
+                            for wid in self.step_works(s[k], works[tid]):
+                                need('jsa' in wmap[wid], 'bad_ref', f'{ws}: work {wid} has no jsa')
                     for k in ('lock', 'unlock'):
                         if k in s:
                             for wid in self.step_works(s[k]['work'], works[tid]):
@@ -1333,6 +1343,9 @@ class Staff:
                              f'{ws}: role {rid} lacks remove_lock')
                 for k in ('permit', 'lock', 'unlock'):
                     if k in s and s[k]['work'] == '$':
+                        need(works[tid], 'bad_ref', f'{ws}: "$" but no work is ever given to task {tid}')
+                for k in ('jsa', 'talk'):
+                    if k in s and s[k] == '$':
                         need(works[tid], 'bad_ref', f'{ws}: "$" but no work is ever given to task {tid}')
                 if 'wait' in s and 'permit' in s['wait'] and s['wait']['permit'][0] == '$':
                     need(works[tid], 'bad_ref', f'{ws}: "$" but no work is ever given to task {tid}')
@@ -3035,11 +3048,18 @@ class StaffRun:
             if a is not None and e.astate.get(a) in ('active_unack', 'cleared_unack'):
                 e.npc_queue.append(('ack', a))
             return 'next'
-        if 'op' in s or 'permit' in s:
+        if 'op' in s or 'permit' in s or 'jsa' in s or 'talk' in s:
             if not x.get('busy'):
                 if 'op' in s:
                     o = s['op']
                     e.npc_queue.append(('op', o['kks'], o['do'], o.get('value'), o.get('trip'), o['where'], p.id))
+                elif 'jsa' in s or 'talk' in s:
+                    # REALISM.md §8.6: an NPC's JSA is the work's own list, its talk's points the job's hazards
+                    from ref import plant3d_hse as HS
+                    k = 'jsa' if 'jsa' in s else 'talk'
+                    w = cur['work'] if s[k] == '$' else s[k]
+                    hz, cs = HS.own(e, w)
+                    e.npc_queue.append(('jsa', w, hz, cs, p.id) if k == 'jsa' else ('talk', w, hz, p.id))
                 else:
                     w = cur['work'] if s['permit']['work'] == '$' else s['permit']['work']
                     e.npc_queue.append(('permit', w, s['permit']['action'], p.id))
@@ -3799,6 +3819,20 @@ class StaffRun:
                 elif self.early_done(p, cur, x, slot, lambda q: q[0] == 'permit' and q[2] == w and q[3] == a
                                      and self.permit_holds(w, a, q[4])):
                     r = 'next'
+            elif 'jsa' in s or 'talk' in s:
+                # REALISM.md §8.6: their own JSA of the work (made now or before: the work's JSA is theirs), or their
+                # own talk for it done in this step
+                k = 'jsa' if 'jsa' in s else 'talk'
+                w = cur['work'] if s[k] == '$' else s[k]
+                if k == 'jsa':
+                    if w in e.jsa_of and e.jsa_of[w][2] == p.id:
+                        r = 'next'
+                else:
+                    j = next((j for j, y in enumerate(mine) if j not in took and y[1] == 'talk' and y[2] == w
+                              and y[4] == p.id and y[5] == 'done'), None)
+                    if j is not None:
+                        took.add(j)
+                        r = 'next'
             elif 'handover' in s and s['handover'] == 'take':
                 if self.lock_target(p, cur, s, None) is None:
                     r = 'next'

@@ -1207,5 +1207,111 @@ class LabVectors(PartVectors, unittest.TestCase):
         self.assertIn('sample', B.NOT_ON_THE_BENCH)
 
 
+
+class HseVectors(PartVectors, unittest.TestCase):
+    """Milestone HS1 (REALISM.md §8.6): hse.json's hazard library, works' job kinds, the jsa and talk inputs, the issue
+    refused without a JSA, the talk's attendance, the JSA's life with its permit."""
+    part, rejects = 'hse', 'REJECTS_HSE'
+
+    def evs(self, k, kinds):
+        return [x[1:] for x in self.st['runs'][k]['events'] if x[1] in kinds]
+
+    def test_npc_jsa_is_the_works_own_list(self):
+        """An NPC's JSA is the work's own list: the job's hazards in order, then each hazard's controls in order, each
+        once (pump_brg: rotating loto guard, pinch gloves, pressure drain loto); its talk's points the job's hazards."""
+        ev = self.evs(0, ('jsa', 'talk'))
+        self.assertIn(['jsa', 'wo_pump', ['rotating', 'pinch', 'pressure'], ['loto', 'guard', 'gloves', 'drain'],
+                       'ms1', 'done', []], ev)
+        self.assertIn(['jsa', 'wo_paint', ['height', 'fumes', 'dropped'], ['harness', 'barrier', 'mask', 'ventilate'],
+                       'ms1', 'done', []], ev)
+        talks = [x for x in ev if x[0] == 'talk']
+        self.assertEqual({x[1]: x[2] for x in talks}, {'wo_pump': ['rotating', 'pinch', 'pressure'],
+                                                        'wo_paint': ['height', 'fumes', 'dropped']})
+
+    def test_npc_step_without_a_work(self):
+        """The adversarial review: an NPC's JSA step on a task with no work (a routine's slot starting the pump's JSA
+        task, which only a call gives a work) is unknown, as a permit step's is, and the task abandoned: not a crash;
+        the supervisor goes on to the painting's JSA."""
+        ev = [x[1:] for x in self.st['runs'][8]['events']]
+        self.assertIn(['jsa', None, [], [], 'ms1', 'unknown', []], ev)
+        i = ev.index(['jsa', None, [], [], 'ms1', 'unknown', []])
+        self.assertEqual(ev[i + 1], ['task', 'ms1', 'jsa_pump', 'abandoned'])
+        self.assertIn(['jsa', 'wo_paint', ['height', 'fumes', 'dropped'], ['harness', 'barrier', 'mask', 'ventilate'],
+                       'ms1', 'done', []], ev[i:])
+
+    def test_npc_flow_order(self):
+        """Every JSA before its permit's issue, every talk after it and before its accept; the talk in the workshop
+        attended by the technician who then accepts; the one at the muster point by the contractors standing there."""
+        ev = self.st['runs'][0]['events']
+        for w in ('wo_pump', 'wo_paint'):
+            jsa = next(x[0] for x in ev if x[1] == 'jsa' and x[2] == w and x[6] == 'done')
+            issue = next(x[0] for x in ev if x[1:4] == ['permit', w, 'issue'] and x[5] == 'done')
+            talk = next(x for x in ev if x[1] == 'talk' and x[2] == w and x[5] == 'done')
+            accept = next(x for x in ev if x[1:4] == ['permit', w, 'accept'] and x[5] == 'done')
+            self.assertLess(jsa, issue, w)
+            self.assertLess(issue, talk[0], w)
+            self.assertLess(talk[0], accept[0], w)
+            self.assertIn(accept[4], talk[7], f'{w}: the acceptor was at the talk')
+        self.assertFalse([x for x in ev if x[1] == 'permit' and x[3] == 'issue' and 'jsa' in x[6]])
+
+    def test_issue_refused_without_a_jsa(self):
+        """The night supervisor's issue of the painting before its JSA is refused `jsa` (their task abandoned), the
+        form's too; once the JSA is made the issue is done; the reasons in §2.7's order (authority, state, iso_busy,
+        jsa)."""
+        ev = self.evs(2, ('permit', 'jsa'))
+        issues = [x for x in ev if x[0] == 'permit' and x[2] == 'issue']
+        self.assertEqual([x[4:] for x in issues], [['refused', ['jsa']], ['refused', ['jsa']], ['done', []]])
+        self.assertEqual(issues[0][3], 'a_sup')
+        self.assertIn(['jsa', 'wo_paint', ['height', 'fumes', 'dropped'], ['harness', 'barrier', 'mask', 'ventilate'],
+                       'ms1', 'refused', ['state']], ev)
+
+    def test_unknown_and_refused(self):
+        ev = self.evs(1, ('jsa', 'talk'))
+        self.assertEqual([x[5] for x in ev if x[0] == 'jsa'][:7], ['unknown'] * 7)
+        self.assertEqual(ev[7], ['talk', 'wo_pump', [], 'ms1', 'unknown', [], []])
+        self.assertEqual(ev[8], ['jsa', 'wo_pump', ['rotating'], [], 'a_sup', 'refused', ['authority']])
+        self.assertEqual(ev[9], ['talk', 'wo_pump', ['rotating'], 'ms1', 'refused', ['state', 'jsa'], []])
+
+    def test_attendance(self):
+        """In the workshop (a room, at its door) the technicians at its benches attend; on the way the giver alone; at
+        the muster point (no room) those standing there; the work's attendance is the union, in people order."""
+        r = self.st['runs'][1]
+        talks = [x for x in r['events'] if x[1] == 'talk' and x[5] == 'done']
+        self.assertEqual([x[7] for x in talks], [['mech1', 'mech2', 'ms1'], ['ms1'], ['ms1', 'csup', 'con1', 'con2']])
+        self.assertEqual(r['states'][-1]['hse']['wo_pump']['talk'], ['mech1', 'mech2', 'ms1', 'csup', 'con1', 'con2'])
+
+    def test_cancel_clears(self):
+        ev = self.evs(3, ('talk', 'jsa'))
+        self.assertEqual([x[4:6] for x in ev if x[0] == 'talk'],
+                         [['done', []], ['refused', ['state', 'jsa']], ['refused', ['jsa']], ['done', []]])
+        self.assertIn(['jsa', 'wo_pump', ['rotating'], [], 'a_sup', 'refused', ['authority']], ev)
+
+    def test_without_hse_nothing_changes(self):
+        """Without hse.json the inputs are unknown, the snapshots have no `hse` and the digests no part of it: the
+        safety staff's own runs (plant3d-v2.json) stay byte for byte."""
+        r = self.st['runs'][4]
+        self.assertEqual([x[1:][-2] for x in r['events'] if x[1] in ('jsa', 'talk')], ['unknown', []])
+        self.assertFalse(any('hse' in s for s in r['states']))
+
+    def test_free_mode_talk_attended_by_nobody(self):
+        r = self.st['runs'][5]
+        self.assertIn(['talk', 'wo_paint', ['height'], None, 'done', [], []], [x[1:] for x in r['events']])
+        self.assertEqual(r['states'][-1]['hse'], {'wo_paint': {'jsa': [['height'], ['harness'], None]}})
+
+    def test_player_plays_their_steps(self):
+        """The maintenance supervisor played (the Trainee helper as the app would): the hosting task's JSA, the called
+        jsa_pump and talk_pump, each step done by their own input, the tasks done."""
+        ev = self.st['runs'][7]['events']
+        for t in ('host_paint', 'jsa_pump', 'talk_pump'):
+            self.assertIn(['task', 'ms1', t, 'done'], [x[1:5] for x in ev], t)
+        self.assertIn(['talk', 'wo_pump', ['rotating', 'pinch', 'pressure'], 'ms1', 'done', []],
+                      [x[1:7] for x in ev])
+
+    def test_session(self):
+        ev = self.evs(6, ('jsa', 'talk'))
+        self.assertEqual(ev[-1], ['talk', 'wo_paint', ['height', 'fumes'], 'hse1', 'done', [], ['a_elec', 'hse1', 'ms1']])
+        self.assertEqual(self.st['runs'][6]['states'][-1]['hse']['wo_paint']['jsa'][2], 'hse1')
+
+
 if __name__ == '__main__':
     unittest.main()
