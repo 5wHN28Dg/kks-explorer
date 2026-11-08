@@ -2347,8 +2347,8 @@ class Engine:
     def repair_under(self, fid, work, person=None, slot=None):
         self._q(('repair', fid, work, person), slot)
 
-    def work_order(self, work, action, person=None, data=None, slot=None):
-        self._q(('wo', work, action, person, [] if data is None else data), slot)
+    def work_order(self, work, action, person, data, slot=None):
+        self._q(('wo', work, action, person, data), slot)     # (data as given: null or not a list is unknown)
 
     def permit(self, work, action, person=None, slot=None):
         self._q(('permit', work, action, person), slot)

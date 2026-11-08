@@ -13,6 +13,7 @@ const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goe
 
 const RunSave = preload("res://ui/run_save.gd")
 const PlantEngine = preload("res://sim/engine.gd")
+const WoSim = preload("res://sim/workorders.gd")   # the work order actions (REALISM.md §2.20)
 const SimClock = preload("res://ui/sim_clock.gd")
 const Tracker = preload("res://ui/procedure_tracker.gd")
 const W = preload("res://ui/widgets.gd")
@@ -250,6 +251,16 @@ static func _hands_contents(fresh, d: Dictionary) -> String:
 					if q.size() != 4:
 						return "a damaged NPC input"
 					who = q[3]
+				"wo":
+					# a work order's action (REALISM.md §2.20): a work of the model, an action, data a list or null
+					# (null: the NPC's defaults, a completion's from the work's codes)
+					if q.size() != 5 or typeof(q[1]) != TYPE_STRING or not fresh.m.work_ix.has(q[1]) \
+							or typeof(q[2]) != TYPE_STRING or not WoSim.AUTH.has(q[2]) \
+							or (q[4] != null and typeof(q[4]) != TYPE_ARRAY) \
+							or (q[4] == null and q[2] == "complete" \
+								and not fresh.m.works[fresh.m.work_ix[q[1]]].has("codes")):
+						return "a damaged NPC input"
+					who = q[3]
 				_:
 					continue
 			if typeof(who) != TYPE_STRING or not people.has(who):
@@ -329,7 +340,12 @@ static func _wo_contents(fresh, d: Dictionary) -> String:
 		for r in d["wo_history"]:
 			if not _wo_record_ok(r, works, null):
 				return "a damaged work order history"
-	if d.get("wo_count", 0) < 0:
+	# the number counter: never below a number already given (a later order would take it again)
+	var top := 0
+	for r in d.get("wo_no", {}).values() + d.get("wo_history", []).map(func(x): return x[0]):
+		if typeof(r) == TYPE_STRING and r.begins_with("WO-") and r.substr(3).is_valid_int():
+			top = maxi(top, r.substr(3).to_int())
+	if d.get("wo_count", 0) < top:
 		return "a damaged work order count"
 	if d.has("wo_npc_done"):
 		for x in d["wo_npc_done"]:

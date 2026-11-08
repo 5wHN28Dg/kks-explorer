@@ -1,6 +1,7 @@
 ## Work orders in the app (docs/plant3d/REALISM.md §7.1, §2.20; milestone WM1), in the aged plant in free mode:
 ## - a finding matched to its work by the code and the kind found (the first work written for it without an open
 ##   order);
+## - the form's actions only those the person played may make (the engine's authority), named by the roles that may;
 ## - the card's "Work orders" at closed cooling water pump A's motor (works and past orders) and none at a code with
 ##   neither; its view lists the content's history and reports a finding: the bearings' vibration notified (WO-0001);
 ## - the list: the open order with the backlog's planned hours; its form plans it (urgent) and schedules it (today),
@@ -21,6 +22,7 @@ const CAL := "wo_cond_p2_cal"         # condenser pressure transmitter 2's calib
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = _matching()
+	p += _who_may()
 	p += await _panel(tree)
 	return p
 
@@ -47,6 +49,35 @@ func _matching() -> Array:
 		var w: Dictionary = Wo.work_for(e, c[0], c[1])
 		if w.get("id", "") != c[3]:
 			p.append("a finding of %s on %s with %s went to %s, wanted %s" % [c[1], c[0], str(c[2]), w.get("id", ""), c[3]])
+	return p
+
+
+## The form offers only what the person played may do (the engine's authority): a fake staff with a supervisor
+## (plan_work, close_work) and an I&C technician (accept, instrument); free mode (nobody played) may do everything.
+class Staffed extends RefCounted:
+	var _sm := Sm.new()
+	class Sm extends RefCounted:
+		var person_ix := {"sup": 0, "ic": 1}
+		var people := [{"id": "sup", "role": "maint_sup"}, {"id": "ic", "role": "ic_tech"}]
+		var auth := {"maint_sup": {"plan_work": true, "close_work": true}, "ic_tech": {"accept": true}}
+		var roles := {"maint_sup": {"title": "Maintenance supervisor", "discipline": "mechanical"},
+			"ic_tech": {"title": "I&C technician", "discipline": "instrument"}}
+
+
+func _who_may() -> Array:
+	var p: Array = []
+	var e := Staffed.new()
+	var cal := {"id": "cal", "discipline": "instrument"}
+	var pump := {"id": "pump", "discipline": "mechanical"}
+	for c in [["sup", "plan", cal, true], ["sup", "close", cal, true], ["sup", "complete", cal, false],
+			["ic", "plan", cal, false], ["ic", "cancel", cal, false], ["ic", "complete", cal, true],
+			["ic", "complete", pump, false], ["ic", "notify", pump, true], [null, "plan", cal, true]]:
+		if Wo.may(e, c[0], c[1], c[2]) != c[3]:
+			p.append("%s may %s %s: %s, wanted %s" % [c[0], c[1], c[2]["id"], not c[3], c[3]])
+	for c in [["plan", cal, "maintenance supervisor"], ["complete", cal, "i&c technician"],
+			["complete", pump, "nobody in this plant"], ["notify", pump, "anyone"]]:
+		if Wo.role_words(e, c[0], c[1]) != c[2]:
+			p.append("who may %s %s: %s, wanted %s" % [c[0], c[1]["id"], Wo.role_words(e, c[0], c[1]), c[2]])
 	return p
 
 

@@ -15,6 +15,7 @@ extends PanelContainer
 const W = preload("res://ui/widgets.gd")
 const Permits = preload("res://ui/permits.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
+const Wo = preload("res://sim/workorders.gd")
 
 const STATE_WORDS := ["No work order", "Notified", "Planned", "Scheduled", "In progress", "Complete", "Closed",
 	"Cancelled"]
@@ -173,14 +174,36 @@ static func clock_words(e, c: int) -> String:
 	return "day %d %02d:%02d" % [int(c / DAY), s / 3600, (s / 60) % 60]
 
 
-## Who may make the action (§2.20), in words, for the form's buttons.
-static func role_words(action: String, w: Dictionary) -> String:
-	match action:
-		"notify":
-			return "anyone"
-		"complete":
+## Who may make the action (§2.20), in words, for the form's buttons: the titles of the roles holding its authority
+## (and the work's discipline, for a completion), from the staff's content; without staff the usual roles.
+static func role_words(e, action: String, w: Dictionary) -> String:
+	if action == "notify":
+		return "anyone"
+	var sm = e._sm if "_sm" in e else null
+	if sm == null:
+		if action == "complete":
 			return Permits.TECH.get(w.get("discipline", ""), "technician")
-	return "maintenance or shift supervisor"
+		return "maintenance or shift supervisor"
+	var need: String = Wo.AUTH[action]
+	var out := PackedStringArray()
+	for rid in sm.roles:
+		var r: Dictionary = sm.roles[rid]
+		if sm.auth[rid].has(need) and (action != "complete" or r.get("discipline", "") == w.get("discipline", "")):
+			out.append(String(r.get("title", rid)).to_lower())
+	return " or ".join(out) if not out.is_empty() else "nobody in this plant"
+
+
+## Whether the person played (null: free mode) may make the action on the work (§2.20, as the engine's authority
+## check: a refused action is not offered on the form).
+static func may(e, me, action: String, w: Dictionary) -> bool:
+	var sm = e._sm if "_sm" in e else null
+	if sm == null or me == null or not sm.person_ix.has(me):
+		return sm != null or me == null
+	var rid: String = sm.people[sm.person_ix[me]]["role"]
+	var need: String = Wo.AUTH[action]
+	if need != "" and not sm.auth[rid].has(need):
+		return false
+	return action != "complete" or sm.roles[rid].get("discipline", "") == w.get("discipline", "")
 
 
 ## The work a finding of that kind on the code goes to (§7.1: matched by code and kind): the first of the code's works
@@ -223,7 +246,7 @@ func _show(text: String, ok := false) -> void:
 static func reason_text(e, w: Dictionary, why: String, action: String) -> String:
 	match why:
 		"authority":
-			return "it is the %s's to do" % role_words(action, w)
+			return "it is the %s's to do" % role_words(e, action, w)
 		"state":
 			return "the order is %s" % STATE_WORDS[state_of(e, w.get("id", ""))].to_lower()
 		"permit":
@@ -268,6 +291,8 @@ func on_events(evs: Array, from: int) -> void:
 			if p[0] == ev[2] and p[1] == ev[3] and int(ev[0]) >= p[2]:
 				var txt := event_text(e, ev)
 				_show(txt, ev[5] == "done")
+				if ev[3] == "complete" and ev[5] == "done":
+					_pick.erase(ev[2])      # (a later order on the work starts with an empty completion)
 				if ev[5] != "done":
 					ui.toast(txt)
 				_pending.remove_at(k)
@@ -283,7 +308,8 @@ func refresh() -> void:
 	if e == null or e.m.wo_doc == null:
 		return
 	var sig := [work, code, today(e), e.wo_history.size(), ui.me()]
-	for wd in e.m.works:
+	# (a work's form follows only its own work: other works' moves never rebuild a completion being filled in)
+	for wd in ([e.m.works[e.m.work_ix[work]]] if work != "" and e.m.work_ix.has(work) else e.m.works):
 		sig.append(state_of(e, wd["id"]))
 		sig.append(Permits.state_of(e, wd["id"]))
 	var s := str(sig)
@@ -323,17 +349,18 @@ func _list(e) -> void:
 		if st >= 1 and st <= 5:
 			var rec := record_of(e, wd["id"])
 			var pr: int = int(rec[4]) if rec.size() > 4 and int(rec[4]) > 0 else 9
-			open_ws.append([pr, String(rec[0]) if not rec.is_empty() else "", wd])
+			var day: int = int(rec[5]) if rec.size() > 5 and int(rec[5]) >= 0 else 1 << 30
+			open_ws.append([[st, pr, day, String(rec[0]) if not rec.is_empty() else ""], wd])
 			if st <= 4:
 				hours += float(wd.get("hours", 0.0))
-	open_ws.sort_custom(func(a, b): return a[0] < b[0] or a[0] == b[0] and a[1] < b[1])
+	open_ws.sort_custom(func(a, b): return _before(a[0], b[0]))     # by state, priority, day, then number
 	body.add_child(W.label("Backlog: %d open order%s, %s planned crew hours" % [open_ws.size(),
 			"" if open_ws.size() == 1 else "s", _hours(hours)], 18, Color.WHITE))
 	if open_ws.is_empty():
 		body.add_child(W.label("No open work orders. Report a finding from a piece of equipment's card (Work orders).",
 				16, W.DIM))
 	for x in open_ws:
-		_row(e, x[2])
+		_row(e, x[1])
 	if not e.wo_history.is_empty():
 		body.add_child(W.label("Closed in this run", 20, Color.WHITE))
 		for k in range(e.wo_history.size() - 1, -1, -1):
@@ -355,6 +382,14 @@ func _row(e, wd: Dictionary) -> void:
 		words += " · day %d" % int(rec[5])
 	var colour: Color = W.PRIO_COLOURS.get(int(rec[4]) if rec.size() > 4 else 0, W.DIM)
 	body.add_child(W.label(words, 16, colour if st <= 4 else W.OK_COLOUR))
+
+
+## The list's order (§2.20): [state, priority, day, number], each ascending.
+static func _before(a: Array, b: Array) -> bool:
+	for i in a.size():
+		if a[i] != b[i]:
+			return a[i] < b[i]
+	return false
 
 
 static func _closed_line(e, r: Array) -> String:
@@ -415,9 +450,9 @@ func _form(e, w: Dictionary) -> void:
 	body.add_child(pb)
 	# the actions that come next
 	for a in ["notify", "plan", "schedule", "complete", "close", "cancel"]:
-		if not st in FROM[a]:
+		if not st in FROM[a] or not may(e, ui.me(), a, w):
 			continue
-		var who := role_words(a, w)
+		var who := role_words(e, a, w)
 		match a:
 			"notify":
 				for m in (w.get("finds", []) if not w.get("finds", []).is_empty() else [null]):

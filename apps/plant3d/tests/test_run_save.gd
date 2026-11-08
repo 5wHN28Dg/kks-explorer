@@ -321,7 +321,11 @@ func _round_trip_wo(p: Array) -> void:
 			{"wo_rec": {"wo_pump": short}}, {"wo_rec": {"wo_pump": other}}, {"wo_rec": {"wo_fan": rec}},
 			{"wo_rec": {"wo_pump": badclock}}, {"wo_no": {"wo_pump": 3}}, {"wo_no": {"wo_fan": "WO-0009"}},
 			{"wo_history": [short]}, {"wo_count": -1}, {"wo_npc_done": [["wo_fan", "mech1"]]},
-			{"wo_npc_done": [["wo_pump"]]}]:
+			{"wo_npc_done": [["wo_pump"]]}, {"wo_count": 0},
+			{"npc_queue": [["wo"]]}, {"npc_queue": [["wo", "wo_fan", "plan", "a_sup", null]]},
+			{"npc_queue": [["wo", "wo_pump", "approve", "a_sup", []]]},
+			{"npc_queue": [["wo", "wo_pump", "plan", "nobody", [3]]]},
+			{"npc_queue": [["wo", "wo_pump", "plan", "a_sup", 3]]}]:
 		var t := cap0.duplicate(true)
 		for k in c:             # (a record or number changed among the others; the states replaced whole)
 			if k == "wo_rec" or k == "wo_no":
@@ -330,6 +334,15 @@ func _round_trip_wo(p: Array) -> void:
 				t[k] = c[k]
 		if Autosave._engine_contents(f2, t) == "":
 			p.append("realism wo: a save with %s was taken" % str(c))
+	# an NPC's completion without data on a work without codes (its defaults would read the codes)
+	var pump: Dictionary = f2.m.works[f2.m.work_ix["wo_pump"]]
+	var codes = pump["codes"]
+	pump.erase("codes")
+	var t2 := cap0.duplicate(true)
+	t2["npc_queue"] = [["wo", "wo_pump", "complete", "mech1", null]]
+	if Autosave._engine_contents(f2, t2) == "":
+		p.append("realism wo: a save with an NPC's completion of a work without codes was taken")
+	pump["codes"] = codes
 
 
 ## The water treatment plant's day work (W3) saved in the middle of its sequences: an RO train being cleaned in place

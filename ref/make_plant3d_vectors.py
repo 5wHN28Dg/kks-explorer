@@ -5833,6 +5833,12 @@ def wo_runs():
         (310, 'wo', V, 'notify', 'a_sup', ['leak']), (312, 'wo', V, 'plan', 'a_sup', [2]),
         (400, 'wo', V, 'schedule', 'a_sup', [1]), (404, 'wo', 'wo_pump', 'notify', 'a_sup', ['vibration'])))
     npc = Scripted(_x((320, 'wo', 'wo_pump', 'notify', None, ['vibration']), (700, 'fault', 'f1')))
+    emergency = Scripted(_x(
+        (2, 'wo', G, 'notify', None, None), (2, 'wo', G, 'notify', None, ['reading']),
+        (3, 'permit', G, 'request', None), (4, 'permit', G, 'approve', None), (5, 'lock', G, 0, None),
+        (7, 'permit', G, 'issue', None), (8, 'permit', G, 'accept', None), (9, 'wo', G, 'cancel', None, None),
+        (10, 'permit', G, 'done', None), (11, 'wo', G, 'complete', None, None),
+        (12, 'wo', G, 'complete', None, code)))
     return [
         ('a work order\'s actions and their reasons (§2.20): notified (WO-0001), again (state); a mode not in the file '
          '(data); a work, an action and data not known (unknown); planned by another person (authority), with a '
@@ -5857,6 +5863,10 @@ def wo_runs():
         ('the trainee as the supervisor (§2.20): their notification of the valve gives them the plan task (the '
          'reaction), whose plan step they make from the panel before acknowledging it (early) and whose schedule '
          'step they make later (taken); the pump\'s order notified too', sup, wf, played, 480, 20),
+        ('an emergency job and null data (§2.20): the gauge\'s notification with data null (unknown), then notified; '
+         'its permit requested, approved, locked, issued and accepted without the order being planned or scheduled: '
+         'in progress by itself from notified (its planned and scheduled clocks stay -1); cancelled and completed '
+         'with data null (unknown); completed after the permit\'s done', {}, bare, emergency, 14, 1),
     ]
 
 

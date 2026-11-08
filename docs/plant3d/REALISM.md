@@ -959,18 +959,27 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   calibrations every year, relay tests every 2 years, cartridge filters every 3 months, and 5 failures), each wear
   item's failures at the lives the engine draws for the ageing scenario's seed, so its last renewal in the history is
   as long ago as that day's wear says (`tests/test_plant3d_workorders.py`).
-- **Vectors:** `plant3d-realism.json` gains the part `wo` (49 rejects, 4 runs: the actions and their reasons, the whole
+- **Vectors:** `plant3d-realism.json` gains the part `wo` (49 rejects, 5 runs: the actions and their reasons, the whole
   cycle with no trainee, NPCs carrying a notified order from notification to closure, the trainee as the supervisor
-  with an early action); every earlier part unchanged but `about`'s sentence. `plant3d-v1.json` and `plant3d-v2.json`
+  with an early action, an emergency job in progress straight from notified and actions whose data are null); every earlier part unchanged but `about`'s sentence. `plant3d-v1.json` and `plant3d-v2.json`
   made again with the train's 55 `_wo` values (0 in every run: nobody notifies) and the empty work order parts of the
   snapshots; compared item by item with the files before: every input, event and earlier value unchanged, only the
   digests moved. `plant3d-bench-v1.json` unchanged. Both engines run every item bit for bit.
 - **Settled in the code:** a record carries its work's id (its last field), so the run's history names its works; an
-  NPC's `schedule` without data schedules for the clock's day when the input is made (step 1), not when it was queued.
+  NPC's `schedule` without data schedules for the clock's day when the input is made (step 1), not when it was queued; an input's data
+  null is `unknown` in both engines (the reference's queue once turned it into `[]`; a run's vector pins it); the
+  bench's plant has no work orders.
+- **The app, as settled by the reviews:** the form offers only the actions the person played may make (the engine's
+  authority check; free mode all) and names the roles of the staff's content that may; the open orders are listed by
+  state, priority, day and number; a work's form is rebuilt only when its own order or permit moves (a completion
+  being filled in survives other works' moves), and a completion's choices are forgotten once it is done.
 - **Tests:** `tests/test_plant3d_realism.py` `WoVectors`, `tests/test_plant3d_workorders.py` (every work coded, the
   history against the ageing scenario, the day's staff planning a notified order and asking for its permit),
-  `apps/plant3d/tests/test_run_save.gd` (a save in the middle of a work order goes on bit for bit; 14 damaged saves
-  refused), `apps/plant3d/tests/test_ui_workorders.gd` (app shard 2: a finding reported from the card, planned,
+  `apps/plant3d/tests/test_run_save.gd` (a save in the middle of a work order goes on bit for bit; 21 damaged saves
+  refused: the 14 of the state and records, a number counter below a number given, and an NPC's queued work order
+  input that is short, names no work, an unknown action or person, data not a list, or a completion without data on
+  a work without codes), `apps/plant3d/tests/test_ui_workorders.gd` (app shard 2: who may make each action and their
+  roles' words; a finding reported from the card, planned,
   scheduled and cancelled from the form; a calibration completed after its permit's done, refused before it in words;
   the debrief's line).
 

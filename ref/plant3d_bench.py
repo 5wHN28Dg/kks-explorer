@@ -64,6 +64,8 @@ class _Bundle:
         self.sounds = None
         self.model = None
         self.scenarios = {}
+        self.wo_ids = None          # no work orders on the bench (REALISM.md §2.20)
+        self.wo_doc = None
 
 
 class BenchModel(P.Model):
