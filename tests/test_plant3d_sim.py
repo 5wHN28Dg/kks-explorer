@@ -176,10 +176,21 @@ def ref_tasks(V, V2):
 # vector: 18 to 30+ minutes on GitHub's runners, past the 1800 s limit on main's own runs (2026-11-08).
 SIM_SHARDS = 4
 SIM_REST = 0
-# Godot's seconds per unit on the laptop (run_vectors.gd's UNIT lines, 2026-11-08); a unit not listed costs its
-# reference steps / 1000 s. REST_COST: the module's other classes (CI's log, 2026-11-08, ~270 s there; ~190 s here).
+# Each unit's cost on the laptop, 2026-11-08: Godot's seconds (run_vectors.gd's UNIT lines) plus a third of the
+# reference's (made in 3 processes beside it); whole: Godot 1,197 s, the reference 2,523 s. A unit not listed costs
+# its steps / 1000 s. REST_COST: the module's other classes (CI's log, 2026-11-08: ~270 s there).
 REST_COST = 190
-SIM_COST = {}
+SIM_COST = {'v1': 0, 'v2': 0, 'v2/staff': 10, 'train': 362, 'hot': 47, 'v2/train': 77, 'v2/wtp': 143,
+            'v2/wtp_cip': 46, 'v2/wtp_regen': 36, 'v2/day': 145, 'v2/day/field_cw_alarm': 18,
+            'v2/day/ccr_instruction': 9, 'v2/day/npc_permit': 42, 'v2/day/job_suspended': 42, 'v2/day/sup_late': 52,
+            'v2/day/npc_cal': 35, 'v2/day/npc_hands': 44, 'v2/day/npc_hands_drift': 44, 'v2/day/npc_ls': 46,
+            'v2/day/trainee_ic': 37, 'v2/day/trainee_hse': 40, 'v2/day/session_cw_alarm': 13,
+            'v2/day/trainee_contractor': 38, 'v2/day/wtp_npc': 43, 'v2/day/backwash_again': 79,
+            'v2/day/trainee_wtp': 13, 'v2/day/trainee_chem': 20, 'v2/day/demin_call': 29, 'v2/day/wtp_cartridge': 43,
+            'v2/day/ro_trip': 15, 'v2/day/wtp_cip': 70, 'v2/day/wtp_resin': 43, 'v2/day/wtp_orp_cal': 39,
+            'v2/day/trainee_driver': 10, 'v2/day/trainee_pm': 18, 'v2/day/trainee_om': 18, 'v2/day/trainee_mm': 18,
+            'v2/day/trainee_ice': 17, 'v2/day/trainee_mce': 18, 'v2/day/trainee_ele': 17, 'v2/day/trainee_rides': 76,
+            'v2/day/evening_jump': 82, 'v2/day/aged_ccw': 32}
 
 
 def sim_units(V, V2):

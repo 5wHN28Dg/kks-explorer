@@ -116,9 +116,9 @@ class SimShards(unittest.TestCase):
         self.assertEqual(len(per), S.SIM_SHARDS)
         self.assertTrue(all(per), [len(p) for p in per])
         got = [u for p in per for u in p]
-        self.assertEqual(sorted(got), sorted(units))
+        self.assertEqual(sorted(got, key=repr), sorted(units, key=repr))
         self.assertEqual(len({u[0] for u in got}), len(got))
-        self.assertEqual(sorted(u[1] for u in got), sorted(S.ref_tasks(V, V2)))
+        self.assertEqual(sorted((u[1] for u in got), key=repr), sorted(S.ref_tasks(V, V2), key=repr))
         # the units' results: the whole run's count, as test_every_vector_replays counts it
         n = 1 + len(V['steps']) + len(V['links']) + 2 * (1 + 1) + len(V['train']['forks']) + \
             len(V['hot']['forks']) + 1 + len(V2['steps']) + len(V2.get('train', {}).get('forks', [])) + \
