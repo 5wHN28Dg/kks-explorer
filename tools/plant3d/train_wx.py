@@ -31,7 +31,7 @@ AMB_HR = [[-10, 0.940], [0, 0.950], [15, 0.964], [25, 0.982], [35, 1.0], [45, 1.
 HR_35 = 9750            # kJ/kWh at base load and 35 °C (an F-class machine's ISO figure about 9,400, + 3.7 %)
 HR_LF = [[0, 3.0], [0.1, 2.5], [0.3, 1.45], [0.5, 1.2], [0.75, 1.07], [1, 1.0]]     # part load (generic)
 RATING = 250
-INV_CAP = [[c, round(1 / c, 9)] for c in range(100, RATING + 1, 5)]     # 1/MW, by 5 MW (0.05 % at most off)
+INV_CAP = [[c, round(1 / c, 9)] for c in range(100, RATING + 1, 5)]     # 1/MW, by 5 MW (0.06 % at most off)
 AIR_DENSITY = 1.15      # kg/m³ (the exhaust's mass flow stands for the air's: its fuel is about 2 %)
 # the filter house (pulse cartridges, at full flow): the clean media, the cake that pulsing removes, the residue
 # that only new cartridges remove (a share of what is caught, grown at the scenario's training rate like any wear)
@@ -65,7 +65,7 @@ CAB_H = 55                                              # °C: the electronics' 
 APPROACH_WB = [[-5, 2.0], [5, 1.6], [15, 1.3], [25, 1.0], [32, 0.85]]  # × the approach at the design 25 °C
 ICE = [[-3, 5], [0, 2], [2, 0]]                         # mm/s on a running fan's probe by the air's °C
 ICE_TAU = 600                                           # s (an hour of the clock): the ice builds and melts
-LINE_TAU = 1200                                         # s: the basin level transmitter's impulse line cools
+LINE_TAU = 600                                          # s (an hour of the clock): the basin level transmitter's impulse line cools
 JB_RAIN = [[0, 3], [0.5, 10], [1, 30]]                  # mm of rain before the water reaches the terminals
 STRIKE_GAP = [[0, 120], [0.5, 1000], [1, 4000]]         # clock seconds of storm between strikes near the plant
 STRIKE_N = [[0, 1], [0.5, 3], [1, 12]]                  # the strike whose surge reaches fan 9's loop

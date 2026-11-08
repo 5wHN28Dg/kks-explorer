@@ -44,7 +44,7 @@
   ["ln_strike", {"cmp": ["ln_w", ">=", "ln_gap"]}],
   ["ln_count", {"count": "ln_strike", "kks": "10BAT10"}],
   ["ln_n", {"draw": [[0, 1], [0.5, 3], [1, 12]]}],
-  ["ct_line_t", {"lag": "ambient_t", "tau": 1200, "init": 35, "unit": "°C"}],
+  ["ct_line_t", {"lag": "ambient_t", "tau": 600, "init": 35, "unit": "°C"}],
   ["ct_line_ice", {"cmp": ["ct_line_t", "<", 0]}],
   ["ct_line_cold", {"cmp": ["ct_line_t", "<", 3]}],
   ["ct_lvl_held", {"and": ["ct_lvl_frozen", "ct_line_cold"]}],
