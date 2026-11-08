@@ -22,6 +22,7 @@ var section := ""
 var code := ""                  # the equipment it was opened from ("" none): its own data in the `unit` block
 var history: Array = []         # [[manual, section]] for Back
 var open_ms := 0.0              # the last page's build, ms
+var page_ms := {}               # "manual#section" -> its longest build, ms (walk=manuals)
 var last_note := ""             # the last sentence shown (a link that could not be followed), for the tests
 var root: Control
 var title: Label
@@ -188,7 +189,7 @@ func _show(id: String, sec: String) -> void:
 	man_id = id
 	section = sec
 	title.text = "%s  %s" % [m["number"], m["title"]]
-	back_btn.text = "Back" if not history.is_empty() else "Close"
+	back_btn.visible = not history.is_empty()
 	note.visible = false
 	if new_manual or contents.get_child_count() == 0:
 		W.clear(contents)
@@ -205,6 +206,7 @@ func _show(id: String, sec: String) -> void:
 	_build_page(m, sec)
 	scroll.scroll_vertical = 0
 	open_ms = (Time.get_ticks_usec() - t0) / 1000.0
+	page_ms[id + "#" + sec] = maxf(open_ms, float(page_ms.get(id + "#" + sec, 0.0)))
 	opened.emit(id, sec)
 
 
@@ -320,7 +322,11 @@ func _figure(f: Dictionary) -> Control:
 		tr.texture = tex
 		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		var pw := maxf(scroll.size.x - 24.0, 320.0)
+		# the page's width (before its first layout, from the screen less the contents)
+		var pw := scroll.size.x - 24.0
+		if pw < 100.0:
+			pw = root.get_viewport_rect().size.x - (contents.get_parent() as Control).custom_minimum_size.x - 80.0
+		pw = maxf(pw, 320.0)
 		var w := minf(pw, float(f["w"]) * W.scale)
 		tr.custom_minimum_size = Vector2(w, w * float(f["h"]) / float(f["w"]))
 		tr.size_flags_horizontal = Control.SIZE_SHRINK_CENTER

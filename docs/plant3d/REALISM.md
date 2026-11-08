@@ -1368,6 +1368,31 @@ the app).
 - **Budgets** (§11): a manual opens in ≤ 300 ms on the Note 9 (its JSON read when first opened, a figure decoded when
   first shown); ≤ 40 MB more with a manual open; the package growth measured and reported against the 250 MB APK.
 
+#### 6.2.2 As built for milestone DC2 (2026-11-08)
+
+- **The set:** the six manuals of §6.2.1, 97 KB of JSON (the index 20 KB: 120 codes' own data, the reverse links of
+  10 work view actions and 22 Workshop steps), made in under a second at every build; four figures (the transmitter's
+  and the steam turbine's exploded and cut views, 960 × 600, 164 KB of lossless WebP) drawn in 15–23 s on the laptop,
+  the same bytes on every run (checked). The gas turbine's figures and Workshop links wait for its Workshop scene;
+  the pumps' and valves' for K6's kinds. The transmitter's troubleshooting table carries both of the content's
+  causes for it (`drift`, `loose`); HW3's three further causes get their ids when they exist.
+- **As built beyond §6.2.1:** the parts list puts the Workshop tree first, then the manual's consumables; a manual
+  names the components that come with a sealed one (`comes_with`), and the app's test checks that list against the
+  built tree (the steam turbine's thrust collar comes with its rotor). A reverse link opens the section that links
+  the most others of its kind (the field procedure for the work view's actions). A Workshop link picks the step's
+  component and shows the step's words in the Workshop (it does not take the machine apart up to that step). The
+  section's sources are listed at its end ("this section follows, in our own words"). A `num` keeps its spaces
+  unbroken. Escape (B) goes Back, then closes; the Workshop's own keys wait while the reader shows over it.
+- **Tests:** `tests/test_plant3d_manuals.py` (the set, the same output twice and in another process, links and
+  reverse links, causes, units and part numbers, figures, generic words; the checks refuse a broken link of each kind,
+  an unknown cause or one of another kind, a missing section, an unlisted or uncited source, bad markup) and
+  `apps/plant3d/tests/test_ui_manuals.gd` (the set and its figures, the card's Manual with the unit's data, Next,
+  links and Back, the troubleshooting table, the 3D view off and given back, the Workshop's Manual with its view
+  paused, Escape, a Workshop link from the Workshop and from the plant, a work link without a role, the work view's
+  Manual and a work link picking its part, the parts lists against the built trees).
+- **On the laptop** (Iris Xe, `tests/manual_shots.gd`): a page built in 21–65 ms (the transmitter's description with
+  its two figures decoded the longest).
+
 ### 6.3 Discussions
 
 - **Format** `walkdown-plant-discussion`: a topic tied to a work or a decision, two or three participants by role

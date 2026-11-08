@@ -33,6 +33,7 @@ func run(tree: SceneTree) -> Array:
 	p += await _card(tree, ui)
 	p += _parts_against_trees(ui)
 	p += await _workshop(tree, main, ui)
+	await tree.process_frame        # (out of the Workshop's `left` before the app goes)
 	main.free()
 	await tree.process_frame
 	p += await _work_view(tree)

@@ -4,6 +4,7 @@ from manual_blocks import S, H, P, UL, OL, TABLE, WARNING, CAUTION, NOTE, FIG, T
 
 _ROWS = {'srow_%s%d' % (h, i): 'carrier_%s' % ('upper' if h == 'u' else 'lower') for h in 'ul' for i in range(1, 9)}
 _ROWS.update({'mrow_%d' % i: 'rotor' for i in range(1, 9)})
+_ROWS['collar'] = 'rotor'
 
 MANUAL = {
     'id': 'steam_turbine',
@@ -143,7 +144,7 @@ MANUAL = {
             ),
         ], src=['imia_wgp42', 'ger3646']),
         S('parts', 'Spare parts', [
-            P('Part numbers are the generic plant\'s catalogue. The blade rows come with their carrier or the rotor.'),
+            P('Part numbers are the generic plant\'s catalogue. The blade rows come with their carrier or the rotor, the thrust collar with the rotor.'),
             PARTS(),
         ], src=['imia_wgp42']),
         S('safety', 'Safety', [
