@@ -1322,7 +1322,7 @@ the app).
   and check valves (`valve_gate`, `valve_globe`, `valve_ball`, `valve_butterfly`, `valve_check`), 004 centrifugal
   pumps (`pump_horizontal`, `pump_vertical`), 005 the steam turbine (`steam_turbine`, an overview) and 006 the gas
   turbine (`gas_turbine`, an overview). A manual covers one or more part kinds; a kind has at most one manual.
-- **Where:** each manual's text is a source file `tools/plant3d/manuals/<id>.py` (blocks written with a small inline
+- **Where:** each manual's text is a source file `tools/plant3d/manual_texts/<id>.py` (blocks written with a small inline
   markup that the generator turns into COURSES.md runs); the generator `tools/plant3d/manuals.py` adds what comes
   from the content and writes `apps/plant3d/built/manuals/` at every build (`build.sh`, after the P&IDs): a view of
   the content, never committed, as the drawings are.

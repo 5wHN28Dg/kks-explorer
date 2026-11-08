@@ -77,6 +77,17 @@ cp "$ROOT/data/plant3d/monitoring.json" "$HERE/built/content/"
 python3 "$ROOT/tools/plant3d/pid.py" "$HERE/built/drawings" >"$HERE/.drawings.log" 2>&1 ||
   { tail -5 "$HERE/.drawings.log"; echo "the P&IDs were not made (apps/plant3d/.drawings.log)" >&2; exit 1; }
 cat "$HERE/.drawings.log"
+# the equipment manuals (REALISM.md §6.2.1, tools/plant3d/manuals.py): written for the kit's parts, completed from the
+# content at every build, never committed; their figures drawn from the Workshop scenes just built by our own software
+# renderer (builder/manual_figures.gd: no rendering device under --headless); the app reads them from built/manuals
+python3 "$ROOT/tools/plant3d/manuals.py" "$HERE/built/manuals" >"$HERE/.manuals.log" 2>&1 ||
+  { tail -5 "$HERE/.manuals.log"; echo "the manuals were not made (apps/plant3d/.manuals.log)" >&2; exit 1; }
+$T "$GODOT" --headless --path "$HERE" --script res://builder/manual_figures.gd >>"$HERE/.manuals.log" 2>&1 ||
+  { tail -5 "$HERE/.manuals.log"; echo "the manuals' figures were not drawn (apps/plant3d/.manuals.log)" >&2; exit 1; }
+if grep -q "SCRIPT ERROR" "$HERE/.manuals.log"; then
+  grep -A2 "SCRIPT ERROR" "$HERE/.manuals.log" | head -10; echo "the manuals' figures hit a script error" >&2; exit 1
+fi
+grep -E "^manuals:" "$HERE/.manuals.log"
 # what About shows (app/about.gd): the third-party assets' notices, and the commit this build is made of and whether
 # the checkout had changes (tools/plant_release.py finds the commit in the packages: the release's own)
 cp "$HERE/about.json" "$HERE/built/about.json"
