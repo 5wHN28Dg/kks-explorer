@@ -98,6 +98,7 @@ func _card(tree: SceneTree, ui) -> Array:
 	var tr: Node = mv.page.find_child("trouble", true, false)
 	if tr == null or not App.texts(tr).contains("A loose or corroded signal terminal"):
 		p.append("the troubleshooting table: %s" % (App.texts(tr).left(200) if tr != null else "missing"))
+	p += await _laid_out_off_the_main_thread(tree, mv)
 	if mv.open_ms <= 0.0 or mv.open_ms > 300.0:
 		p.append("the troubleshooting page took %.1f ms (budget 300)" % mv.open_ms)
 	# a long page is built over several frames (the frame rule), its figures decoded on a worker thread
@@ -313,4 +314,29 @@ func _work_view(tree: SceneTree) -> Array:
 	ui.work.close()
 	main.free()
 	await tree.process_frame
+	return p
+
+
+## The page's rich text is laid out on a worker thread (the Note 9's frames over 100 ms were the text laid out on the
+## main thread at page changes), and it still ends up laid out: every label finished, as tall as its lines.
+func _laid_out_off_the_main_thread(tree: SceneTree, mv) -> Array:
+	var p: Array = []
+	var labels: Array = mv.page.find_children("*", "RichTextLabel", true, false)
+	if labels.size() < 3:
+		return ["the page has %d rich text labels" % labels.size()]
+	for r in labels:
+		if not (r as RichTextLabel).threaded:
+			p.append("a page label laid out on the main thread: %s" % (r as RichTextLabel).get_parsed_text().left(60))
+			break
+	for i in 120:
+		if labels.all(func(r): return (r as RichTextLabel).is_finished()):
+			break
+		await tree.process_frame
+	await tree.process_frame
+	for r in labels:
+		var l := r as RichTextLabel
+		if not l.is_finished() or (l.get_parsed_text().strip_edges() != "" and l.size.y < l.get_line_count() * 10.0):
+			p.append("a page label not laid out: finished %s, %d lines, %.0f px tall: %s" % [str(l.is_finished()),
+				l.get_line_count(), l.size.y, l.get_parsed_text().left(60)])
+			break
 	return p

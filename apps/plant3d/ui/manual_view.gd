@@ -568,6 +568,9 @@ func _rich(bb: String) -> RichTextLabel:
 	r.add_theme_font_size_override("mono_font_size", int(19 * W.scale))
 	r.meta_clicked.connect(_on_meta)
 	r.mouse_filter = Control.MOUSE_FILTER_PASS
+	# its lines broken and shaped on a worker thread (shown when done): on the Note 9 the page's text laid out on the
+	# main thread, after the scripts and before the draw, took frames over 100 ms however few blocks a frame added
+	r.threaded = true
 	r.text = bb
 	_frame_chars += bb.length()
 	return r
