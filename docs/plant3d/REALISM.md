@@ -1700,6 +1700,90 @@ the app).
   - restart the steam turbine after a trip before the cause is known, or investigate first ([DOE-RCA]);
   - change an alarm's limit now or through a change ([ISA182], [MOC]).
 
+#### 6.3.1 DC3's details (settled 2026-11-08, before the code)
+
+§6.3 leaves these open; settled here. What the engine does is in both engines bit for bit, behind the plant's
+`discussions.json` (without it nothing changes: every earlier item stays byte for byte); what is drawn is the app's,
+pinned by app tests. NPC speech is text only (the user, 2026-11-01).
+
+**What real sites do** (public sources, §14): a maintenance supervisor and the maintenance manager, or the I&C
+engineer and the shift supervisor, often differ on a job's method, order or isolation; they settle it at a short
+meeting by putting evidence (a reading or trend, the manufacturer's manual, a standard, the site's rules), and the
+agreed method is what the permit and the work order then carry ([HSG250] for the permit's method and isolations,
+[ISO20816-3] and [Moubray] for running a machine on while it is watched, [R3051] for in-place against bench
+calibration, [FCVH] for packing, [DOE-RCA] for finding a trip's cause before a restart, [ISA182] and [MOC] for an
+alarm limit's change).
+
+- **The file, `discussions.json`** (format `walkdown-plant-discussion`, version 1; a plant file beside `hse.json`,
+  only in a version 2 plant with `staff.json`, `unknown_key` and `bad_ref` otherwise): `discussions`, 1–64 of:
+  - `id` (an identifier of at most 24 characters, unique), `title` (1–120 characters), `topic` (optional: the work
+    it is about, a work of the model, `bad_ref` otherwise);
+  - `room` (a room of staff.json) and `roles`: 2–3 different roles of staff.json; the first is the **lead** (the
+    one whose task carries the step that runs it), the others **join**;
+  - `evidence`: 1–16 `{"id", "kind", "text", …}`: `kind` `manual` (`manual`, `section`: a section of a DC2 manual,
+    checked by the manuals' generator and its test, not the engine), `standard` (`cite`: a §14 key), `reading`
+    (`code`: a code of the model, `value`: a model value or binding the engine reads as true or false, as `wait`'s
+    `until` does) or `rule` (the site's own rule, `text` alone); `text` 1–200 characters;
+  - `positions`: one per role, `{"role", "claim", "evidence": [ids]}` (the claim 1–200 characters);
+  - `turns`: 1–16 opening lines `{"role", "text"}`, said when it starts;
+  - `points`: 1–8 `{"id", "role"?, "minutes", "options", "default"}`: `minutes` 1–30 clock minutes; `options` 2–4
+    `{"id", "text", "side"?, "evidence"?: [ids], "lines": [{"role", "text"}]}` (`side` a role of the discussion: the
+    position the option supports; `lines` 1–4, said when it is taken; the role `"$"` is whoever picked, the default's
+    taker being the point's `role`, else the lead); `default` an option id;
+  - `minutes`: 1–120, the clock minutes it takes between NPCs;
+  - `agreements`: 1–8 `{"when": [terms], "outcome": {"task"?, "text"}, "lines": [{"role", "text"}]}`: a term is
+    `{"point", "option"}` (that option was taken) or `{"value", "is"}` (a reading true or false when it ends); the
+    first whose terms all hold is reached; the last has no terms (`bad_ref` otherwise). The outcome's `task` (a task
+    of staff.json, not one that reaches the lead's own task through `choose`, `call` or another outcome, `bad_ref`)
+    runs in place of the rest of the lead's task, as `choose` does; without one the lead's task goes on.
+  Ids are identifiers of at most 24 characters, unique in their list; `bad_ref` for a role, room, evidence, option
+  or task that isn't there, `bad_number` for numbers out of range.
+- **The step `{"discuss": id}`** (§16.6; `bad_ref` for an unknown discussion, `unknown_key` without
+  discussions.json). The validator checks that the task's roles (those who can get it) are all the discussion's
+  roles, so the step is either a lead's or a joiner's for everyone who runs it.
+  - **The lead's step** is a `meet` (§16.6) in the discussion's room with the other roles: the first free seat,
+    waiting for one on-duty person of each joining role in the room (at most 15 clock minutes). While another
+    discussion of the same id is live the step waits. When met, the discussion **starts**: its participants are the
+    lead and, for each joining role, the first person of that role in the room in person order; event
+    `["discussion", id, "start", lead, [participants], mode]`. `mode` is `npc` when no slot's person is a
+    participant, else `open` (decided at the start, and kept).
+  - **Mode `npc`:** after `minutes` clock minutes every point takes its default (events `["point", id, point, option,
+    null]` in point order), then the agreement is found.
+  - **Mode `open`:** the points come in order; each waits at most its `minutes` for a pick, then takes its default
+    (`null` as the taker); a pick takes it at once (the taker's id in the event). After the last point the agreement
+    is found at once.
+  - **The end:** the first agreement whose terms hold (readings as the model's previous step left them); event
+    `["discussion", id, "agreed", agreement index, task or null]`; the lead's step then ends as `choose` does (the
+    outcome's task) or is done. A joiner's step is done when the discussion it took part in ends, or when it has
+    waited 15 clock minutes in the room and no discussion of that id has started since it arrived.
+  - The discussion goes on only in its lead's turns: while the lead is paused it waits (the content makes these
+    tasks not interruptible).
+- **The input `[n, "discuss", id, point, option]`** (step 1, in the order the inputs were made, before any person's
+  turn): `unknown` for ids not in the file; `authority` when the slot's person is not a participant of the live
+  discussion; `state` when no discussion of that id is live in mode `open`, the point is not the current one, or it
+  was already taken (the first pick in the commit's order counts); else `done`, and the point is taken. Event
+  `["discuss", person, id, point, option, "done"|"refused", reasons]`. All of it is state, so every player agrees.
+- **State:** per discussion id the live or last instance: its count, lead, participants, mode, start step, current
+  point, the step it began, the options taken and by whom, ended or not. It is in the state digest (§17.14) and the
+  saved run, after the earlier parts, only with discussions.json.
+- **The first five** (the first train; each tied to a job whose method, order, isolation or tools the outcome
+  changes, through the existing work, permit and work order machinery):
+  1. a CW pump's bearing vibration in zone C: run to the weekend's planned stop with weekly readings, or stop it
+     now on the standby pump ([ISO20816-3], [Moubray]);
+  2. the condenser pressure transmitter: calibrate in place or at the bench ([R3051], WDP-MAN-001);
+  3. a valve's packing leak: tighten under pressure or isolate and repack ([FCVH], WDP-MAN-003; the site's rule
+     wins: whatever is argued, the repack is isolated);
+  4. the steam turbine after a trip: restart before the cause is known or investigate first ([DOE-RCA],
+     WDP-MAN-005);
+  5. an alarm's limit that keeps going off: change it now or through a change ([ISA182], [MOC]).
+  Each has three roles: the two who differ and the trainee's usual role (an engineer, a technician or the control
+  room operator), so a trainee playing it takes part.
+- **The app** (text only): a discussion panel while the trainee's person is a participant or in the room (the
+  opening lines, each option's lines as points are taken, the agreement's lines and outcome; for a participant in
+  mode `open` the current point's options with their evidence, a manual link opening the DC2 reader at that
+  section, a reading's value as now shown, and the time left); the lines also go to the radio log. The debrief lists
+  each discussion, who took which option and the outcome.
+
 ## 7. Work management
 
 ### 7.1 Work orders and job history
