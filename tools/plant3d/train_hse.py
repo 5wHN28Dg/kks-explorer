@@ -2,6 +2,7 @@
 §8.6, milestone HS1) and each work's job kind: the hazards its jobs meet and the controls that answer them, from public
 sources only (the keys of REALISM.md §14: OSHA3071 job hazard analysis, HSG250 permits to work, IOGP459 life-saving
 rules, INDG163 risk assessment). Nothing here is any real plant's."""
+import train_discussions
 
 FORMAT = 'walkdown-plant-hse'
 
@@ -93,7 +94,7 @@ JOBS = [
     ('analyser', 'A water analyser calibrated', ['chemicals', 'process_trip', 'elec_shock']),
     ('scaffold', 'A scaffold built on a platform', ['height', 'dropped', 'manual', 'lifting']),
     ('painting', 'Pipework painted by running plant', ['fumes', 'flammable', 'noise', 'debris']),
-]
+] + train_discussions.HSE_JOBS      # the discussions' outcome works' kinds (milestone DC3), after every earlier one
 
 # a work's job kind from its id (wo_ + the rest): the first pattern that matches, in this order
 _PATTERNS = [
@@ -110,6 +111,8 @@ _PATTERNS = [
 def job_of(work):
     """A work's job kind (REALISM.md §8.6): its `jsa`. An electrical work on a motor is its windings' check, a
     mechanical one its bearings'."""
+    if work['id'] in train_discussions.JSA:     # a discussion's outcome work (milestone DC3)
+        return train_discussions.JSA[work['id']]
     x = work['id'][3:]
     for pat, job, how in _PATTERNS:
         if how == 'is' and x == pat or how == 'end' and x.endswith(pat) or how == 'start' and x.startswith(pat):

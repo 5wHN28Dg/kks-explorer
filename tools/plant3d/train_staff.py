@@ -76,6 +76,7 @@ import train_hands  # noqa: E402  (the hand actions, milestone HW2)
 import train_ageing  # noqa: E402  (the wear items' failures, milestone AG2)
 import train_wx  # noqa: E402  (the weather's faults, milestone WX2)
 import train_hse  # noqa: E402  (the hazard library and each work's job kind, milestone HS1)
+import train_discussions  # noqa: E402  (the discussions' tasks, works and findings, milestone DC3)
 LIFT_POINTS = [f'p_lift{i}' for i in range(len(train_lift.ZS))]
 for _i, _z in enumerate(train_lift.ZS):
     POINTS[LIFT_POINTS[_i]] = (round(train_lift.GATE_X - 1.0, 6), train_lift.AT[1], _z)
@@ -234,6 +235,7 @@ MESSAGES = {
     'music_off': 'Music off, earbuds out: my phone is with the supervisor until the end of my shift',
     'phone_out': 'Phone out of the Ex zone: left with the supervisor',
     **wtp_staff.MESSAGES,
+    **train_discussions.MESSAGES,      # milestone DC3 (REALISM.md §6.3.1)
 }
 
 
@@ -576,10 +578,10 @@ def tasks(models):
         lock_s, unlock_s = [], []
         by_role = {}
         wtp = wid in wtp_works
-        prep = wtp_staff.prep(x['id']) if wtp else None
+        prep = wtp_staff.prep(x['id']) if wtp and x else None
         if prep:                # the WTP operator takes the equipment out of service first (S3)
             by_role['wtp_op'] = []
-        for i, pt in enumerate(x['points']):
+        for i, pt in enumerate(x['points'] if x else []):     # (DC3: a work on live plant has no isolation)
             by_role.setdefault((wtp_staff.LOCKER if wtp else LOCKER)[pt['kind']], []).append((i, pt))
         for role, pts in by_role.items():
             steps, usteps = list(prep) if prep and role == 'wtp_op' else [], []
@@ -606,8 +608,9 @@ def tasks(models):
             if pts:
                 task(ut, f'Remove the isolation of "{w["title"]}"', usteps, priority=2)
                 unlock_s.append({'call': {'role': role, 'task': ut}})
-        task(f'isolate_{wid[3:]}', f'Have "{w["title"]}" isolated', lock_s, priority=2)
-        task(f'deisolate_{wid[3:]}', f'Have the isolation of "{w["title"]}" removed', unlock_s, priority=2)
+        if x is not None:
+            task(f'isolate_{wid[3:]}', f'Have "{w["title"]}" isolated', lock_s, priority=2)
+            task(f'deisolate_{wid[3:]}', f'Have the isolation of "{w["title"]}" removed', unlock_s, priority=2)
         job = f'job_{wid[3:]}'
         cal = wid.endswith('_cal')
         gas = wtp_staff.gas_test(wid) + [{'go': {'kks': w['kks']}}] if w['permit'] in ('hot', 'confined') else []
@@ -618,6 +621,8 @@ def tasks(models):
             {'permit': {'work': '$', 'action': 'return'}}, {'say': 'cal_done' if cal else 'job_done', 'to': 'shift_sup'}]
         if wid == train_hands.WORK[0]:      # the job done by hand (REALISM.md §3.1, milestone HW2)
             steps = train_hands.job_steps()
+        elif train_discussions.job_steps(wid) is not None:     # a discussion's outcome: its own method and tools
+            steps = train_discussions.job_steps(wid)
         steps = talk_first(steps, w['discipline'])
         task(job, w['title'], steps,
              work=wid, resume='next_duty')        # left unfinished at the duty's end: held overnight, lock on (§17.10)
@@ -762,8 +767,9 @@ def staff(models, layout):
             'lifts': [{'lift': train_lift.LIFT, 'landings': list(LIFT_POINTS)}],
             'places': places, 'ways': ways, 'next': nxt, 'zones': zones, 'roles': rl,
             'rosters': rosters() + camp_staff.rosters(),
-            'people': everyone, 'routines': rts, 'tasks': T + camp_staff.tasks() + AUDIO_TASKS + WO_TASKS,
-            'reactions': reactions(model_reacts) + AUDIO_REACTIONS + WO_REACTIONS,
+            'people': everyone, 'routines': rts,
+            'tasks': T + camp_staff.tasks() + AUDIO_TASKS + WO_TASKS + train_discussions.tasks(),     # (DC3 last)
+            'reactions': reactions(model_reacts) + AUDIO_REACTIONS + WO_REACTIONS + train_discussions.reactions(),
             'vehicles': camp_staff.vehicles(),
             'messages': MESSAGES, 'put_right': {'ppe': 'put_on_ppe', 'permit': 'ask_permit',
                                                 'unsafe': 'leave_shortcut', 'audio': 'music_off',
@@ -830,6 +836,8 @@ def works_tasks(models):
         out[w['id']] = {'task': f'job_{x}', 'jsa': train_hse.job_of(w)}    # (its job kind, REALISM.md §8.6)
         if w['discipline'] != 'civil':
             out[w['id']].update(isolate=f'isolate_{x}', assign=f'assign_{x}', deisolate=f'deisolate_{x}')
+            if 'isolation' not in w:    # (DC3: a work on live plant has none to make or remove)
+                del out[w['id']]['isolate'], out[w['id']]['deisolate']
     return out
 
 
@@ -842,6 +850,7 @@ if __name__ == '__main__':
         {'hrsg1': train_hoists.roof_hoist, 'st': train_hoists.crane}.get(m.area, lambda _m: None)(m)
         if m.area == 'hrsg1':
             train_lift.model(m)
+        train_discussions.model(m)
     if '--requests' in sys.argv:
         path = sys.argv[sys.argv.index('--requests') + 1]
         with open(path, 'w', encoding='utf-8') as f:
