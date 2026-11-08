@@ -155,7 +155,7 @@ static func _evidence(ui, e, box: Control, v: Dictionary) -> void:
 		text = "%s [%s]: %s" % [KIND_WORDS["standard"], v["cite"], v["text"]]
 	elif v["kind"] == "reading":
 		var now := ""
-		if e.m.ix.has(v["value"]):
+		if e.ix.has(v["value"]):
 			now = " Now: %s (%s)." % ["yes" if e.truth(v["value"]) else "no", _shown_text(e, v["code"])]
 		text = "%s at %s: %s%s" % [KIND_WORDS["reading"], v["code"], v["text"], now]
 	var l := W.label("  • " + text, 16, W.DIM)
@@ -200,7 +200,9 @@ static func build(ui, e, box: Control, di: int, pi: int, close: Callable) -> voi
 		panel.add_child(W.label("%s: %s" % [ln[0], ln[1]], 16, Color(0.9, 0.9, 0.75)))
 	if not live:
 		var row := HBoxContainer.new()
-		row.add_child(W.button("Close", close))
+		var cb := W.button("Close", close)
+		cb.name = "disc_close"
+		row.add_child(cb)
 		panel.add_child(row)
 		return
 	if x["mode"] != 1 or not x["parts"].has(pi):

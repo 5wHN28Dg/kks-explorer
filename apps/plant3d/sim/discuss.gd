@@ -69,7 +69,7 @@ static func read(doc, st, m):
 				if t.has("point"):
 					if not pix.has(t["point"]) or not opts[pix[t["point"]]].has(t.get("option")):
 						return "discussion %s: a term of no option" % did
-				elif not m.ix.has(t.get("value")) or typeof(t.get("is")) != TYPE_BOOL:
+				elif not m.known(t.get("value")) or typeof(t.get("is")) != TYPE_BOOL:
 					return "discussion %s: a term of no value" % did
 			var tk = a["outcome"].get("task")
 			if tk != null and not st.tasks.has(tk):

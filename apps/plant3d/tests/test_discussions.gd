@@ -98,7 +98,7 @@ func run(tree: SceneTree) -> Array:
 	for a in d["agreements"]:
 		var ok := true
 		for t in a["when"]:
-			if t.has("point") and t["option"] != "now":
+			if (t.has("point") and t["option"] != "now") or (t.has("value") and e.truth(t["value"]) != t["is"]):
 				ok = false
 		if ok:
 			want_task = a["outcome"].get("task")
@@ -117,14 +117,14 @@ func run(tree: SceneTree) -> Array:
 	txt = App.texts(ui.crew)
 	if not txt.contains(a_text):
 		p.append("the panel should show the agreement's outcome: %s" % txt.left(800))
-	var close := App.find_button(ui.crew, "Close")
+	var close = ui.crew.find_child("disc_close", true, false)
 	if close == null:
 		p.append("no Close on the ended discussion")
 	else:
 		close.emit_signal("pressed")
 		await tree.process_frame
 		if App.texts(ui.crew).contains("Discussion: " + d["title"]):
-			p.append("the closed discussion is still on the panel")
+			p.append("the closed discussion is still on the panel: %s %s" % [str(ui.crew._disc_closed), App.texts(ui.crew).left(600)])
 	# the debrief's list
 	var lines: PackedStringArray = Discussions.debrief_lines(sm, Discussions.review(e))
 	var all := "\n".join(lines)
