@@ -67,9 +67,15 @@ concurrency:
 jobs:
   engine-vectors:
     runs-on: ubuntu-26.04
-    # (every vector through the engine took 23-28 minutes since S3's day and forks, and runs past 30 were stopped,
-    # main's of 2026-10-26 too: a limit for a hang, not a gate on the time)
+    # (every vector through the engine in one job took 18 to 30+ minutes, past the test's 1800 s limit on main's own
+    # runs: since 2026-11-08 the vectors are replayed in shards side by side, tests/test_plant3d_sim.py sim_shards;
+    # tests/test_shards.py checks this matrix is every shard. The job's limit is for a hang, not a gate on the time)
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    name: engine-vectors (${{ matrix.shard }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # the editor's zip only (no export templates): checked by SHA-512 on every run, cached or not
@@ -94,8 +100,12 @@ jobs:
           "$G" --headless --version | grep -q "^$VERSION.stable"
           echo "KKS_GODOT=$G" >> "$GITHUB_ENV"
       - name: The engine against the reference (every vector; every value at every step bit for bit; numbers; strict JSON)
-        run: KKS_REQUIRE_GODOT=1 python3 -m unittest -v tests.test_plant3d_sim
+        # (shard 0, SIM_REST, also runs the module's other classes; every shard its own units of GdscriptEngine)
+        env:
+          KKS_SIM_SHARD: ${{ matrix.shard }}
+        run: KKS_REQUIRE_GODOT=1 python3 -m unittest -v ${{ matrix.shard == 0 && 'tests.test_plant3d_sim' || 'tests.test_plant3d_sim.GdscriptEngine' }}
       - name: The model's step time on this runner (not a gate; the phone's is measured by hand, 0054)
+        if: matrix.shard == 0
         run: |
           "$KKS_GODOT" --headless --script apps/plant3d/sim/tests/bench_step.gd | tee "$RUNNER_TEMP/bench.txt"
           { echo '### Walkdown Plant model step'; echo '```'; grep -E '^(LOAD|STEP|BATCH)' "$RUNNER_TEMP/bench.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

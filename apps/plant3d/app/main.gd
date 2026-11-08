@@ -1122,9 +1122,9 @@ func _finish() -> void:
 		var mv = ui.manual_view
 		var ms: Array = mv.page_ms.values()
 		ms.sort()
-		_say("MANUALS open=%s pages=%d of %d open_max_ms=%.1f open_median_ms=%.1f figures=%d" % [str(ui.manual_open()),
-			ms.size(), _man_pages.size(), ms.back() if not ms.is_empty() else -1.0, ms[ms.size() / 2] if not ms.is_empty() else -1.0,
-			ui.manuals._figures.size()])
+		_say("MANUALS open=%s pages=%d of %d open_max_ms=%.1f open_median_ms=%.1f reader_frame_max_ms=%.1f figures=%d" % [
+			str(ui.manual_open()), ms.size(), _man_pages.size(), ms.back() if not ms.is_empty() else -1.0,
+			ms[ms.size() / 2] if not ms.is_empty() else -1.0, mv.frame_ms_max, ui.manuals._figures.size()])
 	if screens_walk:
 		var m = ui.mimic
 		_say("MIMIC screens_open=%s frames=%d draw_max_us=%d draw_mean_us=%d frames_over_2ms=%d longest_piece_us=%d (the pieces' drawing only)" % [
