@@ -976,6 +976,13 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   (512 bytes: 120 characters of 4-byte UTF-8 go over) is refused on the form in words, not sent to be dropped. The
   app's engine answers an NPC's completion without data on a work without codes `unknown` (content the validator
   refuses; never a crash).
+- **The Note 9** (a test-signed release build of this branch at 2b45e8d8, `walk=workorders probe=1`, 300 s from a
+  cool start at 29.9 °C, 2026-11-08): closed cooling water pump A's vibration reported from its motor's card in free
+  mode (WO-0001 notified), the panel open on the motor's history, then on the list: it opened in 26.5 ms; the frame
+  drew 413 draw calls and 222,289 triangles (404 and 221,289 before it opened). Tier lean+vis, 12,016 frames: median
+  21.7 ms, p95 36.2 ms, max 62.3 ms, none over 100 ms (the frame rule passes without excluding any frame; the kernel
+  reclaimed in 1.72 % of the samples). The screen's only long gaps were while the app loaded (its first frame at
+  13.6 s).
 - **Left from the reviews (not changed):** the run's history has no limit (a player holding `close_work` can notify
   and cancel the same work 10 times a turn, each a record the digest carries); a reaction on `notified` is offered
   only to those on duty then, so an order notified while no maintenance or shift supervisor is on duty stays notified
