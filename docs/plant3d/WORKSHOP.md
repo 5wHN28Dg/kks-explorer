@@ -717,7 +717,7 @@ addition (both engines, vectors) made in K6.
   (§4.7 `open_running`); once it is stopped and at rest (the turbine's standstill, below 1 % speed on its turning
   gear; the transmitter's loop supply off) they are allowed again. The user's decision (2026-11-07): a powered
   transmitter's terminal cover may come off (to measure the loop current or connect HART, in a non-Ex area); its
-  electronics, sensor module and flange need the loop supply off; a turning machine is never opened. Putting it back together, Reset, hiding
+  electronics, sensor module and flange need the loop supply off; a turning machine is opened only at standstill on its turning gear. Putting it back together, Reset, hiding
   and the views stay allowed. Starting a machine taken apart is still decided by `run_exploded` (§4.7). The walk
   (§8) therefore takes the machine apart first and starts it once it stands assembled again, at 118 s.
 
@@ -786,15 +786,21 @@ addition (both engines, vectors) made in K6.
   the cranking speed (25 %) the compressor gives 3.5 bar and about 180 °C at its discharge through the purge; a real
   compressor's pressure ratio falls about as the square of the speed (nearer 1.6 bar there). The bench takes the
   plant's figure. Power laws are tables of the discharge pressure (the
-  engines have no power node; 16 points from 1 to 20 bar). The fuel's flow is the plant's fuel valve times the base
+  engines have no power node; 20 points from 0.5 to 20 bar: a surge at standstill takes the plant's discharge to
+  0.5 bar, where the stages run the other way, each still between its neighbours, the last stage the discharge
+  itself; the bench starts the plant's discharge-pressure lags at 1 bar, not the plant's 0). A test makes a surge at
+  standstill, cranking, in the purge and coasting, and finds the pressures in order along the path. The fuel's flow is the plant's fuel valve times the base
   load's heat input (the plant's 9,750 kJ/kWh at 250 MW) over methane's lower heating value, 50.0 MJ/kg (NIST's
   enthalpy of combustion less the water's vaporisation): 13.5 kg/s at base load.
 - **The start:** at standstill on its turning gear, the AC lube oil pump running (the oil pumps' own ops stay off
   the bench; the DC pump starts by the interlock). Start, and the plant's sequence runs: about 12¼ minutes of bench
   time to full speed no load, of which the purge is 8 (about 6 minutes at the Run panel's 2×). The **speed bias**
   (the plant's op, ±1 %, for synchronising) has no permissive in the plant's model: moved below zero while the SFC
-  cranks, it holds the speed under the 24.5 % the sequence waits for, and the start waits until it is moved back
-  (the plant's model behaves so; the bench takes it as it is, and `make_bench.py` adds no permissive of its own).
+  cranks, it holds the speed under the 24.5 % the sequence waits for, and the start waits until it is moved back;
+  moved 1 % below zero in the run-up after the SFC is off, it holds the speed at 99 %, under the 99.5 % that full
+  speed no load waits for (0.5 % below lands just on it). The plant's model behaves so; the bench takes it as it is
+  (`make_bench.py` adds no permissive of its own), and `GasTurbine.test_a_speed_bias_below_zero_holds_the_sequence`
+  pins both, so a change to the plant's model shows.
 - **Drawn:** the rotor's `shaft` at 50 rev/s per unit speed (the plant's binding), right-handed about the air's way
   (`GT_TURN`, as the blades are made for), at most `MAX_DRAWN_RPS`; 16 flow paths (§6.1's limit; `_gt_flows`, Workshop
   only): the air down the plenum into the bellmouth, four lines along the compressor and four along the turbine (by
@@ -813,8 +819,9 @@ addition (both engines, vectors) made in K6.
   tripping by the plant's own trip and reset from the Run panel once its cause is gone; the AC lube oil pump lost
   (the DC pump takes over by the plant's interlock: no trip) and the fuel gas pressure low (a start is refused).
 - **A turning machine is not opened, and runs only closed** (the user's decision of 2026-11-07 and the steam
-  turbine's rule, §4.7): `open_running` allows nothing ("Stop it and let the rotor come to standstill on its turning
-  gear first"), and `run_exploded` allows nothing either: the casings hold the air and the gas, the bearings the
+  turbine's rule, §4.7): `open_running` allows nothing while it turns ("Not opened while the rotor turns: stop it,
+  let the rotor come to standstill on its turning gear, then open it up"; the steam turbine's says the same since
+  K5b's review), and `run_exploded` allows nothing either: the casings hold the air and the gas, the bearings the
   rotor, and a gas turbine has no lagging to leave off.
 - **Vectors:** `plant3d-bench-v1.json` gains two runs: the committed file (cranked to its purge, the refusals on the
   way, the AC oil pump lost and the DC pump started by the interlock, a rub's trip in the purge, its reset refused
@@ -824,16 +831,19 @@ addition (both engines, vectors) made in K6.
   bit for bit (`GdscriptBench`). The file is 31.4 MB (14.7 MB before).
 - **The walk:** the turbine's start is the first command its resting state takes, the excitation and the breaker
   switched on as they may (K4b). Two changes, both generic: a slider whose value a machine's states set (the sequence
-  owns it: the speed bias, zeroed at standstill) is swept only while that machine waits for the trainee
-  (`bench_clock.waits_for_trainee`: full speed no load, where the bias slips the phase into the synchronising
-  window) and put back to 0 when that ends; swept from the start, the bias held the gas turbine's cranking short of
-  the 24.5 % its sequence waits for. And with `bench_speed` past 2× the walk lets the clock step as many steps a frame
-  as that speed needs at 15 frames a second (`max_steps`; the clock's own 4 hold the trainee's 2× down to 20 frames a
-  second), so a slower frame doesn't slow the run. The gas turbine needs about 7,330 bench steps to full speed no
+  owns it: the speed bias, zeroed at standstill) is left alone until that machine waits for the trainee
+  (`bench_clock.waits_for_trainee`: full speed no load; a slider's input counts as the trainee's), then held 1 % of
+  its range above its middle (a slip of 0.01 Hz, which brings the phase slowly round into the synchronising window
+  at any frame rate; a sine passed through it too quickly at 20 frames a second) and put back to 0 when that ends;
+  swept from the start, the bias held the gas turbine's cranking short of the 24.5 % its sequence waits for. The walk
+  switches on what it may every frame (at 30× a frame is 1.5 s of bench time). And with `bench_speed` past 2× (held
+  to at most 60×) the walk lets the clock step as many steps a frame as that speed needs at 15 frames a second
+  (`max_steps`; the clock's own 4 hold the trainee's 2× down to 20 frames a second), so a slower frame doesn't slow
+  the run; loading or restarting a kind puts the clock back to its own 4 and the trainee's speeds. The gas turbine needs about 7,330 bench steps to full speed no
   load: the walk is measured with **`bench_speed=30`**, which gets it there at about 143 s, 12 s before the faults at
-  155 s. `tests/test_workshop_run.gd` walks the running part at 30× on the gas turbine at 60 and 20 frames a second
-  (full speed no load before the faults), on the steam turbine (full speed and the breaker closed before them) and on
-  the transmitter (its slider still swept).
+  155 s. `tests/test_workshop_run.gd` walks the running part at 30×, frames jittered from half to one and a half of
+  their mean, on the gas turbine at 60 and 20 frames a second and on the steam turbine (each synchronised and loaded
+  before the faults), and on the transmitter (its slider still swept, at the clock's own 4 steps a frame).
 - **Pictures** (the gallery, `kit/gallery_workshop.gd`): a machine with a sequence is now run on until it waits for
   the trainee (`bench_clock.all_wait`, the walk's helper), at most 1,500 s of bench time, so both turbines are
   pictured at full speed; only the transmitter's applied pressure is moved for the pictures (the gas turbine shows

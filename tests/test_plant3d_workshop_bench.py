@@ -364,6 +364,66 @@ class GasTurbine(unittest.TestCase):
             self.assertGreaterEqual(a, b - 1e-9, where)
         self.assertGreaterEqual(e.v('t_t3'), e.v('exh_t') - 1e-9, where)
         self.assertGreaterEqual(e.v('tit'), e.v('c_t8') - 1e-9, where)
+        self.ordered_p(e, where)
+
+    def ordered_p(self, e, where):
+        """The pressures in order along the path at any discharge pressure, a surge's below 1 bar too: from the
+        bellmouth through the compressor's stages to the discharge (each between its neighbours, the last the
+        discharge itself), and from the discharge through the turbine's stages back to the bellmouth's."""
+        cp = [e.v('p_amb')] + [e.v(f'c_p{k}') for k in range(1, 9)]
+        tp = [e.v('cpd')] + [e.v(f't_p{k}') for k in range(1, 4)]
+        self.assertAlmostEqual(e.v('c_p8'), e.v('cpd'), 9, where)
+        self.assertAlmostEqual(e.v('t_p3'), e.v('p_amb'), 9, where)
+        for xs in (cp, tp):
+            up = all(a <= b + 1e-9 for a, b in zip(xs, xs[1:]))
+            down = all(a >= b - 1e-9 for a, b in zip(xs, xs[1:]))
+            self.assertTrue(up or down, f'{where}: {xs}')
+
+    def test_a_surge_below_full_speed_keeps_the_pressures_in_order(self):
+        """(The adversarial review of K5b: a surge at standstill took the discharge under 1 bar, below the stage
+        tables' first point.)"""
+        for when, steps in (('standstill', 0), ('crank', 100), ('purge', 600)):
+            e = self.bench.engine()
+            if steps:
+                e.op('rotor', 'start')
+            for _ in range(steps):
+                e.step()
+            e.fault('surge')
+            for _ in range(30):
+                e.step()
+                self.ordered_p(e, f'a surge at {when}, step {e.step_no}')
+            if when == 'standstill':
+                self.assertLess(e.v('cpd'), 0.6)
+        e = self.short.engine()           # and while it coasts to the ignition speed
+        e.op('rotor', 'start')
+        while e.v('turbine_state') != 3:
+            e.step()
+        e.fault('surge')
+        for _ in range(30):
+            e.step()
+            self.ordered_p(e, f'a surge while it coasts, step {e.step_no}')
+
+    def test_a_speed_bias_below_zero_holds_the_sequence(self):
+        """The plant's model gives the speed bias (±1 %) no permissive, and the sequence's speed thresholds have
+        less margin than that (WORKSHOP.md §6.7): pinned here, so that a change to the plant's model shows."""
+        e = self.bench.engine()            # cranking: the SFC's 25 % less 1 % never reaches the 24.5 % it waits for
+        e.op('rotor', 'start')
+        e.op('brg1_housing', 'set', -0.01)
+        self.go(e, 120)
+        self.assertEqual(e.v('turbine_state'), 1)
+        self.assertAlmostEqual(e.v('speed'), 0.24, 6)
+        e.op('brg1_housing', 'set', 0)
+        self.go(e, 5)
+        self.assertEqual(e.v('turbine_state'), 2, 'moved back, it goes on to the purge')
+        for bias, parked in ((-0.01, True), (-0.005, False)):
+            e = self.short.engine()        # the run-up: full speed less the bias, against the 99.5 % it waits for
+            e.op('rotor', 'start')
+            while e.v('turbine_state') != 6:
+                e.step()
+            e.op('brg1_housing', 'set', bias)
+            self.go(e, 120)
+            self.assertEqual(e.v('turbine_state'), 6 if parked else 7, bias)
+            self.assertAlmostEqual(e.v('speed'), 1 + bias, 6)
 
     def test_the_stages_stay_in_order_through_ignition_and_a_flame_out(self):
         """In the transients too (the review of K5b: a 2 s lag on the flame against the exhaust's 60 s drew the

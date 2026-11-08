@@ -385,14 +385,14 @@ def data():
                   'cutaway': {'planes': [{'normal': [1, 0, 0], 'offset': 0}, {'normal': [0, 0, 1], 'offset': 0}],
                               'keep': ['rotor', 'cblades'] + [f'tbucket{n}' for n in range(1, TSTAGES + 1)]},
                   # (K5b) it runs only closed, as the steam turbine: the casings hold the air and the gas, the
-                  # bearings the rotor, and there is no lagging to leave off; a turning machine is never opened (the
+                  # bearings the rotor, and there is no lagging to leave off; it is opened only at standstill on its turning gear (the
                   # user's decision, 2026-11-07)
                   'run_exploded': {'allowed': [],
                                    'why': 'A gas turbine runs only closed: the casings hold the air and the hot gas, '
                                           'the bearings the rotor. Put it back together first.'},
                   'open_running': {'allowed': [],
-                                   'why': 'A turning machine is never opened. Stop it and let the rotor come to '
-                                          'standstill on its turning gear first.'}},
+                                   'why': 'Not opened while the rotor turns: stop it, let the rotor come to '
+                                          'standstill on its turning gear, then open it up.'}},
     }
 
 
@@ -441,8 +441,9 @@ LHV = 50.0              # MJ/kg, methane's lower heating value (NIST, above)
 HEAT_RATE = 9750.0      # kJ/kWh at base load, the plant's (gt1_hr)
 BASE_MW = 250.0         # the plant's base load (gt1_cap)
 FUEL_RATED = round(BASE_MW * HEAT_RATE / 3600.0 / LHV, 3)   # kg/s of fuel at base load: the fuel valve's 1
-# the compressor discharge pressure's points the stage tables are made at (bar absolute; the plant's runs 1 to 15)
-CPD = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20]
+# the compressor discharge pressure's points the stage tables are made at (bar absolute; the plant's runs 1 to 15, and
+# down to 0.5 in a surge at standstill: below 1 bar the stages run the other way, still each between its neighbours)
+CPD = [0.5, 0.625, 0.75, 0.875, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20]
 MC = (GAMMA_AIR - 1) / GAMMA_AIR
 MT = (GAMMA_GAS - 1) / GAMMA_GAS
 
@@ -649,8 +650,9 @@ def bench_source():
             {'id': 'gas_low', 'at': 'fuel_ring', 'text': 'Fuel gas pressure low: a start is refused',
              'set': {'gas_low': 1}, 'repair': {'gas_low': 0}},
         ],
-        # at standstill on its turning gear, the AC lube oil pump running, oil on the bearings
-        'start': {'lac_cmd': 1, 'tg_cmd': 1, 'lube_p': 2.5},
+        # at standstill on its turning gear, the AC lube oil pump running, oil on the bearings; the compressor's
+        # discharge at the bellmouth's 1 bar (the plant's lags start from 0, which the gas path's tables don't reach)
+        'start': {'lac_cmd': 1, 'tg_cmd': 1, 'lube_p': 2.5, 'cpd': 1, 'cpd_slow': 1},
         'bind': bind,
         'legends': {
             'heat': {'unit': '°C', 'table': [[20, '#2c7bb6'], [150, '#abd9e9'], [400, '#ffffbf'], [700, '#fdae61'],

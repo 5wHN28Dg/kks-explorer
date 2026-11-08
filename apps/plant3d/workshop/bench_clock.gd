@@ -48,6 +48,9 @@ func load_text(text: String, comps: Array) -> bool:
 
 ## The bench from its start state again (the model as loaded; the clock's speed and pause stay).
 func restart() -> void:
+	# (a measurement's speed past 2× and its steps a frame end here: a kind loaded or restarted runs at the trainee's)
+	max_steps = MAX_STEPS_FRAME
+	speed = clampf(speed, SPEED_MIN, SPEED_MAX)
 	e = PlantEngine.new(m, BenchModel.SCENARIO)
 	prev = e.cur.duplicate()
 	acc = 0.0
@@ -169,12 +172,14 @@ func machine_state(mid: String) -> String:
 
 
 ## Whether machine `mid` waits for the trainee: out of its resting state, in a state whose next steps all read values
-## only ops set (a turbine at full speed no load waits for its breaker), not in one that moves on by itself.
+## only the trainee sets (an op's value or a slider's input) (a turbine at full speed no load waits for its breaker), not in one that moves on by itself.
 func waits_for_trainee(mid: String) -> bool:
-	var by_op := {}
+	var by_op := {}             # what the trainee sets: ops' values and sliders' inputs
 	for o in m.ops_ui:
 		for k in o.get("set", {}):
 			by_op[k] = true
+		if o.has("input"):
+			by_op[String(o.input)] = true
 	for mc in m.machines:
 		if mc["id"] != mid:
 			continue

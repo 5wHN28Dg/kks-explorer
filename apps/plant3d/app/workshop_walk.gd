@@ -82,6 +82,7 @@ func start(m, k := "") -> void:
 	_bench_ready()
 	running = true
 
+const MAX_BENCH_SPEED := 60.0   # the walk's bench_speed at most (its steps a frame grow with it)
 var _ops := []                  # the bench's ops as written (machine commands, set ops)
 var _made := {}                 # the faults made in the walk's fault phase
 
@@ -93,7 +94,7 @@ func _bench_ready() -> void:
 		main._say("WORKSHOP the kind has no bench model")
 		return
 	ws.bench.set_speed(2.0)
-	var fast := float(main.opts.get("bench_speed", "2"))
+	var fast := minf(float(main.opts.get("bench_speed", "2")), MAX_BENCH_SPEED)   # (a frame's catch-up bounded)
 	if fast > 2.0:
 		ws.bench.speed = fast   # (past the Run panel's 2×: the walk's own)
 		# (and as many steps a frame as that speed needs at 15 frames a second, so a slow phone keeps up: the clock's
@@ -115,7 +116,7 @@ func _bench_start() -> void:
 				ws.run_command(o.at, o.do)
 				break
 
-## What the walk switches on as it may (every 0.2 s of the walk): each op of the bench that is no machine's command,
+## What the walk switches on as it may (every frame): each op of the bench that is no machine's command,
 ## no slider and no trip's reset, and sets something from 0 to on, once its permissives are met (a generator's
 ## excitation at 95 % speed, its breaker inside the synchronising window).
 func _switch_on() -> void:
@@ -131,11 +132,12 @@ func _switch_on() -> void:
 		if on:
 			ws.run_op(o.at, o.do)
 
-## Each set op's slider swept over its range on a slow sine of the walk's time (a period of 40 s); a slider whose
-## value a machine's states set (the sequence owns it: a turbine's speed bias, zeroed at standstill) only while each
-## machine that sets it waits for the trainee (bench_clock.waits_for_trainee: full speed no load, where the bias slips
-## the phase into the synchronising window), and put back to 0 (within its range) when that ends. Swept from the
-## start, the bias (±1 %) held the gas turbine's cranking short of the speed its sequence waits for (K5b).
+## Each set op's slider swept over its range on a slow sine of the walk's time (a period of 40 s). A slider whose
+## value a machine's states set (the sequence owns it: a turbine's speed bias, zeroed at standstill) is left alone
+## until each machine that sets it waits for the trainee (bench_clock.waits_for_trainee: full speed no load), then held
+## a little above its middle (HOLD_SLIP: the bias slips the phase slowly round into the synchronising window, which a
+## sine passed too quickly to catch at a low frame rate), and put back to 0 (within its range) when that ends. Swept
+## from the start, the bias (±1 %) held the gas turbine's cranking short of the speed its sequence waits for (K5b).
 func _bench_sweep() -> void:
 	for o in _ops:
 		if o.get("do") != "set" or not o.has("range"):
@@ -143,14 +145,29 @@ func _bench_sweep() -> void:
 		var lo: float = float(o.range[0])
 		var hi: float = float(o.range[1])
 		var key := "%s/%s" % [o.at, o.input]
-		if _sweep_now(String(o.input)):
-			_swept[key] = true
+		if _owned(String(o.input)):
+			if _sweep_now(String(o.input)):   # held a little above its middle: the bias slips the phase slowly round
+				_swept[key] = true             # into the synchronising window, at any frame rate
+				ws.bench.op_set(o.at, clampf((lo + hi) * 0.5 + (hi - lo) * HOLD_SLIP, lo, hi))
+			elif _swept.has(key):
+				_swept.erase(key)
+				ws.bench.op_set(o.at, clampf(0.0, lo, hi))
+		elif _sweep_now(String(o.input)):
 			ws.bench.op_set(o.at, lo + (hi - lo) * (0.5 - 0.5 * cos(t * TAU / 40.0)))
 		elif _swept.has(key):
 			_swept.erase(key)
 			ws.bench.op_set(o.at, clampf(0.0, lo, hi))
 
 var _swept := {}                # the sliders a machine's sequence owns, swept now ("at/input")
+const HOLD_SLIP := 0.01         # an owned slider's hold above its middle, of its range (the speed bias: 0.02 %, 0.01 Hz)
+
+## Whether a machine's states set `input` (its sequence owns the slider).
+func _owned(input: String) -> bool:
+	for mc in ws.bench.m.machines:
+		for sd in mc.states:
+			if sd.get("set", {}).has(input):
+				return true
+	return false
 
 ## Whether the slider of `input` may be swept now (_bench_sweep).
 func _sweep_now(input: String) -> bool:
@@ -168,7 +185,7 @@ func _process(delta: float) -> void:
 	t += delta
 	if ws.bench.loaded() and fmod(t, 0.5) < delta:
 		_bench_sweep()
-	if ws.bench.loaded() and fmod(t, 0.2) < delta:
+	if ws.bench.loaded():   # (every frame: at 30× a frame is 1.5 s of bench time, the synchronising window a few)
 		_switch_on()
 	ws.cam.yaw += ORBIT_RATE * delta
 	ws.cam.place()

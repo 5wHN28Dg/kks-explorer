@@ -395,7 +395,7 @@ func _gas_turbine(tree: SceneTree, ws) -> void:
 ## `speed`: started once assembled again at 118 s, each fault made and repaired, Stop. What it got to.
 func _walk_run(tree: SceneTree, ws, kind: String, speed: float, fps: float) -> Dictionary:
 	var out := {"shown": false, "started": false, "at_faults": "", "made": 0, "faults": 0, "end": "", "brk": false,
-		"lo": INF, "hi": -INF, "slider": ""}
+		"lo": INF, "hi": -INF, "slider": "", "max_steps": 0, "speed": 0.0}
 	ws.open(kind)
 	if not await _wait_shown(tree, ws):
 		return out
@@ -416,8 +416,12 @@ func _walk_run(tree: SceneTree, ws, kind: String, speed: float, fps: float) -> D
 		if o.get("do") == "set" and o.has("input") and ins == "":
 			ins = String(o.input)
 	out.slider = ins
-	var dt := 1.0 / fps
+	out.max_steps = c.max_steps
+	out.speed = c.speed
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5   # (frames jittered from half to one and a half of 1/fps, as a phone's are)
 	while walk.t < 178.0:
+		var dt := (0.5 + rng.randf()) / fps
 		var st := PackedStringArray()
 		for mc in c.m.machines:
 			st.append(c.machine_state(String(mc.id)))
@@ -452,13 +456,18 @@ func _walks(tree: SceneTree, ws) -> void:
 	for fps in [60.0, 20.0]:
 		var g := await _walk_run(tree, ws, "gas_turbine", 30.0, fps)
 		check(g.shown and g.started, "the walk starts the gas turbine once it stands assembled again (%d fps)" % fps)
-		check(g.at_faults in ["fsnl", "loaded"], "the walk runs the gas turbine to full speed no load before the faults at %d fps: %s" % [fps, g.at_faults])
+		check(g.at_faults == "loaded" and g.brk, "the walk runs the gas turbine up and synchronises it before the faults at %d fps, frames jittered: %s" % [fps, g.at_faults])
 		check(g.made == g.faults and g.faults > 0, "the walk makes each of its %d faults (%d)" % [g.faults, g.made])
 		check(g.end in ["trip", "coastdown", "standstill"], "and stops it: %s" % g.end)
 	var s := await _walk_run(tree, ws, "steam_turbine", 30.0, 60.0)
-	check(s.at_faults in ["fsnl", "loaded"] and s.brk, "the walk runs the steam turbine to full speed and closes its breaker before the faults: %s, breaker %s" % [s.at_faults, s.brk])
+	check(s.at_faults == "loaded" and s.brk, "the walk runs the steam turbine to full speed and closes its breaker before the faults: %s, breaker %s" % [s.at_faults, s.brk])
 	var p := await _walk_run(tree, ws, "pressure_transmitter", 2.0, 60.0)
 	check(p.slider != "" and p.hi - p.lo > 8.0, "the walk still sweeps the transmitter's %s (%.2f to %.2f)" % [p.slider, p.lo, p.hi])
+	check(p.max_steps == ws.bench.MAX_STEPS_FRAME and p.speed == 2.0,
+		"a kind loaded after a fast walk steps at the clock's own pace again (%d a frame at %.1fx)" % [p.max_steps, p.speed])
+	var f := await _walk_run(tree, ws, "pressure_transmitter", 1000.0, 60.0)
+	check(f.speed == 60.0 and f.max_steps == ceili(60.0 / (15.0 * ws.bench.STEP)),
+		"the walk's bench_speed is held to 60x (%.1fx, %d steps a frame)" % [f.speed, f.max_steps])
 
 func _wait_shown(tree: SceneTree, ws) -> bool:
 	var end := Time.get_ticks_msec() + 30000
