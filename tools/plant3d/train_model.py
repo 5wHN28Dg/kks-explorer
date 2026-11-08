@@ -14,6 +14,7 @@ STEAM = [[100, 1.01], [120, 1.99], [140, 3.61], [160, 6.18], [180, 10.0], [200, 
 import train_hands  # noqa: E402  (milestone HW2: the hand actions from the service files)
 import train_ageing  # noqa: E402  (milestone AG2: the wear items, their signs and failures)
 import train_monitoring  # noqa: E402  (milestone AG3: condition monitoring)
+import train_wx  # noqa: E402  (milestone WX2: the weather in the model)
 
 
 def inv(points):
@@ -482,18 +483,21 @@ def ct():
         m.state(f'ct_fan{i}_vfault', 0, f'30PAD10AN{i:03d}')
     m.state('ct_mk_cmd', 0, '30PAR10AA001')
     m.state('ct_drain_open', 0, '30PAD10BB001')
+    train_wx.ct_values(m)       # WX2: the approach against the wet bulb, ice, the weather's instrument faults
     for i in range(1, 11):
         m.lag(f'ct_fan{i}_spd', f'ct_fan{i}_cmd', 8, unit='pu')
         m.tab(f'ct_fan{i}_vft', f'ct_fan{i}_vfault', [[0, 2.5], [1, 15]])
         m.prod(f'ct_fan{i}_vt', [f'ct_fan{i}_spd', train_ageing.fan(m, i)])     # AG2: + the gear reducer's share
-        m.lag(f'ct_fan{i}_vib', f'ct_fan{i}_vt', 2, unit='mm/s', kks=f'30PAD10CY{i:03d}')
-        m.cmp(f'ct_fan{i}_hh', f'ct_fan{i}_vib', '>', 10)
+        m.lag(f'ct_fan{i}_vib', f'ct_fan{i}_vt', 2, unit='mm/s',     # (WX2: fans 7 and 9's codes on their readings)
+              kks=None if train_wx.reading(i) != f'ct_fan{i}_vib' else f'30PAD10CY{i:03d}')
+        m.cmp(f'ct_fan{i}_hh', train_wx.fan_reading(m, i), '>', 10)   # WX2: fans 7 and 9 through their readings
     m.sum('ct_fans_n', [f'ct_fan{i}_cmd' for i in range(1, 11)])
     m.tab('ct_inv_cap', 'ct_fans_n', [[n, round(1 / (20 + 46 * n), 6)] for n in range(11)])
     m.lag('ct_heat', 'cond_heat_mw', 30, unit='MW')
     m.prod('ct_ratio', ['ct_heat', 'ct_inv_cap'])
     m.tab('ct_approach', 'ct_ratio', [[0, 2], [0.5, 3.5], [1, 5], [2, 9], [4, 15], [10, 25]], 'K')
-    m.sum('ct_cold_sp', ['ambient_wb', 'ct_approach'])
+    m.prod('ct_approach_w', ['ct_approach', 'ct_appr_f'], 'K')    # WX2: a larger approach in colder air
+    m.sum('ct_cold_sp', ['ambient_wb', 'ct_approach_w'])
     m.lag('cw_cold_t', 'ct_cold_sp', 300, init=28, unit='°C', kks='30PAD10')
     m.prod('ct_evap', ['ct_heat', 1.5], 'm³/h')
     m.prod('ct_bd', ['ct_evap', 0.33], 'm³/h')
@@ -501,8 +505,9 @@ def ct():
     m.sum('ct_out', ['ct_evap', 'ct_bd', 'ct_leak'], 'm³/h')
     m.cmp('ct_mk_auto', 'ct_mk_ctrl_state', '>=', 1)
     m.NOT('ct_mk_man', 'ct_mk_auto')
-    m.integ('ct_basin_level', 'ct_net', 1 / (3600 * 2560), -2, 0.5, 0, 'm', '30PAD10CL001')
-    m.tab('ct_mk_auto_pos', 'ct_basin_level', [[-0.3, 1], [0, 0]])
+    m.integ('ct_basin_level', 'ct_net', 1 / (3600 * 2560), -2, 0.5, 0, 'm')     # (WX2: its code on the reading)
+    m.hold('ct_lvl_m', 'ct_basin_level', 'ct_lvl_held', 'm', '30PAD10CL001')   # WX2: what the transmitter reads
+    m.tab('ct_mk_auto_pos', 'ct_lvl_m', [[-0.3, 1], [0, 0]])
     m.sel('ct_mk_tgt', 'ct_mk_auto', ['ct_mk_cmd', 'ct_mk_auto_pos'])
     m.ramp('ct_mk_pos', 'ct_mk_tgt', 0.02, unit='pu', kks='30PAR10AA001')
     # the makeup comes from the WTP's makeup pumps and filtered water tank (WATER-TREATMENT §8): none while no
@@ -510,10 +515,10 @@ def ct():
     m.v('ct_mk_sup', {'delay': 'mk_avail', 'on': 0.1, 'init': 1})
     m.prod('ct_mk_flow', ['ct_mk_pos', 800, 'ct_mk_sup'], 'm³/h')
     m.diff('ct_net', 'ct_mk_flow', 'ct_out', 'm³/h')
-    m.cmp('ct_l', 'ct_basin_level', '<', -0.3)
-    m.cmp('ct_ll', 'ct_basin_level', '<', -0.6)
+    m.cmp('ct_l', 'ct_lvl_m', '<', -0.3)
+    m.cmp('ct_ll', 'ct_lvl_m', '<', -0.6)
     m.NOT('cw_basin_ok', 'ct_ll')
-    m.cmp('ct_level_ok', 'ct_basin_level', '>=', -0.2)
+    m.cmp('ct_level_ok', 'ct_lvl_m', '>=', -0.2)
     m.cmp('ct_fans_5', 'ct_fans_n', '>=', 5)
     m.ctrl_machine('ct_mk_ctrl', '30PAR10AA001', say_auto='Makeup in automatic: holds the basin level')
     m.op('30PAR10AA001', 'set', None, [('ct_mk_man', 'The makeup valve is in automatic')], ('screen',),
@@ -530,7 +535,7 @@ def ct():
         m.b(kks=code, sound='fan_large', gain={'of': f'ct_fan{i}_spd', 'table': [[0, 0], [1, 1]]},
             pitch={'of': f'ct_fan{i}_spd', 'table': [[0, 0.5], [1, 1]]})
         m.b(kks=code, shake=f'ct_fan{i}_vib', scale=0.05)
-        m.b(kks=f'30PAD10CY{i:03d}', show=f'ct_fan{i}_vib')
+        m.b(kks=f'30PAD10CY{i:03d}', show=train_wx.reading(i))
     # a permit to work on a fan (PLANT3D §15): fan 3's bearings and gearbox, the fan locked out at its breaker
     m.NOT('ct_fan3_nocmd', 'ct_fan3_cmd')
     m.cmp('ct_fan3_still', 'ct_fan3_spd', '<', 0.01)
@@ -552,7 +557,8 @@ def ct():
     _ageing(m)
     m.alarm('ct_basin_low', '30PAD10CL001', 'Cooling tower basin level low', 'ct_l', 2, isa='LAL')
     m.alarm('ct_basin_ll', '30PAD10CL001', 'Cooling tower basin level low-low', 'ct_ll', 1, isa='LALL')
-    m.b(kks='30PAD10CL001', show='ct_basin_level')
+    m.b(kks='30PAD10CL001', show='ct_lvl_m')
+    train_wx.ct_after(m)
     m.b(kks='30PAR10AA001', anim='stem', of='ct_mk_pos')
     m.b(kks='30PAD10', sound='water_rain', gain={'of': 'cw_flow', 'table': [[0, 0], [30000, 1]]})
     return m
@@ -744,7 +750,8 @@ def gt1():
     m.state('gt1_brk_cmd', 0, '10BAC10')
     for f, code in (('gt1_gov_fault', '10MBA10'), ('gt1_fuel_fault', '10MBP10AA001'), ('gt1_tc_fault', '10MBR10CT007'),
                     ('gt1_flameout', '10MBM10CB001'), ('gt1_surge', '10MBA10'), ('gt1_vib_fault', '10MBD10CY002'),
-                    ('gt1_gas_low', '10MBP10CP001'), ('gt1_stator_fault', '10MKA10')):
+                    ('gt1_gas_low', '10MBP10CP001'), ('gt1_stator_fault', '10MKA10'),
+                    ('gt1_pulse_fail', '10MBL10AT001')):
         m.state(f, 0, code)
     m.ramp('gt1_speed', 'gt1_tgt', 0.005, 0.003, 0, 'pu', '10MBA10')
     m.cmp('gt1_still', 'gt1_speed', '<', 0.01)
@@ -793,10 +800,11 @@ def gt1():
     # there is no steam sink, whatever the setpoint; it returns to the setpoint once a sink is back
     m.delay('gt1_rb', 'gt1_rb_c', 0.1, 0.1)
     m.tab('gt1_rb_cap', 'gt1_rb', [[0, 250], [1, 20]], 'MW')
-    m.min('gt1_load_eff', ['gt1_load_sp', 'gt1_rb_cap'], 'MW')
+    caps = train_wx.gt_values(m)    # WX2: what the air, the filters and the fouling let it give
+    m.min('gt1_load_eff', ['gt1_load_sp', 'gt1_rb_cap'] + caps, 'MW')
     m.prod('gt1_mw_tgt', ['gt1_brk_cmd', 'gt1_load_eff'])
     m.ramp('gt1_mw', 'gt1_mw_tgt', 0.2, 2, 0, 'MW', '10MKA10')
-    m.tab('gt1_lf', 'gt1_mw', [[0, 0], [250, 1]])
+    m.prod('gt1_lf', ['gt1_mw', 'gt1_inv_cap'])         # WX2: of the base load the day gives
     m.tab('gt1_fuel_acc', 'gt1_speed', [[0.15, 0.12], [1, 0.25]])
     m.tab('gt1_fuel_ld', 'gt1_mw', [[0, 0.25], [250, 1]])
     m.sel('gt1_fuel_dem', 'gt1_brk_cmd', ['gt1_fuel_acc', 'gt1_fuel_ld'])
@@ -869,7 +877,8 @@ def gt1():
     m.OR('gt1_any_trip', [f'{t}_latched' for t in GT_TRIPS])
     m.NOT('gt1_trips_clear', 'gt1_any_trip')
     m.AND('gen1_prot_c', ['gt1_any_trip', 'gt1_brk_cmd'])
-    m.cmp('gt1_at_base', 'gt1_mw', '>=', 249)
+    m.cmp('gt1_at_base', 'gt1_mw', '>=', 'gt1_base_mw')     # 249 MW, or the most the day gives (WX2)
+    train_wx.gt_after(m)
     # the start sequence (FIRST-TRAIN §4 #13)
     stop = {'gt1_sfc_on': 0, 'gt1_fuel_on': 0, 'gt1_ign': 0, 'gt1_speed_sp': 0, 'gt1_bias': 0}
     m.machines.append({'id': 'gt1_start', 'kks': '10MBA10', 'init': 'standstill',
@@ -899,7 +908,8 @@ def gt1():
         ('gt1_lube_ok', 'Lube oil pressure below 1.8 bar'), ('gt1_tg_run', 'Turning gear not running'),
         ('gt1_gas_ok', 'Fuel gas pressure below 25 bar'), ('ccw_ok', 'Closed cooling water not in service'),
         ('gt1_trips_clear', 'A GT trip is latched: reset it first'),
-        ('hp_lvl_ok', 'HP drum level outside ±150 mm'), ('fw_avail', 'No feedwater pump running')],
+        ('hp_lvl_ok', 'HP drum level outside ±150 mm'), ('fw_avail', 'No feedwater pump running'),
+        ('gt1_wash_idle', 'A compressor wash is running')],
         ('screen',), machine='gt1_start')
     m.op('10MBA10', 'stop', None, (), ('screen',), machine='gt1_start')
     m.op('10MKA10', 'set', None, (), ('screen',), input='gt1_load_sp', range=[10, 250])

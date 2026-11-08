@@ -817,6 +817,28 @@ FORKS = [
     ('cep_protection', 'end', [('fault', 'cep_a_motor'), ('run', 30), ('op', '30LCB10AP002', 'start', None, None),
                                ('run', 30), ('fault', 'cep_b_motor'), ('run', 30)],
      {'interlocks': ['cep_a_prot', 'cep_b_prot'], 'end': {'cep_a_cmd': [0, 0], 'cep_b_cmd': [0, 0]}}),
+] + [  # milestone WX2 (REALISM.md §5.7): the weather in the model, an instructor's kind from base load (a clock
+    # hour is 600 model seconds)
+    ('wx_sandstorm_pulsed', 'end', [('weather', 'sandstorm'), ('run', 2400)],
+     {'no_alarms': ['gt1_filt_dp_high', 'gt1_filt_runback'], 'max': {'gt1_filt_dp': [6, 6.7]},
+      'end': {'gt1_filt_res': [0.5, 20]}}),
+    ('wx_sandstorm_no_pulse', 'end', [('fault', 'gt1_pulse'), ('weather', 'sandstorm'), ('until', 'gt1_dp_rb', 3600),
+                                      ('run', 120)],
+     {'alarms': ['gt1_filt_dp_high', 'gt1_filt_runback'], 'end': {'gt1_mw': [140, 150.5], 'gt1_dp_rb': [1, 1]}}),
+    ('wx_wash_online', 'end', [('op', '10MBA10', 'wash_online', None, None), ('run', 30)] + [('run', 600)],
+     {'done': [['10MBA10', 'wash_online']], 'machines': {'gt1_wash': 'idle'}, 'end': {'gt1_foul_on': [0, 1]}}),
+    ('wx_wash_offline_refused', 'end', [('op', '10MBA10', 'wash_offline', None, None), ('run', 1)],
+     {'refused': [['10MBA10', 'wash_offline', ['gt1_still', 'gt1_tg_run']]]}),
+    ('wx_wash_offline', 'gt_tg', [('op', '10MBA10', 'wash_offline', None, None), ('run', 60),
+                                  ('op', '10MBA10', 'start', None, None), ('run', 1800)],
+     {'done': [['10MBA10', 'wash_offline']], 'refused': [['10MBA10', 'start', ['gt1_wash_idle']]],
+      'machines': {'gt1_wash': 'idle'}}),
+    ('wx_cold_night', 'end', [('weather', 'cold_clear'), ('until', 'ct_lvl_held', 9000), ('run', 600)],
+     {'faults': ['ct_lvl_frozen'], 'alarms': ['ct_fan1_vib_high'], 'end': {'ct_lvl_held': [1, 1]}}),
+    ('wx_thunderstorm', 'end', [('weather', 'thunderstorm'), ('until', 'ct_fan9_cy_fail', 9000),
+                                ('until', 'ct_fan7_cy_err', 9000), ('run', 1200)],
+     {'faults': ['ct_fan9_surge', 'ct_fan7_ingress'], 'alarms': ['ct_fan7_vib_high', 'ct_fan9_vib_hh'],
+      'end': {'ct_fan7_vm': [6.3, 9.5]}}),
 ]
 
 
@@ -884,6 +906,8 @@ def run_fork(base, actions, probes=()):
             e.permit(a[1], a[2])
         elif a[0] in ('lock', 'unlock'):
             getattr(e, a[0])(a[1], a[2])
+        elif a[0] == 'weather':       # the instructor's weather (REALISM.md §5.1; milestone WX2's forks)
+            e.weather(a[1])
         elif a[0] == 'run':
             step(round(a[1] * 10))
         elif a[0] == 'until':
