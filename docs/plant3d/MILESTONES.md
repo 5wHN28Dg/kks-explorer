@@ -317,6 +317,16 @@ first frame; no frame over 100 ms; 99.79 / 99.89 % at ≥ 30 fps, mean frame 19.
 peak PSS 868 / 886 MB; at most 95 draw calls in any view. The walk's guided phases leave 14 of its parts loose.
 Pictures: the wiki's Workshop page.
 
+**K5a as built (2026-11-08):** the gas turbine's insides for the plant's first instance: 84 components, 2 fastener
+groups (the compressor casing's 40 studs replacing the plant's stand-ins, the coupling's 12 bolts `beyond`), 86 guided
+steps in a major inspection's order, 27,868 triangles, a public source per subassembly; the plant byte for byte
+unchanged (WORKSHOP.md "As built (K5a)"). The Note 9 (fresh installs, cool starts), with the warm-up / `cold=1`: first
+entry 212 ms / 4,249 ms (≤ 5.0 s), again 101 / 436 ms, back to the plant 17–27 ms / 1.68 s the first time (the plant's
+own pipelines, as K4b's); no pipeline compiled after the machine's first frame; no frame over 100 ms; 99.85 / 99.81 %
+at ≥ 30 fps, mean frame 19.90 / 19.84 ms, 88.3 / 90.0 % at 60 fps; peak PSS 1,119 / 1,099 MB; at most 135 draw calls;
+0 steps loose. The plant's 0.7 s frame at the start is still there (686 ms, 8 surface pipelines). APK 147.3 MB.
+Pictures: the wiki's Workshop page.
+
 **K4b as built (2026-11-07):** the steam turbine runs on its bench, made from the plant's st model by
 `tools/plant3d/workshop/make_bench.py` (the start-up machine, five trips and the breaker's opening by protection,
 four alarms, the excitation's, breaker's, bias and reset ops, 134 values; WORKSHOP.md §6.6): the steam path's eight

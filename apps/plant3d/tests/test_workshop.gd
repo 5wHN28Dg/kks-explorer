@@ -15,6 +15,25 @@ extends RefCounted
 
 const Kit = preload("res://kit/kit.gd")
 const WB = preload("res://builder/workshop_build.gd")
+const Explode = preload("res://workshop/explode.gd")
+## The way the working fluid flows along the shaft, per kind with blade rows (Godot's axes: the generator's +y is -z):
+## the steam turbine's steam from its inlet end to its exhaust end (generator -y), the gas turbine's air and gas from
+## the compressor to the exhaust (generator +y). Every kind whose drawn faces lean about a shaft is listed here.
+const FLOW := {"steam_turbine": Vector3(0, 0, 1), "gas_turbine": Vector3(0, 0, -1)}
+## Pairs of components whose explode may pass through each other ("kind|a|b", either order; b may end in "*" for
+## every component whose id begins so), each with its reason (_explode_paths).
+const PASSES := {
+	"gas_turbine|intake|rotor": "the plant draws the inlet plenum as a closed box round the shaft: lifted off, it "
+		+ "passes over it as if its floor and walls were split round the shaft, as a real plenum's are",
+	"gas_turbine|intake|bell_*": "the same box round the bellmouth's halves",
+	"steam_turbine|rotor|pedestal_f": "the plant draws the front pedestal's end walls whole round the shaft: a real "
+		+ "pedestal's are split at the joint and their upper parts come off with the cap",
+	"gas_turbine|fuel_ring|*": "the plant draws the fuel gas ring closed round the discharge casing, among the cans' "
+		+ "end covers and into the foundation block: it stays, and what lifts passes through it (a real one's pigtails "
+		+ "are undone and it comes off in segments)",
+}
+const CELL := 0.25   # the cells' width (m) in which the explode's paths are compared
+const SMALL := 0.1   # the longest edge of a small triangle there (m)
 const FIXTURE := "res://tests/fixtures/workshop_gadget.gd"
 const FIXTURE_DATA := "res://tests/fixtures/workshop_gadget.json"
 const DIRS := [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 1, 0), Vector3(0, -1, 0), Vector3(0, 0, 1), Vector3(0, 0, -1),
@@ -87,6 +106,9 @@ func _kind(part: String, data: Dictionary, params: Dictionary, ctx := {}) -> voi
 	_outside(part, plant, ws)
 	_pieces(part, ws)
 	_closed(part, ws)
+	_blade_lean(part, ws)
+	if r.scene != null:
+		_explode_paths(part, r.scene)
 	print("workshop: %s %d components, %d fastener groups, %d triangles (plant %d)" % [part, ws.components.size(),
 		ws.fasteners.size(), ws.tris, plant.tris])
 
@@ -324,6 +346,295 @@ func _closed(part: String, ws: Dictionary) -> void:
 
 func _q(p: Vector3) -> String:
 	return "%d,%d,%d" % [roundi(p.x * 100000.0), roundi(p.y * 100000.0), roundi(p.z * 100000.0)]
+
+## Each blade row's lean, from its drawn faces: a flat blade turned b from the flow f towards the way t its row's
+## points move as the rotor turns has faces whose normals n give (n·f)(n·t) = -sin b cos b, whichever face; summed over
+## a component's faces (each by its area; surfaces of revolution give 0) its sign is the lean's. A stationary row
+## (nozzles, stator vanes) leans with the rotor's turn and a moving row (buckets, rotor blades) against it, in a
+## compressor and in a turbine alike: so the turbine drives the rotor the way it turns (its anim's axis, right-handed)
+## and the compressor is driven that way. Any kind with a shaft must say its flow (FLOW).
+func _blade_lean(part: String, ws: Dictionary) -> void:
+	var shaft = null
+	for mv in ws.moving:
+		if mv.name == "shaft":
+			shaft = mv
+	if shaft == null:
+		return
+	check(FLOW.has(part), "%s: a kind with a shaft says the way its flow goes along it (FLOW)" % part)
+	if not FLOW.has(part):
+		return
+	var f: Vector3 = FLOW[part]
+	var ax: Vector3 = shaft.axis
+	check(absf(ax.dot(f)) > 0.999, "%s: the shaft turns about the flow's line (%s, %s)" % [part, ax, f])
+	var sums := {}   # comp -> [sum, area, moving]
+	for pr in _all_layers(ws):
+		var L: Dictionary = pr[0]
+		var shift: Vector3 = pr[1]
+		var arr := (L.mesh as ArrayMesh).surface_get_arrays(0)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		var acc: Array = sums.get(L.comp, [0.0, 0.0, false])
+		acc[2] = acc[2] or String(pr[2]).begins_with("shaft/")
+		for i in range(0, idx.size(), 3):
+			var a := v[idx[i]] + shift
+			var b := v[idx[i + 1]] + shift
+			var c := v[idx[i + 2]] + shift
+			var cr := (b - a).cross(c - a)
+			var area := cr.length() * 0.5
+			if area < 1e-12:
+				continue
+			var n := cr.normalized()
+			var rel: Vector3 = (a + b + c) / 3.0 - (shaft.pivot as Vector3)
+			var rad: Vector3 = rel - ax * rel.dot(ax)
+			if rad.length() < 1e-4:
+				continue
+			var tg := ax.cross(rad.normalized())
+			acc[0] += area * n.dot(f) * n.dot(tg)
+			acc[1] += area
+		sums[L.comp] = acc
+	var rows := [0, 0]
+	for id in sums:
+		var acc: Array = sums[id]
+		var lean: float = acc[0] / maxf(acc[1], 1e-9)
+		if absf(lean) < 0.05:
+			continue
+		rows[1 if acc[2] else 0] += 1
+		# stationary: b > 0, the sum < 0; moving: b < 0, the sum > 0
+		check((lean > 0.0) == bool(acc[2]), "%s: %s (%s) leans %s the rotor's turn (%.2f): a %s row leans %s it" % [part, id,
+			"moving" if acc[2] else "stationary", "with" if lean < 0.0 else "against", lean,
+			"moving" if acc[2] else "stationary", "against" if acc[2] else "with"])
+	check(rows[0] > 0 and rows[1] > 0, "%s: blade rows found, stationary and moving (%d, %d)" % [part, rows[0], rows[1]])
+
+## The explode's paths (§4.3), sampled through every stage of the slider: no component goes below the floor (the
+## machine's lowest point, assembled, when it stands on the ground, y = 0, on a part that stays), and none passes
+## through another: while a
+## stage moves, no two cells of two components (_mesh_cells, _meet) share more than they did at the stage's start; a
+## pair listed in PASSES is not compared. Wherever two components' whole boxes meet while they move apart from each
+## other (a child and its parent too: it leaves the parent along its own way), their triangles (halved down to SMALL,
+## found through the cells) are tested: two that cut each other at a sample and not at the stage's start pass through
+## each other. Two whose triangles already cut each other at the stage's start are not judged.
+func _explode_paths(part: String, ps: PackedScene) -> void:
+	var root: Node3D = ps.instantiate()
+	var spec := Explode.spec_of(root)
+	var home := {}
+	var pieces := {}
+	_home_boxes(root, root, Vector3.ZERO, home, pieces)
+	root.free()
+	var floor_y := INF
+	var lowest := ""
+	for id in home:
+		if (home[id] as AABB).position.y < floor_y:
+			floor_y = (home[id] as AABB).position.y
+			lowest = id
+	var b_end := _boxes_at(spec, home, 1.0)
+	if absf(floor_y) > 0.01 or not b_end[lowest].position.is_equal_approx(home[lowest].position - Vector3.ONE * 0.005):
+		floor_y = -INF   # (it doesn't stand on the ground on a part that stays: no floor)
+	var ids: Array = home.keys()
+	var D: int = Explode.levels(spec)[2]
+	var N := 8
+	var bad := {}
+	for d in D:
+		var b0 := _boxes_at(spec, home, float(d) / D)
+		for k in range(1, N + 1):
+			var b1 := _boxes_at(spec, home, (d + float(k) / N) / D)
+			for i in ids.size():
+				var a: String = ids[i]
+				if b1[a].position.y < floor_y - 0.005 and not bad.has(a):
+					bad[a] = true
+					check(false, "%s: %s goes below the floor in the explode (%.2f m under it at s = %.2f)" % [part, a,
+						floor_y - b1[a].position.y, (d + float(k) / N) / D])
+				for j in range(i + 1, ids.size()):
+					var c: String = ids[j]
+					if bad.has(a + "|" + c) or not b1[a].intersects(b1[c]) or _passes(part, a, c):
+						continue
+					var r0: Vector3 = (b0[a].position - home[a].position) - (b0[c].position - home[c].position)
+					var r1: Vector3 = (b1[a].position - home[a].position) - (b1[c].position - home[c].position)
+					if r0.is_equal_approx(r1):
+						continue   # (they move together, or neither moves)
+					var ca: Dictionary = pieces[a]
+					var cc: Dictionary = pieces[c]
+					var small: bool = ca.size() <= cc.size()
+					var hit := _cells_pass(ca.values(), cc, r0, r1) if small else _cells_pass(cc.values(), ca, -r0, -r1)
+					# (two drawn into each other at the stage's start, a can through its wrapper's wall, a shaft
+					# through a housing's end walls, are not judged: their surfaces slide through each other)
+					if hit and (_cells_pass(ca.values(), cc, r0, r0) if small else _cells_pass(cc.values(), ca, -r0, -r0)):
+						bad[a + "|" + c] = true
+						continue
+					if hit:
+						bad[a + "|" + c] = true
+						check(false, "%s: %s and %s pass through each other in the explode (stage %d of %d, s = %.2f)" % [
+							part, a, c, d + 1, D, (d + float(k) / N) / D])
+
+## Whether two components' cells pass through each other between two moments: each cell moved by its component's
+## offset (a's relative to c's: r0 at the first, r1 at the second); a cell of a only meets c's cells near it, and
+## where two cells' boxes meet more than before, their small triangles' boxes decide.
+func _cells_pass(ca: Array, cc: Dictionary, r0: Vector3, r1: Vector3) -> bool:
+	for x: Array in ca:
+		var lo: Vector3 = x[0]
+		var hi: Vector3 = x[1]
+		var k := Vector3i((((lo + hi) * 0.5 + r1) / CELL).floor())
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				for dz in [-1, 0, 1]:
+					var y = cc.get(k + Vector3i(dx, dy, dz))
+					if y == null:
+						continue
+					if _meet(lo + r1, hi + r1, y[0], y[1]) > 0.0 and _small_grow(x[2], y[2], r0, r1):
+						return true
+	return false
+
+## Whether box a, moved from r0 to r1, comes to share more with box b.
+func _grows(alo: Vector3, ahi: Vector3, blo: Vector3, bhi: Vector3, r0: Vector3, r1: Vector3) -> bool:
+	var before := _meet(alo + r0, ahi + r0, blo, bhi)
+	var now := _meet(alo + r1, ahi + r1, blo, bhi)
+	return now > before + 0.02 * minf(_meet(alo, ahi, alo, ahi), _meet(blo, bhi, blo, bhi)) + 1e-12
+
+## Whether a small triangle of one cell, moved by r1, cuts one of the other's (their boxes first).
+func _small_grow(sa: PackedVector3Array, sb: PackedVector3Array, _r0: Vector3, r1: Vector3) -> bool:
+	for i in range(0, sa.size(), 5):
+		for j in range(0, sb.size(), 5):
+			if _meet(sa[i] + r1, sa[i + 1] + r1, sb[j], sb[j + 1]) > 0.0 and \
+					_tris_cut(sa[i + 2] + r1, sa[i + 3] + r1, sa[i + 4] + r1, sb[j + 2], sb[j + 3], sb[j + 4]):
+				return true
+	return false
+
+## Whether two triangles cut each other: an edge of one through the other.
+func _tris_cut(a0: Vector3, a1: Vector3, a2: Vector3, b0: Vector3, b1: Vector3, b2: Vector3) -> bool:
+	for e in [[a0, a1], [a1, a2], [a2, a0]]:
+		if Geometry3D.segment_intersects_triangle(e[0], e[1], b0, b1, b2) != null:
+			return true
+	for e in [[b0, b1], [b1, b2], [b2, b0]]:
+		if Geometry3D.segment_intersects_triangle(e[0], e[1], a0, a1, a2) != null:
+			return true
+	return false
+
+## How much two boxes (lo, hi) share: the product of their overlaps along each axis, where touching faces share
+## nothing (each thick side is drawn in by 2 mm) and a flat side (under 4 mm thick) counts 1 mm when it lies inside
+## the other's span, so a flat face crossing another is seen and two faces in one plane are not.
+func _meet(alo: Vector3, ahi: Vector3, blo: Vector3, bhi: Vector3) -> float:
+	var m := 1.0
+	for i in 3:
+		var a0: float = alo[i]
+		var a1: float = ahi[i]
+		var b0: float = blo[i]
+		var b1: float = bhi[i]
+		var at := a1 - a0 >= 0.004
+		var bt := b1 - b0 >= 0.004
+		if at:
+			a0 += 0.002
+			a1 -= 0.002
+		if bt:
+			b0 += 0.002
+			b1 -= 0.002
+		var o: float
+		if at and bt:
+			o = minf(a1, b1) - maxf(a0, b0)
+		elif at:
+			var c := (b0 + b1) * 0.5
+			o = 0.001 if c > a0 and c < a1 else 0.0
+		elif bt:
+			var c := (a0 + a1) * 0.5
+			o = 0.001 if c > b0 and c < b1 else 0.0
+		else:
+			o = 0.0   # (two flat sides in one axis: in one plane, or apart)
+		if o <= 0.0:
+			return 0.0
+		m *= o
+	return m
+
+## A mesh's triangles, halved along their longest edge down to SMALL, each small one's box in the cell of the grid
+## CELL wide its centre falls in: per cell [lo, hi, its small boxes (lo, hi, ...)] ({Vector3i: Array}), moved by p.
+func _mesh_cells(mi: MeshInstance3D, p: Vector3, cells: Dictionary) -> void:
+	var mesh: Mesh = mi.mesh
+	for si in mesh.get_surface_count():
+		var arr := mesh.surface_get_arrays(si)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		for t in range(0, idx.size(), 3):
+			var stack: Array = [[mi.transform * v[idx[t]] + p, mi.transform * v[idx[t + 1]] + p, mi.transform * v[idx[t + 2]] + p]]
+			while not stack.is_empty():
+				var tri: Array = stack.pop_back()
+				var a: Vector3 = tri[0]
+				var b: Vector3 = tri[1]
+				var c: Vector3 = tri[2]
+				var lab := a.distance_squared_to(b)
+				var lbc := b.distance_squared_to(c)
+				var lca := c.distance_squared_to(a)
+				var m := maxf(lab, maxf(lbc, lca))
+				if m > SMALL * SMALL:
+					if m == lab:
+						var q := (a + b) * 0.5
+						stack.append([a, q, c]); stack.append([q, b, c])
+					elif m == lbc:
+						var q := (b + c) * 0.5
+						stack.append([a, b, q]); stack.append([a, q, c])
+					else:
+						var q := (c + a) * 0.5
+						stack.append([a, b, q]); stack.append([q, b, c])
+					continue
+				var lo := a.min(b).min(c)
+				var hi := a.max(b).max(c)
+				var key := Vector3i((((lo + hi) * 0.5) / CELL).floor())
+				var e = cells.get(key)
+				if e == null:
+					cells[key] = [lo, hi, PackedVector3Array([lo, hi, a, b, c])]
+				else:
+					e[0] = (e[0] as Vector3).min(lo)
+					e[1] = (e[1] as Vector3).max(hi)
+					(e[2] as PackedVector3Array).append_array(PackedVector3Array([lo, hi, a, b, c]))
+
+## Each component's box at home, of its own meshes, in the root's frame (components are placed, never turned), and
+## its pieces' boxes.
+func _home_boxes(n: Node, root: Node3D, at: Vector3, out: Dictionary, pieces: Dictionary) -> void:
+	for c in n.get_children():
+		if not (c is Node3D and c.has_meta("explode")):
+			continue
+		var p: Vector3 = at + (c as Node3D).position
+		var bb := AABB()
+		var first := true
+		var pc := {}
+		for m in c.get_children():
+			if m is MeshInstance3D and m.mesh != null:
+				var b: AABB = (m as MeshInstance3D).transform * (m.mesh as Mesh).get_aabb()
+				b.position += p
+				bb = b if first else bb.merge(b)
+				first = false
+				_mesh_cells(m, p, pc)
+		if not first:
+			out[String(c.get_meta("id"))] = bb
+			pieces[String(c.get_meta("id"))] = pc
+		_home_boxes(c, root, p, out, pieces)
+
+func _passes(part: String, a: String, c: String) -> bool:
+	for k in PASSES:
+		var s: PackedStringArray = String(k).split("|")
+		if s[0] != part:
+			continue
+		for pr in [[a, c], [c, a]]:
+			if pr[0] == s[1] and (pr[1] == s[2] or s[2].ends_with("*") and String(pr[1]).begins_with(s[2].trim_suffix("*"))):
+				return true
+	return false
+
+## The boxes at slider value s: each moved by its own offset and its ancestors'.
+func _boxes_at(spec: Dictionary, home: Dictionary, s: float) -> Dictionary:
+	var off := Explode.offsets(spec, s)
+	var out := {}
+	for id in home:
+		var o := Vector3.ZERO
+		var at: String = id
+		while at != "":
+			o += off.get(at, Vector3.ZERO)
+			at = spec.comps[at].parent
+		var b: AABB = home[id]
+		out[id] = AABB(b.position + o, b.size).grow(0.005)
+	return out
+
+func _overlap(a: AABB, b: AABB) -> float:
+	var i := a.intersection(b)
+	return _vol(i)
+
+func _vol(b: AABB) -> float:
+	return maxf(b.size.x, 0.0) * maxf(b.size.y, 0.0) * maxf(b.size.z, 0.0)
 
 ## The built scene loads as the tree, with its words.
 func _built(part: String, data: Dictionary) -> void:

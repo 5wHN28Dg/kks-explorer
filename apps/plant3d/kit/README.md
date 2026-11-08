@@ -317,6 +317,53 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   it; the joint flanges, pedestals and covers are one stand-in (the plant's paint pieces of the casing and the
   pedestals), held together to the plant's box and triangles, since each flange cut at the joint alone is 1.67 times
   its box's triangles.
+- **gas_turbine** (K5a; the plant's first instance: a heavy-duty single-shaft machine, cold-end drive, axial exhaust,
+  top intake; GE GER-3620P and GER-3434D, GEA-12985B, the Baker Hughes 9E overview, GE's patents on the inlet casing,
+  the thrust bearing, the exhaust frame and the rotor's lift, the US Navy NAVEDTRA 14114; the data file cites the pages):
+  built with the instance's shaft line (`context`), so its coupling to the generator stands where the plant's does. The
+  plant's cone over the compressor is its casing, split at the joint into two halves 0.12 m thick, its joint flanges
+  the plant's boxes each cut at the joint and its 40 studs the plant's (a fastener group replacing the stand-in); the
+  combustion wrapper is the compressor discharge casing in two halves; the cladding drum over the turbine is the turbine
+  shell with its insulation, 0.15 m thick, in halves with its two seams. Inside: a bellmouth in the inlet plenum (in halves), the
+  variable inlet guide vanes and **8 compressor stages** (a moving row on the rotor, then a stator row in the casing's
+  halves; GE's F class has 18, its E class 17: the count drawn is a picture, not a design), the rotor's drum of disks
+  (one lathe: the tie bolts are not drawn), the distance piece through the combustion section, **3 turbine stages** (a
+  nozzle row in the shell's halves, then a row of buckets on the wheels: GE's E and F classes have 3), all flat plates,
+  not aerofoils, the moving rows turning right-handed about +y (air and gas flow to +y). **12 combustion cans**, as the
+  plant draws them (a real 9E has 14, a 9F 18; GE's 12-can machine is the 60 Hz 7H): each the plant's casing (with its
+  flow sleeve, one solid), its end cover with **six fuel nozzles** (GE's Dry Low NOx cans), a liner inside, and a
+  transition piece from the can to the first stage's nozzles inside the wrapper; the crossfire tubes, spark plugs and
+  the cans' own cover bolts are not drawn. The front bearing housing is the plant's drum on its pedestal: the drum lifts
+  off as the housing's cover over the journal bearing's halves and the thrust bearing's two pad rings round the rotor's
+  thrust collar (GE puts the thrust bearing at the inlet end). **Simplified:** the rear journal bearing is drawn just
+  ahead of the exhaust frame's face, inside the shell, because the plant draws the shell's rear end closed (a disk the
+  Workshop gives the exhaust frame) and the diffuser open behind it: a real one sits in the exhaust frame's inner barrel,
+  and the gas path goes on through its struts. The exhaust frame and diffuser, the fuel gas manifold and the bleed pipes
+  are `thin` (the plant draws them as open ducts and pipes). The rotor is sealed in this view (it comes out with its
+  blades and buckets; changing a bucket, which GER-3620P does in the field, is not drawn). The order (the data file's
+  `assembly`, reversed for taking apart) is a major inspection's: the combustion parts first, without lifting a casing,
+  then the upper casings one at a time with their stator rows and nozzles, the bearings and the coupling, the rotor
+  lifted out, then the lower halves; the inlet plenum comes off first, where a real inspection opens only the
+  bellmouth's upper half. Also **simplified**: the upper inlet guide vanes and stator rows are parts of their own, put
+  in over the rotor before the upper casing (a real unit's sit in the casing's upper half and lift with it), and the
+  exhaust frame is one part that stays while the rotor is lifted (a real unit has its upper half off first). The
+  nozzles lean with the rotor's turn and the buckets against it, as the compressor's stators and moving rows do, so
+  the turbine drives the rotor the way the compressor is made to be driven (`tests/test_workshop.gd` checks every
+  row's lean from its faces). **The explode:** a can above the joint rides up with the discharge casing's upper half
+  and then comes out of it along its own axis, the only way out of the wrapper; one below comes out of the lower half
+  along its axis only as far as its end cover stays above the foundation block, so the cans at the bottom stay in place
+  (a real unit's lower cans come out into the pit under the machine, which is not drawn). The transition pieces above
+  the joint lift once the upper half is off, farther than the rotor; those below stay. The liners stay in their cans
+  (the plant draws each can closed at both ends; the steps take a liner out by hand). The bellmouth, the front
+  bearing's drum (the plant's: its upper half is the housing's cover) and the thrust bearing's pad rings are split at
+  the joint like the casings: the upper halves lift a little farther than the rotor, the lower halves stay. The bleed
+  pipes ride up with the upper compressor casing; the exhaust frame lifts (it stands in the foundation block, so it
+  can't slide back); the fuel gas ring stays (the plant draws it closed round the wrapper, among the end covers and
+  into the block: it can go no way). `tests/test_workshop.gd` checks every kind's explode stays above the floor and that no two parts pass
+  through each other (their triangles' boxes, cell by cell, in every stage), apart from the pairs listed there with their
+  reasons: the plant's closed inlet plenum lifted over the shaft and the bellmouth, the plant's fuel gas ring, and the
+  steam turbine's front pedestal round its rotor; two parts drawn into each other (a can through its wrapper's wall)
+  are not judged.
 
 ## Tables and their sources
 

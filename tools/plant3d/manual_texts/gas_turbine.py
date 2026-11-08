@@ -12,6 +12,8 @@ MANUAL = {
     'kind_names': {'gas_turbine': 'Gas turbine'},
     'params': {'rating_mw': ('Rating', '{} MW'), 'length': ('Length', '{} m'), 'casing_d': ('Casing diameter', '{} m'),
                'intake': ('Air intake', '{}'), 'exhaust': ('Exhaust', '{}')},
+    # (the Workshop takes the rotor out and puts it back as one assembly with its blades: they come with it)
+    'comes_with': {'cblades': 'rotor', 'tbucket1': 'rotor', 'tbucket2': 'rotor', 'tbucket3': 'rotor'},
     'consumables': [
         ('inlet_filters', 'Inlet air filter elements (pre-filters and fine filters)', '1 set', 'By the pressure drop '
          'across them, or every year'),

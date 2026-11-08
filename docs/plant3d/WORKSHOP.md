@@ -721,6 +721,30 @@ addition (both engines, vectors) made in K6.
   and the views stay allowed. Starting a machine taken apart is still decided by `run_exploded` (§4.7). The walk
   (§8) therefore takes the machine apart first and starts it once it stands assembled again, at 118 s.
 
+**As built (K5a, 2026-11-08).**
+- **The gas turbine** for the plant's first instance, with its shaft line: 84 components and 2 fastener groups (86
+  guided steps), 27,868 triangles in the built scene (§8's 120,000). The inlet plenum and bellmouth, the front bearing (journal halves,
+  thrust bearing), the compressor casing halves with the plant's 40 studs (`split`), the inlet guide vanes and 8
+  compressor stages, the discharge casing halves, 12 cans (end cover, six fuel nozzles, liner, transition piece each),
+  the fuel gas manifold, the turbine shell halves with 3 stages of nozzles and buckets, the rear bearing, the exhaust
+  frame and diffuser, the rotor with its 12 coupling bolts (`beyond`). The plant byte for byte unchanged
+  (`test_kit_frozen`). Its data (`tools/plant3d/workshop/gas_turbine.py`) cites a public source per subassembly; the
+  guided order is a major inspection's take-apart reversed. Simplifications (8 stages for an F class's 18, flat-plate
+  blades, the rear bearing inside the shell, the thin exhaust, manifold and bleed pipes) in the kit README. No bench
+  yet (K5b): the walk's run phases find no model.
+- **The Note 9** (`lean+vis`, a test-signed release build of this branch with main merged (the polish's baked shaders
+  in), fresh installs, SAMPLE=1, batteries at 27.9 / 29.2 °C; with the warm-up / `cold=1`): first entry 212 ms after
+  the walk waited 13.1 s for the warm-up / 4,249 ms at once (≤ 5.0 s); again 101 / 436 ms; back to the plant 17–27 ms
+  / 1.68 s the first time (as K4b's 1.52 s: the plant's own pipelines, one surface and seven specialization, in its
+  first frame back, the plant having drawn barely a frame before the Workshop opened; §8's 1.0 s is met from the
+  second time on); no pipeline compiled after the machine's first frame; no frame over 100 ms in the walk (the longest
+  74 / 56 ms; the frame rule passes, 0 caused by the app); 99.85 / 99.81 % of frames at ≥ 30 fps, mean frame 19.90 /
+  19.84 ms, 88.3 / 90.0 % shown at 60 fps; peak PSS 1,119 / 1,099 MB (≤ 1.5 GB); at most 135 draw calls in the
+  Workshop (≤ 300); every guided step walked (0 loose). The kernel reclaimed in 0.59 / 1.07 % of the samples (the cold
+  walk just over the 1 % at which the reclaim rule judges no walk, as K4b's warm one was). The plant's 0.7 s frame at
+  the start is still there with the baked shaders: 686 ms at 4.74 s after the first frame, 8 surface pipelines in it.
+  The APK (test-signed) 147.3 MB; the gas turbine's scene is 606 KB.
+
 ## 7. Shaders and cut faces
 
 Decision 0060: one lit shader and one vertex format; each lit ubershader is 0.6–0.9 s of serial compile on the Note
