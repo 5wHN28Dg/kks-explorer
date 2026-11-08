@@ -471,6 +471,9 @@ MESSAGES = {
 }
 
 
+DOORS = {'meeting': 'meet_door', 'control_room': 'cr_door', 'workshop': 'ws_door'}
+
+
 def _desk():
     return {'go': {'kind': 'desk', 'room': 'control_room'}}
 
@@ -485,8 +488,11 @@ def tasks():
         T.append(dict({'id': tid, 'title': title, 'steps': steps, 'priority': 2}, **kw))
     for d in DISCUSSIONS:
         lead, joiners = d['roles'][0], d['roles'][1:]
+        # to the room first, then the others called (a joiner who arrives first waits there 15 minutes at most),
+        # a meet that waits for them, then the discussion
         task(f'dsc_{d["id"]}', f'Meet about it: {d["title"][0].lower() + d["title"][1:]}',
-             [{'call': {'role': r, 'task': f'dsc_{d["id"]}_{r}'}} for r in joiners] + [{'discuss': d['id']}],
+             [{'go': DOORS[d['room']]}] + [{'call': {'role': r, 'task': f'dsc_{d["id"]}_{r}'}} for r in joiners] +
+             [{'meet': {'room': d['room'], 'with': joiners, 'minutes': 1}}, {'discuss': d['id']}],
              interruptible=False)
         for r in joiners:
             task(f'dsc_{d["id"]}_{r}', f'Join the meeting: {d["title"][0].lower() + d["title"][1:]}',
@@ -494,43 +500,52 @@ def tasks():
 
     def ask(work, last):
         return [{'permit': {'work': work, 'action': 'request'}, 'else': last}]
+
+    def outcome(tid, title, steps):
+        """An agreement's outcome: the lead (their task goes on as it) has a person of their own role do it. The
+        reference validator gives an outcome every role whose task carries the discussion's step, the joiners' too
+        (as `choose`'s targets), so the outcome itself holds only steps any role may take, and its call gives the
+        lead's role alone the steps that need an authority (the permit request)."""
+        lead = next(d['roles'][0] for d in DISCUSSIONS for a in d['agreements'] if a['outcome'].get('task') == tid)
+        task(tid, title, [{'call': {'role': lead, 'task': f'{tid}_do'}}, {'work': 1}])
+        task(f'{tid}_do', title, steps)
     # cw_a_vib
-    task('dsc_cw_a_stop', 'CW pump A out today: change to C and ask for the bearings\' permit', [
+    outcome('dsc_cw_a_stop', 'CW pump A out today: change to C and ask for the bearings\' permit', [
         {'call': {'role': 'ccr_op', 'task': 'dsc_cw_swap'}}] + ask('wo_cw_a_brg', 2) + [
         {'say': 'dsc_cw_stop', 'to': 'shift_sup'}])
     task('dsc_cw_swap', 'Change from CW pump A to C at the desk', [
         _desk(), {'op': {'kks': '30PAC10AP003', 'do': 'start', 'where': 'screen'}, 'else': 3},
         {'op': {'kks': '30PAC10AP001', 'do': 'stop', 'where': 'screen'}},
         {'say': 'dsc_cw_swap', 'to': 'maint_sup'}])
-    task('dsc_cw_a_run', 'CW pump A runs on: ask for the readings and grease job\'s permit',
+    outcome('dsc_cw_a_run', 'CW pump A runs on: ask for the readings and grease job\'s permit',
          ask('wo_cw_a_watch', 1) + [{'say': 'dsc_cw_watch', 'to': 'shift_sup'}])
     # cond_p2_cal
-    task('dsc_cp2_place', 'Transmitter 2 calibrated in place: ask for its permit', [
+    outcome('dsc_cp2_place', 'Transmitter 2 calibrated in place: ask for its permit', [
         {'say': 'dsc_cp2_out', 'to': 'ccr_op'}] + ask('wo_cond_p2_insitu', 2) + [{'work': 1}])
-    task('dsc_cp2_bench', 'Transmitter 2 to the bench: ask for its permit', [
+    outcome('dsc_cp2_bench', 'Transmitter 2 to the bench: ask for its permit', [
         {'say': 'dsc_cp2_out', 'to': 'ccr_op'}] + ask('wo_cond_p2_bench', 2) + [{'work': 1}])
     # cw_a_pack: both isolate
-    task('dsc_cwpk_now', 'The gland repacked under isolation: change to C, ask for the permit', [
+    outcome('dsc_cwpk_now', 'The gland repacked under isolation: change to C, ask for the permit', [
         {'call': {'role': 'ccr_op', 'task': 'dsc_cw_swap'}}] + ask('wo_cw_a_pack', 2) + [
         {'say': 'dsc_cwpk', 'to': 'shift_sup'}])
-    task('dsc_cwpk_later', 'A drip tray first, then the live-loaded packing under isolation', [
+    outcome('dsc_cwpk_later', 'A drip tray first, then the live-loaded packing under isolation', [
         {'call': {'role': 'field_op', 'task': 'dsc_cw_tray'}}] + ask('wo_cw_a_pack_ll', 2) + [
         {'say': 'dsc_cwpk', 'to': 'shift_sup'}])
     task('dsc_cw_tray', 'Put a drip tray under CW pump A\'s discharge valve', [
         {'go': {'kks': '30PAC10AA101'}}, {'work': [5, 10], 'anim': 'inspect'}, {'say': 'dsc_tray', 'to': 'shift_sup'}])
     # st_trip
-    task('dsc_st_restart', 'Restart agreed: reset the trip, ask for the portable probe\'s permit', [
+    outcome('dsc_st_restart', 'Restart agreed: reset the trip, ask for the portable probe\'s permit', [
         {'call': {'role': 'ccr_op', 'task': 'dsc_st_reset'}}] + ask('wo_st_vib3_watch', 2) + [
         {'say': 'dsc_st_restart', 'to': 'channel'}])
     task('dsc_st_reset', 'Reset the steam turbine\'s vibration trip at the desk', [
         _desk(), {'op': {'kks': '30MAD10CY001', 'do': 'reset', 'trip': 'st_trip_vib', 'where': 'screen'},
                   'else': 2}, {'say': 'dsc_st_reset', 'to': 'shift_sup'}])
-    task('dsc_st_find', 'No restart before the cause: ask for the probe check\'s permit', [
+    outcome('dsc_st_find', 'No restart before the cause: ask for the probe check\'s permit', [
         {'say': 'dsc_st_hold', 'to': 'channel'}] + ask('wo_st_vib3_rca', 2) + [{'work': 1}])
     # ct_fan7_alarm
-    task('dsc_ct7_now', 'Fan 7\'s alarm limit raised now: ask for the temporary change\'s permit',
+    outcome('dsc_ct7_now', 'Fan 7\'s alarm limit raised now: ask for the temporary change\'s permit',
          ask('wo_ct_fan7_alm', 1) + [{'say': 'dsc_ct7_temp', 'to': 'channel'}])
-    task('dsc_ct7_change', 'Fan 7\'s alarm through a change: ask for the junction box job\'s permit', [
+    outcome('dsc_ct7_change', 'Fan 7\'s alarm through a change: ask for the junction box job\'s permit', [
         {'say': 'dsc_ct7_change', 'to': 'channel'}] + ask('wo_ct_fan7_cy', 2) + [{'work': 1}])
     return T
 

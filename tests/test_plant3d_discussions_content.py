@@ -191,6 +191,7 @@ class Content(unittest.TestCase):
                 lead = self.tasks[f'dsc_{d["id"]}']
                 self.assertIs(lead['interruptible'], False)
                 self.assertEqual(lead['steps'][-1], {'discuss': d['id']})
+                self.assertEqual(lead['steps'][-2]['meet']['with'], d['roles'][1:])
                 called = [s['call'] for s in lead['steps'] if 'call' in s]
                 self.assertEqual([c['role'] for c in called], d['roles'][1:])
                 for c in called:
@@ -222,6 +223,41 @@ class Content(unittest.TestCase):
         for sid in STAFFED:
             sc = jload(self.F, f'scenarios/{sid}.json')
             self.assertEqual([f['id'] for f in sc['faults'][-len(TD.FINDINGS):]], [f[0] for f in TD.FINDINGS])
+
+
+class NpcRun(unittest.TestCase):
+    """On the reference engine: shift_cold, the gland's finding at 08:00 (the instructor's fault); the maintenance
+    supervisor calls the shift supervisor and a mechanical technician to the workshop, the discussion runs between
+    NPCs (mode npc, every point at its default) and agrees on the isolated repack, whose permit is asked for."""
+
+    def test_the_gland_discussion_between_npcs(self):
+        b = P.check_files(P.load_dir(DATA))
+        e = P.Engine(b, 'shift_cold')
+        tpm = e.staff.st.tpm
+        e.step(180 * tpm)                   # 05:00 to 08:00 (day 1, a Monday)
+        e.fault('cw_a_gland')
+        k0 = len(e.events)
+        for _ in range(120):
+            e.step(tpm)
+            if any(x[1] == 'permit' and x[2] == 'wo_cw_a_pack' for x in e.events[k0:]):
+                break
+        ev = e.events[k0:]
+        start = next(x for x in ev if x[1] == 'discussion' and x[3] == 'start')
+        self.assertEqual(start[2], 'cw_a_pack')
+        self.assertEqual(start[-1], 'npc')
+        lead, parts = start[4], start[5]
+        self.assertEqual(len(parts), 3)
+        self.assertNotIn(None, parts)       # all three met
+        roles = {p.id: p.role for p in e.staff.people}
+        self.assertEqual([roles[p] for p in parts], ['maint_sup', 'shift_sup', 'mech_tech'])
+        self.assertEqual([x[2:5] for x in ev if x[1] == 'point'],
+                         [['cw_a_pack', 'how', 'isolate'], ['cw_a_pack', 'when', 'today']])
+        agreed = next(x for x in ev if x[1] == 'discussion' and x[3] == 'agreed')
+        self.assertEqual(agreed[2:], ['cw_a_pack', 'agreed', 1, 'dsc_cwpk_now'])
+        self.assertIn(['task', lead, 'dsc_cwpk_now', 'start'], [x[1:] for x in ev])
+        req = next(x for x in ev if x[1] == 'permit' and x[2] == 'wo_cw_a_pack')
+        self.assertEqual((req[3], req[5]), ('request', 'done'))
+        self.assertEqual(roles[req[4]], 'maint_sup')
 
 
 if __name__ == '__main__':
