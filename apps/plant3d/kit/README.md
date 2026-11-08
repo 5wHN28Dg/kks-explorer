@@ -363,7 +363,11 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   through each other (their triangles' boxes, cell by cell, in every stage), apart from the pairs listed there with their
   reasons: the plant's closed inlet plenum lifted over the shaft and the bellmouth, the plant's fuel gas ring, and the
   steam turbine's front pedestal round its rotor; two parts drawn into each other (a can through its wrapper's wall)
-  are not judged.
+  are not judged. **The flow (K5b, `_gt_flows`):** 16 paths, Workshop only: the air down the plenum into the bellmouth,
+  four straight lines along the compressor's annulus and four along the turbine's (mid-annulus, to +y), the fuel along
+  the gas ring's upper arc and down a pigtail to two cans' nozzle tips, the flame from the nozzles' tips along three
+  liners and through their transition pieces to the first nozzles, two lines out of the diffuser; one of each set in
+  the cutaway's quarter. Straight lines, not the swirl the blades give the air.
 
 ## Tables and their sources
 

@@ -352,6 +352,7 @@ func _make_flow(machine: Node3D, fid: String, pts_in: Array) -> void:
 	mat.set_shader_parameter("cum", cum)
 	mat.set_shader_parameter("npts", mini(pts_in.size(), FLOW_PTS))
 	mat.set_shader_parameter("count", float(FLOW_QUADS))
+	mat.set_shader_parameter("size", flow_size(machine.get_meta("box", AABB())))
 	mat.set_shader_parameter("density", 0.0)
 	var quad := QuadMesh.new()
 	quad.size = Vector2(1, 1)
@@ -377,6 +378,12 @@ func flow_ids() -> Array:
 
 ## A flow path drawn from the bench's value (flow -1..1: its sign is the direction), advanced by `dt` seconds of
 ## bench time at `speed` m/s at full flow; `c` its colour.
+## A flow particle's half size for a machine of box `box`: 4 mm on the transmitter's bench, growing with the machine
+## (0.2 % of its longest side, at most 5 cm) so that a turbine's particles show from where it is seen whole (K5b: on
+## the gas turbine's 25 m the transmitter's 4 mm were not seen at all).
+static func flow_size(box: AABB) -> float:
+	return clampf(box.get_longest_axis_size() * 0.002, 0.004, 0.05)
+
 func set_flow(fid: String, flow: float, speed: float, dt: float, c: Color) -> void:
 	if not _flows.has(fid):
 		return

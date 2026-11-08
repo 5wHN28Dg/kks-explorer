@@ -297,6 +297,9 @@ func _gas_turbine(tree: SceneTree, ws) -> void:
 	check(anims.has("rotor") and anims.rotor.kind == "rotate" and anims.rotor.travel == 0.0, "the gas turbine's rotor turns freely")
 	for f in ["air_in", "comp_0", "comp_3", "fuel_0", "fuel_1", "flame_0", "flame_2", "turb_0", "exhaust_1"]:
 		check(ws.views.flow_ids().has(f), "the flow path %s is drawn" % f)
+	var fsz: float = (ws.views._flows["comp_0"].mat as ShaderMaterial).get_shader_parameter("size")
+	check(fsz > 0.04 and fsz <= 0.05, "the gas turbine's particles are sized to be seen on its 25 m (%.3f m)" % fsz)
+	check(Views.flow_size(AABB(Vector3.ZERO, Vector3(0.2, 0.15, 0.3))) == 0.004, "a transmitter's stay 4 mm")
 	var rp = ws.panels.run_panel
 	ws.panels.show_run(true)
 	rp.tick()

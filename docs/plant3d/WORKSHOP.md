@@ -808,14 +808,23 @@ addition (both engines, vectors) made in K6.
   the vector's only change (fired, run up, synchronised, loaded and tripped on load by a flame-out, the breaker
   opened by protection; 3,058 steps); both engines bit for bit (`GdscriptBench`). The file is 32.6 MB (14.7 MB
   before).
-- **The walk:** unchanged code (the turbine's start is the first command its resting state takes; the excitation and
-  the breaker switched on as they may); the gas turbine needs about 7,350 bench steps to full speed, so with
-  `bench_speed=20` it reaches full speed no load about when the faults begin, at most 4 steps a frame (§K3's clock)
-  allowing.
+- **The walk:** the turbine's start is the first command its resting state takes, the excitation and the breaker
+  switched on as they may (K4b). One change: a slider whose value a machine's states set (the sequence owns it: the
+  speed bias, zeroed at standstill) is swept only while that machine waits for the trainee (full speed no load,
+  where the bias slips the phase into the synchronising window); swept from the start, the bias (±0.01) held the gas
+  turbine's cranking short of the 24.5 % its sequence waits for. The gas turbine needs about 7,330 bench steps to
+  full speed no load, so with `bench_speed=20` (at most 4 steps a frame, the clock's) it gets there at about 154.6 s,
+  just before the faults at 155 s (`tests/test_workshop_run.gd` walks the running part at 60 frames a second).
 - **Pictures** (the gallery, `kit/gallery_workshop.gd`): a machine with a sequence is now run on until it waits for
   the trainee (each machine in a state whose next steps read only values ops set: full speed no load), at most
   1,500 s of bench time, so both turbines are pictured at full speed.
-- **Measured on the laptop:** LAPTOP_TODO
+- **Flow particles sized to the machine** (`views.gd flow_size`): 0.2 % of the machine's longest side, from the
+  transmitter's 4 mm to at most 5 cm, so that the gas turbine's (25 m) show from where it is seen whole; the steam
+  turbine's grow from 4 mm to about 2 cm.
+- **Measured on the laptop** (this branch, `--walk=workshop --kind=gas_turbine --bench_speed=20 --quality=lean+vis`
+  on the private display, Forward+): first entry 124 ms after the plant's warm-up, again 75 ms, back to the plant
+  8–12 ms; 0 guided steps loose; the bench at full speed no load before the faults; no frame over 100 ms (the
+  longest 21.7 ms, p95 15.2 ms); **the bench step 81 µs mean** (the longest 2.3 ms) over 35,991 steps.
 - **The Note 9: TODO (the coordinator's run): first entry, again, back to the plant, frames, peak PSS, draw calls,
   the bench step (≤ 0.3 ms), the APK's size.**
 
@@ -882,7 +891,7 @@ the Workshop. The Workshop's own, on the Note 9 (`lean+vis`, release build, cool
 | Workshop button to the first frame of the machine | ≤ 2.0 s with its pipelines compiled; ≤ 5.0 s with an empty pipeline cache (the first entry after an install) |
 | Back to the plant's first frame | ≤ 1.0 s |
 | After the first frame of the machine | no frame over 100 ms while orbiting, exploding, X-raying, cutting, sectioning and running; ≥ 95 % of frames at ≥ 30 fps over the Workshop walk |
-| The Workshop walk (scripted, `app/workshop_walk.gd`) | 3 minutes on a fixed camera orbit: assembled, exploded 0 → 1 → 0, handled, the guided steps, then (the machine assembled again, at 118 s) Start, X-ray, cutaway, a section sweep, the faults, Stop (a running machine is not taken apart: the polish after K4b; the turbine's walk is measured with `bench_speed=20`, so that its 300 s soak still lets it reach full speed in the 37 s before the faults) |
+| The Workshop walk (scripted, `app/workshop_walk.gd`) | 3 minutes on a fixed camera orbit: assembled, exploded 0 → 1 → 0, handled, the guided steps, then (the machine assembled again, at 118 s) Start, X-ray, cutaway, a section sweep, the faults, Stop (a running machine is not taken apart: the polish after K4b; the turbines' walks are measured with `bench_speed=20`, so that the steam turbine's 300 s soak still lets it reach full speed in the 37 s before the faults, and the gas turbine's 480 s purge full speed no load just before them, K5b) |
 | Peak PSS | ≤ 1.5 GB with the plant held behind it |
 | One kind's scene | ≤ 120,000 triangles (all components, insides included); ≤ 300 draw calls in any view of the walk, `ws_cap`'s second pass included (it is drawn only while a cut or section is on, on the components the cut reaches) (the plant's busiest measured 479 at p95 within the frame rules, 0041) |
 | The bench step | ≤ 0.3 ms on the Note 9 (a bench model is a fraction of the plant's 1.4 ms) |
@@ -966,7 +975,9 @@ Starting sources (to be checked page by page in each milestone):
   Applications and Rerating*; for the overhaul order, published inspection guides (EPRI's public summaries) and the
   same books' maintenance chapters.
 - **Gas turbine:** Saravanamuttoo, Rogers and Cohen, *Gas Turbine Theory*; Boyce, *Gas Turbine Engineering Handbook*;
-  manufacturers' published cutaways of heavy-duty frames.
+  manufacturers' published cutaways of heavy-duty frames. Its bench (K5b): NASA Glenn Research Center's Beginner's Guide to
+  Propulsion (compressor and power-turbine thermodynamics), the NIST Chemistry WebBook (methane's heat of
+  combustion), GE GER-3434D and GER-3620P; the sequence, trips and their values are the plant's own model.
 
 ## 12. Milestones
 

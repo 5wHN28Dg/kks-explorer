@@ -325,7 +325,7 @@ stages, the firing temperature worked back from the plant's exhaust temperature,
 flow; 16 flow paths (the air, the fuel to two cans, the flame in three, the gas, the exhaust), Heat and Pressure on the
 gas path, the compressor's blade-pass tone with the plant's combustion roar, exhaust rumble and SFC whine; eight faults
 (six tripping by the plant's own trips); not opened while it turns, run only closed; two runs in
-`plant3d-bench-v1.json`, bit for bit in both engines. Laptop: LAPTOP_TODO. **The Note 9: TODO (the coordinator's
+`plant3d-bench-v1.json`, bit for bit in both engines. Laptop (the walk, `bench_speed=20`): full speed no load before the faults, no frame over 100 ms, the bench step 81 µs mean. **The Note 9: TODO (the coordinator's
 run).**
 
 **K5a as built (2026-11-08):** the gas turbine's insides for the plant's first instance: 84 components, 2 fastener
