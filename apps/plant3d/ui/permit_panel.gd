@@ -399,6 +399,10 @@ func _list(e) -> void:
 	title.text = "Permits to work"
 	body.add_child(W.label("Each job on the plant's equipment and its permit. Open one to work it through: in free "
 			+ "mode you play each role in turn.", 17, W.DIM))
+	if ui.work_orders != null and ui.work_orders.available():
+		var wo := W.button("Work orders", func(): ui.open_work_orders())    # (REALISM.md §2.20)
+		wo.name = "to_work_orders"
+		body.add_child(wo)
 	for wd in e.m.works:
 		var st: int = Permits.state_of(e, wd["id"])
 		var num: String = Permits.number_of(e, wd["id"])

@@ -78,6 +78,11 @@ func permit(work: String, action: String, person_id) -> int:
 	return send(["permit", work, action, person_id])
 
 
+## A work order's action (REALISM.md §2.20): notify, plan, schedule, complete, close or cancel, with its data.
+func work_order(work: String, action: String, person_id, data: Array) -> int:
+	return send(["wo", work, action, person_id, data])
+
+
 func lock(work: String, point: int, person_id) -> int:
 	return send(["lock", work, point, person_id])
 

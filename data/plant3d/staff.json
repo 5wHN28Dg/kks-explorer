@@ -1230,14 +1230,14 @@
   {"id": "intake", "title": "Intake pump house", "outline": [[430, 60], [470, 60], [470, 110], [430, 110]], "z": [-10, 60], "ppe": ["helmet", "boots", "glasses", "ear"]}
  ],
  "roles": [
-  {"id": "shift_sup", "title": "Shift supervisor", "discipline": "ops", "look": "coverall_ops_white", "authority": ["operate_screen", "request", "approve", "issue", "lock_process", "remove_lock", "stop_work"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "sup_shift", "play": true, "off": "off_shift"},
+  {"id": "shift_sup", "title": "Shift supervisor", "discipline": "ops", "look": "coverall_ops_white", "authority": ["operate_screen", "request", "approve", "issue", "lock_process", "remove_lock", "stop_work", "plan_work", "close_work"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "sup_shift", "play": true, "off": "off_shift"},
   {"id": "ccr_op", "title": "Control room operator", "discipline": "ops", "look": "coverall_ops", "authority": ["operate_screen", "request", "lock_process"], "ppe": ["helmet", "boots"], "routine": "ccr_shift", "play": true, "requests": ["ask_ccw_cooler_in", "ask_ccw_cooler_out", "ask_cw_vents_open", "ask_cw_vents_close", "ask_wtp_demin"], "off": "off_shift"},
   {"id": "field_op", "title": "Field operator", "discipline": "ops", "look": "coverall_ops", "authority": ["operate_local", "request", "lock_mechanical", "lock_process"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "field_st", "play": true, "off": "off_shift"},
   {"id": "elec_ap", "title": "Electrical authorised person", "discipline": "ops", "look": "coverall_ops", "authority": ["operate_local", "request", "lock_electrical"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "elec_shift", "play": true, "off": "off_shift"},
   {"id": "mech_tech", "title": "Mechanical technician", "discipline": "mech", "look": "coverall_mech", "authority": ["accept", "sample"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "tech_days", "play": true, "off": "off_days"},
   {"id": "elec_tech", "title": "Electrical technician", "discipline": "elec", "look": "coverall_elec", "authority": ["accept", "lock_electrical"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "tech_days", "play": true, "off": "off_days"},
   {"id": "ic_tech", "title": "I&C technician", "discipline": "inst", "look": "coverall_inst", "authority": ["operate_local", "accept", "lock_instrument", "operate_hart"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "tech_days", "play": true, "off": "off_days"},
-  {"id": "maint_sup", "title": "Maintenance supervisor", "discipline": "mech", "look": "supervisor", "authority": ["request", "accept", "stop_work"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "ms_mech", "play": true, "off": "off_days"},
+  {"id": "maint_sup", "title": "Maintenance supervisor", "discipline": "mech", "look": "supervisor", "authority": ["request", "accept", "stop_work", "plan_work", "close_work"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear"], "routine": "ms_mech", "play": true, "off": "off_days"},
   {"id": "hse_officer", "title": "HSE officer", "discipline": "hse", "look": "hse", "authority": ["stop_work"], "ppe": ["helmet", "boots", "glasses", "ear", "vest"], "routine": "hse_days1", "play": true, "off": "off_days"},
   {"id": "contractor_sup", "title": "Contractors' supervisor", "discipline": "civil", "look": "contractor", "authority": ["request", "accept"], "ppe": ["helmet", "boots", "glasses", "gloves", "ear", "harness"], "routine": "con_sup_days", "play": true, "off": "off_days"},
   {"id": "contractor", "title": "Contractor", "discipline": "civil", "look": "contractor", "authority": [], "ppe": ["helmet", "boots", "glasses", "gloves", "ear", "harness"], "routine": "con_days", "play": true, "off": "off_days"},
@@ -1877,7 +1877,9 @@
   {"id": "clean_blocks", "title": "Cleaning the blocks", "steps": [{"go": "p_bw35"}, {"work": 10}, {"go": "p_bw55"}, {"work": 10}, {"go": "p_bw75"}, {"work": 10}, {"go": "p_bw95"}, {"work": 10}]},
   {"id": "laundry_work", "title": "The laundry", "steps": [{"go": {"kind": "table", "room": "laundry"}, "else": 1}, {"work": 30}]},
   {"id": "music_off", "title": "Music off: hand the phone to the supervisor", "priority": 1, "steps": [{"say": "music_off", "to": "channel"}, {"work": 2}]},
-  {"id": "phone_out", "title": "Take the phone out of the Ex zone", "priority": 1, "steps": [{"say": "phone_out", "to": "channel"}, {"work": 2}]}
+  {"id": "phone_out", "title": "Take the phone out of the Ex zone", "priority": 1, "steps": [{"say": "phone_out", "to": "channel"}, {"work": 2}]},
+  {"id": "plan_wo", "title": "Plan the notified work order", "priority": 3, "steps": [{"work": 5, "anim": "write"}, {"wo": {"work": "$", "action": "plan"}}, {"wo": {"work": "$", "action": "schedule"}}, {"permit": {"work": "$", "action": "request"}, "else": 4}, {"work": 1, "anim": "write"}]},
+  {"id": "close_wo", "title": "Close the work order", "priority": 4, "steps": [{"wait": {"permit": ["$", "closed"], "minutes": 720}}, {"work": 2, "anim": "write"}, {"wo": {"work": "$", "action": "close"}}]}
  ],
  "reactions": [
   {"on": {"alarm": 2}, "areas": ["gt1", "hrsg1", "st", "cw", "ct", "bop", "trafo1"], "roles": ["ccr_op"], "task": "answer_alarm"},
@@ -1917,7 +1919,9 @@
   {"on": {"trip": "mf_b_trip_ll"}, "roles": ["wtp_op"], "task": "mf_trip"},
   {"on": {"value": "dm_l"}, "roles": ["ccr_op"], "task": "call_wtp_demin"},
   {"on": {"fault": ["cart_a_clog", "cart_b_clog", "mb_a_resin", "mb_b_resin", "ro_a_cl_damage", "ro_b_cl_damage", "ro_a_orp_drift", "ro_b_orp_drift", "ro_a_cond_drift", "ro_b_cond_drift"]}, "roles": ["wtp_op"], "task": "request_permit_wtp", "work": "$"},
-  {"on": {"unsafe": "audio"}, "roles": ["shift_sup", "maint_sup"], "task": "stop_unsafe", "seen": true}
+  {"on": {"unsafe": "audio"}, "roles": ["shift_sup", "maint_sup"], "task": "stop_unsafe", "seen": true},
+  {"on": {"wo": "notified"}, "roles": ["maint_sup", "shift_sup"], "task": "plan_wo"},
+  {"on": {"wo": "complete"}, "roles": ["maint_sup", "shift_sup"], "task": "close_wo"}
  ],
  "vehicles": [
   {"id": "bus_1", "kind": "bus", "seats": 45, "driver": "driver", "home": "bus_depot", "runs": [{"at": "05:02", "stops": ["camp_stop", "cr_stop"], "dwell": 1}, {"at": "05:40", "stops": ["camp_stop", "gate_stop", "cr_stop"], "dwell": 1}, {"at": "06:25", "stops": ["cr_stop", "gate_stop", "camp_stop"], "dwell": 1}, {"at": "06:35", "stops": ["camp_stop", "gate_stop", "cr_stop"], "dwell": 1}, {"at": "06:50", "stops": ["camp_stop", "gate_stop", "cr_stop"], "dwell": 1}, {"at": "16:15", "stops": ["cr_stop", "gate_stop", "camp_stop"], "dwell": 1}, {"at": "17:02", "stops": ["camp_stop", "cr_stop"], "dwell": 1}, {"at": "17:40", "stops": ["camp_stop", "gate_stop", "cr_stop"], "dwell": 1}, {"at": "18:25", "stops": ["cr_stop", "gate_stop", "camp_stop"], "dwell": 1}]}

@@ -20,7 +20,7 @@ DAY = 864000            # a clock day in tenths of a clock second (§16.1)
 LIVE = (0, 9, 10)       # permit states that are not live: none, closed, cancelled
 DONE = (6, 7, 8, 9)     # permit states past the work: done, returned, deisolated, closed
 # a record's fields: number, clocks of the six moves (notified, planned, scheduled, started, completed, ended),
-# notifier, mode named, priority, day, completer, codes (mode, cause, action), comment
+# notifier, mode named, priority, day, completer, codes (mode, cause, action), comment, the work
 T_NOTIFY, T_PLAN, T_SCHEDULE, T_START, T_COMPLETE, T_END = range(6)
 
 
@@ -109,7 +109,7 @@ def check(d, b, m):
 # ---------------------------------------------------------------- the engine's part
 
 def new_record(e, work):
-    return [e.wo_no.get(work, ''), [-1] * 6, None, None, 0, -1, None, [None, None, None], '']
+    return [e.wo_no.get(work, ''), [-1] * 6, None, None, 0, -1, None, [None, None, None], '', work]
 
 
 def init(e, b, m):
@@ -132,7 +132,7 @@ def copy_state(c, e):
 
 
 def _copy_rec(r):
-    return [r[0], list(r[1]), r[2], r[3], r[4], r[5], r[6], list(r[7]), r[8]]
+    return [r[0], list(r[1]), r[2], r[3], r[4], r[5], r[6], list(r[7]), r[8], r[9]]
 
 
 def _whole(x):
@@ -258,7 +258,7 @@ def npc_data(e, w, action):
 
 def _rec_out(r):
     return {'no': r[0], 'clocks': list(r[1]), 'by': r[2], 'mode': r[3], 'priority': r[4], 'day': r[5],
-            'completer': r[6], 'codes': list(r[7]), 'comment': r[8]}
+            'completer': r[6], 'codes': list(r[7]), 'comment': r[8], 'work': r[9]}
 
 
 def snapshot_part(e, s):
@@ -268,7 +268,7 @@ def snapshot_part(e, s):
 
 def _rec_tree(r):
     from ref.godot_variant import Packed, PACKED_INT64
-    return [r[0], Packed(PACKED_INT64, r[1]), r[2], r[3], r[4], r[5], r[6], list(r[7]), r[8]]
+    return [r[0], Packed(PACKED_INT64, r[1]), r[2], r[3], r[4], r[5], r[6], list(r[7]), r[8], r[9]]
 
 
 def digest_part(e):

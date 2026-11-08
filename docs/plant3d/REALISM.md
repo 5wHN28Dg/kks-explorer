@@ -917,7 +917,7 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   progress, for the trainee to code from the panel.
 - **The record** of each work's current work order: its number, the clock (tenths) of each move (notified, planned,
   scheduled, started, completed, closed or cancelled; −1 before), the notifier, the mode named, the priority, the day,
-  the completer, the codes and the comment. When it is closed or cancelled the record is copied to the run's
+  the completer, the codes, the comment and the work. When it is closed or cancelled the record is copied to the run's
   **history** (in that order), so a work notified again keeps its earlier orders. Snapshots carry both; saves keep and
   check them; the digest gains, after the lab's part, the number counter, each work order's state and record in model
   order and the history (the clocks as whole numbers, text as its UTF-8 bytes).
