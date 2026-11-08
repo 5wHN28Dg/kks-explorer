@@ -178,7 +178,8 @@ SIM_SHARDS = 4
 SIM_REST = 0
 # Each unit's cost on the laptop, 2026-11-08: Godot's seconds (run_vectors.gd's UNIT lines) plus a third of the
 # reference's (made in 3 processes beside it); whole: Godot 1,197 s, the reference 2,523 s. A unit not listed costs
-# its steps / 1000 s. REST_COST: the module's other classes (CI's log, 2026-11-08: ~270 s there).
+# its steps / 1000 s. REST_COST: the module's other classes, on the laptop's scale (CI's log, 2026-11-08: ~270 s
+# there, CI's runners being ~1.4 times slower).
 REST_COST = 190
 SIM_COST = {'v1': 0, 'v2': 0, 'v2/staff': 10, 'train': 362, 'hot': 47, 'v2/train': 77, 'v2/wtp': 143,
             'v2/wtp_cip': 46, 'v2/wtp_regen': 36, 'v2/day': 145, 'v2/day/field_cw_alarm': 18,
@@ -488,10 +489,12 @@ class GdscriptEngine(unittest.TestCase):
     def first_difference(self, run, lo, hi, names):
         """The first step and value of a run where the two engines differ (both dump the chunk's values)."""
         part = 'v2' if run.startswith('v2/') else 'steps' if run.startswith('steps/') else 'train'
-        r = godot('run_vectors.gd', f'--only={part}', f'--dump={run}:{lo}:{hi}')
+        shard = [] if self.units is None else ['--units=' + ','.join(u[0] for u in self.units)]   # (its shard's only)
+        r = godot('run_vectors.gd', f'--only={part}', f'--dump={run}:{lo}:{hi}', *shard)
         dumped = {int(line.split()[1]): bytes.fromhex(line.split()[2])
                   for line in r.stdout.splitlines() if line.startswith('DUMP ')}
-        ref = reference_runs(self.V, keep=(run, lo, hi), V2=self.V2, jobs=G.jobs())[run][3]
+        ref = reference_runs(self.V, keep=(run, lo, hi), V2=self.V2, jobs=G.jobs(),
+                             tasks=None if self.units is None else [u[1] for u in self.units])[run][3]
         for step in sorted(ref):
             a, b = dumped.get(step), ref[step]
             if a != b:
