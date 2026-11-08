@@ -441,7 +441,6 @@ LHV = 50.0              # MJ/kg, methane's lower heating value (NIST, above)
 HEAT_RATE = 9750.0      # kJ/kWh at base load, the plant's (gt1_hr)
 BASE_MW = 250.0         # the plant's base load (gt1_cap)
 FUEL_RATED = round(BASE_MW * HEAT_RATE / 3600.0 / LHV, 3)   # kg/s of fuel at base load: the fuel valve's 1
-CBLADES = 40            # each compressor moving row's blades (kit/parts_machines.gd _gt_rotor): 2,000 Hz at 50 rev/s
 # the compressor discharge pressure's points the stage tables are made at (bar absolute; the plant's runs 1 to 15)
 CPD = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20]
 MC = (GAMMA_AIR - 1) / GAMMA_AIR
@@ -508,11 +507,15 @@ def _gas_path():
     the exhaust's temperature, not what lies between). The compressor's eight stages share its pressure ratio equally
     (each stage's pressure the discharge's to the power k/8, from the plant's 1 bar at the bellmouth); each stage's
     temperature from the ambient air's by NASA's compressor relation with the efficiency, T/T0 = 1 + (r^((g-1)/g) - 1)
-    / nc. The flame's temperature (the firing temperature at the first nozzles) is worked back from the exhaust's (the
-    plant's) through the turbine's whole expansion, T5/T4 = 1 - nt (1 - (1/r)^((g-1)/g)); with no flame it is the
-    compressor's discharge air's, and never below it. The turbine's three stages share the expansion likewise, down to
-    the bellmouth's pressure at the exhaust. The fuel's flow in kg/s is the plant's fuel valve times the base load's
-    heat input (the plant's heat rate) over methane's lower heating value."""
+    / nc. The turbine's three stages share the expansion likewise, down to the bellmouth's pressure at the exhaust,
+    T/Tin = 1 - nt (1 - (p/pin)^((g-1)/g)). Every turbine temperature comes from one chain, so the stages stay in order
+    through ignition, a trip and the coast-down: the hot gas's, worked back from the plant's exhaust temperature (its
+    thermocouples' lag, 20 s up and 60 s down, is the gas path's) through the expansion from each stage to the exhaust,
+    the last stage the plant's exhaust temperature itself; or, where hotter, the compressor's discharge air expanded
+    from the first nozzles (no flame: the purge, a coast-down). The turbine inlet temperature (`tit`, at the first
+    nozzles: the combustor's outlet, above a maker's "firing temperature" at the first buckets) is the larger of the
+    hot gas's and the discharge air's. The fuel's flow in kg/s is the plant's fuel valve times the base load's heat
+    input (the plant's heat rate) over methane's lower heating value."""
     v = [
         ['amb_k', {'sum': ['ambient_t', 273.15], 'unit': 'K'}],
         ['air_frac', {'product': ['exh_flow', round(1.0 / AIR_RATED, 9)]}],
@@ -528,23 +531,28 @@ def _gas_path():
             [f'c_tk{k}', {'product': ['amb_k', f'c_tr{k}'], 'unit': 'K'}],
             [f'c_t{k}', {'sum': [f'c_tk{k}', -273.15], 'unit': '°C'}],
         ]
+
+    def t_ratio(x, e):      # T at the fraction e of the turbine's expansion over T at its inlet
+        return 1 - ETA_T * (1 - x ** (-MT * e))
+
+    cd = f'c_tk{CSTAGES}'
     v += [
         ['exh_k', {'sum': ['exh_t', 273.15], 'unit': 'K'}],
-        ['fire_x', {'of': 'cpd', 'table': _table(lambda x: 1 / (1 - ETA_T * (1 - x ** -MT)))}],
-        ['fire_hot', {'product': ['exh_k', 'fire_x'], 'unit': 'K'}],
-        ['comb_tgt', {'select': 'flame', 'cases': [f'c_tk{CSTAGES}', 'fire_hot'], 'unit': 'K'}],
-        ['comb_k', {'max': ['comb_tgt', f'c_tk{CSTAGES}'], 'unit': 'K'}],
-        ['fire_c', {'sum': ['comb_k', -273.15], 'unit': '°C'}],
-        # (the flame goes out in a few seconds; the liners and nozzles drawn with it)
-        ['fire_t', {'lag': 'fire_c', 'tau': 2, 'init': 30, 'unit': '°C'}],
-        ['fire_k', {'sum': ['fire_t', 273.15], 'unit': 'K'}],
+        ['tit_x', {'of': 'cpd', 'table': _table(lambda x: 1 / t_ratio(x, 1))}],
+        ['tit_hot', {'product': ['exh_k', 'tit_x'], 'unit': 'K'}],
+        ['tit_k', {'max': ['tit_hot', cd], 'unit': 'K'}],
+        ['tit', {'sum': ['tit_k', -273.15], 'unit': '°C'}],
     ]
     for k in range(1, TSTAGES + 1):
         e = k / TSTAGES
         v += [
             [f't_p{k}', {'of': 'cpd', 'table': _table(lambda x: x ** (1 - e)), 'unit': 'bar'}],
-            [f't_tr{k}', {'of': 'cpd', 'table': _table(lambda x: 1 - ETA_T * (1 - x ** (-MT * e)))}],
-            [f't_tk{k}', {'product': ['fire_k', f't_tr{k}'], 'unit': 'K'}],
+            # (stage k's exit over the exhaust: 1 at the last stage, so the hot chain's last stage is exh_t itself)
+            [f't_hx{k}', {'of': 'cpd', 'table': _table(lambda x: t_ratio(x, e) / t_ratio(x, 1))}],
+            [f't_hot{k}', {'product': ['exh_k', f't_hx{k}'], 'unit': 'K'}],
+            [f't_ax{k}', {'of': 'cpd', 'table': _table(lambda x: t_ratio(x, e))}],
+            [f't_air{k}', {'product': [cd, f't_ax{k}'], 'unit': 'K'}],
+            [f't_tk{k}', {'max': [f't_hot{k}', f't_air{k}'], 'unit': 'K'}],
             [f't_t{k}', {'sum': [f't_tk{k}', -273.15], 'unit': '°C'}],
         ]
     return v
@@ -588,9 +596,9 @@ def bench_source():
              {'at': 'cblades', 'heat': 'c_t4'}, {'at': 'cblades', 'pressure': 'c_p4'}]
     for k in ks():
         for c in ('liner_', 'tp_'):
-            bind += [{'at': c + k, 'heat': 'fire_t'}, {'at': c + k, 'pressure': 'cpd'}]
+            bind += [{'at': c + k, 'heat': 'tit'}, {'at': c + k, 'pressure': 'cpd'}]
     for n in range(1, TSTAGES + 1):
-        tin, pin = ('fire_t', 'cpd') if n == 1 else (f't_t{n - 1}', f't_p{n - 1}')
+        tin, pin = ('tit', 'cpd') if n == 1 else (f't_t{n - 1}', f't_p{n - 1}')
         for s in ('u', 'l'):
             bind += [{'at': f'tnoz{n}_{s}', 'heat': tin}, {'at': f'tnoz{n}_{s}', 'pressure': pin}]
         bind += [{'at': f'tbucket{n}', 'heat': f't_t{n}'}, {'at': f'tbucket{n}', 'pressure': f't_p{n}'}]
@@ -604,7 +612,7 @@ def bench_source():
     for q in range(2):
         bind.append({'flow': f'fuel_{q}', 'of': 'fuel_v', 'speed': 0.8, 'colour': 'pressure', 'by': 'gas_p'})
     for q in range(3):
-        bind.append({'flow': f'flame_{q}', 'of': 'flame_v', 'speed': 1.5, 'colour': 'heat', 'by': 'fire_t'})
+        bind.append({'flow': f'flame_{q}', 'of': 'flame_v', 'speed': 1.5, 'colour': 'heat', 'by': 'tit'})
     for q in range(4):
         bind.append(dict(air, flow=f'turb_{q}', speed=3.0, by='t_p1'))
     for q in range(2):
@@ -650,7 +658,7 @@ def bench_source():
             'pressure': {'unit': 'bar', 'table': [[1, '#2c7bb6'], [4, '#abd9e9'], [8, '#ffffbf'], [12, '#fdae61'],
                                                   [16, '#d7191c'], [32, '#67001f']]},
         },
-        'readouts': ['rpm', 'exh_flow', 'cpd', 'fuel_flow', 'fire_t', 'exh_t', 'spread', 'lube_p', 'vib2', 'ph',
+        'readouts': ['rpm', 'exh_flow', 'cpd', 'fuel_flow', 'tit', 'exh_t', 'spread', 'lube_p', 'vib2', 'ph',
                      'slip', 'mw'],
     }
     oil = '10MBV10'

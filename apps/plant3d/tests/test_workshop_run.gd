@@ -142,7 +142,7 @@ func run(tree: SceneTree) -> Array:
 	check(not ws.panels.step_layer.visible, "the step words' layer hides when the Workshop closes")
 	await _turbine(tree, ws)
 	await _gas_turbine(tree, ws)
-	await _gas_turbine_walk(tree, ws)
+	await _walks(tree, ws)
 	main.free()
 	return p
 
@@ -167,6 +167,9 @@ func _turbine(tree: SceneTree, ws) -> void:
 		check(anims.has(v) and anims[v].kind == "translate" and anims[v].travel > 0.0, "%s moves on its stem" % v)
 	for f in ["inlet_l", "inlet_r", "blades_0", "blades_3", "exhaust"]:
 		check(ws.views.flow_ids().has(f), "the flow path %s is drawn" % f)
+	var ssz: float = (ws.views._flows["blades_0"].mat as ShaderMaterial).get_shader_parameter("size")
+	check(ssz > 0.01 and ssz < 0.04 and is_equal_approx(ssz, Views.flow_size(ws.machine.get_meta("box", AABB()))),
+		"the steam turbine's particles grow with its box (%.4f m)" % ssz)
 	# the turbine's own words in the panel: its commands and the bench's other ops, its two steam sliders
 	var rp = ws.panels.run_panel
 	ws.panels.show_run(true)
@@ -299,7 +302,6 @@ func _gas_turbine(tree: SceneTree, ws) -> void:
 		check(ws.views.flow_ids().has(f), "the flow path %s is drawn" % f)
 	var fsz: float = (ws.views._flows["comp_0"].mat as ShaderMaterial).get_shader_parameter("size")
 	check(fsz > 0.04 and fsz <= 0.05, "the gas turbine's particles are sized to be seen on its 25 m (%.3f m)" % fsz)
-	check(Views.flow_size(AABB(Vector3.ZERO, Vector3(0.2, 0.15, 0.3))) == 0.004, "a transmitter's stay 4 mm")
 	var rp = ws.panels.run_panel
 	ws.panels.show_run(true)
 	rp.tick()
@@ -339,10 +341,10 @@ func _gas_turbine(tree: SceneTree, ws) -> void:
 	for k in range(2, 9):
 		ok = ok and c.now("c_p%d" % k) > c.now("c_p%d" % (k - 1)) and c.now("c_t%d" % k) > c.now("c_t%d" % (k - 1))
 	check(ok, "the air's pressure and temperature rise stage by stage")
-	ok = c.now("fire_t") > c.now("c_t8") and c.now("t_t1") < c.now("fire_t") and c.now("t_p1") < c.now("cpd")
+	ok = c.now("tit") > c.now("c_t8") and c.now("t_t1") < c.now("tit") and c.now("t_p1") < c.now("cpd")
 	for k in range(2, 4):
 		ok = ok and c.now("t_t%d" % k) < c.now("t_t%d" % (k - 1)) and c.now("t_p%d" % k) < c.now("t_p%d" % (k - 1))
-	check(ok, "the gas's fall stage by stage from the flame (%.0f °C)" % c.now("fire_t"))
+	check(ok, "the gas's fall stage by stage from the flame (%.0f °C)" % c.now("tit"))
 	ws.views.heat_on = true
 	ws.views.pressure_on = false
 	_go(ws, 0.1)
@@ -389,44 +391,74 @@ func _gas_turbine(tree: SceneTree, ws) -> void:
 	ws.close()
 	await ws.left
 
-## The Workshop walk's running part on the gas turbine (app/workshop_walk.gd, as measured on the Note 9 with
-## `bench_speed=20`, at 60 frames a second): started once assembled again at 118 s, run up by the plant's sequence
-## (the clock's 4 steps a frame at most), each fault made and repaired, Stop.
-func _gas_turbine_walk(tree: SceneTree, ws) -> void:
-	ws.open("gas_turbine")
+## The Workshop walk's running part (app/workshop_walk.gd) on `kind` at `fps` frames a second with `bench_speed`
+## `speed`: started once assembled again at 118 s, each fault made and repaired, Stop. What it got to.
+func _walk_run(tree: SceneTree, ws, kind: String, speed: float, fps: float) -> Dictionary:
+	var out := {"shown": false, "started": false, "at_faults": "", "made": 0, "faults": 0, "end": "", "brk": false,
+		"lo": INF, "hi": -INF, "slider": ""}
+	ws.open(kind)
 	if not await _wait_shown(tree, ws):
-		check(false, "the gas turbine's Workshop did not show for the walk")
-		return
+		return out
+	out.shown = true
 	var c = ws.bench
 	var had: Dictionary = ws.main.opts.duplicate()
-	ws.main.opts["bench_speed"] = "20"
+	ws.main.opts["bench_speed"] = str(speed)
 	var W = load("res://app/workshop_walk.gd")
 	var walk = W.new()
 	walk.main = ws.main
 	walk.ws = ws
-	walk.kind = "gas_turbine"
+	walk.kind = kind
 	walk._bench_ready()
 	walk.running = true
 	walk.t = W.PILE[1] - 0.01
-	var dt := 1.0 / 60.0
-	var at_faults := ""
-	var started := false
+	var ins := ""               # the first slider's value, followed over the walk
+	for o in c.m.ops_ui:
+		if o.get("do") == "set" and o.has("input") and ins == "":
+			ins = String(o.input)
+	out.slider = ins
+	var dt := 1.0 / fps
 	while walk.t < 178.0:
+		var st := PackedStringArray()
+		for mc in c.m.machines:
+			st.append(c.machine_state(String(mc.id)))
+		if out.at_faults == "" and walk.t + dt >= 155.0:   # (as the walk logs it: before the first fault is made)
+			out.at_faults = " ".join(st)
 		walk._process(dt)
 		ws.apply()
 		ws._run(dt)
-		started = started or c.machine_state("turbine") == "crank"
-		if at_faults == "" and walk.t >= 155.0:
-			at_faults = c.machine_state("turbine")
-	check(started, "the walk starts the gas turbine once it stands assembled again")
-	check(at_faults in ["accel_sfc_off", "fsnl", "loaded"], "the walk runs it up by the plant's sequence before the faults: %s" % at_faults)
-	check(walk._made.size() == c.m.faults.size(), "the walk makes each of its %d faults (%d)" % [c.m.faults.size(), walk._made.size()])
-	check(c.machine_state("turbine") in ["trip", "coastdown", "standstill"] and c.now("fuel_flow") == 0.0,
-		"and stops it: %s" % c.machine_state("turbine"))
+		st.clear()
+		for mc in c.m.machines:
+			st.append(c.machine_state(String(mc.id)))
+		out.started = out.started or (st.size() > 0 and st[0] != String(c.m.machines[0].init))
+		if walk.t < 155.0:
+			if c.m.index.has("brk_cmd") and c.now("brk_cmd") >= 0.5:
+				out.brk = true
+			if ins != "":
+				out.lo = minf(out.lo, c.now(ins))
+				out.hi = maxf(out.hi, c.now(ins))
+		out.end = " ".join(st)
+	out.made = walk._made.size()
+	out.faults = c.m.faults.size()
 	walk.free()
 	ws.main.opts = had
 	ws.close()
 	await ws.left
+	return out
+
+## The walk's running part on each kind with a bench (K5b's review): the gas turbine at full speed no load before the
+## faults at `bench_speed=30`, at 60 and at 20 frames a second (the walk lets the clock step as many as that speed
+## needs); the steam turbine synchronised (its breaker closed) before them; the transmitter's slider still swept.
+func _walks(tree: SceneTree, ws) -> void:
+	for fps in [60.0, 20.0]:
+		var g := await _walk_run(tree, ws, "gas_turbine", 30.0, fps)
+		check(g.shown and g.started, "the walk starts the gas turbine once it stands assembled again (%d fps)" % fps)
+		check(g.at_faults in ["fsnl", "loaded"], "the walk runs the gas turbine to full speed no load before the faults at %d fps: %s" % [fps, g.at_faults])
+		check(g.made == g.faults and g.faults > 0, "the walk makes each of its %d faults (%d)" % [g.faults, g.made])
+		check(g.end in ["trip", "coastdown", "standstill"], "and stops it: %s" % g.end)
+	var s := await _walk_run(tree, ws, "steam_turbine", 30.0, 60.0)
+	check(s.at_faults in ["fsnl", "loaded"] and s.brk, "the walk runs the steam turbine to full speed and closes its breaker before the faults: %s, breaker %s" % [s.at_faults, s.brk])
+	var p := await _walk_run(tree, ws, "pressure_transmitter", 2.0, 60.0)
+	check(p.slider != "" and p.hi - p.lo > 8.0, "the walk still sweeps the transmitter's %s (%.2f to %.2f)" % [p.slider, p.lo, p.hi])
 
 func _wait_shown(tree: SceneTree, ws) -> bool:
 	var end := Time.get_ticks_msec() + 30000
@@ -514,6 +546,9 @@ func _go(ws, seconds: float) -> void:
 
 func _running(ws) -> void:
 	var c = ws.bench
+	for f in ws.views.flow_ids():   # the transmitter's particles keep their 4 mm (views.flow_size)
+		var tsz: float = (ws.views._flows[f].mat as ShaderMaterial).get_shader_parameter("size")
+		check(tsz == 0.004, "the transmitter's %s particles are 4 mm (%.4f m)" % [f, tsz])
 	c.speed = 1.0
 	ws.run_command("terminal_block", "start")
 	_go(ws, 0.3)

@@ -21,6 +21,7 @@ var error := ""
 var prev := PackedFloat64Array()
 var acc := 0.0
 var speed := 1.0
+var max_steps := MAX_STEPS_FRAME  # steps a frame at most: a measurement run past 2× may allow more (the walk's)
 var paused := false
 var steps := 0                  # stepped since the load
 var step_us_max := 0            # the longest step (microseconds), and their sum: the §8 rule's 0.3 ms
@@ -72,7 +73,7 @@ func tick(delta: float) -> int:
 		return 0
 	acc += delta * speed
 	var n := 0
-	while acc >= STEP and n < MAX_STEPS_FRAME:
+	while acc >= STEP and n < max_steps:
 		prev = e.cur.duplicate()
 		var t0 := Time.get_ticks_usec()
 		e.step()
@@ -82,7 +83,7 @@ func tick(delta: float) -> int:
 		steps += 1
 		acc -= STEP
 		n += 1
-	if n == MAX_STEPS_FRAME and acc >= STEP:
+	if n == max_steps and acc >= STEP:
 		acc = fmod(acc, STEP)
 	_read_events()
 	_drop_read()
@@ -165,6 +166,39 @@ func machine_state(mid: String) -> String:
 		if mc["id"] == mid:
 			return mc["_ids"][int(now(mid + "_state"))]
 	return ""
+
+
+## Whether machine `mid` waits for the trainee: out of its resting state, in a state whose next steps all read values
+## only ops set (a turbine at full speed no load waits for its breaker), not in one that moves on by itself.
+func waits_for_trainee(mid: String) -> bool:
+	var by_op := {}
+	for o in m.ops_ui:
+		for k in o.get("set", {}):
+			by_op[k] = true
+	for mc in m.machines:
+		if mc["id"] != mid:
+			continue
+		var st := machine_state(mid)
+		if st == String(mc.init):
+			return false
+		for sd in mc.states:
+			if String(sd.id) == st:
+				if sd.get("next", []).is_empty():
+					return false
+				for nx in sd.get("next", []):
+					if not by_op.has(String(nx[0])):
+						return false
+				return true
+	return false
+
+## Whether every machine of the bench waits for the trainee (waits_for_trainee); false with none.
+func all_wait() -> bool:
+	if m == null or m.machines.is_empty():
+		return false
+	for mc in m.machines:
+		if not waits_for_trainee(String(mc.id)):
+			return false
+	return true
 
 
 ## Alarms not normal: [[id, text, state]] in the model's order.

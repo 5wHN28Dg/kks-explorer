@@ -284,15 +284,15 @@ def gas_turbine_inputs():
         [70, 'op', b, 'close_breaker', None, None],        # not at full speed no load: refused
         [80, 'op', 'intake', 'set', 40, None],             # the ambient air warmer: the compressor's air too
         [100, 'op', h, 'set', 0.05, None],                 # the speed bias past its range: refused
-        [300, 'fault', 'lube_pump'],                       # the DC emergency pump takes over (the interlock)
-        [400, 'repair', 'lube_pump'],
-        [600, 'fault', 'rub'],
-        [660, 'ack', 'vib2_h'],
-        [670, 'op', 'brg1_upper', 'reset', None, 'trip_vib'],    # the vibration still high: refused
-        [680, 'repair', 'rub'],
-        [720, 'op', 'brg1_upper', 'reset', None, 'trip_vib'],
-        [740, 'op', r, 'start', None, None],               # still coasting down: refused
-        [800, 'fault', 'gas_low'],
+        [200, 'fault', 'lube_pump'],                       # the DC emergency pump takes over (the interlock)
+        [260, 'repair', 'lube_pump'],
+        [510, 'fault', 'rub'],                             # (in the purge, which began at step 490)
+        [550, 'ack', 'vib2_h'],
+        [560, 'op', 'brg1_upper', 'reset', None, 'trip_vib'],    # the vibration still high: refused
+        [570, 'repair', 'rub'],
+        [600, 'op', 'brg1_upper', 'reset', None, 'trip_vib'],
+        [610, 'op', r, 'start', None, None],               # still coasting down: refused
+        [640, 'fault', 'gas_low'],
     ]
 
 
@@ -337,11 +337,11 @@ def gas_turbine_sync_inputs(bench_text, comps, sounds):
             do('op', h, 'set', 0, None)
         elif closed is not None and e.step_no == closed + 1:
             do('op', b, 'set', 100, None)
-        elif closed is not None and e.step_no == closed + 200:
+        elif closed is not None and e.step_no == closed + 100:
             do('fault', 'flameout')
         if trip is None and e.v('turbine_state') == 10:
             trip = e.step_no
-        if trip is not None and e.step_no >= trip + 60:
+        if trip is not None and e.step_no >= trip + 30:
             return inputs, e.step_no
         assert e.step_no < 6000, 'the gas turbine vector\'s run did not get there'
         e.step()
@@ -479,7 +479,7 @@ def build():
                                  'synchronised, loaded, tripped on load by a rub (the breaker opened by protection)',
                           'components': comps, 'bench': t2, 'inputs': ins, 'states': states, 'events': events})
         if part == 'gas_turbine':
-            states, events = run(t, comps, sounds, gas_turbine_inputs(), 900)
+            states, events = run(t, comps, sounds, gas_turbine_inputs(), 680)
             steps.append({'why': 'the gas turbine: cranked to its purge, refusals, the AC oil pump lost and the DC pump '
                                  'started, a rub\'s vibration trip, its reset, the fuel gas low',
                           'components': comps, 'bench': t, 'inputs': gas_turbine_inputs(), 'states': states,

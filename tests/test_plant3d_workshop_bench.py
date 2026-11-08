@@ -260,8 +260,8 @@ class GasTurbine(unittest.TestCase):
         self.assertEqual(mine['commands'], plant['commands'])
         for a, b in zip(mine['states'], plant['states']):
             self.assertEqual(a.get('say'), b.get('say'))
-            self.assertEqual([c for c, _ in a.get('next', [])], [c.replace('gt1_', '', 1) for c, _ in b.get('next', [])])
-            self.assertEqual(sorted(a.get('set', {})), sorted(k.replace('gt1_', '', 1) for k in b.get('set', {})))
+            self.assertEqual(a.get('next', []), [[c.replace('gt1_', '', 1), to] for c, to in b.get('next', [])])
+            self.assertEqual(a.get('set', {}), {k.replace('gt1_', '', 1): v for k, v in b.get('set', {}).items()})
         pv = {n: d for n, d in self.gt['values']}
         mv = {n: d for n, d in self.file['values']}
         for n in ('gt1_speed', 'gt1_purge_done', 'gt1_flame', 'gt1_exh_t', 'gt1_cpd', 'gt1_os', 'gt1_spread_hh'):
@@ -336,15 +336,15 @@ class GasTurbine(unittest.TestCase):
         self.assertAlmostEqual(e.v('c_t8'), want, delta=4)
         # the gas: hottest at the first nozzles, falling stage by stage to the plant's exhaust temperature
         self.go(e, 120)
-        gs = [e.v('fire_t')] + [e.v(f't_t{k}') for k in range(1, 4)]
+        gs = [e.v('tit')] + [e.v(f't_t{k}') for k in range(1, 4)]
         ps = [e.v('cpd')] + [e.v(f't_p{k}') for k in range(1, 4)]
         for a, b in zip(gs, gs[1:]):
             self.assertGreater(a, b)
         for a, b in zip(ps, ps[1:]):
             self.assertGreater(a, b)
         self.assertAlmostEqual(e.v('t_p3'), 1.0, 6)
-        self.assertAlmostEqual(e.v('t_t3'), e.v('exh_t'), delta=3)
-        self.assertGreater(e.v('fire_t'), e.v('c_t8') + 300)
+        self.assertAlmostEqual(e.v('t_t3'), e.v('exh_t'), 6)       # the last stage is the plant's exhaust
+        self.assertGreater(e.v('tit'), e.v('c_t8') + 300)
 
     def test_flame_out_trips(self):
         e = self.to_fsnl()
@@ -354,7 +354,37 @@ class GasTurbine(unittest.TestCase):
         self.assertEqual(e.v('turbine_state'), 10)                # TRIPPED: fuel off
         self.go(e, 10)
         self.assertEqual(e.v('fuel_flow'), 0)
-        self.assertLess(e.v('fire_t'), e.v('c_t8') + 5)          # the flame out: as hot as the compressor's air
+        self.assertEqual(e.v('flame_v'), 0)                       # the flame drawn (and heard) no more
+
+    def ordered(self, e, where):
+        """The gas path in order: the turbine inlet no colder than the first stage, each stage no colder than the next,
+        the last stage the plant's exhaust temperature; the inlet no colder than the compressor's discharge."""
+        ts = [e.v('tit')] + [e.v(f't_t{k}') for k in range(1, 4)]
+        for a, b in zip(ts, ts[1:]):
+            self.assertGreaterEqual(a, b - 1e-9, where)
+        self.assertGreaterEqual(e.v('t_t3'), e.v('exh_t') - 1e-9, where)
+        self.assertGreaterEqual(e.v('tit'), e.v('c_t8') - 1e-9, where)
+
+    def test_the_stages_stay_in_order_through_ignition_and_a_flame_out(self):
+        """In the transients too (the review of K5b: a 2 s lag on the flame against the exhaust's 60 s drew the
+        buckets colder than the exhaust for a minute after a trip)."""
+        e = self.short.engine()
+        e.op('rotor', 'start')
+        lit = None
+        for _ in range(4000):
+            e.step()
+            self.ordered(e, f'step {e.step_no}')
+            if lit is None and e.v('flame') == 1:
+                lit = e.step_no
+            if e.v('turbine_state') == 7:
+                break
+        self.assertIsNotNone(lit)
+        e.fault('flameout')
+        for _ in range(900):                # the trip and 90 s of the coast-down
+            e.step()
+            self.ordered(e, f'after the flame-out, step {e.step_no}')
+        self.assertEqual(e.v('turbine_state'), 10)
+        self.assertAlmostEqual(e.v('t_t3'), e.v('exh_t'), 6)
 
     def test_tripped_on_load_opens_the_breaker(self):
         e = self.to_fsnl()
