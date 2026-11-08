@@ -1311,7 +1311,9 @@ weather on, seeded by season.
   earlier and its clearing 197 steps later (hotter air); the machines gained `gt1_wash`. The digests moved with the
   values. `plant3d-v2.json`'s `staff` and synthetic items, and `plant3d-realism.json`, are byte for byte main's.
 - **The step's cost:** 102 values added (gt1 75, ct 27), within §11's 150 for the weather and the wear budget's 67
-  left by AG2 for the filters and fouling.
+  left by AG2 for the filters and fouling. On the laptop (`bench_step.gd`, headless, two runs each alternating with
+  main's at d62aeb11): the cold start's mean step 231 and 231 µs on main, 247 and 243 µs here, about +0.014 ms;
+  model and staff 283 and 285 µs against 297 and 293.
 
 ## 6. Documents and discussions
 
