@@ -70,6 +70,8 @@ for d in areas model scenarios procedures service; do
 done
 # the tools carried and the service files' words and anchors (docs/plant3d/REALISM.md §2.3, §2.16: the work view)
 [ -f "$ROOT/data/plant3d/tools.json" ] && cp "$ROOT/data/plant3d/tools.json" "$HERE/built/content/"
+# condition monitoring's points as the app draws them (docs/plant3d/REALISM.md §2.19: ui/monitoring_view.gd)
+cp "$ROOT/data/plant3d/monitoring.json" "$HERE/built/content/"
 # the generated P&IDs (docs/plant3d/REALISM.md §6.1.1, tools/plant3d/pid.py): a view of the content, made at every
 # build, never committed; the app reads them from built/drawings (ui/drawings.gd)
 python3 "$ROOT/tools/plant3d/pid.py" "$HERE/built/drawings" >"$HERE/.drawings.log" 2>&1 ||

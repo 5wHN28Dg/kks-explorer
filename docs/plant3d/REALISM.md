@@ -821,10 +821,40 @@ does is in both engines bit for bit, with vectors.
   `oil`), title, its meter or hand action, the running speed (rpm), the ISO 20816-3 group and zone limits, the
   spectrum's lines (order, value or share), the oil results' nodes with their units and alert and alarm limits, the
   sources. The app reads it for drawing and words only; the engine never reads it.
-- **Left open (the user's call):** the thermal camera's false-colour picture (§9.3 draws it in the work view with the
-  Workshop's heat view, and the work view exists for equipment with a Workshop kind: today the transmitters, whose
-  temperatures teach nothing; the pumps' and motors' trees are K6's). AG3 gives the camera's spot readings.
-
+- **The thermal camera's false-colour picture (the user's call, 2026-11-08: option A):** spot readings now; the
+  picture (§9.3: the work view with the Workshop's heat view) comes with K6's pump and motor kinds, the first
+  equipment with a work view whose temperatures teach something (today's work views are the transmitters').
+- **As built (2026-11-08):**
+  - **Where:** the reference (`ref/plant3d_hands.py`, `ref/plant3d_monitoring.py`), the GDScript engine
+    (`sim/hands.gd`, `sim/plant_model.gd`, `sim/engine.gd`, saves in `ui/autosave.gd`), the content
+    (`tools/plant3d/train_monitoring.py`, hooked into the train's model, tools and staff), the monitoring file, the
+    app's view (`ui/monitoring_view.gd`, from the card). Tests: `tests/test_plant3d_monitoring.py`, the realism
+    file's lab part in `tests/test_plant3d_realism.py` and `tests/test_plant3d_sim.py`, the app's
+    `tests/test_ui_monitoring.gd` and `test_run_save.gd`'s lab case.
+  - **Content:** 92 values: 14 for the pump bearings' outer race tones (each pump's tone and its margin's table) and
+    78 for the oil (13 points, four sample nodes each, and their refs: the CW pump motors' oil baths VG 68, the fan
+    gear reducers VG 220). The collector, the camera and two sampling kits at the store counter; 17 collector meters
+    (7 pumps, 10 fans), 7 camera meters (the pump motors); 13 oil sampling actions; the mechanical technician gains
+    `sample`.
+  - **The app's view:** the card of any code of a machine with points (a pump's probe and its motor share their
+    system and number) offers "Condition monitoring": one panel with the machine's points. The collector's screen
+    (with the collector carried, within reach of the probe) shows the overall the meter shows, its ISO 20816-3 zone
+    in words and as a bar with the group's limits, and the spectrum in orders of the running speed: each line from the
+    file (a model value, times `by`, times `share`; or a share of the overall), the floor, and the 1× taking what they
+    leave; when the lines alone exceed the overall (a machine slowing down) they are scaled to fit and the 1× is
+    nothing, so the energy always adds up to the overall. The camera's spot reading shows against the point's alert
+    and alarm. Both record S1's `read` with the meter. The oil point's button sends the hand action with the kit
+    carried; the ten minutes show under way, the queue at the lab with its next due time, and the lab's report (the
+    newest results against their limits, the one before beside them) with a toast when results arrive.
+  - **Readings listed from the inputs, not the events:** a reading no task step waits on makes no event in either
+    engine (S1 matches reads against the trainee's steps), so the view lists a point's readings from the run's `read`
+    inputs with its meter; saves keep the inputs, so routes and trends still need no new state.
+  - **Vectors:** `plant3d-realism.json`'s lab part (25 rejects, 4 runs) after `audio`, every earlier part unchanged
+    but `about`'s sentence; `plant3d-v1.json` and `plant3d-v2.json` made again with the content: every input, event and
+    earlier value unchanged, the new values added, every snapshot's empty `lab: {}`, the digests changed with them.
+    The GDScript engine runs every vector bit for bit (the lab results compared as values to 9 decimals, the digests
+    bit for bit).
+  - **The Note 9:** NOTE9_PENDING
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does

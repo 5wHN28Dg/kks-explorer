@@ -53,6 +53,7 @@ const BusDrive = preload("res://app/bus_drive.gd")
 const Snapshot = preload("res://net/snapshot.gd")
 const RunSave = preload("res://ui/run_save.gd")
 const WorkView = preload("res://ui/work_view.gd")
+const MonitoringView = preload("res://ui/monitoring_view.gd")
 const AndroidNet = preload("res://net/android_net.gd")
 
 const CONTENT := "res://built/content"
@@ -98,6 +99,7 @@ var drawing_view                # ui/drawing_view.gd: their viewer (null without
 var run_tracker                 # the last procedure followed in this run (kept for its debrief after it is closed)
 var crew                        # ui/crew_panel.gd: the trainee's role, tasks and radio (PLANT3D §18.7)
 var work                        # ui/work_view.gd: hands-on work at the equipment and the tools (REALISM.md §3.3)
+var monitoring                  # ui/monitoring_view.gd: condition monitoring's points of a machine (REALISM.md §2.19)
 const ROOM_MARGIN := 1.0        # m: a banned room's footprint round its places (room_at)
 var _room_boxes: Array = []     # [[room index, plan Rect2, z low, z high]] of the staff model _room_boxes_of
 var _room_boxes_of = null
@@ -311,6 +313,10 @@ func _build() -> void:
 	work.name = "work"
 	root.add_child(work)
 	work.setup(self)
+	monitoring = MonitoringView.new()
+	monitoring.name = "monitoring"
+	root.add_child(monitoring)
+	monitoring.setup(self)
 	session_panel = SessionPanel.new()
 	session_panel.name = "session_panel"
 	root.add_child(session_panel)
@@ -1710,6 +1716,8 @@ func close_top() -> bool:
 		work.close()
 	elif work != null and work.tools_panel.visible:
 		work.close_tools()
+	elif monitoring != null and monitoring.is_open():
+		monitoring.close()
 	elif session_panel.visible:
 		close_session()
 	elif trainer.visible:
@@ -1847,6 +1855,8 @@ func _sync_events() -> void:
 		_follow_events(evs, from)
 		if work != null:
 			work.on_events(evs, from)
+		if monitoring != null:
+			monitoring.on_events(evs, from)
 
 
 func _on_speed(_s: int, why: String) -> void:

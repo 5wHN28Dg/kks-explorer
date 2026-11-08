@@ -98,6 +98,8 @@ APP = {
     # the hands-on work at a transmitter: the work view, the tools panel and the technician's job (HW2; ~7 s). Shard 2
     # had the least (2026-11-03, the laptop's full run: shards 0-3 228, 286, 139 and 174 s)
     'test_ui_hands': 2,
+    # condition monitoring: the collector's screen, the camera, an oil sample and its lab results (AG3; ~2 s)
+    'test_ui_monitoring': 2,
     # the cold start through the screens and the panels (~15 s, ~14 s), the saved run (~13 s), the RO cleaning (~10 s),
     # the water plant's staff (~9 s), the mixed-bed regeneration (~9 s), the parts kit (~7 s), the water plant's start
     # (~6 s), the crew (~6 s): ~89 s
