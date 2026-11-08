@@ -250,6 +250,8 @@ static func join(res: Dictionary, data: Dictionary) -> Array:
 	var named: Array = views.get("xray_all", []) + views.get("cutaway", {}).get("keep", [])
 	if views.get("run_exploded") is Dictionary:
 		named += views.run_exploded.get("allowed", [])
+	if views.get("open_running") is Dictionary:
+		named += views.open_running.get("allowed", [])
 	for id in named:
 		if not gen.has(id):
 			errs.append("views: %s is no component the generator makes" % id)

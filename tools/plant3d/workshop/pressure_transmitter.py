@@ -84,11 +84,19 @@ def data():
         # the views (WORKSHOP.md §4.7): the X-ray takes the shells round the insides; the cutaway opens a quarter on
         # the display side and the front, through the housing's axis and the sensor module's (the manual's cutaway
         # figures show the module and the electronics this way); the transmitter runs taken apart (on the bench the
-        # loop is wired to the terminal block wherever it lies)
+        # loop is wired to the terminal block wherever it lies); powered, only the terminal cover may be opened (to
+        # measure the loop current or connect a HART communicator, outside a hazardous area): the electronics, the
+        # sensor module and the flange come out with the loop supply off (the user's decision, 2026-11-07)
         'views': {'xray_all': ['manifold', 'process_flange', 'sensor_module', 'housing', 'cover_front',
                                'cover_back'],
                   'cutaway': {'planes': [{'normal': [0, -1, 0], 'offset': 0}, {'normal': [1, 0, 0], 'offset': 0}]},
-                  'run_exploded': True},
+                  'run_exploded': True,
+                  'open_running': {'allowed': ['cover_back'],
+                                   'why': 'Switch the loop supply off first. With the loop live only the terminal '
+                                          'cover comes off, to measure the loop current or connect a HART '
+                                          'communicator (outside a hazardous area); everything else (the '
+                                          'electronics, the sensor module, the flange) comes out with the loop '
+                                          'dead.'}},
     }
 
 
