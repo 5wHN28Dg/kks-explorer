@@ -10,7 +10,7 @@
 - the figures are listed exactly for the kinds with a Workshop scene;
 - the checks refuse a broken link, an unknown cause, a missing section, an unlisted or uncited source;
 - no text names a real plant or a manufacturer's product as ours."""
-import copy, importlib, json, os, re, subprocess, sys, unittest
+import copy, hashlib, importlib, json, os, re, subprocess, sys, tempfile, unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -60,10 +60,15 @@ class Manuals(unittest.TestCase):
         a = M.files()
         b = M.files()
         self.assertEqual(a, b)
-        # and in another process (no dict order or hash seed leaks in)
-        out = subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'plant3d', 'manuals.py'), '--check'],
-                             capture_output=True, text=True, env=dict(os.environ, PYTHONHASHSEED='7'))
-        self.assertEqual(out.returncode, 0, out.stderr)
+        # and in another process with another hash seed: the same bytes on disk
+        with tempfile.TemporaryDirectory() as d:
+            out = subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'plant3d', 'manuals.py'), d],
+                                 capture_output=True, text=True, env=dict(os.environ, PYTHONHASHSEED='7'))
+            self.assertEqual(out.returncode, 0, out.stderr)
+            self.assertEqual(sorted(os.listdir(d)), sorted(a))
+            for n, text in a.items():
+                with open(os.path.join(d, n), encoding='utf-8') as f:
+                    self.assertEqual(f.read(), text, n)
 
     def test_links_resolve_and_reverse_links_link_back(self):
         n = {'work': 0, 'workshop': 0, 'kks': 0, 'section': 0}
@@ -154,10 +159,15 @@ class Manuals(unittest.TestCase):
                 if k not in self.content['workshop']:
                     self.assertFalse(any(f['kind'] == k for f in m['figures']))
 
+    # words a generic manual never holds (the names of real places and companies), kept as the first 16 hex digits of
+    # their lowercase SHA-256 so that this public file doesn't spell them out
+    NOT_GENERIC = {'8d71046f44eafb6d', '191a42bb95c1e8cf', 'b6a3df8ad16ab20e', '90208d0aea7ca76e', '40d78ccce9816c8c',
+                   'c2f2d91c2a31954e', '545e4ba6a171ddfc', 'f429d420086f70a3'}
+
     def test_generic_words(self):
-        bad = re.compile(r'rumail|basra|sinohydro|shandong|\bKAR\b', re.I)
         for mid, m in self.manuals.items():
-            self.assertIsNone(bad.search(json.dumps(m, ensure_ascii=False)), mid)
+            for w in set(re.findall(r'[a-z]+', json.dumps(m, ensure_ascii=False).lower())):
+                self.assertNotIn(hashlib.sha256(w.encode()).hexdigest()[:16], self.NOT_GENERIC, (mid, w))
 
 
 class Refusals(unittest.TestCase):
@@ -204,6 +214,12 @@ class Refusals(unittest.TestCase):
             'valves', lambda m: m['sources'].append({'id': 'extra', 'cite': 'Something'})))
         self.assertIn('does not list', self._make_with(
             'valves', lambda m: m['sections'][0]['src'].append('nobody')))
+
+    def test_a_figure_no_section_shows(self):
+        def ch(m):
+            for s in m['sections']:
+                s['blocks'] = [b for b in s['blocks'] if b.get('figure') != ['pressure_transmitter', 'cut']]
+        self.assertIn('no section shows', self._make_with('pressure_transmitter', ch))
 
     def test_markup(self):
         self.assertIn('unclosed', self._make_with('valves', lambda m: self._add_p(m, 'a **bold start')))

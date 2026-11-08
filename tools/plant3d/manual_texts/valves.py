@@ -51,6 +51,8 @@ MANUAL = {
         ], src=['api600', 'liptak', 'fcvh']),
         S('specifications', 'Specifications', [
             UNIT(),
+            P('What the generic plant\'s parts kit allows for these kinds (the limits of the model, not a '
+              'product\'s ratings):'),
             SERIES(),
             NOTE('A valve\'s pressure rating (PN) is the pressure it may hold at room temperature; it may hold less '
                  'when hot. Its body is marked with the size, rating, material and the flow arrow where it has one.'),
@@ -73,7 +75,11 @@ MANUAL = {
                'room.'),
         ], src=['api598']),
         S('operation', 'Operation', [
-            UL('Open and shut by hand only: a wheel key or a bar on the handwheel bends the stem or cracks the yoke.',
+            NOTE('Valves on trip duty, such as the turbine\'s stop valves, are worked by their actuators and tested '
+                 'by their own procedures: see the [steam turbine manual](manual:steam_turbine#operation). What follows '
+                 'is for valves worked by hand or by a simple actuator.'),
+            UL('Handwheel valves: open and shut by hand only; a wheel key or a bar on the handwheel bends the stem or '
+               'cracks the yoke.',
                'Open a gate or globe valve fully, then back it off a quarter turn from the backseat, so it does not '
                'jam open when it heats up.',
                'Open a valve across a large pressure difference slowly, or open its bypass first to warm and '
@@ -91,8 +97,9 @@ MANUAL = {
                 ['At overhaul', 'Repack; lap gate and globe seats or replace soft seats; new bonnet gasket; seat test'],
             ]),
             H('Repacking under pressure'),
-            P('Only on a gate or globe valve with a backseat, only if the procedure allows it: open it fully onto its '
-              'backseat, then the packing may be renewed. Otherwise isolate and depressurise first.'),
+            P('Only on a gate or globe valve with a backseat, only if the procedure allows it, and never on a valve on '
+              'trip duty: open it fully onto its backseat, then the packing may be renewed. Otherwise isolate and '
+              'depressurise first.'),
         ], src=['api598', 'api600']),
         S('troubleshooting', 'Troubleshooting', [
             TROUBLE(

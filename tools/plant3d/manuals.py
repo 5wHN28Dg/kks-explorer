@@ -114,6 +114,17 @@ def target(t, where):
     fail(where, 'an unknown link target %r' % t)
 
 
+def walk_blocks(x, fn):
+    """Calls fn(block) for every dict inside sections and blocks, nested."""
+    if isinstance(x, list):
+        for v in x:
+            walk_blocks(v, fn)
+    elif isinstance(x, dict):
+        fn(x)
+        for v in x.values():
+            walk_blocks(v, fn)
+
+
 def walk_runs(x, fn):
     """Calls fn(item) for every run item inside a block or run, nested."""
     if isinstance(x, list):
@@ -148,7 +159,7 @@ def load_content(data=DATA):
             service[s['part']] = s
     causes = {}                                        # part kind -> {cause id}
     scen = os.path.join(data, 'scenarios')
-    for n in sorted(os.listdir(scen)):
+    for n in sorted(x for x in os.listdir(scen) if x.endswith('.json')):
         with open(os.path.join(scen, n), encoding='utf-8') as f:
             sc = json.load(f)
         for fault in sc.get('faults', []):
@@ -235,6 +246,11 @@ def make_manual(src, content, all_ids):
         if not blocks:
             fail(sw, 'no blocks')
         sections.append({'id': s['id'], 'title': run(s['title'], sw), 'blocks': blocks, 'src': list(s['src'])})
+    placed = set()
+    walk_blocks(sections, lambda b: placed.add(b['figure']) if 'figure' in b else None)
+    for f in figures:
+        if f['id'] not in placed:
+            fail(where, 'figure %s is listed but no section shows it' % f['id'])
     for sid in sources:
         if sid not in used_src:
             fail(where, 'lists source %r, which no section cites' % sid)
@@ -274,7 +290,7 @@ def block(b, where, m, content, fig_ids):
         body = []
         for x in b['body']:
             y = block(x, where, m, content, fig_ids)
-            if not any(k in y for k in ('p', 'ul', 'ol', 'table')):
+            if not isinstance(y, dict) or not any(k in y for k in ('p', 'ul', 'ol', 'table')):
                 fail(where, 'a callout holding more than text, lists and tables')
             body.append(y)
         return {'callout': b['callout'], 'label': run(b['label'], where), 'body': body}
@@ -321,10 +337,10 @@ def series_table(m, content, where):
             if name not in labels and name != 'range':
                 continue
             lab = labels.get(name, 'Calibrated range')
-            lab = lab[0] if isinstance(lab, (list, tuple)) else lab
+            lab, fmt = lab if isinstance(lab, (list, tuple)) else (lab, '{}')
             t = p.get('type')
             if t in ('num', 'int'):
-                rng = '%s to %s' % (_num(p['min']), _num(p['max']))
+                rng = '%s to %s' % (fmt.format(_num(p['min'])), fmt.format(_num(p['max'])))
             elif t == 'enum':
                 rng = ', '.join(('PN ' + v[2:]) if re.match(r'^pn[0-9]+$', v) else str(v) for v in p['values'])
             elif t == 'pair':
@@ -334,11 +350,18 @@ def series_table(m, content, where):
             dflt = _num(p['default']) if 'default' in p else '—'
             if re.match(r'^pn[0-9]+$', dflt):
                 dflt = 'PN ' + dflt[2:]
+            elif t in ('num', 'int'):
+                dflt = fmt.format(dflt)
             rows.append([m['kind_names'][k], lab, rng, dflt])
     if not rows:
         fail(where, 'no kit parameters to list')
-    return {'table': {'head': [['Kind'], ['Parameter'], ['Range of the series'], ['Usual']],
-                      'rows': [[run(c, where) for c in r] for r in rows], 'num': []}}
+    return {'table': {'head': [['Kind'], ['Parameter'], ['What the generic kit allows'], ['Kit default']],
+                      'rows': [[run(_esc(c), where) for c in r] for r in rows], 'num': []}}
+
+
+def _esc(s):
+    """The content's words as plain text in the markup."""
+    return re.sub(r'([*~`\[\]\\])', r'\\\1', s)
 
 
 def part_number(m, pid_):
@@ -377,9 +400,8 @@ def parts_table(m, content, where):
     nums = [r[0] for r in rows]
     if len(set(nums)) != len(nums):
         fail(where, 'a part number twice')
-    esc = lambda s: re.sub(r'([*~`\[\]\\])', r'\\\1', s)   # noqa: E731  (the content's words are plain text)
     return {'table': {'head': [['Part number'], ['Part'], ['Qty'], ['Material, notes']],
-                      'rows': [[run(esc(c), where) for c in r] for r in rows], 'num': []}}
+                      'rows': [[run(_esc(c), where) for c in r] for r in rows], 'num': []}}
 
 
 def check_links(man, content, all_ids):

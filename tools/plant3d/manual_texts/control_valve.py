@@ -15,8 +15,8 @@ MANUAL = {
          'Sized to the stem; new at every repacking'),
         ('body_gasket', 'Bonnet gasket', '1', 'New whenever the bonnet comes off'),
         ('seat_ring_gasket', 'Seat ring gasket', '1', 'New with the seat ring'),
-        ('trim_set', 'Trim set: plug, stem, seat ring, cage', '1 set', 'Lapped together at the factory: replaced '
-         'as a set'),
+        ('trim_set', 'Trim set: plug, stem, seat ring, cage', '1 set', 'Plug and seat ring lapped together: the '
+         'trim replaced as a set'),
         ('diaphragm', 'Actuator diaphragm', '1', 'New when it leaks or every major overhaul'),
         ('positioner', 'Digital positioner with feedback linkage', '1', 'Calibrated on the valve after fitting'),
         ('air_filter', 'Air filter regulator element', '1', 'Every year, or when the drain shows oil or water'),
@@ -48,6 +48,8 @@ MANUAL = {
         ], src=['fcvh', 'dvc']),
         S('specifications', 'Specifications', [
             UNIT(),
+            P('What the generic plant\'s parts kit allows for these kinds (the limits of the model, not a '
+              'product\'s ratings):'),
             SERIES(),
             TABLE(['Item', 'Value'], [
                 ['Signal', '`4–20 mA` with HART to the positioner'],

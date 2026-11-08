@@ -59,6 +59,8 @@ MANUAL = {
         ], src=['ger3567', 'ger3620']),
         S('specifications', 'Specifications', [
             UNIT(),
+            P('What the generic plant\'s parts kit allows for these kinds (the limits of the model, not a '
+              'product\'s ratings):'),
             SERIES(),
             TABLE(['Item', 'Typical value'], [
                 ['Rated output (ISO conditions: `15 °C`, sea level, `60 %` humidity)', 'see the table above'],

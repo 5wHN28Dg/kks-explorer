@@ -70,11 +70,14 @@ MANUAL = {
         ], src=['ger3646', 'ger3582', 'navedtra14104']),
         S('specifications', 'Specifications', [
             UNIT(),
+            P('What the generic plant\'s parts kit allows for these kinds (the limits of the model, not a '
+              'product\'s ratings):'),
             SERIES(),
             TABLE(['Item', 'Typical value'], [
                 ['Speed', '`3000 rpm` (50 Hz) or `3600 rpm` (60 Hz)'],
                 ['Main steam', 'about `120` to `170 bar`, `540` to `565 °C` in a combined cycle'],
-                ['Bearing vibration', 'trip set by its maker, usually at about `125 µm` shaft vibration'],
+                ['Bearing vibration', 'alarm and trip levels set by its maker (shaft vibration in µm peak to peak, the '
+                 'trip well above the alarm)'],
                 ['Bearing metal temperature', 'alarm about `110 °C`, trip about `120 °C`'],
             ]),
             NOTE('Every turbine\'s limits are its maker\'s: these are typical values for this class of machine.'),

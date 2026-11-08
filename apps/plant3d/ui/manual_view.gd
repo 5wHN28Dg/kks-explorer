@@ -170,13 +170,48 @@ func _cover(on: bool) -> void:
 		_prev_ws_update = -1
 
 
+## Esc and gamepad B go Back, then close; Start closes (before the Workshop's and the plant's keys see them: Godot's
+## ui_cancel has no gamepad button). The D-pad moves between the reader's buttons; the left stick, Page Up and Down
+## scroll the page.
 func _input(ev: InputEvent) -> void:
-	if visible and (ev.is_action_pressed("ui_cancel") or ev.is_action_pressed("menu")):
-		if not history.is_empty() and ev.is_action_pressed("ui_cancel"):
+	if not visible:
+		return
+	var b_btn: bool = ev is InputEventJoypadButton and ev.button_index == JOY_BUTTON_B and ev.pressed
+	if ev.is_action_pressed("ui_cancel") or b_btn or ev.is_action_pressed("menu"):
+		if not history.is_empty() and not ev.is_action_pressed("menu"):
 			back()
 		else:
 			close()
 		root.get_viewport().set_input_as_handled()
+		return
+	if ev is InputEventJoypadButton and ev.button_index == JOY_BUTTON_A and ev.pressed:
+		var fo := root.get_viewport().gui_get_focus_owner()
+		if fo is Button and root.is_ancestor_of(fo):
+			(fo as Button).pressed.emit()
+			root.get_viewport().set_input_as_handled()
+		return
+	var page := int(scroll.size.y * 0.9)
+	if ev is InputEventKey and ev.pressed and ev.keycode in [KEY_PAGEDOWN, KEY_PAGEUP]:
+		scroll.scroll_vertical += page if ev.keycode == KEY_PAGEDOWN else -page
+		root.get_viewport().set_input_as_handled()
+	elif ev is InputEventJoypadMotion and ev.axis == JOY_AXIS_LEFT_Y:
+		root.get_viewport().set_input_as_handled()   # (scrolled in _process: the stick's position, not its events)
+
+
+func _process(delta: float) -> void:
+	if not visible:
+		return
+	var y := Input.get_joy_axis(0, JOY_AXIS_LEFT_Y) if not Input.get_connected_joypads().is_empty() else 0.0
+	if absf(y) > 0.2:
+		scroll.scroll_vertical += int(y * 1600.0 * W.scale * delta)
+
+
+## A gamepad's focus: the current section's button in the contents.
+func take_focus() -> void:
+	for b in contents.get_children():
+		if (b as Button).button_pressed:
+			(b as Button).grab_focus()
+			return
 
 
 func _show(id: String, sec: String) -> void:
@@ -206,8 +241,15 @@ func _show(id: String, sec: String) -> void:
 	_build_page(m, sec)
 	scroll.scroll_vertical = 0
 	open_ms = (Time.get_ticks_usec() - t0) / 1000.0
-	page_ms[id + "#" + sec] = maxf(open_ms, float(page_ms.get(id + "#" + sec, 0.0)))
 	opened.emit(id, sec)
+	if ui != null and ui.has_method("wants_focus") and ui.wants_focus():
+		take_focus()
+	# to the page's first frame (its text laid out and shaped then): what the reader waits for
+	var key := id + "#" + sec
+	await root.get_tree().process_frame
+	if man_id == id and section == sec:
+		var shown := (Time.get_ticks_usec() - t0) / 1000.0
+		page_ms[key] = maxf(shown, float(page_ms.get(key, 0.0)))
 
 
 ## To a section of this manual (Back returns).
@@ -479,6 +521,9 @@ func _follow_work(action: String) -> void:
 	if w == null or code == "" or not w.has_job(code):
 		_say("This is done in the work view at the equipment: open the manual from its card there (Work on it).")
 		return
+	if w.is_open and w.code != code:
+		_say("The work view is open at %s, not at %s." % [w.code, code])
+		return
 	var comp := ""
 	for a in w.jobs[code]["service"]["actions"]:
 		if a["action"] == action:
@@ -514,12 +559,17 @@ func _follow_workshop(kind: String, place: String) -> void:
 	if ws.is_open:
 		ws.close()
 		await ws.left
+		if ws.is_open:
+			return                  # (opened again meanwhile)
 	if work_open_now():
 		ui.work.close()
 	if not ui.open_workshop(kind, c):
 		return
+	var gen: int = ws._gen
 	await ws.shown
-	_pick_step(ws, place)
+	# (a load that failed, or a leave before the first frame, emits no `shown`: a later entry's must not pick here)
+	if ws.is_open and ws.part == kind and ws._gen == gen:
+		_pick_step(ws, place)
 
 
 func work_open_now() -> bool:

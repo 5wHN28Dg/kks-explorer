@@ -639,6 +639,10 @@ func wants_focus() -> bool:
 ## the saved run's offer at the start (Continue or New run). True when it gave the focus to something.
 func focus_top() -> bool:
 	var fo := root.get_viewport().gui_get_focus_owner()
+	if manual_open():
+		var had_m: bool = fo != null and manual_view.root.is_ancestor_of(fo)
+		manual_view.take_focus()
+		return not had_m
 	if autosave != null and autosave.offering():
 		return _focus_in(autosave.offer_panel, fo)
 	for p in [trainer, permits, debrief, alarms, card]:

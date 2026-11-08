@@ -77,16 +77,19 @@ func render(kind: String, view: String, w: int, h: int, yaw: float, pitch: float
 	# every triangle in the machine's frame: [a, b, c, normal, colour, owner index, cuttable]
 	var tris: Array = []
 	var owners := {}
-	_collect(root, Transform3D.IDENTITY, "", off, foff, spec, tris, owners, keep)
+	_collect(root, Transform3D.IDENTITY, "", "", off, foff, spec, tris, owners, keep)
 	root.free()
 	return _draw(tris, planes, w, h, yaw, pitch)
 
 
-func _collect(n: Node, m: Transform3D, owner: String, off: Dictionary, foff: Dictionary, spec: Dictionary,
-		tris: Array, owners: Dictionary, keep: Dictionary) -> void:
+## `owner` the component or fastener group the meshes belong to (outlined apart); `host` the component whose `keep`
+## (the cutaway's uncut parts) counts for them: a fastener group's host component, as the Workshop keeps it.
+func _collect(n: Node, m: Transform3D, owner: String, host: String, off: Dictionary, foff: Dictionary,
+		spec: Dictionary, tris: Array, owners: Dictionary, keep: Dictionary) -> void:
 	for c in n.get_children():
 		if c is MeshInstance3D:
-			_add_mesh((c as MeshInstance3D).mesh, m, String(c.get_meta("mat", "")), owner, tris, owners, keep)
+			_add_mesh((c as MeshInstance3D).mesh, m, String(c.get_meta("mat", "")), owner, not keep.has(host), tris,
+				owners)
 		elif c is MultiMeshInstance3D:
 			# a fastener group's items (the scene keeps no instance transforms: they come from the group's `items`)
 			var g: Node3D = c.get_parent()
@@ -97,25 +100,29 @@ func _collect(n: Node, m: Transform3D, owner: String, off: Dictionary, foff: Dic
 				var t: Transform3D = items[i]
 				if i < fo.size():
 					t.origin += fo[i]
-				_add_mesh(mesh, m * t, String(c.get_meta("mat", "")), owner + "#" + str(i), tris, owners, keep)
+				_add_mesh(mesh, m * t, String(c.get_meta("mat", "")), owner + "#" + str(i), not keep.has(host), tris,
+					owners)
 		elif c is Node3D:
 			var t: Transform3D = (c as Node3D).transform
 			var id := owner
-			if c.has_meta("explode") or c.has_meta("items"):
+			var h := host
+			if c.has_meta("explode"):
 				id = String(c.get_meta("id"))
+				h = id
 				t.origin += off.get(id, Vector3.ZERO)
-			_collect(c, m * t, id, off, foff, spec, tris, owners, keep)
+			elif c.has_meta("items"):
+				id = String(c.get_meta("id"))   # (its host stays the component it hangs on)
+			_collect(c, m * t, id, h, off, foff, spec, tris, owners, keep)
 
 
-func _add_mesh(mesh: Mesh, m: Transform3D, mat: String, owner: String, tris: Array, owners: Dictionary,
-		keep: Dictionary) -> void:
+func _add_mesh(mesh: Mesh, m: Transform3D, mat: String, owner: String, cuttable: bool, tris: Array,
+		owners: Dictionary) -> void:
 	if mesh == null:
 		return
 	if not owners.has(owner):
 		owners[owner] = owners.size() + 1
 	var oi: int = owners[owner]
 	var col := _colour(mat)
-	var cuttable := not keep.has(owner.get_slice("#", 0))
 	for s in mesh.get_surface_count():
 		var a := mesh.surface_get_arrays(s)
 		var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
@@ -165,9 +172,14 @@ func _colour(mat: String) -> Color:
 						if img.is_compressed():
 							img.decompress()
 						if not img.is_compressed():
+							# the mean of a 32 × 32 copy (each texel of the copy itself a mean of its area)
 							img.convert(Image.FORMAT_RGBA8)
-							img.resize(1, 1, Image.INTERPOLATE_BILINEAR)
-							c = c * img.get_pixel(0, 0)
+							img.resize(32, 32, Image.INTERPOLATE_TRILINEAR)
+							var sum := Color(0, 0, 0, 0)
+							for y in 32:
+								for x in 32:
+									sum += img.get_pixel(x, y)
+							c = c * (sum / 1024.0)
 		elif r is StandardMaterial3D:
 			c = (r as StandardMaterial3D).albedo_color
 	c.a = 1.0

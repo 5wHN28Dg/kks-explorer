@@ -74,7 +74,8 @@ MANUAL = {
         S('specifications', 'Specifications', [
             P('What this transmitter is set up for (shown when the manual is opened from an equipment card):'),
             UNIT(),
-            P('The series the plant\'s transmitters come from:'),
+            P('What the generic plant\'s parts kit allows for this kind (the limits of the model, not a product\'s '
+              'ratings):'),
             SERIES(),
             TABLE(['Item', 'Value'], [
                 ['Output', '`4–20 mA` two-wire, HART digital signal on the same pair'],
@@ -117,16 +118,20 @@ MANUAL = {
                'insulate it.',
                'Seal the gland round the cable. Put the cover back on until it seats fully, so the enclosure stays '
                'sealed.'),
-            CAUTION('A loose terminal or a wire end without its ferrule makes a contact that adds resistance: the loop '
-                    'current falls while the transmitter itself still reads right. See [troubleshooting](#troubleshooting).'),
+            CAUTION('A loose terminal or a wire end without its ferrule makes a poor contact. Most often the signal then '
+                    'drops out now and then or is noisy. A contact bad enough to take the voltage at the transmitter '
+                    'below its minimum leaves it unable to hold its current: the loop then carries less than the '
+                    'output the transmitter reports, while its own reading is still right. See '
+                    '[troubleshooting](#troubleshooting).'),
         ], src=['r3051', 'liptak']),
         S('commissioning', 'Commissioning', [
             P('Before it is put in service a new or refitted transmitter gets a loop check with the control room '
               'operator.'),
             OL('Check the transmitter\'s tag, range and units against its data sheet (with the communicator).',
-               'With the manifold\'s equalising valve open and the block valves shut, the transmitter sees no '
-               'differential pressure (or vent a gauge transmitter to air): check it reads zero, and [trim the '
-               'zero](#calibration) if it does not.',
+               'Check the zero. A differential transmitter: equalising valve open, block valves shut, so it sees '
+               'no differential pressure. A gauge transmitter: vented to air. Either should read zero; [trim the '
+               'zero](#calibration) if it does not. An absolute transmitter (the condenser\'s) cannot be zeroed '
+               'this way: check it against a reference instead (a [two-point check](#calibration)).',
                'Simulate the output (the communicator\'s loop test) at `4`, `8`, `12`, `16` and `20 mA`. At each '
                'one the operator reads the value on the screen; both agree within the loop\'s tolerance.',
                'Check the alarms and trips that use this transmitter from the field, one at a time, with the '
@@ -152,9 +157,10 @@ MANUAL = {
                'Shut the equalising valve.',
                'Open the low pressure block valve.',
                'Tell the control room; it puts the loop back in automatic once the reading is steady and right.'),
-            CAUTION('A passing (leaking) equalising valve joins the two sides a little in service: a differential '
-                    'transmitter then reads low, and an absolute or gauge one reads between the process and the '
-                    'other side. Check it is tight when a reading is low.'),
+            CAUTION('A passing (leaking) equalising valve joins the two sides a little in service, so a differential '
+                    'transmitter reads low. Check it is tight when a differential reading is low. (A gauge or absolute '
+                    'transmitter has a two-valve block-and-bleed manifold instead: a passing bleed valve lets its '
+                    'reading fall toward the vented side.)'),
         ], src=['r3051', 'liptak']),
         S('hart', 'Connecting a HART communicator', [
             P('A communicator talks to the transmitter across the loop. It can be clipped on anywhere along the pair: '
@@ -245,7 +251,9 @@ MANUAL = {
                  'Check against a reference (two-point check); [sensor trim](#calibration); replace the sensor module '
                  'if the drift is large or comes back', 'drift'),
                 ('The loop current is lower than the output the transmitter reports; its PV agrees with its partners',
-                 'A loose or corroded signal terminal (contact resistance in the loop)',
+                 'A loose or corroded signal terminal: its contact drops so much voltage that the transmitter is '
+                 'left below its minimum supply and cannot hold its current (a milder one makes the signal drop out '
+                 'or jump)',
                  '[Tighten the signal terminals](work:tighten_terms); a ferrule on every wire end; check again', 'loose'),
                 ('Reads steady while the process changes',
                  'A blocked impulse line, or a closed root or block valve',

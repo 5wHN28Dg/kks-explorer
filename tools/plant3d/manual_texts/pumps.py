@@ -57,9 +57,12 @@ MANUAL = {
         ], src=['api610', 'api682']),
         S('specifications', 'Specifications', [
             UNIT(),
+            P('What the generic plant\'s parts kit allows for these kinds (the limits of the model, not a '
+              'product\'s ratings):'),
             SERIES(),
             TABLE(['Item', 'Value'], [
-                ['Allowable operating region', 'about `70 %` to `120 %` of the best efficiency flow'],
+                ['Preferred operating region', 'about `70 %` to `120 %` of the best efficiency flow; the wider '
+                 'allowable region is the maker\'s, on the pump\'s data sheet'],
                 ['NPSH margin', 'available at least `1.1` to `1.3` times the pump\'s required NPSH, more for '
                  'hot or high energy duties'],
                 ['Vibration', 'new pumps within zone A of ISO 20816-3; alarm at the zone C boundary'],
@@ -83,15 +86,16 @@ MANUAL = {
                'Fit the coupling and its guard; fill the bearing housing with oil to the sight glass\'s mark.',
                'Open the suction valve fully; fill and vent the casing until liquid comes out with no air.',
                'Discharge valve shut or a little open (as the pump\'s procedure says); minimum flow line open.',
-               'Start. Open the discharge valve slowly within a minute of the start; never run against a shut valve.',
+               'Start. Open the discharge valve slowly within a minute of the start: never run against a shut valve '
+               'for longer than that, or the liquid inside heats up.',
                'Check the pressures against the curve, the seal (no leak), the vibration and the bearing temperatures '
                'for the first hours.'),
             CAUTION('Never run the pump dry, even for seconds: the mechanical seal\'s faces burn without liquid between '
                     'them.'),
         ], src=['api610', 'api686']),
         S('operation', 'Operation', [
-            UL('Run within the allowable operating region; a pump that must run at low flow needs its minimum flow '
-               'line open.',
+            UL('Run within the preferred operating region, and never outside the maker\'s allowable one; a pump that '
+               'must run at low flow needs its minimum flow line open.',
                'Watch suction pressure: a falling suction pressure or a rising temperature eats the NPSH margin, and '
                'the pump starts to cavitate (a rattle like gravel, the discharge pressure wavering).',
                'Change over duty and standby pumps regularly so both stay fit.',
