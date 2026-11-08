@@ -943,6 +943,37 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   history, newest first, and "Report a finding": the kinds the code's works find, matched to the work), and the
   debrief's line per order (its codes against the work's).
 
+### 2.21 As built for milestone WM1 (2026-11-08: work orders and job history)
+
+- **Where:** the reference `ref/plant3d_wo.py` (workorders.json's check, the works' keys, the input, the moves, the
+  records, the snapshot's and digest's parts) with hooks in `ref/plant3d.py` and `ref/plant3d_staff.py`; the app's
+  engine `apps/plant3d/sim/workorders.gd` with hooks in `engine.gd`, `plant_model.gd` and `staff.gd`; saves keep and
+  check the state (`ui/autosave.gd`), a session carries the input (`net/input_check.gd`). The content tool
+  `tools/plant3d/train_workorders.py` (the codes, each work's finds, codes and hours, the history) makes
+  `data/plant3d/workorders.json`; `train_staff.py` gives the maintenance and shift supervisors `plan_work` and
+  `close_work` and appends the two reactions and their tasks after everything before them. The app's
+  `ui/wo_panel.gd` (the list, an order's form, a code's history and findings), the card's "Work orders", the permit
+  list's "Work orders", the debrief's lines, `walk=workorders`.
+- **The content:** 55 works coded (15 modes, 21 causes, 12 actions after ISO 14224's tables); 153 past orders over the
+  30 months since the overhaul (the overhaul's renewals, motor regreasing every 3 months, gear reducer oil every year,
+  calibrations every year, relay tests every 2 years, cartridge filters every 3 months, and 5 failures), each wear
+  item's failures at the lives the engine draws for the ageing scenario's seed, so its last renewal in the history is
+  as long ago as that day's wear says (`tests/test_plant3d_workorders.py`).
+- **Vectors:** `plant3d-realism.json` gains the part `wo` (49 rejects, 4 runs: the actions and their reasons, the whole
+  cycle with no trainee, NPCs carrying a notified order from notification to closure, the trainee as the supervisor
+  with an early action); every earlier part unchanged but `about`'s sentence. `plant3d-v1.json` and `plant3d-v2.json`
+  made again with the train's 55 `_wo` values (0 in every run: nobody notifies) and the empty work order parts of the
+  snapshots; compared item by item with the files before: every input, event and earlier value unchanged, only the
+  digests moved. `plant3d-bench-v1.json` unchanged. Both engines run every item bit for bit.
+- **Settled in the code:** a record carries its work's id (its last field), so the run's history names its works; an
+  NPC's `schedule` without data schedules for the clock's day when the input is made (step 1), not when it was queued.
+- **Tests:** `tests/test_plant3d_realism.py` `WoVectors`, `tests/test_plant3d_workorders.py` (every work coded, the
+  history against the ageing scenario, the day's staff planning a notified order and asking for its permit),
+  `apps/plant3d/tests/test_run_save.gd` (a save in the middle of a work order goes on bit for bit; 14 damaged saves
+  refused), `apps/plant3d/tests/test_ui_workorders.gd` (app shard 2: a finding reported from the card, planned,
+  scheduled and cancelled from the form; a calibration completed after its permit's done, refused before it in words;
+  the debrief's line).
+
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does
