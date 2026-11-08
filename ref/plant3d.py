@@ -308,6 +308,8 @@ class Bundle:
         self.weather = None                        # weather.json, checked (ref/plant3d_world.py), or None
         self.tools = None                          # tools.json, checked (ref/plant3d_hands.py, REALISM.md §2.3)
         self.tools_doc = None                      # (its text, read before staff.json's tasks are checked)
+        self.wo_ids = None                         # workorders.json's code lists (REALISM.md §2.20), or None
+        self.wo_doc = None                         # workorders.json, checked (ref/plant3d_wo.py), or None
         self.screen_of = {}                        # code shown on the screens -> (screen id, group id) (§7.11)
         self.areas, self.models = [], []          # in plant.json order
         self.scenarios, self.procedures = {}, {}
@@ -350,7 +352,7 @@ def check_files(files):
     b = Bundle()
     for rel in files:
         need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json', 'weather.json',
-                     'tools.json', 'monitoring.json') or re.fullmatch(
+                     'tools.json', 'monitoring.json', 'workorders.json') or re.fullmatch(
             r'(areas|model|procedures|scenarios|workshop|workshop/bench|service)/[a-z_][a-z0-9_]{0,31}\.json|'
             r'sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg',
             rel), 'unknown_key', f'{rel}: not a file of the format')
@@ -445,6 +447,12 @@ class Plant:
             if rel.startswith('model/'):
                 need(rel[6:-5] in p['areas'], 'bad_ref', f'{rel}: area not listed in plant.json')
         m.finish()
+        from ref import plant3d_wo as WO    # work orders (REALISM.md §2.20, milestone WM1): before staff.json's steps
+        if 'workorders.json' in files:
+            b.wo_doc = parse(files, 'workorders.json')
+            b.wo_ids = WO.check(b.wo_doc, b, m)
+        else:
+            WO.no_file(m)
         b.staff = None
         if 'tools.json' in files:
             # the tools carried (REALISM.md §2.3, milestone HW1): checked with staff.json's places, before its tasks
@@ -1025,12 +1033,14 @@ class Model:
         self.hands, self.meters = [], []         # REALISM.md §2.4, §2.5 (milestone HW1)
         self.hand_keys, self.meter_ix = {}, {}   # (code, action) -> hand action; meter id -> meter
         self.version = 1                         # of the model file being added
+        self.has_wo = 'workorders.json' in getattr(plant, 'files', ())     # work orders (REALISM.md §2.20)
 
     def kept(self):
         """The values the engine keeps for permits and isolations (§15.1, §15.3) and each lift's load (§20.1), in slot
         order."""
         return [x['id'] + s for x in self.isolations for s in ('_locked', '_complete')] + \
-            [w['id'] + '_permit' for w in self.works] + [x['id'] + '_load' for x in self.lifts]
+            [w['id'] + '_permit' for w in self.works] + [x['id'] + '_load' for x in self.lifts] + \
+            ([w['id'] + '_wo' for w in self.works] if self.has_wo else [])     # (work orders, REALISM.md §2.20)
 
     def known(self):
         """Names any condition may read: values, ext, machine states, trip latches, and the permits' and isolations'
@@ -1100,7 +1110,8 @@ class Model:
              f'{MAX["isolations"]} isolations')
         for i, x in enumerate(lst(d.get('works', []), f'{rel}.works')):
             self.check_work(x, f'{rel}: work {x.get("id", i) if isinstance(x, dict) else i}')
-        need(len(self.works) <= MAX['works'], 'limit', f'{rel}: the joined model has over {MAX["works"]} works')
+        top = 512 if self.has_wo else MAX['works']      # (512 with work orders, REALISM.md §2.20)
+        need(len(self.works) <= top, 'limit', f'{rel}: the joined model has over {top} works')
         need(len(self.lifts) + len(lst(d.get('lifts', []), f'{rel}.lifts')) <= MAX['lifts'], 'limit',
              f'{rel}: the joined model has over {MAX["lifts"]} lifts')
         for i, x in enumerate(d.get('lifts', [])):
@@ -1171,8 +1182,8 @@ class Model:
 
     def check_work(self, x, w):
         """§15.2: a job on equipment that needs a permit."""
-        keys(x, ('id', 'kks', 'title', 'discipline', 'permit'), ('isolation', 'repairs', 'set', 'task', 'renews', 'cures')
-             + WORK_TASKS, w)
+        keys(x, ('id', 'kks', 'title', 'discipline', 'permit'), ('isolation', 'repairs', 'set', 'task', 'renews', 'cures',
+                                                                 'finds', 'codes', 'hours') + WORK_TASKS, w)
         need(isinstance(x['id'], str) and ID_RE.fullmatch(x['id']) and len(x['id']) <= 22, 'bad_id',
              f'{w}: id of at most 22 characters')
         need(x['id'] not in {y['id'] for y in self.works}, 'dup_id', w)
@@ -1211,6 +1222,8 @@ class Model:
         for k in ('task',) + WORK_TASKS:    # tasks of staff.json once the plant has one (§16, S1; §16.7, AG2)
             if k in x:
                 ident(x[k], f'{w}.{k}')
+        from ref import plant3d_wo as WO    # work orders' keys (REALISM.md §2.20)
+        WO.check_work_keys(x, w)
         self.works.append(x)
 
     def kks_ref(self, c, where):
@@ -1919,6 +1932,8 @@ class Engine:
         self.ptw = {}                                   # work -> its permit's number, from its last request
         self.ptw_count = 0
         self.acceptor = {}                              # work -> who accepted its permit (None in free mode)
+        from ref import plant3d_wo as WO                # work orders (REALISM.md §2.20)
+        WO.init(self, b, m)
         self.holder = {x['id']: None for x in m.isolations}     # the work holding each isolation (§15.1)
         self.locks = {}                                 # (isolation id, point index) -> who locked it, in order
         self.code_locks = {}                            # code -> its locked points, of every isolation
@@ -2040,6 +2055,8 @@ class Engine:
         c.faults_fixed = set(self.faults_fixed)
         from ref import plant3d_hands as H
         H.copy_state(c, self)
+        from ref import plant3d_wo as WO
+        WO.copy_state(c, self)
         return c
 
     # --- compile nodes to closures over (cur, prev)
@@ -2330,6 +2347,9 @@ class Engine:
     def repair_under(self, fid, work, person=None, slot=None):
         self._q(('repair', fid, work, person), slot)
 
+    def work_order(self, work, action, person=None, data=None, slot=None):
+        self._q(('wo', work, action, person, [] if data is None else data), slot)
+
     def permit(self, work, action, person=None, slot=None):
         self._q(('permit', work, action, person), slot)
 
@@ -2579,6 +2599,8 @@ class Engine:
             self.acceptor[work] = person
         elif action == 'done':
             dones.append(work)
+            from ref import plant3d_wo as WO      # an NPC's write-up in step 3 (REALISM.md §2.20)
+            WO.note_done(self, work, person, npc)
         elif action in ('cancel', 'close') and iso is not None and self.n_locked(iso) == 0:
             self.holder[iso] = None
         self.ev('permit', work, action, person, 'done', [])
@@ -2763,6 +2785,12 @@ class Engine:
                 r = self._permit(item[1], item[2], item[3], dones, npc)
                 if npc:
                     self._npc_result(item[3], r, k0)
+            elif kind == 'wo':
+                from ref import plant3d_wo as WO      # a work order's action (REALISM.md §2.20)
+                k0 = len(self.events)
+                r = WO.wo_input(self, item, npc)
+                if npc:
+                    self._npc_result(item[3], r, k0)
             elif kind in ('board', 'alight') and npc and self.session and isinstance(item[2], str) \
                     and sr.st.person_ix[item[2]] in sr.players.values():
                 continue        # an NPC's board or alight made before a slot took the person: dropped (§20.10)
@@ -2883,6 +2911,9 @@ class Engine:
                 self.pstate[wid] = new
                 cur[self.ix[wid + '_permit']] = float(new)
                 self.ev('permit', wid, 'auto', None, 'done', [new])
+        if self.wo_ids is not None:     # work orders in progress by themselves, NPCs' write-ups (REALISM.md §2.20)
+            from ref import plant3d_wo as WO
+            WO.step3(self)
         # then the faults
         for fid, f in self.faults.items():
             # applied once; a repaired trainer's fault can be pressed again (§7.8)
@@ -3172,6 +3203,7 @@ class Engine:
     def digest_tree(self):
         from ref.godot_variant import Packed, PACKED_BYTE, PACKED_INT32, PACKED_INT64
         from ref import plant3d_hands as H
+        from ref import plant3d_wo as WO
         m = self.m
         work_ix = {w['id']: k for k, w in enumerate(m.works)}
         locks = [[k, p, list(self.locks[(x['id'], p)])] for k, x in enumerate(m.isolations)
@@ -3199,7 +3231,8 @@ class Engine:
               Packed(PACKED_INT64, self.lift_dwell)] if m.lifts else []) + \
             ([Packed(PACKED_INT64, [self.wx_kind, self.wx_s])] if self.wx is not None else []) + \
             ([H.digest_part(self)] if self.hw else []) + \
-            ([H.lab_digest(self)] if self.lab_nodes else [])
+            ([H.lab_digest(self)] if self.lab_nodes else []) + \
+            ([WO.digest_part(self)] if self.wo_ids is not None else [])
 
     def snapshot(self, values=True):
         s = {'step': self.step_no,
@@ -3235,6 +3268,9 @@ class Engine:
         if self.lab_nodes:
             from ref import plant3d_hands as H      # REALISM.md §2.19
             H.lab_snapshot(self, s)
+        if self.wo_ids is not None:
+            from ref import plant3d_wo as WO        # REALISM.md §2.20
+            WO.snapshot_part(self, s)
         if values:
             s['values'] = {n: self.cur[i] for i, n in enumerate(self.names)}
         return s

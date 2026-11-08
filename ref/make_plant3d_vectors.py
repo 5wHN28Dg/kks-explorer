@@ -569,6 +569,8 @@ def apply(e, item, slot=None):
         e.repair(item[2], slot=slot)
     elif kind == 'permit':
         e.permit(item[2], item[3], item[4], slot=slot)
+    elif kind == 'wo':
+        e.work_order(item[2], item[3], item[4], item[5], slot=slot)      # (a work order's action, REALISM.md §2.20)
     elif kind in ('lock', 'unlock'):
         getattr(e, kind)(item[2], item[3], item[4], slot=slot)
     elif kind == 'remove_lock':
@@ -5623,6 +5625,250 @@ def lab_part():
             'runs': build_runs(lab_runs(), lf)}
 
 
+# ---------------------------------------------------------------- milestone WM1: work orders (REALISM.md §2.20)
+
+WO_DOC = {'format': 'walkdown-plant-workorders', 'version': 1,
+          'modes': [{'id': 'vibration', 'title': 'Vibration'}, {'id': 'noise', 'title': 'Abnormal noise'},
+                    {'id': 'leak', 'title': 'External leakage'}, {'id': 'reading', 'title': 'Erratic or wrong reading'}],
+          'causes': [{'id': 'wear', 'title': 'Wear'}, {'id': 'looseness', 'title': 'Looseness'},
+                     {'id': 'drift', 'title': 'Out of adjustment'}],
+          'actions': [{'id': 'replace', 'title': 'Replace'}, {'id': 'repair', 'title': 'Repair'},
+                      {'id': 'adjust', 'title': 'Adjust'}, {'id': 'check', 'title': 'Check'}],
+          'history': [{'kks': '10LAC10AP001', 'work': 'wo_pump', 'ago': 400, 'kind': 'corrective', 'mode': 'vibration',
+                       'cause': 'wear', 'action': 'replace', 'hours': 6, 'title': 'Bearing replaced'},
+                      {'kks': '10LAB10CP501', 'ago': 30, 'kind': 'preventive', 'mode': None, 'cause': None,
+                       'action': 'adjust', 'hours': 1.5, 'title': 'Calibrated'}]}
+WO_KEYS = {'wo_pump': {'finds': ['vibration', 'noise'], 'codes': ['vibration', 'wear', 'replace'], 'hours': 6},
+           'wo_gauge': {'finds': ['reading'], 'codes': [None, None, 'adjust'], 'hours': 1.5},
+           'wo_valve': {'finds': ['leak'], 'codes': ['leak', 'wear', 'repair'], 'hours': 2}}
+WO_TASKS = [{'id': 'plan_wo', 'title': 'Plan a work order', 'priority': 2,
+             'steps': [{'go': 'seat1'}, {'work': 2}, {'wo': {'work': '$', 'action': 'plan'}},
+                       {'wo': {'work': '$', 'action': 'schedule'}}]},
+            {'id': 'close_wo', 'title': 'Close a work order', 'priority': 4,
+             'steps': [{'wait': {'permit': ['$', 'closed'], 'minutes': 180}}, {'go': 'seat1'},
+                       {'wo': {'work': '$', 'action': 'close'}}]}]
+
+
+def wo_files():
+    """The realism base's staff plant (staff_files) with work orders: workorders.json (four modes, three causes, four
+    actions, two past orders), the three works' finds, codes and hours, the supervisor's plan_work and close_work, a
+    supervisor's task that plans and schedules a notified order and one that closes a complete order once its permit
+    is closed (reactions on notified and complete), and the field round notifies the gauge's order before its report; the
+    scenario has a world (realism_files)."""
+    F = realism_files()
+    F['workorders.json'] = copy.deepcopy(WO_DOC)
+    for w in F['model/a1.json']['works']:
+        w.update(copy.deepcopy(WO_KEYS[w['id']]))
+    st = F['staff.json']
+    next(r for r in st['roles'] if r['id'] == 'shift_sup')['authority'] += ['plan_work', 'close_work']
+    st['tasks'] += copy.deepcopy(WO_TASKS)
+    st['reactions'] += [{'on': {'wo': 'notified'}, 'roles': ['shift_sup'], 'task': 'plan_wo'},
+                        {'on': {'wo': 'complete'}, 'roles': ['shift_sup'], 'task': 'close_wo'}]
+    rnd = next(t for t in st['tasks'] if t['id'] == 'round')['steps']
+    rnd.insert(len(rnd) - 2, {'wo': {'work': 'wo_gauge', 'action': 'notify'}, 'else': len(rnd) - 1})
+    return F
+
+
+def _wo_bare(F):
+    """wo_files without the reactions on work orders, their tasks and the round's notification (the trainee's own
+    runs)."""
+    st = F['staff.json']
+    st['reactions'] = [r for r in st['reactions'] if 'wo' not in r['on']]
+    st['tasks'] = [t for t in st['tasks'] if t['id'] not in ('plan_wo', 'close_wo')]
+    rnd = next(t for t in st['tasks'] if t['id'] == 'round')
+    rnd['steps'] = [s for s in rnd['steps'] if 'wo' not in s]
+    return F
+
+
+def _wo_free(F):
+    """wo_files without staff: no clock, no tasks, no world."""
+    G = _wo_bare(wo_files())
+    del G['plant.json']['clock']
+    del G['scenarios/s1.json']['staff']
+    del G['scenarios/s1.json']['world']
+    G['model/a1.json']['values'] = [v for v in G['model/a1.json']['values'] if v not in CLOCK_NODES]
+    G.pop('staff.json')
+    G['model/a1.json']['works'] = [{k: v for k, v in w.items() if k != 'task'} for w in G['model/a1.json']['works']]
+    F.clear()
+    F.update(G)
+    return F
+
+
+def _wo_doc(fn):
+    def f(F):
+        fn(F['workorders.json'])
+    return f
+
+
+def _wo_work(wid, fn):
+    def f(F):
+        fn(next(w for w in F['model/a1.json']['works'] if w['id'] == wid))
+    return f
+
+
+def _wo_hist(i, fn):
+    return _wo_doc(lambda d: fn(d['history'][i]))
+
+
+def _wo_no_file(F):
+    F.pop('workorders.json')
+
+
+def _wo_many_works(n):
+    """n works in the free plant (each a general inspection of the pump), with or without workorders.json."""
+    def f(F):
+        _wo_free(F)
+        F['model/a1.json']['works'] += [{'id': f'w{k:03d}', 'kks': '10LAC10AP001', 'title': 'Inspection',
+                                         'discipline': 'mech', 'permit': 'general'} for k in range(n - 3)]
+    return f
+
+
+def _wo_step(fn):
+    return _st(lambda st: fn(next(t for t in st['tasks'] if t['id'] == 'plan_wo')['steps']))
+
+
+REJECTS_WO = [
+    ('workorders.json of another format', 'bad_format', _wo_doc(lambda d: SET(d, 'format', 'walkdown-plant-stores')), 'format must be'),
+    ('workorders.json of version 2', 'bad_version', _wo_doc(lambda d: SET(d, 'version', 2)), 'version must be 1'),
+    ('workorders.json without its causes', 'missing_key', _wo_doc(lambda d: d.pop('causes')), 'workorders.json.causes'),
+    ('workorders.json with a key it doesn\'t know', 'unknown_key', _wo_doc(lambda d: SET(d, 'parts', [])), 'workorders.json.parts'),
+    ('no failure modes', 'bad_length', _wo_doc(lambda d: SET(d, 'modes', [])), 'workorders.json.modes'),
+    ('65 maintenance actions', 'bad_length',
+     _wo_doc(lambda d: SET(d, 'actions', [{'id': f'a{k}', 'title': 'A'} for k in range(65)])), 'workorders.json.actions'),
+    ('a mode whose id is not an identifier', 'bad_id', _wo_doc(lambda d: SET(d['modes'][0], 'id', 'Vibration')), 'modes[0].id'),
+    ('a cause whose id is 23 characters', 'bad_id', _wo_doc(lambda d: SET(d['causes'][0], 'id', 'w' * 23)), 'at most 22'),
+    ('a mode twice', 'dup_id', _wo_doc(lambda d: d['modes'].append({'id': 'leak', 'title': 'Leak'})), 'leak twice'),
+    ('an action without its title', 'missing_key', _wo_doc(lambda d: d['actions'][0].pop('title')), 'actions[0].title'),
+    ('a cause whose title is 121 characters', 'bad_type', _wo_doc(lambda d: SET(d['causes'][1], 'title', 'x' * 121)), 'causes[1].title'),
+    ('a work finding a mode not in the file', 'bad_ref', _wo_work('wo_valve', lambda w: SET(w, 'finds', ['crack'])), "'crack' is not one of modes"),
+    ('a work finding a mode twice', 'dup_id', _wo_work('wo_pump', lambda w: SET(w, 'finds', ['noise', 'noise'])), 'noise twice'),
+    ('a work finding nothing', 'bad_length', _wo_work('wo_pump', lambda w: SET(w, 'finds', [])), '.finds'),
+    ('a work finding nine modes', 'bad_length', _wo_work('wo_pump', lambda w: SET(w, 'finds', ['m'] * 9)), '.finds'),
+    ('a work whose codes are two', 'bad_length', _wo_work('wo_pump', lambda w: SET(w, 'codes', ['vibration', 'wear'])), '.codes'),
+    ('a work whose codes name no action', 'bad_id', _wo_work('wo_pump', lambda w: SET(w, 'codes', ['vibration', 'wear', None])), 'codes[2]'),
+    ('a work whose codes name a cause not in the file', 'bad_ref',
+     _wo_work('wo_pump', lambda w: SET(w, 'codes', ['vibration', 'fatigue', 'replace'])), "'fatigue' is not one of causes"),
+    ('a work whose codes name a mode as its action', 'bad_ref',
+     _wo_work('wo_pump', lambda w: SET(w, 'codes', ['vibration', 'wear', 'noise'])), "'noise' is not one of actions"),
+    ('a work of 0 hours', 'bad_number', _wo_work('wo_gauge', lambda w: SET(w, 'hours', 0)), 'hours: above 0'),
+    ('a work whose hours are text', 'bad_number', _wo_work('wo_gauge', lambda w: SET(w, 'hours', '2')), '.hours'),
+    ('a work with finds in a plant without workorders.json', 'bad_ref', _wo_no_file, 'no workorders.json'),
+    ('a past order of no equipment', 'bad_ref', _wo_hist(0, lambda h: SET(h, 'kks', '10LAC10AP009')), 'no equipment or pipe'),
+    ('a past order of no work', 'bad_ref', _wo_hist(0, lambda h: SET(h, 'work', 'wo_fan')), "no work 'wo_fan'"),
+    ('a past order of a work on another code', 'bad_ref', _wo_hist(0, lambda h: SET(h, 'work', 'wo_gauge')), 'is a work on'),
+    ('a past order of 0 days ago', 'bad_number', _wo_hist(0, lambda h: SET(h, 'ago', 0)), 'history[0].ago'),
+    ('a past order of half a day ago', 'bad_number', _wo_hist(1, lambda h: SET(h, 'ago', 1.5)), 'history[1].ago'),
+    ('a past order of over 50 years ago', 'bad_number', _wo_hist(1, lambda h: SET(h, 'ago', 18251)), 'history[1].ago'),
+    ('a past order of a kind not known', 'bad_value', _wo_hist(1, lambda h: SET(h, 'kind', 'breakdown')), '.kind: one of'),
+    ('a past order whose mode is not in the file', 'bad_ref', _wo_hist(0, lambda h: SET(h, 'mode', 'smoke')), "'smoke' is not one of modes"),
+    ('a past order whose cause is not in the file', 'bad_ref', _wo_hist(0, lambda h: SET(h, 'cause', 'age')), "'age' is not one of causes"),
+    ('a past order without an action', 'bad_ref', _wo_hist(1, lambda h: SET(h, 'action', None)), 'is not one of actions'),
+    ('a past order of no hours', 'bad_number', _wo_hist(1, lambda h: SET(h, 'hours', 0)), 'hours: above 0'),
+    ('a past order without its title', 'missing_key', _wo_hist(1, lambda h: h.pop('title')), 'history[1].title'),
+    ('a past order with a key it doesn\'t know', 'unknown_key', _wo_hist(1, lambda h: SET(h, 'cost', 3)), 'history[1].cost'),
+    ('a past order whose title is empty', 'bad_type', _wo_hist(1, lambda h: SET(h, 'title', '')), 'history[1].title'),
+    ('4,097 past orders', 'bad_length', _wo_doc(lambda d: SET(d, 'history', d['history'] * 2049)), 'workorders.json.history'),
+    ('129 works without workorders.json', 'limit', lambda F: (_wo_many_works(129)(F), F.pop('workorders.json'),
+                                                             [w.pop(k, None) for w in F['model/a1.json']['works']
+                                                              for k in ('finds', 'codes', 'hours')]), 'over 128 works'),
+    ('513 works with workorders.json', 'limit', _wo_many_works(513), 'over 512 works'),
+    ('a wo step in a plant without workorders.json', 'bad_ref',
+     lambda F: (_wo_no_file(F), [[w.pop(k) for k in ('finds', 'codes', 'hours')] for w in F['model/a1.json']['works']]),
+     'no workorders.json'),
+    ('a wo step of an action not known', 'bad_value', _wo_step(lambda s: SET(s[2]['wo'], 'action', 'approve')), '.wo.action: one of'),
+    ('a wo step without its work', 'missing_key', _wo_step(lambda s: s[2]['wo'].pop('work')), '.wo.work'),
+    ('a wo step whose data are not a list', 'bad_type', _wo_step(lambda s: SET(s[2]['wo'], 'data', 3)), '.wo.data'),
+    ('a wo step with five data', 'bad_length', _wo_step(lambda s: SET(s[3]['wo'], 'data', [1, 2, 3, 4, 5])), '.wo.data'),
+    ('a plan step by a role without plan_work', 'authority',
+     _st(lambda st: next(r for r in st['roles'] if r['id'] == 'shift_sup')['authority'].remove('plan_work')), 'lacks plan_work'),
+    ('a close step by a role without close_work', 'authority',
+     _st(lambda st: next(r for r in st['roles'] if r['id'] == 'shift_sup')['authority'].remove('close_work')), 'lacks close_work'),
+    ('a complete step by a role of another discipline', 'authority',
+     _wo_step(lambda s: s.append({'wo': {'work': '$', 'action': 'complete', 'data': ['leak', 'wear', 'repair', '']}})),
+     'lacks accept'),
+    ('a complete step without data on a work without codes', 'bad_ref', lambda F: (
+        _wo_work('wo_valve', lambda w: w.pop('codes'))(F),
+        next(t for t in F['staff.json']['tasks'] if t['id'] == 'job_valve')['steps'].insert(
+            5, {'wo': {'work': '$', 'action': 'complete'}})), 'which has no codes'),
+    ('a reaction on a work order\'s state not known', 'bad_value',
+     _st(lambda st: SET(st['reactions'][-1], 'on', {'wo': 'none'})), 'a work order state from notified'),
+]
+
+
+def wo_runs():
+    """(why, scenario changes, files, player, steps, snapshot every): WM1's runs (REALISM.md §2.20)."""
+    wf = wo_files()
+    bare = _wo_bare(wo_files())
+    sup = {'trainee': 'a_sup'}
+    V = 'wo_valve'
+    reasons = Trainee(quiet=True, extra=_x(
+        (2, 'wo', V, 'notify', 'a_sup', ['leak']), (2, 'wo', V, 'notify', 'a_sup', ['leak']),
+        (3, 'wo', 'wo_gauge', 'notify', 'a_sup', ['crack']), (3, 'wo', 'wo_fan', 'notify', 'a_sup', [None]),
+        (3, 'wo', V, 'repair', 'a_sup', []), (3, 'wo', V, 'plan', 'a_sup', 3),
+        (4, 'wo', V, 'plan', 'a_fo1', [3]), (4, 'wo', V, 'plan', 'a_sup', [5]), (4, 'wo', V, 'plan', 'a_sup', [True]),
+        (5, 'wo', V, 'plan', 'a_sup', [2.0]),
+        (5, 'wo', V, 'complete', 'a_sup', ['leak', 'wear', 'repair', 'Packing renewed']),
+        (6, 'wo', V, 'schedule', 'a_sup', [0]), (6, 'wo', V, 'schedule', 'a_sup', [367]),
+        (6, 'wo', V, 'schedule', 'a_sup', [3]), (7, 'wo', V, 'close', 'a_sup', []),
+        (8, 'wo', 'wo_gauge', 'cancel', 'a_sup', []), (9, 'permit', V, 'request', 'a_sup'),
+        (10, 'wo', V, 'cancel', 'a_sup', []), (11, 'permit', V, 'cancel', 'a_sup'),
+        (12, 'wo', V, 'cancel', 'a_sup', ['x']), (12, 'wo', V, 'cancel', 'a_sup', []),
+        (13, 'wo', V, 'notify', 'a_sup', [None]), (14, 'wo', 'wo_pump', 'notify', 'a_sup', ['noise'])))
+
+    G = 'wo_gauge'
+    code = [None, 'drift', 'adjust', 'Zero reset']
+    free_cycle = Scripted(_x(
+        (2, 'wo', G, 'notify', None, ['reading']), (3, 'wo', G, 'plan', None, [1]),
+        (4, 'wo', G, 'schedule', None, [1]), (5, 'permit', G, 'request', None),
+        (6, 'permit', G, 'approve', None), (7, 'lock', G, 0, None),
+        (9, 'permit', G, 'issue', None), (10, 'wo', G, 'complete', None, code),
+        (11, 'permit', G, 'accept', None), (12, 'wo', G, 'complete', None, code),
+        (13, 'permit', G, 'done', None), (14, 'wo', G, 'complete', None, ['reading', 'drift', 'adjust', 'x' * 121]),
+        (14, 'wo', G, 'complete', None, code), (15, 'wo', G, 'complete', None, code),
+        (15, 'wo', G, 'close', None, []), (16, 'permit', G, 'return', None), (17, 'unlock', G, 0, None),
+        (19, 'wo', G, 'close', None, []), (20, 'permit', G, 'close', None),
+        (21, 'wo', G, 'close', None, []), (22, 'wo', G, 'notify', None, ['reading']),
+        (23, 'wo', G, 'notify', 'a_sup', ['reading'])))
+    played = Trainee(extra=_x(
+        (310, 'wo', V, 'notify', 'a_sup', ['leak']), (312, 'wo', V, 'plan', 'a_sup', [2]),
+        (400, 'wo', V, 'schedule', 'a_sup', [1]), (404, 'wo', 'wo_pump', 'notify', 'a_sup', ['vibration'])))
+    npc = Scripted(_x((320, 'wo', 'wo_pump', 'notify', None, ['vibration']), (700, 'fault', 'f1')))
+    return [
+        ('a work order\'s actions and their reasons (§2.20): notified (WO-0001), again (state); a mode not in the file '
+         '(data); a work, an action and data not known (unknown); planned by another person (authority), with a '
+         'priority of 5 and true (data), then 2.0 (a whole number); completed by the supervisor while planned and its '
+         'permit none (authority, state, permit); scheduled for day 0 and day 367 (data), then day 3; closed while '
+         'scheduled (state); the gauge\'s none cancelled (state); its permit requested: cancelled (permit); the permit '
+         'cancelled: cancelled with data (data), then cancelled (into the history); notified again (WO-0002, nothing '
+         'named), and the pump\'s (WO-0003)', sup, bare, reasons, 16, 1),
+        ('the whole cycle in free mode (§2.20, no trainee: inputs naming no person): the gauge\'s order notified, planned urgent, '
+         'scheduled; its permit requested, approved, locked, issued; completed while scheduled (state, permit); '
+         'accepted: in progress by itself (auto); completed while the permit is accepted (permit); done; completed '
+         'with a comment of 121 characters (data), then with no mode (as the work\'s codes), then again (state); '
+         'closed while the permit is done and while it is deisolated (permit); the permit closed: closed; notified '
+         'again (WO-0002); by a person (authority, state)', {}, bare, free_cycle, 26, 1),
+        ('NPCs carry a notified order (§2.20): the pump\'s order notified in free mode at 06:02 (its vibration); the '
+         'supervisor\'s reaction plans it (normal) and schedules it for the day (their defaults); the trainer\'s '
+         'fault trips the pump at 06:40 and the supervisor raises its permit, the mechanical technician\'s accept puts '
+         'the order in progress, their done writes it up with the work\'s codes; the reaction on complete closes it '
+         'once the permit is closed; the field round notifies the gauge\'s order (its first finds), which is planned '
+         'and scheduled and waits, and a later round\'s notification is refused (state) and goes on to its report '
+         '(else)', {}, wf, npc, 3000, 100),
+        ('the trainee as the supervisor (§2.20): their notification of the valve gives them the plan task (the '
+         'reaction), whose plan step they make from the panel before acknowledging it (early) and whose schedule '
+         'step they make later (taken); the pump\'s order notified too', sup, wf, played, 480, 20),
+    ]
+
+
+def wo_part():
+    wf = wo_files()
+    return {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in wf.items()},
+            'counts': check(wf).counts,
+            'reject': reject_changes(wf, [r[:3] for r in REJECTS_WO], wf),
+            'runs': build_runs(wo_runs(), wf)}
+
+
+
 def parts3():
     """The realism vectors part by part (REALISM.md §13), in the file's order."""
     return {
@@ -5643,7 +5889,9 @@ def parts3():
                           'noticing by drawn delays and by missed calls, the device held until the duty ends; milestone AG3 (§2.19): `lab`, '
                           'the hands part\'s plant with an oil sampling kit, a vibration data collector and a '
                           'thermal camera, sample nodes taken by hand actions, the lab\'s results after clock hours '
-                          'from the lab streams, and an NPC\'s round. A run\'s `files` are '
+                          'from the lab streams, and an NPC\'s round; milestone WM1 (§2.20): `wo`, the staff plant with '
+                          'workorders.json, work orders moved by their inputs, by themselves and by NPCs, and '
+                          'reactions on their states. A run\'s `files` are '
                           'those that differ from its part\'s. Numbers compare to 1e-6; the digests (§17.14) of every '
                           '50th step are exact.'),
         'streams': build_streams,
@@ -5655,7 +5903,8 @@ def parts3():
         'weather': weather_part,
         'hands': hands_part,
         'audio': audio_part,
-        'lab': lab_part}
+        'lab': lab_part,
+        'wo': wo_part}
 
 
 def build3():
