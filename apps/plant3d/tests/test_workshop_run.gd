@@ -141,6 +141,7 @@ func run(tree: SceneTree) -> Array:
 	await tree.process_frame
 	check(not ws.panels.step_layer.visible, "the step words' layer hides when the Workshop closes")
 	await _turbine(tree, ws)
+	await _gas_turbine(tree, ws)
 	main.free()
 	return p
 
@@ -270,6 +271,116 @@ func _turbine(tree: SceneTree, ws) -> void:
 	check(ws.s == 0.5 and ws.note == "", "at rest, it is taken apart again: %s" % ws.note)
 	ws.set_slider(0.0)
 	check(ws.start_guide("disassemble"), "and taken apart step by step")
+	ws.reset()
+	ws.close()
+	await ws.left
+
+## The gas turbine on its bench (K5b, WORKSHOP.md §6.7): started by the plant's sequence (cranked by the SFC, the
+## purge, ignition, the run-up), its rotor turning the way its blades are made for, the air's pressure rising through
+## the compressor and the gas's falling through the turbine in the heat and pressure colours, the flame in the cans,
+## the flow along the gas path, the compressor's blade-pass tone and the combustion's roar; tripped by a flame-out
+## and opened again only once at rest.
+func _gas_turbine(tree: SceneTree, ws) -> void:
+	ws.open("gas_turbine")
+	if not await _wait_shown(tree, ws):
+		check(false, "the gas turbine's Workshop did not show")
+		return
+	var c = ws.bench
+	check(c.loaded(), "the gas turbine's bench model loads: %s" % c.error)
+	if not c.loaded():
+		return
+	var bv = ws.bench_view
+	var anims := {}
+	for a in bv.anims:
+		anims[a.at] = a
+	check(anims.has("rotor") and anims.rotor.kind == "rotate" and anims.rotor.travel == 0.0, "the gas turbine's rotor turns freely")
+	for f in ["air_in", "comp_0", "comp_3", "fuel_0", "fuel_1", "flame_0", "flame_2", "turb_0", "exhaust_1"]:
+		check(ws.views.flow_ids().has(f), "the flow path %s is drawn" % f)
+	var rp = ws.panels.run_panel
+	ws.panels.show_run(true)
+	rp.tick()
+	for n in ["run_turbine_start", "run_turbine_stop", "set_ambient_t", "set_bias", "set_load_sp"]:
+		check(rp.find_child(n, true, false) != null, "the gas turbine's Run panel has %s" % n)
+	# taken apart, it doesn't start: a gas turbine runs only closed
+	check(ws.start_guide("assemble", "pile"), "the gas turbine laid out in a pile")
+	ws.run_command("rotor", "start")
+	_go(ws, 0.3)
+	check(ws.run_note != "" and c.machine_state("turbine") == "standstill", "Start refused with its parts loose: %s" % ws.run_note)
+	ws.reset()
+	ws.run_note = ""
+	c.speed = 1.0
+	ws.run_command("rotor", "start")
+	_go(ws, 30.0)
+	check(c.machine_state("turbine") == "crank" and c.now("rpm") > 100.0 and c.now("sfc_on") == 1.0,
+		"Start: the SFC cranks it: %s at %.0f rpm" % [c.machine_state("turbine"), c.now("rpm")])
+	# the generator makes the blades for a rotor turning right-handed about GT_TURN, the air's way (+y): the anim's
+	# axis points along the compressor's flow, and the speed turns it forwards
+	var cp: PackedVector3Array = (ws.views._flows["comp_0"].mat as ShaderMaterial).get_shader_parameter("pts")
+	var air_way: Vector3 = (cp[cp.size() - 1] - cp[0]).normalized()
+	check(anims.rotor.axis.dot(air_way) > 0.99 and anims.rotor.scale > 0.0,
+		"the rotor's anim turns it about the air's way, forwards (%s, %s)" % [anims.rotor.axis, air_way])
+	var a1: float = float(anims.rotor.get("angle", 0.0))
+	bv.draw(0.002)
+	var da := wrapf(float(anims.rotor.get("angle", 0.0)) - a1, -PI, PI)
+	check(da > 0.0 and da < 1.0, "the gas turbine's rotor turns right-handed about it (%.4f rad)" % da)
+	# the purge, the coast to ignition speed, the flame
+	for i in 700:
+		if c.machine_state("turbine") in ["accel", "accel_sfc_off", "fsnl"]:
+			break
+		_go(ws, 1.0)
+	check(c.now("flame") == 1.0 and c.machine_state("turbine") == "accel", "purged, ignited and accelerating: %s" % c.machine_state("turbine"))
+	_go(ws, 60.0)
+	# the air's pressure and temperature rise through the compressor, the gas's fall through the turbine
+	var ok: bool = c.now("c_p1") > c.now("p_amb") and c.now("c_t1") > c.now("ambient_t")
+	for k in range(2, 9):
+		ok = ok and c.now("c_p%d" % k) > c.now("c_p%d" % (k - 1)) and c.now("c_t%d" % k) > c.now("c_t%d" % (k - 1))
+	check(ok, "the air's pressure and temperature rise stage by stage")
+	ok = c.now("fire_t") > c.now("c_t8") and c.now("t_t1") < c.now("fire_t") and c.now("t_p1") < c.now("cpd")
+	for k in range(2, 4):
+		ok = ok and c.now("t_t%d" % k) < c.now("t_t%d" % (k - 1)) and c.now("t_p%d" % k) < c.now("t_p%d" % (k - 1))
+	check(ok, "the gas's fall stage by stage from the flame (%.0f °C)" % c.now("fire_t"))
+	ws.views.heat_on = true
+	ws.views.pressure_on = false
+	_go(ws, 0.1)
+	check(bv.shown_ramps.has("liner_01") and bv.shown_ramps.liner_01.legend == "heat" and bv.legend_shown() == "heat", "Heat colours the liners")
+	_channels(ws, "gas turbine heat")
+	ws.views.heat_on = false
+	ws.views.pressure_on = true
+	_go(ws, 0.1)
+	check(bv.shown_ramps.tbucket1.legend == "pressure" and bv.legend_shown() == "pressure", "Pressure colours the buckets by pressure")
+	_channels(ws, "gas turbine pressure")
+	ws.views.heat_on = true
+	# the flame's particles burn along the liners, the fuel's run down to the nozzles
+	for f in ["flame_0", "fuel_0", "comp_0", "turb_0"]:
+		var fl: Dictionary = ws.views._flows[f]
+		var ph1: float = fl.phase
+		_go(ws, 0.3)
+		check(fl.phase != ph1 and (fl.mat as ShaderMaterial).get_shader_parameter("density") > 0.0, "the particles move along %s" % f)
+	# the compressor's tone rises with the speed, the combustion roars while it burns
+	var snd: Array = bv.sounds.filter(func(x): return x.id == "compressor_pass")
+	var roar: Array = bv.sounds.filter(func(x): return x.id == "combustion")
+	check(snd.size() == 1 and roar.size() == 1, "the compressor's and the combustion's sounds are bound")
+	if snd.size() == 1 and roar.size() == 1:
+		var p1: float = bv.level(snd[0].pitch)
+		_go(ws, 10.0)
+		check(bv.level(snd[0].pitch) > p1 and bv.level(roar[0].gain) > 0.0, "its pitch rises with the speed, the flame roars (%.3f -> %.3f)" % [p1, bv.level(snd[0].pitch)])
+	# a flame-out trips it: the fuel off, the flame gone
+	ws.toggle_fault("flameout")
+	_go(ws, 4.0)
+	check(c.machine_state("turbine") == "trip" and c.now("fuel_flow") == 0.0, "a flame-out trips it, the fuel off: %s" % c.machine_state("turbine"))
+	if roar.size() == 1:
+		check(bv.level(roar[0].gain) == 0.0, "and the roar stops")
+	check(c.now("rpm") > 100.0, "the tripped rotor still turns: %.0f rpm" % c.now("rpm"))
+	_refused_running(ws, "the coasting gas turbine", "comp_upper")
+	ws.toggle_fault("flameout")
+	for i in 900:
+		if c.machine_state("turbine") == "standstill":
+			break
+		_go(ws, 1.0)
+	check(c.machine_state("turbine") == "standstill" and not ws.bench_running(), "the rotor comes to rest on its turning gear: %s" % c.machine_state("turbine"))
+	ws.note = ""
+	ws.set_slider(0.5)
+	check(ws.s == 0.5 and ws.note == "", "at rest, the gas turbine is taken apart again: %s" % ws.note)
 	ws.reset()
 	ws.close()
 	await ws.left

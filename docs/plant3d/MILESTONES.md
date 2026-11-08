@@ -317,6 +317,17 @@ first frame; no frame over 100 ms; 99.79 / 99.89 % at ≥ 30 fps, mean frame 19.
 peak PSS 868 / 886 MB; at most 95 draw calls in any view. The walk's guided phases leave 14 of its parts loose.
 Pictures: the wiki's Workshop page.
 
+**K5b as built (2026-11-08):** the gas turbine runs on its bench, made from the plant's gt1 model by
+`tools/plant3d/workshop/make_bench.py` (the start-up machine with the SFC's cranking, the purge, ignition and the
+run-up, eight trips and the breaker's opening by protection, eight alarms, the DC oil pump's interlock, the turning
+gear's, excitation's, breaker's, bias, load and reset ops, 182 values; WORKSHOP.md §6.7): the compressor's eight
+stages, the firing temperature worked back from the plant's exhaust temperature, the turbine's three stages, the fuel's
+flow; 16 flow paths (the air, the fuel to two cans, the flame in three, the gas, the exhaust), Heat and Pressure on the
+gas path, the compressor's blade-pass tone with the plant's combustion roar, exhaust rumble and SFC whine; eight faults
+(six tripping by the plant's own trips); not opened while it turns, run only closed; two runs in
+`plant3d-bench-v1.json`, bit for bit in both engines. Laptop: LAPTOP_TODO. **The Note 9: TODO (the coordinator's
+run).**
+
 **K5a as built (2026-11-08):** the gas turbine's insides for the plant's first instance: 84 components, 2 fastener
 groups (the compressor casing's 40 studs replacing the plant's stand-ins, the coupling's 12 bolts `beyond`), 86 guided
 steps in a major inspection's order, 27,868 triangles, a public source per subassembly; the plant byte for byte

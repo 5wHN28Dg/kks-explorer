@@ -10,6 +10,7 @@
   {"id": "transformer_hum", "kind": "synth", "tones": [{"hz": 100, "gain": 0.8}, {"hz": 200, "gain": 0.45}, {"hz": 300, "gain": 0.3}, {"hz": 400, "gain": 0.2}, {"hz": 500, "gain": 0.12}, {"hz": 600, "gain": 0.1}], "noise": {"colour": "pink", "band": [150, 2000], "gain": 0.12}},
   {"id": "turbine_hum", "kind": "synth", "tones": [{"hz": 50, "gain": 0.5}, {"hz": 100, "gain": 0.4}, {"hz": 150, "gain": 0.25}, {"hz": 3600, "gain": 0.12}], "noise": {"colour": "pink", "band": [100, 2000], "gain": 0.35}},
   {"id": "blade_pass", "kind": "synth", "tones": [{"hz": 1700, "gain": 0.6}, {"hz": 3400, "gain": 0.2}, {"hz": 50, "gain": 0.25}], "noise": {"colour": "pink", "band": [400, 4000], "gain": 0.2}, "made": "moving blade rows passing at full speed"},
+  {"id": "compressor_pass", "kind": "synth", "tones": [{"hz": 2000, "gain": 0.6}, {"hz": 4000, "gain": 0.2}, {"hz": 3000, "gain": 0.2}, {"hz": 50, "gain": 0.2}], "noise": {"colour": "pink", "band": [300, 5000], "gain": 0.3}, "made": "compressor blade rows passing at full speed"},
   {"id": "steam_rush", "kind": "synth", "noise": {"colour": "white", "band": [500, 8000]}},
   {"id": "steam_vent", "kind": "synth", "noise": {"colour": "white", "band": [300, 10000]}},
   {"id": "turning_gear", "kind": "synth", "tones": [{"hz": 8, "gain": 0.5}, {"hz": 100, "gain": 0.3}, {"hz": 600, "gain": 0.12}], "noise": {"colour": "brown", "band": [50, 400], "gain": 0.3}},

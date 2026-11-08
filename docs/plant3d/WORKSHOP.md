@@ -745,6 +745,80 @@ addition (both engines, vectors) made in K6.
   the start is still there with the baked shaders: 686 ms at 4.74 s after the first frame, 8 surface pipelines in it.
   The APK (test-signed) 147.3 MB; the gas turbine's scene is 606 KB.
 
+### 6.7 The gas turbine's bench (K5b)
+
+**As built (K5b, 2026-11-08).**
+- **Made, not written.** `make_bench.py` takes from the generated `model/gt1.json` the start-up machine `gt1_start`
+  (as `turbine`): the SFC cranks it to 25 % speed, the HRSG purge (480 s), coasting to 15 %, fuel and igniters, the
+  flame detected, the run-up with the SFC, the SFC off at 70 %, full speed no load, synchronised, loaded; eight trips
+  (lube oil pressure low-low two out of three, flame failure, exhaust temperature high-high, exhaust spread
+  high-high, overspeed, bearing vibration, compressor surge, lube oil temperature) and the generator breaker's
+  opening by the turbine's protection, eight alarms, the DC emergency oil pump's interlock, the turning gear's,
+  excitation's and breaker's ops with their permissives, the speed bias and the load set point, each trip's reset,
+  and 182 named values (the speed and the governor, the purge's timer, the lube oil's pumps and switches, the fuel
+  gas, ignition and the flame's latch, the load and its capacity by the ambient air, the fuel's demand and valves,
+  the exhaust's twelve thermocouples and their spread, the air's flow, the compressor's discharge pressure and its
+  surge detection, the vibration, the synchronising check), renamed by stripping `gt1_`. The plant's filter and
+  compressor-fouling chains are `wear` nodes, which a version 1 bench may not hold (§6.1): the bench gives their
+  results as a clean filter and clean blading (`dp_f`, `foul_f` at 1, no runbacks), and takes the plant's capacity
+  formula over them. The source (`gas_turbine.py bench_source()`) adds what the plant's other areas give the GT: the
+  ambient air (a slider, 0–50 °C), the closed cooling water, the grid, the HRSG's drum-level and feedwater
+  permissives, no compressor wash running; and the gas path the plant's model doesn't have. `make_bench.py` needed no
+  change. `tests/test_plant3d_workshop_bench.py GasTurbine` checks the sequence, its sentences and seven values are
+  the plant's own, that a change to the plant's purge is a change to the bench, the tool's refusals, and the runs.
+- **The gas path** (sources: NASA Glenn's compressor and power-turbine thermodynamics pages, GER-3434D): the
+  compressor's eight drawn stages share the plant's discharge pressure (1 bar at the bellmouth, 11 bar at full speed
+  no load, 15 at base load) in equal ratios, each stage's temperature from the ambient air's by NASA's relation with
+  an efficiency of 0.87, T/T0 = 1 + (r^0.286 − 1)/0.87 (about 370 °C at the discharge at full speed, 30 °C ambient);
+  the firing temperature at the first nozzles is worked back from the plant's exhaust temperature through the whole
+  expansion, T5/T4 = 1 − 0.89 (1 − (1/r)^0.248) for the hot gas (γ 1.33): about 780 °C at full speed no load and
+  1,290 °C at base load with 600 °C at the exhaust; with no flame it is the compressor's discharge air's, and it falls
+  in 2 s when the flame goes out; the turbine's three stages share the expansion down to 1 bar at the exhaust, the
+  last stage's temperature the plant's exhaust temperature. Power laws are tables of the discharge pressure (the
+  engines have no power node; 16 points from 1 to 20 bar). The fuel's flow is the plant's fuel valve times the base
+  load's heat input (the plant's 9,750 kJ/kWh at 250 MW) over methane's lower heating value, 50.0 MJ/kg (NIST's
+  enthalpy of combustion less the water's vaporisation): 13.5 kg/s at base load.
+- **The start:** at standstill on its turning gear, the AC lube oil pump running (the oil pumps' own ops stay off
+  the bench; the DC pump starts by the interlock). Start, and the plant's sequence runs: about 12¼ minutes of bench
+  time to full speed no load, of which the purge is 8 (about 6 minutes at the Run panel's 2×).
+- **Drawn:** the rotor's `shaft` at 50 rev/s per unit speed (the plant's binding), right-handed about the air's way
+  (`GT_TURN`, as the blades are made for), at most `MAX_DRAWN_RPS`; 16 flow paths (§6.1's limit; `_gt_flows`, Workshop
+  only): the air down the plenum into the bellmouth, four lines along the compressor and four along the turbine (by
+  pressure), the fuel from the gas ring down a pigtail to two cans' nozzles (by the gas's pressure), the flame along
+  three liners and their transition pieces to the first nozzles (by the firing temperature: the flame's colour), two
+  out of the diffuser; one of each set lies in the cutaway's quarter. Heat and Pressure colour the inlet guide vanes,
+  the compressor's casings, stator rows and blades (the middle stage's air), the discharge casings, every liner and
+  transition piece (the flame), the nozzle rows (the gas entering each stage), the buckets (leaving it), the turbine
+  shell and the exhaust (96 colour bindings of the bench's 115; the cans' casings, under the X-ray, are left their own
+  colour). The speed on a tag at the front bearing housing, the exhaust temperature on the exhaust.
+- **Sound:** `compressor_pass` (new, synthesised: the drawn rows' 40 blades at 50 rev/s, 2,000 Hz and its harmonic,
+  the buckets' 3,000 Hz, 50 Hz, the air's pink noise), its gain and pitch from the speed; the plant's `combustion`
+  roar by the flame, `exhaust_rumble` by the air's flow and `sfc_whine` while the SFC cranks.
+- **Faults:** a flame-out (flame failure), the governor (its set point 15 % high: overspeed), exhaust thermocouple 7
+  reading 80 K low (the spread), a compressor surge, a rub (vibration), a lube oil leak (lube oil pressure), each
+  tripping by the plant's own trip and reset from the Run panel once its cause is gone; the AC lube oil pump lost
+  (the DC pump takes over by the plant's interlock: no trip) and the fuel gas pressure low (a start is refused).
+- **A turning machine is not opened, and runs only closed** (the user's decision of 2026-11-07 and the steam
+  turbine's rule, §4.7): `open_running` allows nothing ("Stop it and let the rotor come to standstill on its turning
+  gear first"), and `run_exploded` allows nothing either: the casings hold the air and the gas, the bearings the
+  rotor, and a gas turbine has no lagging to leave off.
+- **Vectors:** `plant3d-bench-v1.json` gains two runs: the committed file (cranked to its purge, the refusals on the
+  way, the AC oil pump lost and the DC pump started by the interlock, a rub's trip in the purge, its reset refused
+  and taken, a start refused while it coasts, the fuel gas low; 900 steps) and the same with the purge cut to 10 s,
+  the vector's only change (fired, run up, synchronised, loaded and tripped on load by a flame-out, the breaker
+  opened by protection; 3,058 steps); both engines bit for bit (`GdscriptBench`). The file is 32.6 MB (14.7 MB
+  before).
+- **The walk:** unchanged code (the turbine's start is the first command its resting state takes; the excitation and
+  the breaker switched on as they may); the gas turbine needs about 7,350 bench steps to full speed, so with
+  `bench_speed=20` it reaches full speed no load about when the faults begin, at most 4 steps a frame (§K3's clock)
+  allowing.
+- **Pictures** (the gallery, `kit/gallery_workshop.gd`): a machine with a sequence is now run on until it waits for
+  the trainee (each machine in a state whose next steps read only values ops set: full speed no load), at most
+  1,500 s of bench time, so both turbines are pictured at full speed.
+- **Measured on the laptop:** LAPTOP_TODO
+- **The Note 9: TODO (the coordinator's run): first entry, again, back to the plant, frames, peak PSS, draw calls,
+  the bench step (≤ 0.3 ms), the APK's size.**
+
 ## 7. Shaders and cut faces
 
 Decision 0060: one lit shader and one vertex format; each lit ubershader is 0.6–0.9 s of serial compile on the Note
