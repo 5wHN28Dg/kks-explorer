@@ -174,6 +174,7 @@ def ref_tasks(V, V2):
 # Every unit is in exactly one shard, and the shards' results add up to the whole run's (tests/test_shards.py checks).
 # Shard SIM_REST also runs this module's other classes and the step bench. Before the split one job replayed every
 # vector: 18 to 30+ minutes on GitHub's runners, past the 1800 s limit on main's own runs (2026-11-08).
+# The whole replay in one process still runs nightly (plant3d-nightly.yml, with its own limit: sim_deadline).
 SIM_SHARDS = 4
 SIM_REST = 0
 # Each unit's cost on the laptop, 2026-11-08: Godot's seconds (run_vectors.gd's UNIT lines) plus a third of the
