@@ -746,7 +746,17 @@ at 29–35 °C over the runs.
 - **The step's cost:** 213 values added (183 of them the items and their signs, within §11's 250; the rest the new
   isolations' safe conditions). On the laptop (`bench_step.gd`, headless, base load, two runs each alternating with
   main's): 166 and 168 µs on main, 200 and 212 µs here, about +0.04 ms of §11's 0.15 for all realism content.
-- **The Note 9:** the walk with the new content waits for the next phone window (2026-11-08 from 17:30).
+- **The Note 9** (2026-11-08; a test-signed release build of main at 44cba70e, AG2's merge, without the lightmap's
+  bake; the frames walk among the crews in the aged train's scenario, `crews=1`, `scenario=shift_aged`, 600 s, a
+  fresh install, a cool start at 26.4 °C, `SAMPLE=1`; evidence in `~/kks-work/build/k5a/n9b/` on the maintainer's
+  laptop): the frame rule passes (no frame over 100 ms the app causes; the longest 63.7 ms; reclaim in 0.05 % of the
+  samples); mean frame 25.85 ms, 49.31 % shown at 60 fps, 99.05 % at ≥ 30 fps; GPU median 19.7 ms, p95 26.2 ms;
+  peak PSS 1,128 MB. As WX3's clear runs among the crews (25.70–26.63 ms, 44.6–49.3 % at 60 fps, GPU 19.7–20.9 ms):
+  the aged content costs nothing on screen. **The step's cost there:** the model's step with the staff, at 1×,
+  1.48–1.60 ms (1.600 ms over the walk; 15.7 ms of model a second on the mean, 26.7 at most; the fast-forward's cap
+  15.6×); the scripts' frame 4.93 ms mean (the model 0.32, the staff 0.06). Two pipelines compiled after the first
+  5 s; the plant's 0.73 s frame at the start (8 surface pipelines, 4.8 s after the first frame) is there as on every
+  build before the Workshop's polish (decision 0072).
 - **Vectors:** `plant3d-v1.json` and `plant3d-v2.json` made again with the train's new values; compared item by
   item with the files before, keyed by id: every input of every run and fork unchanged, every event too except in the
   ten cold-start forks that damage a cooling tower fan's blades (`ct_fan<i>_vibration`, and v2's `ct_fan3_service`),

@@ -706,8 +706,12 @@ addition (both engines, vectors) made in K6.
   the first time in the plant's warm-up. The content build now saves one material per shader file the app ships
   (`builder/shader_mats.gd`, `built/shaders/`), the walking directions' and the weather's too, which were made by
   script as well; `tests/test_launch.gd` checks every shader file has one. The release APK carries 32 baked
-  versions of the mobile scene shader instead of 20. Whether the frame goes (the driver's pipeline builds are not
-  baked) is measured on the Note 9 below.
+  versions of the mobile scene shader instead of 20. **Measured on the Note 9 (2026-11-08): the frame stays.** The
+  polish's own build (`walk=workshop`, the steam turbine, a cool start at 29.9 °C) had a 692 ms frame 4.82 s after
+  the first frame with 8 surface pipelines in it; K5a's build with main merged 686 ms at 4.74 s (8); main before the
+  polish (AG2's build) 730 ms at 4.82 s (8). Baking the shaders' source does not take away the driver's pipeline
+  builds, which are what holds that frame (decision 0072, "Measured after K4b"). Still a question for the user:
+  move that warm-up behind the start's loading screen, or leave it.
 - **A running machine is not taken apart** (§3): while the bench's machine is out of its resting state the slider
   (towards apart), the selected subassembly, handling and both guided modes are refused with the kind's reason
   (§4.7 `open_running`); once it is stopped and at rest (the turbine's standstill, below 1 % speed on its turning

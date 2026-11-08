@@ -331,6 +331,12 @@ frame), 14 ms after; no pipeline compiled in the walk; no frame over 100 ms in i
 705 ms frame 4.8 s after the start (the Workshop's shaders' first compilation; a question for the user). APK 145.2 MB
 (K4b's own files about 120 KB). Pictures: the wiki's Workshop page.
 
+**The Workshop's polish (#331) and the 0.7 s frame (measured 2026-11-08):** the Workshop's shaders baked at export
+did not take the frame away: 692 ms at 4.82 s after the first frame on the polish's build, 686 ms at 4.74 s on K5a's
+(main merged), against 730 ms at 4.82 s before the polish; 8 surface pipelines in it each time (WORKSHOP.md "After K4b",
+decision 0072). The driver's pipeline builds are what holds it; moving that warm-up behind the start's loading is the
+user's call.
+
 **K3 follow-ups as built (2026-11-03):** the step sentence on a canvas layer of its own (the pile's ~510 draw calls
 were its letters: now at most 58 on the laptop and 59 on the Note 9), the bench's engine logs bounded (bit for bit
 with an engine that keeps everything), and every kind's machine warmed in the plant after its first walkable frame

@@ -113,6 +113,15 @@ The two questions raised with K0:
    that player's person; it needs one flag in `pos` (bit 0 of its existing flags byte, so the message keeps its 24
    bytes), a planned change of MULTIPLAYER.md §6.3, built with K1. WORKSHOP.md §2.
 
+## Measured after K4b (2026-11-08)
+
+The plant's frame of about 0.7 s at the start, 4.8 s after its first frame (8 surface pipelines finish in it: the
+Workshop's warm-up in the plant), is not taken away by baking the Workshop's shaders at export (#331): on the Note 9
+692 ms on the polish's build and 686 ms on K5a's, against 730 ms before it. The export bakes the shaders' source; the
+driver's pipelines are still built on the phone the first time each is drawn. It falls inside the start's first
+seconds, which the frame rules don't judge. Open for the user: build those pipelines behind the start's loading screen
+(the start then takes the ~0.7 s longer), or leave it.
+
 **When to revisit:** if `ws_lit` costs more than about 10 pipelines or its background compile costs the plant's frames
 on the Note 9 (then compile at the Workshop's load only); if a kind can't stay within 120,000 triangles without losing
 what the trainee learns from (the user's call, WORKSHOP.md §13); if stencil support leaves "experimental" in a Godot
