@@ -827,6 +827,7 @@ addition (both engines, vectors) made in K6.
   longest 21.7 ms, p95 15.2 ms); **the bench step 81 µs mean** (the longest 2.3 ms) over 35,991 steps.
 - **The Note 9: TODO (the coordinator's run): first entry, again, back to the plant, frames, peak PSS, draw calls,
   the bench step (≤ 0.3 ms), the APK's size.**
+- **Package:** K5b's own files are about 130 KB (the bench file 37 KB, the compressor's tone 91 KB of Ogg Vorbis).
 
 ## 7. Shaders and cut faces
 
