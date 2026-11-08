@@ -1314,6 +1314,12 @@ weather on, seeded by season.
   left by AG2 for the filters and fouling. On the laptop (`bench_step.gd`, headless, two runs each alternating with
   main's at d62aeb11): the cold start's mean step 231 and 231 µs on main, 247 and 243 µs here, about +0.014 ms;
   model and staff 283 and 285 µs against 297 and 293.
+- **The Note 9** (a test-signed release build of this branch at 53afb6e1, `walk=screens probe=1`, 300 s
+  from a cool start at 28.1 °C, SAMPLE=1, 2026-11-08; what the milestone draws is the screens' new readouts, so the
+  control room's screens in turn): tier lean+vis, 17,942 frames, median 16.7 ms, p95 18.7 ms, max 39.2 ms, none over
+  100 ms (the frame rule passes); GPU median 6.7 ms; the model's step 1.80 ms in the app, fast-forward up to 13.9×;
+  first frame at 11.3 s. Evidence in `~/kks-work/build/wx2-note9/` on the maintainer's laptop. The app's 87 test
+  files passed in the build.
 
 ## 6. Documents and discussions
 
