@@ -42,6 +42,7 @@ CAKE = [[0, 0], [20, 4], [60, 14], [100, 26]]       # kg of cake → mbar
 RESIDUE = [[0, 0], [100, 2], [200, 5], [400, 12]]   # kg of residue → mbar
 RESIDUE_SHARE = 0.02
 PULSE_AT, DP_H, DP_HH, DP_RESET = 6.5, 9, 11, 7     # mbar: pulsing on demand, alarm, runback, runback cleared
+DP_DELAY = 30                                       # s: the alarm's and the runback's delay
 RUNBACK_MW = 150
 # (q / 620 kg/s)² as a table: the pressure drop goes with the square of the flow
 FLOW_SQ = [[q, round((q / 620) ** 2, 6)] for q in (0, 100, 200, 300, 400, 500, 620, 700)]
@@ -97,7 +98,11 @@ def gt_values(m):
     m.cmp('gt1_dp_h', 'gt1_filt_dp', '>', DP_H)
     m.cmp('gt1_dp_hh', 'gt1_filt_dp', '>=', DP_HH)
     m.cmp('gt1_dp_lo', 'gt1_filt_dp', '<', DP_RESET)
-    m.latch('gt1_dp_rb', 'gt1_dp_hh', 'gt1_dp_lo')
+    # the alarm and the runback wait 30 s, as a filter house's switches do: a clock jump's dust arrives in one step,
+    # before the next step's pulse has cleaned it off
+    m.delay('gt1_dp_h_d', 'gt1_dp_h', DP_DELAY)
+    m.delay('gt1_dp_hh_d', 'gt1_dp_hh', DP_DELAY)
+    m.latch('gt1_dp_rb', 'gt1_dp_hh_d', 'gt1_dp_lo')
     m.tab('gt1_dp_rb_cap', 'gt1_dp_rb', [[0, RATING], [1, RUNBACK_MW]], 'MW')
     m.tab('gt1_dp_f', 'gt1_filt_dp', DP_OUT)
     # compressor fouling
@@ -105,7 +110,7 @@ def gt_values(m):
     m.diff('gt1_wb_dep', 'ambient_t', 'ambient_wb', 'K')
     m.tab('gt1_f_damp', 'gt1_wb_dep', F_DAMP)
     m.prod('gt1_foul_rate', ['gt1_flame', 'age_h', 'gt1_f_dust', 'gt1_f_damp'], 'h/s')
-    m.v('gt1_foul_on', {'wear': 'gt1_foul_rate', 'max': 100000, 'reset': 'gt1_wash_on_done'}, 'h')
+    m.v('gt1_foul_on', {'wear': 'gt1_foul_rate', 'max': 100000, 'reset': 'gt1_wash_done'}, 'h')    # either wash
     m.v('gt1_foul_off', {'wear': 'gt1_foul_rate', 'max': 100000, 'reset': 'gt1_wash_off_done'}, 'h')
     m.tab('gt1_foul_on_f', 'gt1_foul_on', FOUL_ON)
     m.tab('gt1_foul_off_f', 'gt1_foul_off', FOUL_OFF)
@@ -134,28 +139,38 @@ def gt_after(m):
     for i, s in enumerate(('idle', 'online', 'offline')):
         m.eq(f'gt1_wash_{s}', 'gt1_wash_state', i)
     m.NOT('gt1_washing', 'gt1_wash_idle')
-    m.timer('gt1_wash_t', 'gt1_washing')
+    # the wash's time: from 0 at each wash (a wash ended in one step and pressed again in the next starts again: the
+    # timer reads the step before, when the ended wash was still running)
+    m.timer('gt1_wash_t', 'gt1_wash_run')
     m.cmp('gt1_wash_t_on', 'gt1_wash_t', '>=', WASH_ON_S)
     m.cmp('gt1_wash_t_off', 'gt1_wash_t', '>=', WASH_OFF_S)
     m.AND('gt1_wash_on_done', ['gt1_wash_online', 'gt1_wash_t_on'])
     m.AND('gt1_wash_off_done', ['gt1_wash_offline', 'gt1_wash_t_off'])
+    m.OR('gt1_wash_done', ['gt1_wash_on_done', 'gt1_wash_off_done'])     # the offline wash removes both shares
+    m.NOT('gt1_wash_ndone', 'gt1_wash_done')
+    m.AND('gt1_wash_run', ['gt1_washing', 'gt1_wash_ndone'])
     m.cmp('gt1_wash_load', 'gt1_mw', '>=', WASH_LOAD)
+    m.AND('gt1_wash_ok', ['gt1_in_loaded', 'gt1_wash_load'])
+    m.NOT('gt1_wash_lost', 'gt1_wash_ok')          # off the grid or below the load: the online wash stops
     m.cmp('gt1_ws_cool', 'gt1_ws', '<', WS_WASH)
+    m.cmp('gt1_at_stand', 'gt1_start_state', '<', 0.5)     # the start sequence at standstill
+    m.NOT('gt1_spun', 'gt1_still')                  # the rotor driven up: the offline wash stops
     m.machines.append({'id': 'gt1_wash', 'kks': '10MBA10', 'init': 'idle',
         'commands': {'wash_online': {'from': ['idle'], 'to': 'online'},
                      'wash_offline': {'from': ['idle'], 'to': 'offline'}},
         'states': [
             {'id': 'idle', 'watch': False},
-            {'id': 'online', 'next': [['gt1_wash_on_done', 'idle'], ['gt1_noflame', 'idle']],
+            {'id': 'online', 'next': [['gt1_wash_on_done', 'idle'], ['gt1_wash_lost', 'idle']],
              'say': 'Online compressor wash: demineralised water sprayed into the running compressor'},
-            {'id': 'offline', 'next': [['gt1_wash_off_done', 'idle']],
+            {'id': 'offline', 'next': [['gt1_wash_off_done', 'idle'], ['gt1_spun', 'idle']],
              'say': 'Offline compressor wash: the rotor cranked, the compressor soaked with detergent, rinsed and '
                     'dried'}]})
     m.op('10MBA10', 'wash_online', None, [
         ('gt1_in_loaded', 'GT 1 is not on the grid'), ('gt1_wash_load', f'Load below {WASH_LOAD} MW')],
         ('screen',), machine='gt1_wash')
     m.op('10MBA10', 'wash_offline', None, [
-        ('gt1_still', 'GT 1 is turning: stop it first'), ('gt1_tg_run', 'Turning gear not running'),
+        ('gt1_at_stand', 'GT 1 is starting or stopping'), ('gt1_still', 'GT 1 is turning: stop it first'),
+        ('gt1_tg_run', 'Turning gear not running'),
         ('gt1_ws_cool', f'Wheel spaces above {WS_WASH} °C: water would crack the hot parts')],
         ('screen',), machine='gt1_wash')
     # the excitation cabinet's air filters
@@ -169,24 +184,22 @@ def gt_after(m):
     m.cmp('gen1_cab_h', 'gen1_cab_t', '>', CAB_H)
     m.NOT('gen1_exc_off', 'gt1_exc_cmd')
     # alarms and readouts
-    m.alarm('gt1_filt_dp_high', '10MBL10AT001', 'GT 1 air intake filter pressure drop high', 'gt1_dp_h', 2,
+    m.alarm('gt1_filt_dp_high', '10MBL10AT001', 'GT 1 air intake filter pressure drop high', 'gt1_dp_h_d', 2,
             '10MBL10AT001', 'PDAH')
     m.alarm('gt1_filt_runback', '10MBL10AT001', 'GT 1 runback: air intake filter pressure drop high-high', 'gt1_dp_rb',
             1, '10MBA10', 'PDAHH')
     m.alarm('gen1_cab_hot', '10MKC10', 'Generator 1 excitation cabinet temperature high', 'gen1_cab_h', 2, None, 'TAH')
     m.b(kks='10MBL10AT001', show='gt1_filt_dp')
-    # the works: the cartridges changed with the GT stopped; the pulse system's valves; the cabinet's filters
+    # the works: the cartridges changed with the GT stopped (its isolation locks the GT's code: the start refused
+    # meanwhile, as intended); the cabinet's filters. The filter house stands 20 m up with no way onto it in the plant
+    # yet: the cartridges' work is done from the GT's work place. The pulse system's repair has no work until then: an
+    # isolation of its air on the GT's code would lock the running GT (its stop, its alarms); the trainer repairs it
     m.isolation('iso_gt1_filt', 'GT 1 air intake filter house: the GT stopped',
                 [('10MBA10', 'electrical', 'gt1_still', 'GT 1 stopped; its starting device isolated, locked and '
                                                        'tagged')])
-    m.work('wo_gt1_filters', '10MBL10AT001', 'GT 1 air intake: replace the filter cartridges', 'mech', 'general',
+    m.work('wo_gt1_filters', '10MBA10', 'GT 1 air intake: replace the filter cartridges', 'mech', 'general',
            'iso_gt1_filt')
     m.works[-1]['renews'] = ['gt1_filt_res', 'gt1_filt_cake']
-    m.isolation('iso_gt1_pulse', 'GT 1 air intake filter house: the pulse air',
-                [('10MBL10AT001', 'process', None, 'Pulse air supply valve closed, locked and tagged; the header '
-                                                     'vented')])
-    m.work('wo_gt1_pulse', '10MBL10AT001', 'GT 1 air intake: repair the pulse cleaning (controller and diaphragm '
-           'valves)', 'inst', 'general', 'iso_gt1_pulse', 'gt1_pulse')
     m.isolation('iso_gen1_exc', 'Generator 1 excitation: its supply',
                 [('10MKC10', 'electrical', 'gen1_exc_off', 'Excitation off; its supply isolated, locked and tagged')])
     m.work('wo_gen1_cab', '10MKC10', 'Generator 1 excitation cabinet: replace the air filters', 'elec', 'general',
@@ -280,15 +293,15 @@ def faults():
 
 def fault_work():
     """{fault: its work} for the staff (train_staff.FAULT_WORK): the supervisor asks for the permit."""
-    return {'ct_lvl_frozen': 'wo_ct_lvl_thaw', 'ct_fan7_ingress': 'wo_ct_fan7_cy', 'ct_fan9_surge': 'wo_ct_fan9_cy',
-            'gt1_pulse': 'wo_gt1_pulse'}
+    return {'ct_lvl_frozen': 'wo_ct_lvl_thaw', 'ct_fan7_ingress': 'wo_ct_fan7_cy', 'ct_fan9_surge': 'wo_ct_fan9_cy'}
 
 
 # ------------------------------------------------------------------------------------------------ the scenarios' ages
-# (wear, what a month adds, what it is renewed at): the filters' residue (kg: a hot month's dust at 90 % running), the
+# (wear, what a month adds, what it is renewed at): the filters' residue (kg: a hot month's dust at 90 % running;
+# new cartridges at 150 kg, before the residue alone would keep the pulsing on), the
 # fouling that only offline washes remove (quarterly), what the online washes leave (daily), the cabinet's filters
 HOURS_A_MONTH = 730
-AGE_ITEMS = [('gt1_filt_res', HOURS_A_MONTH * 0.9 * 3600 * 0.2 * 540 * 1e-6 * RESIDUE_SHARE, 200),
+AGE_ITEMS = [('gt1_filt_res', HOURS_A_MONTH * 0.9 * 3600 * 0.2 * 540 * 1e-6 * RESIDUE_SHARE, 150),
              ('gt1_foul_off', HOURS_A_MONTH * 0.9, 2190),
              ('gt1_foul_on', HOURS_A_MONTH * 0.9, 24),
              ('gen1_cab_filt', HOURS_A_MONTH * 0.9, 4380)]

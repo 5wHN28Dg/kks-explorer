@@ -128,14 +128,16 @@
   ["gt1_dp_h", {"cmp": ["gt1_filt_dp", ">", 9]}],
   ["gt1_dp_hh", {"cmp": ["gt1_filt_dp", ">=", 11]}],
   ["gt1_dp_lo", {"cmp": ["gt1_filt_dp", "<", 7]}],
-  ["gt1_dp_rb", {"latch": "gt1_dp_hh", "reset": "gt1_dp_lo"}],
+  ["gt1_dp_h_d", {"delay": "gt1_dp_h", "on": 30}],
+  ["gt1_dp_hh_d", {"delay": "gt1_dp_hh", "on": 30}],
+  ["gt1_dp_rb", {"latch": "gt1_dp_hh_d", "reset": "gt1_dp_lo"}],
   ["gt1_dp_rb_cap", {"of": "gt1_dp_rb", "table": [[0, 250], [1, 150]], "unit": "MW"}],
   ["gt1_dp_f", {"of": "gt1_filt_dp", "table": [[0, 1.00355], [2.5, 1.0], [12.5, 0.9858], [30, 0.961]]}],
   ["gt1_f_dust", {"of": "dust", "table": [[0, 0.7], [0.2, 1], [1.5, 2], [10, 5]]}],
   ["gt1_wb_dep", {"diff": ["ambient_t", "ambient_wb"], "unit": "K"}],
   ["gt1_f_damp", {"of": "gt1_wb_dep", "table": [[0, 1.6], [5, 1.2], [12, 1]]}],
   ["gt1_foul_rate", {"product": ["gt1_flame", "age_h", "gt1_f_dust", "gt1_f_damp"], "unit": "h/s"}],
-  ["gt1_foul_on", {"wear": "gt1_foul_rate", "max": 100000, "reset": "gt1_wash_on_done", "unit": "h"}],
+  ["gt1_foul_on", {"wear": "gt1_foul_rate", "max": 100000, "reset": "gt1_wash_done", "unit": "h"}],
   ["gt1_foul_off", {"wear": "gt1_foul_rate", "max": 100000, "reset": "gt1_wash_off_done", "unit": "h"}],
   ["gt1_foul_on_f", {"of": "gt1_foul_on", "table": [[0, 1], [100, 0.99], [200, 0.983], [400, 0.976], [800, 0.973]]}],
   ["gt1_foul_off_f", {"of": "gt1_foul_off", "table": [[0, 1], [1000, 0.99], [3000, 0.972], [6000, 0.958]]}],
@@ -327,13 +329,20 @@
   ["gt1_wash_offline_le", {"cmp": ["gt1_wash_state", "<=", 2]}],
   ["gt1_wash_offline", {"and": ["gt1_wash_offline_ge", "gt1_wash_offline_le"]}],
   ["gt1_washing", {"not": "gt1_wash_idle"}],
-  ["gt1_wash_t", {"timer": "gt1_washing", "unit": "s"}],
+  ["gt1_wash_t", {"timer": "gt1_wash_run", "unit": "s"}],
   ["gt1_wash_t_on", {"cmp": ["gt1_wash_t", ">=", 600]}],
   ["gt1_wash_t_off", {"cmp": ["gt1_wash_t", ">=", 1800]}],
   ["gt1_wash_on_done", {"and": ["gt1_wash_online", "gt1_wash_t_on"]}],
   ["gt1_wash_off_done", {"and": ["gt1_wash_offline", "gt1_wash_t_off"]}],
+  ["gt1_wash_done", {"or": ["gt1_wash_on_done", "gt1_wash_off_done"]}],
+  ["gt1_wash_ndone", {"not": "gt1_wash_done"}],
+  ["gt1_wash_run", {"and": ["gt1_washing", "gt1_wash_ndone"]}],
   ["gt1_wash_load", {"cmp": ["gt1_mw", ">=", 150]}],
+  ["gt1_wash_ok", {"and": ["gt1_in_loaded", "gt1_wash_load"]}],
+  ["gt1_wash_lost", {"not": "gt1_wash_ok"}],
   ["gt1_ws_cool", {"cmp": ["gt1_ws", "<", 95]}],
+  ["gt1_at_stand", {"cmp": ["gt1_start_state", "<", 0.5]}],
+  ["gt1_spun", {"not": "gt1_still"}],
   ["gen1_cab_dust", {"of": "dust", "table": [[0, 0.5], [0.2, 1], [1.5, 2], [10, 6]]}],
   ["gen1_cab_rate", {"product": ["gt1_exc_cmd", "age_h", "gen1_cab_dust"], "unit": "h/s"}],
   ["gen1_cab_filt", {"wear": "gen1_cab_rate", "max": 100000, "unit": "h"}],
@@ -355,7 +364,7 @@
   {"kks": "10BAC10", "do": "open_breaker", "set": {"gt1_brk_cmd": 0}, "where": ["screen"]},
   {"kks": "10MBY10CS001", "do": "set", "input": "gt1_bias", "range": [-0.01, 0.01], "where": ["screen"]},
   {"kks": "10MBA10", "do": "wash_online", "machine": "gt1_wash", "needs": [["gt1_in_loaded", "GT 1 is not on the grid"], ["gt1_wash_load", "Load below 150 MW"]], "where": ["screen"]},
-  {"kks": "10MBA10", "do": "wash_offline", "machine": "gt1_wash", "needs": [["gt1_still", "GT 1 is turning: stop it first"], ["gt1_tg_run", "Turning gear not running"], ["gt1_ws_cool", "Wheel spaces above 95 °C: water would crack the hot parts"]], "where": ["screen"]},
+  {"kks": "10MBA10", "do": "wash_offline", "machine": "gt1_wash", "needs": [["gt1_at_stand", "GT 1 is starting or stopping"], ["gt1_still", "GT 1 is turning: stop it first"], ["gt1_tg_run", "Turning gear not running"], ["gt1_ws_cool", "Wheel spaces above 95 °C: water would crack the hot parts"]], "where": ["screen"]},
   {"kks": "10MBA10", "do": "start", "machine": "gt1_start", "needs": [["gt1_lube_ok", "Lube oil pressure below 1.8 bar"], ["gt1_tg_run", "Turning gear not running"], ["gt1_gas_ok", "Fuel gas pressure below 25 bar"], ["ccw_ok", "Closed cooling water not in service"], ["gt1_trips_clear", "A GT trip is latched: reset it first"], ["hp_lvl_ok", "HP drum level outside ±150 mm"], ["fw_avail", "No feedwater pump running"], ["gt1_wash_idle", "A compressor wash is running"]], "where": ["screen"]},
   {"kks": "10MBA10", "do": "stop", "machine": "gt1_start", "where": ["screen"]},
   {"kks": "10MKA10", "do": "set", "input": "gt1_load_sp", "range": [10, 250], "where": ["screen"]},
@@ -377,7 +386,7 @@
   {"id": "gt1_dc_auto", "when": "gt1_dc_auto_c", "do": [{"set": {"gt1_ldc_cmd": 1}}], "kks": "10MBV10AP002", "text": "Lube oil pressure low while the oil system is in service: the DC emergency pump starts"}
  ],
  "machines": [
-  {"id": "gt1_wash", "kks": "10MBA10", "init": "idle", "commands": {"wash_online": {"from": ["idle"], "to": "online"}, "wash_offline": {"from": ["idle"], "to": "offline"}}, "states": [{"id": "idle", "watch": false}, {"id": "online", "next": [["gt1_wash_on_done", "idle"], ["gt1_noflame", "idle"]], "say": "Online compressor wash: demineralised water sprayed into the running compressor"}, {"id": "offline", "next": [["gt1_wash_off_done", "idle"]], "say": "Offline compressor wash: the rotor cranked, the compressor soaked with detergent, rinsed and dried"}]},
+  {"id": "gt1_wash", "kks": "10MBA10", "init": "idle", "commands": {"wash_online": {"from": ["idle"], "to": "online"}, "wash_offline": {"from": ["idle"], "to": "offline"}}, "states": [{"id": "idle", "watch": false}, {"id": "online", "next": [["gt1_wash_on_done", "idle"], ["gt1_wash_lost", "idle"]], "say": "Online compressor wash: demineralised water sprayed into the running compressor"}, {"id": "offline", "next": [["gt1_wash_off_done", "idle"], ["gt1_spun", "idle"]], "say": "Offline compressor wash: the rotor cranked, the compressor soaked with detergent, rinsed and dried"}]},
   {"id": "gt1_start", "kks": "10MBA10", "init": "standstill", "commands": {"start": {"from": ["standstill"], "to": "crank"}, "stop": {"from": ["crank", "purge", "coast", "ignite", "accel", "accel_sfc_off", "fsnl"], "to": "coastdown"}}, "states": [{"id": "standstill", "set": {"gt1_sfc_on": 0, "gt1_fuel_on": 0, "gt1_ign": 0, "gt1_speed_sp": 0, "gt1_bias": 0}, "watch": false}, {"id": "crank", "set": {"gt1_sfc_on": 1, "gt1_speed_sp": 0.25}, "next": [["gt1_at_crank", "purge"]], "say": "Cranking: the static frequency converter drives the generator as a motor"}, {"id": "purge", "next": [["gt1_purge_done", "coast"]], "watch": false, "say": "HRSG purge: five volume changes of air through the gas path"}, {"id": "coast", "set": {"gt1_sfc_on": 0, "gt1_speed_sp": 0.15}, "next": [["gt1_at_coast", "ignite"]], "say": "Coasting down to ignition speed"}, {"id": "ignite", "set": {"gt1_sfc_on": 1, "gt1_ign": 1, "gt1_fuel_on": 1}, "next": [["gt1_flame", "accel"]], "say": "Ignition: fuel gas and igniters on"}, {"id": "accel", "set": {"gt1_ign": 0, "gt1_speed_sp": 1}, "next": [["gt1_at_sfc_off", "accel_sfc_off"]], "say": "Flame detected: accelerating with the SFC"}, {"id": "accel_sfc_off", "set": {"gt1_sfc_on": 0}, "next": [["gt1_at_full", "fsnl"]], "say": "SFC off at 70 % speed: the turbine accelerates on its own"}, {"id": "fsnl", "next": [["gt1_brk_cmd", "loaded"]], "watch": false, "say": "Full speed no load: ready to synchronise"}, {"id": "loaded", "next": [["gt1_brk_open", "fsnl"]], "watch": false, "say": "On the grid"}, {"id": "coastdown", "set": {"gt1_sfc_on": 0, "gt1_fuel_on": 0, "gt1_ign": 0, "gt1_speed_sp": 0, "gt1_bias": 0}, "next": [["gt1_still", "standstill"]], "say": "Stopping: fuel off"}, {"id": "trip", "set": {"gt1_sfc_on": 0, "gt1_fuel_on": 0, "gt1_ign": 0, "gt1_speed_sp": 0, "gt1_bias": 0}, "next": [["gt1_still", "standstill"]], "say": "TRIPPED: fuel off"}]}
  ],
  "alarms": [
@@ -389,7 +398,7 @@
   {"id": "gt1_lp2_ll", "kks": "10MBV10CP002", "text": "GT 1 lube oil pressure low-low (2)", "when": "gt1_lp_2_ll", "priority": 1, "where": "10MBV10CP002", "isa": "PALL", "suppress": "gt1_lube_sup"},
   {"id": "gt1_lp3_low", "kks": "10MBV10CP003", "text": "GT 1 lube oil pressure low (3)", "when": "gt1_lp_3_l", "priority": 2, "where": "10MBV10CP003", "isa": "PAL", "suppress": "gt1_lube_sup"},
   {"id": "gt1_lp3_ll", "kks": "10MBV10CP003", "text": "GT 1 lube oil pressure low-low (3)", "when": "gt1_lp_3_ll", "priority": 1, "where": "10MBV10CP003", "isa": "PALL", "suppress": "gt1_lube_sup"},
-  {"id": "gt1_filt_dp_high", "kks": "10MBL10AT001", "text": "GT 1 air intake filter pressure drop high", "when": "gt1_dp_h", "priority": 2, "where": "10MBL10AT001", "isa": "PDAH"},
+  {"id": "gt1_filt_dp_high", "kks": "10MBL10AT001", "text": "GT 1 air intake filter pressure drop high", "when": "gt1_dp_h_d", "priority": 2, "where": "10MBL10AT001", "isa": "PDAH"},
   {"id": "gt1_filt_runback", "kks": "10MBL10AT001", "text": "GT 1 runback: air intake filter pressure drop high-high", "when": "gt1_dp_rb", "priority": 1, "where": "10MBA10", "isa": "PDAHH"},
   {"id": "gen1_cab_hot", "kks": "10MKC10", "text": "Generator 1 excitation cabinet temperature high", "when": "gen1_cab_h", "priority": 2, "where": "10MKC10", "isa": "TAH"},
   {"id": "gt1_tg_hot", "kks": "10MBK10AE001", "text": "GT 1 turning gear not running with the rotor hot", "when": "gt1_tg_alarm_c", "priority": 2, "where": "10MBK10AE001"},
@@ -522,12 +531,10 @@
  ],
  "isolations": [
   {"id": "iso_gt1_filt", "text": "GT 1 air intake filter house: the GT stopped", "points": [{"kks": "10MBA10", "kind": "electrical", "how": "GT 1 stopped; its starting device isolated, locked and tagged", "safe": "gt1_still"}]},
-  {"id": "iso_gt1_pulse", "text": "GT 1 air intake filter house: the pulse air", "points": [{"kks": "10MBL10AT001", "kind": "process", "how": "Pulse air supply valve closed, locked and tagged; the header vented"}]},
   {"id": "iso_gen1_exc", "text": "Generator 1 excitation: its supply", "points": [{"kks": "10MKC10", "kind": "electrical", "how": "Excitation off; its supply isolated, locked and tagged", "safe": "gen1_exc_off"}]}
  ],
  "works": [
-  {"id": "wo_gt1_filters", "kks": "10MBL10AT001", "title": "GT 1 air intake: replace the filter cartridges", "discipline": "mech", "permit": "general", "isolation": "iso_gt1_filt", "renews": ["gt1_filt_res", "gt1_filt_cake"], "task": "job_gt1_filters", "isolate": "isolate_gt1_filters", "assign": "assign_gt1_filters", "deisolate": "deisolate_gt1_filters"},
-  {"id": "wo_gt1_pulse", "kks": "10MBL10AT001", "title": "GT 1 air intake: repair the pulse cleaning (controller and diaphragm valves)", "discipline": "inst", "permit": "general", "isolation": "iso_gt1_pulse", "repairs": "gt1_pulse", "task": "job_gt1_pulse", "isolate": "isolate_gt1_pulse", "assign": "assign_gt1_pulse", "deisolate": "deisolate_gt1_pulse"},
+  {"id": "wo_gt1_filters", "kks": "10MBA10", "title": "GT 1 air intake: replace the filter cartridges", "discipline": "mech", "permit": "general", "isolation": "iso_gt1_filt", "renews": ["gt1_filt_res", "gt1_filt_cake"], "task": "job_gt1_filters", "isolate": "isolate_gt1_filters", "assign": "assign_gt1_filters", "deisolate": "deisolate_gt1_filters"},
   {"id": "wo_gen1_cab", "kks": "10MKC10", "title": "Generator 1 excitation cabinet: replace the air filters", "discipline": "elec", "permit": "general", "isolation": "iso_gen1_exc", "renews": ["gen1_cab_filt"], "task": "job_gen1_cab", "isolate": "isolate_gen1_cab", "assign": "assign_gen1_cab", "deisolate": "deisolate_gen1_cab"}
  ]
 }

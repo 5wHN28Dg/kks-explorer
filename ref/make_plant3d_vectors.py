@@ -828,7 +828,15 @@ FORKS = [
     ('wx_wash_online', 'end', [('op', '10MBA10', 'wash_online', None, None), ('run', 630)],
      {'done': [['10MBA10', 'wash_online']], 'machines': {'gt1_wash': 'idle'}, 'end': {'gt1_foul_on': [0, 10]}}),
     ('wx_wash_offline_refused', 'end', [('op', '10MBA10', 'wash_offline', None, None), ('run', 1)],
-     {'refused': [['10MBA10', 'wash_offline', ['gt1_still', 'gt1_tg_run', 'gt1_ws_cool']]]}),
+     {'refused': [['10MBA10', 'wash_offline', ['gt1_at_stand', 'gt1_still', 'gt1_tg_run', 'gt1_ws_cool']]]}),
+    # a wash pressed again the step after one ended runs its whole time again
+    ('wx_wash_twice', 'end', [('op', '10MBA10', 'wash_online', None, None), ('run', 1), ('until', 'gt1_wash_idle', 700),
+                              ('op', '10MBA10', 'wash_online', None, None), ('run', 30)],
+     {'done': [['10MBA10', 'wash_online'], ['10MBA10', 'wash_online']], 'machines': {'gt1_wash': 'online'}}),
+    # the offline wash and a start pressed in the same step: the wash stops as the rotor is driven up
+    ('wx_wash_offline_start', 'gt_tg', [('op', '10MBA10', 'wash_offline', None, None),
+                                        ('op', '10MBA10', 'start', None, None), ('run', 120)],
+     {'done': [['10MBA10', 'wash_offline'], ['10MBA10', 'start']], 'machines': {'gt1_wash': 'idle'}}),
     ('wx_wash_offline', 'gt_tg', [('op', '10MBA10', 'wash_offline', None, None), ('run', 60),
                                   ('op', '10MBA10', 'start', None, None), ('run', 1800)],
      {'done': [['10MBA10', 'wash_offline']], 'refused': [['10MBA10', 'start', ['fw_avail', 'gt1_wash_idle']]],
@@ -836,10 +844,12 @@ FORKS = [
     ('wx_cold_night', 'end', [('weather_hold', 'cold_clear', 'ct_lvl_held', 9000),
                               ('weather_hold', 'cold_clear', None, 1800)],
      {'faults': ['ct_lvl_frozen'], 'alarms': ['ct_fan1_vib_high'], 'end': {'ct_lvl_held': [1, 1]}}),
-    ('wx_thunderstorm', 'end', [('weather_hold', 'thunderstorm', 'ct_fan9_cy_fail', 9000),
+    ('wx_thunderstorm', 'end', [('op', '30PAD10AN007', 'start', None, None), ('run', 60),
+                                ('weather_hold', 'thunderstorm', 'ct_fan9_cy_fail', 9000),
                                 ('weather_hold', 'thunderstorm', 'ct_fan7_cy_err', 9000),
                                 ('weather_hold', 'thunderstorm', None, 1200)],
      {'faults': ['ct_fan7_ingress', 'ct_fan9_surge'], 'alarms': ['ct_fan7_vib_high', 'ct_fan9_vib_hh'],
+      'first_out': {'ct_fans': 'ct_fan7_trip_vib'},
       'end': {'ct_fan7_vm': [6.3, 9.5]}}),
 ]
 

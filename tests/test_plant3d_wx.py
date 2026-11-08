@@ -87,7 +87,9 @@ class GasTurbine(unittest.TestCase):
         self.assertTrue(X.DP_CLEAN < X.PULSE_AT < X.DP_H < X.DP_HH)
         self.assertTrue(X.PULSE_AT < X.DP_RESET < X.DP_H)
         self.assertGreater(X.DP_CLEAN + at(X.CAKE, 60), X.DP_HH)
-        self.assertLess(X.DP_CLEAN + at(X.RESIDUE, 150), X.PULSE_AT)
+        # new cartridges (the ages' renewal) before the residue alone would keep pulsing on
+        renew = next(every for wear, _, every in X.AGE_ITEMS if wear == 'gt1_filt_res')
+        self.assertLess(X.DP_CLEAN + at(X.RESIDUE, renew), X.PULSE_AT)
 
     def test_fouling_within_GER3620(self):
         """What online washes leave levels off near 3 %; offline fouling reaches 3-5 % in a year of firing; dust and
@@ -98,7 +100,7 @@ class GasTurbine(unittest.TestCase):
         self.assertGreater(at(X.F_DAMP, 0), at(X.F_DAMP, 12))
 
     def test_load_fraction_of_the_days_base_load(self):
-        """The load fraction (exhaust, HRSG, fuel) reads the day's base load: 1/MW by table within 0.06 %."""
+        """The load fraction (exhaust flow and temperature, the HRSG's sliding pressure) reads the day's base load: 1/MW by table within 0.06 %."""
         for c in range(100, 251):
             self.assertAlmostEqual(at(X.INV_CAP, c) * c, 1, delta=0.0006)
 
@@ -111,9 +113,9 @@ class Faults(unittest.TestCase):
         cls.cold = load('scenarios/cold_iron.json')
 
     def test_each_fault_has_its_work(self):
-        """The frozen line, the junction box's water (two hidden causes), the lightning surge and the pulse
-        system's failure: each a scenario fault repaired by exactly one isolated work, which the supervisor's generic
-        fault reaction asks for."""
+        """The frozen line, the junction box's water (two hidden causes) and the lightning surge: each a scenario
+        fault repaired by exactly one isolated work, which the supervisor's generic fault reaction asks for. The pulse
+        system's failure is the trainer's, with no work (an isolation on the GT's code would lock the running GT)."""
         faults = {f['id']: f for f in self.cold['faults']}
         for fid, wid in X.fault_work().items():
             self.assertIn(fid, faults)
@@ -124,6 +126,11 @@ class Faults(unittest.TestCase):
         for fid in ('ct_lvl_frozen', 'ct_fan7_ingress', 'ct_fan9_surge'):
             self.assertIn('when', faults[fid])
         self.assertNotIn('when', faults['gt1_pulse'])        # the trainer's
+        self.assertFalse([w for w in self.works.values() if w.get('repairs') == 'gt1_pulse'])
+        # no isolation locks the GT's code while it may run: only the cartridges' change, safe once it is still
+        isos = {i['id']: i for m in self.models for i in m.get('isolations', [])}
+        on_gt = [(k, p.get('safe')) for k, i in isos.items() for p in i['points'] if p['kks'] == '10MBA10']
+        self.assertEqual(on_gt, [('iso_gt1_filt', 'gt1_still')])
         st = load('staff.json')
         listed = [r for r in st['reactions'] if r['on'].get('fault') and r.get('work') == '$']
         self.assertTrue(set(X.fault_work()) <= set(listed[0]['on']['fault']))
@@ -136,17 +143,37 @@ class Faults(unittest.TestCase):
         self.assertEqual(self.works['wo_ct_fan7_cy']['renews'], ['ct_jb7_rain'])
 
 
+class FilterAlarm(unittest.TestCase):
+    def test_a_jumps_dust_in_one_step_brings_no_alarm(self):
+        """A clock jump adds the night's dust to the cake in one step (the wear's jump rule): the pulse in the next
+        step cleans it before the alarm's and the runback's 30 s delay, so the night passes without either."""
+        b = P.check_dir(DATA)
+        e, _ = P.run_procedure(b, 'cold_start')
+        e.cur[e.ix['gt1_filt_cake']] = 100.0         # as a jump's step leaves it (the wear's max)
+        seen, raw = set(), 0
+        for _ in range(X.DP_DELAY * 10 + 50):
+            e.step()
+            raw += e.truth('gt1_dp_hh')          # the undelayed high-high: what an alarm without the delay reads
+            seen |= {a for a in ('gt1_filt_dp_high', 'gt1_filt_runback') if a in e.snapshot(values=False)['alarms']}
+        self.assertGreater(raw, 0)
+        self.assertEqual(seen, set())
+        self.assertLess(e.v('gt1_filt_cake'), 1)
+
+
 class Procedure(unittest.TestCase):
     def test_offline_wash_from_cold_iron(self):
         """The procedure runs in the reference engine: the oil and turning gear, then the wash, which ends in half
-        an hour of model time with the compressor's fouling gone; a start is refused meanwhile."""
+        an hour of model time with both shares of the compressor's fouling gone."""
         b = P.check_dir(DATA)
+        # fouled before the wash (cold_iron starts clean): both shares go
+        b.scenarios['cold_iron']['init'].update(gt1_foul_on=300.0, gt1_foul_off=2000.0)
         e, log = P.run_procedure(b, 'gt_wash_offline')
         ids = [s for s, _ in log]
         self.assertEqual(ids[-2:], ['wash', 'wash_done'])
         n = dict(log)
         self.assertAlmostEqual((n['wash_done'] - n['wash']) / 10, X.WASH_OFF_S, delta=1)
         self.assertEqual(e.v('gt1_foul_off'), 0)
+        self.assertLess(e.v('gt1_foul_on'), 1)      # (what the drying crank's minutes add again: none, unfired)
 
 
 class Ages(unittest.TestCase):
@@ -155,8 +182,10 @@ class Ages(unittest.TestCase):
         fouling and the cabinet's filters at their months less their renewals; the cold start at none."""
         cold = load('scenarios/cold_iron.json')['init']
         hot = load('scenarios/hot_restart.json')['init']
+        aged = load('scenarios/shift_aged.json')['init']
         for wear, per_month, every in X.AGE_ITEMS:
             self.assertNotIn(wear, cold)
+            self.assertAlmostEqual(aged.get(wear, 0), round((30 * per_month) % every, 3), places=3)
             self.assertAlmostEqual(hot.get(wear, 0), round((2 * per_month) % every, 3), places=3)
             self.assertLess(hot.get(wear, 0), every)
 

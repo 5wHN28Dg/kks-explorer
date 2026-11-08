@@ -136,6 +136,7 @@ def build():
     files['scenarios/shift_wtp.json'] = train_staff.scenario_wtp(files['scenarios/cold_iron.json'])
     for sid, world in train_weather.FREE_PLAY.items():     # free play's weather (REALISM.md §5.1, §5.5)
         files[f'scenarios/{sid}.json'] = _with_world(files[f'scenarios/{sid}.json'], world)
+        files[f'scenarios/{sid}.json'] = train_weather.start_air(files[f'scenarios/{sid}.json'])   # (WX2)
     files['weather.json'] = train_weather.weather()
     # the ageing scenario, and every scenario's training rate and age (REALISM.md §4.3, milestone AG2)
     files['scenarios/shift_aged.json'] = train_ageing.aged_scenario(files['scenarios/shift_cold.json'])

@@ -108,3 +108,16 @@ def weather():
             'values': [{'id': v, 'tau': t} for v, t in VALUES],
             'kinds': [{'id': k, 'targets': {v: K[k][v] for v, _ in VALUES}} for k in K],
             'seasons': S}
+
+
+def start_air(sc):
+    """WX2: a scenario whose season starts in another kind than summer's `hot` starts with that kind's air at 06:00
+    (the clock's start), so it doesn't begin with a summer afternoon's 35/25 (FIRST-TRAIN's cold start keeps them)."""
+    from ref.courses import table_at
+    season = next(x for x in S if x['id'] == sc['world']['weather']['season'])
+    k = season['start']
+    if k != 'hot':
+        t, wb = AIR[k]
+        sc['init'] = dict(sc['init'], ambient_t=round(float(table_at(t, 6.0)), 3),
+                          ambient_wb=round(float(table_at(wb, 6.0)), 3))
+    return sc
