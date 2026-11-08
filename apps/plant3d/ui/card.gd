@@ -68,7 +68,7 @@ func open(c: String, note := "") -> void:
 		body.add_child(W.label(line, 17, W.DIM))
 	_where = W.label("", 17, W.DIM)
 	body.add_child(_where)
-	var row := HBoxContainer.new()
+	var row := HFlowContainer.new()     # (Show me, Go there, Workshop, Manual, Drawing: wraps on a narrow card)
 	body.add_child(row)
 	if ui.index.has(c):
 		row.add_child(W.button("Show me", func(): ui.show_me(code)))
@@ -79,6 +79,11 @@ func open(c: String, note := "") -> void:
 			var wb := W.button("Workshop", func(): ui.open_workshop(kind, code))
 			wb.name = "workshop"
 			row.add_child(wb)
+	if ui.manual_of(c) != "":
+		# its kind's manual (REALISM.md §6.2.1), with this unit's own data
+		var mb := W.button("Manual", func(): ui.open_manual(ui.manual_of(code), "", code))
+		mb.name = "manual"
+		row.add_child(mb)
 	if ui.drawing_of(c) != "":
 		# its home sheet among the generated P&IDs (REALISM.md §6.1.1), the code centred and outlined
 		var db := W.button("Drawing", func(): ui.open_drawing(code))
