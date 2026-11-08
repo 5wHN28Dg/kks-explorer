@@ -26,6 +26,7 @@ const OIL_AT := "30PAC10AP001"        # CW pump A's motor (its oil bath)
 ## An engine's values for the pure functions (e.v(name)).
 class Vals extends RefCounted:
 	var d := {}
+	var events: Array = []
 	var _S := 3600
 	var _ds := 60
 	func v(n: String) -> float:
@@ -69,6 +70,18 @@ func _drawn() -> Array:
 		p.append("the 1× should be nothing when the lines alone exceed the overall: %s" % str(s1["lines"][0]))
 	if Mon.clock_at(e, 100, [[50, 600], [150, 900]]) != 3600 + 6000 + 600 or Mon.clock_at(e, 150, [[150, 900]]) != 3600 + 9000 + 900:
 		p.append("the clock at a step should count the jumps made by then")
+	var oilp := {"results": [{"node": "fe", "unit": "ppm"}, {"node": "pc", "unit": ""}]}
+	e.events = [[5, "lab", "fe", 10.0], [5, "lab", "pc", 15.0], [9, "lab", "fe", 11.0], [9, "lab", "pc", 16.0],
+		[9, "lab", "fe", 12.0], [9, "lab", "pc", 17.0], [9, "lab", "other", 1.0]]
+	var reps: Array = Mon.reports(e, oilp)        # (a jump's step brought two samples: two reports, newest first)
+	if reps != [[9, {"fe": 12.0, "pc": 17.0}], [9, {"fe": 11.0, "pc": 16.0}], [5, {"fe": 10.0, "pc": 15.0}]]:
+		p.append("the lab's reports: %s" % str(reps))
+	var fe0 := {"unit": "ppm", "alert": 15, "alarm": 30}
+	if Mon.level(fe0, Mon.shown(fe0, 15.4)) != 0 or Mon.level(fe0, Mon.shown(fe0, 15.6)) != 1:
+		p.append("a result is judged as shown (15.4 ppm shows 15: normal; 15.6 shows 16: alert)")
+	if not Mon.zone_basis({"group": 1, "zones": [2.3, 4.5, 7.1]}).begins_with("ISO 20816-3 group 1, rigid") \
+			or Mon.zone_basis({"group": 2, "zones": [2.8, 4.5, 6.3]}).contains("ISO 20816-3 group"):
+		p.append("the zones' basis: ISO's where they are, the plant's own otherwise")
 	var fe := {"alert": 15, "alarm": 30}
 	var visc := {"alert": [61.2, 74.8], "alarm": [54.4, 81.6]}
 	for c in [[fe, 15.0, 0], [fe, 15.5, 1], [fe, 31.0, 2], [visc, 68.0, 0], [visc, 60.0, 1], [visc, 76.0, 1],
@@ -175,7 +188,8 @@ func _round(tree: SceneTree) -> Array:
 	if ui._toast.text != "":
 		p.append("the refusal was said twice (a toast too): %s" % ui._toast.text)
 	mv.open(MOTOR)
-	# the tools at the store counter
+	_fresh(mv)
+	# the tools at the store counter (the panel stays open: it follows by itself from here)
 	_go(ui, "store_counter")
 	if not ui.work.tools_panel.visible:
 		ui.work.toggle_tools()
@@ -196,8 +210,7 @@ func _round(tree: SceneTree) -> Array:
 	_go(ui, "w_" + MOTOR.to_lower())
 	if not ui.near(PROBE) and ui.index.has(PROBE):
 		p.append("the probe %s is not within reach of the motor's work place (%.1f m)" % [PROBE, ui.distance_to(PROBE)])
-	mv.open(MOTOR)
-	_fresh(mv)
+	mv.refresh()                # (no reset: the tools carried and the walk up rebuild it)
 	var col = mv.body.find_child("collector", true, false)
 	if col == null:
 		main.free()
@@ -223,7 +236,7 @@ func _round(tree: SceneTree) -> Array:
 	var rs: Array = Mon.readings(e, pv)
 	if rs.size() != 1 or absf(rs[0][1] - snappedf(v, 0.01)) > 1e-9:
 		p.append("the reading recorded: %s (wanted %.2f)" % [str(rs), v])
-	_fresh(mv)
+	mv.refresh()                # (no reset: the reading recorded rebuilds it)
 	var hist = mv.body.find_child("point_%d" % iv, true, false).find_child("history", true, false)
 	if hist == null or not (hist as Label).text.contains("%.2f mm/s" % snappedf(v, 0.01)):
 		p.append("the reading is not listed: %s" % (hist.text if hist != null else "no history"))
@@ -289,6 +302,17 @@ func _round(tree: SceneTree) -> Array:
 			p.append("the result %s is not coloured as its level %d" % [res["node"], want])
 	if App.texts(mv.body).contains("No lab results yet.") or not App.texts(mv.body).contains("Lab report of"):
 		p.append("the lab's report is not shown: %s" % App.texts(mv.body).left(500))
+	# a sampling action done whose node's queue had filled meanwhile takes no sample: told so, not "Sample taken"
+	var full: Array = []
+	for k in 8:
+		full.append([e.clock() + 864000, 1.0])
+	var keep: Array = e.lab_q[node0]
+	e.lab_q[node0] = full
+	mv._qprev[node0] = 8
+	mv.on_events([[e.step_no, "hand", OIL_AT, String(po["action"]), "oil_kit", pid, "done", []]], 0)
+	if not mv.last_text.begins_with("No sample taken"):
+		p.append("a done action that took no sample was told: %s" % mv.last_text)
+	e.lab_q[node0] = keep
 	mv.close()
 	main.free()
 	return p

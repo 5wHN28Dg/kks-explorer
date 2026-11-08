@@ -23,6 +23,10 @@ const ZONE_NAMES := ["A", "B", "C", "D"]
 const ZONE_WORDS := ["newly commissioned machines", "unrestricted long-term operation",
 	"restricted: plan a remedy, not for long-term operation", "damage: vibration severe enough to damage the machine"]
 const ZONE_COLOURS := [Color(0.25, 0.75, 0.35), Color(0.75, 0.85, 0.25), Color(1.0, 0.6, 0.1), Color(0.95, 0.25, 0.2)]
+## ISO 20816-3's zone limits (mm/s r.m.s., A/B, B/C, C/D) by group and support: a point whose limits are one of these
+## is labelled with the standard; any other (the fans' gear reducers: AG2's advisory values) as the plant's own.
+const ISO_ZONES := [[1, "rigid", [2.3, 4.5, 7.1]], [1, "flexible", [3.5, 7.1, 11.0]], [2, "rigid", [1.4, 2.8, 4.5]],
+	[2, "flexible", [2.3, 4.5, 7.1]]]
 const LEVEL_WORDS := ["normal", "alert", "alarm"]
 const LEVEL_COLOURS := [Color(0.6, 1.0, 0.6), Color(1.0, 0.75, 0.2), Color(1.0, 0.4, 0.35)]
 ## The engine's reasons for a refused oil sample, in words (the work view's for the rest).
@@ -128,6 +132,10 @@ var _sig := ""
 var _rows := {}                 # point index -> {widgets}
 var _t := 0.0
 var _js: Array = []             # the run's jumps, at the last rebuild
+var _reads := 0                 # the machine's readings recorded (the panel's history rebuilt when it changes)
+var _in_seen := 0               # the run's inputs looked at for them
+var _qprev := {}                # an oil point's first node -> its queue's length at the last look (on_events)
+var _eng = null                 # the engine those belong to (a restart or a load starts again)
 
 
 func setup(u) -> void:
@@ -202,6 +210,7 @@ func open(c: String) -> bool:
 	last_text = ""
 	note.text = ""
 	_sig = ""
+	_eng = null             # (another machine: its readings counted afresh)
 	panel.visible = true
 	ui.close_card()
 	refresh()
@@ -224,6 +233,14 @@ func _process(delta: float) -> void:
 
 
 # ------------------------------------------------------------------ what is drawn (pure: the tests call these)
+
+## What a point's zones are: ISO 20816-3's (group and support) or the plant's own limits.
+static func zone_basis(p: Dictionary) -> String:
+	for z in ISO_ZONES:
+		if int(z[0]) == int(p["group"]) and z[2] == p["zones"]:
+			return "ISO 20816-3 group %d, %s support" % [int(z[0]), String(z[1])]
+	return "the plant's own limits for it (not ISO 20816-3's)"
+
 
 ## The ISO 20816-3 zone (0 A … 3 D) a velocity falls in: a boundary belongs to the zone below it.
 static func zone(p: Dictionary, v: float) -> int:
@@ -273,7 +290,8 @@ static func spectrum(e, p: Dictionary, overall: float) -> Dictionary:
 	return {"lines": [["1×", 1.0, one]] + out, "floor": fl}
 
 
-## An oil result's level (0 normal, 1 alert, 2 alarm): a limit is a ceiling, or a band [low, high] (viscosity).
+## An oil result's level (0 normal, 1 alert, 2 alarm): a limit is a ceiling, or a band [low, high] (viscosity). The
+## app judges the value as shown (`shown`): the same number is never two levels.
 static func level(res: Dictionary, v: float) -> int:
 	var lv := 0
 	for k in 2:
@@ -302,6 +320,11 @@ static func clock_at(e, n: int, js: Array) -> int:
 	return c
 
 
+## An oil result as the report shows it: whole numbers (an ISO 4406 code is a whole number), viscosity to 0.1 cSt.
+static func shown(res: Dictionary, v: float) -> float:
+	return snappedf(v, 0.1) if String(res["unit"]) == "cSt" else roundf(v)
+
+
 static func clock_words(e, t: int) -> String:
 	var s: int = (t % 864000) / 10
 	return "Day %d %02d:%02d" % [t / 864000, s / 3600, (s / 60) % 60]
@@ -317,7 +340,7 @@ static func readings(e, p: Dictionary) -> Array:
 	return out
 
 
-## The lab's reports for an oil point (newest first): [step, {node: value}], one per step results came in.
+## The lab's reports for an oil point (newest first): [step, {node: value}], one per sample.
 static func reports(e, p: Dictionary) -> Array:
 	var nodes := {}
 	for res in p["results"]:
@@ -325,7 +348,8 @@ static func reports(e, p: Dictionary) -> Array:
 	var out: Array = []
 	for ev in e.events:
 		if ev[1] == "lab" and nodes.has(ev[2]):
-			if out.is_empty() or out[0][0] != int(ev[0]):
+			# one sample's results come together; a jump's step can bring several samples of a point: each its own
+			if out.is_empty() or out[0][0] != int(ev[0]) or out[0][1].has(ev[2]):
 				out.push_front([int(ev[0]), {}])
 			out[0][1][ev[2]] = float(ev[3])
 	return out
@@ -360,7 +384,8 @@ func refresh() -> void:
 	if e == null:
 		return
 	var pid = ui.me()
-	var parts := PackedStringArray([str(e.carried.get(pid, [])), str(e.busy.get(pid, [])), str(e.inputs.size())])
+	_count_reads(e)
+	var parts := PackedStringArray([str(e.carried.get(pid, [])), str(e.busy.get(pid, [])), str(_reads)])
 	for i in by_machine.get(machine, []):
 		var p: Dictionary = points[i]
 		parts.append("1" if _near(p) else "0")
@@ -371,6 +396,27 @@ func refresh() -> void:
 		_sig = sig
 		_build(e, pid)
 	_write(e, pid)
+
+
+## The machine's readings recorded since the last look (only new inputs read): the panel is rebuilt for a reading of
+## its own, not for every input of the run (an arrival, another player's op).
+func _count_reads(e) -> void:
+	if e != _eng:
+		_eng = e
+		_in_seen = 0
+		_reads = 0
+		_qprev.clear()
+	if _in_seen > e.inputs.size():
+		_in_seen = 0
+	var mine := {}
+	for i in by_machine.get(machine, []):
+		if points[i].has("meter"):
+			mine[String(points[i]["meter"])] = true
+	for k in range(_in_seen, e.inputs.size()):
+		var it: Array = e.inputs[k]
+		if it.size() > 4 and it[1] == "read" and typeof(it[4]) == TYPE_STRING and mine.has(it[4]):
+			_reads += 1
+	_in_seen = e.inputs.size()
 
 
 func _build(e, pid) -> void:
@@ -395,7 +441,7 @@ func _build(e, pid) -> void:
 			"oil": _build_oil(e, i, p, box, row)
 		_rows[i] = row
 		body.add_child(HSeparator.new())
-	var src := W.label("Zones: ISO 20816-3. Oil limits: the lab's routine report (ASTM D6224).", 14, W.DIM)
+	var src := W.label("Oil: the lab's routine tests (ASTM D6224), ISO 4406 cleanliness.", 14, W.DIM)
 	body.add_child(src)
 
 
@@ -405,8 +451,8 @@ func _build_vib(e, i: int, p: Dictionary, box: VBoxContainer, row: Dictionary) -
 		why = "Carry the vibration data collector (Tools, at the store counter) to read it"
 	elif not _near(p):
 		why = "Walk up to the bearing to put the collector's probe on it"
-	box.add_child(W.label("Vibration data collector: overall velocity, 10 Hz to 1 kHz (mm/s r.m.s.), ISO 20816-3 group %d"
-			% int(p["group"]), 16, W.DIM))
+	box.add_child(W.label("Vibration data collector: overall velocity, 10 Hz to 1 kHz (mm/s r.m.s.). Zones: %s"
+			% zone_basis(p), 16, W.DIM))
 	if why != "":
 		var l := W.label(why, 17, W.DIM)
 		l.name = "why"
@@ -492,8 +538,8 @@ func _history(e, p: Dictionary, box: VBoxContainer, row: Dictionary) -> void:
 
 
 func _build_oil(e, i: int, p: Dictionary, box: VBoxContainer, row: Dictionary) -> void:
-	box.add_child(W.label("An oil sample (ten minutes with the sampling kit, at its work place); the lab's results after %d hours"
-			% int(p["hours"]), 16, W.DIM))
+	box.add_child(W.label("An oil sample (%d minutes with the sampling kit, at its work place); the lab's results after %d hours"
+			% [_minutes(e, p), int(p["hours"])], 16, W.DIM))
 	var b := W.button("Take an oil sample", func(): sample(i))
 	b.name = "sample"
 	box.add_child(b)
@@ -525,7 +571,7 @@ func _build_oil(e, i: int, p: Dictionary, box: VBoxContainer, row: Dictionary) -
 		var nd: String = res["node"]
 		if not reps[0][1].has(nd):
 			continue
-		var v: float = reps[0][1][nd]
+		var v: float = shown(res, float(reps[0][1][nd]))
 		var lv := level(res, v)
 		g.add_child(W.label(String(res["title"]), 16, W.DIM, false))
 		var vl := W.label(("%.0f" if String(res["unit"]) != "cSt" else "%.1f") % v + (" " + String(res["unit"])
@@ -536,6 +582,19 @@ func _build_oil(e, i: int, p: Dictionary, box: VBoxContainer, row: Dictionary) -
 		if reps.size() > 1 and reps[1][1].has(nd):
 			prev = "was %s" % (("%.0f" if String(res["unit"]) != "cSt" else "%.1f") % float(reps[1][1][nd]))
 		g.add_child(W.label(LEVEL_WORDS[lv] + ("  (" + prev + ")" if prev != "" else ""), 16, LEVEL_COLOURS[lv], false))
+
+
+func _minutes(e, p: Dictionary) -> int:
+	var x = e.m.hands_ix.get(String(p["code"]) + "|" + String(p["action"]))
+	return int(x.get("minutes", 0)) if x != null else 0
+
+
+## Whether an oil point takes this sampling action at this code (its refusals are this view's to say).
+func handles(c: String, action: String) -> bool:
+	for i in by_machine.get(machine_of(c), []):
+		if points[i]["kind"] == "oil" and points[i]["code"] == c and points[i]["action"] == action:
+			return true
+	return false
 
 
 func _write(e, pid) -> void:
@@ -565,6 +624,7 @@ func _write(e, pid) -> void:
 					sp.queue_redraw()
 			else:
 				var lim: Array = p["limits"]
+				v = snappedf(v, 0.1)            # (judged as shown)
 				var lv := 2 if v >= float(lim[1]) else (1 if v >= float(lim[0]) else 0)
 				(row["value"] as Label).text = "%.1f °C  %s" % [v, LEVEL_WORDS[lv]]
 				(row["value"] as Label).add_theme_color_override("font_color", LEVEL_COLOURS[lv])
@@ -609,32 +669,45 @@ func _show(text: String, ok := false) -> void:
 
 
 ## The engine's events since the last look (ui/plant_ui.gd passes them on): this person's oil samples refused or
-## done, and the lab's results as they arrive (a toast, open or not).
+## done, and the lab's results as they arrive (a toast, open or not). A sampling action done takes no sample when its
+## node's queue filled while it was under way (REALISM.md §2.19): told by the queue, which grew by the samples taken
+## less the results delivered since the last look.
 func on_events(evs: Array, from: int) -> void:
+	var e = ui.clock.engine
+	if e != _eng:
+		_eng = e
+		_in_seen = 0
+		_reads = 0
+		_qprev.clear()
 	var pid = ui.me()
 	var told := {}
+	var got := {}           # node -> results delivered in these events
 	for k in range(from, evs.size()):
 		var ev: Array = evs[k]
 		if ev[1] == "lab" and by_node.has(ev[2]):
+			got[ev[2]] = got.get(ev[2], 0) + 1
 			var i: int = by_node[ev[2]]
 			if not told.has(i):
 				told[i] = true
 				ui.toast("Lab results: %s" % points[i]["title"], 6.0)
-			_sig = ""
-		elif ev[1] == "hand" and pid != null and ev[5] == pid and ev.size() > 7:
-			var oil := false
-			for i in by_machine.get(machine_of(str(ev[2])), []):
-				oil = oil or (points[i]["kind"] == "oil" and points[i]["code"] == ev[2] and points[i]["action"] == ev[3])
-			if not oil:
-				continue
+			if machine_of(String(points[i]["code"])) == machine:
+				_sig = ""
+		elif ev[1] == "hand" and pid != null and ev[5] == pid and ev.size() > 7 and handles(str(ev[2]), str(ev[3])):
 			if ev[6] == "refused":
-				var x = ui.clock.engine.m.hands_ix.get(str(ev[2]) + "|" + str(ev[3]))
+				var x = e.m.hands_ix.get(str(ev[2]) + "|" + str(ev[3]))
 				var why := PackedStringArray()
 				for r in ev[7]:
 					why.append(WHY[r] if WHY.has(r) else WorkView.hand_reason(x, String(r), ev[4]))
 				_show("; ".join(why))
 			elif ev[6] == "done":
-				_show("Sample taken: it goes to the lab", true)
+				var nd: String = e.m.hands_ix[str(ev[2]) + "|" + str(ev[3])]["samples"][0]
+				var before = _qprev.get(nd)
+				if before == null or e.lab_q[nd].size() - int(before) + int(got.get(nd, 0)) > 0:
+					_show("Sample taken: it goes to the lab", true)
+				else:
+					_show("No sample taken: the lab already holds 8 of its samples (another was taken meanwhile)")
 				_sig = ""
 			elif ev[6] == "abandoned":
-				_show("The sample was not finished: stay at the equipment for its ten minutes")
+				_show("The sample was not finished: stay at the equipment until it is done")
+	for nd in by_node:
+		_qprev[nd] = e.lab_q[nd].size() if e.lab_q.has(nd) else 0
