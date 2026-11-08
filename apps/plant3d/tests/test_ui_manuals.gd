@@ -99,6 +99,7 @@ func _card(tree: SceneTree, ui) -> Array:
 	if tr == null or not App.texts(tr).contains("A loose or corroded signal terminal"):
 		p.append("the troubleshooting table: %s" % (App.texts(tr).left(200) if tr != null else "missing"))
 	p += await _laid_out_off_the_main_thread(tree, mv)
+	p += await _one_share_a_frame(tree, mv)
 	if mv.open_ms <= 0.0 or mv.open_ms > 300.0:
 		p.append("the troubleshooting page took %.1f ms (budget 300)" % mv.open_ms)
 	# a long page is built over several frames (the frame rule), its figures decoded on a worker thread
@@ -339,4 +340,32 @@ func _laid_out_off_the_main_thread(tree: SceneTree, mv) -> Array:
 			p.append("a page label not laid out: finished %s, %d lines, %.0f px tall: %s" % [str(l.is_finished()),
 				l.get_line_count(), l.size.y, l.get_parsed_text().left(60)])
 			break
+	return p
+
+
+## A page opened adds its first share in that frame only: the reader's own _process in the same frame adds none (it
+## added a second share, twice the frame's budget, in the frame that opens a page); and a figure's decode left running
+## when the reader closes is waited for later, once done, not in the frame that closes it.
+func _one_share_a_frame(tree: SceneTree, mv) -> Array:
+	var p: Array = []
+	mv.go("installation")
+	var left: int = mv._jobs.size()
+	if left == 0:
+		return ["the installation page was built in one share: the check needs a longer page"]
+	mv._process(0.016)
+	if mv._jobs.size() != left:
+		p.append("the frame that opened a page added a second share: %d jobs left, then %d" % [left, mv._jobs.size()])
+	await tree.process_frame
+	await tree.process_frame
+	if mv._jobs.size() >= left and mv.building:
+		p.append("the next frame added nothing to the page")
+	mv.finish_page()
+	mv.manuals.request_figure("pressure_transmitter-exploded.wfig")
+	mv.manuals.forget_figures()
+	for i in 120:
+		if mv.manuals._orphans.is_empty():
+			break
+		await tree.process_frame
+	if not mv.manuals._orphans.is_empty():
+		p.append("a forgotten decode was never waited for")
 	return p

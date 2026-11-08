@@ -16,7 +16,8 @@ var work := {}                  # "<part>:<action>" -> [manual, section]
 var workshop := {}              # "<kind>:<component>" -> [manual, section]
 var _loaded := {}               # manual id -> its data
 var _figures := {}              # file -> ImageTexture
-var _tasks := {}                # file -> [worker task id, {img}]: being decoded
+var _tasks := {}                # file -> [worker task id, {img}, waited]: being decoded
+var _orphans: Array = []        # the task ids of decodes forgotten while running, waited for once done
 
 
 func _init(from := DIR) -> void:
@@ -76,9 +77,9 @@ func figure(file: String) -> Texture2D:
 ## Waits for a figure's task (once: the pool forgets a task's id when it has been waited for).
 func _finish(file: String) -> void:
 	var t: Array = _tasks[file]
-	if not t[1].get("waited", false):
+	if not t[2]:
 		WorkerThreadPool.wait_for_task_completion(t[0])
-		t[1]["waited"] = true
+		t[2] = true
 
 
 func has_figure(file: String) -> bool:
@@ -96,7 +97,7 @@ func request_figure(file: String) -> void:
 			var img := Image.new()
 			if img.load_webp_from_buffer(FileAccess.get_file_as_bytes(p)) == OK:
 				holder["img"] = img)
-	_tasks[file] = [id, holder]
+	_tasks[file] = [id, holder, false]     # (whether waited for: kept out of the dictionary the worker writes)
 
 
 func figure_pending(file: String) -> bool:
@@ -109,7 +110,7 @@ func poll_figure(file: String) -> Texture2D:
 		return _figures[file]
 	if not _tasks.has(file):
 		return null
-	if not _tasks[file][1].get("waited", false):
+	if not _tasks[file][2]:
 		if not WorkerThreadPool.is_task_completed(_tasks[file][0]):
 			return null
 		_finish(file)
@@ -120,12 +121,22 @@ func poll_figure(file: String) -> Texture2D:
 	return tex
 
 
-## Drops the decoded figures (the reader closed).
+## Drops the decoded figures (the reader closed). Decodes still running are waited for later, once done (`reap`):
+## waiting here would hold the frame that closes the reader.
 func forget_figures() -> void:
 	for f in _tasks:
-		_finish(f)
+		if not _tasks[f][2]:
+			_orphans.append(_tasks[f][0])
 	_tasks.clear()
 	_figures.clear()
+
+
+## Waits for the forgotten decodes that have finished (each frame), or for all of them (`all`: the app leaving).
+func reap(all := false) -> void:
+	for i in range(_orphans.size() - 1, -1, -1):
+		if all or WorkerThreadPool.is_task_completed(_orphans[i]):
+			WorkerThreadPool.wait_for_task_completion(_orphans[i])
+			_orphans.remove_at(i)
 
 
 ## The section a work view action opens ([manual, section]; [] none).

@@ -34,6 +34,7 @@ var _frame_chars := 0           # the new text this frame
 var _jobs: Array = []           # the page's work left: Callables that each add one block or one table row
 var _page_t0 := 0               # the page's start (µs)
 var _page_key := ""
+var _pumped_frame := -1         # the frame whose share of the page _show already added (not added again in _process)
 var _waiting: Array = []        # [TextureRect, file]: figures decoded on a worker thread, shown when ready
 var _trash: Array = []          # the last page's blocks, freed a few a frame (a whole page freed at once took a
 								# Note 9 frame over 100 ms)
@@ -266,7 +267,9 @@ func _show(id: String, sec: String) -> void:
 	_build_page(m, sec)
 	scroll.scroll_vertical = 0
 	_pump(FRAME_BUDGET_MS)              # the title and the first blocks at once; the rest over the next frames
+	_pumped_frame = Engine.get_process_frames()
 	open_ms = (Time.get_ticks_usec() - t0) / 1000.0
+	frame_ms_max = maxf(frame_ms_max, open_ms)
 	opened.emit(id, sec)
 	if ui != null and ui.has_method("wants_focus") and ui.wants_focus():
 		take_focus()
@@ -311,6 +314,9 @@ func _page_built(key: String, t0: int) -> void:
 
 ## The app leaving: what is left of the last pages goes now (nodes out of the tree are not freed with it).
 func _exit_tree() -> void:
+	if manuals != null:
+		manuals.forget_figures()
+		manuals.reap(true)
 	for n in _trash:
 		if is_instance_valid(n):
 			n.free()
@@ -338,14 +344,16 @@ func finish_page() -> void:
 
 
 func _process(delta: float) -> void:
-	_free_some(Time.get_ticks_usec())
+	var t0 := Time.get_ticks_usec()
+	_free_some(t0)
+	if manuals != null:
+		manuals.reap()
 	if not visible:
 		return
 	var y := Input.get_joy_axis(0, JOY_AXIS_LEFT_Y) if not Input.get_connected_joypads().is_empty() else 0.0
 	if absf(y) > 0.2:
 		scroll.scroll_vertical += int(y * 1600.0 * W.scale * delta)
-	var t0 := Time.get_ticks_usec()
-	if building:
+	if building and Engine.get_process_frames() != _pumped_frame:
 		_pump(FRAME_BUDGET_MS)
 	for i in range(_waiting.size() - 1, -1, -1):
 		var w: Array = _waiting[i]
