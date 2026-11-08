@@ -1222,7 +1222,7 @@ plant.json: `"clock": {"day_scale": 6, "start": {"day": 1, "time": "06:00"}, "we
 - **`discipline`:** `ops`, `inst`, `mech`, `elec`, `chem`, `civil` (contractors), `hse`, `mgmt`, `security`,
   `transport`, `camp`. Accepting a permit needs `accept` and the work's discipline (§15.2).
 - **`authority`:** `operate_screen` (ops from the screens), `operate_local`, `request`, `approve`, `issue`, `accept`,
-  `lock_<kind>` (§15.1), `remove_lock` (a lock removal by authority, §15.1), `stop_work` (HSE: halts a work, §16.7), `sample` (samples and lab readings), `drive`. The
+  `lock_<kind>` (§15.1), `remove_lock` (a lock removal by authority, §15.1), `stop_work` (HSE: halts a work, §16.7), `sample` (samples and lab readings), `drive`, `jsa` (JSAs and toolbox talks, REALISM.md §8.6). The
   trainee in a role has exactly its authorities: an operator who is not authorised can't lock an electrical point.
 - **`ppe`:** what the role wears at work (the items: `helmet`, `boots`, `glasses`, `gloves`, `ear`, `harness`,
   `face_shield`, `apron`, `vest`); it is put on with a `ppe` step at a locker.
@@ -1304,6 +1304,8 @@ Steps, each done by an NPC as said and by the trainee through the input named (�
 | `handover`: `"take"` | takes over, one point at a time in model order, the locks of their post (§17.8) | locks those points from the permit form ("Take over the lock") |
 | `handover`: `"give"` | at each of their locks in turn, waits for another lock on the point (60 clock minutes at most), then unlocks; a lock nobody took over stays | unlocks each lock another lock now shares |
 | `remove_locks`: a message id (the reason) | removes by authority, one point at a time, the locks of the person the `lock_left` reaction named (§16.7), with the message's text as the reason | the same, from the permit form |
+| `jsa`: a work (`"$"` the task's) | makes the work's JSA: its own list (REALISM.md §8.6; roles with `jsa`) | picks the hazards and controls on the permit form |
+| `talk`: a work (`"$"` the task's) | gives the work's toolbox talk, its points the job's hazards, to those around (REALISM.md §8.6) | picks the points on the permit form |
 
 - A task has `priority` 1 (urgent) to 5 (default 3), `interruptible` (default true), `resume` (`"next_duty"`: a
   job left unfinished at the end of its person's duty is held and resumed at their next duty, §17.10), optionally `work` (the work it

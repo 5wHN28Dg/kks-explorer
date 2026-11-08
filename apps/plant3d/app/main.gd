@@ -147,6 +147,7 @@ var sim_t := 0.0
 var screens_walk := false   # walk=screens: the control room's screens in turn, nobody walking
 var job_walk := false       # walk=job: the work view open at a code, its camera going round (milestone HW2)
 var monitor_walk := false   # walk=monitor: the monitoring panel open at a machine, the plant at 1× (milestone AG3)
+var jsa_walk := false       # walk=jsa: the permit form's JSA picker open, the plant at 1× (milestone HS1)
 var drawings_walk := false  # walk=drawings: each P&ID in turn, panned and zoomed (REALISM.md §6.1.1, DC1)
 var manuals_walk := false   # walk=manuals: every manual's every page in turn, scrolled (REALISM.md §6.2.1, DC2)
 var _man_pages: Array = []  # walk=manuals: [manual, section] in order
@@ -290,6 +291,8 @@ func _ready() -> void:
 	add_child(ui)
 	if opts.get("walk", "") == "job" and not opts.has("scenario"):
 		opts["scenario"] = "shift_cold"   # (the work view needs a person played: the crews' scenario)
+	if opts.get("walk", "") == "jsa" and not opts.has("scenario"):
+		opts["scenario"] = "shift_cold"   # (the JSA needs a supervisor played: the crews' scenario)
 	if opts.get("walk", "") == "monitor" and not opts.has("scenario"):
 		opts["scenario"] = "shift_aged"   # (the aged plant: a pump running with its bearing's signs)
 	if opts.get("walk", "") in ["gate", "drive"]:
@@ -648,6 +651,9 @@ func _start_walk() -> void:
 	if opts.walk == "monitor":
 		await _monitor_walk()
 		return
+	if opts.walk == "jsa":
+		await _jsa_walk()
+		return
 	if opts.walk == "screens":
 		ui.open_panel("screens")
 		screens_walk = true
@@ -765,6 +771,49 @@ func _monitor_walk() -> void:
 		code, str(e.carried.get(ui.me(), [])), "yes" if ui.monitoring.body.find_child("collector", true, false) != null else "no",
 		vib, open_ms, inview.x, inview.y, before.x, before.y])
 	monitor_walk = true
+	last_us = Time.get_ticks_usec()
+
+
+## walk=jsa: the first maintenance supervisor played, at the maintenance office, the permit form open on a work with a
+## job kind and its JSA picker open (every hazard and control of the library as check boxes, half of them picked);
+## its JSA line, then the frames measured as any walk's (REALISM.md §8.6).
+func _jsa_walk() -> void:
+	var wid := "wo_cw_b_motor"
+	var e = ui.clock.engine
+	if e._sm == null or e.m.hse == null or not e.m.work_ix.has(wid):
+		_say("JSA none: no crews, no hse.json or no %s in this build" % wid)
+		_finish()
+		return
+	var ms := ""
+	for p in e._sm.people:
+		if p["role"] == "maint_sup" and ms == "":
+			ms = p["id"]
+	if ms == "" or not e._sm.rooms.has("maint_office"):
+		_say("JSA none: no maintenance supervisor or maintenance office in this scenario")
+		_finish()
+		return
+	ui.take_role(ms)
+	ui.go_to_place(e._sm.rooms["maint_office"][0])
+	ui._place_tick()
+	ui.clock.run_steps(1)
+	for i in 30:
+		await get_tree().process_frame
+	var before: Vector2i = await _view_counts()
+	var t0 := Time.get_ticks_usec()
+	ui.open_permits(wid)
+	ui.permits.refresh()
+	ui.permits.open_pick("jsa")
+	var open_ms := (Time.get_ticks_usec() - t0) / 1000.0
+	var boxes: Array = ui.permits.body.find_children("*", "CheckBox", true, false)
+	for k in boxes.size():
+		if k % 2 == 0:
+			(boxes[k] as CheckBox).button_pressed = true
+	for i in 30:
+		await get_tree().process_frame
+	var inview: Vector2i = await _view_counts()
+	_say("JSA %s boxes=%d open_ms=%.1f view_draws=%d view_tris=%d before_draws=%d before_tris=%d" % [
+		wid, boxes.size(), open_ms, inview.x, inview.y, before.x, before.y])
+	jsa_walk = true
 	last_us = Time.get_ticks_usec()
 
 
@@ -945,7 +994,7 @@ func _process(delta: float) -> void:
 		_say("SPEED %s at %.1f s, uptime %d ms" % ["fast-forward" if ff else "normal", t_walk, WalkFrames.uptime_ms()])
 	if job_walk and ui.work.is_open:
 		ui.work._turn(Vector2(delta * 25.0, 0.0))      # slowly round the transmitter (the whole scene in turn)
-	if not screens_walk and not job_walk and not monitor_walk and not drawings_walk and not manuals_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
+	if not screens_walk and not job_walk and not monitor_walk and not jsa_walk and not drawings_walk and not manuals_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
 		return
 	t_walk += delta
 	if drawings_walk:

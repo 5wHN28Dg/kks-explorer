@@ -534,7 +534,7 @@
   {"id": "iso_gen1_exc", "text": "Generator 1 excitation: its supply", "points": [{"kks": "10MKC10", "kind": "electrical", "how": "Excitation off; its supply isolated, locked and tagged", "safe": "gen1_exc_off"}]}
  ],
  "works": [
-  {"id": "wo_gt1_filters", "kks": "10MBA10", "title": "GT 1 air intake: replace the filter cartridges", "discipline": "mech", "permit": "general", "isolation": "iso_gt1_filt", "renews": ["gt1_filt_res", "gt1_filt_cake"], "task": "job_gt1_filters", "isolate": "isolate_gt1_filters", "assign": "assign_gt1_filters", "deisolate": "deisolate_gt1_filters"},
-  {"id": "wo_gen1_cab", "kks": "10MKC10", "title": "Generator 1 excitation cabinet: replace the air filters", "discipline": "elec", "permit": "general", "isolation": "iso_gen1_exc", "renews": ["gen1_cab_filt"], "task": "job_gen1_cab", "isolate": "isolate_gen1_cab", "assign": "assign_gen1_cab", "deisolate": "deisolate_gen1_cab"}
+  {"id": "wo_gt1_filters", "kks": "10MBA10", "title": "GT 1 air intake: replace the filter cartridges", "discipline": "mech", "permit": "general", "isolation": "iso_gt1_filt", "renews": ["gt1_filt_res", "gt1_filt_cake"], "task": "job_gt1_filters", "jsa": "gt_filters", "isolate": "isolate_gt1_filters", "assign": "assign_gt1_filters", "deisolate": "deisolate_gt1_filters"},
+  {"id": "wo_gen1_cab", "kks": "10MKC10", "title": "Generator 1 excitation cabinet: replace the air filters", "discipline": "elec", "permit": "general", "isolation": "iso_gen1_exc", "renews": ["gen1_cab_filt"], "task": "job_gen1_cab", "jsa": "elec_cabinet", "isolate": "isolate_gen1_cab", "assign": "assign_gen1_cab", "deisolate": "deisolate_gen1_cab"}
  ]
 }

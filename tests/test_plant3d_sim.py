@@ -59,6 +59,10 @@ def apply(e, item):
         getattr(e, kind)(item[2], item[3])              # a lift's riders (PLANT3D §20.3)
     elif kind == 'weather':
         e.weather(item[2])                              # the instructor's weather (REALISM.md §5.1: WX2's forks)
+    elif kind == 'jsa':
+        e.jsa(item[2], item[3], item[4], item[5])       # a JSA (REALISM.md §8.6: the free-mode forks' and the day's)
+    elif kind == 'talk':
+        e.talk(item[2], item[3], item[4])
     else:
         raise ValueError(f'an input this harness does not replay: {item}')
 
@@ -581,8 +585,8 @@ class GdscriptRealism(unittest.TestCase):
         with open(os.path.join(REPO, 'ref', 'vectors', 'plant3d-realism.json'), encoding='utf-8') as f:
             V3 = json.load(f)
         want, n = {}, 1
-        for part in ('staff', 'wear', 'weather', 'hands', 'audio', 'lab'):   # RE1, AG1 (REALISM.md §2.2), WX1
-            # (§5.1), HW1 (§2.13), HS7 (§8.5), AG3 (§2.19)
+        for part in ('staff', 'wear', 'weather', 'hands', 'audio', 'lab', 'hse'):   # RE1, AG1 (REALISM.md §2.2), WX1
+            # (§5.1), HW1 (§2.13), HS7 (§8.5), AG3 (§2.19), HS1 (§8.6)
             st = V3[part]
             want.update({f'realism/{part}/{i}': staff_run(st['files'], r, None) for i, r in enumerate(st['runs'])})
             n += 1 + len(st['runs'])

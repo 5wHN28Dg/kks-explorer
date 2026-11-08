@@ -577,6 +577,10 @@ def apply(e, item, slot=None):
         getattr(e, kind)(item[2], item[3], slot=slot)
     elif kind == 'weather':
         e.weather(item[2], slot=slot)
+    elif kind == 'jsa':             # REALISM.md §8.6 (the free-mode forks' JSAs)
+        e.jsa(item[2], item[3], item[4], item[5], slot=slot)
+    elif kind == 'talk':
+        e.talk(item[2], item[3], item[4], slot=slot)
     else:
         raise ValueError(kind)
 
@@ -916,6 +920,9 @@ def run_fork(base, actions, probes=()):
             asked_at.append(len(e.inputs))
         elif a[0] == 'permit':
             e.permit(a[1], a[2])
+        elif a[0] == 'jsa':           # the work's JSA in free mode, its own list (REALISM.md §8.6, milestone HS1)
+            from ref import plant3d_hse as HS
+            e.jsa(a[1], *HS.own(e, a[1]))
         elif a[0] in ('lock', 'unlock'):
             getattr(e, a[0])(a[1], a[2])
         elif a[0] == 'weather':       # the instructor's weather (REALISM.md §5.1; milestone WX2's forks)
@@ -1394,7 +1401,7 @@ def permit_run(work, isolate, work_s=60):
     the work, done, return, the points unlocked, close."""
     a = [('permit', work, 'request'), ('run', 1), ('permit', work, 'approve'), ('run', 1)]
     a += [('lock', work, i) for i in isolate] + [('run', 1)]
-    a += [('permit', work, 'issue'), ('permit', work, 'accept'), ('run', work_s), ('permit', work, 'done'),
+    a += [('jsa', work), ('permit', work, 'issue'), ('permit', work, 'accept'), ('run', work_s), ('permit', work, 'done'),
           ('run', 1), ('permit', work, 'return'), ('run', 1)]
     a += [('unlock', work, i) for i in isolate] + [('run', 1), ('permit', work, 'close'), ('run', 1)]
     return a
@@ -1411,7 +1418,7 @@ FORKS2 = [
       ('run', 1),
       ('op', CW_B, 'start', None, None), ('op', CW_B, 'reset', None, 'cw_b_trip_ol'),
       ('op', CW_B_V, 'set', 0.15, None), ('run', 1),
-      ('permit', 'wo_cw_b_motor', 'issue'), ('permit', 'wo_cw_b_motor', 'accept'), ('run', 60),
+      ('jsa', 'wo_cw_b_motor'), ('permit', 'wo_cw_b_motor', 'issue'), ('permit', 'wo_cw_b_motor', 'accept'), ('run', 60),
       ('permit', 'wo_cw_b_motor', 'done'), ('run', 1), ('permit', 'wo_cw_b_motor', 'return'), ('run', 1),
       ('unlock', 'wo_cw_b_motor', 0), ('unlock', 'wo_cw_b_motor', 1), ('run', 1),
       ('permit', 'wo_cw_b_motor', 'close'), ('run', 1),
@@ -1457,7 +1464,7 @@ FORKS2 = [
      [('fault', 'cw_b_motor'), ('run', 20), ('repair_under', 'cw_b_motor', 'wo_cw_b_motor'), ('run', 1),
       ('permit', 'wo_cw_b_motor', 'request'), ('run', 1), ('permit', 'wo_cw_b_motor', 'approve'), ('run', 1),
       ('lock', 'wo_cw_b_motor', 0), ('run', 90), ('lock', 'wo_cw_b_motor', 1), ('run', 1),
-      ('permit', 'wo_cw_b_motor', 'issue'), ('repair_under', 'cw_b_motor', 'wo_cw_b_motor'), ('run', 1),
+      ('jsa', 'wo_cw_b_motor'), ('permit', 'wo_cw_b_motor', 'issue'), ('repair_under', 'cw_b_motor', 'wo_cw_b_motor'), ('run', 1),
       ('permit', 'wo_cw_b_motor', 'accept'), ('repair_under', 'cw_b_motor', 'wo_cw_b_motor'), ('run', 60),
       ('permit', 'wo_cw_b_motor', 'done'), ('run', 1), ('permit', 'wo_cw_b_motor', 'return'), ('run', 1),
       ('unlock', 'wo_cw_b_motor', 0), ('unlock', 'wo_cw_b_motor', 1), ('run', 1),
@@ -2157,7 +2164,7 @@ def build_rejects_staff():
 
 INPUTS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
           'remove_lock', 'role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump', 'ppe', 'zone',
-          'stop', 'board', 'alight', 'get_on', 'drive', 'weather', 'audio', 'phone')
+          'stop', 'board', 'alight', 'get_on', 'drive', 'weather', 'audio', 'phone', 'jsa', 'talk')
 
 
 class Slotted:
@@ -2392,6 +2399,14 @@ class Trainee:
         elif 'permit' in s:
             w = cur['work'] if s['permit']['work'] == '$' else s['permit']['work']
             e.permit(w, s['permit']['action'], me)
+        elif 'jsa' in s or 'talk' in s:     # REALISM.md §8.6: the work's own list, as an NPC's
+            from ref import plant3d_hse as HS
+            w = cur['work'] if s.get('jsa', s.get('talk')) == '$' else s.get('jsa', s.get('talk'))
+            hz, cs = HS.own(e, w)
+            if 'jsa' in s:
+                e.jsa(w, hz, cs, me)
+            else:
+                e.talk(w, hz, me)
         elif 'lock' in s or 'unlock' in s:
             k = 'lock' if 'lock' in s else 'unlock'
             w = cur['work'] if s[k]['work'] == '$' else s[k]['work']
@@ -2475,6 +2490,10 @@ def apply_staff(e, item):
         getattr(e, kind)(item[2], item[3], slot=slot)
     elif kind == 'call':
         e.call(item[2], item[3], item[4], slot=slot)
+    elif kind == 'jsa':             # REALISM.md §8.6
+        e.jsa(item[2], item[3], item[4], item[5], slot=slot)
+    elif kind == 'talk':
+        e.talk(item[2], item[3], item[4], slot=slot)
     else:
         apply(e, item, slot)
 
@@ -5623,6 +5642,265 @@ def lab_part():
             'runs': build_runs(lab_runs(), lf)}
 
 
+# ---------------------------------------------------------------- milestone HS1: JSAs and toolbox talks (REALISM.md §8.6)
+
+HSE_LIB = {
+    'format': 'walkdown-plant-hse', 'version': 1,
+    'controls': [
+        {'id': 'loto', 'title': 'Isolation locked, tagged and tried before work', 'source': 'IOGP459'},
+        {'id': 'guard', 'title': 'Guards back on before the test run'},
+        {'id': 'gloves', 'title': 'Cut-resistant gloves'},
+        {'id': 'drain', 'title': 'Line drained and vented to zero pressure'},
+        {'id': 'harness', 'title': 'Harness clipped to an anchor point'},
+        {'id': 'barrier', 'title': 'Area below barriered off'},
+        {'id': 'mask', 'title': 'Respirator for the paint\'s fumes'},
+        {'id': 'ventilate', 'title': 'Work upwind; the yard ventilated'}],
+    'hazards': [
+        {'id': 'rotating', 'title': 'Rotating parts started while hands are in', 'controls': ['loto', 'guard'],
+         'source': 'OSHA3071'},
+        {'id': 'pinch', 'title': 'Fingers caught between parts', 'controls': ['gloves']},
+        {'id': 'pressure', 'title': 'Pressure left in the line', 'controls': ['drain', 'loto']},
+        {'id': 'height', 'title': 'A fall from the tank\'s ladder or roof', 'controls': ['harness', 'barrier']},
+        {'id': 'fumes', 'title': 'Solvent fumes', 'controls': ['mask', 'ventilate']},
+        {'id': 'dropped', 'title': 'Tools dropped on people below', 'controls': ['barrier']}],
+    'jobs': [
+        {'id': 'pump_brg', 'title': 'A pump\'s bearing changed', 'hazards': ['rotating', 'pinch', 'pressure']},
+        {'id': 'painting', 'title': 'A tank painted', 'hazards': ['height', 'fumes', 'dropped']}]}
+# the pump's own list: rotating, pinch, pressure and loto, guard, gloves, drain; the painting's height, fumes,
+# dropped and harness, barrier, mask, ventilate
+
+
+def hse_files():
+    """The synthetic plant with the safety staff (safety_files) and hse.json: the pump's work and the painting with a
+    job kind each (the valve's and the gauge's without); the maintenance supervisor, the contractors' supervisor and
+    the HSE officer with the authority jsa. The supervisor makes the painting's JSA at the control room's table before asking
+    for its permit; the contractors' supervisor gives its toolbox talk at the muster point (no room) before taking the
+    permit. The pump's work: the shift supervisor calls the maintenance supervisor to make its JSA before the issue,
+    and the technician given the job calls them to the workshop for its talk (a meet), then goes to the pump."""
+    F = safety_files()
+    F['scenarios/s1.json']['world'] = {'seed': 7}
+    F['hse.json'] = copy.deepcopy(HSE_LIB)
+    for w in F['model/a1.json']['works']:
+        if w['id'] in ('wo_pump', 'wo_paint'):
+            w['jsa'] = {'wo_pump': 'pump_brg', 'wo_paint': 'painting'}[w['id']]
+    st = F['staff.json']
+    for r in st['roles']:
+        if r['id'] in ('maint_sup', 'contractor_sup', 'hse_officer'):
+            r['authority'].append('jsa')
+    T = {t['id']: t for t in st['tasks']}
+    T['host_paint']['steps'].insert(1, {'jsa': 'wo_paint'})
+    T['con_accept']['steps'][:0] = [{'go': 'muster'}, {'talk': '$'}]
+    T['raise_work']['steps'].insert(2, {'call': {'role': 'maint_sup', 'task': 'jsa_pump'}})
+    T['job_pump']['steps'][:0] = [{'call': {'role': 'maint_sup', 'task': 'talk_pump'}},
+                                  {'meet': {'room': 'workshop', 'with': ['maint_sup'], 'minutes': 5}}]
+    st['tasks'] += [
+        {'id': 'jsa_pump', 'title': 'The pump\'s JSA', 'steps': [{'go': 'seat2'}, {'work': 3}, {'jsa': '$'}],
+         'priority': 2},
+        {'id': 'talk_pump', 'title': 'The pump\'s toolbox talk', 'steps': [
+            {'meet': {'room': 'workshop', 'with': ['mech_tech'], 'minutes': 1}}, {'talk': '$'}], 'priority': 2}]
+    return F
+
+
+def _hs(f):
+    """A change to the hse part's hse.json."""
+    return lambda F: f(F['hse.json'])
+
+
+def _hs_work(wid, f):
+    return lambda F: f(next(w for w in F['model/a1.json']['works'] if w['id'] == wid))
+
+
+def _hs_task(tid, f):
+    return _st(lambda st: f(next(t for t in st['tasks'] if t['id'] == tid)))
+
+
+REJECTS_HSE = [
+    ('an hse.json that is not an object', 'bad_type', lambda F: F.__setitem__('hse.json', [1]), 'hse.json'),
+    ('an hse.json of another format', 'bad_format', _hs(lambda d: d.__setitem__('format', 'walkdown-plant-tools')),
+     'format'),
+    ('an hse.json of version 2', 'bad_version', _hs(lambda d: d.__setitem__('version', 2)), 'version'),
+    ('an hse.json key not known', 'unknown_key', _hs(lambda d: d.__setitem__('rules', [])), 'rules'),
+    ('an hse.json without its jobs', 'missing_key', _hs(lambda d: d.pop('jobs')), 'jobs'),
+    ('no controls', 'bad_length', _hs(lambda d: d.__setitem__('controls', [])), 'hse.json.controls'),
+    ('a control twice', 'dup_id', _hs(lambda d: d['controls'].append(dict(d['controls'][0]))), 'loto twice'),
+    ('a control id of 25 characters', 'bad_id', _hs(lambda d: d['controls'][0].__setitem__('id', 'c' * 25)),
+     'at most 24'),
+    ('a control id that is no identifier', 'bad_id', _hs(lambda d: d['controls'][0].__setitem__('id', 'Lo To')),
+     'controls[0].id'),
+    ('a control title of 121 characters', 'bad_type', _hs(lambda d: d['controls'][0].__setitem__('title', 'x' * 121)),
+     'controls[0].title'),
+    ('a control without its title', 'missing_key', _hs(lambda d: d['controls'][0].pop('title')), 'title'),
+    ('an empty source', 'bad_type', _hs(lambda d: d['controls'][0].__setitem__('source', '')), 'source'),
+    ('a hazard answered by no control', 'bad_length', _hs(lambda d: d['hazards'][0].__setitem__('controls', [])),
+     'hazards[0].controls'),
+    ('a hazard answered by a control that does not exist', 'bad_ref',
+     _hs(lambda d: d['hazards'][0]['controls'].append('pray')), 'no control'),
+    ('a hazard answered by a control twice', 'dup_id', _hs(lambda d: d['hazards'][0]['controls'].append('loto')),
+     'loto twice'),
+    ('a hazard with 17 controls', 'bad_length',
+     _hs(lambda d: d['hazards'][0].__setitem__('controls', ['loto'] * 17)), 'hazards[0].controls'),
+    ('a hazard twice', 'dup_id', _hs(lambda d: d['hazards'].append(dict(d['hazards'][0]))), 'rotating twice'),
+    ('a job with no hazard', 'bad_length', _hs(lambda d: d['jobs'][0].__setitem__('hazards', [])), 'jobs[0].hazards'),
+    ('a job with a hazard that does not exist', 'bad_ref', _hs(lambda d: d['jobs'][0]['hazards'].append('bees')),
+     'no hazard'),
+    ('a job with a hazard twice', 'dup_id', _hs(lambda d: d['jobs'][0]['hazards'].append('pinch')), 'pinch twice'),
+    ('a job twice', 'dup_id', _hs(lambda d: d['jobs'].append(dict(d['jobs'][0]))), 'pump_brg twice'),
+    ('a hazard key not known', 'unknown_key', _hs(lambda d: d['hazards'][0].__setitem__('risk', 3)), 'risk'),
+    ('a work\'s jsa naming no job', 'bad_ref', _hs_work('wo_pump', lambda w: w.__setitem__('jsa', 'welding')),
+     'no job'),
+    ('a work\'s jsa that is not text', 'bad_id', _hs_work('wo_pump', lambda w: w.__setitem__('jsa', True)),
+     'wo_pump.jsa'),
+    ('a work\'s jsa without hse.json', 'bad_ref', _all(
+        lambda F: F.pop('hse.json'),
+        _st(lambda st: [r['authority'].remove('jsa') for r in st['roles'] if 'jsa' in r['authority']]),
+        _hs_task('host_paint', lambda t: t['steps'].pop(1)), _hs_task('con_accept', lambda t: t['steps'].pop(1)),
+        _hs_task('jsa_pump', lambda t: t['steps'].pop()), _hs_task('talk_pump', lambda t: t['steps'].pop())),
+     'the plant has none'),
+    ('hse.json in a plant without staff', 'bad_ref', _all(
+        lambda F: F.pop('staff.json'), lambda F: F['scenarios/s1.json'].pop('staff'),
+        lambda F: [w.pop(k) for w in F['model/a1.json']['works'] for k in ('task', 'jsa') if k in w]),
+     'only in a plant with staff.json'),
+    ('a JSA step by a role without jsa', 'authority', _st(lambda st: next(
+        r for r in st['roles'] if r['id'] == 'maint_sup')['authority'].remove('jsa')), 'lacks jsa'),
+    ('a talk step on a work without jsa', 'bad_ref', _hs_task('talk_pump', lambda t: t['steps'][1].__setitem__(
+        'talk', 'wo_valve')), 'has no jsa'),
+    ('a JSA step naming no work', 'bad_ref', _hs_task('jsa_pump', lambda t: t['steps'][2].__setitem__('jsa', 'wo_x')),
+     'no work'),
+    ('a talk step with a key not known', 'unknown_key', _hs_task('talk_pump', lambda t: t['steps'][1].__setitem__(
+        'points', [])), 'points'),
+    # (the blind review: every limit of hse.json)
+    ('201 controls', 'bad_length', _hs(lambda d: d['controls'].extend(
+        {'id': f'c{k}', 'title': 'A control'} for k in range(201 - len(d['controls'])))), 'hse.json.controls'),
+    ('201 hazards', 'bad_length', _hs(lambda d: d['hazards'].extend(
+        {'id': f'h{k}', 'title': 'A hazard', 'controls': ['loto']} for k in range(201 - len(d['hazards'])))),
+     'hse.json.hazards'),
+    ('101 jobs', 'bad_length', _hs(lambda d: d['jobs'].extend(
+        {'id': f'j{k}', 'title': 'A job', 'hazards': ['pinch']} for k in range(101 - len(d['jobs'])))),
+     'hse.json.jobs'),
+    ('a job with 33 hazards', 'bad_length', _hs(lambda d: (
+        d['hazards'].extend({'id': f'h{k}', 'title': 'A hazard', 'controls': ['loto']} for k in range(33)),
+        d['jobs'][0].__setitem__('hazards', [f'h{k}' for k in range(33)]))), 'jobs[0].hazards'),
+    ('a source of 201 characters', 'bad_type', _hs(lambda d: d['hazards'][0].__setitem__('source', 's' * 201)),
+     'hazards[0].source'),
+    ('an empty title', 'bad_type', _hs(lambda d: d['jobs'][0].__setitem__('title', '')), 'jobs[0].title'),
+    ('a hazard id of 25 characters', 'bad_id', _hs(lambda d: d['hazards'][5].__setitem__('id', 'h' * 25)),
+     'at most 24'),
+    ('a job id of 25 characters', 'bad_id', _hs(lambda d: d['jobs'][1].__setitem__('id', 'j' * 25)), 'at most 24'),
+    ('a job key not known', 'unknown_key', _hs(lambda d: d['jobs'][0].__setitem__('steps', [])), 'steps'),
+]
+
+
+def hse_runs():
+    """(why, scenario changes, files, player, steps, snapshot every): HS1's runs (REALISM.md §8.6)."""
+    hf = hse_files()
+    plain = safety_files()
+    plain['scenarios/s1.json']['world'] = {'seed': 7}
+    pump = Trainee(extra=[[1500, 'fault', 'f1']])
+    return [
+        ('the NPCs\' flow: the maintenance supervisor makes the painting\'s JSA (the work\'s own list) at the control '
+         'room\'s table and asks for its permit; it is approved, isolated by itself (no isolation) and issued (it has its '
+         'JSA); the contractors\' supervisor gives its toolbox talk at the muster point (a place of no room: those '
+         'standing there attend) and takes the permit. The pump\'s fault at step 1500: the shift supervisor asks for '
+         'its permit and calls the maintenance supervisor to make its JSA, the issue made once isolated; the '
+         'technician calls the supervisor to the workshop for the talk (a meet: the technicians in the workshop '
+         'attend), then goes to the pump', {}, hf, pump, 2600, 50),
+        ('the trainee as the maintenance supervisor (making their inputs by hand): JSAs unknown (hazards not a '
+         'list, a hazard not in the library, a hazard twice, no hazard, a control not in the library, a work without '
+         'jsa, a work that does not exist), a talk unknown (no points); a JSA naming another person refused '
+         '(authority); a talk refused (state, jsa) before the '
+         'permit; their JSA made with the permit at none, the permit requested; the talk given in the workshop (the '
+         'room, at its door: the technicians at its benches attend), on the way (alone) and at the '
+         'muster point (a place of no room: the contractors standing there attend)',
+         {'trainee': 'ms1'}, hf,
+         Trainee(quiet=True, extra=[[5, 'jsa', 'wo_pump', 'rotating', ['loto'], 'ms1'],
+                                    [6, 'jsa', 'wo_pump', ['rotating', 'bees'], ['loto'], 'ms1'],
+                                    [7, 'jsa', 'wo_pump', ['rotating', 'rotating'], ['loto'], 'ms1'],
+                                    [8, 'jsa', 'wo_pump', [], ['loto'], 'ms1'],
+                                    [9, 'jsa', 'wo_pump', ['rotating'], ['pray'], 'ms1'],
+                                    [10, 'jsa', 'wo_valve', ['rotating'], [], 'ms1'],
+                                    [11, 'jsa', 'wo_x', ['rotating'], [], 'ms1'],
+                                    [12, 'talk', 'wo_pump', [], 'ms1'],
+                                    [13, 'jsa', 'wo_pump', ['rotating'], [], 'a_sup'],
+                                    [400, 'talk', 'wo_pump', ['rotating'], 'ms1'],
+                                    [401, 'jsa', 'wo_pump', ['rotating', 'pressure'], [], 'ms1'],
+                                    [402, 'permit', 'wo_pump', 'request', 'ms1'],
+                                    [1410, 'arrive', 'ws_door'], [1420, 'talk', 'wo_pump', ['rotating', 'pinch'], 'ms1'],
+                                    [1430, 'leave', 'ws_door'], [1431, 'talk', 'wo_pump', ['pressure'], 'ms1'],
+                                    [1500, 'arrive', 'muster'], [1501, 'talk', 'wo_pump', ['height'], 'ms1']]),
+         1550, 50),
+        ('free mode on the painting before the day shift: its permit asked for from the form; the night shift '
+         'supervisor approves it (isolated by itself) and their issue is refused (jsa: no JSA), so their task '
+         'is abandoned; the form\'s issue refused too, its JSA made (no person) and the issue made; the contractors\' '
+         'supervisor gives the talk and takes the permit; at 07:15 the maintenance supervisor\'s own JSA step is '
+         'refused (state: issued) and their task is abandoned', {}, hf,
+         Trainee(extra=[[5, 'permit', 'wo_paint', 'request', None], [450, 'permit', 'wo_paint', 'issue', None],
+                        [451, 'jsa', 'wo_paint', ['height', 'fumes'], ['harness'], None],
+                        [452, 'permit', 'wo_paint', 'issue', None]]), 1500, 50),
+        ('the JSA and the talk\'s attendance end with the permit (a session: slot 0 the maintenance supervisor, slot '
+         '1 the shift supervisor): a JSA, the permit requested, a talk (attended); the permit cancelled; a talk '
+         'refused (state, jsa), and the shift supervisor\'s JSA (authority: their role has no jsa); requested again, a talk refused (jsa: the cancel cleared it); the JSA made again and '
+         'the talk given', {}, hf,
+         Session([Trainee(slot=0, quiet=True), Trainee(slot=1, quiet=True)],
+                 extra=[[1, 'role', 'ms1', 0], [1, 'role', 'a_sup', 1],
+                        [5, 'jsa', 'wo_pump', ['rotating'], ['loto', 'guard'], 'ms1', 0],
+                        [6, 'permit', 'wo_pump', 'request', 'ms1', 0],
+                        [7, 'talk', 'wo_pump', ['rotating'], 'ms1', 0],
+                        [8, 'permit', 'wo_pump', 'cancel', 'a_sup', 1],
+                        [9, 'talk', 'wo_pump', ['rotating'], 'ms1', 0],
+                        [9, 'jsa', 'wo_pump', ['rotating'], [], 'a_sup', 1],
+                        [10, 'permit', 'wo_pump', 'request', 'ms1', 0],
+                        [11, 'talk', 'wo_pump', ['rotating'], 'ms1', 0],
+                        [12, 'jsa', 'wo_pump', ['rotating', 'pinch', 'pressure'], ['loto', 'guard', 'gloves', 'drain'],
+                         'ms1', 0],
+                        [13, 'talk', 'wo_pump', ['rotating', 'pinch'], 'ms1', 0]]), 40, 10),
+        ('without hse.json the same inputs: the JSA and talk unknown, the issue not refused for a JSA; in free mode '
+         '(no trainee) a JSA and a talk are made with no person (the talk attended by nobody)', {}, plain,
+         Trainee(extra=[[5, 'jsa', 'wo_pump', ['rotating'], [], None], [6, 'talk', 'wo_pump', ['rotating'], None]]),
+         20, 10),
+        ('free mode with hse.json: the JSA made with no person, the permit requested, the talk given with nobody '
+         'attending, the JSA refused once the permit is issued (state)', {}, hf,
+         Trainee(extra=[[5, 'jsa', 'wo_paint', ['height'], ['harness'], None],
+                        [6, 'permit', 'wo_paint', 'request', None], [7, 'talk', 'wo_paint', ['height'], None],
+                        [8, 'permit', 'wo_paint', 'approve', None], [10, 'permit', 'wo_paint', 'issue', None],
+                        [11, 'jsa', 'wo_paint', ['height'], [], None]]), 30, 10),
+        ('a session (§17.13): slot 0 plays the maintenance supervisor, slot 1 the HSE officer; each makes a JSA (the '
+         'later replaces the earlier), slot 1 gives the talk in the office (slot 0 at its table attends), each input '
+         'and event with its slot; an input naming another slot\'s person refused (authority); from 07:30, both on '
+         'duty', {'start': {'day': 1, 'time': '07:30'}}, hf,
+         Session([Trainee(slot=0, quiet=True), Trainee(slot=1, quiet=True)],
+                 extra=[[1, 'role', 'ms1', 0], [1, 'role', 'hse1', 1],
+                        [3, 'arrive', 'office_table', 0], [3, 'arrive', 'hse_table', 1],
+                        [5, 'jsa', 'wo_paint', ['height'], ['harness'], 'ms1', 0],
+                        [6, 'jsa', 'wo_paint', ['height', 'fumes'], ['harness', 'mask'], 'hse1', 1],
+                        [7, 'jsa', 'wo_paint', ['height'], [], 'hse1', 0],
+                        [8, 'permit', 'wo_paint', 'request', 'ms1', 0],
+                        [9, 'talk', 'wo_paint', ['height', 'fumes'], 'hse1', 1]]), 40, 10),
+        ('the trainee as the maintenance supervisor plays their own steps (the blind review): the painting\'s JSA in '
+         'their hosting task, the pump\'s JSA when the shift supervisor calls them (after its fault at step 1500), '
+         'and its toolbox talk in the workshop when the technician calls them; each step done by their own input',
+         {'trainee': 'ms1'}, hf, Trainee(extra=[[1500, 'fault', 'f1']]), 2600, 50),
+        ('the adversarial review: the maintenance supervisor\'s routine also starts the pump\'s JSA task at 07:20, a '
+         'task with no work then (only a call gives it one; here its JSA step first): its JSA step is unknown (no work: as a permit step\'s), '
+         'the task abandoned, not a crash', {}, _ms_jsa_slot(hf), Trainee(), 1500, 50),
+    ]
+
+
+def _ms_jsa_slot(hf):
+    F = copy.deepcopy(hf)
+    next(r for r in F['staff.json']['routines'] if r['id'] == 'ms_days')['slots'].append(
+        {'at': '07:20', 'task': 'jsa_pump'})
+    next(t for t in F['staff.json']['tasks'] if t['id'] == 'jsa_pump')['steps'] = [{'jsa': '$'}, {'go': 'seat2'}]
+    return F
+
+
+def hse_part():
+    hf = hse_files()
+    return {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in hf.items()},
+            'counts': check(hf).counts,
+            'reject': reject_changes(hf, [r[:3] for r in REJECTS_HSE], hf),
+            'runs': build_runs(hse_runs(), hf)}
+
+
 def parts3():
     """The realism vectors part by part (REALISM.md §13), in the file's order."""
     return {
@@ -5643,7 +5921,9 @@ def parts3():
                           'noticing by drawn delays and by missed calls, the device held until the duty ends; milestone AG3 (§2.19): `lab`, '
                           'the hands part\'s plant with an oil sampling kit, a vibration data collector and a '
                           'thermal camera, sample nodes taken by hand actions, the lab\'s results after clock hours '
-                          'from the lab streams, and an NPC\'s round. A run\'s `files` are '
+                          'from the lab streams, and an NPC\'s round; milestone HS1 (§8.6): `hse`, the safety staff with hse.json (the '
+                          'hazard library), works with a job kind, JSAs and toolbox talks by NPCs and trainees, the '
+                          'issue refused without a JSA, the talk\'s attendance. A run\'s `files` are '
                           'those that differ from its part\'s. Numbers compare to 1e-6; the digests (§17.14) of every '
                           '50th step are exact.'),
         'streams': build_streams,
@@ -5655,7 +5935,8 @@ def parts3():
         'weather': weather_part,
         'hands': hands_part,
         'audio': audio_part,
-        'lab': lab_part}
+        'lab': lab_part,
+        'hse': hse_part}
 
 
 def build3():

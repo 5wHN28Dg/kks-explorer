@@ -1810,6 +1810,92 @@ and limit, and a reaction or put-right of the new kinds without the key. Its run
 meets an act). Music playback is one streamed Vorbis player (no new pipelines, ≤ 2 MB PSS). The package grows by
 ≈ 0.8 MB, within §11's 15 MB.
 
+### 8.6 HS1's details (settled 2026-11-08, before the code: JSA and toolbox talks)
+
+§8.1 leaves these open; settled here. What the engine does is in both engines bit for bit, behind the plant's
+`hse.json` (without it nothing changes: every earlier synthetic item stays byte for byte); what is drawn is the app's,
+pinned by app tests.
+
+**What real sites do** (public sources, §14 "For JSAs and toolbox talks"): a job hazard analysis breaks the job into
+its steps, names each step's hazards and the controls that answer them, best before the work and with the people who
+will do it ([OSHA3071]); a permit to work names the hazards and the precautions, and the issuer makes sure they are
+in place before it is issued ([HSG250]); the hazards are identified with the workers, and what is found is
+communicated to them ([ISO45001] 5.4, 6.1.2, 7.4; [INDG163]'s five steps). IOGP's life-saving rules ask for a valid
+permit, isolations verified before work, staying out of the line of fire and safe lifting ([IOGP459]). The toolbox
+talk is where the crew hears it, just before the work, and signs that they did.
+
+- **The library, `hse.json`** (format `walkdown-plant-hse`, version 1; a plant file beside `tools.json`, only in a
+  version 2 plant with `staff.json`, `unknown_key` and `bad_ref` otherwise): `controls` (1–200 `{"id", "title"}`),
+  `hazards` (1–200 `{"id", "title", "controls"}`: the 1–16 controls that answer it, no repeat) and `jobs` (1–100
+  `{"id", "title", "hazards"}`: a job kind and its 1–32 hazards, no repeat). Ids are identifiers of at most 24
+  characters, titles 1–120 characters; each item may carry `source` (1–200 characters: the §14 key it comes from).
+- **A work's `jsa`** names its job kind (an identifier, `bad_id` otherwise; a job id of hse.json, `bad_ref`
+  otherwise, and `bad_ref` without hse.json).
+  This replaces §8.1's `"jsa": true`: the job kind is the work's own list, which the debrief compares with, and the
+  library keeps it once for every work of that kind. **The work's own list:** the job's hazards in their order, and
+  each of them's controls in order, each control once.
+- **A new authority `jsa`** (§16.3): makes JSAs and gives toolbox talks. §8.1 says the acceptor picks; on site the
+  JSA is the performing side's, made by its supervisor with the crew ([OSHA3071], [HSG250]), so the authority goes
+  to the supervisors (maintenance, contractors), the engineers and the HSE officers; the first train's technicians
+  accept without it. No discipline check: the first train's maintenance supervisors run every trade's jobs (they
+  already give them out).
+- **The input `[n, "jsa", work, hazards, controls, person]`** (step 1, §2.7): `unknown` (event `["jsa", work,
+  hazards, controls, person, "unknown", []]`, nothing else) when the plant has no hse.json, the work is not a work of
+  the model or has no `jsa`, `hazards` is not a list of 1–32 hazard ids without repeats, or `controls` not a list of
+  0–64 control ids without repeats (a JSA naming no control is valid, and wrong: the debrief says so). Refused with
+  the reasons, in this order: `authority` (§17.1's rule, with `jsa`), `state` (the permit is issued or past it, 4–8:
+  a JSA is made before its permit is issued, at none, requested, approved, isolated, closed or cancelled). Otherwise
+  the work's JSA is these lists and this person, replacing an earlier one; event `[..., "done", []]`.
+- **Its life:** the JSA belongs to the work's next or open permit. A `close` or `cancel` of the permit clears it and
+  the talk's attendance (the next permit needs its own); a re-issue after a suspension (§15.3) keeps them.
+- **The issue refusal:** `issue` of a work with `jsa` and no JSA is refused `jsa`, after `authority`, `state`,
+  `iso_busy` (§2.7).
+- **The toolbox talk is an input** `[n, "talk", work, points, person]` (step 1): `unknown` (event `["talk", work,
+  points, person, "unknown", [], []]`) as the JSA's, `points` being 1–32 hazard ids without repeats. Refused, in this
+  order: `authority` (`jsa`), `state` (the permit is not requested to accepted, 1–5: the talk is before the work is
+  done), `jsa` (the work has no JSA: the talk's topic is the JSA). Otherwise **attendance**: the giver, and every other
+  person on duty at a place of the room of the giver's place (a room as `meet` finds it, §16.6); at a place of no
+  room, at that same place; the giver at no place (walking), the giver alone. They join the work's attendance (a later
+  talk adds to it); event `["talk", work, points, person, "done", [], [attendees]]`, the attendees' ids in people
+  order. The points are what the giver picked; whether they cover the JSA's hazards and the work's own list is the
+  debrief's (§8.1: "checked against the job's hazards"), not a refusal.
+- **NPC steps** `{"jsa": work}` and `{"talk": work}` (`"$"` the task's work; optional `else`): the validator checks
+  the role has `jsa` (`authority`) and the work has `jsa` (`bad_ref`). An NPC's JSA is the work's own list (it knows
+  the job); its talk's points are the job's hazards. Done goes on, anything else fails (to `else`). A player's `jsa` step is
+  done while the work's JSA is theirs (made in that step or before it, any lists: theirs to get right); a `talk` step
+  by their own talk for that work, done in that step.
+- **The digest** gains, with hse.json, per work with `jsa` in model order: whether it has a JSA, its hazards' and
+  controls' indices in hse.json, its person's index (−1 for none or free mode), and the attendance's person indices
+  in order. The snapshot gains `hse`: `{work: {"jsa": [hazards, controls, person], "talk": [persons]}}` for the works
+  with a JSA or attendance, once there is one (so the first train's free-play snapshots stay as they were).
+- **The first train** (content, `tools/plant3d/train_hse.py`): a library of the hazards and controls its jobs meet
+  (rotating parts, stored electrical energy, pressure and heat left in the line, hot surfaces, work at height,
+  lifting, manual handling, chemicals of the water treatment plant, a process trip from an instrument job, noise,
+  dust), each from [OSHA3071], [HSG250], [IOGP459] or [INDG163], and a job kind for every work. The permit flow gains
+  the JSA and the talk: when a permit is isolated, a maintenance supervisor makes the JSA at the maintenance office and
+  asks the shift supervisor to issue it (`jsa_permit`, in place of the reaction that had the shift supervisor issue at
+  once: an issue before the JSA would be refused); the technician given the job first calls a maintenance supervisor
+  to the workshop for its toolbox talk (`talk_mech`, `talk_elec`, `talk_inst`: a `meet` with the trade,
+  then the `talk`) and meets them there, then goes to the job. A permit isolated at night waits for the day's
+  supervisors, as its job already did (§17.10's offers made again). **What changes:** the first train's runs that
+  follow its staff (v2's `day` and its forks) gain the JSA and talk events, and the NPCs' days move with them (the
+  supervisors' walks, the jobs a little later): their events and digests are made again, documented in the PR; no
+  synthetic item changes.
+- **The debrief** (the app; from the events, so saved runs keep it): per work whose JSA or talk the run holds, the JSA's
+  author; the hazards of the work's own list it missed, those it named that the list doesn't, and the controls of the
+  list it lacks; each talk's points against the JSA's hazards and the job's, and who attended; and **a job started
+  without a toolbox talk** (its `accept` by a person not among the attendees; an accept by nobody, free mode's, is
+  not counted) listed with the unsafe acts as an observation, as HS7's are. A session's input is at most 512 bytes
+  (MULTIPLAYER.md §3.3): the form refuses a pick longer than that in a session and says so (the whole first-train
+  library ticked is about 680 bytes; its jobs' own lists 143–220). A player's own JSA, talk or acceptance is marked as theirs.
+- **Vectors** (`plant3d-realism.json`, part `hse`): the safety staff with hse.json and works with `jsa`. Its rejects
+  cover every key and limit of hse.json, a work's `jsa` without hse.json or naming no job, and an NPC step without the
+  authority or on a work without `jsa`. Its runs: the NPCs' JSA, issue and talk with attendance in a room; the
+  trainee's JSA refused (authority, state) and unknown (bad lists), the issue refused `jsa` then made; the talk
+  refused (state, jsa), given at a place of no room and walking; the JSA and attendance cleared by a cancel and a new
+  request; a session; and (the adversarial review) an NPC's JSA step on a task with no work, unknown as a permit
+  step's is.
+
 ## 9. Electrical and mechanical crafts, condition monitoring
 
 ### 9.1 Electrical
@@ -2297,6 +2383,12 @@ Textbooks:
   to read. MC4 needs a public source in its place (or the user's choice to cite EPRI's) before its content is written
   · [BW-Steam] Babcock & Wilcox, Steam: its generation and use (chemical cleaning) · [Palmer] R. D. Palmer,
   Maintenance planning and scheduling handbook (McGraw-Hill).
+
+For JSAs and toolbox talks (§8.6; checked 2026-11-08): [OSHA3071] (above: a job's steps, their hazards and the
+controls, made with the workers), [HSG250] (above: the hazards and precautions on the permit, in place before it is
+issued), [ISO45001] (above: 5.4 workers' participation, 6.1.2 hazard identification, 7.4 communication), [IOGP459]
+(below: a valid permit, isolations verified, the line of fire, safe lifting, work at height) and [INDG163] UK HSE,
+Risk assessment: a brief guide to controlling risks in the workplace, https://www.hse.gov.uk/pubns/indg163.pdf.
 
 For personal audio and the phone (§8.5; checked 2026-11-03):
 - [OSHA-Music] US OSHA, Use of music headphones on construction sites (letter of interpretation, 2019-09-06),

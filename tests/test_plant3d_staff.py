@@ -1335,7 +1335,7 @@ class FirstTrainStaff(unittest.TestCase):
     def test_ppe_on_before_a_held_job_and_for_the_supervisors(self):
         """Blind review of S2: transmitter 3's calibration issued late on Monday is held overnight; on Tuesday its I&C
         technician puts their PPE on at the toolbox talk, then walks back to the transmitter to finish it, and the
-        supervisors who took over the shift at 18:00 and 06:00 wear theirs: nobody's PPE act from Monday 15:40 to
+        supervisors who took over the shift at 18:00 and 06:00 wear theirs: nobody's PPE act from Monday 15:10 to
         Tuesday 10:00, and the job resumed and handed back with its lock on overnight (the trainee, a shift
         supervisor, plays nothing: the deisolation waits for them)."""
         sid = next(k for k, v in self.b.scenarios.items() if 'staff' in v)
@@ -1346,7 +1346,7 @@ class FirstTrainStaff(unittest.TestCase):
             want = day * 864000 + (hh * 60 + mm) * 600
             while e.clock() < want:
                 e.step()
-        until(1, 15, 40)
+        until(1, 15, 10)        # (HS1: the JSA and the toolbox talk come first, so the job starts at 15:10)
         w = 'wo_cond_p3_cal'
         e.permit(w, 'request', 'a_sup')
         e.step()
@@ -1355,6 +1355,8 @@ class FirstTrainStaff(unittest.TestCase):
         e.npc_queue.append(('lock', w, 0, 'ic1'))     # the I&C technician's lock, as their step 9 makes it
         e.step()
         e.step()
+        while w not in e.jsa_of:        # a maintenance supervisor's JSA, made once it is isolated (REALISM.md §8.6)
+            e.step()
         e.permit(w, 'issue', 'a_sup')
         e.step()
         n0 = e.step_no
