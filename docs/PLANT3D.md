@@ -1307,6 +1307,7 @@ Steps, each done by an NPC as said and by the trainee through the input named (�
 | `remove_locks`: a message id (the reason) | removes by authority, one point at a time, the locks of the person the `lock_left` reaction named (§16.7), with the message's text as the reason | the same, from the permit form |
 | `jsa`: a work (`"$"` the task's) | makes the work's JSA: its own list (REALISM.md §8.6; roles with `jsa`) | picks the hazards and controls on the permit form |
 | `talk`: a work (`"$"` the task's) | gives the work's toolbox talk, its points the job's hazards, to those around (REALISM.md §8.6) | picks the points on the permit form |
+| `discuss`: a discussion of discussions.json (REALISM.md §6.3.1; every role that runs the task is one of its roles) | the lead (its first role): a `meet` in its room with the other roles, then starts it (mode `npc` when no player takes part, else `open`), each point's default after its minutes (all at once after the discussion's minutes in mode `npc`), then the first agreement whose terms hold: its outcome task runs in place of the rest of this task, as `choose`'s; a joiner: to the room, done when the discussion it takes part in ends, or after 15 clock minutes in the room without one | the same; a participant's picks are `discuss` inputs (§17.6) |
 
 - A task has `priority` 1 (urgent) to 5 (default 3), `interruptible` (default true), `resume` (`"next_duty"`: a
   job left unfinished at the end of its person's duty is held and resumed at their next duty, §17.10), optionally `work` (the work it
@@ -1490,6 +1491,7 @@ Each person has their own stream:
 | `[n, "stop", person]` | the trainee stops an unsafe act of that person's (§16.7, §17.11) |
 | `[n, "say", message, to]` | a radio message from the trainee |
 | `[n, "pick", index]` | the trainee's answer to a `choose` |
+| `[n, "discuss", id, point, option]` | the player's pick at a live discussion's current point (REALISM.md §6.3.1): event `["discuss", person, id, point, option, "done" \| "refused", [reasons]]` (`unknown`, `authority`, `state`) |
 | `[n, "task_ack"]` | the trainee has seen the new tasks in their queue (§17.6, fast-forward) |
 | `[n, "jump", "HH:MM"]` | sleep or skip to the next such clock time |
 

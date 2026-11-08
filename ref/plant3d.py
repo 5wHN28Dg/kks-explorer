@@ -309,6 +309,8 @@ class Bundle:
         self.tools = None                          # tools.json, checked (ref/plant3d_hands.py, REALISM.md §2.3)
         self.tools_doc = None                      # (its text, read before staff.json's tasks are checked)
         self.hse = None                            # hse.json, checked (ref/plant3d_hse.py, REALISM.md §8.6)
+        self.discuss_doc = None                    # discussions.json (REALISM.md §6.3.1), checked with staff.json's
+                                                   # tasks (ref/plant3d_discuss.py: staff.discuss)
         self.wo_ids = None                         # workorders.json's code lists (REALISM.md §2.20), or None
         self.wo_doc = None                         # workorders.json, checked (ref/plant3d_wo.py), or None
         self.screen_of = {}                        # code shown on the screens -> (screen id, group id) (§7.11)
@@ -353,7 +355,7 @@ def check_files(files):
     b = Bundle()
     for rel in files:
         need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json', 'weather.json',
-                     'tools.json', 'monitoring.json', 'hse.json', 'workorders.json') or re.fullmatch(
+                     'tools.json', 'monitoring.json', 'hse.json', 'workorders.json', 'discussions.json') or re.fullmatch(
             r'(areas|model|procedures|scenarios|workshop|workshop/bench|service)/[a-z_][a-z0-9_]{0,31}\.json|'
             r'sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg',
             rel), 'unknown_key', f'{rel}: not a file of the format')
@@ -468,6 +470,12 @@ class Plant:
             need('staff.json' in files, 'bad_ref', 'hse.json: only in a plant with staff.json (REALISM.md §8.6)')
             b.hse = HS.check(parse(files, 'hse.json'))
         HS.check_works(b, m, 'hse.json' in files)
+        if 'discussions.json' in files:
+            # the discussions (REALISM.md §6.3.1, milestone DC3): checked with staff.json's rooms, roles and tasks
+            need(b.version == 2, 'unknown_key', 'discussions.json: only in a version 2 plant (REALISM.md §6.3.1)')
+            need('staff.json' in files, 'bad_ref', 'discussions.json: only in a plant with staff.json (REALISM.md '
+                                                   '§6.3.1)')
+            b.discuss_doc = parse(files, 'discussions.json')
         if 'staff.json' in files:
             from ref.plant3d_staff import Staff
             need(b.version == 2, 'unknown_key', 'staff.json: only in a version 2 plant (§14)')
@@ -2436,6 +2444,10 @@ class Engine:
     def stop(self, person, slot=None):
         self._q(('stop', person), slot)
 
+    def discuss(self, discussion, point, option, slot=None):
+        """The player's pick at a discussion's point (REALISM.md §6.3.1)."""
+        self._q(('discuss', discussion, point, option), slot)
+
     def get_on(self, vehicle, slot=None):
         """The player's person gets on a vehicle standing at their stop (§21.4)."""
         self._q(('get_on', vehicle), slot)
@@ -2828,7 +2840,7 @@ class Engine:
             elif kind == 'release' and not self.session:
                 continue        # (a session run's input: a single-player run has no slots)
             elif kind in ('role', 'release', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump',
-                          'ppe', 'zone', 'stop', 'get_on', 'drive', 'audio', 'phone'):
+                          'ppe', 'zone', 'stop', 'get_on', 'drive', 'audio', 'phone', 'discuss'):
                 tail = (slot,) if self.session else ()
                 if sr is not None:
                     sr.t_input(item, slot)
@@ -3291,6 +3303,9 @@ class Engine:
             s['vehicles'] = self.staff.snap_vehicles()
             if self.staff.st.audio is not None:     # REALISM.md §8.5
                 s['audio'] = self.staff.snap_audio()
+            if self.staff.st.discuss is not None:   # REALISM.md §6.3.1
+                from ref import plant3d_discuss as DC
+                s['discussions'] = DC.snapshot_part(self.staff)
             s['unacked'] = self.staff.unacked
             if self.session:
                 sr = self.staff

@@ -2166,7 +2166,7 @@ def build_rejects_staff():
 
 INPUTS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
           'remove_lock', 'role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump', 'ppe', 'zone',
-          'stop', 'board', 'alight', 'get_on', 'drive', 'weather', 'audio', 'phone', 'jsa', 'talk')
+          'stop', 'board', 'alight', 'get_on', 'drive', 'weather', 'audio', 'phone', 'jsa', 'talk', 'discuss')
 
 
 class Slotted:
@@ -2340,7 +2340,7 @@ class Trainee:
         place = None
         if 'go' in s:
             place = x.get('dest')
-        elif 'meet' in s:
+        elif 'meet' in s or 'discuss' in s:     # (a discussion's seat, REALISM.md §6.3.1)
             place = x.get('place')
         elif 'work' in s and x.get('place') is not None and self.back:
             place = x['place']          # back to a work left half done (a pause took them elsewhere)
@@ -2496,6 +2496,8 @@ def apply_staff(e, item):
         e.jsa(item[2], item[3], item[4], item[5], slot=slot)
     elif kind == 'talk':
         e.talk(item[2], item[3], item[4], slot=slot)
+    elif kind == 'discuss':         # REALISM.md §6.3.1
+        e.discuss(item[2], item[3], item[4], slot=slot)
     else:
         apply(e, item, slot)
 
@@ -6173,6 +6175,216 @@ def wo_part():
 
 
 
+# ---------------------------------------------------------------- milestone DC3: discussions (REALISM.md §6.3.1)
+
+DISCUSS_DOC = {
+    'format': 'walkdown-plant-discussion', 'version': 1,
+    'discussions': [
+        {'id': 'pump_run', 'title': 'Run the pump to the weekend\'s stop, or stop it now', 'topic': 'wo_pump',
+         'room': 'office', 'roles': ['shift_sup', 'mech_tech', 'elec_ap'],
+         'evidence': [
+             {'id': 'zone', 'kind': 'standard', 'cite': 'ISO20816-3', 'text': 'Zone C: not for long-term running'},
+             {'id': 'manual', 'kind': 'manual', 'manual': 'pumps', 'section': 'troubleshooting',
+              'text': 'The pump manual\'s troubleshooting table'},
+             {'id': 'shut', 'kind': 'reading', 'code': VALVE, 'value': 'valve_shut', 'text': 'The valve is shut'},
+             {'id': 'site', 'kind': 'rule', 'text': 'A machine in zone C is read weekly until it is stopped'}],
+         'positions': [
+             {'role': 'shift_sup', 'claim': 'Run it to the weekend with extra readings', 'evidence': ['site']},
+             {'role': 'mech_tech', 'claim': 'Stop it now on the standby pump', 'evidence': ['zone', 'manual']},
+             {'role': 'elec_ap', 'claim': 'The standby pump\'s breaker is ready', 'evidence': []}],
+         'turns': [{'role': 'mech_tech', 'text': 'The bearing reads zone C.'},
+                   {'role': 'shift_sup', 'text': 'The planned stop is on Saturday.'}],
+         'points': [
+             {'id': 'when', 'role': 'mech_tech', 'minutes': 5, 'default': 'weekend', 'options': [
+                 {'id': 'now', 'text': 'Stop it now', 'side': 'mech_tech', 'evidence': ['zone'],
+                  'lines': [{'role': '$', 'text': 'Zone C: stop it now.'}]},
+                 {'id': 'weekend', 'text': 'Run to the weekend', 'side': 'shift_sup',
+                  'lines': [{'role': '$', 'text': 'It can run to Saturday.'}]}]},
+             {'id': 'watch', 'minutes': 3, 'default': 'weekly', 'options': [
+                 {'id': 'weekly', 'text': 'Read it weekly', 'evidence': ['site'],
+                  'lines': [{'role': '$', 'text': 'Weekly, as the rule says.'}]},
+                 {'id': 'daily', 'text': 'Read it daily',
+                  'lines': [{'role': '$', 'text': 'Daily, while the valve is open.'},
+                            {'role': 'shift_sup', 'text': 'Agreed.'}]}]}],
+         'minutes': 10,
+         'agreements': [
+             {'when': [{'point': 'when', 'option': 'now'}],
+              'outcome': {'task': 'stop_pump', 'text': 'The pump is stopped now; the standby takes over'},
+              'lines': [{'role': 'shift_sup', 'text': 'Stop it, then.'}]},
+             {'when': [{'value': 'valve_shut', 'is': False}, {'point': 'watch', 'option': 'daily'}],
+              'outcome': {'text': 'It runs to the weekend, read daily'},
+              'lines': [{'role': 'shift_sup', 'text': 'Daily readings to Saturday.'}]},
+             {'when': [], 'outcome': {'text': 'It runs to the weekend, read weekly'},
+              'lines': [{'role': 'shift_sup', 'text': 'Weekly readings to Saturday.'}]}]},
+        {'id': 'gauge_cal', 'title': 'Calibrate the gauge in place or at the bench', 'room': 'workshop',
+         'roles': ['shift_sup', 'mech_tech'],
+         'evidence': [{'id': 'r3051', 'kind': 'standard', 'cite': 'R3051', 'text': 'The transmitter\'s manual'}],
+         'positions': [{'role': 'shift_sup', 'claim': 'In place', 'evidence': []},
+                       {'role': 'mech_tech', 'claim': 'At the bench', 'evidence': ['r3051']}],
+         'turns': [{'role': 'shift_sup', 'text': 'Do it where it is.'}],
+         'points': [{'id': 'where', 'minutes': 2, 'default': 'place', 'options': [
+             {'id': 'place', 'text': 'In place', 'lines': [{'role': '$', 'text': 'In place.'}]},
+             {'id': 'bench', 'text': 'At the bench', 'lines': [{'role': '$', 'text': 'At the bench.'}]}]}],
+         'minutes': 2,
+         'agreements': [{'when': [], 'outcome': {'text': 'As picked'}, 'lines': [{'role': 'shift_sup',
+                                                                                   'text': 'Go on.'}]}]}]}
+DISCUSS_TASKS = [
+    {'id': 'debate_pump', 'title': 'Settle the pump\'s running', 'interruptible': False,
+     'steps': [{'discuss': 'pump_run'}, {'say': 'all_well', 'to': 'channel'}]},
+    {'id': 'join_pump', 'title': 'The pump\'s running, with the supervisor', 'interruptible': False,
+     'steps': [{'discuss': 'pump_run'}, {'work': 1}]},
+    {'id': 'stop_pump', 'title': 'Stop the pump on the standby', 'priority': 2,
+     'steps': [{'go': 'cr_table'}, {'work': 2}, {'say': 'all_well', 'to': 'channel'}]}]
+
+
+def discuss_files():
+    """The realism base's staff plant (realism_files) from 07:20 with discussions.json: the pump's running argued in
+    the office by the shift supervisor (the lead: a routine's slot at 07:25), a mechanical technician (their routine's
+    slot at 07:25: a joiner's step; the first in the office takes part, the other waits its 15 minutes) and the
+    electrical authorised person (the third role, at the office's table with no step of it); two points, the minutes
+    between NPCs, an agreement by a point's option whose outcome task stops the pump, one by a reading and an option,
+    and the last with no terms. A second discussion, the gauge's calibration in the workshop, no step runs."""
+    F = realism_files()
+    F['scenarios/s1.json']['start'] = {'day': 1, 'time': '07:20'}
+    F['discussions.json'] = copy.deepcopy(DISCUSS_DOC)
+    st = F['staff.json']
+    st['tasks'] += copy.deepcopy(DISCUSS_TASKS)
+    for r in st['routines']:
+        if r['id'] == 'sup_shift':
+            r['slots'].append({'at': '07:25', 'task': 'debate_pump'})
+        if r['id'] == 'mech_days':
+            r['slots'].append({'at': '07:25', 'task': 'join_pump'})
+    return F
+
+
+def _dc(fn):
+    """A change to the discuss part's first discussion."""
+    return lambda F: fn(F['discussions.json']['discussions'][0])
+
+
+def _dc_task(tid, fn):
+    return _st(lambda st: fn(next(t for t in st['tasks'] if t['id'] == tid)))
+
+
+def _dc_no_file(F):
+    """The discuss part without discussions.json and the steps naming it."""
+    F.pop('discussions.json')
+    st = F['staff.json']
+    st['tasks'] = [t for t in st['tasks'] if t['id'] not in ('debate_pump', 'join_pump', 'stop_pump')]
+    for r in st['routines']:
+        r['slots'] = [x for x in r['slots'] if x['task'] not in ('debate_pump', 'join_pump')]
+
+
+REJECTS_DISCUSS = [
+    ('discussions.json of another format', 'bad_format', lambda F: SET(F['discussions.json'], 'format', 'walkdown-plant-hse'), 'format must be'),
+    ('discussions.json of version 2', 'bad_version', lambda F: SET(F['discussions.json'], 'version', 2), 'version must be 1'),
+    ('discussions.json with a key it doesn\'t know', 'unknown_key', lambda F: SET(F['discussions.json'], 'topics', []), 'discussions.json.topics'),
+    ('no discussions', 'bad_length', lambda F: SET(F['discussions.json'], 'discussions', []), 'discussions.json.discussions'),
+    ('discussions.json in a plant without staff', 'bad_ref', _all(
+        _dc_no_file, lambda F: F.__setitem__('discussions.json', copy.deepcopy(DISCUSS_DOC)),
+        lambda F: F.pop('staff.json'), lambda F: F['scenarios/s1.json'].pop('staff'),
+        lambda F: F['scenarios/s1.json'].pop('start'),
+        lambda F: [w.pop('task') for w in F['model/a1.json']['works'] if 'task' in w]), 'only in a plant with staff.json'),
+    ('a discussion id of 25 characters', 'bad_id', _dc(lambda d: SET(d, 'id', 'd' * 25)), 'at most 24'),
+    ('a discussion twice', 'dup_id', lambda F: F['discussions.json']['discussions'].append(
+        copy.deepcopy(F['discussions.json']['discussions'][1]) | {'id': 'pump_run'}), 'pump_run twice'),
+    ('a title of 121 characters', 'bad_type', _dc(lambda d: SET(d, 'title', 't' * 121)), '[0].title'),
+    ('a topic that is no work', 'bad_ref', _dc(lambda d: SET(d, 'topic', 'wo_fan')), "no work 'wo_fan'"),
+    ('a room that is not there', 'bad_ref', _dc(lambda d: SET(d, 'room', 'canteen')), "no room 'canteen'"),
+    ('one role', 'bad_length', _dc(lambda d: SET(d, 'roles', ['shift_sup'])), '[0].roles'),
+    ('four roles', 'bad_length', _dc(lambda d: SET(d, 'roles', ['shift_sup', 'mech_tech', 'elec_ap', 'ccr_op'])), '[0].roles'),
+    ('a role that is not there', 'bad_ref', _dc(lambda d: SET(d['roles'], 2, 'pilot')), "no role 'pilot'"),
+    ('a role twice', 'dup_id', _dc(lambda d: SET(d['roles'], 2, 'mech_tech')), 'mech_tech twice'),
+    ('evidence of a kind not known', 'bad_value', _dc(lambda d: SET(d['evidence'][3], 'kind', 'rumour')), '.kind: one of'),
+    ('a standard\'s cite that is no source key', 'bad_id', _dc(lambda d: SET(d['evidence'][0], 'cite', 'ISO 20816')), 'a source key'),
+    ('a manual\'s evidence without its section', 'missing_key', _dc(lambda d: d['evidence'][1].pop('section')), '.section'),
+    ('a reading of a code the plant lacks', 'bad_ref', _dc(lambda d: SET(d['evidence'][2], 'code', '10LAC10AP009')), 'no equipment'),
+    ('a reading of a value the model lacks', 'bad_ref', _dc(lambda d: SET(d['evidence'][2], 'value', 'valve_gone')), 'valve_gone'),
+    ('a rule with a key not known', 'unknown_key', _dc(lambda d: SET(d['evidence'][3], 'cite', 'HSG250')), '.cite'),
+    ('evidence text of 201 characters', 'bad_type', _dc(lambda d: SET(d['evidence'][3], 'text', 'x' * 201)), 'evidence[3].text'),
+    ('17 pieces of evidence', 'bad_length', _dc(lambda d: SET(d, 'evidence', [
+        {'id': f'r{k}', 'kind': 'rule', 'text': 'A rule'} for k in range(17)])), '[0].evidence'),
+    ('a position\'s evidence that is not there', 'bad_ref', _dc(lambda d: d['positions'][0]['evidence'].append('hearsay')), "no evidence 'hearsay'"),
+    ('a role without its position', 'bad_ref', _dc(lambda d: d['positions'].pop()), 'no position for role elec_ap'),
+    ('a turn by a role not in the discussion', 'bad_ref', _dc(lambda d: SET(d['turns'][0], 'role', 'ccr_op')), 'turns[0].role'),
+    ('no turns', 'bad_length', _dc(lambda d: SET(d, 'turns', [])), '[0].turns'),
+    ('nine points', 'bad_length', _dc(lambda d: SET(d, 'points', [dict(d['points'][1], id=f'p{k}') for k in range(9)])), '[0].points'),
+    ('a point of 0 minutes', 'bad_number', _dc(lambda d: SET(d['points'][0], 'minutes', 0)), 'points[0].minutes'),
+    ('a point of 31 minutes', 'bad_number', _dc(lambda d: SET(d['points'][0], 'minutes', 31)), 'points[0].minutes'),
+    ('a point with one option', 'bad_length', _dc(lambda d: d['points'][0]['options'].pop()), 'points[0].options'),
+    ('a point whose default is not one of its options', 'bad_ref', _dc(lambda d: SET(d['points'][0], 'default', 'daily')), "no option 'daily'"),
+    ('an option twice', 'dup_id', _dc(lambda d: SET(d['points'][0]['options'][1], 'id', 'now')), 'now twice'),
+    ('an option siding with a role not in the discussion', 'bad_ref', _dc(lambda d: SET(d['points'][0]['options'][0], 'side', 'ccr_op')), '.side'),
+    ('an option with five lines', 'bad_length', _dc(lambda d: SET(d['points'][0]['options'][0], 'lines', [{'role': '$', 'text': 'x'}] * 5)), 'options[0].lines'),
+    ('a point id twice', 'dup_id', _dc(lambda d: SET(d['points'][1], 'id', 'when')), 'when twice'),
+    ('a discussion of 0 minutes', 'bad_number', _dc(lambda d: SET(d, 'minutes', 0)), '[0].minutes'),
+    ('a discussion of 121 minutes', 'bad_number', _dc(lambda d: SET(d, 'minutes', 121)), '[0].minutes'),
+    ('a last agreement with terms', 'bad_ref', _dc(lambda d: d['agreements'].pop()), 'the last agreement has no terms'),
+    ('a term naming an option of another point', 'bad_ref', _dc(lambda d: SET(d['agreements'][0]['when'][0], 'option', 'daily')), "no option 'daily' of point when"),
+    ('a term naming a point that is not there', 'bad_ref', _dc(lambda d: SET(d['agreements'][0]['when'][0], 'point', 'why')), "no point 'why'"),
+    ('a reading term whose is is not true or false', 'bad_type', _dc(lambda d: SET(d['agreements'][1]['when'][0], 'is', 1)), '.is: true or false'),
+    ('an outcome task that is not there', 'bad_ref', _dc(lambda d: SET(d['agreements'][0]['outcome'], 'task', 'flee')), "no task 'flee'"),
+    ('an outcome task that reaches the lead\'s own task', 'bad_ref', _dc_task('stop_pump', lambda t: t['steps'].append(
+        {'choose': [[1, 'debate_pump']]})), 'reaches itself'),
+    ('nine agreements', 'bad_length', _dc(lambda d: SET(d, 'agreements', [d['agreements'][0]] * 8 + [d['agreements'][2]])), '[0].agreements'),
+    ('a discuss step naming no discussion', 'bad_ref', _dc_task('debate_pump', lambda t: SET(t['steps'][0], 'discuss', 'pay')), "no discussion 'pay'"),
+    ('a discuss step without discussions.json', 'unknown_key', lambda F: F.pop('discussions.json'), 'the plant has no discussions.json'),
+    ('a discuss step with a key not known', 'unknown_key', _dc_task('debate_pump', lambda t: SET(t['steps'][0], 'else', 1)), '.else'),
+    ('a discuss step run by a role not in the discussion', 'authority', lambda F: next(
+        r for r in F['staff.json']['routines'] if r['id'] == 'field_shift')['slots'].append({'at': '07:25', 'task': 'join_pump'}),
+     'role field_op is not a role of discussion pump_run'),
+]
+
+
+def discuss_runs():
+    """(why, scenario changes, files, player, steps, snapshot every): DC3's runs (REALISM.md §6.3.1)."""
+    df = discuss_files()
+    no_sup = {'absent': ['a_sup']}
+    return [
+        ('NPCs alone (mode npc): the supervisor\'s slot at 07:25 starts their discuss step: to the office\'s first free '
+         'seat, then waiting for a mechanical technician and a field operator in the office; the technician\'s own '
+         'joiner step takes them there. Started, its participants the supervisor, the first technician and the first '
+         'field operator in the office in person order (none: null); after its 10 minutes each point takes its '
+         'default (null as the taker), and the last agreement is reached (no outcome task): the supervisor\'s task '
+         'goes on, the technician\'s joiner step is done', {}, df, None, 600, 50),
+        ('the trainee as the technician (mode open): their step takes them to the office; before it starts a pick is '
+         'refused (state: none live); an id, a point and an option not in the file are unknown; started in mode open, '
+         'a pick of the second point refused (state: not the current one); their pick of `now` takes the first point '
+         'at once (their id), a second pick of it refused (state: taken); the second point takes its default after '
+         'its 3 minutes; the first agreement is reached and its outcome task stops the pump in place of the rest of '
+         'the supervisor\'s task', {'trainee': 'mech1'}, df,
+         Trainee(extra=_x((250, 'discuss', 'pump_run', 'when', 'now'), (251, 'discuss', 'pay', 'when', 'now'),
+                          (251, 'discuss', 'pump_run', 'why', 'now'), (251, 'discuss', 'pump_run', 'when', 'later'),
+                          (251, 'discuss', 'pump_run', 'when', None), (280, 'discuss', 'pump_run', 'watch', 'daily'),
+                          (290, 'discuss', 'pump_run', 'when', 'now'), (291, 'discuss', 'pump_run', 'when', 'weekend'))),
+         900, 50),
+        ('the trainee as the supervisor (the lead, mode open): the first point takes its default after its 5 minutes '
+         '(null), their pick of `daily` takes the second; the valve open (a reading term: valve_shut false) and `daily`: the second '
+         'agreement is reached, no outcome task', {'trainee': 'a_sup'}, df,
+         Trainee(extra=_x((285, 'discuss', 'pump_run', 'watch', 'daily'))), 900, 50),
+        ('a session (§17.13): slot 0 the supervisor, slot 1 the first technician, slot 2 the second; slot 2\'s pick '
+         'refused (authority: not a participant); slots 0 and 1 pick the first point in one step: the first in the '
+         'commit\'s order counts, the second refused (state: taken); free mode (slot 3 playing nobody) refused '
+         '(authority)', {}, df, Session([Trainee(slot=0), Trainee(slot=1), Trainee(slot=2)],
+                                       extra=[[1, 'role', 'a_sup', 0], [1, 'role', 'mech1', 1], [1, 'role', 'mech2', 2],
+                                              [150, 'discuss', 'pump_run', 'when', 'now', 2],
+                                              [150, 'discuss', 'pump_run', 'when', 'now', 3],
+                                              [160, 'discuss', 'pump_run', 'when', 'weekend', 0],
+                                              [160, 'discuss', 'pump_run', 'when', 'now', 1]]),
+         900, 50),
+        ('the joiner times out: the supervisor absent, the technician waits 15 clock minutes in the office and no '
+         'discussion starts: their step is done', no_sup, df, None, 450, 50),
+    ]
+
+
+def discuss_part():
+    df = discuss_files()
+    return {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in df.items()},
+            'counts': check(df).counts,
+            'reject': reject_changes(df, [r[:3] for r in REJECTS_DISCUSS], df),
+            'runs': build_runs(discuss_runs(), df)}
+
+
 def parts3():
     """The realism vectors part by part (REALISM.md §13), in the file's order."""
     return {
@@ -6197,7 +6409,9 @@ def parts3():
                           'hazard library), works with a job kind, JSAs and toolbox talks by NPCs and trainees, the '
                           'issue refused without a JSA, the talk\'s attendance; milestone WM1 (§2.20): `wo`, the staff plant with '
                           'workorders.json, work orders moved by their inputs, by themselves and by NPCs, and '
-                          'reactions on their states. A run\'s `files` are '
+                          'reactions on their states; milestone DC3 (§6.3.1): `discuss`, the staff plant with '
+                          'discussions.json, the discuss step\'s lead and joiners, modes npc and open, picks and their '
+                          'reasons, defaults, agreements and an outcome task. A run\'s `files` are '
                           'those that differ from its part\'s. Numbers compare to 1e-6; the digests (§17.14) of every '
                           '50th step are exact.'),
         'streams': build_streams,
@@ -6211,7 +6425,8 @@ def parts3():
         'audio': audio_part,
         'lab': lab_part,
         'hse': hse_part,
-        'wo': wo_part}
+        'wo': wo_part,
+        'discuss': discuss_part}
 
 
 def build3():

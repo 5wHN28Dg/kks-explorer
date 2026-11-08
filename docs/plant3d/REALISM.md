@@ -1784,6 +1784,41 @@ alarm limit's change).
   section, a reading's value as now shown, and the time left); the lines also go to the radio log. The debrief lists
   each discussion, who took which option and the outcome.
 
+#### 6.3.2 As built for milestone DC3 (reference engine)
+
+The reference engine is `ref/plant3d_discuss.py` (with `ref/plant3d.py` and `ref/plant3d_staff.py`); its vectors are
+the realism file's `discuss` part. What §6.3.1 left open, settled the smallest way:
+- **The checks beyond §6.3.1:** the room has a door (as a `meet`'s); a `standard`'s `cite` has a §14 key's form
+  (`[A-Za-z0-9][A-Za-z0-9.-]{0,23}`, `bad_id`), the key itself checked by the content's test, as a `manual`'s
+  `manual` and `section` (identifiers here); a position's `evidence` may be empty; an agreement's `lines` are 1–4 of
+  the discussion's roles (no `"$"`), its terms at most 16; a second discussion of an id is `dup_id`; a task running a
+  `discuss` step for a role not of the discussion is `authority`; an outcome task is an edge of the "reaches itself"
+  check, as `choose`'s tasks are, and runs for the lead's roles and works.
+- **The participants** are listed in the discussion's role order; a joining role with nobody in the room after the
+  meeting's 15 minutes is `null` in the event (-1 in the digest), and the discussion starts without it.
+- **A pick** in mode `open` takes the point in step 1 (event `["point", id, point, option, taker]` right after the
+  input's); the lead's next turn moves to the next point, whose minutes count from that step. In mode `npc` the
+  points' events come in point order, all in the step the discussion's minutes end. Lines are not events: the app
+  reads them from the file (the opening turns at `start`, an option's lines with its `point`, an agreement's with
+  `agreed`).
+- **The reasons:** `unknown` alone when the id, the point or the option is not in the file (or not text); else
+  `authority` when the slot plays nobody or a live discussion of that id has other participants, and `state` when no
+  discussion of that id is live in mode `open`, the point is not the current one, or it is taken (both may be listed).
+  The event has no slot, as `jsa`'s.
+- **Live** means started, no agreement yet, and the lead still has a task at a step of that discussion (current,
+  queued or held): a lead's task abandoned, stopped or skipped by a jump leaves its discussion behind, not live (no
+  event; it shows unended in the state) and a later lead's step starts the next one.
+- **A joiner** (an NPC) goes to the meeting's first free seat as a `meet` does; a trainee joiner only needs to be in
+  the room. Its 15 minutes count from when it first is in the room; a discussion live then, or started since, in
+  which it takes part ends its step when it ends; one it is not part of does not stop its 15 minutes.
+- **State** in the staff's part of the run (`StaffRun.disc`), per discussion in file order. **The digest:** at the
+  end of the staff's digest list (after the audio part), only with discussions.json: per discussion `[]` before its
+  first start, else `[count, lead, participants (PackedInt32, -1 none), mode (0 npc, 1 open), start step, current
+  point (the points' count once all are taken), the step the current point began, options taken (PackedInt32, -1
+  none), takers (PackedInt32, -1 none or a default), the agreement reached (-1 while unended)]`. **The snapshot:**
+  `discussions`, with discussions.json only: `{id: {count, lead, participants, mode, start, point, since, taken:
+  [[option, taker or null] or null per point], agreed (null while unended)}}` for each discussion started once.
+
 ## 7. Work management
 
 ### 7.1 Work orders and job history

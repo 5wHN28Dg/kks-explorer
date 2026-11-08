@@ -43,7 +43,8 @@ STATE_NAMES = ('none', 'requested', 'approved', 'isolated', 'issued', 'accepted'
 STEP_KINDS = ('go', 'work', 'read', 'op', 'permit', 'lock', 'unlock', 'say', 'wait', 'call', 'meet', 'choose', 'ack',
               'handover', 'remove_locks', 'ppe', 'stop', 'ride', 'sleep', 'tool', 'hand',   # (tool, hand: §2.13)
               'jsa', 'talk',    # (REALISM.md §8.6)
-              'wo')     # (a work order's action, REALISM.md §2.20)
+              'wo',     # (a work order's action, REALISM.md §2.20)
+              'discuss')    # (a discussion, REALISM.md §6.3.1)
 LATER = {}
 VEHICLE_KINDS = ('bus', 'pickup', 'suv')
 DRIVE_KINDS = ('stop', 'depot')     # the places drive ways join (§21.4)
@@ -304,6 +305,11 @@ class Staff:
             self.task_ix[t['id']] = i
             self.tasks[t['id']] = t
         self.task_list = tl
+        self.discuss = None             # discussions.json, checked (REALISM.md §6.3.1), before the steps name them
+        if b.discuss_doc is not None:
+            from ref import plant3d_discuss as DC
+            self.discuss = DC.check(b.discuss_doc, self, m)
+            m.finish()
         self.check_routines(d['routines'])
         for t in tl:
             self.check_task(t)
@@ -1044,6 +1050,10 @@ class Staff:
                     need(c[1] in self.tasks, 'bad_ref', f'{ws}.choose: no task {c[1]!r}')
                     tot += c[0]
                 need(tot <= 65536, 'bad_number', f'{ws}.choose: weights total at most 65536')
+            elif k == 'discuss':       # REALISM.md §6.3.1
+                keys(s, ('discuss',), (), ws)
+                need(self.discuss is not None, 'unknown_key', f'{ws}.discuss: the plant has no discussions.json')
+                need(isinstance(x, str) and x in self.discuss['ix'], 'bad_ref', f'{ws}.discuss: no discussion {x!r}')
             elif k == 'ack':
                 keys(s, ('ack',), (), ws)
                 need(x == '$', 'bad_value', f'{ws}.ack: "$" (the alarm the task was given for)')
@@ -1218,6 +1228,9 @@ class Staff:
                         yield x
                 if 'call' in s:
                     yield s['call']['task']
+                if 'discuss' in s:      # an outcome runs in place of the rest, as choose's (REALISM.md §6.3.1)
+                    from ref import plant3d_discuss as DC
+                    yield from DC.outcomes(self, s)
         state = {}
 
         def visit(tid, path):
@@ -1279,6 +1292,9 @@ class Staff:
                     targets = []
                     if 'choose' in s:
                         targets = [(x, runs[t['id']], works[t['id']]) for _, x in s['choose']]
+                    if 'discuss' in s:      # (an outcome: the lead's task goes on as it, REALISM.md §6.3.1)
+                        from ref import plant3d_discuss as DC
+                        targets = [(x, runs[t['id']], works[t['id']]) for x in DC.outcomes(self, s)]
                     if 'call' in s:
                         c = s['call']
                         wk = works[t['id']] if c.get('work', '$') == '$' else {c['work']}
@@ -1355,6 +1371,11 @@ class Staff:
                                 for p in (pts if pt == 'all' else [pts[pt]]):
                                     need(f'lock_{p["kind"]}' in auth, 'authority',
                                          f'{ws}: role {rid} lacks lock_{p["kind"]}')
+                if 'discuss' in s:      # a lead's or a joiner's for everyone who runs it (REALISM.md §6.3.1)
+                    roles = self.discuss['list'][self.discuss['ix'][s['discuss']]]['roles']
+                    for rid in sorted(runs[tid]):
+                        need(rid in roles, 'authority', f'{ws}: role {rid} is not a role of discussion '
+                                                        f'{s["discuss"]}')
                 if 'stop' in s:
                     need(tid in act_tasks, 'bad_ref', f'{ws}: stop only in the task of a reaction to an unsafe act')
                     for rid in sorted(runs[tid]):
@@ -1488,6 +1509,7 @@ class StaffRun:
         self.pending = []               # offers for a permit nobody was on duty to take (§17.10)
         self.made = set()               # (reaction, act) of `seen` reactions made (once per act, §16.7)
         self.veh = [self.vehicle_home(v) for v in st.vehicles]   # the vehicles' state (§21.4)
+        self.disc = {}                  # discussion index -> its live or last instance (REALISM.md §6.3.1)
 
     def copy(self, e):
         """An independent copy for a clone of the engine (the content is shared)."""
@@ -2102,6 +2124,9 @@ class StaffRun:
                 elif item[0] == 'drive':    # (nobody to drive, §21.16)
                     e.ev('drive', None, item[1], item[2], drive_place(item), 'refused', ['authority'],
                          *((slot,) if self.session else ()))
+                elif item[0] == 'discuss':  # (nobody to take part, REALISM.md §6.3.1)
+                    from ref import plant3d_discuss as DC
+                    DC.t_discuss(self, None, item)
                 continue
             tp = self.people[ti]
             if item[0] in ('arrive', 'leave') and tp.aboard is not None:
@@ -2139,6 +2164,9 @@ class StaffRun:
                 self.t_audio(tp, item[1], slot)
             elif item[0] == 'phone':
                 self.t_phone(tp, item[1], slot)
+            elif item[0] == 'discuss':      # a pick at a discussion's point (REALISM.md §6.3.1)
+                from ref import plant3d_discuss as DC
+                DC.t_discuss(self, tp, item)
 
         # 1. duties, then slots
         day = c // DAY
@@ -3060,6 +3088,9 @@ class StaffRun:
             return 'next'
         if 'meet' in s:
             return self.meet(p, cur, s['meet'], False)
+        if 'discuss' in s:              # REALISM.md §6.3.1
+            from ref import plant3d_discuss as DC
+            return DC.step(self, p, cur, s['discuss'], False)
         if 'say' in s:
             self.say(p, s['say'], s['to'])
             return 'next'
@@ -3799,6 +3830,9 @@ class StaffRun:
                         break
             elif 'meet' in s:
                 r = self.meet(p, cur, s['meet'], True)
+            elif 'discuss' in s:        # REALISM.md §6.3.1: as an NPC's; their picks are inputs (step 1)
+                from ref import plant3d_discuss as DC
+                r = DC.step(self, p, cur, s['discuss'], True)
             elif 'sleep' in s:          # §21.3: done once the clock reaches T, wherever they are
                 if 'T' not in x:
                     x['T'] = self.sleep_until(p, s['sleep']['until'])
@@ -4117,7 +4151,12 @@ class StaffRun:
                   Packed(PACKED_INT64, [p.watch[wk][qi] for qi in sorted(p.watch[wk])])]
                  for wk in sorted(p.watch, key=lambda x: (x[0], AUDIO_KINDS.index(x[1])))] for p in people],
                Packed(PACKED_INT64, list(self.aud_s)), Packed(PACKED_INT64, [p.held_to for p in people])]]
-             if st.audio is not None else [])
+             if st.audio is not None else []) + \
+            ([self._discuss_digest()] if st.discuss is not None else [])
+
+    def _discuss_digest(self):
+        from ref import plant3d_discuss as DC      # REALISM.md §6.3.1
+        return DC.digest_part(self)
 
     def snap_vehicles(self):
         """`vehicles` (§21.4): {id: [place or [from, to, depart, arrive], [the driver, then the riders]]}."""
