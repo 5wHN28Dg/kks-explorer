@@ -2038,6 +2038,14 @@ talk is where the crew hears it, just before the work, and signs that they did.
   refused (state, jsa), given at a place of no room and walking; the JSA and attendance cleared by a cancel and a new
   request; a session; and (the adversarial review) an NPC's JSA step on a task with no work, unknown as a permit
   step's is.
+- **The Note 9** (a test-signed release build of HS1's branch at 575b7ffa, `walk=jsa probe=1`: the maintenance
+  supervisor at the maintenance office with the permit form's JSA picker open, the plant at 1×; 300 s from a cool
+  start at 29.4 °C, SAMPLE=1, 2026-11-08): tier lean+vis, 11,804 frames, median 25.2 ms, p95 36.2 ms, max 55.5 ms,
+  none over 100 ms (the frame rule passes; reclaim in 0.63 % of the samples); 1.03 % of the frames shown below
+  30 fps; GPU median 19.6 ms; the model's step 2.0 ms in the app; first frame at 14.5 s. An earlier walk the same
+  day (from 28.4 °C) was not judged: the kernel reclaimed in 5 % of its samples, and its one frame over 100 ms fell
+  inside that reclaim. Evidence in `~/kks-work/build/hs1-note9/` on the maintainer's laptop. The app's 89 test files
+  passed in the build.
 
 ## 9. Electrical and mechanical crafts, condition monitoring
 
