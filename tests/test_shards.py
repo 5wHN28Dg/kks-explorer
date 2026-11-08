@@ -137,6 +137,49 @@ class SimShards(unittest.TestCase):
         self.assertIn("python3 -m unittest -v ${{ matrix.shard == 0 && 'tests.test_plant3d_sim' || "
                       "'tests.test_plant3d_sim.GdscriptEngine' }}", text)
         self.assertEqual(text.count('-m unittest'), 1)
+        self.assertNotIn('KKS_SIM_DEADLINE', text, 'the PR shards keep the 1800 s limit')
+
+    def test_nightly_replays_every_vector_in_one_process(self):
+        """plant3d-nightly.yml: the whole replay, unsharded, in one job and one Godot process, nightly and by hand."""
+        with open(os.path.join(WORKFLOWS, 'plant3d-nightly.yml'), encoding='utf-8') as f:
+            text = f.read()
+        self.assertRegex(text, r"(?m)^  schedule:\n    - cron: '[^']+'$")
+        self.assertRegex(text, r'(?m)^  workflow_dispatch:$')
+        self.assertNotIn('pull_request', text)
+        self.assertNotIn('KKS_SIM_SHARD', text)
+        self.assertNotIn('matrix', text)
+        self.assertNotIn('continue-on-error', text)       # a failure fails the run
+        self.assertEqual(re.findall(r'(?m)^\s+run: (.*-m unittest.*)$', text),
+                         ['KKS_REQUIRE_GODOT=1 python3 -m unittest -v tests.test_plant3d_sim'])
+        deadline = int(re.search(r"(?m)^\s+KKS_SIM_DEADLINE: '(\d+)'$", text).group(1))
+        minutes = int(re.search(r'(?m)^\s+timeout-minutes: (\d+)$', text).group(1))
+        self.assertGreater(deadline, 1800)
+        self.assertGreater(minutes * 60, deadline + 600, 'the job outlives the replay\'s own limit')
+        # every action pinned by a commit SHA
+        uses = re.findall(r'(?m)^\s+- uses: (\S+)', text)
+        self.assertTrue(uses)
+        for u in uses:
+            self.assertRegex(u, r'@[0-9a-f]{40}$')
+
+    def test_deadline_only_for_the_whole_replay(self):
+        import test_plant3d_sim as S
+        env = {k: os.environ.pop(k) for k in ('KKS_SIM_DEADLINE', 'KKS_SIM_SHARD') if k in os.environ}
+        try:
+            self.assertEqual(S.sim_deadline(), 1800)
+            os.environ['KKS_SIM_DEADLINE'] = '3600'
+            self.assertEqual(S.sim_deadline(), 3600)
+            for bad in ('600', 'x', '-1'):
+                os.environ['KKS_SIM_DEADLINE'] = bad
+                self.assertRaises(AssertionError, S.sim_deadline)
+            os.environ['KKS_SIM_DEADLINE'] = '3600'
+            os.environ['KKS_SIM_SHARD'] = '1'
+            self.assertRaises(AssertionError, S.sim_deadline)
+            del os.environ['KKS_SIM_DEADLINE']
+            self.assertEqual(S.sim_deadline(), 1800)
+        finally:
+            for k in ('KKS_SIM_DEADLINE', 'KKS_SIM_SHARD'):
+                os.environ.pop(k, None)
+            os.environ.update(env)
 
 
 if __name__ == '__main__':

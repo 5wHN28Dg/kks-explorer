@@ -237,6 +237,20 @@ def sim_shard():
     return int(k)
 
 
+def sim_deadline():
+    """GdscriptEngine's limit on its Godot run, in seconds: 1800 (as godot()'s timeout), or KKS_SIM_DEADLINE for the
+    nightly whole replay (plant3d-nightly.yml), which takes longer than a shard and may not be a shard (the PR shards
+    keep 1800: tests/test_shards.py checks only the nightly job sets it)."""
+    v = os.environ.get('KKS_SIM_DEADLINE')
+    if v is None or v == '':
+        return 1800
+    if not v.isdigit() or int(v) < 1800:
+        raise AssertionError(f'KKS_SIM_DEADLINE={v}: not a number of seconds of at least 1800')
+    if sim_shard() is not None:
+        raise AssertionError('KKS_SIM_DEADLINE is for the whole replay only, not a shard (KKS_SIM_SHARD)')
+    return int(v)
+
+
 def train_cost(t):
     return t['until'] + sum(f['until'] - f['base_step'] for f in t['forks'])
 
@@ -429,7 +443,7 @@ class GdscriptEngine(unittest.TestCase):
                 f'--digests={cls.digest_path}'] + ([] if cls.units is None else
                                                     ['--units=' + ','.join(u[0] for u in cls.units)])
         out, err = (os.path.join(cls.tmp.name, x) for x in ('godot.out', 'godot.err'))
-        deadline = time.monotonic() + 1800         # (as godot()'s timeout)
+        deadline = time.monotonic() + sim_deadline()
         with open(out, 'w', encoding='utf-8') as fo, open(err, 'w', encoding='utf-8') as fe:
             proc = subprocess.Popen(args, stdout=fo, stderr=fe, cwd=REPO)
             try:
