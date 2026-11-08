@@ -27,6 +27,10 @@ var building := false           # the page's blocks still being added (a few eac
 var frame_ms_max := 0.0         # the longest the reader's own work took in one frame, ms (walk=manuals)
 const FRAME_BUDGET_MS := 4.0    # the page's blocks and table rows added (and the last page's freed) each frame, at most
 								# this long
+const FRAME_TEXT := 600         # ... and about this many characters of new text: laying text out (after the scripts,
+								# before the frame is drawn) costs by its length, about 0.05 ms a character on the
+								# Note 9, and a whole page at once took a frame over 100 ms
+var _frame_chars := 0           # the new text this frame
 var _jobs: Array = []           # the page's work left: Callables that each add one block or one table row
 var _page_t0 := 0               # the page's start (µs)
 var _page_key := ""
@@ -285,10 +289,11 @@ func go(sec: String) -> void:
 ## Adds the page's next blocks and table rows for at most `budget_ms` (at least one).
 func _pump(budget_ms: float) -> void:
 	var t0 := Time.get_ticks_usec()
+	_frame_chars = 0
 	while not _jobs.is_empty():
 		var j: Callable = _jobs.pop_front()
 		j.call()
-		if (Time.get_ticks_usec() - t0) / 1000.0 >= budget_ms:
+		if (Time.get_ticks_usec() - t0) / 1000.0 >= budget_ms or (budget_ms < INF and _frame_chars >= FRAME_TEXT):
 			break
 	building = not _jobs.is_empty()
 	if not building and _page_key != "":
@@ -539,6 +544,7 @@ func _cell(run) -> Control:
 	if plain:
 		var l := Label.new()
 		l.text = run if run is String else "".join(run)
+		_frame_chars += l.text.length()
 		l.add_theme_color_override("font_color", INK)
 		l.add_theme_font_size_override("font_size", int(20 * W.scale))
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -563,6 +569,7 @@ func _rich(bb: String) -> RichTextLabel:
 	r.meta_clicked.connect(_on_meta)
 	r.mouse_filter = Control.MOUSE_FILTER_PASS
 	r.text = bb
+	_frame_chars += bb.length()
 	return r
 
 
