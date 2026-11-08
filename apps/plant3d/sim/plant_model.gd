@@ -238,6 +238,11 @@ func _load(files: Dictionary) -> void:
 		_load_tools(_read(files, "tools.json"))
 		if error != "":
 			return
+	if hse == null and (not files.has("hse.json") or files["hse.json"] == null):
+		for w in works:
+			if w.has("jsa"):
+				_fail("work %s: a job kind, and the plant has no hse.json" % str(w.get("id")))
+				return
 	if files.has("hse.json") and files["hse.json"] != null:
 		# the JSAs' hazard library (REALISM.md §8.6, milestone HS1): only in a version 2 plant with staff.json
 		if version != 2 or staff == null:

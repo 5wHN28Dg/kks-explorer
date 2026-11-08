@@ -143,6 +143,9 @@ func send_pick() -> void:
 		if pick["cs"].has(c):
 			cs.append(c)
 	var kind: String = pick["kind"]
+	if hz.is_empty():
+		ui.toast("Pick at least one hazard first")
+		return
 	# a session carries an input of at most 512 bytes (MULTIPLAYER.md §3.3): a longer one would be dropped unseen
 	var item := ["jsa", pick["work"], hz, cs, ui.me()] if kind == "jsa" else ["talk", pick["work"], hz, ui.me()]
 	if e.st_session and InputCheck.text(item).size() > InputCheck.MAX_BYTES:

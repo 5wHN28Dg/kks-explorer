@@ -1829,7 +1829,8 @@ talk is where the crew hears it, just before the work, and signs that they did.
   `hazards` (1–200 `{"id", "title", "controls"}`: the 1–16 controls that answer it, no repeat) and `jobs` (1–100
   `{"id", "title", "hazards"}`: a job kind and its 1–32 hazards, no repeat). Ids are identifiers of at most 24
   characters, titles 1–120 characters; each item may carry `source` (1–200 characters: the §14 key it comes from).
-- **A work's `jsa`** names its job kind (a job id of hse.json, `bad_ref` otherwise, and `bad_ref` without hse.json).
+- **A work's `jsa`** names its job kind (an identifier, `bad_id` otherwise; a job id of hse.json, `bad_ref`
+  otherwise, and `bad_ref` without hse.json).
   This replaces §8.1's `"jsa": true`: the job kind is the work's own list, which the debrief compares with, and the
   library keeps it once for every work of that kind. **The work's own list:** the job's hazards in their order, and
   each of them's controls in order, each control once.
@@ -1860,8 +1861,9 @@ talk is where the crew hears it, just before the work, and signs that they did.
   debrief's (§8.1: "checked against the job's hazards"), not a refusal.
 - **NPC steps** `{"jsa": work}` and `{"talk": work}` (`"$"` the task's work; optional `else`): the validator checks
   the role has `jsa` (`authority`) and the work has `jsa` (`bad_ref`). An NPC's JSA is the work's own list (it knows
-  the job); its talk's points are the job's hazards. Done goes on, anything else fails (to `else`). A player's step is
-  done by their own input of that kind for that work, done (any lists: theirs to get right).
+  the job); its talk's points are the job's hazards. Done goes on, anything else fails (to `else`). A player's `jsa` step is
+  done while the work's JSA is theirs (made in that step or before it, any lists: theirs to get right); a `talk` step
+  by their own talk for that work, done in that step.
 - **The digest** gains, with hse.json, per work with `jsa` in model order: whether it has a JSA, its hazards' and
   controls' indices in hse.json, its person's index (−1 for none or free mode), and the attendance's person indices
   in order. The snapshot gains `hse`: `{work: {"jsa": [hazards, controls, person], "talk": [persons]}}` for the works
@@ -1882,8 +1884,10 @@ talk is where the crew hears it, just before the work, and signs that they did.
 - **The debrief** (the app; from the events, so saved runs keep it): per work whose JSA or talk the run holds, the JSA's
   author; the hazards of the work's own list it missed, those it named that the list doesn't, and the controls of the
   list it lacks; each talk's points against the JSA's hazards and the job's, and who attended; and **a job started
-  without a toolbox talk** (its `accept` by a person not among the attendees) listed with the unsafe acts as an
-  observation, as HS7's are. A player's own JSA, talk or acceptance is marked as theirs.
+  without a toolbox talk** (its `accept` by a person not among the attendees; an accept by nobody, free mode's, is
+  not counted) listed with the unsafe acts as an observation, as HS7's are. A session's input is at most 512 bytes
+  (MULTIPLAYER.md §3.3): the form refuses a pick longer than that in a session and says so (the whole first-train
+  library ticked is about 680 bytes; its jobs' own lists 143–220). A player's own JSA, talk or acceptance is marked as theirs.
 - **Vectors** (`plant3d-realism.json`, part `hse`): the safety staff with hse.json and works with `jsa`. Its rejects
   cover every key and limit of hse.json, a work's `jsa` without hse.json or naming no job, and an NPC step without the
   authority or on a work without `jsa`. Its runs: the NPCs' JSA, issue and talk with attendance in a room; the

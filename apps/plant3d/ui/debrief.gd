@@ -667,8 +667,9 @@ static func hse_review(engine, me_id, evs: Array, to: int) -> Dictionary:
 			if ev[3] == "close" or ev[3] == "cancel":
 				att.erase(ev[2])
 				made.erase(ev[2])
-			elif ev[3] == "accept" and not Permits.own_list(engine, ev[2]).is_empty() \
+			elif ev[3] == "accept" and ev[4] != null and not Permits.own_list(engine, ev[2]).is_empty() \
 					and not att.get(ev[2], {}).has(ev[4]):
+				# (an accept by nobody, free mode or a plant without staff, has no talk to attend: not counted)
 				out.no_talk += 1
 				var mine: bool = typeof(ev[4]) == typeof(me_id) and ev[4] == me_id
 				if mine:

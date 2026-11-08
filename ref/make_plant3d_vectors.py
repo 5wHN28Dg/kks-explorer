@@ -5768,6 +5768,25 @@ REJECTS_HSE = [
      'no work'),
     ('a talk step with a key not known', 'unknown_key', _hs_task('talk_pump', lambda t: t['steps'][1].__setitem__(
         'points', [])), 'points'),
+    # (the blind review: every limit of hse.json)
+    ('201 controls', 'bad_length', _hs(lambda d: d['controls'].extend(
+        {'id': f'c{k}', 'title': 'A control'} for k in range(201 - len(d['controls'])))), 'hse.json.controls'),
+    ('201 hazards', 'bad_length', _hs(lambda d: d['hazards'].extend(
+        {'id': f'h{k}', 'title': 'A hazard', 'controls': ['loto']} for k in range(201 - len(d['hazards'])))),
+     'hse.json.hazards'),
+    ('101 jobs', 'bad_length', _hs(lambda d: d['jobs'].extend(
+        {'id': f'j{k}', 'title': 'A job', 'hazards': ['pinch']} for k in range(101 - len(d['jobs'])))),
+     'hse.json.jobs'),
+    ('a job with 33 hazards', 'bad_length', _hs(lambda d: (
+        d['hazards'].extend({'id': f'h{k}', 'title': 'A hazard', 'controls': ['loto']} for k in range(33)),
+        d['jobs'][0].__setitem__('hazards', [f'h{k}' for k in range(33)]))), 'jobs[0].hazards'),
+    ('a source of 201 characters', 'bad_type', _hs(lambda d: d['hazards'][0].__setitem__('source', 's' * 201)),
+     'hazards[0].source'),
+    ('an empty title', 'bad_type', _hs(lambda d: d['jobs'][0].__setitem__('title', '')), 'jobs[0].title'),
+    ('a hazard id of 25 characters', 'bad_id', _hs(lambda d: d['hazards'][5].__setitem__('id', 'h' * 25)),
+     'at most 24'),
+    ('a job id of 25 characters', 'bad_id', _hs(lambda d: d['jobs'][1].__setitem__('id', 'j' * 25)), 'at most 24'),
+    ('a job key not known', 'unknown_key', _hs(lambda d: d['jobs'][0].__setitem__('steps', [])), 'steps'),
 ]
 
 
@@ -5856,6 +5875,10 @@ def hse_runs():
                         [7, 'jsa', 'wo_paint', ['height'], [], 'hse1', 0],
                         [8, 'permit', 'wo_paint', 'request', 'ms1', 0],
                         [9, 'talk', 'wo_paint', ['height', 'fumes'], 'hse1', 1]]), 40, 10),
+        ('the trainee as the maintenance supervisor plays their own steps (the blind review): the painting\'s JSA in '
+         'their hosting task, the pump\'s JSA when the shift supervisor calls them (after its fault at step 1500), '
+         'and its toolbox talk in the workshop when the technician calls them; each step done by their own input',
+         {'trainee': 'ms1'}, hf, Trainee(extra=[[1500, 'fault', 'f1']]), 2600, 50),
     ]
 
 

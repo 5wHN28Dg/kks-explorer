@@ -1287,6 +1287,15 @@ class HseVectors(PartVectors, unittest.TestCase):
         self.assertIn(['talk', 'wo_paint', ['height'], None, 'done', [], []], [x[1:] for x in r['events']])
         self.assertEqual(r['states'][-1]['hse'], {'wo_paint': {'jsa': [['height'], ['harness'], None]}})
 
+    def test_player_plays_their_steps(self):
+        """The maintenance supervisor played (the Trainee helper as the app would): the hosting task's JSA, the called
+        jsa_pump and talk_pump, each step done by their own input, the tasks done."""
+        ev = self.st['runs'][7]['events']
+        for t in ('host_paint', 'jsa_pump', 'talk_pump'):
+            self.assertIn(['task', 'ms1', t, 'done'], [x[1:5] for x in ev], t)
+        self.assertIn(['talk', 'wo_pump', ['rotating', 'pinch', 'pressure'], 'ms1', 'done', []],
+                      [x[1:7] for x in ev])
+
     def test_session(self):
         ev = self.evs(6, ('jsa', 'talk'))
         self.assertEqual(ev[-1], ['talk', 'wo_paint', ['height', 'fumes'], 'hse1', 'done', [], ['a_elec', 'hse1', 'ms1']])

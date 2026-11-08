@@ -324,8 +324,8 @@ static func _hse_contents(fresh, d: Dictionary) -> String:
 		var n: int = fresh._sm.people.size() if fresh._sm != null else 0
 		for wid in d["talked"]:
 			var a = d["talked"][wid]
-			if lib == null or typeof(wid) != TYPE_STRING or not fresh.m.work_ix.has(wid) or typeof(a) != TYPE_ARRAY \
-					or a.is_empty():
+			if lib == null or typeof(wid) != TYPE_STRING or not fresh.m.work_ix.has(wid) \
+					or not fresh.m.works[fresh.m.work_ix[wid]].has("jsa") or typeof(a) != TYPE_ARRAY or a.is_empty():
 				return "a toolbox talk's attendance the content doesn't have"
 			var last := -1
 			for i in a:

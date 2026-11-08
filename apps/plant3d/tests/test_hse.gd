@@ -151,6 +151,7 @@ func _review(ui) -> Array:
 		[15, "permit", WORK, "cancel", "sup", "done", []],
 		[16, "permit", WORK, "request", "me", "done", []],
 		[17, "permit", WORK, "accept", "tech", "done", []],
+		[18, "permit", WORK, "accept", null, "done", []],      # free mode's: no talk to attend, never flagged
 	]
 	var h := Debrief.hse_review(e, "me", evs, evs.size())
 	var own: Array = Permits.own_list(e, WORK)
@@ -164,6 +165,8 @@ func _review(ui) -> Array:
 		p.append("the talk's review reads %s" % str(h["at"].get(2)))
 	if h["at"].has(3):
 		p.append("an acceptor who attended the talk is marked: %s" % str(h["at"][3]))
+	if h["at"].has(8):
+		p.append("a free-mode accept (nobody's) is flagged: %s" % str(h["at"][8]))
 	if h.no_talk != 2 or h.no_talk_me != 1 or not h["at"].has(4) or not h["at"][4][1] or not h["at"].has(7) \
 			or h["at"][7][1]:
 		p.append("jobs started without a talk: %s" % str(h))
