@@ -174,6 +174,7 @@ def ref_tasks(V, V2):
 # Every unit is in exactly one shard, and the shards' results add up to the whole run's (tests/test_shards.py checks).
 # Shard SIM_REST also runs this module's other classes and the step bench. Before the split one job replayed every
 # vector: 18 to 30+ minutes on GitHub's runners, past the 1800 s limit on main's own runs (2026-11-08).
+# The whole replay in one process still runs nightly (plant3d-nightly.yml, with its own limit: sim_deadline).
 SIM_SHARDS = 4
 SIM_REST = 0
 # Each unit's cost on the laptop, 2026-11-08: Godot's seconds (run_vectors.gd's UNIT lines) plus a third of the
@@ -235,6 +236,20 @@ def sim_shard():
     if not k.isdigit() or int(k) >= SIM_SHARDS:
         raise AssertionError(f'KKS_SIM_SHARD={k}: not a shard from 0 to {SIM_SHARDS - 1}')
     return int(k)
+
+
+def sim_deadline():
+    """GdscriptEngine's limit on its Godot run, in seconds: 1800 (as godot()'s timeout), or KKS_SIM_DEADLINE for the
+    nightly whole replay (plant3d-nightly.yml), which takes longer than a shard and may not be a shard (the PR shards
+    keep 1800: tests/test_shards.py checks only the nightly job sets it)."""
+    v = os.environ.get('KKS_SIM_DEADLINE')
+    if v is None or v == '':
+        return 1800
+    if not v.isdigit() or int(v) < 1800:
+        raise AssertionError(f'KKS_SIM_DEADLINE={v}: not a number of seconds of at least 1800')
+    if sim_shard() is not None:
+        raise AssertionError('KKS_SIM_DEADLINE is for the whole replay only, not a shard (KKS_SIM_SHARD)')
+    return int(v)
 
 
 def train_cost(t):
@@ -429,7 +444,7 @@ class GdscriptEngine(unittest.TestCase):
                 f'--digests={cls.digest_path}'] + ([] if cls.units is None else
                                                     ['--units=' + ','.join(u[0] for u in cls.units)])
         out, err = (os.path.join(cls.tmp.name, x) for x in ('godot.out', 'godot.err'))
-        deadline = time.monotonic() + 1800         # (as godot()'s timeout)
+        deadline = time.monotonic() + sim_deadline()
         with open(out, 'w', encoding='utf-8') as fo, open(err, 'w', encoding='utf-8') as fe:
             proc = subprocess.Popen(args, stdout=fo, stderr=fe, cwd=REPO)
             try:

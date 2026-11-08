@@ -1,0 +1,50 @@
+# Walkdown Plant: every vector through the GDScript engine in ONE Godot process, against the reference, as
+# engine-vectors did before it was split into shards (plant3d.yml, 2026-11-08). A bug that shows only when the vectors
+# run one after another in the same process is caught here, not by the shards. Nightly and by hand, never on PRs, so
+# its longer limits gate no PR (tests/test_shards.py checks it runs unsharded).
+name: Walkdown Plant nightly
+
+on:
+  schedule:
+    - cron: '17 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plant3d-nightly
+  cancel-in-progress: false
+
+jobs:
+  engine-vectors-whole:
+    runs-on: ubuntu-26.04
+    # (the whole replay took 18 to 30+ minutes on GitHub's runners before the split; the module's other classes ~5 more)
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # the editor's zip only (no export templates): checked by SHA-512 on every run, cached or not
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/godot-dl
+          key: godot-editor-${{ hashFiles('tools/plant3d/bench/fetch_godot.sh') }}
+      - name: Godot (the version and SHA-512 pinned in tools/plant3d/bench/fetch_godot.sh)
+        run: |
+          set -eu
+          F=tools/plant3d/bench/fetch_godot.sh
+          VERSION=$(sed -n 's/^VERSION=//p' "$F")
+          SHA=$(sed -n 's/^EDITOR_SHA512=//p' "$F")
+          ZIP="Godot_v$VERSION-stable_linux.x86_64.zip"
+          mkdir -p ~/godot-dl ~/godot
+          if [ ! -f ~/godot-dl/"$ZIP" ]; then
+            curl -sSLf -o ~/godot-dl/"$ZIP" "https://github.com/godotengine/godot/releases/download/$VERSION-stable/$ZIP"
+          fi
+          echo "$SHA  $HOME/godot-dl/$ZIP" | sha512sum -c -
+          unzip -oq ~/godot-dl/"$ZIP" -d ~/godot
+          G=~/godot/Godot_v$VERSION-stable_linux.x86_64
+          "$G" --headless --version | grep -q "^$VERSION.stable"
+          echo "KKS_GODOT=$G" >> "$GITHUB_ENV"
+      - name: The engine against the reference (every vector in one process, unsharded; bit for bit; numbers; strict JSON)
+        env:
+          KKS_SIM_DEADLINE: '3600'
+        run: KKS_REQUIRE_GODOT=1 python3 -m unittest -v tests.test_plant3d_sim
