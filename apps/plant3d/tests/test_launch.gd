@@ -151,6 +151,7 @@ static func _shader_files(dir: String, out: Array) -> void:
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
 	p += main_compile_graph()
+	p += workshop_scenes_plain()
 	# the pipeline cache is saved soon after a start compiles (Godot's default waits for 3 MB of new pipelines, more
 	# than a start makes: the next start compiled everything again, 7 s on the Note 9 instead of 3.5 s)
 	var chunk := float(ProjectSettings.get_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", 3.0))
@@ -292,7 +293,9 @@ func run(tree: SceneTree) -> Array:
 		await tree.process_frame
 		if late.first_frame_ms >= 0:
 			break
+	# (and the warm-up after the first walkable frame is under way: it waits WARM_UP_S for its first piece)
 	if late.first_frame_ms < 0 or late.workshop == null or late.workshop.warmed_at_start or late.workshop._warm != null \
+			or not late.workshop._warming \
 			or Array(late.lines).any(func(l): return l.begins_with("LAUNCH workshop's")):
 		p.append("ws_warm=late leaves the Workshop's warm-up to after the first walkable frame")
 	late.free()
@@ -310,6 +313,76 @@ func run(tree: SceneTree) -> Array:
 		p += tier_materials(full.plant, "full")
 	full.free()
 	return p
+
+## The start's warm-up loads the Workshop's scenes with a plain `load()` on a worker thread while the main thread waits
+## for it (workshop.gd `warm_at_start_end`). That holds only while they are plain geometry: a material, texture, shader
+## or script in them would have the load wait for the main thread (resource_loader.cpp: its `changed` connections go
+## through the main thread's queue; a texture's upload asks the rendering server) and hang the start. The builder sets
+## the pieces' materials as metadata; this keeps it so. A scene with a material is refused (the check's own test).
+const WS_START_SCENES := ["res://built/workshop_ui/space.scn"]
+
+func workshop_scenes_plain() -> Array:
+	var p: Array = []
+	var paths: Array = WS_START_SCENES.duplicate()
+	for f in DirAccess.get_files_at("res://built/workshop"):   # (every kind: workshop.gd's `kinds()`, not loaded here)
+		if f.ends_with(".scn"):
+			paths.append("res://built/workshop".path_join(f))
+	if paths.size() < 2:
+		p.append("the Workshop's kinds are built")
+	for path in paths:
+		if not ResourceLoader.exists(path):
+			p.append("%s is built" % path)
+			continue
+		var bad := scene_not_plain(path)
+		if not bad.is_empty():
+			p.append("%s holds only plain geometry for the start's worker thread (%s)" % [path, ", ".join(bad)])
+	# the check finds a material
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.material = StandardMaterial3D.new()
+	mi.mesh = bm
+	var ps := PackedScene.new()
+	ps.pack(mi)
+	mi.free()
+	var probe := "user://tests-plain-probe.scn"
+	ResourceSaver.save(ps, probe)
+	if scene_not_plain(probe).is_empty():
+		p.append("the plain-scene check refuses a scene with a material")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(probe))
+	return p
+
+## What in the scene at `path` is not plain geometry: its dependencies, and any Material, Texture, Shader or Script
+## in its nodes' properties or in their meshes' surfaces.
+static func scene_not_plain(path: String) -> Array:
+	var bad: Array = []
+	for d in ResourceLoader.get_dependencies(path):
+		bad.append("depends on " + d)
+	var ps := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
+	if ps == null:
+		return ["does not load"]
+	var root := ps.instantiate()
+	for n in [root] + root.find_children("*", "", true, false):
+		if n.get_script() != null:
+			bad.append("%s has a script" % n.name)
+		var res: Array = []
+		for prop in n.get_property_list():
+			if not (int(prop.usage) & PROPERTY_USAGE_STORAGE):
+				continue   # (what the scene saves; not what is worked out, like a global transform outside the tree)
+			var v = n.get(prop.name)
+			if v is Resource:
+				res.append(v)
+		while not res.is_empty():
+			var r: Resource = res.pop_back()
+			if r is Material or r is Texture or r is Shader or r is Script:
+				bad.append("%s holds a %s" % [n.name, r.get_class()])
+			elif r is MultiMesh and (r as MultiMesh).mesh != null:
+				res.append((r as MultiMesh).mesh)
+			elif r is Mesh:
+				for i in (r as Mesh).get_surface_count():
+					if (r as Mesh).surface_get_material(i) != null:
+						bad.append("%s's mesh holds a material" % n.name)
+	root.free()
+	return bad
 
 ## The Workshop's pipelines prepared behind the loading screen (the user's decision, 2026-11-08; WORKSHOP.md §7.1):
 ## everything the plant's warm-up held after the first walkable frame (the ghost's and K3's pieces, every kind's own
