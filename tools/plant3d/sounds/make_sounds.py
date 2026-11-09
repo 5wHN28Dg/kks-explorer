@@ -100,6 +100,11 @@ VOICES = {
         'The HP turbine\'s blade-pass tone on the Workshop\'s bench: each moving row\'s 34 blades pass a point 50 '
         'times a second at 3,000 rpm, 1,700 Hz, with its second harmonic 3,400 Hz; 50 Hz once per revolution; pink '
         'noise 400-4,000 Hz is the steam in the blade path. Pitch follows speed')),
+    'compressor_pass': dict(spl=92, noise_am=[(0.5, 0.05)], why=(
+        'The gas turbine\'s blade-pass tone on the Workshop\'s bench: each compressor moving row\'s 40 blades pass a '
+        'point 50 times a second at 3,000 rpm, 2,000 Hz, with its second harmonic 4,000 Hz; the turbine\'s 60 buckets a '
+        'row 3,000 Hz; 50 Hz once per revolution; pink noise 300-5,000 Hz is the air through the stages. Pitch follows '
+        'speed')),
     'steam_rush': dict(spl=92, noise_am=[(0.5, 0.1), (1.25, 0.06)], why=(
         'Steam flow through the control valves and inlet: aerodynamic valve noise is broadband with its peak at a '
         'few kHz (IEC 60534-8-3), white 500-8,000 Hz, gently unsteady')),

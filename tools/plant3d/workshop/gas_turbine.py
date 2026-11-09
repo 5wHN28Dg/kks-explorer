@@ -379,9 +379,321 @@ def data():
         },
         'assembly': assembly(),
         # the views (WORKSHOP.md §4.7): the X-ray takes the casings and the cans round the gas path; the cutaway opens
-        # the upper quarter on the right (+x), the rotor and its blades shown whole
+        # the upper quarter on the right (+x), the rotor and its blades shown whole; the turbine runs only closed
         'views': {'xray_all': ['intake', 'comp_upper', 'comp_lower', 'cdc_upper', 'cdc_lower', 'tshell_upper',
                                'tshell_lower', 'brg1_cover'] + ['can_' + k for k in ks()],
                   'cutaway': {'planes': [{'normal': [1, 0, 0], 'offset': 0}, {'normal': [0, 0, 1], 'offset': 0}],
-                              'keep': ['rotor', 'cblades'] + [f'tbucket{n}' for n in range(1, TSTAGES + 1)]}},
+                              'keep': ['rotor', 'cblades'] + [f'tbucket{n}' for n in range(1, TSTAGES + 1)]},
+                  # (K5b) it runs only closed, as the steam turbine: the casings hold the air and the gas, the
+                  # bearings the rotor, and there is no lagging to leave off; it is opened only at standstill on its turning gear (the
+                  # user's decision, 2026-11-07)
+                  'run_exploded': {'allowed': [],
+                                   'why': 'A gas turbine runs only closed: the casings hold the air and the hot gas, '
+                                          'the bearings the rotor. Put it back together first.'},
+                  'open_running': {'allowed': [],
+                                   'why': 'Not opened while the rotor turns: stop it, let the rotor come to '
+                                          'standstill on its turning gear, then open it up.'}},
     }
+
+
+# ------------------------------------------------------------------ the bench (WORKSHOP.md §6, milestone K5b)
+# The gas turbine run on its bench: the plant's own start-up sequence (`gt1_start`: the SFC cranks it, the HRSG purge,
+# coasting to ignition speed, fuel and igniters, the flame detected, the run-up, the SFC off at 70 %, full speed no
+# load, synchronised, loaded), its trips, alarms, interlock and the values they read, taken from the generated gt1
+# model by make_bench.py (never copied here). The bench gives what the plant's other areas would: the ambient air (a
+# slider), the closed cooling water, the grid, the HRSG's permissives; and the gas path the plant's model doesn't have:
+# the pressure and the temperature through the compressor's stages, the combustion and the firing temperature, the
+# expansion through the turbine's stages to the exhaust, the fuel's flow. Generic: no plant data.
+NASA_C = 'nasa_compth'
+NASA_T = 'nasa_powtrbth'
+NIST_CH4 = 'nist_methane'
+SOURCES_BENCH = [
+    {'id': NASA_C, 'cite': 'NASA Glenn Research Center, Beginner\'s Guide to Propulsion: Compressor Thermodynamics: '
+                           'the total temperature ratio across a compressor from its pressure ratio, Tt3/Tt2 = '
+                           '(pt3/pt2)^((gam-1)/gam), and the work it takes divided by the efficiency nc',
+     'url': 'https://www.grc.nasa.gov/www/k-12/airplane/compth.html'},
+    {'id': NASA_T, 'cite': 'NASA Glenn Research Center, Beginner\'s Guide to Propulsion: Power Turbine '
+                           'Thermodynamics: the temperature ratio across a turbine from its pressure ratio, '
+                           'Tt5/Tt4 = (pt5/pt4)^((gam-1)/gam), the work it gives times the efficiency nt',
+     'url': 'https://www.grc.nasa.gov/www/k-12/airplane/powtrbth.html'},
+    {'id': NIST_CH4, 'cite': 'NIST Chemistry WebBook, SRD 69, Methane: the enthalpy of combustion of the gas, '
+                             '-890.7 kJ/mol (water as liquid); less the two moles of water\'s 44.0 kJ/mol of '
+                             'vaporisation, 802.7 kJ/mol over 16.04 g/mol, the lower heating value 50.0 MJ/kg',
+     'url': 'https://webbook.nist.gov/cgi/cbook.cgi?ID=C74828&Mask=1'},
+    {'id': GER3434, 'cite': 'Brandt and Wesorick, GE Gas Turbine Design Philosophy, GE GER-3434D (1994): pp. 8-10 '
+                            'the cans, the liner cooled by the compressor\'s air, the transition piece to the first '
+                            'stage\'s nozzles; pp. 13-15 three turbine stages, the first two air-cooled',
+     'url': 'https://uodiyala.edu.iq/uploads/PDF%20ELIBRARY%20UODIYALA/EL23/General%20Electric%20Gas%20turbine%20'
+            'Power%20Generator%20philosophy%201994.pdf'},
+    {'id': GER3620, 'cite': 'Beagle et al., Heavy-Duty Gas Turbine Operating and Maintenance Considerations, GE '
+                            'GER-3620P (2021): the start, firing and the run-up, trips from load, the hot gas path\'s '
+                            'temperatures',
+     'url': 'https://www.gevernova.com/content/dam/gepower-new/global/en_US/downloads/gas-new-site/resources/'
+            'reference/GER-3620-P.pdf'},
+]
+P_AMB = 1.0             # bar (absolute) at the bellmouth: the plant's compressor discharge pressure is 1 at standstill
+GAMMA_AIR = 1.4
+GAMMA_GAS = 1.33        # the hot gas's ratio of specific heats
+ETA_C = 0.87            # the compressor's isentropic efficiency (NASA's nc)
+ETA_T = 0.89            # the turbine's (NASA's nt)
+AIR_RATED = 620.0       # kg/s at base load (the plant's: gt1_exh_flow's tables, 430 at full speed and 190 with load)
+LHV = 50.0              # MJ/kg, methane's lower heating value (NIST, above)
+HEAT_RATE = 9750.0      # kJ/kWh at base load, the plant's (gt1_hr)
+BASE_MW = 250.0         # the plant's base load (gt1_cap)
+FUEL_RATED = round(BASE_MW * HEAT_RATE / 3600.0 / LHV, 3)   # kg/s of fuel at base load: the fuel valve's 1
+# the compressor discharge pressure's points the stage tables are made at (bar absolute; the plant's runs 1 to 15, and
+# down to 0.5 in a surge at standstill: below 1 bar the stages run the other way, still each between its neighbours)
+CPD = [0.5, 0.625, 0.75, 0.875, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20]
+MC = (GAMMA_AIR - 1) / GAMMA_AIR
+MT = (GAMMA_GAS - 1) / GAMMA_GAS
+
+# what the bench takes from the plant's gt1 model (WORKSHOP.md §6.3)
+TAKE_VALUES = (
+    # the commands, the sequence's set points and the trainer's faults
+    ['gt1_lac_cmd', 'gt1_lac_fault', 'gt1_ldc_cmd', 'gt1_ldc_fault', 'gt1_oil_leak', 'gt1_tg_cmd', 'gt1_sfc_on',
+     'gt1_fuel_on', 'gt1_ign', 'gt1_speed_sp', 'gt1_bias', 'gt1_load_sp', 'gt1_exc_cmd', 'gt1_brk_cmd',
+     'gt1_gov_fault', 'gt1_fuel_fault', 'gt1_tc_fault', 'gt1_flameout', 'gt1_surge', 'gt1_vib_fault', 'gt1_gas_low',
+     # the rotor's speed
+     'gt1_speed', 'gt1_still', 'gt1_at_rest',
+     # the lube oil: the AC and the DC pumps, three pressure switches (two out of three trip), the DC pump's start,
+     # the oil's temperature
+     'gt1_lac_ok', 'gt1_lac_run', 'gt1_ldc_ok', 'gt1_ldc_run', 'gt1_ldc_q', 'gt1_lsup', 'gt1_lp_sp0', 'gt1_lp_leakf',
+     'gt1_lp_sp', 'gt1_lube_p', 'gt1_lp_1', 'gt1_lp_1_l', 'gt1_lp_1_ll', 'gt1_lp_2', 'gt1_lp_2_ll', 'gt1_lp_3',
+     'gt1_lp_3_ll', 'gt1_lp_llv', 'gt1_lp_ll', 'gt1_lube_ok', 'gt1_lp_norm', 'gt1_pumps_off', 'gt1_lube_off',
+     'gt1_lube_est', 'gt1_lube_sup', 'gt1_lp_low', 'gt1_dc_auto_c', 'gt1_oil_heat', 'gt1_oil_k', 'gt1_oil_rise',
+     'gt1_oil_tgt', 'gt1_oil_t', 'gt1_oil_t_h', 'gt1_oil_t_hc', 'gt1_oil_t_hh',
+     # the turning gear, the governor, the speed's target, overspeed
+     'gt1_slow', 'gt1_tg_run', 'gt1_tg_spd', 'gt1_driven', 'gt1_gov', 'gt1_sp_eff', 'gt1_free_tgt', 'gt1_grid_pu',
+     'gt1_tgt', 'gt1_rpm', 'gt1_os',
+     # the sequence's states and steps: the purge's timer, the speeds it waits for, firing
+     'gt1_in_purge_ge', 'gt1_in_purge_le', 'gt1_in_purge', 'gt1_in_fsnl_ge', 'gt1_in_fsnl_le', 'gt1_in_fsnl',
+     'gt1_purge_t', 'gt1_purge_done', 'gt1_at_crank', 'gt1_at_coast', 'gt1_at_sfc_off', 'gt1_at_full',
+     'gt1_fired_ge', 'gt1_fired_le', 'gt1_fired',
+     # the fuel gas, ignition and the flame
+     'gt1_gas_p', 'gt1_gas_ok', 'gt1_gas_lo', 'gt1_fi', 'gt1_lit', 'gt1_nofuel', 'gt1_flame_rst', 'gt1_flame',
+     'gt1_noflame', 'gt1_flame_lost',
+     # the load: the capacity by the ambient air, the runbacks, the load's ramp, the fuel's demand and valves
+     'gt1_rb_cap', 'gt1_amb_f', 'gt1_dp_rb_cap', 'gt1_cap', 'gt1_base_cap', 'gt1_inv_cap', 'gt1_load_eff',
+     'gt1_mw_tgt', 'gt1_mw', 'gt1_lf', 'gt1_fuel_acc', 'gt1_fuel_ld', 'gt1_fuel_dem', 'gt1_fuel', 'gt1_fuel_v',
+     'gt1_stop_v',
+     # the exhaust's temperature and its twelve thermocouples, the spread
+     'gt1_exh_spd', 'gt1_exh_ld', 'gt1_exh_flt', 'gt1_exh_fired', 'gt1_exh_tgt', 'gt1_exh_t', 'gt1_tc7_err'] +
+    [f'gt1_tc{k}' for k in range(1, 13)] +
+    ['gt1_tc1_h', 'gt1_tc7_d', 'gt1_tc7_da', 'gt1_tc7_dev', 'gt1_tc_max', 'gt1_tc_min', 'gt1_spread',
+     'gt1_spread_hh', 'gt1_exh_hh',
+     # the air's flow, the compressor's discharge pressure and surge
+     'gt1_flow_spd', 'gt1_flow_ld', 'gt1_exh_flow', 'gt1_cpd_b', 'gt1_cpd_l', 'gt1_cpd_s', 'gt1_cpd_f', 'gt1_cpd_t',
+     'gt1_cpd', 'gt1_cpd_slow', 'gt1_cpd_drop', 'gt1_surge_c',
+     # the bearings' vibration
+     'gt1_vib_b', 'gt1_vib_f', 'gt1_vib1', 'gt1_vib1_hh', 'gt1_vib2', 'gt1_vib2_h', 'gt1_vib2_hh', 'gt1_vib3',
+     'gt1_vib3_hh', 'gt1_vib4', 'gt1_vib4_hh', 'gt1_vib_hh',
+     # the generator's excitation and the synchronising check
+     'gt1_v_sp', 'gt1_v', 'gt1_f', 'gt1_slip', 'gt1_slip_deg', 'gt1_phase', 'gt1_ph', 'gt1_ph_abs', 'gt1_ph_ok',
+     'gt1_slip_abs', 'gt1_slip_ok', 'gt1_v_dev', 'gt1_v_ok', 'gt1_sync_ok', 'gt1_spd95', 'gt1_brk_open',
+     'gen1_prot_c'])
+TRIPS = ['gt1_trip_lube', 'gt1_trip_flame', 'gt1_trip_exh', 'gt1_trip_spread', 'gt1_trip_os', 'gt1_trip_vib',
+         'gt1_trip_surge', 'gt1_trip_oil_temp']
+BREAKER_TRIP = 'gen1_trip_prot'     # the breaker opened by the turbine's protection (else the grid holds a tripped rotor)
+ALARMS = ['gt1_lp1_low', 'gt1_oil_t_h', 'gt1_gas_low', 'gt1_flame1_fail', 'gt1_tc1_h', 'gt1_tc7_dev', 'gt1_os1',
+          'gt1_vib2_h']
+
+
+def _table(f):
+    """A table of the compressor discharge pressure (CPD's points) to f(it), rounded."""
+    return [[x, round(f(float(x)), 9)] for x in CPD]
+
+
+def _gas_path():
+    """The gas path (the bench's own: the plant's gt1 model has the compressor's discharge pressure, the air's flow and
+    the exhaust's temperature, not what lies between). The compressor's eight stages share its pressure ratio equally
+    (each stage's pressure the discharge's to the power k/8, from the plant's 1 bar at the bellmouth); each stage's
+    temperature from the ambient air's by NASA's compressor relation with the efficiency, T/T0 = 1 + (r^((g-1)/g) - 1)
+    / nc. The turbine's three stages share the expansion likewise, down to the bellmouth's pressure at the exhaust,
+    T/Tin = 1 - nt (1 - (p/pin)^((g-1)/g)). Every turbine temperature comes from one chain, so the stages stay in order
+    through ignition, a trip and the coast-down: the hot gas's, worked back from the plant's exhaust temperature (its
+    thermocouples' lag, 20 s up and 60 s down, is the gas path's) through the expansion from each stage to the exhaust,
+    the last stage the plant's exhaust temperature itself; or, where hotter, the compressor's discharge air expanded
+    from the first nozzles (no flame: the purge, a coast-down). The turbine inlet temperature (`tit`, at the first
+    nozzles: the combustor's outlet, above a maker's "firing temperature" at the first buckets) is the larger of the
+    hot gas's and the discharge air's. The fuel's flow in kg/s is the plant's fuel valve times the base load's heat
+    input (the plant's heat rate) over methane's lower heating value."""
+    v = [
+        ['amb_k', {'sum': ['ambient_t', 273.15], 'unit': 'K'}],
+        ['air_frac', {'product': ['exh_flow', round(1.0 / AIR_RATED, 9)]}],
+        ['fuel_flow', {'product': ['fuel_v', FUEL_RATED], 'unit': 'kg/s'}],
+        ['fl_lvl', {'of': 'fuel_v', 'table': [[0, 0.4], [1, 1]]}],
+        ['flame_v', {'product': ['flame', 'fl_lvl']}],
+    ]
+    for k in range(1, CSTAGES + 1):
+        e = k / CSTAGES
+        v += [
+            [f'c_p{k}', {'of': 'cpd', 'table': _table(lambda x: x ** e), 'unit': 'bar'}],
+            [f'c_tr{k}', {'of': 'cpd', 'table': _table(lambda x: 1 + (x ** (e * MC) - 1) / ETA_C)}],
+            [f'c_tk{k}', {'product': ['amb_k', f'c_tr{k}'], 'unit': 'K'}],
+            [f'c_t{k}', {'sum': [f'c_tk{k}', -273.15], 'unit': '°C'}],
+        ]
+
+    def t_ratio(x, e):      # T at the fraction e of the turbine's expansion over T at its inlet
+        return 1 - ETA_T * (1 - x ** (-MT * e))
+
+    cd = f'c_tk{CSTAGES}'
+    v += [
+        ['exh_k', {'sum': ['exh_t', 273.15], 'unit': 'K'}],
+        ['tit_x', {'of': 'cpd', 'table': _table(lambda x: 1 / t_ratio(x, 1))}],
+        ['tit_hot', {'product': ['exh_k', 'tit_x'], 'unit': 'K'}],
+        ['tit_k', {'max': ['tit_hot', cd], 'unit': 'K'}],
+        ['tit', {'sum': ['tit_k', -273.15], 'unit': '°C'}],
+    ]
+    for k in range(1, TSTAGES + 1):
+        e = k / TSTAGES
+        v += [
+            [f't_p{k}', {'of': 'cpd', 'table': _table(lambda x: x ** (1 - e)), 'unit': 'bar'}],
+            # (stage k's exit over the exhaust: 1 at the last stage, so the hot chain's last stage is exh_t itself)
+            [f't_hx{k}', {'of': 'cpd', 'table': _table(lambda x: t_ratio(x, e) / t_ratio(x, 1))}],
+            [f't_hot{k}', {'product': ['exh_k', f't_hx{k}'], 'unit': 'K'}],
+            [f't_ax{k}', {'of': 'cpd', 'table': _table(lambda x: t_ratio(x, e))}],
+            [f't_air{k}', {'product': [cd, f't_ax{k}'], 'unit': 'K'}],
+            [f't_tk{k}', {'max': [f't_hot{k}', f't_air{k}'], 'unit': 'K'}],
+            [f't_t{k}', {'sum': [f't_tk{k}', -273.15], 'unit': '°C'}],
+        ]
+    return v
+
+
+def bench_source():
+    """The gas turbine's bench source for make_bench.py (WORKSHOP.md §6.3)."""
+    before = [
+        # the ambient air (the slider) at the bellmouth
+        ['ambient_t', {'state': 30, 'unit': '°C'}],
+        ['p_amb', {'state': P_AMB, 'unit': 'bar'}],
+        # what the plant's other areas give the turbine: the closed cooling water, the grid, the HRSG's drum and
+        # feedwater (the start's permissives); no compressor wash, a clean filter and blading, no runback
+        ['ccw_ok', {'state': 1}],
+        ['ccw_t', {'state': 35, 'unit': '°C'}],
+        ['grid_frequency', {'state': 50, 'unit': 'Hz'}],
+        ['hp_lvl_ok', {'state': 1}],
+        ['fw_avail', {'state': 1}],
+        ['wash_idle', {'state': 1}],
+        ['dp_f', {'state': 1}],
+        ['foul_f', {'state': 1}],
+        ['dp_rb', {'state': 0}],
+        ['rb', {'state': 0}],
+    ]
+    after = [
+        # the trips the bench takes (the plant's gt1_any_trip reads two more: the HRSG drum's level)
+        # (with the breaker's: left latched it would not open the breaker at the next trip on load)
+        ['any_trip', {'or': [n.replace('gt1_', '', 1) + '_latched' for n in TRIPS] + ['trip_breaker_latched']}],
+        ['trips_clear', {'not': 'any_trip'}],
+    ] + _gas_path()
+    bind = [{'at': 'rotor', 'anim': 'shaft', 'of': 'speed', 'scale': 50}]
+    # the colours: the air through the compressor, the flame in the liners and transition pieces, the hot gas
+    # through the turbine's stages, the exhaust
+    for h in ('upper', 'lower'):
+        bind += [{'at': f'igv_{h}', 'heat': 'ambient_t'}, {'at': f'igv_{h}', 'pressure': 'p_amb'}]
+        bind += [{'at': f'comp_{h}', 'heat': 'c_t4'}, {'at': f'comp_{h}', 'pressure': 'c_p4'}]
+        bind += [{'at': f'cvanes_{h}', 'heat': 'c_t4'}, {'at': f'cvanes_{h}', 'pressure': 'c_p4'}]
+        bind += [{'at': f'cdc_{h}', 'heat': f'c_t{CSTAGES}'}, {'at': f'cdc_{h}', 'pressure': 'cpd'}]
+        bind += [{'at': f'tshell_{h}', 'heat': 't_t2'}, {'at': f'tshell_{h}', 'pressure': 't_p1'}]
+    bind += [{'at': 'intake', 'heat': 'ambient_t'}, {'at': 'intake', 'pressure': 'p_amb'},
+             {'at': 'cblades', 'heat': 'c_t4'}, {'at': 'cblades', 'pressure': 'c_p4'}]
+    for k in ks():
+        for c in ('liner_', 'tp_'):
+            bind += [{'at': c + k, 'heat': 'tit'}, {'at': c + k, 'pressure': 'cpd'}]
+    for n in range(1, TSTAGES + 1):
+        tin, pin = ('tit', 'cpd') if n == 1 else (f't_t{n - 1}', f't_p{n - 1}')
+        for s in ('u', 'l'):
+            bind += [{'at': f'tnoz{n}_{s}', 'heat': tin}, {'at': f'tnoz{n}_{s}', 'pressure': pin}]
+        bind += [{'at': f'tbucket{n}', 'heat': f't_t{n}'}, {'at': f'tbucket{n}', 'pressure': f't_p{n}'}]
+    bind += [{'at': 'exhaust', 'heat': 'exh_t'}, {'at': 'exhaust', 'pressure': 'p_amb'}]
+    # the flow paths (kit/parts_machines.gd _gt_flows): the air in, along the compressor, the fuel to two cans, the
+    # flame in three, the gas along the turbine, the exhaust
+    air = {'of': 'air_frac', 'colour': 'pressure'}
+    bind.append(dict(air, flow='air_in', speed=2.0, by='p_amb'))
+    for q in range(4):
+        bind.append(dict(air, flow=f'comp_{q}', speed=2.0, by='c_p4'))
+    for q in range(2):
+        bind.append({'flow': f'fuel_{q}', 'of': 'fuel_v', 'speed': 0.8, 'colour': 'pressure', 'by': 'gas_p'})
+    for q in range(3):
+        bind.append({'flow': f'flame_{q}', 'of': 'flame_v', 'speed': 1.5, 'colour': 'heat', 'by': 'tit'})
+    for q in range(4):
+        bind.append(dict(air, flow=f'turb_{q}', speed=3.0, by='t_p1'))
+    for q in range(2):
+        bind.append(dict(air, flow=f'exhaust_{q}', speed=2.5, by='p_amb'))
+    bind += [
+        {'at': 'brg1_housing', 'show': 'rpm'},
+        {'at': 'exhaust', 'show': 'exh_t'},
+        {'at': 'rotor', 'sound': 'compressor_pass', 'gain': {'of': 'speed', 'table': [[0, 0], [0.05, 0.15], [1, 1]]},
+         'pitch': {'of': 'speed', 'table': [[0, 0.05], [1.2, 1.2]]}},
+        {'at': 'liner_01', 'sound': 'combustion', 'gain': {'of': 'flame_v', 'table': [[0, 0], [1, 1]]}},
+        {'at': 'exhaust', 'sound': 'exhaust_rumble', 'gain': {'of': 'air_frac', 'table': [[0, 0], [1, 1]]}},
+        {'at': 'brg1_housing', 'sound': 'sfc_whine', 'gain': {'of': 'sfc_on', 'table': [[0, 0], [1, 0.6]]}},
+    ]
+    bench = {
+        'format': 'walkdown-plant-bench', 'version': 1, 'part': 'gas_turbine',
+        'sources': SOURCES_BENCH,
+        'values': after,
+        'ops': [{'at': 'intake', 'do': 'set', 'input': 'ambient_t', 'range': [0, 50], 'title': 'Ambient temperature'}],
+        'faults': [
+            {'id': 'flameout', 'at': 'liner_02', 'text': 'Flame out in the cans (a lean blow-out)',
+             'set': {'flameout': 1}, 'repair': {'flameout': 0}},
+            {'id': 'governor', 'at': 'bench', 'text': 'Speed governor fault: the speed set 15 % high',
+             'set': {'gov_fault': 1}, 'repair': {'gov_fault': 0}},
+            {'id': 'tc_fault', 'at': 'exhaust', 'text': 'Exhaust thermocouple 7 reading 80 K low: the spread',
+             'set': {'tc_fault': 1}, 'repair': {'tc_fault': 0}},
+            {'id': 'surge', 'at': 'cvanes_upper', 'text': 'Compressor surge: the air flow breaks down',
+             'set': {'surge': 1}, 'repair': {'surge': 0}},
+            {'id': 'rub', 'at': 'brg2_upper', 'text': 'Rotor rubbing: bearing vibration high',
+             'set': {'vib_fault': 1}, 'repair': {'vib_fault': 0}},
+            {'id': 'oil_leak', 'at': 'brg1_housing', 'text': 'Lube oil leak: the bearings\' oil pressure falls',
+             'set': {'oil_leak': 1}, 'repair': {'oil_leak': 0}},
+            {'id': 'lube_pump', 'at': 'bench', 'text': 'AC lube oil pump lost: the DC emergency pump takes over',
+             'set': {'lac_fault': 1}, 'repair': {'lac_fault': 0}},
+            {'id': 'gas_low', 'at': 'fuel_ring', 'text': 'Fuel gas pressure low: a start is refused',
+             'set': {'gas_low': 1}, 'repair': {'gas_low': 0}},
+        ],
+        # at standstill on its turning gear, the AC lube oil pump running, oil on the bearings; the compressor's
+        # discharge at the bellmouth's 1 bar (the plant's lags start from 0, which the gas path's tables don't reach)
+        'start': {'lac_cmd': 1, 'tg_cmd': 1, 'lube_p': 2.5, 'cpd': 1, 'cpd_slow': 1},
+        'bind': bind,
+        'legends': {
+            'heat': {'unit': '°C', 'table': [[20, '#2c7bb6'], [150, '#abd9e9'], [400, '#ffffbf'], [700, '#fdae61'],
+                                             [1000, '#d7191c'], [1400, '#fff2c0']]},
+            'pressure': {'unit': 'bar', 'table': [[1, '#2c7bb6'], [4, '#abd9e9'], [8, '#ffffbf'], [12, '#fdae61'],
+                                                  [16, '#d7191c'], [32, '#67001f']]},
+        },
+        'readouts': ['rpm', 'exh_flow', 'cpd', 'fuel_flow', 'tit', 'exh_t', 'spread', 'lube_p', 'vib2', 'ph',
+                     'slip', 'mw'],
+    }
+    oil = '10MBV10'
+    return {
+        'area': 'gt1', 'prefix': 'gt1_',
+        'rename': {'gt1_start': 'turbine', 'gen1_trip_prot': 'trip_breaker', 'gen1_prot_c': 'prot_c'},
+        'at': {'10MBA10': 'rotor', '10MKC10': 'bench', '10BAC10': 'bench', '10MKA10': 'bench',
+               '10MBK10AE001': 'brg1_housing', oil + 'AP001': 'bench', oil + 'AP002': 'bench',
+               oil + 'CP001': 'brg1_housing', oil + 'CP002': 'brg1_housing', oil + 'CP003': 'brg1_housing',
+               oil + 'CT001': 'brg1_housing', '10MBM10CB001': 'liner_02', '10MBR10CT001': 'exhaust',
+               '10MBR10CT002': 'exhaust', '10MBR10CT007': 'exhaust', '10MBY10CS001': 'brg1_housing',
+               '10MBD10CY001': 'brg1_upper', '10MBD10CY002': 'brg2_upper', '10MBP10CP001': 'fuel_ring'},
+        'machines': ['gt1_start'], 'trips': TRIPS + [BREAKER_TRIP], 'alarms': ALARMS, 'interlocks': ['gt1_dc_auto'],
+        # (the oil pumps' own ops stay off the bench: the AC pump runs from the start, the DC pump by the interlock)
+        'ops': [['10MBK10AE001', 'start'], ['10MBK10AE001', 'stop'], ['10MKC10', 'start'], ['10MKC10', 'stop'],
+                ['10BAC10', 'close_breaker'], ['10BAC10', 'open_breaker'], ['10MBY10CS001', 'set'],
+                ['10MKA10', 'set']],
+        'titles': {('10MBA10', 'start'): 'Start', ('10MBA10', 'stop'): 'Stop',
+                   ('10MBK10AE001', 'start'): 'Turning gear on', ('10MBK10AE001', 'stop'): 'Turning gear off',
+                   ('10MKC10', 'start'): 'Excitation on', ('10MKC10', 'stop'): 'Excitation off',
+                   ('10BAC10', 'close_breaker'): 'Close the breaker', ('10BAC10', 'open_breaker'): 'Open the breaker',
+                   ('10MBY10CS001', 'set'): 'Speed bias', ('10MKA10', 'set'): 'Load set point',
+                   'gt1_trip_lube': 'Reset: lube oil', 'gt1_trip_flame': 'Reset: flame', 'gt1_trip_exh':
+                   'Reset: exhaust temperature', 'gt1_trip_spread': 'Reset: exhaust spread', 'gt1_trip_os':
+                   'Reset: overspeed', 'gt1_trip_vib': 'Reset: vibration', 'gt1_trip_surge': 'Reset: surge',
+                   'gt1_trip_oil_temp': 'Reset: oil temperature', BREAKER_TRIP: 'Reset: breaker'},
+        'values': TAKE_VALUES,
+        'before': before,
+        'bench': bench,
+    }
+
+
+def bench(models):
+    """The gas turbine's bench file, made from the plant's gt1 model (WORKSHOP.md §6.3)."""
+    from workshop import make_bench
+    return make_bench.make(bench_source(), models)

@@ -1123,9 +1123,13 @@ func _takes_apart(new_s: float, new_root: String) -> bool:
 	return false
 
 ## Whether every part stands at home (nothing taken apart, handled, hidden or in the steps).
+var assembled_asks := 0        # assembled() asked (tests: the bench's drawing asks once a frame)
 func assembled() -> bool:
+	assembled_asks += 1
 	if guide.on() or not handled.is_empty() or not hidden.is_empty():
 		return false
+	if s <= 0.0:                # (nothing exploded: every part at home, without working out each offset)
+		return true
 	return Explode.offsets(spec, s, root_id).values().all(func(o): return (o as Vector3).length() < 1e-5)
 
 ## Why the machine can't run as it stands now ("" when it can): taken apart beyond what the kind's `run_exploded`

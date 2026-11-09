@@ -271,6 +271,82 @@ def turbine_sync_inputs(bench_text, comps, sounds):
     return inputs, until(lambda e: e.v('turbine_state') == 8, k + 2000) + 60
 
 
+def gas_turbine_inputs():
+    """The gas turbine's run from its committed file (WORKSHOP.md §6.7, K5b): started (the SFC cranks it to the purge
+    speed; the commands its state refuses on the way), the ambient air warmer, the AC lube oil pump lost and the DC
+    pump started by the interlock, a rub's vibration tripping it in its purge, the alarm acknowledged, the trip's reset
+    refused while it stands and taken once repaired, a start refused while it coasts, the fuel gas's pressure low."""
+    r, b, h = 'rotor', 'bench', 'brg1_housing'
+    return [
+        [1, 'op', r, 'start', None, None],
+        [2, 'op', r, 'start', None, None],                 # already starting: refused
+        [60, 'op', b, 'start', None, None],                # excitation below 95 % speed: refused
+        [70, 'op', b, 'close_breaker', None, None],        # not at full speed no load: refused
+        [80, 'op', 'intake', 'set', 40, None],             # the ambient air warmer: the compressor's air too
+        [100, 'op', h, 'set', 0.05, None],                 # the speed bias past its range: refused
+        [200, 'fault', 'lube_pump'],                       # the DC emergency pump takes over (the interlock)
+        [260, 'repair', 'lube_pump'],
+        [510, 'fault', 'rub'],                             # (in the purge, which began at step 490)
+        [550, 'ack', 'vib2_h'],
+        [560, 'op', 'brg1_upper', 'reset', None, 'trip_vib'],    # the vibration still high: refused
+        [570, 'repair', 'rub'],
+        [600, 'op', 'brg1_upper', 'reset', None, 'trip_vib'],
+        [610, 'op', r, 'start', None, None],               # still coasting down: refused
+        [640, 'fault', 'gas_low'],
+    ]
+
+
+def short_purge(bench_text):
+    """The committed gas turbine with the HRSG's purge cut from the plant's 480 s to 10 s (the vector's only change):
+    ignition, the run-up, synchronising and load within a vector's length."""
+    d = json.loads(bench_text)
+    for v in d['values']:
+        if v[0] == 'purge_done':
+            assert v[1]['cmp'][0] == 'purge_t' and v[1]['cmp'][2] == 480, v
+            v[1]['cmp'][2] = 10
+    return text(d)
+
+
+def gas_turbine_sync_inputs(bench_text, comps, sounds):
+    """Started with a short purge (short_purge): cranked, purged, coasted to ignition speed, fired, run up to full
+    speed; the excitation on at 95 %; a small speed bias slips the phase into the synchronising window and the
+    breaker is tried every 5 steps at full speed no load until it closes (the refusals are inputs too); loaded towards
+    100 MW; then the flame lost on load trips it and the protection opens the breaker. The inputs are found in one run
+    of the reference, each made as it is chosen (deterministic)."""
+    r, b, h = 'rotor', 'bench', 'brg1_housing'
+    e = B.check(B.loads(bench_text), comps, 'bench', sounds).engine()
+    inputs = []
+
+    def do(*item):
+        x = [e.step_no + 1] + list(item)
+        inputs.append(x)
+        apply(e, x)
+
+    do('op', r, 'start', None, None)
+    exc = closed = trip = None
+    while True:
+        if exc is None and e.step_no > 1 and e.v('spd95') >= 0.5:
+            do('op', b, 'start', None, None)
+            exc = e.step_no + 1
+        elif exc is not None and e.step_no == exc:
+            do('op', h, 'set', 0.001, None)
+        elif closed is None and e.v('turbine_state') == 7 and e.step_no % 5 == 0:
+            do('op', b, 'close_breaker', None, None)
+        if closed is None and e.v('brk_cmd') >= 0.5:
+            closed = e.step_no
+            do('op', h, 'set', 0, None)
+        elif closed is not None and e.step_no == closed + 1:
+            do('op', b, 'set', 100, None)
+        elif closed is not None and e.step_no == closed + 100:
+            do('fault', 'flameout')
+        if trip is None and e.v('turbine_state') == 10:
+            trip = e.step_no
+        if trip is not None and e.step_no >= trip + 30:
+            return inputs, e.step_no
+        assert e.step_no < 6000, 'the gas turbine vector\'s run did not get there'
+        e.step()
+
+
 def run(bench_text, comps, sounds, inputs, until):
     bm = B.check(B.loads(bench_text), comps, 'bench', sounds)
     e = bm.engine()
@@ -401,6 +477,18 @@ def build():
             states, events = run(t2, comps, sounds, ins, end)
             steps.append({'why': 'the steam turbine with a 10 s soak: run up through its critical speeds, '
                                  'synchronised, loaded, tripped on load by a rub (the breaker opened by protection)',
+                          'components': comps, 'bench': t2, 'inputs': ins, 'states': states, 'events': events})
+        if part == 'gas_turbine':
+            states, events = run(t, comps, sounds, gas_turbine_inputs(), 680)
+            steps.append({'why': 'the gas turbine: cranked to its purge, refusals, the AC oil pump lost and the DC pump '
+                                 'started, a rub\'s vibration trip, its reset, the fuel gas low',
+                          'components': comps, 'bench': t, 'inputs': gas_turbine_inputs(), 'states': states,
+                          'events': events})
+            t2 = short_purge(t)
+            ins, end = gas_turbine_sync_inputs(t2, comps, sounds)
+            states, events = run(t2, comps, sounds, ins, end)
+            steps.append({'why': 'the gas turbine with a 10 s purge: fired, run up, synchronised, loaded, tripped on '
+                                 'load by a flame-out (the breaker opened by protection)',
                           'components': comps, 'bench': t2, 'inputs': ins, 'states': states, 'events': events})
     g = text(gadget_ok())
     valid.append({'why': 'the synthetic kind', 'components': GADGET_COMPS, 'bench': g})

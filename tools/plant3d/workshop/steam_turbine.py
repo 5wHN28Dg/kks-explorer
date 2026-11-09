@@ -331,8 +331,8 @@ def data():
                                           'bearings the rotor. Put it back together first (the lagging may stay '
                                           'off).'},
                   'open_running': {'allowed': [],
-                                   'why': 'A turning machine is never opened. Stop it and let the rotor come to '
-                                          'standstill on its turning gear first.'}},
+                                   'why': 'Not opened while the rotor turns: stop it, let the rotor come to '
+                                          'standstill on its turning gear, then open it up.'}},
     }
 
 

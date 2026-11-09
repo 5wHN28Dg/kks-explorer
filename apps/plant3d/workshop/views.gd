@@ -55,6 +55,7 @@ func machine_shown(machine: Node3D, comps: Dictionary) -> void:
 	_capped.clear()
 	_caps.clear()
 	_ramped.clear()
+	_ramp_set.clear()
 	_xrayed.clear()
 	_keep.clear()
 	xray = false
@@ -305,14 +306,21 @@ static func _v3(a) -> Vector3:
 # ------------------------------------------------------------------ heat and pressure colours, the selection
 
 ## A component's heat or pressure colour (a = how much: 0 none).
+var ramp_writes := 0            # set_ramp's writes (tests)
+var _ramp_set := {}             # component -> the ws_ramp it was last given (set_ramp writes only a change)
 func set_ramp(id: String, c: Color, a: float) -> void:
 	if not _meshes.has(id):
 		return
 	if a <= 0.0 and not _ramped.has(id):
 		return
 	var lc := c.srgb_to_linear()   # (a legend's #rrggbb is sRGB; the shader's ALBEDO is linear)
+	var want := Color(lc.r, lc.g, lc.b, a * RAMP_MIX)
+	if _ramp_set.get(id) == want:   # (unchanged since the last frame: no instance uniform written again)
+		return
+	_ramp_set[id] = want
+	ramp_writes += 1
 	for g in _meshes[id]:
-		g.set_instance_shader_parameter("ws_ramp", Color(lc.r, lc.g, lc.b, a * RAMP_MIX))
+		g.set_instance_shader_parameter("ws_ramp", want)
 	if a > 0.0:
 		_ramped[id] = true
 	else:
@@ -352,6 +360,7 @@ func _make_flow(machine: Node3D, fid: String, pts_in: Array) -> void:
 	mat.set_shader_parameter("cum", cum)
 	mat.set_shader_parameter("npts", mini(pts_in.size(), FLOW_PTS))
 	mat.set_shader_parameter("count", float(FLOW_QUADS))
+	mat.set_shader_parameter("size", flow_size(machine.get_meta("box", AABB())))
 	mat.set_shader_parameter("density", 0.0)
 	var quad := QuadMesh.new()
 	quad.size = Vector2(1, 1)
@@ -373,6 +382,13 @@ func _make_flow(machine: Node3D, fid: String, pts_in: Array) -> void:
 
 func flow_ids() -> Array:
 	return _flows.keys()
+
+
+## A flow particle's half size for a machine of box `box`: 4 mm on the transmitter's bench, growing with the machine
+## (0.2 % of its longest side, at most 5 cm) so that a turbine's particles show from where it is seen whole (K5b: on
+## the gas turbine's 25 m the transmitter's 4 mm were not seen at all).
+static func flow_size(box: AABB) -> float:
+	return clampf(box.get_longest_axis_size() * 0.002, 0.004, 0.05)
 
 
 ## A flow path drawn from the bench's value (flow -1..1: its sign is the direction), advanced by `dt` seconds of

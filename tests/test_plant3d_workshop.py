@@ -77,6 +77,10 @@ class WorkshopData(unittest.TestCase):
         self.assertLess(undo.index('comp_bolts'), undo.index('comp_upper'))
         for after in ('brg1_lower', 'brg2_lower', 'cvanes_lower', 'igv_lower', 'tnoz1_l', 'comp_lower'):
             self.assertGreater(undo.index(after), undo.index('rotor'), after)
+        # (K5b) a turning machine is never opened, and a gas turbine runs only closed: nothing may be out or opened
+        self.assertEqual(d['views']['open_running']['allowed'], [])
+        self.assertIn('turning gear', d['views']['open_running']['why'])
+        self.assertEqual(d['views']['run_exploded']['allowed'], [])
 
     def test_context(self):
         w = copy.deepcopy(self.fixture)
