@@ -405,6 +405,29 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   their circles' points listed the other way round (for an odd number of segments, other points of the same circle),
   so each split face lists its points as its own cylinder does (`C._face`), and only the cowl's face to the frame
   keeps the plant's points, with a seam of thin triangles (`C._zip`), so that the outline is the plant's within 1 mm.
+- **valve_control** (the pneumatic actuator's branch, K6: kit/parts_valves.gd `_cv_*`): a cage-guided globe valve
+  (as the Fisher easy-e ES) under a spring-and-diaphragm actuator (as the Fisher 667) with a digital positioner. The
+  order (the data file's `assembly`, reversed for taking apart) follows the ES manual (the stem connector parted and
+  the actuator off by its yoke locknut, the bonnet nuts and the bonnet, the packing; then the plug and stem, the cage
+  and the seat ring) and the 667's (the casing cap screws, the upper casing, the diaphragm, its head and the stem, the
+  lower casing), with SAMSON's 3241 and 3271 instructions as second sources; the positioner's feedback is a magnet on
+  the stem connector (DVC6200). The guided steps put the actuator together on its yoke in place, where the shop does it
+  on the bench and sets it on the valve whole (said in the yoke's step); the explode lifts it off whole first. **Simplified:**
+  the body's flow passages are not drawn: its gallery is a round well from under the seat up to the bonnet, closed at
+  the bottom, and the skin's top round the bonnet is a sloped lid from the gallery's rim to the skin (the plant draws
+  the bonnet's flange sunk into the body's bulge); the cage is two rings and four posts (its windows' shapes, which give
+  the characteristic, are not drawn); the gaskets, the packing's spacer and the plug's pin are not drawn; the packing
+  is one ring and its flange the plant's gland; the yoke is the plant's two arms and head (the actuator stem passes
+  through its solid head; the yoke locknut, the spring adjuster and the seal bushing are not drawn); **the spring sits
+  inside the lower casing** under the diaphragm head (in a real 667 it sits in the yoke under the lower casing, put in
+  from below), five turns drawn as rings; the diaphragm is a flat disc on its head and moves with the stem (a real
+  one's edge is clamped between the casings' flanges and rolls); the diaphragm head, the diaphragm and the stems are
+  drawn at the closed position (the plug on its seat: `tests/test_workshop.gd _seats` checks it sits there, covers the
+  seat's bore and lies on the stem's axis); the positioner is the plant's box with its gauges, the tubing the plant's
+  one straight tube (thin). The electric and hydraulic actuators have no tree yet. **The stand-ins:** the plant's body,
+  neck, bonnet and diaphragm casing are one stand-in (the neck is not drawn in the Workshop: it lies under the lid), the
+  stem another (split at the stem connector into the valve stem and the actuator stem); the bonnet's and the casing's
+  bolt rings are fastener groups.
 
 ## Tables and their sources
 
