@@ -81,7 +81,7 @@ CONTENT = {
 }
 
 APP_DIR = os.path.join(os.path.dirname(HERE), 'apps', 'plant3d', 'tests')
-APP_SHARDS = 4
+APP_SHARDS = 5
 # a test file's name (without .gd): its shard. All in one run they took 598 s of build.sh's 600 s on CI (2026-10-26)
 # and were cut off now and then; 413 s on the laptop since three UI tests stopped rebuilding the Crew panel every round
 # (from 592 s). Times on the laptop, 2026-10-26 (CI's runners took 1 to 1.6 times as long). Keep each shard well under
@@ -116,6 +116,9 @@ APP = {
     'test_ui_crew': 3,
     # the plant's kit output held to its frozen digests (K1a, ~12 s): beside the parts kit's own test
     'test_kit_frozen': 3,
+    # the Workshop's kinds: every kind's tree, its explode's paths triangle by triangle, the turning string, the seats
+    # (~145 s on the laptop, 2026-11-10, since its pass-through test keeps every triangle: K6): a shard of its own
+    'test_workshop': 4,
     # shard 0 the rest (~64 s), in the job that also makes the exports
 }
 
