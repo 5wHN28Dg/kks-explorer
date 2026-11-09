@@ -488,11 +488,12 @@ def tasks():
         T.append(dict({'id': tid, 'title': title, 'steps': steps, 'priority': 2}, **kw))
     for d in DISCUSSIONS:
         lead, joiners = d['roles'][0], d['roles'][1:]
-        # to the room first, then the others called (a joiner who arrives first waits there 15 minutes at most),
-        # a meet that waits for them, then the discussion
+        # to the room first, then the others called, then the discussion: its lead's step is the meeting (a seat
+        # and at most 15 minutes' wait for a called person of each joining role, REALISM.md §6.3.1); a joiner who
+        # arrives first waits there 15 minutes, and longer while the lead waits there for its people
         task(f'dsc_{d["id"]}', f'Meet about it: {d["title"][0].lower() + d["title"][1:]}',
              [{'go': DOORS[d['room']]}] + [{'call': {'role': r, 'task': f'dsc_{d["id"]}_{r}'}} for r in joiners] +
-             [{'meet': {'room': d['room'], 'with': joiners, 'minutes': 1}}, {'discuss': d['id']}],
+             [{'discuss': d['id']}],
              interruptible=False)
         for r in joiners:
             task(f'dsc_{d["id"]}_{r}', f'Join the meeting: {d["title"][0].lower() + d["title"][1:]}',

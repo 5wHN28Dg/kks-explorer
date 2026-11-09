@@ -122,12 +122,44 @@ static func step(st, e, pi: int, cur: Dictionary, did: String, trainee: bool):
 	return _join(st, e, pi, cur, di, d, trainee)
 
 
-## A meet's seating and wait (staff.gd meet's first half): "" once met (the joining roles in the room, or 15 clock
-## minutes waited), else what the turn returns.
-static func _gather(st, e, pi: int, cur: Dictionary, room: String, roles: Array, trainee: bool) -> String:
+## Whether person qi's current task is at a `discuss` step of this discussion (for the lead: not paused).
+static func _at_step(e, qi: int, did: String) -> bool:
+	var c = e.sp_cur[qi]
+	if c == null:
+		return false
+	var steps: Array = e._sm.tasks[c["task"]]["steps"]
+	return c["step"] < steps.size() and steps[c["step"]].get("discuss") == did
+
+
+## Whether person qi has a task at a `discuss` step of this discussion, current or queued (called to it).
+static func _given(e, qi: int, did: String) -> bool:
+	var all := []
+	if e.sp_cur[qi] != null:
+		all.append(e.sp_cur[qi])
+	all.append_array(e.sp_queue[qi])
+	for inst in all:
+		var steps: Array = e._sm.tasks[inst["task"]]["steps"]
+		if inst["step"] < steps.size() and steps[inst["step"]].get("discuss") == did:
+			return true
+	return false
+
+
+## The first person in person order (not pi) of joining role r who is on duty, in the discussion's room and called to
+## it (a task of theirs, current or queued, at a `discuss` step of this id), or -1.
+static func _called(st, e, pi: int, d: Dictionary, r: String) -> int:
+	var rm: PackedInt32Array = st.rooms[d["room"]]
+	for qi in st.role_people.get(r, PackedInt32Array()):
+		if qi != pi and e.sp_on[qi] and e.sp_pos[qi] != -1 and rm.has(e.sp_pos[qi]) and _given(e, qi, d["id"]):
+			return qi
+	return -1
+
+
+## A meet's seating and wait (staff.gd meet's first half): "" once met (a called person of each joining role in the
+## room, or 15 clock minutes waited), else what the turn returns.
+static func _gather(st, e, pi: int, cur: Dictionary, d: Dictionary, trainee: bool) -> String:
 	var x: Dictionary = cur["st"]
 	if not x.has("place"):
-		x["place"] = st.meet_place(e, room, pi)
+		x["place"] = st.meet_place(e, d["room"], pi)
 	if trainee and not x.has("seat"):
 		x["seat"] = true
 		if x["place"] != -1 and not st.taken(e, x["place"], pi):
@@ -141,15 +173,9 @@ static func _gather(st, e, pi: int, cur: Dictionary, room: String, roles: Array,
 		return "wait"
 	if not x.has("meet_since"):
 		x["meet_since"] = e.step_no
-	var rm: PackedInt32Array = st.rooms[room]
 	var all := true
-	for r in roles:
-		var found := false
-		for qi in st.role_people.get(r, PackedInt32Array()):
-			if qi != pi and e.sp_on[qi] and e.sp_pos[qi] != -1 and rm.has(e.sp_pos[qi]):
-				found = true
-				break
-		if not found:
+	for r in d["roles"].slice(1):
+		if _called(st, e, pi, d, r) == -1:
 			all = false
 			break
 	if all or e.step_no - int(x["meet_since"]) >= JOIN_WAIT * st.tpm:
@@ -164,19 +190,12 @@ static func _lead(st, e, pi: int, cur: Dictionary, di: int, d: Dictionary, train
 	if live and x["lead"] != pi:
 		return "wait"               # another discussion of the same id is live: the step waits
 	if not live:
-		var r := _gather(st, e, pi, cur, d["room"], d["roles"].slice(1), trainee)
+		var r := _gather(st, e, pi, cur, d, trainee)
 		if r != "":
 			return r
-		var rm: PackedInt32Array = st.rooms[d["room"]]
 		var parts := PackedInt32Array([pi])
 		for role in d["roles"].slice(1):
-			var who := -1
-			for qi in st.people.size():     # (the first of the role in the room, in person order)
-				if qi != pi and e.sp_on[qi] and e.sp_pos[qi] != -1 and rm.has(e.sp_pos[qi]) \
-						and st.people[qi]["role"] == role:
-					who = qi
-					break
-			parts.append(who)
+			parts.append(_called(st, e, pi, d, role))
 		var mode := 0
 		for i in parts:
 			if i >= 0 and e.slot_of(i) != -1:
@@ -246,7 +265,8 @@ static func _end(e, d: Dictionary, x: Dictionary):
 
 
 ## A joiner's step: to the room (an NPC to the meeting's first free seat, as a meet), then done when the discussion it
-## takes part in ends, or after 15 clock minutes in the room without one.
+## takes part in ends, when its lead has been paused for 15 clock minutes in a row, or after 15 clock minutes in the
+## room without one (longer while a lead waits there for its people: then it takes part).
 static func _join(st, e, pi: int, cur: Dictionary, di: int, d: Dictionary, trainee: bool) -> String:
 	var n: int = e.step_no
 	var c: Dictionary = cur["st"]
@@ -266,9 +286,31 @@ static func _join(st, e, pi: int, cur: Dictionary, di: int, d: Dictionary, train
 	var mine: bool = not x.is_empty() and x["count"] > c["cnt"] and x["parts"].has(pi)
 	if mine and not _live(e, d, x):
 		return "next"
-	if not mine and n - int(c["arr"]) >= JOIN_WAIT * st.tpm:
+	if mine:
+		# its lead paused (the lead's task queued or held, not current): 15 clock minutes of it in a row at most
+		if _at_step(e, int(x["lead"]), d["id"]):
+			c.erase("pz")
+		else:
+			if not c.has("pz"):
+				c["pz"] = n
+			if n - int(c["pz"]) >= JOIN_WAIT * st.tpm:
+				return "next"
+	if not mine and n - int(c["arr"]) >= JOIN_WAIT * st.tpm and not _gathering(st, e, pi, d, x):
 		return "next"
 	return "wait"
+
+
+## Whether a lead of the discussion (not pi) is in its room at its step waiting for its people (the meeting's 15
+## minutes running, none of this id live): a called joiner there waits for it past its own 15 minutes.
+static func _gathering(st, e, pi: int, d: Dictionary, x: Dictionary) -> bool:
+	if _live(e, d, x):
+		return false
+	var rm: PackedInt32Array = st.rooms[d["room"]]
+	for qi in st.role_people.get(d["roles"][0], PackedInt32Array()):
+		if qi != pi and e.sp_on[qi] and e.sp_pos[qi] != -1 and rm.has(e.sp_pos[qi]) and _at_step(e, qi, d["id"]) \
+				and e.sp_cur[qi]["st"].has("meet_since"):
+			return true
+	return false
 
 
 ## A player's `[discuss, id, point, option]` in step 1, for their person tp (-1 in free mode): its event, and the

@@ -1324,8 +1324,8 @@ class DiscussVectors(PartVectors, unittest.TestCase):
         return [x for x in self.st['runs'][k]['events'] if x[1] in kinds]
 
     def test_npc_mode(self):
-        """Between NPCs: started once the technician and the electrical authorised person are in the office (the
-        first of each role in person order), every point's default after its 10 minutes (null takers), the last
+        """Between NPCs: started once a called technician and the called electrical authorised person are in the
+        office (the first called of each role in person order), every point's default after its 10 minutes (null takers), the last
         agreement (no task): the supervisor's task goes on in the same step; the participant technician's step ends
         with it, the other's after its 15 minutes in the office."""
         ev = self.evs(0)
@@ -1463,6 +1463,44 @@ class DiscussVectors(PartVectors, unittest.TestCase):
         e.step()
         self.assertIn(['discuss', 'mech1', 'pump_run', 'when', 'now', 'refused', ['state']],
                       [y[1:] for y in e.events if y[0] == e.step_no])
+
+    def test_called_not_a_bystander(self):
+        """The participant of a joining role is the called person (current task at a discuss step of it), not the
+        first of the role in the room: the first technician sits in the office on a break, not called, and takes no
+        part; the second, called, does (the user, 2026-11-09)."""
+        ev = self.evs(5)
+        self.assertEqual(ev[0][1:], ['discussion', 'pump_run', 'start', 'a_sup', ['a_sup', 'mech2', 'a_elec'], 'npc'])
+        start = ev[0][0]
+        e = P.Engine(G.check(G.discuss_bystander_files()), 's1')
+        while e.step_no < start:
+            e.step()
+        sr = e.staff
+        m1 = sr.people[sr.st.person_ix['mech1']]
+        self.assertIn(m1.pos, sr.st.rooms['office'])          # in the room, earlier in person order
+        self.assertEqual(m1.cur['task'], 'sit_office')         # but not called
+
+    def test_joiner_leaves_a_paused_lead(self):
+        """The lead's task held at the end of their day (the discussion still live): the participant supervisor waits
+        15 clock minutes (150 steps) of the pause from the first step it sees it, then their step is done; the
+        discussion stays unended (the user, 2026-11-09)."""
+        r = self.st['runs'][6]
+        ev = self.evs(6)
+        self.assertEqual(ev, [[ev[0][0], 'discussion', 'gauge_cal', 'start', 'mech1', ['mech1', 'a_sup'], 'npc']])
+        held = [x[0] for x in r['events'] if x[1:] == ['task', 'mech1', 'lead_gauge', 'held']]
+        done = [x[0] for x in r['events'] if x[1:] == ['task', 'a_sup', 'join_gauge', 'done']]
+        self.assertEqual(len(held), 1)
+        self.assertEqual(done, [held[0] + 1 + 150])
+        self.assertIsNone(r['states'][-1]['discussions']['gauge_cal']['agreed'])
+
+    def test_joiner_kept_by_a_waiting_lead(self):
+        """A called joiner whose own 15 minutes end while the lead waits in the room for the others waits on and takes
+        part when the lead's 15 minutes end (the first train's joiners come before their lead)."""
+        r = self.st['runs'][7]
+        ev = self.evs(7)
+        self.assertEqual(ev[0][1:], ['discussion', 'pump_run', 'start', 'a_sup', ['a_sup', None, 'a_elec'], 'npc'])
+        came = [x[0] for x in r['events'] if x[1:] == ['task', 'a_elec', 'join_pump_e', 'start']][0]
+        self.assertGreater(ev[0][0] - came, 150 + 62)          # past their own 15 minutes in the office
+        self.assertIn([ev[0][0] + 100, 'task', 'a_elec', 'join_pump_e', 'done'], r['events'])
 
 
 if __name__ == '__main__':

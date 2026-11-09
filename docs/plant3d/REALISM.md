@@ -1742,9 +1742,12 @@ alarm limit's change).
   discussions.json). The validator checks that the task's roles (those who can get it) are all the discussion's
   roles, so the step is either a lead's or a joiner's for everyone who runs it.
   - **The lead's step** is a `meet` (§16.6) in the discussion's room with the other roles: the first free seat,
-    waiting for one on-duty person of each joining role in the room (at most 15 clock minutes). While another
-    discussion of the same id is live the step waits. When met, the discussion **starts**: its participants are the
-    lead and, for each joining role, the first person of that role in the room in person order; event
+    waiting for a called person of each joining role in the room (at most 15 clock minutes). A **called** person is
+    one on duty with a task at a `discuss` step of this id, current or queued (the joiner's step: their task was given
+    to them, by a `call`, a routine's slot or a reaction); another person of the role who happens to be in the room is a
+    bystander and takes no part (the user, 2026-11-09). While another discussion of the same id is live the step
+    waits. When met, the discussion **starts**: its participants are the lead and, for each joining role, the first
+    called person of that role in the room in person order; event
     `["discussion", id, "start", lead, [participants], mode]`. `mode` is `npc` when no slot's person is a
     participant, else `open` (decided at the start, and kept).
   - **Mode `npc`:** after `minutes` clock minutes every point takes its default (events `["point", id, point, option,
@@ -1756,8 +1759,10 @@ alarm limit's change).
     `["discussion", id, "agreed", agreement index, task or null]`; the lead's step then ends as `choose` does (the
     outcome's task) or is done. A joiner's step is done when the discussion it took part in ends, or when it has
     waited 15 clock minutes in the room and no discussion of that id has started since it arrived.
-  - The discussion goes on only in its lead's turns: while the lead is paused it waits (the content makes these
-    tasks not interruptible).
+  - The discussion goes on only in its lead's turns: while the lead is paused (a player taking the lead over, a
+    task held for the next duty) it waits (the content makes these tasks not interruptible). A participant joiner
+    waits through a pause for at most 15 clock minutes in a row, like the other joiner waits, then its step is done
+    (the user, 2026-11-09); the discussion stays live for the lead's return, without them.
 - **The input `[n, "discuss", id, point, option]`** (step 1, in the order the inputs were made, before any person's
   turn): `unknown` for ids not in the file; `authority` when the slot's person is not a participant of the live
   discussion; `state` when no discussion of that id is live in mode `open`, the point is not the current one, or it
@@ -1796,8 +1801,11 @@ the realism file's `discuss` part. What §6.3.1 left open, settled the smallest 
   check, as `choose`'s tasks are, and runs for the lead's role alone (the discussion's first role, when it may run the
   task) with the task's works: a joiner's step has no outcome, so the joiners' roles need none of its authorities (the
   first reference gave it every role of the task, and refused content whose outcome asks for a permit).
-- **The participants** are listed in the discussion's role order; a joining role with nobody in the room after the
-  meeting's 15 minutes is `null` in the event (-1 in the digest), and the discussion starts without it.
+- **The participants** are listed in the discussion's role order; a joining role with nobody called in the room
+  after the meeting's 15 minutes is `null` in the event (-1 in the digest), and the discussion starts without it.
+  Called: on duty, in the room, and a task current or queued (not held) at a `discuss` step of this id (a trainee's
+  joiner task waiting for their acknowledgement counts); the lead's wait for its joiners counts only such people. A participant stays one when it leaves (its step done): a
+  trainee's later pick still counts.
 - **A pick** in mode `open` takes the point in step 1 (event `["point", id, point, option, taker]` right after the
   input's); the lead's next turn moves to the next point, whose minutes count from that step. In mode `npc` the
   points' events come in point order, all in the step the discussion's minutes end. Lines are not events: the app
@@ -1812,7 +1820,15 @@ the realism file's `discuss` part. What §6.3.1 left open, settled the smallest 
   event; it shows unended in the state) and a later lead's step starts the next one.
 - **A joiner** (an NPC) goes to the meeting's first free seat as a `meet` does; a trainee joiner only needs to be in
   the room. Its 15 minutes count from when it first is in the room; a discussion live then, or started since, in
-  which it takes part ends its step when it ends; one it is not part of does not stop its 15 minutes.
+  which it takes part ends its step when it ends; one it is not part of does not stop its 15 minutes. **The lead
+  paused:** in its turn a participant joiner whose live discussion's lead is not at the step (the lead's task queued
+  or held) notes the step it first saw that (`pz` in the step's state), cleared when it sees the lead at the step
+  again; 15 clock minutes after the noted step its step is done. **A lead waiting:** a called joiner whose own 15
+  minutes in the room are up waits on while a lead of the discussion is in the room at its step waiting for its
+  people (the meeting's 15 minutes running, none of this id live), so it takes part when that wait ends (the first
+  train's leads call their joiners at the room's door, and a joiner already near may wait there longer than 15
+  minutes for a lead whose other joiner is late). The first train's lead tasks have no `meet` before the
+  `discuss` step: that step is the meeting.
 - **State** in the staff's part of the run (`StaffRun.disc`), per discussion in file order. **The digest:** at the
   end of the staff's digest list (after the audio part), only with discussions.json: per discussion `[]` before its
   first start, else `[count, lead, participants (PackedInt32, -1 none), mode (0 npc, 1 open), start step, current

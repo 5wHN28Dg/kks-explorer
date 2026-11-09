@@ -6233,6 +6233,8 @@ DISCUSS_TASKS = [
      'steps': [{'discuss': 'pump_run'}, {'say': 'all_well', 'to': 'channel'}]},
     {'id': 'join_pump', 'title': 'The pump\'s running, with the supervisor', 'interruptible': False,
      'steps': [{'discuss': 'pump_run'}, {'work': 1}]},
+    {'id': 'join_pump_e', 'title': 'The pump\'s running: the standby\'s breaker', 'interruptible': False,
+     'steps': [{'discuss': 'pump_run'}]},
     {'id': 'stop_pump', 'title': 'Stop the pump on the standby', 'priority': 2,
      'steps': [{'go': 'cr_table'}, {'work': 2}, {'say': 'all_well', 'to': 'channel'}]}]
 
@@ -6240,8 +6242,9 @@ DISCUSS_TASKS = [
 def discuss_files():
     """The realism base's staff plant (realism_files) from 07:20 with discussions.json: the pump's running argued in
     the office by the shift supervisor (the lead: a routine's slot at 07:25), a mechanical technician (their routine's
-    slot at 07:25: a joiner's step; the first in the office takes part, the other waits its 15 minutes) and the
-    electrical authorised person (the third role, at the office's table with no step of it); two points, the minutes
+    slot at 07:25: a joiner's step; the first called in the office takes part, the other waits its 15 minutes) and the
+    electrical authorised person (the third role, called by their routine's slot at 07:27: only a called person takes
+    part, since the participant is the one called, not a bystander of the role); two points, the minutes
     between NPCs, an agreement by a point's option whose outcome task stops the pump, one by a reading and an option,
     and the last with no terms. A second discussion, the gauge's calibration in the workshop, no step runs."""
     F = realism_files()
@@ -6254,6 +6257,48 @@ def discuss_files():
             r['slots'].append({'at': '07:25', 'task': 'debate_pump'})
         if r['id'] == 'mech_days':
             r['slots'].append({'at': '07:25', 'task': 'join_pump'})
+        if r['id'] == 'elec_shift':
+            r['slots'].append({'at': '07:27', 'task': 'join_pump_e'})
+    return F
+
+
+def discuss_paused_files():
+    """The discuss part's files from 15:40 with the gauge's calibration led by a mechanical technician (its roles
+    swapped: the technician leads, the supervisor joins) in the workshop for 30 minutes, the technician's slot and
+    the supervisor's at 15:45: the technician's day ends at 16:00 with the discussion live, its task held for their
+    next duty (the lead paused); the supervisor, a participant, waits 15 minutes of it and is done."""
+    F = discuss_files()
+    F['scenarios/s1.json']['start'] = {'day': 1, 'time': '15:40'}
+    d = F['discussions.json']['discussions'][1]
+    d['roles'] = ['mech_tech', 'shift_sup']
+    d['minutes'] = 30
+    st = F['staff.json']
+    st['tasks'] += [{'id': 'lead_gauge', 'title': 'The gauge\'s calibration', 'interruptible': False,
+                     'resume': 'next_duty', 'steps': [{'discuss': 'gauge_cal'}]},
+                    {'id': 'join_gauge', 'title': 'The gauge\'s calibration, with the technician',
+                     'interruptible': False, 'steps': [{'discuss': 'gauge_cal'}]}]
+    for r in st['routines']:
+        if r['id'] == 'sup_shift':
+            r['slots'] = [{'at': '15:45', 'task': 'join_gauge'}]
+        if r['id'] == 'mech_days':
+            r['slots'] = [{'at': '15:45', 'task': 'lead_gauge'}]
+        if r['id'] == 'elec_shift':
+            r['slots'] = []
+    return F
+
+
+def discuss_bystander_files():
+    """The discuss part's files with the first mechanical technician not called: their slot at 07:25 is tea in the
+    office (a seat there for 30 minutes), so they sit in the room while the second, called, joins."""
+    F = discuss_files()
+    st = F['staff.json']
+    st['tasks'].append({'id': 'sit_office', 'title': 'A break in the office', 'interruptible': False,
+                        'steps': [{'go': {'kind': 'seat', 'room': 'office'}}, {'work': 30}]})
+    st['routines'].append({'id': 'mech_days_b', 'idle': 'idle_mech', 'slots': [{'at': '07:15', 'task': 'toolbox'},
+                                                          {'at': '07:25', 'task': 'sit_office'}]})
+    for p in st['people']:
+        if p['id'] == 'mech1':
+            p['routine'] = 'mech_days_b'
     return F
 
 
@@ -6270,9 +6315,9 @@ def _dc_no_file(F):
     """The discuss part without discussions.json and the steps naming it."""
     F.pop('discussions.json')
     st = F['staff.json']
-    st['tasks'] = [t for t in st['tasks'] if t['id'] not in ('debate_pump', 'join_pump', 'stop_pump')]
+    st['tasks'] = [t for t in st['tasks'] if t['id'] not in ('debate_pump', 'join_pump', 'join_pump_e', 'stop_pump')]
     for r in st['routines']:
-        r['slots'] = [x for x in r['slots'] if x['task'] not in ('debate_pump', 'join_pump')]
+        r['slots'] = [x for x in r['slots'] if x['task'] not in ('debate_pump', 'join_pump', 'join_pump_e')]
 
 
 REJECTS_DISCUSS = [
@@ -6344,9 +6389,10 @@ def discuss_runs():
     no_sup = {'absent': ['a_sup']}
     return [
         ('NPCs alone (mode npc): the supervisor\'s slot at 07:25 starts their discuss step: to the office\'s first free '
-         'seat, then waiting for a mechanical technician and a field operator in the office; the technician\'s own '
-         'joiner step takes them there. Started, its participants the supervisor, the first technician and the first '
-         'field operator in the office in person order (none: null); after its 10 minutes each point takes its '
+         'seat, then waiting for a called mechanical technician and electrical authorised person in the office (each '
+         'one with a task, current or queued, at a discuss step of it); the joiners\' own steps take them there. Started, its '
+         'participants the supervisor, the first called technician and the called electrical authorised person in the '
+         'office in person order (none: null); after its 10 minutes each point takes its '
          'default (null as the taker), and the last agreement is reached (no outcome task): the supervisor\'s task '
          'goes on, the technician\'s joiner step is done', {}, df, None, 600, 50),
         ('the trainee as the technician (mode open): their step takes them to the office; before it starts a pick is '
@@ -6376,6 +6422,18 @@ def discuss_runs():
          900, 50),
         ('the joiner times out: the supervisor absent, the technician waits 15 clock minutes in the office and no '
          'discussion starts: their step is done', no_sup, df, None, 450, 50),
+        ('the called technician, not a bystander: the first technician (first in person order) sits in the office on '
+         'a break, not called, while the second, called, joins; the discussion starts with the second technician '
+         'and the electrical authorised person, the first takes no part', {}, discuss_bystander_files(), None, 600,
+         50),
+        ('the lead paused: the technician leads the gauge\'s calibration in the workshop (30 minutes, mode npc) with '
+         'the supervisor joining; at 16:00 the technician\'s day ends and their task is held for the next duty (the '
+         'discussion stays live); the supervisor, a participant, waits 15 clock minutes of the pause and their step '
+         'is done', {'absent': ['mech2']}, discuss_paused_files(), None, 500, 50),
+        ('a joiner kept by its waiting lead: both technicians absent, the electrical authorised person (called) is '
+         'in the office before the supervisor; their own 15 minutes end while the supervisor waits there for a '
+         'technician, so they wait on, and the discussion starts at the end of the supervisor\'s 15 minutes with '
+         'them and no technician (null)', {'absent': ['mech1', 'mech2']}, df, None, 550, 50),
     ]
 
 

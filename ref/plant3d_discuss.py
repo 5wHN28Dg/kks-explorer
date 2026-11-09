@@ -207,9 +207,36 @@ def step(sr, p, cur, did, trainee):
     return _join(sr, p, cur, di, d, trainee)
 
 
-def _gather(sr, p, cur, room, roles, trainee):
-    """A meet's seating and wait (PLANT3D.md §16.6, StaffRun.meet's first half): None once met (the joining roles in
-    the room, or 15 clock minutes waited), else what the turn returns."""
+def _at_step(sr, q, did):
+    """Whether person q's current task is at a `discuss` step of this discussion (for the lead: not paused)."""
+    c = q.cur
+    if c is None:
+        return False
+    steps = sr.st.tasks[c['task']]['steps']
+    return c['step'] < len(steps) and steps[c['step']].get('discuss') == did
+
+
+def _given(sr, q, did):
+    """Whether person q has a task at a `discuss` step of this discussion, current or queued (called to it)."""
+    for inst in ([q.cur] if q.cur is not None else []) + q.queue:
+        steps = sr.st.tasks[inst['task']]['steps']
+        if inst['step'] < len(steps) and steps[inst['step']].get('discuss') == did:
+            return True
+    return False
+
+
+def _called(sr, p, d, r):
+    """The first person in person order (not p) of joining role r who is on duty, in the discussion's room and called
+    to it (a task of theirs, current or queued, at a `discuss` step of this id), or -1."""
+    room = set(sr.st.rooms[d['room']])
+    return next((q.i for q in sr.people if q.i != p.i and q.on and q.pos in room and q.role == r
+                 and _given(sr, q, d['id'])), -1)
+
+
+def _gather(sr, p, cur, d, trainee):
+    """A meet's seating and wait (PLANT3D.md §16.6, StaffRun.meet's first half): None once met (a called person of
+    each joining role in the room, or 15 clock minutes waited), else what the turn returns."""
+    room = d['room']
     e, st = sr.e, sr.st
     x = cur['st']
     if 'place' not in x:
@@ -227,9 +254,7 @@ def _gather(sr, p, cur, room, roles, trainee):
         return 'wait'
     if 'meet_since' not in x:
         x['meet_since'] = e.step_no
-    here = set(st.rooms[room])
-    here = [q for q in sr.people if q.i != p.i and q.on and q.pos in here]
-    if all(any(q.role == r for q in here) for r in roles) or e.step_no - x['meet_since'] >= JOIN_WAIT * st.tpm:
+    if all(_called(sr, p, d, r) >= 0 for r in d['roles'][1:]) or e.step_no - x['meet_since'] >= JOIN_WAIT * st.tpm:
         return None
     return 'wait'
 
@@ -241,12 +266,10 @@ def _lead(sr, p, cur, di, d, trainee):
     if _live(sr, d, x) and x['lead'] != p.i:
         return 'wait'               # another discussion of the same id is live: the step waits
     if not _live(sr, d, x):
-        r = _gather(sr, p, cur, d['room'], d['roles'][1:], trainee)
+        r = _gather(sr, p, cur, d, trainee)
         if r is not None:
             return r
-        room = set(st.rooms[d['room']])
-        parts = [p.i] + [next((q.i for q in sr.people if q.i != p.i and q.on and q.pos in room and q.role == r), -1)
-                         for r in d['roles'][1:]]
+        parts = [p.i] + [_called(sr, p, d, r) for r in d['roles'][1:]]
         mode = 1 if any(i >= 0 and sr.slot_of(i) is not None for i in parts) else 0
         npts = len(d['points'])
         x = sr.disc[di] = {'count': (x['count'] if x is not None else 0) + 1, 'lead': p.i, 'parts': parts,
@@ -298,7 +321,8 @@ def _end(sr, d, x):
 
 def _join(sr, p, cur, di, d, trainee):
     """A joiner's step: to the room (an NPC to the meeting's first free seat, as a meet), then done when the
-    discussion it takes part in ends, or after 15 clock minutes in the room without one."""
+    discussion it takes part in ends, when its lead has been paused for 15 clock minutes in a row, or after 15 clock
+    minutes in the room without one (longer while a lead waits there for its people: then it takes part)."""
     e, st = sr.e, sr.st
     n = e.step_no
     c = cur['st']
@@ -318,9 +342,28 @@ def _join(sr, p, cur, di, d, trainee):
     mine = x is not None and x['count'] > c['cnt'] and p.i in x['parts']
     if mine and not _live(sr, d, x):
         return 'next'
-    if not mine and n - c['arr'] >= JOIN_WAIT * st.tpm:
+    if mine:
+        # its lead paused (the lead's task queued or held, not current): 15 clock minutes of it in a row at most
+        if _at_step(sr, sr.people[x['lead']], d['id']):
+            c.pop('pz', None)
+        else:
+            if 'pz' not in c:
+                c['pz'] = n
+            if n - c['pz'] >= JOIN_WAIT * st.tpm:
+                return 'next'
+    if not mine and n - c['arr'] >= JOIN_WAIT * st.tpm and not _gathering(sr, p, d, x):
         return 'next'
     return 'wait'
+
+
+def _gathering(sr, p, d, x):
+    """Whether a lead of the discussion (not p) is in its room at its step waiting for its people (the meeting's 15
+    minutes running, none of this id live): a called joiner there waits for it past its own 15 minutes."""
+    if _live(sr, d, x):
+        return False
+    room = set(sr.st.rooms[d['room']])
+    return any(q.i != p.i and q.on and q.pos in room and q.role == d['roles'][0] and _at_step(sr, q, d['id'])
+               and 'meet_since' in q.cur['st'] for q in sr.people)
 
 
 def t_discuss(sr, tp, item):

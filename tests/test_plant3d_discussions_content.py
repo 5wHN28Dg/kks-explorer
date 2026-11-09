@@ -191,8 +191,9 @@ class Content(unittest.TestCase):
                 lead = self.tasks[f'dsc_{d["id"]}']
                 self.assertIs(lead['interruptible'], False)
                 self.assertEqual(lead['steps'][-1], {'discuss': d['id']})
-                self.assertEqual(lead['steps'][-2]['meet']['with'], d['roles'][1:])
+                self.assertFalse(any('meet' in s for s in lead['steps']))     # (the discuss step is the meeting)
                 called = [s['call'] for s in lead['steps'] if 'call' in s]
+                self.assertEqual(lead['steps'][-1 - len(called):-1], [{'call': c} for c in called])
                 self.assertEqual([c['role'] for c in called], d['roles'][1:])
                 for c in called:
                     j = self.tasks[c['task']]
