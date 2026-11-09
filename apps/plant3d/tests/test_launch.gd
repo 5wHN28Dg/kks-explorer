@@ -102,9 +102,10 @@ func run(tree: SceneTree) -> Array:
 		seen.started += 1
 		seen.ui_at_start = main.ui != null and main.hud != null and main.plant.visible)
 	var watch := func():
-		if main.plant != null and not seen.has("ws_before_plant"):
-			var w = main.workshop._warm if main.workshop != null else null
-			seen["ws_before_plant"] = w != null and w.is_inside_tree() and main.workshop.kinds_warmed
+		if main.plant != null and main.first_frame_ms < 0 and main.lines.size() > 0 and not seen.has("ws_before_lightmap"):
+			if Array(main.lines).any(func(l): return l.begins_with("LAUNCH lightmap")):
+				var w = main.workshop._warm if main.workshop != null else null
+				seen["ws_before_lightmap"] = w != null and w.is_inside_tree() and main.workshop.kinds_warmed
 		if main.plant != null and main.first_frame_ms < 0:
 			seen.frames += 1
 			if not main.plant.visible and main.plant.get_child_count() > 1:
@@ -121,7 +122,7 @@ func run(tree: SceneTree) -> Array:
 	if main.first_frame_ms < 0:
 		main.free()
 		return p + ["the app drew its first frame"]
-	var order := ["LAUNCH tier", "LAUNCH sky frame", "LAUNCH workshop's pieces", "LAUNCH workshop's pipelines queued", "LAUNCH plant at", "LAUNCH plant's pipelines queued", "LAUNCH player, map, hud", "LAUNCH ui", "first frame drawn"]
+	var order := ["LAUNCH tier", "LAUNCH sky frame", "LAUNCH plant at", "LAUNCH workshop's pieces", "LAUNCH workshop's and the plant's pipelines queued", "LAUNCH plant's pipelines queued", "LAUNCH player, map, hud", "LAUNCH ui", "first frame drawn"]
 	var at := -1
 	for o in order:
 		var i := -1
@@ -215,15 +216,17 @@ func run(tree: SceneTree) -> Array:
 
 ## The Workshop's pipelines prepared behind the loading screen (the user's decision, 2026-11-08; WORKSHOP.md §7.1):
 ## everything the plant's warm-up held after the first walkable frame (the ghost's and K3's pieces, every kind's own
-## machine in the Workshop's materials with its ghosts) is in the world, hidden, before the plant is loaded, and the
-## warm-up after the first frame has nothing left to add.
+## machine in the Workshop's materials with its ghosts) is made on a worker thread while the plant loads and is in the
+## world, hidden, from the frame after the plant's load, and the warm-up after the first frame has nothing left to add.
 func workshop_warm_at_start(main: Node, seen: Dictionary) -> Array:
 	var p: Array = []
 	var ws = main.workshop
 	if ws == null or not ws.warmed_at_start or ws._warm == null:
 		return ["the Workshop's warm-up runs in the start's loading"]
-	if not seen.get("ws_before_plant", false):
-		p.append("the Workshop's warm pieces are in the world before the plant is loaded")
+	if not seen.get("ws_before_lightmap", false):
+		p.append("the Workshop's warm pieces are in the world before the plant's lightmap and UI are made")
+	if not ws.warm_on_start_thread:
+		p.append("the start's warm pieces are made on a worker thread")
 	if ws._warm.visible or ws._warm.get_parent() != main:
 		p.append("the start's warm pieces are hidden, under the app")
 	var shaders := {}

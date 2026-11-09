@@ -1300,10 +1300,11 @@ func _ghost_pieces(mesh: Mesh) -> Array:
 ## The start's warm-up (the user's decision, 2026-11-08: the Workshop's pipelines prepared behind the loading screen).
 ## warm_up after the first walkable frame held the same pieces, and on the Note 9 one plant frame of about 0.7 s came
 ## 4.8 s after the start, with 8 surface pipelines in it (baking the shaders at export did not take it away). Here
-## everything warm_up and _warm_kinds hold is made at once, hidden, while the start shows the sky: app/main.gd calls
-## this after its sky frame and draws once more, so the pipelines are queued then and compile on the worker threads
-## while the plant loads (the compiler is idle there: it starts on the plant's at the plant's hidden frame, decision
-## 0060). Nothing is drawn or freed here, and nothing waits for a pipeline. The machines' pieces get the Workshop's
+## everything warm_up and _warm_kinds hold is made, hidden, while the start shows the sky: app/main.gd begins it
+## before the sky frame (a worker thread loads and builds it while the main thread loads the plant), ends it after the
+## plant's load, hides the plant and draws once more, so the Workshop's and the plant's pipelines are queued then and
+## compile while the lightmap, the people and the UI are made (decision 0060: the compiler is idle until a frame queues
+## something). Nothing is drawn or freed here, and nothing waits for a pipeline. The machines' pieces get the Workshop's
 ## materials without the plant's textures and colours (one ws_lit, one ws_lit with ws_cap as its next pass, the
 ## glass): a material's values are not part of its pipelines, and the plant's materials are loaded only with the
 ## plant, at the tier's sizes. The pieces stay (hidden) for the app's life: freeing them in a frame of the plant's is
@@ -1314,18 +1315,9 @@ var warmed_at_start := false
 static func warms_at_start() -> bool:
 	return RenderingServer.get_current_rendering_method() != "gl_compatibility"
 
-func warm_at_start(parent: Node) -> void:
-	if warmed or _warming or _warm != null or not ResourceLoader.exists(SPACE):
+func warm_at_start_begin() -> void:
+	if warmed or _warming or _warm != null or _start_task >= 0 or not ResourceLoader.exists(SPACE):
 		return
-	var mesh := _space_mesh()
-	if mesh == null:
-		return
-	_warm = Node3D.new()
-	_warm.name = "workshop_warm"
-	_warm.position = Vector3(0, -1000, 0)
-	_warm.visible = false
-	for n in _ghost_pieces(mesh):
-		_warm.add_child(n)
 	var lit := ShaderMaterial.new()
 	lit.shader = Views.LIT
 	var capped := ShaderMaterial.new()
@@ -1334,6 +1326,49 @@ func warm_at_start(parent: Node) -> void:
 	(capped.next_pass as ShaderMaterial).shader = Views.CAP
 	var xr := ShaderMaterial.new()
 	xr.shader = XRAY
+	var mats := {"lit": lit, "capped": capped, "xray": xr, "glass": views.glass_mat()}
+	_start_made.clear()
+	_start_task = WorkerThreadPool.add_task(_start_build.bind(mats, _start_made), false, "workshop start warm-up")
+
+## The start's warm-up's second half: waits for the worker thread (it had the plant's load to do its work in), then
+## puts what it made, hidden, into `parent`'s world. The next frame drawn queues their pipelines.
+func warm_at_start_end(parent: Node) -> void:
+	if _start_task < 0:
+		return
+	WorkerThreadPool.wait_for_task_completion(_start_task)
+	_start_task = -1
+	if _start_made.is_empty() or _start_made[0] == null:
+		return
+	_warm = _start_made[0]
+	_warm_kinds_done = _start_made[1]
+	warm_pieces = _start_made[2]
+	_start_made.clear()
+	parent.add_child(_warm)
+	warmed = true
+	kinds_warmed = true
+	warmed_at_start = true
+
+var warm_on_start_thread := false   # the start's warm-up was made on a worker thread (tests)
+var _start_task := -1        # the worker thread's task making the start's warm-up (-1: none)
+var _start_made: Array = []  # what it made: [the hidden node, the kinds held, the most pieces one kind had]
+
+## The worker thread's part: everything made outside the tree (loading, instancing, materials, ghosts).
+func _start_build(mats: Dictionary, made: Array) -> void:
+	warm_on_start_thread = OS.get_thread_caller_id() != OS.get_main_thread_id()
+	var mesh := _space_mesh()
+	if mesh == null:
+		return
+	var w := Node3D.new()
+	w.name = "workshop_warm"
+	w.position = Vector3(0, -1000, 0)
+	w.visible = false
+	for n in _ghost_pieces(mesh):
+		w.add_child(n)
+	var lit: Material = mats.lit
+	var capped: Material = mats.capped
+	var xr: Material = mats.xray
+	var done: Array = []
+	var most := 0
 	for k in kinds():
 		var ps := load(DIR.path_join(k + ".scn")) as PackedScene
 		if ps == null:
@@ -1363,7 +1398,7 @@ func warm_at_start(parent: Node) -> void:
 			if (n is MeshInstance3D or n is MultiMeshInstance3D) and n.has_meta("mat"):
 				var items_child: bool = n.get_parent().has_meta("items")
 				if glass and not items_child:
-					(n as GeometryInstance3D).material_override = views.glass_mat()
+					(n as GeometryInstance3D).material_override = mats.glass
 				else:
 					(n as GeometryInstance3D).material_override = capped if not thin or items_child else lit
 			for c in n.get_children():
@@ -1375,13 +1410,10 @@ func warm_at_start(parent: Node) -> void:
 			gi.get_parent().remove_child(gi)
 			held.add_child(gi)
 		mc.free()   # (what is left of it: the pieces' empty parents)
-		warm_pieces = maxi(warm_pieces, held.get_child_count())
-		_warm.add_child(held)
-		_warm_kinds_done.append(k)
-	parent.add_child(_warm)
-	warmed = true
-	kinds_warmed = true
-	warmed_at_start = true
+		most = maxi(most, held.get_child_count())
+		w.add_child(held)
+		done.append(k)
+	made.append_array([w, done, most])
 
 ## Every kind's own machine, hidden under the warm-up, in the Workshop's materials as an entry gives them (ws_lit with
 ## the cap as its next pass on solid components, the glass in ws_xray) and its parts' ghosts: their surfaces' pipelines
@@ -1585,6 +1617,12 @@ var _warm_loading := ""          # the kind the warm-up's threaded load is fetch
 ## scene) for the rest of the process: the test runner, which frees one app after another in one process, saw a
 ## later Workshop test find the transmitter's load still there, and an abort at an app's free.
 func _exit_tree() -> void:
+	if _start_task >= 0:   # (the start's warm-up still on its worker thread: waited for, what it made freed)
+		WorkerThreadPool.wait_for_task_completion(_start_task)
+		_start_task = -1
+		if not _start_made.is_empty() and is_instance_valid(_start_made[0]):
+			(_start_made[0] as Node).free()
+		_start_made.clear()
 	if _warm_task >= 0:   # (the warm-up's instancing on a worker thread: waited for, what it made freed)
 		WorkerThreadPool.wait_for_task_completion(_warm_task)
 		_warm_task = -1

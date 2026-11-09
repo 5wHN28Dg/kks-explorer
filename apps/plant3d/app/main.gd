@@ -200,19 +200,16 @@ func _ready() -> void:
 		sky_cam = Camera3D.new()
 		add_child(sky_cam)
 		sky_cam.make_current()
-		await _drawn()
-		_launch("sky frame")
-		# the Workshop's pipelines behind the loading screen (the user's decision, 2026-11-08; WORKSHOP.md §7.1):
-		# its pieces made hidden now and drawn once more, so their pipelines compile on the worker threads while the
-		# plant loads, before the plant's are queued (ws_warm=late: after the first walkable frame, as before)
+		# the Workshop's pipelines behind the loading screen (the user's decision, 2026-11-08; WORKSHOP.md §7.1): its
+		# pieces are made on a worker thread while the sky frame is drawn and the plant loads (ws_warm=late: after
+		# the first walkable frame, as before)
 		if opts.get("ws_warm", "") != "late" and Workshop.warms_at_start():
 			workshop = Workshop.new()
 			workshop.name = "workshop"
 			add_child(workshop)
-			workshop.warm_at_start(self)
-			_launch("workshop's pieces")
-			await _drawn()
-			_launch("workshop's pipelines queued")
+			workshop.warm_at_start_begin()
+		await _drawn()
+		_launch("sky frame")
 	plant = Plant.new()
 	plant.name = "plant"
 	add_child(plant)
@@ -228,6 +225,14 @@ func _ready() -> void:
 	for st in plant.stages:
 		_say("LAUNCH  %s" % st)
 	_launch("plant")
+	if early and workshop != null:
+		# the Workshop's pieces into the world, hidden, and the plant hidden now (not after the lightmap and the
+		# people): the next frame queues both's pipelines, which then compile while the rest of the start is made
+		plant.visible = false
+		workshop.warm_at_start_end(self)
+		_launch("workshop's pieces")
+		await _drawn()
+		_launch("workshop's and the plant's pipelines queued")
 	var lm := Lighting.lightmap_node()
 	if lm != null:
 		plant.add_child(lm)   # beside the areas: its users' paths are "../area_…" (app/lighting.gd)
