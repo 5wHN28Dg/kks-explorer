@@ -43,6 +43,8 @@ var _head_text := ""
 var _reads: Dictionary = {}     # person -> their read events
 var _disc_parts: Dictionary = {}    # discussion id -> its participants at its last start (the radio's speakers)
 var _disc_lines: Dictionary = {}    # discussion id -> [[who, text]] of its last instance (the panel's, read once each)
+var _disc_node: Control = null      # the discussion's part, kept across the panel's rebuilds while it is the same
+var _disc_key := ""                 # what it was built from (Discussions.sig and its lines' count)
 var _disc_closed: Dictionary = {}   # "id|count" -> true: an ended discussion's panel the trainee closed
 var _exchanges: Dictionary = {}  # "step|caller" -> true: a call or message to the trainee missed then (its others too)
 var _said: Dictionary = {}      # "from|message" -> the radio line of its last say (a missed call replaces it)
@@ -230,9 +232,12 @@ func refresh() -> void:
 	var had_focus := get_viewport() != null and get_viewport().gui_get_focus_owner() != null \
 			and is_ancestor_of(get_viewport().gui_get_focus_owner())
 	entry = null
+	if _disc_node != null and _disc_node.get_parent() == body:
+		body.remove_child(_disc_node)   # (kept: rebuilt only when what it shows changed; the Note 9's frames)
 	W.clear(body)
 	var sm = e._sm
 	if sm == null:
+		_drop_disc()
 		_radio_labels.clear()           # (no radio in this run: nothing for _radio_lines to fill)
 		_radio_shown = _radio.size()
 		body.add_child(W.label("No crews in this run: the plant as format 1, the trainee alone.", 18, W.DIM))
@@ -246,6 +251,7 @@ func refresh() -> void:
 		_roles(e, sm)
 	else:
 		_me(e, sm)
+	_drop_disc()
 	ui.phone.build(body)
 	_radio_log(e, sm)
 	if entry != null and typed != "" and typed_for == _entry_code:
@@ -303,11 +309,24 @@ func _me(e, sm) -> void:
 		body.add_child(row)
 	var di: int = Discussions.shown(e, pi, _disc_closed)
 	if di != -1:                        # (REALISM.md §6.3.1)
-		var key := "%s|%d" % [sm.discuss["list"][di]["id"], e.dsc[di]["count"]]
-		Discussions.build(ui, e, body, di, pi, _disc_lines.get(sm.discuss["list"][di]["id"], []), func():
-			_disc_closed[key] = true
-			_sig = ""
-			refresh())
+		var did: String = sm.discuss["list"][di]["id"]
+		var lines: Array = _disc_lines.get(did, [])
+		var dk := "%s|%d|%d" % [Discussions.sig(e, pi, _disc_closed), lines.size(), pi]
+		if _disc_node == null or dk != _disc_key:
+			if _disc_node != null:
+				_disc_node.queue_free()
+			_disc_node = VBoxContainer.new()
+			_disc_key = dk
+			var key := "%s|%d" % [did, e.dsc[di]["count"]]
+			Discussions.build(ui, e, _disc_node, di, pi, lines, func():
+				_disc_closed[key] = true
+				_sig = ""
+				refresh())
+		body.add_child(_disc_node)
+	elif _disc_node != null:
+		_disc_node.queue_free()
+		_disc_node = null
+		_disc_key = ""
 	var cur = e.sp_cur[pi]
 	if cur == null:
 		body.add_child(W.label("No task now.", 18, W.DIM))
@@ -774,3 +793,15 @@ static func _to(sm, to) -> String:
 	if sm.person_ix.has(to):
 		return _call(sm, to)
 	return "all"
+
+
+## The kept discussion part freed when the rebuild didn't put it back (no discussion shown, free mode, no crews).
+func _drop_disc() -> void:
+	if _disc_node != null and _disc_node.get_parent() == null:
+		_disc_node.queue_free()
+		_disc_node = null
+		_disc_key = ""
+
+
+func _exit_tree() -> void:
+	_drop_disc()

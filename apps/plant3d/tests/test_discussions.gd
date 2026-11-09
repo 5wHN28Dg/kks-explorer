@@ -78,6 +78,12 @@ func run(tree: SceneTree) -> Array:
 		p.append("the operator in the control room should take part, mode open: %s" % str(x))
 	ui.crew.refresh()
 	await tree.process_frame
+	# a rebuild of the crew panel for something else keeps the discussion's part as it was (the Note 9's frames)
+	var kept = ui.crew._disc_node
+	ui.crew._sig = ""
+	ui.crew.refresh()
+	if kept == null or ui.crew._disc_node != kept or not kept.is_inside_tree():
+		p.append("the discussion's part was built again by an unrelated rebuild")
 	var txt: String = App.texts(ui.crew)
 	var d: Dictionary = sm.discuss["list"][di]
 	for want in ["Discussion: " + d["title"], d["positions"][0]["claim"], d["turns"][0]["text"], "until ",
