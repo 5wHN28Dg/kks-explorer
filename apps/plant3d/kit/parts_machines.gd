@@ -201,6 +201,7 @@ static func gas_turbine(_part: String, g) -> void:
 	g.comp("rotor")
 	_shaft(g, za, y0 - 0.6, y0 + 0.2, 0.22, "coupling_bolts" if g.workshop else "")
 	_gt_rotor(g, L, D, za)
+	_gt_flows(g, L, D, za, top_in)
 	g.comp("comp_upper")
 	C.lug(m, Vector3(0, ya.call(0.25), za + D * 0.43), Vector3(0, 0, 1), 0.4)
 	g.plate("side", Vector3(D * 0.43, ya.call(0.25), za - D * 0.12), Vector3(1, 0, 0), "large")
@@ -1279,6 +1280,58 @@ static func _gt_rotor(g, L: float, D: float, za: float) -> void:
 			var an := _gt_tannulus(L, D, row.y)
 			_gt_blades(sh, za, row.y, an[0], an[1] - 0.012, row.chord, -40.0, 0.0, TAU, 60)
 	g.only()
+
+## The gas path's flow (K5b, Workshop only: plant mode unchanged), each path at most 8 points: the air down the
+## plenum into the bellmouth, four lines along the compressor's annulus and four along the turbine's (to +y, the way
+## GT_TURN's blades are made for), the fuel from the gas ring down a pigtail to two cans' nozzles, the flame from the
+## nozzles' tips along three liners and their transition pieces to the first nozzles, two lines out of the diffuser.
+## One of each set lies in the cutaway's quarter (+x, above the axis), where the cut opens it to view.
+static func _gt_flows(g, L: float, D: float, za: float, top_in: float) -> void:
+	var ya := func(f: float) -> float: return -L * 0.5 + L * f
+	var ax := Vector3(0, 0, za)
+	var er := func(phi: float) -> Vector3: return Vector3(cos(phi), 0, sin(phi))
+	var q45: Vector3 = er.call(PI / 4.0)
+	g.flow("air_in", [Vector3(0.6, ya.call(0.02), top_in - 0.3), Vector3(0.6, ya.call(0.02), za + D * 0.4),
+		Vector3(0, ya.call(0.06), 0) + ax + q45 * D * 0.33, Vector3(0, ya.call(0.112), 0) + ax + q45 * D * 0.32])
+	for q in 4:
+		var e: Vector3 = er.call(PI / 4.0 + q * PI / 2.0)
+		var y0: float = ya.call(0.115)
+		var y1: float = ya.call(0.398)
+		var a0 := _gt_cannulus(L, D, y0)
+		var a1 := _gt_cannulus(L, D, y1)
+		g.flow("comp_%d" % q, [Vector3(0, y0, 0) + ax + e * (a0[0] + a0[1]) * 0.5, Vector3(0, y1, 0) + ax + e * (a1[0] + a1[1]) * 0.5])
+		var t0: float = ya.call(0.585)
+		var t1: float = ya.call(0.705)
+		var b0 := _gt_tannulus(L, D, t0)
+		var b1 := _gt_tannulus(L, D, t1)
+		g.flow("turb_%d" % q, [Vector3(0, t0, 0) + ax + e * (b0[0] + b0[1]) * 0.5, Vector3(0, t1, 0) + ax + e * (b1[0] + b1[1]) * 0.5])
+	# the cans as the plant draws them (gas_turbine): c0 on the wrapper, c1 at the end cover, `out` along the can
+	var yr: float = ya.call(0.47)
+	var can := func(i: int) -> Dictionary:
+		var a := TAU * (i + 0.5) / GT_CANS
+		var rad := Vector3(cos(a), 0, sin(a))
+		var c0: Vector3 = Vector3(0, ya.call(0.50), za) + rad * D * 0.46
+		var c1: Vector3 = c0 + rad * D * 0.16 + Vector3(0, -L * 0.03, 0)
+		return {"a": a, "rad": rad, "c0": c0, "c1": c1, "out": (c1 - c0).normalized()}
+	var fuel := [[0, [60.0, 45.0, 30.0]], [2, [120.0, 105.0, 90.0]]]
+	for f in fuel.size():
+		var c: Dictionary = can.call(fuel[f][0])
+		var pts: Array = []
+		for deg in fuel[f][1]:
+			pts.append(Vector3(0, yr, za) + er.call(deg_to_rad(deg)) * D * 0.68)
+		pts.append(Vector3(0, yr, za) + c.rad * D * 0.68)                 # the ring at the can's pigtail
+		pts.append(Vector3(0, ya.call(0.49), za) + c.rad * D * 0.6)       # the pigtail's end at the end cover
+		pts.append(c.c1)
+		pts.append(c.c1 - c.out * 0.34)                                   # the nozzles' tips
+		g.flow("fuel_%d" % f, pts)
+	var at := _gt_tannulus(L, D, ya.call(0.578))
+	for i in 3:
+		var c: Dictionary = can.call(i)
+		var p1: Vector3 = Vector3(0, ya.call(0.578), za) + c.rad * (at[0] + at[1]) * 0.5
+		g.flow("flame_%d" % i, [c.c1 - c.out * 0.36, c.c0 + c.out * 0.1, c.c0 - c.rad * 0.12, p1])
+	for q in 2:
+		var e: Vector3 = er.call(PI / 4.0 + q * PI)
+		g.flow("exhaust_%d" % q, [Vector3(0, ya.call(0.725), 0) + ax + e * D * 0.38, Vector3(0, ya.call(0.97), 0) + ax + e * D * 0.46])
 
 ## The static frequency converter: a row of cabinets on a plinth (doors, handles, louvres, the controller's display).
 static func sfc(_part: String, g) -> void:

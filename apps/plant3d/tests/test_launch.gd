@@ -17,6 +17,102 @@ const ATTRS := FORMAT | Mesh.ARRAY_FORMAT_TEX_UV2 | Mesh.ARRAY_FORMAT_BONES | Me
 const ShaderMats = preload("res://builder/shader_mats.gd")
 const SKIP_DIRS := ["tests", "addons", "built", "android", "export", "flatpak", "msix", "phone"]
 
+## The start's slow scripts and the plant's model are made on worker threads in a staged start (app/main.gd
+## `_prep_begin`): main.gd's own compile, on the main thread before anything is drawn, must not pull them in.
+const PREPPED := ["res://ui/plant_ui.gd", "res://workshop/workshop.gd", "res://net/session.gd", "res://ui/sim_clock.gd",
+		"res://sim/plant_model.gd"]
+
+func main_compile_graph() -> Array:
+	var p: Array = []
+	var seen := {}
+	var todo := ["res://app/main.gd"]
+	var re := RegEx.create_from_string("(?:preload\\(|^extends )\\s*\"([^\"]+\\.gd)\"")
+	var globals := {}   # a global class named in a script is compiled with it, as a preload
+	for c in ProjectSettings.get_global_class_list():
+		globals[String(c["class"])] = String(c["path"])
+	var word := RegEx.create_from_string("\\b[A-Z][A-Za-z0-9_]*\\b")
+	while not todo.is_empty():
+		var f: String = todo.pop_back()
+		if seen.has(f):
+			continue
+		seen[f] = true
+		var src := FileAccess.get_file_as_string(f)
+		for line in src.split("\n"):
+			var code := line.get_slice("#", 0)   # (a path in a comment is not a preload)
+			for m in re.search_all(code):
+				var path := m.get_string(1)
+				todo.append(path if path.begins_with("res://") else f.get_base_dir().path_join(path).simplify_path())
+			for m in word.search_all(code):
+				if globals.has(m.get_string()):
+					todo.append(globals[m.get_string()])
+	if seen.size() < 10:
+		p.append("main.gd's preloads were found (%s)" % str(seen.keys()))
+	for f in PREPPED:
+		if seen.has(f):
+			p.append("main.gd's compile does not pull in %s (made on a worker thread at the start)" % f)
+	# the scenes the main thread loads while the worker threads compile carry only scripts main.gd has compiled already
+	# (Godot compiles one script at a time: a new one would wait seconds for the UI's on the Note 9)
+	var scenes: Array = ["res://built/ground.scn", "res://built/lit.scn"]
+	for dir in ["res://built/areas", "res://built/people"]:
+		for f in DirAccess.get_files_at(dir):
+			if f.ends_with(".scn") or f.ends_with(".tscn"):
+				scenes.append(dir.path_join(f))
+	for sc in scenes:
+		if not ResourceLoader.exists(sc):
+			continue
+		for d in ResourceLoader.get_dependencies(sc):
+			var path: String = d.get_slice("::", 2) if d.contains("::") else d
+			if path.begins_with("uid://"):
+				path = ResourceUID.get_id_path(ResourceUID.text_to_id(path))
+			if path.ends_with(".gd") and not seen.has(path):
+				p.append("%s's script %s is compiled with main.gd (not on the main thread during the start)" % [sc, path])
+	# the model's script is taken on a worker thread while the main thread waits for it: its graph must be scripts
+	# only (a material or shader there can make that load wait for the main thread: a deadlock)
+	var mtodo := ["res://sim/plant_model.gd"]
+	var mseen := {}
+	var any := RegEx.create_from_string("preload\\(\\s*\"([^\"]+)\"")
+	while not mtodo.is_empty():
+		var f: String = mtodo.pop_back()
+		if mseen.has(f):
+			continue
+		mseen[f] = true
+		if not f.ends_with(".gd"):
+			p.append("the plant model's preloads are scripts only (%s)" % f)
+			continue
+		for line in FileAccess.get_file_as_string(f).split("\n"):
+			for m in any.search_all(line.get_slice("#", 0)):
+				var path := m.get_string(1)
+				mtodo.append(path if path.begins_with("res://") else f.get_base_dir().path_join(path).simplify_path())
+	if mseen.size() < 3:
+		p.append("the plant model's preloads were found (%s)" % str(mseen.keys()))
+	return p
+
+## A staged start took the model and the scripts from its worker threads, before the UI.
+func worker_prep(main: Node) -> Array:
+	var p: Array = []
+	var w := -1
+	var u := -1
+	for k in main.lines.size():
+		if main.lines[k].begins_with("LAUNCH  worker threads"):
+			w = k
+		elif main.lines[k].begins_with("LAUNCH ui"):
+			u = k
+	if w < 0 or u < 0 or w > u:
+		p.append("the staged start logs its worker threads before the UI (%s)" % " | ".join(main.lines))
+	if main._prep_model_ms.y < 0 or main._prep_task != -1:
+		p.append("the plant's model was read on a worker thread, and the task waited for (%s, %d)" % [main._prep_model_ms, main._prep_task])
+	if main.ui == null or main.ui.model == null or main.ui.model.error != "":
+		p.append("the UI has the model read on the worker thread")
+	elif not main.prep_model_used or main._prep_model != null:
+		p.append("the UI took the model read on the worker thread (and main let go of it)")
+	for f in ["res://ui/plant_ui.gd", "res://workshop/workshop.gd", "res://net/session.gd"]:
+		var held := false
+		for s in main._prep_scripts:
+			held = held or (s != null and s.resource_path == f)
+		if not held:
+			p.append("%s was taken from its threaded load" % f)
+	return p
+
 func _baked_shaders() -> Array:
 	var p: Array = []
 	var files: Array = []
@@ -54,6 +150,7 @@ static func _shader_files(dir: String, out: Array) -> void:
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
+	p += main_compile_graph()
 	# the pipeline cache is saved soon after a start compiles (Godot's default waits for 3 MB of new pipelines, more
 	# than a start makes: the next start compiled everything again, 7 s on the Note 9 instead of 3.5 s)
 	var chunk := float(ProjectSettings.get_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", 3.0))
@@ -102,14 +199,13 @@ func run(tree: SceneTree) -> Array:
 		seen.started += 1
 		seen.ui_at_start = main.ui != null and main.hud != null and main.plant.visible)
 	var watch := func():
-		if main.plant != null and main.first_frame_ms < 0 and main.lines.size() > 0 and not seen.has("ws_before_lightmap"):
-			if Array(main.lines).any(func(l): return l.begins_with("LAUNCH lightmap")):
-				var w = main.workshop._warm if main.workshop != null else null
-				seen["ws_before_lightmap"] = w != null and w.is_inside_tree() and main.workshop.kinds_warmed
 		if main.plant != null and main.first_frame_ms < 0:
 			seen.frames += 1
 			if not main.plant.visible and main.plant.get_child_count() > 1:
 				seen.hidden_frames += 1
+				if not seen.has("ws_in_hidden"):   # (the plant's hidden frame queues the Workshop's pieces too)
+					var w = main.workshop._warm if main.workshop != null else null
+					seen["ws_in_hidden"] = w != null and w.is_inside_tree() and main.workshop.kinds_warmed
 				if main.people != null and not main.people.avatars.is_empty():
 					seen["people_hidden"] = seen.get("people_hidden", 0) + 1
 	tree.process_frame.connect(watch)
@@ -122,7 +218,7 @@ func run(tree: SceneTree) -> Array:
 	if main.first_frame_ms < 0:
 		main.free()
 		return p + ["the app drew its first frame"]
-	var order := ["LAUNCH tier", "LAUNCH sky frame", "LAUNCH plant at", "LAUNCH workshop's pieces", "LAUNCH workshop's and the plant's pipelines queued", "LAUNCH plant's pipelines queued", "LAUNCH player, map, hud", "LAUNCH ui", "first frame drawn"]
+	var order := ["LAUNCH tier", "LAUNCH sky frame", "LAUNCH plant at", "LAUNCH workshop's warm-up begun", "LAUNCH lightmap", "LAUNCH workshop's pieces", "LAUNCH plant's pipelines queued", "LAUNCH player, map, hud", "LAUNCH ui", "first frame drawn"]
 	var at := -1
 	for o in order:
 		var i := -1
@@ -140,6 +236,7 @@ func run(tree: SceneTree) -> Array:
 		p.append("the first frame has the plant, the HUD and the UI")
 	if seen.started != 1 or not seen.ui_at_start:
 		p.append("`started` is sent once, with the plant shown, the HUD and the UI made (%d times)" % seen.started)
+	p += worker_prep(main)
 	p += tier_materials(main.plant, "lean+vis")
 	p += workshop_warm_at_start(main, seen)
 	# the people's avatars and posed meshes are made in the plant before its hidden frame: their pipelines are queued
@@ -216,15 +313,15 @@ func run(tree: SceneTree) -> Array:
 
 ## The Workshop's pipelines prepared behind the loading screen (the user's decision, 2026-11-08; WORKSHOP.md §7.1):
 ## everything the plant's warm-up held after the first walkable frame (the ghost's and K3's pieces, every kind's own
-## machine in the Workshop's materials with its ghosts) is made on a worker thread while the plant loads and is in the
-## world, hidden, from the frame after the plant's load, and the warm-up after the first frame has nothing left to add.
+## machine in the Workshop's materials with its ghosts) is made on a worker thread while the lightmap, people and weather are set up
+## and is in the world, hidden, in the plant's hidden frame, and the warm-up after the first frame has nothing left to add.
 func workshop_warm_at_start(main: Node, seen: Dictionary) -> Array:
 	var p: Array = []
 	var ws = main.workshop
 	if ws == null or not ws.warmed_at_start or ws._warm == null:
 		return ["the Workshop's warm-up runs in the start's loading"]
-	if not seen.get("ws_before_lightmap", false):
-		p.append("the Workshop's warm pieces are in the world before the plant's lightmap and UI are made")
+	if not seen.get("ws_in_hidden", false):
+		p.append("the Workshop's warm pieces are in the world in the plant's hidden frame (%s)" % str(seen))
 	if not ws.warm_on_start_thread:
 		p.append("the start's warm pieces are made on a worker thread")
 	if ws._warm.visible or ws._warm.get_parent() != main:

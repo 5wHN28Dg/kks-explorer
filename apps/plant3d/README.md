@@ -97,7 +97,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--walk=drawings` | the generated P&IDs, each in turn for 10 s, panned and zoomed from the whole sheet to 9 px/mm and back: their frame cost and how long each sheet and level took to make (`DRAWINGS` line) |
 | `--shot=NAME@x,y,z,yaw,pitch;…` | saves PNG views and quits |
 | `--walk=workshop --kind=KIND` | the Workshop's scripted 3 minutes on one kind (default the first the build has): taken apart, a part moved, put back step by step, run on its bench with the X-ray, cutaway, section and faults, on an orbiting camera, then back to the plant; its `WORKSHOP` lines (entry, exit, triangles, bench steps) |
-| `--walk=workshop --kind=KIND --bench_speed=X` | the Workshop walk with its bench run at X× (past the Run panel's 2×; the walk logs it): the steam turbine's walk at 6× reaches full speed within the 3 minutes despite the plant's 300 s soak at 800 rpm (K4b) |
+| `--walk=workshop --kind=KIND --bench_speed=X` | the Workshop walk with its bench run at X× (past the Run panel's 2×; the walk logs it): measured at 30× (K5b; the walk then lets the bench step as many steps a frame as that speed needs): the steam turbine (the plant's 300 s soak at 800 rpm) and the gas turbine (its 480 s purge) reach full speed before the faults |
 | `--weather=KIND` | the scenario's weather fixed at that kind (`data/plant3d/weather.json`: clear, sandstorm, rain, …) from the start; walks, shots and the step bench without it run in clear weather (a walk with `--mp` takes the host's), free play keeps its seasonal weather |
 | `--map=1` | starts on the overview map |
 | `--scenario=ID` | the scenario the plant starts in (default `cold_iron`) |

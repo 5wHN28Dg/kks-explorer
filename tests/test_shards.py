@@ -99,5 +99,88 @@ class Shards(unittest.TestCase):
                                                  'PLANT_TEST_SHARD=${{ matrix.app_shard }} apps/plant3d/build.sh tests']))
 
 
+class SimShards(unittest.TestCase):
+    """plant3d.yml's engine-vectors shards (tests/test_plant3d_sim.py sim_shards): every unit of run_vectors.gd in
+    exactly one shard, every reference task too, their results adding up to the whole run's, no shard empty, the
+    matrix every shard, and shard SIM_REST (alone) running the module's other classes."""
+
+    def test_every_vector_in_one_shard(self):
+        import json
+        import test_plant3d_sim as S
+        with open(S.VECTORS, encoding='utf-8') as f:
+            V = json.load(f)
+        with open(S.VECTORS2, encoding='utf-8') as f:
+            V2 = json.load(f)
+        units = S.sim_units(V, V2)
+        per = S.sim_shards(V, V2)
+        self.assertEqual(len(per), S.SIM_SHARDS)
+        self.assertTrue(all(per), [len(p) for p in per])
+        got = [u for p in per for u in p]
+        self.assertEqual(sorted(got, key=repr), sorted(units, key=repr))
+        self.assertEqual(len({u[0] for u in got}), len(got))
+        self.assertEqual(sorted((u[1] for u in got), key=repr), sorted(S.ref_tasks(V, V2), key=repr))
+        # the units' results: the whole run's count, as test_every_vector_replays counts it
+        n = 1 + len(V['steps']) + len(V['links']) + 2 * (1 + 1) + len(V['train']['forks']) + \
+            len(V['hot']['forks']) + 1 + len(V2['steps']) + len(V2.get('train', {}).get('forks', [])) + \
+            (1 + len(V2['staff']['runs']) if 'staff' in V2 else 0) + \
+            (1 + len(V2['day']['forks']) if 'day' in V2 else 0) + \
+            sum(2 + len(V2[r]['forks']) for r in S.WTP_RUNS if r in V2)
+        self.assertEqual(sum(u[2] for u in got), n)
+        # run_vectors.gd's units: every day fork by its id, every start and run (a unit not of the files fails there)
+        names = {u[0] for u in got}
+        self.assertTrue({'v1', 'train', 'hot', 'v2', 'v2/staff', 'v2/day'} <= names, names)
+        self.assertTrue({'v2/day/' + f['id'] for f in V2['day']['forks']} <= names)
+        text, m = matrix('plant3d.yml', 'shard')
+        self.assertEqual(m, [[str(k) for k in range(S.SIM_SHARDS)]])
+        self.assertEqual(S.SIM_REST, 0)
+        self.assertIn("KKS_SIM_SHARD: ${{ matrix.shard }}", text)
+        self.assertIn("python3 -m unittest -v ${{ matrix.shard == 0 && 'tests.test_plant3d_sim' || "
+                      "'tests.test_plant3d_sim.GdscriptEngine' }}", text)
+        self.assertEqual(text.count('-m unittest'), 1)
+        self.assertNotIn('KKS_SIM_DEADLINE', text, 'the PR shards keep the 1800 s limit')
+
+    def test_nightly_replays_every_vector_in_one_process(self):
+        """plant3d-nightly.yml: the whole replay, unsharded, in one job and one Godot process, nightly and by hand."""
+        with open(os.path.join(WORKFLOWS, 'plant3d-nightly.yml'), encoding='utf-8') as f:
+            text = f.read()
+        self.assertRegex(text, r"(?m)^  schedule:\n    - cron: '[^']+'$")
+        self.assertRegex(text, r'(?m)^  workflow_dispatch:$')
+        self.assertNotIn('pull_request', text)
+        self.assertNotIn('KKS_SIM_SHARD', text)
+        self.assertNotIn('matrix', text)
+        self.assertNotIn('continue-on-error', text)       # a failure fails the run
+        self.assertEqual(re.findall(r'(?m)^\s+run: (.*-m unittest.*)$', text),
+                         ['KKS_REQUIRE_GODOT=1 python3 -m unittest -v tests.test_plant3d_sim'])
+        deadline = int(re.search(r"(?m)^\s+KKS_SIM_DEADLINE: '(\d+)'$", text).group(1))
+        minutes = int(re.search(r'(?m)^\s+timeout-minutes: (\d+)$', text).group(1))
+        self.assertGreater(deadline, 1800)
+        self.assertGreater(minutes * 60, deadline + 600, 'the job outlives the replay\'s own limit')
+        # every action pinned by a commit SHA
+        uses = re.findall(r'(?m)^\s+- uses: (\S+)', text)
+        self.assertTrue(uses)
+        for u in uses:
+            self.assertRegex(u, r'@[0-9a-f]{40}$')
+
+    def test_deadline_only_for_the_whole_replay(self):
+        import test_plant3d_sim as S
+        env = {k: os.environ.pop(k) for k in ('KKS_SIM_DEADLINE', 'KKS_SIM_SHARD') if k in os.environ}
+        try:
+            self.assertEqual(S.sim_deadline(), 1800)
+            os.environ['KKS_SIM_DEADLINE'] = '3600'
+            self.assertEqual(S.sim_deadline(), 3600)
+            for bad in ('600', 'x', '-1'):
+                os.environ['KKS_SIM_DEADLINE'] = bad
+                self.assertRaises(AssertionError, S.sim_deadline)
+            os.environ['KKS_SIM_DEADLINE'] = '3600'
+            os.environ['KKS_SIM_SHARD'] = '1'
+            self.assertRaises(AssertionError, S.sim_deadline)
+            del os.environ['KKS_SIM_DEADLINE']
+            self.assertEqual(S.sim_deadline(), 1800)
+        finally:
+            for k in ('KKS_SIM_DEADLINE', 'KKS_SIM_SHARD'):
+                os.environ.pop(k, None)
+            os.environ.update(env)
+
+
 if __name__ == '__main__':
     unittest.main()

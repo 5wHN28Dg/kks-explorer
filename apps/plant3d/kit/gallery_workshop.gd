@@ -98,6 +98,8 @@ func _run() -> void:
 		await process_frame
 	quit()
 
+const PICTURE_INPUT := "p_applied"   # the one slider the pictures move (the pressure transmitter's)
+
 ## K3's pictures: the views and the run, through the Workshop's own code.
 func _k3(m: Node3D, homes: Dictionary, box: AABB, cam: Camera3D, out: String, part: String) -> void:
 	var ws := WsStub.new()
@@ -135,9 +137,11 @@ func _k3(m: Node3D, homes: Dictionary, box: AABB, cam: Camera3D, out: String, pa
 			if o.get("machine") == mc.id and mc.commands.has(o.do) and String(mc.init) in Array(mc.commands[o.do].get("from", [])):
 				clock.command(o.at, o.do)
 				break
+	# the slider the pictures move: the transmitter's applied pressure (0, then 6 bar, 8 with a fault); every other
+	# kind's sliders stay at their start (the gas turbine's 30 °C ambient, the steam turbine's steam)
 	var setop: Dictionary = {}
 	for o in clock.m.ops_ui:
-		if o.get("do") == "set":
+		if o.get("do") == "set" and String(o.get("input", "")) == PICTURE_INPUT:
 			setop = o
 	v.set_cut(true)
 	var run := func(value: float, seconds: float):
@@ -153,7 +157,15 @@ func _k3(m: Node3D, homes: Dictionary, box: AABB, cam: Camera3D, out: String, pa
 	# K4b: a machine with a start-up sequence, run on (the turbine at its soak speed, its steam flowing), cut away in
 	# the heat colours and then the pressure colours
 	if clock.m.legends.has("heat"):
+		# K5b: run on until each machine waits for the trainee (bench_clock.all_wait: the steam turbine's and the gas
+		# turbine's full speed no load, waiting for the breaker), at most 1,500 s of bench time: a long sequence (the
+		# gas turbine's purge, the turbine's soak) is pictured at its end
 		run.call(6.0, 90.0)
+		for i in 1410:
+			if clock.all_wait():
+				break
+			run.call(6.0, 1.0)
+		print("gallery_workshop: %s pictured running in %s" % [part, str(clock.m.machines.map(func(mc): return clock.machine_state(mc.id)))])
 		v.set_cut(false)
 		v.set_xray(false)
 		# the upper halves off (the kind's X-ray parts), from closer: the rows, the flow and the colours inside

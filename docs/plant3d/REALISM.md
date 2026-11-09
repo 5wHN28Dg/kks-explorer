@@ -993,16 +993,31 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   21.7 ms, p95 36.2 ms, max 62.3 ms, none over 100 ms (the frame rule passes without excluding any frame; the kernel
   reclaimed in 1.72 % of the samples). The screen's only long gaps were while the app loaded (its first frame at
   13.6 s).
-- **Left from the reviews (not changed):** the run's history has no limit (a player holding `close_work` can notify
-  and cancel the same work 10 times a turn, each a record the digest carries); a reaction on `notified` is offered
-  only to those on duty then, so an order notified while no maintenance or shift supervisor is on duty stays notified
-  (a permit's offer is made again; a work order's is not); a session slot playing nobody may make every action, as
-  with permits (§17.13's free-mode rule).
+- **Follow-ups (the user's decisions, 2026-11-08, milestone WM2):**
+  - **The run's history is capped at 4,096 records**, as the content's: when a close or cancel would make it 4,097,
+    the oldest record drops (the newest 4,096 kept, in order). New records are never refused: a close or cancel
+    always moves the work order, the counter goes on (`WO-` and at least four digits), and only the oldest closed
+    order is forgotten (the debrief's count of orders raised is the counter's; its closed count is of the records
+    kept). Both engines (`LIMITS['run_history']`, `RUN_HISTORY`); a save whose history is over the
+    limit is refused. Before, a player holding `close_work` could notify and cancel the same work 10 times a turn,
+    each a record the digest carried, with no end.
+  - **Offered again:** a reaction on a work order's state whose offer finds nobody of its roles on duty is kept, as a
+    permit's (§17.10): offered again when someone of its roles comes on duty, at each later shift until taken, while
+    the work order is still at that state (notified to complete; one that has moved on is dropped, as a permit's:
+    the state is compared, not the order's number, so an order cancelled and notified again in the same step keeps
+    the offer for the new order). Only reactions' offers are kept: a task's `call` stays on the permit's rule. So an order notified while no maintenance or shift supervisor is on duty is planned when one
+    comes on. The kept offer is the permit's record (the work and the work order's state then); its source names a
+    reaction on a work order.
+  - **Free mode:** a session slot playing nobody keeps free-mode rights over work orders: it may make every action,
+    as with permits (§17.13's free-mode rule; the form offers it every action).
+- **Vectors (WM2):** `wo` gains two runs after the five: the history at its limit (4,097 closed records in one step,
+  the oldest dropped) and an order offered again when the supervisor comes on (and one cancelled meanwhile, not
+  offered); every earlier item of every file unchanged.
 - **Tests:** `tests/test_plant3d_realism.py` `WoVectors`, `tests/test_plant3d_workorders.py` (every work coded, the
   history against the ageing scenario, the day's staff planning a notified order and asking for its permit),
-  `apps/plant3d/tests/test_run_save.gd` (a save in the middle of a work order goes on bit for bit; 22 damaged saves
+  `apps/plant3d/tests/test_run_save.gd` (a save in the middle of a work order goes on bit for bit; 23 damaged saves
   refused: the 14 of the state and records, a number counter below a number given, a record whose number isn't its
-  work's, and an NPC's queued work order
+  work's, a history over its limit (one at the limit taken), and an NPC's queued work order
   input that is short, names no work, an unknown action or person, data not a list, or a completion without data on
   a work without codes), `apps/plant3d/tests/test_ui_workorders.gd` (app shard 2: who may make each action and their
   roles' words; a finding reported from the card, planned,

@@ -15,6 +15,11 @@ extends SceneTree
 ##                     the state digest (docs/PLANT3D.md §17.14) of every 50th step (`state`)
 ##                     (tests/test_plant3d_sim.py compares them with the reference's: bit for bit)
 ##   --dump=RUN:FROM:TO   print every value's bits at steps FROM–TO of one run (steps/N, train, hot or a fork's id)
+##   --units=LIST      only these units of the default parts (CI's shards, tests/test_plant3d_sim.py sim_units): v1
+##                     (the valid plant, steps and links), train, hot (each start's procedure and run with forks), v2
+##                     (the format 2 file's valid plant and steps), v2/staff, v2/train, v2/wtp, v2/wtp_cip,
+##                     v2/wtp_regen, v2/day and v2/day/<fork id>; a name not of the files fails the run. Each unit's
+##                     time is printed as "UNIT name seconds"
 ##   --interpreter=1   step every engine with the interpreter (engine.gd _run), not the straight-line program; the
 ##                     last lines say how many of the engines made here ran each ("PROGRAM straight-line=N interpreter=M")
 ##   --only=PARTS      some of: valid,steps,links,procedure,train,v2 (default all; procedure and train run both the
@@ -54,6 +59,9 @@ var dump_from := 0
 var dump_to := -1
 var _programs := [0, 0]
 var expected := 0       # results the run must give: a script error that skips one fails the run
+var units := {}         # --units: the units to run (empty: every unit of the parts)
+var _unit := ""
+var _unit_t := 0
 
 
 func _init() -> void:
@@ -77,6 +85,9 @@ func _init() -> void:
 		return
 	var V: Dictionary = r.value
 	var parts: PackedStringArray = opts.get("only", "valid,steps,links,procedure,train,v2").split(",")
+	if opts.has("units"):
+		for u in opts["units"].split(","):
+			units[u] = true
 	var V2 := {}
 	if parts.has("v2"):
 		var path2: String = opts.get("vectors2", repo.path_join("ref/vectors/plant3d-v2.json"))
@@ -86,16 +97,19 @@ func _init() -> void:
 			_finish(t0)
 			return
 		V2 = r2.value
-		expected += 1 + V2["steps"].size()
-		if V2.has("train"):
+		if _want("v2"):
+			expected += 1 + V2["steps"].size()
+		if V2.has("train") and _want("v2/train"):
 			expected += V2["train"]["forks"].size()
 		for k in WTP_RUNS:         # the water treatment plant's runs by their procedures (W2, W3): procedure, run, forks
-			if V2.has(k):
+			if V2.has(k) and _want("v2/" + k):
 				expected += 2 + V2[k]["forks"].size()
-		if V2.has("staff"):
+		if V2.has("staff") and _want("v2/staff"):
 			expected += 1 + V2["staff"]["runs"].size()
 		if V2.has("day"):
-			expected += 1 + V2["day"]["forks"].size()
+			expected += 1 if _want("v2/day") else 0
+			for f in V2["day"]["forks"]:
+				expected += 1 if _want("v2/day/" + f["id"]) else 0
 	var V3 := {}
 	if parts.has("realism"):
 		var path3: String = opts.get("vectors3", repo.path_join("ref/vectors/plant3d-realism.json"))
@@ -124,21 +138,38 @@ func _init() -> void:
 	var starts := ["train", "hot"].filter(func(k): return V.has(k))
 	for part in parts:
 		for st in starts:
-			expected += {"procedure": 1, "train": 1 + V[st]["forks"].size()}.get(part, 0)
-		expected += {"valid": 1, "steps": V["steps"].size(), "links": V["links"].size()}.get(part, 0)
-	if parts.has("valid"):
-		_valid(V["valid"][0])
-	if parts.has("steps"):
-		for k in V["steps"].size():
-			_steps(k, V["steps"][k], valid_files)
-	if parts.has("links"):
-		_links(V["links"], valid_files)
+			if _want(st):
+				expected += {"procedure": 1, "train": 1 + V[st]["forks"].size()}.get(part, 0)
+		if _want("v1"):
+			expected += {"valid": 1, "steps": V["steps"].size(), "links": V["links"].size()}.get(part, 0)
+	if not units.is_empty():        # every unit asked for is one of the files'
+		var known := ["v1", "v2", "v2/staff", "v2/train", "v2/day"] + starts
+		for k in WTP_RUNS:
+			known.append("v2/" + k)
+		for f in V2.get("day", {}).get("forks", []):
+			known.append("v2/day/" + f["id"])
+		for u in units:
+			if not known.has(u):
+				expected += 1
+				_result("units", "%s is not a unit of the files" % u)
+	if _want("v1"):
+		_unit_begin("v1")
+		if parts.has("valid"):
+			_valid(V["valid"][0])
+		if parts.has("steps"):
+			for k in V["steps"].size():
+				_steps(k, V["steps"][k], valid_files)
+		if parts.has("links"):
+			_links(V["links"], valid_files)
 	var train_model = null
 	if parts.has("v2"):
-		_valid(V2["valid"][0])
-		for k in V2["steps"].size():
-			_steps(k, V2["steps"][k], V2["valid"][0]["files"], "v2/")
-		if V2.has("staff"):
+		if _want("v2"):
+			_unit_begin("v2")
+			_valid(V2["valid"][0])
+			for k in V2["steps"].size():
+				_steps(k, V2["steps"][k], V2["valid"][0]["files"], "v2/")
+		if V2.has("staff") and _want("v2/staff"):
+			_unit_begin("v2/staff")
 			_staff(V2["staff"])
 	if parts.has("realism"):
 		_streams(V3["streams"])
@@ -152,6 +183,7 @@ func _init() -> void:
 			_result("bench/valid (%s)" % v["why"], bm.error)
 		for k in V4["steps"].size():
 			_bench_steps(k, V4["steps"][k])
+	_unit_begin("")
 	if parts.has("procedure") or parts.has("train") or V2.has("train") or WTP_RUNS.any(func(k): return V2.has(k)):
 		train_model = PlantModel.from_dir(opts.get("data", repo.path_join("data/plant3d")))
 		if train_model.error != "":
@@ -159,18 +191,24 @@ func _init() -> void:
 			_finish(t0)
 			return
 	for st in starts:
+		if not _want(st):
+			continue
+		_unit_begin(st)
 		if parts.has("procedure"):
 			_procedure(V[st], train_model)
 		if parts.has("train"):
 			_train(V[st], train_model, st)
-	if V2.has("train"):
+	if V2.has("train") and _want("v2/train"):
+		_unit_begin("v2/train")
 		_train(V2["train"], train_model, "v2/train")
 	for k in WTP_RUNS:
-		if V2.has(k):
+		if V2.has(k) and _want("v2/" + k):
+			_unit_begin("v2/" + k)
 			_procedure(V2[k], train_model)
 			_train(V2[k], train_model, "v2/" + k)
 	if V2.has("day"):
 		_day(V2["day"], train_model)
+	_unit_begin("")
 	if opts.has("digests"):
 		var f := FileAccess.open(opts["digests"], FileAccess.WRITE)
 		f.store_string(JSON.stringify(digests, " ", false))
@@ -186,6 +224,19 @@ func _finish(t0: int) -> void:
 				expected])
 	print("VECTORS passed=%d failed=%d seconds=%.1f" % [passed, failed, (Time.get_ticks_msec() - t0) / 1000.0])
 	quit(0 if failed == 0 and passed > 0 else 1)
+
+
+## Whether the unit runs (--units, else every unit of the parts).
+func _want(u: String) -> bool:
+	return units.is_empty() or units.has(u)
+
+
+## Ends the unit being timed (its "UNIT name seconds" line) and starts timing u ("" for none).
+func _unit_begin(u: String) -> void:
+	if _unit != "":
+		print("UNIT %s %.1f" % [_unit, (Time.get_ticks_msec() - _unit_t) / 1000.0])
+	_unit = u
+	_unit_t = Time.get_ticks_msec()
 
 
 func _result(what: String, diff: String) -> void:
@@ -502,6 +553,16 @@ func _staff_run(k: int, r: Dictionary, base: Dictionary, prefix := "v2/staff") -
 ## The first train's day with its staff (§19 `day`): the run from the scenario's start (every event, a snapshot every
 ## clock hour) and each run with a trainee or a fault (every event).
 func _day(d: Dictionary, m) -> void:
+	if _want("v2/day"):
+		_unit_begin("v2/day")
+		_day_run(d, m)
+	for f in d["forks"]:
+		if _want("v2/day/" + f["id"]):
+			_unit_begin("v2/day/" + f["id"])
+			_day_fork(d, f, m)
+
+
+func _day_run(d: Dictionary, m) -> void:
 	var e = PlantEngine.new(m, d["scenario"])
 	_hash_begin("v2/day", 0)
 	_hash(e)
@@ -520,23 +581,25 @@ func _day(d: Dictionary, m) -> void:
 	if df == "" and d.has("digests"):
 		df = diff(digests["v2/day"]["state"], d["digests"], "day state digests")
 	_result("v2/day (%d steps)" % d["until"], df)
-	for f in d["forks"]:
-		var x = PlantEngine.new(m, f.get("scenario", d["scenario"]), f.get("session", false))     # (S3's: shift_wtp)
-		var inputs := by_step(f["inputs"])
-		var i := 0
-		_hash_begin("v2/day/" + f["id"], 0)
+
+
+func _day_fork(d: Dictionary, f: Dictionary, m) -> void:
+	var x = PlantEngine.new(m, f.get("scenario", d["scenario"]), f.get("session", false))     # (S3's: shift_wtp)
+	var inputs := by_step(f["inputs"])
+	var i := 0
+	_hash_begin("v2/day/" + f["id"], 0)
+	_hash(x)
+	while x.step_no < f["until"]:
+		i = _apply_due(x, inputs, i)
+		x.step()
 		_hash(x)
-		while x.step_no < f["until"]:
-			i = _apply_due(x, inputs, i)
-			x.step()
-			_hash(x)
-		_hash_end()
-		var fd := diff(_reads_as(x.events, f["events"]), f["events"], "events")
-		if fd == "":
-			fd = diff(x.snapshot(false), f["end"], "end")
-		if fd == "" and f.has("digests"):
-			fd = diff(digests["v2/day/" + f["id"]]["state"], f["digests"], "state digests")
-		_result("v2/day/" + f["id"], fd)
+	_hash_end()
+	var fd := diff(_reads_as(x.events, f["events"]), f["events"], "events")
+	if fd == "":
+		fd = diff(x.snapshot(false), f["end"], "end")
+	if fd == "" and f.has("digests"):
+		fd = diff(digests["v2/day/" + f["id"]]["state"], f["digests"], "state digests")
+	_result("v2/day/" + f["id"], fd)
 
 
 ## The events with each read's value and each lab result (REALISM.md §2.19) replaced by the reference's when it is

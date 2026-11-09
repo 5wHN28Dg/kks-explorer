@@ -123,6 +123,8 @@ def sounds():
               {'colour': 'pink', 'band': [100, 2000], 'gain': 0.35}),
         synth('blade_pass', t((1700, 0.6), (3400, 0.2), (50, 0.25)),
               {'colour': 'pink', 'band': [400, 4000], 'gain': 0.2}, 'moving blade rows passing at full speed'),
+        synth('compressor_pass', t((2000, 0.6), (4000, 0.2), (3000, 0.2), (50, 0.2)),
+              {'colour': 'pink', 'band': [300, 5000], 'gain': 0.3}, 'compressor blade rows passing at full speed'),
         synth('steam_rush', None, {'colour': 'white', 'band': [500, 8000]}),
         synth('steam_vent', None, {'colour': 'white', 'band': [300, 10000]}),
         synth('turning_gear', t((8, 0.5), (100, 0.3), (600, 0.12)),

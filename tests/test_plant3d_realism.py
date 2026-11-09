@@ -1369,6 +1369,41 @@ class WoVectors(PartVectors, unittest.TestCase):
         self.assertTrue(any(x[1] == 'early' and x[5] == 'wo' for x in ev))
         self.assertTrue(any(x[1] == 'task' and x[3] == 'plan_wo' and x[4] == 'done' for x in ev))
 
+    def test_run_history_capped(self):
+        """The run's history keeps the newest 4,096 records (§2.21): the oldest drops, numbers go on."""
+        from ref.plant3d_wo import LIMITS
+        end = self.st['runs'][5]['states'][-1]
+        h = end['wo_history']
+        self.assertEqual(LIMITS['run_history'], 4096)
+        self.assertEqual(len(h), 4096)
+        self.assertEqual((h[0]['no'], h[-1]['no']), ('WO-0002', 'WO-4097'))
+        self.assertEqual(end['wo']['wo_pump']['no'], 'WO-4098')
+
+    def test_run_history_cap_in_engine(self):
+        """One more close past the limit drops exactly the oldest record."""
+        from ref import plant3d_wo as WO
+        e = P.Engine(G.check(G._wo_bare(G.wo_files())), 's1')
+        for _ in range(WO.LIMITS['run_history'] + 1):
+            e.work_order('wo_valve', 'notify', None, [None])
+            e.work_order('wo_valve', 'cancel', None, [])
+        e.step()
+        self.assertEqual(len(e.wo_history), WO.LIMITS['run_history'])
+        self.assertEqual(e.wo_history[0][0], 'WO-0002')
+
+    def test_offered_again_when_a_supervisor_comes_on(self):
+        """An order notified while no shift supervisor is on duty is planned once one comes on (§2.21); one cancelled
+        meanwhile is not offered again."""
+        r = self.st['runs'][6]
+        ev = r['events']
+        on = next(x[0] for x in ev if x[1] == 'duty' and x[2] == 'a_sup' and x[3] == 'on')
+        self.assertTrue(any(x[:3] == [10, 'wo', 'wo_pump'] for x in ev))
+        self.assertIn([10, 'task', None, 'plan_wo', 'unassigned'], ev)
+        plan = next(x for x in ev if x[1] == 'wo' and x[2] == 'wo_pump' and x[3] == 'plan')
+        self.assertGreater(plan[0], on)
+        self.assertEqual((plan[4], plan[5]), ('a_sup', 'done'))
+        self.assertFalse(any(x[1] == 'wo' and x[2] == 'wo_valve' and x[3] == 'plan' for x in ev))
+        self.assertEqual(r['states'][-1]['wo']['wo_pump']['state'], 3)
+
     def test_no_file_no_values(self):
         """A plant without workorders.json keeps no work order values and refuses nothing new."""
         F = G.staff_files()
