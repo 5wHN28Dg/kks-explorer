@@ -17,6 +17,67 @@ const ATTRS := FORMAT | Mesh.ARRAY_FORMAT_TEX_UV2 | Mesh.ARRAY_FORMAT_BONES | Me
 const ShaderMats = preload("res://builder/shader_mats.gd")
 const SKIP_DIRS := ["tests", "addons", "built", "android", "export", "flatpak", "msix", "phone"]
 
+## The start's slow scripts and the plant's model are made on worker threads in a staged start (app/main.gd
+## `_prep_begin`): main.gd's own compile, on the main thread before anything is drawn, must not pull them in.
+const PREPPED := ["res://ui/plant_ui.gd", "res://workshop/workshop.gd", "res://net/session.gd", "res://ui/sim_clock.gd",
+		"res://sim/plant_model.gd"]
+
+func main_compile_graph() -> Array:
+	var p: Array = []
+	var seen := {}
+	var todo := ["res://app/main.gd"]
+	var re := RegEx.create_from_string("(?:preload\\(|^extends )\\s*\"([^\"]+\\.gd)\"")
+	var globals := {}   # a global class named in a script is compiled with it, as a preload
+	for c in ProjectSettings.get_global_class_list():
+		globals[String(c["class"])] = String(c["path"])
+	var word := RegEx.create_from_string("\\b[A-Z][A-Za-z0-9_]*\\b")
+	while not todo.is_empty():
+		var f: String = todo.pop_back()
+		if seen.has(f):
+			continue
+		seen[f] = true
+		var src := FileAccess.get_file_as_string(f)
+		for line in src.split("\n"):
+			var code := line.get_slice("#", 0)   # (a path in a comment is not a preload)
+			for m in re.search_all(code):
+				var path := m.get_string(1)
+				todo.append(path if path.begins_with("res://") else f.get_base_dir().path_join(path).simplify_path())
+			for m in word.search_all(code):
+				if globals.has(m.get_string()):
+					todo.append(globals[m.get_string()])
+	if seen.size() < 10:
+		p.append("main.gd's preloads were found (%s)" % str(seen.keys()))
+	for f in PREPPED:
+		if seen.has(f):
+			p.append("main.gd's compile does not pull in %s (made on a worker thread at the start)" % f)
+	return p
+
+## A staged start took the model and the scripts from its worker threads, before the UI.
+func worker_prep(main: Node) -> Array:
+	var p: Array = []
+	var w := -1
+	var u := -1
+	for k in main.lines.size():
+		if main.lines[k].begins_with("LAUNCH  worker threads"):
+			w = k
+		elif main.lines[k].begins_with("LAUNCH ui"):
+			u = k
+	if w < 0 or u < 0 or w > u:
+		p.append("the staged start logs its worker threads before the UI (%s)" % " | ".join(main.lines))
+	if main._prep_model_ms.y < 0 or main._prep_task != -1:
+		p.append("the plant's model was read on a worker thread, and the task waited for (%s, %d)" % [main._prep_model_ms, main._prep_task])
+	if main.ui == null or main.ui.model == null or main.ui.model.error != "":
+		p.append("the UI has the model read on the worker thread")
+	elif not main.prep_model_used or main._prep_model != null:
+		p.append("the UI took the model read on the worker thread (and main let go of it)")
+	for f in ["res://ui/plant_ui.gd", "res://workshop/workshop.gd", "res://net/session.gd"]:
+		var held := false
+		for s in main._prep_scripts:
+			held = held or (s != null and s.resource_path == f)
+		if not held:
+			p.append("%s was taken from its threaded load" % f)
+	return p
+
 func _baked_shaders() -> Array:
 	var p: Array = []
 	var files: Array = []
@@ -54,6 +115,7 @@ static func _shader_files(dir: String, out: Array) -> void:
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
+	p += main_compile_graph()
 	# the pipeline cache is saved soon after a start compiles (Godot's default waits for 3 MB of new pipelines, more
 	# than a start makes: the next start compiled everything again, 7 s on the Note 9 instead of 3.5 s)
 	var chunk := float(ProjectSettings.get_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", 3.0))
@@ -136,6 +198,7 @@ func run(tree: SceneTree) -> Array:
 		p.append("the first frame has the plant, the HUD and the UI")
 	if seen.started != 1 or not seen.ui_at_start:
 		p.append("`started` is sent once, with the plant shown, the HUD and the UI made (%d times)" % seen.started)
+	p += worker_prep(main)
 	p += tier_materials(main.plant, "lean+vis")
 	# the people's avatars and posed meshes are made in the plant before its hidden frame: their pipelines are queued
 	# with the plant's (and are the plant's: the one shader, app/people.gd)
