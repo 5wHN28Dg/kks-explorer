@@ -76,18 +76,45 @@ static func motor_dims(kw: float) -> Dictionary:
 
 ## A horizontal motor: its drive end at `front` (on the shaft line), the body running back along -dir. Feet down to
 ## the floor at `floor_z`. The shaft stub is not drawn here (the part's `shaft` node has it).
-static func motor_h(m, front: Vector3, dir: Vector3, kw: float, floor_z: float, mat := "paint_motor") -> Dictionary:
+## `g` (the Workshop, WORKSHOP.md §4; milestone K6): the motor's component tree under `root` (its stator and frame),
+## the root's own spec `root_spec`. The motor kind's and the horizontal pump's motor are this one tree (kit/README.md
+## "Workshop: the motor"); plant mode draws exactly what it drew before (the Workshop's pieces are "workshop" pieces
+## and the split of the plant's stand-ins). Without `g` (every other kind) nothing changes.
+static func motor_h(m, front: Vector3, dir: Vector3, kw: float, floor_z: float, mat := "paint_motor", g = null,
+		root := "", root_spec := {}) -> Dictionary:
 	var md := motor_dims(kw)
 	var r: float = md.d * 0.5
 	var l: float = md.l
 	var back := front - dir * l
 	var ax: Array = m.across(dir)
+	var ws: bool = g != null
+	var F0 := front - dir * 0.06            # the frame's drive end (the drive-end shield in front of it)
+	var B0 := back + dir * l * 0.18         # the frame's non-drive end (the fan cowl behind it)
+	if ws:
+		_motor_comps(g, root, root_spec, front, dir, r, l, md.h)
+		g.comp(root)
+		g.only("plant", [root, "end_shield_nde", "end_shield_de", "fan_cowl"])
 	m.use(mat, "form")
-	m.cyl(front - dir * 0.06, back + dir * l * 0.18, r * 0.92)          # the frame
-	m.cyl(front, front - dir * 0.06, r * 0.7)                            # drive end shield
-	m.lathe(back + dir * l * 0.18, -dir, [[r * 0.98, 0.0], [r * 0.98, l * 0.16], [r * 0.6, l * 0.2]], 0, true)   # fan cowl
+	m.cyl(F0, B0, r * 0.92)          # the frame
+	if ws:
+		_motor_frame(g, m, mat, root, F0, B0, dir, r, l, md.h)
+		g.comp("end_shield_de")
+		g.only("plant", [root, "end_shield_nde", "end_shield_de", "fan_cowl"])
+		m.use(mat, "form")
+	m.cyl(front, F0, r * 0.7)                            # drive end shield
+	if ws:
+		_motor_de(g, m, mat, front, F0, dir, r, md.h)
+		g.comp("fan_cowl")
+		g.only("plant", [root, "end_shield_nde", "end_shield_de", "fan_cowl"])
+		m.use(mat, "form")
+	m.lathe(B0, -dir, [[r * 0.98, 0.0], [r * 0.98, l * 0.16], [r * 0.6, l * 0.2]], 0, true)   # fan cowl
+	if ws:
+		_motor_cowl(g, m, mat, B0, dir, r, l)
+		g.comp("grille")
 	m.use("dark", "identify")
 	m.disk(back - dir * (l * 0.02 + 0.002), -dir, r * 0.55, 16)          # the cowl's grille: a TEFC motor's tell
+	if ws:
+		g.comp(root)
 	# cooling fins along the frame (detail)
 	m.use(mat, "detail", r * 0.08)
 	var nf := 12 if r < 0.25 else 16
@@ -108,10 +135,189 @@ static func motor_h(m, front: Vector3, dir: Vector3, kw: float, floor_z: float, 
 			m.box_lh(Vector3(p.x - 0.04 - absf(dir.x) * l * 0.08, p.y - 0.04 - absf(dir.y) * l * 0.08, floor_z),
 				Vector3(p.x + 0.04 + absf(dir.x) * l * 0.08, p.y + 0.04 + absf(dir.y) * l * 0.08, front.z - r * 0.5))
 	var tb := front - dir * l * 0.45 + up * (r * 0.95)
+	if ws:
+		g.comp("terminal_box")
 	m.box(tb + up * r * 0.18, Vector3(r * 0.7, r * 0.7, r * 0.36), Basis(side, dir, up))
 	m.use("steel_dark", "detail", 0.03)
 	m.cyl(tb + side * r * 0.3 + up * r * 0.12, tb + side * r * 0.45 + up * r * 0.12, 0.02, -1.0, 6)   # cable gland
+	if ws:
+		_motor_rotor(g, front, F0, B0, dir, r, l, md.h)
+		g.comp(root)
 	return {"r": r, "l": l, "back": back}
+
+# ------------------------------------------------------------------ the motor in the Workshop (WORKSHOP.md K6)
+# A totally enclosed fan-cooled motor (IC 411, foot mounted IM B3) as the public manuals describe one; its take-apart
+# order is derived from how it is built, not from a manual (kit/README.md "Workshop: the motor"). Every piece here is
+# a Workshop piece: plant mode draws what it drew before.
+
+## A flat face (a disk when r0 is 0, else a ring) at c across the axis d, facing +d or -d, its points listed as a
+## cylinder along d lists them (across(d)): so it meets that cylinder's rim exactly, whichever way it faces.
+static func _face(m, c: Vector3, d: Vector3, r0: float, r1: float, n: int, toward_d: bool) -> void:
+	m.lathe(c, d, [[r1, 0.0], [r0, 0.0]] if toward_d else [[r0, 0.0], [r1, 0.0]], n, false)
+
+## Closes a seam at radius r round c on the axis d: a cylinder's rim there lists its n points by across(d), a disk or
+## ring facing the other way (as the kit's cyl() draws its first cap) lists them by across(-d), which for an odd n are
+## other points of the same circle; a strip of thin triangles between the two in the plane joins them, so that what
+## the plant draws stays as it is and a Workshop solid is still closed (every edge used twice). `out`: the way the face
+## it lies in looks out of the solid. Nothing for an even n.
+static func _zip(m, c: Vector3, d: Vector3, r: float, n: int, out: Vector3) -> void:
+	if n % 2 == 0:
+		return
+	var A: Array = m.across(d)
+	var B: Array = m.across(-d)
+	var pts: Array = []   # [angle in A's frame, point]
+	for i in n:
+		var t := TAU * i / n
+		pts.append([t, c + (A[0] * cos(t) + A[1] * sin(t)) * r])
+		pts.append([fposmod(PI - t, TAU), c + (B[0] * cos(t) + B[1] * sin(t)) * r])
+	pts.sort_custom(func(x, y): return x[0] < y[0])
+	for i in pts.size():
+		m.poly([pts[i][1], pts[(i + 1) % pts.size()][1], pts[(i + 2) % pts.size()][1]], out)
+
+## The bore of the stator, the bearings' outside radius and the shaft's radius.
+static func _motor_r(r: float, h: float) -> Dictionary:
+	var rs := h * 0.15
+	return {"bore": r * 0.68, "brg": rs * 2.0, "shaft": rs, "core": r * 0.6, "e": 0.04, "cowl_in": r * 0.9}
+
+## The tree: the root (the stator in its frame) and, one stage later, everything that comes off it; the bearings come
+## off the rotor's shaft after it is out. Each part leaves the way it is taken off, the faster ones ahead of the slower
+## ones on the same line (the cowl ahead of the fan ahead of the non-drive end shield; the drive-end shield ahead of
+## the rotor), so none passes through another.
+static func _motor_comps(g, root: String, root_spec: Dictionary, front: Vector3, dir: Vector3, r: float, l: float,
+		h: float) -> void:
+	var up := Vector3(0, 0, 1)
+	var spec := root_spec.duplicate()
+	var ranim: String = spec.get("rotor_anim", "")   # the motor kind's rotor is its `shaft` node (in a pump, the coupling)
+	spec.erase("rotor_anim")
+	spec["anchors"] = {"vib_nde": front - dir * l * 0.78 + up * r * 0.92}
+	g.comp(root, spec)
+	var axis := front - dir * l * 0.5
+	g.comp("terminal_box", {"parent": root, "explode": [up, r * 1.2],
+		"anchors": {"u1": front - dir * l * 0.41 + up * r * 1.2, "v1": front - dir * l * 0.45 + up * r * 1.2,
+			"w1": front - dir * l * 0.49 + up * r * 1.2}})
+	g.comp("end_shield_de", {"parent": root, "explode": [dir, l * 1.4], "anchors": {"vib_de": front - dir * 0.03 + up * r * 0.7}})
+	g.comp("end_shield_nde", {"parent": root, "explode": [-dir, l * 0.2]})
+	g.comp("fan", {"parent": root, "explode": [-dir, l * 0.55], "sym": [dir, 8]})
+	g.comp("fan_cowl", {"parent": root, "explode": [-dir, l * 0.95]})
+	g.comp("grille", {"parent": "fan_cowl", "explode": [-dir, 0.0], "thin": true})
+	g.comp("rotor", {"parent": root, "explode": [dir, l * 1.05], "pivot": axis, "sym": [dir, 0],
+		"anim": ranim})
+	g.comp("bearing_de", {"parent": "rotor", "explode": [dir, l * 0.25], "sym": [dir, 0]})
+	g.comp("bearing_nde", {"parent": "rotor", "explode": [-dir, l * 0.2], "sym": [dir, 0]})
+
+## The frame split: the stator's frame open at both ends round its bore (the end shields close it), the non-drive end
+## shield the frame's end as the plant draws it, with its spigot in the bore and its bearing housing open to the rotor.
+static func _motor_frame(g, m, mat: String, root: String, F0: Vector3, B0: Vector3, dir: Vector3, r: float, l: float,
+		h: float) -> void:
+	var k := _motor_r(r, h)
+	var n: int = m.segs(r * 0.92)   # the plant's frame's
+	g.only("workshop", "split")
+	m.use(mat, "form")
+	m.cyl(F0, B0, r * 0.92, -1.0, n, false)
+	_face(m, F0, -dir, k.bore, r * 0.92, n, false)
+	g.only("workshop")
+	m._inner(F0, B0, k.bore, n)                     # the stator's bore
+	m.ring(B0, -dir, k.bore, r * 0.92, n)
+	m.use("brass", "identify")                       # the winding's end turns, at both ends of the core
+	var ax: Array = m.across(dir)
+	for c in [F0 - dir * 0.05, B0 + dir * (k.e + 0.04)]:
+		m.torus(c, ax[0], ax[1], r * 0.81, r * 0.065, TAU, 24, 8)
+	# the non-drive-end shield: the plant's cap; its flange against the frame is drawn facing out (it lies in the cap's
+	# plane), so that what is inside it is held to the outside by the frame
+	g.comp("end_shield_nde")
+	g.only("workshop", "split")
+	m.use(mat, "form")
+	m.disk(B0, -dir, r * 0.92, n)
+	g.only("workshop")
+	m.ring(B0, -dir, k.bore, r * 0.92, n)
+	m.cyl(B0 + dir * k.e, B0, k.bore, -1.0, n, false)   # its spigot in the bore
+	_face(m, B0 + dir * k.e, -dir, k.brg, k.bore, n, false)
+	m._inner(B0 + dir * k.e, B0 + dir * (k.e - 0.03), k.brg, n)   # the bearing housing, open to the rotor
+	_face(m, B0 + dir * (k.e - 0.03), -dir, 0.0, k.brg, n, false)
+	g.comp(root)
+	g.only()
+
+## The drive-end shield as the plant draws it, its bearing housing open to the rotor.
+static func _motor_de(g, m, mat: String, front: Vector3, F0: Vector3, dir: Vector3, r: float, h: float) -> void:
+	var k := _motor_r(r, h)
+	var n: int = m.segs(r * 0.7)   # the plant's shield's
+	g.only("workshop", "split")
+	m.use(mat, "form")
+	m.cyl(F0, front, r * 0.7, -1.0, n, false)   # (its points as its front face lists them)
+	m.disk(front, dir, r * 0.7, n)
+	_face(m, F0, dir, k.brg, r * 0.7, n, false)
+	g.only("workshop")
+	m._inner(F0, F0 + dir * 0.03, k.brg, n)
+	_face(m, F0 + dir * 0.03, dir, 0.0, k.brg, n, false)
+	g.only()
+	var bolts: Array = []   # 4 bolts through the shield into the frame, backing out forwards
+	var ax: Array = m.across(dir)
+	for i in 4:
+		var a := TAU * (i + 0.5) / 4.0
+		var p: Vector3 = front + (ax[0] * cos(a) + ax[1] * sin(a)) * r * 0.58
+		var by: Vector3 = ax[0]
+		bolts.append(Transform3D(Basis(by.cross(dir), by, dir), p))
+	var bolt := func(b) -> void:
+		b.use("steel_bolt", "detail", 0.02)
+		b.cyl(Vector3(0, 0, 0), Vector3(0, 0, 0.008), 0.009, -1.0, 6)    # the head, on the shield's face
+		b.cyl(Vector3(0, 0, -0.02), Vector3(0, 0, 0), 0.005, -1.0, 6)    # the shank, in the shield
+	g.fasteners("de_bolts", "bolt", bolts, bolt)
+
+## The fan cowl as the plant draws it, open at the front over the fan, with its screws into the frame's end.
+static func _motor_cowl(g, m, mat: String, B0: Vector3, dir: Vector3, r: float, l: float) -> void:
+	var k := _motor_r(r, 0.0)
+	var n: int = m.segs(r * 0.98)   # the plant's cowl's
+	g.only("workshop", "split")
+	m.use(mat, "form")
+	m.lathe(B0, -dir, [[r * 0.98, 0.0], [r * 0.98, l * 0.16], [r * 0.6, l * 0.2]], n, false)
+	m.disk(B0 - dir * l * 0.2, -dir, r * 0.6, n)
+	m.ring(B0, dir, k.cowl_in, r * 0.98, n)   # its face to the frame, as the plant's cap (the outline needs it)
+	_zip(m, B0, -dir, r * 0.98, n, dir)       # (a seam in the outside: the stand-in's own)
+	g.only("workshop")
+	m._inner(B0 - dir * l * 0.16, B0, k.cowl_in, n)
+	m.disk(B0 - dir * l * 0.16, dir, k.cowl_in, n)
+	g.only()
+	var screws: Array = []   # 4 screws through the cowl's rim into the frame's end, backing out outwards
+	var ax: Array = m.across(dir)
+	for i in 4:
+		var a := TAU * (i + 0.125) / 4.0
+		var rad: Vector3 = ax[0] * cos(a) + ax[1] * sin(a)
+		screws.append(Transform3D(Basis(dir.cross(rad).normalized(), dir, rad), B0 - dir * 0.03 + rad * r * 0.98))
+	var screw := func(b) -> void:
+		b.use("steel_bolt", "detail", 0.015)
+		b.cyl(Vector3(0, 0, 0), Vector3(0, 0, 0.005), 0.007, -1.0, 6)
+		b.cyl(Vector3(0, 0, -0.015), Vector3(0, 0, 0), 0.0035, -1.0, 6)
+	g.fasteners("cowl_screws", "screw", screws, screw)
+
+## The rotor in the `shaft` node (it turns with the shaft): its shaft from the fan to the drive end, the core in the
+## stator's bore, the bearings in the end shields' housings, the fan on the shaft's non-drive end in the cowl. All
+## hidden inside the motor.
+static func _motor_rotor(g, front: Vector3, F0: Vector3, B0: Vector3, dir: Vector3, r: float, l: float, h: float) -> void:
+	var k := _motor_r(r, h)
+	var sh = g.move("shaft", Vector3(front.x, 0.0, front.z) if absf(dir.y) > 0.5 else Vector3(0.0, front.y, front.z),
+		dir, "rotate", 0.0)
+	g.comp("rotor")
+	g.only("workshop")
+	sh.use("steel", "identify")
+	sh.cyl(B0 - dir * l * 0.1, front - dir * 0.001, k.shaft, -1.0, 16)
+	sh.use("steel_dark", "identify")
+	sh.cyl(B0 + dir * (k.e + 0.02), F0 - dir * 0.02, k.core, -1.0, 32)   # the core (laminations, cage bars)
+	sh.use("chrome", "identify")
+	g.comp("bearing_de")
+	sh.tube(F0 + dir * 0.002, F0 + dir * 0.028, k.brg, k.shaft, 16)
+	g.comp("bearing_nde")
+	sh.tube(B0 + dir * (k.e - 0.028), B0 + dir * (k.e - 0.002), k.brg, k.shaft, 16)
+	g.comp("fan")
+	sh.use("paint_darkgrey", "identify")
+	sh.cyl(B0 - dir * 0.02, B0 - dir * l * 0.1, k.shaft * 1.6, -1.0, 16)    # its hub
+	var ax: Array = sh.across(dir)
+	for i in 8:   # straight radial blades: the fan cools whichever way the motor turns
+		var a := TAU * i / 8.0
+		var rad: Vector3 = ax[0] * cos(a) + ax[1] * sin(a)
+		var rr: float = (k.shaft * 1.5 + r * 0.8) * 0.5
+		sh.box(B0 - dir * l * 0.06 + rad * rr, Vector3(0.012, l * 0.07, r * 0.8 - k.shaft * 1.5),
+			Basis(dir.cross(rad).normalized(), dir, rad))
+	g.only()
 
 ## A vertical motor standing on `base` (its flange), shaft down. Large ones (> 500 kW) get a box-shaped top
 ## (weather-protected WP II housing), small ones a TEFC frame with a cowl on top.
