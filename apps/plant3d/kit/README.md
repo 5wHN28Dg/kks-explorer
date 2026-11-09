@@ -379,9 +379,14 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   end as the plant draws it, its spigot in the bore; the fan has eight straight radial blades (it cools whichever
   way the motor turns: `tests/test_workshop.gd` checks that no fan blade leans); the terminal box is one part with
   its terminals as anchors (`u1`, `v1`, `w1`). The plant draws the drive-end shield smaller than the frame, so its
-  four bolts stand on its own face. In the pump the motor is lifted off the baseplate whole first, and its parts come
-  apart above the pump.
-- **pump_horizontal** (the end-suction branch, K6): a back pull-out end-suction pump (API 610 type OH1) as the Goulds
+  four bolts stand on its own face. In the pump's explode the motor is lifted off the baseplate whole first and its
+  parts come apart above the pump (so that the back pull-out unit has room); the guided steps leave it standing, as
+  the spacer coupling lets a real one stay. The bearings are fitted on the rotor's shaft before it goes in and come off
+  it once it is out (in the guided steps they ride with it). The bench (later) will need the parts drawn in the
+  `shaft` node (the pump's shaft, impeller, seal and bearings, the motor's rotor and fan) turned with it: today only the
+  coupling (in the pump) or the rotor (in the motor) carries the `shaft` anim.
+- **pump_horizontal** (the end-suction branch, K6): a back pull-out end-suction pump (the OH1 configuration in API 610's terms; the Goulds 3196 itself is an
+  ASME B73.1 pump) as the Goulds
   3196 i-FRAME manual (maintenance pp. 73–84, reassembly pp. 102–132) and the Flowserve Mark 3 ISO instructions
   (§6.8, §6.10) take it apart: the coupling guard, the coupling and the motor off; the back pull-out unit (the bearing
   frame with the casing cover, the seal, the shaft and the impeller) drawn back out of the volute, which stays on its

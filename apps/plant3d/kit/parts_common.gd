@@ -172,7 +172,11 @@ static func _zip(m, c: Vector3, d: Vector3, r: float, n: int, out: Vector3) -> v
 		pts.append([fposmod(PI - t, TAU), c + (B[0] * cos(t) + B[1] * sin(t)) * r])
 	pts.sort_custom(func(x, y): return x[0] < y[0])
 	for i in pts.size():
-		m.poly([pts[i][1], pts[(i + 1) % pts.size()][1], pts[(i + 2) % pts.size()][1]], out)
+		var a: Vector3 = pts[i][1]
+		var b: Vector3 = pts[(i + 1) % pts.size()][1]
+		var e: Vector3 = pts[(i + 2) % pts.size()][1]
+		# wound counter-clockwise seen from `out` (the side it is seen from), whichever way the angles run
+		m.poly([a, b, e] if (b - a).cross(e - a).dot(out) >= 0.0 else [a, e, b], out)
 
 ## The bore of the stator, the bearings' outside radius and the shaft's radius.
 static func _motor_r(r: float, h: float) -> Dictionary:
@@ -250,7 +254,7 @@ static func _motor_de(g, m, mat: String, front: Vector3, F0: Vector3, dir: Vecto
 	m._inner(F0, F0 + dir * 0.03, k.brg, n)
 	_face(m, F0 + dir * 0.03, dir, 0.0, k.brg, n, false)
 	g.only()
-	var bolts: Array = []   # 4 bolts through the shield into the frame, backing out forwards
+	var bolts: Array = []   # 4 bolts on the shield's face (the plant draws it smaller than the frame), backing out forwards
 	var ax: Array = m.across(dir)
 	for i in 4:
 		var a := TAU * (i + 0.5) / 4.0
@@ -277,7 +281,7 @@ static func _motor_cowl(g, m, mat: String, B0: Vector3, dir: Vector3, r: float, 
 	m._inner(B0 - dir * l * 0.16, B0, k.cowl_in, n)
 	m.disk(B0 - dir * l * 0.16, dir, k.cowl_in, n)
 	g.only()
-	var screws: Array = []   # 4 screws through the cowl's rim into the frame's end, backing out outwards
+	var screws: Array = []   # 4 screws through the cowl's rim, backing out outwards
 	var ax: Array = m.across(dir)
 	for i in 4:
 		var a := TAU * (i + 0.125) / 4.0

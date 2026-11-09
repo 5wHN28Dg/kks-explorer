@@ -1,6 +1,6 @@
 """The horizontal pump's Workshop data (docs/plant3d/WORKSHOP.md §4, milestone K6): a single-stage end-suction back
-pull-out centrifugal pump (API 610 type OH1) on a baseplate, driven by a foot-mounted motor through a spacer coupling
-under a guard. Its geometry is the kit's generator, apps/plant3d/kit/parts_rotating.gd `pump_horizontal` (the
+pull-out centrifugal pump (the OH1 configuration in API 610's terms) on a baseplate, driven by a foot-mounted motor
+through a spacer coupling under a guard. Its geometry is the kit's generator, apps/plant3d/kit/parts_rotating.gd `pump_horizontal` (the
 end-suction branch; the multi-stage barrel pump's tree is not built yet), and its motor is the motor kind's tree from
 the same helper (`motor_h`): its words, fasteners and assembly come from tools/plant3d/workshop/motor.py, written once.
 
@@ -99,32 +99,39 @@ def _step(place, text, needs=(), why=None, sources=(GOULDS,)):
     return s
 
 
-# The pump's reassembly (Goulds pp. 102-132, Flowserve §6.10): the power end on the bench (the bearings on the shaft,
-# the shaft into the frame, its end cover), the seal and the casing cover, the impeller; the back pull-out assembly
-# into the casing with its bolts; the motor (its own tree, motor.py), the coupling and the guard. A part goes into its
-# parent wherever that stands; the needs are only what the manuals say must come first.
+# The pump's reassembly (Goulds pp. 102-132, Flowserve §6.10): the motor stands on the baseplate throughout (the spacer
+# coupling lets the back pull-out assembly come out without moving it); the power end on the bench (the shaft with its
+# bearings already on it into the frame, its end cover), the seal and the casing cover, the impeller; the back pull-out
+# assembly into the casing with its bolts; the coupling and the guard. A part goes into its parent wherever that
+# stands; the needs are only what the manuals say must come first. The bearings ride with the shaft (its children in
+# the tree): they come off it on the bench once it is out of the frame, so no step makes the shaft wait for them.
 ASSEMBLY = [
     _step('baseplate', 'The baseplate stays grouted to the floor.'),
     _step('volute', 'The casing stays bolted to the baseplate and to its suction and discharge pipes.',
           why='The back pull-out design lets the rest come out without disturbing the pipes.',
           sources=(GOULDS, FLOWSERVE)),
+    _step('motor', 'The motor stands on the baseplate, on its shims.',
+          why='The spacer coupling lets the back pull-out assembly come out without moving the motor; its own parts '
+              'come apart as the motor kind\'s do.', sources=(GOULDS, motor.SIMOTICS)),
+] + motor.assembly('motor', first=False) + [
     _step('frame', 'Set the bearing frame on the bench.', sources=(GOULDS, FLOWSERVE)),
-    _step('shaft', 'Slide the shaft into the frame from the coupling end.',
+    _step('shaft', 'Slide the shaft, its bearings already on it, into the frame from the coupling end.',
           [('frame', 'The shaft goes into the bearing frame: set the frame down first.',
             'Draw the shaft out of the frame before the frame is moved.')], sources=(GOULDS, FLOWSERVE)),
-    _step('bearing_ib', 'Fit the inboard bearing on the shaft, heated, pressing on its inner race only.',
-          [('shaft', 'The bearing goes on the shaft: put the shaft in first.',
-            'Press the inboard bearing off before the shaft is handled further.')],
-          why='Bearings are never reused once removed.', sources=(GOULDS, FLOWSERVE)),
-    _step('bearing_ob', 'Fit the outboard bearing on the shaft the same way, with its locknut.',
-          [('shaft', 'The bearing goes on the shaft: put the shaft in first.',
-            'Press the outboard bearing off before the shaft is handled further.')], sources=(GOULDS, FLOWSERVE)),
+    _step('bearing_ib', 'The inboard bearing is fitted on the shaft on the bench, before the shaft goes into the '
+          'frame: heated, pressed on its inner race only.',
+          why='It comes off the shaft once the shaft is out of the frame; bearings are never reused once removed.',
+          sources=(GOULDS, FLOWSERVE)),
+    _step('bearing_ob', 'The outboard bearing is fitted on the shaft the same way, with its locknut, before the shaft '
+          'goes into the frame.', sources=(GOULDS, FLOWSERVE)),
     _step('end_cover', 'Fit the bearing end cover at the coupling end.',
           [('bearing_ob', 'The end cover holds the outboard bearing: fit the bearing first.',
-            'Take the end cover off before the shaft and its bearings are drawn out.')], sources=(GOULDS, FLOWSERVE)),
+            'Take the end cover off before the shaft and its bearings are drawn out.'),
+           ('shaft', 'The end cover closes the frame round the shaft: put the shaft in first.',
+            'Take the end cover off before the shaft is drawn out.')], sources=(GOULDS, FLOWSERVE)),
     _step('seal', 'Slide the mechanical seal onto the shaft, its faces clean.',
           [('shaft', 'The seal goes on the shaft: put the shaft in first.',
-            'Take the seal off the shaft before the shaft is handled further.')], sources=(GOULDS,)),
+            'Take the seal off the shaft before the shaft is drawn out of the frame.')], sources=(GOULDS,)),
     _step('casing_cover', 'Fit the casing cover over the seal to the frame.',
           [('seal', 'The cover closes over the seal: fit the seal first.',
             'Take the casing cover off before the seal.')], sources=(GOULDS, FLOWSERVE)),
@@ -139,22 +146,22 @@ ASSEMBLY = [
           [('frame', 'The bolts hold the back pull-out assembly to the casing: put it in first.',
             'Take the casing bolts out before the back pull-out assembly is pulled.'),
            ('casing_cover', 'The bolts clamp the casing cover: fit the cover first.',
-            'Take the casing bolts out before the casing cover comes off.')], sources=(GOULDS, FLOWSERVE)),
-    _step('motor', 'Set the motor\'s stator and frame on the baseplate, on its shims.',
-          why='Its own parts go together as the motor kind\'s do; the motor is lifted by its own lifting eyes.',
-          sources=(GOULDS, motor.SIMOTICS)),
-] + motor.assembly('motor', first=False) + [
+            'Take the casing bolts out before the casing cover comes off.'),
+           ('impeller', 'The impeller goes on before the back pull-out assembly goes into the casing.',
+            'Pull the back pull-out assembly before the impeller comes off.')], sources=(GOULDS, FLOWSERVE)),
     _step('coupling', 'Fit the coupling\'s spacer between the hubs and check the alignment.',
           [('motor', 'The coupling joins the pump to the motor: set the motor down first.',
             'Take the coupling out before the motor is lifted.'),
-           ('shaft', 'The coupling joins the pump\'s shaft to the motor\'s: put the shaft in first.',
-            'Take the coupling out before the back pull-out assembly is pulled.')], sources=(GOULDS, FLOWSERVE)),
+           ('rotor', 'The coupling\'s motor hub sits on the motor\'s shaft: put the rotor in first.',
+            'Take the coupling out before the motor\'s rotor is drawn out.'),
+           ('casing_bolts', 'The coupling joins the pump\'s shaft to the motor\'s: bolt the back pull-out assembly in '
+            'first.', 'Take the coupling out before the back pull-out assembly is pulled.')],
+          sources=(GOULDS, FLOWSERVE)),
     _step('guard', 'Fit the coupling guard.',
           [('coupling', 'The guard covers the coupling: fit the coupling first.',
             'Take the coupling guard off first.')],
           why='The pump never runs without its coupling guard.', sources=(GOULDS, FLOWSERVE)),
 ]
-
 
 def data():
     return {

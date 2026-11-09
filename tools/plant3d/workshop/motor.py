@@ -99,17 +99,15 @@ def assembly(root, first=True):
     steps = [_step(root, 'Set the stator in its frame on the bench, feet down, the winding protected.',
                    sources=(SIMOTICS,))] if first else []
     return steps + [
-        _step('rotor', 'Slide the rotor into the stator\'s bore from the drive end, its weight carried so that it '
-              'never rests on the winding.',
+        _step('rotor', 'Slide the rotor, its bearings already on its shaft, into the stator\'s bore from the drive '
+              'end, its weight carried so that it never rests on the winding.',
               [(root, 'The rotor goes into the stator\'s bore: set the stator down first.',
                 'Draw the rotor out before the stator is moved.')],
               why='A rotor dragged against the winding damages its insulation.', sources=(SIMOTICS, WEG)),
-        _step('bearing_de', 'Fit the drive-end bearing on the shaft, heated, pressing on its inner ring only.',
-              [('rotor', 'The bearing goes on the rotor\'s shaft: put the rotor in first.',
-                'Pull the drive-end bearing off before the rotor is handled further.')], sources=(ABB, SIMOTICS)),
-        _step('bearing_nde', 'Fit the non-drive-end bearing on the shaft the same way.',
-              [('rotor', 'The bearing goes on the rotor\'s shaft: put the rotor in first.',
-                'Pull the non-drive-end bearing off before the rotor is handled further.')], sources=(ABB, SIMOTICS)),
+        _step('bearing_de', 'The drive-end bearing is fitted on the shaft before the rotor goes in: heated, pressed '
+              'on its inner ring only.', why='It comes off the shaft once the rotor is out.', sources=(ABB, SIMOTICS)),
+        _step('bearing_nde', 'The non-drive-end bearing is fitted on the shaft the same way, before the rotor goes in.',
+              sources=(ABB, SIMOTICS)),
         _step('end_shield_nde', 'Fit the non-drive-end shield over its bearing and into the frame, with its bearing '
               'cap.',
               [('bearing_nde', 'The shield\'s housing closes over the non-drive-end bearing: fit the bearing first.',
