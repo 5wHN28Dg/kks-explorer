@@ -145,7 +145,29 @@ class WorkshopData(unittest.TestCase):
         self.assertIn('baseplate', needs['stator'])
         self.assertEqual(pump['params']['head_m'], 40)   # the end-suction pump (the multi-stage one has no tree yet)
 
-    def test_context(self):
+    def test_the_control_valve_passes(self):
+        # K6: the pneumatic control valve (Fisher easy-e ES body and trim, Fisher 667 actuator)
+        v = json.loads(self.files['workshop/valve_control.json'])
+        self.assertEqual(self.b.workshop['valve_control']['components'], 15)
+        self.assertEqual(v['params'], {'dn': 150, 'actuator': 'pneumatic'})
+        self.assertEqual(set(v['fasteners']), {'bonnet_bolts', 'casing_bolts'})
+        undo = [s['place'] for s in v['assembly']][::-1]
+        # taken apart (the reverse): the tubing and the positioner, the stem connector before the actuator's casing
+        # comes apart (667: never part it under spring force) and before the actuator leaves the bonnet; the
+        # actuator off before the packing (ES: replacing packing); the bonnet nuts, the bonnet, then the plug and
+        # stem, the cage, the seat ring (ES §3.3)
+        for a, b in (('tubing', 'positioner'), ('positioner', 'stem_connector'), ('stem_connector', 'casing_bolts'),
+                     ('stem_connector', 'yoke'), ('casing_bolts', 'upper_casing'), ('upper_casing', 'diaphragm'),
+                     ('diaphragm', 'actuator_stem'), ('yoke', 'packing'), ('packing', 'bonnet'),
+                     ('bonnet_bolts', 'bonnet'), ('bonnet', 'plug_stem'), ('plug_stem', 'cage'), ('cage', 'seat_ring')):
+            self.assertLess(undo.index(a), undo.index(b), (a, b))
+        # every step cites the valve's or the actuator's manual; the spring's says where the 667's really sits
+        steps = {st['place']: st for st in v['assembly']}
+        self.assertIn('yoke', ' '.join(steps['spring']['why']))
+        for st in v['assembly']:
+            self.assertTrue(set(st['sources']) & {'fisher_es', 'fisher_667', 'dvc6200'}, st['place'])
+
+
         w = copy.deepcopy(self.fixture)
         w.pop('params', None)
         w['context'] = ['shaft_lo']

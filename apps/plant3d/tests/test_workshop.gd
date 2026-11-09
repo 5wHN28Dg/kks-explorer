@@ -50,6 +50,8 @@ const PASSES := {
 	"test_gadget|base|core": "the fixture's core is drawn inside its closed base on purpose (a hidden piece) and "
 		+ "comes out through its wall",
 }
+## A valve's closure member, its seat and the moving piece that carries it ("kind": [plug, seat, moving]) (_seats).
+const SEATS := {"valve_control": ["plug_stem", "seat_ring", "stem"]}
 const CELL := 0.25   # the cells' width (m) in which the explode's paths are compared
 const SMALL := 0.1   # the longest edge of a small triangle there (m)
 const FIXTURE := "res://tests/fixtures/workshop_gadget.gd"
@@ -126,6 +128,7 @@ func _kind(part: String, data: Dictionary, params: Dictionary, ctx := {}) -> voi
 	_closed(part, ws)
 	_blade_lean(part, ws)
 	_turning(part, ws)
+	_seats(part, ws)
 	if r.scene != null:
 		_explode_paths(part, r.scene)
 	print("workshop: %s %d components, %d fastener groups, %d triangles (plant %d)" % [part, ws.components.size(),
@@ -663,6 +666,61 @@ func _explode_paths(part: String, ps: PackedScene) -> void:
 						bad[a + "|" + c] = true
 						check(false, "%s: %s and %s pass through each other in the explode (stage %d of %d, s = %.2f)" % [
 							part, a, c, d + 1, D, (d + float(k) / N) / D])
+
+## A valve's plug closes its seat (SEATS): at 0 travel its face toward the seat lies on the seat's face (within 1 mm)
+## and covers the seat's bore; the plug, the seat's bore and the moving piece's axis are one line; opening (the moving
+## piece's travel along its axis) lifts the plug off the seat, never into it.
+func _seats(part: String, ws: Dictionary) -> void:
+	if not SEATS.has(part):
+		return
+	var who: Array = SEATS[part]
+	var mv = null
+	for x in ws.moving:
+		if x.name == who[2]:
+			mv = x
+	check(mv != null, "%s: the moving piece %s" % [part, who[2]])
+	if mv == null:
+		return
+	var a: Vector3 = mv.axis
+	var o: Vector3 = mv.pivot
+	var pts := {who[0]: PackedVector3Array(), who[1]: PackedVector3Array()}
+	for pr in _all_layers(ws):
+		var L: Dictionary = pr[0]
+		if pts.has(L.comp):
+			var arr := (L.mesh as ArrayMesh).surface_get_arrays(0)
+			for v in (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+				pts[L.comp].append(v + pr[1])
+	for c in pts:
+		check(not pts[c].is_empty(), "%s: %s is drawn" % [part, c])
+		if pts[c].is_empty():
+			return
+	var off := func(p: Vector3) -> float: return ((p - o) - a * (p - o).dot(a)).length()   # from the axis line
+	var centre := func(ps: PackedVector3Array) -> Vector3:
+		var b := AABB(ps[0], Vector3.ZERO)
+		for p in ps:
+			b = b.expand(p)
+		return b.get_center()
+	var cp: Vector3 = centre.call(pts[who[0]])
+	var cs: Vector3 = centre.call(pts[who[1]])
+	check(off.call(cp) <= 0.001 and off.call(cs) <= 0.001, "%s: %s and %s on %s's axis (%.1f and %.1f mm off it)" % [
+		part, who[0], who[1], who[2], off.call(cp) * 1000.0, off.call(cs) * 1000.0])
+	check(a.dot(cp - cs) > 0.0 and mv.travel > 0.0, "%s: opening %s lifts %s off %s" % [part, who[2], who[0], who[1]])
+	var low := INF
+	for p in pts[who[0]]:
+		low = minf(low, (p - o).dot(a))
+	var top := -INF
+	var bore := INF
+	for p in pts[who[1]]:
+		top = maxf(top, (p - o).dot(a))
+		bore = minf(bore, off.call(p))
+	var face := 0.0   # the plug's radius at its face toward the seat
+	for p in pts[who[0]]:
+		if absf((p - o).dot(a) - low) <= 0.001:
+			face = maxf(face, off.call(p))
+	check(absf(low - top) <= 0.001, "%s: %s sits on %s at 0 travel (%.1f mm apart)" % [part, who[0], who[1],
+		(low - top) * 1000.0])
+	check(face > bore + 0.001, "%s: %s's face (radius %.1f mm) covers %s's bore (%.1f mm)" % [part, who[0], who[1],
+		face * 1000.0, bore * 1000.0])
 
 ## Whether two components' cells pass through each other between two moments: each cell moved by its component's
 ## offset (a's relative to c's: r0 at the first, r1 at the second); a cell of a only meets c's cells near it, and
