@@ -86,9 +86,8 @@ def fasteners(root):
 
 
 def _step(place, text, needs=(), why=None, sources=(WEG,)):
-    s = {'place': place, 'text': [text], 'sources': list(sources)}
-    if why:
-        s['why'] = [why]
+    """A step of the motor's own order: its reason says the order is derived from the build (the user, 2026-11-09)."""
+    s = {'place': place, 'text': [text], 'sources': list(sources), 'why': [(why + ' ' if why else '') + DERIVED]}
     if needs:
         s['needs'] = [list(n) for n in needs]
     return s
@@ -98,7 +97,7 @@ def assembly(root, first=True):
     """The motor's guided order (reassembly; taking apart is its reverse). `first`: the root is placed here (the
     motor kind) rather than by the machine it drives."""
     steps = [_step(root, 'Set the stator in its frame on the bench, feet down, the winding protected.',
-                   why=DERIVED, sources=(SIMOTICS,))] if first else []
+                   sources=(SIMOTICS,))] if first else []
     return steps + [
         _step('rotor', 'Slide the rotor into the stator\'s bore from the drive end, its weight carried so that it '
               'never rests on the winding.',
@@ -151,7 +150,8 @@ def data():
                            baseplate=_c('Baseplate', 'The steel frame the motor\'s feet are bolted to, grouted to '
                                         'the floor.', 'Steel, grout', [SIMOTICS])),
         'fasteners': fasteners('stator'),
-        'assembly': [_step('baseplate', 'The baseplate stays grouted to the floor.', sources=(SIMOTICS,))] +
+        'assembly': [{'place': 'baseplate', 'text': ['The baseplate stays grouted to the floor.'],
+                      'sources': [SIMOTICS]}] +
         assembly('stator'),
         # the X-ray takes the frame and its closures; the cutaway opens a quarter above the shaft on the side away from
         # the terminal box; the motor runs only assembled, and nothing is opened while it turns

@@ -370,6 +370,14 @@ func _blade_lean(part: String, ws: Dictionary) -> void:
 		return
 	if FLOW[part] is String:
 		_radial_lean(part, ws, shaft)
+		if int(RADIAL_ROWS.get(part, 0)) > 0:   # the check itself: the same vanes with the shaft turning the other way fail
+			var kept := problems.duplicate()
+			var back: Dictionary = shaft.duplicate()
+			back.axis = -(shaft.axis as Vector3)
+			_radial_lean(part, ws, back)
+			var caught := problems.size() > kept.size()
+			problems = kept
+			check(caught, "%s: the vane check misses an impeller turning the wrong way" % part)
 		return
 	var f: Vector3 = FLOW[part]
 	var ax: Vector3 = shaft.axis

@@ -1027,6 +1027,15 @@ Starting sources (to be checked page by page in each milestone):
   manufacturers' published cutaways of heavy-duty frames. Its bench (K5b): NASA Glenn Research Center's Beginner's Guide to
   Propulsion (compressor and power-turbine thermodynamics), the NIST Chemistry WebBook (methane's heat of
   combustion), GE GER-3434D and GER-3620P; the sequence, trips and their values are the plant's own model.
+- **Horizontal pump (K6):** ITT Goulds 3196 i-FRAME installation, operation and maintenance manual (2017: the
+  maintenance chapter's take-apart, pp. 73–84, and its reassembly, pp. 102–132), Flowserve Durco Mark 3 ISO user
+  instructions 85392719 (§6.8 dismantling, §6.10 assembly), a public summary of API 610's pump types (OH1), the US DOE
+  Fundamentals Handbook's pumps chapter (the volute) and KSB's pump lexicon (backward-curved vanes, the direction of
+  rotation named from the drive).
+- **Motor (K6):** ABB's low voltage motors manual (3GZF500730-85), WEG's installation, operation and maintenance manual
+  (50033244) and Innomotics' SIMOTICS 1LE1 operating instructions (A5E38483075A: IC 411, IM B3, the fan and the end
+  shields). None of them gives a numbered dismantling order: the motor's order is **derived from how it is built, not
+  from a manual** (the user, 2026-11-09), and its data says so in every step's reason.
 
 ## 12. Milestones
 
