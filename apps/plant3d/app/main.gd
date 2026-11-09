@@ -99,18 +99,25 @@ const Autopilot = preload("res://app/autopilot.gd")
 const Routes = preload("res://app/routes.gd")
 const Hud = preload("res://app/hud.gd")
 const MapView = preload("res://app/map_view.gd")
-const PlantUi = preload("res://ui/plant_ui.gd")
 const Lighting = preload("res://app/lighting.gd")
 const Interiors = preload("res://app/interiors.gd")
+const Door = preload("res://app/door.gd")   # (in the areas' scenes: compiled before `_prep_begin`, see there)
 const People = preload("res://app/people.gd")
 const StairTreads = preload("res://app/stair_treads.gd")
-const MpSession = preload("res://net/session.gd")
 const Crowd = preload("res://app/crowd.gd")
 const ScriptCost = preload("res://app/script_cost.gd")
 const WalkFrames = preload("res://app/walk_frames.gd")
-const SimClock = preload("res://ui/sim_clock.gd")
-const Workshop = preload("res://workshop/workshop.gd")
 const WeatherView = preload("res://app/weather_view.gd")
+# The start's slow scripts and the plant's model are made on worker threads while the sky frame is drawn and the plant
+# loads (`_prep_begin`): preloaded here, the UI's, the Workshop's and the session's scripts were compiled on the main
+# thread before the scene was ready (most of the Note 9's 5.2 s to `ready`), and the model read there in the `ui` stage
+# (most of its 2.3 s). Loaded by path, so that this script's own compile does not pull them in.
+const PLANT_UI := "res://ui/plant_ui.gd"
+const WORKSHOP := "res://workshop/workshop.gd"
+const SESSION := "res://net/session.gd"
+const SIM_CLOCK := "res://ui/sim_clock.gd"
+const PLANT_MODEL := "res://sim/plant_model.gd"
+const CONTENT := "res://built/content"
 const ANDROID_FILES := "/storage/emulated/0/Android/data/io.github.walkdown.plant/files"
 
 var cf: ConfigFile
@@ -167,6 +174,11 @@ var workshop_walk: Node     # walk=workshop: app/workshop_walk.gd
 var _screen_t := 0.0
 var lightmap_filter := ""   # "bicubic" or "bilinear": the lightmap's filter on this device, set before the plant loads (app/lighting.gd lightmap_bicubic)
 var probing := false     # the tier probe is running: no map, no tier changes, no walking until it ends
+var _prep_scripts: Array[Script] = []   # what they compiled (held: the main thread takes them from the cache)
+var _prep_model = null   # sim/plant_model.gd read from CONTENT on a worker thread, for the UI
+var prep_model_used := false   # the UI took it (tests/test_launch.gd)
+var _Session    # net/session.gd and ui/sim_clock.gd, held from `_prep_end` (never a load() per frame)
+var _SimClock
 
 func _ready() -> void:
 	_launch("ready")
@@ -197,6 +209,7 @@ func _ready() -> void:
 			else Quality.choose(cf, opts.get("quality", "")).tier != ""
 	var sky_cam: Camera3D = null
 	if early:
+		_prep_begin()
 		choose_tier(false)   # the plant's pieces and materials get the tier once they are loaded (below)
 		_launch("tier")
 		sky_cam = Camera3D.new()
@@ -295,7 +308,8 @@ func _ready() -> void:
 	hud.setup(self)
 	player.mode_changed.connect(func(_m): hud.refresh())
 	_launch("player, map, hud")
-	ui = PlantUi.new()
+	_prep_end()
+	ui = load(PLANT_UI).new()
 	ui.name = "ui"
 	add_child(ui)
 	if opts.get("walk", "") == "job" and not opts.has("scenario"):
@@ -306,10 +320,12 @@ func _ready() -> void:
 		opts["scenario"] = "shift_aged"   # (the aged plant: a pump running with its bearing's signs)
 	if opts.get("walk", "") in ["gate", "drive"]:
 		opts["crews"] = "1"       # the gate walk is the crews' shift change (PLANT3D §21.10); the drive walk drives them
-	ui.setup(self, opts.get("scenario", "shift_cold" if opts.has("crews") else "cold_iron"))
+	ui.setup(self, opts.get("scenario", "shift_cold" if opts.has("crews") else "cold_iron"), CONTENT, _prep_model)
+	prep_model_used = _prep_model != null and ui.model == _prep_model
+	_prep_model = null
 	ui.add_settings(hud.extra)
 	weather.attach(ui)
-	workshop = Workshop.new()
+	workshop = load(WORKSHOP).new()
 	workshop.name = "workshop"
 	add_child(workshop)
 	workshop.setup(self)
@@ -353,14 +369,64 @@ func _ready() -> void:
 	elif opts.get("map", "") == "1":
 		toggle_map()
 
+## The start's slow scripts compiled, and the plant's model read, on worker threads (see PLANT_UI), in a staged start
+## (a start in one go, as in the tests, has no frames to hide them behind: `_prep_end` loads them there). The scripts
+## go through ResourceLoader's threaded loads (a plain load() on a worker can wait for the main thread, which would be
+## waiting for it in `_prep_end`): the model's first, then its task asks for the others and reads the model while they
+## compile. While they compile the main thread loads no script it has not loaded already (Godot compiles one script at a
+## time: it would wait for them), hence the door's preload.
+func _prep_begin() -> void:
+	_prep_t0 = Time.get_ticks_msec()
+	ResourceLoader.load_threaded_request(PLANT_MODEL)
+	_prep_task = WorkerThreadPool.add_task(func():
+		var model_script: Script = ResourceLoader.load_threaded_get(PLANT_MODEL)
+		for p in [PLANT_UI, WORKSHOP, SESSION]:
+			ResourceLoader.load_threaded_request(p)
+		var t := Time.get_ticks_msec()
+		_prep_model = model_script.from_dir(CONTENT) if model_script != null else null
+		_prep_model_ms = Vector2i(t - _prep_t0, Time.get_ticks_msec() - t), true, "the plant's model")
+
+var _prep_task := -1
+var _prep_t0 := 0
+var _prep_model_ms := Vector2i(-1, -1)   # the model's task: [ms from _prep_begin to its start, its own ms]
+
+## Takes what `_prep_begin` made (on the Note 9 it is done by now: the wait is logged); without it, loads them here.
+func _prep_end() -> void:
+	if _prep_task < 0:
+		if _prep_scripts.is_empty():
+			for p in [PLANT_UI, WORKSHOP, SESSION]:
+				_prep_scripts.append(load(p))
+		_hold_scripts()
+		return
+	var t0 := Time.get_ticks_msec()
+	WorkerThreadPool.wait_for_task_completion(_prep_task)   # (it reads files and runs the model's code: no main thread)
+	_prep_task = -1
+	var model_at := Time.get_ticks_msec() - _prep_t0
+	_prep_scripts.clear()
+	for p in [PLANT_UI, WORKSHOP, SESSION]:
+		# (while a load still runs, the main thread's wait here runs its message queue: calls deferred by the HUD's
+		# setup run before the UI is made instead of at the frame's end; on the Note 9 the loads are done by now)
+		_prep_scripts.append(ResourceLoader.load_threaded_get(p))
+	_hold_scripts()
+	_say("LAUNCH  worker threads: model %d ms (from +%d), done by +%d ms, the scripts by +%d ms; waited %d ms" % [
+			_prep_model_ms.y, _prep_model_ms.x, model_at, Time.get_ticks_msec() - _prep_t0, Time.get_ticks_msec() - t0])
+
+func _hold_scripts() -> void:
+	_Session = _prep_scripts[2]
+	_SimClock = load(SIM_CLOCK)   # (compiled with the UI's: from the cache, once)
+
+func _exit_tree() -> void:
+	if _prep_task >= 0:
+		_prep_end()   # (a start that ended before its UI: no task left behind)
+
 func _unbaked(n: Node) -> void:
 	var g := n as GeometryInstance3D
 	if g != null and g.gi_mode == GeometryInstance3D.GI_MODE_STATIC and not (n is MeshInstance3D and n.is_in_group("kit_static")):
 		g.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 
 func _digest_bench() -> void:
-	var m = preload("res://sim/plant_model.gd").from_dir("res://built/content")
-	var lines: PackedStringArray = ["ERROR " + m.error] if m.error != "" else preload("res://app/digest_bench.gd").run(m, 200)
+	var m = load("res://sim/plant_model.gd").from_dir("res://built/content")
+	var lines: PackedStringArray = ["ERROR " + m.error] if m.error != "" else load("res://app/digest_bench.gd").run(m, 200)
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	var f := FileAccess.open(out_dir.path_join("digest.txt"), FileAccess.WRITE)
 	f.store_string("\n".join(lines) + "\n")
@@ -370,7 +436,7 @@ func _digest_bench() -> void:
 	get_tree().quit()
 
 func _step_bench() -> void:
-	var SB := preload("res://app/step_bench.gd")
+	var SB = load("res://app/step_bench.gd")
 	var loads := {}
 	var d := DirAccess.open(out_dir)
 	if d != null:
@@ -379,7 +445,7 @@ func _step_bench() -> void:
 		for f in names:
 			if f.begins_with("realism-") and f.ends_with(".json"):
 				loads[f.trim_suffix(".json")] = FileAccess.get_file_as_string(out_dir.path_join(f))
-	var lines := SB.run(SB.read_dir("res://built/content"), loads, 6000, String(opts.get("weather", "clear")))
+	var lines: PackedStringArray = SB.run(SB.read_dir("res://built/content"), loads, 6000, String(opts.get("weather", "clear")))
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	var fo := FileAccess.open(out_dir.path_join("step.txt"), FileAccess.WRITE)
 	fo.store_string("\n".join(lines) + "\n")
@@ -614,11 +680,11 @@ func _start_walk() -> void:
 	walk_seconds = float(opts.get("seconds", "600"))
 	player.pace = Player.WALK_SPEED     # a measured walk goes at the same speed on every device, whatever its settings
 	if opts.get("probe", "0") not in ["0", "false", ""]:
-		frame_probe = preload("res://app/frame_probe.gd").new()
+		frame_probe = load("res://app/frame_probe.gd").new()
 		frame_probe.main = self
 		add_child(frame_probe)
 		if opts.has("shadow_ab"):   # each group of shadow casters' GPU cost, switched in turn (app/shadow_ab.gd)
-			var ab := preload("res://app/shadow_ab.gd").new()
+			var ab: Node = load("res://app/shadow_ab.gd").new()
 			ab.name = "shadow_ab"
 			ab.setup(String(opts.shadow_ab), [plant, people], sun)
 			add_child(ab)
@@ -648,7 +714,7 @@ func _start_walk() -> void:
 		last_us = Time.get_ticks_usec()
 		return
 	if opts.walk == "workshop":
-		workshop_walk = preload("res://app/workshop_walk.gd").new()
+		workshop_walk = load("res://app/workshop_walk.gd").new()
 		workshop_walk.name = "workshop_walk"
 		add_child(workshop_walk)
 		last_us = Time.get_ticks_usec()
@@ -781,7 +847,7 @@ func _monitor_walk() -> void:
 	for i in ui.monitoring.by_machine[ui.monitoring.machine_of(code)]:
 		var p: Dictionary = ui.monitoring.points[i]
 		if p["kind"] == "vib":
-			vib = preload("res://sim/hands.gd").shown(e, String(p["meter"]), e.cur)
+			vib = load("res://sim/hands.gd").shown(e, String(p["meter"]), e.cur)
 	_say("MON %s carried=%s screen=%s vib=%.2f open_ms=%.1f view_draws=%d view_tris=%d before_draws=%d before_tris=%d" % [
 		code, str(e.carried.get(ui.me(), [])), "yes" if ui.monitoring.body.find_child("collector", true, false) != null else "no",
 		vib, open_ms, inview.x, inview.y, before.x, before.y])
@@ -1039,7 +1105,7 @@ func _mp_join() -> void:
 		add_child(t)
 		var flip := [false]
 		t.timeout.connect(func():
-			if ui.session != null and ui.session.state == MpSession.State.RUN and not ui.session._loading:
+			if ui.session != null and ui.session.state == _Session.State.RUN and not ui.session._loading:
 				flip[0] = not flip[0]
 				ui.inputs.op("00QFA10AN001", "start" if flip[0] else "stop"))
 
@@ -1065,7 +1131,7 @@ func _mp_result() -> void:
 	# the layer's slow frames (over 1.5 ms) and where their time went: receive (decrypt, parse), frame (beside the
 	# model's steps), positions, flush (seal, send); with mp_probe=1 the thread's time on a CPU (run) and waiting (wait)
 	if s.probe_sched:
-		_say("SESSION probe: schedstat %s" % ("read" if MpSession.sched_error == "" else "not read (%s)" % MpSession.sched_error))
+		_say("SESSION probe: schedstat %s" % ("read" if _Session.sched_error == "" else "not read (%s)" % _Session.sched_error))
 	for f in st.get("slow", []):
 		_say("SESSION slow %d us at %.1f s: receive %d, frame %d (steps %d apart), positions %d, flush %d; packets in %d, out %d; run %s, wait %s, switches %s; %s" % [
 			f["us"], f["t"], f["receive"], f["frame"], f["steps"], f["positions"], f["flush"], f["in"], f["out"],
@@ -1090,7 +1156,7 @@ func _process(delta: float) -> void:
 	# with the phone's monotonic clock from the start (speed=fast fast-forwards before the walk begins), so that
 	# phone/frames.sh leaves fast-forward's frames out of what the screen showed, which counts from the first frame
 	# (a player still catching up on turns committed in fast-forward runs fast-forward's steps at 1×: net/session.gd)
-	var ff: bool = ui != null and ui.clock != null and (ui.clock.speed == SimClock.Speed.FAST or
+	var ff: bool = ui != null and ui.clock != null and (ui.clock.speed == _SimClock.Speed.FAST or
 		(ui.session != null and ui.session.ff_tail))
 	if ff != _walk_ff and opts.has("walk"):
 		_walk_ff = ff

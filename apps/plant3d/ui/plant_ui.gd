@@ -147,7 +147,8 @@ var _blink := 0.0
 var _flight: Tween
 
 
-func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
+## ready_model: the plant's model already read from `content` (app/main.gd reads it on a worker thread), or null.
+func setup(m, scenario := "cold_iron", content := CONTENT, ready_model = null) -> void:
 	main = m
 	player = m.player
 	layer = 2
@@ -159,7 +160,7 @@ func setup(m, scenario := "cold_iron", content := CONTENT) -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.theme = W.make_theme()
 	add_child(root)
-	model = PlantModel.from_dir(content)
+	model = ready_model if ready_model != null else PlantModel.from_dir(content)
 	if model.error != "":
 		error = "The plant's model did not load: " + model.error
 		_build_toast()
