@@ -231,13 +231,14 @@ static func _motor_frame(g, m, mat: String, root: String, F0: Vector3, B0: Vecto
 	g.comp("end_shield_nde")
 	g.only("workshop", "split")
 	m.use(mat, "form")
-	m.disk(B0, -dir, r * 0.92, n)
+	m.ring(B0, -dir, k.shaft * 1.06 + 0.002, r * 0.92, n)   # (the plant's cap, open round the shaft to the fan)
 	g.only("workshop")
 	m.ring(B0, -dir, k.bore, r * 0.92, n)
 	m.cyl(B0 + dir * k.e, B0, k.bore, -1.0, n, false)   # its spigot in the bore
 	_face(m, B0 + dir * k.e, -dir, k.brg, k.bore, n, false)
 	m._inner(B0 + dir * k.e, B0 + dir * (k.e - 0.03), k.brg, n)   # the bearing housing, open to the rotor
-	_face(m, B0 + dir * (k.e - 0.03), -dir, 0.0, k.brg, n, false)
+	_face(m, B0 + dir * (k.e - 0.03), -dir, k.shaft * 1.06 + 0.002, k.brg, n, false)   # (the shaft through it to the fan)
+	m._inner(B0 + dir * (k.e - 0.03), B0, k.shaft * 1.06 + 0.002, n)
 	g.comp(root)
 	g.only()
 
@@ -252,7 +253,10 @@ static func _motor_de(g, m, mat: String, front: Vector3, F0: Vector3, dir: Vecto
 	_face(m, F0, dir, k.brg, r * 0.7, n, false)
 	g.only("workshop")
 	m._inner(F0, F0 + dir * 0.03, k.brg, n)
-	_face(m, F0 + dir * 0.03, dir, 0.0, k.brg, n, false)
+	var bs: float = k.shaft * 1.06 + 0.002   # (clear of the shaft's corners whatever the bore's sides) the shaft's end in a blind bore (the plant draws the shield's face closed)
+	_face(m, F0 + dir * 0.03, dir, bs, k.brg, n, false)
+	m._inner(F0 + dir * 0.03, front - dir * 0.0005, bs, n)
+	_face(m, front - dir * 0.0005, dir, 0.0, bs, n, false)
 	g.only()
 	var bolts: Array = []   # 4 bolts on the shield's face (the plant draws it smaller than the frame), backing out forwards
 	var ax: Array = m.across(dir)

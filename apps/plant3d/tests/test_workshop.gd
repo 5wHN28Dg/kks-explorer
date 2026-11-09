@@ -27,10 +27,7 @@ const FLOW := {"steam_turbine": Vector3(0, 0, 1), "gas_turbine": Vector3(0, 0, -
 const RADIAL_ROWS := {"pump_horizontal": 1, "motor": 0, "pump_vertical": 2}
 ## Pairs of a turning component and a standing one that may meet as it turns ("kind|turning|standing", standing may
 ## end in "*"), each with its reason (_turning).
-const RUBS := {
-	"pump_horizontal|impeller|volute": "the plant draws the casing's foot as a box up to 0.6 Rv under the shaft, into "
-		+ "the impeller's chamber (0.8 Rv), where the impeller's tips (0.62 Rv) sweep: the box is the plant's, shared",
-}
+const RUBS := {}
 const RUB := 0.002   # how far (m) a turning surface may reach into a standing one's band (a polygon's flats, a fit)
 const TURN_SMALL := 0.05   # the longest edge (m) of the pieces a triangle is halved into for it
 ## Pairs of components whose explode may pass through each other ("kind|a|b", either order; b may end in "*" for
@@ -48,6 +45,8 @@ const PASSES := {
 		+ "lifted out through its top, as a real one comes out through the chest's opening once the servomotor and "
 		+ "the cover are off",
 	"steam_turbine|valve_r|ctrl_r": "the same chest on the other side",
+	"motor|end_shield_de|rotor": "the plant draws the drive-end shield's face closed and the shaft's stub standing on it: "
+		+ "the shield comes off forwards over the stub, as a real one does through its bore",
 	"test_gadget|base|core": "the fixture's core is drawn inside its closed base on purpose (a hidden piece) and "
 		+ "comes out through its wall",
 }
@@ -490,8 +489,8 @@ func _radial_lean(part: String, ws: Dictionary, shaft: Dictionary) -> void:
 ## has its box centred on the node's axis (within RUB), and no standing component's triangle lies in the band a turning
 ## triangle sweeps round the axis: a triangle of each is reduced to its span along the axis and its nearest and
 ## farthest distance from it (corners and edges' midpoints: a chord's nearest point), and a standing one whose span
-## meets a turning one's by more than RUB along the axis and RUB across it is cut by it as it turns (a shaft drawn
-## through a closed face, an impeller wider than its bowl, a rotor off its line). The centrifugal kinds (FLOW "radial").
+## meets a turning one's by more than RUB along the axis and RUB across it (an impeller wider than its bowl, a rotor off
+## its line), or crosses it (_across: a shaft drawn through a closed face), is cut by it as it turns. The centrifugal kinds (FLOW "radial").
 func _turning(part: String, ws: Dictionary) -> void:
 	var shaft = null
 	for mv in ws.moving:
@@ -584,11 +583,19 @@ func _turning(part: String, ws: Dictionary) -> void:
 					for e: Array in bins.get(Vector2i(k, j), []):
 						var y: Array = e[0]
 						var sid: String = e[1]
-						if minf(x[1], y[1]) - maxf(x[0], y[0]) > RUB and minf(x[3], y[3]) - maxf(x[2], y[2]) > tol \
-								and not told.has(tid + "|" + sid) and not _rubs_listed(part, tid, sid):
+						if (minf(x[1], y[1]) - maxf(x[0], y[0]) > RUB and minf(x[3], y[3]) - maxf(x[2], y[2]) > tol \
+								or _across(x, y)) and not told.has(tid + "|" + sid) and not _rubs_listed(part, tid, sid):
 							told[tid + "|" + sid] = true
 							check(false, "%s: %s rubs %s as it turns (its piece %.3f-%.3f m along the shaft, %.3f-%.3f m from it; %s's %.3f-%.3f, %.3f-%.3f)" % [
 								part, tid, sid, x[0], x[1], x[2], x[3], sid, y[0], y[1], y[2], y[3]])
+
+## Whether one span crosses the other: within it along the shaft and across it from the shaft, by a millimetre each way
+## (a standing face a turning surface passes through, however thin either is: a shaft through a closed face).
+func _across(x: Array, y: Array) -> bool:
+	var e := 0.001
+	var along: bool = (y[0] > x[0] + e and y[1] < x[1] - e) or (x[0] > y[0] + e and x[1] < y[1] - e)
+	var out: bool = (y[2] < x[2] - e and y[3] > x[3] + e) or (x[2] < y[2] - e and x[3] > y[3] + e)
+	return along and out
 
 func _rubs_listed(part: String, a: String, c: String) -> bool:
 	for k in RUBS:

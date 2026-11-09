@@ -398,7 +398,10 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   chamber round the impeller (the plant's offset scroll shell outside it); the impeller is closed, six vanes in two
   straight pieces each, curved back against the shaft's turn (`tests/test_workshop.gd` checks the curve from the
   vanes' faces); the seal is one ring; the bearing frame's oil, the labyrinth seals and the gasket are not drawn; the
-  discharge pipe starts in the scroll's wall (in the plant it reaches into the chamber); the twelve casing bolts are
+  discharge pipe starts in the scroll's wall (in the plant it reaches into the chamber); the casing's foot stops under
+  the impeller's chamber and the bearing frame's foot is notched under its bore (the plant's reach in, where the
+  impeller and the shaft turn); the shaft's end stands in a blind bore in the end cover, as the motor's shaft's ends do
+  in its end shields (the plant draws their faces closed); the twelve casing bolts are
   the plant's bolt ring as a fastener group. The multi-stage barrel pump (`head_m` over 150) has no tree yet; the data
   file names an end-suction pump the plant has three of. **The stand-ins:** the pump's casing, scroll, nozzles and
   bearing frame are one stand-in, and the motor's frame, end shields and cowl another: the plant draws their caps with
@@ -427,7 +430,7 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   and the taperlocks themselves are not drawn; the bell's mouth is closed by a flat plate (a real one is open,
   often behind a basket strainer: the Workshop's insides are hidden pieces, which no opening may show); the coupling
   is one part with its hubs and comes out sideways through the stand's window; the stand's two rings are the plant's
-  discs with a bore round the shafts; the sole plate is the plant's solid box, which the shaft runs through (a real
+  discs with a bore round the shafts; the sole plate is the plant's solid box, the shaft drawn stopping at its faces (a real
   one has the column's opening); the packing box sits inside the head's top (the plant's stand ring is over it) and
   the explode draws it down inside the head. The motor's bearings, rotor and fan turn in the `shaft` node with the
   pump's shaft and impellers. **The explode:** the coupling out sideways and the motor lifted off first, its parts
