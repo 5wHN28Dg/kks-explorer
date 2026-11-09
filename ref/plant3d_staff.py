@@ -2687,7 +2687,7 @@ class StaffRun:
     def pause(self, p):
         cur = p.cur
         st = cur['st']
-        for k in ('dest', 'waiting', 'wait_since', 'target', 'meet_since', 'seat', 'seen', 'pt', 'since'):
+        for k in ('dest', 'waiting', 'wait_since', 'target', 'meet_since', 'seat', 'seen', 'pt', 'since', 'pz'):
             st.pop(k, None)     # (seen: a resumed step is current again, §17.8)
         if st.pop('hw', False):
             from ref import plant3d_hands as H      # pre-empted: their hand action abandoned (REALISM.md §2.13)

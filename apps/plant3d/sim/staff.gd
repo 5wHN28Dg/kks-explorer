@@ -1721,7 +1721,7 @@ func pause(e, pi: int) -> void:
 			st["left"] -= m - st["last"]
 			st["last"] = m
 		st["resumed"] = true
-	for k in ["dest", "waiting", "wait_since", "target", "meet_since", "seat", "seen", "pt", "since"]:
+	for k in ["dest", "waiting", "wait_since", "target", "meet_since", "seat", "seen", "pt", "since", "pz"]:
 		st.erase(k)          # (seen: a resumed step is current again, §17.8)
 	e.sp_wait_on[pi] = -1   # (no longer waiting: a claim, a driver taken, a pre-emption)
 	if st.get("hw", false):

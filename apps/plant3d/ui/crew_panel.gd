@@ -254,6 +254,12 @@ func refresh(spread := false) -> void:
 	var sm = e._sm
 	if sm != null and ui.my_person() != -1:
 		_trainee_parts(e, sm, forced, spread)
+		# (the parts not built again still show the newest radio lines and the clock: their keys don't hold them)
+		ui.phone.show()
+		if _radio.size() != _radio_shown and not _pending.has("radio"):
+			_radio_lines()
+		if is_instance_valid(_head) and _head.is_inside_tree():
+			_head.text = _head_text + ui.clock_text()
 		return
 	_parts.clear()                      # (free mode, the roles, no crews: built whole, as they change seldom)
 	_part_keys.clear()

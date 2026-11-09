@@ -1492,6 +1492,23 @@ class DiscussVectors(PartVectors, unittest.TestCase):
         self.assertEqual(done, [held[0] + 1 + 150])
         self.assertIsNone(r['states'][-1]['discussions']['gauge_cal']['agreed'])
 
+    def test_joiner_pause_restarts_its_count(self):
+        """A joiner's count of its lead's pause is for minutes in a row: the joiner's own task paused (pre-empted, held)
+        drops it, so a resumed joiner counts again from when it next sees the lead paused (adversarial review)."""
+        r = self.st['runs'][6]
+        held = [x[0] for x in r['events'] if x[1:] == ['task', 'mech1', 'lead_gauge', 'held']][0]
+        F = G.discuss_paused_files()
+        F['scenarios/s1.json']['staff']['absent'] = ['mech2']        # (as the vectors' run)
+        e = P.Engine(G.check(F), 's1')
+        while e.step_no < held + 10:
+            e.step()
+        sr = e.staff
+        sup = sr.people[sr.st.person_ix['a_sup']]
+        self.assertIn('pz', sup.cur['st'])
+        sr.pause(sup)
+        self.assertEqual([q['task'] for q in sup.queue], ['join_gauge'])
+        self.assertNotIn('pz', sup.queue[0]['st'])
+
     def test_joiner_kept_by_a_waiting_lead(self):
         """A called joiner whose own 15 minutes end while the lead waits in the room for the others waits on and takes
         part when the lead's 15 minutes end (the first train's joiners come before their lead)."""
