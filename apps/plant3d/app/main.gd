@@ -173,6 +173,8 @@ var probing := false     # the tier probe is running: no map, no tier changes, n
 var _prep_scripts: Array[Script] = []   # what they compiled (held: the main thread takes them from the cache)
 var _prep_model = null   # sim/plant_model.gd read from CONTENT on a worker thread, for the UI
 var prep_model_used := false   # the UI took it (tests/test_launch.gd)
+var _Session    # net/session.gd and ui/sim_clock.gd, held from `_prep_end` (never a load() per frame)
+var _SimClock
 
 func _ready() -> void:
 	_launch("ready")
@@ -390,6 +392,7 @@ func _prep_end() -> void:
 		if _prep_scripts.is_empty():
 			for p in [PLANT_UI, WORKSHOP, SESSION]:
 				_prep_scripts.append(load(p))
+		_hold_scripts()
 		return
 	var t0 := Time.get_ticks_msec()
 	WorkerThreadPool.wait_for_task_completion(_prep_task)   # (it reads files and runs the model's code: no main thread)
@@ -397,9 +400,16 @@ func _prep_end() -> void:
 	var model_at := Time.get_ticks_msec() - _prep_t0
 	_prep_scripts.clear()
 	for p in [PLANT_UI, WORKSHOP, SESSION]:
-		_prep_scripts.append(ResourceLoader.load_threaded_get(p))   # (the main thread's wait runs its message queue)
+		# (while a load still runs, the main thread's wait here runs its message queue: calls deferred by the HUD's
+		# setup run before the UI is made instead of at the frame's end; on the Note 9 the loads are done by now)
+		_prep_scripts.append(ResourceLoader.load_threaded_get(p))
+	_hold_scripts()
 	_say("LAUNCH  worker threads: model %d ms (from +%d), done by +%d ms, the scripts by +%d ms; waited %d ms" % [
 			_prep_model_ms.y, _prep_model_ms.x, model_at, Time.get_ticks_msec() - _prep_t0, Time.get_ticks_msec() - t0])
+
+func _hold_scripts() -> void:
+	_Session = _prep_scripts[2]
+	_SimClock = load(SIM_CLOCK)   # (compiled with the UI's: from the cache, once)
 
 func _exit_tree() -> void:
 	if _prep_task >= 0:
@@ -1028,7 +1038,7 @@ func _mp_join() -> void:
 		add_child(t)
 		var flip := [false]
 		t.timeout.connect(func():
-			if ui.session != null and ui.session.state == load(SESSION).State.RUN and not ui.session._loading:
+			if ui.session != null and ui.session.state == _Session.State.RUN and not ui.session._loading:
 				flip[0] = not flip[0]
 				ui.inputs.op("00QFA10AN001", "start" if flip[0] else "stop"))
 
@@ -1054,7 +1064,7 @@ func _mp_result() -> void:
 	# the layer's slow frames (over 1.5 ms) and where their time went: receive (decrypt, parse), frame (beside the
 	# model's steps), positions, flush (seal, send); with mp_probe=1 the thread's time on a CPU (run) and waiting (wait)
 	if s.probe_sched:
-		_say("SESSION probe: schedstat %s" % ("read" if load(SESSION).sched_error == "" else "not read (%s)" % load(SESSION).sched_error))
+		_say("SESSION probe: schedstat %s" % ("read" if _Session.sched_error == "" else "not read (%s)" % _Session.sched_error))
 	for f in st.get("slow", []):
 		_say("SESSION slow %d us at %.1f s: receive %d, frame %d (steps %d apart), positions %d, flush %d; packets in %d, out %d; run %s, wait %s, switches %s; %s" % [
 			f["us"], f["t"], f["receive"], f["frame"], f["steps"], f["positions"], f["flush"], f["in"], f["out"],
@@ -1079,7 +1089,7 @@ func _process(delta: float) -> void:
 	# with the phone's monotonic clock from the start (speed=fast fast-forwards before the walk begins), so that
 	# phone/frames.sh leaves fast-forward's frames out of what the screen showed, which counts from the first frame
 	# (a player still catching up on turns committed in fast-forward runs fast-forward's steps at 1×: net/session.gd)
-	var ff: bool = ui != null and ui.clock != null and (ui.clock.speed == load(SIM_CLOCK).Speed.FAST or
+	var ff: bool = ui != null and ui.clock != null and (ui.clock.speed == _SimClock.Speed.FAST or
 		(ui.session != null and ui.session.ff_tail))
 	if ff != _walk_ff and opts.has("walk"):
 		_walk_ff = ff

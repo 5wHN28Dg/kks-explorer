@@ -50,6 +50,41 @@ func main_compile_graph() -> Array:
 	for f in PREPPED:
 		if seen.has(f):
 			p.append("main.gd's compile does not pull in %s (made on a worker thread at the start)" % f)
+	# the scenes the main thread loads while the worker threads compile carry only scripts main.gd has compiled already
+	# (Godot compiles one script at a time: a new one would wait seconds for the UI's on the Note 9)
+	var scenes: Array = ["res://built/ground.scn", "res://built/lit.scn"]
+	for dir in ["res://built/areas", "res://built/people"]:
+		for f in DirAccess.get_files_at(dir):
+			if f.ends_with(".scn") or f.ends_with(".tscn"):
+				scenes.append(dir.path_join(f))
+	for sc in scenes:
+		if not ResourceLoader.exists(sc):
+			continue
+		for d in ResourceLoader.get_dependencies(sc):
+			var path: String = d.get_slice("::", 2) if d.contains("::") else d
+			if path.begins_with("uid://"):
+				path = ResourceUID.get_id_path(ResourceUID.text_to_id(path))
+			if path.ends_with(".gd") and not seen.has(path):
+				p.append("%s's script %s is compiled with main.gd (not on the main thread during the start)" % [sc, path])
+	# the model's script is taken on a worker thread while the main thread waits for it: its graph must be scripts
+	# only (a material or shader there can make that load wait for the main thread: a deadlock)
+	var mtodo := ["res://sim/plant_model.gd"]
+	var mseen := {}
+	var any := RegEx.create_from_string("preload\\(\\s*\"([^\"]+)\"")
+	while not mtodo.is_empty():
+		var f: String = mtodo.pop_back()
+		if mseen.has(f):
+			continue
+		mseen[f] = true
+		if not f.ends_with(".gd"):
+			p.append("the plant model's preloads are scripts only (%s)" % f)
+			continue
+		for line in FileAccess.get_file_as_string(f).split("\n"):
+			for m in any.search_all(line.get_slice("#", 0)):
+				var path := m.get_string(1)
+				mtodo.append(path if path.begins_with("res://") else f.get_base_dir().path_join(path).simplify_path())
+	if mseen.size() < 3:
+		p.append("the plant model's preloads were found (%s)" % str(mseen.keys()))
 	return p
 
 ## A staged start took the model and the scripts from its worker threads, before the UI.
