@@ -10,6 +10,7 @@ MANUAL = {
     'kinds': ['pump_horizontal', 'pump_vertical'],
     'kind_names': {'pump_horizontal': 'Horizontal pump', 'pump_vertical': 'Vertical pump'},
     'kind_tags': {'pump_horizontal': 'H', 'pump_vertical': 'V'},
+    'comes_with': {'grille': 'fan_cowl'},   # the motor's grille is part of its fan cowl (the Workshop's sealed cowl)
     'params': {'flow_m3h': ('Rated flow', '{} m³/h'), 'head_m': ('Rated head', '{} m'),
                'motor_kw': ('Motor rating', '{} kW'), 'pit_depth': ('Pit depth', '{} m')},
     'consumables': [

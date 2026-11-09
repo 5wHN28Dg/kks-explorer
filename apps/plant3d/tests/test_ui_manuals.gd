@@ -206,7 +206,8 @@ func _card(tree: SceneTree, ui) -> Array:
 	return p
 
 
-## Every component of each kind's built Workshop tree has its part number, but those inside a sealed component.
+## Every component of each kind's built Workshop tree has its part number, but those inside a sealed component (in a
+## manual of several kinds, with that kind's tag: tools/plant3d/manuals.py `kind_tags`).
 func _parts_against_trees(ui) -> Array:
 	var p: Array = []
 	for e in ui.manuals.list:
@@ -230,6 +231,10 @@ func _parts_against_trees(ui) -> Array:
 					at = spec.comps[at].parent
 				var pn := "WDP-%s-%s" % [m["short"], String(id).to_upper().replace("_", "-")]
 				var has := listed.contains("\"" + pn + "\"")
+				if m["kinds"].size() > 1:   # a manual of several kinds numbers each kind's tree with its tag (WDP-CP-H-…)
+					pn = "WDP-%s-…-%s" % [m["short"], String(id).to_upper().replace("_", "-")]
+					has = RegEx.create_from_string("\"WDP-%s-[A-Z]+-%s\"" % [m["short"],
+						String(id).to_upper().replace("_", "-")]).search(listed) != null
 				if has == inside:
 					p.append("%s: %s %s" % [k, pn, "listed, though it comes with a sealed part" if inside else "not listed"])
 	return p
