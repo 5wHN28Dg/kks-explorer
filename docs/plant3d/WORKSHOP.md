@@ -877,6 +877,39 @@ addition (both engines, vectors) made in K6.
   53,977 steps. The APK (test-signed) 147.8 MB, 0.5 MB over K5a's.
 - **Package:** K5b's own files are about 130 KB (the bench file 37 KB, the compressor's tone 91 KB of Ogg Vorbis).
 
+### 6.8 The horizontal pump and the motor (K6, first pull request)
+
+**As built (K6, 2026-11-09).**
+- **The motor** (`kit/parts_common.gd motor_h`, one tree for the motor kind and the pump's motor): the stator in its
+  finned frame (the winding's end turns inside), the terminal box (anchors `u1`, `v1`, `w1`), the drive-end and
+  non-drive-end shields with their bearing housings open to the rotor, the fan with straight radial blades, the fan
+  cowl with its grille, the rotor and its two bearings; the drive-end shield's bolts and the cowl's screws. 11
+  components, 2 fastener groups, 2,876 triangles (the plant's 724). **Its order is derived from how it is built, not
+  from a manual** (the user, 2026-11-09): every step's reason says so.
+- **The horizontal pump** (`kit/parts_rotating.gd`, the end-suction branch; the data file names an end-suction pump
+  the plant has three of, 900 m³/h, 40 m, 160 kW): the baseplate, the volute hollow round the impeller's chamber, the
+  back pull-out unit (the bearing frame, the casing cover with the seal's bore, the shaft, the mechanical seal, the
+  inboard and outboard bearings, the end cover, the closed impeller with six backward-curved vanes), the spacer
+  coupling, the guard, the plant's 12 casing bolts (`split`), and the motor's full tree from the same helper (the
+  user's decision, 2026-11-09). 22 components, 3 fastener groups (25 guided steps), 6,444 triangles (the plant's
+  2,482). The guided steps leave the motor standing (the spacer coupling); the explode lifts it first, so that its
+  parts come apart above the pump.
+- **The plant unchanged:** the pump's casing, scroll, nozzles and bearing frame are one stand-in, the motor's frame,
+  end shields and cowl another. The plant's odd-segment caps list their circles' points mirrored: each split face lists
+  them as its own cylinder does (`C._face`), and only the cowl's face to the frame keeps the plant's, closed with a seam
+  of thin triangles (`C._zip`), so that the outline is the plant's within 1 mm.
+- **New check:** `tests/test_workshop.gd _radial_lean`: an impeller's vanes curve back against the shaft's turn, a
+  motor fan's blades lean neither way; the same vanes with the turn reversed must fail it.
+- **Manuals:** the pump manual's parts list and figures now come from the pump's tree; `comes_with` in a manual of
+  several kinds names one kind's parts (the grille with its cowl).
+- **The Note 9** (`lean+vis`, a test-signed release build, a fresh install, a cool start at 30.0 °C, `walk=workshop
+  kind=pump_horizontal probe=1`, SAMPLE=1): first entry 123 ms after the walk waited 14.8 s for the plant's warm-up
+  (load 53 ms), again 38 ms; back to the plant 15–28 ms; every guided step walked (0 loose); after the machine's first
+  frame no frame over 100 ms (the longest in the walk 48.1 ms), **99.83 % of frames at ≥ 30 fps**, median 16.8 ms, p95
+  35.7 ms; peak PSS 1,168 MB; the pipelines compiled after the first 5 s were the plant start's (none in the
+  Workshop). The APK 148.1 MB (K5b's 147.8 MB); the two scenes 130 KB of the package. The motor kind's own walk
+  was not run (the phone was not plugged back in the window): its tree is the pump's motor, measured in the pump's.
+
 ## 7. Shaders and cut faces
 
 Decision 0060: one lit shader and one vertex format; each lit ubershader is 0.6–0.9 s of serial compile on the Note
