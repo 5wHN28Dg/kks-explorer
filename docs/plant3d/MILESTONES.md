@@ -330,6 +330,8 @@ start, the same walk): first entry 407 ms, again 307 ms, back 20–22 ms, 0 step
 no frame over 100 ms (the longest 45.9 ms), peak PSS 1,145 MB, at most 155 draw calls, the bench step 172 µs mean;
 APK 147.8 MB.
 
+**K6, first pull request (2026-11-09):** the horizontal pump and the motor in the Workshop (WORKSHOP.md §6.8): the motor's tree written once and carried by the pump, the motor's order derived from its build (the user's call), the plant byte for byte unchanged, a new check of the impeller's vanes against the shaft's turn. The Note 9 (the pump): first entry 123 ms, 99.83 % of frames at ≥ 30 fps, no frame over 100 ms, peak PSS 1,168 MB; APK 148.1 MB. Left in K6: the vertical pump, the control valve and the other kinds, then the mirror.
+
 **K5a as built (2026-11-08):** the gas turbine's insides for the plant's first instance: 84 components, 2 fastener
 groups (the compressor casing's 40 studs replacing the plant's stand-ins, the coupling's 12 bolts `beyond`), 86 guided
 steps in a major inspection's order, 27,868 triangles, a public source per subassembly; the plant byte for byte

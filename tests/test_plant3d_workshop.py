@@ -82,6 +82,41 @@ class WorkshopData(unittest.TestCase):
         self.assertIn('turning gear', d['views']['open_running']['why'])
         self.assertEqual(d['views']['run_exploded']['allowed'], [])
 
+    def test_the_motor_and_the_pump_pass(self):
+        # K6: the motor's tree is written once (tools/plant3d/workshop/motor.py) and the pump carries it under `motor`
+        motor = json.loads(self.files['workshop/motor.json'])
+        pump = json.loads(self.files['workshop/pump_horizontal.json'])
+        self.assertEqual(self.b.workshop['motor']['components'], 11)
+        self.assertEqual(self.b.workshop['pump_horizontal']['components'], 22)
+        mine = set(motor['components']) - {'stator', 'baseplate'}
+        self.assertTrue(mine <= set(pump['components']), mine - set(pump['components']))
+        for c in mine:
+            self.assertEqual(motor['components'][c], pump['components'][c], c)
+        # the motor's order is derived from the build, not a manual (the user, 2026-11-09): every step of it says so
+        for d in (motor, pump):
+            for st in d['assembly']:
+                if st['place'] in mine | {'stator', 'de_bolts', 'cowl_screws'}:
+                    self.assertIn('derived from how the motor is built', ' '.join(st.get('why', [])), st['place'])
+        # taken apart (the reverse): the cowl before the fan, the fan before the non-drive-end shield, the drive-end
+        # shield before the rotor, the rotor before its bearings come off
+        undo = [s['place'] for s in motor['assembly']][::-1]
+        for a, b in (('fan_cowl', 'fan'), ('fan', 'end_shield_nde'), ('end_shield_de', 'rotor'),
+                     ('end_shield_nde', 'rotor')):
+            self.assertLess(undo.index(a), undo.index(b), (a, b))
+        # the pump (Goulds 3196, Flowserve Mark 3): the guard and the coupling off, the casing bolts out with the motor
+        # left standing (the spacer coupling), the impeller and the casing cover off before the shaft leaves the frame
+        undo = [s['place'] for s in pump['assembly']][::-1]
+        for a, b in (('guard', 'coupling'), ('coupling', 'casing_bolts'), ('frame', 'motor'),
+                     ('casing_bolts', 'impeller'), ('impeller', 'shaft'), ('casing_cover', 'shaft'),
+                     ('end_cover', 'shaft'), ('seal', 'shaft')):
+            self.assertLess(undo.index(a), undo.index(b), (a, b))
+        # the fan (wider than the stator's bore) off before the rotor is drawn out; the baseplate there first
+        for d in (pump, motor):
+            needs = {st['place']: [n[0] for n in st.get('needs', [])] for st in d['assembly']}
+            self.assertIn('rotor', needs['fan'])
+        self.assertIn('baseplate', needs['stator'])
+        self.assertEqual(pump['params']['head_m'], 40)   # the end-suction pump (the multi-stage one has no tree yet)
+
     def test_context(self):
         w = copy.deepcopy(self.fixture)
         w.pop('params', None)

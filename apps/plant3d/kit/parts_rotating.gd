@@ -4,6 +4,7 @@
 extends RefCounted
 
 const C = preload("res://kit/parts_common.gd")
+const PUMP_LIFT := 1.6   # (the Workshop) how far a pump's motor is lifted off its baseplate (m)
 
 ## A pipe's nominal size for a flow at a velocity (m/s), as the kit's DN table has it.
 static func dn_for(g, flow_m3h: float, v: float) -> float:
@@ -53,42 +54,291 @@ static func pump_horizontal(_part: String, g) -> void:
 	else:
 		# an end-suction volute: the scroll, its foot, the suction and the bearing frame behind
 		var Tw := Rv * 0.7
-		m.lathe(Vector3(0, y_c - Tw * 0.5, zs), Vector3(0, 1, 0), [[Rv * 0.45, 0.0], [Rv * 0.95, 0.0], [Rv, Tw * 0.2], [Rv, Tw * 0.8], [Rv * 0.95, Tw], [ds * 0.5, Tw]], 0, true)
+		var y0 := y_c - Tw * 0.5
+		var lb := 0.35 + Rv
+		y_back = y0 - lb
+		var prof := [[Rv * 0.45, 0.0], [Rv * 0.95, 0.0], [Rv, Tw * 0.2], [Rv, Tw * 0.8], [Rv * 0.95, Tw], [ds * 0.5, Tw]]
+		_pump_comps(g, zs, y0, Tw, Rv, y_back, kw)
+		g.comp("volute")
+		g.only("plant", ["volute", "casing_cover", "frame", "end_cover"])
+		m.lathe(Vector3(0, y0, zs), Vector3(0, 1, 0), prof, 0, true)
+		_pump_casing(g, m, zs, y0, Tw, Rv, ds, prof)
 		# the volute's scroll grows towards the discharge: an offset second shell
+		g.only("plant", ["volute", "casing_cover", "frame", "end_cover"])
+		m.use("paint_pump", "identify")
 		m.cyl(Vector3(0.0, y_c - Tw * 0.4, zs + Rv * 0.12), Vector3(0.0, y_c + Tw * 0.4, zs + Rv * 0.12), Rv * 0.92, -1.0)
+		_pump_scroll(g, m, zs, y_c, Tw, Rv)
+		m.use("paint_pump", "identify")
 		m.box_lh(Vector3(-Rv * 0.4, y_c - Tw * 0.3, 0.15), Vector3(Rv * 0.4, y_c + Tw * 0.3, zs - Rv * 0.6))
 		var Rf := Rv * 0.38
-		var lb := 0.35 + Rv
-		m.cyl(Vector3(0, y_c - Tw * 0.5, zs), Vector3(0, y_c - Tw * 0.5 - lb, zs), Rf, Rf * 0.9)
-		m.box_lh(Vector3(-Rf, y_c - Tw * 0.5 - lb, 0.15), Vector3(Rf, y_c - Tw * 0.5 - lb + 0.15, zs))
-		y_back = y_c - Tw * 0.5 - lb
+		g.comp("frame")
+		g.only("plant", ["volute", "casing_cover", "frame", "end_cover"])
+		m.use("paint_pump", "identify")
+		m.cyl(Vector3(0, y0, zs), Vector3(0, y_back, zs), Rf, Rf * 0.9)
+		_pump_frame(g, m, zs, y0, y_back, Rv, Rf)
+		m.use("paint_pump", "identify")
+		m.box_lh(Vector3(-Rf, y_back, 0.15), Vector3(Rf, y_back + 0.15, zs))
+		g.only("plant", ["casing_bolts"])
 		C.bolt_ring(m, Vector3(0, y_c - Tw * 0.45, zs), Vector3(0, 1, 0), Rv * 0.75, 12, 0.008, 0.05)
+		g.only()
+		if g.workshop:   # the casing bolts, where the plant draws its ring: they back out towards the bearing frame
+			_ring_bolts(g, "casing_bolts", Vector3(0, y_c - Tw * 0.45, zs), 1.0, Rv * 0.75, 12, 0.008, 0.05)
+		_pump_insides(g, zs, y0, Tw, Rv, y_back, lb)
+		g.comp("volute")
 		g.plate("pump_side", Vector3(Rv + 0.01, y_c, zs), Vector3(1, 0, 0), "large")
 	# suction: a reducer from the casing to the suction flange at the front (kit.json: [0, L/2, 0.6] facing north)
+	var tree := not multistage   # the Workshop's tree is the end-suction pump's (kit/README.md "Workshop: the pump")
+	if tree:
+		g.comp("volute")
 	m.use("paint_pump", "identify")
 	var y_in := y_c + (0.25 if multistage else Rv * 0.35)
 	m.cyl(Vector3(0, y_in, zs), Vector3(0, y_suc, zs), ds * 0.38, ds * 0.5, 0, false)
-	C.flange(m, Vector3(0, y_suc, zs), Vector3(0, 1, 0), ds, "paint_pump")
+	if tree:   # its ends closed inside the casing and the flange
+		g.only("workshop")
+		var nr: int = m.segs(ds * 0.5)
+		C._face(m, Vector3(0, y_in, zs), Vector3(0, 1, 0), 0.0, ds * 0.38, nr, false)
+		m.disk(Vector3(0, y_suc, zs), Vector3(0, 1, 0), ds * 0.5, nr)
+		g.only()
+	var tf_s: float = C.flange_dims(ds).tf
+	_pump_flange(g, m, tree, Vector3(0, y_suc, zs), Vector3(0, 1, 0), ds, "pn16",
+		lerpf(ds * 0.38, ds * 0.5, (y_suc - tf_s * 2.2 - y_in) / (y_suc - y_in)))
 	# discharge: up from the casing's top to its flange at 1.4 m
 	var z_top := zs + (Rv if not multistage else clampf(Rv * 0.85 + head / 6000.0, 0.16, 0.5)) * 0.9
+	if tree:
+		g.only("plant", ["volute", "casing_cover", "frame", "end_cover"])
 	m.use("paint_pump", "identify")
 	m.cyl(Vector3(0, y_c, z_top - 0.1), Vector3(0, y_c, 1.4), dd * 0.5, -1.0, 0, false)
-	C.flange(m, Vector3(0, y_c, 1.4), Vector3(0, 0, 1), dd, "paint_pump", "pn40" if head > 100 else "pn16")
+	if tree:   # in the Workshop it starts in the scroll's wall, clear of the impeller's chamber, its ends closed
+		var nd: int = m.segs(dd * 0.5)
+		var zb := zs + Rv * 0.82
+		g.only("workshop", "split")
+		m.cyl(Vector3(0, y_c, zb), Vector3(0, y_c, 1.4), dd * 0.5, -1.0, nd, false)
+		g.only("workshop")
+		C._face(m, Vector3(0, y_c, zb), Vector3(0, 0, 1), 0.0, dd * 0.5, nd, false)
+		m.disk(Vector3(0, y_c, 1.4), Vector3(0, 0, 1), dd * 0.5, nd)
+		g.only()
+	_pump_flange(g, m, tree, Vector3(0, y_c, 1.4), Vector3(0, 0, 1), dd, "pn40" if head > 100 else "pn16")
 	# coupling, guard and motor
 	var md := C.motor_dims(kw)
 	var gap := clampf(0.15 + md.h * 0.3, 0.18, 0.5)
 	var y_mf := y_back - gap
-	var mo := C.motor_h(m, Vector3(0, y_mf, zs), Vector3(0, 1, 0), kw, 0.15)
+	var mo := C.motor_h(m, Vector3(0, y_mf, zs), Vector3(0, 1, 0), kw, 0.15, "paint_motor", g if tree else null,
+		"motor", {"explode": [Vector3(0, 0, 1), PUMP_LIFT]})
 	g.plate("motor_side", Vector3(mo.r * 0.92 + 0.01, y_mf - mo.l * 0.5, zs), Vector3(1, 0, 0), "large")
+	var rc := clampf(md.h * 0.35, 0.05, 0.25)
+	if tree:
+		g.comp("coupling", {"explode": [Vector3(0, 0, 1), 0.5], "anim": "shaft",
+			"pivot": Vector3(0, (y_mf + y_back) * 0.5, zs), "sym": [Vector3(0, 1, 0), 0]})
 	var sh = g.move("shaft", Vector3(0, 0, zs), Vector3(0, 1, 0), "rotate", 0.0)
-	C.coupling(sh, Vector3(0, y_mf + 0.01, zs), Vector3(0, y_back - 0.01, zs), clampf(md.h * 0.35, 0.05, 0.25))
-	C.guard(m, Vector3(0, y_mf, zs), Vector3(0, y_back, zs), clampf(md.h * 0.35, 0.05, 0.25) * 1.15, 0.15)
+	C.coupling(sh, Vector3(0, y_mf + 0.01, zs), Vector3(0, y_back - 0.01, zs), rc)
+	if tree:
+		g.comp("guard", {"explode": [Vector3(0, 0, 1), 0.8]})
+	C.guard(m, Vector3(0, y_mf, zs), Vector3(0, y_back, zs), rc * 1.15, 0.15)
 	# the baseplate under everything
+	if tree:
+		g.comp("baseplate", {"explode": [Vector3(0, 0, 1), 0.0]})
 	var y_lo := minf(-L * 0.5, mo.back.y - 0.1)
 	var w := maxf(mo.r * 2.0 + 0.2, Rv * 2.0 + 0.2)
 	C.baseplate(m, Vector3(-w * 0.5, y_lo, 0.0), Vector3(w * 0.5, y_suc - 0.15, 0.15), "paint_darkgrey")
 	g.solid_box(Vector3(-w * 0.5, y_lo, 0), Vector3(w * 0.5, y_suc, zs + maxf(mo.r, Rv)))
 	g.axis_line = [Vector3(0, y_lo, zs), Vector3(0, y_suc, zs)]
+
+# ------------------------------------------------------------------ the end-suction pump in the Workshop (K6)
+# A back pull-out end-suction pump (API 610 type OH1) as the Goulds 3196 and Flowserve Mark 3 manuals describe one;
+# what is simplified: kit/README.md "Workshop: the pump". Every piece here is a Workshop piece or the split of a plant
+# stand-in: plant mode draws what it drew before.
+
+## The pump's own sizes from the volute's radius: the chamber, the impeller, the cover's seal bore, the frame's bore,
+## the shaft, the seal and the bearings (radii, m).
+static func _pump_r(Rv: float) -> Dictionary:
+	return {"chamber": Rv * 0.8, "imp": Rv * 0.62, "eye": Rv * 0.32, "cover_bore": Rv * 0.28, "frame_bore": Rv * 0.266,
+		"shaft": Rv * 0.09, "seal": Rv * 0.22, "brg": Rv * 0.24, "brg_w": Rv * 0.08}
+
+## The tree. The volute stays on the baseplate (and on its pipes); the coupling, the guard and the motor come off
+## first, then the back pull-out unit (the bearing frame with everything in it) is drawn back out of the volute, then
+## on the bench the impeller and the casing cover come off forwards while the shaft with its bearings and seal leaves
+## the frame at the coupling end; last the seal and the bearings come off the shaft. On one line the part ahead moves
+## faster than the one behind it, so none passes through another.
+static func _pump_comps(g, zs: float, y0: float, Tw: float, Rv: float, y_back: float, _kw: float) -> void:
+	var k := _pump_r(Rv)
+	var Y := Vector3(0, 1, 0)
+	var up := Vector3(0, 0, 1)
+	var lb := y0 - y_back
+	var Ls := y0 + Tw * 0.66 - y_back                       # the shaft's length
+	var d_ib: float = lb * 0.2 + Tw * 0.66 + k.brg_w + 0.1        # the inboard bearing off the shaft's impeller end
+	var d_seal: float = d_ib + 0.2
+	var d_shaft: float = Ls + d_seal + 0.15
+	g.comp("volute", {"explode": [up, 0.0]})
+	g.comp("frame", {"parent": "volute", "explode": [-Y, 0.55 + Tw],
+		"anchors": {"vib_ib": Vector3(0, y0 - lb * 0.2, zs + Rv * 0.38), "vib_ob": Vector3(0, y_back + 0.06, zs + Rv * 0.342)}})
+	g.comp("casing_cover", {"parent": "frame", "explode": [Y, 0.15], "sym": [Y, 0]})
+	g.comp("impeller", {"parent": "frame", "explode": [Y, 0.35], "sym": [Y, 6]})
+	g.comp("shaft", {"parent": "frame", "explode": [-Y, d_shaft], "pivot": Vector3(0, y_back + Ls * 0.5, zs),
+		"sym": [Y, 0]})
+	g.comp("end_cover", {"parent": "frame", "explode": [-Y, d_shaft + 0.3], "sym": [Y, 0]})
+	g.comp("seal", {"parent": "shaft", "explode": [Y, d_seal], "sym": [Y, 0]})
+	g.comp("bearing_ib", {"parent": "shaft", "explode": [Y, d_ib], "sym": [Y, 0]})
+	g.comp("bearing_ob", {"parent": "shaft", "explode": [-Y, 0.3], "sym": [Y, 0]})
+
+## The plant's casing (one solid of revolution) split at the cover's joint: the volute ahead of it, hollow round the
+## impeller's chamber; the casing cover behind it, its seal bore through the middle. The pump's stand-ins (the casing,
+## the scroll, the pipe and flanges, the bearing frame) are one: its outline is the casing's. Every face of a split
+## lists its circle's points as its cylinder does (C._face), so each part is closed.
+static func _pump_casing(g, m, zs: float, y0: float, Tw: float, Rv: float, ds: float, prof: Array) -> void:
+	var k := _pump_r(Rv)
+	var c0 := Vector3(0, y0, zs)
+	var Y := Vector3(0, 1, 0)
+	var n: int = m.segs(Rv)   # the plant's casing's
+	var cj := c0 + Y * Tw * 0.2
+	g.only("workshop", "split")
+	m.use("paint_pump", "identify")
+	m.lathe(c0, Y, prof.slice(2), n, false)
+	m.disk(c0 + Y * Tw, Y, ds * 0.5, n)
+	g.only("workshop")
+	C._face(m, cj, Y, k.chamber, Rv, n, false)        # its joint face
+	m._inner(cj, c0 + Y * Tw * 0.75, k.chamber, n)   # the impeller's chamber
+	C._face(m, c0 + Y * Tw * 0.75, Y, 0.0, k.chamber, n, false)
+	g.comp("casing_cover")
+	g.only("workshop", "split")
+	m.use("paint_pump", "identify")
+	m.lathe(c0, Y, prof.slice(0, 3), n, false)
+	C._face(m, c0, Y, k.cover_bore, Rv * 0.45, n, false)
+	g.only("workshop")
+	m.ring(cj, Y, k.cover_bore, Rv, n)                # its face to the impeller
+	m._inner(c0, cj, k.cover_bore, n)                 # the seal chamber's bore
+	g.comp("volute")
+	g.only()
+
+## The scroll (the plant's offset shell) open at the back round the chamber, so the impeller comes out through it.
+static func _pump_scroll(g, m, zs: float, y_c: float, Tw: float, Rv: float) -> void:
+	var a := Vector3(0.0, y_c - Tw * 0.4, zs + Rv * 0.12)
+	var b := Vector3(0.0, y_c + Tw * 0.4, zs + Rv * 0.12)
+	var Y := Vector3(0, 1, 0)
+	var n: int = m.segs(Rv * 0.92)   # the plant's scroll's
+	g.only("workshop", "split")
+	m.use("paint_pump", "identify")
+	m.cyl(a, b, Rv * 0.92, -1.0, n, false)
+	C._face(m, a, Y, Rv * 0.8, Rv * 0.92, n, false)
+	m.disk(b, Y, Rv * 0.92, n)
+	g.only("workshop")
+	m._inner(a, a + Y * Tw * 0.7, Rv * 0.8, n)
+	C._face(m, a + Y * Tw * 0.7, Y, 0.0, Rv * 0.8, n, false)
+	g.only()
+
+## The bearing frame (the plant's cone behind the casing): open through its bore; its back is the bearing end cover.
+static func _pump_frame(g, m, zs: float, y0: float, y_back: float, Rv: float, Rf: float) -> void:
+	var k := _pump_r(Rv)
+	var a := Vector3(0, y0, zs)
+	var b := Vector3(0, y_back, zs)
+	var Y := Vector3(0, 1, 0)
+	var n: int = m.segs(Rf)   # the plant's frame's
+	g.only("workshop", "split")
+	m.use("paint_pump", "identify")
+	m.cyl(a, b, Rf, Rf * 0.9, n, false)
+	C._face(m, a, -Y, k.frame_bore, Rf, n, false)
+	g.only("workshop")
+	m._inner(a, b, k.frame_bore, n)
+	m.ring(b, -Y, k.frame_bore, Rf * 0.9, n)
+	g.comp("end_cover")
+	g.only("workshop", "split")
+	m.use("paint_pump", "identify")
+	m.disk(b, -Y, Rf * 0.9, n)
+	g.only("workshop")
+	m.ring(b, -Y, k.frame_bore, Rf * 0.9, n)   # its flange against the frame, facing out (in the disk's plane)
+	m.cyl(b + Y * 0.03, b, k.frame_bore, -1.0, n, false)      # its spigot in the bore
+	C._face(m, b + Y * 0.03, -Y, 0.0, k.frame_bore, n, false)
+	g.comp("frame")
+	g.only()
+
+## What turns, in the `shaft` node: the shaft from the end cover to the impeller, the mechanical seal in the cover's
+## bore, the two bearings in the frame, the closed impeller with six vanes curved back against the turn (the shaft
+## turns clockwise seen from the motor, as its `shaft` node's axis has it).
+static func _pump_insides(g, zs: float, y0: float, Tw: float, Rv: float, y_back: float, lb: float) -> void:
+	if not g.workshop:
+		return
+	var k := _pump_r(Rv)
+	var Y := Vector3(0, 1, 0)
+	var at := func(t: float) -> Vector3: return Vector3(0, y0 + Tw * t, zs)
+	var sh = g.move("shaft", Vector3(0, 0, zs), Y, "rotate", 0.0)
+	g.only("workshop")
+	g.comp("shaft")
+	sh.use("steel", "identify")
+	sh.cyl(Vector3(0, y_back + 0.001, zs), at.call(0.66), k.shaft, -1.0, 16)
+	g.comp("seal")
+	sh.use("chrome", "identify")
+	sh.tube(Vector3(0, y0 - 0.03, zs), at.call(0.15), k.seal, k.shaft, 16)
+	g.comp("bearing_ib")
+	var yi := y0 - lb * 0.2
+	sh.tube(Vector3(0, yi - k.brg_w * 0.5, zs), Vector3(0, yi + k.brg_w * 0.5, zs), k.brg, k.shaft, 16)
+	g.comp("bearing_ob")
+	sh.tube(Vector3(0, y_back + 0.04, zs), Vector3(0, y_back + 0.04 + k.brg_w, zs), k.brg, k.shaft, 16)
+	g.comp("impeller")
+	sh.use("steel_dark", "identify")
+	sh.cyl(at.call(0.28), at.call(0.31), k.imp, -1.0, 32)              # the back shroud
+	sh.tube(at.call(0.55), at.call(0.58), k.imp, k.eye, 32)            # the front shroud round the eye
+	sh.cyl(at.call(0.28), at.call(0.64), k.shaft * 2.0, -1.0, 16)      # the hub
+	var ax: Array = sh.across(Y)
+	var r1: float = k.shaft * 2.0
+	var r2: float = k.imp
+	var hgt := Tw * 0.25
+	var thick := Rv * 0.035
+	for i in 6:
+		var th0 := TAU * i / 6.0
+		var pts: Array = []
+		for j in 3:   # each vane's centre line from the hub to the tip, trailing back against the turn
+			var rr := lerpf(r1, r2, j / 2.0)
+			var th := th0 - 1.0 * (rr - r1) / (r2 - r1)
+			pts.append(at.call(0.43) + (ax[0] * cos(th) + ax[1] * sin(th)) * rr)
+		for j in 2:
+			var p: Vector3 = pts[j]
+			var q: Vector3 = pts[j + 1]
+			var x: Vector3 = (q - p).normalized()
+			sh.box((p + q) * 0.5, Vector3(p.distance_to(q) + thick, hgt, thick), Basis(x, Y, x.cross(Y)))
+	g.only()
+
+## A ring of bolts as a fastener group, each item where C.bolt_ring draws one (the same hexagon, so the group matches
+## the ring it replaces), backing out along -y (as parts_machines.gd's coupling bolts).
+static func _ring_bolts(g, id: String, c: Vector3, s: float, R: float, n: int, r: float, len: float) -> void:
+	var items: Array = []
+	var d := Vector3(0, s, 0)
+	var ax: Array = g.m.across(d)
+	for i in n:
+		var a := TAU * (i + 0.5) / n
+		var p: Vector3 = c + (ax[0] * cos(a) + ax[1] * sin(a)) * R
+		var by: Vector3 = ax[0]
+		var bz := -d
+		items.append(Transform3D(Basis(by.cross(bz), by, bz), p + d * len * 0.5))
+	var bolt := func(b) -> void:
+		b.use("steel_bolt", "detail", r * 3.4)
+		b.cyl(Vector3.ZERO, Vector3(0, 0, len), r * 1.7, -1.0, 6)
+	g.fasteners(id, "bolt", items, bolt, "split")
+
+## A nozzle's flange: the plant's (C.flange), and in the Workshop the same with its neck closed round the pipe
+## (`pipe_r`: the pipe's radius where the neck ends; the neck's bore a little inside it, so no gap is left between).
+static func _pump_flange(g, m, tree: bool, c: Vector3, d: Vector3, od: float, rating: String, pipe_r := 0.0) -> void:
+	if not tree:
+		C.flange(m, c, d, od, "paint_pump", rating)
+		return
+	g.only("plant", ["volute", "casing_cover", "frame", "end_cover"])
+	C.flange(m, c, d, od, "paint_pump", rating)
+	var f := C.flange_dims(od, rating)
+	var n1: int = m.segs(f.df * 0.5, 10, 40)
+	var n2: int = m.segs(od * 0.5, 8, 32)
+	var e: Vector3 = c - d * (f.tf * 2.2)
+	var rb: float = (pipe_r if pipe_r > 0.0 else od * 0.5) * 0.97
+	g.only("workshop", "split")
+	m.use("paint_pump", "form")
+	m.cyl(c - d * f.tf, c, f.df * 0.5, -1.0, n1, false)
+	C._face(m, c - d * f.tf, d, 0.0, f.df * 0.5, n1, false)
+	m.disk(c, d, f.df * 0.5, n1)
+	m.cyl(e, c - d * f.tf, od * 0.5 + f.tf * 0.6, od * 0.5 + f.tf * 0.3, n2, false)
+	C._face(m, e, d, rb, od * 0.5 + f.tf * 0.6, n2, false)   # the neck's end round the pipe
+	C.bolt_ring(m, c - d * f.tf * 0.5, d, f.pcd, f.n, f.bolt_r, f.tf * 2.4)
+	g.only("workshop")
+	m.use("paint_pump", "form")
+	m._inner(e, c - d * f.tf, rb, n2)
+	m.ring(c - d * f.tf, d, rb, od * 0.5 + f.tf * 0.3, n2)
+	g.only()
 
 static func pump_vertical(_part: String, g) -> void:
 	var m = g.m
@@ -280,8 +530,12 @@ static func motor(_part: String, g) -> void:
 	var md := C.motor_dims(kw)
 	var zs: float = md.h + 0.15
 	var l: float = md.l
-	var mo := C.motor_h(m, Vector3(0, l * 0.5, zs), Vector3(0, 1, 0), kw, 0.15)
+	# the Workshop's tree (WORKSHOP.md §4, milestone K6): kit/README.md "Workshop: the motor"
+	var mo := C.motor_h(m, Vector3(0, l * 0.5, zs), Vector3(0, 1, 0), kw, 0.15, "paint_motor", g, "stator",
+		{"explode": [Vector3(0, 0, 1), 0.0], "rotor_anim": "shaft"})
+	g.comp("baseplate", {"explode": [Vector3(0, 0, 1), 0.0]})
 	C.baseplate(m, Vector3(-mo.r - 0.1, -l * 0.5 - 0.1, 0), Vector3(mo.r + 0.1, l * 0.5 + 0.1, 0.15))
+	g.comp("rotor")
 	var sh = g.move("shaft", Vector3(0, 0, zs), Vector3(0, 1, 0), "rotate", 0.0)
 	sh.use("steel", "identify")
 	sh.cyl(Vector3(0, l * 0.5, zs), Vector3(0, l * 0.5 + md.h * 0.6, zs), md.h * 0.15, -1.0, 12)

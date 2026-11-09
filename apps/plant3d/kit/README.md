@@ -368,6 +368,43 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   the gas ring's upper arc and down a pigtail to two cans' nozzle tips, the flame from the nozzles' tips along three
   liners and through their transition pieces to the first nozzles, two lines out of the diffuser; one of each set in
   the cutaway's quarter. Straight lines, not the swirl the blades give the air.
+- **motor** and the **motor of pump_horizontal** (one tree from `C.motor_h`, K6: kit/parts_common.gd): a totally
+  enclosed fan-cooled induction motor (IC 411, foot mounted IM B3), as the ABB, WEG and Siemens/Innomotics manuals
+  describe one. **The take-apart order is derived from how the motor is built, not from a manual** (the user,
+  2026-11-09): none of those manuals gives a numbered dismantling sequence; the order is the one the parts allow (the
+  fan cowl, the fan, the end shields, the rotor drawn out of the stator towards the drive end, the bearings off the
+  shaft), and each part cites what the manuals do say about it. **Simplified:** the bearing caps are part of their end
+  shields; the stator core is not drawn apart from the frame (its bore is the frame's), the winding is its two end
+  turns (brass); the rotor is a plain core on its shaft (no cage bars drawn); the non-drive-end shield is the frame's
+  end as the plant draws it, its spigot in the bore; the fan has eight straight radial blades (it cools whichever
+  way the motor turns: `tests/test_workshop.gd` checks that no fan blade leans); the terminal box is one part with
+  its terminals as anchors (`u1`, `v1`, `w1`). The plant draws the drive-end shield smaller than the frame, so its
+  four bolts stand on its own face. In the pump's explode the motor is lifted off the baseplate whole first and its
+  parts come apart above the pump (so that the back pull-out unit has room); the guided steps leave it standing, as
+  the spacer coupling lets a real one stay. The bearings are fitted on the rotor's shaft before it goes in and come off
+  it once it is out (in the guided steps they ride with it). The bench (later) will need the parts drawn in the
+  `shaft` node (the pump's shaft, impeller, seal and bearings, the motor's rotor and fan) turned with it: today only the
+  coupling (in the pump) or the rotor (in the motor) carries the `shaft` anim.
+- **pump_horizontal** (the end-suction branch, K6): a back pull-out end-suction pump (the OH1 configuration in API 610's terms; the Goulds 3196 itself is an
+  ASME B73.1 pump) as the Goulds
+  3196 i-FRAME manual (maintenance pp. 73–84, reassembly pp. 102–132) and the Flowserve Mark 3 ISO instructions
+  (§6.8, §6.10) take it apart: the coupling guard, the coupling and the motor off; the back pull-out unit (the bearing
+  frame with the casing cover, the seal, the shaft and the impeller) drawn back out of the volute, which stays on its
+  pipes; on the bench the impeller and the casing cover forwards, the shaft with its bearings and seal out of the
+  frame at the coupling end; the seal and the bearings off the shaft. The guided steps fit each part in its place
+  (a part's parent first), so the unit put together on the bench and the bearings fitted before the shaft goes in are
+  said in the steps' reasons; the explode shows them coming out whole. **Simplified:** the spacer coupling is one part
+  with its hubs (a real one's spacer drops out and the hubs stay on the shafts); the volute's passage is a plain
+  chamber round the impeller (the plant's offset scroll shell outside it); the impeller is closed, six vanes in two
+  straight pieces each, curved back against the shaft's turn (`tests/test_workshop.gd` checks the curve from the
+  vanes' faces); the seal is one ring; the bearing frame's oil, the labyrinth seals and the gasket are not drawn; the
+  discharge pipe starts in the scroll's wall (in the plant it reaches into the chamber); the twelve casing bolts are
+  the plant's bolt ring as a fastener group. The multi-stage barrel pump (`head_m` over 150) has no tree yet; the data
+  file names an end-suction pump the plant has three of. **The stand-ins:** the pump's casing, scroll, nozzles and
+  bearing frame are one stand-in, and the motor's frame, end shields and cowl another: the plant draws their caps with
+  their circles' points listed the other way round (for an odd number of segments, other points of the same circle),
+  so each split face lists its points as its own cylinder does (`C._face`), and only the cowl's face to the frame
+  keeps the plant's points, with a seam of thin triangles (`C._zip`), so that the outline is the plant's within 1 mm.
 
 ## Tables and their sources
 

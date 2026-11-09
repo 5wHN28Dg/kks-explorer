@@ -201,6 +201,19 @@ class Manuals(unittest.TestCase):
         self.assertIn(('WDP-CV-PACKING-SET', 'Packing'), rows)
         self.assertEqual([n for n, _ in rows].count('WDP-CV-PACKING-SET'), 1)
 
+    def test_comes_with_in_a_manual_of_several_kinds(self):
+        """K6: the pump manual's `comes_with` (the motor's grille with its cowl) names parts of the horizontal pump's
+        tree alone; a pair only half in a kind's tree, or in no kind's, is refused."""
+        content = M.load_content()
+        m = {'short': 'CP', 'kinds': ['pump_horizontal', 'pump_vertical'],
+             'kind_tags': {'pump_horizontal': 'H', 'pump_vertical': 'V'}}
+        rows = [M.runs_text(r[0]) if hasattr(M, 'runs_text') else r[0] for r in
+                M.parts_table(dict(m, comes_with={'grille': 'fan_cowl'}), content, 'w')['table']['rows']]
+        self.assertFalse(any('GRILLE' in json.dumps(r) for r in rows))
+        for bad in ({'grille': 'impeller_x'}, {'nothing': 'none'}):
+            with self.assertRaises(M.ManualError):
+                M.parts_table(dict(m, comes_with=bad), content, 'w')
+
     def test_generic_words(self):
         for mid, m in self.manuals.items():
             for w in set(re.findall(r'[a-z]+', json.dumps(m, ensure_ascii=False).lower())):

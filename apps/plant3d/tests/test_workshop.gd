@@ -19,7 +19,12 @@ const Explode = preload("res://workshop/explode.gd")
 ## The way the working fluid flows along the shaft, per kind with blade rows (Godot's axes: the generator's +y is -z):
 ## the steam turbine's steam from its inlet end to its exhaust end (generator -y), the gas turbine's air and gas from
 ## the compressor to the exhaust (generator +y). Every kind whose drawn faces lean about a shaft is listed here.
-const FLOW := {"steam_turbine": Vector3(0, 0, 1), "gas_turbine": Vector3(0, 0, -1)}
+## A kind whose flow leaves the shaft radially (a centrifugal pump's impeller, a motor's fan) says "radial", with the
+## number of its moving rows whose vanes lean (RADIAL_ROWS): an impeller's vanes curve back against its turn, a
+## motor's fan has straight radial blades (it cools whichever way the motor turns), so it has none.
+const FLOW := {"steam_turbine": Vector3(0, 0, 1), "gas_turbine": Vector3(0, 0, -1), "pump_horizontal": "radial",
+	"motor": "radial"}
+const RADIAL_ROWS := {"pump_horizontal": 1, "motor": 0}
 ## Pairs of components whose explode may pass through each other ("kind|a|b", either order; b may end in "*" for
 ## every component whose id begins so), each with its reason (_explode_paths).
 const PASSES := {
@@ -363,6 +368,17 @@ func _blade_lean(part: String, ws: Dictionary) -> void:
 	check(FLOW.has(part), "%s: a kind with a shaft says the way its flow goes along it (FLOW)" % part)
 	if not FLOW.has(part):
 		return
+	if FLOW[part] is String:
+		_radial_lean(part, ws, shaft)
+		if int(RADIAL_ROWS.get(part, 0)) > 0:   # the check itself: the same vanes with the shaft turning the other way fail
+			var kept := problems.duplicate()
+			var back: Dictionary = shaft.duplicate()
+			back.axis = -(shaft.axis as Vector3)
+			_radial_lean(part, ws, back)
+			var caught := problems.size() > kept.size()
+			problems = kept
+			check(caught, "%s: the vane check misses an impeller turning the wrong way" % part)
+		return
 	var f: Vector3 = FLOW[part]
 	var ax: Vector3 = shaft.axis
 	check(absf(ax.dot(f)) > 0.999, "%s: the shaft turns about the flow's line (%s, %s)" % [part, ax, f])
@@ -404,6 +420,56 @@ func _blade_lean(part: String, ws: Dictionary) -> void:
 			"moving" if acc[2] else "stationary", "with" if lean < 0.0 else "against", lean,
 			"moving" if acc[2] else "stationary", "against" if acc[2] else "with"])
 	check(rows[0] > 0 and rows[1] > 0, "%s: blade rows found, stationary and moving (%d, %d)" % [part, rows[0], rows[1]])
+
+## A radial machine's vanes, from the faces of what turns with the shaft (its `shaft` node): with the flow f the
+## radial direction at each face, a vane curved back against the turn t (its tip trailing) has faces whose normals n
+## give (n·f)(n·t) > 0, one curved forwards < 0, and a straight radial blade 0. Faces nearly facing outwards (a
+## surface of revolution's facets) or across the shaft are left out. Per component: the signed sum over the sum of
+## its magnitudes, for each component whose faces lean one way by more than 2 % of its area; every one must lean back (an impeller drawn turning the wrong way, or its vanes mirrored, fails),
+## and the kind has RADIAL_ROWS of them.
+func _radial_lean(part: String, ws: Dictionary, shaft: Dictionary) -> void:
+	var ax: Vector3 = shaft.axis
+	var sums := {}   # comp -> [signed, magnitude, area]
+	for pr in _all_layers(ws):
+		var L: Dictionary = pr[0]
+		if not String(pr[2]).begins_with("shaft/"):
+			continue
+		var shift: Vector3 = pr[1]
+		var arr := (L.mesh as ArrayMesh).surface_get_arrays(0)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		var acc: Array = sums.get(L.comp, [0.0, 0.0, 0.0])
+		for i in range(0, idx.size(), 3):
+			var a := v[idx[i]] + shift
+			var b := v[idx[i + 1]] + shift
+			var c := v[idx[i + 2]] + shift
+			var cr := (b - a).cross(c - a)
+			var area := cr.length() * 0.5
+			if area < 1e-12:
+				continue
+			var n := cr.normalized()
+			var rel: Vector3 = (a + b + c) / 3.0 - (shaft.pivot as Vector3)
+			var rad: Vector3 = rel - ax * rel.dot(ax)
+			if rad.length() < 1e-4:
+				continue
+			var f := rad.normalized()
+			acc[2] += area
+			if absf(n.dot(f)) > 0.97 or absf(n.dot(ax)) > 0.5:
+				continue   # (a surface of revolution's facets, a face across the shaft: no vane)
+			var x := area * n.dot(f) * n.dot(ax.cross(f))
+			acc[0] += x
+			acc[1] += absf(x)
+		sums[L.comp] = acc
+	var rows := 0
+	for id in sums:
+		var acc: Array = sums[id]
+		if absf(acc[0]) < 0.02 * acc[2]:
+			continue
+		rows += 1
+		check(acc[0] / acc[1] > 0.5, "%s: %s's vanes lean %s the shaft's turn (%.2f): an impeller's curve back against it" % [
+			part, id, "with" if acc[0] < 0.0 else "neither way against", acc[0] / acc[1]])
+	check(rows == int(RADIAL_ROWS.get(part, -1)), "%s: %d leaning rows turn with the shaft, %d expected (RADIAL_ROWS)" % [
+		part, rows, int(RADIAL_ROWS.get(part, -1))])
 
 ## The explode's paths (§4.3), sampled through every stage of the slider: no component goes below the floor (the
 ## machine's lowest point, assembled, when it stands on the ground, y = 0, on a part that stays), and none passes
