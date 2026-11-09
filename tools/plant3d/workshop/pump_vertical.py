@@ -263,10 +263,10 @@ def data():
                               'sources': [GOULDS_VIT, FLOWSERVE_VTP]},
         },
         'assembly': ASSEMBLY,
-        # the X-ray takes the head, the column, the bowls and the motor's casing; the cutaway opens a quarter on the
-        # plate's side; nothing is opened while it turns (WORKSHOP.md §4.7: a rotating machine)
+        # the X-ray takes the head, the column, the bowls and the motor's casing; the cutaway opens the quarter on the
+        # plate's side away from the discharge branch (the one the gallery and the Workshop's first view face); nothing is opened while it turns (WORKSHOP.md §4.7: a rotating machine)
         'views': {'xray_all': ['head', 'column_1', 'column_2', 'column_3', 'discharge_case', 'bowl_2', 'bowl_1',
                                'suction_bell', 'motor', 'end_shield_de', 'drip_cover'],
-                  'cutaway': {'planes': [{'normal': [0, 1, 0], 'offset': 0}, {'normal': [1, 0, 0], 'offset': 0}],
+                  'cutaway': {'planes': [{'normal': [0, -1, 0], 'offset': 0}, {'normal': [1, 0, 0], 'offset': 0}],
                               'keep': ['impeller_1', 'impeller_2', 'shaft', 'rotor']}},
     }

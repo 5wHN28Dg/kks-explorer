@@ -199,9 +199,10 @@ def data():
                              'sources': [F667]},
         },
         'assembly': ASSEMBLY,
-        # the X-ray takes the body, the bonnet, the casings, the cage and the packing; the cutaway opens the half on the
-        # side away from the positioner, down the flow and the stem
+        # the X-ray takes the body, the bonnet, the casings, the cage and the packing; the cutaway opens the upstream
+        # half, across the flow through the stem (the side the gallery and the Workshop's first view face), so the
+        # seat, the cage and the plug show in section; the positioner beside the yoke stays whole
         'views': {'xray_all': ['body', 'bonnet', 'lower_casing', 'upper_casing', 'cage', 'packing'],
-                  'cutaway': {'planes': [{'normal': [-1, 0, 0], 'offset': 0}],
-                              'keep': ['plug_stem', 'actuator_stem', 'stem_connector']}},
+                  'cutaway': {'planes': [{'normal': [0, -1, 0], 'offset': 0}],
+                              'keep': ['plug_stem', 'actuator_stem', 'stem_connector', 'positioner', 'tubing']}},
     }

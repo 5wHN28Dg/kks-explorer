@@ -33,5 +33,5 @@
   {"place": "positioner", "text": ["Mount the positioner on the yoke, its feedback magnet on the stem connector."], "sources": ["dvc6200"], "needs": [["stem_connector", "The positioner reads the travel from the stem connector: fit it first.", "Take the positioner off before the stem connector."]]},
   {"place": "tubing", "text": ["Connect the tubing from the positioner's output to the upper casing."], "sources": ["dvc6200", "fisher_667"], "why": ["Shut off and vent the air supply before disconnecting anything."], "needs": [["positioner", "The tubing runs from the positioner: mount it first.", "Disconnect the tubing first."], ["upper_casing", "The tubing goes to the upper casing: fit it first.", "Disconnect the tubing before the upper casing comes off."]]}
  ],
- "views": {"xray_all": ["body", "bonnet", "lower_casing", "upper_casing", "cage", "packing"], "cutaway": {"planes": [{"normal": [-1, 0, 0], "offset": 0}], "keep": ["plug_stem", "actuator_stem", "stem_connector"]}}
+ "views": {"xray_all": ["body", "bonnet", "lower_casing", "upper_casing", "cage", "packing"], "cutaway": {"planes": [{"normal": [0, -1, 0], "offset": 0}], "keep": ["plug_stem", "actuator_stem", "stem_connector", "positioner", "tubing"]}}
 }
