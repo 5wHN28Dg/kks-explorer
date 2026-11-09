@@ -167,7 +167,7 @@ class WorkshopData(unittest.TestCase):
         for st in v['assembly']:
             self.assertTrue(set(st['sources']) & {'fisher_es', 'fisher_667', 'dvc6200'}, st['place'])
 
-
+    def test_context(self):
         w = copy.deepcopy(self.fixture)
         w.pop('params', None)
         w['context'] = ['shaft_lo']

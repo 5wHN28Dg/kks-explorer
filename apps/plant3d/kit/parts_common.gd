@@ -343,13 +343,13 @@ static func motor_v(m, base: Vector3, kw: float, mat := "paint_motor", g = null,
 	if g != null and not ws:
 		g.comp("motor", root_spec)
 	if ws:
-		_vmotor_comps(g, root_spec, base, r, l, md.h)
+		_vmotor_comps(g, root_spec, base, r, l, md.h, float(root_spec.get("shaft_r", 0.0)))
 		g.comp("end_shield_de")
 		g.only("plant", SI)
 	m.use(mat, "form")
 	m.cyl(base, base + up * 0.08, r * 1.05)                  # mounting flange
 	if ws:
-		_vmotor_de(g, m, mat, base, r, md.h)
+		_vmotor_de(g, m, mat, base, r, md.h, float(root_spec.get("shaft_r", 0.0)))
 		g.comp("motor")
 		g.only("plant", SI)
 		m.use(mat, "form")
@@ -365,7 +365,7 @@ static func motor_v(m, base: Vector3, kw: float, mat := "paint_motor", g = null,
 		return {"r": r * 1.15, "top": base.z + l}
 	m.cyl(base + up * 0.08, base + up * l * 0.8, r * 0.92)
 	if ws:
-		_vmotor_frame(g, m, mat, base, r, l, md.h)
+		_vmotor_frame(g, m, mat, base, r, l, md.h, float(root_spec.get("shaft_r", 0.0)))
 		g.comp("drip_cover")
 		g.only("plant", SI)
 		m.use(mat, "form")
@@ -399,9 +399,9 @@ static func _vmotor_r(r: float, l: float, h: float, shaft_r := 0.0) -> Dictionar
 ## what comes off it upwards: the drip cover ahead of the fan ahead of the top bracket ahead of the rotor, so none
 ## passes through another; the drive-end bracket (the mounting flange) stays on the frame. The bearings ride out with
 ## the rotor and come off its shaft after.
-static func _vmotor_comps(g, root_spec: Dictionary, base: Vector3, r: float, l: float, h: float) -> void:
+static func _vmotor_comps(g, root_spec: Dictionary, base: Vector3, r: float, l: float, h: float, shaft_r := 0.0) -> void:
 	var up := Vector3(0, 0, 1)
-	var k := _vmotor_r(r, l, h)
+	var k := _vmotor_r(r, l, h, shaft_r)
 	var spec := root_spec.duplicate()
 	spec.erase("shaft_r")
 	spec["anchors"] = {"vib_nde": base + up * l * 0.75 + Vector3(r * 0.92, 0, 0), "vib_de": base + up * 0.12 + Vector3(r * 0.92, 0, 0)}
@@ -419,9 +419,9 @@ static func _vmotor_comps(g, root_spec: Dictionary, base: Vector3, r: float, l: 
 
 ## The mounting flange (the drive-end bracket): the plant's disc open through its bearing housing's bore, the lower
 ## guide bearing's seat.
-static func _vmotor_de(g, m, mat: String, base: Vector3, r: float, h: float) -> void:
+static func _vmotor_de(g, m, mat: String, base: Vector3, r: float, h: float, shaft_r := 0.0) -> void:
 	var up := Vector3(0, 0, 1)
-	var k := _vmotor_r(r, 1.0, h)
+	var k := _vmotor_r(r, 1.0, h, shaft_r)
 	var n: int = m.segs(r * 1.05)   # the plant's flange's
 	var top := base + up * 0.08
 	g.only("workshop", "split")
@@ -437,9 +437,9 @@ static func _vmotor_de(g, m, mat: String, base: Vector3, r: float, h: float) -> 
 	g.only()
 
 ## The frame and stator: the plant's cylinder open through the stator's bore at both ends (the brackets close it).
-static func _vmotor_frame(g, m, mat: String, base: Vector3, r: float, l: float, h: float) -> void:
+static func _vmotor_frame(g, m, mat: String, base: Vector3, r: float, l: float, h: float, shaft_r := 0.0) -> void:
 	var up := Vector3(0, 0, 1)
-	var k := _vmotor_r(r, l, h)
+	var k := _vmotor_r(r, l, h, shaft_r)
 	var n: int = m.segs(r * 0.92)   # the plant's frame's
 	var a := base + up * 0.08
 	var b: Vector3 = base + up * k.z_top

@@ -199,7 +199,7 @@ def data():
                              'sources': [F667]},
         },
         'assembly': ASSEMBLY,
-        # the X-ray takes the body, the bonnet, the casing and the positioner; the cutaway opens the half on the
+        # the X-ray takes the body, the bonnet, the casings, the cage and the packing; the cutaway opens the half on the
         # side away from the positioner, down the flow and the stem
         'views': {'xray_all': ['body', 'bonnet', 'lower_casing', 'upper_casing', 'cage', 'packing'],
                   'cutaway': {'planes': [{'normal': [-1, 0, 0], 'offset': 0}],

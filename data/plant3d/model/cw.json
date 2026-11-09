@@ -464,9 +464,9 @@
   {"id": "wo_cw_a_pack_ll", "kks": "30PAC10AA101", "title": "CW pump A discharge valve: drip tray first, then isolate and fit live-loaded packing", "discipline": "mech", "permit": "general", "isolation": "iso_cw_a", "set": {"cw_a_gland": 0}, "task": "job_cw_a_pack_ll", "jsa": "valve_packing", "isolate": "isolate_cw_a_pack_ll", "assign": "assign_cw_a_pack_ll", "deisolate": "deisolate_cw_a_pack_ll", "codes": ["leak", "wear", "modify"], "hours": 5, "finds": ["leak"]}
  ],
  "hands": [
-  {"kks": "30PAC10AP001", "action": "take_oil", "component": "bearing_thrust", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["cw_a_lab_fe", "cw_a_lab_pc", "cw_a_lab_visc", "cw_a_lab_h2o"]},
-  {"kks": "30PAC10AP002", "action": "take_oil", "component": "bearing_thrust", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["cw_b_lab_fe", "cw_b_lab_pc", "cw_b_lab_visc", "cw_b_lab_h2o"]},
-  {"kks": "30PAC10AP003", "action": "take_oil", "component": "bearing_thrust", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["cw_c_lab_fe", "cw_c_lab_pc", "cw_c_lab_visc", "cw_c_lab_h2o"]}
+  {"kks": "30PAC10AP001", "action": "take_oil", "component": "motor", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["cw_a_lab_fe", "cw_a_lab_pc", "cw_a_lab_visc", "cw_a_lab_h2o"]},
+  {"kks": "30PAC10AP002", "action": "take_oil", "component": "motor", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["cw_b_lab_fe", "cw_b_lab_pc", "cw_b_lab_visc", "cw_b_lab_h2o"]},
+  {"kks": "30PAC10AP003", "action": "take_oil", "component": "motor", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["cw_c_lab_fe", "cw_c_lab_pc", "cw_c_lab_visc", "cw_c_lab_h2o"]}
  ],
  "meters": [
   {"id": "cw_a_vel", "kks": "30PAC10CY001", "point": "brg", "tool_kind": "collector", "mode": "vel", "value": "cw_a_vib"},

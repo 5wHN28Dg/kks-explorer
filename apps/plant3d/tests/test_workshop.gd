@@ -576,7 +576,8 @@ func _turning(part: String, ws: Dictionary) -> void:
 	var told := {}
 	for tid in turning:
 		if standing.has(tid):
-			continue   # (a component partly in the shaft node and partly standing: judged by its own design)
+			check(false, "%s: %s is drawn partly in the turning node and partly standing" % [part, tid])
+			continue
 		for x: Array in turning[tid]:
 			# (a polygon's flats: a turning corner sweeps past a standing flat of the same circle by r (1 - cos(pi/n)),
 			# 2 % of r at 16 sides)
