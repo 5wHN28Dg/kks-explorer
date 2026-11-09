@@ -36,6 +36,12 @@ const PASSES := {
 	"gas_turbine|fuel_ring|*": "the plant draws the fuel gas ring closed round the discharge casing, among the cans' "
 		+ "end covers and into the foundation block: it stays, and what lifts passes through it (a real one's pigtails "
 		+ "are undone and it comes off in segments)",
+	"steam_turbine|valve_l|ctrl_l": "the plant draws each valve chest closed (§7.2): the control valve's plug is "
+		+ "lifted out through its top, as a real one comes out through the chest's opening once the servomotor and "
+		+ "the cover are off",
+	"steam_turbine|valve_r|ctrl_r": "the same chest on the other side",
+	"test_gadget|base|core": "the fixture's core is drawn inside its closed base on purpose (a hidden piece) and "
+		+ "comes out through its wall",
 }
 const CELL := 0.25   # the cells' width (m) in which the explode's paths are compared
 const SMALL := 0.1   # the longest edge of a small triangle there (m)
@@ -647,7 +653,9 @@ func _mesh_cells(mi: MeshInstance3D, p: Vector3, cells: Dictionary) -> void:
 				else:
 					e[0] = (e[0] as Vector3).min(lo)
 					e[1] = (e[1] as Vector3).max(hi)
-					(e[2] as PackedVector3Array).append_array(PackedVector3Array([lo, hi, a, b, c]))
+					var smalls: PackedVector3Array = e[2]   # (a packed array is a value: append to it, then store it back)
+					smalls.append_array(PackedVector3Array([lo, hi, a, b, c]))
+					e[2] = smalls
 
 ## Each component's box at home, of its own meshes, in the root's frame (components are placed, never turned), and
 ## its pieces' boxes.
