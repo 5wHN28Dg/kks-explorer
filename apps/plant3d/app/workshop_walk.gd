@@ -158,6 +158,7 @@ func _bench_sweep() -> void:
 			_swept.erase(key)
 			ws.bench.op_set(o.at, clampf(0.0, lo, hi))
 
+var phases := 0                 # the phases begun (probe=1's `workshop_phase` events)
 var _swept := {}                # the sliders a machine's sequence owns, swept now ("at/input")
 const HOLD_SLIP := 0.01         # an owned slider's hold above its middle, of its range (the speed bias: 0.02 %, 0.01 Hz)
 
@@ -369,5 +370,8 @@ func _at(phase: String) -> bool:
 	if _phase == phase:
 		return false
 	_phase = phase
+	phases += 1
+	if main.get("frame_probe") != null and not main.frame_probe.counters.has("workshop_phase"):
+		main.frame_probe.counters["workshop_phase"] = func(): return phases   # (probe=1: frames.csv marks each phase)
 	main._say("WORKSHOP phase %s at %.1f s" % [phase, t])
 	return true

@@ -55,6 +55,7 @@ func machine_shown(machine: Node3D, comps: Dictionary) -> void:
 	_capped.clear()
 	_caps.clear()
 	_ramped.clear()
+	_ramp_set.clear()
 	_xrayed.clear()
 	_keep.clear()
 	xray = false
@@ -305,14 +306,21 @@ static func _v3(a) -> Vector3:
 # ------------------------------------------------------------------ heat and pressure colours, the selection
 
 ## A component's heat or pressure colour (a = how much: 0 none).
+var ramp_writes := 0            # set_ramp's writes (tests)
+var _ramp_set := {}             # component -> the ws_ramp it was last given (set_ramp writes only a change)
 func set_ramp(id: String, c: Color, a: float) -> void:
 	if not _meshes.has(id):
 		return
 	if a <= 0.0 and not _ramped.has(id):
 		return
 	var lc := c.srgb_to_linear()   # (a legend's #rrggbb is sRGB; the shader's ALBEDO is linear)
+	var want := Color(lc.r, lc.g, lc.b, a * RAMP_MIX)
+	if _ramp_set.get(id) == want:   # (unchanged since the last frame: no instance uniform written again)
+		return
+	_ramp_set[id] = want
+	ramp_writes += 1
 	for g in _meshes[id]:
-		g.set_instance_shader_parameter("ws_ramp", Color(lc.r, lc.g, lc.b, a * RAMP_MIX))
+		g.set_instance_shader_parameter("ws_ramp", want)
 	if a > 0.0:
 		_ramped[id] = true
 	else:

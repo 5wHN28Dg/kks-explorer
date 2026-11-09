@@ -301,6 +301,14 @@ func _gas_turbine(tree: SceneTree, ws) -> void:
 	for f in ["air_in", "comp_0", "comp_3", "fuel_0", "fuel_1", "flame_0", "flame_2", "turb_0", "exhaust_1"]:
 		check(ws.views.flow_ids().has(f), "the flow path %s is drawn" % f)
 	var fsz: float = (ws.views._flows["comp_0"].mat as ShaderMaterial).get_shader_parameter("size")
+	# a frame's drawing asks once whether the machine stands assembled (each ask works out every part's offset: asked
+	# for each of 16 flows it cost the Note 9 its frame rate in K5b's first run), and writes no unchanged colour
+	_go(ws, 0.1)
+	var asks0: int = ws.assembled_asks
+	var writes0: int = ws.views.ramp_writes
+	bv.draw(0.0)
+	check(ws.assembled_asks - asks0 == 1, "the gas turbine's frame asks once whether it stands assembled (%d)" % (ws.assembled_asks - asks0))
+	check(ws.views.ramp_writes == writes0, "and with nothing changed writes no colour again (%d)" % (ws.views.ramp_writes - writes0))
 	check(fsz > 0.04 and fsz <= 0.05, "the gas turbine's particles are sized to be seen on its 25 m (%.3f m)" % fsz)
 	var rp = ws.panels.run_panel
 	ws.panels.show_run(true)

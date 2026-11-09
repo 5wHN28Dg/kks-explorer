@@ -166,24 +166,31 @@ func draw(dt: float) -> void:
 	for at in lits:
 		var on: bool = clock.now(lits[at]) >= 0.5
 		views.set_ramp(at, LCD_ON if on else LCD_OFF, 1.0)
+	# (asked once a frame: whether it stands assembled works out every part's offset, which on an 84-part machine
+	# took 0.2 ms a call on the laptop, 3.5 ms a frame for 16 flows: the Note 9's slow frames in K5b's first run)
+	var together: bool = ws.assembled() if not flows.is_empty() else true
 	for f in flows:
 		var c := FLOW_COLOUR
 		if f.legend != "" and clock.m.legends.has(f.legend):
 			c = Views.legend_colour(clock.m.legends[f.legend], clock.val(f.by))
 		# drawn only while the machine stands assembled: the path is in the machine's frame, through parts that move
 		# when it is taken apart
-		views.set_flow(f.flow, clock.val(f.of) if ws.assembled() else 0.0, f.speed, dt, c)
+		views.set_flow(f.flow, clock.val(f.of) if together else 0.0, f.speed, dt, c)
 	var shown := shown_ramps    # component -> the ramp it shows now
 	shown.clear()
 	for r in ramps:
 		if (r.legend == "heat" and views.heat_on) or (r.legend == "pressure" and views.pressure_on):
 			if not shown.has(r.at) or r.legend == "heat":
 				shown[r.at] = r
+	var memo := {}
 	for r in ramps:
 		if views.is_xrayed(r.at):
 			continue
 		if shown.get(r.at) == r:
-			views.set_ramp(r.at, Views.legend_colour(clock.m.legends.get(r.legend, {}), clock.val(r.of)), 1.0)
+			var key: String = r.legend + "/" + r.of   # (one colour a value a frame: the gas turbine's 24 liners and
+			if not memo.has(key):                     # transition pieces read one temperature)
+				memo[key] = Views.legend_colour(clock.m.legends.get(r.legend, {}), clock.val(r.of))
+			views.set_ramp(r.at, memo[key], 1.0)
 		elif not shown.has(r.at) and not lits.has(r.at):
 			views.set_ramp(r.at, Color.BLACK, 0.0)
 	for s in sounds:

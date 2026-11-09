@@ -855,6 +855,17 @@ addition (both engines, vectors) made in K6.
   on the private display, Forward+): first entry 126 ms after the plant's warm-up, again 118 ms, back to the plant
   15–19 ms; 0 guided steps loose; the turbine synchronised and loaded before the faults; no frame over 100 ms (the
   longest 50 ms, p95 17.3 ms); **the bench step 79 µs mean** (the longest 3.2 ms) over 53,998 steps.
+- **The Note 9's first run (2026-11-09, at 4c1e5254): 93.77 % of frames at ≥ 30 fps** (rule ≥ 95 %; median frame
+  23.7 ms; main's K5a gas turbine walk on the same phone minutes before, 99.75 %). The slow frames were in the
+  phases with the whole machine shown and no guided step (assembled, exploded, subassembly, reset: medians of 33–50
+  ms), before the bench was started, so not its steps. The cause: `bench_view.draw` asked `ws.assembled()` once
+  for each of the 16 flows, and each ask works out every one of the 84 parts' offsets: 3.5 ms of a frame's 4.3 ms
+  of drawing the bench on the laptop. Now asked once a frame (and at once when nothing is exploded), `set_ramp`
+  writes an instance uniform only when its colour changed, and the ramps work out one colour a value a frame:
+  drawing the bench takes 1.1–1.4 ms a frame on the laptop in every phase (from 4.1–4.5 ms), the flows 0.2–0.45 ms
+  (from 3.3–3.7), the ramps about 0.4 ms. `test_workshop_run.gd` checks a frame asks once and rewrites no unchanged
+  colour. The bench's own steps at the walk's 30× cost the Note 9 about 1.3 ms a frame (168 µs a step, about 7.5
+  steps a frame at 40 frames a second; at the trainee's 2× about 0.08 ms).
 - **The Note 9: TODO (the coordinator's run): first entry, again, back to the plant, frames, peak PSS, draw calls,
   the bench step (≤ 0.3 ms), the APK's size.**
 - **Package:** K5b's own files are about 130 KB (the bench file 37 KB, the compressor's tone 91 KB of Ogg Vorbis).
