@@ -84,6 +84,31 @@ func run(tree: SceneTree) -> Array:
 	ui.crew.refresh()
 	if kept == null or ui.crew._disc_node != kept or not kept.is_inside_tree():
 		p.append("the discussion's part was built again by an unrelated rebuild")
+	# the panel is built in parts: a change found by its own timer builds only the parts it touched, one a frame
+	# (the Note 9: a whole rebuild took 35 to 55 ms of scripts there, frames over 100 ms)
+	var crew = ui.crew
+	var parts: Dictionary = crew.get("_parts") if crew.get("_parts") != null else {}
+	var task_label = parts["task"].get_child(0) if parts.has("task") and parts["task"].get_child_count() > 0 else null
+	var n0: int = crew.get("built_parts") if crew.get("built_parts") != null else 0
+	if crew.get("_part_keys") != null:
+		crew._part_keys["disc"] = "stale"
+		crew._part_keys["day"] = "stale"
+	crew._sig = "stale"
+	if crew.has_method("_build_part"):
+		crew.refresh(true)
+	else:
+		crew.refresh()
+	var built0: int = crew.get("built_parts") if crew.get("built_parts") != null else -1
+	if built0 != n0 + 1 or crew.get("_pending") != ["day"] or crew._disc_node == kept:
+		p.append("a change of two parts found by the timer should build the first now, the other next: %d %s" % [
+				built0 - n0, str(crew.get("_pending"))])
+	if task_label == null or not is_instance_valid(task_label) or not task_label.is_inside_tree():
+		p.append("the task's part was built again though its key had not changed")
+	await tree.process_frame
+	await tree.process_frame
+	var built1: int = crew.get("built_parts") if crew.get("built_parts") != null else -1
+	if built1 != n0 + 2 or crew.get("_pending") != []:
+		p.append("the other part should be built in the next frame: %d %s" % [built1 - n0, str(crew.get("_pending"))])
 	var txt: String = App.texts(ui.crew)
 	var d: Dictionary = sm.discuss["list"][di]
 	for want in ["Discussion: " + d["title"], d["positions"][0]["claim"], d["turns"][0]["text"], "until ",

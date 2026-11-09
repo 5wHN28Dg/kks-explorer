@@ -48,6 +48,15 @@ var _disc_key := ""                 # what it was built from (Discussions.sig an
 var _disc_closed: Dictionary = {}   # "id|count" -> true: an ended discussion's panel the trainee closed
 var _exchanges: Dictionary = {}  # "step|caller" -> true: a call or message to the trainee missed then (its others too)
 var _said: Dictionary = {}      # "from|message" -> the radio line of its last say (a missed call replaces it)
+# The trainee's panel is built in parts, each in its own box, each built again only when what it shows changed (its
+# key): a change of one part no longer builds the whole panel (the Note 9's frames: a whole rebuild took 35 to 55 ms
+# of scripts there). Parts that changed together are built one a frame when the change is found by the panel's own
+# timer; a refresh() called directly builds them all at once.
+const PARTS := ["head", "disc", "task", "queue", "day", "safety", "reads", "phone", "radio"]
+var _parts: Dictionary = {}     # part -> its box in body (empty while the panel shows something else)
+var _part_keys: Dictionary = {} # part -> the key it was built from
+var _pending: Array = []        # parts to build in the next frames, in PARTS' order
+var built_parts := 0            # parts built so far (tests)
 
 
 func setup(u) -> void:
@@ -93,10 +102,13 @@ func _process(delta: float) -> void:
 func _each_frame(delta: float) -> void:
 	if not visible:
 		return
+	if not _pending.is_empty():
+		_build_part(_pending.pop_front(), ui.clock.engine)
+		return
 	_t += delta
 	if _t >= 0.25:
 		_t = 0.0
-		refresh()
+		refresh(true)
 
 
 ## What the panel shows, as text: rebuilt only when it changes (a typed reading is kept).
@@ -105,14 +117,21 @@ func _signature(e) -> String:
 	if sm == null:
 		return "none|" + ui.phone.sig()
 	var tr: int = ui.my_person()
-	var cur = e.sp_cur[tr] if tr != -1 else null
 	# (free mode shows the roles or a line, and the radio's last lines; the sleep button's state, fast-forward's,
 	# only with a role. The radio's new lines alone are written into the lines shown, without a rebuild: refresh)
-	return "%d|%d|%s|%s|%d|%d|%d|%s|%d|%s|%s" % [tr, e.step_no if tr == -1 and e.step_no < 2 else 0,
+	return _base_sig(e) + "|" + (Discussions.sig(e, tr, _disc_closed) if tr != -1 else "") + "|" + ui.phone.sig()
+
+
+## The signature without the discussion's and the phone's parts: the key of the task's part (which reads more of
+## the engine than its key says, so it is built again on any of these changes, as the whole panel was).
+func _base_sig(e) -> String:
+	var tr: int = ui.my_person()
+	var cur = e.sp_cur[tr] if tr != -1 else null
+	return "%d|%d|%s|%s|%d|%d|%d|%s|%d|%s" % [tr, e.step_no if tr == -1 and e.step_no < 2 else 0,
 			str(cur["task"]) + str(cur["step"]) + str(cur["st"].get("dest", "")) if cur != null else "",
 			(str(e.sp_queue[tr].size()) + "/" + str(e.sp_slots[tr].size())) if tr != -1 else "", e.unacked(ui.inputs.slot),
 			_reads_count(e), e.t_at(ui.inputs.slot), str(e.fast_forward()) if tr != -1 else "", e.J,
-			_safety_sig(e) + _me_sig(e) + Discussions.sig(e, tr, _disc_closed) if tr != -1 else "", ui.phone.sig()]
+			_safety_sig(e) + _me_sig(e) if tr != -1 else ""]
 
 
 ## What else the trainee's part shows (its header's duty, the waiting tasks' priorities, whether a permit is open:
@@ -214,30 +233,37 @@ func _follow(e) -> void:
 	_seen = e.events.size()
 
 
-func refresh() -> void:
+## The panel brought up to date. `spread` (the panel's own timer): parts that changed together are built one a frame;
+## else all now (a direct call, the tests' too).
+func refresh(spread := false) -> void:
 	var e = ui.clock.engine
 	if e._sm != null:
 		_follow(e)
 	var sig := _signature(e)
 	if sig == _sig:
+		while not spread and not _pending.is_empty():
+			_build_part(_pending.pop_front(), e)
 		ui.phone.show()
 		if _radio.size() != _radio_shown:
 			_radio_lines()
 		if e._sm != null and ui.my_person() != -1 and is_instance_valid(_head) and _head.is_inside_tree():
 			_head.text = _head_text + ui.clock_text()       # (the clock, a new minute: no rebuild)
 		return
+	var forced := _sig == ""            # (open(), a closed discussion, the tests: every part built again)
 	_sig = sig
-	var typed := entry.text if entry != null and is_instance_valid(entry) else ""
-	var typed_for := _entry_code
-	var had_focus := get_viewport() != null and get_viewport().gui_get_focus_owner() != null \
-			and is_ancestor_of(get_viewport().gui_get_focus_owner())
-	entry = null
-	if _disc_node != null and _disc_node.get_parent() == body:
-		body.remove_child(_disc_node)   # (kept: rebuilt only when what it shows changed; the Note 9's frames)
-	W.clear(body)
 	var sm = e._sm
+	if sm != null and ui.my_person() != -1:
+		_trainee_parts(e, sm, forced, spread)
+		return
+	_parts.clear()                      # (free mode, the roles, no crews: built whole, as they change seldom)
+	_part_keys.clear()
+	_pending.clear()
+	var had_focus := _focus_inside()
+	entry = null
+	_disc_node = null
+	_disc_key = ""
+	W.clear(body)
 	if sm == null:
-		_drop_disc()
 		_radio_labels.clear()           # (no radio in this run: nothing for _radio_lines to fill)
 		_radio_shown = _radio.size()
 		body.add_child(W.label("No crews in this run: the plant as format 1, the trainee alone.", 18, W.DIM))
@@ -247,17 +273,105 @@ func refresh() -> void:
 				body.add_child(W.button("Start: " + ui.model.scenarios[s].get("title", s), func(): ui.start_shift(s)))
 		ui.phone.build(body)
 		return
-	if ui.my_person() == -1:
-		_roles(e, sm)
-	else:
-		_me(e, sm)
-	_drop_disc()
+	_roles(e, sm)
 	ui.phone.build(body)
 	_radio_log(e, sm)
+	if had_focus and ui.wants_focus():
+		var f: Control = _first(body)
+		if f:
+			f.grab_focus.call_deferred()
+
+
+func _focus_inside() -> bool:
+	var o: Control = get_viewport().gui_get_focus_owner() if get_viewport() != null else null
+	return o != null and is_ancestor_of(o)
+
+
+## The trainee's parts: those whose key changed (all when forced; the discussion's only when it changed) built again,
+## now or (spread) the first now and the others in the next frames.
+func _trainee_parts(e, sm, forced: bool, spread: bool) -> void:
+	if _parts.is_empty():
+		W.clear(body)
+		_part_keys.clear()
+		_disc_node = null
+		_disc_key = ""
+		for name in PARTS:
+			var box := VBoxContainer.new()
+			box.name = "part_" + name
+			_parts[name] = box
+			body.add_child(box)
+	var keys := _keys(e, sm)
+	for name in PARTS:
+		if keys[name] != _part_keys.get(name) or (forced and name != "disc"):
+			_part_keys[name] = keys[name]
+			if not _pending.has(name):
+				_pending.append(name)
+	_pending.sort_custom(func(x, y): return PARTS.find(x) < PARTS.find(y))
+	if spread and not _pending.is_empty():
+		_build_part(_pending.pop_front(), e)
+		return
+	while not _pending.is_empty():
+		_build_part(_pending.pop_front(), e)
+
+
+## What each part of the trainee's panel shows depends on.
+func _keys(e, sm) -> Dictionary:
+	var pi: int = ui.my_person()
+	var p: Dictionary = sm.people[pi]
+	var q := ""
+	for inst in e.sp_queue[pi]:
+		q += "%s/%d," % [inst["task"], inst["prio"]]
+	var day := str(e.clock() / 864000) + "|"
+	for sl in e.sp_slots[pi].slice(0, 8):
+		day += "%d/%s," % [sl[0], sl[4]]
+	var di: int = Discussions.shown(e, pi, _disc_closed)
+	var dk := ""
+	if di != -1:
+		dk = "%s|%d|%d" % [Discussions.sig(e, pi, _disc_closed), _disc_lines.get(sm.discuss["list"][di]["id"], []).size(), pi]
+	var open_permit := false
+	for st in e.pstate:
+		open_permit = open_permit or (st >= 1 and st <= 7)
+	return {"head": "%d|%d|%d" % [pi, e.sp_on[pi], e.unacked(ui.inputs.slot)], "disc": dk, "task": _base_sig(e),
+			"queue": q, "day": day, "safety": _safety_sig(e), "reads": "%d|%d" % [pi, _reads.get(p["id"], []).size()],
+			"phone": ui.phone.sig(), "radio": "%d|%s|%s|%s" % [pi, _next_shift(e), str(e.fast_forward()), str(open_permit)]}
+
+
+## One part built again in its box (the focus given back, and a reading being typed kept, when its control went).
+func _build_part(name: String, e) -> void:
+	var box: VBoxContainer = _parts.get(name)
+	var sm = e._sm
+	if box == null or not is_instance_valid(box) or sm == null or ui.my_person() == -1:
+		return
+	built_parts += 1
+	var had_focus := _focus_inside()
+	var typed := entry.text if name == "task" and entry != null and is_instance_valid(entry) else ""
+	var typed_for := _entry_code
+	if name == "task":
+		entry = null
+	W.clear(box)
+	if name == "disc":
+		_disc_node = null
+		_disc_key = _part_keys.get("disc", "")
+	var keep := body
+	body = box                          # (the parts' builders add to body)
+	var pi: int = ui.my_person()
+	match name:
+		"head": _me_head(e, sm, pi)
+		"disc": _me_disc(e, sm, pi)
+		"task": _me_task(e, sm, pi)
+		"queue": _me_queue(e, sm, pi)
+		"day": _day(e, sm, pi)
+		"safety": _safety(e, sm)
+		"reads": _me_reads(e, sm, pi)
+		"phone": ui.phone.build(body)
+		"radio": _radio_log(e, sm)
+	body = keep
 	if entry != null and typed != "" and typed_for == _entry_code:
 		entry.text = typed                  # a reading being typed survives the panel's rebuild (the same reading's)
-	if had_focus and ui.wants_focus():
-		var f: Control = entry if entry != null else _first(body)
+	if had_focus and not _focus_inside() and ui.wants_focus():
+		var f: Control = entry if entry != null else _first(box)
+		if f == null:
+			f = _first(body)
 		if f:
 			f.grab_focus.call_deferred()
 
@@ -294,8 +408,7 @@ func _roles(e, sm) -> void:
 
 # ------------------------------------------------------------------ the trainee's tasks (§18.7)
 
-func _me(e, sm) -> void:
-	var pi: int = ui.my_person()
+func _me_head(e, sm, pi: int) -> void:
 	var p: Dictionary = sm.people[pi]
 	title.text = "Crew: you are %s" % p["call"]
 	var duty := "on duty" if e.sp_on[pi] else "off duty"
@@ -307,39 +420,41 @@ func _me(e, sm) -> void:
 		row.add_child(W.label("%d new for you" % e.unacked(ui.inputs.slot), 20, Color(1.0, 0.75, 0.2)))
 		row.add_child(W.button("Seen", func(): ui.inputs.task_ack()))
 		body.add_child(row)
+
+
+## The discussion the trainee takes part in or whose room they are in (REALISM.md §6.3.1).
+func _me_disc(e, sm, pi: int) -> void:
 	var di: int = Discussions.shown(e, pi, _disc_closed)
-	if di != -1:                        # (REALISM.md §6.3.1)
-		var did: String = sm.discuss["list"][di]["id"]
-		var lines: Array = _disc_lines.get(did, [])
-		var dk := "%s|%d|%d" % [Discussions.sig(e, pi, _disc_closed), lines.size(), pi]
-		if _disc_node == null or dk != _disc_key:
-			if _disc_node != null:
-				_disc_node.queue_free()
-			_disc_node = VBoxContainer.new()
-			_disc_key = dk
-			var key := "%s|%d" % [did, e.dsc[di]["count"]]
-			Discussions.build(ui, e, _disc_node, di, pi, lines, func():
-				_disc_closed[key] = true
-				_sig = ""
-				refresh())
-		body.add_child(_disc_node)
-	elif _disc_node != null:
-		_disc_node.queue_free()
-		_disc_node = null
-		_disc_key = ""
+	if di == -1:
+		return
+	var did: String = sm.discuss["list"][di]["id"]
+	_disc_node = VBoxContainer.new()
+	var key := "%s|%d" % [did, e.dsc[di]["count"]]
+	Discussions.build(ui, e, _disc_node, di, pi, _disc_lines.get(did, []), func():
+		_disc_closed[key] = true
+		_sig = ""
+		refresh())
+	body.add_child(_disc_node)
+
+
+func _me_task(e, sm, pi: int) -> void:
 	var cur = e.sp_cur[pi]
 	if cur == null:
 		body.add_child(W.label("No task now.", 18, W.DIM))
 	else:
 		_task(e, sm, cur)
+
+
+func _me_queue(e, sm, pi: int) -> void:
 	var q: Array = e.sp_queue[pi]
 	if not q.is_empty():
 		body.add_child(W.label("Waiting:", 18, W.DIM))
 		for inst in q:
 			body.add_child(W.label("• " + sm.tasks[inst["task"]]["title"] + " (priority %d)" % inst["prio"], 18))
-	_day(e, sm, pi)
-	_safety(e, sm)
-	var reads: Array = _reads.get(p["id"], [])
+
+
+func _me_reads(e, sm, pi: int) -> void:
+	var reads: Array = _reads.get(sm.people[pi]["id"], [])
 	if not reads.is_empty():
 		body.add_child(W.label("Readings sheet:", 18, W.DIM))
 		for ev in reads.slice(maxi(0, reads.size() - 12)):
@@ -793,15 +908,3 @@ static func _to(sm, to) -> String:
 	if sm.person_ix.has(to):
 		return _call(sm, to)
 	return "all"
-
-
-## The kept discussion part freed when the rebuild didn't put it back (no discussion shown, free mode, no crews).
-func _drop_disc() -> void:
-	if _disc_node != null and _disc_node.get_parent() == null:
-		_disc_node.queue_free()
-		_disc_node = null
-		_disc_key = ""
-
-
-func _exit_tree() -> void:
-	_drop_disc()
