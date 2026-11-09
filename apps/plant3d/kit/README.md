@@ -391,7 +391,9 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   (§6.8, §6.10) take it apart: the coupling guard, the coupling and the motor off; the back pull-out unit (the bearing
   frame with the casing cover, the seal, the shaft and the impeller) drawn back out of the volute, which stays on its
   pipes; on the bench the impeller and the casing cover forwards, the shaft with its bearings and seal out of the
-  frame at the coupling end; the seal and the bearings off the shaft. **Simplified:** the spacer coupling is one part
+  frame at the coupling end; the seal and the bearings off the shaft. The guided steps fit each part in its place
+  (a part's parent first), so the unit put together on the bench and the bearings fitted before the shaft goes in are
+  said in the steps' reasons; the explode shows them coming out whole. **Simplified:** the spacer coupling is one part
   with its hubs (a real one's spacer drops out and the hubs stay on the shafts); the volute's passage is a plain
   chamber round the impeller (the plant's offset scroll shell outside it); the impeller is closed, six vanes in two
   straight pieces each, curved back against the shaft's turn (`tests/test_workshop.gd` checks the curve from the

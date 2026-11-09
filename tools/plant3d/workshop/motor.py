@@ -96,18 +96,19 @@ def _step(place, text, needs=(), why=None, sources=(WEG,)):
 def assembly(root, first=True):
     """The motor's guided order (reassembly; taking apart is its reverse). `first`: the root is placed here (the
     motor kind) rather than by the machine it drives."""
-    steps = [_step(root, 'Set the stator in its frame on the bench, feet down, the winding protected.',
-                   sources=(SIMOTICS,))] if first else []
+    steps = [_step(root, 'Set the stator in its frame on its baseplate, feet down, the winding protected.',
+                   [('baseplate', 'The motor stands on its baseplate: it is there first.',
+                     'The baseplate stays grouted to the floor.')], sources=(SIMOTICS,))] if first else []
     return steps + [
-        _step('rotor', 'Slide the rotor, its bearings already on its shaft, into the stator\'s bore from the drive '
-              'end, its weight carried so that it never rests on the winding.',
+        _step('rotor', 'Slide the rotor into the stator\'s bore from the drive end, its weight carried so that it '
+              'never rests on the winding.',
               [(root, 'The rotor goes into the stator\'s bore: set the stator down first.',
                 'Draw the rotor out before the stator is moved.')],
               why='A rotor dragged against the winding damages its insulation.', sources=(SIMOTICS, WEG)),
-        _step('bearing_de', 'The drive-end bearing is fitted on the shaft before the rotor goes in: heated, pressed '
-              'on its inner ring only.', why='It comes off the shaft once the rotor is out.', sources=(ABB, SIMOTICS)),
-        _step('bearing_nde', 'The non-drive-end bearing is fitted on the shaft the same way, before the rotor goes in.',
-              sources=(ABB, SIMOTICS)),
+        _step('bearing_de', 'Fit the drive-end bearing on the shaft, heated, pressing on its inner ring only.',
+              why='In the shop the bearings go on the shaft before the rotor goes in, and come off it once the rotor '
+                  'is out (in the steps here they are fitted and taken off in place).', sources=(ABB, SIMOTICS)),
+        _step('bearing_nde', 'Fit the non-drive-end bearing on the shaft the same way.', sources=(ABB, SIMOTICS)),
         _step('end_shield_nde', 'Fit the non-drive-end shield over its bearing and into the frame, with its bearing '
               'cap.',
               [('bearing_nde', 'The shield\'s housing closes over the non-drive-end bearing: fit the bearing first.',
@@ -124,7 +125,9 @@ def assembly(root, first=True):
                 'Take the four bolts out before the drive-end shield comes off.')]),
         _step('fan', 'Push the fan onto the shaft\'s non-drive end and lock it.',
               [('end_shield_nde', 'The fan sits behind the non-drive-end shield: fit the shield first.',
-                'Pull the fan off before the non-drive-end shield comes off.')],
+                'Pull the fan off before the non-drive-end shield comes off.'),
+               ('rotor', 'The fan goes on the rotor\'s shaft: put the rotor in first.',
+                'Pull the fan off before the rotor is drawn out: it is wider than the stator\'s bore.')],
               why='A fan fitted with interference is pulled with a puller, never knocked off, and replaced.',
               sources=(WEG, SIMOTICS)),
         _step('fan_cowl', 'Put the fan cowl over the fan.',

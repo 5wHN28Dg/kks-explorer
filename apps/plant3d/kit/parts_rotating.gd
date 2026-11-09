@@ -110,7 +110,7 @@ static func pump_horizontal(_part: String, g) -> void:
 	m.cyl(Vector3(0, y_c, z_top - 0.1), Vector3(0, y_c, 1.4), dd * 0.5, -1.0, 0, false)
 	if tree:   # in the Workshop it starts in the scroll's wall, clear of the impeller's chamber, its ends closed
 		var nd: int = m.segs(dd * 0.5)
-		var zb := zs + Rv * 0.97
+		var zb := zs + Rv * 0.82
 		g.only("workshop", "split")
 		m.cyl(Vector3(0, y_c, zb), Vector3(0, y_c, 1.4), dd * 0.5, -1.0, nd, false)
 		g.only("workshop")
@@ -127,12 +127,12 @@ static func pump_horizontal(_part: String, g) -> void:
 	g.plate("motor_side", Vector3(mo.r * 0.92 + 0.01, y_mf - mo.l * 0.5, zs), Vector3(1, 0, 0), "large")
 	var rc := clampf(md.h * 0.35, 0.05, 0.25)
 	if tree:
-		g.comp("coupling", {"explode": [Vector3(0, 0, 1), 0.25], "anim": "shaft",
+		g.comp("coupling", {"explode": [Vector3(0, 0, 1), 0.5], "anim": "shaft",
 			"pivot": Vector3(0, (y_mf + y_back) * 0.5, zs), "sym": [Vector3(0, 1, 0), 0]})
 	var sh = g.move("shaft", Vector3(0, 0, zs), Vector3(0, 1, 0), "rotate", 0.0)
 	C.coupling(sh, Vector3(0, y_mf + 0.01, zs), Vector3(0, y_back - 0.01, zs), rc)
 	if tree:
-		g.comp("guard", {"explode": [Vector3(0, 0, 1), 0.55]})
+		g.comp("guard", {"explode": [Vector3(0, 0, 1), 0.8]})
 	C.guard(m, Vector3(0, y_mf, zs), Vector3(0, y_back, zs), rc * 1.15, 0.15)
 	# the baseplate under everything
 	if tree:

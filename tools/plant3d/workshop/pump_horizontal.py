@@ -103,27 +103,33 @@ def _step(place, text, needs=(), why=None, sources=(GOULDS,)):
 # coupling lets the back pull-out assembly come out without moving it); the power end on the bench (the shaft with its
 # bearings already on it into the frame, its end cover), the seal and the casing cover, the impeller; the back pull-out
 # assembly into the casing with its bolts; the coupling and the guard. A part goes into its parent wherever that
-# stands; the needs are only what the manuals say must come first. The bearings ride with the shaft (its children in
-# the tree): they come off it on the bench once it is out of the frame, so no step makes the shaft wait for them.
+# stands; the needs are only what the manuals say must come first. The steps fit each part where it belongs (a part's
+# parent first): the unit put together on the bench and the bearings fitted before the shaft goes in are said in the
+# steps' reasons, and the "taken apart" view shows the unit and the shaft with its bearings coming out whole.
 ASSEMBLY = [
     _step('baseplate', 'The baseplate stays grouted to the floor.'),
     _step('volute', 'The casing stays bolted to the baseplate and to its suction and discharge pipes.',
-          why='The back pull-out design lets the rest come out without disturbing the pipes.',
+          needs=[('baseplate', 'The casing stands on the baseplate: it is there first.',
+                  'The baseplate stays grouted to the floor.')], why='The back pull-out design lets the rest come out without disturbing the pipes.',
           sources=(GOULDS, FLOWSERVE)),
     _step('motor', 'The motor stands on the baseplate, on its shims.',
-          why='The spacer coupling lets the back pull-out assembly come out without moving the motor; its own parts '
+          needs=[('baseplate', 'The motor stands on the baseplate: it is there first.',
+                  'The baseplate stays grouted to the floor.')], why='The spacer coupling lets the back pull-out assembly come out without moving the motor; its own parts '
               'come apart as the motor kind\'s do.', sources=(GOULDS, motor.SIMOTICS)),
 ] + motor.assembly('motor', first=False) + [
-    _step('frame', 'Set the bearing frame on the bench.', sources=(GOULDS, FLOWSERVE)),
-    _step('shaft', 'Slide the shaft, its bearings already on it, into the frame from the coupling end.',
+    _step('frame', 'Put the bearing frame in place behind the casing.',
+          why='In the shop the back pull-out unit (the frame with the shaft, the seal, the casing cover and the impeller) '
+              'is put together on the bench and slid into the casing whole; the steps here fit each part in place, '
+              'and the "taken apart" view shows the unit coming out whole.', sources=(GOULDS, FLOWSERVE)),
+    _step('shaft', 'Slide the shaft into the frame from the coupling end.',
           [('frame', 'The shaft goes into the bearing frame: set the frame down first.',
             'Draw the shaft out of the frame before the frame is moved.')], sources=(GOULDS, FLOWSERVE)),
-    _step('bearing_ib', 'The inboard bearing is fitted on the shaft on the bench, before the shaft goes into the '
-          'frame: heated, pressed on its inner race only.',
-          why='It comes off the shaft once the shaft is out of the frame; bearings are never reused once removed.',
+    _step('bearing_ib', 'Fit the inboard bearing on the shaft, heated, pressing on its inner race only.',
+          why='In the shop the bearings go on the shaft before it goes into the frame, and come off it once it is out '
+              '(in the steps here they are fitted and taken off in place); bearings are never reused once removed.',
           sources=(GOULDS, FLOWSERVE)),
-    _step('bearing_ob', 'The outboard bearing is fitted on the shaft the same way, with its locknut, before the shaft '
-          'goes into the frame.', sources=(GOULDS, FLOWSERVE)),
+    _step('bearing_ob', 'Fit the outboard bearing on the shaft the same way, with its locknut.',
+          sources=(GOULDS, FLOWSERVE)),
     _step('end_cover', 'Fit the bearing end cover at the coupling end.',
           [('bearing_ob', 'The end cover holds the outboard bearing: fit the bearing first.',
             'Take the end cover off before the shaft and its bearings are drawn out.'),

@@ -103,19 +103,18 @@ class WorkshopData(unittest.TestCase):
         for a, b in (('fan_cowl', 'fan'), ('fan', 'end_shield_nde'), ('end_shield_de', 'rotor'),
                      ('end_shield_nde', 'rotor')):
             self.assertLess(undo.index(a), undo.index(b), (a, b))
-        # the pump (Goulds 3196, Flowserve Mark 3): the guard and the coupling off, the back pull-out unit out with
-        # the motor left standing (the spacer coupling), the impeller in the unit until it is out, the impeller and the
-        # casing cover off before the shaft leaves the frame
+        # the pump (Goulds 3196, Flowserve Mark 3): the guard and the coupling off, the casing bolts out with the motor
+        # left standing (the spacer coupling), the impeller and the casing cover off before the shaft leaves the frame
         undo = [s['place'] for s in pump['assembly']][::-1]
         for a, b in (('guard', 'coupling'), ('coupling', 'casing_bolts'), ('frame', 'motor'),
                      ('casing_bolts', 'impeller'), ('impeller', 'shaft'), ('casing_cover', 'shaft'),
                      ('end_cover', 'shaft'), ('seal', 'shaft')):
             self.assertLess(undo.index(a), undo.index(b), (a, b))
-        # the bearings ride out with their shaft (rotor) and come off it afterwards: no step makes it wait for them
-        for d, shaft in ((pump, 'shaft'), (pump, 'rotor'), (motor, 'rotor')):
-            for st in d['assembly']:
-                if st['place'].startswith('bearing'):
-                    self.assertNotIn(shaft, [n[0] for n in st.get('needs', [])], st['place'])
+        # the fan (wider than the stator's bore) off before the rotor is drawn out; the baseplate there first
+        for d in (pump, motor):
+            needs = {st['place']: [n[0] for n in st.get('needs', [])] for st in d['assembly']}
+            self.assertIn('rotor', needs['fan'])
+        self.assertIn('baseplate', needs['stator'])
         self.assertEqual(pump['params']['head_m'], 40)   # the end-suction pump (the multi-stage one has no tree yet)
 
     def test_context(self):
