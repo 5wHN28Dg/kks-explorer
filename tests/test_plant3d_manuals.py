@@ -193,7 +193,7 @@ class Manuals(unittest.TestCase):
         pumps = [s for s in manuals['pumps']['sections'] if s['id'] == 'parts'][0]
         nums = [runs_text(r[0]) for r in pumps['blocks'][1]['table']['rows']]
         self.assertIn('WDP-CP-H-IMPELLER', nums)
-        self.assertIn('WDP-CP-V-IMPELLER', nums)
+        self.assertIn('WDP-CP-V-IMPELLER-1', nums)
         self.assertEqual(len(nums), len(set(nums)))
         # a consumable whose id the kind's tree also has gives way to the tree's row (a manual of one kind)
         cv = [s for s in manuals['control_valve']['sections'] if s['id'] == 'parts'][0]

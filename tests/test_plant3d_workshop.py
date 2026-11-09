@@ -82,6 +82,34 @@ class WorkshopData(unittest.TestCase):
         self.assertIn('turning gear', d['views']['open_running']['why'])
         self.assertEqual(d['views']['run_exploded']['allowed'], [])
 
+    def test_the_vertical_pump_passes(self):
+        # K6: a wet-pit vertical turbine pump, two stages, its vertical motor's tree from parts_common.gd motor_v
+        d = json.loads(self.files['workshop/pump_vertical.json'])
+        self.assertEqual(self.b.workshop['pump_vertical']['components'], 23)
+        self.assertEqual(set(d['fasteners']), {'head_bolts', 'joint_bolts_1', 'joint_bolts_2'})
+        self.assertEqual(d['params'], {'flow_m3h': 550, 'head_m': 30, 'motor_kw': 75, 'pit_depth': 6.5})
+        undo = [s['place'] for s in d['assembly']][::-1]
+        # taken apart (Goulds VIT §6, Flowserve VTP §6.8): the coupling, then the motor lifted off, the seal, the head
+        # unbolted, the column from the top down, the bowls last, each impeller off its taperlock after its bowl
+        for a, b in (('coupling', 'motor'), ('coupling', 'seal'), ('drip_cover', 'motor'), ('motor', 'head'),
+                     ('seal', 'head'), ('head_bolts', 'head'), ('head', 'column_1'), ('column_1', 'column_2'),
+                     ('column_2', 'column_3'), ('column_3', 'discharge_case'), ('discharge_case', 'bowl_2'),
+                     ('bowl_2', 'impeller_2'), ('impeller_2', 'bowl_1'), ('bowl_1', 'impeller_1'),
+                     ('impeller_1', 'suction_bell')):
+            self.assertLess(undo.index(a), undo.index(b), (a, b))
+        # the vertical motor: cover, fan, top bracket, then the rotor lifted out; every step of it says its order is
+        # derived from the build (the user, 2026-11-09)
+        for a, b in (('drip_cover', 'fan'), ('fan', 'end_shield_nde'), ('end_shield_nde', 'rotor')):
+            self.assertLess(undo.index(a), undo.index(b), (a, b))
+        mot = {'motor', 'end_shield_de', 'end_shield_nde', 'drip_cover', 'fan', 'rotor', 'bearing_thrust',
+               'bearing_guide', 'terminal_box'}
+        for st in d['assembly']:
+            if st['place'] in mot:
+                self.assertIn('derived from how the motor is built', ' '.join(st.get('why', [])), st['place'])
+        # no grille here: the pumps manual's comes_with (grille -> fan_cowl) needs both or neither
+        self.assertNotIn('fan_cowl', d['components'])
+        self.assertNotIn('mixed', json.dumps(d))   # (no source read calls these impellers mixed-flow)
+
     def test_the_motor_and_the_pump_pass(self):
         # K6: the motor's tree is written once (tools/plant3d/workshop/motor.py) and the pump carries it under `motor`
         motor = json.loads(self.files['workshop/motor.json'])

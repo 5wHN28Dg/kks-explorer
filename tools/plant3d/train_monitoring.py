@@ -127,8 +127,10 @@ def oil(m, pt):
     for k, _, _ in RESULTS:
         nodes.append(m.v(f'{p}_lab_{k}', {'sample': refs[k], 'spread': _spread(o['spread'][k]), 'hours': HOURS},
                          units[k]))
-    m.hands.append({'kks': code, 'action': 'take_oil', 'component': 'body', 'tools': ['oil_kit'],
-                    'minutes': MINUTES, 'work': False, 'samples': nodes})
+    # a large vertical motor's oil-bath bearing is its thrust bearing at the top (the vertical pump's Workshop tree);
+    # a fan's gear reducer has no tree yet
+    m.hands.append({'kks': code, 'action': 'take_oil', 'component': 'bearing_thrust' if kind == 'bearing' else 'body',
+                    'tools': ['oil_kit'], 'minutes': MINUTES, 'work': False, 'samples': nodes})
 
 
 # ------------------------------------------------------------------------------------------------ into the models

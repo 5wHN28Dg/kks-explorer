@@ -406,6 +406,41 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   so each split face lists its points as its own cylinder does (`C._face`), and only the cowl's face to the frame
   keeps the plant's points, with a seam of thin triangles (`C._zip`), so that the outline is the plant's within 1 mm.
 
+- **pump_vertical** (the wet-pit pump, K6: kit/parts_rotating.gd, its motor from parts_common.gd `motor_v`): a
+  wet-pit vertical turbine pump of two stages, as the Goulds VIT manual (bowl assembly p. 6, figs 1–4, disassembly §6
+  p. 31, reassembly pp. 32–33) and the Flowserve VTP user instructions (§6.8) describe one; the data file names a pump
+  the plant has three of (550 m³/h, 30 m, 75 kW, a 6.5 m pit). The sole plate and the discharge head (hollow round
+  the shaft, its branch and flange, its motor stand) stay; the packing box in the head's top; the column in three
+  sections, each joint's flanges on the upper section with the lineshaft's bearing in its retainer and the joint's
+  eight bolts a fastener group; the discharge case, the two bowls and the suction bell (the plant's lathe split at its
+  profile points and once more in its third segment); the pump shaft with two enclosed impellers on their taperlocks,
+  five vanes each curved back against the turn (`tests/test_workshop.gd` checks the curve from the vanes' faces); the
+  spacer coupling; the head's eight hold-down bolts; and a vertical motor up to 500 kW with its own tree (the stator
+  in its frame, the drive-end bracket that is its mounting flange with the lower guide bearing, the top bracket with
+  the thrust bearing that carries the pump's thrust, the fan, the drip cover, the rotor, the terminal box). **The
+  motor's order is derived from how it is built, not from a manual**, as the motor kind's is: every step says so.
+  The guided steps put the pump together as Goulds does, from the bell up (each impeller slid over the shaft and its
+  taperlock driven, the next bowl bolted on), the column section by section, the head, the seal, the motor on the
+  stand and the coupling last (its adjusting nut sets the impellers' lift); taken apart, the reverse. **Simplified:**
+  the lineshaft and the bowl shaft are one shaft (a real one is in sections joined by threaded couplings); the
+  impellers are drawn radial between flat shrouds; the bowls' diffuser vanes, the column's shaft enclosing tube
+  and the taperlocks themselves are not drawn; the bell's mouth is closed by a flat plate (a real one is open,
+  often behind a basket strainer: the Workshop's insides are hidden pieces, which no opening may show); the coupling
+  is one part with its hubs and comes out sideways through the stand's window; the stand's two rings are the plant's
+  discs with a bore round the shafts; the sole plate is the plant's solid box, which the shaft runs through (a real
+  one has the column's opening); the packing box sits inside the head's top (the plant's stand ring is over it) and
+  the explode draws it down inside the head. The motor's bearings, rotor and fan turn in the `shaft` node with the
+  pump's shaft and impellers. **The explode:** the coupling out sideways and the motor lifted off first, its parts
+  apart above (the drip cover ahead of the fan ahead of the top bracket ahead of the rotor); the string in the pit is
+  drawn apart downwards, each part below moving farther, the impellers rising out of their bowls, while the shaft
+  stays (a real pump is lifted out of the pit whole and laid down to be taken apart: the steps' reasons say so). A
+  motor over 500 kW (the circulating water pumps') is one component. **The stand-in:** everything of the pump's
+  casing the plant draws (the head, its branch and flange, the stand's rings, the column with its joints, the bowls)
+  is one, and the motor's flange, frame and drip cover another. The plant draws the bowls after the joints' bolts, in
+  their material, and so does the Workshop; its odd-segment discs list their circles' points mirrored, so the
+  stand's lower ring is drawn about the downward axis and the upper about the upward one, and the motor's flange's
+  face down keeps the plant's points with a seam (`C._zip`): the outline is the plant's within 1 mm.
+
 ## Tables and their sources
 
 The kit derives what a part looks like from what its content says it is (§9: content says what the equipment *is*).
