@@ -86,8 +86,10 @@
 ##                           and wait in the SESSION slow lines)
 ##   voice=bench             wdp_voice's test scene instead of the plant (voice/demo/voice_wav.gd: the codec's round
 ##                           trip and its time per 20 ms frame, `VOICE` lines in the log; milestone MP5's measurement)
+##   ws_warm=late            the Workshop's pipelines queued after the first walkable frame (as before 2026-11-08),
+##                           not behind the start's loading screen (measuring what the start's warm-up costs it)
 ##   On a phone walk.txt takes voice, probe, fx_off, fx_on, max_fps, crowd, people_skinned, people_shadows, crews,
-##   shot, digest, step and music too
+##   shot, digest, step, music and ws_warm too
 ##   (phone/frames.sh's WALK_EXTRA, phone/shots.sh); a shot's line in result.txt gives the view's draw calls, triangles
 ##   and GPU time (median of 30 frames)
 extends Node3D
@@ -232,6 +234,18 @@ func _ready() -> void:
 	for st in plant.stages:
 		_say("LAUNCH  %s" % st)
 	_launch("plant")
+	# the Workshop's pipelines behind the loading screen (the user's decision, 2026-11-08; WORKSHOP.md §7.1): its
+	# script compiled on a worker thread since the start (`_prep_begin`), its pieces are made on another while the
+	# lightmap, the people and the weather are set up, and go into the world hidden just before the plant's hidden
+	# frame, which queues both's pipelines (ws_warm=late: after the first walkable frame, as before)
+	if early and opts.get("ws_warm", "") != "late":
+		var ws_script: Script = _prep_take(WORKSHOP)
+		if ws_script != null and ws_script.warms_at_start():
+			workshop = ws_script.new()
+			workshop.name = "workshop"
+			add_child(workshop)
+			workshop.warm_at_start_begin()
+			_launch("workshop's warm-up begun")
 	var lm := Lighting.lightmap_node()
 	if lm != null:
 		plant.add_child(lm)   # beside the areas: its users' paths are "../area_…" (app/lighting.gd)
@@ -287,9 +301,12 @@ func _ready() -> void:
 		people.camera = player.camera
 	weather.camera = player.camera
 	if early:
+		if workshop != null:
+			workshop.warm_at_start_end(self)   # (waits for its worker thread: logged as this stage)
+			_launch("workshop's pieces")
 		sky_cam.queue_free()
 		player.camera.make_current()
-		await _drawn()   # draws the sky alone and sets the hidden plant's pipelines compiling
+		await _drawn()   # draws the sky alone and sets the hidden plant's (and the Workshop's) pipelines compiling
 		plant.visible = true
 		_launch("plant's pipelines queued")
 	interiors = Interiors.new()
@@ -325,9 +342,12 @@ func _ready() -> void:
 	_prep_model = null
 	ui.add_settings(hud.extra)
 	weather.attach(ui)
-	workshop = load(WORKSHOP).new()
-	workshop.name = "workshop"
-	add_child(workshop)
+	if workshop == null:
+		workshop = load(WORKSHOP).new()
+		workshop.name = "workshop"
+		add_child(workshop)
+	else:
+		move_child(workshop, -1)   # (made at the start's warm-up: in the place it always had among main's children)
 	workshop.setup(self)
 	_launch("ui")
 	if opts.has("procedure") and ui.clock != null and ui.model.procedures.has(opts.procedure):
@@ -378,9 +398,10 @@ func _ready() -> void:
 func _prep_begin() -> void:
 	_prep_t0 = Time.get_ticks_msec()
 	ResourceLoader.load_threaded_request(PLANT_MODEL)
+	ResourceLoader.load_threaded_request(WORKSHOP)   # (taken after the plant's load, for its warm-up: early)
 	_prep_task = WorkerThreadPool.add_task(func():
 		var model_script: Script = ResourceLoader.load_threaded_get(PLANT_MODEL)
-		for p in [PLANT_UI, WORKSHOP, SESSION]:
+		for p in [PLANT_UI, SESSION]:
 			ResourceLoader.load_threaded_request(p)
 		var t := Time.get_ticks_msec()
 		_prep_model = model_script.from_dir(CONTENT) if model_script != null else null
@@ -404,12 +425,20 @@ func _prep_end() -> void:
 	var model_at := Time.get_ticks_msec() - _prep_t0
 	_prep_scripts.clear()
 	for p in [PLANT_UI, WORKSHOP, SESSION]:
-		# (while a load still runs, the main thread's wait here runs its message queue: calls deferred by the HUD's
-		# setup run before the UI is made instead of at the frame's end; on the Note 9 the loads are done by now)
-		_prep_scripts.append(ResourceLoader.load_threaded_get(p))
+		_prep_scripts.append(_prep_take(p))
 	_hold_scripts()
 	_say("LAUNCH  worker threads: model %d ms (from +%d), done by +%d ms, the scripts by +%d ms; waited %d ms" % [
 			_prep_model_ms.y, _prep_model_ms.x, model_at, Time.get_ticks_msec() - _prep_t0, Time.get_ticks_msec() - t0])
+
+var _prep_taken := {}   # path -> the script taken from its threaded load (each is taken once)
+
+## A script asked for in `_prep_begin`, from its threaded load. (While the load still runs, the main thread's wait
+## here runs its message queue: calls deferred by the HUD's setup run before the UI is made instead of at the frame's
+## end; on the Note 9 the loads are done by then.)
+func _prep_take(path: String) -> Script:
+	if not _prep_taken.has(path):
+		_prep_taken[path] = ResourceLoader.load_threaded_get(path)
+	return _prep_taken[path]
 
 func _hold_scripts() -> void:
 	_Session = _prep_scripts[2]
@@ -465,7 +494,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe", "weather", "cold", "music", "job", "monitor", "bench_speed"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe", "weather", "cold", "music", "job", "monitor", "bench_speed", "ws_warm"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))
