@@ -705,7 +705,6 @@ func _seats(part: String, ws: Dictionary) -> void:
 	var cs: Vector3 = centre.call(pts[who[1]])
 	check(off.call(cp) <= 0.001 and off.call(cs) <= 0.001, "%s: %s and %s on %s's axis (%.1f and %.1f mm off it)" % [
 		part, who[0], who[1], who[2], off.call(cp) * 1000.0, off.call(cs) * 1000.0])
-	check(a.dot(cp - cs) > 0.0 and mv.travel > 0.0, "%s: opening %s lifts %s off %s" % [part, who[2], who[0], who[1]])
 	var low := INF
 	for p in pts[who[0]]:
 		low = minf(low, (p - o).dot(a))
@@ -720,6 +719,9 @@ func _seats(part: String, ws: Dictionary) -> void:
 			face = maxf(face, off.call(p))
 	check(absf(low - top) <= 0.001, "%s: %s sits on %s at 0 travel (%.1f mm apart)" % [part, who[0], who[1],
 		(low - top) * 1000.0])
+	# opening moves the stem along +axis by its travel; the plug lies wholly on that side of the seat's top (its
+	# lowest point on it, above), so opening lifts it off and never drives it into the seat
+	check(mv.travel > 0.0 and low >= top - 0.001, "%s: opening %s lifts %s off %s" % [part, who[2], who[0], who[1]])
 	check(face > bore + 0.001, "%s: %s's face (radius %.1f mm) covers %s's bore (%.1f mm)" % [part, who[0], who[1],
 		face * 1000.0, bore * 1000.0])
 

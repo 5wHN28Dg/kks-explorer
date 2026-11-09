@@ -430,7 +430,11 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   one straight tube (thin). The electric and hydraulic actuators have no tree yet. **The stand-ins:** the plant's body,
   neck, bonnet and diaphragm casing are one stand-in (the neck is not drawn in the Workshop: it lies under the lid), the
   stem another (split at the stem connector into the valve stem and the actuator stem); the bonnet's and the casing's
-  bolt rings are fastener groups.
+  bolt rings are fastener groups. **Known limits** (the tree is built and tested for the data file's DN 150 valve only, as the
+  Workshop builds one scene per kind; WORKSHOP.md §5's scenes per equipment need these first): the plant's neck shows
+  a few millimetres through the body's flats, where the Workshop's lid lies up to about 3 mm inside it; from DN 250 the
+  Workshop's bonnet is drawn with the flange's segment count (9) round the plant's 8-sided bonnet, about 2 mm proud of
+  its flats; at DN 32 and below the gallery is wider than the body's polygon and the generator refuses it (an assert).
 
 - **pump_vertical** (the wet-pit pump, K6: kit/parts_rotating.gd, its motor from parts_common.gd `motor_v`): a
   wet-pit vertical turbine pump of two stages, as the Goulds VIT manual (bowl assembly p. 6, figs 1–4, disassembly §6
@@ -465,7 +469,12 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   is one, and the motor's flange, frame and drip cover another. The plant draws the bowls after the joints' bolts, in
   their material, and so does the Workshop; its odd-segment discs list their circles' points mirrored, so the
   stand's lower ring is drawn about the downward axis and the upper about the upward one, and the motor's flange's
-  face down keeps the plant's points with a seam (`C._zip`): the outline is the plant's within 1 mm.
+  face down keeps the plant's points with a seam (`C._zip`): the outline is the plant's within 1 mm. **Known limits** (built and tested
+  for the data file's pump only, as the Workshop builds one scene per kind; WORKSHOP.md §5's scenes per equipment need
+  these first): the column's sections and joints follow the pit (`int(pit / 3)` joints), so a 9 m pit has a fourth
+  section and a 3 m one a second only, which the data file's names don't match; a motor over 500 kW has no tree; from
+  a column of about DN 500 the shaft is wider than the stand rings' bore; under about 22 kW the fan stands through the
+  drip cover's ceiling.
 
 ## Tables and their sources
 
