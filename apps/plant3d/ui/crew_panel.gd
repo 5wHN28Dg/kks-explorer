@@ -42,6 +42,7 @@ var _head: Label = null         # the trainee's header line (role, duty, clock) 
 var _head_text := ""
 var _reads: Dictionary = {}     # person -> their read events
 var _disc_parts: Dictionary = {}    # discussion id -> its participants at its last start (the radio's speakers)
+var _disc_lines: Dictionary = {}    # discussion id -> [[who, text]] of its last instance (the panel's, read once each)
 var _disc_closed: Dictionary = {}   # "id|count" -> true: an ended discussion's panel the trainee closed
 var _exchanges: Dictionary = {}  # "step|caller" -> true: a call or message to the trainee missed then (its others too)
 var _said: Dictionary = {}      # "from|message" -> the radio line of its last say (a missed call replaces it)
@@ -165,6 +166,7 @@ func _follow(e) -> void:
 		_said.clear()
 		_exchanges.clear()
 		_disc_parts.clear()
+		_disc_lines.clear()
 		_disc_closed.clear()
 	var sm = e._sm
 	var me_id = sm.people[ui.my_person()]["id"] if sm != null and ui.my_person() != -1 else null
@@ -196,7 +198,12 @@ func _follow(e) -> void:
 			_radio.append("%s  %s → %s: %s" % [_at(e, ev[0], _j), _call(sm, ev[2]), _to(sm, ev[3]),
 					sm.tasks[ev[4]]["title"] if sm.tasks.has(ev[4]) else ev[4]])
 		elif ev[1] == "discussion" or ev[1] == "point":     # a discussion's lines (REALISM.md §6.3.1)
-			for ln in Discussions.event_lines(sm, ev, _disc_parts):
+			var dl: Array = Discussions.event_lines(sm, ev, _disc_parts)
+			if ev[1] == "discussion" and ev[3] == "start":
+				_disc_lines[ev[2]] = []
+			if not dl.is_empty():
+				_disc_lines[ev[2]] = _disc_lines.get(ev[2], []) + dl
+			for ln in dl:
 				_radio.append("%s  %s: %s" % [_at(e, ev[0], _j), ln[0], ln[1]])
 		elif ev[1] == "read":
 			if not _reads.has(ev[2]):
@@ -297,7 +304,7 @@ func _me(e, sm) -> void:
 	var di: int = Discussions.shown(e, pi, _disc_closed)
 	if di != -1:                        # (REALISM.md §6.3.1)
 		var key := "%s|%d" % [sm.discuss["list"][di]["id"], e.dsc[di]["count"]]
-		Discussions.build(ui, e, body, di, pi, func():
+		Discussions.build(ui, e, body, di, pi, _disc_lines.get(sm.discuss["list"][di]["id"], []), func():
 			_disc_closed[key] = true
 			_sig = ""
 			refresh())

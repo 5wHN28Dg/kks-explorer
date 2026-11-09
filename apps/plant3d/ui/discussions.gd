@@ -191,7 +191,8 @@ static func _shown_text(e, code: String) -> String:
 
 
 ## The panel, built into box for the trainee's person pi: the discussion `di` (shown()).
-static func build(ui, e, box: Control, di: int, pi: int, close: Callable) -> void:
+## `lines`: this instance's lines so far ([[who, text]], the crew panel's, read from the events once each).
+static func build(ui, e, box: Control, di: int, pi: int, lines: Array, close: Callable) -> void:
 	var sm = e._sm
 	var d: Dictionary = sm.discuss["list"][di]
 	var x: Dictionary = e.dsc[di]
@@ -207,15 +208,6 @@ static func build(ui, e, box: Control, di: int, pi: int, close: Callable) -> voi
 		ids.append(sm.people[i]["id"] if i >= 0 else null)
 	for pos in d["positions"]:
 		panel.add_child(W.label("%s: %s" % [speaker(sm, d, ids, pos["role"]), pos["claim"]], 16))
-	# the lines so far, from this instance's start
-	var parts := {}
-	var lines := []
-	for ev in e.events:
-		if ev[0] < x["start"] or not _well_formed(sm, ev) or ev[2] != d["id"]:
-			continue
-		if ev[1] == "discussion" and ev[3] == "start":
-			lines.clear()       # (an instance ended in the step this one started: its lines are not this one's)
-		lines.append_array(event_lines(sm, ev, parts))
 	for ln in lines:
 		panel.add_child(W.label("%s: %s" % [ln[0], ln[1]], 16, Color(0.9, 0.9, 0.75)))
 	if not live:
