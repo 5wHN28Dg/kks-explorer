@@ -42,5 +42,5 @@
   {"place": "coupling", "text": ["Fit the coupling's spacer between the hubs and check the alignment."], "sources": ["goulds_3196", "flowserve_mk3"], "needs": [["motor", "The coupling joins the pump to the motor: set the motor down first.", "Take the coupling out before the motor is lifted."], ["shaft", "The coupling joins the pump's shaft to the motor's: put the shaft in first.", "Take the coupling out before the back pull-out assembly is pulled."]]},
   {"place": "guard", "text": ["Fit the coupling guard."], "sources": ["goulds_3196", "flowserve_mk3"], "why": ["The pump never runs without its coupling guard."], "needs": [["coupling", "The guard covers the coupling: fit the coupling first.", "Take the coupling guard off first."]]}
  ],
- "views": {"xray_all": ["volute", "casing_cover", "frame", "end_cover", "guard", "motor", "end_shield_de", "end_shield_nde", "fan_cowl"], "cutaway": {"planes": [{"normal": [0, 0, 1], "offset": 0}, {"normal": [-1, 0, 0], "offset": 0}], "keep": ["impeller", "shaft", "rotor"]}}
+ "views": {"xray_all": ["volute", "casing_cover", "frame", "end_cover", "guard", "motor", "end_shield_de", "end_shield_nde", "fan_cowl"], "cutaway": {"planes": [{"normal": [0, 0, 1], "offset": 0}, {"normal": [1, 0, 0], "offset": 0}], "keep": ["impeller", "shaft", "rotor"]}}
 }

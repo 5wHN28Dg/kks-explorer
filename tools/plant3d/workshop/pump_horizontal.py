@@ -167,9 +167,9 @@ def data():
                                         'sources': [GOULDS, FLOWSERVE]}),
         'assembly': ASSEMBLY,
         # the X-ray takes the casing, its cover, the frame and the guard; the cutaway opens a quarter above the shaft
-        # on the side away from the plate; nothing is opened while it turns (WORKSHOP.md §4.7: a rotating machine)
+        # on the plates' side (as the motor's); nothing is opened while it turns (WORKSHOP.md §4.7: a rotating machine)
         'views': {'xray_all': ['volute', 'casing_cover', 'frame', 'end_cover', 'guard', 'motor', 'end_shield_de',
                                'end_shield_nde', 'fan_cowl'],
-                  'cutaway': {'planes': [{'normal': [0, 0, 1], 'offset': 0}, {'normal': [-1, 0, 0], 'offset': 0}],
+                  'cutaway': {'planes': [{'normal': [0, 0, 1], 'offset': 0}, {'normal': [1, 0, 0], 'offset': 0}],
                               'keep': ['impeller', 'shaft', 'rotor']}},
     }
