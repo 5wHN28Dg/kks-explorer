@@ -866,8 +866,15 @@ addition (both engines, vectors) made in K6.
   (from 3.3–3.7), the ramps about 0.4 ms. `test_workshop_run.gd` checks a frame asks once and rewrites no unchanged
   colour. The bench's own steps at the walk's 30× cost the Note 9 about 1.3 ms a frame (168 µs a step, about 7.5
   steps a frame at 40 frames a second; at the trainee's 2× about 0.08 ms).
-- **The Note 9: TODO (the coordinator's run): first entry, again, back to the plant, frames, peak PSS, draw calls,
-  the bench step (≤ 0.3 ms), the APK's size.**
+- **The Note 9 (2026-11-09, at ab0cc104;** `lean+vis`, a test-signed release build, a fresh install, a cool start
+  at 27.7 °C, SAMPLE=1, probe=1, `bench_speed=30`): first entry 407 ms after the walk waited 12.8 s for the warm-up
+  (≤ 2.0 s; load 82 ms; its frame of 336 ms, the bench's six sound files and 8 specialization pipelines, is inside
+  the entry); again 307 ms (load 137 ms); back to the plant 20–22 ms; every guided step walked (0 loose); the bench
+  started at 118 s, synchronised and loaded before the faults; no frame over 100 ms in the walk (the longest 45.9 ms;
+  the frame rule passes, 0 caused by the app, reclaim in 0.29 % of the samples); **99.80 % of frames at ≥ 30 fps**
+  (from 93.77 % before the drawing fix), mean frame 20.10 ms, 87.7 % shown at 60 fps; peak PSS 1,145 MB (≤ 1.5 GB);
+  at most 155 draw calls in the Workshop (≤ 300); **the bench step 172 µs mean** (≤ 0.3 ms; the longest 2.3 ms) over
+  53,977 steps. The APK (test-signed) 147.8 MB, 0.5 MB over K5a's.
 - **Package:** K5b's own files are about 130 KB (the bench file 37 KB, the compressor's tone 91 KB of Ogg Vorbis).
 
 ## 7. Shaders and cut faces
