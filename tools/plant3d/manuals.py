@@ -393,15 +393,20 @@ def parts_table(m, content, where):
     rows = []
     comes = m.get('comes_with', {})
     tree_ids = set()
+    matched = set()   # comes_with's parts some kind's tree has (in a manual of several kinds, one kind's alone may)
+    trees = 0
     for k in m['kinds']:
         w = content['workshop'].get(k)
         if w is None:
             continue
+        trees += 1
         # a manual of several kinds numbers each kind's tree apart (`kind_tags`): their components share ids
         tag = m['kind_tags'][k] + '-' if len(m['kinds']) > 1 else ''
         for c, parent in comes.items():
-            if c not in w['components'] or parent not in w['components']:
-                fail(where, 'comes_with %s -> %s: not components of %s' % (c, parent, k))
+            if (c in w['components']) != (parent in w['components']):
+                fail(where, 'comes_with %s -> %s: not both components of %s' % (c, parent, k))
+            if c in w['components']:
+                matched.add(c)
         for cid, c in w['components'].items():
             if cid in comes:
                 continue
@@ -417,6 +422,8 @@ def parts_table(m, content, where):
             rows.append([part_number(m, tag + gid), g['name'], '1 set' if g['name'][:1].isdigit() else '1',
                          'Replace when damaged or stretched'])
             tree_ids.add(tag + gid)
+    if trees and set(comes) - matched:
+        fail(where, 'comes_with %s: no kind of this manual has them' % ', '.join(sorted(set(comes) - matched)))
     for cid, name, qty, note in m.get('consumables', []):
         if cid in tree_ids:
             continue                                   # (the Workshop tree's own row for that part stands)
