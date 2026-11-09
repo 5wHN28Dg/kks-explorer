@@ -30,6 +30,9 @@
 ##                           closed cooling water pump A, running with its bearing wearing) with the monitoring panel
 ##                           open (the collector's screen and spectrum redrawn as the plant runs at 1×); the MON line
 ##                           gives the panel's open time and the view's draw calls and triangles with it and before it
+##   walk=discuss            the discussions' walk (REALISM.md §6.3.1, milestone DC3): the scenario shift_cold, the
+##                           first control room operator on duty played in the fan 7 alarm meeting, the crew panel
+##                           open on it; the frames then measured as any walk's
 ##   walk=workorders         the work orders' walk (REALISM.md §2.20, milestone WM1): the scenario shift_aged in free
 ##                           mode, closed cooling water pump A's vibration reported from its card, the work order
 ##                           panel open on the motor's history and then on the list (the plant at 1×); the WO line
@@ -153,6 +156,7 @@ var job_walk := false       # walk=job: the work view open at a code, its camera
 var monitor_walk := false   # walk=monitor: the monitoring panel open at a machine, the plant at 1× (milestone AG3)
 var jsa_walk := false       # walk=jsa: the permit form's JSA picker open, the plant at 1× (milestone HS1)
 var wo_walk := false        # walk=workorders: the work order panel open, the plant at 1× (milestone WM1)
+var disc_walk := false      # walk=discuss: the crew panel open on a discussion the player takes part in (milestone DC3)
 var drawings_walk := false  # walk=drawings: each P&ID in turn, panned and zoomed (REALISM.md §6.1.1, DC1)
 var manuals_walk := false   # walk=manuals: every manual's every page in turn, scrolled (REALISM.md §6.2.1, DC2)
 var _man_pages: Array = []  # walk=manuals: [manual, section] in order
@@ -296,7 +300,7 @@ func _ready() -> void:
 	add_child(ui)
 	if opts.get("walk", "") == "job" and not opts.has("scenario"):
 		opts["scenario"] = "shift_cold"   # (the work view needs a person played: the crews' scenario)
-	if opts.get("walk", "") == "jsa" and not opts.has("scenario"):
+	if opts.get("walk", "") in ["jsa", "discuss"] and not opts.has("scenario"):
 		opts["scenario"] = "shift_cold"   # (the JSA needs a supervisor played: the crews' scenario)
 	if opts.get("walk", "") in ["monitor", "workorders"] and not opts.has("scenario"):
 		opts["scenario"] = "shift_aged"   # (the aged plant: a pump running with its bearing's signs)
@@ -662,6 +666,9 @@ func _start_walk() -> void:
 	if opts.walk == "workorders":
 		await _wo_walk()
 		return
+	if opts.walk == "discuss":
+		await _disc_walk()
+		return
 	if opts.walk == "screens":
 		ui.open_panel("screens")
 		screens_walk = true
@@ -822,6 +829,66 @@ func _jsa_walk() -> void:
 	_say("JSA %s boxes=%d open_ms=%.1f view_draws=%d view_tris=%d before_draws=%d before_tris=%d" % [
 		wid, boxes.size(), open_ms, inview.x, inview.y, before.x, before.y])
 	jsa_walk = true
+	last_us = Time.get_ticks_usec()
+
+
+## walk=discuss: the first control room operator on duty played, at a control room desk; the trainer's fault that
+## starts the shift supervisor's fan 7 alarm meeting there, the clock run until it starts (the operator takes part),
+## then the crew panel open on it, its options and evidence shown (its DISC line); the frames measured as any walk's
+## (REALISM.md §6.3.1).
+func _disc_walk() -> void:
+	var did := "ct_fan7_alarm"
+	var e = ui.clock.engine
+	if e._sm == null or e._sm.discuss == null or not e._sm.discuss["ix"].has(did):
+		_say("DISC none: no crews or no discussion %s in this build" % did)
+		_finish()
+		return
+	var sm = e._sm
+	var op := -1
+	for pi in sm.people.size():
+		if sm.people[pi]["role"] == "ccr_op" and e.sp_on[pi] and op == -1:
+			op = pi
+	if op == -1:
+		_say("DISC none: no control room operator on duty")
+		_finish()
+		return
+	ui.take_role(sm.people[op]["id"])
+	var desk: int = sm.door["control_room"]
+	for i in sm.rooms["control_room"]:
+		if sm.kind[i] == "desk" and not e.st_holder.has(i):
+			desk = i
+			break
+	ui.inputs.send(["arrive", sm.places[desk]["id"]])
+	ui.go_to_place(desk)
+	ui.inputs.send(["fault", "ct_fan7_chatter"])
+	var di: int = sm.discuss["ix"][did]
+	var t0 := Time.get_ticks_usec()
+	for i in 1000:
+		ui.clock.run_steps(10)
+		if not e.dsc[di].is_empty():
+			break
+		if i % 20 == 0:
+			await get_tree().process_frame
+	var run_ms := (Time.get_ticks_usec() - t0) / 1000.0
+	if e.dsc[di].is_empty():
+		_say("DISC none: the meeting did not start (%s)" % ui.clock_text())
+		_finish()
+		return
+	for i in 30:
+		await get_tree().process_frame
+	var before: Vector2i = await _view_counts()
+	t0 = Time.get_ticks_usec()
+	ui.open_panel("crew")
+	ui.crew.refresh()
+	var open_ms := (Time.get_ticks_usec() - t0) / 1000.0
+	for i in 30:
+		await get_tree().process_frame
+	var inview: Vector2i = await _view_counts()
+	var shown = ui.crew.find_child("discussion", true, false)
+	_say("DISC %s mode=%s panel=%s run_ms=%.0f open_ms=%.1f view_draws=%d view_tris=%d before_draws=%d before_tris=%d" % [
+		did, ["npc", "open"][e.dsc[di]["mode"]], "yes" if shown != null else "no", run_ms, open_ms, inview.x, inview.y,
+		before.x, before.y])
+	disc_walk = true
 	last_us = Time.get_ticks_usec()
 
 
@@ -1030,7 +1097,7 @@ func _process(delta: float) -> void:
 		_say("SPEED %s at %.1f s, uptime %d ms" % ["fast-forward" if ff else "normal", t_walk, WalkFrames.uptime_ms()])
 	if job_walk and ui.work.is_open:
 		ui.work._turn(Vector2(delta * 25.0, 0.0))      # slowly round the transmitter (the whole scene in turn)
-	if not screens_walk and not job_walk and not monitor_walk and not jsa_walk and not wo_walk and not drawings_walk and not manuals_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
+	if not screens_walk and not job_walk and not monitor_walk and not jsa_walk and not wo_walk and not disc_walk and not drawings_walk and not manuals_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
 		return
 	t_walk += delta
 	if drawings_walk:

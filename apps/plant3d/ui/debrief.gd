@@ -10,6 +10,7 @@ extends RefCounted
 const W = preload("res://ui/widgets.gd")
 const Permits = preload("res://ui/permits.gd")
 const WoPanel = preload("res://ui/wo_panel.gd")
+const Discussions = preload("res://ui/discussions.gd")     # (REALISM.md §6.3.1)
 
 ## The consequence ladder of personal audio (REALISM.md §8.5), by how many times the player's device was taken in
 ## the run (a stop of a phone act in an Ex zone starts at the written warning): its name and what it brings.
@@ -73,6 +74,9 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 	# JSAs and toolbox talks over the whole run (REALISM.md §8.6): each against the job's own list
 	var hs := hse_review(engine, my_id, engine.events, to)
 	sm["hse"] = hs
+	# the discussions up to the debrief's end (REALISM.md §6.3.1): who took which option, and the outcome
+	sm["discussions"] = Discussions.debrief_lines(engine._sm, Discussions.review(engine, to)) \
+			if engine._sm != null else PackedStringArray()
 	sm["audio_ds"] = maxi(1, int(engine._ds)) if engine._sm != null else 1
 	var begun := {}                     # the trainee's task id -> instances begun and not yet ended (the role tab)
 	var by_instructor := {}             # "fault|id" or "repair|id" -> the step of the instructor's input
@@ -512,6 +516,7 @@ static func summary_lines(d: Dictionary) -> PackedStringArray:
 				(" (%d stopped by HSE)" % sm.stops_of_me) if sm.stops_of_me > 0 else "", sm.stops_made])
 	out.append_array(audio_lines(sm.get("audio", {}), sm.get("audio_ds", 1)))
 	out.append_array(hse_lines(sm.get("hse", {})))
+	out.append_array(sm.get("discussions", PackedStringArray()))
 	out.append_array(sm.get("wo", PackedStringArray()))
 	if sm.early > 0:
 		out.append("Done out of order: %d (made before their task step, counted when it came)" % sm.early)

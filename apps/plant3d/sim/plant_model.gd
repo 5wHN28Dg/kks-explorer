@@ -46,6 +46,7 @@ var procedures := {}                  # id -> procedure, in file-name order
 var staff = null                      # sim/staff.gd: staff.json (§16), or null
 var weather = null                    # weather.json (REALISM.md §5.1), or null
 var tools = null                      # tools.json (REALISM.md §2.3): {list, ix: id -> index, at: per tool [[place, count]]}
+var discuss_doc = null                # discussions.json (REALISM.md §6.3.1), read by the staff (staff.gd discuss)
 var hse = null                        # hse.json (REALISM.md §8.6): {hazard_ix, control_ix, own: job -> [hazards, controls]}
 var hands: Array = []                 # hand actions (REALISM.md §2.4), joined in area order
 var hands_ix := {}                    # "code|action" -> hand action
@@ -128,7 +129,7 @@ static func from_dir(path: String):
 	var files := {}
 	var top := path.trim_suffix("/")
 	for rel in ["plant.json", "kit.json", "sounds.json", "staff.json", "weather.json", "tools.json", "hse.json",
-			"workorders.json"]:
+			"workorders.json", "discussions.json"]:
 		if FileAccess.file_exists(top + "/" + rel):
 			files[rel] = FileAccess.get_file_as_bytes(top + "/" + rel)
 	for sub in ["areas", "model", "scenarios", "procedures"]:
@@ -230,6 +231,14 @@ func _load(files: Dictionary) -> void:
 			if pr == null:
 				return
 			procedures[pr["id"]] = pr
+	if files.has("discussions.json") and files["discussions.json"] != null:
+		# the discussions (REALISM.md §6.3.1, milestone DC3): only in a version 2 plant with staff.json
+		if version != 2 or not files.has("staff.json") or files["staff.json"] == null:
+			_fail("discussions.json: only in a version 2 plant with staff.json")
+			return
+		discuss_doc = _read(files, "discussions.json")
+		if discuss_doc == null:
+			return
 	if files.has("staff.json") and files["staff.json"] != null:
 		var sd = _read(files, "staff.json")
 		if sd == null:

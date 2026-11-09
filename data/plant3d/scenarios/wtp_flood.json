@@ -142,7 +142,12 @@
   {"id": "ct_lvl_frozen", "when": "ct_line_ice", "set": {"ct_lvl_frozen": 1}, "text": "The cooling tower basin level transmitter's impulse line freezes: the reading holds", "kks": "30PAD10CL001", "repair": {"ct_lvl_frozen": 0}},
   {"id": "ct_fan7_ingress", "when": {"cmp": ["ct_jb7_rain", ">=", "ct_jb7_mm"]}, "set": {"ct_fan7_cy_err": 1}, "text": "Cooling tower fan 7 vibration reads high and climbing", "kks": "30PAD10CY007", "repair": {"ct_fan7_cy_err": 0}, "causes": [{"id": "water", "weight": 4, "set": {"ct_jb7_wet": 1}, "repair": {"ct_jb7_wet": 0}, "text": "Rain in the junction box through a poor cable gland: the wet terminals leak current into the loop"}, {"id": "electronics", "weight": 1, "set": {"ct_cy7_bad": 1}, "repair": {"ct_cy7_bad": 0}, "text": "The transmitter's electronics have failed"}]},
   {"id": "ct_fan9_surge", "when": {"cmp": ["ln_count", ">=", "ln_n"]}, "set": {"ct_fan9_cy_fail": 1}, "text": "A lightning surge damages cooling tower fan 9's vibration transmitter: it reads full scale", "kks": "30PAD10CY009", "repair": {"ct_fan9_cy_fail": 0}},
-  {"id": "gt1_pulse", "set": {"gt1_pulse_fail": 1}, "text": "GT 1 air intake: the pulse cleaning stops (its controller fails)", "kks": "10MBL10AT001", "repair": {"gt1_pulse_fail": 0}}
+  {"id": "gt1_pulse", "set": {"gt1_pulse_fail": 1}, "text": "GT 1 air intake: the pulse cleaning stops (its controller fails)", "kks": "10MBL10AT001", "repair": {"gt1_pulse_fail": 0}},
+  {"id": "cw_a_zone_c", "set": {"cw_a_zone_c": 1}, "text": "CW pump A: the monthly vibration route reads 5.6 mm/s at the motor's drive-end bearing (zone C), up from 2.9", "kks": "30PAC10AP001", "repair": {"cw_a_zone_c": 0}},
+  {"id": "cond_p2_again", "set": {"cond_p2_drift": 1.2, "cond_p2_seen": 1}, "text": "Condenser pressure transmitter 2 reads 1.2 kPa above its partners again, a month after it was trimmed", "kks": "30MAG10CP002", "repair": {"cond_p2_drift": 0, "cond_p2_seen": 0, "cond_p2_trim": 0}},
+  {"id": "cw_a_gland", "set": {"cw_a_gland": 1}, "text": "CW pump A discharge valve: water weeping from the stem's gland onto the motor base", "kks": "30PAC10AA101", "repair": {"cw_a_gland": 0}},
+  {"id": "st_vib3_trip", "set": {"st_trip_rep": 1}, "text": "The night shift's report: the steam turbine tripped on bearing 3 vibration high-high; the restart is the day shift's decision", "kks": "30MAD10CY003", "repair": {"st_trip_rep": 0}},
+  {"id": "ct_fan7_chatter", "set": {"ct_fan7_chat": 1}, "text": "Cooling tower fan 7's vibration alarm came in and cleared fourteen times last shift", "kks": "30PAD10AN007", "repair": {"ct_fan7_chat": 0}}
  ],
  "world": {"seed": 105, "year_day": 100, "weather": {"season": "spring"}, "age": {"months": 0}}
 }

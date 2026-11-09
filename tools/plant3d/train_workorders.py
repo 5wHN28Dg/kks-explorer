@@ -16,6 +16,7 @@ Weibull table (the lives the engine draws for the ageing scenario's seed: the hi
 A new run starts from it (§7.1)."""
 
 import train_ageing
+import train_discussions
 
 MODES = [
     ('vibration', 'Vibration'), ('noise', 'Abnormal noise'), ('overheating', 'Overheating'),
@@ -70,6 +71,7 @@ OWN = {
     'wo_scaffold_hrsg': (None, [None, None, 'other'], 24),
     'wo_hrsg1_lift_drive': (['fail_function', 'noise'], ['fail_function', 'wear', 'repair'], 6),
     'wo_cond_p2_fix': (['reading', 'erratic'], ['reading', None, 'repair'], 3),
+    **train_discussions.WO_KEYS,        # the discussions' outcome works (milestone DC3)
 }
 
 

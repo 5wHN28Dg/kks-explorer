@@ -146,6 +146,11 @@ func radio_call(role_id: String, task: String, work = null) -> int:
 	return send(["call", role_id, task, work])
 
 
+## A pick of an option at a discussion's point (REALISM.md §6.3.1).
+func discuss(discussion: String, point: String, option: String) -> int:
+	return send(["discuss", discussion, point, option])
+
+
 func jump(hhmm: String) -> int:
 	return send(["jump", hhmm])
 

@@ -1313,6 +1313,213 @@ class HseVectors(PartVectors, unittest.TestCase):
         self.assertEqual(self.st['runs'][6]['states'][-1]['hse']['wo_paint']['jsa'][2], 'hse1')
 
 
+
+class DiscussVectors(PartVectors, unittest.TestCase):
+    """Milestone DC3 (REALISM.md §6.3.1): discussions.json, the step `discuss` (a lead's meeting and a joiner's
+    wait), modes npc and open, points taken by picks or by their defaults, the agreement and its outcome task, and the
+    input `discuss` with its reasons."""
+    part, rejects = 'discuss', 'REJECTS_DISCUSS'
+
+    def evs(self, k, kinds=('discussion', 'point', 'discuss')):
+        return [x for x in self.st['runs'][k]['events'] if x[1] in kinds]
+
+    def test_npc_mode(self):
+        """Between NPCs: started once a called technician and the called electrical authorised person are in the
+        office (the first called of each role in person order), every point's default after its 10 minutes (null takers), the last
+        agreement (no task): the supervisor's task goes on in the same step; the participant technician's step ends
+        with it, the other's after its 15 minutes in the office."""
+        ev = self.evs(0)
+        start = ev[0]
+        self.assertEqual(start[1:], ['discussion', 'pump_run', 'start', 'a_sup', ['a_sup', 'mech1', 'a_elec'], 'npc'])
+        n = start[0] + 10 * 10
+        self.assertEqual(ev[1:], [[n, 'point', 'pump_run', 'when', 'weekend', None],
+                                  [n, 'point', 'pump_run', 'watch', 'weekly', None],
+                                  [n, 'discussion', 'pump_run', 'agreed', 2, None]])
+        all_ev = self.st['runs'][0]['events']
+        self.assertIn([n, 'say', 'a_sup', 'all_well', 'channel'], all_ev)
+        self.assertIn([n, 'task', 'a_sup', 'debate_pump', 'done'], all_ev)
+        end = self.st['runs'][0]['states'][-1]['discussions']['pump_run']
+        self.assertEqual(end, {'count': 1, 'lead': 'a_sup', 'participants': ['a_sup', 'mech1', 'a_elec'],
+                               'mode': 'npc', 'start': start[0], 'point': 2, 'since': start[0],
+                               'taken': [['weekend', None], ['weekly', None]], 'agreed': 2})
+
+    def test_open_mode_picks_and_reasons(self):
+        """The trainee technician: a pick before the start (state), ids not in the file (unknown), the second point
+        while the first is current (state), their pick (done, their id on the point), a second pick of it
+        (state: taken); the second point's default after its 3 minutes from the pick."""
+        ev = [x[:2] + x[3:] for x in self.evs(1)]
+        self.assertEqual([x[1:] for x in ev if x[1] == 'discuss'], [
+            ['discuss', 'pump_run', 'when', 'now', 'refused', ['state']],
+            ['discuss', 'pay', 'when', 'now', 'refused', ['unknown']],
+            ['discuss', 'pump_run', 'why', 'now', 'refused', ['unknown']],
+            ['discuss', 'pump_run', 'when', 'later', 'refused', ['unknown']],
+            ['discuss', 'pump_run', 'when', None, 'refused', ['unknown']],
+            ['discuss', 'pump_run', 'watch', 'daily', 'refused', ['state']],
+            ['discuss', 'pump_run', 'when', 'now', 'done', []],
+            ['discuss', 'pump_run', 'when', 'weekend', 'refused', ['state']]])
+        full = self.evs(1)
+        self.assertEqual(full[5][1:7], ['discussion', 'pump_run', 'start', 'a_sup', ['a_sup', 'mech1', 'a_elec'],
+                                        'open'])
+        pick = next(x for x in full if x[1] == 'discuss' and x[6] == 'done')
+        self.assertEqual(pick[2], 'mech1')
+        nxt = full[full.index(pick) + 1]
+        self.assertEqual(nxt, [pick[0], 'point', 'pump_run', 'when', 'now', 'mech1'])
+        self.assertIn([pick[0] + 30, 'point', 'pump_run', 'watch', 'weekly', None], full)
+
+    def test_outcome_task_replaces_the_rest(self):
+        """The first agreement (`now`) names stop_pump: it runs in place of the rest of the lead's task (no
+        all_well said by debate_pump), as choose's task does."""
+        r = self.st['runs'][1]['events']
+        ag = next(x for x in r if x[1] == 'discussion' and x[3] == 'agreed')
+        self.assertEqual(ag[4:], [0, 'stop_pump'])
+        k = r.index(ag)
+        self.assertEqual(r[k + 1:k + 3], [[ag[0], 'task', 'a_sup', 'debate_pump', 'done'],
+                                          [ag[0], 'task', 'a_sup', 'stop_pump', 'start']])
+        said = [x[0] for x in r if x[1:3] == ['say', 'a_sup'] and x[0] >= ag[0]]
+        done = next(x[0] for x in r if x[1:5] == ['task', 'a_sup', 'stop_pump', 'done'])
+        self.assertEqual(said, [done])      # (stop_pump's own say, at its end)
+
+    def test_default_then_pick_and_a_reading_term(self):
+        """The trainee lead: the first point's default after 5 minutes (null), their pick of `daily`; the valve open
+        (valve_shut false, as the model's step left it) and `daily`: the second agreement, at once."""
+        ev = self.evs(2)
+        st = ev[0][0]
+        self.assertEqual(ev[0][-1], 'open')
+        self.assertEqual(ev[1], [st + 50, 'point', 'pump_run', 'when', 'weekend', None])
+        pick = ev[2]
+        self.assertEqual(pick[1:], ['discuss', 'a_sup', 'pump_run', 'watch', 'daily', 'done', []])
+        self.assertEqual(ev[3:], [[pick[0], 'point', 'pump_run', 'watch', 'daily', 'a_sup'],
+                                  [pick[0], 'discussion', 'pump_run', 'agreed', 1, None]])
+        vals = self.st['runs'][2]['states'][-1]['values']
+        self.assertEqual(vals['valve_shut'], 0.0)
+
+    def test_outcome_runs_for_the_lead_alone(self):
+        """An outcome task runs in the lead's task only (REALISM.md §6.3.1): a step only the lead's role may take
+        (the shift supervisor's permit request, which the technician and the electrical authorised person, the
+        joiners, lack) is valid in it."""
+        F = G.discuss_files()
+        next(t for t in F['staff.json']['tasks'] if t['id'] == 'stop_pump')['steps'].insert(
+            1, {'permit': {'work': 'wo_pump', 'action': 'request'}, 'else': 2})
+        P.check_files({k: v if isinstance(v, bytes) else json.dumps(v).encode() for k, v in F.items()})
+
+    def test_session_first_pick_counts(self):
+        """A session: a slot whose person is not a participant (authority), a slot playing nobody (authority); the
+        supervisor's and the technician's picks of one point in one step: the first in the commit's order counts."""
+        ev = [x[1:] for x in self.evs(3, ('discuss',))]
+        self.assertEqual(ev, [['discuss', 'mech2', 'pump_run', 'when', 'now', 'refused', ['authority']],
+                              ['discuss', None, 'pump_run', 'when', 'now', 'refused', ['authority']],
+                              ['discuss', 'a_sup', 'pump_run', 'when', 'weekend', 'done', []],
+                              ['discuss', 'mech1', 'pump_run', 'when', 'now', 'refused', ['state']]])
+        self.assertTrue(self.st['runs'][3].get('session'))
+
+    def test_joiner_times_out(self):
+        """The supervisor absent: no discussion starts; each technician's joiner step ends 15 clock minutes (150
+        steps) after they came into the office."""
+        r = self.st['runs'][4]
+        self.assertEqual(self.evs(4), [])
+        for who in ('mech1', 'mech2'):
+            came = max(x[0] for x in r['events'] if x[1] == 'move' and x[2] == who and x[4] in (
+                'seat1', 'seat2', 'office_door', 'office_table') and x[0] < 300)
+            arrive = next(x[5] for x in r['events'] if x[1] == 'move' and x[2] == who and x[0] == came)
+            done = next(x[0] for x in r['events'] if x[1:5] == ['task', who, 'join_pump', 'done'])
+            self.assertEqual(done, arrive + 150 + 10, who)     # (then the task's own minute of work)
+        self.assertEqual(r['states'][-1]['discussions'], {})
+
+    def test_no_file_no_part(self):
+        """Without discussions.json the snapshots have no `discussions`, the digests no part and the input is
+        unknown: every earlier part's runs stay byte for byte."""
+        V = json.load(open(G.OUT3, encoding='utf-8'))
+        for k, part in V.items():
+            if k in ('about', 'streams', 'discuss'):
+                continue
+            for r in part['runs']:
+                self.assertFalse(any('discussions' in s for s in r['states']), k)
+        F = G.discuss_files()
+        G._dc_no_file(F)
+        e = P.Engine(G.check(F), 's1')
+        e.discuss('pump_run', 'when', 'now')
+        e.step()
+        self.assertIn([1, 'discuss', None, 'pump_run', 'when', 'now', 'refused', ['unknown']], e.events)
+        self.assertNotIn('discussions', e.snapshot())
+
+    def test_lead_task_gone_ends_liveness(self):
+        """A live discussion whose lead no longer has a task at its step (abandoned, stopped, skipped by a jump) is
+        not live: a pick is refused (state), and the next lead's step starts a new one (count 2)."""
+        from ref import plant3d_discuss as DC
+        F = G.discuss_files()
+        F['scenarios/s1.json']['staff']['trainee'] = 'mech1'
+        e = P.Engine(G.check(F), 's1')
+        pl = G.Trainee()
+        while e.step_no < 280:
+            pl(e)
+            e.step()
+        sr = e.staff
+        x = sr.disc[0]
+        self.assertTrue(DC._live(sr, sr.st.discuss['list'][0], x))
+        lead = sr.people[x['lead']]
+        sr.finish(lead, 'abandoned')
+        self.assertFalse(DC._live(sr, sr.st.discuss['list'][0], x))
+        e.discuss('pump_run', 'when', 'now')
+        e.step()
+        self.assertIn(['discuss', 'mech1', 'pump_run', 'when', 'now', 'refused', ['state']],
+                      [y[1:] for y in e.events if y[0] == e.step_no])
+
+    def test_called_not_a_bystander(self):
+        """The participant of a joining role is the called person (current task at a discuss step of it), not the
+        first of the role in the room: the first technician sits in the office on a break, not called, and takes no
+        part; the second, called, does (the user, 2026-11-09)."""
+        ev = self.evs(5)
+        self.assertEqual(ev[0][1:], ['discussion', 'pump_run', 'start', 'a_sup', ['a_sup', 'mech2', 'a_elec'], 'npc'])
+        start = ev[0][0]
+        e = P.Engine(G.check(G.discuss_bystander_files()), 's1')
+        while e.step_no < start:
+            e.step()
+        sr = e.staff
+        m1 = sr.people[sr.st.person_ix['mech1']]
+        self.assertIn(m1.pos, sr.st.rooms['office'])          # in the room, earlier in person order
+        self.assertEqual(m1.cur['task'], 'sit_office')         # but not called
+
+    def test_joiner_leaves_a_paused_lead(self):
+        """The lead's task held at the end of their day (the discussion still live): the participant supervisor waits
+        15 clock minutes (150 steps) of the pause from the first step it sees it, then their step is done; the
+        discussion stays unended (the user, 2026-11-09)."""
+        r = self.st['runs'][6]
+        ev = self.evs(6)
+        self.assertEqual(ev, [[ev[0][0], 'discussion', 'gauge_cal', 'start', 'mech1', ['mech1', 'a_sup'], 'npc']])
+        held = [x[0] for x in r['events'] if x[1:] == ['task', 'mech1', 'lead_gauge', 'held']]
+        done = [x[0] for x in r['events'] if x[1:] == ['task', 'a_sup', 'join_gauge', 'done']]
+        self.assertEqual(len(held), 1)
+        self.assertEqual(done, [held[0] + 1 + 150])
+        self.assertIsNone(r['states'][-1]['discussions']['gauge_cal']['agreed'])
+
+    def test_joiner_pause_restarts_its_count(self):
+        """A joiner's count of its lead's pause is for minutes in a row: the joiner's own task paused (pre-empted, held)
+        drops it, so a resumed joiner counts again from when it next sees the lead paused (adversarial review)."""
+        r = self.st['runs'][6]
+        held = [x[0] for x in r['events'] if x[1:] == ['task', 'mech1', 'lead_gauge', 'held']][0]
+        F = G.discuss_paused_files()
+        F['scenarios/s1.json']['staff']['absent'] = ['mech2']        # (as the vectors' run)
+        e = P.Engine(G.check(F), 's1')
+        while e.step_no < held + 10:
+            e.step()
+        sr = e.staff
+        sup = sr.people[sr.st.person_ix['a_sup']]
+        self.assertIn('pz', sup.cur['st'])
+        sr.pause(sup)
+        self.assertEqual([q['task'] for q in sup.queue], ['join_gauge'])
+        self.assertNotIn('pz', sup.queue[0]['st'])
+
+    def test_joiner_kept_by_a_waiting_lead(self):
+        """A called joiner whose own 15 minutes end while the lead waits in the room for the others waits on and takes
+        part when the lead's 15 minutes end (the first train's joiners come before their lead)."""
+        r = self.st['runs'][7]
+        ev = self.evs(7)
+        self.assertEqual(ev[0][1:], ['discussion', 'pump_run', 'start', 'a_sup', ['a_sup', None, 'a_elec'], 'npc'])
+        came = [x[0] for x in r['events'] if x[1:] == ['task', 'a_elec', 'join_pump_e', 'start']][0]
+        self.assertGreater(ev[0][0] - came, 150 + 62)          # past their own 15 minutes in the office
+        self.assertIn([ev[0][0] + 100, 'task', 'a_elec', 'join_pump_e', 'done'], r['events'])
+
+
 if __name__ == '__main__':
     unittest.main()
 

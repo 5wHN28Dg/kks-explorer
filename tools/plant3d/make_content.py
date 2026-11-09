@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
-import kit, train_workorders, train_ageing, train_hse, train_hands, train_monitoring, train_weather, train_wx, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
+import kit, train_discussions, train_workorders, train_ageing, train_hse, train_hands, train_monitoring, train_weather, train_wx, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
 from workshop import pressure_transmitter as ws_pressure_transmitter  # noqa: E402
 from workshop import steam_turbine as ws_steam_turbine  # noqa: E402
 from workshop import gas_turbine as ws_gas_turbine  # noqa: E402
@@ -123,6 +123,7 @@ def build():
         {'hrsg1': train_hoists.roof_hoist, 'st': train_hoists.crane}.get(m.area, lambda _m: None)(m)
         if m.area == 'hrsg1':
             train_lift.model(m)
+        train_discussions.model(m)      # the discussions' findings and outcome works (REALISM.md §6.3.1, DC3)
     add_air_permissives(areas, models)
     jobs = train_staff.works_tasks(models)      # with staff.json every work names its task (§15.2)
     for m in models:
@@ -153,6 +154,7 @@ def build():
     files['tools.json'] = dict(train_hands.TOOLS, tools=train_hands.TOOLS['tools'] + train_monitoring.TOOLS)
     files['monitoring.json'] = train_monitoring.monitoring()    # what the app draws the CM views from (§2.19)
     files['hse.json'] = train_hse.hse()     # the JSAs' hazard library (REALISM.md §8.6, milestone HS1)
+    files['discussions.json'] = train_discussions.discussions()     # REALISM.md §6.3.1, milestone DC3
     files.update(train_hands.files())           # the service files (§2.4) the hand actions are made from
     for w in WORKSHOP:
         d = w.data()

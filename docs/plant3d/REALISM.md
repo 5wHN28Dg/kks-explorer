@@ -1700,6 +1700,157 @@ the app).
   - restart the steam turbine after a trip before the cause is known, or investigate first ([DOE-RCA]);
   - change an alarm's limit now or through a change ([ISA182], [MOC]).
 
+#### 6.3.1 DC3's details (settled 2026-11-08, before the code)
+
+§6.3 leaves these open; settled here. What the engine does is in both engines bit for bit, behind the plant's
+`discussions.json` (without it nothing changes: every earlier item stays byte for byte); what is drawn is the app's,
+pinned by app tests. NPC speech is text only (the user, 2026-11-01).
+
+**What real sites do** (public sources, §14): a maintenance supervisor and the maintenance manager, or the I&C
+engineer and the shift supervisor, often differ on a job's method, order or isolation; they settle it at a short
+meeting by putting evidence (a reading or trend, the manufacturer's manual, a standard, the site's rules), and the
+agreed method is what the permit and the work order then carry ([HSG250] for the permit's method and isolations,
+[ISO20816-3] and [Moubray] for running a machine on while it is watched, [R3051] for in-place against bench
+calibration, [FCVH] for packing, [DOE-RCA] for finding a trip's cause before a restart, [ISA182] and [MOC] for an
+alarm limit's change).
+
+- **The file, `discussions.json`** (format `walkdown-plant-discussion`, version 1; a plant file beside `hse.json`,
+  only in a version 2 plant with `staff.json`, `unknown_key` and `bad_ref` otherwise): `discussions`, 1–64 of:
+  - `id` (an identifier of at most 24 characters, unique), `title` (1–120 characters), `topic` (optional: the work
+    it is about, a work of the model, `bad_ref` otherwise);
+  - `room` (a room of staff.json) and `roles`: 2–3 different roles of staff.json; the first is the **lead** (the
+    one whose task carries the step that runs it), the others **join**;
+  - `evidence`: 1–16 `{"id", "kind", "text", …}`: `kind` `manual` (`manual`, `section`: a section of a DC2 manual,
+    checked by the manuals' generator and its test, not the engine), `standard` (`cite`: a §14 key), `reading`
+    (`code`: a code of the model, `value`: a model value or binding the engine reads as true or false, as `wait`'s
+    `until` does) or `rule` (the site's own rule, `text` alone); `text` 1–200 characters;
+  - `positions`: one per role, `{"role", "claim", "evidence": [ids]}` (the claim 1–200 characters);
+  - `turns`: 1–16 opening lines `{"role", "text"}`, said when it starts;
+  - `points`: 1–8 `{"id", "role"?, "minutes", "options", "default"}`: `minutes` 1–30 clock minutes; `options` 2–4
+    `{"id", "text", "side"?, "evidence"?: [ids], "lines": [{"role", "text"}]}` (`side` a role of the discussion: the
+    position the option supports; `lines` 1–4, said when it is taken; the role `"$"` is whoever picked, the default's
+    taker being the point's `role`, else the lead); `default` an option id;
+  - `minutes`: 1–120, the clock minutes it takes between NPCs;
+  - `agreements`: 1–8 `{"when": [terms], "outcome": {"task"?, "text"}, "lines": [{"role", "text"}]}`: a term is
+    `{"point", "option"}` (that option was taken) or `{"value", "is"}` (a reading true or false when it ends); the
+    first whose terms all hold is reached; the last has no terms (`bad_ref` otherwise). The outcome's `task` (a task
+    of staff.json, not one that reaches the lead's own task through `choose`, `call` or another outcome, `bad_ref`)
+    runs in place of the rest of the lead's task, as `choose` does; without one the lead's task goes on.
+  Ids are identifiers of at most 24 characters, unique in their list; `bad_ref` for a role, room, evidence, option
+  or task that isn't there, `bad_number` for numbers out of range.
+- **The step `{"discuss": id}`** (§16.6; `bad_ref` for an unknown discussion, `unknown_key` without
+  discussions.json). The validator checks that the task's roles (those who can get it) are all the discussion's
+  roles, so the step is either a lead's or a joiner's for everyone who runs it.
+  - **The lead's step** is a `meet` (§16.6) in the discussion's room with the other roles: the first free seat,
+    waiting for a called person of each joining role in the room (at most 15 clock minutes). A **called** person is
+    one on duty with a task at a `discuss` step of this id, current or queued (the joiner's step: their task was given
+    to them, by a `call`, a routine's slot or a reaction); another person of the role who happens to be in the room is a
+    bystander and takes no part (the user, 2026-11-09). While another discussion of the same id is live the step
+    waits. When met, the discussion **starts**: its participants are the lead and, for each joining role, the first
+    called person of that role in the room in person order; event
+    `["discussion", id, "start", lead, [participants], mode]`. `mode` is `npc` when no slot's person is a
+    participant, else `open` (decided at the start, and kept).
+  - **Mode `npc`:** after `minutes` clock minutes every point takes its default (events `["point", id, point, option,
+    null]` in point order), then the agreement is found.
+  - **Mode `open`:** the points come in order; each waits at most its `minutes` for a pick, then takes its default
+    (`null` as the taker); a pick takes it at once (the taker's id in the event). After the last point the agreement
+    is found at once.
+  - **The end:** the first agreement whose terms hold (readings as the model's previous step left them); event
+    `["discussion", id, "agreed", agreement index, task or null]`; the lead's step then ends as `choose` does (the
+    outcome's task) or is done. A joiner's step is done when the discussion it took part in ends, or when it has
+    waited 15 clock minutes in the room and no discussion of that id has started since it arrived.
+  - The discussion goes on only in its lead's turns: while the lead is paused (a player taking the lead over, a
+    task held for the next duty) it waits (the content makes these tasks not interruptible). A participant joiner
+    waits through a pause for at most 15 clock minutes in a row, like the other joiner waits, then its step is done
+    (the user, 2026-11-09); the discussion stays live for the lead's return, without them.
+- **The input `[n, "discuss", id, point, option]`** (step 1, in the order the inputs were made, before any person's
+  turn): `unknown` for ids not in the file; `authority` when the slot's person is not a participant of the live
+  discussion; `state` when no discussion of that id is live in mode `open`, the point is not the current one, or it
+  was already taken (the first pick in the commit's order counts); else `done`, and the point is taken. Event
+  `["discuss", person, id, point, option, "done"|"refused", reasons]`. All of it is state, so every player agrees.
+- **State:** per discussion id the live or last instance: its count, lead, participants, mode, start step, current
+  point, the step it began, the options taken and by whom, ended or not. It is in the state digest (§17.14) and the
+  saved run, after the earlier parts, only with discussions.json.
+- **The first five** (the first train; each tied to a job whose method, order, isolation or tools the outcome
+  changes, through the existing work, permit and work order machinery):
+  1. a CW pump's bearing vibration in zone C: run to the weekend's planned stop with weekly readings, or stop it
+     now on the standby pump ([ISO20816-3], [Moubray]);
+  2. the condenser pressure transmitter: calibrate in place or at the bench ([R3051], WDP-MAN-001);
+  3. a valve's packing leak: tighten under pressure or isolate and repack ([FCVH], WDP-MAN-003; the site's rule
+     wins: whatever is argued, the repack is isolated);
+  4. the steam turbine after a trip: restart before the cause is known or investigate first ([DOE-RCA],
+     WDP-MAN-005);
+  5. an alarm's limit that keeps going off: change it now or through a change ([ISA182], [MOC]).
+  Each has three roles: the two who differ and the trainee's usual role (an engineer, a technician or the control
+  room operator), so a trainee playing it takes part.
+- **The app** (text only): a discussion panel while the trainee's person is a participant or in the room (the
+  opening lines, each option's lines as points are taken, the agreement's lines and outcome; for a participant in
+  mode `open` the current point's options with their evidence, a manual link opening the DC2 reader at that
+  section, a reading's value as now shown, and the time left); the lines also go to the radio log. The debrief lists
+  each discussion, who took which option and the outcome.
+
+#### 6.3.2 As built for milestone DC3 (reference engine)
+
+The reference engine is `ref/plant3d_discuss.py` (with `ref/plant3d.py` and `ref/plant3d_staff.py`); its vectors are
+the realism file's `discuss` part. What §6.3.1 left open, settled the smallest way:
+- **The checks beyond §6.3.1:** the room has a door (as a `meet`'s); a `standard`'s `cite` has a §14 key's form
+  (`[A-Za-z0-9][A-Za-z0-9.-]{0,23}`, `bad_id`), the key itself checked by the content's test, as a `manual`'s
+  `manual` and `section` (identifiers here); a position's `evidence` may be empty; an agreement's `lines` are 1–4 of
+  the discussion's roles (no `"$"`), its terms at most 16; a second discussion of an id is `dup_id`; a task running a
+  `discuss` step for a role not of the discussion is `authority`; an outcome task is an edge of the "reaches itself"
+  check, as `choose`'s tasks are, and runs for the lead's role alone (the discussion's first role, when it may run the
+  task) with the task's works: a joiner's step has no outcome, so the joiners' roles need none of its authorities (the
+  first reference gave it every role of the task, and refused content whose outcome asks for a permit).
+- **The participants** are listed in the discussion's role order; a joining role with nobody called in the room
+  after the meeting's 15 minutes is `null` in the event (-1 in the digest), and the discussion starts without it.
+  Called: on duty, in the room, and a task current or queued (not held) at a `discuss` step of this id (a trainee's
+  joiner task waiting for their acknowledgement counts); the lead's wait for its joiners counts only such people. A participant stays one when it leaves (its step done): a
+  trainee's later pick still counts.
+- **A pick** in mode `open` takes the point in step 1 (event `["point", id, point, option, taker]` right after the
+  input's); the lead's next turn moves to the next point, whose minutes count from that step. In mode `npc` the
+  points' events come in point order, all in the step the discussion's minutes end. Lines are not events: the app
+  reads them from the file (the opening turns at `start`, an option's lines with its `point`, an agreement's with
+  `agreed`).
+- **The reasons:** `unknown` alone when the id, the point or the option is not in the file (or not text); else
+  `authority` when the slot plays nobody or a live discussion of that id has other participants, and `state` when no
+  discussion of that id is live in mode `open`, the point is not the current one, or it is taken (both may be listed).
+  The event has no slot, as `jsa`'s.
+- **Live** means started, no agreement yet, and the lead still has a task at a step of that discussion (current,
+  queued or held): a lead's task abandoned, stopped or skipped by a jump leaves its discussion behind, not live (no
+  event; it shows unended in the state) and a later lead's step starts the next one.
+- **A joiner** (an NPC) goes to the meeting's first free seat as a `meet` does; a trainee joiner only needs to be in
+  the room. Its 15 minutes count from when it first is in the room; a discussion live then, or started since, in
+  which it takes part ends its step when it ends; one it is not part of does not stop its 15 minutes. **The lead
+  paused:** in its turn a participant joiner whose live discussion's lead is not at the step (the lead's task queued
+  or held) notes the step it first saw that (`pz` in the step's state), cleared when it sees the lead at the step
+  again; 15 clock minutes after the noted step its step is done. **A lead waiting:** a called joiner whose own 15
+  minutes in the room are up waits on while a lead of the discussion is in the room at its step waiting for its
+  people (the meeting's 15 minutes running, none of this id live), so it takes part when that wait ends (the first
+  train's leads call their joiners at the room's door, and a joiner already near may wait there longer than 15
+  minutes for a lead whose other joiner is late). The first train's lead tasks have no `meet` before the
+  `discuss` step: that step is the meeting.
+- **State** in the staff's part of the run (`StaffRun.disc`), per discussion in file order. **The digest:** at the
+  end of the staff's digest list (after the audio part), only with discussions.json: per discussion `[]` before its
+  first start, else `[count, lead, participants (PackedInt32, -1 none), mode (0 npc, 1 open), start step, current
+  point (the points' count once all are taken), the step the current point began, options taken (PackedInt32, -1
+  none), takers (PackedInt32, -1 none or a default), the agreement reached (-1 while unended)]`. **The snapshot:**
+  `discussions`, with discussions.json only: `{id: {count, lead, participants, mode, start, point, since, taken:
+  [[option, taker or null] or null per point], agreed (null while unended)}}` for each discussion started once.
+
+**In the app** (milestone DC3, after the reference): `sim/discuss.gd` is the GDScript engine's side, bit for bit on
+the realism vectors' `discuss` part and the first train's vectors; it reads discussions.json with the staff (only
+what the engine leans on: the reference checks every rule), keeps the instances in the engine's `dsc` (one entry per
+discussion, `{}` before its first start; saved with the run and checked against the content when one is continued),
+and adds the staff digest's part and the snapshot's `discussions`. A session carries the input as three texts. The
+app (`ui/discussions.gd`, text only): the crew panel shows the discussion while the trainee's person takes part in a
+live one or is in its room (the positions, the opening lines and each option's and agreement's lines as they come;
+for a participant in mode `open` the current point's options, each a button, with their evidence: a manual's section
+opens in the DC2 reader, a standard by its key, a reading with its value now, a site rule; the clock time the point
+ends at and the option that stands then, so the panel is not rebuilt every minute); an ended one stays, with the
+agreement and its outcome, while they are in its room, until closed. Every line also goes to the radio log, and the
+debrief lists each discussion with who took which option (or the default) and the outcome. The trainee's task line
+names a `discuss` step's room and title, with "Take me there".
+
 ## 7. Work management
 
 ### 7.1 Work orders and job history

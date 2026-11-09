@@ -76,6 +76,10 @@
   {"id": "wtp_cartridge", "title": "A cartridge filter's cartridges changed", "hazards": ["stored_pressure", "chemicals", "manual"]},
   {"id": "analyser", "title": "A water analyser calibrated", "hazards": ["chemicals", "process_trip", "elec_shock"]},
   {"id": "scaffold", "title": "A scaffold built on a platform", "hazards": ["height", "dropped", "manual", "lifting"]},
-  {"id": "painting", "title": "Pipework painted by running plant", "hazards": ["fumes", "flammable", "noise", "debris"]}
+  {"id": "painting", "title": "Pipework painted by running plant", "hazards": ["fumes", "flammable", "noise", "debris"]},
+  {"id": "running_checks", "title": "Readings and grease on a running machine", "hazards": ["rotating", "hot_surface", "noise", "slips"]},
+  {"id": "valve_packing", "title": "A valve's stem packing renewed", "hazards": ["stored_pressure", "valve_stroke", "manual", "pinch", "slips"]},
+  {"id": "probe_check", "title": "A turbine vibration probe's gap and wiring checked", "hazards": ["process_trip", "elec_shock", "hot_surface", "noise"]},
+  {"id": "alarm_change", "title": "An alarm limit changed in the control system", "hazards": ["process_trip"]}
  ]
 }

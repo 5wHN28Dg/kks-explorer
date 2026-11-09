@@ -30,6 +30,7 @@ const Staff = preload("staff.gd")
 const World = preload("world.gd")
 const Hands = preload("hands.gd")
 const Hse = preload("hse.gd")
+const Disc = preload("discuss.gd")   # discussions (REALISM.md §6.3.1)
 const WorkOrders = preload("workorders.gd")
 
 const STEP := 0.1
@@ -245,6 +246,7 @@ var wo_no := {}                     # work id -> its current work order's number
 var wo_rec := {}                    # work id -> its current work order's record
 var wo_count := 0
 var wo_history: Array = []          # the run's closed and cancelled work orders' records, in that order
+var dsc: Array = []                 # per discussion of discussions.json its live or last instance ({} before it; sim/discuss.gd)
 var wo_npc_done: Array = []         # [work, person]: this step's NPC dones, written up in step 3
 var _wx_mode := 0                   # its mode (0 seeded, 1 fixed, 2 scripted), slots, lag factors and targets per
 var _wx_slots := PackedInt32Array() # kind (one table per driven value), out of _wx for the step's cost
@@ -330,6 +332,9 @@ func _init(model = null, scenario = null, session := false) -> void:
 	if m.staff != null and sc.has("staff"):
 		_sm = m.staff
 		_sm.init_run(self, sc)
+		if _sm.discuss != null:     # (REALISM.md §6.3.1)
+			for _d in _sm.discuss["list"]:
+				dsc.append({})
 		if _sm.has_audio:           # (REALISM.md §8.5)
 			var aseed := World.seed_of(sc)
 			for p in _sm.people:
@@ -818,6 +823,11 @@ func phone(what, slot = null) -> void:
 	_q(["phone", what], slot)
 
 
+## The player's pick of an option at a discussion's point (REALISM.md §6.3.1).
+func discuss(discussion, point, option, slot = null) -> void:
+	_q(["discuss", discussion, point, option], slot)
+
+
 ## The trainee entered ("in") or left ("out") a zone (§16.2).
 func zone(zone_id, how, slot = null) -> void:
 	_q(["zone", zone_id, how], slot)
@@ -982,6 +992,8 @@ func apply_input(item: Array) -> void:
 			jsa(item[2], item[3], item[4], item[5], slot)
 		"talk":
 			talk(item[2], item[3], item[4], slot)
+		"discuss":
+			discuss(item[2], item[3], item[4], slot)
 		"wo":
 			work_order(item[2], item[3], item[4], item[5] if item.size() > 5 else null, slot)
 		"lock":
@@ -1957,7 +1969,7 @@ func _step() -> void:
 		if kind == "role" or kind == "task_ack" or kind == "arrive" or kind == "leave" or kind == "read" \
 				or kind == "say" or kind == "pick" or kind == "call" or kind == "jump" or kind == "ppe" \
 				or kind == "zone" or kind == "stop" or kind == "release" or kind == "get_on" or kind == "drive" \
-				or kind == "audio" or kind == "phone":
+				or kind == "audio" or kind == "phone" or kind == "discuss":
 			if _sm != null:
 				_sm.t_input(self, item, slot)
 			elif kind == "role":
@@ -2478,6 +2490,8 @@ func snapshot(with_values: bool = true) -> Dictionary:
 		s["vehicles"] = _sm.snap_vehicles(self)
 		if _sm.has_audio:               # (REALISM.md §8.5)
 			s["audio"] = _sm.snap_audio(self)
+		if _sm.discuss != null:         # (REALISM.md §6.3.1)
+			s["discussions"] = Disc.snapshot_part(_sm, self)
 		s["unacked"] = unacked(-1)
 		if st_session:
 			var pl := []
@@ -2632,6 +2646,8 @@ func _digest_staff():
 			if phone[pi] == 0:
 				phone[pi] = 3 + sp_locker[pi]
 		tree.append([sp_music, phone, sp_told, watch, sp_aud, sp_held_to])
+	if _sm.discuss != null:             # the discussions (REALISM.md §6.3.1), with discussions.json only
+		tree.append(Disc.digest_part(self))
 	return tree
 
 
@@ -2685,6 +2701,6 @@ func clone():
 			"st_left", "st_pending", "st_made",
 			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result", "sp_held", "sp_acts",
 			"riders", "sp_ride", "sp_stairs", "sp_watch", "st_veh", "sp_spans", "tool_n", "carried", "busy", "cause_of", "cause_s",
-			"slip_s", "lab_q", "lab_s", "jsa_of", "talked", "wo", "wo_no", "wo_rec", "wo_history", "wo_npc_done"]:
+			"slip_s", "lab_q", "lab_s", "jsa_of", "talked", "wo", "wo_no", "wo_rec", "wo_history", "wo_npc_done", "dsc"]:
 		c.set(k, get(k).duplicate(true))
 	return c

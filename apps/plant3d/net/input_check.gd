@@ -34,6 +34,7 @@ const FORMS := {
 	"tool": [["s", "i", "zs"]], "hand": [["s", "s", "zs", "zn", "zs"]],    # (REALISM.md §2.3, §2.4)
 	"jsa": [["s", "a", "a", "zs"]], "talk": [["s", "a", "zs"]],     # (REALISM.md §8.6: lists of ids)
 	"wo": [["s", "s", "zs", "l"]],          # a work order's action and its data (REALISM.md §2.20)
+	"discuss": [["s", "s", "s"]],           # a pick at a discussion's point (REALISM.md §6.3.1)
 }
 
 
