@@ -1114,6 +1114,11 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   length, the forks), `tests/test_plant3d_hands_content.py` (the job's choices and the five causes in every train
   scenario), `apps/plant3d/tests/test_ui_hands.gd` (the loop check through the work view's field and its control room
   line; the diagnosis tab after the job and its button opening the Workshop on the terminal block).
+- **The Note 9** (a test-signed release build of this branch at 93ff274b, `walk=diagnosis probe=1`, 300 s from a
+  cool start at 29.9 °C, 2026-11-10): tier lean+vis, 11,877 frames: median 24.9 ms, p95 36.4 ms, p99 40.9 ms, max
+  57.9 ms, none over 100 ms (the frame rule passes without excluding any frame; the kernel reclaimed in 1.78 % of the
+  samples, as WM1's walk did); the model 24.1 ms a second (2.50 ms a step), peak PSS 1,161 MB, first frame at
+  12.0 s; no pipeline compiled after the first 5 s.
 
 ## 3. Hands-on work and tools
 
