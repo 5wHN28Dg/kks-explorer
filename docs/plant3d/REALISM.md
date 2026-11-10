@@ -1024,6 +1024,94 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   scheduled and cancelled from the form; a calibration completed after its permit's done, refused before it in words;
   the debrief's line).
 
+### 2.23 WM2's details (settled 2026-11-10, before the code: the stores)
+
+§7.2 leaves these open; settled here. What is drawn is the app's, pinned by app tests; what the engine does is in
+both engines bit for bit, with vectors. The words follow [EN13306] (spare part, the maintenance support), the part
+taxonomy [ISO14224]'s (equipment class, unit, maintainable item: its Annex A), and the stores' practice [Palmer]'s
+(min/max stock levels, the reorder point, parts reserved and issued against a work order, the backlog held for
+parts). Lead times are clock days (§2.1).
+
+- **The gate: `stores.json`** (format `walkdown-plant-stores`, version 1, optional, version 2 plants only). A model
+  has stores when the plant has it; without it an `issue` or `order` is `unknown`, a service action's `part` and a
+  scenario's `stock` are `bad_ref`, and the plant steps exactly as before.
+  - `stores`: 1 to 8 `{"id", "title", "place", "self_service"}`: `place` a staff place (checked only with staff),
+    `self_service` true for a store anyone draws from (no storekeeper needed at the counter).
+  - `parts`: 1 to 512 `{"id", "number", "title", "class", "store", "stock", "min", "reorder", "max", "lead_days"}`
+    and optionally `"looks_like": [{"part", "differs"}]` (1 to 8). `id` an identifier of at most 22 characters,
+    each once (`dup_id`); `number` the generic catalogue number of §6.2 (`WDP-…`, at most 40 characters, each
+    once); `class` the [ISO14224] equipment class or maintainable item it belongs to (text, at most 40);
+    `stock`, `min`, `reorder`, `max` whole numbers with 0 ≤ min ≤ reorder < max ≤ 9,999 and stock ≤ max;
+    `lead_days` 1 to 365. `looks_like`: another part of the file (not itself, each once) and the sentence (at most
+    200 characters) that the fitting check gives when that part is offered in this one's place ("the range code
+    on the new transmitter's plate is not the one on the data sheet").
+  - Two new authorities: `issue_parts` (the storekeeper's) and `order_parts` (the storekeeper's and the
+    maintenance supervisor's), in the train's staff content.
+- **Two values per part**, engine-kept, after the work orders' (`_wo`) values, in the file's order: `<part>_stock`
+  (on the shelf) and `<part>_due` (on order, not yet delivered), read by any node as `_wo` is. A name that is
+  already a value is `dup_id`. A scenario may set `"stock": {part: n}` (0 to the part's `max`) for its start.
+- **The input `[n, "issue", part, qty, work, person]`**, step 1, its event at once `[n, "issue", part, qty, work,
+  person, "done" | "refused" | "unknown", [reasons]]`. `unknown`, changing nothing: no stores, a part not of the
+  file, a work not of the model. Reasons in this order, every one that applies:
+  - `authority`: the person check every input has (§17.1; with staff, the trainee names themself);
+  - `where`: with staff, a named person not at the part's store's place;
+  - `storekeeper`: with staff, a store not self-service, and nobody on duty at its place whose role holds
+    `issue_parts` (the person themself counts): the storekeeper hands over what is written on the request, the
+    part number the person asked for, and checks nothing else (§7.2);
+  - `qty`: not a whole number from 1 to 9,999; `stock`: more than is on the shelf;
+  - `work`: in a plant with work orders, the work's order is not planned, scheduled or in progress (2 to 4: parts
+    are issued against a work order, [Palmer]).
+  Free mode (a slot playing nobody, person null) skips `where` and `storekeeper`. Done: the shelf goes down by qty
+  and the work holds qty more of the part (its **issued** parts, kept per work in the part file's order).
+- **The input `[n, "order", part, qty, person]`**, its event `[n, "order", part, qty, person, "done" | "refused" |
+  "unknown", [reasons], number]` (number null unless done). `unknown`: no stores, a part not of the file. Reasons:
+  `authority` (`order_parts`), `qty` (whole, 1 to 9,999), `pending` (the part has 8 orders pending already). Done:
+  a purchase order `PO-` and four digits (counted from 1 in the run, as work orders'), due at the clock +
+  `lead_days` × 864,000; `<part>_due` goes up by qty. The lead time is the file's: the stores stream (§2.1) draws
+  nothing in WM2 (it is WM7's, for cycle counts).
+- **Deliveries** (step 3, after hand actions whose minutes end, §2.7): every pending order whose due clock is
+  reached, in the order made: the shelf up by qty, `_due` down by it, the event `[n, "delivery", number, part,
+  qty]`. A jump's step delivers every order due by the clock after it.
+- **Fitting a part** (the look-alike's lesson): a service file's action may name `"part"`, a part of the stores
+  file. Such a hand action is made under a work: the first work on the code, in model order, whose permit is
+  accepted. Reasons after `value`: `part` when that work holds none of the part (or no such work), else nothing;
+  `wrong_part` in its place when the work holds none of the part but holds a part that lists it in `looks_like`
+  (the app gives that part's sentence: the permissive reads the new part's plate against the data sheet). The
+  part is taken from the work's issued parts when the action starts (an abandoned one gives it back); the removed
+  part is the Workshop's (§3.5).
+- **Jumps to a date:** `[n, "jump", "HH:MM", days]` with `days` a whole number 0 to 30 (absent: 0) goes to the next
+  occurrence of HH:MM, then `days` × 864,000 on; other `days` are refused. In a scenario with `world`, §7.4's
+  amendment of §17.6 applies (it is WM2's first use): refused while a permit is issued or accepted and its task
+  is not held for the next duty (§17.10), or while anyone is in a hand action; permits requested, approved,
+  isolated, done or returned, and held jobs, don't block, and held jobs' locks stay on through the gap. Wear ages
+  across it (§2.2); deliveries due inside it arrive in its step.
+- **NPCs:** a task step `{"issue": part, "qty": n, "work": "$" | work}` (made at the counter: the step's place is
+  the store's) and `{"order": part, "qty": n}`; an `order` step without `qty` orders up to the part's `max`
+  (max − stock − due; refused `qty` when that is under 1). The validator checks each step's roles hold its
+  authority. The first train's storekeeper is at the counter on their duty days (a routine) and orders a part when
+  its `<part>_low` value (stock + due ≤ reorder, a content node the tool makes per part) turns true (a reaction
+  `{"on": {"value": …}}`), so stock is kept between the levels without the trainee.
+- **The record and the digest:** the PO counter, each part's stock and due, the pending orders (number, part, qty,
+  by, ordered clock, due clock) and each work's issued parts. Snapshots carry them; saves keep and check them; the
+  digest gains, after the work orders' part, `[counter, stock per part, due per part, pending, issued per work in
+  model order]` (clocks as whole numbers).
+- **The content** (`tools/plant3d/train_stores.py` → `data/plant3d/stores.json`): the parts of the manuals' spare
+  parts lists (§6.2's numbers) for the train's equipment classes, the consumables, and complete units where a
+  job replaces one (the condenser pressure transmitters, with a look-alike of another range); levels and lead
+  times after [Palmer]'s practice for critical and common spares; the store at the counter (`store_counter`), not
+  self-service.
+- **The app:** the stores panel (the catalogue by class, each part's number, title, stock, due, levels and store;
+  the look-alikes beside each other, as on the shelf), the counter's issue form (the part number written by the
+  person drawing, the quantity, the work order), the order form, deliveries due by day; the work order's form
+  lists its issued parts; the work view names the part a fitting needs and gives a refusal in words; the
+  debrief's parts drawn per work and every look-alike offered; the jump's days.
+- **Replacing a transmitter** (HW3's leftover): a sixth cause of the condenser transmitter's fault, `failed` (the
+  sensor module failed: the output goes to the NAMUR NE 43 low alarm current and HART reports the sensor failure;
+  weighed by a value at 0, so every earlier draw stands), put right only by a new transmitter: the old one
+  removed under the permit (wires lifted, the manifold's block valve shut and vented, unbolted), the spare issued
+  against the work order, fitted (the part check), its range set with HART from the data sheet, the wires landed,
+  the loop check, and the equipment back in service. The removed transmitter opens in the Workshop, writable (§3.5).
+
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does
