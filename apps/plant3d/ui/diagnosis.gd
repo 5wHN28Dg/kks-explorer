@@ -123,9 +123,15 @@ static func _fix(r: Dictionary, n: int, who, title: String, cures: Array, cause:
 
 ## The review as lines: the fault and its cause, what was found, each row with its model time and who, the parts,
 ## the time to find it (clock minutes) and the outcome. `tpm`: steps in a clock minute (the staff's).
-static func lines(r: Dictionary, model_time: Callable, tpm: float) -> PackedStringArray:
+## Before the fault is put right (and while the run or its procedure goes on: `over` false), the cause stays hidden,
+## and with it every verdict: only how many tests were made.
+static func lines(r: Dictionary, model_time: Callable, tpm: float, over := false) -> PackedStringArray:
 	var out := PackedStringArray()
 	out.append("%s  %s" % [model_time.call(r.made), r.text])
+	if not shown(r, over):
+		out.append("Under investigation: the cause and what each test showed appear here once it is put right " +
+				"(or the run is over). Tests made so far: %d." % r.rows.filter(func(x): return x.kind == "test").size())
+		return out
 	out.append("The cause: %s. %s" % [r.cause_title, r.found])
 	if r.rows.is_empty():
 		out.append("No test or fix was made at %s." % r.kks)
@@ -141,3 +147,8 @@ static func lines(r: Dictionary, model_time: Callable, tpm: float) -> PackedStri
 		out.append("The cause was not found.")
 	out.append("Put right." if r.repaired >= 0 else "Not put right: the fault is still there.")
 	return out
+
+
+## Whether a review may show its cause: once its fault is put right, or the run (its procedure) is over.
+static func shown(r: Dictionary, over: bool) -> bool:
+	return over or int(r.repaired) >= 0

@@ -38,8 +38,8 @@
 ##                           panel open on the motor's history and then on the list (the plant at 1×); the WO line
 ##                           gives the panel's open time and the view's draw calls and triangles with it and before it
 ##   walk=diagnosis          the debrief's diagnosis tab (REALISM.md §2.22, milestone HW3): the scenario shift_cold,
-##                           transmitter 2's fault with water in its terminal side named by the instructor, the
-##                           debrief opened on its Diagnosis tab, then its failed part opened in the Workshop and left
+##                           transmitter 2's fault with water in its terminal side named and then repaired by the
+##                           instructor, the debrief opened on its Diagnosis tab, then its failed part opened in the Workshop and left
 ##                           after 20 s, the tab open again (the plant at 1×); the DIAG line gives the tab's and the
 ##                           Workshop's open times and the view's draw calls and triangles with the tab and before it
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
@@ -1005,6 +1005,8 @@ func _diag_walk() -> void:
 		_finish()
 		return
 	ui.inputs.fault("cond_p2_low", "wet")
+	ui.clock.run_steps(2)
+	ui.inputs.repair("cond_p2_low")         # (the instructor's repair: the tab shows a cause once it is put right)
 	ui.clock.run_steps(2)
 	for i in 30:
 		await get_tree().process_frame

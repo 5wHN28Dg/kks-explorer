@@ -26,6 +26,7 @@
   ["cable_gland", "worn", "The cable gland's seal insert is hard and cracked: water gets past it"],
   ["drain_vents", "open", "The process flange's drain/vent valve is cracked open"],
   ["manifold", "block", "The impulse line is blocked at the manifold: the transmitter sees the pressure trapped behind the blockage"],
+  ["manifold", "shut", "The manifold's block valve is shut: the transmitter is cut off from the process"],
   ["manifold", "pass", "The manifold's test/vent valve is passing: air leaks in to the transmitter's side of the line"],
   ["electronics", "lt", "The communicator's loop test holds the output at a fixed current"]
  ],
@@ -35,7 +36,8 @@
   ["$_clear", {"not": "$_on_tb"}],
   ["$_hart_ok", {"and": ["$_terminal_block_hart", "$_wired"]}],
   ["$_live", {"not": "$_terminal_block_ohm"}],
-  ["$_shut", {"not": "$_drain_vents_open"}]
+  ["$_shut", {"not": "$_drain_vents_open"}],
+  ["$_open", {"not": "$_manifold_shut"}]
  ],
  "consts": [
   ["hand_no", 0]
@@ -44,7 +46,7 @@
   {"action": "open_cover", "title": "Unscrew the terminal cover", "component": "cover_back", "minutes": 1, "wrong": {"spanner_17": "The cover unscrews by hand: a spanner on its rim would dent it and spoil the seal"}, "set": {"$_cover_back_off": 1}, "sources": ["r3051"]},
   {"action": "close_cover", "title": "Screw the terminal cover back on", "component": "cover_back", "minutes": 1, "wrong": {"spanner_17": "The cover goes on by hand, fully engaged: a spanner would dent its rim"}, "needs": [["$_clear", "Land the wires and take the communicator, the meter's leads and the clamp off before the cover goes back on"]], "set": {"$_cover_back_off": 0}, "sources": ["r3051"]},
   {"action": "lift_wires", "title": "Back out the signal terminals' screws and lift the wires", "component": "terminal_block", "tools": ["sd_term"], "minutes": 2, "anchors": ["sig_plus", "sig_minus"], "wrong": {"sd_flat8": "An 8 mm blade is too wide for the terminal screws: it slips and can short the terminals"}, "needs": [["$_cover_back_off", "Take the terminal cover off first: the terminals are under it"]], "set": {"$_terminal_block_lift": 1}, "sources": ["r3051"]},
-  {"action": "land_wires", "title": "Land the wires and tighten the signal terminals' screws", "component": "terminal_block", "tools": ["sd_term"], "minutes": 2, "anchors": ["sig_plus", "sig_minus"], "wrong": {"sd_flat8": "An 8 mm blade is too wide for the terminal screws: it slips and can short the terminals"}, "needs": [["$_cover_back_off", "Take the terminal cover off first: the terminals are under it"]], "set": {"$_terminal_block_lift": 0, "$_terminal_block_loose": 0}, "sources": ["r3051"]},
+  {"action": "land_wires", "title": "Land the wires and tighten the signal terminals' screws", "component": "terminal_block", "tools": ["sd_term"], "minutes": 2, "anchors": ["sig_plus", "sig_minus"], "wrong": {"sd_flat8": "An 8 mm blade is too wide for the terminal screws: it slips and can short the terminals"}, "needs": [["$_cover_back_off", "Take the terminal cover off first: the terminals are under it"], ["$_live", "Take the multimeter's ohms leads off first: the loop's supply would drive its current through the meter"]], "set": {"$_terminal_block_lift": 0, "$_terminal_block_loose": 0}, "sources": ["r3051"]},
   {"action": "tighten_terms", "title": "Tighten the signal terminals' screws", "component": "terminal_block", "tools": ["sd_term"], "minutes": 1, "anchors": ["sig_plus", "sig_minus"], "wrong": {"sd_flat8": "An 8 mm blade is too wide for the terminal screws: it slips and can short the terminals"}, "needs": [["$_cover_back_off", "Take the terminal cover off first: the terminals are under it"], ["$_wired", "Land the wires first: there is nothing under the screws to tighten"]], "set": {"$_terminal_block_loose": 0}, "sources": ["r3051"]},
   {"action": "connect_hart", "title": "Clip the HART communicator's leads on the signal terminals", "component": "terminal_block", "tools": ["hart"], "minutes": 0.5, "anchors": ["sig_plus", "sig_minus"], "needs": [["$_cover_back_off", "Take the terminal cover off first: the terminals are under it"]], "set": {"$_terminal_block_hart": 1}, "sources": ["r3051"]},
   {"action": "disconnect_hart", "title": "Unclip the HART communicator", "component": "terminal_block", "tools": ["hart"], "minutes": 0.25, "anchors": ["sig_plus", "sig_minus"], "set": {"$_terminal_block_hart": 0}, "sources": ["r3051"]},
@@ -59,7 +61,9 @@
   {"action": "dmm_ohm_off", "title": "Take the multimeter's ohms leads off", "component": "terminal_block", "tools": ["dmm"], "minutes": 0.25, "anchors": ["sig_minus"], "set": {"$_terminal_block_ohm": 0}, "sources": ["r3051"]},
   {"action": "dry_terms", "title": "Dry the terminal side and the terminals with a clean cloth", "component": "terminal_block", "minutes": 5, "needs": [["$_cover_back_off", "Take the terminal cover off first: the terminal side is under it"]], "set": {"$_terminal_block_wet": 0}, "sources": ["r3051", "iec60079_14"]},
   {"action": "reseal_gland", "title": "Fit a new seal insert in the cable gland", "component": "cable_gland", "tools": ["spanner_24"], "minutes": 10, "wrong": {"spanner_17": "A 17 mm spanner is too small for the M20 gland's 24 mm nut"}, "needs": [["$_terminal_block_lift", "Lift the wires first: the cable is drawn back through the new seal insert"]], "set": {"$_cable_gland_worn": 0}, "sources": ["iec60079_14"]},
-  {"action": "crack_vent", "title": "Crack open the process flange's drain/vent valve", "component": "drain_vents", "tools": ["spanner_17"], "minutes": 0.5, "set": {"$_drain_vents_open": 1}, "sources": ["r3051", "liptak"]},
+  {"action": "shut_block", "title": "Shut the manifold's block valve by its handle", "component": "manifold", "minutes": 0.5, "set": {"$_manifold_shut": 1}, "sources": ["r3051"]},
+  {"action": "open_block", "title": "Open the manifold's block valve by its handle", "component": "manifold", "minutes": 0.5, "needs": [["$_shut", "Close the flange's drain/vent valve first: opened to the condenser it lets air in"]], "set": {"$_manifold_shut": 0}, "sources": ["r3051"]},
+  {"action": "crack_vent", "title": "Crack open the process flange's drain/vent valve", "component": "drain_vents", "tools": ["spanner_17"], "minutes": 0.5, "needs": [["$_manifold_shut", "Shut the manifold's block valve first: venting with it open lets air into the condenser"]], "set": {"$_drain_vents_open": 1}, "sources": ["r3051", "liptak"]},
   {"action": "close_vent", "title": "Close the process flange's drain/vent valve", "component": "drain_vents", "tools": ["spanner_17"], "minutes": 0.5, "set": {"$_drain_vents_open": 0}, "sources": ["r3051", "liptak"]},
   {"action": "blow_line", "title": "Undo the impulse line at the manifold and blow it through with instrument air", "component": "manifold", "tools": ["spanner_17"], "minutes": 15, "needs": [["$_shut", "Close the flange's drain/vent valve first: the line is blown through from the manifold towards the process"]], "set": {"$_manifold_block": 0}, "sources": ["liptak"]},
   {"action": "shut_test", "title": "Shut the manifold's test/vent valve firmly by its handle", "component": "manifold", "minutes": 0.5, "wrong": {"spanner_17": "A manifold valve is shut by its handle: a spanner on it crushes the seat"}, "set": {"$_manifold_pass": 0}, "sources": ["r3051", "liptak"]},
@@ -90,12 +94,11 @@
   {"meter": "$_clamp1", "title": "The loop current with the clamp, against the output it reports", "shows": ["loose"]},
   {"meter": "$_ohm", "title": "The ohms from the terminals to the housing's earth", "shows": ["wet"]},
   {"action": "open_cover", "title": "The terminal side looked into with the cover off", "shows": ["wet"]},
-  {"action": "close_vent", "title": "The vent test: the PV after the flange was vented and shut again", "shows": ["blocked"]},
+  {"action": "open_block", "title": "The vent test: the PV after the flange was vented, shut and the block valve opened again", "shows": ["blocked"]},
   {"action": "shut_test", "title": "The manifold's test/vent valve shut firmly", "shows": ["passing"]}
  ],
  "fixes": [
   ["tighten_terms", ["loose"]],
-  ["land_wires", ["loose"]],
   ["dry_terms", ["wet"]],
   ["reseal_gland", ["wet"]],
   ["blow_line", ["blocked"]],

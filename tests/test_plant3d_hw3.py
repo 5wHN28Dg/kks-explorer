@@ -45,11 +45,13 @@ class Causes(unittest.TestCase):
         for k, v in states.items():
             e.cur[self.ix[k]] = v
 
-    def made(self, cause, steps=3, **more):
-        """A cold plant with the cause's states written and the communicator and the multimeter on (the job's
-        connections), after `steps` steps."""
+    def made(self, cause, steps=3, vac=True, **more):
+        """A plant with the condenser under vacuum (40 kPa(a) written over the cold plant's air, `vac`) and the
+        cause's states written, the communicator and the multimeter on (the job's connections), after `steps` steps."""
         e = self.engine()
         e.step(2)
+        if vac:
+            e.cur[self.ix['cond_p']] = 40
         st = dict(cpt2_terminal_block_dmm=1, cpt2_terminal_block_hart=1, cpt2_cover_back_off=1)
         st.update(self.f[cause]['set'] if cause else {})
         st.update(more)
@@ -72,6 +74,8 @@ class Causes(unittest.TestCase):
         self.assertEqual(sig['drift'], (-1.4, 0, False, 0))
         self.assertEqual(sig['loose'], (0.1, 0.3, True, 0))
         self.assertEqual(sig['passing'], (2.1, 0, False, 0))
+        # at atmospheric pressure no air can leak in: the passing valve shows nothing (the reviews' finding)
+        self.assertEqual(self.signature(self.made('passing', vac=False))[:3], (0.1, 0, False))
         self.assertEqual(sig['wet'][:2], (0.1, 0))
         self.assertTrue(sig['wet'][2] and sig['wet'][3])
         self.assertEqual(len({sig[c] for c in ('drift', 'loose', 'passing', 'wet')}), 4)
@@ -88,21 +92,25 @@ class Causes(unittest.TestCase):
         e.step(2)
         self.assertEqual(self.val(e, 'cond_p2_tx'), held)
         self.assertLess(self.val(e, 'cond_p1'), held - 30)
-        for vent in (1, 0):
-            self.put(e, cpt2_drain_vents_open=vent)
+        # the vent test: the block valve shut, the vent cracked (the air's), shut, the block valve opened again
+        for st, want in (({'cpt2_manifold_shut': 1}, held), ({'cpt2_drain_vents_open': 1}, 101.3),
+                         ({'cpt2_drain_vents_open': 0}, 101.3), ({'cpt2_manifold_shut': 0}, 101.3)):
+            self.put(e, **st)
             e.step(2)
-            self.assertAlmostEqual(self.val(e, 'cond_p2_tx'), 101.3, places=6)   # the air's
+            self.assertAlmostEqual(self.val(e, 'cond_p2_tx'), want, places=6, msg=st)
         self.assertEqual(self.val(e, 'cpt2_vent_held'), 1)
         self.put(e, cpt2_manifold_block=0)
         e.step(2)
         self.assertAlmostEqual(self.val(e, 'cond_p2_tx'), self.val(e, 'cond_p1') + 0.1, places=6)
-        # the same test on a clear line: it goes back to the process
+        # the same test on a clear line: it keeps the air's while the block valve is shut, then goes back
         e = self.engine()
         e.step(2)
         e.cur[self.ix['cond_p']] -= 40
-        self.put(e, cpt2_drain_vents_open=1)
-        e.step(2)
-        self.put(e, cpt2_drain_vents_open=0)
+        for st in ({'cpt2_manifold_shut': 1}, {'cpt2_drain_vents_open': 1}, {'cpt2_drain_vents_open': 0}):
+            self.put(e, **st)
+            e.step(2)
+        self.assertAlmostEqual(self.val(e, 'cond_p2_tx'), 101.3, places=6)
+        self.put(e, cpt2_manifold_shut=0)
         e.step(2)
         self.assertAlmostEqual(self.val(e, 'cond_p2_tx'), self.val(e, 'cond_p1') + 0.1, places=6)
         self.assertEqual(self.val(e, 'cpt2_vent_held'), 0)
@@ -142,7 +150,7 @@ class Causes(unittest.TestCase):
             self.put(e, **bad)
             e.step(2)
             self.assertEqual(self.val(e, 'cpt2_sound'), 0, bad)
-        for bad in ({'cpt2_drain_vents_open': 1}, {'cpt2_electronics_lt': 12}):
+        for bad in ({'cpt2_drain_vents_open': 1}, {'cpt2_electronics_lt': 12}, {'cpt2_manifold_shut': 1}):
             e = self.engine()
             e.step(2)
             self.put(e, **bad)
@@ -182,7 +190,7 @@ class Weights(unittest.TestCase):
             sid = rel.split('/')[1][:-5]
             e = P.Engine(b, sid)
             ws = [e.cur[b.model.index[w]] for w in train_hands.W_NEW]
-            self.assertEqual(ws, [1, 1, 1] if sid == 'shift_tx' else [0, 0, 0], sid)
+            self.assertEqual(ws, [1, 1, 1] if sid in ('shift_tx', 'shift_vac') else [0, 0, 0], sid)
         sc = json.loads(F['scenarios/shift_tx.json'].decode())
         f = next(x for x in sc['faults'] if x['id'] == 'cond_p2_low')
         self.assertEqual(f['when'], {'cmp': ['cond_p', '<', 60]})
@@ -259,13 +267,13 @@ class JobForks(unittest.TestCase):
 
     def test_blocked(self):
         hands, trims, repairs, loop = self.done('npc_hands_blocked')
-        self.assertTrue({'crack_vent', 'close_vent', 'blow_line'} <= hands)
+        self.assertTrue({'shut_block', 'crack_vent', 'close_vent', 'open_block', 'blow_line'} <= hands)
         self.assertFalse({'shut_test', 'reseal_gland', 'tighten_terms'} & hands)
         self.assertEqual((trims, repairs, loop), (0, 1, [0, 30, 60, 90, 120]))
 
     def test_passing(self):
         hands, trims, repairs, loop = self.done('npc_hands_passing')
-        self.assertTrue({'crack_vent', 'close_vent', 'shut_test'} <= hands)
+        self.assertTrue({'shut_block', 'crack_vent', 'close_vent', 'open_block', 'shut_test'} <= hands)
         self.assertFalse({'blow_line', 'reseal_gland', 'tighten_terms'} & hands)
         self.assertEqual((trims, repairs, loop), (0, 1, [0, 30, 60, 90, 120]))
 

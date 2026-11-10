@@ -18,6 +18,7 @@ var body: VBoxContainer
 var title: Label
 var tab := "all"                # all, deviations, alarms, permits, safety, role, diagnosis
 var diagnosis: Array = []       # the diagnosis tab's reviews (ui/diagnosis.gd, REALISM.md §3.2, milestone HW3)
+var _diag_sig := ""             # what the tab last showed (rebuilt only when it changes)
 var data := {}                  # the last Debrief.collect
 var _summary: Label
 var _list: VBoxContainer
@@ -67,6 +68,7 @@ func open() -> void:
 
 func _tab(t: String) -> void:
 	tab = t
+	_diag_sig = ""
 	refresh(true)
 
 
@@ -146,25 +148,36 @@ func _show_diagnosis(e) -> void:
 	var jobs: Dictionary = ui.work.jobs if ui.work != null else {}
 	var tr = ui.debrief_tracker()
 	var to: int = e.events.size()
+	var over := false
 	if tr != null and not tr.proc.is_empty() and tr.ev_to != -1:
 		to = mini(to, tr.ev_to)
+		over = true             # an ended procedure's debrief: its run is over
 	diagnosis = Diagnosis.review(e, jobs, to)
+	var tpm: float = float(e._sm.tpm) if e._sm != null else 600.0
+	var texts: Array = []
+	for r in diagnosis:
+		texts.append(Diagnosis.lines(r, func(n): return W.model_time(n), tpm, over))
+	# rebuilt only when what it says changed (a rebuild drops the focus and a press under way)
+	var sig := str(texts)
+	if sig == _diag_sig and _list.get_child_count() > 0:
+		return
+	_diag_sig = sig
 	W.clear(_list)
 	_shown = 0
 	if diagnosis.is_empty():
 		_list.add_child(_row({"step": -1, "kind": "", "text": "No fault with a hidden cause in this run.", "code": "",
 				"dev": "", "prio": 0}))
 		return
-	var tpm: float = float(e._sm.tpm) if e._sm != null else 600.0
-	for r in diagnosis:
+	for k in diagnosis.size():
+		var r: Dictionary = diagnosis[k]
 		var box := VBoxContainer.new()
 		box.name = "diag_" + String(r.fault)
-		var ls := Diagnosis.lines(r, func(n): return W.model_time(n), tpm)
+		var ls: PackedStringArray = texts[k]
 		for i in ls.size():
-			var l := W.label(ls[i], 17, W.OK_COLOUR if i == 1 else Color.WHITE)
+			var l := W.label(ls[i], 17, W.OK_COLOUR if i == 1 and Diagnosis.shown(r, over) else Color.WHITE)
 			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			box.add_child(l)
-		if r.component != "" and ui.workshop_has(String(r.kind)):
+		if Diagnosis.shown(r, over) and r.component != "" and ui.workshop_has(String(r.kind)):
 			var rr: Dictionary = r
 			var b := W.button("Open the failed part in the Workshop", func(): ui.open_failed_part(rr))
 			b.name = "failed_part"

@@ -1220,9 +1220,9 @@ def hrsg1():
 # ================================================================ st (steam turbine, condenser, condensate)
 
 # the condenser pressure transmitters' hidden causes (milestone HW3, REALISM.md §2.22): the air at the flange's vent,
-# kPa(a); a passing manifold valve's air, kPa high; a wet terminal's leak to earth, mA (a base and a 7 s wobble on
+# kPa(a); a passing manifold valve's air, kPa high at most (and per kPa of vacuum); a wet terminal's leak to earth, mA (a base and a 7 s wobble on
 # it); the ohms a wet terminal side reads to earth, kΩ, and an open circuit's (OL)
-ATM, AIR_IN, LEAK, WET_KOHM, OL = 101.3, 2.0, 0.6, 40, 1e8
+ATM, AIR_IN, AIR_K, LEAK, WET_KOHM, OL = 101.3, 2.0, 0.05, 0.6, 40, 1e8
 WOBBLE = [[0, 0], [1.5, 0.4], [2.5, 0.05], [4, 0.3], [5, 0.1], [6, 0.35], [7, 0]]
 ST_TRIPS = ['st_trip_lube', 'st_trip_cond_p', 'st_trip_os', 'st_trip_axial', 'st_trip_vib', 'st_trip_steam_t',
             'st_trip_oil_temp']
@@ -1295,8 +1295,23 @@ def st():
             m.NOT(f'{a}_clear_l', f'{a}_manifold_block')
             m.latch(f'{a}_blk_air', f'{a}_blk_v', f'{a}_clear_l')
             m.sel(f'{a}_p_trap', f'{a}_blk_air', [f'{a}_p_blk', ATM])
-            m.sel(f'{a}_p_line', f'{a}_drain_vents_open', [f'{a}_p_trap', ATM], 'kPa(a)')
-            m.prod(f'{a}_air', [f'{a}_manifold_pass', AIR_IN], 'kPa')
+            # the manifold's block valve shut isolates the transmitter: it holds what it saw, and vented while shut it
+            # keeps the air's pressure until the valve is opened again (the vent test: shut, vent, shut the vent,
+            # open, and watch whether the reading goes back to the process's)
+            m.hold(f'{a}_p_held', f'{a}_p_trap', f'{a}_manifold_shut', 'kPa(a)')
+            m.AND(f'{a}_vs_set', [f'{a}_manifold_shut', f'{a}_drain_vents_open'])
+            m.NOT(f'{a}_vs_rst', f'{a}_manifold_shut')
+            m.latch(f'{a}_vs', f'{a}_vs_set', f'{a}_vs_rst')
+            m.sel(f'{a}_p_iso', f'{a}_vs', [f'{a}_p_held', ATM])
+            m.sel(f'{a}_p_blkv', f'{a}_manifold_shut', [f'{a}_p_trap', f'{a}_p_iso'])
+            m.sel(f'{a}_p_line', f'{a}_drain_vents_open', [f'{a}_p_blkv', ATM], 'kPa(a)')
+            # a passing test/vent valve lets air in only while the line is below the air's pressure: 0.05 kPa per kPa
+            # of vacuum, at most 2 kPa (none at atmospheric pressure)
+            m.diff(f'{a}_vac', ATM, f'{a}_p_tap')
+            m.prod(f'{a}_air_k', [f'{a}_vac', AIR_K])
+            m.min(f'{a}_air_c', [f'{a}_air_k', AIR_IN])
+            m.max(f'{a}_air_m', [f'{a}_air_c', 0])
+            m.prod(f'{a}_air', [f'{a}_manifold_pass', f'{a}_air_m'], 'kPa')
             tx = m.sum(f'cond_p{k}_tx', [f'{a}_p_line', f'cond_p{k}_drift', f'cond_p{k}_trim'] +
                        ([age3] if k == 3 else []) + [f'{a}_air'], 'kPa(a)')
             m.prod(f'{a}_ma_s', [tx, round(16 / 120, 12)])

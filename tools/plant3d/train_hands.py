@@ -224,7 +224,7 @@ def fault_values(m):
     # holding the output (HW3)
     m.NOT('cpt2_lt_off', 'cpt2_lt_on')
     m.AND('cpt2_sound', ['cond_p2_trim_ok', 'cpt2_tight', 'cpt2_wired', 'cpt2_cover_on', 'cpt2_dry', 'cpt2_sealed',
-                         'cpt2_line_ok', 'cpt2_valve_ok', 'cpt2_shut', 'cpt2_lt_off'])
+                         'cpt2_line_ok', 'cpt2_valve_ok', 'cpt2_shut', 'cpt2_open', 'cpt2_lt_off'])
     m.diff('cpt2_ma_short', 'cpt2_ma_tx', 'cpt2_ma', 'mA')
     m.cmp('cpt2_loop_low', 'cpt2_ma_short', '>', MA_TOL)
     m.sum('cpt2_partners', ['cond_p1', 'cond_p3'])
@@ -240,10 +240,10 @@ def job_steps():
     """The technician's own job (a task an NPC does, or a player playing the technician follows): the tools from the
     toolbox, the permit accepted at the transmitter, the cover off, the communicator and the multimeter on, both read,
     then the tests and fixes the readings call for, each `wait` skipping its block to its `else` when the reading
-    doesn't call for it (REALISM.md §2.16, §2.22): water seen in the terminal side (dried, the wires lifted, the gland
-    given a new seal insert and the wires landed, the communicator's and meter's leads left on); the loop current low against the AO (the terminals tightened);
-    the PV apart from the partners (the vent test: the flange's vent cracked and shut again; a PV left near the air's
-    means a blocked line, blown through); the PV high (the manifold's test/vent valve shut firmly); the PV low (the
+    doesn't call for it (REALISM.md §2.16, §2.22): water seen in the terminal side (the wires lifted, the terminal side
+    dried, the gland given a new seal insert and the wires landed, the communicator's and meter's leads left on); the loop current low against the AO (the terminals tightened);
+    the PV apart from the partners (the vent test: the manifold's block valve shut, the flange's vent cracked and
+    shut again, the block valve opened; a PV left near the air's means a blocked line, blown through); the PV high (the manifold's test/vent valve shut firmly); the PV low (the
     sensor trim). Then the loop check with the control room (the output held at 4, 8, 12, 16 and 20 mA by the
     communicator's loop test, the screen's value read back over the radio at each), everything off, the display read
     and the cover on, the permit done and handed back, the tools put back.
@@ -273,7 +273,7 @@ def job_steps():
         {'read': CP2, 'via': 'cpt2_pv', 'tol': TOL}, {'read': CP2, 'via': 'cpt2_ao', 'tol': TOL},
         {'read': CP2, 'via': 'cpt2_dmm', 'tol': TOL}]
     skip_unless('cpt2_terminal_block_wet', 'wet')
-    steps += [hand('dry_terms'), hand('lift_wires', 'sd_term'), hand('reseal_gland', 'spanner_24'),
+    steps += [hand('lift_wires', 'sd_term'), hand('dry_terms'), hand('reseal_gland', 'spanner_24'),
               hand('land_wires', 'sd_term'), {'work': 1}]
     label('wet')
     skip_unless('cpt2_loop_low', 'loose')
@@ -281,7 +281,8 @@ def job_steps():
                                                          'text': 'Left a signal terminal\'s screw short of tight'}))
     label('loose')
     skip_unless('cpt2_pv_apart', 'apart')
-    steps += [hand('crack_vent', 'spanner_17'), {'work': 1}, hand('close_vent', 'spanner_17'), {'work': 1}]
+    steps += [hand('shut_block'), hand('crack_vent', 'spanner_17'), {'work': 1}, hand('close_vent', 'spanner_17'),
+              {'work': 1}, hand('open_block'), {'work': 1}]
     skip_unless('cpt2_vent_held', 'held')
     steps += [hand('blow_line', 'spanner_17'), {'work': 1}]
     label('held')
@@ -307,20 +308,29 @@ def job_steps():
 TX_SEED = 3
 
 
-def scenario(base):
-    """`shift_tx` (milestone HW3): the day shift of `base` (shift_cold) with the condenser being evacuated (both
-    vacuum pumps on from the start, closed cooling water pump A cooling their seal water), in which condenser
-    pressure transmitter 2 reads apart from its partners from the moment the condenser passes 60 kPa(a) on its way
-    down (so a blocked line holds a reading the process then leaves), its cause drawn from all five (the HW3
-    weights set to 1)."""
+def vac_scenario(base):
+    """`shift_vac` (milestone HW3): the day shift of `base` (shift_cold) with the condenser being evacuated (both
+    vacuum pumps on from the start, closed cooling water pump A cooling their seal water), the HW3 weights set to 1:
+    the trainer's day for the transmitter's five causes (a blocked line or a passing manifold valve shows only under
+    vacuum, the blocked line only while the process moves). The trainer makes the fault and may name its cause."""
     s = json.loads(json.dumps(base))
+    s['id'] = 'shift_vac'
+    s['title'] = 'Day shift, the condenser being evacuated (choose a role)'
+    s['init'] = dict(s['init'], vac_a_cmd=1, vac_b_cmd=1, ccw_a_cmd=1, **{w: 1 for w in W_NEW})
+    return s
+
+
+def scenario(base):
+    """`shift_tx` (milestone HW3): shift_vac (above) in which condenser pressure transmitter 2 reads apart from its
+    partners from the moment the condenser passes 60 kPa(a) on its way down (so a blocked line holds a reading the
+    process then leaves), its cause drawn from all five."""
+    s = vac_scenario(base)
     s['id'] = 'shift_tx'
     s['title'] = 'Day shift: a condenser pressure transmitter reads apart (choose a role)'
     # its world's seed draws the blocked line (the cause that needs the process to move to show itself; a fault made
     # by its `when` takes no instructor's cause). In the other scenarios the trainer makes the fault and may name any
-    # of the five; drawn there, it is drift or the loose terminal as before HW3
+    # of the five; drawn there, it is drift or the loose terminal as before HW3 (shift_vac: any of the five)
     s['world'] = dict(s['world'], seed=TX_SEED)
-    s['init'] = dict(s['init'], vac_a_cmd=1, vac_b_cmd=1, ccw_a_cmd=1, **{w: 1 for w in W_NEW})
     for f in s['faults']:
         if f['id'] == FAULT['id']:
             f['when'] = {'cmp': ['cond_p', '<', 60]}

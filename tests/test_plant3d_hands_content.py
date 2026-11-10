@@ -274,8 +274,8 @@ class Loop(unittest.TestCase):
         self.assertEqual([w['until'] for _, w in waits],
                          ['cpt2_terminal_block_wet', 'cpt2_loop_low', 'cpt2_pv_apart', 'cpt2_vent_held',
                           'cpt2_pv_high', 'cpt2_pv_low'])
-        first = {'cpt2_terminal_block_wet': 'dry_terms', 'cpt2_loop_low': 'tighten_terms',
-                 'cpt2_pv_apart': 'crack_vent', 'cpt2_vent_held': 'blow_line', 'cpt2_pv_high': 'shut_test'}
+        first = {'cpt2_terminal_block_wet': 'lift_wires', 'cpt2_loop_low': 'tighten_terms',
+                 'cpt2_pv_apart': 'shut_block', 'cpt2_vent_held': 'blow_line', 'cpt2_pv_high': 'shut_test'}
         for i, w in waits:
             if w['until'] in first:
                 self.assertEqual(steps[i + 1]['hand'], first[w['until']])
@@ -328,7 +328,7 @@ class HiddenCauseJob(unittest.TestCase):
                     # (HW3) the three new causes weigh by a value, 0 unless the scenario sets it (shift_tx alone)
                     self.assertEqual([c['weight'] for c in f['causes']], [1, 1] + list(train_hands.W_NEW))
                     init = jload(F, rel)['init']
-                    want = 1 if rel == 'scenarios/shift_tx.json' else None
+                    want = 1 if rel in ('scenarios/shift_tx.json', 'scenarios/shift_vac.json') else None
                     self.assertEqual({init.get(w) for w in train_hands.W_NEW}, {want}, rel)
                     self.assertEqual(f['kks'], CP2)
 

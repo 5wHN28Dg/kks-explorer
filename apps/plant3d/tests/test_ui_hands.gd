@@ -154,7 +154,7 @@ func _job(tree: SceneTree) -> Array:
 				", ".join(log.slice(0, 3))] + "; the last hand events: %s" % str(e.events.filter(
 				func(x): return x[1] == "hand" and x[5] == "ic1").slice(-3)))
 	ui.work.close()
-	for k in ["order", "tool", "short", "dmm_screen", "found", "trim", "loop"]:
+	for k in ["order", "tool", "short", "dmm_screen", "found", "trim", "loop", "hidden"]:
 		if not seen.has(k):
 			p.append("the job never checked %s" % k)
 		elif seen[k] != "":
@@ -298,6 +298,14 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 			var cr = ui.work.meters.get_node_or_null("control_room")
 			seen["loop"] = "" if cr != null and cr.visible and cr.text == want else \
 					"the loop test's control room line is %s, not %s" % [cr.text if cr != null else "missing", want]
+			# (HW3) and the debrief's diagnosis tab, while the fault is not yet put right, keeps the cause hidden
+			ui.open_debrief()
+			ui.debrief._tab("diagnosis")
+			var box = ui.debrief._list.get_node_or_null("diag_" + FAULT)
+			var t: String = App.texts(box) if box != null else "no review"
+			seen["hidden"] = "" if t.contains("Under investigation") and not t.contains("The cause:") \
+					and box.get_node_or_null("failed_part") == null else "the diagnosis tab before the repair: %s" % t.left(300)
+			ui.close_debrief()
 		ui.write_reading(s["read"], "%.3f" % e.shown(s["read"], e.cur))
 		return true
 	# the step that decides on the trim (REALISM.md §2.16: the PV against the partners; under the loose terminal it

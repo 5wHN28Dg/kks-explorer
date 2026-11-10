@@ -149,7 +149,8 @@ def build():
     files['weather.json'] = train_weather.weather()
     # the ageing scenario, and every scenario's training rate and age (REALISM.md §4.3, milestone AG2)
     files['scenarios/shift_aged.json'] = train_ageing.aged_scenario(files['scenarios/shift_cold.json'])
-    files['scenarios/shift_tx.json'] = train_hands.scenario(files['scenarios/shift_cold.json'])    # (HW3)
+    files['scenarios/shift_vac.json'] = train_hands.vac_scenario(files['scenarios/shift_cold.json'])    # (HW3)
+    files['scenarios/shift_tx.json'] = train_hands.scenario(files['scenarios/shift_cold.json'])
     for k in [k for k in files if k.startswith('scenarios/')]:
         files[k] = train_ageing.apply(files[k])
     files['staff.json'] = train_staff.staff(models, train_staff.load_layout())
