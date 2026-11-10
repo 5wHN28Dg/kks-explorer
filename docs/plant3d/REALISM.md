@@ -1069,7 +1069,7 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   call for, each behind a `wait` whose `else` skips its block: water seen (dried, wires lifted, new seal, wires
   landed), the current low (tightened), the PV apart (the vent test; still at the air's: blown through), the PV high
   (the valve shut), the PV low (the trim); then the loop check at 4, 8, 12, 16 and 20 mA, each read back from the
-  screen. 62 steps with the toolbox talk (the limit is 64). It changes the HW2 forks' events (the technician now
+  screen. 61 steps with the toolbox talk (the limit is 64). It changes the HW2 forks' events (the technician now
   waits a minute at each new decision), the one change to an earlier item, listed below.
 - **The debrief's diagnosis tab** (`ui/diagnosis.gd`, the debrief panel's "Diagnosis"): per fault with hidden causes,
   the cause and what was found, each test made at its equipment in order with who made it and what it pointed to or
