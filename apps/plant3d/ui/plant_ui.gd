@@ -478,7 +478,7 @@ func open_workshop(kind: String, code := "") -> bool:
 func open_failed_part(r: Dictionary) -> bool:
 	if main == null or main.workshop == null:
 		return false
-	main.workshop.failed = {"component": r.component, "title": r.cause_title, "found": r.found, "bench": r.bench}
+	main.workshop.failed = {"component": r.component, "title": r.cause_title, "found": r.found, "bench_fault": r.bench}
 	if not open_workshop(String(r.kind), String(r.kks)):
 		main.workshop.failed = {}
 		return false

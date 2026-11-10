@@ -61,7 +61,7 @@ var exit_ms := -1.0             # Back to the plant's first frame (last exit)
 var load_ms := -1.0
 var note := ""                  # the last refusal or hint (shown by the panels)
 ## The failed part a job found (REALISM.md §3.5, milestone HW3: the debrief's diagnosis tab opens it): {component,
-## title, found, bench}; empty otherwise. Set before open(); cleared on close.
+## title, found, bench_fault}; empty otherwise. Set before open(); cleared on close.
 var failed := {}
 var _loading := ""
 var _t0 := 0
@@ -622,7 +622,7 @@ func show_failed() -> void:
 	note = "Failed: %s. %s" % [String(failed.get("title", "")), String(failed.get("found", ""))]
 	if panels != null:
 		panels.selected_changed()
-	var bf := String(failed.get("bench", ""))
+	var bf := String(failed.get("bench_fault", ""))
 	if bf != "" and bench != null and bench.loaded():
 		for f in bench.m.faults:
 			if String(f.id) == bf:

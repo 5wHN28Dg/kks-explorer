@@ -311,7 +311,7 @@ def job_steps():
     return steps
 
 
-TX_SEED = 3
+TX_SEED, VAC_SEED = 6, 7     # (distinct from every other scenario's; 6 draws the blocked line)
 
 
 def vac_scenario(base):
@@ -323,6 +323,7 @@ def vac_scenario(base):
     s['id'] = 'shift_vac'
     s['title'] = 'Day shift, the condenser being evacuated (choose a role)'
     s['init'] = dict(s['init'], vac_a_cmd=1, vac_b_cmd=1, ccw_a_cmd=1, **{w: 1 for w in W_NEW})
+    s['world'] = dict(s['world'], seed=VAC_SEED)     # (every scenario its own seed: its own weather)
     return s
 
 

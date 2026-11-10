@@ -156,6 +156,6 @@
   {"id": "ct_fan7_chatter", "set": {"ct_fan7_chat": 1}, "text": "Cooling tower fan 7's vibration alarm came in and cleared fourteen times last shift", "kks": "30PAD10AN007", "repair": {"ct_fan7_chat": 0}}
  ],
  "start": {"day": 1, "time": "05:00"},
- "world": {"year_day": 196, "weather": {"season": "summer"}, "age": {"months": 0}},
+ "world": {"year_day": 196, "weather": {"season": "summer"}, "seed": 7, "age": {"months": 0}},
  "staff": {"seed": 2}
 }

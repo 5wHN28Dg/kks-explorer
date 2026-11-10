@@ -1042,7 +1042,7 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   draws what it drew. Two new scenarios set them to 1: `shift_vac` (shift_cold's day with both vacuum pumps and closed
   cooling water pump A on from the start: the trainer's day, the fault made and its cause named or drawn by the
   trainer) and `shift_tx` (shift_vac that makes the fault by its `when` once the condenser passes 60 kPa(a) on its
-  way down, and its world seed (3) draws the blocked line, the cause that needs the process to move to show itself (a
+  way down, and its world seed (6; shift_vac 7, every scenario its own) draws the blocked line, the cause that needs the process to move to show itself (a
   fault made by its `when` takes no instructor's cause, §2.6). In the other scenarios the trainer makes the fault and
   may name any of the five; on a cold plant (atmospheric) a passing valve shows nothing, and a blocked line made
   while the process stands still holds the value it has: neither shows until the condenser is under vacuum and
