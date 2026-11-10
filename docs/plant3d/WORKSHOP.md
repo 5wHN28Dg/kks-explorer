@@ -907,8 +907,62 @@ addition (both engines, vectors) made in K6.
   (load 53 ms), again 38 ms; back to the plant 15–28 ms; every guided step walked (0 loose); after the machine's first
   frame no frame over 100 ms (the longest in the walk 48.1 ms), **99.83 % of frames at ≥ 30 fps**, median 16.8 ms, p95
   35.7 ms; peak PSS 1,168 MB; the pipelines compiled after the first 5 s were the plant start's (none in the
-  Workshop). The APK 148.1 MB (K5b's 147.8 MB); the two scenes 130 KB of the package. The motor kind's own walk
-  was not run (the phone was not plugged back in the window): its tree is the pump's motor, measured in the pump's.
+  Workshop). The APK 148.1 MB (K5b's 147.8 MB); the two scenes 130 KB of the package. **The motor kind's own walk**
+  (2026-11-10, with the second pull request's build, `walk=workshop kind=motor probe=1`, a fresh install at 27.0 °C):
+  first entry 116 ms after 4.5 s waiting for the plant's warm-up (load 43 ms), again 24 ms; back to the plant 16–18
+  ms; every guided step walked (0 loose); no frame over 100 ms (the longest 53.3 ms), **99.78 % of frames at ≥ 30
+  fps**, median 16.9 ms, p95 36.4 ms; peak PSS 1,159 MB; no pipeline compiled after the first 5 s. (A first walk the
+  same morning had the kernel reclaiming memory in 54 % of its samples and was walked again, as the reclaim rule says.)
+
+### 6.9 The vertical pump and the control valve (K6, second pull request)
+
+**As built (K6, 2026-11-10).**
+- **The vertical pump** (`kit/parts_rotating.gd pump_vertical`, its motor `kit/parts_common.gd motor_v`; the data file
+  names a wet-pit pump the plant has three of, 550 m³/h, 30 m, 75 kW, a 6.5 m pit): the sole plate, the hollow
+  discharge head with its branch, flange and motor stand, the packing box, the column in three sections (the
+  lineshaft's bearings in their retainers, each joint's bolts a fastener group), the discharge case, two bowls and the
+  suction bell, the shaft with two enclosed impellers on their taperlocks (vanes curved back against the turn), the
+  spacer coupling, the head's hold-down bolts, and a vertical motor's own tree up to 500 kW (the stator in its frame,
+  the drive-end bracket with the guide bearing, the top bracket with the thrust bearing, the fan, the drip cover, the
+  rotor, the terminal box). 23 components, 3 fastener groups, 26 guided steps, 6,182 triangles (the plant's 2,018).
+  The order is the Goulds VIT manual's (§6, p. 31; reassembly pp. 32–33) with Flowserve's VTP §6.8 as a second
+  source; the motor's is derived from how it is built, as the motor kind's. The explode lifts the motor first and
+  draws the string in the pit apart downwards (a real pump is lifted out whole: the steps say so).
+- **The control valve** (`kit/parts_valves.gd`, the pneumatic actuator's branch; the data file names a DN 150 valve the
+  plant has two of): a cage-guided globe valve (body, seat ring, cage, plug and stem, bonnet, packing, yoke, stem
+  connector) with a spring-and-diaphragm actuator (the lower and upper casings, the diaphragm, the actuator stem, the
+  spring) and its positioner and tubing; the bonnet studs and the casing cap screws. 15 components, 2 fastener groups,
+  17 guided steps, 4,236 triangles (the plant's 1,768). The order is Fisher's: the easy-e ES manual (D100397X012) for
+  the body and trim, the 667 manual (D100310X012) for the actuator; SAMSON's EB 8015 and EB 8310 second sources.
+- **The plant unchanged** (`test_kit_frozen`); what is simplified and the trees' limits at other parameter sets are in
+  the kit README.
+- **New checks** (`tests/test_workshop.gd`):
+  - `_explode_paths` had kept one small triangle per cell (a packed array appended as a copy). Keeping them all, it
+    fails on #348's first coupling lift (0.25 m: the coupling rested in the bearing frame's path), the clearance #348
+    fixed without a test.
+  - `_turning`: everything in the `shaft` node turns on its line and rubs nothing that stands, nor runs through a
+    closed face. It found #348's casing foot in the impeller's chamber, the frame's foot under its bore and the shafts'
+    ends through closed faces, all fixed on the Workshop side (no exceptions).
+  - `_seats`: the valve's plug lies on its seat at 0 travel, covers its bore, is on the stem's axis and lifts off as
+    it opens.
+  - `test_workshop` takes about 145 s on the laptop and runs in an app test shard of its own. `build.sh` now runs the
+    shards one after another, each in its own Godot run; in a single run they had passed the 600 s limit.
+- **The Note 9** (`lean+vis`, a test-signed release build, a fresh install for each kind, `probe=1`, SAMPLE=1, battery
+  21.5–27.0 °C at the start):
+
+  | | vertical pump | control valve |
+  |---|---|---|
+  | first entry (after the plant's warm-up) | 131 ms (load 48 ms) | 208 ms (load 49 ms) |
+  | second entry | 27 ms | 26 ms |
+  | back to the plant | 11–15 ms | 13–15 ms |
+  | guided steps | all walked, 0 loose | all walked, 0 loose |
+  | longest frame / over 100 ms | 42.1 ms / 0 | 42.6 ms / 0 |
+  | frames at ≥ 30 fps | **99.93 %** | **99.92 %** |
+  | median / p95 frame | 16.8 / 33.0 ms | 16.8 / 34.6 ms |
+  | peak PSS | 1,144 MB | 1,162 MB |
+  | pipelines after the first 5 s | 0 | 0 |
+
+  The APK is 148.3 MB (the first pull request's was 148.1 MB). The two new scenes take 141 KB of the package.
 
 ## 7. Shaders and cut faces
 
