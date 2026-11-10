@@ -1032,7 +1032,8 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   and each of §3.1's five causes has its true effect: the sensor drifted low (HW2), a loose signal terminal (HW2), a
   **blocked impulse line** (the reading holds what was trapped in the line while the process moves on), the
   manifold's **test/vent valve passing** (air leaks in while the line is under vacuum: 0.05 kPa per kPa below the
-  air's, at most 2 kPa high; nothing at atmospheric pressure) and **water in the terminal side** past a worn
+  air's, at most 2 kPa high; nothing at atmospheric pressure, nor into a line vented or shut off by its block
+  valve) and **water in the terminal side** past a worn
   cable gland seal (a leak from the return terminal to the housing's earth: 0.6–1.0 mA, jumping on a 7 s cycle, goes
   past the control system's input, so the screen reads low and jumps while the transmitter's own current is right).
   The coordinator's order: HW3 without the replacement; the stores (WM2, §7.2) next, then replacing the transmitter.
@@ -1045,7 +1046,8 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   fault made by its `when` takes no instructor's cause, §2.6). In the other scenarios the trainer makes the fault and
   may name any of the five; on a cold plant (atmospheric) a passing valve shows nothing, and a blocked line made
   while the process stands still holds the value it has: neither shows until the condenser is under vacuum and
-  moving, and the job, finding nothing apart, leaves the fault.
+  moving, and the job, finding nothing apart, leaves the fault. Near atmospheric pressure (above about 96 kPa(a))
+  the vent test can't tell a blocked line from a clear one (both near the air's).
 - **The model** (`train_model.py`, the transmitters' loops; `train_hands.py`, the fault, its values and the job): the
   tapping's pressure goes through a hold while the line is blocked; the manifold's **block valve** shut holds what
   the transmitter saw, and the flange's vent may be cracked only with it shut (venting with it open would let air
@@ -1076,7 +1078,9 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   landed), the current low (tightened), the PV apart (the vent test: block valve shut, vent cracked and shut, block
   valve opened; still at the air's: blown through), the PV high
   (the valve shut), the PV low (the trim); then the loop check at 4, 8, 12, 16 and 20 mA, each read back from the
-  screen. 64 steps with the toolbox talk (the limit, 64). It changes the HW2 forks' events (the technician now
+  screen. 64 steps with the toolbox talk (the limit, 64). Its new decisions (the PV apart, high, low; the vent test)
+  read transmitter 2 against transmitter 1 alone (its tap 0.1 kPa lower): transmitter 3 ages (AG2) and may stand
+  1.5 kPa off, which would move the partners' mean past the tolerance (the adversarial review's finding). It changes the HW2 forks' events (the technician now
   waits a minute at each new decision), the one change to an earlier item, listed below.
 - **The debrief's diagnosis tab** (`ui/diagnosis.gd`, the debrief panel's "Diagnosis"): per fault with hidden causes,
   the cause and what was found, each test made at its equipment in order with who made it and what it pointed to or
@@ -1084,7 +1088,8 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   they were needed, the minutes from the fault to the first test that pointed to the cause alone or the first right
   fix, and whether it was put right. Until the fault is put right (or the procedure's run is over) it shows only
   that it is under investigation and how many tests were made: the cause and every verdict stay hidden (the blind
-  review's finding: the tab opens at any time during a run). An NPC's readings carry no meter in their events, so
+  review's finding: the tab opens at any time during a run); a refused or unknown repair request is not a repair
+  (the adversarial review's). The vent test counts only after a vent since the block valve was shut. An NPC's readings carry no meter in their events, so
   only a player's readings and everyone's hand actions are listed. Rebuilt only when what it says changes. A view
   only (nothing in the engine).
 - **The failed part in the Workshop** (§3.5): the tab's button opens the Workshop on the kind with the cause's
@@ -1094,7 +1099,9 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   faults.
 - **The work view:** an action with an input shows a field and its button (the loop test's current); with the
   communicator carried, a line says what the control room reads while a loop test runs; an ohms reading at or above
-  10⁶ kΩ shows OL; marks for the ohms leads and for water standing in the terminal side. The manual's
+  10⁶ kΩ shows OL; marks for the ohms leads, for water standing in the terminal side (seen only with the cover off)
+  and for the gland's cracked seal insert (so a trainee who dried the water but left the seal sees why the fault
+  stays). The manual's
   troubleshooting rows for the blocked line, the passing valve (a row of its own for an absolute transmitter on
   vacuum) and water carry their cause ids and link the new actions; the commissioning section links the loop test.
 - **Vectors:** `plant3d-v1.json`: only values added (the new nodes in every snapshot). `plant3d-v2.json`: values

@@ -310,7 +310,7 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 		return true
 	# the step that decides on the trim (REALISM.md §2.16: the PV against the partners; under the loose terminal it
 	# skips the trim to its else): the communicator's trim checked there, and taken back
-	var trim_wait: bool = s.has("wait") and String(s["wait"].get("until", "")) == "cpt2_pv_low" and not seen.has("trim")
+	var trim_wait: bool = s.has("wait") and String(s["wait"].get("until", "")) == "cpt2_pv_lo1" and not seen.has("trim")
 	var code = s.get("kks") if s.has("hand") else (s["read"] if s.has("read") and s.has("via") else
 			(s["op"]["kks"] if s.has("op") and s["op"].get("where") == "hart" else (PT2 if trim_wait else null)))
 	if code == null:

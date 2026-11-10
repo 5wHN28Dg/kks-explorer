@@ -1311,7 +1311,9 @@ def st():
             m.prod(f'{a}_air_k', [f'{a}_vac', AIR_K])
             m.min(f'{a}_air_c', [f'{a}_air_k', AIR_IN])
             m.max(f'{a}_air_m', [f'{a}_air_c', 0])
-            m.prod(f'{a}_air', [f'{a}_manifold_pass', f'{a}_air_m'], 'kPa')
+            # (and only into a line open to the process: not while vented or with the block valve shut)
+            m.AND(f'{a}_flow', [f'{a}_shut', f'{a}_open'])
+            m.prod(f'{a}_air', [f'{a}_manifold_pass', f'{a}_air_m', f'{a}_flow'], 'kPa')
             tx = m.sum(f'cond_p{k}_tx', [f'{a}_p_line', f'cond_p{k}_drift', f'cond_p{k}_trim'] +
                        ([age3] if k == 3 else []) + [f'{a}_air'], 'kPa(a)')
             m.prod(f'{a}_ma_s', [tx, round(16 / 120, 12)])

@@ -80,6 +80,21 @@ class Causes(unittest.TestCase):
         self.assertTrue(sig['wet'][2] and sig['wet'][3])
         self.assertEqual(len({sig[c] for c in ('drift', 'loose', 'passing', 'wet')}), 4)
 
+    def test_air_only_into_an_open_line_and_the_partner_drifting(self):
+        """The passing valve's air goes only into a line open to the process (the adversarial review's finding);
+        the job's decisions read transmitter 1 alone, so transmitter 3 drifting 1.5 kPa (ageing) calls for nothing."""
+        e = self.made('passing')
+        self.assertAlmostEqual(self.val(e, 'cpt2_air'), 2.0, places=9)
+        self.put(e, cpt2_manifold_shut=1)
+        e.step(2)
+        self.assertEqual(self.val(e, 'cpt2_air'), 0)
+        self.put(e, cpt2_drain_vents_open=1)
+        e.step(2)
+        self.assertAlmostEqual(self.val(e, 'cond_p2_tx'), 101.3, places=9)
+        for d in (-1.5, 1.5):
+            e = self.made('loose', cond_p3_drift=d)
+            self.assertEqual([self.val(e, k) for k in ('cpt2_pv_apart', 'cpt2_pv_high', 'cpt2_pv_lo1')], [0, 0, 0], d)
+
     def test_blocked_line_holds_and_the_vent_test(self):
         """A blocked line holds what was in it while the process moves; vented and shut again it keeps the air's
         pressure (a clear line goes back to the process); blown through it follows the process again."""

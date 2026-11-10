@@ -66,18 +66,28 @@ static func _one(engine, job: Dictionary, f: Dictionary, cause: String, at: int,
 			"component": String(c.get("component", "")), "bench": String(c.get("bench", "")),
 			"made": int(evs[at][0]), "repaired": -1, "found_at": -1, "rows": [], "parts": []}
 	var inputs: Array = engine.inputs
+	var vented := false
 	for i in range(at + 1, to):
 		var ev: Array = evs[i]
 		var n := int(ev[0])
-		if ev[1] == "repair" and ev[2] == f["id"] and r.repaired == -1:
+		if ev[1] == "repair" and ev[2] == f["id"] and ev.size() == 3 and r.repaired == -1:
+			# (a repair made: a refused or unknown request is [n, "repair", fid, work, person, why…], the adversarial
+			# review's finding, and must not show the cause)
 			r.repaired = n
 		elif ev[1] == "fault" and ev[2] == f["id"]:
 			break                   # made again (a trainer's fault after a repair): its own review follows
 		elif ev[1] == "hand" and ev[2] == kks and ev[6] == "done":
 			var act: String = ev[3]
 			var who = ev[5]
-			if by_action.has(act):
+			if act == "crack_vent":
+				vented = true
+			var vent_test := act == "open_block"   # the vent test's result: only after a vent since the valve shut
+			if vent_test and not vented:
+				pass
+			elif by_action.has(act):
 				_test(r, n, who, by_action[act], cause, titles)
+			if vent_test:
+				vented = false
 			if fixes.has(act):
 				_fix(r, n, who, acts.get(act, act), fixes[act], cause)
 			if parts.has(act):

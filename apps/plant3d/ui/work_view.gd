@@ -41,7 +41,8 @@ const WHY := {
 const MARK := {"hart": [Color(1.0, 0.85, 0.1), 0.006], "dmm": [Color(0.85, 0.1, 0.1), 0.005],
 	"clamp": [Color(1.0, 0.45, 0.05), 0.012], "lift": [Color(0.8, 0.45, 0.2), 0.004],
 	# (HW3) the multimeter's ohms leads; water standing in the terminal side, seen once the cover is off
-	"ohm": [Color(0.85, 0.1, 0.1), 0.005], "wet": [Color(0.25, 0.55, 1.0), 0.010]}
+	"ohm": [Color(0.85, 0.1, 0.1), 0.005], "wet": [Color(0.25, 0.55, 1.0), 0.010],
+	"worn": [Color(0.45, 0.3, 0.15), 0.012]}    # a cracked gland seal insert, seen at the gland
 const OL_KOHM := 1e6            # an ohms reading at or above this shows OL (open circuit)
 
 signal opened(code: String)
@@ -741,8 +742,11 @@ func _apply_states(snap: bool, delta := 0.0) -> void:
 		now = want if snap else now.lerp(want, clampf(delta * 8.0, 0.0, 1.0))
 		_offs[c] = now
 		(_comp_nodes[c] as Node3D).position = _home[c] + now
+	var cover := "%s_cover_back_off" % a
 	for st in _marks:
 		var on: bool = e.ix.has(st) and e.cur[e.ix[st]] >= 0.5
+		if st.ends_with("_wet") and e.ix.has(cover):
+			on = on and e.cur[e.ix[cover]] >= 0.5     # water is seen only with the terminal cover off
 		for m in _marks[st]:
 			m.visible = on
 

@@ -231,9 +231,15 @@ def fault_values(m):
     m.prod('cpt2_ref', ['cpt2_partners', 0.5], 'kPa(a)')
     m.diff('cpt2_pv_dev', 'cond_p2_tx', 'cpt2_ref', 'kPa')
     m.cmp('cpt2_pv_low', 'cpt2_pv_dev', '<', -PV_TOL)
-    m.cmp('cpt2_pv_high', 'cpt2_pv_dev', '>', PV_TOL)
-    m.OR('cpt2_pv_apart', ['cpt2_pv_low', 'cpt2_pv_high'])
-    m.cmp('cpt2_vent_held', 'cpt2_pv_dev', '>', STUCK)
+    # (HW3) the new decisions read transmitter 2 against transmitter 1 alone (its tap 0.1 kPa below): transmitter 3
+    # ages (AG2) and may stand 1.5 kPa off, which would move the partners' mean past the tolerance (the adversarial
+    # review's finding); the trim's decision stays HW2's
+    m.diff('cpt2_dev1_r', 'cond_p2_tx', 'cond_p1', 'kPa')
+    m.diff('cpt2_dev1', 'cpt2_dev1_r', 0.1, 'kPa')
+    m.cmp('cpt2_pv_high', 'cpt2_dev1', '>', PV_TOL)
+    m.cmp('cpt2_pv_lo1', 'cpt2_dev1', '<', -PV_TOL)
+    m.OR('cpt2_pv_apart', ['cpt2_pv_lo1', 'cpt2_pv_high'])
+    m.cmp('cpt2_vent_held', 'cpt2_dev1', '>', STUCK)
 
 
 def job_steps():
@@ -290,7 +296,7 @@ def job_steps():
     skip_unless('cpt2_pv_high', 'high')
     steps.append(hand('shut_test'))
     label('high')
-    skip_unless('cpt2_pv_low', 'low')
+    skip_unless('cpt2_pv_lo1', 'low')
     steps.append({'op': {'kks': CP2, 'do': 'set', 'where': 'hart', 'value': TRIM}})
     label('low')
     for ma in LOOP_CHECK:

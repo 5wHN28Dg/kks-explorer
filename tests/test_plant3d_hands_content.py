@@ -273,7 +273,7 @@ class Loop(unittest.TestCase):
         waits = [(i, s['wait']) for i, s in enumerate(steps) if 'wait' in s and 'else' in s['wait']]
         self.assertEqual([w['until'] for _, w in waits],
                          ['cpt2_terminal_block_wet', 'cpt2_loop_low', 'cpt2_pv_apart', 'cpt2_vent_held',
-                          'cpt2_pv_high', 'cpt2_pv_low'])
+                          'cpt2_pv_high', 'cpt2_pv_lo1'])
         first = {'cpt2_terminal_block_wet': 'lift_wires', 'cpt2_loop_low': 'tighten_terms',
                  'cpt2_pv_apart': 'shut_block', 'cpt2_vent_held': 'blow_line', 'cpt2_pv_high': 'shut_test'}
         for i, w in waits:

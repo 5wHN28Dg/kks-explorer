@@ -153,7 +153,7 @@ func _show_diagnosis(e) -> void:
 		to = mini(to, tr.ev_to)
 		over = true             # an ended procedure's debrief: its run is over
 	diagnosis = Diagnosis.review(e, jobs, to)
-	var tpm: float = float(e._sm.tpm) if e._sm != null else 600.0
+	var tpm: float = float(e._sm.tpm) if e._sm != null else 100.0
 	var texts: Array = []
 	for r in diagnosis:
 		texts.append(Diagnosis.lines(r, func(n): return W.model_time(n), tpm, over))
