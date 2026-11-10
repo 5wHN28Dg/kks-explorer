@@ -167,6 +167,38 @@ class WorkshopData(unittest.TestCase):
         for st in v['assembly']:
             self.assertTrue(set(st['sources']) & {'fisher_es', 'fisher_667', 'dvc6200'}, st['place'])
 
+    def test_the_hand_and_motor_operated_valves_pass(self):
+        # K6: the gate valve (Crane), the globe valve under a multi-turn electric actuator (Crane, AUMA SA) and the
+        # butterfly valve under a part-turn one (Bray Series 35/36, AUMA SQ)
+        cases = {'valve_gate': (8, {'dn': 300, 'actuator': 'manual'}, {'bonnet_bolts'}),
+                 'valve_globe': (11, {'dn': 50, 'rating': 'pn160', 'actuator': 'electric'},
+                                 {'bonnet_bolts', 'actuator_bolts'}),
+                 'valve_butterfly': (9, {'dn': 250, 'actuator': 'electric'}, {'actuator_bolts'})}
+        for part, (n, params, fast) in cases.items():
+            v = json.loads(self.files['workshop/%s.json' % part])
+            self.assertEqual(self.b.workshop[part]['components'], n, part)
+            self.assertEqual(v['params'], params, part)
+            self.assertEqual(set(v['fasteners']), fast, part)
+        undo = lambda part: [s['place'] for s in json.loads(self.files['workshop/%s.json' % part])['assembly']][::-1]
+        # the gate valve taken apart (Crane p. 14): the packing, the bonnet nuts, the bonnet, the stem, then the wedge;
+        # the seat rings never come out (the last in the reverse: they stay)
+        u = undo('valve_gate')
+        for a, b in (('packing', 'bonnet_bolts'), ('bonnet_bolts', 'bonnet'), ('bonnet', 'stem'), ('stem', 'wedge'),
+                     ('handwheel', 'stem_nut'), ('stem_nut', 'bonnet')):
+            self.assertLess(u.index(a), u.index(b), (a, b))
+        # the globe valve (Crane §J, p. 18): the actuator off first (its bolts before it), then the packing, the
+        # bonnet nuts, the bonnet, the stem and the disc
+        u = undo('valve_globe')
+        self.assertEqual(u[0], 'actuator_bolts')
+        for a, b in (('actuator', 'packing'), ('packing', 'bonnet_bolts'), ('bonnet_bolts', 'bonnet'),
+                     ('bonnet', 'stem'), ('stem', 'disc')):
+            self.assertLess(u.index(a), u.index(b), (a, b))
+        # the butterfly valve (Bray §13.1): the actuator off, the shaft out with its packing, the disc, the seat
+        u = undo('valve_butterfly')
+        self.assertEqual(u[0], 'actuator_bolts')
+        for a, b in (('actuator', 'packing'), ('packing', 'shaft'), ('shaft', 'disc'), ('disc', 'liner')):
+            self.assertLess(u.index(a), u.index(b), (a, b))
+
     def test_context(self):
         w = copy.deepcopy(self.fixture)
         w.pop('params', None)
