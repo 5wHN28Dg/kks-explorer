@@ -14,6 +14,7 @@ const JsonStrict = preload("json_strict.gd")
 const Staff = preload("staff.gd")
 const World = preload("world.gd")
 const Hse = preload("hse.gd")
+const Stores = preload("stores.gd")
 
 const STATELESS := ["const", "state", "of", "sum", "product", "min", "max", "diff", "select", "cmp", "and", "or", "not"]
 const STATEFUL := ["lag", "ramp", "integrate", "latch", "delay", "timer", "wrap", "hold", "draw", "wear", "count",
@@ -55,6 +56,7 @@ var meters_ix := {}                   # id -> meter
 var has_wo := false                   # work orders (REALISM.md §2.20): the plant has workorders.json
 var wo_doc = null                     # workorders.json as read (the app's panel reads its titles and history), or null
 var wo_ids = null                     # its code lists {modes, causes, actions: [ids]} for the engine, or null
+var stores = null                     # stores.json as the engine reads it (sim/stores.gd read, REALISM.md §2.23), or null
 var _reads_wx := false                # a name read was the weather's kind (world_wx; known())
 var _reads_world := false             # a name read was a clock value's (REALISM.md §2.1; known())
 var _content_reads_world := false     # the model's or the staff's reads were: every scenario needs `world`
@@ -129,7 +131,7 @@ static func from_dir(path: String):
 	var files := {}
 	var top := path.trim_suffix("/")
 	for rel in ["plant.json", "kit.json", "sounds.json", "staff.json", "weather.json", "tools.json", "hse.json",
-			"workorders.json", "discussions.json"]:
+			"workorders.json", "discussions.json", "stores.json"]:
 		if FileAccess.file_exists(top + "/" + rel):
 			files[rel] = FileAccess.get_file_as_bytes(top + "/" + rel)
 	for sub in ["areas", "model", "scenarios", "procedures"]:
@@ -184,6 +186,19 @@ func _load(files: Dictionary) -> void:
 	ext = p.get("ext", [])
 	version = int(p.get("version", 1))
 	has_wo = files.has("workorders.json") and files["workorders.json"] != null
+	if files.has("stores.json") and files["stores.json"] != null:
+		# the stores (REALISM.md §2.23): read first, so that their parts' values are known to every node
+		if version != 2:
+			_fail("stores.json: only in a version 2 plant")
+			return
+		var sd = _read(files, "stores.json")
+		if sd == null:
+			return
+		var r = Stores.read(sd, ext)
+		if typeof(r) == TYPE_STRING:
+			_fail("stores.json: " + r)
+			return
+		stores = r
 	for aid in p.get("areas", []):
 		var a = _read(files, "areas/%s.json" % aid)
 		if a == null:
@@ -224,6 +239,10 @@ func _load(files: Dictionary) -> void:
 		if rel.begins_with("scenarios/"):
 			var s = _read(files, rel)
 			if s == null:
+				return
+			var sw := Stores.check_scenario(s, stores)    # its stock (REALISM.md §2.23)
+			if sw != "":
+				_fail(sw)
 				return
 			scenarios[s["id"]] = s
 		elif rel.begins_with("procedures/"):
@@ -443,6 +462,9 @@ func _check_hands() -> void:
 		for t in x.get("tools", []):
 			if tools == null or not tools["ix"].has(t):
 				_fail("%s: no tool %s" % [w, str(t)])
+		if x.has("part") and (stores == null or typeof(x["part"]) != TYPE_STRING or not stores["ix"].has(x["part"]) \
+				or not x.get("work", true)):
+			_fail("%s: a part the engine can't fit (REALISM.md §2.23)" % w)
 	for x in meters:
 		var w := "meter " + str(x.get("id"))
 		_need(x["value"], w)
@@ -467,6 +489,7 @@ func kept() -> Array:
 	if has_wo:                  # (work orders, REALISM.md §2.20)
 		for w in works:
 			out.append(w["id"] + "_wo")
+	out.append_array(Stores.kept(stores))   # (the stores' values, REALISM.md §2.23)
 	return out
 
 

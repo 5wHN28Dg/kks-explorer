@@ -10,6 +10,7 @@ extends RefCounted
 const W = preload("res://ui/widgets.gd")
 const Permits = preload("res://ui/permits.gd")
 const WoPanel = preload("res://ui/wo_panel.gd")
+const StoresPanel = preload("res://ui/stores_panel.gd")
 const Discussions = preload("res://ui/discussions.gd")     # (REALISM.md §6.3.1)
 
 ## The consequence ladder of personal audio (REALISM.md §8.5), by how many times the player's device was taken in
@@ -345,6 +346,7 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 	sm["stopped"] = tracker != null and tracker.stopped
 	sm["began_at"] = tracker.begin_index if not proc.is_empty() else 0
 	sm["wo"] = WoPanel.debrief_lines(engine, my_id)     # the run's work orders (REALISM.md §2.20)
+	sm["parts"] = StoresPanel.debrief_lines(engine, to)     # parts drawn per work, look-alikes offered (§2.23)
 	var title := ("Debrief: " + String(proc.get("title", ""))) if not proc.is_empty() else "Events since the plant started"
 	if sm.instructor_run > 0:
 		title += " · instructor mode used"
@@ -518,6 +520,7 @@ static func summary_lines(d: Dictionary) -> PackedStringArray:
 	out.append_array(hse_lines(sm.get("hse", {})))
 	out.append_array(sm.get("discussions", PackedStringArray()))
 	out.append_array(sm.get("wo", PackedStringArray()))
+	out.append_array(sm.get("parts", PackedStringArray()))
 	if sm.early > 0:
 		out.append("Done out of order: %d (made before their task step, counted when it came)" % sm.early)
 	var dl: Array = sm.get("drive_log", [])

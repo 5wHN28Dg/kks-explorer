@@ -33,6 +33,7 @@ const ProcedurePanel = preload("res://ui/procedure_panel.gd")
 const TrainerPanel = preload("res://ui/trainer_panel.gd")
 const PermitPanel = preload("res://ui/permit_panel.gd")
 const WoPanel = preload("res://ui/wo_panel.gd")
+const StoresPanel = preload("res://ui/stores_panel.gd")
 const Autosave = preload("res://ui/autosave.gd")
 const DebriefPanel = preload("res://ui/debrief_panel.gd")
 const Debrief = preload("res://ui/debrief.gd")
@@ -93,6 +94,7 @@ var procedure
 var trainer
 var permits                     # ui/permit_panel.gd: the permits to work and their isolations (PLANT3D §15)
 var work_orders                 # ui/wo_panel.gd: the work orders and each code's history (REALISM.md §2.20)
+var stores                      # ui/stores_panel.gd: the stores' catalogue, the counter and orders (REALISM.md §2.23)
 var autosave                    # ui/autosave.gd: the run saved to user://, offered again at start
 var debrief
 var screens                     # ui/screens_model.gd: the control room screens made from the model (PLANT3D §7.11)
@@ -320,6 +322,10 @@ func _build() -> void:
 	work_orders.name = "work_orders"
 	root.add_child(work_orders)
 	work_orders.setup(self)
+	stores = StoresPanel.new()
+	stores.name = "stores"
+	root.add_child(stores)
+	stores.setup(self)
 	crew = CrewPanel.new()
 	crew.name = "crew"
 	root.add_child(crew)
@@ -397,6 +403,8 @@ func _layout() -> void:
 	permits.size = card.size
 	work_orders.position = card.position
 	work_orders.size = card.size
+	stores.position = card.position
+	stores.size = card.size
 	debrief.position = card.position
 	debrief.size = card.size
 	session_panel.position = procedure.position
@@ -1391,7 +1399,7 @@ func toast(text: String, seconds := 4.0) -> void:
 
 ## The right-hand side holds one of the card, the alarm list and the instructor's panel; procedures stay on the left.
 func _right_open(p) -> void:
-	for q in [card, alarms, trainer, debrief, permits, work_orders]:
+	for q in [card, alarms, trainer, debrief, permits, work_orders, stores]:
 		if q != p and q.visible:
 			if q == card:
 				close_card()
@@ -1446,7 +1454,7 @@ func close_procedure() -> void:
 func open_permits(wid := "", code := "") -> void:
 	if card.visible:
 		close_card()
-	for q in [alarms, trainer, debrief, work_orders]:
+	for q in [alarms, trainer, debrief, work_orders, stores]:
 		q.visible = false
 	if code != "":
 		permits.open_for_code(code)
@@ -1745,7 +1753,7 @@ func close_permits() -> void:
 func open_work_orders(wid := "", code := "") -> void:
 	if card.visible:
 		close_card()
-	for q in [alarms, trainer, debrief, permits]:
+	for q in [alarms, trainer, debrief, permits, stores]:
 		q.visible = false
 	if code != "":
 		work_orders.open_for_code(code)
@@ -1756,6 +1764,22 @@ func open_work_orders(wid := "", code := "") -> void:
 
 func close_work_orders() -> void:
 	work_orders.visible = false
+	mimic.take_focus()
+
+
+## The stores (REALISM.md §2.23): the catalogue ("list"), the counter's issue form ("issue", a work's order given) or
+## a part's order form ("order", the part given).
+func open_stores(view := "list", id := "") -> void:
+	if card.visible:
+		close_card()
+	for q in [alarms, trainer, debrief, permits, work_orders]:
+		q.visible = false
+	stores.open(view, id)
+	_release_mouse()
+
+
+func close_stores() -> void:
+	stores.visible = false
 	mimic.take_focus()
 
 
@@ -1794,6 +1818,8 @@ func close_top() -> bool:
 		close_trainer()
 	elif work_orders.visible:
 		work_orders.close()
+	elif stores.visible:
+		stores.close()
 	elif permits.visible:
 		close_permits()
 	elif debrief.visible:
@@ -1925,6 +1951,7 @@ func _sync_events() -> void:
 		alarms.on_events(evs, from)
 		permits.on_events(evs, from)
 		work_orders.on_events(evs, from)
+		stores.on_events(evs, from)
 		_follow_events(evs, from)
 		if work != null:
 			work.on_events(evs, from)

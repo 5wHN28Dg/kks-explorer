@@ -24,6 +24,7 @@ const W = preload("res://ui/widgets.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const Debrief = preload("res://ui/debrief.gd")
 const Discussions = preload("res://ui/discussions.gd")     # the discussion panel and its radio lines (REALISM.md §6.3.1)
+const StoresPanel = preload("res://ui/stores_panel.gd")    # the jump's rule, the store counter (REALISM.md §2.23)
 
 var ui                          # ui/plant_ui.gd
 var body: VBoxContainer
@@ -334,12 +335,11 @@ func _keys(e, sm) -> Dictionary:
 	var dk := ""
 	if di != -1:
 		dk = "%s|%d|%d" % [Discussions.sig(e, pi, _disc_closed), _disc_lines.get(sm.discuss["list"][di]["id"], []).size(), pi]
-	var open_permit := false
-	for st in e.pstate:
-		open_permit = open_permit or (st >= 1 and st <= 7)
+	var open_permit := StoresPanel.jump_blocked(e)
 	return {"head": "%d|%d|%d" % [pi, e.sp_on[pi], e.unacked(ui.inputs.slot)], "disc": dk, "task": _base_sig(e),
 			"queue": q, "day": day, "safety": _safety_sig(e), "reads": "%d|%d" % [pi, _reads.get(p["id"], []).size()],
-			"phone": ui.phone.sig(), "radio": "%d|%s|%s|%s" % [pi, _next_shift(e), str(e.fast_forward()), str(open_permit)]}
+			"phone": ui.phone.sig(), "radio": "%d|%s|%s|%s|%s" % [pi, _next_shift(e), str(e.fast_forward()), open_permit,
+			str(ui.stores != null and ui.stores.available() and ui.stores.at_counter())]}
 
 
 ## One part built again in its box (the focus given back, and a reading being typed kept, when its control went).
@@ -858,15 +858,28 @@ func _radio_log(e, sm) -> void:
 		var task := parts[2]
 		row.add_child(W.button("Call %s: %s" % [role.replace("_", " "), sm.tasks[task]["title"]],
 				func(): ui.inputs.radio_call(role, task, null)))
+	if ui.stores != null and ui.stores.available() and ui.stores.at_counter():     # (REALISM.md §2.23)
+		var sb := W.button("At the store counter: draw parts", func(): ui.open_stores("issue"))
+		sb.name = "store_counter"
+		body.add_child(sb)
 	var nxt := _next_shift(e)
 	var b := W.button("Sleep to %s" % nxt, func(): ui.inputs.jump(nxt))
-	var open_permit := false
-	for s in e.pstate:
-		open_permit = open_permit or (s >= 1 and s <= 7)
-	b.disabled = not e.fast_forward() or open_permit
+	# the engine's rule (§17.6; in a scenario with `world`, §7.4's amendment: REALISM.md §2.23)
+	var blocked := StoresPanel.jump_blocked(e)
+	b.disabled = not e.fast_forward() or blocked != ""
 	body.add_child(b)
-	if open_permit:
-		body.add_child(W.label("(no sleeping while a permit is open)", 16, W.DIM))
+	# a jump to a date (REALISM.md §2.23): the next shift's time, days on
+	var drow := HFlowContainer.new()
+	drow.name = "jump_days"
+	body.add_child(drow)
+	for d in [1, 2, 7]:
+		var dd: int = d
+		var db := W.button("%s, %d day%s on" % [nxt, d, "" if d == 1 else "s"], func(): ui.inputs.jump(nxt, dd))
+		db.name = "jump_days_%d" % d
+		db.disabled = b.disabled
+		drow.add_child(db)
+	if blocked != "":
+		body.add_child(W.label("(%s)" % blocked.replace("no jump", "no sleeping"), 16, W.DIM))
 
 
 ## The radio's last lines written into its labels (new messages, nothing else changed): no rebuild of the panel,

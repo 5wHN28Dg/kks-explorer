@@ -134,7 +134,7 @@ var _host_digests := {}                 # step -> [digest, time]
 var _reported := {}                     # step -> {slot: digest}
 var _snap_cache := {}                   # {step, raw_len, z, t} (one snapshot per 2 s)
 var _snap_jobs := {}                    # task id -> [slots, Dictionary, result]
-var _jump_votes := {}                   # slot -> hhmm
+var _jump_votes := {}                   # slot -> [hhmm, days] (days 0 to 30, REALISM.md §2.23)
 var _own_number := 0
 var _away_host := false
 
@@ -1459,7 +1459,7 @@ func _on_control(p, c: Dictionary) -> void:
 		_roster_changed()
 		_check_fast()
 	if c.has("jump") and typeof(c["jump"]) == TYPE_STRING and c["jump"].length() <= 5:
-		_jump_votes[p.slot] = c["jump"]
+		_jump_votes[p.slot] = [c["jump"], jump_days(c.get("days", 0))]
 		_check_jump()
 	if c.has("away") and typeof(c["away"]) == TYPE_BOOL:
 		p.away = c["away"]
@@ -1582,7 +1582,8 @@ func _check_jump() -> void:
 			return
 	_jump_votes.clear()
 	_own_number += 1
-	_inbox.append([HOST_SLOT, _own_number, InputCheck.text(["jump", want])])
+	# (a jump of days names them: REALISM.md §2.23; without, §17.6's input as before)
+	_inbox.append([HOST_SLOT, _own_number, InputCheck.text(["jump", want[0]] if want[1] == 0 else ["jump", want[0], want[1]])])
 	_roster_changed()
 
 
@@ -2055,7 +2056,7 @@ func send_input(item: Array) -> void:
 		if not (state == State.RUN or state == State.LOBBY) or not InputCheck.form_ok(item):
 			return
 		if item[0] == "jump":
-			vote_jump(item[1])
+			vote_jump(item[1], jump_days(item[2] if item.size() > 2 else 0))
 			return
 		_own_number += 1
 		_inbox.append([HOST_SLOT, _own_number, InputCheck.text(item)])
@@ -2063,7 +2064,7 @@ func send_input(item: Array) -> void:
 	if observer or not InputCheck.form_ok(item):
 		return
 	if item[0] == "jump":
-		vote_jump(item[1])
+		vote_jump(item[1], jump_days(item[2] if item.size() > 2 else 0))
 		return
 	if _send_p == null:
 		_unsent.append(item)
@@ -2142,12 +2143,24 @@ func vote_fast(on: bool) -> void:
 		_send_control({"fast": on, "cap": clock.ff_cap()})
 
 
-func vote_jump(hhmm: String) -> void:
+func vote_jump(hhmm: String, days := 0) -> void:
 	if role == Role.HOST:
-		_jump_votes[HOST_SLOT] = hhmm
+		_jump_votes[HOST_SLOT] = [hhmm, days]
 		_check_jump()
-	else:
+	elif days == 0:
 		_send_control({"jump": hhmm})
+	else:
+		_send_control({"jump": hhmm, "days": days})
+
+
+## A jump's days as a vote carries them (REALISM.md §2.23): a whole number 0 to 30, anything else 0 (the engine
+## refuses a bad one itself; a vote only has to agree with the others').
+static func jump_days(x) -> int:
+	var t := typeof(x)
+	if (t == TYPE_INT or t == TYPE_FLOAT) and is_finite(float(x)) and float(x) == floorf(float(x)) \
+			and float(x) >= 0.0 and float(x) <= 30.0:
+		return int(x)
+	return 0
 
 
 ## Android's lifecycle (§7.5): the app goes to the background or comes back.

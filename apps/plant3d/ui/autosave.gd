@@ -253,6 +253,16 @@ static func _hands_contents(fresh, d: Dictionary) -> String:
 					if q.size() != 4:
 						return "a damaged NPC input"
 					who = q[3]
+				"issue", "order":
+					# the stores (REALISM.md §2.23): a part of the content, an issue's whole qty and work of the model,
+					# an order's qty whole or null (up to the part's max, worked out in step 1)
+					var sr = fresh._sr
+					var iss: bool = q[0] == "issue"
+					if q.size() != (5 if iss else 4) or sr == null or typeof(q[1]) != TYPE_STRING \
+							or not sr["ix"].has(q[1]) or not (typeof(q[2]) == TYPE_INT or (not iss and q[2] == null)) \
+							or (iss and (typeof(q[3]) != TYPE_STRING or not fresh.m.work_ix.has(q[3]))):
+						return "a damaged NPC input"
+					who = q[q.size() - 1]
 				"wo":
 					# a work order's action (REALISM.md §2.20): a work of the model, an action, data a list or null
 					# (null: the NPC's defaults, a completion's from the work's codes)
@@ -271,9 +281,11 @@ static func _hands_contents(fresh, d: Dictionary) -> String:
 		var nplaces: int = fresh._sm.places.size() if fresh._sm != null else 0
 		for pid in d["busy"]:
 			var b = d["busy"][pid]
-			if typeof(pid) != TYPE_STRING or not people.has(pid) or typeof(b) != TYPE_ARRAY or b.size() != 6 \
+			if typeof(pid) != TYPE_STRING or not people.has(pid) or typeof(b) != TYPE_ARRAY or not b.size() in [6, 7] \
 					or typeof(b[0]) != TYPE_STRING or typeof(b[1]) != TYPE_STRING \
 					or not fresh._hands.has(b[0] + "|" + b[1]) or not typeof(b[2]) in [TYPE_STRING, TYPE_NIL] \
+					or (b.size() == 7) != fresh._hands[b[0] + "|" + b[1]].has("part") \
+					or (b.size() == 7 and (typeof(b[6]) != TYPE_STRING or not fresh.m.work_ix.has(b[6]))) \
 					or not typeof(b[3]) in [TYPE_FLOAT, TYPE_NIL] or typeof(b[4]) != TYPE_INT \
 					or typeof(b[5]) != TYPE_INT or b[5] < -1 or b[5] >= nplaces \
 					or (b[3] == null) == fresh._hands[b[0] + "|" + b[1]].has("input"):
@@ -358,6 +370,65 @@ static func _wo_contents(fresh, d: Dictionary) -> String:
 			if typeof(x) != TYPE_ARRAY or x.size() != 2 or typeof(x[0]) != TYPE_STRING or not works.has(x[0]) \
 					or (x[1] != null and typeof(x[1]) != TYPE_STRING):
 				return "a damaged work order write-up"
+	return ""
+
+
+## The stores' state (REALISM.md §2.23): the shelf and on order, one whole count per part of the content (none
+## without stores.json) that agrees with its values; the pending orders, of parts of the content, a whole qty, a
+## person of the staff or null, numbers the counter has given, at most 8 a part, adding up to each part's on order;
+## each work's issued parts, works and parts of the content with counts of at least one. "" when it fits.
+static func _stores_contents(fresh, d: Dictionary) -> String:
+	var sr = fresh._sr
+	var np: int = sr["parts"].size() if sr != null else 0
+	for k in ["sr_stock", "sr_due"]:
+		if d.has(k):
+			if typeof(d[k]) != TYPE_ARRAY or d[k].size() != np:
+				return "a damaged stock of parts"
+			for i in np:
+				var x = d[k][i]
+				if typeof(x) != TYPE_INT or x < 0 or x > 99999999:
+					return "a damaged stock of parts"
+				if d.has("cur") and d["cur"][fresh._sr_slot[2 * i + (0 if k == "sr_stock" else 1)]] != float(x):
+					return "a stock of parts whose value doesn't agree"
+	var po = d.get("sr_po", 0)
+	if typeof(po) != TYPE_INT or po < 0 or po > 9999:
+		return "a damaged purchase order count"
+	if d.has("sr_orders"):
+		if typeof(d["sr_orders"]) != TYPE_ARRAY:
+			return "a damaged purchase order"
+		var people: Dictionary = fresh._sm.person_ix if fresh._sm != null else {}
+		var due := {}
+		var seen := {}
+		var per := {}
+		for o in d["sr_orders"]:
+			if typeof(o) != TYPE_ARRAY or o.size() != 6 or sr == null or typeof(o[0]) != TYPE_STRING \
+					or typeof(o[1]) != TYPE_STRING or not sr["ix"].has(o[1]) or typeof(o[2]) != TYPE_INT or o[2] < 1 \
+					or not (o[3] == null or (typeof(o[3]) == TYPE_STRING and people.has(o[3]))) \
+					or typeof(o[4]) != TYPE_INT or typeof(o[5]) != TYPE_INT or o[5] <= o[4] \
+					or not o[0].begins_with("PO-") or not o[0].substr(3).is_valid_int() or seen.has(o[0]) \
+					or o[0].substr(3).to_int() < 1 or o[0].substr(3).to_int() > po:
+				return "a damaged purchase order"
+			seen[o[0]] = true
+			due[o[1]] = due.get(o[1], 0) + o[2]
+			per[o[1]] = per.get(o[1], 0) + 1
+			if per[o[1]] > 8:
+				return "a damaged purchase order"
+		if d.has("sr_due"):
+			for i in np:
+				if d["sr_due"][i] != due.get(sr["parts"][i]["id"], 0):
+					return "purchase orders that don't agree with the parts on order"
+	if d.has("sr_issued"):
+		if typeof(d["sr_issued"]) != TYPE_DICTIONARY:
+			return "damaged parts issued"
+		for w in d["sr_issued"]:
+			var held = d["sr_issued"][w]
+			if typeof(w) != TYPE_STRING or not fresh.m.work_ix.has(w) or typeof(held) != TYPE_DICTIONARY \
+					or held.is_empty() or sr == null:
+				return "damaged parts issued"
+			for part in held:
+				if typeof(part) != TYPE_STRING or not sr["ix"].has(part) or typeof(held[part]) != TYPE_INT \
+						or held[part] < 1:
+					return "damaged parts issued"
 	return ""
 
 
@@ -486,9 +557,9 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 		var sizes := {"op": [5, 7], "ack": [2], "shelve": [3], "unshelve": [2], "fault": [2, 3], "repair": [2, 4],
 				"permit": [4], "lock": [4], "unlock": [4], "remove_lock": [5, 6], "role": [2], "release": [1],
 				"task_ack": [1], "arrive": [2], "leave": [2], "read": [3, 4], "say": [3], "pick": [2], "call": [4],
-				"jump": [2], "ppe": [3], "zone": [3], "stop": [2], "board": [3], "alight": [3],
+				"jump": [2, 3], "ppe": [3], "zone": [3], "stop": [2], "board": [3], "alight": [3],
 				"get_on": [2], "drive": [3, 4], "weather": [2], "tool": [4], "hand": [6], "audio": [2], "phone": [2],
-				"jsa": [5], "talk": [4], "wo": [5], "discuss": [4]}
+				"jsa": [5], "talk": [4], "wo": [5], "discuss": [4], "issue": [5], "order": [4]}
 		for q0 in d["queue"]:
 			var q = q0
 			# a session run's inputs end with their slot (§17.13): looked at without it
@@ -525,7 +596,11 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 			if typeof(kept) != TYPE_ARRAY:
 				return "a damaged record of the trainee's actions"
 			for r in kept:
-				if typeof(r) != TYPE_ARRAY or r.size() < 4 or not r[0] in ["op", "permit", "lock", "unlock", "hand", "wo"] \
+				if typeof(r) != TYPE_ARRAY or r.size() < 3 or typeof(r[0]) != TYPE_STRING \
+						or (r.size() < 4 and r[0] != "order") or not r[0] in ["op", "permit", "lock", "unlock", "hand", "wo", "issue", "order"] \
+						or (r[0] == "issue" and (r.size() != 4 or typeof(r[2]) != TYPE_STRING \
+						or typeof(r[3]) != TYPE_STRING)) \
+						or (r[0] == "order" and (r.size() != 3 or typeof(r[2]) != TYPE_STRING)) \
 						or (r[0] == "wo" and (r.size() != 5 or typeof(r[2]) != TYPE_STRING \
 						or typeof(r[3]) != TYPE_STRING or (r[4] != null and typeof(r[4]) != TYPE_STRING))) \
 						or (r[0] == "op" and (r.size() != 6 or typeof(r[2]) != TYPE_STRING \
@@ -548,6 +623,9 @@ static func _engine_contents(fresh, d: Dictionary) -> String:
 	var wow := _wo_contents(fresh, d)
 	if wow != "":
 		return wow
+	var srw := _stores_contents(fresh, d)
+	if srw != "":
+		return srw
 	if d.has("dsc"):                    # the discussions (REALISM.md §6.3.1): one per discussion of the content
 		var dw: String = Disc.contents(fresh._sm, d["dsc"])
 		if dw != "":

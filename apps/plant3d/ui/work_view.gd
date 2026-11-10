@@ -16,6 +16,7 @@ extends Control
 const W = preload("res://ui/widgets.gd")
 const JsonStrict = preload("res://sim/json_strict.gd")
 const Hands = preload("res://sim/hands.gd")
+const StoresPanel = preload("res://ui/stores_panel.gd")    # a fitting's part (REALISM.md §2.23)
 
 const SCENES := "res://built/work/"
 const MATS := "res://built/materials/"
@@ -452,6 +453,10 @@ func _build_actions(e) -> void:
 		b.name = "act_" + act
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		actions.add_child(b)
+		if a.has("part") and e._sr != null:     # the part a fitting needs (REALISM.md §2.23)
+			var pl := W.label(StoresPanel.fitting_words(e, {"part": a["part"]}), 15, W.DIM)
+			pl.name = "part_" + act
+			actions.add_child(pl)
 
 
 ## The meters of this code whose tool the person carries (its kind, with the meter's mode).
@@ -613,7 +618,10 @@ func on_events(evs: Array, from: int) -> void:
 						continue        # (an oil sample's: the monitoring view says why, once)
 					var why := PackedStringArray()
 					for r in ev[7]:
-						why.append(hand_reason(x, String(r), ev[4]))
+						if r == "part" or r == "wrong_part":    # the fitting check (REALISM.md §2.23)
+							why.append(StoresPanel.fit_reason(ui.clock.engine, x, String(r)))
+						else:
+							why.append(hand_reason(x, String(r), ev[4]))
 					_show("; ".join(why), String(x["component"]) if x != null else "")
 				elif ev[6] == "done" and ev[2] == code:
 					last_text = "Done: " + _action_title(String(ev[3]))

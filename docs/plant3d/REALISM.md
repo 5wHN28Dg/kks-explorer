@@ -1112,7 +1112,7 @@ parts). Lead times are clock days (§2.1).
   against the work order, fitted (the part check), its range set with HART from the data sheet, the wires landed,
   the loop check, and the equipment back in service. The removed transmitter opens in the Workshop, writable (§3.5).
 
-### 2.24 As built for milestone WM2 (draft, 2026-11-10: the stores, part 1: the reference, the content, the vectors)
+### 2.24 As built for milestone WM2 (draft, 2026-11-10: the stores; part 1 the reference, the content, the vectors; part 2 the app's engine, saves, sessions and the app)
 
 - **Where:** the reference `ref/plant3d_stores.py` (stores.json's check, the values, the scenario's `stock`, the
   `issue` and `order` inputs, the deliveries, the fitting check, the snapshot's and digest's parts), with hooks in
@@ -1120,7 +1120,19 @@ parts). Lead times are clock days (§2.1).
   hand actions, `jump(hhmm, days)`), `ref/plant3d_hands.py` (a hand action's `part`, its reasons after `value`),
   `ref/plant3d_service.py` (a service action's `part`) and `ref/plant3d_staff.py` (the two authorities, the `issue`
   and `order` steps for NPCs and the trainee, the jump's days and §7.4's rule, held jobs through a jump). The app's
-  engine (`apps/plant3d/sim/`) follows in part 2, from the reference: each rule there names its §.
+  engine, bit for bit with it: `apps/plant3d/sim/stores.gd` (stores.json as the engine reads it, the values, the
+  inputs, the deliveries, the fitting, the snapshot's and digest's parts; its state `sr_stock`, `sr_due`, `sr_po`,
+  `sr_orders`, `sr_issued`, saved with a run as every engine field), with hooks in `engine.gd` (the stores before step
+  0, step 1's `issue` and `order`, step 3's deliveries after the hand actions, `jump(hhmm, slot, days)`),
+  `plant_model.gd` (stores.json read first, the kept values after the work orders', a scenario's `stock`, a hand
+  action's `part`), `hands.gd` (the fitting's reasons after `value`, the part taken, given back when abandoned) and
+  `staff.gd` (the NPCs' `issue` and `order` steps, the trainee's and kept ones, the jump's days and §7.4's rule, held
+  jobs kept through a jump). Saves (`ui/autosave.gd`) check the stores' state: one stock and one on-order count per
+  part agreeing with their values, pending orders of parts of the content with numbers the counter gave (at most 8 a
+  part, adding up to each part's on order), issued parts of works and parts of the content, a fitting's busy record
+  naming its work, NPC issues and orders, the trainee's kept issues and orders. A session (`net/input_check.gd`)
+  carries `issue` and `order`, and the jump's days: a jump vote names its days, and the host commits
+  `["jump", "HH:MM", days]` when everyone voted the same (`net/session.gd`).
 - **The content:** `tools/plant3d/train_stores.py` makes `data/plant3d/stores.json`: one store, the counter
   (`store_counter`, not self-service), and 43 parts in 30 classes: 41 from the manuals' spare parts lists (PT 9,
   CP 12, CV 7, MV 6, GT 4, ST 3; every number checked against the lists by `tests/test_plant3d_stores.py`) and the two
@@ -1141,6 +1153,30 @@ parts). Lead times are clock days (§2.1).
   train's stores: every input, event and earlier value unchanged; the snapshots and fork ends gain the 172 new values
   and the `stores` part; v2's `day` digests moved (the digest's stores part and the new slots). `plant3d-bench-v1.json`
   unchanged.
+- **The app:** `ui/stores_panel.gd`, opened from the work order list and the permit list ("Stores"), from an
+  order's form ("Draw parts for it at the counter", on the issue form with that order chosen) and, with a person
+  played, from the crew panel while they stand at the counter. The catalogue by class, each part's number, title,
+  stock, on order, levels, store and lead time (the stock red at 0, amber at or below the reorder point), a part's
+  look-alikes drawn right after it ("looks like the one above"); deliveries due by day, with "Jump to the next
+  delivery" when it lands within 30 days and the jump's rule allows; the counter's issue form (the part number as the
+  person writes it, any case, the quantity, the work order among those planned, scheduled or in progress), which with
+  a person played away from the counter offers only "Take me to the store counter"; a part's order form (offered up to
+  its max, named by the roles holding `order_parts`). The work order form lists its issued parts. The work view names
+  the part a fitting needs under its action, and gives `part` ("No … issued against this job's work order: draw one
+  at the store counter") and `wrong_part` (the look-alike's `differs` sentence) in words. The debrief: the parts drawn
+  per work and every look-alike offered with its sentence. The crew panel offers the jump's days (the next shift's
+  time 1, 2 and 7 days on) beside "Sleep to", both by the engine's rule (`stores_panel.gd` `jump_blocked`). Every
+  action is an input through `ui/inputs.gd`; refusals come back in words. `walk=stores` (app/main.gd): shift_aged in
+  free mode, the pump's vibration reported and planned, the first part on the shelf drawn against it and the last
+  ordered, the panel left on the catalogue for the frames (the STORES line).
+- **Tests (part 2):** `tests/test_plant3d_sim.py`'s Godot checks run the realism file's `stores` (`run_vectors.gd`
+  `REALISM_PARTS`: 85 of 85 realism items pass, with the straight-line program and the interpreter) and v1 and v2 with
+  the train's stores. `tests/test_run_save.gd` `_round_trip_stores`: run 7 saved mid-fitting and run 8 with an order
+  pending, each continued bit for bit to its end after the save; 28 damaged saves refused, 3 good variants taken.
+  `apps/plant3d/tests/test_ui_stores.gd` (app shard 2): the shelves and the number as written, the jump to a clock,
+  the fitting's words and the debrief's lines in the realism plant, and in the aged plant the order's form, the
+  counter's refusals on the form and in words, an issue, the catalogue's look-alikes and levels, an order and its
+  delivery line, the debrief, a jump with days, and a person played away from the counter.
 - **Settled in the code:**
   - An issue step names its work under `"for"`, not `"work"`: `work` is a step kind of its own (a work of minutes),
     and a step has exactly one kind: `{"issue": part, "qty": n, "for": "$" | work}`.
@@ -1162,6 +1198,13 @@ parts). Lead times are clock days (§2.1).
   - A reorder offer that finds no storekeeper on duty is not kept (§17.12 keeps only abandoned value jobs): only
     free mode draws from the counter without a storekeeper there, and `<part>_low` then stays true with no new edge
     until the part is ordered by hand.
+  - The app's engine reads stores.json as far as it runs it (`stores.gd` `read`: ids, stores, levels, look-alikes) and
+    refuses a file it can't run; every other rule is the validator's (the reference's `check`), as for the other
+    files.
+  - The issue form finds the part by its catalogue number as written (spaces round it and case ignored); a number not
+    in the catalogue is refused on the form, nothing sent: the storekeeper hands over what is written, so the
+    look-alike's lesson is a number copied wrong, not a number that does not exist.
+  - A jump vote in a session carries its days only when they are not 0; votes agree when time and days do.
 
 ## 3. Hands-on work and tools
 

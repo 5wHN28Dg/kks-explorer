@@ -37,6 +37,11 @@
 ##                           mode, closed cooling water pump A's vibration reported from its card, the work order
 ##                           panel open on the motor's history and then on the list (the plant at 1×); the WO line
 ##                           gives the panel's open time and the view's draw calls and triangles with it and before it
+##   walk=stores             the stores' walk (REALISM.md §2.23, milestone WM2): the scenario shift_aged in free mode,
+##                           closed cooling water pump A's vibration reported and planned, a part drawn at the counter
+##                           against its order and another ordered, the stores panel then left open on the catalogue
+##                           (the plant at 1×); the STORES line gives the results, the panel's open time and the view's
+##                           draw calls and triangles with it and before it
 ##   seconds=600             (walk) how long, after the first 5 s which are not measured
 ##   out=DIR                 where result.txt (and shots) go (default: the external files folder on Android, the user
 ##                           data folder elsewhere)
@@ -165,6 +170,7 @@ var job_walk := false       # walk=job: the work view open at a code, its camera
 var monitor_walk := false   # walk=monitor: the monitoring panel open at a machine, the plant at 1× (milestone AG3)
 var jsa_walk := false       # walk=jsa: the permit form's JSA picker open, the plant at 1× (milestone HS1)
 var wo_walk := false        # walk=workorders: the work order panel open, the plant at 1× (milestone WM1)
+var stores_walk := false    # walk=stores: the stores panel open on the catalogue, the plant at 1× (milestone WM2)
 var disc_walk := false      # walk=discuss: the crew panel open on a discussion the player takes part in (milestone DC3)
 var drawings_walk := false  # walk=drawings: each P&ID in turn, panned and zoomed (REALISM.md §6.1.1, DC1)
 var manuals_walk := false   # walk=manuals: every manual's every page in turn, scrolled (REALISM.md §6.2.1, DC2)
@@ -333,7 +339,7 @@ func _ready() -> void:
 		opts["scenario"] = "shift_cold"   # (the work view needs a person played: the crews' scenario)
 	if opts.get("walk", "") in ["jsa", "discuss"] and not opts.has("scenario"):
 		opts["scenario"] = "shift_cold"   # (the JSA needs a supervisor played: the crews' scenario)
-	if opts.get("walk", "") in ["monitor", "workorders"] and not opts.has("scenario"):
+	if opts.get("walk", "") in ["monitor", "workorders", "stores"] and not opts.has("scenario"):
 		opts["scenario"] = "shift_aged"   # (the aged plant: a pump running with its bearing's signs)
 	if opts.get("walk", "") in ["gate", "drive"]:
 		opts["crews"] = "1"       # the gate walk is the crews' shift change (PLANT3D §21.10); the drive walk drives them
@@ -761,6 +767,9 @@ func _start_walk() -> void:
 	if opts.walk == "workorders":
 		await _wo_walk()
 		return
+	if opts.walk == "stores":
+		await _stores_walk()
+		return
 	if opts.walk == "discuss":
 		await _disc_walk()
 		return
@@ -1015,6 +1024,54 @@ func _wo_walk() -> void:
 	last_us = Time.get_ticks_usec()
 
 
+## walk=stores: free mode, the pump's vibration reported and its order planned, the first part on the shelf drawn at
+## the counter against it and the last part of the catalogue ordered, the panel left open on the catalogue (its STORES
+## line); the frames are then measured as any walk's.
+func _stores_walk() -> void:
+	var code := "00PGC10AP001"
+	var e = ui.clock.engine
+	if ui.stores == null or not ui.stores.available() or ui.work_orders == null or not ui.work_orders.has_orders(code):
+		_say("STORES none: no stores or work orders in this build")
+		_finish()
+		return
+	for i in 30:
+		await get_tree().process_frame
+	var before: Vector2i = await _view_counts()
+	ui.work_orders.report(code, "vibration")
+	ui.clock.run_steps(2)
+	var wid: String = ui.work_orders.work_for(e, code, "vibration")["id"]
+	ui.inputs.work_order(wid, "plan", null, [3])
+	ui.clock.run_steps(2)
+	var t0 := Time.get_ticks_usec()
+	ui.open_stores("issue", wid)
+	var open_ms := (Time.get_ticks_usec() - t0) / 1000.0
+	var take := ""
+	for p in e._sr["parts"]:
+		if ui.stores.stock_of(e, p["id"]) > 0:
+			take = p["id"]
+			break
+	var n0: int = e.events.size()
+	ui.stores.issue(ui.stores.part_of(e, take)["number"], 1, wid)
+	var last: String = e._sr["parts"][-1]["id"]
+	ui.stores.order(last, 1)
+	ui.clock.run_steps(2)
+	var res := {}
+	for k in range(n0, e.events.size()):
+		var ev: Array = e.events[k]
+		if ev[1] == "issue":
+			res["issue"] = ev[6]
+		elif ev[1] == "order":
+			res["order"] = ev[5]
+	ui.open_stores()
+	for i in 30:
+		await get_tree().process_frame
+	var inview: Vector2i = await _view_counts()
+	_say("STORES issue=%s order=%s open_ms=%.1f view_draws=%d view_tris=%d before_draws=%d before_tris=%d" % [
+		res.get("issue", "none"), res.get("order", "none"), open_ms, inview.x, inview.y, before.x, before.y])
+	stores_walk = true
+	last_us = Time.get_ticks_usec()
+
+
 ## The draw calls and triangles of the last frame drawn (the median of 10 frames' counts).
 func _view_counts() -> Vector2i:
 	var d: Array = []
@@ -1192,7 +1249,7 @@ func _process(delta: float) -> void:
 		_say("SPEED %s at %.1f s, uptime %d ms" % ["fast-forward" if ff else "normal", t_walk, WalkFrames.uptime_ms()])
 	if job_walk and ui.work.is_open:
 		ui.work._turn(Vector2(delta * 25.0, 0.0))      # slowly round the transmitter (the whole scene in turn)
-	if not screens_walk and not job_walk and not monitor_walk and not jsa_walk and not wo_walk and not disc_walk and not drawings_walk and not manuals_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
+	if not screens_walk and not job_walk and not monitor_walk and not jsa_walk and not wo_walk and not stores_walk and not disc_walk and not drawings_walk and not manuals_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
 		return
 	t_walk += delta
 	if drawings_walk:

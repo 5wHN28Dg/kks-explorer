@@ -413,6 +413,10 @@ func _build(m, doc: Dictionary) -> void:
 				_fail("task %s: a wo step the engine can't run (REALISM.md §2.20)" % t["id"])
 			if s.has("discuss") and (discuss == null or not discuss["ix"].has(s["discuss"])):
 				_fail("task %s: a discuss step the engine can't run (REALISM.md §6.3.1)" % t["id"])
+			for k in ["issue", "order"]:    # REALISM.md §2.23: a part of stores.json (an issue's work under "for")
+				if s.has(k) and (m.stores == null or typeof(s[k]) != TYPE_STRING or not m.stores["ix"].has(s[k]) \
+						or (k == "issue" and (not s.has("for") or not s.has("qty")))):
+					_fail("task %s: an %s step the engine can't run (REALISM.md §2.23)" % [t["id"], k])
 			if s.has("unlock"):
 				if not unlocks.has(t["id"]):
 					unlocks[t["id"]] = {}
@@ -763,7 +767,10 @@ func off_slots(e, pi: int, day: int) -> void:
 
 # ---------------------------------------------------------------- placement (§17.2)
 
-func place_all(e, c: int, old: int) -> void:
+## Placement (§17.2): at step 0 and after a jump, at clock c. keep_held (a jump in a scenario with `world`, REALISM.md
+## §2.23): each person's held jobs stay held, their reaction sources still given, and come back into their queue
+## (event `resumed` each, in the order held) when the placement puts them on duty.
+func place_all(e, c: int, old: int, keep_held := false) -> void:
 	var day: int = c / DAY
 	if e._touched.size() == people.size():
 		e._touched.fill(1)         # everyone's acts looked at again in this step's phase 5
@@ -774,6 +781,11 @@ func place_all(e, c: int, old: int) -> void:
 	e.st_holder = {}
 	e.sp_wait_on.fill(-1)           # (everyone awake: sp_wake 0 below)
 	e.st_given = {}
+	if keep_held:                   # (the held jobs' reaction sources stay given, REALISM.md §2.23)
+		for pi in people.size():
+			for q in e.sp_held[pi]:
+				if q["src"] != null:
+					e.st_given[q["src"]] = e.st_given.get(q["src"], 0) + 1
 	e.st_pending = []
 	e.st_made = {}
 	e.st_next1 = 0
@@ -800,7 +812,8 @@ func place_all(e, c: int, old: int) -> void:
 		e.sp_res[pi] = -1
 		e.sp_occ[pi] = -1
 		e.sp_result[pi] = null
-		e.sp_held[pi] = []
+		if not keep_held:
+			e.sp_held[pi] = []
 		e.sp_pos[pi] = -1
 		e.sp_on[pi] = 0
 		e.sp_duty[pi] = []
@@ -874,6 +887,12 @@ func place_all(e, c: int, old: int) -> void:
 		if task != null:
 			give(e, pi, task, prio_of(task), null, null, null, null, false, null, null, null,
 					(1 if pick[5] == null else 2) if home[pi] != -1 else 0, pick[5][1] if pick[5] != null else 0)
+		if e.sp_on[pi] and not e.sp_held[pi].is_empty():   # (a jump into their duty: the duty has begun, §17.10)
+			var held: Array = e.sp_held[pi]
+			e.sp_held[pi] = []
+			for h in held:
+				_enqueue(e, pi, h)
+				e._ev(["task", people[pi]["id"], h["task"], "resumed"])
 	e.st_t_from.fill(-1)
 
 
@@ -1128,7 +1147,7 @@ func t_input(e, item: Array, slot: int = 0) -> void:
 		e._ev(["task_ack", slot] if ses else ["task_ack"])
 		return
 	if k == "jump":
-		jump(e, item[1])
+		jump(e, item[1], item[2] if item.size() > 2 else 0)
 		return
 	e.st_t_in.append([slot, item])
 
@@ -1208,6 +1227,15 @@ func let_go(e, slot: int) -> void:
 	e.sp_wake[pi] = 0
 
 
+## A jump's days (REALISM.md §2.23): a whole number 0 to 30 (3 or 3.0; not a boolean).
+static func _jump_days_ok(x) -> bool:
+	var t := typeof(x)
+	if t != TYPE_INT and t != TYPE_FLOAT:
+		return false
+	var f := float(x)
+	return is_finite(f) and f == floorf(f) and f >= 0.0 and f <= 30.0
+
+
 static func is_hhmm(x) -> bool:
 	if typeof(x) != TYPE_STRING or x.length() != 5 or x[2] != ":":
 		return false
@@ -1217,22 +1245,39 @@ static func is_hhmm(x) -> bool:
 	return x.substr(0, 2).to_int() <= 23 and x.substr(3, 2).to_int() <= 59
 
 
-func jump(e, to) -> void:
+## [n, "jump", "HH:MM", days] (§17.6; REALISM.md §2.23): to the next occurrence of HH:MM strictly after the clock,
+## then `days` (a whole number 0 to 30; absent 0) clock days on; other days are refused as a bad time.
+func jump(e, to, days = 0) -> void:
 	var old: int = e.clock()
-	if not is_hhmm(to):
+	if not is_hhmm(to) or not _jump_days_ok(days):
 		e._ev(["jump", old, null, "refused"])
 		return
 	var t: int = (old / DAY) * DAY + hhmm(to) * MINUTE
 	while t <= old:
 		t += DAY
+	t += int(days) * DAY
 	var ok: bool = e.unacked(-1) == 0
 	if ok and not e.ff_model():
 		ok = false
-	if ok:
+	if ok and not e._world:         # §17.6: no permit between requested and returned
 		for s in e.pstate:
 			if s >= 1 and s <= 7:
 				ok = false
 				break
+	elif ok:
+		# in a scenario with `world`, §7.4's amendment of §17.6 (REALISM.md §2.23, its first use): a permit issued or
+		# accepted blocks unless its job is held for the next duty (§17.10); anyone in a hand action blocks; permits
+		# requested, approved, isolated, done or returned, and held jobs, don't
+		var held := {}
+		for pi in people.size():
+			for q in e.sp_held[pi]:
+				held[q["work"]] = true
+		for wi in e.pstate.size():
+			if (e.pstate[wi] == 4 or e.pstate[wi] == 5) and not held.has(e.m.works[wi]["id"]):
+				ok = false
+				break
+		if not e.busy.is_empty():
+			ok = false
 	if ok and (not e.st_jumped.is_empty() or e._npc_pending > 0):
 		ok = false
 	if ok:
@@ -1259,15 +1304,19 @@ func step(e) -> void:
 		var old: int = e.st_jumped[0]
 		var nw: int = e.st_jumped[1]
 		e.st_jumped = []
+		# in a scenario with `world` (REALISM.md §2.23, §7.4) held jobs stay held through the gap, their locks on
+		# (§17.10); otherwise a jump skips them as every other instance (§17.10)
+		var keep_held: bool = e._world
 		for pi in people.size():
 			var all := []
 			if e.sp_cur[pi] != null:
 				all.append(e.sp_cur[pi])
 			all.append_array(e.sp_queue[pi])
-			all.append_array(e.sp_held[pi])
+			if not keep_held:
+				all.append_array(e.sp_held[pi])
 			for inst in all:
 				e._ev(["task", people[pi]["id"], inst["task"], "skipped"])
-		place_all(e, nw, old)
+		place_all(e, nw, old, keep_held)
 		jump_step = true
 	# the players' arrive, leave, ppe, zone and stop inputs, in the order made, each for its slot's person now (a slot
 	# playing nobody is in free mode: its stop refused, the others nothing)
@@ -2336,6 +2385,30 @@ func run(e, pi: int, cur: Dictionary):
 		e.sp_result[pi] = null
 		x["busy"] = false
 		return "next" if r == "done" else "fail"
+	if s.has("issue") or s.has("order"):
+		# REALISM.md §2.23: an issue made at the counter (a walk to the part's store's place first), an order where
+		# they stand; an order without qty orders up to the part's max (worked out in step 1)
+		if not x.get("busy", false):
+			if s.has("issue"):
+				var stv: Dictionary = e._sr
+				var store: Dictionary = stv["stores"][stv["store_ix"][stv["parts"][stv["ix"][s["issue"]]]["store"]]]
+				var r := go(e, pi, cur, pix[store["place"]])
+				if r != "next":
+					return r
+				x.erase("dest")
+				var w = cur["work"] if s["for"] == "$" else s["for"]
+				e.npc_queue.append(["issue", s["issue"], s["qty"], w, pid])
+			else:
+				e.npc_queue.append(["order", s["order"], s.get("qty"), pid])
+			x["busy"] = true
+			e.sp_result[pi] = null
+			return "wait"
+		if e.sp_result[pi] == null:
+			return "wait"
+		var r2 = e.sp_result[pi]
+		e.sp_result[pi] = null
+		x["busy"] = false
+		return "next" if r2 == "done" else "fail"
 	if s.has("lock") or s.has("unlock"):
 		var k := "lock" if s.has("lock") else "unlock"
 		var w = cur["work"] if s[k]["work"] == "$" else s[k]["work"]
@@ -3892,6 +3965,23 @@ func trainee_steps(e, pi: int, tin: Array, used: Array, mine: Array, took: Dicti
 			if typeof(r) == TYPE_STRING and r == "wait" and _first_look(x) \
 					and early_done(e, pi, cur, "wo", [w, a], null, slot):
 				r = "next"
+		elif s.has("issue") or s.has("order"):
+			# REALISM.md §2.23: their own issue of that part against that work (any qty), or order of that part, done
+			# in this step or kept from before (an issue or order made stays made)
+			var k := "issue" if s.has("issue") else "order"
+			var w = (cur["work"] if s["for"] == "$" else s["for"]) if k == "issue" else null
+			for j in mine.size():
+				var y: Array = mine[j]
+				if took.has(j) or y[1] != k or not _same(y[2], s[k]):
+					continue
+				if (k == "issue" and _same(y[4], w) and _same(y[5], pid) and y[6] == "done") \
+						or (k == "order" and _same(y[4], pid) and y[5] == "done"):
+					took[j] = true
+					r = "next"
+					break
+			if typeof(r) == TYPE_STRING and r == "wait" and _first_look(x) \
+					and early_done(e, pi, cur, k, [s[k], w], null, slot):
+				r = "next"
 		elif s.has("handover") and s["handover"] == "take":
 			if lock_target(e, pi, cur, s, null).x == -1:
 				r = "next"
@@ -4030,6 +4120,12 @@ func keep(e, pi: int, mine: Array, took: Dictionary, slot: int) -> void:
 		elif kind == "hand":            # (REALISM.md §2.13)
 			if y[6] == "done" and _same(y[5], pid):
 				early.append(["hand", y[0], y[2], y[3]])
+		elif kind == "issue":           # (REALISM.md §2.23: the part and the work)
+			if y[6] == "done" and _same(y[5], pid):
+				early.append(["issue", y[0], y[2], y[4]])
+		elif kind == "order":           # (the part)
+			if y[5] == "done" and _same(y[4], pid):
+				early.append(["order", y[0], y[2]])
 		elif kind == "permit" or kind == "lock" or kind == "unlock" or kind == "wo":
 			if y[5] == "done" and _same(y[4], pid):
 				if kind == "permit":
@@ -4059,6 +4155,10 @@ func early_done(e, pi: int, cur: Dictionary, kind: String, want: Array, o, slot:
 			ok = _same(q[2], want[0]) and q[3] == want[1] and WorkOrders.holds(e, want[0], want[1], q[4])
 		elif kind == "hand":
 			ok = _same(q[2], want[0]) and _same(q[3], want[1]) and Hands.hand_holds(e, want[0], want[1], o)
+		elif kind == "issue":           # (REALISM.md §2.23: an issue or order made stays made)
+			ok = _same(q[2], want[0]) and _same(q[3], want[1])
+		elif kind == "order":
+			ok = _same(q[2], want[0])
 		else:
 			ok = _same(q[2], want[0]) and q[3] == want[1] and _lock_holds(e, kind, want[0], want[1], pi)
 		if ok:

@@ -27,7 +27,7 @@ const FORMS := {
 	"permit": [["s", "s", "zs"]], "lock": [["s", "i", "zs"]], "unlock": [["s", "i", "zs"]],
 	"remove_lock": [["s", "i", "zs", "s", "zs"]],
 	"role": [["s"]], "release": [[]], "task_ack": [[]], "arrive": [["s"]], "leave": [["s"]], "read": [["s", "n"], ["s", "n", "s"]],
-	"say": [["s", "s"]], "pick": [["i"]], "call": [["s", "s", "zs"]], "jump": [["s"]], "ppe": [["s", "i"]],
+	"say": [["s", "s"]], "pick": [["i"]], "call": [["s", "s", "zs"]], "jump": [["s"], ["s", "i"]], "ppe": [["s", "i"]],
 	"zone": [["s", "s"]], "stop": [["s"]], "board": [["s", "zs"]], "alight": [["s", "zs"]],
 	"get_on": [["s"]], "drive": [["s", "s"], ["s", "s", "s"]], "weather": [["s"]],
 	"audio": [["i"]], "phone": [["s"]],    # (REALISM.md §8.5)
@@ -35,6 +35,7 @@ const FORMS := {
 	"jsa": [["s", "a", "a", "zs"]], "talk": [["s", "a", "zs"]],     # (REALISM.md §8.6: lists of ids)
 	"wo": [["s", "s", "zs", "l"]],          # a work order's action and its data (REALISM.md §2.20)
 	"discuss": [["s", "s", "s"]],           # a pick at a discussion's point (REALISM.md §6.3.1)
+	"issue": [["s", "n", "s", "zs"]], "order": [["s", "n", "zs"]],     # the stores (REALISM.md §2.23)
 }
 
 

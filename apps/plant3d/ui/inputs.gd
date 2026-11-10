@@ -91,6 +91,16 @@ func work_order(work: String, action: String, person_id, data: Array) -> int:
 	return send(["wo", work, action, person_id, data])
 
 
+## Parts drawn from the stores against a work (REALISM.md §2.23): the part the person wrote on the request.
+func issue(part: String, qty: int, work: String, person_id) -> int:
+	return send(["issue", part, qty, work, person_id])
+
+
+## A purchase order for a part (REALISM.md §2.23).
+func order(part: String, qty: int, person_id) -> int:
+	return send(["order", part, qty, person_id])
+
+
 func lock(work: String, point: int, person_id) -> int:
 	return send(["lock", work, point, person_id])
 
@@ -151,8 +161,9 @@ func discuss(discussion: String, point: String, option: String) -> int:
 	return send(["discuss", discussion, point, option])
 
 
-func jump(hhmm: String) -> int:
-	return send(["jump", hhmm])
+## A jump to the next HH:MM, then `days` clock days on (REALISM.md §2.23: 0 to 30; 0 is §17.6's jump).
+func jump(hhmm: String, days := 0) -> int:
+	return send(["jump", hhmm] if days == 0 else ["jump", hhmm, days])
 
 
 func ppe(item: String, on: int) -> int:

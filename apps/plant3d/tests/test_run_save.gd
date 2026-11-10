@@ -37,6 +37,7 @@ func run(tree: SceneTree) -> Array:
 	_round_trip_weather(p)
 	_round_trip_lab(p)
 	_round_trip_wo(p)
+	_round_trip_stores(p)
 	if ran != null:
 		_compiled_fixed(m, ran, p)
 	_file(m, p)
@@ -363,6 +364,112 @@ func _round_trip_wo(p: Array) -> void:
 	if Autosave._engine_contents(f2, t2) == "":
 		p.append("realism wo: a save with an NPC's completion of a work without codes was taken")
 	pump["codes"] = codes
+
+
+## The realism vectors' stores (REALISM.md §2.23) saved twice: in the middle of a fitting (run 7 at step 40: the range 3
+## transmitter taken, the range 4 still issued against the gauge's order, the fitting's busy record naming the work its
+## part came from) and with a purchase order pending (run 8 at step 100: the storekeeper's reorder, the packing issued
+## against the valve's order). Put back into a fresh engine, each run goes on bit for bit to its end (the fitting done,
+## the look-alike refused; the order delivered in the jump's step); a save whose stock, orders, counter, issued parts,
+## fitting, NPC issue or order, kept issue or order, or jump input is damaged or names no part or work of the content
+## is refused.
+func _round_trip_stores(p: Array) -> void:
+	const JsonStrict = preload("res://sim/json_strict.gd")
+	var path := ProjectSettings.globalize_path("res://").path_join("../../ref/vectors/plant3d-realism.json").simplify_path()
+	var S: Dictionary = JsonStrict.parse(FileAccess.get_file_as_bytes(path), 1000).value["stores"]
+	var caps := {}
+	var f2s := {}
+	for at in [[7, 40], [8, 100]]:
+		var run: Dictionary = S["runs"][at[0]]
+		var files: Dictionary = S["files"].duplicate()
+		files["scenarios/s1.json"] = run["scenario"]
+		if run["staff"] != null:
+			files["staff.json"] = run["staff"]
+		for rel in run.get("files", {}):
+			if run["files"][rel] == null:
+				files.erase(rel)
+			else:
+				files[rel] = run["files"][rel]
+		var m = PlantModel.from_files(files)
+		if m.error != "":
+			p.append("the realism stores plant did not load: %s" % m.error)
+			return
+		var e = PlantEngine.new(m, "s1")
+		var inputs: Array = run["inputs"]
+		var i := 0
+		while e.step_no < at[1]:
+			while i < inputs.size() and inputs[i][0] == e.step_no + 1:
+				e.apply_input(inputs[i])
+				i += 1
+			e.step()
+		var cap := RunSave.capture(e, RunSave.engine_fields(e))
+		var f2 = PlantEngine.new(m, "s1")
+		var bad := RunSave.check(f2, RunSave.engine_fields(f2), cap)
+		if bad == "":
+			bad = Autosave._engine_contents(f2, cap)
+		if bad != "":
+			p.append("realism stores %d: a fresh engine refuses its own save: %s" % [at[0], bad])
+			return
+		caps[at[0]] = cap.duplicate(true)
+		f2s[at[0]] = f2
+		RunSave.apply(f2, cap)
+		while e.step_no < int(run["until"]):
+			while i < inputs.size() and inputs[i][0] == e.step_no + 1:
+				e.apply_input(inputs[i])
+				f2.apply_input(inputs[i])
+				i += 1
+			e.step()
+			f2.step()
+			if f2.cur != e.cur or f2.digest() != e.digest():
+				p.append("realism stores %d: the restored run differs at step %d" % [at[0], e.step_no])
+				break
+		if f2.events.slice(f2.events.size() - 3) != e.events.slice(e.events.size() - 3):
+			p.append("realism stores %d: the restored run's last events differ" % at[0])
+	if caps.size() != 2:
+		return
+	var c7: Dictionary = caps[7]
+	var c8: Dictionary = caps[8]
+	if c7["busy"].get("ic1", []).size() != 7 or c7["sr_issued"] != {"wo_gauge": {"tx_r4": 1}}:
+		p.append("realism stores: the save is not in the middle of the fitting (%s, %s)" % [str(c7["busy"]),
+				str(c7["sr_issued"])])
+	if c8["sr_orders"].size() != 1 or c8["sr_po"] != 1 or c8["sr_issued"] != {"wo_valve": {"packing": 2}}:
+		p.append("realism stores: the save has no order pending (%s)" % str(c8["sr_orders"]))
+	var b6: Array = c7["busy"]["ic1"].slice(0, 6)
+	var bw: Array = c7["busy"]["ic1"].duplicate()
+	bw[6] = "wo_nowhere"
+	var o: Array = c8["sr_orders"][0]
+	var stock: Array = c8["sr_stock"]
+	var cases := [
+		[7, {"busy": {"ic1": b6}}], [7, {"busy": {"ic1": bw}}],
+		[7, {"sr_issued": {"wo_nowhere": {"tx_r4": 1}}}], [7, {"sr_issued": {"wo_gauge": {"gasket": 1}}}],
+		[7, {"sr_issued": {"wo_gauge": {"tx_r4": 0}}}], [7, {"sr_issued": {"wo_gauge": {}}}],
+		[8, {"sr_stock": stock.slice(1)}], [8, {"sr_stock": [stock[0] + 1] + stock.slice(1)}],
+		[8, {"sr_stock": [-1] + stock.slice(1)}], [8, {"sr_due": c8["sr_due"].map(func(x): return 0)}],
+		[8, {"sr_orders": []}], [8, {"sr_orders": [[o[0], "gasket", o[2], o[3], o[4], o[5]]]}],
+		[8, {"sr_orders": [[o[0], o[1], 0, o[3], o[4], o[5]]]}], [8, {"sr_orders": [["PO-0002", o[1], o[2], o[3], o[4], o[5]]]}],
+		[8, {"sr_orders": [[o[0], o[1], o[2], "nobody", o[4], o[5]]]}], [8, {"sr_orders": [[o[0], o[1], o[2], o[3], o[4], o[4]]]}],
+		[8, {"sr_orders": [o.slice(0, 5)]}], [8, {"sr_po": -1}], [8, {"sr_po": 0}],
+		[8, {"npc_queue": [["issue", "gasket", 1, "wo_valve", "keeper"]]}],
+		[8, {"npc_queue": [["issue", "packing", 1, "wo_nowhere", "keeper"]]}],
+		[8, {"npc_queue": [["issue", "packing", null, "wo_valve", "keeper"]]}],
+		[8, {"npc_queue": [["order", "packing", null, "nobody"]]}], [8, {"npc_queue": [["order", "packing"]]}],
+		[8, {"st_kept": [[["order", 3]]] + c8["st_kept"].slice(1)}],
+		[8, {"st_kept": [[["issue", 3, "packing"]]] + c8["st_kept"].slice(1)}],
+		[8, {"queue": [["jump", "08:00", 1, 2]]}], [8, {"queue": [["issue", "packing", 1]]}]]
+	for c in cases:
+		var t: Dictionary = caps[c[0]].duplicate(true)
+		for k in c[1]:
+			t[k] = c[1][k]
+		if Autosave._engine_contents(f2s[c[0]], t) == "":
+			p.append("realism stores: a save with %s was taken" % str(c[1]))
+	for c in [{"npc_queue": [["order", "packing", null, "keeper"]]}, {"st_kept": [[["order", 3, "packing"]]] + c8["st_kept"].slice(1)},
+			{"queue": [["jump", "08:00", 1]]}]:
+		var t: Dictionary = c8.duplicate(true)
+		for k in c:
+			t[k] = c[k]
+		var why: String = Autosave._engine_contents(f2s[8], t)
+		if why != "":
+			p.append("realism stores: a save with %s was refused: %s" % [str(c), why])
 
 
 ## The water treatment plant's day work (W3) saved in the middle of its sequences: an RO train being cleaned in place

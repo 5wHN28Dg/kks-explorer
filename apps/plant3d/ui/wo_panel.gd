@@ -17,6 +17,7 @@ const Permits = preload("res://ui/permits.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const Wo = preload("res://sim/workorders.gd")
 const InputCheck = preload("res://net/input_check.gd")
+const StoresPanel = preload("res://ui/stores_panel.gd")
 
 const STATE_WORDS := ["No work order", "Notified", "Planned", "Scheduled", "In progress", "Complete", "Closed",
 	"Cancelled"]
@@ -308,7 +309,8 @@ func refresh() -> void:
 	var e = ui.clock.engine
 	if e == null or e.m.wo_doc == null:
 		return
-	var sig := [work, code, today(e), e.wo_count, e.wo_history.size(), ui.me()]
+	var sig := [work, code, today(e), e.wo_count, e.wo_history.size(), ui.me(),
+			StoresPanel.issued_words(e, work) if work != "" else ""]     # (its issued parts, REALISM.md §2.23)
 	# (a work's form follows only its own work: other works' moves never rebuild a completion being filled in)
 	for wd in ([e.m.works[e.m.work_ix[work]]] if work != "" and e.m.work_ix.has(work) else e.m.works):
 		sig.append(state_of(e, wd["id"]))
@@ -355,6 +357,10 @@ func _list(e) -> void:
 			if st <= 4:
 				hours += float(wd.get("hours", 0.0))
 	open_ws.sort_custom(func(a, b): return _before(a[0], b[0]))     # by state, priority, day, then number
+	if ui.stores != null and ui.stores.available():      # (the parts, REALISM.md §2.23)
+		var sb := W.button("Stores", func(): ui.open_stores())
+		sb.name = "to_stores"
+		body.add_child(sb)
 	body.add_child(W.label("Backlog: %d open order%s, %s planned crew hours" % [open_ws.size(),
 			"" if open_ws.size() == 1 else "s", _hours(hours)], 18, Color.WHITE))
 	if open_ws.is_empty():
@@ -449,6 +455,15 @@ func _form(e, w: Dictionary) -> void:
 	var pb := W.button("Open its permit", func(): ui.open_permits(wid))
 	pb.name = "to_permit"
 	body.add_child(pb)
+	if e._sr != null:           # its issued parts, and the counter (REALISM.md §2.23)
+		var held := StoresPanel.issued_words(e, wid)
+		var il := W.label("Parts issued: %s" % (held if held != "" else "none"), 17, W.DIM)
+		il.name = "issued"
+		body.add_child(il)
+		if st in StoresPanel.WO_OPEN:
+			var db := W.button("Draw parts for it at the counter", func(): ui.open_stores("issue", wid))
+			db.name = "to_counter"
+			body.add_child(db)
 	# the actions that come next
 	for a in ["notify", "plan", "schedule", "complete", "close", "cancel"]:
 		if not st in FROM[a] or not may(e, ui.me(), a, w):

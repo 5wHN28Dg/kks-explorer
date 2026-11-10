@@ -32,6 +32,7 @@ const Hands = preload("hands.gd")
 const Hse = preload("hse.gd")
 const Disc = preload("discuss.gd")   # discussions (REALISM.md §6.3.1)
 const WorkOrders = preload("workorders.gd")
+const Stores = preload("stores.gd")    # the stores (REALISM.md §2.23)
 
 const STEP := 0.1
 const SLOTS := 8                    # a session run's slots, 0 to 7 (§17.13)
@@ -248,6 +249,15 @@ var wo_count := 0
 var wo_history: Array = []          # the run's closed and cancelled work orders' records, in that order
 var dsc: Array = []                 # per discussion of discussions.json its live or last instance ({} before it; sim/discuss.gd)
 var wo_npc_done: Array = []         # [work, person]: this step's NPC dones, written up in step 3
+# the stores (REALISM.md §2.23; sim/stores.gd), in a plant with stores.json: the catalogue (or null), each part's two
+# slots (stock, due), and the state saved with a run
+var _sr = null
+var _sr_slot := PackedInt32Array()
+var sr_stock: Array = []            # per part in the file's order: on the shelf
+var sr_due: Array = []              # per part: on order, not yet delivered
+var sr_po := 0                      # the purchase order counter
+var sr_orders: Array = []           # the pending orders in the order made: [number, part, qty, by, ordered, due]
+var sr_issued := {}                 # work id -> {part: count} issued against it and not yet fitted
 var _wx_mode := 0                   # its mode (0 seeded, 1 fixed, 2 scripted), slots, lag factors and targets per
 var _wx_slots := PackedInt32Array() # kind (one table per driven value), out of _wx for the step's cost
 var _wx_f := PackedFloat64Array()
@@ -304,6 +314,7 @@ func _init(model = null, scenario = null, session := false) -> void:
 		_wx_slots = _wx["slots"]
 		_wx_f = _wx["factors"]
 		_wx_t = _wx["targets"]
+	Stores.init(self)               # (before step 0: it writes the parts' values, REALISM.md §2.23)
 	_compile()
 	_step0()
 	for k in m.lifts.size():
@@ -604,6 +615,8 @@ func _step0() -> void:
 	var init: Dictionary = sc["init"]
 	for k in init:
 		cur[ix[k]] = float(init[k])
+	if _sr != null:
+		Stores.step0(self)          # the shelf and on order (REALISM.md §2.23)
 	latched.resize(_tr.size())
 	trip_count.resize(_tr.size())
 	for t in sc.get("latched", []):
@@ -804,8 +817,19 @@ func radio_call(role_id, task, work = null, slot = null) -> void:
 	_q(["call", role_id, task, work], slot)
 
 
-func jump(hhmm, slot = null) -> void:
-	_q(["jump", hhmm], slot)
+## A jump to the next HH:MM, then `days` days on (REALISM.md §2.23; without days, §17.6's input).
+func jump(hhmm, slot = null, days = null) -> void:
+	_q(["jump", hhmm] if days == null else ["jump", hhmm, days], slot)
+
+
+## Parts drawn from the stores against a work (REALISM.md §2.23).
+func issue(part, qty, work, person = null, slot = null) -> void:
+	_q(["issue", part, qty, work, person], slot)
+
+
+## A purchase order for a part (REALISM.md §2.23).
+func order(part, qty, person = null, slot = null) -> void:
+	_q(["order", part, qty, person], slot)
 
 
 ## The trainee puts a PPE item on (1) or takes it off (0), at a locker (§17.6, §17.11).
@@ -1005,7 +1029,13 @@ func apply_input(item: Array) -> void:
 				remove_lock(item[2], item[3], item[4], item[5], item[6], true, slot)
 			else:
 				remove_lock(item[2], item[3], item[4], item[5], null, false, slot)
-		"role", "arrive", "leave", "pick", "jump", "get_on", "audio", "phone":
+		"jump":
+			jump(item[2], slot, item[3] if item.size() > 3 else null)
+		"issue":
+			issue(item[2], item[3], item[4], item[5], slot)
+		"order":
+			order(item[2], item[3], item[4], slot)
+		"role", "arrive", "leave", "pick", "get_on", "audio", "phone":
 			_q([item[1], item[2]], slot)
 		"drive":
 			drive(item[2], item[3], item[4] if item.size() > 4 else null, slot)
@@ -1934,6 +1964,12 @@ func _step() -> void:
 			if npc:
 				_npc_result(item[3], r, k0)
 			continue
+		if kind == "issue" or kind == "order":     # the stores (REALISM.md §2.23)
+			var k0 := events.size()
+			var r := Stores.issue(self, item, npc) if kind == "issue" else Stores.order(self, item, npc)
+			if npc:
+				_npc_result(item[item.size() - 1], r, k0)
+			continue
 		if kind == "tool":              # REALISM.md §2.3: a tool taken or put back at the person's place
 			var k0 := events.size()
 			var r := Hands.tool(self, item[1], item[3], item[2], npc)
@@ -2160,6 +2196,9 @@ func _step() -> void:
 	# then the hand actions whose minutes end (REALISM.md §2.4, §2.13)
 	if not busy.is_empty():
 		Hands.end_hands(self, gap > 0)
+	# then the deliveries whose clock time is reached (REALISM.md §2.7, §2.23)
+	if not sr_orders.is_empty():
+		Stores.deliveries(self)
 	# then the lab's results whose clock time is reached (REALISM.md §2.19)
 	if not _lab.is_empty():
 		Hands.lab_results(self)
@@ -2507,6 +2546,8 @@ func snapshot(with_values: bool = true) -> Dictionary:
 		Hse.snapshot_part(self, s)      # (REALISM.md §8.6)
 	if _wo_ids != null:
 		WorkOrders.snapshot_part(self, s)   # (REALISM.md §2.20)
+	if _sr != null:
+		Stores.snapshot_part(self, s)       # (REALISM.md §2.23)
 	if with_values:
 		var vals := {}
 		for i in n:
@@ -2568,6 +2609,8 @@ func digest_tree() -> Array:
 		tree.append(Hse.digest_part(self))
 	if _wo_ids != null:                 # the work orders (REALISM.md §2.20), with workorders.json only
 		tree.append(WorkOrders.digest_part(self))
+	if _sr != null:                     # the stores (REALISM.md §2.23), with stores.json only
+		tree.append(Stores.digest_part(self))
 	return tree
 
 
@@ -2690,7 +2733,7 @@ func clone():
 			"_sm", "_S", "_ds", "_absent", "_fixed_trainee", "_show", "_fault_kks", "J", "ev_mark", "st_order",
 			"st_session", "st_next1", "_lift_ix", "_load_slot", "_lift_ctl", "_lift_ops", "_world", "_world_seed",
 			"_world_year_day", "_w_S", "_gap", "_wear_ps", "_draws", "_wx", "wx_kind", "wx_s", "_wx_mode", "_wx_slots", "_wx_f", "_wx_t",
-			"_hw", "_hands", "_meters", "_works_on", "_fdef", "_lab", "_lab_of", "_wo_ids", "_wo_slot", "wo_count"]:
+			"_hw", "_hands", "_meters", "_works_on", "_fdef", "_lab", "_lab_of", "_wo_ids", "_wo_slot", "wo_count", "_sr", "_sr_slot", "sr_po"]:
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_wait_on", "sp_worn",
@@ -2701,6 +2744,7 @@ func clone():
 			"st_left", "st_pending", "st_made",
 			"sp_duty", "sp_duties", "sp_slots", "sp_leg", "sp_cur", "sp_queue", "sp_result", "sp_held", "sp_acts",
 			"riders", "sp_ride", "sp_stairs", "sp_watch", "st_veh", "sp_spans", "tool_n", "carried", "busy", "cause_of", "cause_s",
-			"slip_s", "lab_q", "lab_s", "jsa_of", "talked", "wo", "wo_no", "wo_rec", "wo_history", "wo_npc_done", "dsc"]:
+			"slip_s", "lab_q", "lab_s", "jsa_of", "talked", "wo", "wo_no", "wo_rec", "wo_history", "wo_npc_done",
+			"sr_stock", "sr_due", "sr_orders", "sr_issued", "dsc"]:
 		c.set(k, get(k).duplicate(true))
 	return c
