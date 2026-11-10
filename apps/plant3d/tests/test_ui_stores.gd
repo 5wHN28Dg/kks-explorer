@@ -253,10 +253,21 @@ func _panel(tree: SceneTree) -> Array:
 	var lines := "\n".join(Debrief.summary_lines(d))
 	if not lines.contains("Parts drawn for") or not lines.contains("10 × WDP-PT-FERRULES"):
 		p.append("the debrief has no parts drawn: %s" % lines.right(400))
-	# a person played away from the counter: the form sends them there
+	# a jump with days through the input path
+	ui.inputs.jump("07:00", 2)
+	if e.queue.is_empty() or e.queue[-1] != ["jump", "07:00", 2]:
+		p.append("a jump with days was queued as %s" % str(e.queue.slice(-1)))
+	ui.clock.run_steps(1)
+	# a person played away from the counter: the form sends them there (a person is taken at a run's first step:
+	# the shift again)
+	ui.start_shift("test_stores")
+	await tree.process_frame
+	ui.clock.set_speed(SimClock.Speed.PAUSED)
+	e = ui.clock.engine
 	var who := ""                   # (someone on duty who is not a storekeeper)
 	for pi in e._sm.people.size():
-		if e.sp_on[pi] and not e._sm.auth[e._sm.people[pi]["role"]].has("issue_parts"):
+		var rid: String = e._sm.people[pi]["role"]
+		if e.sp_on[pi] and e._sm.roles[rid]["play"] and not e._sm.auth[rid].has("issue_parts"):
 			who = e._sm.people[pi]["id"]
 			break
 	ui.inputs.role(who)
@@ -270,10 +281,5 @@ func _panel(tree: SceneTree) -> Array:
 		if sp.at_counter() or sp.body.find_child("go_counter", true, false) == null \
 				or sp.body.find_child("issue_send", true, false) != null:
 			p.append("away from the counter the issue form was offered")
-	# a jump with days through the input path
-	ui.inputs.jump("07:00", 2)
-	if e.queue.is_empty() or e.queue[-1] != ["jump", "07:00", 2]:
-		p.append("a jump with days was queued as %s" % str(e.queue.slice(-1)))
-	ui.clock.run_steps(1)
 	main.free()
 	return p
