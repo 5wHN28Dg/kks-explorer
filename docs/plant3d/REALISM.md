@@ -601,7 +601,7 @@ at 29–35 °C over the runs.
   transmitter's isolation, its repair putting back the cause's states (the drift and the trim; the terminal). The two
   are told apart at the transmitter (the HART PV against the partners; the multimeter's or the clamp's current against
   the one the transmitter says it sets) and put right by hand (a trim, or the terminals tightened); HW3 adds the other
-  three causes and the diagnosis tab. Replacing the transmitter waits for the stores (§7.2) in HW3.
+  three causes and the diagnosis tab (§2.22). Replacing the transmitter waits for the stores (§7.2, after WM2).
 - **A cure follows the fix made** (the coordinator's decision, 2026-11-03, on real-world grounds; §2.6 `fixed`): the
   work's `done` clears the fault only when the trainee's own fix matched the drawn cause and left the transmitter
   sound: both causes' `fixed` is `cpt2_sound`, the sensor's error, drift plus trim (`cond_p2_err`), within ±0.3 kPa
@@ -1023,6 +1023,79 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   roles' words; a finding reported from the card, planned,
   scheduled and cancelled from the form; a calibration completed after its permit's done, refused before it in words;
   the debrief's line).
+
+### 2.22 As built for milestone HW3 (2026-11-10: hidden causes)
+
+- **Settled with the user (2026-11-10, option A):** the condenser transmitters are absolute (0–120 kPa(a)) on a vacuum
+  condenser, where a passing manifold valve reads high, not low (§3.1's list was written for a differential
+  transmitter). So the symptom is "transmitter 2 reads apart from its partners" (the fault keeps its id `cond_p2_low`)
+  and each of §3.1's five causes has its true effect: the sensor drifted low (HW2), a loose signal terminal (HW2), a
+  **blocked impulse line** (the reading holds what was trapped in the line while the process moves on), the
+  manifold's **test/vent valve passing** (air leaks in: 2 kPa high) and **water in the terminal side** past a worn
+  cable gland seal (a leak from the return terminal to the housing's earth: 0.6–1.0 mA, jumping on a 7 s cycle, goes
+  past the control system's input, so the screen reads low and jumps while the transmitter's own current is right).
+  The coordinator's order: HW3 without the replacement; the stores (WM2, §7.2) next, then replacing the transmitter.
+- **Earlier runs kept:** drift and the loose terminal weigh 1 as before; the three new causes weigh by a value
+  (`cpt2_w_block`, `cpt2_w_pass`, `cpt2_w_wet`, states at 0), so every earlier scenario's draw has the same total and
+  draws what it drew. The new scenario `shift_tx` (shift_cold's day with both vacuum pumps and closed cooling water
+  pump A on from the start) sets them to 1, makes the fault by its `when` once the condenser passes 60 kPa(a) on its
+  way down, and its world seed (3) draws the blocked line, the cause that needs the process to move to show itself (a
+  fault made by its `when` takes no instructor's cause, §2.6). In the other scenarios the trainer makes the fault and
+  may name any of the five.
+- **The model** (`train_model.py`, the transmitters' loops; `train_hands.py`, the fault, its values and the job): the
+  tapping's pressure goes through a hold while the line is blocked; the flange's vent cracked open puts the air's
+  pressure (101.3 kPa(a)) on the port, and vented while blocked the trapped line keeps it once the vent is shut again
+  (a latch, reset when the line is blown through), while a clear line goes back to the process's; a passing valve
+  adds 2 kPa; the communicator's **loop test** (a hand action with an input, the current 3.6–23 mA, on the
+  electronics; a second HART `set` op on the same code would be a duplicate op) holds the output, and the control
+  system then shows the value that current stands for, past the isolation's hold, so the **loop check** reads the
+  screen (the operator's reading on the radio). Every new node passes the old value itself while sound (a select, a
+  hold, a sum with 0 last), so every earlier value is unchanged bit for bit. `cpt2_sound` (every cause's `fixed`) now
+  also needs the terminal side dry, the gland sealed, the line clear, the manifold's valve and the flange's vent shut
+  and no loop test left on.
+- **The tests that tell them apart** (at the transmitter): the PV against the partners (drift low, passing high, a
+  blocked line held), the multimeter's or the clamp's current against the AO (loose), the terminal side seen with the
+  cover off and the ohms from the terminals to earth with the wires lifted (wet: 40 kΩ, else OL), the vent test (a
+  blocked line keeps the air's pressure after the vent is shut), the manifold's valve shut (passing). Fixes: tighten
+  (loose), the trim (drift), blow the line through with instrument air (blocked, 15 min), shut the valve firmly
+  (passing), dry the terminal side and fit a new gland seal insert with the wires lifted (wet; a 24 mm spanner joins
+  the I&C toolbox for the M20 gland). The new hand actions: `dmm_ohm`, `dmm_ohm_off`, `dry_terms`, `reseal_gland`,
+  `crack_vent`, `close_vent`, `blow_line`, `shut_test`, `loop_test`, `end_loop_test`; the meter `ohm`. The service
+  file's format gains an action's `input` and `range` (its check, `ref/plant3d_service.py`) and the diagnosis data
+  (`causes`: each in a component, what is found there, the bench fault that runs it; `tests`: what a hand action or a
+  meter shows; `fixes`; `parts`), checked so that every cause is shown by a test and put right by a fix and no test
+  shows every cause.
+- **The technician's job** (an NPC's, or a player's playing it): after the readings, each test or fix its readings
+  call for, each behind a `wait` whose `else` skips its block: water seen (dried, wires lifted, new seal, wires
+  landed), the current low (tightened), the PV apart (the vent test; still at the air's: blown through), the PV high
+  (the valve shut), the PV low (the trim); then the loop check at 4, 8, 12, 16 and 20 mA, each read back from the
+  screen. 62 steps with the toolbox talk (the limit is 64). It changes the HW2 forks' events (the technician now
+  waits a minute at each new decision), the one change to an earlier item, listed below.
+- **The debrief's diagnosis tab** (`ui/diagnosis.gd`, the debrief panel's "Diagnosis"): per fault with hidden causes,
+  the cause and what was found, each test made at its equipment in order with who made it and what it pointed to or
+  ruled out (a reading's meter from the player's input), each fix (the cause's or not), the parts used and whether
+  they were needed, the minutes from the fault to the first test that pointed to the cause alone or the first right
+  fix, and whether it was put right. A view only (nothing in the engine).
+- **The failed part in the Workshop** (§3.5): the tab's button opens the Workshop on the kind with the cause's
+  component picked, what was found there in the note, and the cause's bench fault made when the bench model has one
+  (the blocked line: `impulse_blocked`). Read-only: no part is removed in HW3 (the replacement comes with the stores),
+  so the "writable for the removed part" of §3.5 waits for it, as do the bench's drift and the other causes' bench
+  faults.
+- **The work view:** an action with an input shows a field and its button (the loop test's current); with the
+  communicator carried, a line says what the control room reads while a loop test runs; an ohms reading at or above
+  10⁶ kΩ shows OL; marks for the ohms leads and for water standing in the terminal side. The manual's
+  troubleshooting rows for the blocked line, the passing valve (a row of its own for an absolute transmitter on
+  vacuum) and water carry their cause ids and link the new actions; the commissioning section links the loop test.
+- **Vectors:** `plant3d-v1.json`: only values added (the new nodes in every snapshot). `plant3d-v2.json`: values
+  added; three forks appended to the day (`npc_hands_blocked` on shift_tx, `npc_hands_passing` and `npc_hands_wet`
+  named on the cold plant), each found, fixed by its own fix alone and cured, with the loop check; changed: the forks
+  `npc_hands` and `npc_hands_drift`, from the technician's first new decision on (the same fix made, later), as the
+  job changed. `plant3d-realism.json`: see the comparison in the PR. Digests change with the values.
+- **Tests:** `tests/test_plant3d_hw3.py` (each cause's effect, the vent test, the water's leak and ohms, each cure
+  only by its own fix, the loop test, the weights and shift_tx's draw, the diagnosis data and its refusals, the job's
+  length, the forks), `tests/test_plant3d_hands_content.py` (the job's choices and the five causes in every train
+  scenario), `apps/plant3d/tests/test_ui_hands.gd` (the loop check through the work view's field and its control room
+  line; the diagnosis tab after the job and its button opening the Workshop on the terminal block).
 
 ## 3. Hands-on work and tools
 
