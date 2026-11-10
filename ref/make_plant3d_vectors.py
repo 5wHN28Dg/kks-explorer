@@ -5025,9 +5025,10 @@ def hands_runs():
          'connected (hart), made locally (where), out of range, done (write protect off), by another person '
          '(authority); the calibrator not carried (tool); then a hart op on the locked code', me, hf, meters, 300,
          10),
-        ('a timed bare-hand action abandoned by a jump (§2.13): the trainee cleans the glass (work: false, 30 '
-         'minutes), jumps to 06:30 (the plant fast-forwards: no permit open) and the action is abandoned in the '
-         'jump\'s step; started again after it', me, hf, jump, 200, 10),
+        ('a timed bare-hand action and a jump (§2.13; REALISM.md §2.23): the trainee cleans the glass (work: false, 30 '
+         'minutes) and jumps to 06:30: refused while anyone is in a hand action (§7.4\'s rule in a scenario with '
+         'world; before WM2 the jump was made and the action abandoned in the jump\'s step); started again while it '
+         'goes on (busy)', me, hf, jump, 200, 10),
         ('an NPC\'s job (§2.13, REALISM.md §3.1): ic2 takes three tools at the toolbox, takes the permit and the '
          'lock, opens the cover (2 minutes: start, then done) with a slip drawn from their stream (per mille 1000: '
          'written in the next step\'s step 1), connects the communicator, reads the loop through the multimeter '
@@ -6452,6 +6453,310 @@ def discuss_part():
             'runs': build_runs(discuss_runs(), df)}
 
 
+# ---------------------------------------------------------------- milestone WM2: the stores (REALISM.md §2.23)
+
+DIFF_R4 = 'The range code on the new transmitter\'s plate is 4, not the 3 on the data sheet.'
+DIFF_R3 = 'The range code on the new transmitter\'s plate is 3, not the 4 on the data sheet.'
+STORES_DOC = {'format': 'walkdown-plant-stores', 'version': 1,
+              'stores': [{'id': 'main', 'title': 'Main store', 'place': 'counter', 'self_service': False},
+                         {'id': 'rack', 'title': 'Consumables rack', 'place': 'rack', 'self_service': True}],
+              'parts': [{'id': 'tx_r3', 'number': 'WDP-PT-UNIT-A3', 'title': 'Transmitter, range 3',
+                         'class': 'Pressure transmitter', 'store': 'main', 'stock': 2, 'min': 1, 'reorder': 1,
+                         'max': 3, 'lead_days': 2, 'looks_like': [{'part': 'tx_r4', 'differs': DIFF_R4}]},
+                        {'id': 'tx_r4', 'number': 'WDP-PT-UNIT-A4', 'title': 'Transmitter, range 4',
+                         'class': 'Pressure transmitter', 'store': 'main', 'stock': 1, 'min': 0, 'reorder': 0,
+                         'max': 2, 'lead_days': 3, 'looks_like': [{'part': 'tx_r3', 'differs': DIFF_R3}]},
+                        {'id': 'packing', 'number': 'WDP-MV-PACKING-SET', 'title': 'Stem packing set',
+                         'class': 'Valve: packing', 'store': 'main', 'stock': 4, 'min': 1, 'reorder': 2, 'max': 6,
+                         'lead_days': 1},
+                        {'id': 'ferrules', 'number': 'WDP-PT-FERRULES', 'title': 'Wire end ferrules',
+                         'class': 'Pressure transmitter: wiring', 'store': 'rack', 'stock': 50, 'min': 10,
+                         'reorder': 20, 'max': 100, 'lead_days': 1}]}
+FIT = {'kks': GAUGE, 'action': 'fit_tx', 'component': 'body', 'minutes': 5, 'set': {'g1_new': 1}, 'part': 'tx_r3'}
+
+
+def stores_files():
+    """The work order plant without its reactions (_wo_bare(wo_files())) with stores.json: the main store at the
+    counter (not self-service) and a self-service rack, two look-alike transmitters, a packing set and ferrules; the
+    scenario's stock of ferrules (30, not the file's 50); the gauge's fitting of the range 3 transmitter (a hand action
+    with `part`, 5 minutes); a storekeeper on days at the counter who reorders the packing when its `packing_low`
+    (stock + due ≤ reorder) turns true, and kits the valve's packing on Sundays (an issue step for a work); an
+    instrument technician who may plan work orders; the shift supervisor's order_parts. The scenario starts at
+    07:30 on day 1 (a Monday)."""
+    F = _wo_bare(wo_files())
+    F['stores.json'] = copy.deepcopy(STORES_DOC)
+    m = F['model/a1.json']
+    m['values'] += [['g1_new', {'state': 0}], ['packing_have', {'sum': ['packing_stock', 'packing_due']}],
+                    ['packing_low', {'cmp': ['packing_have', '<=', 2]}]]
+    m['hands'] = [copy.deepcopy(FIT)]
+    sc = F['scenarios/s1.json']
+    sc['start'] = {'day': 1, 'time': '07:30'}
+    sc['stock'] = {'ferrules': 30}
+    st = F['staff.json']
+    st['places'] += [{'id': 'counter', 'at': [18, 13, 0], 'kind': 'store'},
+                     {'id': 'rack', 'at': [19, 9, 0], 'kind': 'store'}]
+    st['ways'] += [['counter', 'p5', 3.7, 'walk'], ['rack', 'p5', 1.5, 'walk']]
+    next(r for r in st['roles'] if r['id'] == 'shift_sup')['authority'].append('order_parts')
+    st['roles'] += [{'id': 'store', 'title': 'Storekeeper', 'discipline': 'mech', 'routine': 'store_days',
+                     'authority': ['issue_parts', 'order_parts'], 'play': True},
+                    {'id': 'ic_tech', 'title': 'Instrument technician', 'discipline': 'inst', 'routine': 'ic_days',
+                     'authority': ['request', 'approve', 'issue', 'accept', 'lock_instrument', 'operate_local',
+                                   'plan_work'], 'play': True}]
+    st['routines'] += [{'id': 'store_days', 'idle': 'idle_store',
+                        'slots': [{'at': '08:00', 'task': 'kit_valve', 'days': ['sun']}]},
+                       {'id': 'ic_days', 'idle': 'idle_mech', 'slots': []}]
+    st['people'] += [{'id': 'keeper', 'role': 'store', 'roster': 'day', 'call': 'Stores'},
+                     {'id': 'ic1', 'role': 'ic_tech', 'roster': 'day', 'call': 'Instruments 1'}]
+    st['tasks'] += [{'id': 'idle_store', 'title': 'At the counter', 'steps': [{'go': 'counter'}, {'work': 30}]},
+                    {'id': 'reorder_packing', 'title': 'Reorder the packing', 'priority': 4,
+                     'steps': [{'go': 'counter'}, {'work': 5, 'anim': 'write'}, {'order': 'packing'}]},
+                    {'id': 'kit_valve', 'title': 'Kit the valve\'s packing', 'priority': 3,
+                     'steps': [{'issue': 'packing', 'qty': 2, 'for': 'wo_valve', 'else': 1},
+                               {'issue': 'tx_r3', 'qty': 3, 'for': 'wo_gauge', 'else': 2},
+                               {'work': 2, 'anim': 'write'}]}]
+    st['reactions'].append({'on': {'value': 'packing_low'}, 'roles': ['store'], 'task': 'reorder_packing'})
+    return F
+
+
+def _sr(fn):
+    def f(F):
+        fn(F['stores.json'])
+    return f
+
+
+def _sr_part(i, fn):
+    return _sr(lambda d: fn(d['parts'][i]))
+
+
+def _sr_task(tid, fn):
+    return _st(lambda st: fn(next(t for t in st['tasks'] if t['id'] == tid)['steps']))
+
+
+def _sr_no_file(F):
+    """stores_files without stores.json and everything that names its parts."""
+    F.pop('stores.json')
+    m = F['model/a1.json']
+    m['values'] = [v for v in m['values'] if not v[0].startswith('packing_')]
+    del m['hands'][0]['part']
+    del F['scenarios/s1.json']['stock']
+    st = F['staff.json']
+    st['tasks'] = [t for t in st['tasks'] if t['id'] not in ('reorder_packing', 'kit_valve')]
+    st['reactions'] = [r for r in st['reactions'] if 'value' not in r['on'] or r['on']['value'] != 'packing_low']
+    next(r for r in st['routines'] if r['id'] == 'store_days')['slots'] = []
+
+
+def _sr_kit_run(F):
+    """The storekeeper kits the valve's packing at 08:00 every day (the Sunday slot moved to the run's day)."""
+    del next(r for r in F['staff.json']['routines'] if r['id'] == 'store_days')['slots'][0]['days']
+
+
+REJECTS_STORES = [
+    ('stores.json of another format', 'bad_format', _sr(lambda d: SET(d, 'format', 'walkdown-plant-workorders')), 'format must be'),
+    ('stores.json of version 2', 'bad_version', _sr(lambda d: SET(d, 'version', 2)), 'version must be 1'),
+    ('stores.json without its parts', 'missing_key', _sr(lambda d: d.pop('parts')), 'stores.json.parts'),
+    ('stores.json with a key it doesn\'t know', 'unknown_key', _sr(lambda d: SET(d, 'orders', [])), 'stores.json.orders'),
+    ('stores.json in a version 1 plant', 'unknown_key', lambda F: SET(F['plant.json'], 'version', 1), 'only in a version 2 plant'),
+    ('no stores', 'bad_length', _sr(lambda d: SET(d, 'stores', [])), 'stores.json.stores'),
+    ('nine stores', 'bad_length',
+     _sr(lambda d: SET(d, 'stores', [dict(d['stores'][0], id=f's{k}') for k in range(9)])), 'stores.json.stores'),
+    ('a store whose id is not an identifier', 'bad_id', _sr(lambda d: SET(d['stores'][0], 'id', 'Main')), 'stores[0].id'),
+    ('a store twice', 'dup_id', _sr(lambda d: SET(d['stores'][1], 'id', 'main')), 'store main twice'),
+    ('a store without its place', 'missing_key', _sr(lambda d: d['stores'][0].pop('place')), 'stores[0].place'),
+    ('a store whose title is empty', 'bad_type', _sr(lambda d: SET(d['stores'][0], 'title', '')), 'stores[0].title'),
+    ('a store at a place the staff don\'t have', 'bad_ref', _sr(lambda d: SET(d['stores'][1], 'place', 'shelf')), "no place 'shelf'"),
+    ('a store whose self_service is not true or false', 'bad_type',
+     _sr(lambda d: SET(d['stores'][1], 'self_service', 1)), 'self_service: true or false'),
+    ('no parts', 'bad_length', _sr(lambda d: SET(d, 'parts', [])), 'stores.json.parts'),
+    ('513 parts', 'bad_length', _sr(lambda d: SET(d, 'parts', [dict(d['parts'][3], id=f'f{k}', number=f'WDP-F-{k}')
+                                                             for k in range(513)])), 'stores.json.parts'),
+    ('a part whose id is 23 characters', 'bad_id', _sr_part(2, lambda p: SET(p, 'id', 'p' * 23)), 'at most 22'),
+    ('a part twice', 'dup_id', _sr_part(3, lambda p: SET(p, 'id', 'packing')), 'part packing twice'),
+    ('a part without its lead time', 'missing_key', _sr_part(2, lambda p: p.pop('lead_days')), 'parts[2].lead_days'),
+    ('a part with a key it doesn\'t know', 'unknown_key', _sr_part(2, lambda p: SET(p, 'price', 3)), 'parts[2].price'),
+    ('a part number not of the catalogue', 'bad_value', _sr_part(2, lambda p: SET(p, 'number', 'MV-PACKING')), 'parts[2].number'),
+    ('a part number in small letters', 'bad_value', _sr_part(2, lambda p: SET(p, 'number', 'WDP-MV-packing')), 'parts[2].number'),
+    ('a part number of 41 characters', 'bad_value', _sr_part(2, lambda p: SET(p, 'number', 'WDP-' + 'X' * 37)), 'parts[2].number'),
+    ('a part number twice', 'dup_id', _sr_part(1, lambda p: SET(p, 'number', 'WDP-PT-UNIT-A3')), 'WDP-PT-UNIT-A3 twice'),
+    ('a part whose title is empty', 'bad_type', _sr_part(2, lambda p: SET(p, 'title', '')), 'parts[2].title'),
+    ('a part whose class is 41 characters', 'bad_type', _sr_part(2, lambda p: SET(p, 'class', 'c' * 41)), 'parts[2].class'),
+    ('a part of a store not in the file', 'bad_ref', _sr_part(2, lambda p: SET(p, 'store', 'yard')), "no store 'yard'"),
+    ('a stock of half a part', 'bad_number', _sr_part(2, lambda p: SET(p, 'stock', 1.5)), 'parts[2].stock'),
+    ('a minimum of -1', 'bad_number', _sr_part(2, lambda p: SET(p, 'min', -1)), 'parts[2].min'),
+    ('a maximum of 10,000', 'bad_number', _sr_part(3, lambda p: SET(p, 'max', 10000)), 'parts[3].max'),
+    ('a minimum above the reorder point', 'bad_number', _sr_part(2, lambda p: SET(p, 'min', 3)), 'min ≤ reorder < max'),
+    ('a reorder point at the maximum', 'bad_number', _sr_part(2, lambda p: SET(p, 'reorder', 6)), 'min ≤ reorder < max'),
+    ('a stock above the maximum', 'bad_number', _sr_part(2, lambda p: SET(p, 'stock', 7)), 'stock: at most max'),
+    ('a lead time of 0 days', 'bad_number', _sr_part(2, lambda p: SET(p, 'lead_days', 0)), 'parts[2].lead_days'),
+    ('a lead time of 366 days', 'bad_number', _sr_part(2, lambda p: SET(p, 'lead_days', 366)), 'parts[2].lead_days'),
+    ('a part whose value is a model value', 'dup_id',
+     lambda F: F['model/a1.json']['values'].append(['ferrules_due', {'state': 0}]), 'name already used'),
+    ('a part whose value is an ext value', 'dup_id', lambda F: (
+        F['plant.json']['ext'].append('ferrules_stock'), SET(F['scenarios/s1.json']['init'], 'ferrules_stock', 0)),
+     'already an ext value'),
+    ('no look-alikes', 'bad_length', _sr_part(0, lambda p: SET(p, 'looks_like', [])), 'parts[0].looks_like'),
+    ('nine look-alikes', 'bad_length', _sr_part(0, lambda p: SET(p, 'looks_like', p['looks_like'] * 9)), 'parts[0].looks_like'),
+    ('a look-alike not in the file', 'bad_ref', _sr_part(0, lambda p: SET(p['looks_like'][0], 'part', 'tx_r5')), "no part 'tx_r5'"),
+    ('a part that looks like itself', 'bad_ref', _sr_part(0, lambda p: SET(p['looks_like'][0], 'part', 'tx_r3')), 'not the part itself'),
+    ('a look-alike twice', 'dup_id', _sr_part(0, lambda p: p['looks_like'].append(dict(p['looks_like'][0]))), 'tx_r4 twice'),
+    ('a look-alike without its sentence', 'missing_key', _sr_part(1, lambda p: p['looks_like'][0].pop('differs')), 'differs'),
+    ('a look-alike\'s sentence of 201 characters', 'bad_type',
+     _sr_part(1, lambda p: SET(p['looks_like'][0], 'differs', 'd' * 201)), 'looks_like[0].differs'),
+    ('a scenario stock of a part not in the file', 'bad_ref',
+     lambda F: SET(F['scenarios/s1.json']['stock'], 'gasket', 1), "no part 'gasket'"),
+    ('a scenario stock above the part\'s maximum', 'bad_number',
+     lambda F: SET(F['scenarios/s1.json']['stock'], 'ferrules', 101), 'stock.ferrules'),
+    ('a scenario stock of -1', 'bad_number', lambda F: SET(F['scenarios/s1.json']['stock'], 'tx_r3', -1), 'stock.tx_r3'),
+    ('a scenario stock that is not an object', 'bad_type', lambda F: SET(F['scenarios/s1.json'], 'stock', [1]), '.stock'),
+    ('a scenario stock in a plant without stores.json', 'bad_ref',
+     lambda F: (_sr_no_file(F), SET(F['scenarios/s1.json'], 'stock', {'tx_r3': 1})), 'no stores.json'),
+    ('a hand action fitting a part in a plant without stores.json', 'bad_ref',
+     lambda F: (_sr_no_file(F), SET(F['model/a1.json']['hands'][0], 'part', 'tx_r3')), 'no stores.json'),
+    ('a hand action fitting a part not in the file', 'bad_ref',
+     lambda F: SET(F['model/a1.json']['hands'][0], 'part', 'tx_r5'), "no part 'tx_r5'"),
+    ('a hand action fitting a part outside a work', 'bad_value',
+     lambda F: SET(F['model/a1.json']['hands'][0], 'work', False), 'a fitting is made under a work'),
+    ('an issue step in a plant without stores.json', 'bad_ref', lambda F: (
+        _sr_no_file(F), F['staff.json']['tasks'].append({'id': 'kit2', 'title': 'Kit', 'steps': [
+            {'issue': 'packing', 'qty': 1, 'for': 'wo_valve'}]})), 'no stores.json'),
+    ('an issue step of a part not in the file', 'bad_ref', _sr_task('kit_valve', lambda s: SET(s[0], 'issue', 'gasket')), "no part 'gasket'"),
+    ('an issue step without its quantity', 'missing_key', _sr_task('kit_valve', lambda s: s[0].pop('qty')), 'steps[0].qty'),
+    ('an issue step of no parts', 'bad_number', _sr_task('kit_valve', lambda s: SET(s[0], 'qty', 0)), 'qty: 1 to 9,999'),
+    ('an issue step of half a part', 'bad_number', _sr_task('kit_valve', lambda s: SET(s[0], 'qty', 1.5)), 'qty: 1 to 9,999'),
+    ('an issue step for no work', 'bad_ref', _sr_task('kit_valve', lambda s: SET(s[0], 'for', 'wo_fan')), "no work 'wo_fan'"),
+    ('an issue step without its work', 'missing_key', _sr_task('kit_valve', lambda s: s[0].pop('for')), 'steps[0].for'),
+    ('an issue step for the work given in a task given none', 'bad_ref',
+     _sr_task('kit_valve', lambda s: SET(s[0], 'for', '$')), '"$" but no work is ever given'),
+    ('an order step of a part not in the file', 'bad_ref', _sr_task('reorder_packing', lambda s: SET(s[2], 'order', 'gasket')), "no part 'gasket'"),
+    ('an order step of 10,000 parts', 'bad_number', _sr_task('reorder_packing', lambda s: SET(s[2], 'qty', 10000)), 'qty: 1 to 9,999'),
+    ('an order step for a work', 'unknown_key', _sr_task('reorder_packing', lambda s: SET(s[2], 'for', 'wo_valve')), 'steps[2].for'),
+    ('an issue step by a role without issue_parts', 'authority',
+     _st(lambda st: next(r for r in st['roles'] if r['id'] == 'store')['authority'].remove('issue_parts')), 'lacks issue_parts'),
+    ('an order step by a role without order_parts', 'authority',
+     _st(lambda st: next(r for r in st['roles'] if r['id'] == 'store')['authority'].remove('order_parts')), 'lacks order_parts'),
+    ('an authority not known', 'bad_value',
+     _st(lambda st: next(r for r in st['roles'] if r['id'] == 'store')['authority'].append('draw_parts')), 'draw_parts'),
+]
+
+
+def stores_runs():
+    """(why, scenario changes, files, player, steps, snapshot every): WM2's runs (REALISM.md §2.23)."""
+    sf = stores_files()
+    me = {'trainee': 'ic1'}
+    G, T3, T4 = 'wo_gauge', 'tx_r3', 'tx_r4'
+    early = {'start': {'day': 1, 'time': '06:50'}}
+    reasons = Trainee(quiet=True, extra=_x(
+        (2, 'issue', T3, 1, G, 'ic1'), (2, 'issue', 'gasket', 1, G, 'ic1'), (2, 'issue', T3, 1, 'wo_fan', 'ic1'),
+        (2, 'issue', T3, 1, G, 'a_sup'), (2, 'arrive', 'counter'),
+        (3, 'issue', T3, 1, G, 'ic1'), (4, 'wo', G, 'notify', 'ic1', ['reading']), (5, 'wo', G, 'plan', 'ic1', [2]),
+        (500, 'issue', T3, 0, G, 'ic1'), (500, 'issue', T3, 2.5, G, 'ic1'), (500, 'issue', T3, True, G, 'ic1'),
+        (500, 'issue', T3, 3, G, 'ic1'), (500, 'issue', T3, 10000, G, 'ic1'), (500, 'issue', T3, 1.0, G, 'ic1'),
+        (500, 'issue', 'ferrules', 10, G, 'ic1'), (501, 'leave', 'counter'), (502, 'arrive', 'rack'),
+        (503, 'issue', 'ferrules', 10, G, 'ic1'), (503, 'issue', 'ferrules', 25, G, 'ic1'),
+        (504, 'issue', 'packing', 1, G, 'ic1')))
+    free = Scripted(_x(
+        (2, 'issue', 'packing', 1, 'wo_valve', None), (3, 'wo', 'wo_valve', 'notify', None, ['leak']),
+        (4, 'wo', 'wo_valve', 'plan', None, [3]), (5, 'issue', 'packing', 1, 'wo_valve', None),
+        (5, 'issue', 'packing', 1, 'wo_valve', 'keeper'), (6, 'wo', 'wo_valve', 'schedule', None, [1]),
+        (7, 'issue', 'tx_r4', 1, 'wo_valve', None), (8, 'issue', 'ferrules', 30, 'wo_valve', None),
+        (9, 'wo', 'wo_valve', 'cancel', None, []), (10, 'issue', 'packing', 1, 'wo_valve', None),
+        (11, 'order', 'packing', 2, None), (11, 'order', 'packing', 0, None), (11, 'order', 'packing', 2.5, None),
+        (11, 'order', 'gasket', 1, None), (11, 'order', 'packing', 1, 'a_sup'), (11, 'order', 'packing', None, None),
+        *[(12, 'order', 'ferrules', 10, None) for _ in range(9)]))
+    no_wo = copy.deepcopy(sf)
+    no_wo.pop('workorders.json')
+    for w in no_wo['model/a1.json']['works']:
+        for k in ('finds', 'codes', 'hours'):
+            w.pop(k, None)
+    no_wo['staff.json']['roles'] = [dict(r, authority=[a for a in r['authority'] if a not in ('plan_work', 'close_work')])
+                                    for r in no_wo['staff.json']['roles']]
+    plain = Scripted(_x((2, 'issue', 'packing', 2, 'wo_pump', None), (3, 'order', 'packing', 4, None)))
+    delivery = Scripted(_x((2, 'order', 'packing', 2, None), (3, 'order', 'packing', 1, None)))
+    jumps = Scripted(_x(
+        (2, 'order', 'packing', 2, None), (2, 'order', T4, 1, None),
+        (3, 'jump', '07:00', 31), (4, 'jump', '07:00', -1), (5, 'jump', '07:00', 1.5), (6, 'jump', '07:00', 'x'),
+        (7, 'jump', '08:00', 2), (9, 'jump', '07:00', 0), (11, 'jump', '07:40', 0.0)))
+    rule = Scripted(_x(
+        (2, 'permit', G, 'request', None), (3, 'jump', '07:40'), (5, 'permit', G, 'approve', None),
+        (6, 'lock', G, 0, None), (8, 'jump', '07:50'), (10, 'permit', G, 'issue', None), (11, 'jump', '08:00'),
+        (12, 'permit', G, 'accept', None), (13, 'jump', '08:00'), (14, 'permit', G, 'done', None),
+        (15, 'jump', '08:10'), (16, 'permit', G, 'return', None), (17, 'jump', '08:20')))
+    held_files = realism_files()
+    held_files['staff.json'] = overnight_staff()
+    held = Trainee(extra=[[2, 'permit', G, 'request', None], [3, 'permit', G, 'approve', None],
+                          [1000, 'jump', '06:50']])
+    fit = Trainee(quiet=True, extra=_x(
+        (2, 'wo', G, 'notify', 'ic1', ['reading']), (3, 'wo', G, 'plan', 'ic1', [1]), (4, 'arrive', 'w_gauge'),
+        (5, 'hand', GAUGE, 'fit_tx', None, None, 'ic1'),
+        (6, 'permit', G, 'request', 'ic1'), (7, 'permit', G, 'approve', 'ic1'), (8, 'lock', G, 0, 'ic1'),
+        (10, 'permit', G, 'issue', 'ic1'), (11, 'permit', G, 'accept', 'ic1'),
+        (12, 'hand', GAUGE, 'fit_tx', None, None, 'ic1'),
+        (13, 'leave', 'w_gauge'), (14, 'arrive', 'counter'), (15, 'issue', T4, 1, G, 'ic1'),
+        (16, 'leave', 'counter'), (17, 'arrive', 'w_gauge'), (18, 'hand', GAUGE, 'fit_tx', None, None, 'ic1'),
+        (19, 'leave', 'w_gauge'), (20, 'arrive', 'counter'), (21, 'issue', T3, 1, G, 'ic1'),
+        (22, 'leave', 'counter'), (23, 'arrive', 'w_gauge'), (24, 'hand', GAUGE, 'fit_tx', None, None, 'ic1'),
+        (30, 'leave', 'w_gauge'), (31, 'arrive', 'w_gauge'), (32, 'hand', GAUGE, 'fit_tx', None, None, 'ic1'),
+        (100, 'hand', GAUGE, 'fit_tx', None, None, 'ic1')))
+    plan_valve = [(2, 'wo', 'wo_valve', 'notify', None, ['leak']), (3, 'wo', 'wo_valve', 'plan', None, [3])]
+    kit_files = copy.deepcopy(sf)
+    _sr_kit_run(kit_files)
+    kit = Scripted(_x((2, 'wo', 'wo_valve', 'notify', None, ['leak']), (3, 'wo', 'wo_valve', 'plan', None, [3]),
+                      (4, 'wo', G, 'notify', None, ['reading']), (5, 'wo', G, 'plan', None, [3])))
+    return [
+        ('an issue\'s reasons in order (§2.23), the instrument technician played from 06:50: away from the counter, '
+         'its work order none (where, work); a part and a work not known (unknown); by another person (authority, '
+         'where, work); at the counter before the storekeeper is on (storekeeper, work); the order notified and '
+         'planned; after 07:00, the storekeeper at the counter: 0, 2.5 and true (qty), 3 of the 2 on the shelf '
+         '(stock), 10,000 (qty), then 1.0 (done: one left); the ferrules from the counter (where: the rack\'s); at '
+         'the self-service rack with nobody there: 10 done, 25 of the 20 left (stock); the packing from the rack '
+         '(where: the counter\'s)', dict(early, trainee='ic1'), sf, reasons, 510, 10),
+        ('free mode (§2.23: person null skips where and storekeeper): the packing for the valve\'s order none (work), '
+         'notified, planned: done; by a named person (authority); scheduled: the look-alike done; 30 ferrules of the '
+         'scenario\'s 30: done (none left); cancelled: refused (work); orders: 2 packing (PO-0001, due in a day), 0 and '
+         '2.5 (qty), a part not known (unknown), by a named person (authority), without a quantity (qty: only an '
+         'NPC\'s goes to the max); nine orders of ferrules, the ninth refused (pending: eight already)', {}, sf, free,
+         14, 1),
+        ('a plant without work orders (§2.23): an issue against any work is not checked against its order (it takes '
+         'the packing to its reorder point: the storekeeper is given the reorder); an order made', {}, no_wo, plain,
+         4, 1),
+        ('an order and its delivery (§2.23): 2 packing ordered at 07:30 (PO-0001, its lead time a day: due at 07:30 '
+         'on day 2) and 1 more a step later (PO-0002); on order 3, the shelf 4; each delivered in step 3 of the step '
+         'its clock is reached, in the order made, the shelf up and on order down', {}, sf, delivery, 14420, 2000),
+        ('a jump to a date (§2.23): orders of packing (a day) and the range 4 transmitter (3 days); jumps with 31, '
+         '-1, 1.5 and "x" days refused; to 08:00 two days on (day 3 08:00): the packing delivered in the jump\'s '
+         'step; to 07:00 (day 4): nothing due; to 07:40 with 0.0 days: the transmitter delivered', {}, sf, jumps,
+         14, 1),
+        ('§7.4\'s jump rule in a scenario with `world` (§2.23, its first use; free mode): the gauge\'s permit '
+         'requested: the jump made (it no longer blocks); approved and locked (isolated): made; issued: refused; '
+         'accepted: refused; done: made; returned: made', {}, sf, rule, 20, 1),
+        ('a held job doesn\'t block a jump (§2.23, §7.4, §17.10): the instrument technician\'s job on the gauge, its '
+         'permit accepted, is held at 16:00 with their lock on; the jump to 06:50 is made (the permit accepted but '
+         'its job held) and the job stays held through it (not skipped), resumes at 07:00 and is done; the lock '
+         'kept, no removal by authority', {'start': {'day': 1, 'time': '14:30'}}, held_files, held, 2400, 200),
+        ('fitting a part (§2.23, the look-alike\'s lesson), the technician played: the fitting before any permit '
+         '(authority, part: no work accepted); the order notified and planned urgent; the permit raised and '
+         'accepted (in progress by itself): the fitting with nothing issued (part); the range 4 transmitter issued '
+         'and offered (wrong_part: it lists the range 3 as its look-alike); the range 3 issued: the fitting starts '
+         '(the part taken), is abandoned when they leave (the part given back), started again and done (taken); '
+         'again with only the look-alike left (wrong_part)', me, sf, fit, 110, 1),
+        ('the storekeeper reorders (§2.23): the valve\'s order notified and planned; 2 packing issued in free mode take the shelf to 2, its reorder point '
+         '(packing_low true); the storekeeper, on duty at the counter, is given the reorder, walks, writes and '
+         'orders without a quantity: up to the max (6 - 2 - 0 = 4, PO-0001); low no longer; a jump a day on '
+         'delivers it', {}, sf, Scripted(_x(*plan_valve, (4, 'issue', 'packing', 2, 'wo_valve', None),
+                                           (250, 'jump', '08:00', 1))), 260, 10),
+        ('an NPC issues (§2.23): the storekeeper kits the valve\'s packing at 08:00 against its planned order (done) '
+         'and draws 3 transmitters for the gauge\'s (stock: 2 on the shelf; the step goes on to its else)', {},
+         kit_files, kit, 400, 10),
+    ]
+
+
+def stores_part():
+    sf = stores_files()
+    return {'files': {k: json.dumps(v, ensure_ascii=False) for k, v in sf.items()},
+            'counts': check(sf).counts,
+            'reject': reject_changes(sf, [r[:3] for r in REJECTS_STORES], sf),
+            'runs': build_runs(stores_runs(), sf)}
+
+
 def parts3():
     """The realism vectors part by part (REALISM.md §13), in the file's order."""
     return {
@@ -6478,7 +6783,10 @@ def parts3():
                           'workorders.json, work orders moved by their inputs, by themselves and by NPCs, and '
                           'reactions on their states; milestone DC3 (§6.3.1): `discuss`, the staff plant with '
                           'discussions.json, the discuss step\'s lead and joiners, modes npc and open, picks and their '
-                          'reasons, defaults, agreements and an outcome task. A run\'s `files` are '
+                          'reasons, defaults, agreements and an outcome task; milestone WM2 (§2.23): `stores`, the work order plant '
+                          'with stores.json, the issue and order inputs and their reasons, deliveries, jumps to a '
+                          'date and §7.4\'s rule for them, the fitting check, and the storekeeper\'s reorders and '
+                          'issues. A run\'s `files` are '
                           'those that differ from its part\'s. Numbers compare to 1e-6; the digests (§17.14) of every '
                           '50th step are exact.'),
         'streams': build_streams,
@@ -6493,7 +6801,8 @@ def parts3():
         'lab': lab_part,
         'hse': hse_part,
         'wo': wo_part,
-        'discuss': discuss_part}
+        'discuss': discuss_part,
+        'stores': stores_part}
 
 
 def build3():

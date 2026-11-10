@@ -1685,6 +1685,11 @@ class StaffRun:
                     self.queue_alight(x['id'], r)
         self.holder = {}
         self.given = {}
+        if keep_held:       # (the held jobs' reaction sources stay given, REALISM.md §2.23)
+            for p in self.people:
+                for q in p.held:
+                    if q['src'] is not None:
+                        self.given[q['src']] = self.given.get(q['src'], 0) + 1
         self.pending = []
         self.made = set()
         self.veh = [self.vehicle_home(v) for v in st.vehicles]    # every vehicle home, nobody aboard (§21.4)

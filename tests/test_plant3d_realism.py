@@ -698,12 +698,14 @@ class HandsVectors(PartVectors, unittest.TestCase):
             ['op', '10LAB10CP501', 'set', 'refused', ['iso_gauge_locked'], 'hart', 'ic1']])
         self.assertEqual(run_on(self.st, self.st['runs'][2]).v('g1_cfg_urv'), 25.0)
 
-    def test_jump_abandons(self):
+    def test_jump_refused_while_in_a_hand_action(self):
+        """In a scenario with `world` a jump is refused while anyone is in a hand action (REALISM.md §2.23, §7.4's
+        rule; before WM2 the jump was made and the action abandoned in the jump's step)."""
         ev = self.evs(3, ('hand', 'jump'))
         self.assertEqual([x[1:] for x in ev[:3]], [
             ['hand', '10LAB10CP501', 'clean_glass', None, 'ic1', 'start', []],
-            ['jump', 1134480, 1962000, 'done'],
-            ['hand', '10LAB10CP501', 'clean_glass', None, 'ic1', 'abandoned', []]])
+            ['jump', 1134480, 1962000, 'refused'],
+            ['hand', '10LAB10CP501', 'clean_glass', None, 'ic1', 'refused', ['busy']]])
 
     def test_npc_job_and_slips(self):
         """ic2's job: its slips drawn from its own stream (seed 7, purpose slips, its id): per mille 1000 always,
@@ -1619,3 +1621,101 @@ class WoVectors(PartVectors, unittest.TestCase):
         e.work_order('wo_pump', 'notify', None, [None])
         e.step()
         self.assertIn([1, 'wo', 'wo_pump', 'notify', None, 'unknown', []], e.events)
+
+
+class StoresVectors(PartVectors, unittest.TestCase):
+    """Milestone WM2 (REALISM.md §2.23): stores.json, the issue and order inputs and their reasons, deliveries, jumps
+    to a date and §7.4's rule for them, the fitting check with the right part, none and a look-alike, the
+    storekeeper's reorder and issue steps."""
+    part, rejects = 'stores', 'REJECTS_STORES'
+
+    def evs(self, k, kinds):
+        return [x for x in self.st['runs'][k]['events'] if x[1] in kinds]
+
+    def test_issue_reasons_in_order(self):
+        """authority, where, storekeeper, qty, stock, work: every one that applies, in that order."""
+        why = [(x[0], x[2], x[3], x[6], x[7]) for x in self.evs(0, ('issue',))]
+        self.assertIn((2, 'tx_r3', 1, 'refused', ['authority', 'where', 'storekeeper', 'work']),
+                      [(x[0], x[2], x[3], x[6], x[7]) for x in self.evs(0, ('issue',)) if x[5] == 'a_sup'])
+        self.assertIn((2, 'gasket', 1, 'unknown', []), why)
+        self.assertIn((3, 'tx_r3', 1, 'refused', ['storekeeper', 'work']), why)
+        self.assertIn((500, 'tx_r3', 3, 'refused', ['stock']), why)
+        self.assertIn((500, 'tx_r3', 10000, 'refused', ['qty']), why)
+        self.assertIn((500, 'tx_r3', 1.0, 'done', []), why)
+        self.assertIn((503, 'ferrules', 10, 'done', []), why)          # (the self-service rack, nobody there)
+        self.assertIn((504, 'packing', 1, 'refused', ['where']), why)
+
+    def test_free_mode_and_orders(self):
+        ev = self.evs(1, ('issue', 'order'))
+        self.assertIn([5, 'issue', 'packing', 1, 'wo_valve', None, 'done', []], ev)
+        self.assertIn([5, 'issue', 'packing', 1, 'wo_valve', 'keeper', 'refused', ['authority']], ev)
+        self.assertIn([11, 'order', 'packing', 2, None, 'done', [], 'PO-0001'], ev)
+        self.assertIn([11, 'order', 'packing', None, None, 'refused', ['qty'], None], ev)
+        self.assertEqual([x[5] for x in ev if x[2] == 'ferrules' and x[1] == 'order'], ['done'] * 8 + ['refused'])
+        self.assertEqual(ev[-1][6], ['pending'])
+        end = self.st['runs'][1]['states'][-1]
+        self.assertEqual(end['stores']['stock']['ferrules'], 0)         # (the scenario's 30, not the file's 50)
+        self.assertEqual(end['values']['ferrules_due'], 80)
+
+    def test_delivery(self):
+        r = self.st['runs'][3]
+        d = [x for x in r['events'] if x[1] == 'delivery']
+        self.assertEqual([x[2:] for x in d], [['PO-0001', 'packing', 2], ['PO-0002', 'packing', 1]])
+        o = r['states'][-1]['stores']
+        self.assertEqual((o['stock']['packing'], o['due'], o['orders']), (7, {}, []))
+
+    def test_jump_days(self):
+        ev = self.evs(4, ('jump', 'delivery'))
+        self.assertEqual([x[4] for x in ev if x[1] == 'jump'], ['refused'] * 4 + ['done'] * 3)
+        day = 864000
+        self.assertEqual(ev[4][3], 3 * day + 8 * 36000)                    # 08:00 two days after its next
+        self.assertEqual(ev[5][1:], ['delivery', 'PO-0001', 'packing', 2])  # (in the jump's step)
+        self.assertEqual(ev[5][0], ev[4][0])
+        self.assertEqual(ev[-1][2:], ['PO-0002', 'tx_r4', 1])
+
+    def test_jump_rule_with_world(self):
+        """§7.4's rule: requested, isolated, done and returned don't block; issued and accepted do."""
+        ev = self.evs(5, ('jump',))
+        self.assertEqual([x[4] for x in ev], ['done', 'done', 'refused', 'refused', 'done', 'done'])
+
+    def test_held_job_doesnt_block(self):
+        r = self.st['runs'][6]
+        ev = r['events']
+        jump = next(x for x in ev if x[1] == 'jump')
+        self.assertEqual(jump[4], 'done')
+        self.assertFalse(any(x[1] == 'task' and x[3] == 'job_gauge' and x[4] == 'skipped' for x in ev))
+        res = next(x for x in ev if x[1:4] == ['task', 'ic1', 'job_gauge'] and x[4] == 'resumed')
+        self.assertGreater(res[0], jump[0])
+        self.assertFalse(any(x[1] == 'remove_lock' for x in ev))
+        self.assertTrue(any(x[1:4] == ['permit', 'wo_gauge', 'close'] and x[5] == 'done' for x in ev))
+
+    def test_fitting(self):
+        why = [(x[0], x[6], x[7]) for x in self.evs(7, ('hand',))]
+        self.assertEqual(why, [(5, 'refused', ['authority', 'part']), (12, 'refused', ['part']),
+                               (18, 'refused', ['wrong_part']), (24, 'start', []), (31, 'abandoned', []),
+                               (32, 'start', []), (82, 'done', []), (100, 'refused', ['wrong_part'])])
+        st = {s['step']: s['stores']['issued'] for s in self.st['runs'][7]['states']}
+        self.assertEqual(st[25], {'wo_gauge': {'tx_r4': 1}})            # (taken as it started)
+        self.assertEqual(st[23], {'wo_gauge': {'tx_r4': 1, 'tx_r3': 1}})
+        self.assertEqual(st[31], {'wo_gauge': {'tx_r4': 1, 'tx_r3': 1}})   # (abandoned: given back)
+        self.assertEqual(st[32], {'wo_gauge': {'tx_r4': 1}})
+        self.assertEqual(self.st['runs'][7]['states'][-1]['stores']['issued'], {'wo_gauge': {'tx_r4': 1}})
+
+    def test_storekeeper_reorders_and_issues(self):
+        o = self.evs(7 + 1, ('order', 'delivery', 'jump'))
+        self.assertEqual(o[0][2:], ['packing', 4, 'keeper', 'done', [], 'PO-0001'])     # up to the max
+        self.assertEqual(o[-1][1:], ['delivery', 'PO-0001', 'packing', 4])
+        ev = self.evs(9, ('issue', 'order'))
+        self.assertEqual([x[2:] for x in ev], [['packing', 2, 'wo_valve', 'keeper', 'done', []],
+                                               ['tx_r3', 3, 'wo_gauge', 'keeper', 'refused', ['stock']],
+                                               ['packing', 4, 'keeper', 'done', [], 'PO-0001']])
+
+    def test_no_file_no_values(self):
+        """A plant without stores.json keeps no stores values: an issue or an order is unknown."""
+        e = P.Engine(G.check(G._wo_bare(G.wo_files())), 's1')
+        self.assertFalse(any(n.endswith(('_stock', '_due')) for n in e.names))
+        e.issue('packing', 1, 'wo_valve', None)
+        e.order('packing', 1, None)
+        e.step()
+        self.assertIn([1, 'issue', 'packing', 1, 'wo_valve', None, 'unknown', []], e.events)
+        self.assertIn([1, 'order', 'packing', 1, None, 'unknown', [], None], e.events)

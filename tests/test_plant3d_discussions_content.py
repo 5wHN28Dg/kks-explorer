@@ -216,11 +216,14 @@ class Content(unittest.TestCase):
         self.assertIn({'trip': 'st_trip_vib'}, [r['on'] for r in rs if r['task'] == 'dsc_st_trip'])
 
     def test_appended_after_everything_before(self):
-        """The discussions' tasks and reactions come last, the findings last in every scenario's faults."""
+        """The discussions' tasks and reactions come after everything before them (only WM2's stores after them:
+        REALISM.md §2.23), the findings last in every scenario's faults."""
+        import train_stores as TS
+        k, kr = len(TS.tasks()), len(TS.reactions())
         n = len(TD.tasks())
-        self.assertEqual([t['id'] for t in self.st['tasks'][-n:]], [t['id'] for t in TD.tasks()])
+        self.assertEqual([t['id'] for t in self.st['tasks'][-n - k:-k]], [t['id'] for t in TD.tasks()])
         m = len(TD.reactions())
-        self.assertEqual(self.st['reactions'][-m:], TD.reactions())
+        self.assertEqual(self.st['reactions'][-m - kr:-kr], TD.reactions())
         for sid in STAFFED:
             sc = jload(self.F, f'scenarios/{sid}.json')
             self.assertEqual([f['id'] for f in sc['faults'][-len(TD.FINDINGS):]], [f[0] for f in TD.FINDINGS])

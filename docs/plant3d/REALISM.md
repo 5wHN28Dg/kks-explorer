@@ -1112,6 +1112,57 @@ parts). Lead times are clock days (§2.1).
   against the work order, fitted (the part check), its range set with HART from the data sheet, the wires landed,
   the loop check, and the equipment back in service. The removed transmitter opens in the Workshop, writable (§3.5).
 
+### 2.24 As built for milestone WM2 (draft, 2026-11-10: the stores, part 1: the reference, the content, the vectors)
+
+- **Where:** the reference `ref/plant3d_stores.py` (stores.json's check, the values, the scenario's `stock`, the
+  `issue` and `order` inputs, the deliveries, the fitting check, the snapshot's and digest's parts), with hooks in
+  `ref/plant3d.py` (the file, the kept values after the work orders', step 1's inputs, step 3's deliveries after the
+  hand actions, `jump(hhmm, days)`), `ref/plant3d_hands.py` (a hand action's `part`, its reasons after `value`),
+  `ref/plant3d_service.py` (a service action's `part`) and `ref/plant3d_staff.py` (the two authorities, the `issue`
+  and `order` steps for NPCs and the trainee, the jump's days and §7.4's rule, held jobs through a jump). The app's
+  engine (`apps/plant3d/sim/`) follows in part 2, from the reference: each rule there names its §.
+- **The content:** `tools/plant3d/train_stores.py` makes `data/plant3d/stores.json`: one store, the counter
+  (`store_counter`, not self-service), and 43 parts in 30 classes: 41 from the manuals' spare parts lists (PT 9,
+  CP 12, CV 7, MV 6, GT 4, ST 3; every number checked against the lists by `tests/test_plant3d_stores.py`) and the two
+  complete condenser pressure transmitters, `WDP-PT-UNIT-A3` (range code 3, to 248 kPa: the condenser's 0–120 kPa(a))
+  and its look-alike `WDP-PT-UNIT-A4` (range 4, to 2,068 kPa), each listing the other. Levels after [Palmer]:
+  insurance spares at 1 to 3 with 6 to 17 weeks' lead time, common spares at a few with 2 to 6 weeks, consumables
+  in tens or hundreds with a week or two; every stock starts above its reorder point. `model/admin.json` (the store's
+  area) holds each part's `<part>_have` (stock + due) and `<part>_low` (have ≤ reorder); the storekeeper (`store1`,
+  days, idle at the counter) holds `issue_parts` and `order_parts`, the maintenance supervisors `order_parts`;
+  `train_staff.py` appends 43 reorder tasks (at the counter, 5 minutes' writing, an `order` without qty) and their
+  reactions on `<part>_low` after everything before them, so no earlier task's or reaction's index moves.
+- **Vectors:** `plant3d-realism.json` gains the part `stores` (65 rejects; 10 runs: an issue's reasons, free mode
+  and orders, a plant without work orders, an order and its delivery, a jump to a date with deliveries in its step,
+  §7.4's rule, a held job through a jump, the fitting with no part, a look-alike and the right part (taken,
+  given back when abandoned), the storekeeper's reorder, an NPC's issue). Earlier items that changed, compared item
+  by item: `about`'s sentence; `hands` run 3 (its jump, made before with a hand action under way, is now refused
+  under §7.4's rule: its why, events, states and digests). `plant3d-v1.json` and `plant3d-v2.json` made again with the
+  train's stores: every input, event and earlier value unchanged; the snapshots and fork ends gain the 172 new values
+  and the `stores` part; v2's `day` digests moved (the digest's stores part and the new slots). `plant3d-bench-v1.json`
+  unchanged.
+- **Settled in the code:**
+  - An issue step names its work under `"for"`, not `"work"`: `work` is a step kind of its own (a work of minutes),
+    and a step has exactly one kind: `{"issue": part, "qty": n, "for": "$" | work}`.
+  - The two values per part are kept per part in the file's order: `<p1>_stock`, `<p1>_due`, `<p2>_stock`, …
+  - `stock` is checked only for a quantity that is one (a bad quantity is `qty` alone).
+  - Deliveries come after the hand actions whose minutes end and before the lab's results (§2.19 came after §2.7's
+    list).
+  - A fitting's busy record carries, as a seventh element, the work its part was taken from; an abandoned fitting
+    gives the part back to it. Each fitting takes one part. A hand action with `part` is a work's (`"work": false` is
+    `bad_value`).
+  - A jump's days other than a whole number 0 to 30 are refused as a bad time (`[n, "jump", from, null, "refused"]`).
+  - In a scenario with `world`, a jump keeps held jobs held (not skipped, their reaction sources still given); a jump
+    that lands inside their person's duty puts them back in the queue at once (event `resumed` each). Without
+    `world`, §17.10's skip stands.
+  - The digest's issued parts per work are a packed list of (part index, count) pairs in the file's order.
+  - An issue step needs `issue_parts`, an order step `order_parts` (the validator's authority rule): only a
+    storekeeper issues as an NPC. A technician's job that needs a part (the transmitter's replacement, waiting on its
+    own branch) has the storekeeper issue against its work order, or is played.
+  - A reorder offer that finds no storekeeper on duty is not kept (§17.12 keeps only abandoned value jobs): only
+    free mode draws from the counter without a storekeeper there, and `<part>_low` then stays true with no new edge
+    until the part is ordered by hand.
+
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does
