@@ -964,6 +964,28 @@ addition (both engines, vectors) made in K6.
 
   The APK is 148.3 MB (the first pull request's was 148.1 MB). The two new scenes take 141 KB of the package.
 
+### 6.10 The gate, globe and butterfly valves (K6, third pull request)
+
+**As built (K6, 2026-11-10).**
+- **The gate valve** (`kit/parts_valves.gd _rising`, `_gv_*`; the data file names a manual DN 300 gate valve the plant
+  has several of): body, seat rings, wedge, stem, bonnet with its yoke, packing, stem nut, handwheel, the bonnet's 12
+  studs. 8 components, 1 fastener group, 9 guided steps, 2,740 triangles. The order is Crane's (Pacific CSV IOM, the
+  gate valve pp. 12-14).
+- **The globe valve** (`_rising`, `_gv_stem`, `_gl_*`; a DN 50 PN 160 globe valve under a multi-turn electric
+  actuator, the plant has four): body, seat ring, disc, stem, bonnet with its yoke, packing, the actuator (one part),
+  its stem nut (output drive type A), display and handwheel, the bonnet studs and the actuator's bolts. 10
+  components, 2 fastener groups, 12 guided steps, 2,134 triangles. Crane's order (p. 18, the operator first: §J p. 42)
+  with AUMA SA's for the actuator.
+- **The butterfly valve** (`_quarter`, `_bf_*`; a DN 250 butterfly valve under a part-turn electric actuator, the
+  plant has six): body, liner, disc, shaft, packing, actuator, coupling, position indicator, handwheel, the actuator's
+  bolts. 9 components, 1 fastener group, 10 guided steps, 1,528 triangles. Bray's Series 35/36 order (§13, pp. 28-29)
+  with AUMA SQ's for the actuator.
+- **The plant unchanged** (`test_kit_frozen`); what is simplified and the trees' limits are in the kit README.
+- **New checks** (`tests/test_workshop.gd`): `_wedge` (the gate's wedge lies on both seat rings at 0 travel, covers
+  their bore, clears it at full travel), `_discs` (the butterfly's disc's edge on the liner's bore, within its width,
+  edge-on when turned by its travel); the globe's disc is held by `_seats`. Each made to fail once by a changed wedge or
+  liner. `WS_ONLY=kind,…` runs `test_workshop` on those kinds alone (a quicker run while a tree is written).
+
 ## 7. Shaders and cut faces
 
 Decision 0060: one lit shader and one vertex format; each lit ubershader is 0.6–0.9 s of serial compile on the Note

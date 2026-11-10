@@ -580,6 +580,7 @@ static func _cv_dims(r: float, zb: float, bf: float, zt: float, zg: float, stem_
 		# `lean` (the tangent) from the stem's axis, thicker at the top
 		var rw := bf * 0.85 - 2.0 * clampf(0.006 + od * 0.01, 0.006, 0.02) - 0.004   # inside the bonnet studs' circle
 		var rg := rw - 0.01
+		assert(rg > 0.02, "the gate's wedge has room in its well (DN 80 and up)")
 		d.merge({"well": rw, "wedge": rg, "wt": rg * 0.2, "lean": tan(deg_to_rad(5.0)), "seat_t": rg * 0.1,
 			"seat_bore": rg * 0.7, "bot": -(rg + 0.008)}, true)
 		var ys: float = d.wt + d.seat_t + d.lean * rg   # the seat rings' outer faces at the top
@@ -672,6 +673,10 @@ static func _cv_body(g, m, prof: Array, F: float, od: float, rating: String, cv:
 	for k in range(bb - 1, ba, -1):
 		outer.append(ring.call(k, ia))
 	_fan(m, outer, inner)
+	if ba < 2:   # (the gate's: its lid drops below the bonnet's seat towards the cones) a boss under the bonnet flange
+		var rb2: float = float(prof[2][0]) ** 2 - float(cv.bf) ** 2   # (the bulge's height beside the flange's edge)
+		var zs := sqrt(maxf(rb2, 0.0)) - 0.005
+		_ring_solid(m, [[rw, zs], [cv.bf * 0.98, zs], [cv.bf * 0.98, zb], [rw, zb], [rw, zs]], K)
 	# the flanges again, their necks closed
 	for sg: float in [-1.0, 1.0]:
 		var d := Y * sg
@@ -917,10 +922,10 @@ static func _cv_actuator_insides(g, cv: Dictionary, z: float, zc: float, R: floa
 static func _gv_comps(g, cv: Dictionary, od: float) -> void:
 	var up := Vector3(0, 0, 1)
 	g.comp("body", {"explode": [up, 0.0]})
-	g.comp("seat_rings", {"parent": "body", "explode": [up, 0.0], "sym": [Vector3(0, 1, 0), 0]})
+	g.comp("seat_rings", {"parent": "body", "explode": [up, 0.0]})   # (no symmetry: their faces lean)
 	g.comp("wedge", {"parent": "body", "explode": [up, 0.3 + od * 0.5], "anim": "stem"})
 	g.comp("stem", {"parent": "body", "explode": [up, 0.55 + od], "sym": [up, 0], "anim": "stem"})
-	g.comp("bonnet", {"parent": "body", "explode": [up, 0.8 + od * 1.5], "sym": [up, 8]})
+	g.comp("bonnet", {"parent": "body", "explode": [up, 0.8 + od * 1.5], "sym": [up, 2]})   # (its yoke's two arms)
 	g.comp("packing", {"parent": "bonnet", "explode": [up, 0.15], "sym": [up, 0]})
 	g.comp("stem_nut", {"parent": "bonnet", "explode": [up, 0.0], "sym": [up, 0]})
 	g.comp("handwheel", {"parent": "bonnet", "explode": [up, 0.3], "sym": [up, 0], "anim": "handwheel",
@@ -935,7 +940,7 @@ static func _gl_comps(g, cv: Dictionary, od: float) -> void:
 	g.comp("seat_ring", {"parent": "body", "explode": [up, 0.0], "sym": [up, 0]})
 	g.comp("disc", {"parent": "body", "explode": [up, 0.14], "sym": [up, 0], "anim": "stem"})
 	g.comp("stem", {"parent": "body", "explode": [up, 0.44], "anim": "stem"})
-	g.comp("bonnet", {"parent": "body", "explode": [up, 0.4], "sym": [up, 8]})
+	g.comp("bonnet", {"parent": "body", "explode": [up, 0.4]})   # (no symmetry: the travel scale on one arm)
 	# (the packing stays in its box in the explode: the stem's block in the yoke's short window sits on its gland)
 	g.comp("packing", {"parent": "bonnet", "explode": [up, 0.0], "sym": [up, 0]})
 	g.comp("actuator", {"parent": "bonnet", "explode": [up, 0.5]})

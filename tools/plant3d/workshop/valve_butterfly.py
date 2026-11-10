@@ -30,8 +30,12 @@ SOURCES = [
 PARAMS = {'dn': 250, 'actuator': 'electric'}
 
 
-def _c(name, does, material, sources=(BRAY,)):
-    return {'name': name, 'does': does, 'material': material, 'sources': list(sources)}
+def _c(name, does, material, sources=(BRAY,), sealed_why=None):
+    c = {'name': name, 'does': does, 'material': material, 'sources': list(sources)}
+    if sealed_why:
+        c['sealed'] = True
+        c['sealed_why'] = sealed_why
+    return c
 
 
 def components():
@@ -43,12 +47,15 @@ def components():
         'disc': _c('Disc', 'Turns a quarter of a turn on its shaft: across the bore it closes the valve, edge-on it '
                    'opens it. Held on the shaft by taper pins.', 'Stainless steel or coated ductile iron'),
         'shaft': _c('Shaft', 'Carries the disc and turns it; its top end takes the actuator\'s coupling.',
-                    'Stainless steel'),
+                    'Stainless steel', sealed_why='Bray drives the shaft out through the top with its bushing and '
+                                                  'packing on it.'),
         'packing': _c('Shaft bushing and packing', 'Guide the shaft in the neck and seal it, under the packing '
                       'gland.', 'Bronze bushing, PTFE packing'),
         'actuator': _c('Electric part-turn actuator', 'A motor and a worm gear that turn the shaft a quarter of a '
                        'turn between its end stops, with its limit and torque switches. It is one part here: its '
-                       'maker\'s service opens it.', 'Aluminium housing, motor, gearing, switches', (AUMA, BRAY)),
+                       'maker\'s service opens it.', 'Aluminium housing, motor, gearing, switches', (AUMA, BRAY),
+                       sealed_why='The actuator comes off the valve whole, its coupling, position indicator and '
+                                  'handwheel on it.'),
         'coupling': _c('Coupling', 'Joins the actuator\'s output to the shaft\'s top: it goes on the shaft first and '
                        'the actuator over it.', 'Steel', (AUMA,)),
         'indicator': _c('Position indicator', 'A disc on top that turns with the valve: along the pipe is open, '
@@ -82,25 +89,16 @@ ASSEMBLY = [
                      'Drive the taper pins and the shaft out before the disc comes out.')],
           why='The disc\'s pins and the bottom plate under the shaft are not drawn: the pins come out before the '
               'shaft, the bottom plate and its thrust bearing before the pins.'),
-    _step('packing', 'Slide the bushing and the packing over the shaft into the neck and fit the packing gland.',
-          [('shaft', 'The packing seals round the shaft: put the shaft in first.',
-            'The packing comes out with the shaft.')]),
+    _step('packing', 'The bushing and the packing come with the shaft, under the packing gland.'),
     _step('actuator', 'Set the actuator onto the neck\'s top flange over the coupling, the valve and the actuator '
           'both at the same end position.',
-          [('packing', 'Fit the gland before the actuator goes on.', 'Take the actuator off first.')],
+          [('shaft', 'The actuator turns the shaft: put the shaft in first.', 'Take the actuator off first.')],
           why='Isolate the actuator\'s supply before anything is undone. Its end stops are set again after it is '
               'mounted.', sources=(AUMA, BRAY)),
-    _step('coupling', 'The coupling joins the actuator\'s output to the shaft\'s top.',
-          [('actuator', 'The coupling is the actuator\'s output: set the actuator on first.',
-            'It comes off with the actuator.')],
-          why='AUMA fits the coupling on the shaft first and lowers the actuator over it; here it comes with the '
-              'actuator, in its foot.', sources=(AUMA,)),
-    _step('indicator', 'The position indicator turns with the actuator\'s output, on its top.',
-          [('actuator', 'The indicator is the actuator\'s: set the actuator on first.',
-            'It comes off with the actuator.')], sources=(AUMA,)),
-    _step('handwheel', 'Put the handwheel on its input shaft and fit its retaining ring.',
-          [('actuator', 'The handwheel is the actuator\'s: set the actuator on first.',
-            'Take the handwheel off once the actuator is off the valve.')], sources=(AUMA,)),
+    _step('coupling', 'The coupling comes with the actuator, in its foot.',
+          why='AUMA fits the coupling on the shaft first and lowers the actuator over it.', sources=(AUMA,)),
+    _step('indicator', 'The position indicator comes with the actuator, on its top.', sources=(AUMA,)),
+    _step('handwheel', 'The handwheel comes with the actuator, on its input shaft.', sources=(AUMA,)),
     _step('actuator_bolts', 'Fit the actuator\'s mounting bolts and tighten them crosswise.',
           [('actuator', 'The bolts hold the actuator\'s flange: set it on first.',
             'Take the mounting bolts out first.')], sources=(AUMA, BRAY)),

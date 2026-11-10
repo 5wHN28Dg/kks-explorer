@@ -30,8 +30,12 @@ SOURCES = [
 PARAMS = {'dn': 50, 'rating': 'pn160', 'actuator': 'electric'}
 
 
-def _c(name, does, material, sources=(CRANE,)):
-    return {'name': name, 'does': does, 'material': material, 'sources': list(sources)}
+def _c(name, does, material, sources=(CRANE,), sealed_why=None):
+    c = {'name': name, 'does': does, 'material': material, 'sources': list(sources)}
+    if sealed_why:
+        c['sealed'] = True
+        c['sealed_why'] = sealed_why
+    return c
 
 
 def components():
@@ -52,7 +56,10 @@ def components():
                       'Graphite rings, steel gland and flange'),
         'actuator': _c('Electric actuator', 'A motor and a worm gear that turn the stem nut, with its limit and torque '
                        'switches and local controls. It is one part here: its maker\'s service opens it.',
-                       'Aluminium housing, motor, gearing, switches', (AUMA, CRANE)),
+                       'Aluminium housing, motor, gearing, switches', (AUMA, CRANE),
+                       sealed_why='The actuator comes off the valve whole, unscrewed off the stem with its handwheel '
+                                  '(Crane), its stem nut, display and handwheel on it; AUMA takes the stem nut out of '
+                                  'its output drive on the bench, to machine it.'),
         'stem_nut': _c('Stem nut (output drive type A)', 'Turns in the actuator\'s output drive on its thrust bearing '
                        'and drives the stem up or down; it carries the valve\'s thrust into the actuator\'s flange.',
                        'Bronze', (AUMA,)),
@@ -107,22 +114,14 @@ ASSEMBLY = [
           why='Crane takes a motor operated valve\'s operator off first: its mounting bolts out, then it is unscrewed '
               'off the stem by turning the handwheel towards closed, and lifted off. AUMA screws the output drive '
               'onto the stem first and sets the actuator on it, its dogs engaging.', sources=(CRANE, AUMA)),
-    _step('stem_nut', 'The stem nut turns in the actuator\'s output drive, on the stem\'s thread.',
-          [('actuator', 'The stem nut is the actuator\'s output drive: set the actuator on first.',
-            'Take the stem nut out of the actuator once it is off the valve.')],
+    _step('stem_nut', 'The stem nut comes with the actuator, in its output drive.',
           why='AUMA takes the stem nut out of the output drive (its spigot ring off) to machine it to the stem\'s '
               'thread, and greases it going back.', sources=(AUMA,)),
-    _step('display', 'The local display is in the actuator\'s controls\' cover.',
-          [('actuator', 'The display is the actuator\'s: set the actuator on first.',
-            'It comes off with the actuator.')], sources=(AUMA,)),
-    _step('handwheel', 'Put the handwheel on its input shaft and fit its retaining ring.',
-          [('actuator', 'The handwheel is the actuator\'s: set the actuator on first.',
-            'Take the handwheel off once the actuator is off the valve.')], sources=(AUMA,)),
+    _step('display', 'The local display comes with the actuator.', sources=(AUMA,)),
+    _step('handwheel', 'The handwheel comes with the actuator, on its input shaft.', sources=(AUMA,)),
     _step('actuator_bolts', 'Fit the actuator\'s mounting bolts and tighten them crosswise.',
           [('actuator', 'The bolts hold the actuator\'s flange: set it on first.',
-            'Take the mounting bolts out first.'),
-           ('handwheel', 'Turn the handwheel to bring the flanges together before the bolts.',
-            'Take the bolts out before the handwheel comes off.')],
+            'Take the mounting bolts out first.')],
           why='Isolate the actuator\'s supply before anything is undone.', sources=(CRANE, AUMA)),
 ]
 

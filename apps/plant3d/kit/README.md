@@ -496,7 +496,8 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   ring stays) under an electric actuator with an output drive type A (AUMA SA: the stem nut turns in the drive on its
   thrust bearing, and Crane takes the actuator off by unscrewing it off the stem with its handwheel, so the stem nut
   rides with it). **Simplified:** the actuator is one part (its motor, worm gear, switches and controls not drawn: its
-  maker's service opens it), its display a thin part of its own; the body's passages are the control valve's well
+  maker's service opens it), sealed with its stem nut, display (a thin part) and handwheel, which come off the valve
+  with it; the body's passages are the control valve's well
   (`_cv_body`), the disc a plain plug on the seat ring (`_seats` checks it as the control valve's); the block and
   travel pointer in the yoke's window are the stem's (Crane names none: the plant draws it); the four actuator
   bolts stand under the actuator's flange beside the yoke's head, which the plant draws smaller than the flange.
@@ -508,11 +509,13 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   closed top flange in the explode; the taper pins and the bottom plate with its thrust bearing are not drawn (the
   steps say where they come out); the liner is a plain rubber ring round the bore (`tests/test_workshop.gd _discs`
   checks that the disc's edge lies on its bore, within its width, and lies edge-on when turned by its travel); the
-  actuator is one part with its coupling, its position indicator (the plant's, turning with the disc) and its
-  handwheel. **The stand-in:** the plant's drum lists its first face's points mirrored (an odd circle): the Workshop
+  actuator is one part, sealed with its coupling, its position indicator (the plant's, turning with the disc) and its
+  handwheel, and the shaft sealed with its bushing and packing (Bray drives them out together). **The stand-in:** the plant's drum lists its first face's points mirrored (an odd circle): the Workshop
   draws the plant's drum and closes it with a seam (`C._zip`); the disc's face the same, hidden.
 - **Known limits** of the three (built and tested for the data files' sizes only, as the Workshop builds one scene per
-  kind): the gate's well follows the bonnet flange and the globe's the control valve's (refused at DN 32 and below);
+  kind): the gate's well follows the bonnet flange (refused below DN 80, where its wedge has no room) and the
+  globe's the control valve's (refused at DN 32 and below); the gate's lid drops below the bonnet's seat towards the
+  cones, so a boss under the bonnet flange (the body's) closes the view under it;
   the other actuators of each kind have no tree.
 
 ## Tables and their sources
