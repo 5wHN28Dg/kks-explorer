@@ -51,7 +51,13 @@ const PASSES := {
 		+ "comes out through its wall",
 }
 ## A valve's closure member, its seat and the moving piece that carries it ("kind": [plug, seat, moving]) (_seats).
-const SEATS := {"valve_control": ["plug_stem", "seat_ring", "stem"]}
+const SEATS := {"valve_control": ["plug_stem", "seat_ring", "stem"], "valve_globe": ["disc", "seat_ring", "stem"]}
+## A gate valve's wedge, its seat rings and the moving piece that lifts it ("kind": [wedge, seats, moving]): the
+## wedge lies across the flow between the two rings (_wedge).
+const WEDGES := {"valve_gate": ["wedge", "seat_rings", "stem"]}
+## A butterfly valve's disc, its seat (the liner) and the moving piece that turns it ("kind": [disc, seat, moving])
+## (_discs).
+const DISCS := {"valve_butterfly": ["disc", "liner", "disc"]}
 const CELL := 0.25   # the cells' width (m) in which the explode's paths are compared
 const SMALL := 0.1   # the longest edge of a small triangle there (m)
 const FIXTURE := "res://tests/fixtures/workshop_gadget.gd"
@@ -133,6 +139,8 @@ func _kind(part: String, data: Dictionary, params: Dictionary, ctx := {}) -> voi
 	_blade_lean(part, ws)
 	_turning(part, ws)
 	_seats(part, ws)
+	_wedge(part, ws)
+	_discs(part, ws)
 	if r.scene != null:
 		_explode_paths(part, r.scene)
 	print("workshop: %s %d components, %d fastener groups, %d triangles (plant %d)" % [part, ws.components.size(),
@@ -728,6 +736,177 @@ func _seats(part: String, ws: Dictionary) -> void:
 	check(mv.travel > 0.0 and low >= top - 0.001, "%s: opening %s lifts %s off %s" % [part, who[2], who[0], who[1]])
 	check(face > bore + 0.001, "%s: %s's face (radius %.1f mm) covers %s's bore (%.1f mm)" % [part, who[0], who[1],
 		face * 1000.0, bore * 1000.0])
+
+## A gate valve's wedge at 0 travel (closed): on the stem's axis, between its two seat rings, each face lying on the
+## ring on its side (no ring's point inside the wedge, the nearest within 1 mm of its face), wider than the rings'
+## bore; opening lifts it by its travel clear of the bore (its lowest point above the bore's top).
+func _wedge(part: String, ws: Dictionary) -> void:
+	if not WEDGES.has(part):
+		return
+	var who: Array = WEDGES[part]
+	var mv = null
+	for x in ws.moving:
+		if x.name == who[2]:
+			mv = x
+	check(mv != null, "%s: the moving piece %s" % [part, who[2]])
+	if mv == null:
+		return
+	var a: Vector3 = mv.axis
+	var o: Vector3 = mv.pivot
+	var pts := {who[0]: PackedVector3Array(), who[1]: PackedVector3Array()}
+	var faces: Array = []   # the wedge's triangles [p0, p1, p2]
+	for pr in _all_layers(ws):
+		var L: Dictionary = pr[0]
+		if not pts.has(L.comp):
+			continue
+		var arr := (L.mesh as ArrayMesh).surface_get_arrays(0)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		for q in v:
+			pts[L.comp].append(q + pr[1])
+		if L.comp == who[0]:
+			var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+			for t in range(0, idx.size(), 3):
+				faces.append([v[idx[t]] + pr[1], v[idx[t + 1]] + pr[1], v[idx[t + 2]] + pr[1]])
+	for c in pts:
+		check(not pts[c].is_empty(), "%s: %s is drawn" % [part, c])
+		if pts[c].is_empty():
+			return
+	var centre := func(ps: PackedVector3Array) -> Vector3:
+		var b := AABB(ps[0], Vector3.ZERO)
+		for p in ps:
+			b = b.expand(p)
+		return b.get_center()
+	var cw: Vector3 = centre.call(pts[who[0]])
+	var cs: Vector3 = centre.call(pts[who[1]])
+	var off := func(p: Vector3) -> float: return ((p - o) - a * (p - o).dot(a)).length()
+	check(off.call(cw) <= 0.001 and off.call(cs) <= 0.001, "%s: %s and %s on %s's axis (%.1f and %.1f mm off it)" % [
+		part, who[0], who[1], who[2], off.call(cw) * 1000.0, off.call(cs) * 1000.0])
+	# the bore's axis (the flow's way): the direction across the stem's axis in which the rings' points spread least
+	var flow := Vector3.ZERO
+	var best := INF
+	for k in 36:
+		var t := PI * k / 36.0
+		var A: Array = _perp(a)
+		var dir: Vector3 = A[0] * cos(t) + A[1] * sin(t)
+		var spread := 0.0
+		for p in pts[who[1]]:
+			spread = maxf(spread, absf((p - cs).dot(dir)))
+		if spread < best:
+			best = spread
+			flow = dir
+	var bore := INF   # the rings' bore: their nearest point to the flow line through their centre
+	for p in pts[who[1]]:
+		var d: Vector3 = (p - cs) - flow * (p - cs).dot(flow)
+		bore = minf(bore, d.length())
+	var reach := 0.0  # the wedge's reach from that line
+	for p in pts[who[0]]:
+		var d: Vector3 = (p - cs) - flow * (p - cs).dot(flow)
+		reach = maxf(reach, d.length())
+	check(reach > bore + 0.001, "%s: %s (reaching %.1f mm from the bore's axis) covers %s's bore (%.1f mm)" % [part,
+		who[0], reach * 1000.0, who[1], bore * 1000.0])
+	for sg: float in [-1.0, 1.0]:
+		var side := flow * sg
+		var plane = null   # the wedge's face toward this ring
+		for f in faces:   # (by where it lies, not its winding)
+			var nrm: Vector3 = (f[1] - f[0]).cross(f[2] - f[0])
+			if nrm.length() < 1e-9 or absf(nrm.normalized().dot(side)) < 0.9:
+				continue
+			if ((f[0] + f[1] + f[2]) / 3.0 - cw).dot(side) > 0.0:
+				nrm = nrm.normalized()
+				plane = [nrm if nrm.dot(side) > 0.0 else -nrm, f[0]]
+				break
+		check(plane != null, "%s: %s has a face toward the ring on its %s side" % [part, who[0], "+" if sg > 0 else "-"])
+		if plane == null:
+			continue
+		var near := INF
+		var inside := 0.0
+		for p in pts[who[1]]:
+			if (p - cs).dot(side) <= 0.0:
+				continue
+			var h: float = (p - plane[1]).dot(plane[0])
+			near = minf(near, h)
+			inside = minf(inside, h)
+		check(absf(near) <= 0.001 and inside >= -0.001, "%s: %s's face lies on the %s side's ring (%.1f mm apart, %.1f mm into it)" % [
+			part, who[0], "+" if sg > 0 else "-", near * 1000.0, -inside * 1000.0])
+	var low := INF
+	for p in pts[who[0]]:
+		low = minf(low, (p - cs).dot(a))
+	check(mv.travel > 0.0 and low + mv.travel >= bore - 0.001, "%s: opening %s by its travel (%.1f mm) lifts %s clear of %s's bore (its lowest point %.1f mm below the bore's centre, the bore %.1f mm)" % [
+		part, who[2], mv.travel * 1000.0, who[0], who[1], -low * 1000.0, bore * 1000.0])
+
+## A butterfly valve's disc at 0 (closed): its centre on the shaft's axis and on the liner's bore axis, its edge on the
+## liner's bore all round (within 1 mm), within the liner's width; turned by its travel it lies edge-on in the bore
+## (open: across the bore no wider than at its thickest).
+func _discs(part: String, ws: Dictionary) -> void:
+	if not DISCS.has(part):
+		return
+	var who: Array = DISCS[part]
+	var mv = null
+	for x in ws.moving:
+		if x.name == who[2]:
+			mv = x
+	check(mv != null, "%s: the moving piece %s" % [part, who[2]])
+	if mv == null:
+		return
+	var a: Vector3 = mv.axis
+	var o: Vector3 = mv.pivot
+	var pts := {who[0]: PackedVector3Array(), who[1]: PackedVector3Array()}
+	for pr in _all_layers(ws):
+		var L: Dictionary = pr[0]
+		# (the disc as the plant draws it, not the seam that closes its face; the liner is hidden)
+		if pts.has(L.comp) and (L.tag != "hidden" or L.comp == who[1]):
+			for q in ((L.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+				pts[L.comp].append(q + pr[1])
+	for c in pts:
+		check(not pts[c].is_empty(), "%s: %s is drawn" % [part, c])
+		if pts[c].is_empty():
+			return
+	var box := func(ps: PackedVector3Array) -> AABB:
+		var b := AABB(ps[0], Vector3.ZERO)
+		for p in ps:
+			b = b.expand(p)
+		return b
+	var cd: Vector3 = (box.call(pts[who[0]]) as AABB).get_center()
+	var cs: Vector3 = (box.call(pts[who[1]]) as AABB).get_center()
+	var off := func(p: Vector3) -> float: return ((p - o) - a * (p - o).dot(a)).length()
+	check(off.call(cd) <= 0.001 and off.call(cs) <= 0.001, "%s: %s and %s on %s's axis (%.1f and %.1f mm off it)" % [
+		part, who[0], who[1], who[2], off.call(cd) * 1000.0, off.call(cs) * 1000.0])
+	var flow := Vector3.ZERO   # the bore's axis: across the shaft, the way the liner's points spread least
+	var best := INF
+	var A: Array = _perp(a)
+	for k in 36:
+		var t := PI * k / 36.0
+		var dir: Vector3 = A[0] * cos(t) + A[1] * sin(t)
+		var spread := 0.0
+		for p in pts[who[1]]:
+			spread = maxf(spread, absf((p - cs).dot(dir)))
+		if spread < best:
+			best = spread
+			flow = dir
+	var bore := INF
+	for p in pts[who[1]]:
+		bore = minf(bore, ((p - cs) - flow * (p - cs).dot(flow)).length())
+	var reach := 0.0
+	var thick := 0.0
+	for p in pts[who[0]]:
+		reach = maxf(reach, ((p - cs) - flow * (p - cs).dot(flow)).length())
+		thick = maxf(thick, absf((p - cs).dot(flow)))
+	check(absf(reach - bore) <= 0.001, "%s: %s's edge (%.1f mm from the bore's axis) on %s's bore (%.1f mm)" % [part,
+		who[0], reach * 1000.0, who[1], bore * 1000.0])
+	check(thick <= best + 0.0005, "%s: %s (%.1f mm each side) within %s's width (%.1f mm)" % [part, who[0],
+		thick * 1000.0, who[1], best * 1000.0])
+	var across := a.cross(flow).normalized()
+	var turned := 0.0
+	var rot := Basis(a, mv.travel)
+	for p in pts[who[0]]:
+		turned = maxf(turned, absf((rot * (p - o) + o - cs).dot(across)))
+	check(mv.travel > 0.0 and turned <= thick + 0.001, "%s: turning %s by its travel lays %s edge-on in the bore (%.1f mm across it, %.1f mm thick)" % [
+		part, who[2], who[0], turned * 1000.0, thick * 1000.0])
+
+## Two unit vectors across d.
+func _perp(d: Vector3) -> Array:
+	var u := d.cross(Vector3(1, 0, 0) if absf(d.x) < 0.9 else Vector3(0, 1, 0)).normalized()
+	return [u, d.cross(u).normalized()]
 
 ## Whether two components' cells pass through each other between two moments: each cell moved by its component's
 ## offset (a's relative to c's: r0 at the first, r1 at the second); a cell of a only meets c's cells near it, and
