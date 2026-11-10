@@ -23,8 +23,13 @@ const Explode = preload("res://workshop/explode.gd")
 ## number of its moving rows whose vanes lean (RADIAL_ROWS): an impeller's vanes curve back against its turn, a
 ## motor's fan has straight radial blades (it cools whichever way the motor turns), so it has none.
 const FLOW := {"steam_turbine": Vector3(0, 0, 1), "gas_turbine": Vector3(0, 0, -1), "pump_horizontal": "radial",
-	"motor": "radial"}
-const RADIAL_ROWS := {"pump_horizontal": 1, "motor": 0}
+	"motor": "radial", "pump_vertical": "radial"}
+const RADIAL_ROWS := {"pump_horizontal": 1, "motor": 0, "pump_vertical": 2}
+## Pairs of a turning component and a standing one that may meet as it turns ("kind|turning|standing", standing may
+## end in "*"), each with its reason (_turning).
+const RUBS := {}
+const RUB := 0.002   # how far (m) a turning surface may reach into a standing one's band (a polygon's flats, a fit)
+const TURN_SMALL := 0.05   # the longest edge (m) of the pieces a triangle is halved into for it
 ## Pairs of components whose explode may pass through each other ("kind|a|b", either order; b may end in "*" for
 ## every component whose id begins so), each with its reason (_explode_paths).
 const PASSES := {
@@ -36,7 +41,17 @@ const PASSES := {
 	"gas_turbine|fuel_ring|*": "the plant draws the fuel gas ring closed round the discharge casing, among the cans' "
 		+ "end covers and into the foundation block: it stays, and what lifts passes through it (a real one's pigtails "
 		+ "are undone and it comes off in segments)",
+	"steam_turbine|valve_l|ctrl_l": "the plant draws each valve chest closed (§7.2): the control valve's plug is "
+		+ "lifted out through its top, as a real one comes out through the chest's opening once the servomotor and "
+		+ "the cover are off",
+	"steam_turbine|valve_r|ctrl_r": "the same chest on the other side",
+	"motor|end_shield_de|rotor": "the plant draws the drive-end shield's face closed and the shaft's stub standing on it: "
+		+ "the shield comes off forwards over the stub, as a real one does through its bore",
+	"test_gadget|base|core": "the fixture's core is drawn inside its closed base on purpose (a hidden piece) and "
+		+ "comes out through its wall",
 }
+## A valve's closure member, its seat and the moving piece that carries it ("kind": [plug, seat, moving]) (_seats).
+const SEATS := {"valve_control": ["plug_stem", "seat_ring", "stem"]}
 const CELL := 0.25   # the cells' width (m) in which the explode's paths are compared
 const SMALL := 0.1   # the longest edge of a small triangle there (m)
 const FIXTURE := "res://tests/fixtures/workshop_gadget.gd"
@@ -112,6 +127,8 @@ func _kind(part: String, data: Dictionary, params: Dictionary, ctx := {}) -> voi
 	_pieces(part, ws)
 	_closed(part, ws)
 	_blade_lean(part, ws)
+	_turning(part, ws)
+	_seats(part, ws)
 	if r.scene != null:
 		_explode_paths(part, r.scene)
 	print("workshop: %s %d components, %d fastener groups, %d triangles (plant %d)" % [part, ws.components.size(),
@@ -471,6 +488,126 @@ func _radial_lean(part: String, ws: Dictionary, shaft: Dictionary) -> void:
 	check(rows == int(RADIAL_ROWS.get(part, -1)), "%s: %d leaning rows turn with the shaft, %d expected (RADIAL_ROWS)" % [
 		part, rows, int(RADIAL_ROWS.get(part, -1))])
 
+## What turns turns on the shaft's line and rubs nothing that stands (K6): every component drawn in the `shaft` node
+## has its box centred on the node's axis (within RUB), and no standing component's triangle lies in the band a turning
+## triangle sweeps round the axis: a triangle of each is reduced to its span along the axis and its nearest and
+## farthest distance from it (corners and edges' midpoints: a chord's nearest point), and a standing one whose span
+## meets a turning one's by more than RUB along the axis and RUB across it (an impeller wider than its bowl, a rotor off
+## its line), or crosses it (_across: a shaft drawn through a closed face), is cut by it as it turns. The centrifugal kinds (FLOW "radial").
+func _turning(part: String, ws: Dictionary) -> void:
+	var shaft = null
+	for mv in ws.moving:
+		if mv.name == "shaft":
+			shaft = mv
+	if shaft == null or not FLOW.get(part, null) is String:
+		return   # (the turbines' rows turn in their carriers' grooves: their tens of thousands of triangles are left)
+	var ax: Vector3 = (shaft.axis as Vector3).normalized()
+	var piv: Vector3 = shaft.pivot
+	var turning := {}   # comp -> [[t0, t1, r0, r1], ...]
+	var standing := {}
+	var boxes := {}
+	for pr in _all_layers(ws):
+		var L: Dictionary = pr[0]
+		var turns := String(pr[2]).begins_with("shaft/")
+		var into: Dictionary = turning if turns else standing
+		var arr := (L.mesh as ArrayMesh).surface_get_arrays(0)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		var spans: Array = into.get(L.comp, [])
+		for i in range(0, idx.size(), 3):
+			var a: Vector3 = v[idx[i]] + pr[1]
+			var b: Vector3 = v[idx[i + 1]] + pr[1]
+			var c: Vector3 = v[idx[i + 2]] + pr[1]
+			if turns:
+				var bb: AABB = boxes.get(L.comp, AABB(a, Vector3.ZERO))
+				boxes[L.comp] = bb.expand(a).expand(b).expand(c)
+			var stack: Array = [[a, b, c]]
+			while not stack.is_empty():   # halved along the longest edge down to TURN_SMALL: a span is the triangle's
+				var tri: Array = stack.pop_back()
+				var p0: Vector3 = tri[0]
+				var p1: Vector3 = tri[1]
+				var p2: Vector3 = tri[2]
+				var l01 := p0.distance_squared_to(p1)
+				var l12 := p1.distance_squared_to(p2)
+				var l20 := p2.distance_squared_to(p0)
+				var lm := maxf(l01, maxf(l12, l20))
+				if lm > TURN_SMALL * TURN_SMALL:
+					if lm == l01:
+						stack.append([p0, (p0 + p1) * 0.5, p2]); stack.append([(p0 + p1) * 0.5, p1, p2])
+					elif lm == l12:
+						stack.append([p0, p1, (p1 + p2) * 0.5]); stack.append([p0, (p1 + p2) * 0.5, p2])
+					else:
+						stack.append([p0, p1, (p2 + p0) * 0.5]); stack.append([(p2 + p0) * 0.5, p1, p2])
+					continue
+				var t0 := INF
+				var t1 := -INF
+				var r0 := INF
+				var r1 := -INF
+				for q: Vector3 in [p0, p1, p2, (p0 + p1) * 0.5, (p1 + p2) * 0.5, (p2 + p0) * 0.5, (p0 + p1 + p2) / 3.0]:
+					var rel := q - piv
+					var t := rel.dot(ax)
+					var r := (rel - ax * t).length()
+					t0 = minf(t0, t)
+					t1 = maxf(t1, t)
+					r0 = minf(r0, r)
+					r1 = maxf(r1, r)
+				spans.append([t0, t1, r0, r1])
+		into[L.comp] = spans
+	for id in boxes:
+		var cen: Vector3 = (boxes[id] as AABB).get_center() - piv
+		var off: float = (cen - ax * cen.dot(ax)).length()
+		check(off <= RUB, "%s: %s turns with the shaft but its box is %.1f mm off the shaft's line" % [part, id,
+			off * 1000.0])
+	var bins := {}   # (bin along the axis, bin out from it) -> [[span, standing comp]]
+	var rmax := 0.0
+	for tid in turning:
+		for x: Array in turning[tid]:
+			rmax = maxf(rmax, x[3])
+	for sid in standing:
+		for y: Array in standing[sid]:
+			if y[2] > rmax:
+				continue   # (beyond anything that turns)
+			for k in range(floori(y[0] / TURN_SMALL), floori(y[1] / TURN_SMALL) + 1):
+				for j in range(floori(y[2] / TURN_SMALL), floori(minf(y[3], rmax) / TURN_SMALL) + 1):
+					var key := Vector2i(k, j)
+					if not bins.has(key):
+						bins[key] = []
+					bins[key].append([y, sid])
+	var told := {}
+	for tid in turning:
+		if standing.has(tid):
+			check(false, "%s: %s is drawn partly in the turning node and partly standing" % [part, tid])
+			continue
+		for x: Array in turning[tid]:
+			# (a polygon's flats: a turning corner sweeps past a standing flat of the same circle by r (1 - cos(pi/n)),
+			# 2 % of r at 16 sides)
+			var tol: float = maxf(RUB, x[3] * 0.025)
+			for k in range(floori(x[0] / TURN_SMALL), floori(x[1] / TURN_SMALL) + 1):
+				for j in range(floori(x[2] / TURN_SMALL), floori(x[3] / TURN_SMALL) + 1):
+					for e: Array in bins.get(Vector2i(k, j), []):
+						var y: Array = e[0]
+						var sid: String = e[1]
+						if (minf(x[1], y[1]) - maxf(x[0], y[0]) > RUB and minf(x[3], y[3]) - maxf(x[2], y[2]) > tol \
+								or _across(x, y)) and not told.has(tid + "|" + sid) and not _rubs_listed(part, tid, sid):
+							told[tid + "|" + sid] = true
+							check(false, "%s: %s rubs %s as it turns (its piece %.3f-%.3f m along the shaft, %.3f-%.3f m from it; %s's %.3f-%.3f, %.3f-%.3f)" % [
+								part, tid, sid, x[0], x[1], x[2], x[3], sid, y[0], y[1], y[2], y[3]])
+
+## Whether one span crosses the other: within it along the shaft and across it from the shaft, by a millimetre each way
+## (a standing face a turning surface passes through, however thin either is: a shaft through a closed face).
+func _across(x: Array, y: Array) -> bool:
+	var e := 0.001
+	var along: bool = (y[0] > x[0] + e and y[1] < x[1] - e) or (x[0] > y[0] + e and x[1] < y[1] - e)
+	var out: bool = (y[2] < x[2] - e and y[3] > x[3] + e) or (x[2] < y[2] - e and x[3] > y[3] + e)
+	return along and out
+
+func _rubs_listed(part: String, a: String, c: String) -> bool:
+	for k in RUBS:
+		var s: PackedStringArray = String(k).split("|")
+		if s[0] == part and s[1] == a and (s[2] == c or s[2].ends_with("*") and c.begins_with(s[2].trim_suffix("*"))):
+			return true
+	return false
+
 ## The explode's paths (§4.3), sampled through every stage of the slider: no component goes below the floor (the
 ## machine's lowest point, assembled, when it stands on the ground, y = 0, on a part that stays), and none passes
 ## through another: while a
@@ -530,6 +667,63 @@ func _explode_paths(part: String, ps: PackedScene) -> void:
 						bad[a + "|" + c] = true
 						check(false, "%s: %s and %s pass through each other in the explode (stage %d of %d, s = %.2f)" % [
 							part, a, c, d + 1, D, (d + float(k) / N) / D])
+
+## A valve's plug closes its seat (SEATS): at 0 travel its face toward the seat lies on the seat's face (within 1 mm)
+## and covers the seat's bore; the plug, the seat's bore and the moving piece's axis are one line; opening (the moving
+## piece's travel along its axis) lifts the plug off the seat, never into it.
+func _seats(part: String, ws: Dictionary) -> void:
+	if not SEATS.has(part):
+		return
+	var who: Array = SEATS[part]
+	var mv = null
+	for x in ws.moving:
+		if x.name == who[2]:
+			mv = x
+	check(mv != null, "%s: the moving piece %s" % [part, who[2]])
+	if mv == null:
+		return
+	var a: Vector3 = mv.axis
+	var o: Vector3 = mv.pivot
+	var pts := {who[0]: PackedVector3Array(), who[1]: PackedVector3Array()}
+	for pr in _all_layers(ws):
+		var L: Dictionary = pr[0]
+		if pts.has(L.comp):
+			var arr := (L.mesh as ArrayMesh).surface_get_arrays(0)
+			for v in (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+				pts[L.comp].append(v + pr[1])
+	for c in pts:
+		check(not pts[c].is_empty(), "%s: %s is drawn" % [part, c])
+		if pts[c].is_empty():
+			return
+	var off := func(p: Vector3) -> float: return ((p - o) - a * (p - o).dot(a)).length()   # from the axis line
+	var centre := func(ps: PackedVector3Array) -> Vector3:
+		var b := AABB(ps[0], Vector3.ZERO)
+		for p in ps:
+			b = b.expand(p)
+		return b.get_center()
+	var cp: Vector3 = centre.call(pts[who[0]])
+	var cs: Vector3 = centre.call(pts[who[1]])
+	check(off.call(cp) <= 0.001 and off.call(cs) <= 0.001, "%s: %s and %s on %s's axis (%.1f and %.1f mm off it)" % [
+		part, who[0], who[1], who[2], off.call(cp) * 1000.0, off.call(cs) * 1000.0])
+	var low := INF
+	for p in pts[who[0]]:
+		low = minf(low, (p - o).dot(a))
+	var top := -INF
+	var bore := INF
+	for p in pts[who[1]]:
+		top = maxf(top, (p - o).dot(a))
+		bore = minf(bore, off.call(p))
+	var face := 0.0   # the plug's radius at its face toward the seat
+	for p in pts[who[0]]:
+		if absf((p - o).dot(a) - low) <= 0.001:
+			face = maxf(face, off.call(p))
+	check(absf(low - top) <= 0.001, "%s: %s sits on %s at 0 travel (%.1f mm apart)" % [part, who[0], who[1],
+		(low - top) * 1000.0])
+	# opening moves the stem along +axis by its travel; the plug lies wholly on that side of the seat's top (its
+	# lowest point on it, above), so opening lifts it off and never drives it into the seat
+	check(mv.travel > 0.0 and low >= top - 0.001, "%s: opening %s lifts %s off %s" % [part, who[2], who[0], who[1]])
+	check(face > bore + 0.001, "%s: %s's face (radius %.1f mm) covers %s's bore (%.1f mm)" % [part, who[0], who[1],
+		face * 1000.0, bore * 1000.0])
 
 ## Whether two components' cells pass through each other between two moments: each cell moved by its component's
 ## offset (a's relative to c's: r0 at the first, r1 at the second); a cell of a only meets c's cells near it, and
@@ -647,7 +841,9 @@ func _mesh_cells(mi: MeshInstance3D, p: Vector3, cells: Dictionary) -> void:
 				else:
 					e[0] = (e[0] as Vector3).min(lo)
 					e[1] = (e[1] as Vector3).max(hi)
-					(e[2] as PackedVector3Array).append_array(PackedVector3Array([lo, hi, a, b, c]))
+					var smalls: PackedVector3Array = e[2]   # (a packed array is a value: append to it, then store it back)
+					smalls.append_array(PackedVector3Array([lo, hi, a, b, c]))
+					e[2] = smalls
 
 ## Each component's box at home, of its own meshes, in the root's frame (components are placed, never turned), and
 ## its pieces' boxes.

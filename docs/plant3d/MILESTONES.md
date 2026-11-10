@@ -332,6 +332,8 @@ APK 147.8 MB.
 
 **K6, first pull request (2026-11-09):** the horizontal pump and the motor in the Workshop (WORKSHOP.md §6.8): the motor's tree written once and carried by the pump, the motor's order derived from its build (the user's call), the plant byte for byte unchanged, a new check of the impeller's vanes against the shaft's turn. The Note 9 (the pump): first entry 123 ms, 99.83 % of frames at ≥ 30 fps, no frame over 100 ms, peak PSS 1,168 MB; APK 148.1 MB. Left in K6: the vertical pump, the control valve and the other kinds, then the mirror.
 
+**K6, second pull request (2026-11-10):** the vertical pump (with its vertical motor's tree) and the control valve with its actuator in the Workshop (WORKSHOP.md §6.9), the plant byte for byte unchanged. The explode's pass-through test now keeps every triangle, and two new checks cover every kind: what turns and the valve's seat. The Note 9: first entry 131 / 208 ms, 99.93 / 99.92 % of frames at ≥ 30 fps, no frame over 100 ms, peak PSS 1,144 / 1,162 MB; the motor kind's own walk 99.78 %, 1,159 MB; APK 148.3 MB. Left in K6: the butterfly, gate and globe valves, the generator, the fan, the heat exchangers, then the mirror.
+
 **K5a as built (2026-11-08):** the gas turbine's insides for the plant's first instance: 84 components, 2 fastener
 groups (the compressor casing's 40 studs replacing the plant's stand-ins, the coupling's 12 bolts `beyond`), 86 guided
 steps in a major inspection's order, 27,868 triangles, a public source per subassembly; the plant byte for byte

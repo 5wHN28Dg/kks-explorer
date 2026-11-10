@@ -13,6 +13,8 @@
 extends RefCounted
 
 const C = preload("res://kit/parts_common.gd")
+## (the Workshop) the control valve's static stand-in: the plant's body, neck, bonnet and diaphragm casing
+const VC_STAND := ["body", "bonnet", "lower_casing", "upper_casing"]
 
 ## Face-to-face length per type, from the outside diameter (EN 558 basic series, rounded: README "Tables").
 static func ftf(part: String, od: float) -> float:
@@ -46,10 +48,13 @@ static func valve_control(_part: String, g) -> void:
 	_rising(g, "valve_control")
 
 ## The body between two flanges: a lathe along y. `bulge` is its widest radius as a share of od.
-static func _body(g, part: String, od: float, F: float, bulge: float) -> void:
+static func _body(g, part: String, od: float, F: float, bulge: float, cv := {}) -> void:
 	var m = g.m
 	var r := od * 0.5
 	var rating: String = g.p.get("rating", "pn16")
+	if not cv.is_empty():
+		g.comp("body")
+		g.only("plant", VC_STAND)
 	m.use("paint_valve", "identify")
 	var prof := [[r * 1.02, -F * 0.5], [r * 1.05, -F * 0.38], [r * bulge, -F * 0.18], [r * bulge, F * 0.18],
 		[r * 1.05, F * 0.38], [r * 1.02, F * 0.5]]
@@ -59,6 +64,9 @@ static func _body(g, part: String, od: float, F: float, bulge: float) -> void:
 	m.lathe(Vector3.ZERO, Vector3(0, 1, 0), pr, 0, false)
 	C.flange(m, Vector3(0, -F * 0.5, 0), Vector3(0, -1, 0), od, "paint_valve", rating)
 	C.flange(m, Vector3(0, F * 0.5, 0), Vector3(0, 1, 0), od, "paint_valve", rating)
+	if not cv.is_empty():
+		_cv_body(g, m, pr, F, od, rating, cv)
+		g.only()
 	g.plate("body", Vector3(r * bulge + 0.01, 0, 0), Vector3(1, 0, 0), "small")
 	g.solid_box(Vector3(-r * bulge, -F * 0.5, -r * bulge), Vector3(r * bulge, F * 0.5, r * bulge))
 
@@ -71,23 +79,49 @@ static func _rising(g, part: String) -> void:
 	var act: String = g.p.get("actuator", "manual" if part != "valve_control" else "pneumatic")
 	var side: String = g.p.get("handwheel", "top")
 	var bulge := 1.25 if part == "valve_gate" else 1.55
-	_body(g, part, od, F, bulge)
-	# the neck and bonnet flange
-	m.use("paint_valve", "identify")
+	# (the Workshop's tree: the pneumatic control valve, kit/README.md "Workshop: the control valve")
+	var tree: bool = g.workshop and part == "valve_control" and act == "pneumatic"
 	var zb := r * (1.15 if part == "valve_gate" else 1.35)
-	m.cyl(Vector3(0, 0, r * 0.4), Vector3(0, 0, zb), r * 0.62 if part == "valve_gate" else r * 0.7, -1.0)
 	var bf := od * 0.42 + 0.02
-	m.cyl(Vector3(0, 0, zb), Vector3(0, 0, zb + 0.02 + od * 0.06), bf, -1.0)
-	C.bolt_ring(m, Vector3(0, 0, zb + 0.01 + od * 0.03), Vector3(0, 0, 1), bf * 0.85, 8 if od < 0.3 else 12, clampf(0.006 + od * 0.01, 0.006, 0.02), od * 0.1 + 0.04)
 	var zt := zb + 0.02 + od * 0.06
 	var s := stroke(part, od)
-	# bonnet: a gate valve's is tall (it houses the wedge's travel)
 	var hb := (s + od * 0.25 + 0.05) if part == "valve_gate" else (od * 0.35 + 0.06)
+	var zg := zt + hb   # the gland: the stem comes out here
+	var stem_r := clampf(0.006 + od * 0.04, 0.007, 0.06)
+	var cv := {}
+	if tree:
+		cv = _cv_dims(r, zb, bf, zt, zg, stem_r, s)
+		_cv_comps(g, cv, od)
+	_body(g, part, od, F, bulge, cv)
+	# the neck and bonnet flange
+	if tree:
+		g.comp("body")
+		g.only("plant", VC_STAND)
+	m.use("paint_valve", "identify")
+	m.cyl(Vector3(0, 0, r * 0.4), Vector3(0, 0, zb), r * 0.62 if part == "valve_gate" else r * 0.7, -1.0)
+	if tree:
+		g.comp("bonnet")
+	m.cyl(Vector3(0, 0, zb), Vector3(0, 0, zb + 0.02 + od * 0.06), bf, -1.0)
+	if tree:
+		g.only("plant", ["bonnet_bolts"])
+	C.bolt_ring(m, Vector3(0, 0, zb + 0.01 + od * 0.03), Vector3(0, 0, 1), bf * 0.85, 8 if od < 0.3 else 12, clampf(0.006 + od * 0.01, 0.006, 0.02), od * 0.1 + 0.04)
+	if tree:
+		g.only()
+		if g.workshop:   # the bonnet's studs and nuts, where the plant draws its ring: they back out upwards
+			_ring_bolts_z(g, "bonnet_bolts", Vector3(0, 0, zb + 0.01 + od * 0.03), bf * 0.85, 8 if od < 0.3 else 12,
+				clampf(0.006 + od * 0.01, 0.006, 0.02), od * 0.1 + 0.04)
+		g.only("plant", VC_STAND)
+	# bonnet: a gate valve's is tall (it houses the wedge's travel)
 	m.use("paint_valve", "identify")
 	m.cyl(Vector3(0, 0, zt), Vector3(0, 0, zt + hb), r * 0.36 + 0.015, r * 0.28 + 0.012)
-	var zg := zt + hb   # the gland: the stem comes out here
+	if tree:
+		_cv_bonnet(g, m, cv, r)
+		g.comp("packing")
 	m.use("brass", "form")
 	m.cyl(Vector3(0, 0, zg), Vector3(0, 0, zg + 0.03), r * 0.18 + 0.012, -1.0, 12)
+	if tree:
+		_cv_packing(g, m, cv)
+		g.comp("yoke")
 	# the yoke: two arms from the bonnet up to the yoke head
 	var yh := s + 0.08 + od * 0.15
 	var zy := zg + yh
@@ -98,17 +132,25 @@ static func _rising(g, part: String) -> void:
 	m.box_lh(Vector3(-yw - 0.02, -0.025 - od * 0.05, zy), Vector3(yw + 0.02, 0.025 + od * 0.05, zy + 0.03 + od * 0.04))
 	var ztop := zy + 0.03 + od * 0.04
 	# the stem (moves): from inside the bonnet up through the yoke; its top shows the position
-	var stem_r := clampf(0.006 + od * 0.04, 0.007, 0.06)
+	var top_extra := 0.04 + od * 0.05
+	if tree:
+		g.comp("plug_stem")
+		g.only("plant", ["plug_stem", "actuator_stem"])
 	var sm = g.move("stem", Vector3(0, 0, zg), Vector3(0, 0, 1), "translate", s)
 	sm.use("chrome", "identify")
-	var top_extra := 0.04 + od * 0.05
 	sm.cyl(Vector3(0, 0, zg - s), Vector3(0, 0, ztop + top_extra), stem_r, -1.0, 10)
+	if tree:
+		_cv_stems(g, sm, cv, ztop + top_extra)
+		g.comp("stem_connector")
+		sm.use("chrome", "identify")
 	if act != "manual" or part == "valve_control":
 		# a coupling block in the yoke window and the travel pointer against a scale on the yoke (control valves)
 		sm.use("steel", "identify")
 		sm.box(Vector3(0, 0, zg + 0.04 + od * 0.03), Vector3(stem_r * 4, stem_r * 3, 0.03 + od * 0.04))
 		sm.use("paint_red", "identify")
 		sm.box(Vector3(yw * 0.6, 0, zg + 0.04 + od * 0.03), Vector3(yw * 0.8, 0.006, 0.008))
+		if tree:
+			g.comp("yoke")
 		m.use("plate", "identify")
 		m.box(Vector3(yw + 0.012 + od * 0.015, 0.0, zg + 0.04 + od * 0.03 + s * 0.5), Vector3(0.004, 0.03, s + 0.02))
 	var wr := wheel_r(od)
@@ -121,7 +163,7 @@ static func _rising(g, part: String) -> void:
 			_motor_actuator(g, ztop, od, side)
 		"pneumatic":
 			if part == "valve_control":
-				_diaphragm(g, ztop, od, side)
+				_diaphragm(g, ztop, od, side, cv)
 			else:
 				_cylinder_actuator(g, ztop, od, false)
 		"hydraulic":
@@ -198,16 +240,31 @@ static func _cylinder_actuator(g, z: float, od: float, hydraulic: bool) -> void:
 		m.cyl(Vector3(rr * 1.7, rr * 0.2, z + h * 0.5), Vector3(rr * 1.7, rr * 0.2, z + h * 0.5 - 0.6), 0.012, -1.0, 6)
 
 ## A spring-and-diaphragm actuator (the dome every control valve is known by) with its positioner.
-static func _diaphragm(g, z: float, od: float, side: String) -> void:
+static func _diaphragm(g, z: float, od: float, side: String, cv := {}) -> void:
 	var m = g.m
+	var tree := not cv.is_empty()
 	var R := clampf(0.12 + od * 0.6, 0.13, 0.42)
 	var zc := z + 0.06 + R * 0.35
+	var prof := [[R * 0.3, -R * 0.35], [R * 0.9, -R * 0.12], [R, 0.0], [R * 0.9, R * 0.15], [R * 0.3, R * 0.42], [0.0, R * 0.45]]
+	if tree:
+		g.comp("lower_casing")
+		g.only("plant", VC_STAND)
 	m.use("paint_machine", "identify")
 	m.cyl(Vector3(0, 0, z), Vector3(0, 0, z + 0.06), R * 0.25, -1.0)
-	m.lathe(Vector3(0, 0, zc), Vector3(0, 0, 1), [[R * 0.3, -R * 0.35], [R * 0.9, -R * 0.12], [R, 0.0], [R * 0.9, R * 0.15], [R * 0.3, R * 0.42], [0.0, R * 0.45]], 0, true)
+	m.lathe(Vector3(0, 0, zc), Vector3(0, 0, 1), prof, 0, true)
 	m.use("paint_valve", "form")
 	m.cyl(Vector3(0, 0, zc - 0.01), Vector3(0, 0, zc + 0.01), R * 1.04, -1.0)   # the casing's bolted rim
+	if tree:
+		_cv_casings(g, m, cv, z, zc, R, prof)
+		g.comp("upper_casing")
+		g.only("plant", ["casing_bolts"])
 	C.bolt_ring(m, Vector3(0, 0, zc), Vector3(0, 0, 1), R * 0.98, 16, 0.006, 0.04)
+	if tree:
+		g.only()
+		if g.workshop:   # the casing's cap screws and nuts round the rim: they back out upwards
+			_ring_bolts_z(g, "casing_bolts", Vector3(0, 0, zc), R * 0.98, 16, 0.006, 0.04)
+		_cv_actuator_insides(g, cv, z, zc, R)
+		g.comp("positioner")
 	# positioner on the yoke's side, with its gauges and the air tubing
 	var sx := -1.0 if side == "left" else 1.0
 	var pp := Vector3((R * 0.35 + 0.08) * sx, 0.02, z - 0.08)
@@ -216,6 +273,8 @@ static func _diaphragm(g, z: float, od: float, side: String) -> void:
 	m.use("dial", "detail", 0.04)
 	for k: float in [-1.0, 1.0]:
 		m.cyl(pp + Vector3(0.05 * sx, 0.035 * k, 0.05), pp + Vector3(0.07 * sx, 0.035 * k, 0.05), 0.022, -1.0, 10)
+	if tree:
+		g.comp("tubing")
 	m.use("chrome", "detail", 0.01)
 	m.cyl(pp + Vector3(0, 0, 0.09), Vector3(0, 0, zc + R * 0.43), 0.005, -1.0, 6, false)
 	g.plate("actuator", Vector3(0, -R, zc), Vector3(0, -1, 0), "small")
@@ -414,3 +473,329 @@ static func damper(_part: String, g) -> void:
 	g.plate("frame", Vector3(-W * 0.5 - t, -D * 0.5 - 0.01, H * 0.3), Vector3(0, -1, 0), "large")
 	g.solid_box(Vector3(-W * 0.5 - t, -D * 0.5, -H * 0.5 - t), Vector3(W * 0.5 + t, D * 0.5, H * 0.5 + t))
 	g.axis_line = [Vector3(0, -1, 0), Vector3(0, 1, 0)]
+
+# ------------------------------------------------------------------ the control valve in the Workshop (K6)
+# A cage-guided globe valve (Fisher easy-e ES) under a spring-and-diaphragm actuator (Fisher 667) with its positioner,
+# as their manuals describe them; what is simplified: kit/README.md "Workshop: the control valve". Every piece here is
+# a Workshop piece or the split of a plant stand-in: plant mode draws what it drew before.
+
+## The trim's and the gallery's sizes (m): the plug seats at z 0 (the flow's centre line) on the seat ring, guided in
+## the cage, which the bonnet holds down; the gallery (the body's well) runs from under the seat up to the bonnet.
+static func _cv_dims(r: float, zb: float, bf: float, zt: float, zg: float, stem_r: float, s: float) -> Dictionary:
+	var rp := r * 0.5
+	return {"r": r, "zb": zb, "bf": bf, "zt": zt, "zg": zg, "stem_r": stem_r, "s": s,
+		"plug": rp, "plug_h": rp * 0.95, "port": rp * 0.8, "cage_in": rp + 0.002, "cage_out": rp + 0.012,
+		"well": rp + 0.014, "bot": -rp * 0.7, "seat_h": rp * 0.3, "bore": stem_r * 1.8}
+
+## The tree. The body stays on its pipes; the actuator (the yoke and everything on it) lifts off first, then the
+## bonnet, the plug with its stem, the cage and the seat ring come up out of the gallery, the faster ones above the
+## slower; on the bench the actuator comes apart upwards (the upper casing over the diaphragm over the stem's head
+## over the spring), the positioner and its tubing aside, the stem connector out of the yoke's window.
+static func _cv_comps(g, cv: Dictionary, od: float) -> void:
+	var up := Vector3(0, 0, 1)
+	g.comp("body", {"explode": [up, 0.0]})
+	g.comp("yoke", {"parent": "body", "explode": [up, 1.0 + od]})
+	g.comp("bonnet", {"parent": "body", "explode": [up, 0.6], "sym": [up, 8]})
+	g.comp("plug_stem", {"parent": "body", "explode": [up, 0.4], "sym": [up, 0], "anim": "stem"})
+	g.comp("cage", {"parent": "body", "explode": [up, 0.25], "sym": [up, 4]})
+	g.comp("seat_ring", {"parent": "body", "explode": [up, 0.12], "sym": [up, 0]})
+	g.comp("packing", {"parent": "bonnet", "explode": [up, 0.15], "sym": [up, 0]})
+	g.comp("lower_casing", {"parent": "yoke", "explode": [up, 0.35], "sym": [up, 0]})
+	g.comp("positioner", {"parent": "yoke", "explode": [Vector3(1, 0, 0), 0.35]})
+	g.comp("tubing", {"parent": "yoke", "explode": [Vector3(1, 0, 0), 0.6], "thin": true})
+	g.comp("stem_connector", {"parent": "yoke", "explode": [Vector3(0, -1, 0), 0.3], "anim": "stem"})
+	g.comp("upper_casing", {"parent": "lower_casing", "explode": [up, 0.7], "sym": [up, 0]})
+	g.comp("diaphragm", {"parent": "lower_casing", "explode": [up, 0.5], "sym": [up, 0], "anim": "stem"})
+	g.comp("actuator_stem", {"parent": "lower_casing", "explode": [up, 0.35], "sym": [up, 0], "anim": "stem"})
+	g.comp("spring", {"parent": "lower_casing", "explode": [up, 0.15], "sym": [up, 0]})
+
+## A closed solid of revolution about z through the origin: `pts` [[r, z], ...] round its section, the first point
+## again at the end (outer surfaces going up, inner ones down: their faces turn outwards).
+static func _ring_solid(m, pts: Array, n: int) -> void:
+	m.lathe(Vector3.ZERO, Vector3(0, 0, 1), pts, n, false)
+
+## The body: the plant's skin (a lathe along the pipe) drawn again with the gallery's opening under the bonnet, its
+## ends closed inside the flanges, the flanges' necks closed, and the gallery (hidden) down to under the seat.
+static func _cv_body(g, m, prof: Array, F: float, od: float, rating: String, cv: Dictionary) -> void:
+	var Y := Vector3(0, 1, 0)
+	var n: int = m.segs(float(prof[2][0]))   # the plant's skin's
+	var f := C.flange_dims(od, rating)
+	# the skin, its ends drawn in to inside the flanges (where it is hidden)
+	var e: float = F * 0.5 - f.tf
+	var w := Callable(func(a: Array, b: Array, t: float) -> Array:
+		return [lerpf(a[0], b[0], (t - a[1]) / (b[1] - a[1])), t])
+	var pr: Array = [w.call(prof[0], prof[1], -e), prof[1], prof[2], prof[3], prof[4], w.call(prof[4], prof[5], e)]
+	# the angular segments the gallery's opening takes: from the last vertex beside it on one side to the first on
+	# the other (vertex i at (cos t, 0, -sin t) * r, t = TAU i / n), over the top
+	var R2: float = prof[2][0]
+	var rw: float = cv.well
+	var ia := -1
+	var ib := -1
+	for i in n:
+		var t := TAU * i / n
+		var x := cos(t) * R2
+		if -sin(t) <= 0.0:
+			continue
+		if x < -rw:
+			ia = i
+		elif x > rw and ib < 0:
+			ib = i
+	assert(ia >= 0 and ib > ia, "the gallery's opening lies over the body's top")
+	g.only("workshop", "split")
+	m.use("paint_valve", "identify")
+	m.lathe_arc(Vector3.ZERO, Y, pr, n, 0, ia)
+	m.lathe_arc(Vector3.ZERO, Y, pr, n, ib, n)
+	m.lathe_arc(Vector3.ZERO, Y, pr.slice(0, 3), n, ia, ib)
+	m.lathe_arc(Vector3.ZERO, Y, pr.slice(3), n, ia, ib)
+	# the lid round the opening: from the gallery's rim (at the bonnet's seat) out to the skin's edge round it
+	var K := 16
+	var zb: float = cv.zb
+	var A: Array = m.across(Vector3(0, 0, 1))
+	var inner: Array = []
+	for k in K:
+		var t := TAU * k / K
+		inner.append(Vector3(0, 0, zb) + (A[0] * cos(t) + A[1] * sin(t)) * rw)
+	var outer: Array = []
+	for i in range(ia, ib + 1):
+		var t := TAU * i / n
+		outer.append(Vector3(cos(t) * R2, float(prof[2][1]), -sin(t) * R2))
+	for i in range(ib, ia - 1, -1):
+		var t := TAU * i / n
+		outer.append(Vector3(cos(t) * R2, float(prof[3][1]), -sin(t) * R2))
+	_fan(m, outer, inner)
+	# the flanges again, their necks closed
+	for sg: float in [-1.0, 1.0]:
+		var d := Y * sg
+		var c := Y * F * 0.5 * sg
+		m.use("paint_valve", "form")
+		m.cyl(c - d * f.tf, c, f.df * 0.5, -1.0, m.segs(f.df * 0.5, 10, 40))
+		var nn: int = m.segs(od * 0.5, 8, 32)
+		var a: Vector3 = c - d * (f.tf * 2.2)
+		var b: Vector3 = c - d * f.tf
+		m.cyl(a, b, od * 0.5 + f.tf * 0.6, od * 0.5 + f.tf * 0.3, nn, false)
+		C.bolt_ring(m, c - d * f.tf * 0.5, d, f.pcd, f.n, f.bolt_r, f.tf * 2.4)
+		g.only("workshop")   # the neck's ends, inside the skin and the flange
+		m.use("paint_valve", "form")
+		C._face(m, a, d, 0.0, od * 0.5 + f.tf * 0.6, nn, false)
+		C._face(m, b, d, 0.0, od * 0.5 + f.tf * 0.3, nn, true)
+		g.only("workshop", "split")
+	# the skin's ends inside the flanges, the gallery down from the bonnet's seat to under the seat ring (hidden)
+	g.only("workshop")
+	m.use("paint_valve", "identify")
+	C._face(m, Vector3(0, -e, 0), Y, 0.0, pr[0][0], n, false)
+	C._face(m, Vector3(0, e, 0), Y, 0.0, pr[5][0], n, true)
+	m._inner(Vector3(0, 0, cv.bot), Vector3(0, 0, zb), rw, K)
+	m.disk(Vector3(0, 0, cv.bot), Vector3(0, 0, 1), rw, K)
+	# the seat ring and the cage, standing in the gallery
+	g.comp("seat_ring")
+	m.use("steel", "identify")
+	_ring_solid(m, [[cv.port, -cv.seat_h], [rw - 0.001, -cv.seat_h], [rw - 0.001, 0.0], [cv.port, 0.0], [cv.port, -cv.seat_h]], K)
+	g.comp("cage")
+	var ct: float = zb - 0.002
+	var bh: float = cv.seat_h
+	_ring_solid(m, [[cv.cage_in, 0.0], [cv.cage_out, 0.0], [cv.cage_out, bh], [cv.cage_in, bh], [cv.cage_in, 0.0]], K)
+	_ring_solid(m, [[cv.cage_in, ct - bh], [cv.cage_out, ct - bh], [cv.cage_out, ct], [cv.cage_in, ct], [cv.cage_in, ct - bh]], K)
+	for k in 4:   # the posts between its windows
+		var a := TAU * (k + 0.5) / 4.0
+		var rm: float = (cv.cage_in + cv.cage_out) * 0.5
+		var wd: float = cv.cage_out - cv.cage_in
+		var dir := Vector3(cos(a), sin(a), 0)
+		m.box(Vector3(0, 0, ct * 0.5) + dir * rm, Vector3(0.02, wd * 0.9, ct - 2.0 * bh + 0.002),
+			Basis(dir.cross(Vector3(0, 0, 1)), -dir, Vector3(0, 0, 1)).orthonormalized())
+	g.comp("body")
+
+## A cylinder closed at both ends that is closed for any n (its caps list their points as the side does).
+static func _closed_cyl(m, a: Vector3, b: Vector3, ra: float, rb: float, n: int) -> void:
+	var d := (b - a).normalized()
+	m.cyl(a, b, ra, rb, n, false)
+	C._face(m, a, d, 0.0, ra, n, false)
+	C._face(m, b, d, 0.0, rb, n, true)
+
+## Triangles between an outer loop and an inner one round the z axis (both in turn, each counter-clockwise seen from
+## above, the inner one from its point nearest the outer's first round the axis), facing up: each step goes on along
+## the loop whose next point makes the shorter diagonal.
+static func _fan(m, outer: Array, inner: Array) -> void:
+	var ang := func(p: Vector3) -> float: return atan2(p.y, p.x)
+	var a0: float = ang.call(outer[0])
+	var rel := func(p: Vector3) -> float: return fposmod(ang.call(p) - a0, TAU)
+	# outer in turn from its first point; inner from the first at or past it
+	var oa: Array = []
+	for p in outer:
+		oa.append(rel.call(p))
+	var start := 0
+	var best := INF
+	for k in inner.size():
+		var v: float = rel.call(inner[k])
+		if v < best:
+			best = v
+			start = k
+	var ins: Array = []
+	var ia: Array = []
+	for k in inner.size():
+		var p: Vector3 = inner[(start + k) % inner.size()]
+		ins.append(p)
+		ia.append(rel.call(p))
+	assert(oa == oa.duplicate() and _increasing(oa) and _increasing(ia), "the loops go round counter-clockwise")
+	var no := outer.size()
+	var ni := ins.size()
+	var o := 0
+	var i := 0
+	while o < no or i < ni:
+		var P: Vector3 = outer[o % no]
+		var Q: Vector3 = ins[i % ni]
+		var Pn: Vector3 = outer[(o + 1) % no]
+		var Qn: Vector3 = ins[(i + 1) % ni]
+		# the shorter diagonal (so no triangle reaches across the opening from a far corner of the outer loop)
+		if i >= ni or (o < no and Pn.distance_to(Q) <= P.distance_to(Qn)):
+			_tri3(m, P, Pn, Q)
+			o += 1
+		else:
+			_tri3(m, P, Qn, Q)
+			i += 1
+
+static func _increasing(a: Array) -> bool:
+	for k in range(1, a.size()):
+		if a[k] <= a[k - 1]:
+			return false
+	return true
+
+## One flat triangle (counter-clockwise seen from where it faces).
+static func _tri3(m, a: Vector3, b: Vector3, c: Vector3) -> void:
+	var nrm := (b - a).cross(c - a).normalized()
+	var i0: int = m._vert(a, nrm, Vector2(a.x, a.y))
+	var i1: int = m._vert(b, nrm, Vector2(b.x, b.y))
+	var i2: int = m._vert(c, nrm, Vector2(c.x, c.y))
+	m._tri(i0, i1, i2)
+
+## The bonnet: its flange and body as one solid round the stem's bore.
+static func _cv_bonnet(g, m, cv: Dictionary, r: float) -> void:
+	g.only("workshop", "split")
+	m.use("paint_valve", "identify")
+	var rb: float = cv.bore
+	var n: int = m.segs(cv.bf)
+	_ring_solid(m, [[rb, cv.zb], [cv.bf, cv.zb], [cv.bf, cv.zt], [r * 0.36 + 0.015, cv.zt], [r * 0.28 + 0.012, cv.zg],
+		[rb, cv.zg]], n)
+	g.only("workshop")   # the stem's bore
+	m.use("paint_valve", "identify")
+	_ring_solid(m, [[rb, cv.zg], [rb, cv.zb]], n)
+	g.only()
+
+## The packing rings in the bonnet's bore under the packing flange (the plant's gland: shared).
+static func _cv_packing(g, m, cv: Dictionary) -> void:
+	g.only("workshop")
+	m.use("rubber", "identify")
+	var z0: float = cv.zg - 0.04
+	var z1: float = cv.zg - 0.0005
+	_ring_solid(m, [[cv.stem_r * 1.05, z0], [cv.bore * 0.98, z0], [cv.bore * 0.98, z1], [cv.stem_r * 1.05, z1],
+		[cv.stem_r * 1.05, z0]], 12)
+	g.only()
+
+## The stem's pieces in the `stem` node: the plant's one stem split at the stem connector into the valve stem (with
+## the plug, hidden, on its lower end) and the actuator stem; the plug seated on the seat ring at 0 (closed).
+static func _cv_stems(g, sm, cv: Dictionary, z_top: float) -> void:
+	var zk: float = cv.zg + 0.04 + cv.r * 2.0 * 0.03   # the connector's centre (the plant's coupling block)
+	var sr: float = cv.stem_r
+	g.only("workshop", "split")
+	g.comp("plug_stem")
+	sm.use("chrome", "identify")
+	sm.cyl(Vector3(0, 0, cv.zg - cv.s), Vector3(0, 0, zk), sr, -1.0, 10, false)
+	g.comp("actuator_stem")
+	sm.cyl(Vector3(0, 0, zk), Vector3(0, 0, z_top), sr, -1.0, 10, false)
+	g.only("workshop")
+	g.comp("plug_stem")
+	sm.use("chrome", "identify")
+	sm.cyl(Vector3(0, 0, cv.plug_h), Vector3(0, 0, cv.zg - cv.s), sr, -1.0, 10, false)
+	sm.disk(Vector3(0, 0, cv.plug_h), Vector3(0, 0, -1), sr, 10)
+	sm.disk(Vector3(0, 0, zk), Vector3(0, 0, 1), sr, 10)
+	sm.use("steel", "identify")
+	sm.lathe(Vector3.ZERO, Vector3(0, 0, 1), [[0.0, 0.0], [cv.plug, 0.0], [cv.plug, cv.plug_h], [0.0, cv.plug_h]], 16, false)
+	g.only()
+
+## The diaphragm casing split at its rim: the lower casing (the plant's mounting boss and the dome's lower half) and
+## the upper casing, each a shell with its half of the rim; the lower one's boss and bottom open round the actuator
+## stem.
+static func _cv_casings(g, m, cv: Dictionary, z: float, zc: float, R: float, prof: Array) -> void:
+	var e := 0.006
+	var n: int = m.segs(R)   # the plant's dome's
+	var rs: float = cv.stem_r * 1.5
+	var Z := Vector3(0, 0, 1)
+	var c := Vector3(0, 0, zc)
+	g.only("workshop", "split")
+	g.comp("lower_casing")
+	m.use("paint_machine", "identify")
+	var nb: int = m.segs(R * 0.25)   # the plant's boss's
+	var nr: int = m.segs(R * 1.04)   # the plant's rim's
+	var lo: Array = [[rs, -R * 0.35], prof[0], prof[1], prof[2], [R - e, 0.0], [R * 0.9 - e, -R * 0.12 + e],
+		[R * 0.3 - e, -R * 0.35 + e], [rs, -R * 0.35 + e], [rs, -R * 0.35]]
+	var hi: Array = [prof[2], prof[3], prof[4], prof[5], [0.0, R * 0.45 - e], [R * 0.3 - e * 0.5, R * 0.42 - e],
+		[R * 0.9 - e, R * 0.15 - e * 0.5], [R - e, 0.0], prof[2]]
+	# what the trainee sees of each (split), then its inner faces (hidden)
+	_ring_solid(m, [[rs, z], [R * 0.25, z], [R * 0.25, z + 0.06]], nb)
+	m.lathe(c, Z, lo.slice(0, 4), n, false)
+	m.use("paint_valve", "form")
+	m.cyl(c - Z * 0.01, c, R * 1.04, -1.0, nr, false)
+	g.comp("upper_casing")
+	m.use("paint_machine", "identify")
+	m.lathe(c, Z, hi.slice(0, 4), n, false)
+	m.use("paint_valve", "form")
+	m.cyl(c, c + Z * 0.01, R * 1.04, -1.0, nr, false)
+	g.only("workshop")
+	g.comp("lower_casing")
+	m.use("paint_machine", "identify")
+	_ring_solid(m, [[R * 0.25, z + 0.06], [rs, z + 0.06], [rs, z]], nb)
+	m.lathe(c, Z, lo.slice(3), n, false)
+	m.use("paint_valve", "form")
+	C._face(m, c - Z * 0.01, Z, 0.0, R * 1.04, nr, false)
+	C._face(m, c, Z, 0.0, R * 1.04, nr, true)
+	g.comp("upper_casing")
+	m.use("paint_machine", "identify")
+	m.lathe(c, Z, hi.slice(3), n, false)
+	m.use("paint_valve", "form")
+	C._face(m, c, Z, 0.0, R * 1.04, nr, false)
+	C._face(m, c + Z * 0.01, Z, 0.0, R * 1.04, nr, true)
+	g.only()
+
+## The actuator's insides (hidden; the Fisher 667's, air on top of the diaphragm pushing the stem down to close, the
+## spring under it lifting): the diaphragm on its head plate and the plate on the actuator stem's top (in the `stem`
+## node, at the closed position), the spring between the plate and the lower casing.
+static func _cv_actuator_insides(g, cv: Dictionary, z: float, zc: float, R: float) -> void:
+	if not g.workshop:
+		return
+	var m = g.m
+	var sm = g.moving["stem"].mb
+	var Z := Vector3(0, 0, 1)
+	g.only("workshop")
+	g.comp("actuator_stem")
+	sm.use("chrome", "identify")
+	var zk: float = cv.zg + 0.04 + cv.r * 2.0 * 0.03
+	sm.cyl(Vector3(0, 0, z + 0.04 + cv.r * 0.1), Vector3(0, 0, zc - 0.012), cv.stem_r, -1.0, 10, false)
+	sm.disk(Vector3(0, 0, zk), Vector3(0, 0, -1), cv.stem_r, 10)
+	sm.disk(Vector3(0, 0, zc - 0.012), Vector3(0, 0, 1), cv.stem_r, 10)
+	sm.use("steel", "identify")
+	sm.cyl(Vector3(0, 0, zc - 0.012), Vector3(0, 0, zc - 0.004), R * 0.55, -1.0, 24)   # the diaphragm head
+	g.comp("diaphragm")
+	sm.use("rubber", "identify")
+	sm.cyl(Vector3(0, 0, zc - 0.003), Vector3(0, 0, zc + 0.001), R * 0.58, -1.0, 24)
+	g.comp("spring")
+	m.use("steel_dark", "identify")
+	var z0 := zc - R * 0.35 + 0.006 + 0.006
+	var z1 := zc - 0.012 - 0.006
+	var turns := 5
+	for k in turns:
+		var zz := lerpf(z0, z1, float(k) / (turns - 1))
+		m.torus(Vector3(0, 0, zz), Vector3(1, 0, 0), Vector3(0, 1, 0), R * 0.3, 0.005, TAU, 16, 6)
+	g.only()
+
+## A ring of studs as a fastener group, each where C.bolt_ring draws one (the same hexagon), backing out up the z axis.
+static func _ring_bolts_z(g, id: String, c: Vector3, R: float, n: int, r: float, len: float) -> void:
+	var items: Array = []
+	var Z := Vector3(0, 0, 1)
+	var ax: Array = g.m.across(Z)
+	for i in n:
+		var a := TAU * (i + 0.5) / n
+		var p: Vector3 = c + (ax[0] * cos(a) + ax[1] * sin(a)) * R
+		items.append(Transform3D(Basis.IDENTITY, p - Z * len * 0.5))
+	var bolt := func(b) -> void:
+		b.use("steel_bolt", "detail", r * 3.4)
+		b.cyl(Vector3.ZERO, Vector3(0, 0, len), r * 1.7, -1.0, 6)
+	g.fasteners(id, "bolt", items, bolt, "split")

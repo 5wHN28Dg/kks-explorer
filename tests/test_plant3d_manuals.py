@@ -193,13 +193,15 @@ class Manuals(unittest.TestCase):
         pumps = [s for s in manuals['pumps']['sections'] if s['id'] == 'parts'][0]
         nums = [runs_text(r[0]) for r in pumps['blocks'][1]['table']['rows']]
         self.assertIn('WDP-CP-H-IMPELLER', nums)
-        self.assertIn('WDP-CP-V-IMPELLER', nums)
+        self.assertIn('WDP-CP-V-IMPELLER-1', nums)
         self.assertEqual(len(nums), len(set(nums)))
-        # a consumable whose id the kind's tree also has gives way to the tree's row (a manual of one kind)
+        # a consumable whose id the kind's tree also has gives way to the tree's row (a manual of one kind: the control
+        # valve's own tree since K6 has a diaphragm and a positioner, which its consumables list too)
         cv = [s for s in manuals['control_valve']['sections'] if s['id'] == 'parts'][0]
         rows = [(runs_text(r[0]), runs_text(r[1])) for r in cv['blocks'][1]['table']['rows']]
-        self.assertIn(('WDP-CV-PACKING-SET', 'Packing'), rows)
-        self.assertEqual([n for n, _ in rows].count('WDP-CV-PACKING-SET'), 1)
+        for num, name in (('WDP-CV-DIAPHRAGM', 'Diaphragm'), ('WDP-CV-POSITIONER', 'Positioner')):
+            self.assertIn((num, name), rows)
+            self.assertEqual([n for n, _ in rows].count(num), 1)
 
     def test_comes_with_in_a_manual_of_several_kinds(self):
         """K6: the pump manual's `comes_with` (the motor's grille with its cowl) names parts of the horizontal pump's

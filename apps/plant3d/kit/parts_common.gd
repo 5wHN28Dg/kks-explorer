@@ -231,13 +231,14 @@ static func _motor_frame(g, m, mat: String, root: String, F0: Vector3, B0: Vecto
 	g.comp("end_shield_nde")
 	g.only("workshop", "split")
 	m.use(mat, "form")
-	m.disk(B0, -dir, r * 0.92, n)
+	m.ring(B0, -dir, k.shaft * 1.06 + 0.002, r * 0.92, n)   # (the plant's cap, open round the shaft to the fan)
 	g.only("workshop")
 	m.ring(B0, -dir, k.bore, r * 0.92, n)
 	m.cyl(B0 + dir * k.e, B0, k.bore, -1.0, n, false)   # its spigot in the bore
 	_face(m, B0 + dir * k.e, -dir, k.brg, k.bore, n, false)
 	m._inner(B0 + dir * k.e, B0 + dir * (k.e - 0.03), k.brg, n)   # the bearing housing, open to the rotor
-	_face(m, B0 + dir * (k.e - 0.03), -dir, 0.0, k.brg, n, false)
+	_face(m, B0 + dir * (k.e - 0.03), -dir, k.shaft * 1.06 + 0.002, k.brg, n, false)   # (the shaft through it to the fan)
+	m._inner(B0 + dir * (k.e - 0.03), B0, k.shaft * 1.06 + 0.002, n)
 	g.comp(root)
 	g.only()
 
@@ -252,7 +253,10 @@ static func _motor_de(g, m, mat: String, front: Vector3, F0: Vector3, dir: Vecto
 	_face(m, F0, dir, k.brg, r * 0.7, n, false)
 	g.only("workshop")
 	m._inner(F0, F0 + dir * 0.03, k.brg, n)
-	_face(m, F0 + dir * 0.03, dir, 0.0, k.brg, n, false)
+	var bs: float = k.shaft * 1.06 + 0.002   # (clear of the shaft's corners whatever the bore's sides) the shaft's end in a blind bore (the plant draws the shield's face closed)
+	_face(m, F0 + dir * 0.03, dir, bs, k.brg, n, false)
+	m._inner(F0 + dir * 0.03, front - dir * 0.0005, bs, n)
+	_face(m, front - dir * 0.0005, dir, 0.0, bs, n, false)
 	g.only()
 	var bolts: Array = []   # 4 bolts on the shield's face (the plant draws it smaller than the frame), backing out forwards
 	var ax: Array = m.across(dir)
@@ -325,13 +329,30 @@ static func _motor_rotor(g, front: Vector3, F0: Vector3, B0: Vector3, dir: Vecto
 
 ## A vertical motor standing on `base` (its flange), shaft down. Large ones (> 500 kW) get a box-shaped top
 ## (weather-protected WP II housing), small ones a TEFC frame with a cowl on top.
-static func motor_v(m, base: Vector3, kw: float, mat := "paint_motor") -> Dictionary:
+## A vertical motor standing on its mounting flange at `base`. `g` (the Workshop, K6: the vertical pump's motor,
+## kit/README.md "Workshop: the vertical pump"): the motor's tree under `motor` (its stator in its frame), the root's
+## own spec `root_spec`, for a motor up to 500 kW (a larger one is one component); plant mode draws what it drew
+## before (the Workshop's pieces are "workshop" pieces and the split of the plant's stand-ins).
+static func motor_v(m, base: Vector3, kw: float, mat := "paint_motor", g = null, root_spec := {}) -> Dictionary:
 	var md := motor_dims(kw)
 	var r: float = md.d * 0.55
 	var l: float = md.l * 0.95
 	var up := Vector3(0, 0, 1)
+	var ws: bool = g != null and kw <= 500.0
+	var SI := ["motor", "end_shield_de", "drip_cover"]
+	if g != null and not ws:
+		g.comp("motor", root_spec)
+	if ws:
+		_vmotor_comps(g, root_spec, base, r, l, md.h, float(root_spec.get("shaft_r", 0.0)))
+		g.comp("end_shield_de")
+		g.only("plant", SI)
 	m.use(mat, "form")
 	m.cyl(base, base + up * 0.08, r * 1.05)                  # mounting flange
+	if ws:
+		_vmotor_de(g, m, mat, base, r, md.h, float(root_spec.get("shaft_r", 0.0)))
+		g.comp("motor")
+		g.only("plant", SI)
+		m.use(mat, "form")
 	if kw > 500.0:
 		m.cyl(base + up * 0.08, base + up * l * 0.55, r)
 		m.box(base + up * (l * 0.55 + l * 0.2), Vector3(r * 2.3, r * 2.3, l * 0.4))
@@ -343,15 +364,149 @@ static func motor_v(m, base: Vector3, kw: float, mat := "paint_motor") -> Dictio
 		m.box(base + up * (l * 0.3) + Vector3(r * 1.05, 0, 0), Vector3(r * 0.4, r * 0.7, r * 0.6))   # terminal box
 		return {"r": r * 1.15, "top": base.z + l}
 	m.cyl(base + up * 0.08, base + up * l * 0.8, r * 0.92)
+	if ws:
+		_vmotor_frame(g, m, mat, base, r, l, md.h, float(root_spec.get("shaft_r", 0.0)))
+		g.comp("drip_cover")
+		g.only("plant", SI)
+		m.use(mat, "form")
 	m.lathe(base + up * l * 0.8, up, [[r * 0.95, 0.0], [r * 0.95, l * 0.16], [r * 0.5, l * 0.2]], 0, true)
+	if ws:
+		_vmotor_cover(g, m, mat, base, r, l)
+		g.comp("motor")
+		g.only()
 	m.use(mat, "detail", r * 0.08)
 	for i in 14:
 		var a := TAU * i / 14.0
 		var rad := Vector3(cos(a), sin(a), 0)
 		m.box(base + up * l * 0.45 + rad * r * 0.95, Vector3(r * 0.06, r * 0.14, l * 0.6), Basis(rad.cross(up), rad, up).orthonormalized())
+	if ws:
+		g.comp("terminal_box")
 	m.use(mat, "form")
 	m.box(base + up * (l * 0.5) + Vector3(r * 1.0, 0, 0), Vector3(r * 0.35, r * 0.6, r * 0.6))
+	if ws:
+		_vmotor_insides(g, base, r, l, md.h, float(root_spec.get("shaft_r", 0.0)))
+		g.comp("motor")
 	return {"r": r, "top": base.z + l}
+
+## The vertical motor's sizes from its radius r, length l and frame height h: the stator's bore, the rotor's core and
+## shaft, the bearings and their housings' bores, where the drip cover's cavity starts and its inner radius (m).
+static func _vmotor_r(r: float, l: float, h: float, shaft_r := 0.0) -> Dictionary:
+	var rs := minf(h * 0.12, shaft_r) if shaft_r > 0.0 else h * 0.12
+	return {"bore": r * 0.62, "core": r * 0.56, "shaft": rs, "brg": rs * 2.0, "hous": rs * 2.0 + 0.002,
+		"z_top": l * 0.8, "cov_in": r * 0.95 - 0.012, "cov_h": l * 0.16 - 0.012, "plate": r * 0.84}
+
+## The vertical motor's tree: its stator in the frame (the root, lifted off the pump's stand first) and one stage later
+## what comes off it upwards: the drip cover ahead of the fan ahead of the top bracket ahead of the rotor, so none
+## passes through another; the drive-end bracket (the mounting flange) stays on the frame. The bearings ride out with
+## the rotor and come off its shaft after.
+static func _vmotor_comps(g, root_spec: Dictionary, base: Vector3, r: float, l: float, h: float, shaft_r := 0.0) -> void:
+	var up := Vector3(0, 0, 1)
+	var k := _vmotor_r(r, l, h, shaft_r)
+	var spec := root_spec.duplicate()
+	spec.erase("shaft_r")
+	spec["anchors"] = {"vib_nde": base + up * l * 0.75 + Vector3(r * 0.92, 0, 0), "vib_de": base + up * 0.12 + Vector3(r * 0.92, 0, 0)}
+	g.comp("motor", spec)
+	g.comp("terminal_box", {"parent": "motor", "explode": [Vector3(1, 0, 0), r * 1.4],
+		"anchors": {"u1": base + up * l * 0.46 + Vector3(r * 1.18, 0, 0), "v1": base + up * l * 0.5 + Vector3(r * 1.18, 0, 0),
+			"w1": base + up * l * 0.54 + Vector3(r * 1.18, 0, 0)}})
+	g.comp("end_shield_de", {"parent": "motor", "explode": [up, 0.0]})
+	g.comp("drip_cover", {"parent": "motor", "explode": [up, l * 1.5]})
+	g.comp("fan", {"parent": "motor", "explode": [up, l * 1.2], "sym": [up, 8]})
+	g.comp("end_shield_nde", {"parent": "motor", "explode": [up, l * 1.0], "sym": [up, 0]})
+	g.comp("rotor", {"parent": "motor", "explode": [up, l * 0.8], "pivot": base + up * l * 0.45, "sym": [up, 0]})
+	g.comp("bearing_thrust", {"parent": "rotor", "explode": [up, 0.06], "sym": [up, 0]})
+	g.comp("bearing_guide", {"parent": "rotor", "explode": [-up, 0.04], "sym": [up, 0]})
+
+## The mounting flange (the drive-end bracket): the plant's disc open through its bearing housing's bore, the lower
+## guide bearing's seat.
+static func _vmotor_de(g, m, mat: String, base: Vector3, r: float, h: float, shaft_r := 0.0) -> void:
+	var up := Vector3(0, 0, 1)
+	var k := _vmotor_r(r, 1.0, h, shaft_r)
+	var n: int = m.segs(r * 1.05)   # the plant's flange's
+	var top := base + up * 0.08
+	g.only("workshop", "split")
+	m.use(mat, "form")
+	m.cyl(base, top, r * 1.05, -1.0, n, false)
+	m.ring(base, -up, k.hous, r * 1.05, n)        # its face down, as the plant's first cap (the outline needs it)
+	_zip(m, base, up, r * 1.05, n, -up)           # (a seam in the outside: the stand-in's own)
+	_face(m, top, up, k.hous, r * 1.05, n, true)
+	g.only("workshop")
+	m.use(mat, "form")
+	m._inner(top, base, k.hous, n)                # (listed downwards, as its face down)
+	_zip(m, top, up, k.hous, n, up)
+	g.only()
+
+## The frame and stator: the plant's cylinder open through the stator's bore at both ends (the brackets close it).
+static func _vmotor_frame(g, m, mat: String, base: Vector3, r: float, l: float, h: float, shaft_r := 0.0) -> void:
+	var up := Vector3(0, 0, 1)
+	var k := _vmotor_r(r, l, h, shaft_r)
+	var n: int = m.segs(r * 0.92)   # the plant's frame's
+	var a := base + up * 0.08
+	var b: Vector3 = base + up * k.z_top
+	g.only("workshop", "split")
+	m.use(mat, "form")
+	m.cyl(a, b, r * 0.92, -1.0, n, false)
+	g.only("workshop")
+	m.use(mat, "form")
+	_face(m, a, up, k.bore, r * 0.92, n, false)
+	_face(m, b, up, k.bore, r * 0.92, n, true)
+	m._inner(a, b, k.bore, n)
+	m.use("brass", "identify")   # the winding's end turns, above and below the core, round the bore
+	m.tube(a + up * 0.005, a + up * 0.05, r * 0.86, k.bore + 0.004, 32)
+	m.tube(b - up * 0.05, b - up * 0.005, r * 0.86, k.bore + 0.004, 32)
+	g.only()
+
+## The drip cover: the plant's canopy, a shell open at the bottom over the fan and the top bracket.
+static func _vmotor_cover(g, m, mat: String, base: Vector3, r: float, l: float) -> void:
+	var up := Vector3(0, 0, 1)
+	var k := _vmotor_r(r, l, 1.0)
+	var c: Vector3 = base + up * k.z_top
+	var n: int = m.segs(r * 0.95)   # the plant's canopy's
+	g.only("workshop", "split")
+	m.use(mat, "form")
+	m.lathe(c, up, [[r * 0.95, 0.0], [r * 0.95, l * 0.16], [r * 0.5, l * 0.2]], n, false)
+	m.disk(c + up * l * 0.2, up, r * 0.5, n)
+	_face(m, c, up, k.cov_in, r * 0.95, n, false)
+	g.only("workshop")
+	m.use(mat, "form")
+	m._inner(c, c + up * k.cov_h, k.cov_in, n)
+	_face(m, c + up * k.cov_h, up, 0.0, k.cov_in, n, false)
+	g.only()
+
+## What is inside: the top bracket (a plate on the frame under the cover, with the thrust bearing's housing), and in the
+## `shaft` node the rotor (core and shaft, from the pump's coupling up to the fan), the upper thrust bearing that
+## carries the pump's thrust, the lower guide bearing, and the fan with straight radial blades.
+static func _vmotor_insides(g, base: Vector3, r: float, l: float, h: float, shaft_r: float) -> void:
+	var m = g.m
+	var up := Vector3(0, 0, 1)
+	var k := _vmotor_r(r, l, h, shaft_r)
+	var zt: Vector3 = base + up * k.z_top
+	g.comp("end_shield_nde")
+	g.only("workshop")
+	m.use("paint_motor", "form")
+	m.tube(zt + up * 0.002, zt + up * 0.032, k.plate, k.hous, 16)
+	var sh = g.move("shaft", Vector3(0, 0, base.z), up, "rotate", 0.0)
+	g.comp("rotor")
+	sh.use("steel", "identify")
+	sh.cyl(base - up * 0.07, zt + up * 0.1, k.shaft, -1.0, 16)   # (its foot in the coupling's top)
+	sh.use("steel_dark", "identify")
+	sh.cyl(base + up * 0.14, base + up * l * 0.72, k.core, -1.0, 32)   # the core (laminations, cage bars)
+	sh.use("chrome", "identify")
+	g.comp("bearing_guide")
+	sh.tube(base + up * 0.015, base + up * 0.065, k.brg, k.shaft, 16)
+	g.comp("bearing_thrust")
+	sh.tube(zt + up * 0.004, zt + up * 0.03, k.brg, k.shaft, 16)
+	g.comp("fan")
+	sh.use("paint_darkgrey", "identify")
+	sh.cyl(zt + up * 0.05, zt + up * 0.095, k.shaft * 1.6, -1.0, 16)    # its hub
+	var ax: Array = sh.across(up)
+	for i in 8:   # straight radial blades: the fan cools whichever way the motor turns
+		var a := TAU * i / 8.0
+		var rad: Vector3 = ax[0] * cos(a) + ax[1] * sin(a)
+		var r1: float = k.shaft * 1.5
+		var r2: float = k.cov_in - 0.03
+		sh.box(zt + up * 0.0725 + rad * (r1 + r2) * 0.5, Vector3(0.01, 0.04, r2 - r1), Basis(up.cross(rad).normalized(), up, rad))
+	g.only()
 
 ## A coupling (two hubs with a spacer) on the shaft line from a to b, for a `shaft` node.
 static func coupling(m, a: Vector3, b: Vector3, r: float) -> void:

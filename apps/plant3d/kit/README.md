@@ -398,13 +398,83 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   chamber round the impeller (the plant's offset scroll shell outside it); the impeller is closed, six vanes in two
   straight pieces each, curved back against the shaft's turn (`tests/test_workshop.gd` checks the curve from the
   vanes' faces); the seal is one ring; the bearing frame's oil, the labyrinth seals and the gasket are not drawn; the
-  discharge pipe starts in the scroll's wall (in the plant it reaches into the chamber); the twelve casing bolts are
+  discharge pipe starts in the scroll's wall (in the plant it reaches into the chamber); the casing's foot stops under
+  the impeller's chamber and the bearing frame's foot is notched under its bore (the plant's reach in, where the
+  impeller and the shaft turn); the shaft's end stands in a blind bore in the end cover, as the motor's shaft's ends do
+  in its end shields (the plant draws their faces closed); the twelve casing bolts are
   the plant's bolt ring as a fastener group. The multi-stage barrel pump (`head_m` over 150) has no tree yet; the data
   file names an end-suction pump the plant has three of. **The stand-ins:** the pump's casing, scroll, nozzles and
   bearing frame are one stand-in, and the motor's frame, end shields and cowl another: the plant draws their caps with
   their circles' points listed the other way round (for an odd number of segments, other points of the same circle),
   so each split face lists its points as its own cylinder does (`C._face`), and only the cowl's face to the frame
   keeps the plant's points, with a seam of thin triangles (`C._zip`), so that the outline is the plant's within 1 mm.
+- **valve_control** (the pneumatic actuator's branch, K6: kit/parts_valves.gd `_cv_*`): a cage-guided globe valve
+  (as the Fisher easy-e ES) under a spring-and-diaphragm actuator (as the Fisher 667) with a digital positioner. The
+  order (the data file's `assembly`, reversed for taking apart) follows the ES manual (the stem connector parted and
+  the actuator off by its yoke locknut, the bonnet nuts and the bonnet, the packing; then the plug and stem, the cage
+  and the seat ring) and the 667's (the casing cap screws, the upper casing, the diaphragm, its head and the stem, the
+  lower casing), with SAMSON's 3241 and 3271 instructions as second sources; the positioner's feedback is a magnet on
+  the stem connector (DVC6200). The guided steps put the actuator together on its yoke in place, where the shop does it
+  on the bench and sets it on the valve whole (said in the yoke's step); the explode lifts it off whole first. **Simplified:**
+  the body's flow passages are not drawn: its gallery is a round well from under the seat up to the bonnet, closed at
+  the bottom, and the skin's top round the bonnet is a sloped lid from the gallery's rim to the skin (the plant draws
+  the bonnet's flange sunk into the body's bulge); the cage is two rings and four posts (its windows' shapes, which give
+  the characteristic, are not drawn); the gaskets, the packing's spacer and the plug's pin are not drawn; the packing
+  is one ring and its flange the plant's gland; the yoke is the plant's two arms and head (the actuator stem passes
+  through its solid head; the yoke locknut, the spring adjuster and the seal bushing are not drawn); **the spring sits
+  inside the lower casing** under the diaphragm head (in a real 667 it sits in the yoke under the lower casing, put in
+  from below), five turns drawn as rings; the diaphragm is a flat disc on its head and moves with the stem (a real
+  one's edge is clamped between the casings' flanges and rolls); the diaphragm head, the diaphragm and the stems are
+  drawn at the closed position (the plug on its seat: `tests/test_workshop.gd _seats` checks it sits there, covers the
+  seat's bore and lies on the stem's axis); the positioner is the plant's box with its gauges, the tubing the plant's
+  one straight tube (thin). The electric and hydraulic actuators have no tree yet. **The stand-ins:** the plant's body,
+  neck, bonnet and diaphragm casing are one stand-in (the neck is not drawn in the Workshop: it lies under the lid), the
+  stem another (split at the stem connector into the valve stem and the actuator stem); the bonnet's and the casing's
+  bolt rings are fastener groups. **Known limits** (the tree is built and tested for the data file's DN 150 valve only, as the
+  Workshop builds one scene per kind; WORKSHOP.md §5's scenes per equipment need these first): the plant's neck shows
+  a few millimetres through the body's flats, where the Workshop's lid lies up to about 3 mm inside it; from DN 250 the
+  Workshop's bonnet is drawn with the flange's segment count (9) round the plant's 8-sided bonnet, about 2 mm proud of
+  its flats; at DN 32 and below the gallery is wider than the body's polygon and the generator refuses it (an assert).
+
+- **pump_vertical** (the wet-pit pump, K6: kit/parts_rotating.gd, its motor from parts_common.gd `motor_v`): a
+  wet-pit vertical turbine pump of two stages, as the Goulds VIT manual (bowl assembly p. 6, figs 1–4, disassembly §6
+  p. 31, reassembly pp. 32–33) and the Flowserve VTP user instructions (§6.8) describe one; the data file names a pump
+  the plant has three of (550 m³/h, 30 m, 75 kW, a 6.5 m pit). The sole plate and the discharge head (hollow round
+  the shaft, its branch and flange, its motor stand) stay; the packing box in the head's top; the column in three
+  sections, each joint's flanges on the upper section with the lineshaft's bearing in its retainer and the joint's
+  eight bolts a fastener group; the discharge case, the two bowls and the suction bell (the plant's lathe split at its
+  profile points and once more in its third segment); the pump shaft with two enclosed impellers on their taperlocks,
+  five vanes each curved back against the turn (`tests/test_workshop.gd` checks the curve from the vanes' faces); the
+  spacer coupling; the head's eight hold-down bolts; and a vertical motor up to 500 kW with its own tree (the stator
+  in its frame, the drive-end bracket that is its mounting flange with the lower guide bearing, the top bracket with
+  the thrust bearing that carries the pump's thrust, the fan, the drip cover, the rotor, the terminal box). **The
+  motor's order is derived from how it is built, not from a manual**, as the motor kind's is: every step says so.
+  The guided steps put the pump together as Goulds does, from the bell up (each impeller slid over the shaft and its
+  taperlock driven, the next bowl bolted on), the column section by section, the head, the seal, the motor on the
+  stand and the coupling last (its adjusting nut sets the impellers' lift); taken apart, the reverse. **Simplified:**
+  the lineshaft and the bowl shaft are one shaft (a real one is in sections joined by threaded couplings); the
+  impellers are drawn radial between flat shrouds; the bowls' diffuser vanes, the column's shaft enclosing tube
+  and the taperlocks themselves are not drawn; the bell's mouth is closed by a flat plate (a real one is open,
+  often behind a basket strainer: the Workshop's insides are hidden pieces, which no opening may show); the coupling
+  is one part with its hubs and comes out sideways through the stand's window; the stand's two rings are the plant's
+  discs with a bore round the shafts; the sole plate is the plant's solid box, the shaft drawn stopping at its faces (a real
+  one has the column's opening); the packing box sits inside the head's top (the plant's stand ring is over it) and
+  the explode draws it down inside the head. The motor's bearings, rotor and fan turn in the `shaft` node with the
+  pump's shaft and impellers. **The explode:** the coupling out sideways and the motor lifted off first, its parts
+  apart above (the drip cover ahead of the fan ahead of the top bracket ahead of the rotor); the string in the pit is
+  drawn apart downwards, each part below moving farther, the impellers rising out of their bowls, while the shaft
+  stays (a real pump is lifted out of the pit whole and laid down to be taken apart: the steps' reasons say so). A
+  motor over 500 kW (the circulating water pumps') is one component. **The stand-in:** everything of the pump's
+  casing the plant draws (the head, its branch and flange, the stand's rings, the column with its joints, the bowls)
+  is one, and the motor's flange, frame and drip cover another. The plant draws the bowls after the joints' bolts, in
+  their material, and so does the Workshop; its odd-segment discs list their circles' points mirrored, so the
+  stand's lower ring is drawn about the downward axis and the upper about the upward one, and the motor's flange's
+  face down keeps the plant's points with a seam (`C._zip`): the outline is the plant's within 1 mm. **Known limits** (built and tested
+  for the data file's pump only, as the Workshop builds one scene per kind; WORKSHOP.md §5's scenes per equipment need
+  these first): the column's sections and joints follow the pit (`int(pit / 3)` joints), so a 9 m pit has a fourth
+  section and a 3 m one a second only, which the data file's names don't match; a motor over 500 kW has no tree; from
+  a column of about DN 500 the shaft is wider than the stand rings' bore; under about 22 kW the fan stands through the
+  drip cover's ceiling.
 
 ## Tables and their sources
 

@@ -453,7 +453,11 @@ static func _ws_pieces(res: Dictionary, moving: String, mb, pivot: Vector3) -> v
 	var at := {}                # the builder's stand-in index -> res.standins'
 	for i in mb.standins.size():
 		var si: Dictionary = mb.standins[i]
-		if si.layers.is_empty():   # a stand-in another builder drew (a moving piece's, or the static one's)
+		var drew := false   # (a stand-in another builder drew, a moving piece's or the static one's: here at most
+		for k in si.layers:  # a layer selected again by only(), with nothing in it)
+			if not (si.layers[k].idx as PackedInt32Array).is_empty():
+				drew = true
+		if not drew:
 			continue
 		at[i] = res.standins.size()
 		var layers := _ws_meshes(mb.finish_layers(si.layers), pivot)
